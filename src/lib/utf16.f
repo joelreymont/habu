@@ -149,17 +149,15 @@ public
 
 \ Both conversions append to an initialised BUF without clearing it, strictly:
 \ no replacement character, BOM, terminator or normalisation; NUL is ordinary.
-\ A negative length is E-STR-BOUNDS and input overlapping the destination's
-\ storage, which an append may move, BUF's E-BUF-BOUNDS, both before a byte
-\ moves. A throw while converting may leave part of the append; the caller
-\ discards it.
+\ A negative length is E-STR-BOUNDS before a byte moves. Input may not overlap
+\ the destination's storage, which an append may move. A throw while
+\ converting may leave part of the append; the caller discards it.
 \ Two-byte little-endian units; a high-then-low pair is one scalar. An odd byte
 \ length or an unpaired surrogate, high (at the span's end included) or low, is
 \ E-UTF16.
 : APPEND-LE>UTF8 ( ptr u8 n ptr a -- )
    {: a:ptr u:n buf:ptr :}
    u 0 < if E-STR-BOUNDS throw then
-   a u buf BUF:BORROWED? if E-BUF-BOUNDS throw then
    u UNIT-BYTES mod 0<> if E-UTF16 throw then
    0 begin dup u < while a u buf DECODE-STEP repeat
    drop ;
@@ -170,7 +168,6 @@ public
 : APPEND-UTF8>LE ( ptr u8 n ptr a -- )
    {: a:ptr u:n buf:ptr :}
    u 0 < if E-STR-BOUNDS throw then
-   a u buf BUF:BORROWED? if E-BUF-BOUNDS throw then
    0 begin dup u < while a u buf ENCODE-STEP repeat
    drop ;
 

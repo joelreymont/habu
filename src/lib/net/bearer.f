@@ -603,9 +603,6 @@ private
    SECRET @ SPAN:LEN 0= if exit then
    s" client_secret" SECRET @ SPAN:$ buf PAIR+ ;
 
-\ A text TOKEN or REFRESH reads must not lie in the BUF it writes.
-: OUTSIDE ( ptr u8 n ptr n -- ) BUF:BORROWED? if E-BUF-BOUNDS throw then ;
-
 : WIPE ( ptr n -- )
    {: buf:ptr :}
    0 buf BUF:SPAN SPAN:FILL
@@ -617,7 +614,6 @@ private
 
 : FORM ( ptr u8 n grant ptr n -- )
    {: scope:ptr su:n g buf:ptr :}
-   scope su buf OUTSIDE
    g MATCH grant
       own OF
          buf EMPTIED
@@ -625,7 +621,6 @@ private
          buf CREDENTIALS+
          s" scope" scope su buf PAIR+ ENDOF
       for-person OF {: a:ptr au:n :}
-         a au buf OUTSIDE
          buf EMPTIED
          s" grant_type" s" urn:ietf:params:oauth:grant-type:jwt-bearer" buf PAIR+
          buf CREDENTIALS+
@@ -636,8 +631,6 @@ private
 
 : REFRESH-FORM ( ptr u8 n ptr u8 n ptr n -- )
    {: scope:ptr su:n r:ptr ru:n buf:ptr :}
-   scope su buf OUTSIDE
-   r ru buf OUTSIDE
    buf EMPTIED
    s" grant_type" s" refresh_token" buf PAIR+
    buf CREDENTIALS+
@@ -828,7 +821,7 @@ public
 \ the issuer's answer, empty past TOKEN-CAP; E-RESPONSE for a 2xx without an
 \ access_token string or a positive integer expires_in, or any other status.
 \ Each of those failures first logs one line tagged bearer, never a 2xx
-\ answer's text. A scope or assertion lying in the BUF throws E-BUF-BOUNDS.
+\ answer's text. A scope or assertion must not lie in the BUF.
 \ E-HTTP-STATE before CLIENT!.
 : TOKEN ( ptr u8 n grant ptr n -- ptr u8 n n )
    {: scope:ptr su:n g buf:ptr :}
@@ -843,8 +836,8 @@ public
 \ token, empty when it has none (the old one then stays the one to present),
 \ then expires_in. Both texts are borrowed from the BUF until the caller writes
 \ to it again. It fails as TOKEN does, and E-RESPONSE for a 2xx whose
-\ refresh_token is not a string; a scope or refresh token lying in the BUF
-\ throws E-BUF-BOUNDS.
+\ refresh_token is not a string. A scope or refresh token must not lie in the
+\ BUF.
 : REFRESH ( ptr u8 n ptr u8 n ptr n -- ptr u8 n ptr u8 n n )
    {: scope:ptr su:n r:ptr ru:n buf:ptr :}
    STATED

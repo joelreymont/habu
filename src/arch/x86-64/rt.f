@@ -155,7 +155,7 @@ public
 
 \ An x86-64 stencil is a byte string of whole instructions
 \ (src/os/linux-x86-64/sys.f), so it is appended as it stands where ARM64's
-\ consumer reassembles four-byte words. BUF:N>BLEN refuses a negative length.
+\ consumer reassembles four-byte words.
 : EMIT-STENCIL ( ptr u8 n -- ) {: a:ptr u:n :}
    a u BUF:N>BLEN ASM-SINK BUF:APPEND-SPAN ;
 

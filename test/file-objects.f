@@ -711,7 +711,7 @@ variable CLASS-N                        \ the class CLASS+ read
    L$ s" prog" IN$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
    rc 0<> if rc SHOW then
    s" a kept handle is refused and word docs read at build and run time count 2 and 1" LABEL
-   CMD:OUT$ s\" zip refused\naio refused\ndocs 2 1\n" T$= ;
+   CMD:OUT$ s\" zip refused\ndocs 2 1\n" T$= ;
 
 \ Stores the member's integer in the cell; false when the object has no such member.
 : MEMBER! ( JSON:reader ptr u8 n ptr n -- JSON:reader bool )

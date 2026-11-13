@@ -128,11 +128,10 @@ MODULE-AT MODULE-MARK nip + constant MODULE-END
 
 public
 
-\ The module's bytes, the title and the BUF the page is appended to; a module
-\ the BUF holds or a title that is not XML text is refused.
+\ The module's bytes, the title and the BUF the page is appended to; the BUF
+\ must not hold the module, and a title that is not XML text is refused.
 : PAGE+ ( ptr u8 n ptr u8 n ptr a -- )
    {: m:ptr mu:n t:ptr tu:n buf:ptr :}
-   m mu buf BUF:BORROWED? if E-BUF-BOUNDS throw then
    \ An allocation is never empty, so an empty title takes one escape's room.
    tu 1 max WIDEST * {: cap:n :}
    m mu t tu buf cap  cap MEM:BYTES-ALLOC-LEN [: ESCAPED ;] MEM:WITH-BYTES ;

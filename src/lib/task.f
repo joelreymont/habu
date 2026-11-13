@@ -186,8 +186,7 @@ TASK-USER-END CELL - constant TASK-AREA-OFF
    1 TASK-DEFER-DEPTH +! ;
 
 : TASK-DEFER-LEAVE ( -- )
-   TASK-DEFER-DEPTH @ dup 0= if drop E-TASK-STATE throw then
-   1- TASK-DEFER-DEPTH ! ;
+   -1 TASK-DEFER-DEPTH +! ;
 
 : TASK-NULL ( -- ptr n )
    NULL$ drop CELL-VIEW ;
@@ -360,13 +359,9 @@ host
    SEM-REC BYTE-VIEW TASK-SEM-OBJ-OFF + ;
 
 \ The guard cell holds the record's OWN
-\ address exactly while the POSIX object behind it is live, so an uninitialized
-\ record and a destroyed one fail closed instead of entering sem_wait.
+\ address exactly while the POSIX object behind it is live.
 : SEM-LIVE? ( sem -- bool ) {: s:sem :}
    s SEM-GUARD atomic@ s SEM>N = ;
-
-: SEM-CHECK ( sem -- )
-   SEM-LIVE? 0= if E-TASK-SEM-STATE throw then ;
 
 : SEM-COUNT-CHECK ( n -- ) {: value:n :}
    value 0 < value TASK-SEM-MAX > or if E-TASK-SEM-COUNT throw then ;
@@ -395,7 +390,6 @@ host
 \ consuming a count, so an aborted wait retries.
 : MACH-WAIT ( sem -- ) {: s:sem :}
    begin
-      s SEM-CHECK
       s SEM-OBJ LE:U32@ MACH-SEM-WAIT
       dup 0= if drop exit then
       MACH-ABORTED <> if E-TASK-THREAD throw then
@@ -404,13 +398,11 @@ host
 : SEM-WAIT ( sem -- ) {: s:sem :}
    HB-TARGET-MACOS? if s MACH-WAIT exit then
    begin
-      s SEM-CHECK
       s SEM-OBJ SEM-WAIT-CALL 0= if exit then
       FFI:ERRNO TASK-EINTR <> if E-TASK-THREAD throw then
    again ;
 
 : SEM-SIGNAL ( sem -- ) {: s:sem :}
-   s SEM-CHECK
    HB-TARGET-MACOS? if s SEM-OBJ LE:U32@ MACH-SEM-SIGNAL
    else s SEM-OBJ SEM-POST-CALL then TASK-RC0 ;
 
@@ -418,7 +410,6 @@ host
 \ wait retries as MACH-WAIT does.
 : MACH-TRY-WAIT ( sem -- bool ) {: s:sem :}
    begin
-      s SEM-CHECK
       s SEM-OBJ LE:U32@ 0 MACH-SEM-TIMEDWAIT
       dup 0= if drop true exit then
       dup MACH-TIMED-OUT = if drop false exit then
@@ -428,7 +419,6 @@ host
 : SEM-TRY-WAIT ( sem -- bool ) {: s:sem :}
    HB-TARGET-MACOS? if s MACH-TRY-WAIT exit then
    begin
-      s SEM-CHECK
       s SEM-OBJ SEM-TRYWAIT-CALL 0= if 0 0= exit then
       FFI:ERRNO TASK-EAGAIN = if 0 0= 0= exit then
       FFI:ERRNO TASK-EINTR <> if E-TASK-THREAD throw then
@@ -1765,7 +1755,6 @@ private
    ns TASK-NS-PER-S /   ns TASK-NS-PER-S mod 32 lshift or ;
 
 : MACH-WAIT-NS ( n sem -- bool ) {: ns:n s:sem :}
-   s SEM-CHECK
    s SEM-OBJ LE:U32@ ns MACH-SPEC MACH-SEM-TIMEDWAIT
    dup 0= if drop true exit then
    dup MACH-TIMED-OUT = swap MACH-ABORTED = or if false exit then
@@ -1780,7 +1769,6 @@ private
    TASK-CLOCK-MONOTONIC SLEEP-REQ BYTE-VIEW CLOCK-GETTIME-CALL TASK-RC0
    SLEEP-REQ SPEC@ {: now:n :}
    ns TASK-NS-MAX now - min now + SLEEP-REQ SPEC!
-   s SEM-CHECK
    s SEM-OBJ TASK-CLOCK-MONOTONIC SLEEP-REQ BYTE-VIEW SEM-CLOCKWAIT-CALL
    0= if true exit then
    FFI:ERRNO dup TASK-ETIMEDOUT = swap TASK-EINTR = or if false exit then

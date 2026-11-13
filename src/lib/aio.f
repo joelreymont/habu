@@ -20,10 +20,10 @@ require src/lib/adt/result.f
 package AIO
 public
 
-\ A submission's handle: a nominal cell over a record index and the generation
-\ the record carried at minting, never an address. Both converters are private,
-\ so no caller can mint a ticket for a record it did not submit; a handle kept
-\ past its record's reuse is E-AIO-STATE. Only the submitting task may AWAIT it.
+\ A submission's handle: a nominal cell over a record index, never an address.
+\ Both converters are private,
+\ so no caller can mint a ticket for a record it did not submit. Only the
+\ submitting task may AWAIT it, once.
 NEWTYPE ticket
 
 \ A set of tickets one AWAIT-ANY waits on, as the index a GROUP definition
@@ -178,7 +178,7 @@ BEGIN-STRUCTURE REC-BYTES
    CELL +FIELD REC.TIMED-OUT        \ the link fired, so -ECANCELED means timed out
    CELL +FIELD REC.CANCELING        \ a cancel was submitted; a record gets one
    CELL +FIELD REC.HOLD
-   CELL +FIELD REC.GEN              \ the handle's other half
+   CELL +FIELD REC.GEN              \ bumped each time the record goes free
    CELL +FIELD REC.OWNER            \ the submitting task, as TASK:WAKE takes it
    \ The allocation a transfer holds: the pointer MEM:ALLOC-BYTES answered and
    \ its extent. REC.HOLD says the pair is this record's to give back. It is
@@ -205,10 +205,9 @@ CELL constant CHUNK-HEAD
 \ the first static; a chunk is appended when a group past the chain is first
 \ used, without the facility, so the chunks are one size and an append that
 \ loses a race is only spare room. The task whose GROUP+ finds a group empty
-\ claims G.OWNER and holds the group until its count is back to zero; until
-\ then GROUP+, GROUP- and AWAIT-ANY from any other task are E-AIO-STATE before
-\ they read the row, so only the owner reads the row or moves it when GROUP+
-\ doubles it.
+\ takes G.OWNER and holds the group until its count is back to zero; until then
+\ only it may GROUP+, GROUP- or AWAIT-ANY on the group, so only the owner reads
+\ the row or moves it when GROUP+ doubles it.
 $10 constant GROUPS-FIRST
 $40 constant ROW-FIRST
 
@@ -240,9 +239,6 @@ SCRATCH-VARIABLE REC-LIVE           \ records claimed and not yet freed: URING-C
 
 variable GROUP-N
 variable RING-FD
-\ Carried while the records are scratch: at least every generation a ticket
-\ holds. Read with atomic@, written with atomic! under AIO-LOCK.
-variable GEN-SERIAL
 variable RING-LIVE                  \ the loop is running
 variable RING-STOP
 variable RING-READY                 \ the facility has been initialized once
@@ -447,37 +443,16 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
    repeat
    G-AT ;
 
-\ A fresh mapping is zero, every record free; each record's generation is above
-\ GEN-SERIAL. The chunk is linked before REC-GROWN counts it.
+\ A fresh mapping is zero, every record free. The chunk is linked before
+\ REC-GROWN counts it.
 : REC-GROW ( -- )
    REC-CAP RECS-FIRST + {: len:n :}
    len CHUNK-LEN MEM:ALLOC-BYTES drop FFI:>CELL {: c:n :}
    len 0 ?do
       -1 c i CHUNK-REC REC.PEER !
-      GEN-SERIAL atomic@ 1 + c i CHUNK-REC REC.GEN !
    loop
    c CHUNK-LAST AIO-N>PTR atomic!
    REC-GROWN @ len + REC-GROWN atomic! ;
-
-\ ---- handles -----------------------------------------------------------------
-\ A handle's bits HANDLE-TOP..63 hold w, the index's width; the low w bits hold
-\ the index, the bits between its record's generation modulo 2^(HANDLE-TOP-w).
-58 constant HANDLE-TOP
-
-: IDX-WIDTH ( n -- n )
-   0 swap begin dup 0<> while 1 rshift swap 1 + swap repeat drop ;
-
-: LOW-BITS ( n -- n )
-   1 swap lshift 1 - ;
-
-: IDX>HANDLE ( n -- n ) {: idx:n :}
-   idx IDX-WIDTH {: w:n :}
-   idx REC REC.GEN @ HANDLE-TOP w - LOW-BITS and w lshift
-   idx or
-   w HANDLE-TOP lshift or ;
-
-: HANDLE>IDX ( n -- n ) {: h:n :}
-   h h HANDLE-TOP rshift LOW-BITS and ;
 
 : AIO-NULL ( -- ptr n )
    NULL$ drop CELL-VIEW ;
@@ -485,14 +460,13 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
 : AIO-NULL-BYTES ( -- ptr u8 )
    NULL$ drop ;
 
-\ Only REC.BUF is cleared: REC.HOLD says whether the pair is readable. The
-\ generation passes its own and GEN-SERIAL before the state goes free.
+\ Only REC.BUF is cleared: REC.HOLD says whether the pair is readable.
 : REC-RESET ( n -- ) {: idx:n :}
    idx REC {: r:ptr :}
    0 r REC.RES ! 0 r REC.FLAGS ! 0 r REC.TIMED-OUT ! 0 r REC.CANCELING !
    0 r REC.PENDING ! -1 r REC.PEER ! KIND-POLL r REC.KIND !
    0 r REC.HOLD !
-   r REC.GEN @ GEN-SERIAL atomic@ max 1 + r REC.GEN !
+   r REC.GEN @ 1 + r REC.GEN !
    AIO-NULL-BYTES idx REC-BUF !
    AIO-NULL idx REC-OWNER !
    STATE-FREE r REC.STATE atomic! ;
@@ -533,14 +507,13 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
    again ;
 
 \ A free record, grown into when all are taken; every claim holds AIO-LOCK,
-\ which serializes REC-GROW and GEN-SERIAL. Answers 0 and it, or a code and -1.
+\ which serializes REC-GROW. Answers 0 and it, or a code and -1.
 : REC-CLAIM ( -- n n )
    REC-FIND dup 0 < if
       drop [: REC-GROW ;] catch dup 0<> if -1 exit then drop
       REC-FIND
    then
    REC-LIVE @ 1 + REC-LIVE atomic!
-   dup REC REC.GEN @ GEN-SERIAL atomic@ max GEN-SERIAL atomic!
    0 swap ;
 
 : REC-ARM ( n n n -- ) {: idx:n kind:n owed:n :}
@@ -963,16 +936,6 @@ INSTALL-HOST
    idx REC-FREE
    AIO-LOCK TASK:RELEASE ;
 
-\ The one boundary between a public handle and a record index: a handle goes in
-\ and the index it names comes out.
-: OWNED-CHECK ( n -- n ) {: h:n :}
-   h HANDLE>IDX {: idx:n :}
-   idx REC-CAP >= if E-AIO-STATE throw then
-   idx REC-STATE@ STATE-FREE = if E-AIO-STATE throw then
-   idx REC-OWNER @ FFI:>CELL TASK:SELF-N <> if E-AIO-STATE throw then
-   idx IDX>HANDLE h <> if E-AIO-STATE throw then
-   idx ;
-
 : GIVE-BACK ( n -- ) {: idx:n :}
    AIO-LOCK TASK:GET
    idx REC-STATE@ STATE-SUBMITTED = if idx TRY-CANCEL then
@@ -1015,16 +978,15 @@ INSTALL-HOST
    ENSURE-SCRUB
    AIO-LOCK TASK:GET ;
 
-\ Mints with AIO-LOCK released: until the handle exists, no REC-FREE caller
-\ reaches a record whose stage answered 0.
+\ Until the caller holds the handle, no REC-FREE caller reaches a record whose
+\ stage answered 0.
 : SUBMIT-LEAVE ( n n -- n ) {: rc:n idx:n :}
    AIO-LOCK TASK:RELEASE
    rc 0 <> if rc throw then
-   idx IDX>HANDLE ;
+   idx ;
 
-: CANCEL-HANDLE ( n -- ) {: h:n :}
+: CANCEL-HANDLE ( n -- ) {: idx:n :}
    RUNNING-CHECK
-   h OWNED-CHECK {: idx:n :}
    AIO-LOCK TASK:GET
    idx HOST-CANCEL {: rc:n :}
    AIO-LOCK TASK:RELEASE
@@ -1067,8 +1029,8 @@ INSTALL-HOST
    loop
    -1 ;
 
-\ Only the group's owner reaches here (G-CLAIM), so no other task reads
-\ the row while it moves and the move needs no facility.
+\ Only the group's owner reaches here, so no other task reads the row while it
+\ moves and the move needs no facility.
 : ROW-GROW ( ptr n -- ) {: e:ptr :}
    e G.CAP @ 2 * ROW-FIRST max {: cap:n :}
    cap ROW-LEN MEM:ALLOC-BYTES drop FFI:>CELL {: row:n :}
@@ -1082,17 +1044,6 @@ INSTALL-HOST
 : G-DISOWN-EMPTY ( ptr n -- ) {: e:ptr :}
    e G.COUNT @ 0= if 0 e G.OWNER atomic! then ;
 
-: G-MINE? ( ptr n -- bool ) {: e:ptr :}
-   e G.OWNER atomic@ {: holder:n :}
-   holder 0<> holder TASK:SELF-CONTEXT <> and if E-AIO-STATE throw then
-   holder 0<> ;
-
-\ Two tasks adding to one empty group race on the cell; the one whose swap
-\ loses is E-AIO-STATE.
-: G-CLAIM ( ptr n -- ) {: e:ptr :}
-   e G-MINE? if exit then
-   0 TASK:SELF-CONTEXT e G.OWNER atomic-cas 0<> if E-AIO-STATE throw then ;
-
 \ A row that cannot grow leaves the group as it was, and a group this add
 \ claimed empty goes back to being no task's.
 : G-WIDEN ( ptr n -- ) {: e:ptr :}
@@ -1101,7 +1052,7 @@ INSTALL-HOST
 
 : G-ADD ( n n n -- ) {: g:n h:n tag:n :}
    g G-ENTRY {: e:ptr :}
-   e G-CLAIM
+   e G.COUNT @ 0= if TASK:SELF-CONTEXT e G.OWNER atomic! then
    e G.COUNT @ e G.CAP @ = if e G-WIDEN then
    h e e G.COUNT @ E-SLOT !
    tag e e G.COUNT @ E-TAG !
@@ -1120,7 +1071,7 @@ INSTALL-HOST
 : G-READY ( n -- n ) {: g:n :}
    g G-ENTRY {: e:ptr :}
    e G.COUNT @ 0 ?do
-      e i E-SLOT @ OWNED-CHECK REC-STATE@ STATE-DONE = if i unloop exit then
+      e i E-SLOT @ REC-STATE@ STATE-DONE = if i unloop exit then
    loop
    -1 ;
 
@@ -1128,7 +1079,7 @@ INSTALL-HOST
    g G-ENTRY at E-SLOT @ {: h:n :}
    g G-ENTRY at E-TAG @ {: tag:n :}
    g at G-REMOVE-AT
-   tag h HANDLE>IDX TAKE ;
+   tag h TAKE ;
 
 : GROUP-LOOP ( n -- n ) {: g:n :}
    begin
@@ -1143,11 +1094,11 @@ INSTALL-HOST
    g 0 < if exit then
    g G-ENTRY {: e:ptr :}
    e G.COUNT @ 0 ?do
-      e i E-SLOT @ HANDLE>IDX GIVE-BACK
+      e i E-SLOT @ GIVE-BACK
    loop ;
 
 : AWAIT-GROUP ( n -- n outcome ) {: g:n :}
-   g G-ENTRY G-MINE? 0= if E-AIO-GROUP throw then
+   g G-ENTRY G.COUNT @ 0= if E-AIO-GROUP throw then
    -1 AIO-PARKED !
    g [: GROUP-LOOP ;] [: GROUP-GIVE-BACK ;] finally {: at:n :}
    g at G-TAKE-AT ;
@@ -1217,13 +1168,11 @@ public
    TICKET>N CANCEL-HANDLE ;
 
 \ Blocks until that operation has ended and answers its outcome, releasing the
-\ record. Only the task that submitted the ticket may await it, and only once:
-\ a ticket whose record is free, one another task owns, and one whose record has
-\ since been reused - even by this task - are E-AIO-STATE.
+\ record. Only the task that submitted the ticket may await it, and only once.
 \ The main thread may await too.
 : AWAIT ( ticket -- outcome ) {: t:ticket :}
    RUNNING-CHECK
-   t TICKET>N OWNED-CHECK AWAIT-ONE ;
+   t TICKET>N AWAIT-ONE ;
 
 \ ---- the completion operations -----------------------------------------------
 \ READ hands the transfer a MEM allocation and it owns those bytes
@@ -1248,28 +1197,23 @@ public
 \ the transfer may await it, and only once, as for a ticket.
 : AWAIT-XFER ( xfer -- ptr u8 NUM:alloc-byte-len outcome ) {: x:xfer :}
    RUNNING-CHECK
-   x XFER>N OWNED-CHECK AWAIT-XFER-ONE ;
+   x XFER>N AWAIT-XFER-ONE ;
 
 : GROUP ( -- )
    create G-REGISTER ,
    does> ( -- AIO:group ) @ >GROUP ;
 
 \ A group belongs to the task that adds to it while empty until it is empty
-\ again; any other task's GROUP+, GROUP- or AWAIT-ANY on it meanwhile is
-\ E-AIO-STATE. When the holder ends, AIO's exit cleanup empties every group it
-\ holds, so a cleanup of the caller's that runs after AIO's finds them empty.
+\ again; no other task may GROUP+, GROUP- or AWAIT-ANY on it meanwhile. When
+\ the holder ends, AIO's exit cleanup empties every group it holds, so a cleanup
+\ of the caller's that runs after AIO's finds them empty.
 \ The number is the caller's, any value; AWAIT-ANY hands it back for this wait.
 : GROUP+ ( ticket n group -- ) {: t:ticket tag:n g:group :}
-   t TICKET>N {: h:n :}
-   h OWNED-CHECK drop
-   g GROUP>N h tag G-ADD ;
+   g GROUP>N t TICKET>N tag G-ADD ;
 
-\ The group holds the handle cell GROUP+ was given, so this matches the caller's
-\ handle exactly: a ticket the group never held is E-AIO-GROUP whether it is
-\ stale or live, and a member whose record has since been reused can still be
-\ taken out of the group. A group no task holds is empty: E-AIO-GROUP.
+\ The group holds the handle cell GROUP+ was given: a ticket the group does not
+\ hold is E-AIO-GROUP. A group no task holds is empty: E-AIO-GROUP.
 : GROUP- ( ticket group -- ) {: t:ticket g:group :}
-   g GROUP>N G-ENTRY G-MINE? 0= if E-AIO-GROUP throw then
    g GROUP>N t TICKET>N G-FIND {: at:n :}
    at 0 < if E-AIO-GROUP throw then
    g GROUP>N at G-REMOVE-AT ;
@@ -1277,7 +1221,7 @@ public
 \ The number GROUP+ was given with the first wait of the group whose operation
 \ has ended, with its outcome. That ticket leaves the group and its record is
 \ released, exactly as AWAIT does; the others stay. An empty group has nothing to
-\ wait for and is E-AIO-GROUP; another task's group is E-AIO-STATE.
+\ wait for and is E-AIO-GROUP.
 : AWAIT-ANY ( group -- n outcome ) {: g:group :}
    RUNNING-CHECK
    g GROUP>N AWAIT-GROUP ;

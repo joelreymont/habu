@@ -132,7 +132,7 @@ TASK:MIN-STACK TASK:TASK WORKER-C
    16 MEM:BYTES-ALLOC-LEN [: THROW-BODY ;] C2-MEM:WITH-MUT ;
 
 : FAIL-INIT ( mut-view<p,i,a,init<i,C2-MEM:owner-state>> -- mut-view<p,i,a,init<i,C2-MEM:owner-state>> )
-   C2-MEM:BIND 0 MEM:BYTES-ALLOC-LEN [: DISPOSE ;] C2-MEM:ALLOC-DISPOSE
+   C2-MEM:BIND MEM-MAX-N MEM:BYTES-ALLOC-LEN [: DISPOSE ;] C2-MEM:ALLOC-DISPOSE
    C2-MEM:PUBLISH drop C2-MEM:UNBIND ;
 
 : FAIL-BODY ( mut-view<p,p,a,u8> -- mut-view<p,p,a,u8> )

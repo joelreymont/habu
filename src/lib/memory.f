@@ -1,6 +1,6 @@
 \ memory.f - checked OS-backed mappings for runtime-sized storage; `create ...
-\ allot` is for dictionary-sized static storage. Sizes are validated before
-\ mmap; a kernel munmap refusal writes "memory: unmap failed" and exits 71,
+\ allot` is for dictionary-sized static storage. A refused mmap throws
+\ E-MEM-MAP; a kernel munmap refusal writes "memory: unmap failed" and exits 71,
 \ bypassing catch. STORAGE CLASS. CALLER-OWNED: the caller releases every
 \ mapping. WITH-BYTES's scopes are TASK-LOCAL: their chunks hang off one head
 \ cell in the MEM-ABI band (src/habu/layout.f), a halted task unwinds its scopes
@@ -25,43 +25,24 @@ $1012 constant MEM-MAP-PRIVATE-ANON-FIXED   \ the engine's mmap treats $10 as MA
 -1 constant MEM-ANON-FD
 0 constant MEM-OFF-ZERO
 
-: MEM-CHECK-SIZE ( n -- )
-   dup 0 <= if E-MEM-SIZE throw then
-   drop ;
-
-: MEM-CHECK-64K-COUNT ( n -- )
-   dup 0 <= if E-MEM-SIZE throw then
-   dup MEM-MAX-64K-BUFFERS > if E-MEM-SIZE throw then
-   drop ;
-
-: MEM-CHECK-CELL-COUNT ( count -- )
-   dup COUNT>N 0 <= if E-MEM-SIZE throw then
-   dup COUNT>N MEM-MAX-CELLS > if E-MEM-SIZE throw then
-   drop ;
-
-: MEM-64K-BYTES ( n -- n ) {: cnt :}
-   cnt MEM-CHECK-64K-COUNT
-   cnt MEM-64K * ;
+: MEM-64K-BYTES ( n -- n )
+   MEM-64K * ;
 
 : MEM-CELLS>BYTES ( count -- n )
-   dup MEM-CHECK-CELL-COUNT
    COUNT>N cells ;
 
-: MEM-64K-COUNT-FOR ( n -- n ) {: bytes :}
-   bytes MEM-CHECK-SIZE
-   bytes 1 - MEM-64K / 1 + dup MEM-CHECK-64K-COUNT ;
+: MEM-64K-COUNT-FOR ( n -- n )
+   1 - MEM-64K / 1 + ;
 
 : MEM-64K-SPAN-BYTES ( n -- n )
    MEM-64K-COUNT-FOR MEM-64K-BYTES ;
 
 \ Fresh storage gets its element type from the caller. The engine owns only
-\ the OS mapping and its pointer/error result; sizing and failure policy are checked.
+\ the OS mapping and its pointer/error result.
 : MEM-ALLOC-PTR ( n -- ptr a )
-   dup MEM-CHECK-SIZE
    map-anon 0<> if drop E-MEM-MAP throw then ;
 
 : MEM-ALLOC-BYTES ( n -- ptr u8 n ) {: bytes :}
-   bytes MEM-CHECK-SIZE
    bytes MEM-ALLOC-PTR bytes ;
 
 : MEM-ALLOC-CELLS ( count -- ptr a )
@@ -78,9 +59,7 @@ $1012 constant MEM-MAP-PRIVATE-ANON-FIXED   \ the engine's mmap treats $10 as MA
 
 \ Package MEM states the raw MEM-ALLOC-* sizing as checked words over NUM roles:
 \ the scalar words answer numeric-result<a> (zero is a valid answer), and the
-\ allocation sinks take only alloc-* roles, which refuse zero and
-\ over-allocation at validation, so a role swap or a zero/overflow size never
-\ reaches mmap.
+\ allocation sinks take only alloc-* roles, so a role swap never reaches mmap.
 
 package MEM
 private
@@ -107,37 +86,6 @@ private
       zero OF E-MEM-TOTALITY throw ENDOF        overflow OF E-MEM-TOTALITY throw ENDOF
       underflow OF E-MEM-TOTALITY throw ENDOF   bad-alignment OF E-MEM-TOTALITY throw ENDOF
       misaligned OF E-MEM-TOTALITY throw ENDOF
-   ;MATCH ;
-
-\ These narrow a caller's runtime n, so a refusal is a real sizing outcome and
-\ throws E-MEM-SIZE.
-: SIZE-BYTE-LEN ( NUM:numeric-result<NUM:byte-len> -- NUM:byte-len )
-   MATCH NUM:numeric-result
-      ok OF ENDOF                              negative OF E-MEM-SIZE throw ENDOF
-      zero OF E-MEM-SIZE throw ENDOF            overflow OF E-MEM-SIZE throw ENDOF
-      underflow OF E-MEM-SIZE throw ENDOF       bad-alignment OF E-MEM-SIZE throw ENDOF
-      misaligned OF E-MEM-SIZE throw ENDOF
-   ;MATCH ;
-: SIZE-ALLOC-BYTE-LEN ( NUM:numeric-result<NUM:alloc-byte-len> -- NUM:alloc-byte-len )
-   MATCH NUM:numeric-result
-      ok OF ENDOF                              negative OF E-MEM-SIZE throw ENDOF
-      zero OF E-MEM-SIZE throw ENDOF            overflow OF E-MEM-SIZE throw ENDOF
-      underflow OF E-MEM-SIZE throw ENDOF       bad-alignment OF E-MEM-SIZE throw ENDOF
-      misaligned OF E-MEM-SIZE throw ENDOF
-   ;MATCH ;
-: SIZE-CELL-COUNT ( NUM:numeric-result<NUM:cell-count> -- NUM:cell-count )
-   MATCH NUM:numeric-result
-      ok OF ENDOF                              negative OF E-MEM-SIZE throw ENDOF
-      zero OF E-MEM-SIZE throw ENDOF            overflow OF E-MEM-SIZE throw ENDOF
-      underflow OF E-MEM-SIZE throw ENDOF       bad-alignment OF E-MEM-SIZE throw ENDOF
-      misaligned OF E-MEM-SIZE throw ENDOF
-   ;MATCH ;
-: SIZE-ALLOC-CELL-COUNT ( NUM:numeric-result<NUM:alloc-cell-count> -- NUM:alloc-cell-count )
-   MATCH NUM:numeric-result
-      ok OF ENDOF                              negative OF E-MEM-SIZE throw ENDOF
-      zero OF E-MEM-SIZE throw ENDOF            overflow OF E-MEM-SIZE throw ENDOF
-      underflow OF E-MEM-SIZE throw ENDOF       bad-alignment OF E-MEM-SIZE throw ENDOF
-      misaligned OF E-MEM-SIZE throw ENDOF
    ;MATCH ;
 
 \ MEM-64K is a compile-time positive power of two, so BYTE-LEN / ALIGNMENT /
@@ -193,15 +141,10 @@ public
 : UNMAP ( ptr u8 NUM:byte-len -- )
    BYTE-LEN>N RELEASE-RANGE ;
 
-\ Callers narrow a raw size to the positive alloc role before the allocation
-\ sink; a zero, negative or overflowing size throws E-MEM-SIZE.
-\ Composes the public NUM validators only, so no new unchecked boundary.
-: BYTES-ALLOC-LEN ( n -- NUM:alloc-byte-len )
-   NUM:BYTE-LEN SIZE-BYTE-LEN
-   NUM:AS-ALLOC-BYTE-LEN SIZE-ALLOC-BYTE-LEN ;
-: CELLS-ALLOC-COUNT ( n -- NUM:alloc-cell-count )
-   NUM:CELL-COUNT SIZE-CELL-COUNT
-   NUM:AS-ALLOC-CELL-COUNT SIZE-ALLOC-CELL-COUNT ;
+\ Callers name a raw size as the positive alloc role before the allocation
+\ sink.
+CAST: BYTES-ALLOC-LEN ( n -- NUM:alloc-byte-len )
+CAST: CELLS-ALLOC-COUNT ( n -- NUM:alloc-cell-count )
 
 \ Here and not in src/lib/span.f, because this file owns MEM
 \ (docs/forth-card.md § 6); that makes src/lib/span.f a boot-prefix row ahead of
@@ -310,12 +253,9 @@ CAST: >CHUNK ( ptr u8 -- ptr chunk )
    top slot + cur CHUNK-TOP !
    cur CHUNK>BYTES top + >FRAME ;
 
-\ The extent for a body of `len` bytes; one whose header would carry it past
-\ MEM-MAX-N is refused as a size.
+\ The extent for a body of `len` bytes.
 : SCOPE-EXTENT ( NUM:alloc-byte-len -- n )
-   ALLOC-BYTES>N
-   dup MEM-MAX-N FRAME-BYTES - > if drop E-MEM-SIZE throw then
-   FRAME-BYTES + ;
+   ALLOC-BYTES>N FRAME-BYTES + ;
 
 \ A scope links only once its storage is taken, so a refused mapping links
 \ nothing.
@@ -411,7 +351,6 @@ public
 \ reach past its end into whatever the kernel mapped next (a task's DATA
 \ region).
 : ALLOC-GUARDED ( n -- ptr u8 n ) {: cap:n :}
-   cap STACK-ABI:PAGE-BYTES mod 0 <> if E-MEM-SIZE throw then
    cap GUARDED-SPAN-BYTES {: span-bytes:n :}
    MEM-ADDR-ANY span-bytes MEM-PROT-NONE MEM-MAP-PRIVATE-ANON MEM-ANON-FD MEM-OFF-ZERO mmap {: span:n :}
    span 0 < if E-MEM-MAP throw then

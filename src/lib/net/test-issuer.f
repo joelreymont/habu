@@ -290,11 +290,10 @@ HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-LEN n
 public
 
 \ A compact JWS of the claims text, signed RS256 with the fixture key under the
-\ issuer's kid, borrowed from the BUF until its next write. Claims lying in the
-\ BUF throw E-BUF-BOUNDS.
+\ issuer's kid, borrowed from the BUF until its next write. Claims must not lie
+\ in the BUF.
 : MINT ( ptr u8 n ptr n -- ptr u8 n )
    {: claims:ptr cu:n buf:ptr :}
-   claims cu buf BUF:BORROWED? if E-BUF-BOUNDS throw then
    buf BUF:CLEAR
    HEADER$ buf SEGMENT+
    [char] . buf BUF:APPEND-BYTE

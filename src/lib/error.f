@@ -173,7 +173,7 @@ require src/lib/prelude.f
 -3603 constant E-TASK-THREAD
 -3604 constant E-TASK-STATE
 -3605 constant E-TASK-USER
--3606 constant E-TASK-SEM-STATE     \ semaphore not initialized, initialized twice, or destroyed
+-3606 constant E-TASK-SEM-STATE     \ semaphore initialized twice
 -3607 constant E-TASK-SEM-COUNT     \ semaphore count out of range
 -3608 constant E-TASK-SEM-HOST      \ host has no usable unnamed semaphores
 -3609 constant E-TASK-JOIN          \ join of a task never activated or already joined
@@ -243,7 +243,7 @@ require src/lib/prelude.f
 -5799 constant E-BUF-LAST
 -5700 constant E-BUF-BOUNDS      \ byte offset / active length outside the buffer
 -5701 constant E-BUF-CAPACITY    \ zero, negative, or cell-overflowing byte capacity
--5702 constant E-BUF-STATE       \ touch of a disposed buffer, or re-init of a live one
+-5702 constant E-BUF-STATE       \ a buffer in the wrong state for the operation
 -5703 constant E-BUF-OVERLAP     \ source and destination byte ranges overlap
 
 \ Open-addressing integer-key hash probe: -5800..-5899
@@ -1024,7 +1024,7 @@ require src/lib/prelude.f
 -9299 constant E-AIO-LAST
 -9290 constant E-AIO-SETUP        \ io_uring_setup or one of the ring mappings was refused
 -9291 constant E-AIO-ENTER        \ io_uring_enter was refused, or took fewer entries than offered
--9292 constant E-AIO-STATE        \ no loop running, a second START, or a ticket this task does not own
+-9292 constant E-AIO-STATE        \ no loop running, or a second START
 -9293 constant E-AIO-FULL         \ the kernel's io_uring ring is full: no submission entry free, or as many operations in flight as half the completion ring holds
 -9294 constant E-AIO-BUSY         \ STOP with an operation still in flight
 -9295 constant E-AIO-GROUP        \ the group is empty, holds no such ticket, or names no defined group

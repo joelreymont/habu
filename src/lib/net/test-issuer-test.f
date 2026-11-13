@@ -534,8 +534,6 @@ $A constant LF
    FORM-RESET S\"  error bearer: token request answered 401: " FORM+
    S\" {\"error\":\"invalid_client\"}\n" FORM+
    LINE$ FORM$ T$=
-   s" an assertion inside the BUF is E-BUF-BOUNDS" T-LABEL
-   [: UP GOT BUF:SPAN$ BUF:BLEN>N BEARER-GRANT:for-person GOT BEARER:TOKEN drop 2drop ;] E-BUF-BOUNDS TTHROWSQ
    ENDPOINT$ s" cli" s" " BEARER:CLIENT!
    s" REFRESH from a public client is admitted with the refresh token's oid, for expires_in" T-LABEL
    s" cli" LATER ASSERT
@@ -554,9 +552,16 @@ $A constant LF
    s" another client's refresh token is E-REFUSED, the BUF holding invalid_grant" T-LABEL
    s" app" LATER ASSERT
    [: UP ASSERTION$ GOT BEARER:REFRESH drop 2drop 2drop ;] BEARER:E-REFUSED TTHROWSQ
-   GOT BUF:SPAN$ BUF:BLEN>N S\" {\"error\":\"invalid_grant\"}" T$=
+   GOT BUF:SPAN$ BUF:BLEN>N S\" {\"error\":\"invalid_grant\"}" T$= ;
+
+false [if] \ off until dot habu-add-the-checks-a49d054d
+\ Runs after BEARER-GRANTS in SERVE-CASES.
+: BEARER-BOUNDS ( -- )
+   s" an assertion inside the BUF is E-BUF-BOUNDS" T-LABEL
+   [: UP GOT BUF:SPAN$ BUF:BLEN>N BEARER-GRANT:for-person GOT BEARER:TOKEN drop 2drop ;] E-BUF-BOUNDS TTHROWSQ
    s" a refresh token inside the BUF is E-BUF-BOUNDS" T-LABEL
    [: UP GOT BUF:SPAN$ BUF:BLEN>N GOT BEARER:REFRESH drop 2drop 2drop ;] E-BUF-BOUNDS TTHROWSQ ;
+[then]
 
 : BEARER-FAULTS ( -- )
    FAULT-URL$ s" app" s" s3cr&t+1" BEARER:CLIENT!

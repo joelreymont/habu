@@ -64,10 +64,9 @@ private
    SEEN-BASE @ POOL = TTRUE
    SEEN-CAP @ POOL-BYTES T=
    CALLER-RESTORED
-   \ MEM:ALLOC-GUARDED refuses a size that is not a whole STACK-ABI:PAGE-BYTES
-   \ multiple, and run-in-stack's GUARDED-EXTENT? (src/habu/habu1.f) refuses
-   \ capacity 0 before the callback runs, catchable as E-STACK-UNGUARDED: the
-   \ stack never switches, so the caller's allocation is untouched.
+   \ run-in-stack's GUARDED-EXTENT? (src/habu/habu1.f) refuses capacity 0
+   \ before the callback runs, catchable as E-STACK-UNGUARDED: the stack never
+   \ switches, so the caller's allocation is untouched.
    s" capacity 0 is refused" T-LABEL
    ['] CAP-ZERO catch E-STACK-UNGUARDED T= CALLER-RESTORED
    s" catch restores allocation across run-in-stack" T-LABEL

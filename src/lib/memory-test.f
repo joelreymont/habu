@@ -26,27 +26,6 @@ variable MEMT-HERE
 : MEMT-SPAN-TOTAL ( -- n )
    MEMT-SPAN-BUFS MEM-64K * ;
 
-: MEMT-ZERO-BYTES ( -- )
-   0 MEM-ALLOC-BYTES 2drop ;
-
-: MEMT-NEG-BYTES ( -- )
-   -1 MEM-ALLOC-BYTES 2drop ;
-
-: MEMT-ZERO-64K ( -- )
-   0 MEM-ALLOC-64K-BUFFERS 2drop ;
-
-: MEMT-TOO-MANY-64K ( -- )
-   MEM-MAX-64K-BUFFERS 1 + MEM-64K-BYTES drop ;
-
-: MEMT-TOO-LARGE-SPAN ( -- )
-   MEM-MAX-N MEM-ALLOC-64K-SPAN 2drop ;
-
-: MEMT-ZERO-CELLS ( -- )
-   0 >COUNT MEM-ALLOC-CELLS drop ;
-
-: MEMT-TOO-MANY-CELLS ( -- )
-   MEM-MAX-CELLS 1 + >COUNT MEM-CELLS>BYTES drop ;
-
 : MEMT-END ( ptr u8 n -- ptr u8 ) {: a:ptr u :}
    a u 1 - + ;
 
@@ -142,6 +121,31 @@ MEMT-SINGLE-64K
 MEMT-MANY-64K
 MEMT-DATA-UNCHANGED
 MEMT-MANY-LIVE-SPANS
+T-REPORT
+
+false [if] \ off until dot habu-add-the-checks-a49d054d
+: MEMT-ZERO-BYTES ( -- )
+   0 MEM-ALLOC-BYTES 2drop ;
+
+: MEMT-NEG-BYTES ( -- )
+   -1 MEM-ALLOC-BYTES 2drop ;
+
+: MEMT-ZERO-64K ( -- )
+   0 MEM-ALLOC-64K-BUFFERS 2drop ;
+
+: MEMT-TOO-MANY-64K ( -- )
+   MEM-MAX-64K-BUFFERS 1 + MEM-64K-BYTES drop ;
+
+: MEMT-TOO-LARGE-SPAN ( -- )
+   MEM-MAX-N MEM-ALLOC-64K-SPAN 2drop ;
+
+: MEMT-ZERO-CELLS ( -- )
+   0 >COUNT MEM-ALLOC-CELLS drop ;
+
+: MEMT-TOO-MANY-CELLS ( -- )
+   MEM-MAX-CELLS 1 + >COUNT MEM-CELLS>BYTES drop ;
+
+T-RESET
 ' MEMT-ZERO-BYTES E-MEM-SIZE TTHROWS
 ' MEMT-NEG-BYTES E-MEM-SIZE TTHROWS
 ' MEMT-ZERO-64K E-MEM-SIZE TTHROWS
@@ -150,6 +154,7 @@ MEMT-MANY-LIVE-SPANS
 ' MEMT-ZERO-CELLS E-MEM-SIZE TTHROWS
 ' MEMT-TOO-MANY-CELLS E-MEM-SIZE TTHROWS
 T-REPORT
+[then]
 
 \ numeric-result<a> is a layout value with no polymorphic eliminator, so each
 \ classifier MATCHes the concrete role it holds and maps ok -> 0 / refusal ->
@@ -236,8 +241,7 @@ T-REPORT
    a @ 111 T=  a 1 cells + @ 222 T= ;
 
 \ MEM:64K-COUNT-FOR composes NUM:DIV-BYTES-CEIL and reads no raw cell. At MAX-N
-\ it answers the true ceil, MEM-MAX-64K-BUFFERS+1; the allocation ceiling is
-\ enforced at the alloc sink.
+\ it answers the true ceil, MEM-MAX-64K-BUFFERS+1.
 CAST: MEMT-IC>RAW ( NUM:item-count -- n )
 
 : MEMT-64K-COUNT ( n -- n ) NUM:BYTE-LEN
@@ -266,8 +270,7 @@ $1000 constant RBT-CAP
 create RBT-OUT RBT-CAP allot
 create RBT-ERR RBT-CAP allot
 
-\ MEM:SIZE-BYTE-LEN is private and the image ships no dictionary names, so
-\ this suite narrows the result itself, with the same refusal code.
+\ The suite narrows a raw length to a byte length itself.
 : RBT-LEN ( n -- NUM:byte-len )
    NUM:BYTE-LEN
    MATCH NUM:numeric-result
@@ -448,6 +451,13 @@ HB-TARGET-LINUX-X86-64? [if]
    MEMT-TYPED-BYTES
    MEMT-TYPED-64K
    MEMT-TYPED-CELLS
+   T-REPORT ;
+
+TEST-ALLOC-ROLES
+
+false [if] \ off until dot habu-add-the-checks-a49d054d
+: TEST-ALLOC-SIZES ( -- )
+   T-RESET
    [: 0 BYTES-ALLOC-LEN drop ;] E-MEM-SIZE TTHROWSQ
    [: -1 BYTES-ALLOC-LEN drop ;] E-MEM-SIZE TTHROWSQ
    [: 0 CELLS-ALLOC-COUNT drop ;] E-MEM-SIZE TTHROWSQ
@@ -455,7 +465,9 @@ HB-TARGET-LINUX-X86-64? [if]
    [: MEM-MAX-CELLS 1 + CELLS-ALLOC-COUNT drop ;] E-MEM-SIZE TTHROWSQ
    T-REPORT ;
 
-TEST-ALLOC-ROLES
+TEST-ALLOC-SIZES
+[then]
+
 RBT-ACTION
 
 ;package
@@ -960,9 +972,6 @@ private
 \ granule puts the page-aligned base up to a page into the span, so a release
 \ computed from the span reaches past its end into the next mapping (a task's
 \ DATA region).
-: GUARDED-SIZE-REFUSAL ( -- )
-   100 MEM:ALLOC-GUARDED MEM:RELEASE-GUARDED ;
-
 : GUARDED ( -- )
    T-RESET
    s" releasing a guarded stack leaves its neighbours mapped" T-LABEL
@@ -976,9 +985,20 @@ private
    b CELL-VIEW @ 77 T=
    b bu 8 - + CELL-VIEW @ 88 T=
    b bu MEM:RELEASE-GUARDED
+   T-REPORT ;
+
+false [if] \ off until dot habu-add-the-checks-a49d054d
+: GUARDED-SIZE-REFUSAL ( -- )
+   100 MEM:ALLOC-GUARDED MEM:RELEASE-GUARDED ;
+
+: GUARDED-SIZE ( -- )
+   T-RESET
    s" a guarded stack needs a whole-page capacity" T-LABEL
    ['] GUARDED-SIZE-REFUSAL catch E-MEM-SIZE T=
    T-REPORT ;
+
+GUARDED-SIZE
+[then]
 
 : STAT ( -- )
    T-RESET

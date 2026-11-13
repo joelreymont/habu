@@ -850,8 +850,7 @@ public
    READER>STATE dst cap STR-INNER ;
 
 \ Appends the current string or key, decoded, to a byte buffer, whose earlier
-\ bytes stay. Another token is E-JSON-READ-STATE and a disposed buffer
-\ E-BUF-STATE, each before the buffer changes.
+\ bytes stay. Another token is E-JSON-READ-STATE before the buffer changes.
 : READ-STR-APPEND ( JSON:reader ptr a -- JSON:reader ) {: buf:ptr :}
    READER>STATE {: state:ptr :}
    state CURSOR-KIND @ dup T-STR = swap T-KEY = or 0= if E-JSON-READ-STATE throw then

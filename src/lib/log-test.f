@@ -55,7 +55,7 @@ create CHUNK CHUNK-U allot
 variable PIPE-R
 variable PIPE-W
 variable SAVED-ERR
-variable ROW-CODE                   \ what LEN@ of a task's row threw as it ended
+variable ROW-LIVE                   \ LIVE? of a task's row as it ended
 variable T0                         \ epoch seconds before a case's first line
 variable T1                         \ and after its last
 variable CODE-A
@@ -323,10 +323,10 @@ TASK:MIN-STACK TASK:TASK RELEASER
 
 
 \ Runs after LOG's release, which the task registers later: the exit chain runs
-\ newest first. LEN@ of a disposed row is E-BUF-STATE, and the rest of the line
+\ newest first. The released row is no longer LIVE?, and the rest of the line
 \ the release closed writes nothing.
 : ROW-PROBE ( -- )
-   [: LOG-TEST:ROW BUF:LEN@ drop ;] catch ROW-CODE !
+   LOG-TEST:ROW BUF:LIVE? bool>n ROW-LIVE !
    [: s" late" LOG:TEXT+ LOG:;LINE ;] catch CODE-A ! ;
 
 
@@ -342,9 +342,9 @@ TASK:MIN-STACK TASK:TASK RELEASER
 
 : RELEASE-CASE ( -- )
    s" a task that abandons a line releases its row and closes the line" T-LABEL
-   0 ROW-CODE !  -1 CODE-A !
+   1 ROW-LIVE !  -1 CODE-A !
    [: RELEASE-TASK ;] CAPTURED
-   ROW-CODE @ E-BUF-STATE T=
+   ROW-LIVE @ 0 T=
    CODE-A @ 0 T=
    PATH$ FS:FILE-SIZE 0 T= ;
 

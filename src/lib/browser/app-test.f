@@ -95,10 +95,6 @@ BUF:HDR-BYTES BUFFER: PAGE
    [: MODULE$ s\" bad\z" PAGE MCP-APP:PAGE+ ;] XML:E-SCALAR TTHROWSQ
    s" a refused title leaves the BUF as it was" T-LABEL
    PAGE$ nip u T=
-   s" a module held in the BUF is refused" T-LABEL
-   [: PAGE$ TITLE$ PAGE MCP-APP:PAGE+ ;] E-BUF-BOUNDS TTHROWSQ
-   s" a refused module leaves the BUF as it was" T-LABEL
-   PAGE$ nip u T=
    PAGE BUF:DISPOSE ;
 
 T-RESET
@@ -119,6 +115,16 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 T-RESET
 NEGATIVE-LENGTH-CASE
 T-REPORT
+[then]
+
+false [if] \ off until dot habu-add-the-checks-a49d054d
+\ Runs in COMPOSE-CASES after the refused title, the page built.
+: MODULE-HELD ( -- )
+   PAGE$ {: u:n :} drop
+   s" a module held in the BUF is refused" T-LABEL
+   [: PAGE$ TITLE$ PAGE MCP-APP:PAGE+ ;] E-BUF-BOUNDS TTHROWSQ
+   s" a refused module leaves the BUF as it was" T-LABEL
+   PAGE$ nip u T= ;
 [then]
 
 ;package

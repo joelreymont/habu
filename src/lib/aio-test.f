@@ -8,16 +8,6 @@
 \ Every transfer hands its allocation to the operation and takes it back from
 \ AWAIT-XFER, which is the only word that answers one, and releases it itself.
 \ A buffer a case still holds after a refusal was never submitted.
-\
-\ A handle is the record's index and the generation that record carried when
-\ the handle was minted, and freeing a record bumps its generation, so a handle
-\ whose record this very task has reclaimed is E-AIO-STATE - the one case the
-\ index and the owner cannot tell apart from a live handle. The stale-handle
-\ cases reuse the record on purpose: the settle each of them starts with leaves
-\ nothing of an earlier case in flight, the claim takes the lowest free record,
-\ and nothing frees a record between the await and the next submission, so the
-\ second operation lands on the record the first one just gave back. Each case
-\ asserts that before it asserts a refusal.
 
 require src/lib/error.f
 require src/lib/test.f
@@ -47,10 +37,12 @@ package AIO
 : AIO-TEST:PENDING ( -- n )
    SQ-PENDING ;
 
+false [if] \ off until dot habu-add-the-checks-a49d054d
 \ The record a handle names, so a case can say two handles share a record
 \ without restating how a handle encodes it.
 : AIO-TEST:HANDLE-IDX ( n -- n )
    HANDLE>IDX ;
+[then]
 
 \ The loop's task, so a case can hold it busy and make START's activation fail.
 : AIO-TEST:LOOP-TASK ( -- ptr n )
@@ -459,26 +451,6 @@ TASK:MIN-STACK TASK:TASK FAN7
 : CASE-START-TWICE ( -- )
    [: AIO:START ;] E-AIO-STATE TTHROWSQ ;
 
-: OWNER-WORK ( -- )
-   [: LONE-TICKET @ AIO:AWAIT OUTCOME>N drop ;] catch OWNER-RC ! ;
-
-: CASE-OWNER-REFUSAL ( -- )
-   0 OWNER-RC !
-   P-R P-W PIPE-OPEN
-   P-R @ >FD AIO:READABLE -1 >MS AIO:POLL LONE-TICKET !
-   ['] OWNER-WORK OWNER-TASK TASK:ACTIVATE
-   OWNER-TASK AWAIT-END
-   OWNER-RC @ E-AIO-STATE T=
-   OWNER-TASK TASK:KILL
-   LONE-TICKET @ AIO:CANCEL
-   LONE-TICKET @ AWAIT>N MARK-CANCELLED T=
-   P-R P-W PIPE-CLOSE ;
-
-: CASE-AWAIT-TWICE ( -- )
-   1 >MS AIO:TIMEOUT LONE-TICKET !
-   LONE-TICKET @ AWAIT>N MARK-TIMED-OUT T=
-   [: LONE-TICKET @ AIO:AWAIT OUTCOME>N drop ;] E-AIO-STATE TTHROWSQ ;
-
 : CASE-BUSY ( -- )
    P-R P-W PIPE-OPEN
    P-R @ >FD AIO:READABLE -1 >MS AIO:POLL LONE-TICKET !
@@ -625,79 +597,10 @@ TASK:MIN-STACK TASK:TASK FAN7
    XB-FREE
    P-R P-W PIPE-CLOSE ;
 
-: XFER-OWNER-WORK ( -- )
-   [: LONE-XFER @ AIO:AWAIT-XFER XFER-DROP ;] catch XFER-OWNER-RC ! ;
-
-: CASE-XFER-STATE ( -- )
-   0 XFER-OWNER-RC !
-   P-R P-W PIPE-OPEN
-   XFER-ALLOC {: buf cap:NUM:alloc-byte-len :}
-   P-R @ >FD buf cap XFER-N 0 AIO:READ LONE-XFER !
-   ['] XFER-OWNER-WORK XFER-OWNER-TASK TASK:ACTIVATE
-   XFER-OWNER-TASK AWAIT-END
-   XFER-OWNER-RC @ E-AIO-STATE T=
-   XFER-OWNER-TASK TASK:KILL
-   P-W @ POKE
-   LONE-XFER @ AIO:AWAIT-XFER {: rb rcap:NUM:alloc-byte-len out:AIO:outcome :}
-   out OUTCOME>N 1 T=
-   rb rcap MEM:RELEASE-BYTES
-   [: LONE-XFER @ AIO:AWAIT-XFER XFER-DROP ;] E-AIO-STATE TTHROWSQ
-   P-R P-W PIPE-CLOSE ;
-
 \ Projecting a foreign nominal out is allowed anywhere; minting one is not, so
 \ these two read a handle without being able to make one.
 CAST: TICKET>N ( AIO:ticket -- n )
 CAST: XFER>N ( AIO:xfer -- n )
-
-: REUSED ( n n -- ) {: live:n stale:n :}
-   live AIO-TEST:HANDLE-IDX stale AIO-TEST:HANDLE-IDX T=
-   live stale <> TTRUE ;
-
-: CASE-STALE-TICKET ( -- )
-   SETTLE-MS TASK:SLEEP
-   1 >MS AIO:TIMEOUT STALE-TICKET !
-   STALE-TICKET @ AWAIT>N MARK-TIMED-OUT T=
-   1 >MS AIO:TIMEOUT LIVE-TICKET !
-   LIVE-TICKET @ TICKET>N STALE-TICKET @ TICKET>N REUSED
-   [: STALE-TICKET @ AIO:AWAIT OUTCOME>N drop ;] E-AIO-STATE TTHROWSQ
-   [: STALE-TICKET @ 0 ANY-GROUP AIO:GROUP+ ;] E-AIO-STATE TTHROWSQ
-   [: STALE-TICKET @ ANY-GROUP AIO:GROUP- ;] E-AIO-GROUP TTHROWSQ
-   LIVE-TICKET @ AWAIT>N MARK-TIMED-OUT T= ;
-
-\ The record now holds a timer, whose buffer rows are null: without the
-\ generation this AWAIT-XFER would hand back that null pointer with the extent
-\ row of a transfer that ended long ago.
-: CASE-STALE-XFER ( -- )
-   P-R P-W PIPE-OPEN
-   XFER-ALLOC {: buf cap:NUM:alloc-byte-len :}
-   SETTLE-MS TASK:SLEEP
-   P-R @ >FD buf cap XFER-N 0 AIO:READ STALE-XFER !
-   P-W @ POKE
-   STALE-XFER @ AIO:AWAIT-XFER {: rb rcap:NUM:alloc-byte-len out:AIO:outcome :}
-   out OUTCOME>N 1 T=
-   rb rcap MEM:RELEASE-BYTES
-   1 >MS AIO:TIMEOUT LIVE-TICKET !
-   LIVE-TICKET @ TICKET>N STALE-XFER @ XFER>N REUSED
-   [: STALE-XFER @ AIO:AWAIT-XFER XFER-DROP ;] E-AIO-STATE TTHROWSQ
-   LIVE-TICKET @ AWAIT>N MARK-TIMED-OUT T=
-   P-R P-W PIPE-CLOSE ;
-
-\ The other order, which is where the allocation would leak: the record a stale
-\ ticket names now holds a transfer that owns a MEM allocation.
-: CASE-STALE-OVER-XFER ( -- )
-   P-R P-W PIPE-OPEN
-   SETTLE-MS TASK:SLEEP
-   1 >MS AIO:TIMEOUT STALE-TICKET !
-   STALE-TICKET @ AWAIT>N MARK-TIMED-OUT T=
-   XFER-ALLOC {: buf cap:NUM:alloc-byte-len :}
-   P-R @ >FD buf cap XFER-N 0 AIO:READ LIVE-XFER !
-   LIVE-XFER @ XFER>N STALE-TICKET @ TICKET>N REUSED
-   [: STALE-TICKET @ AIO:AWAIT OUTCOME>N drop ;] E-AIO-STATE TTHROWSQ
-   P-W @ POKE
-   LIVE-XFER @ AIO:AWAIT-XFER {: rb rcap:NUM:alloc-byte-len out:AIO:outcome :}
-   out OUTCOME>N 1 T=
-   rb rcap MEM:RELEASE-BYTES
-   P-R P-W PIPE-CLOSE ;
 
 : GROW-SUBMIT ( -- )
    GROW-N 0 ?do
@@ -715,13 +618,11 @@ CAST: XFER>N ( AIO:xfer -- n )
    FAN-READY @ GROW-N T= ;
 
 : GROW-IDX@ ( n -- n )
-   GROW-TICKETS @ TICKET>N AIO-TEST:HANDLE-IDX ;
+   GROW-TICKETS @ TICKET>N ;
 
 \ More operations in flight than the first record chunks hold: the records
 \ grow, every operation completes, and a second round lands on the same
-\ records, so the grown ones are reused and not grown again. A handle from
-\ the first round over a grown record names a generation that record no
-\ longer carries once the second round has reclaimed it.
+\ records, so the grown ones are reused and not grown again.
 : CASE-GROW ( -- )
    SETTLE-MS TASK:SLEEP
    P-R P-W PIPE-OPEN
@@ -729,12 +630,9 @@ CAST: XFER>N ( AIO:xfer -- n )
    GROW-COMPLETE
    P-R P-W PIPE-CLOSE
    GROW-N 0 ?do i GROW-IDX@ GROW-IDX CELL-VIEW i SLOT ! loop
-   GROW-N 1 - GROW-TICKETS @ STALE-TICKET !
    P-R P-W PIPE-OPEN
    GROW-SUBMIT
    GROW-N 0 ?do i GROW-IDX@ GROW-IDX CELL-VIEW i SLOT @ T= loop
-   GROW-N 1 - GROW-TICKETS @ TICKET>N STALE-TICKET @ TICKET>N REUSED
-   [: STALE-TICKET @ AIO:AWAIT OUTCOME>N drop ;] E-AIO-STATE TTHROWSQ
    GROW-COMPLETE
    P-R P-W PIPE-CLOSE ;
 
@@ -779,42 +677,6 @@ CAST: XFER>N ( AIO:xfer -- n )
       i DEF-GROUPS @ AIO:AWAIT-ANY OUTCOME>N AIO:READABLE and AIO:READABLE T=
       i T=
    loop
-   P-R P-W PIPE-CLOSE ;
-
-\ The task that adds to an empty group owns it until it is empty again, so a
-\ second task's GROUP+, GROUP- and AWAIT-ANY on it are refused before they reach
-\ its row, and the second task's own ticket stays out of it.
-: THIEF-WORK ( -- )
-   P-R @ >FD AIO:READABLE -1 >MS AIO:POLL THIEF-TICKET !
-   [: THIEF-TICKET @ 1 OWNED-GROUP AIO:GROUP+ ;] catch THIEF-ADD-RC !
-   [: THIEF-TICKET @ OWNED-GROUP AIO:GROUP- ;] catch THIEF-DROP-RC !
-   [: OWNED-GROUP AIO:AWAIT-ANY OUTCOME>N drop drop ;] catch THIEF-ANY-RC !
-   THIEF-TICKET @ AIO:CANCEL
-   THIEF-TICKET @ AWAIT>N drop ;
-
-\ Once its owner has emptied it, the group is any task's to fill.
-: TAKEOVER-WORK ( -- )
-   P-R @ >FD AIO:READABLE -1 >MS AIO:POLL dup 0 OWNED-GROUP AIO:GROUP+
-   AIO:CANCEL
-   OWNED-GROUP AIO:AWAIT-ANY OUTCOME>N nip TAKEOVER-GOT ! ;
-
-: CASE-GROUP-OWNER ( -- )
-   0 THIEF-ADD-RC ! 0 THIEF-DROP-RC ! 0 THIEF-ANY-RC ! 0 TAKEOVER-GOT !
-   P-R P-W PIPE-OPEN
-   P-R @ >FD AIO:READABLE -1 >MS AIO:POLL dup LONE-TICKET ! 0 OWNED-GROUP AIO:GROUP+
-   ['] THIEF-WORK THIEF-TASK TASK:ACTIVATE
-   THIEF-TASK AWAIT-END
-   THIEF-TASK TASK:KILL
-   THIEF-ADD-RC @ E-AIO-STATE T=
-   THIEF-DROP-RC @ E-AIO-STATE T=
-   THIEF-ANY-RC @ E-AIO-STATE T=
-   LONE-TICKET @ AIO:CANCEL
-   OWNED-GROUP AIO:AWAIT-ANY OUTCOME>N MARK-CANCELLED T=
-   0 T=
-   ['] TAKEOVER-WORK TAKEOVER-TASK TASK:ACTIVATE
-   TAKEOVER-TASK AWAIT-END
-   TAKEOVER-TASK TASK:KILL
-   TAKEOVER-GOT @ MARK-CANCELLED T=
    P-R P-W PIPE-CLOSE ;
 
 \ A task that ends holding a group gives it back with the ticket it left in
@@ -1101,23 +963,16 @@ CAST: XFER>N ( AIO:xfer -- n )
    then
    CASE-AWAIT-ANY
    CASE-FAN
-   CASE-OWNER-REFUSAL
-   CASE-AWAIT-TWICE
-   CASE-STALE-TICKET
-   CASE-STALE-XFER
-   CASE-STALE-OVER-XFER
    CASE-BUSY
    CASE-GROW
    CASE-GROUP-WIDE
    CASE-GROUP-DEFS
-   CASE-GROUP-OWNER
    CASE-GROUP-ABANDONED
    CASE-XFER-FILE
    CASE-XFER-EMPTY
    CASE-XFER-ALIASES
    CASE-XFER-BAD-FD
    CASE-XFER-BOUNDS
-   CASE-XFER-STATE
    CASE-XFER-FORGOTTEN
    CASE-OWN-EXIT
    CASE-HALTED-REUSE
@@ -1129,5 +984,170 @@ CAST: XFER>N ( AIO:xfer -- n )
    T-REPORT ;
 
 AIO-TEST-RUN
+
+false [if] \ off until dot habu-add-the-checks-a49d054d
+: OWNER-WORK ( -- )
+   [: LONE-TICKET @ AIO:AWAIT OUTCOME>N drop ;] catch OWNER-RC ! ;
+
+: CASE-OWNER-REFUSAL ( -- )
+   0 OWNER-RC !
+   P-R P-W PIPE-OPEN
+   P-R @ >FD AIO:READABLE -1 >MS AIO:POLL LONE-TICKET !
+   ['] OWNER-WORK OWNER-TASK TASK:ACTIVATE
+   OWNER-TASK AWAIT-END
+   OWNER-RC @ E-AIO-STATE T=
+   OWNER-TASK TASK:KILL
+   LONE-TICKET @ AIO:CANCEL
+   LONE-TICKET @ AWAIT>N MARK-CANCELLED T=
+   P-R P-W PIPE-CLOSE ;
+
+: CASE-AWAIT-TWICE ( -- )
+   1 >MS AIO:TIMEOUT LONE-TICKET !
+   LONE-TICKET @ AWAIT>N MARK-TIMED-OUT T=
+   [: LONE-TICKET @ AIO:AWAIT OUTCOME>N drop ;] E-AIO-STATE TTHROWSQ ;
+
+: XFER-OWNER-WORK ( -- )
+   [: LONE-XFER @ AIO:AWAIT-XFER XFER-DROP ;] catch XFER-OWNER-RC ! ;
+
+: CASE-XFER-STATE ( -- )
+   0 XFER-OWNER-RC !
+   P-R P-W PIPE-OPEN
+   XFER-ALLOC {: buf cap:NUM:alloc-byte-len :}
+   P-R @ >FD buf cap XFER-N 0 AIO:READ LONE-XFER !
+   ['] XFER-OWNER-WORK XFER-OWNER-TASK TASK:ACTIVATE
+   XFER-OWNER-TASK AWAIT-END
+   XFER-OWNER-RC @ E-AIO-STATE T=
+   XFER-OWNER-TASK TASK:KILL
+   P-W @ POKE
+   LONE-XFER @ AIO:AWAIT-XFER {: rb rcap:NUM:alloc-byte-len out:AIO:outcome :}
+   out OUTCOME>N 1 T=
+   rb rcap MEM:RELEASE-BYTES
+   [: LONE-XFER @ AIO:AWAIT-XFER XFER-DROP ;] E-AIO-STATE TTHROWSQ
+   P-R P-W PIPE-CLOSE ;
+
+\ A handle is the record's index and the generation that record carried when
+\ the handle was minted, and freeing a record bumps its generation, so a handle
+\ whose record this very task has reclaimed is E-AIO-STATE - the one case the
+\ index and the owner cannot tell apart from a live handle. The stale-handle
+\ cases reuse the record on purpose: the settle each of them starts with leaves
+\ nothing of an earlier case in flight, the claim takes the lowest free record,
+\ and nothing frees a record between the await and the next submission, so the
+\ second operation lands on the record the first one just gave back. Each case
+\ asserts that before it asserts a refusal.
+: REUSED ( n n -- ) {: live:n stale:n :}
+   live AIO-TEST:HANDLE-IDX stale AIO-TEST:HANDLE-IDX T=
+   live stale <> TTRUE ;
+
+: CASE-STALE-TICKET ( -- )
+   SETTLE-MS TASK:SLEEP
+   1 >MS AIO:TIMEOUT STALE-TICKET !
+   STALE-TICKET @ AWAIT>N MARK-TIMED-OUT T=
+   1 >MS AIO:TIMEOUT LIVE-TICKET !
+   LIVE-TICKET @ TICKET>N STALE-TICKET @ TICKET>N REUSED
+   [: STALE-TICKET @ AIO:AWAIT OUTCOME>N drop ;] E-AIO-STATE TTHROWSQ
+   [: STALE-TICKET @ 0 ANY-GROUP AIO:GROUP+ ;] E-AIO-STATE TTHROWSQ
+   [: STALE-TICKET @ ANY-GROUP AIO:GROUP- ;] E-AIO-GROUP TTHROWSQ
+   LIVE-TICKET @ AWAIT>N MARK-TIMED-OUT T= ;
+
+\ The record now holds a timer, whose buffer rows are null: without the
+\ generation this AWAIT-XFER would hand back that null pointer with the extent
+\ row of a transfer that ended long ago.
+: CASE-STALE-XFER ( -- )
+   P-R P-W PIPE-OPEN
+   XFER-ALLOC {: buf cap:NUM:alloc-byte-len :}
+   SETTLE-MS TASK:SLEEP
+   P-R @ >FD buf cap XFER-N 0 AIO:READ STALE-XFER !
+   P-W @ POKE
+   STALE-XFER @ AIO:AWAIT-XFER {: rb rcap:NUM:alloc-byte-len out:AIO:outcome :}
+   out OUTCOME>N 1 T=
+   rb rcap MEM:RELEASE-BYTES
+   1 >MS AIO:TIMEOUT LIVE-TICKET !
+   LIVE-TICKET @ TICKET>N STALE-XFER @ XFER>N REUSED
+   [: STALE-XFER @ AIO:AWAIT-XFER XFER-DROP ;] E-AIO-STATE TTHROWSQ
+   LIVE-TICKET @ AWAIT>N MARK-TIMED-OUT T=
+   P-R P-W PIPE-CLOSE ;
+
+\ The other order, which is where the allocation would leak: the record a stale
+\ ticket names now holds a transfer that owns a MEM allocation.
+: CASE-STALE-OVER-XFER ( -- )
+   P-R P-W PIPE-OPEN
+   SETTLE-MS TASK:SLEEP
+   1 >MS AIO:TIMEOUT STALE-TICKET !
+   STALE-TICKET @ AWAIT>N MARK-TIMED-OUT T=
+   XFER-ALLOC {: buf cap:NUM:alloc-byte-len :}
+   P-R @ >FD buf cap XFER-N 0 AIO:READ LIVE-XFER !
+   LIVE-XFER @ XFER>N STALE-TICKET @ TICKET>N REUSED
+   [: STALE-TICKET @ AIO:AWAIT OUTCOME>N drop ;] E-AIO-STATE TTHROWSQ
+   P-W @ POKE
+   LIVE-XFER @ AIO:AWAIT-XFER {: rb rcap:NUM:alloc-byte-len out:AIO:outcome :}
+   out OUTCOME>N 1 T=
+   rb rcap MEM:RELEASE-BYTES
+   P-R P-W PIPE-CLOSE ;
+
+: CASE-GROW-STALE ( -- )
+   SETTLE-MS TASK:SLEEP
+   P-R P-W PIPE-OPEN
+   GROW-SUBMIT
+   GROW-COMPLETE
+   P-R P-W PIPE-CLOSE
+   GROW-N 1 - GROW-TICKETS @ STALE-TICKET !
+   P-R P-W PIPE-OPEN
+   GROW-SUBMIT
+   [: STALE-TICKET @ AIO:AWAIT OUTCOME>N drop ;] E-AIO-STATE TTHROWSQ
+   GROW-COMPLETE
+   P-R P-W PIPE-CLOSE ;
+
+\ The task that adds to an empty group owns it until it is empty again, so a
+\ second task's GROUP+, GROUP- and AWAIT-ANY on it are refused before they reach
+\ its row, and the second task's own ticket stays out of it.
+: THIEF-WORK ( -- )
+   P-R @ >FD AIO:READABLE -1 >MS AIO:POLL THIEF-TICKET !
+   [: THIEF-TICKET @ 1 OWNED-GROUP AIO:GROUP+ ;] catch THIEF-ADD-RC !
+   [: THIEF-TICKET @ OWNED-GROUP AIO:GROUP- ;] catch THIEF-DROP-RC !
+   [: OWNED-GROUP AIO:AWAIT-ANY OUTCOME>N drop drop ;] catch THIEF-ANY-RC !
+   THIEF-TICKET @ AIO:CANCEL
+   THIEF-TICKET @ AWAIT>N drop ;
+
+\ Once its owner has emptied it, the group is any task's to fill.
+: TAKEOVER-WORK ( -- )
+   P-R @ >FD AIO:READABLE -1 >MS AIO:POLL dup 0 OWNED-GROUP AIO:GROUP+
+   AIO:CANCEL
+   OWNED-GROUP AIO:AWAIT-ANY OUTCOME>N nip TAKEOVER-GOT ! ;
+
+: CASE-GROUP-OWNER ( -- )
+   0 THIEF-ADD-RC ! 0 THIEF-DROP-RC ! 0 THIEF-ANY-RC ! 0 TAKEOVER-GOT !
+   P-R P-W PIPE-OPEN
+   P-R @ >FD AIO:READABLE -1 >MS AIO:POLL dup LONE-TICKET ! 0 OWNED-GROUP AIO:GROUP+
+   ['] THIEF-WORK THIEF-TASK TASK:ACTIVATE
+   THIEF-TASK AWAIT-END
+   THIEF-TASK TASK:KILL
+   THIEF-ADD-RC @ E-AIO-STATE T=
+   THIEF-DROP-RC @ E-AIO-STATE T=
+   THIEF-ANY-RC @ E-AIO-STATE T=
+   LONE-TICKET @ AIO:CANCEL
+   OWNED-GROUP AIO:AWAIT-ANY OUTCOME>N MARK-CANCELLED T=
+   0 T=
+   ['] TAKEOVER-WORK TAKEOVER-TASK TASK:ACTIVATE
+   TAKEOVER-TASK AWAIT-END
+   TAKEOVER-TASK TASK:KILL
+   TAKEOVER-GOT @ MARK-CANCELLED T=
+   P-R P-W PIPE-CLOSE ;
+
+: AIO-TEST-CHECKS-RUN ( -- )
+   T-RESET
+   AIO:START
+   CASE-OWNER-REFUSAL
+   CASE-AWAIT-TWICE
+   CASE-STALE-TICKET
+   CASE-STALE-XFER
+   CASE-STALE-OVER-XFER
+   CASE-GROW-STALE
+   CASE-GROUP-OWNER
+   CASE-XFER-STATE
+   AIO:STOP
+   T-REPORT ;
+
+AIO-TEST-CHECKS-RUN
+[then]
 
 ;package

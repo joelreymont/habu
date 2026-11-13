@@ -760,16 +760,12 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    SEM-GATE TASK:SEMAPHORE-DESTROY ;
 
 : TASK-TEST-SEM-NEGATIVE ( -- )
-   [: SEM-COLD TASK:WAIT-SEM ;] E-TASK-SEM-STATE TTHROWSQ
-   [: SEM-COLD TASK:SIGNAL-SEM ;] E-TASK-SEM-STATE TTHROWSQ
    [: -1 SEM-COLD TASK:SEMAPHORE-INIT ;] E-TASK-SEM-COUNT TTHROWSQ
    [: SEM-OVER-MAX SEM-COLD TASK:SEMAPHORE-INIT ;] E-TASK-SEM-COUNT TTHROWSQ
    0 SEM-COLD TASK:SEMAPHORE-INIT
    [: 0 SEM-COLD TASK:SEMAPHORE-INIT ;] E-TASK-SEM-STATE TTHROWSQ
    SEM-COLD TASK:SEMAPHORE-DESTROY
-   SEM-COLD TASK:SEMAPHORE-DESTROY
-   [: SEM-COLD TASK:WAIT-SEM ;] E-TASK-SEM-STATE TTHROWSQ
-   [: SEM-COLD TASK:SIGNAL-SEM ;] E-TASK-SEM-STATE TTHROWSQ ;
+   SEM-COLD TASK:SEMAPHORE-DESTROY ;
 
 : TASK-TEST-TRY-WAIT-TYPES ( -- )
    s" TASK-TRY-WAIT-OK ( TASK:sem -- bool ) TASK:TRY-WAIT-SEM"
@@ -805,9 +801,8 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
       i POOL-SEMS @ TASK:TRY-WAIT-SEM TTRUE
    loop ;
 
-\ A stale handle names its record still, so it counts again exactly when the
-\ record went to a new owner who initialized it; otherwise it is
-\ E-TASK-SEM-STATE.
+\ A stale handle names its record still, so it counts again when the record
+\ went to a new owner who initialized it.
 : POOL-REUSED ( TASK:sem -- )
    [: dup TASK:TRY-WAIT-SEM TTRUE ;] catch {: rc:n :}
    drop
@@ -841,8 +836,7 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    POOL-N @ 0 T=
    [: SEM-COLD TASK:FREE-SEMAPHORE ;] E-TASK-SEM-POOL TTHROWSQ ;
 
-\ A pooled semaphore counts like a defined one, and freeing it destroys it: the
-\ handle crosses the quotation on the stack because a quotation reads no local.
+\ A pooled semaphore counts like a defined one.
 : TASK-TEST-SEM-POOL-USE ( -- )
    TASK:NEW-SEMAPHORE {: s :}
    1 s TASK:SEMAPHORE-INIT
@@ -850,13 +844,10 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    s TASK:TRY-WAIT-SEM TFALSE
    s TASK:SIGNAL-SEM
    s TASK:WAIT-SEM
-   s TASK:FREE-SEMAPHORE
-   s [: dup TASK:TRY-WAIT-SEM drop ;] catch {: rc:n :}
-   drop
-   rc E-TASK-SEM-STATE T= ;
+   s TASK:FREE-SEMAPHORE ;
 
 \ The handle is nominal, so the raw record address a TASK:FACILITY also has is
-\ refused before it can reach sem_wait - the guard cell is the second line.
+\ refused before it can reach sem_wait.
 : TASK-TEST-SEM-TYPES ( -- )
    s" TASK-SEM-OK ( TASK:sem -- ) TASK:WAIT-SEM"
       CHECK-QUIET-CANDIDATE! -1 T=
@@ -2499,5 +2490,34 @@ variable NEW-STRAY
    T-REPORT ;
 
 TASK-TEST-RUN
+
+false [if] \ off until dot habu-add-the-checks-a49d054d
+\ A wait or signal on a semaphore never initialized, or destroyed, is refused.
+: TASK-TEST-SEM-DEAD ( -- )
+   [: SEM-COLD TASK:WAIT-SEM ;] E-TASK-SEM-STATE TTHROWSQ
+   [: SEM-COLD TASK:SIGNAL-SEM ;] E-TASK-SEM-STATE TTHROWSQ
+   0 SEM-COLD TASK:SEMAPHORE-INIT
+   SEM-COLD TASK:SEMAPHORE-DESTROY
+   [: SEM-COLD TASK:WAIT-SEM ;] E-TASK-SEM-STATE TTHROWSQ
+   [: SEM-COLD TASK:SIGNAL-SEM ;] E-TASK-SEM-STATE TTHROWSQ ;
+
+\ Freeing a pooled semaphore destroys it: the handle crosses the quotation on
+\ the stack because a quotation reads no local.
+: TASK-TEST-SEM-POOL-FREED ( -- )
+   TASK:NEW-SEMAPHORE {: s :}
+   1 s TASK:SEMAPHORE-INIT
+   s TASK:FREE-SEMAPHORE
+   s [: dup TASK:TRY-WAIT-SEM drop ;] catch {: rc:n :}
+   drop
+   rc E-TASK-SEM-STATE T= ;
+
+: TASK-TEST-CHECKS-RUN ( -- )
+   T-RESET
+   TASK-TEST-SEM-DEAD
+   TASK-TEST-SEM-POOL-FREED
+   T-REPORT ;
+
+TASK-TEST-CHECKS-RUN
+[then]
 
 ;package
