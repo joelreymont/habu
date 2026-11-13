@@ -218,22 +218,11 @@ INSTALL-RETIRE
    d ;
 
 \ ---- cell access -------------------------------------------------------------
-\ Cells are eight-byte little-endian slots written with the CDIGEST slot words.
-\ Every span comes from IR-CTX:SCRATCH-OFFSET, whose cursor advances by aligned
-\ steps over a fresh mapping, so every cell is slot-aligned; NATIVE-CELLS? asks
-\ CDIGEST whether the host's cell load reads a canonical slot, and where it
-\ does not the slot words read. The descriptor is not canonical storage: it is
-\ read and written by native cell.
-align
-create NATIVE-PROBE CDIGEST:SLOT-BYTES allot
-$0123456789ABCDEF NATIVE-PROBE 0 CDIGEST:SLOT!
-NATIVE-PROBE CELL-VIEW @ $0123456789ABCDEF = constant NATIVE-CELLS?
 
 : CELL-AT ( ptr u8 n -- n )
    {: d:ptr k:n :}
    RBASE @ d D-DATA + CELL-VIEW @ +
-   NATIVE-CELLS? if k CDIGEST:SLOT-BYTES * + CELL-VIEW @ exit then
-   k CDIGEST:SLOT@ ;
+   k CDIGEST:SLOT-BYTES * + CELL-VIEW @ ;
 
 : IDX-AT ( ptr u8 n -- n )
    {: d:ptr raw:n :}
@@ -468,8 +457,7 @@ public
    d D-TOK + CELL-VIEW @ t <> if t TOKEN-REFUSE then
    k 0 < k d D-CNT + CELL-VIEW @ >= or if E-IR-ARENA-BOUND throw then
    base d D-DATA + CELL-VIEW @ +
-   NATIVE-CELLS? if k CDIGEST:SLOT-BYTES * + CELL-VIEW @ exit then
-   k CDIGEST:SLOT@ ;
+   k CDIGEST:SLOT-BYTES * + CELL-VIEW @ ;
 
 \ The token and the run's last cell are checked once, so the loop is a load and
 \ a compare (IR-SCHEMA:SCAN-NAME). Answers the index of the first match in the
@@ -491,15 +479,9 @@ public
       used 1- first - steps / stride < if E-IR-ARENA-BOUND throw then
    then
    base d D-DATA + CELL-VIEW @ + {: dbase:ptr :}
-   NATIVE-CELLS? if
-      count 0 ?do
-         dbase first i stride * + CDIGEST:SLOT-BYTES * + CELL-VIEW @ want =
-         if i unloop exit then
-      loop
-      -1 exit
-   then
    count 0 ?do
-      dbase first i stride * + CDIGEST:SLOT@ want = if i unloop exit then
+      dbase first i stride * + CDIGEST:SLOT-BYTES * + CELL-VIEW @ want =
+      if i unloop exit then
    loop
    -1 ;
 

@@ -19,8 +19,6 @@ public
 : U32! ( n ptr u8 -- ) {: v:n p :}
    4 0 do v i 8 * rshift $FF and p i + c! loop ;
 
-\ Every target's cells are eight little-endian bytes, which arm64, x86-64 and
-\ Wasm read and write at any alignment.
 : U64@ ( ptr u8 -- n ) CELL-VIEW @ ;
 
 : U64! ( n ptr u8 -- ) CELL-VIEW ! ;

@@ -21,8 +21,8 @@ $4C constant E-BYTE-RANGE
    u LEN>N {: count :}
    count 0 <= if exit then
    0
-   \ CELL-VIEW keeps the addresses checked. The supported targets admit
-   \ unaligned cell access; never read or write beyond the complete-cell prefix.
+   \ CELL-VIEW keeps the addresses checked. Never read or write beyond the
+   \ complete-cell prefix.
    \ A forward overlap narrower than a cell needs the original byte sequence.
    dst src > dst src CELL + < and 0= if
       count CELL / CELL * {: bulk :}

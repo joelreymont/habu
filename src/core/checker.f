@@ -1003,8 +1003,6 @@ DECLARATIONS data-base NCOMP-DISPATCH:TARGET-DECL-CELL + 0 ptr-field ptr-cell!
 \ An address's DATA offset, measured from the null so neither pointer is viewed.
 : DATA-OFF ( ptr a -- n ) NULL-PTR - data-base NULL-PTR - - ;
 
-\ arm64 and x86-64 both take an unaligned cell access, so a span may start at
-\ any byte.
 : ARENA-COPY ( ptr u8 ptr u8 n -- ) {: src:ptr dst:ptr n:n :}
    0
    begin dup CELL + n <= while

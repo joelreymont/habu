@@ -26,12 +26,10 @@ DEFLINEAR CONTENT-KEY:fold
 
 private
 
-\ A fold's scope bytes, by byte offset: the digest context at 0 (cell-aligned,
-\ as WITH-BYTES hands a cell-aligned base), the file-digest context after it
-\ (SHA256-CTX-BYTES is a whole number of cells), then the binary digest
-\ FINAL-HEX renders, the file digest FILE-NAMED+ folds, the one byte a tag or
-\ length is folded through and the byte FINAL sets once it has finalized the
-\ fold.
+\ A fold's scope bytes, by byte offset: the digest context at 0, the
+\ file-digest context after it, then the binary digest FINAL-HEX renders, the
+\ file digest FILE-NAMED+ folds, the one byte a tag or length is folded through
+\ and the byte FINAL sets once it has finalized the fold.
 32 constant DIGEST-LEN
 SHA256-CTX-BYTES constant FILE-CTX-OFF
 FILE-CTX-OFF SHA256-FILE-CTX-BYTES + constant DG-OFF

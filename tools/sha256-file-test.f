@@ -23,8 +23,6 @@ create SFT-HEX-B 64 allot
 create SFT-CTX-A SHA256-CTX-BYTES allot
 create SFT-CTX-B SHA256-CTX-BYTES allot
 create SFT-CTX-C SHA256-CTX-BYTES allot
-create SFT-ODD 1 allot            \ R6: one byte, so the next `create` has to align
-create SFT-CTX-D SHA256-CTX-BYTES allot
 create SFT-CTX-ONE SHA256-CTX-BYTES allot   \ the row's own one-shot context
 create SFT-CTX-S1 SHA256-CTX-BYTES allot    \ S1: one context per task
 create SFT-CTX-S2 SHA256-CTX-BYTES allot
@@ -240,17 +238,6 @@ TASK:MIN-STACK TASK:TASK SFT-TASK-B
       SFT-DG-S2 SFT-DG-D SFT-DIGEST=
    loop ;
 
-\ R6. The hash words are cells, so a context must be cell-aligned, which
-\ `create` gives even right after a one-byte allot. AArch64 does not fault on a
-\ misaligned context, so the address itself is the assertion.
-: SFT-TEST-ALIGNED-CREATE ( -- )
-   SFT-CTX-D BYTE-VIEW NULL-PTR BYTE-VIEW - CELL mod 0 T=
-   SFT-FILL-BIG
-   SFT-CTX-D SHA256-BEGIN
-   SFT-CTX-D SFT-BIG SFT-BIG-LEN 7 SFT-FEED-PIECES
-   SFT-CTX-D SFT-DG-A SHA256-END
-   SFT-DG-A SFT-BIG SFT-BIG-LEN SFT-ONE-SHOT= ;
-
 \ R5. SHA256>HEX reads and writes only the caller's two spans; every nibble
 \ value pins where each half of a byte renders.
 : SFT-FILL-NIB ( -- )
@@ -373,7 +360,6 @@ TASK:MIN-STACK TASK:TASK SFT-TASK-B
    SFT-TEST-CONTEXT-COPY
    SFT-TEST-TASKS
    SFT-TEST-TASKS-ONE-SHOT
-   SFT-TEST-ALIGNED-CREATE
    SFT-TEST-HEX
    SFT-TEST-FILE
    SFT-TEST-MISSING

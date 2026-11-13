@@ -2,8 +2,8 @@
 \ RFC 6455's Sec-WebSocket-Accept only proves a server read the client's key.
 \ Collisions are practical: authenticate, sign or name adversary bytes with the
 \ engine's SHA-256 (src/core/sha256.f) or src/lib/crypto/evp.f's HMAC-SHA256.
-\ STORAGE CLASS. CALLER-OWNED: one context of CTX-BYTES per digest, unaligned
-\ (fields are read a byte at a time); no file state, so tasks hash at once.
+\ STORAGE CLASS. CALLER-OWNED: one context of CTX-BYTES per digest; no file
+\ state, so tasks hash at once.
 
 require src/lib/error.f
 require src/lib/le.f

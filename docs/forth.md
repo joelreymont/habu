@@ -1752,7 +1752,7 @@ defined again binds its earlier text against every later record too.
   `ptr ptr x` field whose index is a cell slot, not a byte offset, so `@`/`!`
   keep nested pointer types; never multiply by cell size. Raw byte offsets need
   a checked view or a modeled byte-offset primitive; byte-offset header access
-  goes through checked views with explicit alignment and bounds; a missing
+  goes through checked views with explicit bounds; a missing
   primitive model is fixed, never cast around. The base must be a declared cell:
   `ptr-field` over raw storage is refused at the token.
 - **Byte pointers are not cell pointers.** `ptr u8` is a byte span read with
@@ -2270,11 +2270,13 @@ runtime or analysis layer.
 - **`create … allot`, `BUFFER:` and `TYPED-BUFFER` allot zeroed space on a
   cell-rounded address.** `create`, hence `variable`, rounds the data pointer to
   a cell before publishing, and `align` does on request. So a `create … allot`
-  block and `src/lib/memory.f` memory are cell-aligned for a cell-typed reader,
-  and a row a foreign call reads as an aligned C object needs no alignment word
-  of its own. `allot`, `c,` and `,` never realign: storage carved after
-  byte-sized data is misaligned unless `align` precedes it, and a cell-typed
-  reader refuses it.
+  block and `src/lib/memory.f` memory are cell-aligned, and a row a foreign
+  call reads as an aligned C object needs no alignment word of its own.
+  `allot`, `c,` and `,` never realign: storage carved after byte-sized data is
+  misaligned unless `align` precedes it. Every target's cells are eight
+  little-endian bytes; `@` and `!` reach a cell at any byte address, and the
+  cell of `atomic@`, `atomic!`, `atomic-add` or `atomic-cas` must be
+  cell-aligned.
 - **A created body's data follows its `create` before the next definition or
   row.** A colon definition's `;` may lay its facts text at `here`, a length
   cell then its bytes, then `align`; data written after that `;` lands past

@@ -417,7 +417,8 @@ the process that fills it: a build leaves it out and the program reads it as
 zero, and it is declared where it is made, as `create R n SCRATCH-ALLOT` for a
 definer's own scratch body, with `here` cell-aligned. Runtime-sized buffers come
 from `src/lib/memory.f` (`MEM:ALLOC-BYTES`). `ptr-field` takes a **cell** index, not
-a byte offset.
+a byte offset. Every target's cells are eight little-endian bytes; `@` and `!`
+reach a cell at any byte address, and an atomic word's cell must be cell-aligned.
 
 forth.md: **Structures And Enums**, **Habu Native Tooling Gotchas**, **Rules
 learned by refusal**.

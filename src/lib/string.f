@@ -90,7 +90,7 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
    u v <> if 0 0= 0= exit then
    u CELL - {: last:n :}
    0
-   \ Supported targets admit unaligned cells; read only the complete-cell prefix.
+   \ Read only the complete-cell prefix.
    begin dup last <= while
       dup a + CELL-VIEW @ over b + CELL-VIEW @ <> if
          drop 0 0= 0= exit

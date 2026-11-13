@@ -49,9 +49,6 @@ create HH0 $6a09e667 , $bb67ae85 , $3c6ef372 , $a54ff53a , $510e527f , $9b05688c
 \ TAIL and PBLK are byte offsets into the span, byte regions because BE32@ reads
 \ the caller's block and BE32! writes the digest. Reading the schedule byte-wise
 \ cost 4.4x on a 4 MiB digest.
-\ A context must be cell-aligned, and nothing diagnoses a misaligned one (the
-\ checker sees a `ptr u8`; AArch64 does not fault): `create` aligns, and
-\ SHA256-CTX-BYTES is a cell multiple, so an array of contexts stays aligned.
 $00 constant SHA-H-CELL
 $40 constant SHA-TAIL-OFF
 $10 constant SHA-TAIL-U-CELL
@@ -64,11 +61,11 @@ $1000 constant SHA-IO-CAP
 -1 constant SHA-E-OPEN
 -2 constant SHA-E-READ
 
-\ A FILE CONTEXT, by byte offset: the digest context at 0 (so the file context
-\ is cell-aligned by the same rule), the 32-byte binary digest, the read buffer,
-\ and the NUL-terminated path the open is handed — PATHZ writes it here because
-\ PATH0's own scratch is process-wide and two tasks would race on it. The path
-\ region is PATH-CAP bytes and a cell, room for the longest path and its NUL.
+\ A FILE CONTEXT, by byte offset: the digest context at 0, the 32-byte binary
+\ digest, the read buffer, and the NUL-terminated path the open is handed —
+\ PATHZ writes it here because PATH0's own scratch is process-wide and two tasks
+\ would race on it. The path region is PATH-CAP bytes and a cell, room for the
+\ longest path and its NUL.
 SHA256-CTX-BYTES constant SHA-FILE-DG-OFF
 SHA-FILE-DG-OFF $20 + constant SHA-FILE-IO-OFF
 SHA-FILE-IO-OFF SHA-IO-CAP + constant SHA-FILE-PATH-OFF
