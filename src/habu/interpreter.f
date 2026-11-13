@@ -2285,11 +2285,6 @@ variable DEF-VALUE
    OVERLAY-GUARD
    a u shape param CHILD-DEFINE ;
 
-\ Serves callers built against the six-operand form until they move.
-: CHILD-RUN-BOOL ( ptr u8 n bool n n -- )
-   {: a:ptr u:n priv:bool shape:n param:n :}
-   a u shape param CHILD-RUN ;
-
 \ A qualified linear name is refused by the certifier before DEF-QUALIFY can
 \ create its namespace. A second colon is left to DEF-QUALIFY's syntax refusal.
 : LINEAR-QUALIFIED? ( -- bool )
@@ -2841,7 +2836,6 @@ public
    ['] DEFINE-RUN data-base PROVIDED-XT:DEFINE-CELL + xt!
    ['] APPEND-RUN data-base PROVIDED-XT:APPEND-CELL + xt!
    ['] POSTPONE-RUN data-base PROVIDED-XT:POSTPONE-CELL + xt!
-   ['] CHILD-RUN-BOOL data-base PROVIDED-XT:BOOL-CHILD-CELL + xt!
    ['] CHILD-RUN data-base PROVIDED-XT:CHILD-CELL + xt!
    ['] LITERAL-RUN data-base PROVIDED-XT:LITERAL-CELL + xt! ;
 

@@ -1057,26 +1057,26 @@ variable TDECL-EVAL-ARMED
 
 private
 
-\ The engine's cell holds INTERPRETER:CHILD-RUN-BOOL as a raw execution token.
-CAST: AS-CHILD-RUN ( n -- [ ptr u8 n bool n n -- ] )
+\ The engine's cell holds INTERPRETER:CHILD-RUN as a raw execution token.
+CAST: AS-CHILD-RUN ( n -- [ ptr u8 n n n -- ] )
 
 \ Makes the child word NAME through CHILD-RUN, of a CHILD-ABI SHAPE and PARAM. A
 \ definer reaches the running engine through the cell, never by name: inside a
 \ build a name binds the tree's copy.
-: TDECL-CHILD ( ptr u8 n bool n n -- )
-   data-base PROVIDED-XT:BOOL-CHILD-CELL + @ AS-CHILD-RUN execute ;
+: TDECL-CHILD ( ptr u8 n n n -- )
+   data-base PROVIDED-XT:CHILD-CELL + @ AS-CHILD-RUN execute ;
 
 public
 
 \ The structures.f field words, OFF bytes into a record.
 : TDECL-CELL-CHILD ( ptr u8 n n -- ) {: na:ptr nu:n off:n :}
-   na nu RES-FALSE CHILD-ABI:CELL-OFF off TDECL-CHILD ;
+   na nu CHILD-ABI:CELL-OFF off TDECL-CHILD ;
 
 : TDECL-PTR-CHILD ( ptr u8 n n -- ) {: na:ptr nu:n off:n :}
-   na nu RES-FALSE CHILD-ABI:PTR-OFF off TDECL-CHILD ;
+   na nu CHILD-ABI:PTR-OFF off TDECL-CHILD ;
 
 : TDECL-BYTE-CHILD ( ptr u8 n n -- ) {: na:ptr nu:n off:n :}
-   na nu RES-FALSE CHILD-ABI:BYTE-OFF off TDECL-CHILD ;
+   na nu CHILD-ABI:BYTE-OFF off TDECL-CHILD ;
 
 
 private
@@ -1933,7 +1933,7 @@ private
    na nu TDECL-NAME-PREFLIGHT-XT ;
 
 : TDECL-ADDR-MAKE ( ptr u8 n n n -- ) {: na:ptr nu:n shape:n param:n :}
-   na nu RES-FALSE shape param TDECL-CHILD ;
+   na nu shape param TDECL-CHILD ;
 
 \ Replay makes no word: it registers each child's effect, as CHILD-RUN would.
 : TDECL-ADDR-REG ( ptr u8 n n n -- ) {: na:ptr nu:n shape:n param:n :}
