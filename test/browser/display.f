@@ -429,7 +429,7 @@ variable ECHO-U
 
 : DISPATCH ( -- )
    0 EVENT@ 0 = if
-      0 EVENT BYTES>N 0 0 RECORD
+      0 EVENT BYTES>N PROTOCOL 0 RECORD
       9 0 0 0 RECORD
       RED exit
    then

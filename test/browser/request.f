@@ -178,7 +178,7 @@ variable TEXT-U
 
 : DISPATCH ( -- )
    0 EVENT@ {: kind:n :}
-   kind 0 = if 0 EVENT BYTES>N 0 0 RECORD exit then
+   kind 0 = if 0 EVENT BYTES>N PROTOCOL 0 RECORD exit then
    kind 4 = if TYPED exit then
    kind 3 = if ANSWERED exit then
    kind 1 = if BYTES exit then ;

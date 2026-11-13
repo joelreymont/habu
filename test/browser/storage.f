@@ -59,7 +59,7 @@ variable TYPED-N
    131072 HELD-RESERVE
    0 HELD FIRST !
    42 131071 HELD c!
-   0 EVENT BYTES>N 0 0 RECORD
+   0 EVENT BYTES>N PROTOCOL 0 RECORD
    s" fixture" {: path:ptr u:n :}
    1 path BYTES>N u 0 RECORD
    0 TEXT-U !

@@ -10,6 +10,9 @@
 // that names them. The module frees them (src/lib/browser/event.f) once it no
 // longer needs them. An empty delivery reserves nothing and is named 0, 0.
 //
+// PROTOCOL is this protocol's revision: a change to any event's or record's
+// fields or meaning raises it by one.
+//
 // An event is 56 bytes at the address hello names: kind, a, b, c, d, buttons,
 // mods. Kinds: 0 start, 1 bytes, 2 pointer, 3 answered, 4 typed, 5 moved,
 // 6 released, 7 wheel, 8 key, 9 resize, 10 control, 11 load, 12 focus,
@@ -56,7 +59,8 @@
 // The host writes all 56 bytes on every event; a field that does not apply is 0.
 //
 // A record is 32 bytes, kind a b c:
-//   0 hello: a is the event's address
+//   0 hello: a is the event's address, b the turn protocol revision the
+//     module's events and records follow, which must be PROTOCOL
 //   1 fetch: a, b a path fetched relative to the page; outside 2xx it fails
 //   2 draw: a, b instance rows, b rows of 72 bytes: twelve f32, a column-major
 //     3x4 transform from the mesh's grid position (its origin plus a vertex's
@@ -211,6 +215,8 @@ const CHUNK = 17n;
 const PICKED = 18n;
 const OCCLUDED = 19n;
 const ID_BYTES = 16;
+
+const PROTOCOL = 1n;
 
 // Records.
 const HELLO = 0n;
@@ -624,6 +630,10 @@ export class Module {
   record(kind, a, b, c) {
     switch (kind) {
       case HELLO:
+        if (b !== PROTOCOL) {
+          this.ended = `the module follows turn protocol ${b} and this host turn protocol ${PROTOCOL}`;
+          throw new Error(this.ended);
+        }
         this.event = a;
         this.host.hello();
         return;
