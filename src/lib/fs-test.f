@@ -18,6 +18,10 @@ require src/lib/process.f               \ the FIFO rows' reader child and its pi
 require src/lib/process-argv.f
 require src/lib/process-env.f           \ RESOLVE-EXECUTABLE finds mkfifo and cat
 require src/lib/fd.f                    \ FD:TRY-FIFO-WRITER, WRITE-FULL, READ-EXACT
+require src/lib/ffi-abi.f
+
+PROCESS-SYMBOLS
+FUNCTION: ACCESS-CALL access ( ptr u8 n -- i32 ) ;FUNCTION
 
 $4000 constant FS-TEST-S-IFDIR             \ S_IFDIR on both targets
 2 constant FS-TEST-ENOENT                   \ ENOENT on both targets
@@ -100,6 +104,7 @@ create FS-TEST-RANGE-BUF PATH-CAP allot
 create FS-TEST-LINKS-BUF PATH-CAP allot
 create FS-TEST-LONG PATH-CAP 1 + allot
 create FS-TEST-CAP-PATH PATH-CAP 1 + allot
+create FS-TEST-OS-PATH PATH-CAP 2 + allot
 create FS-TEST-READ-BUF FS-TEST-READ-CAP allot
 
 : FS-TEST-ASSERT ( bool -- ) {: ok :}
@@ -398,6 +403,18 @@ create FS-TEST-READ-BUF FS-TEST-READ-CAP allot
    s" no-such-habu-fs-path-for-stdlib-test" FS:EXISTS? FS-TEST-FALSE
    s" no-such-habu-fs-path-for-stdlib-test" FS:FILE? FS-TEST-FALSE
    s" no-such-habu-fs-path-for-stdlib-test" FS:DIR? FS-TEST-FALSE ;
+
+\ The OS takes a path of PATH-CAP bytes and refuses one byte more: ENAMETOOLONG.
+: FS-TEST-OS-PATH-CAP ( -- )
+   FS-TEST-OS-PATH PATH-CAP 2 + [char] / FS-TEST-FILL
+   PATH-CAP 2 + 0 ?do [char] . FS-TEST-OS-PATH i + c! 2 +loop
+   FS-TEST-OS-PATH PATH-CAP + c@
+   0 FS-TEST-OS-PATH PATH-CAP + c!
+   FS-TEST-OS-PATH 0 ACCESS-CALL 0 FS-TEST=
+   FS-TEST-OS-PATH PATH-CAP + c!
+   0 FS-TEST-OS-PATH PATH-CAP 1 + + c!
+   FS-TEST-OS-PATH 0 ACCESS-CALL -1 FS-TEST=
+   FFI:ERRNO FS:ENAMETOOLONG FS-TEST= ;
 
 : FS-TEST-FILE-DIR ( -- )
    s" AGENTS.md" FS:FILE? FS-TEST-TRUE
@@ -1037,6 +1054,7 @@ public
    FS-TEST-PREPARE-FIXTURE
    FS-TEST-TRY-STAT
    FS-TEST-PATHS
+   FS-TEST-OS-PATH-CAP
    FS-TEST-FILE-DIR
    FS-TEST-EXECUTABLE
    FS-TEST-FILE-SIZE
