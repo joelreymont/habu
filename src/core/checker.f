@@ -6,9 +6,9 @@
 \ image. Growth is geometric, so a store is copied O(log n) times per load.
 \
 \ The scratch region: per-definition scratch stores take storage from one
-\ region and keep their counter, pointer and capacity cells in DATA spans that
-\ CHECKER-REG:SCRATCH{ and CHECKER-REG:}SCRATCH bracket. At each file boundary
-\ SR-RETIRE gives the region back and zeroes every span, so stores rest at
+\ region that lives as long as the process; their counter, pointer and
+\ capacity cells sit in DATA spans that CHECKER-REG:SCRATCH{ and
+\ CHECKER-REG:}SCRATCH bracket and mark as scratch, so an image holds them at
 \ none, NULL and 0.
 \
 \ The trail pin: ROWS-PIN marks the trail height at a refusal. Between AT-PIN
@@ -1057,59 +1057,41 @@ public
    NULL-PTR pv !  0 capv ! ;
 
 \ --- the scratch region ------------------------------------------------------
-\ A span record is two cells at the span's start: the link to
-\ the previous record and the span's end, both distances from the record (as is
-\ SCRATCH-SPANS's link from that cell), so they hold wherever DATA is loaded;
-\ 0 is none, and an end of 0 an open span.
-variable SCRATCH-SPANS
-
-: SR-LINK@ ( ptr n -- ptr n ) {: cell:ptr :}
-   cell @ {: d:n :}
-   d 0= IF NULL-PTR EXIT THEN
-   cell d + ;
-
-: SR-LINK! ( ptr n ptr n -- ) {: target:ptr cell:ptr :}
-   target NULL-PTR - cell NULL-PTR - - cell ! ;
+PTR-VARIABLE SCRATCH-OPEN   \ the open span's start, NULL when none
 
 package CHECKER-REG
 public
 : SCRATCH{ ( -- )
-   SCRATCH-SPANS SR-LINK@ {: prev:ptr :}
-   prev NULL-PTR <> IF
-      prev CELL + @ 0= IF s" checker: SCRATCH{ inside an open span" 76 die THEN
+   SCRATCH-OPEN @ NULL-PTR <> IF
+      s" checker: SCRATCH{ inside an open span" 76 die
    THEN
-   align here {: rec:ptr :}
-   0 , 0 ,
-   prev NULL-PTR <> IF prev rec SR-LINK! THEN
-   rec SCRATCH-SPANS SR-LINK! ;
+   align here SCRATCH-OPEN ! ;
 
-\ A written program holds the span's cells at 0, as SR-RETIRE leaves them.
 : }SCRATCH ( -- )
-   SCRATCH-SPANS SR-LINK@ {: rec:ptr :}
-   rec NULL-PTR = IF s" checker: }SCRATCH without SCRATCH{" 76 die THEN
-   rec CELL + @ 0 <> IF s" checker: }SCRATCH without SCRATCH{" 76 die THEN
-   here NULL-PTR - rec NULL-PTR - - rec CELL + !
-   rec CELL + @ CELL / 2 ?do rec i cells + scratch-cell-mark loop ;
+   SCRATCH-OPEN @ {: start:ptr :}
+   start NULL-PTR = IF s" checker: }SCRATCH without SCRATCH{" 76 die THEN
+   here NULL-PTR - start NULL-PTR - - CELL / 0 ?do
+      start i cells + scratch-cell-mark
+   loop
+   NULL-PTR SCRATCH-OPEN ! ;
 ;package
 
-\ The region's chunks come from ARENA-ALLOC and are never reused before
-\ SR-RETIRE unmaps them, so a take answers zero bytes as map-anon does. A chunk
-\ header is two cells: the previous chunk's self-relative link, then the chunk's
-\ bytes.
+\ The region's chunks come from ARENA-ALLOC and are never reused or unmapped,
+\ so a take answers zero bytes as map-anon does. A chunk header is one cell,
+\ the chunk's bytes.
 1024 1024 * constant SR-GRAIN
 CHECKER-REG:SCRATCH{
 PTR-VARIABLE SR-CHUNK   variable SR-USED   variable SR-SIZE
 CHECKER-REG:}SCRATCH
 
-\ The header cells are written through a cell view, so the payload's element
+\ The header cell is written through a cell view, so the payload's element
 \ type stays the caller's.
 : SR-CHUNK-NEW ( n n -- ptr a ) {: need:n bytes:n :}
    bytes ARENA-ALLOC {: c:ptr :}
    c BYTE-VIEW CELL-VIEW {: h:ptr :}
-   SR-CHUNK @ NULL-PTR <> IF SR-CHUNK @ h SR-LINK! THEN
-   bytes h CELL + !
-   h SR-CHUNK !  bytes SR-SIZE !  2 cells need + SR-USED !
-   c 2 cells + ;
+   bytes h !
+   h SR-CHUNK !  bytes SR-SIZE !  CELL need + SR-USED !
+   c CELL + ;
 
 : SR-TAKE ( n -- ptr n ) {: need:n :}
    SR-USED @ 7 + -8 and {: at:n :}
@@ -1117,26 +1099,13 @@ CHECKER-REG:}SCRATCH
       at need + SR-USED !
       SR-CHUNK @ at + EXIT
    THEN
-   need  need 2 cells + SR-GRAIN max  SR-CHUNK-NEW ;
+   need  need CELL + SR-GRAIN max  SR-CHUNK-NEW ;
 
-\ The old bytes stay until SR-RETIRE.
+\ The old bytes stay mapped: the region gives nothing back.
 : SR-GROW ( ptr n n n -- ptr n ) {: base:ptr oldbytes:n newbytes:n :}
    newbytes SR-TAKE {: nb:ptr :}
    base nb oldbytes CELL + 1- CELL / ARENA-CELLS-COPY
    nb ;
-
-: SR-CHUNK-FREE ( ptr n -- ptr n ) {: c:ptr :}
-   c SR-LINK@  c c CELL + @ ARENA-UNMAP ;
-
-: SR-SPAN-ZERO ( ptr n -- ptr n ) {: rec:ptr :}
-   rec CELL + @ 0= IF s" checker: SCRATCH{ without }SCRATCH" 76 die THEN
-   rec BYTE-VIEW 2 cells +  rec CELL + @ 2 cells -  ARENA-ZERO
-   rec SR-LINK@ ;
-
-\ Unmap first: SR-CHUNK itself lives in a span.
-: SR-RETIRE ( -- )
-   SR-CHUNK @ begin dup NULL-PTR <> while SR-CHUNK-FREE repeat drop
-   SCRATCH-SPANS SR-LINK@ begin dup NULL-PTR <> while SR-SPAN-ZERO repeat drop ;
 
 \ TVT, RVT, EC-TV and EC-RV store logical values plus one: zero means UNBOUND.
 \ A saved program starts with none: the planes and TV-CAP are scratch, so
@@ -1758,8 +1727,8 @@ ATOMA-BOOT ATOMA-P !   ATOMU-BOOT ATOMU-P !   ATOMK-BOOT ATOMK-P !   MAXATOM-INI
 : ATOMA-FIELD ( n -- ptr n )
    cells ATOMA + ;
 : TERM-NAMES ( -- ptr u8 ) TERM-NAME-P @ ;
-\ A source inside the pool stays readable across the grow: the scratch region
-\ keeps the old bytes until SR-RETIRE.
+\ A source inside the pool stays readable across the grow: SR-GROW keeps the
+\ old bytes.
 : TERM-NAME+ ( ptr u8 n -- n ) {: a:ptr u:n :}
    TERM-NAME-N @ u + TERM-NAME-CAP @ > IF
       TERM-NAME-N @ u + TERM-NAME-CAP @ 2 * max TERM-NAME-INIT max {: nc:n :}
@@ -4171,8 +4140,6 @@ variable FIELD-PROJ-U   0 FIELD-PROJ-U !
 variable FIELD-PROJ-FID \ committed field id (the authority: offset/type/role derive from it)
 variable FIELD-PROJ-OFF \ baked byte offset (cross-checked against the committed offset)
 
-TRUSTED: FIELD-PROJ-SCRATCH-RESET ( -- )
-   NULL-PTR FIELD-PROJ-A !  0 FIELD-PROJ-U !  0 FIELD-PROJ-FID !  0 FIELD-PROJ-OFF ! ;
 TRUSTED: FIELD-PROJ-NAME$ ( -- ptr u8 n ) FIELD-PROJ-A @ FIELD-PROJ-U @ ;
 TRUSTED: FIELD-PROJ-SCHEMA ( -- n n ) FIELD-PROJ-FID @ FIELD-PROJ-OFF @ ;
 PTR-VARIABLE LBUF-PEND-A
@@ -5255,13 +5222,6 @@ TOKBUF-INIT-CAP TOKBUF-CAP-U !
    need TOKBUF-CAP-U @ <= IF exit THEN
    need TOKBUF-GROW ;
 
-\ RESET retires the decoded/diagnostic token spans but leaves their old boot
-\ bytes. At capture no span is live, so retire the four owned boot buffers too.
-: TOKBUF-SNAP-ZERO ( -- )
-   FAILTK-BOOT 0 TOKBUF-INIT-CAP CELL / ARENA-CELLS-ZERO
-   TKF-BOOT 0 TOKBUF-INIT-CAP CELL / ARENA-CELLS-ZERO
-   NMB-BOOT 0 TOKBUF-INIT-CAP CELL / ARENA-CELLS-ZERO
-   SDEC-BOOT 0 TOKBUF-INIT-CAP CELL / ARENA-CELLS-ZERO ;
 variable TOKIX  variable FAILIX
 variable FAILB  variable FAILE
 CHECKER-REG:SCRATCH{
@@ -15659,20 +15619,11 @@ CHECKER-REG:}SCRATCH
    from to >= IF EXIT THEN
    to from ?do NULL-PTR base i cells + ! loop ;
 
-\ Scratch hooks, one per owning file. Each runs at every file boundary
-\ (FILE-SCRATCH-RETIRE), so it resets only state no later read depends on.
-defer REG-SCRATCH-SNAP-XT ( -- )
-defer REG-LATE-SCRATCH-SNAP-XT ( -- )
-defer REG-EXT-SCRATCH-XT ( -- )
-\ A cell of its own: a second `is` on a cell above would silently retire the
-\ earlier owner's reset. The lowering-certificate producer owns it:
-\ per-definition arena bases that must be back on their baked boot buffers
-\ before capture, since a grown base lives in process-local mmap.
+\ The lowering-certificate producer owns it: per-definition arena bases that
+\ must be back on their baked boot buffers before capture, since a grown base
+\ lives in process-local mmap.
 defer REG-CERT-SNAP-XT ( -- )
 : REG-EXT-DEFAULTS ( -- )
-   [: ;] is REG-SCRATCH-SNAP-XT
-   [: ;] is REG-LATE-SCRATCH-SNAP-XT
-   [: ;] is REG-EXT-SCRATCH-XT
    [: ;] is REG-CERT-SNAP-XT ;
 REG-EXT-DEFAULTS
 
@@ -15739,17 +15690,6 @@ REG-EXT-AOT-DEFAULTS
 : CHECKER-REG-AOT-MARK ( -- ) REG-EXT-AOT-MARK-XT ;
 : CHECKER-REG-AOT-CLOSE ( -- ) REG-EXT-AOT-CLOSE-XT ;
 : CHECKER-REG-AOT-SAVE ( ptr u8 n -- n ) REG-EXT-AOT-SAVE-XT ;
-
-: CHECKER-CAPTURE-SCRATCH-PREPARE ( -- )
-   SG-ROWS-RESET
-   REC-RELEASE
-   UWL-SNAP-RESET
-   TOKBUF-SNAP-ZERO
-   NULL-PTR SIGSCOPE-P !  0 SIGSCOPE-U !  0 SIGSCOPE-ON !
-   SGBAD-CLEAR
-   PKRESET
-   NMAP-RESET ROWMAP-RESET   \ letter maps rest at UNBOUND, not 0, so no span holds them
-   FIELD-PROJ-SCRATCH-RESET ;
 
 : NORET-REC ( -- ptr n )
    NORET-END @ NORET-CELL ;
@@ -26999,17 +26939,6 @@ CHECKER-REG:}SCRATCH
    TOP-ROW-OFF @ 0 <>  TOP-ROW-CELLS @ live =  and IF a u cls TOP-READ-LIT EXIT THEN
    live CHECKER-TOP-LOAD  a u cls TOP-LIT-STEP  CHECKER-TOP-SAVE ;
 
-\ The scratch a check leaves rests at a file boundary.
-package CHECKER-REG
-public
-: FILE-SCRATCH-RETIRE ( -- )
-   CHECKER-CAPTURE-SCRATCH-PREPARE
-   REG-EXT-SCRATCH-XT
-   REG-SCRATCH-SNAP-XT
-   REG-LATE-SCRATCH-SNAP-XT
-   SR-RETIRE ;
-;package
-
 package CHECKER-REG
 ' RECORD-CONTRACT DECLARATIONS CHECKER-OWNER-ABI:RECORD-CONTRACT-OFF + xt!
 ' RECORD-GRID-BEFORE DECLARATIONS CHECKER-OWNER-ABI:GRID-BEFORE-OFF + xt!
@@ -27182,8 +27111,7 @@ package CHECK
 \ first indexes the records made since. When the count went down it drops the rows
 \ naming a record at or above it, which can empty a row an older record holds; it
 \ indexes from 0 again when the answer is missing or no longer holds, as after a
-\ package gains its private wordlist. The cells rest in a scratch span: SR-RETIRE
-\ empties it.
+\ package gains its private wordlist. The cells rest in a scratch span.
 CHECKER-REG:SCRATCH{
 PTR-VARIABLE NS-ROWS-P   variable NS-CAP   variable NS-SEEN
 CHECKER-REG:}SCRATCH

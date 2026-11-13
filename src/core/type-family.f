@@ -5252,27 +5252,6 @@ UNIT-FAM-STABLE-INIT
 create TFC-VARS TFC-VAR-CAP cells allot
 variable TFC-I   variable TFC-J   variable TFC-ROW
 
-\ This file's scratch: each cell is written and read within one call, so a
-\ file boundary or image capture resets it with no later read depending on it.
-: TFAM-SCRATCH-RETIRE ( -- )
-   \ A caught FILE dependency refusal leaves only an invocation diagnostic.
-   NULL-PTR REG-AOT-ERROR-A ! 0 REG-AOT-ERROR-U !
-   PACKAGE-PATH:CAP 0 ?do 0 TFQ-BUF i + c! loop
-   0 TFQ-U !  NULL-PTR TFQ-TA !  0 TFQ-TU !  0 TFQ-COLON !
-   NULL-PTR TFSR-PA !  0 TFSR-PU !
-   NULL-PTR TFSR-NA !  0 TFSR-NU !
-   0 TFSR-ID !  0 TFSR-FLAG !
-   TFC-VARS 0 TFC-VAR-CAP ARENA-CELLS-ZERO
-   0 TFC-I !  0 TFC-J !  0 TFC-ROW !
-   TF-CTOR-CAP 0 ?do 0 TF-CTOR-BUF i + c!  0 TF-INIT-TAIL i + c! loop
-   0 TF-CTOR-U !
-   \ Rows above the open frames were released; the open frames keep theirs.
-   PF-TX-P @ PF-TX-DEPTH @ PF-TX-REC * CELL /
-   PF-TX-CAP-V @ PF-TX-REC * CELL / ARENA-CELLS-ZERO ;
-
-: TFAM-SCRATCH-INSTALL ( -- ) [: TFAM-SCRATCH-RETIRE ;] is REG-EXT-SCRATCH-XT ;
-TFAM-SCRATCH-INSTALL
-
 public
 
 \ Construct form (docs/forth.md "Structures And Enums"): the checker's reserved

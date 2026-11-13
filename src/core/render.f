@@ -9,7 +9,7 @@ using TFAM
 create ECH 1 allot
 variable RDST   0 RDST !                 \ 0 = stdout, 1 = RSBUF (sig recording)
 \ RSBUF, mapped on first use, holds the text being recorded, RSN bytes of it;
-\ RSBUF-FLUSH and REND-SNAPSHOT-RESET zero RSN.
+\ RSBUF-FLUSH zeroes RSN.
 16384 constant RSBUF-FIRST                \ bytes of the first mapping
 PERSISTED-PTR-VARIABLE RSBUF-P   NULL-PTR RSBUF-P !
 variable RSBUF-CAP   0 RSBUF-CAP !        \ bytes mapped at RSBUF-P, 0 for none
@@ -160,12 +160,6 @@ $7FFFFFFFFFFFFFFF CELL / constant SEEN-MAX-CAP
 : SEEN-UNMAP-RC ( ptr a n -- n ) {: base:ptr cap:n :}
    cap 0= IF 0 EXIT THEN
    base cap cells munmap ;
-
-: SEEN-RELEASE ( -- )
-   SEEN-P @ SEEN-CAP @ SEEN-UNMAP-RC 0 <> IF
-      s" render: seen munmap failed" 76 die
-   THEN
-   NULL-PTR SEEN-P !   0 SEEN-CAP !   0 SEEN-HW ! ;
 
 : SEEN-GROW-CAP ( n -- n ) {: need:n :}
    need MAXTV-INIT max
@@ -990,8 +984,8 @@ variable DSUGE  variable DSUGA
 \ hold it (TAIL-ROW), so a join whose two callables read alike still says which
 \ side escaped. MDIAG gates every read, so a capture an abandoned trial made is
 \ never rendered.
-\ TCAP is mapped by the first capture; REND-SNAPSHOT-RESET releases it. Its
-\ lengths are 0 until a capture, so a reader reads nothing.
+\ TCAP is mapped by the first capture. Its lengths are 0 until a capture, so a
+\ reader reads nothing.
 4096 constant TCAP-FIRST                  \ bytes of the first mapping
 PERSISTED-PTR-VARIABLE TCAP-P   NULL-PTR TCAP-P !
 variable TCAP-CAP   0 TCAP-CAP !          \ bytes mapped at TCAP-P, 0 for none
@@ -1039,19 +1033,6 @@ variable TCAP-INF   variable TCAP-EXP   variable TCAP-ACT   variable TCAP-HELD
 : TAIL-CAPTURE-INSTALL ( -- ) [: TAIL-CAPTURE ;] is TAIL-CAPTURE-XT ;
 TAIL-CAPTURE-INSTALL
 
-
-\ Releases every render buffer, so no mapping's address enters an image; it runs
-\ as REG-SCRATCH-SNAP-XT, whose comment in checker.f says when.
-: REND-SNAPSHOT-RESET ( -- )
-   SEEN-RELEASE
-   RSBUF-P @ RSBUF-CAP @ ARENA-UNMAP  NULL-PTR RSBUF-P !  0 RSBUF-CAP !  0 RSN !
-   RPOS-P RPOS-CAP 2 ARENA-ROWS-RELEASE  0 RPOS-N !
-   TCAP-P @ TCAP-CAP @ ARENA-UNMAP  NULL-PTR TCAP-P !  0 TCAP-CAP !
-   0 TCAP-INF !  0 TCAP-EXP !  0 TCAP-ACT !  0 TCAP-HELD ! ;
-
-
-: REG-SCRATCH-SNAP-INSTALL ( -- ) [: REND-SNAPSHOT-RESET ;] is REG-SCRATCH-SNAP-XT ;
-REG-SCRATCH-SNAP-INSTALL
 \ Match/construct reasons (docs/forth.md "Structures And Enums"): MDIAG's latched
 \ code maps to a JSON code, repair class, suggestion and prose. MD-NONEXH names
 \ the missing variants from the latched (family, seen-bitset, count):
