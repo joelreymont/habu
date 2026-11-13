@@ -11,7 +11,7 @@ Ruling (Joel, 2026-10-08): system words go in the system package's private secti
 Design (settled by the lead, 2026-11-13; each slice is a child dot):
 - An internal primitive is a private word of each engine package that calls it: prims.f keeps one private row per primitive and calling package (the form patch32 has in XREF and DEBUG) and no global row. No package named SYSTEM, no language change. A caller in no package, or behind a TRUSTED: wrapper, moves into a package with its own private row.
 - A build lays each private row's record from the host kernel's seed table by name.
-- A primitive with a public form safe for programs keeps one home: xref-search-wl in CHECKER-RESOLVE, run-rc in PROCESS.
+- A primitive with a public form safe for programs keeps one home: xref-search-wl in XREF (src/habu/xref.f loads first; the others call XREF:INDEXED-WL), run-rc in PROCESS.
 - `postponed` becomes an ordinary global primitive beside define-word, body-append and literal; postpone finds no engine private by name.
 - native-origin-cell is deleted: NATIVE-BODY addresses the origin record at its layout.f cell.
 - ffi-call and top-check@, dead on arm64, go with the x86-64 kernel's tests at the x86-64 step.
