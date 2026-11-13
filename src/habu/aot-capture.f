@@ -1503,7 +1503,7 @@ variable ACAP-SWEEP-B1
    boff ACAP-CHAIN@ {: size:n v:n :}
    ACAP-SWEEP-B0 @ {: bstart:n :}
    v bstart < v ACAP-SWEEP-B1 @ >= or if exit then
-   \ Live shared DATA is in the fixed DATA mapping, disjoint from this JIT CODE
+   \ Live shared DATA is in the fixed DATA mapping, disjoint from this CODE
    \ window. A short carrier here is corrupt, not a CODE literal: all later
    \ CODE-site passes require four words.
    size ADDRESS-CARRIER:DATA-CHAIN-BYTES = if

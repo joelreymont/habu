@@ -621,8 +621,8 @@ public
    FUN-ROW FUN-SOURCE @ ;
 
 \ A quotation has no dictionary record. An exact published host function entry
-\ still identifies its HIR sibling in the shadow emission; no interior address
-\ or nearest routine span is accepted as an identity.
+\ still identifies its sibling function in the shadow emission; no interior
+\ address or nearest routine span is accepted as an identity.
 : SOURCE-FUNCTION ( n -- n n ) {: xt:n :}
    OPEN-CK
    SOURCE-INDEX

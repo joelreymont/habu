@@ -29,7 +29,7 @@ public
 3 constant R-DATA            \ reads or moves the DATA pointer
 4 constant R-SOURCE          \ reads the input after its token
 5 constant R-DICT            \ records and wordlist state an object carries
-6 constant R-BUILD           \ the tracked kernel cells: tier, build scope, dispatch
+6 constant R-BUILD           \ the tracked kernel cells: build scope, dispatch
 7 constant R-RUN             \ runs its xt or text operand; the effect is the
                              \ operand's, accounted by the operand's own edges
                              \ and the nested runs it makes
@@ -461,7 +461,7 @@ EPRIM: char+  PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:CHAR-STEP EPRIM; REACH stack
 
 EPRIM: @          PE-PTR-A PE-IN  PE-A PE-OUT EPRIM; REACH memory
 EPRIM: !          PE-A PE-IN PE-PTR-A PE-IN EPRIM; REACH memory
-\ `xt!` is `!` plus the declaration that the cell it writes holds a JIT-region
+\ `xt!` is `!` plus the declaration that the cell it writes holds a code-region
 \ address, for a persisted cell whose address the caller works out at run time
 \ from a table base and a row index.
 \ What the row still cannot say is that the pointee MUST be an execution token:
@@ -697,7 +697,7 @@ ETRUSTED-ONLY!                       \ slot and nonzero process-local occurrence
 EPPRIM: DEF-OCC def-occ-resolve PE-N PE-IN PE-N PE-IN PE-PTR-N PE-OUT ECLOSE-PRIVATE
 \ What `package`, `export`, `:`, `create`, `does>`, `;`, `immediate`, `cast:`
 \ and `defer` change is sealed state after the seal: CUR, WIDN, DEF-WL, TSIG,
-\ TCSIG, PKG-*, the body text, DEF-TIER-CELL and the records behind the
+\ TCSIG, PKG-*, the body text, COMP-LATCH-CELL and the records behind the
 \ PROT window.
 \ These fifteen rows are how an interpreter written in Habu writes it. A
 \ refusal exits and never throws: 79 on a task's
@@ -758,11 +758,10 @@ EPPRIM: INTERPRETER package-scope! PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ [0] CP after the name, [8] 0, the kind (0, DKIND:VAL, DKIND:ADDR with
 \ DNAME-ALLOC, and DNAME-CELL as well for a variable, or DKIND:CAST) in [16] and
 \ the wid in [40]; PEND-CELL is that record; TSIG, TCSIG, DOESB, CLAUSE and
-\ TRUSTED clear; DEF-TIER-CELL takes the tier latch; LASTC-CELL
+\ TRUSTED clear; COMP-LATCH-CELL takes the compiler latch; LASTC-CELL
 \ waits for the body (def-close, def-create). It refuses a kind with a bit
 \ outside DKIND:MASK, DNAME-CELL and DNAME-ALLOC, a negative wid, and CP at or
-\ past the code ceiling. Latched to the JIT it opens the record only: the JIT's
-\ own head (its frame and resets) is not this row's.
+\ past the code ceiling.
 EPRIM: def-open PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
 EPPRIM: INTERPRETER def-open PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
@@ -805,11 +804,11 @@ ETRUSTED-ONLY!
 EPPRIM: INTERPRETER created-sig! PE-PTR-U8 PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ def-close ( -- ): end the pending definition the native compiler compiled:
 \ the state def-open set clears:
-\ DEF-TIER-CELL, TSIG, TCSIG, DOESB, CLAUSE, TRUSTED and PEND-CELL. Before
+\ COMP-LATCH-CELL, TSIG, TCSIG, DOESB, CLAUSE, TRUSTED and PEND-CELL. Before
 \ PEND-CELL clears, LASTC-CELL takes the record for a nonzero kind other than
 \ DKIND:CAST, the record `does-patch` reads. It refuses when
 \ no definition is pending and when the pending one is not a native compiler's
-\ (DEF-TIER-CELL zero), as ndict-append does.
+\ (COMP-LATCH-CELL zero), as ndict-append does.
 EPRIM: def-close EPRIM;
 ETRUSTED-ONLY!
 EPPRIM: INTERPRETER def-close ECLOSE-PRIVATE

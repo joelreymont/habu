@@ -177,7 +177,7 @@ variable ERRLEN
    CHILD-RC 0 T=
    s" one loop frame past the region" T-LABEL
    s" : NEST ( n -- ) dup 0= if drop exit then 1 0 do dup 1 - recurse loop drop ; STACK-ABI:LOOP-FRAMES 1 + NEST"
-   \ x86-64's guard handler writes its line without the code and the lr.
+   \ x86-64's guard handler writes an `hb:` line with no code and no lr.
    HB-TARGET-LINUX-X86-64? if
       CHILD-RC ENGINE-ERROR:STACK-BOUNDS T=
       ERR ERRLEN @ S\" hb: stack bounds exceeded (loop)\n" T$=

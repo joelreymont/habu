@@ -90,7 +90,8 @@ create TAB
    NCOMP-DISPATCH:FIXED-COMP-CELL     1 cells                 CLAIM NCOMP-FIXED-COMP-CELL
    NCOMP-DISPATCH:DECL-CELL           1 cells                 CLAIM NCOMP-DECL-CELL
    NCOMP-DISPATCH:TARGET-DECL-CELL    1 cells                 CLAIM NCOMP-TARGET-DECL-CELL
-   NCOMP-DISPATCH:DEF-TIER-CELL       2 cells                 CLAIM NCOMP-DEF-TIER
+   NCOMP-DISPATCH:COMP-LATCH-CELL     1 cells                 CLAIM NCOMP-COMP-LATCH-CELL
+   NCOMP-DISPATCH:BUILD-DEPTH-CELL    1 cells                 CLAIM NCOMP-BUILD-DEPTH-CELL
    NCOMP-DISPATCH:RECOVER-CELL        1 cells                 CLAIM NCOMP-RECOVER-CELL
    LASTC-CELL                         1 cells                 CLAIM LASTC-CELL
    RSP-CELL                           1 cells                 CLAIM RSP-CELL

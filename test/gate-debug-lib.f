@@ -2,11 +2,11 @@
 \ test/gate-debug.f.
 
 require src/lib/string.f
-require tools/jitdump-core.f
+require tools/code-dump-core.f
 require test/gate-common.f
 require src/habu/prof-abi.f
 
-using JITDUMP      \ JD / JIT-FIND / JIT-EVALUATE, called bare in GDB-JITDUMP
+using CODE-DUMP    \ JD / FIND-XT / LOAD-PROGRAM, called bare in GDB-CODE-DUMP
 
 : GDB-PROFILER-SOURCE ( -- )
    GE-SRC-RESET
@@ -519,14 +519,14 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    S\" ,\"edges\":[" s" profiler json has no edge array" GE-EXPECT-OUT-HAS
    s" PASS: profiler json reports the same walk as the text report" type cr ;
 
-: GDB-JITDUMP ( -- )
+: GDB-CODE-DUMP ( -- )
    GE-HB-RESET
-   [: s" : JITDUMP-SMOKE ( -- i64 ) 7 ;" JIT-EVALUATE
-      s" JITDUMP-SMOKE" JIT-FIND JD ;] GE-CAPTURE-ACTION
-   s" jitdump direct core" GE-EXPECT-OK
-   s" mov" s" jitdump decodes a real move" GE-EXPECT-OUT-HAS
-   s" ret" s" jitdump direct core output" GE-EXPECT-OUT-HAS
-   s" PASS: jitdump direct core" type cr ;
+   [: s" : CODE-DUMP-SMOKE ( -- i64 ) 7 ;" LOAD-PROGRAM
+      s" CODE-DUMP-SMOKE" FIND-XT JD ;] GE-CAPTURE-ACTION
+   s" code-dump direct core" GE-EXPECT-OK
+   s" mov" s" code-dump decodes a real move" GE-EXPECT-OUT-HAS
+   s" ret" s" code-dump direct core output" GE-EXPECT-OUT-HAS
+   s" PASS: code-dump direct core" type cr ;
 
 \ An engine-text target can share a page with patch32 itself: opening that
 \ page RW removes execute permission from the patcher's next instruction.
@@ -615,7 +615,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    GDB-PROFILER-ROW
    GDB-PROFILER-JSON-ALL
    GDB-PROFILER-RETIRED
-   GDB-JITDUMP
+   GDB-CODE-DUMP
    GDB-BREAKPOINT-REFUSAL
    GDB-PATCH32-OUTSIDE
    GDB-DEBUG-NAMES

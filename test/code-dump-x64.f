@@ -1,12 +1,12 @@
-\ jitdump-x64.f - the live Intel JIT dump and its bounded byte decoder.
+\ code-dump-x64.f - the live Intel code dump and its bounded byte decoder.
 \ Needs a native x86-64 engine.
 
 require src/lib/test.f
 require test/gate-common.f
 require src/arch/x86-64/disasm.f
-require tools/jitdump-core.f
+require tools/code-dump-core.f
 
-package JITDUMP-X64-TEST
+package CODE-DUMP-X64-TEST
 private
 
 \ Independent x86 encodings: REX.W + SIB/displacement, scalar float,
@@ -40,10 +40,10 @@ create BAD-IMM $48 c, $B8 c, $01 c,
 create BAD-OP $0F c, $FF c,
 
 public
-: JIT-IMM ( -- n ) $C3 ;
-: JIT-EARLY ( n -- n ) dup 0= if drop 7 exit then drop 9 ;
-: JIT-TAIL ( n -- n ) 1+ ;
-: JIT-TAIL-WRAP ( n -- n ) JIT-TAIL ;
+: DUMP-IMM ( -- n ) $C3 ;
+: DUMP-EARLY ( n -- n ) dup 0= if drop 7 exit then drop 9 ;
+: DUMP-TAIL ( n -- n ) 1+ ;
+: DUMP-TAIL-WRAP ( n -- n ) DUMP-TAIL ;
 private
 
 : CHECK-MEM ( -- )
@@ -110,21 +110,21 @@ private
    [: BAD-OP 2 $6000 X64DIS:DIS1 drop ;] X64DIS:E-UNKNOWN TTHROWSQ ;
 
 : CHECK-LIVE ( -- )
-   [: s" JIT-IMM" JITDUMP:JIT-FIND JITDUMP:JD ;] GE-CAPTURE-ACTION
+   [: s" DUMP-IMM" CODE-DUMP:FIND-XT CODE-DUMP:JD ;] GE-CAPTURE-ACTION
    s" mov" s" live compiled immediate" GE-EXPECT-OUT-HAS
    s" ret" s" live compiled return" GE-EXPECT-OUT-HAS
-   [: s" JIT-EARLY" JITDUMP:JIT-FIND JITDUMP:JD ;] GE-CAPTURE-ACTION
+   [: s" DUMP-EARLY" CODE-DUMP:FIND-XT CODE-DUMP:JD ;] GE-CAPTURE-ACTION
    s" 0x9" s" instructions after early return" GE-EXPECT-OUT-HAS
-   [: s" JIT-TAIL-WRAP" JITDUMP:JIT-FIND JITDUMP:JD ;] GE-CAPTURE-ACTION
+   [: s" DUMP-TAIL-WRAP" CODE-DUMP:FIND-XT CODE-DUMP:JD ;] GE-CAPTURE-ACTION
    s" jmp" s" complete tail branch" GE-EXPECT-OUT-HAS
-   [: s" JITDUMP-X64-ALIAS:JIT-IMM" XREF-FIND XREF-START JITDUMP:JD ;]
+   [: s" CODE-DUMP-X64-ALIAS:DUMP-IMM" XREF-FIND XREF-START CODE-DUMP:JD ;]
       GE-CAPTURE-ACTION
    s" mov" s" exported alias shares the original code" GE-EXPECT-OUT-HAS ;
 
 public
 : RUN ( -- )
    T-RESET
-   s" jitdump-x64" GT-START
+   s" code-dump-x64" GT-START
    GE-HB-RESET
    CHECK-MEM CHECK-MEM-WIDTH CHECK-FP CHECK-PREFIX CHECK-IMM CHECK-CONTROL
    CHECK-REFUSALS CHECK-LIVE
@@ -132,12 +132,12 @@ public
    T-REPORT ;
 ;package
 
-package JITDUMP-X64-ALIAS
+package CODE-DUMP-X64-ALIAS
 public
-EXPORT JITDUMP-X64-TEST:JIT-IMM
+EXPORT CODE-DUMP-X64-TEST:DUMP-IMM
 ;package
 
-package JITDUMP-X64-TEST
+package CODE-DUMP-X64-TEST
 public
 RUN
 ;package

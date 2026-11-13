@@ -368,7 +368,7 @@ require src/lib/prelude.f
 
 \ What T0 cannot compile: -8280..-8299.
 -8286 constant E-HIR-UNMODELED  \ a source word this dialect cannot compile: unmodeled, or never declared at all
--8294 constant E-UNMODELED-IMMEDIATE  \ a body uses an immediate that is not parse-neutral and no native tier models: refused at its token, it never runs
+-8294 constant E-UNMODELED-IMMEDIATE  \ a body uses an immediate that is not parse-neutral and the compiler does not model: refused at its token, it never runs
 
 \ The does> cut of a definition's source: -8400..-8409
 -8407 constant E-NFEED-CUT      \ the does> cut the engine recorded is not just past a `does> ` in the definition source: it lies outside the source, or after other bytes - the source and the pending definition disagree

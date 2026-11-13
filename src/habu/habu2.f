@@ -1010,7 +1010,7 @@ package ENGINE-EMIT
 public
 : C-CLEAR-TRUSTED-STATE ( -- )
    9 0 MOVZ,
-   9 DATA NCOMP-DISPATCH:DEF-TIER-CELL STR,
+   9 DATA NCOMP-DISPATCH:COMP-LATCH-CELL STR,
    9 DATA NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:PENDING-TAKE cells + STR,
    9 DATA TSIG-A-CELL STR,   9 DATA TSIG-U-CELL STR,
    9 DATA TCSIG-A-CELL STR,  9 DATA TCSIG-U-CELL STR,
@@ -1485,7 +1485,7 @@ variable LREPLAYTRAP
    14 DATA TCSIG-A-CELL STR,  14 DATA TCSIG-U-CELL STR,
    14 DATA DOESB-CELL STR,    14 DATA TRUSTED-CELL STR,
    14 DATA CLAUSE-CELL STR,
-   14 TIER-LATCH  14 DATA NCOMP-DISPATCH:DEF-TIER-CELL STR,
+   14 COMP-LATCH  14 DATA NCOMP-DISPATCH:COMP-LATCH-CELL STR,
    done B,
    s" E-SEAL-VIOLATION habu: def-open with a bad kind, a marker wid, a definition pending, CP at the code ceiling, no record room, an empty name or one reaching the code ceiling, or a name taken"
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
@@ -1551,7 +1551,7 @@ variable LREPLAYTRAP
 : DEF-CLOSE ( -- )
    LBL LBL LBL {: bad done nolast :}
    9 DATA PEND-CELL LDR,  9 bad CBZ,
-   10 DATA NCOMP-DISPATCH:DEF-TIER-CELL LDR,  10 bad CBZ,
+   10 DATA NCOMP-DISPATCH:COMP-LATCH-CELL LDR,  10 bad CBZ,
    10 9 16 LDR,  10 10 DKIND:MASK ANDI,  10 nolast CBZ,   \ a published body that pushes a cell is the slot `does>` patches (LDOESPATCH), set after the body as the kernel's definers set it
    11 DKIND:CAST LIT64,  10 11 CMP,  C-EQ nolast BCOND,
    9 DATA LASTC-CELL STR,
@@ -2348,7 +2348,7 @@ public
 \ the handler, return and loop stacks that receive the error.
 : EM-ABORT-COMPILE-STATE ( -- )
    9 0 MOVZ,
-   9 DATA NCOMP-DISPATCH:DEF-TIER-CELL STR,
+   9 DATA NCOMP-DISPATCH:COMP-LATCH-CELL STR,
    9 DATA NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:PENDING-TAKE cells + STR,
    9 DATA LVD-CELL STR,  9 DATA VSP-CELL STR,  9 DATA QPATCH-CELL STR,
    9 DATA FRAME-CELL STR,  9 DATA QFRAME-CELL STR,
@@ -2974,9 +2974,9 @@ public
 package ENGINE-EMIT
 \ scope-find ( ptr u8 n -- ptr n ptr n ptr n n ): LSCOPEREC's four answers for a
 \ token (bound record, used publics' record, second used record when two hold
-\ the tail, flags), so the checker, the optimizing compiler and the Habu
-\ interpreter bind a spelling to the record the JIT's call binds. A global row,
-\ checked like any other.
+\ the tail, flags), so the checker, tier 0 and the Habu interpreter bind a
+\ spelling to the record a compiled call binds. A global row, checked like any
+\ other.
 : BSCOPEFIND ( -- )
    10 G-POP  9 G-POP                   \ x10 = len (TOS), x9 = addr
    LSCOPEREC LABEL@ BL,

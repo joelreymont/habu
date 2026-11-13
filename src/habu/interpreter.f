@@ -1268,7 +1268,7 @@ package INTERPRETER
 private
 
 \ The capture reads locals before syntax. These cells describe lexical
-\ lifetime only; CF is the JIT's patch stack.
+\ lifetime only.
 LOC-RECS TYPED-BUFFER BODY-LOCAL-DEPTH n
 variable BODY-DEPTH
 \ The raw capture: 0 none, -1 one raw token (the operand of `[char]` or
@@ -1280,7 +1280,7 @@ variable TOK-BODY-RAW
 : BODY-LEX-RESET ( -- )
    0 BODY-DEPTH !  0 BODY-RAW-NEXT ! ;
 
-76 constant DEF-RC-TIER-0        \ the code of the engine head's first refusal, a pass-2 nesting
+76 constant DEF-RC-NO-COMPILER   \ the code of the engine head's first refusal, a pass-2 nesting
 76 constant DEF-RC-BAD-SIG       \ `trusted:` or `does>` with no signature
 72 constant DEF-RC-PD-FULL       \ no pending slot holds the defer
 
@@ -1332,13 +1332,12 @@ CAST: AS-COMPILE-FIXED ( n -- [ n n COMP:body -- ] )
 CAST: AS-BODY-HOOK ( n -- [ -- ptr u8 bool ] )
 CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
 
-\ A head with no tier-0 compiler (COMP-CELL 0), or a body token or fixed body
-\ latched to the JIT, refuses: this loop cannot call the JIT. `immediate`
-\ passes.
-: DEF-TIER-0 ( -- )
-   s" E-TIER-0" REFUSAL
-   s" tier 0 is not in the Habu loop: " ERROR-TEXT:TYPE
-   DEF-RC-TIER-0 PKG-FAIL ;
+\ A head with no compiler (COMP-CELL 0), or a body token or fixed body whose
+\ latch is 0, refuses. `immediate` passes.
+: DEF-NO-COMPILER ( -- )
+   s" E-NO-COMPILER" REFUSAL
+   s" the definition has no compiler: " ERROR-TEXT:TYPE
+   DEF-RC-NO-COMPILER PKG-FAIL ;
 
 \ The capture's first token, the definition's name, which a head seeds.
 : DEF-CAPTURED-NAME ( -- ptr u8 n )
@@ -1602,7 +1601,7 @@ private
    true DEF-SIG-SPAN DEF-SIG-TAKE ;
 
 : DEF-COMPILER ( -- n )
-   NCOMP-DISPATCH:DEF-TIER-CELL CELL@ 2 = if
+   NCOMP-DISPATCH:COMP-LATCH-CELL CELL@ 2 = if
       NCOMP-DISPATCH:COMP-CELL CELL@ exit
    then
    0 ;
@@ -1659,7 +1658,7 @@ private
 
 : DEF-HEAD ( bool -- ) {: trusted:bool :}
    NCOMP-DISPATCH:COMP-CELL CELL@ 0= if
-      DEF-TIER-0
+      DEF-NO-COMPILER
    then
    DEF-ROOM
    trusted DEF-NAME
@@ -1979,7 +1978,7 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    a u DEF-ONE-TOKEN? 0= if s" define-word" a u DEF-NAME-REFUSE then
    a u s su DEF-GIVEN-SIG {: p:ptr pu:n :}
    NCOMP-DISPATCH:COMP-CELL CELL@ 0= if
-      DEF-TIER-0
+      DEF-NO-COMPILER
    then
    DEF-ROOM
    OVERLAY-GUARD
@@ -2069,7 +2068,7 @@ variable LIT-AT
 
 : COMPILING? ( -- bool )
    PEND-CELL CELL@ 0= if false exit then
-   NCOMP-DISPATCH:DEF-TIER-CELL CELL@ 0= if DEF-TIER-0 then
+   NCOMP-DISPATCH:COMP-LATCH-CELL CELL@ 0= if DEF-NO-COMPILER then
    BODY-RAW-NEXT @ 0 > if
       TOKEN$ TYPE-SPAN-END? if 0 BODY-RAW-NEXT ! then
    then
@@ -2142,8 +2141,8 @@ variable LIT-AT
 \ The pending record's fixed body ( val entry kind ): entry is the routine a
 \ routine body calls, 0 for every other kind.
 : DEF-FIXED ( n n COMP:body -- )
-   NCOMP-DISPATCH:DEF-TIER-CELL CELL@ {: latch:n :}
-   latch 0= if DEF-TIER-0 then
+   NCOMP-DISPATCH:COMP-LATCH-CELL CELL@ {: latch:n :}
+   latch 0= if DEF-NO-COMPILER then
    NCOMP-DISPATCH:FIXED-COMP-CELL CELL@ AS-COMPILE-FIXED execute ;
 
 \ The cell-aligned here a created body pushes, kept as the latest body start.
@@ -2191,7 +2190,7 @@ variable DEF-VALUE
    s" -- a" DEF-RAW-PUBLISH ;
 
 \ `cast:` and `linear:` have no body or `;`: each completes where its keyword
-\ is read, at either tier with a compiler latched, and calls no def hook.
+\ is read, with a compiler latched, and calls no def hook.
 
 \ With the input at its end the refusal names the keyword as spelled, at the
 \ end's line.
@@ -2226,9 +2225,8 @@ variable DEF-VALUE
    TSIG-A-CELL ADDR@ TSIG-U-CELL CELL@ NCOMP-DISPATCH:DECL-CAST-OFF
    DEF-REGISTER-IDENTITY ;
 
-\ The published record takes the facts the checker's registrar latched: the
-\ wide mark, then the minimum input arity, which the interpret dispatch refuses
-\ an underdepth call on.
+\ The record takes what the checker's registrar latched: the wide mark, then
+\ the minimum input arity, under which the interpret dispatch refuses a call.
 : DEF-CAST-FACTS ( -- )
    REC-WIDE-PUBLISH
    REC-MIN-IN@ {: mi:n :}
@@ -2322,7 +2320,7 @@ variable DEF-VALUE
    PEND-CELL CELL@ 0<> if s" child word" a u DEF-OPEN-REFUSE then
    a u DEF-ONE-TOKEN? 0= if s" child word" a u DEF-NAME-REFUSE then
    shape CHILD-BODY 2drop
-   NCOMP-DISPATCH:COMP-CELL CELL@ 0= if DEF-TIER-0 then
+   NCOMP-DISPATCH:COMP-CELL CELL@ 0= if DEF-NO-COMPILER then
    DEF-ROOM
    OVERLAY-GUARD
    a u shape param ta tu CHILD-DEFINE ;
@@ -2813,8 +2811,7 @@ variable REPL-OK
 : REPL-LINE ( ptr u8 n -- bool ) {: a:ptr u:n :}
    depth FRAME-OPEN {: f:ptr :}
    \ The session, not this line, owns a pending definition from an earlier
-   \ line. The JIT's source-close check must allow its `;`; a failed line
-   \ still abandons that definition through this savepoint's full rollback.
+   \ line, yet a failed line abandons it through this savepoint's full rollback.
    0 f EVAL-FRAME:PEND FR!
    USE-FLOOR @ {: prior:n :}
    REC @ {: found:ptr :}

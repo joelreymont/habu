@@ -1694,7 +1694,7 @@ DYNAMIC-BUFFER TICK-QUAL u8
    pkgu 0= IF false EXIT THEN
    pkg pkgu tail tailu QUAL-SPELLING tok-imm? 0<> ;
 
-\ A compile-time action inside the current definition can change the tier or
+\ A compile-time action inside the current definition can change the compiler or
 \ replace a checker before its later trusted tick. The source scan does not run
 \ that action, so this definition and the following source lose the answer.
 : TICK-BODY-STEP ( -- )

@@ -1,8 +1,7 @@
 \ intern.f - the permanent address of a string literal's bytes; equal bodies
 \ within a segment share one. Bodies live in DATA, since a DATA address means the
-\ same after a snapshot restore and an mmap one does not. Both tiers intern
-\ through INTERN-SOURCE, and fetch descriptors are bodies under the same rule. A
-\ build's data space keeps its strings at `here`.
+\ same after a snapshot restore and an mmap one does not. Tier 0 interns
+\ through INTERN-SOURCE. A build's data space keeps its strings at `here`.
 \
 \ A segment is an owner record, its row tables and an arena. The store opens the
 \ next segment at `here` when the last cannot take a body, and a capture opens

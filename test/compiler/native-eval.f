@@ -1,7 +1,6 @@
 \ The closed evaluation boundary: `evaluate-closed` runs source on a data
 \ stack of its own and refuses residue by name, which is what lets a checked
-\ word evaluate source. Tier-neutral by design: the boundary asserted is the
-\ engine primitive and the checker's row for it, which no compiler tier moves.
+\ word evaluate source.
 require src/core/engine-error.f
 require src/habu/stack-abi.f
 require src/lib/error.f

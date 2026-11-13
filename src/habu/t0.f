@@ -6,7 +6,7 @@
 \ (src/compiler/native/definition.f), and emits through
 \ src/habu/t0-emit.f's EMIT- words to the selected emitter. A name, a tick's
 \ operand and `is`'s operand lower from the record the checker bound; spelling
-\ is looked up only by IMM-TOKEN (NEUTRAL-PARSE-IMM?).
+\ is looked up only by IMM-TOKEN.
 \ COMPILE-FIXED builds the body of a `constant`, `create`, `defer` or child,
 \ which has no text, through the same step.
 
@@ -1833,7 +1833,7 @@ variable FIXED-ENTRY                 \ the routine a routine body calls
 \ A does> definer is scanned twice: its head (CHECK-DOES-HEAD) from the
 \ definition's start, then its clause (CHECK-DOES-CLAUSE) from M-DOES. The
 \ clause's ordinals go on from the head's, one past for the `does>` between
-\ them, which the checker files nothing for (CHECKER-TAPE:ADVANCE), and
+\ them, which the checker files nothing for, and
 \ its token offsets count from the clause's start; the clause's scan first lays
 \ the `does>` row, so the tape is in text order with the checker's ordinals.
 variable SCAN-VERDICT

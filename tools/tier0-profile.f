@@ -5,8 +5,9 @@
 \ Run: bin/hb --load tools/tier0-profile.f -- corpus <usec> <file.f>...
 \      bin/hb --load tools/tier0-profile.f -- trivial <usec> <count>
 
-\ Nothing loads before the corpus: src/lib/fmt.f is a corpus entry, and loading it first would hide every word its compile
-\ reaches. The decimal writer below is the price.
+\ Nothing loads before the corpus: src/lib/fmt.f is a corpus entry, and loading
+\ it first would hide every word its compile reaches. The decimal writer below
+\ is the price.
 package TIER0-PROF
 private
 

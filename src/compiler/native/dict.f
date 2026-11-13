@@ -502,7 +502,7 @@ public
    w ;
 
 \ ---- and the literal inputs a call takes on top of its checked site inputs ---
-\ Both native tiers push them, deepest first, just before the call.
+\ Tier 0 pushes them, deepest first, just before the call.
 : CALL-EXTRAS ( n -- n ) {: ix:n :}
    ix INIT-LAYOUT 2drop 0 >= if 3 exit then
    ix FIELD-SPAN drop 0 >= if 2 exit then

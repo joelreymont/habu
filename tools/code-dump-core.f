@@ -1,18 +1,18 @@
-\ jitdump-core.f - decode the exact live code span of a dictionary word.
+\ code-dump-core.f - decode the exact live code span of a dictionary word.
 
 require src/habu/boot-cells.f
 require src/habu/code-bytes.f
 require src/lib/fmt.f
 
-HB-TARGET-LINUX-X86-64? [if] require tools/jitdump-x64.f [then]
-HB-TARGET-LINUX-X86-64? 0= [if] require tools/jitdump-arm.f [then]
+HB-TARGET-LINUX-X86-64? [if] require tools/code-dump-x64.f [then]
+HB-TARGET-LINUX-X86-64? 0= [if] require tools/code-dump-arm.f [then]
 
-\ CLI: bin/hb --load tools/jitdump.f -- '<program>' WORD
-\ Inline: <program> ' WORD JITDUMP:JD. A record supplies the terminal address;
+\ CLI: bin/hb --load tools/code-dump.f -- '<program>' WORD
+\ Inline: <program> ' WORD CODE-DUMP:JD. A record supplies the terminal address;
 \ a branch, early return or immediate byte that looks like RET does not. The
-\ target's decoder (tools/jitdump-arm.f, tools/jitdump-x64.f) reads one
+\ target's decoder (tools/code-dump-arm.f, tools/code-dump-x64.f) reads one
 \ instruction per step.
-package JITDUMP
+package CODE-DUMP
 private
 
 : REC-FOR ( n -- ptr n ) {: xt:n :}
@@ -24,12 +24,12 @@ private
          rec XREF-CODE-BYTES 0 > if rec unloop exit then
       then
    loop
-   s" jitdump: no live record begins at this xt" 74 die ;
+   s" code-dump: no live record begins at this xt" 74 die ;
 
 : STEP ( ptr u8 n n -- n ) {: a:ptr u:n pc:n :}
    pc FMT:.INT s" : " type
-   a u pc JIT-DIS:STEP {: bytes:n :}
-   bytes 0 <= bytes u > or if s" jitdump: decoder escaped recorded span" 74 die then
+   a u pc DUMP-DECODE:STEP {: bytes:n :}
+   bytes 0 <= bytes u > or if s" code-dump: decoder escaped recorded span" 74 die then
    cr bytes ;
 
 : WALK ( n ptr u8 n -- ) {: xt:n a:ptr u:n :}
@@ -39,8 +39,8 @@ private
       offset +
    repeat drop ;
 
-: JIT-USAGE ( -- )
-   s" usage: bin/hb --load tools/jitdump.f -- '<program>' WORD" 64 die ;
+: USAGE ( -- )
+   s" usage: bin/hb --load tools/code-dump.f -- '<program>' WORD" 64 die ;
 
 public
 
@@ -49,22 +49,22 @@ public
    xt bytes CODE-BYTES:AT drop {: a:ptr :}
    xt a bytes WALK ;
 
-: JIT-FIND ( ptr u8 n -- n )
+: FIND-XT ( ptr u8 n -- n )
    get-current XREF-FIND-WL
-   dup XREF-FOUND? 0= if drop s" jitdump: target word not found" 74 die then
+   dup XREF-FOUND? 0= if drop s" code-dump: target word not found" 74 die then
    XREF-START ;
 
 \ Evaluates caller source through the real compiler before lookup. The program
 \ defines words and leaves nothing: a cell it leaves is E-EVAL-RESIDUE.
-: JIT-EVALUATE ( ptr u8 n -- )
+: LOAD-PROGRAM ( ptr u8 n -- )
    evaluate-closed ;
 
-: JIT-MAIN ( -- )
-   SCRIPT-ARGC 2 <> if JIT-USAGE then
-   0 SCRIPT-ARGV$ JIT-EVALUATE
-   1 SCRIPT-ARGV$ JIT-FIND JD ;
+: MAIN ( -- )
+   SCRIPT-ARGC 2 <> if USAGE then
+   0 SCRIPT-ARGV$ LOAD-PROGRAM
+   1 SCRIPT-ARGV$ FIND-XT JD ;
 
-: JIT-AUTO ( -- )
-   SCRIPT-ARGC 0 > if JIT-MAIN then ;
+: AUTO ( -- )
+   SCRIPT-ARGC 0 > if MAIN then ;
 
 ;package

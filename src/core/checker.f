@@ -191,8 +191,8 @@
 \ input's physical cells and push the declared outputs over the remainder. A
 \ failure that cannot be spliced while a row holds a wide or open-width cell
 \ sets SCAN-INCOMPLETE, and so does a lost local bind with a local declared
-\ wide (LOC-UNJ-BIND); tier 0 then refuses the definition. Otherwise
-\ the unspliced result stands and every cell lowers at the default width. A
+\ wide (LOC-UNJ-BIND). Otherwise the unspliced result stands and every cell
+\ lowers at the default width. A
 \ spliced call whose unify never reached the row tail freezes its declared
 \ rows there, so its call record states the cells the splice popped and
 \ pushed; CHECK finalizes an unjudged scan's call records whatever its

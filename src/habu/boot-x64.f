@@ -260,7 +260,7 @@ variable SNAP-END
    \ Every process starts with no definition or build scope open, whatever
    \ DATA carried.
    RAX ZERO-REG,
-   RAX NCOMP-DISPATCH:DEF-TIER-CELL CELL!
+   RAX NCOMP-DISPATCH:COMP-LATCH-CELL CELL!
    RAX NCOMP-DISPATCH:BUILD-DEPTH-CELL CELL! ;
 
 \ This process's definition occurrence allocation (layout.f DEF-OCC): a fresh

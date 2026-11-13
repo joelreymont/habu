@@ -640,7 +640,7 @@ $6C0 constant FIXED-COMP-CELL
 
 \ Latched at the colon (0 no compiler, 2 COMP-CELL); an
 \ immediate may only select the NEXT definition.
-$388 constant DEF-TIER-CELL
+$388 constant COMP-LATCH-CELL
 \ How many executable-build scopes are open.
 $390 constant BUILD-DEPTH-CELL
 \ RECOVER-CELL ( 0 | -1 ) -- whether the reader whose `;` called the compiler
@@ -1224,7 +1224,7 @@ USE-BAND-OFF 8 +      constant USE-PKG-SAVE-CELL   \ depth saved at `package` op
 USE-BAND-OFF 24 +     constant USE-WIDS-OFF        \ public-wid array base (USE-MAX u64 cells)
 USE-WIDS-OFF USE-MAX cells + constant USE-BAND-END
 
-\ Two tables of the JIT region's recorded sites, which AOT capture reads: calls
+\ Two tables of the code region's recorded sites, which AOT capture reads: calls
 \ into __text and the first instruction of each address literal. Both live below
 \ DATA-START and are keyed by region offset.
 package SNAP-RELOC
@@ -1244,7 +1244,7 @@ public
 \ alone, would relocate the cell wrongly.
 99 constant XTKIND-RC
 
-\ Call-site map: one bit per four-byte word of the JIT region, marking every call
+\ Call-site map: one bit per four-byte word of the code region, marking every call
 \ whose callee is in the engine's loaded __text. A site is recorded when the call
 \ is published, because region bytes cannot be decoded soundly: a compiled word
 \ may carry inline non-instruction data.
@@ -1304,7 +1304,7 @@ ADDRMAP-END SITE-ROWS-OFF - SITE-ROW-BYTES / constant SITE-CAP
 103 constant SITE-RC
 
 \ Address-cell table: the DATA offset and kind of every cell declared
-\ to hold an address. XT cells hold JIT-region addresses, DATA-pointer cells
+\ to hold an address. XT cells hold code-region addresses, DATA-pointer cells
 \ addresses in the DATA heap. Only XT values need snapshot canonicalisation:
 \ region code moves on restore and DATA does not. Both kinds need the
 \ declaration for AOT capture, where the captured DATA window moves and a raw

@@ -64,8 +64,7 @@ X64LAYOUT:DATA-SIZE PROF-CNT-BYTES - constant DP-CEILING
 \ the target's on a macOS host: check them with the target's band.
 X64LAYOUT:DATA-SIZE DATA-CLAIMS:BAND-ASSERT
 
-\ Every CP is a multiple of the code slot, X64IR:SP-ALIGN, the only placement
-\ X64EMIT:PLACE-AT accepts. The kernel loads no dialect, so it states the value.
+\ Every CP is a multiple of the code slot.
 16 constant CODE-SLOT
 
 \ The definition writers refuse a CP, or a long name's slots at CP, that reach
@@ -2832,9 +2831,8 @@ variable SITE-TRAP-CELL
    RAX RDX ASM-SINK ENC-TEST-RR  C-NE prot JCC,
    open X64CODE:LBL, ;
 
-\ patch32 ( n n -- ): store the word at the address between two LPROTREC flips
-\ of its pages, as BPATCH32 does: the flip is keyed on the target, never on a
-\ band another bracket may hold open.
+\ patch32 ( n n -- ): store the word between two LPROTREC flips of its pages,
+\ keyed on the target, never on a band another bracket may hold open.
 : PATCH32, ( -- )
    R8 POP,  R9 POP,                                    \ the address, the word
    R8 PROT-RW PROT-REC,
@@ -3307,8 +3305,8 @@ private
 \ The status a refused hook exits with: habu1.f BSETCHECK's.
 70 constant HOOK-BAD-RC
 
-\ Branch to the label unless rax is a live JIT entry, DBASE <= rax < CP,
-\ unsigned: the install window of habu1.f BSETCHECK. It catches a wild
+\ Branch to the label unless rax is a live code entry, DBASE <= rax < CP,
+\ unsigned: set-check's install window. It catches a wild
 \ install, not a well-formed pointer into live code.
 : WINDOW, ( label -- ) {: bad:label :}
    RAX DBASE-REG ASM-SINK ENC-CMP-RR  C-B bad JCC,
@@ -3515,7 +3513,7 @@ private
    LASTC-TRIM,
    done X64CODE:LBL, ;
 
-\ ndict-append ( n -- ): count the native tier's pending record, which must
+\ ndict-append ( n -- ): count the compiler's pending record, which must
 \ be record n at the count, or its does> companion one record past it while
 \ a does> body is pending, and index it. Anything else, or a count below the
 \ seal floor, exits SEAL-VIOLATION.
@@ -3525,7 +3523,7 @@ private
    RAX 0 PEEK,
    RAX NDICT-REG ASM-SINK ENC-CMP-RR  C-NE bad JCC,
    RAX DICT-CAP >IMM32 ASM-SINK ENC-CMP-RI32  C-AE bad JCC,
-   RCX NCOMP-DISPATCH:DEF-TIER-CELL CELL@,
+   RCX NCOMP-DISPATCH:COMP-LATCH-CELL CELL@,
    RCX RCX ASM-SINK ENC-TEST-RR  C-E bad JCC,
    RDX RAX DREC >IMM8 ASM-SINK ENC-IMUL-RRI8
    RDX DBASE-REG ASM-SINK ENC-ADD-RR                   \ rdx = record n
@@ -3806,7 +3804,6 @@ private
    s" wide-mark" [: WIDE-MARK-BODY ;] PRIM ;
 
 \ Capture needs address-cell declarations at fixed x86-64 addresses too.
-\ The ARM64 twins are habu2.f RELOC-EMIT's primitives and habu1.f's build primitives.
 
 : DEPTH-OFF ( -- n ) NCOMP-DISPATCH:BUILD-DEPTH-CELL ;
 
@@ -4735,11 +4732,9 @@ $3A constant NAME-COLON                \ a qualified name's separator
 
 \ def-open ( ptr u8 n n n -- ) name, wid, kind: record NDICT unpublished, [0]
 \ CP past the name, [8] 0, the kind beside the length and the wid in [40];
-\ PEND-CELL the record;
-\ TSIG, TCSIG, DOESB, CLAUSE and TRUSTED clear; DEF-TIER-CELL takes
-\ the latch as habu1.f TIER-LATCH computes it. A DKIND:ADDR kind carries
-\ DNAME-ALLOC, and DNAME-CELL as well for a variable, as habu2.f
-\ DEFWRITE:DEF-OPEN admits them.
+\ PEND-CELL the record; TSIG, TCSIG, DOESB, CLAUSE and TRUSTED clear;
+\ COMP-LATCH-CELL takes the latch. A DKIND:ADDR kind carries DNAME-ALLOC, and
+\ DNAME-CELL as well for a variable.
 : DEF-OPEN-BODY ( -- )
    X64CODE:LBL X64CODE:LBL X64CODE:LBL {: latched:label prot:label done:label :}
    TASK-LIVE-GUARD,
@@ -4773,7 +4768,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RAX RAX ASM-SINK ENC-TEST-RR  C-E latched JCC,
    RAX 2 IMM32,
    latched X64CODE:LBL,
-   RAX NCOMP-DISPATCH:DEF-TIER-CELL CELL!,
+   RAX NCOMP-DISPATCH:COMP-LATCH-CELL CELL!,
    WINDOW-CLOSE,
    FRAME-CLOSE,
    done JMP,
@@ -5039,18 +5034,16 @@ variable GROW-CELL
 : CREATED-SIG-BODY ( -- )
    TCSIG-A-CELL TCSIG-U-CELL PENDING-SPAN-BODY ;
 
-\ def-close ( -- ): the pending definition of the native tier ends:
-\ DEF-TIER-CELL, TSIG, TCSIG, DOESB, CLAUSE, TRUSTED and PEND-CELL
-\ clear; before they clear, LASTC-CELL takes the record for a nonzero kind
-\ other than DKIND:CAST. Nothing pending, and DEF-TIER-CELL 0 (no compiler),
-\ are refused. Unlike arm64's (habu2.f NATIVE-CLOSE, through C-CLEAR-LOCALS) it
-\ clears no locals cell: the Habu loop's `;` clears LOCN-CELL after it
-\ (src/habu/interpreter.f DEF-CLOSE).
+\ def-close ( -- ): the pending definition ends: COMP-LATCH-CELL, TSIG, TCSIG,
+\ DOESB, CLAUSE, TRUSTED and PEND-CELL clear; before they clear, LASTC-CELL
+\ takes the record for a nonzero kind other than DKIND:CAST. Nothing pending,
+\ and COMP-LATCH-CELL 0 (no compiler), are refused. Unlike arm64's, it clears
+\ no locals cell: the Habu loop's `;` clears LOCN-CELL after it.
 : DEF-CLOSE-BODY ( -- )
    X64CODE:LBL {: nolast:label :}
    RDX PEND-CELL CELL@,
    RDX RDX ASM-SINK ENC-TEST-RR  C-E SEAL-TRAP-LBL JCC,
-   RCX NCOMP-DISPATCH:DEF-TIER-CELL CELL@,
+   RCX NCOMP-DISPATCH:COMP-LATCH-CELL CELL@,
    RCX RCX ASM-SINK ENC-TEST-RR  C-E SEAL-TRAP-LBL JCC,
    RCX RDX REC-FLAGS MOV-LOAD,                        \ a published body that pushes a cell is the slot `does>` patches, set after the body as the kernel's definers set it
    RAX DKIND:MASK IMM64,  RCX RAX ASM-SINK ENC-AND-RR
@@ -5059,7 +5052,7 @@ variable GROW-CELL
    RDX LASTC-CELL CELL!,
    nolast X64CODE:LBL,
    RAX ZERO-REG,
-   RAX NCOMP-DISPATCH:DEF-TIER-CELL CELL!,
+   RAX NCOMP-DISPATCH:COMP-LATCH-CELL CELL!,
    RAX TSIG-A-CELL CELL!,  RAX TSIG-U-CELL CELL!,
    RAX TCSIG-A-CELL CELL!,  RAX TCSIG-U-CELL CELL!,
    RAX DOESB-CELL CELL!,  RAX TRUSTED-CELL CELL!,  RAX CLAUSE-CELL CELL!,
@@ -5071,7 +5064,7 @@ variable GROW-CELL
 : DEF-ABORT-BODY ( -- )
    WINDOW-CLOSE,
    RAX ZERO-REG,
-   RAX NCOMP-DISPATCH:DEF-TIER-CELL CELL!,
+   RAX NCOMP-DISPATCH:COMP-LATCH-CELL CELL!,
    RAX LVD-CELL CELL!,  RAX VSP-CELL CELL!,
    RAX QPATCH-CELL CELL!,  RAX FRAME-CELL CELL!,  RAX QFRAME-CELL CELL!,
    RAX LOCN-CELL CELL!,  RAX BODYLEN-CELL CELL!,  RAX EXITH-CELL CELL!,
@@ -5122,7 +5115,7 @@ INT3-CELL $FF invert and RET-OP or constant CAST-CELL
    R11 ASM-SINK ENC-CALL-REG
    noshadow X64CODE:LBL,
    RAX ZERO-REG,
-   RAX NCOMP-DISPATCH:DEF-TIER-CELL CELL!,
+   RAX NCOMP-DISPATCH:COMP-LATCH-CELL CELL!,
    RAX TSIG-A-CELL CELL!,  RAX TSIG-U-CELL CELL!,
    RAX TCSIG-A-CELL CELL!,  RAX TCSIG-U-CELL CELL!,
    RAX DOESB-CELL CELL!,  RAX TRUSTED-CELL CELL!,  RAX CLAUSE-CELL CELL!,
@@ -5412,8 +5405,8 @@ public
 \ where they stand and writes its answer over the deepest cell it consumed, so
 \ a row that leaves as many cells as it takes never moves DSP. The guarded
 \ stores are the twins of habu1.f BSTORE, BCSTORE and BPLUSSTORE, which
-\ compiled stores call rather than inline (src/compiler/native/elaborate.f
-\ DO-STORE), and f. is the twin of habu1.f BFDOT, which writes its own line.
+\ compiled stores call rather than inline, and f. is the twin of habu1.f BFDOT,
+\ which writes its own line.
 \
 \ A float is a double's bits in a cell, worked in xmm0 and xmm1. An operation
 \ that makes a NaN from numbers makes SSE's default NaN, $FFF8000000000000,

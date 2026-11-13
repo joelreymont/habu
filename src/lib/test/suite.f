@@ -405,7 +405,7 @@ EXPORT ITEM-NAME$
 
 \ Visit the source files before a row's script separator. The registry is the
 \ authority for what the adapter passes after --load; the same file can belong
-\ to several rows with different argv or engine tiers.
+\ to several rows with different argv.
 : VISIT-ROW-FILES ( n [ n bool ptr u8 n -- ] -- ) {: id:n visit :}
    id ITEM-ARG-OFF@
    id ITEM-ARG-COUNT@ 0 ?do

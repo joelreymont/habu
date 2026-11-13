@@ -56,8 +56,7 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
 \ (src/arch/x86-64/rt.f G-PUSH, G-POP). The vregs are rcx rdx rsi rdi r8-r11;
 \ rax is this file's temporary and holds no value between two of its words. A
 \ body is entered by `call`, leaves by `ret` and saves nothing; its frame on
-\ the machine stack is its own cells rounded to 16 (src/compiler/native/abi.f
-\ FRAME-FOR).
+\ the machine stack is its own cells rounded to 16.
 : DSP ( -- r64 ) ENGINE-GPR:X64-DSTACK >R64 ;
 : DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
 
@@ -158,8 +157,7 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
    FRAME-CELLS @ CELL * 15 + 15 invert and {: bytes:n :}
    NFRAME @ 0 ?do bytes i FRAME-AT @ 4 PUT loop ;
 
-\ The return is the kernel's does> patch slot (src/habu/kernel-x64.f
-\ PATCH-SLOT), filed at the jump's offset as tier 1's PUT-RET files it.
+\ The return is the kernel's does> patch slot, filed at the jump's offset.
 : SLOT-CLOSE ( -- )
    UNFRAME
    HERE-OFF EMIT-PATCH-SLOT!

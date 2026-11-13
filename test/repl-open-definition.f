@@ -15,7 +15,6 @@ using PTY-HARNESS
 : STEP ( ptr u8 n -- bool )
    BUF-CLEAR SEND-LINE WAIT-ANSWER ;
 
-\ A REPL child on the pty.
 : OPEN ( -- bool )
    ENGINE-CANDIDATE:PATH$ SPAWN-ON-PTY
    s" habu> " WAIT-FOR ;

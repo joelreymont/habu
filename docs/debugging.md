@@ -121,7 +121,7 @@ stream — ASLR slides the xt, file bytes do not move.
 
 ## gdb/lldb — native stepping boundary
 
-Use the Habu stepper, breakpoints, watch cells, `jitdump`, and `imgdump` first.
+Use the Habu stepper, breakpoints, watch cells, `code-dump`, and `imgdump` first.
 Use gdb on Linux and lldb on macOS only when the fault is in startup or emitted
 machine code before the Forth debugger is reachable. Inspect data-stack cells,
 DATA header cells, and watch-cell addresses before adding print probes. On macOS,
@@ -154,7 +154,7 @@ Use the in-process dumps to inspect generated code before falling back to
 external tools:
 
 ```
-bin/hb --load tools/jitdump.f -- ': S ( n -- n ) dup * ;' S
+bin/hb --load tools/code-dump.f -- ': S ( n -- n ) dup * ;' S
 bin/hb --load tools/imagedisasm.f -- bin/hb $1000 16
 bin/hb --load tools/imgdump.f -- bin/hb
 bin/hb --load tools/imgdump.f -- old-hb new-hb

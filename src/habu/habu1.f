@@ -1,6 +1,5 @@
 \ habu1.f, engine builder part 1: emits the native engine's primitive bodies,
-\ helper routines and seed dictionary for arm64 (Linux and macOS). The
-\ interpreter loop and keyword JIT are in habu2.f.
+\ helper routines and seed dictionary for arm64 (Linux and macOS).
 \ Requests run before any package or `using` opens, so each file links
 \ (linker.f TOP-SCOPE?). A64ASM's encoders live in src/arch/arm64/asm.f.
 \
@@ -1471,7 +1470,7 @@ private
    LBL LBL LBL LBL LBL {: parent:label owner:label floor-ok:label bad:label done:label :}
    A NDICT CMP,  C-NE bad BCOND,
    14 DICT-CAP LIT64,  A 14 CMP,  C-CS bad BCOND,
-   14 DATA NCOMP-DISPATCH:DEF-TIER-CELL LDR,  14 bad CBZ,
+   14 DATA NCOMP-DISPATCH:COMP-LATCH-CELL LDR,  14 bad CBZ,
    C DREC MOVZ,  B A C MUL,  B DBASE B ADD,
    14 DATA PEND-CELL LDR,  14 bad CBZ,
    14 B CMP,  C-EQ parent BCOND,
@@ -3599,8 +3598,8 @@ private
    done LBL, ;
 
 public
-\ Register n gets the DEF-TIER-CELL latch the next `:` takes.
-: TIER-LATCH ( n -- ) {: r:n :}
+\ Register n gets the latch the next `:` stores in COMP-LATCH-CELL.
+: COMP-LATCH ( n -- ) {: r:n :}
    LBL {: done:label :}
    r DATA NCOMP-DISPATCH:COMP-CELL LDR,  r done CBZ,
    r 2 MOVZ,
@@ -3610,13 +3609,13 @@ private
 \ A prospective answer at this boundary: 0 means checking first, 1 means the
 \ trusted gate would run first. The verifier captures it before loading tools.
 : BTICKORDER ( -- )
-   LBL LBL LBL LBL {: next:label checking:label tier:label done:label :}
+   LBL LBL LBL LBL {: next:label checking:label latched:label done:label :}
    9 DATA PEND-CELL LDR,  9 next CBZ,
-      9 DATA NCOMP-DISPATCH:DEF-TIER-CELL LDR,
-      tier B,
+      9 DATA NCOMP-DISPATCH:COMP-LATCH-CELL LDR,
+      latched B,
    next LBL,
-      9 TIER-LATCH
-   tier LBL,
+      9 COMP-LATCH
+   latched LBL,
    9 checking CBNZ,
    C-TICK-QUERY
    11 checking CBZ,
@@ -3627,7 +3626,7 @@ private
    done LBL, ;
 
 \ set-preflight ( xt -- ): single-assignment installer for the checker-owned
-\ immediate preflight. While it is empty the checker may install one live JIT
+\ immediate preflight. While it is empty the checker may install one live code
 \ entry, and an identical reinstall is inert. While checking stays armed, even
 \ a TRUSTED: caller cannot replace the hook.
 : BSETPREFLIGHT ( -- )

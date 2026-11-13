@@ -172,7 +172,7 @@ public
    M-DOES @ {: cut:n :}
    M-SRC @ cut DOES-SPAN - CHECK-PARENT
    TRUSTED? if drop else -1 <> if E-COMP-VERDICT throw then then
-   \ the clause's scan starts its own
+   \ The clause's scan clears the checker's recovery flag, so keep the head's.
    CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? M-HEAD-RECOVERY ! ;
 
 \ The `does>` clause, named for a refusal by the unit's name. The checker's
@@ -484,7 +484,7 @@ private
 public
 
 \ A word compiled code cannot reach and a MALFORMED? body take the reject
-\ status, as the JIT refuses them; p is the refused token's byte or NULL-PTR.
+\ status; p is the refused token's byte or NULL-PTR.
 : SETTLE-UNIT ( n n bool ptr u8 n ptr u8 -- )
    {: entry-rc:n rc:n undefined:bool a:ptr u:n p:ptr :}
    entry-rc 0<> if

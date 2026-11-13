@@ -10,8 +10,8 @@ require src/compiler/native/fetch-check.f
 package WKWORDS
 private
 
-\ A real's bits: a rename HIR models (hir-word.f DECLARE-BOUND-CAST), where
-\ IEEE754:F64>BITS would be a call the map does not answer.
+\ A real's bits: a cast, where IEEE754:F64>BITS would be a call the map does
+\ not answer.
 CAST: F>BITS ( r -- n )
 CAST: ZERO>PTR ( n -- ptr n )
 CAST: >DATA ( n -- ptr n )

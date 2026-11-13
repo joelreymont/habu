@@ -168,7 +168,7 @@ ARCHES TYPED-BUFFER EMIT-VREGS-N n
 \ begins where the previous EMIT-CLOSE left off. A `does>` clause is a later
 \ unit too, begun by EMIT-QUOT-OPEN when the parent pushed its address, else by
 \ EMIT-UNIT-OPEN. Sealing files one NEMIT function per unit. `recurse` in any
-\ unit calls byte 0, as both tiers run it, and files no row.
+\ unit calls byte 0 and files no row.
 \
 \ THE PATCH SLOT. EMIT-SLOT-CLOSE closes a unit whose return is the does> patch
 \ slot (EMIT-PATCH-SLOT!). The kernel finds the slot from the record's length,

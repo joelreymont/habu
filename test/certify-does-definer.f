@@ -251,7 +251,6 @@ package CERTIFY-DOES-DEFINER
 \ definitions, so they run between two scopes.
 : CDD-SECTION-LATCH-LIVE ( -- )
    s" a clause its body contradicts is refused" T-LABEL
-   \ The checker refuses the clause with rc 70.
    [: s\" : CDD-RES-BAD ( n -- ) create , does> ( -- n ) ;\n" evaluate-closed ;]
       70 TTHROWSQ
    s\" : CDD-RES-AFTER ( n -- n ) 2 * ;\n" evaluate-closed ;

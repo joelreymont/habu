@@ -1,5 +1,5 @@
 \ code-owner.f - turn a live code address into the records that own it. Runs inside
-\ the engine under study: JIT-region addresses have no external symbols, and each
+\ the engine under study: code-region addresses have no external symbols, and each
 \ record holds its routine's start and length. Every owner is reported, as an
 \ `EXPORT` alias or `;does` companion can cover one routine twice. REGION-OWNER.
 \ takes a region offset, which is stable across ASLR runs.

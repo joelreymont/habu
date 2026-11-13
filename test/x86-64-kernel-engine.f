@@ -333,10 +333,10 @@ REGION SLOT-BYTES - constant TOP-SLOT
 
 : APPEND, ( n -- ) X64HARNESS:PUSH,  s" ndict-append" ROW ;
 
-\ Record 5, delta, written and pending but not counted, under the native tier.
+\ Record 5, delta, written and pending but not counted, with a compiler latched.
 : PENDING, ( -- )
    SEED,  X64KERNEL:HIDX-BUILD,
-   1 NCOMP-DISPATCH:DEF-TIER-CELL X64HARNESS:CELL!,
+   1 NCOMP-DISPATCH:COMP-LATCH-CELL X64HARNESS:CELL!,
    5 DREC * PEND-CELL X64HARNESS:REGION-ADDR!,
    s" delta" 0 0 X64HARNESS:RECORD,  5 NDICT!, ;
 
@@ -528,14 +528,12 @@ REGION SLOT-BYTES - constant TOP-SLOT
    0 X64HARNESS:PUSH-SCRATCH, s" ptr-cell-mark" ROW
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
-\ The constant rows.
 : BUILD-CONSTANTS ( ptr u8 n -- ) {: path:ptr pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    s" snapshot-format" ROW  SNAPSHOT-FORMAT:VERSION X64HARNESS:EXPECT-POP,
    0 X64HARNESS:EXPECT-DEPTH,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
-\ The executable-build scope rows.
 : ENTER, ( -- ) s" executable-build-enter" ROW ;
 : LEAVE, ( -- ) s" executable-build-leave" ROW ;
 : DEPTH?, ( n -- ) NCOMP-DISPATCH:BUILD-DEPTH-CELL X64HARNESS:EXPECT-CELL, ;

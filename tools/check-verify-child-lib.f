@@ -2,8 +2,8 @@
 \ states the contract, loads this file from its own tree and runs
 \ CHECK-VERIFY-CHILD:MAIN.
 
-\ The observation must precede every verifier require: those files may select a
-\ tier or replace a checker in this child, while the hypothetical subject has
+\ The observation must precede every verifier require: those files may change the
+\ compiler or replace a checker in this child, while the hypothetical subject has
 \ not reached any of them at its own load boundary.
 tick-order@
 package CHECK-VERIFY-CHILD

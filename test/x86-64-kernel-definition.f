@@ -183,7 +183,7 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
 \ - hb-x64-kernel-def-open, after the seal, opens a definition whose name
 \   another wid holds: the pending record, its cells, and NDICT unchanged.
 \ - hb-x64-kernel-def-open-state checks the state def-open resets: its record's
-\   length cell 0, TSIG, TCSIG, DOESB, CLAUSE and TRUSTED clear, DEF-TIER-CELL 2
+\   length cell 0, TSIG, TCSIG, DOESB, CLAUSE and TRUSTED clear, COMP-LATCH-CELL 2
 \   with COMP-CELL set, and CP, which an inline name leaves.
 \ - hb-x64-kernel-def-open-long stores a 17-byte name at CP: CP and the entry
 \   move 32 bytes and the pad over poisoned cells is 0.
@@ -201,7 +201,7 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
 \ - hb-x64-kernel-created-sig stores the pending definition's `does>`
 \   signature span, an address in the block.
 \ - hb-x64-kernel-def-close ends a tier-0 definition whose state cells are set:
-\   DEF-TIER, the seven signature and clause cells and PEND clear.
+\   COMP-LATCH-CELL, the seven signature and clause cells and PEND clear.
 \ - hb-x64-kernel-imm-mark sets DNAME-IMM on the newest record, keeping its
 \   other bits, and leaves the record before it alone.
 \ - hb-x64-kernel-def-abort closes a failed definition's code window and
@@ -288,7 +288,7 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
    s" w" 0 DKIND:CAST DEF-OPEN,
    0 0 REC-AUX X64HARNESS:EXPECT-RECORD,
    PUSH-SIGS,  0 X64HARNESS:EXPECT-POP,
-   2 NCOMP-DISPATCH:DEF-TIER-CELL X64HARNESS:EXPECT-CELL,
+   2 NCOMP-DISPATCH:COMP-LATCH-CELL X64HARNESS:EXPECT-CELL,
    X64HARNESS:PUSH-CP,  DICT-SIZE X64HARNESS:EXPECT-POP-REGION,
    s" w" nip DKIND:CAST or 0 X64KERNEL:REC-FLAGS X64HARNESS:EXPECT-RECORD,
    0 CLOSED, ;
@@ -383,7 +383,7 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
    TIER-0-OPEN,
    s" def-close" X64HARNESS:CALL-ROW,
    PUSH-SIGS,  0 X64HARNESS:EXPECT-POP,
-   0 NCOMP-DISPATCH:DEF-TIER-CELL X64HARNESS:EXPECT-CELL,
+   0 NCOMP-DISPATCH:COMP-LATCH-CELL X64HARNESS:EXPECT-CELL,
    0 PEND-CELL X64HARNESS:EXPECT-CELL, ;
 
 \ Record 1 is the newest, a cast whose kind the mark keeps.
@@ -407,7 +407,7 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
    s" def-abort" X64HARNESS:CALL-ROW,
    PUSH-SIGS,  0 X64HARNESS:EXPECT-POP,
    0 CLOSED,
-   0 NCOMP-DISPATCH:DEF-TIER-CELL X64HARNESS:EXPECT-CELL,
+   0 NCOMP-DISPATCH:COMP-LATCH-CELL X64HARNESS:EXPECT-CELL,
    0 PEND-CELL X64HARNESS:EXPECT-CELL,
    0 LOCN-CELL X64HARNESS:EXPECT-CELL,
    0 BODYLEN-CELL X64HARNESS:EXPECT-CELL, ;
