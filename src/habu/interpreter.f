@@ -323,13 +323,8 @@ create NL NEWLINE c,
    ERROR-TEXT:TYPE TOKEN$ ERROR-TEXT:TYPE NL 1 ERROR-TEXT:TYPE
    RC-REJECT throw ;
 
-\ The line the cursor is on, counted from the open file's first owned byte.
-: LINE ( -- n )
-   SRCLOC:OWNED-CELL ADDR@ INP-CELL ADDR@ ERROR-TEXT:LINE ;
-
 : REFUSAL ( ptr u8 n -- )
-   SRCLOC:PATH-CELL ADDR@ SRCLOC:PATHLEN-CELL CELL@
-   SRCLOC:FILE-BUFFER? if LINE else 0 then
+   SRCLOC:PATH-CELL ADDR@ SRCLOC:PATHLEN-CELL CELL@ SRCLOC:LINE
    ERROR-TEXT:PREFIX ;
 
 : UNDEFINED-NAME ( ptr u8 n -- ) {: a:ptr u:n :}

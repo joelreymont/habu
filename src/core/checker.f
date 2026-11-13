@@ -29522,9 +29522,6 @@ $4E constant DUP-RC
 INP-CELL RESERVED-PTR-U8-CELL SRC-CURSOR
 PENDTKA-CELL RESERVED-PTR-U8-CELL SRC-NAME
 
-: BYTE-LINE ( ptr u8 -- n )
-   SRC-OWNED @ swap ERROR-TEXT:LINE ;
-
 \ The line of the definition's name, where the wall places a duplicate. At a
 \ colon definition's closing `;` the definition is pending (PEND-CELL) and its
 \ opener kept where its name starts (PENDTKA-CELL); create, variable and
@@ -29535,7 +29532,7 @@ PENDTKA-CELL RESERVED-PTR-U8-CELL SRC-NAME
 : NAME-LINE ( -- n )
    SRC-OWNED @ SRC-NAME @ SRC-CURSOR @ {: o:ptr nm:ptr p:ptr :}
    data-base PEND-CELL + @ 0 <>  nm o - 0 >= and  p nm - 0 >= and
-   if nm BYTE-LINE else p BYTE-LINE then ;
+   if o nm ERROR-TEXT:LINE else SRCLOC:LINE then ;
 
 public
 : REFUSE-DUPLICATE ( ptr u8 n -- )
