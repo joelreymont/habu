@@ -2,8 +2,6 @@
 
 s" CELL" s" -- n" TRUST
 s" CELL-WIDTH-CHECK" s" --" TRUST
-s" CHECKER-CAPTURE-PREPARE" s" --" TRUST
-s" CHECKER-STORAGE-PREPARE" s" --" TRUST
 
 \ src/core/util.f's public constants, which load before the checker: without
 \ these rows a body naming one is E-UNDEFINED on a from-source prefix boot.

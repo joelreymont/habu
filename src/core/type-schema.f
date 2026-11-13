@@ -322,19 +322,4 @@ public
 : SCHEMA-ROLLBACK-FINALIZE ( -- )
    SCH-RBF-DEPTH @ 1 - SCH-RBF-DEPTH ! ;
 
-\ Snapshot prepare: frames are transient (depth 0 at snapshot), so drop any grown
-\ arena back to the baked boot store.
-: SCHEMA-RBF-SNAP-RESET ( -- )
-   SCH-RBF-DEPTH @ IF s" checker: snapshot inside rollback scope" 76 die THEN
-   SCH-RBF-BOOT SCH-RBF-P !
-   SCH-RBF-CAP-INIT SCH-RBF-CAP-V !
-   SCH-RBF-BOOT 0 SCH-RBF-CAP-INIT SCH-RBF-REC * CELL / ARENA-CELLS-ZERO
-   0 SCH-RBF-DEPTH ! ;
-
-\ --- snapshot persist: bake any grown store into fresh image DATA, through the
-\ checker's REG-EXT-PERSIST hook.
-: SCHEMA-SNAPSHOT-PERSIST ( -- )
-   SCH-A-P    SCH-CAP-V @ SCH-REC *  REG-PERSIST-BUF drop
-   SCH-ROOT-P SCH-ROOT-CAP-V @ cells REG-PERSIST-BUF drop ;
-
 ;package

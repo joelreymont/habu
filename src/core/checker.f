@@ -1,17 +1,15 @@
 \ The stack-effect checker: the declaration owner and its arenas, the scan of
 \ each definition, and the effect store and records the compiler reads.
 \
-\ Arenas: owners decide the lifetime. Persistent registries copy external
-\ storage into image DATA; scratch resets to its boot buffer, releases its
-\ owned mapping at capture, or takes from the scratch region. No
-\ process-local mmap address may enter an image. Growth is geometric, so a
-\ store is copied O(log n) times per load.
+\ Arenas: owners decide the lifetime. Scratch resets to its boot buffer or
+\ takes from the scratch region. No process-local mmap address may enter an
+\ image. Growth is geometric, so a store is copied O(log n) times per load.
 \
 \ The scratch region: per-definition scratch stores take storage from one
 \ region and keep their counter, pointer and capacity cells in DATA spans that
 \ CHECKER-REG:SCRATCH{ and CHECKER-REG:}SCRATCH bracket. At each file boundary
-\ and at capture SR-RETIRE gives the region back and zeroes every span, so
-\ stores rest at none, NULL and 0.
+\ SR-RETIRE gives the region back and zeroes every span, so stores rest at
+\ none, NULL and 0.
 \
 \ The trail pin: ROWS-PIN marks the trail height at a refusal. Between AT-PIN
 \ and ;AT-PIN every store made since the pin is undone, so the tables read as
@@ -562,13 +560,6 @@
 \ constant of 0 certifies here and fails there. The unification binds only in
 \ per-definition scratch that NEW clears.
 \
-\ Registry persistence: the append-only registries (CT, VREC, SYMS) survive
-\ into a built image, since later checked loads reference persisted
-\ signatures. At capture a store whose whole extent lies in image DATA stays
-\ where it is; a store that grew into process-local mmap is copied into fresh
-\ image DATA. Records name their string pools by offset, so each pool is
-\ persisted last and nothing needs fixing up.
-\
 \ Width facts: per checked definition the checker records one row for every
 \ operation whose lowering needs a logical layout width, keyed by the
 \ operation's raw source-byte offset and an operand position. Transport and
@@ -802,7 +793,6 @@ CHECKER-OWNER-ABI:PUBLIC-OFF constant PUBLIC-OFF
 CHECKER-OWNER-ABI:PRIVATE-OFF constant PRIVATE-OFF
 CHECKER-OWNER-ABI:END-PACKAGE-OFF constant END-PACKAGE-OFF
 CHECKER-OWNER-ABI:EXPORT-OFF constant EXPORT-OFF
-CHECKER-OWNER-ABI:CAPTURE-OFF constant CAPTURE-OFF
 CHECKER-OWNER-ABI:CHECK-OFF constant CHECK-OFF
 CHECKER-OWNER-ABI:TAPE-INSTALL-OFF constant TAPE-INSTALL-OFF
 CHECKER-OWNER-ABI:TAPE-ARM-OFF constant TAPE-ARM-OFF
@@ -869,7 +859,7 @@ public
 create DECLARATIONS
 private
    0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
-   0 , 0 , 0 , 0 , 0 , 0 ,
+   0 , 0 , 0 , 0 , 0 ,
    0 , 0 , 0 , 0 , 0 , 0 ,
    0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
    0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
@@ -907,7 +897,7 @@ private
    0 , 0 , 0 , 0 ,
    0 ,
    0 ,
-   0 , 0 , 0 , 0 ,
+   0 , 0 , 0 ,
    0 , 0 ,
    0 ,
    0 ,
@@ -1179,9 +1169,6 @@ PTR-VARIABLE QCON-RIDS-P  PTR-VARIABLE QCON-NLIN-P
 : TV-UNMAP-RC ( ptr a n -- n ) {: base:ptr cap:n :}
    cap 0= IF 0 EXIT THEN
    base cap TV-BYTES munmap ;
-
-: TV-RELEASE ( ptr a n -- )
-   TV-UNMAP-RC 0 <> IF s" checker: typevar munmap failed" 76 die THEN ;
 
 : TV-COPY-AT ( n ptr a ptr a n n -- )
    {: plane:n old:ptr next:ptr oc:n nc:n :}
@@ -2881,8 +2868,6 @@ create CT-STR-BOOT CT-STR-INIT allot
 PERSISTED-PTR-VARIABLE CT-NAME-A-P   PERSISTED-PTR-VARIABLE CT-NAME-U-P   PERSISTED-PTR-VARIABLE CT-CLASS-P
 PERSISTED-PTR-VARIABLE CT-WIDTH-P    PERSISTED-PTR-VARIABLE CT-SIGN-P     PERSISTED-PTR-VARIABLE CT-STR-P
 PERSISTED-PTR-VARIABLE CT-PKG-A-P    PERSISTED-PTR-VARIABLE CT-PKG-U-P
-\ The string pool's home, the DATA block it was last baked in (REG-POOL-PERSIST).
-PERSISTED-PTR-VARIABLE CT-STR-HOME   variable CT-STR-HOME-CAP
 variable CTN
 variable CT-STR-U
 variable CT-J
@@ -2895,8 +2880,7 @@ CHECKER-REG:}SCRATCH
    CT-NAME-A-BOOT CT-NAME-A-P !   CT-NAME-U-BOOT CT-NAME-U-P !
    CT-CLASS-BOOT CT-CLASS-P !     CT-WIDTH-BOOT CT-WIDTH-P !
    CT-SIGN-BOOT CT-SIGN-P !       CT-STR-BOOT CT-STR-P !
-   CT-PKG-A-BOOT CT-PKG-A-P !     CT-PKG-U-BOOT CT-PKG-U-P !
-   CT-STR-BOOT CT-STR-HOME !      CT-STR-INIT CT-STR-HOME-CAP ! ;
+   CT-PKG-A-BOOT CT-PKG-A-P !     CT-PKG-U-BOOT CT-PKG-U-P ! ;
 CT-ARENA-BOOT
 : CT-NAME-A ( -- ptr n ) CT-NAME-A-P @ ;
 : CT-NAME-U ( -- ptr n ) CT-NAME-U-P @ ;
@@ -3816,12 +3800,6 @@ create CAST-PATH-TERM CAST-PATH-CAP cells allot
 create CAST-PATH-SIGN CAST-PATH-CAP cells allot
 variable CAST-PATH-N
 : CAST-WALK-RESET ( -- ) TWALK-RESET 0 CAST-PATH-N ! ;
-\ A file reused from the object cache runs no walk, so a saved image holds no
-\ path and a reused file captures as its compiled one does.
-: CAST-PATH-SNAP-RESET ( -- )
-   CAST-PATH-TERM 0 CAST-PATH-CAP ARENA-CELLS-ZERO
-   CAST-PATH-SIGN 0 CAST-PATH-CAP ARENA-CELLS-ZERO
-   CAST-WALK-RESET ;
 : CAST-SAME-INSTANCE? ( n n -- bool ) {: a:n b:n :}
    a PARAM>FAM b PARAM>FAM <> IF RES-FALSE EXIT THEN
    a PARAM>ARGC b PARAM>ARGC <> IF RES-FALSE EXIT THEN
@@ -5277,14 +5255,6 @@ TOKBUF-INIT-CAP TOKBUF-CAP-U !
    need TOKBUF-CAP-U @ <= IF exit THEN
    need TOKBUF-GROW ;
 
-: TOKBUF-RESET ( -- )
-   FAILTK-BOOT FAILTK!
-   TKF-BOOT TKF!
-   NMB-BOOT NMB!
-   SDEC-BOOT SDEC!
-   TOKBUF-INIT-CAP TOKBUF-CAP-U !
-   0 FAILTU ! ;
-
 \ RESET retires the decoded/diagnostic token spans but leaves their old boot
 \ bytes. At capture no span is live, so retire the four owned boot buffers too.
 : TOKBUF-SNAP-ZERO ( -- )
@@ -6594,8 +6564,6 @@ PERSISTED-PTR-VARIABLE VREC-FIELDS-P
 PERSISTED-PTR-VARIABLE VRN-TAG-P   PERSISTED-PTR-VARIABLE VRN-A-P   PERSISTED-PTR-VARIABLE VRN-B-P   PERSISTED-PTR-VARIABLE VRN-C-P
 PERSISTED-PTR-VARIABLE VRN-D-P     PERSISTED-PTR-VARIABLE VRN-E-P   PERSISTED-PTR-VARIABLE VRN-F-P   PERSISTED-PTR-VARIABLE VRN-G-P
 PERSISTED-PTR-VARIABLE VRN-H-P     PERSISTED-PTR-VARIABLE VRN-I-P   PERSISTED-PTR-VARIABLE VREC-STR-P
-\ The string pool's home, the DATA block it was last baked in (REG-POOL-PERSIST).
-PERSISTED-PTR-VARIABLE VREC-STR-HOME   variable VREC-STR-HOME-CAP
 
 : VREC-ARENA-BOOT ( -- )
    VREC-NAME-A-BOOT VREC-NAME-A-P !   VREC-NAME-U-BOOT VREC-NAME-U-P !
@@ -6606,8 +6574,7 @@ PERSISTED-PTR-VARIABLE VREC-STR-HOME   variable VREC-STR-HOME-CAP
    VRN-C-BOOT VRN-C-P !       VRN-D-BOOT VRN-D-P !   VRN-E-BOOT VRN-E-P !
    VRN-F-BOOT VRN-F-P !       VRN-G-BOOT VRN-G-P !   VRN-H-BOOT VRN-H-P !
    VRN-I-BOOT VRN-I-P !
-   VREC-STR-BOOT VREC-STR-P !
-   VREC-STR-BOOT VREC-STR-HOME !   VREC-STR-INIT VREC-STR-HOME-CAP ! ;
+   VREC-STR-BOOT VREC-STR-P ! ;
 VREC-ARENA-BOOT
 : VREC-NAME-A ( -- ptr n ) VREC-NAME-A-P @ ;
 : VREC-NAME-U ( -- ptr n ) VREC-NAME-U-P @ ;
@@ -8988,13 +8955,6 @@ PTR-VARIABLE PU-P   variable PU-CAP   variable PU-N      \ pending uses, in rows
 : NAV-CLEAR ( -- )
    0 DL-N !  0 DLB-N !  0 PU-N !  0 DL-NEW ! ;
 
-: NAV-RELEASE ( -- )
-   DL-P DL-CAP DL-ROW ARENA-ROWS-RELEASE
-   DLB-P DLB-CAP 1 ARENA-ROWS-RELEASE
-   NULL-PTR DL-NA !  0 DL-NU !
-   PU-P PU-CAP PU-ROW ARENA-ROWS-RELEASE
-   NAV-CLEAR  0 DL-ON ! ;
-
 : CHECKER-DECL-AT! ( ptr u8 n n n n -- )
    {: name:ptr nameu:n visit:n start:n end:n :}
    name DL-NA !  nameu DL-NU !
@@ -9131,34 +9091,6 @@ PTR-VARIABLE PU-P   variable PU-CAP   variable PU-N      \ pending uses, in rows
 
 USIGS-CLEAR
 
-: USIGS-SNAPSHOT-SIZE ( -- n )
-   UEND @ CELL + ;
-
-: USIGS-SNAPSHOT-ALLOC ( n -- ptr u8 ) {: n:n :}
-   here {: dst:ptr :}
-   n allot
-   dst ;
-
-\ Bake the store at the grain above its content plus one grain of room. Without
-\ it a capture just under a grain boundary leaves a restored program a few rows
-\ before its first definitions regrow the store.
-: USIGS-PERSIST-CAP ( n -- n )
-   USIGS-GRAIN + USIGS-ROUND-CAP ;
-
-\ A restored DATA allocation already belongs to the image. Recopying it would
-\ retain another full effect store on every unchanged application recapture.
-: USIGS-SNAPSHOT-PERSIST ( -- )
-   USIGS USIGS-CAP-U @ REG-DATA-SPAN? 0= IF
-      USIGS-SNAPSHOT-SIZE {: n:n :}
-      n USIGS-PERSIST-CAP {: cap:n :}
-      cap USIGS-SNAPSHOT-ALLOC {: dst:ptr :}
-      USIGS dst n ARENA-COPY
-      dst USIGS-P !
-      cap USIGS-CAP-U !
-   THEN
-   \ Interning and rejected definitions rewind UEND without clearing bytes.
-   USIGS CELL-VIEW USIGS-SNAPSHOT-SIZE CELL / USIGS-CAP-U @ CELL / ARENA-CELLS-ZERO ;
-
 \ No address into the store survives a grow: a record being built is held as its
 \ offset and atom and param terms keep their names in TERM-NAMES.
 : USIGS-GROW {: need :}
@@ -9217,9 +9149,7 @@ USIGS-CLEAR
 \ SYM-CAP is a live power-of-2 cap. PKG-A/NAME-A hold offsets into SYM-STR, so
 \ moving the pool changes only its base.
 $40 constant SYM-CAP-INIT
-\ Keep the boot pool above the self-build's live span: once the prefix outgrows
-\ it, capture copies the used span into fresh image DATA and the dead boot
-\ buffer stays.
+\ Keep the boot pool above the self-build's live span.
 $60000 constant SYM-STR-INIT
 variable SYM-CAP-V   SYM-CAP-INIT SYM-CAP-V !
 : SYM-CAP ( -- n ) SYM-CAP-V @ ;
@@ -9254,9 +9184,6 @@ create SYMS-BOOT SYM-CAP-INIT SYM-REC * allot
 create SYM-STR-BOOT SYM-STR-INIT allot
 PERSISTED-PTR-VARIABLE SYMS-P     SYMS-BOOT SYMS-P !
 PERSISTED-PTR-VARIABLE SYM-STR-P  SYM-STR-BOOT SYM-STR-P !
-\ The string pool's home, the DATA block it was last baked in.
-PERSISTED-PTR-VARIABLE SYM-STR-HOME   SYM-STR-BOOT SYM-STR-HOME !
-variable SYM-STR-HOME-CAP   SYM-STR-INIT SYM-STR-HOME-CAP !
 variable SYM-N
 variable SYM-STR-U
 variable SYM-ID
@@ -11739,25 +11666,6 @@ defer E-I-UNIT-CON ( ptr u8 ptr u8 -- n )
 
 : E-INST ( n -- n ) USIGS E-INST-FROM ;
 
-\ Fixed storage belongs to the binding that introduced its accessor. The
-\ effect graph already preserves the exact instantiated pointee type, while
-\ these two binding fields preserve its DATA location and element count.
-defer CHECKER-STORAGE-WALK-XT ( n n n -- )
-: CHECKER-STORAGE-WALK-DEFAULT ( n n n -- )
-   2drop drop s" checker: storage capture walker unbound" 76 die ;
-: CHECKER-STORAGE-WALK-INSTALL ( -- )
-   [: CHECKER-STORAGE-WALK-DEFAULT ;] is CHECKER-STORAGE-WALK-XT ;
-CHECKER-STORAGE-WALK-INSTALL
-
-: CHECKER-STORAGE-POINTEE ( ptr u8 -- n ) {: rec:ptr :}
-   NEW
-   rec E-INST-RESET
-   rec E-DOUT@ E-INST R-RES
-   dup TAG S-PUSH <> IF s" checker: storage accessor output" 76 die THEN
-   P>TYPE T-RES
-   dup TAG T-PTR <> IF s" checker: storage accessor pointer" 76 die THEN
-   PTR>INNER T-RES ;
-
 variable CHECKER-STORAGE-CUR
 -1 constant STORAGE-DEFERRED
 3 constant LDEFER-CTRL-CELLS
@@ -11766,31 +11674,9 @@ defer CHECKER-GRID-UNBIND-XT ( -- )
 : CHECKER-GRID-CELLS-INSTALL ( -- )
    [: CHECKER-GRID-UNBIND-DEFAULT ;] is CHECKER-GRID-UNBIND-XT ;
 CHECKER-GRID-CELLS-INSTALL
-: CHECKER-STORAGE-PREPARE ( -- )
-   0 CHECKER-STORAGE-CUR !
-   begin CHECKER-STORAGE-CUR @ EFF-REC + UEND @ <= while
-      CHECKER-STORAGE-CUR @ E-PTR {: rec:ptr :}
-      rec ER.STORAGE-N @ {: count:n :}
-      rec ER.STORAGE-KIND @ STORAGE-ACCESSOR = IF
-         rec CHECKER-STORAGE-POINTEE {: term:n :}
-         rec ER.STORAGE-OFF @ count term CHECKER-STORAGE-WALK-XT
-      ELSE rec ER.STORAGE-KIND @ STORAGE-DEFER = IF
-         data-base rec ER.STORAGE-OFF @ + CELL-VIEW {: cb:ptr :}
-         cb CELL + @ {: cap:n :}
-         cap 0 > IF
-            rec CHECKER-STORAGE-POINTEE {: term:n :}
-            cb cb @ + BYTE-VIEW data-base BYTE-VIEW -
-            cap term CHECKER-STORAGE-WALK-XT
-         THEN
-      THEN THEN
-      rec USIG-NEXT E-OFF CHECKER-STORAGE-CUR !
-   repeat
-   NULL-PTR FEP ! 0 FEP-OFF !
-   NULL-PTR TOK-EFF ! ;
-
 \ A bare native engine rebuild starts with freshly loaded source. Its builder
 \ allocations do not survive into the new engine's DATA, so only that builder
-\ drops their ownership after preparing address declarations for its capture.
+\ drops their ownership.
 : CHECKER-STORAGE-UNBIND-ALL ( -- )
    CHECKER-GRID-UNBIND-XT
    0 CHECKER-STORAGE-CUR !
@@ -12157,7 +12043,7 @@ $18 constant PE-REC
 
 
 \ A fresh source window can declare more rows than the baked engine. Keep row
-\ indices stable as the backing grows; capture copies a grown buffer into DATA.
+\ indices stable as the backing grows.
 create PES PE-CAP-INIT PE-REC * allot
 PERSISTED-PTR-VARIABLE PES-P   PES PES-P !
 variable PE-CAP-V   PE-CAP-INIT PE-CAP-V !
@@ -12224,7 +12110,6 @@ variable BUILD-SYM-END   0 BUILD-SYM-END !
    PE-LAST @ #PE @ >= IF -1 PE-LAST ! THEN
    HIDX-EPOCH+ ;
 
-\ UEND lowerers need no scrub: USIGS-SNAPSHOT-PERSIST zeroes all above UEND.
 : USIGS-RESTORE-END ( n -- )
    dup RECORD-EFFECT-REWIND-XT
    dup CHX-TRUNCATE                      \ content and nodes share the rollback watermark
@@ -15693,11 +15578,6 @@ CHECKER-REG:}SCRATCH
    NORET-END @ NRX-HI !
    NORETS NRX-BASE! ;
 
-: NRX-RESET ( -- )
-   0 NRX-GEN !
-   0 NRX-HI !
-   NULL-PTR NRX-BASE! ;
-
 : NRX-SYNC ( -- )
    NORET-END @ NRX-HI @ <
    NORETS NRX-BASE@ <> or IF 0 NRX-GEN ! THEN ;
@@ -15759,18 +15639,6 @@ CHECKER-REG:}SCRATCH
    NRX-ENSURE
    sym NRX@ ;
 
-\ The table can outgrow its initial buffer. Persist the complete live prefix
-\ in image DATA.
-: NORET-SNAPSHOT-PERSIST ( -- )
-   NORETS NORET-CAP-U @ REG-DATA-SPAN? 0= IF
-      NORET-END @ CELL + {: n:n :}
-      n USIGS-PERSIST-CAP {: cap:n :}
-      cap USIGS-SNAPSHOT-ALLOC {: dst:ptr :}
-      NORETS dst n ARENA-COPY
-      dst NORET-P !
-      cap NORET-CAP-U !
-   THEN ;
-
 : NORET-GROW {: need :}
    need NORET-CAP-U @ 2 * max USIGS-ROUND-CAP {: cap:n :}
    NORET-P NORET-CAP-U @ cap CHECKER-REG:GROW
@@ -15780,18 +15648,6 @@ CHECKER-REG:}SCRATCH
 : NORET-ENSURE {: need :}
    need NORET-CAP-U @ <= IF exit THEN
    need NORET-GROW ;
-
-\ No plane address and no check's ids enter the image. FV and both copy maps'
-\ written marks describe planes that outlive a file boundary; the instantiation
-\ atom map rests UNBOUND and the rigid counters at 1, so none rests in a span.
-: TV-SNAP-RESET ( -- )
-   TVT-P @ TV-CAP @ TV-RELEASE
-   TV-CLEAR
-   0 FV !
-   0 EC-TV-HW !   0 EC-TV-LW !
-   0 EC-RV-HW !   0 EC-RV-LW !
-   E-I-AK-RESET
-   RIGID-RESET ;
 
 \ Capture copies these DATA buffers into the image; the last definition's
 \ scratch is dead by the quiescent-capture contract.
@@ -15803,107 +15659,8 @@ CHECKER-REG:}SCRATCH
    from to >= IF EXIT THEN
    to from ?do NULL-PTR base i cells + ! loop ;
 
-\ At capture, repoint the scope, atom and inst-key arenas at their emptied boot
-\ buffers and init caps, so no grown mmap address is persisted. The scope arena
-\ cannot rest at each file boundary: SCOPE-N never rewinds (SCOPE-FRESH).
-: DECOUPLED-ARENA-SNAP-RESET ( -- )
-   SCOPE-PARENT-P SCOPE-PARENT-BOOT SCOPE-PARENT-INIT ARENA-SNAP-BOOT
-   SCOPE-SECOND-P SCOPE-SECOND-BOOT SCOPE-PARENT-INIT ARENA-SNAP-BOOT
-   SCOPE-PARENT-INIT SCOPE-PARENT-CAP !
-   ATOMA-P ATOMA-BOOT MAXATOM-INIT ARENA-SNAP-BOOT       ATOMU-P ATOMU-BOOT MAXATOM-INIT ARENA-SNAP-BOOT
-   ATOMK-P ATOMK-BOOT MAXATOM-INIT ARENA-SNAP-BOOT       MAXATOM-INIT ATOM-CAP !
-   VRI-AK-P VRI-AK-BOOT VRI-AK-INIT ARENA-SNAP-BOOT      VRI-AK-INIT VRI-AK-CAP-V ! ;
-
-\ The delta travels on the stack, never in a DATA cell: one term is the grown
-\ store's mmap address, which differs between builds, and the AOT capture would
-\ bake that cell into the image.
-
-: REG-PERSIST-REFUSE ( -- )
-   s" checker: invalid registry storage span" 76 die ;
-
-
-\ Return the rebase delta and whether an external allocation was copied.
-: REG-PERSIST-MOVE ( ptr ptr u8 n n -- n bool ) {: pvar:ptr bytes:n cap:n :}
-   bytes 0 < bytes cap > or IF REG-PERSIST-REFUSE THEN
-   pvar @ cap REG-DATA-SPAN? IF 0 RES-FALSE EXIT THEN
-   pvar @ data-base - {: off:n :}
-   off 0 >= off here data-base - <= and IF REG-PERSIST-REFUSE THEN
-   pvar @ {: old:ptr :}
-   here {: dst:ptr :}
-   bytes allot
-   old dst bytes ARENA-COPY
-   dst pvar !
-   dst old - RES-TRUE ;
-
-\ A store of integers or interned offsets has no pool pointer to rebase, so its
-\ caller asks only whether the store grew.
-: REG-PERSIST-BUF ( ptr ptr u8 n -- bool ) {: pvar:ptr bytes:n :}
-   pvar bytes bytes REG-PERSIST-MOVE nip ;
-
-\ Bake a string pool by its used size and its home: the DATA block it was last
-\ baked in, its boot buffer until a capture rebakes it (a reset to boot resets
-\ the home; a grow zeroes it). A pool whose used bytes fit its home goes back
-\ there, so a rolled-back declaration's interns leave the image a load without
-\ it bakes, as a file hit leaves. A pool that outgrew its home is baked at its
-\ used size, and that block becomes the home.
-: REG-POOL-PERSIST ( ptr ptr u8 ptr ptr u8 ptr n ptr n ptr n -- )
-   {: pvar:ptr home:ptr hcap:ptr used:ptr cap:ptr :}
-   pvar @ home @ = IF EXIT THEN
-   used @ hcap @ <= IF
-      pvar @ home @ used @ ARENA-COPY
-      home @ pvar !
-      hcap @ cap !
-      EXIT
-   THEN
-   pvar used @ cap @ REG-PERSIST-MOVE 2drop
-   used @ cap !
-   pvar @ home !
-   cap @ hcap ! ;
-
-: CT-SNAPSHOT-PERSIST ( -- )
-   CT-CAP-V @ cells {: ab:n :}
-   CT-NAME-A-P ab REG-PERSIST-BUF drop
-   CT-NAME-U-P ab REG-PERSIST-BUF drop
-   CT-CLASS-P ab REG-PERSIST-BUF drop
-   CT-WIDTH-P ab REG-PERSIST-BUF drop
-   CT-SIGN-P ab REG-PERSIST-BUF drop
-   CT-PKG-A-P ab REG-PERSIST-BUF drop
-   CT-PKG-U-P ab REG-PERSIST-BUF drop
-   CT-STR-P CT-STR-HOME CT-STR-HOME-CAP CT-STR-U CT-STR-CAP-V REG-POOL-PERSIST ;
-
-: VREC-SNAPSHOT-PERSIST ( -- )
-   VREC-CAP-V @ cells {: rb:n :}
-   VREC-NAME-A-P rb REG-PERSIST-BUF drop
-   VREC-NAME-U-P rb REG-PERSIST-BUF drop
-   VREC-START-P rb REG-PERSIST-BUF drop
-   VREC-COUNT-P rb REG-PERSIST-BUF drop
-   VREC-TVN-P rb REG-PERSIST-BUF drop
-   VREC-RVN-P rb REG-PERSIST-BUF drop
-   VREC-FIELDS-P VREC-FIELD-CAP-V @ cells REG-PERSIST-BUF drop
-   VREC-NODE-CAP-V @ cells {: nb:n :}
-   VRN-TAG-P nb REG-PERSIST-BUF drop
-   VRN-A-P nb REG-PERSIST-BUF drop
-   VRN-B-P nb REG-PERSIST-BUF drop
-   VRN-C-P nb REG-PERSIST-BUF drop
-   VRN-D-P nb REG-PERSIST-BUF drop
-   VRN-E-P nb REG-PERSIST-BUF drop
-   VRN-F-P nb REG-PERSIST-BUF drop
-   VRN-G-P nb REG-PERSIST-BUF drop
-   VRN-H-P nb REG-PERSIST-BUF drop
-   VRN-I-P nb REG-PERSIST-BUF drop
-   VNARG-P VNARG-CAP-V @ cells REG-PERSIST-BUF drop
-   VREC-STR-P VREC-STR-HOME VREC-STR-HOME-CAP VREC-STR-U VREC-STR-CAP-V REG-POOL-PERSIST ;
-
-: SYM-SNAPSHOT-PERSIST ( -- )      \ HIDX is dropped at capture; rebuilt on restore
-   SYMS-P SYM-CAP-V @ SYM-REC * REG-PERSIST-BUF drop
-   SYM-STR-P SYM-STR-HOME SYM-STR-HOME-CAP SYM-STR-U SYM-STR-CAP-V REG-POOL-PERSIST ;
-
-\ The TFAM/SCHEMA registries load after checker.f and install their persist
-\ word here.
-defer REG-EXT-PERSIST-XT ( -- )
 \ Scratch hooks, one per owning file. Each runs at every file boundary
-\ (FILE-SCRATCH-RETIRE) and once at image capture (CHECKER-QUIESCE-END), so it
-\ resets only state no later read depends on.
+\ (FILE-SCRATCH-RETIRE), so it resets only state no later read depends on.
 defer REG-SCRATCH-SNAP-XT ( -- )
 defer REG-LATE-SCRATCH-SNAP-XT ( -- )
 defer REG-EXT-SCRATCH-XT ( -- )
@@ -15913,7 +15670,6 @@ defer REG-EXT-SCRATCH-XT ( -- )
 \ before capture, since a grown base lives in process-local mmap.
 defer REG-CERT-SNAP-XT ( -- )
 : REG-EXT-DEFAULTS ( -- )
-   [: ;] is REG-EXT-PERSIST-XT
    [: ;] is REG-SCRATCH-SNAP-XT
    [: ;] is REG-LATE-SCRATCH-SNAP-XT
    [: ;] is REG-EXT-SCRATCH-XT
@@ -15983,22 +15739,6 @@ REG-EXT-AOT-DEFAULTS
 : CHECKER-REG-AOT-MARK ( -- ) REG-EXT-AOT-MARK-XT ;
 : CHECKER-REG-AOT-CLOSE ( -- ) REG-EXT-AOT-CLOSE-XT ;
 : CHECKER-REG-AOT-SAVE ( ptr u8 n -- n ) REG-EXT-AOT-SAVE-XT ;
-
-\ The AOT signature pool is live across file loads: files loaded inside the
-\ window record into it. So only image capture (CHECKER-QUIESCE-CORE) releases
-\ it, never a file boundary.
-: ASIG-POOL-RELEASE ( -- )
-   CHECKER-ASIG-DISARM
-   0 ASIG-FROZEN !
-   ASIG-ROW-P @ ASIG-ROW-CAP-V @ ASIG-RELEASE
-   ASIG-STR-P @ ASIG-STR-CAP-V @ ASIG-RELEASE
-   ASIG-DIST-P @ ASIG-DIST-CAP-V @ cells ASIG-RELEASE
-   ASIG-LAST-P @ ASIG-LAST-CAP-V @ cells ASIG-RELEASE
-   0 ASIG-MAPPED !
-   NULL-PTR ASIG-ROW-P !  0 ASIG-ROW-U !  0 ASIG-ROW-CAP-V !
-   NULL-PTR ASIG-STR-P !  0 ASIG-STR-U !  0 ASIG-STR-CAP-V !
-   NULL-PTR ASIG-DIST-P !  0 ASIG-DIST-N !  0 ASIG-DIST-CAP-V !
-   NULL-PTR ASIG-LAST-P !  0 ASIG-LAST-CAP-V ! ;
 
 : CHECKER-CAPTURE-SCRATCH-PREPARE ( -- )
    SG-ROWS-RESET
@@ -16577,102 +16317,6 @@ package CHECKER-REG
    ord RECORD-LINK-CURRENT? 0= IF EXIT THEN
    ord RECORD-LINK-CELL RECORD-GRID-DISCARD ;
 
-package CHECKER-REG
-public
-
-\ Occurrences belong to this process: a snapshot keeps only their presence.
-\ Write the copied table alone, so live comparisons still work.
-: RECORD-SNAPSHOT-COPY ( ptr u8 n -- )
-   {: copy:ptr size:n :}
-   RECORD-LINK-CAP @ 0= IF EXIT THEN
-   RECORD-LINK-P @ BYTE-VIEW data-base BYTE-VIEW - {: off:n :}
-   off 0 < off size > or IF E-CHECKER-LAYOUT-BUFFER throw THEN
-   RECORD-LINK-CAP @ RECORD-LINK-ROW * size off - > IF
-      E-CHECKER-LAYOUT-BUFFER throw
-   THEN
-   RECORD-LINK-CAP @ 0 ?do
-      copy off + i RECORD-LINK-ROW * + CELL-VIEW {: occurrence:ptr :}
-      occurrence @ 0 <> IF 1 occurrence ! THEN
-   loop ;
-
-\ A complete AOT capture copies the persisted link backing while its source
-\ dictionary still exists. The backup stays in a temporary arena; the DATA
-\ backing is rewritten only for the duration of the copy. The scratch address
-\ is an unmarked scalar because it is never an image pointer.
-private
-variable RECORD-CAPTURE-ORIGINAL-N
-variable RECORD-CAPTURE-SCRATCH-N
-variable RECORD-CAPTURE-BYTES
-0 RECORD-CAPTURE-ORIGINAL-N ! 0 RECORD-CAPTURE-SCRATCH-N !
-0 RECORD-CAPTURE-BYTES !
-CAST: RECORD-CAPTURE-PTR ( n -- ptr u8 )
-
-: RECORD-CAPTURE-ORIGINAL@ ( -- ptr u8 )
-   RECORD-CAPTURE-ORIGINAL-N @ RECORD-CAPTURE-PTR ;
-
-: RECORD-CAPTURE-SCRATCH@ ( -- ptr u8 )
-   RECORD-CAPTURE-SCRATCH-N @ RECORD-CAPTURE-PTR ;
-
-: RECORD-CAPTURE-CLEAN ( -- )
-   RECORD-CAPTURE-ORIGINAL@ {: original:ptr :}
-   RECORD-CAPTURE-SCRATCH@ {: scratch:ptr :}
-   original RECORD-LINK-P !
-   scratch original RECORD-CAPTURE-BYTES @ ARENA-COPY
-   scratch RECORD-CAPTURE-BYTES @ ASIG-RELEASE
-   0 RECORD-CAPTURE-ORIGINAL-N !
-   0 RECORD-CAPTURE-SCRATCH-N !
-   0 RECORD-CAPTURE-BYTES ! ;
-
-: RECORD-CAPTURE-BODY ( [ n -- n ] [ -- ] -- )
-   {: shipped copy :}
-   RECORD-CAPTURE-SCRATCH@ {: scratch:ptr :}
-   RECORD-CAPTURE-ORIGINAL@ {: original:ptr :}
-   scratch RECORD-LINK-P !
-   original CELL-VIEW 0 RECORD-LINK-CAP @ RLINK-CELLS * ARENA-CELLS-ZERO
-   FIRST-RECORD-XT shipped execute {: anchor:n :}
-   RECORD-LINK-CAP @ ndict@ min FIRST-RECORD-XT ?do
-      i RECORD-LINK-CURRENT? IF
-         i shipped execute {: row:n :}
-         row 0 >= IF
-            row anchor < IF
-               s" checker: shipped record precedes prefix anchor" 76 die THEN
-            original row anchor - RECORD-LINK-ROW * + {: dest:ptr :}
-            scratch i RECORD-LINK-ROW * +
-               dest RECORD-LINK-ROW ARENA-COPY
-            1 dest RLINK.OCC cells + CELL-VIEW !
-         THEN
-      THEN
-   loop
-   original RECORD-LINK-P !
-   \ Scratch ownership is live on this call stack, not in the copied DATA.
-   RECORD-CAPTURE-ORIGINAL-N @ {: original-n:n :}
-   RECORD-CAPTURE-SCRATCH-N @ {: scratch-n:n :}
-   RECORD-CAPTURE-BYTES @ {: bytes:n :}
-   0 RECORD-CAPTURE-ORIGINAL-N !
-   0 RECORD-CAPTURE-SCRATCH-N ! 0 RECORD-CAPTURE-BYTES !
-   copy catch {: code:n :}
-   original-n RECORD-CAPTURE-ORIGINAL-N !
-   scratch-n RECORD-CAPTURE-SCRATCH-N !
-   bytes RECORD-CAPTURE-BYTES !
-   code 0= IF EXIT THEN
-   code throw ;
-
-: RECORD-LINK-CAPTURE ( [ n -- n ] [ -- ] -- )
-   {: shipped copy :}
-   FIRST-RECORD-XT shipped execute 0 < IF
-      s" checker: source prefix anchor is not shipped" 76 die THEN
-   RECORD-LINK-CAP @ 0= IF copy execute EXIT THEN
-   RECORD-LINK-CAP @ RECORD-LINK-ROW * {: bytes:n :}
-   bytes ARENA-ALLOC-BYTES {: scratch:ptr :}
-   RECORD-LINK-P @ {: original:ptr :}
-   original scratch bytes ARENA-COPY
-   original NULL-PTR - RECORD-CAPTURE-ORIGINAL-N !
-   scratch NULL-PTR - RECORD-CAPTURE-SCRATCH-N !
-   bytes RECORD-CAPTURE-BYTES !
-   shipped copy [: RECORD-CAPTURE-BODY ;] [: RECORD-CAPTURE-CLEAN ;] finally ;
-
-;package
-
 : RECORD-GRID-BEFORE ( ptr n -- n ) {: owner:ptr :}
    owner CHECKER-RESOLVE:REC>INDEX {: ord:n :}
    ord 0 < ord ndict@ >= or IF 0 EXIT THEN
@@ -16839,9 +16483,7 @@ CAST: AS-RECORD-PUBLISHED ( n -- [ n -- ] )
    s" ptr-field" INTRINSIC-RAW-FIELD INTRINSIC>CTL NORET-AXIOM ;
 
 KEYWORD-AXIOMS
-NORET-END @ constant NORET-PRIM-END
-
-\ Every entry below NORET-PRIM-END names a prefix symbol (NORET-AXIOM), so a
+\ Every entry so far names a prefix symbol (NORET-AXIOM), so a
 \ build's copy of the prefix holds no fact about an hb word.
 package CHECK
 NORET-P NORET-CAP-U 1 NORET-END STORE+
@@ -16862,7 +16504,7 @@ package CHECK
 \ export's link alive under a retired name. It also retires every link naming
 \ the word: the name defined afresh takes the symbol, while an export of the
 \ old word still runs that word. The walk reads the entries present before it
-\ and appends past them; a rollback rewinds them and a capture compacts them.
+\ and appends past them; a rollback rewinds them.
 : UNDEFINE-SYM ( n -- )
    {: sym:n :}
    sym CHECKER-REC-SYM !
@@ -17429,11 +17071,6 @@ variable SV-THDMASK  variable SV-THRMASK  variable SV-THSET
 variable SV-TRAIL   variable SV-PIN
 variable TSEEN  variable TSOK  variable TFA
 CHECKER-REG:}SCRATCH
-
-\ These cells are one TRY-EFF save frame. A trial restores or commits
-\ synchronously, so a capture inside one is a caller error.
-: TRIAL-IDLE-CK ( -- )
-   TRIAL-DEPTH @ 0 <> IF s" checker: active trial at capture" 76 die THEN ;
 
 : TRIAL-SAVE
    FV @ SV-FV !  TRAIL-N @ SV-TRAIL !  TRAIL-PIN @ SV-PIN !
@@ -18887,13 +18524,6 @@ create XG-START XG-GCAP cells allot
 create XG-LEN XG-GCAP cells allot
 variable XG-N   variable XG-TN   variable XG-ROW
 
-: XG-SNAP-RESET ( -- )
-   XG-TERMS 0 XG-TCAP ARENA-CELLS-ZERO
-   XG-NODES 0 XG-TCAP ARENA-CELLS-ZERO
-   XG-START 0 XG-GCAP ARENA-CELLS-ZERO
-   XG-LEN 0 XG-GCAP ARENA-CELLS-ZERO
-   0 XG-N !  0 XG-TN !  0 XG-ROW ! ;
-
 : XG-T+ ( n n -- ) {: term:n node:n :}   \ term and occurrence travel together
    XG-TN @ XG-TCAP >= IF s" checker: transport group scratch full" 76 die THEN
    term XG-TN @ cells XG-TERMS + !
@@ -19222,17 +18852,6 @@ create LOCSEQIX LOC-RECS cells allot
    s 0 <  s LOCSEQ @ >=  or IF s" checker: bad local bind sequence" 76 die THEN
    s cells LOC-HW + @ ;
 : LOCW-HW-N@ ( -- n ) LOCSEQ @ ;
-\ Retire the fixed columns; the width arena and LOCSEQ rest through SR-RETIRE.
-: LOC-SNAP-RESET ( -- )
-   LOCNB BYTE-VIEW CELL-VIEW 0 LOC-RECS LOC-NAME-CAP * CELL / ARENA-CELLS-ZERO
-   LOCLN 0 LOC-RECS ARENA-CELLS-ZERO
-   LOCTV 0 LOC-RECS ARENA-CELLS-ZERO
-   LOCSHOW 0 LOC-RECS ARENA-CELLS-ZERO
-   LOCW 0 LOC-RECS ARENA-CELLS-ZERO
-   LOCVAL 0 LOC-RECS ARENA-CELLS-ZERO
-   LOCSEQIX 0 LOC-RECS ARENA-CELLS-ZERO
-   0 LOC-CAP-HEAD !
-   0 #LOC !  0 LMODE !  0 LGRP !  0 LI !  0 LRF ! ;
 \ The no-op default keeps the call effect-known and drops the name span,
 \ length and type.
 defer LOCSHOWXT ( ptr u8 n n -- )
@@ -23073,15 +22692,6 @@ create NP-INVARS NP-CAP cells allot   variable NP-INVARS-N   \ declared input va
 create NP-OUTVARS NP-CAP cells allot  variable NP-OUTVARS-N  \ declared output var ids (dedup)
 variable NP-VARSET   \ which set NP-INVARS-WALK fills: 0 = inputs, 1 = outputs
 
-: NP-SNAP-RESET ( -- )
-   NP-ORIG 0 NP-CAP ARENA-CELLS-ZERO
-   NP-ORIG-KIND 0 NP-CAP ARENA-CELLS-ZERO
-   NP-ROOT 0 NP-CAP ARENA-CELLS-ZERO
-   NP-ROOT-OID 0 NP-CAP ARENA-CELLS-ZERO
-   NP-INVARS 0 NP-CAP ARENA-CELLS-ZERO
-   NP-OUTVARS 0 NP-CAP ARENA-CELLS-ZERO
-   0 NP-ORIG-N !  0 NP-SEEN-N !
-   0 NP-INVARS-N !  0 NP-OUTVARS-N !  0 NP-VARSET ! ;
 : NP-INVARS+ ( n -- ) {: id:n :}
    0 BEGIN dup NP-INVARS-N @ < WHILE
       dup cells NP-INVARS + @ id = IF drop EXIT THEN  1 +
@@ -23349,21 +22959,6 @@ variable ARMED   0 ARMED !
 : DISARM ( -- )
    0 ARMED !
    REC-OFF ;
-
-private
-: NO-SCAN ( ptr u8 n -- ) 2drop ;
-: NO-TOKEN ( ptr u8 n n n n n -- ) 2drop 2drop 2drop ;
-: NO-DONE ( ptr u8 n n -- ) 2drop drop ;
-public
-
-\ Final capture owns no compilation unit. Drop its installer identity and all
-\ callbacks, which may belong to a retained compiler outside the target window.
-: DETACH ( -- )
-   DISARM
-   ['] NO-SCAN is SCAN-XT
-   ['] NO-TOKEN is TOKEN-XT
-   ['] NO-DONE is DONE-XT
-   0 BY !  0 SET ! ;
 
 \ One structurally supplied token between two checker scans still occupies one
 \ reported-token ordinal in the side tables, just as it does in the source tape.
@@ -24193,8 +23788,8 @@ variable CK-GRAPH-EXTRA-FLAGS
 
 : ASIG-GRAPH-CHECK ( ptr u8 n -- )
    [: 2dup NULL-PTR 0 CK-GRAPH-CHECK ;] catch
-   \ Reuse scratch across the freeze's definitions; capture preparation releases
-   \ it. A refusal releases immediately before crossing the public boundary.
+   \ Reuse scratch across the freeze's definitions. A refusal releases
+   \ immediately before crossing the public boundary.
    dup 0 <> IF CK-GRAPH-RELEASE THEN
    >r 2drop r> CK-GRAPH-THROW ;
 : ASIG-GRAPH-CHECK-INSTALL ( -- ) [: ASIG-GRAPH-CHECK ;] is ASIG-GRAPH-CHECK-XT ;
@@ -24671,13 +24266,6 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
 \ The '( ... )' that opens at TI: where, and whether it is the signature.
 variable CUR-OPEN   variable CUR-PSIG
 
-: CHECKER-SCAN-SNAP-RESET ( -- )
-   0 TOKIX !  0 FAILIX !  0 FAILB !  0 FAILE !
-   0 CUR-OPEN !  0 CUR-PSIG !
-   0 TKFU !  0 SCAN-U !  0 SCAN-TOK0 !  0 SCAN-TOKS !
-   0 CPAY-B !  0 CPAY-U !  0 CPAY-ON !  0 TPAY-ON !
-   0 IS-TOFF !  0 IS-PEND !  0 IS-PEND-OFF !  0 IS-PEND-U !
-   0 CURSYM !  0 XROW !  0 XRROW ! ;
 : CUR-PAREN-AT ( -- )
    TI @ CUR-OPEN !
    VSIG @ 0 <>  SGSEEN @ 0 = and  TOKIX @ 2 < and IF -1 ELSE 0 THEN CUR-PSIG ! ;
@@ -26960,144 +26548,6 @@ private
 
 ;package
 
-
-\ Capture's resets for checker scratch declared after
-\ CHECKER-CAPTURE-SCRATCH-PREPARE and held outside the spans. RECEFF stays out
-\ of the spans: a CHECK that exits before SIG-EFF-DROP leaves the recurse cache
-\ armed, and the capture mark pass keeps its record while RECEFF-ON says so.
-: CHECKER-LATE-CAPTURE-SCRATCH-PREPARE ( -- )
-   XG-SNAP-RESET
-   CAST-PATH-SNAP-RESET
-   CHECKER-SCAN-SNAP-RESET
-   TRIAL-IDLE-CK
-   RECEFF-ON @ 0= IF 0 RECEFF ! THEN
-   CHECKER-REG:UNIT-SCRATCH-RELEASE-CHECKER ;
-
-\ A capture keeps the primitive control prefix verbatim and the state now: the
-\ newest row per symbol after it; a zero row is a retraction and must survive
-\ just like a nonzero one. Effect offsets in CREATES never change.
-PTR-VARIABLE RECORD-CTL-MAP-P
-variable RECORD-CTL-MAP-N
-
-: RECORD-CTL-MAP-CELL ( n -- ptr n )
-   NORET-ENTRY / cells RECORD-CTL-MAP-P @ + CELL-VIEW ;
-
-: RECORD-CTL-MAP-BEGIN ( n -- ) {: oldend:n :}
-   oldend NORET-ENTRY / RECORD-CTL-MAP-N !
-   RECORD-CTL-MAP-N @ cells ARENA-ALLOC-BYTES RECORD-CTL-MAP-P !
-   RECORD-CTL-MAP-P @ CELL-VIEW 0 RECORD-CTL-MAP-N @ ARENA-CELLS-ZERO
-   RECORD-LINK-CAP @ 0 ?do
-      i RECORD-LINK-CURRENT? IF
-         i RECORD-LINK-CELL RLINK.CONTROL cells + @ {: ctl:n :}
-         ctl NORET-PRIM-END > ctl oldend <= and IF
-            -1 ctl 1- RECORD-CTL-MAP-CELL !
-         THEN
-      THEN
-   loop ;
-
-: RECORD-CTL-KEEP? ( n -- bool ) {: off:n :}
-   off RECORD-CTL-MAP-CELL @ 0 <> ;
-
-: RECORD-CTL-MOVED ( n n -- ) {: off:n dst:n :}
-   off RECORD-CTL-KEEP? IF dst 1+ off RECORD-CTL-MAP-CELL ! THEN ;
-
-: RECORD-CTL-MAP-END ( -- )
-   RECORD-LINK-CAP @ 0 ?do
-      i RECORD-LINK-CURRENT? IF
-         i RECORD-LINK-CELL {: row:ptr :}
-         row RLINK.CONTROL cells + @ {: ctl:n :}
-         ctl NORET-PRIM-END > IF
-            ctl 1- RECORD-CTL-MAP-CELL @ dup 0 > IF
-               row RLINK.CONTROL cells + !
-            ELSE
-               drop
-               0 row RLINK.CONTROL cells + !
-               0 row RLINK.DEFER cells + !
-            THEN
-         THEN
-      THEN
-   loop
-   RECORD-CTL-MAP-P @ RECORD-CTL-MAP-N @ cells ASIG-RELEASE
-   NULL-PTR RECORD-CTL-MAP-P ! 0 RECORD-CTL-MAP-N ! ;
-
-: NORET-COMPACT-REFUSE ( -- )
-   s" checker: invalid control checkpoint" 76 die ;
-
-: NORET-COMPACT-TERM? ( n -- bool )
-   NORET-CELL NORET.SYM @ 0= ;
-
-: NORET-COMPACT-SYMS? ( n -- bool ) {: oldend:n :}
-   RES-TRUE
-   oldend NORET-ENTRY / 0 ?do
-      i NORET-ENTRY * NORET-CELL NORET.SYM @ {: sym:n :}
-      sym 0 <= IF drop RES-FALSE THEN
-      sym SYM-N @ >= IF drop RES-FALSE THEN
-   loop ;
-
-: NORET-COMPACT-CHECK ( -- n )
-   RBF-DEPTH @ IF s" checker: snapshot inside rollback scope" 76 die THEN
-   NORET-END @ {: oldend:n :}
-   NORET-PRIM-END 0 < IF NORET-COMPACT-REFUSE THEN
-   NORET-PRIM-END oldend > IF NORET-COMPACT-REFUSE THEN
-   NORET-CAP-U @ CELL < IF NORET-COMPACT-REFUSE THEN
-   oldend NORET-CAP-U @ CELL - > IF NORET-COMPACT-REFUSE THEN
-   NORET-PRIM-END NORET-ENTRY / NORET-ENTRY * NORET-PRIM-END <>
-      IF NORET-COMPACT-REFUSE THEN
-   oldend NORET-ENTRY / NORET-ENTRY * oldend <> IF NORET-COMPACT-REFUSE THEN
-   oldend NORET-COMPACT-TERM? 0= IF NORET-COMPACT-REFUSE THEN
-   oldend NORET-COMPACT-SYMS? 0= IF NORET-COMPACT-REFUSE THEN
-   oldend ;
-
-: NORET-COMPACT-HEAD ( n ptr n -- ptr n ) {: sym:n heads:ptr :}
-   heads sym cells + ;
-
-: NORET-COMPACT-MARK ( n n ptr n -- ) {: lo:n hi:n heads:ptr :}
-   heads 0 SYM-N @ ARENA-CELLS-ZERO
-   hi NORET-ENTRY / lo NORET-ENTRY / ?do
-      i NORET-ENTRY * NORET-CELL NORET.SYM @ heads NORET-COMPACT-HEAD
-      i NORET-ENTRY * 1 + swap !
-   loop ;
-
-: NORET-COMPACT-ONE ( n n ptr n -- n ) {: dst:n off:n heads:ptr :}
-   off NORET-CELL NORET.SYM @ {: sym:n :}
-   off RECORD-CTL-KEEP? 0= IF
-      sym heads NORET-COMPACT-HEAD @ off 1 + <> IF dst EXIT THEN
-   THEN
-   off dst RECORD-CTL-MOVED
-   off dst <> IF NORETS off + NORETS dst + NORET-ENTRY ARENA-COPY THEN
-   dst NORET-ENTRY + ;
-
-: NORET-COMPACT-INTERVAL ( n n n ptr n -- n )
-   {: lo:n hi:n dst:n heads:ptr :}
-   lo hi heads NORET-COMPACT-MARK
-   dst
-   hi NORET-ENTRY / lo NORET-ENTRY / ?do
-      i NORET-ENTRY * heads NORET-COMPACT-ONE
-   loop ;
-
-\ The primitive links are part of its byte-for-byte prefix. Build heads from
-\ them, then link only retained post-prefix rows to their new predecessors.
-: NORET-COMPACT-LINKS ( n ptr n -- ) {: newend:n heads:ptr :}
-   0 NORET-PRIM-END heads NORET-COMPACT-MARK
-   newend NORET-ENTRY / NORET-PRIM-END NORET-ENTRY / ?do
-      i NORET-ENTRY * NORET-CELL {: row:ptr :}
-      row NORET.SYM @ heads NORET-COMPACT-HEAD {: head:ptr :}
-      head @ row NORET.SYMPREV !
-      i NORET-ENTRY * 1 + head !
-   loop ;
-
-: NORET-COMPACT ( -- )
-   NORET-COMPACT-CHECK {: oldend:n :}   \ all guards precede mutation
-   oldend RECORD-CTL-MAP-BEGIN
-   SYM-N @ cells ARENA-ALLOC {: heads:ptr :}
-   NORET-PRIM-END oldend NORET-PRIM-END heads NORET-COMPACT-INTERVAL {: newend:n :}
-   newend heads NORET-COMPACT-LINKS
-   RECORD-CTL-MAP-END
-   newend NORET-END !
-   NORETS CELL-VIEW newend CELL / oldend CELL / 1 + ARENA-CELLS-ZERO
-   heads BYTE-VIEW SYM-N @ cells ASIG-RELEASE
-   NRX-RESET ;                         \ every entry moved: rebuild at the next lookup
-
 \ ---- the interpret row: saved between top-level events -----------------------
 0 constant TS.BASE   1 constant TS.RP    2 constant TS.RC   3 constant TS.WP
 4 constant TS.WC     5 constant TS.OFF   6 constant TS.TV   7 constant TS.RV
@@ -27549,120 +26999,7 @@ CHECKER-REG:}SCRATCH
    TOP-ROW-OFF @ 0 <>  TOP-ROW-CELLS @ live =  and IF a u cls TOP-READ-LIT EXIT THEN
    live CHECKER-TOP-LOAD  a u cls TOP-LIT-STEP  CHECKER-TOP-SAVE ;
 
-: CHECKER-TOP-DROP ( -- )                 \ every segment, buffer and row cell, before a quiesce
-   TOP-SEG-N @ 0 ?DO i TOP-SEG-UNMAP LOOP
-   TOP-SEG-P TOP-SEG-CAP TS-ROW ARENA-ROWS-RELEASE
-   0 TOP-SEG-N !
-   TOP-SEG-RELEASE
-   0 TOP-WRITE-END !  0 TOP-READ-END !  0 TOP-ROW-TV !  0 TOP-ROW-RV !  0 TOP-SCOPE-SEEN !
-   0 TOP-LIVE !  0 TOP-BASE !  0 TOP-COPYING ! ;
-
-\ A grown primitive table left its first rows in the boot buffer, which is DATA
-\ and would be baked beside the live copy; nothing reads it once PES-P moved.
-: PES-BOOT-RETIRE ( -- )
-   PES-P @ PES = IF EXIT THEN
-   PES CELL-VIEW 0 PE-CAP-INIT PE-REC * CELL / ARENA-CELLS-ZERO ;
-
-\ FILE persistence runs on the product checker only after all source-owner
-\ exports and product-owner installs have finished. These steps also prepare
-\ final capture, where NORET compaction interleaves with them.
-\ The shared steps do not retire source records or clear observer state.
-: CHECKER-PERSIST-PRIMS ( -- )
-   PES-P PE-CAP-V @ PE-REC * REG-PERSIST-BUF drop ;
-
-\ Discard abandoned DATA extents before any checker store or link copy enters
-\ the image. Callable facts of a retired occurrence remain available by index.
-: RECORD-LINK-PRUNE ( -- )
-   here BYTE-VIEW data-base BYTE-VIEW - {: used:n :}
-   RECORD-LINK-CAP @ 0 ?do
-      i RECORD-LINK-CURRENT? 0= IF
-         i RECORD-LINK-CELL RECORD-GRID-DISCARD
-         i RECORD-LINK-CLEAR
-      ELSE
-         i RECORD-LINK-CELL {: row:ptr :}
-         row RLINK.GRID cells + @ {: grid:n :}
-         grid 0 <> IF
-            grid RECORD-GRID-REC {: rec:ptr :}
-            i CHECKER-RESOLVE:REC-AT CK-REC-WID WL:RETIRED =
-            rec ER.STORAGE-OFF @ rec ER.STORAGE-N @ cells + used > or IF
-               row RECORD-GRID-DISCARD
-            THEN
-         THEN
-      THEN
-   loop ;
-
-: CHECKER-PERSIST-CORE ( -- )
-   RECORD-LINK-PRUNE
-   CT-SNAPSHOT-PERSIST
-   VREC-SNAPSHOT-PERSIST
-   SYM-SNAPSHOT-PERSIST
-   USIGS-SNAPSHOT-PERSIST
-   RECORD-LINK-CAP @ 0 <> IF
-      RECORD-LINK-P RECORD-LINK-CAP @ RECORD-LINK-ROW * REG-PERSIST-BUF drop
-   THEN ;
-
-: CHECKER-PERSIST-LATE ( -- )
-   NORET-SNAPSHOT-PERSIST ;
-
-: CHECKER-QUIESCE-BEGIN ( -- )
-   CHECKER-TOP-DROP
-   NAV-RELEASE
-   CHECKER-REG:RECORD-CONTRACT-RELEASE
-   CK-GRAPH-RELEASE
-   ASIG-GRAPH-SCRATCH-RELEASE
-   0 CK-AOT-STATE !                  \ validation belongs to the current signature pool
-   TOKBUF-RESET
-   NULL-PTR TORDER-A !  0 TORDER-U !  TORDER-CHECKING TORDER-KIND !
-   0 TORDER-SCOPE !  0 TORDER-USED !  TORDER-CHECKING TORDER-ACTIVE !
-   0 TORDER-UNCERTAIN !  0 TORDER-SCAN-UNKNOWN !  0 TORDER-DEPTH ! ;
-
-: CHECKER-QUIESCE-CORE ( -- )
-   HIDX-MEM-CLEAR                       \ process-local mmap: never bake its address
-   TV-SNAP-RESET
-   DECOUPLED-ARENA-SNAP-RESET
-   SR-RETIRE
-   LOC-SNAP-RESET
-   CHECKER-CAPTURE-SCRATCH-PREPARE
-   ASIG-POOL-RELEASE
-   CHECKER-PERSIST-PRIMS
-   PES-BOOT-RETIRE
-   CHECKER-PERSIST-CORE
-   UIX-RESET                            \ process-local mmap: never bake its address
-   CHX-RESET ;
-
-: CHECKER-QUIESCE-END ( -- )
-   CHECKER-PERSIST-LATE
-   NP-SNAP-RESET
-   REG-EXT-PERSIST-XT
-   REG-EXT-SCRATCH-XT
-   REG-SCRATCH-SNAP-XT
-   REG-LATE-SCRATCH-SNAP-XT
-   REG-CERT-SNAP-XT
-   CHECKER-LATE-CAPTURE-SCRATCH-PREPARE
-   \ A pending record outlives a file boundary, so it lives outside the spans.
-   -1 RECORD-PEND-IX ! 0 RECORD-PEND-SYM ! 0 RECORD-PEND-EFF ! ;
-
-\ One capture seam owns the order: scrub transient stores before persistence
-\ copies any grown registry, persist the live rows (all three name stores use
-\ offsets and need no pointer marking), then clear the later checker scopes.
-\ A capture is a boundary like a file's end: the pending created body closes
-\ first.
-\ Not in CHECKER-QUIESCE-END: that runs after UIX-RESET, CHX-RESET and
-\ HIDX-MEM-CLEAR, and the record the close builds would regrow those indexes.
-: CHECKER-CAPTURE-PREPARE ( -- )
-   CHECKER-BODY-CLOSE
-   CHECKER-STORAGE-PREPARE
-   CHECKER-TAPE:DETACH
-   ON-USE-DEFAULT                         \ final image no longer observes source
-   CHECKER-QUIESCE-BEGIN
-   CHECKER-QUIESCE-CORE
-   NORET-COMPACT
-   CHECKER-QUIESCE-END ;
-
-\ Run at a file boundary, so the scratch a check leaves rests there as it
-\ rests in an image. Index state
-\ rests here through the spans as at every file boundary; only dropping the
-\ mappings (HIDX-MEM-CLEAR, UIX-RESET, CHX-RESET) and persistence are image-only.
+\ The scratch a check leaves rests at a file boundary.
 package CHECKER-REG
 public
 : FILE-SCRATCH-RETIRE ( -- )
@@ -27674,13 +27011,11 @@ public
 ;package
 
 package CHECKER-REG
-' CHECKER-CAPTURE-PREPARE DECLARATIONS CAPTURE-OFF + xt!
 ' RECORD-CONTRACT DECLARATIONS CHECKER-OWNER-ABI:RECORD-CONTRACT-OFF + xt!
 ' RECORD-GRID-BEFORE DECLARATIONS CHECKER-OWNER-ABI:GRID-BEFORE-OFF + xt!
 ' RECORD-GRID-AFTER DECLARATIONS CHECKER-OWNER-ABI:GRID-AFTER-OFF + xt!
 ' DP-CUT DECLARATIONS CHECKER-OWNER-ABI:GRID-REVOKE-OFF + xt!
 ' RECORD-GRID-RETIRE DECLARATIONS CHECKER-OWNER-ABI:GRID-RETIRE-OFF + xt!
-' RECORD-LINK-CAPTURE DECLARATIONS CHECKER-OWNER-ABI:RECORD-CAPTURE-OFF + xt!
 ;package
 
 \ ---- the optimizing front end's half of the owner record ---------------------

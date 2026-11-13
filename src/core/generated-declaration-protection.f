@@ -7,10 +7,10 @@ package DECLARATION-TRANSACTION
    GENERATED-DECL-DICTIONARY:PREFLIGHT ;
 
 \ This file anchors the participants' snapshot-reset chain: it loads last, so it
-\ owns TDECL-OWNER-SNAPSHOT-XT, which CHECKER-CAPTURE-PREPARE reaches; an earlier
-\ participant cannot name a later one, so each tail is a call. Each link drops
-\ its grown buffers back to its boot store: a persisted host address is a wild
-\ pointer in the process that restores the image.
+\ owns TDECL-OWNER-SNAPSHOT-XT; an earlier participant cannot name a later one,
+\ so each tail is a call. Each link drops its grown buffers back to its boot
+\ store: a persisted host address is a wild pointer in the process that restores
+\ the image.
 : SNAPSHOT-RESET ( -- )
    ACTIVE? IF E-ACTIVE throw THEN
    GENERATED-DECL-DICTIONARY:SNAPSHOT-RESET

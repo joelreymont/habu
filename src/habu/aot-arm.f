@@ -39,7 +39,7 @@ variable W0  variable W1      \ its wordlist span
 
 \ A payload belongs to one concrete checker instance for the whole window.
 PTR-VARIABLE PAYLOAD-OWNER
-variable PAYLOAD-MODE                       \ 0 pending, 1 partial; no word stores 2
+variable PAYLOAD-MODE                       \ 0 pending, 1 partial
 variable PAYLOAD-FROZEN
 variable PAYLOAD-EXPORTED
 

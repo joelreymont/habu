@@ -176,7 +176,7 @@ PTR-VARIABLE STGT-START
 : LBUF-ALIGN ( -- )
    align ;
 
-\ The capture walk marks by the active sum tag: a shared payload slot is a code
+\ A sum is marked by its active tag: a shared payload slot is a code
 \ cell while it holds a quotation and an address cell while it holds a pointer.
 \ A niche value has no tag: its one cell is an address cell, zero or not.
 : STORAGE-MARK-TERM ( ptr n n -- ) {: base:ptr term:n :}
@@ -223,21 +223,6 @@ defer STORAGE-CLEAR-XT ( n n -- )
 : STORAGE-CLEAR-DEFAULT ( -- )
    ['] STORAGE-CLEAR-MISSING is STORAGE-CLEAR-XT ;
 STORAGE-CLEAR-DEFAULT
-
-: STORAGE-CAPTURE-WALK ( n n n -- ) {: off:n count:n term:n :}
-   term T-WIDTH {: width:n :}
-   count width LBUF-EXTENT?
-   0= if drop E-LAYOUT-BUFFER throw then {: bytes:n :}
-   term TFAM:HAS-ADDRESS? 0= if exit then
-   off bytes STORAGE-CLEAR-XT
-   data-base BYTE-VIEW off + CELL-VIEW {: base:ptr :}
-   count 0 ?do
-      base i width * cells + term STORAGE-MARK-TERM
-   loop ;
-
-: STORAGE-CAPTURE-INSTALL ( -- )
-   [: STORAGE-CAPTURE-WALK ;] is CHECKER-STORAGE-WALK-XT ;
-STORAGE-CAPTURE-INSTALL
 
 \ Quotation cells belong to the image even while null; the term walk declares
 \ each code and address cell of these DATA allocations for capture.

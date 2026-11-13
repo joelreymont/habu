@@ -1,9 +1,8 @@
 \ type-family.f: package TFAM, the family (TFAM), variant (SUMV), product-field
 \ and logical-layout registries for the checker; loaded unchecked in the checker
 \ prefix after type-schema.f. Records key on (package, canonical lowercase tail);
-\ names are byte offsets into one string pool, so records hold only integers and
-\ snapshot persist bakes stores verbatim. Registries roll back through RBF-PUSH /
-\ RBF-POP and persist through TFAM-SNAPSHOT-PERSIST.
+\ names are byte offsets into one string pool, so records hold only integers.
+\ Registries roll back through RBF-PUSH / RBF-POP.
 
 using SCHEMA-REG
 
@@ -150,9 +149,6 @@ variable TF-STR-CAP-V   TF-STR-INIT TF-STR-CAP-V !
 create TF-STR-BOOT   TF-STR-INIT allot
 PERSISTED-PTR-VARIABLE TF-STR-P   TF-STR-BOOT TF-STR-P !
 : TF-STR ( -- ptr u8 ) TF-STR-P @ ;
-\ The string pool's home, the DATA block it was last baked in (REG-POOL-PERSIST).
-PERSISTED-PTR-VARIABLE TF-STR-HOME   TF-STR-BOOT TF-STR-HOME !
-variable TF-STR-HOME-CAP   TF-STR-INIT TF-STR-HOME-CAP !
 
 public
 
@@ -1606,13 +1602,6 @@ variable TFM-CAP   TF-CAP-INIT TFM-CAP !   \ families TFM-P holds
 : TFM-FLAG! ( bool n n -- ) {: b:bool fam:n k:n :}
    b IF 1 ELSE 0 THEN fam k TFM! ;
 
-\ Capture: back to the zeroed boot store. Its zero stamps are invalid at epoch 1.
-: TFM-SNAP-RESET ( -- )
-   TFM-BOOT 0 TF-CAP-INIT TFM-REC * CELL / ARENA-CELLS-ZERO
-   TFM-BOOT TFM-P !
-   TF-CAP-INIT TFM-CAP !
-   1 TFM-EPOCH ! ;
-
 public
 
 \ A variant has one declared-payload source: SUMTYPE stores positional roots in
@@ -1766,12 +1755,6 @@ variable TFW-CAP   TFW-INIT TFW-CAP !   \ cells TFW-P holds
 : TFW! ( n n -- ) {: w:n idx:n :}
    idx 1 + TFW-ENSURE
    w idx cells TFW-P @ + ! ;
-
-\ Capture: back to the boot row. The frames are process-local scratch, like TFM.
-: TFW-SNAP-RESET ( -- )
-   TFW-BOOT 0 TFW-INIT ARENA-CELLS-ZERO
-   TFW-BOOT TFW-P !
-   TFW-INIT TFW-CAP ! ;
 
 defer TFW-FAM ( n n n -- n )   \ ( fam base top -- width ) forward ref for a nested application
 
@@ -3244,24 +3227,6 @@ package CHECKER-DECL-FRAME
 
 package TFAM
 
-\ Frames are transient (depth 0 at snapshot): drop any grown arena back to the
-\ baked boot store.
-: TFAM-RBF-SNAP-RESET ( -- )
-   TF-RBF-DEPTH @ IF s" checker: snapshot inside rollback scope" 76 die THEN
-   TF-RBF-BOOT TF-RBF-P !
-   TF-RBF-CAP-INIT TF-RBF-CAP-V !
-   TF-RBF-BOOT 0 TF-RBF-CAP-INIT TF-RBF-REC * CELL / ARENA-CELLS-ZERO
-   0 TF-RBF-DEPTH ! ;
-
-: PF-TX-SNAP-RESET ( -- )
-   PF-TX-DEPTH @ IF s" checker: snapshot inside field transaction" 76 die THEN
-   PF-TX-P PF-TX-BOOT PF-TX-CAP-V @ PF-TX-REC * ARENA-BOOT-RESTORE
-   PF-TX-CAP-INIT PF-TX-CAP-V ! ;
-
-;package
-
-package TFAM
-
 \ One SAVE/RESTORE pair the checker's core RBF-PUSH/POP drives, so TFAM and
 \ SCHEMA frames stay in lockstep with core marks.
 
@@ -3305,27 +3270,6 @@ INSTALL-TYPES
 ;package
 
 package TFAM
-
-\ Persist runs at depth 0 (PF-TX-SNAP-RESET / TFAM-RBF-SNAP-RESET assert it), so
-\ PF-N = PF-COMMIT-N and [PF-COMMIT-N, PF-CAP) is dead capacity: zeroed so that
-\ identical logical registries bake byte-identically.
-: PF-PERSIST-CANONICAL ( -- )
-   PF-COMMIT-N @ PF-CAP-V @ PF-SCRUB ;
-
-\ snapshot persist: bake grown TFAM/SUMV/field/layout/param-kind/string stores
-\ into image DATA. All record fields are integers or interned offsets, so nothing
-\ rebases. Wired into CHECKER-CAPTURE-PREPARE through the REG-EXT-PERSIST-XT hook.
-
-public
-
-: TFAM-SNAPSHOT-PERSIST ( -- )
-   TF-A-P    TF-CAP-V @ TF-REC *      REG-PERSIST-BUF drop
-   TF-PK-P   TF-PK-CAP-V @ cells      REG-PERSIST-BUF drop
-   SUMV-A-P  SUMV-CAP-V @ SUMV-REC *  REG-PERSIST-BUF drop
-   PF-PERSIST-CANONICAL
-   PF-A-P    PF-CAP-V @ PF-REC *      REG-PERSIST-BUF drop
-   LAY-A-P   LAY-CAP-V @ LAY-REC *    REG-PERSIST-BUF drop
-   TF-STR-P TF-STR-HOME TF-STR-HOME-CAP TF-STR-U TF-STR-CAP-V REG-POOL-PERSIST ;
 
 \ The bucket array is grown and process-local: dropped back to the boot store
 \ and marked not-ready. TFX-BUILD rewrites every row's TF.TAILNEXT, so each is
@@ -3409,8 +3353,7 @@ create REG-AOT-END-A REG-AOT-N cells allot
 \ (`cap 1+`), so a seeded delta lands in an arena of the capacity a compiled one
 \ reaches rather than the grow's floor `n`. The type-name store's compiled ENSURE
 \ asks for max(used + name bytes, 2*cap), which is 2*cap here: names are at most
-\ TF-NAME-MAX bytes and every baked name store is larger, and persist places a
-\ moved name store by its used size and home (REG-POOL-PERSIST).
+\ TF-NAME-MAX bytes and every baked name store is larger.
 : REG-AOT-ROOM ( n n -- ) {: k:n n:n :}
    k 0 = IF begin n TF-CAP-V @ > while TF-CAP-V @ 1+ TF-GROW repeat EXIT THEN
    k 1 = IF begin n TF-PK-CAP-V @ > while TF-PK-CAP-V @ 1+ TF-PK-GROW repeat EXIT THEN
@@ -5308,29 +5251,6 @@ UNIT-FAM-STABLE-INIT
 26 constant TFC-VAR-CAP          \ internal construct scratch; not the declaration spelling cap
 create TFC-VARS TFC-VAR-CAP cells allot
 variable TFC-I   variable TFC-J   variable TFC-ROW
-
-\ Installed after this file's last signature-resolution scratch is declared, so
-\ the same owner clears the raw token spans before DATA is baked. Every index,
-\ memo, frame and transaction reset here is process-local.
-: REG-EXT-PERSIST ( -- )
-   \ An ordinary prepared checker unit still owns its family plans here.
-   \ Its explicit prepare end releases them after installation or discard.
-   UNIT-FAM-PROJECT-ON @ 0= IF UNIT-FAM-RESET-XT THEN
-   TFAM-SNAPSHOT-PERSIST
-   SCHEMA-SNAPSHOT-PERSIST
-   TFX-SNAP-RESET
-   VNX-SNAP-RESET
-   FVX-SNAP-RESET
-   TFM-SNAP-RESET
-   TFW-SNAP-RESET
-   PF-TX-SNAP-RESET
-   RBF-SNAP-RESET
-   TFAM-RBF-SNAP-RESET
-   SCHEMA-RBF-SNAP-RESET
-   UNIT-FAM-EXPORT-RESET ;
-
-: REG-EXT-PERSIST-INSTALL ( -- ) [: REG-EXT-PERSIST ;] is REG-EXT-PERSIST-XT ;
-REG-EXT-PERSIST-INSTALL
 
 \ This file's scratch: each cell is written and read within one call, so a
 \ file boundary or image capture resets it with no later read depending on it.

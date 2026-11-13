@@ -2100,26 +2100,8 @@ public
       s" aot-capture: persistent checker owner is outside captured DATA" 74 die then
    owner 8 - CELL-VIEW @ AOT-ARM:D1 @ at - > if
       s" aot-capture: checker owner extends beyond captured DATA" 74 die then
-   owner CHECKER-OWNER-ABI:CAPTURE-OFF + CELL-VIEW @ {: prepare:n :}
-   prepare AOT-ARM:B0 @ < prepare AOT-ARM:B1 @ >= or if
-      s" aot-capture: checker preparation is outside captured code" 74 die then
    s" CHECKER-REG" s" DECLARATIONS" ACAP-MEMBER? 0= if
       s" aot-capture: persistent payload has no captured checker declaration owner" 74 die then ;
-
-private
-CAST: ACAP-RECORD-CAPTURE-XT ( n -- [ [ n -- n ] [ -- ] -- ] )
-public
-
-: ACAP-COPY-CHECKER-DATA ( -- )
-   AOT-ARM:PAYLOAD-OWNER @ CHECKER-OWNER-ABI:RECORD-CAPTURE-OFF CELL +
-      CHECKER-OWNER-GUARD:VALIDATE {: owner:ptr :}
-   owner CHECKER-OWNER-ABI:RECORD-CAPTURE-OFF + CELL-VIEW @
-      dup 0= if
-         drop s" aot-capture: persistent checker has no record capture callback" 74 die
-      then
-      ACAP-RECORD-CAPTURE-XT {: capture :}
-   ['] SH-SHIPPED [: ACAP-W-D0 @ ACAP-COPY-DATA ;]
-      capture execute ;
 
 : PAYLOAD-CAPTURE ( -- )
    AOT-ARM:?FROZEN
@@ -2186,11 +2168,7 @@ public
 
 : CAPTURE-COMPLETE ( n -- ) {: d0:n :}
    SH-NUMBER                                    \ final named rows are the shipped rows
-   AOT-ARM:PAYLOAD-MODE @ 2 = if
-      ACAP-COPY-CHECKER-DATA
-   else
-      d0 ACAP-COPY-DATA
-   then
+   d0 ACAP-COPY-DATA
    ACAP-GRAPH-BUILD-MAP
    ACAP-GRAPH-COPY-BLOB
    ACAP-GRAPH-PATCH
