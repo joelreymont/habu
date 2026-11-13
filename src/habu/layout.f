@@ -563,6 +563,9 @@ $3898 constant LITERAL-CELL
 \ A declaration makes each child word through CHILD-CELL's CHILD-RUN, with a
 \ CHILD-ABI shape code.
 $38A8 constant CHILD-CELL
+\ A definer's type and effect values are schema nodes the running engine's
+\ CHECK:TYPE-OP, which this cell holds, makes from a TYPE-OP-ABI code.
+$38A0 constant TYPE-OP-CELL
 ;package
 
 \ A child word's shape: from it the engine makes the child's body and the effect
@@ -578,6 +581,19 @@ public
 3 constant FIELD
 4 constant INDEX
 5 constant VALUE
+;package
+
+\ A type operation on operands a and b: INT `n`, FAMILY family a on fresh
+\ parameters, PTR a pointer to type a, EFFECT an empty effect, IN and OUT
+\ effect a with type b as its new top input or output.
+package TYPE-OP-ABI
+public
+0 constant INT
+1 constant FAMILY
+2 constant PTR
+3 constant EFFECT
+4 constant IN
+5 constant OUT
 ;package
 
 \ The checked interpreter's keyword test ( wid -- name len hit ), which every

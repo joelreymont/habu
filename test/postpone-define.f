@@ -76,4 +76,44 @@ STRUCTURE pdpair DERIVE addr FIELD a n FIELD b n ;STRUCTURE
 PD-STRIDE PDPAIR-BYTES T=
 ;package
 
+\ An effect built from found types renders as the text a definition would
+\ declare, and its nodes are transient: no persistent schema root takes one.
+package POSTPONE-EFFECT
+private
+STRUCTURE peslot FIELD a n ;STRUCTURE
+CAST: >NODE ( EFFECT:type -- n )
+
+: SLOT-FAM ( -- n ) [package] s" peslot" TFAM:TFAM-FIND-IN drop ;
+
+: SLOT-PTR ( -- EFFECT:type ) SLOT-FAM EFFECT:FAMILY EFFECT:PTR ;
+
+\ ( ptr peslot n -- ptr peslot ), one pointer node in both rows.
+: SLOT-EFFECT ( -- EFFECT:type )
+   SLOT-PTR {: p :}
+   EFFECT:NEW p EFFECT:IN  EFFECT:N EFFECT:IN  p EFFECT:OUT ;
+
+\ peslot has no parameters, so its own term instantiates the effect.
+: SLOT-TERM ( -- n )
+   SLOT-FAM {: fam:n :}
+   PARAM-SCR-N @ fam TFAM-NAME$ fam MK-PARAM
+   SLOT-EFFECT >NODE TFAM:SCHEMA-TERM-FOR ;
+
+: SLOT-TEXT ( -- ptr u8 n )
+   SLOT-TERM {: q:n :}
+   0 RSN !  q Q>DIN q Q>DOUT 0 0 false REND-FACTS ;
+
+SLOT-TEXT s" ( ptr peslot n -- ptr peslot ) " T$=
+
+: ROOT-PERSIST ( -- )
+   SLOT-PTR >NODE {: node:n :}
+   [: node SCHEMA-REG:SCHEMA-ROOT+ drop ;] SCHEMA-REG:E-SCHEMA-BAD TTHROWSQ ;
+ROOT-PERSIST
+
+\ Nor does a persistent pointer node.
+: PTR-PERSIST ( -- )
+   SLOT-PTR >NODE {: node:n :}
+   [: node SCHEMA-REG:SCHEMA-PTR drop ;] SCHEMA-REG:E-SCHEMA-BAD TTHROWSQ ;
+PTR-PERSIST
+;package
+
 : MAIN ( -- ) POSTPONE-USER:ANSWERS ;

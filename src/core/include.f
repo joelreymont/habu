@@ -1861,6 +1861,13 @@ CAST: CLOSE-ACTION ( n -- [ -- ] )
    close 0= if exit then
    close CLOSE-ACTION execute ;
 
+\ A file that ends with no definition open ends the transient schema nodes its
+\ definers built definitions from; a build ends them at each piece's end.
+: TRANSIENT-END ( -- )
+   data-base BOOT:IMAGE-BASE-CELL + @ 0 <> if exit then
+   data-base PEND-CELL + @ 0 <> if exit then
+   SCHEMA-REG:TRANSIENT-RESET ;
+
 \ The created body closes and the residue check runs inside the unit, so a runner's call
 \ returns only for an accepted file; each compiled part starts in host.
 : CALL-UNIT ( -- )
@@ -1868,7 +1875,7 @@ CAST: CLOSE-ACTION ( n -- [ -- ] )
    frame FR-PATH + frame FR-PATHLEN + CELL-VIEW @
    frame FR-ROOT + frame FR-ROOTLEN + CELL-VIEW @
    EXEC-SOURCE frame FR-SIZE + CELL-VIEW @
-   [: 0 data-base SECTION-CELL + !  RUN-RANGE BODY-CLOSE RESIDUE-CHECK ;]
+   [: 0 data-base SECTION-CELL + !  RUN-RANGE BODY-CLOSE RESIDUE-CHECK TRANSIENT-END ;]
    SOURCE-UNIT:LOAD ;
 
 \ A loaded file's DATA starts and ends on a cell, so its bytes are a function

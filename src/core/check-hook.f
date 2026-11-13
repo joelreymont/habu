@@ -220,6 +220,68 @@ public
 
 private
 
+using SCHEMA-REG
+
+\ A type: a live node, never an effect side's row.
+: TYPE-ARG ( n -- n ) {: node:n :}
+   node SCHEMA-NODE-OK? if node SCHEMA-ROW? 0= if node exit then then
+   E-SCHEMA-BAD throw ;
+
+: EFFECT-ARG ( n -- n ) {: node:n :}
+   node TYPE-ARG SCHEMA-QUOT? if node exit then
+   E-SCHEMA-BAD throw ;
+
+: FAMILY-NODE ( n -- n ) {: fam:n :}
+   fam 0 <  fam TFAM:TFAM-N@ >=  or if E-SCHEMA-BAD throw then
+   fam TFAM:TFAM-ARITY@ {: k:n :}
+   SCHEMA-ROOT-N@ {: start:n :}
+   k 0 ?do FRESH-PARAM SCHEMA-ROOT+ drop loop
+   fam start k SCHEMA-APP ;
+
+: EMPTY-EFFECT ( -- n )
+   0 0 SCHEMA-ROW {: row:n :}
+   row row row row 0 SCHEMA-QUOT ;
+
+\ Row with node after its elements.
+: SIDE+ ( n n -- n ) {: row:n node:n :}
+   row SCHEMA-ROW-COUNT@ {: k:n :}
+   SCHEMA-ROOT-N@ {: start:n :}
+   k 0 ?do row i SCHEMA-ROW-ELEM@ SCHEMA-ROOT+ drop loop
+   node SCHEMA-ROOT+ drop
+   start k 1 + SCHEMA-ROW ;
+
+: EFFECT-IN ( n n -- n ) {: eff:n node:n :}
+   eff SCHEMA-QUOT-DIN@ node SIDE+  eff SCHEMA-QUOT-DOUT@
+   eff SCHEMA-QUOT-RIN@  eff SCHEMA-QUOT-ROUT@
+   eff SCHEMA-QUOT-HASR@ SCHEMA-QUOT ;
+
+: EFFECT-OUT ( n n -- n ) {: eff:n node:n :}
+   eff SCHEMA-QUOT-DIN@  eff SCHEMA-QUOT-DOUT@ node SIDE+
+   eff SCHEMA-QUOT-RIN@  eff SCHEMA-QUOT-ROUT@
+   eff SCHEMA-QUOT-HASR@ SCHEMA-QUOT ;
+
+: TYPE-NODE ( n n n -- n ) {: code:n a:n b:n :}
+   code TYPE-OP-ABI:INT = if CC-N SCHEMA-CON exit then
+   code TYPE-OP-ABI:FAMILY = if a FAMILY-NODE exit then
+   code TYPE-OP-ABI:PTR = if a TYPE-ARG SCHEMA-PTR exit then
+   code TYPE-OP-ABI:EFFECT = if EMPTY-EFFECT exit then
+   code TYPE-OP-ABI:IN = if a EFFECT-ARG b TYPE-ARG EFFECT-IN exit then
+   code TYPE-OP-ABI:OUT = if a EFFECT-ARG b TYPE-ARG EFFECT-OUT exit then
+   E-SCHEMA-BAD throw ;
+
+public
+
+\ The transient schema node the TYPE-OP-ABI operation code makes of operands a
+\ and b; E-SCHEMA-BAD for an unknown code or an operand of the wrong kind.
+: TYPE-OP ( n n n -- n )
+   {: code:n a:n b:n :}
+   TRANSIENT-ON
+   [: code a b TYPE-NODE ;] [: TRANSIENT-OFF ;] finally ;
+
+;using
+
+private
+
 
 : DEFERRED ( ptr u8 n -- )
    {: a:ptr u:n :}

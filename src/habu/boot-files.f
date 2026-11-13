@@ -79,6 +79,7 @@ private
    CHECKER COMMON s" src/core/type-family.f" ROW
    CHECKER COMMON s" src/core/render.f" ROW
    CHECKER COMMON s" src/core/sumtype.f" ROW
+   CHECKER COMMON s" src/core/effect.f" ROW
    CHECKER COMMON s" src/core/layout-buffer.f" ROW
    CHECKER COMMON s" src/core/layout-valid.f" ROW
    CHECKER COMMON s" src/core/check-hook.f" ROW

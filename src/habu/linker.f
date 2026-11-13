@@ -5296,6 +5296,7 @@ variable DUE-MADE
    {: req:n :}
    FILE-HELD @ CHECK:AMENDED   \ the facts its `TRUST` rows and amenders changed
    TYPE-ENTRIES
+   SCHEMA-REG:TRANSIENT-RESET  \ the nodes its definers built definitions from
    here NULL-PTR - FILE-END !
    RETIRED!  CHECK-EARLIER  FIND-STORES
    STORED-N @ 0 ?do i STORED @ dup HSTORE+ STORER+ loop
