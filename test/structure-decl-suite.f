@@ -626,11 +626,10 @@ DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
 \ 15. DERIVE addr: one accessor per field plus AT / BYTES / CELLS, in the
-\     family's spelling and wordlist, generated at commit because an accessor is
-\     armed with a committed field id (src/core/structure-decl.f). The words are
-\     checked text over `field-project` and `record-at`; the checker derives
-\     family, offset, extent, role and schema from the field id, so the declared
-\     output type is judged.
+\     family's spelling and wordlist, generated at commit because an accessor
+\     takes a committed field id (src/core/structure-decl.f). The checker
+\     derives each accessor's family, offset, extent, role and schema from the
+\     field id, so the declared output type is judged.
 DECL-DIAG:PROSE                                       \ this section rejects too: keep the output clean
 STRUCTURE sdaddr
    DERIVE addr
@@ -815,14 +814,65 @@ TYPE-FIELD:COUNT PFB @ T=
 s" STRUCTURE sdaroll DERIVE addr FIELD z n ;STRUCTURE" TEST-EVAL:RC 0 T=
 s" SDAR1 ( ptr sdaroll -- ptr n ) SDAROLL:Z" CHECK-QUIET-CANDIDATE! -1 T=
 
-\ An accessor's text calls `field-project` unqualified, so a package's own is
-\ refused at its definition (70, `E-RESERVED-DEFINITION habu: ... reserved word
-\ cannot be a definition name: field-project` on fd 2) and no accessor can bind it.
+\ `field-project` is reserved: a package's own is refused at its definition (70,
+\ `E-RESERVED-DEFINITION habu: ... reserved word cannot be a definition name:
+\ field-project` on fd 2).
 package SDAFP
 variable V
 s" : field-project ( a n -- ptr n ) drop drop V ;" TEST-EVAL:RC 70 T=
 s" field-project" get-current search-wl 0= TTRUE      \ the definition did not take
 ;package
+
+\ A package's own `*`, RECORD-AT, `+` or `swap`, defined before a STRUCTURE with
+\ DERIVE addr, captures none of the words it makes: each reads its own field
+\ and AT element. Each is undefined before the storage, whose definer spells it.
+package SDACAPM
+: * ( n n -- n ) + ;
+STRUCTURE cp DERIVE addr FIELD a n FIELD b n ;STRUCTURE
+undefine *
+2 TYPED-BUFFER CB cp
+public
+: GO ( -- n n n n )
+   11 0 CB CP-A !  22 0 CB CP-B !  33 1 CB CP-A !  44 1 CB CP-B !
+   0 CB 1 CP-AT CP-B @  0 CB CP-A @  CP-BYTES  CP-CELLS ;
+;package
+SDACAPM:GO 2 T= 16 T= 11 T= 44 T=
+
+package SDACAPR
+8 constant RECORD-AT
+STRUCTURE cp DERIVE addr FIELD a n FIELD b n ;STRUCTURE
+undefine RECORD-AT
+2 TYPED-BUFFER CB cp
+public
+: GO ( -- n n n n )
+   11 0 CB CP-A !  22 0 CB CP-B !  33 1 CB CP-A !  44 1 CB CP-B !
+   0 CB 1 CP-AT CP-B @  0 CB CP-A @  CP-BYTES  CP-CELLS ;
+;package
+SDACAPR:GO 2 T= 16 T= 11 T= 44 T=
+
+package SDACAPP
+: + ( n n -- n ) - ;
+STRUCTURE cp DERIVE addr FIELD a n FIELD b n ;STRUCTURE
+undefine +
+2 TYPED-BUFFER CB cp
+public
+: GO ( -- n n n n )
+   11 0 CB CP-A !  22 0 CB CP-B !  33 1 CB CP-A !  44 1 CB CP-B !
+   0 CB 1 CP-AT CP-B @  0 CB CP-A @  CP-BYTES  CP-CELLS ;
+;package
+SDACAPP:GO 2 T= 16 T= 11 T= 44 T=
+
+package SDACAPS
+: swap ( n n -- n n ) ;
+STRUCTURE cp DERIVE addr FIELD a n FIELD b n ;STRUCTURE
+undefine swap
+2 TYPED-BUFFER CB cp
+public
+: GO ( -- n n n n )
+   11 0 CB CP-A !  22 0 CB CP-B !  33 1 CB CP-A !  44 1 CB CP-B !
+   0 CB 1 CP-AT CP-B @  0 CB CP-A @  CP-BYTES  CP-CELLS ;
+;package
+SDACAPS:GO 2 T= 16 T= 11 T= 44 T=
 
 \ 16. OPAQUE is refused after a field, twice, on a fieldless family, in an ENUM and
 \     outside a package; each reject keeps the field rows at their mark and renders.

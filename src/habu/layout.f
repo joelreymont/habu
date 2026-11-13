@@ -568,11 +568,16 @@ $3890 constant CHILD-CELL
 \ A child word's shape: from it the engine makes the child's body and the effect
 \ it registers. An OFF child adds its parameter, a byte offset, to `ptr a`,
 \ answering `ptr a` for CELL-OFF, `ptr ptr b` for PTR-OFF, `ptr u8` for BYTE-OFF.
+\ A FIELD child's parameter is a committed field id, an INDEX child's a family
+\ id, a VALUE child's the number it answers.
 package CHILD-ABI
 public
 0 constant CELL-OFF
 1 constant PTR-OFF
 2 constant BYTE-OFF
+3 constant FIELD
+4 constant INDEX
+5 constant VALUE
 ;package
 
 \ The checked interpreter's keyword test ( wid -- name len hit ), which every

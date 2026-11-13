@@ -388,7 +388,7 @@ public
 \ their fixed tails like generated constructors.
 1 constant DRV-EQ
 2 constant DRV-HASH
-4 constant DRV-ADDR              \ address surface: one accessor per field (sumtype.f TDECL-ADDR-FIELD-WORD)
+4 constant DRV-ADDR              \ address surface: one accessor per field
 8 constant DRV-INIT              \ initialized-record field accessors
 DRV-EQ DRV-HASH or DRV-ADDR or DRV-INIT or constant DRV-ALL
 
@@ -2631,7 +2631,7 @@ public
 seal-package
 ;package
 
-\ generated ADDRESS accessors (`DERIVE addr`, sumtype.f TDECL-ADDR-FIELD-WORD):
+\ generated ADDRESS accessors (`DERIVE addr`):
 \ one word per field plus AT / BYTES / CELLS, in the spellings and wordlists the
 \ family's constructors use. A public family's accessors are new tails in its
 \ reserved constructor package, which TFAM-CTOR-EXTEND? would otherwise refuse,
@@ -5286,14 +5286,63 @@ TFAM-MEMBERS-INSTALL
 
 public
 
+\ The family FAM over fresh type variables, one per parameter.
+: TFAM-FRESH-TERM ( n -- n ) {: fam:n :}
+   PARAM-SCR-N @ {: base:n :}
+   fam TFAM-ARITY@ 0 ?do FRESH MK-VAR PARAM-SCR+ loop
+   base fam TFAM-NAME$ fam MK-PARAM ;
+
+private
+
+\ A field accessor's rows and byte offset, from the committed field id FID: it
+\ takes `ptr F<..>` and answers `ptr T`, T the field's type over the same
+\ arguments. A field role other than plain storage, or an extent past the
+\ family's width, has no address to answer.
+: TFAM-FIELD-ROWS ( n -- n n n ) {: fid:n :}
+   fid TYPE-FIELD:FAMILY@ {: fam:n :}
+   fid TYPE-FIELD:BYTE-OFF@ {: off:n :}
+   fid TYPE-FIELD:FLAGS@ PF-FLAGS-NONE <> IF E-PF-FLAGS throw THEN
+   off fid TYPE-FIELD:BYTES@ +  fam TFAM-SLOTS@ CELL *  > IF
+      E-PF-LAYOUT throw THEN
+   fam TFAM-FRESH-TERM {: term:n :}
+   term TFC-ARGS!
+   fid TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ RES-FALSE TFC-SCH-TERM {: ft:n :}
+   FRESH MK-ROW {: base:n :}
+   term MK-PTR base MK-PUSH
+   ft MK-PTR base MK-PUSH
+   off ;
+
+\ AT's rows and stride in bytes, from the family id FAM: it takes `ptr F<..> n`
+\ and answers `ptr F<..>`, the count an integer as `record-at` takes it.
+: TFAM-AT-ROWS ( n -- n n n ) {: fam:n :}
+   fam TFAM-FRESH-TERM {: term:n :}
+   FRESH MK-ROW {: base:n :}
+   term MK-PTR base MK-PUSH  CC-N MK-CON swap MK-PUSH
+   term MK-PTR base MK-PUSH
+   fam TFAM-SLOTS@ CELL * ;
+
+\ A value child's rows: it answers its number, `( -- n )`.
+: VALUE-ROWS ( n -- n n n ) {: v:n :}
+   FRESH MK-ROW {: base:n :}
+   base  CC-N MK-CON base MK-PUSH  v ;
+
+\ An offset child's rows and offset, from its shape and byte offset.
+: OFFSET-ROWS ( n n -- n n n ) {: shape:n off:n :}
+   FRESH MK-ROW  FRESH MK-VAR {: base:n a:n :}
+   a MK-PTR base MK-PUSH
+   shape a CHILD-POINTEE MK-PTR base MK-PUSH
+   off ;
+
+public
+
 \ A child word's input row, output row and body value, from its CHILD-ABI SHAPE
 \ and PARAM, in fresh checker terms.
 : TFAM-CHILD-ROWS ( n n -- n n n ) {: shape:n param:n :}
    NEW
-   FRESH MK-ROW  FRESH MK-VAR {: base:n a:n :}
-   a MK-PTR base MK-PUSH
-   shape a CHILD-POINTEE MK-PTR base MK-PUSH
-   param ;
+   shape CHILD-ABI:FIELD = IF param TFAM-FIELD-ROWS EXIT THEN
+   shape CHILD-ABI:INDEX = IF param TFAM-AT-ROWS EXIT THEN
+   shape CHILD-ABI:VALUE = IF param VALUE-ROWS EXIT THEN
+   shape param OFFSET-ROWS ;
 
 private
 

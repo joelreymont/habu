@@ -1103,11 +1103,8 @@ PTR-VARIABLE TDGEN-NA   variable TDGEN-NU  \ word-name span inside TDGEN-BUF
 \ relocation-safe offsets for its name and checker definition span. The symbol
 \ table rejects collisions within the plan; post-xref name and capacity hooks
 \ validate live visibility and every plan-determined fixed registry.
-\ A row also carries the field-projection arming a generated address accessor
-\ needs (TDECL-ADDR-FIELD-WORD). The sealed window is single-shot and keyed on
-\ the accessor's name, and every text row is read twice (candidate preflight,
-\ evaluator), so the authority rides the row that names the word.
-\ FID -1 means no arming: every constructor and derived row.
+\ A row also carries a field-projection arming, FID -1 for none; no generator
+\ arms one.
 $1000 constant TDPLAN-CAP-INIT
 4 constant TDPLAN-ROW-CAP-INIT
 8 cells constant TDPLAN-REC
@@ -1302,23 +1299,6 @@ private
 : TDPLAN-DERIVED+ ( -- )
    TDPLAN-NAME+ drop
    TDPLAN-WORD+ ;
-
-\ A built row plans ": NAME ( sig )" from TDGEN-BUF, its definition span the
-\ signature: its generator builds the word from both when the plan is
-\ evaluated, so a plan holding one is evaluated row by row.
-: TDPLAN-BUILT+ ( -- )
-   TDPLAN-NAME+ drop
-   TDPLAN-N @ 1 - TDPLAN-ROW {: r:ptr :}
-   TDGEN-NA @ TDGEN-BUF - {: noff:n :}
-   noff TDGEN-NU @ + 1 + {: soff:n :}
-   noff TDPLAN-BYTE-NEED r TDPLAN.NAME-OFF !
-   TDGEN-NU @ r TDPLAN.NAME-U !
-   soff TDPLAN-BYTE-NEED r TDPLAN.DEF-OFF !
-   TDGEN-U @ soff - r TDPLAN.DEF-U !
-   TDPLAN-NO-ARM r TDPLAN.FID !
-   0 r TDPLAN.FOFF !
-   1 r TDPLAN.BUILT !
-   TDGEN-BUF TDGEN-U @ TDPLAN-APP ;
 
 : TDPLAN-SPAN$ ( n n -- ptr u8 n ) {: off:n u:n :}
    off 0 < u 0 < or off TDPLAN-U @ > or IF
@@ -1959,122 +1939,74 @@ public
    fam TDECL-PROD-WORDS-BODY ;
 
 \ --- generated ADDRESS accessors (`DERIVE addr`).
-\ One word per field plus AT / BYTES / CELLS, in the family's own spelling:
-\
-\   : PKG-BUF:DATA ( ptr PKG:buf -- ptr ptr u8 ) 0 field-project ;
-\   : PKG-BUF:AT   ( ptr PKG:buf n -- ptr PKG:buf ) 3 * record-at ;
-\   : PKG-BUF:BYTES ( -- n ) 24 ;
-\
-\ The field accessors, BYTES and CELLS are ordinary checked text: no TRUST row,
-\ no set-check, no pending window. AT is built, not evaluated: its `*` and
-\ `record-at` are the words found when its generator was compiled, so the
-\ declaring package's own words cannot capture them.
-\ Outside the armed window `field-project` is `+` and `record-at` is
-\ `cells +`; the checker replaces the first only while this plan's window is
-\ live, and the second only on a layout pointee, which the plain rows fence. The
-\ committed field id is the whole authority: the checker re-derives family,
-\ offset, extent, role and schema from it and refuses a body whose baked offset,
-\ arity, role or output type disagrees.
-\ Generation runs at commit: a field id is an authority only once TYPE-FIELD has
-\ committed the row, which the runner's commit order (DECL-EVENT before the
-\ address surface) guarantees.
+\ One child word per field plus AT / BYTES / CELLS, in the family's own
+\ spelling, each made by the engine's CHILD-RUN from its CHILD-ABI shape and
+\ parameter: no text, so no word of the declaring package can capture one. A
+\ field's parameter is its committed field id, AT's the family id; BYTES and
+\ CELLS are numbers. Generation runs at commit: a field id is an authority only
+\ once TYPE-FIELD has committed the row, which the runner's commit order
+\ (DECL-EVENT before the address surface) guarantees.
 
 private
 
-: TDGEN-ADDR-IN ( n -- ) {: fam:n :}      \ "( ptr PKG:family<..> "
-   s" ( ptr " TDGEN-APP  fam TDGEN-OUT-TYPE  32 TDGEN-C, ;
+: TDECL-ADDR-NAME ( n ptr u8 n -- ptr u8 n ) {: fam:n ta:ptr tu:n :}
+   TDGEN-CLEAR  fam ta tu TDGEN-DRV-REF  TDGEN-BUF TDGEN-U @ ;
 
-\ ( ptr F -- ptr T ) <byte-offset> field-project
-: TDECL-ADDR-FIELD-WORD ( n n -- ) {: fam:n fid:n :}
-   TDGEN-CLEAR
-   fam  fid PF-NAME$  TDGEN-DRV-NAME
-   fam TDGEN-ADDR-IN
-   s" -- ptr " TDGEN-APP  fid PF-SCH@ SCHEMA-ROOT@ TDGEN-SCH
-   s" ) " TDGEN-APP
-   fid PF-BYTE-OFF@ TDGEN-DEC
-   s"  field-project ;" TDGEN-APP
-   TDPLAN-DERIVED+
-   fid fid PF-BYTE-OFF@ TDPLAN-ARM+ ;
-
-: TDECL-ADDR-AT-NAME ( n -- ) {: fam:n :}
-   TDGEN-CLEAR
-   fam s" at" TDGEN-DRV-NAME
-   fam TDGEN-ADDR-IN
-   s" n -- ptr " TDGEN-APP  fam TDGEN-OUT-TYPE  s"  )" TDGEN-APP
-   TDPLAN-BUILT+ ;
-
-\ Builds AT from its plan row's name and signature. It strides by the family's
-\ committed width, baked because `record-at`'s row cannot scale: it keeps the
-\ pointee and adds cells, as `cells +` does on any other pointer.
-: TDECL-ADDR-AT-WORD ( n n -- ) {: fam:n row:n :}
-   row TDPLAN-NAME$  row TDPLAN-DEF$  define-word
-   fam TFAM-SLOTS@ literal
-   postpone *
-   postpone record-at
-   postpone ; ;
-
-: TDECL-ADDR-SIZE-WORD ( n ptr u8 n n -- ) {: fam:n ta:ptr tu:n v:n :}
-   TDGEN-CLEAR
-   fam ta tu TDGEN-DRV-NAME
-   s" ( -- n ) " TDGEN-APP
-   v TDGEN-DEC
-   s"  ;" TDGEN-APP
-   TDPLAN-DERIVED+ ;
-
-: TDECL-ADDR-PLAN ( n -- ) {: fam:n :}
-   TDPLAN-BEGIN
+\ Runs XT on each child of FAM, with its name, shape and parameter.
+: TDECL-ADDR-EACH ( n [ ptr u8 n n n -- ] -- ) {: fam:n xt :}
    fam TFAM-FLD-START@ {: fs:n :}
    fam TFAM-FLD-COUNT@ 0 ?do
-      fam  fs i +  TDECL-ADDR-FIELD-WORD
+      fam  fs i + PF-NAME$  TDECL-ADDR-NAME
+      CHILD-ABI:FIELD  fs i +  xt execute
    loop
-   fam TDECL-ADDR-AT-NAME
-   fam s" bytes" fam TFAM-SLOTS@ CELL * TDECL-ADDR-SIZE-WORD
-   fam s" cells" fam TFAM-SLOTS@        TDECL-ADDR-SIZE-WORD ;
+   fam s" at" TDECL-ADDR-NAME  CHILD-ABI:INDEX fam  xt execute
+   fam s" bytes" TDECL-ADDR-NAME
+   CHILD-ABI:VALUE  fam TFAM-SLOTS@ CELL *  xt execute
+   fam s" cells" TDECL-ADDR-NAME
+   CHILD-ABI:VALUE  fam TFAM-SLOTS@  xt execute ;
 
-\ Evaluation is row by row, unlike the constructor set's single evaluator call,
-\ because each armed row must be armed again for the evaluator's reading. The
-\ plan is checked whole first (TDPLAN-PREFLIGHT), so a set that cannot certify
-\ reaches no evaluator. The built row is AT, built in its place.
-: TDECL-ADDR-EVAL ( n -- ) {: fam:n :}
-   TDECL-EVAL-ARMED @ 0= IF s" sumtype: accessor eval hook not installed" 76 die THEN
-   TDPLAN-PREFLIGHT
-   TDPLAN-N @ 0 ?do
-      i TDPLAN-TEXT? IF
-         i TDPLAN-ARM
-         i TDPLAN-FULL$ TDECL-EVAL-XT
-      ELSE fam i TDECL-ADDR-AT-WORD THEN
-   loop ;
+\ A name the checker already holds in this scope is the declaration's error,
+\ asked of every child before any is made.
+: TDECL-ADDR-FREE ( ptr u8 n n n -- ) {: na:ptr nu:n shape:n param:n :}
+   na nu CHECKER-DEFINED-HERE? IF
+      na nu s" generated declaration already defined" E-TDECL-NAME TDECL-THROW
+   THEN ;
 
-: TDECL-ADDR-BODY ( n -- )
-   RES-FALSE [: dup TDECL-ADDR-PLAN dup TDECL-ADDR-EVAL ;] TDECL-GEN-PLACED ;
+: TDECL-ADDR-LIVE-FREE ( ptr u8 n n n -- ) {: na:ptr nu:n shape:n param:n :}
+   na nu shape param TDECL-ADDR-FREE
+   na nu TDECL-NAME-PREFLIGHT-XT ;
 
-\ Replay takes only the first reading: each text row is armed and checked and
-\ the built row registers its signature, so every accessor's effect registers
-\ under its own name, and no row reaches TDECL-EVAL-XT. The arming is live: this participant commits after DECL-EVENT
-\ advances the committed field watermark on both paths, so the baked field ids
-\ are committed ids.
-: TDECL-ADDR-REPLAY-BODY ( n -- )
-   RES-TRUE [: dup TDECL-ADDR-PLAN TDPLAN-PREFLIGHT-DEFINITIONS ;] TDECL-GEN-PLACED ;
+: TDECL-ADDR-MAKE ( ptr u8 n n n -- ) {: na:ptr nu:n shape:n param:n :}
+   na nu RES-FALSE shape param TDECL-CHILD ;
+
+\ Replay makes no word: it registers each child's effect, as CHILD-RUN would.
+: TDECL-ADDR-REG ( ptr u8 n n n -- ) {: na:ptr nu:n shape:n param:n :}
+   shape param TFAM-CHILD-ROWS {: din:n dout:n val:n :}
+   na nu din dout CHECKER-CHILD-ROWS ;
+
+: TDECL-ADDR-ROOM ( n -- ) {: fam:n :}
+   fam s" at" TDECL-ADDR-NAME  fam TFAM-FLD-COUNT@ 3 +
+   TDECL-CAPACITY-PREFLIGHT-XT ;
+
+: TDECL-ADDR-LIVE ( n -- n )
+   dup [: TDECL-ADDR-LIVE-FREE ;] TDECL-ADDR-EACH
+   dup TDECL-ADDR-ROOM
+   dup [: TDECL-ADDR-MAKE ;] TDECL-ADDR-EACH ;
+
+: TDECL-ADDR-REPLAY-REG ( n -- n )
+   dup [: TDECL-ADDR-FREE ;] TDECL-ADDR-EACH
+   dup [: TDECL-ADDR-REG ;] TDECL-ADDR-EACH ;
 
 public
 
-\ The window is disarmed on every exit: a rejected row leaves its arming live
-\ otherwise, and an arming outlives no generation.
 : TDECL-ADDR-WORDS ( n -- )
-   [: dup TDECL-ADDR-BODY ;] catch {: rc:n :}
-   FIELD-PROJ-CLEAR
-   rc 0 <> IF rc throw THEN
-   drop ;
+   RES-FALSE [: TDECL-ADDR-LIVE ;] TDECL-GEN-PLACED ;
 
 \ Replay (verify-source.f's declaration pre-pass) registers the checked
-\ effects of a generated set without emitting code; the address surface replays
-\ from the same plan the live path evaluates, so a file that uses its own record
-\ accessors resolves on the pre-scan.
+\ effects of a generated set without emitting code, so a file that uses its
+\ own record accessors resolves on the pre-scan.
 : TDECL-ADDR-REPLAY ( n -- )
-   [: dup TDECL-ADDR-REPLAY-BODY ;] catch {: rc:n :}
-   FIELD-PROJ-CLEAR
-   rc 0 <> IF rc throw THEN
-   drop ;
+   RES-TRUE [: TDECL-ADDR-REPLAY-REG ;] TDECL-GEN-PLACED ;
 
 \ Initialized fields publish through a trusted path: a checked TDPLAN row is
 \ ": NAME ..." and CHECK! judges its body, and neither describes the fixed
@@ -2089,10 +2021,7 @@ variable TDINIT-SIG-U
 TRUSTED: TDINIT-MARK-LAST ( -- ) ndict@ 1 - int-mark ;
 TRUSTED: TDINIT-DECLARE ( ptr u8 n ptr u8 n -- ) TRUST-DECL ;
 
-: TDINIT-TERM ( n -- n ) {: fam:n :}
-   PARAM-SCR-N @ {: base:n :}
-   fam TFAM-ARITY@ 0 ?do FRESH MK-VAR PARAM-SCR+ loop
-   base fam TFAM-NAME$ fam MK-PARAM ;
+: TDINIT-TERM ( n -- n ) TFAM-FRESH-TERM ;
 
 : TDINIT-REFUSE ( n -- )
    TFAM-NAME$ s" derive init requires a canonical fixed-cell record"

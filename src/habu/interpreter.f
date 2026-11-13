@@ -2260,14 +2260,19 @@ variable DEF-VALUE
 : CHILD-BODY ( n -- COMP:body ) {: shape:n :}
    shape CHILD-ABI:CELL-OFF =
    shape CHILD-ABI:PTR-OFF = or
-   shape CHILD-ABI:BYTE-OFF = or if COMP-BODY:offset exit then
+   shape CHILD-ABI:BYTE-OFF = or
+   shape CHILD-ABI:FIELD = or if COMP-BODY:offset exit then
+   shape CHILD-ABI:INDEX = if COMP-BODY:index exit then
+   shape CHILD-ABI:VALUE = if COMP-BODY:value exit then
    RC-REJECT throw ;
 
-: CHILD-RECORD ( ptr u8 n -- ) {: a:ptr u:n :}
+\ A value child is recorded as a constant, which a call folds to its number.
+: CHILD-RECORD ( ptr u8 n n -- ) {: a:ptr u:n shape:n :}
    a u DEF-QUALIFY-NAME {: ta:ptr tu:n wid:n :}
    ta tu wid WL-PROBE XREF-FOUND? if a u PKG-DUPLICATE then
    0 BODYLEN-CELL CELL!  a u DEF-CAPTURE
-   ta tu wid 0 DEF-RECORD ;
+   shape CHILD-ABI:VALUE = if DKIND:VAL else 0 then {: kind:n :}
+   ta tu wid kind DEF-RECORD ;
 
 : CHILD-CLOSE ( n n -- ) {: shape:n param:n :}
    DEF-CAPTURED-NAME shape param CHECK:CHILD {: val:n :}
@@ -2277,7 +2282,7 @@ variable DEF-VALUE
 
 : CHILD-DEFINE ( ptr u8 n n n -- )
    {: a:ptr u:n shape:n param:n :}
-   a u CHILD-RECORD
+   a u shape CHILD-RECORD
    [: shape param CHILD-CLOSE ;] catch {: rc:n :}
    rc 0<> if DEF-ABORT rc throw then ;
 

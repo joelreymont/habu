@@ -2000,6 +2000,7 @@ variable SCAN-LO                     \ the ordinal of its first row
       defer OF FIXED-VAL @ NPUB:PUBLISH-PENDING-DEFER ENDOF
       cast OF NPUB:PUBLISH-RAW ENDOF
       offset OF NPUB:PUBLISH-RAW ENDOF
+      index OF NPUB:PUBLISH-RAW ENDOF
    ;MATCH ;
 
 : HOSTED ( [ -- ] -- )
@@ -2062,7 +2063,8 @@ variable SCAN-LO                     \ the ordinal of its first row
    kind COMP-BODY:address COMP-BODY:EQ or
    kind COMP-BODY:defer COMP-BODY:EQ or
    kind COMP-BODY:cast COMP-BODY:EQ or
-   kind COMP-BODY:offset COMP-BODY:EQ or ;
+   kind COMP-BODY:offset COMP-BODY:EQ or
+   kind COMP-BODY:index COMP-BODY:EQ or ;
 
 : FIXED-BODY ( -- )
    FIXED-VAL @ {: val:n :}
@@ -2080,6 +2082,10 @@ variable SCAN-LO                     \ the ordinal of its first row
       cast OF EMIT-RETURN  EMIT-CLOSE ENDOF
       offset OF
          val PUSH-CONST  [: + ;] OP-ADD true ALU2
+         SPILL-ALL  EMIT-RETURN  EMIT-CLOSE
+      ENDOF
+      index OF
+         val PUSH-CONST  MUL2  [: + ;] OP-ADD true ALU2
          SPILL-ALL  EMIT-RETURN  EMIT-CLOSE
       ENDOF
    ;MATCH ;
