@@ -159,10 +159,14 @@ variable WANT-N
    s" 4809c8" E+              \ llvm-mc: orq %rcx, %rax
    E=
 
-   s" OS-OPEN-FLAGS keeps the access mode and moves four flag bits" T-LABEL
+   s" OS-OPEN-FLAGS keeps the access mode and moves five flag bits" T-LABEL
    OS-OPEN-FLAGS
    s" 4889f0" E+              \ llvm-mc: movq %rsi, %rax
    s" 4883e003" E+            \ llvm-mc: andq $3, %rax
+   s" 31c9" E+                \ O_NONBLOCK
+   s" 49c7c300080000" E+      \ llvm-mc: movq $2048, %r11
+   s" 48f7c604000000" E+      \ llvm-mc: testq $4, %rsi
+   s" 490f45cb" E+  s" 4809c8" E+
    s" 31c9" E+                \ O_APPEND
    s" 49c7c300040000" E+      \ llvm-mc: movq $1024, %r11
    s" 48f7c608000000" E+      \ llvm-mc: testq $8, %rsi

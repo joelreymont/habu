@@ -175,15 +175,12 @@ $05 SYS-SVC-STENCIL 1 + c!
    C-NE RCX R11 ASM-SINK ENC-CMOVCC             \ cmovne rcx, r11
    RAX RCX ASM-SINK ENC-OR-RR ;                 \ or rax, rcx
 
-\ rsi carries the caller's open flags and rdx takes the kernel's: the access mode
-\ in the low two bits travels unchanged, and four flags move between the BSD and
-\ the Linux bit positions. The values are the same ones the aarch64 seam maps.
-\ Both translators clobber rax, rcx and r11 and are called before the trap, so a
-\ caller stages any other argument register first - the ordering constraint the
-\ aarch64 seam's caller already has around its own x6/x7 clobber.
+\ rsi's BSD-shaped open flags into rdx: the access mode as it is, each flag to
+\ its Linux bit; it clobbers rax, rcx and r11, so stage other arguments first.
 : OS-OPEN-FLAGS ( -- )
    RAX RSI ASM-SINK ENC-MOV-RR
    RAX 3 >IMM8 ASM-SINK ENC-AND-RI8
+   RSI $4 $800 OS-FLAG-BIT,                     \ O_NONBLOCK
    RSI $8 $400 OS-FLAG-BIT,                     \ O_APPEND
    RSI $200 $40 OS-FLAG-BIT,                    \ O_CREAT
    RSI $400 $200 OS-FLAG-BIT,                   \ O_TRUNC
