@@ -2064,59 +2064,15 @@ public
       s" aot-capture: dynamic storage has no range release" 74 die then
    d0 AOT-N>U8 d1 d0 - range ACAP-RANGE-XT execute ;
 
-\ Full-runtime payload mode is explicit. Its verified checker stores travel in
-\ DATA, so an empty sidecar is valid only for that captured owner and closure.
-: ACAP-ADDRESS ( ptr u8 -- n ) NULL-PTR BYTE-VIEW - ;
-
-private
-: ACAP-MEMBER? ( ptr u8 n ptr u8 n -- bool )
-   {: pkg:ptr pkgu:n name:ptr nameu:n :}
-   \ A later window may give a previously queried WID a new package owner.
-   0 ACAP-PKG-MEMO-W ! 0 ACAP-PKG-MEMO-ROW ! 0 ACAP-PKG-MEMO-PUB !
-   AOT-ARM:R1 @ AOT-ARM:R0 @ ?do
-      i AOT-REC {: rec:ptr :}
-      rec AOT-RWID dup 0 >= if
-         ACAP-REC-PKG {: pa:ptr pu:n pub:bool found:bool :}
-         found if
-            pa pu pkg pkgu CORE-STR=CI if
-               rec AOT-RNPTR rec AOT-RNLEN name nameu CORE-STR=CI if
-                  0 0= unloop exit then
-            then
-         then
-      else drop then
-   loop
-   0 0= 0= ;
-public
-
-: ACAP-PERSISTENT-OWNER ( -- )
-   AOT-ARM:PAYLOAD-OWNER @ CHECKER-OWNER-ABI:BYTES
-   CHECKER-OWNER-GUARD:VALIDATE {: owner:ptr :}
-   owner ACAP-ADDRESS {: at:n :}
-   at AOT-ARM:D0 @ < if
-      s" aot-capture: persistent checker owner is outside captured DATA" 74 die then
-   at AOT-ARM:D0 @ - CHECKER-OWNER-ABI:HEADER-BYTES < if
-      s" aot-capture: checker owner descriptor is outside captured DATA" 74 die then
-   at AOT-ARM:D1 @ > if
-      s" aot-capture: persistent checker owner is outside captured DATA" 74 die then
-   owner 8 - CELL-VIEW @ AOT-ARM:D1 @ at - > if
-      s" aot-capture: checker owner extends beyond captured DATA" 74 die then
-   s" CHECKER-REG" s" DECLARATIONS" ACAP-MEMBER? 0= if
-      s" aot-capture: persistent payload has no captured checker declaration owner" 74 die then ;
-
 : PAYLOAD-CAPTURE ( -- )
    AOT-ARM:?FROZEN
-   AOT-ARM:PAYLOAD-MODE @ 1 = if
-      AOT-ARM:PAYLOAD-EXPORTED @ if exit then
-      AOT-ARM:B0 @ AOT-ARM:R0 @ AOT-ARM:R1 @ AOT-ARM:D0 @ ACAP-BAND!
-      ACAP-AUDIT-SIGS
-      -1 AOT-ARM:PAYLOAD-EXPORTED ! exit
-   then
-   ACAP-PERSISTENT-OWNER
-   0 AOT-SIG-N ! 0 AOT-SIG-STR-LEN ! 0 AOT-REG-LEN ! ;
+   AOT-ARM:PAYLOAD-EXPORTED @ if exit then
+   AOT-ARM:B0 @ AOT-ARM:R0 @ AOT-ARM:R1 @ AOT-ARM:D0 @ ACAP-BAND!
+   ACAP-AUDIT-SIGS
+   -1 AOT-ARM:PAYLOAD-EXPORTED ! ;
 
 private
-\ The payload membership is exactly the bytes and records CAPTURE copied. The
-\ DATA end may move after owner persistence, before WINDOW$ is read.
+\ The payload membership is exactly the bytes and records CAPTURE copied.
 : ACAP-PAYLOAD-BAND? ( n n n n n n -- bool )
    {: bstart:n bend:n rstart:n rend:n d0:n d1:n :}
    bstart AOT-ARM:B0 @ = bend AOT-ARM:B1 @ = and
@@ -2143,7 +2099,7 @@ public
    ACAP-NORMALIZE-DSITES
    ACAP-COMPACT-RECS                            \ build 20B compact records + add record names to pool
    ACAP-PWIN-CAPTURE                            \ only the window's own seals travel
-   AOT-ARM:PAYLOAD-MODE @ 1 = SITE-ROW AOT-SECTION:BYTES drop ;
+   SITE-ROW AOT-SECTION:BYTES drop ;
 
 : CAPTURE-PREPARE ( n n n n n n -- ) {: bstart:n bend:n rstart:n rend:n d0:n d1:n :}
    bstart bend rstart rend d0 d1 ACAP-START

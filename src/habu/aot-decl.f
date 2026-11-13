@@ -509,12 +509,10 @@ public
    56 AOT-SIG-N @ SIG-ROW +ROWS
    AOT-SIG-STR-LEN @ +RAW AOT-REG-LEN @ +RAW ;
 
-: BYTES ( bool n -- n ) {: sidecar:bool sitewidth:n :}
-   sitewidth BODY-BYTES
-   sidecar if
-      8 +BYTES PAYLOAD-BYTES +BYTES
-      AOT-SIG:INSTALL-NAME$ nip +BYTES
-   then ;
+: BYTES ( n -- n )
+   BODY-BYTES
+   8 +BYTES PAYLOAD-BYTES +BYTES
+   AOT-SIG:INSTALL-NAME$ nip +BYTES ;
 
 ;package
 

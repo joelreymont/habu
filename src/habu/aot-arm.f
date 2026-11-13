@@ -39,7 +39,7 @@ variable W0  variable W1      \ its wordlist span
 
 \ A payload belongs to one concrete checker instance for the whole window.
 PTR-VARIABLE PAYLOAD-OWNER
-variable PAYLOAD-MODE                       \ 0 pending, 1 partial
+TYPED-VARIABLE PAYLOAD-ARMED bool   \ the owner's checker payload is armed
 variable PAYLOAD-FROZEN
 variable PAYLOAD-EXPORTED
 
@@ -70,24 +70,23 @@ CAST: AS-SAVE ( n -- [ ptr u8 n -- n ] )
 : RUN-ACTION ( n -- ) PAYLOAD-FIELD AS-ACTION execute ;
 
 : CANCEL ( -- )
-   PAYLOAD-MODE @ 1 = if
+   PAYLOAD-ARMED @ if
       CHECKER-OWNER-ABI:PAYLOAD-DISARM-OFF RUN-ACTION then
-   0 PAYLOAD-MODE !  0 PAYLOAD-FROZEN ! 0 PAYLOAD-EXPORTED !
+   false PAYLOAD-ARMED !  0 PAYLOAD-FROZEN ! 0 PAYLOAD-EXPORTED !
    NULL-PTR PAYLOAD-OWNER ! ;
 
 public
 
 : PAYLOAD-ARM ( ptr u8 -- )
    CANCEL OWNER!
-   1 PAYLOAD-MODE !
+   true PAYLOAD-ARMED !
    CHECKER-OWNER-ABI:PAYLOAD-ARM-OFF RUN-ACTION ;
 
 : SIG-CLOSE ( -- )
    PAYLOAD-FROZEN @ 0= 0= if exit then
-   PAYLOAD-MODE @ 0= if PAYLOAD-BAD then
+   PAYLOAD-ARMED @ 0= if PAYLOAD-BAD then
    PAYLOAD-OWNER @ SOURCE-OWNER <> if PAYLOAD-BAD then
-   PAYLOAD-MODE @ 1 = if
-      CHECKER-OWNER-ABI:PAYLOAD-FREEZE-OFF RUN-ACTION then
+   CHECKER-OWNER-ABI:PAYLOAD-FREEZE-OFF RUN-ACTION
    -1 PAYLOAD-FROZEN ! ;
 
 : ?FROZEN ( -- )
@@ -125,10 +124,6 @@ public
    LATCH-OPEN
    B0 @ OPEN
    SOURCE-OWNER PAYLOAD-ARM ;
-
-: WINDOW-OPEN-PERSISTENT ( -- )
-   LATCH-OPEN
-   B0 @ OPEN ;
 
 \ Where the window's definitions end. The wordlist counter is latched HERE for
 \ the reason above, and never read again at capture time.
