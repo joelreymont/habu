@@ -20,6 +20,7 @@ require src/habu/linker.f
 require tools/hb-build-core.f
 require tools/hb-build-report.f
 require tools/image-size-lib.f
+require tools/image-names.f
 
 package HB-BUILD-CLI
 
@@ -102,14 +103,14 @@ variable HBB-ELAPSED-NS
 : HBB-OUT$ ( -- ptr u8 n )
    HBB-OUT-PATH HBB-OUT-U @ ;
 
-: HBB-MAP-PATH! ( ptr u8 n ptr u8 -- n ) {: a:ptr u:n dst:ptr :}
-   u 4 + PATH-CAP > if E-BUILD-PATH throw then
-   a dst u BYTE-COPY
-   s" .map" drop dst u + 4 BYTE-COPY
-   u 4 + ;
+: HBB-MAP-SRC! ( ptr u8 n -- )
+   HBB-MAP-SRC IMAGE-NAMES:MAP-PATH! 0= if E-BUILD-PATH throw then
+   HBB-MAP-SRC-U ! ;
 
-: HBB-MAP-SRC! ( ptr u8 n -- ) HBB-MAP-SRC HBB-MAP-PATH! HBB-MAP-SRC-U ! ;
-: HBB-MAP-DST! ( ptr u8 n -- ) HBB-MAP-DST HBB-MAP-PATH! HBB-MAP-DST-U ! ;
+: HBB-MAP-DST! ( ptr u8 n -- )
+   HBB-MAP-DST IMAGE-NAMES:MAP-PATH! 0= if E-BUILD-PATH throw then
+   HBB-MAP-DST-U ! ;
+
 : HBB-MAP-SRC$ ( -- ptr u8 n ) HBB-MAP-SRC HBB-MAP-SRC-U @ ;
 : HBB-MAP-DST$ ( -- ptr u8 n ) HBB-MAP-DST HBB-MAP-DST-U @ ;
 

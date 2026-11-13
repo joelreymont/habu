@@ -126,13 +126,19 @@ variable ATTR-GENERATED variable ATTR-UNKNOWN variable ATTR-OK
 
 public
 
+\ Writes <path>.map into dst, a PATH-CAP buffer; false when it would pass PATH-CAP.
+: MAP-PATH! ( ptr u8 n ptr u8 -- n bool )
+   {: path:ptr pathu:n dst:ptr :}
+   pathu 4 + PATH-CAP > if 0 false exit then
+   path dst pathu BYTE-COPY
+   s" .map" drop dst pathu + 4 BYTE-COPY
+   pathu 4 + true ;
+
 \ <path>.map in PATH until the next call, false when it would pass PATH-CAP.
 : MAP$ ( ptr u8 n -- ptr u8 n bool )
    {: path:ptr pathu:n :}
-   pathu 4 + PATH-CAP > if path pathu false exit then
-   path PATH pathu BYTE-COPY
-   s" .map" drop PATH pathu + 4 BYTE-COPY
-   PATH pathu 4 + true ;
+   path pathu PATH MAP-PATH! {: mapu:n ok:bool :}
+   ok if PATH mapu true else path pathu false then ;
 
 \ A missing map or an unknown header leaves no rows: LOADED? is false.
 : LOAD ( ptr u8 n -- )
