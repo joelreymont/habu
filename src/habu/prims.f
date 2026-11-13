@@ -29,7 +29,6 @@ public
 3 constant R-DATA            \ reads or moves the DATA pointer
 4 constant R-SOURCE          \ reads the input after its token
 5 constant R-DICT            \ records and wordlist state an object carries
-6 constant R-BUILD           \ the tracked kernel cells: dispatch
 7 constant R-RUN             \ runs its xt or text operand; the effect is the
                              \ operand's, accounted by the operand's own edges
                              \ and the nested runs it makes
@@ -274,7 +273,6 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
    a u s" data" CORE-STR= IF R-DATA EXIT THEN
    a u s" source" CORE-STR= IF R-SOURCE EXIT THEN
    a u s" dict" CORE-STR= IF R-DICT EXIT THEN
-   a u s" build" CORE-STR= IF R-BUILD EXIT THEN
    a u s" run" CORE-STR= IF R-RUN EXIT THEN
    a u s" exit" CORE-STR= IF R-EXIT EXIT THEN
    s" prims: unknown reach" SPEC-RC die ;

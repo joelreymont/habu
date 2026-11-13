@@ -123,8 +123,7 @@ private
    RESTLIB COMMON s" src/lib/memory.f" ROW
    RESTLIB COMMON s" src/lib/allocator.f" ROW
    RESTLIB COMMON s" src/lib/arena.f" ROW
-   RESTLIB COMMON s" src/compiler/fixed-body.f" ROW
-   RESTLIB COMMON s" src/compiler/native/fetch-check.f" ROW ;
+   RESTLIB COMMON s" src/compiler/fixed-body.f" ROW ;
 
 
 create ROWS FILL

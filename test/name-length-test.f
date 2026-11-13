@@ -132,7 +132,6 @@ create BEFORE MARK-N cells allot
 : DYNAMIC ( -- ) MARKS! BAD$ CHECKER-DYNAMIC-INFO nip 0= VERDICT ;
 : MATCH-FAM ( -- ) MARKS! BAD$ TFL-MATCH-FAM? nip 0= VERDICT ;
 : CON-FAM ( -- ) MARKS! BAD$ TFL-CON-FAM? nip 0= VERDICT ;
-: VAR ( -- ) MARKS! BAD$ 0 TFAM:TFL-VAR? nip 0= VERDICT ;
 : LAYOUT-TEXT ( -- ) MARKS! STORED$ CHECKER-LAYOUT-INFO nip nip 0= VERDICT ;
 : STORAGE-TEXT ( -- ) MARKS! STORED$ CHECKER-STORAGE-INFO nip 0= VERDICT ;
 : DYNAMIC-TEXT ( -- ) MARKS! STORED$ CHECKER-DYNAMIC-INFO nip 0= VERDICT ;
@@ -250,8 +249,7 @@ variable LBL-U
 
 : TEST-FAMILIES ( -- )
    s" MATCH-FAM" FAM-DIES-AT-MAX
-   s" CON-FAM" FAM-DIES-AT-MAX
-   s" VAR" FAM-DIES-AT-MAX ;
+   s" CON-FAM" FAM-DIES-AT-MAX ;
 
 \ An uncaught code above 255 exits 70 when the checker rendered it, else 67.
 \ In this file's package PART-PATH refuses a long path (7136).

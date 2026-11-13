@@ -5209,9 +5209,6 @@ package TFAM
 
 public
 
-: TFL-VAR? ( ptr u8 n n -- n bool ) {: na:ptr nu:n fam:n :}   \ variant in fam -> vid
-   fam na nu TFL-FOLD$ SUMV-FIND ;
-
 : TFL-VPADS ( n n -- n ) {: fam:n vid:n :}   \ zero pads M-p for a variant's construct
    fam TFAM-SLOTS@ vid SUMV-PAYCELLS@ - ;
 

@@ -4,7 +4,6 @@
 \ Wasm build loads this file ahead of the program (tools/hb-build-core.f).
 
 require src/arch/wasm/profile.f
-require src/compiler/native/fetch-check.f
 
 package WKWORDS
 private
