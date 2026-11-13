@@ -13,7 +13,6 @@ require src/arch/arm64/icode.f
 require src/arch/arm64/mnem.f
 require src/habu/layout.f
 require src/habu/code-bytes.f
-require src/os/macos/macho.f
 require src/os/linux/elf.f
 
 package LINKER
@@ -63,6 +62,8 @@ variable KTEXT-VA                    \ the values of the object's TEXT-VA and DA
 variable KDATA-VA
 variable PRESETS-AT
 variable PRESETS-N
+variable MACHO-AT                    \ the Mach-O import names' bytes in KOBJ
+variable MACHO-U
 variable CHECK-ROWS-AT               \ the checker rows' bytes in KOBJ
 variable CHECK-ROWS-U
 DYNAMIC-BUFFER OWNED-AT n            \ each package-private row's package, then name: offset in KOBJ, length
@@ -79,8 +80,9 @@ variable PATH-U
    SAY-OBJECT
    s" link: the kernel object is cut short or malformed" 74 die ;
 
-\ hb's writer lays the image and the tree's kernel reads each libc slot at the
-\ row the tree's writer gives it, so an import table that is not hb's dies.
+\ hb's ELF writer lays the image's imports and the tree's kernel reads each libc
+\ slot at the row the tree's writer gives it, so an import table that is not
+\ hb's dies.
 : SAME ( n n ptr u8 n -- )
    {: mine:n theirs:n a:ptr u:n :}
    mine theirs = if exit then
@@ -123,6 +125,12 @@ variable PATH-U
    AT @ SYMS-AT !  count SYMS-N !
    count 0 ?do  NEXT SKIP  8 SKIP  loop ;
 
+\ The Mach-O import names, each ending in a NUL, so the last byte is one.
+: MACHO-IMPORTS ( -- )
+   NEXT {: u:n :}
+   AT @ MACHO-AT !  u MACHO-U !  u SKIP
+   u 0 > if MACHO-AT @ u + 1 - 0 KOBJ swap + c@ 0<> if BAD then then ;
+
 : SECTIONS ( -- )
    40 AT !
    NEXT {: codeu:n :}
@@ -140,6 +148,7 @@ variable PATH-U
       SAY-OBJECT
       s" link: the kernel object has no checker rows: its tree is older than this hb" 74 die
    then
+   MACHO-IMPORTS
    NEXT {: rowsu:n :}
    AT @ CHECK-ROWS-AT !  rowsu CHECK-ROWS-U !  rowsu SKIP
    AT @ KOBJ-U @ <> if BAD then ;
@@ -242,6 +251,9 @@ public
    j 0<  j SCOPES-N @ >= or if s" link: the kernel object has no scope site of that kind" 74 die then
    j 8 * SCOPES-AT @ + KOBJ@ >LABEL ;
 
+\ The C names the image's GOT binds, in row order, each ending in a NUL.
+: MACHO-IMPORTS$ ( -- ptr u8 n ) 0 KOBJ MACHO-AT @ +  MACHO-U @ ;
+
 \ The header cells the object gives a value: preset k's value and offset.
 : PRESET-N ( -- n ) PRESETS-N @ ;
 
@@ -304,7 +316,6 @@ public
       s" , hb's is " SAY DATA-START SAY-INT SAY-CR
       s" link: a target may not raise DATA-START above the running hb's" 74 die
    then
-   MACHO:IMPORTS-SUM  s" MACHO-IMPORTS" SYM  s" MACHO-IMPORTS" SAME
    ELF:IMPORTS-SUM  s" ELF-IMPORTS" SYM  s" ELF-IMPORTS" SAME
    s" TEXT-VA" SYM KTEXT-VA !  s" DATA-VA" SYM KDATA-VA ! ;
 

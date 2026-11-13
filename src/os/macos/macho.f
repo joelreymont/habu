@@ -7,8 +7,8 @@
 \ The header is MH_EXECUTE for ARM64 with NOUNDEFS, DYLDLINK, TWOLEVEL and,
 \ while PIE? is set, PIE. The load commands, in order: __PAGEZERO, 4 GiB with
 \ no file bytes; __TEXT at VMBASE, sized to its content in 16 KB pages, __text
-\ at CODE-OFF; __DATA_CONST, whose __got holds one cell per IMPORT$ row, which
-\ dyld binds to libSystem; __LINKEDIT, the chained-fixups blob, which the signer
+\ at CODE-OFF; __DATA_CONST, whose __got holds one cell per import BUILD-IMAGE
+\ is given, which dyld binds to libSystem; __LINKEDIT, the chained-fixups blob, which the signer
 \ grows; LC_DYLD_CHAINED_FIXUPS, whose starts name the __DATA_CONST segment
 \ offset so dyld rewrites the GOT before LC_MAIN runs; /usr/lib/dyld; LC_MAIN at
 \ CODE-OFF; libSystem; and two Homebrew runpaths.
@@ -52,8 +52,9 @@ CODE-CAP-BYTES CODE-OFF + constant MPAGE
 $4000     constant MACHO-PAGE
 $4000     constant DATA-CONST-SIZE
 
-\ The libSystem functions and variables dyld binds into the GOT, in slot order,
-\ by C name.
+public
+\ The libSystem functions and variables dyld binds into the GOT of the tree's
+\ kernel, in slot order, by C name; the kernel object carries them to the link.
 : IMPORT$ ( n -- ptr u8 n )
    case
       0 of s" dlopen" endof
@@ -67,23 +68,6 @@ $4000     constant DATA-CONST-SIZE
    endcase ;
 7 constant IMPORTS
 
-\ Darwin's plain realpath is its legacy entry, which reads every parent
-\ directory of a relative path; C programs link realpath$DARWIN_EXTSN.
-: SUFFIX$ ( n -- ptr u8 n )
-   IMPORT$ s" realpath" STR= if s" $DARWIN_EXTSN" else s" " then ;
-
-\ Row n's symbol is an underscore, the name, then the suffix.
-: SYMBOL-LEN ( n -- n )
-   dup IMPORT$ nip 1 +  swap SUFFIX$ nip + ;
-
-: SYMBOL, ( n -- )
-   s" _" M-BYTES  dup IMPORT$ M-BYTES  SUFFIX$ M-BYTES ;
-
-: NAME-SUM ( n ptr u8 n -- n )
-   {: h:n a:ptr u:n :}
-   h  u 0 ?do 31 * a i + c@ + loop  31 * ;
-
-public
 \ The row whose C name this is; the build dies on a name the table lacks.
 : IMPORT-ROW ( ptr u8 n -- n )
    {: a:ptr u:n :}
@@ -91,35 +75,80 @@ public
    SB-RESET  s" macho: no such import " SB-APPEND  a u SB-APPEND
    SB$ 73 die ;
 
-\ A sum over the C names in row order.
-: IMPORTS-SUM ( -- n )
-   0  IMPORTS 0 ?do i IMPORT$ NAME-SUM loop ;
-
 \ Import row n's cell, as a byte offset from the GOT's start.
 : SLOT-OFF ( n -- n ) 8 * ;
 private
 
-\ A row's symbol's offset in the symbol strings, which open with a NUL.
-: NAME-OFF ( n -- n )
-   1 swap 0 ?do i SYMBOL-LEN 1 + + loop ;
+\ The image's imports, which BUILD-IMAGE is given: C names in GOT row order,
+\ each ending in a NUL.
+PTR-VARIABLE NAMES
+variable NAMES-U
+variable NAMES-N
 
-IMPORTS SLOT-OFF constant MACHO-GOT-BYTES
-IMPORTS NAME-OFF constant SYMBOLS-BYTES
+: NAMES@ ( -- ptr u8 ) NAMES @ ;
+
+\ The name at a byte offset in NAMES.
+: NAME-AT ( n -- ptr u8 n )
+   {: at:n :}
+   NAMES@ at +  0
+   begin 2dup + c@ 0<> while 1 + repeat ;
+
+: NEXT-AT ( n -- n ) dup NAME-AT nip + 1 + ;
+
+: NAMES! ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   a NAMES !  u NAMES-U !
+   0 0 begin dup u < while NEXT-AT swap 1 + swap repeat
+   drop NAMES-N ! ;
+
+\ Darwin's plain realpath is its legacy entry, which reads every parent
+\ directory of a relative path; C programs link realpath$DARWIN_EXTSN.
+: SUFFIX$ ( ptr u8 n -- ptr u8 n )
+   s" realpath" STR= if s" $DARWIN_EXTSN" else s" " then ;
+
+\ A name's symbol is an underscore, the name, then the suffix.
+: SYMBOL-LEN ( ptr u8 n -- n )
+   {: a:ptr u:n :}
+   a u SUFFIX$ nip u + 1 + ;
+
+: SYMBOL, ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   s" _" M-BYTES  a u M-BYTES  a u SUFFIX$ M-BYTES ;
+
+\ From a symbol's offset in the symbol strings and its name's in NAMES to the
+\ next one's.
+: STEP ( n n -- n n )
+   dup NAME-AT SYMBOL-LEN 1 + rot + swap NEXT-AT ;
+
+\ The symbol strings open with a NUL, and each symbol ends in one.
+: SYMBOLS-BYTES ( -- n )
+   1 0 begin dup NAMES-U @ < while STEP repeat drop ;
+
+: MACHO-GOT-BYTES ( -- n ) NAMES-N @ SLOT-OFF ;
+
 \ The fixups header and image starts ($38), one page's segment starts (24), the
 \ imports and the symbol strings; the blob pads them to a cell.
-$38 24 + IMPORTS 4 * + SYMBOLS-BYTES + constant MACHO-FIXUPS-USED
-MACHO-FIXUPS-USED 7 + -8 and constant MACHO-FIXUPS-SIZE
+: MACHO-FIXUPS-USED ( -- n )
+   $38 24 + NAMES-N @ 4 * + SYMBOLS-BYTES + ;
+
+: MACHO-FIXUPS-SIZE ( -- n ) MACHO-FIXUPS-USED 7 + -8 and ;
+
 \ One chained start belongs to each __DATA_CONST page. The first starts the
 \ GOT binds; no other page holds a bind.
-CODE-CAP-BYTES MACHO-GOT-BYTES + MACHO-PAGE 1- + MACHO-PAGE / 1- 2 * 3 + -4 and
-   MACHO-FIXUPS-SIZE + constant MACHO-FIXUPS-MAX
+: MACHO-FIXUPS-MAX ( -- n )
+   CODE-CAP-BYTES MACHO-GOT-BYTES + MACHO-PAGE 1- + MACHO-PAGE /
+   1- 2 * 3 + -4 and  MACHO-FIXUPS-SIZE + ;
+
 \ Code and payload share the assembler window. Their two separately rounded
 \ segments can therefore exceed MPAGE + one DATA_CONST page by one more page.
 MPAGE DATA-CONST-SIZE + MACHO-PAGE + constant MACHO-IMAGE-MAX
+
 \ CODESIG2's largest signature, spelt from sign2.f's CS-PAGE, CS-HASH, CD-HDR and
 \ $14 SuperBlob header, which load later, and a $40 id; more throws M-BOUNDS-RC.
-MACHO-IMAGE-MAX MACHO-FIXUPS-MAX +
-   $FFF + $1000 / $20 *   $14 + $58 + $40 +   constant MACHO-SIG-MAX
+: MACHO-SIG-MAX ( -- n )
+   MACHO-IMAGE-MAX MACHO-FIXUPS-MAX +
+   $FFF + $1000 / $20 *   $14 + $58 + $40 + ;
+
 $10       constant SG-READ-ONLY
 $6        constant S-NON-LAZY-SYMBOL-POINTERS
 6         constant DYLD-CHAINED-PTR-64-OFFSET
@@ -142,7 +171,8 @@ private
 \ The image buffer fits the largest emittable image, so the loud MPAGE
 \ code-window guard stays the binding constraint, never a silent M-BOUNDS-RC
 \ throw from the byte cursor.
-MACHO-IMAGE-MAX MACHO-FIXUPS-MAX + MACHO-SIG-MAX + MSIZE!
+: MACHO-MSIZE! ( -- )
+   MACHO-IMAGE-MAX MACHO-FIXUPS-MAX + MACHO-SIG-MAX + MSIZE! ;
 
 : ASM-CODELEN! ( -- )
    IMG-PAYLOAD-N @ 0 > if
@@ -227,26 +257,30 @@ variable NCMDS
 \ A bind per row: the import's ordinal, the bind bit and, on every row but the
 \ last, a next of two 4-byte strides.
 : MACHO-GOT, ( -- )
-   IMPORTS 0 ?do
+   NAMES-N @ 0 ?do
       i IMG-M32
-      $80000000 i IMPORTS 1- < if $00100000 or then IMG-M32
+      $80000000 i NAMES-N @ 1- < if $00100000 or then IMG-M32
    loop ;
 
 \ Each import names libSystem (ordinal 1) and its name's offset.
 : MACHO-IMPORTS, ( -- )
-   IMPORTS 0 ?do i NAME-OFF 9 lshift 1 or IMG-M32 loop ;
+   1 0 begin dup NAMES-U @ < while
+      over 9 lshift 1 or IMG-M32  STEP
+   repeat 2drop ;
 
 : MACHO-SYMBOLS, ( -- )
    0 IMG-M8
-   IMPORTS 0 ?do i SYMBOL, 0 IMG-M8 loop
+   0 begin dup NAMES-U @ < while
+      dup NAME-AT SYMBOL, 0 IMG-M8  NEXT-AT
+   repeat drop
    MACHO-FIXUPS-SIZE MACHO-FIXUPS-USED - M-ZEROS ;
 
 : MACHO-FIXUPS, ( n -- ) {: segoff:n :}
    0 IMG-M32                 \ fixups_version
    $20 IMG-M32               \ starts_offset
    $38 MACHO-STARTS-BYTES + IMG-M32  \ imports_offset
-   $38 MACHO-STARTS-BYTES + IMPORTS 4 * + IMG-M32  \ symbols_offset
-   IMPORTS IMG-M32           \ imports_count
+   $38 MACHO-STARTS-BYTES + NAMES-N @ 4 * + IMG-M32  \ symbols_offset
+   NAMES-N @ IMG-M32         \ imports_count
    1 IMG-M32                 \ DYLD_CHAINED_IMPORT
    0 IMG-M32                 \ uncompressed symbol strings
    4 M-ZEROS
@@ -295,7 +329,7 @@ variable NCMDS
    M-HERE MH-HDR-SZ - 20 M-OFF M-LE32! ;
 
 : BUILD-MACHO ( -- )                        \ assumes icode's CODE holds the program
-   ASM-CODELEN!  M-RESET  0 NCMDS !
+   ASM-CODELEN!  MACHO-MSIZE!  M-RESET  0 NCMDS !
    MH-HDR,
    TEXTSZ CODELEN @ MACHO-CMDS,
    PATCH-HDR
@@ -308,8 +342,10 @@ variable NCMDS
    IMG-PAYLOAD-CLEAR ;
 
 public
-\ The program in icode's CODE as a Mach-O file whose code maps at the address.
-: BUILD-IMAGE ( asm n -- img )
+\ The program in icode's CODE as a Mach-O file whose code maps at the address,
+\ its GOT binding the C names, each ending in a NUL, in row order.
+: BUILD-IMAGE ( asm n ptr u8 n -- img )
+   NAMES!
    CODE-OFF - VMBASE !
    ASM-DROP
    BUILD-MACHO
@@ -399,7 +435,7 @@ private
    DATA-CMD @ 72 + s" __got" NAME? CHECK
    DATA-CMD @ 88 + s" __DATA_CONST" NAME? CHECK
    DATA-CMD @ 120 + U32@ DATA-OFF = CHECK
-   GOT-BYTES MACHO-GOT-BYTES = CHECK
+   GOT-BYTES 7 and 0= CHECK
    DATA-OFF TEXT-LIMIT = CHECK
    DATA-BYTES GOT-BYTES >= CHECK
    DATA-OFF DATA-BYTES AT drop ;

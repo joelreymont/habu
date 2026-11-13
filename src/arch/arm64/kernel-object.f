@@ -15,6 +15,8 @@
 \   scope sites n, then the label of scope-kind?'s chain for each kind from 2
 \   symbols     n, then each one's name and value
 \   presets     n, then each header cell's offset and the value the link writes
+\   Mach-O imports their length in bytes, then the C names the GOT binds in row
+\               order, each ending in a NUL, padded as a name's
 \   checker rows their length in bytes, then n, then each row's kind,
 \               trusted-only, fixed-ABI, name, package name, atom count and
 \               atoms
@@ -52,13 +54,20 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
    0 OUT OUT-U @ + LE:U64!
    8 OUT-U +! ;
 
-: SPAN+ ( ptr u8 n -- )
+: BYTES+ ( ptr u8 n -- )
    {: a:ptr u:n :}
-   u 7 + -8 and {: end:n :}
-   OUT-U @ end + OUT-RESERVE
+   OUT-U @ u + OUT-RESERVE
    a  0 OUT OUT-U @ +  u BYTE-COPY
-   end u ?do 0  0 OUT OUT-U @ + i + c! loop
-   end OUT-U +! ;
+   u OUT-U +! ;
+
+: BYTE+ ( n -- )
+   OUT-U @ 1 + OUT-RESERVE
+   0 OUT OUT-U @ + c!  1 OUT-U +! ;
+
+\ Zeros up to the next multiple of 8.
+: PAD+ ( -- ) begin OUT-U @ 7 and 0<> while 0 BYTE+ repeat ;
+
+: SPAN+ ( ptr u8 n -- ) BYTES+ PAD+ ;
 
 : NAME+ ( ptr u8 n -- ) dup U64+ SPAN+ ;
 
@@ -184,7 +193,6 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
    s" UNCGH-CELL" UNCGH-CELL SYM+
    s" STUB-CELL" SIGNAL-ABI:STUB-CELL SYM+
    s" CODE-END-CELL" CODE-END-CELL SYM+
-   s" MACHO-IMPORTS" MACHO:IMPORTS-SUM SYM+
    s" ELF-IMPORTS" ELF:IMPORTS-SUM SYM+ ;
 
 : ENGINE-SYMBOLS ( -- )
@@ -236,6 +244,14 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
    ;SECTION ;
 
 
+: MACHO-IMPORTS+ ( -- )
+   OUT-U @ {: at:n :}
+   0 U64+
+   MACHO:IMPORTS 0 ?do i MACHO:IMPORT$ BYTES+  0 BYTE+ loop
+   OUT-U @ at - 8 -  0 OUT at + LE:U64!
+   PAD+ ;
+
+
 : FLAG+ ( bool -- ) if 1 else 0 then U64+ ;
 
 : CHECK-ROW+ ( n -- )
@@ -266,7 +282,7 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
    0 OUT-U !
    s" HBKERNEL" SPAN+  4 0 ?do 0 U64+ loop
    CODE+ LABELS+ REFS+ DATA-SPANS+ FIXUPS+ PRIMS+
-   engine SCOPES+  engine SYMBOLS+  engine PRESETS+  CHECK-ROWS+
+   engine SCOPES+  engine SYMBOLS+  engine PRESETS+  MACHO-IMPORTS+  CHECK-ROWS+
    SUM
    0 OUT OUT-U @ sink execute ;
 

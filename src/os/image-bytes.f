@@ -6,7 +6,7 @@ require src/core/bytes.f
 require src/lib/span.f
 
 package IMAGE-BYTES
-\ The buffer's bytes: the largest image a loaded target writer names.
+\ The buffer's bytes: the largest image a target writer has named.
 variable MSIZE-N
 public
 : MSIZE ( -- n ) MSIZE-N @ ;
@@ -43,13 +43,20 @@ private
 : M-ENSURE-BUF ( -- )
    MBUF-A@ 0= if M-ALLOC-BUF MBUF-A! then ;
 
+: M-UNMAP ( -- )
+   MBUF-A@ MSIZE munmap 0 <> if s" image-bytes: munmap failed" 74 die then
+   NULL-PTR MBUF-A! ;
+
 public
-\ A target writer names its largest image at load; the largest named wins,
-\ whatever the load order. The buffer maps on first use, so a size named after
-\ that is refused.
+\ A target writer names its largest image at load or before an image's M-RESET;
+\ the largest named wins. The buffer maps on first use, and a size above a
+\ mapped buffer's unmaps it, so the next use maps one that large.
 : MSIZE! ( n -- )
-   MBUF-A@ 0= 0= if s" image-bytes: a size named after the buffer mapped" 73 die then
-   $FFFF + $10000 / $10000 *  MSIZE-N @ max  MSIZE-N ! ;
+   $FFFF + $10000 / $10000 * {: n:n :}
+   n MSIZE > if
+      MBUF-A@ 0= 0= if M-UNMAP then
+      n MSIZE-N !
+   then ;
 
 : MBUF ( -- ptr u8 )
    M-ENSURE-BUF
