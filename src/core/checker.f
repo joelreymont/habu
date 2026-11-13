@@ -1039,11 +1039,6 @@ public
    dst pv ! ;
 ;package
 
-: ARENA-BOOT-RESTORE ( ptr ptr n ptr n n -- )
-   {: pv:ptr boot:ptr bytes:n :}
-   pv @ boot <> IF pv @ bytes ARENA-UNMAP THEN
-   boot pv ! ;
-
 : ARENA-ROWS-ENSURE ( ptr ptr n ptr n n n -- )
    {: pv:ptr capv:ptr need:n row:n :}
    need capv @ <= IF EXIT THEN
@@ -1077,21 +1072,18 @@ public
 ;package
 
 \ The region's chunks come from ARENA-ALLOC and are never reused or unmapped,
-\ so a take answers zero bytes as map-anon does. A chunk header is one cell,
-\ the chunk's bytes.
+\ so a take answers zero bytes as map-anon does.
 1024 1024 * constant SR-GRAIN
 CHECKER-REG:SCRATCH{
 PTR-VARIABLE SR-CHUNK   variable SR-USED   variable SR-SIZE
 CHECKER-REG:}SCRATCH
 
-\ The header cell is written through a cell view, so the payload's element
-\ type stays the caller's.
+\ SR-CHUNK holds the chunk through a cell view, so the payload's element type
+\ stays the caller's.
 : SR-CHUNK-NEW ( n n -- ptr a ) {: need:n bytes:n :}
    bytes ARENA-ALLOC {: c:ptr :}
-   c BYTE-VIEW CELL-VIEW {: h:ptr :}
-   bytes h !
-   h SR-CHUNK !  bytes SR-SIZE !  CELL need + SR-USED !
-   c CELL + ;
+   c BYTE-VIEW CELL-VIEW SR-CHUNK !  bytes SR-SIZE !  need SR-USED !
+   c ;
 
 : SR-TAKE ( n -- ptr n ) {: need:n :}
    SR-USED @ 7 + -8 and {: at:n :}
@@ -1099,7 +1091,7 @@ CHECKER-REG:}SCRATCH
       at need + SR-USED !
       SR-CHUNK @ at + EXIT
    THEN
-   need  need CELL + SR-GRAIN max  SR-CHUNK-NEW ;
+   need  need SR-GRAIN max  SR-CHUNK-NEW ;
 
 \ The old bytes stay mapped: the region gives nothing back.
 : SR-GROW ( ptr n n n -- ptr n ) {: base:ptr oldbytes:n newbytes:n :}
@@ -8825,8 +8817,8 @@ variable CHK-CAND
 
 \ Per-symbol effect-record index state. USX-GEN is the mapping generation it was
 \ built at; USX-HI is the UEND it was last exact at; USX-BASE is the store its
-\ offsets were read against. These rest at 0 at a file boundary: generation 0 is
-\ never HIDX-GEN's, and a null base is no store's.
+\ offsets were read against. An image holds them at 0: generation 0 is never
+\ HIDX-GEN's, and a null base is no store's.
 CHECKER-REG:SCRATCH{
 variable USX-GEN   variable USX-HI
 PTR-VARIABLE USX-BASE
@@ -9237,14 +9229,13 @@ CAST: REG-PTR-CELLS ( ptr u8 -- ptr ptr u8 )
 17 constant HIDX-TABLES
 $CBF29CE484222325 constant HIDX-FNV-BASIS
 $100000001B3 constant HIDX-FNV-PRIME
-\ The mapping survives a file boundary, so it lives outside the spans.
 PTR-VARIABLE HIDX-MEM
 variable HIDX-MEM-U    \ its bytes: SYM-GROW changes SYM-CAP before it drops it
 \ HIDX-GEN counts the times this mapping was dropped or re-laid-out. Starts at 1
 \ so a never-built index recorded as 0 can never look current.
 variable HIDX-GEN
-\ The index rests invalid at a file boundary and in an image. The effect owner
-\ rests unbound, so an image bakes no store address through it.
+\ The index rests invalid in an image. The effect owner rests unbound, so an
+\ image bakes no store address through it.
 CHECKER-REG:SCRATCH{
 variable HIDX-VALID
 variable HIDX-EPOCH
@@ -9377,8 +9368,6 @@ HIDX-MEM-CLEAR
       drop s" checker: symbol index mmap failed" 76 die THEN
    HIDX-MEM!  u HIDX-MEM-U ! ;
 
-\ The epoch restarts at a file boundary while the mapping stays, so a stamp left
-\ from an earlier run of epochs could equal a new one.
 : HIDX-ROWS-CLEAR ( -- )
    0 begin dup SYM-CAP < while
       dup HIDX-EP0
@@ -9874,12 +9863,12 @@ $400 constant UIX-ENT-INIT        \ entries; grows geometrically
 0 constant UIX-E-OFF              \ the interned node's store offset
 1 constant UIX-E-BKT              \ the bucket it is chained in
 2 constant UIX-E-NEXT             \ the next entry in that bucket, +1; 0 ends it
-\ The mappings and their capacities survive a file boundary, and only UIX-RESET
-\ gives them up, for an image.
+\ The mappings keep their largest capacity for the process; an image holds the
+\ pointers null, so UIX-EXACT allocates them again.
 PTR-VARIABLE UIX-BKT-P   PTR-VARIABLE UIX-ENT-P
 variable UIX-BKT-CAP variable UIX-ENT-CAP
-\ At a file boundary UIX-N rests 0 and the null base mismatches USIGS, so
-\ UIX-EXACT drops the stale buckets before any chain walk.
+\ In an image UIX-N rests 0 and the null base mismatches USIGS, so UIX-EXACT
+\ drops the stale buckets before any chain walk.
 CHECKER-REG:SCRATCH{
 variable UIX-N       variable UIX-HI
 variable UIX-I       variable UIX-J   variable UIX-H
@@ -13651,7 +13640,7 @@ variable CK-CLOSED-OFF     \ its record, offset+1 (USIG-NEWEST)
 variable CK-CLOSED-OPEN    \ its record is unpublished: RECORD-PUBLISHED-LOCAL links it once
 CHECKER-REG:}SCRATCH
 : CK-CLOSED-OFF@ ( -- n ) CK-CLOSED-OFF @ ;
-\ A build's checker starts with no definition recorded, as at a file boundary.
+\ A build's checker starts with no definition recorded.
 package CHECK
 CK-CLOSED-SYM 0 CELL-ROW+
 CK-CLOSED-IX 0 CELL-ROW+

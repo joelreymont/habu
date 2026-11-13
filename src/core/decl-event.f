@@ -540,27 +540,6 @@ public
       DEV-PART-CLEAR
    THEN ;
 
-private
-
-\ Image-snapshot reset, not the declaration PART-SNAPSHOT. Both arenas grow by
-\ REG-GROW1 into fresh pages of this process and the snapshot copies the DP
-\ heap verbatim, so a grown base would persist as a dead address: measured, a warm
-\ image stored into an unmapped page and died SIGSEGV/SIGBUS on its first ENUM.
-\ The boot stores clear whole so a reusing build and a fresh one capture the same
-\ bytes. Runs only at depth 0: a mid-declaration image would carry frames whose
-\ savepoints no one closes.
-: DEV-SNAPSHOT-RESET ( -- )
-   DECLARATION-TRANSACTION:ACTIVE? DEV-TX-DEPTH @ 0 <> or IF
-      s" decl-event: snapshot inside declaration transaction" DEV-BUG-RC die
-   THEN
-   DEV-A-P DEV-A-BOOT DEV-CAP-V @ DEV-REC * ARENA-BOOT-RESTORE
-   DEV-CAP-INIT DEV-CAP-V !
-   DEV-TX-P DEV-TX-BOOT DEV-TX-CAP-V @ DEV-TX-REC * ARENA-BOOT-RESTORE
-   DEV-TX-CAP-INIT DEV-TX-CAP-V !
-   DEV-A-BOOT 0 DEV-CAP-INIT DEV-REC * CELL / ARENA-CELLS-ZERO
-   DEV-TX-BOOT 0 DEV-TX-CAP-INIT DEV-TX-REC * CELL / ARENA-CELLS-ZERO
-   DEV-RESET ;
-
 \ Public API. CURRENT answers the frame the declaration savepoint opened and
 \ rejects outside one; OPEN is the standalone interface. The event words and the
 \ provisional FIELD-SCHEMA@ / PAYLOAD-* queries are legal only between OPEN and
@@ -594,7 +573,6 @@ public
 : FINALIZE ( n -- ) DEV-FINALIZE ;
 : ROLLBACK ( n -- ) DEV-ROLLBACK ;
 : RESET ( -- ) DEV-RESET ;
-: SNAPSHOT-RESET ( -- ) DEV-SNAPSHOT-RESET ;
 
 : CURRENT-VARIANT ( -- n ) DEV-CUR-VAR @ ;
 : NO-VARIANT ( -- n ) DEV-NO-VARIANT ;

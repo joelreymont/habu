@@ -1115,18 +1115,6 @@ private
 
 variable TDPLAN-SYM-HI        \ the largest symbol a row of this plan holds
 
-
-public
-
-defer TDECL-OWNER-SNAPSHOT-XT ( -- )
-
-private
-
-: TDECL-OWNER-SNAPSHOT-DEFAULT ( -- ) ;
-: TDECL-OWNER-SNAPSHOT-DEFAULTS ( -- )
-   [: TDECL-OWNER-SNAPSHOT-DEFAULT ;] is TDECL-OWNER-SNAPSHOT-XT ;
-TDECL-OWNER-SNAPSHOT-DEFAULTS
-
 : TDPLAN-BYTE-NEED ( n -- n ) {: add:n :}
    add 0 < add TDPLAN-BYTE-MAX > or IF
       s" sumtype: generated declaration plan capacity overflow" 76 die

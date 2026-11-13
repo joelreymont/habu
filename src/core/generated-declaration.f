@@ -197,13 +197,6 @@ public
    a u d CAP-COPY
    row NEWEST ! ;
 
-\ The last declaration's packet slots back to zero at a file boundary or image
-\ capture, so a cached load and a fresh one capture the same bytes.
-: SNAPSHOT-RESET ( -- )
-   SLOTS SPAN-CAP * 0 ?do 0 SPAN-BUF i + c! loop
-   SLOTS 0 ?do 0 i cells SPAN-LEN + ! loop
-   NO-CODE ARMED ! ;
-
 private
 
 \ The codes of the owners loaded before this file: sumtype.f's grammar codes,
