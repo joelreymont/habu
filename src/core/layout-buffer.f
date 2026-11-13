@@ -352,6 +352,41 @@ PRIM: LDEFER-BIND PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
 \ Effect: ( count cbase wc -- ).
 PRIM: LDEFER-GROW PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
 
+\ ---- LBUF: the routines a buffer child's body calls --------------------------
+\ A buffer block starts with HEAD-CELLS header cells, indexed by OFF (the
+\ elements' byte offset from the block), CAP and CNT (allotted and live element
+\ counts) and STRIDE (an element's width in cells). An unbound block reads 0
+\ in all but STRIDE. Each routine takes the block, or the cell holding it, last.
+package LBUF
+public
+
+0 constant OFF
+1 constant CAP
+2 constant CNT
+3 constant STRIDE
+4 constant HEAD-CELLS
+
+private
+
+\ Element i of the block.
+: ELEMENT ( n ptr n -- ptr n )
+   {: i:n v:ptr :}
+   v  v OFF cells + @ +  i v STRIDE cells + @ * cells + ;
+
+\ Binds the block in the cell to count elements, as LDEFER-BIND does.
+: BIND ( n ptr ptr n -- )
+   {: count:n b:ptr :}
+   b @ {: v:ptr :}
+   count v  v STRIDE cells + @  LDEFER-BIND ;
+
+\ Grows the block in the cell to count elements, as LDEFER-GROW does.
+: GROW ( n ptr ptr n -- )
+   {: count:n b:ptr :}
+   b @ {: v:ptr :}
+   count v  v STRIDE cells + @  LDEFER-GROW ;
+
+;package
+
 \ The `create` comes first so the accessor and both binders can name the control
 \ cells; it runs no CHECK, so the accessor is still the first definition the
 \ armed window authorizes by name.

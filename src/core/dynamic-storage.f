@@ -192,6 +192,30 @@ public
 
 private
 
+\ A buffer block is its head, its control block right behind it and the
+\ element width in bytes after that; each routine takes the head, or the cell
+\ holding it, last.
+1 cells constant CTL-OFF
+CONTROL-CELLS 1+ cells constant WIDTH-OFF
+
+: HEAD-CTL ( ptr ptr a -- ptr n ) CTL-OFF + byte-view cell-view ;
+: HEAD-WIDTH ( ptr ptr a -- n ) WIDTH-OFF + byte-view cell-view @ ;
+
+\ Element idx of the block; it reads the width inline so an access stays one
+\ call deep.
+: ELEMENT ( n ptr ptr a -- ptr a )
+   {: idx:n cb:ptr :}
+   cb @  idx  cb WIDTH-OFF + byte-view cell-view @  * + ;
+
+\ Reserves count elements in the block the cell holds.
+: ENSURE ( n ptr ptr ptr a -- )
+   {: count:n b:ptr :}
+   b @ {: cb:ptr :}
+   count cb  cb HEAD-CTL  cb HEAD-WIDTH  RESERVE ;
+
+\ Releases the block the cell holds.
+: EMPTY ( ptr ptr ptr a -- ) @ dup HEAD-CTL RELEASE ;
+
 \ Whether row i's record lies wholly inside the span. A record is its head (one
 \ cell) and its control block (CONTROL-CELLS cells): it belongs to the span when
 \ both lie wholly inside it, and a span that cuts through either, or holds
