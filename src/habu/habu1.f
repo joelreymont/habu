@@ -3384,18 +3384,6 @@ public
 : EMIT-FAULT-REC ( -- )  LFAULTREC LABEL@ LBL,  BTHROW-UNWIND ;
 
 private
-\ The `throw` primitive. A zero code is a caller bug, success passed as a
-\ failure: it would unwind the body and let its catch read 0, so it unwinds as
-\ ENGINE-ERROR:THROW-ZERO. A TASK:HALT unwind (HALT-UNWIND-CELL set) carries 0
-\ by design and keeps it: only the task's root catch receives that code. The
-\ engine's own BTHROW sites throw named nonzero codes or rethrow a caught one.
-: BTHROWPRIM ( -- )
-   LBL {: coded:label :}
-   A G-POP  A coded CBNZ,
-   10 DATA HALT-UNWIND-CELL LDR,  10 coded CBNZ,
-   A ENGINE-ERROR:THROW-ZERO MOVZ,
-   coded LBL,  A G-PUSH  BTHROW ;
-
 \ BCATCH-FORWARD sits at CATCH-RES with the code in x9. With HALT-UNWIND-CELL
 \ clear the code is delivered as always. Set, a TASK:HALT is unwinding the task:
 \ while a frame remains below this one (HND nonzero) this is an inner catch,
@@ -4603,7 +4591,7 @@ package ENGINE-EMIT
    s" rbase" ['] BRBASE FPRIM-L ;
 
 : EMIT-CHECKER-PRIMS ( -- )
-   s" catch" ['] BCATCH FPRIM   s" throw" ['] BTHROWPRIM FPRIM-L
+   s" catch" ['] BCATCH FPRIM   s" throw" ['] BTHROW FPRIM-L
    s" finally" ['] BFINALLY FPRIM
    s" c2-invoke" ['] BC2-INVOKE FPRIM
    s" c2-init-stow" ['] BC2-INIT-STOW FPRIM

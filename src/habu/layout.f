@@ -334,8 +334,7 @@ $3C88 constant TASK-TCB-CELL
 \ HALT-UNWIND-CELL: nonzero while a TASK:HALT unwinds the task that observed it,
 \ else 0, which a fresh task region and every non-task region hold. Only that
 \ task's own thread writes it: HALT-UNWIND, which PAUSE calls, sets it before it
-\ throws, and the catch family reads it on its throw-resume path, and the
-\ `throw` primitive keeps a halt's 0 instead of refusing it. An inner
+\ throws, and the catch family reads it on its throw-resume path. An inner
 \ catch rethrows at once and never pushes; the task's root catch, whose frame's
 \ prev HND is 0, clears it and delivers the code; finally and c2-invoke clear it
 \ while their cleanup runs and set it again to continue the unwind. $3870

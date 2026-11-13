@@ -541,8 +541,7 @@ holds an address**.
   `ndict!` exit 79 on it too while any task is live, writing
   `E-TASK-COMPILE habu: <primitive> while a task is live lr <lr>`. `NLEASE`'s
   checks throw `NLEASE:E-TASK` on a task's thread.
-- `0 throw` throws `ENGINE-ERROR:THROW-ZERO` (109), never the ANS no-op:
-  `[: 0 throw ;] catch` answers 109.
+- `0 throw` unwinds unchecked, a caller bug: `[: 0 throw ;] catch` answers 0.
 - A read or write that faults in Habu code throws `ENGINE-ERROR:MEMORY-FAULT`
   (110) on the faulting thread, after the line `E-MEMORY-FAULT habu: memory
   fault at <address> pc <pc>` on fd 2: `catch` answers 110, a task ends with

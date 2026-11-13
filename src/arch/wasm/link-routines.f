@@ -473,16 +473,12 @@ variable SITES-N
    0 ROOM WLEB:U32-PAD! BUF-U +! ;
 
 
-\ throw ( n -- ) pops its code into ctx.throw-code and answers status 1; a zero
-\ code is stored as ENGINE-ERROR:THROW-ZERO.
+\ throw ( n -- ) pops its code into ctx.throw-code and answers status 1.
 : THROW-BODY ( -- )
    2 U32,  1 U32,  I32 B,  1 U32,  I64 B,
    WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES I32,  OP-I32-SUB B,  L-SP SET,
    L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,  L-CODE SET,
    SP!,
-   L-CODE GET,  OP-I64-EQZ B,  IF,
-      ENGINE-ERROR:THROW-ZERO I64,  L-CODE SET,
-   OP-END B,
    L-CTX GET,  L-CODE GET,  OP-I64-STORE ALIGN-64 WPROF:CTX-THROW-CODE MEM,
    NO-FAULT,  1 I32,  OP-END B, ;
 

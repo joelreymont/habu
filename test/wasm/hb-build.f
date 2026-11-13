@@ -442,12 +442,20 @@ variable TEXT-U
    s" an uncaught `9 throw` ends run with status 1 and throw-code 9" T-LABEL
    s" throw.wasm" BUILD 0 T=
    RAN 1 T=
-   WASM-HARNESS:THROW-CODE 9 T=
+   WASM-HARNESS:THROW-CODE 9 T= ;
+
+false [if] \ off until dot habu-add-the-checks-a49d054d
+: THROW-ZERO-CASE ( -- )
    s" : MAIN ( -- ) 0 throw ;" s" throw-zero.f" SOURCE!
    s" `0 throw` ends run with status 1 and throw-code ENGINE-ERROR:THROW-ZERO" T-LABEL
    s" throw-zero.wasm" BUILD 0 T=
    RAN 1 T=
    WASM-HARNESS:THROW-CODE ENGINE-ERROR:THROW-ZERO T= ;
+
+\ A line of catch.f's MAIN, after FIVE.
+: CATCH-ZERO+ ( -- )
+   S\" [: 0 throw ;] catch 109 4 WANT\n" SB-APPEND ;
+[then]
 
 \ run.mjs shows OUT after a trap but not the throw code, which it prints only
 \ for status 1.
@@ -473,7 +481,7 @@ variable TEXT-U
    S\" : NEST ( -- n ) 0 3 0 do 4 0 do 1 + loop loop ;\n: PARK ( n -- n ) >r 1 r> + ;\n" SB-APPEND
    \ MAIN's lines go unindented to keep the text within SB-CAP.
    S\" public\n: MAIN ( -- )\n" SB-APPEND
-   S\" [: 7 throw ;] catch 7 1 WANT  FIVE  [: 0 throw ;] catch 109 4 WANT\n" SB-APPEND
+   S\" [: 7 throw ;] catch 7 1 WANT  FIVE\n" SB-APPEND
    S\" 1 2 [: MID ;] catch 11 5 WANT  2 6 WANT  1 7 WANT\n" SB-APPEND
    S\" LEAK  LEAK-R  NEST 12 8 WANT  6 PARK 7 9 WANT\n" SB-APPEND
    S\" [: 42 ;] [: CLEAN ;] finally 42 10 WANT  DONE @ 1 11 WANT\n" SB-APPEND

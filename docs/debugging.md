@@ -53,10 +53,11 @@ An uncaught throw in a `--load` or spawned child, or in an arm64 stripped (AOT)
 application, runs the process-exit hook and then exits by its code. An x86-64
 stripped application's uncaught throw does not yet run the hook or print the
 report. A code from 1 to 255 is the exit status and prints nothing: `42 throw`
-exits 42. Any other code prints `hb: uncaught throw code N` on stderr and exits
-67, so read the `E-*` from the message, not from the status. `0 throw` throws
-`ENGINE-ERROR:THROW-ZERO` instead, so it exits 109 on every entry. A refusal the
-checker rendered before throwing its code prints the same line after its
+exits 42. Any other nonzero code prints `hb: uncaught throw code N` on stderr
+and exits 67, so read the `E-*` from the message, not from the status. Under
+`--load` an uncaught `0 throw` reads as success: it ends its file silently and
+the run goes on; a stripped application prints `hb: uncaught throw code 0` and
+exits 67. A refusal the checker rendered before throwing its code prints the same line after its
 diagnostic and exits 70, the status of every refusal; a stripped application
 carries no checker, so it never takes that exit. A one-byte diagnostic and a
 clean exit means a raw engine capacity path, not a throw.
