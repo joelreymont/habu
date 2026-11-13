@@ -99,7 +99,6 @@ create ERR CAP allot
    s" 0 data-base TXN-STATE-OFF TXN-STATE-LEN + 1- + !" REJECTS
    s" 0 data-base PD-TABLE-OFF + c!" ACCEPTS
    s" 0 data-base PD-TABLE-END 1 cells - + !" ACCEPTS
-   s" 0 data-base DECLARED-LOG:OFF + c!" ACCEPTS
    s" 0 data-base REPLAY-SCOPE:LATCH 1 cells - + !" ACCEPTS
    s" 0 data-base REPLAY-SCOPE:LATCH 1- + !" REJECTS
    s" 0 data-base REPLAY-SCOPE:LATCH + c!" REJECTS

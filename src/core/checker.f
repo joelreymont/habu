@@ -754,22 +754,6 @@
 \ as CHECK runs it for a refusal, and the load goes on to the next definition.
 \ The packet is the definition's diagnostic; nothing else renders.
 \
-\ The checked-prefix transfer: the retained checker checked the replacement
-\ prefix before the new owner's hooks existed, so TRANSFER-CHECKED copies those
-\ graphs into the new owner before the hooks are enabled. Symbols and
-\ constructors cross by name, never by id. The copies land in the source's
-\ record order, not its symbol order: each copy appends a record, a no-return
-\ row and, for a deferred word, a defer row, and interns its name when this
-\ owner lacks it, so copy order is image order. A host numbers every name it
-\ holds a PRIM: row for ahead of all others, so a walk by source id would make
-\ the image depend on the host's primitive count; sorting by the store offset
-\ just past each record (EW.NEXT) orders the copies the same way on every
-\ host. The source's record links are then remapped through the copies, looked
-\ up by source handle. Claiming the source owner does not depend on having
-\ something to import: a window that did not claim would compile its own
-\ source with no source owner, which the optimizing front end refuses, and
-\ re-claiming an owned record is the same store.
-\
 \ The interpret row: a segment is a saved row and the row's two buffers, keyed
 \ by the evaluator stack base (a closed `evaluate` reads a different floor) and
 \ the evaluate levels ENTRY..LEVEL it spans (the engine's EVALD). Text a running
@@ -804,7 +788,7 @@
 \ A capture keeps every checker symbol the engine holds.
 package CHECKER-REG
 \ DECL-CELL is the record the engine certifies through; TARGET-DECL-CELL is
-\ the one a replacement checker publishes itself into.
+\ the one each checker publishes itself into as it loads.
 NCOMP-DISPATCH:DECL-CELL RESERVED-PTR-U8-CELL SOURCE-OWNER-A
 NCOMP-DISPATCH:TARGET-DECL-CELL RESERVED-PTR-U8-CELL TARGET-OWNER-A
 CHECKER-OWNER-ABI:RAW-OFF constant RAW-OFF
@@ -817,8 +801,6 @@ CHECKER-OWNER-ABI:PACKAGE-OFF constant PACKAGE-OFF
 CHECKER-OWNER-ABI:PUBLIC-OFF constant PUBLIC-OFF
 CHECKER-OWNER-ABI:PRIVATE-OFF constant PRIVATE-OFF
 CHECKER-OWNER-ABI:END-PACKAGE-OFF constant END-PACKAGE-OFF
-CHECKER-OWNER-ABI:SOURCE-ROW-OFF constant SOURCE-ROW-OFF
-CHECKER-OWNER-ABI:SOURCE-CON-OFF constant SOURCE-CON-OFF
 CHECKER-OWNER-ABI:EXPORT-OFF constant EXPORT-OFF
 CHECKER-OWNER-ABI:WIDE-OFF constant WIDE-OFF
 CHECKER-OWNER-ABI:CAPTURE-OFF constant CAPTURE-OFF
@@ -898,8 +880,6 @@ private
    0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
    0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
    0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
-   0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
-   0 , 0 , 0 , 0 , 0 , 0 ,
    0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
    0 , 0 ,
    0 , 0 , 0 , 0 , 0 , 0 ,
@@ -9270,8 +9250,6 @@ variable SYM-STR-CAP-V   SYM-STR-INIT SYM-STR-CAP-V !
 1 constant SYM-PRIVATE
 2 constant SYM-PUBLIC
 
-0 constant SYM-PKG-A-CELL
-2 constant SYM-NAME-A-CELL
 $0 constant SYM-PKG-A-OFF
 $8 constant SYM-PKG-U-OFF
 $10 constant SYM-NAME-A-OFF
@@ -9351,26 +9329,9 @@ variable SYM-ID
    SYM-STR-U @ u + SYM-STR-U !
    off u ;
 
-\ SOURCE-ROW crosses checker owners, including an older retained checker. The
-\ caller consumes it before asking for another row; capture clears the view.
-create SYM-XFER SYM-REC allot
-
-: SYM-XFER-CLEAR ( -- )
-   SYM-XFER CELL-VIEW 0 SYM-REC CELL / ARENA-CELLS-ZERO ;
-
 package CHECKER-REG
 \ Cell rows whose pointer cells hold byte addresses.
 CAST: REG-PTR-CELLS ( ptr u8 -- ptr ptr u8 )
-: SYM-XFER.PKG-A ( ptr u8 -- ptr ptr u8 )
-   REG-PTR-CELLS SYM-PKG-A-CELL ptr-field ;
-: SYM-XFER.NAME-A ( ptr u8 -- ptr ptr u8 )
-   REG-PTR-CELLS SYM-NAME-A-CELL ptr-field ;
-
-: SYM-XFER-ROW ( n -- ptr u8 ) {: id:n :}
-   id SYM-PKG$ SYM-XFER SYM.PKG-U ! SYM-XFER SYM-XFER.PKG-A !
-   id SYM-NAME$ SYM-XFER SYM.NAME-U ! SYM-XFER SYM-XFER.NAME-A !
-   id SYM-ROW SYM.VIS @ SYM-XFER SYM.VIS !
-   SYM-XFER ;
 ;package
 
 : SYM-MATCH? ( ptr u8 n n ptr u8 n n -- bool )
@@ -11700,23 +11661,21 @@ CHECKER-REG:}SCRATCH
       EN-ATOM of  node E-AK-BIND-SLOT  endof
    endcase ;
 
-\ Cross-owner instantiation resolves constructors by their declared names.
-defer E-I-FOREIGN-CON ( n -- n )
-\ A package-unit graph carries constructor names, not the exporting owner's ids.
-variable UNIT-INST-ON   0 UNIT-INST-ON !
 defer E-I-UNIT-CON ( ptr u8 ptr u8 -- n )
 
 : E-INST-PUSH? ( n ptr u8 -- bool ) {: off:n pool:ptr :}
    off 0= IF RES-FALSE EXIT THEN
    pool off + EN.TAG @ EN-PUSH = ;
 
+\ A pool other than USIGS and the top-level row's is a package unit's graph,
+\ which names its constructors instead of carrying the exporting owner's ids.
 : E-INST-FROM ( n ptr u8 -- n ) {: off:n pool:ptr :}
    off 0= if 0 exit then
    pool off + >r
    r@ EN.TAG @ case
       EN-CON of
          pool USIGS <> pool TOP-READ-P @ BYTE-VIEW <> and IF
-            UNIT-INST-ON @ IF r@ pool E-I-UNIT-CON ELSE r@ EN.A @ E-I-FOREIGN-CON THEN
+            r@ pool E-I-UNIT-CON
          ELSE r@ EN.A @ THEN MK-CON r> drop
       endof
       EN-VAR of
@@ -11779,8 +11738,6 @@ defer E-I-UNIT-CON ( ptr u8 ptr u8 -- n )
       endof
       EN-BVAR of r@ EN.A @ MK-BVAR r> drop endof
       EN-ATOM of
-         pool USIGS <> pool TOP-READ-P @ BYTE-VIEW <> and UNIT-INST-ON @ 0= and
-         if s" checker: unsupported transferred atom" 76 die then
          pool USIGS = IF r@ EN.C @ E-AK-BOUND ELSE 0 THEN {: bound:n :}
          bound 0 <> IF bound ELSE
             r@ pool E-I-STR r@ EN.C @
@@ -11788,8 +11745,6 @@ defer E-I-UNIT-CON ( ptr u8 ptr u8 -- n )
             MK-ATOM-K
          THEN r> drop endof
       EN-PARAM of
-         pool USIGS <> pool TOP-READ-P @ BYTE-VIEW <> and UNIT-INST-ON @ 0= and
-         if s" checker: unsupported transferred family" 76 die then
          r@ {: np:ptr :}
          np EN.C @ {: argc:n :}
          np EN.D @ {: run:n :}                      \ arg-run offset in USIGS
@@ -16106,7 +16061,6 @@ REG-EXT-AOT-DEFAULTS
    SGBAD-CLEAR
    PKRESET
    NMAP-RESET ROWMAP-RESET   \ letter maps rest at UNBOUND, not 0, so no span holds them
-   SYM-XFER-CLEAR
    FIELD-PROJ-SCRATCH-RESET ;
 
 : NORET-REC ( -- ptr n )
@@ -16280,12 +16234,6 @@ TRUSTED: RECORD-LINK-OCC ( n -- n n ) {: ord:n :}
    row RLINK.EFFECT cells + @ 0= row RLINK.GRID cells + @ 0= and IF
       RES-FALSE EXIT THEN
    ord row RLINK.OCC cells + @ RECORD-LINK-MATCH? ;
-
-\ The pointer is borrowed until the source owner next mutates its link store.
-: SOURCE-LINK ( n -- ptr n ) {: ord:n :}
-   ord RECORD-LINK-CURRENT? IF ord RECORD-LINK-CELL EXIT THEN
-   NULL-PTR ;
-' SOURCE-LINK CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:SOURCE-LINK-OFF + xt!
 
 : RECORD-LINK-VALID? ( n n n -- bool )
    {: ord:n effect:n control:n :}
@@ -21601,50 +21549,6 @@ DIAG-NO-FILE$ DIAG-FILE-COPY
 package CHECKER-REG
 ' TRUST-DECL DECLARATIONS EFFECT-OFF + xt!
 ;package
-
-\ CHECKER-DECLARED-ROW!: the row of a definition compiled with the hook cell
-\ empty is its declaration, active and WITHOUT authority: an unsealed checker
-\ binds the row and checks callers against it, a sealed one refuses it by
-\ authority. A TRUSTED: declaration goes through TRUST-DECL instead.
-\ A live row wins: at tier 1 the scan's own row (certified, deferred, or a
-\ multi-error recovery fact) keeps the symbol; after `undefine` the tombstone is
-\ not live and the redefinition records. A declaration that does not parse, one
-\ too deep or wide for a record, or one with a scope scheme records nothing (an
-\ unverified declaration carries no lexical binder) and its symbol stays
-\ interned without a row. No DOES-EFF-STEP: no clause check ran, and STORE
-\ keeps no created-word value for a row without authority. Sealed as
-\ TRUST-DECL is.
-\ CK-DECLARED-SYM! records the row once the symbol is known and no live row
-\ states it. A cold boot's claim keys each definition logged before it by its
-\ dictionary record, not by a token in the open scope. It writes a row for any
-\ symbol it is handed, so it is sealed as well.
-: CK-DECLARED-SYM! ( n ptr u8 n -- )
-   {: sym:n sa:ptr su:n :}
-   sym CHECKER-REC-SYM !
-   NEW
-   SGBAD-CLEAR
-   sa su PARSE-SIG-RAW {: din:n dout:n rin:n rout:n :}
-   SGBAD @ 0 <> SIG-UNRES @ 0 <> or IF EXIT THEN
-   din SCHEME-TYPE? dout SCHEME-TYPE? or
-   rin SCHEME-TYPE? or rout SCHEME-TYPE? or IF EXIT THEN
-   sa su din dout rin rout SGBAD-UNFIT!
-   SGBAD @ IF EXIT THEN
-   din KEEP-QUOTS
-   din dout rin rout SGHASR @ RES-FALSE E-ADD-EFFECT
-   sa su CHECKER-ASIG-CAPTURE
-   \ An unchecked body may throw after replacing a scoped input.
-   PD-IN @ SCOPED-TYPE? PR-IN @ SCOPED-TYPE? or IF
-      sym sym CTL-FLAGS-SYM CTL-THROW or 0 0 NORET-ADD-SYM
-   THEN
-   sym CK-CLOSE! ;
-
-: CHECKER-DECLARED-ROW! ( ptr u8 n ptr u8 n -- )
-   {: na:ptr nu:n sa:ptr su:n :}
-   na nu BYTE-SPAN? 0= IF na 0 TRUST-STALE EXIT THEN
-   na nu CHECKER-CERT-DUP? IF EXIT THEN
-   na nu CHECKER-RECORD-NAME 2drop
-   CHECKER-REC-SYM @ sa su CK-DECLARED-SYM! ;
-
 
 : TRUST-RECORD-WL ( -- n )
    CHECKER-AUTH-PACKAGE-MODE@ {: mode:n :}
@@ -27103,376 +27007,6 @@ NAMED-OPERAND-INSTALL
    {: a:ptr u:n :}
    a u NAMED-SYM a u NAV-USE-NOW ;
 
-\ SOURCE-ROW is consumed synchronously before the next call. Node offsets remain
-\ relative to the returned source pool, not this transient flat view.
-create EFFECT-XFER EFF-WIRE allot
-: EFFECT-XFER-CLEAR ( -- ) EFFECT-XFER EFF-WIRE ARENA-ZERO ;
-
-package CHECKER-REG
-
-CHECKER-OWNER-ABI:BINDING-DEFER constant TRANSFER-DEFER
-
-: CHECKED-ROW ( n -- ptr u8 ptr u8 ptr u8 n bool ) {: id:n :}
-   id SYM-N @ >= if NULL-PTR NULL-PTR NULL-PTR 0 RES-FALSE exit then
-   id USIG-NEWEST {: off:n :}
-   off 0= if NULL-PTR NULL-PTR NULL-PTR 0 RES-TRUE exit then
-   off 1- E-PTR {: rec:ptr :}
-   rec ER.ACTIVE @ dup EFF-DELETED = swap EFF-UNRESOLVED = or
-   if NULL-PTR NULL-PTR NULL-PTR 0 RES-TRUE exit then
-   id CTL-FLAGS-SYM
-   id DFER-FIND-SYM if TRANSFER-DEFER or then
-   id CTL-MASKS-SYM XFER-PACK {: flags:n :}
-   rec EFFECT-XFER E-WIRE-COPY
-   USIGS EFFECT-XFER id SYM-XFER-ROW flags RES-TRUE ;
-
-: CON-NAME ( n -- ptr u8 n ) CT-NAME$ ;
-
-: SOURCE-HANDLES ( n -- n n bool ) {: id:n :}
-   id USIG-NEWEST id NORET-NEWEST {: effect:n control:n :}
-   control 0= IF effect control RES-FALSE EXIT THEN
-   control 1- NORET-CELL {: row:ptr :}
-   effect control
-   row NORET.CREATES @ 0 <> row NORET.SOURCE @ 0 <> or ;
-
-' CHECKED-ROW DECLARATIONS SOURCE-ROW-OFF + xt!
-' CON-NAME DECLARATIONS SOURCE-CON-OFF + xt!
-' SOURCE-HANDLES DECLARATIONS CHECKER-OWNER-ABI:SOURCE-HANDLES-OFF + xt!
-
-defer SOURCE-ROW ( n -- ptr u8 ptr u8 ptr u8 n bool )
-defer SOURCE-CON-NAME ( n -- ptr u8 n )
-defer SOURCE-HANDLES-XT ( n -- n n bool )
-defer SOURCE-LINK-XT ( n -- ptr n )
-variable TRANSFER-FACTS 0 TRANSFER-FACTS !
-
-: FOREIGN-CON ( n -- n )
-   SOURCE-CON-NAME CT-FIND
-   dup 0= if s" checker: transferred constructor is absent" 76 die then ;
-
-\ The handover: the retained checker certifies the window only up to the
-\ transfer, and from here the window is the sole certifier for its own source.
-: CLAIM-SOURCE-OWNER ( -- )
-   DECLARATIONS SOURCE-OWNER-A ! ;
-
-\ The owner's callbacks are stored as raw cells in its record; these casts are
-\ the one crossing from a stored execution token to the quotation each defer
-\ takes.
-CAST: AS-SOURCE-ROW ( n -- [ n -- ptr u8 ptr u8 ptr u8 n bool ] )
-CAST: AS-CON-NAME ( n -- [ n -- ptr u8 n ] )
-CAST: AS-SOURCE-HANDLES ( n -- [ n -- n n bool ] )
-CAST: AS-SOURCE-LINK ( n -- [ n -- ptr n ] )
-: SOURCE-FACTS? ( ptr u8 -- bool ) {: owner:ptr :}
-   owner CHECKER-OWNER-ABI:HEADER-BYTES - CELL-VIEW @
-      CHECKER-OWNER-ABI:MAGIC <> IF RES-FALSE EXIT THEN
-   owner CELL - CELL-VIEW @
-      CHECKER-OWNER-ABI:SOURCE-LINK-OFF CELL + < IF RES-FALSE EXIT THEN
-   owner CHECKER-OWNER-ABI:SOURCE-HANDLES-OFF + CELL-VIEW @ 0 <>
-   owner CHECKER-OWNER-ABI:SOURCE-LINK-OFF + CELL-VIEW @ 0 <> and ;
-: BIND-SOURCE ( ptr u8 -- ) {: owner:ptr :}
-   ['] FOREIGN-CON is E-I-FOREIGN-CON
-   owner SOURCE-ROW-OFF + CELL-VIEW @ AS-SOURCE-ROW is SOURCE-ROW
-   owner SOURCE-CON-OFF + CELL-VIEW @ AS-CON-NAME is SOURCE-CON-NAME
-   owner SOURCE-FACTS? IF
-      owner CHECKER-OWNER-ABI:SOURCE-HANDLES-OFF + CELL-VIEW @
-         AS-SOURCE-HANDLES is SOURCE-HANDLES-XT
-      owner CHECKER-OWNER-ABI:SOURCE-LINK-OFF + CELL-VIEW @
-         AS-SOURCE-LINK is SOURCE-LINK-XT
-      1 TRANSFER-FACTS !
-   ELSE
-      0 TRANSFER-FACTS !
-   THEN ;
-
-: TRANSFER-SYMBOL ( ptr u8 -- n ) {: sym:ptr :}
-   sym SYM-XFER.PKG-A @ sym SYM.PKG-U @ sym SYM.VIS @
-   sym SYM-XFER.NAME-A @ sym SYM.NAME-U @ SYM-INTERN ;
-
-: TRANSFER-PRIM? ( n n -- bool )
-   {: sym:n effect:n :}
-   #PE @ 0 ?do
-      i PE-ACTIVE? IF
-         i PE-SYM@ sym = i PE-EFF@ 1+ effect = and IF
-            RES-TRUE unloop EXIT
-         THEN
-      THEN
-   loop RES-FALSE ;
-
-: TRANSFER-ROW ( ptr u8 ptr u8 ptr u8 n -- n n )
-   {: pool:ptr rec:ptr name:ptr packed:n :}
-   rec 0= if 0 0 exit then
-   \ A failed declaration's row serves only its own run, and the copy below
-   \ records every row it imports as an active one, a source grant.
-   rec EW.ACTIVE @ EFF-RECOVERY = if
-      s" checker: a failed declaration's row does not transfer" 76 die
-   then
-   name TRANSFER-SYMBOL {: sym:n :}
-   \ Target-checked rows win. An ordinary source row still carries its checked
-   \ graph when the target has only that symbol's exact active PRIM: axiom. Keep
-   \ the axiom for primitive call authority.
-   sym USIG-NEWEST {: target:n :}
-   target 0 <> if
-      \ Callers check against the kept row, so the source links bind to it too.
-      packed XFER-FLAGS EFFECT-EXTERNAL and 0 <> if target sym NORET-NEWEST exit then
-      sym target TRANSFER-PRIM? 0= if target sym NORET-NEWEST exit then
-   then
-   packed XFER-FLAGS sym CTL-FLAGS-SYM CTL-NOMINAL and or {: flags:n :}
-   NEW rec EW.TVN @ rec EW.RVN @ E-INST-COUNTS
-   rec EW.DIN @ pool E-INST-FROM
-   rec EW.DOUT @ pool E-INST-FROM
-   rec EW.RIN @ pool E-INST-FROM
-   rec EW.ROUT @ pool E-INST-FROM
-   sym CHECKER-REC-SYM !
-   rec EW.HASR @ 0= 0= flags EFFECT-EXTERNAL and 0 <> E-ADD-EFFECT
-   sym flags TRANSFER-DEFER invert and  packed XFER-DMASK  packed XFER-RMASK  NORET-ADD-SYM
-   sym flags TRANSFER-DEFER and 0= 0= DFER-ADD-SYM
-   sym USIG-NEWEST sym NORET-NEWEST ;
-
-\ ORDER-P: ORDER-N rows of handles, then ORDER-RUNS runs of ORDER-N pairs; a
-\ private mapping TRANSFER-CHECKED releases on every way out, never imaged.
-4 cells constant ORDER-ROW
-0 constant ORDER-SOURCE-EFFECT
-1 constant ORDER-TARGET-EFFECT
-2 constant ORDER-SOURCE-CONTROL
-3 constant ORDER-TARGET-CONTROL
-2 cells constant ORDER-PAIR
-0 constant ORDER-WALK
-1 constant ORDER-EFFECTS
-2 constant ORDER-CONTROLS
-3 constant ORDER-RUNS
-PTR-VARIABLE ORDER-P   variable ORDER-N
-NULL-PTR ORDER-P !   0 ORDER-N !
-
-: ORDER-BASE ( -- ptr n ) ORDER-P @ ;
-: ORDER-BYTES ( n -- n ) ORDER-RUNS ORDER-PAIR * ORDER-ROW + * ;
-: ORDER-FIELD ( n n -- ptr n )
-   {: i:n field:n :}
-   i ORDER-ROW * field cells + ORDER-BASE + ;
-
-
-: ORDER-PAIRS ( n -- ptr n )
-   {: run:n :}
-   run ORDER-PAIR * ORDER-ROW + ORDER-N @ * ORDER-BASE + ;
-
-: ORDER-AT ( ptr n n -- ptr n ) ORDER-PAIR * + ;
-
-
-: ORDER-PAIR@ ( ptr n n -- n n ) ORDER-AT {: p:ptr :}
-   p @ p CELL + @ ;
-
-
-: ORDER-PAIR! ( n n ptr n n -- ) ORDER-AT {: k:n t:n p:ptr :}
-   k p !  t p CELL + ! ;
-
-
-: ORDER-BEFORE? ( ptr n n n -- bool )
-   {: a:ptr i:n j:n :}
-   a i ORDER-PAIR@ a j ORDER-PAIR@ {: ki:n ti:n kj:n tj:n :}
-   ki kj <  ki kj = ti tj < and  or ;
-
-
-: ORDER-SWAP ( ptr n n n -- )
-   {: a:ptr i:n j:n :}
-   a i ORDER-PAIR@ a j ORDER-PAIR@  a i ORDER-PAIR!  a j ORDER-PAIR! ;
-
-
-: ORDER-LATER ( ptr n n n n -- n )
-   {: a:ptr i:n j:n n:n :}
-   j n >= if i exit then
-   a i j ORDER-BEFORE? if j else i then ;
-
-
-: ORDER-STEP ( ptr n n n -- n )
-   {: a:ptr at:n n:n :}
-   a at at 2 * 1 + n ORDER-LATER {: big:n :}
-   a big at 2 * 2 + n ORDER-LATER {: top:n :}
-   top at = if -1 exit then
-   a at top ORDER-SWAP  top ;
-
-
-: ORDER-SIFT ( ptr n n n -- )
-   {: a:ptr root:n n:n :}
-   root begin dup 0 >= while a swap n ORDER-STEP repeat drop ;
-
-
-\ Every run's second cells are distinct, so the result is the one total order.
-: ORDER-SORT ( ptr n n -- )
-   {: a:ptr n:n :}
-   n 2 / 0 ?do a  n 2 / 1 - i -  n ORDER-SIFT loop
-   n 1 ?do
-      a 0 n i - ORDER-SWAP
-      a 0 n i - ORDER-SIFT
-   loop ;
-
-
-: ORDER-FIRST ( ptr n n n -- n )
-   {: a:ptr n:n k:n :}
-   0 n begin 2dup < while
-      {: lo:n hi:n :}
-      lo hi + 2 / {: mid:n :}
-      a mid ORDER-PAIR@ drop k < if mid 1 + hi else lo mid then
-   repeat drop ;
-
-
-\ Only a record still being built has offset 0, and the source has finished
-\ every record it hands over, so 0 never stands for a record.
-: SOURCE-AT ( n -- n bool )
-   SOURCE-ROW {: pool:ptr rec:ptr name:ptr packed:n more:bool :}
-   rec 0= if 0 more exit then
-   rec EW.NEXT @ more ;
-
-: ORDER-COUNT ( -- n )
-   0 1 begin dup SOURCE-AT while
-      0 <> if swap 1 + swap then
-      1 +
-   repeat 2drop ;
-
-
-\ The ids' newest records are distinct (one ER.SYM each), so no two pairs share
-\ an EW.NEXT.
-: ORDER-FILL ( -- )
-   ORDER-WALK ORDER-PAIRS {: walk:ptr :}
-   0 1 begin dup SOURCE-AT while
-      {: id:n at:n :}
-      at 0 <> if
-         dup {: pos:n :}
-         at id walk pos ORDER-PAIR!
-         1 +
-      then
-      id 1 +
-   repeat 2drop drop ;
-
-
-: ORDER-SOURCE! ( n n -- )
-   {: pos:n id:n :}
-   0 pos ORDER-SOURCE-EFFECT ORDER-FIELD !
-   0 pos ORDER-SOURCE-CONTROL ORDER-FIELD !
-   TRANSFER-FACTS @ 0= IF EXIT THEN
-   id SOURCE-HANDLES-XT {: effect:n control:n refs:bool :}
-   effect pos ORDER-SOURCE-EFFECT ORDER-FIELD !
-   refs 0= IF control pos ORDER-SOURCE-CONTROL ORDER-FIELD ! THEN ;
-
-
-: ORDER-ID ( n -- n ) ORDER-WALK ORDER-PAIRS swap ORDER-PAIR@ nip ;
-
-
-: ORDER-INDEX ( n n -- )
-   {: field:n run:n :}
-   run ORDER-PAIRS {: index:ptr :}
-   ORDER-N @ 0 ?do i field ORDER-FIELD @ i index i ORDER-PAIR! loop
-   index ORDER-N @ ORDER-SORT ;
-
-
-: ORDER-RELEASE ( -- )
-   ORDER-N @ 0= if exit then
-   ORDER-BASE ORDER-N @ ORDER-BYTES munmap 0 <> if
-      s" checker: transfer order munmap failed" 76 die
-   then
-   NULL-PTR ORDER-P !  0 ORDER-N ! ;
-
-
-: TRANSFER-ROWS ( -- )
-   ORDER-COUNT {: n:n :}
-   n 0= if exit then
-   n ORDER-BYTES ARENA-ALLOC ORDER-P !  n ORDER-N !
-   ORDER-FILL
-   ORDER-WALK ORDER-PAIRS n ORDER-SORT
-   n 0 ?do i i ORDER-ID ORDER-SOURCE! loop
-   n 0 ?do
-      i ORDER-ID SOURCE-ROW drop TRANSFER-ROW {: effect:n control:n :}
-      effect i ORDER-TARGET-EFFECT ORDER-FIELD !
-      control i ORDER-TARGET-CONTROL ORDER-FIELD !
-   loop
-   ORDER-SOURCE-EFFECT ORDER-EFFECTS ORDER-INDEX
-   ORDER-SOURCE-CONTROL ORDER-CONTROLS ORDER-INDEX ;
-
-
-\ A kept row may hold no control row: control 0, found.
-: ORDER-MAP ( n n n -- n bool )
-   {: handle:n run:n target:n :}
-   handle 0= IF 0 RES-FALSE EXIT THEN
-   run ORDER-PAIRS {: index:ptr :}
-   index ORDER-N @ handle ORDER-FIRST {: at:n :}
-   at ORDER-N @ = IF 0 RES-FALSE EXIT THEN
-   index at ORDER-PAIR@ {: found:n row:n :}
-   found handle <> IF 0 RES-FALSE EXIT THEN
-   row target ORDER-FIELD @ RES-TRUE ;
-
-
-\ A pre-change source can still hold an address record's live value.
-: TRANSFER-FIXED ( ptr n ptr n -- ) {: source:ptr target:ptr :}
-   source RLINK.FIXED-KIND cells + @ {: kind:n :}
-   kind target RLINK.FIXED-KIND cells + !
-   kind CHECKER-OWNER-ABI:RECORD-FIXED-VAL = IF
-      source RLINK.FIXED-VALUE cells + @
-   ELSE 0 THEN target RLINK.FIXED-VALUE cells + ! ;
-
-: TRANSFER-LINK ( n ptr n -- )
-   {: ord:n source:ptr :}
-   source RLINK.GRID cells + @ 0 <> IF EXIT THEN
-   ord RECORD-LINK-CURRENT? IF
-      ord RECORD-LINK-CELL {: target:ptr :}
-      target RLINK.FIXED-KIND cells + @ 0<
-      source RLINK.FIXED-KIND cells + @ 0 >= and IF
-         source target TRANSFER-FIXED
-      THEN
-      EXIT
-   THEN
-   source RLINK.EFFECT cells + @
-      ORDER-EFFECTS ORDER-TARGET-EFFECT ORDER-MAP 0= IF drop EXIT THEN
-      {: effect:n :}
-   source RLINK.CONTROL cells + @ {: prior-control:n :}
-   prior-control 0= IF 0 ELSE
-      prior-control ORDER-CONTROLS ORDER-TARGET-CONTROL ORDER-MAP
-      0= IF drop EXIT THEN
-   THEN {: control:n :}
-   ord effect control RECORD-LINK-VALID? 0= IF EXIT THEN
-   ord RECORD-LINK-CAP @ < IF ord RECORD-LINK-CELL RECORD-GRID-DISCARD THEN
-   ord effect control source RLINK.DEFER cells + @ 0 <>
-      source RLINK.OCC cells + @ RECORD-LINK-WRITE
-   source ord RECORD-LINK-CELL TRANSFER-FIXED ;
-
-: TRANSFER-LINKS ( -- )
-   TRANSFER-FACTS @ 0= IF EXIT THEN
-   ndict@ 0 ?do
-      i SOURCE-LINK-XT {: source:ptr :}
-      source NULL-PTR <> IF i source TRANSFER-LINK THEN
-   loop ;
-
-CAST: AS-PENDING-DISCARD ( n -- [ -- ] )
-: TRANSFER-PUBLICATION ( ptr u8 -- ) {: owner:ptr :}
-   owner CHECKER-OWNER-ABI:HEADER-BYTES - CELL-VIEW @
-      CHECKER-OWNER-ABI:MAGIC <> IF EXIT THEN
-   owner CELL - CELL-VIEW @ {: size:n :}
-   size CHECKER-OWNER-EXT:PENDING-DISCARD-OFF CELL + >= IF
-      owner CHECKER-OWNER-EXT:PENDING-DISCARD-OFF + CELL-VIEW @
-      dup 0 <> IF AS-PENDING-DISCARD execute ELSE drop THEN
-   THEN
-   size CHECKER-OWNER-EXT:PUBLICATION-USE-OFF CELL + < IF EXIT THEN
-   owner CHECKER-OWNER-EXT:PUBLICATION-USE-OFF + CELL-VIEW @ {: observer:n :}
-   observer 0= IF EXIT THEN
-   observer DECLARATIONS CHECKER-OWNER-EXT:PUBLICATION-USE-OFF +
-      CELL-VIEW !
-   0 owner CHECKER-OWNER-EXT:PUBLICATION-USE-OFF + CELL-VIEW ! ;
-
-: TRANSFER-CHECKED ( ptr u8 -- ) {: owner:ptr :}
-   owner 0= if CLAIM-SOURCE-OWNER exit then
-   owner DECLARATIONS = if CLAIM-SOURCE-OWNER exit then
-   owner TRANSFER-PUBLICATION
-   owner BIND-SOURCE
-   CHECKER-REC-SYM @ {: saved:n :}
-   [: TRANSFER-ROWS TRANSFER-LINKS ;] catch {: rc:n :}
-   ORDER-RELEASE
-   saved CHECKER-REC-SYM !
-   DECLARATIONS BIND-SOURCE
-   0 TRANSFER-FACTS !
-   rc 0 <> if rc throw then
-   \ The retained checker needed its REPL seed while source rows transferred.
-   \ Its type IDs no longer belong to this checker after that transfer.
-   NULL-PTR CK-AOT-SIG-POOL-FIELD !
-   0 data-base AOT-CELLS:SIG-LEN-CELL + !
-   0 CK-AOT-STATE !
-   CLAIM-SOURCE-OWNER ;
-
-;package
-
 \ A package unit carries the checker's own ordered facts. The native artifact
 \ owns the file; these callbacks own only the checker section's bytes.
 package CHECKER-REG
@@ -29100,11 +28634,6 @@ UNIT-CON-PROJECT-INSTALL
    endpoint UNIT-PROJ-SERIAL ! endpoint plan UP.SERIAL UP!
    UNIT-PLAN-N @ 1 UNIT-PLAN-N +! ;
 
-\ End the pending prepare and its plan; an open mark stays.
-: PENDING-PREPARE-END ( -- )
-   UNIT-PLAN-OPEN @ IF CHECKER-UNIT-PREPARE-END THEN
-   0 UNIT-PREP-PENDING ! 0 UNIT-PREP-PORTABLE ! ;
-
 : UP-PLAN ( n -- ptr u8 ) {: idx:n :}
    idx 0 < idx UNIT-PLAN-N @ >= or IF UNIT-BAD THEN
    UNIT-PLAN-FIRST @ idx 0 ?do UP.NEXT UP-PTR@ loop ;
@@ -29259,24 +28788,16 @@ UNIT-CON-PROJECT-INSTALL
    plan UP-INSTALL-PIMMS ;
 
 : UP-INSTALL-CLEAN ( -- )
-   0 UNIT-INST-ON ! UNIT-PLAN-OLD-SYM @ CHECKER-REC-SYM ! ;
+   UNIT-PLAN-OLD-SYM @ CHECKER-REC-SYM ! ;
 
 : CHECKER-UNIT-INSTALL ( n -- ) {: idx:n :}
    UNIT-PLAN-OPEN @ 0= idx UNIT-PLAN-INSTALL-N @ <> or IF UNIT-BAD THEN
    idx UP-PLAN {: plan:ptr :}
    CHECKER-REC-SYM @ UNIT-PLAN-OLD-SYM !
-   -1 UNIT-INST-ON !
    plan [: UP-INSTALL-BODY ;] [: UP-INSTALL-CLEAN ;] finally
    plan UP.SERIAL UP@ BWIN-EPOCH !
    plan UP.DELTA UP@ 0 <> IF BWIN-RESET THEN
    1 UNIT-PLAN-INSTALL-N +! ;
-
-: CHECKER-PENDING-DISCARD ( -- )
-   UNIT-PENDING @ UNIT-PREP-PENDING @ or 0= IF EXIT THEN
-   PENDING-PREPARE-END
-   0 UNIT-PENDING ! 0 UNIT-PORTABLE !
-   0 UNIT-MARKED ! 0 PENDING-MARKED ! 0 PENDING-DIRTY-N !
-   0 UNIT-PREFIX-N ! 0 UNIT-SYMS-FROZEN ! ;
 
 : UNIT-IMPORT-PLAN ( ptr u8 n -- ) {: src:ptr size:n :}
    UNIT-BASE?
@@ -29334,7 +28855,6 @@ public
    0 UNIT-READ-SYMS ! 0 UNIT-READ-EFFS ! 0 UNIT-READ-CTLS !
    0 UNIT-READ-DELTA ! 0 UNIT-READ-TFAM-U !
    0 UNIT-READ-CONS ! 0 UNIT-READ-PIMMS !
-   0 UNIT-INST-ON !
    NULL-PTR UNIT-ASIG-P ! 0 UNIT-ASIG-U ! 0 UNIT-ASIG-CAP !
    0 UNIT-MARKED ! ;
 private
@@ -29346,7 +28866,6 @@ private
 ' CHECKER-UNIT-PREPARE DECLARATIONS CHECKER-OWNER-ABI:UNIT-PREPARE-OFF + xt!
 ' CHECKER-UNIT-INSTALL DECLARATIONS CHECKER-OWNER-ABI:UNIT-INSTALL-OFF + xt!
 ' CHECKER-UNIT-PREPARE-END DECLARATIONS CHECKER-OWNER-ABI:UNIT-PREPARE-END-OFF + xt!
-' CHECKER-PENDING-DISCARD DECLARATIONS CHECKER-OWNER-ABI:PENDING-DISCARD-OFF + xt!
 ;package
 
 
@@ -29360,7 +28879,6 @@ private
    CHECKER-SCAN-SNAP-RESET
    TRIAL-IDLE-CK
    RECEFF-ON @ 0= IF 0 RECEFF ! THEN
-   EFFECT-XFER-CLEAR
    CHECKER-REG:UNIT-SCRATCH-RELEASE-CHECKER ;
 
 \ A capture keeps the primitive control prefix verbatim and the state now: the
@@ -29998,7 +29516,6 @@ CHECKER-REG:}SCRATCH
    CHECKER-TOP-DROP
    NAV-RELEASE
    CHECKER-REG:RECORD-CONTRACT-RELEASE
-   EFFECT-XFER-CLEAR
    CK-GRAPH-RELEASE
    ASIG-GRAPH-SCRATCH-RELEASE
    0 CK-AOT-STATE !                  \ validation belongs to the current signature pool
@@ -30170,7 +29687,6 @@ package CHECKER-REG
 ' CHECKER-RESOLVE:EACH-VISIBLE DECLARATIONS CHECKER-OWNER-ABI:VERIFY-EACH-VISIBLE-OFF + xt!
 ' WITH-TICK-ORDER DECLARATIONS CHECKER-OWNER-ABI:WITH-TICK-ORDER-OFF + xt!
 ' TRUST-DECL? DECLARATIONS CHECKER-OWNER-ABI:VERIFY-DECL-OFF + xt!
-' CHECKER-DECLARED-ROW! DECLARATIONS CHECKER-OWNER-ABI:DECLARED-ROW-OFF + xt!
 ' CHECKER-RETRACT-ROWS DECLARATIONS CHECKER-OWNER-ABI:RETRACT-ROWS-OFF + xt!
 ' CHECKER-ROWS-END DECLARATIONS CHECKER-OWNER-ABI:ROWS-END-OFF + xt!
 ' CHECKER-WRITE-WINDOW! DECLARATIONS CHECKER-OWNER-ABI:WRITE-WINDOW-OFF + xt!
@@ -30186,81 +29702,11 @@ package CHECKER-REG
 ' CHECKER-UNIT-FACTS DECLARATIONS CHECKER-OWNER-EXT:UNIT-FACTS-OFF + xt!
 ' CHECKER-TAPE:EVENT DECLARATIONS CHECKER-OWNER-EXT:TAPE-EVENT-OFF + xt!
 
-\ ---- the declared-row log of a cold boot ------------------------------------
-\ The claim below drains the declared-row log, which no engine code appends to.
-\ It records each logged row by CHECKER-DECLARED-ROW!'s rule - active, without
-\ authority, only where no live row states the symbol - so a cold boot's
-\ checker holds the rows the build host records for the definitions of this
-\ file and the files before it. A TRUSTED: declaration before the claim is not
-\ logged: the claim grants no authority.
-0 constant CK-NS-PUBLIC-SLOT            \ = xref.f XREF-START-SLOT
-1 constant CK-NS-PRIVATE-SLOT           \ = xref.f XREF-LEN-SLOT
-
-\ The cell holding the log's address while the log holds entries, 0 otherwise.
-DECLARED-LOG:ADDR-CELL RESERVED-PTR-U8-CELL CK-DLOG-FIELD
-
-: CK-DLOG-AT ( ptr n n n -- ptr n )
-   {: log:ptr i:n off:n :}
-   log DECLARED-LOG:SLOTS-REL + i DECLARED-LOG:SLOT * + off + ;
-
-\ A slot's REC, PKG and SIG-A fields hold addresses.
-CAST: DLOG-CELL ( ptr n -- ptr ptr n )
-
-\ The symbol a logged definition's row is keyed by. REC names the word and the
-\ wordlist it was published into; NS is the open package's namespace record,
-\ NULL-PTR outside one, holding that package's public and private wordlist ids
-\ in the slots where a word keeps its code span. A record in neither a global
-\ wordlist nor NS's is a qualified definition, which no file before the claim
-\ makes: its row would be keyed in a scope no lookup of the engine reaches, so
-\ the boot stops.
-: CK-DLOG-SYM ( ptr n ptr n -- n )
-   {: rec:ptr ns:ptr :}
-   rec CHECKER-RESOLVE:CK-REC-NAME$ {: a:ptr u:n :}
-   rec CK-REC-WID {: wid:n :}
-   wid WL:GLOBAL? IF a u CHECKER-GLOBAL-SYM EXIT THEN
-   ns NULL-PTR <> IF
-      wid ns CK-NS-PUBLIC-SLOT cells + @ = IF
-         ns CHECKER-RESOLVE:CK-REC-NAME$ SYM-PUBLIC a u CHECKER-PKG-SYM EXIT
-      THEN
-      wid ns CK-NS-PRIVATE-SLOT cells + @ = IF
-         ns CHECKER-RESOLVE:CK-REC-NAME$ SYM-PRIVATE a u CHECKER-PKG-SYM EXIT
-      THEN
-   THEN
-   s" checker: qualified definition before the source claim" 76 die ;
-
-\ A record `undefine` has retired since has no row. A live row wins, the
-\ question CHECKER-CERT-DUP? asks; no candidate is open here.
-: CK-DLOG-ROW ( ptr n n -- )
-   {: log:ptr i:n :}
-   log i DECLARED-LOG:REC-OFF CK-DLOG-AT DLOG-CELL @ {: rec:ptr :}
-   rec CK-REC-WID WL:RETIRED = IF EXIT THEN
-   rec log i DECLARED-LOG:PKG-OFF CK-DLOG-AT DLOG-CELL @ CK-DLOG-SYM {: sym:n :}
-   sym CHECKER-FIND-USIG-SYM IF EXIT THEN
-   sym
-   log i DECLARED-LOG:SIG-A-OFF CK-DLOG-AT DLOG-CELL 0 ptr-field @
-   log i DECLARED-LOG:SIG-U-OFF CK-DLOG-AT @
-   CK-DECLARED-SYM! ;
-
-\ The log is emptied - slots, count and address cell - so no process-local
-\ address outlives the claim in DATA. The last row's wide and arity latches
-\ would mark the next definition the engine publishes (REC-WIDE-PUBLISH,
-\ REC-MIN-IN@), so they are cleared too.
-: CK-DECLARED-LOG-DRAIN ( -- )
-   CK-DLOG-FIELD @ CELL-VIEW {: log:ptr :}
-   log NULL-PTR = IF EXIT THEN
-   log @ {: n:n :}
-   n 0 ?DO log i CK-DLOG-ROW LOOP
-   log 0 n DECLARED-LOG:SLOT * DECLARED-LOG:SLOTS-REL + CELL / ARENA-CELLS-ZERO
-   NULL-PTR CK-DLOG-FIELD !
-   0 RECW !  0 RECMI ! ;
-
-\ The first cold checker has no retained owner to transfer from. Publish it
-\ only after every callback is installed, then record the rows the engine
-\ logged while nothing owned the source. A replacement keeps the nonzero
-\ source owner until TRANSFER-CHECKED completes the explicit handover.
+\ A checker claims the source only where nothing owns it, after every callback
+\ is installed.
 : CLAIM-COLD-SOURCE ( -- )
    SOURCE-OWNER-A @ 0= if
-      CLAIM-SOURCE-OWNER CK-DECLARED-LOG-DRAIN
+      DECLARATIONS SOURCE-OWNER-A !
    then ;
 CLAIM-COLD-SOURCE
 ;package

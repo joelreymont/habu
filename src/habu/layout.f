@@ -1407,12 +1407,10 @@ $2CA8 constant SOURCE-EXEC-CTX-CELL
 \ guarded band (DATA-BANDS below), not scratch: a raw store that forged the
 \ saved NDICT, HW or WIDN would turn replay-close into a record eraser and
 \ either into a WIDN setter.
-\ A fixed offset, because source reads LATCH. The band
-\ takes the start of the unclaimed run $4208..$4398 below DECLARED-LOG:ADDR-CELL;
-\ DATA-CLAIMS refuses a USE-MAX that would outgrow the run.
+\ DATA-CLAIMS refuses a USE-MAX that would run this band into ENCLOSING:PUB.
 package REPLAY-SCOPE
 public
-$4208 constant LATCH                                \ 0: no overlay open
+CB-END constant LATCH                               \ 0: no overlay open
 LATCH CELL + constant HW
 HW CELL + constant NDICT
 NDICT CELL + constant CP
@@ -1509,38 +1507,6 @@ public
 JIT-SNAP:END constant PD-TABLE-OFF
 PD-TABLE-OFF PD-SLOTS-REL + PD-CAP PD-SLOT * + constant PD-TABLE-END
 
-\ A definition compiled with the hook cell empty has its declaration as its row,
-\ recorded by the source owner. No engine code appends to this log. The claim at
-\ the end of checker.f records every logged declaration's row, then zeroes the
-\ slots and ADDR-CELL. The log is empty whenever user source runs and at every
-\ capture.
-\ A slot is four cells: the pending record (PEND-CELL), the open package's
-\ namespace record (PKG-REC-CELL, 0 outside a package), the signature's address
-\ and its length. The checker keys each row by the record's wordlist and that
-\ namespace record, read through `ptr-field`, so no record number crosses.
-\ Unguarded engine scratch, as the pre-trust table: the claim records rows
-\ without authority from it.
-\
-\ ADDR-CELL holds the log's address while it holds entries, else 0. The seed
-\ lays its bands out at other offsets, so the checker
-\ finds the log through this one fixed cell;
-\ an engine without the log reads 0, an empty log. Below $7FF8 for
-\ `DATA <off> LDR` and below DATA-START, it is the last cell of the run
-\ $4208..$43A0 below APP-ENTRY:XT-CELL, which the seed leaves free.
-package DECLARED-LOG
-public
-$4398 constant ADDR-CELL
-4096 constant CAP
-0  constant REC-OFF
-8  constant PKG-OFF
-16 constant SIG-A-OFF
-24 constant SIG-U-OFF
-32 constant SLOT                                   \ per-slot stride
-8  constant SLOTS-REL                              \ slots begin after the u64 count cell
-PD-TABLE-END constant OFF
-OFF SLOTS-REL + CAP SLOT * + constant END
-;package
-
 \ Rows (text offset, input-buffer offset or NONE) for the runs
 \ EMIT-BCAP appends, ascending: a run first drops the rows at or past BODYLEN.
 \ The rows live in the body text block after its text: row i at
@@ -1550,9 +1516,9 @@ public
 16 constant ROW                     \ bytes per row
 -1 constant NONE
 ;package
-\ DATA-START: first offset of the user DP heap (allot/,/c,); everything below is
-\ engine-reserved state; DP-CHECK bounds the heap >= DATA-START.
-DECLARED-LOG:END constant DATA-START
+\ DATA-START: the user DP heap's floor (DP-CHECK); all below is the engine's. The
+\ $20008 unclaimed bytes above PD-TABLE-END keep it at the running hb's value.
+PD-TABLE-END $20008 + constant DATA-START
 \ The bytes below a build's image where a routed header store marks its cell:
 \ DATA-START and the cell every such store sets.
 DATA-START 8 + $FFFF + $10000 / $10000 * constant ROUTED-BYTES

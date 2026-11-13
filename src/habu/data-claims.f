@@ -210,7 +210,6 @@ create TAB
    $40C8                              $100                    CLAIM FFI-LEN-BUFFERS
    CB-XDS                             CB-BAND-BYTES           CLAIM CALLBACK-BAND
    CB-TLS-GET                         2 cells                 CLAIM CALLBACK-TLS
-   DECLARED-LOG:ADDR-CELL             1 cells                 CLAIM DECLARED-LOG-ADDR
    APP-ENTRY:XT-CELL                  1 cells                 CLAIM APP-ENTRY-XT-CELL
    AOT-CELLS:T0-CELL                  1 cells                 CLAIM AOT-WINDOW-T0
    REGION-ALIAS:DELTA-CELL            1 cells                 CLAIM REGION-ALIAS-DELTA
@@ -240,7 +239,6 @@ create TAB
    FMT-ABI:START                      FMT-ABI:BYTES           CLAIM FMT-ABI
    STRING-ABI:START                   STRING-ABI:BYTES        CLAIM STRING-ABI
    PD-TABLE-OFF                       PD-TABLE-END PD-TABLE-OFF -  CLAIM PD-TABLE
-   DECLARED-LOG:OFF                   DECLARED-LOG:END DECLARED-LOG:OFF -  CLAIM DECLARED-LOG
    USE-BAND-OFF                       USE-BAND-END USE-BAND-OFF -  CLAIM USE-BAND
    SNAP-RELOC:CALLMAP-OFF             SNAP-RELOC:CALLMAP-BYTES  CLAIM SNAP-CALLMAP
    SNAP-RELOC:ADDRMAP-OFF             SNAP-RELOC:ADDRMAP-BYTES  CLAIM SNAP-ADDRMAP

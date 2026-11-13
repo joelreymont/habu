@@ -1895,10 +1895,8 @@ create RESIDUE-DIGIT 1 allot
 CAST: CLOSE-ACTION ( n -- [ -- ] )
 
 \ The active checker owner closes the created body pending at a load boundary,
-\ so the body's `,` grid stops there.
-\ After a native build's handover that owner is the target's checker, which
-\ holds the pending record. No owner, or one that predates the slot, has no
-\ pending body.
+\ so the body's `,` grid stops there. No owner, or one that predates the slot,
+\ has no pending body.
 : BODY-CLOSE ( -- )
    data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ {: owner:ptr :}
    owner NULL-PTR = if exit then

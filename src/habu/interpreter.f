@@ -952,8 +952,8 @@ CAST: PKG-AS-ACTION ( n -- [ -- ] )
 CAST: PKG-AS-NAME-ACTION ( n -- [ ptr u8 n -- ] )
 CAST: PKG-AS-EXPORT-ACTION ( n -- [ ptr u8 n n -- ] )
 
-\ `package`, `public`, `private` and `;package` notify the target checker
-\ alone.
+\ `package`, `public`, `private` and `;package` notify the target checker alone:
+\ a loading checker is the target at once, the source owner only where none was.
 : PKG-TARGET ( n -- n )
    NCOMP-DISPATCH:TARGET-DECL-A swap PKG-OPERATION ;
 

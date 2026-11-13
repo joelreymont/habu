@@ -7399,7 +7399,7 @@ TFAM-HOOK-INSTALL
 ;using
 
 \ The native lowerer and the checker must resolve names and interpret the
-\ resulting family/variant ids in this same registry, including after handover.
+\ resulting family/variant ids in this same registry.
 package CHECKER-REG
 ' TFL-MATCH-FAM?       DECLARATIONS FAMILY-MATCH-OFF + xt!
 ' TFL-CON-FAM?         DECLARATIONS FAMILY-CON-OFF + xt!

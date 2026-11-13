@@ -2658,17 +2658,11 @@ sections above.
   `TRUSTED:` or data word before the hook gains no such declaration. A
   top-level step that reads one is refused the same way, so its row goes in
   `src/core/cell-effects.f`.
-- **A signature compiled before the check hook is a row without authority.**
-  This applies to cold prefix definitions at either tier.
-  An unsealed checker can use the declared effect to check callers, rejecting
-  a missing input as `E-INPUT-UNDERFLOW`; sealed images refuse it
-  `E-CAP-TRUSTED`, while a pre-hook internal name is refused by the engine
-  first. `TRUSTED:` asserts an authoritative row. Before the checker claims a
-  cold prefix's source, signed definitions are logged for that claim; a
-  qualified definition there terminates with `checker: qualified definition
-  before the source claim`. A signature missing, unparseable, too deep or wide
-  to record, or containing a scope scheme records nothing. On tier 1 a refused
-  scan leaves ordinary compilation using the declaration and reports the
+- **A colon definition compiled before the check hook records no row**,
+  whatever its signature says: a use is refused as the bullet above says.
+  `TRUSTED:` asserts an authoritative row, and a `defer` made before the hook
+  gets its declared effect as one when the checker loads.
+- **On tier 1 a refused scan** leaves ordinary compilation using the declaration and reports the
   reason; a native build requires the scan and refuses before publication. A
   failed native compile retracts only the pending definition's rows,
   preserving prior rows. If no row supplies arity it refuses with the hook's
