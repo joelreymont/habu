@@ -631,8 +631,7 @@ PTR-VARIABLE OBJ-BASE
    0 begin dup u < while
       a over + KEY-BYTES  FILE-KEY KEY-BYTES  STR= if KEY-BYTES + exit then
       KEY-BYTES +  a over + LE:U64@ +  8 +
-   repeat
-   drop E-COMP-STATE throw ;
+   repeat ;
 
 \ The object of FILE-KEY's part FILE-PART. A source named a.f.2 or a.f+1 shares the name of a.f's second load or
 \ second part: each fails the other's object at HEADER-CK's key and compiles.
@@ -679,9 +678,8 @@ PTR-VARIABLE OBJ-BASE
    r 0= if 0 false exit then
    r 1 - true ;
 
-\ The BUILT row that holds the record index; E-COMP-STATE when none does.
-: BUILT-ROW ( n -- n )
-   REC-ROW@ 0= if drop E-COMP-STATE throw then ;
+\ The BUILT row that holds the record index.
+: BUILT-ROW ( n -- n ) REC-ROW@ drop ;
 
 \ The BUILT row whose [first, end) data pointer holds v, and true; false when none.
 : DP-ROW ( n -- n bool )
@@ -900,12 +898,10 @@ PTR-VARIABLE OBJ-BASE
    then ;
 
 
-\ The value v into the empty slot PLACE-SLOT answers; E-COMP-STATE when a slot holds the key, third cell and identity:
-\ a second value would hide the first, and a part's records and extents each have their own (IDENTIFY, EXTENTS!).
+\ The value v into the empty slot PLACE-SLOT answers.
 : PLACE! ( n n n n n n -- )
    {: path:n seen:n third:n sum:n count:n v:n :}
    path seen third sum count PLACE-SLOT 6 * {: s:n :}
-   s PLACES @ 0<> if E-COMP-STATE throw then
    path 1 + s PLACES !  seen s 1 + PLACES !  third s 2 + PLACES !  sum s 3 + PLACES !
    count s 4 + PLACES !  v s 5 + PLACES !
    1 PLACES-N +! ;
@@ -1196,8 +1192,7 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    CROSS?  e NSHADOW:HOST@ e =  and ;
 
 \ The record that owns emission e: its first shadow row's, a definition's, whose emission is e or,
-\ for a host copy (HOST-COPY?), the target copy before it; E-COMP-STATE when no row is that
-\ emission's or that row is a does> companion's. Emissions rise with the row (SHADOW-ROW).
+\ for a host copy (HOST-COPY?), the target copy before it. Emissions rise with the row (SHADOW-ROW).
 : EM-OWNER ( n -- n )
    {: h:n :}
    h HOST-COPY? if h 1 - else h then {: e:n :}
@@ -1207,11 +1202,7 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
       lo hi + 2 / {: mid:n :}
       mid NSHADOW:EMISSION@ e < if mid 1 + hi else lo mid then
    repeat
-   drop {: row:n :}
-   row NSHADOW:RECORDS >= if E-COMP-STATE throw then
-   row NSHADOW:EMISSION@ e <> if E-COMP-STATE throw then
-   row NSHADOW:ENTRY@ 0<> if E-COMP-STATE throw then
-   row NSHADOW:RECORD@ ;
+   drop NSHADOW:RECORD@ ;
 
 \ An earlier piece's emission e: its owning record's rows (NAMED-REC+), so a
 \ reader of e's code compiles when that record's time changes.
@@ -1626,12 +1617,6 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
    loop
    -1 ;
 
-\ SAME-START, which every alias has.
-: ALIAS-SOURCE ( n -- n )
-   SAME-START {: src:n :}
-   src 0 < if E-COMP-STATE throw then
-   src ;
-
 : KIND ( n n -- n )
    {: row:n wid:n :}
    row 0 >= if
@@ -1694,7 +1679,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
       idx OWN-PRIVATE? if 1 else 0 then PIECES U64+  -1 exit
    then
    kind KIND-TYPE = if TYPE-SOURCE exit then
-   idx ALIAS-SOURCE {: src:n :}
+   idx SAME-START {: src:n :}
    src ID-REF+  src ;
 
 \ Word w's cell c in WORD-SPANS.
@@ -1716,8 +1701,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
    e EM-EDGE+  CROSS? if e 1 + EM-EDGE+ then ;
 
 \ RECORD+, then the entry's span, emission (a cross build's target copy), highest FILES row
-\ and bound record into WORD-SPANS; PIECE+ zeroed cell 6. E-COMP-STATE for an
-\ emission the piece did not file.
+\ and bound record into WORD-SPANS; PIECE+ zeroed cell 6.
 : WORD-RECORD+ ( n -- )
    {: idx:n :}
    idx FILE-REC @ - {: w:n :}
@@ -1729,7 +1713,6 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
    row idx MADE-WID KIND {: kind:n :}
    kind KIND-DEF =  kind KIND-DOES =  or {: coded:bool :}
    coded if row NSHADOW:EMISSION@ FILE-EM @ - else -1 then {: em:n :}
-   coded  em 0<  em NSHADOW:EMISSIONS FILE-EM @ - >=  or  and if E-COMP-STATE throw then
    bound 0 >= if bound REC-EDGE+ then
    coded if  row NSHADOW:EMISSION@ COPY-EDGES+  then
    idx start REC-EDGES!
@@ -1902,11 +1885,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
    e NSHADOW:ADDR-SITES 0 ?do
       e i NSHADOW:ADDR-SITE@ {: at:n :}
       e i NSHADOW:ADDR-SITE-KIND@ {: kind:n :}
-      kind NEMIT:ADDR-CODE <>  kind NEMIT:ADDR-DATA <>  and if E-COMP-STATE throw then
-      e i SITE-VALUE {: v:n held:bool :}
-      held 0= if E-COMP-STATE throw then
-      0  e NSHADOW:ARCH@  PIECES BYTES$ drop off +  s  at  kind  ADDRESS!
-      0= if E-COMP-STATE throw then
+      e i SITE-VALUE drop {: v:n :}
+      0  e NSHADOW:ARCH@  PIECES BYTES$ drop off +  s  at  kind  ADDRESS! drop
       at PIECES U64+
       kind NEMIT:ADDR-CODE = {: code:bool :}
       code if
@@ -1972,11 +1952,6 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
 : CODE+ ( -- )
    ENTRIES
    NSHADOW:EMISSIONS FILE-EM @ - PIECES U64+
-   CROSS? if
-      NSHADOW:EMISSIONS FILE-EM @ ?do
-         i NSHADOW:HOST@ i 1 + <> if E-COMP-STATE throw then
-      2 +loop
-   then
    NSHADOW:EMISSIONS FILE-EM @ ?do i EM-CODE+ loop ;
 
 \ The distance from NULL-PTR of a row's cell, when it lies whole in the file's data.
@@ -2425,7 +2400,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
    STORED-N @ 0 ?do
       i STORED @ {: v:n :}
       HOLDS-HEADER @ {: held:bool :}  EDGES-N @ {: edges:n :}
-      v DATA-REF+ 0= if E-COMP-STATE throw then   \ FIND-STORES refused a cell nothing holds
+      v DATA-REF+ drop
       held HOLDS-HEADER !  edges EDGES-N !        \ the store's cell is no address or edge the piece holds
       v ROW-OF {: row:n hit:bool :}
       hit if
@@ -2518,7 +2493,6 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
 : ACTS+ ( n -- )
    {: req:n :}
    EVENT-COUNT  req 0 >= if 1 - then {: end:n :}
-   EVENT-ON? 0=  end FILE-EVENT @ <  or if E-COMP-STATE throw then
    0  end FILE-EVENT @ ?do i ACT? if 1 + then loop  PIECES U64+
    end FILE-EVENT @ ?do
       i ACT? if
@@ -4612,8 +4586,7 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
    ROLE-WID {: wid:n :}
    RD-U64 {: own:n :}
    GOOD? 0=  wid BOOT:NAMESPACE-WL <>  or if E-COMP-STATE throw then
-   ndict@ {: want:n :}
-   a u  own 1 =  INTERPRETER:PACKAGE-RECORD  want <> if E-COMP-STATE throw then
+   a u  own 1 =  INTERPRETER:PACKAGE-RECORD {: want:n :}
    flags want SET-FLAGS ;
 
 
@@ -4807,8 +4780,7 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
       else
          copy s recorded calls calln addrs addrn false 0 NPUB:IMPORT-PENDING
       then
-   then
-   want <> if E-COMP-STATE throw then
+   then drop
    INTERPRETER:DEF-CLOSE
    \ After publication, as PENDING-CK refuses IMM and INT on a pending row; it also restores the
    \ wide and min-in bits the imports were given false 0 for.
@@ -4878,7 +4850,6 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
 \ sets FILE-DP to here's distance from NULL-PTR, as MARKS does.
 : LINK-DATA ( -- )
    LINK-CLEAR
-   here NULL-PTR -  FILE-DP @ <> if E-COMP-STATE throw then
    DATA-AT @ OBJ@ {: d:n :}
    d allot
    0 LINK-EXTENTS  1 LINK-EXTENTS  2 LINK-EXTENTS
@@ -4920,9 +4891,7 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    read if file sum count ID-REC exit then
    file 0= if  sum count PART-REC  else
       REFS BYTES$ drop  file 1 - FILES-ROW-BYTES * +  sum count PLACE
-   then {: r:n :}
-   r 0< if E-COMP-STATE throw then
-   r ;
+   then ;
 
 \ A retirement row: a link retires its record again (XREF:RETIRE) in the compile's order (DUE!), so both see one
 \ wordlist; either way an earlier piece's record counts as changed by this piece (CHANGER+).
@@ -5142,7 +5111,6 @@ variable DUE-MADE
       objects OF E-COMP-STATE throw ENDOF
       routed OF E-COMP-STATE throw ENDOF
       open OF
-         nested if E-COMP-STATE throw then
          DPHW-CELL HOST@ 0<> if
             s" linker: data space was given back outside the build's files" SAY
             s"  (a caught failure or a negative allot)" SAY
@@ -5314,7 +5282,6 @@ variable DUE-MADE
    RESET-SCRATCH
    WIDN-CELL HOST@ FILE-WID @ -  MINTED {: ids:n held:n :}
    ids held > if E-WORDLIST throw then
-   ids held < if E-COMP-STATE throw then
    req PIECE+  RAN+ ;
 
 
@@ -5472,17 +5439,6 @@ variable DUE-MADE
    if 1 COMPILED-N +! else 1 LINKED-N +! then ;
 
 
-\ Whether event ev of the loader's log is the request that loads path: the piece's, an include or a
-\ require the registry did not hold, for that path.
-: REQUEST? ( n ptr u8 n -- bool )
-   {: ev:n path:ptr pathu:n :}
-   ev FILE-EVENT @ < if false exit then
-   ev EVENT-KIND@ {: kind:n :}
-   kind EV-INCLUDED =
-   kind EV-REQUIRED =  ev EVENT-STATE@ EV-STATE-FRESH =  and  or
-   ev EVENT-PATH@ path pathu STR=  and ;
-
-
 \ The next part's offset past request ev's token, -1 unless a clean cut: top scope, host section, empty stack, no open
 \ definition, the token in the source, a loader word run last, this file's reader at the token's end (NEST ends it).
 : RESUME ( n -- n )
@@ -5502,12 +5458,11 @@ variable DUE-MADE
    a u + src - ;
 
 
-\ The newest request (REQUEST?) ends the part (names, REQUESTS row, object, BUILT row), then loads its file unrecorded.
+\ The newest request ends the part (names, REQUESTS row, object, BUILT row), then loads its file unrecorded.
 \ At a clean cut (RESUME) the next part is LOAD's turn; else it compiles on in this reader, both parts UNLINKABLE.
 : NEST ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
    {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q :}
    EVENT-COUNT 1 - {: ev:n :}
-   ev path pathu REQUEST? 0= if E-COMP-STATE throw then
    ev EVENT-KIND@ EV-INCLUDED = if SOURCE-UNIT:LOAD-INCLUDE else SOURCE-UNIT:LOAD-REQUIRE then {: mode:n :}
    ev RESUME {: resume:n :}
    resume 0< if true UNLINKABLE ! then
@@ -5673,9 +5628,8 @@ variable DUE-MADE
    {: r:n :}
    r 0 OWNED@ XREF-REC {: src:ptr :}
    r 1 OWNED$ OWNER XREF-PKG-PRIVATE {: wid:n :}
-   ndict@ {: want:n :}
    r 3 OWNED$ wid 0 INTERPRETER:DEF-RECORD
-   src XREF-START  src XREF-RAW-LEN  NPUB:IMPORT-ENTRY  want <> if E-COMP-STATE throw then
+   src XREF-START  src XREF-RAW-LEN  NPUB:IMPORT-ENTRY {: want:n :}
    INTERPRETER:DEF-CLOSE
    src XREF-FLAGS  DNAME-IMM DNAME-WIDE or DNAME-MIN-IN-MASK or  and  want SET-FLAGS
    r 5 OWNED$  want CHECK:FACTS! ;
