@@ -562,6 +562,10 @@ SUITE error
    src/lib/error-test.f
 ;SUITE
 
+SUITE reason
+   src/lib/reason-test.f
+;SUITE
+
 SUITE hashmap
    src/lib/hashmap-test.f
 ;SUITE
