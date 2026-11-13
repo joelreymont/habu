@@ -10,13 +10,14 @@
 \ THE WRAPPERS. The exports are memory and the wrappers. run initializes the
 \ task DATA stack header and zeroes its return and loop depths, so a throw
 \ uncaught inside a loop leaves no depth for the next host turn; it stores
-\ WPROF's stack base in ctx's stack base and top and 0 in its out-len, calls the
-\ entry with WPROF's ctx base and answers its status; throw-code answers ctx's
-\ throw code, out-base WPROF's out base, out-len ctx's out-len; fault-kind and
-\ fault-addr answer ctx's fault kind and address, which a checked fault stores
-\ before it traps and no other trap does. reserve, (i64 bytes) -> (i64 address),
-\ calls map-anon and answers its address, 0 when refused: a host copies each
-\ delivery into pages the module reserved (src/lib/browser/turn.js).
+\ WPROF's stack base in ctx's stack base and top and 0 in its out-len, on the
+\ instance's first run WPROF's OUT in ctx's out-base and out-cap, which a grown
+\ OUT keeps across runs, calls the entry with WPROF's ctx base and answers its
+\ status; throw-code answers ctx's throw code, out-base ctx's out-base, the
+\ current OUT's address, out-len ctx's out-len; fault-kind and fault-addr answer
+\ ctx's fault kind and address. reserve, (i64 bytes) -> (i64 address), calls
+\ map-anon and answers its address, 0 when refused: a host copies each delivery
+\ into pages the module reserved (src/lib/browser/turn.js).
 \
 \ THE SECTIONS. In the specification's order: type, function, table when a slot
 \ was added, memory, export, element from slot 1, code, and data, one active
@@ -329,6 +330,11 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
    WPROF:STACK-BASE WPROF:CTX-STACK-BASE CTX!
    WPROF:STACK-BASE WPROF:CTX-STACK-TOP CTX!
    0 WPROF:CTX-OUT-LEN CTX!
+   OP-I32-LOAD ALIGN-32 WPROF:CTX-OUT-CAP CTX@  OP-I32-EQZ PUT-BYTE
+   OP-IF PUT-BYTE  EMPTY-TYPE PUT-BYTE
+      WPROF:OUT-BASE WPROF:CTX-OUT-BASE CTX!
+      WPROF:OUT-CAP WPROF:CTX-OUT-CAP CTX!
+   OP-END PUT-BYTE
    WPROF:CTX-BASE I32-CONST
    OP-CALL PUT-BYTE  ENTRY-IDX @ PUT-U32
    OP-END PUT-BYTE ;
@@ -340,7 +346,7 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
 
 : OUT-BASE-BODY ( -- )
    0 PUT-U32
-   WPROF:OUT-BASE I32-CONST
+   OP-I32-LOAD ALIGN-32 WPROF:CTX-OUT-BASE CTX@
    OP-END PUT-BYTE ;
 
 : OUT-LEN-BODY ( -- )

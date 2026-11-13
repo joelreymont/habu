@@ -20,9 +20,10 @@ package WASM-HARNESS
 private
 
 4096 constant ERR-CAP
+WPROF:OUT-CAP 4 * constant OUT-BYTES      \ the most OUT bytes a run's capture keeps
 
 PATH-CAP BUFFER: EXE
-WPROF:OUT-CAP BUFFER: OUT
+OUT-BYTES BUFFER: OUT
 ERR-CAP BUFFER: ERR
 variable OUT-U
 variable ERR-U
@@ -35,7 +36,7 @@ variable ADDR
 \ The program at the path, run with the arguments staged; answers its exit
 \ status, or 128 plus the signal that ended it.
 : RUN-AT ( ptr u8 len -- n )
-   OUT WPROF:OUT-CAP >LEN  ERR ERR-CAP >LEN  PROCESS:WAIT-FOREVER
+   OUT OUT-BYTES >LEN  ERR ERR-CAP >LEN  PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N {: outu:len erru:len rc:n :}
    outu LEN>N OUT-U !  erru LEN>N ERR-U !
    rc ;

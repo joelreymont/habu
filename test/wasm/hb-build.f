@@ -108,16 +108,27 @@ variable TEXT-U
    s" : MAIN ( -- ) " SB-APPEND  reps FMT:SB-U  s"  0 do 120 emit loop ;" SB-APPEND
    SB$ name nu SOURCE! ;
 
+\ Every byte OUT received is EMITS!'s x, 120.
+: ALL-X? ( -- bool )
+   WASM-HARNESS:OUT$ {: a:ptr u:n :}
+   u 0 ?do  a i + c@ 120 <> if false unloop exit then  loop
+   true ;
+
+\ Past twice OUT's first size: two growths, the second freeing a mapped run. A
+\ die of more than 2^32 bytes asks for more OUT than memory32 holds.
 : FULL-CASE ( -- )
-   WPROF:OUT-CAP s" full.f" EMITS!
-   s" emit fills OUT to its last byte" T-LABEL
+   WPROF:OUT-CAP 2 * 1+ s" full.f" EMITS!
+   s" emit grows OUT and the harness receives every byte" T-LABEL
    s" full.wasm" BUILD 0 T=
    RAN 0 T=
-   WASM-HARNESS:OUT$ nip WPROF:OUT-CAP T=
-   WPROF:OUT-CAP 1+ s" over.f" EMITS!
-   s" an emit past OUT traps" T-LABEL
-   s" over.wasm" BUILD 0 T=
-   RAN 2 T= ;
+   WASM-HARNESS:OUT$ nip WPROF:OUT-CAP 2 * 1+ T=
+   ALL-X? TTRUE
+   S\" : MAIN ( -- ) s\" x\" drop 1 32 lshift 1+ 1 die ;" s" huge.f" SOURCE!
+   s" a die OUT cannot grow for traps and records OUT-GROW at OUT's end past it" T-LABEL
+   s" huge.wasm" BUILD 0 T=
+   RAN 2 T=
+   WASM-HARNESS:FAULT-KIND ENGINE-ERROR:OUT-GROW T=
+   WASM-HARNESS:FAULT-ADDR WPROF:OUT-BASE 1 32 lshift + 1+ T= ;
 
 
 \ Package K at the name, its first test comparing 5 FACT with want.
@@ -152,6 +163,29 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" low.f" SOURCE!
    s" a c! below WPROF:CTX-BASE faults and throws E-MEMORY-FAULT" T-LABEL
    s" low.wasm" BUILD 0 T=
+   RAN 1 T=
+   WASM-HARNESS:THROW-CODE ENGINE-ERROR:MEMORY-FAULT T=
+   WASM-HARNESS:FAULT-KIND WPROF:CRASH-RC T=
+   WASM-HARNESS:FAULT-ADDR 8 T=
+   SB-RESET
+   S\" package K private CAST: >BYTES ( n -- ptr u8 )\n" SB-APPEND
+   S\" : LOW ( -- ) 65 8 >BYTES c! ;\npublic\n" SB-APPEND
+   S\" : MAIN ( -- ) [: LOW ;] catch 110 <> if 1 >BYTES c@ drop then\n" SB-APPEND
+   S\"    65536 map-anon drop {: p:ptr :} p 65536 munmap drop p 65536 munmap drop ;\n" SB-APPEND
+   S\" ;package\n: MAIN ( -- ) K:MAIN ;\n" SB-APPEND
+   SB$ s" caught.f" SOURCE!
+   s" a caught fault leaves no fault kind for a later trap that records none" T-LABEL
+   s" caught.wasm" BUILD 0 T=
+   RAN 2 T=
+   WASM-HARNESS:FAULT-KIND 0 T=
+   SB-RESET
+   S\" package K private CAST: >BYTES ( n -- ptr u8 )\n" SB-APPEND
+   S\" : LOW ( -- ) 65 8 >BYTES c! ;\npublic\n" SB-APPEND
+   S\" : MAIN ( -- ) [: LOW ;] [: [: 9 throw ;] catch drop ;] finally ;\n" SB-APPEND
+   S\" ;package\n: MAIN ( -- ) K:MAIN ;\n" SB-APPEND
+   SB$ s" finally.f" SOURCE!
+   s" a finally body's fault stands after a cleanup that catches its own throw" T-LABEL
+   s" finally.wasm" BUILD 0 T=
    RAN 1 T=
    WASM-HARNESS:THROW-CODE ENGINE-ERROR:MEMORY-FAULT T=
    WASM-HARNESS:FAULT-KIND WPROF:CRASH-RC T=

@@ -3,11 +3,11 @@
 // no DOM, GPU, network or file system.
 //
 // The module (src/arch/wasm/link.f) imports nothing and exports memory, run,
-// throw-code, out-base, out-len and reserve. The module owns every byte of its
-// memory, which may grow to memory32's 65536 pages. For each delivery the host
-// calls reserve(length), which answers the address of fresh pages, at least
-// one, or 0 when it refuses; the host copies the bytes there and runs the event
-// that names them. The module frees them (src/lib/browser/event.f) once it no
+// throw-code, out-base, out-len, fault-kind, fault-addr and reserve. The module
+// owns every byte of its memory, which may grow to memory32's 65536 pages. For
+// each delivery the host calls reserve(length), which answers the address of
+// fresh pages, at least one, or 0 when it refuses; the host copies the bytes
+// there and runs the event that names them. The module frees them (src/lib/browser/event.f) once it no
 // longer needs them. An empty delivery reserves nothing and is named 0, 0.
 //
 // PROTOCOL is this protocol's revision: any change to the module's exports,
@@ -176,7 +176,8 @@
 // Runs are synchronous and never overlap, but other turns
 // run while a request waits. A run that
 // traps ends the instance, as end() does: nothing runs, and memory does not
-// grow, after it.
+// grow, after it. A trap the module recorded a fault kind for names the kind
+// and fault-addr.
 //
 // Every field is an i64, little-endian, and a BigInt here. Growth detaches the
 // old ArrayBuffer, so every view is taken from memory.buffer where it is used:
@@ -487,8 +488,9 @@ export class Module {
     try {
       status = this.x.run();
     } catch (e) {
-      this.ended = `the module trapped and has ended: ${e}`;
-      throw e;
+      const error = this.fault(e);
+      this.ended = `the module trapped and has ended: ${error}`;
+      throw error;
     }
     const thrown = status !== 0 ? new Error(`throw ${this.x["throw-code"]()}`) : null;
     const requests = [];
@@ -511,6 +513,14 @@ export class Module {
       throw e;
     }
     return [requests, thrown];
+  }
+
+  // The error a trap e ends the run with: e, or one naming the fault kind and
+  // address the module recorded, e its cause.
+  fault(e) {
+    const kind = this.x["fault-kind"]();
+    if (kind === 0) return e;
+    return new Error(`fault kind ${kind} at ${this.x["fault-addr"]()}`, { cause: e });
   }
 
   // Memory's bytes [a, a + n), refused unless they lie inside it.

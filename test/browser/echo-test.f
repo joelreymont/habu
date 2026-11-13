@@ -205,7 +205,7 @@ DYNAMIC-BUFFER PAYLOAD u8
    ;MATCH ;
 
 : ENDED-LINE ( ptr u8 n -- )
-   s" the module trapped and has ended: RuntimeError: " SB-APPEND  LINE ;
+   s" the module trapped and has ended: Error: " SB-APPEND  LINE ;
 
 : TRAPPED-CASE ( -- )
    HOST-OPEN  s" trap" TYPED+  200 s" small.bin" ANSWER+  s" --pointer" 1 2 1 AT+
@@ -214,8 +214,10 @@ DYNAMIC-BUFFER PAYLOAD u8
    STARTED
    s" trapped: after a trap the module prints nothing more" T-LABEL
    OUT OUT-U @ SB$ T$=
-   s" trapped: the waiting fetch's answer, a pointer and typed text are refused" T-LABEL
    TRAP$ {: t:ptr u:n :}
+   s" trapped: the host names the fault kind the module recorded" T-LABEL
+   t u s" fault kind 102 at " STARTS-WITH? TTRUE
+   s" trapped: the waiting fetch's answer, a pointer and typed text are refused" T-LABEL
    SB-RESET  t u LINE  t u ENDED-LINE  t u ENDED-LINE  t u ENDED-LINE
    ERR ERR-U @ SB$ T$= ;
 

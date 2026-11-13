@@ -20,11 +20,10 @@ using WCODE
 3 constant CELL-SHIFT                \ log2 of CELL-BYTES
 10 constant LEB-MOST
 
-\ The locals: ctx, the parameter; the stack address the routine works at; emit's
-\ OUT length or a store's address.
+\ The locals: ctx, the parameter; the stack address the routine works at; a
+\ store's address.
 0 constant L-CTX
 1 constant L-SP
-2 constant L-LEN
 2 constant L-ADDR
 
 \ ---- division, views and atomics
@@ -68,11 +67,17 @@ $7FF8000000000000 constant NAN-MADE
 11 constant L-PTR
 12 constant L-END
 
+\ ---- emit and die
+\ Past the allocator's locals: the i64 bytes OUT must take, then OUT's length
+\ and its address before it grows, each an i32.
+13 constant L-NEED
+14 constant L-OUT-LEN
+15 constant L-OLD
+
 \ ---- throw, die and execute
 0 constant TABLE0                    \ call_indirect's table, the module's one
 4 constant HIGH-HALF                 \ a cell's upper 32 bits, little-endian
 2 constant L-CODE                    \ throw's code
-3 constant L-U                       \ die's message length
 
 \ ---- catch and finally
 2 constant L-STATUS                  \ the first callee's status
@@ -116,23 +121,6 @@ variable BUF-U
 \ The context's top becomes SP: the caller reloads its stack pointer from it.
 : SP!, ( -- )
    L-CTX GET,  L-SP GET,  OP-I32-STORE ALIGN-32 WPROF:CTX-STACK-TOP MEM, ;
-
-
-\ emit ( c -- ) stores c's low byte at OUT-BASE plus ctx.out-len and counts it;
-\ a full OUT traps.
-: EMIT-BODY ( -- )
-   1 U32,  2 U32,  I32 B,
-   WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES I32,  OP-I32-SUB B,  L-SP SET,
-   WPROF:CTX-OUT-LEN CTX@,  L-LEN SET,
-   L-LEN GET,  WPROF:OUT-CAP I32,  OP-I32-GE-U B,  IF,  OP-UNREACHABLE B,  OP-END B,
-   WPROF:OUT-BASE I32,  L-LEN GET,  OP-I32-ADD B,
-   L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,
-   OP-I64-STORE8 ALIGN-8 0 MEM,
-   L-CTX GET,  L-LEN GET,  1 I32,  OP-I32-ADD B,
-   OP-I32-STORE ALIGN-32 WPROF:CTX-OUT-LEN MEM,
-   SP!,
-   0 I32,  OP-END B, ;
-
 
 \ A store ( x a -- ) by opcode op of alignment al.
 : STORE-BODY ( n n -- )
@@ -355,11 +343,9 @@ variable BUF-U
    L-CUR GET,  OP-I64-EXTEND-I32-U B,  L-PTR SET,  0 I64,  L-IOR SET,
    3 BR, ;
 
-\ map-anon ( bytes -- ptr ior ): first fit, else growth; a count outside 1
-\ through 2^32 or a refused growth answers 0 -1.
-: MAP-BODY ( -- )
-   ALLOC-LOCALS,  CELL-BYTES SP-AT,  CELL-BYTES 2 * STACK-ROOM,
-   L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,  L-BYTES SET,
+\ A run of L-PAGES pages holding L-BYTES in L-PTR, L-IOR 0, by first fit, else
+\ growth; a count outside 1 through 2^32 or a refused growth leaves L-IOR -1.
+: MAP-RUN, ( -- )
    -1 I64,  L-IOR SET,
    BLOCK,
       L-BYTES GET,  0 I64,  OP-I64-LE-S B,
@@ -377,7 +363,13 @@ variable BUF-U
       L-PAGES GET,  OP-MEMORY-GROW B,  MEMORY-0 B,  L-CUR SET,
       L-CUR GET,  -1 I32,  OP-I32-EQ B,  0 BR-IF,
       L-CUR GET,  BYTES-OF,  L-PTR SET,  0 I64,  L-IOR SET,
-   OP-END B,
+   OP-END B, ;
+
+\ map-anon ( bytes -- ptr ior ): MAP-RUN,'s run, 0 -1 when refused.
+: MAP-BODY ( -- )
+   ALLOC-LOCALS,  CELL-BYTES SP-AT,  CELL-BYTES 2 * STACK-ROOM,
+   L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,  L-BYTES SET,
+   MAP-RUN,
    L-SP GET,  L-PTR GET,  OP-I64-STORE ALIGN-64 0 MEM,
    L-SP GET,  L-IOR GET,  OP-I64-STORE ALIGN-64 CELL-BYTES MEM,
    L-SP GET,  CELL-BYTES 2 * I32,  OP-I32-ADD B,  L-SP SET,  SP!,
@@ -410,12 +402,10 @@ variable BUF-U
       OP-END B,
    OP-END B, ;
 
-\ munmap ( addr bytes -- ior ): -1 for bytes outside 1 through 2^32, addr 0, or
-\ an addr that is not a page-aligned offset below 2^32.
-: UNMAP-BODY ( -- )
-   ALLOC-LOCALS,  CELL-BYTES 2 * SP-AT,
-   L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,  L-PTR SET,
-   L-SP GET,  OP-I64-LOAD ALIGN-64 CELL-BYTES MEM,  L-BYTES SET,
+\ The run of L-BYTES bytes at L-PTR joins the free list, L-IOR 0; -1 for bytes
+\ outside 1 through 2^32, addr 0, or an addr that is not a page-aligned offset
+\ below 2^32.
+: UNMAP-RUN, ( -- )
    -1 I64,  L-IOR SET,
    BLOCK,
       L-BYTES GET,  1 I64,  OP-I64-SUB B,  L-PTR GET,  OP-I64-OR B,
@@ -434,9 +424,83 @@ variable BUF-U
       OP-END B,
       AFTER-RUN,  INSERT-RUN,
       0 I64,  L-IOR SET,
-   OP-END B,
+   OP-END B, ;
+
+\ munmap ( addr bytes -- ior ): UNMAP-RUN,'s ior.
+: UNMAP-BODY ( -- )
+   ALLOC-LOCALS,  CELL-BYTES 2 * SP-AT,
+   L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,  L-PTR SET,
+   L-SP GET,  OP-I64-LOAD ALIGN-64 CELL-BYTES MEM,  L-BYTES SET,
+   UNMAP-RUN,
    L-SP GET,  L-IOR GET,  OP-I64-STORE ALIGN-64 0 MEM,
    ONE-RESULT,  DONE, ;
+
+
+\ ---- emit and die
+: OUT-LOCALS, ( -- )  3 U32,  8 U32,  I32 B,  5 U32,  I64 B,  2 U32,  I32 B, ;
+
+\ The i64 address past OUT's length plus L-NEED.
+: OUT-END, ( -- )
+   L-OLD GET,  OP-I64-EXTEND-I32-U B,  L-OUT-LEN GET,  OP-I64-EXTEND-I32-U B,
+   OP-I64-ADD B,  L-NEED GET,  OP-I64-ADD B, ;
+
+\ L-BYTES becomes the larger of twice OUT's capacity and its length plus
+\ L-NEED, or -1, which map-anon refuses, for an L-NEED past 2^32.
+: OUT-WANT, ( -- )
+   WPROF:CTX-OUT-CAP CTX@,  OP-I64-EXTEND-I32-U B,  1 I64,  OP-I64-SHL B,
+   L-END SET,
+   -1 I64,
+   L-OUT-LEN GET,  OP-I64-EXTEND-I32-U B,  L-NEED GET,  OP-I64-ADD B,
+   L-NEED GET,  1 OFFSET-BITS lshift I64,  OP-I64-GT-U B,  OP-SELECT B,  L-BYTES SET,
+   L-END GET,  L-BYTES GET,  L-END GET,  L-BYTES GET,  OP-I64-GT-U B,  OP-SELECT B,
+   L-BYTES SET, ;
+
+\ A refused growth records ENGINE-ERROR:OUT-GROW with OUT-END, and traps.
+: OUT-REFUSED, ( -- )
+   L-IOR GET,  OP-I32-WRAP-I64 B,  IF,
+      L-CTX GET,  ENGINE-ERROR:OUT-GROW I32,
+      OP-I32-STORE ALIGN-32 WPROF:CTX-FAULT-KIND MEM,
+      L-CTX GET,  OUT-END,  OP-I64-STORE ALIGN-64 WPROF:CTX-FAULT-ADDR MEM,
+      OP-UNREACHABLE B,
+   OP-END B, ;
+
+\ OUT moves to a run of OUT-WANT,'s pages holding its bytes, which ctx's
+\ out-base and out-cap name; the old run is freed unless it is the fixed one.
+: OUT-GROW, ( -- )
+   WPROF:CTX-OUT-BASE CTX@,  L-OLD SET,
+   OUT-WANT,  MAP-RUN,  OUT-REFUSED,
+   L-PTR GET,  OP-I32-WRAP-I64 B,  L-OLD GET,  L-OUT-LEN GET,
+   OP-MISC B,  MISC-MEMORY-COPY U32,  MEMORY-0 B,  MEMORY-0 B,
+   WPROF:CTX-OUT-CAP CTX@,  OP-I64-EXTEND-I32-U B,  L-BYTES SET,
+   L-CTX GET,  L-PTR GET,  OP-I32-WRAP-I64 B,
+   OP-I32-STORE ALIGN-32 WPROF:CTX-OUT-BASE MEM,
+   L-CTX GET,  L-PAGES GET,  PAGE-SHIFT I32,  OP-I32-SHL B,
+   OP-I32-STORE ALIGN-32 WPROF:CTX-OUT-CAP MEM,
+   L-OLD GET,  WPROF:OUT-BASE I32,  OP-I32-NE B,  IF,
+      L-OLD GET,  OP-I64-EXTEND-I32-U B,  L-PTR SET,  UNMAP-RUN,
+   OP-END B, ;
+
+\ L-OUT-LEN becomes ctx's out-len, and OUT grows when L-NEED more bytes pass
+\ its capacity.
+: OUT-ROOM, ( -- )
+   WPROF:CTX-OUT-LEN CTX@,  L-OUT-LEN SET,
+   L-NEED GET,
+   WPROF:CTX-OUT-CAP CTX@,  L-OUT-LEN GET,  OP-I32-SUB B,  OP-I64-EXTEND-I32-U B,
+   OP-I64-GT-U B,  IF,  OUT-GROW,  OP-END B, ;
+
+\ emit ( c -- ) stores c's low byte at ctx.out-base plus ctx.out-len and counts
+\ it, a full OUT grown first.
+: EMIT-BODY ( -- )
+   OUT-LOCALS,
+   WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES I32,  OP-I32-SUB B,  L-SP SET,
+   1 I64,  L-NEED SET,  OUT-ROOM,
+   WPROF:CTX-OUT-BASE CTX@,  L-OUT-LEN GET,  OP-I32-ADD B,
+   L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,
+   OP-I64-STORE8 ALIGN-8 0 MEM,
+   L-CTX GET,  L-OUT-LEN GET,  1 I32,  OP-I32-ADD B,
+   OP-I32-STORE ALIGN-32 WPROF:CTX-OUT-LEN MEM,
+   SP!,
+   0 I32,  OP-END B, ;
 
 
 \ ---- throw, die and execute
@@ -462,22 +526,20 @@ variable SITES-N
    1 I32,  OP-END B, ;
 
 
-\ die ( a u code -- ) appends its message to OUT, leaves its code in ctx.throw-code
-\ and traps, which no catch consumes; a message past OUT's room traps uncopied.
+\ die ( a u code -- ) appends its message to OUT, grown as emit's, leaves its
+\ code in ctx.throw-code and traps, which no catch consumes.
 : DIE-BODY ( -- )
-   2 U32,  2 U32,  I32 B,  1 U32,  I64 B,
+   OUT-LOCALS,
    WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES 3 * I32,  OP-I32-SUB B,  L-SP SET,
    L-CTX GET,  L-SP GET,  OP-I64-LOAD ALIGN-64 CELL-BYTES 2 * MEM,
    OP-I64-STORE ALIGN-64 WPROF:CTX-THROW-CODE MEM,
-   L-SP GET,  OP-I64-LOAD ALIGN-64 CELL-BYTES MEM,  L-U SET,
-   WPROF:CTX-OUT-LEN CTX@,  L-LEN SET,
-   L-U GET,  WPROF:OUT-CAP I32,  L-LEN GET,  OP-I32-SUB B,  OP-I64-EXTEND-I32-U B,
-   OP-I64-GT-U B,  IF,  OP-UNREACHABLE B,  OP-END B,
-   WPROF:OUT-BASE I32,  L-LEN GET,  OP-I32-ADD B,
+   L-SP GET,  OP-I64-LOAD ALIGN-64 CELL-BYTES MEM,  L-NEED SET,
+   OUT-ROOM,
+   WPROF:CTX-OUT-BASE CTX@,  L-OUT-LEN GET,  OP-I32-ADD B,
    L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,  OP-I32-WRAP-I64 B,
-   L-U GET,  OP-I32-WRAP-I64 B,
-   OP-MISC B,  MISC-MEMORY-COPY U32,  0 B,  0 B,
-   L-CTX GET,  L-LEN GET,  L-U GET,  OP-I32-WRAP-I64 B,  OP-I32-ADD B,
+   L-NEED GET,  OP-I32-WRAP-I64 B,
+   OP-MISC B,  MISC-MEMORY-COPY U32,  MEMORY-0 B,  MEMORY-0 B,
+   L-CTX GET,  L-OUT-LEN GET,  L-NEED GET,  OP-I32-WRAP-I64 B,  OP-I32-ADD B,
    OP-I32-STORE ALIGN-32 WPROF:CTX-OUT-LEN MEM,
    OP-UNREACHABLE B,  OP-END B, ;
 

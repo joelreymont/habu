@@ -18,6 +18,6 @@ try {
   console.error(String(e));
   process.exitCode = 2;
 }
-process.stdout.write(new Uint8Array(x.memory.buffer, x["out-base"](), x["out-len"]()));
+process.stdout.write(new Uint8Array(x.memory.buffer, x["out-base"]() >>> 0, x["out-len"]() >>> 0));
 if (process.exitCode === 1) console.error(`throw ${x["throw-code"]()}`);
 writeFileSync(after, new Uint8Array(x.memory.buffer));
