@@ -640,7 +640,6 @@ EPPRIM: NPUB ndict-append PE-N PE-IN ECLOSE-PRIVATE
 EPRIM: def-occ-select PE-PTR-N PE-IN PE-N PE-OUT PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!                       \ exact resolved dictionary record
 EPPRIM: DEF-OCC def-occ-select PE-PTR-N PE-IN PE-N PE-OUT PE-N PE-OUT ECLOSE-PRIVATE
-EPPRIM: CHECKER-REG def-occ-select PE-PTR-N PE-IN PE-N PE-OUT PE-N PE-OUT ECLOSE-PRIVATE
 EPRIM: def-occ-resolve PE-N PE-IN PE-N PE-IN PE-PTR-N PE-OUT EPRIM;
 ETRUSTED-ONLY!                       \ slot and nonzero process-local occurrence
 EPPRIM: DEF-OCC def-occ-resolve PE-N PE-IN PE-N PE-IN PE-PTR-N PE-OUT ECLOSE-PRIVATE
@@ -648,18 +647,13 @@ EPPRIM: DEF-OCC def-occ-resolve PE-N PE-IN PE-N PE-IN PE-PTR-N PE-OUT ECLOSE-PRI
 \ and `defer` change is sealed state after the seal: CUR, WIDN, DEF-WL, TSIG,
 \ TCSIG, PKG-*, the body text, COMP-LATCH-CELL and the records behind the
 \ PROT window.
-\ These fifteen rows are how an interpreter written in Habu writes it. A
-\ refusal exits and never throws: 79 on a task's
-\ thread (the five dictionary rows), 84 for a protected wid after
-\ the seal (`alias-record`, `def-open`) and 83 for every other refusal. A
-\ caller checks first and prints the engine's own text. Two refusals are
-\ compile dies instead, which `evaluate` delivers as throws: while a checker
-\ overlay is open `namespace-private`, `alias-record`
-\ and `def-open` name the token and die
-\ ENGINE-ERROR:OVERLAY-OPEN, and `def-create`
-\ dies 76 as `allot` does when DP would pass the data region. x86-64 refuses
-\ `def-create` and `def-defer`: its Habu loop has NCOMP
-\ compile a created or deferred word's body instead.
+\ These rows are how an interpreter written in Habu writes it. A refusal exits
+\ and never throws: 79 on a task's thread (the four dictionary rows), 84 for a
+\ protected wid after the seal (`alias-record`, `def-open`) and 83 for every
+\ other refusal. A caller checks first and prints the engine's own text. While a
+\ checker overlay is open, `namespace-private`, `alias-record` and `def-open`
+\ refuse instead with a compile die, which `evaluate` delivers as a throw: they
+\ name the token and die ENGINE-ERROR:OVERLAY-OPEN.
 \
 \ The three record writers store a name of at least one byte: up to DNAME-INL
 \ bytes inline, a longer one at CP rounded up to a code slot, 4 bytes on ARM64
@@ -708,7 +702,7 @@ EPPRIM: INTERPRETER package-scope! PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ DNAME-ALLOC, and DNAME-CELL as well for a variable, or DKIND:CAST) in [16] and
 \ the wid in [40]; PEND-CELL is that record; TSIG, TCSIG, DOESB, CLAUSE and
 \ TRUSTED clear; COMP-LATCH-CELL takes the compiler latch; LASTC-CELL
-\ waits for the body (def-close, def-create). It refuses a kind with a bit
+\ waits for the body (def-close). It refuses a kind with a bit
 \ outside DKIND:MASK, DNAME-CELL and DNAME-ALLOC, a negative wid, and CP at or
 \ past the code ceiling.
 EPRIM: def-open PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN EPRIM;
@@ -769,16 +763,6 @@ EPPRIM: INTERPRETER def-abort ECLOSE-PRIVATE
 EPRIM: stack-clear EPRIM;
 ETRUSTED-ONLY!
 EPPRIM: INTERPRETER stack-clear ECLOSE-PRIVATE
-\ def-create ( -- ): end the pending DKIND:ADDR definition: DP rounds up to a
-\ cell, the
-\ code at CP pushes that address, an address-map site, and returns, [8] takes
-\ the code's length, LASTC the record, the record is counted and indexed and
-\ the state def-open set clears, PEND-CELL with it.
-\ It refuses no pending definition, a pending one of another kind and CP at
-\ or past the code ceiling.
-EPRIM: def-create EPRIM;
-ETRUSTED-ONLY!
-EPPRIM: INTERPRETER def-create ECLOSE-PRIVATE
 \ imm-mark ( -- ): set DNAME-IMM on the newest record, as the engine's
 \ `immediate` sets it. Like that keyword it checks
 \ nothing and refuses nothing.

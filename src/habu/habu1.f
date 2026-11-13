@@ -53,12 +53,6 @@ $F2A00009 constant W-MOVK1
 $F2C00009 constant W-MOVK2
 $F2E00009 constant W-MOVK3
 
-private
-\ XDS points just past the top cell: a push is a post-indexed store, a pop a
-\ pre-indexed load.
- 9 XDS   8 ENC-STRPOST constant W-PUSH9
-
-public
 \ A word that calls nothing gets W-NOP in the entry slot. 16 bytes: AArch64 sp
 \ stays 16-byte aligned.
 30 SP -16 ENC-STRPRE  constant W-LINKSAVE

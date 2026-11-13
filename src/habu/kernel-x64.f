@@ -5225,11 +5225,10 @@ JMP-BYTES 1+ constant PATCH-SLOT       \ the jump and the return
 
 public
 
-\ def-create and def-defer, the tails of the engine's interpret-mode `create`
-\ and `defer`, refuse as those keywords do: the x86-64 kernel carries no
-\ interpreter. def-cast has a body: it publishes a cast's identity slot at CP
-\ and the pending record that names it. GROW-LBL, which body-capture calls,
-\ comes first.
+\ def-defer, the tail of the engine's interpret-mode `defer`, refuses as that
+\ keyword does: the x86-64 kernel carries no interpreter. def-cast has a body:
+\ it publishes a cast's identity slot at CP and the pending record that names
+\ it. GROW-LBL, which body-capture calls, comes first.
 : DEFINITION, ( -- )
    X64CODE:LBL GROW-CELL !  GROW-HELPER,
    s" namespace-record" [: NAMESPACE-RECORD-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
@@ -5241,7 +5240,6 @@ public
    s" trust-sig!" [: TRUST-SIG-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" created-sig!" [: CREATED-SIG-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" def-close" [: DEF-CLOSE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" def-create" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
    s" def-defer" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
    s" def-abort" [: DEF-ABORT-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" replay-open" [: REPLAY-OPEN-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID

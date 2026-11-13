@@ -77,8 +77,8 @@ private
    done LBL, ;
 ;package
 using ENGINE-EMIT
-\ C-DATA-ADDR and C-DATA-ADDR-RAW sit after the snapshot-relocation labels: both
-\ record a site through RELOC-EMIT:MARK-SITE.
+\ C-DATA-ADDR-RAW sits after the snapshot-relocation labels: it records a site
+\ through RELOC-EMIT:MARK-SITE.
 
 package ENGINE-EMIT
 public
@@ -159,11 +159,6 @@ variable LADDRSITE  \ record the address-literal chain whose first word is in x9
 ;package
 
 package ENGINE-EMIT
-public
-: C-DATA-ADDR ( -- )
-   RELOC-EMIT:MARK-SITE
-   14 9 MOVZ,  C-DATA-RAW
-   9 W-PUSH9 LIT64,  LCEMIT LABEL@ BL, ;
 private
 \ x9, no push: the defer dispatch-cell address.
 : C-DATA-ADDR-RAW ( -- )
@@ -1548,37 +1543,9 @@ variable LREPLAYTRAP
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 
-\ The end of the def-create row, for record x9 in slot NDICT.
-: ADDR-TAIL, ( -- )
-   11 DATA REGION-ALIAS:DELTA-CELL LDR,  11 9 11 ADD,  CP 11 0 STR,
-   11 DATA 0 LDR,  11 11 7 ADDI,  11 11 3 LSRI,  11 11 3 LSLI,   \ standard CREATE: round the data field up to a cell
-   11 DP-CHECK  11 DATA 0 STR,
-   11 DATA COMMA-BASE-CELL STR,
-   C-DATA-ADDR
-   9 W-RET LIT64,  LCEMIT LABEL@ BL,
-   9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
-   11 DATA REGION-ALIAS:DELTA-CELL LDR,  11 9 11 ADD,
-   10 9 0 LDR,  10 CP 10 SUB,  10 10 4 SUBI,  10 11 8 STR,
-   10 9 16 LDR,  10 10 DKIND:ADDR ORRI,
-   10 10 DNAME-ALLOC ORRI,  10 11 16 STR,  \ the DATA allocation starts at its leading carrier
-   9 DATA LASTC-CELL STR,
-   EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,  9 9 0 LDR,   \ publish record NDICT-1; x9 = body start for the flush
-   LFLUSH LABEL@ BL, ;
-
-\ The fixed shadow callback, when one is installed, learns the created record
-\ ADDR-TAIL, just published, NDICT - 1, and the DATA address its body pushes.
-: ADDR-SHADOW, ( -- )
-   LBL {: noshadow:label :}
-   11 DATA NCOMP-DISPATCH:FIXED-SHADOW-CELL LDR,  11 noshadow CBZ,
-   9 DATA DP-CELL LDR,  9 G-PUSH
-   9 COMP-BODY:address COMP:BODY>N MOVZ,  9 G-PUSH
-   9 NDICT 0 ADDI,  9 9 1 SUBI,  9 G-PUSH
-   11 DATA NCOMP-DISPATCH:FIXED-SHADOW-CELL LDR,  C-CALL-X11-SAVED
-   noshadow LBL, ;
-
 private
 
-\ The end of a definition with no compiled body, the def-create and def-cast
+\ The end of a definition with no compiled body, the def-cast and def-defer
 \ rows alike: the pending record must be of kind `kind`, with CP below the
 \ code ceiling. `tail` writes the row's code, then the state def-open set
 \ clears, PEND-CELL last.
@@ -1595,14 +1562,6 @@ private
    done B,
    a u bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
-
-public
-
-\ def-create ( -- ): a pending DKIND:ADDR record takes ADDR-TAIL, and its
-\ shadow, as `create` does.
-: DEF-CREATE ( -- )
-   s" E-SEAL-VIOLATION habu: def-create with no definition pending, one not of the kind, or CP at the code ceiling"
-   DKIND:ADDR [: ADDR-TAIL,  ADDR-SHADOW, ;] TAIL-CLOSE ;
 
 ;package
 
@@ -1625,9 +1584,8 @@ public
 package DEFWRITE
 public
 
-\ The empty checked body of a cast, for record x9 pending in slot NDICT. The end
-\ of `cast:` and of the def-cast row alike, as ADDR-TAIL, is of `create` and
-\ def-create.
+\ The empty checked body of a cast, for record x9 pending in slot NDICT: the end
+\ of the def-cast row.
 : EMPTY-BODY, ( -- )
    10 DATA REGION-ALIAS:DELTA-CELL LDR,  10 9 10 ADD,  CP 10 0 STR,
    9 CP 0 ADDI,  9 DATA FRAME-CELL STR,              \ the entry slot
@@ -2975,7 +2933,6 @@ package ENGINE-EMIT
    s" trust-sig!" ['] DEFWRITE:TRUST-SIG ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" created-sig!" ['] DEFWRITE:CREATED-SIG ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" def-close" ['] DEFWRITE:DEF-CLOSE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
-   s" def-create" ['] DEFWRITE:DEF-CREATE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" def-abort" ['] DEFWRITE:DEF-ABORT ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" stack-clear" ['] DEFWRITE:STACK-CLEAR ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" imm-mark" ['] C-IMMEDIATE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID

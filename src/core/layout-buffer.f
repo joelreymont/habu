@@ -88,8 +88,7 @@ variable LBUF-BYTES
    LBUF-GEN start + nameu ;
 
 \ ---- how a generated accessor reaches its storage ----------------------------
-\ Every generated accessor addresses its storage through a `create`d word, whose
-\ DATA carrier habu2.f C-DATA-ADDR emits.
+\ Every generated accessor addresses its storage through a `create`d word.
 : LBUF-BASE$ ( -- ptr u8 n ) s" #base" ;
 
 \ The answer stays in LBUF-GEN until the next LBUF-CLEAR.
