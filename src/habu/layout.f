@@ -1516,9 +1516,8 @@ public
 16 constant ROW                     \ bytes per row
 -1 constant NONE
 ;package
-\ DATA-START: the user DP heap's floor (DP-CHECK); all below is the engine's. The
-\ $20008 unclaimed bytes above PD-TABLE-END keep it at the running hb's value.
-PD-TABLE-END $20008 + constant DATA-START
+\ DATA-START: the user DP heap's floor (DP-CHECK); all below is the engine's.
+PD-TABLE-END constant DATA-START
 \ The bytes below a build's image where a routed header store marks its cell:
 \ DATA-START and the cell every such store sets.
 DATA-START 8 + $FFFF + $10000 / $10000 * constant ROUTED-BYTES
