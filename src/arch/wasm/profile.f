@@ -10,8 +10,7 @@ public
 \ The features past scalar core V1's code uses, as wasm-tools' --features list
 \ spells them: multi-value for the (status, outputs) signature, and
 \ saturating-float-to-int for `f>s`, whose i64.trunc_sat_f64_s truncates,
-\ saturates and answers 0 for a NaN exactly as src/compiler/native/hir-word.f
-\ defines realint, and bulk-memory for clearing reused page runs.
+\ saturates and answers 0 for a NaN, and bulk-memory for clearing reused page runs.
 : FEATURES ( -- ptr u8 n )
    s" multi-value,saturating-float-to-int,bulk-memory" ;
 

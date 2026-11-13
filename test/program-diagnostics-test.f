@@ -131,12 +131,11 @@ package PROGRAM-DIAGNOSTICS
    s" test/program-diagnostic-badsig.f" {: path:ptr pathu:n :}
    path pathu RUN-LOAD
    path pathu GE-EXPECT-OK
-   GT-OUT$ S\" 1\n1\n1\n0\n1\nok\n" STR= 0= if s" badsig counts" GE-FAIL then
+   GT-OUT$ S\" 1\n1\n1\nok\n" STR= 0= if s" badsig counts" GE-FAIL then
    SB-RESET
    S\" habu: in pdb-colon: unknown type 'zz' in signature; suggestion: Use a known stack-signature type or a single-letter type variable.\n" SB-APPEND
    S\" habu: in pdb-trusted: bad stored signature '-- zz'\n" SB-APPEND
    S\" habu: in pdb-defer: bad stored signature '-- zz'\n" SB-APPEND
-   S\" habu: in pdb-native: bad stored signature '-- zz'\n" SB-APPEND
    GT-ERR$ SB$ STR= 0= if s" badsig reports" GE-FAIL then ;
 
 : BADSIG-WIDE-ONCE ( -- )

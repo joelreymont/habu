@@ -4,8 +4,7 @@
 \ Wasm build loads this file ahead of the program (tools/hb-build-core.f).
 
 require src/arch/wasm/profile.f
-\ Tier 1 stages a call to NFETCH-CHECK:TAGS before a module fetches a tagged
-\ value (src/compiler/native/elaborate.f VALIDATE-FETCH).
+\ T0 stages a call to NFETCH-CHECK:TAGS before a module fetches a tagged value.
 require src/compiler/native/fetch-check.f
 
 package WKWORDS

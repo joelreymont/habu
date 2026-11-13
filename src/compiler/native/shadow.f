@@ -1,9 +1,8 @@
 \ shadow.f - a second machine's routine for every definition the native driver
 \ publishes, mapped from its dictionary record. A cross-build runs the target's
 \ prefix on the host and a body's names bind as it compiles, so while a shadow
-\ is open src/compiler/native/compiler.f compiles each definition a second time
-\ for the shadow's binding, in a nested context, from the HIR module
-\ NBACK:FREEZE froze for the engine's own selector. Such a shadow keeps both
+\ is open each definition is compiled a second time, for the shadow's binding.
+\ Such a shadow keeps both
 \ copies: a definition files its target emission e and then its host emission
 \ e+1, which later files run while they compile. A native shadow's one emission
 \ serves both roles. A record's emission is always the target's.
@@ -149,9 +148,8 @@ private
    i ;
 
 \ ---- taking a sealed emission -------------------------------------------------
-\ A shadow routine is a sealed NEMIT emission stated by its backend's unplaced
-\ row (NBACK:EMIT-UNPLACED): every call, branch and address leaving it is a row
-\ whose field the linker writes. NEMIT holds one emission and the engine's own
+\ A shadow routine is a sealed NEMIT emission: every call, branch and address
+\ leaving it is a row whose field the linker writes. NEMIT holds one emission and the engine's own
 \ opens it next, so TAKE copies the bytes and rows before the nested context
 \ leaves, and TAKE-HOST the host's after the engine's own walk seals them.
 \
@@ -422,7 +420,7 @@ public
 
 \ A placed emission's address sites carry the host address it was placed with.
 \ A backend that hands a native shadow a placed emission installs how its sites
-\ carry an address and return to the unplaced form (src/arch/x86-64/passes.f),
+\ carry an address and return to the unplaced form,
 \ given the first byte of its copy while the emission stands sealed in NEMIT;
 \ COPY refuses such an emission until one has.
 : NATIVE-ADDRS! ( [ ptr u8 -- ] -- )
@@ -560,8 +558,7 @@ public
    loop
    E-NSHADOW-ROW throw ;
 
-\ Drop the taken copies no publication claimed. Nonthrowing: compiler.f
-\ RETIRE-BODY runs it as every tier-1 definition ends, refused or accepted.
+\ Drop the taken copies no publication claimed. Nonthrowing.
 : ABANDON ( -- )
    construct pending none PENDING !  false HOST-PENDING ! ;
 

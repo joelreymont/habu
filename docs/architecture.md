@@ -143,9 +143,7 @@ definition still open at the end of a line continues on the next.
 ## Platforms and code generation
 
 **T0 compiles on ARM64 and x86-64.** A definition compiles through the current
-platform's tier 0 (T0) codegen. Tier 1 stays for experiments, chosen with
-`set-tier`, and for the paths it still owns: the stripped-image driver and
-saved app images. Hand-written code per platform is only the
+platform's tier 0 (T0) codegen. Hand-written code per platform is only the
 kernel's primitives.
 
 ### Cross-compilation

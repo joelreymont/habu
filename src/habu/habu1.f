@@ -3956,16 +3956,16 @@ private
    9 DATA NCOMP-DISPATCH:BUILD-TIER-CELL STR,
    done LBL, ;
 
-\ set-tier ( n -- ): a primitive so it works on a file's first line; a tier is
-\ not a flag, so only 0 and 1 pass.
+\ set-tier ( n -- ): a primitive so it works on a file's first line; tier 0 is
+\ the only native tier, so only 0 passes.
 : BSETTIER ( -- )
    LBL LBL {: bad:label done:label :}
    A G-POP                               \ x9 = requested tier
-   9 1 CMPI,  C-HI bad BCOND,            \ unsigned > 1: rejects 2.. and every negative
+   A bad CBNZ,
    A DATA NCOMP-DISPATCH:TIER-CELL STR,
    done B,
    bad LBL,
-      s" E-SET-TIER habu: set-tier: tier must be 0 or 1" 70 DIE-LINE,
+      s" E-SET-TIER habu: set-tier: tier must be 0" 70 DIE-LINE,
    done LBL, ;
 
 \ tier@ ( -- n ): the live tier.

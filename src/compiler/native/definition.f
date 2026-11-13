@@ -1,9 +1,7 @@
 \ definition.f - the compiler-neutral step around one pending definition's
 \ lowering: staging, the checker scan and verdict, name and arity checks,
 \ publication by kind, the pending callback stub, and retraction on refusal.
-\ Tier 1 (src/compiler/native/compiler.f, NCOMP) and tier 0 (src/habu/t0.f)
-\ both call it. It requires no tier-1 package (tape, feed, elaborator, HIR,
-\ backend), so tier 0 can require it on every target.
+\ src/habu/t0.f calls it on every target.
 
 require src/lib/prelude.f
 require src/lib/error.f
@@ -283,15 +281,13 @@ public
 \ ---- what the definition takes and leaves ------------------------------------
 \ The arity is the checker's answer, from the same dict.f reader every callee's
 \ arity comes from, so the routine's contract and its calls share one
-\ authority. It asks for cells, what NELAB:COLON checks the body's value vector
-\ against; dict.f EFF-CELLS states the width rule.
+\ authority. It asks for cells; dict.f EFF-CELLS states the width rule.
 \
 \ It is asked with the source spelling KEEP-TAPE-NAME kept: bare for an
 \ author's private definition, qualified when a public definition names a
 \ different wordlist. A TRUSTED: effect is registered under that same spelling.
 \
-\ ARITY-NONE is refused here: passed on as -1, NELAB:COLON would refuse it as
-\ E-NELAB-ARITY and name the wrong thing. Only a definition with no recordable
+\ ARITY-NONE is refused here. Only a definition with no recordable
 \ declaration reaches the refusal (no signature, an unparsable one, or one with
 \ a scope scheme): CHECK:DEFINITION has refused every uncertified body. After a
 \ certified scan nothing reaches it either: a package opened and closed by the source is

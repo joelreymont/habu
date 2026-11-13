@@ -171,8 +171,6 @@ Top-level code is checked too: each token is judged against the live stack's
 cells as the same token in a colon body. A checked step runs, as does one
 deferred to the run; a refused or uncheckable one prints the body's diagnostic
 before the word runs, and `--load` exits 70 (`evaluate-closed` throws 70).
-`set-tier`'s row is global, so a program's first line may choose the tier
-before any `require`.
 
 | you write | diagnostic |
 |---|---|

@@ -92,33 +92,6 @@ package STACK-LIFECYCLE-TEST
    s" 1 TYPED-BUFFER SLOT pair : STORE ( -- ) 11 22 SW-PAIR:MAKE 0 SLOT ! ; : GO ( -- ) ['] STORE BUF STACK-ABI:PAGE-BYTES run-in-stack 0 SLOT @ SW-PAIR:UNMAKE . . ; GO"
    PAIR-RC 0 T= OUT OUTLEN @ S\" 22\n11\n" T$= ;
 
-\ These subjects select tier 1 before defining their bodies. VALUES publishes
-\ two distinct results at one native return; TAKE consumes them at one native
-\ call. ARM also checks the selected post-index pair instruction. The ratchet
-\ advances by one cell, so VALUES crosses the data guard while returning.
-: NATIVE-PAIR-SOURCE ( -- )
-   SB-RESET s" 1 set-tier require src/habu/xref.f require src/habu/code-bytes.f " SB-APPEND GUARDED-BUF
-   s" : VALUES ( -- n n ) 11 22 ; " SB-APPEND
-   HB-TARGET-LINUX-X86-64? if exit then
-   s" : CODE@ ( n -- n ) 4 CODE-BYTES:AT drop {: p:ptr :} p c@  p 1+ c@ 8 lshift or " SB-APPEND
-   s" p 2 + c@ 16 lshift or  p 3 + c@ 24 lshift or ; " SB-APPEND
-   S\" : SELECTED ( -- ) s\" VALUES\" XREF-FIND {: rec:ptr :} rec XREF-FOUND? 0= if s\" missing VALUES\" 1 die then " SB-APPEND
-   s" 0 rec XREF-CODE-BYTES 4 / 0 ?do rec XREF-START i 4 * + CODE@ {: w:n :} " SB-APPEND
-   s" w 4290772992 and 2826960896 = w 5 rshift 31 and 19 = and if 1+ then loop " SB-APPEND
-   S\" 1 <> if s\" VALUES has no post-index pair\" 1 die then ; SELECTED " SB-APPEND ;
-
-: NATIVE-TRANSFERS ( -- )
-   s" native calls and returns preserve two ordered results" T-LABEL
-   NATIVE-PAIR-SOURCE
-   s" variable ANSWER : TAKE ( n n -- ) 3 * swap 5 * + ANSWER ! ; " SB-APPEND
-   S\" : MOVE ( -- ) 79 VALUES TAKE 79 <> if s\" displaced sentinel\" 1 die then ; " SB-APPEND
-   s" : GO ( -- ) ['] MOVE BUF STACK-ABI:PAGE-BYTES run-in-stack ANSWER @ . ; GO" SB-APPEND
-   SB$ CHILD-RC 0 T= OUT OUTLEN @ S\" 121\n" T$=
-   s" native two-result return faults on its second guarded cell" T-LABEL
-   NATIVE-PAIR-SOURCE
-   s" : MOVE ( -- ) VALUES 2drop ; " SB-APPEND
-   s" MOVE" RATCHET-TAIL SB$ REFUSED-DATA ;
-
 \ Set RSP inside the compiled word: the interpreter parks its own tokens on
 \ the return stack between top-level words. An observable wide peek/pop
 \ reaches the guarded VM mapping, so these measure its two-cell boundary.
@@ -189,7 +162,7 @@ package STACK-LIFECYCLE-TEST
 
 public
 : RUN-WIDE ( -- )
-   T-RESET PRIMITIVE-GROUPS PAIR-TRANSFERS NATIVE-TRANSFERS WIDE-RETURN-GROUPS LARGE-TRANSFERS MEDIUM-TRANSFERS T-REPORT ;
+   T-RESET PRIMITIVE-GROUPS PAIR-TRANSFERS WIDE-RETURN-GROUPS LARGE-TRANSFERS MEDIUM-TRANSFERS T-REPORT ;
 
 ;package
 

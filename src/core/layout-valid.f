@@ -352,8 +352,7 @@ variable CHECKS
    BUF-N @ TOTAL-CELLS <> if s" lowering certificate size mismatch" 76 die then ;
 
 \ An unjudged scan (checker.f CHECK-UNJUDGED!, a TRUSTED: body) states the
-\ body's widths whatever its verdict: nothing enforces that verdict, and tier 1
-\ lowers from the scan's tape either way. Its rows stay whole past a rejected
+\ body's widths whatever its verdict: nothing enforces that verdict. Its rows stay whole past a rejected
 \ token (checker.f UNJ-SPLICE); where a width fact was lost instead, NEEDS
 \ says NEEDS-INCOMPLETE and tier 0 refuses the certificate.
 : FULL-PRODUCE ( ptr u8 n n -- ) {: a:ptr u:n verdict:n :}

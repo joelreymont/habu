@@ -211,11 +211,8 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 \ LEAF has returned the interrupted x30 points back inside BUSY on ARM -
 \ which leaves a deferred sample with no caller. Intel's machine return stack
 \ instead identifies OUTER as BUSY's caller for this same execution.
-\ Tier 1 on purpose: at tier 0 these words are interpreted and the samples land
-\ in the primitives the interpreter runs, not in the words the case is about.
 : GDB-PROF-LATE-SRC ( -- )
    GE-SRC-RESET
-   s" 1 set-tier" GE-SRC-LINE
    s" 0 prof-on" GE-SRC-LINE
    s" package GDBLATE" GE-SRC-LINE
    s" public" GE-SRC-LINE
@@ -586,7 +583,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 
 : GDB-BREAKPOINT-NATIVE ( -- )
    GE-HB-RESET GE-SRC-RESET
-   s" 1 set-tier require src/habu/debug.f" GE-SRC-LINE
+   s" require src/habu/debug.f" GE-SRC-LINE
    s" package GDBNBP" GE-SRC-LINE
    s" : SUBJECT ( n -- n ) 3 + ; ' SUBJECT DEBUG:BP+ 4 SUBJECT . 5 SUBJECT . ;package" GE-SRC-LINE
    s" native breakpoint resumes" GE-HB-RUN-STDIN

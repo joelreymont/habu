@@ -619,7 +619,7 @@ variable RC
    EXITED @ TTRUE
    RC @ REJECT-RC T=
    s" the native compiler places a refusal in a slice past the evaluating line" T-LABEL
-   BODY$ S\" 1 set-tier\n\nparse-name x drop 24 + 27 evaluate\n: LRD-QQ ( -- )\n5 c@ drop ;\n" FS:WRITE-ALL
+   BODY$ S\" \n\nparse-name x drop 24 + 27 evaluate\n: LRD-QQ ( -- )\n5 c@ drop ;\n" FS:WRITE-ALL
    BODY$ RUN
    SB-RESET  10 SB-APPEND-C  s" ncomp: cannot compile LRD-QQ at c@ in " SB-APPEND  BODY$ SB-APPEND
    s" :5" SB-APPEND  10 SB-APPEND-C

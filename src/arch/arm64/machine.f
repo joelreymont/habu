@@ -1,6 +1,6 @@
 \ machine.f - A64M, the ARM64 machine description every ARM64 pass and routine
-\ contract is written against; src/arch/x86-64/machine.f is the x86-64 half and
-\ src/compiler/native-effect.f the target-neutral schema. Every bound is read off
+\ contract is written against; src/compiler/native-effect.f is the
+\ target-neutral schema. Every bound is read off
 \ the vocabulary src/arch/arm64/asm.f emits; the engine's registers come from
 \ ENGINE-GPR (src/habu/layout.f). Readers answer from the constants MACHINE is
 \ built from, so nothing is stated twice.
@@ -20,8 +20,8 @@ private
 31 constant ZERO-N        \ operand 31: the zero register, or the stack pointer
 
 \ AAPCS64 leaves x18 to the platform: Linux gives it to code, Darwin keeps it. An
-\ x86-64 target still loads this file (the shared compiler requires a64ir.f, and
-\ an x86-64 build window loads it on an ARM64 host), so it answers the reserving
+\ x86-64 target still loads this file (abi.f and frame.f require it, and an
+\ x86-64 build window loads it on an ARM64 host), so it answers the reserving
 \ default instead of refusing the whole closure.
 : PLATFORM-RESERVED-MASK ( -- n )
    HB-TARGET-LINUX? if 0 exit then
@@ -38,7 +38,7 @@ constant TARGET-RESERVED-MASK
 
 \ The engine's claim, x19's data stack among it, is ENGINE-GPR:A64-MASK, the one
 \ authority: never name an engine register here. It is read by name: the x86-64
-\ compiler loads this file too (abi.f and frame.f require a64ir.f).
+\ compiler loads this file too (abi.f and frame.f require it).
 TARGET-RESERVED-MASK ENGINE-GPR:A64-MASK or constant RESERVED-MASK
 
 1 FILE-N lshift 1 -  RESERVED-MASK invert and  constant GPR-MASK
@@ -62,8 +62,7 @@ $1 1 lshift  $1 4 lshift or  $1 WIDEST lshift or  constant WIDTHS-N
 \ the widest access reaches, rounded down to the stack alignment.
 OFF-MAX WIDEST * dup SP-ALIGN-N mod - constant FRAME-MAX-N
 
-\ A spill slot holds one general register; a64ir.f's frame forms read their slot
-\ width here.
+\ A spill slot holds one general register; frame.f reads its slot width here.
 WIDEST constant SLOT-WIDTH-N
 
 \ Every allocatable register is call-destroyed: src/compiler/native/abi.f

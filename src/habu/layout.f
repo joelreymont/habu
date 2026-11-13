@@ -184,7 +184,7 @@ $3000 constant LOCNAMES
 \ name wider than the field is refused before it is stored.
 LOC-REC 8 - constant LOC-NAME-CAP
 64 constant LOC-RECS          \ LOCNAMES holds this many LOC-RECs ($600 bytes)
-\ Tier 1's arm64 body capture scopes the locals it records by block:
+\ The body capture scopes the locals it records by block:
 \ CAPDEPTH-CELL is the block depth and TOKDEPTH-CELL the depth as the current
 \ token began, restored with TOKLOCN-CELL's mark.
 $2DB8 constant CAPDEPTH-CELL
@@ -595,14 +595,14 @@ $250 constant VVAL-OFF
 32 constant VSMAX
 
 
-\ A latch whose compiler cell (XT-CELL or COMP-CELL) is zero dies with
+\ A latch whose compiler cell (COMP-CELL) is zero dies with
 \ ENGINE-ERROR:AOT-SEED.
 package NCOMP-DISPATCH
 public
 $358 constant XT-CELL
 
-\ The callback operations are NDEFINITION's, shared by the XT-CELL and COMP-CELL
-\ compilers; TIER-CELL selects which compiles the accessor. A fresh source
+\ The callback operations are NDEFINITION's, which the COMP-CELL compiler
+\ uses. A fresh source
 \ compiler may coexist with a retained active compiler in a build window; both
 \ operations must follow the active compiler rather than dictionary names.
 $3810 constant CALLBACK-STUB-CELL
@@ -619,23 +619,14 @@ $3840 constant COMP-CELL
 \ COMP-CELL; the Habu loop's `constant`, `create` and `defer` call it.
 $6C0 constant FIXED-COMP-CELL
 
-\ TIER-CELL ( 0 | 1 ) -- which compiler the `:` handlers dispatch to.
-\
-\   0 = tier 0: the compiler in COMP-CELL; with COMP-CELL zero, the Habu loop
-\       refuses a definition. Every `--load` and
-\       the REPL; every process starts at 0.
-\   1 = tier 1, the IR pipeline reached through XT-CELL.
-\       Selected deliberately with `1 set-tier`. A build, the engine's
-\       included, compiles at its caller's tier.
-\
-\ On an engine whose tier 0 is the JIT, tier 1 must be selected BEFORE the
-\ first definition on a tier-1 path: NCOMP's READ-PRIOR exits on GLUE-UNKNOWN
-\ when it meets a body the JIT compiled.
+\ TIER-CELL ( 0 ) -- which compiler the `:` handlers dispatch to: tier 0, the
+\ compiler in COMP-CELL; with COMP-CELL zero, the Habu loop refuses a
+\ definition. Every process starts at 0, and `set-tier` refuses any other tier.
 \
 \ Read by emitted code as `DATA TIER-CELL LDR` (12-bit scaled immediate), so it
 \ stays 8-aligned and below $7FF8.
 $370 constant TIER-CELL
-\ Latched at the colon (0 JIT or no compiler, 1 XT-CELL, 2 COMP-CELL); an
+\ Latched at the colon (0 no compiler, 2 COMP-CELL); an
 \ immediate may only select the NEXT definition.
 $388 constant DEF-TIER-CELL
 \ The outer executable-build scope saves the caller's selection once and

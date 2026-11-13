@@ -144,7 +144,7 @@ public
 
 \ A baked compiler must be told which checker owns the source: clearing the
 \ latch makes the built engine refuse a missing field instead of reaching for a
-\ name (called by src/compiler/native/compiler.f CAPTURE-PREPARE).
+\ name.
 : CAPTURE-PREPARE ( -- )
    0 SOURCE-LOADED ! ;
 

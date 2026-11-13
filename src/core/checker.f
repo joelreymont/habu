@@ -20511,8 +20511,8 @@ variable CPAY-ON
    DEADP @ 0= IF RES-TRUE EXIT THEN
    a u DEAD-CLOSE? ;
 
-\ A token no path reaches is bound as a call, which tier 1 needs to refuse it
-\ (E-NELAB-CTRL), and files K-UNREACHED, which T0 refuses.
+\ A token no path reaches is bound as a call and files K-UNREACHED, which T0
+\ refuses.
 : DEAD-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
    a u BIND-SOURCE-CALL
    CHECKER-TAPE:K-UNREACHED 0 0 EVENT! ;

@@ -11,7 +11,6 @@ require src/lib/argv.f
 require src/lib/time-cpu.f
 require src/lib/fd.f
 
--7700 constant E-FLOOR-UNCOMPILED
 -7701 constant E-FLOOR-EXCEEDED
 -7702 constant E-FLOOR-CAPACITY
 
@@ -31,11 +30,6 @@ create SRC-OFF SET-N cells allot
 create SRC-LEN SET-N cells allot
 variable SRC-FILL
 
-variable NC-COUNT                  \ NCOMP:COMPILE dispatches since MAIN took the cell
-variable NC-MARK                   \ NC-COUNT when the current set opened
-
-variable PRIOR-TIER                \ the tier the caller had selected
-
 8 constant PREFIX-CAP
 create LIVE-PREFIX PREFIX-CAP allot
 variable PREFIX-U                  \ length of the prefix in LIVE-PREFIX
@@ -45,14 +39,6 @@ $7FFFFFFFFFFFFFFF constant NO-LEAST \ above any least: the first sample replaces
 variable SET-NS                    \ the set's CPU ns, summed over every round
 variable SET-LEAST                 \ the set's cheapest definition in any round
 variable BOUND-US                  \ ratchet floor in us; read only when a floor was given
-
-\ ---- the dispatch counter ---------------------------------------------------
-\ The wrapper counts every definition tier 1 compiles while installed; tier 0
-\ never reads this cell, so a tier-0 set that adds one dies E-FLOOR-UNCOMPILED.
-
-: COUNTING-COMPILE ( ptr u8 n -- )
-   NC-COUNT @ 1+ NC-COUNT !
-   NCOMP:COMPILE ;
 
 \ ---- refusal ----------------------------------------------------------------
 
@@ -114,8 +100,6 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
    0 SET-NS !
    NO-LEAST SET-LEAST ! ;
 
-: DISPATCHES ( -- n )  NC-COUNT @ NC-MARK @ - ;
-
 \ Every round rebuilds the same names and the engine refuses a redefinition,
 \ so TEARDOWN removes a measured set before the next is built.
 : UNDEF-ONE ( n -- ) {: ix :}
@@ -136,23 +120,11 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
 : MEASURE ( ptr u8 n ptr u8 n -- ) {: px:ptr pu tx:ptr tu :}
    TEARDOWN
    px pu tx tu BUILD-SET
-   NC-COUNT @ NC-MARK !
    COMPILE-SET
    1 SET-LIVE? ! ;
 
-: EXPECT ( n n ptr u8 n -- ) {: want got lbl:ptr lu :}
-   want got = if exit then
-   SB-RESET
-   s" compile-floor: " SB-APPEND  lbl lu SB-APPEND
-   s"  put " SB-APPEND  got FMT:SB-U
-   s"  definitions through ncomp, expected " SB-APPEND  want FMT:SB-U
-   LF SB-APPEND-C
-   SB$ E-FLOOR-UNCOMPILED REFUSE ;
-
 : RUN-TIER0 ( -- )
-   0 set-tier
-   s" V" s"  ( n -- n ) 1 + ; " MEASURE
-   0 DISPATCHES s" the trivial tier-0 set" EXPECT ;
+   s" V" s"  ( n -- n ) 1 + ; " MEASURE ;
 
 : REPORT ( -- )
    SB-RESET
@@ -187,24 +159,10 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
    ARGV:POS# 0= if exit then
    0 ARGV:POS$ FLOOR-US BOUND-US ! ;
 
-\ ---- the borrow ------------------------------------------------------------
-\ MAIN borrows the dispatch cell, the tier and the measurement names after
-\ parsing and gives all three back through `finally`, on the refusing path too.
-
-\ Every boot installs NCOMP:COMPILE in the tier-1 `:` dispatch, the entry
-\ COUNTING-COMPILE forwards to, so PUT-BACK ends the borrow with NCOMP:INSTALL.
-: TAKE-OVER ( -- )
-   tier@ PRIOR-TIER !
-   0 NC-COUNT !
-   ['] COUNTING-COMPILE NCOMP:DISPATCH! ;
-
-\ TEARDOWN first: on the refusing paths a measured set is still standing, and
-\ the caller gets its dictionary back along with the compiler's dispatch and
-\ its tier.
+\ On the refusing paths a measured set is still standing: MAIN removes it
+\ through `finally`, so the caller gets its dictionary back.
 : PUT-BACK ( -- )
-   TEARDOWN
-   NCOMP:INSTALL
-   PRIOR-TIER @ set-tier ;
+   TEARDOWN ;
 
 : MEASURE-ALL ( -- )
    RESET-SET
@@ -216,11 +174,10 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
 
 public
 
-\ CONFIG runs before the borrow so a usage failure restores nothing, having
-\ taken nothing. Everything after it is inside the cleanup's reach.
+\ CONFIG runs first, so a usage failure has nothing to remove. Everything after
+\ it is inside the cleanup's reach.
 : MAIN ( -- )
    CONFIG
-   TAKE-OVER
    [: MEASURE-ALL ;] [: PUT-BACK ;] finally ;
 
 ;package

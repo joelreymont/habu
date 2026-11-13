@@ -31,14 +31,6 @@ TYPED-VARIABLE UCE-A ptr u8   variable UCE-U
 70 constant E-REJECT            \ E-UNDEFINED / checker rejection
 E-USING-SHADOW-GLOBAL constant E-SHADOW   \ a global shadows a used public of the same name
 
-package USING-TEST
-private
-variable START-TIER
-tier@ START-TIER !
-public
-: RESTORE-TIER ( -- ) START-TIER @ set-tier ;
-;package
-
 package UA public : AW ( -- n ) 11 ; ;package
 package UB public : BW ( -- n ) 22 ; ;package
 package UC public : AW ( -- n ) 33 ; ;package   \ same tail AW as UA -> ambiguity source
@@ -391,10 +383,5 @@ USING-TEST:UAD-V @ 1 T=
 s" using UA using UC : UAD-R1 ( -- n ) AW ; ;using ;using" UCE-CATCH E-USING-AMBIGUOUS T=
 s" using UA using UC AW drop ;using ;using" UCE-CATCH E-AMBIGUOUS T=
 s" undefine AW" UCE-CATCH 0 T=
-1 set-tier
-s" using UA using UC : AW ( -- n ) 2 ; ;using ;using AW USING-TEST:UAD-V !" UCE-CATCH 0 T=
-USING-TEST:UAD-V @ 2 T=
-s" using UA using UC : UAD-R2 ( -- n ) AW ; ;using ;using" UCE-CATCH E-USING-AMBIGUOUS T=
-USING-TEST:RESTORE-TIER
 
 T-REPORT

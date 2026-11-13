@@ -18,12 +18,8 @@ public
    s" : C2-MEM-READ-OK ( read-view<p,q,u8> -- u8 read-view<p,q,u8> ) 0 C2-MEM:BYTE@ ;" 0 SUBJECT:EXITED? TTRUE
    s" a mutable view uses the mutable byte operation" T-LABEL
    s" : C2-MEM-MUT-OK ( mut-view<p,q,a,u8> -- u8 mut-view<p,q,a,u8> ) 0 C2-MEM:MUT-BYTE@ ;" 0 SUBJECT:EXITED? TTRUE
-   s" native scoped invocation rejects a boolean finisher" T-LABEL
-   s" 1 set-tier TRUSTED: C2-BAD-FIN ( -- ) [: ;] [: ;] [: if then ;] c2-invoke ;" 67 SUBJECT:EXITED? TTRUE
    s" native scoped invocation is trusted-only" T-LABEL
    s" : C2-UNTRUSTED-INVOKE ( -- ) [: ;] [: ;] [: drop ;] c2-invoke ;" 70 SUBJECT:EXITED? TTRUE
-   s" tier 1 scoped invocation is trusted-only" T-LABEL
-   s" 1 set-tier : C2-UNTRUSTED-INVOKE-P2 ( -- ) [: ;] [: ;] [: drop ;] c2-invoke ;" 70 SUBJECT:EXITED? TTRUE
    s" an exclusive view cannot be copied" T-LABEL
    s" : C2-MEM-COPY ( mut-view<p,q,a,u8> -- mut-view<p,q,a,u8> ) dup drop ;" 70 SUBJECT:EXITED? TTRUE
    s" an exclusive view cannot be dropped" T-LABEL

@@ -5347,8 +5347,8 @@ TFAM-MEMBERS-INSTALL
 \ pads and pass 2 adds the WF row's cells at the same site; the native chain
 \ calls the generated constructor (declared pads and tag, whatever the
 \ instantiation) or reads the declared pads from the registry for a
-\ `construct`. MWIN-CELLS! files the difference under the judged token for
-\ src/compiler/native/elaborate.f; the WF row carries it to pass 2. A
+\ `construct`. MWIN-CELLS! files the difference under the judged token;
+\ the WF row carries it to pass 2. A
 \ construction that adds nothing files nothing (src/core/checker.f states the
 \ absent case above the table). A niche family counts its bundle, so a construct
 \ of either variant adds nothing.
@@ -5367,7 +5367,7 @@ TFAM-MEMBERS-INSTALL
 \ Pass 2 needs the difference from the declared pads (its lowering emitted them
 \ and can only add); a compiler that models the stack cell by cell needs the
 \ pad count itself. Both come off one subtraction: MWIN-CELLS! files the count
-\ under this `of` token for src/compiler/native/elaborate.f, and the WF row
+\ under this `of` token, and the WF row
 \ carries the difference to pass 2. An arm whose term is not closed latches
 \ nothing: the cell-accurate consumer then refuses the definition by name. A
 \ niche family counts its bundle, so its empty arm files one pad and the other

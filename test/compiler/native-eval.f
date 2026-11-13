@@ -317,11 +317,11 @@ $4F constant TASK-THREAD                \ habu1.f B-TASK-GUARD's exit
 
 \ The set-tier refusal's whole line up to the lr's 16 hex digits and its newline.
 : SET-TIER-LINE$ ( -- ptr u8 n )
-   s" E-SET-TIER habu: set-tier: tier must be 0 or 1 lr " ;
+   s" E-SET-TIER habu: set-tier: tier must be 0 lr " ;
 
 : SET-TIER-PAST ( -- )
-   s" set-tier past 1 exits 70" T-LABEL
-   s" 2 set-tier" OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
+   s" set-tier past 0 exits 70" T-LABEL
+   s" 1 set-tier" OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    PROCESS:ENDING>RC RC>N 70 T=
    nip LEN>N {: erru:n :}
    s" and prints its one line" T-LABEL

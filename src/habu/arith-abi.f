@@ -1,5 +1,5 @@
 \ arith-abi.f - the arithmetic primitives' refusal ABI, shared by the emitters
-\ (habu1.f BDIV0?, kernel-x64.f, src/compiler/native/emit-x64.f). error.f owns
+\ (habu1.f BDIV0?, kernel-x64.f). error.f owns
 \ the code as E-DIV-ZERO; the pair is re-registered here, the one form
 \ tools/error-code-lint.f admits; test/prim-parity.f keeps them equal.
 package ARITH-ABI

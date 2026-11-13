@@ -27,7 +27,7 @@ variable USED
 variable NAME-BYTES
 variable SCALAR-ROW
 \ Nonzero while an x86-64 build carries a complete captured runtime; RESET
-\ clears it and the x86-64 builder arms it (tools/native-emit-x64.f STREAM,).
+\ clears it.
 variable SEEDED
 
 : ROW-FIELD ( n n -- ptr n ) {: row:n field:n :}

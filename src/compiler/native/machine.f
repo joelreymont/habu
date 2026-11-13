@@ -269,11 +269,7 @@ public
 
 \ The frame a routine needing `want` bytes below its entry declares: the request
 \ rounded up to this machine's stack alignment, and no frame at all for a routine
-\ that needs nothing. It is here rather than in either caller because two of them
-\ need the same number - src/compiler/native/abi.f turns a spill count into a
-\ declaration, and src/compiler/native/regalloc.f measures the frame a walk
-\ proved its routine needs - and the two have to agree exactly or the contract
-\ validator refuses the difference.
+\ that needs nothing.
 : FRAME-ROUND ( n NMACH:mach -- n )
    SP-ALIGN {: want:n a:n :}
    want 0= if 0 exit then

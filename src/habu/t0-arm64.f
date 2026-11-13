@@ -406,7 +406,7 @@ DYNAMIC-BUFFER BR-ARG n
    RETURN CLOSE
    OUT-OFF INSN - EMIT-PATCH-SLOT! ;
 
-\ The callback stub is tier 1's, appended after the last unit so each unit's
+\ The callback stub is appended after the last unit so each unit's
 \ code is the same armed or not. Answers where it starts.
 : CB-STUB ( -- n )
    OUT-OFF {: at:n :}

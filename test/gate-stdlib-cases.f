@@ -115,11 +115,6 @@ SUITE compiler-target-policy
    test/compiler/target-policy.f
 ;SUITE
 
-\ The sealed Wasm target, scalar-FP split and function convention.
-SUITE compiler-wasm-target
-   test/compiler/wasm-target.f
-;SUITE
-
 \ The N01-N06 and W32 numeric rows of test/wasm/numeric-rows.f, each forked and
 \ its printed bytes compared.
 SUITE wasm-numeric
@@ -150,39 +145,6 @@ SUITE compiler-arm32-asm
 
 SUITE compiler-x86-64-asm
    test/compiler/x86-64-asm.f
-;SUITE
-
-\ The x86-64 machine dialect and the capability predicate it loads with:
-\ src/compiler/native/x64ir.f and src/arch/x86-64/backend.f.
-SUITE compiler-x64ir
-   test/compiler/x64ir.f
-;SUITE
-
-\ The x86-64 selection pass: src/compiler/native/select-x64.f and the routine
-\ contracts it is told, src/arch/x86-64/abi.f.
-SUITE compiler-x64-select
-   test/compiler/x64-select.f
-;SUITE
-
-\ The register allocator and its validator over an x86-64 module:
-\ src/compiler/native/regalloc.f and regalloc-verify.f reading this machine
-\ through the vocabulary src/compiler/native/dialect.f declares and
-\ src/compiler/native/x64ir.f builds.
-SUITE compiler-x64-regalloc
-   test/compiler/x64-regalloc.f
-;SUITE
-
-\ The x86-64 bytes themselves: src/compiler/native/emit-x64.f over the modules
-\ the two suites above select and accept, pinned against llvm-mc vectors.
-SUITE compiler-x64-emit
-   test/compiler/x64-emit.f
-;SUITE
-
-\ The x86-64 pass chain: the rows src/arch/x86-64/passes.f installs in
-\ src/compiler/native/backend.f, driven as src/compiler/native/compiler.f drives
-\ them, with the shared spill pass lowering the allocator's plan.
-SUITE compiler-x64-chain
-   test/compiler/x64-chain.f
 ;SUITE
 
 \ Host rows (the ARM tier-0 JIT, native x86-64 capture) live in

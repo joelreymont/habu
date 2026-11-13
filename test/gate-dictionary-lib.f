@@ -387,13 +387,6 @@ variable CANDIDATE-VERDICT
    s" 7" GE-OUT-LINE
    SB$ s" hb quotation reads a local output" GE-EXPECT-OUT ;
 
-: LOCAL-QUOT-TIER1 ( -- )
-   GE-HB-RESET
-   GE-SRC-RESET
-   s" 1 set-tier" GE-SRC-LINE
-   s" : QLOCAL1 ( n -- ) {: x:n :} [: x . ;] execute ;" GE-SRC-LINE
-   67 s" ncomp: cannot compile QLOCAL1 at x" s" tier 1 refuses a local read in a quotation" GE-EVAL-FORK-BAD ;
-
 : LOCAL-FIRST ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -1407,7 +1400,6 @@ variable CANDIDATE-VERDICT
    SB-RESET s" interpreted ndict! refuses " SB-APPEND lit litu SB-APPEND
    74 s" E-DICT-COUNT habu: dictionary count above DICT-CAP: " SB$ GE-EVAL-FORK-BAD
    GE-SRC-RESET
-   s" 1 set-tier" GE-SRC-LINE
    s" : GD-NDICT-BAD ( -- ) " GE-SRC+
    lit litu GE-SRC+ s"  ndict! ;" GE-SRC-LINE
    s" GD-NDICT-BAD" GE-SRC-LINE
@@ -1417,7 +1409,6 @@ variable CANDIDATE-VERDICT
 : NDICT-LIVE-RESTORE ( -- )
    GE-HB-RESET
    GE-SRC-RESET
-   s" 1 set-tier" GE-SRC-LINE
    s" package GD-NDICT-LIVE" GE-SRC-LINE
    s" variable LO variable HI" GE-SRC-LINE
    s" : MARK-LOW ( -- ) ndict@ LO ! ;" GE-SRC-LINE
@@ -1469,7 +1460,6 @@ public
    COMBINATOR-CHECKS
    LOCAL-QUOT-CHECKS
    LOCAL-QUOT-RUN
-   LOCAL-QUOT-TIER1
    LOCAL-FIRST
    LITERAL-FLOAT-FIRST
    LITERAL-FLOAT-EVAL

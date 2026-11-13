@@ -1,4 +1,4 @@
-\ A tier-1 replacement whose declared input row exceeds stored-signature width.
+\ A replacement whose declared input row exceeds stored-signature width.
 require src/lib/string.f
 
 package PROGRAM-DIAG-WIDE
@@ -15,7 +15,6 @@ public
 
 : PDB-WIDE ( -- ) ;
 undefine PDB-WIDE
-1 set-tier
 PROGRAM-DIAG-WIDE:START
 ' PROGRAM-DIAG-WIDE:BAD catch .
 PROGRAM-DIAG-WIDE:FINISH .

@@ -5,7 +5,6 @@
 require src/lib/error.f
 require src/lib/test.f
 
-1 set-tier
 
 \ Records defined here sit at the dictionary's top, so the sweep covers every
 \ body shape this engine emits: short and long colon words, a created cell with

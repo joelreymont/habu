@@ -10,7 +10,7 @@
 
 \ RR-R and R-R cases are a double's bits in and out: a NaN made from numbers is
 \ $7FF8000000000000 on every target, and a NaN operand passes through, the left
-\ one of two (src/compiler/native/hir-word.f DEF-FLOAT).
+\ one of two.
 
 0 CASES f+
            3           4                   7  NN-N

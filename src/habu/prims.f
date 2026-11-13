@@ -806,8 +806,8 @@ ETRUSTED-ONLY!
 EPRIM: created-sig! PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
 EPPRIM: INTERPRETER created-sig! PE-PTR-U8 PE-IN PE-N PE-IN ECLOSE-PRIVATE
-\ def-close ( -- ): end the pending definition the native compiler compiled,
-\ as the engine's tier-1 `;` ends one: the state def-open set clears:
+\ def-close ( -- ): end the pending definition the native compiler compiled:
+\ the state def-open set clears:
 \ DEF-TIER-CELL, TSIG, TCSIG, DOESB, CLAUSE, TRUSTED and PEND-CELL. Before
 \ PEND-CELL clears, LASTC-CELL takes the record for a nonzero kind other than
 \ DKIND:CAST, the record `does-patch` reads. It refuses when

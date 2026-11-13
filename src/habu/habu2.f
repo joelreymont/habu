@@ -1589,8 +1589,7 @@ variable LREPLAYTRAP
    EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,  9 9 0 LDR,   \ publish record NDICT-1; x9 = body start for the flush
    LFLUSH LABEL@ BL, ;
 
-\ The native compiler's fixed shadow callback, when one is installed
-\ (src/compiler/native/compiler.f SHADOW-FIXED), learns the created record
+\ The fixed shadow callback, when one is installed, learns the created record
 \ ADDR-TAIL, just published, NDICT - 1, and the DATA address its body pushes.
 : ADDR-SHADOW, ( -- )
    LBL {: noshadow:label :}

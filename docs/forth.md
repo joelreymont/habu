@@ -1735,7 +1735,7 @@ defined again binds its earlier text against every later record too.
   local is a plain xt: storable, and saved in images. Declaring a local inside
   a quotation is `E-BAD-LOCAL-SHAPE`: a body that needs locals of its own
   becomes a named private word. T0 compiles the read for arm64 and Wasm; an
-  x86-64 build and tier 1 refuse it. Quotations nest: each `[:` inside another opens its own body,
+  x86-64 build refuses it. Quotations nest: each `[:` inside another opens its own body,
   with its own inputs, calls and `exit`, and the enclosing body resumes after
   its `;]`; at most 32 are open at once (**Engine limits ordinary source
   reaches**).
@@ -1965,8 +1965,8 @@ backend answers alike.
   not an exit: `[: a b / drop ;] catch E-DIV-ZERO = if … then`. A structurally
   positive divisor says so in the type: the `positive-divisor` role
   (`src/lib/num-arithmetic.f`) makes the refusal unreachable. **The contract
-  holds at every tier**: the interpreted primitive, a word compiled with
-  `1 set-tier` and an AOT-built executable all throw the same code.
+  holds at every tier**: the interpreted primitive, a compiled word
+  and an AOT-built executable all throw the same code.
 - **`$8000000000000000 -1 /` is `$8000000000000000`, and
   `$8000000000000000 -1 mod` is `0`.** The quotient `2^63` has no signed cell,
   so it wraps like `+`, `-`, `*`.
@@ -2534,8 +2534,7 @@ sections above.
   does one deferred to the run; a refused or uncheckable one prints the body's
   diagnostic and throws the checker's rc before the word runs. A word the
   engine holds with no row the step can see is `E-UNDEFINED`, as a body call
-  to an unknown word is. `set-tier`'s row is global, so a program's first
-  line may choose the tier before any `require`.
+  to an unknown word is.
 - **Unknown top-level parsers stop discovery unless declared.** A word whose
   body reaches `parse-name` or `create`, or a `defer`, may consume or define
   following tokens. In `--verify-only`, it is `W-CHECK-DEFERRED`; later text
@@ -2584,10 +2583,6 @@ sections above.
   checker-only row with no engine word is `E-UNDEFINED` in compiled code,
   except that generated definitions in one checker scope may refer to rows
   recorded earlier in that scope (see **Naming**).
-- **Native compilation bounds a definition's width.** A wide enough
-  definition is refused: by the ARM64 backend as `E-A64RAV-DKEEP`, and past
-  the IR signature list's cap as `E-IR-TYPE-ARITY`. Register pressure is no
-  limit: entry values beyond the register pool are stored.
 - **Literal and output punctuation matter.** `s"` does not interpret escapes;
   `S\"` does and needs its delimiter space (see **Habu Native Tooling
   Gotchas**). Native `.` prints a newline: `11 . 22 . cr` emits
@@ -2663,8 +2658,7 @@ sections above.
   whatever its signature says: a use is refused as the bullet above says.
   `TRUSTED:` asserts an authoritative row, and a `defer` made before the hook
   gets its declared effect as one when the checker loads.
-- **On tier 1 a refused scan** leaves ordinary compilation using the declaration and reports the
-  reason; a native build requires the scan and refuses before publication. A
+- **A native build requires the scan** and refuses before publication. A
   failed native compile retracts only the pending definition's rows,
   preserving prior rows. If no row supplies arity it refuses with the hook's
   reject status; if another owner's row supplies arity but the body underflows

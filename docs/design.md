@@ -45,9 +45,6 @@ to remove, not a row to add.
   definition no build may run: every build writes objects, and a definition
   its source puts in a target section is compiled for the target alone
   ([xcomp.md](xcomp.md#host-and-target-words)).
-- Tier 1 and the JIT as compilers: T0 on every target, reusing what they
-  already implement; tier 1 changes only to fix a defect on a path it still
-  owns.
 - `TRUSTED:`, engine-only marks and owner rows: checked forms and private
   sections.
 - Compatibility with older hosts, formats or schemas: hard cutover.

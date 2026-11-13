@@ -1158,9 +1158,9 @@ require src/lib/prelude.f
 -9600 constant E-T0-UNSUPPORTED  \ a token T0 does not compile
 -9601 constant E-T0-CONTROL      \ a control word without its opener, a body ending inside one, or a token no path reaches
 -9604 constant E-T0-BINDS        \ the body binds other than its scan's count of locals
--9606 constant E-T0-MATCH        \ a MATCH or construct the checker's facts do not bear out, as tier 1's E-NELAB-MATCH
+-9606 constant E-T0-MATCH        \ a MATCH or construct the checker's facts do not bear out
 -9607 constant E-T0-DEFER        \ `is` names no deferred word
--9608 constant E-T0-BUNDLE       \ an operation over a width it cannot move, as tier 1's E-NELAB-BUNDLE
+-9608 constant E-T0-BUNDLE       \ an operation over a width it cannot move
 
 \ HEAD and each row's first cell are declared address cells holding the newest
 \ row and the row before, NULL-PTR for none, so the linker relocates them.

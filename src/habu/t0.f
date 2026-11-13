@@ -5,8 +5,8 @@
 \ through the step every native compiler shares
 \ (src/compiler/native/definition.f), and emits through
 \ src/habu/t0-emit.f's EMIT- words to the selected emitter. A name, a tick's
-\ operand and `is`'s operand lower from the record the checker bound, as tier
-\ 1's src/compiler/native/hir-word.f RESOLVE-SITE does; spelling is looked up
+\ operand and `is`'s operand lower from the record the checker bound; spelling
+\ is looked up
 \ only by IMM-TOKEN (CHECKER-OWNER:PARSE-IMM?), VALIDATE (NFETCH-CHECK:TAGS) and
 \ TAG-INLINE (NFETCH-CHECK:BAD-TAG).
 \ COMPILE-FIXED builds the body of a `constant`, `create` or `defer`, which has
@@ -31,7 +31,6 @@ require src/compiler/native/publish.f
 require src/compiler/native/definition.f
 require src/compiler/native/callback-stub.f
 require src/compiler/native/shadow.f
-require src/compiler/native/compiler.f
 require src/habu/t0-emit.f
 
 package COMP
@@ -469,12 +468,11 @@ variable FREE                       \ bit k set: no entry holds vreg k
 \ An unmeasured operand is one cell: the checker files only layout values. `>r`
 \ moves a value's cells as one cell each would, so they sit reversed on the
 \ return stack and `r>` restores their order. `@` and `!` move the measured
-\ cells as tier 1's WIDE-LOAD and WIDE-STORE (src/compiler/native/elaborate.f),
-\ `!` by the engine's guarded store once per cell. An `@` with a layout fact
+\ cells, `!` by the engine's guarded store once per cell. An `@` with a layout fact
 \ (NFETCH:AT) checks its tags first (VALIDATE); a fact whose width is not the
 \ token's is E-T0-BUNDLE. Any other inlined operation
 \ over a width other than one cell, and `@` or `!` under one cell, is
-\ E-T0-BUNDLE, as tier 1's DO-OP refuses it.
+\ E-T0-BUNDLE.
 \
 \ ON-DONE keeps each scan's measures because a does> definer's clause scan
 \ replaces the head's facts before the walk. A row: the token's offset in the
@@ -573,10 +571,10 @@ variable WS-K                        \ operands the word moves
 \ cell, into slots of the body's machine-stack frame; a local holds the cells
 \ the checker measured for its bind, and T0 never reads a type annotation. A
 \ bind past the scan's count, or a body that binds fewer than it counts, is
-\ E-T0-BINDS, as tier 1's BINDS-CK; a body that binds nothing reads none and
+\ E-T0-BINDS; a body that binds nothing reads none and
 \ is not checked. A local is in scope from its group to the closer of the
 \ structure it binds in, as the checker's CF-LOC-REST ends it; `while` keeps
-\ the loop's names, as tier 1's borrow does. A dead local's slots go to the
+\ the loop's names. A dead local's slots go to the
 \ next group. A local is its bind sequence, the checker's number for it in the
 \ unit's scan: a K-LOCAL-DECL row names the next one, a K-LOCAL-REF row the
 \ one it reads.
@@ -1116,7 +1114,7 @@ DYNAMIC-BUFFER RS-V vreg     \ reserved to EMIT-VREGS by RESET-STATE: one
    rec XREF-START ;
 
 \ An operand bound to no record, or one NDICT:TICK-REFUSED? refuses, is undefined
-\ (MISSING), as tier 1's tick refuses it, even in an unchecked body (THE EVENTS).
+\ (MISSING), even in an unchecked body (THE EVENTS).
 : DO-TICK ( n -- ) {: r:n :}
    NEXT$ {: a:ptr u:n :}
    r 0< if -1 MISSING !  a u UNSUPPORTED then
@@ -1189,8 +1187,7 @@ DYNAMIC-BUFFER RS-V vreg     \ reserved to EMIT-VREGS by RESET-STATE: one
    tag limit CC-GE entry at TRAP-IF
    TOP REMOVE ;
 
-\ Any other fact calls NFETCH-CHECK:TAGS as tier 1's VALIDATE-FETCH does (its
-\ comment covers the frozen value); NFETCH:CAPTURE keys facts by whole-text offset.
+\ Any other fact calls NFETCH-CHECK:TAGS; NFETCH:CAPTURE keys facts by whole-text offset.
 : VALIDATE ( ptr u8 n -- ) {: a:ptr w:n :}
    a TXT$ - {: at:n :}
    at NFETCH:AT {: address:n bytes:n width:n origin:n :}
@@ -1230,8 +1227,7 @@ DYNAMIC-BUFFER RS-V vreg     \ reserved to EMIT-VREGS by RESET-STATE: one
 \ decoded for an escaped literal (src/core/checker.f CHECKER-TAPE:STRING), and
 \ the tape copies it. Bytes are interned (INTERN:INTERN-SOURCE), so equal bodies
 \ share an address, and the address row files the origin interning answers. A
-\ counted string past COUNTED-MAX bytes is refused with tier 1's message and
-\ exit code 76.
+\ counted string past COUNTED-MAX bytes is refused with exit code 76.
 255 constant COUNTED-MAX            \ a counted string's length is one byte
 
 DYNAMIC-BUFFER STR-BUF u8           \ a decoded or counted body before interning
@@ -1240,7 +1236,7 @@ DYNAMIC-BUFFER STR-BUF u8           \ a decoded or counted body before interning
    kind CHECKER-TAPE:K-STRING =  kind CHECKER-TAPE:K-COUNTED-STRING = or
    kind CHECKER-TAPE:K-PRINTED-STRING = or ;
 
-\ A counted string of u bytes refuses as tier 1's COUNTED-LENGTH-CK does.
+\ A counted string of u bytes past COUNTED-MAX refuses.
 : TOO-LONG ( n -- )
    COUNTED-MAX <= if exit then
    2 S\" E-COUNTED-STRING-TOO-LONG habu: counted string too long (max 255)\n" write drop
@@ -1263,8 +1259,7 @@ DYNAMIC-BUFFER STR-BUF u8           \ a decoded or counted body before interning
 \ package scope.
 CAST: XT>N ( xt -- n )
 
-\ The payload's offset is the call's for `."`, as tier 1's (src/core/checker.f
-\ SPAY-B).
+\ The payload's offset is the call's for `."`.
 : DO-STRING ( n -- ) {: k:n :}
    k ROW-KIND @ {: kind:n :}
    kind CHECKER-TAPE:K-COUNTED-STRING = {: counted:bool :}
@@ -1275,8 +1270,7 @@ CAST: XT>N ( xt -- n )
    kind CHECKER-TAPE:K-PRINTED-STRING = if ['] type XT>N k ROW-OFF @ DO-CALL then ;
 
 \ ---- is ----------------------------------------------------------------------
-\ `is W` pushes W's cell (NDICT:REC-DEFER-CELL) and calls `xt!`, as tier 1's
-\ elaborate.f DO-IS; a W that is missing or no deferred word is E-T0-DEFER.
+\ `is W` pushes W's cell (NDICT:REC-DEFER-CELL) and calls `xt!`; a W that is missing or no deferred word is E-T0-DEFER.
 
 : DO-IS ( n n -- ) {: r:n loc:n :}
    ORD @ ROWS @ >= if ORD @ 1- ROW$ E-T0-DEFER REFUSE then
@@ -1442,15 +1436,14 @@ variable READER                     \ the unit being compiled if it reads locals
 \ NDEFINITION:CHECK-DOES-HEAD checks. The parent is unit 0 up to the `does>`
 \ token, where it calls `does-patch` with the clause's address (0 for an empty
 \ clause) and the clause's interned signature, then returns. The clause is the
-\ unit after every quotation of the parent text, nested ones included, as tier 1
-\ numbers it; its own quotations follow it, and an empty clause's unit is still
+\ unit after every quotation of the parent text, nested ones included; its own quotations follow it, and an empty clause's unit is still
 \ built. The clause binds locals of its own, whose cells its own scan measured.
 variable EMPTY-CLAUSE               \ whether no row follows the split: the clause is empty
 variable CLAUSE-ORD                 \ the checker's ordinal of the clause's first token
 
 : CLAUSE-EMPTY? ( -- bool ) CLAUSE-ORD @ ROWS @ >= ;
 
-\ As tier 1's STAGE-DOES-PATCH (src/compiler/native/elaborate.f).
+\ The clause's patch.
 : DOES-TAIL ( -- )
    NQ @ NESTED @ + CLAUSE !
    EMPTY-CLAUSE @ if 0 PUSH-CONST else CLAUSE @ PUSH-UNIT then
@@ -1465,20 +1458,20 @@ variable CLAUSE-ORD                 \ the checker's ordinal of the clause's firs
 \ the pads proved at its `of`. A niche family's one cell is first given its tag
 \ (NICHE-TAG), and the value's width counts it. `;MATCH` is the default arm: an
 \ unmatched tag calls the trap routine with the family's bad-tag message
-\ (src/compiler/native/trap.f), as tier 1's MATCH-TRAP. `construct fam v` pushes
+\ (src/compiler/native/trap.f). `construct fam v` pushes
 \ the variant's pads as zeros, then its tag, which a niche family omits. A call
 \ first pushes, as zeros, the pads the checker proved the call's instantiation
 \ adds (NDICT:CON-PADS):
-\ OPTION:NONE at option<pt>. A form whose facts are missing or disagree, as
-\ tier 1's MATCH-SCAN refuses them, is E-T0-MATCH: MATCH-CK names the token
+\ OPTION:NONE at option<pt>. A form whose facts are missing or disagree is
+\ E-T0-MATCH: MATCH-CK names the token
 \ being compiled, a family or variant that resolves nothing or a MATCH with no
 \ cells proved under its tag; DO-ARM names the token in place of a missing `of`.
 \ The facts are the checker's, filed under the ordinal of the token that holds
-\ them, as tier 1 reads them (src/compiler/native/elaborate.f MATCH-SCAN).
+\ them.
 : MATCH-CK ( bool -- ) 0= if ORD @ 1- ROW$ E-T0-MATCH REFUSE then ;
 
 \ `;MATCH` closes MATCH k: a tag no arm matched runs into the trap on the last
-\ arm's mismatch edge, as tier 1's MATCH-TRAP, and every `endof` lands after
+\ arm's mismatch edge, and every `endof` lands after
 \ it. loc is the `;MATCH` token's offset in the text.
 : CLOSE-MATCH ( n n -- ) {: loc:n k:n :}
    CS-TOP-KIND CS-MATCH <> MATCH-CK
@@ -1531,7 +1524,7 @@ variable CLAUSE-ORD                 \ the checker's ordinal of the clause's firs
    ORD @ ROW-KIND @ CHECKER-TAPE:K-MATCH-OF <> if ORD @ ROW$ E-T0-MATCH REFUSE then
    tag PUSH-CONST ;
 
-\ As tier 1's DO-MAKE-BUNDLE; the family is the token before the variant. A niche
+\ The family is the token before the variant. A niche
 \ value is the bundle without its tag.
 : DO-CONSTRUCT ( n n n -- ) {: tag:n pads:n at:n :}
    tag 0 >= MATCH-CK
@@ -1696,16 +1689,14 @@ variable OP-REC                      \ the last of them
 \ (WORD-CALL). Anything else is E-T0-UNSUPPORTED (UNSUPPORTED$). A name compiled
 \ code cannot reach (MISSING) is refused as undefined, even in an unchecked
 \ body whose scan did not refuse it.
-\ A token no path reaches (K-UNREACHED) is E-T0-CONTROL, as tier 1's
-\ E-NELAB-CTRL.
+\ A token no path reaches (K-UNREACHED) is E-T0-CONTROL.
 \
-\ T0 passes over a parse-neutral immediate as tier 1 does
-\ (src/compiler/native/elaborate.f WALK-SKIP?) and refuses any other.
+\ T0 passes over a parse-neutral immediate and refuses any other.
 : IMM-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
    a u CHECKER-OWNER:PARSE-IMM? if exit then
    a u E-UNMODELED-IMMEDIATE REFUSE ;
 
-\ A fixed word is its stamped value, as tier 1's RESOLVE-SITE folds it; r files a
+\ A fixed word is its stamped value; r files a
 \ DATA address so publication relocates it. A created word made before the AOT
 \ window opened stays a call: the capture refuses its address. User-space code
 \ addresses and 0 lie below 2^63, so the signed >= orders them as an unsigned
@@ -1861,18 +1852,15 @@ variable FIXED-VAL                   \ the fixed body's value or dispatch cell
 \ CALLBACK-STUB! and CALLBACK-STUB@ in the cells CALLBACK:
 \ (src/lib/ffi-callback.f) arms and reads its C entry through. The definition
 \ after a CALLBACK-STUB! seals with NCBSTUB armed (src/habu/t0-emit.f THE
-\ CALLBACK STUB); that compile ends the pending stub on every exit, as tier 1's
-\ does. T0 classifies no body for the host: each reason is UNKNOWN, and a
-\ quotation's arity is unknown (-1 -1), as tier 1 answers for one it has none
-\ for. A shadow open while it compiles adds a walk (THE WALKS).
+\ CALLBACK STUB); that compile ends the pending stub on every exit. T0 classifies no body for the host: each reason is UNKNOWN, and a
+\ quotation's arity is unknown (-1 -1). A shadow open while it compiles adds a walk (THE WALKS).
 \
-\ T0 owns its copies of tier 1's back-end words HOST-ARITIES and PUBLISH-IT,
+\ T0 owns HOST-ARITIES and PUBLISH-IT,
 \ with BODY-KIND and FIXED-VAL; from NDEFINITION it calls the front end and the
 \ callback group only.
 \
 \ The scan's recording unit latches the facts the capture and the call targets
-\ read. T0's observer keeps the verdict the scan reached, as tier 1's tape does
-\ (src/compiler/native/feed.f ON-DONE), and lays the tape the walk reads (THE
+\ read. T0's observer keeps the verdict the scan reached, and lays the tape the walk reads (THE
 \ TAPE): a row per token the scan reports, as it reports it, and at the scan's
 \ end each row's event, which the checker answers only then.
 \ A does> definer is scanned twice: its head (CHECK-DOES-HEAD) from the
@@ -1919,8 +1907,7 @@ variable SCAN-LO                     \ the ordinal of its first row
    ROWS @ SCAN-LO ! ;
 
 \ An escaped string's body is copied: it is not the text at its offset. Row 0,
-\ the definition's name, names the unit from here on, as tier 1's
-\ KEEP-TAPE-NAME.
+\ the definition's name, names the unit from here on.
 : ON-TOKEN ( ptr u8 n n n n n -- )
    drop {: a:ptr u:n off:n ru:n kind:n :}
    SCAN-TXT @ off + {: at:ptr :}
@@ -1978,7 +1965,7 @@ variable SCAN-LO                     \ the ordinal of its first row
    CHECK-SOURCE ;
 
 \ The scan's verdict stands over CHECK:DEFINITION's nonzero answer; its zero
-\ answer stands over the scan's, as tier 1's END-RECORDED has it.
+\ answer stands over the scan's.
 : SCAN ( -- )
    OBSERVE
    0 SCAN-VERDICT !
@@ -1997,7 +1984,7 @@ variable SCAN-LO                     \ the ordinal of its first row
 \ The shadow walk runs only for a machine an emitter provided (EMIT-PROVIDED?):
 \ for any other a T0 colon definition has no shadow routine, and the capture
 \ refuses one a shadow routine reaches. A refusal in either walk refuses the
-\ definition, as tier 1's SHADOWED. Each walk starts clean: WALK and FIXED-BODY
+\ definition. Each walk starts clean: WALK and FIXED-BODY
 \ set their own cells and RESET-STATE's, EMIT-OPEN clears the seam's rows and the
 \ selected emitter's sink and LABEL state; the tape, the measures and the NFETCH
 \ facts are only read.
@@ -2010,7 +1997,7 @@ variable SCAN-LO                     \ the ordinal of its first row
 
 : SHADOW-ARCH ( -- CTARGET:arch ) NSHADOW:BINDING CBIND:TARGET@ CTARGET:ARCH@ ;
 
-\ A `does>` definer's copy enters at its clause, as tier 1's SHADOW-TAKE.
+\ A `does>` definer's copy enters at its clause.
 : SHADOW-TAKE ( -- )
    M-DOES @ 0<> if CLAUSE @ NSHADOW:TAKE-DOES exit then
    NSHADOW:TAKE ;
@@ -2118,7 +2105,7 @@ variable SCAN-LO                     \ the ordinal of its first row
    before [: LOWER ;] [: SHUT ;] finally ;
 
 \ ---- the fixed bodies --------------------------------------------------------
-\ The bodies tier 1's NELAB:FIXED and NELAB:DEFER build, on one unit.
+\ The fixed bodies, on one unit.
 
 : FIXED-KIND? ( body -- bool )
    {: kind:body :}
@@ -2156,8 +2143,8 @@ variable SCAN-LO                     \ the ordinal of its first row
    if UNSUPPORTED$ exit then
    NULL-PTR 0 ;
 
-\ Compile the pending record's fixed body for ( val kind ), as tier 1's
-\ NCOMP:COMPILE-FIXED: no body text and no checker scan.
+\ Compile the pending record's fixed body for ( val kind ): no body text and no
+\ checker scan.
 : COMPILE-FIXED ( n body -- )
    {: val:n kind:body :}
    kind FIXED-KIND? 0= if E-COMP-STATE throw then

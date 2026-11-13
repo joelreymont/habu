@@ -314,8 +314,7 @@ public
 
 \ Whether a compiled call may bind an internal record (DNAME-INT) with flag cell
 \ f: an owned one (DNAME-OWNED) always, since the checker decides that call;
-\ any other only while the TRUSTED: compilation cell is armed. Asked by REC-CALL and by
-\ src/compiler/native/hir-word.f RESOLVE-SITE.
+\ any other only while the TRUSTED: compilation cell is armed. Asked by REC-CALL.
 : INT-CALL? ( n -- bool )
    DNAME-OWNED and 0<> if true exit then
    data-base TRUSTED-CELL + @ 0<> ;

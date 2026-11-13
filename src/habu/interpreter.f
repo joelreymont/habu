@@ -1263,13 +1263,12 @@ require src/core/checker.f
 require src/core/check-hook.f
 require src/core/does-clause.f
 require src/compiler/fixed-body.f
-require src/compiler/native/compiler.f
 
 package INTERPRETER
 
 private
 
-\ Tier 1's capture reads locals before syntax. These cells describe lexical
+\ The capture reads locals before syntax. These cells describe lexical
 \ lifetime only; CF is the JIT's patch stack.
 LOC-RECS TYPED-BUFFER BODY-LOCAL-DEPTH n
 variable BODY-DEPTH
@@ -1568,7 +1567,7 @@ private
    NCOMP-DISPATCH:DEF-TIER-CELL CELL@ 2 = if
       NCOMP-DISPATCH:COMP-CELL CELL@ exit
    then
-   NCOMP-DISPATCH:XT-CELL CELL@ ;
+   0 ;
 
 \ With no compiler in the latched cell the boot is broken, and the process
 \ ends.
@@ -1659,8 +1658,8 @@ private
    S\" c\\\q" TOKEN-IS? if DEF-ESC-TEXT exit then
    S\" .\\\q" TOKEN-IS? if DEF-ESC-TEXT then ;
 
-\ Tier 0's JIT fills LOCNAMES while compiling `{:`; tier 1 captures each
-\ declaration here, then the native compiler reads it from the body text at `;`.
+\ The capture records each `{:` declaration here; the compiler reads it from the
+\ body text at `;`.
 : BODY-LOCAL? ( -- bool )
    TOKEN$ {: a:ptr u:n :}
    LOCN-CELL CELL@ 0 ?do
@@ -1719,7 +1718,7 @@ private
       BODY-BLOCK-DROP  BODY-DEPTH @ 1- BODY-DEPTH !
    then ;
 
-\ The JIT's sealed row and the tier-1 capture admit the same body vocabulary.
+\ The body vocabulary the capture admits.
 \ `;` is handled before the capture.
 : BODY-POLICY ( -- )
    BODY-LOCAL? if exit then
@@ -2068,10 +2067,7 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
 : DEF-FIXED ( n COMP:body -- )
    NCOMP-DISPATCH:DEF-TIER-CELL CELL@ {: latch:n :}
    latch 0= if DEF-TIER-0 then
-   latch 2 = if
-      NCOMP-DISPATCH:FIXED-COMP-CELL CELL@ AS-COMPILE-FIXED execute exit
-   then
-   NCOMP:COMPILE-FIXED ;
+   NCOMP-DISPATCH:FIXED-COMP-CELL CELL@ AS-COMPILE-FIXED execute ;
 
 \ The fixed body pushes the cell-aligned here, and ends in the
 \ slot a `does>` patches.

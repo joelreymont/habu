@@ -257,8 +257,7 @@ so the message names the mechanism that caught the fault
   mapping, before the callback ran. Allocate the stack with
   `MEM:ALLOC-GUARDED`.
 
-A tier-1 top-row warning does not change which of these a program hits; it
-only warns once first. `test/stack-guard.f`, `test/engine-stack-machine.f` and
+`test/stack-guard.f`, `test/engine-stack-machine.f` and
 `test/engine-stack-wide.f` hold worked cases.
 
 ## Standalone gotchas a stepper catches fast

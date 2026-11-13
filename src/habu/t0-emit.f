@@ -531,7 +531,7 @@ ARCHES TYPED-BUFFER EMIT-LOOP-CLOSE-XT [ -- ]
 \ offset, since publishing only copies bytes; an unplaced one keeps the bytes.
 \
 \ THE CALLBACK STUB. While NCBSTUB is armed, the emission's first seal has the
-\ emitter append tier 1's stub after the last unit and files it as the last
+\ emitter append the stub after the last unit and files it as the last
 \ function, and later seals reuse it, so an unplaced seal's copy holds it.
 
 : EMIT-PLACE ( n -- )

@@ -39,13 +39,13 @@ create ERR CAP allot
    s" TRUSTED: PST-RAW ( -- ) 0 data-base TXN-STATE-OFF 1- + patch32 ; PST-RAW" REJECTS
    s" TRUSTED: PST-RAW ( -- ) 0 -4 ! ; PST-RAW" REJECTS ;
 
-\ Exercise source stores compiled at tier 1, where the guard belongs to the
+\ Exercise compiled source stores, where the guard belongs to the
 \ lowered operation rather than the interpreted store primitive.
 : TEST-NATIVE-STORE ( -- )
-   s" 1 set-tier TRUSTED: PST-P ( -- ptr n ) data-base TXN-STATE-OFF 1- + ; : PST-S ( -- n ) 0 PST-P ! 1 ; PST-S drop" REJECTS
-   s" 1 set-tier TRUSTED: PST-P ( -- ptr u8 ) data-base TXN-STATE-OFF 1+ + byte-view ; : PST-S ( -- n ) 0 PST-P c! 1 ; PST-S drop" REJECTS
-   s" 1 set-tier TRUSTED: PST-P ( -- ptr n ) -4 ; : PST-S ( -- n ) 0 PST-P ! 1 ; PST-S drop" REJECTS
-   s" 1 set-tier variable PST-C : PST-S ( -- n ) 19 PST-C ! PST-C @ ; : PST-CHECK ( -- ) PST-S 19 <> if 1 throw then ; PST-CHECK" ACCEPTS ;
+   s" TRUSTED: PST-P ( -- ptr n ) data-base TXN-STATE-OFF 1- + ; : PST-S ( -- n ) 0 PST-P ! 1 ; PST-S drop" REJECTS
+   s" TRUSTED: PST-P ( -- ptr u8 ) data-base TXN-STATE-OFF 1+ + byte-view ; : PST-S ( -- n ) 0 PST-P c! 1 ; PST-S drop" REJECTS
+   s" TRUSTED: PST-P ( -- ptr n ) -4 ; : PST-S ( -- n ) 0 PST-P ! 1 ; PST-S drop" REJECTS
+   s" variable PST-C : PST-S ( -- n ) 19 PST-C ! PST-C @ ; : PST-CHECK ( -- ) PST-S 19 <> if 1 throw then ; PST-CHECK" ACCEPTS ;
 
 \ At the code ceiling `create` and `:` refuse before they write (src/habu/interpreter.f
 \ DEF-CODE-ROOM); a constant's body write reaches the guard.

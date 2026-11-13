@@ -173,7 +173,7 @@ variable BUF-U
    L-SP GET,  CELL-BYTES I32,  OP-I32-ADD B,  L-SP SET,  SP!, ;
 
 
-\ `/` or `mod` by op, as tier 1's SEL-DIV: a zero divisor throws E-DIV-ZERO, the
+\ `/` or `mod` by op: a zero divisor throws E-DIV-ZERO, the
 \ stack kept. With neg1 a divisor of -1 answers 0 - a: div_s traps on MIN-N / -1.
 : DIVIDE-BODY ( n bool -- )
    {: op:n neg1:bool :}
@@ -474,7 +474,7 @@ variable SITES-N
 
 
 \ throw ( n -- ) pops its code into ctx.throw-code and answers status 1; a zero
-\ code is stored as ENGINE-ERROR:THROW-ZERO, as tier 1's (kernel.f THROW-ROW).
+\ code is stored as ENGINE-ERROR:THROW-ZERO.
 : THROW-BODY ( -- )
    2 U32,  1 U32,  I32 B,  1 U32,  I64 B,
    WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES I32,  OP-I32-SUB B,  L-SP SET,
