@@ -302,21 +302,6 @@ public
    uin 0 < uout 0 < or if E-COMP-ARITY throw then
    uin M-IN !  uout M-OUT ! ;
 
-\ The arity of each of the definition's functions, root first. A `does>`
-\ clause's is the split's; every other function past the root is a quotation,
-\ whose arity the compiler that built it answers by function ordinal.
-: HOST-ARITIES ( n [ n -- n n ] -- )
-   {: funs:n q :}
-   M-IN @ M-OUT @ NHOST:SOURCE-ARITY+
-   funs 1 ?do
-      M-DOES @ 0<> i M-DOES-FUN @ = and if
-         M-DOES-IN @ M-DOES-OUT @
-      else
-         i q execute
-      then
-      NHOST:SOURCE-ARITY+
-   loop ;
-
 private
 
 \ ---- publication and refusal -------------------------------------------------
@@ -554,7 +539,7 @@ public
    sa M-SRC ! su M-SRC-U !
    NULL-PTR M-SCAN !
    0 M-IN ! 0 M-OUT !
-   TRUSTED? NHOST:SOURCE-BEGIN
+   NHOST:INSTALL
    0 M-VERDICT !
    CHECKER-OWNER:ROWS-END M-ROWS !
    0 M-DOES-FRAME !

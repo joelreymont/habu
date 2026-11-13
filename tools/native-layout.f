@@ -3,7 +3,6 @@
 require src/habu/layout.f
 require src/habu/aot-decl.f              \ AOT-WINDOW, the XT-offset rows TRANSLATE-ROWS rewrites
 require src/habu/native-observer-cells.f
-require src/habu/native-host-cells.f
 
 package NATIVE-LAYOUT
 private

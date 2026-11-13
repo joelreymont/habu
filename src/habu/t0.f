@@ -1819,10 +1819,10 @@ variable FIXED-VAL                   \ the fixed body's value or dispatch cell
 \ CALLBACK-STUB! and CALLBACK-STUB@ in the cells CALLBACK:
 \ (src/lib/ffi-callback.f) arms and reads its C entry through. The definition
 \ after a CALLBACK-STUB! seals with NCBSTUB armed (src/habu/t0-emit.f THE
-\ CALLBACK STUB); that compile ends the pending stub on every exit. T0 classifies no body for the host: each reason is UNKNOWN, and a
-\ quotation's arity is unknown (-1 -1). A shadow open while it compiles adds a walk (THE WALKS).
+\ CALLBACK STUB); that compile ends the pending stub on every exit. A shadow
+\ open while it compiles adds a walk (THE WALKS).
 \
-\ T0 owns HOST-ARITIES and PUBLISH-IT,
+\ T0 owns PUBLISH-IT,
 \ with BODY-KIND and FIXED-VAL; from NDEFINITION it calls the front end and the
 \ callback group only.
 \
@@ -1836,7 +1836,6 @@ variable FIXED-VAL                   \ the fixed body's value or dispatch cell
 \ them, which the checker files nothing for (CHECKER-OWNER:TAPE-ADVANCE), and
 \ its token offsets count from the clause's start; the clause's scan first lays
 \ the `does>` row, so the tape is in text order with the checker's ordinals.
-variable OBSERVER-ID
 variable SCAN-VERDICT
 PTR-VARIABLE SCAN-TXT                \ the text the scan reads
 variable SCAN-BASE                   \ its offset in the definition's text
@@ -1919,7 +1918,6 @@ variable SCAN-LO                     \ the ordinal of its first row
    0 MEASURES !  0 BIND-COUNT !  0 HEAD-BINDS ! ;
 
 : OBSERVE ( -- )
-   OBSERVER-ID BYTE-VIEW NULL-PTR BYTE-VIEW -
    [: ON-SCAN ;] [: ON-TOKEN ;] [: ON-DONE ;]
    CHECKER-OWNER:TAPE-INSTALL ;
 
@@ -1986,21 +1984,6 @@ variable SCAN-LO                     \ the ordinal of its first row
    SHADOW-TAKE
    NEMIT:CLEAR ;
 
-\ The arity of each of the definition's functions, root first. A `does>`
-\ clause's is the split's; every other function past the root is a quotation,
-\ whose arity the compiler that built it answers by function ordinal.
-: HOST-ARITIES ( n [ n -- n n ] -- )
-   {: funs:n q :}
-   M-IN @ M-OUT @ NHOST:SOURCE-ARITY+
-   funs 1 ?do
-      M-DOES @ 0<> i CLAUSE @ = and if
-         M-DOES-IN @ M-DOES-OUT @
-      else
-         i q execute
-      then
-      NHOST:SOURCE-ARITY+
-   loop ;
-
 \ A `does>` publication ends the split's checker frame, which RETRACT and
 \ SETTLE-UNIT read.
 : PUBLISH-IT ( -- )
@@ -2052,9 +2035,7 @@ variable SCAN-LO                     \ the ordinal of its first row
    KEEP-ARITY
    STUB-ARM
    [: WALK ;] SHADOWED
-   [: TARGET-WORD? if NQ @ ERROR-EMIT else WALK then
-      NQ @ [: drop -1 -1 ;] HOST-ARITIES
-      NHOST:SOURCE-FREEZE ;] HOSTED ;
+   [: TARGET-WORD? if NQ @ ERROR-EMIT else WALK then ;] HOSTED ;
 
 \ The compile window, the emission, the armed stub and a shadow copy no
 \ publication claimed end on every exit.
@@ -2124,14 +2105,12 @@ variable SCAN-LO                     \ the ordinal of its first row
    0 M-OPEN !
    STUB-END
    NFETCH:RELEASE
-   NHOST:SOURCE-ABANDON
    0 rc false NULL-PTR 0 NULL-PTR SETTLE-UNIT ;
 
 \ Compile the pending definition whose body text the engine captured.
 : COMPILE ( ptr u8 n -- )
    IDLE-CK
    STAGE-UNIT
-   NHOST:UNKNOWN 0 NHOST:SOURCE-REFUSE
    CHECKER-OWNER:RESET-REPORT
    0 MISSING !  0 BAD-LEN !
    COMP-BODY:compiled BODY-KIND !
@@ -2141,7 +2120,6 @@ variable SCAN-LO                     \ the ordinal of its first row
    STUB-END
    NFETCH:RELEASE
    FORGET-MEASURES
-   NHOST:SOURCE-ABANDON
    rc REFUSED$ {: a:ptr u:n :}
    0 rc  rc E-T0-UNSUPPORTED = MISSING @ 0<> and  a u a SETTLE-UNIT ;
 

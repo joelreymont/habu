@@ -22647,10 +22647,6 @@ defer DONE-XT ( ptr u8 n n -- )
 \ A dispatch cell cannot be interrogated, so ARM asks this flag.
 variable SET   0 SET !
 
-\ The installer's unit id, so a takeover is a stated fact; nothing here
-\ interprets it.
-variable BY   0 BY !
-
 \ Whether the observer is being told a verdict (DONE): the one time the table of
 \ events holds the scan that publishes, so the one time EVENT may read it.
 variable TELLING   0 TELLING !
@@ -22660,11 +22656,10 @@ public
 \ Armed by the compilation unit that wants a tape, disarmed after it.
 variable ARMED   0 ARMED !
 
-: INSTALL ( n [ ptr u8 n -- ] [ ptr u8 n n n n n -- ] [ ptr u8 n n -- ] -- )
+: INSTALL ( [ ptr u8 n -- ] [ ptr u8 n n n n n -- ] [ ptr u8 n n -- ] -- )
    is DONE-XT
    is TOKEN-XT
    is SCAN-XT
-   BY !
    1 SET ! ;
 
 : ARM ( -- )

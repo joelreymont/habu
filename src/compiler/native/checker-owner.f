@@ -53,7 +53,7 @@ defer SOURCE-DOES-REPORT ( n ptr u8 n -- n )
 \ The owner record stores raw execution tokens; each view states a field's
 \ signature so native execute has a callable layout.
 CAST: AS-CHECK ( n -- [ ptr u8 n -- n ] )
-CAST: AS-TAPE-INSTALL ( n -- [ n [ ptr u8 n -- ] [ ptr u8 n n n n n -- ] [ ptr u8 n n -- ] -- ] )
+CAST: AS-TAPE-INSTALL ( n -- [ [ ptr u8 n -- ] [ ptr u8 n n n n n -- ] [ ptr u8 n n -- ] -- ] )
 CAST: AS-ACTION ( n -- [ -- ] )
 CAST: AS-DOES-CHECK ( n -- [ ptr u8 n ptr u8 n -- n ] )
 CAST: AS-DOES-REPORT ( n -- [ n ptr u8 n -- n ] )
@@ -193,7 +193,7 @@ public
    AS-BOOL execute ;
 
 \ CHECKER-TAPE token-kind constants remain part of the shared observer ABI.
-: TAPE-INSTALL ( n [ ptr u8 n -- ] [ ptr u8 n n n n n -- ] [ ptr u8 n n -- ] -- )
+: TAPE-INSTALL ( [ ptr u8 n -- ] [ ptr u8 n n n n n -- ] [ ptr u8 n n -- ] -- )
    NCOMP-DISPATCH:DECL-TAPE-INSTALL-OFF s" tape install" FIELD
    dup 0= if drop CHECKER-TAPE:INSTALL exit then
    AS-TAPE-INSTALL execute ;

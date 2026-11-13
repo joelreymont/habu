@@ -18,42 +18,12 @@ public
 -9449 constant E-LAST
 -9441 constant E-STATE
 
-\ A definition's host reason names what in its body the published facts
-\ (call sites, address sites) do not account for. SAFE: nothing.
-\ MEMORY: memory operations and address-forming words, admitted by provenance.
-\ FIXED: a constant compiled as an immediate, or a data address the address
-\ sites carry. INDIRECT: a run of an xt or text operand, which a file's closure
-\ walk accounts for. CAST and UNCHECKED: an effect the
-\ facts cannot name. UNKNOWN: an unmodeled op or literal, or no facts.
-\ REBIND: a compiled `is`.
-0 constant SAFE
-1 constant CAST
-2 constant MEMORY
-3 constant INDIRECT
-4 constant UNCHECKED
-6 constant UNKNOWN
-7 constant FIXED
-8 constant REBIND
-
 private
 
 0 CWORK-VARIABLE IMPL-N n
 DYNAMIC-BUFFER IMPL-ENTRY n
 DYNAMIC-BUFFER IMPL-LEN n
 DYNAMIC-BUFFER IMPL-LIVE n
-
-UNKNOWN CWORK-VARIABLE SOURCE-REASON n
-0 CWORK-VARIABLE SOURCE-LOC n
-0 CWORK-VARIABLE SOURCE-FUNS n
-DYNAMIC-BUFFER SOURCE-IN n
-DYNAMIC-BUFFER SOURCE-OUT n
-
-\ SOURCE-FREEZE's copy of the source facts; no word reads it.
-0 CWORK-VARIABLE FACT-REASON n
-0 CWORK-VARIABLE FACT-LOC n
-0 CWORK-VARIABLE FACT-FUNS n
-DYNAMIC-BUFFER FACT-IN n
-DYNAMIC-BUFFER FACT-OUT n
 
 \ One process's install state (INSTALL): a save or a file's object writes it
 \ zero, as CAPTURE-PREPARE leaves it. The engine cell INSTALL fills holds no
@@ -157,70 +127,6 @@ public
    then
    0 OWNER-INSTALLED !
    0 KERNEL-BEGIN !  0 KERNEL-END !  0 SEEDED-N ! ;
-
-\ The elaborator keeps the worst reason by rank while its source tape is still
-\ live. Later HIR and machine rows cannot reinterpret that decision.
-: SOURCE-BEGIN ( bool -- )
-   INSTALL
-   if UNCHECKED else SAFE then SOURCE-REASON !
-   0 SOURCE-LOC !
-   0 SOURCE-FUNS !
-   0 FACT-FUNS ! ;
-
-private
-
-\ The admitted reasons rank SAFE < MEMORY < INDIRECT < FIXED < REBIND, then
-\ UNCHECKED, which a checker contract admits; every refusing reason ranks
-\ above them, alike, so a cast or an unmodeled op still refuses after an `is`
-\ or in an unchecked body.
-: RANK ( n -- n )
-   {: reason:n :}
-   reason SAFE = if 0 exit then
-   reason MEMORY = if 1 exit then
-   reason INDIRECT = if 2 exit then
-   reason FIXED = if 3 exit then
-   reason REBIND = if 4 exit then
-   reason UNCHECKED = if 5 exit then
-   6 ;
-
-public
-
-\ Keep the worst reason by rank, so an admitted reason never masks a later
-\ refusing one; among refusing reasons the first keeps its location.
-: SOURCE-REFUSE ( n n -- )
-   {: reason:n loc:n :}
-   reason RANK SOURCE-REASON @ RANK > if
-      reason SOURCE-REASON !
-      loc SOURCE-LOC !
-   then ;
-
-: SOURCE-ABANDON ( -- )
-   UNKNOWN SOURCE-REASON !
-   0 SOURCE-LOC !
-   0 SOURCE-FUNS !
-   0 FACT-FUNS ! ;
-
-: SOURCE-ARITY+ ( n n -- )
-   {: din:n dout:n :}
-   SOURCE-FUNS @ 1+ {: count:n :}
-   count SOURCE-IN-RESERVE
-   count SOURCE-OUT-RESERVE
-   din count 1- SOURCE-IN !
-   dout count 1- SOURCE-OUT !
-   count SOURCE-FUNS ! ;
-
-\ The source facts are complete before emission.
-: SOURCE-FREEZE ( -- )
-   SOURCE-FUNS @ {: funs:n :}
-   funs FACT-IN-RESERVE
-   funs FACT-OUT-RESERVE
-   funs 0 ?do
-      i SOURCE-IN @ i FACT-IN !
-      i SOURCE-OUT @ i FACT-OUT !
-   loop
-   SOURCE-REASON @ FACT-REASON !
-   SOURCE-LOC @ FACT-LOC !
-   funs FACT-FUNS ! ;
 
 private
 
