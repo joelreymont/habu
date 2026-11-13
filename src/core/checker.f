@@ -833,7 +833,7 @@ private
    0 ,
    0 , 0 , 0 ,
    0 , 0 , 0 ,
-   0 , 0 , 0 , 0 , 0 ,
+   0 , 0 , 0 , 0 ,
    0 ,
    0 ,
    0 ,
@@ -25130,11 +25130,11 @@ package CHECKER-REG
    dup VERDICT-CHECKED =  over VERDICT-DEFERRED =  or IF SIG-EFF-DROP THEN
    dup 0= IF RIGID-DIAG-CLASSIFY THEN
    dup -1 = IF CALL-FINALIZE THEN
-   CHECKER-TAPE:ARMED @ IF ba bu DVERD @ CHECKER-TAPE:DONE THEN
    \ A clause body is walked like any other but is nobody's definition body, and
    \ the next record after it is the CREATED word's, so what this walk armed
-   \ dies here.
-   WRAP-CLEAR ;
+   \ dies here, before the tape's observer, which may refuse the clause.
+   WRAP-CLEAR
+   CHECKER-TAPE:ARMED @ IF ba bu DVERD @ CHECKER-TAPE:DONE THEN ;
 
 \ The retained engine reaches CHECK-DOES! at the `;` of a definition it is
 \ compiling, before that definition's own body is checked and recorded, so the

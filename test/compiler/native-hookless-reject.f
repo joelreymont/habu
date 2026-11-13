@@ -18,9 +18,14 @@ $4000 constant CAP
 create OUT CAP allot                   variable OUT-U
 create ERR CAP allot                   variable ERR-U
 variable RC
+\ Texts that outrun a source line.
+create TEXT CAP allot                  variable TEXT-U
 
 : OUT$ ( -- ptr u8 n ) OUT OUT-U @ ;
 : ERR$ ( -- ptr u8 n ) ERR ERR-U @ ;
+
+: TEXT$ ( -- ptr u8 n ) TEXT TEXT-U BUF-LEN@ ;
+: TEXT+ ( ptr u8 n -- ) TEXT CAP TEXT-U BUF-APPEND ;
 
 : SHOW ( bool -- bool )
    dup 0= if OUT$ type ERR$ type then ;
@@ -81,23 +86,26 @@ variable RC
    s" ncomp: cannot compile F at F in" SAYS ;
 
 \ A TRUSTED: body whose `@` cannot be applied over a two-cell family value
-\ loses that value's width, so nothing can place its cells.
+\ loses that value's width, so nothing can place its cells. A does> clause that
+\ loses one is refused the same way, and the definitions after it certify.
 \ Its own process: the uncaught throw ends it, and its exit status is tested.
 : INCOMPLETE-SCAN ( -- )
    s" a scan that loses a wide value's width is refused" T-LABEL
-   s" ENUM hr-v VARIANT none ;VARIANT VARIANT some FIELD x n ;VARIANT ;ENUM TRUSTED: HR-LOST ( n -- n ) construct hr-v some @ ;" SESSION
+   TEXT-U BUF-RESET
+   s" ENUM hr-v VARIANT none ;VARIANT VARIANT some FIELD x n ;VARIANT ;ENUM " TEXT+
+   s" : HR-MK ( n -- ) create , does> ( -- n ) @ ; " TEXT+
+   S\" : HR-TRY ( -- n ) [: s\" TRUSTED: HR-DEF ( n -- ) create , does> ( -- n ) @ dup HR-MK construct hr-v some @ ;\" evaluate-closed ;] catch ; " TEXT+
+   s" HR-TRY . 7 HR-MK HR-SEVEN HR-SEVEN . " TEXT+
+   s" TRUSTED: HR-LOST ( n -- n ) construct hr-v some @ ;" TEXT+
+   TEXT$ SESSION
    RC @ UNCAUGHT-RC T=
+   s" ncomp: cannot compile HR-DEF" SAYS
+   S\" -8519\n7\n" PRINTS
    s" ncomp: cannot compile HR-LOST" SAYS
    s" hb: uncaught throw code -8519" SAYS ;
 
 \ ---- a refused definition keeps no row ---------------------------------------
-\ The texts outrun a source line, so TEXT holds them; `;package` first makes
-\ them global.
-create TEXT CAP allot                  variable TEXT-U
-
-: TEXT$ ( -- ptr u8 n ) TEXT TEXT-U BUF-LEN@ ;
-: TEXT+ ( ptr u8 n -- ) TEXT CAP TEXT-U BUF-APPEND ;
-
+\ `;package` first makes the texts global.
 : REFUSED-TEXT ( -- )
    TEXT-U BUF-RESET  s" ;package " TEXT+ ;
 

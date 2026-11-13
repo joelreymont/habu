@@ -22,7 +22,6 @@ public
 4 constant CORE
 8 constant DYNAMIC
 16 constant OWNER
-32 constant SEAL
 64 constant ARGV
 128 constant INTERNAL
 256 constant TOPROW
