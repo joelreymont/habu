@@ -866,14 +866,15 @@ private
    10 0 ARN-USEC LDR,  10 dflt CBNZ,  10 1000 MOVZ,
    dflt LBL,  10 0 ARN-USEC STR, ;
 
-\ x0 = arena: ARN-TICKS = the interval in the timer clock's ticks, at least 1,
-\ and ARN-LAST = now. Run before PROF-ARMED goes to ARMED-RUNS, so a sample
-\ never weighs time the clock was held or stopped. Clobbers x10-x12.
+\ x0 = arena; run before ARMED-RUNS. Seconds and the rest scale apart so no
+\ product wraps for an interval prof-rate takes. Clobbers x10-x12.
 : C-PROF-CLOCK-MARK ( -- )
    LBL {: tk :}
    C-PROF-USEC>R10
-   11 OS-TIMER-HZ  10 10 11 MUL,
-   11 USEC-PER-SEC LIT64,  10 10 11 UDIV,
+   11 USEC-PER-SEC LIT64,  12 10 11 UDIV,
+   11 12 11 MUL,  10 10 11 SUB,
+   11 OS-TIMER-HZ  12 12 11 MUL,  10 10 11 MUL,
+   11 USEC-PER-SEC LIT64,  10 10 11 UDIV,  10 10 12 ADD,
    10 tk CBNZ,  10 1 MOVZ,
    tk LBL,  10 0 ARN-TICKS STR,
    10 OS-TIMER-NOW  10 0 ARN-LAST STR, ;
@@ -903,15 +904,17 @@ private
 : C-PROF-TIMER-DONE ( -- )
    SP SP 32 ADDI, ;
 
-\ x0 = arena, a C-PROF-TIMER-FRAME frame on SP: its first expiry becomes the
-\ interval less ARN-CARRY, the carry in microseconds by the ratio of ARN-USEC
-\ to ARN-TICKS, or 1 us once the carry reaches a whole interval. Clobbers
-\ x9-x11.
+\ x0 = arena, a C-PROF-TIMER-FRAME frame on SP: first expiry = interval less
+\ carry, seconds and rest scaled apart so no product wraps. Clobbers x9-x11.
 : C-PROF-TIMER-REST ( -- )
    LBL LBL {: whole split :}
-   9 0 ARN-CARRY LDR,  10 0 ARN-TICKS LDR,  11 0 ARN-USEC LDR,
+   9 0 ARN-CARRY LDR,  10 0 ARN-TICKS LDR,
    9 10 CMP,  C-CS whole BCOND,
-   9 9 11 MUL,  9 9 10 UDIV,  9 11 9 SUB,
+   10 OS-TIMER-HZ  11 9 10 UDIV,
+   10 11 10 MUL,  9 9 10 SUB,
+   10 USEC-PER-SEC LIT64,  11 11 10 MUL,  9 9 10 MUL,
+   10 OS-TIMER-HZ  9 9 10 UDIV,  9 9 11 ADD,
+   11 0 ARN-USEC LDR,  9 11 9 SUB,
    split B,
    whole LBL,  9 1 MOVZ,
    split LBL,
@@ -1629,7 +1632,7 @@ private
    LBL {: ok :}
    C-PROF-CTL-TAKE
    10 G-POP
-   10 0 CMPI,  C-GE ok BCOND,
+   11 OS-TIMER-MAX-USEC LIT64,  10 11 CMP,  C-LS ok BCOND,
       C-PROF-CTL-FREE
       9 PROF-ABI:E-PROF-RATE LIT64,  9 G-PUSH  BTHROW
    ok LBL,

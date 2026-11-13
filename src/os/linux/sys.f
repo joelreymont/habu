@@ -96,8 +96,12 @@ $100 constant AT-SYMLINK-NOFOLLOW
    {: reg :}
    NR-GETTID SYS,  reg 0 0 ADDI, ;
 
-\ x(n) = OS-TIMER-NOW's ticks per second.
+\ x(n) = OS-TIMER-NOW's ticks per second. Clobbers only x(n).
 : OS-TIMER-HZ ( n -- ) 1000000000 LIT64, ;
+
+\ The longest interval in us setitimer arms as given: a tv_sec of 9223372036
+\ or more saturates.
+9223372035999999 constant OS-TIMER-MAX-USEC
 
 \ x(n) = CLOCK_MONOTONIC in ns, the clock ITIMER_REAL expires on, by a frame on
 \ sp it gives back; dies for n of 0, 1, 8 or 16. Clobbers only x(n) and flags.

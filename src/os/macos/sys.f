@@ -109,8 +109,12 @@ public
 \ Clobbers only x(n).
 : OS-TIMER-NOW ( n -- ) CNTVCT>R ;
 
-\ x(n) = OS-TIMER-NOW's ticks per second.
+\ x(n) = OS-TIMER-NOW's ticks per second. Clobbers only x(n).
 : OS-TIMER-HZ ( n -- ) CNTFRQ>R ;
+
+\ The longest interval in us setitimer arms: it refuses a tv_sec past
+\ 100000000 with EINVAL.
+100000000999999 constant OS-TIMER-MAX-USEC
 
 \ __pthread_kill(the port in x(t), the signal in x(s)); s is not x16.
 \ Clobbers x0, x1 and x16.

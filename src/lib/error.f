@@ -187,7 +187,7 @@ require src/lib/prelude.f
 -3800 constant E-ENGINE-PATH    \ own executable path cannot be resolved
 -3801 constant E-ENGINE-KEY     \ own binary cannot be content-hashed
 -3802 constant E-STACK-UNGUARDED \ run-in-stack was handed an extent that is not a guarded stack mapping (re-registered as the same (code, name) in src/habu/stack-abi.f)
--3803 constant E-PROF-RATE       \ prof-rate was handed an interval below 0 (re-registered as the same (code, name) in src/habu/prof-abi.f)
+-3803 constant E-PROF-RATE       \ prof-rate was handed an interval below 0 or past the OS timer's longest
 -3804 constant E-EVAL-RESIDUE    \ an evaluate-closed text left cells above its floor (re-registered as the same (code, name) in src/habu/stack-abi.f)
 
 \ JSON reader: -3900..-3999, minted by src/lib/json/read.f, a file of package JSON (src/lib/json.f).

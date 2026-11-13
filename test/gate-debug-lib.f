@@ -342,11 +342,8 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 : GDB-UNCAUGHT$ ( n -- ptr u8 n ) {: code:n :}
    SB-RESET  s" hb: uncaught throw code " SB-APPEND  code FMT:SB-INT  GE-SB-LF  SB$ ;
 
-\ A negative interval is the caller's error: prof-rate throws E-PROF-RATE
-\ before it stores anything. Uncaught, the engine reports the code and exits
-\ UNCAUGHT-RC before the next line runs. Caught, the code is src/lib/error.f's
-\ E-PROF-RATE, printed negated since GDB-FIELD reads a digit run, and the next
-\ prof-on arms the 250 us set before it, which the report states.
+\ prof-rate refuses a negative interval and one past the OS timer's longest,
+\ keeping the rate; GDB-FIELD reads digits, so the code is printed negated.
 : GDB-PROFILER-RATE-REFUSED ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -356,16 +353,22 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    UNCAUGHT-RC s" an uncaught prof-rate -1 exits UNCAUGHT-RC" GE-EXPECT-RC
    E-PROF-RATE GDB-UNCAUGHT$ s" an uncaught prof-rate -1 reports E-PROF-RATE" GE-EXPECT-ERR
    GT-OUT$ nip 0<> if s" the line after an uncaught prof-rate -1 ran" GE-FAIL then
-   S\" : GDB-REFUSE ( -- n ) [: -1 prof-rate ;] catch ; 250 prof-rate GDB-REFUSE negate s\" refused \" type . cr 0 prof-on GDB-BUSY prof-off prof-report"
+   S\" : GDB-REFUSE ( -- n ) [: -1 prof-rate ;] catch ; : GDB-PAST ( -- n ) [: 9223372036000000 prof-rate ;] catch ; : GDB-MAX ( -- n ) [: 100000000999999 prof-rate ;] catch ; GDB-MAX s\" within \" type . cr 250 prof-rate GDB-REFUSE negate s\" refused \" type . cr GDB-PAST negate s\" past \" type . cr 0 prof-on GDB-BUSY prof-off prof-report"
    GDB-PROF-RATE-RUN
    s" a caught prof-rate -1" GE-EXPECT-OK
    GT-OUT$ s" refused" GDB-FIELD E-PROF-RATE negate <> if
       s" prof-rate -1 threw another code than E-PROF-RATE" GE-FAIL
    then
-   GT-OUT$ s" usec" GDB-FIELD 250 <> if
-      s" a caught prof-rate -1 changed the rate the next prof-on arms" GE-FAIL
+   GT-OUT$ s" past" GDB-FIELD E-PROF-RATE negate <> if
+      s" prof-rate past the OS timer's longest threw another code than E-PROF-RATE" GE-FAIL
    then
-   s" PASS: prof-rate throws E-PROF-RATE for a negative interval and keeps the rate" type cr ;
+   GT-OUT$ s" within" GDB-FIELD 0 <> if
+      s" prof-rate refused 100000000999999, within both OS timers" GE-FAIL
+   then
+   GT-OUT$ s" usec" GDB-FIELD 250 <> if
+      s" a caught prof-rate -1 or past the longest changed the rate the next prof-on arms" GE-FAIL
+   then
+   s" PASS: prof-rate throws E-PROF-RATE for a negative interval and one past the OS timer's longest, and keeps the rate" type cr ;
 
 \ An interval only a write past prof-rate can leave, -1 in ARN-USEC: prof-on's
 \ setitimer refuses it, and the refusal is named and exits PROF-MAP-RC.
