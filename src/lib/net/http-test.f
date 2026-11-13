@@ -47,10 +47,9 @@ package HTTP
 \ Whether the first worker's slot holds a connection: the one-worker server
 \ sets it just before READ-REQUEST starts that connection's deadline.
 : HTTP-TEST:SERVING? ( -- bool ) 0 SERVING-LIVE @ 0<> ;
-\ The first worker's late budget (FILL): untaken from the start of a request's
-\ deadline until a read finds it passed, then the bytes the request may still read.
+\ A stop leaves the slot's late budget as its last deadline left it, so this
+\ answers once the server has stopped.
 : HTTP-TEST:LATE-UNTAKEN? ( -- bool ) 0 LATE-LEFT@ UNTAKEN = ;
-: HTTP-TEST:READING-LATE? ( -- bool ) 0 LATE-LEFT@ 0 > ;
 : HTTP-TEST:BODY-TAKEN ( -- n ) 0 BODY-U@ ;
 ;package
 
@@ -2186,14 +2185,35 @@ TASK:MIN-STACK TASK:TASK SENDER-TASK
 
 
 $1B58 constant FLOOD-EXTENSION    \ most of the input window
-\ The flooded server's deadline: long enough for the receive buffer to grow
-\ past what parses within STOP-MARGIN-MS.
-$3E8 constant FLOOD-IDLE-MS
-\ The parse of one full receive buffer: macOS autotunes one to at most 4 MiB,
-\ and this framing parses at about 2 MB/s.
+$3E8 constant FLOOD-IDLE-MS       \ far past the read of a flood's head
+\ The first flood's late reading: its socket's queue at the deadline, up to a
+\ 4 MiB macOS buffer at about 2 MB/s; under 160 KB measured on Linux arm64.
 $BB8 constant FLOOD-MARGIN-MS
 variable FLOOD-ENDED
+variable FLOOD-ENTERED            \ mono-ns as the flood's handler starts
+variable FLOOD-GO
+variable LOOP-HELD
 TASK:MIN-STACK TASK:TASK FLOOD-TASK
+TASK:MIN-STACK TASK:TASK HOLD-TASK
+
+
+\ Reads its body only once FLOOD-GO is set, so a held AIO loop stalls that
+\ read at its first fill, before it reads from the socket.
+: FLOOD-READ ( HTTP:request HTTP:response -- )
+   {: asked:HTTP:request answer:HTTP:response :}
+   mono-ns FLOOD-ENTERED !
+   [: FLOOD-GO @ 0<> ;] TEST-WAIT:POLL
+   asked answer ECHO ;
+
+
+: FLOOD-ROUTE ( -- )
+   s" POST" s" /api/flood" [: FLOOD-READ ;] HTTP:ROUTE ;
+
+
+: HOLD-UNTIL-STOP ( -- )
+   HTTP-TEST:LOOP-HOLD
+   1 LOOP-HELD !
+   [: [: HTTP:STOPPING? ;] TEST-WAIT:POLL ;] [: HTTP-TEST:LOOP-FREE ;] finally ;
 
 
 \ Waits until the flooding peer has ended, which the worker's close does, then
@@ -2204,11 +2224,15 @@ TASK:MIN-STACK TASK:TASK FLOOD-TASK
    FLOOD-IDLE-MS FLOOD-MARGIN-MS + NS-PER-MS * < TTRUE ;
 
 
-\ The slot keeps the first flood's budget until the second's deadline starts,
-\ so that start is awaited first.
-: LATE-AWAIT ( -- )
-   [: HTTP-TEST:LATE-UNTAKEN? ;] TEST-WAIT:POLL
-   [: HTTP-TEST:READING-LATE? ;] TEST-WAIT:POLL ;
+\ Leaves the flood's body read stalled behind the held loop past its deadline,
+\ with nothing read late, until a stop frees the loop.
+: STALL-LATE ( -- )
+   [: FLOOD-ENTERED @ 0<> ;] TEST-WAIT:POLL
+   [: HOLD-UNTIL-STOP ;] HOLD-TASK TASK:ACTIVATE
+   [: LOOP-HELD @ 0<> ;] TEST-WAIT:POLL
+   1 FLOOD-GO !
+   \ the request's deadline started before its handler did
+   [: FLOOD-ENTERED @ FLOOD-IDLE-MS NS-PER-MS * + mono-ns <= ;] TEST-WAIT:POLL ;
 
 
 \ Opens a connection and floods it: a chunked head, then FLOOD-TASK writing
@@ -2219,31 +2243,38 @@ TASK:MIN-STACK TASK:TASK FLOOD-TASK
    RAW-OPEN {: conn:TCP4:connection :}
    mono-ns {: began:n :}
    conn 0 SENDER-CONN !
-   conn s\" POST /api/echo HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\n" RAW-SEND
+   conn s\" POST /api/flood HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\n" RAW-SEND
    [: REQ$ KEEP-SENDING mono-ns FLOOD-ENDED ! ;] FLOOD-TASK TASK:ACTIVATE
    conn began ;
 
 
 : FLOOD-CASE ( -- )
+   FLOOD-ROUTE
    LOOPBACK 0 ONE-WORKER FLOOD-IDLE-MS HTTP:START
    REQ-RESET
    s" 1;" REQ+
    [char] a FLOOD-EXTENSION REQ-FILL
    s\" \r\nx\r\n" REQ+
+   1 FLOOD-GO !
    FLOOD {: first:TCP4:connection began:n :}
    s" the flooded worker closes once it has read what arrived by its deadline" T-LABEL
    began FLOOD-AWAIT
    first TCP4:CLOSE DROP-TCP-STATUS
+   0 FLOOD-GO !
+   0 FLOOD-ENTERED !
+   0 LOOP-HELD !
    FLOOD drop {: second:TCP4:connection :}
-   LATE-AWAIT
+   STALL-LATE
    mono-ns {: raised:n :}
    HTTP:STOP
    s" a stop ends the flooded worker's late reading within the stop margin" T-LABEL
    HTTP:KILLED-TASKS 0 T=
+   HTTP-TEST:LATE-UNTAKEN? TTRUE
    FLOOD-TASK TASK-AWAIT
-   FLOOD-ENDED @ raised > TTRUE
+   HOLD-TASK TASK-AWAIT
    FLOOD-ENDED @ raised - HTTP-TEST:STOP-MARGIN-MS NS-PER-MS * < TTRUE
    FLOOD-TASK TASK:KILL
+   HOLD-TASK TASK:KILL
    second TCP4:CLOSE DROP-TCP-STATUS ;
 
 

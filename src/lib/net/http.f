@@ -27,7 +27,7 @@ $8 constant MAX-HOOKS             \ packages that give a worker a resource of it
 -1 constant STOP-JOB
 $C8 constant LINGER-MS            \ how long a refused peer may still be sending
 $C8 constant ACCEPT-WAIT-MS       \ how long the listener parks before reading the stop flag
-$C8 constant STOP-MARGIN-MS       \ scheduling slack over the longest park a stop waits out
+$C8 constant STOP-MARGIN-MS       \ over the longest park: scheduling slack and one window's parse
 $7FFFFFFF constant MAX-BODY-TIMEOUT-MS  \ TCP4's largest READABLE-WITHIN? poll
 
 ENUM served keep-open answered silent taken ;ENUM
@@ -630,25 +630,15 @@ variable EXIT-HOOK-N
    WORKER-COUNT @ 1+ ;
 
 
-\ How long a stop waits for the tasks to end themselves: the longest park any
-\ of them can be in when the flag rises, plus the scheduling slack. The
-\ listener re-reads STOPPING every ACCEPT-WAIT-MS. A worker reading a request
-\ parks at most until that request's own deadlines: IDLE-MS for the head, and
-\ for a body its handler reads, that deadline or BODY-TIMEOUT-MS from the read's
-\ start (SERVE-ONE and BODY$ into src/lib/net/http-request.f WAIT-READABLE).
-\ The bound counts no other handler work. After the request it parks for
-\ LINGER-MS in LINGER. Past its deadline it never parks, and its first read
-\ after the flag ends the request (src/lib/net/http-request.f FILL), so what
-\ remains is the parse of one input window, which STOP-MARGIN-MS covers
-\ (http-test.f FLOOD-CASE). A connection a handler took over is no longer the
-\ server's to wait for.
-\ Bound sums stay representable as milliseconds in DEADLINE-AT.
+\ The longest bound whose nanoseconds a cell holds.
 MEM-MAX-N NS-PER-MS / constant MAX-DEADLINE-MS
 
 : BOUND+ ( n n -- n ) {: left:n right:n :}
    right MAX-DEADLINE-MS left - > if MAX-DEADLINE-MS exit then
    left right + ;
 
+\ The longest a task can stay parked once the flag rises - a worker's head, body
+\ and linger parks in turn - plus STOP-MARGIN-MS. It counts no handler work.
 : STOP-BOUND-MS ( -- n )
    IDLE-MS @ BODY-TIMEOUT-MS @ BOUND+ LINGER-MS BOUND+
    ACCEPT-WAIT-MS max
