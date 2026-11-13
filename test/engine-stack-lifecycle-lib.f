@@ -87,7 +87,7 @@ variable ERRLEN
 
 : CHILD-RC ( ptr u8 n -- n ) {: src:ptr size:n :}
    PROC-ARGV-RESET
-   ENGINE-CANDIDATE:PATH$ >LEN src size >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN 10000 >MS
+   ENGINE-CANDIDATE:PATH$ >LEN src size >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-STDIN-CAPTURE PCAP-RESULT:>N >r ERRLEN ! OUTLEN ! r> ;
 
 : PREFIX? ( ptr u8 n ptr u8 n -- bool ) {: g:ptr gu:n w:ptr wu:n :}

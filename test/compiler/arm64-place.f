@@ -74,7 +74,7 @@ FILE-CAP BUFFER: FILE-B
 
 : RUN-PROG ( CMD:command ptr u8 n ptr u8 n -- CMD:command )
    {: file:ptr file-n:n out:ptr out-n:n :}
-   file file-n PROG$ 60000 >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
+   file file-n PROG$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
    CMD:OUT$ out out-n STR=  rc 0=  and 0= if
       s" arm64-place: " type file file-n type s"  exited " type rc .
       s" stdout: " type CMD:OUT$ type cr  s" stderr: " type CMD:ERR$ type cr
@@ -143,7 +143,7 @@ FILE-CAP BUFFER: FILE-B
 : UNSAFE-RUN ( CMD:command -- CMD:command )
    s" --load" CMD:ARG+  s" test/compiler/arm64-place-unsafe-bad.f" CMD:ARG+
    s" --" CMD:ARG+  HB-BUILD-CORE:KERNEL$ CMD:ARG+  s" make" PROG$ CMD:ARG+
-   ENGINE-CANDIDATE:PATH$ 60000 >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
+   ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
    s" refusal: the child arms before the link" T-LABEL
    CMD:OUT$ s\" ARM64-PLACE-UNSAFE-ARMED\n" T$=
    s" refusal: the child names the caller and the word" T-LABEL

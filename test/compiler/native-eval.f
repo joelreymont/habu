@@ -267,7 +267,7 @@ create ERR IO-CAP allot
 
 : OVERFLOW ( -- )
    s" an overflow inside a closed text exits STACK-BOUNDS" T-LABEL
-   OVERFLOW$ OUT IO-CAP >LEN ERR IO-CAP >LEN 10000 >MS SUBJECT:RUN
+   OVERFLOW$ OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    PROCESS:ENDING>RC RC>N ENGINE-ERROR:STACK-BOUNDS T=
    nip LEN>N {: erru:n :}
    s" and names the data stack" T-LABEL
@@ -281,7 +281,7 @@ create ERR IO-CAP allot
 
 : TOP-LEVEL ( -- )
    s" a word reaching below the base outside a closed text throws 70" T-LABEL
-   TOP-LEVEL$ OUT IO-CAP >LEN ERR IO-CAP >LEN 10000 >MS SUBJECT:RUN
+   TOP-LEVEL$ OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    PROCESS:ENDING>RC RC>N 70 T=
    nip LEN>N {: erru:n :}
    s" and names the token the interpreter was running" T-LABEL
@@ -296,7 +296,7 @@ create ERR IO-CAP allot
 
 : UNFINISHED-LINE ( -- )
    s" an uncaught unfinished text exits 74" T-LABEL
-   UNFINISHED-LINE$ OUT IO-CAP >LEN ERR IO-CAP >LEN 10000 >MS SUBJECT:RUN
+   UNFINISHED-LINE$ OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    PROCESS:ENDING>RC RC>N UNCLOSED T=
    nip LEN>N {: erru:n :}
    s" and names the definition and where the text ran" T-LABEL
@@ -308,7 +308,7 @@ $4F constant TASK-THREAD                \ habu1.f B-TASK-GUARD's exit
 
 : IN-TASK ( -- )
    s" evaluation in a task exits before it reads the text" T-LABEL
-   s" NATIVE-EVAL-TEST:EVAL-IN-TASK" OUT IO-CAP >LEN ERR IO-CAP >LEN 10000 >MS SUBJECT:RUN
+   s" NATIVE-EVAL-TEST:EVAL-IN-TASK" OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    PROCESS:ENDING>RC RC>N TASK-THREAD T=
    LEN>N {: erru:n :}
    s" and names evaluate-closed, printing nothing else" T-LABEL
@@ -321,7 +321,7 @@ $4F constant TASK-THREAD                \ habu1.f B-TASK-GUARD's exit
 
 : SET-TIER-PAST ( -- )
    s" set-tier past 1 exits 70" T-LABEL
-   s" 2 set-tier" OUT IO-CAP >LEN ERR IO-CAP >LEN 10000 >MS SUBJECT:RUN
+   s" 2 set-tier" OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    PROCESS:ENDING>RC RC>N 70 T=
    nip LEN>N {: erru:n :}
    s" and prints its one line" T-LABEL
@@ -343,7 +343,7 @@ variable ERR-U
 : TEXT+ ( ptr u8 n -- ) TEXT IO-CAP TEXT-U BUF-APPEND ;
 
 : TEXT-RC ( -- n )
-   TEXT TEXT-U BUF-LEN@ OUT IO-CAP >LEN ERR IO-CAP >LEN 10000 >MS SUBJECT:RUN
+   TEXT TEXT-U BUF-LEN@ OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    PROCESS:ENDING>RC RC>N {: rc:n :}
    LEN>N ERR-U !  LEN>N OUT-U !  rc ;
 

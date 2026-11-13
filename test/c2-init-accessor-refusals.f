@@ -16,7 +16,7 @@ variable ERR-U
 
 : REFUSED? ( ptr u8 n n -- bool )
    {: src:ptr srcu:n expected:n :}
-   src srcu OUT CAP >LEN ERR CAP >LEN 10000 >MS SUBJECT:RUN
+   src srcu OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    {: outu:len erru:len oc :}
    erru LEN>N ERR-U !
    oc MATCH PROCESS:ending

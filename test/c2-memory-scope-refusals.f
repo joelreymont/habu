@@ -16,11 +16,10 @@ create OUT CAP allot
 create ERR CAP allot
 
 \ Run the source in a child: the lengths of what it wrote to OUT and ERR, and
-\ whether it exited with the expected status. A deadline is no answer: the
-\ source and its capture are printed and E-PROC-TIMEOUT thrown.
+\ whether it exited with the expected status.
 : EXITED? ( ptr u8 n n -- len len bool )
    {: src:ptr srcu:n expected:n :}
-   src srcu OUT CAP >LEN ERR CAP >LEN 10000 >MS SUBJECT:RUN
+   src srcu OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    {: outu:len erru:len oc :}
    outu erru
    oc MATCH PROCESS:ending

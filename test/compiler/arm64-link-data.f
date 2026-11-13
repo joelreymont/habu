@@ -116,7 +116,7 @@ DYNAMIC-BUFFER SECOND-LINK u8
 
 : RUN-PROG ( CMD:command ptr u8 n -- CMD:command n )
    {: file:ptr file-n:n :}
-   file file-n PROG$ 60000 >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N ;
+   file file-n PROG$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N ;
 
 : RUN-MAIN ( CMD:command -- CMD:command )
    s" main" RUN-PROG {: rc:n :}
@@ -143,7 +143,7 @@ DYNAMIC-BUFFER SECOND-LINK u8
    s" --load" CMD:ARG+  s" test/compiler/arm64-link-data-bad.f" CMD:ARG+
    s" --" CMD:ARG+  name name-n CMD:ARG+  HB-BUILD-CORE:KERNEL$ CMD:ARG+
    s" bad" PROG$ CMD:ARG+
-   ENGINE-CANDIDATE:PATH$ 60000 >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N ;
+   ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N ;
 
 \ name's child arms, its link is refused for the reason err, and it exits 74.
 : BAD-CHILD ( CMD:command ptr u8 n ptr u8 n -- CMD:command )

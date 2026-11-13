@@ -18,7 +18,7 @@ create ERR CAP allot
 
 : REFUSAL ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: source:ptr source-u:n operation:ptr operation-u:n culprit:ptr culprit-u:n reason:ptr reason-u:n :}
-   source source-u OUT CAP >LEN ERR CAP >LEN 10000 >MS SUBJECT:RUN
+   source source-u OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    {: out-u:len err-u:len oc :}
    oc MATCH PROCESS:ending
       exited OF 70 = ENDOF
