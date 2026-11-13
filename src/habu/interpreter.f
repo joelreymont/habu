@@ -2242,50 +2242,91 @@ variable DEF-VALUE
 
 \ ---- child words a declaration makes ------------------------------------------
 \ CHILD-RUN makes the word NAME for a declaration, with no text: a fixed body of
-\ its CHILD-ABI shape, whose value and effect CHECK:CHILD makes from the shape
-\ and parameter while the record is pending.
+\ its CHILD-ABI shape, whose value and effect CHECK:CHILD makes from the shape,
+\ parameter and stored type while the record is pending. A storage child's body
+\ pushes its own data address, which the declaration fills after the return.
+
+\ The entry of a private routine the engine's dictionary holds; a missing one
+\ is refused by name.
+: CHILD-ROUTINE ( ptr u8 n -- COMP:body n )
+   HANDLE-REC XREF-START COMP-BODY:routine swap ;
 
 \ An unknown shape is the calling declaration's error.
-: CHILD-BODY ( n -- COMP:body ) {: shape:n :}
+: CHILD-BODY ( n -- COMP:body n ) {: shape:n :}
    shape CHILD-ABI:CELL-OFF =
    shape CHILD-ABI:PTR-OFF = or
    shape CHILD-ABI:BYTE-OFF = or
-   shape CHILD-ABI:FIELD = or if COMP-BODY:offset exit then
-   shape CHILD-ABI:INDEX = if COMP-BODY:index exit then
-   shape CHILD-ABI:VALUE = if COMP-BODY:value exit then
+   shape CHILD-ABI:FIELD = or if COMP-BODY:offset 0 exit then
+   shape CHILD-ABI:INDEX = if COMP-BODY:index 0 exit then
+   shape CHILD-ABI:VALUE = if COMP-BODY:value 0 exit then
+   shape CHILD-ABI:STORED = if COMP-BODY:address 0 exit then
+   shape CHILD-ABI:BUFFER = if s" private LBUF ELEMENT" CHILD-ROUTINE exit then
+   shape CHILD-ABI:BIND = if s" private LBUF BIND" CHILD-ROUTINE exit then
+   shape CHILD-ABI:GROW = if s" private LBUF GROW" CHILD-ROUTINE exit then
+   shape CHILD-ABI:DYNAMIC = if
+      s" private DYNAMIC-STORAGE ELEMENT" CHILD-ROUTINE exit
+   then
+   shape CHILD-ABI:RESERVE = if
+      s" private DYNAMIC-STORAGE ENSURE" CHILD-ROUTINE exit
+   then
+   shape CHILD-ABI:RELEASE = if
+      s" private DYNAMIC-STORAGE EMPTY" CHILD-ROUTINE exit
+   then
+   shape CHILD-ABI:SLOT = if s" private TASK SLOT" CHILD-ROUTINE exit then
+   shape CHILD-ABI:SLOTS = if s" private TASK SLOT-AT" CHILD-ROUTINE exit then
    RC-REJECT throw ;
 
-\ A value child is recorded as a constant, which a call folds to its number.
+: CHILD-ANCHORED? ( n -- bool ) {: shape:n :}
+   shape CHILD-ABI:STORED >= shape CHILD-ABI:SLOTS <= and ;
+
+\ A value child is recorded as a constant, which a call folds to its number, a
+\ STORED child as an address, which a call folds to an inline push.
+: CHILD-KIND ( n -- n ) {: shape:n :}
+   shape CHILD-ABI:VALUE = if DKIND:VAL exit then
+   shape CHILD-ABI:STORED = if DKIND:ADDR DNAME-ALLOC or exit then
+   shape CHILD-ANCHORED? if DNAME-ALLOC exit then
+   0 ;
+
 : CHILD-RECORD ( ptr u8 n n -- ) {: a:ptr u:n shape:n :}
    a u DEF-QUALIFY-NAME {: ta:ptr tu:n wid:n :}
    ta tu wid WL-PROBE XREF-FOUND? if a u PKG-DUPLICATE then
    0 BODYLEN-CELL CELL!  a u DEF-CAPTURE
-   shape CHILD-ABI:VALUE = if DKIND:VAL else 0 then {: kind:n :}
-   ta tu wid kind DEF-RECORD ;
+   ta tu wid shape CHILD-KIND DEF-RECORD ;
 
-: CHILD-CLOSE ( n n -- ) {: shape:n param:n :}
-   DEF-CAPTURED-NAME shape param CHECK:CHILD {: val:n :}
-   val 0 shape CHILD-BODY DEF-FIXED
+\ The anchor is taken after CHECK:CHILD, whose facts may open an intern segment
+\ at here.
+: CHILD-CLOSE ( n n ptr u8 n -- n )
+   {: shape:n param:n ta:ptr tu:n :}
+   DEF-CAPTURED-NAME shape param ta tu CHECK:CHILD {: val:n h:n :}
+   shape CHILD-BODY {: kind:COMP:body entry:n :}
+   shape CHILD-ANCHORED? if DEF-ANCHOR entry else val 0 then
+   kind DEF-FIXED
    DEF-CLOSE
-   DEF-CAST-FACTS ;
+   DEF-CAST-FACTS
+   h ;
 
-: CHILD-DEFINE ( ptr u8 n n n -- )
-   {: a:ptr u:n shape:n param:n :}
+: CHILD-DEFINE ( ptr u8 n n n ptr u8 n -- n )
+   {: a:ptr u:n shape:n param:n ta:ptr tu:n :}
    a u shape CHILD-RECORD
-   [: shape param CHILD-CLOSE ;] catch {: rc:n :}
-   rc 0<> if DEF-ABORT rc throw then ;
+   0 [: drop shape param ta tu CHILD-CLOSE ;] catch {: h rc:n :}
+   rc 0= if h exit then
+   DEF-ABORT rc throw ;
 
-: CHILD-RUN ( ptr u8 n n n -- )
-   {: a:ptr u:n shape:n param:n :}
+\ Answers the child's effect handle. TYPE is empty for the shapes before STORED.
+: CHILD-RUN ( ptr u8 n n n ptr u8 n -- n )
+   {: a:ptr u:n shape:n param:n ta:ptr tu:n :}
    PEND-CELL CELL@ 0<> if s" child word" a u DEF-OPEN-REFUSE then
    a u DEF-ONE-TOKEN? 0= if s" child word" a u DEF-NAME-REFUSE then
-   shape CHILD-BODY drop
+   shape CHILD-BODY 2drop
    NCOMP-DISPATCH:TIER-CELL CELL@ NCOMP-DISPATCH:COMP-CELL CELL@ or 0= if
       DEF-TIER-0
    then
    DEF-ROOM
    OVERLAY-GUARD
-   a u shape param CHILD-DEFINE ;
+   a u shape param ta tu CHILD-DEFINE ;
+
+: CHILD-RUN-FIVE ( ptr u8 n n n -- )
+   NULL-PTR 0 CHILD-RUN drop ;
 
 \ A qualified linear name is refused by the certifier before DEF-QUALIFY can
 \ create its namespace. A second colon is left to DEF-QUALIFY's syntax refusal.
@@ -2838,6 +2879,7 @@ public
    ['] DEFINE-RUN data-base PROVIDED-XT:DEFINE-CELL + xt!
    ['] APPEND-RUN data-base PROVIDED-XT:APPEND-CELL + xt!
    ['] POSTPONE-RUN data-base PROVIDED-XT:POSTPONE-CELL + xt!
+   ['] CHILD-RUN-FIVE data-base PROVIDED-XT:FIVE-CHILD-CELL + xt!
    ['] CHILD-RUN data-base PROVIDED-XT:CHILD-CELL + xt!
    ['] LITERAL-RUN data-base PROVIDED-XT:LITERAL-CELL + xt!
    ['] CHECK:TYPE-OP data-base PROVIDED-XT:TYPE-OP-CELL + xt! ;

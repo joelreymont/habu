@@ -5333,7 +5333,27 @@ private
    shape a CHILD-POINTEE MK-PTR base MK-PUSH
    off ;
 
+\ A storage companion's rows: RELEASE takes nothing, `( -- )`, and BIND, GROW
+\ and RESERVE take a count, `( n -- )`. Its body value is unread.
+: COMPANION-ROWS ( n -- n n n ) {: shape:n :}
+   FRESH MK-ROW {: base:n :}
+   shape CHILD-ABI:RELEASE = IF base base 0 EXIT THEN
+   CC-N MK-CON base MK-PUSH  base  0 ;
+
+: COMPANION? ( n -- bool ) {: shape:n :}
+   shape CHILD-ABI:BIND =  shape CHILD-ABI:GROW = or
+   shape CHILD-ABI:RESERVE = or  shape CHILD-ABI:RELEASE = or ;
+
 public
+
+\ A typed storage child's input and output rows over the stored type's term T:
+\ STORED and SLOT answer `( -- ptr T )`, the indexed shapes `( n -- ptr T )`.
+\ It takes no NEW, so T, which the storage parse just made, stays live.
+: TFAM-STORED-ROWS ( n n -- n n ) {: shape:n term:n :}
+   FRESH MK-ROW {: base:n :}
+   shape CHILD-ABI:STORED =  shape CHILD-ABI:SLOT = or
+   IF base ELSE CC-N MK-CON base MK-PUSH THEN
+   term MK-PTR base MK-PUSH ;
 
 \ A child word's input row, output row and body value, from its CHILD-ABI SHAPE
 \ and PARAM, in fresh checker terms.
@@ -5342,6 +5362,7 @@ public
    shape CHILD-ABI:FIELD = IF param TFAM-FIELD-ROWS EXIT THEN
    shape CHILD-ABI:INDEX = IF param TFAM-AT-ROWS EXIT THEN
    shape CHILD-ABI:VALUE = IF param VALUE-ROWS EXIT THEN
+   shape COMPANION? IF shape COMPANION-ROWS EXIT THEN
    shape param OFFSET-ROWS ;
 
 private

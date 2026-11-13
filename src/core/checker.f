@@ -8483,12 +8483,6 @@ variable LBI-LINEAR   \ the refused stored type parsed and may hold a linear val
    STORAGE-RESOLVE? 0= IF 0 RES-FALSE EXIT THEN
    STORAGE-CELL-W ;
 
-\ The term is live until the next checker parse; its family name alone loses
-\ the arguments of an applied product such as entry<n>.
-: CHECKER-STORAGE-TERM ( ptr u8 n -- n bool )
-   CHECKER-STORAGE-INFO 0= IF drop 0 RES-FALSE EXIT THEN
-   drop LBI-T @ RES-TRUE ;
-
 \ Admissibility for the DYNAMIC definer, in bytes, because its accessor scales
 \ the index by the element width: the CHECKER-STORAGE-INFO surface plus `u8`,
 \ the one sub-cell con with an accessor pair.
@@ -8504,6 +8498,12 @@ variable LBI-LINEAR   \ the refused stored type parsed and may hold a linear val
 : CHECKER-DYNAMIC-INFO ( ptr u8 n -- n bool )
    STORAGE-RESOLVE? 0= IF 0 RES-FALSE EXIT THEN
    DYNAMIC-BYTES ;
+
+\ The term is live until the next checker parse; its family name alone loses
+\ the arguments of an applied product such as entry<n>. A `u8` element has one.
+: CHECKER-STORAGE-TERM ( ptr u8 n -- n bool )
+   CHECKER-DYNAMIC-INFO 0= IF drop 0 RES-FALSE EXIT THEN
+   drop LBI-T @ RES-TRUE ;
 
 \ CHECKER-DYNAMIC-INFO's answer, false for an atom or a width the type hands
 \ out as a pointee.
@@ -15070,11 +15070,13 @@ CHECKER-REG:}SCRATCH
    sa su na nu  SGIN @ SGOUT @ SGRIN @ SGROUT @ SGHASR @  CHECKER-ROWS-PUBLISH ;
 
 \ A child word's effect, rows a declaration built, for the pending record named
-\ NA NU: it has no signature text and no return clause.
-: CHECKER-CHILD-ROWS ( ptr u8 n n n -- )
+\ NA NU: it has no signature text and no return clause. Answers the effect's
+\ handle, its offset+1.
+: CHECKER-CHILD-ROWS ( ptr u8 n n n -- n )
    {: na:ptr nu:n din:n dout:n :}
    NULL-PTR 0 na nu din dout 0 0 RES-FALSE CHECKER-ROWS-PUBLISH
-   CHECKER-REC-SYM @ CK-CLOSE! ;
+   CHECKER-REC-SYM @ CK-CLOSE!
+   CHECKER-REC-SYM @ USIG-NEWEST-VISIBLE ;
 
 $7FFFFFFFFFFFFFFF constant LBUF-COUNT-MAX
 create LBUF-SIG-BUF LBUF-SIG-CAP allot

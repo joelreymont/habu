@@ -201,6 +201,19 @@ CAST: REG-XT ( n -- [ ptr u8 n ptr u8 n -- ] )
    sym FACTS-TEXT? if RSBUF RSN @ CK-CLOSED-IX @ FACTS!
    else NULL-PTR 0 CK-CLOSED-IX @ FIND-FACTS! then ;
 
+\ The shapes whose child answers `ptr t` for its declared type t.
+: STORED-SHAPE? ( n -- bool ) {: shape:n :}
+   shape CHILD-ABI:STORED =  shape CHILD-ABI:BUFFER = or
+   shape CHILD-ABI:DYNAMIC = or  shape CHILD-ABI:SLOT = or
+   shape CHILD-ABI:SLOTS = or ;
+
+\ A refused type is reported, naming the child, before the throw.
+: STORED-ROWS ( ptr u8 n ptr u8 n n -- n n )
+   {: na:ptr nu:n ta:ptr tu:n shape:n :}
+   ta tu CHECKER-STORAGE-TERM 0= if
+      drop na nu ta tu CHECKER-STORAGE-TYPE-REFUSE CHECK-RC throw
+   then
+   shape swap TFAM:TFAM-STORED-ROWS ;
 
 public
 
@@ -210,13 +223,17 @@ public
    {: na:ptr nu:n sa:ptr su:n :}
    na nu sa su DECL-REG @ REG-XT execute  na nu PENDING-FACTS ;
 
-\ Registers the effect of the pending child word NAME of SHAPE and PARAM, lays
-\ its facts, and answers its body value.
-: CHILD ( ptr u8 n n n -- n )
-   {: na:ptr nu:n shape:n param:n :}
-   shape param TFAM:TFAM-CHILD-ROWS {: din:n dout:n val:n :}
-   na nu din dout CHECKER-CHILD-ROWS  na nu PENDING-FACTS
-   val ;
+\ Registers the effect of the pending child word NAME of SHAPE, PARAM and
+\ stored TYPE, lays its facts, and answers its body value and effect handle.
+\ TYPE is read only for the shapes that answer `ptr t`.
+: CHILD ( ptr u8 n n n ptr u8 n -- n n )
+   {: na:ptr nu:n shape:n param:n ta:ptr tu:n :}
+   shape STORED-SHAPE? if
+      na nu ta tu shape STORED-ROWS 0
+   else shape param TFAM:TFAM-CHILD-ROWS then {: din:n dout:n val:n :}
+   na nu din dout CHECKER-CHILD-ROWS {: h:n :}
+   na nu PENDING-FACTS
+   val h ;
 
 private
 

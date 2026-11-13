@@ -185,6 +185,7 @@ create TAB
    PROVIDED-XT:DEFINE-CELL            1 cells                 CLAIM PROVIDED-XT-DEFINE-CELL
    PROVIDED-XT:APPEND-CELL            1 cells                 CLAIM PROVIDED-XT-APPEND-CELL
    PROVIDED-XT:POSTPONE-CELL          1 cells                 CLAIM PROVIDED-XT-POSTPONE-CELL
+   PROVIDED-XT:FIVE-CHILD-CELL        1 cells                 CLAIM PROVIDED-XT-FIVE-CHILD-CELL
    PROVIDED-XT:CHILD-CELL             1 cells                 CLAIM PROVIDED-XT-CHILD-CELL
    PROVIDED-XT:LITERAL-CELL           1 cells                 CLAIM PROVIDED-XT-LITERAL-CELL
    PROVIDED-XT:TYPE-OP-CELL           1 cells                 CLAIM PROVIDED-XT-TYPE-OP-CELL

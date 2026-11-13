@@ -561,8 +561,9 @@ $3880 constant APPEND-CELL
 $3888 constant POSTPONE-CELL
 $3898 constant LITERAL-CELL
 \ A declaration makes each child word through CHILD-CELL's CHILD-RUN, with a
-\ CHILD-ABI shape code.
-$38A8 constant CHILD-CELL
+\ CHILD-ABI shape code; FIVE-CHILD-CELL holds its five-operand form.
+$38A8 constant FIVE-CHILD-CELL
+$38B0 constant CHILD-CELL
 \ A definer's type and effect values are schema nodes the running engine's
 \ CHECK:TYPE-OP, which this cell holds, makes from a TYPE-OP-ABI code.
 $38A0 constant TYPE-OP-CELL
@@ -572,7 +573,9 @@ $38A0 constant TYPE-OP-CELL
 \ it registers. An OFF child adds its parameter, a byte offset, to `ptr a`,
 \ answering `ptr a` for CELL-OFF, `ptr ptr b` for PTR-OFF, `ptr u8` for BYTE-OFF.
 \ A FIELD child's parameter is a committed field id, an INDEX child's a family
-\ id, a VALUE child's the number it answers.
+\ id, a VALUE child's the number it answers. STORED to SLOTS are storage
+\ children: the parameter is 0, and the effects of STORED, BUFFER, DYNAMIC, SLOT
+\ and SLOTS answer `ptr t` for the type the declaration spells.
 package CHILD-ABI
 public
 0 constant CELL-OFF
@@ -581,6 +584,15 @@ public
 3 constant FIELD
 4 constant INDEX
 5 constant VALUE
+6 constant STORED
+7 constant BUFFER
+8 constant BIND
+9 constant GROW
+10 constant DYNAMIC
+11 constant RESERVE
+12 constant RELEASE
+13 constant SLOT
+14 constant SLOTS
 ;package
 
 \ A type operation on operands a and b: INT `n`, FAMILY family a on fresh
