@@ -8,8 +8,8 @@ host, and runs them in `gate-pool.f`'s process pool.
 `load-graph.f` reads the tests' load graph, which `gate-entry-guard.f` walks.
 Keep stdin at end of file: the tests' process groups inherit it, and a read
 from a terminal stops them with SIGTTIN. Give a run its own `TMPDIR` outside
-the checkout: a file walk skips `.out` (src/lib/fs.f `SKIP-DIR?`), so under
-one inside it test/file-objects.f finds no object of its sources.
+the checkout: jj snapshots a file a run leaves there that `.gitignore` does not
+name into the working-copy commit.
 
 - `compiler/` — compiler, capture and image tests; `wasm/`, `browser/` — Wasm
   and browser-host tests; `db/` — the private PostgreSQL cluster;

@@ -3,7 +3,16 @@
 \ STAT-BUF, the read probe and ERRNO$'s text are the FS-ABI band of the
 \ per-task DATA region. Every data buffer an FS word takes is CALLER-OWNED.
 \ Each walk maps a context of its own for one call and releases it on return
-\ or throw.
+\ or throw. WALK-FILES-IF visits regular files depth-first, in the order the
+\ directory stream returns (a caller that needs lexical order sorts). Its allow
+\ quotation sees every path, the root and directories included, before the walk
+\ stats it; false skips the path and all it holds. Below the root the walk skips
+\ special files, links stat cannot follow and entries gone since the read; any
+\ other entry stat refuses, and a root that is neither a file nor a directory,
+\ is E-FS-STAT. The walk closes every descriptor it opened however it ends, and
+\ a callback's path is valid only during the callback. Two walks in flight
+\ cover disjoint trees: getdirentries64 on a directory removed meanwhile
+\ answers -1 and the walk reports E-FS-DIR.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -696,25 +705,11 @@ private
 : DOTDOT-ENTRY? ( ptr u8 n -- bool ) {: a:ptr u :}
    u 2 = if a c@ DOT = a 1 + c@ DOT = and else false then ;
 
-: SKIP-DIR? ( ptr u8 n -- bool )
-   BASENAME
-   2dup s" .jj" PATH= if 2drop true exit then
-   2dup s" .jj-ws" PATH= if 2drop true exit then
-   2dup s" .git" PATH= if 2drop true exit then
-   2dup s" .out" PATH= if 2drop true exit then
-   s" .dots" PATH= ;
-
 public
 : SKIP-SELF-ENTRY? ( ptr u8 n -- bool )
    2dup DOT-ENTRY? if 2drop true exit then
    DOTDOT-ENTRY? ;
 
-private
-: SKIP-ENTRY? ( ptr u8 n -- bool )
-   2dup SKIP-SELF-ENTRY? if 2drop true exit then
-   SKIP-DIR? ;
-
-public
 : OPEN-DIR-READ ( ptr u8 n -- n )
    READ-PATHZ open-rd dup 0 < if drop E-FS-OPEN throw then ;
 
@@ -890,7 +885,6 @@ private
 \ the loop carries nothing but the handle across its recursion.
 : WALK-PATH ( ptr n ptr u8 n [ ptr u8 n -- bool ] [ ptr u8 n -- ] -- )
    {: ctx:ptr a:ptr u allow q :}
-   a u SKIP-DIR? if exit then
    a u allow execute 0= if exit then
    ctx a u WALK-TYPE {: fmt :}
    fmt S-IFREG = if a u q execute exit then
@@ -899,7 +893,7 @@ private
    begin ctx READ-DIR while
       ctx DIR-BLOCK-BEGIN
       begin ctx DIR-MORE? while
-         ctx LOAD-ENTRY DIRENT-NAME SKIP-ENTRY? 0= if
+         ctx LOAD-ENTRY DIRENT-NAME SKIP-SELF-ENTRY? 0= if
             ctx DESCEND-PATH allow q recurse
             ctx ASCEND-PATH
          then
@@ -929,14 +923,6 @@ private
    code 0<> if code throw then ;
 
 public
-\ The walk visits regular files only, depth-first, in the order the directory
-\ stream returns (a caller that needs lexical order sorts), skips SKIP-DIR?'s
-\ directories and, below the root, special files, links stat cannot follow and
-\ entries gone since the read; any other entry stat refuses, and a root that is
-\ neither a file nor a directory, is E-FS-STAT. It closes every descriptor it
-\ opened however it ends. A callback's path is valid only during the callback.
-\ Two walks in flight cover disjoint trees: getdirentries64 on a directory
-\ removed meanwhile answers -1 and the walk reports E-FS-DIR.
 : WALK-FILES-IF ( ptr u8 n [ ptr u8 n -- bool ] [ ptr u8 n -- ] -- )
    WALK-HANDLE-BYTES MEM:BYTES-ALLOC-LEN [: WALK-SCOPE ;] MEM:WITH-BYTES ;
 

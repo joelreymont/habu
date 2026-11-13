@@ -409,10 +409,10 @@
 \   it but whose text on disk does not left out, or a file loading one whose
 \   text on disk loads it but whose open text does not given; a file
 \   that reaches it only through a file outside the workspace left out, or
-\   that file given; a file under .jj-ws/ given; the file itself not given
-\   first, or given when neither the workspace nor an open document holds it;
-\   a load of a file not there refused; a file reached under two roots, whose
-\   loads resolve against the root, walked under one; a file whose loader
+\   that file given; a file under .jj-ws.noindex/ given; the file itself not
+\   given first, or given when neither the workspace nor an open document holds
+\   it; a load of a file not there refused; a file reached under two roots,
+\   whose loads resolve against the root, walked under one; a file whose loader
 \   names no literal path, or one there that cannot be read, not named with
 \   its reason, or stopping the walk before a file it does not lie between;
 \   a root that is not there not refused, naming it; the requesting document
@@ -4504,17 +4504,17 @@ variable WS-ROOT-U
 
 \ 1: a1 loads b1, which loads f1; u1 loads nothing. 2: a2 loads b2, which
 \ loads f2 on disk and nothing open. 3: c3 loads nothing on disk and f3
-\ open. 4: a4 loads out/b4, which loads f4 from a4's root, w/. 5: .jj-ws/a5
-\ loads f5. 6: m6 loads a file not there, then f6. 7: p/a7 and q/b7 load
-\ s/x7, which loads y7 from the root it is reached under: p/y7 loads nothing,
-\ q/y7 loads f7. 8: dyn/d8 loads at top level a path its command line names,
-\ which no walk can read, z8 cannot be read, and e8 loads out/h8, which loads
-\ f1 from e8's root, dyn/. 9: p/a9 and q/b9 load out/x9, which loads f9 from
-\ either root.
+\ open. 4: a4 loads out/b4, which loads f4 from a4's root, w/.
+\ 5: .jj-ws.noindex/a5 loads f5. 6: m6 loads a file not there, then f6. 7: p/a7
+\ and q/b7 load s/x7, which loads y7 from the root it is reached under: p/y7
+\ loads nothing, q/y7 loads f7. 8: dyn/d8 loads at top level a path its command
+\ line names, which no walk can read, z8 cannot be read, and e8 loads out/h8,
+\ which loads f1 from e8's root, dyn/. 9: p/a9 and q/b9 load out/x9, which loads
+\ f9 from either root.
 : WS-TREE ( -- )
    s" graph" FIXTURE FS:MAKE-DIR
    s" w" WS-DIR s" out" WS-DIR s" dyn" WS-DIR
-   s" w/.jj-ws" WS-DIR s" w/p" WS-DIR s" w/q" WS-DIR s" w/s" WS-DIR
+   s" w/.jj-ws.noindex" WS-DIR s" w/p" WS-DIR s" w/q" WS-DIR s" w/s" WS-DIR
    s" w/a1.f" s\" require b1.f\n" WS-FILE
    s" w/b1.f" s\" require f1.f\n" WS-FILE
    s" w/f1.f" s\" : F1 ( -- ) ;\n" WS-FILE
@@ -4527,7 +4527,7 @@ variable WS-ROOT-U
    s" w/a4.f" s\" require ../out/b4.f\n" WS-FILE
    s" out/b4.f" s\" require f4.f\n" WS-FILE
    s" w/f4.f" s\" : F4 ( -- ) ;\n" WS-FILE
-   s" w/.jj-ws/a5.f" s\" require ../f5.f\n" WS-FILE
+   s" w/.jj-ws.noindex/a5.f" s\" require ../f5.f\n" WS-FILE
    s" w/f5.f" s\" : F5 ( -- ) ;\n" WS-FILE
    s" w/m6.f" s\" require nothere.f\nrequire f6.f\n" WS-FILE
    s" w/f6.f" s\" : F6 ( -- ) ;\n" WS-FILE
