@@ -23,7 +23,7 @@ require src/habu/wl.f
 require src/habu/xref.f
 require src/habu/code-span.f
 require src/arch/arm64/icode.f
-require src/arch/arm64/link-kernel.f
+require src/habu/link-kernel.f
 require src/habu/linker.f
 require src/habu/link-band.f
 
@@ -79,19 +79,19 @@ variable REGION-N
 4 constant RECORD-LIST-KIND          \ an engine's record list
 
 \ Kernel primitive k is row k, build record r row P + (r - FIRST-REC).
-: MAP-N ( -- n ) ARM64:ROW-N  ndict@ +  FIRST-REC @ - ;
+: MAP-N ( -- n ) NATIVE:ROW-N  ndict@ +  FIRST-REC @ - ;
 
 
 \ Kernel row k's code, -1 0 when CUT removed it. CUT unbinds its last label when
 \ it removes the code after the body; MAP-ENDS then ends it.
 : KERNEL-SPAN ( n -- n n )
    {: k:n :}
-   k ARM64:ROW-FIRST {: first:label :}
-   first A64ICODE:LBL-BOUND? 0= if -1 0 exit then
-   first ARM64:OFFSET {: at:n :}
-   k ARM64:ROW-LAST {: last:label :}
-   last A64ICODE:LBL-BOUND? 0= if at -1 exit then
-   at  last ARM64:OFFSET at - ;
+   k NATIVE:ROW-FIRST {: first:label :}
+   first NATIVE:BOUND? 0= if -1 0 exit then
+   first NATIVE:OFFSET {: at:n :}
+   k NATIVE:ROW-LAST {: last:label :}
+   last NATIVE:BOUND? 0= if at -1 exit then
+   at  last NATIVE:OFFSET at - ;
 
 
 \ Build record r's code: a placed shadow record's [entry, RANGE-END), else the
@@ -106,7 +106,7 @@ variable REGION-N
       off 0 < if -1 0 exit then
       off s NSHADOW:ENTRY@ +  s RANGE-END s NSHADOW:ENTRY@ - exit
    then
-   a ARM64:KERNEL-ROW {: k:n :}
+   a NATIVE:KERNEL-ROW {: k:n :}
    k 0 < if -1 0 exit then
    k MAP-START @  k MAP-BYTES @ ;
 
@@ -126,10 +126,10 @@ variable REGION-N
 
 : MAP-FILL ( -- )
    MAP-N MAP-START-RESERVE  MAP-N MAP-BYTES-RESERVE  MAP-N MAP-FILE-RESERVE
-   ARM64:ROW-N 0 ?do i KERNEL-SPAN i MAP-BYTES ! i MAP-START !  -1 i MAP-FILE ! loop
+   NATIVE:ROW-N 0 ?do i KERNEL-SPAN i MAP-BYTES ! i MAP-START !  -1 i MAP-FILE ! loop
    0 MAP-WALK !
    ndict@ FIRST-REC @ ?do
-      i FIRST-REC @ - ARM64:ROW-N + {: k:n :}
+      i FIRST-REC @ - NATIVE:ROW-N + {: k:n :}
       i XREF-REC XREF-WORDLIST XREF:PACKAGE-WL? if -1 0 else i RECORD-SPAN then
       k MAP-BYTES !  k MAP-START !
       i REC-FILE k MAP-FILE !
@@ -236,13 +236,13 @@ variable REGION-N
 
 : KERNEL-ROW+ ( n -- )
    {: k:n :}
-   REC+ NAMED  k MAP-START @  k MAP-LEN  k ARM64:ROW-WID MAP-WID  MAP-HEAD
-   k ARM64:ROW-NAME$ MAP-NAME+  k MAP-KIND$ MAP+  s" baked -" MAP+  MAP-NL ;
+   REC+ NAMED  k MAP-START @  k MAP-LEN  k NATIVE:ROW-WID MAP-WID  MAP-HEAD
+   k NATIVE:ROW-NAME$ MAP-NAME+  k MAP-KIND$ MAP+  s" baked -" MAP+  MAP-NL ;
 
 \ Row k, a build record with code.
 : RECORD-ROW+ ( n -- )
    {: k:n :}
-   k ARM64:ROW-N - FIRST-REC @ + {: r:n :}
+   k NATIVE:ROW-N - FIRST-REC @ + {: r:n :}
    r XREF-REC {: rec:ptr :}
    REC+ NAMED  k MAP-START @  k MAP-LEN  rec XREF-WORDLIST r WID-MAP MAP-WID  MAP-HEAD
    rec XREF-NAME$ MAP-NAME+  k MAP-KIND$ MAP+  ORIGIN$ MAP+
@@ -251,13 +251,13 @@ variable REGION-N
 \ Row k, a package: its public and private wid in the start and len columns.
 : PACKAGE-ROW+ ( n -- )
    {: k:n :}
-   k ARM64:ROW-N - FIRST-REC @ + {: r:n :}
+   k NATIVE:ROW-N - FIRST-REC @ + {: r:n :}
    r XREF-REC {: rec:ptr :}
    REC+ NAMED  rec XREF-PKG-PUBLIC r WID-MAP  rec XREF-PKG-PRIVATE r WID-MAP  -1 MAP-HEAD
    rec XREF-NAME$ MAP-NAME+  s"  namespace " MAP+  ORIGIN$ MAP+
    k MAP-FILE @ FILE-PATH$ MAP-ESC+  MAP-NL ;
 
-: CODE-ROW+ ( n -- ) dup ARM64:ROW-N < if KERNEL-ROW+ else RECORD-ROW+ then ;
+: CODE-ROW+ ( n -- ) dup NATIVE:ROW-N < if KERNEL-ROW+ else RECORD-ROW+ then ;
 
 
 \ The code bytes [at, end) the link wrote for no record, if any.
@@ -283,8 +283,8 @@ variable REGION-N
 
 : CODE-ROWS ( n -- )
    {: end:n :}
-   0 ARM64:KERNEL-AT RUNTIME-ROW+
-   ARM64:KERNEL-AT MAP-AT !
+   0 NATIVE:KERNEL-AT RUNTIME-ROW+
+   NATIVE:KERNEL-AT MAP-AT !
    MAP-ORDER-N @ 0 ?do
       i MAP-ORDER @ {: k:n :}
       k MAP-START @ GAP
@@ -331,14 +331,14 @@ variable REGION-N
 : REGION-ROWS ( n -- )
    MAP-AT !
    REGION-N @ 0 ?do i REGION-ROW+ loop
-   MAP-AT @ A64ICODE:ASM-LEN <> if
+   MAP-AT @ NATIVE:SIZE <> if
       s" link: the map's regions do not end at the code buffer's end" 74 die
    then ;
 
 : PACKAGE-ROWS ( -- )
    ndict@ FIRST-REC @ ?do
       i XREF-REC XREF-WORDLIST XREF:PACKAGE-WL? if
-         i FIRST-REC @ - ARM64:ROW-N + PACKAGE-ROW+
+         i FIRST-REC @ - NATIVE:ROW-N + PACKAGE-ROW+
       then
    loop ;
 

@@ -22,7 +22,7 @@ public
 \ captured engine's code region at VMBASE plus REGION-OFF (src/habu/boot-x64.f),
 \ so the window and its read-write tail end below that. rel32 reaches the whole
 \ image, so the bound is ARM64's engine code allowance (arm64/asm.f ADR-HI).
-$100000 constant CODE-CAP-BYTES
+REGION-OFF PROT-PAGE-MAX - X64LAYOUT:CODE-OFF - constant CODE-CAP-BYTES
 
 private
 
@@ -221,18 +221,44 @@ $3145544953343658 constant TEXT-SITE-MAGIC
    code-end U32,  count U32,  TEXT-SITE-MAGIC U64,
    code-end ;
 
-\ base is the address byte 0 of the stream loads at. Every site is checked before
-\ any byte is patched; then the stream's labels and sites are forgotten.
-: ASM-LINK ( n -- ) {: base:n :}
+\ The linker keeps labels through map writing. Other callers finish the stream
+\ with ASM-LINK, which also releases its labels and sites.
+: FIXUPS! ( n -- ) {: base:n :}
    NSITE @ 0 ?do base i SITE-CHECK loop
-   NSITE @ 0 ?do base i SITE-PATCH loop
-   FORGET ;
+   NSITE @ 0 ?do base i SITE-PATCH loop ;
+
+: ASM-LINK ( n -- ) FIXUPS! FORGET ;
 
 \ Empties the sink and forgets this stream's labels and sites, so nothing of one
 \ stream is patched into the next.
 : ASM-RESET ( -- )
    SINK BUF:CLEAR
    FORGET ;
+
+\ Kernel objects retain labels and relocation sites until final placement.
+: LABEL-COUNT ( -- n ) NLBL @ LBL-BASE @ - ;
+: LABEL-POS ( n -- n ) LBL-AT @ ;
+: LABEL-INDEX ( label -- n ) ?KNOWN ;
+: LABEL-REF ( n -- label ) LBL-BASE @ + >LABEL ;
+: LABEL-BOUND? ( label -- bool ) ?KNOWN LBL-AT @ UNBOUND <> ;
+: LABEL-POS! ( n n -- ) LBL-AT ! ;
+: SITES ( -- n ) NSITE @ ;
+: REF-SITE ( n -- n ) SITE-AT @ ;
+: REF-LABEL ( n -- n ) SITE-LBL @ ;
+: REF-KIND ( n -- n ) SITE-KIND @ ;
+: REF+ ( n n n -- ) SITE+ ;
+
+: OPEN ( -- )
+   SINK BUF:LIVE? if ASM-RESET else
+      SINK 4096 BUF:N>BLEN BUF:INIT
+   then ;
+
+: CLOSE ( -- ) FORGET SINK BUF:DISPOSE ;
+
+: BYTES, ( ptr u8 n -- ) BUF:N>BLEN SINK BUF:APPEND-SPAN ;
+
+: SPACE ( n -- ptr u8 )
+   BUF:N>BLEN SINK swap BUF:GROW SPAN:$ drop ;
 
 ;using
 ;package

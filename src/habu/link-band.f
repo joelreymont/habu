@@ -13,7 +13,7 @@ require src/compiler/native/dict.f
 require src/compiler/native/shadow.f
 require src/arch/arm64/icode.f
 require src/arch/arm64/link.f
-require src/arch/arm64/link-kernel.f
+require src/habu/link-kernel.f
 require src/arch/wasm/link-kernel.f
 require src/arch/wasm/link-site.f
 
@@ -238,6 +238,7 @@ variable UNSAFE-COUNT
 : ADDRESS@ ( CTARGET:arch ptr u8 n n n -- n bool )
    {: a:CTARGET:arch b:ptr s:n site:n kind:n :}
    a CTARGET-ARCH:AARCH64 CTARGET-ARCH:EQ if b s site kind ARM64:ADDRESS@ exit then
+   a CTARGET-ARCH:X86-64 CTARGET-ARCH:EQ if b s site kind X64:ADDRESS@ exit then
    a CTARGET-ARCH:WASM CTARGET-ARCH:EQ if b s site kind WASM:ADDRESS@ exit then
    NO-PART ;
 
@@ -247,6 +248,7 @@ variable UNSAFE-COUNT
 : ADDRESS! ( n CTARGET:arch ptr u8 n n n -- bool )
    {: v:n a:CTARGET:arch b:ptr s:n site:n kind:n :}
    a CTARGET-ARCH:AARCH64 CTARGET-ARCH:EQ if v b s site kind ARM64:ADDRESS! exit then
+   a CTARGET-ARCH:X86-64 CTARGET-ARCH:EQ if v b s site kind X64:ADDRESS! exit then
    a CTARGET-ARCH:WASM CTARGET-ARCH:EQ if v b s site kind WASM:ADDRESS! exit then
    NO-PART ;
 
@@ -256,6 +258,7 @@ variable UNSAFE-COUNT
 : CALL? ( CTARGET:arch ptr u8 n n n -- bool )
    {: a:CTARGET:arch b:ptr s:n site:n kind:n :}
    a CTARGET-ARCH:AARCH64 CTARGET-ARCH:EQ if b s site kind ARM64:CALL? exit then
+   a CTARGET-ARCH:X86-64 CTARGET-ARCH:EQ if b s site kind X64:CALL? exit then
    a CTARGET-ARCH:WASM CTARGET-ARCH:EQ if b s site kind WASM:CALL? exit then
    NO-PART ;
 
@@ -265,6 +268,7 @@ variable UNSAFE-COUNT
 : SLOT? ( CTARGET:arch ptr u8 n n -- bool )
    {: a:CTARGET:arch b:ptr s:n site:n :}
    a CTARGET-ARCH:AARCH64 CTARGET-ARCH:EQ if b s site ARM64:SLOT? exit then
+   a CTARGET-ARCH:X86-64 CTARGET-ARCH:EQ if b s site X64:SLOT? exit then
    a CTARGET-ARCH:WASM CTARGET-ARCH:EQ if b s site WASM:SLOT? exit then
    NO-PART ;
 
@@ -273,6 +277,7 @@ variable UNSAFE-COUNT
 : SIZE? ( CTARGET:arch n -- bool )
    {: a:CTARGET:arch s:n :}
    a CTARGET-ARCH:AARCH64 CTARGET-ARCH:EQ if s ARM64:SIZE? exit then
+   a CTARGET-ARCH:X86-64 CTARGET-ARCH:EQ if s X64:SIZE? exit then
    a CTARGET-ARCH:WASM CTARGET-ARCH:EQ if s WASM:SIZE? exit then
    NO-PART ;
 
@@ -360,7 +365,7 @@ variable UNSAFE-COUNT
 \ primitive's entry. A Wasm module has no hb kernel and keeps none.
 : KEEP-KERNEL ( n -- bool )
    WASM? if drop false exit then
-   ARM64:ROOT-ENTRY ;
+   NATIVE:ROOT-ENTRY ;
 
 
 \ A target with no record and no UNSAFE-NAME? word is a kernel primitive or a
@@ -471,17 +476,17 @@ variable UNSAFE-COUNT
    repeat
    drop 0 ;
 
-\ Each placed emission from A64ICODE:ASM-LEN on, in emission order, a defer's
+\ Each placed emission from NATIVE:SIZE on, in emission order, a defer's
 \ with room for its trailer.
 : LAYOUT ( -- )
    NSHADOW:EMISSIONS OFFSETS-RESERVE  NSHADOW:EMISSIONS TRAILERS-RESERVE
-   A64ICODE:ASM-LEN  dup BAND-AT !
+   NATIVE:SIZE  dup BAND-AT !
    NSHADOW:EMISSIONS 0 ?do
       0 i TRAILERS !
       i PLACED @ 0= if
          -1 i OFFSETS !
       else
-         i NSHADOW:SIZE 3 and 0<> if
+         NATIVE:X64? 0= i NSHADOW:SIZE 3 and 0<> and if
             s" link: " SAY i ROUTINE. s"  is not whole 4-byte words" SAY SAY-CR
             s" link: a routine is not whole 4-byte words" 74 die
          then
@@ -503,16 +508,16 @@ variable UNSAFE-COUNT
    r 0 >= if
       r NSHADOW:EMISSION@ {: e:n :}
       e PLACED @ 0= if -1 exit then
-      ARM64:TEXT-VA  e OFFSET@ +  r NSHADOW:ENTRY@ + exit
+      NATIVE:TEXT-VA  e OFFSET@ +  r NSHADOW:ENTRY@ + exit
    then
-   a ARM64:KERNEL-ENTRY {: off:n :}
-   off 0 >= if ARM64:TEXT-VA off + exit then
+   a NATIVE:KERNEL-ENTRY {: off:n :}
+   off 0 >= if NATIVE:TEXT-VA off + exit then
    \ Only a value no record or kernel entry matched scans every emission's
    \ functions: (quotation xt cells) x (functions), here and in QUOTE-ROOT.
    a NSHADOW:SOURCE-FUNCTION {: qe:n qf:n :}
    qe 0< if -1 exit then
    qe PLACED @ 0= if -1 exit then
-   ARM64:TEXT-VA  qe OFFSET@ +  qe qf NSHADOW:FUNCTION-OFFSET@ + ;
+   NATIVE:TEXT-VA  qe OFFSET@ +  qe qf NSHADOW:FUNCTION-OFFSET@ + ;
 
 
 : TARGET-ADDRESS ( n -- n )
@@ -528,17 +533,15 @@ variable UNSAFE-COUNT
 \ through data.
 : PLACE-ONE ( n [ n -- n ] -- )
    {: e:n data :}
-   e NSHADOW:SIZE 4 / {: words:n :}
-   words A64ICODE:ASM-CP?
+   e NSHADOW:SIZE NATIVE:SPACE {: dst:ptr :}
    e PLACING !
-   e  A64ICODE:CODE e OFFSET@ +  ARM64:TEXT-VA e OFFSET@ +  data  ['] TARGET-ADDRESS
-   ARM64:PLACE
-   words A64ICODE:ASM-CP +!
+   e dst NATIVE:TEXT-VA e OFFSET@ + data ['] TARGET-ADDRESS
+   NATIVE:PLACE
    e TRAILERS @ {: cell:n :}
-   cell 0<> if DEFER-MAGIC A64ICODE:DCQ,  cell data execute A64ICODE:DCQ, then ;
+   cell 0<> if DEFER-MAGIC NATIVE:U64,  cell data execute NATIVE:U64, then ;
 
 
-\ Each placed emission, after the kernel ARM64:ADOPT laid, its data addresses
+\ Each placed emission, after the kernel NATIVE:ADOPT laid, its data addresses
 \ through data.
 : PLACE-ROUTINES ( [ n -- n ] -- )
    {: data :}

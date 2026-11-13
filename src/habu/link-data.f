@@ -17,7 +17,7 @@ require src/habu/boot-cells.f
 require src/habu/wl.f
 require src/habu/address-cells.f
 require src/arch/arm64/icode.f
-require src/arch/arm64/link-kernel.f
+require src/habu/link-kernel.f
 require src/habu/fdio.f
 require src/habu/sign-id.f
 require src/os/macos/macho.f
@@ -72,7 +72,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 
 
 \ A bound label's byte offset in A64ICODE's code buffer.
-: LABEL-OFFSET ( ptr n -- n ) A64ICODE:LABEL@ ARM64:OFFSET ;
+: LABEL-OFFSET ( ptr n -- n ) NATIVE:LABEL@ NATIVE:OFFSET ;
 
 
 \ The image is the space's runs: its length is the space's, not the distance
@@ -84,10 +84,10 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 
 \ A host address in the open space at its DATA-VA address: the resolver code's
 \ data address sites get.
-: DATA-ADDRESS ( n -- n ) DATA-OFFSET  ARM64:DATA-VA + ;
+: DATA-ADDRESS ( n -- n ) DATA-OFFSET  NATIVE:DATA-VA + ;
 
 
-: PAD8 ( -- ) A64ICODE:ASM-LEN 7 and 0<> if 0 A64ICODE:EMITW then ;
+: PAD8 ( -- ) NATIVE:PAD8 ;
 
 
 \ The link address xt cell off's value v gives the image.
@@ -124,7 +124,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 : LIST, ( -- )
    LISTED-N @ {: n:n :}
    n 0 > if 0 LISTED n [: < ;] SORT:SORT! then
-   n 0 ?do i LISTED @ A64ICODE:DCQ, loop ;
+   n 0 ?do i LISTED @ NATIVE:U64, loop ;
 
 
 \ A cell the build stored into would be written and slid twice.
@@ -140,18 +140,18 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 \ Header cells valued as the target's boot leaves them, at the kernel object's
 \ offsets, and the cells it presets.
 : HEADER-CELLS ( -- )
-   ARM64:DATA-VA {: va:n :}
-   s" DATA-START" ARM64:SYM {: start:n :}
-   va DATA-IMAGE-LEN +  s" DP-CELL" ARM64:SYM HEADER!
-   va start +  s" DP-FLOOR-CELL" ARM64:SYM HEADER!
-   va s" DP-CEILING-OFF" ARM64:SYM +  s" DP-CEILING-CELL" ARM64:SYM HEADER!
-   start s" HEAP-START-CELL" ARM64:SYM HEADER!
-   ARM64:PRESET-N 0 ?do i ARM64:PRESET@ HEADER! loop
-   va s" FD-CELL" ARM64:SYM +  s" FD-PTR-CELL" ARM64:SYM HEADER!
-   ARM64:TEXT-VA s" RBASE-CELL" ARM64:SYM HEADER!
-   ARM64:TEXT-VA LUNCAUGHT LABEL-OFFSET +  s" UNCGH-CELL" ARM64:SYM HEADER!
-   ARM64:TEXT-VA LSIGH LABEL-OFFSET +  s" STUB-CELL" ARM64:SYM HEADER!
-   ARM64:TEXT-VA KERNEL-END @ +  s" CODE-END-CELL" ARM64:SYM HEADER!
+   NATIVE:DATA-VA {: va:n :}
+   s" DATA-START" NATIVE:SYM {: start:n :}
+   va DATA-IMAGE-LEN +  s" DP-CELL" NATIVE:SYM HEADER!
+   va start +  s" DP-FLOOR-CELL" NATIVE:SYM HEADER!
+   va s" DP-CEILING-OFF" NATIVE:SYM +  s" DP-CEILING-CELL" NATIVE:SYM HEADER!
+   start s" HEAP-START-CELL" NATIVE:SYM HEADER!
+   NATIVE:PRESET-N 0 ?do i NATIVE:PRESET@ HEADER! loop
+   va s" FD-CELL" NATIVE:SYM +  s" FD-PTR-CELL" NATIVE:SYM HEADER!
+   NATIVE:TEXT-VA s" RBASE-CELL" NATIVE:SYM HEADER!
+   NATIVE:TEXT-VA LUNCAUGHT LABEL-OFFSET +  s" UNCGH-CELL" NATIVE:SYM HEADER!
+   NATIVE:TEXT-VA LSIGH LABEL-OFFSET +  s" STUB-CELL" NATIVE:SYM HEADER!
+   NATIVE:TEXT-VA KERNEL-END @ +  s" CODE-END-CELL" NATIVE:SYM HEADER!
    \ The build's MARK left its own index mapping's address here; the target's
    \ first MARK builds one from 0.
    0 ADDRESS-CELLS:INDEX-CELL COPY-AT LE:U64! ;
@@ -160,18 +160,19 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 \ An engine's throw recoveries: its kernel branches through these cells inside an
 \ evaluate and after a data-stack underdepth. A stripped program's cut keeps neither.
 : RECOVERY-CELLS ( -- )
-   ARM64:TEXT-VA LEVALREC LABEL-OFFSET +  s" EVALREC-CELL" ARM64:SYM HEADER!
-   ARM64:TEXT-VA LFLOORREC LABEL-OFFSET +  s" FLOORREC-CELL" ARM64:SYM HEADER! ;
+   NATIVE:X64? if 0 else NATIVE:TEXT-VA LEVALREC LABEL-OFFSET + then
+   s" EVALREC-CELL" NATIVE:SYM HEADER!
+   NATIVE:TEXT-VA LFLOORREC LABEL-OFFSET +  s" FLOORREC-CELL" NATIVE:SYM HEADER! ;
 
 \ The header cells HEADER-CELLS and RECOVERY-CELLS give a code address.
 : LIST-HEADER ( -- )
-   s" RBASE-CELL" ARM64:SYM A64ICODE:DCQ,
-   s" UNCGH-CELL" ARM64:SYM A64ICODE:DCQ,
-   s" STUB-CELL" ARM64:SYM A64ICODE:DCQ,
-   s" CODE-END-CELL" ARM64:SYM A64ICODE:DCQ,
+   s" RBASE-CELL" NATIVE:SYM NATIVE:U64,
+   s" UNCGH-CELL" NATIVE:SYM NATIVE:U64,
+   s" STUB-CELL" NATIVE:SYM NATIVE:U64,
+   s" CODE-END-CELL" NATIVE:SYM NATIVE:U64,
    ENGINE? @ if
-      s" EVALREC-CELL" ARM64:SYM A64ICODE:DCQ,
-      s" FLOORREC-CELL" ARM64:SYM A64ICODE:DCQ,
+      NATIVE:X64? 0= if s" EVALREC-CELL" NATIVE:SYM NATIVE:U64, then
+      s" FLOORREC-CELL" NATIVE:SYM NATIVE:U64,
    then ;
 
 
@@ -184,19 +185,19 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 
 \ The target kernel's primitive count and record k's cell: [0] and [8] the
 \ entry's and the last word's code offsets, [24] an out-of-line name's.
-: PRIMS ( -- n ) A64ICODE:CODE LNCOUNT LABEL-OFFSET + LE:U64@ ;
+: PRIMS ( -- n ) NATIVE:CODE LNCOUNT LABEL-OFFSET + LE:U64@ ;
 
 : PRIM@ ( n n -- n )
    {: k:n slot:n :}
-   A64ICODE:CODE LDICT LABEL-OFFSET +  k DREC * +  slot cells +  LE:U64@ ;
+   NATIVE:CODE LDICT LABEL-OFFSET +  k DREC * +  slot cells +  LE:U64@ ;
 
 : PRIM-NAME$ ( n -- ptr u8 n )
    {: k:n :}
    k 2 PRIM@ {: flags:n :}
    flags DNAME-EXT and 0<> if
-      A64ICODE:CODE k 3 PRIM@ +
+      NATIVE:CODE k 3 PRIM@ +
    else
-      A64ICODE:CODE LDICT LABEL-OFFSET +  k DREC * +  24 +
+      NATIVE:CODE LDICT LABEL-OFFSET +  k DREC * +  24 +
    then
    flags DNAME-LEN-MASK and ;
 
@@ -222,10 +223,12 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 \ A cell holding a code address at band offset off: listed, so start-up slides it.
 : CODE-CELL, ( n n -- )
    {: v:n off:n :}
-   v A64ICODE:DCQ,  off RLIST+ ;
+   v NATIVE:U64,  off RLIST+ ;
 
 
-: PRIM-LEN ( n -- n ) dup 1 PRIM@ swap 0 PRIM@ - 4 - ;
+: PRIM-LEN ( n -- n )
+   dup 1 PRIM@ swap 0 PRIM@ -
+   NATIVE:X64? if CODE-SPAN:EXACT else 4 - then ;
 
 \ A primitive's record: [8] the body's length, a package row's
 \ [0] and [8] its wordlist ids; [32] the facts text PRIM-TEXTS laid.
@@ -235,20 +238,20 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    k 0 PRIM@ {: first:n :}
    k 5 PRIM@ {: wid:n :}
    wid WL:NAMESPACE = if
-      first A64ICODE:DCQ,  k 1 PRIM@ A64ICODE:DCQ,
+      first NATIVE:U64,  k 1 PRIM@ NATIVE:U64,
    else
-      ARM64:TEXT-VA first + at CODE-CELL,
-      k PRIM-LEN A64ICODE:DCQ,
+      NATIVE:TEXT-VA first + at CODE-CELL,
+      k PRIM-LEN NATIVE:U64,
    then
    k 2 PRIM@ {: flags:n :}
-   flags A64ICODE:DCQ,
+   flags NATIVE:U64,
    flags DNAME-EXT and 0<> if
-      ARM64:TEXT-VA k 3 PRIM@ +  at 24 + CODE-CELL,
+      NATIVE:TEXT-VA k 3 PRIM@ +  at 24 + CODE-CELL,
    else
-      k 3 PRIM@ A64ICODE:DCQ,
+      k 3 PRIM@ NATIVE:U64,
    then
-   k PRIM-FACTS-AT @ A64ICODE:DCQ,
-   wid A64ICODE:DCQ, ;
+   k PRIM-FACTS-AT @ NATIVE:U64,
+   wid NATIVE:U64, ;
 
 
 \ Shadow record s's [8] cell as native publication records it: a definer's span
@@ -265,7 +268,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    {: r:n :}
    r XREF-REC {: rec:ptr :}
    rec XREF-START {: a:n :}
-   a ARM64:KERNEL-ROW {: k:n :}
+   a NATIVE:KERNEL-ROW {: k:n :}
    k 0 >= if k PRIM-LEN exit then
    CROSS? a 0<> and if
       a REC-AT {: s:n :}
@@ -307,22 +310,22 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    rec XREF-WORDLIST {: wid:n :}
    wid XREF:PACKAGE-WL? if -1 else r EXPORT-SOURCE then {: src:n :}
    wid XREF:PACKAGE-WL? if
-      rec XREF-PKG-PUBLIC r WID-MAP A64ICODE:DCQ,
-      rec XREF-PKG-PRIVATE r WID-MAP A64ICODE:DCQ,
+      rec XREF-PKG-PUBLIC r WID-MAP NATIVE:U64,
+      rec XREF-PKG-PRIVATE r WID-MAP NATIVE:U64,
    else
       r ENTRY-ADDRESS {: entry:n :}
-      entry 0<> if entry at CODE-CELL, else 0 A64ICODE:DCQ, then
-      r BUILD-LEN A64ICODE:DCQ,
+      entry 0<> if entry at CODE-CELL, else 0 NATIVE:U64, then
+      r BUILD-LEN NATIVE:U64,
    then
-   rec XREF-FLAGS A64ICODE:DCQ,
+   rec XREF-FLAGS NATIVE:U64,
    rec XREF-EXT? if
-      ARM64:TEXT-VA  r FIRST-REC @ - NAME-AT @ +  at 24 + CODE-CELL,
+      NATIVE:TEXT-VA  r FIRST-REC @ - NAME-AT @ +  at 24 + CODE-CELL,
    else
-      rec XREF-NAME-SLOT XREF-CELL@ A64ICODE:DCQ,
+      rec XREF-NAME-SLOT XREF-CELL@ NATIVE:U64,
    then
    src 0 >= if  -1  PRIMS src +  FIRST-REC @ -  -
-   else  rec CK-REC-FACTS-SLOT XREF-CELL@  then  A64ICODE:DCQ,
-   wid r WID-MAP A64ICODE:DCQ, ;
+   else  rec CK-REC-FACTS-SLOT XREF-CELL@  then  NATIVE:U64,
+   wid r WID-MAP NATIVE:U64, ;
 
 
 : NAME-POOL ( -- )
@@ -330,8 +333,8 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    ndict@ FIRST-REC @ ?do
       i XREF-REC {: rec:ptr :}
       rec XREF-EXT? if
-         A64ICODE:ASM-LEN  i FIRST-REC @ - NAME-AT !
-         rec XREF-NAME$ A64ICODE:BYTES,
+         NATIVE:SIZE  i FIRST-REC @ - NAME-AT !
+         rec XREF-NAME$ NATIVE:BYTES,
       then
    loop ;
 
@@ -343,26 +346,26 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 \ the record list.
 : RECORD-IMAGE ( -- )
    NAME-POOL
-   A64ICODE:ASM-LEN NAMES-END !
+   NATIVE:SIZE NAMES-END !
    PAD8
    0 RLISTED-N !
-   LRECS A64ICODE:LABEL@ A64ICODE:LBL,
+   LRECS NATIVE:LABEL@ NATIVE:BIND
    PRIMS 0 ?do i PRIM-REC, loop
    0 SHADOW-AT !
    ndict@ FIRST-REC @ ?do  i  PRIMS i + FIRST-REC @ -  BUILD-REC,  loop
-   LRECS-END A64ICODE:LABEL@ A64ICODE:LBL,
-   LRLIST A64ICODE:LABEL@ A64ICODE:LBL,
-   RLISTED-N @ 0 ?do i RLISTED @ A64ICODE:DCQ, loop
-   LRLIST-END A64ICODE:LABEL@ A64ICODE:LBL,
+   LRECS-END NATIVE:LABEL@ NATIVE:BIND
+   LRLIST NATIVE:LABEL@ NATIVE:BIND
+   RLISTED-N @ 0 ?do i RLISTED @ NATIVE:U64, loop
+   LRLIST-END NATIVE:LABEL@ NATIVE:BIND
    RLISTED-RELEASE  NAME-AT-RELEASE  PRIM-FACTS-AT-RELEASE ;
 
 
 \ An engine's header cells beside HEADER-CELLS': the record count the seal
 \ covers, the wordlist counter and the types wordlist, as the target numbers them.
 : ENGINE-CELLS ( -- )
-   TARGET-NDICT s" SEAL-NDICT-CELL" ARM64:SYM HEADER!
-   TARGET-WIDN s" WIDN-CELL" ARM64:SYM HEADER!
-   FIRST-DYNAMIC-WID BOOT:TYPES-WL FIRST-WID - +  s" TYPES-WL-CELL" ARM64:SYM HEADER! ;
+   TARGET-NDICT s" SEAL-NDICT-CELL" NATIVE:SYM HEADER!
+   TARGET-WIDN s" WIDN-CELL" NATIVE:SYM HEADER!
+   FIRST-DYNAMIC-WID BOOT:TYPES-WL FIRST-WID - +  s" TYPES-WL-CELL" NATIVE:SYM HEADER! ;
 
 
 : SET? ( n -- bool ) COPY-CELLS @ 0<> ;
@@ -379,8 +382,8 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 
 : RUN, ( n n -- )
    {: first:n end:n :}
-   first CELL * A64ICODE:DCQ,  end first - A64ICODE:DCQ,
-   end first ?do i COPY-CELLS @ A64ICODE:DCQ, loop ;
+   first CELL * NATIVE:U64,  end first - NATIVE:U64,
+   end first ?do i COPY-CELLS @ NATIVE:U64, loop ;
 
 \ The copy as runs [off u64][n u64][n cells], off the run's byte offset from
 \ DATA; zero cells outside a run are not written.
@@ -392,20 +395,20 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 \ After PLACE-ROUTINES: at an 8-byte boundary the copy's runs with the header
 \ cells written, then the DATA list, the code header cells last.
 : DATA-IMAGE ( -- )
-   A64ICODE:ASM-LEN CODE-END !
+   NATIVE:SIZE CODE-END !
    PAD8
-   LIMAGE A64ICODE:LABEL@ A64ICODE:LBL,
+   LIMAGE NATIVE:LABEL@ NATIVE:BIND
    KEPT-COPY
    ['] COPY-ROW EACH-KEPT
    HEADER-CELLS
    ENGINE? @ if ENGINE-CELLS RECOVERY-CELLS then
    RUNS,
-   LIMAGE-END A64ICODE:LABEL@ A64ICODE:LBL,
-   LLIST A64ICODE:LABEL@ A64ICODE:LBL,
+   LIMAGE-END NATIVE:LABEL@ NATIVE:BIND
+   LLIST NATIVE:LABEL@ NATIVE:BIND
    0 LISTED-N !  ['] LIST-ROW EACH-KEPT
    LIST,
    LIST-HEADER
-   LLIST-END A64ICODE:LABEL@ A64ICODE:LBL, ;
+   LLIST-END NATIVE:LABEL@ NATIVE:BIND ;
 
 
 \ Region kind k spans labels a to b.
@@ -424,22 +427,22 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 
 
 : ADOPT-LABELS ( -- )
-   ARM64:ADOPT
-   s" IMAGE" ARM64:SYM-LABEL LIMAGE A64ICODE:LABEL!
-   s" IMAGE-END" ARM64:SYM-LABEL LIMAGE-END A64ICODE:LABEL!
-   s" LIST" ARM64:SYM-LABEL LLIST A64ICODE:LABEL!
-   s" LIST-END" ARM64:SYM-LABEL LLIST-END A64ICODE:LABEL!
-   s" UNCAUGHT" ARM64:SYM-LABEL LUNCAUGHT A64ICODE:LABEL!
-   s" SIGH" ARM64:SYM-LABEL LSIGH A64ICODE:LABEL!
-   s" NCOUNT" ARM64:SYM-LABEL LNCOUNT A64ICODE:LABEL!
-   s" DICT" ARM64:SYM-LABEL LDICT A64ICODE:LABEL!
+   NATIVE:ADOPT
+   s" IMAGE" NATIVE:SYM-LABEL LIMAGE NATIVE:LABEL!
+   s" IMAGE-END" NATIVE:SYM-LABEL LIMAGE-END NATIVE:LABEL!
+   s" LIST" NATIVE:SYM-LABEL LLIST NATIVE:LABEL!
+   s" LIST-END" NATIVE:SYM-LABEL LLIST-END NATIVE:LABEL!
+   s" UNCAUGHT" NATIVE:SYM-LABEL LUNCAUGHT NATIVE:LABEL!
+   s" SIGH" NATIVE:SYM-LABEL LSIGH NATIVE:LABEL!
+   s" NCOUNT" NATIVE:SYM-LABEL LNCOUNT NATIVE:LABEL!
+   s" DICT" NATIVE:SYM-LABEL LDICT NATIVE:LABEL!
    ENGINE? @ 0= if exit then
-   s" RECS" ARM64:SYM-LABEL LRECS A64ICODE:LABEL!
-   s" RECS-END" ARM64:SYM-LABEL LRECS-END A64ICODE:LABEL!
-   s" RLIST" ARM64:SYM-LABEL LRLIST A64ICODE:LABEL!
-   s" RLIST-END" ARM64:SYM-LABEL LRLIST-END A64ICODE:LABEL!
-   s" EVALREC" ARM64:SYM-LABEL LEVALREC A64ICODE:LABEL!
-   s" FLOORREC" ARM64:SYM-LABEL LFLOORREC A64ICODE:LABEL! ;
+   s" RECS" NATIVE:SYM-LABEL LRECS NATIVE:LABEL!
+   s" RECS-END" NATIVE:SYM-LABEL LRECS-END NATIVE:LABEL!
+   s" RLIST" NATIVE:SYM-LABEL LRLIST NATIVE:LABEL!
+   s" RLIST-END" NATIVE:SYM-LABEL LRLIST-END NATIVE:LABEL!
+   NATIVE:X64? 0= if s" EVALREC" NATIVE:SYM-LABEL LEVALREC NATIVE:LABEL! then
+   s" FLOORREC" NATIVE:SYM-LABEL LFLOORREC NATIVE:LABEL! ;
 
 
 \ A stripped program's code: the start-up, the kernel code the program reaches,
@@ -449,10 +452,10 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    ADOPT-LABELS
    ROUTINES
    REACH-DATA
-   LUNCAUGHT A64ICODE:LABEL@ ARM64:ROOT-LABEL
-   LSIGH A64ICODE:LABEL@ ARM64:ROOT-LABEL
-   ARM64:CUT
-   A64ICODE:ASM-CP @ 4 * KERNEL-END !
+   LUNCAUGHT NATIVE:LABEL@ NATIVE:ROOT-LABEL
+   LSIGH NATIVE:LABEL@ NATIVE:ROOT-LABEL
+   NATIVE:CUT
+   NATIVE:SIZE KERNEL-END !
    ['] DATA-ADDRESS PLACE-ROUTINES
    DATA-IMAGE ;
 
@@ -481,8 +484,8 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    then
    rec XREF-START LINK-ADDRESS {: to:n :}
    to -1 = if s" link: a C2-MEM scope entry is code the target does not place" 74 die then
-   k ARM64:SCOPE-SITE ARM64:OFFSET {: at:n :}
-   to  ARM64:TEXT-VA at +  A64ICODE:CODE at +  ARM64:CODE-ADDRESS! ;
+   k NATIVE:SCOPE-SITE NATIVE:OFFSET {: at:n :}
+   to  NATIVE:TEXT-VA at +  NATIVE:CODE at +  NATIVE:CODE-ADDRESS! ;
 
 
 \ After PLACE-ROUTINES, scope-kind?'s chains name C2-MEM's entries; a target
@@ -498,7 +501,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 \ the records.
 : LINK-ENGINE ( -- )
    ADOPT-LABELS
-   A64ICODE:ASM-CP @ 4 * KERNEL-END !
+   NATIVE:SIZE KERNEL-END !
    PRIM-TEXTS
    ROUTINES REACH-ALL
    ['] DATA-ADDRESS PLACE-ROUTINES
@@ -509,8 +512,12 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 
 : OBJECT-KIND ( -- )
    KERNEL? @ if s" link: a kernel build writes no program" 74 die then
-   ARM64:READ? 0= if s" link: no kernel object was read for this build" 74 die then
-   ENGINE? @ if 1 else 0 then  s" ENGINE" ARM64:SYM <> if
+   NATIVE:READ? 0= if s" link: no kernel object was read for this build" 74 die then
+   TARGET @ RTARGET:ARCH@ CTARGET-ARCH:X86-64 CTARGET-ARCH:EQ
+   NATIVE:X64? <> if
+      s" link: the kernel object is for another architecture" 74 die
+   then
+   ENGINE? @ if 1 else 0 then  s" ENGINE" NATIVE:SYM <> if
       s" link: the kernel object is another kind of build's" 74 die
    then ;
 
@@ -519,11 +526,14 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    {: sig:ptr sigu:n path:ptr pathu:n :}
    TARGET @ RTARGET:IMAGE@ MATCH RTARGET:image
       macho OF
-         MACHO:ASM-CODE ARM64:TEXT-VA MACHO:BUILD-IMAGE
+         MACHO:ASM-CODE NATIVE:TEXT-VA MACHO:BUILD-IMAGE
          sig sigu MACHO:SET-SIGID MACHO:CODESIG2
       ENDOF
       elf OF
-         ELF:ASM-CODE ARM64:TEXT-VA ELF:BUILD-IMAGE
+         NATIVE:X64? if
+            NATIVE:TEXT-VA X64CODE:FIXUPS!
+            NATIVE:CODE NATIVE:SIZE NATIVE:TEXT-VA ELF:BUILD-X64
+         else ELF:ASM-CODE NATIVE:TEXT-VA ELF:BUILD-IMAGE then
          sig sigu ELF:SET-SIGID ELF:CODESIG2
       ENDOF
       pe OF s" link: no file writer for a PE target" 74 die ENDOF
@@ -541,7 +551,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    {: path:ptr pathu:n :}
    OBJECT-KIND
    ENGINE? @ if 0 CHECK:PLACE-FACTS then
-   s" ENTRY-CELL" ARM64:SYM {: entry:n :}
+   s" ENTRY-CELL" NATIVE:SYM {: entry:n :}
    entry SPACE-AT @ 0= if
       s" link: the build stored no entry for the program" 74 die
    then

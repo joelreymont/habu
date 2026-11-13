@@ -130,21 +130,21 @@ $40 constant NORESERVE               \ macOS MAP_NORESERVE
 : COPIES ( -- n ) CROSS? if 2 else 1 then ;
 
 \ The space's DATA starts, ends and stops DP where the kernel the link adopts
-\ reads them (ARM64:READ); a kernel build's, a cross build's, or one no object
+\ reads them (NATIVE:READ); a kernel build's, a cross build's, or one no object
 \ was read for, where hb's does (src/arch/wasm/profile.f WPROF mirrors hb's
 \ band through DATA-START).
-: OBJECT-LAYOUT? ( -- bool ) KERNEL? @ 0= CROSS? 0= and ARM64:READ? and ;
+: OBJECT-LAYOUT? ( -- bool ) KERNEL? @ 0= CROSS? 0= and NATIVE:READ? and ;
 
 : LAYOUT-START ( -- n )
-   OBJECT-LAYOUT? if s" DATA-START" ARM64:SYM exit then
+   OBJECT-LAYOUT? if s" DATA-START" NATIVE:SYM exit then
    DATA-START ;
 
 : LAYOUT-SIZE ( -- n )
-   OBJECT-LAYOUT? if s" DATA-SIZE" ARM64:SYM exit then
+   OBJECT-LAYOUT? if s" DATA-SIZE" NATIVE:SYM exit then
    DATA-SIZE ;
 
 : LAYOUT-CEILING ( -- n )
-   OBJECT-LAYOUT? if s" DP-CEILING-OFF" ARM64:SYM exit then
+   OBJECT-LAYOUT? if s" DP-CEILING-OFF" NATIVE:SYM exit then
    DATA-SIZE PROF-CNT-BYTES - ;
 
 \ ---- the object ----------------------------------------------------------------
@@ -1845,7 +1845,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
    qe 0 >= if
       qe EM-EDGE+  2 PIECES U64+  qe EM-OWNER ID-REF+  qf PIECES U64+ true exit
    then
-   a ARM64:HOST-KERNEL? if 1 PIECES U64+  a rbase - PIECES U64+ true exit then
+   a NATIVE:HOST-KERNEL? if 1 PIECES U64+  a rbase - PIECES U64+ true exit then
    false ;
 
 \ Whether a is the entry of one of hb's own words, which every build's process holds where this
@@ -1863,7 +1863,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
 \ copy (HOST-COPY?) any of hb's words, as a target word's host copy calls NDEFINITION:TARGET-ERROR.
 : HB-CODE? ( n bool -- bool )
    {: a:n host:bool :}
-   a ARM64:HOST-KERNEL? if true exit then
+   a NATIVE:HOST-KERNEL? if true exit then
    host if a HB-ENTRY? else false then ;
 
 \ The reference of emission e's site holding v: a function of e itself (OWN-FUNCTION) as a
@@ -2031,13 +2031,9 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
 \ The first data address emission e's code holds, -1 for none.
 : EM-DATA ( n -- n )
    {: e:n :}
-   e NSHADOW:BYTES {: src:ptr :}
-   e NSHADOW:SIZE {: s:n :}
    e NSHADOW:ADDR-SITES 0 ?do
       e i NSHADOW:ADDR-SITE-KIND@ NEMIT:ADDR-DATA = if
-         e i NSHADOW:ADDR-SITE@ {: c:n :}
-         src c +  src s +  ADDRESS-CARRIER:CHAIN-SIZE {: size:n :}
-         size 0 > if  src c +  size ADDRESS-CARRIER:CHAIN-VALUE  unloop exit  then
+         e i SITE-VALUE if unloop exit then drop
       then
    loop
    -1 ;
@@ -2924,7 +2920,7 @@ variable RD-END
       x 0= if  r REC-KIND KIND-PACKAGE = if BAD then exit  then
       r PKG? if BAD then exit
    then
-   tag 1 = if rbase x + ARM64:HOST-KERNEL? 0= if BAD then exit then
+   tag 1 = if rbase x + NATIVE:HOST-KERNEL? 0= if BAD then exit then
    tag 2 = if x y z w top FN-REF-CK exit then
    BAD ;
 
@@ -4886,7 +4882,7 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
    patch 0<> if want patch NSHADOW:PATCH-DOES then
    CODE-COPY BYTES$ drop {: copy:ptr :}
    \ The call targets and chains already hold host values, so both resolvers answer what they get.
-   NSHADOW:EMISSIONS 1 -  copy  fn  [: ;] [: ;]  ARM64:PATCH
+   NSHADOW:EMISSIONS 1 -  copy  fn  [: ;] [: ;]  NATIVE:PATCH
    h EM-OFFS @ {: at:n :}
    at OBJ@  at 8 + OBJ@ {: s:n r:n :}
    s r CODE-SPAN:RECORDED {: recorded:n :}
@@ -5721,9 +5717,9 @@ variable DUE-MADE
    a u OWNED-COPY  at 6 + OWNED !  at 5 + OWNED !
    1 OWNED-N +! ;
 
-\ A build that links the object ARM64:READ read types the kernel's primitives by
+\ A build that links the object NATIVE:READ read types the kernel's primitives by
 \ its rows; a kernel build and a Wasm target's link no arm64 object. WASM? needs the shadow open.
-: STATES-PRIMS? ( -- bool ) KERNEL? @ 0=  ARM64:READ? and  WASM? 0= and ;
+: STATES-PRIMS? ( -- bool ) KERNEL? @ 0=  NATIVE:READ? and  WASM? 0= and ;
 
 \ Before MOVE-IN, while hb's namespace and checker stores are current: a build that states no
 \ object types its owned primitives by hb's rows and records.
@@ -5780,8 +5776,8 @@ variable DUE-MADE
 \ The object's rows, then its owned primitives' texts, which those rows render.
 : PRIMS-IN ( -- )
    STATES-PRIMS? 0= if exit then
-   ARM64:STATE-PRIMS
-   ARM64:OWNED-N 0 ?do  XREF-NULL  i ARM64:OWNED-PKG$  i ARM64:OWNED-NAME$  OWNED+  loop ;
+   NATIVE:STATE-PRIMS
+   NATIVE:OWNED-N 0 ?do  XREF-NULL  i NATIVE:OWNED-PKG$  i NATIVE:OWNED-NAME$  OWNED+  loop ;
 
 \ OWNED-TEXTS runs once the shadow is open (STATES-PRIMS?) and before MOVE-IN replaces hb's namespace.
 : OPEN ( -- )
@@ -5891,11 +5887,14 @@ public
    mode modeu s" engine" STR= ENGINE? !
    mode modeu s" kernel" STR= KERNEL? !
    body BODY !
-   [: ['] RUN ['] CLOSE finally ;] INTERPRETER:WITHOUT-PACKAGE ;
+   tier@ {: tier:n :}
+   target RTARGET:ARCH@ CTARGET-ARCH:X86-64 CTARGET-ARCH:EQ if 0 set-tier then
+   [: [: ['] RUN ['] CLOSE finally ;] INTERPRETER:WITHOUT-PACKAGE ;]
+   [: tier set-tier ;] finally ;
 
 \ The kernel object at the path, written by a kernel build: the engine and
 \ program builds that follow lay their space as its kernel reads it and link it.
-: KERNEL ( ptr u8 n -- ) ARM64:READ ;
+: KERNEL ( ptr u8 n -- ) NATIVE:READ ;
 
 \ True while a build's space is open, from WITH's open to the end of its close.
 : OPEN? ( -- bool ) IDLE? 0= ;

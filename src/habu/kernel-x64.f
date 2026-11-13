@@ -1,9 +1,11 @@
 \ kernel-x64.f - the x86-64 engine's primitive bodies (package X64KERNEL): the
 \ twins of habu1.f's bodies for the rows of src/habu/prims.f, written through
 \ X64ASM and registered in src/habu/primitive-registry.f as habu1.f FPRIM does.
-\ The text window (X64CODE:CODE-CAP-BYTES) holds this kernel alone: _start
-\ (boot-x64.f START,), the helpers and every row. The captured engine is the code
-\ region, at the image base plus REGION-OFF. Tests: test/x86-64-kernel-*.f.
+\ The kernel object contains startup, helpers and primitive rows; the common
+\ linker places it beside compiled Habu code in ELF text. REGION holds the
+\ runtime dictionary and newly compiled code. The older boot harness still
+\ uses the same primitive bodies. Tests: test/x86-64-kernel-*.f and the current
+\ link and source-loading tests.
 
 \ The x86-64 seam (src/os/linux-x86-64/sys.f) and its process emitters
 \ (proc-watch.f, proc-control.f) load here globally, so this file loads before
@@ -53,6 +55,8 @@ public
 
 variable FLOORREC-ENTRY
 variable FLOORREC-PENDING
+variable UNCAUGHT-ENTRY
+: UNCAUGHT-LBL ( -- label ) UNCAUGHT-ENTRY @ >LABEL ;
 : FLOORREC-LBL ( -- label ) FLOORREC-ENTRY @ >LABEL ;
 : FLOORREC-NEW ( -- label )
    X64CODE:LBL dup LABEL>N FLOORREC-ENTRY !
@@ -475,6 +479,7 @@ variable FIND-CELL
 variable FIND-SCAN-CELL
 variable BUILD-CELL
 variable ADD-CELL
+variable REKEY-CELL
 variable REBUILD-CELL
 variable FULL-CELL
 variable HEAD-ROW-CELL
@@ -482,6 +487,7 @@ variable HEAD-ROW-CELL
 : FIND-SCAN-LBL ( -- label ) FIND-SCAN-CELL @ >LABEL ;
 : BUILD-LBL ( -- label ) BUILD-CELL @ >LABEL ;
 : ADD-LBL ( -- label ) ADD-CELL @ >LABEL ;
+: REKEY-LBL ( -- label ) REKEY-CELL @ >LABEL ;
 : REBUILD-LBL ( -- label ) REBUILD-CELL @ >LABEL ;
 : FULL-LBL ( -- label ) FULL-CELL @ >LABEL ;
 : HEAD-ROW-LBL ( -- label ) HEAD-ROW-CELL @ >LABEL ;
@@ -663,24 +669,26 @@ variable HEAD-ROW-CELL
    probe X64CODE:LBL,
    RDI RSP 16 MEM-OFF ASM-SINK ENC-LEA
    RSI RCX ASM-SINK ENC-MOV-RR
-   RDX WL:NAMESPACE IMM64,
+   RDX BOOT:NAMESPACE-WL-CELL CELL@,
    FIND-LBL CALL,
    RDI RSP 0 MEM-OFF ASM-SINK ENC-MOV-RM
    RSI RSP CELL MEM-OFF ASM-SINK ENC-MOV-RM
    RSP frame >IMM32 ASM-SINK ENC-ADD-RI32
    RAX RAX ASM-SINK ENC-TEST-RR  C-NE done JCC,
    bare X64CODE:LBL,
-   RDX WL:NAMESPACE IMM64,
+   RDX BOOT:NAMESPACE-WL-CELL CELL@,
    FIND-LBL JMP,                                       \ its ret is this one's
    done X64CODE:LBL,
    ASM-SINK ENC-RET ;
 
 \ The twin of C-HIDX-INS: index record rdi, which it keeps, at the first empty
-\ or stale slot of its key's chain. Claiming an empty slot counts one more
+\ or stale slot of its key's chain, unless the chain already holds that row.
+\ Claiming an empty slot counts one more
 \ HIDX:CLAIMS; a chain walked through every slot is HIDX-EMIT:LFULL's. It clobbers
 \ rax rcx rdx rsi and r8-r11.
 : INSERT, ( -- )
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: probe:label empty:label put:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   {: probe:label empty:label put:label done:label :}
    RAX RDI ASM-SINK ENC-MOV-RR  RAX ROW,
    RCX RAX REC-WID MEM-OFF ASM-SINK ENC-MOV-RM
    RAX RDX R8 NAME-LEN,
@@ -692,6 +700,7 @@ variable HEAD-ROW-CELL
    R10 R8 SLOT@,
    R10 R10 ASM-SINK ENC-TEST-RR  C-E empty JCC,
    R10 ASM-SINK ENC-DEC
+   R10 RDI ASM-SINK ENC-CMP-RR  C-E done JCC,
    R10 NDICT-REG ASM-SINK ENC-CMP-RR  C-GE put JCC,    \ stale: reuse its claim
    R9 ASM-SINK ENC-DEC  C-E FULL-LBL JCC,
    R8 NEXT-SLOT,
@@ -702,7 +711,8 @@ variable HEAD-ROW-CELL
    R10 DATA-REG HIDX:CLAIMS MEM-OFF ASM-SINK ENC-MOV-MR
    put X64CODE:LBL,
    R10 RDI 1 MEM-OFF ASM-SINK ENC-LEA
-   R10 R64>N >R32 RAX R8 4 0 MEM-IDX ASM-SINK ENC-MOV32-MR ;
+   R10 R64>N >R32 RAX R8 4 0 MEM-IDX ASM-SINK ENC-MOV32-MR
+   done X64CODE:LBL, ;
 
 \ HIDX-EMIT:LREBUILD's twin: zero the table and HIDX:CLAIMS, then index the live
 \ records [0, r14). With no table it returns at once; a dictionary at
@@ -736,9 +746,10 @@ variable HEAD-ROW-CELL
 : ADD-HELPER, ( -- )
    X64CODE:LBL {: done:label :}
    ADD-LBL X64CODE:LBL,
+   RDI NDICT-REG -1 MEM-OFF ASM-SINK ENC-LEA
+   REKEY-LBL X64CODE:LBL,
    RAX DATA-REG HIDXP-CELL MEM-OFF ASM-SINK ENC-MOV-RM
    RAX RAX ASM-SINK ENC-TEST-RR  C-E done JCC,
-   RDI NDICT-REG -1 MEM-OFF ASM-SINK ENC-LEA
    INSERT,
    RAX DATA-REG HIDX:CLAIMS MEM-OFF ASM-SINK ENC-MOV-RM
    RAX HIDX:LOAD-MAX >IMM32 ASM-SINK ENC-CMP-RI32  C-L done JCC,
@@ -773,6 +784,7 @@ variable HEAD-ROW-CELL
 : INDEX-HELPERS, ( -- )
    X64CODE:LBL FIND-CELL !  X64CODE:LBL FIND-SCAN-CELL !
    X64CODE:LBL BUILD-CELL !  X64CODE:LBL ADD-CELL !  X64CODE:LBL REBUILD-CELL !
+   X64CODE:LBL REKEY-CELL !
    X64CODE:LBL FULL-CELL !  X64CODE:LBL HEAD-ROW-CELL !
    FIND-HELPER,  HEAD-ROW-HELPER,  BUILD-HELPER,  ADD-HELPER,  REBUILD-HELPER,  FULL-HELPER, ;
 
@@ -1691,6 +1703,28 @@ private
    bare X64CODE:LBL,
    RDI ASM-SINK ENC-POP
    1 RC-EXIT, ;
+
+\ The default UNCGH hook consumes the code and returns. Ordinary exit codes
+\ are quiet; a wider code is printed intact before UNCAUGHT, maps it to 67.
+: UNCAUGHT-HELPER, ( -- )
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   {: done:label number:label head:label minus:label nl:label :}
+   X64CODE:LBL dup LABEL>N UNCAUGHT-ENTRY ! X64CODE:LBL,
+   RAX POP,
+   RCX RAX -1 MEM-OFF ASM-SINK ENC-LEA
+   RCX 254 >IMM32 ASM-SINK ENC-CMP-RI32  C-BE done JCC,
+   R8 RAX ASM-SINK ENC-MOV-RR
+   head s" hb: uncaught throw code " nip STDERR-WRITE,
+   R8 R8 ASM-SINK ENC-TEST-RR  C-NS number JCC,
+   minus 1 STDERR-WRITE,
+   R8 ASM-SINK ENC-NEG
+   number X64CODE:LBL,
+   RAX R8 ASM-SINK ENC-MOV-RR  DIAG-U,
+   nl 1 STDERR-WRITE,
+   done X64CODE:LBL,  ASM-SINK ENC-RET
+   head X64CODE:LBL,  s" hb: uncaught throw code " TEXT,
+   minus X64CODE:LBL,  $2D ASM-SINK BUF:APPEND-BYTE
+   nl X64CODE:LBL,  STR-LF ASM-SINK BUF:APPEND-BYTE ;
 
 \ Throw the code in rax: BTHROW without its evaluate and REPL arms, which jump
 \ into habu2.f routines the x86-64 engine never has. Habu's `evaluate`
@@ -3846,7 +3880,8 @@ private
 
 \ A successful code rewind retires any published span that reaches its floor.
 : DEF-CODE-RECLAIM-BODY ( -- )
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: scan:label next:label full:label done:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   {: scan:label next:label full:label span:label done:label :}
    RSI CP-REG ASM-SINK ENC-MOV-RR
    HOST-INVALIDATE,
    RCX ZERO-REG,
@@ -3854,8 +3889,9 @@ private
       RCX NDICT-REG ASM-SINK ENC-CMP-RR  C-AE done JCC,
       RCX RECORD-AT,
       R10 R8 REC-WID MEM-OFF ASM-SINK ENC-MOV-RM
-      R11 WL:NAMESPACE IMM64,
-      R10 R11 ASM-SINK ENC-CMP-RR  C-E next JCC,
+      R10 WL:RETIRED >IMM8 ASM-SINK ENC-CMP-RI8  C-E span JCC,
+      R10 R10 ASM-SINK ENC-TEST-RR  C-S next JCC,
+   span X64CODE:LBL,
       R9 R8 REC-CODE MEM-OFF ASM-SINK ENC-MOV-RM
       R9 CP-REG ASM-SINK ENC-CMP-RR  C-AE next JCC,
       R10 R8 REC-CODE CELL + MEM-OFF ASM-SINK ENC-MOV-RM
@@ -4154,7 +4190,7 @@ private
    {: nopkg:label pkg:label keyword:label nl:label :}
    POLICY-OPEN,
    RSI POP,  RDI POP,                                \ length, name
-   RDX WL:NAMESPACE IMM64,
+   RDX BOOT:NAMESPACE-WL-CELL CELL@,
    FIND-LBL CALL,
    RAX RAX ASM-SINK ENC-TEST-RR  C-NE found JCC,
       R9 RDI ASM-SINK ENC-MOV-RR  R10 RSI ASM-SINK ENC-MOV-RR
@@ -4277,17 +4313,27 @@ variable MARK-CELL
    s" (MARK)" start LABEL>N finish LABEL>N ENGINE-PRIMS:HELPER-REGISTER
    start X64CODE:LBL,
    RSP 72 >IMM8 ASM-SINK ENC-SUB-RI8
-   RAX SHARED-DATA,  RDI RAX ASM-SINK ENC-SUB-RR
+   X64CODE:LBL {: selected:label :}
+   RAX SHARED-DATA,
+   RCX BOOT:IMAGE-BASE-CELL CELL@,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-E selected JCC,
+   RDX RDI ASM-SINK ENC-MOV-RR  RDX RCX ASM-SINK ENC-SUB-RR
+   R8 X64LAYOUT:DATA-SIZE IMM64,
+   RDX R8 ASM-SINK ENC-CMP-RR  C-AE selected JCC,
+   RAX RCX ASM-SINK ENC-MOV-RR
+   selected X64CODE:LBL,
+   RAX RSP 56 MOV-STORE,
+   RDI RAX ASM-SINK ENC-SUB-RR
    RAX X64LAYOUT:DATA-SIZE CELL - IMM64,
    RDI RAX ASM-SINK ENC-CMP-RR  C-A band JCC,
    RDI RSP 0 MEM-OFF ASM-SINK ENC-MOV-MR
    RSI RSP 8 MEM-OFF ASM-SINK ENC-MOV-MR
    lock X64CODE:LBL,
       RAX 1 IMM32,
-      R11 SHARED-DATA,
+      R11 RSP 56 MOV-LOAD,
       RAX R11 ADDRESS-CELLS:LOCK-CELL MEM-OFF ASM-SINK ENC-XCHG-MR
       RAX RAX ASM-SINK ENC-TEST-RR  C-NE lock JCC,
-   R11 SHARED-DATA,
+   R11 RSP 56 MOV-LOAD,
    R11 R11 SNAP-RELOC:XTCELL-N-CELL MEM-OFF ASM-SINK ENC-LEA
    RAX R11 ADDRESS-CELLS:MAGIC-FIELD MEM-OFF ASM-SINK ENC-MOV-RM
    RCX ADDRESS-CELLS:MAGIC IMM64,
@@ -4307,7 +4353,7 @@ variable MARK-CELL
    RAX RDX ASM-SINK ENC-SUB-RR
    RAX 3 >IMM8 ASM-SINK ENC-SHR-RI8
    R9 RAX ASM-SINK ENC-CMP-RR  C-A shape JCC,
-   RAX SHARED-DATA,  RDX RAX ASM-SINK ENC-ADD-RR
+   RAX RSP 56 MOV-LOAD,  RDX RAX ASM-SINK ENC-ADD-RR
    scan JMP,
    mapped X64CODE:LBL,
    RDX RDX ASM-SINK ENC-TEST-RR  C-LE shape JCC,
@@ -4341,7 +4387,7 @@ variable MARK-CELL
    RDI RSI ASM-SINK ENC-OR-RR
    RDI RDX R8 8 0 MEM-IDX ASM-SINK ENC-MOV-MR
    R8 ASM-SINK ENC-INC
-   R11 SHARED-DATA,
+   R11 RSP 56 MOV-LOAD,
    R8 R11 SNAP-RELOC:XTCELL-N-CELL MEM-OFF ASM-SINK ENC-MOV-MR
    release JMP,
    grow X64CODE:LBL,
@@ -4366,7 +4412,7 @@ variable MARK-CELL
       RAX RDI RCX 8 0 MEM-IDX ASM-SINK ENC-MOV-MR
       RCX ASM-SINK ENC-INC  copy JMP,
    copied X64CODE:LBL,
-   R11 SHARED-DATA,
+   R11 RSP 56 MOV-LOAD,
    R11 R11 SNAP-RELOC:XTCELL-N-CELL MEM-OFF ASM-SINK ENC-LEA
    RAX R11 ADDRESS-CELLS:MODE-FIELD MEM-OFF ASM-SINK ENC-MOV-RM
    RAX RAX ASM-SINK ENC-TEST-RR  C-E publish JCC,
@@ -4375,7 +4421,7 @@ variable MARK-CELL
    RSI 3 >IMM8 ASM-SINK ENC-SHL-RI8
    NR-MUNMAP SYS,  C-B discard JCC,
    publish X64CODE:LBL,
-   R11 SHARED-DATA,
+   R11 RSP 56 MOV-LOAD,
    R11 R11 SNAP-RELOC:XTCELL-N-CELL MEM-OFF ASM-SINK ENC-LEA
    RDI RSP 48 MEM-OFF ASM-SINK ENC-MOV-RM
    R8 RSP 16 MEM-OFF ASM-SINK ENC-MOV-RM
@@ -4392,7 +4438,7 @@ variable MARK-CELL
    R8 R11 MEM-AT ASM-SINK ENC-MOV-MR
    release X64CODE:LBL,
    RAX ZERO-REG,
-   R11 SHARED-DATA,
+   R11 RSP 56 MOV-LOAD,
    RAX R11 ADDRESS-CELLS:LOCK-CELL MEM-OFF ASM-SINK ENC-MOV-MR
    RSP 72 >IMM8 ASM-SINK ENC-ADD-RI8
    ASM-SINK ENC-RET
@@ -4411,10 +4457,40 @@ variable MARK-CELL
    S\" hb: snapshot address cell kind mismatch\n" SNAP-RELOC:XTKIND-RC STDERR-EXIT,
    finish X64CODE:LBL, ;
 
+\ A build routes header stores to the image and records their destination in
+\ the mapped band below it. The store and its declaration then share a base.
+: ROUTE-HEADER, ( -- )
+   X64CODE:LBL {: own:label :}
+   RCX 0 PEEK,
+   R8 RCX ASM-SINK ENC-MOV-RR  R8 DATA-REG ASM-SINK ENC-SUB-RR
+   R9 DATA-START IMM64,
+   R8 R9 ASM-SINK ENC-CMP-RR  C-AE own JCC,
+   R9 BOOT:IMAGE-BASE-CELL CELL@,
+   R9 R9 ASM-SINK ENC-TEST-RR  C-E own JCC,
+   RCX R9 R8 1 0 MEM-IDX ASM-SINK ENC-LEA
+   RCX R9 CELL negate MOV-STORE,
+   R8 ROUTED-BYTES IMM64,
+   R9 RCX ASM-SINK ENC-MOV-RR  R9 R8 ASM-SINK ENC-SUB-RR
+   RCX R9 0 MOV-STORE,
+   RCX DSP CELL negate MOV-STORE,
+   own X64CODE:LBL, ;
+
+\ The pending row is allowed; sealed rows and the control-flow band are not.
+: RECORD-FACTS-BODY ( -- )
+   TASK-LIVE-GUARD,
+   RAX POP,  R9 POP,
+   RAX NDICT-REG ASM-SINK ENC-CMP-RR  C-A SEAL-TRAP-LBL JCC,
+   RAX DICT-CAP >IMM32 ASM-SINK ENC-CMP-RI32  C-AE SEAL-TRAP-LBL JCC,
+   FLOOR-GUARD,
+   RAX RECORD-AT,
+   R8 PROT-RW PROT-REC,
+   R9 R8 32 MOV-STORE,
+   R8 PROT-RX PROT-REC, ;
+
 : SCOPE-ROWS, ( -- )
    MARK-BODY,
    s" xt!" [:
-      0 CELL SIZED-GUARD,  RCX POP,  RAX POP,
+      ROUTE-HEADER,  0 CELL SIZED-GUARD,  RCX POP,  RAX POP,
       RAX ASM-SINK ENC-PUSH  RCX ASM-SINK ENC-PUSH
       RDI RCX ASM-SINK ENC-MOV-RR  RSI ZERO-REG,  MARK-LBL CALL,
       RCX ASM-SINK ENC-POP  RAX ASM-SINK ENC-POP
@@ -4429,7 +4505,7 @@ variable MARK-CELL
       RSI SNAP-RELOC:XTCELL-DATA-TAG SNAP-RELOC:XTCELL-SCRATCH-TAG or IMM64,
       MARK-LBL CALL, ;] PRIM
    s" ptr-cell!" [:
-      0 CELL SIZED-GUARD,  RCX POP,  RAX POP,
+      ROUTE-HEADER,  0 CELL SIZED-GUARD,  RCX POP,  RAX POP,
       RAX ASM-SINK ENC-PUSH  RCX ASM-SINK ENC-PUSH
       RDI RCX ASM-SINK ENC-MOV-RR  RSI SNAP-RELOC:XTCELL-DATA-TAG IMM64,  MARK-LBL CALL,
       RCX ASM-SINK ENC-POP  RAX ASM-SINK ENC-POP
@@ -4437,7 +4513,7 @@ variable MARK-CELL
    s" snapshot-format" [: RAX SNAPSHOT-FORMAT:VERSION IMM32,  RAX PUSH, ;] PRIM
    \ The x86-64 test kernel has no image writer to stamp implementation bytes.
    s" kernel-producer$" [: RAX ZERO-REG,  RAX PUSH,  RAX PUSH,  RAX PUSH, ;] PRIM
-   s" record-facts!" REFUSE
+   s" record-facts!" [: RECORD-FACTS-BODY ;] PRIM
    \ No SHA-256 instructions here yet: sha256.f compresses every block itself.
    s" sha256-blocks" [: RAX POP,  RAX POP,  RAX POP,  RAX ZERO-REG,  RAX PUSH, ;] PRIM
    s" executable-build-enter" [: BUILD-ENTER-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
@@ -4493,6 +4569,17 @@ SRET-SLOT 1+ constant ABI-SLOTS         \ x0..x8, the slots the twin guards
    $8B ASM-SINK BUF:APPEND-BYTE  $04 ASM-SINK BUF:APPEND-BYTE
    $25 ASM-SINK BUF:APPEND-BYTE
    4 0 do  0 ASM-SINK BUF:APPEND-BYTE  loop ;
+
+public
+
+\ The linked boot has established the VM registers and the main stacks.
+: START-RUNTIME, ( -- )
+   RSP MAIN-STACK-TOP-CELL CELL!,
+   CB-SELF,  RAX MAIN-THREAD-CELL CELL!,
+   DBASE-REG DBASE-CELL CELL!,
+   RAX ZERO-REG,  RAX REGION-ALIAS:DELTA-CELL CELL!, ;
+
+private
 
 \ The owner is claimed before any cursor is published. A nested outbound call
 \ on the same thread retains the claim; another thread fails closed.
@@ -5010,10 +5097,15 @@ $3A constant NAME-COLON                \ a qualified name's separator
    FIND-LBL CALL,
    RAX RAX ASM-SINK ENC-TEST-RR  C-NE SEAL-TRAP-LBL JCC, ;
 
-\ Wid rdx is a namespace row's or a retired record's, not a wordlist.
+\ Every wordlist is nonnegative; all negative values are record markers.
 : REAL-WID, ( -- )
-   RDX WL:NAMESPACE >IMM8 ASM-SINK ENC-CMP-RI8  C-E SEAL-TRAP-LBL JCC,
-   RDX WL:RETIRED >IMM8 ASM-SINK ENC-CMP-RI8  C-E SEAL-TRAP-LBL JCC, ;
+   RDX RDX ASM-SINK ENC-TEST-RR  C-S SEAL-TRAP-LBL JCC, ;
+
+\ rax is a package marker in the current or an imported namespace.
+: LIVE-NAMESPACE, ( -- )
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NS SEAL-TRAP-LBL JCC,
+   RAX WL:RETIRED >IMM8 ASM-SINK ENC-CMP-RI8  C-E SEAL-TRAP-LBL JCC,
+   RAX WL:RETIRED-NAMESPACE >IMM8 ASM-SINK ENC-CMP-RI8  C-E SEAL-TRAP-LBL JCC, ;
 
 \ Store the frame's name in record NDICT, whose address DW-REC takes: [16]
 \ its length, with DNAME-EXT for a long one; [24] and [32] the bytes inline,
@@ -5097,7 +5189,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RCX ASM-SINK ENC-INC
    scan JMP,
    clean X64CODE:LBL,
-   RAX WL:NAMESPACE >IMM32 ASM-SINK ENC-MOV-RI32
+   RAX BOOT:NAMESPACE-WL-CELL CELL@,
    RAX RSP DW-WID MOV-STORE,
    FRESH,
    NAME-STORE,
@@ -5127,7 +5219,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RCX NDICT-REG ASM-SINK ENC-CMP-RR  C-AE SEAL-TRAP-LBL JCC,
    RCX RECORD-AT,
    RAX R8 REC-WID MOV-LOAD,
-   RAX WL:NAMESPACE >IMM8 ASM-SINK ENC-CMP-RI8  C-NE SEAL-TRAP-LBL JCC,
+   LIVE-NAMESPACE,
    RAX R8 REC-CODE CELL + MOV-LOAD,
    RAX RAX ASM-SINK ENC-TEST-RR  C-NE SEAL-TRAP-LBL JCC,
    R8 ASM-SINK ENC-PUSH                               \ the record, past the span call
@@ -5155,8 +5247,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RCX NDICT-REG ASM-SINK ENC-CMP-RR  C-AE SEAL-TRAP-LBL JCC,
    RCX RECORD-AT,
    RAX R8 REC-WID MOV-LOAD,
-   RAX WL:NAMESPACE >IMM8 ASM-SINK ENC-CMP-RI8  C-E SEAL-TRAP-LBL JCC,
-   RAX WL:RETIRED >IMM8 ASM-SINK ENC-CMP-RI8  C-E SEAL-TRAP-LBL JCC,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-S SEAL-TRAP-LBL JCC,
    RAX DNAME-INT IMM64,
    RAX R8 REC-FLAGS MEM-OFF ASM-SINK ENC-TEST-MR  C-NE SEAL-TRAP-LBL JCC,
    DICT-ROOM,
@@ -5200,7 +5291,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RCX NDICT-REG ASM-SINK ENC-CMP-RR  C-AE SEAL-TRAP-LBL JCC,
    RCX RECORD-AT,
    RAX R8 REC-WID MOV-LOAD,
-   RAX WL:NAMESPACE >IMM8 ASM-SINK ENC-CMP-RI8  C-NE SEAL-TRAP-LBL JCC,
+   LIVE-NAMESPACE,
    R9 R8 REC-CODE CELL + MOV-LOAD,                    \ r9 = the private wid
    R9 R9 ASM-SINK ENC-TEST-RR  C-E SEAL-TRAP-LBL JCC,
    R8 RSI RAX NAME-LEN,  R8 RDI RAX NAME-AT,
@@ -5318,6 +5409,74 @@ $3A constant NAME-COLON                \ a qualified name's separator
    true SCOPE,
    NDICT-REG REPLAY-SCOPE:HW CELL!,
    RAX 1 IMM32,  RAX REPLAY-SCOPE:LATCH CELL!, ;
+
+variable REPLAY-TRAP-CELL
+: REPLAY-TRAP-LBL ( -- label ) REPLAY-TRAP-CELL @ >LABEL ;
+
+: REPLAY-REQUIRED, ( -- )
+   RAX REPLAY-SCOPE:LATCH CELL@,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E SEAL-TRAP-LBL JCC, ;
+
+\ A replay row can bind a checked name, but can only trap if executed.
+: REPLAY-RECORD-BODY ( -- )
+   TASK-LIVE-GUARD,
+   FRAME-OPEN,
+   DW-WID POP-TO,  DW-LEN POP-TO,  DW-NAME POP-TO,
+   RDX RSP DW-WID MOV-LOAD,  REAL-WID,
+   REPLAY-REQUIRED,
+   NOT-PENDING,  DICT-ROOM,  NAME-SIZE,  FRESH,
+   NAME-STORE,
+   R8 RSP DW-REC MOV-LOAD,
+   RAX REPLAY-TRAP-LBL MOVABS,  RAX R8 REC-CODE MOV-STORE,
+   RAX ZERO-REG,  RAX R8 REC-CODE CELL + MOV-STORE,
+   RAX RSP DW-WID MOV-LOAD,  RAX R8 REC-WID MOV-STORE,
+   PUBLISH-RECORD,  HW-RAISE,
+   FRAME-CLOSE, ;
+
+\ Re-keying admits a wordlist or one of the two retired markers, never a live
+\ package marker. Its index is repaired after the store, including restores.
+: REPLAY-WID, ( r64 -- ) {: r:r64 :}
+   X64CODE:LBL {: admitted:label :}
+   r r ASM-SINK ENC-TEST-RR  C-NS admitted JCC,
+   r WL:RETIRED >IMM8 ASM-SINK ENC-CMP-RI8  C-E admitted JCC,
+   r WL:RETIRED-NAMESPACE >IMM8 ASM-SINK ENC-CMP-RI8  C-NE SEAL-TRAP-LBL JCC,
+   admitted X64CODE:LBL, ;
+
+: RECORD-WID-BODY ( -- )
+   TASK-LIVE-GUARD,
+   R10 POP,  R9 POP,
+   REPLAY-REQUIRED,
+   R10 NDICT-REG ASM-SINK ENC-CMP-RR  C-AE SEAL-TRAP-LBL JCC,
+   R10 RECORD-AT,
+   RAX R8 REC-WID MOV-LOAD,  RAX REPLAY-WID,  R9 REPLAY-WID,
+   R8 PROT-RW PROT-REC,
+   R9 R8 REC-WID MOV-STORE,
+   R8 PROT-RX PROT-REC,
+   RDI R10 ASM-SINK ENC-MOV-RR  REKEY-LBL CALL, ;
+
+\ A private wordlist granted inside an overlay may only be withdrawn at or
+\ above that overlay's saved WIDN. The namespace row itself remains indexed.
+: REPLAY-PRIVATE-BODY ( -- )
+   X64CODE:LBL X64CODE:LBL {: give:label store:label :}
+   TASK-LIVE-GUARD,
+   R10 POP,  RCX POP,
+   REPLAY-REQUIRED,
+   RCX NDICT-REG ASM-SINK ENC-CMP-RR  C-AE SEAL-TRAP-LBL JCC,
+   RCX RECORD-AT,
+   RAX R8 REC-WID MOV-LOAD,  LIVE-NAMESPACE,
+   R9 R8 REC-CODE CELL + MOV-LOAD,
+   R10 R10 ASM-SINK ENC-TEST-RR  C-NE give JCC,
+   RAX REPLAY-SCOPE:WIDN CELL@,
+   R9 RAX ASM-SINK ENC-CMP-RR  C-B SEAL-TRAP-LBL JCC,
+   R9 ZERO-REG,  store JMP,
+   give X64CODE:LBL,
+   R9 R9 ASM-SINK ENC-TEST-RR  C-NE SEAL-TRAP-LBL JCC,
+   R9 WIDN-CELL CELL@,
+   RAX R9 1 MEM-OFF ASM-SINK ENC-LEA  RAX WIDN-CELL CELL!,
+   store X64CODE:LBL,
+   R8 PROT-RW PROT-REC,
+   R9 R8 REC-CODE CELL + MOV-STORE,
+   R8 PROT-RX PROT-REC, ;
 
 \ replay-close ( -- ): habu2.f DEFWRITE:REPLAY-CLOSE's twin; TASK-LIVE-GUARD,
 \ stands for its task-live arm. NDICT goes back without ndict!'s guards and CP
@@ -5878,13 +6037,16 @@ JMP-BYTES 1+ constant PATCH-SLOT       \ the jump and the return
 
 public
 
-\ def-create and def-defer, the tails of the engine's interpret-mode `create`
-\ and `defer`, refuse as those keywords do: the x86-64 kernel carries no
-\ interpreter. def-cast has a body: it publishes a cast's identity slot at CP
+\ The old native-interpreter tails def-create and def-defer still refuse;
+\ the Habu interpreter emits their fixed bodies through def-open/def-close.
+\ def-cast publishes a cast's identity slot at CP
 \ and the pending record that names it. GROW-LBL, which body-capture calls,
 \ comes first.
 : DEFINITION, ( -- )
    X64CODE:LBL GROW-CELL !  GROW-HELPER,
+   X64CODE:LBL REPLAY-TRAP-CELL !
+   REPLAY-TRAP-LBL X64CODE:LBL,
+   S\" E-REPLAY-RECORD habu: replay record executed\n" REFUSE-RC STDERR-EXIT,
    s" namespace-record" [: NAMESPACE-RECORD-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" namespace-private" [: NAMESPACE-PRIVATE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" alias-record" [: ALIAS-RECORD-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
@@ -5900,10 +6062,9 @@ public
    s" replay-open" [: REPLAY-OPEN-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" replay-close" [: REPLAY-CLOSE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" replay-widn!" [: REPLAY-WIDN-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   \ The overlay's three record writers have no x86-64 body.
-   s" replay-record" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
-   s" record-wid!" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
-   s" replay-private" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
+   s" replay-record" [: REPLAY-RECORD-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" record-wid!" [: RECORD-WID-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" replay-private" [: REPLAY-PRIVATE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" stack-clear" [: STACK-CLEAR-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" imm-mark" [: IMM-MARK-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" def-cast" [: DEF-CAST-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
@@ -6281,13 +6442,33 @@ public
    read 2 SCOPE-KIND-TEST,
    RAX ZERO-REG,  ASM-SINK ENC-RET ;
 
-\ The whole kernel: the helpers, then every section. The specification's
-\ other half runs once the linker knows which provided cells the capture fills
-\ (tools/native-emit-x64.f): ENGINE-PRIMS:COMPLETE dies 76 naming the first row
-\ of src/habu/prims.f that no section registered, as habu2.f
-\ ENGINE-EMIT:EMIT-PRIMITIVE-SECTIONS does for ARM64, and COMPLETE-PROVIDED
-\ refuses a provided row whose cell the capture leaves empty, so a row this
-\ kernel does not carry is a REFUSE or REFUSE-WID, never an absence a captured program meets.
+private
+
+9 TYPED-BUFFER SCOPE-SITES n
+
+public
+
+: SCOPE-SITE ( n -- label ) SCOPE-SITES @ >LABEL ;
+
+\ The linker fills the immediate of each ten-byte movabs after placement.
+\ These are plain bytes, not assembler references that FIXUPS! could replace.
+: SCOPE-OBJECT, ( -- )
+   SCOPE-KIND-LBL X64CODE:LBL,
+   9 2 ?do
+      X64CODE:LBL {: next:label :}
+      X64CODE:LBL dup LABEL>N i SCOPE-SITES ! X64CODE:LBL,
+      RDX 0 IMM64,
+      RDX RDX ASM-SINK ENC-TEST-RR  C-E next JCC,
+      RAX RDX ASM-SINK ENC-CMP-RR  C-NE next JCC,
+      RAX i IMM32,  ASM-SINK ENC-RET
+      next X64CODE:LBL,
+   loop
+   RAX ZERO-REG,  ASM-SINK ENC-RET ;
+
+\ The helpers, then every primitive section. The kernel-object writer checks
+\ ENGINE-PRIMS:COMPLETE against prims.f; provided rows dispatch through cells
+\ the linked Habu runtime fills. Unsupported legacy rows remain explicit
+\ refusals, never missing entries.
 : KERNEL, ( -- )
    X64CODE:LBL LCLOSE-CELL !
    HELPERS,
@@ -6297,6 +6478,7 @@ public
    s" (SCOPE-SEED)" SCOPE-SEED-LBL LABEL>N SCOPE-SEED-END-LBL LABEL>N
    ENGINE-PRIMS:HELPER-REGISTER
    SYSCALLS,
+   UNCAUGHT-HELPER,
    CONTROL,
    DIV-ZERO-HELPER,
    ATOMICS,

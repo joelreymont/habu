@@ -1,0 +1,179 @@
+\ The x86-64 kernel object. Positions are bytes; relocation kinds are
+\ X64CODE's rel8, rel32 and abs64 fields. The other sections are shared.
+require src/habu/kernel-format.f
+require src/habu/primitive-registry.f
+require src/habu/kernel-x64.f
+require src/arch/x86-64/boot.f
+
+package KERNEL-OBJECT
+private
+
+8 TYPED-BUFFER TAIL n
+variable K0
+variable GO-L
+variable STUB-L
+variable COUNT-L
+variable DICT-L
+DYNAMIC-BUFFER NAME-OFF n
+
+: L@ ( ptr n -- label ) @ >LABEL ;
+: L! ( label ptr n -- ) swap LABEL>N swap ! ;
+: TAIL@ ( n -- label ) TAIL L@ ;
+: TEXT-VA ( -- n ) $400000 X64LAYOUT:CODE-OFF + ;
+: PAD8 ( -- )
+   begin X64CODE:ASM-LEN 7 and 0<> while
+      0 X64CODE:ASM-SINK BUF:APPEND-BYTE
+   repeat ;
+
+: NAMES, ( -- )
+   ENGINE-PRIMS:COUNT NAME-OFF-RESERVE
+   ENGINE-PRIMS:COUNT 0 ?do
+      X64CODE:ASM-LEN i NAME-OFF !
+      i ENGINE-PRIMS:NAME$ X64CODE:BYTES,
+   loop
+   PAD8 ;
+
+\ The common linker reads offsets, flags, name offset, facts and wordlist.
+: PRIMITIVE, ( n -- )
+   {: k:n :}
+   k ENGINE-PRIMS:FIRST-LABEL X64CODE:LABEL-AT X64CODE:U64,
+   k ENGINE-PRIMS:LAST-LABEL X64CODE:LABEL-AT X64CODE:U64,
+   k ENGINE-PRIMS:DNAME DNAME-EXT or X64CODE:U64,
+   k NAME-OFF @ X64CODE:U64,
+   0 X64CODE:U64,
+   k ENGINE-PRIMS:HELPER-WID X64CODE:U64, ;
+
+: DICTIONARY, ( -- )
+   NAMES,
+   COUNT-L L@ X64CODE:LBL,
+   ENGINE-PRIMS:COUNT X64CODE:U64,
+   DICT-L L@ X64CODE:LBL,
+   ENGINE-PRIMS:COUNT 0 ?do i PRIMITIVE, loop ;
+
+: EMIT ( bool -- )
+   {: engine:bool :}
+   X64CODE:OPEN ENGINE-PRIMS:RESET
+   engine ENGINE-PRIMS:SEEDED!
+   8 0 ?do X64CODE:LBL i TAIL L! loop
+   X64CODE:LBL COUNT-L L! X64CODE:LBL DICT-L L!
+   engine 0 TAIL@ 1 TAIL@ 4 TAIL@ 5 TAIL@
+   X64BOOT:LINK-START, STUB-L L! GO-L L!
+   X64CODE:ASM-LEN K0 !
+   X64KERNEL:KERNEL,
+   X64KERNEL:SCOPE-OBJECT,
+   ENGINE-PRIMS:COMPLETE
+   GO-L L@ X64CODE:LBL,
+   X64KERNEL:START-RUNTIME,
+   engine if X64KERNEL:HIDX-BUILD, then
+   X64BOOT:ENTRY,
+   DICTIONARY, ;
+
+: CODE+ ( -- )
+   X64CODE:ASM-LEN dup U64+ X64CODE:CODE swap SPAN+ ;
+
+: LABELS+ ( -- )
+   X64CODE:LABEL-COUNT dup U64+
+   0 ?do i X64CODE:LABEL-POS U64+ loop ;
+
+: REFS+ ( -- )
+   X64CODE:SITES dup U64+
+   0 ?do
+      i X64CODE:REF-SITE U64+
+      i X64CODE:REF-LABEL U64+
+      i X64CODE:REF-KIND U64+
+   loop ;
+
+: PRIMS+ ( -- )
+   ENGINE-PRIMS:COUNT dup U64+
+   0 ?do
+      i ENGINE-PRIMS:FIRST-LABEL X64CODE:LABEL-INDEX U64+
+      i ENGINE-PRIMS:LAST-LABEL X64CODE:LABEL-INDEX U64+
+      i ENGINE-PRIMS:HELPER-WID U64+
+      i ENGINE-PRIMS:NAME$ NAME+
+   loop ;
+
+: SCOPES+ ( -- )
+   7 U64+
+   9 2 ?do i X64KERNEL:SCOPE-SITE X64CODE:LABEL-INDEX U64+ loop ;
+
+: LSYM+ ( ptr u8 n label -- ) X64CODE:LABEL-INDEX SYM+ ;
+
+: COMMON-SYMBOLS ( -- )
+   s" K0" K0 @ SYM+
+   s" IMAGE" 0 TAIL@ LSYM+
+   s" IMAGE-END" 1 TAIL@ LSYM+
+   s" LIST" 2 TAIL@ LSYM+
+   s" LIST-END" 3 TAIL@ LSYM+
+   s" UNCAUGHT" X64KERNEL:UNCAUGHT-LBL LSYM+
+   s" SIGH" STUB-L L@ LSYM+
+   s" NCOUNT" COUNT-L L@ LSYM+
+   s" DICT" DICT-L L@ LSYM+
+   s" TEXT-VA" TEXT-VA SYM+
+   s" DATA-VA" X64LAYOUT:DATA-VA VA>N SYM+
+   s" DATA-START" DATA-START SYM+
+   s" DATA-SIZE" X64LAYOUT:DATA-SIZE SYM+
+   s" DP-CEILING-OFF" X64LAYOUT:DATA-SIZE PROF-CNT-BYTES - SYM+
+   s" DP-CELL" DP-CELL SYM+
+   s" DP-FLOOR-CELL" BOOT:DP-FLOOR-CELL SYM+
+   s" DP-CEILING-CELL" BOOT:DP-CEILING-CELL SYM+
+   s" HEAP-START-CELL" BOOT:HEAP-START-CELL SYM+
+   s" FD-PTR-CELL" SIGNAL-ABI:FD-PTR-CELL SYM+
+   s" FD-CELL" SIGNAL-ABI:FD-CELL SYM+
+   s" RBASE-CELL" RBASE-CELL SYM+
+   s" UNCGH-CELL" UNCGH-CELL SYM+
+   s" STUB-CELL" SIGNAL-ABI:STUB-CELL SYM+
+   s" CODE-END-CELL" CODE-END-CELL SYM+ ;
+
+: ENGINE-SYMBOLS ( -- )
+   s" RECS" 4 TAIL@ LSYM+
+   s" RECS-END" 5 TAIL@ LSYM+
+   s" RLIST" 6 TAIL@ LSYM+
+   s" RLIST-END" 7 TAIL@ LSYM+
+   s" FLOORREC" X64KERNEL:FLOORREC-LBL LSYM+
+   s" EVALREC-CELL" EVALREC-CELL SYM+
+   s" FLOORREC-CELL" FLOORREC-CELL SYM+
+   s" SEAL-NDICT-CELL" SEAL-NDICT-CELL SYM+
+   s" WIDN-CELL" WIDN-CELL SYM+
+   s" TYPES-WL-CELL" BOOT:TYPES-WL-CELL SYM+ ;
+
+: SYMBOLS+ ( bool -- )
+   {: engine:bool :}
+   SECTION
+   s" ENGINE" engine if 1 else 0 then SYM+
+   COMMON-SYMBOLS
+   engine if ENGINE-SYMBOLS then
+   s" ENTRY-CELL" engine if ENGINE-MAIN:XT-CELL else APP-ENTRY:XT-CELL then SYM+
+   ;SECTION ;
+
+: PRESET+ ( n n -- ) swap U64+ U64+ ENTRY ;
+
+: PRESETS+ ( bool -- )
+   {: engine:bool :}
+   SECTION
+   0 BOOT:GLOBAL-WL-CELL PRESET+
+   0 BOOT:IMAGE-BASE-CELL PRESET+
+   WL:NAMESPACE BOOT:NAMESPACE-WL-CELL PRESET+
+   engine if
+      0 CUR-CELL PRESET+ 0 HIDXP-CELL PRESET+
+      0 HIDX:CLAIMS PRESET+ 0 LASTC-CELL PRESET+
+      0 PKG-REC-CELL PRESET+ 0 ENCLOSING:REC PRESET+
+      0 POLICY-NDICT-CELL PRESET+
+      DICT-L L@ X64CODE:LABEL-AT PRIM-TABLE-CELL PRESET+
+   then
+   ;SECTION ;
+
+: WRITE-OUT ( bool [ ptr u8 n -- ] -- )
+   {: engine:bool sink :}
+   engine EMIT
+   0 OUT-U ! s" HBKERNX6" SPAN+ 4 0 ?do 0 U64+ loop
+   CODE+ LABELS+ REFS+
+   0 U64+ 0 U64+                 \ no data spans or pending ARM fixups
+   PRIMS+ SCOPES+ engine SYMBOLS+ engine PRESETS+ CHECK-ROWS+
+   SUM 0 OUT OUT-U @ sink execute ;
+
+: RELEASE ( -- ) OUT-RELEASE NAME-OFF-RELEASE X64CODE:CLOSE ;
+
+public
+: WRITE ( bool [ ptr u8 n -- ] -- ) ['] WRITE-OUT ['] RELEASE finally ;
+
+;package
