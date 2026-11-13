@@ -2,7 +2,7 @@
 \ and staged replacement, temp paths, and the process exit cleanup registry.
 \ Public names avoid the primitives' (the dictionary is case-insensitive):
 \ MAKE-DIR and REMOVE-DIR, not mkdir or rmdir.
-\ STORAGE CLASS. TASK-LOCAL staged paths; PROCESS-WIDE COPY-BUF and registry.
+\ STORAGE CLASS. TASK-LOCAL staged paths; PROCESS-WIDE registry.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -37,11 +37,6 @@ $2D constant DASH
 17 constant EEXIST                    \ EEXIST on both targets
 4 constant RENAME-EXCL                \ renameatx_np's RENAME_EXCL
 1 constant NO-REPLACE                 \ renameat2's RENAME_NOREPLACE
-
-\ Process-wide, so COPY-FILE-STREAM is single-task: 8192 bytes is
-\ more than the per-task band carries, and a second task that copies needs its
-\ own buffer.
-COPY-CAP SPAN-BUFFER: COPY-BUF
 
 \ The cleanup registry is one MEM:ALLOC-CELLS row the process owns. Slot i is
 \ CLEANUP-STRIDE cells at cell i * CLEANUP-STRIDE: the path's length, its kind,
@@ -370,37 +365,46 @@ private
    out ;
 
 \ The write cursor is the deepest argument, so a loop can leave it on the stack
-\ and hand the call its three known values on top.
-: COPY-WRITE-ONE ( n n n n -- n ) {: off in out u :}
-   out COPY-BUF off SPAN:SKIP  u off - SPAN:TAKE SPAN:$ write {: wr :}
+\ and hand the call its known values on top.
+: COPY-WRITE-ONE ( n SPAN:span<u8> n n n -- n )
+   {: off buf in out u :}
+   out buf off SPAN:SKIP  u off - SPAN:TAKE SPAN:$ write {: wr :}
    wr 0 <= if in out E-FS-IO COPY-THROW then
    wr u off - > if in out E-FS-IO COPY-THROW then
    off wr + ;
 
-: COPY-WRITE-CHUNK ( n n n -- ) {: u in out :}
+: COPY-WRITE-CHUNK ( n SPAN:span<u8> n n -- ) {: u buf in out :}
    0 begin dup u < while
-      in out u COPY-WRITE-ONE
+      buf in out u COPY-WRITE-ONE
    repeat drop ;
 
-: COPY-READ-ONE ( n n -- n ) {: in out :}
-   in COPY-BUF SPAN:$ read {: rd :}
+: COPY-READ-ONE ( SPAN:span<u8> n n -- n ) {: buf in out :}
+   in buf SPAN:$ read {: rd :}
    rd 0 < if in out E-FS-IO COPY-THROW then
    rd COPY-CAP > if in out E-FS-IO COPY-THROW then
    rd ;
 
-: COPY-PUMP ( n n -- ) {: in out :}
-   begin in out COPY-READ-ONE dup 0 > while
-      in out COPY-WRITE-CHUNK
+: COPY-PUMP ( SPAN:span<u8> n n -- ) {: buf in out :}
+   begin buf in out COPY-READ-ONE dup 0 > while
+      buf in out COPY-WRITE-CHUNK
    repeat drop ;
 
-public
-: COPY-FILE-STREAM ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu dst:ptr dstu :}
+\ The WITH-BYTES body: the scope's bytes are this copy's buffer, mapped before
+\ either file opens, so a refused mapping leaves nothing to close.
+: COPY-SCOPE ( ptr u8 n ptr u8 n ptr u8 NUM:alloc-byte-len -- )
+   MEM:ALLOCATION>SPAN {: src:ptr srcu dst:ptr dstu buf :}
    dst dstu COPY-DST-PATHZ {: dstz:ptr :}
    src srcu COPY-OPEN-SRC {: in :}
    in dstz COPY-OPEN-DST {: out :}
-   in out COPY-PUMP
+   buf in out COPY-PUMP
    in CLOSE-COPY-FD
    out CLOSE-COPY-FD ;
+
+public
+\ Copies src's bytes to dst, a regular file made or truncated, through a buffer
+\ of the call's own that a throw releases, so tasks may copy at once.
+: COPY-FILE-STREAM ( ptr u8 n ptr u8 n -- )
+   COPY-CAP MEM:BYTES-ALLOC-LEN [: COPY-SCOPE ;] MEM:WITH-BYTES ;
 
 private
 : U-DIGITS ( n -- n ) {: n :}

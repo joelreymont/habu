@@ -1316,7 +1316,8 @@ public
 \ Each row runs one module word in two tasks at once and asserts what the other
 \ task could not disturb. T1 is the witnessed failure, a task's returned temp
 \ directory path replaced by another task's: it fails when fs-mutate.f stages
-\ that name process-wide. T4's paths stay registered on purpose:
+\ that name process-wide. T7 fails when FS:COPY-FILE-STREAM pumps through one
+\ process-wide buffer. T4's paths stay registered on purpose:
 \ FMT-TEST-CLEANUP's FS:CLEANUP-RUN removes them before the root goes.
 package FMT-TASKS
 private
@@ -1362,6 +1363,10 @@ create P-W5F2 PATH-CAP allot variable P-W5F2-U
 create P-W5D PATH-CAP allot  variable P-W5D-U
 create P-W5DS PATH-CAP allot variable P-W5DS-U
 create P-W5DF PATH-CAP allot variable P-W5DF-U
+create P-CAS PATH-CAP allot  variable P-CAS-U
+create P-CAD PATH-CAP allot  variable P-CAD-U
+create P-CBS PATH-CAP allot  variable P-CBS-U
+create P-CBD PATH-CAP allot  variable P-CBD-U
 
 : A1$ ( -- ptr u8 n ) P-A1 P-A1-U @ ;
 : A2$ ( -- ptr u8 n ) P-A2 P-A2-U @ ;
@@ -1385,6 +1390,10 @@ create P-W5DF PATH-CAP allot variable P-W5DF-U
 : W5D$ ( -- ptr u8 n ) P-W5D P-W5D-U @ ;
 : W5DS$ ( -- ptr u8 n ) P-W5DS P-W5DS-U @ ;
 : W5DF$ ( -- ptr u8 n ) P-W5DF P-W5DF-U @ ;
+: CAS$ ( -- ptr u8 n ) P-CAS P-CAS-U @ ;
+: CAD$ ( -- ptr u8 n ) P-CAD P-CAD-U @ ;
+: CBS$ ( -- ptr u8 n ) P-CBS P-CBS-U @ ;
+: CBD$ ( -- ptr u8 n ) P-CBD P-CBD-U @ ;
 : A-BODY$ ( -- ptr u8 n ) s" task-a wrote this" ;
 : B-BODY$ ( -- ptr u8 n ) s" b" ;
 
@@ -1410,7 +1419,11 @@ create P-W5DF PATH-CAP allot variable P-W5DF-U
    W5S$ s" f-2.txt" P-W5F2 FS:JOIN-PATH P-W5F2-U !
    FMT-ROOT$ s" w5-doomed" P-W5D FS:JOIN-PATH P-W5D-U !
    W5D$ s" sub" P-W5DS FS:JOIN-PATH P-W5DS-U !
-   W5DS$ s" x.txt" P-W5DF FS:JOIN-PATH P-W5DF-U ! ;
+   W5DS$ s" x.txt" P-W5DF FS:JOIN-PATH P-W5DF-U !
+   FMT-ROOT$ s" copy-a-src.bin" P-CAS FS:JOIN-PATH P-CAS-U !
+   FMT-ROOT$ s" copy-a-dst.bin" P-CAD FS:JOIN-PATH P-CAD-U !
+   FMT-ROOT$ s" copy-b-src.bin" P-CBS FS:JOIN-PATH P-CBS-U !
+   FMT-ROOT$ s" copy-b-dst.bin" P-CBD FS:JOIN-PATH P-CBD-U ! ;
 
 : FILE-IS? ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu body:ptr bodyu :}
    path pathu FMT-READ-BUF 64 FS:READ-ALL bodyu T=
@@ -1445,9 +1458,8 @@ create P-W5DF PATH-CAP allot variable P-W5DF-U
    then
    true ;
 
-\ A task waits for its peer's round counter rather than a flag, so no round
-\ clears what the next one sets. A peer that never arrives ends the wait with
-\ E-PROC-TIMEOUT; JOIN records it and JOIN-BOTH reads it.
+\ Waits until the counter reaches want, never for a flag, so no round clears
+\ what the next sets. A peer that never comes ends the wait with E-PROC-TIMEOUT.
 : WAIT-FOR ( ptr n n -- )
    {: flag want :}
    mono-ns WAIT-NS + {: deadline :}
@@ -1617,6 +1629,55 @@ variable T6-BAD
    W5$ FS:REMOVE-TREE
    W5$ FS:EXISTS? TFALSE ;
 
+\ Each source is five 8192-byte copy chunks and an odd remainder. A's byte at i
+\ is i mod 251, B's its complement, so the two differ at every offset.
+5 8192 * 37 + constant T7-LEN
+create T7-A-SRC T7-LEN allot
+create T7-B-SRC T7-LEN allot
+create T7-A-GOT T7-LEN allot
+create T7-B-GOT T7-LEN allot
+variable T7-A-BAD
+variable T7-B-BAD
+variable T7-READY
+
+: T7-FILL ( ptr u8 n -- ) {: buf:ptr mask :}
+   T7-LEN 0 ?do i 251 mod mask xor buf i + c! loop ;
+
+\ Counts a round whose destination is not byte for byte its own source.
+: T7-CHECK ( ptr u8 n ptr u8 ptr u8 ptr n -- )
+   {: dst:ptr dstu src:ptr got:ptr bad:ptr :}
+   dst dstu got T7-LEN FS:READ-ALL {: u :}
+   got u src T7-LEN STR= 0= if 1 bad atomic-add drop then ;
+
+: T7-A-ROUND ( -- )
+   CAS$ CAD$ FS:COPY-FILE-STREAM
+   CAD$ T7-A-SRC T7-A-GOT T7-A-BAD T7-CHECK ;
+
+: T7-B-ROUND ( -- )
+   CBS$ CBD$ FS:COPY-FILE-STREAM
+   CBD$ T7-B-SRC T7-B-GOT T7-B-BAD T7-CHECK ;
+
+\ Neither worker begins its rounds until both have started, so the copies
+\ overlap, or the test fails on WAIT-FOR's deadline.
+: T7-GO ( -- ) 1 T7-READY atomic-add drop  T7-READY 2 WAIT-FOR ;
+
+: T7-A ( -- ) T7-GO ROUNDS 0 ?do T7-A-ROUND loop 0 TASK:RETURN ;
+: T7-B ( -- ) T7-GO ROUNDS 0 ?do T7-B-ROUND loop 0 TASK:RETURN ;
+
+: T7-RUN ( -- )
+   T7-A-SRC 0 T7-FILL  T7-B-SRC 255 T7-FILL
+   CAS$ T7-A-SRC T7-LEN FS:WRITE-ALL
+   CBS$ T7-B-SRC T7-LEN FS:WRITE-ALL
+   0 T7-A-BAD !  0 T7-B-BAD !  0 T7-READY !
+   ['] T7-A WORKER-A TASK:ACTIVATE
+   ['] T7-B WORKER-B TASK:ACTIVATE
+   JOIN-BOTH 0= if exit then
+   s" two tasks copying files at once each copied only its own bytes" T-LABEL
+   T7-A-BAD @ 0 T=
+   T7-B-BAD @ 0 T=
+   CAS$ FS:REMOVE-FILE  CAD$ FS:REMOVE-FILE
+   CBS$ FS:REMOVE-FILE  CBD$ FS:REMOVE-FILE ;
+
 public
 
 : RUN ( -- )
@@ -1632,7 +1693,8 @@ public
    STAGE-RUN
    T4-RUN
    T5-RUN
-   T6-RUN ;
+   T6-RUN
+   T7-RUN ;
 
 ;package
 
