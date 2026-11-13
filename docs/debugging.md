@@ -300,6 +300,9 @@ phase measurement:
   `--engine` build profile, `LINKER:WITH` took 14,704 inclusive samples of
   14,707 Habu samples (15,726 less 1,019 foreign).
 - `n prof-row` prints one word's row whatever its rank.
+- A sample counts the sampling intervals elapsed since the last one, so time
+  blocked in a syscall (an fsync, a file read) is charged where the sample that
+  ends it lands, though the ticks of that wait arrive as one signal.
 - A non-zero `prof-on` limit reports from inside the signal handler and exits
   99 at that many samples. Words compiled after `prof-on` stay in the `defer`
   column of that report; a program that can reach its own `prof-off` should

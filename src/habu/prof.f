@@ -32,6 +32,15 @@
 \ prof-on, and a rebuild moves every entry, so C-PROF-INCL-FOLD first empties
 \ the entries into the per-record array, the durable home, and historical rows
 \ remain readable after their code leaves the searchable index.
+\
+\ A sample is weighed by the time since the last one. SIGALRM does not queue:
+\ every tick that expires while the process waits in a syscall (an fsync, a
+\ regular-file read) or is descheduled arrives as one signal, so a count of
+\ signals would show a blocked second as about one sample. The handler reads
+\ CNTVCT_EL0 and counts (now - ARN-LAST + ARN-TICKS/2) / ARN-TICKS, at least
+\ 1, wherever it counts a sample; arming sets ARN-LAST, so time the clock was
+\ held or stopped is never counted. ARN-SEQ still counts samples one by one
+\ for the inclusive stamps.
 require src/habu/prof-abi.f
 
 require src/arch/arm64/icode.f
@@ -85,6 +94,9 @@ $0043 constant MACOS-SA-PROF-FLAGS        \ SA_ONSTACK | SA_RESTART | SA_SIGINFO
    13 13 CODE-SPAN:INSN-BYTES ADDI,
    14 14 2 LSLI,  13 13 14 SUB, ;
 
+: CNTVCT>R ( n -- ) $D53BE040 or EMITW ;   \ mrs xn, CNTVCT_EL0
+: CNTFRQ>R ( n -- ) $D53BE000 or EMITW ;   \ mrs xn, CNTFRQ_EL0
+
 public
 
 \ LPROFFIND ( x9 = pc, x8 = arena -- x6 = index entry or 0 ): the whole of pc
@@ -113,10 +125,11 @@ public
    miss LBL,  6 0 MOVZ,
    out LBL,  RET, ;
 
-\ LPROFEDGE ( x8 = arena, x22 = sampled record, x10 = caller record ): count one
-\ caller edge. Clobbers x11-x16. A sample whose own record is unknown (x22 < 0)
-\ has no edge to key, and a full probe window counts a drop rather than
-\ overwriting somebody else's pair.
+\ LPROFEDGE ( x8 = arena, x22 = sampled record, x10 = caller record, x3 = the
+\ sample's weight ): add the weight to one caller edge. Clobbers x11-x16. A
+\ sample whose own record is unknown (x22 < 0) has no edge to key, and a full
+\ probe window counts the weight as dropped rather than overwriting somebody
+\ else's pair.
 : EMIT-PROFEDGE ( -- )
    LPROFEDGE LABEL@ LBL,
    LBL LBL LBL LBL {: eprobe efree ehit edone :}
@@ -132,30 +145,31 @@ public
       16 11 CMP,  C-EQ ehit BCOND,
       12 12 1 ADDI,  12 12 PROF-CALL-MASK ANDI,
       13 13 1 SUBI,  13 eprobe CBNZ,
-   16 8 ARN-DROP LDR,  16 16 1 ADDI,  16 8 ARN-DROP STR,  edone B,
-   efree LBL,  11 15 0 STR,  16 1 MOVZ,  16 15 8 STR,  edone B,
-   ehit LBL,  16 15 8 LDR,  16 16 1 ADDI,  16 15 8 STR,
+   16 8 ARN-DROP LDR,  16 16 3 ADD,  16 8 ARN-DROP STR,  edone B,
+   efree LBL,  11 15 0 STR,  3 15 8 STR,  edone B,
+   ehit LBL,  16 15 8 LDR,  16 16 3 ADD,  16 15 8 STR,
    edone LBL,  RET, ;
 
-\ x8 = arena, x7 = band, x6 = an index entry, x10 = its record index: one
-\ inclusive sample for that record, and only the first time THIS sample reaches
-\ it. The conservative walk can see one word twice - a recursive call, or a
+\ x8 = arena, x6 = an index entry, x10 = its record index, x3 = the sample's
+\ weight: one inclusive sample for that record, and only the first time THIS
+\ sample reaches it. The conservative walk can see one word twice - a recursive call, or a
 \ stale spill slot still holding a return address into it - and an inclusive
 \ count that ran past the sample total would say a word took longer than the
-\ program did. The stamp is the sample serial. Clobbers x11-x13.
+\ program did. The stamp is ARN-SEQ, which a weight above one does not move.
+\ Clobbers x11-x13.
 : C-PROF-INCL-ONCE ( -- )
    LBL {: seen :}
    11 ARN-STAMP LIT64,  11 8 11 ADD,  12 10 3 LSLI,  11 11 12 ADD,
    12 11 0 LDR,
-   13 7 PROF-TOT LDR,  13 13 1 ADDI,               \ this sample's serial: TOT is bumped after
+   13 8 ARN-SEQ LDR,
    12 13 CMP,  C-EQ seen BCOND,
    13 11 0 STR,
-   12 6 ENT-INCL LDR,  12 12 1 ADDI,  12 6 ENT-INCL STR,
+   12 6 ENT-INCL LDR,  12 12 3 ADD,  12 6 ENT-INCL STR,
    seen LBL, ;
 
-\ x8 = arena, x9 = the interrupted pc, x21 = mcontext: keep one sample whose code
-\ the index cannot name yet. Only the pc and the interrupted x30 are kept, at a
-\ fixed stride, so the handler still walks nothing here and allocates nothing; the
+\ x8 = arena, x9 = the interrupted pc, x21 = mcontext, x3 = the weight: keep one
+\ sample whose code the index cannot name yet. Only the pc, the interrupted x30
+\ and the weight are kept, at a fixed stride, so the handler still walks nothing here and allocates nothing; the
 \ next report rebuilds the index and replays them. Clobbers x10-x14.
 : C-PROF-DEFER ( -- )
    LBL LBL {: full done :}
@@ -164,10 +178,10 @@ public
    12 ARN-DEF LIT64,  12 8 12 ADD,
    13 PROF-DEFER-ENT MOVZ,  13 10 13 MUL,  12 12 13 ADD,
    9 12 0 STR,
-   30 14 C-PROF-CTX-X>R  14 12 8 STR,
+   30 14 C-PROF-CTX-X>R  14 12 8 STR,  3 12 16 STR,
    10 10 1 ADDI,  10 8 ARN-DEFER STR,
    done B,
-   full LBL,  10 8 ARN-SPILL LDR,  10 10 1 ADDI,  10 8 ARN-SPILL STR,
+   full LBL,  10 8 ARN-SPILL LDR,  10 10 3 ADD,  10 8 ARN-SPILL STR,
    done LBL, ;
 
 : C-PROF-WALK ( -- )
@@ -340,8 +354,9 @@ public
       next LBL,  12 12 1 ADDI,  turn B,
    done LBL, ;
 
-\ The header line names every field: samples (ticks delivered), words (ticks in a
-\ dictionary word, the sum of the exclusive column), other (Habu code in no word:
+\ The header line names every field: samples (sampling intervals elapsed, the
+\ unit of every count below but frames), words (ticks in a dictionary word, the sum of
+\ the exclusive column), other (Habu code in no word:
 \ the main loop, engine helpers, gaps between spans), new (deferred ticks whose pc
 \ no live record owns), defer (ticks in code compiled after prof-on, still
 \ unnamed), spill (deferred ticks the buffer had no room for), foreign (contexts
@@ -361,6 +376,16 @@ public
 \ line states. After a sync, defer is 0 and new holds only the deferred samples
 \ whose pc belongs to no live record; an auto-report at the limit does not sync,
 \ so its deferred samples are still sitting in defer.
+\ x19 = arena: x10 = the weight of the deferred samples. Clobbers x11-x13.
+: C-PROF-DEFER-WEIGHT ( -- )
+   LBL LBL {: dl dd :}
+   10 0 MOVZ,  11 19 ARN-DEFER LDR,
+   12 ARN-DEF LIT64,  12 19 12 ADD,
+   dl LBL,  11 dd CBZ,
+      13 12 16 LDR,  10 10 13 ADD,
+      12 12 PROF-DEFER-ENT ADDI,  11 11 1 SUBI,  dl B,
+   dd LBL, ;
+
 : C-PROF-REP-HEAD ( bool -- ) {: json:bool :}
    json IF s\" {\"samples\":" ELSE s" profiler samples " THEN 22 C-PROF-FIELD
    json IF s\" ,\"words\":" ELSE s"  words " THEN 4 C-PROF-FIELD
@@ -368,7 +393,7 @@ public
    json IF s\" ,\"other\":" ELSE s"  other " THEN 10 C-PROF-FIELD
    10 19 ARN-NEW LDR,
    json IF s\" ,\"new\":" ELSE s"  new " THEN 10 C-PROF-FIELD
-   10 19 ARN-DEFER LDR,
+   C-PROF-DEFER-WEIGHT
    json IF s\" ,\"defer\":" ELSE s"  defer " THEN 10 C-PROF-FIELD
    10 19 ARN-SPILL LDR,
    json IF s\" ,\"spill\":" ELSE s"  spill " THEN 10 C-PROF-FIELD
@@ -617,19 +642,36 @@ public
    s" profiler: no row for that record" C-PROF-SAY  C-PROF-NL
    C-PROF-REP-CLOSE ;
 
+\ x7 = band: x3 = this sample's weight, the intervals since the last sample as
+\ the file header states; ARN-LAST moves to now and ARN-SEQ counts the sample.
+\ Clobbers x8 and x10-x12.
+: C-PROF-WEIGHT ( -- )
+   LBL {: wdone :}
+   3 1 MOVZ,
+   8 7 PROF-ARENA LDR,  8 wdone CBZ,
+   10 CNTVCT>R
+   11 8 ARN-LAST LDR,  10 8 ARN-LAST STR,
+   12 8 ARN-SEQ LDR,  12 12 1 ADDI,  12 8 ARN-SEQ STR,
+   12 8 ARN-TICKS LDR,  12 wdone CBZ,
+   10 10 11 SUB,  11 12 1 LSRI,  10 10 11 ADD,
+   10 10 12 UDIV,  10 wdone CBZ,  3 10 0 ADDI,
+   wdone LBL, ;
+
 \ THE HANDLER TAKES NOTHING FROM THE LIVE REGISTERS: a foreign callee (libc's
 \ dlsym, libzip's inflate) reuses x20 (DATA), x26 (DBASE) and x27 (NDICT).
 \ The handler runs on the crash handler's alternate signal stack, so a deep
 \ machine stack never pushes the frame over the data stack.
 \
-\ Attribute the interrupted pc FIRST, THEN bump PROF-TOT once and test the
-\ limit, so every sample the running clock delivers is counted, including the
-\ sample that reaches the limit.
+\ Weigh the sample, attribute the interrupted pc, THEN add the weight to
+\ PROF-TOT and test the limit, so every sample the running clock delivers is
+\ counted, including the sample that reaches the limit. x3 holds the weight:
+\ no word the handler calls writes it.
 : EMIT-PROF ( -- )
    LPROFH LABEL@ LBL,
    LBL LBL LBL LBL LBL LBL {: pnew pother pdone pforeign psig pexit :}
    7 PROF-BAND-VA LIT64,
    9 7 PROF-ARMED LDR,  9 ARMED-RUNS CMPI,  C-NE pexit BCOND,
+   C-PROF-WEIGHT
    C-PROF-MCTX>R21  C-PROF-PC>R9
    20 10 C-PROF-CTX-X>R  11 DATA-VA VA>N LIT64,  10 11 CMP,  C-NE pforeign BCOND,
    26 10 C-PROF-CTX-X>R  11 7 PROF-DBASE LDR,  10 11 CMP,  C-NE pforeign BCOND,
@@ -639,7 +681,7 @@ public
    6 pnew CBZ,
    12 6 ENT-IDX LDR,
    14 PROF-CNT-VA LIT64,  13 12 3 LSLI,  14 14 13 ADD,
-   12 14 0 LDR,  12 12 1 ADDI,  12 14 0 STR,
+   12 14 0 LDR,  12 12 3 ADD,  12 14 0 STR,
    10 6 ENT-IDX LDR,  C-PROF-INCL-ONCE                \ a word is inside itself
    22 6 ENT-IDX LDR,
    C-PROF-WALK
@@ -651,17 +693,17 @@ public
    C-PROF-WALK
    psig B,
    pother LBL,
-   12 7 PROF-OTHER LDR,  12 12 1 ADDI,  12 7 PROF-OTHER STR,
+   12 7 PROF-OTHER LDR,  12 12 3 ADD,  12 7 PROF-OTHER STR,
    C-PROF-WALK
    psig B,
    pdone LBL,
-   12 7 PROF-OTHER LDR,  12 12 1 ADDI,  12 7 PROF-OTHER STR,
+   12 7 PROF-OTHER LDR,  12 12 3 ADD,  12 7 PROF-OTHER STR,
    psig B,
    pforeign LBL,
    17 0 MOVZ,                                        \ not Habu code: no search, no report from here
-   12 7 PROF-FOREIGN LDR,  12 12 1 ADDI,  12 7 PROF-FOREIGN STR,
+   12 7 PROF-FOREIGN LDR,  12 12 3 ADD,  12 7 PROF-FOREIGN STR,
    psig LBL,
-   10 7 PROF-TOT LDR,  10 10 1 ADDI,  10 7 PROF-TOT STR,
+   10 7 PROF-TOT LDR,  10 10 3 ADD,  10 7 PROF-TOT STR,
    11 7 PROF-LIM LDR,  11 pexit CBZ,                 \ limit 0: sample until prof-off
    10 11 CMP,  C-LT pexit BCOND,
    17 pexit CBZ,                                     \ the limit reached on a foreign sample: the next Habu sample reports
@@ -689,14 +731,30 @@ private
 : C-PROF-SIGACTION-DONE ( -- )
    SP SP 32 ADDI, ;
 
-\ x0 = arena: the interval prof-rate left there, or the 1000 us default, which
-\ prof-on writes back so the report states the rate it actually sampled at.
-\ The signed divide keeps an interval below 0 negative, which C-PROF-TIMER's
-\ arm refuses rather than reading it as years. Clobbers x9-x11.
-: C-PROF-TIMER-FRAME ( -- )
+\ x0 = arena: x10 = the interval prof-rate left there, or the 1000 us default,
+\ written back so the report states the rate it actually sampled at.
+: C-PROF-USEC>R10 ( -- )
    LBL {: dflt :}
    10 0 ARN-USEC LDR,  10 dflt CBNZ,  10 1000 MOVZ,
-   dflt LBL,  10 0 ARN-USEC STR,
+   dflt LBL,  10 0 ARN-USEC STR, ;
+
+\ x0 = arena: ARN-TICKS = the interval in CNTVCT_EL0 ticks, at least 1, and
+\ ARN-LAST = now. Run before PROF-ARMED goes to ARMED-RUNS, so a sample never
+\ weighs time the clock was held or stopped. Clobbers x10-x12.
+: C-PROF-CLOCK-MARK ( -- )
+   LBL {: tk :}
+   C-PROF-USEC>R10
+   11 CNTFRQ>R  10 10 11 MUL,
+   11 USEC-PER-SEC LIT64,  10 10 11 UDIV,
+   10 tk CBNZ,  10 1 MOVZ,
+   tk LBL,  10 0 ARN-TICKS STR,
+   10 CNTVCT>R  10 0 ARN-LAST STR, ;
+
+\ x0 = arena: the interval split for setitimer. The signed divide keeps an
+\ interval below 0 negative, which C-PROF-TIMER's arm refuses rather than
+\ reading it as years. Clobbers x9-x11.
+: C-PROF-TIMER-FRAME ( -- )
+   C-PROF-USEC>R10
    11 USEC-PER-SEC LIT64,  9 10 11 SDIV,               \ x9 = seconds
    11 9 11 MUL,  10 10 11 SUB,                        \ x10 = microseconds
    SP SP 32 SUBI,
@@ -1034,15 +1092,16 @@ private
    C-PROF-SORT-LAND
    skip LBL, ;
 
-\ x8 = arena, x10 = a record index: one inclusive sample for that record.
-\ Clobbers x11 and x12, and preserves x10 for the caller.
+\ x8 = arena, x10 = a record index, x3 = the sample's weight: one inclusive
+\ sample for that record. Clobbers x11 and x12, and preserves x10 for the caller.
 : C-PROF-INCL+ ( -- )
    11 ARN-INCL LIT64,  11 8 11 ADD,  12 10 3 LSLI,  11 11 12 ADD,
-   12 11 0 LDR,  12 12 1 ADDI,  12 11 0 STR, ;
+   12 11 0 LDR,  12 12 3 ADD,  12 11 0 STR, ;
 
 \ x0 = arena. The handler already took an inclusive sample for every frame the
 \ OLD index could name, so replay adds one only for a record that index did not
-\ reach - start at or above ARN-OLDHI.
+\ reach - start at or above ARN-OLDHI. Each sample counts at the weight the
+\ handler kept with it, in x3.
 : C-PROF-REPLAY ( -- )
    LBL LBL LBL LBL LBL LBL {: rl rdone rmiss rnocall rgo rnext :}
    8 0 0 ADDI,                                       \ LPROFFIND and LPROFEDGE take the arena in x8
@@ -1050,12 +1109,12 @@ private
    23 ARN-DEF LIT64,  23 8 23 ADD,
    rl LBL,
       24 rdone CBZ,
-      9 23 0 LDR,
+      9 23 0 LDR,  3 23 16 LDR,
       LPROFFIND LABEL@ BL,
       6 rmiss CBZ,
       22 6 ENT-IDX LDR,
       14 PROF-CNT-VA LIT64,  13 22 3 LSLI,  14 14 13 ADD,
-      12 14 0 LDR,  12 12 1 ADDI,  12 14 0 STR,      \ the exclusive sample this stands for
+      12 14 0 LDR,  12 12 3 ADD,  12 14 0 STR,       \ the exclusive sample this stands for
       10 22 0 ADDI,  C-PROF-INCL+                    \ and the word is inside itself
       9 23 8 LDR,  9 rnocall CBZ,
       9 9 4 SUBI,                                    \ the call site, not the return address
@@ -1069,7 +1128,7 @@ private
       rgo LBL,
       LPROFEDGE LABEL@ BL,
       rnext B,
-      rmiss LBL,  12 8 ARN-NEW LDR,  12 12 1 ADDI,  12 8 ARN-NEW STR,
+      rmiss LBL,  12 8 ARN-NEW LDR,  12 12 3 ADD,  12 8 ARN-NEW STR,
       rnext LBL,  23 23 PROF-DEFER-ENT ADDI,  24 24 1 SUBI,  rl B,
    rdone LBL,
    12 0 MOVZ,  12 8 ARN-DEFER STR, ;
@@ -1139,6 +1198,7 @@ private
    C-PROF-SIGACTION
    C-PROF-SIGACTION-DONE
    7 PROF-BAND-VA LIT64,  0 7 PROF-ARENA LDR,   \ the sigaction calls above own x0
+   C-PROF-CLOCK-MARK
    9 ARMED-RUNS MOVZ,  9 7 PROF-ARMED STR,
    C-PROF-TIMER-FRAME
    C-PROF-TIMER
@@ -1162,12 +1222,13 @@ private
    C-PROF-TIMER-STOP ;
 
 \ Start a held clock again at the recorded interval; one prof-off stopped stays
-\ stopped. Clobbers x0-x2, x7 and x9-x11.
+\ stopped. Clobbers x0-x2, x7 and x9-x12.
 : C-PROF-CLOCK-RESUME ( -- )
    LBL {: off :}
    7 PROF-BAND-VA LIT64,  9 7 PROF-ARMED LDR,  9 off CBZ,
-   9 ARMED-RUNS MOVZ,  9 7 PROF-ARMED STR,
    0 7 PROF-ARENA LDR,
+   C-PROF-CLOCK-MARK
+   9 ARMED-RUNS MOVZ,  9 7 PROF-ARMED STR,
    C-PROF-TIMER-FRAME
    C-PROF-TIMER
    C-PROF-TIMER-DONE
