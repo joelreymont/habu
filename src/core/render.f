@@ -1116,6 +1116,8 @@ variable MDV-I   variable MDV-F
       MD-STORED-LINEAR of s" E-CAST-LINEAR" endof
       MD-STORED-CLASS of s" E-CAST-CLASS" endof
       MD-IS-STORED    of s" E-CAST-LINEAR" endof
+      MD-DIV-ZERO     of s" E-DIV-ZERO" endof
+      MD-THROW-ZERO   of s" E-THROW-ZERO" endof
       MD-LOOP-DEPTH   of s" E-MISMATCH" endof
       MD-IF-DEPTH     of s" E-MISMATCH" endof
       MD-ARMS-DEPTH   of s" E-MISMATCH" endof
@@ -1176,6 +1178,8 @@ variable MDV-I   variable MDV-F
       MD-STORED-LINEAR of s" fix_type_form" endof
       MD-STORED-CLASS of s" fix_type_form" endof
       MD-IS-STORED    of s" fix_type_form" endof
+      MD-DIV-ZERO     of s" fix_divisor" endof
+      MD-THROW-ZERO   of s" fix_throw_code" endof
       MD-LOOP-DEPTH   of ['] ROW-CELLS ROWS-CLASS$ endof
       MD-IF-DEPTH     of ['] ROW-CELLS ROWS-CLASS$ endof
       MD-ARMS-DEPTH   of ['] ROW-CELLS ROWS-CLASS$ endof
@@ -1288,6 +1292,8 @@ variable MDV-I   variable MDV-F
       MD-STORED-LINEAR of s" Pass a type with no linear value in it: a cast's stored type is copied as plain cells." endof
       MD-STORED-CLASS of s" Pass a type a cast may name as a pointee: no atom and no width<t> in it." endof
       MD-IS-STORED    of s" Declare the cell over the concrete type the callable stores, or install a callable whose type variable takes any type: a cast's stored type holds no linear value, atom or width." endof
+      MD-DIV-ZERO     of s" Divide by a value that cannot be zero; a zero divisor's answer is undefined." endof
+      MD-THROW-ZERO   of s" Throw a nonzero code: 0 means no error, and a catch that answers 0 cannot tell the unwind from a normal return." endof
       MD-LOOP-DEPTH   of ['] ROW-CELLS ROWS-SUGGEST$ endof
       MD-IF-DEPTH     of ['] ROW-CELLS ROWS-SUGGEST$ endof
       MD-ARMS-DEPTH   of ['] ROW-CELLS ROWS-SUGGEST$ endof
@@ -1363,6 +1369,8 @@ variable MDV-I   variable MDV-F
       MD-STORED-LINEAR of s" a cast's stored type would hold a linear value" endof
       MD-STORED-CLASS of s" a cast's stored type would hand out an atom or a width" endof
       MD-IS-STORED    of s" the callable takes only a cast's stored types where the cell takes any type" endof
+      MD-DIV-ZERO     of s" zero divisor: a literal 0 divisor has no quotient" endof
+      MD-THROW-ZERO   of s" zero throw code: `0 throw` unwinds with the code that means no error" endof
       MD-LOOP-DEPTH   of s" the loop body changes the stack's depth" endof
       MD-IF-DEPTH     of s" the if arm changes the stack's depth" endof
       MD-ARMS-DEPTH   of s" the if and else arms leave different stack depths" endof

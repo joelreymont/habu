@@ -24,7 +24,6 @@ require src/arch/arm64/icode.f
 require src/habu/primitive-registry.f
 require src/habu/native-body-abi.f
 require src/habu/data-claims.f
-require src/habu/arith-abi.f           \ E-DIV-ZERO, the dividing bodies' refusal
 require src/habu/task-abi.f
 require src/habu/spawn-abi.f
 require src/habu/code-span.f
@@ -112,7 +111,6 @@ public
 \ label ids (forward refs)
 variable LFIND  variable LNUM  variable LDICT
 variable LCEMIT  variable LTOK  variable LFLUSH variable LFLUSHTO variable LNCOUNT
-variable LDIVZERO                       \ the (DIV-ZERO) refusal the dividing bodies branch to
 private
 \ The count EMIT-DICT bakes into LNCOUNT. The AOT call-site binder reads this,
 \ not the registry: a payload record's dictionary index is the seeded count
@@ -1666,27 +1664,19 @@ private
 : BRSH ( -- )
    B G-POP A G-POP  A A B LSRV, A G-PUSH ;
 
-\ arm64 SDIV by zero yields zero, so the divisor (B) is tested. A zero divisor
-\ is a caller error the program can recover from, so the guard branches to the
-\ engine-resident (DIV-ZERO) helper, which throws ARITH-ABI:E-DIV-ZERO. The
-\ helper is out of line so the guard costs one branch: inlining BTHROW's forty
-\ instructions pushes the divide out of the body's first cache lines.
+\ arm64 SDIV by zero answers 0.
 \
 \ MIN-N -1 / is MIN-N, SDIV's modular answer, like the wrap of `+`, `-` and
 \ `*`; a guard for it would cost every division a compare no caller in this
 \ tree can fail.
-: BDIV0? ( -- )
-   LBL {: ok:label :}
-   B ok CBNZ,  LDIVZERO LABEL@ BL,  ok LBL, ;
-
 : BDIV ( -- )
-   B G-POP A G-POP  BDIV0?  A A B SDIV, A G-PUSH ;
+   B G-POP A G-POP  A A B SDIV, A G-PUSH ;
 
 : BMOD ( -- )
-   B G-POP A G-POP  BDIV0?  C A B SDIV,  C C B MUL,  A A C SUB,  A G-PUSH ;
+   B G-POP A G-POP  C A B SDIV,  C C B MUL,  A A C SUB,  A G-PUSH ;
 
 : BDIVMOD ( -- )
-   B G-POP A G-POP  BDIV0?  C A B SDIV,  DREG C B MUL,  A A DREG SUB,  A G-PUSH C G-PUSH ;
+   B G-POP A G-POP  C A B SDIV,  DREG C B MUL,  A A DREG SUB,  A G-PUSH C G-PUSH ;
 
 : BABS ( -- )
    LBL PRIM-DONE !
@@ -4540,24 +4530,6 @@ package ENGINE-EMIT
    TOK-NONE LABEL@ LBL,  11 DATA INP-CELL STR,  0 0 MOVZ,  RET, ;
 ;package
 
-package ENGINE-EMIT
-
-\ The dividing primitives' refusal ( no arguments; never returns ). `/`, `mod`
-\ and `/mod` each test their divisor and branch here when it is zero, so the
-\ throw exists ONCE. Registered as the sealed (DIV-ZERO) engine helper because
-\ a direct branch out of a primitive has to be a record the ahead-of-time
-\ closure walker can follow. It inlines BTHROW, which is why it sits here and
-\ not beside the bodies.
-: EMIT-DIV-ZERO ( -- )
-   LDIVZERO LABEL@ {: start:label :}
-   LBL {: end:label :}
-   s" (DIV-ZERO)" start LABEL>N end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
-   start LBL,
-   9 ARITH-ABI:E-DIV-ZERO LIT64,  9 G-PUSH  BTHROW
-   end LBL, ;
-
-;package
-
 \ Protected-WID membership, BL routine: x9 = wid, x13 = 1 when protected else 0.
 \ The OWNER-API wordlists (public=1, private=2; OWNER-API-PRI-WID marks the AOT
 \ direct-branch helpers) are always protected, pinned here because three paths
@@ -4611,8 +4583,8 @@ package ENGINE-EMIT
 \ LFLUSH makes the code in [x9, CP) visible to instruction fetch; LFLUSHTO takes
 \ the end in x11 instead, for code that stands above CP. Clobbers x9 (rounded
 \ down to its line), x10, x11.
-\ LFLUSHTO is registered as the sealed (FLUSHTO) engine helper, as (DIV-ZERO)
-\ is: the fork primitive's Linux child branches to it directly.
+\ LFLUSHTO is registered as the sealed (FLUSHTO) engine helper: the fork
+\ primitive's Linux child branches to it directly.
 : EMIT-FLUSH ( -- )
    LFLUSHTO LABEL@ {: start:label :}
    LBL {: end:label :}

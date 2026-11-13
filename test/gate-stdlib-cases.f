@@ -181,11 +181,6 @@ SUITE compiler-native-eval-prefix
    test/compiler/native-eval-prefix.f
 ;SUITE
 
-\ Native primitive goldens live in prim-cases.f and prim-float-cases.f, owned
-\ by prim-parity.f. They pin wrap at MAX-N+1, MIN-N/-1, divisor throws,
-\ modulo-64 shifts, and canonical NaN outputs through compiled primitive calls.
-\ Each case runs against this backend and its available reference implementation
-\ on the product engine.
 SUITE prim-parity
    test/prim-parity.f
 ;SUITE
@@ -302,6 +297,10 @@ SUITE width-type
 
 SUITE input-underflow-refusals
    test/compiler/input-underflow-refusals.f
+;SUITE
+
+SUITE zero-operand-refusals
+   test/compiler/zero-operand-refusals.f
 ;SUITE
 
 SUITE base-pointer-arith-refusals

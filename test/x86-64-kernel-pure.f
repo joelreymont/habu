@@ -4,7 +4,7 @@
 \ test/prim-float-cases.f are included into the open image, each `<overload>
 \ CASES <name>` line staging checks against the kernel row of that name.
 require test/x86-64-boot-harness.f
-require src/lib/error.f                    \ E-DIV-ZERO, the dividing rows' refusal
+require src/lib/error.f
 require src/lib/fmt.f
 require src/lib/string.f
 

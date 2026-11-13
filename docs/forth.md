@@ -1950,16 +1950,15 @@ a callback input, as a word that returns `[: WITH-SCOPE ;]` does, is refused
 Cells are two's-complement 64-bit. The signed bounds are
 `$8000000000000000` and `$7FFFFFFFFFFFFFFF`. `+`, `-` and `*` wrap
 (`$7FFFFFFFFFFFFFFF 1 +` is `$8000000000000000`) and never refuse. Division
-is the one partial operation; its two boundary cases are contracts every
-backend answers alike.
+is the one partial operation; its `-1` case is a contract every backend
+answers alike.
 
-- **A zero divisor throws `E-DIV-ZERO`.** `/`, `mod` and `/mod`, the only
-  dividing primitives, test the divisor and throw. It is a catchable throw,
-  not an exit: `[: a b / drop ;] catch E-DIV-ZERO = if … then`. A structurally
-  positive divisor says so in the type: the `positive-divisor` role
-  (`src/lib/num-arithmetic.f`) makes the refusal unreachable. **The contract
-  holds at every tier**: the interpreted primitive, a compiled word
-  and an AOT-built executable all throw the same code.
+- **A literal 0 divisor is refused (`E-DIV-ZERO`); a computed one's answer is
+  undefined**: the checker refuses `/`, `mod` and `/mod` over a literal 0, which
+  stack words carry, and at run time they do not test the divisor (arm64 `sdiv`
+  answers 0; x86-64 `idiv` and Wasm `i64.div_s` trap). An extent's divisor that
+  cannot be zero says so in its type: `NUM:positive-divisor`
+  (`src/lib/num-types.f`), which NUM's `DIV-` and `REM-` words take.
 - **`$8000000000000000 -1 /` is `$8000000000000000`, and
   `$8000000000000000 -1 mod` is `0`.** The quotient `2^63` has no signed cell,
   so it wraps like `+`, `-`, `*`.
@@ -2375,7 +2374,8 @@ sections above.
   `undefine` throws it before retiring anything (`E-OVERLAY-OPEN habu: undefine
   while a checker replay is open: NAME`). Reopening an existing package is
   allowed. The throw is catchable inside `evaluate`; the replay still closes.
-- **`0 throw` unwinds unchecked, a caller bug: `[: 0 throw ;] catch` answers 0.**
+- **A literal `0 throw` is refused (`E-THROW-ZERO`); a computed 0 unwinds
+  unchecked, a caller bug: its `catch` answers 0.**
 - **A definition and a `(` comment close in the source that opened them.**
   Files, stdin and `evaluate` strings refuse an open definition at their end
   (`E-VS-UNTERMINATED-DEFINITION`, `source ended inside definition: NAME`) or

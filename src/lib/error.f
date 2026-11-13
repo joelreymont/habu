@@ -279,9 +279,7 @@ require src/lib/prelude.f
 \ Engine arithmetic: -6400..-6499
 -6400 constant E-ARITH-FIRST
 -6499 constant E-ARITH-LAST
--6400 constant E-DIV-ZERO       \ `/`, `mod` or `/mod` given a zero divisor (thrown by the
-                                \ engine's own primitive bodies through
-                                \ the same (code, name) re-registered in src/habu/arith-abi.f)
+-6400 constant E-DIV-ZERO       \ `/`, `mod` or `/mod` given a zero divisor
 
 \ Native test runner (package TEST): -6500..-6599
 -6500 constant E-TR-FIRST

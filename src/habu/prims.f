@@ -427,9 +427,6 @@ EPRIM: <=     PE-N PE-IN PE-N PE-IN  PE-F PE-OUT REF PRIM-REF:LE EPRIM; REACH st
 EPRIM: <=     PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-F PE-OUT EPRIM; REACH stack
 EPRIM: >=     PE-N PE-IN PE-N PE-IN  PE-F PE-OUT REF PRIM-REF:GE EPRIM; REACH stack
 EPRIM: >=     PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-F PE-OUT EPRIM; REACH stack
-\ The three dividing rows. Their effects say nothing about the zero divisor
-\ because a throw is not an output: each body refuses it with
-\ ARITH-ABI:E-DIV-ZERO and MIN-N -1 wraps.
 EPRIM: /      PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:DIV EPRIM; REACH stack
 EPRIM: mod    PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:REM EPRIM; REACH stack
 EPRIM: /mod   PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PE-N PE-OUT REF PRIM-REF:DIVREM EPRIM; REACH stack

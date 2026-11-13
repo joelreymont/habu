@@ -121,12 +121,12 @@ holds an address ([forth.md](forth.md) "Raw storage never holds an address").
 ## Numeric admission
 
 A backend implements the language's semantics, not its machine's convenient
-answer (`src/habu/arith-abi.f`, `src/compiler/numeric-policy.f`):
+answer (`src/compiler/numeric-policy.f`):
 
 - `+ - *` wrap modulo 2^64, including on register-pair targets;
-- a zero divisor throws `E-DIV-ZERO` and `MIN-N -1 /` wraps to `MIN-N`, both
-  guarded before a machine divide that would trap (x86-64 `idiv`, Wasm
-  `i64.div_s`);
+- a zero divisor's answer is undefined, untested before the machine divide;
+  `MIN-N -1 /` wraps to `MIN-N`, guarded before a divide that would trap
+  (x86-64 `idiv`, Wasm `i64.div_s`);
 - `/`, `mod` and `/mod` truncate toward zero;
 - `lshift`/`rshift` take the count modulo 64 and `rshift` is logical;
 - a comparison observed as a cell is the all-ones flag, never 0/1;
@@ -333,8 +333,7 @@ write.
 
 ### Arithmetic
 
-A module keeps the language rules ("Numeric admission"): a zero divisor
-throws before any divide, and `-1` answers `0 - n`, so `MIN-N -1 /` is `MIN-N`
+A module keeps the language rules ("Numeric admission"): a zero divisor traps, and `-1` answers `0 - n`, so `MIN-N -1 /` is `MIN-N`
 where `i64.div_s` would trap. An observable flag is `0 - extend_u(p)`, because
 Wasm comparisons answer 0/1. A raw 64-bit condition is tested against zero
 before it becomes an `i32`; truncating it can turn nonzero into false.

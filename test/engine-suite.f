@@ -2123,7 +2123,7 @@ public
    s" ES-SWL-PRIV"          PKG-PUB-WID PROBE
    s" ES-SWL-U"             0 PROBE
    s" ES-SWL-U"             RET-WID PROBE
-   s" (DIV-ZERO)"           OWNER-PRIVATE-WID PROBE
+   s" (NUM)"                OWNER-PRIVATE-WID PROBE
    s" ES-SWL-PUB"           NO-SUCH-WID PROBE ;
 
 : CAPTURE-SECOND ( -- )

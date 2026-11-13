@@ -504,7 +504,7 @@ variable NEST-ARM   variable NEST-ENUM
    s" CMPA" VISIT AT-START AT-END PLACED ;
 
 : THROWING ( ptr u8 n n n n -- )
-   KEEP  1 0 / drop ;
+   KEEP  E-DIV-ZERO throw ;
 
 : CASE-RELEASE ( -- )
    s" cmp" KEPT-RESET
@@ -531,7 +531,7 @@ variable NEST-ARM   variable NEST-ENUM
 
 \ A use handler that throws, as the owner's handler of published uses can.
 : USE-THROWS ( n n n n n n -- )
-   2drop 2drop 2drop  1 0 / drop ;
+   2drop 2drop 2drop  E-DIV-ZERO throw ;
 
 : USES-THROW ( -- ) [: USE-THROWS ;] [: REPLAY ;] WITH-USES ;
 
@@ -568,7 +568,7 @@ variable DOES-USES
    THEN
    s 50 = IF
       1 DOES-USES +!
-      1 0 / drop
+      E-DIV-ZERO throw
    THEN ;
 
 : DOES-USES-THROW ( -- ) [: DOES-USE ;] [: REPLAY ;] WITH-USES ;

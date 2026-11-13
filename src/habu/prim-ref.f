@@ -182,9 +182,8 @@ public
 \ `/mod`'s order, measured: remainder under quotient. Division truncates toward
 \ zero, so the remainder carries the dividend's sign.
 \
-\ A zero divisor has no quotient to reference, so this word refuses it with the
-\ code the engine's own bodies throw (E-DIV-ZERO), and the gate catches both
-\ sides and compares the codes like any other pair of answers.
+\ A zero divisor has no quotient to reference, so this word refuses it with
+\ E-DIV-ZERO.
 \
 \ MIN-N -1 NEEDS NO CASE OF ITS OWN. MAGN(MIN-N) is 2^63, MAGN(-1) is 1, so the
 \ unsigned division answers 2^63, and the two operands' signs agree, so nothing

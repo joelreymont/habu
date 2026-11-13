@@ -8,7 +8,7 @@
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/fmt.f
-require src/lib/error.f                    \ E-DIV-ZERO, the dividing rows' refusal
+require src/lib/error.f                    \ E-DIV-ZERO, in the cases switched off
 require src/habu/prim-ref.f
 require src/lib/ieee754.f                  \ the bit shapes' casts
 
@@ -284,11 +284,8 @@ $3A constant COLON-B
    na nu s" fsqrt" STR= IF a IEEE754:BITS>F64 fsqrt IEEE754:F64>BITS EXIT THEN
    s" unary bits" na nu NO-ARM ;
 
-\ A refusal is pinned by the code it throws: the case column is the expected
-\ code (`7 0 E-DIV-ZERO NN-THROWS`), the reference held to the same code. Each
-\ arm drops what the body left, so a primitive that wrongly answers is caught by
-\ the code comparison (`catch` gives 0), not by an unbalanced stack further down
-\ the gate.
+\ A refusal is pinned by its code, the reference's held to the same; each arm
+\ drops what the body left, so a wrong answer fails the code comparison.
 : NN-THROW-PRIM ( ptr u8 n -- n ) {: na:ptr nu:n :}
    na nu s" /"    STR= IF [: DV-A @ DV-B @ /    drop  ;] catch EXIT THEN
    na nu s" mod"  STR= IF [: DV-A @ DV-B @ mod  drop  ;] catch EXIT THEN

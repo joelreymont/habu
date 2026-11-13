@@ -19,7 +19,6 @@ require src/habu/layout.f
 require src/habu/wl.f
 require src/habu/address-cells.f
 require src/habu/stack-abi.f
-require src/habu/arith-abi.f
 require src/habu/primitive-registry.f
 require src/habu/boot-x64.f
 require src/habu/data-claims.f
@@ -1625,20 +1624,6 @@ private
    REC-HELPER,  LIVE-HELPER,  INDEX-HELPERS,
    DPBAD-HELPER,  GENIO-HELPER,
    X64PROF:HELPERS, ;
-
-\ Native ARM selection on an x86 host still resolves the sealed `(DIV-ZERO)`
-\ helper by name. Give that name a real x86 body with the same refusal as the
-\ ARM helper: put its code on the VM stack and enter the existing throw row.
-: DIV-ZERO-HELPER, ( -- )
-   X64CODE:LBL X64CODE:LBL {: entry:label done:label :}
-   s" (DIV-ZERO)" entry LABEL>N done LABEL>N ENGINE-PRIMS:HELPER-REGISTER
-   \ A64IR's cross-host branch target still requires a whole 4-byte entry.
-   X64CODE:ASM-LEN negate 3 and 0 ?do ASM-SINK ENC-NOP loop
-   entry X64CODE:LBL,
-   RAX ARITH-ABI:E-DIV-ZERO >IMM32 ASM-SINK ENC-MOV-RI32
-   RAX PUSH,
-   s" throw" ENTRY-LABEL JMP,
-   done X64CODE:LBL, ;
 
 \ finally ( xt xt -- ): run the body under CAUGHT-HELD, and then the cleanup
 \ under another outside it; the cleanup's nonzero code replaces the body's only
@@ -5427,18 +5412,11 @@ $43DFFFFFFFFFFFFF constant REALINT-TOP  \ every double above it is 2^63 or more
    RAX 0 PEEK,  RCX RAX ASM-SINK ENC-MOV-RR  RCX 63 >IMM8 ASM-SINK ENC-SAR-RI8
    RAX RCX ASM-SINK ENC-XOR-RR  RAX RCX ASM-SINK ENC-SUB-RR  RAX TOP!, ;
 
-\ ( a b -- ): rax = a / b, truncated toward zero, and rdx = a mod b, which
-\ carries a's sign: habu1.f's sdiv and msub. A zero divisor calls the kernel's
-\ `throw` row with ARITH-ABI:E-DIV-ZERO where a stood, as habu1.f BDIV0?
-\ enters (DIV-ZERO). idiv raises #DE on MIN-N -1, so -1 negates instead: MIN-N
-\ wraps to MIN-N, sdiv's answer, and the remainder is 0.
+\ ( a b -- ): rax = a / b toward zero, rdx = a mod b; idiv raises #DE on 0,
+\ untested, and on MIN-N -1, so -1 negates: MIN-N stays MIN-N, remainder 0.
 : DIVIDE, ( -- )
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: ok:label hot:label done:label :}
+   X64CODE:LBL X64CODE:LBL {: hot:label done:label :}
    RCX POP,  RAX POP,
-   RCX RCX ASM-SINK ENC-TEST-RR  C-NE ok JCC,
-   RAX ARITH-ABI:E-DIV-ZERO >IMM32 ASM-SINK ENC-MOV-RI32  RAX PUSH,
-   s" throw" ENTRY-LABEL CALL,
-   ok X64CODE:LBL,
    RCX -1 >IMM32 ASM-SINK ENC-CMP-RI32  C-NE hot JCC,
    RAX ASM-SINK ENC-NEG  RDX ZERO-REG,  done JMP,
    hot X64CODE:LBL,
@@ -5746,7 +5724,6 @@ public
    ENGINE-PRIMS:HELPER-REGISTER
    SYSCALLS,
    CONTROL,
-   DIV-ZERO-HELPER,
    ATOMICS,
    PUBLICATION,
    DICT-SEARCH,

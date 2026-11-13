@@ -331,9 +331,9 @@ ARCHES TYPED-BUFFER EMIT-IMM?-XT [ n -- bool ]
 
 \ DIVISION. `/` and `mod` by a literal divisor other than 0 and -1 are
 \ EMIT-DIV-LIT and EMIT-MOD-LIT. A zero divisor stays a call of the kernel row,
-\ which throws E-DIV-ZERO; -1 stays a call because x86-64 idiv faults on
-\ MIN-N -1 (arm64 sdiv answers MIN-N), and one rule holds for every target. A
-\ register divisor and `/mod` stay calls too.
+\ so no fold divides by it on the host; -1 stays a call because x86-64 idiv
+\ faults on MIN-N -1 (arm64 sdiv answers MIN-N), and one rule holds for every
+\ target. A register divisor and `/mod` stay calls too.
 \
 \ EMIT-DIV-LIT and EMIT-MOD-LIT replace the dividend in d with its quotient by
 \ n, truncated toward zero, or the remainder that carries the dividend's sign,

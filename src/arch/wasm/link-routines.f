@@ -7,7 +7,6 @@ require src/arch/wasm/leb.f
 require src/arch/wasm/profile.f
 require src/arch/wasm/code.f
 require src/habu/layout.f
-require src/lib/error.f
 
 package LINKER
 private
@@ -141,17 +140,13 @@ variable BUF-U
    L-SP GET,  CELL-BYTES I32,  OP-I32-ADD B,  L-SP SET,  SP!, ;
 
 
-\ `/` or `mod` by op: a zero divisor throws E-DIV-ZERO, the
-\ stack kept. With neg1 a divisor of -1 answers 0 - a: div_s traps on MIN-N / -1.
+\ `/` or `mod` by op; a zero divisor traps in div_s or rem_s. With neg1 a divisor
+\ of -1 answers 0 - a: div_s traps on MIN-N / -1.
 : DIVIDE-BODY ( n bool -- )
    {: op:n neg1:bool :}
    2 U32,  1 U32,  I32 B,  1 U32,  I64 B,
    WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES 2 * I32,  OP-I32-SUB B,  L-SP SET,
    L-SP GET,  OP-I64-LOAD ALIGN-64 CELL-BYTES MEM,  L-DIVISOR SET,
-   L-DIVISOR GET,  OP-I64-EQZ B,  IF,
-      L-CTX GET,  E-DIV-ZERO I64,  OP-I64-STORE ALIGN-64 WPROF:CTX-THROW-CODE MEM,
-      1 I32,  OP-RETURN B,
-   OP-END B,
    neg1 if
       L-DIVISOR GET,  -1 I64,  OP-I64-EQ B,  IF,
          L-SP GET,  0 I64,  L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,  OP-I64-SUB B,

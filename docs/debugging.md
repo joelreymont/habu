@@ -55,7 +55,8 @@ stripped application's uncaught throw does not yet run the hook or print the
 report. A code from 1 to 255 is the exit status and prints nothing: `42 throw`
 exits 42. Any other nonzero code prints `hb: uncaught throw code N` on stderr
 and exits 67, so read the `E-*` from the message, not from the status. Under
-`--load` an uncaught `0 throw` reads as success: it ends its file silently and
+`--load` an uncaught throw of a computed 0 reads as success (a literal `0 throw`
+is refused, `E-THROW-ZERO`): it ends its file silently and
 the run goes on; a stripped application prints `hb: uncaught throw code 0` and
 exits 67. A refusal the checker rendered before throwing its code prints the same line after its
 diagnostic and exits 70, the status of every refusal; a stripped application

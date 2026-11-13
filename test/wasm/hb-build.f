@@ -213,13 +213,6 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    S\"    5 FLIP $1FFFFFFFFFFFFFFF <> if 16 FAIL then ;\n;package\n" SB-APPEND
    SB$ s" d.f" SOURCE! ;
 
-: DIV0-CASE ( -- )
-   s" : DIV ( n n -- n ) / ;  : MAIN ( -- ) 1 0 DIV drop ;" s" div0.f" SOURCE!
-   s" a zero divisor runs to status 1 and throws E-DIV-ZERO" T-LABEL
-   s" div0.wasm" BUILD 0 T=
-   RAN 1 T=
-   WASM-HARNESS:THROW-CODE E-DIV-ZERO T= ;
-
 
 \ The program f.f: each float word through a word whose operands are not
 \ literals at the call, and a double out of an if's two arms, printed by `f.`
@@ -748,7 +741,6 @@ public
    FULL-CASE
    PASS-CASE
    PROGRAM-CASES
-   DIV0-CASE
    FLOAT-CASE
    LOOP-CASE
    SHA-CASE
@@ -784,6 +776,17 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    WASM-HARNESS:OUT$ s" byte: negative length" T$= ;
 
 T-RESET SETUP NEGATIVE-BYTE-CASE T-REPORT
+[then]
+
+false [if] \ off until dot habu-add-the-checks-a49d054d
+: DIV0-CASE ( -- )
+   s" : DIV ( n n -- n ) / ;  : MAIN ( -- ) 1 0 DIV drop ;" s" div0.f" SOURCE!
+   s" a zero divisor runs to status 1 and throws E-DIV-ZERO" T-LABEL
+   s" div0.wasm" BUILD 0 T=
+   RAN 1 T=
+   WASM-HARNESS:THROW-CODE E-DIV-ZERO T= ;
+
+T-RESET SETUP DIV0-CASE T-REPORT
 [then]
 
 ;package

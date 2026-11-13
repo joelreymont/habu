@@ -284,7 +284,8 @@
 \ same node copier as stored effects, but into two process-owned buffers instead
 \ of USIGS, while TOP-COPYING is set. A save writes the write buffer from terms
 \ whose atom and family names still borrow the read buffer, then the two swap.
-\ A literal event appends to the read buffer at TOP-READ-END.
+\ A literal event appends to the read buffer at TOP-READ-END. While TOP-COPYING,
+\ a cell's lost flag and literal value ride in its push node's EN.D, EN.E and EN.F.
 \
 \ Node interning: when E-COPY* finishes a subterm at the top of the arena, an
 \ identical node below wins: UEND rewinds over the fresh copy and the older
@@ -2030,8 +2031,8 @@ CHECKER-REG:}SCRATCH
 3 constant CP-NORMAL
 4 constant CP-FACT
 5 constant CP-LOCAL
-\ A body's number token pushes a cell holding its value in CP-ID; stack words
-\ and equal joins carry it, LIT-FITS? judges it, no effect record keeps it.
+\ A number token's cell holds its value in CP-ID; stack words and equal joins
+\ carry it, and of the stores only the interpret row keeps it.
 6 constant CP-LIT
 : CP-BASE ( -- ptr n ) CP-P @ ;
 : CP-AT ( n -- ptr n ) 1- 32 * CP-BASE + ;
@@ -5187,6 +5188,8 @@ CHECKER-REG:}SCRATCH
 68 constant MD-STORED-LINEAR \ a type bound to a cast's stored type variable may hold a linear value (TV! STORED-TERM-HIT); E-CAST-LINEAR
 69 constant MD-STORED-CLASS  \ it hands out an atom or a width (TV! STORED-TERM-HIT); E-CAST-CLASS
 70 constant MD-IS-STORED     \ a callable's cast-stored type variable meets a cell's unrestricted one (QCON-OK?); E-CAST-LINEAR
+71 constant MD-DIV-ZERO      \ a literal 0 divisor reached the engine's `/`, `mod` or `/mod` (ZERO-OPERAND?)
+72 constant MD-THROW-ZERO    \ a literal 0 reached the engine's `throw` (ZERO-OPERAND?)
 \ A data depth change is E-MISMATCH and prints the loop's start row and the
 \ row at its back edge or leave; the others are E-REJECTED.
 48 constant MD-LOOP-DEPTH    \ a loop's back edge or leave holds another data depth than its start (CF-CARRIED=)
@@ -9995,7 +9998,12 @@ UIX-RESET
             over P>TYPE TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-WPTR EN.A !
             TOP-SCOPE-SEEN @ IF                      \ only while TOP-COPYING: the cell is lost
                EN-STALE E-NODE-OFF r@ E-WPTR EN.A !  -1 r@ E-WPTR EN.D !
-            ELSE TOP-COPYING @ IF over P>LOST r@ E-WPTR EN.D ! THEN THEN
+            ELSE TOP-COPYING @ IF
+               over P>LOST r@ E-WPTR EN.D !
+               over P>PROOF dup CP-LIT? IF
+                  -1 r@ E-WPTR EN.E !  CP-ID r@ E-WPTR EN.F !
+               ELSE drop THEN
+            THEN THEN
             TOP-SCOPE-SEEN @ or TOP-SCOPE-SEEN !     \ ( back cur )
             \ The cell's physical width. Held as width+1; readers fail
             \ closed on 0.
@@ -11278,6 +11286,15 @@ PTR-VARIABLE ASIG-LAST-P
    off 0= IF RES-FALSE EXIT THEN
    pool off + EN.TAG @ EN-PUSH = ;
 
+: TOP-CELL-LOAD ( n ptr u8 ptr u8 -- n )
+   {: cell:n node:ptr pool:ptr :}
+   pool TOP-READ-P @ BYTE-VIEW <> IF cell EXIT THEN
+   node EN.D @ cell P-LOST!
+   node EN.E @ 0 <> IF
+      CP-LIT node EN.F @ 0 0 CP-NEW cell P-PROOF!
+   THEN
+   cell ;
+
 : E-INST-FROM ( n ptr u8 -- n ) {: off:n pool:ptr :}
    off 0= if 0 exit then
    pool off + >r
@@ -11310,12 +11327,12 @@ PTR-VARIABLE ASIG-LAST-P
       EN-PUSH of
          \ A row's spine is a loop, so its length costs no depth.
          r@ EN.A @ pool RECURSE 0 MK-PUSH                  \ ( head )
-         pool TOP-READ-P @ BYTE-VIEW = IF r@ EN.D @ over P-LOST! THEN
+         r@ pool TOP-CELL-LOAD
          dup r> EN.B @                                     \ ( head last next )
          BEGIN dup pool E-INST-PUSH? WHILE
             pool swap + >r
             r@ EN.A @ pool RECURSE 0 MK-PUSH               \ ( head last p )
-            pool TOP-READ-P @ BYTE-VIEW = IF r@ EN.D @ over P-LOST! THEN
+            r@ pool TOP-CELL-LOAD
             tuck swap P-REST!                              \ ( head p )
             r> EN.B @                                      \ ( head p next )
          REPEAT
@@ -15803,7 +15820,7 @@ CAST: AS-RECORD-PUBLISHED ( n -- [ n -- ] )
 
 \ A symbol's newest row wins, so create's one row carries all its facts.
 : NORET-AXIOMS ( -- )
-   s" throw" CTL-DEAD CTL-THROW or NORET-AXIOM
+   s" throw" CTL-DEAD CTL-THROW or CTL-CORE-OP or NORET-AXIOM
    s" die" CTL-DEAD NORET-AXIOM
    s" evaluate" CTL-RENDERS CTL-CORE-OP or NORET-AXIOM
    s" evaluate-closed" CTL-RENDERS NORET-AXIOM
@@ -15813,6 +15830,9 @@ CAST: AS-RECORD-PUBLISHED ( n -- [ n -- ] )
    s" create" CTL-PARSES CTL-CREATES or INTRINSIC-CREATE INTRINSIC>CTL or NORET-AXIOM
    s" 0=" CTL-CORE-OP CTL-ZERO-TRUE or NORET-AXIOM
    s" <>" CTL-CORE-OP NORET-AXIOM
+   s" /" CTL-CORE-OP NORET-AXIOM
+   s" mod" CTL-CORE-OP NORET-AXIOM
+   s" /mod" CTL-CORE-OP NORET-AXIOM
    s" dup" CTL-CORE-OP NORET-AXIOM
    s" drop" CTL-CORE-OP NORET-AXIOM
    s" swap" CTL-CORE-OP NORET-AXIOM
@@ -21388,6 +21408,30 @@ variable IS-PEND-U                   \ and its length
    famterm LAYOUT-PARAM? 0= IF RES-FALSE EXIT THEN        \ ordinary pointee: the plain row answers
    famterm RECORD-AT-STEP RES-TRUE ;
 
+\ The reason a literal 0 operand of the token's spelling raises, else 0.
+: ZERO-REASON ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u s" /" CORE-STR=  a u s" mod" CORE-STR= or
+   a u s" /mod" CORE-STR= or IF MD-DIV-ZERO EXIT THEN
+   a u s" throw" CORE-STR= IF MD-THROW-ZERO EXIT THEN
+   0 ;
+
+: ZERO-ON-TOP? ( -- bool )
+   DCUR @ R-RES dup TAG S-PUSH <> IF drop RES-FALSE EXIT THEN
+   P>PROOF {: pf:n :}
+   pf CP-LIT? 0= IF RES-FALSE EXIT THEN
+   pf CP-ID 0= ;
+
+\ A zero divisor has no quotient, and `0 throw` unwinds with the code that
+\ means no error: the engine's word refuses a literal 0 on top.
+: ZERO-OPERAND? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u ZERO-REASON {: why:n :}
+   why 0= IF RES-FALSE EXIT THEN
+   a u TOK-CORE-OP? 0= IF RES-FALSE EXIT THEN
+   ZERO-ON-TOP? 0= IF RES-FALSE EXIT THEN
+   why MDIAG!
+   0 OK !
+   RES-TRUE ;
+
 \ The steps that type an engine word by what it does, in their one order. Each
 \ is asked only when the token binds that word (TOK-INTRINSIC, TOK-CORE-OP?);
 \ any other binding of the spelling goes on to DO-TOK and is judged by its own
@@ -21396,6 +21440,7 @@ variable IS-PEND-U                   \ and its length
    a u TOK-INTRINSIC  TOK-SYM @  {: id:n sym:n :}
    a u BIND-SOURCE-CALL
    sym ARENA-CALL-REFUSE? IF RES-TRUE EXIT THEN
+   a u ZERO-OPERAND? IF RES-TRUE EXIT THEN
    id INTRINSIC-QDUP = IF QDUP-STEP RES-TRUE EXIT THEN
    LAYOUT-XPORT @ IF a u WF-XPORT-RECORD THEN   \ width facts from the pre-op row
    id INTRINSIC-HIDE-ROW = IF HIDROW-STEP? EXIT THEN   \ depth/.s fail closed over a wide or open-width value
@@ -25506,17 +25551,24 @@ CHECKER-REG:}SCRATCH
    REPEAT ;
 
 \ A literal of class cls: STR pushes ptr u8 and n, CSTR ptr u8, NUM n or r,
-\ CHAR n.
+\ CHAR n; an integer NUM's entry keeps its value.
 : TOP-READ-LIT ( ptr u8 n n -- ) {: a:ptr u:n cls:n :}
    cls TOP-EV-NUM = IF
-      a u FLOAT-LITERAL-ADMITTED? nip IF CC-R ELSE CC-N THEN TOP-READ-CON TOP-READ-PUSH EXIT
+      a u FLOAT-LITERAL-ADMITTED? nip IF CC-R ELSE CC-N THEN TOP-READ-CON TOP-READ-PUSH
+      a u INTEGER-LITERAL-ADMITTED? IF
+         TOP-ROW-OFF @ TOP-READ-AT EN.F !
+         -1 TOP-ROW-OFF @ TOP-READ-AT EN.E !
+      ELSE drop THEN EXIT
    THEN
    cls TOP-EV-STR = cls TOP-EV-CSTR = or IF TOP-READ-PTR-U8 TOP-READ-PUSH THEN
    cls TOP-EV-CSTR <> IF CC-N TOP-READ-CON TOP-READ-PUSH THEN ;
 
 : TOP-LIT-STEP ( ptr u8 n n -- ) {: a:ptr u:n cls:n :}
    cls TOP-EV-NUM = IF
-      a u FLOAT-LITERAL-ADMITTED? nip IF PE-R ELSE PE-N THEN TOP-PUSH EXIT
+      a u FLOAT-LITERAL-ADMITTED? nip IF PE-R ELSE PE-N THEN TOP-PUSH
+      a u INTEGER-LITERAL-ADMITTED? IF
+         CP-LIT swap 0 0 CP-NEW DCUR @ P-PROOF!
+      ELSE drop THEN EXIT
    THEN
    cls TOP-EV-STR = cls TOP-EV-CSTR = or IF PE-PTR-U8 TOP-PUSH THEN
    cls TOP-EV-CSTR <> IF PE-N TOP-PUSH THEN ;

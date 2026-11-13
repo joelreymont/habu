@@ -482,11 +482,11 @@ variable ERR-U
    ['] SIBLINGS 0 TTHROWSQ
    TS-PV @ NULL-PTR - 0 T<> ;
 
-\ The first text's row ends `ptr ptr n` when `/` throws; its sibling starts on
+\ The first text's row ends `ptr ptr n` when it throws; its sibling starts on
 \ the same stack base with no cells, so its literals replace that row: a row
 \ that kept it would hand `+` two pointers.
 : SIBLING-LITERALS ( -- )
-   [: s" here here 1 0 /" evaluate-closed ;] catch E-DIV-ZERO T=
+   [: s" here here 1 E-DIV-ZERO throw" evaluate-closed ;] catch E-DIV-ZERO T=
    s" 3 4 + TS-V !" evaluate-closed ;
 
 : CASE-SIBLING-LITERALS ( -- )

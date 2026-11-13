@@ -89,7 +89,7 @@ CAST: N>TCB ( n -- ptr n )
 : FAIL ( n -- )
    {: v:n :}
    TASK:SELF-N v SEEN atomic!
-   1 0 / drop ;
+   E-DIV-ZERO throw ;
 
 
 : RECORD-CASE ( -- )

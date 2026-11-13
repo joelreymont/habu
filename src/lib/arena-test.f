@@ -172,7 +172,7 @@ variable ORDER                     \ the ids actions saw in run order, a digit e
    [: 6 TAGGED 42 ;] ARENA:WITH 42 T=
    ORDER @ 6 T=
    0 ORDER !
-   [: [: 7 TAGGED 1 0 / drop ;] ARENA:WITH ;] E-DIV-ZERO TTHROWSQ
+   [: [: 7 TAGGED E-DIV-ZERO throw ;] ARENA:WITH ;] E-DIV-ZERO TTHROWSQ
    ORDER @ 7 T= ;
 
 
