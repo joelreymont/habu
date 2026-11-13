@@ -77,14 +77,6 @@ variable PATH-U
    SAY-OBJECT
    s" link: the kernel object is cut short or malformed" 74 die ;
 
-: SAME ( n n ptr u8 n -- )
-   {: mine:n theirs:n a:ptr u:n :}
-   mine theirs = if exit then
-   SAY-OBJECT
-   s" link: its " SAY a u SAY s"  is " SAY theirs SAY-INT
-   s" , hb's is " SAY mine SAY-INT SAY-CR
-   s" link: the kernel object's code or data layout is not hb's" 74 die ;
-
 : KOBJ@ ( n -- n ) 0 KOBJ swap + LE:U64@ ;
 
 : NEXT ( -- n )
@@ -246,7 +238,7 @@ public
    at 8 + KOBJ@  at KOBJ@ ;
 
 \ The kernel object at the path, which the links that follow adopt; one whose
-\ DATA-START is not hb's dies.
+\ DATA-START is above hb's dies: hb routes only its own header's stores.
 : READ ( ptr u8 n -- )
    {: path:ptr pathu:n :}
    0 KOBJ-U !
@@ -261,7 +253,13 @@ public
    file 0 KOBJ size FS:READ-SIZED
    size KOBJ-U !
    CHECK SECTIONS
-   DATA-START  s" DATA-START" SYM  s" DATA-START" SAME
+   s" DATA-START" SYM {: theirs:n :}
+   theirs DATA-START > if
+      SAY-OBJECT
+      s" link: its DATA-START is " SAY theirs SAY-INT
+      s" , hb's is " SAY DATA-START SAY-INT SAY-CR
+      s" link: a target may not raise DATA-START above the running hb's" 74 die
+   then
    s" TEXT-VA" SYM KTEXT-VA !  s" DATA-VA" SYM KDATA-VA ! ;
 
 \ States READ's object's primitive rows to the open build's checker in table

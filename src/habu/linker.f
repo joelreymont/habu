@@ -44,6 +44,7 @@ TYPED-VARIABLE PROGRESS step
 public
 -9690 s" a file of this build failed or DP moved back in its space: the build loads no other file and writes no object or program" ERROR:CODE E-FAILED
 -9691 s" a file of this build changed an earlier record or code, or stored into a cell no file holds" ERROR:CODE E-STORE
+-9692 s" a file of this build stored into a cell of hb's header that the target's data holds: its DATA-START is below hb's" ERROR:CODE E-HEAP-STORE
 -9693 s" a file of this build made a wordlist no package of it holds" ERROR:CODE E-WORDLIST
 -9694 s" a file of this build left a task running at its end: its object would hold data the task can still change" ERROR:CODE E-LIVE-TASK
 private
@@ -130,10 +131,9 @@ $40 constant NORESERVE               \ macOS MAP_NORESERVE
 : COPIES ( -- n ) CROSS? if 2 else 1 then ;
 
 \ The space's DATA starts, ends and stops DP where the kernel the link adopts
-\ reads them (ARM64:READ); a kernel build's, a cross build's, or one no object
-\ was read for, where hb's does (src/arch/wasm/profile.f WPROF mirrors hb's
-\ band through DATA-START).
-: OBJECT-LAYOUT? ( -- bool ) KERNEL? @ 0= CROSS? 0= and ARM64:READ? and ;
+\ reads them (ARM64:READ); a kernel build's, or one no object was read for (a
+\ Wasm build's, whose WPROF mirrors hb's band through DATA-START), where hb's does.
+: OBJECT-LAYOUT? ( -- bool ) KERNEL? @ 0= ARM64:READ? and ;
 
 : LAYOUT-START ( -- n )
    OBJECT-LAYOUT? if s" DATA-START" ARM64:SYM exit then
@@ -2402,10 +2402,17 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
 
 \ STORED, ascending: each changed non-scratch cell BELOW, each header cell xt! or ptr-cell! stored (MARKED+) and each
 \ new row's cell below FILE-DP, aligned or E-COMP-STATE; E-STORE for a cell no earlier file or the header holds.
+\ A mark at or above the target's DATA-START, a lower one than hb's, is E-HEAP-STORE.
 : FIND-STORES ( -- )
    0 STORED-N !
    BELOW COMPARE-RANGE
-   ANY-MARK @ 0<> if DATA-START CELL / 0 ?do i cells MARKED+ loop then
+   LAYOUT-START CELL / {: heap:n :}
+   ANY-MARK @ 0<> if
+      heap 0 ?do i cells MARKED+ loop
+      DATA-START CELL / heap ?do
+         i cells MARK-AT @ 0<> if E-HEAP-STORE throw then
+      loop
+   then
    ROWS {: rows:ptr count:n :}
    count FILE-CELLS @ ?do
       rows i cells + @ ROW-AT {: at:n :}

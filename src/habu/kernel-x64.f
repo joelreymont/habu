@@ -394,7 +394,7 @@ CELL 4 * constant DIAG-BYTES
    RSP DIAG-BYTES >IMM8 ASM-SINK ENC-ADD-RI8 ;
 
 \ The DP refusal's line, before and between its two numbers.
-: DPBAD-HEAD$ ( -- ptr u8 n ) s" hb: data space out of range: DP " ;
+: DPBAD-HEAD$ ( -- ptr u8 n ) s" hb: data space out of range: heap byte " ;
 \ The line CONTROL,'s floor recovery writes before the token.
 : UNDERDEPTH$ ( -- ptr u8 n ) s" E-UNDERFLOW habu: interpret stack underdepth: " ;
 : DPBAD-OF$ ( -- ptr u8 n ) s"  of " ;
@@ -1768,11 +1768,12 @@ private
    RAX ENGINE-ERROR:OVERLAY-OPEN IMM32,  RAX ASM-SINK ENC-PUSH
    COMPILE-DIE-LBL JMP,
    DPBAD-LBL X64CODE:LBL,
-   R8 RDI ASM-SINK ENC-MOV-RR  R8 DATA-REG ASM-SINK ENC-SUB-RR
+   RAX DATA-REG DATA-START MEM-OFF ASM-SINK ENC-LEA
+   R8 RDI ASM-SINK ENC-MOV-RR  R8 RAX ASM-SINK ENC-SUB-RR
    head DPBAD-HEAD$ nip STDERR-WRITE,
    RAX R8 ASM-SINK ENC-MOV-RR  DIAG-U,
    of DPBAD-OF$ nip STDERR-WRITE,
-   RAX DP-CEILING IMM64,  DIAG-U,
+   RAX DP-CEILING DATA-START - IMM64,  DIAG-U,
    unit DPBAD-UNIT$ nip STDERR-WRITE,
    RAX DPBAD-RC IMM32,  RAX ASM-SINK ENC-PUSH
    COMPILE-DIE-LBL X64CODE:LBL,

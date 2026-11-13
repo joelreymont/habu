@@ -78,7 +78,7 @@ seed and target.
 ## Staged hosts
 
 A change to the kernel, the start-up or the layout lands in one build unless it
-moves where DATA starts. One to what the running hb's compiler does with the
+raises where DATA starts. One to what the running hb's compiler does with the
 tree's code (code layout, records, wordlist numbering, the address list), a
 body that calls a primitive its own change adds, a new primitive-spec atom code
 (the running checker replays the tree's rows and dies `checker: unknown
@@ -97,7 +97,7 @@ does not yet need it, with the running hb; then build the tree with that stage:
 The link refuses a kernel object the running hb cannot read
 (src/arch/arm64/link-kernel.f READ). A change to the object's format needs a
 stage that changes the reader before the tree changes the writer. READ also
-refuses an object whose DATA-START is not hb's, staged or not: the hb building
+refuses an object whose DATA-START is above hb's: the hb building
 it sends a build's xt! and ptr-cell! stores into its header to the image only
 below its own DATA start (src/habu/habu2.f ROUTE-HEADER).
 

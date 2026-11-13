@@ -127,11 +127,11 @@ variable LFLOORREC   \ the underdepth throw for a data access below the base
 \ ceiling and the count.
 variable LDIAGU     \ ( x9 = value ) unsigned decimal on fd 2, no newline
 variable LBGROWCLASS   variable LBGROWMSG   variable LBGROWUNIT   \ the body text block could not grow
-variable LDPBADCLASS   variable LDPBADMSG   variable LDPBADOF   variable LDPBADUNIT   \ DP-heap bound reject: the class head, the prose before the DP, the " of " before the ceiling and the " bytes" that ends the line
+variable LDPBADCLASS   variable LDPBADMSG   variable LDPBADOF   variable LDPBADUNIT   \ DP-heap bound reject: the class head, the prose before the DP's offset from the heap floor, the " of " before the ceiling's and the " bytes" that ends the line
 
 private
 : DPBAD-CLASS$ ( -- ptr u8 n )   s" E-DATA-SPACE habu: " ;
-: DPBAD-MSG$ ( -- ptr u8 n )     s" data space out of range: DP " ;
+: DPBAD-MSG$ ( -- ptr u8 n )     s" data space out of range: heap byte " ;
 : DPBAD-OF$ ( -- ptr u8 n )      s"  of " ;
 : DPBAD-UNIT$ ( -- ptr u8 n )    s"  bytes" ;
 : BGROW-CLASS$ ( -- ptr u8 n )   s" E-BODY-TEXT habu: " ;
@@ -444,7 +444,7 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
    LMINCLASS LABEL@ LBL, MINCLASS$ BYTES,
    LMINMSG LABEL@ LBL, MINMSG$ BYTES,                  \ LFLOORREC appends the token + newline
    LDPBADCLASS LABEL@ LBL, DPBAD-CLASS$ BYTES,
-   LDPBADMSG LABEL@ LBL, DPBAD-MSG$ BYTES,                               \ LDPBAD appends the refused DP, " of ", the ceiling and " bytes"
+   LDPBADMSG LABEL@ LBL, DPBAD-MSG$ BYTES,
    LDPBADOF LABEL@ LBL, DPBAD-OF$ BYTES,
    LDPBADUNIT LABEL@ LBL, DPBAD-UNIT$ BYTES,
    LBGROWCLASS LABEL@ LBL, BGROW-CLASS$ BYTES,
@@ -2891,10 +2891,10 @@ private
    0 2 MOVZ,  1 LDPBADCLASS LABEL@ ADR,  2 DPBAD-CLASS-LEN MOVZ,  NR-WRITE SYS,
    LPLACE LABEL@ BL,
    0 2 MOVZ,  1 LDPBADMSG LABEL@ ADR,  2 DPBADMSG-LEN MOVZ,  NR-WRITE SYS,
-   9 DATA BOOT:DP-FLOOR-CELL LDR,  10 DATA-START LIT64,  9 9 10 SUB,
+   9 DATA BOOT:DP-FLOOR-CELL LDR,
    9 15 9 SUB,  LDIAGU LABEL@ BL,                           \ the refused DP
    0 2 MOVZ,  1 LDPBADOF LABEL@ ADR,  2 DPBAD-OF-LEN MOVZ,  NR-WRITE SYS,
-   9 DATA BOOT:DP-FLOOR-CELL LDR,  10 DATA-START LIT64,  9 9 10 SUB,
+   9 DATA BOOT:DP-FLOOR-CELL LDR,
    10 DATA BOOT:DP-CEILING-CELL LDR,  9 10 9 SUB,
    LDIAGU LABEL@ BL,                                        \ the ceiling DP-CHECK enforces
    0 2 MOVZ,  1 LDPBADUNIT LABEL@ ADR,  2 DPBAD-UNIT-LEN MOVZ,  NR-WRITE SYS,

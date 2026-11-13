@@ -66,13 +66,13 @@ create PROG-BUF PATH-CAP allot
    s" : LD-OVER ( -- ) 1 41 lshift allot ;" evaluate-closed ;
 
 
-\ What over's refusal names: its DP and ceiling less the floor's base, read
+\ What over's refusal names: its DP and ceiling less the heap floor, read
 \ from the build's cells as the kernel reads the program's.
 variable OVER-DP
 variable OVER-CEILING
 
 : OVER-EXPECT ( -- )
-   data-base BOOT:DP-FLOOR-CELL + @ DATA-START - {: base:n :}
+   data-base BOOT:DP-FLOOR-CELL + @ {: base:n :}
    here NULL-PTR - 1 41 lshift + base - OVER-DP !
    data-base BOOT:DP-CEILING-CELL + @ base - OVER-CEILING ! ;
 

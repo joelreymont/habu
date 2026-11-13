@@ -2095,9 +2095,10 @@ cannot grow definition body text to <n> bytes`.
 - **Data space**: `allot`, `align`, `,`, `c,`, `create`/`variable`/`defer` and
   the interpret-mode string literals that keep their text (all but `."`)
   advance the dictionary pointer. Past the DATA reservation: `E-DATA-SPACE
-  habu: <path>:<line>: data space out of range: DP <dp> of <cap> bytes`, the
-  place as [debugging.md](debugging.md) "Where a load refusal happened" states,
-  catchable inside `evaluate`, both numbers offsets from `data-base`. Hold bulk data in `MEM:ALLOC-BYTES` or a
+  habu: <path>:<line>: data space out of range: heap byte <dp> of <cap> bytes`,
+  the place as [debugging.md](debugging.md) "Where a load refusal happened"
+  states, catchable inside `evaluate`, both numbers offsets from the heap's
+  first byte. Hold bulk data in `MEM:ALLOC-BYTES` or a
   `DYNAMIC-BUFFER`, which map their own pages, not in the dictionary. On a
   task's thread every one of these sinks exits before it writes, as do
   `evaluate` and `evaluate-closed`; the main thread uses them while tasks run
