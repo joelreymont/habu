@@ -6,7 +6,7 @@ issue-type: task
 created-at: "2026-10-08T10:58:28.751596+02:00"
 ---
 
-Problem: engine-internal primitives (trust-sig!, def-defer, set-check, namespace-record, package-scope!, code-publish, ...) have a global record, kept from checked code only by marks and by per-package owner rows (src/habu/prims.f EPRIM: with ETRUSTED-ONLY!, EPPRIM:), and several stay reachable: the probes are in the children.
+Problem: engine-internal primitives (trust-sig!, set-check, namespace-record, package-scope!, code-publish, ...) have a global record, kept from checked code only by marks and by per-package owner rows (src/habu/prims.f EPRIM: with ETRUSTED-ONLY!, EPPRIM:), and several stay reachable: the probes are in the children.
 Ruling (Joel, 2026-10-08): system words go in the system package's private section, never the global dictionary; no owner rows, no caller checks. Restricting a word = putting it in a private section.
 Design (settled by the lead, 2026-11-13; each slice is a child dot):
 - An internal primitive is a private word of each engine package that calls it: prims.f keeps one private row per primitive and calling package (the form patch32 has in XREF and DEBUG) and no global row. No package named SYSTEM, no language change. A caller in no package, or behind a TRUSTED: wrapper, moves into a package with its own private row.

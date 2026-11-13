@@ -4,10 +4,6 @@
 \ label VARIABLES (a giant single word would need dozens of locals); emission
 \ order is stable so the self-rebuild reaches a fixpoint.
 \
-\ Every address literal is a fixed MOVZ/MOVK chain whose site the address map
-\ records: a DATA address uses the three-half carrier, any other the absolute
-\ one.
-\
 \ A does> clause gets a record of its own. LDOESPATCH patches the created
 \ word's RET into `b D`, D inside the defining word's body. As a record, D is an
 \ entry resolved by name like every BL; a name plus byte delta is refused, since
@@ -32,7 +28,6 @@
 \ pending-definition refusals, as a raw ndict! reaches the HW one.
 require src/lib/fmt.f
 require src/habu/address-cells.f
-require src/habu/address-carrier.f
 require src/habu/snapshot-format.f
 require src/habu/code-span.f
 require src/habu/native-body-abi.f
@@ -44,41 +39,7 @@ using CRASH
 using RT
 using SYSCALL
 
-package ENGINE-EMIT
-private
-
-\ A carrier word with its destination field cleared: the chain emitters OR in
-\ the register x14 names.
-: RD-FREE ( n -- n )
-   ADDRESS-CARRIER:ADDR-RD-BITS rshift ADDRESS-CARRIER:ADDR-RD-BITS lshift ;
-
-\ Fixed four-instruction MOVZ/MOVK chain of x11 into the register x14 names.
-: C-ADDR-RAW ( -- )
-   6 11 0 ADDI,  5 $FFFF MOVZ,
-   7 6 5 AND,    7 7 5 LSLI,  8 W-MOVZ0 RD-FREE LIT64,  8 8 14 ORR,  9 8 7 ORR,  LCEMIT LABEL@ BL,
-   7 6 16 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 W-MOVK1 RD-FREE LIT64,  8 8 14 ORR,  9 8 7 ORR,  LCEMIT LABEL@ BL,
-   7 6 32 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 W-MOVK2 RD-FREE LIT64,  8 8 14 ORR,  9 8 7 ORR,  LCEMIT LABEL@ BL,
-   7 6 48 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 W-MOVK3 RD-FREE LIT64,  8 8 14 ORR,  9 8 7 ORR,  LCEMIT LABEL@ BL, ;
-
-\ Shared DATA must not use x20, which changes per task. Both fixed DATA mappings
-\ fit three halves; high-to-low order distinguishes these from full addresses.
-\ The chain loads the register x14 names.
-: C-DATA-RAW ( -- )
-   DATA-VA VA>N DATA-SIZE + $FFFFFFFFFFFF > if C-ADDR-RAW exit then
-   LBL LBL {: absolute:label done:label :}
-   5 DATA-VA VA>N LIT64,  6 11 5 SUB,  5 DATA-SIZE LIT64,
-   6 5 CMP,  C-HI absolute BCOND,
-   5 $FFFF MOVZ,
-   7 11 32 LSRI,  7 7 5 AND,  7 7 5 LSLI,  8 ADDRESS-CARRIER:DATA-MOVZ2 LIT64,  8 8 14 ORR,  9 8 7 ORR,  LCEMIT LABEL@ BL,
-   7 11 16 LSRI,  7 7 5 AND,  7 7 5 LSLI,  8 W-MOVK1 RD-FREE LIT64,  8 8 14 ORR,  9 8 7 ORR,  LCEMIT LABEL@ BL,
-   7 11 5 AND,  7 7 5 LSLI,  8 ADDRESS-CARRIER:DATA-MOVK0 LIT64,  8 8 14 ORR,  9 8 7 ORR,  LCEMIT LABEL@ BL,
-   done B,
-   absolute LBL, C-ADDR-RAW
-   done LBL, ;
-;package
 using ENGINE-EMIT
-\ C-DATA-ADDR-RAW sits after the snapshot-relocation labels: it records a site
-\ through RELOC-EMIT:MARK-SITE.
 
 package ENGINE-EMIT
 public
@@ -141,17 +102,6 @@ variable LMARK      \ declare one DATA cell as holding a region address
 variable LPTRMARK   \ declare one DATA cell as holding a DATA pointer
 variable LSCRATCHMARK \ declare one DATA cell as a scratch pointer, saved as null
 variable LROLLBACK  \ retire address rows at or above the saved DATA cut
-variable LADDRSITE  \ record the address-literal chain whose first word is in x9
-
-\ Record an address chain whose first instruction is held in the named register;
-\ compile handlers name CP.
-: MARK-SITE-AT ( n -- ) {: site:n :}
-   9 site 0 ADDI,
-   LADDRSITE LABEL@ BL, ;
-
-\ The compile handler records CP before emitting the chain's first instruction.
-: MARK-SITE ( -- )
-   CP MARK-SITE-AT ;
 
 : EMIT-FULL-MESSAGE ( -- )
    LXTMSG LABEL@ LBL, XTMSG$ BYTES, ;
@@ -159,14 +109,6 @@ variable LADDRSITE  \ record the address-literal chain whose first word is in x9
 ;package
 
 package ENGINE-EMIT
-private
-\ x9, no push: the defer dispatch-cell address.
-: C-DATA-ADDR-RAW ( -- )
-   RELOC-EMIT:MARK-SITE
-   14 9 MOVZ,  C-DATA-RAW ;
-
-$D63F0200 constant C-CALL-BLR-X16     \ blr x16: deferred-word indirect call
-
 public
 
 variable LPLACEEND            \ ": " — what LPLACE writes after <path> or <path>:<line>
@@ -470,15 +412,6 @@ variable LKWTRUSTDECL
 
 : EMIT ( -- )
    LKWTRUSTDECL LABEL@ LBL, TRUSTDECL$ BYTES,      LKWTRUSTRAW LABEL@ LBL, TRUSTRAW$ BYTES, ;
-
-;package
-
-package ENGINE-EMIT
-
-private
-
-: W-LDRX ( n n n -- n ) {: rt RN off :}                               \ ldr rt,[rn,#off]
-   $F9400000  off 8 / 10 lshift or  RN 5 lshift or  rt or ;
 
 ;package
 
@@ -1505,80 +1438,6 @@ variable LREPLAYTRAP
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 
-private
-
-\ The end of the def-defer row, a definition with no compiled body: the pending
-\ record must be of kind `kind`, with CP below the code ceiling. `tail` writes
-\ the row's code, then the state def-open set clears, PEND-CELL last.
-: TAIL-CLOSE ( ptr u8 n n [ -- ] -- )
-   {: a:ptr u:n kind:n tail :}
-   LBL LBL {: bad done :}
-   9 DATA PEND-CELL LDR,  9 bad CBZ,
-   9 NDICT REC-AT,
-   10 9 16 LDR,  10 10 DKIND:MASK ANDI,  11 kind LIT64,  10 11 CMP,  C-NE bad BCOND,
-   10 REGION $4000 - LIT64,  10 DBASE 10 ADD,  CP 10 CMP,  C-CS bad BCOND,
-   tail execute
-   C-CLEAR-TRUSTED-STATE
-   9 0 MOVZ,  9 DATA PEND-CELL STR,
-   done B,
-   a u bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
-   done LBL, ;
-
-;package
-
-package ENGINE-EMIT
-
-: C-EMITW ( n -- ) 9 swap LIT64,  LCEMIT LABEL@ BL, ;
-
-\ The whole body in one emission, frame included: it reaches its target through
-\ `blr x16`. It is emitted from the interpret-mode `defer` declarer, outside any
-\ open body.
-: C-DEFER-EMIT-CODE ( -- )
-   W-LINKSAVE C-EMITW
-   11 DATA DEFER-XT-CELL LDR,
-   C-DATA-ADDR-RAW                                 \ movz/movk x9 = dispatch-cell addr (relocatable data addr)
-   16 9 0 W-LDRX C-EMITW
-   16 CP ENC-CMP C-EMITW                           \ `is` stores an xt
-   8 C-CC ENC-BCOND C-EMITW                        \ below CP: past the ISB
-   ENC-ISB C-EMITW
-   C-CALL-BLR-X16 C-EMITW
-   W-LINKREST C-EMITW
-   W-RET C-EMITW ;
-
-: C-DEFER-META-WRITE ( -- )
-   1 DATA REGION-ALIAS:DELTA-CELL LDR,  1 CP 1 ADD,
-   11 DEFER-MAGIC LIT64,  11 1 0 STR,
-   11 DATA DEFER-XT-CELL LDR,  11 1 8 STR,  28 28 16 ADDI, ;
-
-public
-\ The end of `defer` and of the def-defer row alike, for record x9 in slot
-\ NDICT and the dispatch cell in DEFER-XT-CELL: [0] is CP, the code loads the
-\ cell and calls what it holds, [8] takes the code's length, the DEFER-MAGIC
-\ trailer naming the cell follows, the code is native and flushed.
-: DEFER-BODY, ( -- )
-   10 DATA REGION-ALIAS:DELTA-CELL LDR,  10 9 10 ADD,  CP 10 0 STR,
-   C-DEFER-EMIT-CODE
-   9 DATA PEND-CELL LDR,
-   10 9 0 LDR,  10 CP 10 SUB,  10 10 CODE-SPAN:FULL ORRI,
-   11 DATA REGION-ALIAS:DELTA-CELL LDR,  11 9 11 ADD,  10 11 8 STR,
-   C-DEFER-META-WRITE
-   9 DATA PEND-CELL LDR,  9 9 0 LDR,
-   LFLUSH LABEL@ BL, ;
-
-;package
-
-\ def-defer ( n -- ): a pending kind-0 record takes DEFER-BODY, for dispatch
-\ cell n. The cell is popped before TAIL-CLOSE checks: its refusals exit, never
-\ throw.
-package DEFWRITE
-public
-
-: DEF-DEFER ( -- )
-   11 G-POP  11 DATA DEFER-XT-CELL STR,
-   s" E-SEAL-VIOLATION habu: def-defer with no definition pending, one not of the kind, or CP at the code ceiling"
-   0 [: DEFER-BODY,  EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL, ;]
-   TAIL-CLOSE ;
-
 ;package
 
 package ENGINE-EMIT
@@ -2141,19 +2000,6 @@ ardone LBL,
    LPTRMARK LABEL@ BL,
    C B 0 STR, ;
 
-\ Record the MOVZ/MOVK address carrier whose first word is in x9, which compile
-\ handlers set to CP before emission. Preserve x11, the literal value they hold;
-\ they have no live x30 across this call and call LCEMIT afterward.
-\ Clobbers x5, x6, x9.
-: EMIT-ADDR-SITE ( -- )
-   LADDRSITE LABEL@ LBL,
-   6 9 DBASE SUB,                                   \ x6 = chain's byte offset within the region
-   9 6 0 ADDI,  9 9 2 LSRI,  9 9 7 ANDI,            \ x9 = bit number = word index & 7
-   6 6 5 LSRI,                                      \ x6 = map byte index = offset >> 5
-   5 SNAP-RELOC:ADDRMAP-OFF LIT64,  6 6 5 ADD,  6 DATA 6 ADD, \ x6 = map byte address
-   5 1 MOVZ,  5 5 9 LSLV,  9 6 0 LDRB,  9 9 5 ORR,  9 6 0 STRB,
-   RET, ;
-
 ;package
 
 package ENGINE-EMIT
@@ -2696,8 +2542,7 @@ package LABELS
    LBL EM-DEF-OCC:LBEFORE !  LBL EM-DEF-OCC:LAFTER !  LBL EM-DEF-OCC:LMATCH !
    LBL EM-DEF-OCC:LRECLAIM !  LBL EM-DEF-OCC:LRETIRE !
    LBL RELOC-EMIT:LMARK !  LBL RELOC-EMIT:LPTRMARK !  LBL RELOC-EMIT:LSCRATCHMARK !
-   LBL RELOC-EMIT:LROLLBACK !
-   LBL RELOC-EMIT:LADDRSITE ! ;
+   LBL RELOC-EMIT:LROLLBACK ! ;
 
 : CONTROL ( -- )
    LBL KWDATA:LKWTRUSTDECL !  LBL KWDATA:LKWTRUSTRAW !
@@ -2829,7 +2674,6 @@ package ENGINE-EMIT
    s" def-abort" ['] DEFWRITE:DEF-ABORT ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" stack-clear" ['] DEFWRITE:STACK-CLEAR ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" imm-mark" ['] C-IMMEDIATE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
-   s" def-defer" ['] DEFWRITE:DEF-DEFER ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" replay-open" ['] DEFWRITE:REPLAY-OPEN ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" replay-close" ['] DEFWRITE:REPLAY-CLOSE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" replay-widn!" ['] DEFWRITE:REPLAY-WIDN ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
@@ -2872,7 +2716,6 @@ package ENGINE-EMIT
    DOESPATCH:EMIT
    RELOC-EMIT:EMIT-MARK
    RELOC-EMIT:EMIT-ROLLBACK
-   RELOC-EMIT:EMIT-ADDR-SITE
    KWDATA:EMIT ;
 
 \ [LCRASHH, LHANDLERS-END) holds the signal handlers and no code Habu code calls. Where an

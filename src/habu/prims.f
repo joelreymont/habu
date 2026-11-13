@@ -769,10 +769,6 @@ EPPRIM: INTERPRETER stack-clear ECLOSE-PRIVATE
 EPRIM: imm-mark EPRIM;
 ETRUSTED-ONLY!
 EPPRIM: INTERPRETER imm-mark ECLOSE-PRIVATE
-\ def-defer ( n -- ): end the pending kind-0 definition as a call through
-\ dispatch cell n. Refuses none pending, a nonzero kind, and CP at the ceiling.
-EPRIM: def-defer PE-N PE-IN EPRIM;
-ETRUSTED-ONLY!
 \ Only CHECKER-OVERLAY types these six: elsewhere a checked call is E-UNDEFINED
 \ and a TRUSTED: one binds at tier 0 only. Refusals exit 79 on a task, else 83.
 \

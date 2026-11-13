@@ -45,15 +45,9 @@ using SYSCALL
 package ENGINE-EMIT
 public
 $D65F03C0 constant W-RET
-$D2800009 constant W-MOVZ0
-$F2A00009 constant W-MOVK1
-$F2C00009 constant W-MOVK2
-$F2E00009 constant W-MOVK3
 
 \ 16 bytes: AArch64 sp stays 16-byte aligned.
 30 SP -16 ENC-STRPRE  constant W-LINKSAVE
-private
-30 SP  16 ENC-LDRPOST constant W-LINKREST
 ;package
 package ENGINE-EMIT
 PTR-VARIABLE FP-A  variable FP-U

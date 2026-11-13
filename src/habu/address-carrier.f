@@ -8,13 +8,8 @@
 package ADDRESS-CARRIER
 public
 
-\ The four-instruction address chain habu2.f C-ADDR-RAW emits. ADDR-OPC-MASK keeps
-\ a MOVZ or MOVK word without its 16-bit immediate; ADDR-IMM-MASK is that
-\ immediate shifted down by five. W-MOVZ0..W-MOVK3 name x9, C-ADDR-RAW's register,
-\ but a native-compiled chain names its allocator's register: the pass takes the
-\ register from the site's first word and requires the other three to name it,
-\ since four words naming four registers spell no address. ADDR-RD-MASK and
-\ ADDR-RD-BITS are the move-wide destination field and its width.
+\ ADDR-OPC-MASK keeps a MOVZ or MOVK word without its 16-bit immediate;
+\ ADDR-RD-MASK is its destination field, ADDR-RD-BITS wide.
 $FFE0001F constant ADDR-OPC-MASK
 $FFFF constant ADDR-IMM-MASK
 16 constant ADDR-CHAIN-BYTES
@@ -25,8 +20,7 @@ $D2C00000 constant DATA-MOVZ2
 $F2800000 constant DATA-MOVK0
 
 \ The one reader and writer of a chain's value, for the capture's site scan, the
-\ capture merge's rebase and any later consumer. The relocation pass in
-\ src/habu/habu2.f is emitted machine code and reads the constants directly.
+\ capture merge's rebase and any later consumer.
 private
 
 \ The chain's own instruction word, a private copy as every reader of this
@@ -49,9 +43,7 @@ public
    p 12 + W32@ ADDR-RD-BITS rshift ADDR-IMM-MASK and 48 lshift or ;
 
 \ Re-encode a full 64-bit value into an existing chain, keeping each word's
-\ opcode AND its destination register - it never reads the register it
-\ preserves, so a chain the native compiler emitted into an allocator's register
-\ rewrites as readily as one the engine emitted into x9.
+\ opcode and destination register, so it rewrites a chain in any register.
 : SET-CHAIN ( ptr u8 n -- ) {: p:ptr val:n :}
    4 0 ?do
       p i 4 * + W32@ ADDR-OPC-MASK and

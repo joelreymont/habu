@@ -209,7 +209,6 @@ $78 constant PKG-PUB-CELL
 $80 constant PKG-PRI-CELL
 $88 constant PKG-PARENT-CELL
 $90 constant PKG-REC-CELL
-$A0 constant DEFER-XT-CELL
 \ DEFER-MAGIC: the first cell of the meta trailer `defer` writes just past a
 \ deferred word's code, followed by the address of its dispatch cell. A reader
 \ holding a record recognises a defer's trailer by this word, never by the

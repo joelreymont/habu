@@ -231,8 +231,7 @@ package CLOBBER
    a u s" g-push" LINT-STR=CI if LINT-TRUE exit then
    a u s" g-pop" LINT-STR=CI if LINT-TRUE exit then
    a u s" c-hidx-hash" LINT-STR=CI if LINT-TRUE exit then
-   a u s" g-print9" LINT-STR=CI if LINT-TRUE exit then
-   a u s" c-emitw" LINT-STR=CI ;
+   a u s" g-print9" LINT-STR=CI ;
 : INSTR?  ( ptr u8 n -- bool ) {: a:ptr u :}
    a u PSEUDO? if LINT-TRUE exit then
    a u ENDS-COMMA?  a u START-DOLLAR? 0= and  a u UPPERISH? and ;
@@ -406,8 +405,7 @@ DYNAMIC-BUFFER ROLES u8
    \ and its scratch.
    a u s" c-hidx-hash" LINT-STR=CI if 0 ER 1 ER 2 EW 3 EW 4 EW 5 EW exit then
    a u s" g-pop" LINT-STR=CI if 0 EW exit then
-   a u s" g-print9" LINT-STR=CI if 0 0 CL-ADD 1 CL-ADD 2 CL-ADD 16 CL-ADD CL-WOR  0 9 CL-ADD CL-ROR exit then
-   a u s" c-emitw" LINT-STR=CI if 0 9 CL-ADD 30 CL-ADD CL-WOR exit then ;
+   a u s" g-print9" LINT-STR=CI if 0 0 CL-ADD 1 CL-ADD 2 CL-ADD 16 CL-ADD CL-WOR  0 9 CL-ADD CL-ROR exit then ;
 
 : SYS-EXIT-NAME? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" NR-EXIT" LINT-STR= if LINT-TRUE exit then
