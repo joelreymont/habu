@@ -11,7 +11,6 @@ require src/core/include.f
 require src/os/env-base.f
 require src/habu/interpreter.f
 require src/habu/repl.f
-require src/lib/fmt.f
 
 package COMMAND-LINE
 
@@ -192,32 +191,6 @@ CAST: APP-ACTION ( n -- [ -- ] )
 : APP? ( -- bool )
    data-base APP-ENTRY:XT-CELL + @ 0<> ;
 
-\ The x86 kernel calls this reporter with the throw code on the data stack.
-\ It has no machine-side exit hook; run and clear that hook before any report.
-CAST: HOOK-ACTION ( n -- [ -- ] )
-
-: EXIT-HOOK ( -- )
-   data-base EXIT-HOOK-CELL + {: slot:ptr :}
-   slot @ {: xt:n :}
-   0 slot !
-   xt 0<> if xt HOOK-ACTION execute then ;
-
-: THROW-REPORT ( n -- )
-   SB-RESET
-   s" hb: uncaught throw code " SB-APPEND
-   FMT:SB-INT
-   10 SB-APPEND-C
-   2 SB$ write drop ;
-
-: REPORT ( n -- )
-   {: code:n :}
-   EXIT-HOOK
-   code 1 >= code 255 <= and if NULL$ code die then
-   code THROW-REPORT
-   data-base REFUSAL-ABI:CODE-CELL + @ {: refusal:n :}
-   refusal 0<> code refusal = and if NULL$ 70 die then
-   NULL$ UNCAUGHT-RC die ;
-
 public
 
 \ Load what argv names, in order. argv[0] is the program and is not read; a
@@ -258,13 +231,8 @@ public
    ROUTED
    NULL$ 0 die ;
 
-\ The x86 linker copies the captured reporter from its fixed code cell into
-\ protected UNCGH-CELL before it publishes the image. ARM boot installs its
-\ assembly uncaught reporter separately.
+\ Install MAIN as the entry the engine boot calls.
 : INSTALL ( -- )
-   HB-TARGET-LINUX-X86-64? if
-      ['] REPORT data-base ENGINE-MAIN:REPORT-CELL + xt!
-   then
    ['] MAIN data-base ENGINE-MAIN:XT-CELL + xt! ;
 
 ;package

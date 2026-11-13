@@ -4,21 +4,12 @@
 package CELL-GRID
 public
 
-\ Image form, framed by each writer with the group count G and stored group
-\ bytes S: a presence map of ceil(G/8) bytes (group g in bit g mod 8 of byte
-\ g div 8, low bit first), the present groups of GROUP-BYTES bitmap bytes in
-\ order, the last zero-padded, then one unsigned LEB128 per present cell in cell
-\ order. It is canonical: a present cell is never zero, a present group holds a
-\ present cell, the last group is present and every value has one width.
-\ A bitmap over cells, not extents: the release engine's window holds 772,892
-\ content bytes in 256,128 non-zero extents. Bytes for the whole window:
-\   (a) varint (gap, length) run rows plus their bytes        1,285,454
-\   (b) this format: cell bitmap plus one varint per cell       964,570
-\   (c) (b) with raw 8-byte cells instead of varints          2,535,017
-\   (d) a per-4-KiB-page choice between (a) and (b)             843,675
-\ (d) is 9.4% below (b) but costs two decoders and a tag byte a page.
-\ Grouping: 69,906 of the bitmap's 130,792 bytes are all clear; 2,044 groups
-\ cost a 256-byte presence map and save 63,360 bytes of bitmap.
+\ Image form, given the group count G and the stored group bytes S: a presence
+\ map of ceil(G/8) bytes (group g in bit g mod 8 of byte g div 8, low bit
+\ first), the present groups of GROUP-BYTES bitmap bytes in order, the last
+\ zero-padded, then one unsigned LEB128 per present cell in cell order. It is
+\ canonical: a present cell is never zero, a present group holds a present cell,
+\ the last group is present and every value has one width.
 8 constant CELL-BYTES                \ the grid's cell: the DATA cell a declared address sits on
 8 constant CELL-BITS                 \ cells one bitmap byte covers
 CELL-BYTES CELL-BITS * constant BM-BYTE-SPAN

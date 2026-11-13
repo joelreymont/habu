@@ -1,6 +1,5 @@
 \ data-table-census.f - attributes every byte of the boot DATA heap [0, DP0) to
-\ the `create`d or `variable` word that owns it: an AOT image carries every
-\ non-zero byte in full, whether or not anything reads it.
+\ the `create`d or `variable` word that owns it.
 \   printf 'require tools/data-table-census.f\nDATA-CENSUS:RUN\n' | bin/hb
 \ RUN is not called on load, so tools/check.f can carry this file. Rows are
 \ tab-separated: offset, extent, fill, nonzero, cells, cost, wid, owner.
@@ -75,7 +74,6 @@ $FFFFFFFF constant IDX-MASK
    loop
    0 T-ROW T-N @ [: < ;] SORT:SORT! ;
 
-\ Bytes past the extent read as zero, as the capture leaves them.
 variable CV
 
 : CELL@ ( n n n -- n ) {: base:n c:n len:n :}

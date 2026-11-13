@@ -263,8 +263,7 @@ Cross-build first, self-host second.
 - The primitive parity gate (`test/prim-parity.f`), green on both backends.
 - `test/run.f` green on an x86-64 host on a cross-built engine, then on its
   own fixpoint engine.
-- The FFI suite under SysV, the task suite, the guard-page suite, and an
-  AOT-stripped application running.
+- The FFI suite under SysV, the task suite and the guard-page suite.
 - A native x86-64 build records the emission it published and reaches the same
   image, engine and names sidecar, across three generations before a
   product is promoted.

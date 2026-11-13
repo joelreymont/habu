@@ -1,6 +1,6 @@
 \ x86-64-kernel-ffi.f - the FFI rows of src/habu/kernel-x64.f FFI, in the booted
 \ harness, cross-built for an x86-64 peer: one case per image. No libc symbol
-\ takes nine integer arguments, so a stub stands in, as test/ffi-stub-child.f SUM10 does on ARM64.
+\ takes nine integer arguments, so a stub stands in.
 \ The host checks each image's ELF header; running them is the peer's.
 require test/x86-64-boot-harness.f
 

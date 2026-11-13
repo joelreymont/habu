@@ -380,10 +380,10 @@ $688 constant FD-CELL
 \ OUT-CELL and IN-CELL hold a device index, never an address: 0 is the built-in
 \ terminal, 1..DEVICES a row of the write table. They are per task, and nothing
 \ canonicalises a code address in a task region, so an execution token there
-\ would survive a snapshot or capture pointing into the builder's region.
+\ would survive a snapshot pointing into the builder's region.
 \ The write table holds execution tokens in the engine header, where SNAP-RELOC
 \ canonicalises declared cells. TASK-REGION-INIT copies the rows too, sound
-\ because a task region is never snapshotted or captured. DEVICES is small so
+\ because a task region is never snapshotted. DEVICES is small so
 \ the table costs no allocation on a microcontroller.
 \ BUSY-CELL stops re-entry: a device write may reach `type`, and while one runs
 \ the funnel takes the terminal path.
@@ -417,11 +417,11 @@ $3CA0 constant EVALREC-CELL
 \ protected, so the set holds any subset of the WIDs the engine indexes.
 \ PROT-WID-MAX is a WID bound: $400 bytes index 8192 WIDs, and prot-wid-add
 \ names the bound when handed a WID at or above it. A wider bitmap must first
-\ move CB-XDS at $41C8, and APP-ENTRY:XT-CELL, the AOT capture window and the
-\ evaluator-pointer band from $43A0; growing it also moves UNCGH-CELL.
+\ move CB-XDS at $41C8, and APP-ENTRY:XT-CELL and the evaluator-pointer band
+\ from $43A0; growing it also moves UNCGH-CELL.
 \ No compiled source writes the band, the DP heap is bounded >= DATA-START, and
 \ snapshots save it.
-$3CB8 constant PROT-REG-TAG-CELL        \ bitmap-shape tag; capture requires this exact runtime shape
+$3CB8 constant PROT-REG-TAG-CELL        \ bitmap-shape tag
 $3CC0 constant PROT-BITS-OFF
 8192 constant PROT-WID-MAX
 PROT-WID-MAX 8 / constant PROT-BITS-BYTES
@@ -458,7 +458,7 @@ $41F8 constant CB-XTS
 $4200 constant CB-ROWS
 $4208 constant CB-END
 CB-END CB-XDS - constant CB-BAND-BYTES
-16 constant CB-POOL                \ boot stubs retained for seed compatibility
+16 constant CB-POOL                \ boot callback stubs
 24 constant CB-ROW-BYTES
 0 constant CB-ROW-REGION
 8 constant CB-ROW-OWNER
@@ -495,24 +495,16 @@ $37F8 constant SNAP-CELL
 package ENGINE-MAIN
 public
 $3808 constant XT-CELL
-\ The captured x86 reporter is written here while the ARM build host is
-\ sealed. The linker publishes its translated XT in protected UNCGH-CELL.
-\ $3858 is outside PROT-REG.
-$3858 constant REPORT-CELL
 \ The x86-64 Habu loop's source arena: a mapping this process made, which every
 \ boot reads zero until MAIN maps its stream.
 $3868 constant ARENA-CELL
 ;package
 
-\ PROVIDED-XT: the dispatch cell of each src/habu/prims.f row a captured
-\ runtime provides, stored with `xt!` and restored on every x86-64 boot as a
-\ fixed address row. A seeded x86-64 row is a stub that jumps through it, and
-\ x86-64's `evaluate-closed` calls EVALUATE-CELL's word; arm64's rows run the
-\ cells' words.
+\ PROVIDED-XT: cells holding the running engine's words that primitives and
+\ declarations call, stored with `xt!`; x86-64 restores them on every boot.
 package PROVIDED-XT
 public
 $3848 constant EVALUATE-CELL
-\ A seeded x86-64 `evaluate-range` jumps through its own cell the same way.
 $3860 constant EVALUATE-RANGE-CELL
 \ `define-word`, `body-append`, `postponed` and `literal` run the running
 \ engine's interpreter words these cells hold.
@@ -1127,9 +1119,9 @@ USE-BAND-OFF 8 +      constant USE-PKG-SAVE-CELL   \ depth saved at `package` op
 USE-BAND-OFF 24 +     constant USE-WIDS-OFF        \ public-wid array base (USE-MAX u64 cells)
 USE-WIDS-OFF USE-MAX cells + constant USE-BAND-END
 
-\ Two tables of the code region's recorded sites, which AOT capture reads: calls
-\ into __text and the first instruction of each address literal. Both live below
-\ DATA-START and are keyed by region offset.
+\ Two tables of the code region's recorded sites: calls into __text and the
+\ first instruction of each address literal. Both live below DATA-START and are
+\ keyed by region offset.
 package SNAP-RELOC
 public
 
@@ -1159,11 +1151,7 @@ CALLMAP-OFF CALLMAP-BYTES + constant CALLMAP-END
 \ address carrier. A CODE carrier has four move-wide halves, shared DATA normally
 \ three; CODE includes the entry a `[: ... ;]` pushes and the target a `[']`
 \ pushes. Recorded where the compiler decides a literal is an address.
-\ DATA sites are recorded for the AOT capture: the captured blob lands at a
-\ different DP in the seeded engine, so a DATA chain needs rebasing there, while
-\ fixed-VA DATA needs nothing on snapshot restore.
-\ The map stores no kind: a consumer classifies a recorded value by its window's
-\ DATA and code spans, which cannot overlap, and refuses a value in neither.
+\ Fixed-VA DATA needs nothing on snapshot restore.
 \ Nothing recognises a chain from region bytes or from its value: a word may
 \ hold inline data and an integer any value.
 REGION 32 / constant ADDRMAP-BYTES
@@ -1183,20 +1171,17 @@ ADDRMAP-OFF ADDRMAP-BYTES + constant ADDRMAP-END
 \
 \ Both views are declared on every target.
 \
-\ The rows are strictly ascending by offset, one per offset, so the reader yields
-\ a span's sites in bitmap order without sorting a live band. On x86-64
+\ The rows are strictly ascending by offset, one per offset. On x86-64
 \ `callmap-set` and `addrmap-set` insert a row at its offset's place, so a
 \ caller records sites in any order. `code-publish` and `reloc-maps-clear` remove
 \ the rows of a span. Kinds start at 1, so a zeroed row is no
 \ kind.
 \
 \ Unlike a bitmap, the band can fill. SITE-CAP rows fit; a writer refuses one
-\ more with SITE-RC, and the reader refuses with the same status a count above
-\ SITE-CAP, a row at or after REGION, a row of no known kind and a row not above
-\ the one before it. SITE-RC lives here for the reason XTCELL-RC does.
+\ more with SITE-RC, which lives here for the reason XTCELL-RC does.
 \
 \ Snapshot relocation does not apply on x86-64: the region and DATA are mapped
-\ at fixed addresses there. The rows serve publication and the AOT capture.
+\ at fixed addresses there.
 CALLMAP-OFF constant SITE-N-CELL                \ live row count (u64)
 SITE-N-CELL 8 + constant SITE-ROWS-OFF
 4 constant SITE-KIND-OFF
@@ -1209,11 +1194,9 @@ ADDRMAP-END SITE-ROWS-OFF - SITE-ROW-BYTES / constant SITE-CAP
 \ Address-cell table: the DATA offset and kind of every cell declared
 \ to hold an address. XT cells hold code-region addresses, DATA-pointer cells
 \ addresses in the DATA heap. Only XT values need snapshot canonicalisation:
-\ region code moves on restore and DATA does not. Both kinds need the
-\ declaration for AOT capture, where the captured DATA window moves and a raw
-\ pointer into it would escape in sparse bytes. Membership is recorded where the
-\ cell's kind is decided, never inferred from its contents (an integer can hold
-\ any value).
+\ region code moves on restore and DATA does not. Membership is recorded where
+\ the cell's kind is decided, never inferred from its contents (an integer can
+\ hold any value).
 \ A scratch pointer cell is a DATA-pointer row that also carries bit 62: every
 \ save writes it as null and never reads it, so a reader that knows only bit 63
 \ treats it as a DATA pointer, never as an xt.

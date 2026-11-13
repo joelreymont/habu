@@ -9,7 +9,6 @@
 \ (proc-watch.f, proc-control.f) load here globally, so this file loads before
 \ any file that loads the seam into a private wordlist, as boot-x64.f does.
 require src/lib/byte-buffer.f
-require src/lib/le.f
 require src/lib/string.f
 require src/habu/prof-x64.f
 require src/core/does-clause.f
@@ -133,15 +132,12 @@ variable ROW-U
    is BODY  ROW-U !  ROW-A !
    ROW$ ENGINE-PRIMS:SPEC-CHECK ;
 
-\ The record spans [first, last): the body, and the ret after it when the
-\ flag says so. A dispatch stub (DISPATCH-BODY) leaves by its jump.
-: RECORD ( bool -- n ) {: ret:bool :}
+\ The record spans [first, last): the body and the ret after it.
+: EMIT-ROW ( -- n )
    X64CODE:LBL X64CODE:LBL {: first:label last:label :}
    ROW$ first last ENGINE-PRIMS:ADD {: row:n :}
-   first X64CODE:LBL,  BODY  ret if ASM-SINK ENC-RET then  last X64CODE:LBL,
+   first X64CODE:LBL,  BODY  ASM-SINK ENC-RET  last X64CODE:LBL,
    row ;
-
-: EMIT-ROW ( -- n ) true RECORD ;
 
 : REFUSE-HEAD$ ( -- ptr u8 n ) s" hb: " ;
 : REFUSE-TAIL$ ( -- ptr u8 n ) s"  is not in the x86-64 kernel" ;
@@ -177,46 +173,6 @@ public
 : PRIM-WID ( ptr u8 n [ -- ] n -- ) {: wid:n :}
    ARGS
    wid EMIT-ROW ENGINE-PRIMS:WID! ;
-
-private
-
-variable ROW-CELL
-
-\ Jump through the row's dispatch cell, leaving the caller's return address on
-\ the machine stack for the word the cell holds.
-: DISPATCH-BODY ( -- )
-   RAX DATA-REG ROW-CELL @ MEM-OFF ASM-SINK ENC-MOV-RM
-   RAX ASM-SINK ENC-JMP-REG ;
-
-public
-
-\ PRIM for a row the captured runtime provides (src/habu/prims.f
-\ EPREFIX-PROVIDED!), registered with its dispatch cell n (layout.f
-\ PROVIDED-XT). In a seeded build the record is a stub that jumps through the
-\ cell; otherwise it is the body given.
-: PROVIDED-ROW ( n ptr u8 n [ -- ] -- ) {: cell:n a:ptr u:n q :}
-   a u q ARGS
-   cell ROW-CELL !
-   ENGINE-PRIMS:SEEDED? if
-      [: DISPATCH-BODY ;] is BODY  false RECORD
-   else
-      true RECORD
-   then
-   cell swap ENGINE-PRIMS:DISPATCH! ;
-
-\ PROVIDED-ROW whose record carries wid n, for a provided row ARM64 or the
-\ refusal it replaces registers internal.
-: PROVIDED-ROW-WID ( n ptr u8 n [ -- ] n -- ) {: cell:n a:ptr u:n q wid:n :}
-   a u q ARGS
-   cell ROW-CELL !
-   ENGINE-PRIMS:SEEDED? if
-      [: DISPATCH-BODY ;] is BODY  false RECORD
-   else
-      true RECORD
-   then
-   {: row:n :}
-   wid row ENGINE-PRIMS:WID!
-   cell row ENGINE-PRIMS:DISPATCH! ;
 
 \ A row the x86-64 kernel does not carry: its body writes `hb: <name> is not
 \ in the x86-64 kernel` on fd 2 and exits REFUSE-RC.
@@ -2426,15 +2382,15 @@ public
    s" c2-records-stow" [: C2-RECORDS-STOW, ;] PRIM
    s" die" [: DIE, ;] PRIM
    s" source-file-run" [: SOURCE-FILE-RUN, ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   PROVIDED-XT:EVALUATE-CELL s" evaluate" [: REFUSE-BODY ;] PROVIDED-ROW
+   s" evaluate" [: REFUSE-BODY ;] PRIM
    s" evaluate-closed" [: EVAL-CLOSED, ;] PRIM
-   PROVIDED-XT:EVALUATE-RANGE-CELL s" evaluate-range" [: REFUSE-BODY ;]
-      ENGINE-PRIMS:GLOBAL-INT-WID PROVIDED-ROW-WID
-   PROVIDED-XT:DEFINE-CELL s" define-word" [: REFUSE-BODY ;] PROVIDED-ROW
-   PROVIDED-XT:APPEND-CELL s" body-append" [: REFUSE-BODY ;] PROVIDED-ROW
-   PROVIDED-XT:LITERAL-CELL s" literal" [: REFUSE-BODY ;] PROVIDED-ROW
-   PROVIDED-XT:POSTPONE-CELL s" postponed" [: REFUSE-BODY ;]
-      ENGINE-PRIMS:GLOBAL-INT-WID PROVIDED-ROW-WID
+   s" evaluate-range" [: REFUSE-BODY ;]
+      ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" define-word" [: REFUSE-BODY ;] PRIM
+   s" body-append" [: REFUSE-BODY ;] PRIM
+   s" literal" [: REFUSE-BODY ;] PRIM
+   s" postponed" [: REFUSE-BODY ;]
+      ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" create" [: CREATE-BODY ;] PRIM
    s" parse-name" [: PARSE-NAME-BODY ;] PRIM
    s" num-parse" [: NUM-PARSE, ;] PRIM
@@ -5629,12 +5585,6 @@ public
    \ The x86-64 profiler's one process-wide state is the armed clock, which
    \ prof-off's body clears; a forked child has no interval timer to stop.
    s" prof-child-reset" [: X64PROF:OFF-BODY ;] PRIM ;
-
-\ A seeded provider needs a non-null code xt in the linked DATA cell. The
-\ capture's address-row metadata alone does not prove the final value.
-: PROVIDED-FILLED? ( ptr u8 n n -- bool ) {: data:ptr size:n cell:n :}
-   cell 0 < cell CELL + size > or if false exit then
-   data cell + LE:U64@ 0<> ;
 
 \ The linker supplies the seven translated entries after it has placed the
 \ captured routines. Comparing code identities also classifies aliases, while

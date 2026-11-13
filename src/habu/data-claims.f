@@ -7,8 +7,7 @@ require src/habu/native-body-abi.f
 
 \ Every claim on DATA states its extent. CLAIMS-ASSERT refuses an overlapping
 \ pair at engine build time, naming both, when an engine builder
-\ (src/habu/habu1.f, src/habu/kernel-x64.f) loads this file. Without the map a
-\ per-task slot can overrun the AOT window and crash at teardown.
+\ (src/habu/habu1.f, src/habu/kernel-x64.f) loads this file.
 \
 \ The map holds every claim with a declared extent: everything from $3A00 up,
 \ src/habu/address-cells.f LOCK-CELL and INDEX-CELL, and the profiler band, the top PROF-CNT-BYTES of DATA as src/habu/prof-abi.f
@@ -167,7 +166,6 @@ create TAB
    NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:ORIGIN-TAKE cells +  1 cells                 CLAIM NATIVE-BODY-ABI:ORIGIN-TAKE
    NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:PENDING-TAKE cells +  1 cells                 CLAIM NATIVE-BODY-ABI:PENDING-TAKE
    NCOMP-DISPATCH:BODY-HOOK-CELL      1 cells                 CLAIM NCOMP-DISPATCH:BODY-HOOK-CELL
-   ENGINE-MAIN:REPORT-CELL            1 cells                 CLAIM ENGINE-MAIN-REPORT-CELL
    PROVIDED-XT:EVALUATE-CELL          1 cells                 CLAIM PROVIDED-XT-EVALUATE-CELL
    PROVIDED-XT:EVALUATE-RANGE-CELL    1 cells                 CLAIM PROVIDED-XT-EVALUATE-RANGE-CELL
    PROVIDED-XT:DEFINE-CELL            1 cells                 CLAIM PROVIDED-XT-DEFINE-CELL

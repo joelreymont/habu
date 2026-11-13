@@ -88,7 +88,6 @@ $1000 constant CODE-CAP
 
 1 constant FL-TRUSTED-ONLY
 2 constant FL-FIXED-ABI
-16 constant FL-PREFIX-PROVIDED
 
 create ROWS  ROW-CAP ROW-CELLS * cells allot
 create NAMES NAME-CAP allot
@@ -242,18 +241,6 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
    ROW-N @ 0 <= IF s" prims: fixed ABI before any row" SPEC-RC die THEN
    ROW-N @ 1 - F-FLAGS ROW-FIELD dup @ FL-FIXED-ABI or swap ! ;
 
-\ The just-written row is one an x86-64 captured runtime provides. Its record
-\ stays in every build; in a seeded x86-64 build its body jumps through the
-\ row's dispatch cell, which the captured runtime fills, and a build with no
-\ captured runtime keeps the backend body. The x86-64 backend registers the
-\ cell with the body, and COMPLETE-PROVIDED refuses a marked row registered
-\ without one, or a seeded build whose captured runtime leaves the cell empty.
-\ An ARM64 record is the assembly body and registers no cell; the body itself
-\ jumps through a filled cell.
-: EPREFIX-PROVIDED! ( -- )
-   ROW-N @ 0 <= IF s" prims: prefix-provided before any row" SPEC-RC die THEN
-   ROW-N @ 1 - F-FLAGS ROW-FIELD dup @ FL-PREFIX-PROVIDED or swap ! ;
-
 \ The just-written row's minimum input depth, for a primitive whose body reads
 \ the stack although its atoms state no input: the elaborated `execute`,
 \ `catch`, `evaluate`, `?dup` and `2>r`, and `finally`. ENGINE-PRIMS:DNAME
@@ -311,9 +298,6 @@ public
 
 : FIXED-ABI? ( n -- bool )
    F-FLAGS ROW-FIELD @ FL-FIXED-ABI and 0 <> ;
-
-: PREFIX-PROVIDED? ( n -- bool )
-   F-FLAGS ROW-FIELD @ FL-PREFIX-PROVIDED and 0 <> ;
 
 : MIN-IN ( n -- n )
    F-MIN-IN ROW-FIELD @ ;
@@ -481,7 +465,6 @@ EPRIM: fence      EPRIM; REACH memory
 EPRIM: evaluate-closed PE-PTR-U8 PE-IN PE-N PE-IN EPRIM; REACH run
 EPRIM: evaluate-range PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
-EPREFIX-PROVIDED!
 EPPRIM: SOURCE-ROOT evaluate-range
    PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 EPRIM: count      PE-PTR-U8 PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT REF PRIM-REF:COUNTED$ EPRIM; REACH memory
@@ -741,21 +724,17 @@ EPPRIM: INTERPRETER body-capture PE-PTR-U8 PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ body-append ( ptr u8 n -- ): append the bytes to the definition `define-word`
 \ or `:` opened; it refuses when no definition is open.
 EPRIM: body-append PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
-EPREFIX-PROVIDED!
 \ literal ( n -- ): append n to the definition `define-word` opened, which the
 \ checker reads as that number; it refuses when no definition is open.
 EPRIM: literal PE-N PE-IN EPRIM;
-EPREFIX-PROVIDED!
 \ define-word ( name$ sig$ -- ): open a definition in the open package and
 \ section as `: NAME ( … )` does, NAME one token and SIG the signature as source
 \ writes it.
 EPRIM: define-word PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
-EPREFIX-PROVIDED!
 \ postponed ( ptr u8 n -- ): what `postpone W` compiles a call of; only the
 \ checker binds it.
 EPRIM: postponed PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
-EPREFIX-PROVIDED!
 EPPRIM: INTERPRETER postponed PE-PTR-U8 PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ trust-sig! ( ptr u8 n -- ): the pending definition's signature span into
 \ TSIG-A and TSIG-U. It refuses when no definition is pending.
@@ -992,7 +971,6 @@ ELAB: catch REACH run
 1 EMIN-IN!
 ELAB: evaluate
 2 EMIN-IN!
-EPREFIX-PROVIDED!
 ELAB: ?dup REACH stack
 1 EMIN-IN!
 ELAB: 2>r REACH stack

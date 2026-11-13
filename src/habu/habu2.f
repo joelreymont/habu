@@ -6,16 +6,12 @@
 \
 \ Every address literal is a fixed MOVZ/MOVK chain whose site the address map
 \ records: a DATA address uses the three-half carrier, any other the absolute
-\ one. DATA chains are recorded too: an AOT capture copies the blob to a
-\ different DP and must find them. The map stores no kind: a consumer derives it
-\ from which of its window's disjoint DATA and code spans the value lands in.
+\ one.
 \
 \ A does> clause gets a record of its own. LDOESPATCH patches the created
-\ word's RET into `b D`, D inside the defining word's body: a raw PC-relative
-\ branch the AOT seed cannot relocate (a capture whose definer lies outside the
-\ window branched into another word). As a record, D is an entry the seed
-\ resolves by name like every BL; a name plus byte delta is refused, since a
-\ captured branch must not depend on a callee's interior. The record overlaps
+\ word's RET into `b D`, D inside the defining word's body. As a record, D is an
+\ entry resolved by name like every BL; a name plus byte delta is refused, since
+\ a branch must not depend on a callee's interior. The record overlaps
 \ its parent's span and trims nothing: the inliner, the snapshot and the size
 \ census read that span. Its name is the parent's plus `;does`: the parent's
 \ name is the only identity two engines spell alike (a `:` would make it
@@ -56,8 +52,7 @@ private
 : RD-FREE ( n -- n )
    ADDRESS-CARRIER:ADDR-RD-BITS rshift ADDRESS-CARRIER:ADDR-RD-BITS lshift ;
 
-\ Fixed four-instruction MOVZ/MOVK chain of x11 into the register x14 names: the
-\ relocatable form the AOT boot pass rewrites in place.
+\ Fixed four-instruction MOVZ/MOVK chain of x11 into the register x14 names.
 : C-ADDR-RAW ( -- )
    6 11 0 ADDI,  5 $FFFF MOVZ,
    7 6 5 AND,    7 7 5 LSLI,  8 W-MOVZ0 RD-FREE LIT64,  8 8 14 ORR,  9 8 7 ORR,  LCEMIT LABEL@ BL,
@@ -148,8 +143,8 @@ variable LSCRATCHMARK \ declare one DATA cell as a scratch pointer, saved as nul
 variable LROLLBACK  \ retire address rows at or above the saved DATA cut
 variable LADDRSITE  \ record the address-literal chain whose first word is in x9
 
-\ Record an address chain whose first instruction is held in the named register.
-\ Compile handlers use CP; boot relocation uses the captured site's address.
+\ Record an address chain whose first instruction is held in the named register;
+\ compile handlers name CP.
 : MARK-SITE-AT ( n -- ) {: site:n :}
    9 site 0 ADDI,
    LADDRSITE LABEL@ BL, ;
@@ -2295,10 +2290,9 @@ ardone LBL,
    LPTRMARK LABEL@ BL,
    C B 0 STR, ;
 
-\ Record the MOVZ/MOVK address carrier whose first word is in x9.
-\ Compile handlers supply CP before emission; seed relocation supplies its site.
-\ Preserve x11, the literal value held by compile and seed callers. Both callers
-\ have no live x30 across this call; compile handlers also call LCEMIT afterward.
+\ Record the MOVZ/MOVK address carrier whose first word is in x9, which compile
+\ handlers set to CP before emission. Preserve x11, the literal value they hold;
+\ they have no live x30 across this call and call LCEMIT afterward.
 \ Clobbers x5, x6, x9.
 : EMIT-ADDR-SITE ( -- )
    LADDRSITE LABEL@ LBL,
