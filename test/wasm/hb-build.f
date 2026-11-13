@@ -5,9 +5,9 @@
 \ `bin/hb --load test/wasm/hb-build.f` from the tree's root. The sources and
 \ modules stay in the printed directory.
 \
-\ A generated program fails check k by reading the byte at address k, below
-\ WPROF:CTX-BASE, which traps. In the module the six share, OUT's letters name
-\ the program a failed check ran in, and fault-addr is the check's number.
+\ A generated program fails check k by an uncaught `k throw`: status 1 and throw
+\ code k. In the module the six share, OUT's letters name the program a failed
+\ check ran in.
 
 require src/lib/string.f
 require src/lib/fmt.f
@@ -124,16 +124,16 @@ variable TEXT-U
 : K! ( n ptr u8 n -- )
    {: want:n name:ptr nu:n :}
    SB-RESET
-   S\" package K\nprivate\nCAST: >BYTES ( n -- ptr u8 )\nvariable SEED\n9 SEED !\n" SB-APPEND
+   S\" package K\nprivate\nvariable SEED\n9 SEED !\n" SB-APPEND
    S\" variable ACC\n8 BUFFER: SPOT\n" SB-APPEND
    S\" : FACT ( n -- n ) dup 1 > if dup 1 - recurse * else drop 1 then ;\n" SB-APPEND
    S\" : SUM-TO ( n -- n ) 0 swap 0 ?do i + loop ;\n" SB-APPEND
    S\" : BUMP ( n -- ) ACC @ + ACC ! ;\npublic\n: MAIN ( -- )\n   5 FACT " SB-APPEND
    want FMT:SB-U
-   S\"  <> if 1 >BYTES c@ drop then\n   10 SUM-TO 45 <> if 2 >BYTES c@ drop then\n" SB-APPEND
-   S\"    SEED @ 9 <> if 3 >BYTES c@ drop then\n" SB-APPEND
-   S\"    0 ACC !  7 BUMP 8 BUMP  ACC @ 15 <> if 4 >BYTES c@ drop then\n" SB-APPEND
-   S\"    65 SPOT c!  SPOT c@ 65 <> if 5 >BYTES c@ drop then\n" SB-APPEND
+   S\"  <> if 1 throw then\n   10 SUM-TO 45 <> if 2 throw then\n" SB-APPEND
+   S\"    SEED @ 9 <> if 3 throw then\n" SB-APPEND
+   S\"    0 ACC !  7 BUMP 8 BUMP  ACC @ 15 <> if 4 throw then\n" SB-APPEND
+   S\"    65 SPOT c!  SPOT c@ 65 <> if 5 throw then\n" SB-APPEND
    S\"    [: 1 ;] drop ;\n;package\n" SB-APPEND
    SB$ name nu SOURCE! ;
 
@@ -141,12 +141,13 @@ variable TEXT-U
    121 s" k-bad.f" K!
    0 TEXT-U !  s" k-bad.f" REQUIRE+  S\" : MAIN ( -- ) K:MAIN ;\n" TEXT+
    TEXT TEXT-U @ s" k-fail.f" SOURCE!
-   s" the same program with a failing first test throws E-MEMORY-FAULT" T-LABEL
+   s" the same program with a failing first test throws 1" T-LABEL
    s" k-fail.wasm" BUILD 0 T=
    RAN 1 T=
-   WASM-HARNESS:THROW-CODE ENGINE-ERROR:MEMORY-FAULT T=
-   WASM-HARNESS:FAULT-KIND WPROF:CRASH-RC T=
-   WASM-HARNESS:FAULT-ADDR 1 T=
+   WASM-HARNESS:THROW-CODE 1 T= ;
+
+false [if] \ off until dot habu-add-the-checks-a49d054d
+: LOW-CASE ( -- )
    S\" package K private CAST: >BYTES ( n -- ptr u8 ) public : MAIN ( -- ) 65 8 >BYTES c! ; ;package : MAIN ( -- ) K:MAIN ;"
    s" low.f" SOURCE!
    s" a c! below WPROF:CTX-BASE faults and throws E-MEMORY-FAULT" T-LABEL
@@ -155,15 +156,16 @@ variable TEXT-U
    WASM-HARNESS:THROW-CODE ENGINE-ERROR:MEMORY-FAULT T=
    WASM-HARNESS:FAULT-KIND WPROF:CRASH-RC T=
    WASM-HARNESS:FAULT-ADDR 8 T= ;
+[then]
 
 
 \ Package D in d.f: division, max, invert and rshift, atomics and views through
 \ words whose operands are not literals at the call.
 : D! ( -- )
    SB-RESET
-   S\" package D\nprivate\nCAST: >BYTES ( n -- ptr u8 )\nvariable CELL0\nvariable SPOT\n" SB-APPEND
+   S\" package D\nprivate\nvariable CELL0\nvariable SPOT\n" SB-APPEND
    S\" : DIV ( n n -- n ) / ;\n: REM ( n n -- n ) mod ;\n: BIG ( n n -- n ) max ;\n" SB-APPEND
-   S\" : MIN-N ( -- n ) 1 63 lshift ;\n: FAIL ( n -- ) >BYTES c@ drop ;\n" SB-APPEND
+   S\" : MIN-N ( -- n ) 1 63 lshift ;\n: FAIL ( n -- ) throw ;\n" SB-APPEND
    S\" : FLIP ( n -- n ) invert 3 rshift ;\npublic\n" SB-APPEND
    S\" : MAIN ( -- )\n   17 5 DIV 3 <> if 1 FAIL then  17 5 REM 2 <> if 2 FAIL then\n" SB-APPEND
    S\"    -17 5 DIV -3 <> if 3 FAIL then  -17 5 REM -2 <> if 4 FAIL then\n" SB-APPEND
@@ -304,8 +306,8 @@ variable TEXT-U
 \ Package M in m.f: map-anon and munmap through words.
 : M! ( -- )
    0 TEXT-U !
-   S\" package M\nprivate\nCAST: >BYTES ( n -- ptr u8 )\nCAST: >N ( ptr u8 -- n )\n" TEXT+
-   S\" : FAIL ( n -- ) >BYTES c@ drop ;\n" TEXT+
+   S\" package M\nprivate\nCAST: >N ( ptr u8 -- n )\n" TEXT+
+   S\" : FAIL ( n -- ) throw ;\n" TEXT+
    S\" : CHECK ( bool n -- ) swap if drop else FAIL then ;\n: ONE-PAGE ( -- n ) 65536 ;\n" TEXT+
    S\" : MAP ( n -- ptr u8 n ) map-anon ;\n: UNMAP ( ptr u8 n -- n ) munmap ;\n" TEXT+
    S\" : AT ( ptr u8 n -- bool ) swap >N swap = ;\n" TEXT+
@@ -429,11 +431,11 @@ variable TEXT-U
 \ quotation kept in a variable.
 : X! ( -- )
    SB-RESET
-   S\" package X\nprivate\nCAST: >BYTES ( n -- ptr u8 )\n" SB-APPEND
+   S\" package X\nprivate\n" SB-APPEND
    S\" TYPED-VARIABLE HOOK [ n -- n ]\n: DOUBLE ( n -- n ) 2 * ;\npublic\n" SB-APPEND
-   S\" : MAIN ( -- )\n   3 ['] DOUBLE execute 6 <> if 1 >BYTES c@ drop then\n" SB-APPEND
-   S\"    4 [: 1 + ;] execute 5 <> if 2 >BYTES c@ drop then\n" SB-APPEND
-   S\"    [: 10 * ;] HOOK !  7 HOOK @ execute 70 <> if 3 >BYTES c@ drop then ;\n" SB-APPEND
+   S\" : MAIN ( -- )\n   3 ['] DOUBLE execute 6 <> if 1 throw then\n" SB-APPEND
+   S\"    4 [: 1 + ;] execute 5 <> if 2 throw then\n" SB-APPEND
+   S\"    [: 10 * ;] HOOK !  7 HOOK @ execute 70 <> if 3 throw then ;\n" SB-APPEND
    S\" ;package\n" SB-APPEND
    SB$ s" execute.f" SOURCE! ;
 
@@ -471,8 +473,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 \ which LEAK and LEAK-R overflow without.
 : CATCH! ( -- )
    SB-RESET
-   S\" package C\nprivate\nCAST: >BYTES ( n -- ptr u8 )\nvariable DONE\n" SB-APPEND
-   S\" : FAIL ( n -- ) >BYTES c@ drop ;\n" SB-APPEND
+   S\" package C\nprivate\nvariable DONE\n" SB-APPEND
+   S\" : FAIL ( n -- ) throw ;\n" SB-APPEND
    S\" : WANT ( n n n -- ) {: a:n b:n k:n :} a b <> if k FAIL then ;\n" SB-APPEND
    S\" : DEEP ( -- ) 11 throw ;\n: MID ( -- ) DEEP ;\n: CLEAN ( -- ) 1 DONE ! ;\n" SB-APPEND
    S\" : FIVE ( -- ) 4 [: 1 + ;] catch 0= if 5 3 WANT else drop 2 FAIL then ;\n" SB-APPEND
@@ -528,8 +530,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 \ Package G in grow.f: a cell row reserved, then reserved larger.
 : GROW! ( -- )
    SB-RESET
-   S\" package G\nprivate\nCAST: >BYTES ( n -- ptr u8 )\nDYNAMIC-BUFFER ROW n\n" SB-APPEND
-   S\" : FAIL ( n -- ) >BYTES c@ drop ;\n" SB-APPEND
+   S\" package G\nprivate\nDYNAMIC-BUFFER ROW n\n" SB-APPEND
+   S\" : FAIL ( n -- ) throw ;\n" SB-APPEND
    S\" : WANT ( n n n -- ) {: a:n b:n k:n :} a b <> if k FAIL then ;\n" SB-APPEND
    S\" : AT ( n -- n ) ROW NULL-PTR - ;\npublic\n: MAIN ( -- )\n" SB-APPEND
    S\"    4 ROW-RESERVE  11 0 ROW !  22 3 ROW !  0 AT {: old:n :}\n" SB-APPEND
@@ -551,7 +553,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" six programs in one module each run to their end: recursion, a loop, variables and a quotation; division, max, invert and rshift, atomics and views; map-anon and munmap; execute; catch and finally; a DYNAMIC-BUFFER reserved larger" T-LABEL
    s" pass.wasm" BUILD 0 T=
    RAN 0 T=
-   WASM-HARNESS:FAULT-ADDR 0 T=
+   WASM-HARNESS:THROW-CODE 0 T=
    WASM-HARNESS:OUT$ s" KDMXCG" T$= ;
 
 
@@ -623,6 +625,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    WASM-HARNESS:OUT$ S\" -37\n" T$= ;
 
 
+false [if] \ off until dot habu-add-the-checks-a49d054d
 : FETCH! ( -- )
    SB-RESET
    S\" package PROBE\npublic\nENUM shade dark light grey ;ENUM\nTYPED-VARIABLE V shade\n" SB-APPEND
@@ -638,6 +641,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" fetch.wasm" BUILD 0 T=
    RAN 2 T=
    WASM-HARNESS:OUT$ S\" 2\nE-BAD-TAG habu: layout tag 7 outside 0..2" T$= ;
+[then]
 
 
 65536 constant PAGE-BYTES
@@ -677,18 +681,23 @@ DYNAMIC-BUFFER MODULE u8
    1 POS +!  m u U32> drop  m u U32> drop  1 POS +!
    m u U32> PAGE-BYTES * ;
 
-\ Memory ends at the memory section's minimum pages, not the image; the four
-\ sources differ only in the access, so they share that end.
-: MEMORY-CASES ( -- )
+false [if] \ off until dot habu-add-the-checks-a49d054d
+: CHECKED-CASES ( -- )
    s" a cell at an upper-bit pointer, $100031000, fails its check and throws" T-LABEL
    $100031000 true s" upper.f" ACCESS!
    s" upper.wasm" ACCESS 1 T=
    WASM-HARNESS:THROW-CODE ENGINE-ERROR:MEMORY-FAULT T=
-   MEMORY-END {: end:n :}
    s" a byte in the null region, $FFFF, fails its check and throws" T-LABEL
    $FFFF false s" null.f" ACCESS!
    s" null.wasm" ACCESS 1 T=
-   WASM-HARNESS:THROW-CODE ENGINE-ERROR:MEMORY-FAULT T=
+   WASM-HARNESS:THROW-CODE ENGINE-ERROR:MEMORY-FAULT T= ;
+[then]
+
+\ Memory ends at the memory section's minimum pages, not the image; the
+\ sources differ only in the access, so they share that end.
+: MEMORY-CASES ( -- )
+   0 false s" last.f" ACCESS!  s" last.wasm" BUILD 0 T=
+   MEMORY-END {: end:n :}
    s" the last byte of the module's memory reads" T-LABEL
    end 1- false s" last.f" ACCESS!
    s" last.wasm" ACCESS 0 T=
@@ -719,7 +728,6 @@ public
    UNUSED-CASE
    FATAL-CASE
    CELL-CASES
-   FETCH-CASES
    MEMORY-CASES
    T-REPORT ;
 

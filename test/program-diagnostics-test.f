@@ -88,6 +88,23 @@ package PROGRAM-DIAGNOSTICS
       s" DEFTYPE-DUP-ARMED" s" duplicate family" NEGATIVE
    s" test/layout-buffer-forge.f" 70
       s" LAYOUT-BUFFER-FORGE-ARMED" s" undefined word 'LBUF-PEND!'" NEGATIVE
+   s" test/layout-valid-hook-forge.f" 70
+      s" LAYOUT-VALID-FORGE-ARMED" s" undefined word 'LAYOUT-VALID-RECORD-XT'" NEGATIVE
+   s" test/layout-valid-walk-forge.f" 70
+      s" LAYOUT-VALID-FORGE-ARMED" s" undefined word 'VP-TERM-WALK-XT'" NEGATIVE
+   s" test/layout-valid-desc-forge.f" 70
+      s" LAYOUT-VALID-FORGE-ARMED" s" undefined word 'LAYOUT-VALID-DESC-XT'" NEGATIVE
+   s" test/bootstrap-created-effect-src.f" 70
+      s" BOOTSTRAP-CREATED-ARMED" s" actual: ptr a" NEGATIVE
+   s" test/bootstrap-created-raw-src.f" 70
+      s" BOOTSTRAP-CREATED-ARMED" s" expected: nom-id actual: a" NEGATIVE
+   s" test/bootstrap-created-const-src.f" 70
+      s" BOOTSTRAP-CREATED-ARMED" s" expected: kon-id actual: a" NEGATIVE
+   s" test/bootstrap-created-does-src.f" 70
+      s" BOOTSTRAP-CREATED-ARMED" s" expected: dow-id actual: a" NEGATIVE ;
+
+false [if] \ off until dot habu-add-the-checks-a49d054d
+: BAD-TAGS ( -- )
    s" test/layout-valid-w1-bad.f" 85
       s" LAYOUT-VALID-ARMED"
       s" E-BAD-TAG habu: layout tag 2 outside 0..1" NEGATIVE
@@ -109,21 +126,8 @@ package PROGRAM-DIAGNOSTICS
       s" E-BAD-TAG habu: layout tag 7 outside 0..1" NEGATIVE
    s" test/layout-valid-tags-bad.f" 85
       s" LAYOUT-VALID-TAGS-ARMED"
-      s" E-BAD-TAG habu: layout tag 2 outside 0..1" NEGATIVE
-   s" test/layout-valid-hook-forge.f" 70
-      s" LAYOUT-VALID-FORGE-ARMED" s" undefined word 'LAYOUT-VALID-RECORD-XT'" NEGATIVE
-   s" test/layout-valid-walk-forge.f" 70
-      s" LAYOUT-VALID-FORGE-ARMED" s" undefined word 'VP-TERM-WALK-XT'" NEGATIVE
-   s" test/layout-valid-desc-forge.f" 70
-      s" LAYOUT-VALID-FORGE-ARMED" s" undefined word 'LAYOUT-VALID-DESC-XT'" NEGATIVE
-   s" test/bootstrap-created-effect-src.f" 70
-      s" BOOTSTRAP-CREATED-ARMED" s" actual: ptr a" NEGATIVE
-   s" test/bootstrap-created-raw-src.f" 70
-      s" BOOTSTRAP-CREATED-ARMED" s" expected: nom-id actual: a" NEGATIVE
-   s" test/bootstrap-created-const-src.f" 70
-      s" BOOTSTRAP-CREATED-ARMED" s" expected: kon-id actual: a" NEGATIVE
-   s" test/bootstrap-created-does-src.f" 70
-      s" BOOTSTRAP-CREATED-ARMED" s" expected: dow-id actual: a" NEGATIVE ;
+      s" E-BAD-TAG habu: layout tag 2 outside 0..1" NEGATIVE ;
+[then]
 
 \ Each refused signature of a multi-error load is counted once and written once:
 \ a second report of one would be a second line on stderr and a count of 2.

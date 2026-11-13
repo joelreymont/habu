@@ -617,9 +617,7 @@ multi-cell type rationale is `docs/design.md` "Types".
   scrutinee"), because a quotation's row is inferred forward. The family
   resolves as a bare word does in a signature (own package, globals, `using`
   imports, or `PKG:tail`): whatever is nameable can be matched, unlike
-  `construct`. Every compiled `MATCH` ends in a die a well-typed value never
-  reaches: a tag forged through a `TRUSTED:` constructor writes `hb: bad
-  <family> tag` and exits (`ENGINE-ERROR:BAD-TAG`).
+  `construct`.
   This program prints 5, 4 and 3:
 
   ```forth
@@ -2567,7 +2565,7 @@ sections above.
   Payload cells sit below the tag. Native elaboration groups them by its
   signature; a checked body must build the family value explicitly
   (`E-NELAB-JOIN` for loose cells). A wrong cell count is `E-NELAB-ARITY`
-  either way, and consumption still checks its tag (`hb: bad layout tag`).
+  either way.
 - **Binding follows the engine's selected word and its own metadata.** After
   `undefine dup  : dup ( n -- n ) 100 + ;`, `5 dup` answers 105 at either
   tier. Intrinsic typing belongs to the original engine word, not the new

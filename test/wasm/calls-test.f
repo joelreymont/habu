@@ -44,6 +44,13 @@ variable SRC-U
 
 : TRAPS ( ptr u8 n ptr u8 n -- )  RAN TRAPPED T= ;
 
+false [if] \ off until dot habu-add-the-checks-a49d054d
+: FAULTED-CASE ( -- )
+   s" a memory fault inside a quotation is caught and thrown again" T-LABEL
+   s" FAULTED" s" faulted" RAN 1 T=
+   WASM-HARNESS:THROW-CODE ENGINE-ERROR:MEMORY-FAULT T= ;
+[then]
+
 public
 
 : RUN ( -- )
@@ -54,9 +61,6 @@ public
    s" every entry throws its native code in a module; a throw code numbers the first that does not" T-LABEL
    s" CHECKS" s" checks" RAN 0 T=
    WASM-HARNESS:THROW-CODE 0 T=
-   s" a memory fault inside a quotation is caught and thrown again" T-LABEL
-   s" FAULTED" s" faulted" RAN 1 T=
-   WASM-HARNESS:THROW-CODE ENGINE-ERROR:MEMORY-FAULT T=
    s" execute of xt 0 traps" T-LABEL
    s" ZERO" s" zero" TRAPS
    s" catch of xt 0 traps" T-LABEL

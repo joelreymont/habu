@@ -1,7 +1,6 @@
 \ bare-main.f - a program with no require, built by tools/hb-build.f between two
 \ builds of log-main.f and between two of path-main.f, so that app-end.f's object
-\ is this program's. L-GET's fetch of an enum compiles at tier 0 to a call of
-\ NFETCH-CHECK by name, which a built program has only from its boot rows.
+\ is this program's.
 
 ENUM lay fresh valued ;ENUM
 TYPED-VARIABLE SLOT lay

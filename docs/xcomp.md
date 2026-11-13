@@ -373,11 +373,9 @@ pointers have no Wasm form. A target data builder lays out static bytes; no
 native dictionary or snapshot is copied in. Changing an index can change an
 LEB's length, so every call and address immediate is a padded LEB and the
 padded size is accepted (`src/arch/wasm/link.f`, `leb.f`). Memory regions are
-fixed by the profile; address zero is in bounds in Wasm, so null is enforced by
-the checked access, not by a guard page. Section order follows the
-specification, not a sort by section ID. A custom section would be evidence,
-not authority: a loader compares the actual imports, memory and table
-declarations.
+fixed by the profile. Section order follows the specification, not a sort by
+section ID. A custom section would be evidence, not authority: a loader
+compares the actual imports, memory and table declarations.
 
 ### Validation and proof
 

@@ -160,16 +160,6 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
    ENGINE-ERROR:STACK-BOUNDS FAULT-KIND,  L-SP GET,  OP-I64-EXTEND-I32-U B,
    FAULT-END,  END, ;
 
-\ A failed check throws ENGINE-ERROR:MEMORY-FAULT, the context's top at SP.
-: CHECKED ( vreg -- ) {: a:vreg :}
-   a GET-REG  WPROF:CTX-BASE I64,  OP-I64-LT-U B,
-   a GET-REG  $FFFFFFFF I64,  OP-I64-GT-U B,
-   OP-I32-OR B,  OP-IF OPENER,
-   WPROF:CRASH-RC FAULT-KIND,  a GET-REG  FAULT-ADDR,
-   SYNC  L-CTX GET,  ENGINE-ERROR:MEMORY-FAULT I64,
-   OP-I64-STORE ALIGN-64 WPROF:CTX-THROW-CODE MEM,
-   1 I32,  OP-RETURN B,  END, ;
-
 \ A unit is a function (i32 ctx) -> (i32 status): four i32 locals, SP, AT, ENV
 \ and REC, then FIXED-I64 + FRAME-CELLS i64 locals, a padded count CLOSE writes.
 : UNIT-BEGIN ( -- )
@@ -357,7 +347,6 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 
 \ ---- memory ------------------------------------------------------------------
 : LOAD ( vreg vreg width -- ) {: d:vreg a:vreg w:width :}
-   a CHECKED
    a GET-REG  OP-I32-WRAP-I64 B,
    w WIDTH>N 1 = if OP-I64-LOAD8-U 0 0 MEM, else LD64, then
    d SET-REG ;

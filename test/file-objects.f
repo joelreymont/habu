@@ -698,15 +698,6 @@ variable CLASS-N                        \ the class CLASS+ read
    s" the program prints the enum its MAIN fetched" LABEL  same TTRUE
    s" the program exits 0" LABEL  rc 0 T= ;
 
-\ H's program, run in its own process: the trap ends it, so its exit code and stderr are what is checked.
-: PART-RUN ( CMD:command -- CMD:command )
-   CMD:RESET
-   L$ s" prog" IN$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
-   CMD:ERR$ s\" E-BAD-TAG habu: layout tag 7 outside 0..1\n" STR= {: trapped:bool :}
-   trapped  rc 85 =  and 0= if rc SHOW then
-   s" the program dies with the bad-tag error" LABEL  trapped TTRUE
-   s" the program exits 85" LABEL  rc 85 T= ;
-
 \ scratch-main.f's program, run in its own process: the boundary under test is the written file.
 : SCRATCH-RUN ( CMD:command -- CMD:command )
    CMD:RESET
@@ -821,16 +812,29 @@ variable CLASS-N                        \ the class CLASS+ read
    s" the object it rewrites is app-end.f's" LABEL  FOUND$ s" /app-end.f.hfo" ENDS-WITH? TTRUE
    LOG-RUN ;
 
-\ Guards a linked file's top-level cache: P2 links path-main.f after M2, and its program reports its own path;
-\ H's program dies on a bad tag though part-main.f's NFETCH-CHECK has a BAD-TAG that returns.
+\ Guards a linked file's top-level cache: P2 links path-main.f after M2, and its program reports its own path.
 : PATH-CASE ( CMD:command -- CMD:command )
    s" P" WHICH!  s" test/fixtures/file-objects/path-main.f" FIXTURE-BUILD 0= if exit then
    PATH-MAIN KEEP
    s" M2" WHICH!  s" test/fixtures/file-objects/bare-main.f" FIXTURE-BUILD 0= if exit then
    s" P2" WHICH!  s" test/fixtures/file-objects/path-main.f" FIXTURE-BUILD 0= if exit then
-   s" the build links path-main.f" PATH-MAIN LINKED  PATH-RUN
+   s" the build links path-main.f" PATH-MAIN LINKED  PATH-RUN ;
+
+false [if] \ off until dot habu-add-the-checks-a49d054d
+\ H's program, run in its own process: the trap ends it, so its exit code and stderr are what is checked.
+: PART-RUN ( CMD:command -- CMD:command )
+   CMD:RESET
+   L$ s" prog" IN$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
+   CMD:ERR$ s\" E-BAD-TAG habu: layout tag 7 outside 0..1\n" STR= {: trapped:bool :}
+   trapped  rc 85 =  and 0= if rc SHOW then
+   s" the program dies with the bad-tag error" LABEL  trapped TTRUE
+   s" the program exits 85" LABEL  rc 85 T= ;
+
+\ H's program dies on a bad tag though part-main.f's NFETCH-CHECK has a BAD-TAG that returns.
+: PART-CASE ( CMD:command -- CMD:command )
    s" H" WHICH!  s" test/fixtures/file-objects/part-main.f" FIXTURE-BUILD 0= if exit then
    PART-RUN ;
+[then]
 
 \ FIXTURE-BYTES gets the fixture out root's object of tail i; answers its length, -1 if there is not
 \ one or it is shorter than a header. FOUND? asserts under its own label, then the caller's is back.

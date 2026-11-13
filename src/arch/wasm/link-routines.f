@@ -117,11 +117,6 @@ variable BUF-U
 : SP!, ( -- )
    L-CTX GET,  L-SP GET,  OP-I32-STORE ALIGN-32 WPROF:CTX-STACK-TOP MEM, ;
 
-\ A throw that is not a fault clears the fault kind: the host reports a fault
-\ for an uncaught throw only while the kind is nonzero.
-: NO-FAULT, ( -- )
-   L-CTX GET,  0 I32,  OP-I32-STORE ALIGN-32 WPROF:CTX-FAULT-KIND MEM, ;
-
 
 \ emit ( c -- ) stores c's low byte at OUT-BASE plus ctx.out-len and counts it;
 \ a full OUT traps.
@@ -139,27 +134,12 @@ variable BUF-U
    0 I32,  OP-END B, ;
 
 
-\ The address in L-ADDR is at or past WPROF:CTX-BASE and below 2^32, else the
-\ fault records WPROF:CRASH-RC with it and throws ENGINE-ERROR:MEMORY-FAULT,
-\ the context's top as the routine found it.
-: ADDRESS-CHECK, ( -- )
-   L-ADDR GET,  WPROF:CTX-BASE I64,  OP-I64-LT-U B,
-   L-ADDR GET,  $FFFFFFFF I64,  OP-I64-GT-U B,
-   OP-I32-OR B,  IF,
-      L-CTX GET,  WPROF:CRASH-RC I32,  OP-I32-STORE ALIGN-32 WPROF:CTX-FAULT-KIND MEM,
-      L-CTX GET,  L-ADDR GET,  OP-I64-STORE ALIGN-64 WPROF:CTX-FAULT-ADDR MEM,
-      L-CTX GET,  ENGINE-ERROR:MEMORY-FAULT I64,
-      OP-I64-STORE ALIGN-64 WPROF:CTX-THROW-CODE MEM,
-      1 I32,  OP-RETURN B,
-   OP-END B, ;
-
-\ A store ( x a -- ) by opcode op of alignment al, its address checked.
+\ A store ( x a -- ) by opcode op of alignment al.
 : STORE-BODY ( n n -- )
    {: op:n al:n :}
    2 U32,  1 U32,  I32 B,  1 U32,  I64 B,
    WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES 2 * I32,  OP-I32-SUB B,  L-SP SET,
    L-SP GET,  OP-I64-LOAD ALIGN-64 CELL-BYTES MEM,  L-ADDR SET,
-   ADDRESS-CHECK,
    L-ADDR GET,  OP-I32-WRAP-I64 B,
    L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,
    op al 0 MEM,
@@ -182,7 +162,7 @@ variable BUF-U
    L-SP GET,  OP-I64-LOAD ALIGN-64 CELL-BYTES MEM,  L-DIVISOR SET,
    L-DIVISOR GET,  OP-I64-EQZ B,  IF,
       L-CTX GET,  E-DIV-ZERO I64,  OP-I64-STORE ALIGN-64 WPROF:CTX-THROW-CODE MEM,
-      NO-FAULT,  1 I32,  OP-RETURN B,
+      1 I32,  OP-RETURN B,
    OP-END B,
    neg1 if
       L-DIVISOR GET,  -1 I64,  OP-I64-EQ B,  IF,
@@ -201,13 +181,12 @@ variable BUF-U
 : VIEW-BODY ( -- )  0 U32,  0 I32,  OP-END B, ;
 
 
-\ atomic-cas ( expected new a -- actual ), its address checked as a store's; a
-\ module runs one task, so the plain compare and store is atomic.
+\ atomic-cas ( expected new a -- actual ); a module runs one task, so the plain
+\ compare and store is atomic.
 : CAS-BODY ( -- )
    2 U32,  1 U32,  I32 B,  2 U32,  I64 B,
    WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES 3 * I32,  OP-I32-SUB B,  L-SP SET,
    L-SP GET,  OP-I64-LOAD ALIGN-64 CELL-BYTES 2 * MEM,  L-ADDR SET,
-   ADDRESS-CHECK,
    L-ADDR GET,  OP-I32-WRAP-I64 B,  OP-I64-LOAD ALIGN-64 0 MEM,  L-ACTUAL SET,
    L-ACTUAL GET,  L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,  OP-I64-EQ B,  IF,
       L-ADDR GET,  OP-I32-WRAP-I64 B,
@@ -480,7 +459,7 @@ variable SITES-N
    L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,  L-CODE SET,
    SP!,
    L-CTX GET,  L-CODE GET,  OP-I64-STORE ALIGN-64 WPROF:CTX-THROW-CODE MEM,
-   NO-FAULT,  1 I32,  OP-END B, ;
+   1 I32,  OP-END B, ;
 
 
 \ die ( a u code -- ) appends its message to OUT, leaves its code in ctx.throw-code
@@ -489,7 +468,7 @@ variable SITES-N
    2 U32,  2 U32,  I32 B,  1 U32,  I64 B,
    WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES 3 * I32,  OP-I32-SUB B,  L-SP SET,
    L-CTX GET,  L-SP GET,  OP-I64-LOAD ALIGN-64 CELL-BYTES 2 * MEM,
-   OP-I64-STORE ALIGN-64 WPROF:CTX-THROW-CODE MEM,  NO-FAULT,
+   OP-I64-STORE ALIGN-64 WPROF:CTX-THROW-CODE MEM,
    L-SP GET,  OP-I64-LOAD ALIGN-64 CELL-BYTES MEM,  L-U SET,
    WPROF:CTX-OUT-LEN CTX@,  L-LEN SET,
    L-U GET,  WPROF:OUT-CAP I32,  L-LEN GET,  OP-I32-SUB B,  OP-I64-EXTEND-I32-U B,

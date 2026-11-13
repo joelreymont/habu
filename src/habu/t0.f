@@ -6,22 +6,18 @@
 \ (src/compiler/native/definition.f), and emits through
 \ src/habu/t0-emit.f's EMIT- words to the selected emitter. A name, a tick's
 \ operand and `is`'s operand lower from the record the checker bound; spelling
-\ is looked up
-\ only by IMM-TOKEN (CHECKER-OWNER:PARSE-IMM?), VALIDATE (NFETCH-CHECK:TAGS) and
-\ TAG-INLINE (NFETCH-CHECK:BAD-TAG).
+\ is looked up only by IMM-TOKEN (CHECKER-OWNER:PARSE-IMM?).
 \ COMPILE-FIXED builds the body of a `constant`, `create` or `defer`, which has
 \ no text, through the same step.
 
 require src/lib/prelude.f
 require src/lib/error.f
 require src/core/bytes.f
-require src/lib/le.f
 require src/compiler/native/checker-owner.f
 require src/compiler/fixed-body.f
 require src/compiler/native/dict.f
 require src/core/prefix-boundary.f
 require src/compiler/native/family.f
-require src/compiler/native/trap.f
 require src/compiler/native/fetch.f
 require src/habu/intern.f
 require src/compiler/target.f
@@ -143,10 +139,10 @@ variable CUT                         \ the byte just past `does> `, or 0
 6 constant CS-OF
 7 constant CS-ENDOF
 8 constant CS-MATCH
+9 constant CS-LAST                   \ a MATCH's last arm, which compares no tag
 
 DYNAMIC-BUFFER CS-KIND n
 DYNAMIC-BUFFER CS-LOC n              \ the locals' slots in scope where the block opened
-DYNAMIC-BUFFER CS-FAM n              \ a MATCH's family
 DYNAMIC-BUFFER CS-WID n              \ a MATCH's cells, the tag on top
 DYNAMIC-BUFFER CS-LAY n              \ layout k's vregs from k*EMIT-VREGS, bottom first
 DYNAMIC-BUFFER CS-LAY-N n            \ layout k's count, -1 unrecorded
@@ -468,9 +464,7 @@ variable FREE                       \ bit k set: no entry holds vreg k
 \ An unmeasured operand is one cell: the checker files only layout values. `>r`
 \ moves a value's cells as one cell each would, so they sit reversed on the
 \ return stack and `r>` restores their order. `@` and `!` move the measured
-\ cells, `!` by the engine's guarded store once per cell. An `@` with a layout fact
-\ (NFETCH:AT) checks its tags first (VALIDATE); a fact whose width is not the
-\ token's is E-T0-BUNDLE. Any other inlined operation
+\ cells, `!` by the engine's guarded store once per cell. Any other inlined operation
 \ over a width other than one cell, and `@` or `!` under one cell, is
 \ E-T0-BUNDLE.
 \
@@ -1038,10 +1032,11 @@ variable DO-N                       \ the open levels
    OF-TEST ;
 
 : DO-ENDOF ( -- )
-   CS-OF CS-POP
+   CS-TOP-KIND {: kind:n :}
+   CS-OF CS-LAST CS-POP2
    SCOPE-END
    LAND
-   EMIT-ENDOF,
+   kind CS-OF = if EMIT-ENDOF, then
    CS-ENDOF L-N @ CS-PUSH ;
 
 \ The default arm drops the selector, and every `endof` lands after the drop.
@@ -1156,55 +1151,9 @@ DYNAMIC-BUFFER RS-V vreg     \ reserved to EMIT-VREGS by RESET-STATE: one
    v o r EMIT-ADDR-DATA
    r PUSH-REG ;
 
-\ Cell k of a fact's descriptor, read while compiling.
-: DESC@ ( ptr u8 n -- n ) cells + LE:U64@ ;
-
-: PLAIN? ( ptr u8 -- bool ) {: d:ptr :}
-   d 0 DESC@ 1 =  d 3 DESC@ 0=  and ;
-
-\ BAD-TAG runs when c holds and never returns, so only the path that skips it
-\ reaches `then`, every entry and vreg as before: no reconcile. Its tag and
-\ limit go on the data stack on its path alone.
-: TRAP-IF ( vreg n cc n n -- ) {: tag:vreg limit:n c:cc entry:n at:n :}
-   c EMIT-IF-CC,
-   tag 1 EMIT-PUSH  limit 1 EMIT-PUSH-LIT  entry at EMIT-CALL
-   EMIT-THEN, ;
-
-\ A descriptor of one row and no guards checks inline that 0 <= tag < limit;
-\ every entry it pushes is gone again, so the address is on top.
-: TAG-INLINE ( ptr u8 n -- ) {: d:ptr at:n :}
-   s" NFETCH-CHECK:BAD-TAG" NDICT:TOP-TARGET {: entry:n :}
-   entry 0= if E-HIR-UNMODELED throw then
-   d 2 DESC@ {: limit:n :}
-   0 DEEP  d 1 DESC@ ADDR+  CELL-W FETCH
-   TOP MAT {: tag:vreg :}
-   tag 0 EMIT-CMP-LIT  tag limit CC-LT entry at TRAP-IF
-   limit EMIT-IMM? if
-      tag limit EMIT-CMP-LIT
-   else
-      limit PUSH-CONST  TOP 1- MAT TOP MAT EMIT-CMP  TOP REMOVE
-   then
-   tag limit CC-GE entry at TRAP-IF
-   TOP REMOVE ;
-
-\ Any other fact calls NFETCH-CHECK:TAGS; NFETCH:CAPTURE keys facts by whole-text offset.
-: VALIDATE ( ptr u8 n -- ) {: a:ptr w:n :}
-   a TXT$ - {: at:n :}
-   at NFETCH:AT {: address:n bytes:n width:n origin:n :}
-   bytes 0= if exit then
-   width w <> if E-T0-BUNDLE throw then
-   NULL-PTR BYTE-VIEW address + {: d:ptr :}
-   d PLAIN? if d at TAG-INLINE exit then
-   s" NFETCH-CHECK:TAGS" NDICT:TOP-TARGET {: entry:n :}
-   entry 0= if E-HIR-UNMODELED throw then
-   0 DEEP
-   address origin PUSH-ADDR
-   SPILL-ALL  entry at EMIT-CALL ;
-
 : DO-FETCH ( ptr u8 -- ) {: a:ptr :}
    a CELLS0 {: w:n :}
    w 1 < if E-T0-BUNDLE throw then
-   a w VALIDATE
    w 1 = if CELL-W FETCH exit then
    w 0 ?do i DEEP i ADDR+ CELL-W FETCH loop
    w 1 NIP-CELLS ;
@@ -1456,10 +1405,10 @@ variable CLAUSE-ORD                 \ the checker's ordinal of the clause's firs
 \ `MATCH fam` reads its value as the cells the checker proved at the family
 \ token, tag on top, and opens a case over the tag; each arm drops the tag and
 \ the pads proved at its `of`. A niche family's one cell is first given its tag
-\ (NICHE-TAG), and the value's width counts it. `;MATCH` is the default arm: an
-\ unmatched tag calls the trap routine with the family's bad-tag message
-\ (src/compiler/native/trap.f). `construct fam v` pushes
-\ the variant's pads as zeros, then its tag, which a niche family omits. A call
+\ (NICHE-TAG), and the value's width counts it. The checker proved the arms
+\ exhaustive, so the last arm compares no tag and falls through to `;MATCH`.
+\ `construct fam v` pushes the variant's pads as zeros, then its tag, which a
+\ niche family omits. A call
 \ first pushes, as zeros, the pads the checker proved the call's instantiation
 \ adds (NDICT:CON-PADS):
 \ OPTION:NONE at option<pt>. A form whose facts are missing or disagree is
@@ -1470,19 +1419,37 @@ variable CLAUSE-ORD                 \ the checker's ordinal of the clause's firs
 \ them.
 : MATCH-CK ( bool -- ) 0= if ORD @ 1- ROW$ E-T0-MATCH REFUSE then ;
 
-\ `;MATCH` closes MATCH k: a tag no arm matched runs into the trap on the last
-\ arm's mismatch edge, and every `endof` lands after
-\ it. loc is the `;MATCH` token's offset in the text.
-: CLOSE-MATCH ( n n -- ) {: loc:n k:n :}
+\ `;MATCH` closes the MATCH its arms' `endof`s sit on: the last arm falls
+\ through to it, and every other `endof` lands with it.
+: CLOSE-MATCH ( -- )
    CS-TOP-KIND CS-MATCH <> MATCH-CK
-   k CS-FAM @ NFAM:NAME$ NTRAP:BAD-TAG {: a:ptr u:n rc:n :}
-   a u INTERN:INTERN-SOURCE PUSH-ADDR
-   u PUSH-CONST  rc PUSH-CONST
-   NTRAP:ROUTINE loc DO-CALL
    begin CS-TOP-KIND CS-ENDOF = while CS-ENDOF CS-POP repeat
    CS-MATCH CS-POP
    EMIT-ENDCASE,
    SCOPE-END ;
+
+\ Row j's change to the MATCH nesting depth d.
+: NEST ( n n -- n ) {: d:n j:n :}
+   j ROW-KIND @ CHECKER-TAPE:K-MATCH = if d 1+ exit then
+   j ROW-KIND @ CHECKER-TAPE:K-MATCH-END = if d 1- exit then
+   d ;
+
+\ Whether the arm whose `of` is row k is its MATCH's last: its `;MATCH` comes
+\ before another arm of its own.
+: LAST-ARM? ( n -- bool ) {: k:n :}
+   0  ROWS @ k 1+ ?do
+      dup 0= if
+         i ROW-KIND @ CHECKER-TAPE:K-MATCH-ARM = if drop false unloop exit then
+         i ROW-KIND @ CHECKER-TAPE:K-MATCH-END = if drop true unloop exit then
+      then
+      i NEST
+   loop
+   drop false ;
+
+\ The last arm drops the tag and its variant's literal.
+: LAST-TEST ( -- )
+   DROP1 DROP1
+   CS-LAST L-N @ CS-PUSH ;
 
 \ The mismatch keeps the value for the next arm. A niche family's empty arm
 \ drops the cell as its one pad.
@@ -1494,7 +1461,7 @@ variable CLAUSE-ORD                 \ the checker's ordinal of the clause's firs
    k CS-WID @ 1- pads - {: pay:n :}
    pay 0 >= MATCH-CK
    at NDICT:MATCH-PAYLOAD drop pay = MATCH-CK
-   OF-TEST
+   at LAST-ARM? if LAST-TEST else OF-TEST then
    pads 0 ?do DROP1 loop ;
 
 \ A niche cell's tag, 0 for a zero cell and else 1, pushed above the cell. The
@@ -1513,8 +1480,8 @@ variable CLAUSE-ORD                 \ the checker's ordinal of the clause's firs
    EMIT-CASE,
    CS-N @ {: k:n :}
    CS-MATCH L-N @ CS-PUSH
-   k 1+ CS-FAM-RESERVE  k 1+ CS-WID-RESERVE
-   fam k CS-FAM !  w k CS-WID ! ;
+   k 1+ CS-WID-RESERVE
+   w k CS-WID ! ;
 
 \ A variant's tag; the checker files K-MATCH-OF only for an `of`, which a body
 \ ending here lacks.
@@ -1752,7 +1719,7 @@ variable OP-REC                      \ the last of them
       CHECKER-TAPE:K-MATCH of a0 k DO-MATCH endof
       CHECKER-TAPE:K-MATCH-ARM of a0 DO-ARM endof
       CHECKER-TAPE:K-MATCH-OF of k ARM-OF endof
-      CHECKER-TAPE:K-MATCH-END of loc ARMS-AT CLOSE-MATCH endof
+      CHECKER-TAPE:K-MATCH-END of CLOSE-MATCH endof
       CHECKER-TAPE:K-CONSTRUCT of a0 k ROW-A1 @ k DO-CONSTRUCT endof
       a u UNSUPPORTED
    endcase ;
@@ -1986,8 +1953,8 @@ variable SCAN-LO                     \ the ordinal of its first row
 \ refuses one a shadow routine reaches. A refusal in either walk refuses the
 \ definition. Each walk starts clean: WALK and FIXED-BODY
 \ set their own cells and RESET-STATE's, EMIT-OPEN clears the seam's rows and the
-\ selected emitter's sink and LABEL state; the tape, the measures and the NFETCH
-\ facts are only read.
+\ selected emitter's sink and LABEL state; the tape and the measures are only
+\ read.
 \ INTERN:STRING finds before it adds, so a string gets one address in both
 \ routines, though each walk interns it.
 

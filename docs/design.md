@@ -212,7 +212,7 @@ policy would give one logical type several stack shapes.
   offset table.
 - `niche-null` and `boxed` change the stack shape to one cell. A policy that
   changes the stack shape must not be selectable before its constructor,
-  `MATCH`, stack-operation and invalid-tag lowering exists; `boxed` has none
+  `MATCH` and stack-operation lowering exists; `boxed` has none
   and is refused with `layout policy not yet supported`.
 - `niche-null` is one shape: an empty variant, then one holding a single `ptr`
   field. The cell is the pointer, zero for the empty variant, so every cell
@@ -223,8 +223,7 @@ policy would give one logical type several stack shapes.
   family row and its layout state.
 
 **Construction never starts from a raw tag.** There is no public construction
-from a tag value and no unchecked enum cast; a tag outside the declared range
-is a runtime invalid-tag failure, not a new variant.
+from a tag value and no unchecked enum cast.
 
 **Visibility picks the spelling, not whether words are generated.** A public
 family publishes `PKG-FAMILY:MAKE` in a reserved constructor namespace; a

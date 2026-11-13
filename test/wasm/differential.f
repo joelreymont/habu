@@ -222,6 +222,7 @@ public
    want wu UNCAUGHT-RC code NATIVE
    want wu 1 code WASM ;
 
+false [if] \ off until dot habu-add-the-checks-a49d054d
 \ Stderr is one line, the native engine's report of a caught memory fault.
 : FAULT-LINE? ( ptr u8 n -- bool )
    RTRIM {: a:ptr u:n :}
@@ -238,6 +239,7 @@ public
    want wu 0 NATIVE-RUN {: e:n :}
    LABEL  ERR e FAULT-LINE? TTRUE
    want wu 0 0 WASM ;
+[then]
 
 ;package
 
@@ -278,10 +280,12 @@ s" W07-THROW"
 s" : W07-THROW ( -- ) [: $8000000000000001 throw ;] catch . $8000000000000001 throw ;"
 s\" -9223372036854775807\n" $8000000000000001 THROW-ROW
 
+false [if] \ off until dot habu-add-the-checks-a49d054d
 \ A byte read in the null region throws E-MEMORY-FAULT through the catch around it.
 s" W07-FAULT"
 s" package W07-FAULT-CAST private CAST: >BYTE ( n -- ptr u8 ) public : PEEK ( -- ) $FFFF >BYTE c@ drop ; ;package : W07-FAULT ( -- ) 2 . [: W07-FAULT-CAST:PEEK ;] catch . ;"
 s\" 2\n110\n" FAULT-ROW
+[then]
 
 \ ---- W31 a program's own storage -------------------------------------------------
 \ A variable, a created buffer and a constant link as data; ! and c! store
