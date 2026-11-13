@@ -61,10 +61,6 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
    RCX TEXT@,  RCX DATA-REG BODY-TEXT:CAP-CELL MEM-OFF ASM-SINK ENC-ADD-RM
    RAX RCX off MEM-OFF ASM-SINK ENC-MOV-RM  0 G-PUSH ;
 
-: POISON-TEXT, ( n -- ) {: off:n :}
-   RCX TEXT@,  RAX -1 >IMM32 ASM-SINK ENC-MOV-RI32
-   RAX RCX off MEM-OFF ASM-SINK ENC-MOV-MR ;
-
 \ Push the address off bytes into the text, or store it in the DATA cell at
 \ cell; pop one and expect it off bytes in.
 : PUSH-TEXT-ADDR, ( n -- ) {: off:n :}
@@ -195,7 +191,6 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
 \   to twice the capacity, its text following.
 \ - hb-x64-kernel-body-append-rows, after that growth: TCSIG-A rebased and
 \   the three rows at base + capacity, the copied one included.
-\ - hb-x64-kernel-body-append-pass2 appends in pass 2, which stores nothing.
 \ - hb-x64-kernel-trust-sig stores the pending definition's signature span, an
 \   address in the block.
 \ - hb-x64-kernel-created-sig stores the pending definition's `does>`
@@ -349,16 +344,6 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
    3 BODY-TEXT:ROWS-CELL X64HARNESS:EXPECT-CELL,
    2 cells PUSH-ROW-CELL,  FIRST-CAP HELLO-LEN - X64HARNESS:EXPECT-POP,   \ row 1, copied
    4 cells PUSH-ROW-CELL,  FIRST-CAP X64HARNESS:EXPECT-POP, ;       \ row 2
-
-: BODY-APPEND-PASS2-CASE, ( -- )
-   X64HARNESS:REST,
-   HELLO$ APPEND,
-   CELL POISON-TEXT,
-   1 P2-CELL X64HARNESS:CELL!,
-   HELLO$ APPEND,
-   HELLO-LEN BODYLEN-CELL X64HARNESS:EXPECT-CELL,
-   1 BODY-TEXT:ROWS-CELL X64HARNESS:EXPECT-CELL,
-   CELL PUSH-TEXT-CELL,  -1 X64HARNESS:EXPECT-POP, ;
 
 \ LONG$ is a capture longer than SIG-LEN.
 : TRUST-SIG-CASE, ( -- )
@@ -524,7 +509,6 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
    [: BODY-APPEND-FILL-CASE, ;] false s" hb-x64-kernel-body-append-fill" TMP-PATH IMAGE
    [: BODY-APPEND-GROW-CASE, ;] false s" hb-x64-kernel-body-append-grow" TMP-PATH IMAGE
    [: BODY-APPEND-ROWS-CASE, ;] false s" hb-x64-kernel-body-append-rows" TMP-PATH IMAGE
-   [: BODY-APPEND-PASS2-CASE, ;] false s" hb-x64-kernel-body-append-pass2" TMP-PATH IMAGE
    [: TRUST-SIG-CASE, ;] false s" hb-x64-kernel-trust-sig" TMP-PATH IMAGE
    [: CREATED-SIG-CASE, ;] false s" hb-x64-kernel-created-sig" TMP-PATH IMAGE
    [: DEF-CLOSE-CASE, ;] false s" hb-x64-kernel-def-close" TMP-PATH IMAGE

@@ -214,7 +214,6 @@ create TAB
    STACK-ABI:REPL-CAP-CELL            1 cells                 CLAIM STACK-ABI-REPL-CAP
    STACK-ABI:RETURN-BASE-CELL         1 cells                 CLAIM STACK-ABI-RETURN-BASE
    STACK-ABI:LOOP-BASE-CELL           1 cells                 CLAIM STACK-ABI-LOOP-BASE
-   TXN-STATE-OFF                      TXN-STATE-LEN           CLAIM TXN-STATE
    USER-BAND:START                    USER-BAND:END USER-BAND:START -  CLAIM USER-BAND
    MEM-ABI:START                      MEM-ABI:BYTES           CLAIM MEM-ABI
    FS-MUT-ABI:START                   FS-MUT-ABI:BYTES        CLAIM FS-MUT-ABI

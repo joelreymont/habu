@@ -1267,7 +1267,7 @@ variable TOK-BODY-RAW
 : BODY-LEX-RESET ( -- )
    0 BODY-DEPTH !  0 BODY-RAW-NEXT ! ;
 
-76 constant DEF-RC-NO-COMPILER   \ the code of the engine head's first refusal, a pass-2 nesting
+76 constant DEF-RC-NO-COMPILER   \ the code of the engine head's first refusal
 76 constant DEF-RC-BAD-SIG       \ `trusted:` or `does>` with no signature
 72 constant DEF-RC-PD-FULL       \ no pending slot holds the defer
 

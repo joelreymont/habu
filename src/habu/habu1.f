@@ -290,7 +290,6 @@ variable FD-SIGN
 variable BCAP-OK
 variable BCAP-CP
 variable BCAP-CD
-variable BCAP-GO
 variable TOK-SKIP
 variable TOK-HAS
 variable TOK-SCAN
@@ -4469,10 +4468,6 @@ package ENGINE-EMIT
    LBL BCAP-OK !
    LBL BCAP-CP !
    LBL BCAP-CD !
-   LBL BCAP-GO !
-   \ pass 2 re-runs the already-captured body: never re-capture
-   14 DATA P2-CELL LDR,  14 BCAP-GO LABEL@ CBZ,  RET,
-   BCAP-GO LABEL@ LBL,
    17 12 0 ADDI,                  \ len in x17: callers keep x6-x8
    14 DATA BODYLEN-CELL LDR,
    16 14 17 ADD,  16 16 1 ADDI,

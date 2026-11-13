@@ -987,17 +987,9 @@ $4CA8 constant CLAUSE-CELL
 \               64 saved-base | 72 saved-capacity | 80 saved-BUSY
 \               88 saved-ACTIVE
 
-\ Compiler lowering transaction: all mutable pass-2 authority lives in one engine
-\ band.
-$5000 constant TXN-STATE-OFF
-$300 constant TXN-STATE-LEN
 STACK-ABI:PAGE-BYTES constant PROT-PAGE-MAX   \ the mapping alignment
 
-TXN-STATE-OFF       constant TXN-ACTIVE-CELL
-TXN-STATE-OFF $30 + constant P2-CELL
-
-\ The run the transaction reserved and never used, handed to the libraries that
-\ need storage a task owns.
+\ The end of the run handed to the libraries that need storage a task owns.
 $8000 constant USER-REGION-END
 
 \ STRING-ABI is src/lib/string.f's SB builder, declared here because string.f is
@@ -1108,7 +1100,7 @@ START constant HEAD-OFF
 \ USER-BAND is the run of the per-task header src/lib/task.f keeps its own cells in.
 package USER-BAND
 public
-TXN-STATE-OFF TXN-STATE-LEN + constant START
+$5000 constant START
 MEM-ABI:START constant END
 ;package
 

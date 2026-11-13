@@ -4967,20 +4967,17 @@ variable GROW-CELL
    head X64CODE:LBL,  GROW-HEAD$ TEXT,
    unit X64CODE:LBL,  GROW-UNIT$ TEXT, ;
 
-\ body-capture ( ptr u8 n -- ): habu2.f BODY-APPEND's twin, with BODY-ROW,;
-\ pass 2 re-runs a captured body and stores nothing. BODYLEN past the
-\ capacity and a length that wraps exit SEAL-VIOLATION; with no block, or
-\ none the run and its space fit, GROW-LBL grows it first.
+\ body-capture ( ptr u8 n -- ): habu2.f BODY-APPEND's twin, with BODY-ROW,.
+\ BODYLEN past the capacity and a length that wraps exit SEAL-VIOLATION; with
+\ no block, or none the run and its space fit, GROW-LBL grows it first.
 : BODY-APPEND-BODY ( -- )
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: done:label grow:label fits:label :}
+   X64CODE:LBL X64CODE:LBL {: grow:label fits:label :}
    RCX POP,  RSI POP,                                 \ the count, the bytes
    RAX BODYLEN-CELL CELL@,
    RAX DATA-REG BODY-TEXT:CAP-CELL MEM-OFF ASM-SINK ENC-CMP-RM  C-A SEAL-TRAP-LBL JCC,
    RDX RAX ASM-SINK ENC-MOV-RR
    RDX RCX ASM-SINK ENC-ADD-RR  C-B SEAL-TRAP-LBL JCC,
    RDX 1 >IMM8 ASM-SINK ENC-ADD-RI8  C-B SEAL-TRAP-LBL JCC,   \ the length past the space
-   R8 P2-CELL CELL@,
-   R8 R8 ASM-SINK ENC-TEST-RR  C-NE done JCC,
    R8 BODY-TEXT:BASE-CELL CELL@,
    R8 R8 ASM-SINK ENC-TEST-RR  C-E grow JCC,
    RDX DATA-REG BODY-TEXT:CAP-CELL MEM-OFF ASM-SINK ENC-CMP-RM  C-BE fits JCC,
@@ -4992,8 +4989,7 @@ variable GROW-CELL
    COPY-BYTES,
    RAX STR-SPACE IMM32,
    0 >R8 RDI MEM-AT ASM-SINK ENC-MOV8-MR
-   RDX BODYLEN-CELL CELL!,
-   done X64CODE:LBL, ;
+   RDX BODYLEN-CELL CELL!, ;
 
 \ ( ptr u8 n -- ): the span into the cells aoff and uoff while a
 \ definition is pending.
