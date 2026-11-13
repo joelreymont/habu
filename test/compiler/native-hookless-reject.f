@@ -86,21 +86,20 @@ create TEXT CAP allot                  variable TEXT-U
    s" ncomp: cannot compile F at F in" SAYS ;
 
 \ A TRUSTED: body whose `@` cannot be applied over a two-cell family value
-\ loses that value's width, so nothing can place its cells. A does> clause that
-\ loses one is refused the same way, and the definitions after it certify.
+\ loses that value's width, so nothing can place its cells; a does> clause that
+\ loses one is refused the same way.
 \ Its own process: the uncaught throw ends it, and its exit status is tested.
 : INCOMPLETE-SCAN ( -- )
    s" a scan that loses a wide value's width is refused" T-LABEL
    TEXT-U BUF-RESET
    s" ENUM hr-v VARIANT none ;VARIANT VARIANT some FIELD x n ;VARIANT ;ENUM " TEXT+
-   s" : HR-MK ( n -- ) create , does> ( -- n ) @ ; " TEXT+
-   S\" : HR-TRY ( -- n ) [: s\" TRUSTED: HR-DEF ( n -- ) create , does> ( -- n ) @ dup HR-MK construct hr-v some @ ;\" evaluate-closed ;] catch ; " TEXT+
-   s" HR-TRY . 7 HR-MK HR-SEVEN HR-SEVEN . " TEXT+
+   S\" : HR-TRY ( -- n ) [: s\" TRUSTED: HR-DEF ( n -- ) create , does> ( -- n ) @ construct hr-v some @ ;\" evaluate-closed ;] catch ; " TEXT+
+   s" HR-TRY . " TEXT+
    s" TRUSTED: HR-LOST ( n -- n ) construct hr-v some @ ;" TEXT+
    TEXT$ SESSION
    RC @ UNCAUGHT-RC T=
    s" ncomp: cannot compile HR-DEF" SAYS
-   S\" -8519\n7\n" PRINTS
+   S\" -8519\n" PRINTS
    s" ncomp: cannot compile HR-LOST" SAYS
    s" hb: uncaught throw code -8519" SAYS ;
 

@@ -2620,7 +2620,6 @@ public
 : FAMILY@ ( n -- n ) PF-FAM@ ;
 : NAME$ ( n -- ptr u8 n ) PF-NAME$ ;
 : SCHEMA@ ( n -- n ) PF-SCH@ ;
-: SLOT@ ( n -- n ) PF-SLOT@ ;
 : CELLS@ ( n -- n ) PF-CELLS@ ;
 : BYTE-OFF@ ( n -- n ) PF-BYTE-OFF@ ;
 : BYTES@ ( n -- n ) PF-BYTES@ ;

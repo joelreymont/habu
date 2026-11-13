@@ -56,7 +56,7 @@ CAST: CODE>BYTES ( n -- ptr u8 )
 
 : TIER-CK ( -- )
    T0? 0= if
-      s" shadow-kinds: the tier is not T0 (COMP-CELL 0)" 1 die
+      s" shadow-kinds: no tier-0 compiler is installed (COMP-CELL 0)" 1 die
    then ;
 
 \ Whether a section line starts at byte at.

@@ -6,7 +6,7 @@ require tools/code-dump-core.f
 require test/gate-common.f
 require src/habu/prof-abi.f
 
-using CODE-DUMP    \ JD / FIND-XT / LOAD-PROGRAM, called bare in GDB-CODE-DUMP
+using CODE-DUMP    \ DECODE / FIND-XT / LOAD-PROGRAM, called bare in GDB-CODE-DUMP
 
 : GDB-PROFILER-SOURCE ( -- )
    GE-SRC-RESET
@@ -522,7 +522,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 : GDB-CODE-DUMP ( -- )
    GE-HB-RESET
    [: s" : CODE-DUMP-SMOKE ( -- i64 ) 7 ;" LOAD-PROGRAM
-      s" CODE-DUMP-SMOKE" FIND-XT JD ;] GE-CAPTURE-ACTION
+      s" CODE-DUMP-SMOKE" FIND-XT DECODE ;] GE-CAPTURE-ACTION
    s" code-dump direct core" GE-EXPECT-OK
    s" mov" s" code-dump decodes a real move" GE-EXPECT-OUT-HAS
    s" ret" s" code-dump direct core output" GE-EXPECT-OUT-HAS

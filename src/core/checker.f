@@ -18129,36 +18129,6 @@ variable CHECKER-PREFIX-ROLLBACK
 
 \ The facts are the last checked definition's per-CHECK scratch, still live
 \ until the next CHECK.
-: WF-WIDE? ( -- bool )
-   0 BEGIN dup WF-N @ < WHILE
-      dup WF-WIDTH@ 1 > IF drop RES-TRUE EXIT THEN
-      1 +
-   REPEAT drop RES-FALSE ;
-: WF-XPAD? ( -- bool )   \ any construct/MATCH extra-pad fact (triggers pass-2 even at extra=1)
-   0 BEGIN dup WF-N @ < WHILE
-      dup WF-FLAGS@ WF-XPAD-FLAG and 0 <> IF drop RES-TRUE EXIT THEN
-      1 +
-   REPEAT drop RES-FALSE ;
-: WF-INIT? ( -- bool )
-   0 BEGIN dup WF-N @ < WHILE
-      dup WF-FLAGS@ WF-INIT-FLAG and 0 <> IF drop RES-TRUE EXIT THEN
-      1 +
-   REPEAT drop RES-FALSE ;
-: WF-FIELD? ( -- bool )
-   0 BEGIN dup WF-N @ < WHILE
-      dup WF-FLAGS@ WF-FIELD-FLAG and 0 <> IF drop RES-TRUE EXIT THEN
-      1 +
-   REPEAT drop RES-FALSE ;
-: WF-FETCH? ( n -- bool ) WF-FLAGS@ WF-FETCH-FLAG and 0 <> ;
-: WF-NEEDS-P2? ( -- bool )
-   WF-WIDE? IF RES-TRUE EXIT THEN
-   WF-XPAD? IF RES-TRUE EXIT THEN
-   WF-INIT? IF RES-TRUE EXIT THEN
-   WF-FIELD? IF RES-TRUE EXIT THEN
-   0 BEGIN dup WF-N @ < WHILE
-      dup WF-FETCH? IF drop RES-TRUE EXIT THEN
-      1 +
-   REPEAT drop RES-FALSE ;
 : WF-HIT? ( n n n -- bool ) {: i:n off:n pos:n :}
    i WF-OFF@ off <> IF RES-FALSE EXIT THEN
    i WF-POS@ pos = ;

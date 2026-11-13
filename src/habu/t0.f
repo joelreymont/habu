@@ -1907,7 +1907,7 @@ variable SCAN-LO                     \ the ordinal of its first row
 \ leaves no cells to place a wide value from, so nothing lowers.
 : ON-DONE ( ptr u8 n n -- )
    SCAN-VERDICT !  2drop
-   CHECKER-OWNER:SCAN-INCOMPLETE? if E-NELAB-BUNDLE throw then
+   SCAN-INCOMPLETE @ 0<> if E-NELAB-BUNDLE throw then
    ROWS @ SCAN-LO @ ?do
       i CHECKER-TAPE:EVENT  i ROW-A1 !  i ROW-A0 !  i ROW-KIND !
    loop

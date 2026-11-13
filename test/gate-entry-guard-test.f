@@ -84,7 +84,7 @@ GUARD
 \ A file may launch itself, even as an entry two rows share.
 TEST:RESET
 TEST:SUITE self test/gate-entry-guard-self-launch.f TEST:;SUITE
-TEST:SUITE again src/lib/test.f ENTRIES test/gate-entry-guard-self-launch.f TEST:;SUITE
+TEST:SUITE again test/gate-entry-guard-self-launch.f TEST:;SUITE
 GUARD
 
 \ A row may import one of its own entries from another, unless another row

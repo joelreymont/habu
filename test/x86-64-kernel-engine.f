@@ -336,7 +336,7 @@ REGION SLOT-BYTES - constant TOP-SLOT
 \ Record 5, delta, written and pending but not counted, with a compiler latched.
 : PENDING, ( -- )
    SEED,  X64KERNEL:HIDX-BUILD,
-   1 NCOMP-DISPATCH:COMP-LATCH-CELL X64HARNESS:CELL!,
+   2 NCOMP-DISPATCH:COMP-LATCH-CELL X64HARNESS:CELL!,
    5 DREC * PEND-CELL X64HARNESS:REGION-ADDR!,
    s" delta" 0 0 X64HARNESS:RECORD,  5 NDICT!, ;
 

@@ -8,10 +8,10 @@ HB-TARGET-LINUX-X86-64? [if] require tools/code-dump-x64.f [then]
 HB-TARGET-LINUX-X86-64? 0= [if] require tools/code-dump-arm.f [then]
 
 \ CLI: bin/hb --load tools/code-dump.f -- '<program>' WORD
-\ Inline: <program> ' WORD CODE-DUMP:JD. A record supplies the terminal address;
-\ a branch, early return or immediate byte that looks like RET does not. The
-\ target's decoder (tools/code-dump-arm.f, tools/code-dump-x64.f) reads one
-\ instruction per step.
+\ Inline: <program> ' WORD CODE-DUMP:DECODE. A record supplies the terminal
+\ address; a branch, early return or immediate byte that looks like RET does
+\ not. The target's decoder (tools/code-dump-arm.f, tools/code-dump-x64.f)
+\ reads one instruction per step.
 package CODE-DUMP
 private
 
@@ -44,7 +44,7 @@ private
 
 public
 
-: JD ( n -- ) {: xt:n :}
+: DECODE ( n -- ) {: xt:n :}
    xt REC-FOR XREF-CODE-BYTES {: bytes:n :}
    xt bytes CODE-BYTES:AT drop {: a:ptr :}
    xt a bytes WALK ;
@@ -62,7 +62,7 @@ public
 : MAIN ( -- )
    SCRIPT-ARGC 2 <> if USAGE then
    0 SCRIPT-ARGV$ LOAD-PROGRAM
-   1 SCRIPT-ARGV$ FIND-XT JD ;
+   1 SCRIPT-ARGV$ FIND-XT DECODE ;
 
 : AUTO ( -- )
    SCRIPT-ARGC 0 > if MAIN then ;

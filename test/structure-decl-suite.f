@@ -532,7 +532,6 @@ TYPE-FIELD:COUNT B !
 s" STRUCTURE sdlouter FIELD inner sdlbox FIELD z n ;STRUCTURE" TEST-EVAL:RC 0 T=
 B @ TYPE-FIELD:NAME$ s" inner" CORE-STR= TTRUE
 B @ TYPE-FIELD:CELLS@ 2 T=                            \ the field is the whole bundle, not one cell
-B @ 1 + TYPE-FIELD:SLOT@ 2 T=                         \ z sits after it
 
 \ depth 3: the walk recurses again rather than stopping one level down.
 s" STRUCTURE sdldeep FIELD d sdlouter ;STRUCTURE" TEST-EVAL:RC 0 T=

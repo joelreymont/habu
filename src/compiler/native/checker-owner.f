@@ -249,7 +249,4 @@ public
 : CALL-QUOT-OUT ( n n -- n n )
    SOURCE-QUOT-OUT ;
 
-: SCAN-INCOMPLETE? ( -- bool )
-   SCAN-INCOMPLETE @ 0<> ;
-
 ;package

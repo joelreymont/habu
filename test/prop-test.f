@@ -628,8 +628,6 @@ variable CASE-EXP
    s" : PROP-PC ( -- n ) checker-scope-depth ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) type-field:tx-depth ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) wf-n@ ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- bool ) wf-wide? ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- bool ) wf-needs-p2? ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( n n -- n ) wf-w-at ; " s" 7 7 " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) locw-hw-n@ ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) schema-reg:schema-root-n@ ; " s" " 1 CHECK-CASE
