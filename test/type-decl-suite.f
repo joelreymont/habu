@@ -1472,6 +1472,79 @@ s" undefine TDHO:HASH" E-CTOR-PROTECTED TDT-NEG
 \ eq-only families grow no hash surface.
 s" TDSV-NOH ( tdsv -- n ) TDSV:HASH" CHECK-QUIET-CANDIDATE! 0 T=
 
+\ A derived word's engine words are the ones sumtype.f found: a declaring
+\ package's own `=`, `and`, `0=`, `drop`, `swap`, `xor` and `*` capture none.
+package tdbw
+public
+variable HITS
+private
+: = ( n n -- bool ) <> ;
+: 0= ( n -- bool ) 0<> ;
+: and ( bool bool -- bool ) or ;
+: xor ( n n -- n ) + ;
+: * ( n n -- n ) + ;
+: swap ( a b -- b a ) {: x y :} 1 HITS +! y x ;
+: drop ( a -- ) {: x :} 1 HITS +! ;
+public
+ENUM tdbe DERIVE eq hash red green ;ENUM
+SUMTYPE tdbs DERIVE eq hash
+  VARIANT bnil ;VARIANT
+  VARIANT bpair n n ;VARIANT
+;SUMTYPE
+PRODUCT tdbp DERIVE eq hash
+  FIELD col tdbe
+  FIELD amt n
+;PRODUCT
+;package
+package tdbc
+public
+ENUM tdbe DERIVE eq hash red green ;ENUM
+SUMTYPE tdbs DERIVE eq hash
+  VARIANT bnil ;VARIANT
+  VARIANT bpair n n ;VARIANT
+;SUMTYPE
+PRODUCT tdbp DERIVE eq hash
+  FIELD col tdbe
+  FIELD amt n
+;PRODUCT
+;package
+: TDBW-E1 ( -- bool ) TDBW-TDBE:RED TDBW-TDBE:RED TDBW-TDBE:EQ ;
+: TDBW-E2 ( -- bool ) TDBW-TDBE:RED TDBW-TDBE:GREEN TDBW-TDBE:EQ ;
+: TDBW-ET ( -- n ) TDBW-TDBE:GREEN TDBW-TDBE:TAG ;
+: TDBW-EH ( -- bool )
+   TDBW-TDBE:GREEN TDBW-TDBE:HASH TDBC-TDBE:GREEN TDBC-TDBE:HASH = ;
+TDBW-E1 TTRUE
+TDBW-E2 TFALSE
+TDBW-ET 1 T=
+TDBW-EH TTRUE
+: TDBW-S1 ( -- bool ) 1 2 TDBW-TDBS:BPAIR 1 2 TDBW-TDBS:BPAIR TDBW-TDBS:EQ ;
+: TDBW-S2 ( -- bool ) 1 2 TDBW-TDBS:BPAIR 1 3 TDBW-TDBS:BPAIR TDBW-TDBS:EQ ;
+: TDBW-S3 ( -- bool ) TDBW-TDBS:BNIL 1 2 TDBW-TDBS:BPAIR TDBW-TDBS:EQ ;
+: TDBW-S0 ( -- bool ) TDBW-TDBS:BNIL TDBW-TDBS:BNIL TDBW-TDBS:EQ ;
+: TDBW-ST ( -- n ) 1 2 TDBW-TDBS:BPAIR TDBW-TDBS:TAG ;
+: TDBW-SH ( -- bool )
+   1 2 TDBW-TDBS:BPAIR TDBW-TDBS:HASH 1 2 TDBC-TDBS:BPAIR TDBC-TDBS:HASH = ;
+TDBW-S0 TTRUE
+TDBW-S1 TTRUE
+TDBW-S2 TFALSE
+TDBW-S3 TFALSE
+TDBW-ST 1 T=
+TDBW-SH TTRUE
+: TDBW-P1 ( -- bool )
+   TDBW-TDBE:RED 7 TDBW-TDBP:MAKE TDBW-TDBE:RED 7 TDBW-TDBP:MAKE TDBW-TDBP:EQ ;
+: TDBW-P2 ( -- bool )
+   TDBW-TDBE:RED 7 TDBW-TDBP:MAKE TDBW-TDBE:GREEN 7 TDBW-TDBP:MAKE TDBW-TDBP:EQ ;
+: TDBW-P3 ( -- bool )
+   TDBW-TDBE:RED 7 TDBW-TDBP:MAKE TDBW-TDBE:RED 8 TDBW-TDBP:MAKE TDBW-TDBP:EQ ;
+: TDBW-PH ( -- bool )
+   TDBW-TDBE:GREEN 7 TDBW-TDBP:MAKE TDBW-TDBP:HASH
+   TDBC-TDBE:GREEN 7 TDBC-TDBP:MAKE TDBC-TDBP:HASH = ;
+TDBW-P1 TTRUE
+TDBW-P2 TFALSE
+TDBW-P3 TFALSE
+TDBW-PH TTRUE
+TDBW:HITS @ 0 T=
+
 \ grammar: order stays deferred inside the list; unknown first token rejects;
 \ a sum variant named hash collides; hash-only ptr/field gates still fire.
 s" ENUM tdhb1 DERIVE eq order aa bb ;ENUM" E-TDECL-DERIVE TDT-NEG

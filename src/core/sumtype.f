@@ -1062,6 +1062,11 @@ CAST: AS-STORAGE-RUN ( n -- [ ptr u8 n n n ptr u8 n -- n ] )
 : TDECL-CHILD-RUN ( ptr u8 n n n ptr u8 n -- n )
    data-base PROVIDED-XT:CHILD-CELL + @ AS-STORAGE-RUN execute ;
 
+CAST: AS-OPEN ( n -- [ ptr u8 n n -- ] )
+
+: TDECL-DEFINE-RUN ( ptr u8 n n -- )
+   data-base PROVIDED-XT:DEFINE-CELL + @ AS-OPEN execute ;
+
 \ Makes the child word NAME through CHILD-RUN, of a CHILD-ABI SHAPE and PARAM.
 : TDECL-CHILD ( ptr u8 n n n -- )
    {: na:ptr nu:n shape:n param:n :}
@@ -1112,7 +1117,7 @@ PTR-VARIABLE TDGEN-NA   variable TDGEN-NU  \ word-name span inside TDGEN-BUF
 \ validate live visibility and every plan-determined fixed registry.
 $1000 constant TDPLAN-CAP-INIT
 4 constant TDPLAN-ROW-CAP-INIT
-5 cells constant TDPLAN-REC
+7 cells constant TDPLAN-REC
 $7FFFFFFFFFFFFFFF constant TDPLAN-BYTE-MAX
 TDPLAN-BYTE-MAX TDPLAN-REC / constant TDPLAN-ROW-MAX
 0 cells constant TDPLAN.SYM-OFF
@@ -1120,6 +1125,12 @@ TDPLAN-BYTE-MAX TDPLAN-REC / constant TDPLAN-ROW-MAX
 2 cells constant TDPLAN.DEF-U-OFF
 3 cells constant TDPLAN.NAME-OFF-OFF
 4 cells constant TDPLAN.NAME-U-OFF
+5 cells constant TDPLAN.BUILT-OFF
+6 cells constant TDPLAN.FAM-OFF
+\ The builder kinds TDPLAN.BUILT holds; a text row holds 0.
+1 constant TDPLAN-TAG
+2 constant TDPLAN-EQ
+3 constant TDPLAN-HASH
 create TDPLAN-BOOT TDPLAN-CAP-INIT allot
 create TDPLAN-ROW-BOOT TDPLAN-ROW-CAP-INIT TDPLAN-REC * allot
 PERSISTED-PTR-VARIABLE TDPLAN-P       TDPLAN-BOOT TDPLAN-P !
@@ -1226,6 +1237,8 @@ private
 : TDPLAN.DEF-U ( ptr a -- ptr a ) TDPLAN.DEF-U-OFF + ;
 : TDPLAN.NAME-OFF ( ptr a -- ptr a ) TDPLAN.NAME-OFF-OFF + ;
 : TDPLAN.NAME-U ( ptr a -- ptr a ) TDPLAN.NAME-U-OFF + ;
+: TDPLAN.BUILT ( ptr a -- ptr a ) TDPLAN.BUILT-OFF + ;
+: TDPLAN.FAM ( ptr a -- ptr a ) TDPLAN.FAM-OFF + ;
 
 : TDPLAN-SYM@ ( n -- n )
    TDPLAN-ROW TDPLAN.SYM @ ;
@@ -1262,6 +1275,8 @@ private
    TDGEN-U @ 3 - r TDPLAN.DEF-U !
    noff TDPLAN-BYTE-NEED r TDPLAN.NAME-OFF !
    TDGEN-NU @ r TDPLAN.NAME-U !
+   0 r TDPLAN.BUILT !
+   0 r TDPLAN.FAM !
    TDGEN-BUF TDGEN-U @ TDPLAN-APP
    10 TDPLAN-C, ;
 
@@ -1286,6 +1301,13 @@ private
    TDPLAN-NAME+ drop
    TDPLAN-WORD+ ;
 
+\ A built row records its name, family and kind; its kind's builder makes the
+\ word at evaluation.
+: TDPLAN-BUILT+ ( n n -- ) {: fam:n kind:n :}
+   TDPLAN-DERIVED+
+   TDPLAN-N @ 1 - TDPLAN-ROW {: r:ptr :}
+   kind r TDPLAN.BUILT !  fam r TDPLAN.FAM ! ;
+
 : TDPLAN-SPAN$ ( n n -- ptr u8 n ) {: off:n u:n :}
    off 0 < u 0 < or off TDPLAN-U @ > or IF
       s" sumtype: invalid generated declaration span" 76 die
@@ -1309,6 +1331,10 @@ public
 
 private
 
+: TDPLAN-TEXT? ( n -- bool ) TDPLAN-ROW TDPLAN.BUILT @ 0= ;
+: TDPLAN-KIND@ ( n -- n ) TDPLAN-ROW TDPLAN.BUILT @ ;
+: TDPLAN-FAM@ ( n -- n ) TDPLAN-ROW TDPLAN.FAM @ ;
+
 \ The whole row text, ": NAME ( sig ) body ;", as the evaluator reads it;
 \ TDPLAN-DEF$ is the same span without ': ' and ';', the candidate form CHECK!
 \ takes. Both come from the recorded definition span so they cannot drift.
@@ -1316,12 +1342,50 @@ private
    TDPLAN-ROW {: r:ptr :}
    r TDPLAN.DEF-OFF @ 2 -  r TDPLAN.DEF-U @ 3 +  TDPLAN-SPAN$ ;
 
+: TDPLAN-TEXT-N ( -- n )
+   0 BEGIN
+      dup TDPLAN-N @ < IF dup TDPLAN-TEXT? ELSE RES-FALSE THEN
+   WHILE 1 + REPEAT ;
+
+\ The text rows' bytes, newlines included. They lead the plan: a text row after
+\ a built one would be left out, so it is refused.
+: TDPLAN-TEXT$ ( -- ptr u8 n )
+   TDPLAN-TEXT-N {: k:n :}
+   TDPLAN-N @ k ?do
+      i TDPLAN-TEXT? IF s" sumtype: text row after a built row" 76 die THEN
+   loop
+   k 0= IF 0 0 TDPLAN-SPAN$ EXIT THEN
+   k 1 - TDPLAN-ROW {: r:ptr :}
+   0  r TDPLAN.DEF-OFF @ r TDPLAN.DEF-U @ + 2 +  TDPLAN-SPAN$ ;
+
 : TDPLAN-PREFLIGHT-NAMES ( -- )
    TDPLAN-N @ 0 ?do i TDPLAN-NAME$ TDECL-NAME-PREFLIGHT-XT loop ;
 
+\ FAM's value type; derive requires arity 0.
+: TDECL-SELF-NODE ( n -- n ) {: fam:n :}
+   fam 0 0 SCHEMA-APP ;
+
+\ The effect a derived word of KIND over FAM takes, a transient node.
+: TDECL-DRV-EFFECT ( n n -- n ) {: fam:n kind:n :}
+   TRANSIENT-ON
+   [: fam TDECL-SELF-NODE  EMPTY-EFFECT over EFFECT-IN
+      kind TDPLAN-EQ = IF
+         over EFFECT-IN  CC-BOOL SCHEMA-CON EFFECT-OUT
+      ELSE CC-N SCHEMA-CON EFFECT-OUT THEN
+      nip ;]
+   [: TRANSIENT-OFF ;] finally ;
+
+\ A text row's definition is checked; a built row registers the effect its
+\ kind gives.
 : TDPLAN-PREFLIGHT-ROWS ( -- )
    TDPLAN-N @ 0 ?do
-      i TDPLAN-DEF$ CHECK! -1 <> IF 70 throw THEN
+      i TDPLAN-TEXT? IF
+         i TDPLAN-DEF$ CHECK! -1 <> IF 70 throw THEN
+      ELSE
+         i TDPLAN-NAME$
+         i TDPLAN-FAM@ i TDPLAN-KIND@ TDECL-DRV-EFFECT EFFECT-SIG 2drop
+         CHECKER-CHILD-ROWS drop
+      THEN
    loop
    CTOR-PEND-REQUIRE-DONE ;
 
@@ -1628,21 +1692,6 @@ private
    vid SUMV-NAME$ TDGEN-APP
    s"  ;" TDGEN-APP ;
 
-: TDECL-GEN-EVAL-BODY ( -- )
-   TDECL-EVAL-ARMED @ 0= IF s" sumtype: constructor eval hook not installed" 76 die THEN
-   TDPLAN-PREFLIGHT
-   TDPLAN-P @ TDPLAN-U @ TDECL-EVAL-XT
-   CTOR-PEND-REQUIRE-DONE ;
-
-\ The constructor queue is an authority, not scratch state. This inner boundary
-\ proves exact consumption on success and clears name/capacity/candidate/evaluator
-\ failures; TDECL-CTOR-WORDS-BODY starts the outer owner before plan rendering.
-: TDECL-GEN-EVAL ( -- )
-   [: TDECL-GEN-EVAL-BODY ;] catch {: rc:n :}
-   CTOR-PEND-CLEAR
-   rc 0 <> IF rc throw THEN ;
-
-
 public
 
 : TDECL-CTOR-WORD ( n n -- ) {: fam:n vid:n :}
@@ -1680,10 +1729,10 @@ private
    THEN
    vid TDPLAN-PROD-CTOR+ ;
 
-\ --- derived typed equality. `DERIVE eq` generates ordinary checked words into
-\ the family's constructor package: no pending window, no trust rows, no engine
-\ lowering, so equality is semantic and layout-policy agnostic. Derived eq
-\ consumes both operands.
+\ --- derived typed equality. `DERIVE eq` builds checked words into the family's
+\ constructor package, their engine words found where this file is compiled: no
+\ pending window, no trust rows, no engine lowering, so equality is semantic and
+\ layout-policy agnostic. Derived eq consumes both operands.
 \  - TAG ( fam -- n ): declaration-order tag, which any checked MATCH already
 \    observes. Enums and sums only.
 \  - EQ ( fam fam -- bool ): payload-free families compare tags; payload sums
@@ -1693,9 +1742,6 @@ private
 \    drop and answer false); products UNMAKE both values, bind fields top-down
 \    (an enum-typed field goes through its family's PKG:TAG) and compare
 \    field-wise.
-\ The scalar `=`/`0=` wall on layout values stays (test/type-decl-suite.f
-\ TD12-ZEQ); extend/undefine protection recognizes the fixed tails through
-\ TFAM-DERIVED-AT? (products: eq only).
 \ A derived word is "PKG-FAMILY:TAIL" for a public family and "FAMILY-TAIL" for a
 \ private or OPAQUE one, as TDGEN-NAME spells a constructor. Neither stamps a
 \ constructor package (TDECL-CTOR-PUBLISH exits early), so SUMV-CTOR-PKG$ would
@@ -1713,8 +1759,11 @@ private
    TDGEN-BUF n0 + TDGEN-NA !
    TDGEN-U @ n0 - TDGEN-NU !
    32 TDGEN-C, ;
-: TDGEN-DROPS ( n -- ) {: k:n :}          \ "drop " x k
-   k 0 ?do s" drop " TDGEN-APP loop ;
+: TDGEN-FLUSH ( -- )                      \ pending text to the open definition
+   TDGEN-U @ 0 > IF TDGEN-BUF TDGEN-U @ body-append THEN
+   TDGEN-CLEAR ;
+: TDGEN-DROPS ( n -- ) {: k:n :}          \ drop x k
+   k 0 ?do TDGEN-FLUSH postpone drop loop ;
 : TDGEN-LOCAL1 ( n n -- ) {: c:n i:n :}   \ "<c><i>:n "
    c TDGEN-C,  i TDGEN-DEC  s" :n " TDGEN-APP ;
 : TDGEN-BINDS ( n n n -- ) {: fam:n vid:n c:n :}   \ "{: c0:n .. :} " over vid's payload slots
@@ -1723,17 +1772,17 @@ private
    s" {: " TDGEN-APP
    m 0 ?do c i TDGEN-LOCAL1 loop
    s" :} " TDGEN-APP ;
-: TDGEN-CMP ( n -- ) {: m:n :}            \ "p0 q0 = p1 q1 = and .. " (m=0 -> true)
-   m 0= IF s" 0 0= " TDGEN-APP EXIT THEN
+: TDGEN-CMP ( n -- ) {: m:n :}            \ p0 q0 = p1 q1 = and .. (m=0 -> true)
+   m 0= IF s" 0" TDGEN-APP  TDGEN-FLUSH postpone 0= EXIT THEN
    m 0 ?do
       112 TDGEN-C,  i TDGEN-DEC  32 TDGEN-C,
-      113 TDGEN-C,  i TDGEN-DEC  32 TDGEN-C,
-      s" = " TDGEN-APP
-      i 0 > IF s" and " TDGEN-APP THEN
+      113 TDGEN-C,  i TDGEN-DEC
+      TDGEN-FLUSH postpone =
+      i 0 > IF postpone and THEN
    loop ;
 : TDGEN-MATCH-OPEN ( n -- ) {: fam:n :}   \ "match fam "
    s" match " TDGEN-APP  fam TFAM-NAME$ TDGEN-APP  32 TDGEN-C, ;
-: TDGEN-TAG-BODY ( n -- ) {: fam:n :}   \ "match fam v of <drops> <tag> endof .. ;match ;"
+: TDGEN-TAG-BODY ( n -- ) {: fam:n :}   \ match fam v of <drops> <tag> endof .. ;match
    fam TDGEN-MATCH-OPEN
    fam TFAM-VAR-START@ {: vstart:n :}
    vstart fam TFAM-VAR-COUNT@ + vstart ?do
@@ -1743,7 +1792,7 @@ private
       i SUMV-TAG@ TDGEN-DEC
       s"  endof " TDGEN-APP
    loop
-   s" ;match ;" TDGEN-APP ;
+   s" ;match" TDGEN-APP ;
 : TDGEN-EQ-ARM ( n n n -- ) {: fam:n vout:n vin:n :}   \ one inner arm: diagonal cmp / off-diag drop+false
    vin SUMV-NAME$ TDGEN-APP  s"  of " TDGEN-APP
    vin vout = IF
@@ -1751,7 +1800,7 @@ private
       fam vin TDPV-N@ TDGEN-CMP
    ELSE
       fam vin TDPV-N@ TDGEN-DROPS
-      s" 1 0= " TDGEN-APP
+      s" 1" TDGEN-APP  TDGEN-FLUSH postpone 0=
    THEN
    s" endof " TDGEN-APP ;
 : TDGEN-EQ-ROW ( n n n n -- ) {: fam:n vstart:n k:n vout:n :}   \ vout's inner arms
@@ -1767,7 +1816,7 @@ private
       fam vstart k i TDGEN-EQ-ROW
       s" ;match endof " TDGEN-APP
    loop
-   s" ;match ;" TDGEN-APP ;
+   s" ;match" TDGEN-APP ;
 : TDGEN-UNBIND1 ( n n n n -- ) {: fam:n mk:n k:n c:n :}   \ field k's bind
    fam mk k TDPV-NODE@ dup SCHEMA-APP? IF
       dup SCHEMA-A@ s" tag" TDGEN-DRV-REF  32 TDGEN-C, THEN
@@ -1781,11 +1830,10 @@ private
 : TDGEN-EQ-PROD ( n -- ) {: fam:n :}   \ UNMAKE both values, field-wise compare
    fam 113 TDGEN-UNBIND
    fam 112 TDGEN-UNBIND
-   fam fam TFAM-VAR-START@ TDPV-N@ TDGEN-CMP
-   59 TDGEN-C, ;
+   fam fam TFAM-VAR-START@ TDPV-N@ TDGEN-CMP ;
 : TDGEN-EQ-TAGS ( n -- ) {: fam:n :}      \ payload-free family: tag equality (O(V))
-   fam s" tag" TDGEN-DRV-REF  s"  swap " TDGEN-APP
-   fam s" tag" TDGEN-DRV-REF  s"  = ;" TDGEN-APP ;
+   fam s" tag" TDGEN-DRV-REF  TDGEN-FLUSH postpone swap
+   fam s" tag" TDGEN-DRV-REF  TDGEN-FLUSH postpone = ;
 
 \ Derived hash: FNV-1a over whole cells, h = BASIS, then per cell
 \ h = (h xor v) * PRIME. Sums and enums fold the tag, then each bound payload
@@ -1800,8 +1848,9 @@ $100000001b3 constant DRV-FNV-PRIME        \ FNV-1a 64-bit prime
    36 TDGEN-C,
    0 15 ?do v  i 4 *  rshift  15 and  TDGEN-HEXD  -1 +loop
    32 TDGEN-C, ;
-: TDGEN-HMIX ( -- )                       \ "xor $PRIME * "
-   s" xor " TDGEN-APP  DRV-FNV-PRIME TDGEN-HEX  s" * " TDGEN-APP ;
+: TDGEN-HMIX ( -- )                       \ xor $PRIME *
+   TDGEN-FLUSH postpone xor
+   DRV-FNV-PRIME TDGEN-HEX  TDGEN-FLUSH postpone * ;
 : TDGEN-HASH-FOLDS ( n -- ) {: m:n :}     \ fold locals p0..pm-1
    m 0 ?do 112 TDGEN-C,  i TDGEN-DEC  32 TDGEN-C,  TDGEN-HMIX loop ;
 : TDGEN-HASH-ARM ( n n -- ) {: fam:n vid:n :}   \ bind payloads, fold tag then payloads
@@ -1817,38 +1866,71 @@ $100000001b3 constant DRV-FNV-PRIME        \ FNV-1a 64-bit prime
       fam i TDGEN-HASH-ARM
       s" endof " TDGEN-APP
    loop
-   s" ;match ;" TDGEN-APP ;
+   s" ;match" TDGEN-APP ;
 : TDGEN-HASH-PROD ( n -- ) {: fam:n :}   \ product: UNMAKE, fold fields (no tag)
    fam 112 TDGEN-UNBIND
    DRV-FNV-BASIS TDGEN-HEX
-   fam fam TFAM-VAR-START@ TDPV-N@ TDGEN-HASH-FOLDS
-   59 TDGEN-C, ;
+   fam fam TFAM-VAR-START@ TDPV-N@ TDGEN-HASH-FOLDS ;
 : TDECL-TAG-WORD ( n -- ) {: fam:n :}
    TDGEN-CLEAR
    fam s" tag" TDGEN-DRV-NAME
-   s" ( " TDGEN-APP  fam TDGEN-OUT-TYPE  s"  -- n ) " TDGEN-APP
-   fam TDGEN-TAG-BODY
-   TDPLAN-DERIVED+ ;
+   fam TDPLAN-TAG TDPLAN-BUILT+ ;
 : TDECL-EQ-WORD ( n -- ) {: fam:n :}
    TDGEN-CLEAR
    fam s" eq" TDGEN-DRV-NAME
-   s" ( " TDGEN-APP
-   fam TDGEN-OUT-TYPE  32 TDGEN-C,  fam TDGEN-OUT-TYPE
-   s"  -- bool ) " TDGEN-APP
-   fam TFAM-PRODUCT? IF fam TDGEN-EQ-PROD ELSE
-   fam TFAM-SLOTS@ 0= IF fam TDGEN-EQ-TAGS ELSE fam TDGEN-EQ-DIAG THEN THEN
-   TDPLAN-DERIVED+ ;
+   fam TDPLAN-EQ TDPLAN-BUILT+ ;
 : TDECL-HASH-WORD ( n -- ) {: fam:n :}
    TDGEN-CLEAR
    fam s" hash" TDGEN-DRV-NAME
-   s" ( " TDGEN-APP  fam TDGEN-OUT-TYPE  s"  -- n ) " TDGEN-APP
-   fam TFAM-PRODUCT? IF fam TDGEN-HASH-PROD ELSE fam TDGEN-HASH-BODY THEN
-   TDPLAN-DERIVED+ ;
+   fam TDPLAN-HASH TDPLAN-BUILT+ ;
 : TDECL-DRV-WORDS ( n -- ) {: fam:n :}
    fam TFAM-DERIVE-ANY? 0= IF EXIT THEN
    fam TFAM-PRODUCT? 0= IF fam TDECL-TAG-WORD THEN   \ discriminant rides any derive
    fam TFAM-DERIVE-EQ? IF fam TDECL-EQ-WORD THEN
    fam TFAM-DERIVE-HASH? IF fam TDECL-HASH-WORD THEN ;
+
+: TDECL-BUILT-OPEN ( n -- ) {: row:n :}
+   row TDPLAN-NAME$
+   row TDPLAN-FAM@ row TDPLAN-KIND@ TDECL-DRV-EFFECT
+   TDECL-DEFINE-RUN
+   TDGEN-CLEAR ;
+: TDECL-BUILT-END ( -- ) TDGEN-FLUSH postpone ; ;
+: TDECL-TAG-BUILD ( n n -- ) {: fam:n row:n :}
+   row TDECL-BUILT-OPEN
+   fam TDGEN-TAG-BODY
+   TDECL-BUILT-END ;
+: TDECL-EQ-BUILD ( n n -- ) {: fam:n row:n :}
+   row TDECL-BUILT-OPEN
+   fam TFAM-PRODUCT? IF fam TDGEN-EQ-PROD ELSE
+   fam TFAM-SLOTS@ 0= IF fam TDGEN-EQ-TAGS ELSE fam TDGEN-EQ-DIAG THEN THEN
+   TDECL-BUILT-END ;
+: TDECL-HASH-BUILD ( n n -- ) {: fam:n row:n :}
+   row TDECL-BUILT-OPEN
+   fam TFAM-PRODUCT? IF fam TDGEN-HASH-PROD ELSE fam TDGEN-HASH-BODY THEN
+   TDECL-BUILT-END ;
+: TDECL-DRV-BUILD ( n n -- ) {: fam:n row:n :}
+   row TDPLAN-KIND@ {: kind:n :}
+   kind TDPLAN-TAG = IF fam row TDECL-TAG-BUILD EXIT THEN
+   kind TDPLAN-EQ = IF fam row TDECL-EQ-BUILD EXIT THEN
+   kind TDPLAN-HASH = IF fam row TDECL-HASH-BUILD EXIT THEN
+   s" sumtype: no builder for this plan row" 76 die ;
+
+: TDECL-GEN-EVAL-BODY ( n -- ) {: fam:n :}
+   TDECL-EVAL-ARMED @ 0= IF s" sumtype: constructor eval hook not installed" 76 die THEN
+   TDPLAN-PREFLIGHT
+   TDPLAN-TEXT$ TDECL-EVAL-XT
+   CTOR-PEND-REQUIRE-DONE
+   TDPLAN-N @ 0 ?do
+      i TDPLAN-TEXT? 0= IF fam i TDECL-DRV-BUILD THEN
+   loop ;
+
+\ The constructor queue is an authority: this boundary clears it on every exit
+\ and the body proves it consumed; TDECL-CTOR-WORDS-BODY's covers rendering.
+: TDECL-GEN-EVAL ( n -- )
+   [: dup TDECL-GEN-EVAL-BODY ;] catch {: rc:n :}
+   CTOR-PEND-CLEAR
+   rc 0 <> IF rc throw THEN
+   drop ;
 
 : TDECL-PROD-PLAN ( n -- ) {: fam:n :}   \ make (row 0) + unmake (row 1)
    fam TFAM-VAR-START@ {: vstart:n :}
@@ -1889,7 +1971,7 @@ $100000001b3 constant DRV-FNV-PRIME        \ FNV-1a 64-bit prime
    drop ;
 
 : TDECL-PROD-WORDS-BODY ( n -- ) {: fam:n :}
-   fam RES-FALSE [: dup TDECL-PROD-PLAN TDECL-GEN-EVAL ;] TDECL-GEN-PLACED ;
+   fam RES-FALSE [: dup TDECL-PROD-PLAN dup TDECL-GEN-EVAL ;] TDECL-GEN-PLACED ;
 
 \ The ( fam -- ) product generator structure-make.f calls: it declares its
 \ variant rows through SUMV-ADD before generating, so the committed view is its
@@ -2228,7 +2310,7 @@ private
 : TDECL-GEN-BODY ( n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n -- n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n )
    dup TDECL-GENERATES? 0= IF EXIT THEN
    TDECL-GEN-PLAN
-   TDECL-GEN-EVAL ;
+   dup TDECL-GEN-EVAL ;
 
 \ Replay publishes checked effects from the same constructor bodies as a live
 \ declaration. It emits no code and creates no runtime dictionary entries.
