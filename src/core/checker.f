@@ -340,9 +340,7 @@
 \ know. Nothing is hidden by name or for being older, so a package dependency
 \ still binds. Always visible: what the pass itself recorded (PASS-FLOOR), since
 \ the text verified may differ from the text on record and a word it defined
-\ earlier is what a cold compile would see; and a seeded record, whose offset
-\ says when the pool was first missed on its name, not when the word was
-\ defined (boot).
+\ earlier is what a cold compile would see.
 \
 \ Navigation, what a use bound: a use is reported at the five places one source
 \ occurrence resolves: a body token (BIND-TOK), a swallowed `[']` or `is` target
@@ -357,10 +355,9 @@
 \
 \ The completion cursor: the verifier arms a cursor's offset in the next text
 \ it checks, with the visitor its candidates go to (CHECKER-CURSOR!). The check
-\ that takes the arm (CUR-TAKE) owns it for its whole run, retries included: an
-\ attempt that reaches the cursor keeps the spellings that bind there in the
-\ pending table, a retry drops its attempt's rows, and at its exit the owner
-\ publishes the final attempt's with its uses and disarms (PUBLISH-EXIT). A
+\ that takes the arm (CUR-TAKE) owns it for its whole run: reaching the cursor,
+\ it keeps the spellings that bind there in the pending table, and at its exit
+\ it publishes them with its uses and disarms (PUBLISH-EXIT). A
 \ visitor gets a spelling, borrowed for the call, and the file visit and
 \ half-open byte range of the declaration row that gave it, or 0 0 0 when no
 \ row locates it. One arm at a time: arming over an arm, and arming, disarming
@@ -521,14 +518,13 @@
 \ multi-cell argument occupies more cells than its declaration reserves
 \ (`option<obj:line>` needs two payload cells), and the instantiated width is a
 \ function of a resolved type term. So the checker records it per token in the
-\ call-fact table under its own kind, which the definition reset, the retry
-\ cursor and capture cleanup cover. A MATCH family token records its
-\ instantiated bundle width, an arm's `of` token its instantiated pad count, and
-\ a construction's token the cells its instantiation adds beyond the declared
-\ width: a difference, since the construction's lowering already pushes the
-\ declared pads. These are width facts, not lowering-certificate rows. Dispatch
-\ requires a fact; a construction needs none unless its instantiation adds
-\ cells.
+\ call-fact table under its own kind, which the definition reset and capture
+\ cleanup cover. A MATCH family token records its instantiated bundle width, an
+\ arm's `of` token its instantiated pad count, and a construction's token the
+\ cells its instantiation adds beyond the declared width: a difference, since
+\ the construction's lowering already pushes the declared pads. These are width
+\ facts, not lowering-certificate rows. Dispatch requires a fact; a
+\ construction needs none unless its instantiation adds cells.
 \
 \ Shadowed arity: while a package is open, the engine and the checker resolve
 \ a bare tail private-first, so a public definition whose bare tail a private
@@ -682,9 +678,9 @@
 \ spelling is compared with the whole prefix, so L, LSP and LSP: each reach
 \ LSP:MAIN. The selection decides, not the source.
 \
-\ Captured effect graphs: a graph a seed carries is checked in three passes
-\ before it is imported. The structural pass proves a finite acyclic graph of
-\ well-formed nodes. The relevance pass records, per node, a mask of the binders
+\ Captured effect graphs: each graph the capture's freeze copies is checked in
+\ three passes (CK-GRAPH-CHECK). The structural pass proves a finite acyclic
+\ graph of well-formed nodes. The relevance pass records, per node, a mask of the binders
 \ outside it that its descendants can name; a forall body consumes bit zero and
 \ shifts its other references toward the new caller. The lexical pass checks how
 \ each reference is reached: input position, scheme placement, a family's scope
@@ -716,25 +712,13 @@
 \ after the checker keep parallel marks through the REG-EXT-RB words, in
 \ lockstep since every push pairs with one pop.
 \
-\ Seeded words: a body naming a seeded word whose row is not yet taken queues
-\ the name, and its pass judges the name unbound. CHECK-RETRY runs the pass,
-\ takes the names it could not resolve, and runs the pass again. Every pass
-\ either creates an effect for a (package, visibility, name) the checker did
-\ not have, of which the pool holds finitely many, or creates none and is the
-\ last, so the loop ends. It wraps CHECK, not CHECK!, so the source tape's
-\ verdict and the certificate producer see the definition's answer once. A
-\ candidate and a prefix read run the same loop, since a bare CHECK cannot see
-\ a seeded word whose row was never taken in this process; rows a retry takes
-\ inside a candidate's rollback frame are popped with it and re-taken at the
-\ next miss.
-\
 \ Refusing a definition: a refusal of the definition (REFUSE-DEF) leaves the
 \ walk by a throw, from a body, a does> clause or a top-level token alike.
 \ DEF-REFUSED rethrows any other code. On the ordinary load path the refusal
 \ stops the load and DEF-STOPPED keeps its code. In a multi-error load it
-\ refuses the definition as a rejected verdict does: the walk and its retries
-\ end at the refusal, what the walk left set is cleared, the record step runs
-\ as CHECK runs it for a refusal, and the load goes on to the next definition.
+\ refuses the definition as a rejected verdict does: the walk ends at the
+\ refusal, what the walk left set is cleared, the record step runs as CHECK
+\ runs it for a refusal, and the load goes on to the next definition.
 \ The packet is the definition's diagnostic; nothing else renders.
 \
 \ The interpret row: a segment is a saved row and the row's two buffers, keyed
@@ -754,19 +738,6 @@
 \ evaluate level, once the dead ones are gone: the live one, a parked one
 \ (dropping the segments above it), or a fresh empty one parked over the live
 \ one (CHECKER-TOP-SEGMENT).
-\
-\ Seeded words at top level: a seeded engine's rows come in at first
-\ reference (CK-AOT-INTAKE), and a body takes them between its passes
-\ (CHECK-RETRY). The interpret row takes them between passes of one step
-\ (TOP-STEP-RETRY): a step over a name the checker does not bind queues it
-\ (CALL-UNDEFINED, TOP-TICK-STEP). A tick step is admitted checked with an
-\ opaque xt. A word step is held while a seeded row answers the name
-\ (TOP-JUDGE), admitted when a rendering statement in scope may define it, and
-\ refused otherwise. When a seeded row answers the queue, the step's terms are
-\ released, the row taken and the step run again over a fresh load. The saved
-\ row the step loads from is not written between passes, so a pass costs the
-\ step alone. Each pass takes a row the tables lacked, so the loop ends as a
-\ body's does.
 \
 \ A capture keeps every checker symbol the engine holds.
 package CHECKER-REG
@@ -7416,8 +7387,7 @@ defer TYPE-MAY-ARRIVE-XT ( ptr u8 n -- bool )
    a u FRESH-ORD? 0= IF a u SGBAD-SYNTAX!  a 6 + u 6 - FAM-K @ MK-ATOM-K EXIT THEN
    a 6 + u 8 - FAM-K @ MK-ATOM-K ;
 \ The package a signature parse resolves bare family tails in: the checked
-\ definition's package, except a stored signature at AOT intake (CK-AOT-TAKE),
-\ whose text was written in the row's package.
+\ definition's package, or the one SIGSCOPE! names.
 variable SIGSCOPE-ON   0 SIGSCOPE-ON !
 PTR-VARIABLE SIGSCOPE-P
 variable SIGSCOPE-U
@@ -9549,7 +9519,6 @@ public
 0 constant EFF-DELETED
 1 constant EFF-ACTIVE
 2 constant EFF-RECOVERY          \ current-run analysis fact, never a source grant
-3 constant EFF-SEEDED            \ taken from the baked signature pool: the engine's word since boot
 4 constant EFF-UNRESOLVED        \ quiet TRUST changed this binding; no effect content
 
 0 constant EN-CON
@@ -10593,8 +10562,7 @@ RECORD-HOOK-DEFAULTS
 : HORIZON-VISIBLE? ( n -- bool ) {: off1:n :}   \ record offset+1
    BIND-HORIZON @ 0= IF RES-TRUE EXIT THEN
    off1 BIND-HORIZON @ < IF RES-TRUE EXIT THEN
-   PASS-FLOOR @ 0 >  off1 PASS-FLOOR @ >=  and IF RES-TRUE EXIT THEN
-   off1 1 - E-PTR ER.ACTIVE @ EFF-SEEDED = ;
+   PASS-FLOOR @ 0 >  off1 PASS-FLOOR @ >=  and ;
 
 : USIG-NEWEST-VISIBLE ( n -- n ) {: sym:n :}   \ newest visible record, offset+1, 0 = none
    sym USIG-NEWEST
@@ -10669,7 +10637,7 @@ ON-USE-DEFAULT
    s s u + rec1 sym v ds de RES-TRUE ;
 
 \ A body's uses wait in the pending table until the entry that walked it
-\ publishes them (NAV-PUBLISH): CHECK! its last attempt's, CHECKER-SOURCE-DOES!
+\ publishes them (NAV-PUBLISH): CHECK! its body's, CHECKER-SOURCE-DOES!
 \ a clause's. A row keeps its record's offset so a rewind drops it.
 : NAV-USE ( n ptr u8 n -- )
    NAV-USE-AT 0= IF 2drop 2drop 2drop drop EXIT THEN
@@ -10736,7 +10704,7 @@ defer CHECKER-ON-CAND ( ptr u8 n n n n -- )
 : NO-CAND ( ptr u8 n n n n -- ) 2drop 2drop drop ;
 variable CUR-AT                         \ the armed offset in the checked text, -1 none
 variable CUR-OWNED                      \ a check took the arm and runs
-variable CUR-DONE                       \ this attempt reached the cursor
+variable CUR-DONE                       \ the check reached the cursor
 CHECKER-REG:SCRATCH{
 variable CUR-GAP                        \ where the gap before the token now read starts
 CHECKER-REG:}SCRATCH
@@ -10790,9 +10758,9 @@ CUR-DEFAULT
    -1 VIS-OPEN !
    CUR-RN @ 0 ?do i CUR-SEND loop ;
 
-\ The owner's exit, when it took the arm: publish the final attempt's
-\ candidates, then drop the tables and disarm whatever the visitor throws, and
-\ answer the code it threw, 0 when none.
+\ The owner's exit, when it took the arm: publish the check's candidates, then
+\ drop the tables and disarm whatever the visitor throws, and answer the code
+\ it threw, 0 when none.
 : CUR-RELEASE ( bool -- n )
    0= IF 0 EXIT THEN
    [: CUR-PUBLISH ;] catch {: rc:n :}
@@ -11265,36 +11233,6 @@ PTR-VARIABLE ASIG-LAST-P
    -1 ASIG-ARMED ! ;
 
 : CHECKER-ASIG-DISARM ( -- ) 0 ASIG-ARMED ! ;
-
-\ ---- the names one check pass could not resolve ------------------------------
-\ A bounded queue: a pass that fills it drops the rest, which costs a retry
-\ pass, not an answer. Cleared at CHECK-RESET, so it describes the pass
-\ just run.
-$800 constant ASIG-MISS-CAP
-CHECKER-REG:SCRATCH{
-create ASIG-MISS ASIG-MISS-CAP allot
-variable ASIG-MISS-U
-variable ASIG-MISS-K
-CHECKER-REG:}SCRATCH
-
-: ASIG-MISS-CLEAR ( -- ) 0 ASIG-MISS-U ! ;
-
-\ [len u16][bytes], the same record shape the pool's strings use.
-: ASIG-MISS+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   ASIG-MISS-U @ u + 2 + ASIG-MISS-CAP > IF exit THEN
-   u $FF and  ASIG-MISS ASIG-MISS-U @ + c!
-   u 8 rshift $FF and  ASIG-MISS ASIG-MISS-U @ 1 + + c!
-   0 ASIG-MISS-K !
-   BEGIN ASIG-MISS-K @ u < WHILE
-      a ASIG-MISS-K @ + c@  ASIG-MISS ASIG-MISS-U @ 2 + ASIG-MISS-K @ + + c!
-      ASIG-MISS-K @ 1 + ASIG-MISS-K !
-   REPEAT
-   ASIG-MISS-U @ u + 2 + ASIG-MISS-U ! ;
-
-: ASIG-MISS-LEN@ ( n -- n ) {: at:n :}
-   ASIG-MISS at + c@  ASIG-MISS at 1 + + c@ 8 lshift or ;
-
-: ASIG-MISS-A@ ( n -- ptr u8 ) {: at:n :} ASIG-MISS at 2 + + ;
 
 \ The token SGBAD names in signature SA SU, at its copy in the checked text
 \ when the scan holds SA SU's bytes there at SGA SGU, else where the parse read it.
@@ -13546,13 +13484,12 @@ STORAGE-DIAG-DEFAULT
    {: sym:n :}
    sym SYM-PKG$ sym SYM-NAME$ sym SYM-ROW SYM.VIS @ ;
 
-\ A tombstone means the name is being defined afresh and a seeded record is the
-\ engine's word, not this source's.
+\ A tombstone means the name is being defined afresh.
 : OWN-RECORD ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u CHECKER-RECORD-SYM? dup 0= IF EXIT THEN
    USIG-NEWEST dup 0= IF EXIT THEN
    dup 1 - E-PTR ER.ACTIVE @ {: off1:n state:n :}
-   state EFF-DELETED = state EFF-SEEDED = or IF 0 EXIT THEN
+   state EFF-DELETED = IF 0 EXIT THEN
    off1 ;
 
 CHECKER-REG:SCRATCH{
@@ -15506,49 +15443,42 @@ CHECKER-REG:}SCRATCH
    need NORET-GROW ;
 
 \ ---- the type registry an AOT capture has to carry ---------------------------
-\ The registry delta a capture carries, validated here and never installed: its
-\ base is asserted, not remapped, because family and schema ids are identities.
-\ The type registries load after this file and install these.
+\ The registry delta a capture carries. The type registries load after this
+\ file and install these.
 defer REG-EXT-AOT-MARK-XT ( -- )
 defer REG-EXT-AOT-CLOSE-XT ( -- )
 defer REG-EXT-AOT-SAVE-XT ( ptr u8 n -- n )
-defer REG-EXT-AOT-VALIDATE-XT ( ptr u8 n -- )
 \ The graph node and its strings have already passed extent checks. The
-\ registry validates its canonical family identity against the future view.
-defer REG-EXT-AOT-PARAM-XT ( ptr u8 ptr u8 ptr u8 n -- )
-\ The persisted family's parameter kinds come from the same future registry
-\ view used to authenticate its name and arity, not from a caller's live id.
-defer REG-EXT-AOT-SCOPE-XT ( ptr u8 ptr u8 n n -- bool )
-defer REG-EXT-AOT-REGION-XT ( ptr u8 ptr u8 n n -- bool )
+\ registry validates its canonical family identity.
+defer REG-EXT-AOT-PARAM-XT ( ptr u8 ptr u8 -- )
+\ The family's parameter kinds come from the registry row that authenticated
+\ its name and arity.
+defer REG-EXT-AOT-SCOPE-XT ( ptr u8 n -- bool )
+defer REG-EXT-AOT-REGION-XT ( ptr u8 n -- bool )
 \ Read a graph family's logical width from already validated argument widths
-\ and the same future registry view. Hidden row fields are charged separately.
-defer REG-EXT-AOT-WIDTH-XT ( ptr u8 ptr u8 ptr u8 ptr u8 n -- n )
+\ and the registry. Hidden row fields are charged separately.
+defer REG-EXT-AOT-WIDTH-XT ( ptr u8 ptr u8 ptr u8 -- n )
 
-\ A build with no type registry has no delta to write. Reading bytes no store
-\ can take dies by name: the seeded signatures could not resolve.
+\ A build with no type registry has no delta to write.
 : REG-EXT-AOT-NO-SAVE ( ptr u8 n -- n ) 2drop 0 ;
-: REG-EXT-AOT-NO-LOAD ( ptr u8 n -- ) {: a:ptr u:n :}
-   u 0= IF EXIT THEN
-   s" checker: a seeded type registry arrived with no registry to take it" 76 die ;
-: REG-EXT-AOT-NO-PARAM ( ptr u8 ptr u8 ptr u8 n -- )
-   2drop 2drop
-   s" checker: a seeded family arrived with no registry to validate it" 76 die ;
+: REG-EXT-AOT-NO-PARAM ( ptr u8 ptr u8 -- )
+   2drop
+   s" checker: a captured family arrived with no registry to validate it" 76 die ;
 
-: REG-EXT-AOT-NO-SCOPE ( ptr u8 ptr u8 n n -- bool )
-   2drop 2drop
-   s" checker: a seeded scope slot arrived with no registry" 76 die ;
+: REG-EXT-AOT-NO-SCOPE ( ptr u8 n -- bool )
+   2drop
+   s" checker: a captured scope slot arrived with no registry" 76 die ;
 
 
 \ The callback has a result contract even though this default never returns.
-: REG-EXT-AOT-NO-WIDTH ( ptr u8 ptr u8 ptr u8 ptr u8 n -- n )
-   rot drop REG-EXT-AOT-NO-PARAM ;
+: REG-EXT-AOT-NO-WIDTH ( ptr u8 ptr u8 ptr u8 -- n )
+   drop REG-EXT-AOT-NO-PARAM ;
 
 
 : REG-EXT-AOT-DEFAULTS ( -- )
    [: ;] is REG-EXT-AOT-MARK-XT
    [: ;] is REG-EXT-AOT-CLOSE-XT
    [: REG-EXT-AOT-NO-SAVE ;] is REG-EXT-AOT-SAVE-XT
-   [: REG-EXT-AOT-NO-LOAD ;] is REG-EXT-AOT-VALIDATE-XT
    [: REG-EXT-AOT-NO-PARAM ;] is REG-EXT-AOT-PARAM-XT
    [: REG-EXT-AOT-NO-SCOPE ;] is REG-EXT-AOT-SCOPE-XT
    [: REG-EXT-AOT-NO-SCOPE ;] is REG-EXT-AOT-REGION-XT
@@ -16457,14 +16387,9 @@ CHECKER-REG:}SCRATCH
    THEN
    a u sym TOP-BOUND-SYM ;
 
-defer CK-AOT-REC-CONTROL ( ptr n -- n bool )
-
-\ An accepted cold dictionary selection can precede lazy effect intake. Keep
-\ symbolic facts authoritative for every selection the checker already knows.
 : TOP-CONTROL ( n -- n bool ) {: sym:n :}
    sym 0 <> IF sym CTL-FLAGS-SYM sym DFER-FIND-SYM EXIT THEN
-   WALK-REC @ 0= IF 0 RES-FALSE EXIT THEN
-   BIND-REC @ CK-AOT-REC-CONTROL ;
+   0 RES-FALSE ;
 
 \ May the word define words no source text spells? A deferred word may: it runs
 \ whatever word was set, a renderer or a definer among them.
@@ -18081,7 +18006,6 @@ variable CHECKER-PREFIX-ROLLBACK
 : CALL-UNDEFINED ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    TSTART @ dup PREFIX-MISS-AT
-   a u ASIG-MISS+
    -1 UNDEFERR !
    a u UNSEEN-COVERS?
    {: unseen:bool :}
@@ -21565,13 +21489,13 @@ public
    VIS-ENUM ;
 ;package
 
-\ The cursor's attempt reached it: keep what binds there for the owner's exit.
+\ The check reached the cursor: keep what binds there for the owner's exit.
 : CUR-FIRE ( ptr u8 n n -- )
    -1 CUR-DONE !
    ['] CUR-PEND is VIS-VISIT
    VIS-ENUM ;
 
-\ The owning check's attempt has not reached the cursor, and no visitor runs.
+\ The owning check has not reached the cursor, and no visitor runs.
 : CUR-LIVE? ( -- bool )
    CUR-OWNED @ 0 <>  CUR-DONE @ 0 = and  VIS-OPEN @ 0 = and ;
 
@@ -21698,7 +21622,6 @@ variable IS-PEND-U                   \ and its length
    why 0= IF sym IS-TA@ IS-TU @ NAV-USE THEN
    sym 0= CHECKER-PREFIX-ACTIVE @ and IF
       IS-TOFF @ TSTART @ PREFIX-MISS-AT
-      IS-TA@ IS-TU @ ASIG-MISS+
    THEN
    sym ;
 
@@ -22804,32 +22727,14 @@ variable ARMED   0 ARMED !
 
 ;package
 
-\ ---- the baked signature pool, and the lazy intake that reads it -------------
-\ An AOT seed puts a word in the runtime dictionary but not the checker's record
-\ of its effect, so a `:` definition naming a seeded word would die E-UNDEFINED.
-\ The capture carries the window's signatures beside its records, the seed
-\ publishes them here, and the checker takes one row when it needs it.
-
-\ The pool base is a pointer into __text the seed stored, so its cell is a
-\ reserved pointer cell and the role survives the read.
-AOT-CELLS:SIG-POOL-CELL RESERVED-PTR-U8-CELL CK-AOT-SIG-POOL-FIELD
-: CK-AOT-SIG-POOL ( -- ptr u8 ) CK-AOT-SIG-POOL-FIELD @ ;
-: CK-AOT-SIG-LEN ( -- n ) data-base AOT-CELLS:SIG-LEN-CELL + @ ;
-
-\ ---- what the two cells point at ---------------------------------------------
-\ One payload, three sections (rows, the strings they name, the type registry
-\ they resolve against), because the seed has two cells to publish with. The
-\ payload carries its own table (a count, an (offset, length) row per section,
-\ the sections contiguous behind it), and every malformation is refused by name
-\ before a byte of it is believed.
+\ ---- the captured signature graphs -------------------------------------------
+\ The capture carries the window's signatures beside its records.
 \ A row has four u32 fields (name, graph, package, visibility). Name/package
 \ offsets point at `[len u16][bytes]`; the graph offset points at the aligned
-\ self-contained verified graph below. The artifact and seed copy this pool
-\ without re-encoding. The E record/node shapes are reused with blob-relative
-\ references: EW.ACTIVE carries the magic, EW.NEXT the byte length, EW.SYM the
-\ control/defer flags. No source symbol id or history link travels. Variable
-\ nodes carry storage restrictions: a generic setter graph without them could
-\ not enter the checker without rechecking its body.
+\ self-contained verified graph below. The E record/node shapes are reused with
+\ blob-relative references: EW.ACTIVE carries the magic, EW.NEXT the byte
+\ length, EW.SYM the control/defer flags. No source symbol id or history link
+\ travels.
 $4842470000000003 constant ASIG-GRAPH-MAGIC
 $10000 constant ASIG-GRAPH-DEFER
 \ The node map is owned and reused across copies and files; its slots carry
@@ -22968,8 +22873,8 @@ defer ASIG-GRAPH-CHECK-XT ( ptr u8 n -- )
 : ASIG-GRAPH-COPY-RECORD ( n n -- n ) {: off1:n flags:n :}
    off1 0= IF ASIG-GRAPH-DIE THEN
    off1 1- {: src:n :}
-   \ A failed declaration's row serves only its own run. The wire has no
-   \ recovery state and the import seeds every row it reads.
+   \ A failed declaration's row serves only its own run, and the wire has no
+   \ recovery state.
    src E-PTR ER.ACTIVE @ EFF-RECOVERY = IF
       s" checker: a failed declaration's row is not portable" 76 die
    THEN
@@ -23031,83 +22936,11 @@ defer ASIG-GRAPH-CHECK-XT ( ptr u8 n -- )
    ASIG-FROZEN @ 0= IF ASIG-GRAPH-DIE THEN
    ASIG-ROW-P @ ASIG-ROW-U @ ASIG-STR-P @ ASIG-STR-U @ ;
 
-3 constant CK-AOT-SEC-N
-16 constant CK-AOT-ROW                  \ = ASIG-ROW: the store's row, carried verbatim
-0 constant CK-AOT-S-ROWS
-1 constant CK-AOT-S-STR
-2 constant CK-AOT-S-REG
-CK-AOT-SEC-N 16 * 8 + constant CK-AOT-TBL-END
-
-variable CK-AOT-STATE                   \ 0 not validated, 1 usable
-\ A build has no signature pool, so the state holds 0 while it runs.
-package CHECK
-CK-AOT-STATE 0 CELL-ROW+
-;package
-variable CK-AOT-RETRY-ARMED             \ a retry loop is driving this pass
-variable CK-AOT-RETRY-DUE               \ ... and this pass is not the last one
-variable CK-AOT-I   variable CK-AOT-J   variable CK-AOT-K
-variable CK-AOT-CUR variable CK-AOT-GOT variable CK-AOT-ANY
-
-: CK-AOT-DIE ( ptr u8 n -- ) 76 die ;
-
-: CK-AOT-U64@ ( n -- n ) {: at:n :}
-   0  8 0 ?do  8 lshift  CK-AOT-SIG-POOL at 7 i - + + c@ or  loop ;
-
-: CK-AOT-U32@ ( n -- n ) {: at:n :}
-   CK-AOT-SIG-POOL at + c@
-   CK-AOT-SIG-POOL at 1 + + c@ 8 lshift or
-   CK-AOT-SIG-POOL at 2 + + c@ 16 lshift or
-   CK-AOT-SIG-POOL at 3 + + c@ 24 lshift or ;
-
-: CK-AOT-U16@ ( n -- n ) {: at:n :}
-   CK-AOT-SIG-POOL at + c@  CK-AOT-SIG-POOL at 1 + + c@ 8 lshift or ;
-
-: CK-AOT-OFF ( n -- n ) {: k:n :} k 16 * 8 + CK-AOT-U64@ ;
-: CK-AOT-LEN ( n -- n ) {: k:n :} k 16 * 16 + CK-AOT-U64@ ;
-
-\ A failure is a build defect, not a runtime condition.
-: CK-AOT-VALIDATE ( -- )
-   CK-AOT-SIG-LEN CK-AOT-TBL-END < IF
-      s" checker: the seeded signature payload is shorter than its own table" CK-AOT-DIE THEN
-   0 CK-AOT-U64@ CK-AOT-SEC-N <> IF
-      s" checker: the seeded signature payload names a section count this engine cannot read" CK-AOT-DIE THEN
-   CK-AOT-TBL-END CK-AOT-CUR !
-   CK-AOT-SEC-N 0 ?do
-      i CK-AOT-OFF CK-AOT-CUR @ <> IF
-         s" checker: a seeded payload section does not start where the last one ended" CK-AOT-DIE THEN
-      i CK-AOT-LEN 0 < IF
-         s" checker: a seeded payload section has a negative length" CK-AOT-DIE THEN
-      i CK-AOT-LEN CK-AOT-SIG-LEN CK-AOT-CUR @ - > IF
-         s" checker: a seeded payload section runs past its own bytes" CK-AOT-DIE THEN
-      CK-AOT-CUR @ i CK-AOT-LEN + CK-AOT-CUR !
-   loop
-   CK-AOT-CUR @ CK-AOT-SIG-LEN <> IF
-      s" checker: the seeded payload sections do not fill the span the seed published" CK-AOT-DIE THEN
-   CK-AOT-S-ROWS CK-AOT-LEN CK-AOT-ROW mod 0 <> IF
-      s" checker: the seeded signature rows are not a whole number of rows" CK-AOT-DIE THEN ;
-
-: CK-AOT-ROWS ( -- n ) CK-AOT-S-ROWS CK-AOT-LEN CK-AOT-ROW / ;
-: CK-AOT-FIELD ( n n -- n ) {: r:n f:n :}
-   CK-AOT-S-ROWS CK-AOT-OFF r CK-AOT-ROW * + f + CK-AOT-U32@ ;
-
-\ A string record's bytes, as a span into the payload. It is __text and stays
-\ mapped for the life of the process, so the parser reads it in place.
-: CK-AOT-STR-U ( n -- n ) {: at:n :} CK-AOT-S-STR CK-AOT-OFF at + CK-AOT-U16@ ;
-: CK-AOT-STR-A ( n -- ptr u8 ) {: at:n :} CK-AOT-SIG-POOL CK-AOT-S-STR CK-AOT-OFF + at + 2 + ;
-: CK-AOT-STR$ ( n -- ptr u8 n ) {: at:n :} at CK-AOT-STR-A at CK-AOT-STR-U ;
-
-: CK-AOT-REG$ ( -- ptr u8 n )
-   CK-AOT-SIG-POOL CK-AOT-S-REG CK-AOT-OFF + CK-AOT-S-REG CK-AOT-LEN ;
-
 \ All lengths are subtraction-bounded before an address/product is formed.
 : CK-AOT-SPAN? ( n n n -- ) {: off:n bytes:n limit:n :}
    off 0 < bytes 0 < or IF ASIG-GRAPH-DIE THEN
    off limit > IF ASIG-GRAPH-DIE THEN
    bytes limit off - > IF ASIG-GRAPH-DIE THEN ;
-
-: CK-AOT-KEY? ( n -- ) {: off:n :}
-   off 2 CK-AOT-S-STR CK-AOT-LEN CK-AOT-SPAN?
-   off 2 + off CK-AOT-STR-U CK-AOT-S-STR CK-AOT-LEN CK-AOT-SPAN? ;
 
 \ The map is owned: CK-GRAPH-RELEASE gives it back. The graph under check is
 \ set at each check's entry.
@@ -23117,8 +22950,6 @@ CHECKER-REG:SCRATCH{
 PTR-VARIABLE CK-GRAPH-BASE
 variable CK-GRAPH-LEN
 variable CK-GRAPH-MAP-U
-PTR-VARIABLE CK-GRAPH-REG-P
-variable CK-GRAPH-REG-U
 variable CK-GRAPH-WIDTH-BAD
 CHECKER-REG:}SCRATCH
 PTR-VARIABLE CK-LEX-MEMO-P
@@ -23147,7 +22978,6 @@ CK-GRAPH-META-SPANS CK-LEX-MASK 1+ + constant CK-GRAPH-SPANS
    CK-GRAPH-MAP @ CK-GRAPH-MAP-U @ 3 * + + CELL-VIEW ;
 : CK-GRAPH-LEX-SLOT ( n n -- ptr n ) {: off:n ctx:n :}
    CK-GRAPH-MAP @ ctx CK-GRAPH-META-SPANS + CK-GRAPH-MAP-U @ * + off + CELL-VIEW ;
-: CK-GRAPH-REG$ ( -- ptr u8 n ) CK-GRAPH-REG-P @ CK-GRAPH-REG-U @ ;
 
 : CK-GRAPH-RELEASE ( -- )
    CK-GRAPH-MAP @ CK-GRAPH-CAP @ ASIG-RELEASE
@@ -23207,24 +23037,14 @@ CK-GRAPH-META-SPANS CK-LEX-MASK 1+ + constant CK-GRAPH-SPANS
    slot @ 0 <> slot @ meta <> and IF ASIG-GRAPH-DIE THEN
    meta slot ! ;
 
-defer CK-AOT-FAMILY? ( ptr u8 n ptr u8 n -- bool )
-: CK-AOT-FAMILY-DEFAULT ( ptr u8 n ptr u8 n -- bool )
-   2drop 2drop RES-FALSE ;
-: CK-AOT-FAMILY-INSTALL ( -- )
-   [: CK-AOT-FAMILY-DEFAULT ;] is CK-AOT-FAMILY? ;
-CK-AOT-FAMILY-INSTALL
-
 : CK-GRAPH-CON? ( ptr u8 -- ) {: node:ptr :}
    node CK-GRAPH-NAME?
    node EN.A @ CK-GRAPH-PTR node EN.B @ CT-FIND {: con:n :}
    con 0= IF
-      \ New linear constructors have the existing CT-ADD-LINEAR recipe. No
-      \ constructor is installed until every graph and registry has validated.
+      \ A constructor the engine lacks must have the shape CT-ADD-LINEAR makes.
       node EN.C @ CT-LINEAR <> node EN.D @ 64 <> or
       node EN.E @ CS-NONE <> or IF ASIG-GRAPH-DIE THEN
       node EN.A @ CK-GRAPH-PTR node EN.B @ TYPE-RESERVED? IF ASIG-GRAPH-DIE THEN
-      node EN.A @ CK-GRAPH-PTR node EN.B @ CK-GRAPH-REG$
-         CK-AOT-FAMILY? IF ASIG-GRAPH-DIE THEN
    ELSE
       con CT-CLASS@ node EN.C @ <> con CT-WIDTH@ node EN.D @ <> or
       con CT-SIGN@ node EN.E @ <> or IF ASIG-GRAPH-DIE THEN
@@ -23312,11 +23132,11 @@ CK-AOT-FAMILY-INSTALL
          node EN.D @ i cells + CK-GRAPH-PTR CELL-VIEW @
          RES-FALSE TWALK-DEEPER RECURSE TWALK-SHALLOWER
       loop
-      node CK-GRAPH-BASE @ CK-GRAPH-REG$ REG-EXT-AOT-PARAM-XT
+      node CK-GRAPH-BASE @ REG-EXT-AOT-PARAM-XT
    THEN THEN THEN THEN THEN THEN THEN THEN THEN
    row 0= IF
       tag EN-PARAM = IF
-         node CK-GRAPH-BASE @ CK-GRAPH-WIDTHS CK-GRAPH-REG$ REG-EXT-AOT-WIDTH-XT
+         node CK-GRAPH-BASE @ CK-GRAPH-WIDTHS REG-EXT-AOT-WIDTH-XT
          dup node EN.E @ < IF drop CK-GRAPH-WIDTH-REFUSE THEN
       ELSE 1 THEN
       off CK-GRAPH-WIDTH-SLOT !
@@ -23411,9 +23231,9 @@ create CK-LEX-DOMAINS 64 cells allot
    dup 1+ slot ! ;
 
 : CK-LEX-SCOPE-SLOT? ( n n -- bool ) {: off:n idx:n :}
-   off CK-GRAPH-PTR CK-GRAPH-REG$ idx REG-EXT-AOT-SCOPE-XT ;
+   off CK-GRAPH-PTR idx REG-EXT-AOT-SCOPE-XT ;
 : CK-LEX-REGION-SLOT? ( n n -- bool ) {: off:n idx:n :}
-   off CK-GRAPH-PTR CK-GRAPH-REG$ idx REG-EXT-AOT-REGION-XT ;
+   off CK-GRAPH-PTR idx REG-EXT-AOT-REGION-XT ;
 : CK-GRAPH-LEX-PARAM-CTX ( n n n -- n ) {: off:n ctx:n idx:n :}
    off idx CK-LEX-SCOPE-SLOT? IF
       ctx CK-LEX-SCOPE and CK-LEX-SLOT or EXIT THEN
@@ -23508,11 +23328,10 @@ create CK-LEX-DOMAINS 64 cells allot
       width + swap CK-GRAPH-PTR EN.B @
    REPEAT drop ;
 
-: CK-GRAPH-CHECK ( ptr u8 n ptr u8 n -- ) {: graph:ptr bytes:n reg:ptr regu:n :}
+: CK-GRAPH-CHECK ( ptr u8 n -- ) {: graph:ptr bytes:n :}
    0 CK-GRAPH-WIDTH-BAD !
    bytes EFF-WIRE < IF ASIG-GRAPH-DIE THEN
    graph CK-GRAPH-BASE ! bytes CK-GRAPH-LEN !
-   reg CK-GRAPH-REG-P ! regu CK-GRAPH-REG-U !
    0 CK-GRAPH-PTR {: rec:ptr :}
    rec EW.ACTIVE @ ASIG-GRAPH-MAGIC <> IF ASIG-GRAPH-DIE THEN
    rec EW.NEXT @ bytes <> IF ASIG-GRAPH-DIE THEN
@@ -23542,16 +23361,8 @@ create CK-LEX-DOMAINS 64 cells allot
    rec EW.ROUT @ CK-LEX-TYPES 0 CK-GRAPH-LEX?
    CK-GRAPH-MIN-IN rec EW.MINI @ <> IF ASIG-GRAPH-DIE THEN ;
 
-: CK-GRAPH-VALIDATE ( n -- ) {: at:n :}
-   at 7 and 0 <> IF ASIG-GRAPH-DIE THEN
-   at EFF-WIRE CK-AOT-S-STR CK-AOT-LEN CK-AOT-SPAN?
-   CK-AOT-SIG-POOL CK-AOT-S-STR CK-AOT-OFF + at + {: graph:ptr :}
-   graph EW.NEXT @ {: bytes:n :}
-   at bytes CK-AOT-S-STR CK-AOT-LEN CK-AOT-SPAN?
-   graph bytes CK-AOT-REG$ CK-GRAPH-CHECK ;
-
 : ASIG-GRAPH-CHECK ( ptr u8 n -- )
-   [: 2dup NULL-PTR 0 CK-GRAPH-CHECK ;] catch
+   [: 2dup CK-GRAPH-CHECK ;] catch
    \ Reuse scratch across the freeze's definitions. A refusal releases
    \ immediately before crossing the public boundary.
    dup 0 <> IF CK-GRAPH-RELEASE THEN
@@ -23559,282 +23370,10 @@ create CK-LEX-DOMAINS 64 cells allot
 : ASIG-GRAPH-CHECK-INSTALL ( -- ) [: ASIG-GRAPH-CHECK ;] is ASIG-GRAPH-CHECK-XT ;
 ASIG-GRAPH-CHECK-INSTALL
 
-: CK-AOT-CONTENTS? ( -- )
-   CK-AOT-VALIDATE
-   CK-AOT-REG$ REG-EXT-AOT-VALIDATE-XT
-   CK-AOT-ROWS 0 ?do
-      i 0 CK-AOT-FIELD dup CK-AOT-KEY? CK-AOT-STR-U 0= IF ASIG-GRAPH-DIE THEN
-      i 8 CK-AOT-FIELD CK-AOT-KEY?
-      i 12 CK-AOT-FIELD dup 0 < swap SYM-PUBLIC > or IF ASIG-GRAPH-DIE THEN
-      i 8 CK-AOT-FIELD CK-AOT-STR-U 0=
-      i 12 CK-AOT-FIELD SYM-GLOBAL = IF 0= THEN IF ASIG-GRAPH-DIE THEN
-      i 4 CK-AOT-FIELD CK-GRAPH-VALIDATE
-   loop ;
-
-\ Validation may reserve scratch but publishes no symbol, effect or registry.
-\ AN EMPTY POOL IS NOT LATCHED: each call reads the length cell again, so a
-\ pool written after an earlier miss is still taken.
-: CK-AOT-READY? ( -- bool )
-   CK-AOT-STATE @ 0 <> IF RES-TRUE EXIT THEN
-   CK-AOT-SIG-LEN 0 <= IF RES-FALSE EXIT THEN
-   0 CK-GRAPH-WIDTH-BAD !
-   [: CK-AOT-CONTENTS? ;] catch
-   CK-GRAPH-RELEASE
-   CK-GRAPH-THROW
-   1 CK-AOT-STATE ! RES-TRUE ;
-
-: CK-AOT-ROW-WID ( n -- n ) {: r:n :}
-   r 12 CK-AOT-FIELD {: vis:n :}
-   vis SYM-GLOBAL = IF BOOT:GLOBAL-WL EXIT THEN
-   r 8 CK-AOT-FIELD CK-AOT-STR$ BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: ns:ptr :}
-   ns NULL-PTR = IF -1 EXIT THEN
-   vis SYM-PUBLIC = IF ns @ ELSE ns CELL + @ THEN
-   dup 0= IF drop -1 THEN ;
-
-: CK-AOT-ROW-REC ( n -- ptr n ) {: r:n :}
-   r CK-AOT-ROW-WID {: wid:n :}
-   wid 0 < IF NULL-PTR EXIT THEN
-   r 0 CK-AOT-FIELD CK-AOT-STR$ wid CHECKER-RESOLVE:WL-PROBE ;
-
-\ A zero-symbol top-level walk already selected REC. Source replacements have
-\ their own checker symbol and never ask this cold query.
-: CK-AOT-REC-CONTROL-READ ( ptr n -- n bool ) {: selected:ptr :}
-   selected NULL-PTR = IF 0 RES-FALSE EXIT THEN
-   CK-AOT-READY? 0= IF 0 RES-FALSE EXIT THEN
-   CK-AOT-ROWS 0 ?do
-      i CK-AOT-ROW-REC selected = IF
-         CK-AOT-SIG-POOL CK-AOT-S-STR CK-AOT-OFF +
-         i 4 CK-AOT-FIELD + EW.SYM @ {: control:n :}
-         control ASIG-GRAPH-DEFER invert and
-         control ASIG-GRAPH-DEFER and 0 <>
-         unloop EXIT
-      THEN
-   loop
-   0 RES-FALSE ;
-
-: CK-AOT-REC-CONTROL-INSTALL ( -- )
-   [: CK-AOT-REC-CONTROL-READ ;] is CK-AOT-REC-CONTROL ;
-CK-AOT-REC-CONTROL-INSTALL
-
-\ ---- taking one row ----------------------------------------------------------
-\ The key is the row's own scope, not the scope the failing reference resolved
-\ in: a row carries (package, visibility, name), SYM-FIND's key, so the intake
-\ re-interns the word where it lives and the retry does the scope walk as for a
-\ word compiled from source.
-: CK-AOT-ROW-SYM ( n -- n ) {: r:n :}
-   r 8 CK-AOT-FIELD CK-AOT-STR$
-   r 12 CK-AOT-FIELD
-   r 0 CK-AOT-FIELD CK-AOT-STR$
-   SYM-INTERN ;
-
-: CK-AOT-ROW-PRESENT? ( n -- bool ) {: r:n :}
-   r 8 CK-AOT-FIELD CK-AOT-STR$
-   r 12 CK-AOT-FIELD
-   r 0 CK-AOT-FIELD CK-AOT-STR$
-   SYM-FIND {: sym:n hit:bool :}
-   hit 0= IF RES-FALSE EXIT THEN
-   sym CHECKER-FIND-USIG-SYM ;
-
-\ Import the validated DAG directly. Instantiating and re-copying it would
-\ expand shared subgraphs and change row kinds; it is already an effect record.
-: CK-GRAPH-REBASE ( ptr n n -- ) {: field:ptr base:n :}
-   field @ dup 0 <> IF base + THEN field ! ;
-
-: CK-GRAPH-CON-INSTALL ( ptr u8 -- ) {: node:ptr :}
-   node EN.A @ CK-GRAPH-PTR node EN.B @ {: name:ptr len:n :}
-   name len CT-FIND 0= IF name len s" " CT-ADD-LINEAR THEN ;
-
-: CK-GRAPH-NODE-REBASE ( n n -- ) {: off:n base:n :}
-   off base + E-PTR {: node:ptr :}
-   node EN.TAG @ {: tag:n :}
-   tag EN-CON = IF
-      off CK-GRAPH-PTR {: source:ptr :}
-      source EN.A @ CK-GRAPH-PTR source EN.B @ CT-FIND node EN.A !
-      0 node EN.B ! 0 node EN.C ! 0 node EN.D ! 0 node EN.E !
-   ELSE tag EN-PTR = IF node EN.A base CK-GRAPH-REBASE
-   ELSE tag EN-PUSH = IF
-      node EN.A base CK-GRAPH-REBASE node EN.B base CK-GRAPH-REBASE
-   ELSE tag EN-QUOT = IF
-      node EN.A base CK-GRAPH-REBASE node EN.B base CK-GRAPH-REBASE
-      node EN.C base CK-GRAPH-REBASE node EN.D base CK-GRAPH-REBASE
-      node EN.I base CK-GRAPH-REBASE
-   ELSE tag EN-FORALL = IF
-      node EN.A base CK-GRAPH-REBASE
-      node EN.B base CK-GRAPH-REBASE
-      node EN.C base CK-GRAPH-REBASE
-   ELSE tag EN-ATOM = IF node EN.A base CK-GRAPH-REBASE
-   ELSE tag EN-PARAM = IF
-      node EN.A base CK-GRAPH-REBASE node EN.D base CK-GRAPH-REBASE
-      node EN.C @ 0 ?do
-         node EN.D @ i cells + E-PTR CELL-VIEW base CK-GRAPH-REBASE
-      loop
-      \ Canonical package bytes are validation-only, not live EN-PARAM fields.
-      0 node EN.F ! 0 node EN.G !
-   THEN THEN THEN THEN THEN THEN THEN ;
-
-: CK-GRAPH-OFFSET ( n n -- n ) {: off:n delta:n :}
-   off 0= IF 0 ELSE off delta + THEN ;
-
-: CK-GRAPH-IMPORT ( n -- ) {: sym:n :}
-   CK-GRAPH-LEN @ $7FFFFFFFFFFFFFFF 7 - > IF ASIG-GRAPH-DIE THEN
-   CK-GRAPH-LEN @ 7 + -8 and {: wirebytes:n :}
-   wirebytes EFF-WIRE - EFF-REC + {: bytes:n :}
-   bytes $7FFFFFFFFFFFFFFF UEND @ - CELL - EFF-CONTENT - > IF ASIG-GRAPH-DIE THEN
-   UEND @ bytes + EFF-CONTENT + CELL + USIGS-ENSURE
-   0 CK-GRAPH-PTR EW.TVN @ 0 CK-GRAPH-PTR EW.RVN @ max TV-ENSURE
-   \ Reserve every allocation before publishing the new binding or constructors.
-   CTN @ wirebytes EFF-NODE / + CT-ENSURE
-   wirebytes CT-STR-ENSURE
-   DFER-NEED DFER-ENSURE
-   NORET-END @ NORET-ENTRY + CELL + NORET-ENSURE
-   NRX-ENSURE USX-ENSURE UIX-EXACT CHX-EXACT
-   UIX-N @ wirebytes EFF-NODE / + {: maxnodes:n :}
-   BEGIN maxnodes UIX-ENT-CAP @ > WHILE UIX-ENT-GROW REPEAT
-   BEGIN maxnodes 2 * UIX-BKT-CAP @ > WHILE UIX-BKT-GROW REPEAT
-   CHX-N @ 1+ CHX-ENT-CAP @ > IF CHX-ENT-GROW THEN
-   CHX-N @ 1+ 2 * CHX-BKT-CAP @ > IF CHX-BKT-GROW THEN
-   EFF-WIRE BEGIN dup CK-GRAPH-LEN @ < WHILE
-      dup CK-GRAPH-SLOT @ EN-CON 1+ = IF dup CK-GRAPH-PTR CK-GRAPH-CON-INSTALL THEN
-      CELL +
-   REPEAT drop
-   CHECKER-REC-SYM @ {: was:n :}
-   sym CHECKER-REC-SYM !
-   E-REC-START E-OFF {: base:n :}
-   base EFF-REC + EFF-WIRE - {: delta:n :}
-   CK-GRAPH-BASE @ EFF-WIRE + base EFF-REC + E-PTR
-   CK-GRAPH-LEN @ EFF-WIRE - ARENA-COPY
-   CK-GRAPH-LEN @ delta + E-PTR wirebytes CK-GRAPH-LEN @ - ARENA-ZERO
-   EFF-WIRE BEGIN dup CK-GRAPH-LEN @ < WHILE
-      dup CK-GRAPH-SLOT @ 0 > IF dup delta CK-GRAPH-NODE-REBASE THEN
-      CELL +
-   REPEAT drop
-   base bytes + UEND !
-   0 CK-GRAPH-PTR {: source:ptr :}
-   EFF-SEEDED base E-PTR ER.ACTIVE !
-   source EW.DIN @ delta CK-GRAPH-OFFSET
-   source EW.DOUT @ delta CK-GRAPH-OFFSET
-   source EW.RIN @ delta CK-GRAPH-OFFSET
-   source EW.ROUT @ delta CK-GRAPH-OFFSET
-   source EW.HASR @ source EW.TVN @ source EW.RVN @ source EW.MINI @
-   E-CONTENT-NEW base E-PTR ER.CONTENT !
-   base E-PTR E-REC-FINISH USX-STAMP
-   base UEND @ UIX-REC-ADD UIX-STAMP
-   HIDX-VALID @ IF base 1+ sym HIDX-EFF! UEND @ HIDX-EFF-DEP+ THEN
-   sym source EW.SYM @ ASIG-GRAPH-DEFER invert and 0 0 NORET-ADD-SYM
-   sym source EW.SYM @ ASIG-GRAPH-DEFER and 0 <> DFER-ADD-SYM
-   was CHECKER-REC-SYM ! ;
-
-: CK-AOT-TAKE ( n -- ) {: r:n :}
-   r 4 CK-AOT-FIELD CK-GRAPH-VALIDATE
-   r CK-AOT-ROW-SYM CK-GRAPH-IMPORT
-   CK-GRAPH-RELEASE ;
-
-\ ---- taking every row one pass could have used -------------------------------
-\ Every row whose name the pass could not resolve, not the newest: the same
-\ tail lives in many packages of a captured chain, and the retry's own scope
-\ walk picks the one the reference meant. Rows hold the folded name the symbol
-\ store keeps; a probe may arrive as written, so both comparisons fold the probe
-\ byte as the store does.
-: CK-AOT-NAME= ( n ptr u8 n -- bool ) {: r:n a:ptr u:n :}
-   r 0 CK-AOT-FIELD {: at:n :}
-   at CK-AOT-STR-U u <> IF RES-FALSE EXIT THEN
-   0 CK-AOT-J !
-   BEGIN CK-AOT-J @ u < WHILE
-      at CK-AOT-STR-A CK-AOT-J @ + c@  a CK-AOT-J @ + c@ SYM-FOLD-C <> IF RES-FALSE EXIT THEN
-      CK-AOT-J @ 1 + CK-AOT-J !
-   REPEAT
-   RES-TRUE ;
-
-: CK-AOT-PKG= ( n ptr u8 n -- bool ) {: r:n a:ptr u:n :}
-   r 8 CK-AOT-FIELD {: at:n :}
-   at CK-AOT-STR-U u <> IF RES-FALSE EXIT THEN
-   0 CK-AOT-J !
-   BEGIN CK-AOT-J @ u < WHILE
-      at CK-AOT-STR-A CK-AOT-J @ + c@  a CK-AOT-J @ + c@ SYM-FOLD-C <> IF RES-FALSE EXIT THEN
-      CK-AOT-J @ 1 + CK-AOT-J !
-   REPEAT
-   RES-TRUE ;
-
-: CK-AOT-ROW-WANTED? ( n ptr u8 n -- bool ) {: r:n a:ptr u:n :}
-   a u CHECKER-QUALIFIED? IF
-      r CHECKER-QPKG$ CK-AOT-PKG= 0= IF RES-FALSE EXIT THEN
-      r CHECKER-QTAIL$ CK-AOT-NAME= EXIT
-   THEN
-   r a u CK-AOT-NAME= ;
-
-\ With `take` false the retry decision asks whether a row would be taken and the
-\ tables stay untouched; the intake takes them. One walk answers both, so they
-\ cannot disagree. A name a rendering statement's mark covers takes no row: the
-\ load may bind a product of that name ahead of the seeded word, so the
-\ definition stays deferred to the run.
-: CK-AOT-SERVE ( ptr u8 n bool -- bool ) {: a:ptr u:n take:bool :}
-   a u UNSEEN-COVERS? IF RES-FALSE EXIT THEN
-   0 CK-AOT-GOT !
-   0 CK-AOT-I !
-   BEGIN CK-AOT-I @ CK-AOT-ROWS < WHILE
-      CK-AOT-I @ a u CK-AOT-ROW-WANTED? IF
-         CK-AOT-I @ CK-AOT-ROW-PRESENT? 0= IF
-            take IF CK-AOT-I @ CK-AOT-TAKE THEN
-            -1 CK-AOT-GOT !
-         THEN
-      THEN
-      CK-AOT-I @ 1 + CK-AOT-I !
-   REPEAT
-   CK-AOT-GOT @ 0 <> ;
-
-: CK-AOT-MISSES ( bool -- bool ) {: take:bool :}
-   0 CK-AOT-ANY !
-   0 CK-AOT-K !
-   BEGIN CK-AOT-K @ ASIG-MISS-U @ < WHILE
-      CK-AOT-K @ ASIG-MISS-A@  CK-AOT-K @ ASIG-MISS-LEN@  take CK-AOT-SERVE IF
-         -1 CK-AOT-ANY !
-      THEN
-      CK-AOT-K @ CK-AOT-K @ ASIG-MISS-LEN@ + 2 + CK-AOT-K !
-   REPEAT
-   CK-AOT-ANY @ 0 <> ;
-
-: CK-AOT-MISS-SERVED? ( -- bool )
-   ASIG-MISS-U @ 0= IF RES-FALSE EXIT THEN
-   CK-AOT-READY? 0= IF RES-FALSE EXIT THEN
-   RES-FALSE CK-AOT-MISSES ;
-
 -1 constant VERDICT-CHECKED
 0 constant VERDICT-REFUSED
 1 constant VERDICT-UNCHECKABLE
 2 constant VERDICT-DEFERRED
-
-\ It takes nothing: CHECK must not publish an effect while its own diagnostic is
-\ pending.
-: CK-AOT-RETRY-DUE? ( n -- bool )
-   {: verdict:n :}
-   verdict VERDICT-CHECKED = IF RES-FALSE EXIT THEN
-   UNDEFERR @ 0= IF RES-FALSE EXIT THEN
-   CK-AOT-MISS-SERVED? ;
-
-\ Latched where the verdict is reached so the diagnostic asks one variable, and
-\ a bare CHECK with no retry loop above it reports unchanged.
-: CK-AOT-LATCH-RETRY ( n -- n ) {: verdict:n :}
-   0 CK-AOT-RETRY-DUE !
-   CK-AOT-RETRY-ARMED @ 0= IF verdict EXIT THEN
-   verdict CK-AOT-RETRY-DUE? IF -1 CK-AOT-RETRY-DUE ! THEN
-   verdict ;
-
-\ The intake runs between passes, never at the token that missed: the pass has
-\ already judged the name unbound, so it runs again once the row is in. Between
-\ passes is safe: the intake appends effect records and table entries and moves
-\ no pool counter. The registry is installed by the seed, not here.
-: CK-AOT-INTAKE ( -- bool )
-   CK-AOT-READY? 0= IF RES-FALSE EXIT THEN
-   RES-TRUE CK-AOT-MISSES ;
-
-\ The intake a caller asked for because a row was there to take. If taking it
-\ now finds nothing, the two walks disagree, so that is a death, not a
-\ fallthrough: a body's pass held its verdict and would be refused with no
-\ diagnostic at all, and the interpret row's take would answer true and run the
-\ same miss again forever.
-: CK-AOT-INTAKE! ( -- )
-   CK-AOT-INTAKE IF EXIT THEN
-   s" checker: a seeded signature the miss queue answered was not there to take" 76 die ;
 
 CHECKER-REG:SCRATCH{
 variable ZSHAPE   \ 0 empty, 1 core 0=, 2 literal zero, 3 zero then core <>, -1 other
@@ -23890,7 +23429,6 @@ CHECKER-REG:}SCRATCH
    0 NPBAD !  0 NPBAD-KIND !  0 NPBAD-Q1 !  0 NPBAD-Q2 !  0 NPBAD-TERM !
    0 LOCSEQ !
    0 WF-N !  0 RECW !  0 RECMI !  0 SCAN-INCOMPLETE !  0 UNJ-TOK !
-   ASIG-MISS-CLEAR                     \ the queue always describes the pass just run
    0 RECEFF !  0 RECEFF-ON !  0 RECEFF-UEND !  0 CLAUSE-WALK ! ;
 
 : CHECK-RESET {: a u :}
@@ -23917,14 +23455,6 @@ CHECKER-REG:}SCRATCH
 \ a spent payload (the token's own length), and the name branch clears TOK0.
 variable SCAN-U
 variable SCAN-TOK0
-
-\ THE OBSERVER SEES ONE SCAN PER CHECKED BODY, though a lazy signature intake
-\ scans some bodies twice. The token stream is a function of the text alone (an
-\ intake changes which words resolve, not which tokens exist), so the first
-\ pass gives the observer the stream, later passes are silent, and CHECK! hands
-\ over the one verdict at the end. CHECK-RETRY asserts the streams matched.
-variable RESCAN
-variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
 
 \ The token this turn's judgement swallowed, reported after the judgement's own
 \ row (consumption order). It is never the name token: neither keyword can stand
@@ -23960,11 +23490,6 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
 : SCAN-REPORT ( -- )
    REC-COMMIT
    EV-COMMIT
-   RESCAN @ IF
-      REC-STEP
-      IS-PEND @ IF 0 IS-PEND ! REC-STEP THEN
-      EXIT
-   THEN
    CPAY-ON @ IF
       CPAY-B @ TADDR CPAY-U @ TSTART @ TI @ TSTART @ -
       CHECKER-TAPE:CHARACTER
@@ -23986,7 +23511,7 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
    SCAN-PEND-REPORT ;
 
 : TAPE-FEED? ( -- bool )
-   CHECKER-TAPE:ARMED @ 0 <>  RESCAN @ 0=  and ;
+   CHECKER-TAPE:ARMED @ 0 <> ;
 
 \ These three read byte i only inside TBLEN: `and` evaluates both operands, so a
 \ bound test beside the read reads past a text that ends where its mapping does.
@@ -24094,12 +23619,11 @@ variable CUR-OPEN   variable CUR-PSIG
 : SCAN-TOK-TAIL ( n -- bool ) {: was-name:n :}
    TORDER-SCAN-UNKNOWN @ IF RES-TRUE EXIT THEN
    was-name 0= IF TSTART @ TADDR TI @ TSTART @ - ZSUMMARY-TOKEN THEN
-   SCAN-TOKS @ 1 + SCAN-TOKS !
    CHECKER-TAPE:ARMED @ IF SCAN-REPORT THEN
    RES-FALSE ;
 
 : CHECK-SCAN-WALK ( -- )
-   0 SCAN-TOKS !  0 SPAY-S !
+   0 SPAY-S !
    EV-START
    TAPE-FEED? IF TBASE@ TBLEN @ CHECKER-TAPE:SCAN THEN
    BEGIN TI @ TBLEN @ < WHILE
@@ -24200,7 +23724,7 @@ BODY-ITEMS:BASE-CELL RESERVED-PTR-U8-CELL ITEM-BLOCK
    a u unj unsafe ok-in unck-in pin-in DO-TOK-TAIL ;
 
 : ITEM-WALK ( -- )
-   0 SCAN-TOKS !  0 SPAY-S !
+   0 SPAY-S !
    EV-START
    TAPE-FEED? IF TBASE@ TBLEN @ CHECKER-TAPE:SCAN THEN
    ITEM-COUNT 0 ?DO
@@ -24768,15 +24292,12 @@ variable UNREC-DOUT  CELLS-NONE UNREC-DOUT !
    CHECK-DEPTH-FITS
    CHECK-VERDICT
    dup DVERD !
-   CK-AOT-LATCH-RETRY                                 \ is a seeded signature still to come?
    dup 0= IF RIGID-DIAG-CLASSIFY THEN
    \ An uncheckable verdict is rendered here as JSON and in a multi-error load,
    \ whose record step below may refuse the definition by a throw (a duplicate,
    \ a name that keys no record) that would otherwise come before it.
    dup VERDICT-REFUSED =  over VERDICT-UNCHECKABLE = JSON-DIAGS @ MULTI-ERR? or and  or
-   \ A pass another pass will replace has not judged anything yet, so it says
-   \ nothing: the diagnostic belongs to the verdict the definition is given.
-   DIAG-QUIET @ 0= and CK-AOT-RETRY-DUE @ 0= and IF DIAGXT THEN
+   DIAG-QUIET @ 0= and IF DIAGXT THEN
    \ The declared effect's record outlives the body until the diagnostic above,
    \ which renders it.
    SIG-EFF-DROP
@@ -24829,7 +24350,7 @@ variable UNREC-DOUT  CELLS-NONE UNREC-DOUT !
    \ still binds to it and a duplicate is still refused, but no control claim
    \ is made for a body the run measures; only CTL-INHERITED, a may-claim the walk
    \ saw directly.
-   dup 2 =  NMU @ 0 >  and  CHECK-SIG? and  CK-AOT-RETRY-DUE @ 0= and
+   dup 2 =  NMU @ 0 >  and  CHECK-SIG? and
    TORDER-ACTIVE @ TORDER-PARENT-GATE < and IF
       NMA @ NMU @ CHECK-REC-ADMIT
       NMA @ NMU @ INHSET @ NORET-ADD
@@ -24837,7 +24358,7 @@ variable UNREC-DOUT  CELLS-NONE UNREC-DOUT !
    THEN
    \ The count is the number of refusals rendered, so a quiet scan's is not
    \ counted.
-   dup 0 =  over 1 = or  MULTI-ERR? and  NMU @ 0 > and  CK-AOT-RETRY-DUE @ 0= and
+   dup 0 =  over 1 = or  MULTI-ERR? and  NMU @ 0 > and
    DIAG-QUIET @ 0= and IF
       MULTI-REFUSED
    THEN ;
@@ -25182,54 +24703,17 @@ variable CAND-VERDICT
 : CHECKER-CANDIDATE-SCOPE-DONE ( -- )
    0 CHECK-CANDIDATE-DONE drop ;
 
-variable CK-RETRY-V
-
-\ The token COUNT is compared, not the tokens: the split is a function of the
-\ text alone, so two passes over the same bytes cut the same tokens and a
-\ differing count is the only way the streams can part.
-: CK-RETRY-STREAM-CK ( n -- )
-   SCAN-TOKS @ = IF EXIT THEN
-   s" checker: a re-checked body read a different NUMBER of tokens than the observer holds"
-   76 die ;
-
-: CHECK-RETRY ( ptr u8 n -- n )
+: CHECK-WINDOWED ( ptr u8 n -- n )
    {: a:ptr u:n :}
    WRITE-WINDOW-CK
-   REC-IX @ {: ix0:n :}
-   REC-ON @ IF CWIN-N @ ELSE 0 THEN {: cw0:n :}
-   REC-ON @ IF BWIN-N @ ELSE 0 THEN {: bw0:n :}
-   PU-N @ {: pu0:n :}
-   CUR-RN @ CB-N @ CUR-DONE @ {: cp0:n cb0:n done0:n :}
-   0 RESCAN !
-   -1 CK-AOT-RETRY-ARMED !
-   a u CHECK CK-RETRY-V !
-   SCAN-TOKS @ {: toks0:n :}
-   BEGIN CK-AOT-RETRY-DUE @ 0 <> WHILE
-      CK-AOT-INTAKE!
-      -1 RESCAN !
-      pu0 PU-N !                       \ this attempt's uses replace the last's
-      cp0 CUR-RN !  cb0 CB-N !  done0 CUR-DONE !   \ and its candidates
-      REC-ON @ IF ix0 REC-IX ! cw0 CWIN-N ! bw0 BWIN-N ! MWIN-RESET THEN
-      a u CHECK CK-RETRY-V !
-      toks0 CK-RETRY-STREAM-CK
-   REPEAT
-   0 RESCAN !
-   0 CK-AOT-RETRY-ARMED !
-   CK-RETRY-V @ ;
+   a u CHECK ;
 
-\ The retry loop's driving state is snapshotted where the catch is: a candidate
-\ may run inside an enclosing CHECK-RETRY pass, which the inner loop must not
-\ disarm or misread.
 : CHECK-CANDIDATE-BODY ( -- )
-   CAND-A @ CAND-U @ CHECK-RETRY CAND-VERDICT ! ;
+   CAND-A @ CAND-U @ CHECK-WINDOWED CAND-VERDICT ! ;
 
 : CHECK-CANDIDATE! ( ptr u8 n -- n ) {: a:ptr u:n :}
    WRITE-WINDOW-CK
    a CAND-A !  u CAND-U !
-   CK-AOT-RETRY-ARMED @ {: armed0:n :}
-   CK-AOT-RETRY-DUE @ {: due0:n :}
-   RESCAN @ {: rescan0:n :}
-   CK-RETRY-V @ {: v0:n :}
    CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? {: recovery0:bool :}
    BIND-HORIZON @ {: horizon0:n :}
    CHK-PROBE @ {: probe0:n :}
@@ -25245,10 +24729,6 @@ variable CK-RETRY-V
    probe0 CHK-PROBE !
    0 CHECK-CANDIDATE-DONE drop
    pu0 PU-N !                          \ a candidate's uses are never published
-   armed0 CK-AOT-RETRY-ARMED !
-   due0 CK-AOT-RETRY-DUE !
-   rescan0 RESCAN !
-   v0 CK-RETRY-V !
    recovery0 CHECKER-EFFECT-AUTHORITY:RECOVERY-USED!
    horizon0 BIND-HORIZON !
    rc 0 <> IF rc throw THEN
@@ -25261,14 +24741,11 @@ variable SOURCE-U
 variable ANSWER
 
 : SCAN ( -- )
-   BEGIN
-      0 CHECKER-PREFIX-MISS !
-      CHECKER-PREFIX-CUT @ CHECKER-PREFIX-ROLLBACK !
-      SOURCE-A @ SOURCE-U @ CHECK-RESET
-      s" " CHECK-SCAN                  \ a prefix: no closer
-      CHECKER-PREFIX-MISS @ 0= IF RES-TRUE ANSWER ! EXIT THEN
-      CK-AOT-INTAKE 0= IF RES-FALSE ANSWER ! EXIT THEN
-   AGAIN ;
+   0 CHECKER-PREFIX-MISS !
+   CHECKER-PREFIX-CUT @ CHECKER-PREFIX-ROLLBACK !
+   SOURCE-A @ SOURCE-U @ CHECK-RESET
+   s" " CHECK-SCAN                     \ a prefix: no closer
+   CHECKER-PREFIX-MISS @ 0= ANSWER ! ;
 
 public
 
@@ -25278,10 +24755,6 @@ public
 : BIND? ( ptr u8 n n -- n bool ) {: a:ptr u:n cut:n :}
    WRITE-WINDOW-CK
    a SOURCE-A !  u SOURCE-U !  cut CHECKER-PREFIX-CUT !
-   CK-AOT-RETRY-ARMED @ {: armed0:n :}
-   CK-AOT-RETRY-DUE @ {: due0:n :}
-   RESCAN @ {: rescan0:n :}
-   CK-RETRY-V @ {: v0:n :}
    CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? {: recovery0:bool :}
    BIND-HORIZON @ {: horizon0:n :}
    CHK-PROBE @ {: probe0:n :}
@@ -25300,10 +24773,6 @@ public
    probe0 CHK-PROBE !
    0 CHECK-CANDIDATE-DONE drop
    pu0 PU-N !                       \ a prefix's uses are never published
-   armed0 CK-AOT-RETRY-ARMED !
-   due0 CK-AOT-RETRY-DUE !
-   rescan0 RESCAN !
-   v0 CK-RETRY-V !
    recovery0 CHECKER-EFFECT-AUTHORITY:RECOVERY-USED!
    horizon0 BIND-HORIZON !
    rc 0 <> IF rc throw THEN
@@ -25338,7 +24807,7 @@ CHECKER-REG:}SCRATCH
 PTR-VARIABLE CK-DEF-A   variable CK-DEF-U   variable CK-DEF-VERDICT
 
 : CHECK-DEF-BODY ( -- )
-   CK-DEF-A @ CK-DEF-U @ CHECK-RETRY CK-DEF-VERDICT ! ;
+   CK-DEF-A @ CK-DEF-U @ CHECK-WINDOWED CK-DEF-VERDICT ! ;
 
 \ The code of the last refusal that rendered its packet and stopped a load by its
 \ throw, 0 before one.
@@ -25355,7 +24824,6 @@ variable DEF-STOPPED
 : CHECK-DEF-THREW ( n -- )
    0 PARSE-COMPLETE !
    DEF-REFUSED
-   0 RESCAN !  0 CK-AOT-RETRY-ARMED !  0 CK-AOT-RETRY-DUE !
    MULTI-REFUSED
    0 CK-DEF-VERDICT ! ;
 
@@ -25377,7 +24845,7 @@ variable DEF-STOPPED
    -1 TORDER-DEPTH +!
    TORDER-SCAN-UNKNOWN @ {: unknown:n :}
    oldactive TORDER-ACTIVE !  oldunknown TORDER-SCAN-UNKNOWN !
-   pu0 took PUBLISH-EXIT {: prc:n :}   \ the final attempt's uses, its resolved prefix if it
+   pu0 took PUBLISH-EXIT {: prc:n :}   \ the body's uses, its resolved prefix if it
    rc 0 <> IF rc CHECK-DEF-THREW THEN  \ stopped, and its candidates; the arm goes either way
    prc 0 <> IF prc throw THEN
    CK-DEF-VERDICT @ {: verdict:n :}
@@ -25799,12 +25267,6 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    sym PRIM-FIRST-IDX 0 <> IF RES-TRUE EXIT THEN
    sym a u TOK-IDENTITY 0 <> ;
 
-
-: TOP-TAKE-ROW? ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
-   CK-AOT-READY? 0= IF RES-FALSE EXIT THEN
-   a u RES-TRUE CK-AOT-SERVE ;
-
 : TOP-REFUSE ( ptr u8 n n -- n )
    {: a:ptr u:n sel:n :}
    a USH-TOK-A !  u USH-TOK-U !
@@ -25834,7 +25296,6 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
             dup a u NAV-USE-NOW drop
             flags deferred runs TOP-RUNS EXIT
          THEN
-         a u TOP-TAKE-ROW? IF drop a u runs RECURSE EXIT THEN
       THEN drop
       a u UNSEEN-COVERS? IF 3 EXIT THEN
    THEN
@@ -26255,17 +25716,14 @@ public
 
 
 \ `' W` pushes W's quotation when W has a row, else an opaque xt, as `['] W`
-\ does in a body. W is the word the load's own find selects. A name the checker
-\ does not bind joins the lazy intake's queue, as a body's does
-\ (CALL-UNDEFINED): a seeded word's row is taken and the step run again
-\ (TOP-STEP-RETRY); a word no row answers stays opaque.
+\ does in a body. W is the word the load's own find selects.
 : TOP-TICK-STEP ( -- )
    TOP-BEGIN
    TKF TKFU @ CHECKER-TOP-SYM {: sym:n hit:bool :}
    hit IF sym ARENA-CALL-REFUSE? IF EXIT THEN THEN
    FEP-CLEAR
    hit IF sym CHECKER-FIND-USIG-SYM drop THEN
-   FEP-HIT? IF FEP @ TICK-QUOT FEP @ USIG-SYM@ BTICK-EDGE ELSE TKF TKFU @ ASIG-MISS+ OPAQUE-XT THEN
+   FEP-HIT? IF FEP @ TICK-QUOT FEP @ USIG-SYM@ BTICK-EDGE ELSE OPAQUE-XT THEN
    TOP-PUSH ;
 
 package SRCLOC
@@ -26371,9 +25829,7 @@ public
 \ The token's verdict as DO-TOK1 and CHECK take it: a checked step runs, as
 \ does one deferred to the run; a refused or uncheckable one renders the
 \ diagnostic the same token gets in a body and throws the checker's rc, so the
-\ word never runs. A pass a seeded row answers holds its verdict, as a body's
-\ does (CK-AOT-RETRY-DUE?): TOP-STEP-RETRY takes the row and judges the next
-\ pass.
+\ word never runs.
 : TOP-JUDGE ( -- )
    EXEC-OPAQUE @ IF MD-EXEC-OPAQUE MDIAG! THEN
    CATCH-OPAQUE @ IF MD-CATCH-OPAQUE MDIAG! THEN
@@ -26385,7 +25841,6 @@ public
    TOK-SPELL-A @ TOK-SPELL-U @ REFUSAL-STEP
    CHECK-VERDICT dup DVERD ! {: v:n :}
    v VERDICT-CHECKED =  v VERDICT-DEFERRED =  or  RCOMPILE @ 0=  and IF EXIT THEN
-   v CK-AOT-RETRY-DUE? IF EXIT THEN
    DIAG-QUIET @ 0= IF DIAGXT THEN
    CHECKER-REJECT-RC throw ;
 
@@ -26488,35 +25943,18 @@ CHECKER-REG:}SCRATCH
    off 0 <> IF TOP-ROW-COUNT ELSE 0 THEN TOP-ROW-CELLS !
    TOP-RELEASE ;
 
-\ Take the rows that answer the step's queue, after releasing its terms: true
-\ when one was taken. The bool in is the catch's preserved cell.
-: TOP-INTAKE ( bool -- bool )
-   drop  CK-AOT-MISS-SERVED? dup IF TOP-RELEASE  CK-AOT-INTAKE! THEN ;
-
-
-\ The intake asks UNSEEN-COVERS? of each queued name, which reads the package
-\ context; with the flag on, as TOP-RUN has it for the step, no context names no
-\ package instead of refusing (CHECKER-PKG-CONTEXT), so the walk answers as the
-\ step's CALL-UNDEFINED did. A throw turns the flag off and releases the step's
-\ terms.
-: TOP-TAKE ( -- bool )
-   -1 TOP-STEP !  RES-FALSE ['] TOP-INTAKE catch  0 TOP-STEP !  {: took rc:n :}
-   rc 0= IF took EXIT THEN
-   TOP-RELEASE  rc throw ;
-
-
-: TOP-STEP-RETRY ( [ -- ] n -- )
+: TOP-STEP-LOAD ( [ -- ] n -- )
    {: live:n :}
-   BEGIN live CHECKER-TOP-LOAD  dup TOP-RUN  TOP-TAKE 0= UNTIL drop ;
+   live CHECKER-TOP-LOAD  TOP-RUN ;
 
 
 : CHECKER-TOP-WORD ( ptr u8 n n -- )
    {: a:ptr u:n live:n :}
-   a TOK-SPELL-A !  u TOK-SPELL-U !  ['] TOP-WORD-STEP live TOP-STEP-RETRY ;
+   a TOK-SPELL-A !  u TOK-SPELL-U !  ['] TOP-WORD-STEP live TOP-STEP-LOAD ;
 
 : CHECKER-TOP-TICK ( ptr u8 n n -- )
    {: a:ptr u:n live:n :}
-   a TOK-SPELL-A !  u TOK-SPELL-U !  ['] TOP-TICK-STEP live TOP-STEP-RETRY ;
+   a TOK-SPELL-A !  u TOK-SPELL-U !  ['] TOP-TICK-STEP live TOP-STEP-LOAD ;
 
 \ ---- a literal event: pushed onto the saved row ------------------------------
 \ A literal's cells have constant types, so over a saved row that fits the live

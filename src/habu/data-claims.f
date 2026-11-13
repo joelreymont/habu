@@ -208,8 +208,6 @@ create TAB
    EVAL-TOP-CELL                      PROT:RHI EVAL-TOP-CELL -  CLAIM EVAL-POINTER-BAND
    PROT:RHI                           1 cells                 CLAIM PROT-RHI
    PROT:CF                            1 cells                 CLAIM PROT-CF
-   AOT-CELLS:SIG-POOL-CELL            1 cells                 CLAIM AOT-SIG-POOL
-   AOT-CELLS:SIG-LEN-CELL             1 cells                 CLAIM AOT-SIG-LEN
    BOOT:HEAP-START-CELL               1 cells                 CLAIM BOOT-HEAP-START
    BOOT:DP-FLOOR-CELL                 1 cells                 CLAIM BOOT-DP-FLOOR
    BOOT:DP-CEILING-CELL               1 cells                 CLAIM BOOT-DP-CEILING

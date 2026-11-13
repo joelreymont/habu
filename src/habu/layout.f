@@ -358,19 +358,9 @@ public
 $43B0 constant DELTA-CELL
 ;package
 
-\ AOT-CELLS:SIG-POOL-CELL / SIG-LEN-CELL: the baked signature pool's address and
-\ length, read by the checker's lazy intake for a word it has no effect for.
-\ Nothing publishes a pool, so both stay zero and the intake is a no-op.
-\ The pool is __text, the same at every boot, so it is never copied.
 \ AOT-CELLS holds every AOT cell this file declares: the engine bakes this file,
 \ so a cell declared in AOT-SPAN or AOT-WINDOW would make aot-decl.f,
 \ habu1.f and habu2.f reopen a baked package in a native build.
-package AOT-CELLS
-public
-$47D0 constant SIG-POOL-CELL
-$47D8 constant SIG-LEN-CELL
-;package
-
 \ AOT-CELLS:SPAN-TABLE-CELL / SPAN-N-CELL / SPAN-BASE-CELL: the baked CODE-SPAN
 \ table, its row count and the address the blob was copied to; only the x86-64
 \ linker writes them. A word with no dictionary record is accounted for only by
