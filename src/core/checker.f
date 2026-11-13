@@ -802,11 +802,7 @@ CHECKER-OWNER-ABI:PUBLIC-OFF constant PUBLIC-OFF
 CHECKER-OWNER-ABI:PRIVATE-OFF constant PRIVATE-OFF
 CHECKER-OWNER-ABI:END-PACKAGE-OFF constant END-PACKAGE-OFF
 CHECKER-OWNER-ABI:EXPORT-OFF constant EXPORT-OFF
-CHECKER-OWNER-ABI:WIDE-OFF constant WIDE-OFF
 CHECKER-OWNER-ABI:CAPTURE-OFF constant CAPTURE-OFF
-\ A new field goes on the end, whatever its group: the compiler that reads this
-\ record is a baked routine of the previous generation, so a moved offset is
-\ read at its old number.
 CHECKER-OWNER-ABI:CHECK-OFF constant CHECK-OFF
 CHECKER-OWNER-ABI:TAPE-INSTALL-OFF constant TAPE-INSTALL-OFF
 CHECKER-OWNER-ABI:TAPE-ARM-OFF constant TAPE-ARM-OFF
@@ -815,7 +811,6 @@ CHECKER-OWNER-ABI:TAPE-ADVANCE-OFF constant TAPE-ADVANCE-OFF
 CHECKER-OWNER-ABI:DOES-CHECK-OFF constant DOES-CHECK-OFF
 CHECKER-OWNER-ABI:DOES-IN-OFF constant DOES-IN-OFF
 CHECKER-OWNER-ABI:DOES-OUT-OFF constant DOES-OUT-OFF
-CHECKER-OWNER-ABI:DOES-WIDE-OFF constant DOES-WIDE-OFF
 CHECKER-OWNER-ABI:DOES-IN-N-OFF constant DOES-IN-N-OFF
 CHECKER-OWNER-ABI:DOES-OUT-N-OFF constant DOES-OUT-N-OFF
 CHECKER-OWNER-ABI:DOES-IN-SLOT-OFF constant DOES-IN-SLOT-OFF
@@ -839,7 +834,6 @@ CHECKER-OWNER-ABI:EFFECT-DOUT-SLOT-OFF constant EFFECT-DOUT-SLOT-OFF
 CHECKER-OWNER-ABI:EFFECT-DIN-QUOT-OFF constant EFFECT-DIN-QUOT-OFF
 CHECKER-OWNER-ABI:EFFECT-DOUT-QUOT-OFF constant EFFECT-DOUT-QUOT-OFF
 CHECKER-OWNER-ABI:EFFECT-QUOT-UP-OFF constant EFFECT-QUOT-UP-OFF
-CHECKER-OWNER-ABI:EFFECT-RET-NEUTRAL-OFF constant EFFECT-RET-NEUTRAL-OFF
 CHECKER-OWNER-ABI:EFFECT-QUOT-SIMPLE-OFF constant EFFECT-QUOT-SIMPLE-OFF
 CHECKER-OWNER-ABI:EFFECT-CATCH-CELLS-OFF constant EFFECT-CATCH-CELLS-OFF
 CHECKER-OWNER-ABI:EFFECT-EXEC-CELLS-OFF constant EFFECT-EXEC-CELLS-OFF
@@ -863,7 +857,6 @@ CHECKER-OWNER-ABI:FAMILY-NAME-OFF constant FAMILY-NAME-OFF
 CHECKER-OWNER-ABI:VARIANT-TAG-OFF constant VARIANT-TAG-OFF
 CHECKER-OWNER-ABI:VARIANT-PADS-OFF constant VARIANT-PADS-OFF
 CHECKER-OWNER-ABI:VARIANT-PAY-CELLS-OFF constant VARIANT-PAY-CELLS-OFF
-CHECKER-OWNER-ABI:VARIANT-PAY-TERMS-OFF constant VARIANT-PAY-TERMS-OFF
 \ The record's size is derived from the field list above and the cells below
 \ are checked against it: a field without a cell, or a cell without a field,
 \ is a load failure.
@@ -876,15 +869,15 @@ public
 create DECLARATIONS
 private
    0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
+   0 , 0 , 0 , 0 , 0 , 0 ,
+   0 , 0 , 0 , 0 , 0 , 0 ,
    0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
    0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
-   0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
-   0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
-   0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
+   0 , 0 , 0 , 0 , 0 , 0 , 0 ,
    0 , 0 ,
    0 , 0 , 0 , 0 , 0 , 0 ,
    0 ,
-   0 , 0 , 0 , 0 ,
+   0 , 0 , 0 ,
    0 , 0 , 0 ,
    0 , 0 , 0 , 0 , 0 ,
    0 ,
@@ -892,7 +885,6 @@ private
    0 ,
    0 ,
    0 ,
-   0 ,
    0 , 0 , 0 ,
    0 , 0 , 0 , 0 ,
    0 ,
@@ -902,39 +894,31 @@ private
    0 ,
    0 , 0 , 0 , 0 ,
    0 ,
+   0 ,
+   0 ,
+   0 , 0 , 0 , 0 , 0 ,
    0 , 0 ,
    0 ,
-   0 , 0 , 0 , 0 , 0 , 0 ,
-   0 , 0 , 0 , 0 ,
-   0 ,
-   0 , 0 ,
-   0 ,
-   0 ,
-   0 ,
-   0 ,
-   0 , 0 , 0 , 0 ,
-   0 , 0 , 0 , 0 , 0 , 0 ,
-   0 , 0 , 0 , 0 , 0 ,
-   0 ,
-   0 ,
-   0 ,
-   0 , 0 , 0 , 0 , 0 ,
-   0 ,
-   0 ,
-   0 , 0 , 0 ,
-   0 , 0 , 0 , 0 , 0 , 0 ,
-   0 ,
-   0 , 0 , 0 , 0 , 0 ,
    0 , 0 ,
    0 ,
    0 ,
    0 ,
    0 ,
+   0 , 0 , 0 , 0 ,
+   0 , 0 , 0 , 0 , 0 , 0 ,
    0 , 0 , 0 ,
    0 ,
+   0 , 0 , 0 , 0 ,
+   0 ,
+   0 , 0 , 0 , 0 , 0 , 0 ,
+   0 , 0 , 0 , 0 ,
+   0 , 0 ,
+   0 ,
+   0 ,
+   0 ,
+   0 ,
    0 ,
    0 , 0 , 0 ,
-   0 ,
    0 ,
    0 , 0 ,
    0 ,
@@ -14517,10 +14501,6 @@ variable EFFQ-SAVE-DOUT
    0 EFFQ-QUOT !  0 EFFQ-SAVE-DIN !  0 EFFQ-SAVE-DOUT !
    0 0= ;
 
-\ Every word leaves its caller's return stack alone.
-: EFFECT-RET-NEUTRAL? ( -- bool )
-   EFFQ-OK @ 0 <> ;
-
 \ A quotation a caller may compile as an ordinary routine: no throw edge and a
 \ live fall-through.
 : EFF-QUOT-SIMPLE? ( n -- bool )
@@ -14641,7 +14621,6 @@ variable BWIN-EPOCH
       0 i CHECKER-OWNER-ABI:BOUND-PEND-IX BWIN-AT !
       0 i CHECKER-OWNER-ABI:BOUND-PEND-OFF BWIN-AT !
       0 i CHECKER-OWNER-ABI:BOUND-CTL BWIN-AT !
-      0 i CHECKER-OWNER-ABI:BOUND-NEUTRAL BWIN-AT !
       0 i CHECKER-OWNER-ABI:BOUND-DEAD BWIN-AT !
       -1 i CHECKER-OWNER-ABI:BOUND-IN BWIN-AT !
       -1 i CHECKER-OWNER-ABI:BOUND-OUT BWIN-AT !
@@ -14673,7 +14652,6 @@ variable BWIN-EPOCH
    TOK-PEND-OFF @ i CHECKER-OWNER-ABI:BOUND-PEND-OFF BWIN-AT !
    TOK-CTL @ TOK-SEEDED @ IF CHECKER-OWNER-ABI:BOUND-SEEDED or THEN
       i CHECKER-OWNER-ABI:BOUND-CTL BWIN-AT !
-   eff NULL-PTR = IF 0 ELSE 1 THEN i CHECKER-OWNER-ABI:BOUND-NEUTRAL BWIN-AT !
    TOK-DEAD @ i CHECKER-OWNER-ABI:BOUND-DEAD BWIN-AT !
    eff NULL-PTR = IF
       -1 i CHECKER-OWNER-ABI:BOUND-IN BWIN-AT !
@@ -16201,10 +16179,6 @@ RECORD-PEND-EFF 0 CELL-ROW+
    row RLINK.CONTROL cells + @
       RECORD-LINK-CONTROL-HI @ max RECORD-LINK-CONTROL-HI ! ;
 
-: RECORD-LINK-BOUNDS-REBUILD ( -- )
-   0 RECORD-LINK-EFFECT-HI ! 0 RECORD-LINK-CONTROL-HI !
-   RECORD-LINK-CAP @ 0 ?do i RECORD-LINK-CELL RECORD-LINK-BOUND-ROW loop ;
-
 \ The engine primitive selects the live occurrence; only this small boundary
 \ can call it, so later contract queries compare the selected identity.
 TRUSTED: RECORD-LINK-OCC ( n -- n n ) {: ord:n :}
@@ -16633,27 +16607,11 @@ package CHECKER-REG
    ord RECORD-LINK-CURRENT? 0= IF EXIT THEN
    ord RECORD-LINK-CELL RECORD-GRID-DISCARD ;
 
-\ A snapshot keeps the link's exact facts, but its receiving process issues
-\ fresh occurrence numbers for the dictionary it restored.
-: RECORD-LINK-RESTAMP ( -- )
-   RECORD-LINK-CAP @ ndict@ min 0 ?do
-      i RECORD-LINK-CELL {: row:ptr :}
-      row RLINK.OCC cells + @ 0 <> IF
-         i RECORD-LINK-SELECT {: slot:n occurrence:n :}
-         slot i <> IF s" checker: restored record ordinal changed" 76 die THEN
-         occurrence row RLINK.OCC cells + !
-      THEN
-   loop
-   RECORD-LINK-BOUNDS-REBUILD ;
-
-: RECORD-LINK-RESTORE ( -- ) RECORD-LINK-RESTAMP ;
-
 package CHECKER-REG
 public
 
-\ Occurrences belong to this process. A snapshot keeps only their presence:
-\ restore issues fresh identities before reading the exact-record facts. Write
-\ the copied table alone, so live comparisons still work.
+\ Occurrences belong to this process: a snapshot keeps only their presence.
+\ Write the copied table alone, so live comparisons still work.
 : RECORD-SNAPSHOT-COPY ( ptr u8 n -- )
    {: copy:ptr size:n :}
    RECORD-LINK-CAP @ 0= IF EXIT THEN
@@ -16742,31 +16700,6 @@ CAST: RECORD-CAPTURE-PTR ( n -- ptr u8 )
    scratch NULL-PTR - RECORD-CAPTURE-SCRATCH-N !
    bytes RECORD-CAPTURE-BYTES !
    shipped copy [: RECORD-CAPTURE-BODY ;] [: RECORD-CAPTURE-CLEAN ;] finally ;
-
-\ Canonical rows start at zero. The receiving engine's actual first source
-\ record can differ from the producer's, including after a partial prelude.
-: RECORD-LINK-SEED ( -- )
-   0 RECORD-CAPTURE-ORIGINAL-N !
-   0 RECORD-CAPTURE-SCRATCH-N ! 0 RECORD-CAPTURE-BYTES !
-   -1
-   RECORD-LINK-CAP @ 0 ?do
-      i RECORD-LINK-CELL RLINK.OCC cells + @ 0 <> IF drop i THEN
-   loop
-   {: highest:n :}
-   highest 0 < IF RECORD-LINK-BOUNDS-REBUILD EXIT THEN
-   FIRST-RECORD-XT {: anchor:n :}
-   anchor 0 < IF s" checker: negative source prefix anchor" 76 die THEN
-   anchor 0 <> IF
-      highest anchor + RECORD-LINK-ROOM
-      highest 1+ 0 ?do
-         highest i - {: src:n :}
-         src RECORD-LINK-CELL BYTE-VIEW
-         src anchor + RECORD-LINK-CELL BYTE-VIEW
-            RECORD-LINK-ROW ARENA-COPY
-      loop
-      anchor 0 ?do i RECORD-LINK-CLEAR loop
-   THEN
-   RECORD-LINK-RESTAMP ;
 
 ;package
 
@@ -26180,7 +26113,6 @@ public
 ;package
 
 package CHECKER-REG
-' CHECKER-PREFIX:BIND? DECLARATIONS CHECKER-OWNER-ABI:PREFIX-BIND-OFF + xt!
 ' CHECK-UNRECORDED-DIN DECLARATIONS CHECKER-OWNER-ABI:UNRECORDED-IN-OFF + xt!
 ' CHECK-UNRECORDED-DOUT DECLARATIONS CHECKER-OWNER-ABI:UNRECORDED-OUT-OFF + xt!
 ' SIG-COUNTED? DECLARATIONS CHECKER-OWNER-ABI:SIG-COUNTED-OFF + xt!
@@ -26334,7 +26266,6 @@ public
 CHECKER-REG:SCRATCH{
 variable CD-DIN-CELLS
 variable CD-DOUT-CELLS
-variable CD-WIDE
 variable CD-DIN-N
 variable CD-DOUT-N
 variable CD-I
@@ -26364,13 +26295,11 @@ CHECKER-REG:}SCRATCH
 : CHECK-DOES-EFFECT! ( n n -- ) {: din:n dout:n :}
    din ROW-CELLS CD-DIN-CELLS !
    dout ROW-CELLS CD-DOUT-CELLS !
-   din ROW-WIDE? dout ROW-WIDE? or CD-WIDE !
    din CD-DIN-SLOTS CD-ROW-CAPTURE CD-DIN-N !
    dout CD-DOUT-SLOTS CD-ROW-CAPTURE CD-DOUT-N ! ;
 
 : CHECK-DOES-DIN-CELLS ( -- n ) CD-DIN-CELLS @ ;
 : CHECK-DOES-DOUT-CELLS ( -- n ) CD-DOUT-CELLS @ ;
-: CHECK-DOES-WIDE? ( -- bool ) CD-WIDE @ ;
 : CHECK-DOES-DIN-N ( -- n ) CD-DIN-N @ ;
 : CHECK-DOES-DOUT-N ( -- n ) CD-DOUT-N @ ;
 
@@ -29589,9 +29518,7 @@ package CHECKER-REG
 ' RECORD-GRID-AFTER DECLARATIONS CHECKER-OWNER-ABI:GRID-AFTER-OFF + xt!
 ' DP-CUT DECLARATIONS CHECKER-OWNER-ABI:GRID-REVOKE-OFF + xt!
 ' RECORD-GRID-RETIRE DECLARATIONS CHECKER-OWNER-ABI:GRID-RETIRE-OFF + xt!
-' RECORD-LINK-RESTORE DECLARATIONS CHECKER-OWNER-ABI:RECORD-RESTORE-OFF + xt!
 ' RECORD-LINK-CAPTURE DECLARATIONS CHECKER-OWNER-ABI:RECORD-CAPTURE-OFF + xt!
-' RECORD-LINK-SEED DECLARATIONS CHECKER-OWNER-ABI:RECORD-SEED-OFF + xt!
 ;package
 
 \ ---- the optimizing front end's half of the owner record ---------------------
@@ -29609,7 +29536,6 @@ package CHECKER-REG
 ' CHECK-DOES!                       DECLARATIONS DOES-CHECK-OFF + xt!
 ' CHECK-DOES-DIN-CELLS              DECLARATIONS DOES-IN-OFF + xt!
 ' CHECK-DOES-DOUT-CELLS             DECLARATIONS DOES-OUT-OFF + xt!
-' CHECK-DOES-WIDE?                  DECLARATIONS DOES-WIDE-OFF + xt!
 ' CHECK-DOES-DIN-N                  DECLARATIONS DOES-IN-N-OFF + xt!
 ' CHECK-DOES-DOUT-N                 DECLARATIONS DOES-OUT-N-OFF + xt!
 ' CHECK-DOES-DIN-SLOT               DECLARATIONS DOES-IN-SLOT-OFF + xt!
@@ -29640,7 +29566,6 @@ package CHECKER-REG
 ' EFFECT-DIN-QUOT                   DECLARATIONS EFFECT-DIN-QUOT-OFF + xt!
 ' EFFECT-DOUT-QUOT                  DECLARATIONS EFFECT-DOUT-QUOT-OFF + xt!
 ' EFFECT-QUOT-UP                    DECLARATIONS EFFECT-QUOT-UP-OFF + xt!
-' EFFECT-RET-NEUTRAL?               DECLARATIONS EFFECT-RET-NEUTRAL-OFF + xt!
 ' EFFECT-QUOT-SIMPLE?               DECLARATIONS EFFECT-QUOT-SIMPLE-OFF + xt!
 ' EFFECT-CATCH-CELLS                DECLARATIONS EFFECT-CATCH-CELLS-OFF + xt!
 ' EFFECT-EXEC-CELLS                 DECLARATIONS EFFECT-EXEC-CELLS-OFF + xt!

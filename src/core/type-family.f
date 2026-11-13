@@ -3,7 +3,7 @@
 \ prefix after type-schema.f. Records key on (package, canonical lowercase tail);
 \ names are byte offsets into one string pool, so records hold only integers and
 \ snapshot persist bakes stores verbatim. Registries roll back through RBF-PUSH /
-\ RBF-POP and persist through TFAM-SNAPSHOT-PERSIST. Five words stay global (TFAM-NAME$).
+\ RBF-POP and persist through TFAM-SNAPSHOT-PERSIST.
 
 using SCHEMA-REG
 
@@ -392,11 +392,8 @@ public
 
 using TFAM
 
-\ Five names stay global because the engine needs them there. TFAM-NAME$,
-\ TFL-CON-FAM?, TFL-CVAR? and TFL-MATCH-FAM? are the `construct`/`match`/`;match`
-\ bridge. TFAM-CTOR-WORD? is named by an AOT-captured call site, and the boot seed re-resolves a baked
-\ callee only through a global scope. Each sits between `;package` and
-\ `package TFAM` and reads the registry through `using TFAM`.
+\ Global: the engine names TFAM-NAME$, TFL-CON-FAM?, TFL-MATCH-FAM? and
+\ TFAM-CTOR-WORD? bare, from packages that do not use TFAM.
 : TFAM-NAME$ ( n -- ptr u8 n ) {: id:n :}
    id TF-REC@ {: r:ptr :}  r TF.NAME-OFF @ r TF.NAME-U @ TF-OFF$ ;
 
@@ -6133,15 +6130,7 @@ public
 : TFL-VPADS ( n n -- n ) {: fam:n vid:n :}   \ zero pads M-p for a variant's construct
    fam TFAM-SLOTS@ vid SUMV-PAYCELLS@ - ;
 
-;package
-
-: TFL-CVAR? ( ptr u8 n n -- n n bool )   \ variant in a resolved fam -> ( tag pads ok )
-   {: va:ptr vu:n fam:n :}
-   va vu fam TFL-VAR? 0= IF drop 0 0 RES-FALSE EXIT THEN
-   {: vid:n :}
-   vid SUMV-TAG@  fam vid TFL-VPADS  RES-TRUE ;
-
-package TFAM
+private
 
 : UNIT-FAM-MARK ( -- )
    REG-AOT-N 0 ?do i REG-AOT-COUNT UNIT-FAM-MARKS i cells + ! loop
@@ -7411,8 +7400,6 @@ package CHECKER-REG
 ' TFAM:SUMV-TAG@       DECLARATIONS VARIANT-TAG-OFF + xt!
 ' TFAM:TFL-VPADS       DECLARATIONS VARIANT-PADS-OFF + xt!
 ' TFAM:SUMV-PAYCELLS@  DECLARATIONS VARIANT-PAY-CELLS-OFF + xt!
-' TFAM:SUMV-PAY-N      DECLARATIONS VARIANT-PAY-TERMS-OFF + xt!
-' TFL-CVAR?           DECLARATIONS CHECKER-OWNER-ABI:FAMILY-CVAR-OFF + xt!
 ;package
 
 \ A build's registries start with the families above, which every program

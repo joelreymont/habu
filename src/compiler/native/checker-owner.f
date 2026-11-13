@@ -296,11 +296,6 @@ public
    NCOMP-DISPATCH:DECL-PIN-TOKEN-OFF s" refused token text" SOURCE-FIELD
    AS-TEXT execute ;
 
-: DOES-WIDE? ( -- bool )
-   NCOMP-DISPATCH:DECL-DOES-WIDE-OFF s" does> width" FIELD
-   dup 0= if drop CHECK-DOES-WIDE? exit then
-   AS-BOOL execute ;
-
 \ The does> row's own value boundaries. A clause's rows are rows: the terms and
 \ the per-term bundle slot are read the same way a definition's DIN-N / DIN-SLOT
 \ are read, and the placer (dict.f ROW-GLUE) asks the same questions of both.
@@ -666,11 +661,6 @@ TRUSTED: DECLARED-EFFECT ( ptr u8 n ptr u8 n -- )
 : VARIANT-PAY-CELLS ( n -- n )
    NCOMP-DISPATCH:DECL-VARIANT-PAY-CELLS-OFF s" variant payload cells" FIELD
    dup 0= if drop TFAM:SUMV-PAYCELLS@ exit then
-   AS-SLOT execute ;
-
-: VARIANT-PAY-TERMS ( n -- n )
-   NCOMP-DISPATCH:DECL-VARIANT-PAY-TERMS-OFF s" variant payload terms" FIELD
-   dup 0= if drop TFAM:SUMV-PAY-N exit then
    AS-SLOT execute ;
 
 ;package

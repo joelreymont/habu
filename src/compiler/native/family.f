@@ -53,9 +53,6 @@ public
 : PAY-CELLS ( n -- n )
    CHECKER-OWNER:VARIANT-PAY-CELLS ;
 
-: PAY-TERMS ( n -- n )
-   CHECKER-OWNER:VARIANT-PAY-TERMS ;
-
 seal-package
 
 ;package
