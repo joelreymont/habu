@@ -9230,13 +9230,13 @@ CAST: REG-PTR-CELLS ( ptr u8 -- ptr ptr u8 )
 $CBF29CE484222325 constant HIDX-FNV-BASIS
 $100000001B3 constant HIDX-FNV-PRIME
 PTR-VARIABLE HIDX-MEM
-variable HIDX-MEM-U    \ its bytes: SYM-GROW changes SYM-CAP before it drops it
 \ HIDX-GEN counts the times this mapping was dropped or re-laid-out. Starts at 1
 \ so a never-built index recorded as 0 can never look current.
 variable HIDX-GEN
 \ The index rests invalid in an image. The effect owner rests unbound, so an
 \ image bakes no store address through it.
 CHECKER-REG:SCRATCH{
+variable HIDX-MEM-U    \ the mapping's bytes: SYM-GROW changes SYM-CAP before it drops it
 variable HIDX-VALID
 variable HIDX-EPOCH
 variable HIDX-EFF-HI
@@ -9270,9 +9270,6 @@ CHECKER-REG:}SCRATCH
    HIDX-GEN+
    HIDX-MEM@ HIDX-MEM-U @ ARENA-UNMAP  0 HIDX-MEM-U !
    NULL-PTR HIDX-MEM! ;
-
-: HIDX-MEM-READY? ( -- bool )
-   HIDX-MEM@ 0= 0= ;
 
 HIDX-MEM-CLEAR
 
@@ -9368,18 +9365,9 @@ HIDX-MEM-CLEAR
       drop s" checker: symbol index mmap failed" 76 die THEN
    HIDX-MEM!  u HIDX-MEM-U ! ;
 
-: HIDX-ROWS-CLEAR ( -- )
-   0 begin dup SYM-CAP < while
-      dup HIDX-EP0
-      0 over HT-BKT HIDX-CELL !
-      0 over HT-PKG-BKT HIDX-CELL !
-      0 over HT-NAME-BKT HIDX-CELL !
-      1 +
-   repeat drop ;
-
+\ Every invalidation drops the mapping, so a build maps fresh zeroed rows.
 : HIDX-BUILD ( -- )
-   HIDX-MEM-READY? 0= IF HIDX-ALLOC THEN
-   HIDX-ROWS-CLEAR
+   HIDX-ALLOC
    1 HIDX-I !
    begin HIDX-I @ SYM-N @ < while
       HIDX-I @ HIDX-SYM+
@@ -9908,7 +9896,7 @@ CHECKER-REG:}SCRATCH
    UIX-ENT-INIT UIX-ENT-CAP !
    UIX-DROP ;
 
-\ Snapshot prepare: the next append re-allocates.
+\ The index starts with no storage; the next append allocates it.
 : UIX-RESET ( -- )
    NULL-PTR UIX-BKT-P !
    NULL-PTR UIX-ENT-P !
