@@ -175,14 +175,11 @@ KERNEL: TKERNEL-INC ( n -- n ) 1+ ;
 8 TKERNEL-INC 9 T=
 
 \ target predicates must be real executable booleans, not trusted signature stubs
-: TTARGET-KNOWN ( -- n )
-   HB-TARGET-KNOWN? if 1 else 0 then ;
 : TTARGET-COUNT ( -- n )
    0
    HB-TARGET-LINUX? if 1 + then
    HB-TARGET-MACOS? if 1 + then
    HB-TARGET-LINUX-X86-64? if 1 + then ;
-TTARGET-KNOWN 1 T=
 TTARGET-COUNT 1 T=
 
 : TRS ( -- n ) 1 2 >r 10 + r> + ;

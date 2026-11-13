@@ -965,7 +965,6 @@ variable SEALS-N
       HB-TARGET-LINUX-KERNEL? >GUARD EXIT
    THEN
    a u s" HB-TARGET-WASM?" STR=CI IF HB-TARGET-WASM? >GUARD EXIT THEN
-   a u s" HB-TARGET-KNOWN?" STR=CI IF HB-TARGET-KNOWN? >GUARD EXIT THEN
    GUARD-NONE ;
 
 \ `if`, `else` and `then` on the straight line, true when the token is one. The

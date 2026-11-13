@@ -85,8 +85,8 @@ public
   `ENGINE-ERROR:OVERLAY-OPEN`.
 - Compiler keywords (`I`, `DO`, `IF`, …) cannot be definition names:
   `E-RESERVED-DEFINITION`. Nor can the target predicates `HB-TARGET-LINUX?`,
-  `HB-TARGET-MACOS?`, `HB-TARGET-LINUX-X86-64?`, `HB-TARGET-LINUX-KERNEL?`,
-  `HB-TARGET-WASM?` and `HB-TARGET-KNOWN?`, as the name after `:`, `+:`, `TRUSTED:`, `KERNEL:`,
+  `HB-TARGET-MACOS?`, `HB-TARGET-LINUX-X86-64?`, `HB-TARGET-LINUX-KERNEL?` and
+  `HB-TARGET-WASM?`, as the name after `:`, `+:`, `TRUSTED:`, `KERNEL:`,
   `create`, `variable`, `constant`, `defer` or `LAYOUT-BUFFER`: `tools/check.f`
   refuses them, not `--load`. A number-shaped name (`: 42`, an overflowed `: 99999999999999999999`
   too) is refused by `--load`, by every definer: rc 70.
