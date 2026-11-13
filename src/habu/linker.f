@@ -44,7 +44,7 @@ TYPED-VARIABLE PROGRESS step
 public
 -9690 s" a file of this build failed or DP moved back in its space: the build loads no other file and writes no object or program" ERROR:CODE E-FAILED
 -9691 s" a file of this build changed an earlier record or code, or stored into a cell no file holds" ERROR:CODE E-STORE
--9692 s" a file of this build stored into a cell of hb's header that the target's data holds: its DATA-START is below hb's" ERROR:CODE E-HEAP-STORE
+-9692 s" a store into a cell of hb's header that the target's data holds: its DATA-START is below hb's" ERROR:CODE E-HEAP-STORE
 -9693 s" a file of this build made a wordlist no package of it holds" ERROR:CODE E-WORDLIST
 -9694 s" a file of this build left a task running at its end: its object would hold data the task can still change" ERROR:CODE E-LIVE-TASK
 private
@@ -5135,9 +5135,10 @@ variable DUE-MADE
    INTERPRETER:INSTALL-CREATE
    NHOST:INSTALL ;
 
-\ The address-cell header the boot lays (habu2.f), so EMIT-MARK records the
-\ space's address cells in the space.
+\ Lays the boot's address-cell header, so EMIT-MARK records address cells in the
+\ space; it and its cap's rows lie at hb's offsets, below the target's DATA-START.
 : LAY-ADDRESS-HEADER ( -- )
+   SNAP-RELOC:XTCELL-END LAYOUT-START > if E-HEAP-STORE throw then
    SNAP-RELOC:XTCELL-N-CELL {: h:n :}
    0 h SPACE-AT !
    ADDRESS-CELLS:MAGIC h ADDRESS-CELLS:MAGIC-FIELD + SPACE-AT !

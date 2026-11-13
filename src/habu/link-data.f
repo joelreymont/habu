@@ -129,7 +129,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 
 \ A cell the build stored into would be written and slid twice.
 : HEADER! ( n n -- )
-   {: v:n off:n :}
+   ARM64:HEADER-CELL {: v:n off:n :}
    off SPACE-AT @ 0<> if
       s" link: the build stored into the header cell at offset " SAY off SAY-INT SAY-CR
       s" link: a build stored into a header cell the link writes" 74 die
@@ -147,7 +147,8 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    va s" DP-CEILING-OFF" ARM64:SYM +  s" DP-CEILING-CELL" ARM64:SYM HEADER!
    start s" HEAP-START-CELL" ARM64:SYM HEADER!
    ARM64:PRESET-N 0 ?do i ARM64:PRESET@ HEADER! loop
-   va s" FD-CELL" ARM64:SYM +  s" FD-PTR-CELL" ARM64:SYM HEADER!
+   va s" FD-CELL" ARM64:SYM ARM64:HEADER-CELL +
+      s" FD-PTR-CELL" ARM64:SYM HEADER!
    ARM64:TEXT-VA s" RBASE-CELL" ARM64:SYM HEADER!
    ARM64:TEXT-VA LUNCAUGHT LABEL-OFFSET +  s" UNCGH-CELL" ARM64:SYM HEADER!
    ARM64:TEXT-VA LSIGH LABEL-OFFSET +  s" STUB-CELL" ARM64:SYM HEADER!
@@ -541,7 +542,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    {: path:ptr pathu:n :}
    OBJECT-KIND
    ENGINE? @ if 0 CHECK:PLACE-FACTS then
-   s" ENTRY-CELL" ARM64:SYM {: entry:n :}
+   s" ENTRY-CELL" ARM64:SYM ARM64:HEADER-CELL {: entry:n :}
    entry SPACE-AT @ 0= if
       s" link: the build stored no entry for the program" 74 die
    then

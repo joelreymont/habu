@@ -237,6 +237,38 @@ public
    16 * PRESETS-AT @ + {: at:n :}
    at 8 + KOBJ@  at KOBJ@ ;
 
+private
+
+\ A cell-aligned offset whose cell lies whole in [0, start); start is cell-aligned.
+: IN-HEADER? ( n n -- bool )
+   {: off:n start:n :}
+   off 7 and 0=  off 0 >= and  off start < and ;
+
+public
+
+\ The offset of a header cell the link reads or writes; one whose cell does not
+\ lie whole below the object's DATA-START makes the object malformed.
+: HEADER-CELL ( n -- n )
+   dup s" DATA-START" SYM IN-HEADER? 0= if BAD then ;
+
+private
+
+: CEILING-IN ( n -- )
+   {: start:n :}
+   s" DP-CEILING-OFF" SYM {: ceil:n :}
+   s" DATA-SIZE" SYM {: size:n :}
+   ceil size or 7 and 0<>  ceil start < or  ceil size > or
+   if BAD then ;
+
+\ DATA-START is cell-aligned, and the dictionary's ceiling lies between it and
+\ DATA's end.
+: HEADER-BOUNDS ( -- )
+   s" DATA-START" SYM {: start:n :}
+   start 7 and 0<> if BAD then
+   start CEILING-IN ;
+
+public
+
 \ The kernel object at the path, which the links that follow adopt; one whose
 \ DATA-START is above hb's dies: hb routes only its own header's stores.
 : READ ( ptr u8 n -- )
@@ -252,7 +284,7 @@ public
    size 1 max KOBJ-RESERVE
    file 0 KOBJ size FS:READ-SIZED
    size KOBJ-U !
-   CHECK SECTIONS
+   CHECK SECTIONS HEADER-BOUNDS
    s" DATA-START" SYM {: theirs:n :}
    theirs DATA-START > if
       SAY-OBJECT
