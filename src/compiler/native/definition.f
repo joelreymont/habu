@@ -28,8 +28,6 @@ public
 0 CWORK-VARIABLE M-DOES n                      \ byte split after `does> `, or zero
 0 CWORK-VARIABLE M-DOES-SIG ptr u8
 0 CWORK-VARIABLE M-DOES-SIG-U n
-0 CWORK-VARIABLE M-DOES-GIN n                  \ where the clause's argument row's values end
-0 CWORK-VARIABLE M-DOES-GOUT n                 \ where the clause's result row's values end
 0 CWORK-VARIABLE M-DOES-FUN n                  \ hidden clause function ordinal
 0 CWORK-VARIABLE M-DOES-OFF n                  \ published clause's byte offset, or zero
 0 CWORK-VARIABLE M-FIXED-VAL n                  \ the pending definer's value or dispatch cell
@@ -185,12 +183,6 @@ public
    M-SRC @ cut +  M-SRC-U @ cut -  M-DOES-SIG @ M-DOES-SIG-U @
    CHECKER-OWNER:DOES-CHECK na nu CLAUSE-CK
    CHECK-DOES-DIN-CELLS 0 <  CHECK-DOES-DOUT-CELLS 0 <  or if E-COMP-ARITY throw then
-   \ Where the clause's values end, read here because the checker captured
-   \ the clause's rows for this split and the next one replaces them. A row
-   \ wider than a cell is placed from these boundaries as a definition's own
-   \ row is; a row the checker could not separate into cells answers
-   \ GLUE-UNKNOWN and the elaborator refuses the definer over it.
-   NDICT:DOES-GLUE M-DOES-GOUT ! M-DOES-GIN !
    -1 ;
 
 public
@@ -528,7 +520,6 @@ public
    DOES-SIG-FIELD @ M-DOES-SIG !
    data-base TCSIG-U-CELL + @ M-DOES-SIG-U !
    false M-HEAD-RECOVERY !
-   NDICT:GLUE-NONE M-DOES-GIN !  NDICT:GLUE-NONE M-DOES-GOUT !
    -1 M-DOES-FUN !
    0 M-DOES-OFF !
    PUB-PENDING M-PUB !

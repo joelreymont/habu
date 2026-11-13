@@ -234,18 +234,14 @@ private
 : GLUE-WHOLE ( n -- n )
    GLUE-RUN-MASK  1 invert and ;
 
-\ Four rows carry per-cell value boundaries, a definition's two and a `does>`
-\ clause's two; each is read by its own owner operation and walked by one rule.
+\ A definition's two rows carry per-cell value boundaries; each is read by its
+\ own owner operation and walked by one rule.
 0 constant RS-DIN
 1 constant RS-DOUT
-2 constant RS-DOES-IN
-3 constant RS-DOES-OUT
 
 : RG-SLOT ( n n -- n ) {: i:n src:n :}
    src RS-DIN = if i EFFECT-DIN-SLOT exit then
    src RS-DOUT = if i EFFECT-DOUT-SLOT exit then
-   src RS-DOES-IN = if i CHECK-DOES-DIN-SLOT exit then
-   src RS-DOES-OUT = if i CHECK-DOES-DOUT-SLOT exit then
    E-COMP-OWNER throw ;
 
 \ The width of the value a term belongs to is readable from the top of each run:
@@ -384,28 +380,14 @@ public
    dout 0 < if ARITY-NONE ARITY-NONE exit then
    din dout ;
 
-\ GLUE-NONE for a name the checker holds no effect for - the same answer as
-\ "every cell is its own value", and SPELL-ARITY refuses such a name first.
-: SPELL-GLUE ( ptr u8 n -- n n )
-   EFFECT-QUERY 0= if GLUE-NONE GLUE-NONE exit then
-   EFF-COUNTS {: dn:n dc:n on:n oc:n :}
-   dn dc RS-DIN ROW-GLUE
-   on oc RS-DOUT ROW-GLUE ;
-
-\ The clause has no name until the created word exists, so its rows come from
-\ the owner's does> group. The elaborator refuses GLUE-UNKNOWN at the definer.
-: DOES-GLUE ( -- n n )
-   CHECK-DOES-DIN-N CHECK-DOES-DIN-CELLS RS-DOES-IN ROW-GLUE
-   CHECK-DOES-DOUT-N CHECK-DOES-DOUT-CELLS RS-DOES-OUT ROW-GLUE ;
-
 \ ---- the callable facts a call site needs, from ONE resolution ---------------
 \ One effect query, read both ways: the query resolves the spelling to a checker
 \ symbol and latches its rows, so separate readers would resolve one name twice.
 \ ARITY-NONE in the first answer refuses as SPELL-ARITY does and voids the rest.
 \ No return-stack answer: no declaration moves a return-stack cell
-\ (docs/forth.md "The return-stack clause"). Result glue only; a definition's
-\ own frame uses SPELL-GLUE. Deadness stays apart: CTL-DEAD? reads the
-\ control-flag table, a second query wherever it is asked.
+\ (docs/forth.md "The return-stack clause"). Result glue only. Deadness stays
+\ apart: CTL-DEAD? reads the control-flag table, a second query wherever it is
+\ asked.
 : SPELL-CALL ( ptr u8 n -- n n n )  \ din cells, dout cells, result glue
    EFFECT-QUERY 0= if ARITY-NONE ARITY-NONE GLUE-NONE exit then
    EFFECT-DIN-CELLS {: din:n :}
