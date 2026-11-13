@@ -2027,11 +2027,15 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    -1 BODY-ITEMS:RAW-CELL CELL!
    a u DEF-CAPTURE ;
 
-\ What `postponed` runs: the handle `end` ends the definition, any other
-\ appends its record's name, which the checker then binds to it.
+\ What `postponed` runs: `end` ends the definition, abandoning it if the end
+\ throws; any other handle appends its record's name, which the checker binds.
 : POSTPONE-RUN ( ptr u8 n -- ) {: h:ptr hu:n :}
    s" postpone" BUILT-PENDING
-   h hu s" end" STR= if DEF-END exit then
+   h hu s" end" STR= if
+      [: DEF-END ;] catch {: rc:n :}
+      rc 0<> if DEF-ABORT rc throw then
+      exit
+   then
    h hu HANDLE-REC {: rec:ptr :}
    BODYLEN-CELL CELL@ {: at:n :}
    rec XREF-NULL - XREF-ADDR>INDEX {: ix:n :}

@@ -3,9 +3,11 @@
 \ the definer found when it was compiled, whatever the building package
 \ defines: a global, the definer package's private word and its public one.
 \ The same body evaluated as text binds the building package's words, and
-\ body-append or literal with no definition open is refused. A STRUCTURE's AT
-\ answers its element in a package with its own `*` and `record-at`. The file
-\ is also a build source: MAIN prints the four answers.
+\ body-append or literal with no definition open is refused. A definition the
+\ checker refuses at the definer's postpone ; is abandoned, and the next
+\ definition compiles. A STRUCTURE's AT answers its element in a package with
+\ its own `*` and `record-at`. The file is also a build source: MAIN prints the
+\ four answers.
 
 require src/lib/test.f
 
@@ -52,6 +54,12 @@ public
    s" ( n -- n )" define-word
    postpone .HALF
    postpone ; ;
+
+\ : NAME ( -- n ) drop ;, an underflow the checker refuses.
+: MAKE-BROKEN ( ptr u8 n -- )
+   s" ( -- n )" define-word
+   postpone drop
+   postpone ; ;
 ;package
 
 package POSTPONE-USER
@@ -79,6 +87,11 @@ s" HALVED" POSTPONE-DEFINER:MAKE-HALVER
 APPEND-NONE 0 T<>
 : LITERAL-NONE ( -- n ) [: 1 literal ;] catch ;
 LITERAL-NONE 70 T=
+
+: BROKEN ( -- n ) [: s" UNDERFLOW" POSTPONE-DEFINER:MAKE-BROKEN ;] catch ;
+BROKEN 70 T=
+s" : AFTER ( -- n ) 7 ;" evaluate-closed
+AFTER 7 T=
 
 public
 : ANSWERS ( -- ) 7 TRIPLE . 7 STEP . 7 TRIPLE-TEXT . NEG-ANSWER . cr ;
