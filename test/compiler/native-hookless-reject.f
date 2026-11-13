@@ -13,6 +13,7 @@ private
 $4000 constant CAP
 20000 constant SUBJECT-TIMEOUT-MS
 70 constant RC-REJECT                \ the check hook's reject status (src/core/check-hook.f CHECK-RC)
+67 constant UNCAUGHT-RC              \ an uncaught throw's exit status
 
 create OUT CAP allot                   variable OUT-U
 create ERR CAP allot                   variable ERR-U
@@ -79,6 +80,16 @@ variable RC
    s" E-SHADOWED-ARITY habu: public 'sat-a:f'" SAYS
    s" ncomp: cannot compile F at F in" SAYS ;
 
+\ A TRUSTED: body whose `@` cannot be applied over a two-cell family value
+\ loses that value's width, so nothing can place its cells.
+\ Its own process: the uncaught throw ends it, and its exit status is tested.
+: INCOMPLETE-SCAN ( -- )
+   s" a scan that loses a wide value's width is refused" T-LABEL
+   s" ENUM hr-v VARIANT none ;VARIANT VARIANT some FIELD x n ;VARIANT ;ENUM TRUSTED: HR-LOST ( n -- n ) construct hr-v some @ ;" SESSION
+   RC @ UNCAUGHT-RC T=
+   s" ncomp: cannot compile HR-LOST" SAYS
+   s" hb: uncaught throw code -8519" SAYS ;
+
 \ ---- a refused definition keeps no row ---------------------------------------
 \ The texts outrun a source line, so TEXT holds them; `;package` first makes
 \ them global.
@@ -115,6 +126,7 @@ create TEXT CAP allot                  variable TEXT-U
    SHADOWING-CALLEE
    BAD-SIGNATURE
    SHADOWED-ARITY
+   INCOMPLETE-SCAN
    REFUSED-CAUGHT
    T-REPORT ;
 

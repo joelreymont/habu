@@ -19,7 +19,6 @@ require src/compiler/fixed-body.f
 require src/compiler/native/dict.f
 require src/core/prefix-boundary.f
 require src/core/type-family.f
-require src/compiler/native/fetch.f
 require src/habu/intern.f
 require src/compiler/target.f
 require src/compiler/binding.f
@@ -1904,9 +1903,11 @@ variable SCAN-LO                     \ the ordinal of its first row
    b binds + BIND-COUNT !
    base 0= if BIND-COUNT @ HEAD-BINDS ! then ;
 
-\ Offsets are made whole by the scan's base.
+\ Offsets are made whole by the scan's base. A scan that lost a width fact
+\ leaves no cells to place a wide value from, so nothing lowers.
 : ON-DONE ( ptr u8 n n -- )
    SCAN-VERDICT !  2drop
+   CHECKER-OWNER:SCAN-INCOMPLETE? if E-NELAB-BUNDLE throw then
    ROWS @ SCAN-LO @ ?do
       i CHECKER-TAPE:EVENT  i ROW-A1 !  i ROW-A0 !  i ROW-KIND !
    loop
@@ -2123,7 +2124,6 @@ variable SCAN-LO                     \ the ordinal of its first row
    [: FIXED-RUN ;] catch {: rc:n :}
    0 M-OPEN !
    STUB-END
-   NFETCH:RELEASE
    0 rc false NULL-PTR 0 NULL-PTR SETTLE-UNIT ;
 
 \ Compile the pending definition whose body text the engine captured.
@@ -2137,7 +2137,6 @@ variable SCAN-LO                     \ the ordinal of its first row
    [: RUN ;] catch {: rc:n :}
    0 M-OPEN !
    STUB-END
-   NFETCH:RELEASE
    FORGET-MEASURES
    rc REFUSED$ {: a:ptr u:n :}
    0 rc  rc E-T0-UNSUPPORTED = MISSING @ 0<> and  a u a SETTLE-UNIT ;

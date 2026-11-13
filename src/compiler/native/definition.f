@@ -15,7 +15,6 @@ require src/core/check-hook.f
 require src/compiler/native/checker-owner.f
 require src/compiler/native/host.f
 require src/compiler/native/dict.f
-require src/compiler/native/fetch.f
 require src/compiler/native/emission.f
 require src/compiler/native/publish.f
 require src/compiler/native/callback-stub.f
@@ -143,8 +142,7 @@ private
 public
 
 : CHECK-SOURCE ( -- n )
-   SRC$ CHECK-PARENT
-   SRC$ 0 NFETCH:CAPTURE ;
+   SRC$ CHECK-PARENT ;
 
 private
 
@@ -176,8 +174,7 @@ public
    M-SRC @ cut DOES-SPAN - CHECK-PARENT
    TRUSTED? if drop else -1 <> if E-COMP-VERDICT throw then then
    \ the clause's scan starts its own
-   CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? M-HEAD-RECOVERY !
-   M-SRC @ cut DOES-SPAN - 0 NFETCH:CAPTURE ;
+   CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? M-HEAD-RECOVERY ! ;
 
 \ The `does>` clause, named for a refusal by the unit's name. The checker's
 \ token ordinal first steps past the `does>` keyword between the two bodies.
@@ -188,7 +185,6 @@ public
    M-SRC @ cut + M-SCAN !
    M-SRC @ cut +  M-SRC-U @ cut -  M-DOES-SIG @ M-DOES-SIG-U @
    CHECKER-OWNER:DOES-CHECK na nu CLAUSE-CK
-   M-SRC @ cut + M-SRC-U @ cut - cut NFETCH:CAPTURE
    CHECK-DOES-DIN-CELLS 0 <  CHECK-DOES-DOUT-CELLS 0 <  or if E-COMP-ARITY throw then
    \ Where the clause's values end, read here because the checker captured
    \ the clause's rows for this split and the next one replaces them. A row
@@ -524,7 +520,6 @@ public
 : STAGE-UNIT ( ptr u8 n -- )
    {: sa su:n :}
    0 CHECKER-OWNER:BIND-REGIME!
-   NFETCH:RELEASE
    sa M-SRC ! su M-SRC-U !
    NULL-PTR M-SCAN !
    NHOST:INSTALL

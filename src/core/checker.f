@@ -191,7 +191,7 @@
 \ input's physical cells and push the declared outputs over the remainder. A
 \ failure that cannot be spliced while a row holds a wide or open-width cell
 \ sets SCAN-INCOMPLETE, and so does a lost local bind with a local declared
-\ wide (LOC-UNJ-BIND); the certificate then says NEEDS-INCOMPLETE. Otherwise
+\ wide (LOC-UNJ-BIND); tier 0 then refuses the definition. Otherwise
 \ the unspliced result stands and every cell lowers at the default width. A
 \ spliced call whose unify never reached the row tail freezes its declared
 \ rows there, so its call record states the cells the splice popped and
@@ -522,9 +522,9 @@
 \ cleanup cover. A MATCH family token records its instantiated bundle width, an
 \ arm's `of` token its instantiated pad count, and a construction's token the
 \ cells its instantiation adds beyond the declared width: a difference, since
-\ the construction's lowering already pushes the declared pads. These are width
-\ facts, not lowering-certificate rows. Dispatch requires a fact; a
-\ construction needs none unless its instantiation adds cells.
+\ the construction's lowering already pushes the declared pads. Dispatch
+\ requires a fact; a construction needs none unless its instantiation adds
+\ cells.
 \
 \ Shadowed arity: while a package is open, the engine and the checker resolve
 \ a bare tail private-first, so a public definition whose bare tail a private
@@ -553,8 +553,8 @@
 \ operation's raw source-byte offset and an operand position. Transport and
 \ locals rows use logical operand positions; layout-memory rows use position 0
 \ for the operation's bundle width, the address itself staying one cell. An
-\ absent row means scalar lowering. Certificate consumers query the table
-\ before emitting the operation. The table is per-check scratch.
+\ absent row means scalar lowering. The compiler queries the table before
+\ emitting the operation. The table is per-check scratch.
 \
 \ Storable layouts: `!` and `@` through a `ptr family<..>` address move the
 \ pointee's whole logical value, and the address type picks the arm: a bare
@@ -814,7 +814,7 @@ CHECKER-OWNER-ABI:VARIANT-PAY-CELLS-OFF constant VARIANT-PAY-CELLS-OFF
 \ The record's size is derived from the field list above and the cells below
 \ are checked against it: a field without a cell, or a cell without a field,
 \ is a load failure.
-CHECKER-FETCH-ABI:BYTES constant OWNER-BYTES
+CHECKER-OWNER-EXT:OWNER-BYTES constant OWNER-BYTES
 create OWNER-STORAGE
    CHECKER-OWNER-ABI:MAGIC , OWNER-BYTES ,
 public
@@ -883,12 +883,6 @@ OWNER-BYTES constant OWNER-CELLS-BYTES
    OWNER-COMMITTED OWNER-CELLS-BYTES <> if
       s" checker: declaration-owner field list and record size disagree" 76 die then ;
 OWNER-SIZE-AGREE
-\ The size is the end of the last appended field: a field appended without
-\ growing it is read past the record's extent by every guard that trusts it.
-: OWNER-LAST-FIELD-AGREE ( -- )
-   CHECKER-OWNER-EXT:FAMILY-NICHE-OFF CELL + OWNER-BYTES <> if
-      s" checker: declaration-owner last field and record size disagree" 76 die then ;
-OWNER-LAST-FIELD-AGREE
 DECLARATIONS data-base NCOMP-DISPATCH:TARGET-DECL-CELL + 0 ptr-field ptr-cell!
 ;package
 
@@ -12753,21 +12747,6 @@ private
 ;package
 
 
-package CHECKER-CERT
-
-\ The lowering-certificate producer is a declared dispatch cell, not a
-\ `variable` read by `execute`: a variable's xt would restore as a dead address.
-defer PRODUCER-XT ( ptr u8 n n -- )
-
-public
-
-: INSTALL ( [ ptr u8 n n -- ] -- ) is PRODUCER-XT ;
-
-: PRODUCE ( ptr u8 n n -- ) {: a:ptr u:n verdict:n :}
-   a u verdict PRODUCER-XT ;
-
-;package
-
 \ How many colons the name holds, and the index of its first, -1 for none.
 : CHECKER-COLON-SCAN ( ptr u8 n -- n n )
    {: a:ptr u:n :}
@@ -22614,7 +22593,7 @@ variable NP-OUT-I
 \ ---- the source-tape observer ---------------------------------------------------
 \ CHECK-SCAN is the reader that turns a checked definition into tokens, so it
 \ fills the compiler's source tape: any other producer would be a second lexer,
-\ and the certificate would bind a token stream the checker never read. The
+\ and the compiler would lower a token stream the checker never read. The
 \ observer is called after the token is judged and its answer is never read:
 \ it can abort a compilation but never accept one.
 package CHECKER-TAPE
@@ -24850,10 +24829,7 @@ variable DEF-STOPPED
    CK-DEF-VERDICT @ {: verdict:n :}
    0 VSIG !
    CHECKER-TAPE:ARMED @ 0 <> {: recording:bool :}
-   unknown 0= IF
-      recording IF a u verdict CHECKER-TAPE:DONE THEN
-      a u verdict CHECKER-CERT:PRODUCE
-   THEN
+   unknown 0= recording and IF a u verdict CHECKER-TAPE:DONE THEN
    verdict -1 = recording and BWIN-UNJUDGED @ 0= and BWIN-VALID !
    verdict ;
 
@@ -25158,8 +25134,7 @@ package CHECKER-REG
    \ A clause body is walked like any other but is nobody's definition body, and
    \ the next record after it is the CREATED word's, so what this walk armed
    \ dies here.
-   WRAP-CLEAR
-   ba bu DVERD @ CHECKER-CERT:PRODUCE ;
+   WRAP-CLEAR ;
 
 \ The retained engine reaches CHECK-DOES! at the `;` of a definition it is
 \ compiling, before that definition's own body is checked and recorded, so the

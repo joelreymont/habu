@@ -178,11 +178,8 @@ variable IN-DEFINITION
    s" src/core/engine-error-effects.f" LINT-FILE
    s" src/habu/prims.f"     LINT-FILE
    s" src/core/checker.f"   LINT-FILE
-   s" src/core/lower-cert-base.f" LINT-FILE
    s" src/core/type-schema.f" LINT-FILE s" src/core/type-family.f" LINT-FILE
    s" src/core/render.f"    LINT-FILE   s" src/core/roles.f"     LINT-FILE
-   s" src/core/layout-valid.f" LINT-FILE
-   s" src/core/lower-cert-seal.f" LINT-FILE
    s" src/core/bytes.f"     LINT-FILE
    s" src/core/exec-vector.f" LINT-FILE s" src/core/sha256.f"    LINT-FILE
    s" src/core/source-producer.f" LINT-FILE

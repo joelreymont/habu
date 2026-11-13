@@ -68,7 +68,7 @@ $1D0 constant PAYLOAD-REG-SAVE-OFF
 $1D8 constant PAYLOAD-DISARM-OFF
 
 \ The does> row's own value boundaries: the clause's term counts and the bundle
-\ slot of each term. $1E0 is the frozen certificate, which these rows follow.
+\ slot of each term. $1E0 is unused.
 $1E8 constant DOES-IN-N-OFF
 $1F0 constant DOES-OUT-N-OFF
 $1F8 constant DOES-IN-SLOT-OFF
@@ -234,7 +234,7 @@ CHECKER-OWNER-EXT:UNJUDGED-CLOSED-OFF constant UNJUDGED-CLOSED-OFF \ ( -- bool )
 CHECKER-OWNER-EXT:PIN-SPAN-OFF constant PIN-SPAN-OFF \ ( -- n n bool )
 CHECKER-OWNER-EXT:PIN-TOKEN-OFF constant PIN-TOKEN-OFF \ ( -- ptr u8 n )
 CHECKER-OWNER-EXT:FAMILY-NICHE-OFF constant FAMILY-NICHE-OFF \ ( n -- bool )
-CHECKER-FETCH-ABI:BYTES constant BYTES
+CHECKER-OWNER-EXT:OWNER-BYTES constant BYTES
 
 \ These cells precede the record; callable offsets count from the record
 \ pointer, after them.
