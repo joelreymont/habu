@@ -10,4 +10,4 @@ close-reason: landed baef7bb4; PFTX.STRU gone
 
 src/core/type-family.f PFTX ROLLBACK lowers TF-STR-U to PFTX.STRU, but DEV-OPEN (decl-event.f:259) opens the field transaction before the family interns its name, so the window can hold a live family name; a rollback then commit lets the next intern overwrite it. Scrubbing it corrupts TFX-POP. Found by scrub lane.
 
-Design /Users/joel/.cache/tmp/carl-file/design-pftx.md: drop PFTX.STRU; TFAM-REWIND owns the pool. Worker lane in .jj-ws.noindex/carl-pftx on spnzoswy.
+Design /home/joel/.cache/tmp/carl-file/design-pftx.md: drop PFTX.STRU; TFAM-REWIND owns the pool. Worker lane in .jj-ws.noindex/carl-pftx on spnzoswy.

@@ -14,6 +14,6 @@ Files: src/core/checker.f (TVK-MEET, OFF-RIDE, E-INST/E-COPY, NP-KIND-*), test/c
 
 Verify: the design dot exists; then the fixture, three generations compared with cmp, test/run.f.
 
-Depends: habu-bound-byte-stepping-01f99cb9 (the design at /Users/joel/Work/habu/.jj-ws.noindex/jerry-wasm/.out/design-null-reach.md deletes pointer stepping from ordinary words, so nothing need record a step; this dot closes when that lane refuses its program).
+Depends: habu-bound-byte-stepping-01f99cb9 (the design at /home/joel/Work/habu/.jj-ws.noindex/jerry-wasm/.out/design-null-reach.md deletes pointer stepping from ordinary words, so nothing need record a step; this dot closes when that lane refuses its program).
 
 Ownership: unassigned. Claim: unassigned.
