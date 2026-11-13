@@ -1357,7 +1357,7 @@ s" TDRX-USE ( -- tdrx ) TDRX:EQ" CHECK-QUIET-CANDIDATE! -1 T=
 \ derive: payload sums compare diagonally (outer MATCH binds one value's
 \ payloads, inner MATCH the other's; same-variant arms compare scalars with
 \ `=`, cross arms are false); products UNMAKE both values and compare
-\ field-wise, enum-typed fields through their family's PKG:TAG.
+\ field-wise, family-typed fields through their family's EQ.
 SUMTYPE tdsv DERIVE eq
   VARIANT nil ;VARIANT
   VARIANT sing n ;VARIANT
@@ -1384,7 +1384,7 @@ TDSV-TAG-P 2 T=
 \ the scalar = wall stays closed on a derived W>1 sum.
 s" TDSV-RAW ( tdsv tdsv -- bool ) =" CHECK-QUIET-CANDIDATE! 0 T=
 
-\ product field-wise eq; the col field routes through TDRV:TAG (derived enum).
+\ product field-wise eq; the col field compares through TDRV:EQ.
 PRODUCT tdpv DERIVE eq
   FIELD col tdrv
   FIELD amt n
@@ -1406,6 +1406,12 @@ s" SUMTYPE tdsb1 DERIVE eq VARIANT hold ptr u8 ;VARIANT ;SUMTYPE" E-TDECL-DERIVE
 s" SUMTYPE tdsb2<a> DERIVE eq VARIANT hold a ;VARIANT ;SUMTYPE" E-TDECL-DERIVE TDT-NEG
 s" SUMTYPE tdsb3 DERIVE eq VARIANT hold tdown ;VARIANT ;SUMTYPE" E-TDECL-DERIVE TDT-NEG
 s" PRODUCT tdsb4 DERIVE eq FIELD cc tdrw ;PRODUCT" E-TDECL-DERIVE TDT-NEG
+\ an OPAQUE family's derived words are private to its package.
+package tdsbo
+public
+STRUCTURE inner OPAQUE DERIVE eq hash FIELD u n ;STRUCTURE
+;package
+s" PRODUCT tdsb7 DERIVE eq FIELD w tdsbo:inner ;PRODUCT" E-TDECL-DERIVE TDT-NEG
 s" SUMTYPE tdsb5 DERIVE eq VARIANT eq n ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
 
 \ rollback: a rejected derive leaves no residue; the name redeclares clean.
@@ -1415,8 +1421,8 @@ SUMTYPE tdsb6 DERIVE eq VARIANT hold n ;VARIANT ;SUMTYPE
 TDSB6-EQ TTRUE
 
 \ derive hash: the checked SEMANTIC generator (FNV-1a folded over the
-\ variant tag + bound payload scalars per branch; products fold fields, enum
-\ fields through their family's PKG:TAG). INVARIANT: equal values hash equal
+\ variant tag + bound payload scalars per branch; products fold fields,
+\ family-typed fields through their family's HASH). INVARIANT: equal values hash equal
 \ BY CONSTRUCTION (hash folds exactly what eq compares); the differs cases
 \ are non-degeneracy smoke only. `DERIVE eq hash` and `DERIVE hash eq` are
 \ an order-free feature list; hash-alone derives HASH (+TAG) without EQ.
@@ -1446,15 +1452,16 @@ TDHS-D1 TFALSE
 TDHS-D2 TFALSE
 TDHS-D3 TFALSE
 
-\ product hash: order-free `DERIVE hash eq`; enum field folds via TDRV:TAG.
+\ product hash: order-free `DERIVE hash eq`; the col field folds TDHE:HASH.
+ENUM tdhe DERIVE eq hash red green ;ENUM
 PRODUCT tdhp DERIVE hash eq
-  FIELD col tdrv
+  FIELD col tdhe
   FIELD amt n
 ;PRODUCT
-: TDHP-C ( -- bool ) TDRV:RED 7 TDHP:MAKE TDRV:RED 7 TDHP:MAKE TDHP:EQ ;
-: TDHP-H ( -- bool ) TDRV:RED 7 TDHP:MAKE TDHP:HASH TDRV:RED 7 TDHP:MAKE TDHP:HASH = ;
-: TDHP-D1 ( -- bool ) TDRV:RED 7 TDHP:MAKE TDHP:HASH TDRV:GREEN 7 TDHP:MAKE TDHP:HASH = ;
-: TDHP-D2 ( -- bool ) TDRV:RED 7 TDHP:MAKE TDHP:HASH TDRV:RED 8 TDHP:MAKE TDHP:HASH = ;
+: TDHP-C ( -- bool ) TDHE:RED 7 TDHP:MAKE TDHE:RED 7 TDHP:MAKE TDHP:EQ ;
+: TDHP-H ( -- bool ) TDHE:RED 7 TDHP:MAKE TDHP:HASH TDHE:RED 7 TDHP:MAKE TDHP:HASH = ;
+: TDHP-D1 ( -- bool ) TDHE:RED 7 TDHP:MAKE TDHP:HASH TDHE:GREEN 7 TDHP:MAKE TDHP:HASH = ;
+: TDHP-D2 ( -- bool ) TDHE:RED 7 TDHP:MAKE TDHP:HASH TDHE:RED 8 TDHP:MAKE TDHP:HASH = ;
 TDHP-C TTRUE
 TDHP-H TTRUE
 TDHP-D1 TFALSE
@@ -1551,6 +1558,38 @@ s" ENUM tdhb1 DERIVE eq order aa bb ;ENUM" E-TDECL-DERIVE TDT-NEG
 s" SUMTYPE tdhb2 DERIVE hash VARIANT hash n ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
 s" SUMTYPE tdhb3 DERIVE hash VARIANT hold ptr u8 ;VARIANT ;SUMTYPE" E-TDECL-DERIVE TDT-NEG
 s" PRODUCT tdhb4 DERIVE hash FIELD cc tdrw ;PRODUCT" E-TDECL-DERIVE TDT-NEG
+
+\ A family-typed field or payload compares through its family's EQ and hashes
+\ through its HASH: a product of payload sums tells 1 2 from 1 3.
+SUMTYPE tdfs DERIVE eq hash
+  VARIANT fnil ;VARIANT
+  VARIANT fpair n n ;VARIANT
+;SUMTYPE
+PRODUCT tdfp DERIVE eq hash FIELD s tdfs ;PRODUCT
+: TDFP-12 ( -- tdfp ) 1 2 TDFS:FPAIR TDFP:MAKE ;
+: TDFP-EQ ( -- bool ) TDFP-12 TDFP-12 TDFP:EQ ;
+: TDFP-NEQ ( -- bool ) TDFP-12 1 3 TDFS:FPAIR TDFP:MAKE TDFP:EQ ;
+: TDFP-H ( -- bool ) TDFP-12 TDFP:HASH TDFP-12 TDFP:HASH = ;
+TDFP-EQ TTRUE
+TDFP-NEQ TFALSE
+TDFP-H TTRUE
+\ an enum payload of a sum, and a product field of a product.
+ENUM tdfe DERIVE eq red green ;ENUM
+SUMTYPE tdfw DERIVE eq VARIANT fhold tdfe ;VARIANT VARIANT fnone ;VARIANT ;SUMTYPE
+: TDFW-EQ ( -- bool ) TDFE:RED TDFW:FHOLD TDFE:RED TDFW:FHOLD TDFW:EQ ;
+: TDFW-NEQ ( -- bool ) TDFE:RED TDFW:FHOLD TDFE:GREEN TDFW:FHOLD TDFW:EQ ;
+TDFW-EQ TTRUE
+TDFW-NEQ TFALSE
+PRODUCT tdfi DERIVE eq FIELD u n ;PRODUCT
+PRODUCT tdfo DERIVE eq FIELD w tdfi ;PRODUCT
+: TDFO-EQ ( -- bool ) 4 TDFI:MAKE TDFO:MAKE 4 TDFI:MAKE TDFO:MAKE TDFO:EQ ;
+: TDFO-NEQ ( -- bool ) 4 TDFI:MAKE TDFO:MAKE 5 TDFI:MAKE TDFO:MAKE TDFO:EQ ;
+TDFO-EQ TTRUE
+TDFO-NEQ TFALSE
+\ the field's family derives what the outer does, or the declaration is refused.
+TDIAG-BUF 8192 DIAG-BUFFER!
+s" PRODUCT tdfb DERIVE hash FIELD c tdrv ;PRODUCT" E-TDECL-DERIVE TDT-NEG
+DIAG-BUFFER$ s" field family must also derive hash" CONTAINS? TTRUE
 
 \ Unified named-field ENUM metadata drives the same derivation validator and
 \ semantic generators. The constructor participant runs TDECL-DERIVE-REQUIRE,

@@ -756,8 +756,8 @@ private
 \ variant/field after the block parses (TDECL-DERIVE-REQUIRE): integer scalars
 \ compare with `=`; pointer payloads have no derived equality (no checked
 \ pointer-equality surface exists); other scalars reject, linear ones because
-\ comparing consumes them; a family-typed field requires that family to derive
-\ too (its words are the field comparator).
+\ comparing consumes them; a family-typed field compares through its family's
+\ EQ and hashes through its HASH, so that family derives what the outer does.
 
 : TDECL-DERIVE-GUARD ( ptr u8 n n -- ) {: a:ptr u:n fam:n :}
    fam TFAM-PUBLIC? 0= IF
@@ -811,7 +811,21 @@ public
 
 private
 
-: TDECL-DERIVE-NODE-OK ( n -- ) {: node:n :}
+: TDECL-DERIVE-FIELD-OK ( n n -- ) {: fam:n node:n :}
+   node SCHEMA-A@ {: ff:n :}
+   ff TFAM-GEN-PUBLIC? 0= IF
+      ff TFAM-PKG$ fam TFAM-PKG$ CORE-STR=CI 0= IF
+         ff TFAM-NAME$
+         s" field family's derived words are private to its package"
+         E-TDECL-DERIVE TDECL-THROW THEN THEN
+   fam TFAM-DERIVE-EQ? ff TFAM-DERIVE-EQ? 0= and IF
+      ff TFAM-NAME$
+      s" field family must also derive eq" E-TDECL-DERIVE TDECL-THROW THEN
+   fam TFAM-DERIVE-HASH? ff TFAM-DERIVE-HASH? 0= and IF
+      ff TFAM-NAME$
+      s" field family must also derive hash" E-TDECL-DERIVE TDECL-THROW THEN ;
+
+: TDECL-DERIVE-NODE-OK ( n n -- ) {: fam:n node:n :}
    node SCHEMA-CON? IF
       node SCHEMA-A@ CT-INT? 0= IF
          node SCHEMA-A@ CT-NAME$
@@ -820,24 +834,20 @@ private
    node SCHEMA-PTR? IF
       TDN-A @ TDN-U @
       s" pointer payloads have no derived equality" E-TDECL-DERIVE TDECL-THROW THEN
-   node SCHEMA-APP? IF
-      node SCHEMA-A@ TFAM-DERIVE-ANY? 0= IF
-         node SCHEMA-A@ TFAM-NAME$
-         s" field family must also derive" E-TDECL-DERIVE TDECL-THROW THEN
-      EXIT THEN
+   node SCHEMA-APP? IF fam node TDECL-DERIVE-FIELD-OK EXIT THEN
    TDN-A @ TDN-U @
    s" payload role has no derived equality" E-TDECL-DERIVE TDECL-THROW ;
 
-: TDECL-DERIVE-VARIANT ( n -- ) {: vid:n :}
+: TDECL-DERIVE-VARIANT ( n n -- ) {: fam:n vid:n :}
    vid SUMV-PAY-N 0 ?do
-      vid i SUMV-PAY-ROOT SCHEMA-ROOT@ TDECL-DERIVE-NODE-OK
+      fam vid i SUMV-PAY-ROOT SCHEMA-ROOT@ TDECL-DERIVE-NODE-OK
    loop ;
 
 public
 
 : TDECL-DERIVE-REQUIRE ( n n n -- ) {: fam:n vstart:n count:n :}
    fam TFAM-DERIVE-EQ? fam TFAM-DERIVE-HASH? or 0= IF EXIT THEN
-   vstart count + vstart ?do i TDECL-DERIVE-VARIANT loop ;
+   vstart count + vstart ?do fam i TDECL-DERIVE-VARIANT loop ;
 
 \ --- registration entry points (verify-source and the definers below).
 
@@ -1740,12 +1750,14 @@ private
 \    inner MATCH the other's to p-locals; the same-variant arm compares with `=`,
 \    integer widening at the bind making every CT-INT payload an n; cross arms
 \    drop and answer false); products UNMAKE both values, bind fields top-down
-\    (an enum-typed field goes through its family's PKG:TAG) and compare
-\    field-wise.
+\    and compare field-wise. A family-typed slot binds as its family and
+\    compares through that family's EQ.
 \ A derived word is "PKG-FAMILY:TAIL" for a public family and "FAMILY-TAIL" for a
 \ private or OPAQUE one, as TDGEN-NAME spells a constructor. Neither stamps a
 \ constructor package (TDECL-CTOR-PUBLISH exits early), so SUMV-CTOR-PKG$ would
-\ name nothing.
+\ name nothing. A private or OPAQUE family's words bind in the declaring package,
+\ so only a declaration in that package derives through them
+\ (TDECL-DERIVE-FIELD-OK).
 : TDGEN-DRV-REF ( n ptr u8 n -- ) {: fam:n ta:ptr tu:n :}
    fam TFAM-GEN-PUBLIC? 0= IF
       fam TFAM-NAME$ ta tu TF-CTOR-PRIV$ TDGEN-APP EXIT THEN
@@ -1764,20 +1776,28 @@ private
    TDGEN-CLEAR ;
 : TDGEN-DROPS ( n -- ) {: k:n :}          \ drop x k
    k 0 ?do TDGEN-FLUSH postpone drop loop ;
-: TDGEN-LOCAL1 ( n n -- ) {: c:n i:n :}   \ "<c><i>:n "
-   c TDGEN-C,  i TDGEN-DEC  s" :n " TDGEN-APP ;
-: TDGEN-BINDS ( n n n -- ) {: fam:n vid:n c:n :}   \ "{: c0:n .. :} " over vid's payload slots
+: TDGEN-LOCAL1 ( n n n -- ) {: c:n i:n node:n :}   \ "<c><i>:<type> "
+   c TDGEN-C,  i TDGEN-DEC  58 TDGEN-C,
+   node SCHEMA-APP? IF node TDGEN-SCH ELSE 110 TDGEN-C, THEN
+   32 TDGEN-C, ;
+: TDGEN-BINDS ( n n n -- ) {: fam:n vid:n c:n :}   \ "{: c0:T .. :} " over vid's payload slots
    fam vid TDPV-N@ {: m:n :}
    m 0= IF EXIT THEN
    s" {: " TDGEN-APP
-   m 0 ?do c i TDGEN-LOCAL1 loop
+   m 0 ?do c i  fam vid i TDPV-NODE@  TDGEN-LOCAL1 loop
    s" :} " TDGEN-APP ;
-: TDGEN-CMP ( n -- ) {: m:n :}            \ p0 q0 = p1 q1 = and .. (m=0 -> true)
+: TDGEN-CMP1 ( n n n -- ) {: fam:n vid:n i:n :}   \ "p<i> q<i>" then = or FAM:EQ
+   112 TDGEN-C,  i TDGEN-DEC  32 TDGEN-C,
+   113 TDGEN-C,  i TDGEN-DEC  32 TDGEN-C,
+   fam vid i TDPV-NODE@ {: node:n :}
+   node SCHEMA-APP? IF
+      node SCHEMA-A@ s" eq" TDGEN-DRV-REF  TDGEN-FLUSH EXIT THEN
+   TDGEN-FLUSH postpone = ;
+: TDGEN-CMP ( n n -- ) {: fam:n vid:n :}  \ p0 q0 = p1 q1 = and .. (m=0 -> true)
+   fam vid TDPV-N@ {: m:n :}
    m 0= IF s" 0" TDGEN-APP  TDGEN-FLUSH postpone 0= EXIT THEN
    m 0 ?do
-      112 TDGEN-C,  i TDGEN-DEC  32 TDGEN-C,
-      113 TDGEN-C,  i TDGEN-DEC
-      TDGEN-FLUSH postpone =
+      fam vid i TDGEN-CMP1
       i 0 > IF postpone and THEN
    loop ;
 : TDGEN-MATCH-OPEN ( n -- ) {: fam:n :}   \ "match fam "
@@ -1797,7 +1817,7 @@ private
    vin SUMV-NAME$ TDGEN-APP  s"  of " TDGEN-APP
    vin vout = IF
       fam vin 112 TDGEN-BINDS
-      fam vin TDPV-N@ TDGEN-CMP
+      fam vin TDGEN-CMP
    ELSE
       fam vin TDPV-N@ TDGEN-DROPS
       s" 1" TDGEN-APP  TDGEN-FLUSH postpone 0=
@@ -1818,10 +1838,9 @@ private
    loop
    s" ;match" TDGEN-APP ;
 : TDGEN-UNBIND1 ( n n n n -- ) {: fam:n mk:n k:n c:n :}   \ field k's bind
-   fam mk k TDPV-NODE@ dup SCHEMA-APP? IF
-      dup SCHEMA-A@ s" tag" TDGEN-DRV-REF  32 TDGEN-C, THEN
-   drop
-   s" {: " TDGEN-APP  c k TDGEN-LOCAL1  s" :} " TDGEN-APP ;
+   s" {: " TDGEN-APP
+   c k  fam mk k TDPV-NODE@  TDGEN-LOCAL1
+   s" :} " TDGEN-APP ;
 : TDGEN-UNBIND ( n n -- ) {: fam:n c:n :}   \ "PKG:UNMAKE " + top-down field binds
    fam s" unmake" TDGEN-DRV-REF  32 TDGEN-C,
    fam TFAM-VAR-START@ {: mk:n :}
@@ -1830,16 +1849,16 @@ private
 : TDGEN-EQ-PROD ( n -- ) {: fam:n :}   \ UNMAKE both values, field-wise compare
    fam 113 TDGEN-UNBIND
    fam 112 TDGEN-UNBIND
-   fam fam TFAM-VAR-START@ TDPV-N@ TDGEN-CMP ;
+   fam fam TFAM-VAR-START@ TDGEN-CMP ;
 : TDGEN-EQ-TAGS ( n -- ) {: fam:n :}      \ payload-free family: tag equality (O(V))
    fam s" tag" TDGEN-DRV-REF  TDGEN-FLUSH postpone swap
    fam s" tag" TDGEN-DRV-REF  TDGEN-FLUSH postpone = ;
 
 \ Derived hash: FNV-1a over whole cells, h = BASIS, then per cell
 \ h = (h xor v) * PRIME. Sums and enums fold the tag, then each bound payload
-\ scalar; products fold the fields (enum-typed fields through their family's
-\ PKG:TAG, as derived eq does), so equal values always hash equal. Hash values
-\ are an in-memory contract only: never persist them across engine versions.
+\ scalar; products fold the fields. A family-typed slot folds its family's
+\ HASH, so equal values always hash equal. Hash values are an in-memory
+\ contract only: never persist them across engine versions.
 $cbf29ce484222325 constant DRV-FNV-BASIS   \ FNV-1a 64-bit offset basis
 $100000001b3 constant DRV-FNV-PRIME        \ FNV-1a 64-bit prime
 : TDGEN-HEXD ( n -- ) {: d:n :}
@@ -1851,13 +1870,19 @@ $100000001b3 constant DRV-FNV-PRIME        \ FNV-1a 64-bit prime
 : TDGEN-HMIX ( -- )                       \ xor $PRIME *
    TDGEN-FLUSH postpone xor
    DRV-FNV-PRIME TDGEN-HEX  TDGEN-FLUSH postpone * ;
-: TDGEN-HASH-FOLDS ( n -- ) {: m:n :}     \ fold locals p0..pm-1
-   m 0 ?do 112 TDGEN-C,  i TDGEN-DEC  32 TDGEN-C,  TDGEN-HMIX loop ;
+: TDGEN-HASH-FOLD1 ( n n n -- ) {: fam:n vid:n i:n :}   \ "p<i>" [FAM:HASH] mix
+   112 TDGEN-C,  i TDGEN-DEC  32 TDGEN-C,
+   fam vid i TDPV-NODE@ {: node:n :}
+   node SCHEMA-APP? IF
+      node SCHEMA-A@ s" hash" TDGEN-DRV-REF  32 TDGEN-C, THEN
+   TDGEN-HMIX ;
+: TDGEN-HASH-FOLDS ( n n -- ) {: fam:n vid:n :}   \ fold locals p0..pm-1
+   fam vid TDPV-N@ 0 ?do fam vid i TDGEN-HASH-FOLD1 loop ;
 : TDGEN-HASH-ARM ( n n -- ) {: fam:n vid:n :}   \ bind payloads, fold tag then payloads
    fam vid 112 TDGEN-BINDS
    DRV-FNV-BASIS TDGEN-HEX
    vid SUMV-TAG@ TDGEN-DEC  32 TDGEN-C,  TDGEN-HMIX
-   fam vid TDPV-N@ TDGEN-HASH-FOLDS ;
+   fam vid TDGEN-HASH-FOLDS ;
 : TDGEN-HASH-BODY ( n -- ) {: fam:n :}   \ sum/enum: MATCH ladder of per-arm folds
    fam TDGEN-MATCH-OPEN
    fam TFAM-VAR-START@ {: vstart:n :}
@@ -1870,7 +1895,7 @@ $100000001b3 constant DRV-FNV-PRIME        \ FNV-1a 64-bit prime
 : TDGEN-HASH-PROD ( n -- ) {: fam:n :}   \ product: UNMAKE, fold fields (no tag)
    fam 112 TDGEN-UNBIND
    DRV-FNV-BASIS TDGEN-HEX
-   fam fam TFAM-VAR-START@ TDPV-N@ TDGEN-HASH-FOLDS ;
+   fam fam TFAM-VAR-START@ TDGEN-HASH-FOLDS ;
 : TDECL-TAG-WORD ( n -- ) {: fam:n :}
    TDGEN-CLEAR
    fam s" tag" TDGEN-DRV-NAME
