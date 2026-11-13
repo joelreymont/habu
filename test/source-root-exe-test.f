@@ -140,7 +140,8 @@ variable RC
 
 : B-TREE ( -- )
    s" b" A$ B-ROOT B-ROOT-U COPY!
-   s" src" [: B-COPY ;] FS:WALK-FILES ;
+   s" src" [: B-COPY ;] FS:WALK-FILES
+   s" test/fixtures/source-root-exe" [: B-COPY ;] FS:WALK-FILES ;
 
 \ A package whose one word answers n, standing in for a file the engine bakes.
 : MARKER ( ptr u8 n n -- )
@@ -153,10 +154,10 @@ variable RC
 
 : WD-APP ( -- )
    SB-RESET
-   s" require src/lib/utf16.f" LINE
+   s" require test/fixtures/source-root-exe/outer.f" LINE
    s" package SOURCE-ROOT-EXE-WD" LINE
    S\" : YN ( bool -- ) if s\q yes\q else s\q no\q then type cr ;" LINE
-   S\" UTF16:E-UTF16 -9530 = s\q ok\q UTF8:VALID? and YN" LINE
+   s" SOURCE-ROOT-EXE-INNER:MARK 5 = SOURCE-ROOT-EXE-OUTER:MARK 6 = and YN" LINE
    s" ;package" LINE ;
 
 \ A package that names itself as it loads, standing in for a library file.
@@ -195,6 +196,8 @@ variable RC
    s" tree/bin" A$ FS:MAKE-DIRS
    s" tree/bin/hb" PLACE-ENGINE
    s" src" s" tree/src" GATE-LINK
+   s" tree/test/fixtures" A$ FS:MAKE-DIRS
+   s" test/fixtures/source-root-exe" s" tree/test/fixtures/source-root-exe" GATE-LINK
    s" bin" A$ FS:MAKE-DIR
    s" tree/bin/hb" B$ s" bin/hb" A$ FS:MAKE-SYMLINK
    \ A lone engine, and a tree that has no lib.
@@ -216,11 +219,13 @@ variable RC
    s" app/src/lib" A$ FS:MAKE-DIRS
    s" test/source-root-exe-app.f" s" app/app.f" A$ FS:COPY-FILE-STREAM
    s" SOURCE-ROOT-EXE-APP-ERRORS" 1 MARKER s" app/src/lib/error.f" SB$ TEXT
-   s" wd-app/src/lib" A$ FS:MAKE-DIRS
+   s" wd-app/test/fixtures/source-root-exe" A$ FS:MAKE-DIRS
    WD-APP s" wd-app/wd.f" SB$ TEXT
-   s" SOURCE-ROOT-EXE-ENTRY-DECOY" DECOY s" wd-app/src/lib/utf8-scalar.f" SB$ TEXT
-   s" shadow/src/lib" A$ FS:MAKE-DIRS
-   s" SOURCE-ROOT-EXE-WD-DECOY" DECOY s" shadow/src/lib/utf16.f" SB$ TEXT
+   s" SOURCE-ROOT-EXE-ENTRY-DECOY" DECOY
+   s" wd-app/test/fixtures/source-root-exe/inner.f" SB$ TEXT
+   s" shadow/test/fixtures/source-root-exe" A$ FS:MAKE-DIRS
+   s" SOURCE-ROOT-EXE-WD-DECOY" DECOY
+   s" shadow/test/fixtures/source-root-exe/outer.f" SB$ TEXT
    \ A program behind a link of another name requires the file beside it, then
    \ itself.
    s" real" A$ FS:MAKE-DIR
@@ -320,7 +325,7 @@ variable RC
    S\"    s\q src/lib/string.f\q ENGINE-PROVIDES? YN ;" PLINE
    s" RUN" PLINE
    s" ;package" PLINE
-   s" require src/lib/utf8-scalar.f" PLINE ;
+   s" require test/fixtures/source-root-exe/inner.f" PLINE ;
 
 : FROM-FOREIGN ( ptr u8 n -- )
    {: exe:ptr exeu:n :}
@@ -345,7 +350,7 @@ variable RC
    PROG-RESET
    s" SOURCE-ROOT:ENGINE$ type cr" PLINE
    s" require src/lib/string.f" PLINE
-   s" require src/lib/utf8-scalar.f" PLINE
+   s" require test/fixtures/source-root-exe/inner.f" PLINE
    PROC-ARGV-RESET
    s" tree/bin/hb" HB-AT$ s" b" A$ PROG$ TIMEOUT-MS RUN-EXE
    SB-RESET s" b" A$ LINE
@@ -358,10 +363,10 @@ variable RC
    SB-RESET GATE$ LINE SB$ 0 EXPECT
    s" elsewhere it takes the working directory, and finds no library there" T-LABEL
    PROC-ARGV-RESET
-   s" x/hb" HB-AT$ FOREIGN$ S\" SOURCE-ROOT:ENGINE$ type cr\nrequire src/lib/utf8-scalar.f\n"
+   s" x/hb" HB-AT$ FOREIGN$ S\" SOURCE-ROOT:ENGINE$ type cr\nrequire test/fixtures/source-root-exe/inner.f\n"
    TIMEOUT-MS RUN-EXE
    SB-RESET FOREIGN$ LINE SB$ STDOUT
-   FOREIGN$ s" /src/lib/utf8-scalar.f" CANNOT-OPEN ;
+   FOREIGN$ s" /test/fixtures/source-root-exe/inner.f" CANNOT-OPEN ;
 
 \ The tree's lib is missing, so its frozen rows answer by name, also under a
 \ discovery base, and a library is refused naming the owner's path.
@@ -378,11 +383,11 @@ variable RC
    s"    REQUIRE-RESTORE ;" PLINE
    s" RUN" PLINE
    s" ;package" PLINE
-   s" require src/lib/utf8-scalar.f" PLINE
+   s" require test/fixtures/source-root-exe/inner.f" PLINE
    PROC-ARGV-RESET
    s" p/bin/hb" HB-AT$ FOREIGN$ PROG$ TIMEOUT-MS RUN-EXE
    SB-RESET s" p" A$ LINE s" yes" LINE s" yes" LINE SB$ STDOUT
-   FOREIGN$ s" /src/lib/utf8-scalar.f" CANNOT-OPEN ;
+   FOREIGN$ s" /test/fixtures/source-root-exe/inner.f" CANNOT-OPEN ;
 
 \ After the program's load lines: the root, and whether q's file loaded.
 : NOT-TREE-RUN ( -- )
@@ -426,9 +431,9 @@ variable RC
 \ A relative dependency searches its owner, the root, then the working
 \ directory; a relative --load entry is relative to the working directory only;
 \ only the root's own copy matches a frozen engine row.
-\ The entry lacks src/lib/utf16.f, which the working directory holds, and
-\ holds src/lib/utf8-scalar.f, which the root's utf16.f requires: each decoy
-\ would print its package name, and leave UTF16 or UTF8 undefined.
+\ The entry lacks the fixture's outer.f, which the working directory holds, and
+\ holds its inner.f, which the root's outer.f requires: each decoy would print
+\ its package name, and leave SOURCE-ROOT-EXE-OUTER or -INNER undefined.
 : WD ( -- )
    s" a library comes from the root, not the working or the entry directory" T-LABEL
    PROC-ARGV-RESET
@@ -451,10 +456,10 @@ variable RC
    s" a relative --load entry is relative to the working directory only" T-LABEL
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
-   s" src/lib/utf8-scalar.f" >LEN PROC-ARGV+
+   s" test/fixtures/source-root-exe/inner.f" >LEN PROC-ARGV+
    s" tree/bin/hb" HB-AT$ FOREIGN$ TIMEOUT-MS RUN-ARGS
    NULL$ STDOUT
-   FOREIGN$ s" /src/lib/utf8-scalar.f" CANNOT-OPEN ;
+   FOREIGN$ s" /test/fixtures/source-root-exe/inner.f" CANNOT-OPEN ;
 
 \ The root's src is a symlink into the gate tree; branch is a symlink
 \ elsewhere, so branch/../src/lib/error.f only reads like the root's file.
@@ -500,7 +505,7 @@ variable RC
    YN-LINE
    s" : RUN ( -- )" PLINE
    S\"    SOURCE-ROOT:CWD$ s\q src/lib/error.f\q SOURCE-ROOT:JOIN provided" PLINE
-   S\"    s\q src/lib/utf8-scalar.f\q SOURCE-ROOT:RESOLVE drop 2drop" PLINE
+   S\"    s\q test/fixtures/source-root-exe/inner.f\q SOURCE-ROOT:RESOLVE drop 2drop" PLINE
    S\"    s\q src/lib/error.f\q ENGINE-PROVIDES? YN" PLINE
    s"    SOURCE-ROOT:RESOLVED-ROOT$ type cr ;" PLINE
    s" RUN" PLINE
