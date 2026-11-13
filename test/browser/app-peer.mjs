@@ -15,6 +15,7 @@ import assert from "node:assert/strict";
 import { readFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { devtoolsPort, launch, stopGroup, until } from "./chrome.mjs";
 
 const [file, output, title, flag, chrome] = process.argv.slice(2);
 if (!file || !output || !title || flag !== "--chrome" || !chrome)
@@ -94,10 +95,7 @@ const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch(request) {
   return new Response("not found", { status: 404 });
 } });
 const profile = mkdtempSync(join(tmpdir(), "habu-app-chrome-"));
-const child = Bun.spawn([chrome, "--headless=new", "--no-first-run", "--no-default-browser-check",
-  "--enable-unsafe-webgpu", "--use-angle=swiftshader", "--disable-gpu-sandbox",
-  "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"],
-  { detached: true, stdout: "ignore", stderr: Bun.file(join(output, "chrome.log")) });
+const child = launch(chrome, profile, join(output, "chrome.log"));
 let socket, failure;
 try {
   const port = await devtoolsPort(join(profile, "DevToolsActivePort"));
@@ -188,7 +186,7 @@ try {
   failure = error; throw error;
 } finally {
   try {
-    try { await stopGroup(child.pid, socket); await child.exited; } finally {
+    try { await stopGroup(child, socket); await child.exited; } finally {
       socket?.close();
       server.stop(true);
       rmSync(profile, { recursive: true });
@@ -197,48 +195,4 @@ try {
     if (!failure) throw error;
     console.error("Chrome teardown after the failed check:", error);
   }
-}
-
-// Chrome removes its code-sign clone only when it closes itself, so teardown
-// asks it to close and waits; it signals the group only if no socket opened.
-async function stopGroup(group, socket) {
-  if (socket?.readyState === WebSocket.OPEN) {
-    socket.send(JSON.stringify({ id: 0, method: "Browser.close" }));
-    while (signalGroup(group, 0)) await Bun.sleep(25);
-    return;
-  }
-  for (const signal of ["SIGTERM", "SIGKILL"]) {
-    if (!signalGroup(group, signal)) return;
-    const limit = performance.now() + 5000;
-    while (performance.now() < limit) {
-      if (!signalGroup(group, 0)) return;
-      await Bun.sleep(25);
-    }
-  }
-  throw new Error(`Chrome process group ${group} survived SIGKILL`);
-}
-
-// Whether a member is left. Darwin answers EPERM, not ESRCH, while the group's
-// last members have exited but are not yet reaped: members remain.
-function signalGroup(group, signal) {
-  try { process.kill(-group, signal); return true; }
-  catch (error) { if (error.code === "ESRCH") return false; if (error.code === "EPERM") return true; throw error; }
-}
-
-async function until(check) {
-  const limit = performance.now() + 15000;
-  while (performance.now() < limit) { if (await check()) return; await Bun.sleep(25); }
-  throw new Error("browser condition timed out");
-}
-
-// Chrome creates DevToolsActivePort before it writes the port into it, so the
-// port is taken only from a whole first line.
-async function devtoolsPort(active) {
-  let port;
-  await until(() => {
-    try { port = /^(\d+)\n/.exec(readFileSync(active, "utf8"))?.[1]; }
-    catch (error) { if (error.code !== "ENOENT") throw error; }
-    return port !== undefined;
-  });
-  return port;
 }
