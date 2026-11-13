@@ -1402,10 +1402,8 @@ variable LREPLAYTRAP
 \ the saved WIDN; then it zeroes the overlay's records, puts NDICT, CP and the
 \ scope back and zeroes the band, the latch with it, and its enclosing copy.
 \ While a task is live it retires the records instead and keeps NDICT and CP.
-\ The WIDN refusal is defensive: every engine writer of WIDN but replay-widn!
-\ raises it, replay-widn! lowers it no further than the saved WIDN, and a raw
-\ store to WIDN-CELL or the band exits 83 after the seal. It keeps a WIDN the
-\ overlay did not leave from being restored over, as the NDICT and CP checks do.
+\ Engine writers only raise WIDN past the saved count, so the WIDN refusal meets
+\ a raw store to WIDN-CELL, which nothing else refuses.
 : REPLAY-CLOSE ( -- )
    LBL LBL LBL {: bad kept done :}
    s" E-TASK-COMPILE habu: replay-close from a task" B-TASK-GUARD

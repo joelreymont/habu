@@ -13343,8 +13343,6 @@ package CHECKER-REG
 ;package
 
 \ --- the verifier window --------------------------------------------------
-\ These two names stay checker-internal: their rows are trusted-only, so checked
-\ code cannot activate the provider.
 : CHECKER-VERIFY-PKG-START ( -- )
    CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF E-PKG-CONTEXT throw THEN
    CHECKER-RESOLVE:AUTHORITY 0= IF E-PKG-CONTEXT throw THEN 2drop drop
