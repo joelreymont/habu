@@ -1577,12 +1577,12 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    pkg XREF-REC XREF-PKG-PUBLIC wid = if 3 else 4 then PIECES U64+
    pkg ID-REF+ ;
 
-variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow rows
+variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
 
 : SHADOW-LIVE? ( -- bool ) SHADOW-AT @ NSHADOW:RECORDS < ;
 
-\ The file's shadow row of the record, or -1. Rows are in publication order, so
-\ their record indices rise and the cursor, asked in index order, only advances.
+\ Record idx's shadow row, or -1. Rows are in publication order, so their record indices rise and the cursor,
+\ asked in index order, only advances.
 : SHADOW-ROW ( n -- n )
    {: idx:n :}
    begin
@@ -1595,22 +1595,28 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    then
    -1 ;
 
-\ An alias's source: the lowest of the build's records before it with its start.
-: ALIAS-SOURCE ( n -- n )
+\ The lowest of the build's records before record idx with its start, or -1.
+: SAME-START ( n -- n )
    {: idx:n :}
    idx XREF-REC XREF-START {: start:n :}
    idx FIRST-REC @ ?do
       i XREF-REC XREF-START start = if i unloop exit then
    loop
-   E-COMP-STATE throw ;
+   -1 ;
+
+\ SAME-START, which every alias has.
+: ALIAS-SOURCE ( n -- n )
+   SAME-START {: src:n :}
+   src 0 < if E-COMP-STATE throw then
+   src ;
 
 : KIND ( n n -- n )
-   {: idx:n row:n :}
+   {: row:n wid:n :}
    row 0 >= if
       row NSHADOW:ENTRY@ 0 > if KIND-DOES else KIND-DEF then exit
    then
-   idx PKG? if KIND-PACKAGE exit then
-   idx MADE-WID BOOT:TYPES-WL = if KIND-TYPE exit then
+   wid BOOT:NAMESPACE-WL = if KIND-PACKAGE exit then
+   wid BOOT:TYPES-WL = if KIND-TYPE exit then
    KIND-ALIAS ;
 
 
@@ -1655,7 +1661,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    {: idx:n :}
    idx XREF-REC {: rec:ptr :}
    idx SHADOW-ROW {: row:n :}
-   idx row KIND {: kind:n :}
+   row idx MADE-WID KIND {: kind:n :}
    kind PIECES U64+
    rec XREF-NAME$ PIECES FIELD+
    rec XREF-FLAGS  DNAME-LEN-MASK DNAME-EXT or invert and  PIECES U64+
@@ -1698,7 +1704,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    EDGES-N @ {: start:n :}
    idx RECORD+ {: bound:n :}
    idx SHADOW-ROW {: row:n :}
-   idx row KIND {: kind:n :}
+   row idx MADE-WID KIND {: kind:n :}
    kind KIND-DEF =  kind KIND-DOES =  or {: coded:bool :}
    coded if row NSHADOW:EMISSION@ FILE-EM @ - else -1 then {: em:n :}
    coded  em 0<  em NSHADOW:EMISSIONS FILE-EM @ - >=  or  and if E-COMP-STATE throw then

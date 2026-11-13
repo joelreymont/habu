@@ -3131,7 +3131,9 @@ public
 
 2 constant CK-REC-FLAGS-SLOT                \ = xref.f XREF-FLAGS-SLOT
 3 constant CK-REC-NAME-SLOT                 \ = xref.f XREF-NAME-SLOT
-4 constant CK-REC-FACTS-SLOT                \ the facts text's offset from its DATA, 0 for none
+\ The facts text's offset from its DATA, 0 for none; in a linked image an
+\ export's holds -1 minus its source's index instead (READ-BOUND).
+4 constant CK-REC-FACTS-SLOT
 
 \ The dictionary record at index IX; a record spans DICT-WORDLIST-SLOT and the
 \ slots before it.
@@ -3182,12 +3184,12 @@ variable HB-CEILING   0 HB-CEILING !
    pa pu ;
 
 public
-\ Record ix's facts text, empty for none: bytes 32-39 hold its offset in the DATA
-\ owning it, and a text outside that DATA dies: the kernel bounds only writes.
+\ Record ix's own facts text, empty for none: bytes 32-39 hold its offset in the
+\ DATA owning it, and a text outside that DATA dies: the kernel bounds only writes.
 : FACTS@ ( n -- ptr u8 n )
    {: ix:n :}
    ix CHECKER-RESOLVE:REC-AT CK-REC-FACTS-SLOT cells + @ {: off:n :}
-   off 0= IF NULL-PTR BYTE-VIEW 0 EXIT THEN
+   off 0 <= IF NULL-PTR BYTE-VIEW 0 EXIT THEN
    data-base BOOT:DP-CEILING-CELL + @ {: ceiling:n :}
    BUILDING? ix BUILD-FIRST @ >= and IF
       IMAGE-BASE ceiling
@@ -30612,20 +30614,6 @@ CHECKER-REG:}SCRATCH
 : READ-IX ( n -- ) {: ix:n :}
    ix FACTS@ ix  READ-ENTER  [: READ-BODY ;] [: READ-LEAVE ;] finally ;
 
-\ Reads record rec's facts text when it has one and no link, except hb's own
-\ record of a prefix symbol in a build: the prefix holds its rows (PREFIX-SYM?).
-: READ-BOUND ( ptr n -- ) {: rec:ptr :}
-   rec CK-REC-FACTS-SLOT cells + @ 0= IF EXIT THEN
-   rec NULL-PTR - dbase@ - DREC / {: ix:n :}
-   BUILDING? ix BUILD-FIRST @ < and IF
-      rec REC-SYM PREFIX-SYM? IF EXIT THEN
-   THEN
-   ix LINKED? IF EXIT THEN
-   ix READ-IX ;
-
-: FACTS-READ-INSTALL ( -- ) [: READ-BOUND ;] is FACTS-READ-XT ;
-FACTS-READ-INSTALL
-
 \ EXPORT-META-COPY for symbols, which a link has where a compile has a spelling.
 : EXPORT-META-SYM ( n n -- ) {: sym:n src:n :}
    src DFER-FIND-SYM IF sym RES-TRUE DFER-ADD-SYM THEN
@@ -30650,6 +30638,29 @@ FACTS-READ-INSTALL
    ix sym USIG-NEWEST sym NORET-NEWEST sym DFER-FIND-SYM RECORD-LINK-SET
    ix RECORD-LINK-CURRENT? IF ix ix CHECKER-RESOLVE:REC-AT RECORD-LINK-FIXED! THEN ;
 
+\ Export record ix of record src, once src's own facts are read.
+: ALIAS-READ ( n n -- ) {: ix:n src:n :}
+   ix src  READ-ENTER  [: ALIAS-BODY ;] [: READ-LEAVE ;] finally ;
+
+\ Reads rec's facts text, or an image's export's source's, when there is one and no link,
+\ except hb's own record of a prefix symbol in a build: the prefix holds its rows.
+: READ-BOUND ( ptr n -- ) {: rec:ptr :}
+   rec CK-REC-FACTS-SLOT cells + @ {: off:n :}
+   off 0= IF EXIT THEN
+   rec NULL-PTR - dbase@ - DREC / {: ix:n :}
+   BUILDING? ix BUILD-FIRST @ < and IF
+      rec REC-SYM PREFIX-SYM? IF EXIT THEN
+   THEN
+   ix LINKED? IF EXIT THEN
+   off 0 > IF ix READ-IX EXIT THEN
+   -1 off - {: src:n :}
+   src 0 <  src ix >=  or IF s" checker: an export's source is not an earlier record" 76 die THEN
+   src CHECKER-RESOLVE:REC-AT recurse
+   ix src ALIAS-READ ;
+
+: FACTS-READ-INSTALL ( -- ) [: READ-BOUND ;] is FACTS-READ-XT ;
+FACTS-READ-INSTALL
+
 public
 : WORDLIST-PACKAGE ( n -- n bool )
    NS-FIND {: row:n :}
@@ -30659,7 +30670,7 @@ public
 \ Export record ix of record src, as a compile of its file recorded it.
 : READ-ALIAS ( n n -- ) {: ix:n src:n :}
    src CHECKER-RESOLVE:REC-AT READ-BOUND
-   ix src  READ-ENTER  [: ALIAS-BODY ;] [: READ-LEAVE ;] finally ;
+   ix src ALIAS-READ ;
 
 \ Reads text a u as record ix's facts now, over what a compile or a read taught:
 \ an earlier file's record whose text a later file's `TRUST` row rewrote.

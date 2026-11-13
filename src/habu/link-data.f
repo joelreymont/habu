@@ -286,13 +286,23 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    s" link: a record enters code the target does not place" 74 die ;
 
 
-\ Build record r at target index k: [32], the facts text's offset from the
-\ image's DATA, holds in the target's.
+\ Build record r's source when r is an alias, else -1; an owned primitive's record has
+\ a facts text, an alias none. Asked in index order from SHADOW-AT 0.
+: EXPORT-SOURCE ( n -- n )
+   {: r:n :}
+   r XREF-REC {: rec:ptr :}
+   rec CK-REC-FACTS-SLOT XREF-CELL@ 0<> if -1 exit then
+   r SHADOW-ROW  rec XREF-WORDLIST  KIND  KIND-ALIAS <> if -1 exit then
+   r SAME-START ;
+
+\ Build record r at target index k: [32], the facts text's offset from the image's DATA,
+\ holds in the target's, as does an export's source index.
 : BUILD-REC, ( n n -- )
    {: r:n k:n :}
    r XREF-REC {: rec:ptr :}
    k DREC * {: at:n :}
    rec XREF-WORDLIST {: wid:n :}
+   wid XREF:PACKAGE-WL? if -1 else r EXPORT-SOURCE then {: src:n :}
    wid XREF:PACKAGE-WL? if
       rec XREF-PKG-PUBLIC r WID-MAP A64ICODE:DCQ,
       rec XREF-PKG-PRIVATE r WID-MAP A64ICODE:DCQ,
@@ -307,7 +317,8 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    else
       rec XREF-NAME-SLOT XREF-CELL@ A64ICODE:DCQ,
    then
-   rec CK-REC-FACTS-SLOT XREF-CELL@ A64ICODE:DCQ,
+   src 0 >= if  -1  PRIMS src +  FIRST-REC @ -  -
+   else  rec CK-REC-FACTS-SLOT XREF-CELL@  then  A64ICODE:DCQ,
    wid r WID-MAP A64ICODE:DCQ, ;
 
 
@@ -334,6 +345,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    0 RLISTED-N !
    LRECS A64ICODE:LABEL@ A64ICODE:LBL,
    PRIMS 0 ?do i PRIM-REC, loop
+   0 SHADOW-AT !
    ndict@ FIRST-REC @ ?do  i  PRIMS i + FIRST-REC @ -  BUILD-REC,  loop
    LRECS-END A64ICODE:LABEL@ A64ICODE:LBL,
    LRLIST A64ICODE:LABEL@ A64ICODE:LBL,

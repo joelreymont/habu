@@ -42,7 +42,8 @@ package FILE-OBJECTS-TEST
 29 constant EVALUATED-LAST               \ the evaluated sequence's main.f's last part's
 30 constant OPENED-LAST                  \ and the opened sequence's
 31 constant CTOR-SUM                     \ ctor-sum.f's
-32 constant TAILS                        \ TAIL$'s tails
+32 constant EXPORT-MAIN                  \ export-main.f's
+33 constant TAILS                        \ TAIL$'s tails
 65 constant FILES-C                     \ build C's: count.f's, shape.f's, each sequence's, those that
                                          \ never link included, the twins', the order sequence's four,
                                          \ the header, same and held sequences' three each, e.f's, the
@@ -219,6 +220,7 @@ variable CLASS-N                        \ the class CLASS+ read
    i EVALUATED-LAST = if s" /evaluated/main.f+3.hfo" exit then
    i OPENED-LAST = if s" /opened/main.f+3.hfo" exit then
    i CTOR-SUM = if s" /test/fixtures/file-objects/ctor-sum.f.hfo" exit then
+   i EXPORT-MAIN = if s" /test/fixtures/file-objects/export-main.f.hfo" exit then
    s" /test/fixtures/file-objects/seal-second.f.hfo" ;
 
 : ROOT! ( ptr u8 n -- ) {: out:ptr outu:n :}
@@ -1038,6 +1040,29 @@ variable CLASS-N                        \ the class CLASS+ read
    s" the build exits as CT does" LABEL  warm cold T=
    s" the build links ctor-sum.f" CTOR-SUM LINKED ;
 
+\ export-main.f's image, run in its own process, since the boundary under test is the written
+\ file: its input calls each export in a definition, then at top level.
+: EXPORT-RUN ( CMD:command -- CMD:command )
+   CMD:RESET
+   SB-RESET
+   S\" : FILE-OBJECTS-EXP-SHOW ( -- ) FILE-OBJECTS-EXP:HIDDEN . FILE-OBJECTS-EXP:PUB . FILE-OBJECTS-EXP:THREE . ;\n"
+   SB-APPEND
+   S\" FILE-OBJECTS-EXP-SHOW\nFILE-OBJECTS-EXP:HIDDEN . FILE-OBJECTS-EXP:PUB . FILE-OBJECTS-EXP:THREE .\n" SB-APPEND
+   SB$ CMD:IN!
+   L$ s" prog" IN$ 60000 >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
+   rc 0<> if rc SHOW then
+   s" the image's definition and top level call the exports" LABEL
+   CMD:OUT$ s\" 42\n5\n3\n42\n5\n3\n" T$=
+   s" the image exits 0" LABEL  rc 0 T= ;
+
+\ Guards an image's exports: EX compiles export-main.f into a --repl image, EX2 links its object
+\ into another, and each resolves an exported private word, another package's public word and a constant.
+: EXPORT-CASE ( CMD:command -- CMD:command )
+   s" EX" WHICH!  s" test/fixtures/file-objects/export-main.f" REPL-BUILD 0= if exit then
+   EXPORT-RUN  EXPORT-MAIN KEEP
+   s" EX2" WHICH!  s" test/fixtures/file-objects/export-main.f" REPL-BUILD 0= if exit then
+   s" the build links export-main.f" EXPORT-MAIN LINKED  EXPORT-RUN ;
+
 
 \ The path of U's source of that name.
 : NEST-PATH$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
@@ -1415,7 +1440,7 @@ variable CLASS-N                        \ the class CLASS+ read
    CHECK-COLD
    [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE PATH-CASE STALE-CASE HIDDEN-CASE SEALED-CASE
       STORED-CASE RETIRED-CASE ORDER-CASE PART-LINK-CASE PIECE-CASE SEAL-CASE SQUAT-CASE CAUGHT-CASE
-      CTOR-CASE
+      CTOR-CASE EXPORT-CASE
       NEST-CASE SAME-CASE RETIRE-CASE SPELLED-CASE PACKAGED-CASE EVALUATED-CASE OPENED-CASE CAST-CASE
       CROSS-CASE TARGET-CASE ;]
    CMD:WITH-COMMAND ;
