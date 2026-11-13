@@ -3444,8 +3444,6 @@ private
    s" dbase@" [: DBASE-REG PUSH, ;] PRIM
    s" data-base" [: DATA-REG PUSH, ;] PRIM
    s" NULL-PTR" [: RAX RAX ASM-SINK ENC-XOR-RR  RAX PUSH, ;] PRIM
-   \ This kernel has no origin record. The optional ABI reports absence.
-   s" native-origin-cell" [: RAX RAX ASM-SINK ENC-XOR-RR  RAX PUSH, ;] PRIM
    s" rbase" [: RAX RBASE-CELL CELL@,  RAX PUSH, ;] PRIM
    s" ndict@" [: NDICT-REG PUSH, ;] PRIM
    s" cp!" [:

@@ -587,8 +587,6 @@ public
 \ operations must follow the active compiler rather than dictionary names.
 $3810 constant CALLBACK-STUB-CELL
 $3818 constant CALLBACK-ENTRY-CELL
-\ The optional three-cell origin record follows at $3820..$3837, read through
-\ the three-cell native-origin-cell getter.
 \ BODY-HOOK-CELL, when nonzero, is an xt `( -- ptr u8 bool )` the `:` and
 \ TRUSTED: heads call with their record pending.
 $3838 constant BODY-HOOK-CELL

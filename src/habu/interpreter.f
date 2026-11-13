@@ -2453,8 +2453,6 @@ public
 require src/lib/memory.f
 require src/habu/address-cells.f
 require src/core/rollback-cells.f
-require src/habu/native-body-abi.f
-require src/habu/native-body.f
 require src/habu/repl.f
 require src/core/compile-reads.f
 
@@ -2591,11 +2589,6 @@ private
 : RUN ( -- )
    RUN-TOKENS
    DEF-SOURCE-END ;
-
-: CLEAR-BODY-TAKE ( -- )
-   NATIVE-BODY:BODY-CAPABILITY dup NULL-PTR = if drop exit then
-   {: record:ptr :}
-   0 record NATIVE-BODY-ABI:PENDING-TAKE cells + CELL-VIEW ! ;
 
 \ An evaluate the buffer caught left its code, which would fail the load.
 \ A `package` in it leaves PKG-OUTSIDE-CELL 0, which matters only in a package.
@@ -2866,7 +2859,6 @@ public
    then
    prior ENTRY-PEND !
    code 0<> if
-      entry PEND-CELL CELL@ <> if CLEAR-BODY-TAKE then
       entry PEND-CELL CELL!
    then
    outer USE-FLOOR !  found REC !

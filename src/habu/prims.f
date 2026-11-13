@@ -821,11 +821,6 @@ EPRIM: data-base      PE-PTR-A-DBASE PE-OUT EPRIM;
 \ address. What it refuses is a value read THROUGH it: `NULL-PTR + @` taken as
 \ a nominal identity or as an address certified and forged one.
 EPRIM: NULL-PTR       PE-PTR-A-NULL PE-OUT EPRIM; REACH stack
-\ A null result means the running kernel has no origin record. Source reaches
-\ the three optional cells through this byte pointer and the running engine's
-\ NATIVE-BODY-ABI indices; only the engine's own emitters bake their offsets.
-EPRIM: native-origin-cell PE-PTR-U8 PE-OUT EPRIM;
-ETRUSTED-ONLY!
 EPRIM: prot-wid-add   PE-N PE-IN EPRIM; REACH dict
 EPRIM: prot-wid-room  PE-N PE-OUT EPRIM;
 \ The design seal's two writers: admit a

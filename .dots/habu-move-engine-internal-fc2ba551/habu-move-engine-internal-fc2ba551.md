@@ -13,7 +13,6 @@ Design (settled by the lead, 2026-11-13; each slice is a child dot):
 - A build lays each private row's record from the host kernel's seed table by name.
 - A primitive with a public form safe for programs keeps one home: xref-search-wl in CHECKER-RESOLVE (src/core/checker.f loads first; the others call CHECKER-RESOLVE:WL-PROBE), run-rc in PROCESS.
 - `postponed` becomes an ordinary global primitive beside define-word, body-append and literal; postpone finds no engine private by name.
-- native-origin-cell is deleted: NATIVE-BODY addresses the origin record at its layout.f cell.
 - ffi-call and top-check@, dead on arm64, go with the x86-64 kernel's tests at the x86-64 step.
 - The marks (DNAME-INT, DNAME-OWNED, the trusted-only flag) go after this, in habu-delete-the-internal-3a818b8a; the strip, in habu-re-enable-hb-a2404c26.
 Acceptance: every child is closed: no engine-internal primitive has a global record, and the engine builds itself and passes the full suite.

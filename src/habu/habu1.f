@@ -22,7 +22,6 @@
 \ caller was compiled.
 require src/arch/arm64/icode.f
 require src/habu/primitive-registry.f
-require src/habu/native-body-abi.f
 require src/habu/data-claims.f
 require src/habu/task-abi.f
 require src/habu/spawn-abi.f
@@ -1342,9 +1341,6 @@ $4000 constant POSIX-SPAWN-CLOEXEC-DEFAULT
 : BDBASEFETCH ( -- ) 9 DBASE 0 ADDI,  A G-PUSH ;  \ ( -- addr ) region base
 : BDATAFETCH ( -- ) 9 DATA 0 ADDI,  A G-PUSH ;   \ ( -- addr ) live DATA base
 : BNULLPTR ( -- ) 31 G-PUSH ;   \ ( -- 0 ) the null: register 31 as a store source is xzr
-: BNATIVEORIGINCELL ( -- )
-   9 NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + MOVZ,
-   9 DATA 9 ADD,  9 G-PUSH ;
 : BCHECKFETCH ( -- ) 9 DATA HOOK-CELL LDR,  A G-PUSH ;  \ ( -- xt ) live checker hook — getter for set-check ([x20/DATA + HOOK-CELL])
 : BTOPCHECKFETCH ( -- ) 9 DATA TOP-HOOK-CELL LDR,  A G-PUSH ;  \ ( -- xt ) live top-row hook — getter for set-top-check ([x20/DATA + TOP-HOOK-CELL])
 
@@ -3493,12 +3489,7 @@ private
       0 2 MOVZ,  1 msg ADR,  2 mu MOVZ,  NR-WRITE SYS,
       0 70 MOVZ,  NR-EXIT-GROUP SYS,
    msg LBL,  ma mu BYTES,
-   done LBL,
-      \ Each successful install invalidates the observer identity, including
-      \ suspension and same-xt rearming.
-      10 0 MOVZ,
-      10 DATA NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:ORIGIN-HOOK cells + STR,
-      10 DATA NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:ORIGIN-TAKE cells + STR, ;
+   done LBL, ;
 
 \ The same readiness supplies the live tick gate and the verifier's entry
 \ observation. x11 is the installed query, x12 its owner, both zero if absent.
@@ -4135,7 +4126,6 @@ package ENGINE-EMIT
    s" cp@" ['] BCPFETCH FPRIM-L   s" dbase@" ['] BDBASEFETCH FPRIM-L
    s" data-base" ['] BDATAFETCH FPRIM-L
    s" NULL-PTR" ['] BNULLPTR FPRIM-L
-   s" native-origin-cell" ['] BNATIVEORIGINCELL FPRIM-L
    s" ndict@" ['] BNDICTFETCH FPRIM-L
    s" cp!" ['] BCPSET FPRIM   s" ndict!" ['] BNDSET FPRIM
    s" ndict-append" ['] BNDAPPEND ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID

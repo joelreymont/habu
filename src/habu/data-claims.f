@@ -3,7 +3,6 @@ require src/habu/boot-cells.f
 require src/habu/layout.f
 require src/habu/address-cells.f
 require src/habu/prof-abi.f
-require src/habu/native-body-abi.f
 
 \ Every claim on DATA states its extent. CLAIMS-ASSERT refuses an overlapping
 \ pair at engine build time, naming both, when an engine builder
@@ -160,9 +159,6 @@ create TAB
    ENGINE-MAIN:XT-CELL                1 cells                 CLAIM ENGINE-MAIN-XT-CELL
    NCOMP-DISPATCH:CALLBACK-STUB-CELL  1 cells                 CLAIM NCOMP-DISPATCH:CALLBACK-STUB-CELL
    NCOMP-DISPATCH:CALLBACK-ENTRY-CELL  1 cells                 CLAIM NCOMP-DISPATCH:CALLBACK-ENTRY-CELL
-   NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:ORIGIN-HOOK cells +  1 cells                 CLAIM NATIVE-BODY-ABI:ORIGIN-HOOK
-   NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:ORIGIN-TAKE cells +  1 cells                 CLAIM NATIVE-BODY-ABI:ORIGIN-TAKE
-   NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:PENDING-TAKE cells +  1 cells                 CLAIM NATIVE-BODY-ABI:PENDING-TAKE
    NCOMP-DISPATCH:BODY-HOOK-CELL      1 cells                 CLAIM NCOMP-DISPATCH:BODY-HOOK-CELL
    PROVIDED-XT:EVALUATE-CELL          1 cells                 CLAIM PROVIDED-XT-EVALUATE-CELL
    PROVIDED-XT:EVALUATE-RANGE-CELL    1 cells                 CLAIM PROVIDED-XT-EVALUATE-RANGE-CELL
