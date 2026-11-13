@@ -19,7 +19,6 @@ Acceptance cases folded in by the 2026-11-04 census (the closed dots' full text 
 - habu-give-gate-pool-c515de30 (closed): gate pool's orphan reaping must hold once it forks only to exec; readiness via process-fork.f (dot text)
 Waiting case (from the test prune, 'Drop tests the suite no longer keeps', 2026-11-06): src/lib/process-fork.f FORK-CALL (:45-49), a defer only a dropped test refilled, has no other setter; it goes with fork without exec.
 Done in part (2026-11-09, "Drop the test framework's waiting tests"): test/gate-pool.f's forked slots had no caller and went, GT-POOL-START-FORK, GT-POOL-FORK, its worker-side GT-POOL-ARM-REAPER and tools/why-threw.f with them. The pool's one remaining fork-and-continue is the spawned slots' PROC-FORK:SPAWN-REAPER.
-Waiting case (step-5 review, 2026-11-09): with the forked slots gone, src/lib/process-fork.f FORK-REAPER, REAP-WATCH-FD and PROC-REAP-ARM-ON (~277-287) have no production caller or setter; only test/gate-pool-orphan-test.f (suite row gate-stdlib-cases.f ~1275, its GPO and GCR cases) reaches them. Comments describing pool workers the pool no longer forks: process-fork.f:1-2, 241, 267-276; gate-pool-orphan-test.f:1-3, 64-66, 180, 215-216, 276-278. They go, or say what is true, with fork without exec.
 
 Consumers: Zen loads neither src/lib/process-fork.f nor process-pty-io.f, and its two dots that named this one are closed.
 
