@@ -3997,8 +3997,6 @@ variable MARK-CELL
       RCX ASM-SINK ENC-POP  RAX ASM-SINK ENC-POP
       RAX RCX MEM-AT ASM-SINK ENC-MOV-MR ;] PRIM
    s" snapshot-format" [: RAX SNAPSHOT-FORMAT:VERSION IMM32,  RAX PUSH, ;] PRIM
-   \ The x86-64 test kernel has no image writer to stamp implementation bytes.
-   s" kernel-producer$" [: RAX ZERO-REG,  RAX PUSH,  RAX PUSH,  RAX PUSH, ;] PRIM
    s" record-facts!" REFUSE
    \ No SHA-256 instructions here yet: sha256.f compresses every block itself.
    s" sha256-blocks" [: RAX POP,  RAX POP,  RAX POP,  RAX ZERO-REG,  RAX PUSH, ;] PRIM
@@ -4766,7 +4764,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RAX DOESB-CELL CELL!,  RAX TRUSTED-CELL CELL!,  RAX CLAUSE-CELL CELL!,
    RAX NCOMP-DISPATCH:COMP-CELL CELL@,
    RAX RAX ASM-SINK ENC-TEST-RR  C-E latched JCC,
-   RAX 2 IMM32,
+   RAX 1 IMM32,
    latched X64CODE:LBL,
    RAX NCOMP-DISPATCH:COMP-LATCH-CELL CELL!,
    WINDOW-CLOSE,

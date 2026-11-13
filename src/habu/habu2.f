@@ -41,7 +41,6 @@ require src/habu/snapshot-format.f
 require src/habu/code-span.f
 require src/habu/aot-runtime.f
 require src/habu/native-body-abi.f
-require src/core/sha256.f
 require src/compiler/fixed-body.f
 require src/arch/arm64/icode.f
 using A64ASM
@@ -189,9 +188,6 @@ variable LPLACEEND            \ ": " — what LPLACE writes after <path> or <pat
 private
 : PLACEEND$ ( -- ptr u8 n )   s" : " ;
 : PLACEEND-LEN ( -- n )   PLACEEND$ nip ;
-public
-variable LKERNELDIGEST
-private
 
 create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-bp:\n
 here BPH-KW - constant BPH-LEN
@@ -2852,7 +2848,6 @@ package LABELS
 
 : CORE ( -- )
    LBL LFIND !  LBL LNUM !  LBL LDICT !
-   LBL LKERNELDIGEST !
    LBL LCEMIT !  LBL LTOK !  LBL LFLUSH !  LBL LFLUSHTO !  LBL LNCOUNT !
    LBL LDIVZERO !
    LBL LPROTWIDQ !  LBL LPROTWIDADD !
@@ -2982,35 +2977,6 @@ package ENGINE-EMIT
    LSCOPEREC LABEL@ BL,
    14 G-PUSH  16 G-PUSH  17 G-PUSH  15 G-PUSH ;
 
-\ The writer fills this slot from the kernel bytes as emitted, before a link
-\ writes scope-kind?'s chains. The runtime answer is independent of the source
-\ tree later present on disk.
-: BKERNELPRODUCER ( -- )
-   9 LKERNELDIGEST LABEL@ ADR,  9 G-PUSH
-   9 32 MOVZ,  9 G-PUSH
-   9 0 MOVN,  9 G-PUSH ;
-;package
-
-package ENGINE-EMIT
-
-create KERNEL-CONTEXT SHA256-CTX-BYTES allot
-variable KERNEL-CODE-END
-
-: KERNEL-TARGET$ ( -- ptr u8 n )
-   HB-TARGET-LINUX? if s" linux-aarch64" exit then
-   HB-TARGET-MACOS? if s" macos-aarch64" exit then
-   HB-TARGET-LINUX-X86-64? if s" linux-x86-64" exit then
-   s" engine: unknown kernel target" 76 die ;
-
-\ Runs after EMIT-DIGEST-SLOT binds LKERNELDIGEST, so the ADR, in
-\ BKERNELPRODUCER is patched in the bytes it hashes.
-: FILL-KERNEL-DIGEST ( -- )
-   KERNEL-CONTEXT SHA256-BEGIN
-   KERNEL-CONTEXT s" native-kernel-bytes-v1" SHA256-FEED
-   KERNEL-CONTEXT KERNEL-TARGET$ SHA256-FEED
-   KERNEL-CONTEXT CODE KERNEL-CODE-END @ SHA256-FEED
-   KERNEL-CONTEXT CODE KERNEL-CODE-END @ + SHA256-END ;
-
 : EMIT-PRIMITIVE-SECTIONS ( -- )
    EMIT-PRIMS
    s" does-patch" ['] DOESPATCH:PRIM FPRIM
@@ -3045,7 +3011,6 @@ variable KERNEL-CODE-END
    s" scratch-cell-mark" ['] RELOC-EMIT:BSCRATCHCELLMARK FPRIM
    s" ptr-cell!" ['] RELOC-EMIT:BPTRCELLSTORE FPRIM
    s" snapshot-format" ['] RELOC-EMIT:BSNAPSHOTFORMAT FPRIM
-   s" kernel-producer$" ['] BKERNELPRODUCER FPRIM
    PROF:EMIT-PROF-PRIMS
    EMIT-FP-PRIMS
    ENGINE-PRIMS:COMPLETE
@@ -3100,10 +3065,6 @@ variable KERNEL-CODE-END
    EMIT-RUNTIME-SECTIONS
    EMIT-DICT ;
 
-: EMIT-DIGEST-SLOT ( -- )
-   LKERNELDIGEST LABEL@ LBL,
-   0 DCQ,  0 DCQ,  0 DCQ,  0 DCQ, ;
-
 public
 
 : OPEN ( -- )
@@ -3114,10 +3075,7 @@ public
    LABELS:INIT ;
 
 : KERNEL ( -- )
-   EMIT-CODE-SECTIONS
-   ASM-LEN KERNEL-CODE-END !
-   EMIT-DIGEST-SLOT
-   FILL-KERNEL-DIGEST ;
+   EMIT-CODE-SECTIONS ;
 
 ;package
 

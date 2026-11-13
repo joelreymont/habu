@@ -99,7 +99,6 @@ private
    CORE COMMON s" src/core/include.f" ROW
    CORE COMMON s" src/core/enums.f" ROW
    CORE COMMON s" src/core/sha256.f" ROW
-   CORE COMMON s" src/core/source-producer.f" ROW
    CORE COMMON s" src/core/combinators.f" ROW
    CORE COMMON s" src/habu/code-span.f" ROW
    CORE COMMON s" src/habu/xref.f" ROW

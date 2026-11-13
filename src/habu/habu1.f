@@ -3602,7 +3602,7 @@ public
 : COMP-LATCH ( n -- ) {: r:n :}
    LBL {: done:label :}
    r DATA NCOMP-DISPATCH:COMP-CELL LDR,  r done CBZ,
-   r 2 MOVZ,
+   r 1 MOVZ,
    done LBL, ;
 
 private

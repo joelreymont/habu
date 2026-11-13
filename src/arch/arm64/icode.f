@@ -13,7 +13,6 @@ using A64ASM
 public
 
 \ ---- the window this assembler emits into ------------------------------------
-\ An image is the engine code, then the kernel digest's four cells.
 \ ADR, reaches ADR-HI (1 MiB) from its site; past it FX-REACH dies `icode: adr out of reach`.
 \ CODE is a demand-paged anonymous mapping taken on first use and returned by
 \ ASM-RELEASE; nothing walks the span, so the window costs reserved address

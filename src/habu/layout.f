@@ -638,7 +638,7 @@ $3840 constant COMP-CELL
 \ COMP-CELL; the Habu loop's `constant`, `create` and `defer` call it.
 $6C0 constant FIXED-COMP-CELL
 
-\ Latched at the colon (0 no compiler, 2 COMP-CELL); an
+\ Latched at the colon (0 no compiler, 1 COMP-CELL); an
 \ immediate may only select the NEXT definition.
 $388 constant COMP-LATCH-CELL
 \ How many executable-build scopes are open.

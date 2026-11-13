@@ -363,11 +363,7 @@ require src/lib/prelude.f
 -8210 constant E-NEFF-CONV    \ a contract whose declared convention and whose places are two different statements: a data-stack convention naming a register, or a register convention naming a slot of the caller's data stack
 
 
-\ -8220..-8239 unassigned: E-HIR-UNMODELED refuses what checked source may
-\ compile a word into.
-
 \ What T0 cannot compile: -8280..-8299.
--8286 constant E-HIR-UNMODELED  \ a source word this dialect cannot compile: unmodeled, or never declared at all
 -8294 constant E-UNMODELED-IMMEDIATE  \ a body uses an immediate that is not parse-neutral and the compiler does not model: refused at its token, it never runs
 
 \ The does> cut of a definition's source: -8400..-8409

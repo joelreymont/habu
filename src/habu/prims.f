@@ -476,7 +476,6 @@ EPRIM: scratch-cell-mark PE-PTR-A PE-IN EPRIM; REACH dict
 \ value and declares the cell as ptr-cell-mark declares it.
 EPRIM: ptr-cell!  PE-A PE-IN PE-PTR-A PE-IN EPRIM; REACH memory EFIXED-ABI!
 EPRIM: snapshot-format PE-N PE-OUT EPRIM;
-EPRIM: kernel-producer$ PE-PTR-U8 PE-OUT PE-N PE-OUT PE-F PE-OUT EPRIM;
 EPRIM: ptr-field  PE-PTR-A PE-IN PE-N PE-IN  PE-PTR-PTR-B PE-OUT EPRIM; REACH stack
 \ Explicit memory views preserve address bits while changing the access type.
 EPRIM: byte-view  PE-PTR-A PE-IN PE-PTR-U8 PE-OUT EPRIM; REACH stack
@@ -603,12 +602,8 @@ EPPRIM: DEBUG patch32 PE-N PE-IN PE-PTR-U8 PE-IN ECLOSE-PRIVATE
 \ resolve only inside that package, so the publisher's own words are checked
 \ code, and a checked caller anywhere else is refused by name. code-publish,
 \ xref-retarget and does-record (below) are that row alone: outside NPUB the
-\ name is undefined to a checked caller. callmap-set and addrmap-set keep a
-\ global trusted-only row beside it for their TRUSTED: callers outside NPUB
-\ (the relocation-map tests): the optimizing compiler builds such a caller's
-\ call window from a global row, and a seed primitive with none is
-\ E-HIR-UNMODELED there. The same reason keeps the global rows of
-\ reloc-maps-clear and set-top-check beside their owners' rows below.
+\ name is undefined to a checked caller. A global trusted-only row beside an
+\ owner's row refuses a checked caller even a `trust` row would admit.
 EPPRIM: NPUB code-publish PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 EPRIM: callmap-set   PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ relocation metadata for code the publisher just wrote
@@ -617,12 +612,7 @@ EPRIM: addrmap-set   PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ the same, for an address chain the publisher just wrote
 EPPRIM: NPUB addrmap-set PE-N PE-IN ECLOSE-PRIVATE
 EPPRIM: NPUB xref-retarget PE-N PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
-\ Record writers. A row here is what lets the OPTIMIZING compiler build a
-\ TRUSTED: caller's call window: that compiler reads a callee's cell widths out
-\ of this table for every name a body writes, and a primitive is the one kind
-\ of name no scan can ever supply. The rows are TRUSTED-only: a CHECKED caller
-\ is refused here, and the emitted records carry DNAME-INT, so no name is
-\ executable or tickable.
+\ Record writers: trusted-only rows, so no `trust` row admits a checked caller.
 EPRIM: int-mark      PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ sets DNAME-INT on one live record
 EPRIM: rep-mark      PE-N PE-IN EPRIM;
@@ -966,12 +956,8 @@ EPRIM: ffi-call-struct PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN PE-N PE-IN P
                       PE-N PE-IN  PE-N PE-OUT PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!
 
-\ Each primitive here keeps the global ETRUSTED-ONLY! row above — the outside
-\ boundary (E-CAP-TRUSTED), and the call window the optimizing compiler reads for
-\ the TRUSTED: bodies outside FFI that still call it — and gains an
-\ owner-private row, so a CHECKED body compiled inside package FFI resolves it.
-\ FFI's own words are ordinary checked Habu, and
-\ no consumer can reach a raw foreign call.
+\ FFI's checked words call these by its private rows; the global trusted-only
+\ rows above refuse any other checked caller, even past a `trust` row.
 EPPRIM: FFI ffi-call-n PE-PTR-A PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT ECLOSE-PRIVATE
 EPPRIM: FFI ffi-call-abi PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN PE-N PE-IN PE-N PE-IN
                         PE-N PE-OUT ECLOSE-PRIVATE

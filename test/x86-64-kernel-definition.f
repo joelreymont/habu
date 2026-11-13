@@ -183,7 +183,7 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
 \ - hb-x64-kernel-def-open, after the seal, opens a definition whose name
 \   another wid holds: the pending record, its cells, and NDICT unchanged.
 \ - hb-x64-kernel-def-open-state checks the state def-open resets: its record's
-\   length cell 0, TSIG, TCSIG, DOESB, CLAUSE and TRUSTED clear, COMP-LATCH-CELL 2
+\   length cell 0, TSIG, TCSIG, DOESB, CLAUSE and TRUSTED clear, COMP-LATCH-CELL 1
 \   with COMP-CELL set, and CP, which an inline name leaves.
 \ - hb-x64-kernel-def-open-long stores a 17-byte name at CP: CP and the entry
 \   move 32 bytes and the pad over poisoned cells is 0.
@@ -288,7 +288,7 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
    s" w" 0 DKIND:CAST DEF-OPEN,
    0 0 REC-AUX X64HARNESS:EXPECT-RECORD,
    PUSH-SIGS,  0 X64HARNESS:EXPECT-POP,
-   2 NCOMP-DISPATCH:COMP-LATCH-CELL X64HARNESS:EXPECT-CELL,
+   1 NCOMP-DISPATCH:COMP-LATCH-CELL X64HARNESS:EXPECT-CELL,
    X64HARNESS:PUSH-CP,  DICT-SIZE X64HARNESS:EXPECT-POP-REGION,
    s" w" nip DKIND:CAST or 0 X64KERNEL:REC-FLAGS X64HARNESS:EXPECT-RECORD,
    0 CLOSED, ;
