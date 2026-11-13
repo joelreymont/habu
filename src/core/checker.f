@@ -30638,8 +30638,15 @@ CHECKER-REG:}SCRATCH
    ix sym USIG-NEWEST sym NORET-NEWEST sym DFER-FIND-SYM RECORD-LINK-SET
    ix RECORD-LINK-CURRENT? IF ix ix CHECKER-RESOLVE:REC-AT RECORD-LINK-FIXED! THEN ;
 
-\ Export record ix of record src, once src's own facts are read.
+\ A record `undefine` retired has no symbol.
+: HAS-SYM? ( n -- bool ) CHECKER-RESOLVE:REC-AT REC-SYM 0 <> ;
+
+\ Export record ix of record src, once src's own facts are read. An export
+\ keeps the facts of a source retired after it, so it reads src's text as its own.
 : ALIAS-READ ( n n -- ) {: ix:n src:n :}
+   src HAS-SYM? 0= IF
+      src FACTS@ ix  READ-ENTER  [: READ-BODY ;] [: READ-LEAVE ;] finally  EXIT
+   THEN
    ix src  READ-ENTER  [: ALIAS-BODY ;] [: READ-LEAVE ;] finally ;
 
 \ Reads rec's facts text, or an image's export's source's, when there is one and no link,
@@ -30655,7 +30662,7 @@ CHECKER-REG:}SCRATCH
    off 0 > IF ix READ-IX EXIT THEN
    -1 off - {: src:n :}
    src 0 <  src ix >=  or IF s" checker: an export's source is not an earlier record" 76 die THEN
-   src CHECKER-RESOLVE:REC-AT recurse
+   src HAS-SYM? IF src CHECKER-RESOLVE:REC-AT recurse THEN
    ix src ALIAS-READ ;
 
 : FACTS-READ-INSTALL ( -- ) [: READ-BOUND ;] is FACTS-READ-XT ;
@@ -30667,9 +30674,11 @@ public
    row 0= IF 0 RES-FALSE EXIT THEN
    row 1 - RES-TRUE ;
 
-\ Export record ix of record src, as a compile of its file recorded it.
+\ Export record ix of record src, as a compile of its file recorded it: an
+\ export the file retired has no facts, since its `undefine` removed them.
 : READ-ALIAS ( n n -- ) {: ix:n src:n :}
-   src CHECKER-RESOLVE:REC-AT READ-BOUND
+   ix HAS-SYM? 0= IF EXIT THEN
+   src HAS-SYM? IF src CHECKER-RESOLVE:REC-AT READ-BOUND THEN
    ix src ALIAS-READ ;
 
 \ Reads text a u as record ix's facts now, over what a compile or a read taught:

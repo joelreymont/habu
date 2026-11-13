@@ -1043,25 +1043,30 @@ variable CLASS-N                        \ the class CLASS+ read
    s" the build links ctor-sum.f" CTOR-SUM LINKED ;
 
 \ export-main.f's image, run in its own process, since the boundary under test is the written
-\ file: its input calls each export in a definition, then at top level, and defines a
-\ word with the exported does> definer.
+\ file: its input calls each export in a definition, then at top level, defines a word with
+\ the exported does> definer and ends at the undefined export, as a load of the file does.
 : EXPORT-RUN ( CMD:command -- CMD:command )
    CMD:RESET
    SB-RESET
-   S\" : FILE-OBJECTS-EXP-SHOW ( -- ) FILE-OBJECTS-EXP:HIDDEN . FILE-OBJECTS-EXP:PUB . FILE-OBJECTS-EXP:THREE . ;\n"
-   SB-APPEND
-   S\" FILE-OBJECTS-EXP-SHOW\nFILE-OBJECTS-EXP:HIDDEN . FILE-OBJECTS-EXP:PUB . FILE-OBJECTS-EXP:THREE .\n" SB-APPEND
+   S\" : FILE-OBJECTS-EXP-SHOW ( -- ) FILE-OBJECTS-EXP:HIDDEN . FILE-OBJECTS-EXP:PUB . " SB-APPEND
+   S\" FILE-OBJECTS-EXP:THREE . FILE-OBJECTS-EXP:KEPT . ;\n" SB-APPEND
+   S\" FILE-OBJECTS-EXP-SHOW\nFILE-OBJECTS-EXP:HIDDEN . FILE-OBJECTS-EXP:PUB . " SB-APPEND
+   S\" FILE-OBJECTS-EXP:THREE . FILE-OBJECTS-EXP:KEPT .\n" SB-APPEND
    S\" 11 FILE-OBJECTS-EXP:CELLED FILE-OBJECTS-EXP-ELEVEN  FILE-OBJECTS-EXP-ELEVEN .\n" SB-APPEND
+   S\" FILE-OBJECTS-EXP:GONE .\n" SB-APPEND
    SB$ CMD:IN!
    L$ s" prog" IN$ 60000 >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
-   rc 0<> if rc SHOW then
+   rc 70 <> if rc SHOW then
    s" the image's definition and top level call the exports" LABEL
-   CMD:OUT$ s\" 42\n5\n3\n42\n5\n3\n11\n" T$=
-   s" the image exits 0" LABEL  rc 0 T= ;
+   CMD:OUT$ s\" 42\n5\n3\n9\n42\n5\n3\n9\n11\n" T$=
+   s" the image refuses the undefined export" LABEL
+   CMD:ERR$ s\" E-UNDEFINED habu: undefined word 'FILE-OBJECTS-EXP:GONE'\n" T$=
+   s" the image exits 70" LABEL  rc 70 T= ;
 
 \ Guards an image's exports: EX compiles export-main.f into a --repl image, EX2 links its object
 \ into another, and each resolves an exported private word, another package's public word, a
-\ constant and a does> definer.
+\ constant, a does> definer and an export whose source the file undefines, and refuses an
+\ export the file undefines.
 : EXPORT-CASE ( CMD:command -- CMD:command )
    s" EX" WHICH!  s" test/fixtures/file-objects/export-main.f" REPL-BUILD 0= if exit then
    EXPORT-RUN  EXPORT-MAIN KEEP
