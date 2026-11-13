@@ -373,7 +373,7 @@ create SDT-LOAD-ERR SDT-LOAD-CAP allot
    SDT-WRITE-ENTRY
    s" SDT-ENTRY$ ;package included"
    SDT-LOAD-OUT SDT-LOAD-CAP >LEN SDT-LOAD-ERR SDT-LOAD-CAP >LEN
-   20000 >MS SUBJECT:RUN {: outu:len erru:len oc :}
+   PROCESS:WAIT-FOREVER SUBJECT:RUN {: outu:len erru:len oc :}
    s" SDT-ENTRY$ ;package included"
    SDT-LOAD-OUT outu LEN>N SDT-LOAD-ERR erru LEN>N oc 0 T-ENDING-EXITED=
    SDT-LOAD-OUT outu LEN>N s" LOADED" T$=
@@ -386,7 +386,7 @@ create SDT-LOAD-ERR SDT-LOAD-CAP allot
    SDT-WRITE-ENTRY
    s" SDT-ENTRY$ ;package included"
    SDT-LOAD-OUT SDT-LOAD-CAP >LEN SDT-LOAD-ERR SDT-LOAD-CAP >LEN
-   20000 >MS SUBJECT:RUN {: qoutu:len qerru:len qoc :}
+   PROCESS:WAIT-FOREVER SUBJECT:RUN {: qoutu:len qerru:len qoc :}
    s" SDT-ENTRY$ ;package included"
    SDT-LOAD-OUT qoutu LEN>N SDT-LOAD-ERR qerru LEN>N qoc 0 T-ENDING-EXITED=
    SDT-LOAD-OUT qoutu LEN>N s" LOADED" T$=

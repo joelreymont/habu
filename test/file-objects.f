@@ -163,7 +163,7 @@ variable CLASS-N                        \ the class CLASS+ read
    s" --" CMD:ARG+  HB-BUILD-CORE:KERNEL$ CMD:ARG+
    modeu 0<> if mode modeu CMD:ARG+ then
    s" HABU_OUT" out outu CMD:ENV+
-   ENGINE-CANDIDATE:PATH$ 120000 >MS CMD:RUN-OUTCOME
+   ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME
    PROCESS:ENDING>RC RC>N {: rc:n :}
    CMD:OUT$ last lastu ENDS-WITH? {: done:bool :}
    done  rc 0 =  and 0= if rc SHOW then
@@ -179,7 +179,7 @@ variable CLASS-N                        \ the class CLASS+ read
 \ A's program, run in its own process: the boundary under test is the written file.
 : RUN-PROG ( CMD:command ptr u8 n -- CMD:command ) {: out:ptr outu:n :}
    CMD:RESET
-   out outu s" prog" IN$ 60000 >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
+   out outu s" prog" IN$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
    CMD:OUT$ s\" Hi\nok\n" STR=  rc 0 =  and 0= if rc SHOW then
    s" the program prints Hi and ok" LABEL  CMD:OUT$ s\" Hi\nok\n" T$=
    s" the program exits 0" LABEL  rc 0 T= ;
@@ -528,7 +528,7 @@ variable CLASS-N                        \ the class CLASS+ read
    CMD:ARG+
    s" -o" CMD:ARG+  L$ s" prog" IN$ CMD:ARG+
    s" HABU_OUT" F$ CMD:ENV+  s" TMPDIR" L$ CMD:ENV+
-   ENGINE-CANDIDATE:PATH$ 120000 >MS CMD:RUN-OUTCOME
+   ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME
    PROCESS:ENDING>RC RC>N ;
 
 \ Builds a fixture by tools/hb-build.f (TOOL-RUN), since log.f requires and creates through does>
@@ -612,7 +612,7 @@ variable CLASS-N                        \ the class CLASS+ read
 \ L's program, run in its own process: the boundary under test is the written file.
 : LOG-RUN ( CMD:command -- CMD:command )
    CMD:RESET
-   L$ s" prog" IN$ 60000 >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
+   L$ s" prog" IN$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
    CMD:ERR$ s\"  warn main: ran\n" ENDS-WITH? {: ran:bool :}
    ran  rc 0 =  and 0= if rc SHOW then
    s" the program logs MAIN's line" LABEL  ran TTRUE
@@ -678,7 +678,7 @@ variable CLASS-N                        \ the class CLASS+ read
 \ file's, and the park it wakes is its own.
 : PATH-RUN ( CMD:command -- CMD:command )
    CMD:RESET
-   L$ s" prog" IN$ 60000 >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
+   L$ s" prog" IN$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
    CMD:OUT$ s\" /prog\n" ENDS-WITH? {: own:bool :}
    own  rc 0 =  and 0= if rc SHOW then
    s" the program reports its own path" LABEL  own TTRUE
@@ -688,7 +688,7 @@ variable CLASS-N                        \ the class CLASS+ read
 \ own compiler files, so the build and the written file are the boundary under test.
 : BARE-RUN ( CMD:command -- CMD:command )
    CMD:RESET
-   L$ s" prog" IN$ 60000 >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
+   L$ s" prog" IN$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
    CMD:OUT$ s\" valued\n" STR= {: same:bool :}
    same  rc 0 =  and 0= if rc SHOW then
    s" the program prints the enum its MAIN fetched" LABEL  same TTRUE
@@ -697,7 +697,7 @@ variable CLASS-N                        \ the class CLASS+ read
 \ H's program, run in its own process: the trap ends it, so its exit code and stderr are what is checked.
 : PART-RUN ( CMD:command -- CMD:command )
    CMD:RESET
-   L$ s" prog" IN$ 60000 >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
+   L$ s" prog" IN$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
    CMD:ERR$ s\" E-BAD-TAG habu: layout tag 7 outside 0..1\n" STR= {: trapped:bool :}
    trapped  rc 85 =  and 0= if rc SHOW then
    s" the program dies with the bad-tag error" LABEL  trapped TTRUE
@@ -706,14 +706,14 @@ variable CLASS-N                        \ the class CLASS+ read
 \ scratch-main.f's program, run in its own process: the boundary under test is the written file.
 : SCRATCH-RUN ( CMD:command -- CMD:command )
    CMD:RESET
-   L$ s" prog" IN$ 60000 >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
+   L$ s" prog" IN$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
    rc 0<> if rc SHOW then
    s" a file's scratch store ends with the file" LABEL  CMD:OUT$ s\" 0\n0\n0\n0\n0\n0\n" T$= ;
 
 \ kept-main.f's program, run in its own process: the boundary under test is the written file.
 : KEPT-RUN ( CMD:command -- CMD:command )
    CMD:RESET
-   L$ s" prog" IN$ 60000 >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
+   L$ s" prog" IN$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
    rc 0<> if rc SHOW then
    s" a kept handle is refused and word docs read at build and run time count 2 and 1" LABEL
    CMD:OUT$ s\" zip refused\naio refused\ndocs 2 1\n" T$= ;
@@ -783,7 +783,7 @@ variable CLASS-N                        \ the class CLASS+ read
 \ kept-genio.f's program, run in its own process with empty stdin, which ends its REPL.
 : GENIO-RUN ( CMD:command -- CMD:command )
    CMD:RESET
-   L$ s" prog" IN$ 60000 >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
+   L$ s" prog" IN$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
    rc 0<> if rc SHOW then
    s" a device a file kept is refused in the program" LABEL  CMD:OUT$ s\" genio refused\n" T$= ;
 
@@ -792,7 +792,7 @@ variable CLASS-N                        \ the class CLASS+ read
 : PRINTS-RUN ( CMD:command ptr u8 n ptr u8 n -- CMD:command )
    {: want:ptr wantu:n label:ptr labelu:n :}
    CMD:RESET
-   L$ s" prog" IN$ 60000 >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
+   L$ s" prog" IN$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
    rc 0<> if rc SHOW then
    label labelu LABEL  CMD:OUT$ want wantu T$= ;
 
@@ -1076,7 +1076,7 @@ variable CLASS-N                        \ the class CLASS+ read
    s" --" CMD:ARG+  src srcu NEST-PATH$ CMD:ARG+
    s" -o" CMD:ARG+  L$ prog progu IN$ CMD:ARG+
    s" HABU_OUT" L$ CMD:ENV+
-   ENGINE-CANDIDATE:PATH$ 120000 >MS CMD:RUN-OUTCOME
+   ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME
    PROCESS:ENDING>RC RC>N {: rc:n :}
    rc 0<> if rc SHOW then
    s" the build exits 0" LABEL  rc 0 T=
@@ -1087,7 +1087,7 @@ variable CLASS-N                        \ the class CLASS+ read
 : NEST-RUN ( CMD:command ptr u8 n ptr u8 n ptr u8 n -- CMD:command )
    {: prog:ptr progu:n want:ptr wantu:n label:ptr labelu:n :}
    CMD:RESET
-   L$ prog progu IN$ 60000 >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
+   L$ prog progu IN$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
    CMD:OUT$ want wantu STR=  rc 0 =  and 0= if rc SHOW then
    label labelu LABEL  CMD:OUT$ want wantu T$= ;
 
