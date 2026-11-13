@@ -53,39 +53,6 @@ CAST: >I64 ( n -- i64 )
    u v <> IF 0 0= 0= EXIT THEN
    u 0 ?do  a i + c@ CORE-FOLD-C  b i + c@ CORE-FOLD-C  <> if 0 0= 0= unloop exit then  loop 0 0= ;
 
-\ PATHZ is the engine's one C-path copier: it copies (a,u) into the room bytes
-\ at d and appends the NUL, so src/core and src/habu write no terminator of
-\ their own. A path holding a 0 byte, which the OS would read short, is
-\ E-PATH-NUL. Every guard throws, never dies: every file reader opens through
-\ here and a caller must get a catchable refusal (docs/forth.md § Errors). The
-\ negative check is the memory guard: for u < 0 the copy loop never runs and
-\ `0 d u + c!` writes before the buffer. The checker models PATHZ/PATH0 with a
-\ stack effect only, so it does not see these throws.
-\ PATH-CAP is the tree's one path capacity, in bytes without the NUL: a path one
-\ layer accepts every layer accepts. src/core/cell-effects.f gives it,
-\ E-PATH-RANGE and E-PATH-NUL their rows (this file loads before the checker).
-\ The value is PATH_MAX - 1 of the smallest target: Darwin's PATH_MAX is 1024
-\ with the NUL, and lstat refused a 1024-byte path (src/lib/fs-test.f
-\ FS-TEST-PATH-CAP-EDGE); Linux keeps 1023 because the per-task FS-ABI and
-\ FS-MUT-ABI bands (src/habu/layout.f) hold path buffers of this size inside
-\ USER-REGION-END. Buffers of another size are fixed by an OS limit
-\ (src/lib/pty.f SLAVE-PATH-CAP) or a
-\ foreign ABI field (src/habu/habu1.f SPAWN-CHDIR-PATH-CAP).
-1023 constant PATH-CAP
-7134 constant E-PATH-RANGE   \ path length negative, or no room for it and its NUL
-7165 constant E-PATH-NUL     \ a path holds a 0 byte, which would end it early
-: PATHZ ( ptr u8 n ptr u8 n -- )
-   {: a:ptr u d:ptr room :}
-   u 0 < IF E-PATH-RANGE throw THEN
-   u room >= IF E-PATH-RANGE throw THEN
-   0 BEGIN dup u < WHILE
-      dup a + c@  dup 0= IF E-PATH-NUL throw THEN  over d + c!  1 +
-   REPEAT drop  0 d u + c! ;
-create PZB PATH-CAP 1 + allot
-
-: PATH0 ( ptr u8 n -- ptr u8 )
-   {: a:ptr u :}
-   a u PZB PATH-CAP 1 + PATHZ  PZB ;     \ shared scratch
 variable RDP
 
 : RD32 {: p:ptr :} ( ptr u8 -- n )

@@ -59,6 +59,7 @@ private
    CHECKER MACOS s" src/os/macos/target.f" ROW
    CHECKER X64 s" src/os/linux-x86-64/target.f" ROW
    CHECKER WASM s" src/os/wasm/target.f" ROW
+   CHECKER COMMON s" src/core/path.f" ROW
    CHECKER LINUX s" src/os/linux/layout.f" ROW
    CHECKER MACOS s" src/os/macos/layout.f" ROW
    CHECKER X64 s" src/os/linux/layout.f" ROW

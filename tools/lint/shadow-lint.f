@@ -173,6 +173,7 @@ variable IN-DEFINITION
    s" tools/lint/text.f" LINT-FILE   s" tools/lint/token.f" LINT-FILE s" tools/lint/lib.f" LINT-FILE
    s" tools/lint/shadow-lint.f" LINT-FILE
    s" src/core/util.f"      LINT-FILE   s" src/core/cell.f"      LINT-FILE
+   s" src/core/path.f"      LINT-FILE
    s" src/core/pointer-storage.f" LINT-FILE
    s" src/core/engine-error.f" LINT-FILE
    s" src/core/engine-error-effects.f" LINT-FILE

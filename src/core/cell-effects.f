@@ -2,8 +2,8 @@
 
 s" CELL" s" -- n" TRUST
 
-\ src/core/util.f's public constants, which load before the checker: without
-\ these rows a body naming one is E-UNDEFINED on a from-source prefix boot.
+\ Public constants of files that load before the checker: without these rows a
+\ body naming one is E-UNDEFINED on a from-source prefix boot.
 PRIM: PATH-CAP PE-N PE-OUT PRIM;
 PRIM: E-PATH-RANGE PE-N PE-OUT PRIM;
 PRIM: E-PATH-NUL PE-N PE-OUT PRIM;
@@ -11,7 +11,7 @@ PRIM: SCOPE-FIND-AMBIGUOUS PE-N PE-OUT PRIM;
 PRIM: E-XREF-NULL PE-N PE-OUT PRIM;
 
 \ intern-table.f's words load before the checker; a row records no throw, so the
-\ checker misses TEXT's and FIND's E-INTERN-REWIND (util.f PATHZ).
+\ checker misses TEXT's and FIND's E-INTERN-REWIND.
 PPRIM: INTERN CLEANUP PPRIM;
 PPRIM: INTERN EACH-STRING PE-Q PE-N PE-QIN ;PE-Q PE-IN PPRIM;
 PPRIM: INTERN TEXT PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-OUT PPRIM;
