@@ -49,7 +49,6 @@ private
    CHECKER COMMON s" src/core/pointer-storage.f" ROW
    CHECKER COMMON s" src/core/engine-error.f" ROW
    CHECKER COMMON s" src/core/exec-vector.f" ROW
-   CHECKER COMMON s" src/core/checker-fetch-abi.f" ROW
    CHECKER COMMON s" src/core/checker-owner-extension.f" ROW
    CHECKER COMMON s" src/core/checker-owner-abi.f" ROW
    CHECKER COMMON s" src/habu/boot-cells.f" ROW
@@ -74,14 +73,12 @@ private
    CHECKER COMMON s" src/habu/intern-table.f" ROW
    CHECKER COMMON s" src/core/checker.f" ROW
    CHECKER COMMON s" src/core/engine-error-effects.f" ROW
-   CHECKER COMMON s" src/core/lower-cert-base.f" ROW
    CHECKER COMMON s" src/core/type-schema.f" ROW
    CHECKER COMMON s" src/core/type-family.f" ROW
    CHECKER COMMON s" src/core/render.f" ROW
    CHECKER COMMON s" src/core/sumtype.f" ROW
    CHECKER COMMON s" src/core/effect.f" ROW
    CHECKER COMMON s" src/core/layout-buffer.f" ROW
-   CHECKER COMMON s" src/core/layout-valid.f" ROW
    CHECKER COMMON s" src/core/check-hook.f" ROW
    CHECKER COMMON s" src/core/cell-effects.f" ROW
    CHECKER COMMON s" src/core/declaration-transaction.f" ROW
@@ -112,7 +109,6 @@ private
    CORE COMMON s" src/core/generated-declaration-protection.f" ROW
    CORE COMMON s" src/core/layout-buffer-seal.f" ROW
    OWNER COMMON s" src/core/checker-owner-guard.f" ROW
-   SEAL COMMON s" src/core/lower-cert-seal.f" ROW
    ARGV COMMON s" src/os/script-argv.f" ROW
    INTERNAL COMMON s" src/core/internal-mark.f" ROW
    TOPROW COMMON s" src/core/top-row.f" ROW
