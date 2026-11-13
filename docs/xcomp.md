@@ -219,7 +219,7 @@ either side, because the merged engine is the ARM64 seed.
 ### The OS seam
 
 `src/os/linux-x86-64/` is a seam of the same shape as `src/os/linux/`
-(Porting). Both Linux targets share `src/os/linux/layout-constants.f`, so
+(Porting). Both Linux targets share `src/os/linux/layout.f`, so
 captured DATA pointers need no translation between the two Linux hosts. Seam
 register arguments are x86-64 register numbers moving through an
 upward-growing data stack, and the seam's instruction stencils are byte strings

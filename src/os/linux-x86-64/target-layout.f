@@ -2,7 +2,7 @@
 \ package X64LAYOUT.
 \ The host's layout names the host's own DATA (a macOS host maps it at
 \ $44000000000), and the engine refuses a second CODE-OFF beside it, so the
-\ Linux layout constants (src/os/linux/layout-constants.f) are replayed here,
+\ Linux layout constants (src/os/linux/layout.f) are replayed here,
 \ privately, once for every x86-64 file that builds against them: the image
 \ writer (elf.f), the boot (src/habu/boot-x64.f), the kernel
 \ (src/habu/kernel-x64.f), the record layout (src/habu/link-x64.f) and the
@@ -23,7 +23,7 @@
 \ opens a part of it, so this file loads at top level.
 
 package X64LAYOUT
-s" src/os/linux/layout-constants.f" included
+s" src/os/linux/layout.f" included
 public
 DATA-VA constant DATA-VA
 DATA-SIZE constant DATA-SIZE

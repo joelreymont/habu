@@ -59,10 +59,8 @@ private
    CHECKER MACOS s" src/os/macos/target.f" ROW
    CHECKER X64 s" src/os/linux-x86-64/target.f" ROW
    CHECKER WASM s" src/os/wasm/target.f" ROW
-   CHECKER LINUX s" src/os/linux/layout-constants.f" ROW
    CHECKER LINUX s" src/os/linux/layout.f" ROW
    CHECKER MACOS s" src/os/macos/layout.f" ROW
-   CHECKER X64 s" src/os/linux/layout-constants.f" ROW
    CHECKER X64 s" src/os/linux/layout.f" ROW
    CHECKER COMMON s" src/habu/stack-abi.f" ROW
    \ WPROF reads STACK-ABI, and layout.f reads the target's DATA-SIZE.

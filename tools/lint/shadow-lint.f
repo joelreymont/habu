@@ -187,7 +187,6 @@ variable IN-DEFINITION
    s" src/arch/arm64/mnem.f" LINT-FILE  s" src/os/macos/layout.f" LINT-FILE
    s" src/os/macos/sys.f"   LINT-FILE
    s" src/os/macos/repl-term.f" LINT-FILE
-   s" src/os/linux/layout-constants.f" LINT-FILE
    s" src/os/linux/layout.f" LINT-FILE   s" src/os/linux/sys.f"   LINT-FILE
    s" src/os/env-base.f"    LINT-FILE   s" src/os/script-argv.f" LINT-FILE
    s" src/habu/bundle-argv.f" LINT-FILE
