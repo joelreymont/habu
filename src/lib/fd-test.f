@@ -1,6 +1,6 @@
 \ fd-test.f - close-on-exec pipes, exact reads and full writes over real pipes,
-\ a write with SIGPIPE held off, how far a tried write got; a temp file cut back and appended to, and a
-\ directory synced.
+\ a write with SIGPIPE held off, how far a tried write got, one write that never
+\ waits; a temp file cut back and appended to, and a directory synced.
 \ Run: bin/hb --load src/lib/fd-test.f
 \ A pipe holds far less than PAYLOAD, so one read answers short and READ-EXACT
 \ loops; a blocking write answers short only when a caught signal lands after
@@ -35,6 +35,7 @@ $400000 constant PAYLOAD          \ 4 MiB: 64 default Linux pipes, and past Linu
 -1 constant FULL-MARK             \ OUTCOME's answer for `full`
 2 constant CHILD-MISMATCH         \ a forked reader's exit code when the bytes are wrong
 5000 constant EXEC-WAIT-MS        \ how long a read end waits for end of file past an exec
+200000 constant NONBLOCK-SIZE     \ bytes, more than a pipe holds
 
 TYPED-VARIABLE SRC SPAN:span<u8>
 TYPED-VARIABLE DST SPAN:span<u8>
@@ -148,6 +149,30 @@ variable WROTE-IN                 \ WROTE>N of a write WITH-NOSIGPIPE's quotatio
    r 0 >MS PROCESS:POLL-IN COUNT>N 0 T=
    w FD>N 4 flags fcntl 0 T=
    r FD>N close
+   w FD>N close ;
+
+: NONBLOCK-BROKEN ( -- )
+   ERR-FD @ >FD s" x" FD:TRY-WRITE drop ;
+
+: NONBLOCK-NEGATIVE ( -- )
+   ERR-FD @ >FD s" x" drop -1 FD:TRY-WRITE drop ;
+
+\ One write to a full non-blocking pipe answers 0 rather than waiting, and
+\ moves bytes again once the reader has taken what was there.
+: NONBLOCK-WRITE ( -- )
+   FD:PIPE-PAIR {: r:fd w:fd :}
+   w NONBLOCK!
+   SRC @ $ drop {: src:ptr :}
+   w src NONBLOCK-SIZE FD:TRY-WRITE {: k:n :}
+   k 0 > TTRUE
+   k NONBLOCK-SIZE < TTRUE
+   w src k + NONBLOCK-SIZE k - FD:TRY-WRITE 0 T=
+   r DST @ k TAKE READ-EXACT OUTCOME FULL-MARK T=
+   w src k + NONBLOCK-SIZE k - FD:TRY-WRITE 0 > TTRUE
+   r FD>N close
+   w FD>N ERR-FD !
+   w [: [: NONBLOCK-BROKEN ;] E-FS-IO TTHROWSQ ;] WITH-NOSIGPIPE
+   [: NONBLOCK-NEGATIVE ;] E-SPAN-LENGTH TTHROWSQ
    w FD>N close ;
 
 \ A bounded write empties its whole payload into a slow reader in order. The
@@ -432,7 +457,7 @@ variable WROTE-IN                 \ WROTE>N of a write WITH-NOSIGPIPE's quotatio
 
 \ TRY-WRITE-FULL answers `all` on an ordinary write, `part` once a full
 \ non-blocking pipe refuses after taking bytes, and `none` once the reader is gone.
-: TRY-WRITE ( -- )
+: FULL-WRITE-OUTCOMES ( -- )
    FD:PIPE-PAIR {: r:fd w:fd :}
    w s" abc" TRY-WRITE-FULL WROTE>N ALL-MARK T=
    r SMALL 3 TAKE READ-EXACT OUTCOME FULL-MARK T=
@@ -471,6 +496,7 @@ variable WROTE-IN                 \ WROTE>N of a write WITH-NOSIGPIPE's quotatio
    SHORT-WRITE-PREMISE
    FULL-WRITE-UNDER-STORM
    BOUNDED-EDGES
+   NONBLOCK-WRITE
    BOUNDED-SUCCESS
    BOUNDED-TIMEOUT
    BOUNDED-BROKEN
@@ -478,7 +504,7 @@ variable WROTE-IN                 \ WROTE>N of a write WITH-NOSIGPIPE's quotatio
    DIR-SYNC
    ERRORS
    HELD-WRITE
-   TRY-WRITE
+   FULL-WRITE-OUTCOMES
    REFUSED-MARK
    SRC @ FREE-SPAN
    DST @ FREE-SPAN
