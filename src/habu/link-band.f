@@ -250,32 +250,6 @@ variable UNSAFE-COUNT
    NO-PART ;
 
 
-\ Whether machine a's emission bytes b, s of them, hold at site the compile's unplaced call
-\ of kind, by a's part of LINKER.
-: CALL? ( CTARGET:arch ptr u8 n n n -- bool )
-   {: a:CTARGET:arch b:ptr s:n site:n kind:n :}
-   a CTARGET-ARCH:AARCH64 CTARGET-ARCH:EQ if b s site kind ARM64:CALL? exit then
-   a CTARGET-ARCH:WASM CTARGET-ARCH:EQ if b s site kind WASM:CALL? exit then
-   NO-PART ;
-
-
-\ Whether machine a's emission bytes b, s of them, hold at site the compile's does> slot,
-\ by a's part of LINKER.
-: SLOT? ( CTARGET:arch ptr u8 n n -- bool )
-   {: a:CTARGET:arch b:ptr s:n site:n :}
-   a CTARGET-ARCH:AARCH64 CTARGET-ARCH:EQ if b s site ARM64:SLOT? exit then
-   a CTARGET-ARCH:WASM CTARGET-ARCH:EQ if b s site WASM:SLOT? exit then
-   NO-PART ;
-
-
-\ Whether s bytes can be an emission of machine a, by a's part of LINKER.
-: SIZE? ( CTARGET:arch n -- bool )
-   {: a:CTARGET:arch s:n :}
-   a CTARGET-ARCH:AARCH64 CTARGET-ARCH:EQ if s ARM64:SIZE? exit then
-   a CTARGET-ARCH:WASM CTARGET-ARCH:EQ if s WASM:SIZE? exit then
-   NO-PART ;
-
-
 \ Emission e's address site k's value and whether it holds one, read as the emission's
 \ machine encodes it.
 : SITE-VALUE ( n n -- n bool )

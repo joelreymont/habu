@@ -346,8 +346,8 @@ variable CLASS-N                        \ the class CLASS+ read
    STATE-W STATE-W-U @ s\" same: compiled 3 0\n" CONTAINS? TTRUE
    s" the held builds compile 2, 2 and 0 files" LABEL
    STATE-W STATE-W-U @ s\" held: compiled 2 2 0\n" CONTAINS? TTRUE
-   s" the crafted builds compile 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 and 0 files" LABEL
-   STATE-W STATE-W-U @ s\" crafted: compiled 1 1 1 1 1 1 1 1 1 1 1 1 0\n" CONTAINS? TTRUE
+   s" the crafted builds compile 1, 1, 1, 1, 1, 1, 1 and 0 files" LABEL
+   STATE-W STATE-W-U @ s\" crafted: compiled 1 1 1 1 1 1 1 0\n" CONTAINS? TTRUE
    s" the words builds compile 5, 4, 0, 2, 1, 1 and 0 files" LABEL
    STATE-W STATE-W-U @ s\" words: compiled 5 4 0 2 1 1 0\n" CONTAINS? TTRUE
    s" the ran builds compile 4, 1, 3, 0, 3 and 0 files" LABEL

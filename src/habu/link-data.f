@@ -75,13 +75,6 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 : LABEL-OFFSET ( ptr n -- n ) A64ICODE:LABEL@ ARM64:OFFSET ;
 
 
-\ The image is the space's runs: its length is the space's, not the distance
-\ between its labels.
-: DATA-IMAGE-AT ( -- n ) LIMAGE LABEL-OFFSET ;
-: DATA-LIST-AT ( -- n ) LLIST LABEL-OFFSET ;
-: DATA-LIST-N ( -- n ) LLIST-END LABEL-OFFSET DATA-LIST-AT - 8 / ;
-
-
 \ A host address in the open space at its DATA-VA address: the resolver code's
 \ data address sites get.
 : DATA-ADDRESS ( n -- n ) DATA-OFFSET  ARM64:DATA-VA + ;

@@ -247,10 +247,7 @@ variable PRIVS-N
 DYNAMIC-BUFFER GRANTS n              \ the built packages a checked piece gives a private wordlist, by record
 variable GRANTS-N
 DYNAMIC-BUFFER EM-OFFS n             \ its emissions' offsets in OBJECT, each at its S
-variable LAST-CALL                   \ the checked emission's last call row's site, -1 before its first (EMISSION-CK)
-variable LAST-ADDR                   \ and its last address row's site, -1 before its first
 DYNAMIC-BUFFER FILE-ROWS n           \ its FILES row k, from 1, as that file's BUILT row index
-DYNAMIC-BUFFER DOES-AT n             \ its KIND-DOES entries: the offset field's place in OBJECT, the emission
 DYNAMIC-BUFFER HOST-CALLS n          \ the host copy's call sites out of hb's region
 variable HOST-CALLS-N
 DYNAMIC-BUFFER ALIASES n             \ the linked file's aliases, each its record index, then its source's
@@ -482,7 +479,7 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    ANCHORS-RELEASE  ORDER-RELEASE  EXTS-RELEASE  PICKED-RELEASE  EXT-ROWS-RELEASE  BUILT-EXTS-RELEASE  ROW-EXTS-RELEASE
    ENTRY-OFFS-RELEASE  REC-KINDS-RELEASE  EM-RECS-RELEASE  REC-EMS-RELEASE  PRIVS-RELEASE  GRANTS-RELEASE  EM-OFFS-RELEASE
    FILE-ROWS-RELEASE
-   DOES-AT-RELEASE  HOST-CALLS-RELEASE  HOST-ADDRS-RELEASE  ALIASES-RELEASE
+   HOST-CALLS-RELEASE  HOST-ADDRS-RELEASE  ALIASES-RELEASE
    BUILT-PATHS-RELEASE  LOAD-PATHS BUF:DISPOSE  KEY-PATHS BUF:DISPOSE  OBJ-PATHS BUF:DISPOSE  OBJ-NAME BUF:DISPOSE  CODE-COPY BUF:DISPOSE  OLD-RECS BUF:DISPOSE  OLD-SPACE BUF:DISPOSE
    LATE BUF:DISPOSE  PRIOR BUF:DISPOSE  OBJECT BUF:DISPOSE  REQ-PATH BUF:DISPOSE  INPUTS BUF:DISPOSE
    ENTRY-ROOT BUF:DISPOSE  EXIT-ROOT BUF:DISPOSE  PART-READS BUF:DISPOSE  PART-TEXTS BUF:DISPOSE
@@ -1895,7 +1892,6 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
    calls 0 ?do
       e i NSHADOW:PATCH-CALL? 0= if
          e i NSHADOW:CALL-KIND@ {: kind:n :}
-         kind NEMIT:CALL <>  kind NEMIT:TAIL <>  and if E-COMP-STATE throw then
          e i NSHADOW:CALL-SITE@ PIECES U64+
          kind NEMIT:TAIL = if 1 else 0 then PIECES U64+
          e i NSHADOW:CALL-TARGET@ {: t:n :}
@@ -1982,10 +1978,6 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
       2 +loop
    then
    NSHADOW:EMISSIONS FILE-EM @ ?do i EM-CODE+ loop ;
-
-\ The bytes the file's compile laid, [FILE-DP, FILE-END).
-: FILE-DATA ( -- ptr u8 n )
-   NULL-PTR BYTE-VIEW FILE-DP @ +  FILE-END @ FILE-DP @ - ;
 
 \ The distance from NULL-PTR of a row's cell, when it lies whole in the file's data.
 : ROW-AT ( n -- n ) ROW-OFF BASE @ + ;
@@ -2745,11 +2737,9 @@ variable EMS-N                        \ its emissions, E
 variable DATA-AT                      \ the offset in OBJECT of DATA's D
 variable EXTS-AT                      \ of its X
 variable PIECE-AT                     \ the offset in OBJECT of the part's piece (HEADER-CK)
-\ Only the check uses these and DOES-AT.
+\ Only the check uses these.
 variable FILES-N                      \ its FILES rows
 variable DEFS-N                       \ the KIND-DEF entries read so far
-variable DOES-N                       \ the KIND-DOES entries read so far, DOES-AT's rows
-variable LAST-EM                      \ the entry just read's emission when it is KIND-DEF, else -1
 
 \ The reader over OBJECT: [RD-AT, RD-END), and a failure that sticks until RD-OPEN.
 \ A failure also empties the window, so a later read fails on its bounds alone.
@@ -3263,37 +3253,29 @@ variable RD-END
    HEADER-BYTES RD-EQ  RD-U64 {: inputu:n :}
    inputu STAMP-BYTES 24 + <  inputu len HEADER-BYTES - >  or if BAD exit then
    HEADER-BYTES inputu + {: files-at:n :}
-   RD-U64 RD-U64 {: off:n refsu:n :}
+   8 RD-SKIP RD-U64 {: refsu:n :}
    refsu 0<  refsu FILES-ROW-BYTES mod 0<>  or  refsu len files-at - >  or if BAD exit then
-   off  refsu 0<> if files-at else 0 then  <> if BAD then
    files-at refsu + {: reqs-at:n :}
-   RD-U64 RD-U64 {: roff:n requ:n :}
+   8 RD-SKIP RD-U64 {: requ:n :}
    requ 0<  requ len reqs-at - >  or if BAD exit then
-   roff  requ 0<> if reqs-at else 0 then  <> if BAD then
    reqs-at requ + {: names-at:n :}
-   RD-U64 RD-U64 {: noff:n nmu:n :}
+   8 RD-SKIP RD-U64 {: nmu:n :}
    nmu 0<  nmu 8 mod 0<>  or  nmu len names-at - >  or if BAD exit then
-   noff  nmu 0<> if names-at else 0 then  <> if BAD then
    names-at nmu + {: reached-at:n :}
-   RD-U64 RD-U64 {: hoff:n rchu:n :}
+   8 RD-SKIP RD-U64 {: rchu:n :}
    rchu 0<  rchu 8 mod 0<>  or  rchu len reached-at - >  or if BAD exit then
-   hoff  rchu 0<> if reached-at else 0 then  <> if BAD then
    reached-at rchu + {: paths-at:n :}
-   RD-U64 RD-U64 {: poff:n pthu:n :}
+   8 RD-SKIP RD-U64 {: pthu:n :}
    pthu 0<  pthu len paths-at - >  or if BAD exit then
-   poff  pthu 0<> if paths-at else 0 then  <> if BAD then
    paths-at pthu + {: words-at:n :}
-   RD-U64 RD-U64 {: woff:n wordsu:n :}
+   8 RD-SKIP RD-U64 {: wordsu:n :}
    wordsu 0<  wordsu WORD-ROW-BYTES mod 0<>  or  wordsu len words-at - >  or if BAD exit then
-   woff  wordsu 0<> if words-at else 0 then  <> if BAD then
    words-at wordsu + {: exts-at:n :}
-   RD-U64 RD-U64 {: xoff:n extsu:n :}
+   8 RD-SKIP RD-U64 {: extsu:n :}
    extsu 0<  extsu USED-EXT-BYTES mod 0<>  or  extsu len exts-at - >  or if BAD exit then
-   xoff  extsu 0<> if exts-at else 0 then  <> if BAD then
    exts-at extsu + {: times-at:n :}
-   RD-U64 RD-U64 {: toff:n timesu:n :}
+   8 RD-SKIP RD-U64 {: timesu:n :}
    timesu 0<  timesu len times-at - >  or if BAD exit then
-   toff times-at <> if BAD then
    times-at timesu + {: pieces-at:n :}
    pieces-at RD-EQ  len pieces-at - RD-EQ
    INPUT-STAMP STAMP-BYTES RD-SAME
@@ -3461,19 +3443,10 @@ variable RD-END
    n XREF-REC XREF:SEALED? if BAD then ;
 
 
-\ An entry's flags, which RECORD+ writes without the name length and EXT.
-: FLAGS-CK ( -- ) RD-U64  DNAME-LEN-MASK DNAME-EXT or  and 0<> if BAD then ;
-
-
-\ The wordlist role (WORDLIST+) of an entry of the kind: 2 for KIND-PACKAGE, 5 for KIND-TYPE,
-\ else 0, 1, or 3 or 4 then its package; a role 4 package has a private wordlist, as ROLE-WID
-\ requires.
-: ROLE-CK ( n -- )
-   {: kind:n :}
+\ An entry's wordlist role (WORDLIST+), then its package after a role 3 or 4; a role 4 package
+\ has a private wordlist, as ROLE-WID requires.
+: ROLE-CK ( -- )
    RD-U64 {: role:n :}
-   role 0<  role 5 >  or if BAD exit then
-   role 2 =  kind KIND-PACKAGE =  xor if BAD exit then
-   role 5 =  kind KIND-TYPE =  xor if BAD exit then
    role 3 = if PKG-REF-CK 2drop exit then
    role 4 <> if exit then
    PKG-REF-CK {: file:n n:n :}
@@ -3489,17 +3462,7 @@ variable RD-END
 \ A package entry's own-private flag; a 1 adds the package, the next record, to PRIVS.
 : PKG-FLAG-CK ( -- )
    RD-U64 {: f:n :}
-   f 0<>  f 1 <>  and if BAD then
    f 1 = if 0 RECS-N @ PRIV+ then ;
-
-
-\ A does record's entry offset (DOES-ENTRY-CK) into its definer's emission, the KIND-DEF entry's
-\ just before it.
-: DOES-CK ( -- )
-   DOES-N @ 1 + 2 * DOES-AT-RESERVE
-   RD-AT @ DOES-N @ 2 * DOES-AT !  LAST-EM @ DOES-N @ 2 * 1 + DOES-AT !  1 DOES-N +!
-   LAST-EM @ 0< if BAD then
-   8 RD-SKIP ;
 
 
 \ A cell's kind, 0-2 (ROW-KIND), and its value's reference (CELL-REF+).
@@ -3513,14 +3476,11 @@ variable RD-END
 
 
 \ A definition's dispatch cell (DISPATCH+): none, or the start of a word's extent of this part
-\ (OWN-EXT) of at least a cell, at an offset from FILE-DP that is a multiple of 8.
+\ (OWN-EXT).
 : DISPATCH-CK ( -- )
-   RD-REF {: tag:n x:n y:n z:n w:n :}
+   RD-REF drop rot drop {: tag:n y:n z:n :}
    tag 5 = if exit then
-   tag 3 <>  x 0<>  or  w 0<>  or if BAD exit then
-   1 y z OWN-EXT {: e:n :}
-   e 0< if BAD exit then
-   e 9 EXT @ 8 <  e 0 EXT @ FILE-DP @ - 7 and 0<>  or if BAD then ;
+   1 y z OWN-EXT 0< if BAD then ;
 
 
 \ Entry i: its offset into ENTRY-OFFS, then its fields (RECORD+, LATE+, SEAL+), each record it
@@ -3529,7 +3489,6 @@ variable RD-END
    {: i:n :}
    RD-AT @ i ENTRY-OFFS !
    RD-U64 {: kind:n :}
-   kind 0<  kind KIND-TYPE >  or if BAD exit then
    kind KIND-PRIVATE = if
       \ A package holding a private wordlist gains none (INTERPRETER:PACKAGE-PRIVATE refuses it).
       PKG-REF-CK {: file:n n:n :}
@@ -3539,10 +3498,10 @@ variable RD-END
             file 0<> if n GRANT+ then
          then
       then
-      -1 LAST-EM ! exit
+      exit
    then
-   kind KIND-SEALED = if SEALED-CK  -1 LAST-EM ! exit then
-   NAME-CK  FLAGS-CK  kind ROLE-CK
+   kind KIND-SEALED = if SEALED-CK exit then
+   NAME-CK  8 RD-SKIP  ROLE-CK
    kind KIND-DEF = if EM-NAMED else -1 then {: em:n :}
    kind KIND-DEF =  GOOD? and if
       RECS-N @ em EM-RECS !
@@ -3551,8 +3510,7 @@ variable RD-END
    kind KIND-DEF = if DISPATCH-CK then
    kind KIND-PACKAGE = if PKG-FLAG-CK then
    kind KIND-ALIAS = if RD-U64 RD-U64 RD-U64 RECS-N @ ID-REF-CK drop then
-   kind KIND-DOES = if DOES-CK then
-   em LAST-EM !
+   kind KIND-DOES = if 8 RD-SKIP then
    kind RECS-N @ REC-KINDS !  em RECS-N @ REC-EMS !
    1 RECS-N +! ;
 
@@ -3560,7 +3518,7 @@ variable RD-END
 \ A piece's entries (PIECE+); 32 bytes is a KIND-PRIVATE or KIND-SEALED entry's size.
 : ENTRIES-CK ( -- )
    32 RD-COUNT {: n:n :}
-   n ENTRIES-N !  0 RECS-N !  0 DEFS-N !  0 DOES-N !  0 PRIVS-N !  -1 LAST-EM !
+   n ENTRIES-N !  0 RECS-N !  0 DEFS-N !  0 PRIVS-N !
    n 0 > if
       n ENTRY-OFFS-RESERVE  n REC-KINDS-RESERVE  n COPIES * EM-RECS-RESERVE  n REC-EMS-RESERVE  n 2 * PRIVS-RESERVE
    then
@@ -3573,55 +3531,30 @@ variable RD-END
    1 and 1 = if ODD-ARCH @ else EVEN-ARCH @ then ;
 
 
-\ A call row of emission top, s bytes; its site, above the row before it, holds the compile's
-\ unplaced call of the row's kind. A record target precedes top's own: a body naming its word is
-\ E-UNDEFINED. A function target may be top's own, as a Wasm RECURSE's row is.
-: CALL-CK ( n n -- )
-   {: s:n top:n :}
-   RD-U64 {: site:n :}
-   site LAST-CALL @ <= if BAD then
-   site LAST-CALL !
-   RD-U64 {: kind:n :}
-   kind 0<>  kind 1 <>  and if BAD then
-   GOOD? if
-      top EM-ARCH  top EM-OFFS @ 16 + OBJ-PTR  s  site
-      kind 0= if NEMIT:CALL else NEMIT:TAIL then  CALL?
-      0= if BAD then
-   then
+\ A call row of emission top: its site, its kind and its target. A record target precedes top's
+\ own: a body naming its word is E-UNDEFINED. A function target may be top's own, as a Wasm
+\ RECURSE's row is.
+: CALL-CK ( n -- )
+   {: top:n :}
+   16 RD-SKIP
    RD-REF top  top EM-RECS @  SITE-REF-CK ;
 
 
-\ An address row of an emission of s bytes, numbered top, its site above the row before it: its
-\ site holds an address value of the row's kind in the emission's machine's encoding. A record
+\ An address row of emission top: its site, its kind, 0 code or 1 data, and its target. A record
 \ target precedes top's own, as a call's.
-: ADDR-CK ( n n -- )
-   {: s:n top:n :}
-   RD-U64 {: site:n :}
-   site LAST-ADDR @ <= if BAD then
-   site LAST-ADDR !
-   RD-U64 {: kind:n :}
-   kind 0<>  kind 1 <>  and if BAD then
-   GOOD? if
-      top EM-ARCH  top EM-OFFS @ 16 + OBJ-PTR  s  site
-      kind 0= if NEMIT:ADDR-CODE else NEMIT:ADDR-DATA then  ADDRESS@ nip
-      0= if BAD then
-   then
-   kind 0= if RD-REF top  top EM-RECS @  SITE-REF-CK exit then
-   kind 1 = if RD-REF DATA-REF-CK exit then
-   BAD ;
+: ADDR-CK ( n -- )
+   {: top:n :}
+   8 RD-SKIP
+   RD-U64 0= if RD-REF top  top EM-RECS @  SITE-REF-CK exit then
+   RD-REF DATA-REF-CK ;
 
 
-\ The does> slot: -1, or its site, past the last call row and holding the machine's unpatched slot, and
-\ its target: none while no clause patched it, else the record of a does> clause, checked as a call's.
-: SLOT-CK ( n n -- )
-   {: s:n top:n :}
+\ The does> slot: -1, or its site and its target: none while no clause
+\ patched it, else the record of a does> clause, checked as a call's.
+: SLOT-CK ( n -- )
+   {: top:n :}
    RD-U64 {: p:n :}
    p -1 = if exit then
-   p LAST-CALL @ <= if BAD then
-   GOOD? if
-      top EM-ARCH  top EM-OFFS @ 16 + OBJ-PTR  s  p  SLOT?
-      0= if BAD exit then
-   then
    RD-REF {: tag:n x:n y:n z:n w:n :}
    tag 5 = if exit then
    tag 0 <> if BAD exit then
@@ -3639,43 +3572,12 @@ variable RD-END
    {: e:n :}
    RD-AT @ e EM-OFFS !
    RD-U64 {: s:n :}
-   e EM-ARCH s SIZE? 0= if BAD then
-   RD-U64 {: r:n :}
-   r 0<  r s >  or if BAD then
+   8 RD-SKIP
    s RD-SKIP
-   8 RD-COUNT {: f:n :}
-   f 1 < if BAD then
-   -1  f 0 ?do
-      RD-U64 {: off:n :}
-      dup off >=  off s >=  or if BAD then
-      drop off
-   loop drop
-   -1 LAST-CALL !  -1 LAST-ADDR !
-   32 RD-COUNT 0 ?do s e CALL-CK loop
-   32 RD-COUNT 0 ?do s e ADDR-CK loop
-   s e SLOT-CK ;
-
-
-\ Each KIND-DOES entry's offset: function j's offset of its definer's emission e, j from 1 to
-\ F - 1, an ENTRY@ as RECORD+ writes it. A host copy has as many functions (PAIRS-CK), so the
-\ clause is its function j too.
-: DOES-ENTRY-CK ( -- )
-   GOOD? 0= if exit then
-   DOES-N @ 0 ?do
-      i 2 * 1 + DOES-AT @  i 2 * DOES-AT @ OBJ@ {: e:n off:n :}
-      false  e OWN-FUNS 1 ?do  e i OWN-FUN-AT off =  or  loop
-      0= if BAD unloop exit then
-   loop ;
-
-
-\ A cross object's two copies of a definition have as many functions: both walks emit the same
-\ ones, a callback's stub last, and linking pairs them (NSHADOW:SOURCE-FUNS).
-: PAIRS-CK ( -- )
-   GOOD? 0= if exit then
-   COPIES 2 = 0= if exit then
-   EMS-N @ 0 ?do
-      i OWN-FUNS  i 1 + OWN-FUNS  <> if BAD unloop exit then
-   2 +loop ;
+   8 RD-COUNT 8 * RD-SKIP
+   32 RD-COUNT 0 ?do e CALL-CK loop
+   32 RD-COUNT 0 ?do e ADDR-CK loop
+   e SLOT-CK ;
 
 
 \ E, then each emission (CODE+); 60 bytes is a 4-byte emission of one function. Every emission
@@ -3685,9 +3587,7 @@ variable RD-END
    n EMS-N !
    n DEFS-N @ COPIES * <> if BAD then
    n 0 > if n EM-OFFS-RESERVE then
-   n 0 ?do i EMISSION-CK loop
-   PAIRS-CK
-   DOES-ENTRY-CK ;
+   n 0 ?do i EMISSION-CK loop ;
 
 
 \ A cell row of the extent of u bytes at offset s in DATA: its cell inside the extent, at an
@@ -4834,7 +4734,7 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
    NEMIT:SEAL  patch ;
 
 
-\ The function of this object's emission e, from 1, that starts off bytes in (DOES-ENTRY-CK).
+\ The function of this object's emission e, from 1, that starts off bytes in.
 : DOES-FUN ( n n -- n )
    {: e:n off:n :}
    e OWN-FUNS 1 ?do
