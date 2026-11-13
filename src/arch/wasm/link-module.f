@@ -58,6 +58,7 @@ variable KERNEL-N                    \ the kernel routines this link added
 
 
 \ Emission e's function holding byte offset at.
+\ Function 0 exists: every T0 emission opens at least one unit.
 : HOLDER ( n n -- n )
    {: e:n at:n :}
    0

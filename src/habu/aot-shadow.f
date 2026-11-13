@@ -75,13 +75,6 @@ variable SH-NATIVE-READY
    s" , which the capture does not ship" type cr
    s" aot-capture: a shadow site names a record the capture strips" 74 die ;
 
-\ The Wasm reader (src/arch/wasm/capture.f) carries no anonymous routine, so it
-\ refuses a live one no shipped row carries.
-: SH-STRIPPED ( -- )
-   s" aot-capture: the shadow routine of " type SH-REC @ ACAP-NAME.
-   s"  is live, and the capture ships neither its record nor one sharing its emission" type cr
-   s" aot-capture: a live shadow routine no shipped record carries" 74 die ;
-
 : SH-WINDOW? ( n -- bool ) {: idx:n :}
    idx ACAP-W-R0 @ >= idx ACAP-W-R1 @ < and ;
 
@@ -447,22 +440,6 @@ CELL 2 * constant SH-TRAILER-BYTES
 : SH-KEEP-PRIVATE ( -- )
    NSHADOW:OPEN? 0= if exit then
    NSHADOW:RECORDS 0 ?do i NSHADOW:RECORD@ SH-KEEP-ONE loop ;
-
-: SH-OWNER? ( n n -- bool ) {: r:n e:n :}
-   r 0 <  r NSHADOW:RECORDS >= or if false exit then
-   r NSHADOW:EMISSION@ e <> if false exit then
-   r NSHADOW:RECORD@ SH-SHIPPED 0 >= ;
-
-\ The Wasm reader's map row r files a record the capture ships no row for. A
-\ shipped row over its emission carries its routine; otherwise a dead one goes
-\ with its code, and a live one is refused. Stripped and retired alike, a record
-\ is live when the capture's shadow reach reaches its body from live code
-\ (ACAP-SHADOW-LIVE?), not when ARM64 retention keeps it: that retention scans
-\ every gap as a root, and a retired body is a gap, live or not.
-: SH-STRIP ( n -- ) {: r:n :}
-   r NSHADOW:EMISSION@ {: e:n :}
-   r 1- e SH-OWNER?  r 1+ e SH-OWNER? or if exit then
-   r NSHADOW:RECORD@ ACAP-SHADOW-LIVE? if SH-STRIPPED then ;
 
 : SH-QCOPY ( n -- ) {: e:n :}
    SH-QN @ 0 ?do

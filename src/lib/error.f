@@ -815,8 +815,8 @@ require src/lib/prelude.f
 \
 \ Refusals of the shadow chain's stages and of publication keep their own
 \ names.
--8680 constant E-NSHADOW-STATE  \ a shadow opened over an open one or natively with no address rewriter installed, or its binding, an emission or a row asked of none
--8681 constant E-NSHADOW-ROW    \ a record, emission or row index at or past what the shadow holds, or a `does>` clause function the taken emission does not have or that starts where the definer enters
+-8680 constant E-NSHADOW-STATE  \ a shadow opened over an open one or natively with no address rewriter installed, or its binding, a count or a source function asked of none
+-8681 constant E-NSHADOW-ROW    \ a patched record the shadow does not hold, a taken emission whose bytes or rows are not as stated, or a `does>` clause function the taken emission does not have or that starts where the definer enters
 -8682 constant E-NSHADOW-TARGET \ an emission taken for another machine than the one the shadow's binding names
 
 \ The trap terminator's message: -8640..-8649
