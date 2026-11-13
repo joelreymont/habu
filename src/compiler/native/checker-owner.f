@@ -123,11 +123,15 @@ public
 : JSON-REPORTED? ( -- bool )
    SOURCE-JSON-REPORTED ;
 
+private
+
 \ A clause is scanned in its parent's regime (BIND-REGIME!, set by the parent's
 \ scan): unjudged under a TRUSTED: or hookless parent, so it binds and
 \ authorizes calls as that parent's body does (checker.f CHECK-DOES-UNJUDGED!).
 : DOES-UNJUDGED ( ptr u8 n ptr u8 n -- n )
    SOURCE-DOES-UNJUDGED ;
+
+public
 
 : DOES-CHECK ( ptr u8 n ptr u8 n -- n )
    BIND-UNJUDGED @ 0<> if DOES-UNJUDGED exit then

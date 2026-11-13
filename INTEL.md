@@ -1,7 +1,7 @@
 # INTEL.md — the Linux x86-64 backend
 
 The entry point for the lane that finishes the Linux x86-64 backend. The seam
-rules are in [docs/porting.md](docs/porting.md). Its open dots sit under the umbrella
+rules are in [docs/xcomp.md](docs/xcomp.md#porting) "Porting". Its open dots sit under the umbrella
 `habu-campaign-c6-targets-86bb56bb` (`dot tree`).
 
 ## Mission

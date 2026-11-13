@@ -184,8 +184,7 @@ builder this section names, `tools/native-build.f`, is gone.
 A second architecture touches five layers: the assembler
 (`src/arch/x86-64/`), the engine primitive bodies (`src/habu/kernel-x64.f`,
 under the rows of `src/habu/prims.f`), the tier 0 emitter
-(`src/habu/t0-x64.f`), the OS seam (`src/os/linux-x86-64/`, the same file set
-and word names as `src/os/linux/`) and the runtime ABI (SysV FFI, task entry,
+(`src/habu/t0-x64.f`), the OS seam (`src/os/linux-x86-64/`) and the runtime ABI (SysV FFI, task entry,
 the same guard-page model). Tier 0's front end (`src/habu/t0.f`) is
 target-free: it emits through the emitter the target selects.
 
@@ -204,9 +203,9 @@ target-free: it emits through the emitter the target selects.
 ### The capture's reach
 
 A host word's names are bound as it compiles, so its target routine cannot be
-lowered later from the tape: `src/compiler/native/shadow.f` compiles it for the
-target from the same frozen HIR module in a nested context, and a shadow
-refusal refuses the definition.
+lowered later from the tape: while the shadow (`src/compiler/native/shadow.f`)
+is open, `src/habu/t0.f` walks the same tape for the target before the host,
+and a shadow refusal refuses the definition.
 
 The capture carries the shadow's map (`src/habu/aot-shadow.f`). Code bytes
 carry no host address: call fields stay zero, a code literal holds 0, a DATA

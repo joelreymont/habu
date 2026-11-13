@@ -56,7 +56,7 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
 \ (src/arch/x86-64/rt.f G-PUSH, G-POP). The vregs are rcx rdx rsi rdi r8-r11;
 \ rax is this file's temporary and holds no value between two of its words. A
 \ body is entered by `call`, leaves by `ret` and saves nothing; its frame on
-\ the machine stack is its own cells rounded to 16 (src/arch/x86-64/abi.f
+\ the machine stack is its own cells rounded to 16 (src/compiler/native/abi.f
 \ FRAME-FOR).
 : DSP ( -- r64 ) ENGINE-GPR:X64-DSTACK >R64 ;
 : DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;

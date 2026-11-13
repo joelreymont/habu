@@ -13,6 +13,7 @@ require src/core/check-hook.f
 require src/compiler/target.f
 require src/compiler/binding.f
 require src/compiler/native/abi.f
+require src/compiler/native/checker-owner.f
 require src/compiler/native/dict.f
 require src/compiler/native/emission.f
 require src/compiler/native/shadow.f

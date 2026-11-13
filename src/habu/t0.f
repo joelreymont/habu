@@ -18,7 +18,7 @@ require src/compiler/native/checker-owner.f
 require src/compiler/fixed-body.f
 require src/compiler/native/dict.f
 require src/core/prefix-boundary.f
-require src/compiler/native/family.f
+require src/core/type-family.f
 require src/compiler/native/fetch.f
 require src/habu/intern.f
 require src/compiler/target.f
@@ -1476,8 +1476,8 @@ variable CLAUSE-ORD                 \ the checker's ordinal of the clause's firs
    fam 0 >= MATCH-CK
    at NDICT:MATCH-CELLS {: w0:n :}
    w0 NDICT:MATCH-NONE <> MATCH-CK
-   fam NFAM:NICHE? if NICHE-TAG w0 1+ else w0 then {: w:n :}
-   w fam NFAM:WIDTH >= MATCH-CK
+   fam TFAM:TFAM-NICHE? if NICHE-TAG w0 1+ else w0 then {: w:n :}
+   w fam TFAM:TFAM-SLOTS@ 1+ >= MATCH-CK
    EMIT-CASE,
    CS-N @ {: k:n :}
    CS-MATCH L-N @ CS-PUSH
@@ -1497,9 +1497,9 @@ variable CLAUSE-ORD                 \ the checker's ordinal of the clause's firs
 : DO-CONSTRUCT ( n n n -- ) {: tag:n pads:n at:n :}
    tag 0 >= MATCH-CK
    at NDICT:CALL-CELLS drop 0 >= MATCH-CK
-   at 1- ROW$ NFAM:CON-FAM MATCH-CK {: fam:n :}
+   at 1- ROW$ TFL-CON-FAM? MATCH-CK {: fam:n :}
    pads at NDICT:CON-PADS +  0 ?do 0 PUSH-CONST loop
-   fam NFAM:NICHE? if exit then
+   fam TFAM:TFAM-NICHE? if exit then
    tag PUSH-CONST ;
 
 \ ---- the inlined operations --------------------------------------------------
