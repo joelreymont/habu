@@ -1256,17 +1256,17 @@ variable CLASS-N                        \ the class CLASS+ read
    s" h.f" REQUIRE+  s\" : MAIN ( -- ) ;\n" SRC+  s" one.f" NEST-WRITE
    s" w.f" REQUIRE+  s" h.f" REQUIRE+  s\" : MAIN ( -- ) ;\n" SRC+  s" two.f" NEST-WRITE ;
 
-\ two.f's build, refused since w.f's word holds the name of FILE-OBJECTS-CL's clause. Answers its
-\ exit code.
+\ two.f's build, refused at h.f's line 1 since w.f's word holds the name of FILE-OBJECTS-CL's
+\ clause. Answers its exit code.
 : CLAUSE-REFUSED ( CMD:command -- CMD:command n )
    s" two.f" s" prog-c" NEST-RC {: rc:n :}
-   CMD:ERR$ s" duplicate definition: FILE-OBJECTS-CL;does" CONTAINS? {: named:bool :}
+   CMD:ERR$ s" h.f:1: duplicate definition: FILE-OBJECTS-CL;does" CONTAINS? {: named:bool :}
    named  rc 0<>  and 0= if rc SHOW then
    s" the build refuses the clause's name" LABEL  named TTRUE
    rc ;
 
-\ Guards a does> clause a link places: CL2 compiles h.f with no word of its clause's name live, and
-\ CL3 links that object after w.f and is refused as CL, which compiles both, is.
+\ Guards a does> clause a link places: CL2 compiles h.f with no word of its clause's name live. h.f's
+\ object records that name, so in CL3 w.f's word makes it not hold: h.f compiles and is refused as in CL.
 : CLAUSE-CASE ( CMD:command -- CMD:command )
    WRITE-CLAUSE
    s" CL" WHICH!  CLAUSE-REFUSED {: cold:n :}

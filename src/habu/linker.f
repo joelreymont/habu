@@ -185,7 +185,7 @@ create PIECES BUF:HDR-BYTES allot    \ the object's PIECES
 create TIMES BUF:HDR-BYTES allot     \ the object's TIMES: the part's block (TIMES+)
 create NAMED-ROWS BUF:HDR-BYTES allot \ the BUILT rows the compiling part's source and evaluated texts name whole, 8 bytes each
 create NAMED-RECS BUF:HDR-BYTES allot \ the records with a time the running scan hit, 8 bytes each, in hit order
-create SPELLS BUF:HDR-BYTES allot    \ the object's NAMES: SPELL-TEXT's HIT sums, each open a 0 then its sum
+create SPELLS BUF:HDR-BYTES allot    \ the object's NAMES: SPELL-HIT's sums, each open a 0 then its sum
 create RAN-RECS BUF:HDR-BYTES allot  \ the records the compiling part ran, 8 bytes each (RAN-RECORD)
 \ The object's REACHED: per piece whose data or stores RAN-FILES+ reached, its FILES row and its stores time, 8 bytes each.
 create REACHED BUF:HDR-BYTES allot
@@ -3092,7 +3092,7 @@ variable RD-END
    RD-AT @ end <> if BAD then ;
 
 
-\ NAMES' u bytes (SPELLS) run as SPELLED and SPELL-TEXT ran them: HIT each sum, OPENED+ the sum after a 0; for a source INPUT-STAMP
+\ NAMES' u bytes (SPELLS) run as PART-NAMES ran them: HIT each sum, OPENED+ the sum after a 0; for a source INPUT-STAMP
 \ stamps, HITS, HIT-STAMPS and HIT-N end as a scan's.
 : NAMES-CK ( n -- )
    {: u:n :}
@@ -4863,7 +4863,6 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
    does if h j OWN-FUN-AT else 0 then {: hoff:n :}
    ndict@ {: want:n :}
    a u wid  flags  DKIND:MASK DNAME-CELL or DNAME-ALLOC or  and  INTERPRETER:DEF-RECORD
-   does if INTERPRETER:DEF-DOES-NAME then
    NPUB:NEXT-SLOT {: fn:n :}
    fn LINK-FN !  want LINK-OWNER !
    h e <> if
@@ -5419,8 +5418,18 @@ variable DUE-MADE
    t PIECE-STORES-TIME BUILT+ ;
 
 
+\ SPELL-HIT for each does> clause the piece made: its definer derives the clause's name, which no
+\ source spells, so a live word of that name makes the object not hold.
+: SPELL-CLAUSES ( -- )
+   NSHADOW:RECORDS FILE-ROW @ ?do
+      i NSHADOW:ENTRY@ 0 > if
+         i NSHADOW:RECORD@ XREF-REC XREF-NAME$ NAME-SUM SPELL-HIT
+      then
+   loop ;
+
 \ The compiling part's NAMES (NAMED!) as it ends, after READS-KEEP, before PIECE-END, so a part after a request hits the file it loaded:
-\ its source from FILE-OFF to end, then PART-TEXTS' texts and, if there are any, both again, so each is scanned with every package one opened.
+\ its source from FILE-OFF to end, then PART-TEXTS' texts and, if there are any, both again, so each is scanned with every package one
+\ opened, then its clauses' names (SPELL-CLAUSES).
 : PART-NAMES ( n -- )
    {: end:n :}
    HITS-CLEAR
@@ -5436,6 +5445,7 @@ variable DUE-MADE
          at 24 + u + v + 7 + 8 / 8 *
       repeat drop
    loop
+   SPELL-CLAUSES
    NAMED! ;
 
 
