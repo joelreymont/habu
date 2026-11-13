@@ -11,7 +11,6 @@ require src/lib/prelude.f
 require src/lib/string.f
 require src/lib/aio.f
 require src/lib/test.f
-require src/lib/test/wait.f
 require src/lib/task.f                 \ TASK:SLEEP between probes of a sleeper's pid
 require src/lib/engine-candidate.f
 
@@ -20,8 +19,6 @@ package PTY-TTY-SMOKE
 using PTY-HARNESS
 
 $64 constant STEP-MS               \ one poll blocks at most this long
-$1388 constant EXIT-MS
-$1388 constant GONE-MS             \ a killed sleeper's reaping by init, on a loaded box
 $0A constant PROBE-MS              \ the pause between two probes of its pid
 
 \ The engine under test: the gate's freshly built candidate when it exported
@@ -31,11 +28,10 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
 : PROMPT$ ( -- ptr u8 n )    s" habu> " ;
 : ANYWHERE$ ( -- ptr u8 n )  s" " ;      \ an empty head: the tail may be anywhere
 
-\ The buffer, compaction, span search, wait clock and never-seen facts are
+\ The buffer, compaction, span search and never-seen facts are
 \ src/lib/pty-harness.f's. The reads and waits are this file's: the bytes come
 \ through the supervisor's linear handle, which the module's descriptor reader
-\ cannot take, and DEADLINE shows what was read before it throws, which the
-\ harness's WAIT-AFTER-WITHIN does not.
+\ cannot take.
 \ Read what is ready within STEP-MS into the harness buffer and append it: the
 \ count, 0 for a quiet poll, -1 once the target's side is gone. The linear
 \ handle stays on top of the stack, which is why this step is here and not in
@@ -51,58 +47,34 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
    BUF$ {: ra:ptr ru:n :}
    s" read so far (" type ru FMT:.INT s"  bytes):" type cr ra ru type cr ;
 
-\ A clock that ends while the target still holds its side is a deadline, not a
-\ wrong answer, so it asserts nothing: the wait is named and E-PROC-TIMEOUT
-\ thrown (TEST-WAIT:EXPIRED). The scope tears the target down and RUN lets the
-\ throw through, so the engine's report is the last line on stderr.
-: DEADLINE ( process-pty-handle ptr u8 n -- process-pty-handle ) {: name:ptr len:n :}
-   READ-SO-FAR
-   name len TEST-WAIT:EXPIRED ;
-
 : WAIT-SHOW ( ptr u8 n ptr u8 n -- ) {: ha:ptr hu:n ta:ptr tu:n :}
    s" expected: " type ta tu type
    hu 0 > if s"  after " type ha hu type then
-   s"  (wait budget " type WAIT-BUDGET-MS FMT:.INT s"  ms)" type cr ;
+   cr ;
 
-\ Read until the tail appears at or after the head, the target hangs up, or the
-\ deadline passes; an empty head waits for the tail anywhere. A child answers in
+\ Read until the tail appears at or after the head or the target hangs up; an
+\ empty head waits for the tail anywhere. A child answers in
 \ as many pieces as the host's scheduling chooses (the line editor redraws on
 \ every keystroke, a loaded box splits one echo across dozens of reads), so no
 \ count of reads or quiet polls bounds the wait. The hang-up answers whether the
 \ tail came before it.
 : EXPECT-AFTER ( process-pty-handle ptr u8 n ptr u8 n -- process-pty-handle bool )
    {: ha:ptr hu:n ta:ptr tu:n :}
-   WAIT-BUDGET-MS WAIT-OPEN
    begin
       ha hu ta tu AFTER? if true exit then
-      WAIT-LEFT 0= if
-         ha hu ta tu WAIT-SHOW
-         s" process-pty-tty-smoke EXPECT-AFTER" DEADLINE
-      then
       READ-STEP {: n:n :}
       n 0 < if ha hu ta tu AFTER? exit then
    again ;
 
-\ After the target exited, read everything it left behind until the hang-up. A
-\ clock that ends first leaves the claims made over the buffer unproven, so it
-\ is a deadline as well.
+\ After the target exited, read everything it left behind until the hang-up.
 : DRAIN-ALL ( process-pty-handle -- process-pty-handle )
-   WAIT-BUDGET-MS WAIT-OPEN
    begin
-      WAIT-LEFT 0= if
-         s" expected: the target's hang-up (wait budget " type
-         WAIT-BUDGET-MS FMT:.INT s"  ms)" type cr
-         s" process-pty-tty-smoke DRAIN-ALL" DEADLINE
-      then
       READ-STEP 0 < if exit then
    again ;
 
-\ The target's exit within EXIT-MS. A target still running when that clock ends
-\ has not exited YET, which is a deadline as well.
+\ The target's exit. A watch that answers with no exit fails the case.
 : EXPECT-EXIT ( process-pty-handle -- process-pty-handle )
-   EXIT-MS PROCESS-PTY:AWAIT if exit then
-   s" expected: the target's exit (exit budget " type EXIT-MS FMT:.INT s"  ms)" type cr
-   s" process-pty-tty-smoke EXPECT-EXIT" DEADLINE ;
+   -1 PROCESS-PTY:AWAIT TTRUE ;
 
 \ A wait the target hung up on fails its case with what it waited for and what
 \ the target said.
@@ -212,20 +184,16 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
       some OF ENDOF
    ;MATCH ;
 
-\ Whether nobody has pid within ms: the null signal answers ESRCH. A pid at or
-\ below 0 names a group or every process, so it is never probed and answers
-\ false. A pid still taken when the clock ends is this test's own deadline, not
-\ an answer: the wait names itself and throws E-PROC-TIMEOUT. TREE-ENDS has torn
-\ the target down before it waits, so nothing is left open when it throws.
-: GONE-WITHIN? ( n n -- bool )
-   {: pid:n ms:n :}
-   pid 0 <= if false exit then
-   ms WAIT-OPEN
+\ Waits until nobody has pid: the null signal answers ESRCH. A pid at or below
+\ 0 names a group or every process, so it is never probed.
+: AWAIT-GONE ( n -- )
+   {: pid:n :}
+   pid 0 <= if exit then
    begin
-      pid 0 kill-errno PROCESS:ESRCH# negate = if true exit then
-      WAIT-LEFT 0= if s" process-pty-tty-smoke GONE-WITHIN" TEST-WAIT:EXPIRED then
+      pid 0 kill-errno PROCESS:ESRCH# negate <>
+   while
       PROBE-MS >MS TASK:SLEEP
-   again ;
+   repeat ;
 
 \ TREE-ENDS holds the scope's teardown to what the target started.
 : TREE-ENDS-BODY ( process-pty-handle -- n process-pty-handle )
@@ -241,7 +209,7 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
    BUF-CLEAR
    HB$ [: TREE-ENDS-BODY ;] PROCESS-PTY:WITH-TTY-TARGET {: pid:n :}
    pid 0 > TTRUE
-   pid GONE-MS GONE-WITHIN? TTRUE
+   pid AWAIT-GONE
    s" PASS: teardown ends what the target started" type cr ;
 
 \ The prompt barrier itself: the FIRST prompt in the buffer the barrier ended on
@@ -275,7 +243,7 @@ public
 
 \ AWAIT and AWAIT-BYTES wait on the AIO loop, so the loop runs for the body of
 \ RUN: it is started after the last definition. It stops however the cases
-\ end, so a deadline's throw (DEADLINE) passes on with no loop running.
+\ end, so a case's throw passes on with no loop running.
 : RUN ( -- )
    T-RESET
    AIO:START

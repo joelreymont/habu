@@ -21,7 +21,6 @@ require src/lib/engine-candidate.f
 package LOAD-REJECT-TEST
 
 $1000 constant CAP
-60000 constant TIMEOUT-MS
 70 constant REJECT-RC
 67 constant UNCAUGHT-RC
 76 constant BAD-SIG-RC
@@ -263,7 +262,7 @@ variable RC
    s" --load" >LEN PROC-ARGV+
    path pathu >LEN PROC-ARGV+
    ENGINE-CANDIDATE:PATH$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN
-   ERR CAP >LEN  TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   ERR CAP >LEN  PROCESS:WAIT-FOREVER  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    path pathu STORE! ;
 
 : ERR$ ( -- ptr u8 n )

@@ -4,6 +4,7 @@
 require src/lib/string.f
 require src/lib/fs.f
 require tools/check-all-errors-core.f
+require src/lib/process.f
 require test/gate-common.f
 
 package GATE-DICTIONARY
@@ -645,7 +646,8 @@ variable CANDIDATE-VERDICT
 
 : RUN-BAD-CHILD ( n ptr u8 n ptr u8 n -- )
    {: rc:n needle:ptr needleu:n label:ptr labelu:n :}
-   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @
+   PROCESS:WAIT-FOREVER MS>N GE-RUN-STDIN
    rc label labelu GE-EXPECT-RC
    needle needleu label labelu GE-EXPECT-ERR-HAS ;
 
@@ -994,7 +996,7 @@ variable CANDIDATE-VERDICT
    path pathu GE-ARG+
    s" --" GE-ARG+
    label labelu GT-PROGRESS-RUN
-   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
+   s" bin/hb" PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV
    label labelu GE-EXPECT-OK
    label labelu GT-PROGRESS-PASS ;
 
@@ -1006,7 +1008,7 @@ variable CANDIDATE-VERDICT
    INC-MAIN$ GE-ARG+
    s" --" GE-ARG+
    label labelu GT-PROGRESS-RUN
-   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
+   s" bin/hb" PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV
    label labelu GE-EXPECT-OK
    label labelu GT-PROGRESS-PASS ;
 
@@ -1016,7 +1018,7 @@ variable CANDIDATE-VERDICT
    s" --load" GE-ARG+
    INC-MAIN$ GE-ARG+
    s" --" GE-ARG+
-   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
+   s" bin/hb" PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV
    rc label labelu GE-EXPECT-RC
    needle needleu label labelu GE-EXPECT-ERR-HAS ;
 

@@ -907,8 +907,6 @@ TASK:MIN-STACK TASK:TASK FS-TEST-RACE-TASK
 package FS-TEST-FIFO
 private
 
-5000 constant OPEN-MS
-1000000 constant NS-PER-MS
 $20 constant OUT-CAP
 3 constant F-GETFL
 
@@ -967,14 +965,23 @@ variable WRITER
       some OF FD>N WRITER ! true ENDOF
    ;MATCH ;
 
-\ The caller's retry loop: an attempt a millisecond until OPEN-MS has passed.
-: AWAIT-READER ( -- bool )
-   mono-ns OPEN-MS NS-PER-MS * + {: deadline:n :}
-   begin ATTEMPT 0= while
-      mono-ns deadline >= if false exit then
+\ A zero-window probe, which reaps a cat that has ended.
+: ENDED? ( pid -- bool )
+   0 >MS PROCESS:WAIT-BOUNDED MATCH PROCESS:ending
+      timeout OF false ENDOF
+      exited OF drop true ENDOF
+      signaled OF drop true ENDOF
+   ;MATCH ;
+
+\ The caller's retry loop: an attempt a millisecond until one opens, false
+\ once cat has ended without opening the read end.
+: AWAIT-READER ( pid -- bool )
+   {: child:pid :}
+   begin
+      ATTEMPT if true exit then
+      child ENDED? if false exit then
       1 >MS TASK:SLEEP
-   repeat
-   true ;
+   again ;
 
 : PREDICATES ( -- )
    FIFO$ FS:FIFO? FS-TEST-TRUE
@@ -1004,33 +1011,22 @@ variable WRITER
    ;MATCH
    OUT-BUF PAYLOAD$ nip PAYLOAD$ FS-TEST$= ;
 
-\ cat's exit, waited for before its output is read, so a reader that never
-\ sees end of file is killed and reaped rather than read from forever.
 : REAP ( pid -- )
-   {: child:pid :}
-   child OPEN-MS >MS PROCESS:WAIT-BOUNDED MATCH PROCESS:ending
-      exited OF 0 FS-TEST= ENDOF
-      signaled OF drop false FS-TEST-TRUE ENDOF
-      timeout OF
-         child PROCESS:SIGKILL PROCESS:KILL-RAW drop
-         child PROCESS:WAIT drop
-         false FS-TEST-TRUE
-      ENDOF
-   ;MATCH ;
+   PROCESS:WAIT PROCESS:STATUS>RC RC>N 0 FS-TEST= ;
 
 : READER ( -- )
    FD:PIPE-PAIR {: r:fd w:fd :}
    w SPAWN-CAT {: child:pid :}
    w FD>N close
-   AWAIT-READER {: opened:bool :}
+   child AWAIT-READER {: opened:bool :}
    opened FS-TEST-TRUE
    opened if
       WRITER @ F-GETFL 0 fcntl NONBLOCK and 0 FS-TEST=
       WRITER @ >FD PAYLOAD$ FD:WRITE-FULL
       WRITER @ close
+      child REAP
+      r OUTPUT
    then
-   child REAP
-   r OUTPUT
    r FD>N close ;
 
 public

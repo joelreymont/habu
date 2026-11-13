@@ -3,6 +3,7 @@
 require test/gate-common.f
 require src/lib/string.f
 require src/lib/fmt.f
+require src/lib/process.f
 
 package PROGRAM-DIAGNOSTICS
 
@@ -10,7 +11,7 @@ package PROGRAM-DIAGNOSTICS
    GE-HB-RESET
    s" --load" GE-ARG+
    path pathu GE-ARG+
-   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV ;
+   s" bin/hb" PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV ;
 
 \ The Habu loop reads the file and recovers at `;` (src/habu/interpreter.f
 \ DEF-SEMI?), as it does for RUN-LOAD.
@@ -19,7 +20,7 @@ package PROGRAM-DIAGNOSTICS
    s" --load" GE-ARG+
    s" test/interpreter-loop-on.f" GE-ARG+
    path pathu GE-ARG+
-   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV ;
+   s" bin/hb" PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV ;
 
 : EXPECT-MARKER ( ptr u8 n ptr u8 n -- )
    {: marker:ptr markeru:n label:ptr labelu:n :}

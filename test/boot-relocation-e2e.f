@@ -18,7 +18,6 @@ package BOOT-RELOCATION-E2E
 private
 
 $4000 constant IO-CAP
-30000 constant TIMEOUT-MS
 create ROOT PATH-CAP allot variable ROOT-U
 create TREE PATH-CAP allot variable TREE-U
 create PATH PATH-CAP allot variable PATH-U
@@ -85,7 +84,7 @@ variable RC
 : RUN-CHILD ( ptr u8 n -- ) {: exe:ptr exeu:n :}
    PROC-ENV-INHERIT-MISSING
    exe exeu >LEN ROOT$ >LEN
-   OUT IO-CAP >LEN ERR IO-CAP >LEN TIMEOUT-MS >MS
+   OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
    PCAP-RESULT:>N RC ! ERR-U ! OUT-U ! ;
 

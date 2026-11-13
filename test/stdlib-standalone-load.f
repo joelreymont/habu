@@ -18,7 +18,6 @@ require src/lib/engine-candidate.f
 package STDLIB-STANDALONE-LOAD
 
 2048 constant CAP
-20000 constant TIMEOUT-MS
 $4000 constant PATHS-CAP
 128 constant PATHS-MAX
 40 constant MODULE-FLOOR                     \ min flat modules; guards a broken walk
@@ -78,7 +77,7 @@ variable PATHS-USED
    s" --load" >LEN PROC-ARGV+
    p u >LEN PROC-ARGV+
    ENGINE-CANDIDATE:PATH$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN
-   ERR CAP >LEN  TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   ERR CAP >LEN  PROCESS:WAIT-FOREVER RUN-ARGV-STDIN-CAPTURE-OUTCOME
    {: outu:len erru:len oc :}
    p u T-LABEL
    p u OUT outu LEN>N ERR erru LEN>N oc 0 T-ENDING-EXITED= ;

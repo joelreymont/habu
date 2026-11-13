@@ -11,7 +11,6 @@ package HOOKLESS-REJECT-TEST
 private
 
 $4000 constant CAP
-20000 constant SUBJECT-TIMEOUT-MS
 70 constant RC-REJECT                \ the check hook's reject status (src/core/check-hook.f CHECK-RC)
 67 constant UNCAUGHT-RC              \ an uncaught throw's exit status
 
@@ -45,7 +44,7 @@ create TEXT CAP allot                  variable TEXT-U
    ;MATCH ;
 
 : SESSION ( ptr u8 n -- ) {: src:ptr u:n :}
-   src u OUT CAP >LEN ERR CAP >LEN SUBJECT-TIMEOUT-MS >MS SUBJECT:RUN
+   src u OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    src u SUBJECT-STORE! ;
 
 \ The checker's ambiguity refusal makes the native compiler exit with the

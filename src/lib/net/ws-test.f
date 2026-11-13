@@ -12,7 +12,6 @@
 \ with WANT$.
 
 require src/lib/test.f
-require src/lib/test/wait.f
 require src/lib/string.f
 require src/lib/fd.f
 require src/lib/fs.f
@@ -59,7 +58,6 @@ $7F000001 constant LOOPBACK
 2 constant WORKERS                \ fewer than the sockets a case holds open at once
 $1F4 constant IDLE-MS
 10 constant POLL-MS
-$7D0 constant ANSWER-MS           \ a loopback answer that slow is a hang
 $3E8 constant GRACE-MS            \ what a bounded wait may run past its bound on a loaded box
 $190 constant STOP-BOUND-MS       \ how long WS:STOP may take
 STOP-BOUND-MS 2 / constant IDLE-STOP-MS \ an idle socket's stop: far over its few ms, under a stop that waits out its bound
@@ -202,15 +200,10 @@ variable FILL-CODE                \ what AIO refused the poll past them with
 TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a close
 
 
-: AWAITED ( [ -- n ] n -- n )
-   {: probe limit:n :}
-   mono-ns limit NS-PER-MS * + {: deadline:n :}
-   begin
-      probe execute {: got:n :}
-      got 0 <> if got exit then
-      mono-ns deadline > if s" ws-test AWAITED" TEST-WAIT:EXPIRED then
-      POLL-MS >MS TASK:SLEEP
-   again ;
+: AWAITED ( [ -- n ] -- n ) {: probe :}
+   begin probe execute dup 0 = while
+      drop POLL-MS >MS TASK:SLEEP
+   repeat ;
 
 : SCRIPT$ ( -- ptr u8 n )
    SCRIPT-BUF SCRIPT-U @ SPAN:TAKE SPAN:$ ;
@@ -319,11 +312,12 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    conn a u TCP4:TRANSFER-BYTES TCP4:WRITE DROP-STATUS ;
 
 : AWAIT ( TCP4:connection -- ) {: conn:TCP4:connection :}
-   conn ANSWER-MS >MS TCP4:READABLE-WITHIN?
-   MATCH TCP4:ready-result
-      ready OF ENDOF
-      idle OF s" ws-test AWAIT" TEST-WAIT:EXPIRED ENDOF
-      failed OF drop ENDOF
+   conn TCP4:CONNECTION-FD AIO:READABLE -1 >MS AIO:POLL AIO:AWAIT
+   MATCH AIO:outcome
+      ready OF drop ENDOF
+      timed-out OF ENDOF
+      cancelled OF ENDOF
+      refused OF drop ENDOF
    ;MATCH ;
 
 : REFILL ( TCP4:connection -- ) {: conn:TCP4:connection :}
@@ -576,18 +570,13 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 
 \ Once HALT-CASE arms it, the next `closed` handler opens a file, on the
 \ descriptor number its socket's connection has just given back, and blocks
-\ past any stop's bound, until WS:STOP kills WS's task.
+\ until WS:STOP kills WS's task.
 : BLOCK-IN-CLOSED ( WS:socket -- ) {: sock:WS:socket :}
    HALT-ARMED @ 0= if exit then
    0 HALT-ARMED !
    sock SOCK>N HALT-SOCK !
    HALTED$ FS:OPEN-APPEND-FD HALT-FD !
-   mono-ns STOP-BOUND-MS GRACE-MS + NS-PER-MS * + {: deadline:n :}
-   begin
-      POLL-MS >MS TASK:SLEEP
-      TASK:PAUSE
-      mono-ns deadline >
-   until ;
+   begin TASK:PAUSE again ;
 
 : THROW-IN-CLOSED ( -- )
    THROW-ARMED @ 0= if exit then
@@ -661,14 +650,14 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    s" GET" s" /plain" [: PLAIN ;] HTTP:ROUTE ;
 
 
-: CLOSES-WITHIN ( WS:socket n n -- ) {: sock:WS:socket code:n limit:n :}
+: CLOSES-WITHIN ( WS:socket n -- ) {: sock:WS:socket code:n :}
    sock 0 WATCH !
-   [: WATCHED ;] limit AWAITED code T= ;
+   [: WATCHED ;] AWAITED code T= ;
 
 : FAILED ( TCP4:connection WS:socket n -- ) {: conn:TCP4:connection sock:WS:socket code:n :}
    conn HEAR code GOT-CLOSE
    conn ENDS
-   sock code ANSWER-MS CLOSES-WITHIN ;
+   sock code CLOSES-WITHIN ;
 
 : AWAIT-ROUTE ( -- )
    ACCEPTED TASK:WAIT-SEM
@@ -706,7 +695,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    LOG-HEAD
    conn TCP4:SENDING TCP4:SHUTDOWN DROP-STATUS
    conn ENDS
-   sock LOST ANSWER-MS CLOSES-WITHIN ;
+   sock LOST CLOSES-WITHIN ;
 
 \ The status line a refused handshake is answered with, and the status the
 \ route was told it was refused with: 0 when the server refused the request
@@ -825,7 +814,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    conn WS-OPCODE:text s" 68c3a96c6c6f20e282ac" BYTES EXCHANGE
    conn WS-OPCODE:binary 5 PATTERN$ EXCHANGE
    conn FAREWELL
-   sock 1000 ANSWER-MS CLOSES-WITHIN ;
+   sock 1000 CLOSES-WITHIN ;
 
 \ The handler's text that is not UTF-8 is refused before a byte of it goes
 \ out: the first frame the client hears is the echo of its next text.
@@ -960,14 +949,14 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    conn s" 82ff000000000010000037fa213d" SAY-RAW
    conn TCP4:SENDING TCP4:SHUTDOWN DROP-STATUS
    conn ENDS
-   sock LOST ANSWER-MS CLOSES-WITHIN
+   sock LOST CLOSES-WITHIN
    s" fragments of exactly the bound" SECTION
    OPENS {: long:TCP4:connection long-sock:WS:socket :}
    long false WS-OPCODE:binary BIG PATTERN$ SAY
    long s" 80ff00000000000eee9037fa213d" SAY-RAW
    long TCP4:SENDING TCP4:SHUTDOWN DROP-STATUS
    long ENDS
-   long-sock LOST ANSWER-MS CLOSES-WITHIN ;
+   long-sock LOST CLOSES-WITHIN ;
 
 \ A close frame's status comes back as it was sent when a frame may carry it,
 \ and is a protocol error when none may; the handler is told the status the
@@ -1000,7 +989,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    bare true WS-OPCODE:close s" x" drop 0 SAY
    bare HEAR WS-OPCODE:close s" x" drop 0 GOT
    bare ENDS
-   bare-sock 1005 ANSWER-MS CLOSES-WITHIN
+   bare-sock 1005 CLOSES-WITHIN
    s" a close with a reason" SECTION
    OPENS {: reason:TCP4:connection reason-sock:WS:socket :}
    reason true WS-OPCODE:close s" 03e9627965" BYTES SAY
@@ -1027,7 +1016,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    conn true WS-OPCODE:close 1000 STATUS$ SAY
    conn ENDS
    s" the handler saw the client's close" T-LABEL
-   sock 1000 ANSWER-MS CLOSES-WITHIN
+   sock 1000 CLOSES-WITHIN
    s" status 1005 is not one to send" T-LABEL
    BAD-CODE atomic@ E-WS-CODE T=
    s" nothing is sent behind a close" T-LABEL
@@ -1042,7 +1031,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 : CLOSE-ALL ( -- )
    CLOSED-N @ CROWD + CLOSE-GOAL !
    CROWD 0 ?do i CONNS @ TCP4:CLOSE DROP-STATUS loop
-   [: ALL-CLOSED ;] ANSWER-MS AWAITED drop ;
+   [: ALL-CLOSED ;] AWAITED drop ;
 
 : TWICE-CASE ( -- )
    s" one request accepted twice" SECTION
@@ -1051,7 +1040,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    conn WS-OPCODE:text s" still here" EXCHANGE
    SECOND-ACCEPT @ HTTP:E-STATE T=
    conn FAREWELL
-   sock 1000 ANSWER-MS CLOSES-WITHIN
+   sock 1000 CLOSES-WITHIN
    s" the refused accept keeps no slot" T-LABEL
    OPEN-ALL CLOSE-ALL ;
 
@@ -1116,8 +1105,8 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    gone-sock FAULT-LINE
    1 THROW-ARMED !
    gone TCP4:CLOSE DROP-STATUS
-   gone-sock LOST ANSWER-MS CLOSES-WITHIN
-   [: ERR-WRITTEN ;] ANSWER-MS AWAITED drop ;
+   gone-sock LOST CLOSES-WITHIN
+   [: ERR-WRITTEN ;] AWAITED drop ;
 
 \ A handler that throws closes its socket under 1011, and one that throws on
 \ `closed` has no socket left to close: each throw is one line on stderr with
@@ -1221,7 +1210,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    s" a handle kept past its socket" SECTION
    OPENS {: held:TCP4:connection gone:WS:socket :}
    held FAREWELL
-   gone 1000 ANSWER-MS CLOSES-WITHIN
+   gone 1000 CLOSES-WITHIN
    OPENS drop {: conn:TCP4:connection :}
    conn WS-OPCODE:text s" mine" EXCHANGE
    gone 0 PUSHED-TO !
@@ -1248,15 +1237,14 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    sock 0 WATCH !
    peer UNREAD-N PEER-HELD !
    mono-ns PEER-MOVED !
-   begin
-      WATCHED {: code:n :}
-      code 0 <> if code LOST T= exit then
-      peer UNREAD-N {: held:n :}
+   begin WATCHED dup 0 = while
+      drop peer UNREAD-N {: held:n :}
       held PEER-HELD @ <> if held PEER-HELD ! mono-ns PEER-MOVED ! then
-      mono-ns PEER-MOVED @ - WS:STALL-MS GRACE-MS + NS-PER-MS * >
-      if s" ws-test STALL-CLOSES" TEST-WAIT:EXPIRED then
       POLL-MS >MS TASK:SLEEP
-   again ;
+   repeat
+   LOST T=
+   s" closed within the stall bound of the peer's last move" T-LABEL
+   mono-ns PEER-MOVED @ - WS:STALL-MS GRACE-MS + NS-PER-MS * < TTRUE ;
 
 : STALL-CASE ( -- )
    s" a stalled peer" SECTION
@@ -1267,6 +1255,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    stuck 0 WATCH !
    WATCHED 0 T=
    still stuck STALL-CLOSES
+   s" the other socket still talks and closes" T-LABEL
    conn WS-OPCODE:text s" after" EXCHANGE
    conn FAREWELL
    still TCP4:CLOSE DROP-STATUS ;
@@ -1276,7 +1265,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    OPENS {: still:TCP4:connection stuck:WS:socket :}
    OPENS {: conn:TCP4:connection sock:WS:socket :}
    stuck FLOOD-PUSH PUSH-BYTES / PUSHES E-WS-CLOSED T=
-   stuck LOST ANSWER-MS CLOSES-WITHIN
+   stuck LOST CLOSES-WITHIN
    conn WS-OPCODE:text s" unhindered" EXCHANGE
    conn FAREWELL
    still TCP4:CLOSE DROP-STATUS ;
@@ -1427,7 +1416,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    s" GET" s" /stall" REQ-START GOOD-LINES S\" \r\n" REQ+
    DIAL {: conn:TCP4:connection :}
    conn REQ$ SEND-RAW
-   [: STALLING @ ;] ANSWER-MS AWAITED drop
+   [: STALLING @ ;] AWAITED drop
    first conn ;
 
 \ A handshake that holds a slot past a stop's bound is answered 503 by that
@@ -1461,7 +1450,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    [: WS:STOP ;] E-WS-STATE TTHROWSQ
    AWAIT-ROUTE
    REFUSED-WITH @ 503 T=
-   [: STOP-ENDED ;] ANSWER-MS AWAITED drop
+   [: STOP-ENDED ;] AWAITED drop
    TASK-CODE 0 T=
    conn TCP4:CLOSE DROP-STATUS
    first TCP4:CLOSE DROP-STATUS
@@ -1477,10 +1466,10 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    0 GATE-READY atomic!
    0 GATE-OPEN atomic!
    [: GATED-START ;] STOP-TASK TASK:ACTIVATE
-   [: GATE-READY atomic@ ;] ANSWER-MS AWAITED drop
+   [: GATE-READY atomic@ ;] AWAITED drop
    1 GATE-OPEN atomic!
    [: 2 WS:START ;] catch {: here:n :}
-   [: STOP-ENDED ;] ANSWER-MS AWAITED drop
+   [: STOP-ENDED ;] AWAITED drop
    TASK-CODE {: there:n :}
    here there max 0 T=
    here there min E-WS-STATE T=
@@ -1496,7 +1485,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    OPENS drop {: conn:TCP4:connection :}
    conn true WS-OPCODE:text s" stop" SAY
    s" a handler's stop is refused" T-LABEL
-   [: HANDLER-STOP atomic@ ;] ANSWER-MS AWAITED E-WS-STATE T=
+   [: HANDLER-STOP atomic@ ;] AWAITED E-WS-STATE T=
    [: WS:STOP ;] catch 0 T=
    conn HEAR 1001 GOT-CLOSE
    conn ENDS
@@ -1566,14 +1555,14 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    s" GET" s" /fill" REQ-START GOOD-LINES S\" \r\n" REQ+
    DIAL {: conn:TCP4:connection :}
    conn REQ$ SEND-RAW
-   [: STALLING @ ;] ANSWER-MS AWAITED drop
+   [: STALLING @ ;] AWAITED drop
    FILL
    s" AIO refuses the poll past its ceiling" T-LABEL
    FILL-CODE @ CEILING T=
    FILL-CODE @ TASK-LINE
    FILLED TASK:SIGNAL-SEM
    AWAIT-ROUTE
-   [: ERR-WRITTEN ;] ANSWER-MS AWAITED drop
+   [: ERR-WRITTEN ;] AWAITED drop
    UNFILL
    conn TCP4:CLOSE DROP-STATUS
    0 STREAM-AT ! 0 STREAM-U ! ;
@@ -1608,7 +1597,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    0 WS-TEST:LAST-GEN
    OPENS {: conn:TCP4:connection sock:WS:socket :}
    conn TCP4:CLOSE DROP-STATUS
-   sock LOST ANSWER-MS CLOSES-WITHIN
+   sock LOST CLOSES-WITHIN
    OPENS drop {: next:TCP4:connection :}
    [: SEND-HELD ;] catch 0 T=
    next TCP4:CLOSE DROP-STATUS
@@ -1894,18 +1883,15 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    BACK-BUF got SPAN:TAKE SPAN:$ WANT$ T$= ;
 
 
-$3E8 constant DRAIN-MS
 10 constant RETRY-MS
 
 \ AIO:STOP is E-AIO-BUSY until the loop has drained every record, so the stop
-\ is retried to a bound.
+\ is retried until it has.
 : AIO-STOP ( -- )
-   mono-ns DRAIN-MS NS-PER-MS * + {: deadline:n :}
    begin
       [: AIO:STOP ;] catch {: code:n :}
       code 0= if exit then
       code E-AIO-BUSY <> if code throw then
-      mono-ns deadline > if s" ws-test AIO-STOP" TEST-WAIT:EXPIRED then
       RETRY-MS >MS TASK:SLEEP
    again ;
 

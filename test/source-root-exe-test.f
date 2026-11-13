@@ -23,8 +23,6 @@ private
 PATH-CAP 1+ constant CAP
 $10000 constant IO-CAP
 PATH-CAP 1+ 4 * constant PROG-CAP
-\ Guards against a hung child, not budgets: the host runs loaded.
-120000 constant TIMEOUT-MS
 \ A prompt line holds 255 bytes, so `cd <name>` names at most this much.
 200 constant LONG-NAME
 \ One more than the path stack holds (src/core/include.f PATH-DEPTH).
@@ -273,24 +271,24 @@ variable DEEP-U
    tmpu 0= if exit then
    s" TMPDIR" >LEN tmp tmpu >LEN PROC-ENV-SET ;
 
-: RUN-ARGS ( ptr u8 n ptr u8 n n -- )
-   {: exe:ptr exeu:n cwd:ptr cwdu:n ms:n :}
+: RUN-ARGS ( ptr u8 n ptr u8 n -- )
+   {: exe:ptr exeu:n cwd:ptr cwdu:n :}
    CHILD-ENV
    exe exeu >LEN cwd cwdu >LEN
-   OUT IO-CAP >LEN ERR IO-CAP >LEN ms >MS
+   OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE RESULT! ;
 
-: RUN-EXE ( ptr u8 n ptr u8 n ptr u8 n n -- )
-   {: exe:ptr exeu:n cwd:ptr cwdu:n in:ptr inu:n ms:n :}
+: RUN-EXE ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: exe:ptr exeu:n cwd:ptr cwdu:n in:ptr inu:n :}
    CHILD-ENV
    exe exeu >LEN cwd cwdu >LEN in inu >LEN
-   OUT IO-CAP >LEN ERR IO-CAP >LEN ms >MS
+   OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE RESULT! ;
 
 \ <tmp>/tree/bin/hb from <tmp>/foreign, the program on stdin.
 : RUN-TREE ( -- )
    PROC-ARGV-RESET
-   s" tree/bin/hb" HB-AT$ FOREIGN$ PROG$ TIMEOUT-MS RUN-EXE ;
+   s" tree/bin/hb" HB-AT$ FOREIGN$ PROG$ RUN-EXE ;
 
 : SHOW ( -- )
    s" child rc " type RC @ FMT:.INT cr
@@ -342,7 +340,7 @@ variable DEEP-U
    {: exe:ptr exeu:n :}
    PROC-ARGV-RESET
    ROOT-PROGRAM
-   exe exeu FOREIGN$ PROG$ TIMEOUT-MS RUN-EXE
+   exe exeu FOREIGN$ PROG$ RUN-EXE
    SB-RESET s" tree" A$ LINE s" yes" LINE
    SB$ 0 EXPECT ;
 
@@ -363,19 +361,19 @@ variable DEEP-U
    s" require src/lib/string.f" PLINE
    s" require test/fixtures/source-root-exe/inner.f" PLINE
    PROC-ARGV-RESET
-   s" tree/bin/hb" HB-AT$ s" b" A$ PROG$ TIMEOUT-MS RUN-EXE
+   s" tree/bin/hb" HB-AT$ s" b" A$ PROG$ RUN-EXE
    SB-RESET s" b" A$ LINE
    SB$ 0 EXPECT ;
 
 : LONE ( -- )
    s" a lone engine in a tree's working directory takes that tree" T-LABEL
    PROC-ARGV-RESET
-   s" x/hb" HB-AT$ GATE$ S\" SOURCE-ROOT:ENGINE$ type cr\n" TIMEOUT-MS RUN-EXE
+   s" x/hb" HB-AT$ GATE$ S\" SOURCE-ROOT:ENGINE$ type cr\n" RUN-EXE
    SB-RESET GATE$ LINE SB$ 0 EXPECT
    s" elsewhere it takes the working directory, and finds no library there" T-LABEL
    PROC-ARGV-RESET
    s" x/hb" HB-AT$ FOREIGN$ S\" SOURCE-ROOT:ENGINE$ type cr\nrequire test/fixtures/source-root-exe/inner.f\n"
-   TIMEOUT-MS RUN-EXE
+   RUN-EXE
    SB-RESET FOREIGN$ LINE SB$ STDOUT
    FOREIGN$ s" /test/fixtures/source-root-exe/inner.f" CANNOT-OPEN ;
 
@@ -396,7 +394,7 @@ variable DEEP-U
    s" ;package" PLINE
    s" require test/fixtures/source-root-exe/inner.f" PLINE
    PROC-ARGV-RESET
-   s" p/bin/hb" HB-AT$ FOREIGN$ PROG$ TIMEOUT-MS RUN-EXE
+   s" p/bin/hb" HB-AT$ FOREIGN$ PROG$ RUN-EXE
    SB-RESET s" p" A$ LINE s" yes" LINE s" yes" LINE SB$ STDOUT
    FOREIGN$ s" /test/fixtures/source-root-exe/inner.f" CANNOT-OPEN ;
 
@@ -410,7 +408,7 @@ variable DEEP-U
    s" RUN" PLINE
    s" ;package" PLINE
    PROC-ARGV-RESET
-   s" q/bin/hb" HB-AT$ FOREIGN$ PROG$ TIMEOUT-MS RUN-EXE
+   s" q/bin/hb" HB-AT$ FOREIGN$ PROG$ RUN-EXE
    SB-RESET FOREIGN$ LINE s" yes" LINE SB$ 0 EXPECT ;
 
 \ q holds no first row, so the working directory is the root and q's
@@ -436,7 +434,7 @@ variable DEEP-U
    s" --" >LEN PROC-ARGV+
    FOREIGN$ >LEN PROC-ARGV+
    s" tree" A$ >LEN PROC-ARGV+
-   s" tree/bin/hb" HB-AT$ FOREIGN$ TIMEOUT-MS RUN-ARGS
+   s" tree/bin/hb" HB-AT$ FOREIGN$ RUN-ARGS
    S\" test: ok\n" 0 EXPECT ;
 
 \ A relative dependency searches its owner, the root, then the working
@@ -450,17 +448,17 @@ variable DEEP-U
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    s" wd-app/wd.f" A$ >LEN PROC-ARGV+
-   s" tree/bin/hb" HB-AT$ s" shadow" A$ TIMEOUT-MS RUN-ARGS
+   s" tree/bin/hb" HB-AT$ s" shadow" A$ RUN-ARGS
    S\" yes\n" 0 EXPECT
    s" so does one for a program file, whose own directory is its first root" T-LABEL
    PROC-ARGV-RESET
    s" wd-app/wd.f" A$ >LEN PROC-ARGV+
-   s" tree/bin/hb" HB-AT$ s" shadow" A$ NULL$ TIMEOUT-MS RUN-EXE
+   s" tree/bin/hb" HB-AT$ s" shadow" A$ NULL$ RUN-EXE
    S\" yes\n" 0 EXPECT
    s" a program behind a renamed symlink loads once, from its own directory" T-LABEL
    PROC-ARGV-RESET
    s" links/tool" A$ >LEN PROC-ARGV+
-   s" tree/bin/hb" HB-AT$ s" shadow" A$ NULL$ TIMEOUT-MS RUN-EXE
+   s" tree/bin/hb" HB-AT$ s" shadow" A$ NULL$ RUN-EXE
    S\" y\nx\n" 0 EXPECT ;
 
 : ENTRY ( -- )
@@ -468,7 +466,7 @@ variable DEEP-U
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    s" test/fixtures/source-root-exe/inner.f" >LEN PROC-ARGV+
-   s" tree/bin/hb" HB-AT$ FOREIGN$ TIMEOUT-MS RUN-ARGS
+   s" tree/bin/hb" HB-AT$ FOREIGN$ RUN-ARGS
    NULL$ STDOUT
    FOREIGN$ s" /test/fixtures/source-root-exe/inner.f" CANNOT-OPEN ;
 
@@ -498,13 +496,13 @@ variable DEEP-U
    s" the root's file required through its parent directory is the engine's" T-LABEL
    PROC-ARGV-RESET
    s" b/bin/hb" HB-AT$ TOP$ S\" SOURCE-ROOT:ENGINE$ type cr\nrequire b/src/lib/error.f\n"
-   TIMEOUT-MS RUN-EXE
+   RUN-EXE
    SB-RESET s" b" A$ LINE SB$ 0 EXPECT
    s" the root's files reached through a symlinked working directory are the engine's"
    T-LABEL
    PROC-ARGV-RESET
    s" tree/bin/hb" HB-AT$ s" wd" A$ S\" require src/lib/string.f\nrequire src/lib/fs.f\n"
-   TIMEOUT-MS RUN-EXE
+   RUN-EXE
    NULL$ 0 EXPECT ;
 
 \ The working directory's src/lib/error.f is provided by its absolute path, so a
@@ -585,7 +583,7 @@ variable DEEP-U
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    file fileu A$ >LEN PROC-ARGV+
-   s" tree/bin/hb" HB-AT$ FOREIGN$ TIMEOUT-MS RUN-ARGS
+   s" tree/bin/hb" HB-AT$ FOREIGN$ RUN-ARGS
    want wantu REFUSAL ;
 
 \ A load holds the path it replaced, so none of the words may move it.

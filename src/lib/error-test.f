@@ -2,6 +2,7 @@
 
 require src/lib/error.f
 require src/lib/string.f
+require src/lib/process.f
 require src/lib/process-command.f
 require src/lib/engine-candidate.f
 require src/lib/test.f
@@ -22,7 +23,6 @@ s" test/fixtures/error/again.f" included
 -9683 s" the fault test code" ERROR:FAULT E-FAULT
 -9679 constant UNDECLARED
 $4E constant DUPLICATE  \ E-DUPLICATE-DEFINITION, as constant throws it
-60000 constant TIMEOUT-MS
 
 package PB
 -9677 s" the part's test code" ERROR:CODE E-PART
@@ -98,7 +98,7 @@ package PB
 \ the boundary under test.
 : FIXTURE-RUN ( CMD:command ptr u8 n -- CMD:command ) {: path:ptr pathu:n :}
    s" --load" CMD:ARG+ path pathu CMD:ARG+
-   ENGINE-CANDIDATE:PATH$ TIMEOUT-MS >MS 70 T-RUN-EXITED= ;
+   ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER 70 T-RUN-EXITED= ;
 
 
 : TAKEN-RUN ( CMD:command -- CMD:command )

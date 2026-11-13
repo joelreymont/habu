@@ -3,6 +3,7 @@
 
 require src/lib/string.f
 require tools/code-dump-core.f
+require src/lib/process.f
 require test/gate-common.f
 require src/habu/prof-abi.f
 
@@ -100,7 +101,8 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    s"  prof-on GDB-BUSY" GE-SRC-LINE ;
 
 : GDB-PROF-RUN ( -- )   \ run the accumulated GE-SRC through the candidate over stdin
-   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN ;
+   GE-HB$ GE-SRC-BUF GE-SRC-U @
+   PROCESS:WAIT-FOREVER MS>N GE-RUN-STDIN ;
 
 \ A package whose inner word is only ever reached through the outer one, so the
 \ caller rows under the inner word's row have exactly one right answer.

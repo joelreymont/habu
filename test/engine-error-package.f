@@ -6,6 +6,7 @@
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
+require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/engine-candidate.f
 require test/pcap-result.f
@@ -14,7 +15,6 @@ package ENGINE-ERROR-TEST
 private
 
 $800 constant CAP
-10000 constant TIMEOUT-MS
 
 create OUT CAP allot
 create ERR CAP allot
@@ -44,7 +44,8 @@ variable ERR-U         \ bytes the last child wrote to fd 2
 
 : RUN-SOURCE ( ptr u8 n ptr u8 n -- n ) {: exe:ptr exeu:n src:ptr srcu:n :}
    PROC-ARGV-RESET
-   exe exeu >LEN src srcu >LEN OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
+   exe exeu >LEN src srcu >LEN OUT CAP >LEN ERR CAP >LEN
+   PROCESS:WAIT-FOREVER
    RUN-ARGV-STDIN-CAPTURE
    PCAP-RESULT:>N {: outu:n erru:n rc:n :} outu OUT-U ! erru ERR-U ! rc ;
 

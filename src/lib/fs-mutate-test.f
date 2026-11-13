@@ -13,7 +13,7 @@ require src/lib/process-env.f
 require src/lib/engine-candidate.f                  \ the TMPDIR child's engine
 require src/lib/test/ending.f                      \ the TMPDIR child's outcome
 require src/lib/task.f                              \ the two-task rows at the end
-require src/lib/test/wait.f                         \ a worker's deadline at the join
+require src/lib/test/wait.f                         \ the workers' waits on each other
 require src/lib/test/stderr.f                       \ the staged cleanup line
 
 variable FMT-ROOT-U
@@ -228,9 +228,9 @@ create FMT-STREAM-DST-DATA FMT-STREAM-LEN allot
 \ The root prefers HB_SOCK_TMP to TMPDIR: REMOVE-SPECIAL-TREE binds a Unix
 \ socket at <root>/remove-tree/root.txt, sun_path holds 107 bytes on Linux and
 \ 103 on macOS, and a pool slot's TMPDIR alone is 97 bytes (measured: the
-\ listener never binds, WAIT-LISTENER throws E-FS-IO). HB_SOCK_TMP is the short
-\ directory the gate pool makes per slot and removes when the slot retires or is
-\ killed (test/gate-pool.f GT-POOL-CHILD-SOCK!). Without it the root goes under
+\ listener never binds). HB_SOCK_TMP is the short directory the gate pool makes
+\ per slot and removes when the slot retires or is killed (test/gate-pool.f
+\ GT-POOL-CHILD-SOCK!). Without it the root goes under
 \ TMPDIR, then /tmp. FMT-PREPARE registers the root as a tree, so a throw before
 \ FMT-TEST-CLEANUP still removes it at exit.
 : FMT-ROOT-COPY! ( ptr u8 n -- ) {: a:ptr u :}
@@ -951,7 +951,6 @@ private
 
 \ A child's stderr line can echo a TMPDIR of nearly PATH-CAP bytes.
 PATH-CAP 1+ 4 * constant CAP
-15000 constant TIMEOUT-MS
 10 constant NL
 
 create OUT CAP allot
@@ -1006,7 +1005,7 @@ variable WANT-U
 : CAPTURE ( ptr u8 n -- len len PROCESS:ending ) {: prog:ptr progu :}
    PROC-ENV-INHERIT-MISSING
    prog progu >LEN PROC-ARGV+
-   ENGINE-CANDIDATE:PATH$ >LEN OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
+   ENGINE-CANDIDATE:PATH$ >LEN OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-ENV-CAPTURE-OUTCOME ;
 
 : WANT+ ( ptr u8 n -- ) {: a:ptr u :}
@@ -1235,7 +1234,7 @@ create FMT-ROOT-PATH-BUF PATH-CAP allot
 
 package FMT-SPECIAL
 
-variable LISTENER
+variable LISTENER          \ socat's pid, NO-PID once a probe has reaped it
 create MKFIFO-PATH PATH-CAP allot
 create SOCAT-PATH PATH-CAP allot
 variable MKFIFO-U
@@ -1281,18 +1280,30 @@ variable SOCAT-U
 
 
 : STOP-LISTENER ( -- )
-   LISTENER @ PROCESS:SIGKILL PROCESS:KILL-RAW drop
-   LISTENER @ PROCESS:WAIT drop ;
+   LISTENER @ 0 > if
+      LISTENER @ PROCESS:SIGKILL PROCESS:KILL-RAW drop
+      LISTENER @ PROCESS:WAIT drop
+   then ;
 
 
+\ A zero-window probe; it reaps a listener that has ended.
+: LISTENER-ENDED? ( -- bool )
+   LISTENER @ 0 >MS PROCESS:WAIT-BOUNDED MATCH PROCESS:ending
+      timeout OF false ENDOF
+      exited OF drop PROCESS:NO-PID LISTENER ! true ENDOF
+      signaled OF drop PROCESS:NO-PID LISTENER ! true ENDOF
+   ;MATCH ;
+
+
+\ A listener that ends without binding is E-FS-IO.
 : WAIT-LISTENER ( -- )
-   100 0 do
+   begin
       FMT-TREE-ROOT-FILE FS:TRY-LSTAT if
-         FS:STAT-MODE@ FS:S-IFMT and $C000 = if unloop exit then
+         FS:STAT-MODE@ FS:S-IFMT and $C000 = if exit then
       then
+      LISTENER-ENDED? if E-FS-IO throw then
       NULL-PTR 0 10 poll drop
-   loop
-   E-FS-IO throw ;
+   again ;
 
 
 : REMOVE-SPECIAL-TREE ( -- )
@@ -1338,8 +1349,8 @@ STACK-BYTES TASK:TASK WORKER-B
 20 constant ROUNDS
 200 constant SWAPS
 16 constant REGS
-5000000000 constant WAIT-NS
 
+\ Round counters, not flags, so no round clears what the next one sets.
 variable A-READY
 variable B-DONE
 variable T1-BAD
@@ -1445,37 +1456,13 @@ create P-CBD PATH-CAP allot  variable P-CBD-U
       err OF ENDOF
    ;MATCH ;
 
-\ A code that is neither success nor WAIT-FOR's deadline, the only
-\ E-PROC-TIMEOUT a worker here throws.
-: FAILED? ( n -- bool )
-   {: code :}
-   code 0<> code E-PROC-TIMEOUT <> and ;
-
-\ Joins both workers before reading either; true when both answered 0. The two
-\ wait on each other, so a failing worker leaves its peer to wait out WAIT-FOR:
-\ only the failure is asserted, never that deadline. When neither failed, a
-\ deadline is the row's own, named and thrown.
+\ Joins both workers before reading either; true when both answered 0. A
+\ worker's throw ends its peer's wait with the same code, so both may answer it.
 : JOIN-BOTH ( -- bool )
    WORKER-A JOIN-CODE WORKER-B JOIN-CODE {: a b :}
-   a FAILED? b FAILED? or if
-      a FAILED? if a 0 T= then
-      b FAILED? if b 0 T= then
-      false exit
-   then
-   a E-PROC-TIMEOUT = b E-PROC-TIMEOUT = or if
-      s" fs-mutate-test WAIT-FOR" TEST-WAIT:EXPIRED
-   then
-   true ;
-
-\ Waits until the counter reaches want, never for a flag, so no round clears
-\ what the next sets. A peer that never comes ends the wait with E-PROC-TIMEOUT.
-: WAIT-FOR ( ptr n n -- )
-   {: flag want :}
-   mono-ns WAIT-NS + {: deadline :}
-   begin flag atomic@ want < while
-      mono-ns deadline >= if E-PROC-TIMEOUT throw then
-      1 >MS TASK:SLEEP
-   repeat ;
+   a 0<> if a 0 T= then
+   b 0<> if b 0 T= then
+   a 0= b 0= and ;
 
 : A-TMP$ ( -- ptr u8 n ) A-TMP A-TMP-U @ SPAN:TAKE SPAN:$ ;
 : B-TMP$ ( -- ptr u8 n ) B-TMP B-TMP-U @ SPAN:TAKE SPAN:$ ;
@@ -1486,12 +1473,12 @@ create P-CBD PATH-CAP allot  variable P-CBD-U
    FMT-ROOT$ s" race-a" FS:MKTEMP-DIR-IN {: path:ptr u :}
    path u A-TMP SPAN:COPY  u A-TMP-U !
    round A-READY atomic!
-   B-DONE round WAIT-FOR
+   B-DONE round WORKER-B TEST-WAIT:FOR-CELL
    path u A-TMP$ STR= 0= if 1 T1-BAD atomic-add drop then
    A-TMP$ FS:REMOVE-DIR ;
 
 : T1-B-ROUND ( n -- ) {: round :}
-   A-READY round WAIT-FOR
+   A-READY round WORKER-A TEST-WAIT:FOR-CELL
    FMT-ROOT$ s" race-b" FS:MKTEMP-DIR-IN {: path:ptr u :}
    path u B-TMP SPAN:COPY  u B-TMP-U !
    round B-DONE atomic!
@@ -1667,11 +1654,12 @@ variable T7-READY
    CBD$ T7-B-SRC T7-B-GOT T7-B-BAD T7-CHECK ;
 
 \ Neither worker begins its rounds until both have started, so the copies
-\ overlap, or the test fails on WAIT-FOR's deadline.
-: T7-GO ( -- ) 1 T7-READY atomic-add drop  T7-READY 2 WAIT-FOR ;
+\ overlap.
+: T7-GO ( ptr n -- ) {: peer:ptr :}
+   1 T7-READY atomic-add drop  T7-READY 2 peer TEST-WAIT:FOR-CELL ;
 
-: T7-A ( -- ) T7-GO ROUNDS 0 ?do T7-A-ROUND loop 0 TASK:RETURN ;
-: T7-B ( -- ) T7-GO ROUNDS 0 ?do T7-B-ROUND loop 0 TASK:RETURN ;
+: T7-A ( -- ) WORKER-B T7-GO ROUNDS 0 ?do T7-A-ROUND loop 0 TASK:RETURN ;
+: T7-B ( -- ) WORKER-A T7-GO ROUNDS 0 ?do T7-B-ROUND loop 0 TASK:RETURN ;
 
 : T7-RUN ( -- )
    T7-A-SRC 0 T7-FILL  T7-B-SRC 255 T7-FILL

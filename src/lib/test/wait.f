@@ -1,6 +1,6 @@
-\ wait.f - a test's own waits. POLL's expired deadline is no assertion result:
-\ it names itself on stdout and throws E-PROC-TIMEOUT, so the test ends as a
-\ timeout and not as a FAIL. FOR-CELL has no deadline: its worker's end ends it.
+\ wait.f - a test's own waits; neither has a deadline, so a hang shows as the
+\ test's WAIT line. EXPIRED names a library call's own timeout no case expects:
+\ it throws E-PROC-TIMEOUT, so the test ends as a timeout and not as a FAIL.
 \
 \ STORAGE CLASS. CALLER-OWNED: no module state.
 
@@ -16,25 +16,23 @@ public
    type s" : a deadline expired" type cr
    E-PROC-TIMEOUT throw ;
 
-\ Asks the predicate until it answers true, pausing the task between asks. At
-\ the absolute mono-ns deadline the wait is EXPIRED under its name. The
-\ predicate's own throws pass through untouched.
-: POLL ( R [ R -- R bool ] n ptr u8 n -- R )
-   {: q deadline:n name:ptr len:n :}
+\ Asks the predicate until it answers true, pausing the task between asks.
+\ The predicate's own throws pass through untouched.
+: POLL ( R [ R -- R bool ] -- R )
+   {: q :}
    begin
       q execute 0= while
-      mono-ns deadline >= if name len EXPIRED then
       TASK:PAUSE
    repeat ;
 
-
-\ The task is the cell's setter. DONE? is read before the cell, so a store it
-\ made before ending is seen; ending without it throws the task's code here.
+\ Waits until the cell holds at least want. The task is the cell's setter. DONE?
+\ is read before the cell, so a store it made before ending is seen; ending
+\ without it throws the task's code here.
 : FOR-CELL ( ptr n n ptr n -- )
    {: cell:ptr want:n tcb:ptr :}
    begin
       tcb TASK:DONE?
-      cell atomic@ want <> while
+      cell atomic@ want < while
       if
          tcb TASK:THROW@ dup 0= if drop E-TASK-NO-RESULT then
          throw

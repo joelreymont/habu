@@ -31,11 +31,8 @@ $7F000001 constant LOOPBACK
 3 constant THREE-WORKERS
 500 constant IDLE-MS
 1000000 constant NS-PER-MS
-3000 constant WAIT-MS               \ the bound on every wait, past REFETCH-MS
 1000 constant REFETCH-MS            \ BEARER's window between fetches
-2000 constant STALL-MS              \ the bound on a stalled /keys, under WAIT-MS
 600 constant LIFE-S                 \ how far past now a current token's exp lies
-28 constant CURLE-TIMED-OUT         \ CURLE_OPERATION_TIMEDOUT
 
 $1000 constant CAP
 CAP BUFFER: BODY
@@ -69,12 +66,9 @@ variable EARLY-CODE                 \ what ADMIT? threw before ISSUER!
 variable FETCHED-BY                 \ a mono-ns after the last fetch returned
 variable DUE                        \ when that fetch's window has passed, a mono-ns
 variable RELEASED                   \ the test lets the stalled /keys answer
-variable STALL-END                  \ RELEASED as the stalled /keys saw it on answering
 TYPED-VARIABLE PENDING CURL:handle  \ the request ASKER sends
 TASK:MIN-STACK TASK:TASK ASKER
 TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
-
-: DEADLINE ( -- n ) mono-ns WAIT-MS NS-PER-MS * + ;
 
 \ The bytes copied into the span at off; answers the offset past them.
 : PUT ( ptr u8 n SPAN:span<u8> n -- n )
@@ -150,10 +144,7 @@ TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
    ;MATCH ;
 
 : STALL ( -- )
-   mono-ns STALL-MS NS-PER-MS * +
-   [: RELEASED atomic@ 0<> over mono-ns <= or ;] DEADLINE s" bearer-test STALL"
-   TEST-WAIT:POLL drop
-   RELEASED atomic@ STALL-END atomic! ;
+   [: RELEASED atomic@ 0<> ;] TEST-WAIT:POLL ;
 
 : KEYS-ROUTE ( HTTP:request HTTP:response -- )
    nip {: answer:HTTP:response :}
@@ -187,8 +178,7 @@ TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
       ready OF ENDOF
       failed OF drop -1 CURL:>HANDLE ENDOF
    ;MATCH {: h:CURL:handle :}
-   h path pu URL CURL:URL! OK
-   h WAIT-MS >MS CURL:TIMEOUT! OK h ;
+   h path pu URL CURL:URL! OK h ;
 
 : ADD ( CURL:handle ptr u8 n -- CURL:handle )
    {: h:CURL:handle a:ptr u:n :}
@@ -203,8 +193,7 @@ TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
    ;MATCH ;
 
 \ The response's status, its body in BODY and its header block in HEADS; -1
-\ for a body past CAP, -2 for a failed transfer. CURLE 28 is libcurl's
-\ timeout, met by a starved or stopped process: E-PROC-TIMEOUT, not a FAIL.
+\ for a body past CAP, -2 for a failed transfer.
 : PERFORM ( CURL:handle -- n )
    {: h:CURL:handle :}
    0 BODY-U ! 0 HEADS-U !
@@ -213,11 +202,7 @@ TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
       response OF {: status:CURL:http-status got:len :}
          got LEN>N BODY-U ! status CURL:HTTP-STATUS>N ENDOF
       truncated OF drop drop -1 ENDOF
-      failed OF {: rc:CURL:code :}
-         rc CURL:CODE>N CURLE-TIMED-OUT = if
-            s" bearer-test PERFORM" TEST-WAIT:EXPIRED
-         then
-         -2 ENDOF
+      failed OF drop -2 ENDOF
    ;MATCH {: status:n :}
    status 0 > if h HEADS CAP >LEN CURL:HEADERS HEADS-LEN HEADS-U ! then
    status ;
@@ -317,7 +302,7 @@ TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
 
 : WAIT-WINDOW ( -- )
    FETCHED-BY @ REFETCH-MS NS-PER-MS * + DUE !
-   [: DUE @ mono-ns <= ;] DEADLINE s" bearer-test WINDOW" TEST-WAIT:POLL ;
+   [: DUE @ mono-ns <= ;] TEST-WAIT:POLL ;
 
 : UNAVAILABLE ( -- )
    s" a key set that cannot be fetched answers an empty 503" T-LABEL
@@ -414,7 +399,7 @@ TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
    s" exp at the leeway's edge is invalid" T-LABEL
    KID-A ISS-AUD epoch-seconds 60 - WHO CLAIMS MINT SEND INVALID
    s" exp a second inside the leeway is admitted" T-LABEL
-   0 [: EDGE-TRY ;] DEADLINE s" bearer-test EDGE" TEST-WAIT:POLL WANT-WHO ANSWERED
+   0 [: EDGE-TRY ;] TEST-WAIT:POLL WANT-WHO ANSWERED
    s" nbf beyond the leeway is invalid" T-LABEL
    SB-RESET ISS-AUD SB-APPEND LATER FMT:SB-INT
    S\" ,\"nbf\":" SB-APPEND epoch-seconds 120 + FMT:SB-INT WHO SB-APPEND
@@ -457,7 +442,7 @@ TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
    3 MODE atomic!
    KID-B CURRENT MINT s" /claims" OPEN BEARING PENDING !
    ['] ASK ASKER TASK:ACTIVATE
-   [: HITS atomic@ 3 = ;] DEADLINE s" bearer-test HITS" TEST-WAIT:POLL
+   [: HITS atomic@ 3 = ;] TEST-WAIT:POLL
    KID-A CURRENT MINT SEND WANT-WHO ANSWERED
    s" an unknown kid while a fetch is in flight is invalid and fetches nothing" T-LABEL
    2 MODE atomic!                      \ a second fetch would answer set two at once
@@ -468,9 +453,7 @@ TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
    ASKER TASK:JOIN MATCH result
       ok OF WANT-WHO ANSWERED ENDOF
       err OF throw ENDOF
-   ;MATCH
-   s" the stalled fetch was released, not expired" T-LABEL
-   STALL-END atomic@ 1 T= ;
+   ;MATCH ;
 
 : METADATA$ ( -- ptr u8 n ) s" https://bearer-test.example/.well-known/oauth-protected-resource" ;
 : REPLACED$ ( -- ptr u8 n ) s" https://replaced.test/.well-known/oauth-protected-resource" ;

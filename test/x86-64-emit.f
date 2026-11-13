@@ -8,6 +8,7 @@
 require src/lib/test.f
 require src/lib/test/ending.f
 require src/lib/test/subject.f
+require src/lib/process.f
 require src/lib/byte-buffer.f
 require src/lib/error.f
 require src/lib/fmath.f                       \ FMATH:E-DOMAIN, borrowed for a malformed expected string
@@ -325,7 +326,6 @@ $401000 constant LINK-VA
 \ suite survives it. A rel32 site out of reach needs a 2 GB stream: not built.
 72 constant REFUSE-RC                   \ X64CODE's refusal exit, as src/arch/arm64/icode.f's
 $1000 constant CAPTURE-CAP
-10000 constant TIMEOUT-MS
 create OUT CAPTURE-CAP allot
 create ERR CAPTURE-CAP allot
 
@@ -352,8 +352,8 @@ create ERR CAPTURE-CAP allot
 
 : REFUSES ( ptr u8 n ptr u8 n -- )
    {: source:ptr sourceu:n want:ptr wantu:n :}
-   source sourceu OUT CAPTURE-CAP >LEN ERR CAPTURE-CAP >LEN TIMEOUT-MS >MS
-   SUBJECT:RUN {: outu:len erru:len oc :}
+   source sourceu OUT CAPTURE-CAP >LEN ERR CAPTURE-CAP >LEN
+   PROCESS:WAIT-FOREVER SUBJECT:RUN {: outu:len erru:len oc :}
    source sourceu OUT outu LEN>N ERR erru LEN>N oc REFUSE-RC T-ENDING-EXITED=
    outu LEN>N 0 T=
    ERR erru LEN>N want wantu T$= ;

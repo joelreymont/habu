@@ -18,7 +18,6 @@ require src/lib/process-command.f
 package VOCABULARY-TEST
 private
 
-60000 constant TIMEOUT-MS
 10 constant LF
 
 PTR-VARIABLE STEM-A                    \ the harness the next child loads, as its file stem
@@ -37,8 +36,6 @@ variable CODE                          \ the last child's exit code, -1 when it 
    SB-RESET DIR$ SB-APPEND stem su SB-APPEND s" .f" SB-APPEND
    SB$ ;
 
-\ A deadline is no exit code: the file the child loaded last and its capture
-\ are printed and E-PROC-TIMEOUT thrown.
 : CODE! ( CMD:command PROCESS:ending ptr u8 n -- CMD:command )
    {: oc ran:ptr ranu:n :}
    CMD:OUT$ {: out:ptr outu:n :}
@@ -61,7 +58,7 @@ variable CODE                          \ the last child's exit code, -1 when it 
       s" --" CMD:ARG+
       name nu FILE-ARG+
    then
-   s" bin/hb" TIMEOUT-MS >MS CMD:RUN-OUTCOME
+   s" bin/hb" PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME
    nu 0 > if name nu else STEM$ then FILE$ CODE! ;
 
 : ERR-LINE$ ( CMD:command -- CMD:command ptr u8 n )

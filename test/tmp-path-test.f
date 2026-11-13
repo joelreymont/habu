@@ -18,7 +18,6 @@ package TMP-PATH-TEST
 private
 
 PATH-CAP 1+ 4 * constant IO-CAP
-120000 constant TIMEOUT-MS
 76 constant REFUSE-RC
 $2F constant SLASH
 $0A constant LF
@@ -46,7 +45,7 @@ create ERR IO-CAP allot
    s" test/tmp-path-child.f" >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
    case caseu >LEN PROC-ARGV+
-   engine engineu >LEN s" " >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN TIMEOUT-MS >MS
+   engine engineu >LEN s" " >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N
    {: outu:len erru:len rc:n :}
    outu LEN>N erru LEN>N rc ;

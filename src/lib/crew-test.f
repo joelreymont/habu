@@ -18,8 +18,6 @@ require src/lib/crew.f
 package CREW-TEST
 private
 
-1000000 constant NS-PER-MS
-10000 constant WAIT-MS               \ a gate host starts threads late
 8 constant JOBS                      \ the values the cases use, 0..JOBS-1
 
 \ Cells the tasks write, indexed by value.
@@ -41,8 +39,7 @@ CAST: N>TCB ( n -- ptr n )
    loop
    0 GO atomic! ;
 
-: WAIT ( [ -- bool ] -- )
-   mono-ns WAIT-MS NS-PER-MS * + s" crew-test" TEST-WAIT:POLL ;
+: WAIT ( [ -- bool ] -- ) TEST-WAIT:POLL ;
 
 : SEEN? ( n -- bool ) SEEN atomic@ 0<> ;
 : SEEN@ ( n -- n ) SEEN atomic@ ;

@@ -20,7 +20,6 @@ package EXIT-HOOK-TEST
 
 $10000 constant CAP
 1024 constant TEXT-CAP
-600000 constant TIMEOUT-MS
 create OUT CAP allot
 create ERR CAP allot
 create TEXT-BUF TEXT-CAP allot
@@ -80,7 +79,7 @@ variable TREE-U
 : RUN-PATH ( ptr u8 n -- n n n ) {: path:ptr pathu :}
    PROC-ENV-INHERIT-MISSING
    path pathu >LEN
-   OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
+   OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N
    {: outu:len erru:len rc:n :}
    outu LEN>N erru LEN>N rc ;

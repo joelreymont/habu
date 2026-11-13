@@ -18,7 +18,6 @@ package WHOLE-SOURCE-READ-TEST
 private
 
 $10000 constant IO-CAP
-600000 constant TIMEOUT-MS
 \ Many first rooms (src/lib/source.f SOURCE-ROOM-MIN): read from a short
 \ sample, the room doubles five times.
 100000 constant TEXT-LEN
@@ -67,7 +66,7 @@ DYNAMIC-BUFFER READ-BUF u8
 : LSP-MISSING-CASE ( -- )
    SUBJECT$ MISSING$ WHOLE-SOURCE-READ-CHILD:CASE!
    s" WHOLE-SOURCE-READ-CHILD:MAIN"
-   OUT IO-CAP >LEN ERR IO-CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN
+   OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    PROCESS:ENDING>RC RC>N
    {: outu:len erru:len rc:n :}
    s" the language server counts a file it cannot read as empty" T-LABEL

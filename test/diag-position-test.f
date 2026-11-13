@@ -21,7 +21,6 @@ require tools/check-core.f
 package DIAG-POSITION-TEST
 
 PATH-CAP 1+ 4 * constant CAP
-120000 constant TIMEOUT-MS
 70 constant REJECT-RC
 67 constant THROW-RC
 78 constant DUP-RC                    \ a duplicate definition's code, $4E, outside --verify-only
@@ -1390,7 +1389,8 @@ variable RC
    FX-PATH$ >LEN PROC-ARGV+
    FX-PATH$
    ENGINE-CANDIDATE:PATH$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN
-   ERR CAP >LEN  TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   ERR CAP >LEN  PROCESS:WAIT-FOREVER
+   RUN-ARGV-STDIN-CAPTURE-OUTCOME
    STORE!
    RC @ want T=
    textu 0= IF ERR-U @ 0 T= EXIT THEN

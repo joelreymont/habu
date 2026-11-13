@@ -3,6 +3,7 @@
 
 require src/lib/test.f
 require src/lib/string.f
+require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/engine-candidate.f
 require test/pcap-result.f
@@ -12,7 +13,6 @@ private
 
 $20000 constant OUT-CAP
 $4000 constant ERR-CAP
-60000 constant TIMEOUT-MS
 create OUT OUT-CAP allot
 create ERR ERR-CAP allot
 
@@ -24,7 +24,7 @@ create ERR ERR-CAP allot
 : RUN ( -- )
    T-RESET
    CHILD-ARGV
-   ENGINE-CANDIDATE:PATH$ >LEN OUT OUT-CAP >LEN ERR ERR-CAP >LEN TIMEOUT-MS >MS
+   ENGINE-CANDIDATE:PATH$ >LEN OUT OUT-CAP >LEN ERR ERR-CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE PCAP-RESULT:>N {: outu:n erru:n rc:n :}
    s" profiler rewind child exits successfully" T-LABEL  rc 0 T=
    s" ordinary trimming gives the replacement fresh counters" T-LABEL

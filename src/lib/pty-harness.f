@@ -17,8 +17,6 @@ public
 
 DEFTYPE WATCH                      \ a registered never-seen needle
 
-$4E20 constant WAIT-BUDGET-MS      \ one wait or drain runs at most this long on the clock
-
 private
 
 10 constant POLL-MS                \ one poll blocks at most this long
@@ -41,8 +39,6 @@ variable WEND                      \ end of the window an absence claim reads; -
 variable MFD                       \ the master; -1 with no child
 variable SFD                       \ the slave, only between opening it and the spawn
 variable KID                       \ the pty child; -1 with no child
-variable DEADLINE                  \ absolute monotonic end of the wait in flight
-variable QUIET                     \ polls in a row that brought nothing
 variable PATH-U
 variable WATCH-N
 
@@ -153,9 +149,7 @@ public
 
 \ One poll and, when the descriptor has bytes, one read: above zero for bytes
 \ appended, 0 for a quiet poll (an errno included), below zero once the far side
-\ is gone - a ready descriptor that reads nothing is the hang-up. The
-\ descriptors are blocking, so a read no poll authorised could block past the
-\ caller's deadline.
+\ is gone - a ready descriptor that reads nothing is the hang-up.
 : READ-STEP ( fd -- n ) {: f:fd :}
    f POLL-MS >MS PROCESS:POLL-IN COUNT>N 0 <= if 0 exit then
    f READ-CHUNK 0 > if 1 exit then
@@ -167,28 +161,6 @@ public
 \ a wrong verdict by one short read.
 : READ-TO-EOF ( fd -- ) {: f:fd :}
    begin f READ-CHUNK 0 > while repeat ;
-
-
-: WAIT-OPEN ( n -- ) {: ms:n :}
-   ms >MS PROCESS:DEADLINE-AT DEADLINE ! ;
-
-
-: WAIT-LEFT ( -- n )
-   DEADLINE @ PROCESS:LEFT-MS MS>N ;
-
-
-\ Read fd until `quiet` polls in a row bring nothing, the far side hangs up, or
-\ the wait budget passes. The deadline is absolute and is tested before each
-\ poll, so a drain overruns it by at most the one poll already in flight. What
-\ the drain read stays in the buffer; a caller that wants it gone clears.
-: DRAIN ( fd n -- ) {: f:fd quiet:n :}
-   WAIT-BUDGET-MS WAIT-OPEN
-   0 QUIET !
-   begin QUIET @ quiet <  WAIT-LEFT 0 >  and while
-      f READ-STEP {: n:n :}
-      n 0 < if exit then
-      n 0 > if 0 QUIET ! else QUIET @ 1 + QUIET ! then
-   repeat ;
 
 
 \ A short write is an error, never a silent truncation. A negative length is
@@ -234,106 +206,19 @@ public
 
 private
 
-\ Read the master until the child hangs up or the clock runs out. The deadline
-\ is absolute, so this overruns it by at most the poll in flight.
-: DRAIN-TO-HANGUP ( -- bool )
-   begin
-      WAIT-LEFT 0= if false exit then
-      MASTER-FD READ-STEP 0 < if true exit then
-   again ;
-
-
-\ One poll-authorised read of what is still queued at the master, and whether
-\ there may be more. The far side is gone by the time this runs, so a ready
-\ descriptor that reads nothing ends the count instead of blocking.
-: LEFTOVER-STEP ( n -- n bool )
-   MASTER-FD POLL-MS >MS PROCESS:POLL-IN COUNT>N 0 <= if false exit then
-   MASTER-FD READ-CHUNK dup 0 <= if drop false exit then
-   + true ;
-
-
-\ Bytes the child left at the master: what a blocked write was waiting for
-\ someone to take. Only meaningful once the child is dead.
-: LEFTOVER ( -- n )
-   0 begin LEFTOVER-STEP 0= if exit then again ;
-
-
-\ Kill the child and every process it started, then reap the child. What the
-\ child spawned holds the terminal too, and the master hangs up only once that
-\ is gone; src/lib/process.f PROCESS:KILL-TREE reports a walk that throws.
-: KILL-REAP ( pid -- ) {: p:pid :}
-   p PROCESS:KILL-TREE
-   p PROCESS:WAIT drop ;
-
-
-\ True once the watch reports the exit within ms. A signal that lands mid-wait
-\ restarts against the same deadline, so no signal storm shortens the budget.
-: WATCH-READY? ( fd n -- bool ) {: w:fd ms:n :}
-   w FD:POLLIN PROCESS:PFD!
-   1 ms ms >MS PROCESS:DEADLINE-AT PROCESS:POLL-RESTART 0 > ;
-
-
-\ A child that has hung up is not yet a child that has exited: the terminal can
-\ close before the process does. Its lifetime watch answers that question inside
-\ the budget. A host that refuses a watch for a process that has ALREADY exited
-\ (macOS reports ESRCH) answers it the
-\ same way. Other watch failures do not establish that the process is exiting.
-: EXIT-READY? ( pid n -- bool ) {: p:pid ms:n :}
-   p PID>N proc-watch-open {: w:n :}
-   w 0 < if
-      w PROCESS:ESRCH# negate = if true exit then
-      E-PROC-OUTPUT throw
-   then
-   w >FD ms WATCH-READY? {: ready:bool :}
-   w close
-   ready ;
-
-
-\ The expiry: name the child that did not exit, kill it, and answer the killed
-\ outcome, which reds a case that wanted a clean exit instead of hanging it.
-: KILL-EXPIRED ( pid n -- PROCESS:ending ) {: p:pid ms:n :}
-   s" pty reap: no exit within ms " type ms .
-   s" pty reap: killed pid " type p PID>N .
-   p KILL-REAP
-   PROCESS-ENDING:timeout ;
+: DRAIN-TO-HANGUP ( -- )
+   begin MASTER-FD READ-STEP 0 >= while repeat ;
 
 public
 
-\ A pid at or below 0 names no child: the expiry of pid 0 would kill(0), the
-\ caller's own group, and a negative pid's wait reaps some other child.
-: WAIT-EXIT ( pid n -- PROCESS:ending ) {: p:pid ms:n :}
-   p PID>N 0 <= if E-PTY-IO throw then
-   p ms EXIT-READY? 0= if p ms KILL-EXPIRED exit then
-   p PROCESS:WAIT PROCESS:STATUS>ENDING ;
-
-private
-
-\ The wedge: the child still held the terminal when the clock ran out. Kill it
-\ first, so the count below ends, then name the bytes it left for a reader that
-\ never came.
-: WEDGE-OUTCOME ( n -- PROCESS:ending ) {: ms:n :}
-   CHILD-PID ms KILL-EXPIRED
-   s" pty reap: bytes still unread at the master " type LEFTOVER .
-   -1 KID ! ;
-
-public
-
-\ Reap the pty child within ms. A child on a terminal nobody reads blocks in
-\ write() once the terminal's buffer fills, so a reap that only waits never ends
-\ (measured: 5 m 34 s in do_wait before a hand kill). The master is read to the
-\ hang-up first, what is left of the budget waits out the exit on the child's
-\ lifetime watch, and on expiry the child and every process it started are
-\ killed and named with the bytes left unread.
-: REAP-WITHIN ( n -- PROCESS:ending ) {: ms:n :}
-   CHILD-PID PID>N 0 <= if E-PTY-IO throw then
-   ms WAIT-OPEN
-   DRAIN-TO-HANGUP 0= if ms WEDGE-OUTCOME exit then
-   CHILD-PID WAIT-LEFT WAIT-EXIT
-   -1 KID ! ;
-
-
+\ Reap the pty child. A child on a terminal nobody reads blocks in write() once
+\ the terminal's buffer fills, so the master is read to the hang-up before the
+\ wait.
 : REAP ( -- PROCESS:ending )
-   WAIT-BUDGET-MS REAP-WITHIN ;
+   CHILD-PID PID>N 0 <= if E-PTY-IO throw then
+   DRAIN-TO-HANGUP
+   CHILD-PID PROCESS:WAIT PROCESS:STATUS>ENDING
+   -1 KID ! ;
 
 
 private
@@ -410,26 +295,19 @@ public
 
 private
 
-\ Read until the quotation holds; a hang-up answers its last answer. The clock
-\ throws E-PROC-TIMEOUT: a child that holds the terminal is late, not wrong.
-: WAIT-UNTIL ( [ -- bool ] n -- bool )
-   WAIT-OPEN
+\ Read until the quotation holds; a hang-up answers its last answer.
+: WAIT-UNTIL ( [ -- bool ] -- bool )
    begin
       dup execute if drop true exit then
-      WAIT-LEFT 0= if E-PROC-TIMEOUT throw then
       MASTER-FD READ-STEP 0 < if execute exit then
    again ;
 
 public
 
-: WAIT-AFTER-WITHIN ( ptr u8 n ptr u8 n n -- bool ) {: ha:ptr hu:n ta:ptr tu:n ms:n :}
-   [: ha hu ta tu AFTER? ;] ms WAIT-UNTIL ;
-
-
 \ The editor redraws "habu> " per key, so only a prompt after the answer shows
 \ the child raw again; a ^D sent before it is read cooked and dropped as a NUL.
-: WAIT-AFTER ( ptr u8 n ptr u8 n -- bool )
-   WAIT-BUDGET-MS WAIT-AFTER-WITHIN ;
+: WAIT-AFTER ( ptr u8 n ptr u8 n -- bool ) {: ha:ptr hu:n ta:ptr tu:n :}
+   [: ha hu ta tu AFTER? ;] WAIT-UNTIL ;
 
 
 \ The text anywhere: an empty head puts the tail anywhere.
@@ -442,15 +320,14 @@ public
 : WAIT-ANSWER ( -- bool )
    s\"  ok\r\n\r\x1B[Khabu> " {: a:ptr u:n :}
    [: a u IN-BUF?  s\" ?\r\n\r\x1B[Khabu> " IN-BUF? or ;]
-   WAIT-BUDGET-MS WAIT-UNTIL
+   WAIT-UNTIL
    a u IN-BUF? and ;
 
 
 \ Wait for a marker and close an absence claim's window at its end. The marker
 \ has to be one the child prints PAST the point where the rejected text could
 \ have appeared. The window retires before the wait, so a wait the child hangs
-\ up on and one whose clock ends both leave none, and the claim behind it is
-\ refused as well.
+\ up on leaves none, and the claim behind it is refused as well.
 : WAIT-BARRIER ( ptr u8 n -- bool ) {: a:ptr u:n :}
    -1 WEND !
    a u WAIT-FOR 0= if false exit then

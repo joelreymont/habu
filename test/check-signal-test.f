@@ -18,21 +18,13 @@ require src/lib/process-env.f
 require src/lib/signal.f
 require src/lib/engine-candidate.f
 require src/lib/test/runner.f
-require src/lib/test/wait.f
 require src/lib/test/fifo.f
 require src/core/include.f               \ SOURCE-ROOT:CANON-OS, the name --json-errors gives a file
 
 package CHECK-SIGNAL-TEST
 
-\ This test's own waits (for the report, for room in check.f's stdin, for
-\ check.f to end, for end of file on the FIFO) are named on stdout and thrown as
-\ E-PROC-TIMEOUT (src/lib/test/wait.f), so the row ends as a timeout, not a
-\ fail.
-60000 constant READY-MS              \ check.f's static pass and two engine boots under a loaded pool
 10000 constant EXIT-MS               \ half the sleeper's 20 s: a check.f that waited it out is late
-5000 constant GONE-MS                \ the killed take a moment to finish dying
 5000 constant DEADLINE-MS            \ the subject reported 0.6 s after check.f began, at load 15; the sleeper outlasts it
-30000 constant EXPIRE-MS             \ past the sleeper's 20 s, for a case that failed to end it
 1 cells constant REPORT-BYTES        \ the subject's pid
 512 constant FEED-CHUNK              \ PIPE_BUF on macOS: a write poll admitted cannot block
 $20000 constant PAD-BYTES            \ twice the 64 KiB a pipe holds on either host
@@ -111,47 +103,40 @@ PROCESS:NO-FD FEED-WR !
    SB-RESET FMT:SB-INT SB$ ;
 
 \ fd within ms: a positive count once it answers one of the poll events, 0 when
-\ ms ran out first, a negative errno when the poll failed.
+\ ms ran out first, a negative errno when the poll failed; a negative ms has no
+\ limit.
 : POLL-WITHIN ( n n n -- n )
    {: fd:n events:n ms:n :}
    fd >FD events PROCESS:PFD!
    1 ms ms >MS PROCESS:DEADLINE-AT PROCESS:POLL-RESTART ;
 
 \ fd within ms, answered as POLL-WITHIN answers: ready once it has bytes to read
-\ or has reached end of file. A descriptor the poll reports broken (POLLERR or
-\ POLLNVAL) is no answer either way: it throws E-PROC-OUTPUT.
+\ or has reached end of file. A descriptor the poll reports broken is no answer
+\ either way: it throws E-PROC-OUTPUT.
 : READY-WITHIN ( n n -- n )
    FD:POLLIN swap POLL-WITHIN {: ready:n :}
-   0 >IDX PROCESS:PFD-REVENTS FD:POLLERR FD:POLLNVAL or and 0 <> if E-PROC-OUTPUT throw then
+   0 >IDX TEST-FIFO:BROKEN? if E-PROC-OUTPUT throw then
    ready ;
 
-\ The subject's pid, before READY-MS runs out. End of file first means check.f
-\ or its child died before the subject ran: that, a short report or a failed
-\ read or poll answers false. READY-MS running out first is this test's own
-\ deadline, named and thrown as a timeout. On macOS, whose poll never reports a
-\ FIFO's end of file, a subject that dies before its report is that timeout.
+\ The subject's pid. check.f ending first, end of file, a short report or a
+\ failed read answers false.
 : REPORT-READ? ( -- bool )
-   READY-MS >MS PROCESS:DEADLINE-AT {: deadline:n :}
    begin REPORT-U @ REPORT-BYTES < while
-      FIFO-RD @ deadline PROCESS:LEFT-MS MS>N READY-WITHIN {: ready:n :}
-      ready 0= if s" check-signal-test REPORT-READ" TEST-WAIT:EXPIRED then
-      ready 0 < if false exit then
+      FIFO-RD @ >FD CHECK-WATCH @ >FD TEST-FIFO:REPORT-OR-END
+      0 >IDX PROCESS:PFD-REVENTS 0= if false exit then
       FIFO-RD @ REPORT REPORT-U @ + REPORT-BYTES REPORT-U @ - read {: got:n :}
       got 0 <= if false exit then
       REPORT-U @ got + REPORT-U !
    repeat
    true ;
 
-\ End of file within ms: nothing under check.f holds the write end. A failed
-\ read or poll answers false. ms running out first is this test's own
-\ deadline, named and thrown as a timeout. A FIFO no writer has opened reads end
-\ of file too, so it means anything only after the subject's report.
-: GONE-WITHIN? ( n -- bool )
-   {: ms:n :}
+\ End of file: nothing under check.f holds the write end. A failed read or poll
+\ answers false. A FIFO no writer has opened reads end of file too, so it means
+\ anything only after the subject's report.
+: GONE? ( -- bool )
    FIFO-DONE @ if true exit then
-   FIFO-RD @ >FD ms TEST-FIFO:EOF-WITHIN {: eof:n :}
-   eof 0= if s" check-signal-test GONE-WITHIN" TEST-WAIT:EXPIRED then
-   eof 0 < if false exit then
+   FIFO-RD @ >FD -1 TEST-FIFO:EOF-WITHIN {: eof:n :}
+   eof 0 <= if false exit then
    true FIFO-DONE !
    true ;
 
@@ -221,14 +206,12 @@ PROCESS:NO-FD FEED-WR !
    w FD>N FEED-WR !
    r FD>N CHECK-SPAWN ;
 
-\ u bytes at a into check.f's stdin once the pipe has room for them, before
-\ the deadline. u is at most FEED-CHUNK, so the write cannot block. A short
-\ write or a failed poll answers false. The deadline running out first is this
-\ test's own, named and thrown as a timeout.
-: FEED? ( ptr u8 n n -- bool )
-   {: a:ptr u:n deadline:n :}
-   FEED-WR @ FD:POLLOUT deadline PROCESS:LEFT-MS MS>N POLL-WITHIN {: ready:n :}
-   ready 0= if s" check-signal-test FEED" TEST-WAIT:EXPIRED then
+\ u bytes at a into check.f's stdin once the pipe has room for them. u is at
+\ most FEED-CHUNK, so the write cannot block. A short write or a failed poll
+\ answers false.
+: FEED? ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   FEED-WR @ FD:POLLOUT -1 POLL-WITHIN {: ready:n :}
    ready 0 < if false exit then
    FEED-WR @ a u write u = ;
 
@@ -239,28 +222,28 @@ PROCESS:NO-FD FEED-WR !
 \ check.f reads its program, which it does after it has caught the stops.
 : FEED-PAD? ( -- bool )
    FEED-FILL
-   READY-MS >MS PROCESS:DEADLINE-AT {: deadline:n :}
    PAD-BYTES FEED-CHUNK / 0 ?do
-      FEED FEED-CHUNK deadline FEED? 0= if false unloop exit then
+      FEED FEED-CHUNK FEED? 0= if false unloop exit then
    loop
    true ;
 
 \ A definition that leaves nothing for its declared n, then end of file.
 : FEED-REFUSED? ( -- bool )
-   s" : BAD ( -- n ) ;" READY-MS >MS PROCESS:DEADLINE-AT FEED?
+   s" : BAD ( -- n ) ;" FEED?
    FEED-WR PROCESS:CLOSE-CELL ;
 
 : CHECK-SIGNAL ( n -- ) {: sig:n :}
    CHECK-PID @ >PID sig PROCESS:KILL-RAW drop ;
 
-\ Returns once check.f has ended, within ms. ms running out first is this
-\ test's own deadline, named and thrown as a timeout; a failed poll of the
-\ watch, or one that reports it broken, throws E-PROC-OUTPUT, a failure.
+\ Returns once check.f has ended, asserting it ended within ms; a failed poll
+\ of the watch, or one that reports it broken, throws E-PROC-OUTPUT.
 : CHECK-ENDED-WITHIN ( n -- )
    {: ms:n :}
-   CHECK-WATCH @ ms READY-WITHIN {: ready:n :}
-   ready 0= if s" check-signal-test CHECK-ENDED" TEST-WAIT:EXPIRED then
-   ready 0 < if E-PROC-OUTPUT throw then ;
+   mono-ns {: began:n :}
+   CHECK-WATCH @ -1 READY-WITHIN {: ready:n :}
+   ready 0 < if E-PROC-OUTPUT throw then
+   s" check.f ended within its bound" T-LABEL
+   mono-ns began - ms PROCESS:NS-PER-MS * < TTRUE ;
 
 \ Returns once check.f has ended, inside the EXIT-MS a signal's answer gets.
 : CHECK-ENDED ( -- )
@@ -306,7 +289,7 @@ PROCESS:NO-FD FEED-WR !
 \   caller the check finished; its wait status must be killed by the signal;
 \ - a wait that does not hear it: check.f waits in a capture of its child's
 \   output, and for a child that closed its output in the reap after it; each
-\   wait has a case (CASE-CLOSED), and each waits EXIT-MS for check.f to end.
+\   wait has a case (CASE-CLOSED), and each asserts check.f ends within EXIT-MS.
 : CASE-BODY ( n -- )
    {: sig:n :}
    CHECK-START
@@ -322,7 +305,7 @@ PROCESS:NO-FD FEED-WR !
    TMP-ENTRIES 0 T=
    CHECK-END
    s" signal: no process under check.f is left" T-LABEL
-   GONE-MS GONE-WITHIN? TTRUE ;
+   GONE? TTRUE ;
 
 \ check.f answers a stop after its run however the run ended, and a refused
 \ program ends before any child is started: its capture row names pid 0, and a
@@ -377,12 +360,12 @@ PROCESS:NO-FD FEED-WR !
    TMP-ENTRIES 0 T=
    CHECK-END
    s" deadline: no process under check.f is left" T-LABEL
-   GONE-MS GONE-WITHIN? TTRUE ;
+   GONE? TTRUE ;
 
 : LEFT-ENDED ( -- )
    FIFO-DONE @ 0= if
       s" the processes check.f left ended on their own" T-LABEL
-      EXPIRE-MS GONE-WITHIN? TTRUE
+      GONE? TTRUE
    then ;
 
 \ Runs after every body, whatever it asserted or threw; each step is a no-op for

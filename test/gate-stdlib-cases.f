@@ -1068,7 +1068,7 @@ SUITE tcp4
    src/lib/net/tcp4-test.f
 ;SUITE
 
-\ IPv4 datagrams: two loopback sockets in one process, every wait bounded.
+\ IPv4 datagrams: two loopback sockets in one process.
 SUITE udp4
    src/lib/net/udp4-test.f
 ;SUITE
@@ -1276,8 +1276,7 @@ SUITE check-signal
    test/check-signal-test.f
 ;SUITE
 
-\ A capture that ends its child early - its deadline, an overflow, a refused
-\ reaper arm - leaves nothing the child started.
+\ A capture an overflow ends early leaves nothing its child started.
 SUITE capture-tree
    test/capture-tree-test.f
 ;SUITE

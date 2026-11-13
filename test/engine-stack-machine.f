@@ -4,6 +4,7 @@
 \ alternate signal stack. Control: a data-stack overflow still reports (data).
 \ Every subject recurses through a self call with work after it, so it cannot
 \ become a jump.
+require src/lib/process.f
 require test/gate-common.f
 require src/lib/engine-candidate.f
 require src/core/engine-error.f
@@ -41,7 +42,7 @@ variable IMAGE-U
 
 : RUN-SRC ( ptr u8 n -- ) {: src:ptr srcu:n :}
    GE-HB-RESET
-   GE-HB$ src srcu GE-TIMEOUT-MS GE-RUN-STDIN ;
+   GE-HB$ src srcu PROCESS:WAIT-FOREVER MS>N GE-RUN-STDIN ;
 
 : MACHINE-EXIT ( ptr u8 n -- ) {: label:ptr labelu:n :}
    ENGINE-ERROR:STACK-BOUNDS label labelu GE-EXPECT-RC
@@ -88,14 +89,14 @@ variable IMAGE-U
    s" stripped application build" GE-EXPECT-OK
    GE-HB-RESET
    IMAGE$ GE-ARGV+
-   IMAGE$ GE-TIMEOUT-MS GE-RUN-ENV
+   IMAGE$ PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV
    S\" 110\n" s" a stripped application's caught fault" GE-EXPECT-OUT
    s" a stripped application's caught fault" FAULT-LINE
    ENGINE-ERROR:STACK-BOUNDS s" a stripped application" GE-EXPECT-RC
    MACHINE$ s" a stripped application" GE-EXPECT-ERR-HAS
    GE-HB-RESET
    IMAGE$ GE-ARGV+ s" uncaught" GE-ARG+
-   IMAGE$ GE-TIMEOUT-MS GE-RUN-ENV
+   IMAGE$ PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV
    ENGINE-ERROR:MEMORY-FAULT s" a stripped application's uncaught fault"
    GE-EXPECT-RC
    s" a stripped application's uncaught fault" FAULT-LINE

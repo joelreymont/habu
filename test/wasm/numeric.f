@@ -16,7 +16,6 @@ private
 $400 constant CAP
 create OUT CAP allot
 create ERR CAP allot
-30000 constant TIMEOUT-MS               \ a hang guard: a row runs in milliseconds
 
 \ The row the next fork runs; the child inherits these cells.
 PTR-VARIABLE SRC-A
@@ -35,7 +34,7 @@ public
    {: name:ptr nu:n src:ptr su:n want:ptr wu:n :}
    src SRC-A !  su SRC-U !  name NAME-A !  nu NAME-U !
    s" WASM-NUMERIC-TEST:ROW-EVAL"
-   OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN {: outu:len erru:len oc :}
+   OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN {: outu:len erru:len oc :}
    name nu T-LABEL  src su OUT outu LEN>N ERR erru LEN>N oc 0 T-ENDING-EXITED=
    name nu T-LABEL  OUT outu LEN>N want wu T$=
    name nu T-LABEL  erru LEN>N 0 T= ;

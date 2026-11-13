@@ -15,16 +15,12 @@ require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/engine-candidate.f
-require src/lib/test/wait.f
 require src/lib/test/runner.f
 require src/lib/test/fifo.f
 require test/gate-pool.f
 
 package PG-KILL-TEST
 
-60000 constant READY-MS              \ initdb, the server's start and the case's connect
-5000 constant GONE-MS                \ the killed take a moment to finish dying
-90000 constant EXPIRE-MS             \ past the server's once-a-minute lock-file recheck
 10 constant NEWLINE
 
 2 constant IPC-STAT
@@ -84,10 +80,9 @@ PROCESS:NO-FD FIFO-RD !
 : TEST-ENDED? ( -- bool )  0 >IDX GT-POOL-FREE? ;
 
 \ One line into buf, stepping the pool while none is there. False if the test
-\ ends, the FIFO ends, buf fills or a read or poll fails first; the deadline
-\ throws a timeout.
-: LINE-READ? ( ptr u8 ptr n n -- bool )
-   {: buf:ptr count:ptr deadline:n :}
+\ ends, the FIFO ends, buf fills or a read or poll fails first.
+: LINE-READ? ( ptr u8 ptr n -- bool )
+   {: buf:ptr count:ptr :}
    0 count !
    begin
       count @ PATH-CAP >= if false exit then
@@ -95,7 +90,6 @@ PROCESS:NO-FD FIFO-RD !
       ready 0 < if false exit then
       ready 0= if
          TEST-ENDED? if false exit then
-         deadline PROCESS:LEFT-MS MS>N 0= if s" pg-kill-test REPORT-READ" TEST-WAIT:EXPIRED then
          GT-POOL-STEP
       else
          FIFO-RD @ buf count @ + 1 read 1 <> if false exit then
@@ -106,9 +100,8 @@ PROCESS:NO-FD FIFO-RD !
 
 \ A report the case could not finish answers false and leaves REPORTED false.
 : REPORT-READ? ( -- bool )
-   READY-MS >MS PROCESS:DEADLINE-AT {: deadline:n :}
-   LINE LINE-U deadline LINE-READ? 0= if false exit then
-   SHM SHM-U deadline LINE-READ? 0= if false exit then
+   LINE LINE-U LINE-READ? 0= if false exit then
+   SHM SHM-U LINE-READ? 0= if false exit then
    true REPORTED !
    true ;
 
@@ -136,16 +129,13 @@ PROCESS:NO-FD FIFO-RD !
    s" pg-kill: segment " type SHMID FMT:.INT
    s"  outlived its server; `ipcrm -m " type SHMID FMT:.INT
    s" ` removes it" type cr ;
-\ End of file within ms: nothing under the row holds the write end. A failed
-\ read or poll answers false. ms running out first is this test's own
-\ deadline, named and thrown as a timeout. A FIFO no writer has opened reads
-\ end of file too, so it means anything only after the case's report.
-: GONE-WITHIN? ( n -- bool )
-   {: ms:n :}
+\ End of file: nothing under the row holds the write end. A failed read or poll
+\ answers false. A FIFO no writer has opened reads end of file too, so it means
+\ anything only after the case's report.
+: GONE? ( -- bool )
    FIFO-DONE @ if true exit then
-   FIFO-RD @ >FD ms TEST-FIFO:EOF-WITHIN {: eof:n :}
-   eof 0= if s" pg-kill-test GONE-WITHIN" TEST-WAIT:EXPIRED then
-   eof 0 < if false exit then
+   FIFO-RD @ >FD -1 TEST-FIFO:EOF-WITHIN {: eof:n :}
+   eof 0 <= if false exit then
    true FIFO-DONE !
    true ;
 
@@ -202,7 +192,7 @@ PROCESS:NO-FD FIFO-RD !
 \ unless its server's clean stop exits 0.
 : EXPECT-GONE ( -- )
    s" no process under the row is left" T-LABEL
-   GONE-MS GONE-WITHIN? TTRUE
+   GONE? TTRUE
    s" the server's shared-memory segment is gone" T-LABEL
    REPORTED @ if SEGMENT? 0= else false then {: freed:bool :}
    freed TTRUE
@@ -222,14 +212,12 @@ PROCESS:NO-FD FIFO-RD !
 
 \ What a failed case owes. A server the kill missed stops itself once its
 \ lock-file recheck, which runs once a minute, finds its data directory gone,
-\ so the row's directories go first and the FIFO is given that long; a writer
-\ still there after it is this test's own deadline, thrown as a timeout. The
-\ socket directory the case reported goes last, wherever it was, and goes even
-\ when that wait throws.
+\ so the row's directories go first. The socket directory the case reported
+\ goes last, wherever it was, even when a step before it throws.
 : SWEEP ( -- )
    [: 0 >IDX GT-POOL-CHILD-TMP-REMOVE
       s" the sweep left no process behind" T-LABEL
-      EXPIRE-MS GONE-WITHIN? TTRUE ;]
+      GONE? TTRUE ;]
    [: REPORTED @ if SOCKETS$ FS:EXISTS? if SOCKETS$ FS:REMOVE-TREE then then ;]
    finally ;
 

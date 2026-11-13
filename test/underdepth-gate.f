@@ -23,7 +23,6 @@ require src/lib/engine-candidate.f
 require test/tail-parity.f
 
 2048 constant UDG-CAP
-30000 constant UDG-TIMEOUT-MS
 70 constant UDG-REJECT-RC           \ interpret-level reject exit (RC-REJECT)
 
 variable UDG-ROOT-U
@@ -82,7 +81,7 @@ create UDG-EMPTY 1 allot            \ zero-length stdin
    s" --load" >LEN PROC-ARGV+
    UDG-CHILD >LEN PROC-ARGV+
    ENGINE-CANDIDATE:PATH$ >LEN  UDG-EMPTY 0 >LEN  UDG-OUT UDG-CAP >LEN
-   UDG-ERR UDG-CAP >LEN  UDG-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   UDG-ERR UDG-CAP >LEN  PROCESS:WAIT-FOREVER  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    src u UDG-STORE! ;
 
 \ The other cold-prefix path: the program on stdin, no --load.
@@ -90,7 +89,7 @@ create UDG-EMPTY 1 allot            \ zero-length stdin
    UDG-IN!
    PROC-ARGV-RESET
    ENGINE-CANDIDATE:PATH$ >LEN  UDG-IN$ >LEN  UDG-OUT UDG-CAP >LEN
-   UDG-ERR UDG-CAP >LEN  UDG-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   UDG-ERR UDG-CAP >LEN  PROCESS:WAIT-FOREVER  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    UDG-IN$ UDG-STORE! ;
 
 package UDG-EXEC
@@ -99,7 +98,7 @@ public
 
 : SUBJECT ( ptr u8 n -- ) {: src:ptr u:n :}
    src u UDG-OUT UDG-CAP >LEN UDG-ERR UDG-CAP >LEN
-   UDG-TIMEOUT-MS >MS SUBJECT:RUN src u UDG-STORE! ;
+   PROCESS:WAIT-FOREVER SUBJECT:RUN src u UDG-STORE! ;
 
 ;package
 

@@ -226,6 +226,13 @@ FUNCTION: RECEIVE-CALL recvfrom ( n ptr u8 n n ptr u8 ptr u8 -- n )
    NS-PER-MS 1 - + NS-PER-MS / >MS ;
 
 
+\ What a RECEIVE given timeout ms may still wait: a negative timeout has no
+\ deadline and waits as itself.
+: LEFT ( ms ns -- ms ) {: timeout:ms deadline:ns :}
+   timeout MS>N 0 < if timeout exit then
+   deadline REMAINING ;
+
+
 : RETRY? ( errno -- bool )
    ERRNO>N dup 4 = swap
    HB-TARGET-LINUX-KERNEL? if 11 else
@@ -321,19 +328,20 @@ public
 \ A packet may contain zero bytes. Capacity is 1..65507; the caller owns that
 \ writable span. A truncated result carries the ORIGINAL datagram byte length,
 \ while only capacity bytes were copied. Source filtering and reordering are the
-\ caller's. Timeout zero makes one immediate try and never reaches the loop; any
-\ other timeout is an absolute deadline the waits on the AIO loop share, so
-\ AIO:START must have run before the first of them.
+\ caller's. Timeout zero makes one immediate try and never reaches the loop; -1
+\ waits on the AIO loop with no deadline; any other timeout is an absolute
+\ deadline the waits on the AIO loop share. AIO:START must have run before the
+\ first wait.
 : RECEIVE ( socket ptr u8 NUM:byte-len ms -- receive-result )
    {: socket:socket bytes capacity:NUM:byte-len timeout:ms :}
    socket CHECK-SOCKET capacity BLEN>N 1 MAX-PAYLOAD WITHIN-RANGE
-   timeout MS>N 0 $7FFFFFFF WITHIN-RANGE
+   timeout MS>N $7FFFFFFF > if E-OPERAND throw then
    mono-ns timeout MS>N NS-PER-MS * + >NS {: deadline:ns :}
    begin
       ENDPOINT-OUTPUT socket bytes capacity RECEIVE-RAW {: got:n error:errno :}
       got 0 >= if got capacity RECEIVED exit then
       error dup RETRY? 0= if UDP4-RECEIVE--RESULT:failed exit then drop
-      deadline REMAINING dup MS>N 0= if drop UDP4-RECEIVE--RESULT:timeout exit then
+      timeout deadline LEFT dup MS>N 0= if drop UDP4-RECEIVE--RESULT:timeout exit then
       socket swap WAIT-READABLE
       MATCH AIO:outcome
          ready OF drop ENDOF

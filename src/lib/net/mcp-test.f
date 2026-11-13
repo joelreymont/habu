@@ -57,12 +57,11 @@ $4000 constant CAP
 CAP BUFFER: BODY
 variable BODY-U
 1000000 constant NS-PER-MS
-2000 constant WAIT-MS               \ the bound on every wait in this file
+2000 constant WAIT-MS               \ how long /endless pages before its last
 50 constant PAGE-MS                 \ /endless's delay before each page
 300 constant LIST-MS                \ the TOOLS limit /endless runs past
 1000 constant LIST-BOUND-MS         \ when that TOOLS must have thrown by
 300 constant FIRST-PAGE-MS          \ /late's delay before its first page
-1500 constant STALL-MS              \ the bound on /late's stall at its second page
 500 constant LATE-MS                \ the TOOLS limit /late runs past
 790 constant LATE-BOUND-MS          \ when that TOOLS must have thrown by
 
@@ -111,11 +110,11 @@ variable CANCEL-CODE                \ what the cancelled TOOLS or CALL threw, 0 
 variable HITS                       \ the requests /counted has had
 TASK:MIN-STACK TASK:TASK STALLER
 
-\ The end of a wait's WAIT-MS window, an absolute mono-ns.
+\ WAIT-MS from now, an absolute mono-ns.
 : DEADLINE ( -- n ) mono-ns WAIT-MS NS-PER-MS * + ;
 
 : ARM ( -- ) 0 ENTERED atomic! 0 RELEASED atomic! 0 LEFT atomic! ;
-: SETTLE ( -- ) [: LEFT atomic@ 0<> ;] DEADLINE s" mcp-test LEFT" TEST-WAIT:POLL ;
+: SETTLE ( -- ) [: LEFT atomic@ 0<> ;] TEST-WAIT:POLL ;
 
 \ A setter's refusal throws: the case cannot make its request on that handle.
 : OK ( CURL:status -- )
@@ -124,22 +123,15 @@ TASK:MIN-STACK TASK:TASK STALLER
       failed OF drop CURL:E-STATE throw ENDOF
    ;MATCH ;
 
-28 constant CURLE-TIMED-OUT             \ CURLE_OPERATION_TIMEDOUT
-
 \ The response's status, its body in BODY; -1 for a body past CAP, -2 for a
-\ failed transfer. CURLE 28 is the handle's WAIT-MS timeout, met by a starved
-\ or stopped process: E-PROC-TIMEOUT, a timeout and not a FAIL.
+\ failed transfer.
 : PERFORM ( CURL:handle -- n )
    BODY CAP >LEN CURL:PERFORM
    MATCH CURL:fetch-result
       response OF {: status:CURL:http-status got:len :}
          got LEN>N BODY-U ! status CURL:HTTP-STATUS>N ENDOF
       truncated OF drop drop -1 ENDOF
-      failed OF {: rc:CURL:code :}
-         rc CURL:CODE>N CURLE-TIMED-OUT = if
-            s" mcp-test PERFORM" TEST-WAIT:EXPIRED
-         then
-         -2 ENDOF
+      failed OF drop -2 ENDOF
    ;MATCH ;
 
 
@@ -157,7 +149,6 @@ TASK:MIN-STACK TASK:TASK STALLER
    ;MATCH {: h:CURL:handle :}
    SB-RESET  s" http://127.0.0.1:" SB-APPEND  HTTP:PORT FMT:SB-U  s" /mcp" SB-APPEND
    h SB$ CURL:URL! OK
-   h WAIT-MS >MS CURL:TIMEOUT! OK
    h kind ku ADD accept au ADD ;
 
 : OPEN ( -- CURL:handle )
@@ -801,7 +792,7 @@ TASK:MIN-STACK TASK:TASK STALLER
 : ADD-STALL ( -- )
    S\" {\"name\":\"stall\",\"description\":\"Answer once released.\",\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{},\"annotations\":{\"readOnlyHint\":true}}"
    [: 2drop 1 ENTERED atomic!
-      [: RELEASED atomic@ 0<> ;] DEADLINE s" mcp-test STALL" TEST-WAIT:POLL
+      [: RELEASED atomic@ 0<> ;] TEST-WAIT:POLL
       1 LEFT atomic!
       s" {}" MCP:RESULT ;] MCP:ADD-TOOL ;
 
@@ -943,26 +934,23 @@ TASK:MIN-STACK TASK:TASK STALLER
       answer S\" {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[]}}" HTTP:BODY! exit
    then
    mono-ns PAGE-MS NS-PER-MS * +
-   [: dup mono-ns <= ;] DEADLINE s" mcp-test PAGE" TEST-WAIT:POLL drop
+   [: dup mono-ns <= ;] TEST-WAIT:POLL drop
    answer S\" {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[],\"nextCursor\":\"more\"}}"
    HTTP:BODY! ;
 
 \ A first page with a nextCursor after FIRST-PAGE-MS, then a last, empty page,
-\ setting ENTERED as it is asked, once the test sets RELEASED or STALL-MS has
-\ passed, so a client that held its second page to the whole limit ends.
+\ setting ENTERED as it is asked, once the test sets RELEASED.
 : LATE-ROUTE ( HTTP:request HTTP:response -- )
    {: asked:HTTP:request answer:HTTP:response :}
    answer JSON-HEADER
    asked HTTP:BODY$ S\" \"cursor\":\"late\"" CONTAINS? if
       1 ENTERED atomic!
-      mono-ns STALL-MS NS-PER-MS * +
-      [: RELEASED atomic@ 0<> over mono-ns <= or ;] DEADLINE s" mcp-test STALL-PAGE"
-      TEST-WAIT:POLL drop
+      [: RELEASED atomic@ 0<> ;] TEST-WAIT:POLL
       1 LEFT atomic!
       answer S\" {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[]}}" HTTP:BODY! exit
    then
    mono-ns FIRST-PAGE-MS NS-PER-MS * +
-   [: dup mono-ns <= ;] DEADLINE s" mcp-test FIRST-PAGE" TEST-WAIT:POLL drop
+   [: dup mono-ns <= ;] TEST-WAIT:POLL drop
    answer S\" {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[],\"nextCursor\":\"late\"}}"
    HTTP:BODY! ;
 
@@ -973,7 +961,7 @@ TASK:MIN-STACK TASK:TASK STALLER
 \ An empty tools/list answered once the test sets RELEASED.
 : SLOW-ROUTE ( HTTP:request HTTP:response -- )
    nip {: answer:HTTP:response :}
-   [: RELEASED atomic@ 0<> ;] DEADLINE s" mcp-test SLOW" TEST-WAIT:POLL
+   [: RELEASED atomic@ 0<> ;] TEST-WAIT:POLL
    1 LEFT atomic!
    answer JSON-HEADER
    answer S\" {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[]}}" HTTP:BODY! ;
@@ -1064,7 +1052,7 @@ $A constant LF
    HTTP:PORT FMT:SB-U s"  failed: curl 28: Timeout was reached" SB-APPEND
    LOG$ SB$ CONTAINS? TTRUE
    1 RELEASED atomic!
-   CLIENT @ s" echo" s" {}" 300 >MS MCP:CALL TFALSE 2drop SETTLE ;
+   CLIENT @ s" echo" s" {}" 0 >MS MCP:CALL TFALSE 2drop SETTLE ;
 
 8000001 constant PAST-CURL-INPUT          \ CURL_MAX_INPUT_LENGTH + 1
 
@@ -1072,7 +1060,7 @@ $A constant LF
 \ logged line; valid until the next read.
 : FAILED-ON ( ptr u8 n -- ptr u8 n )
    MCP:OPEN ROUTE-CLIENT !
-   [: [: ROUTE-CLIENT @ s" echo" s" {}" WAIT-MS >MS MCP:CALL 2drop drop ;]
+   [: [: ROUTE-CLIENT @ s" echo" s" {}" 0 >MS MCP:CALL 2drop drop ;]
       MCP:E-TRANSFER TTHROWSQ ;] CAPTURED
    ROUTE-CLIENT @ MCP:CLOSE
    LINES 1 T=  LOG$ ;
@@ -1184,7 +1172,7 @@ $A constant LF
    mono-ns start - LATE-BOUND-MS NS-PER-MS * < TTRUE
    1 RELEASED atomic!
    s" the client then serves a TOOLS to the last page" T-LABEL
-   ROUTE-CLIENT @ LATE-MS >MS MCP:TOOLS s" []" T$=
+   ROUTE-CLIENT @ 0 >MS MCP:TOOLS s" []" T$=
    ROUTE-CLIENT @ MCP:CLOSE SETTLE ;
 
 
@@ -1198,7 +1186,7 @@ $A constant LF
    ARM 0 CLOSED atomic!
    s" /mcp" URL MCP:OPEN STALL-CLIENT !
    ['] STALL-WORK STALLER TASK:ACTIVATE
-   [: ENTERED atomic@ 0<> ;] DEADLINE s" mcp-test ENTERED" TEST-WAIT:POLL
+   ENTERED 1 STALLER TEST-WAIT:FOR-CELL
    STALLER TASK:HALT
    STALLER TASK:JOIN MATCH result ok OF ENDOF err OF ENDOF ;MATCH E-TASK-NO-RESULT T=
    1 RELEASED atomic! SETTLE
@@ -1221,9 +1209,9 @@ $A constant LF
    {: work who:MCP:client stop :}
    ARM RUNNING CANCEL-CODE atomic!
    work STALLER TASK:ACTIVATE
-   [: ENTERED atomic@ 0<> ;] DEADLINE s" mcp-test ENTERED" TEST-WAIT:POLL
+   ENTERED 1 STALLER TEST-WAIT:FOR-CELL
    who stop execute
-   [: CANCEL-CODE atomic@ RUNNING <> ;] DEADLINE s" mcp-test CANCEL" TEST-WAIT:POLL
+   [: CANCEL-CODE atomic@ RUNNING <> ;] TEST-WAIT:POLL
    CANCEL-CODE atomic@ MCP:E-TRANSFER T=
    STALLER TASK:JOIN MATCH result ok OF drop ENDOF err OF drop ENDOF ;MATCH
    1 RELEASED atomic! SETTLE ;

@@ -20,7 +20,6 @@ variable RACE-DEST-U
 variable RACE-READY
 variable ENTRIES
 variable SIBLINGS
-5000000000 constant RACE-WAIT-NS
 TASK:MIN-STACK TASK:TASK WORKER-A
 TASK:MIN-STACK TASK:TASK WORKER-B
 
@@ -78,33 +77,25 @@ TASK:MIN-STACK TASK:TASK WORKER-B
    DEST COUNT-ENTRIES  ENTRIES @ 0 T=
    DEST FS:REMOVE-DIR ;
 
-: RACE-WAIT ( -- )
-   mono-ns RACE-WAIT-NS + {: deadline :}
+: RACE-WAIT ( ptr n -- )
+   {: peer:ptr :}
    1 RACE-READY atomic-add drop
-   begin RACE-READY atomic@ 2 < while
-      mono-ns deadline >= if E-PROC-TIMEOUT throw then
-      TASK:PAUSE
-   repeat ;
+   RACE-READY 2 peer TEST-WAIT:FOR-CELL ;
 
 : RACE-A ( -- )
-   RACE-WAIT
+   WORKER-B RACE-WAIT
    RACE-DEST s" first bytes" FS:ATOMIC-CREATE-PRIVATE
    if 1 else 0 then TASK:RETURN ;
 
 : RACE-B ( -- )
-   RACE-WAIT
+   WORKER-A RACE-WAIT
    RACE-DEST s" second bytes" FS:ATOMIC-CREATE-PRIVATE
    if 1 else 0 then TASK:RETURN ;
 
-\ A worker's E-PROC-TIMEOUT is RACE-WAIT's deadline, the row's own: main names
-\ it here, after both joins.
 : WINNER? ( result<n,n> -- bool )
    MATCH result
       ok OF 0<> ENDOF
-      err OF
-         dup E-PROC-TIMEOUT = if s" fs-rename-noreplace-test RACE-WAIT" TEST-WAIT:EXPIRED then
-         throw
-      ENDOF
+      err OF throw ENDOF
    ;MATCH ;
 
 : RACE ( -- )

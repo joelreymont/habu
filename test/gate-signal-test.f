@@ -11,7 +11,6 @@ require src/lib/le.f
 require src/lib/ffi-abi.f
 require src/lib/fmt.f
 require src/lib/test.f
-require src/lib/test/wait.f
 require src/lib/fs.f
 require src/lib/fs-list.f
 require src/lib/fs-mutate.f
@@ -26,10 +25,7 @@ require src/lib/test/fifo.f
 
 package GATE-SIGNAL-TEST
 
-60000 constant READY-MS              \ two engine boots under a loaded pool
 10000 constant EXIT-MS               \ half the writers' 20 s: a root that waited them out is late
-5000 constant GONE-MS                \ the killed take a moment to finish dying
-30000 constant EXPIRE-MS             \ past the writers' 20 s, for a case that failed to end them
 5 constant AGAIN-GAP-MS              \ the second signal, while the first is being answered
 500 constant IGNORED-MS              \ how long an ignored signal is given to stop the root after all
 10 constant SETTLE-MS
@@ -198,41 +194,33 @@ variable STAT-PATH-U
 : REPORT-ENV ( -- )
    s" GATE_SIGNAL_FIFO" >LEN FIFO$ >LEN PROC-ENV+ ;
 
-\ A wait that runs out is no assertion result: TEST-WAIT:EXPIRED names it on
-\ stdout and throws E-PROC-TIMEOUT (src/lib/test/wait.f), so the row ends as a
-\ timeout, not a FAIL.
-
 \ TRUE once fd has bytes to read or has reached end of file, FALSE when ms ran
-\ out first. A failed poll, or a descriptor the poll reports broken (POLLERR or
-\ POLLNVAL), is no answer either way: it throws E-PROC-OUTPUT.
+\ out first, a negative ms none. A failed poll, or a descriptor the poll
+\ reports broken, is no answer: it throws E-PROC-OUTPUT.
 : READY-WITHIN? ( n n -- bool )
    {: fd:n ms:n :}
    fd >FD FD:POLLIN PROCESS:PFD!
    1 ms ms >MS PROCESS:DEADLINE-AT PROCESS:POLL-RESTART {: rc:n :}
    rc 0 < if E-PROC-OUTPUT throw then
-   0 >IDX PROCESS:PFD-REVENTS FD:POLLERR FD:POLLNVAL or and 0 <> if E-PROC-OUTPUT throw then
+   0 >IDX TEST-FIFO:BROKEN? if E-PROC-OUTPUT throw then
    rc 0 > ;
 
-\ Both pids, before READY-MS runs out. End of file first means a reporter died:
-\ that, a short report or a failed read answers false. READY-MS running out
-\ first is this wait's own deadline, named and thrown as a timeout.
-\ On macOS, whose poll never reports a FIFO's end of file, a reporter that dies
-\ before its report is this timeout instead.
+\ Both pids. The root ending first, end of file or a short report answers
+\ false; the root's end also ends the wait where poll never reports a FIFO's
+\ end of file (macOS).
 : REPORTS-READ? ( -- bool )
-   READY-MS >MS PROCESS:DEADLINE-AT {: deadline:n :}
    begin REPORT-U @ REPORT-BYTES < while
-      FIFO-RD @ deadline PROCESS:LEFT-MS MS>N READY-WITHIN? 0= if
-         s" gate-signal-test REPORTS-READ" TEST-WAIT:EXPIRED
-      then
+      FIFO-RD @ >FD ROOT-WATCH @ >FD TEST-FIFO:REPORT-OR-END
+      0 >IDX PROCESS:PFD-REVENTS 0= if false exit then
       FIFO-RD @ REPORTS REPORT-U @ + REPORT-BYTES REPORT-U @ - read {: got:n :}
       got 0 <= if false exit then
       REPORT-U @ got + REPORT-U !
    repeat
    true ;
 
-\ End of file within ms: nothing under the subject holds the write end. FALSE
-\ when ms ran out first, which the zero-time probe of an ignored signal
-\ expects. A failed read or poll throws E-PROC-OUTPUT.
+\ End of file within ms, a negative ms none: nothing under the subject holds
+\ the write end. FALSE when ms ran out first, which the zero-time probe of an
+\ ignored signal expects. A failed read or poll throws E-PROC-OUTPUT.
 : GONE-WITHIN? ( n -- bool )
    {: ms:n :}
    FIFO-DONE @ if true exit then
@@ -241,12 +229,6 @@ variable STAT-PATH-U
    eof 0= if false exit then
    true FIFO-DONE !
    true ;
-
-\ Returns at end of file within ms. ms running out first is this wait's own
-\ deadline, named and thrown as a timeout; a failed poll or read is no
-\ deadline and throws E-PROC-OUTPUT.
-: GONE-WITHIN ( n -- )
-   GONE-WITHIN? 0= if s" gate-signal-test GONE-WITHIN" TEST-WAIT:EXPIRED then ;
 
 : REPORTED ( n -- pid ) {: i:n :}
    i cells REPORTS + @ >PID ;
@@ -270,43 +252,35 @@ variable STAT-PATH-U
 
 \ Returns once no engine that reported is still the process that reported. A
 \ killed engine takes a moment to die, and on Linux its zombie keeps its start
-\ until its new parent reaps it, so "gone" is asked again for a moment rather
-\ than once. GONE-MS running out first is this wait's own deadline, named and
-\ thrown as a timeout.
+\ until its new parent reaps it, so "gone" is asked again until it holds.
 : REPORTED-GONE ( -- )
-   GONE-MS >MS PROCESS:DEADLINE-AT {: deadline:n :}
    begin
       true
       REPORTED# 0 ?do i REPORTED-SAME? if drop false then loop
       if exit then
-      deadline PROCESS:LEFT-MS MS>N 0= if
-         s" gate-signal-test REPORTED-GONE" TEST-WAIT:EXPIRED
-      then
       SETTLE-MS PAUSE
    again ;
 
 \ A failed case leaves nothing behind, except after a root killed in the middle
 \ of a walk: what the walk stopped stays stopped unless the kernel resumes it
 \ (test/gate-pool.f header), and a writer it does not resume, the helper's,
-\ whose group was orphaned already, outlives the wait and is left.
+\ whose group was orphaned already, holds the sweep's wait to its WAIT line.
 \ The scratch is under this process's runner root, which its registered cleanup
 \ removes. A passing case skips the wait: its FIFO is already at end of file.
 
 \ What a failed case owes: the engines that reported are killed, each only
-\ while it is still the process that reported, and the writers nobody could
-\ name have 20 s to live. EXPIRE-MS running out first is this wait's own
-\ deadline, named and thrown as a timeout.
+\ while it is still the process that reported, and the wait outlasts the
+\ writers nobody could name, which sleep 20 s.
 : SWEEP ( -- )
    REPORTED# 0 ?do
       i REPORTED-SAME? if i REPORTED PROCESS:SIGKILL PROCESS:KILL-RAW drop then
    loop
-   EXPIRE-MS GONE-WITHIN ;
+   -1 GONE-WITHIN? drop ;
 
 \ The two claims that outlive the subject, asked of whichever process ended the
-\ row: nothing holds the FIFO, and the engines that reported are gone. Each is
-\ a wait, and its deadline running out is a timeout.
+\ row: nothing holds the FIFO, and the engines that reported are gone.
 : EXPECT-GONE ( -- )
-   GONE-MS GONE-WITHIN
+   -1 GONE-WITHIN? drop
    REPORTED-GONE ;
 
 \ ---- the gate root ----------------------------------------------------------
@@ -359,12 +333,13 @@ variable STAT-PATH-U
 : ROOT-SIGNAL ( n -- ) {: sig:n :}
    ROOT-PID @ >PID sig PROCESS:KILL-RAW drop ;
 
-\ Returns once the root has ended. EXIT-MS running out first is this wait's own
-\ deadline, named and thrown as a timeout; a failed poll throws E-PROC-OUTPUT.
+\ Returns once the root has ended, asserting it ended within EXIT-MS; a failed
+\ poll throws E-PROC-OUTPUT.
 : ROOT-ENDED ( -- )
-   ROOT-WATCH @ EXIT-MS READY-WITHIN? 0= if
-      s" gate-signal-test ROOT-ENDED" TEST-WAIT:EXPIRED
-   then ;
+   mono-ns {: began:n :}
+   ROOT-WATCH @ -1 READY-WITHIN? drop
+   s" signal: the root ended within EXIT-MS" T-LABEL
+   mono-ns began - EXIT-MS PROCESS:NS-PER-MS * < TTRUE ;
 
 : ROOT-REAP ( -- PROCESS:status )
    ROOT-PID @ >PID PROCESS:WAIT

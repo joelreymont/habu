@@ -2,8 +2,15 @@
 \ spawned child holds only the descriptors its spawn maps (src/lib/spawn.f), so
 \ the test names the FIFO's path in an environment variable; each test-code
 \ process of the tree opens the write end first (WRITER) and maps it into each
-\ child (SPAWN). STORAGE CLASS. PROCESS-WIDE: MADE, the counter naming each
-\ FIFO, and SINK, the bytes EOF-WITHIN reads past, never read back.
+\ child (SPAWN). A FIFO no writer has opened reads end of file too, so end of
+\ file means gone only after a tree process has reported on it, and the wait for
+\ that report polls for bytes: neither host's poll reports an unopened FIFO.
+\ macOS's poll never reports a FIFO's end of file (Darwin 27: no POLLIN, no
+\ POLLHUP, last writer closed or died), so EOF-WITHIN reads the nonblocking end
+\ (0 with no writer, EAGAIN with one), polling at most SLICE-MS between reads,
+\ through its own read: no library word reads a nonblocking fd with its errno.
+\ STORAGE CLASS. PROCESS-WIDE: MADE, the counter naming each FIFO, and SINK, the
+\ bytes EOF-WITHIN reads past, never read back.
 
 require src/lib/error.f
 require src/lib/ffi-abi.f
@@ -89,15 +96,8 @@ public
    PROC-ARGV-ENV-RESET
    PROCESS:SPAWN ;
 
-\ End of file on the read end within ms, past bytes still in it: 1 at end of
-\ file, 0 when ms ran out, a negative errno on a failed read or poll; ms 0 is
-\ one read. A FIFO no writer has opened reads end of file too, so 1 means gone
-\ only after a tree process has written a report to it; the wait for that
-\ report polls for bytes, since neither host's poll reports an unopened FIFO.
-\ macOS's poll never reports a FIFO's end of file (Darwin 27: no POLLIN, no
-\ POLLHUP, last writer closed or died), so this reads the nonblocking end (0
-\ with no writer, EAGAIN with one), polling at most SLICE-MS between reads,
-\ through its own read: no library word reads a nonblocking fd with its errno.
+\ End of file within ms, past bytes still in it: 1 at end of file, 0 when ms
+\ ran out, a negative errno on failure; 0 ms is one read, negative ms no limit.
 : EOF-WITHIN ( fd n -- n ) {: rd:fd ms:n :}
    ms >MS PROCESS:DEADLINE-AT {: deadline:n :}
    begin
@@ -106,12 +106,27 @@ public
       got 0 < if
          FFI:ERRNO {: cause:n :}
          cause EAGAIN <> cause EINTR <> and if cause negate exit then
-         deadline PROCESS:LEFT-MS MS>N SLICE-MS min {: left:n :}
+         ms 0 < if SLICE-MS else
+            deadline PROCESS:LEFT-MS MS>N SLICE-MS min
+         then {: left:n :}
          left 0= if 0 exit then
          rd FD:POLLIN PROCESS:PFD!
          1 left left >MS PROCESS:DEADLINE-AT PROCESS:POLL-RESTART {: rc:n :}
          rc 0 < if rc exit then
       then
    again ;
+
+\ The poll reported slot idx broken (POLLERR or POLLNVAL).
+: BROKEN? ( idx -- bool )
+   PROCESS:PFD-REVENTS FD:POLLERR FD:POLLNVAL or and 0 <> ;
+
+\ The FIFO's read end in slot 0 and the watch in slot 1, with no limit. A failed
+\ poll, or a slot the poll reports broken, throws E-PROC-OUTPUT.
+: REPORT-OR-END ( fd fd -- ) {: rd:fd watch:fd :}
+   rd FD:POLLIN 0 >IDX PROCESS:PFD-AT!
+   watch FD:POLLIN 1 >IDX PROCESS:PFD-AT!
+   2 -1 -1 >MS PROCESS:DEADLINE-AT PROCESS:POLL-RESTART
+   0 < if E-PROC-OUTPUT throw then
+   0 >IDX BROKEN? 1 >IDX BROKEN? or if E-PROC-OUTPUT throw then ;
 
 ;package

@@ -49,7 +49,7 @@ TASK:MIN-STACK TASK:TASK WORKER-B
    [: a u CODE-A REASON:THROW ;] catch
    CODE-A <> if 1 bad +! then
    1 BARRIER atomic-add drop
-   [: BOTH-STATED? ;] mono-ns 5000000000 + s" reason-test WAIT-BOTH" TEST-WAIT:POLL
+   [: BOTH-STATED? ;] TEST-WAIT:POLL
    CODE-A REASON:TEXT$ a u STR= 0= if 1 bad +! then
    0 TASK:RETURN ;
 

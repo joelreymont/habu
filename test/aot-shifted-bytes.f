@@ -38,8 +38,6 @@ require src/lib/engine-candidate.f
 package AOT-SHIFTED-BYTES-TEST
 private
 
-\ ms for each stripped application's hb-build, held to an engine build's limit
-300000 constant BUILD-MS
 
 create SUBJECT PATH-CAP allot
 create IMAGE PATH-CAP allot
@@ -159,7 +157,8 @@ variable WANT-U
    s" --" GE-ARG+ src srcu GE-ARG+
    s" -o" GE-ARG+ out outu GE-ARG+ ;
 
-: BUILD-RUN ( -- ) ENGINE-CANDIDATE:PATH$ BUILD-MS GE-RUN-ENV ;
+: BUILD-RUN ( -- )
+   ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV ;
 
 : HB-BUILD ( ptr u8 n ptr u8 n -- )
    GE-HB-RESET BUILD-ARGV BUILD-RUN ;
@@ -172,7 +171,7 @@ variable WANT-U
 : RUN-IMAGE ( -- )
    GE-HB-RESET
    IMAGE$ GE-ARGV+
-   IMAGE$ GE-TIMEOUT-MS GE-RUN-ENV
+   IMAGE$ PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV
    s" the stripped application" GE-EXPECT-OK
    S\" ok\n" s" the stripped application's output" GE-EXPECT-OUT ;
 
@@ -199,7 +198,7 @@ variable WANT-U
    GE-HB-RESET
    ENGINE-CANDIDATE:PATH$ GE-ARGV+
    s" --load" GE-ARG+ PROBE$ GE-ARG+
-   ENGINE-CANDIDATE:PATH$ GE-TIMEOUT-MS GE-RUN-ENV
+   ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV
    s" hb --load of a file whose loads read the loader" GE-EXPECT-OK
    GT-OUT$ {: a:ptr u:n :}
    u LOADED-CAP > if s" the probe's --load output fits its buffer" GE-FAIL then
@@ -213,7 +212,7 @@ variable WANT-U
    GE-HB-RESET
    ENGINE-CANDIDATE:PATH$ GE-ARGV+
    PROBE$ GE-ARG+
-   ENGINE-CANDIDATE:PATH$ GE-TIMEOUT-MS GE-RUN-ENV
+   ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV
    s" hb probe.f, a program file whose loads read the loader" GE-EXPECT-OK
    LOADED$ s" the loader's lines under hb probe.f, as under hb --load" GE-EXPECT-OUT-HAS ;
 
@@ -231,7 +230,7 @@ variable WANT-U
    GE-HB-RESET
    ENGINE-CANDIDATE:PATH$ GE-ARGV+
    s" --load" GE-ARG+ RESOLVES$ GE-ARG+
-   ENGINE-CANDIDATE:PATH$ GE-TIMEOUT-MS GE-RUN-ENV
+   ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV
    s" hb --load of a file whose word resolves its own path" GE-EXPECT-OK
    s" resolves dir " s" " WANT!
    WANT$ s" the directory the word resolves under hb --load" GE-EXPECT-OUT-HAS ;
@@ -260,7 +259,7 @@ variable WANT-U
    then
    GE-HB-RESET
    ENVTOP-IMAGE$ GE-ARGV+
-   ENVTOP-IMAGE$ GE-TIMEOUT-MS GE-RUN-ENV
+   ENVTOP-IMAGE$ PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV
    s" the program built from envtop.f" GE-EXPECT-OK
    want wantu s" the length of HABU_TEST_SIDE the program's compile read" GE-EXPECT-OUT ;
 
@@ -283,7 +282,7 @@ variable WANT-U
 : ROOTED-RUN ( ptr u8 n -- ) {: want:ptr wantu:n :}
    GE-HB-RESET
    ROOTED-IMAGE$ GE-ARGV+
-   ROOTED-IMAGE$ GE-TIMEOUT-MS GE-RUN-ENV
+   ROOTED-IMAGE$ PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV
    s" the program built from a file whose ROOT! reaches its require" GE-EXPECT-OK
    want wantu s" MAIN's line, from the words the ROOT!-reached files define" GE-EXPECT-OUT ;
 
@@ -394,7 +393,7 @@ variable LBL-U
 : CASE-RUN ( ptr u8 n ptr u8 n -- ) {: image:ptr imageu:n want:ptr wantu:n :}
    GE-HB-RESET
    image imageu GE-ARGV+
-   image imageu GE-TIMEOUT-MS GE-RUN-ENV
+   image imageu PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV
    s" the program built from main.f" LABEL GE-EXPECT-OK
    want wantu s" the program prints the value of the helper its root reaches" LABEL GE-EXPECT-OUT ;
 

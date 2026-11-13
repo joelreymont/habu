@@ -2,13 +2,10 @@
 \ child started. An overflow ends the sleeper the child started
 \ (test/check-signal-subject.f), which leads its own process group as every
 \ spawn does: a kill of the child's pid or group reaches neither.
-\ A wait this test runs after a capture is named and thrown as E-PROC-TIMEOUT
-\ (src/lib/test/wait.f), so the row ends as a timeout, not a FAIL.
 
 require src/lib/error.f
 require src/lib/fs.f
 require src/lib/test.f
-require src/lib/test/wait.f
 require src/lib/test/runner.f
 require src/lib/test/fifo.f
 require src/lib/process.f
@@ -18,9 +15,6 @@ require src/lib/engine-candidate.f
 
 package CAPTURE-TREE-TEST
 
-60000 constant READY-MS              \ an engine boot and the subject's load under a loaded pool
-5000 constant GONE-MS                \ the killed take a moment to finish dying
-30000 constant EXPIRE-MS             \ past the sleeper's 20 s, for a case that failed to end it
 1 cells constant REPORT-BYTES        \ the subject's pid
 64 constant CAP
 8 constant SHORT-CAP                 \ shorter than the subject's line
@@ -34,7 +28,7 @@ variable REPORT-U                    \ bytes of REPORT read so far
 variable FIFO-U
 variable FIFO-RD
 
-TYPED-VARIABLE REPORTED bool         \ the subject's pid arrived before READY-MS ran out
+TYPED-VARIABLE REPORTED bool         \ the subject's pid arrived
 TYPED-VARIABLE FIFO-DONE bool        \ the read end has reported end of file
 false REPORTED !
 true FIFO-DONE !
@@ -66,32 +60,24 @@ PROCESS:NO-FD FIFO-RD !
    FIFO-RD @ >FD FD:POLLIN PROCESS:PFD!
    1 ms ms >MS PROCESS:DEADLINE-AT PROCESS:POLL-RESTART ;
 
-\ The subject's pid, before READY-MS runs out. End of file first means the
-\ subject died before it reported: that, a short report or a failed read or
-\ poll is a failed report. READY-MS running out first is this wait's own
-\ deadline, named and thrown as a timeout. On macOS, whose poll never reports a
-\ FIFO's end of file, a subject dying before its report is that timeout.
+\ The subject's pid. The capture has reaped the subject, so the pid is in the
+\ FIFO already or never comes: anything else read or polled is a failed report.
 : REPORT-READ? ( -- bool )
-   READY-MS >MS PROCESS:DEADLINE-AT {: deadline:n :}
    begin REPORT-U @ REPORT-BYTES < while
-      deadline PROCESS:LEFT-MS MS>N READY-WITHIN {: ready:n :}
-      ready 0= if s" capture-tree-test REPORT-READ" TEST-WAIT:EXPIRED then
-      ready 0 < if false exit then
+      0 READY-WITHIN {: ready:n :}
+      ready 0 <= if false exit then
       FIFO-RD @ REPORT REPORT-U @ + REPORT-BYTES REPORT-U @ - read {: got:n :}
       got 0 <= if false exit then
       REPORT-U @ got + REPORT-U !
    repeat
    true ;
 
-\ End of file within ms: nothing the subject started holds the write end. A
-\ failed read or poll answers false. ms running out first is this wait's own
-\ deadline, named and thrown as a timeout.
-: GONE-WITHIN? ( n -- bool )
-   {: ms:n :}
+\ End of file: nothing the subject started holds the write end. A failed read
+\ or poll answers false.
+: GONE? ( -- bool )
    FIFO-DONE @ if true exit then
-   FIFO-RD @ >FD ms TEST-FIFO:EOF-WITHIN {: eof:n :}
-   eof 0= if s" capture-tree-test GONE-WITHIN" TEST-WAIT:EXPIRED then
-   eof 0 < if false exit then
+   FIFO-RD @ >FD -1 TEST-FIFO:EOF-WITHIN {: eof:n :}
+   eof 0 <= if false exit then
    true FIFO-DONE !
    true ;
 
@@ -115,7 +101,7 @@ PROCESS:NO-FD FIFO-RD !
 : OVERFLOW-CAPTURE ( -- )
    SUBJECT-ARGS
    ENGINE-CANDIDATE:PATH$ >LEN OUT-BUF SHORT-CAP >LEN ERR-BUF CAP >LEN
-   READY-MS >MS RUN-ARGV-ENV-CAPTURE DROP-RESULT ;
+   PROCESS:WAIT-FOREVER RUN-ARGV-ENV-CAPTURE DROP-RESULT ;
 
 \ ---- the cases ---------------------------------------------------------------
 
@@ -133,18 +119,17 @@ PROCESS:NO-FD FIFO-RD !
    REPORTED @ TTRUE
    ASSERT-KILLED
    s" nothing the subject started is left" T-LABEL
-   GONE-MS GONE-WITHIN? TTRUE ;
+   GONE? TTRUE ;
 
-\ What a failed case left ends on its own, before EXPIRE-MS runs out.
+\ What a failed case left ends on its own.
 : LEFT-ENDED ( -- )
    FIFO-DONE @ 0= if
       s" the processes the capture left ended on their own" T-LABEL
-      EXPIRE-MS GONE-WITHIN? TTRUE
+      GONE? TTRUE
    then ;
 
 \ Whatever the body asserted or threw. Every step is a no-op for a case that
-\ passed. The read end closes even when the wait for what the case left runs
-\ out.
+\ passed.
 : CASE-END ( -- )
    [: LEFT-ENDED ;] [: FIFO-RD PROCESS:CLOSE-CELL ;] finally ;
 

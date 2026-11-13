@@ -52,11 +52,8 @@ private
 $7F000001 constant LOOPBACK
 2 constant TWO-WORKERS
 500 constant IDLE-MS
-1000000 constant NS-PER-MS
-15000 constant WAIT-MS              \ the bound on every wait, a child engine's start included
 600 constant LIFE-S                 \ how far past now an assertion's exp lies
 3600 constant ISSUED-S              \ an issued token's lifetime
-28 constant CURLE-TIMED-OUT         \ CURLE_OPERATION_TIMEDOUT
 8 constant EXPONENT-CAP
 
 $2000 constant CAP
@@ -134,9 +131,6 @@ variable POSTED-U
 $10001 constant PAST-CAP            \ one byte past BEARER's TOKEN-CAP
 PAST-CAP BUFFER: OVERSIZE
 
-\ The end of a wait's WAIT-MS window, an absolute mono-ns.
-: DEADLINE ( -- n ) mono-ns WAIT-MS NS-PER-MS * + ;
-
 : BODY$ ( -- ptr u8 n ) BODY BODY-U @ ;
 : TOKEN$ ( -- ptr u8 n ) TOKEN TOKEN-U @ ;
 : CLAIMS$ ( -- ptr u8 n ) CLAIMS CLAIMS-U @ ;
@@ -189,14 +183,12 @@ PAST-CAP BUFFER: OVERSIZE
       ready OF ENDOF
       failed OF drop -1 CURL:>HANDLE ENDOF
    ;MATCH {: h:CURL:handle :}
-   h url uu CURL:URL! OK
-   h WAIT-MS >MS CURL:TIMEOUT! OK h ;
+   h url uu CURL:URL! OK h ;
 
 : OPEN ( ptr u8 n -- CURL:handle ) URL OPEN-AT ;
 
 \ The response's status and its body in BODY; -1 for a body past CAP, -2 for
-\ a failed transfer. CURLE 28 is libcurl's timeout, OPEN-AT's WAIT-MS on every
-\ request, met by a starved or stopped process: E-PROC-TIMEOUT, not a FAIL.
+\ a failed transfer.
 : FINISH ( CURL:handle -- n )
    {: h:CURL:handle :}
    0 BODY-U !
@@ -205,11 +197,7 @@ PAST-CAP BUFFER: OVERSIZE
       response OF {: status:CURL:http-status got:len :}
          got LEN>N BODY-U ! status CURL:HTTP-STATUS>N ENDOF
       truncated OF drop drop -1 ENDOF
-      failed OF {: rc:CURL:code :}
-         rc CURL:CODE>N CURLE-TIMED-OUT = if
-            s" test-issuer-test FINISH" TEST-WAIT:EXPIRED
-         then
-         -2 ENDOF
+      failed OF drop -2 ENDOF
    ;MATCH
    h CURL:CLEANUP ;
 
@@ -703,13 +691,13 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    out-r PROCESS:NONBLOCK!
    out-r FD>N CHILD-OUT !
    0 LINE-U !
-   [: LINE? ;] DEADLINE s" test-issuer-test TOOL" TEST-WAIT:POLL
+   [: LINE? ;] TEST-WAIT:POLL
    CHILD-URL {: url:ptr uu:n :}
    SB-RESET url uu SB-APPEND s" /.well-known/openid-configuration" SB-APPEND
    SB$ OPEN-AT FINISH 200 T=
    BODY$ s" issuer" MEMBER$ url uu T$=
    in-w FD>N close
-   pid WAIT-MS >MS PROCESS:WAIT-BOUNDED PROCESS:ENDING>RC RC>N 0 T=
+   pid PROCESS:WAIT PROCESS:STATUS>RC RC>N 0 T=
    out-r FD>N close ;
 
 

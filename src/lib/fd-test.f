@@ -15,7 +15,6 @@ require src/lib/process.f
 require src/lib/process-fork.f
 require src/lib/process-argv.f
 require src/lib/test/ending.f
-require src/lib/test/wait.f
 require src/lib/fd.f
 require src/lib/fs-mutate.f
 
@@ -29,12 +28,10 @@ FUNCTION: KQUEUE-CALL kqueue ( -- i32 ) ;FUNCTION
 
 $400000 constant PAYLOAD          \ 4 MiB: 64 default Linux pipes, and past Linux's pipe-max-size
 251 constant PATTERN-MOD          \ prime, so no power-of-two chunk realigns the pattern
-10000 constant WAIT-MS            \ how long a held-back reader waits for the writer's first bytes
 200 constant READER-DELAY-MS      \ then how long it holds back, the writer blocked and the storm on
 1000000 constant STORM-LIMIT      \ profiler samples allowed; no case comes near it
 -1 constant FULL-MARK             \ OUTCOME's answer for `full`
 2 constant CHILD-MISMATCH         \ a forked reader's exit code when the bytes are wrong
-5000 constant EXEC-WAIT-MS        \ how long a read end waits for end of file past an exec
 200000 constant NONBLOCK-SIZE     \ bytes, more than a pipe holds
 
 TYPED-VARIABLE SRC SPAN:span<u8>
@@ -67,9 +64,7 @@ variable WROTE-IN                 \ WROTE>N of a write WITH-NOSIGPIPE's quotatio
    s" " rot die ;
 
 \ The rest of a forked child's life: its part runs under catch, and the exit
-\ code is PROCESS:TIMEOUT-RC for a deadline, 1 for any other throw, else the code
-\ the part chose. A throw code cannot cross the process boundary; the parent
-\ reads the deadline back from the exit (REAP-READER).
+\ code is PROCESS:EXIT-RC's for a throw, else the code the part chose.
 : IN-CHILD ( [ -- ] -- )
    catch {: code:n :}
    code 0<> if code 1 PROCESS:EXIT-RC CHILD-EXIT then
@@ -80,13 +75,9 @@ variable WROTE-IN                 \ WROTE>N of a write WITH-NOSIGPIPE's quotatio
    0 CHILD-CODE ! ;
 
 \ Waits for the writer's first bytes, so the writer is about to block on a full
-\ pipe, then leaves it blocked for READER-DELAY-MS while the storm lands. No
-\ bytes within WAIT-MS is the row's deadline, named here and thrown; any other
-\ code is rethrown unchanged.
+\ pipe, then leaves it blocked for READER-DELAY-MS while the storm lands.
 : HOLD-BACK ( -- )
-   [: CHILD-FD @ >FD WAIT-MS >MS PROCESS:POLL-IN-OR-TIMEOUT drop ;] catch {: code:n :}
-   code E-PROC-TIMEOUT = if s" fd-test HOLD-BACK" TEST-WAIT:EXPIRED then
-   code 0<> if code throw then
+   CHILD-FD @ >FD -1 >MS PROCESS:POLL-IN-OR-TIMEOUT drop
    READER-DELAY-MS >MS TASK:SLEEP ;
 
 : DRAIN ( -- )
@@ -103,15 +94,12 @@ variable WROTE-IN                 \ WROTE>N of a write WITH-NOSIGPIPE's quotatio
    HOLD-BACK
    DELIVERED? if 0 else CHILD-MISMATCH then CHILD-CODE ! ;
 
-\ Reaps a held-back reader and answers its outcome. A reader whose HOLD-BACK
-\ wait expired has named it and exited PROCESS:TIMEOUT-RC: the row's deadline,
-\ thrown again here. Its writer holds off SIGPIPE, closes its end and reaps the
-\ reader before it acts on its write, so a write into the pipe a starved reader
-\ left fails rather than ending the row before the 124 is read back.
+\ Reaps a held-back reader and answers its outcome. Its writer holds off
+\ SIGPIPE, closes its end and reaps the reader before it acts on its write, so
+\ a write into the pipe a failed reader left fails rather than ending the row
+\ before the reader's exit is read back.
 : REAP-READER ( pid -- PROCESS:ending )
-   PROCESS:WAIT {: oc :}
-   oc PROCESS:STATUS>RC RC>N PROCESS:TIMEOUT-RC = if E-PROC-TIMEOUT throw then
-   oc PROCESS:STATUS>ENDING ;
+   PROCESS:WAIT PROCESS:STATUS>ENDING ;
 
 : FD-FLAGS ( fd -- n )
    FD>N 3 0 fcntl dup 0 < if E-FS-IO throw then ;
@@ -178,8 +166,7 @@ variable WROTE-IN                 \ WROTE>N of a write WITH-NOSIGPIPE's quotatio
 \ A bounded write empties its whole payload into a slow reader in order. The
 \ pipe is made nonblocking inside WRITE-FULL-UNTIL and returns to its original
 \ status flags afterwards, including after the short writes in this case. Once
-\ the reader is reaped, a write unfinished at its deadline is the row's
-\ deadline, named and thrown; any other code is rethrown unchanged.
+\ the reader is reaped, a throw from the write is rethrown.
 : BOUNDED-SUCCESS ( -- )
    0 DST @ FILL
    FD:PIPE-PAIR {: r:fd w:fd :}
@@ -190,12 +177,11 @@ variable WROTE-IN                 \ WROTE>N of a write WITH-NOSIGPIPE's quotatio
    r FD>N close
    w FD:FD-NOSIGPIPE!
    w FD>N ERR-FD !
-   mono-ns 3000 1000000 * + UNTIL-AT !
+   MEM-MAX-N UNTIL-AT !    \ the largest deadline: the reader sets the pace
    [: UNTIL-WRITE ;] catch {: code:n :}
    w FD-FLAGS {: after:n :}
    w FD>N close
    pid REAP-READER {: oc :}
-   code E-FS-TIMEOUT = if s" fd-test BOUNDED-SUCCESS" TEST-WAIT:EXPIRED then
    code 0<> if code throw then
    after FD:O-NONBLOCK and flags FD:O-NONBLOCK and T=
    s" bounded reader" s" " s" " oc 0 T-ENDING-EXITED= ;
@@ -367,14 +353,15 @@ variable WROTE-IN                 \ WROTE>N of a write WITH-NOSIGPIPE's quotatio
    E-PROC-SPAWN throw ;
 
 \ With the parent's write end closed, the read end reaches end of file while the
-\ exec'd child runs; a write end the child kept would make the poll answer 0.
+\ exec'd child runs. A write end the child kept holds the poll until the sleep
+\ ends a minute later, and the child's ending is then an exit, not the kill.
 : PIPE-CLOSES-ON-EXEC ( -- )
    NULL-PTR 0 NO-ENV !
    FD:PIPE {: r:fd w:fd :}
    PROC-FORK:CHECKED {: pid:pid :}
    pid PID>N 0= if [: SLEEPER ;] IN-CHILD then
    w FD>N close
-   r EXEC-WAIT-MS >MS PROCESS:POLL-IN COUNT>N {: ready:n :}
+   r -1 >MS PROCESS:POLL-IN COUNT>N {: ready:n :}
    ready 1 T=
    ready 1 = if r SMALL READ-EXACT OUTCOME 0 T= then
    r FD>N close

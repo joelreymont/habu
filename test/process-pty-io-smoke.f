@@ -12,7 +12,6 @@ package PTY-IO-SMOKE
 
 0 constant SIG-PROBE               \ the null signal: probe existence, deliver nothing
 3 constant ESRCH#                  \ "no such process" (POSIX, identical Linux/macOS)
-$1388 constant DEADLINE-MS         \ 5s ceiling for the live->dead watch transition
 20 constant CYCLES                 \ > PROCESS-PTY slot capacity (16): proves each teardown frees its slot
 -7001 constant BODY-THROW          \ a scope body's own throw code, no library's
 
@@ -46,9 +45,7 @@ TASK:MIN-STACK TASK:TASK HALTEE
    TRUE-PATH [:
       PROCESS-PTY:ALIVE? TTRUE
       PROCESS-PTY:LAUNCH
-      DEADLINE-MS PROCESS-PTY:AWAIT 0= if
-         s" process-pty-io-smoke LIFECYCLE" TEST-WAIT:EXPIRED
-      then
+      -1 PROCESS-PTY:AWAIT TTRUE
       PROCESS-PTY:TARGET SAVE-TGT
    ;] PROCESS-PTY:WITH-TARGET
    TGT-PID @ SIG-PROBE kill-errno ESRCH# negate T= ;
@@ -59,7 +56,7 @@ TASK:MIN-STACK TASK:TASK HALTEE
 : CYCLE ( -- )
    TRUE-PATH [:
       PROCESS-PTY:LAUNCH
-      DEADLINE-MS PROCESS-PTY:AWAIT drop
+      -1 PROCESS-PTY:AWAIT drop
    ;] PROCESS-PTY:WITH-TARGET ;
 
 \ More cycles than the registry has slots: if any teardown leaked its slot the
@@ -105,8 +102,7 @@ TASK:MIN-STACK TASK:TASK HALTEE
 : HALTED ( -- )
    0 IN-SCOPE atomic!
    ['] PARKED HALTEE TASK:ACTIVATE
-   [: IN-SCOPE atomic@ 0<> HALTEE TASK:DONE? or ;]
-   mono-ns DEADLINE-MS 1000000 * + s" process-pty-io-smoke HALTED" TEST-WAIT:POLL
+   [: IN-SCOPE atomic@ 0<> HALTEE TASK:DONE? or ;] TEST-WAIT:POLL
    HALTEE TASK:KILL
    HALTEE TASK:THROW@ 0 T=
    TGT-PID @ SIG-PROBE kill-errno ESRCH# negate T= ;
@@ -199,8 +195,8 @@ TASK:MIN-STACK TASK:TASK HALTEE
 : OPEN-FDS ( ptr u8 -- n ) {: buf:ptr :}
    PROC-ARGV-RESET
    s" /dev/fd" >LEN PROC-ARGV+
-   s" /bin/ls" >LEN buf FDS-CAP >LEN FDS-ERR FDS-CAP >LEN DEADLINE-MS >MS
-   RUN-ARGV-CAPTURE
+   s" /bin/ls" >LEN buf FDS-CAP >LEN FDS-ERR FDS-CAP >LEN
+   PROCESS:WAIT-FOREVER RUN-ARGV-CAPTURE
    MATCH result
       ok OF PCAP-CAPTURED:UNMAKE drop LEN>N ENDOF
       err OF PCAP-FAILED:UNMAKE {: outu:len erru:len rc:rc :}

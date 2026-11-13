@@ -14,7 +14,6 @@ package REQUIRE-CAP
 
 $4000 constant FORGE-CAP
 $800 constant IO-CAP
-30000 constant TIMEOUT-MS
 
 create FORGE-BUF FORGE-CAP allot
 variable FORGE-U
@@ -69,7 +68,7 @@ variable EXITED?
    src u
    OUT-BUF IO-CAP >LEN
    ERR-BUF IO-CAP >LEN
-   TIMEOUT-MS >MS
+   PROCESS:WAIT-FOREVER
    SUBJECT:RUN                          \ -- out-len err-len PROCESS:ending
    src u STORE ;
 

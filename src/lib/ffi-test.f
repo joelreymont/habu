@@ -222,7 +222,6 @@ variable FFI-T-PAIR-AFTER
 \ table: an exact alias takes no row, paths keep their ids and later rows call.
 $800 constant FFI-T-SRC-CAP
 $4000 constant FFI-T-CAP
-30000 constant FFI-T-TIMEOUT-MS
 67 constant FFI-T-UNCAUGHT-RC             \ hb's exit status for an uncaught throw
 
 FFI-T-SRC-CAP CODEGEN:BUFFER FFI-T-SRC
@@ -281,7 +280,7 @@ create FFI-T-LONG-PATH PATH-CAP allot
    PROC-ARGV-RESET
    ENGINE-CANDIDATE:PATH$ >LEN src srcu >LEN
    FFI-T-OUT FFI-T-CAP >LEN FFI-T-ERR FFI-T-CAP >LEN
-   FFI-T-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
+   PROCESS:WAIT-FOREVER RUN-ARGV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
    src srcu FFI-T-OUT outu LEN>N FFI-T-ERR erru LEN>N oc want T-ENDING-EXITED=
    outu erru ;
 

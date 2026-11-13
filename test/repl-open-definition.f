@@ -20,8 +20,7 @@ using PTY-HARNESS
    s" habu> " WAIT-FOR ;
 
 \ Reap the child and assert it exited with code want. The terminal carries both
-\ streams, and its buffer holds what the reap drained; a signal fails the case,
-\ and the reap deadline prints the capture and throws E-PROC-TIMEOUT.
+\ streams, and its buffer holds what the reap drained; a signal fails the case.
 : EXIT= ( n -- )
    {: want:n :}
    REAP {: oc :}

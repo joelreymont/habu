@@ -25,10 +25,8 @@ create ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
 create NUL-NAME 74 c, 74 c, 0 c, 88 c,      \ J J NUL X
 4 constant NUL-NAME-U
 
-5000 constant HB-TIMEOUT-MS
 1000 constant CMD-TIMEOUT-MS
 50 constant SHORT-TIMEOUT-MS
-20000000000 constant WAIT-NS             \ a task row's whole wait: 20 s
 9 constant EBADF                         \ a closed fd's errno, Darwin and Linux alike
 
 : RESULT-CODE ( result<n,n> -- n )   \ 0 on clean exit, else the completion code
@@ -54,7 +52,7 @@ create NUL-NAME 74 c, 74 c, 0 c, 88 c,      \ J J NUL X
    s" %s:%s" CMD:ARG+
    s" left" CMD:ARG+
    s" right" CMD:ARG+
-   s" /usr/bin/printf" CMD-TIMEOUT-MS RUN# 0 T=
+   s" /usr/bin/printf" PROCESS:WAIT-FOREVER MS>N RUN# 0 T=
    CMD:OUT$ s" left:right" T$=
    CMD:ERR$ nip 0 T=
    PROC-ARGV-N @ COUNT>N 0 T=            \ the scope writes no process-wide staging
@@ -62,7 +60,7 @@ create NUL-NAME 74 c, 74 c, 0 c, 88 c,      \ J J NUL X
 
 : STDIN ( CMD:command -- CMD:command )
    s" cmd-stdin" CMD:IN!
-   s" /bin/cat" CMD-TIMEOUT-MS RUN# 0 T=
+   s" /bin/cat" PROCESS:WAIT-FOREVER MS>N RUN# 0 T=
    CMD:OUT$ s" cmd-stdin" T$=
    CMD:ERR$ nip 0 T= ;
 
@@ -70,7 +68,7 @@ create NUL-NAME 74 c, 74 c, 0 c, 88 c,      \ J J NUL X
    CMD:ENV-HERMETIC
    s" test/process-env-child.f" CMD:ARG+
    s" HABU_PROC_ENV_TEST" s" alpha" CMD:ENV+
-   s" bin/hb" HB-TIMEOUT-MS RUN# 0 T=
+   s" bin/hb" PROCESS:WAIT-FOREVER MS>N RUN# 0 T=
    CMD:OUT$ ENV-OUT 8 T$=
    CMD:ERR$ nip 0 T= ;
 
@@ -78,7 +76,7 @@ create NUL-NAME 74 c, 74 c, 0 c, 88 c,      \ J J NUL X
    CMD:ENV-HERMETIC
    s" test/process-env-child.f" CMD:ARG+
    s" HABU_PROC_ENV_TEST=entry" CMD:ENV-ENTRY+
-   s" bin/hb" HB-TIMEOUT-MS RUN# 0 T=
+   s" bin/hb" PROCESS:WAIT-FOREVER MS>N RUN# 0 T=
    CMD:OUT$ ENTRY-OUT 8 T$=
    CMD:ERR$ nip 0 T= ;
 
@@ -87,7 +85,7 @@ create NUL-NAME 74 c, 74 c, 0 c, 88 c,      \ J J NUL X
    CMD:ENV-HERMETIC
    s" HABU_PROC_ENV_TEST" s" alpha" CMD:ENV+
    s" HABU_PROC_ENV_TEST=entry" CMD:ENV-ENTRY+
-   s" /usr/bin/env" CMD-TIMEOUT-MS RUN# 0 T=
+   s" /usr/bin/env" PROCESS:WAIT-FOREVER MS>N RUN# 0 T=
    CMD:OUT$
    s" HABU_PROC_ENV_TEST=entry" CHECK-LINE
    nip 0 T= ;
@@ -95,7 +93,7 @@ create NUL-NAME 74 c, 74 c, 0 c, 88 c,      \ J J NUL X
 : INHERITED-ENV ( CMD:command -- CMD:command )
    s" test/process-env-child.f" CMD:ARG+
    s" HABU_PROC_ENV_TEST" s" alpha" CMD:ENV+
-   s" bin/hb" HB-TIMEOUT-MS RUN# 0 T=
+   s" bin/hb" PROCESS:WAIT-FOREVER MS>N RUN# 0 T=
    CMD:OUT$
    s" alpha" CHECK-LINE
    s" HOME" GETENV CHECK-LINE
@@ -113,10 +111,10 @@ create NUL-NAME 74 c, 74 c, 0 c, 88 c,      \ J J NUL X
    s" HABU_CMD_NEVER_SET" CMD:UNSETENV
    s" -c" CMD:ARG+
    s" test x${HOME+1}${HABU_PROC_ENV_TEST+2} = x && test x${HABU_PROC_ENV_TEST_X+1} = x1" CMD:ARG+
-   s" /bin/sh" CMD-TIMEOUT-MS RUN# 0 T=
+   s" /bin/sh" PROCESS:WAIT-FOREVER MS>N RUN# 0 T=
    CMD:RESET
    s" test/process-env-child.f" CMD:ARG+
-   s" bin/hb" HB-TIMEOUT-MS RUN# 0 T=
+   s" bin/hb" PROCESS:WAIT-FOREVER MS>N RUN# 0 T=
    CMD:OUT$
    s" default" CHECK-LINE
    s" HOME" GETENV CHECK-LINE
@@ -129,7 +127,7 @@ create NUL-NAME 74 c, 74 c, 0 c, 88 c,      \ J J NUL X
    s" test/process-env-child.f" CMD:ARG+
    s" HABU_PROC_ENV_TEST" CMD:UNSETENV
    s" HABU_PROC_ENV_TEST" s" alpha" CMD:ENV+
-   s" bin/hb" HB-TIMEOUT-MS RUN# 0 T=
+   s" bin/hb" PROCESS:WAIT-FOREVER MS>N RUN# 0 T=
    CMD:OUT$
    s" alpha" CHECK-LINE
    s" HOME" GETENV CHECK-LINE
@@ -143,7 +141,7 @@ create NUL-NAME 74 c, 74 c, 0 c, 88 c,      \ J J NUL X
    s" HOME" s" /caller" CMD:ENV+
    s" -c" CMD:ARG+
    s" test x$HABU_PROC_ENV_TEST:$HOME = xalpha:/caller" CMD:ARG+
-   s" /bin/sh" CMD-TIMEOUT-MS RUN# 0 T= ;
+   s" /bin/sh" PROCESS:WAIT-FOREVER MS>N RUN# 0 T= ;
 
 
 : UNSET-ENV ( -- )
@@ -158,10 +156,10 @@ create NUL-NAME 74 c, 74 c, 0 c, 88 c,      \ J J NUL X
 \ Both arms of the result<n,n>: a clean exit MATCHes ok carrying 0, a nonzero
 \ exit MATCHes err carrying the code, and RC@ answers the stored outcome again.
 : RC-ARMS ( CMD:command -- CMD:command )
-   s" /usr/bin/true" CMD-TIMEOUT-MS >MS CMD:RUN-RC
+   s" /usr/bin/true" PROCESS:WAIT-FOREVER CMD:RUN-RC
    MATCH result ok OF 0 T= ENDOF err OF drop 1 0 T= ENDOF ;MATCH
    CMD:RESET
-   s" /usr/bin/false" CMD-TIMEOUT-MS >MS CMD:RUN-RC
+   s" /usr/bin/false" PROCESS:WAIT-FOREVER CMD:RUN-RC
    MATCH result ok OF drop 1 0 T= ENDOF err OF 1 T= ENDOF ;MATCH
    CMD:RC@ MATCH result ok OF drop 1 0 T= ENDOF err OF 1 T= ENDOF ;MATCH ;
 
@@ -190,12 +188,12 @@ create NUL-NAME 74 c, 74 c, 0 c, 88 c,      \ J J NUL X
 \ throws E-PROC-TIMEOUT.
 : RUN-OK ( CMD:command -- CMD:command )
    s" run-ok" CMD:ARG+
-   s" /usr/bin/printf" CMD-TIMEOUT-MS >MS 7 CMD:RUN
+   s" /usr/bin/printf" PROCESS:WAIT-FOREVER 7 CMD:RUN
    CMD:OUT$ s" run-ok" T$= ;
 
 : RUN-FAILS ( CMD:command -- CMD:command )
    s" test/process-command-run-child.f" CMD:ARG+
-   s" bin/hb" HB-TIMEOUT-MS RUN# {: rc:n :}
+   s" bin/hb" PROCESS:WAIT-FOREVER MS>N RUN# {: rc:n :}
    CMD:ERR$ s" child-err" T$=
    CMD:OUT$ s" test: ok" CHECK-LINE nip 0 T=
    rc 0 T= ;
@@ -207,7 +205,7 @@ create NUL-NAME 74 c, 74 c, 0 c, 88 c,      \ J J NUL X
 \ A run that fails leaves its code, not the clean exit of an earlier run:
 \ OUTCOME@ and RC@ throw it again. The catch sits inside the scope.
 : SPAWN-FAILS ( CMD:command -- CMD:command )
-   s" /usr/bin/true" CMD-TIMEOUT-MS RUN# 0 T=
+   s" /usr/bin/true" PROCESS:WAIT-FOREVER MS>N RUN# 0 T=
    [: s" /nonexistent-pcmdt-path" CMD-TIMEOUT-MS >MS CMD:RUN-OUTCOME drop ;]
    catch E-PROC-SPAWN T=
    [: CMD:OUTCOME@ drop ;] catch E-PROC-SPAWN T=
@@ -227,7 +225,7 @@ create NUL-NAME 74 c, 74 c, 0 c, 88 c,      \ J J NUL X
 : REFUSED-KEEPS ( CMD:command -- CMD:command )
    s" -c" CMD:ARG+
    EXIT3$ CMD:ARG+
-   s" /bin/sh" CMD-TIMEOUT-MS >MS CMD:RUN-OUTCOME drop
+   s" /bin/sh" PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME drop
    [: s" /bin/sh" -1 >MS CMD:RUN-OUTCOME drop ;] catch E-PROC-TIMEOUT T=
    EXIT3-KEPT
    [: s" " CMD-TIMEOUT-MS >MS CMD:RUN-OUTCOME drop ;] catch E-PROC-OUTPUT T=
@@ -250,7 +248,7 @@ create REL PATH-CAP allot   variable REL-U
 : CWD-RUN ( CMD:command -- CMD:command )
    DIR DIR-U @ CMD:CWD!
    s" here.txt" CMD:ARG+
-   s" /bin/cat" CMD-TIMEOUT-MS RUN# 0 T=
+   s" /bin/cat" PROCESS:WAIT-FOREVER MS>N RUN# 0 T=
    CMD:OUT$ CWD-BODY$ T$= ;
 
 : CWD ( -- )
@@ -277,7 +275,7 @@ create REL PATH-CAP allot   variable REL-U
 : NUL-REFUSED ( CMD:command -- CMD:command )
    s" kept" CMD:ARG+
    [: s\" a\zb" CMD:ARG+ ;] catch E-FFI-NUL T=
-   s" /bin/echo" CMD-TIMEOUT-MS RUN# 0 T=
+   s" /bin/echo" PROCESS:WAIT-FOREVER MS>N RUN# 0 T=
    CMD:OUT$ s\" kept\n" T$= ;
 
 : NUL-ENV-REFUSED ( CMD:command -- CMD:command )
@@ -285,7 +283,7 @@ create REL PATH-CAP allot   variable REL-U
    s" K" s" v" CMD:ENV+
    [: s\" K=a\zb" CMD:ENV-ENTRY+ ;] catch E-FFI-NUL T=
    [: s" K" s\" a\zb" CMD:ENV+ ;] catch E-FFI-NUL T=
-   s" /usr/bin/env" CMD-TIMEOUT-MS RUN# 0 T=
+   s" /usr/bin/env" PROCESS:WAIT-FOREVER MS>N RUN# 0 T=
    CMD:OUT$ s\" K=v\n" T$= ;
 
 : NUL-ENV-NAME ( CMD:command -- CMD:command )
@@ -316,7 +314,7 @@ create REL PATH-CAP allot   variable REL-U
 : BOTH-STREAMS ( CMD:command -- CMD:command )
    s" -c" CMD:ARG+
    s" head -c 100000 /dev/zero; head -c 70000 /dev/zero >&2" CMD:ARG+
-   s" /bin/sh" HB-TIMEOUT-MS RUN# 0 T=
+   s" /bin/sh" PROCESS:WAIT-FOREVER MS>N RUN# 0 T=
    CMD:OUT$ nip OUT-BYTES T=
    CMD:ERR$ nip ERR-BYTES T= ;
 
@@ -329,7 +327,7 @@ create IN IN-BYTES allot
 
 : BIG-STDIN ( CMD:command -- CMD:command )
    IN IN-BYTES CMD:IN!
-   s" /bin/cat" HB-TIMEOUT-MS RUN# 0 T=
+   s" /bin/cat" PROCESS:WAIT-FOREVER MS>N RUN# 0 T=
    CMD:OUT$ IN IN-BYTES T$= ;
 
 \ 300 arguments, each printed on its own line.
@@ -338,7 +336,7 @@ create IN IN-BYTES allot
 : MANY-ARGS ( CMD:command -- CMD:command )
    s\" %s\n" CMD:ARG+
    ARGS 0 do s" a" CMD:ARG+ loop
-   s" /usr/bin/printf" HB-TIMEOUT-MS RUN# 0 T=
+   s" /usr/bin/printf" PROCESS:WAIT-FOREVER MS>N RUN# 0 T=
    CMD:OUT$ {: a:ptr u:n :}
    u ARGS 2 * T=
    a u LF-COUNT ARGS T= ;
@@ -360,7 +358,7 @@ create NAME 5 allot                      \ V and four digits
       i NAME!
       NAME 5 s" x" CMD:ENV+
    loop
-   s" /usr/bin/env" HB-TIMEOUT-MS RUN# 0 T=
+   s" /usr/bin/env" PROCESS:WAIT-FOREVER MS>N RUN# 0 T=
    CMD:OUT$ {: a:ptr u:n :}
    u ROWS 8 * T=                         \ "Vdddd=x\n" per row
    a u LF-COUNT ROWS T= ;
@@ -368,7 +366,7 @@ create NAME 5 allot                      \ V and four digits
 \ An inner scope is its own command.
 : SAY ( CMD:command ptr u8 n -- CMD:command ) {: a:ptr u:n :}
    a u CMD:ARG+
-   s" /usr/bin/printf" CMD-TIMEOUT-MS RUN# 0 T= ;
+   s" /usr/bin/printf" PROCESS:WAIT-FOREVER MS>N RUN# 0 T= ;
 
 : INNER ( CMD:command CMD:command -- CMD:command CMD:command )
    s" inner" SAY
@@ -411,7 +409,7 @@ create PIPE-BUF PIPE-CAP allot
 : FD3-RUN ( CMD:command -- CMD:command n )
    s" -c" CMD:ARG+
    s" printf placed 2>/dev/null >&3 || exit 7" CMD:ARG+
-   s" /bin/sh" CMD-TIMEOUT-MS RUN# ;
+   s" /bin/sh" PROCESS:WAIT-FOREVER MS>N RUN# ;
 
 \ The run's child wrote `three` to its fd 3 and `four` to its fd 4, and the
 \ parent's fds stay open after.
@@ -428,9 +426,9 @@ create PIPE-BUF PIPE-CAP allot
    4 >FD W4 CMD:FD+
    s" -c" CMD:ARG+
    s" { printf three >&3 && printf four >&4; } 2>/dev/null || exit 7" CMD:ARG+
-   s" /bin/sh" CMD-TIMEOUT-MS RUN# BOTH-PLACED
+   s" /bin/sh" PROCESS:WAIT-FOREVER MS>N RUN# BOTH-PLACED
    s" /" CMD:CWD!
-   s" /bin/sh" CMD-TIMEOUT-MS RUN# BOTH-PLACED ;
+   s" /bin/sh" PROCESS:WAIT-FOREVER MS>N RUN# BOTH-PLACED ;
 
 : PLACED-RESET ( CMD:command -- CMD:command )
    3 >FD W CMD:FD+
@@ -453,7 +451,7 @@ create PIPE-BUF PIPE-CAP allot
    1 >FD W CMD:FD+
    s" -c" CMD:ARG+
    s" printf slot" CMD:ARG+
-   s" /bin/sh" CMD-TIMEOUT-MS RUN# 0 T=
+   s" /bin/sh" PROCESS:WAIT-FOREVER MS>N RUN# 0 T=
    CMD:OUT$ s" " T$=
    PIPE$ s" slot|parent" T$= ;
 
@@ -478,7 +476,7 @@ create PIPE-BUF PIPE-CAP allot
    4 >FD W4 CMD:FD+
    s" -c" CMD:ARG+
    s" printf ran >&4; printf placed >&3" CMD:ARG+
-   s" /bin/sh" CMD-TIMEOUT-MS >MS CMD:RUN-OUTCOME drop ;
+   s" /bin/sh" PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME drop ;
 
 : FD-PLACEMENT ( -- )
    FD:PIPE FD>N PIPE-W ! FD>N PIPE-R !
@@ -531,7 +529,7 @@ FUNCTION: SYNC-RANGE msync ( n n n -- i32 ) ;FUNCTION
    s" -c" CMD:ARG+
    s" 4194304" CMD:ARG+
    s" /dev/zero" CMD:ARG+
-   s" /usr/bin/head" HB-TIMEOUT-MS RUN# 0 T=
+   s" /usr/bin/head" PROCESS:WAIT-FOREVER MS>N RUN# 0 T=
    CMD:OUT$ nip FAT-BYTES T= ;
 
 : FAT ( CMD:command -- CMD:command )
@@ -562,7 +560,7 @@ TASK:MIN-STACK TASK:TASK TASK-B
 : YES ( CMD:command ptr u8 n -- CMD:command n ) {: a:ptr u:n :}
    s" -c" CMD:ARG+
    a u CMD:ARG+
-   s" /bin/sh" HB-TIMEOUT-MS RUN# ;
+   s" /bin/sh" PROCESS:WAIT-FOREVER MS>N RUN# ;
 
 : A-RUN ( CMD:command -- CMD:command )
    s" sleep 0.3; yes A | head -c 100000" YES A-RC !
@@ -588,8 +586,7 @@ TASK:MIN-STACK TASK:TASK TASK-B
 : TWO-TASKS ( -- )
    ['] A-BODY TASK-A TASK:ACTIVATE
    ['] B-BODY TASK-B TASK:ACTIVATE
-   [: BOTH-DONE? ;] mono-ns WAIT-NS + s" process-command-test two tasks"
-   TEST-WAIT:POLL
+   [: BOTH-DONE? ;] TEST-WAIT:POLL
    TASK-A JOIN-0
    TASK-B JOIN-0
    A-RC @ 0 T=   A-LEN @ TASK-BYTES T=   A-BAD @ 0 T=
@@ -609,7 +606,7 @@ variable LATE-SEEN                       \ 1 when the late default reached the c
 TASK:MIN-STACK TASK:TASK LATE-TASK
 
 : LATE-RUN ( CMD:command -- CMD:command )
-   s" /usr/bin/env" CMD-TIMEOUT-MS RUN# LATE-RC !
+   s" /usr/bin/env" PROCESS:WAIT-FOREVER MS>N RUN# LATE-RC !
    CMD:OUT$ {: a:ptr u:n :}
    S\" HABU_CMD_DEFAULT=orig\n" {: first:ptr firstu:n :}
    0 LATE-FIRST !
@@ -624,8 +621,8 @@ TASK:MIN-STACK TASK:TASK LATE-TASK
 
 : LATE-WINDOW ( -- )
    ['] LATE-BODY LATE-TASK TASK:ACTIVATE
-   [: LATE-PREPARED? ;] mono-ns WAIT-NS + s" process-command-test prepared run"
-   TEST-WAIT:POLL
+   [: LATE-PREPARED? LATE-TASK TASK:DONE? or ;] TEST-WAIT:POLL
+   LATE-PREPARED? TTRUE
    s" HABU_CMD_LATE" >LEN LATE LATE-U >LEN PROC-ENV-DEFAULT+ ;
 
 : LATE-DONE? ( -- bool ) LATE-TASK TASK:DONE? ;
@@ -634,8 +631,7 @@ TASK:MIN-STACK TASK:TASK LATE-TASK
    LATE-U 0 ?do [char] x LATE i + c! loop
    s" HABU_CMD_DEFAULT" >LEN s" orig" >LEN PROC-ENV-DEFAULT+
    [: LATE-WINDOW ;] FD-LOCK:WITH
-   [: LATE-DONE? ;] mono-ns WAIT-NS + s" process-command-test late default"
-   TEST-WAIT:POLL
+   [: LATE-DONE? ;] TEST-WAIT:POLL
    LATE-TASK JOIN-0
    PROC-ENV-DEFAULT-RESET
    LATE-RC @ 0 T=
@@ -661,7 +657,7 @@ TASK:MIN-STACK TASK:TASK PARKER
    s" -c" CMD:ARG+
    s" 1048576" CMD:ARG+
    s" /dev/zero" CMD:ARG+
-   s" /usr/bin/head" HB-TIMEOUT-MS RUN# PARK-RC !
+   s" /usr/bin/head" PROCESS:WAIT-FOREVER MS>N RUN# PARK-RC !
    CMD:OUT$ {: a:ptr u:n :}
    u PARK-LEN !
    a NULL-PTR BYTE-VIEW - PARK-ADDR !
@@ -670,20 +666,17 @@ TASK:MIN-STACK TASK:TASK PARKER
 
 : PARK-BODY ( -- ) [: PARK ;] CMD:WITH-COMMAND ;
 
-: PARKED? ( -- bool ) PARK-READY atomic@ 0<> ;
 : PARKER-DONE? ( -- bool ) PARKER TASK:DONE? ;
 
 : HALTED-TASK ( -- )
    0 PARK-READY !
    ['] PARK-BODY PARKER TASK:ACTIVATE
-   [: PARKED? ;] mono-ns WAIT-NS + s" process-command-test parked task"
-   TEST-WAIT:POLL
+   PARK-READY 1 PARKER TEST-WAIT:FOR-CELL
    PARK-RC @ 0 T=
    PARK-LEN @ PARK-BYTES T=
    PARK-ADDR @ MAPPED 0 T=
    PARKER TASK:HALT
-   [: PARKER-DONE? ;] mono-ns WAIT-NS + s" process-command-test halted task"
-   TEST-WAIT:POLL
+   [: PARKER-DONE? ;] TEST-WAIT:POLL
    PARKER TASK:JOIN MATCH result ok OF drop 1 0 T= ENDOF err OF E-TASK-NO-RESULT T= ENDOF ;MATCH
    PARK-ADDR @ MAPPED -1 T= ;
 

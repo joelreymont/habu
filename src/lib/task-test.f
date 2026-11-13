@@ -105,7 +105,6 @@ TASK:MIN-STACK TASK:TASK SLEEP-COUNTER
 TASK:MIN-STACK TASK:TASK SLEEP-KILLED
 
 $4000 constant TASK-CAP
-60000 constant TASK-CAPTURE-MS       \ includes compiling src/lib/task.f in each child
 $4F constant TASK-REFUSED-RC
 $62 constant TASK-DIE-RC
 67 constant TASK-UNCAUGHT-RC
@@ -609,7 +608,7 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
 : TASK-SPAWN-EXITS ( ptr u8 n n -- len len ) {: src:ptr srcu:n want:n :}
    ENGINE-CANDIDATE:PATH$ >LEN src srcu >LEN
    TASK-OUT TASK-CAP >LEN TASK-ERR TASK-CAP >LEN
-   TASK-CAPTURE-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
+   PROCESS:WAIT-FOREVER RUN-ARGV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
    src srcu TASK-OUT outu LEN>N TASK-ERR erru LEN>N oc want T-ENDING-EXITED=
    outu erru ;
 
@@ -1523,7 +1522,6 @@ TASK:MIN-STACK TASK:TASK EXIT-HALT-TASK
 \ WAKE is a hint and WAIT waits for one, so every case here re-checks its own
 \ cell after the WAIT returns instead of treating the wake-up as the message.
 16 constant STOP-ITEM-N
-2000 constant STOP-HINT-MS           \ a lost hint parks forever: the bound ends STOP-REACH
 5 constant STOP-PARK-MS              \ grace for the target to reach its WAIT
 
 TASK:MIN-STACK TASK:TASK STOP-PROD
@@ -1551,13 +1549,6 @@ PTR-VARIABLE STOP-MAIN-TCB
       STOP-SLOT atomic@ want = if exit then
       TASK:WAIT
    again ;
-
-\ A hint that was dropped is no false answer and no hung suite: at
-\ STOP-HINT-MS the wait is EXPIRED, so the row ends as a timeout.
-: STOP-REACH ( ptr n n -- )
-   [: 2dup swap atomic@ = ;]
-   mono-ns STOP-HINT-MS NS-PER-MS * + s" task-test STOP-REACH" TEST-WAIT:POLL
-   2drop ;
 
 : STOP-PROD-WORK ( -- )
    STOP-ITEM-N 1 + 1 ?do
@@ -1601,7 +1592,7 @@ PTR-VARIABLE STOP-MAIN-TCB
    ['] STOP-EARLY-WORK STOP-EARLY TASK:ACTIVATE
    STOP-EARLY TASK:WAKE
    STOP-GATE TASK:SIGNAL-SEM
-   STOP-EARLY-DONE 1 STOP-REACH
+   STOP-EARLY-DONE 1 STOP-EARLY TEST-WAIT:FOR-CELL
    STOP-EARLY APP-WAIT-DONE
    STOP-EARLY TASK:THROW@ 0 T=
    STOP-EARLY TASK:KILL
@@ -1618,7 +1609,7 @@ PTR-VARIABLE STOP-MAIN-TCB
    0 STOP-PARKED !
    ['] JOIN-MARK STOP-HALTED TASK:AT-EXIT
    ['] STOP-HALTED-WORK STOP-HALTED TASK:ACTIVATE
-   STOP-PARKED 1 STOP-REACH
+   STOP-PARKED 1 STOP-HALTED TEST-WAIT:FOR-CELL
    STOP-PARK-MS TASK:SLEEP
    STOP-HALTED TASK:HALT
    STOP-HALTED APP-WAIT-DONE
@@ -1736,7 +1727,7 @@ variable STOP-FOR-SEEN
    0 STOP-FOR-READY ! 0 STOP-FOR-WOKEN ! 0 STOP-FOR-SEEN !
    mono-ns {: t0:n :}
    ['] STOP-FOR-HALT-WORK STOP-FOR-HALTED TASK:ACTIVATE
-   STOP-FOR-READY 1 STOP-REACH
+   STOP-FOR-READY 1 STOP-FOR-HALTED TEST-WAIT:FOR-CELL
    STOP-PARK-MS TASK:SLEEP
    STOP-FOR-HALTED TASK:HALT
    STOP-FOR-HALTED APP-WAIT-DONE
@@ -2313,7 +2304,6 @@ $30 constant NEW-N                   \ past one pool chunk of 42 records
 300 constant NEW-ROUNDS
 300 constant NEW-HOLD-N              \ tasks held at once, two AT-EXIT rows each
 NEW-HOLD-N 2 * constant NEW-HELD-ROWS  \ past the $80 rows of the image's table
-10000 constant NEW-WAIT-MS           \ a gate host starts NEW-N threads late
 TASK:SEMAPHORE NEW-GATE
 TASK:MIN-STACK TASK:TASK NEW-MAKER
 NEW-HOLD-N TYPED-BUFFER NEW-TASKS ptr n
@@ -2332,8 +2322,7 @@ variable NEW-DIRTY
 variable NEW-CLEANED
 variable NEW-STRAY
 
-: NEW-WAIT ( [ -- bool ] -- )
-   mono-ns NEW-WAIT-MS NS-PER-MS * + s" task-test NEW-WAIT" TEST-WAIT:POLL ;
+: NEW-WAIT ( [ -- bool ] -- ) TEST-WAIT:POLL ;
 
 : NEW-UP-BODY ( -- )
    1 NEW-UP atomic-add drop

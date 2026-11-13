@@ -8,7 +8,6 @@ require src/lib/test/subject.f
 package PROTECTION-TEST
 
 $800 constant CAP
-10000 constant TIMEOUT-MS
 ENGINE-ERROR:SEAL-VIOLATION constant VIOLATION-RC
 67 constant UNCAUGHT-RC
 76 constant CODE-FULL-RC
@@ -17,7 +16,7 @@ create OUT CAP allot
 create ERR CAP allot
 
 : CAPTURE ( ptr u8 n -- len len PROCESS:ending ) {: src:ptr u:n :}
-   src u OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN ;
+   src u OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN ;
 
 : EXPECT ( ptr u8 n n -- ) {: src:ptr u:n want:n :}
    src u CAPTURE {: outu:len erru:len oc :}

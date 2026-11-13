@@ -189,12 +189,8 @@ $300000 constant BIG-U
    u ECHO-U +! ;
 
 
-\ Takes a count of the semaphore within ten seconds, else throws E-PROC-TIMEOUT
-\ (TEST-WAIT:POLL): a timeout, no assertion result.
-10000000000 constant TAKE-NS
 : TAKE ( TASK:sem -- )
-   [: dup TASK:TRY-WAIT-SEM ;] mono-ns TAKE-NS + s" model-test TAKE" TEST-WAIT:POLL
-   drop ;
+   [: dup TASK:TRY-WAIT-SEM ;] TEST-WAIT:POLL drop ;
 
 
 : AUTHORIZED? ( HTTP:request -- bool )
@@ -393,19 +389,19 @@ $300000 constant BIG-U
    ;MATCH ;
 
 
-\ The longest a held stream waits for its client to close it.
-10000 constant HOLD-MS
 \ Signals HELD and keeps the connection open until the client closes it, with
 \ the turn given up.
 : HOLD-OPEN ( TCP4:connection -- )
    {: conn:TCP4:connection :}
    HELD TASK:SIGNAL-SEM
    TURN TASK:SIGNAL-SEM
-   conn [: HOLD-MS >MS TCP4:READABLE-WITHIN? ;] [: TURN TASK:WAIT-SEM ;] finally
-   MATCH TCP4:ready-result
-      ready OF ENDOF
-      idle OF FAIL ENDOF
-      failed OF TCP4:ERRNO>N drop FAIL ENDOF
+   conn [: TCP4:CONNECTION-FD AIO:READABLE -1 >MS AIO:POLL AIO:AWAIT ;]
+   [: TURN TASK:WAIT-SEM ;] finally
+   MATCH AIO:outcome
+      ready OF drop ENDOF
+      timed-out OF FAIL ENDOF
+      cancelled OF FAIL ENDOF
+      refused OF drop FAIL ENDOF
    ;MATCH
    conn RAW-CLOSE ;
 
@@ -1728,27 +1724,17 @@ variable REFUSED-BASE-U
 : CONTENT-CODE ( -- n ) 0 [: drop M MODEL:CONTENT$ 2drop 0 ;] CODE-OF ;
 : STATE-IS ( n [ n -- n ] -- ) CODE-OF MODEL:E-STATE = ASSERT ;
 : SERVE-CODE ( -- n ) 0 [: drop M MODEL:SERVE drop 0 ;] CODE-OF ;
-\ The longest a test serves calls before it fails, and the longest one wait
-\ between tries; a transfer's bytes or end wake the task sooner.
-5000000000 constant SERVE-NS
+\ The longest one wait between tries; a transfer's bytes or end wake the
+\ task sooner.
 100 constant SERVE-WAIT-MS
-
-
-\ Fails and answers true once SERVE-NS has passed since mono-ns t0; else waits
-\ for a wake or SERVE-WAIT-MS and answers false.
-: SERVE-OVER? ( n -- bool )
-   {: t0:n :}
-   mono-ns t0 - SERVE-NS > if FAIL true exit then
-   SERVE-WAIT-MS >MS TASK:WAIT-MS drop false ;
+: SERVE-PAUSE ( -- ) SERVE-WAIT-MS >MS TASK:WAIT-MS drop ;
 
 
 : SERVED ( ptr MODEL:call -- )
    {: c:ptr :}
-   mono-ns {: t0:n :}
-   begin
-      c MODEL:SERVE if exit then
-      t0 SERVE-OVER?
-   until ;
+   begin c MODEL:SERVE 0= while
+      SERVE-PAUSE
+   repeat ;
 
 
 \ START sends the request JOURNAL-INPUT$ finished, else the one built since
@@ -1966,20 +1952,18 @@ variable LANDED
 : SERVE-BIT ( n -- ) {: i:n :} i CALL MODEL:SERVE if LANDED @ 1 i lshift or LANDED ! then ;
 
 
-\ Serves calls 0 to 3 once each. True when calls 1, 2 and 3 have each answered
-\ true and the held call 0 never has; once it has, ROUNDS ends by SERVE-OVER?.
+\ Serves calls 0 to 3 once each. True once calls 1, 2 and 3 have each answered
+\ true, whatever the held call 0 did; a landed call 0 FAILs at MANY-CALLS's cancel.
 : ROUND ( -- bool )
    0 SERVE-BIT 1 SERVE-BIT 2 SERVE-BIT 3 SERVE-BIT
-   LANDED @ 14 = ;
+   LANDED @ 14 and 14 = ;
 
 
 : ROUNDS ( -- )
    0 LANDED !
-   mono-ns {: t0:n :}
-   begin
-      ROUND if exit then
-      t0 SERVE-OVER?
-   until ;
+   begin ROUND 0= while
+      SERVE-PAUSE
+   repeat ;
 
 
 \ One task serves four started calls in rounds: three land while the held one
@@ -2592,10 +2576,9 @@ variable LOOKUPS    \ COUNT-GET's lookups
 \ since RESEND-MARK.
 : SERVE-TO ( n -- )
    {: n:n :}
-   mono-ns {: t0:n :}
    begin SENDS-SINCE n < while
       M MODEL:SERVE 0= ASSERT
-      t0 SERVE-OVER? if exit then
+      SERVE-PAUSE
    repeat ;
 
 
@@ -2956,10 +2939,9 @@ variable GOT-NS           \ TIME:MONO-NS as KEEP-GET last ran
 
 \ Serves M, each SERVE answering false, until the call rests.
 : SERVE-TO-REST ( -- )
-   mono-ns {: t0:n :}
    begin M MODEL:RESEND-DUE 0= while
       M MODEL:SERVE 0= ASSERT
-      t0 SERVE-OVER? if exit then
+      SERVE-PAUSE
    repeat ;
 
 
@@ -3315,12 +3297,10 @@ variable SAVED-ERR   \ fd 2's capture file while the pipe holds fd 2
 
 \ Serves M until it lands or rests; answers whether it landed.
 : SERVE-SETTLED ( -- bool )
-   mono-ns {: t0:n :}
-   begin
-      M MODEL:SERVE if true exit then
+   begin M MODEL:SERVE 0= while
       M MODEL:RESEND-DUE 0<> if false exit then
-      t0 SERVE-OVER?
-   until false ;
+      SERVE-PAUSE
+   repeat true ;
 
 
 \ A CANCEL after the 503 send was sensed for a rest, and before the rest's

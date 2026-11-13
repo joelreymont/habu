@@ -22,7 +22,6 @@ require src/lib/fmt.f
 128 constant GT-FAIL-NAME-CAP
 32768 constant GT-OUT-CAP
 32768 constant GT-ERR-CAP
-10000 constant GT-DEFAULT-TIMEOUT-MS
 5000 constant GT-HEARTBEAT-MS
 10 constant GT-LF
 \ The longest name GT-PATH joins. GT-START keeps that much room below the root
@@ -174,9 +173,6 @@ variable GT-TAIL-U
 
 : GT-CAPTURE-DRAIN ( -- )
    GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN PROCESS:DRAIN-READY ;
-
-: GT-RUN-DEFAULT ( ptr u8 n -- )
-   GT-DEFAULT-TIMEOUT-MS GT-RUN ;
 
 \ GT-CAPTURE-ACTION points an action's stdout and stderr at two files under the
 \ caller's directory and reads them back into the caller's spans; code is the

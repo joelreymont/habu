@@ -9,7 +9,6 @@ require src/lib/test.f
 require src/lib/test/wait.f
 require src/lib/string.f
 require src/lib/task.f
-require src/lib/process.f
 require src/lib/aio.f
 require src/lib/pty.f
 require src/lib/serial.f
@@ -22,11 +21,8 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 115200 constant SPEED
 $20 constant BUF-CAP
 1000000 constant NS-PER-MS
-1000 constant WAIT-MS              \ a window generous enough for a local pty
 30 constant IDLE-MS                \ the window an idle port waits out
 50 constant PARK-MS                \ how long the parked task waits before bytes arrive
-20 constant SETTLE-MS              \ bytes written at the master are at the slave by then
-2000 constant JOIN-MS
 
 1 constant K-MOVED                 \ the four io-result variants, as numbers
 2 constant K-TIMEOUT
@@ -62,12 +58,8 @@ TASK:MIN-STACK TASK:TASK READER
       failed OF SERIAL:ERRNO>N K-FAILED swap ENDOF
    ;MATCH ;
 
-\ A deadline the case did not expect is no assertion result.
 : WANT ( SERIAL:io-result n n -- ) {: kind:n payload:n :}
    CLASSIFY {: got-kind:n got-payload:n :}
-   got-kind K-TIMEOUT = kind K-TIMEOUT <> and if
-      s" serial-test WANT" TEST-WAIT:EXPIRED
-   then
    got-kind kind T=
    got-payload payload T= ;
 
@@ -95,14 +87,13 @@ TASK:MIN-STACK TASK:TASK READER
 : PEER-EXACT ( ptr u8 n -- ) {: bytes size:n :}
    0 begin dup size < while
       dup {: offset:n :}
-      PEER bytes offset + size offset - WAIT-MS >MS PTY:READ {: got:n :}
+      PEER bytes offset + size offset - -1 >MS PTY:READ {: got:n :}
       got 0 <= if E-PROC-OUTPUT throw then
       got +
    repeat drop ;
 
 : JOIN-READER ( -- )
-   [: READER TASK:DONE? ;] JOIN-MS >MS PROCESS:DEADLINE-AT
-   s" serial-test JOIN-READER" TEST-WAIT:POLL ;
+   [: READER TASK:DONE? ;] TEST-WAIT:POLL ;
 
 : NUL-OPEN ( -- )
    S\" /dev/tty\x00x" SPEED SERIAL:BAUD SERIAL:OPEN8N1 OPENED drop ;
@@ -123,7 +114,7 @@ TASK:MIN-STACK TASK:TASK READER
    PEER s" habu!" PTY:WRITE
 
    s" five bytes written at the master are read at the port" T-LABEL
-   PORT BUF 5 SERIAL:BYTES WAIT-MS >MS SERIAL:READ K-MOVED 5 WANT
+   PORT BUF 5 SERIAL:BYTES -1 >MS SERIAL:READ K-MOVED 5 WANT
 
    s" ... and they are the bytes the master wrote" T-LABEL
    BUF 5 s" habu!" STR= TTRUE ;
@@ -139,6 +130,17 @@ TASK:MIN-STACK TASK:TASK READER
    s" ... after waiting out the window it was given" T-LABEL
    elapsed IDLE-MS NS-PER-MS * >= TTRUE ;
 
+\ Blocks until the port is readable. Any other outcome leaves its bytes
+\ missing, which the zero-window read after it reports.
+: AWAIT-INPUT ( -- )
+   HANDLE @ >FD AIO:READABLE -1 >MS AIO:POLL AIO:AWAIT
+   MATCH AIO:outcome
+      ready OF drop ENDOF
+      timed-out OF ENDOF
+      cancelled OF ENDOF
+      refused OF drop ENDOF
+   ;MATCH ;
+
 \ A zero timeout links a zero-length timeout behind the poll. The kernel serves
 \ the poll inline before that timer is armed, so a port that already has bytes
 \ answers with them and only an idle one answers the timeout.
@@ -148,24 +150,23 @@ TASK:MIN-STACK TASK:TASK READER
    PORT BUF 1 SERIAL:BYTES 0 >MS SERIAL:READ K-TIMEOUT 0 WANT
 
    PEER s" abc" PTY:WRITE
-   SETTLE-MS >MS TASK:SLEEP
+   AWAIT-INPUT
 
    s" ... and one whose bytes are already there answers with them" T-LABEL
    PORT BUF 3 SERIAL:BYTES 0 >MS SERIAL:READ K-MOVED 3 WANT ;
 
 : WRITE-CASE ( -- )
    s" six bytes written at the port are accepted whole" T-LABEL
-   PORT s" forth!" SERIAL:BYTES WAIT-MS >MS SERIAL:WRITE K-MOVED 6 WANT
+   PORT s" forth!" SERIAL:BYTES -1 >MS SERIAL:WRITE K-MOVED 6 WANT
 
    s" ... and the master reads exactly those six" T-LABEL
    BUF 6 PEER-EXACT
    BUF 6 s" forth!" STR= TTRUE ;
 
-\ A task asserts nothing: the reader records a timeout as K-TIMEOUT, and the
-\ main task throws it as a deadline once the join has seen the reader end.
+\ A task asserts nothing: the reader records what its READ answered.
 
 : PARK-WORK ( -- )
-   PORT BUF 4 SERIAL:BYTES WAIT-MS >MS SERIAL:READ
+   PORT BUF 4 SERIAL:BYTES -1 >MS SERIAL:READ
    CLASSIFY PARK-COUNT ! PARK-KIND ! ;
 
 : PARKED-CASE ( -- )
@@ -174,7 +175,6 @@ TASK:MIN-STACK TASK:TASK READER
    PARK-MS >MS TASK:SLEEP
    PEER s" tick" PTY:WRITE
    JOIN-READER
-   PARK-KIND @ K-TIMEOUT = if s" serial-test PARK-WORK" TEST-WAIT:EXPIRED then
 
    s" a read parked in a task answers the bytes the main task wrote at the master" T-LABEL
    PARK-KIND @ K-MOVED T=
@@ -218,7 +218,7 @@ TASK:MIN-STACK TASK:TASK READER
    m PTY:CLOSE
 
    s" a read of a port whose master closed answers closed" T-LABEL
-   PORT BUF 1 SERIAL:BYTES WAIT-MS >MS SERIAL:READ K-CLOSED 0 WANT
+   PORT BUF 1 SERIAL:BYTES -1 >MS SERIAL:READ K-CLOSED 0 WANT
 
    s" ... and the write after it fails with EIO" T-LABEL
    PORT s" x" SERIAL:BYTES 0 >MS SERIAL:WRITE K-FAILED EIO# WANT

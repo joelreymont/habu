@@ -206,12 +206,15 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    else handle SAVED SET-RAW drop SERIAL-OPEN--RESULT:unsupported then ;
 
 
+\ No deadline is -1 ns, which no mono-ns reading is, and REMAINING answers -1 ms.
 : DEADLINE ( ms -- ns )
-   MS>N dup 0 $7FFFFFFF RANGE NS-PER-MS * mono-ns + >NS ;
+   MS>N dup 0 < if drop -1 >NS exit then
+   dup 0 $7FFFFFFF RANGE NS-PER-MS * mono-ns + >NS ;
 
 
 : REMAINING ( ns -- ms )
-   NS>N mono-ns - dup 0 <= if drop 0 >MS exit then
+   NS>N dup 0 < if drop -1 >MS exit then
+   mono-ns - dup 0 <= if drop 0 >MS exit then
    NS-PER-MS 1 - + NS-PER-MS / >MS ;
 
 
@@ -273,7 +276,8 @@ public
 
 \ One available chunk, up to capacity, possibly short; a zero-byte request is
 \ refused.
-\ Timeout is 0..INT32_MAX milliseconds; zero never waits for future readiness.
+\ Timeout is 0..INT32_MAX milliseconds, negative for no deadline; zero never
+\ waits for future readiness.
 : READ ( handle ptr u8 NUM:byte-len ms -- io-result )
    {: handle:handle bytes capacity:NUM:byte-len timeout:ms :}
    handle capacity CHECK-IO timeout DEADLINE {: deadline:ns :}
@@ -291,7 +295,8 @@ public
 
 \ Accepts one chunk into the kernel queue, possibly short; a zero-byte request
 \ is refused. Success does not prove bytes reached the device. Input is
-\ borrowed for this call.
+\ borrowed for this call. Timeout is 0..INT32_MAX milliseconds, negative for no
+\ deadline.
 : WRITE ( handle ptr u8 NUM:byte-len ms -- io-result )
    {: handle:handle bytes size:NUM:byte-len timeout:ms :}
    handle size CHECK-IO timeout DEADLINE {: deadline:ns :}

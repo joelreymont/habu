@@ -17,6 +17,7 @@ require src/lib/test.f
 require src/lib/span.f
 require src/lib/allocator.f
 require src/lib/arena.f
+require src/lib/process.f
 require src/lib/task.f
 require src/lib/adt/result.f                 \ a halted task's join answer is MATCHed
 require src/lib/test/wait.f
@@ -258,7 +259,6 @@ public
 private
 
 $1000 constant CAP
-1000 constant TIMEOUT-MS
 CAP BUFFER: CAP-OUT
 CAP BUFFER: CAP-ERR
 
@@ -266,7 +266,7 @@ CAP BUFFER: CAP-ERR
 HB-TARGET-LINUX-X86-64? 0= [if]
 : EXPECT-FAULT ( ptr u8 n -- )
    {: src:ptr srcu:n :}
-   src srcu CAP-OUT CAP >LEN CAP-ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN
+   src srcu CAP-OUT CAP >LEN CAP-ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    {: outu:len erru:len oc :}
    src srcu CAP-OUT outu LEN>N CAP-ERR erru LEN>N oc
    ENGINE-ERROR:MEMORY-FAULT T-ENDING-EXITED= ;
@@ -276,7 +276,7 @@ HB-TARGET-LINUX-X86-64? [if]
 11 constant FAULT-SIG
 : EXPECT-FAULT ( ptr u8 n -- )
    {: src:ptr srcu:n :}
-   src srcu CAP-OUT CAP >LEN CAP-ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN
+   src srcu CAP-OUT CAP >LEN CAP-ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    {: outu:len erru:len oc :}
    src srcu CAP-OUT outu LEN>N CAP-ERR erru LEN>N oc
    FAULT-SIG T-ENDING-SIGNALED= ;

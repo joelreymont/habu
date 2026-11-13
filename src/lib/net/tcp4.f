@@ -423,7 +423,7 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ptr u8 ptr u8 -- i32 )
 \ a submitting task runs only after the task ends), so it is a broken foreign
 \ result.
 : WAIT-READY ( n ms -- ready-result ) {: fd:n timeout:ms :}
-   timeout MS>N 0 MAX-TIMEOUT WITHIN-RANGE
+   timeout MS>N MAX-TIMEOUT > if E-OPERAND throw then
    fd >FD AIO:READABLE timeout AIO:POLL AIO:AWAIT
    MATCH AIO:outcome
       ready OF REVENTS>READY ENDOF
@@ -785,7 +785,7 @@ public
 
 
 \ Parks the task on the AIO loop until the stream would answer a READ or the
-\ deadline passes, which is `idle`.
+\ deadline passes, which is `idle`; ms -1 parks it with no deadline.
 : READABLE-WITHIN? ( connection ms -- ready-result )
    {: conn:connection timeout:ms :}
    conn CONNECTION-FD timeout WAIT-READY ;
@@ -796,7 +796,8 @@ public
 
 
 \ The same wait for an arriving connection: `ready` means ACCEPT answers at
-\ once, `idle` that the deadline passed with the queue still empty.
+\ once, `idle` that the deadline passed with the queue still empty; ms -1 parks
+\ it with no deadline.
 : PENDING-WITHIN? ( listener ms -- ready-result )
    {: lis:listener timeout:ms :}
    lis LISTENER-FD timeout WAIT-READY ;

@@ -12,7 +12,6 @@ require src/lib/test/subject.f
 package LOCAL-CASE-TEST
 
 $1000 constant CAP
-20000 constant TIMEOUT-MS
 create OUT CAP allot
 create ERR CAP allot
 variable OUT-U
@@ -32,7 +31,7 @@ variable EXITED
    ;MATCH ;
 
 : RUN-SOURCE ( ptr u8 n -- ) {: src:ptr u:n :}
-   src u OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN src u STORE ;
+   src u OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN src u STORE ;
 
 : EXPECT-RC ( n -- ) {: want:n :}
    EXITED @ 0= RC @ want <> or if ERR$ type OUT$ type then

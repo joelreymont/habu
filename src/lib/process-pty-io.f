@@ -356,7 +356,8 @@ public
 : TARGET ( process-pty-handle -- process-pty-handle pid )
    HANDLE-TARGET@ ;
 
-\ Poll the target's lifetime watch up to ms; true once its exit is signalled.
+\ Poll the target's lifetime watch up to ms, a negative ms with no deadline;
+\ true once its exit is signalled.
 : AWAIT ( process-pty-handle n -- process-pty-handle bool ) {: ms:n :}
    HANDLE-IDX WATCH@ ms IO-POLL-READY? ;
 

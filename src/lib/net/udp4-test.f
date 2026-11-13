@@ -1,4 +1,4 @@
-\ udp4-test.f - loopback datagrams, every wait bounded and on the AIO loop.
+\ udp4-test.f - loopback datagrams.
 \
 \ Two sockets in one process talk over 127.0.0.1, so the suite needs no peer and
 \ no network. Every RECEIVE that waits does so on the AIO loop, which this suite
@@ -23,11 +23,10 @@ $40 constant PAYLOAD-N             \ the datagram every case sends
 $10 constant SMALL-CAP             \ the capacity the truncating case offers
 $80 constant BUF-CAP
 1000000 constant NS-PER-MS
--2 constant GOT-TIMEOUT            \ PARK-GOT once the parked receive's deadline expired
+-2 constant GOT-TIMEOUT            \ PARK-GOT once the parked receive answered timeout
 
 \ The deadlines the timed cases are measured against. They allow a scheduler's
 \ slack while still failing a wait that did not happen at all.
-1000 constant WAIT-MS              \ far beyond a loopback datagram's flight
 30 constant IDLE-MS                \ what an idle socket waits out
 20 constant NO-WAIT-MS             \ a zero timeout answers well inside this
 50 constant SETTLE-MS              \ the armed task reaches its wait within this
@@ -65,7 +64,7 @@ TASK:MIN-STACK TASK:TASK PARK-TASK
       packet OF UDP4:PORT>N port T= UDP4:ADDRESS>N address T= BLEN>N want T= ENDOF
       truncated OF UDP4:PORT>N drop UDP4:ADDRESS>N drop drop
          s" receive: unexpectedly truncated" T-FAIL-AS ENDOF
-      timeout OF s" udp4-test WANT-PACKET" TEST-WAIT:EXPIRED ENDOF
+      timeout OF s" receive: timed out" T-FAIL-AS ENDOF
       failed OF UDP4:ERRNO>N drop s" receive: failed" T-FAIL-AS ENDOF
    ;MATCH ;
 
@@ -75,7 +74,7 @@ TASK:MIN-STACK TASK:TASK PARK-TASK
       packet OF UDP4:PORT>N drop UDP4:ADDRESS>N drop drop
          s" receive: unexpectedly whole" T-FAIL-AS ENDOF
       truncated OF UDP4:PORT>N port T= UDP4:ADDRESS>N address T= BLEN>N want T= ENDOF
-      timeout OF s" udp4-test WANT-TRUNCATED" TEST-WAIT:EXPIRED ENDOF
+      timeout OF s" receive: timed out" T-FAIL-AS ENDOF
       failed OF UDP4:ERRNO>N drop s" receive: failed" T-FAIL-AS ENDOF
    ;MATCH ;
 
@@ -156,14 +155,6 @@ TASK:MIN-STACK TASK:TASK PARK-TASK
    mono-ns start - NS-PER-MS / ;
 
 
-\ A count still short of want at WAIT-MS is a deadline, not an assertion result:
-\ the wait names itself and throws E-PROC-TIMEOUT.
-: REACH ( ptr n n -- )
-   [: 2dup swap atomic@ <= ;] mono-ns WAIT-MS NS-PER-MS * +
-   s" udp4-test REACH" TEST-WAIT:POLL
-   2drop ;
-
-
 \ ---- cases -------------------------------------------------------------------
 
 : T-DATAGRAM ( -- )
@@ -171,7 +162,7 @@ TASK:MIN-STACK TASK:TASK PARK-TASK
    PAT-FILL
    OPEN-PAIR
    SEND-PAYLOAD
-   BUF-CAP WAIT-MS RECEIVE-B PAYLOAD-N LOOPBACK PORT-A @ WANT-PACKET
+   BUF-CAP -1 RECEIVE-B PAYLOAD-N LOOPBACK PORT-A @ WANT-PACKET
    s" and the bytes delivered are the bytes that were sent" T-LABEL
    PAYLOAD-N PAT-CHECK TTRUE
    CLOSE-PAIR ;
@@ -200,9 +191,7 @@ TASK:MIN-STACK TASK:TASK PARK-TASK
    s" and a zero timeout with a datagram queued answers it" T-LABEL
    SEND-PAYLOAD
    SOCK-B @ 1 32 lshift or READY-POLL !
-   READY-POLL 1 WAIT-MS poll
-   dup 0= if s" udp4-test T-ZERO-TIMEOUT" TEST-WAIT:EXPIRED then
-   1 T=
+   READY-POLL 1 -1 poll 1 T=
    BUF-CAP 0 RECEIVE-B PAYLOAD-N LOOPBACK PORT-A @ WANT-PACKET
    PAYLOAD-N PAT-CHECK TTRUE
    CLOSE-PAIR ;
@@ -213,7 +202,7 @@ TASK:MIN-STACK TASK:TASK PARK-TASK
    PAT-FILL
    OPEN-PAIR
    SEND-PAYLOAD
-   SMALL-CAP WAIT-MS RECEIVE-B PAYLOAD-N LOOPBACK PORT-A @ WANT-TRUNCATED
+   SMALL-CAP -1 RECEIVE-B PAYLOAD-N LOOPBACK PORT-A @ WANT-TRUNCATED
    s" and the capacity it filled holds the datagram's first bytes" T-LABEL
    SMALL-CAP PAT-CHECK TTRUE
    CLOSE-PAIR ;
@@ -221,11 +210,11 @@ TASK:MIN-STACK TASK:TASK PARK-TASK
 
 \ The socket is nonblocking, so a RECEIVE with nothing queued is parked on the
 \ loop and not inside recvfrom: the main thread's later send is what answers it.
-\ A task asserts nothing: the worker records a timeout as GOT-TIMEOUT, and the
-\ case throws it as a deadline once the worker is done.
+\ A task asserts nothing: the worker records what it got for the case to check
+\ once the worker is done.
 : PARK-WORK ( -- )
    1 PARK-ARMED atomic-add drop
-   BUF-CAP WAIT-MS RECEIVE-B
+   BUF-CAP -1 RECEIVE-B
    MATCH UDP4:receive-result
       packet OF UDP4:PORT>N drop UDP4:ADDRESS>N drop BLEN>N PARK-GOT ! ENDOF
       truncated OF UDP4:PORT>N drop UDP4:ADDRESS>N drop drop -1 PARK-GOT ! ENDOF
@@ -241,11 +230,10 @@ TASK:MIN-STACK TASK:TASK PARK-TASK
    PAT-FILL
    OPEN-PAIR
    ['] PARK-WORK PARK-TASK TASK:ACTIVATE
-   PARK-ARMED 1 REACH
+   PARK-ARMED 1 PARK-TASK TEST-WAIT:FOR-CELL
    SETTLE-MS >MS TASK:SLEEP
    SEND-PAYLOAD
-   PARK-DONE 1 REACH
-   PARK-GOT @ GOT-TIMEOUT = if s" udp4-test PARK-WORK" TEST-WAIT:EXPIRED then
+   PARK-DONE 1 PARK-TASK TEST-WAIT:FOR-CELL
    PARK-GOT @ PAYLOAD-N T=
    PARK-TASK TASK:KILL
    CLOSE-PAIR ;

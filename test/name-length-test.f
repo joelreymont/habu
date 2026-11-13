@@ -10,13 +10,13 @@ require src/lib/string.f
 require src/lib/test.f
 require src/lib/test/ending.f
 require src/lib/test/subject.f
+require src/lib/process.f
 require src/habu/layout.f
 
 package NAME-LENGTH-TEST
 
 $400 constant OUT-CAP
 $8000 constant ERR-CAP             \ a diagnostic that names a whole name
-10000 constant TIMEOUT-MS
 -1 1 rshift constant MAX-CELL
 \ A name has no ceiling: a definer captures a word's name and one separator
 \ into the definition's body text, which grows with the definition, before it
@@ -177,7 +177,7 @@ variable LBL-U
    {: u:n at:ptr atu:n src:ptr srcu:n :}
    0 LBL-U !  src srcu LBL+  s"  at " LBL+  at atu LBL+
    u LEN !
-   src srcu OUT OUT-CAP >LEN ERR ERR-CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN ;
+   src srcu OUT OUT-CAP >LEN ERR ERR-CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN ;
 
 \ The child prints that its word refused, and nothing else, and exits 0.
 : RETURNS-AT ( n ptr u8 n ptr u8 n -- )

@@ -6,6 +6,7 @@ require src/lib/string-roles.f
 require src/lib/test.f
 require src/lib/memory.f
 require src/lib/test/ending.f
+require src/lib/process.f
 require src/lib/process-fork.f
 require src/lib/test/subject.f
 require src/lib/task.f
@@ -264,7 +265,6 @@ package MEMT
 private
 
 $1000 constant RBT-CAP
-1000 constant RBT-TIMEOUT-MS
 -7777 constant E-PRIMARY
 
 create RBT-OUT RBT-CAP allot
@@ -392,7 +392,7 @@ create RBT-ERR RBT-CAP allot
 \ stdout and stderr lengths.
 : RBT-EXITS ( ptr u8 n n -- n n ) {: src:ptr srcu:n want:n :}
    src srcu RBT-OUT RBT-CAP >LEN RBT-ERR RBT-CAP >LEN
-   RBT-TIMEOUT-MS >MS SUBJECT:RUN {: outu:len erru:len oc :}
+   PROCESS:WAIT-FOREVER SUBJECT:RUN {: outu:len erru:len oc :}
    src srcu RBT-OUT outu LEN>N RBT-ERR erru LEN>N oc want T-ENDING-EXITED=
    outu LEN>N erru LEN>N ;
 
@@ -410,7 +410,7 @@ HB-TARGET-LINUX-X86-64? [if]
 11 constant MEMT-FAULT-SIG
 : RBT-EXPECT-FAULT ( ptr u8 n -- ) {: src:ptr srcu:n :}
    src srcu RBT-OUT RBT-CAP >LEN RBT-ERR RBT-CAP >LEN
-   RBT-TIMEOUT-MS >MS SUBJECT:RUN {: outu:len erru:len oc :}
+   PROCESS:WAIT-FOREVER SUBJECT:RUN {: outu:len erru:len oc :}
    src srcu RBT-OUT outu LEN>N RBT-ERR erru LEN>N oc
    MEMT-FAULT-SIG T-ENDING-SIGNALED=
    erru LEN>N 0 > TTRUE
@@ -479,14 +479,13 @@ execute
 package MEM-FATAL-TEST
 
 $100 constant CAP
-1000 constant TIMEOUT-MS
 $47 constant FATAL-RC
 
 create CAP-OUT CAP allot
 create CAP-ERR CAP allot
 
 : EXPECT-FATAL ( ptr u8 n -- ) {: src:ptr srcu:n :}
-   src srcu CAP-OUT CAP >LEN CAP-ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN
+   src srcu CAP-OUT CAP >LEN CAP-ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    {: outu:len erru:len oc :}
    src srcu CAP-OUT outu LEN>N CAP-ERR erru LEN>N oc FATAL-RC T-ENDING-EXITED=
    outu LEN>N 0 T=

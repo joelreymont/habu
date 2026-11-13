@@ -70,8 +70,8 @@ variable PCT-I
    PCT-SETUP-ROOT
    PCT-RESET
    s" rel.txt"  >LEN PROC-ARGV+
-   s" /bin/cat" PCT-ROOT PCT-ROOT-U @ PCT-OUT PCT-CAP PCT-ERR PCT-CAP 1000
-   PCT-CAPTURE
+   s" /bin/cat" PCT-ROOT PCT-ROOT-U @ PCT-OUT PCT-CAP PCT-ERR PCT-CAP
+   PROCESS:WAIT-FOREVER MS>N PCT-CAPTURE
    0 T= 0 T= PCT-OK-U T=
    PCT-OUT PCT-OK-U PCT-OK PCT-OK-U T$=
    s" README.md" FS:FILE? TTRUE
@@ -83,8 +83,8 @@ variable PCT-I
 : PCT-RUN-STDIN-CAPTURE ( -- )
    PCT-SETUP-ROOT
    PCT-RESET
-   s" /bin/cat" PCT-ROOT PCT-ROOT-U @ PCT-OK PCT-OK-U PCT-OUT PCT-CAP PCT-ERR PCT-CAP 1000
-   PCT-STDIN-CAPTURE
+   s" /bin/cat" PCT-ROOT PCT-ROOT-U @ PCT-OK PCT-OK-U PCT-OUT PCT-CAP PCT-ERR PCT-CAP
+   PROCESS:WAIT-FOREVER MS>N PCT-STDIN-CAPTURE
    0 T= 0 T= PCT-OK-U T=
    PCT-OUT PCT-OK-U PCT-OK PCT-OK-U T$=
    PROC-ARGV-N @ 0 T=
@@ -133,8 +133,8 @@ variable PCT-I
 
 \ The 300 ms captures also cover the child's start, so they claim only what a
 \ deadline promises: a timeout, pid and stdin cleared, stdout a prefix of ok.
-\ The third child ends by itself under a guard it never reaches, so it alone
-\ claims a clean exit with exactly ok read across its early end of output.
+\ The third child ends by itself under no deadline, so it alone claims a
+\ clean exit with exactly ok read across its early end of output.
 : PCT-RUN-EARLY-EOF ( -- )
    [: PCT-EARLY-EOF ;] E-PROC-TIMEOUT TTHROWSQ
    PCT-CLEARED
@@ -142,7 +142,7 @@ variable PCT-I
    PCT-EARLY-EOF$ 300 >MS PCT-OUTCOME
    T-ENDING-TIMEOUT LEN>N 0 T= LEN>N PCT-OUT-OK?
    PCT-CLEARED
-   PCT-SELF-EOF$ 60000 >MS PCT-OUTCOME {: outu:len erru:len oc :}
+   PCT-SELF-EOF$ PROCESS:WAIT-FOREVER PCT-OUTCOME {: outu:len erru:len oc :}
    PCT-SELF-EOF$ PCT-OUT outu LEN>N PCT-ERR erru LEN>N oc 0 T-ENDING-EXITED=
    erru LEN>N 0 T= outu LEN>N 2 T=
    PCT-OUT 2 s" ok" T$=
@@ -164,13 +164,13 @@ variable PCT-I
 
 : PCT-RUN-ARGV-ENV-CWD-CAPTURE-RESULT ( -- )
    PCT-RESET
-   s" /usr/bin/true" >LEN s" ." >LEN PCT-OUT PCT-CAP >LEN PCT-ERR PCT-CAP >LEN 1000 >MS PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
+   s" /usr/bin/true" >LEN s" ." >LEN PCT-OUT PCT-CAP >LEN PCT-ERR PCT-CAP >LEN PROCESS:WAIT-FOREVER PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
    MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N 0 T=  e LEN>N 0 T= ENDOF
      err OF PCAP-FAILED:UNMAKE 2drop drop 1 0 T= ENDOF
    ;MATCH
    PCT-RESET
-   s" /usr/bin/false" >LEN s" ." >LEN PCT-OUT PCT-CAP >LEN PCT-ERR PCT-CAP >LEN 1000 >MS PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
+   s" /usr/bin/false" >LEN s" ." >LEN PCT-OUT PCT-CAP >LEN PCT-ERR PCT-CAP >LEN PROCESS:WAIT-FOREVER PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
    MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE 2drop 1 0 T= ENDOF
      err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} o LEN>N 0 T=  e LEN>N 0 T=  c RC>N 1 T= ENDOF
@@ -181,7 +181,8 @@ variable PCT-I
 
 : PCT-ECHO-FRESH ( -- )
    s" fresh" >LEN PROC-ARGV+
-   s" /bin/echo" s" /" PCT-OUT PCT-CAP PCT-ERR PCT-CAP 1000 PCT-CAPTURE
+   s" /bin/echo" s" /" PCT-OUT PCT-CAP PCT-ERR PCT-CAP
+   PROCESS:WAIT-FOREVER MS>N PCT-CAPTURE
    0 T= 0 T= {: outu:n :}
    PCT-OUT outu s\" fresh\n" T$= ;
 

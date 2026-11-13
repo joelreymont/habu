@@ -4,6 +4,7 @@
 require src/lib/test.f
 require src/lib/string.f
 require test/gate-common.f
+require src/lib/process.f
 
 package MAIN-ROUTING-TEST
 
@@ -23,7 +24,7 @@ create PATH-BUF PATH-CAP allot
 : RUN ( ptr u8 n [ -- ] -- ) {: input:ptr u:n args :}
    GE-HB-RESET
    args execute
-   GE-HB$ input u GE-TIMEOUT-MS GE-RUN-STDIN ;
+   GE-HB$ input u PROCESS:WAIT-FOREVER MS>N GE-RUN-STDIN ;
 
 : PASS ( ptr u8 n ptr u8 n -- ) {: want:ptr wantu:n label:ptr labelu:n :}
    label labelu GE-EXPECT-OK

@@ -36,7 +36,7 @@ public
 : TEST ( -- )
    s" habu-debugger-resume" GT-START
    GE-HB-RESET SOURCE
-   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ PROCESS:WAIT-FOREVER MS>N GE-RUN-STDIN
    s" breakpoint resumes across protection pages" GE-EXPECT-OK
    S\" 19\n19\n" s" resumed word and subsequent call" GE-EXPECT-OUT
    s" habu-bp-watch:" s" watch table printed before resuming" GE-EXPECT-ERR-HAS

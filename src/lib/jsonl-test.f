@@ -8,6 +8,7 @@ require src/lib/fs-mutate.f
 require src/lib/byte-buffer.f
 require src/lib/json.f
 require src/lib/jsonl.f
+require src/lib/process.f
 require src/lib/test/ending.f
 require src/lib/test/subject.f
 
@@ -26,7 +27,6 @@ DEEP-N 2 * 2 + BUFFER: DEEP-FIXTURE
 
 $47 constant FATAL-RC                  \ the close-invariant exit status
 $100 constant CAP
-1000 constant TIMEOUT-MS
 CAP BUFFER: CAP-OUT
 CAP BUFFER: CAP-ERR
 
@@ -295,7 +295,7 @@ private
 
 : CLOSE-FAULT ( -- )
    s" ' JSONL-TEST:SABOTAGE catch $53 emit" {: src:ptr srcu:n :}
-   src srcu CAP-OUT CAP >LEN CAP-ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN
+   src srcu CAP-OUT CAP >LEN CAP-ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    {: outu:len erru:len oc :}
    src srcu CAP-OUT outu LEN>N CAP-ERR erru LEN>N oc FATAL-RC T-ENDING-EXITED=
    outu LEN>N 0 T=

@@ -2,8 +2,6 @@
 \ waits, the completion operations, the per-task cleanup and every refusal.
 \ Pipes, one regular file under the test's own temporary directory, and one
 \ loopback stream this process is both ends of; no clock but the monotonic one.
-\ Every wait in this file is bounded: a wait that never finishes ends the row as a
-\ timeout and not a hung suite, and what a finished wait leaves is asserted.
 \
 \ Every transfer hands its allocation to the operation and takes it back from
 \ AWAIT-XFER, which is the only word that answers one, and releases it itself.
@@ -53,7 +51,6 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 package AIO-TEST
 
 1000000 constant NS-PER-MS
-2000 constant WAIT-MS                \ the bound on every wait in this file
 5 constant SETTLE-MS                 \ grace for a submission to reach the ring
 20 constant TIMER-MS
 30 constant SILENT-MS
@@ -220,20 +217,15 @@ TASK:MIN-STACK TASK:TASK FAN7
 
 : THREADS ( -- n ) TEST-HOST:THREADS ;
 
-: DEADLINE ( -- n )
-   mono-ns WAIT-MS NS-PER-MS * + ;
-
 : REACH ( ptr n n -- )
-   [: 2dup swap atomic@ <= ;] DEADLINE s" aio-test REACH" TEST-WAIT:POLL
-   2drop ;
+   [: 2dup swap atomic@ <= ;] TEST-WAIT:POLL 2drop ;
 
 : AWAIT-END ( ptr n -- )
-   [: dup TASK:DONE? ;] DEADLINE s" aio-test AWAIT-END" TEST-WAIT:POLL
-   drop ;
+   [: dup TASK:DONE? ;] TEST-WAIT:POLL drop ;
 
 \ The scrub a halted task runs cancels its operations, and the cancels have to
 \ reach the kernel and come back before the ring is idle, so the stop is retried
-\ to a bound rather than asserted on the first try.
+\ rather than asserted on the first try.
 : STOPPED? ( -- bool )
    [: AIO:STOP ;] catch {: code:n :}
    code 0= if true exit then
@@ -241,7 +233,7 @@ TASK:MIN-STACK TASK:TASK FAN7
    false ;
 
 : STOP-LOOP ( -- )
-   [: STOPPED? ;] DEADLINE s" aio-test STOP-LOOP" TEST-WAIT:POLL ;
+   [: STOPPED? ;] TEST-WAIT:POLL ;
 
 : C1-WORK ( -- )
    P-R @ >FD AIO:READABLE -1 >MS AIO:POLL AWAIT>N C1-GOT ! ;
@@ -711,7 +703,7 @@ CAST: XFER>N ( AIO:xfer -- n )
    0 XFER-FORGET-DONE !
    P-R P-W PIPE-OPEN
    ['] XFER-FORGET-WORK XFER-FORGET-TASK TASK:ACTIVATE
-   XFER-FORGET-DONE 1 REACH
+   XFER-FORGET-DONE 1 XFER-FORGET-TASK TEST-WAIT:FOR-CELL
    XFER-FORGET-TASK AWAIT-END
    XFER-FORGET-TASK TASK:KILL
    STOP-LOOP
@@ -719,14 +711,14 @@ CAST: XFER>N ( AIO:xfer -- n )
    P-R P-W PIPE-CLOSE
    AIO:START ;
 
-\ The poll's deadline lies past STOP-LOOP's bound: only AIO's cleanup ending it
-\ lets the loop stop in time. The mark counts, so a cleanup run twice is a FAIL.
+\ The task exits with its poll out and no deadline on it, so only the exit
+\ cleanup ends the poll; the mark counts, so a cleanup run twice is a FAIL.
 : OWN-EXIT-MARK+ ( -- )
    1 OWN-EXIT-MARK atomic-add drop ;
 
 : OWN-EXIT-WORK ( -- )
    ['] OWN-EXIT-MARK+ TASK:SELF TASK:AT-EXIT
-   P-R @ >FD AIO:READABLE WAIT-MS 2 * >MS AIO:POLL TICKET-DROP
+   P-R @ >FD AIO:READABLE -1 >MS AIO:POLL TICKET-DROP
    1 OWN-EXIT-DONE atomic! ;
 
 : CASE-OWN-EXIT ( -- )
@@ -734,7 +726,7 @@ CAST: XFER>N ( AIO:xfer -- n )
    0 OWN-EXIT-DONE !
    P-R P-W PIPE-OPEN
    ['] OWN-EXIT-WORK OWN-EXIT-TASK TASK:ACTIVATE
-   OWN-EXIT-DONE 1 REACH
+   OWN-EXIT-DONE 1 OWN-EXIT-TASK TEST-WAIT:FOR-CELL
    OWN-EXIT-TASK AWAIT-END
    OWN-EXIT-TASK TASK:KILL
    OWN-EXIT-MARK @ 1 T=
@@ -754,7 +746,7 @@ CAST: XFER>N ( AIO:xfer -- n )
    0 HALT-PARKED !
    P-R P-W PIPE-OPEN
    ['] HALT-WORK HALT-TASK TASK:ACTIVATE
-   HALT-PARKED 1 REACH
+   HALT-PARKED 1 HALT-TASK TEST-WAIT:FOR-CELL
    SETTLE-MS TASK:SLEEP
    HALT-TASK TASK:HALT
    HALT-TASK AWAIT-END
@@ -789,13 +781,13 @@ CAST: XFER>N ( AIO:xfer -- n )
    STREAM-PAIR {: old-peer:n :}
    XC @ TCP4:CONNECTION-FD FD>N {: num:n :}
    ['] REUSE-WORK REUSE-TASK TASK:ACTIVATE
-   REUSE-PARKED 1 REACH
+   REUSE-PARKED 1 REUSE-TASK TEST-WAIT:FOR-CELL
    SETTLE-MS TASK:SLEEP
    REUSE-TASK TASK:HALT
-   REUSE-CLOSED 1 REACH
+   REUSE-CLOSED 1 REUSE-TASK TEST-WAIT:FOR-CELL
    STREAM-PAIR {: new-peer:n :}
    XC @ TCP4:CONNECTION-FD FD>N num T=
-   XC @ TCP4:CONNECTION-FD AIO:READABLE WAIT-MS >MS AIO:POLL {: px:AIO:ticket :}
+   XC @ TCP4:CONNECTION-FD AIO:READABLE -1 >MS AIO:POLL {: px:AIO:ticket :}
    XFER-ALLOC {: sbuf scap:NUM:alloc-byte-len :}
    sbuf PAT-FILL
    new-peer sbuf REUSE-N write REUSE-N T=
@@ -803,7 +795,7 @@ CAST: XFER>N ( AIO:xfer -- n )
    P-W @ POKE
    REUSE-TASK AWAIT-END
    REUSE-TASK TASK:KILL
-   XC @ TCP4:CONNECTION-FD AIO:READABLE SILENT-MS >MS AIO:POLL AWAIT>N {: got:n :}
+   XC @ TCP4:CONNECTION-FD AIO:READABLE -1 >MS AIO:POLL AWAIT>N {: got:n :}
    got 0 > TTRUE
    XFER-ALLOC {: rbuf rcap:NUM:alloc-byte-len :}
    got 0 > if
@@ -840,19 +832,19 @@ CAST: XFER>N ( AIO:xfer -- n )
    BIND-LISTENER
    XL @ TCP4:LISTENER-FD FD>N {: num:n :}
    ['] LISTEN-WORK LISTEN-TASK TASK:ACTIVATE
-   REUSE-PARKED 1 REACH
+   REUSE-PARKED 1 LISTEN-TASK TEST-WAIT:FOR-CELL
    SETTLE-MS TASK:SLEEP
    LISTEN-TASK TASK:HALT
-   REUSE-CLOSED 1 REACH
+   REUSE-CLOSED 1 LISTEN-TASK TEST-WAIT:FOR-CELL
    BIND-LISTENER
    XL @ TCP4:LISTENER-FD FD>N num T=
-   XL @ TCP4:LISTENER-FD AIO:READABLE WAIT-MS >MS AIO:POLL {: px:AIO:ticket :}
+   XL @ TCP4:LISTENER-FD AIO:READABLE -1 >MS AIO:POLL {: px:AIO:ticket :}
    CONNECT-XC
    px AWAIT>N 0 > TTRUE
    P-W @ POKE
    LISTEN-TASK AWAIT-END
    LISTEN-TASK TASK:KILL
-   XL @ TCP4:LISTENER-FD AIO:READABLE SILENT-MS >MS AIO:POLL AWAIT>N {: got:n :}
+   XL @ TCP4:LISTENER-FD AIO:READABLE -1 >MS AIO:POLL AWAIT>N {: got:n :}
    got 0 > TTRUE
    got 0 > if
       ACCEPT-FD close-rc drop
@@ -874,7 +866,7 @@ CAST: XFER>N ( AIO:xfer -- n )
    0 CLEAN-GOT !
    P-R P-W PIPE-OPEN
    ['] CLEAN-WORK CLEAN-TASK TASK:ACTIVATE
-   HALT-PARKED 1 REACH
+   HALT-PARKED 1 CLEAN-TASK TEST-WAIT:FOR-CELL
    SETTLE-MS TASK:SLEEP
    CLEAN-TASK TASK:HALT
    CLEAN-TASK AWAIT-END

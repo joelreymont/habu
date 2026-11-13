@@ -18,9 +18,6 @@ require src/lib/test/fifo.f
 package PG-CLUSTER
 
 $10000 constant CAPTURE-CAP     \ initdb's chatter, or the server's log
-60000 constant TOOL-MS
-60000 constant DEFAULT-CASE-MS
-$7FFFFFFF constant CASE-MAX-MS  \ poll(2) receives a signed 32-bit millisecond count
 \ A signalled stop: an immediate shutdown SIGKILLs the children still alive 5 s
 \ in (PostgreSQL's SIGKILL_CHILDREN_AFTER_SECS) and exits, so 6 s is the
 \ server's whole stop. With the case engine's walk (src/lib/process-tree.f
@@ -52,12 +49,9 @@ variable SERVER                 \ the postmaster's pid until it is reaped
 variable WATCH                  \ readable once the postmaster has exited
 variable RUNNING                \ the running case engine's pid until it is reaped
 variable CASE-WATCH             \ readable once that engine has exited
-variable CASE-MS                \ one deadline for each case file
 variable HOLD                   \ PG_HOLD_FIFO's write end, NO-FD without one
 TYPED-VARIABLE UP bool          \ the server said it was ready
 TYPED-VARIABLE STOPPED bool     \ the server's stop ended it with exit 0
-TYPED-VARIABLE FAILED bool
-TYPED-VARIABLE LATE bool        \ the first step to fail passed its deadline
 NO-PID INITDB-PID !
 NO-FD INITDB-WATCH !
 NO-PID SERVER !
@@ -67,9 +61,6 @@ NO-FD CASE-WATCH !
 NO-FD HOLD !
 false UP !
 false STOPPED !
-false FAILED !
-false LATE !
-DEFAULT-CASE-MS CASE-MS !
 
 : INITDB$ ( -- ptr u8 n )    INITDB INITDB-U @ ;
 : POSTGRES$ ( -- ptr u8 n )  POSTGRES POSTGRES-U @ ;
@@ -82,20 +73,6 @@ DEFAULT-CASE-MS CASE-MS !
 : CONNINFO$ ( -- ptr u8 n )  CONNINFO CONNINFO-U @ ;
 : CONNINFO+ ( ptr u8 n -- )  CONNINFO TEXT-CAP CONNINFO-U BUF-APPEND ;
 : ARG+ ( ptr u8 n -- )       >LEN PROC-ARGV+ ;
-
-: BAD-CASE-MS ( -- )
-   s" pg-cluster: HB_PG_CASE_MS must be 1..2147483647 milliseconds" 64 die ;
-
-: READ-CASE-MS ( -- )
-   s" HB_PG_CASE_MS" GETENV {: value:ptr size:n :}
-   value NULL-PTR = if exit then
-   value size STR>NUMBER? MATCH option
-      none OF BAD-CASE-MS ENDOF
-      some OF ENDOF
-   ;MATCH {: ms:n :}
-   ms 1 < ms CASE-MAX-MS > or if BAD-CASE-MS then
-   ms CASE-MS ! ;
-
 
 \ initdb and postgres on PATH are a gate requirement on every host
 \ (docs/bootstrap.md "Requirements"): a missing one fails the row, never skips
@@ -150,33 +127,20 @@ DEFAULT-CASE-MS CASE-MS !
    PROC-ENV-INHERIT-MISSING
    s" LC_ALL" >LEN s" C" >LEN PROC-ENV-SET ;
 
-\ The first step to fail decides how the row ends (FAIL-ROW); later failures
-\ change nothing.
-: STEP-FAILED ( bool -- ) {: late:bool :}
-   FAILED @ if exit then
-   true FAILED !
-   late LATE ! ;
-
-\ A case engine exits PROCESS:TIMEOUT-RC (124) when a wait of its own passed its
-\ deadline (src/lib/pg-test.f RUN), so that exit is a late step, as is a case
-\ ended at CASE-MS.
 : EXITED-0? ( PROCESS:ending ptr u8 n -- bool )
    {: what:ptr whatu:n :}
    MATCH PROCESS:ending
       exited OF
          s" pg-cluster: " type what whatu type
          dup 0= if drop s"  ok" type cr true exit then
-         s"  exited " type dup FMT:.INT
-         PROCESS:TIMEOUT-RC = dup if s" , past its own deadline" type then
-         STEP-FAILED
+         s"  exited " type FMT:.INT
       ENDOF
       signaled OF
          s" pg-cluster: " type what whatu type
-         s"  died of signal " type FMT:.INT false STEP-FAILED
+         s"  died of signal " type FMT:.INT
       ENDOF
       timeout OF
          s" pg-cluster " type what whatu type s" : a deadline expired" type
-         true STEP-FAILED
       ENDOF
    ;MATCH
    cr false ;
@@ -187,8 +151,8 @@ DEFAULT-CASE-MS CASE-MS !
    OUT n type ;
 
 
-\ macOS cannot watch a process that has already exited and answers -1, so a
-\ process with no watch has ended.
+\ A negative ms waits with no deadline. macOS cannot watch a process that has
+\ already exited and answers -1, so a process with no watch has ended.
 : GONE-WITHIN? ( n n -- bool ) {: watch:n ms:n :}
    watch 0 < if true exit then
    watch >FD FD:POLLIN PROCESS:PFD!
@@ -388,22 +352,21 @@ DEFAULT-CASE-MS CASE-MS !
       timeout OF ENDOF
    ;MATCH ;
 
-\ A run whose first failed step passed its deadline ends with an uncaught
-\ E-PROC-TIMEOUT: the engine reports that code on stderr last and exits
-\ UNCAUGHT-RC. Any other failure exits 1. A caught signal is answered first.
+\ A failed run exits 1. A caught signal is answered first.
 : FAIL-ROW ( ptr u8 n -- ) {: msg:ptr msgu:n :}
    SIGNAL-CHECK
-   LATE @ if E-PROC-TIMEOUT throw then
    msg msgu 1 die ;
 
 \ A caught signal is answered here.
+\ A negative ms waits with no deadline, and the answer is then always true.
 : ENDED-WITHIN? ( n n -- bool ) {: watch:n ms:n :}
    watch 0 < if true exit then
    ms >MS PROCESS:DEADLINE-AT {: deadline:n :}
    begin
       watch >FD FD:POLLIN 0 >IDX PROCESS:PFD-AT!
       SIGNAL:FD FD:POLLIN 1 >IDX PROCESS:PFD-AT!
-      2 deadline PROCESS:LEFT-MS MS>N deadline PROCESS:POLL-RESTART {: rc:n :}
+      ms 0 < if ms else deadline PROCESS:LEFT-MS MS>N then {: left:n :}
+      2 left deadline PROCESS:POLL-RESTART {: rc:n :}
       rc 0 < if E-PROC-OUTPUT throw then
       rc 0= if false exit then
       1 >IDX PROCESS:PFD-REVENTS 0<> if SIGNAL-CHECK then
@@ -413,28 +376,19 @@ DEFAULT-CASE-MS CASE-MS !
 
 : INITDB-RUN ( -- )
    INITDB-SPAWN
-   INITDB-WATCH @ TOOL-MS ENDED-WITHIN? if
-      INITDB-REAP
-   else
-      INITDB-STOP PROCESS-ENDING:timeout
-   then
+   INITDB-WATCH @ -1 ENDED-WITHIN? drop
+   INITDB-REAP
    s" initdb" EXITED-0? if exit then
    INITDB-LOG$ SHOW-LOG
    s" pg-cluster: initdb failed" FAIL-ROW ;
 
 : READY? ( -- bool )
    SERVER @ NO-PID = if false exit then
-   TOOL-MS >MS PROCESS:DEADLINE-AT {: deadline:n :}
    begin
       STATUS-READY? if s" pg-cluster: postgres ready" type cr true exit then
-      deadline PROCESS:LEFT-MS MS>N {: left:n :}
-      left 0= if
-         s" pg-cluster READY?: a deadline expired" type cr
-         true STEP-FAILED false exit
-      then
-      WATCH @ left READY-POLL-MS min ENDED-WITHIN? if
+      WATCH @ READY-POLL-MS ENDED-WITHIN? if
          s" pg-cluster: postgres ended before it was ready" type cr
-         false STEP-FAILED false exit
+         false exit
       then
    again ;
 
@@ -442,11 +396,8 @@ DEFAULT-CASE-MS CASE-MS !
 \ ends the run.
 : RUN-FILE ( ptr u8 n -- bool ) {: file:ptr fileu:n :}
    file fileu CASE-SPAWN
-   CASE-WATCH @ CASE-MS @ ENDED-WITHIN? if
-      CASE-REAP
-   else
-      CASE-KILL PROCESS-ENDING:timeout
-   then
+   CASE-WATCH @ -1 ENDED-WITHIN? drop
+   CASE-REAP
    file fileu EXITED-0? ;
 
 \ The case files are the script arguments, or src/lib/pg-test.f and then
@@ -475,7 +426,7 @@ DEFAULT-CASE-MS CASE-MS !
 
 : END ( -- )
    CASE-KILL
-   TOOL-MS STOP ;
+   -1 STOP ;
 
 \ With PG_HOLD_FIFO set, test/db/pg-kill-test.f watches this row's tree: the
 \ FIFO's write end (src/lib/test/fifo.f) goes into initdb and the postmaster,
@@ -489,7 +440,6 @@ DEFAULT-CASE-MS CASE-MS !
 \ server that ran the cases may write.
 : MAIN ( -- )
    OPEN-HOLD
-   READ-CASE-MS
    SIGNAL:CATCH-STOPS
    s" initdb" INITDB TOOL INITDB-U !
    s" postgres" POSTGRES TOOL POSTGRES-U !

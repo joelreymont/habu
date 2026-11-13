@@ -19,7 +19,6 @@ require src/lib/engine-candidate.f
 package SEAL-SUITE
 
 2048 constant SLV-CAP
-30000 constant SLV-TIMEOUT-MS
 ENGINE-ERROR:SEAL-VIOLATION constant SLV-SEAL-RC
 
 variable SLV-ROOT-U
@@ -147,13 +146,13 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" --load" >LEN PROC-ARGV+
    SLV-CHILD >LEN PROC-ARGV+
    ENGINE-CANDIDATE:PATH$ >LEN  SLV-EMPTY 0 >LEN  SLV-OUT SLV-CAP >LEN
-   SLV-ERR SLV-CAP >LEN  SLV-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   SLV-ERR SLV-CAP >LEN  PROCESS:WAIT-FOREVER  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    src u SLV-STORE! ;
 
 \ Fixtures run in SUBJECT forks of the sealed candidate.
 : SLV-SUBJECT ( ptr u8 n -- ) {: src:ptr u:n :}
    src u SLV-OUT SLV-CAP >LEN SLV-ERR SLV-CAP >LEN
-   SLV-TIMEOUT-MS >MS SUBJECT:RUN src u SLV-STORE! ;
+   PROCESS:WAIT-FOREVER SUBJECT:RUN src u SLV-STORE! ;
 
 : SLV-ASSERT-SEAL ( -- )
    SLV-EXITED @ TTRUE
