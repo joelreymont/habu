@@ -165,7 +165,6 @@ CHECKER-OWNER-EXT:GRID-REVOKE-OFF constant GRID-REVOKE-OFF               \ ( n -
 CHECKER-OWNER-EXT:GRID-RETIRE-OFF constant GRID-RETIRE-OFF               \ ( ptr n -- )
 CHECKER-OWNER-EXT:PUBLICATION-USE-OFF constant PUBLICATION-USE-OFF \ ( [ n -- ] -- )
 CHECKER-OWNER-EXT:VERIFY-CTOR-DECL-OFF constant VERIFY-CTOR-DECL-OFF \ ( sym name len visit start end -- )
-CHECKER-OWNER-EXT:EXPORT-ACCEPT-OFF constant EXPORT-ACCEPT-OFF \ ( ptr u8 n n -- )
 \ Native diagnostics: the live checker owns diagnostic emission even while a
 \ baked compiler asks it.
 CHECKER-OWNER-EXT:RESET-REPORT-OFF constant RESET-REPORT-OFF \ ( -- )

@@ -840,7 +840,6 @@ $4000 constant PKG-CODE-RESERVE
 \ signatures called here.
 CAST: PKG-AS-ACTION ( n -- [ -- ] )
 CAST: PKG-AS-NAME-ACTION ( n -- [ ptr u8 n -- ] )
-CAST: PKG-AS-EXPORT-ACTION ( n -- [ ptr u8 n n -- ] )
 
 \ `package`, `public`, `private` and `;package` notify the target checker alone:
 \ a loading checker is the target at once, the source owner only where none was.
@@ -879,15 +878,6 @@ CAST: PKG-AS-EXPORT-ACTION ( n -- [ ptr u8 n n -- ] )
       s" checker-export dispatch unset" ENGINE-ERROR:AOT-SEED FAIL-CLOSED
    then
    TOKEN$ xt PKG-AS-NAME-ACTION execute ;
-
-: PKG-NOTIFY-EXPORT ( ptr u8 n n -- )
-   {: operand:ptr operand-u:n ord:n :}
-   NCOMP-DISPATCH:TARGET-DECL-A @
-      dup NULL-PTR = if drop exit then {: owner:ptr :}
-   owner 8 - CELL-VIEW @ CHECKER-OWNER-ABI:EXPORT-ACCEPT-OFF CELL + < if exit then
-   owner CHECKER-OWNER-ABI:EXPORT-ACCEPT-OFF + CELL-VIEW @ {: xt:n :}
-   xt 0= if exit then
-   operand operand-u ord xt PKG-AS-EXPORT-ACTION execute ;
 
 : PKG-ROW ( -- ptr n )
    TOKEN$ BOOT:NAMESPACE-WL WL-PROBE ;
@@ -1193,10 +1183,8 @@ private
       clause XREF-REC XREF-NAME$ tu PKG-CODE-SPAN PKG-CODE-ROOM-AFTER
    then
    PKG-CHECK-EXPORT
-   ndict@ {: ord:n :}
    ta tu src PKG-INDEX get-current alias-record
-   clause 0 >= if clause PKG-CLAUSE-ALIAS then
-   operand operand-u ord PKG-NOTIFY-EXPORT ;
+   clause 0 >= if clause PKG-CLAUSE-ALIAS then ;
 
 \ `host` or `target` at top level is the section word; with a word of that name in scope the
 \ token could mean either, so it is refused: the word is renamed, or called qualified if public.
