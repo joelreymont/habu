@@ -310,21 +310,14 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
    12 DATA BPTRAMP-CELL LDR,  12 12 14 ADD,
    C-MCTX-PC<R12 ;
 
-\ A persistent breakpoint keeps its BRK, so the handler runs the displaced
-\ instruction. The link-register save and the nop EM-COMPILE-RET leaves in a
-\ leaf's slot are emulated; any other instruction runs in the slot's trampoline
-\ (the instruction, then `b` back). One that reads or sets PC (C-BP-PCREL)
-\ degrades the breakpoint to one-shot. The emulated `str x30,[sp,#-16]!` lands
-\ in this handler's signal frame, over the arm64 frame_record {fp, lr}: nothing
-\ reads it back (sigreturn restores from uc_mcontext, lower in the frame; the
-\ handler addresses locals off sp, never x29), and that address is the slot the
-\ resumed word's epilogue reads.
+\ The emulated `str x30,[sp,#-16]!` lands over this signal frame's {fp, lr},
+\ which nothing reads back (sigreturn reads uc_mcontext; locals are off sp),
+\ and that address is the slot the resumed word's epilogue reads.
 : C-BP-EMULATE ( -- )
-   LBL LBL LBL LBL {: framed:label step:label oneshot:label done:label :}
+   LBL LBL LBL {: framed:label oneshot:label done:label :}
    9 SP 24 LDR,                                       \ the interrupted mcontext
    8 SP 40 LDR,  13 8 8 LDR,                          \ the word the BRK replaced
    14 W-LINKSAVE LIT64,  13 14 CMP,  C-EQ framed BCOND,
-   14 W-NOP LIT64,  13 14 CMP,  C-EQ step BCOND,
    oneshot C-BP-PCREL
       C-BP-TRAMP
       done B,
@@ -337,7 +330,6 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
    framed LBL,
       C-MCTX-SP-16!
       C-MCTX-LINK>SLOT
-   step LBL,
       C-MCTX-PC+4!
    done LBL, ;
 
@@ -655,21 +647,6 @@ public
    9 DATA CRSIG-A-CELL STR,
    9 DATA CRSIG-U-CELL STR, ;
 
-private
-\ EMPTY-BODY, emits the link-register save and leaves the slot's address in
-\ FRAME-CELL; the body calls nothing, so `;` rewrites the slot to a nop in
-\ place, through the alias, and flushes it.
-\ SLOT-NOP, rewrites the entry slot at x9 to a nop; clobbers x1, x11.
-: SLOT-NOP, ( -- )
-   1 DATA REGION-ALIAS:DELTA-CELL LDR,  1 9 1 ADD,
-   11 W-NOP LIT64,  11 1 0 STRW, ;
-
-public
-: EM-COMPILE-RET ( -- )
-   9 DATA FRAME-CELL LDR,  SLOT-NOP,
-   9 W-RET LIT64,  LCEMIT LABEL@ BL,
-   9 0 MOVZ,  9 DATA FRAME-CELL STR, ;
-
 ;package
 
 \ The does>-patch runtime routine emitter (LDOESPATCH): patches the created
@@ -972,19 +949,6 @@ public
    9 1 MOVZ,  9 DATA CLAUSE-CELL STR,                  \ an imported definer had no `does>`
    CP CP 15 ADD, ;
 
-public
-
-\ The clause record's own length, by the parent's rule: both bodies end at the
-\ shared epilogue. It runs BEFORE the
-\ parent's write, which leaves x9 live for the cache flush.
-: FLUSH ( -- )
-   LBL {: none:label :}
-   9 DATA DOESB-CELL LDR,  9 none CBZ,
-   11 NDICT 1 ADDI,  12 DREC MOVZ,  11 11 12 MUL,  11 DBASE 11 ADD,
-   9 11 0 LDR,  10 CP 9 SUB,  10 10 4 SUBI,
-   12 DATA REGION-ALIAS:DELTA-CELL LDR,  12 11 12 ADD,  10 12 8 STR,
-   none LBL, ;
-
 ;package
 
 package ENGINE-EMIT
@@ -1008,10 +972,8 @@ public
 
 ;package
 
-\ The bodies of the fourteen rows src/habu/prims.f specifies under "the
-\ definition writers" and of the six replay writers after them. Each checks
-\ everything before it writes, and a refusal exits the process, so no reader
-\ ever sees a half-written row. FPRIM-WID frames x30 around each body.
+\ The bodies of the definition and replay writers: each checks before it writes
+\ a row, so no reader sees a half-written one. FPRIM-WID frames x30 around each.
 package DEFWRITE
 
 \ The refusal at the label: the text and the primitive's lr, which BLs in the
@@ -1545,10 +1507,9 @@ variable LREPLAYTRAP
 
 private
 
-\ The end of a definition with no compiled body, the def-cast and def-defer
-\ rows alike: the pending record must be of kind `kind`, with CP below the
-\ code ceiling. `tail` writes the row's code, then the state def-open set
-\ clears, PEND-CELL last.
+\ The end of the def-defer row, a definition with no compiled body: the pending
+\ record must be of kind `kind`, with CP below the code ceiling. `tail` writes
+\ the row's code, then the state def-open set clears, PEND-CELL last.
 : TAIL-CLOSE ( ptr u8 n n [ -- ] -- )
    {: a:ptr u:n kind:n tail :}
    LBL LBL {: bad done :}
@@ -1566,68 +1527,12 @@ private
 ;package
 
 package ENGINE-EMIT
-public
-
-\ The second end of a cast's publish, emitted by its empty body; the first end
-\ is EM-COMPILE-RET. The recorded length leaves the return out.
-: EM-COMPILE-FLUSH-PEND ( -- )
-   DOES-REC:FLUSH
-   11 DATA PEND-CELL LDR,
-   9 11 0 LDR,  10 CP 9 SUB,
-   10 10 4 SUBI,
-   12 DATA REGION-ALIAS:DELTA-CELL LDR,  12 11 12 ADD,  10 12 8 STR,
-   LFLUSH LABEL@ BL, ;
-;package
-
-\ The cast's body and the def-cast row join the definition writers, past the
-\ two ends of a publish they emit.
-package DEFWRITE
-public
-
-\ The empty checked body of a cast, for record x9 pending in slot NDICT: the end
-\ of the def-cast row.
-: EMPTY-BODY, ( -- )
-   10 DATA REGION-ALIAS:DELTA-CELL LDR,  10 9 10 ADD,  CP 10 0 STR,
-   9 CP 0 ADDI,  9 DATA FRAME-CELL STR,              \ the entry slot
-   9 W-LINKSAVE LIT64,  LCEMIT LABEL@ BL,            \ str x30,[sp,#-16]!
-   EM-COMPILE-RET                                    \ empty body: the slot becomes a nop
-   9 DATA PEND-CELL LDR,  9 9 0 LDR,
-   EM-COMPILE-FLUSH-PEND ;
-
-;package
-
-package INTERP-EMIT
-
-public
-: C-IDENTITY-SHADOW ( -- )
-   LBL {: noshadow:label :}
-   11 DATA NCOMP-DISPATCH:FIXED-SHADOW-CELL LDR,  11 noshadow CBZ,
-   9 0 MOVZ,  9 G-PUSH
-   9 COMP-BODY:cast COMP:BODY>N MOVZ,  9 G-PUSH
-   9 NDICT 0 ADDI,  9 9 1 SUBI,  9 G-PUSH
-   11 DATA NCOMP-DISPATCH:FIXED-SHADOW-CELL LDR,  C-CALL-X11-SAVED
-   noshadow LBL, ;
-;package
-
-package DEFWRITE
-public
-
-: DEF-CAST ( -- )
-   s" E-SEAL-VIOLATION habu: def-cast with no definition pending, one not of the kind, or CP at the code ceiling"
-   DKIND:CAST [: EMPTY-BODY,  EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,
-      INTERP-EMIT:C-IDENTITY-SHADOW ;]
-   TAIL-CLOSE ;
-
-;package
-
-package ENGINE-EMIT
 
 : C-EMITW ( n -- ) 9 swap LIT64,  LCEMIT LABEL@ BL, ;
 
 \ The whole body in one emission, frame included: it reaches its target through
-\ `blr x16`, so the frame is never the leaf kind and there is nothing for
-\ EM-COMPILE-RET to decide. FRAME-CELL is not touched -- this word is emitted
-\ from the interpret-mode `defer` declarer, outside any open body.
+\ `blr x16`. It is emitted from the interpret-mode `defer` declarer, outside any
+\ open body.
 : C-DEFER-EMIT-CODE ( -- )
    W-LINKSAVE C-EMITW
    11 DATA DEFER-XT-CELL LDR,
@@ -2936,7 +2841,6 @@ package ENGINE-EMIT
    s" def-abort" ['] DEFWRITE:DEF-ABORT ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" stack-clear" ['] DEFWRITE:STACK-CLEAR ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" imm-mark" ['] C-IMMEDIATE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
-   s" def-cast" ['] DEFWRITE:DEF-CAST ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" def-defer" ['] DEFWRITE:DEF-DEFER ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" replay-open" ['] DEFWRITE:REPLAY-OPEN ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" replay-close" ['] DEFWRITE:REPLAY-CLOSE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID

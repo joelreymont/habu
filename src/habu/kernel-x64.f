@@ -4313,7 +4313,7 @@ public
 \ the twins of habu2.f DEFWRITE's bodies and of its `immediate`, C-IMMEDIATE,
 \ in each twin's check order. Every refusal of a row with a body comes before
 \ the first store and writes nothing on fd 2: a live task exits TASK-LIVE-RC in
-\ the four dictionary rows, def-cast and the replay rows, a protected wid after
+\ the four dictionary rows and the replay rows, a protected wid after
 \ the seal ENGINE-ERROR:SEAL-PACKAGE, and every other refusal
 \ ENGINE-ERROR:SEAL-VIOLATION. The exception is an open overlay in def-open,
 \ namespace-private and alias-record: OVERLAY-GUARD, writes the die line and
@@ -4939,43 +4939,6 @@ variable GROW-CELL
 : IMM-MARK-BODY ( -- ) DNAME-IMM NEWEST-MARK-BODY ;
 
 $C3 constant RET-OP
-INT3 $0101010101010101 * constant INT3-CELL
-INT3-CELL $FF invert and RET-OP or constant CAST-CELL
-
-: DEF-CAST-BODY ( -- )
-   X64CODE:LBL {: noshadow:label :}
-   TASK-LIVE-GUARD,
-   RDX PEND-CELL CELL@,
-   RDX RDX ASM-SINK ENC-TEST-RR  C-E SEAL-TRAP-LBL JCC,
-   NDICT-REG RECORD-AT,
-   RDX R8 ASM-SINK ENC-CMP-RR  C-NE SEAL-TRAP-LBL JCC,
-   RCX R8 REC-FLAGS MOV-LOAD,
-   RAX DKIND:MASK IMM64,  RCX RAX ASM-SINK ENC-AND-RR
-   RAX DKIND:CAST IMM64,  RCX RAX ASM-SINK ENC-CMP-RR  C-NE SEAL-TRAP-LBL JCC,
-   RAX DOESB-CELL CELL@,
-   RAX RAX ASM-SINK ENC-TEST-RR  C-NE SEAL-TRAP-LBL JCC,
-   RDI CP-REG CODE-SLOT MEM-OFF ASM-SINK ENC-LEA
-   WINDOW-OPEN,
-   RDI PEND-CELL CELL@,  RSI DREC IMM32,  WINDOW-SPAN,
-   RAX CAST-CELL IMM64,  RAX CP-REG 0 MOV-STORE,
-   RAX INT3-CELL IMM64,  RAX CP-REG CELL MOV-STORE,
-   R8 PEND-CELL CELL@,
-   RAX 1 CODE-SPAN:EXACT IMM64,  RAX R8 REC-CODE CELL + MOV-STORE,
-   CP-REG CP-REG CODE-SLOT MEM-OFF ASM-SINK ENC-LEA
-   PUBLISH-RECORD,
-   R11 NCOMP-DISPATCH:FIXED-SHADOW-CELL CELL@,
-   R11 R11 ASM-SINK ENC-TEST-RR  C-E noshadow JCC,
-   RAX ZERO-REG,  RAX PUSH,
-   RAX COMP-BODY:cast COMP:BODY>N IMM32,  RAX PUSH,
-   RAX NDICT-REG ASM-SINK ENC-MOV-RR  RAX ASM-SINK ENC-DEC  RAX PUSH,
-   R11 ASM-SINK ENC-CALL-REG
-   noshadow X64CODE:LBL,
-   RAX ZERO-REG,
-   RAX NCOMP-DISPATCH:COMP-LATCH-CELL CELL!,
-   RAX TSIG-A-CELL CELL!,  RAX TSIG-U-CELL CELL!,
-   RAX TCSIG-A-CELL CELL!,  RAX TCSIG-U-CELL CELL!,
-   RAX DOESB-CELL CELL!,  RAX TRUSTED-CELL CELL!,  RAX CLAUSE-CELL CELL!,
-   RAX PEND-CELL CELL!, ;
 
 \ A created word's routine ends `jmp rel32; ret`, its last six bytes
 \ (src/compiler/native/emit-x64.f PUT-RET): the jump falls through to the
@@ -5226,9 +5189,8 @@ JMP-BYTES 1+ constant PATCH-SLOT       \ the jump and the return
 public
 
 \ def-defer, the tail of the engine's interpret-mode `defer`, refuses as that
-\ keyword does: the x86-64 kernel carries no interpreter. def-cast has a body:
-\ it publishes a cast's identity slot at CP and the pending record that names
-\ it. GROW-LBL, which body-capture calls, comes first.
+\ keyword does: the x86-64 kernel carries no interpreter. GROW-LBL, which
+\ body-capture calls, comes first.
 : DEFINITION, ( -- )
    X64CODE:LBL GROW-CELL !  GROW-HELPER,
    s" namespace-record" [: NAMESPACE-RECORD-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
@@ -5251,7 +5213,6 @@ public
    s" replay-private" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
    s" stack-clear" [: STACK-CLEAR-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" imm-mark" [: IMM-MARK-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" def-cast" [: DEF-CAST-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" does-patch" [: DOES-PATCH-BODY ;] PRIM ;
 
 \ The arithmetic, comparison, shuffle, memory and float rows, each the twin of

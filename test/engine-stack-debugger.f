@@ -36,12 +36,9 @@ package STACK-LIFECYCLE-TEST
    DEBUGGER-LINES 7 T= ;
 
 \ A PERSISTENT breakpoint keeps its BRK planted, so the word's entry instruction
-\ never runs in place: the SIGTRAP handler emulates a nop and
-\ `str x30,[sp,#-16]!`, and runs any other entry in debug.f's trampoline, as
-\ T0's KEEP (`ret`) and TWICE (`ldr x9,[x19,#-8]!`) are. The printed 42 is the
-\ return value through the breakpoint's entry: a handler that failed to store
-\ x30 at the lowered sp would return through whatever was there. The second
-\ call proves the BRK stays planted.
+\ never runs in place: the SIGTRAP handler emulates `str x30,[sp,#-16]!` and
+\ runs any other entry in debug.f's trampoline, as T0's KEEP (`ret`) and TWICE
+\ (`ldr x9,[x19,#-8]!`) are. The second call proves the BRK stays planted.
 : PERSISTENT-BOUNDARIES ( -- )
    s" persistent breakpoint on a leaf word resumes it" T-LABEL
    s" require src/habu/debug.f package PBP : KEEP ( n -- n ) ; ' KEEP DEBUG:BP* : GO ( -- ) 17 KEEP . 25 KEEP . ; GO ;package"

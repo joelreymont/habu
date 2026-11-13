@@ -45,7 +45,7 @@ Counts at fc8fa94a:
 A census of TRUSTED-named words and `trusted:` keyword handling over src finds more sites that read the cell or the keyword. The deletion must account for these too.
 - TRUSTED-CELL's own claim: src/habu/layout.f:316 ($27B8) and the src/habu/data-claims.f claim row 114.
 - Native-compiler readers: src/compiler/native/definition.f TRUSTED? (121); dict.f VISIBLE-RECORD? (43) and INT-CALL? (321).
-- x86-64: src/habu/kernel-x64.f DEF-OPEN-BODY (4789), DEF-CLOSE-BODY (5097), DEF-ABORT-BODY (5119) and DEF-CAST-BODY (5144).
+- x86-64: src/habu/kernel-x64.f DEF-OPEN-BODY (4789), DEF-CLOSE-BODY (5097) and DEF-ABORT-BODY (5119).
 - The keyword:
   - interpreter.f DEF-NAME (1411) and DEFINE? (2451; `trusted:` at 2454);
   - verify-source.f TRUSTED-REACH (1381), TRUSTED-CLAUSE (1386), TICK-NATIVE-DEFINER? (1949), TRUSTED-DOES (2191), TRUSTED-CALL (2195), SCAN-TRUSTED-BODY (2211), TRUSTED-DEFINITION (2238; `trusted:` at 3770) and RECORD-DEFINER? (3696).

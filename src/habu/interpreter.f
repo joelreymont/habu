@@ -2219,8 +2219,6 @@ variable DEF-VALUE
    REC-MIN-IN@ {: mi:n :}
    mi 0<> if ndict@ 1- mi min-in-mark then ;
 
-\ Its name folds apart from the def-cast row: a word spelled DEF-CAST here
-\ would shadow the row for every later body.
 : DEF-CAST-ROW ( -- )
    DEF-ROOM
    DEF-CAST-NAME

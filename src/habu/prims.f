@@ -769,11 +769,6 @@ EPPRIM: INTERPRETER stack-clear ECLOSE-PRIVATE
 EPRIM: imm-mark EPRIM;
 ETRUSTED-ONLY!
 EPPRIM: INTERPRETER imm-mark ECLOSE-PRIVATE
-\ def-cast ( -- ): end the pending DKIND:CAST definition with the empty checked
-\ body. Refuses none pending, another kind, and CP at or past the code ceiling.
-EPRIM: def-cast EPRIM;
-ETRUSTED-ONLY!
-EPPRIM: INTERPRETER def-cast ECLOSE-PRIVATE
 \ def-defer ( n -- ): end the pending kind-0 definition as a call through
 \ dispatch cell n. Refuses none pending, a nonzero kind, and CP at the ceiling.
 EPRIM: def-defer PE-N PE-IN EPRIM;

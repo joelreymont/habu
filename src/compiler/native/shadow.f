@@ -21,8 +21,6 @@ require src/compiler/session/lease.f
 package NSHADOW
 private
 
-CAST: ENTRY-BYTES ( n -- ptr u8 )
-
 \ The shadow is closed; open; or native, open for the engine's own binding
 \ with its source already emitted.
 ENUM state closed open native ;ENUM
@@ -478,30 +476,6 @@ public
    HOST-COPY {: e:n :}
    e fun CLAUSE-AT drop
    e HOST-MARK ;
-
-\ The x86 def-cast writer publishes a raw one-byte RET identity body. It seals
-\ no NEMIT emission because the kernel writes it directly, so that writer
-\ reports the exact published entry and span through its fixed-shadow callback.
-: TAKE-CAST ( n n -- ) {: at:n size:n :}
-   OPEN-CK
-   NATIVE? 0= if E-NSHADOW-STATE throw then
-   size 1 <> if E-NSHADOW-ROW throw then
-   at ENTRY-BYTES c@ $C3 <> if E-NSHADOW-ROW throw then
-   construct pending none PENDING !
-   N-EMS @ {: e:n :}
-   e 1+ EM-RESERVE
-   CODE-N @ e EM-AT !
-   size e EM-SIZE !  size e EM-RET !
-   N-FUNS @ e EM-FUN0 !  1 e EM-FUNS !
-   N-CALLS @ e EM-CALL0 !  0 e EM-CALLS !
-   N-ADDRS @ e EM-ADDR0 !  0 e EM-ADDRS !
-   -1 e EM-PATCH !  0 e EM-PATCH-TGT !  e e EM-HOST !
-   CODE-N @ size + CODE-BUF-RESERVE
-   at ENTRY-BYTES CODE-N @ CODE-BUF size BYTE-COPY
-   N-FUNS @ 1+ FUN-OFF-RESERVE  N-FUNS @ 1+ FUN-SOURCE-RESERVE
-   0 N-FUNS @ FUN-OFF !  at N-FUNS @ FUN-SOURCE !
-   REC-RESERVE
-   construct pending plain PENDING ! ;
 
 \ Pairs the pending target copy's functions with the host emission's, placed
 \ at `at`, before publication commits: both walks emit the same functions, a
