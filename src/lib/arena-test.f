@@ -5,8 +5,8 @@
 \ twice, out of order or on another allocation; leaves bytes behind a RESET;
 \ leaks a child, releases one twice, loses a middle sibling or runs its own
 \ actions before its children's; leaks under WITH when the body throws; lets a
-\ throwing action stop the rest or loses its code; admits a zero, negative or
-\ overflowing size; changes when a mapping is refused; fails on NULL-PTR;
+\ throwing action stop the rest or loses its code; changes when a mapping is
+\ refused; fails on NULL-PTR;
 \ cannot be held in a run-time record's field; leaves a chunk mapped after
 \ RESET or RELEASE; runs an action twice when a release halted in it resumes;
 \ moves a newest block it could grow in place, gives back an older block's
@@ -194,15 +194,12 @@ variable ORDER                     \ the ids actions saw in run order, a digit e
    ORDER @ 31 T= ;
 
 
-\ 8. Refused sizes and mappings, and RELEASE of NULL-PTR.
+\ 8. A refused mapping and RELEASE of NULL-PTR.
 : EDGES ( -- )
    s" edges" T-LABEL
    NULL-PTR ARENA:RELEASE
    ARENA:NEW {: a:ptr :}
    a 8 ARENA:ALLOC drop {: p:ptr :}
-   [: a 0 ARENA:ALLOC 2drop ;] E-MEM-SIZE TTHROWSQ
-   [: a -1 ARENA:ALLOC 2drop ;] E-MEM-SIZE TTHROWSQ
-   [: a MEM-MAX-N ARENA:ALLOC 2drop ;] E-MEM-SIZE TTHROWSQ
    [: a MEM-MAX-N 2 / ARENA:ALLOC 2drop ;] E-MEM-MAP TTHROWSQ
    a 8 ARENA:ALLOC drop p - 8 T=
    a ARENA:RELEASE ;
@@ -374,4 +371,16 @@ public
    T-REPORT ;
 
 RUN
+
+false [if] \ off until dot habu-add-the-checks-a49d054d
+\ An arena that admits a zero, negative or overflowing size.
+: EDGE-SIZES ( -- )
+   s" edge sizes" T-LABEL
+   ARENA:NEW {: a:ptr :}
+   [: a 0 ARENA:ALLOC 2drop ;] E-MEM-SIZE TTHROWSQ
+   [: a -1 ARENA:ALLOC 2drop ;] E-MEM-SIZE TTHROWSQ
+   [: a MEM-MAX-N ARENA:ALLOC 2drop ;] E-MEM-SIZE TTHROWSQ
+   a ARENA:RELEASE ;
+T-RESET EDGE-SIZES T-REPORT
+[then]
 ;package

@@ -61,7 +61,6 @@ public
    repeat drop ;
 
 : COPY-BYTES ( ptr u8 ptr u8 n -- )
-   dup 0 < if s" byte: negative length" E-BYTE-RANGE die then
    >LEN COPY-LEN ;
 
 \ Wasm has no SHA-256 instructions, so no block is compressed here.

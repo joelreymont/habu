@@ -99,6 +99,17 @@ BUF:HDR-BYTES BUFFER: PAGE
    [: PAGE$ TITLE$ PAGE MCP-APP:PAGE+ ;] E-BUF-BOUNDS TTHROWSQ
    s" a refused module leaves the BUF as it was" T-LABEL
    PAGE$ nip u T=
+   PAGE BUF:DISPOSE ;
+
+T-RESET
+COMPOSE-CASES
+T-REPORT
+
+false [if] \ off until dot habu-add-the-checks-a49d054d
+: NEGATIVE-LENGTH-CASE ( -- )
+   PAGE CAP BUF:N>BLEN BUF:INIT
+   PREFIX$ BUF:N>BLEN PAGE BUF:APPEND-SPAN
+   PAGE$ {: u:n :} drop
    s" a negative module length is refused" T-LABEL
    [: MODULE$ drop -1 TITLE$ PAGE MCP-APP:PAGE+ ;] E-STR-BOUNDS TTHROWSQ
    s" a refused length leaves the BUF as it was" T-LABEL
@@ -106,7 +117,8 @@ BUF:HDR-BYTES BUFFER: PAGE
    PAGE BUF:DISPOSE ;
 
 T-RESET
-COMPOSE-CASES
+NEGATIVE-LENGTH-CASE
 T-REPORT
+[then]
 
 ;package

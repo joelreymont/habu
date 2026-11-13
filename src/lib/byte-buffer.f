@@ -264,14 +264,12 @@ public
    src u BLEN>N buf REPLACE-RAW ;
 
 \ The text with every non-overlapping old replaced by new, appended; answers the
-\ count COUNT-SUB answers. A dead buffer is E-BUF-STATE, a negative length
-\ E-STR-BOUNDS and an operand overlapping the storage E-BUF-BOUNDS, each before a
-\ byte moves. An empty old is its zero occurrences: FIND-SUB-FROM would answer
+\ count COUNT-SUB answers. A dead buffer is E-BUF-STATE and an operand
+\ overlapping the storage E-BUF-BOUNDS, each before a byte moves. An empty old is its zero occurrences: FIND-SUB-FROM would answer
 \ every offset.
 : APPEND-REPLACED ( ptr u8 n ptr u8 n ptr u8 n ptr a -- n )
    {: text:ptr tu:n old:ptr ou:n new:ptr nu:n buf:ptr :}
    buf CHECK-LIVE
-   tu ou STR-CHECK-LENS nu STR-CHECK-LEN
    text tu buf BORROWED? old ou buf BORROWED? or new nu buf BORROWED? or if E-BUF-BOUNDS throw then
    ou 0= if text tu buf APPEND-SPAN-RAW 0 exit then
    0 0 begin >r text tu old ou new nu buf r> APPEND-UNTIL-OLD while swap 1+ swap repeat drop ;

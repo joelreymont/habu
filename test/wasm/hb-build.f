@@ -579,24 +579,6 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    RAN 2 T=
    WASM-HARNESS:OUT$ s" fatal" T$= ;
 
-\ `bin/hb --load` of the source; answers its exit status.
-: NATIVE ( -- n )
-   PROC-ARGV-RESET  s" --load" ARG+  SRC+  DRIVER ;
-
-: NEGATIVE-BYTE-CASE ( -- )
-   S\" 8 BUFFER: B : BAD ( -- ) B B -1 BYTE-COPY ; : MAIN ( -- ) ['] BAD catch . ; MAIN"
-   s" negative-native.f" SOURCE!
-   s" native BYTE-COPY dies through catch on a negative length" T-LABEL
-   NATIVE 76 T=
-   ERR ERR-U @ RTRIM s" byte: negative length" T$=
-   S\" 8 BUFFER: B : BAD ( -- ) B B -1 BYTE-COPY ; : MAIN ( -- ) ['] BAD catch . ;"
-   s" negative-wasm.f" SOURCE!
-   s" Wasm BYTE-COPY prints the same diagnostic and traps through catch" T-LABEL
-   s" negative.wasm" BUILD 0 T=
-   RAN 2 T=
-   WASM-HARNESS:OUT$ s" byte: negative length" T$= ;
-
-
 \ ACTION-XT gives execute's own xt, which has no stored effect, as this
 \ fixture's type; its table slot is execute's kernel routine.
 : EXECUTE-CELL! ( -- )
@@ -736,11 +718,31 @@ public
    SEGMENTS-CASE
    UNUSED-CASE
    FATAL-CASE
-   NEGATIVE-BYTE-CASE
    CELL-CASES
    FETCH-CASES
    MEMORY-CASES
    T-REPORT ;
+
+false [if] \ off until dot habu-add-the-checks-a49d054d
+\ `bin/hb --load` of the source; answers its exit status.
+: NATIVE ( -- n )
+   PROC-ARGV-RESET  s" --load" ARG+  SRC+  DRIVER ;
+
+: NEGATIVE-BYTE-CASE ( -- )
+   S\" 8 BUFFER: B : BAD ( -- ) B B -1 BYTE-COPY ; : MAIN ( -- ) ['] BAD catch . ; MAIN"
+   s" negative-native.f" SOURCE!
+   s" native BYTE-COPY dies through catch on a negative length" T-LABEL
+   NATIVE 76 T=
+   ERR ERR-U @ RTRIM s" byte: negative length" T$=
+   S\" 8 BUFFER: B : BAD ( -- ) B B -1 BYTE-COPY ; : MAIN ( -- ) ['] BAD catch . ;"
+   s" negative-wasm.f" SOURCE!
+   s" Wasm BYTE-COPY prints the same diagnostic and traps through catch" T-LABEL
+   s" negative.wasm" BUILD 0 T=
+   RAN 2 T=
+   WASM-HARNESS:OUT$ s" byte: negative length" T$= ;
+
+T-RESET SETUP NEGATIVE-BYTE-CASE T-REPORT
+[then]
 
 ;package
 

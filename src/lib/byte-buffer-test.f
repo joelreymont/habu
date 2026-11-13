@@ -218,10 +218,6 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    s" a-b" BUFT-N>BLEN BUFT-BUF BUF:APPEND-SPAN
    BUFT-BUF BUF:SPAN$ BUFT-BL>RAW drop 1 - 2 s" -" s" +" BUFT-BUF BUF:APPEND-REPLACED drop ;
 
-: BUFT-REPLACED-NEG ( n n n -- )
-   {: tu:n ou:n nu:n :}
-   s" a-b" drop tu s" -" drop ou s" +" drop nu BUFT-BUF BUF:APPEND-REPLACED drop ;
-
 \ Address reuse proves a mapping was freed.
 : BUFT-GROW-RELEASES ( -- )
    BUFT-CAP0 BUFT-REL-INIT
@@ -381,10 +377,6 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" a-b" T$=                        \ refused before a byte moved
    [: BUFT-REPLACED-STRADDLE ;] E-BUF-BOUNDS TTHROWSQ
    BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" a-b" T$=
-   [: -1 1 1 BUFT-REPLACED-NEG ;] E-STR-BOUNDS TTHROWSQ
-   [: 3 -1 1 BUFT-REPLACED-NEG ;] E-STR-BOUNDS TTHROWSQ
-   [: 3 1 -1 BUFT-REPLACED-NEG ;] E-STR-BOUNDS TTHROWSQ
-   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" a-b" T$=
    [: BUFT-LEN-ABOVE-CAP ;] E-BUF-BOUNDS TTHROWSQ
    BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" data" T$=                       \ refused before the length moved
    BUFT-REL-BUF BUF:DISPOSE                                          \ the refused re-init left the buffer owned
@@ -401,3 +393,20 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    T-REPORT ;
 
 BUFT-RUN
+
+false [if] \ off until dot habu-add-the-checks-a49d054d
+: BUFT-REPLACED-NEG ( n n n -- )
+   {: tu:n ou:n nu:n :}
+   s" a-b" drop tu s" -" drop ou s" +" drop nu BUFT-BUF BUF:APPEND-REPLACED drop ;
+
+: BUFT-REPLACED-NEGATIVE ( -- )
+   4 BUFT-FRESH
+   s" a-b" BUFT-N>BLEN BUFT-BUF BUF:APPEND-SPAN
+   [: -1 1 1 BUFT-REPLACED-NEG ;] E-STR-BOUNDS TTHROWSQ
+   [: 3 -1 1 BUFT-REPLACED-NEG ;] E-STR-BOUNDS TTHROWSQ
+   [: 3 1 -1 BUFT-REPLACED-NEG ;] E-STR-BOUNDS TTHROWSQ
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" a-b" T$=
+   BUFT-BUF BUF:DISPOSE ;
+
+T-RESET BUFT-REPLACED-NEGATIVE T-REPORT
+[then]

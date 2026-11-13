@@ -1,7 +1,5 @@
 \ string.f - checked byte-string helpers over pointer and length; no word assumes
-\ NUL termination. A word that takes a length refuses a negative one first
-\ (STR-CHECK-LEN); the builders throw E-STR-CAPACITY or E-STR-BOUNDS instead of
-\ truncating.
+\ NUL termination. The builders throw E-STR-CAPACITY instead of truncating.
 \ STORAGE CLASS: the SB builder is TASK-LOCAL (SB-BUF); the BUF-* family is
 \ CALLER-OWNED, the builder for one shared by two tasks; the rest is pure.
 
@@ -30,14 +28,6 @@ STRING-ABI:SB-BUF-BYTES constant SB-CAP
 $7FFFFFFFFFFFFFFF constant STR-MAX-I64
 STR-MAX-I64 negate 1 - constant STR-MIN-I64
 
-\ Unguarded, a scan that never runs answers NONE, 0, true or an empty string,
-\ and the minimum cell less one wraps to the maximum and reads past the span.
-: STR-CHECK-LEN ( n -- )
-   0 < if E-STR-BOUNDS throw then ;
-
-: STR-CHECK-LENS ( n n -- )
-   STR-CHECK-LEN STR-CHECK-LEN ;
-
 \ TASK-LOCAL: `data-base` is the running task's DATA region, at STRING-ABI's
 \ offsets (src/habu/layout.f). This module is baked into the engine below
 \ src/lib/ffi-abi.f, which requires it back, so it cannot require
@@ -50,23 +40,18 @@ STR-MAX-I64 negate 1 - constant STR-MIN-I64
    data-base STRING-ABI:SB-LEN-OFF + ;
 
 : BUFFER: ( n -- )
-   dup STR-CHECK-LEN
    create allot does> ( -- ptr u8 ) ;
 
 : SCRATCH-BUFFER: ( n -- )
-   dup STR-CHECK-LEN
    create SCRATCH-ALLOT does> ( -- ptr u8 ) ;
 
 : STR-LEN ( n -- len )
-   dup STR-CHECK-LEN
    >LEN ;
 
 : STR-OFF ( n -- off )
-   dup 0 < if E-STR-BOUNDS throw then
    >OFF ;
 
 : STR-COUNT ( n -- count )
-   dup 0 < if E-STR-BOUNDS throw then
    >COUNT ;
 
 create STR-MAX-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 56 c, 53 c, 52 c, 55 c, 55 c, 53 c, 56 c, 48 c, 55 c,
@@ -86,7 +71,6 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
 
 : STR= ( ptr u8 n ptr u8 n -- bool )
    {: a:ptr u:n b:ptr v:n :}
-   u v STR-CHECK-LENS
    u v <> if 0 0= 0= exit then
    u CELL - {: last:n :}
    0
@@ -105,7 +89,6 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
 \ Unsigned byte order, a shorter equal prefix first; no case, locale or UTF-8.
 : STR< ( ptr u8 n ptr u8 n -- bool )
    {: a:ptr u:n b:ptr v:n :}
-   u v STR-CHECK-LENS
    0 begin dup u v min < while
       dup a + c@ over b + c@
       2dup <> if < swap drop exit then
@@ -113,7 +96,6 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
    repeat drop u v < ;
 
 : STR=CI ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n b:ptr v:n :}
-   u v STR-CHECK-LENS
    u v <> if 0 0= 0= exit then
    0 begin dup u < while
       dup a + c@ ASCII-LOWER over b + c@ ASCII-LOWER <> if
@@ -123,19 +105,16 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
    repeat drop 0 0= ;
 
 : STARTS-WITH? ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u b:ptr v :}
-   u v STR-CHECK-LENS
    u v < if 0 0= 0= exit then
    a v b v STR= ;
 
 : ENDS-WITH? ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u b:ptr v :}
-   u v STR-CHECK-LENS
    u v < if 0 0= 0= exit then
    a u v - + v b v STR= ;
 
 \ An offset into the whole text; NONE for a start outside [0, length].
 : FIND-SUB-FROM ( ptr u8 n ptr u8 n n -- option<idx> )   \ SOME first offset of b in a at or after start, else NONE
    {: a:ptr u:n b:ptr v:n start:n :}
-   u v STR-CHECK-LENS
    start 0 < start u > or if OPTION:NONE exit then
    v 0= if start >IDX OPTION:SOME exit then
    start begin dup u v - <= while
@@ -153,14 +132,12 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
    ;MATCH ;
 
 : INDEX-OF ( ptr u8 n n -- option<idx> ) {: a:ptr u:n c:n :}   \ SOME first index of byte c, else NONE
-   u STR-CHECK-LEN
    0 begin dup u < while
       dup a + c@ c = if >IDX OPTION:SOME exit then
       1+
    repeat drop OPTION:NONE ;
 
 : COUNT-CHAR ( ptr u8 n n -- n ) {: a:ptr u c :}
-   u STR-CHECK-LEN
    0 0 begin dup u < while
       dup a + c@ c = if swap 1+ swap then
       1+
@@ -168,14 +145,12 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
 
 : COUNT-SUB ( ptr u8 n ptr u8 n -- n )     \ non-overlapping occurrences of b in a; empty needle -> 0
    {: a:ptr u:n b:ptr v:n :}
-   u v STR-CHECK-LENS
    v 0= if 0 exit then
    0 0 begin dup u v - <= while
       dup a + v b v STR= if swap 1+ swap v + else 1+ then
    repeat drop ;
 
 : LTRIM ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
-   u STR-CHECK-LEN
    0 begin dup u < while
       dup a + c@
       dup STR-SPACE = over STR-TAB = or over STR-LF = or swap STR-CR = or
@@ -184,7 +159,6 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
    repeat drop a 0 ;
 
 : RTRIM ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
-   u STR-CHECK-LEN
    u begin dup 0 > while
       a over 1- + c@
       dup STR-SPACE = over STR-TAB = or over STR-LF = or swap STR-CR = or
@@ -195,7 +169,6 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
    LTRIM RTRIM ;
 
 : SB-CHECK-LEN-ROOM ( len -- ) {: add :}
-   add LEN>N STR-CHECK-LEN
    add LEN>N SB-CAP SB-LEN @ - > if E-STR-CAPACITY throw then ;
 
 : SB-CHECK-ROOM ( n -- )
@@ -213,8 +186,6 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
    STR-LEN SB-APPEND-LEN ;
 
 : SB-APPEND-C ( n -- ) {: c :}
-   c 0 < if E-STR-BOUNDS throw then
-   c STR-BYTE-MAX > if E-STR-BOUNDS throw then
    1 SB-CHECK-ROOM
    c SB-BUF SB-LEN @ + c!
    SB-LEN @ 1+ SB-LEN ! ;
@@ -224,8 +195,6 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
 
 : BUF-CHECK-LEN ( len len ptr len -- )
    {: add cap lenp:ptr :}
-   add LEN>N STR-CHECK-LEN
-   lenp @ LEN>N STR-CHECK-LEN
    lenp @ LEN>N cap LEN>N > if E-STR-CAPACITY throw then
    add LEN>N cap LEN>N lenp @ LEN>N - > if E-STR-CAPACITY throw then ;
 
@@ -247,14 +216,11 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
 
 : BUF-APPEND-C ( n ptr u8 n ptr len -- )
    {: c dst:ptr cap lenp:ptr :}
-   c 0 < if E-STR-BOUNDS throw then
-   c STR-BYTE-MAX > if E-STR-BOUNDS throw then
    1 >LEN cap STR-LEN lenp BUF-CHECK-LEN
    c dst lenp @ LEN>N + c!
    lenp @ LEN>N 1+ >LEN lenp ! ;
 
 : SPLIT-NEXT ( ptr u8 n n n -- ptr u8 n n bool ) {: a:ptr u sep start :}
-   u STR-CHECK-LEN
    start 0 < if a 0 start STR-FALSE exit then
    start u > if a 0 start STR-FALSE exit then
    start begin dup u < while
@@ -280,7 +246,6 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
    ASCII-LOWER STR-LOWER-A - STR-BASE + ;
 
 : STR-DIGITS? ( ptr u8 n -- bool ) {: a:ptr u :}
-   u STR-CHECK-LEN
    u 0= if STR-FALSE exit then
    0 begin dup u < while
       dup a + c@ STR-DIGIT? 0= if drop STR-FALSE exit then
@@ -288,7 +253,6 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
    repeat drop STR-TRUE ;
 
 : STR-DIGITS<= ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u b:ptr v :}
-   u v STR-CHECK-LENS
    u v < if STR-TRUE exit then
    u v > if STR-FALSE exit then
    0 begin dup u < while
@@ -315,7 +279,6 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
    repeat drop OPTION:SOME ;
 
 : STR>NUMBER? ( ptr u8 n -- option<n> ) {: a:ptr u:n :}   \ SOME optional-sign bounded i64, else NONE
-   u STR-CHECK-LEN
    u 0= if OPTION:NONE exit then
    a c@ STR-MINUS = if
       u 1 = if OPTION:NONE exit then
@@ -331,7 +294,6 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
 \ FFFFFFFFFFFFFFFF is -1: the bit pattern, not a bounded magnitude.
 : HEX>NUMBER? ( ptr u8 n -- option<n> )   \ SOME the cell the 1..16 hex digits spell, else NONE
    {: a:ptr u:n :}
-   u STR-CHECK-LEN
    u 0= if OPTION:NONE exit then
    u STR-HEX-MAX-DIGITS > if OPTION:NONE exit then
    0 0 begin dup u < while

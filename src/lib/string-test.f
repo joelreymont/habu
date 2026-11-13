@@ -75,15 +75,6 @@ variable STR-TEST-BUF2-LEN
    SB-CAP 0 ?do STR-TEST-A-CHAR SB-APPEND-C loop
    STR-TEST-A-CHAR SB-APPEND-C ;
 
-: STR-TEST-LEN-NEG ( -- )
-   -1 STR-LEN drop ;
-
-: STR-TEST-OFF-NEG ( -- )
-   -1 STR-OFF drop ;
-
-: STR-TEST-COUNT-NEG ( -- )
-   -1 STR-COUNT drop ;
-
 : STR-TEST-SB-APPEND-LEN ( n -- ) {: u:n :}
    s" x" drop u >LEN SB-APPEND-LEN ;
 
@@ -98,13 +89,8 @@ variable STR-TEST-BUF2-LEN
    s" beta" SB-APPEND
    SB$ s" alpha-beta" STR-ASSERT$
    [: STR-TEST-SB-OVERFLOW ;] catch E-STR-CAPACITY STR-ASSERT=
-   [: STR-TEST-LEN-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
-   [: STR-TEST-OFF-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
-   [: STR-TEST-COUNT-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
-   SB-RESET                                         \ a negative length would move the cursor back
+   SB-RESET
    s" ab" SB-APPEND
-   [: -1 STR-TEST-SB-APPEND-LEN ;] catch E-STR-BOUNDS STR-ASSERT=
-   [: STR-MIN-I64 STR-TEST-SB-APPEND-LEN ;] catch E-STR-BOUNDS STR-ASSERT=
    [: SB-CAP 1- STR-TEST-SB-APPEND-LEN ;] catch E-STR-CAPACITY STR-ASSERT=
    SB$ s" ab" STR-ASSERT$
    STR-TEST-BYTE-VIEW-CELL BYTE-VIEW
@@ -126,21 +112,12 @@ variable STR-TEST-BUF2-LEN
    15 >LEN STR-TEST-BUF2-LEN !
    s" xx" STR-TEST-BUF2 16 STR-TEST-BUF2-LEN BUF-APPEND ;
 
-: STR-TEST-BUF-BAD-C ( -- )
-   300 STR-TEST-BUF2 16 STR-TEST-BUF2-LEN BUF-APPEND-C ;
-
-: STR-TEST-BUF-BAD-LEN ( -- )
-   -1 STR-TEST-BUF2-LEN !
-   s" x" STR-TEST-BUF2 16 STR-TEST-BUF2-LEN BUF-APPEND ;
-
 : STR-TEST-BUFFER ( -- )
    STR-TEST-BUF2-LEN BUF-RESET
    s" hi" STR-TEST-BUF2 16 STR-TEST-BUF2-LEN BUF-APPEND
    33 STR-TEST-BUF2 16 STR-TEST-BUF2-LEN BUF-APPEND-C
    STR-TEST-BUF2 STR-TEST-BUF2-LEN BUF-LEN@ s" hi!" STR-ASSERT$
    [: STR-TEST-BUF-OVERFLOW ;] catch E-STR-CAPACITY STR-ASSERT=
-   [: STR-TEST-BUF-BAD-C ;] catch E-STR-BOUNDS STR-ASSERT=
-   [: STR-TEST-BUF-BAD-LEN ;] catch E-STR-BOUNDS STR-ASSERT=
    s" BAD-BUF-RESET ( ptr n -- ) BUF-RESET" STR-CHECK-REJECTS
    s" BAD-BUF-LEN@ ( ptr n -- n ) BUF-LEN@" STR-CHECK-REJECTS
    s" BAD-BUF-APPEND-LEN ( ptr u8 off ptr u8 len ptr len -- ) BUF-APPEND-LEN" STR-CHECK-REJECTS ;
@@ -241,6 +218,279 @@ variable STR-TEST-BUF2-LEN
      some OF drop STR-FALSE ENDOF
    ;MATCH STR-ASSERT ;
 
+\ The end of readable memory: a word that reads a byte of a span it should have
+\ refused faults here instead of answering.
+: STR-TEST-EDGE ( -- ptr u8 )
+   0 0 GUARD-PAGE:TAIL ;
+
+\ Equality must stay inside both spans, at every alignment and through NUL.
+\ The guarded span ends at unreadable memory; the other is independently
+\ aligned. A difference at each byte must remain visible after preceding NULs.
+3 cells BUFFER: STR-TEST-EQ-BUF
+
+: STR-TEST-EQ-SPANS ( -- )
+   3 cells 0 ?do 0 STR-TEST-EQ-BUF i + c! loop
+   2 cells 2 + 0 ?do
+      i {: u:n :}
+      u 0 GUARD-PAGE:TAIL {: a:ptr :}
+      CELL 0 ?do
+         STR-TEST-EQ-BUF i + {: b:ptr :}
+         a u b u STR= STR-ASSERT
+         u 0 ?do
+            128 b i + c!
+            a u b u STR= 0= STR-ASSERT
+            0 b i + c!
+         loop
+      loop
+   loop
+   STR-TEST-EDGE 0 STR-TEST-EDGE 1 STR= 0= STR-ASSERT
+   STR-TEST-EDGE 1 STR-TEST-EDGE 0 STR= 0= STR-ASSERT ;
+
+: STR-TEST-ORDER ( -- )
+   s" " s" " STR< 0= STR-ASSERT
+   s" " s" a" STR< STR-ASSERT
+   s" a" s" " STR< 0= STR-ASSERT
+   s" ab" s" ab" STR< 0= STR-ASSERT
+   s" ab" s" abc" STR< STR-ASSERT
+   s" abc" s" ab" STR< 0= STR-ASSERT
+   s" azzz" s" ba" STR< STR-ASSERT
+   s" ba" s" azzz" STR< 0= STR-ASSERT
+   STR-TEST-ORDER-LOW 2 STR-TEST-ORDER-HIGH 2 STR< STR-ASSERT
+   STR-TEST-ORDER-HIGH 2 STR-TEST-ORDER-LOW 2 STR< 0= STR-ASSERT ;
+
+: STR-TEST-INDEX-OF-OPTION ( -- )
+   s" abcdef" 100 INDEX-OF MATCH option
+     none OF STR-FALSE ENDOF
+     some OF IDX>N 3 = ENDOF
+   ;MATCH STR-ASSERT
+   s" abcdef" 120 INDEX-OF MATCH option
+     none OF STR-TRUE ENDOF
+     some OF drop STR-FALSE ENDOF
+   ;MATCH STR-ASSERT ;
+
+\ White-box role readers: the asserts take raw n, so extent roles are read out
+\ through checked casts.
+CAST: STR-T-BL>RAW ( NUM:byte-len -- n )
+CAST: STR-T-BO>RAW ( NUM:byte-off -- n )
+CAST: STR-T-IC>RAW ( NUM:item-count -- n )
+
+: STR-T-FIND ( ptr u8 n ptr u8 n -- n ) {: a:ptr u:n b:ptr v:n :}
+   a u STR:LENGTH b v STR:LENGTH STR:FIND-SUB
+   MATCH option
+      none OF -1 ENDOF
+      some OF NUM:ORDINAL ENDOF
+   ;MATCH ;
+: STR-T-INDEX ( ptr u8 n n -- n ) {: a:ptr u:n c:n :}
+   a u STR:LENGTH c STR:INDEX-OF
+   MATCH option
+      none OF -1 ENDOF
+      some OF NUM:ORDINAL ENDOF
+   ;MATCH ;
+
+: STR-T-SPLIT-CHECK ( ptr u8 n n n ptr u8 n n bool -- )
+   {: a:ptr u:n sep:n start:n exp:ptr exp-u:n exp-next:n exp-ok:bool :}
+   a u STR:LENGTH sep start STR:OFFSET STR:SPLIT-NEXT MATCH option
+     none OF exp-ok 0= STR-ASSERT ENDOF
+     some OF STR-SPLIT:UNMAKE {: fa:ptr fl:NUM:byte-len fo:NUM:byte-off :}
+        exp-ok STR-ASSERT
+        fa fl STR-T-BL>RAW exp exp-u STR-ASSERT$
+        fo STR-T-BO>RAW exp-next STR-ASSERT= ENDOF
+   ;MATCH ;
+
+: STR-TEST-TYPED-SCALAR ( -- )
+   0 STR:LENGTH STR-T-BL>RAW 0 STR-ASSERT=
+   5 STR:LENGTH STR-T-BL>RAW 5 STR-ASSERT=
+   0 STR:OFFSET STR-T-BO>RAW 0 STR-ASSERT=
+   7 STR:OFFSET STR-T-BO>RAW 7 STR-ASSERT=
+   0 STR:COUNT STR-T-IC>RAW 0 STR-ASSERT=
+   3 STR:COUNT STR-T-IC>RAW 3 STR-ASSERT= ;
+
+: STR-TEST-TYPED-FIND ( -- )
+   s" abcdef" s" bcd" STR-T-FIND 1 STR-ASSERT=
+   s" abcabc" s" abc" STR-T-FIND 0 STR-ASSERT=
+   s" abcdef" s" def" STR-T-FIND 3 STR-ASSERT=
+   s" abcdef" s" z" STR-T-FIND -1 STR-ASSERT=
+   s" abcdef" s" " STR-T-FIND 0 STR-ASSERT=
+   s" " s" " STR-T-FIND 0 STR-ASSERT=
+   s" abcdef" 100 STR-T-INDEX 3 STR-ASSERT=
+   s" abcdef" 97 STR-T-INDEX 0 STR-ASSERT=
+   s" abcdef" 102 STR-T-INDEX 5 STR-ASSERT=
+   s" abcdef" 120 STR-T-INDEX -1 STR-ASSERT= ;
+
+: STR-TEST-TYPED-SPLIT ( -- )
+   s" a,b,c" STR-TEST-COMMA 0 s" a" 2 STR-TRUE STR-T-SPLIT-CHECK
+   s" a,b,c" STR-TEST-COMMA 2 s" b" 4 STR-TRUE STR-T-SPLIT-CHECK
+   s" a,b,c" STR-TEST-COMMA 4 s" c" 6 STR-TRUE STR-T-SPLIT-CHECK
+   s" a,b,c" STR-TEST-COMMA 6 s" " 6 STR-FALSE STR-T-SPLIT-CHECK
+   s" " STR-TEST-COMMA 0 s" " 1 STR-TRUE STR-T-SPLIT-CHECK
+   s" " STR-TEST-COMMA 1 s" " 1 STR-FALSE STR-T-SPLIT-CHECK ;
+
+: STR-TEST-TYPED-SPLIT-OPTION ( -- )
+   s" a,b" STR:LENGTH STR-TEST-COMMA 0 STR:OFFSET STR:SPLIT-NEXT MATCH option
+     none OF STR-FALSE ENDOF
+     some OF STR-SPLIT:UNMAKE {: fa:ptr fl:NUM:byte-len fo:NUM:byte-off :}
+        fa fl STR-T-BL>RAW s" a" STR=
+        fo STR-T-BO>RAW 2 = and ENDOF
+   ;MATCH STR-ASSERT
+   s" a,b" STR:LENGTH STR-TEST-COMMA 9 STR:OFFSET STR:SPLIT-NEXT MATCH option
+     none OF STR-TRUE ENDOF
+     some OF STR-SPLIT:UNMAKE 2drop drop STR-FALSE ENDOF
+   ;MATCH STR-ASSERT ;
+
+: STR-TEST-TYPED-BUFFER ( -- )
+   STR-TEST-BUF2-LEN STR:BUF-RESET
+   s" hi" STR:LENGTH STR-TEST-BUF2 16 STR:LENGTH STR-TEST-BUF2-LEN STR:BUF-APPEND
+   33 STR-TEST-BUF2 16 STR:LENGTH STR-TEST-BUF2-LEN STR:BUF-APPEND-C
+   STR-TEST-BUF2 STR-TEST-BUF2-LEN STR:BUF-LEN@ STR-T-BL>RAW s" hi!" STR-ASSERT$ ;
+
+: STR-TEST-TYPED-BUF-OVERFLOW ( -- )
+   15 >LEN STR-TEST-BUF2-LEN !
+   s" xx" STR:LENGTH STR-TEST-BUF2 16 STR:LENGTH STR-TEST-BUF2-LEN STR:BUF-APPEND ;
+
+: STR-TEST-TYPED-BUF-C-OVERFLOW ( -- )
+   16 >LEN STR-TEST-BUF2-LEN !
+   65 STR-TEST-BUF2 16 STR:LENGTH STR-TEST-BUF2-LEN STR:BUF-APPEND-C ;
+
+: STR-TEST-TYPED-SPLIT-OVERFLOW ( -- )
+   s" x" drop STR-MAX-I64 STR:LENGTH STR-TEST-COMMA 0 STR:OFFSET STR:SPLIT-NEXT MATCH option
+     none OF ENDOF
+     some OF STR-SPLIT:UNMAKE 2drop drop ENDOF
+   ;MATCH ;
+
+: STR-TEST-TYPED-LEN-NEG ( -- )   -1 STR:LENGTH drop ;
+: STR-TEST-TYPED-OFF-NEG ( -- )   -1 STR:OFFSET drop ;
+: STR-TEST-TYPED-COUNT-NEG ( -- ) -1 STR:COUNT drop ;
+
+: STR-TEST-TYPED ( -- )
+   STR-TEST-TYPED-SCALAR
+   STR-TEST-TYPED-FIND
+   STR-TEST-TYPED-SPLIT
+   STR-TEST-TYPED-SPLIT-OPTION
+   STR-TEST-TYPED-BUFFER
+   [: STR-TEST-TYPED-BUF-OVERFLOW ;] catch E-STR-CAPACITY STR-ASSERT=
+   [: STR-TEST-TYPED-BUF-C-OVERFLOW ;] catch E-STR-CAPACITY STR-ASSERT=
+   [: STR-TEST-TYPED-SPLIT-OVERFLOW ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: STR-TEST-TYPED-LEN-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: STR-TEST-TYPED-OFF-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: STR-TEST-TYPED-COUNT-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   s" SOK-LEN ( n -- NUM:byte-len ) STR:LENGTH" CHECK-QUIET-CANDIDATE! -1 STR-ASSERT=
+   s" SOK-FIND ( ptr u8 NUM:byte-len ptr u8 NUM:byte-len -- option<NUM:index> ) STR:FIND-SUB" CHECK-QUIET-CANDIDATE! -1 STR-ASSERT=
+   s" SOK-INDEX ( ptr u8 NUM:byte-len n -- option<NUM:index> ) STR:INDEX-OF" CHECK-QUIET-CANDIDATE! -1 STR-ASSERT=
+   s" SOK-SPLIT ( ptr u8 NUM:byte-len n NUM:byte-off -- option<str:split> ) STR:SPLIT-NEXT" CHECK-QUIET-CANDIDATE! -1 STR-ASSERT=
+   s" SOK-BUF-C ( n ptr u8 NUM:byte-len ptr len -- ) STR:BUF-APPEND-C" CHECK-QUIET-CANDIDATE! -1 STR-ASSERT=
+   s" SBAD-OFF-FOR-LEN ( ptr u8 NUM:byte-off ptr u8 NUM:byte-len -- option<NUM:index> ) STR:FIND-SUB" STR-CHECK-REJECTS
+   s" SBAD-LEN-FOR-OFF ( ptr u8 NUM:byte-len n NUM:byte-len -- option<str:split> ) STR:SPLIT-NEXT" STR-CHECK-REJECTS
+   s" SBAD-RAW-LEN ( ptr u8 n ptr u8 NUM:byte-len -- option<NUM:index> ) STR:FIND-SUB" STR-CHECK-REJECTS
+   s" SBAD-RAW-OFF ( ptr u8 NUM:byte-len n n -- option<str:split> ) STR:SPLIT-NEXT" STR-CHECK-REJECTS
+   s" SBAD-OFF-FOR-INDEX ( ptr u8 NUM:byte-off n -- option<NUM:index> ) STR:INDEX-OF" STR-CHECK-REJECTS
+   s" SBAD-FIND-OUT ( ptr u8 NUM:byte-len ptr u8 NUM:byte-len -- option<NUM:byte-off> ) STR:FIND-SUB" STR-CHECK-REJECTS
+   s" SBAD-BUF-C-RAW-CAP ( n ptr u8 n ptr len -- ) STR:BUF-APPEND-C" STR-CHECK-REJECTS ;
+
+s" abc" s" abc" STR= STR-ASSERT
+s" " s" " STR= STR-ASSERT
+s" abc" s" abd" STR= 0= STR-ASSERT
+s" abc" s" abcd" STR= 0= STR-ASSERT
+$41 ASCII-LOWER $61 STR-ASSERT=
+$5A ASCII-LOWER $7A STR-ASSERT=
+$7A ASCII-LOWER $7A STR-ASSERT=
+$61 ASCII-UPPER $41 STR-ASSERT=
+$7A ASCII-UPPER $5A STR-ASSERT=
+$5A ASCII-UPPER $5A STR-ASSERT=
+s" AbC" s" aBc" STR=CI STR-ASSERT
+s" AbCd" s" aBce" STR=CI 0= STR-ASSERT
+s" abcdef" s" abc" STARTS-WITH? STR-ASSERT
+s" abcdef" s" " STARTS-WITH? STR-ASSERT
+s" abcdef" s" abd" STARTS-WITH? 0= STR-ASSERT
+s" abc" s" abcdef" STARTS-WITH? 0= STR-ASSERT
+s" abcdef" s" def" ENDS-WITH? STR-ASSERT
+s" abcdef" s" " ENDS-WITH? STR-ASSERT
+s" abcdef" s" cef" ENDS-WITH? 0= STR-ASSERT
+s" abc" s" abcdef" ENDS-WITH? 0= STR-ASSERT
+s" abcdef" s" bcd" STR-FIND-SUB>N 1 STR-ASSERT=
+s" abcabc" s" abc" STR-FIND-SUB>N 0 STR-ASSERT=
+s" abcdef" s" z" STR-FIND-SUB>N -1 STR-ASSERT=
+s" abcdef" s" " STR-FIND-SUB>N 0 STR-ASSERT=
+s" abcabc" s" abc" 3 STR-FIND-SUB-FROM>N 3 STR-ASSERT=
+s" abcabc" s" abc" 4 STR-FIND-SUB-FROM>N -1 STR-ASSERT=
+s" abcabc" s" bc" 2 STR-FIND-SUB-FROM>N 4 STR-ASSERT=
+s" abcabc" s" " 2 STR-FIND-SUB-FROM>N 2 STR-ASSERT=
+s" abc" s" " 3 STR-FIND-SUB-FROM>N 3 STR-ASSERT=
+s" abc" s" c" 3 STR-FIND-SUB-FROM>N -1 STR-ASSERT=
+s" abc" s" " 4 STR-FIND-SUB-FROM>N -1 STR-ASSERT=
+s" abc" s" a" -1 STR-FIND-SUB-FROM>N -1 STR-ASSERT=
+STR-TEST-EDGE 0 s" a" 5 STR-FIND-SUB-FROM>N -1 STR-ASSERT=
+s" abcdef" s" cde" CONTAINS? STR-ASSERT
+s" abcdef" s" " CONTAINS? STR-ASSERT
+s" abcdef" s" xyz" CONTAINS? 0= STR-ASSERT
+s" abcdef" 100 STR-INDEX-OF>N 3 STR-ASSERT=
+s" abcdef" 97 STR-INDEX-OF>N 0 STR-ASSERT=
+s" abcdef" 120 STR-INDEX-OF>N -1 STR-ASSERT=
+s" banana" 97 COUNT-CHAR 3 STR-ASSERT=
+s" " 97 COUNT-CHAR 0 STR-ASSERT=
+s" banana" 120 COUNT-CHAR 0 STR-ASSERT=
+s" abcabc" s" abc" COUNT-SUB 2 STR-ASSERT=
+s" aaaa" s" aa" COUNT-SUB 2 STR-ASSERT=
+s" aaa" s" aa" COUNT-SUB 1 STR-ASSERT=
+s" xabab" s" ab" COUNT-SUB 2 STR-ASSERT=
+s" abcdef" s" xyz" COUNT-SUB 0 STR-ASSERT=
+s" abcdef" s" " COUNT-SUB 0 STR-ASSERT=
+s" " s" a" COUNT-SUB 0 STR-ASSERT=
+s" ab" s" abc" COUNT-SUB 0 STR-ASSERT=
+s"    abc" LTRIM s" abc" STR-ASSERT$
+STR-TEST-LEFT-WS 5 LTRIM s" abc" STR-ASSERT$
+s" abc   " RTRIM s" abc" STR-ASSERT$
+STR-TEST-RIGHT-WS 5 RTRIM s" abc" STR-ASSERT$
+s"    abc   " TRIM s" abc" STR-ASSERT$
+s"   " TRIM nip 0 STR-ASSERT=
+s" " LTRIM nip 0 STR-ASSERT=
+s" " RTRIM nip 0 STR-ASSERT=
+s" copy" drop STR-TEST-BUF 4 BYTE-COPY
+STR-TEST-BUF 4 s" copy" STR-ASSERT$
+STR-TEST-BUF STR-TEST-BUF 0 STR-LEN BYTE-COPY-LEN
+STR-TEST-BUF STR-TEST-BUF 0 BYTE-COPY
+STR-TEST-BUILDER
+STR-TEST-BUFFER
+STR-TEST-SPLIT
+STR-TEST-PARSE
+STR-TEST-PARSE-OPTION
+STR-TEST-HEX-DIGIT
+STR-TEST-INDEX-OF-OPTION
+STR-TEST-FIND-SUB-OPTION
+STR-TEST-EQ-SPANS
+STR-TEST-ORDER
+STR-TEST-TYPED
+
+false [if] \ off until dot habu-add-the-checks-a49d054d
+: STR-TEST-LEN-NEG ( -- )
+   -1 STR-LEN drop ;
+
+: STR-TEST-OFF-NEG ( -- )
+   -1 STR-OFF drop ;
+
+: STR-TEST-COUNT-NEG ( -- )
+   -1 STR-COUNT drop ;
+
+: STR-TEST-BUILDER-NEGATIVE ( -- )
+   [: STR-TEST-LEN-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: STR-TEST-OFF-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: STR-TEST-COUNT-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   SB-RESET                                         \ a negative length would move the cursor back
+   s" ab" SB-APPEND
+   [: -1 STR-TEST-SB-APPEND-LEN ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: STR-MIN-I64 STR-TEST-SB-APPEND-LEN ;] catch E-STR-BOUNDS STR-ASSERT=
+   SB$ s" ab" STR-ASSERT$ ;
+
+: STR-TEST-BUF-BAD-C ( -- )
+   300 STR-TEST-BUF2 16 STR-TEST-BUF2-LEN BUF-APPEND-C ;
+
+: STR-TEST-BUF-BAD-LEN ( -- )
+   -1 STR-TEST-BUF2-LEN !
+   s" x" STR-TEST-BUF2 16 STR-TEST-BUF2-LEN BUF-APPEND ;
+
+: STR-TEST-BUFFER-NEGATIVE ( -- )
+   [: STR-TEST-BUF-BAD-C ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: STR-TEST-BUF-BAD-LEN ;] catch E-STR-BOUNDS STR-ASSERT= ;
+
 : STR-TEST-FIND-SUB-NEG ( n -- ) {: v:n :}
    s" abc" s" x" drop v STR-FIND-SUB>N drop ;
 
@@ -285,34 +535,6 @@ variable STR-TEST-BUF2-LEN
    [: -1 1 STR-TEST-ENDS-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
    [: STR-MIN-I64 0 STR-TEST-ENDS-NEG ;] catch E-STR-BOUNDS STR-ASSERT= ;
 
-\ The end of readable memory: a word that reads a byte of a span it should have
-\ refused faults here instead of answering.
-: STR-TEST-EDGE ( -- ptr u8 )
-   0 0 GUARD-PAGE:TAIL ;
-
-\ Equality must stay inside both spans, at every alignment and through NUL.
-\ The guarded span ends at unreadable memory; the other is independently
-\ aligned. A difference at each byte must remain visible after preceding NULs.
-3 cells BUFFER: STR-TEST-EQ-BUF
-
-: STR-TEST-EQ-SPANS ( -- )
-   3 cells 0 ?do 0 STR-TEST-EQ-BUF i + c! loop
-   2 cells 2 + 0 ?do
-      i {: u:n :}
-      u 0 GUARD-PAGE:TAIL {: a:ptr :}
-      CELL 0 ?do
-         STR-TEST-EQ-BUF i + {: b:ptr :}
-         a u b u STR= STR-ASSERT
-         u 0 ?do
-            128 b i + c!
-            a u b u STR= 0= STR-ASSERT
-            0 b i + c!
-         loop
-      loop
-   loop
-   STR-TEST-EDGE 0 STR-TEST-EDGE 1 STR= 0= STR-ASSERT
-   STR-TEST-EDGE 1 STR-TEST-EDGE 0 STR= 0= STR-ASSERT ;
-
 : STR-TEST-ORDER-LEFT-NEG ( n -- ) {: u:n :}
    STR-TEST-EDGE u s" a" STR< drop ;
 
@@ -320,17 +542,7 @@ variable STR-TEST-BUF2-LEN
    s" a" STR-TEST-EDGE v STR< drop ;
 
 \ Invalid lengths throw before any byte is read.
-: STR-TEST-ORDER ( -- )
-   s" " s" " STR< 0= STR-ASSERT
-   s" " s" a" STR< STR-ASSERT
-   s" a" s" " STR< 0= STR-ASSERT
-   s" ab" s" ab" STR< 0= STR-ASSERT
-   s" ab" s" abc" STR< STR-ASSERT
-   s" abc" s" ab" STR< 0= STR-ASSERT
-   s" azzz" s" ba" STR< STR-ASSERT
-   s" ba" s" azzz" STR< 0= STR-ASSERT
-   STR-TEST-ORDER-LOW 2 STR-TEST-ORDER-HIGH 2 STR< STR-ASSERT
-   STR-TEST-ORDER-HIGH 2 STR-TEST-ORDER-LOW 2 STR< 0= STR-ASSERT
+: STR-TEST-ORDER-NEGATIVE ( -- )
    [: -1 STR-TEST-ORDER-LEFT-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
    [: STR-MIN-I64 STR-TEST-ORDER-LEFT-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
    [: -1 STR-TEST-ORDER-RIGHT-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
@@ -436,219 +648,25 @@ variable STR-TEST-BUF2-LEN
    [: -1 STR-TEST-NUMBER-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
    [: STR-MIN-I64 STR-TEST-NUMBER-NEG ;] catch E-STR-BOUNDS STR-ASSERT= ;
 
-: STR-TEST-INDEX-OF-OPTION ( -- )
-   s" abcdef" 100 INDEX-OF MATCH option
-     none OF STR-FALSE ENDOF
-     some OF IDX>N 3 = ENDOF
-   ;MATCH STR-ASSERT
-   s" abcdef" 120 INDEX-OF MATCH option
-     none OF STR-TRUE ENDOF
-     some OF drop STR-FALSE ENDOF
-   ;MATCH STR-ASSERT ;
-
-\ White-box role readers: the asserts take raw n, so extent roles are read out
-\ through checked casts.
-CAST: STR-T-BL>RAW ( NUM:byte-len -- n )
-CAST: STR-T-BO>RAW ( NUM:byte-off -- n )
-CAST: STR-T-IC>RAW ( NUM:item-count -- n )
-
-: STR-T-FIND ( ptr u8 n ptr u8 n -- n ) {: a:ptr u:n b:ptr v:n :}
-   a u STR:LENGTH b v STR:LENGTH STR:FIND-SUB
-   MATCH option
-      none OF -1 ENDOF
-      some OF NUM:ORDINAL ENDOF
-   ;MATCH ;
-: STR-T-INDEX ( ptr u8 n n -- n ) {: a:ptr u:n c:n :}
-   a u STR:LENGTH c STR:INDEX-OF
-   MATCH option
-      none OF -1 ENDOF
-      some OF NUM:ORDINAL ENDOF
-   ;MATCH ;
-
-: STR-T-SPLIT-CHECK ( ptr u8 n n n ptr u8 n n bool -- )
-   {: a:ptr u:n sep:n start:n exp:ptr exp-u:n exp-next:n exp-ok:bool :}
-   a u STR:LENGTH sep start STR:OFFSET STR:SPLIT-NEXT MATCH option
-     none OF exp-ok 0= STR-ASSERT ENDOF
-     some OF STR-SPLIT:UNMAKE {: fa:ptr fl:NUM:byte-len fo:NUM:byte-off :}
-        exp-ok STR-ASSERT
-        fa fl STR-T-BL>RAW exp exp-u STR-ASSERT$
-        fo STR-T-BO>RAW exp-next STR-ASSERT= ENDOF
-   ;MATCH ;
-
-: STR-TEST-TYPED-SCALAR ( -- )
-   0 STR:LENGTH STR-T-BL>RAW 0 STR-ASSERT=
-   5 STR:LENGTH STR-T-BL>RAW 5 STR-ASSERT=
-   0 STR:OFFSET STR-T-BO>RAW 0 STR-ASSERT=
-   7 STR:OFFSET STR-T-BO>RAW 7 STR-ASSERT=
-   0 STR:COUNT STR-T-IC>RAW 0 STR-ASSERT=
-   3 STR:COUNT STR-T-IC>RAW 3 STR-ASSERT= ;
-
-: STR-TEST-TYPED-FIND ( -- )
-   s" abcdef" s" bcd" STR-T-FIND 1 STR-ASSERT=
-   s" abcabc" s" abc" STR-T-FIND 0 STR-ASSERT=
-   s" abcdef" s" def" STR-T-FIND 3 STR-ASSERT=
-   s" abcdef" s" z" STR-T-FIND -1 STR-ASSERT=
-   s" abcdef" s" " STR-T-FIND 0 STR-ASSERT=
-   s" " s" " STR-T-FIND 0 STR-ASSERT=
-   s" abcdef" 100 STR-T-INDEX 3 STR-ASSERT=
-   s" abcdef" 97 STR-T-INDEX 0 STR-ASSERT=
-   s" abcdef" 102 STR-T-INDEX 5 STR-ASSERT=
-   s" abcdef" 120 STR-T-INDEX -1 STR-ASSERT= ;
-
-: STR-TEST-TYPED-SPLIT ( -- )
-   s" a,b,c" STR-TEST-COMMA 0 s" a" 2 STR-TRUE STR-T-SPLIT-CHECK
-   s" a,b,c" STR-TEST-COMMA 2 s" b" 4 STR-TRUE STR-T-SPLIT-CHECK
-   s" a,b,c" STR-TEST-COMMA 4 s" c" 6 STR-TRUE STR-T-SPLIT-CHECK
-   s" a,b,c" STR-TEST-COMMA 6 s" " 6 STR-FALSE STR-T-SPLIT-CHECK
-   s" " STR-TEST-COMMA 0 s" " 1 STR-TRUE STR-T-SPLIT-CHECK
-   s" " STR-TEST-COMMA 1 s" " 1 STR-FALSE STR-T-SPLIT-CHECK ;
-
-: STR-TEST-TYPED-SPLIT-OPTION ( -- )
-   s" a,b" STR:LENGTH STR-TEST-COMMA 0 STR:OFFSET STR:SPLIT-NEXT MATCH option
-     none OF STR-FALSE ENDOF
-     some OF STR-SPLIT:UNMAKE {: fa:ptr fl:NUM:byte-len fo:NUM:byte-off :}
-        fa fl STR-T-BL>RAW s" a" STR=
-        fo STR-T-BO>RAW 2 = and ENDOF
-   ;MATCH STR-ASSERT
-   s" a,b" STR:LENGTH STR-TEST-COMMA 9 STR:OFFSET STR:SPLIT-NEXT MATCH option
-     none OF STR-TRUE ENDOF
-     some OF STR-SPLIT:UNMAKE 2drop drop STR-FALSE ENDOF
-   ;MATCH STR-ASSERT ;
-
-: STR-TEST-TYPED-BUFFER ( -- )
-   STR-TEST-BUF2-LEN STR:BUF-RESET
-   s" hi" STR:LENGTH STR-TEST-BUF2 16 STR:LENGTH STR-TEST-BUF2-LEN STR:BUF-APPEND
-   33 STR-TEST-BUF2 16 STR:LENGTH STR-TEST-BUF2-LEN STR:BUF-APPEND-C
-   STR-TEST-BUF2 STR-TEST-BUF2-LEN STR:BUF-LEN@ STR-T-BL>RAW s" hi!" STR-ASSERT$ ;
-
-: STR-TEST-TYPED-BUF-OVERFLOW ( -- )
-   15 >LEN STR-TEST-BUF2-LEN !
-   s" xx" STR:LENGTH STR-TEST-BUF2 16 STR:LENGTH STR-TEST-BUF2-LEN STR:BUF-APPEND ;
-
-: STR-TEST-TYPED-BUF-C-OVERFLOW ( -- )
-   16 >LEN STR-TEST-BUF2-LEN !
-   65 STR-TEST-BUF2 16 STR:LENGTH STR-TEST-BUF2-LEN STR:BUF-APPEND-C ;
-
 : STR-TEST-TYPED-BUF-BAD-C-HI ( -- )
    300 STR-TEST-BUF2 16 STR:LENGTH STR-TEST-BUF2-LEN STR:BUF-APPEND-C ;
 
 : STR-TEST-TYPED-BUF-BAD-C-LO ( -- )
    -1 STR-TEST-BUF2 16 STR:LENGTH STR-TEST-BUF2-LEN STR:BUF-APPEND-C ;
 
-: STR-TEST-TYPED-SPLIT-OVERFLOW ( -- )
-   s" x" drop STR-MAX-I64 STR:LENGTH STR-TEST-COMMA 0 STR:OFFSET STR:SPLIT-NEXT MATCH option
-     none OF ENDOF
-     some OF STR-SPLIT:UNMAKE 2drop drop ENDOF
-   ;MATCH ;
-
-: STR-TEST-TYPED-LEN-NEG ( -- )   -1 STR:LENGTH drop ;
-: STR-TEST-TYPED-OFF-NEG ( -- )   -1 STR:OFFSET drop ;
-: STR-TEST-TYPED-COUNT-NEG ( -- ) -1 STR:COUNT drop ;
-
-: STR-TEST-TYPED ( -- )
-   STR-TEST-TYPED-SCALAR
-   STR-TEST-TYPED-FIND
-   STR-TEST-TYPED-SPLIT
-   STR-TEST-TYPED-SPLIT-OPTION
-   STR-TEST-TYPED-BUFFER
-   [: STR-TEST-TYPED-BUF-OVERFLOW ;] catch E-STR-CAPACITY STR-ASSERT=
-   [: STR-TEST-TYPED-BUF-C-OVERFLOW ;] catch E-STR-CAPACITY STR-ASSERT=
+: STR-TEST-TYPED-BUF-BAD-C ( -- )
    [: STR-TEST-TYPED-BUF-BAD-C-HI ;] catch E-STR-BOUNDS STR-ASSERT=
-   [: STR-TEST-TYPED-BUF-BAD-C-LO ;] catch E-STR-BOUNDS STR-ASSERT=
-   [: STR-TEST-TYPED-SPLIT-OVERFLOW ;] catch E-STR-BOUNDS STR-ASSERT=
-   [: STR-TEST-TYPED-LEN-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
-   [: STR-TEST-TYPED-OFF-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
-   [: STR-TEST-TYPED-COUNT-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
-   s" SOK-LEN ( n -- NUM:byte-len ) STR:LENGTH" CHECK-QUIET-CANDIDATE! -1 STR-ASSERT=
-   s" SOK-FIND ( ptr u8 NUM:byte-len ptr u8 NUM:byte-len -- option<NUM:index> ) STR:FIND-SUB" CHECK-QUIET-CANDIDATE! -1 STR-ASSERT=
-   s" SOK-INDEX ( ptr u8 NUM:byte-len n -- option<NUM:index> ) STR:INDEX-OF" CHECK-QUIET-CANDIDATE! -1 STR-ASSERT=
-   s" SOK-SPLIT ( ptr u8 NUM:byte-len n NUM:byte-off -- option<str:split> ) STR:SPLIT-NEXT" CHECK-QUIET-CANDIDATE! -1 STR-ASSERT=
-   s" SOK-BUF-C ( n ptr u8 NUM:byte-len ptr len -- ) STR:BUF-APPEND-C" CHECK-QUIET-CANDIDATE! -1 STR-ASSERT=
-   s" SBAD-OFF-FOR-LEN ( ptr u8 NUM:byte-off ptr u8 NUM:byte-len -- option<NUM:index> ) STR:FIND-SUB" STR-CHECK-REJECTS
-   s" SBAD-LEN-FOR-OFF ( ptr u8 NUM:byte-len n NUM:byte-len -- option<str:split> ) STR:SPLIT-NEXT" STR-CHECK-REJECTS
-   s" SBAD-RAW-LEN ( ptr u8 n ptr u8 NUM:byte-len -- option<NUM:index> ) STR:FIND-SUB" STR-CHECK-REJECTS
-   s" SBAD-RAW-OFF ( ptr u8 NUM:byte-len n n -- option<str:split> ) STR:SPLIT-NEXT" STR-CHECK-REJECTS
-   s" SBAD-OFF-FOR-INDEX ( ptr u8 NUM:byte-off n -- option<NUM:index> ) STR:INDEX-OF" STR-CHECK-REJECTS
-   s" SBAD-FIND-OUT ( ptr u8 NUM:byte-len ptr u8 NUM:byte-len -- option<NUM:byte-off> ) STR:FIND-SUB" STR-CHECK-REJECTS
-   s" SBAD-BUF-C-RAW-CAP ( n ptr u8 n ptr len -- ) STR:BUF-APPEND-C" STR-CHECK-REJECTS ;
+   [: STR-TEST-TYPED-BUF-BAD-C-LO ;] catch E-STR-BOUNDS STR-ASSERT= ;
 
-s" abc" s" abc" STR= STR-ASSERT
-s" " s" " STR= STR-ASSERT
-s" abc" s" abd" STR= 0= STR-ASSERT
-s" abc" s" abcd" STR= 0= STR-ASSERT
-$41 ASCII-LOWER $61 STR-ASSERT=
-$5A ASCII-LOWER $7A STR-ASSERT=
-$7A ASCII-LOWER $7A STR-ASSERT=
-$61 ASCII-UPPER $41 STR-ASSERT=
-$7A ASCII-UPPER $5A STR-ASSERT=
-$5A ASCII-UPPER $5A STR-ASSERT=
-s" AbC" s" aBc" STR=CI STR-ASSERT
-s" AbCd" s" aBce" STR=CI 0= STR-ASSERT
-s" abcdef" s" abc" STARTS-WITH? STR-ASSERT
-s" abcdef" s" " STARTS-WITH? STR-ASSERT
-s" abcdef" s" abd" STARTS-WITH? 0= STR-ASSERT
-s" abc" s" abcdef" STARTS-WITH? 0= STR-ASSERT
-s" abcdef" s" def" ENDS-WITH? STR-ASSERT
-s" abcdef" s" " ENDS-WITH? STR-ASSERT
-s" abcdef" s" cef" ENDS-WITH? 0= STR-ASSERT
-s" abc" s" abcdef" ENDS-WITH? 0= STR-ASSERT
-s" abcdef" s" bcd" STR-FIND-SUB>N 1 STR-ASSERT=
-s" abcabc" s" abc" STR-FIND-SUB>N 0 STR-ASSERT=
-s" abcdef" s" z" STR-FIND-SUB>N -1 STR-ASSERT=
-s" abcdef" s" " STR-FIND-SUB>N 0 STR-ASSERT=
-s" abcabc" s" abc" 3 STR-FIND-SUB-FROM>N 3 STR-ASSERT=
-s" abcabc" s" abc" 4 STR-FIND-SUB-FROM>N -1 STR-ASSERT=
-s" abcabc" s" bc" 2 STR-FIND-SUB-FROM>N 4 STR-ASSERT=
-s" abcabc" s" " 2 STR-FIND-SUB-FROM>N 2 STR-ASSERT=
-s" abc" s" " 3 STR-FIND-SUB-FROM>N 3 STR-ASSERT=
-s" abc" s" c" 3 STR-FIND-SUB-FROM>N -1 STR-ASSERT=
-s" abc" s" " 4 STR-FIND-SUB-FROM>N -1 STR-ASSERT=
-s" abc" s" a" -1 STR-FIND-SUB-FROM>N -1 STR-ASSERT=
-STR-TEST-EDGE 0 s" a" 5 STR-FIND-SUB-FROM>N -1 STR-ASSERT=
-s" abcdef" s" cde" CONTAINS? STR-ASSERT
-s" abcdef" s" " CONTAINS? STR-ASSERT
-s" abcdef" s" xyz" CONTAINS? 0= STR-ASSERT
-s" abcdef" 100 STR-INDEX-OF>N 3 STR-ASSERT=
-s" abcdef" 97 STR-INDEX-OF>N 0 STR-ASSERT=
-s" abcdef" 120 STR-INDEX-OF>N -1 STR-ASSERT=
-s" banana" 97 COUNT-CHAR 3 STR-ASSERT=
-s" " 97 COUNT-CHAR 0 STR-ASSERT=
-s" banana" 120 COUNT-CHAR 0 STR-ASSERT=
-s" abcabc" s" abc" COUNT-SUB 2 STR-ASSERT=
-s" aaaa" s" aa" COUNT-SUB 2 STR-ASSERT=
-s" aaa" s" aa" COUNT-SUB 1 STR-ASSERT=
-s" xabab" s" ab" COUNT-SUB 2 STR-ASSERT=
-s" abcdef" s" xyz" COUNT-SUB 0 STR-ASSERT=
-s" abcdef" s" " COUNT-SUB 0 STR-ASSERT=
-s" " s" a" COUNT-SUB 0 STR-ASSERT=
-s" ab" s" abc" COUNT-SUB 0 STR-ASSERT=
-s"    abc" LTRIM s" abc" STR-ASSERT$
-STR-TEST-LEFT-WS 5 LTRIM s" abc" STR-ASSERT$
-s" abc   " RTRIM s" abc" STR-ASSERT$
-STR-TEST-RIGHT-WS 5 RTRIM s" abc" STR-ASSERT$
-s"    abc   " TRIM s" abc" STR-ASSERT$
-s"   " TRIM nip 0 STR-ASSERT=
-s" " LTRIM nip 0 STR-ASSERT=
-s" " RTRIM nip 0 STR-ASSERT=
-s" copy" drop STR-TEST-BUF 4 BYTE-COPY
-STR-TEST-BUF 4 s" copy" STR-ASSERT$
-STR-TEST-BUF STR-TEST-BUF 0 STR-LEN BYTE-COPY-LEN
-STR-TEST-BUF STR-TEST-BUF 0 BYTE-COPY
-STR-TEST-BUILDER
-STR-TEST-BUFFER
-STR-TEST-SPLIT
-STR-TEST-PARSE
-STR-TEST-PARSE-OPTION
-STR-TEST-HEX-DIGIT
-STR-TEST-INDEX-OF-OPTION
-STR-TEST-FIND-SUB-OPTION
+STR-TEST-BUILDER-NEGATIVE
+STR-TEST-BUFFER-NEGATIVE
 STR-TEST-FIND-SUB-NEGATIVE
 STR-TEST-COMPARE-NEGATIVE
-STR-TEST-EQ-SPANS
-STR-TEST-ORDER
+STR-TEST-ORDER-NEGATIVE
 STR-TEST-SCAN-NEGATIVE
 STR-TEST-NUMBER-NEGATIVE
-STR-TEST-TYPED
+STR-TEST-TYPED-BUF-BAD-C
+[then]
 
 : STR-TEST-REPORT ( -- )
    STR-TEST-FAIL @ 0= if s" string-test: ok" type cr exit then

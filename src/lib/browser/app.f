@@ -132,7 +132,6 @@ public
 \ the BUF holds or a title that is not XML text is refused.
 : PAGE+ ( ptr u8 n ptr u8 n ptr a -- )
    {: m:ptr mu:n t:ptr tu:n buf:ptr :}
-   mu STR-CHECK-LEN
    m mu buf BUF:BORROWED? if E-BUF-BOUNDS throw then
    \ An allocation is never empty, so an empty title takes one escape's room.
    tu 1 max WIDEST * {: cap:n :}
