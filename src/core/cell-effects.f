@@ -37,7 +37,6 @@ s" PERSISTED-PTR-U8-TABLE" s" n --" TRUST
 s" PERSISTED-PTR-U8-TABLE-VARIABLE" s" --" TRUST
 s" PTR-U8-TABLE-VARIABLE" s" --" TRUST
 s" RESERVED-PTR-U8-CELL" s" n --" TRUST
-s" LBUF-CAPTURE-PREPARE" s" --" TRUST
 
 \ The refusal count and the words that open and close a collection, from
 \ src/core/checker.f, which loads before the checker starts. Checked bodies

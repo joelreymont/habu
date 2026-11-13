@@ -169,12 +169,6 @@ variable XREF-FU
 variable XREF-IDX
 variable XREF-NV
 
-: XREF-SNAPSHOT-PREPARE ( -- )
-   NULL-PTR XREF-A !  NULL-PTR XREF-B !  0 XREF-U !  0 XREF-V !
-   NULL-PTR XREF-SN !  0 XREF-SU !
-   NULL-PTR XREF-FN !  0 XREF-FU !
-   0 XREF-IDX !  0 XREF-NV ! ;
-
 : XREF-A@ ( -- ptr u8 )
    XREF-A @ ;
 

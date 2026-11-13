@@ -104,7 +104,3 @@ variable TPU
    $2F TPB TPQ @ ZBYTE!
    TPS@ TPU @ TMP-PATH-COPY-SRC
    TPB TPQ @ 1 + TPU @ + ;
-
-\ Clear transient path cursors before capturing an image.
-: ENV-SNAPSHOT-PREPARE ( -- )
-   NULL$ drop TPP !  0 TPQ !  NULL$ drop TPS!  0 TPU ! ;
