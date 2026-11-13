@@ -1,8 +1,7 @@
 \ link-band.f - the shadow emissions a program's roots reach, or every one for
-\ an engine, on arm64 or Wasm. An arm64 link lays them back to back after the
-\ kernel in A64ICODE's code buffer and places them at TEXT-VA plus their offset
-\ there; a defer's emission is followed by its trailer, as publish.f
-\ COMMIT-DEFER lays it. Words visible only inside LINKER.
+\ an engine, on arm64 or Wasm. An arm64 link lays them after the kernel in
+\ A64ICODE's code buffer (LAYOUT) and places them at TEXT-VA plus their offset
+\ there. Words visible only inside LINKER.
 
 require src/lib/hashmap.f
 require src/habu/layout.f
@@ -440,8 +439,9 @@ variable UNSAFE-COUNT
    drop 0 ;
 
 \ Each placed emission from A64ICODE:ASM-LEN on, in emission order, a defer's
-\ with room for its trailer.
-: LAYOUT ( -- )
+\ with room for its trailer when the output keeps a dictionary.
+: LAYOUT ( bool -- )
+   {: dict:bool :}
    NSHADOW:EMISSIONS OFFSETS-RESERVE  NSHADOW:EMISSIONS TRAILERS-RESERVE
    A64ICODE:ASM-LEN  dup BAND-AT !
    NSHADOW:EMISSIONS 0 ?do
@@ -454,7 +454,7 @@ variable UNSAFE-COUNT
             s" link: a routine is not whole 4-byte words" 74 die
          then
          dup i OFFSETS !  i NSHADOW:SIZE +
-         i EM-TRAILER {: cell:n :}
+         dict if i EM-TRAILER else 0 then {: cell:n :}
          cell i TRAILERS !
          cell 0<> if TRAILER-BYTES + then
       then
@@ -507,10 +507,10 @@ variable UNSAFE-COUNT
 
 
 \ Each placed emission, after the kernel ARM64:ADOPT laid, its data addresses
-\ through data.
-: PLACE-ROUTINES ( [ n -- n ] -- )
-   {: data :}
-   LAYOUT
+\ through data; dict as LAYOUT takes it.
+: PLACE-ROUTINES ( bool [ n -- n ] -- )
+   {: dict:bool data :}
+   dict LAYOUT
    NSHADOW:EMISSIONS 0 ?do i PLACED @ 0<> if i data PLACE-ONE then loop ;
 
 ;package
