@@ -1329,10 +1329,15 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
 : IN-CALLBACK? ( -- bool )
    data-base CB-FRAME + @ 0 <> ;
 
+\ Whether this task's pending halt is served here: HALT-UNWIND's test, which
+\ TASK:HALT-DUE? answers.
+: TCB-HALT-DUE? ( ptr n -- bool ) {: tcb:ptr :}
+   tcb TCB-HALT-PENDING? IN-CALLBACK? 0= and TASK-DEFER-DEPTH @ 0= and ;
+
 : HALT-UNWIND ( n -- ) {: rc:n :}
    TASK-SELF-N dup 0= if drop exit then
    TASK-N>PTR {: self:ptr :}
-   self TCB-HALT-PENDING? IN-CALLBACK? 0= and TASK-DEFER-DEPTH @ 0= and if
+   self TCB-HALT-DUE? if
       1 self TCB.STOP !
       1 data-base HALT-UNWIND-CELL + !
       rc throw
@@ -1919,6 +1924,12 @@ TASK-MIN-STACK constant MIN-STACK
 : HALT-PENDING? ( -- bool )
    TASK-SELF-N dup 0= if drop false exit then
    TASK-N>PTR TCB-HALT-PENDING? ;
+
+\ True where TASK:HALT-UNWIND would serve this task's pending TASK:HALT: a halt
+\ whose unwind has not begun, outside a callback and outside DEFER-ENTER.
+: HALT-DUE? ( -- bool )
+   TASK-SELF-N dup 0= if drop false exit then
+   TASK-N>PTR TCB-HALT-DUE? ;
 
 \ Parks the calling task in the kernel for at least ms milliseconds, holding
 \ nothing. It observes no TASK:HALT until it wakes, so TASK:KILL on one waits

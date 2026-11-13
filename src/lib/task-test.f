@@ -1153,6 +1153,36 @@ TASK:MIN-STACK TASK:TASK HALTED-TASK
    HALTED-SEEN @ 1 T=
    HALTED-TASK TASK:KILL ;
 
+variable DUE-NONE
+variable DUE-DEFER
+variable DUE-HALT
+variable DUE-PARKED
+TASK:MIN-STACK TASK:TASK DUE-TASK
+
+: DUE-WORK ( -- )
+   TASK:HALT-DUE? DUE-NONE atomic!
+   1 DUE-PARKED atomic!
+   begin TASK:WAIT TASK:HALTED? until
+   TASK:DEFER-ENTER  TASK:HALT-DUE? DUE-DEFER atomic!  TASK:DEFER-LEAVE
+   TASK:HALT-DUE? DUE-HALT atomic!
+   TASK:PAUSE ;
+
+\ TASK:HALT-DUE? answers where TASK:HALT-UNWIND would serve the halt: never
+\ before one, nor inside DEFER-ENTER with one pending, and true outside it.
+: TASK-TEST-HALT-DUE ( -- )
+   1 DUE-NONE !  1 DUE-DEFER !  0 DUE-HALT !  0 DUE-PARKED !
+   ['] DUE-WORK DUE-TASK TASK:ACTIVATE
+   DUE-PARKED 1 DUE-TASK TEST-WAIT:FOR-CELL
+   DUE-TASK TASK:HALT
+   DUE-TASK APP-WAIT-DONE
+   s" TASK:HALT-DUE? is false with no halt pending" T-LABEL
+   DUE-NONE @ TFALSE
+   s" TASK:HALT-DUE? is false inside DEFER-ENTER with a halt pending" T-LABEL
+   DUE-DEFER @ TFALSE
+   s" TASK:HALT-DUE? is true with a halt pending" T-LABEL
+   DUE-HALT @ TTRUE
+   DUE-TASK TASK:KILL ;
+
 \ The inner cleanup pauses twice before taking its turn, so a cleanup that
 \ pauses during the unwind yields and completes. Each cleanup takes the next
 \ turn of one counter, so the turns give the order they ran in.
@@ -2548,6 +2578,7 @@ variable NEW-STRAY
    TASK-TEST-EXIT-REDO
    TASK-TEST-EXIT-TWICE
    TASK-TEST-HALTED
+   TASK-TEST-HALT-DUE
    TASK-TEST-JOIN-HALTED
    TASK-TEST-HALT-CLEANUP-THROWS
    TASK-TEST-HALT-UNWIND-KEPT

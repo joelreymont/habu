@@ -32,16 +32,28 @@ FUNCTION: LIB-CLOSE dlclose ( n -- i32 ) ;FUNCTION
 -25299 constant SEC-DUPLICATE    \ errSecDuplicateItem
 -25291 constant SEC-UNAVAILABLE  \ errSecNotAvailable
 
-: OWNED ( n -- n )
-   dup 0= if drop E-UNAVAILABLE throw then ;
+\ A null from dlopen or dlsym: native support is missing.
+: AVAILABLE ( n -- n )
+   dup 0= if drop E-CONFIG throw then ;
+
+\ A null from a CoreFoundation create: its allocation failed. The identifiers
+\ reach CF-STRING as checked UTF-8 without NULs, so it has no other cause.
+: CREATED ( n -- n )
+   dup 0= if drop E-MEM-MAP throw then ;
+
+\ A null result from a SecItemCopyMatching that answered errSecSuccess: asked
+\ with kSecReturnData, its contract returns the item's CFData, so the store
+\ failed the read.
+: RETURNED ( n -- n )
+   dup 0= if drop E-ACCESS throw then ;
 
 \ The caller handles SEC-NOT-FOUND first.
 : SEC-STATUS ( n -- )
-   dup SEC-UNAVAILABLE = if drop E-UNAVAILABLE throw then
+   dup SEC-UNAVAILABLE = if drop E-CONFIG throw then
    0 <> if E-ACCESS throw then ;
 
 : SYMBOL ( n ptr u8 -- n )
-   FFI:DLSYM OWNED >BYTES CELL-VIEW @ ;
+   FFI:DLSYM AVAILABLE >BYTES CELL-VIEW @ ;
 
 : SEC-SYMBOL ( ptr request ptr u8 -- n )
    {: req:ptr name:ptr :}
@@ -55,15 +67,15 @@ FUNCTION: LIB-CLOSE dlclose ( n -- i32 ) ;FUNCTION
 : MAC-OPEN ( ptr request -- )
    {: req:ptr :}
    s\" /System/Library/Frameworks/Security.framework/Security\z" drop FFI:NOW FFI:DLOPEN
-      OWNED req REQUEST-LIBRARY !
+      AVAILABLE req REQUEST-LIBRARY !
    s\" /System/Library/Frameworks/CoreFoundation.framework/CoreFoundation\z" drop FFI:NOW FFI:DLOPEN
-      OWNED req REQUEST-LIBRARY2 !
+      AVAILABLE req REQUEST-LIBRARY2 !
    \ NULL callbacks borrow exact exported key identities and the owned CF values below.
-   0 0 0 0 CF-DICT OWNED req REQUEST-QUERY !
+   0 0 0 0 CF-DICT CREATED req REQUEST-QUERY !
    0 req REQUEST-SERVICE @ req REQUEST-SERVICE-LEN @ $08000100 0 CF-STRING
-      OWNED req REQUEST-SERVICE-OBJ !
+      CREATED req REQUEST-SERVICE-OBJ !
    0 req REQUEST-ACCOUNT @ req REQUEST-ACCOUNT-LEN @ $08000100 0 CF-STRING
-      OWNED req REQUEST-ACCOUNT-OBJ !
+      CREATED req REQUEST-ACCOUNT-OBJ !
    req REQUEST-QUERY @ req s\" kSecClass\z" drop SEC-SYMBOL
       req s\" kSecClassGenericPassword\z" drop SEC-SYMBOL CF-SET
    req REQUEST-QUERY @ req s\" kSecAttrService\z" drop SEC-SYMBOL req REQUEST-SERVICE-OBJ @ CF-SET
@@ -78,7 +90,7 @@ FUNCTION: LIB-CLOSE dlclose ( n -- i32 ) ;FUNCTION
    req REQUEST-QUERY @ req REQUEST-VALUE BYTE-VIEW SEC-READ {: status:n :}
    status SEC-NOT-FOUND = if exit then
    status SEC-STATUS
-   req REQUEST-VALUE @ OWNED {: value:n :}
+   req REQUEST-VALUE @ RETURNED {: value:n :}
    value CF-BYTES value CF-SIZE req COPY-VALUE ;
 
 
@@ -89,9 +101,9 @@ FUNCTION: LIB-CLOSE dlclose ( n -- i32 ) ;FUNCTION
    {: req:ptr :}
    req MAC-OPEN
    0 req REQUEST-DATA @ req REQUEST-CAPACITY @ req s\" kCFAllocatorNull\z" drop CF-SYMBOL
-      CF-DATA-BORROW OWNED req REQUEST-VALUE !
+      CF-DATA-BORROW CREATED req REQUEST-VALUE !
    req s\" kSecValueData\z" drop SEC-SYMBOL {: data-key:n :}
-   0 0 0 0 CF-DICT OWNED req REQUEST-ATTRS !
+   0 0 0 0 CF-DICT CREATED req REQUEST-ATTRS !
    req REQUEST-ATTRS @ data-key req REQUEST-VALUE @ CF-SET
    req REQUEST-QUERY @ req REQUEST-ATTRS @ SEC-UPDATE {: status:n :}
    status SEC-NOT-FOUND <> if status SEC-STATUS exit then

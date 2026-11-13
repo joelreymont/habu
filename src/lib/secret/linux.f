@@ -35,7 +35,7 @@ FUNCTION: LIB-CLOSE dlclose ( n -- i32 ) ;FUNCTION
    dup 0= if drop E-ACCESS throw then ;
 
 : AVAILABLE ( n -- n )
-   dup 0= if drop E-UNAVAILABLE throw then ;
+   dup 0= if drop E-CONFIG throw then ;
 
 \ The query table has no destroy functions, so each identifier's C copy is
 \ Habu's: allocated and published before the copy, so LINUX-CLOSE frees it

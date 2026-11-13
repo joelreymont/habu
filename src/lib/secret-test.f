@@ -1,14 +1,27 @@
 \ E2E against the real desktop credential store via the public SECRET words, dummy
-\ items only, removed even when a case fails; a host store bound with SECRET:STORE!
-\ then replaces it. Fails on: a wrong item; missing read as empty; truncated or
-\ partial writes; an overwrite keeping old bytes or duplicating; an erase that leaves,
-\ misreports or overreaches; ids WRITE/ERASE take that READ refuses; native leaks;
-\ source/AOT mismatch; a host store bypassed, called before the checks or masked.
+\ items only, removed even when a case fails; then with no native store bound for
+\ one case; a host store bound with SECRET:STORE! then replaces it. Fails on: a
+\ wrong item; missing read as empty; truncated or partial writes; an overwrite
+\ keeping old bytes or duplicating; an erase that leaves, misreports or
+\ overreaches; ids WRITE/ERASE take that READ refuses; native leaks; source/AOT
+\ mismatch; no store bound refused as anything but E-CONFIG; a host store
+\ bypassed, called before the checks or masked.
 require src/lib/secret.f
 require src/lib/test.f
 require src/lib/codegen.f
 require src/lib/time.f
 require src/lib/string.f
+
+\ White-box helpers, compiled in package SECRET to reach its native words; each
+\ qualified name lands in SECRET-E2E, so SECRET's public surface gains nothing.
+\ UNBIND leaves the native words no store has bound, NATIVE rebinds the target's.
+package SECRET
+: SECRET-E2E:UNBIND ( -- ) INSTALL-DEFAULT ;
+HB-TARGET-MACOS? [if] : SECRET-E2E:NATIVE ( -- ) INSTALL-MAC ; [then]
+HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or [if]
+   : SECRET-E2E:NATIVE ( -- ) INSTALL-LINUX ;
+[then]
+;package
 
 package SECRET-E2E
 private
@@ -133,6 +146,16 @@ private
    TEST-LOOKUP TEST-REPLACE TEST-ERASE TEST-REFUSALS ;
 
 
+: UNBOUND-READ ( -- )
+   [: s" unbound" s" key" TEST-OUT SECRET:READ 2drop ;] SECRET:E-CONFIG TTHROWSQ ;
+
+
+\ The target's native words are bound again even when the case fails.
+: TEST-UNBOUND ( -- )
+   s" a read with no store bound is E-CONFIG, a fault a person must fix" T-LABEL
+   UNBIND [: UNBOUND-READ ;] [: NATIVE ;] finally ;
+
+
 \ The host store holds one item; an empty service means none, since every
 \ word refuses an empty identifier before calling the store.
 128 CODEGEN:BUFFER HOST-SERVICE
@@ -224,6 +247,7 @@ variable HOST-CALLS
 : TEST-MAIN ( -- )
    T-RESET TEST-NAMES
    [: TEST-RUN ;] [: TEST-CLEANUP ;] finally
+   TEST-UNBOUND
    TEST-HOST
    T-REPORT ;
 TEST-MAIN

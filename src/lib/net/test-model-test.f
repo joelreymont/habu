@@ -61,11 +61,11 @@ TASK:SEMAPHORE GO
 
 
 : STORE-WRITE ( ptr u8 n ptr u8 n ptr u8 n -- )
-   2drop 2drop 2drop SECRET:E-UNAVAILABLE throw ;
+   2drop 2drop 2drop SECRET:E-CONFIG throw ;
 
 
 : STORE-ERASE ( ptr u8 n ptr u8 n -- bool )
-   2drop 2drop SECRET:E-UNAVAILABLE throw ;
+   2drop 2drop SECRET:E-CONFIG throw ;
 
 
 : ROUTES ( -- )

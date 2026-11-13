@@ -42,6 +42,7 @@ ITEMS VALUE-CAP * BUFFER: VALUES
 ITEMS TYPED-BUFFER SERVICE-US n
 ITEMS TYPED-BUFFER ACCOUNT-US n
 ITEMS TYPED-BUFFER VALUE-US n
+variable READ-FAULT    \ the code each read throws, 0 for none
 
 : SERVICE-AT ( n -- ptr u8 n ) {: i:n :} SERVICES i ID-CAP * + i SERVICE-US @ ;
 : ACCOUNT-AT ( n -- ptr u8 n ) {: i:n :} ACCOUNTS i ID-CAP * + i ACCOUNT-US @ ;
@@ -64,6 +65,8 @@ ITEMS TYPED-BUFFER VALUE-US n
 
 : STORE-READ ( ptr u8 n ptr u8 n SPAN:span<u8> -- n bool )
    {: s:ptr su:n a:ptr au:n dest:SPAN:span<u8> :}
+   READ-FAULT @ {: fault:n :}
+   fault 0<> if fault throw then
    s su a au FIND {: i:n :}
    i 0< if 0 false exit then
    i VALUE-AT {: v:ptr vu:n :}
@@ -102,6 +105,8 @@ private
 
 public
 
+\ Each store read throws the code until it is 0 again.
+: READ-FAULT! ( n -- ) READ-FAULT ! ;
 : KEY-SERVICE$ ( -- ptr u8 n ) s" habu-test" ;
 : KEY-ACCOUNT$ ( -- ptr u8 n ) s" model" ;
 : KEY$ ( -- ptr u8 n ) s" local-test-key" ;
@@ -752,6 +757,11 @@ $300000 constant BIG-U
       response [: S\" {\qerror\q:{\qmessage\q:\qrate limit\q}}" JSON:WRITE-RAW ;] HTTP:JSON!
       exit
    then
+   t t-u s" http-busy" STR= if
+      response 503 HTTP:STATUS!
+      response [: S\" {\qerror\q:{\qmessage\q:\qoverloaded\q}}" JSON:WRITE-RAW ;] HTTP:JSON!
+      exit
+   then
    t t-u s" http-bad" STR= if
       response 400 HTTP:STATUS!
       response [: S\" {\qerror\q:{\qmessage\q:\qbad request\q}}" JSON:WRITE-RAW ;] HTTP:JSON!
@@ -1312,11 +1322,16 @@ variable REFUSED-BASE-U
    s" ; events response.created=1 response.in_progress=1 response.output_text.delta=1 keepalive=1" ;
 
 
-\ SB-MS-LOGGED for a stream STREAMED wrote, which ends with an event of the type.
-: STREAMED-LOGGED ( ptr u8 n -- )
+\ Appends to SB the events of a stream STREAMED wrote, which ends with an
+\ event of the type, up to the count of milliseconds.
+: STREAM-TAIL ( ptr u8 n -- )
    {: type:ptr type-u:n :}
    PRELUDE-EVENTS$ SB-APPEND s"  " SB-APPEND type type-u SB-APPEND
-   s" =1; first output after " SB-APPEND SB-MS-LOGGED ;
+   s" =1; first output after " SB-APPEND ;
+
+
+\ SB-MS-LOGGED for a stream STREAMED wrote, which ends with an event of the type.
+: STREAMED-LOGGED ( ptr u8 n -- ) STREAM-TAIL SB-MS-LOGGED ;
 
 
 \ The body logs no line.
@@ -1357,16 +1372,49 @@ variable REFUSED-BASE-U
 : STORED-FAILS ( ptr u8 n -- ) STORE s" valid" MODEL:E-KEY FAILS ;
 
 
-\ A missing item, then the peer's key, then an empty and a non-printable
-\ value, then a 4096-byte value that is accepted and sent: the peer's 401
-\ refuses it, also E-KEY.
+\ A line for a failed key read: the code's name, then the key's service and
+\ account and why.
+: KEY-LOGGED ( ptr u8 n ptr u8 n -- )
+   {: code:ptr code-u:n why:ptr why-u:n :}
+   s" error" CHAT-LINE code code-u SB-APPEND
+   s"  key service " SB-APPEND SERVICE$ SB-APPEND
+   s" , account " SB-APPEND ACCOUNT$ SB-APPEND
+   s" : " SB-APPEND why why-u SB-APPEND SB-LOGGED ;
+
+
+\ The store refuses the key read with the code, which the call throws and its
+\ line names.
+: REFUSED-READ ( n ptr u8 n ptr u8 n -- )
+   {: code:n name:ptr name-u:n why:ptr why-u:n :}
+   code READ-FAULT!
+   s" valid" code FAILS
+   0 READ-FAULT!
+   name name-u why why-u KEY-LOGGED ;
+
+
+: STORE-REFUSALS ( -- )
+   SECRET:E-ACCESS s" SECRET:E-ACCESS" s" access denied" REFUSED-READ
+   SECRET:E-UNAVAILABLE s" SECRET:E-UNAVAILABLE" s" store unavailable"
+   REFUSED-READ
+   SECRET:E-CONFIG s" SECRET:E-CONFIG"
+   s" store not set up, or service or account invalid" REFUSED-READ ;
+
+
+\ A missing item and the store's refusals, then the peer's key, then an empty
+\ and a non-printable value, each logged unsent with the key and why; then a
+\ 4096-byte value that is accepted and sent: the peer's 401 refuses it, also
+\ E-KEY.
 : KEY-CASES ( -- )
    SERVICE$ ACCOUNT$ M MODEL:API-KEY!
-   [: s" valid" MODEL:E-KEY FAILS ;] QUIET
+   s" valid" MODEL:E-KEY FAILS
+   s" MODEL:E-KEY" s" not found" KEY-LOGGED
+   STORE-REFUSALS
    s" local-test-key" STORE
    CHAT
    s" " STORED-FAILS
+   s" MODEL:E-KEY" s" empty" KEY-LOGGED
    s\" local\x01test-key" STORED-FAILS
+   s" MODEL:E-KEY" s" not printable" KEY-LOGGED
    PAD 4096 XS
    PAD 4096 STORE
    s" valid" MODEL:E-KEY FAILS
@@ -1453,7 +1501,9 @@ variable REFUSED-BASE-U
    s" error" S\" MODEL:E-HTTP status 422 body: {\qdetail\q:\qbad field\q}" CHAT-LOGGED
    s" forbidden" MODEL:E-KEY FAILS
    M MODEL:HTTP-STATUS 403 = ASSERT
-   s" error" s" MODEL:E-KEY status 403" CHAT-LOGGED
+   s" error" CHAT-LINE s" MODEL:E-KEY key service " SB-APPEND
+   KEY-SERVICE$ SB-APPEND s" , account " SB-APPEND KEY-ACCOUNT$ SB-APPEND
+   s" : refused by the provider status 403" SB-APPEND SB-LOGGED
    \ A fault before sending reports no earlier call's status: a builder's,
    \ and one in a chat call made again over the same parts.
    INVALID-IMAGE
@@ -1819,6 +1869,18 @@ variable KEPT-U
    MODEL-PEER:CALLS@ before 1+ = ASSERT ;
 
 
+\ A failing send's line names the work by the call's note, before its code;
+\ the note changes no request the peer receives.
+: NOTED-FAILURE ( -- )
+   CHAT KEEP-SENT
+   s" job 7 extract step-3" M MODEL:LOG-NOTE!
+   CHAT SENT-AGAIN
+   s" http-bad" MODEL:E-HTTP FAILS
+   s" error" s" job 7 extract step-3: MODEL:E-HTTP status 400: bad request"
+   CHAT-LOGGED
+   s" " M MODEL:LOG-NOTE! ;
+
+
 \ SERVE refuses a call not started; a started call answers true once it lands
 \ and again until AWAIT ends it, and a fault before the transfer lands it.
 : SERVED-CALL ( -- )
@@ -2175,6 +2237,7 @@ variable ROW-FAIL
 
 
 : TEST-REJECT ( n n -- ) nip REJECTED-ROW ! ;
+: TEST-RECORDER ( -- ) 0 [: TEST-RECORD ;] [: TEST-REJECT ;] M MODEL:RECORDER! ;
 : ROW$ ( -- ptr u8 n ) ROW-TEXT ROW-U @ ;
 \ A reader at the value of the last recorded row's member `key`.
 : ROW ( ptr u8 n -- JSON:reader ) {: key:ptr key-u:n :} ROW$ key key-u MEMBER ;
@@ -2270,7 +2333,7 @@ variable PAUSED-ROWS
 \ behind the fault of a failed one.
 : RECORDED-CALLS ( -- )
    CAPTURE
-   0 [: TEST-RECORD ;] [: TEST-REJECT ;] M MODEL:RECORDER!
+   TEST-RECORDER
    0 ROWS-MADE ! 0 REJECTED-ROW ! false ROW-FAIL !
    0 [: BLANK-PURPOSE ;] CODE-OF MODEL:E-CONFIG = ASSERT
    MODEL-PEER:CALLS@ {: calls:n :}
@@ -2405,7 +2468,7 @@ create ROW-NAME 1 allot
 \ alone, however many rows there are; a repeated purpose is refused.
 : EFFORTS ( -- )
    CAPTURE
-   0 [: TEST-RECORD ;] [: TEST-REJECT ;] M MODEL:RECORDER!
+   TEST-RECORDER
    s" high" M MODEL:EFFORT!
    PURPOSE CHAT
    SENT-EFFORT s" high" STR-IS
@@ -2566,7 +2629,7 @@ variable LOOKUPS    \ COUNT-GET's lookups
    M MODEL:CALL-ID 0= ASSERT
    M MODEL:RECORD-FAULT E-RECORDER = ASSERT
    false ROW-FAIL !
-   0 [: TEST-RECORD ;] [: TEST-REJECT ;] M MODEL:RECORDER!
+   TEST-RECORDER
    RESEND-MARK
    PURPOSE s" flex-gate" PREP M MODEL:START
    2 SERVE-TO
@@ -2635,7 +2698,7 @@ variable LOOKUPS    \ COUNT-GET's lookups
    M MODEL:CLOSE
    SETUP
    CAPTURE
-   0 [: TEST-RECORD ;] [: TEST-REJECT ;] M MODEL:RECORDER!
+   TEST-RECORDER
    s" flex" M MODEL:SERVICE-TIER! ;
 
 
@@ -2649,7 +2712,7 @@ variable LOOKUPS    \ COUNT-GET's lookups
 \ negative tier length is refused.
 : TIERS ( -- )
    CAPTURE
-   0 [: TEST-RECORD ;] [: TEST-REJECT ;] M MODEL:RECORDER!
+   TEST-RECORDER
    PURPOSE CHAT
    NO-TIER
    s" service_tier" ROW NULL-IS
@@ -2734,6 +2797,7 @@ variable LOOKUPS    \ COUNT-GET's lookups
 \ service tier set after the live call is not journal input, so the call
 \ still replays.
 : REPLAYED-CALLS ( -- )
+   TEST-RECORDER
    s" valid" JOURNAL-TEXT 5 SPAN:MAKE SPAN:COPY
    JOURNAL-TEXT 5 + JOURNAL-U 5 - XS
    false JOURNAL-READY !
@@ -2778,7 +2842,8 @@ variable LOOKUPS    \ COUNT-GET's lookups
    [: PURPOSE s" length" MODEL:E-INCOMPLETE FAILS ;] QUIET
    BARE-REFUSAL
    [: PURPOSE s" length" MODEL:E-INCOMPLETE FAILS ;] QUIET
-   MODEL-PEER:CALLS@ sent = ASSERT ;
+   MODEL-PEER:CALLS@ sent = ASSERT
+   s" " M MODEL:SERVICE-TIER! ;
 
 
 : FAILING-PUT ( n ptr u8 n ptr u8 n -- ) 2drop 2drop drop E-RECORDER throw ;
@@ -2811,6 +2876,7 @@ variable ASKED-U
 \ JOURNAL-INPUT$ finished and not yet consumed or discarded by a builder.
 : CALLER-JOURNAL ( -- )
    CAPTURE
+   TEST-RECORDER
    MODEL-PEER:CALLS@ {: before:n :}
    PURPOSE s" valid" ASK
    MODEL-PEER:CALLS@ before = ASSERT
@@ -2849,12 +2915,14 @@ variable ASKED-U
 
 create GOT 32768 allot    \ the journal input KEEP-GET last received
 variable GOT-U
+variable GOT-NS           \ TIME:MONO-NS as KEEP-GET last ran
 : GOT$ ( -- ptr u8 n ) GOT GOT-U @ ;
-\ A journal getter that never hits and keeps the input it receives.
+\ A journal getter that never hits and keeps the input it receives and when.
 : KEEP-GET ( n ptr u8 n ptr n -- bool )
    {: ctx:n input:ptr input-u:n out:ptr :}
    input-u 32768 <= ASSERT
    input input-u GOT 32768 SPAN:MAKE SPAN:COPY input-u GOT-U !
+   TIME:MONO-NS GOT-NS !
    false ;
 
 
@@ -2862,6 +2930,7 @@ variable GOT-U
 \ CHAT then send the same body, which the journal looks up and puts under the
 \ same input it looked the first try up under, and record an ok row.
 : RECORDED-RESEND ( -- )
+   TEST-RECORDER
    0 [: KEEP-GET ;] [: CAPTURE-PUT ;] M MODEL:JOURNAL!
    ROWS-MADE @ {: rows:n :}
    MODEL-PEER:CALLS@ {: calls:n :}
@@ -2883,6 +2952,884 @@ variable GOT-U
    GOT$ ASKED$ STR= ASSERT
    INPUT$ ASKED$ STR= ASSERT
    SENT-AGAIN ;
+
+
+\ Serves M, each SERVE answering false, until the call rests.
+: SERVE-TO-REST ( -- )
+   mono-ns {: t0:n :}
+   begin M MODEL:RESEND-DUE 0= while
+      M MODEL:SERVE 0= ASSERT
+      t0 SERVE-OVER? if exit then
+   repeat ;
+
+
+variable WAKE-MS    \ how long CANCEL-WORK and STOP-WORK-LATER sleep first
+variable ACTED-NS   \ mono-ns as CANCEL-WORK or STOP-WORK-LATER acted
+\ Cancels M from another task WAKE-MS after it starts.
+: CANCEL-WORK ( -- )
+   WAKE-MS @ >MS TASK:SLEEP
+   mono-ns ACTED-NS !
+   M MODEL:CANCEL bool>n TASK:RETURN ;
+
+
+\ Takes every hint pending on this task's park.
+: DRAIN-HINTS ( -- ) begin 0 >MS TASK:WAIT-MS 0= until ;
+
+
+\ AWAITs M, which lands E-CANCELLED at once after the work task acts, and
+\ joins the task, its answer passing the test. Answers whether the AWAIT's
+\ park took the wake, which then leaves no hint pending on this task.
+: AWAIT-WOKEN ( [ n -- bool ] -- bool )
+   {: test :}
+   AWAIT-CODE MODEL:E-CANCELLED = ASSERT
+   mono-ns {: t1:n :}
+   WORK-TASK TASK:JOIN MATCH result
+      ok OF test execute ASSERT ENDOF
+      err OF drop FAIL ENDOF
+   ;MATCH
+   t1 ACTED-NS @ - PROMPT-NS < ASSERT
+   0 >MS TASK:WAIT-MS 0= ;
+
+
+\ The delay of wake try k: 50, 200, then 800 ms.
+: TRY-MS ( n -- n ) 50 swap 0 ?do 4 * loop ;
+
+
+\ Runs a wake scenario at each try's delay until its AWAIT's park takes the
+\ wake, and answers what that try answered; fails when no try's does.
+: WAKE-TRIES ( [ n -- n n bool ] -- n n )
+   {: try :}
+   3 0 do
+      i TRY-MS try execute if unloop exit then 2drop
+   loop
+   FAIL 0 0 ;
+
+
+variable MATCHES   \ COUNT-BY's count
+\ How many captured lines, after their stamps, pass the test against SB.
+: COUNT-BY ( [ ptr u8 n ptr u8 n -- bool ] -- n )
+   {: pred :}
+   0 MATCHES !
+   LOG$ {: a:ptr u:n :}
+   0 u 0 ?do
+      a i + c@ LF = if
+         i over - over a swap + swap SB$ pred execute if 1 MATCHES +! then
+         drop i 1+
+      then
+   loop drop MATCHES @ ;
+
+
+\ How many captured lines are exactly SB's text.
+: SB-COUNT ( -- n ) [: LINE? ;] COUNT-BY ;
+\ How many are SB's text, a count of ms since CHAT-NS and " ms".
+: MS-COUNT ( -- n ) [: MS-LINE? ;] COUNT-BY ;
+
+
+\ A count now k more than `same`, and LINES k more than `before`.
+: NEW-LINES ( n n n n -- )
+   {: now:n same:n before:n k:n :}
+   LINES before k + = now same k + = and
+   dup 0= if SB$ type cr LOG$ type then ASSERT ;
+
+
+\ SB-COUNT is one more than `same` and LINES one more than `before`.
+: ONE-LINE ( n n -- )
+   {: same:n before:n :}
+   SB-COUNT same before 1 NEW-LINES ;
+
+
+: NOTE$ ( -- ptr u8 n ) s" job 9 assemble" ;
+
+
+\ SB holds a chat line at the level naming NOTE$, then the text.
+: NOTED ( ptr u8 n ptr u8 n -- )
+   {: level:ptr level-u:n tail:ptr tail-u:n :}
+   level level-u CHAT-LINE NOTE$ SB-APPEND s" : " SB-APPEND
+   tail tail-u SB-APPEND ;
+
+
+\ NOTED for a reply that named its response id.
+: ID-NOTED ( ptr u8 n ptr u8 n -- )
+   {: level:ptr level-u:n tail:ptr tail-u:n :}
+   level level-u CHAT-ID-LINE NOTE$ SB-APPEND s" : " SB-APPEND
+   tail tail-u SB-APPEND ;
+
+
+\ Starts M's chat, which the provider answers 503: it is recorded failed and
+\ rests started, SERVE answering false and sending nothing, and the work
+\ task CANCELs it after ms. Answers SB-COUNT and LINES from before the start
+\ and whether the AWAIT's park took the CANCEL's wake.
+: CANCELLED-REST ( n -- n n bool )
+   WAKE-MS !
+   SB-COUNT LINES
+   DRAIN-HINTS
+   RESEND-MARK
+   s" http-busy" MODEL-PEER:FAIL-NEXT
+   PURPOSE s" valid" PREP M MODEL:START
+   SERVE-TO-REST
+   SENDS-SINCE 1 = ASSERT
+   ROWS-SINCE 1 = ASSERT
+   s" outcome" ROW s" failed" STR-IS
+   M MODEL:RESEND-DUE {: due:n :}
+   M MODEL:SERVE 0= ASSERT
+   M MODEL:RESEND-DUE due = ASSERT
+   SENDS-SINCE 1 = ASSERT
+   ['] CANCEL-WORK WORK-TASK TASK:ACTIVATE
+   [: 0<> ;] AWAIT-WOKEN ;
+
+
+\ With RESEND-WAIT! a chat the provider answers 503 is recorded failed, its
+\ one line names the note and the wait, and it rests started: SERVE answers
+\ false and sends nothing until it is due, and a CANCEL from another task
+\ wakes the AWAIT parked on it, which ends at once with a cancelled record
+\ and no line. A CANCEL before the park leaves its wake pending on the
+\ starter, so the case cancels later until the park takes the wake.
+: RESTS-CANCELLED ( -- )
+   60000 M MODEL:RESEND-WAIT!
+   s" warn" s" MODEL:E-UNAVAILABLE status 503: overloaded; sent again in 60 s"
+   NOTED
+   [: CANCELLED-REST ;] WAKE-TRIES {: same:n before:n :}
+   SENDS-SINCE 1 = ASSERT
+   ROWS-SINCE 2 = ASSERT
+   s" outcome" ROW s" cancelled" STR-IS
+   M MODEL:RESEND-DUE 0= ASSERT
+   same before ONE-LINE ;
+
+
+\ With a 1 s wait, whose line names 1 s, an AWAIT entered before the due
+\ time waits for it: the resend's journal lookup, which comes before its
+\ dispatch, runs at or after it. AWAIT gives the reply to the same body, its
+\ flex tier included, looked up and put under the same journal input.
+: RESTS-AWAITED ( -- )
+   s" flex" M MODEL:SERVICE-TIER!
+   1000 M MODEL:RESEND-WAIT!
+   s" warn" s" MODEL:E-UNAVAILABLE status 503: overloaded; sent again in 1 s"
+   NOTED
+   SB-COUNT LINES {: same:n before:n :}
+   RESEND-MARK
+   s" http-busy" MODEL-PEER:FAIL-NEXT
+   PURPOSE s" valid" ASK
+   M MODEL:START
+   SERVE-TO-REST
+   same before ONE-LINE
+   GOT$ ASKED$ STR= ASSERT
+   KEEP-SENT
+   0 GOT-U ! 0 GOT-NS ! 0 JOURNAL-INPUT-U !
+   M MODEL:RESEND-DUE {: due:n :}
+   mono-ns due < ASSERT
+   M MODEL:AWAIT
+   GOT-NS @ due >= ASSERT
+   M MODEL:CONTENT$ TRUE-CONTENT$ STR= ASSERT
+   SENDS-SINCE 2 = ASSERT
+   ROWS-SINCE 2 = ASSERT
+   s" outcome" ROW s" ok" STR-IS
+   s" purpose" ROW s" assemble" STR-IS
+   SENT-AGAIN
+   GOT$ ASKED$ STR= ASSERT
+   INPUT$ ASKED$ STR= ASSERT
+   same before ONE-LINE
+   s" " M MODEL:SERVICE-TIER! ;
+
+
+\ With RESEND-WAIT! off the 503 ends the call, with its one error line.
+: RESTS-OFF ( -- )
+   0 M MODEL:RESEND-WAIT!
+   s" error" s" MODEL:E-UNAVAILABLE status 503: overloaded" NOTED
+   SB-COUNT LINES {: same:n before:n :}
+   RESEND-MARK
+   s" http-busy" MODEL-PEER:FAIL-NEXT
+   PURPOSE s" valid" MODEL:E-UNAVAILABLE FAILS
+   SENDS-SINCE 1 = ASSERT
+   ROWS-SINCE 1 = ASSERT
+   s" outcome" ROW s" failed" STR-IS
+   same before ONE-LINE
+   M MODEL:RESEND-DUE 0= ASSERT ;
+
+
+: RESTS ( -- )
+   TEST-RECORDER
+   0 [: KEEP-GET ;] [: CAPTURE-PUT ;] M MODEL:JOURNAL!
+   NOTE$ M MODEL:LOG-NOTE!
+   RESTS-CANCELLED RESTS-AWAITED RESTS-OFF
+   s" " M MODEL:LOG-NOTE! ;
+
+
+variable LANDED-CANCELLED   \ CANCEL-ROW's CANCEL answer
+\ A recorder that records the row, then CANCELs M after the first row since
+\ RESEND-MARK: it runs in ACCOUNT, after the send has landed and before the
+\ tier and resend machines sense it.
+: CANCEL-ROW ( n ptr u8 n -- n )
+   TEST-RECORD
+   ROWS-SINCE 1 = if M MODEL:CANCEL LANDED-CANCELLED ! then ;
+
+
+\ Starts the chat PREP built and serves it to AWAIT, M's recorder CANCEL-ROW;
+\ the AWAIT's fault, at once.
+: CANCELLED-LANDING ( -- n )
+   0 [: CANCEL-ROW ;] [: TEST-REJECT ;] M MODEL:RECORDER!
+   false LANDED-CANCELLED !
+   M MODEL:START
+   mono-ns {: t0:n :}
+   AWAIT-CODE
+   mono-ns t0 - PROMPT-NS < ASSERT
+   TEST-RECORDER ;
+
+
+\ A CANCEL of a send that landed with a 503, RESEND-WAIT! on, before the call
+\ rests answers true and keeps it from resting: AWAIT throws E-CANCELLED at
+\ once, the failed row followed by a cancelled one, nothing is sent again,
+\ and the send's failure line, naming the note, is written once. With
+\ RESEND-WAIT! off the send would not be sent again: the CANCEL answers false
+\ and AWAIT throws the send's own fault, with the same one line.
+: LANDED-CANCEL ( -- )
+   NOTE$ M MODEL:LOG-NOTE!
+   s" error" s" MODEL:E-UNAVAILABLE status 503: overloaded" NOTED
+   60000 M MODEL:RESEND-WAIT!
+   SB-COUNT LINES {: same:n before:n :}
+   RESEND-MARK
+   s" http-busy" MODEL-PEER:FAIL-NEXT
+   PURPOSE s" valid" PREP CANCELLED-LANDING MODEL:E-CANCELLED = ASSERT
+   LANDED-CANCELLED @ 0<> ASSERT
+   SENDS-SINCE 1 = ASSERT
+   ROWS-SINCE 2 = ASSERT
+   s" outcome" ROW s" cancelled" STR-IS
+   M MODEL:RESEND-DUE 0= ASSERT
+   same before ONE-LINE
+   0 M MODEL:RESEND-WAIT!
+   SB-COUNT LINES {: again:n after:n :}
+   RESEND-MARK
+   s" http-busy" MODEL-PEER:FAIL-NEXT
+   PURPOSE s" valid" PREP CANCELLED-LANDING MODEL:E-UNAVAILABLE = ASSERT
+   LANDED-CANCELLED @ 0= ASSERT
+   SENDS-SINCE 1 = ASSERT
+   ROWS-SINCE 1 = ASSERT
+   s" outcome" ROW s" failed" STR-IS
+   again after ONE-LINE
+   s" " M MODEL:LOG-NOTE! ;
+
+
+\ With RESEND-WAIT! a send whose key read the store refuses sends nothing and
+\ rests: its one line names the note, the key's service, account and reason
+\ and the wait. Sent again when due and refused the same way, it writes one
+\ more such line and no failure line; once the store answers, the resend is
+\ served.
+: KEY-RESTS ( -- )
+   TEST-RECORDER
+   1 M MODEL:RESEND-WAIT!
+   NOTE$ M MODEL:LOG-NOTE!
+   SERVICE$ ACCOUNT$ M MODEL:API-KEY!
+   KEY$ STORE
+   s" warn" s" SECRET:E-UNAVAILABLE key service " NOTED
+   SERVICE$ SB-APPEND s" , account " SB-APPEND ACCOUNT$ SB-APPEND
+   s" : store unavailable; sent again in 1 s" SB-APPEND
+   SB-COUNT LINES {: same:n before:n :}
+   SECRET:E-UNAVAILABLE READ-FAULT!
+   RESEND-MARK
+   PURPOSE s" valid" PREP M MODEL:START
+   M MODEL:RESEND-DUE {: due:n :}
+   due 0<> ASSERT
+   same before ONE-LINE
+   begin mono-ns due < while 1 >MS TASK:SLEEP repeat
+   M MODEL:SERVE 0= ASSERT
+   M MODEL:RESEND-DUE {: next:n :}
+   next 0<> next due <> and ASSERT
+   SB-COUNT same before 2 NEW-LINES
+   SENDS-SINCE 0= ASSERT
+   ROWS-SINCE 0= ASSERT
+   0 READ-FAULT!
+   M MODEL:AWAIT
+   M MODEL:CONTENT$ TRUE-CONTENT$ STR= ASSERT
+   SENDS-SINCE 1 = ASSERT
+   ROWS-SINCE 1 = ASSERT
+   LINES before 2 + = ASSERT
+   0 M MODEL:RESEND-WAIT!
+   s" " M MODEL:LOG-NOTE!
+   FIXTURE-KEY ;
+
+
+\ A note longer than the 64 KiB a pipe holds on macOS and Linux, so a line
+\ that carries it is written into a pipe nobody drains only in part.
+262144 constant LONG-U
+create LONG-NOTE LONG-U allot
+\ How many of the note's bytes in a row CUT-REST-WORK reads before it CANCELs.
+1024 constant NOTE-RUN
+create PIPE-BYTE 1 allot
+create PIPE-CHUNK 4096 allot
+variable PIPE-R      \ the read end of the pipe fd 2 writes to
+variable SAVED-ERR   \ fd 2's capture file while the pipe holds fd 2
+
+: PIPE-IN ( -- fd ) PIPE-R @ >FD ;
+
+
+\ Sends fd 2 into a new pipe, keeping its capture file aside.
+: ERR-TO-PIPE ( -- )
+   FD:PIPE-PAIR {: r:fd w:fd :}
+   r FD>N PIPE-R !
+   FD:STDERR FD>N 0 10 fcntl {: saved:n :}
+   saved 0 >= ASSERT
+   saved SAVED-ERR !
+   w FD>N FD:STDERR FD>N dup2 0 >= ASSERT
+   w FD>N close-rc 0= ASSERT ;
+
+
+\ Gives fd 2 its capture file back, which ends the pipe for its reader.
+: ERR-BACK ( -- )
+   SAVED-ERR @ FD:STDERR FD>N dup2 0 >= ASSERT
+   SAVED-ERR @ close-rc 0= ASSERT ;
+
+
+: PIPE-BYTE@ ( -- n )
+   PIPE-IN PIPE-BYTE 1 SPAN:MAKE FD:READ-EXACT MATCH FD:fill
+      full OF ENDOF
+      eof OF drop FAIL ENDOF
+   ;MATCH
+   PIPE-BYTE c@ ;
+
+
+\ Reads the pipe until NOTE-RUN of the note's bytes in a row: the line that
+\ carries it is then being written, held until the pipe is drained.
+: NOTE-REACHED ( -- )
+   0 begin
+      PIPE-BYTE@ [char] x = if 1+ else drop 0 then
+      dup NOTE-RUN >=
+   until drop ;
+
+
+\ Reads the pipe to its end.
+: PIPE-DRAIN ( -- )
+   begin
+      PIPE-IN PIPE-CHUNK 4096 SPAN:MAKE FD:READ-EXACT MATCH FD:fill
+         full OF false ENDOF
+         eof OF drop true ENDOF
+      ;MATCH
+   until ;
+
+
+\ CANCELs M while its starter writes the rest line, then drains the pipe.
+: CUT-REST-WORK ( -- )
+   NOTE-REACHED
+   M MODEL:CANCEL bool>n {: answer:n :}
+   PIPE-DRAIN
+   answer TASK:RETURN ;
+
+
+\ Serves M until it lands or rests; answers whether it landed.
+: SERVE-SETTLED ( -- bool )
+   mono-ns {: t0:n :}
+   begin
+      M MODEL:SERVE if true exit then
+      M MODEL:RESEND-DUE 0<> if false exit then
+      t0 SERVE-OVER?
+   until false ;
+
+
+\ A CANCEL after the 503 send was sensed for a rest, and before the rest's
+\ start was published, lands the call E-CANCELLED in that SERVE, so a caller
+\ never parks on it. The CANCEL comes while the starter writes the rest line,
+\ its note longer than the pipe fd 2 then goes to; MODEL runs no callback in
+\ that window.
+: CUT-REST ( -- )
+   TEST-RECORDER
+   LONG-NOTE LONG-U XS
+   60000 M MODEL:RESEND-WAIT!
+   LONG-NOTE LONG-U M MODEL:LOG-NOTE!
+   RESEND-MARK
+   s" http-busy" MODEL-PEER:FAIL-NEXT
+   PURPOSE s" valid" PREP M MODEL:START
+   ERR-TO-PIPE
+   ['] CUT-REST-WORK WORK-TASK TASK:ACTIVATE
+   SERVE-SETTLED {: landed:bool :}
+   ERR-BACK
+   WORK-TASK TASK:JOIN MATCH result
+      ok OF 0<> ASSERT ENDOF
+      err OF drop FAIL ENDOF
+   ;MATCH
+   PIPE-R @ close-rc 0= ASSERT
+   landed ASSERT
+   AWAIT-CODE MODEL:E-CANCELLED = ASSERT
+   SENDS-SINCE 1 = ASSERT
+   ROWS-SINCE 2 = ASSERT
+   s" outcome" ROW s" cancelled" STR-IS
+   M MODEL:RESEND-DUE 0= ASSERT
+   s" " M MODEL:LOG-NOTE!
+   0 M MODEL:RESEND-WAIT! ;
+
+
+\ Starts M's chat, serves it until it rests, then waits for STOP-GO and
+\ AWAITs it.
+: REST-AWAIT-WORK ( -- )
+   PURPOSE s" valid" PREP M MODEL:START
+   SERVE-TO-REST
+   STOP-READY TASK:SIGNAL-SEM
+   STOP-GO TASK:WAIT-SEM
+   M MODEL:AWAIT
+   0 TASK:RETURN ;
+
+
+\ CANCELs and AWAITs M on the task that started it; returns AWAIT's fault.
+: CANCEL-AWAIT-WORK ( -- )
+   M MODEL:CANCEL drop
+   AWAIT-CODE TASK:RETURN ;
+
+
+\ A halt of a resting call's starter, pending as it AWAITs the due rest, is
+\ served before the resend begins: nothing is looked up or sent and the call
+\ stays resting, until its starter CANCELs and AWAITs it E-CANCELLED.
+: HALT-AT-DUE ( -- )
+   TEST-RECORDER
+   0 [: KEEP-GET ;] [: CAPTURE-PUT ;] M MODEL:JOURNAL!
+   1 M MODEL:RESEND-WAIT!
+   0 STOP-READY TASK:SEMAPHORE-INIT
+   0 STOP-GO TASK:SEMAPHORE-INIT
+   RESEND-MARK
+   s" http-busy" MODEL-PEER:FAIL-NEXT
+   ['] REST-AWAIT-WORK WORK-TASK TASK:ACTIVATE
+   STOP-READY TASK:WAIT-SEM
+   M MODEL:RESEND-DUE {: due:n :}
+   due 0<> ASSERT
+   0 GOT-U !
+   begin mono-ns due < while 1 >MS TASK:SLEEP repeat
+   WORK-TASK TASK:HALT
+   STOP-GO TASK:SIGNAL-SEM
+   WORK-TASK TASK:JOIN MATCH result
+      ok OF drop FAIL ENDOF
+      err OF drop ENDOF
+   ;MATCH
+   M MODEL:RESEND-DUE due = ASSERT
+   GOT-U @ 0= ASSERT
+   SENDS-SINCE 1 = ASSERT
+   ROWS-SINCE 1 = ASSERT
+   ['] CANCEL-AWAIT-WORK WORK-TASK TASK:ACTIVATE
+   WORK-TASK TASK:JOIN MATCH result
+      ok OF MODEL:E-CANCELLED = ASSERT ENDOF
+      err OF drop FAIL ENDOF
+   ;MATCH
+   SENDS-SINCE 1 = ASSERT
+   ROWS-SINCE 2 = ASSERT
+   s" outcome" ROW s" cancelled" STR-IS
+   0 M MODEL:RESEND-WAIT!
+   STOP-READY TASK:SEMAPHORE-DESTROY
+   STOP-GO TASK:SEMAPHORE-DESTROY ;
+
+
+\ A CANCEL of a resting call answers true and SERVE lands it E-CANCELLED; a
+\ second CANCEL then answers true too, and records nothing more.
+: CANCELLED-TWICE ( -- )
+   TEST-RECORDER
+   60000 M MODEL:RESEND-WAIT!
+   RESEND-MARK
+   s" http-busy" MODEL-PEER:FAIL-NEXT
+   PURPOSE s" valid" PREP M MODEL:START
+   SERVE-TO-REST
+   M MODEL:CANCEL ASSERT
+   M MODEL:SERVE ASSERT
+   M MODEL:CANCEL ASSERT
+   AWAIT-CODE MODEL:E-CANCELLED = ASSERT
+   SENDS-SINCE 1 = ASSERT
+   ROWS-SINCE 2 = ASSERT
+   s" outcome" ROW s" cancelled" STR-IS
+   0 M MODEL:RESEND-WAIT! ;
+
+
+: UNAVAILABLE-GET ( n ptr u8 n ptr n -- bool )
+   2drop 2drop SECRET:E-UNAVAILABLE throw ;
+
+
+\ With RESEND-WAIT! on, a journal lookup that throws SECRET:E-UNAVAILABLE
+\ sends nothing, does not rest and writes no line: AWAIT throws the fault.
+: LOOKUP-FAULT ( -- )
+   0 [: UNAVAILABLE-GET ;] [: CAPTURE-PUT ;] M MODEL:JOURNAL!
+   60000 M MODEL:RESEND-WAIT!
+   NOTE$ M MODEL:LOG-NOTE!
+   LINES {: before:n :}
+   RESEND-MARK
+   PURPOSE s" valid" PREP M MODEL:START
+   M MODEL:RESEND-DUE 0= ASSERT
+   M MODEL:SERVE ASSERT
+   AWAIT-CODE SECRET:E-UNAVAILABLE = ASSERT
+   SENDS-SINCE 0= ASSERT
+   LINES before = ASSERT
+   0 M MODEL:RESEND-WAIT!
+   s" " M MODEL:LOG-NOTE!
+   0 [: CAPTURE-GET ;] [: CAPTURE-PUT ;] M MODEL:JOURNAL! ;
+
+
+: UNAVAILABLE-PUT ( n ptr u8 n ptr u8 n -- )
+   2drop 2drop drop SECRET:E-UNAVAILABLE throw ;
+
+
+\ With RESEND-WAIT! on, a served send whose journal put throws
+\ SECRET:E-UNAVAILABLE does not rest and is not sent again: AWAIT throws the
+\ put's fault.
+: PUT-FAULT ( -- )
+   0 [: CAPTURE-GET ;] [: UNAVAILABLE-PUT ;] M MODEL:JOURNAL!
+   60000 M MODEL:RESEND-WAIT!
+   RESEND-MARK
+   PURPOSE s" valid" PREP M MODEL:START
+   SERVE-SETTLED ASSERT
+   M MODEL:RESEND-DUE 0= ASSERT
+   AWAIT-CODE SECRET:E-UNAVAILABLE = ASSERT
+   SENDS-SINCE 1 = ASSERT
+   0 M MODEL:RESEND-WAIT!
+   0 [: CAPTURE-GET ;] [: CAPTURE-PUT ;] M MODEL:JOURNAL! ;
+
+
+variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
+\ A journal getter that CANCELs M, started with nothing sent, and misses.
+: CANCEL-GET ( n ptr u8 n ptr n -- bool )
+   2drop 2drop M MODEL:CANCEL GET-CANCELLED ! false ;
+
+
+\ A CANCEL before a send's failure lands keeps the failure's one line: the
+\ journal lookup CANCELs the call, then its key read finds no key. AWAIT
+\ throws E-CANCELLED, and the line names the note, the code and the key.
+: CUT-KEY ( -- )
+   0 [: CANCEL-GET ;] [: CAPTURE-PUT ;] M MODEL:JOURNAL!
+   SERVICE$ s" missing" M MODEL:API-KEY!
+   NOTE$ M MODEL:LOG-NOTE!
+   s" error" CHAT-LINE NOTE$ SB-APPEND
+   s" : MODEL:E-KEY key service " SB-APPEND SERVICE$ SB-APPEND
+   s" , account missing: not found" SB-APPEND
+   SB-COUNT LINES {: same:n before:n :}
+   false GET-CANCELLED !
+   RESEND-MARK
+   PURPOSE s" valid" PREP CHAT-CODE MODEL:E-CANCELLED = ASSERT
+   GET-CANCELLED @ 0<> ASSERT
+   SENDS-SINCE 0= ASSERT
+   same before ONE-LINE
+   s" " M MODEL:LOG-NOTE!
+   FIXTURE-KEY
+   0 [: CAPTURE-GET ;] [: CAPTURE-PUT ;] M MODEL:JOURNAL! ;
+
+
+\ A key the store reads and the provider refuses (401) is E-KEY, and its one
+\ line names the key's service and account and that the provider refused it.
+: PROVIDER-KEY ( -- )
+   SERVICE$ ACCOUNT$ M MODEL:API-KEY!
+   s" refused-key" STORE
+   NOTE$ M MODEL:LOG-NOTE!
+   s" error" CHAT-LINE NOTE$ SB-APPEND
+   s" : MODEL:E-KEY key service " SB-APPEND SERVICE$ SB-APPEND
+   s" , account " SB-APPEND ACCOUNT$ SB-APPEND
+   s" : refused by the provider status 401" SB-APPEND
+   SB-COUNT LINES {: same:n before:n :}
+   PURPOSE s" valid" MODEL:E-KEY FAILS
+   M MODEL:HTTP-STATUS 401 = ASSERT
+   same before ONE-LINE
+   s" " M MODEL:LOG-NOTE!
+   KEY$ STORE
+   FIXTURE-KEY ;
+
+
+\ Starts M's chat with a 60 s RESEND-WAIT!. It rests on its first send, with
+\ `sends` requests since RESEND-MARK and one line, SB's text then the wait;
+\ a CANCEL then lands it E-CANCELLED with no more lines.
+: RESTS-ON ( n -- )
+   {: sends:n :}
+   s" ; sent again in 60 s" SB-APPEND
+   SB-COUNT LINES {: same:n before:n :}
+   RESEND-MARK
+   PURPOSE s" valid" PREP M MODEL:START
+   SERVE-SETTLED 0= ASSERT
+   M MODEL:RESEND-DUE 0<> ASSERT
+   SENDS-SINCE sends = ASSERT
+   same before ONE-LINE
+   M MODEL:CANCEL ASSERT
+   M MODEL:SERVE ASSERT
+   AWAIT-CODE MODEL:E-CANCELLED = ASSERT
+   same before ONE-LINE ;
+
+
+\ Starts M's chat of the text with a 60 s RESEND-WAIT!. Its one send lands
+\ with the code and does not rest; its one line passes the counter's test
+\ against SB.
+: SETTLES-ON ( ptr u8 n n [ -- n ] -- )
+   {: a:ptr u:n code:n counted :}
+   TIME:MONO-NS CHAT-NS !
+   counted execute LINES {: same:n before:n :}
+   RESEND-MARK
+   PURPOSE a u PREP M MODEL:START
+   SERVE-SETTLED ASSERT
+   M MODEL:RESEND-DUE 0= ASSERT
+   AWAIT-CODE code = ASSERT
+   SENDS-SINCE 1 = ASSERT
+   counted execute same before 1 NEW-LINES ;
+
+
+\ NOTED, then the fixture key's service and ", account ": a key fault's line
+\ up to the account.
+: KEY-NOTED ( ptr u8 n ptr u8 n -- )
+   NOTED KEY-SERVICE$ SB-APPEND s" , account " SB-APPEND ;
+
+
+\ With RESEND-WAIT! on, a send that fails for want of the transport, the key
+\ (missing, or refused by the provider), the model (404) or the key's store
+\ rests, its one line a rest line; one that fails in its work (a refusal, a
+\ bad request, an incomplete answer) lands with its one failure line.
+: WHAT-RESTS ( -- )
+   60000 M MODEL:RESEND-WAIT!
+   NOTE$ M MODEL:LOG-NOTE!
+   s" early-drop" MODEL-PEER:FAIL-NEXT
+   s" warn" s" MODEL:E-TRANSPORT curl 18: " NOTED
+   18 CURL:>CODE CURL:ERROR$ SB-APPEND
+   s" ; events keepalive=1; no output" SB-APPEND
+   1 RESTS-ON
+   s" http-text" MODEL-PEER:FAIL-NEXT
+   s" error" s" MODEL:E-CONFIG status 404: model not found" NOTED
+   1 RESTS-ON
+   s" forbidden" MODEL-PEER:FAIL-NEXT
+   s" error" s" MODEL:E-KEY key service " KEY-NOTED
+   KEY-ACCOUNT$ SB-APPEND s" : refused by the provider status 403" SB-APPEND
+   1 RESTS-ON
+   KEY-SERVICE$ s" missing" M MODEL:API-KEY!
+   s" error" s" MODEL:E-KEY key service " KEY-NOTED
+   s" missing: not found" SB-APPEND
+   0 RESTS-ON
+   FIXTURE-KEY
+   SECRET:E-UNAVAILABLE READ-FAULT!
+   s" warn" s" SECRET:E-UNAVAILABLE key service " KEY-NOTED
+   KEY-ACCOUNT$ SB-APPEND s" : store unavailable" SB-APPEND
+   0 RESTS-ON
+   0 READ-FAULT!
+   s" error" s" MODEL:E-REFUSED status 200 body: " ID-NOTED
+   MODEL-PEER:REFUSAL$ SB-APPEND s" response.completed" STREAM-TAIL
+   s" refusal" MODEL:E-REFUSED [: MS-COUNT ;] SETTLES-ON
+   s" error" s" MODEL:E-HTTP status 400: bad request" NOTED
+   s" http-bad" MODEL:E-HTTP [: SB-COUNT ;] SETTLES-ON
+   s" warn" s" MODEL:E-INCOMPLETE incomplete max_output_tokens" ID-NOTED
+   s" response.incomplete" STREAM-TAIL
+   s" length" MODEL:E-INCOMPLETE [: MS-COUNT ;] SETTLES-ON
+   0 M MODEL:RESEND-WAIT!
+   s" " M MODEL:LOG-NOTE! ;
+
+
+\ With RESEND-WAIT! on, a 503 send whose recorder fails does not rest: AWAIT
+\ throws the send's fault, RECORD-FAULT keeps the recorder's, and the one
+\ line is the send's failure line.
+: UNRECORDED-REST ( -- )
+   TEST-RECORDER
+   60000 M MODEL:RESEND-WAIT!
+   NOTE$ M MODEL:LOG-NOTE!
+   s" error" s" MODEL:E-UNAVAILABLE status 503: overloaded" NOTED
+   SB-COUNT LINES {: same:n before:n :}
+   true ROW-FAIL !
+   RESEND-MARK
+   s" http-busy" MODEL-PEER:FAIL-NEXT
+   PURPOSE s" valid" PREP M MODEL:START
+   SERVE-SETTLED ASSERT
+   M MODEL:RESEND-DUE 0= ASSERT
+   AWAIT-CODE MODEL:E-UNAVAILABLE = ASSERT
+   false ROW-FAIL !
+   M MODEL:RECORD-FAULT E-RECORDER = ASSERT
+   SENDS-SINCE 1 = ASSERT
+   same before ONE-LINE
+   0 M MODEL:RESEND-WAIT!
+   s" " M MODEL:LOG-NOTE! ;
+
+
+\ A recorder that records the row, then has the peer answer the next send
+\ 503 after the first row since RESEND-MARK.
+: BUSY-ROW ( n ptr u8 n -- n )
+   TEST-RECORD
+   ROWS-SINCE 1 = if s" http-busy" MODEL-PEER:FAIL-NEXT then ;
+
+
+\ With RESEND-WAIT! a resend the provider answers 503 again rests again:
+\ each failed send writes its one rest line and no failure line, and the
+\ third send is served.
+: RESTS-AGAIN ( -- )
+   0 [: BUSY-ROW ;] [: TEST-REJECT ;] M MODEL:RECORDER!
+   1 M MODEL:RESEND-WAIT!
+   NOTE$ M MODEL:LOG-NOTE!
+   s" warn" s" MODEL:E-UNAVAILABLE status 503: overloaded; sent again in 1 s"
+   NOTED
+   SB-COUNT LINES {: same:n before:n :}
+   RESEND-MARK
+   s" http-busy" MODEL-PEER:FAIL-NEXT
+   PURPOSE s" valid" PREP M MODEL:START
+   AWAIT-CODE 0= ASSERT
+   M MODEL:CONTENT$ TRUE-CONTENT$ STR= ASSERT
+   SENDS-SINCE 3 = ASSERT
+   ROWS-SINCE 3 = ASSERT
+   s" outcome" ROW s" ok" STR-IS
+   SB-COUNT same before 2 NEW-LINES
+   TEST-RECORDER
+   0 M MODEL:RESEND-WAIT!
+   s" " M MODEL:LOG-NOTE! ;
+
+
+\ Stops M from another task WAKE-MS after it starts.
+: STOP-WORK-LATER ( -- )
+   WAKE-MS @ >MS TASK:SLEEP
+   mono-ns ACTED-NS !
+   M MODEL:REQUEST-STOP
+   0 TASK:RETURN ;
+
+
+\ Opens M again, as the stop stays with the call, and starts its chat, which
+\ rests on a 503; the work task REQUEST-STOPs it after ms. Answers SB-COUNT
+\ and LINES from before the start and whether the AWAIT's park took the
+\ stop's wake.
+: STOPPED-REST ( n -- n n bool )
+   WAKE-MS !
+   M MODEL:CLOSE SETUP
+   TEST-RECORDER
+   60000 M MODEL:RESEND-WAIT!
+   NOTE$ M MODEL:LOG-NOTE!
+   SB-COUNT LINES
+   DRAIN-HINTS
+   RESEND-MARK
+   s" http-busy" MODEL-PEER:FAIL-NEXT
+   PURPOSE s" valid" PREP M MODEL:START
+   SERVE-TO-REST
+   ['] STOP-WORK-LATER WORK-TASK TASK:ACTIVATE
+   [: 0= ;] AWAIT-WOKEN ;
+
+
+\ A REQUEST-STOP from another task during a rest wakes the AWAIT parked on
+\ it, which lands the call E-CANCELLED at once with one cancelled record;
+\ the send's rest line, naming the note, is the call's one line. A stop
+\ before the park leaves its wake pending on the starter, so the case stops
+\ later until the park takes the wake.
+: STOP-REST ( -- )
+   s" warn" s" MODEL:E-UNAVAILABLE status 503: overloaded; sent again in 60 s"
+   NOTED
+   [: STOPPED-REST ;] WAKE-TRIES {: same:n before:n :}
+   SENDS-SINCE 1 = ASSERT
+   ROWS-SINCE 2 = ASSERT
+   s" outcome" ROW s" cancelled" STR-IS
+   same before ONE-LINE ;
+
+
+\ With TIER-RESEND! on, a CANCEL of a send that landed E-TIER at the flex
+\ tier, before the tier machine senses it, answers true and keeps it from
+\ being sent again: AWAIT throws E-CANCELLED, the tier_unavailable row
+\ followed by a cancelled one, and the send's line, naming the note, is
+\ written once.
+: LANDED-TIER-CANCEL ( -- )
+   true M MODEL:TIER-RESEND!
+   s" flex" M MODEL:SERVICE-TIER!
+   NOTE$ M MODEL:LOG-NOTE!
+   s" error" s" MODEL:E-TIER status 200: Flex processing is temporarily unavailable. Please try again later or use standard processing. body: "
+   ID-NOTED MODEL-PEER:FLEX-OUT$ SB-APPEND
+   s" ; events response.created=1 response.in_progress=1 error=1; no output" SB-APPEND
+   SB-COUNT LINES {: same:n before:n :}
+   RESEND-MARK
+   PURPOSE s" flex-then" PREP CANCELLED-LANDING MODEL:E-CANCELLED = ASSERT
+   LANDED-CANCELLED @ 0<> ASSERT
+   SENDS-SINCE 1 = ASSERT
+   ROWS-SINCE 2 = ASSERT
+   s" outcome" ROW s" cancelled" STR-IS
+   same before ONE-LINE
+   s" " M MODEL:LOG-NOTE!
+   false M MODEL:TIER-RESEND! ;
+
+
+\ With TIER-RESEND! and RESEND-WAIT! on, a send that ends E-TIER at the flex
+\ tier is sent again at the standard tier; when that send fails 503 the call
+\ rests, with one rest line, and is sent again at the standard tier, naming
+\ none, and served.
+: TIER-REST ( -- )
+   true M MODEL:TIER-RESEND!
+   s" flex" M MODEL:SERVICE-TIER!
+   1 M MODEL:RESEND-WAIT!
+   NOTE$ M MODEL:LOG-NOTE!
+   0 [: BUSY-ROW ;] [: TEST-REJECT ;] M MODEL:RECORDER!
+   s" warn" s" MODEL:E-UNAVAILABLE status 503: overloaded; sent again in 1 s"
+   NOTED
+   SB-COUNT LINES {: same:n before:n :}
+   RESEND-MARK
+   PURPOSE s" flex-then" PREP M MODEL:START
+   AWAIT-CODE 0= ASSERT
+   M MODEL:CONTENT$ TRUE-CONTENT$ STR= ASSERT
+   SENDS-SINCE 3 = ASSERT
+   ROWS-SINCE 3 = ASSERT
+   s" outcome" ROW s" ok" STR-IS
+   s" requested_tier" ROW NULL-IS
+   NO-TIER
+   LINES before 2 + = ASSERT
+   SB-COUNT same 1+ = ASSERT
+   TEST-RECORDER
+   0 M MODEL:RESEND-WAIT!
+   s" " M MODEL:LOG-NOTE!
+   false M MODEL:TIER-RESEND! ;
+
+
+\ With RESEND-WAIT! on, a send at the flex tier that fails 503 rests and is
+\ sent again at the flex tier, its record naming it, and served.
+: REST-TIER ( -- )
+   TEST-RECORDER
+   s" flex" M MODEL:SERVICE-TIER!
+   1 M MODEL:RESEND-WAIT!
+   RESEND-MARK
+   s" http-busy" MODEL-PEER:FAIL-NEXT
+   PURPOSE s" valid" PREP M MODEL:START
+   AWAIT-CODE 0= ASSERT
+   M MODEL:CONTENT$ TRUE-CONTENT$ STR= ASSERT
+   SENDS-SINCE 2 = ASSERT
+   ROWS-SINCE 2 = ASSERT
+   s" outcome" ROW s" ok" STR-IS
+   s" requested_tier" ROW s" flex" STR-IS
+   s" service_tier" SENT s" flex" STR-IS
+   0 M MODEL:RESEND-WAIT! ;
+
+
+\ A recorder that records the row, then, at the first row since RESEND-MARK,
+\ signals STOP-READY and waits for STOP-GO in the kernel, where a halt is not
+\ served: the starter's halt is pending as ACCOUNT returns.
+: HALT-ROW ( n ptr u8 n -- n )
+   TEST-RECORD
+   ROWS-SINCE 1 = if STOP-READY TASK:SIGNAL-SEM STOP-GO TASK:WAIT-SEM then ;
+
+
+\ With TIER-RESEND! on, a halt of the starter pending once a send that landed
+\ E-TIER at the flex tier is recorded keeps it from being sent again at the
+\ standard tier: the starter unwinds, the call landed E-TIER, so a CANCEL
+\ then answers false and AWAIT throws E-TIER.
+: TIER-HALT ( -- )
+   true M MODEL:TIER-RESEND!
+   s" flex" M MODEL:SERVICE-TIER!
+   0 [: HALT-ROW ;] [: TEST-REJECT ;] M MODEL:RECORDER!
+   0 STOP-READY TASK:SEMAPHORE-INIT
+   0 STOP-GO TASK:SEMAPHORE-INIT
+   RESEND-MARK
+   PURPOSE s" flex-then" PREP
+   ['] CHAT-WORK WORK-TASK TASK:ACTIVATE
+   STOP-READY TASK:WAIT-SEM
+   WORK-TASK TASK:HALT
+   STOP-GO TASK:SIGNAL-SEM
+   WORK-TASK TASK:JOIN MATCH result
+      ok OF drop FAIL ENDOF
+      err OF drop ENDOF
+   ;MATCH
+   SENDS-SINCE 1 = ASSERT
+   ROWS-SINCE 1 = ASSERT
+   M MODEL:CANCEL 0= ASSERT
+   AWAIT-CODE MODEL:E-TIER = ASSERT
+   TEST-RECORDER
+   STOP-READY TASK:SEMAPHORE-DESTROY
+   STOP-GO TASK:SEMAPHORE-DESTROY
+   false M MODEL:TIER-RESEND! ;
+
+
+: TIER-PUT ( n ptr u8 n ptr u8 n -- )
+   2drop 2drop drop MODEL:E-TIER throw ;
+
+
+\ With TIER-RESEND! on and the flex tier named, a served send whose journal
+\ put throws MODEL:E-TIER lands with that fault and is not sent again at the
+\ standard tier.
+: TIER-PUT-FAULT ( -- )
+   true M MODEL:TIER-RESEND!
+   s" flex" M MODEL:SERVICE-TIER!
+   0 [: CAPTURE-GET ;] [: TIER-PUT ;] M MODEL:JOURNAL!
+   RESEND-MARK
+   PURPOSE s" valid" PREP M MODEL:START
+   SERVE-SETTLED ASSERT
+   AWAIT-CODE MODEL:E-TIER = ASSERT
+   SENDS-SINCE 1 = ASSERT
+   0 [: CAPTURE-GET ;] [: CAPTURE-PUT ;] M MODEL:JOURNAL!
+   false M MODEL:TIER-RESEND! ;
 
 
 \ The user message of the part "valid" as a chat request writes it.
@@ -3182,7 +4129,7 @@ variable COUNTED-U
 \ The recorder stays until OPEN, so the call is opened again for the cases after.
 : COUNT-JOURNAL ( -- )
    CAPTURE
-   0 [: TEST-RECORD ;] [: TEST-REJECT ;] M MODEL:RECORDER!
+   TEST-RECORDER
    0 ROWS-MADE ! false ROW-FAIL !
    PURPOSE s" valid" PREP
    M MODEL:COUNT-INPUT {: tokens:n :}
@@ -3327,7 +4274,7 @@ variable COUNTED-U
 \ is opened again for the cases after.
 : COMPACT-JOURNAL ( -- )
    CAPTURE
-   0 [: TEST-RECORD ;] [: TEST-REJECT ;] M MODEL:RECORDER!
+   TEST-RECORDER
    0 ROWS-MADE ! false ROW-FAIL !
    s" high" M MODEL:EFFORT!
    PURPOSE s" valid" PREP CALLED$ ITEM
@@ -3441,7 +4388,7 @@ variable COUNTED-U
 \ so the call is opened again for the cases after.
 : COMPACT-REPLY ( -- )
    CAPTURE
-   0 [: TEST-RECORD ;] [: TEST-REJECT ;] M MODEL:RECORDER!
+   TEST-RECORDER
    0 ROWS-MADE ! false ROW-FAIL !
    s" auto" M MODEL:SERVICE-TIER!
    PURPOSE s" bad-compact" PREP
@@ -3480,9 +4427,15 @@ variable COUNTED-U
 
 \ Producer configurations name the effective base. An empty base restores
 \ OpenAI's: the journal input names its chat route and the hit returns content
-\ with no provider call.
+\ with no provider call. The record it returns is a live call's to the peer,
+\ captured first.
 : OPENAI-BASE ( -- )
    MODEL-PEER:BASE-URL$ BASE-IS
+   s" valid" JOURNAL-TEXT 5 SPAN:MAKE SPAN:COPY
+   JOURNAL-TEXT 5 + JOURNAL-U 5 - XS
+   CAPTURE
+   JOURNAL-TEXT JOURNAL-U PREP
+   M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
    s" " M MODEL:BASE-URL!
    s" https://api.openai.com/v1" BASE-IS
    0 [: OPENAI-GET ;] [: JOURNAL-PUT ;] M MODEL:JOURNAL!
@@ -3631,15 +4584,18 @@ variable COUNTED-U
    M MODEL:CLOSE
    SETUP
    CHAT EMBEDDINGS PREPARED-CHAT
-   [: STARTED-CALLS HELD-START LANDED-START ;] QUIET FAILED-START
-   FAILED-RESENT
+   [: STARTED-CALLS HELD-START ;] QUIET LANDED-START FAILED-START
+   FAILED-RESENT NOTED-FAILURE
    SERVED-CALL STARTER-ONLY SETUP HALTED-STARTER
    SETUP HELD-SERVE MANY-CALLS SPOILED-SERVE
    STOP-ACTIVE
    M MODEL:CLOSE
    SETUP PUT-HALT SETUP RECORD-HALT SETUP PENDING-HALT
    SETUP RECORDED-CALLS REPLAYED-CALLS REFUSAL-PUT-FAULT CALLER-JOURNAL
-   RECORDED-RESEND
+   RECORDED-RESEND RESTS LANDED-CANCEL KEY-RESTS
+   CUT-REST HALT-AT-DUE CANCELLED-TWICE
+   LOOKUP-FAULT PUT-FAULT CUT-KEY PROVIDER-KEY
+   WHAT-RESTS UNRECORDED-REST RESTS-AGAIN STOP-REST
    M MODEL:CLOSE
    SETUP ITEM-TURNS ITEM-ORDER ITEMS-ONLY ITEM-REFUSALS PINNED
    M MODEL:CLOSE
@@ -3651,7 +4607,7 @@ variable COUNTED-U
    M MODEL:CLOSE
    SETUP EFFORTS CACHE-KEYS MAX-OUTPUTS MAX-OUTPUT-KINDS
    M MODEL:CLOSE
-   SETUP TIERS
+   SETUP TIERS LANDED-TIER-CANCEL TIER-REST REST-TIER TIER-HALT TIER-PUT-FAULT
    M MODEL:CLOSE
    SETUP OPENAI-BASE
    M MODEL:CLOSE

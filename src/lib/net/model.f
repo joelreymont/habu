@@ -6,8 +6,8 @@
 \ generating, and COMPACT replaces its input with the provider's compacted
 \ window. The client's API key is read from the native credential store
 \ through SECRET, with a caller's journal and recorder and bounded inputs.
-\ Each failure the provider or the transport caused is logged through LOG
-\ (tag `model`), never the request body.
+\ Each failure the provider, the transport or the key's store caused is logged
+\ through LOG (tag `model`) with the caller's LOG-NOTE!, never the request body.
 \ Test: src/lib/net/model-test.f.
 \ STORAGE CLASS. CALLER-OWNED: each call and settings record, and the arena
 \ OPEN allocates for a call until CLOSE; the module keeps no state.
@@ -48,12 +48,22 @@ require src/lib/time.f
 \ force, so the first try's when none changed. A chat that succeeds uses its
 \ request up. A task drives many calls by STARTing each,
 \ SERVEing each until it answers true, then AWAITing it. It TASK:WAITs only
-\ straight after a round in which every SERVE answered false: landing a call
+\ straight after a round in which every SERVE answered false, and parks no
+\ longer than the earliest RESEND-DUE of its resting calls: landing a call
 \ runs its journal and recorder, and a wait there takes the CURL loop's hint
-\ for another call. With TIER-RESEND!, a call that ends E-TIER is sent again
-\ inside SERVE or AWAIT, and SERVE keeps answering false. SERVE and AWAIT of
-\ a started call run on the task that started it; a halt while AWAIT waits
-\ lands the call first.
+\ for another call. With TIER-RESEND!, a call whose send fails E-TIER is sent
+\ again inside SERVE or AWAIT, and SERVE keeps answering false. With
+\ RESEND-WAIT!, a send that fails in RESENDS?'s class once its request left,
+\ or in its key read at dispatch, has its line written, a dispatched one
+\ recorded, and the call rests, started, for the wait; SERVE answers false
+\ until RESEND-DUE, then it or AWAIT sends the same request again: body,
+\ journal input, purpose, model, tier as last sent and cache key. A CANCEL
+\ or REQUEST-STOP during the rest wakes the starter, and the call lands
+\ E-CANCELLED with a cancelled record when its request was dispatched. SERVE
+\ and AWAIT of a started call run on the task that started it; a halt while
+\ AWAIT waits on a transfer lands the call first; one served during a rest
+\ leaves it resting, and one served where a send that ended E-TIER is to
+\ be sent again lands the call with that send's outcome.
 \ A task that may be halted CANCELs, then AWAITs, each call still started in a
 \ finally, catching each AWAIT's fault.
 
@@ -188,6 +198,7 @@ STRUCTURE call DERIVE addr
    FIELD journal-put [ n ptr u8 n ptr u8 n -- ]
    FIELD journal-ready bool
    FIELD tier-resend bool
+   FIELD resend-wait n
    FIELD replay-kind option<call-kind>
    FIELD starter n
 ;STRUCTURE
@@ -246,14 +257,48 @@ CAST: >STREAM ( ptr u8 -- ptr stream )
 \ The land machine's steps: settling ends the call's transfer and lands it;
 \ recording runs the recorder; serving and refusing run it, then the put.
 ENUM land-step settling recording serving refusing landed ;ENUM
-\ The tier machine's states: preferred sends the call's tier; standard sends
-\ none, after a send that ended E-TIER; done sends no more.
-ENUM tier-step preferred standard done ;ENUM
-ENUM tier-event settled tier-out ;ENUM
+\ How a run ended: cut by a CANCEL, alone or after an unsent or a sent
+\ send's failure; or replayed, replay-failed, served, unsent, refused or
+\ failed.
+ENUM ending
+   cut cut-unsent cut-failed
+   replayed replay-failed served unsent refused failed
+;ENUM
+\ The tier machine's states: preferred sends the call's tier; resuming begins
+\ the call again after a send that ended E-TIER; standard sends none; done
+\ sends no more. A landed send is settled, to be sent again (tier-out), or
+\ halted, a halt of its starter served there.
+ENUM tier-step preferred resuming standard done ;ENUM
+ENUM tier-event settled tier-out halted ;ENUM
+\ The resend machine's states: sending, a send is out or has landed; begun, a
+\ rest just begun, sensed once more in the step that began it; resting, a
+\ send RESENDS? accepts waits RESEND-WAIT!'s time out; resuming, a due rest's
+\ resend begins; done sends no more.
+\ A landed send is settled, outside the work or stopped; a rest is early, due
+\ or stopped. A landed call's next send is begun, refused by a stop or CANCEL,
+\ or faulted.
+ENUM resend-step sending begun resting resuming done ;ENUM
+ENUM sent-event settled outside stopped ;ENUM
+ENUM rest-event early due stopped ;ENUM
+ENUM begin-event begun refused faulted ;ENUM
+\ How the send's key failed: none when it did not; the item missing, empty
+\ or not printable (E-KEY); the store's access denied (SECRET:E-ACCESS), the
+\ store not answering for now (SECRET:E-UNAVAILABLE), or no store set up or
+\ the service or account invalid (SECRET:E-CONFIG); or the provider refused
+\ the key it was sent (E-KEY).
+ENUM key-fault
+   none missing empty unprintable denied unavailable config refused
+;ENUM
 
 \ END-TRANSFER's status, code, spoiling fault and cut; outcome, the fault it
-\ throws; step, the land machine's next; tier, the tier machine's; outer, the
-\ LANDING ACCOUNT replaced.
+\ throws; step, the land machine's next; tier, the tier machine's; sent, the
+\ tier step the last send went out at; resend, the resend machine's state;
+\ due, the TIME:MONO-NS a resting call is sent again, 0 when it is not
+\ resting; report, the fault of a failed send whose line is still to be
+\ written, 0 when none; outer, the LANDING ACCOUNT replaced; key-read, how the
+\ send's key failed, in its read or at the provider; ending, the land
+\ machine's ending, none until the call lands and again once a resend's begin
+\ faults.
 STRUCTURE receipt DERIVE addr
    FIELD status CURL:http-status
    FIELD code n
@@ -263,7 +308,13 @@ STRUCTURE receipt DERIVE addr
    FIELD outcome n
    FIELD step land-step
    FIELD tier tier-step
+   FIELD sent tier-step
+   FIELD resend resend-step
+   FIELD due n
+   FIELD report n
    FIELD outer n
+   FIELD key-read key-fault
+   FIELD ending option<ending>
 ;STRUCTURE
 
 CAST: >RECEIPT ( ptr u8 -- ptr receipt )
@@ -318,7 +369,8 @@ CACHE-KEY-HDR-AT BUF:HDR-BYTES + constant RESPONSE-ID-HDR-AT
 RESPONSE-ID-HDR-AT BUF:HDR-BYTES + constant CHUNK-HDR-AT
 CHUNK-HDR-AT BUF:HDR-BYTES + constant EVENT-ROWS-HDR-AT
 EVENT-ROWS-HDR-AT BUF:HDR-BYTES + constant EVENT-TEXT-HDR-AT
-EVENT-TEXT-HDR-AT BUF:HDR-BYTES + constant COUNTS-AT
+EVENT-TEXT-HDR-AT BUF:HDR-BYTES + constant NOTE-HDR-AT
+NOTE-HDR-AT BUF:HDR-BYTES + constant COUNTS-AT
 COUNTS-AT TOKENS-BYTES + constant ACCOUNTS-AT
 ACCOUNTS-AT LEDGER-BYTES + constant EVENTS-AT
 EVENTS-AT STREAM-BYTES + constant DECODER-AT
@@ -380,7 +432,8 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    base RESPONSE-ID-HDR-AT + CELL-VIEW 64 BUF:N>BLEN BUF:INIT
    base CHUNK-HDR-AT + CELL-VIEW CHUNK-BYTES BUF:N>BLEN BUF:INIT
    base EVENT-ROWS-HDR-AT + CELL-VIEW EVENT-ROW-BYTES BUF:N>BLEN BUF:INIT
-   base EVENT-TEXT-HDR-AT + CELL-VIEW 64 BUF:N>BLEN BUF:INIT ;
+   base EVENT-TEXT-HDR-AT + CELL-VIEW 64 BUF:N>BLEN BUF:INIT
+   base NOTE-HDR-AT + CELL-VIEW 64 BUF:N>BLEN BUF:INIT ;
 
 : DISPOSE-BUFFERS ( ptr u8 -- )
    {: base:ptr :}
@@ -420,7 +473,8 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    base RESPONSE-ID-HDR-AT + CELL-VIEW BUF:DISPOSE
    base CHUNK-HDR-AT + CELL-VIEW BUF:DISPOSE
    base EVENT-ROWS-HDR-AT + CELL-VIEW BUF:DISPOSE
-   base EVENT-TEXT-HDR-AT + CELL-VIEW BUF:DISPOSE ;
+   base EVENT-TEXT-HDR-AT + CELL-VIEW BUF:DISPOSE
+   base NOTE-HDR-AT + CELL-VIEW BUF:DISPOSE ;
 
 : STORAGE ( ptr call -- SPAN:span<u8> )
    {: c :}
@@ -485,6 +539,8 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
 : RESPONSE-ID-BUF ( ptr call -- ptr n ) RESPONSE-ID-HDR-AT HEADER ;
 \ The bytes of the event stream's last read.
 : CHUNK-BUF ( ptr call -- ptr n ) CHUNK-HDR-AT HEADER ;
+\ The text LOG-NOTE! names the call's work with.
+: NOTE-BUF ( ptr call -- ptr n ) NOTE-HDR-AT HEADER ;
 \ A buffer's whole capacity. Writers that keep their own length write here.
 : HELD ( ptr n -- SPAN:span<u8> )
    {: buf:ptr :}
@@ -613,11 +669,13 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    c EFFORT-BUF BUFFER$ ;
 : CACHE-KEY$ ( ptr call -- ptr u8 n ) CACHE-KEY-BUF BUFFER$ ;
 : RESPONSE-ID$ ( ptr call -- ptr u8 n ) RESPONSE-ID-BUF BUFFER$ ;
-\ Whether the call's sends name its tier: not once its tier machine left
-\ preferred.
+: NOTE$ ( ptr call -- ptr u8 n ) NOTE-BUF BUFFER$ ;
+\ Whether the call's sends name its tier: not once its tier machine sends at
+\ the standard tier or is done.
 : TIER-NAMED? ( ptr call -- bool )
    RECEIPT RECEIPT-TIER @ MATCH tier-step
       preferred OF true ENDOF
+      resuming OF true ENDOF
       standard OF false ENDOF
       done OF false ENDOF
    ;MATCH ;
@@ -749,13 +807,15 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    u 0 <= if E-CONFIG throw then
    a u BUF:N>BLEN buf BUF:REPLACE ;
 
+\ Clears buf for a use of used bytes. One whose capacity is above the smallest
+\ doubling of the scratch base that holds them is shrunk to that doubling, the
+\ room a past use took given back; a shrink that throws leaves buf cleared.
 : RESET-SIZED ( ptr n n ptr call -- )
    {: buf:ptr used:n c :}
    c SCRATCH-BASE-CELL @
    begin dup used < while 2 * repeat {: target:n :}
    buf BUF:CAP@ BUF:BLEN>N target > if
-      buf BUF:DISPOSE
-      buf target BUF:N>BLEN BUF:INIT
+      buf BUF:CLEAR  buf target BUF:N>BLEN BUF:RESIZE
    else
       buf BUF:CLEAR
    then ;
@@ -801,6 +861,7 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    construct call-result none c MODEL-CALL:RESULT !
    false c MODEL-CALL:JOURNAL-READY !
    false c MODEL-CALL:TIER-RESEND !
+   0 c MODEL-CALL:RESEND-WAIT !
    construct tier-step preferred c RECEIPT RECEIPT-TIER !
    OPTION:NONE c MODEL-CALL:REPLAY-KIND !
    0 c PICK-CELL !
@@ -954,6 +1015,16 @@ public
    a u BUF:N>BLEN c PURPOSE-BUF BUF:REPLACE
    u c LEDGER LEDGER-PENDING-U ! ;
 
+\ Text naming the work the call does, as the caller names it, copied into the
+\ call and put into each of its failure lines; empty clears it. It changes no
+\ request, journal input, cache key or record. An idle or prepared call is
+\ required, else E-STATE; a negative length is E-CONFIG.
+: LOG-NOTE! ( ptr u8 n ptr call -- )
+   {: a:ptr u:n c :}
+   c REQUIRE-REST
+   u 0< if E-CONFIG throw then
+   a u BUF:N>BLEN c NOTE-BUF BUF:REPLACE ;
+
 : BASE-URL? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    u 0< if false exit then
@@ -1011,13 +1082,24 @@ public
    c UNPREPARE drop
    u 0= if c TIER-BUF BUF:CLEAR else a u c TIER-BUF REPLACE-SOME then ;
 
-\ Whether a call that ends E-TIER is sent again at once, once, with no service
-\ tier, so the provider serves its default: each send is recorded, the first
-\ tier_unavailable. A second E-TIER, a stopped call or a failed recorder ends it.
+\ Whether a call whose send fails E-TIER is sent again at once, once, with no
+\ service tier, so the provider serves its default: each send is recorded,
+\ the first tier_unavailable. A second E-TIER, a stopped call or a failed
+\ recorder ends it.
 : TIER-RESEND! ( bool ptr call -- )
    {: on:bool c :}
    c REQUIRE-REST
    on c MODEL-CALL:TIER-RESEND ! ;
+
+\ How many ms a send that ends in RESENDS?'s class rests before the same
+\ request is sent again, with no cap: each send is recorded and its line
+\ names the wait. A stop or CANCEL during the rest ends the call E-CANCELLED.
+\ 0, OPEN's, is off; below 0 is E-CONFIG.
+: RESEND-WAIT! ( n ptr call -- )
+   {: ms:n c :}
+   c REQUIRE-REST
+   ms 0< if E-CONFIG throw then
+   ms c MODEL-CALL:RESEND-WAIT ! ;
 
 \ The generation model, effort and service tier of every later call for the
 \ purpose, in place of the call's own; empty effort or tier sends none, even
@@ -1868,14 +1950,21 @@ private
    pu ku + c KEY-LINE-BUF ROOM {: line:SPAN:span<u8> :}
    prefix pu line SPAN:COPY ;
 
-: KEY-VALID? ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
-   u 0= if false exit then
+: KEY-FAULT! ( key-fault ptr call -- ) RECEIPT RECEIPT-KEY-READ ! ;
+
+\ Keeps how the key read failed and throws E-KEY.
+: KEY-REFUSE ( key-fault ptr call -- ) KEY-FAULT! E-KEY throw ;
+
+\ A key is one or more bytes from ! to ~.
+: KEY-CHECK ( ptr u8 n ptr call -- )
+   {: a:ptr u:n c :}
+   u 0= if construct key-fault empty c KEY-REFUSE then
    u 0 ?do
       a i + c@ {: b:n :}
-      b 33 < b 126 > or if false unloop exit then
-   loop
-   true ;
+      b 33 < b 126 > or if
+         construct key-fault unprintable c KEY-REFUSE
+      then
+   loop ;
 
 
 \ Reads the store's item into the header after its pu-byte prefix and returns
@@ -1886,9 +1975,18 @@ private
    c MODEL-CALL:KEY-SPLIT @ {: su:n :}
    spec su spec su + spec-u su - c KEY-LINE-BUF HELD pu SPAN:SKIP SECRET:READ
    {: ku:n found:bool :}
-   found 0= if E-KEY throw then
-   c KEY-LINE-BUF HELD pu SPAN:SKIP ku SPAN:TAKE SPAN:$ KEY-VALID? 0= if E-KEY throw then
+   found 0= if construct key-fault missing c KEY-REFUSE then
+   c KEY-LINE-BUF HELD pu SPAN:SKIP ku SPAN:TAKE SPAN:$ c KEY-CHECK
    c pu ku + ;
+
+
+\ How the store's refusal failed the key read; none for another fault.
+: STORE-FAULT ( n -- key-fault )
+   {: code:n :}
+   code SECRET:E-ACCESS = if construct key-fault denied exit then
+   code SECRET:E-UNAVAILABLE = if construct key-fault unavailable exit then
+   code SECRET:E-CONFIG = if construct key-fault config exit then
+   construct key-fault none ;
 
 
 \ An item larger than the header after its prefix grows the header and is
@@ -1901,7 +1999,10 @@ private
       c pu [: KEY-READ ;] catch {: fault:n :}
       fault 0= if nip exit then
       2drop
-      fault SECRET:E-CAPACITY <> if fault throw then
+      fault SECRET:E-CAPACITY <> if
+         fault E-KEY <> if fault STORE-FAULT c KEY-FAULT! then
+         fault throw
+      then
       c KEY-LINE-BUF BUF:CAP@ BUF:BLEN>N c KEY-ROOM
    again ;
 
@@ -1915,15 +2016,20 @@ private
 : KEY-HEADER-KEEP ( CURL:handle ptr call -- CURL:handle ptr call )
    2dup KEY-LINE CURL:HEADER+ over CHECK-STATUS ;
 
-: SET-HEADERS ( CURL:handle ptr call -- )
-   {: h:CURL:handle c :}
-   h s" Content-Type: application/json" CURL:HEADER+ c CHECK-STATUS
+\ Whether the call's request carries the API key: all but an Ollama embed.
+: KEYED? ( ptr call -- bool )
+   {: c :}
    c MODEL-CALL:KIND @ MATCH call-kind
       chat OF true ENDOF
       embed OF c MODEL-CALL:EMBEDDING-KIND @ OLLAMA <> ENDOF
       tally OF true ENDOF
       compaction OF true ENDOF
-   ;MATCH if
+   ;MATCH ;
+
+: SET-HEADERS ( CURL:handle ptr call -- )
+   {: h:CURL:handle c :}
+   h s" Content-Type: application/json" CURL:HEADER+ c CHECK-STATUS
+   c KEYED? if
       h c [: KEY-HEADER-KEEP ;] catch {: fault:n :} 2drop
       fault c WIPE-AFTER
    then ;
@@ -2081,6 +2187,17 @@ private
    E-HTTP ;
 
 
+\ Throws the fault of a refused reply's status; a key the provider refused
+\ keeps that it did.
+: STATUS-THROW ( CURL:http-status ptr call -- )
+   {: status:CURL:http-status c :}
+   status STATUS-FAULT {: fault:n :}
+   fault E-KEY = c KEYED? and if
+      construct key-fault refused c KEY-FAULT!
+   then
+   fault throw ;
+
+
 \ Keeps the transfer's status and reply; throws the fault of a cut or failed
 \ exchange or a refused reply.
 : RECEIPT-CHECK ( ptr call -- ptr call )
@@ -2097,7 +2214,7 @@ private
    status CURL:HTTP-STATUS>N 200 <> if
       c KEEP-ERROR
       c SIZE-REFUSAL? if E-CAPACITY throw then
-      status STATUS-FAULT throw
+      status c STATUS-THROW
    then
    c ;
 
@@ -2669,7 +2786,8 @@ private
 : BEGIN-RESET ( ptr call -- ptr call )
    {: c :}
    \ The reply buffers keep the room the last call's reply took. They are
-   \ resized before the call is started, so a failed resize leaves it as it was.
+   \ resized before the call is started, so a resize that throws leaves the
+   \ call unstarted and a later begin runs as normal.
    c CONTENT-BUF c MODEL-CALL:CONTENT-U @ c MODEL-CALL:INCOMPLETE-U @ max c RESET-SIZED
    c RESPONSE-BUF c MODEL-CALL:RESPONSE-U @ c RESET-SIZED
    c ERROR-BUF c RESET-SCRATCH
@@ -2704,10 +2822,15 @@ private
    ;MATCH
    c BEGIN-RESET ;
 
-\ Begins a landed call's next send, as BEGIN-LOCKED begins an idle call.
+\ Begins a landed call's next send, as BEGIN-LOCKED begins an idle call: a
+\ stop or a CANCEL since the send landed is E-CANCELLED, stored as the call's
+\ outcome under the gate, so a CANCEL once it is released finds it.
 : RESEND-LOCKED ( ptr call -- ptr call )
    {: c :}
-   c MODEL-CALL:STOPPED @ if E-CANCELLED throw then
+   c MODEL-CALL:STOPPED @ c MODEL-CALL:CANCELLED @ or if
+      E-CANCELLED c RECEIPT RECEIPT-OUTCOME !
+      E-CANCELLED throw
+   then
    c MODEL-CALL:STATE @ MATCH call-state
       idle OF E-STATE throw ENDOF
       prepared OF E-STATE throw ENDOF
@@ -2735,13 +2858,13 @@ private
    c MODEL-CALL:GATE @ TASK:SIGNAL-SEM
    stopped if E-CANCELLED throw then ;
 
-: END-CALL ( ptr call -- bool )
+\ Lands the call under its gate, storing no ending: the landing of a settle
+\ that threw (SETTLE-CAUGHT). A run that settles lands through END-RUN.
+: END-CALL ( ptr call -- )
    {: c :}
    c MODEL-CALL:GATE @ TASK:WAIT-SEM
-   c MODEL-CALL:CANCELLED @ {: cancelled:bool :}
    construct call-state landed c MODEL-CALL:STATE !
-   c MODEL-CALL:GATE @ TASK:SIGNAL-SEM
-   cancelled ;
+   c MODEL-CALL:GATE @ TASK:SIGNAL-SEM ;
 
 \ Keeps the reply's response id, which a failure's log line names.
 : KEEP-ID ( ptr call -- )
@@ -2774,6 +2897,10 @@ private
    code E-UNAVAILABLE = if s" MODEL:E-UNAVAILABLE" exit then
    code E-TIER = if s" MODEL:E-TIER" exit then
    code E-CANCELLED = if s" MODEL:E-CANCELLED" exit then
+   code SECRET:E-CONFIG = if s" SECRET:E-CONFIG" exit then
+   code SECRET:E-ACCESS = if s" SECRET:E-ACCESS" exit then
+   code SECRET:E-CAPACITY = if s" SECRET:E-CAPACITY" exit then
+   code SECRET:E-UNAVAILABLE = if s" SECRET:E-UNAVAILABLE" exit then
    code FMT:INT$ ;
 
 
@@ -3505,6 +3632,7 @@ ENUM poll none fed spoiled done ;ENUM
    0 l LEDGER-FAULT !
    0 l LEDGER-TRANSPORT !
    construct tier-step preferred c RECEIPT RECEIPT-TIER !
+   construct resend-step sending c RECEIPT RECEIPT-RESEND !
    l LEDGER-READY @ u 0= and if E-STATE throw then ;
 
 \ Keeps a dispatched request's fault and cut for its record.
@@ -3569,26 +3697,16 @@ ENUM poll none fed spoiled done ;ENUM
    c CHECK-EMBED
    c JOURNAL-EMBED-INPUT ;
 
-: CANCEL-LOCKED ( ptr call -- ptr call )
-   {: c :}
-   c MODEL-CALL:STATE @ MATCH call-state
-      idle OF false c MODEL-CALL:CANCELLED ! ENDOF
-      prepared OF false c MODEL-CALL:CANCELLED ! ENDOF
-      started OF
-         true c MODEL-CALL:CANCELLED !
-         c MODEL-CALL:TRANSPORT @ MATCH option
-            none OF ENDOF
-            some OF OPTION:NONE c MODEL-CALL:TRANSPORT ! CURL:CANCEL ENDOF
-         ;MATCH
-      ENDOF
-      landed OF false c MODEL-CALL:CANCELLED ! ENDOF
-   ;MATCH
-   c ;
-
-: STOP-LOCKED ( ptr call -- ptr call )
-   {: c :}
-   true c MODEL-CALL:STOPPED !
-   c CANCEL-LOCKED ;
+\ Whether the call's resend machine is sending: its send is out, or has
+\ landed and not yet been sensed.
+: SENDING? ( ptr call -- bool )
+   RECEIPT RECEIPT-RESEND @ MATCH resend-step
+      sending OF true ENDOF
+      begun OF false ENDOF
+      resting OF false ENDOF
+      resuming OF false ENDOF
+      done OF false ENDOF
+   ;MATCH ;
 
 public
 
@@ -3648,12 +3766,47 @@ private
    at c LEDGER LEDGER-STARTED-NS @ - NS-PER-MS / LOG:INT+ s"  ms" LOG:TEXT+ ;
 
 
-\ One line for a failed chat, embed, count or compaction call: its model and
-\ URL, response id once known, the code's name and cause, and a chat stream's
+\ The text LOG-NOTE! set, then a colon; nothing when none is set.
+: NOTE+ ( ptr call -- )
+   NOTE$ {: a:ptr u:n :}
+   u 0= if exit then
+   s"  " LOG:TEXT+ a u LOG:TEXT+ s" :" LOG:TEXT+ ;
+
+
+: KEY-REASON$ ( key-fault -- ptr u8 n )
+   MATCH key-fault
+      none OF s" " ENDOF
+      missing OF s" not found" ENDOF
+      empty OF s" empty" ENDOF
+      unprintable OF s" not printable" ENDOF
+      denied OF s" access denied" ENDOF
+      unavailable OF s" store unavailable" ENDOF
+      config OF s" store not set up, or service or account invalid" ENDOF
+      refused OF s" refused by the provider" ENDOF
+   ;MATCH ;
+
+: KEY-FAILED? ( ptr call -- bool )
+   RECEIPT RECEIPT-KEY-READ @ KEY-REASON$ nip 0<> ;
+
+
+\ The key's service and account and why it failed, in its read or at the
+\ provider; nothing when it did not.
+: KEY+ ( ptr call -- )
+   {: c :}
+   c KEY-FAILED? 0= if exit then
+   c KEY-SPEC$ {: spec:ptr spec-u:n :}
+   c MODEL-CALL:KEY-SPLIT @ {: su:n :}
+   s"  key service " LOG:TEXT+ spec su LOG:TEXT+
+   s" , account " LOG:TEXT+ spec su + spec-u su - LOG:TEXT+
+   s" : " LOG:TEXT+ c RECEIPT RECEIPT-KEY-READ @ KEY-REASON$ LOG:TEXT+ ;
+
+
+\ The text of a failed chat, embed, count or compaction call's line: its model
+\ and URL, response id once known, the caller's note, the code's name, a failed
+\ key's service, account and reason, the code's cause, and a chat stream's
 \ events.
-: REPORT ( n ptr call -- )
+: REPORT+ ( n ptr call -- )
    {: code:n c :}
-   code REFUSAL? if LOG:WARN else LOG:ERROR then s" model" LOG:LINE
    c MODEL-CALL:KIND @ MATCH call-kind
       chat OF s" chat " LOG:TEXT+ c GEN$ ENDOF
       embed OF s" embed " LOG:TEXT+ c EMBED-MODEL$ ENDOF
@@ -3662,13 +3815,33 @@ private
    ;MATCH LOG:TEXT+
    s"  " LOG:TEXT+ c REQUEST-URL$ LOG:TEXT+
    c RESPONSE-ID$ nip 0<> if s"  " LOG:TEXT+ c RESPONSE-ID$ LOG:TEXT+ then
+   c NOTE+
    s"  " LOG:TEXT+ code CODE$ LOG:TEXT+
+   c KEY+
    code c REPLY+
    code c CAUSE+
-   c EVENTS+
+   c EVENTS+ ;
+
+\ One line for a failed call, a warning for a refusal.
+: REPORT ( n ptr call -- )
+   {: code:n c :}
+   code REFUSAL? if LOG:WARN else LOG:ERROR then s" model" LOG:LINE
+   code c REPORT+
    LOG:;LINE ;
 
-ENUM ending cut replayed replay-failed served unsent refused failed ;ENUM
+\ The line of a send that rests, naming the wait in whole seconds rounded up,
+\ so a wait under a second is 1 s: a warning for a fault that clears without a
+\ person (the provider away, a failed transfer, a key store that did not
+\ answer), an error for one a person must fix.
+: REST-REPORT ( n ptr call -- )
+   {: code:n c :}
+   code E-UNAVAILABLE = code E-TRANSPORT = or code SECRET:E-UNAVAILABLE = or
+   if LOG:WARN else LOG:ERROR then s" model" LOG:LINE
+   code c REPORT+
+   s" ; sent again in " LOG:TEXT+
+   c MODEL-CALL:RESEND-WAIT @ 999 + 1000 / LOG:INT+ s"  s" LOG:TEXT+
+   LOG:;LINE ;
+
 ENUM record-event kept faulted ;ENUM
 
 \ Keeps n as the call's outcome unless one is kept.
@@ -3688,6 +3861,53 @@ ENUM record-event kept faulted ;ENUM
    c step [: RUN-STEP ;] catch {: code:n :} 2drop
    code c KEEP-FAULT ;
 
+
+\ Whether the send's request left: dispatched, or its transfer failed.
+: LEFT? ( ptr call -- bool )
+   LEDGER {: l :}
+   l LEDGER-DISPATCHED @ l LEDGER-TRANSPORT @ 0<> or ;
+
+\ How a run that kept fault n, 0 for none, ended with no CANCEL.
+: RUN-ENDING ( n bool ptr call -- ending )
+   {: fault:n replayed:bool c :}
+   replayed if
+      fault 0= if construct ending replayed exit then
+      construct ending replay-failed exit
+   then
+   fault 0= if construct ending served exit then
+   c LEFT? 0= if construct ending unsent exit then
+   fault REFUSAL? if construct ending refused exit then
+   construct ending failed ;
+
+\ The ending of a run a CANCEL ended before it landed: after a failure its
+\ send met first, whose line it keeps, or alone. A send whose transfer the
+\ CANCEL cut met none (E-CANCELLED).
+: CUT-ENDING ( n bool ptr call -- ending )
+   {: fault:n replayed:bool c :}
+   fault 0= fault E-CANCELLED = or replayed or if
+      construct ending cut exit
+   then
+   c LEFT? 0= if construct ending cut-unsent exit then
+   construct ending cut-failed ;
+
+\ The ending of a run that kept fault n, cut when cancelled, kept in the
+\ receipt for REST-OUT? and TIER-OUT?.
+: KEPT-ENDING ( n bool bool ptr call -- ending )
+   {: fault:n replayed:bool cancelled:bool c :}
+   cancelled if fault replayed c CUT-ENDING
+   else fault replayed c RUN-ENDING then
+   dup OPTION:SOME c RECEIPT RECEIPT-ENDING ! ;
+
+\ Lands a run that kept fault n and stores its ending in one hold of the
+\ call's gate, so a CANCEL that finds the call landed reads its ending too.
+\ Answers whether a CANCEL marked the call, and the ending.
+: END-RUN ( n bool ptr call -- bool ending )
+   {: fault:n replayed:bool c :}
+   c MODEL-CALL:GATE @ TASK:WAIT-SEM
+   c MODEL-CALL:CANCELLED @ {: cancelled:bool :}
+   construct call-state landed c MODEL-CALL:STATE !
+   cancelled  fault replayed cancelled c KEPT-ENDING
+   c MODEL-CALL:GATE @ TASK:SIGNAL-SEM ;
 
 \ Ends the call's transfer, decoder and handle, wipes its header and parses its
 \ reply, keeping the first fault; then lands the call and answers its ending.
@@ -3731,21 +3951,10 @@ ENUM record-event kept faulted ;ENUM
          compaction OF c [: COMPACT-PARSE ;] CHECK-STEP ENDOF
       ;MATCH
    then
-   c END-CALL {: cancelled:bool :}
    r RECEIPT-OUTCOME @ {: fault:n :}
+   fault replayed c END-RUN {: cancelled:bool e :}
    fault cancelled c END-LEDGER
-   cancelled if construct ending cut exit then
-   replayed if
-      fault 0= if construct ending replayed exit then
-      construct ending replay-failed exit
-   then
-   fault 0= if construct ending served exit then
-   c LEDGER {: l :}
-   l LEDGER-DISPATCHED @ l LEDGER-TRANSPORT @ 0<> or 0= if
-      construct ending unsent exit
-   then
-   fault REFUSAL? if construct ending refused exit then
-   construct ending failed ;
+   e ;
 
 : LAND-CUT ( ptr call -- ) E-CANCELLED swap RECEIPT RECEIPT-OUTCOME ! ;
 
@@ -3785,17 +3994,45 @@ ENUM record-event kept faulted ;ENUM
 
 : REPORT-OUTCOME ( ptr call -- ) dup RECEIPT RECEIPT-OUTCOME @ swap REPORT ;
 
+\ A failed send's line waits for the resend machine, which knows whether the
+\ send rests.
+: KEEP-REPORT ( ptr call -- )
+   RECEIPT dup RECEIPT-OUTCOME @ swap RECEIPT-REPORT ! ;
+
+\ Of the faults before a request leaves, only a failed key read was caused
+\ outside the program, by the store or the item it holds: its line waits for
+\ the resend machine, as a failed send's does.
+: KEEP-UNSENT ( ptr call -- )
+   dup KEY-FAILED? if KEEP-REPORT exit then
+   drop ;
+
+\ A send that failed before a CANCEL ended it keeps its failure's line, as it
+\ would with no CANCEL, then lands cut.
+: CUT-UNSENT ( ptr call -- ) dup KEEP-UNSENT LAND-CUT ;
+: CUT-FAILED ( ptr call -- ) dup KEEP-REPORT LAND-CUT ;
+
+\ Writes the line a failed send keeps, if any, once.
+: REPORT-SENT ( ptr call -- )
+   {: c :}
+   c RECEIPT {: r :}
+   r RECEIPT-REPORT @ {: code:n :}
+   code 0= if exit then
+   0 r RECEIPT-REPORT !
+   code c REPORT ;
+
 \ Lands a call once its run ends: what each ending reports, records, saves and
 \ leaves as the outcome. Settling runs in SETTLE, the rest in ACCOUNT.
 FSM:DEFINE LAND-MACHINE ( ptr call ) land-step ending
    IN settling  SETTLE-SENSE
       cut            LAND-CUT        >recording
+      cut-unsent     CUT-UNSENT      >recording
+      cut-failed     CUT-FAILED      >recording
       replayed       -               >landed
       replay-failed  -               >landed
       served         -               >serving
-      unsent         -               >landed
+      unsent         KEEP-UNSENT     >landed
       refused        REPORT-OUTCOME  >refusing
-      failed         REPORT-OUTCOME  >recording
+      failed         KEEP-REPORT     >recording
    IN recording  RECORD-SENSE ( record-event )
       kept     -  >landed
       faulted  -  >landed
@@ -3897,7 +4134,7 @@ CAST: N>CALL ( n -- ptr call )
    {: c :}
    c [: SETTLE-RUN ;] catch {: rc:n :} drop
    rc 0= if exit then
-   c END-CALL drop
+   c END-CALL
    rc c LAND-THREW ;
 
 \ Lands a call once its run ends, keeping the next step for ACCOUNT. It runs
@@ -3938,6 +4175,7 @@ CAST: N>CALL ( n -- ptr call )
    c RECEIPT {: r :}
    r RECEIPT-OUTER @ LANDING !
    r RECEIPT-STEP @ ACCOUNTING? 0= if exit then
+   c REPORT-SENT
    c LAND-CUT
    construct land-step landed c STEP! ;
 
@@ -4019,14 +4257,23 @@ FSM:DEFINE SEND-MACHINE ( ptr call ) send-step lookup-event
    FINAL ended  LAND
 ;DEFINE
 
+\ A send's or a replay's receipt: nothing replayed, failed, still to report,
+\ failing its key or ended yet.
+: RECEIPT-RESET ( ptr call -- )
+   RECEIPT {: r :}
+   false r RECEIPT-REPLAYED !
+   0 r RECEIPT-OUTCOME !
+   0 r RECEIPT-REPORT !
+   construct key-fault none r RECEIPT-KEY-READ !
+   OPTION:NONE r RECEIPT-ENDING ! ;
+
 : SEND-BEGUN ( ptr call -- )
    {: c :}
-   false c RECEIPT RECEIPT-REPLAYED !
-   0 c RECEIPT RECEIPT-OUTCOME !
+   c RECEIPT-RESET
+   c RECEIPT {: r :}
+   r RECEIPT-TIER @ r RECEIPT-SENT !
    construct land-step settling c STEP!
    c construct send-step looking SEND-MACHINE ;
-
-: BEGIN-SEND ( ptr call -- ) dup BEGIN-CALL SEND-BEGUN ;
 
 
 : LANDED? ( ptr call -- bool )
@@ -4045,53 +4292,466 @@ FSM:DEFINE SEND-MACHINE ( ptr call ) send-step lookup-event
       landed OF false ENDOF
    ;MATCH ;
 
-\ Whether the send that landed ended E-TIER at a tier it named, with
-\ TIER-RESEND! on and its record kept.
-: TIER-SENSE ( ptr call -- tier-event )
+\ Whether the receipt keeps a run that ended failed.
+: FAILED-ENDING? ( ptr call -- bool )
+   RECEIPT RECEIPT-ENDING @ MATCH option
+      none OF false ENDOF
+      some OF
+         MATCH ending
+            cut OF false ENDOF
+            cut-unsent OF false ENDOF
+            cut-failed OF false ENDOF
+            replayed OF false ENDOF
+            replay-failed OF false ENDOF
+            served OF false ENDOF
+            unsent OF false ENDOF
+            refused OF false ENDOF
+            failed OF true ENDOF
+         ;MATCH
+      ENDOF
+   ;MATCH ;
+
+\ Whether the send that landed failed with E-TIER at a tier it named, with
+\ TIER-RESEND! on and its record kept. Its ending must be failed: a served or
+\ refused send whose journal put threw E-TIER is not sent again.
+: TIER-OUT? ( ptr call -- bool )
    {: c :}
-   c RECEIPT RECEIPT-OUTCOME @ E-TIER =
+   c FAILED-ENDING?
+   c RECEIPT RECEIPT-OUTCOME @ E-TIER = and
    c MODEL-CALL:TIER-RESEND @ and
    c TIER$ nip 0<> and
-   c LEDGER LEDGER-FAULT @ 0= and
-   if construct tier-event tier-out else construct tier-event settled then ;
+   c LEDGER LEDGER-FAULT @ 0= and ;
 
-\ Sends the landed call's request again under its label and purpose row,
-\ naming no tier: the send reads that from the state, so the state moves
-\ first. A fault beginning it, E-CANCELLED for a stopped call, becomes its
-\ outcome and it stays landed.
-: TIER-STANDARD ( ptr call -- )
-   {: c :}
-   c [: dup [: RESEND-LOCKED ;] BEGIN-GATED ;] catch {: code:n :} drop
-   code 0<> if code c RECEIPT RECEIPT-OUTCOME ! exit then
-   construct tier-step standard c RECEIPT RECEIPT-TIER !
-   c LEDGER {: l :}
+\ A send TIER-OUT? accepts is halted instead while a halt of its starter is
+\ pending, a halt served there (TASK:HALT-DUE?), so no request is sent before
+\ RECEIVE-STARTED's HALT-UNWIND serves it.
+: TIER-SENSE ( ptr call -- tier-event )
+   TIER-OUT? 0= if construct tier-event settled exit then
+   TASK:HALT-DUE? if construct tier-event halted exit then
+   construct tier-event tier-out ;
+
+\ A resend's ledger: nothing dispatched, recorded or failed yet.
+: LEDGER-RESET ( ptr call -- )
+   LEDGER {: l :}
    false l LEDGER-DISPATCHED !
    0 l LEDGER-CALL-ID !
    0 l LEDGER-FAULT !
-   0 l LEDGER-TRANSPORT !
+   0 l LEDGER-TRANSPORT ! ;
+
+\ Ends a call whose send a stop or CANCEL kept from being sent again, its
+\ outcome E-CANCELLED already, stored by the gate hold that decided so
+\ (RESEND-LOCKED, LAND-CANCELLED); a dispatched one is recorded cancelled,
+\ with no status, tier, usage or duration of its own.
+: CANCEL-RECORD ( ptr call -- )
+   {: c :}
+   0 c MODEL-CALL:HTTP-STATUS !
+   c SERVED-BUF BUF:CLEAR
+   c RESET-USAGE
+   TIME:MONO-NS c LEDGER LEDGER-STARTED-NS !
+   E-CANCELLED true c END-LEDGER
+   construct land-step recording c STEP!
+   c ACCOUNT ;
+
+\ How beginning a landed call's next send went, its fault n, run in the gate
+\ hold that begins it: begun; refused, E-CANCELLED, which RESEND-LOCKED
+\ stored as its outcome for a stop or CANCEL since the send landed; else
+\ faulted, the call landed with n stored here as its outcome and no ending,
+\ so a CANCEL once the gate is released finds it out of REST-OUT?'s and
+\ TIER-OUT?'s class.
+: BEGIN-EVENT ( n ptr call -- begin-event )
+   {: code:n c :}
+   code 0= if construct begin-event begun exit then
+   code E-CANCELLED = if construct begin-event refused exit then
+   c RECEIPT {: r :}
+   code r RECEIPT-OUTCOME !
+   OPTION:NONE r RECEIPT-ENDING !
+   construct begin-event faulted ;
+
+\ Runs begin on a landed call under its gate, as BEGIN-GATED does, and
+\ answers its BEGIN-EVENT from the same hold. A closed call is E-STATE: it
+\ has no gate or receipt to store in.
+: BEGIN-AGAIN ( ptr call [ ptr call -- ptr call ] -- begin-event )
+   {: c begin :}
+   c REQUIRE-OPEN
+   c MODEL-CALL:GATE @ TASK:WAIT-SEM
+   c begin catch {: code:n :} drop
+   code c BEGIN-EVENT
+   c MODEL-CALL:GATE @ TASK:SIGNAL-SEM ;
+
+\ Begins a landed call that ended E-TIER again under its gate.
+: TIER-STANDARD ( ptr call -- begin-event )
+   [: RESEND-LOCKED ;] BEGIN-AGAIN ;
+
+\ Sends the begun call's request again under its label and purpose row,
+\ naming no tier: the send reads that from the state, so the state moves
+\ first.
+: SEND-STANDARD ( ptr call -- )
+   {: c :}
+   construct tier-step standard c RECEIPT RECEIPT-TIER !
+   c LEDGER-RESET
    c SEND-BEGUN ;
 
-\ Sends a call that ended E-TIER once more with no tier. Stepped once each
-\ time a send of the call has landed and been recorded.
+\ Sends a call that ended E-TIER once more with no tier, after the landed
+\ send's line. A stop or CANCEL since the send landed lands the call
+\ E-CANCELLED with its cancelled record; a halt of its starter due there, or
+\ a fault beginning it, leaves it landed with that send's outcome or the
+\ fault. Stepped each time a send of the call has landed and been recorded.
 FSM:DEFINE TIER-MACHINE ( ptr call ) tier-step tier-event
    IN preferred  TIER-SENSE
-      settled   -              >done
-      tier-out  TIER-STANDARD  >standard
+      settled   -            >done
+      tier-out  REPORT-SENT  >resuming
+      halted    -            >done
+   IN resuming  TIER-STANDARD ( begin-event )
+      begun    SEND-STANDARD  >standard
+      refused  CANCEL-RECORD  >done
+      faulted  -              >done
    IN standard  TIER-SENSE
       settled   -  >done
       tier-out  -  >done
+      halted    -  >done
    FINAL done  -
 ;DEFINE
 
-\ Steps a landed call's tier machine, keeping its next state until
-\ START-LEDGER begins the next call: a resend leaves the call started, or
-\ landed on a journal hit or a failed dispatch.
-: TIER-STEP ( ptr call -- )
+: TIER-MOVE ( ptr call -- )
    {: c :}
-   c LANDED? 0= if exit then
    c RECEIPT {: r :}
    c r RECEIPT-TIER @ TIER-MACHINE-STEP drop
    r RECEIPT-TIER ! ;
+
+: TIER-RESUMING? ( ptr call -- bool )
+   RECEIPT RECEIPT-TIER @ MATCH tier-step
+      preferred OF false ENDOF
+      resuming OF true ENDOF
+      standard OF false ENDOF
+      done OF false ENDOF
+   ;MATCH ;
+
+\ Steps a landed call's tier machine, and once more when it resumes, keeping
+\ its next state until START-LEDGER begins the next call: a resend leaves the
+\ call started, or landed on a journal hit or a failed dispatch.
+: TIER-STEP ( ptr call -- )
+   {: c :}
+   c LANDED? 0= if exit then
+   c TIER-MOVE
+   c TIER-RESUMING? if c TIER-MOVE then ;
+
+public
+
+\ Whether fault n of the call is one RESEND-WAIT! rests: the provider away
+\ (E-UNAVAILABLE), a failed or stalled transfer (E-TRANSPORT), a refused key
+\ (E-KEY), an unknown model (E-CONFIG with HTTP status 404), or the key
+\ store's SECRET:E-CONFIG, E-ACCESS or E-UNAVAILABLE from the key read at
+\ dispatch.
+: RESENDS? ( n ptr call -- bool )
+   {: code:n c :}
+   code E-UNAVAILABLE = code E-TRANSPORT = or code E-KEY = or
+   code E-CONFIG = c MODEL-CALL:HTTP-STATUS @ 404 = and or
+   code SECRET:E-CONFIG = or code SECRET:E-ACCESS = or
+   code SECRET:E-UNAVAILABLE = or ;
+
+\ The TIME:MONO-NS at which a resting call is sent again, 0 when the call is
+\ not resting.
+: RESEND-DUE ( ptr call -- n )
+   {: c :}
+   c REQUIRE-OPEN
+   c RECEIPT RECEIPT-DUE @ ;
+
+private
+
+\ Whether a stop or CANCEL was asked for, read under the call's gate.
+: STOP-ASKED? ( ptr call -- bool )
+   {: c :}
+   c MODEL-CALL:GATE @ TASK:WAIT-SEM
+   c MODEL-CALL:STOPPED @ c MODEL-CALL:CANCELLED @ or {: asked:bool :}
+   c MODEL-CALL:GATE @ TASK:SIGNAL-SEM
+   asked ;
+
+\ Whether a run that ended so may rest: a send that failed once its request
+\ left, or went unsent in its key read. A served or refused send whose journal
+\ put failed, a replay, a failed journal lookup and a cut run do not.
+: ENDING-RESTS? ( ending ptr call -- bool )
+   {: e c :}
+   e MATCH ending
+      cut OF false ENDOF
+      cut-unsent OF false ENDOF
+      cut-failed OF false ENDOF
+      replayed OF false ENDOF
+      replay-failed OF false ENDOF
+      served OF false ENDOF
+      unsent OF c KEY-FAILED? ENDOF
+      refused OF false ENDOF
+      failed OF true ENDOF
+   ;MATCH ;
+
+: RESTING-ENDING? ( ptr call -- bool )
+   {: c :}
+   c RECEIPT RECEIPT-ENDING @ MATCH option
+      none OF false ENDOF
+      some OF c ENDING-RESTS? ENDOF
+   ;MATCH ;
+
+\ Whether a landed send rests with RESEND-WAIT! on: its ending may rest, its
+\ fault is in RESENDS?'s class, and its record is kept. A failed ending has no
+\ SECRET fault: the key read and the journal lookup, where one arises, leave
+\ the send unsent, and ENDING-RESTS? rests that only with KEY-FAILED?.
+: REST-OUT? ( ptr call -- bool )
+   {: c :}
+   c MODEL-CALL:RESEND-WAIT @ 0<>
+   c RESTING-ENDING? and
+   c RECEIPT RECEIPT-OUTCOME @ c RESENDS? and
+   c LEDGER LEDGER-FAULT @ 0= and ;
+
+\ Whether a stop or CANCEL marked the landed send to keep it from being sent
+\ again (CANCEL-LOCKED), read under the call's gate. A send a CANCEL cut is
+\ E-CANCELLED already, and so is one a cancelled resend began.
+: CANCEL-KEPT? ( ptr call -- bool )
+   {: c :}
+   c MODEL-CALL:GATE @ TASK:WAIT-SEM
+   c MODEL-CALL:CANCELLED @ {: marked:bool :}
+   c MODEL-CALL:GATE @ TASK:SIGNAL-SEM
+   marked c RECEIPT RECEIPT-OUTCOME @ E-CANCELLED <> and ;
+
+\ A landed send is stopped when a stop or CANCEL kept it from being sent
+\ again, the mark binding even if a later recorder fault takes it out of the
+\ class; else outside when it is in REST-OUT?'s class, else settled.
+: SENT-SENSE ( ptr call -- sent-event )
+   {: c :}
+   c CANCEL-KEPT? if construct sent-event stopped exit then
+   c REST-OUT? if construct sent-event outside exit then
+   construct sent-event settled ;
+
+\ Writes the send's line, naming the wait, and starts the call again under
+\ its gate with no transfer until it is due.
+: BEGIN-REST ( ptr call -- )
+   {: c :}
+   c RECEIPT {: r :}
+   r RECEIPT-REPORT @ {: code:n :}
+   code 0<> if 0 r RECEIPT-REPORT ! code c REST-REPORT then
+   TIME:MONO-NS c MODEL-CALL:RESEND-WAIT @ NS-PER-MS * + {: due:n :}
+   c MODEL-CALL:GATE @ TASK:WAIT-SEM
+   due r RECEIPT-DUE !
+   construct call-state started c MODEL-CALL:STATE !
+   c MODEL-CALL:GATE @ TASK:SIGNAL-SEM ;
+
+: REST-SENSE ( ptr call -- rest-event )
+   {: c :}
+   c STOP-ASKED? if construct rest-event stopped exit then
+   TIME:MONO-NS c RECEIPT RECEIPT-DUE @ - 0< if
+      construct rest-event early exit
+   then
+   construct rest-event due ;
+
+\ Ends a rest under the gate: the call lands as its send left it.
+: REST-END-LOCKED ( ptr call -- ptr call )
+   {: c :}
+   0 c RECEIPT RECEIPT-DUE !
+   construct call-state landed c MODEL-CALL:STATE !
+   c ;
+
+\ Begins the resend: RESEND-LOCKED makes a stop or CANCEL during the rest
+\ E-CANCELLED.
+: RESUME-LOCKED ( ptr call -- ptr call ) REST-END-LOCKED RESEND-LOCKED ;
+
+\ Lands E-CANCELLED a call a stop or CANCEL kept from being sent again,
+\ resting or not, after the line its send keeps, if any. The outcome is
+\ stored in the gate hold that lands it, so a CANCEL once it is released
+\ finds it.
+: LAND-CANCELLED ( ptr call -- )
+   {: c :}
+   c REPORT-SENT
+   c MODEL-CALL:GATE @ TASK:WAIT-SEM
+   c REST-END-LOCKED LAND-CUT
+   c MODEL-CALL:GATE @ TASK:SIGNAL-SEM
+   c CANCEL-RECORD ;
+
+\ Serves a halt of the starter pending here, where PAUSE would serve it,
+\ before a due rest's resend begins: the throw leaves the call resting.
+: SERVE-HALT ( ptr call -- ) drop 0 TASK:HALT-UNWIND ;
+
+\ Begins a resting call's resend under its gate: RESUME-LOCKED ends the rest
+\ and refuses a stop or CANCEL since the rest was sensed.
+: RESEND ( ptr call -- begin-event ) [: RESUME-LOCKED ;] BEGIN-AGAIN ;
+
+\ Sends a begun resend's kept request again at the tier its last send went
+\ out at, as SEND-STANDARD sends the tier machine's own.
+: SEND-AGAIN ( ptr call -- )
+   {: c :}
+   c RECEIPT {: r :}
+   r RECEIPT-SENT @ r RECEIPT-TIER !
+   c LEDGER-RESET
+   c SEND-BEGUN ;
+
+\ Rests a send that failed for want of the provider, the transport, the key
+\ or its store, and sends it again when due, until it is settled or stopped.
+\ A stop or CANCEL that keeps a send from being sent again, before the rest
+\ or during it, lands the call E-CANCELLED, with a cancelled record when its
+\ request was dispatched. A rest just begun is sensed once more, so one that
+\ came after the send was sensed and before the rest's start was published
+\ lands it in that step; a due one is sent at the next step, a halt of its
+\ starter due there served first. A
+\ fault beginning the resend becomes its outcome, sensed as a landed send's.
+\ Stepped after ACCOUNT and the tier machine, so it senses a settled send.
+FSM:DEFINE RESEND-MACHINE ( ptr call ) resend-step sent-event
+   IN sending  SENT-SENSE
+      settled  REPORT-SENT     >done
+      outside  BEGIN-REST      >begun
+      stopped  LAND-CANCELLED  >done
+   IN begun    REST-SENSE ( rest-event )
+      early    -               >resting
+      due      -               >resting
+      stopped  LAND-CANCELLED  >done
+   IN resting  REST-SENSE ( rest-event )
+      early    -               >resting
+      due      SERVE-HALT      >resuming
+      stopped  LAND-CANCELLED  >done
+   IN resuming  RESEND ( begin-event )
+      begun    SEND-AGAIN      >sending
+      refused  CANCEL-RECORD   >done
+      faulted  -               >sending
+   FINAL done  -
+;DEFINE
+
+: RESTING? ( ptr call -- bool )
+   RECEIPT RECEIPT-RESEND @ MATCH resend-step
+      sending OF false ENDOF
+      begun OF true ENDOF
+      resting OF true ENDOF
+      resuming OF false ENDOF
+      done OF false ENDOF
+   ;MATCH ;
+
+: BEGUN? ( ptr call -- bool )
+   RECEIPT RECEIPT-RESEND @ MATCH resend-step
+      sending OF false ENDOF
+      begun OF true ENDOF
+      resting OF false ENDOF
+      resuming OF false ENDOF
+      done OF false ENDOF
+   ;MATCH ;
+
+: RESUMING? ( ptr call -- bool )
+   RECEIPT RECEIPT-RESEND @ MATCH resend-step
+      sending OF false ENDOF
+      begun OF false ENDOF
+      resting OF false ENDOF
+      resuming OF true ENDOF
+      done OF false ENDOF
+   ;MATCH ;
+
+\ Whether the machine is sending and its send has landed.
+: SENT? ( ptr call -- bool )
+   {: c :}
+   c LANDED? 0= if false exit then
+   c SENDING? ;
+
+\ Whether the tier machine, at preferred or resuming, is to send the landed
+\ send again. A send resuming holds TIER-OUT? until its begin's hold stores
+\ another outcome, so it is read there too.
+: TIER-NEXT? ( ptr call -- bool )
+   {: c :}
+   c RECEIPT RECEIPT-TIER @ MATCH tier-step
+      preferred OF c TIER-OUT? ENDOF
+      resuming OF c TIER-OUT? ENDOF
+      standard OF false ENDOF
+      done OF false ENDOF
+   ;MATCH ;
+
+\ Whether a landed send not yet sensed is to be sent again: by a rest, or by
+\ the tier machine. A resend that lands at once, or whose begin faulted,
+\ leaves the machine resuming until RESEND-MOVE stores sending outside the
+\ gate, so it reads REST-OUT? as sending does. Only LAND-CANCELLED lands a
+\ call resting, and RESEND's refused begin one resuming, each E-CANCELLED,
+\ which CANCEL-LOCKED's own check marks. Read under the call's gate.
+: RESEND-NEXT? ( ptr call -- bool )
+   {: c :}
+   c RECEIPT RECEIPT-RESEND @ MATCH resend-step
+      sending OF c REST-OUT? c TIER-NEXT? or ENDOF
+      begun OF false ENDOF
+      resting OF false ENDOF
+      resuming OF c REST-OUT? ENDOF
+      done OF false ENDOF
+   ;MATCH ;
+
+\ Whether the resend machine has yet to sense the landed send: sending, or
+\ resuming while a resend that landed at once waits for RESEND-MOVE.
+: UNSENSED? ( ptr call -- bool )
+   RECEIPT RECEIPT-RESEND @ MATCH resend-step
+      sending OF true ENDOF
+      begun OF false ENDOF
+      resting OF false ENDOF
+      resuming OF true ENDOF
+      done OF false ENDOF
+   ;MATCH ;
+
+\ Marks a started call cancelled and cuts its transfer. A landed send not yet
+\ sensed (UNSENSED?) keeps its mark, and one still to be sent again
+\ (RESEND-NEXT?, a resend landed at once included) is marked: LAND-CUT makes
+\ a send cut as it landed E-CANCELLED, and SENT-SENSE, RESEND-LOCKED or the
+\ rest it begins reads any other's mark, landing the call E-CANCELLED. A
+\ landed call whose outcome is E-CANCELLED is marked too; CANCEL-KEPT?
+\ passes over it, so no second cancelled record follows. Any other call's
+\ mark is cleared, so the flag says whether the call ends E-CANCELLED.
+: CANCEL-LOCKED ( ptr call -- ptr call )
+   {: c :}
+   c MODEL-CALL:STATE @ MATCH call-state
+      idle OF false c MODEL-CALL:CANCELLED ! ENDOF
+      prepared OF false c MODEL-CALL:CANCELLED ! ENDOF
+      started OF
+         true c MODEL-CALL:CANCELLED !
+         c MODEL-CALL:TRANSPORT @ MATCH option
+            none OF ENDOF
+            some OF OPTION:NONE c MODEL-CALL:TRANSPORT ! CURL:CANCEL ENDOF
+         ;MATCH
+      ENDOF
+      landed OF
+         c UNSENSED? c MODEL-CALL:CANCELLED @ and
+         c RESEND-NEXT? or
+         c RECEIPT RECEIPT-OUTCOME @ E-CANCELLED = or
+         c MODEL-CALL:CANCELLED !
+      ENDOF
+   ;MATCH
+   c ;
+
+: STOP-LOCKED ( ptr call -- ptr call )
+   {: c :}
+   true c MODEL-CALL:STOPPED !
+   c CANCEL-LOCKED ;
+
+: RESEND-MOVE ( ptr call -- )
+   {: c :}
+   c RECEIPT {: r :}
+   c r RECEIPT-RESEND @ RESEND-MACHINE-STEP drop
+   r RECEIPT-RESEND ! ;
+
+\ Moves a call's resend machine where it can: a rest is sensed, a due one's
+\ resend begun, then a send that has landed, a resend that landed at once
+\ included, then a rest that send began. A rest and a send still out wait
+\ for the next SERVE or AWAIT.
+: RESEND-STEP ( ptr call -- )
+   {: c :}
+   c RESTING? if c RESEND-MOVE then
+   c RESUMING? if c RESEND-MOVE then
+   c SENT? if c RESEND-MOVE then
+   c BEGUN? if c RESEND-MOVE then ;
+
+\ Parks AWAIT's task until a resting call is due or a hint wakes it.
+: REST-PARK ( ptr call -- )
+   {: c :}
+   c RESTING? 0= if exit then
+   c STOP-ASKED? if exit then
+   c RECEIPT RECEIPT-DUE @ TIME:MONO-NS - {: left:n :}
+   left 0 <= if exit then
+   left NS-PER-MS 1- + NS-PER-MS / >MS TASK:WAIT-MS drop ;
+
+CAST: N>TASK ( n -- ptr n )
+
+\ Wakes the starter of a resting call; one that has ended takes no hint.
+: WAKE-STARTER ( ptr call -- )
+   MODEL-CALL:STARTER @ N>TASK [: dup TASK:WAKE ;] catch {: code:n :} drop
+   code 0= if exit then
+   code E-TASK-STATE <> if code throw then ;
+
+: BEGIN-SEND ( ptr call -- ) dup BEGIN-CALL dup SEND-BEGUN RESEND-STEP ;
 
 
 \ A chat AWAIT ended without a fault has used its finished input; a chat that
@@ -4119,27 +4779,40 @@ FSM:DEFINE TIER-MACHINE ( ptr call ) tier-step tier-event
 
 \ The receive runs deferred: a halt pending while AWAIT waits settles the call,
 \ one in SERVE leaves it started; ACCOUNT and the tier machine's step follow
-\ outside it, where it is served.
+\ outside it, where it is served. A resting call has nothing to receive; the
+\ resend machine steps last.
 : RECEIVE-STARTED ( [ ptr call -- ptr call ] ptr call -- )
    {: receive c :}
    c REQUIRE-STARTER
-   TASK:DEFER-ENTER
-   receive c [: RECEIVE-CAUGHT ;] [: TASK:DEFER-LEAVE ;] finally
-   c ACCOUNT
-   c TIER-STEP
+   c RESTING? 0= if
+      TASK:DEFER-ENTER
+      receive c [: RECEIVE-CAUGHT ;] [: TASK:DEFER-LEAVE ;] finally
+      c ACCOUNT
+      c TIER-STEP
+   then
+   c RESEND-STEP
    0 TASK:HALT-UNWIND ;
 
 public
 
 \ Makes a started call end with E-CANCELLED, cutting any transfer at once, and
-\ answers whether the call was started; the provider, not told, may bill it.
+\ answers whether the call ends E-CANCELLED; the provider, not told, may bill
+\ it. A resting call's starter is woken, so its SERVE or AWAIT lands it at
+\ once. A CANCEL that keeps a landed send from being sent again, by a rest or
+\ by TIER-RESEND!, lands the call E-CANCELLED, with a cancelled record when
+\ its request was dispatched, at its next SERVE or AWAIT step, which does not
+\ park, and answers true. A CANCEL of a landed send that would not be sent
+\ again leaves its outcome and answers whether it is E-CANCELLED.
+\ REQUEST-STOP does the same.
 : CANCEL ( ptr call -- bool )
    {: c :}
    c REQUIRE-OPEN
    c MODEL-CALL:GATE @ TASK:WAIT-SEM
    c [: CANCEL-LOCKED ;] catch {: code:n :} drop
    c MODEL-CALL:CANCELLED @ {: selected:bool :}
+   c RECEIPT RECEIPT-DUE @ 0<> {: resting:bool :}
    c MODEL-CALL:GATE @ TASK:SIGNAL-SEM
+   resting if c WAKE-STARTER then
    code 0<> code CURL:E-STATE <> and if code throw then
    selected ;
 
@@ -4148,7 +4821,9 @@ public
    c REQUIRE-OPEN
    c MODEL-CALL:GATE @ TASK:WAIT-SEM
    c [: STOP-LOCKED ;] catch {: code:n :} drop
+   c RECEIPT RECEIPT-DUE @ 0<> {: resting:bool :}
    c MODEL-CALL:GATE @ TASK:SIGNAL-SEM
+   resting if c WAKE-STARTER then
    code 0<> code CURL:E-STATE <> and if code throw then ;
 
 \ Sends the chat request JOURNAL-INPUT$ finished, else the one built since
@@ -4188,7 +4863,8 @@ public
 
 \ Takes what a started call's transfer holds without waiting for more and
 \ answers whether the call landed, as a landed call has; AWAIT ends it. A take
-\ that faults gives the transfer up and waits until the loop leaves it.
+\ that faults gives the transfer up and waits until the loop leaves it. A
+\ resting call answers false, and is sent again by the SERVE that finds it due.
 : SERVE ( ptr call -- bool )
    {: c :}
    c REQUIRE-OPEN
@@ -4211,7 +4887,8 @@ public
 \ input the window. A chat uses its finished input up only when it ends
 \ without a fault: one that faults keeps it, as a count, a compaction and an
 \ embed keep theirs, and PURPOSE! then START or CHAT sends it again. It waits
-\ through a resend TIER-RESEND! makes.
+\ through a resend TIER-RESEND! makes, and through each rest RESEND-WAIT!
+\ makes, parked until it is due or a CANCEL or stop wakes it.
 : AWAIT ( ptr call -- )
    {: c :}
    c REQUIRE-OPEN
@@ -4221,7 +4898,10 @@ public
       started OF ENDOF
       landed OF ENDOF
    ;MATCH
-   begin c STARTED? while [: dup RECEIVE ;] c RECEIVE-STARTED repeat
+   begin c STARTED? while
+      [: dup RECEIVE ;] c RECEIVE-STARTED
+      c REST-PARK
+   repeat
    c IDLE!
    c RECEIPT RECEIPT-OUTCOME @ {: fault:n :}
    fault 0<> if fault throw then
@@ -4373,7 +5053,7 @@ public
    0 c MODEL-CALL:CACHED-TOKENS !
    construct call-kind chat c MODEL-CALL:KIND !
    c BEGIN-CALL
-   0 c RECEIPT RECEIPT-OUTCOME !
+   c RECEIPT-RESET
    c RESTORE
    c LAND
    c AWAIT

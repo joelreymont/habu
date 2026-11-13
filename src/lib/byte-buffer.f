@@ -202,6 +202,13 @@ public
    at u + buf SET-LEN
    buf BUF-SPAN at u SPAN:SUB ;
 
+\ RESIZE makes the capacity exactly n, at least the length, larger or smaller,
+\ and keeps the active bytes; zero is E-BUF-CAPACITY. The new mapping is made
+\ and filled before the old one is released, so an allocation the OS refuses
+\ throws with the buffer as it was.
+: RESIZE ( ptr a NUM:byte-len -- ) {: buf:ptr n:NUM:byte-len :}
+   buf n BLEN>N RESIZE-RAW ;
+
 \ n zero on a dead header is E-BUF-CAPACITY, as INIT; a growth the OS refuses
 \ leaves a live one empty at its old capacity.
 : RESET ( ptr a NUM:byte-len -- ) {: buf:ptr n:NUM:byte-len :}
