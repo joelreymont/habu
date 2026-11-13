@@ -2873,13 +2873,20 @@ public
    LBL LBL LBL LBL {: badcap:label failed:label short:label done:label :}
    LBL LBL LBL LBL {: count:label counted:label copy:label release:label :}
    2 G-POP  1 G-POP  0 G-POP
-   SP SP 80 SUBI,
+   SP SP 96 SUBI,
    0 SP 0 STR,  1 SP 8 STR,  2 SP 16 STR,
    2 0 CMPI,  C-LE badcap BCOND,
    1 2 PROT-GUARD:CALL
    9 $65657266 LIT64,  9 SP 56 STR,
    9 $687461706C616572 LIT64,  9 SP 64 STR,
-   9 0 MOVZ,  9 SP 72 STR,
+   \ Darwin's plain "realpath" is its legacy entry, which reads every parent
+   \ directory of a relative path; C programs link realpath$DARWIN_EXTSN.
+   HB-TARGET-MACOS? IF
+      9 $5F4E495752414424 LIT64,  9 SP 72 STR,
+      9 $4E53545845 LIT64,  9 SP 80 STR,
+   ELSE
+      9 0 MOVZ,  9 SP 72 STR,
+   THEN
    1 SP 56 ADDI,  DLSYM
    0 failed CBZ,  0 SP 24 STR,
    1 SP 64 ADDI,  DLSYM
@@ -2906,7 +2913,7 @@ public
    badcap LBL,  0 1 MOVN,  done B,
    failed LBL,  0 0 MOVN,
    done LBL,
-   SP SP 80 ADDI,  0 G-PUSH ;
+   SP SP 96 ADDI,  0 G-PUSH ;
 
 \ Darwin's libc fork reinitializes libSystem's child state, including Mach
 \ reply ports. A raw syscall child can execute Habu but subsequent Mach VM
