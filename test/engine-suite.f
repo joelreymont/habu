@@ -52,8 +52,6 @@ s" legacy engine error globals absent" T-LABEL
 s" E-SEAL-VIOLATION" 0 search-wl 0 T=
 s" E-SEAL-PACKAGE" 0 search-wl 0 T=
 s" E-BAD-TAG" 0 search-wl 0 T=
-s" E-CALLABLE-ABI" 0 search-wl 0 T=
-s" E-CATCH-STACK" 0 search-wl 0 T=
 s" E-CODE-CERT" 0 search-wl 0 T=
 s" private engine helpers absent from the public wordlist" T-LABEL
 s" (PROT-SPAN)" 0 search-wl 0 T=

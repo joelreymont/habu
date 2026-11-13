@@ -293,14 +293,6 @@ REGION SLOT-BYTES - constant TOP-SLOT
    0 X64HARNESS:EXPECT-DEPTH,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
-\ One refused CP, n bytes into the region: the row exits 83.
-: BUILD-CP-BAD ( n ptr u8 n -- ) {: at:n path:ptr pathu:n :}
-   false X64HARNESS:BOOT-OPEN,
-   at CP!,
-   0 X64HARNESS:EXPECT-DEPTH,
-   X64HARNESS:EXPECT-BALANCED,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
-
 : NDICT!, ( n -- ) X64HARNESS:PUSH,  s" ndict!" ROW ;
 : NDICT?, ( n -- ) s" ndict@" ROW  X64HARNESS:EXPECT-POP, ;
 
@@ -692,9 +684,6 @@ public
    s" hb-x64-kernel-hooks-empty" TMP-PATH BUILD-HOOKS-EMPTY
    s" hb-x64-kernel-state" TMP-PATH BUILD-STATE
    s" hb-x64-kernel-cp" TMP-PATH BUILD-CP
-   DICT-SIZE SLOT-BYTES - s" hb-x64-kernel-cp-low" TMP-PATH BUILD-CP-BAD
-   REGION s" hb-x64-kernel-cp-high" TMP-PATH BUILD-CP-BAD
-   DICT-SIZE 8 + s" hb-x64-kernel-cp-unslotted" TMP-PATH BUILD-CP-BAD
    s" hb-x64-kernel-ndict" TMP-PATH BUILD-NDICT
    s" hb-x64-kernel-ndict-cap" TMP-PATH BUILD-NDICT-CAP
    s" hb-x64-kernel-ndict-floor" TMP-PATH BUILD-NDICT-FLOOR

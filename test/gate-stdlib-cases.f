@@ -227,10 +227,6 @@ SUITE quotation-locals
    test/quotation-locals.f
 ;SUITE
 
-SUITE empty-quotation
-   test/empty-quotation.f
-;SUITE
-
 SUITE compiler-native-lexical-recovery
    test/compiler/native-lexical-recovery.f
 ;SUITE

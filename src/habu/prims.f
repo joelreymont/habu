@@ -590,7 +590,7 @@ EPPRIM: DEBUG patch32 PE-N PE-IN PE-PTR-U8 PE-IN ECLOSE-PRIVATE
 \ CP is always a code slot, the only address the native driver places code at:
 \ a four-byte instruction word on ARM64 and a 16-byte slot on x86-64. Every CP
 \ writer keeps it one:
-\ `cp!` refuses any other address with ENGINE-ERROR:SEAL-VIOLATION, the boot
+\ `cp!` sets a CP an earlier writer made, the boot
 \ starts it at the page-aligned DBASE+DICT-SIZE, `code-publish` moves it to
 \ the first slot at or past dst+len, x86-64 filling the gap with int3,
 \ `does-record` pads the name it writes at CP to a slot with zeros,

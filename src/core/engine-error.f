@@ -6,8 +6,6 @@ public
 83 constant SEAL-VIOLATION
 84 constant SEAL-PACKAGE
 85 constant BAD-TAG
-86 constant CALLABLE-ABI
-87 constant CATCH-STACK
 88 constant CODE-CERT
 \ `using NAME` / `;using` consumer-import failures.
 \ Each is recoverable inside `evaluate` (a catchable throw of the same code) and a

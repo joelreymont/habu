@@ -237,8 +237,7 @@ so the message names the mechanism that caught the fault
   with checking off, or a `TRUSTED:` body that drops more than it declares.
 - `E-STACK-BOUNDS habu: stack bounds exceeded (data|return|loop) lr <lr>`
   (exit 102): an overflow or a below-base access where no throw entry exists
-  (a task's own stack, a stripped AOT image). `(stack cursor)`: a stack
-  switch or a breakpoint refused a stack's descriptor or cursor.
+  (a task's own stack, a stripped AOT image).
   Match the prefix `E-STACK-BOUNDS` unless the stack matters.
 - `E-STACK-BOUNDS habu: stack bounds exceeded (machine) lr <lr>` (exit 102):
   the OS thread's own stack overflowed, typically unbounded recursion; `catch`

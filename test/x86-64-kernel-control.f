@@ -232,17 +232,11 @@ DATA-START $10000 + constant CLOSED-SCRATCH
 \                                        the faulting stack and throws 70
 \    hb-x64-kernel-stack-clear        0  the trusted recovery row empties only
 \                                        the current data stack
-\    hb-x64-kernel-unset-<row>       86  execute, catch, finally cleanup and
-\                                        run-in-stack refuse a zero quotation
-\                                        with `hb: unset quotation` on fd 2
-\    hb-x64-kernel-unguarded         67  that refusal with no handler
+\    hb-x64-kernel-unguarded         67  E-STACK-UNGUARDED with no handler
 \    hb-x64-kernel-throw             42  42 throw with no handler: the reporter
 \                                        returns with the scratch registers
 \                                        clobbered
 \    hb-x64-kernel-throw-report      50  the reporter exits with the code plus 8
-\    hb-x64-kernel-throw-corrupt     87  a handler frame whose cursor is below
-\                                        its base: `hb: catch frame corrupt` on
-\                                        fd 2
 \    hb-x64-kernel-die                5  `hb: die` and LF on fd 2; the exit hook
 \                                        returns with the scratch registers
 \                                        clobbered
@@ -404,52 +398,11 @@ DATA-START $10000 + constant CLOSED-SCRATCH
    NOTHING PUSH-INSIDE-EXTENT,  s" run-in-stack" ROW,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
-: BUILD-UNSET-EXEC ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   false X64HARNESS:BOOT-OPEN,
-   0 PUSH,  s" execute" ROW,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
-
-: BUILD-UNSET-CATCH ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   false X64HARNESS:BOOT-OPEN,
-   0 PUSH,  s" catch" ROW,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
-
-: BUILD-UNSET-FINALLY ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   false X64HARNESS:BOOT-OPEN,
-   55 THROWS PUSH-XT,  0 PUSH,  s" finally" ROW,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
-
-: BUILD-UNSET-RUN ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   false X64HARNESS:BOOT-OPEN,
-   0 PUSH,  STACK-ABI:LOOP-BASE-CELL PUSH-CELL,  STACK-ABI:LOOP-BYTES PUSH,
-   s" run-in-stack" ROW,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
-
 \ An uncaught THROWN-CODE throw with a reporter installed.
 : BUILD-THROW ( [ -- label ] ptr u8 n -- ) {: path:ptr pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    execute UNCGH-CELL XT!,
    THROWN-CODE PUSH,  s" throw" ROW,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
-
-\ A handler frame that passes every check but the last: its sentinel and
-\ depths hold and its descriptor is the boot stack's, but its cursor is a cell
-\ below that stack's base.
-: BUILD-THROW-CORRUPT ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   false X64HARNESS:BOOT-OPEN,
-   RSP STACK-ABI:CATCH-BYTES >IMM32 ASM-SINK ENC-SUB-RI32
-   RCX ZERO-REG,
-   STACK-ABI:CATCH-BYTES 0 do RCX RSP i MEM-OFF ASM-SINK ENC-MOV-MR CELL +loop
-   RCX STACK-ABI:CATCH-MAGIC IMM,
-   RCX RSP X64KERNEL:CATCH-SENTINEL MEM-OFF ASM-SINK ENC-MOV-MR
-   RCX STACK-ABI:BOOT-BYTES IMM,
-   RCX RSP STACK-ABI:CATCH-CAP MEM-OFF ASM-SINK ENC-MOV-MR
-   RCX DATA-REG STACK-ABI:BASE-CELL MEM-OFF ASM-SINK ENC-MOV-RM
-   RCX RSP STACK-ABI:CATCH-BASE MEM-OFF ASM-SINK ENC-MOV-MR
-   RCX CELL >IMM8 ASM-SINK ENC-SUB-RI8
-   RCX RSP X64KERNEL:CATCH-DSP MEM-OFF ASM-SINK ENC-MOV-MR
-   RSP DATA-REG HND-CELL MEM-OFF ASM-SINK ENC-MOV-MR
-   1 PUSH,  s" throw" ROW,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
 \ die with rc n, a message and an exit hook installed.
@@ -492,13 +445,8 @@ public
    s" hb-x64-kernel-floorrec" TMP-PATH BUILD-FLOORREC
    s" hb-x64-kernel-stack-clear" TMP-PATH BUILD-STACK-CLEAR
    s" hb-x64-kernel-unguarded" TMP-PATH BUILD-UNGUARDED
-   s" hb-x64-kernel-unset-execute" TMP-PATH BUILD-UNSET-EXEC
-   s" hb-x64-kernel-unset-catch" TMP-PATH BUILD-UNSET-CATCH
-   s" hb-x64-kernel-unset-finally" TMP-PATH BUILD-UNSET-FINALLY
-   s" hb-x64-kernel-unset-run" TMP-PATH BUILD-UNSET-RUN
    [: REPORTS-BACK ;] s" hb-x64-kernel-throw" TMP-PATH BUILD-THROW
    [: REPORTS-EXIT ;] s" hb-x64-kernel-throw-report" TMP-PATH BUILD-THROW
-   s" hb-x64-kernel-throw-corrupt" TMP-PATH BUILD-THROW-CORRUPT
    [: RETURNS-CLOBBERED ;] 5 s" hb-x64-kernel-die" TMP-PATH BUILD-DIE
    [: 6 DIES ;] 5 s" hb-x64-kernel-die-hook" TMP-PATH BUILD-DIE
    s" hb-x64-kernel-die-throw" TMP-PATH BUILD-DIE-THROW

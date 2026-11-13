@@ -1535,7 +1535,6 @@ public
 32 constant CATCH-RET       \ the cell at CATCH-MSP, as BCATCH saves x30
 40 constant CATCH-RDEPTH    \ RSP-CELL, the return stack's depth
 48 constant CATCH-LDEPTH    \ LOOPSP-CELL, the loop stack's depth
-56 constant CATCH-SENTINEL  \ STACK-ABI:CATCH-MAGIC
 
 \ The twins of habu1.f BEXEC, BEXECFLOOR, B2TOR, B2RFROM, B2RFETCH, BCATCH,
 \ BTHROW, BFINALLY, BRUNSTACK and BDIE. An xt is a code address a body enters
@@ -1548,15 +1547,6 @@ private
    r base off MEM-OFF ASM-SINK ENC-MOV-RM ;
 : MOV-STORE, ( r64 r64 n -- ) {: r:r64 base:r64 off:n :}
    r base off MEM-OFF ASM-SINK ENC-MOV-MR ;
-
-: CORRUPT$ ( -- ptr u8 n ) S\" hb: catch frame corrupt\n" ;
-
-\ Refuse only the empty typed quotation value at a public invocation boundary.
-: CALLABLE, ( -- )
-   X64CODE:LBL {: live:label :}
-   RAX RAX ASM-SINK ENC-TEST-RR  C-NE live JCC,
-   S\" hb: unset quotation\n" ENGINE-ERROR:CALLABLE-ABI STDERR-EXIT,
-   live X64CODE:LBL, ;
 
 \ run-in-stack's frame: the caller's data stack pointer and descriptor.
 0 constant RUN-DSP
@@ -1622,7 +1612,7 @@ private
 \ in rax. The caller places that label after the return path.
 : CATCH-RUN, ( -- label )
    X64CODE:LBL {: resume:label :}
-   RAX POP,  CALLABLE,
+   RAX POP,
    RSP STACK-ABI:CATCH-BYTES >IMM32 ASM-SINK ENC-SUB-RI32
    RCX DATA-REG HND-CELL MOV-LOAD,  RCX RSP CATCH-PREV MOV-STORE,
    DSP RSP CATCH-DSP MOV-STORE,
@@ -1632,8 +1622,6 @@ private
    RCX resume MOVABS,  RCX RSP CATCH-RESUME MOV-STORE,
    RCX DATA-REG RSP-CELL MOV-LOAD,  RCX RSP CATCH-RDEPTH MOV-STORE,
    RCX DATA-REG LOOPSP-CELL MOV-LOAD,  RCX RSP CATCH-LDEPTH MOV-STORE,
-   RCX STACK-ABI:CATCH-MAGIC >IMM64 ASM-SINK ENC-MOV-RI64
-   RCX RSP CATCH-SENTINEL MOV-STORE,
    RCX DATA-REG STACK-ABI:BASE-CELL MOV-LOAD,
    RCX RSP STACK-ABI:CATCH-BASE MOV-STORE,
    RCX DATA-REG STACK-ABI:CAP-CELL MOV-LOAD,
@@ -1644,21 +1632,6 @@ private
    RSP STACK-ABI:CATCH-BYTES >IMM32 ASM-SINK ENC-ADD-RI32
    RAX ZERO-REG,
    resume ;
-
-\ Admit the handler frame in rdx before any store: its sentinel, both depths
-\ within their stacks' capacities, and its data stack's descriptor and cursor
-\ with room for a cell. A frame that fails branches to the label.
-: FRAME-OK, ( label -- ) {: bad:label :}
-   RCX STACK-ABI:CATCH-MAGIC >IMM64 ASM-SINK ENC-MOV-RI64
-   RCX RDX CATCH-SENTINEL MEM-OFF ASM-SINK ENC-CMP-RM  C-NE bad JCC,
-   RCX STACK-ABI:RETURN-CELLS IMM32,
-   RCX RDX CATCH-RDEPTH MEM-OFF ASM-SINK ENC-CMP-RM  C-B bad JCC,
-   RCX STACK-ABI:LOOP-FRAMES IMM32,
-   RCX RDX CATCH-LDEPTH MEM-OFF ASM-SINK ENC-CMP-RM  C-B bad JCC,
-   RSI RDX STACK-ABI:CATCH-BASE MOV-LOAD,
-   RDI RDX STACK-ABI:CATCH-CAP MOV-LOAD,
-   R8 RDX CATCH-DSP MOV-LOAD,
-   RSI RDI R8 CELL bad CHECK-CURSOR ;
 
 \ Restore the execution state the frame in rdx saved, unlink it and resume
 \ where CAUGHT, left, with the code still in rax.
@@ -1692,22 +1665,17 @@ private
 
 \ Throw the code in rax: BTHROW without its evaluate and REPL arms, which jump
 \ into habu2.f routines the x86-64 engine never has. Habu's `evaluate`
-\ recovers through `catch`. A handler's frame is admitted, restored and resumed;
-\ one that fails its admission writes `hb: catch frame corrupt` on fd 2 and
-\ exits ENGINE-ERROR:CATCH-STACK. The text follows the exit.
+\ recovers through `catch`. A handler's frame is restored and resumed.
 : THROW, ( -- )
-   X64CODE:LBL X64CODE:LBL {: none:label corrupt:label :}
+   X64CODE:LBL {: none:label :}
    RAX ASM-SINK ENC-PUSH
    LCLOSE-LBL CALL,
    RAX ASM-SINK ENC-POP
    RDX DATA-REG HND-CELL MOV-LOAD,
    RDX RDX ASM-SINK ENC-TEST-RR  C-E none JCC,
-   corrupt FRAME-OK,
    RESUME,
    none X64CODE:LBL,
-   UNCAUGHT,
-   corrupt X64CODE:LBL,
-   CORRUPT$ ENGINE-ERROR:CATCH-STACK STDERR-EXIT, ;
+   UNCAUGHT, ;
 
 \ The `throw` row's code, in rax: the twin of habu1.f BTHROWPRIM. A zero code
 \ becomes ENGINE-ERROR:THROW-ZERO unless a TASK:HALT unwind carries it.
@@ -1842,7 +1810,7 @@ private
 \ code, and a halt taken here is set again and the code thrown on, even 0.
 : FINALLY, ( -- )
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: keep:label calm:label throw:label done:label :}
-   RAX POP,  CALLABLE,
+   RAX POP,
    RSP 4 CELL * >IMM8 ASM-SINK ENC-SUB-RI8
    RAX RSP 0 MOV-STORE,
    CAUGHT-HELD,
@@ -2033,14 +2001,12 @@ private
 \ An extent that is not a guarded mapping is the caller's error, so it throws
 \ STACK-ABI:E-STACK-UNGUARDED over the three cells, as BRUNSTACK does. The
 \ extent becomes the data stack and its descriptor for the call; on the return
-\ the caller's saved descriptor and cursor are admitted, since nothing proves
-\ what the callback left of them, and restored.
+\ the caller's saved descriptor and cursor are restored.
 : RUN-IN-STACK, ( -- )
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: unguarded:label bad:label done:label :}
+   X64CODE:LBL X64CODE:LBL {: unguarded:label done:label :}
    RAX DSP -3 CELL * MOV-LOAD,
    RDX DSP -2 CELL * MOV-LOAD,
    RCX DSP CELL negate MOV-LOAD,
-   CALLABLE,
    RDX RCX unguarded GUARDED-EXTENT,
    DSP 3 CELL * >IMM8 ASM-SINK ENC-SUB-RI8
    RSP RUN-BYTES >IMM8 ASM-SINK ENC-SUB-RI8
@@ -2051,8 +2017,7 @@ private
    RCX DATA-REG STACK-ABI:CAP-CELL MOV-STORE,
    DSP RDX ASM-SINK ENC-MOV-RR
    RAX ASM-SINK ENC-CALL-REG
-   RSI RSP RUN-BASE MOV-LOAD,  RDI RSP RUN-CAP MOV-LOAD,  RDX RSP RUN-DSP MOV-LOAD,
-   RSI RDI RDX 0 bad CHECK-CURSOR
+   RSI RSP RUN-BASE MOV-LOAD,
    RSI DATA-REG STACK-ABI:BASE-CELL MOV-STORE,
    RDI RSP RUN-CAP MOV-LOAD,  RDI DATA-REG STACK-ABI:CAP-CELL MOV-STORE,
    DSP RSP RUN-DSP MOV-LOAD,
@@ -2061,8 +2026,6 @@ private
    unguarded X64CODE:LBL,
    RAX STACK-ABI:E-STACK-UNGUARDED >IMM32 ASM-SINK ENC-MOV-RI32
    THROW,
-   bad X64CODE:LBL,
-   EXIT-BOUNDS
    done X64CODE:LBL, ;
 
 \ source-file-run ( xt -- ): the unit runs on the caller's extent with the cursor as its floor, compared before any push so
@@ -2070,7 +2033,7 @@ private
 : SOURCE-FILE-RUN, ( -- )
    X64CODE:LBL X64CODE:LBL {: restore:label done:label :}
    TASK-LIVE-GUARD,
-   RAX POP,  CALLABLE,
+   RAX POP,
    RSP RUN-BYTES >IMM8 ASM-SINK ENC-SUB-RI8
    DSP RSP RUN-DSP MOV-STORE,
    RCX DATA-REG STACK-ABI:BASE-CELL MOV-LOAD,  RCX RSP RUN-BASE MOV-STORE,
@@ -2119,7 +2082,6 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
    RAX RSP CLOSED-ARM-OFF CLOSED-A + MOV-LOAD,  RAX PUSH,
    RAX RSP CLOSED-ARM-OFF CLOSED-U + MOV-LOAD,  RAX PUSH,
    RAX DATA-REG PROVIDED-XT:EVALUATE-CELL MOV-LOAD,
-   CALLABLE,
    RAX ASM-SINK ENC-CALL-REG
    DSP RSP CLOSED-ARM-OFF CLOSED-INNER-DSP + MOV-STORE,
    ASM-SINK ENC-RET ;
@@ -2225,7 +2187,6 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
 \ keyword has its own hook/registrar tail; this primitive shares its row work.
 : CREATE-BODY ( -- )
    RAX DATA-REG CREATEP-CELL MOV-LOAD,
-   CALLABLE,
    RAX ASM-SINK ENC-CALL-REG ;
 
 \ A source token's scope is a dictionary-record lookup. The one-wordlist
@@ -2681,7 +2642,7 @@ public
    msg X64CODE:LBL,  UNDERDEPTH$ TEXT,
    nl X64CODE:LBL,  STR-LF ASM-SINK BUF:APPEND-BYTE
    after-floor X64CODE:LBL,
-   s" execute" [: RAX POP,  CALLABLE,  RAX ASM-SINK ENC-CALL-REG ;] PRIM
+   s" execute" [: RAX POP,  RAX ASM-SINK ENC-CALL-REG ;] PRIM
    s" execute-floor" [: EXECUTE-FLOOR, ;] PRIM
    s" 2>r" [: 2>R, ;] PRIM
    s" 2r>" [: 2R>, ;] PRIM
@@ -3612,22 +3573,6 @@ private
 
 74 constant COUNT-RC                   \ BNDSET's refusal
 
-\ The twin of habu1.f GUARD-CODE-WORD, over code slots where ARM64 takes
-\ instruction words: a new CP must be a CODE-SLOT multiple in
-\ [DBASE + DICT-SIZE, DBASE + REGION - CODE-SLOT], unsigned, or the row exits
-\ SEAL-VIOLATION, so cp! never aims later emission outside the code area or
-\ at an address X64EMIT:PLACE-AT refuses. It clobbers rax.
-: CODE-SLOT-GUARD, ( r64 -- ) {: at:r64 :}
-   X64CODE:LBL X64CODE:LBL {: ok:label trap:label :}
-   RAX DBASE-REG DICT-SIZE MEM-OFF ASM-SINK ENC-LEA
-   at RAX ASM-SINK ENC-CMP-RR  C-B trap JCC,
-   RAX DBASE-REG REGION CODE-SLOT - MEM-OFF ASM-SINK ENC-LEA
-   at RAX ASM-SINK ENC-CMP-RR  C-A trap JCC,
-   at CODE-SLOT 1- >IMM32 ASM-SINK ENC-TEST-RI32  C-E ok JCC,
-   trap X64CODE:LBL,
-   ENGINE-ERROR:SEAL-VIOLATION EXIT-GROUP,
-   ok X64CODE:LBL, ;
-
 \ Guard the DREC bytes of record n, n the top of the data stack, which stays:
 \ the record a new count points the next write at, as habu1.f BNDSET guards
 \ it. It clobbers what PROT-SPAN-CALL, clobbers.
@@ -3822,7 +3767,7 @@ private
    s" rbase" [: RAX RBASE-CELL CELL@,  RAX PUSH, ;] PRIM
    s" ndict@" [: NDICT-REG PUSH, ;] PRIM
    s" cp!" [:
-      TASK-LIVE-GUARD,  RCX POP,  RCX CODE-SLOT-GUARD,
+      TASK-LIVE-GUARD,  RCX POP,
       RDI RCX ASM-SINK ENC-MOV-RR
       DEF-CODE-RECLAIM-BODY
       CP-REG RDI ASM-SINK ENC-MOV-RR ;] PRIM
@@ -5179,7 +5124,6 @@ $3A constant NAME-COLON                \ a qualified name's separator
    CP-REG R10 ASM-SINK ENC-CMP-RR  C-B SEAL-TRAP-LBL JCC,
    RAX REPLAY-SCOPE:WIDN CELL@,  RDX WIDN-CELL CELL@,
    RDX RAX ASM-SINK ENC-CMP-RR  C-B SEAL-TRAP-LBL JCC,
-   R10 CODE-SLOT-GUARD,
    RAX R8 ASM-SINK ENC-MOV-RR
    OCC-COUNT,
    LASTC-TRIM,

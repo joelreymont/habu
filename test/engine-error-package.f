@@ -100,10 +100,6 @@ variable ERR-U         \ bytes the last child wrote to fd 2
    ERR$ s" habu: missing definition name after :" CONTAINS? TTRUE ;
 
 : EXACT-EXITS ( -- )
-   s" callable ABI exits 86" T-LABEL
-   s" ENGINE-ERROR:CALLABLE-ABI" CHILD-RC 86 T=
-   s" CATCH stack exits 87" T-LABEL
-   s" ENGINE-ERROR:CATCH-STACK" CHILD-RC 87 T=
    s" code certificate exits 88" T-LABEL
    s" ENGINE-ERROR:CODE-CERT" CHILD-RC 88 T= ;
 

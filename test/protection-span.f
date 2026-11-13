@@ -50,14 +50,12 @@ create ERR CAP allot
 \ At the code ceiling `create` and `:` refuse before they write (src/habu/interpreter.f
 \ DEF-CODE-ROOM); a constant's body write reaches the guard.
 : TEST-CODE ( -- )
-   s" TRUSTED: PST-RAW ( -- ) data-base TXN-STATE-OFF 1- + cp! ; PST-RAW" REJECTS
    s" dbase@ DICT-SIZE + cp!" ACCEPTS
    s" dbase@ REGION + $4000 - 4 - cp!" ACCEPTS
    s" dbase@ REGION + 4 - cp!" ACCEPTS
    s" dbase@ REGION + 4 - cp! create PST-END" CODE-FULL-RC EXPECT
    s" dbase@ REGION + 4 - cp! 1 constant PST-END" REJECTS
-   s" dbase@ REGION + 4 - cp! : PST-END ( -- n ) 1 ;" CODE-FULL-RC EXPECT
-   s" TRUSTED: PST-RAW ( -- ) data-base TXN-STATE-OFF 1 cells - + cp! ; PST-RAW : PST-CROSS ( -- n ) 1 ;" REJECTS ;
+   s" dbase@ REGION + 4 - cp! : PST-END ( -- n ) 1 ;" CODE-FULL-RC EXPECT ;
 
 : TEST-SYSCALL ( -- )
    s" 0 data-base TXN-STATE-OFF 1 cells - + 16 read drop" REJECTS

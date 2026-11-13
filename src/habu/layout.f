@@ -1002,10 +1002,9 @@ $4CA8 constant CLAUSE-CELL
 
 \ The catch/throw handler frame.
 \ A STACK-ABI:CATCH-BYTES machine-stack frame chained through HND-CELL
-\ ([DATA+8]). Every delivery site validates the sentinel, saved depths and
-\ allocation before any restore store.
+\ ([DATA+8]).
 \ frame layout: 0 prev-HND | 8 data-sp(x19) | 16 machine-sp | 24 resume-pc
-\               32 link | 40 saved-RSP | 48 saved-LOOPSP | 56 sentinel
+\               32 link | 40 saved-RSP | 48 saved-LOOPSP | 56 unused
 \               64 saved-base | 72 saved-capacity | 80 saved-BUSY
 \               88 saved-ACTIVE
 

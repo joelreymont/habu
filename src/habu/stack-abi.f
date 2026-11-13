@@ -62,7 +62,6 @@ $48 constant CATCH-CAP
 $50 constant CATCH-BUSY
 $58 constant CATCH-ACTIVE
 $60 constant CATCH-BYTES
-$CA7CF4A3E00E constant CATCH-MAGIC
 $80 constant EVAL-BASE
 $88 constant EVAL-CAP
 \ $90..$180 are layout.f's: its frame map says which offset holds what.

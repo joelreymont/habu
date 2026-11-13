@@ -285,26 +285,6 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" data-base SLF-UNCGH + 0 swap !" SB-APPEND SLV-LF
    SB$ ;
 
-\ cp! may select only an aligned instruction in the full DBASE code interval: a
-\ data address traps at cp! itself, before any delayed emission can cross a
-\ protected band. One forge per band proves the code-region guard. ndict! writes
-\ records into the disjoint dict-record region (DBASE, not data-base), bounded
-\ by DICT-CAP through the room check, so it cannot land in a data-base band; the
-\ legit round-trip forge above proves its guard leaves FORGET intact.
-: SLV-CPSET-B2-FORGE$ ( -- ptr u8 n )       \ cp! CP into the registry band ($3CB8), then emit
-   SB-RESET
-   s" $3CB8 constant SLF-PWIDN" SB-APPEND SLV-LF
-   s" TRUSTED: SLF-FORGE ( -- ) data-base SLF-PWIDN + cp! ; SLF-FORGE" SB-APPEND SLV-LF
-   s" : SLF-FOO ( -- n ) 1 ;" SB-APPEND SLV-LF
-   SB$ ;
-
-: SLV-CPSET-B1-FORGE$ ( -- ptr u8 n )       \ cp! CP into the crown-jewel band ($20), then emit
-   SB-RESET
-   s" $20 constant SLF-LATCH" SB-APPEND SLV-LF
-   s" TRUSTED: SLF-FORGE ( -- ) data-base SLF-LATCH + cp! ; SLF-FORGE" SB-APPEND SLV-LF
-   s" : SLF-FOO ( -- n ) 1 ;" SB-APPEND SLV-LF
-   SB$ ;
-
 \ A sealed-band pointer packed as a live integer or pointer FFI arg must trap
 \ ENGINE-ERROR:SEAL-VIOLATION at the trampoline before the foreign call, else
 \ the callee writes through it into a sealed cell. Routed through the checked
@@ -565,11 +545,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" c! at the band-2 upper boundary (PROT-REG-OFF+PROT-REG-LEN-1) traps" T-LABEL
    SLV-BAND2-END-FORGE$ SLV-SUBJECT SLV-ASSERT-SEAL
    s" ! into the uncaught-throw reporter hook traps" T-LABEL
-   SLV-UNCGH-FORGE$ SLV-SUBJECT SLV-ASSERT-SEAL
-   s" cp! redirecting emission into band 2 traps at the sink" T-LABEL
-   SLV-CPSET-B2-FORGE$ SLV-SUBJECT SLV-ASSERT-SEAL
-   s" cp! redirecting emission into band 1 traps at the sink" T-LABEL
-   SLV-CPSET-B1-FORGE$ SLV-SUBJECT SLV-ASSERT-SEAL ;
+   SLV-UNCGH-FORGE$ SLV-SUBJECT SLV-ASSERT-SEAL ;
 
 : SLV-NEGATIVES-SINKS ( -- )
    s" atomic-add addr (x10) into the band traps" T-LABEL

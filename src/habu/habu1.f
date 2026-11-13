@@ -112,7 +112,6 @@ public
 variable LFIND  variable LNUM  variable LDICT
 variable LCEMIT  variable LTOK  variable LPROTSPAN  variable LFLUSH variable LFLUSHTO variable LNCOUNT
 variable LDIVZERO                       \ the (DIV-ZERO) refusal the dividing bodies branch to
-variable LUNSET-QUOTATION   variable LCATCH-CORRUPT   \ the exits many bodies share
 private
 \ The count EMIT-DICT bakes into LNCOUNT. The AOT call-site binder reads this,
 \ not the registry: a payload record's dictionary index is the seeded count
@@ -258,27 +257,6 @@ public
 
 ;package
 
-package ENGINE-EMIT
-public
-\ A code emission target is one aligned instruction inside the writable code
-\ interval [DBASE+DICT-SIZE, DBASE+REGION), whatever the DATA protection latch
-\ says: cp! may never redirect later LCEMIT writes into a DATA band. The $4000
-\ reserve below REGION bounds the rest of a definition once its first
-\ instruction is admitted.
-: GUARD-CODE-WORD ( n -- ) {: addr:n :}
-   LBL LBL {: ok:label trap:label :}
-   DREG DICT-SIZE LIT64,  DREG DBASE DREG ADD,
-   addr DREG CMP,  C-CC trap BCOND,
-   DREG REGION 4 - LIT64,  DREG DBASE DREG ADD,
-   addr DREG CMP,  C-HI trap BCOND,
-   EREG addr 3 ANDI,  EREG trap CBNZ,
-   ok B,
-   trap LBL,
-   s" E-SEAL-VIOLATION habu: code address outside [DBASE+DICT-SIZE, DBASE+REGION-4] or not instruction-aligned:"
-   ENGINE-ERROR:SEAL-VIOLATION addr DIE-LINE-VALUE,
-   ok LBL, ;
-;package
-
 \ Every target selector below names the Linux-aarch64 and macOS arms and calls
 \ this otherwise: this file holds primitive bodies for those two targets only,
 \ so emitting one for any other target fails closed.
@@ -410,7 +388,6 @@ variable THROW-NOH
 variable THROW-NOREC-FB
 variable THROW-NOREC-FB2
 variable THROW-EVAL
-variable THROW-CORRUPT
 public
 variable SWL-LOOP
 variable SWL-END
@@ -1547,15 +1524,12 @@ variable LDIE
 ;package
 
 package ENGINE-EMIT
-\ cp! and ndict! are the FORGET sinks: cp! moves JIT emission to the popped CP,
-\ ndict! the next record write to DBASE+n*DREC. Each guards the span it
-\ redirects to, so a post-seal value in a sealed band fails at the sink. FORGET
-\ marks are DBASE-relative and never inside a data-base band, so the guard
-\ admits them.
+\ cp! and ndict! are the FORGET sinks: cp! moves emission to the popped CP,
+\ ndict! the next record write to DBASE+n*DREC.
 : BCPSET ( -- )
    s" E-TASK-COMPILE habu: cp! from a task" B-TASK-GUARD
    s" E-TASK-COMPILE habu: cp! while a task is live" B-LOWER-GUARD
-   A G-POP  A GUARD-CODE-WORD
+   A G-POP
    EM-DEF-OCC:LRECLAIM LABEL@ BL,  CP A 0 ADDI, ;   \ ( addr -- ) set CP
 \ LASTC-CELL names the record the last create, variable or constant wrote;
 \ does> patches it. A record at or above NDICT is retired and its slot reused,
@@ -3158,28 +3132,6 @@ package NPUBWIN
 
 private
 
-\ Guard one aligned SPAN of the writable code interval: x9 = length, x10 =
-\ start. A zero length, a length or a start that is not a whole number of
-\ instructions, a span that wraps, and a span reaching outside
-\ [DBASE+DICT-SIZE, DBASE+REGION) all fail closed the way every other
-\ protected-memory violation does. Clobbers x12/x13.
-: GUARD-CODE-SPAN ( -- )
-   LBL LBL {: ok:label trap:label :}
-   9 trap CBZ,                                  \ a window of nothing is a caller bug
-   12 9 3 ANDI,  12 trap CBNZ,
-   12 10 3 ANDI,  12 trap CBNZ,
-   12 10 9 ADD,
-   12 10 CMP,  C-CC trap BCOND,
-   13 DICT-SIZE LIT64,  13 DBASE 13 ADD,
-   10 13 CMP,  C-CC trap BCOND,
-   13 REGION LIT64,  13 DBASE 13 ADD,
-   12 13 CMP,  C-HI trap BCOND,
-   ok B,
-   trap LBL,
-   s" E-SEAL-VIOLATION habu: code span empty, not whole instructions, wrapping or outside [DBASE+DICT-SIZE, DBASE+REGION):"
-   ENGINE-ERROR:SEAL-VIOLATION 10 DIE-LINE-VALUE,
-   ok LBL, ;
-
 \ Clear the call-map bit of every word in [x10, x10+x9): a bit left from a
 \ reclaimed routine would make a snapshot restore relocate a displacement that
 \ is no longer a call. Call map only: this publisher's address records go in
@@ -3199,7 +3151,6 @@ public
    LBL LBL LBL {: loop:label done:label atcp:label :}
    SP SP 48 SUBI,
    A SP 8 STR,  B SP 16 STR,  C SP 24 STR,
-   GUARD-CODE-SPAN
    9 SP 8 LDR,  10 SP 16 LDR,
    10 CP CMP,  C-EQ atcp BCOND,
       s" E-SEAL-VIOLATION habu: code-publish destination is not CP:"
@@ -3321,12 +3272,9 @@ package ENGINE-EMIT
 : BRBASE ( -- )
    9 DATA RBASE-CELL LDR,  9 G-PUSH ;
 
-\ A typed quotation cell starts at zero. Reading it is valid, but no public
-\ quotation call may branch to that address, even beneath a catch handler.
 : BCALLABLE ( -- )
-   LBL LBL {: live:label old:label :}
-   9 live CBNZ,  LUNSET-QUOTATION LABEL@ B,
-   live LBL,  A CP CMP,  C-CC old BCOND,  ISB,
+   LBL {: old:label :}
+   A CP CMP,  C-CC old BCOND,  ISB,
    old LBL, ;
 
 \ A reading quotation is its record's address with bit 63 set: x4 := the
@@ -3360,7 +3308,7 @@ package ENGINE-EMIT
 \ catch ( xt -- exc ): a STACK-ABI:CATCH-BYTES handler frame chained through
 \ HND-CELL saves the complete caller execution frame so a caught throw resumes
 \ it. Frame: 0 prev-HND | 8 data-sp(x19) | 16 machine-sp | 24 resume-pc |
-\ 32 link | 40 saved-RSP | 48 saved-LOOPSP | 56 sentinel | 64 saved base |
+\ 32 link | 40 saved-RSP | 48 saved-LOOPSP | 56 unused | 64 saved base |
 \ 72 saved capacity | 80 saved BUSY-CELL | 88 saved ACTIVE-CELL. A normal
 \ return branches to CATCH-PUSH with x9 = 0; a throw resumes at CATCH-RES,
 \ where it ends, with the code in x9 and the frame already unlinked; CATCH-RES
@@ -3378,7 +3326,6 @@ package ENGINE-EMIT
    12 CATCH-RES LABEL@ ADR,  12 SP 24 STR,
    11 DATA RSP-CELL LDR,     11 SP 40 STR,
    11 DATA LOOPSP-CELL LDR,  11 SP 48 STR,
-   11 STACK-ABI:CATCH-MAGIC LIT64,  11 SP 56 STR,
    11 DATA STACK-ABI:BASE-CELL LDR,  11 SP STACK-ABI:CATCH-BASE STR,
    11 DATA STACK-ABI:CAP-CELL LDR,  11 SP STACK-ABI:CATCH-CAP STR,
    11 DATA GENIO-ABI:BUSY-CELL LDR,  11 SP STACK-ABI:CATCH-BUSY STR,
@@ -3398,20 +3345,13 @@ private
 \ checker or compile error inside `evaluate` is a catchable throw and a catch
 \ inside the evaluated source still handles its own throws.
 : BTHROW-UNWIND ( -- )
-   LBL THROW-NOH !  LBL THROW-EVAL !  LBL THROW-CORRUPT !
+   LBL THROW-NOH !  LBL THROW-EVAL !
    15 9 0 ADDI,                                        \ x15 = code
    12 DATA EVALD-CELL LDR,  12 THROW-EVAL LABEL@ CBNZ,
    11 DATA 8 LDR,                                      \ x11 = nearest handler (HND-CELL)
    9 15 0 ADDI,
    11 THROW-NOH LABEL@ CBZ,
-   \ handler-frame integrity: check sentinel + saved depths BEFORE any restore store
-   14 STACK-ABI:CATCH-MAGIC LIT64,  10 11 56 LDR,  10 14 CMP,  C-NE THROW-CORRUPT LABEL@ BCOND,
-   10 11 40 LDR,  14 STACK-ABI:RETURN-CELLS MOVZ,
-   10 14 CMP,  C-HI THROW-CORRUPT LABEL@ BCOND,
-   10 11 48 LDR,  14 STACK-ABI:LOOP-FRAMES MOVZ,
-   10 14 CMP,  C-HI THROW-CORRUPT LABEL@ BCOND,
-   14 11 STACK-ABI:CATCH-BASE LDR,  10 11 STACK-ABI:CATCH-CAP LDR,  12 11 8 LDR,
-   8 THROW-CORRUPT LABEL@ STACK-GUARD:CHECK-CURSOR
+   14 11 STACK-ABI:CATCH-BASE LDR,
    19 11 8 LDR,
    14 DATA STACK-ABI:BASE-CELL STR,
    10 11 STACK-ABI:CATCH-CAP LDR,  10 DATA STACK-ABI:CAP-CELL STR,
@@ -3433,20 +3373,11 @@ private
    9 1 CMPI,    C-LT THROW-NOREC-FB2 LABEL@ BCOND,
    9 255 CMPI,  C-GT THROW-NOREC-FB2 LABEL@ BCOND,
    NR-EXIT-GROUP SYS,
-   THROW-NOREC-FB2 LABEL@ LBL,  0 UNCAUGHT-RC MOVZ,  NR-EXIT-GROUP SYS,
-   THROW-CORRUPT LABEL@ LBL,  LCATCH-CORRUPT LABEL@ B, ;
+   THROW-NOREC-FB2 LABEL@ LBL,  0 UNCAUGHT-RC MOVZ,  NR-EXIT-GROUP SYS, ;
 
 public
 \ BTHROW ( code -- ): unwind to the nearest catch handler.
 : BTHROW ( -- )  A G-POP  BTHROW-UNWIND ;
-
-\ The one copy of the lines BCALLABLE and BTHROW-UNWIND, laid in many bodies,
-\ branch to; each prints the lr its body held.
-: EMIT-SHARED-EXITS ( -- )
-   LUNSET-QUOTATION LABEL@ LBL,
-   s" E-CALLABLE-ABI habu: unset quotation" ENGINE-ERROR:CALLABLE-ABI DIE-LINE,
-   LCATCH-CORRUPT LABEL@ LBL,
-   s" E-CATCH-STACK habu: catch frame corrupt" ENGINE-ERROR:CATCH-STACK DIE-LINE, ;
 
 \ The fault entry: the crash handler resumes a faulting thread here with the
 \ code in x9, reaching it with ADR, so it sits next to the handler.
@@ -3607,13 +3538,9 @@ private
 \ run-in-stack ( xt base size -- ): run xt on a fresh data stack (x19=base,
 \ full-ascending). The extent becomes allocation authority, saved with XDS so
 \ return and unwind restore the caller. An unguarded extent is a caller error
-\ and throws STACK-ABI:E-STACK-UNGUARDED; a malformed descriptor is still the
-\ fail-closed STACK-BOUNDS exit, since it can arrive from a saved frame or a
-\ task with no caller to throw to. No STACK-GUARD:CHECK-CURSOR on entry:
-\ GUARDED-EXTENT? already proves every branch it would emit with cursor = base.
-\ The exit check stays: the callback may have moved the descriptor.
+\ and throws STACK-ABI:E-STACK-UNGUARDED.
 : BRUNSTACK ( -- )
-   LBL LBL LBL {: bad:label unguarded:label done:label :}
+   LBL LBL {: unguarded:label done:label :}
    12 XDS 24 SUBI,
    9 12 0 LDR,  14 12 8 LDR,  11 12 16 LDR,     \ xt, base, capacity; no pop yet
    BCALLABLE
@@ -3625,15 +3552,12 @@ private
    14 DATA STACK-ABI:BASE-CELL STR,  11 DATA STACK-ABI:CAP-CELL STR,
    XDS 14 0 ADDI,
    9 BLR,
-   14 SP 16 LDR,  10 SP 24 LDR,  12 SP 8 LDR,
-   0 bad STACK-GUARD:CHECK-CURSOR
-   14 DATA STACK-ABI:BASE-CELL STR,
+   14 SP 16 LDR,  14 DATA STACK-ABI:BASE-CELL STR,
    12 SP 24 LDR,  12 DATA STACK-ABI:CAP-CELL STR,
    XDS SP 8 LDR,  30 SP 0 LDR,  SP SP 32 ADDI,
    done B,
    unguarded LBL,
    9 STACK-ABI:E-STACK-UNGUARDED LIT64,  9 G-PUSH  BTHROW
-   bad LBL,  32 CALLER-LR,  STACK-GUARD:EXIT-BOUNDS
    done LBL, ;
 
 \ Pop B-EVAL-CLOSED's frame: the text's stack (x11) back to the pool, the
@@ -3719,7 +3643,6 @@ private
    12 caught ADR,  12 SP 24 STR,
    11 DATA RSP-CELL LDR,     11 SP 40 STR,
    11 DATA LOOPSP-CELL LDR,  11 SP 48 STR,
-   11 STACK-ABI:CATCH-MAGIC LIT64,  11 SP 56 STR,
    11 DATA STACK-ABI:BASE-CELL LDR,  11 SP STACK-ABI:CATCH-BASE STR,
    11 DATA STACK-ABI:CAP-CELL LDR,  11 SP STACK-ABI:CATCH-CAP STR,
    11 DATA GENIO-ABI:BUSY-CELL LDR,  11 SP STACK-ABI:CATCH-BUSY STR,
@@ -4801,15 +4724,21 @@ package ENGINE-EMIT
    s" f." ['] BFDOT FPRIM-L ;
 
 \ LCEMIT ( x9 = instruction word ): the one store every emission funnels
-\ through. It guards the word at CP and stores it through the region's RW
-\ alias, so the code at CP's own address stays executable and never writable.
+\ through. It stores the word at CP through the region's RW alias, so the code
+\ at CP's own address stays executable and never writable. A definition opens
+\ below REGION less a reserve but may outgrow it: a word past DBASE+REGION-4
+\ exits SEAL-VIOLATION.
 : EMIT-CEMIT ( -- )
+   LBL {: full:label :}
    LCEMIT LABEL@ LBL,
    SP SP 16 SUBI,  12 SP 0 STR,  13 SP 8 STR,
-   28 GUARD-CODE-WORD
+   12 REGION 4 - LIT64,  12 DBASE 12 ADD,  28 12 CMP,  C-HI full BCOND,
    12 DATA REGION-ALIAS:DELTA-CELL LDR,  12 28 12 ADD,  9 12 0 STRW,
    12 SP 0 LDR,  13 SP 8 LDR,  SP SP 16 ADDI,
-   28 28 4 ADDI,  RET, ;
+   28 28 4 ADDI,  RET,
+   full LBL,
+   s" E-SEAL-VIOLATION habu: code space full at:"
+   ENGINE-ERROR:SEAL-VIOLATION 28 DIE-LINE-VALUE, ;
 
 \ EMIT-BCAP's grow routine at gsub ( x16 = the text length needed -- x16 = 0, or
 \ the capacity a refused map tried ). A capacity at 2^59, whose block's size

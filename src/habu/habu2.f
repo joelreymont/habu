@@ -253,21 +253,15 @@ package ENGINE-EMIT
    15 8 24 LDR,  12 15 1 LSRI, ;
 
 : C-BP-STACK-RANGE ( -- )
-   LBL LBL {: bad:label ready:label :}
-   14 DATA STACK-ABI:BASE-CELL LDR,  10 DATA STACK-ABI:CAP-CELL LDR,
+   14 DATA STACK-ABI:BASE-CELL LDR,
    9 SP 24 LDR,  C-MCTX-X19>R12
-   0 bad STACK-GUARD:CHECK-CURSOR
-   12 14 12 ADD,  12 SP 56 STR,  17 14 0 ADDI,
-   ready B,
-   bad LBL,  9 C-CRASH-LR>R30  STACK-GUARD:EXIT-BOUNDS
-   ready LBL, ;
+   12 SP 56 STR,  17 14 0 ADDI, ;
 
 : C-BP-PRINT-HIT ( -- )
    LBL {: empty:label :}
    1 LBPH LABEL@ ADR,  0 2 MOVZ,  2 BPH-LEN MOVZ,  NR-WRITE SYS,
    9 SP 32 LDR,  LHEX LABEL@ BL,
-   \ An empty interrupted stack has no top cell to print. Validate the saved
-   \ cursor against the active allocation before either diagnostic reads it.
+   \ An empty interrupted stack has no top cell to print.
    C-BP-STACK-RANGE
    12 17 CMP, C-EQ empty BCOND,
    9 12 8 SUBI,  9 9 0 LDR,  LHEX LABEL@ BL,
@@ -1423,7 +1417,6 @@ variable LREPLAYTRAP
    6 8 REPLAY-SCOPE:CP BAND-OFF LDR,  CP 6 CMP,  C-CC bad BCOND,
    14 8 REPLAY-SCOPE:WIDN BAND-OFF LDR,  15 DATA WIDN-CELL LDR,
    15 14 CMP,  C-CC bad BCOND,
-   6 GUARD-CODE-WORD
    9 4 0 ADDI,  EM-DEF-OCC:LRETIRE LABEL@ BL,  14 kept CBNZ,
    EM-DEF-OCC:LCOUNT LABEL@ BL,  10 11 LASTC-TRIM,
    CP 6 0 ADDI,
@@ -1817,7 +1810,6 @@ public
 variable LEVALREC             \ re-entrant evaluate: throw-escape recovery entry
 private
 variable LEVLL  variable LEVLP  variable LEVLD  variable LEVLN \ LEVALREC internal labels
-variable LEVCORRUPT   \ eval-cross forged/corrupt handler-frame fail-closed path
 
 public
 : EM-ENTRY-ARGS ( -- )
@@ -2581,11 +2573,10 @@ private
 \ EM-RESET-COMPILE-STATE zeroes HND-CELL) is inside the current frame; delivery
 \ then matches the non-evaluate path.
 : EM-EVAL-THROW-RECOVER ( -- )
-   LBL LBL LBL LBL LBL {: bounds:label owned:label scope:label unrefused:label kept:label :}
+   LBL LBL LBL LBL {: owned:label scope:label unrefused:label kept:label :}
    LBL {: retired:label :}
    LEVALREC LABEL@ LBL,
    LBL LEVLL !  LBL LEVLP !  LBL LEVLD !  LBL LEVLN !
-   LBL LEVCORRUPT !
    11 DATA 8 LDR,
    LEVLL LABEL@ LBL,
       12 DATA EVALD-CELL LDR,  12 LEVLD LABEL@ CBZ,   \ no eval frame left → unwind to handler
@@ -2597,8 +2588,7 @@ private
       \ buffer and the frame pops.
       11 14 CMP,  C-CC LEVLD LABEL@ BCOND,
    LEVLP LABEL@ LBL,
-      14 13 STACK-ABI:EVAL-BASE LDR,  10 13 STACK-ABI:EVAL-CAP LDR,
-      12 13 32 LDR,  0 bounds STACK-GUARD:CHECK-CURSOR
+      14 13 STACK-ABI:EVAL-BASE LDR,
       14 DATA STACK-ABI:BASE-CELL STR,
       12 13 STACK-ABI:EVAL-CAP LDR,  12 DATA STACK-ABI:CAP-CELL STR,
       12 13 0 LDR,   12 DATA INP-CELL STR,
@@ -2660,14 +2650,7 @@ private
    11 SP 0 LDR,  15 SP 8 LDR,  SP SP 16 ADDI,
    9 15 0 ADDI,
    11 LEVLN LABEL@ CBZ,
-   \ Handler-frame integrity: validate before any restore.
-   14 STACK-ABI:CATCH-MAGIC LIT64,  10 11 56 LDR,  10 14 CMP,  C-NE LEVCORRUPT LABEL@ BCOND,
-   10 11 40 LDR,  14 STACK-ABI:RETURN-CELLS MOVZ,
-   10 14 CMP,  C-HI LEVCORRUPT LABEL@ BCOND,
-   10 11 48 LDR,  14 STACK-ABI:LOOP-FRAMES MOVZ,
-   10 14 CMP,  C-HI LEVCORRUPT LABEL@ BCOND,
-   14 11 STACK-ABI:CATCH-BASE LDR,  10 11 STACK-ABI:CATCH-CAP LDR,  12 11 8 LDR,
-   8 LEVCORRUPT LABEL@ STACK-GUARD:CHECK-CURSOR
+   14 11 STACK-ABI:CATCH-BASE LDR,
    19 11 8 LDR,
    14 DATA STACK-ABI:BASE-CELL STR,
    10 11 STACK-ABI:CATCH-CAP LDR,  10 DATA STACK-ABI:CAP-CELL STR,
@@ -2721,10 +2704,7 @@ private
    9 15 CMP,  C-NE unrefused BCOND,
    0 RC-REJECT MOVZ,
    unrefused LBL,
-   NR-EXIT-GROUP SYS,
-   LEVCORRUPT LABEL@ LBL,
-   s" E-CATCH-STACK habu: catch frame corrupt" ENGINE-ERROR:CATCH-STACK DIE-LINE,
-   bounds LBL,  STACK-GUARD:EXIT-BOUNDS ;
+   NR-EXIT-GROUP SYS, ;
 
 : EM-RECOVER-EXITS ( -- )
    \ LFLOORREC: C-CRASH-DATA-RECOVER resumes a thread here, every other register
@@ -2863,8 +2843,7 @@ package ENGINE-EMIT
    EM-COMPILE-DIE
    EMIT-DIAGU
    EM-BODY-GROW-DIE
-   EM-EVAL-THROW-RECOVER
-   EMIT-SHARED-EXITS ;
+   EM-EVAL-THROW-RECOVER ;
 
 ;package
 
@@ -2880,7 +2859,7 @@ package LABELS
    LBL LFIND !  LBL LNUM !  LBL LDICT !
    LBL LKERNELDIGEST !
    LBL LCEMIT !  LBL LTOK !  LBL LPROTSPAN !  LBL LFLUSH !  LBL LFLUSHTO !  LBL LNCOUNT !
-   LBL LDIVZERO !  LBL LUNSET-QUOTATION !  LBL LCATCH-CORRUPT !
+   LBL LDIVZERO !
    LBL LPROTWIDQ !  LBL LPROTWIDADD !
    LBL LBCS !
    LBL LHIDXADD !  LBL LHIDXBUILD !
