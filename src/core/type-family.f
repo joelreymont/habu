@@ -18,21 +18,7 @@ package TFAM
 
 public
 
-\ FAMILY-HOOK-DEFAULTS binds these.
-defer CON-DECLARED-XT ( n -- )
-defer CON-BIND-XT ( n ptr u8 n -- )
-defer UNIT-FAM-RESET-XT ( -- )
-76 constant E-REG-AOT-REFUSED \ a type-registry capture or plan is refused (REG-AOT-REFUSE)
-
-private
-: FAMILY-BIND-ABSENT ( n ptr u8 n -- ) 2drop drop E-REG-AOT-REFUSED throw ;
-: FAMILY-HOOK-DEFAULTS ( -- )
-   [: drop ;] is CON-DECLARED-XT
-   [: FAMILY-BIND-ABSENT ;] is CON-BIND-XT
-   [: ;] is UNIT-FAM-RESET-XT ;
-FAMILY-HOOK-DEFAULTS
-
-public
+76 constant E-REG-AOT-REFUSED \ a type-registry capture is refused (REG-AOT-REFUSE)
 
 0 constant TK-CELL          \ scalar-cell family (no ADT layout)
 1 constant TK-PRODUCT       \ record / struct
@@ -3074,7 +3060,6 @@ public
 \ reset never aliases a transaction begun after it.
 : TFAM-RESET ( -- )
    PF-TX-DEPTH @ IF E-PF-TX throw THEN   \ live field transaction: reset would discard its frame
-   UNIT-FAM-RESET-XT
    0 SVX-GEN !                           \ every variant row the index points at is going
    0 TFX-READY !                         \ ... and every family row the tail index chains
    0 VNX-READY !                         \ ... and every row the variant tail index chains
@@ -3104,7 +3089,6 @@ TFAM-RESET
 \ Product-field rows and schema nodes have their own frames; a caller that owns
 \ them rewinds them after this (field rows through PF-REWIND).
 : TFAM-REWIND ( n n n n n -- ) {: tfamn:n stru:n pkn:n sumvn:n layn:n :}
-   tfamn TFAM-N @ < stru TF-STR-U @ < or IF UNIT-FAM-RESET-XT THEN
    C2-STOW-FAM @ tfamn >= IF -1 C2-STOW-FAM ! THEN
    tfamn TFAM-N @ ENTRIES-RETIRED
    tfamn TFX-RETIRE                      \ unchain the rows before their ids go out of range
@@ -3576,13 +3560,6 @@ private
 PTR-VARIABLE REG-AOT-PROJECTED
 variable REG-AOT-PROJECTED-U
 
-variable UNIT-FAM-PROJECT-ON
-defer UNIT-FAM-PROJECT-VIEW-XT ( n n n -- ptr u8 )
-: UNIT-FAM-NO-VIEW ( n n n -- ptr u8 ) drop 2drop NULL-PTR ;
-: UNIT-FAM-NO-VIEW-INSTALL ( -- )
-   [: UNIT-FAM-NO-VIEW ;] is UNIT-FAM-PROJECT-VIEW-XT ;
-UNIT-FAM-NO-VIEW-INSTALL
-
 : REG-AOT-BLOB-STORE ( ptr u8 n -- ptr u8 ) {: src:ptr k:n :}
    REG-AOT-HDR
    k 0 ?do src i REG-AOT-ROW@ nip nip + loop
@@ -3652,8 +3629,6 @@ UNIT-FAM-NO-VIEW-INSTALL
    {: src:ptr u:n k:n first:n count:n :}
    first 0 < count 0 < or IF
       s" tfam: a seeded registry reference is negative" REG-AOT-REFUSE THEN
-   UNIT-FAM-PROJECT-ON @ IF
-      k first count UNIT-FAM-PROJECT-VIEW-XT EXIT THEN
    u 0= IF
       first k REG-AOT-COUNT > IF
          s" tfam: a seeded registry reference exceeds the prefix" REG-AOT-REFUSE THEN
@@ -3737,7 +3712,6 @@ UNIT-FAM-NO-VIEW-INSTALL
 : REG-AOT-CON-VALID? ( n -- bool ) {: id:n :}
    id CC-N < IF RES-FALSE EXIT THEN
    id CC-MAX < IF RES-TRUE EXIT THEN
-   UNIT-FAM-PROJECT-ON @ IF id CHECKER-REG:UNIT-CON-VALID-XT EXIT THEN
    RES-FALSE ;
 
 : REG-AOT-LIMIT ( n n -- ) {: value:n ceiling:n :}
@@ -3894,7 +3868,7 @@ UNIT-FAM-NO-VIEW-INSTALL
       s" tfam: a seeded layout disagrees with its family descriptor" REG-AOT-REFUSE THEN ;
 
 : REG-AOT-SHAPE-CHECK ( ptr u8 n -- ) {: src:ptr u:n :}
-   UNIT-FAM-PROJECT-ON @ 0= IF src u REG-AOT-TABLE-CHECK THEN
+   src u REG-AOT-TABLE-CHECK
    u 0= IF EXIT THEN
    src 6 REG-AOT-ROW@ drop + 1 ?do
       src u 6 i REG-AOT-ITEM {: node:ptr :}
@@ -5216,17 +5190,6 @@ private
    REPEAT
    RES-FALSE ;
 
-create UNIT-FAM-STABLE REG-AOT-N cells allot
-PTR-VARIABLE UNIT-FAM-COVER
-variable UNIT-FAM-COVER-CAP
-: UNIT-FAM-COVER-RELEASE ( -- )
-   UNIT-FAM-COVER UNIT-FAM-COVER-CAP 1 ARENA-ROWS-RELEASE ;
-defer UNIT-FAM-SCRATCH-RESET ( -- )
-
-: UNIT-FAM-STABLE-INIT ( -- )
-   REG-AOT-N 0 ?do i REG-AOT-COUNT UNIT-FAM-STABLE i cells + ! loop ;
-UNIT-FAM-STABLE-INIT
-
 26 constant TFC-VAR-CAP          \ internal construct scratch; not the declaration spelling cap
 create TFC-VARS TFC-VAR-CAP cells allot
 variable TFC-I   variable TFC-J   variable TFC-ROW
@@ -5913,82 +5876,7 @@ public
 
 private
 
-0 constant UFP.NEXT
-1 constant UFP.BLOB
-2 constant UFP.CAP
-18 constant UFP.COUNT
-26 constant UFP.TBASE
-35 cells constant UFP.REC
-REG-AOT-N PTR-U8-TABLE UNIT-FAM-RAW
-PTR-VARIABLE UNIT-FAM-FIRST
-PTR-VARIABLE UNIT-FAM-CUR
-
-: UFP@ ( ptr u8 n -- n ) cells + CELL-VIEW @ ;
-\ A FILE family plan is a cell row in mapped storage whose UFP.NEXT and
-\ UFP.BLOB cells hold byte addresses.
-CAST: UFP-CELLS ( ptr u8 -- ptr ptr u8 )
-: UFP-PTR@ ( ptr u8 n -- ptr u8 ) cells + UFP-CELLS @ ;
-: UNIT-FAM-RAW! ( ptr u8 n -- ) cells UNIT-FAM-RAW + 0 ptr-field ! ;
-: UFP-COUNT@ ( ptr u8 n -- n ) UFP.COUNT + UFP@ ;
-: UFP-TBASE@ ( ptr u8 n -- n ) UFP.TBASE + UFP@ ;
-
-: UNIT-FAM-ROW ( ptr u8 n n -- ptr n ) {: plan:ptr k:n i:n :}
-   plan UFP.BLOB UFP-PTR@ k REG-AOT-BLOB-STORE
-   i k REG-AOT-WIDTH * + CELL-VIEW ;
-
-: UNIT-FAM-PROJECT-VIEW ( n n n -- ptr u8 )
-   {: k:n first:n count:n :}
-   first k REG-AOT-COUNT <= IF
-      count k REG-AOT-COUNT first - <= IF
-         k REG-AOT-BASE-PTR first k REG-AOT-WIDTH * + EXIT
-      THEN
-   THEN
-   UNIT-FAM-FIRST @
-   BEGIN dup NULL-PTR <> WHILE
-      dup k UFP-TBASE@ {: base:n :}
-      dup k UFP-COUNT@ {: n:n :}
-      first base >= first base n + <= and
-      count base n + first - <= and IF
-         k first base - UNIT-FAM-ROW BYTE-VIEW EXIT
-      THEN
-      UFP.NEXT UFP-PTR@
-   REPEAT drop
-   s" tfam: FILE family reference has no projected row" REG-AOT-REFUSE ;
-
-: UNIT-FAM-PLAN-DROP ( ptr u8 -- ) {: plan:ptr :}
-   plan plan UFP.CAP UFP@ UFP.REC + ASIG-RELEASE ;
-
-: UNIT-FAM-END ( -- )
-   0 UNIT-FAM-PROJECT-ON ! NULL-PTR UNIT-FAM-CUR !
-   UNIT-FAM-FIRST @
-   BEGIN dup NULL-PTR <> WHILE
-      dup UFP.NEXT UFP-PTR@ swap
-      UNIT-FAM-PLAN-DROP
-   REPEAT drop
-   NULL-PTR UNIT-FAM-FIRST !
-   UNIT-FAM-SCRATCH-RESET ;
-
-create UNIT-FAM-CON-CELL 8 allot
-
-\ The copied plans outlive parser and contract staging, including a capture
-\ while projection is active. Clear only the staging at its owner boundaries.
-: UNIT-FAM-SCRATCH-CLEAR ( -- )
-   REG-AOT-N 0 ?do NULL-PTR i UNIT-FAM-RAW! loop
-   0 UNIT-FAM-CON-CELL REG-AOT-U64!
-   UNIT-FAM-COVER-RELEASE ;
-
-: UNIT-FAM-SCRATCH-INSTALL ( -- )
-   [: UNIT-FAM-SCRATCH-CLEAR ;] is UNIT-FAM-SCRATCH-RESET ;
-UNIT-FAM-SCRATCH-INSTALL
-
-: UNIT-FAM-CONTRACT-INSTALL ( -- )
-   [: UNIT-FAM-PROJECT-VIEW ;] is UNIT-FAM-PROJECT-VIEW-XT ;
-UNIT-FAM-CONTRACT-INSTALL
-
-: UNIT-FAM-RESET-INSTALL ( -- ) [: UNIT-FAM-END ;] is UNIT-FAM-RESET-XT ;
-UNIT-FAM-RESET-INSTALL
-
-: UNIT-FAMILY-NAME-IN ( ptr u8 n ptr u8 n -- bool )
+: UNIT-FAMILY-NAME? ( ptr u8 n ptr u8 n -- bool )
    {: name:ptr nameu:n src:ptr u:n :}
    u 0= IF RES-FALSE EXIT THEN
    src 0 REG-AOT-ROW@ drop + 0 ?do
@@ -5996,15 +5884,6 @@ UNIT-FAM-RESET-INSTALL
       src u 5 row TF.NAME-OFF @ row TF.NAME-U @ REG-AOT-VIEW
       row TF.NAME-U @ name nameu CORE-STR= IF RES-TRUE unloop EXIT THEN
    loop RES-FALSE ;
-
-: UNIT-FAMILY-NAME? ( ptr u8 n ptr u8 n -- bool )
-   {: name:ptr nameu:n src:ptr u:n :}
-   UNIT-FAM-PROJECT-ON @ IF
-      UNIT-FAM-CUR @ {: plan:ptr :}
-      name nameu plan UFP.BLOB UFP-PTR@ plan UFP.CAP UFP@
-      UNIT-FAMILY-NAME-IN EXIT
-   THEN
-   name nameu src u UNIT-FAMILY-NAME-IN ;
 
 \ The checker's friend hooks: checker.f loads before this file and reaches
 \ family resolution and arities through these defers during signature parsing.

@@ -15709,18 +15709,6 @@ RLINK-CELLS cells constant RECORD-LINK-ROW
 2 constant RLINK.CONTROL
 3 constant RLINK.GRID
 4 constant RLINK.READ
-package CHECKER-REG
-public
-defer RECORD-FIXED-READ-XT ( ptr n -- n n bool )
-: RECORD-FIXED-USE ( [ ptr n -- n n bool ] -- )
-   is RECORD-FIXED-READ-XT ;
-private
-: RECORD-FIXED-UNAVAILABLE ( ptr n -- n n bool )
-   drop 0 0 RES-FALSE ;
-: RECORD-FIXED-DEFAULT-INSTALL ( -- )
-   [: RECORD-FIXED-UNAVAILABLE ;] is RECORD-FIXED-READ-XT ;
-RECORD-FIXED-DEFAULT-INSTALL
-;package
 PERSISTED-PTR-VARIABLE RECORD-LINK-P
 NULL-PTR RECORD-LINK-P !
 variable RECORD-LINK-CAP   0 RECORD-LINK-CAP !
@@ -16374,17 +16362,8 @@ public
    CHECKER-REC-SYM @ CHECK:UNDEFINE
    CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF a u CHECKER-OVERLAY:RETIRE THEN ;
 
-package CHECKER-REG
-public
-defer CON-DECLARED-XT ( n -- )
-private
-: CON-DECLARED-DEFAULT ( -- ) [: drop ;] is CON-DECLARED-XT ;
-CON-DECLARED-DEFAULT
-;package
-
 : CHECKER-DEFLINEAR ( ptr u8 n -- )
-   CHECKER-AUTH-PACKAGE$ CT-ADD-LINEAR
-   CTN @ 1- CHECKER-REG:CON-DECLARED-XT ;
+   CHECKER-AUTH-PACKAGE$ CT-ADD-LINEAR ;
 
 CHECKER-REG:SCRATCH{
 variable NORET-FMEND
@@ -26090,24 +26069,12 @@ public
 private
 
 : UNIT-FORMAT-BAD ( -- ) E-UNIT-FORMAT throw ;
-public
-defer UNIT-CON-VALID-XT ( n -- bool )
-private
 
 : UNIT-CON-RESOLVE ( ptr u8 ptr u8 -- n ) {: node:ptr pool:ptr :}
    node EN.A @ pool + node EN.B @ CT-FIND
    dup 0= IF UNIT-FORMAT-BAD THEN ;
 : UNIT-CON-INSTALL ( -- ) [: UNIT-CON-RESOLVE ;] is E-I-UNIT-CON ;
 UNIT-CON-INSTALL
-
-: UP-CON-VALID ( n -- bool ) {: id:n :}
-   id CT-LIVE? 0= IF RES-FALSE EXIT THEN
-   id CT-CLASS@ CT-LINEAR = id CT-WIDTH@ 64 = and
-   id CT-SIGN@ CS-NONE = and ;
-
-: UNIT-CON-PROJECT-INSTALL ( -- )
-   [: UP-CON-VALID ;] is UNIT-CON-VALID-XT ;
-UNIT-CON-PROJECT-INSTALL
 
 ;package
 

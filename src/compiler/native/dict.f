@@ -178,14 +178,6 @@ public
    rec FIXED-ENTRY drop
    rec XREF-START READ-FIXED ;
 
-\ Called once by the checker at generated-word publication; later dependency
-\ checks read the stored fact and never enter the word again. The checker
-\ loads before ENUM exists, so the kind crosses as its number.
-: RETAIN-FIXED ( ptr n -- n n bool ) {: rec:ptr :}
-   rec REC-FIXED {: kind:COMP:body :}
-   kind COMP-BODY:compiled COMP-BODY:EQ if 0 0 true exit then
-   kind COMP:BODY>N rec FIXED-ENTRY READ-FIXED true ;
-
 : FIXED-VALUE ( ptr u8 n -- n ) SPELL-REC REC-VALUE ;
 
 \ A fixed DATA literal keeps the exact declaration that produced its address.
@@ -596,21 +588,6 @@ public
 \ The engine's own, whatever the compiled source's package scope. Its tick is
 \ trust-only: `['] does-patch` in a checked body is E-CAP-TRUSTED.
 TRUSTED: DOES-PATCH-ENTRY ( -- n ) ['] does-patch ;
-
-private
-
-CAST: RECORD-FIXED-USE-XT ( n -- [ [ ptr n -- n n bool ] -- ] )
-
-public
-
-\ The source load and a restored partial compiler bind the same reader into
-\ the retained checker, whose dispatch cell lies below the capture window.
-: RETAIN-FIXED-INSTALL ( -- )
-   s" CHECKER-REG:RECORD-FIXED-USE" XREF-FIND
-   dup XREF-FOUND? 0= if drop exit then
-   XREF-START RECORD-FIXED-USE-XT
-   ['] RETAIN-FIXED swap execute ;
-RETAIN-FIXED-INSTALL
 
 seal-package
 
