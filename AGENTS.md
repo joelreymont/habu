@@ -30,6 +30,9 @@ differs where a cold build would not.
 
 ## Repository
 
+- The root checkout stays on `master`: its working copy is one change on
+  `master`'s tip. Commit here only what lands on `master` at once, and run
+  `jj new master` here whenever `master` moves.
 - `spec/` holds TLA+ specs of Habu's state machines;
   [spec/README.md](spec/README.md) says how to check them.
 
