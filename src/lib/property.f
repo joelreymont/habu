@@ -1,7 +1,7 @@
 \ property.f - checked helpers for property-based tests in `package PROP`.
 \ The PRNG is a deterministic LCG, so a seed reproduces a run.
 \ A property that runs generated checked source owns its own audited `evaluate`
-\ boundary; generators and shrink predicates stay checked.
+\ boundary; generators stay checked.
 \ STORAGE CLASS. PROCESS-WIDE: seed, count and the source buffer are static;
 \ one task runs a property at a time.
 
@@ -28,15 +28,10 @@ public
 private
 
 255 constant PROP-BYTE-MAX
-32 constant PROP-SPACE
 48 constant PROP-ZERO
 
 variable PROP-SEED
 variable PROP-COUNT
-\ A typed xt cell keeps ( -- bool ) through store and fetch, so execute stays
-\ checked; an untyped variable would launder it (E-EXEC-OPAQUE-XT).
-TYPED-VARIABLE PROP-SHRINK-PRED [ -- bool ]
-variable PROP-SHRINK-SAVE
 
 create PROP-BUF BUF-CAP allot
 variable PROP-BUF-LEN
@@ -109,47 +104,5 @@ public
 
 : BUF$ ( -- ptr u8 n )
    PROP-BUF PROP-BUF-LEN @ ;
-
-private
-
-: TRIM-TRAIL ( -- )
-   begin PROP-BUF-LEN @ 0 > while
-      PROP-BUF PROP-BUF-LEN @ 1- + c@ PROP-SPACE = if
-         PROP-BUF-LEN @ 1- PROP-BUF-LEN !
-      else
-         exit
-      then
-   repeat ;
-
-public
-
-: DROP-LAST ( -- bool )
-   TRIM-TRAIL
-   PROP-BUF-LEN @ 0= if 0 0= 0= exit then
-   begin PROP-BUF-LEN @ 0 > while
-      PROP-BUF PROP-BUF-LEN @ 1- + c@ PROP-SPACE <> if
-         PROP-BUF-LEN @ 1- PROP-BUF-LEN !
-      else
-         0 0= exit
-      then
-   repeat
-   0 0= ;
-
-: SHRINK ( [ -- bool ] -- )
-   PROP-SHRINK-PRED !
-   PROP-SHRINK-PRED @ execute 0= if E-PROP-SHRINK throw then
-   begin
-      PROP-BUF-LEN @ PROP-SHRINK-SAVE !
-      DROP-LAST if
-         PROP-SHRINK-PRED @ execute if
-            0 0=
-         else
-            PROP-SHRINK-SAVE @ PROP-BUF-LEN !
-            0 0= 0=
-         then
-      else
-         0 0= 0=
-      then
-   while repeat ;
 
 ;package

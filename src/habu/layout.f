@@ -391,7 +391,7 @@ $43B0 constant DELTA-CELL
 \ Nothing publishes a pool, so both stay zero and the intake is a no-op.
 \ The pool is __text, the same at every boot, so it is never copied.
 \ AOT-CELLS holds every AOT cell this file declares: the engine bakes this file,
-\ so a cell declared in AOT-SIG, AOT-SPAN or AOT-WINDOW would make aot-decl.f,
+\ so a cell declared in AOT-SPAN or AOT-WINDOW would make aot-decl.f,
 \ habu1.f and habu2.f reopen a baked package in a native build.
 package AOT-CELLS
 public

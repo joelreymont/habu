@@ -1270,7 +1270,7 @@ TV-CLEAR
 : ANY-KIND? ( n -- bool )
    dup TVK-ANY = swap TVK-STORED = or ;
 \ Permanent (untrailed) marks for build-time contexts (prim and signature build,
-\ freshening); unification uses the trailed TVK-RAISE.
+\ freshening); unification uses the trailed TVK-RAISE-TO.
 : TVK-RAW! ( n -- ) TVK-RAW swap cells TVK + ! ;
 : TVK-NULL! ( n -- ) TVK-NULL swap cells TVK + ! ;
 : TVK-DBASE! ( n -- ) TVK-DBASE swap cells TVK + ! ;
@@ -1512,7 +1512,6 @@ CHECKER-REG:}SCRATCH
    dup id TVK@ = IF drop EXIT THEN
    id  id TVK@ TVK-KIND-TAG  TRAIL-PUSH
    id cells TVK + ! ;
-: TVK-RAISE ( n -- ) TVK-RAW TVK-RAISE-TO ;
 
 : NSCOPE-RAISE ( n -- )
    dup NSCOPE@ IF drop EXIT THEN
@@ -1621,8 +1620,6 @@ variable FV   0 FV !   \ the next var id FRESH hands out
    second QEN @ 32 * QEA + 16 + !
    domain QEN @ 32 * QEA + 24 + !
    QEN @ TAG-SHIFT lshift T-FORALL or  QEN @ 1 + QEN ! ;
-: MK-FORALL ( n -- n ) >r 0 0 BIND-SCOPE r> MK-FORALL-IN ;
-: MK-CHILD-FORALL ( n n -- n ) >r 0 BIND-CHILD r> MK-FORALL-IN ;
 : F>BODY ( n -- n ) PAY 32 * QEA + @ ;
 : F>PARENT ( n -- n ) PAY 32 * QEA + 8 + @ ;
 : F>SECOND ( n -- n ) PAY 32 * QEA + 16 + @ ;
@@ -15560,21 +15557,12 @@ CHECKER-REG:}SCRATCH
    need NORET-GROW ;
 
 \ ---- the type registry an AOT capture has to carry ---------------------------
-\ A seeded word's signature is text the intake parses: `( IR-ARENA:view -- )`
-\ resolves family `view` through the type-family registry, so a window that
-\ declared families carries them, or every signature naming one is refused.
-\ The base is asserted, never remapped: family ids, schema node ids and interned
-\ type-name offsets are identities. The seeding and capturing
-\ engines reach the window with the same registry, built only by the cold
-\ prefix, so the delta appends at an agreed base; a disagreement is refused by
-\ name.
-\ The TFAM and SCHEMA registries load after this file and install these: MARK
-\ latches the high-waters a capture window opens at, SAVE writes those marks and
-\ the delta into the caller's buffer, LOAD asserts the marks and appends.
+\ The registry delta a capture carries, validated here and never installed: its
+\ base is asserted, not remapped, because family and schema ids are identities.
+\ The type registries load after this file and install these.
 defer REG-EXT-AOT-MARK-XT ( -- )
 defer REG-EXT-AOT-CLOSE-XT ( -- )
 defer REG-EXT-AOT-SAVE-XT ( ptr u8 n -- n )
-defer REG-EXT-AOT-LOAD-XT ( ptr u8 n -- )
 defer REG-EXT-AOT-VALIDATE-XT ( ptr u8 n -- )
 \ The graph node and its strings have already passed extent checks. The
 \ registry validates its canonical family identity against the future view.
@@ -15611,7 +15599,6 @@ defer REG-EXT-AOT-WIDTH-XT ( ptr u8 ptr u8 ptr u8 ptr u8 n -- n )
    [: ;] is REG-EXT-AOT-MARK-XT
    [: ;] is REG-EXT-AOT-CLOSE-XT
    [: REG-EXT-AOT-NO-SAVE ;] is REG-EXT-AOT-SAVE-XT
-   [: REG-EXT-AOT-NO-LOAD ;] is REG-EXT-AOT-LOAD-XT
    [: REG-EXT-AOT-NO-LOAD ;] is REG-EXT-AOT-VALIDATE-XT
    [: REG-EXT-AOT-NO-PARAM ;] is REG-EXT-AOT-PARAM-XT
    [: REG-EXT-AOT-NO-SCOPE ;] is REG-EXT-AOT-SCOPE-XT
@@ -21661,12 +21648,6 @@ variable IS-PEND-U                   \ and its length
    sym 0= IF MD-IS-UNKNOWN ELSE MD-IS-NOT-DEFER THEN MDIAG!
    TICK-PIN  IS-FAIL ;
 
-: IS-QUOT-ROWS ( ptr u8 n -- n )
-   PARSE-SIG-RAW
-   SGHASR @ 0= IF 2drop FRESH MK-ROW dup THEN
-   MK-QUOT ;
-
-
 : IS-APPLY ( n -- )
    {: q:n :}
    q NO-SCOPE? 0= IF
@@ -23634,16 +23615,6 @@ ASIG-GRAPH-CHECK-INSTALL
 : CK-AOT-REC-CONTROL-INSTALL ( -- )
    [: CK-AOT-REC-CONTROL-READ ;] is CK-AOT-REC-CONTROL ;
 CK-AOT-REC-CONTROL-INSTALL
-
-\ The registry the signatures resolve against; without it a signature naming a
-\ window-declared family is refused as a bad stored signature.
-\ Nothing calls this: no build publishes a pool. A caller runs it once the two
-\ cells are filled and before the first user token, the seed point. The carried
-\ rows name families by absolute id, so they mean those families only while the
-\ live registry ends where the capture's did.
-: CK-AOT-REG-INSTALL ( -- )
-   CK-AOT-READY? 0= IF EXIT THEN
-   CK-AOT-REG$ REG-EXT-AOT-LOAD-XT ;
 
 \ ---- taking one row ----------------------------------------------------------
 \ The key is the row's own scope, not the scope the failing reference resolved

@@ -448,11 +448,6 @@ public
 
 ;package
 
-package AOT-SIG
-public
-: INSTALL-NAME$ ( -- ptr u8 n ) s" CK-AOT-REG-INSTALL" ;
-;package
-
 package AOT-SECTION
 using AOT-BUF
 public
@@ -511,8 +506,7 @@ public
 
 : BYTES ( n -- n )
    BODY-BYTES
-   8 +BYTES PAYLOAD-BYTES +BYTES
-   AOT-SIG:INSTALL-NAME$ nip +BYTES ;
+   8 +BYTES PAYLOAD-BYTES +BYTES ;
 
 ;package
 

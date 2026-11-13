@@ -70,7 +70,6 @@ require src/lib/prelude.f
 -2799 constant E-PROP-LAST
 -2700 constant E-PROP-SEED
 -2701 constant E-PROP-GENERATOR
--2702 constant E-PROP-SHRINK
 -2703 constant E-PROP-CAPACITY
 
 \ Builds: -2800..-2899

@@ -965,7 +965,7 @@ variable VNX-CUR              \ private bucket-walk cursor
 \ Pops rows [newn, SUMV-N) before SUMV-N rewinds to newn, newest first, so each
 \ popped row is at its bucket head. It dies, as TFX-RETIRE does, on chains that
 \ do not cover exactly the live rows: SUMV-ADD and TFAM-REWIND move VNX-HI with
-\ SUMV-N, and TFAM-RESET and REG-AOT-INSTALL drop the chains, so unequal marks
+\ SUMV-N, and TFAM-RESET drops the chains, so unequal marks
 \ mean a caller moved the counter around those seams, and popping would unlink
 \ rows the chains never held or erase the signal VNX-ENSURE rebuilds on.
 : VNX-RETIRE ( n -- ) {: newn:n :}
@@ -974,13 +974,6 @@ variable VNX-CUR              \ private bucket-walk cursor
    SUMV-N @ 1 -
    BEGIN dup newn >= WHILE dup VNX-POP 1 - REPEAT drop
    newn VNX-HI ! ;
-
-\ Capture: the grown buffers are process-local, so the image keeps the boot
-\ stores and the restored process rebuilds. Mirrors TFX-SNAP-RESET.
-: VNX-SNAP-RESET ( -- )
-   VNX-B-BOOT VNX-B-P !   VNX-SLOTS-INIT VNX-SLOTS-V !
-   VNX-L-BOOT VNX-L-P !   SUMV-CAP-INIT VNX-LCAP !   0 VNX-CAP !
-   0 VNX-READY !   0 VNX-HI !   0 VNX-CUR ! ;
 
 public
 
@@ -1505,13 +1498,6 @@ variable FVX-CAP     0 FVX-CAP !     \ PF-CAP the buckets were sized for
    PF-N @ 1 -
    BEGIN dup newn >= WHILE dup FVX-POP 1 - REPEAT drop
    newn FVX-HI ! ;
-
-\ Capture: the grown buffers are process-local, so the image keeps the boot
-\ stores and the restored process rebuilds. Mirrors VNX-SNAP-RESET.
-: FVX-SNAP-RESET ( -- )
-   FVX-B-BOOT FVX-B-P !   FVX-SLOTS-INIT FVX-SLOTS-V !
-   FVX-L-BOOT FVX-L-P !   PF-CAP-INIT FVX-LCAP !   0 FVX-CAP !
-   0 FVX-READY !   0 FVX-HI ! ;
 
 \ One owner's rows, newest first: FVX-FIRST answers the cursor of its bucket's
 \ newest row and FVX-NEXT the cursor after a cursor's row, each a row id + 1
@@ -3255,39 +3241,22 @@ INSTALL-TYPES
 
 package TFAM
 
-\ The bucket array is grown and process-local: dropped back to the boot store
-\ and marked not-ready. TFX-BUILD rewrites every row's TF.TAILNEXT, so each is
-\ zeroed too; left in place, a row's link would depend on whether anything built
-\ the index before capture, and two loads of one program would capture different
-\ bytes.
-
 private
 
-: TFX-SNAP-RESET ( -- )
-   TFX-A-BOOT TFX-A-P !
-   TFX-SLOTS-INIT TFX-SLOTS-V !
-   0 TFX-CAP !
-   0 TFX-READY !
-   0 TFX-HI !
-   0 TFX-H ! 0 TFX-I ! 0 TFX-CUR !
-   TFAM-N @ 0 ?do 0 i TF-REC@ TF.TAILNEXT ! loop ;
-
-\ AOT capture: the registry delta a captured window declared, and installing it
+\ AOT capture: the registry delta a captured window declared, and validating it
 \ in the engine seeded with that window. A seeded word's signature is text the
 \ intake parses (`( IR-ARENA:view -- )` resolves `view` in IR-ARENA), so a
 \ window that declared families carries them.
-\ References are integer row ids and interned offsets. Partial payloads append
-\ rows only after all eight captured prefixes compare equal to the live stores;
-\ installed deltas must also compare equal, since a count cannot prove
-\ identity. Only the rebuilt family tail link and the scrubbed constructor-symbol
-\ cell are excluded. Every store, reference and schema is validated and all
-\ capacity exists before the first count or row is published: a failure may
-\ leave private capacity, never a partial registry.
+\ References are integer row ids and interned offsets. A delta is valid only
+\ when all eight captured prefixes compare equal to the live stores; delta rows
+\ the live stores already hold must also compare equal, since a count cannot
+\ prove identity. Only the family tail link and the constructor-symbol cell are
+\ excluded. Validation publishes no count or row.
 8 constant REG-AOT-N                      \ stores, in the order below
 24 constant REG-AOT-ROW                   \ base, delta count, complete-store bytes
 REG-AOT-N REG-AOT-ROW * 8 + constant REG-AOT-HDR
 
-variable REG-AOT-STATE  variable REG-AOT-J  variable REG-AOT-CUR
+variable REG-AOT-STATE  variable REG-AOT-CUR
 variable REG-AOT-CLOSED
 create REG-AOT-MARK-A REG-AOT-N cells allot
 create REG-AOT-END-A REG-AOT-N cells allot
@@ -3331,32 +3300,6 @@ create REG-AOT-END-A REG-AOT-N cells allot
    k 5 = IF s" type names" EXIT THEN
    k 6 = IF s" schema nodes" EXIT THEN
    s" schema roots" ;
-
-\ Room for `n` elements in store k, through the store's own geometric grow: each
-\ step is the grow the compiled path's ENSURE takes when the store is full
-\ (`cap 1+`), so a seeded delta lands in an arena of the capacity a compiled one
-\ reaches rather than the grow's floor `n`. The type-name store's compiled ENSURE
-\ asks for max(used + name bytes, 2*cap), which is 2*cap here: names are at most
-\ TF-NAME-MAX bytes and every baked name store is larger.
-: REG-AOT-ROOM ( n n -- ) {: k:n n:n :}
-   k 0 = IF begin n TF-CAP-V @ > while TF-CAP-V @ 1+ TF-GROW repeat EXIT THEN
-   k 1 = IF begin n TF-PK-CAP-V @ > while TF-PK-CAP-V @ 1+ TF-PK-GROW repeat EXIT THEN
-   k 2 = IF begin n SUMV-CAP-V @ > while SUMV-CAP-V @ 1+ SUMV-GROW repeat EXIT THEN
-   k 3 = IF begin n PF-CAP-V @ > while PF-CAP-V @ 1+ PF-GROW repeat EXIT THEN
-   k 4 = IF begin n LAY-CAP-V @ > while LAY-CAP-V @ 1+ LAY-GROW repeat EXIT THEN
-   k 5 = IF begin n TF-STR-CAP-V @ > while TF-STR-CAP-V @ 1+ TF-STR-GROW repeat EXIT THEN
-   k 6 = IF begin n SCH-CAP-V @ > while SCH-CAP-V @ 1+ SCH-GROW repeat EXIT THEN
-   begin n SCH-ROOT-CAP-V @ > while SCH-ROOT-CAP-V @ 1+ SCH-ROOT-GROW repeat ;
-
-: REG-AOT-COUNT! ( n n -- ) {: k:n n:n :}
-   k 0 = IF n TFAM-N ! EXIT THEN
-   k 1 = IF n TF-PK-N ! EXIT THEN
-   k 2 = IF n SUMV-N ! EXIT THEN
-   k 3 = IF n PF-N !  n PF-COMMIT-N ! EXIT THEN
-   k 4 = IF n LAY-N ! EXIT THEN
-   k 5 = IF n TF-STR-U ! EXIT THEN
-   k 6 = IF n SCH-N ! EXIT THEN
-   n SCH-ROOT-N ! ;
 
 : REG-AOT-U64! ( n ptr u8 -- ) {: v:n p:ptr :}
    8 0 ?do  v i 8 * rshift $FF and  p i + c!  loop ;
@@ -3432,7 +3375,7 @@ create REG-AOT-END-A REG-AOT-N cells allot
    loop
    REG-AOT-CUR @ ;
 
-\ ---- putting it back ---------------------------------------------------------
+\ ---- checking a seeded delta -------------------------------------------------
 
 PTR-VARIABLE REG-AOT-ERROR-A
 variable REG-AOT-ERROR-U
@@ -3444,26 +3387,13 @@ variable REG-AOT-ERROR-U
    drop 2drop
    s" tfam: a seeded type registry does not start where its capture did" REG-AOT-REFUSE ;
 
-\ SV.CTOR-SYM names a row of the checker's symbol store, which has no base
-\ alignment between the capture engine and this one. Measured: seeded rows
-\ carried ctor-sym 7750 against a boot SYM-N of 3147, and a later intern of
-\ 7750 bound the stale variant and wedged the install fixpoint. The load zeroes
-\ the cell; SVX-LINK and SUMV-FROM-CTOR-SYM refuse to key on 0. A seeded
-\ constructor is an ordinary word whose calls certify through its signature row.
-: REG-AOT-SCRUB ( n n n -- ) {: k:n base:n cnt:n :}
-   k 2 <> IF EXIT THEN
-   base REG-AOT-J !
-   BEGIN REG-AOT-J @ base cnt + < WHILE
-      0 REG-AOT-J @ SUMV-REC@ SV.CTOR-SYM !
-      REG-AOT-J @ 1 + REG-AOT-J !
-   REPEAT ;
-
 : REG-AOT-ROW@ ( ptr u8 n -- n n n ) {: src:ptr k:n :}
    src k REG-AOT-ROW * 8 + + {: row:ptr :}
    row REG-AOT-U64@  row 8 + REG-AOT-U64@  row 16 + REG-AOT-U64@ ;
 
 \ These two cells are derived runtime associations, not registry identity:
-\ TAILNEXT is rebuilt by TFX; CTOR-SYM is deliberately scrubbed on import.
+\ TAILNEXT is rebuilt by TFX; CTOR-SYM names a row of the checker's symbol
+\ store, which has no base alignment between the capture engine and this one.
 : REG-AOT-CANON-C@ ( ptr u8 n n -- n ) {: src:ptr off:n k:n :}
    k 0 = IF
       off TF-REC mod {: field:n :}
@@ -3562,7 +3492,6 @@ private
    k 0 ?do src i REG-AOT-ROW@ nip nip + loop
    src + ;
 
-\ Validate every base and byte span before reserving or publishing any store.
 \ Subtraction bounds the product and endpoint before either is computed.
 : REG-AOT-TABLE-CHECK ( ptr u8 n -- ) {: src:ptr u:n :}
    u 0= IF EXIT THEN
@@ -3631,8 +3560,8 @@ private
    src u 5 off bytes REG-AOT-VIEW bytes name nameu CORE-STR= ;
 
 \ A graph's family ID is meaningful only with its canonical package/tail,
-\ arity and physical/logical form. Consult incoming records even if a previous
-\ idempotent install has already put those IDs into the live registry.
+\ arity and physical/logical form. Consult incoming records even where the live
+\ registry already holds those IDs.
 : REG-AOT-PARAM-CHECK ( ptr u8 ptr u8 ptr u8 n -- )
    {: node:ptr graph:ptr src:ptr u:n :}
    src u 0 node EN.H @ 1 REG-AOT-VIEW CELL-VIEW {: rec:ptr :}
@@ -3656,8 +3585,7 @@ private
    THEN
    src u 1 rec TF.PK-START @ rec TF.ARITY @ REG-AOT-VIEW drop ;
 
-\ A graph-callback refusal dies 76 like the loader's. 2over 2over keeps the
-\ quotation balanced on both paths.
+\ 2over 2over keeps the quotation balanced on both paths.
 : REG-AOT-PARAM? ( ptr u8 ptr u8 ptr u8 n -- )
    0 REG-AOT-ERROR-U !
    [: 2over 2over REG-AOT-PARAM-CHECK ;] catch
@@ -4247,62 +4175,9 @@ REG-AOT-FAM-W-INSTALL
    REG-AOT-MEMO-DONE
    dup 0 <> IF throw THEN drop 2drop ;
 
-\ The refusal stays fatal (76) while the private REG-AOT-CHECK can be caught to
-\ prove that a late refusal leaves every published store untouched.
 : REG-AOT-VALIDATE ( ptr u8 n -- )
    0 REG-AOT-ERROR-U !
    [: 2dup REG-AOT-CHECK ;] catch
-   dup 0 <> IF
-      REG-AOT-ERROR-U @ 0= IF throw THEN
-      drop 2drop REG-AOT-ERROR-A @ REG-AOT-ERROR-U @ 76 die
-   THEN drop 2drop ;
-
-: REG-AOT-APPEND ( ptr u8 n -- ) {: src:ptr u:n :}
-   u 0= IF EXIT THEN
-   0
-   REG-AOT-N 0 ?do
-      src i REG-AOT-ROW@ drop nip or
-   loop
-   0= IF EXIT THEN
-   \ A failed allocation may leave capacity, but no visible registry member.
-   REG-AOT-N 0 ?do
-      src i REG-AOT-ROW@ drop {: base:n cnt:n :}
-      i REG-AOT-COUNT base = cnt 0 > and IF
-         i base cnt + REG-AOT-ROOM THEN
-   loop
-   REG-AOT-HDR REG-AOT-CUR !
-   REG-AOT-N 0 ?do
-      src i REG-AOT-ROW@ {: base:n cnt:n bytes:n :}
-      i REG-AOT-COUNT base = IF
-         cnt 0 > IF
-            src REG-AOT-CUR @ + base i REG-AOT-WIDTH * +
-            i REG-AOT-BASE-PTR base i REG-AOT-WIDTH * +
-            cnt i REG-AOT-WIDTH * ARENA-COPY
-         THEN
-         i base cnt + REG-AOT-COUNT!
-         i base cnt REG-AOT-SCRUB
-      THEN
-      REG-AOT-CUR @ bytes + REG-AOT-CUR !
-   loop
-   TFX-SNAP-RESET
-   VNX-SNAP-RESET
-   FVX-SNAP-RESET
-   TFM-EPOCH+
-   0 SVX-GEN !   SVX-STAMP ;
-
-: REG-AOT-TAKE ( ptr u8 n n -- ) {: src:ptr u:n state:n :}
-   state 1 = IF src u REG-AOT-APPEND THEN ;
-
-: REG-AOT-INSTALL ( ptr u8 n -- ) {: src:ptr u:n :}
-   u 0= IF EXIT THEN
-   src u REG-AOT-CHECK
-   src u REG-AOT-STATE @ REG-AOT-TAKE ;
-
-\ REG-AOT-INSTALL throws before publication on invalid input; the artifact-load
-\ boundary keeps the named process refusal (76).
-: REG-AOT-LOAD ( ptr u8 n -- )
-   0 REG-AOT-ERROR-U !
-   [: 2dup REG-AOT-INSTALL ;] catch
    dup 0 <> IF
       REG-AOT-ERROR-U @ 0= IF throw THEN
       drop 2drop REG-AOT-ERROR-A @ REG-AOT-ERROR-U @ 76 die
@@ -4312,7 +4187,6 @@ REG-AOT-FAM-W-INSTALL
    [: REG-AOT-MARK ;] is REG-EXT-AOT-MARK-XT
    [: REG-AOT-CLOSE ;] is REG-EXT-AOT-CLOSE-XT
    [: REG-AOT-SAVE ;] is REG-EXT-AOT-SAVE-XT
-   [: REG-AOT-LOAD ;] is REG-EXT-AOT-LOAD-XT
    [: REG-AOT-VALIDATE ;] is REG-EXT-AOT-VALIDATE-XT
    [: REG-AOT-PARAM? ;] is REG-EXT-AOT-PARAM-XT
    [: REG-AOT-SCOPE? ;] is REG-EXT-AOT-SCOPE-XT
