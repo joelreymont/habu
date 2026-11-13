@@ -82,12 +82,13 @@ moves where DATA starts. One to what the running hb's compiler does with the
 tree's code (code layout, records, wordlist numbering, the address list), a
 body that calls a primitive its own change adds, a new primitive-spec atom code
 (the running checker replays the tree's rows and dies `checker: unknown
-primitive-spec atom`), or a tool that calls a word hb
-carries (the linker) by a name or effect its own change gives it, or a change
-to which files a build loads or their order, needs a stage: the tool loads from the tree, but `require` of a file hb carries finds
-the running hb's copy. Build the stage first, from a revision that adds the
-change but does not yet need it, with the running hb; then build the tree with
-that stage:
+primitive-spec atom`), or a tool that calls a word hb carries (the linker) by a
+name or effect its own change gives it, or a change to which files a build
+loads or their order, needs a stage: the tool itself runs the words hb carries
+(outside a build, `require` of a file hb carries loads nothing), though inside
+the build each `require` loads the tree's file (src/habu/linker.f
+REQUIRE-FRESH). Build the stage first, from a revision that adds the change but
+does not yet need it, with the running hb; then build the tree with that stage:
 
     jj workspace add --name stage -r <revision> "$TMP/stage"
     (cd "$TMP/stage" && TMPDIR="$TMP" hb --load tools/hb-build.f -- --engine -o "$TMP/stage-hb")
