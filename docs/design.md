@@ -417,8 +417,7 @@ These names leave the products' (SwiftForth's `STOP`, VFX's `WAIT`/`SIGNAL`)
 for the standard terms: a task's own wait is wait/wake, as Linux's futex and
 Zig's `std.Thread.Futex` name it, and a word that takes a semaphore says so.
 `JOIN` returns a `result` and `AT-EXIT` registers cleanup, after VFX's exit
-code and task-exit hook. Messages are VFX's one-cell mailbox
-(`SEND-MESSAGE`, `GET-MESSAGE`). VFX keeps its embedded task API on pthreads
+code and task-exit hook. VFX keeps its embedded task API on pthreads
 so one program text runs hosted and on a target; Habu takes the same rule. A
 target kernel is polyFORTH's round robin, where the `STATUS` cell is both
 scheduler link and wake flag and every blocking I/O word yields; it exposes the

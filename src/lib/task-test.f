@@ -84,15 +84,6 @@ TASK:SEMAPHORE SEM-SPACE
 TASK:SEMAPHORE SEM-TICKETS
 TASK:SEMAPHORE SEM-GATE
 TASK:SEMAPHORE SEM-COLD
-TASK:MIN-STACK TASK:TASK MSG-PING
-TASK:MIN-STACK TASK:TASK MSG-ECHO
-TASK:MIN-STACK TASK:TASK MSG-FILL
-TASK:MIN-STACK TASK:TASK MSG-DRAIN
-TASK:MIN-STACK TASK:TASK MSG-WAITER
-TASK:MIN-STACK TASK:TASK MSG-LATE
-TASK:MIN-STACK TASK:TASK MSG-REFUSER
-TASK:MIN-STACK TASK:TASK MSG-IDLE
-TASK:SEMAPHORE MSG-GATE
 TASK:MIN-STACK TASK:TASK JOIN-VALUE
 TASK:MIN-STACK TASK:TASK JOIN-SILENT
 TASK:MIN-STACK TASK:TASK JOIN-CLEAN
@@ -158,18 +149,6 @@ variable SEM-GOT
 variable SEM-BAD
 variable SEM-DRAWN
 variable SEM-TICKET-DONE
-variable MSG-PING-GOT
-variable MSG-PING-FROM
-variable MSG-ECHO-GOT
-variable MSG-ECHO-FROM
-variable MSG-SENT1
-variable MSG-SENT2
-variable MSG-SEEN1
-variable MSG-SEEN2
-variable MSG-WAITING
-variable MSG-LATE-GOT
-variable MSG-REFUSE-SELF
-variable MSG-REFUSE-IDLE
 variable POOL-N
 variable POOL-RC
 variable BUILD-BAD
@@ -536,32 +515,10 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
 : TASK-USER-LATE$ ( -- ptr u8 n )
    SB-RESET
    TASK-USER-HEAD
-   s" variable OLD  W TASK:EXPOSE W TASK:CONTEXT OLD ! W TASK:UNEXPOSE" SB-APPEND TASK-LF
+   s" variable OLD  W TASK:PREPARE W BYTE-VIEW TASK-ABI:REGION-OFF + CELL-VIEW @ OLD !" SB-APPEND TASK-LF
    65536 TASK-USER-SLOT
    TASK-USER-RUN
    s" CTX @ OLD @ <> bool>n . FITS ." SB-APPEND TASK-LF
-   s" ;package" SB-APPEND TASK-LF
-   SB$ ;
-
-\ As TASK-USER-LATE$, but EXPOSE must give W its new region and a foreign
-\ thread stores through BIG.
-: TASK-USER-EXPOSE$ ( -- ptr u8 n )
-   SB-RESET
-   s" require src/lib/ffi-callback.f" SB-APPEND TASK-LF
-   TASK-USER-HEAD
-   s" using FFI-CB" SB-APPEND TASK-LF
-   s" PROCESS-SYMBOLS" SB-APPEND TASK-LF
-   s" FUNCTION: PTHREAD-CREATE pthread_create ( ptr u8 n n n -- i32 ) 0 8 WRITES-BYTES ;FUNCTION" SB-APPEND TASK-LF
-   s" FUNCTION: PTHREAD-JOIN pthread_join ( n n -- i32 ) ;FUNCTION" SB-APPEND TASK-LF
-   s" variable TID" SB-APPEND TASK-LF
-   s" CALLBACK: PUT ( n -- n ) 0 FALLBACK ;CALLBACK" SB-APPEND TASK-LF
-   s" W TASK:EXPOSE W TASK:UNEXPOSE" SB-APPEND TASK-LF
-   65536 TASK-USER-SLOT
-   s" : PUT-IMPL ( n -- n ) WORK ;" SB-APPEND TASK-LF
-   s" ' PUT-IMPL PUT-BODY !" SB-APPEND TASK-LF
-   s" W TASK:EXPOSE TID BYTE-VIEW 0 PUT W TASK:CONTEXT ENTRY 0 PTHREAD-CREATE ." SB-APPEND TASK-LF
-   s" TID @ 0 PTHREAD-JOIN . GOT @ . W REGION-U REGU ! FITS . W TASK:UNEXPOSE" SB-APPEND TASK-LF
-   s" ;using" SB-APPEND TASK-LF
    s" ;package" SB-APPEND TASK-LF
    SB$ ;
 
@@ -719,9 +676,6 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    TASK-USER-LATE$ 0 TASK-RUN-EXITS {: lateu:len laterr:len :}
    TASK-OUT lateu LEN>N S\" 77\n0\n-1\n-1\n" T$=
    laterr LEN>N 0 T=
-   TASK-USER-EXPOSE$ 0 TASK-RUN-EXITS {: expu:len experr:len :}
-   TASK-OUT expu LEN>N S\" 0\n0\n77\n-1\n" T$=
-   experr LEN>N 0 T=
    E-TASK-USER TASK-CODE$ {: needle:ptr needleu:n :}
    TASK-USER-BELOW$ TASK-UNCAUGHT-RC needle needleu TASK-EXPECT-FAIL
    TASK-USER-LIVE$ TASK-UNCAUGHT-RC needle needleu TASK-EXPECT-FAIL
@@ -818,134 +772,7 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    [: SEM-COLD TASK:WAIT-SEM ;] E-TASK-SEM-STATE TTHROWSQ
    [: SEM-COLD TASK:SIGNAL-SEM ;] E-TASK-SEM-STATE TTHROWSQ ;
 
-$5A constant MSG-SEED
-$11 constant MSG-FIRST
-$22 constant MSG-SECOND
-$33 constant MSG-LATE-VALUE
-
-\ The sender's TCB is the reply address; the value is all the rest of the
-\ protocol these two fixtures need.
-: MSG-TAKE ( -- n )
-   TASK:GET-MESSAGE drop ;
-
-: MSG-ECHO-WORK ( -- )
-   TASK:GET-MESSAGE {: msg from :}
-   msg MSG-ECHO-GOT !
-   from FFI:>CELL MSG-ECHO-FROM !
-   msg 1 + from TASK:SEND-MESSAGE ;
-
-: MSG-PING-WORK ( -- )
-   MSG-SEED MSG-ECHO TASK:SEND-MESSAGE
-   TASK:GET-MESSAGE {: msg from :}
-   msg MSG-PING-GOT !
-   from FFI:>CELL MSG-PING-FROM ! ;
-
-: TASK-TEST-MSG-ROUND-TRIP ( -- )
-   0 MSG-PING-GOT ! 0 MSG-PING-FROM !
-   0 MSG-ECHO-GOT ! 0 MSG-ECHO-FROM !
-   ['] MSG-ECHO-WORK MSG-ECHO TASK:ACTIVATE
-   ['] MSG-PING-WORK MSG-PING TASK:ACTIVATE
-   MSG-PING APP-WAIT-DONE
-   MSG-ECHO APP-WAIT-DONE
-   MSG-ECHO-GOT @ MSG-SEED T=
-   MSG-ECHO-FROM @ MSG-PING FFI:>CELL T=
-   MSG-PING-GOT @ MSG-SEED 1 + T=
-   MSG-PING-FROM @ MSG-ECHO FFI:>CELL T=
-   MSG-PING TASK:THROW@ 0 T=
-   MSG-ECHO TASK:THROW@ 0 T=
-   MSG-PING TASK:KILL
-   MSG-ECHO TASK:KILL ;
-
-: MSG-FILL-WORK ( -- )
-   MSG-FIRST MSG-DRAIN TASK:SEND-MESSAGE
-   1 MSG-SENT1 atomic-add drop
-   MSG-SECOND MSG-DRAIN TASK:SEND-MESSAGE
-   1 MSG-SENT2 atomic-add drop ;
-
-: MSG-DRAIN-WORK ( -- )
-   MSG-GATE TASK:WAIT-SEM
-   MSG-TAKE MSG-SEEN1 !
-   MSG-TAKE MSG-SEEN2 ! ;
-
-\ One cell per task: the second send blocks in the sender until the target
-\ takes the first, and MSG? reports the unread message without blocking.
-: TASK-TEST-MSG-SEND-BLOCKS ( -- )
-   0 MSG-SENT1 ! 0 MSG-SENT2 ! 0 MSG-SEEN1 ! 0 MSG-SEEN2 !
-   0 MSG-GATE TASK:SEMAPHORE-INIT
-   MSG-DRAIN TASK:MSG? TFALSE
-   ['] MSG-DRAIN-WORK MSG-DRAIN TASK:ACTIVATE
-   ['] MSG-FILL-WORK MSG-FILL TASK:ACTIVATE
-   MSG-SENT1 1 MSG-FILL TEST-WAIT:FOR-CELL
-   MSG-SENT2 @ 0 T=
-   MSG-DRAIN TASK:MSG? TTRUE
-   MSG-GATE TASK:SIGNAL-SEM
-   MSG-FILL APP-WAIT-DONE
-   MSG-DRAIN APP-WAIT-DONE
-   MSG-SENT2 @ 1 T=
-   MSG-SEEN1 @ MSG-FIRST T=
-   MSG-SEEN2 @ MSG-SECOND T=
-   MSG-DRAIN TASK:MSG? TFALSE
-   MSG-FILL TASK:THROW@ 0 T=
-   MSG-DRAIN TASK:THROW@ 0 T=
-   MSG-FILL TASK:KILL
-   MSG-DRAIN TASK:KILL
-   MSG-GATE TASK:SEMAPHORE-DESTROY ;
-
-: MSG-WAITER-WORK ( -- )
-   1 MSG-WAITING atomic-add drop
-   MSG-TAKE MSG-LATE-GOT ! ;
-
-: MSG-LATE-WORK ( -- )
-   MSG-LATE-VALUE MSG-WAITER TASK:SEND-MESSAGE ;
-
-\ The getter parks in the kernel with no PAUSE loop: nothing can have reached
-\ it before a sender exists, and the send releases it.
-: TASK-TEST-MSG-GET-BLOCKS ( -- )
-   0 MSG-WAITING ! 0 MSG-LATE-GOT !
-   ['] MSG-WAITER-WORK MSG-WAITER TASK:ACTIVATE
-   MSG-WAITING 1 MSG-WAITER TEST-WAIT:FOR-CELL
-   MSG-LATE-GOT @ 0 T=
-   ['] MSG-LATE-WORK MSG-LATE TASK:ACTIVATE
-   MSG-WAITER APP-WAIT-DONE
-   MSG-LATE APP-WAIT-DONE
-   MSG-LATE-GOT @ MSG-LATE-VALUE T=
-   MSG-WAITER TASK:THROW@ 0 T=
-   MSG-LATE TASK:THROW@ 0 T=
-   MSG-WAITER TASK:KILL
-   MSG-LATE TASK:KILL ;
-
-: MSG-REFUSE-WORK ( -- )
-   [: MSG-SEED TASK:SELF TASK:SEND-MESSAGE ;] catch MSG-REFUSE-SELF !
-   [: MSG-SEED MSG-IDLE TASK:SEND-MESSAGE ;] catch MSG-REFUSE-IDLE ! ;
-
-\ Both ends of a send are running tasks.
-: TASK-TEST-MSG-REFUSED ( -- )
-   0 MSG-REFUSE-SELF ! 0 MSG-REFUSE-IDLE !
-   ['] MSG-REFUSE-WORK MSG-REFUSER TASK:ACTIVATE
-   MSG-REFUSER APP-WAIT-DONE
-   MSG-REFUSE-SELF @ E-TASK-MAILBOX T=
-   MSG-REFUSE-IDLE @ E-TASK-MAILBOX T=
-   MSG-REFUSER TASK:THROW@ 0 T=
-   MSG-REFUSER TASK:KILL
-   [: MSG-SEED MSG-IDLE TASK:SEND-MESSAGE ;] E-TASK-MAILBOX TTHROWSQ
-   [: TASK:GET-MESSAGE drop drop ;] E-TASK-MAILBOX TTHROWSQ
-   MSG-IDLE TASK:MSG? TFALSE ;
-
-: TASK-TEST-MSG-TYPES ( -- )
-   s" TASK-MSG-OK ( n ptr n -- ) TASK:SEND-MESSAGE"
-      CHECK-QUIET-CANDIDATE! -1 T=
-   s" TASK-MSG-RAW ( n n -- ) TASK:SEND-MESSAGE"
-      CHECK-QUIET-CANDIDATE! 0 T=
-   s" TASK-MSG-SWAP ( ptr n n -- ) TASK:SEND-MESSAGE"
-      CHECK-QUIET-CANDIDATE! 0 T=
-   s" TASK-MSG-GET-OK ( -- n ptr n ) TASK:GET-MESSAGE"
-      CHECK-QUIET-CANDIDATE! -1 T=
-   s" TASK-MSG-GET-RAW ( -- n n ) TASK:GET-MESSAGE"
-      CHECK-QUIET-CANDIDATE! 0 T=
-   s" TASK-MSG-Q-OK ( ptr n -- bool ) TASK:MSG?"
-      CHECK-QUIET-CANDIDATE! -1 T=
-   s" TASK-MSG-Q-RAW ( n -- bool ) TASK:MSG?"
-      CHECK-QUIET-CANDIDATE! 0 T=
+: TASK-TEST-TRY-WAIT-TYPES ( -- )
    s" TASK-TRY-WAIT-OK ( TASK:sem -- bool ) TASK:TRY-WAIT-SEM"
       CHECK-QUIET-CANDIDATE! -1 T=
    s" TASK-TRY-WAIT-PTR ( ptr n -- bool ) TASK:TRY-WAIT-SEM"
@@ -2063,25 +1890,23 @@ variable DONE-PUB-MISSES
    DONE-PUB-MISSES @ 0 T=
    TASK-LIVE-COUNT base T= ;
 
-TASK:MIN-STACK TASK:TASK EXPOSE-CTX
-TASK:MIN-STACK TASK:TASK EXPOSE-BUSY
+TASK:MIN-STACK TASK:TASK CTX-BUSY
 
 TASK-TEST-ALIGN8
-variable EXPOSE-GATE
-variable EXPOSE-BUSY-CTX
-variable EXPOSE-OLD-CTX               \ EXPOSE-CTX's context, kept past its UNEXPOSE
+variable CTX-GATE
+variable CTX-BUSY-CTX
 
 \ Declare these bare rows before the suite starts tasks; callback declarations
 \ would make the same rows and native entries in an FFI consumer.
 : TEST-DECLARE-ROWS ( -- ) CB-POOL 0 ?do i TASK:DECLARE-CALLBACK loop ;
 TEST-DECLARE-ROWS
 
-CB-POOL 1 - constant EXPOSE-SLOT
-CB-POOL 2 - constant EXPOSE-SLOT-B
+CB-POOL 1 - constant BIND-SLOT
+CB-POOL 2 - constant BIND-SLOT-B
 
-: EXPOSE-BUSY-BODY ( -- )
-   TASK:SELF-CONTEXT EXPOSE-BUSY-CTX atomic!
-   begin EXPOSE-GATE atomic@ 0= while TASK:PAUSE repeat ;
+: CTX-BUSY-BODY ( -- )
+   TASK:SELF-CONTEXT CTX-BUSY-CTX atomic!
+   begin CTX-GATE atomic@ 0= while TASK:PAUSE repeat ;
 
 \ Slot k's owner cell, reached as the engine's thunk reaches it: through the
 \ row table the main region's CB-ROWS publishes.
@@ -2090,103 +1915,38 @@ CB-POOL 2 - constant EXPOSE-SLOT-B
    base CB-ROWS + atomic@ base FFI:>CELL - {: table:n :}
    base table + k CB-ROW-BYTES * + CB-ROW-OWNER + ;
 
-: TASK-TEST-EXPOSE-STATES ( -- )
-   s" UNEXPOSE of a task never exposed" T-LABEL
-   [: EXPOSE-CTX TASK:UNEXPOSE ;] E-TASK-STATE TTHROWSQ
-   s" CONTEXT of a task never exposed" T-LABEL
-   [: EXPOSE-CTX TASK:CONTEXT drop ;] E-TASK-STATE TTHROWSQ
-   ['] EXPOSE-BUSY-BODY EXPOSE-BUSY TASK:ACTIVATE
-   begin EXPOSE-BUSY-CTX atomic@ 0= while TASK:PAUSE repeat
-   s" EXPOSE of a running task" T-LABEL
-   [: EXPOSE-BUSY TASK:EXPOSE ;] E-TASK-STATE TTHROWSQ
-   s" UNEXPOSE of a running task" T-LABEL
-   [: EXPOSE-BUSY TASK:UNEXPOSE ;] E-TASK-STATE TTHROWSQ
-   s" CONTEXT of a running task" T-LABEL
-   [: EXPOSE-BUSY TASK:CONTEXT drop ;] E-TASK-STATE TTHROWSQ
+: TASK-TEST-CONTEXT-BINDS ( -- )
    s" CONTEXT-BIND of a running task's region from another task" T-LABEL
-   [: EXPOSE-BUSY-CTX atomic@ EXPOSE-SLOT-B TASK:CONTEXT-BIND ;] E-TASK-STATE TTHROWSQ ;
-
-: TASK-TEST-EXPOSE-BINDS ( -- )
+   [: CTX-BUSY-CTX atomic@ BIND-SLOT-B TASK:CONTEXT-BIND ;] E-TASK-STATE TTHROWSQ
    s" CONTEXT-BIND of a slot past the pool" T-LABEL
-   [: EXPOSE-CTX TASK:CONTEXT CB-POOL TASK:CONTEXT-BIND ;] E-TASK-STATE TTHROWSQ
+   [: TASK:SELF-CONTEXT CB-POOL TASK:CONTEXT-BIND ;] E-TASK-STATE TTHROWSQ
    s" CONTEXT-BIND of a slot below it" T-LABEL
-   [: EXPOSE-CTX TASK:CONTEXT -1 TASK:CONTEXT-BIND ;] E-TASK-STATE TTHROWSQ
+   [: TASK:SELF-CONTEXT -1 TASK:CONTEXT-BIND ;] E-TASK-STATE TTHROWSQ
    s" CONTEXT-BIND of a number that is no context" T-LABEL
-   [: 0 EXPOSE-SLOT TASK:CONTEXT-BIND ;] E-TASK-STATE TTHROWSQ
-   EXPOSE-CTX TASK:CONTEXT EXPOSE-SLOT TASK:CONTEXT-BIND
+   [: 0 BIND-SLOT TASK:CONTEXT-BIND ;] E-TASK-STATE TTHROWSQ
+   TASK:SELF-CONTEXT BIND-SLOT TASK:CONTEXT-BIND
    s" binding a slot to the context it names is a no-op" T-LABEL
-   [: EXPOSE-CTX TASK:CONTEXT EXPOSE-SLOT TASK:CONTEXT-BIND ;] catch 0 T=
+   [: TASK:SELF-CONTEXT BIND-SLOT TASK:CONTEXT-BIND ;] catch 0 T=
    \ The row as a binder leaves it between naming the context and handing the
    \ row back: that binder can still drop it, so the binding is not final.
    s" CONTEXT-BIND of a slot a bind holds BUSY, though it names the context" T-LABEL
-   CB-ROW-BUSY EXPOSE-SLOT SLOT-OWNER atomic!
-   [: EXPOSE-CTX TASK:CONTEXT EXPOSE-SLOT TASK:CONTEXT-BIND ;] E-TASK-STATE TTHROWSQ
-   0 EXPOSE-SLOT SLOT-OWNER atomic!
+   CB-ROW-BUSY BIND-SLOT SLOT-OWNER atomic!
+   [: TASK:SELF-CONTEXT BIND-SLOT TASK:CONTEXT-BIND ;] E-TASK-STATE TTHROWSQ
+   0 BIND-SLOT SLOT-OWNER atomic!
    s" CONTEXT-BIND of a slot naming another context" T-LABEL
-   [: TASK:SELF-CONTEXT EXPOSE-SLOT TASK:CONTEXT-BIND ;] E-TASK-STATE TTHROWSQ
+   [: TASK:CALLER-CONTEXT BIND-SLOT TASK:CONTEXT-BIND ;] E-TASK-STATE TTHROWSQ
    s" CONTEXT-UNBIND of a slot past the pool" T-LABEL
-   [: CB-POOL TASK:CONTEXT-UNBIND ;] E-TASK-STATE TTHROWSQ ;
+   [: CB-POOL TASK:CONTEXT-UNBIND ;] E-TASK-STATE TTHROWSQ
+   BIND-SLOT TASK:CONTEXT-UNBIND ;
 
-: TASK-TEST-EXPOSE ( -- )
-   TASK-LIVE-COUNT {: base:n :}
-   0 EXPOSE-GATE atomic!
-   0 EXPOSE-BUSY-CTX atomic!
-   TASK-TEST-EXPOSE-STATES
-   EXPOSE-CTX TASK:EXPOSE
-   s" an exposed task and a running one both count as live" T-LABEL
-   TASK-LIVE-COUNT base 2 + T=
-   s" EXPOSE of an exposed task" T-LABEL
-   [: EXPOSE-CTX TASK:EXPOSE ;] E-TASK-STATE TTHROWSQ
-   TASK-TEST-EXPOSE-BINDS
-   1 EXPOSE-GATE atomic!
-   EXPOSE-BUSY TASK:KILL
-   EXPOSE-CTX TASK:CONTEXT EXPOSE-OLD-CTX !
-   EXPOSE-CTX TASK:UNEXPOSE
-   s" UNEXPOSE gives the count back" T-LABEL
-   TASK-LIVE-COUNT base T=
-   s" UNEXPOSE dropped the slot naming the task: it binds to the main context" T-LABEL
-   [: TASK:SELF-CONTEXT EXPOSE-SLOT TASK:CONTEXT-BIND ;] catch 0 T=
-   EXPOSE-SLOT TASK:CONTEXT-UNBIND
-   s" CONTEXT-BIND of a CONSTRUCTED task's region" T-LABEL
-   [: EXPOSE-OLD-CTX @ EXPOSE-SLOT TASK:CONTEXT-BIND ;] E-TASK-STATE TTHROWSQ
-   EXPOSE-CTX TASK:EXPOSE
-   EXPOSE-CTX TASK:CONTEXT EXPOSE-SLOT TASK:CONTEXT-BIND
-   EXPOSE-CTX TASK:KILL
-   s" KILL of an exposed task unexposes it: the count is back" T-LABEL
-   TASK-LIVE-COUNT base T=
-   s" ... and its slot is free" T-LABEL
-   [: TASK:SELF-CONTEXT EXPOSE-SLOT TASK:CONTEXT-BIND ;] catch 0 T=
-   EXPOSE-SLOT TASK:CONTEXT-UNBIND ;
-
-\ An exposed task is woken like a running one, and its park outlives UNEXPOSE,
-\ so the next ACTIVATE of the same TCB has to open the park at zero.
-TASK:MIN-STACK TASK:TASK EXPOSE-WAKE
-
-TASK-TEST-ALIGN8
-variable EXPOSE-WOKE
-
-50 constant EXPOSE-WAKE-MS            \ the new run's time to take a stale hint
-
-: EXPOSE-WAKE-BODY ( -- )
-   TASK:WAIT
-   1 EXPOSE-WOKE atomic! ;
-
-: TASK-TEST-EXPOSE-WAKE ( -- )
-   TASK-LIVE-COUNT {: base:n :}
-   0 EXPOSE-WOKE atomic!
-   EXPOSE-WAKE TASK:EXPOSE
-   EXPOSE-WAKE TASK:WAKE
-   EXPOSE-WAKE TASK:UNEXPOSE
-   ['] EXPOSE-WAKE-BODY EXPOSE-WAKE TASK:ACTIVATE
-   EXPOSE-WAKE-MS >MS TASK:SLEEP
-   s" a hint posted while exposed does not reach the next run" T-LABEL
-   EXPOSE-WOKE atomic@ 0 T=
-   s" ... which still waits in its WAIT, so its WAKE is admitted" T-LABEL
-   [: EXPOSE-WAKE TASK:WAKE ;] catch 0 T=
-   EXPOSE-WOKE 1 STOP-REACH
-   EXPOSE-WAKE TASK:KILL
-   s" the case gives the live count back" T-LABEL
-   TASK-LIVE-COUNT base T= ;
+: TASK-TEST-CONTEXT ( -- )
+   0 CTX-GATE atomic!
+   0 CTX-BUSY-CTX atomic!
+   ['] CTX-BUSY-BODY CTX-BUSY TASK:ACTIVATE
+   begin CTX-BUSY-CTX atomic@ 0= while TASK:PAUSE repeat
+   TASK-TEST-CONTEXT-BINDS
+   1 CTX-GATE atomic!
+   CTX-BUSY TASK:KILL ;
 
 \ TASK:WAKE reads the state and then posts the park, and TASK:HALT posts it
 \ after its CAS, so the owner's KILL can end and release the task between the
@@ -2328,86 +2088,6 @@ variable HALT-RACE-ROUND
    s" the race gives the live count back" T-LABEL
    TASK-LIVE-COUNT base T= ;
 
-\ CONTEXT-BIND checks that its context is exposed and only then names its row,
-\ so an UNEXPOSE on another thread in between could sweep the rows before the
-\ row was named and leave it naming a region no longer exposed. The binder's
-\ answers are counted both ways, so a case whose binder stopped landing on both
-\ sides of the UNEXPOSE fails instead of passing untested. A refused
-\ UNEXPOSE met the binder's row mid-move and put EXPOSED back, so the one after
-\ it, the binder parked, succeeds.
-TASK:MIN-STACK TASK:TASK BIND-RACE-HOST
-TASK:MIN-STACK TASK:TASK BIND-RACE-BINDER
-
-TASK-TEST-ALIGN8
-variable BIND-RACE-GO
-variable BIND-RACE-DONE
-variable BIND-RACE-CTX
-variable BIND-RACE-BOUND
-variable BIND-RACE-LOST
-variable BIND-RACE-STALE              \ slots left naming the unexposed host
-variable BIND-RACE-ODD
-
-20000 constant BIND-RACE-ROUNDS
-2048 constant BIND-RACE-SPREAD        \ the UNEXPOSE's delay, in empty loop turns
-
-: BIND-RACE-ODD+ ( -- )
-   1 BIND-RACE-ODD atomic-add drop ;
-
-: BIND-RACE-TRY ( -- )
-   [: BIND-RACE-CTX @ EXPOSE-SLOT TASK:CONTEXT-BIND ;] catch {: rc:n :}
-   rc 0= if 1 BIND-RACE-BOUND +! exit then
-   rc E-TASK-STATE = if 1 BIND-RACE-LOST +! exit then
-   BIND-RACE-ODD+ ;
-
-: BIND-RACE-BODY ( -- )
-   BIND-RACE-ROUNDS 0 ?do
-      begin BIND-RACE-GO atomic@ i 1 + < while repeat
-      BIND-RACE-TRY
-      i 1 + BIND-RACE-DONE atomic!
-   loop ;
-
-: BIND-RACE-SPIN ( n -- )
-   0 ?do loop ;
-
-: BIND-RACE-PROBE ( -- )
-   [: TASK:SELF-CONTEXT EXPOSE-SLOT TASK:CONTEXT-BIND ;] catch
-   0 <> if 1 BIND-RACE-STALE +! then
-   EXPOSE-SLOT TASK:CONTEXT-UNBIND ;
-
-: BIND-RACE-ROUND ( n -- ) {: r:n :}
-   BIND-RACE-HOST TASK:EXPOSE
-   r BIND-RACE-GO atomic!
-   r BIND-RACE-SPREAD mod BIND-RACE-SPIN
-   [: BIND-RACE-HOST TASK:UNEXPOSE ;] catch {: rc:n :}
-   BIND-RACE-DONE r BIND-RACE-BINDER TEST-WAIT:FOR-CELL
-   rc 0= if BIND-RACE-PROBE exit then
-   rc E-TASK-STATE <> if BIND-RACE-ODD+ then
-   [: BIND-RACE-HOST TASK:UNEXPOSE ;] catch 0 <> if BIND-RACE-ODD+ then ;
-
-: TASK-TEST-BIND-RACE ( -- )
-   TASK-LIVE-COUNT {: base:n :}
-   0 BIND-RACE-GO atomic!
-   0 BIND-RACE-DONE atomic!
-   0 BIND-RACE-BOUND !
-   0 BIND-RACE-LOST !
-   0 BIND-RACE-STALE !
-   0 BIND-RACE-ODD atomic!
-   BIND-RACE-HOST TASK:EXPOSE
-   BIND-RACE-HOST TASK:CONTEXT BIND-RACE-CTX !
-   BIND-RACE-HOST TASK:UNEXPOSE
-   ['] BIND-RACE-BODY BIND-RACE-BINDER TASK:ACTIVATE
-   BIND-RACE-ROUNDS 0 do i 1 + BIND-RACE-ROUND loop
-   BIND-RACE-BINDER TASK:KILL
-   BIND-RACE-HOST TASK:KILL
-   s" no slot is left naming a task an UNEXPOSE racing its bind unexposed" T-LABEL
-   BIND-RACE-STALE @ 0 T=
-   s" every refusal on either side of that race is E-TASK-STATE" T-LABEL
-   BIND-RACE-ODD atomic@ 0 T=
-   s" the binder landed on both sides of the UNEXPOSE" T-LABEL
-   BIND-RACE-BOUND @ 0 <> BIND-RACE-LOST @ 0 <> and TTRUE
-   s" the race gives the live count back" T-LABEL
-   TASK-LIVE-COUNT base T= ;
-
 \ CONTEXT-BIND reads the row free and only then moves it to BUSY, so a bind that
 \ read it before another bind named it, and moved it after that bind handed it
 \ back, would rename the other's binding with both answering 0. Each binder
@@ -2430,14 +2110,17 @@ variable BIND-PAIR-Q-WON
 20000 constant BIND-PAIR-ROUNDS
 64 constant BIND-PAIR-SPREAD          \ the waiting side's spin, in loop turns
 
+: BIND-SPIN ( n -- )
+   0 ?do loop ;
+
 : BIND-PAIR-SPIN ( n n -- ) {: r:n side:n :}
-   r 2 mod side = if r 2 / BIND-PAIR-SPREAD mod BIND-RACE-SPIN then ;
+   r 2 mod side = if r 2 / BIND-PAIR-SPREAD mod BIND-SPIN then ;
 
 : BIND-PAIR-P-BODY ( -- )
    BIND-PAIR-ROUNDS 0 ?do
       begin BIND-PAIR-GO atomic@ i 1 + < while repeat
       i 1 + 0 BIND-PAIR-SPIN
-      [: BIND-PAIR-MAIN @ EXPOSE-SLOT TASK:CONTEXT-BIND ;] catch
+      [: BIND-PAIR-MAIN @ BIND-SLOT TASK:CONTEXT-BIND ;] catch
       BIND-PAIR-P-RC atomic!
       i 1 + BIND-PAIR-P-DONE atomic!
    loop ;
@@ -2449,7 +2132,7 @@ variable BIND-PAIR-Q-WON
    BIND-PAIR-ROUNDS 0 ?do
       begin BIND-PAIR-GO atomic@ i 1 + < while repeat
       i 1 + 1 BIND-PAIR-SPIN
-      [: TASK:SELF-CONTEXT EXPOSE-SLOT TASK:CONTEXT-BIND ;] catch
+      [: TASK:SELF-CONTEXT BIND-SLOT TASK:CONTEXT-BIND ;] catch
       BIND-PAIR-Q-RC atomic!
       i 1 + BIND-PAIR-Q-DONE atomic!
    loop
@@ -2458,7 +2141,7 @@ variable BIND-PAIR-Q-WON
 \ The slot is freed before each round starts, while both binders wait, so the
 \ last round's binding is left to the binder's own end or the case's unbind.
 : BIND-PAIR-ROUND ( n -- ) {: r:n :}
-   EXPOSE-SLOT TASK:CONTEXT-UNBIND
+   BIND-SLOT TASK:CONTEXT-UNBIND
    r BIND-PAIR-GO atomic!
    BIND-PAIR-P-DONE r BIND-PAIR-P TEST-WAIT:FOR-CELL
    BIND-PAIR-Q-DONE r BIND-PAIR-Q TEST-WAIT:FOR-CELL
@@ -2482,7 +2165,7 @@ variable BIND-PAIR-Q-WON
    BIND-PAIR-ROUNDS 0 do i 1 + BIND-PAIR-ROUND loop
    BIND-PAIR-P TASK:KILL
    BIND-PAIR-Q TASK:KILL
-   EXPOSE-SLOT TASK:CONTEXT-UNBIND
+   BIND-SLOT TASK:CONTEXT-UNBIND
    s" two binds racing for one free slot never both succeed" T-LABEL
    BIND-PAIR-BOTH @ 0 T=
    s" every other round one bind wins and one is refused E-TASK-STATE" T-LABEL
@@ -2672,13 +2355,8 @@ variable NEW-STRAY
 : TASK-TEST-EXIT-GROW ( -- )
    s" tasks holding more AT-EXIT rows than the table run each cleanup once" T-LABEL
    EXIT-HOLD-ROUND 0 T=
-   TASK:OWNED-EXIT-N {: used:n :}
-   s" the AT-EXIT rows grew to hold every task's cleanups" T-LABEL
-   used NEW-HELD-ROWS >= TTRUE
    s" rows given back serve the next round" T-LABEL
-   EXIT-HOLD-ROUND 0 T=
-   s" the second round uses no more rows" T-LABEL
-   TASK:OWNED-EXIT-N used T= ;
+   EXIT-HOLD-ROUND 0 T= ;
 
 : NEW-HELD ( -- ptr n )
    0 NEW-TASKS @ ;
@@ -2717,24 +2395,12 @@ variable NEW-STRAY
    [: TASK:SELF TASK:FREE ;] E-TASK-STATE TTHROWSQ
    NEW-GATE TASK:SEMAPHORE-DESTROY ;
 
-: TASK-TEST-NEW-EXPOSE ( -- )
-   TASK:MIN-STACK TASK:NEW 0 NEW-TASKS !
-   NEW-HELD TASK:EXPOSE
-   s" TASK:FREE of an exposed task" T-LABEL
-   [: NEW-FREE-HELD ;] E-TASK-STATE TTHROWSQ
-   s" CONTEXT-BIND to an exposed TASK:NEW task TASK:FREE refused" T-LABEL
-   [: NEW-HELD TASK:CONTEXT EXPOSE-SLOT TASK:CONTEXT-BIND ;] catch 0 T=
-   EXPOSE-SLOT TASK:CONTEXT-UNBIND
-   NEW-HELD TASK:KILL
-   s" an exposed task TASK:FREE refused is given back after its kill" T-LABEL
-   [: NEW-FREE-HELD ;] catch 0 T= ;
-
 : TASK-TEST-RUN ( -- )
    T-RESET
    TASK-TEST-CALLBACK-TYPES
    TASK-TEST-THROW-TYPES
    TASK-TEST-SEM-TYPES
-   TASK-TEST-MSG-TYPES
+   TASK-TEST-TRY-WAIT-TYPES
    TASK-TEST-JOIN-TYPES
    0 TASK-COUNT !
    0 TASK-READY-A !
@@ -2778,10 +2444,6 @@ variable NEW-STRAY
    TASK-TEST-SEM-PIPE
    TASK-TEST-SEM-COUNT
    TASK-TEST-SEM-NEGATIVE
-   TASK-TEST-MSG-ROUND-TRIP
-   TASK-TEST-MSG-SEND-BLOCKS
-   TASK-TEST-MSG-GET-BLOCKS
-   TASK-TEST-MSG-REFUSED
    TASK-TEST-SEM-POOL
    TASK-TEST-SEM-POOL-USE
    TASK-TEST-JOIN-VALUE
@@ -2825,18 +2487,15 @@ variable NEW-STRAY
    TASK-TEST-ENTRY-RACE
    TASK-TEST-ENTRY-RELEASE
    TASK-TEST-DONE-PUBLISH
-   TASK-TEST-EXPOSE
-   TASK-TEST-EXPOSE-WAKE
+   TASK-TEST-CONTEXT
    TASK-TEST-WAKE-RACE
    TASK-TEST-HALT-RACE
-   TASK-TEST-BIND-RACE
    TASK-TEST-BIND-PAIR
    TASK-TEST-NEW-LIVE
    TASK-TEST-NEW-RACE
    TASK-TEST-NEW-LOOP
    TASK-TEST-EXIT-GROW
    TASK-TEST-FREE-REFUSED
-   TASK-TEST-NEW-EXPOSE
    TASK-TEST-WORKER-ACTIVATES
    T-REPORT ;
 

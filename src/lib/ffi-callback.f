@@ -192,13 +192,12 @@ public
 \ thunk exits 106 (ENGINE-ERROR:CALLBACK). A context admits one thread at a
 \ time; a second is refused, never made to wait. TASK:SELF-CONTEXT is the
 \ calling task's region (C calls back inside a foreign call it made),
-\ TASK:CONTEXT an exposed task's (a foreign thread enters), TASK:MAIN-BASE
-\ FFI:>CELL the main region (main thread only). TASK:CALLER-CONTEXT is each
-\ calling thread's own region, inside a foreign call it made, for any number of
-\ threads at once; a thread with no region of its own, one inside an exposed
-\ task's region among them, exits 106.
-\ A binding lasts until UNBIND, UNEXPOSE, the end of the task whose region it
-\ names, or a capture; the caller drains C's calls first. A capture drops idle
+\ TASK:MAIN-BASE FFI:>CELL the main region (main thread only).
+\ TASK:CALLER-CONTEXT is each calling thread's own region, inside a foreign
+\ call it made, for any number of threads at once; a thread with no region of
+\ its own exits 106.
+\ A binding lasts until UNBIND, the end of the task whose region it names, or a
+\ capture; the caller drains C's calls first. A capture drops idle
 \ bindings and ends on a slot with a thread inside, so a stripped application
 \ binds in its entry word.
 : ENTRY ( callback n -- n ) {: cb ctx:n :}

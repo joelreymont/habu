@@ -25,8 +25,6 @@ $4000 constant CAP
 60000 constant CHILD-MS               \ includes compiling the fixture in each child
 600000 constant BUILD-MS
 1000 constant OWNER-READS
-2000 constant HAMMER-N                \ refused UNEXPOSEs the thread sorts under
-200 constant HAMMER-SORTS             \ and the sorts it has to finish meanwhile
 200 constant HELD-MS                  \ how long a held row keeps a call waiting
 10 constant LF
 
@@ -43,16 +41,14 @@ variable WANT-U
 variable SUBJECT-U
 variable IMAGE-U
 variable MAIN-OWNER                   \ the owner the main thread claims with
-variable MAIN-SELF                    \ its pthread_self
-variable OLD-CONTEXT                  \ CTX-TASK's context, kept past its UNEXPOSE
-variable HAMMERS
 
-\ With the fixture's twelve callbacks these four make sixteen entries, a
+\ With the fixture's eleven callbacks these five make sixteen entries, a
 \ table-size edge.
 CALLBACK: PAD-A ( -- ) ;CALLBACK
 CALLBACK: PAD-B ( -- ) ;CALLBACK
 CALLBACK: PAD-C ( -- ) ;CALLBACK
 CALLBACK: PAD-D ( -- ) ;CALLBACK
+CALLBACK: PAD-E ( -- ) ;CALLBACK
 
 : SCRIPT$ ( -- ptr u8 n )
    SCRIPT-BUF SCRIPT-U @ ;
@@ -109,8 +105,8 @@ CALLBACK: PAD-D ( -- ) ;CALLBACK
 \ WHO is a comparator that keeps CB-OWNER of the region it runs on. qsort of a
 \ two-cell row calls it on this thread, and every call claims the owner afresh,
 \ so one value across a thousand sorts with a yield between them is the thread
-\ pointer holding still; the foreign thread's half is CASE-THREAD's. The cell
-\ is cleared first, so a sort that never called WHO reads the free owner.
+\ pointer holding still. The cell is cleared first, so a sort that never
+\ called WHO reads the free owner.
 : WHO-CLAIM ( n -- n ) {: fn:n :}
    0 WHO-OWNER !
    OUTER BYTE-VIEW 2 CELL fn QSORT
@@ -128,14 +124,7 @@ CALLBACK: PAD-D ( -- ) ;CALLBACK
    WHO TASK:SELF-CONTEXT ENTRY OWNER-STABLE?
       s" the main thread claims with one value, a thousand calls and yields apart" FACT
    MAIN-OWNER @ 0 <> s" which is not the free owner" FACT
-   PTHREAD-SELF MAIN-SELF !
    WHO UNBIND ;
-
-: OWNER-IDENTITY ( -- )
-   THREAD-OWNER @ MAIN-OWNER @ <> s" a foreign thread claims with another value" FACT
-   THREAD-OWNER @ THREAD-SELF @ - MAIN-OWNER @ MAIN-SELF @ - =
-      s" each at the same offset from its own pthread_self" FACT
-   THREAD-SELF @ THREAD @ = s" and pthread_self there is the pthread_t pthread_create stored" FACT ;
 
 : CASE-WORKERS ( -- )
    UNBIND-SELF
@@ -175,79 +164,12 @@ CALLBACK: PAD-D ( -- ) ;CALLBACK
       s" UNBIND with no thread inside frees it: the slot binds to the main context" FACT
    CMP-CALLER UNBIND ;
 
-\ A foreign thread on an exposed task.
-: IDLE-BODY ( -- ) ;
-
-: ACTIVATE-CTX ( -- )
-   ['] IDLE-BODY CTX-TASK TASK:ACTIVATE ;
-
-\ UNEXPOSE asked again and again while the thread inside keeps nesting through
-\ CMP, a lower slot naming the same context. Each refusal claims CMP's row
-\ before it meets START's and hands it back, and a comparison that meets the
-\ claim waits for the hand-back, so every call completes: answers the count of
-\ attempts that were not E-TASK-STATE.
-: HAMMER ( -- n )
-   0 HAMMERS !
-   0
-   begin
-      [: CTX-TASK TASK:UNEXPOSE ;] catch E-TASK-STATE <> if 1 + then
-      1 HAMMERS +!
-      HAMMERS @ HAMMER-N >= THREAD-SORTS atomic@ HAMMER-SORTS >= and
-   until ;
-
-: CASE-THREAD ( -- )
-   s" == a foreign thread on an exposed task" SAY
-   CMP-VIA TASK:SELF-CONTEXT ENTRY drop
-   THREAD-BIND
-   [: CMP-VIA CTX-TASK TASK:CONTEXT ENTRY drop ;] catch E-TASK-STATE =
-      s" ENTRY of a slot bound to another context is E-TASK-STATE" FACT
-   CMP-VIA UNBIND
-   0 BAD !
-   START-FN @ 5 THREAD-START 0= s" pthread_create takes the entry as its start routine" FACT
-   WAIT-INSIDE
-   [: CTX-TASK TASK:UNEXPOSE ;] catch E-TASK-STATE =
-      s" UNEXPOSE with the thread parked inside is E-TASK-STATE" FACT
-   [: CTX-TASK TASK:KILL ;] catch E-TASK-STATE =
-      s" KILL with the thread parked inside is E-TASK-STATE" FACT
-   [: ACTIVATE-CTX ;] catch E-TASK-STATE = s" ACTIVATE of an exposed task is E-TASK-STATE" FACT
-   [: START UNBIND ;] catch E-TASK-STATE = s" UNBIND of the slot the thread holds is E-TASK-STATE" FACT
-   1 HOLD atomic!
-   1 GATE atomic!
-   HAMMER 0= s" UNEXPOSE stays refused while the thread nests through a second slot, and harms no call" FACT
-   0 HOLD atomic!
-   THREAD-JOIN 0= s" pthread_join returns once the thread is released" FACT
-   THREAD-RET @ 206 = s" its value is the callback's: the argument plus the row it sorted, nested" FACT
-   BAD @ 0= s" and that row came back sorted" FACT
-   OWNER-IDENTITY
-   CTX-TASK TASK:CONTEXT OLD-CONTEXT !
-   CTX-TASK TASK:UNEXPOSE
-   [: START TASK:SELF-CONTEXT ENTRY drop ;] catch 0=
-      s" UNEXPOSE after the join drops the bindings: the slot binds to the main context" FACT
-   START UNBIND
-   [: CMP OLD-CONTEXT @ ENTRY drop ;] catch E-TASK-STATE =
-      s" ENTRY with a CONSTRUCTED task's region number is E-TASK-STATE" FACT
-   CTX-TASK TASK:KILL ;
-
 \ Slot k's cell at offset off of its row, reached as the thunk reaches it:
 \ through the table the main region's CB-ROWS publishes.
 : SLOT-CELL ( n n -- ptr n ) {: k:n off:n :}
    TASK:MAIN-BASE {: base :}
    base CB-ROWS + atomic@ base FFI:>CELL - {: table:n :}
    base table + k 4 cells * + off + ;
-
-\ Moves every idle row naming context ctx 0 -> BUSY, as a bind or UNEXPOSE's
-\ claim moves it, and answers them as a mask. A row a thread is inside stays.
-: HOLD-ROWS ( n -- n ) {: ctx:n :}
-   0 CB-POOL 0 ?do
-      i CB-ROW-REGION SLOT-CELL atomic@ ctx = if
-         0 CB-ROW-BUSY i CB-ROW-OWNER SLOT-CELL atomic-cas 0= if 1 i lshift or then
-      then
-   loop ;
-
-: HAND-BACK ( n -- ) {: mask:n :}
-   CB-POOL 0 ?do
-      mask 1 i lshift and 0 <> if 0 i CB-ROW-OWNER SLOT-CELL atomic! then
-   loop ;
 
 \ CMP-CALLER's slot: the one idle caller row while it is bound; -1 if none is.
 : CALLER-SLOT ( -- n )
@@ -280,55 +202,6 @@ CALLBACK: PAD-D ( -- ) ;CALLBACK
       s" and the row is a caller row" FACT
    CMP-CALLER UNBIND ;
 
-
-\ A call that meets a row held BUSY waits in the thunk until the row is handed
-\ back: the start routine's own entry, then, with the thread parked inside
-\ START, its sort's nested calls through CMP. An UNEXPOSE refused on START's
-\ row holds CMP's, the lower slot, in just this way; a thunk that ended such a
-\ call would kill the thread.
-: CASE-HELD ( -- )
-   s" == calls that meet a row a mover holds" SAY
-   THREAD-BIND
-   0 BAD !
-   CTX-TASK TASK:CONTEXT HOLD-ROWS {: held:n :}
-   held 0 <> s" the rows naming the context are held BUSY" FACT
-   START-FN @ 9 THREAD-START 0= s" pthread_create starts a thread at a held row" FACT
-   HELD-MS >MS TASK:SLEEP
-   INSIDE atomic@ 0= s" the thread waits there and is not inside" FACT
-   held HAND-BACK
-   WAIT-INSIDE
-   CTX-TASK TASK:CONTEXT HOLD-ROWS {: nested:n :}
-   nested 0 <> nested held <> and
-      s" parked inside START, the thread keeps its row and the other is held BUSY" FACT
-   1 GATE atomic!
-   HELD-MS >MS TASK:SLEEP
-   THREAD-SORTS atomic@ 0= s" the nested calls wait there and finish no sort" FACT
-   nested HAND-BACK
-   THREAD-JOIN 0= s" pthread_join returns once that row is handed back" FACT
-   THREAD-RET @ 210 = s" the thread's value is its callback's" FACT
-   BAD @ 0= s" and the row it sorted came back sorted" FACT
-   CTX-TASK TASK:UNEXPOSE
-   CTX-TASK TASK:KILL ;
-
-\ A context that outlives the task that exposed it.
-: LIVE ( -- n )
-   TASK:MAIN-BASE TASKS-LIVE-CELL + atomic@ ;
-
-: CASE-HANDOFF ( -- )
-   s" == a worker exposes a task, hands it to a thread and ends" SAY
-   LIVE {: base:n :}
-   ['] WORK-EXPOSES WORKER-A TASK:ACTIVATE
-   WORKER-A TASK:JOIN JOINED 0= s" the worker started the thread and was joined" FACT
-   WAIT-INSIDE
-   LIVE base 1 + = s" the exposed task still counts on the main region" FACT
-   1 GATE atomic!
-   THREAD-JOIN 0= s" the main task joins the thread" FACT
-   THREAD-RET @ 208 = s" whose callback ran to its result" FACT
-   CTX-TASK TASK:UNEXPOSE
-   LIVE base = s" UNEXPOSE gives the count back" FACT
-   s" variable CBT-DEFINED-AFTER" INCLUDE-EVALUATE
-   s" a definition succeeds" SAY
-   CTX-TASK TASK:KILL ;
 
 : CASE-ACCESSOR ( -- )
    s" == a frame accessor" SAY
@@ -437,11 +310,8 @@ CALLBACK: PAD-D ( -- ) ;CALLBACK
 : CASE-CHILDREN ( -- )
    s" outside" CHILD-CASE
    s" sleeping" CHILD-CASE
-   s" busy" CHILD-CASE
    s" unbound" CHILD-CASE
    s" worker-stale" CHILD-CASE
-   s" unexposed" CHILD-CASE
-   s" defines" CHILD-CASE
    s" body-defines" CHILD-CASE
    HB-TARGET-LINUX-X86-64? 0= if s" caller-thread" CHILD-CASE then
    s" released" CHILD-CASE ;
@@ -468,14 +338,10 @@ CALLBACK: PAD-D ( -- ) ;CALLBACK
    \ Numeric fallbacks grow and retire descriptors before capture. MAIN's seed
    \ entry needs a code span disjoint from the shared thunk's.
    SUBJECT$ S\" CALLBACK: FIRST ( -- n ) 456 FALLBACK ;CALLBACK\nCALLBACK: SECOND ( -- n ) 456 FALLBACK ;CALLBACK\n" FS:APPEND-FILE
-   \ FILE-BOUND, the first row, is bound while the build loads; the image must
-   \ start with it unbound and unmoved.
+   \ FILE-BOUND, the first row, is bound while the build loads; the capture
+   \ drops the binding.
    SUBJECT$ S\" FILE-BOUND TASK:SELF-CONTEXT FFI-CB:ENTRY drop\n" FS:APPEND-FILE
-   SUBJECT$ S\" PERSISTED-PTR-VARIABLE FILE-ROWS\nvariable FILE-ROW-VISITS\n" FS:APPEND-FILE
-   SUBJECT$ S\" : KEEP-ROW ( ptr u8 n -- ) {: a:ptr u:n :} FILE-ROW-VISITS @ 0= if a 0 ptr-field @ FILE-ROWS ! then 1 FILE-ROW-VISITS +! ;\n" FS:APPEND-FILE
-   SUBJECT$ S\" : BOUND-REGION ( -- n ) 0 FILE-ROW-VISITS ! ['] KEEP-ROW TASK:OWNED-CALLBACK-ROWS FILE-ROWS @ CB-ROW-REGION + CELL-VIEW atomic@ ;\n" FS:APPEND-FILE
-   SUBJECT$ S\" : ROW-MOVES ( -- n ) FILE-ROWS @ 2 cells + CELL-VIEW atomic@ ;\n: FRESH-ROW ( -- ) BOUND-REGION dup . cr 0<> if 74 throw then ROW-MOVES dup . cr 0<> if 74 throw then ;\n" FS:APPEND-FILE
-   SUBJECT$ S\" require test/stripped-callback-subject.f\n: MAIN ( -- ) 0 FFI:CALLBACK-ENTRY drop FRESH-ROW s\q fresh callback binding: ok\q type cr STRIPPED-CALLBACK-SUBJECT:RUN ;\n" FS:APPEND-FILE ;
+   SUBJECT$ S\" require test/stripped-callback-subject.f\n: MAIN ( -- ) 0 FFI:CALLBACK-ENTRY drop STRIPPED-CALLBACK-SUBJECT:RUN ;\n" FS:APPEND-FILE ;
 
 : BUILD-IMAGE ( -- len len PROCESS:ending )
    PROC-ARGV-ENV-RESET
@@ -550,39 +416,7 @@ CALLBACK: PAD-D ( -- ) ;CALLBACK
       s" ok   and the row is a caller row" W
    then ;
 
-: WANT-THREADS ( -- )
-   s" == a foreign thread on an exposed task" W
-   s" ok   ENTRY of a slot bound to another context is E-TASK-STATE" W
-   s" ok   pthread_create takes the entry as its start routine" W
-   s" ok   UNEXPOSE with the thread parked inside is E-TASK-STATE" W
-   s" ok   KILL with the thread parked inside is E-TASK-STATE" W
-   s" ok   ACTIVATE of an exposed task is E-TASK-STATE" W
-   s" ok   UNBIND of the slot the thread holds is E-TASK-STATE" W
-   s" ok   UNEXPOSE stays refused while the thread nests through a second slot, and harms no call" W
-   s" ok   pthread_join returns once the thread is released" W
-   s" ok   its value is the callback's: the argument plus the row it sorted, nested" W
-   s" ok   and that row came back sorted" W
-   s" ok   a foreign thread claims with another value" W
-   s" ok   each at the same offset from its own pthread_self" W
-   s" ok   and pthread_self there is the pthread_t pthread_create stored" W
-   s" ok   UNEXPOSE after the join drops the bindings: the slot binds to the main context" W
-   s" ok   ENTRY with a CONSTRUCTED task's region number is E-TASK-STATE" W
-   s" == calls that meet a row a mover holds" W
-   s" ok   the rows naming the context are held BUSY" W
-   s" ok   pthread_create starts a thread at a held row" W
-   s" ok   the thread waits there and is not inside" W
-   s" ok   parked inside START, the thread keeps its row and the other is held BUSY" W
-   s" ok   the nested calls wait there and finish no sort" W
-   s" ok   pthread_join returns once that row is handed back" W
-   s" ok   the thread's value is its callback's" W
-   s" ok   and the row it sorted came back sorted" W
-   s" == a worker exposes a task, hands it to a thread and ends" W
-   s" ok   the worker started the thread and was joined" W
-   s" ok   the exposed task still counts on the main region" W
-   s" ok   the main task joins the thread" W
-   s" ok   whose callback ran to its result" W
-   s" ok   UNEXPOSE gives the count back" W
-   s" a definition succeeds" W
+: WANT-ACCESSOR ( -- )
    s" == a frame accessor" W
    s" ok   a frame accessor outside a callback is E-FFI-CALLBACK-STATE" W ;
 
@@ -613,10 +447,6 @@ CALLBACK: PAD-D ( -- ) ;CALLBACK
    s" sleeping: a thread is parked on its own context" W
    s" --" W
    s" E-CALLBACK habu: context busy on another thread lr" W
-   s" == child busy: exit 106" W
-   s" busy: the first thread is parked inside the context" W
-   s" --" W
-   s" E-CALLBACK habu: context busy on another thread lr" W
    s" == child unbound: exit 106" W
    s" unbound: sorted while bound" W
    s" --" W
@@ -625,14 +455,6 @@ CALLBACK: PAD-D ( -- ) ;CALLBACK
    s" worker-stale: the worker sorted and ended bound" W
    s" --" W
    s" E-CALLBACK habu: slot is not bound lr" W
-   s" == child unexposed: exit 106" W
-   s" unexposed: the context is gone" W
-   s" --" W
-   s" E-CALLBACK habu: slot is not bound lr" W
-   s" == child defines: exit 79" W
-   s" defines: the exposing worker was joined" W
-   s" --" W
-   s" E-TASK-COMPILE habu: cp! while a task is live lr" W
    s" == child body-defines: exit 106" W
    s" --" W
    s" E-CALLBACK habu: the body defined lr" W
@@ -648,25 +470,16 @@ CALLBACK: PAD-D ( -- ) ;CALLBACK
    s" killed: the worker is stopped inside its comparator" W
    s" killed: its sort completed" W
    s" killed: the worker ended at its first TASK:PAUSE after the sort" W
-   s" woken: a thread is stopped inside its callback" W
-   s" woken: WAKE of the exposed task released it to its result" W
-   s" fresh: a hint to a run that ended does not reach an exposure" W
-   s" fresh: nor does a hint to an earlier exposure" W
    s" --" W
    s" == a stripped image" W
    s" ok   hb-build links test/stripped-callback-subject.f stripped" W
    s" == child stripped: exit 0" W
-   s" 0" W
-   s" " W
-   s" 0" W
-   s" " W
-   s" fresh callback binding: ok" W
    s" stripped-callback: ok" W
    s" --" W ;
 
 : WANT-TRANSCRIPT ( -- )
    0 WANT-U !
-   WANT-TASKS WANT-THREADS WANT-DECLARATIONS WANT-CHILDREN ;
+   WANT-TASKS WANT-ACCESSOR WANT-DECLARATIONS WANT-CHILDREN ;
 
 \ The artifact as another reader will find it: read back from its file and
 \ compared whole.
@@ -688,9 +501,6 @@ public
    CASE-OWNER
    CASE-WORKERS
    HB-TARGET-LINUX-X86-64? 0= if CASE-CALLER CASE-CALLER-HELD then
-   CASE-THREAD
-   CASE-HELD
-   CASE-HANDOFF
    CASE-ACCESSOR
    CASE-DECLARATIONS
    CASE-CHILDREN

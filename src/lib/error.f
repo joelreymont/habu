@@ -177,7 +177,6 @@ require src/lib/prelude.f
 -3607 constant E-TASK-SEM-COUNT     \ semaphore count out of range
 -3608 constant E-TASK-SEM-HOST      \ host has no usable unnamed semaphores
 -3609 constant E-TASK-JOIN          \ join of a task never activated or already joined
--3610 constant E-TASK-MAILBOX       \ message operation no mailbox can serve: no TCB, target not running, or self
 -3611 constant E-TASK-SEM-POOL      \ pooled semaphore: the handle is not a pooled record
 -3612 constant E-TASK-NO-RESULT     \ the task ended without storing a result; carried by the err arm of a join
 -3614 constant E-TASK-SLEEP-MS      \ TASK:SLEEP or TASK:WAIT-MS duration below zero or past the last deadline a cell holds

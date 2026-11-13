@@ -531,8 +531,8 @@ holds an address**.
   no-return (§ 3). `throw` for recoverable and interactive paths, `die` for
   build makers and CLI boundaries.
 - Exit 79 (`$4F`) is compilation from a task: a definition, `create`, `allot`,
-  `,`, `evaluate`, a load or a package keyword run on a task's, an exposed
-  region's or a callback's thread. The kernel's guard writes
+  `,`, `evaluate`, a load or a package keyword run on a task's or a
+  callback's thread. The kernel's guard writes
   `E-TASK-COMPILE habu: <primitive> from a task lr <lr>` on fd 2;
   `evaluate`, `evaluate-closed`, a load, `create`, `,`, `c,`, `align` and
   `allot` reach it first, so a definition or keyword in a text is refused

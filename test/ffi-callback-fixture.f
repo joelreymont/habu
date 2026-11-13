@@ -33,36 +33,24 @@ FUNCTION: PTHREAD-CREATE pthread_create ( ptr u8 n n n -- i32 )
    0 8 WRITES-BYTES                  \ pthread_t
 ;FUNCTION
 
-FUNCTION: PTHREAD-JOIN pthread_join ( n ptr u8 -- i32 )
-   1 8 WRITES-BYTES                  \ the start routine's void *
-;FUNCTION
-
-FUNCTION: PTHREAD-SELF pthread_self ( -- n ) ;FUNCTION
-
 create OUTER ROW-N cells allot        \ the row the calling task sorts
 create INNER ROW-N cells allot        \ the row a comparator sorts, nested
-create THREAD-ROW ROW-N cells allot   \ the row a foreign thread sorts
+create THREAD-ROW ROW-N cells allot   \ the row a second thread sorts
 
 variable CMP-FN                       \ the C entry each ENTRY answered
 variable CMP-SELF-FN
 variable CMP-VIA-FN
 variable CMP-BOOM-FN
 variable CMP-UNBIND-FN
-variable START-FN
 variable NESTED                       \ sorts a comparator ran
 variable BAD                          \ nested sorts that came back unsorted
 variable SELF-DEPTH                   \ 1 inside CMP-SELF's own nested sort
 variable BOOMS
 variable BOOM-ON
 variable UNBIND-CODE                  \ what UNBIND threw inside the comparator
-variable INSIDE                       \ 1 once a start routine is parked in its callback
-variable GATE                         \ the release a parked routine waits for
-variable HOLD                         \ non-zero keeps a released routine sorting
-variable THREAD-SORTS                 \ sorts the routine has finished
+variable INSIDE                       \ 1 once a body is parked
+variable GATE                         \ the release a parked body waits for
 variable THREAD                       \ pthread_t
-variable THREAD-RET                   \ the start routine's result, from pthread_join
-variable THREAD-OWNER                 \ CB-OWNER of the region the routine ran on
-variable THREAD-SELF                  \ pthread_self as the routine read it
 variable WHO-OWNER                    \ CB-OWNER of the region WHO last ran on
 variable CMP-CALLER-FN
 variable CALLER-WANT                  \ sorters a first comparison waits for
@@ -76,7 +64,6 @@ create CALLER-ENTERED 3 cells allot   \ 1 once that sorter reached CMP-CALLER
 create ROW-A ROW-N cells allot
 create ROW-B ROW-N cells allot
 
-TASK:MIN-STACK TASK:TASK CTX-TASK     \ the region a foreign thread enters
 TASK:MIN-STACK TASK:TASK WORKER-A
 TASK:MIN-STACK TASK:TASK WORKER-B
 
@@ -104,7 +91,6 @@ CALLBACK: CMP-VIA ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
 CALLBACK: CMP-BOOM ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
 CALLBACK: CMP-UNBIND ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
 CALLBACK: START ( n -- n ) 0 FALLBACK ;CALLBACK
-CALLBACK: START-B ( n -- n ) 0 FALLBACK ;CALLBACK
 \ The longest dispatch a declaration can generate, never called: no C caller
 \ checks i32/u32 narrowing, float arguments, an r result or a full n result.
 : DECLARE-MARSHAL ( -- )
@@ -163,24 +149,8 @@ CALLBACK: CMP-CALLER ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
       GATE atomic@ 0<> TASK:HALTED? or
    until ;
 
-\ A pthread start routine: it reports who it is, parks until the owner lets it
-\ go, sorts a row of its own through CMP - again and again while HOLD is set -
-\ and answers its argument plus the row's first cell.
-: START-IMPL ( n -- n ) {: arg:n :}
-   data-base CB-OWNER + atomic@ THREAD-OWNER !
-   PTHREAD-SELF THREAD-SELF !
-   PARK
-   begin
-      THREAD-ROW 200 ROW-FILL
-      THREAD-ROW BYTE-VIEW ROW-N CELL CMP-FN @ QSORT
-      THREAD-ROW 200 ROW-SORTED? 0= if 1 BAD atomic-add drop then
-      1 THREAD-SORTS atomic-add drop
-      HOLD atomic@ 0=
-   until
-   arg THREAD-ROW @ + ;
-
-\ Bound and never reached: a second thread is refused before its dispatch.
-: START-B-IMPL ( n -- n ) ;
+\ Bound and never reached: a thread C started is refused before its dispatch.
+: START-IMPL ( n -- n ) ;
 
 \ A comparator that keeps the owner of the region it runs on, which is the
 \ calling thread's.
@@ -224,7 +194,6 @@ CALLBACK: CMP-CALLER ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
 ' CMP-BOOM-IMPL CMP-BOOM-BODY !
 ' CMP-UNBIND-IMPL CMP-UNBIND-BODY !
 ' START-IMPL START-BODY !
-' START-B-IMPL START-B-BODY !
 ' WHO-IMPL WHO-BODY !
 ' CMP-CALLER-IMPL CMP-CALLER-BODY !
 \ UNSET-BODY and UNSET-ONE-BODY are left unset: each dispatch has to refuse, not
@@ -305,26 +274,13 @@ CALLBACK: CMP-CALLER ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
    SORT-BOOM 8 MASK-BIT or
    SORT-UNBIND $10 MASK-BIT or ;
 
-\ ---- a foreign thread on an exposed task --------------------------------------
-\ START and the comparator its body sorts through, both on CTX-TASK's context.
-: THREAD-BIND ( -- )
-   CTX-TASK TASK:EXPOSE
-   CMP CTX-TASK TASK:CONTEXT ENTRY CMP-FN !
-   START CTX-TASK TASK:CONTEXT ENTRY START-FN ! ;
-
+\ ---- a thread C starts --------------------------------------------------------
 \ pthread_create's own answer: 0, or its errno.
 : THREAD-START ( n n -- n ) {: fn:n arg:n :}
-   0 INSIDE atomic!
-   0 GATE atomic!
-   0 HOLD atomic!
-   0 THREAD-SORTS atomic!
    THREAD BYTE-VIEW 0 fn arg PTHREAD-CREATE ;
 
 : WAIT-INSIDE ( -- )
    begin INSIDE atomic@ 0= while TASK:PAUSE repeat ;
-
-: THREAD-JOIN ( -- n )
-   THREAD @ THREAD-RET BYTE-VIEW PTHREAD-JOIN ;
 
 \ ---- worker bodies -------------------------------------------------------------
 : JOINED ( result<n,n> -- n )
@@ -339,12 +295,6 @@ CALLBACK: CMP-CALLER ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
 \ Ends with its five slots bound: the task's end drops them.
 : WORK-ENDS ( -- )
    BIND-SELF SORTS TASK:RETURN ;
-
-\ Exposes CTX-TASK, starts a thread on it and ends: the context outlives the
-\ task that exposed it.
-: WORK-EXPOSES ( -- )
-   THREAD-BIND
-   START-FN @ 7 THREAD-START TASK:RETURN ;
 
 : CALLER-SORT ( ptr n n -- bool ) {: row:ptr band:n :}
    data-base FFI:>CELL CALLER-REGIONS band cells + !

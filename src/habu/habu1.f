@@ -1515,11 +1515,11 @@ $4000 constant POSIX-SPAWN-CLOEXEC-DEFAULT
 public
 \ The main thread is the compiler: only the thread whose DATA is the main
 \ region, TASK-TCB-CELL 0, defines, allots, evaluates or changes package scope.
-\ A task, an exposed region and a callback thread hold a TCB there, and
-\ B-TASK-GUARD exits $4F on one. B-LOWER-GUARD exits $4F while any task is
-\ live, for the sinks that lower CP or NDICT: lowering frees code a task may be
-\ running and records it may reference. Each prints the caller's text and the
-\ primitive's lr, so it runs before the body's first BL. Clobbers x9.
+\ A task and a callback thread hold a TCB there, and B-TASK-GUARD exits $4F
+\ on one. B-LOWER-GUARD exits $4F while any task is live, for the sinks that
+\ lower CP or NDICT: lowering frees code a task may be running and records it
+\ may reference. Each prints the caller's text and the primitive's lr, so it
+\ runs before the body's first BL. Clobbers x9.
 : B-TASK-GUARD ( ptr u8 n -- ) {: a:ptr u:n :}
    LBL {: ok:label :}
    9 DATA TASK-TCB-CELL LDR,  9 ok CBZ,
@@ -2931,8 +2931,8 @@ public
       \ and the code up to the larger of CP and the end of every record's span
       \ below the high-water (after a rollback a retired record's code sits above
       \ CP). CP and NDICT are this thread's registers; a task's are the snapshot
-      \ ACTIVATE or EXPOSE took as it went live, and main may have published
-      \ records and code past that snapshot since. The high-water is main's
+      \ ACTIVATE took as it went live, and main may have published records and
+      \ code past that snapshot since. The high-water is main's
       \ cell, read at DATA-VA: a task region does not hold it.
       2 DATA-VA VA>N LIT64,  2 2 NDICT-HW-CELL LDR,  3 NDICT 1 ADDI,  2 3 CMP,  2 2 3 C-HI CSEL,
       3 DICT-CAP LIT64,  2 3 CMP,  2 2 3 C-LS CSEL,

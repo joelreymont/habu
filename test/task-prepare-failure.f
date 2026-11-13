@@ -71,10 +71,6 @@ TASK:MIN-STACK TASK:TASK WORKER
       rc E-MEM-MAP T=
       s" task remains empty" T-LABEL
       TASK-ABI:STATUS-OFF TCB@ TASK-ABI:EMPTY T=
-      s" no task stack pointer survives refusal" T-LABEL
-      TASK-ABI:STACK-U-OFF TCB@ 0 T=
-      TASK-ABI:RSTACK-U-OFF TCB@ 0 T=
-      TASK-ABI:LSTACK-U-OFF TCB@ 0 T=
       s" failed preparation restores mapped bytes" T-LABEL
       VM-BYTES START-VM @ T=
       T-REPORT
