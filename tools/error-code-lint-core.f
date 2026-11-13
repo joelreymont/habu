@@ -171,11 +171,8 @@ variable JX
 : FILE$ ( file-id -- ptr u8 n ) FILE>N INTERN$ ;
 : STEM-NAME$ ( stem-id -- ptr u8 n ) STEM>N INTERN$ ;
 
-\ Identical (code, name) re-registrations are one identity reachable through two
-\ files (re-export shims; src/habu/stack-abi.f E-STACK-UNGUARDED for emitters
-\ that compile before src/lib/), allowed inside another file's range too. Every
-\ copy is recorded with its file: COLLIDE? ignores same-name pairs and FOREIGN?
-\ asks whether the range's owner registers the pair itself.
+\ A (code, name) pair registered in two files (a re-export shim, a boot file loaded
+\ before src/lib/) is one identity, admitted even inside another file's range.
 : CLAIM+ ( n intern-id file-id -- ) {: code:n name:intern-id file:file-id :}
    CLAIM# @ MAX-CLAIMS >= if s" error-code-lint: claim table full" 1 die then
    code name file CLAIM-MAKE CLAIM# @ CLAIM-ROWS !

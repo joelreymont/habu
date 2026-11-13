@@ -299,16 +299,8 @@ private
 : C-CRASH-PC+4 ( -- )
    4 C-CRASH-PC-WORD ;
 
-\ Every VM stack is a mapping with an inaccessible page on each side
-\ (src/habu/rt.f STACK-GUARD:EMIT-MAP), so "this stack overflowed" is a fault
-\ whose address lands in one of those pages. Compiled code carries no bounds
-\ check; this is where the fault becomes the diagnostic.
-\
-\ A guard case is skipped rather than trusted when its descriptor is not a
-\ plausible one -- a zero base, a base off a cell boundary, or a top (base +
-\ capacity) off a PAGE-BYTES boundary. Every extent the engine installs starts
-\ on a page boundary and ends where its high guard page begins (rt.f
-\ STACK-GUARD:EMIT-MAP, habu1.f GUARDED-EXTENT?).
+\ Every VM stack lies between two inaccessible pages and compiled code carries no
+\ bounds check, so a stack overflow is a fault in a guard page, named here.
 variable CRS-BASE   variable CRS-CAP   variable CRS-CAPCELL
 variable CRS-HIT    variable CRS-HIT-LOW
 variable CRS-NEXT   variable CRS-SKIP  variable CRS-FAULT

@@ -2,7 +2,6 @@
 
 require src/lib/error.f
 require src/lib/string.f
-require src/lib/memory.f
 require src/lib/span.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
@@ -36,19 +35,8 @@ variable GE-EVAL-CP
 variable GE-EVAL-NDICT
 variable GE-EVAL-CURRENT
 variable GE-EVAL-JSON-DIAGS
-TYPED-VARIABLE GE-EVAL-STACK-A ptr u8
 TYPED-VARIABLE GE-EVAL-SRC-A ptr u8
 variable GE-EVAL-SRC-U
-
-: GE-EVAL-STACK@ ( -- ptr u8 )
-   GE-EVAL-STACK-A @ ;
-
-: GE-EVAL-STACK! ( ptr u8 -- )
-   GE-EVAL-STACK-A ! ;
-
-: GE-EVAL-STACK ( -- ptr u8 n )
-   GE-EVAL-STACK@ 0= if STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED drop GE-EVAL-STACK! then
-   GE-EVAL-STACK@ STACK-ABI:PAGE-BYTES ;
 
 : GE-EVAL-SRC! ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 < if E-STR-BOUNDS throw then
@@ -376,15 +364,7 @@ variable GE-EVAL-SRC-U
    PROCESS:OUT-W PROCESS:CLOSE-CELL
    PROCESS:ERR-W PROCESS:CLOSE-CELL ;
 
-: GE-EVAL-SOURCE-ACT ( -- )
-   GE-EVAL-SRC$ evaluate-closed ;
-
-: GE-EVAL-SOURCE-RUNSTACK ( -- )
-   ['] GE-EVAL-SOURCE-ACT GE-EVAL-STACK run-in-stack ;
-
-\ run-in-stack owns the active allocation on normal return and unwinding.
-: GE-EVAL-SOURCE ( -- )
-   GE-EVAL-SOURCE-RUNSTACK ;
+: GE-EVAL-SOURCE ( -- ) GE-EVAL-SRC$ evaluate-closed ;
 
 \ An in-process action's capture (src/lib/test/runner.f GT-CAPTURE-ACTION), stored
 \ as an exit whose code is the action's throw code.

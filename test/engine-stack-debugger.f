@@ -17,19 +17,18 @@ package STACK-LIFECYCLE-TEST
       ERR i + 16 s" 0000000000000011" STR= if 1+ then
    loop ;
 
-\ run-in-stack refuses a capacity-0 mapping (GUARDED-EXTENT?, test/stack-guard.f
-\ CAPACITY-ZERO-REFUSAL), so both cases run on a real 64 KB guarded stack: only
-\ the live depth at the breakpoint decides what the dump shows.
+\ GO runs its word on `evaluate-closed`'s own stack, so only the live depth
+\ above that stack's base at the breakpoint decides what the dump shows.
 : DEBUGGER-BOUNDARIES ( -- )
    s" breakpoint on a valid allocation has no top cell" T-LABEL
-   s" require src/habu/debug.f package SBP require src/lib/memory.f PTR-VARIABLE BUF-A STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED drop BUF-A ! : BUF ( -- ptr u8 ) BUF-A @ ; : EMPTY ( -- ) ; ' EMPTY DEBUG:BP+ : GO ( -- ) ['] EMPTY BUF STACK-ABI:PAGE-BYTES run-in-stack ; GO ;package"
+   S\" require src/habu/debug.f package SBP : EMPTY ( -- ) ; ' EMPTY DEBUG:BP+ : GO ( -- ) s\" EMPTY\" evaluate-closed ; GO ;package"
    CHILD-RC 0 T=
    OUTLEN @ 0 T=
    ERR ERRLEN @ s" habu-bp:" CONTAINS? TTRUE
    ERR ERRLEN @ S\" habu-bp-stack:\n" ENDS-WITH? TTRUE
    DEBUGGER-LINES 5 T=
    s" breakpoint on a valid allocation preserves its value" T-LABEL
-   s" require src/habu/debug.f package SBP require src/lib/memory.f PTR-VARIABLE BUF-A STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED drop BUF-A ! : BUF ( -- ptr u8 ) BUF-A @ ; : KEEP ( n -- n ) ; ' KEEP DEBUG:BP+ : ONE ( -- ) 17 KEEP drop ; : GO ( -- ) ['] ONE BUF STACK-ABI:PAGE-BYTES run-in-stack ; GO ;package"
+   S\" require src/habu/debug.f package SBP : KEEP ( n -- n ) ; ' KEEP DEBUG:BP+ : ONE ( -- ) 17 KEEP drop ; : GO ( -- ) s\" ONE\" evaluate-closed ; GO ;package"
    CHILD-RC 0 T=
    OUTLEN @ 0 T=
    ERR ERRLEN @ s" 0000000000000011" CONTAINS? TTRUE

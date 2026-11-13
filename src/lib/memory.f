@@ -316,16 +316,7 @@ public
 
 private
 
-\ A stack the engine may run on (run-in-stack, a task's data, return and loop
-\ stacks) is a mapping with an inaccessible page on each side: a push past its
-\ capacity or a read below its base faults, and the engine's crash handler
-\ names the stack (src/habu/crash.f). This is the only way to make such a
-\ stack: run-in-stack refuses any other extent (E-STACK-UNGUARDED), because a
-\ heap buffer has nothing beyond it to stop an overflow. The layout is the one
-\ src/habu/rt.f STACK-GUARD:EMIT-MAP gives the boot stacks: the whole span is
-\ mapped inaccessible first, then the capacity is remapped read/write at a
-\ STACK-ABI:PAGE-BYTES boundary inside it, so the pages on both sides stay
-\ inaccessible whatever granule the kernel returned.
+\ A task's data, return and loop stacks, each between two inaccessible pages.
 
 \ The address a raw mmap returned, as the byte pointer of the mapping the
 \ word below just made; the only place in this file a bare address becomes a pointer.

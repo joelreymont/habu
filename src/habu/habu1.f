@@ -3219,49 +3219,6 @@ private
       10 10 1 ADDI,  loop B,
    done LBL,  RET, ;
 
-\ GUARDED-EXTENT? ( x14 = base, x11 = capacity ): prove the stack is one
-\ MEM:ALLOC-GUARDED mapped. No push is bounds-checked: the inaccessible page above
-\ the mapping enforces capacity, so a `create BUF … allot` base would overflow
-\ into the DP heap. Proof: base and capacity non-zero and PAGE-BYTES aligned,
-\ base+capacity does not wrap, and base lies outside the DATA region. The last
-\ clause excludes every DP-heap address (DATA-VA is itself page aligned).
-\ Clobbers x12 and x15.
-: GUARDED-EXTENT? ( label -- )
-   {: bad:label :}
-   14 bad CBZ,
-   11 bad CBZ,
-   15 STACK-ABI:PAGE-BYTES 1 - LIT64,
-   12 14 15 AND,  12 bad CBNZ,
-   12 11 15 AND,  12 bad CBNZ,
-   12 14 11 ADD,  12 14 CMP,  C-CC bad BCOND,
-   15 DATA-VA VA>N LIT64,  12 14 15 SUB,
-   15 DATA-SIZE LIT64,  12 15 CMP,  C-CC bad BCOND, ;
-
-\ run-in-stack ( xt base size -- ): run xt on a fresh data stack (x19=base,
-\ full-ascending). The extent becomes allocation authority, saved with XDS so
-\ return and unwind restore the caller. An unguarded extent is a caller error
-\ and throws STACK-ABI:E-STACK-UNGUARDED.
-: BRUNSTACK ( -- )
-   LBL LBL {: unguarded:label done:label :}
-   12 XDS 24 SUBI,
-   9 12 0 LDR,  14 12 8 LDR,  11 12 16 LDR,     \ xt, base, capacity; no pop yet
-   BCALLABLE
-   unguarded GUARDED-EXTENT?
-   XDS XDS 24 SUBI,
-   SP SP 32 SUBI,  30 SP 0 STR,  XDS SP 8 STR,
-   12 DATA STACK-ABI:BASE-CELL LDR,  12 SP 16 STR,
-   12 DATA STACK-ABI:CAP-CELL LDR,  12 SP 24 STR,
-   14 DATA STACK-ABI:BASE-CELL STR,  11 DATA STACK-ABI:CAP-CELL STR,
-   XDS 14 0 ADDI,
-   9 BLR,
-   14 SP 16 LDR,  14 DATA STACK-ABI:BASE-CELL STR,
-   12 SP 24 LDR,  12 DATA STACK-ABI:CAP-CELL STR,
-   XDS SP 8 LDR,  30 SP 0 LDR,  SP SP 32 ADDI,
-   done B,
-   unguarded LBL,
-   9 STACK-ABI:E-STACK-UNGUARDED LIT64,  9 G-PUSH  BTHROW
-   done LBL, ;
-
 \ Pop B-EVAL-CLOSED's frame: the text's stack (x11) back to the pool, the
 \ caller's extent and cursor back in force, the text's cursor in x13.
 : CLOSED-LEAVE ( -- )
@@ -4157,7 +4114,6 @@ package ENGINE-EMIT
    s" ,"    ['] BCOMMA FPRIM-L   s" c,"   ['] BCCOMMA FPRIM-L
    s" execute" ['] BEXEC FPRIM
    s" execute-floor" ['] BEXECFLOOR FPRIM
-   s" run-in-stack" ['] BRUNSTACK FPRIM
    s" create" ['] BCREATE FPRIM
    s" parse-name" ['] BPARSE-NAME FPRIM
    s" num-parse" ['] ENGINE-EMIT:BNUMPARSE FPRIM

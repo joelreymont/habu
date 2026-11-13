@@ -1384,10 +1384,8 @@ public
 40 constant CATCH-RDEPTH    \ RSP-CELL, the return stack's depth
 48 constant CATCH-LDEPTH    \ LOOPSP-CELL, the loop stack's depth
 
-\ The twins of habu1.f BEXEC, BEXECFLOOR, B2TOR, B2RFROM, B2RFETCH, BCATCH,
-\ BTHROW, BFINALLY, BRUNSTACK and BDIE. An xt is a code address a body enters
-\ by `call`; the code it runs owns every scratch register, so what a body needs
-\ after the call waits on the machine stack.
+\ An xt is a code address a body enters by `call`; the code it runs owns every
+\ scratch register, so what a body needs after the call waits on the machine stack.
 
 private
 
@@ -1396,7 +1394,7 @@ private
 : MOV-STORE, ( r64 r64 n -- ) {: r:r64 base:r64 off:n :}
    r base off MEM-OFF ASM-SINK ENC-MOV-MR ;
 
-\ run-in-stack's frame: the caller's data stack pointer and descriptor.
+\ SOURCE-FILE-RUN,'s frame: the caller's data stack pointer and descriptor.
 0 constant RUN-DSP
 8 constant RUN-BASE
 16 constant RUN-CAP
@@ -1801,56 +1799,6 @@ private
    RAX -6101 >IMM64 ASM-SINK ENC-MOV-RI64
    THROW,
    exit-code X64CODE:LBL, ;
-
-\ Branch to the label unless the registers name an extent a guarded stack
-\ mapping could be: habu1.f GUARDED-EXTENT?. The base and the capacity are
-\ nonzero and STACK-ABI:PAGE-BYTES aligned, their sum does not wrap, and the
-\ base lies outside DATA, where every create, allot and buffer address lies, so
-\ no dictionary buffer passes however it is aligned. Clobbers rsi and rdi.
-: GUARDED-EXTENT, ( r64 r64 label -- ) {: base:r64 cap:r64 bad:label :}
-   STACK-ABI:PAGE-BYTES 1- {: mask:n :}
-   base base ASM-SINK ENC-TEST-RR  C-E bad JCC,
-   cap cap ASM-SINK ENC-TEST-RR  C-E bad JCC,
-   base mask >IMM32 ASM-SINK ENC-TEST-RI32  C-NE bad JCC,
-   cap mask >IMM32 ASM-SINK ENC-TEST-RI32  C-NE bad JCC,
-   RSI base cap 1 0 MEM-IDX ASM-SINK ENC-LEA
-   RSI base ASM-SINK ENC-CMP-RR  C-B bad JCC,
-   RDI base ASM-SINK ENC-MOV-RR
-   RSI X64LAYOUT:DATA-VA VA>N >IMM64 ASM-SINK ENC-MOV-RI64
-   RDI RSI ASM-SINK ENC-SUB-RR
-   RSI X64LAYOUT:DATA-SIZE >IMM64 ASM-SINK ENC-MOV-RI64
-   RDI RSI ASM-SINK ENC-CMP-RR  C-B bad JCC, ;
-
-\ run-in-stack ( xt ptr u8 n -- ): run the xt on the extent as its data stack.
-\ An extent that is not a guarded mapping is the caller's error, so it throws
-\ STACK-ABI:E-STACK-UNGUARDED over the three cells, as BRUNSTACK does. The
-\ extent becomes the data stack and its descriptor for the call; on the return
-\ the caller's saved descriptor and cursor are restored.
-: RUN-IN-STACK, ( -- )
-   X64CODE:LBL X64CODE:LBL {: unguarded:label done:label :}
-   RAX DSP -3 CELL * MOV-LOAD,
-   RDX DSP -2 CELL * MOV-LOAD,
-   RCX DSP CELL negate MOV-LOAD,
-   RDX RCX unguarded GUARDED-EXTENT,
-   DSP 3 CELL * >IMM8 ASM-SINK ENC-SUB-RI8
-   RSP RUN-BYTES >IMM8 ASM-SINK ENC-SUB-RI8
-   DSP RSP RUN-DSP MOV-STORE,
-   RSI DATA-REG STACK-ABI:BASE-CELL MOV-LOAD,  RSI RSP RUN-BASE MOV-STORE,
-   RSI DATA-REG STACK-ABI:CAP-CELL MOV-LOAD,  RSI RSP RUN-CAP MOV-STORE,
-   RDX DATA-REG STACK-ABI:BASE-CELL MOV-STORE,
-   RCX DATA-REG STACK-ABI:CAP-CELL MOV-STORE,
-   DSP RDX ASM-SINK ENC-MOV-RR
-   RAX ASM-SINK ENC-CALL-REG
-   RSI RSP RUN-BASE MOV-LOAD,
-   RSI DATA-REG STACK-ABI:BASE-CELL MOV-STORE,
-   RDI RSP RUN-CAP MOV-LOAD,  RDI DATA-REG STACK-ABI:CAP-CELL MOV-STORE,
-   DSP RSP RUN-DSP MOV-LOAD,
-   RSP RUN-BYTES >IMM8 ASM-SINK ENC-ADD-RI8
-   done JMP,
-   unguarded X64CODE:LBL,
-   RAX STACK-ABI:E-STACK-UNGUARDED >IMM32 ASM-SINK ENC-MOV-RI32
-   THROW,
-   done X64CODE:LBL, ;
 
 \ source-file-run ( xt -- ): the unit runs on the caller's extent with the cursor as its floor, compared before any push so
 \ a full extent reports residue.
@@ -2477,7 +2425,6 @@ public
    s" c2-invoke" [: C2-INVOKE, ;] PRIM
    s" c2-init-stow" [: C2-INIT-STOW, ;] PRIM
    s" c2-records-stow" [: C2-RECORDS-STOW, ;] PRIM
-   s" run-in-stack" [: RUN-IN-STACK, ;] PRIM
    s" die" [: DIE, ;] PRIM
    s" source-file-run" [: SOURCE-FILE-RUN, ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    PROVIDED-XT:EVALUATE-CELL s" evaluate" [: REFUSE-BODY ;] PROVIDED-ROW

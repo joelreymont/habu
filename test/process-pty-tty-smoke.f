@@ -193,44 +193,6 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
    HB$ [: TTY-LAYOUT-BODY ;] PROCESS-PTY:WITH-TTY-TARGET
    s" PASS: checked layout calculation works at the REPL after bare-layout refusal" type cr ;
 
-\ An uncaught throw from inside run-in-stack reaches the tty REPL while the
-\ callback's guarded allocation is active; run-in-stack takes only a real
-\ guarded mapping (src/lib/memory.f MEM:ALLOC-GUARDED), so TTY-POOL is one.
-\ Recovery must reinstate the REPL's own allocation: src/habu/habu1.f BDEPTH
-\ subtracts the contents of the active base cell (src/habu/layout.f S0-CELL)
-\ from XDS, so `depth` reads zero only when the cursor and that cell came back
-\ together. The four values printed ahead of it would also fit inside the 64 KB
-\ pool, so the zero identifies the stack. The pool's address lives in a declared
-\ pointer cell (a raw cell never holds an address), named short: this line is
-\ typed at the REPL, whose LBUF holds 256 bytes (src/habu/repl.f), and a longer
-\ line loses its tail silently, failing on E-UNDEFINED much later.
-: STACK-DEFS$ ( -- ptr u8 n )
-   s" require src/lib/memory.f PTR-VARIABLE POOL-A STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED constant TTY-POOL-CAP POOL-A ! : TTY-POOL ( -- ptr u8 ) POOL-A @ ; : TTY-RAISE ( -- ) 7 throw ; : TTY-CROSS ( -- ) ['] TTY-RAISE TTY-POOL TTY-POOL-CAP run-in-stack ;" ;
-
-: TTY-STACK-RECOVERS-BODY ( process-pty-handle -- process-pty-handle )
-   PROCESS-PTY:LAUNCH
-   ANYWHERE$ SETTLE
-   STACK-DEFS$ TELL
-   s" ok" EXPECT!
-   BUF-CLEAR
-   WATCH-RESET
-   s" E-UNDEFINED" WATCH+ {: undef:watch :}
-   s" non-certified" WATCH+ {: refused:watch :}
-   s" TTY-CROSS" TELL
-   s" ?" EXPECT!                          \ the uncaught throw's mark, with nothing refused or undefined
-   undef NEVER-SEEN? TTRUE
-   refused NEVER-SEEN? TTRUE
-   s" ?" PROMPT-AFTER!
-   BUF-CLEAR
-   s" 1 2 3 4 . . . . depth . cr" TELL
-   S\" 4\r\n3\r\n2\r\n1\r\n0\r\n" PROMPT-AFTER!
-   PROCESS-PTY:ALIVE? TTRUE ;
-
-: TTY-STACK-RECOVERS ( -- )
-   BUF-CLEAR
-   HB$ [: TTY-STACK-RECOVERS-BODY ;] PROCESS-PTY:WITH-TTY-TARGET
-   s" PASS: REPL recovers its own stack allocation after an uncaught throw inside run-in-stack" type cr ;
-
 \ The target starts a sleeper on its own terminal and prints 48879, then the
 \ sleeper's pid. The sleeper leads a group of its own; it ends with the target,
 \ and init reaps it.
@@ -307,7 +269,6 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
    TTY-RECOVERS
    ECHO-PROMPT-REJECTED
    TTY-LAYOUT
-   TTY-STACK-RECOVERS
    TREE-ENDS ;
 
 public

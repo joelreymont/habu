@@ -1,15 +1,8 @@
-\ The guard-page contract itself: the shared refusal code, filling a guarded
-\ stack to its real capacity, the three named overflow faults, one case per
-\ GUARDED-EXTENT? clause behind run-in-stack's structural refusal, and a
-\ task's own guarded stack.
+\ The guard-page contract itself: filling a guarded stack to its real
+\ capacity, the three named overflow faults, and a task's own guarded stack.
 require test/engine-stack-lifecycle-lib.f
-require src/lib/memory.f
 
 package STACK-LIFECYCLE-TEST
-
-: STACK-CONTRACT-AGREEMENT ( -- )
-   s" E-STACK-UNGUARDED matches the engine's own spelling" T-LABEL
-   E-STACK-UNGUARDED STACK-ABI:E-STACK-UNGUARDED T= ;
 
 \ Top-level literal pushes are interpreted, not checked, so the data stack
 \ really holds COUNT cells. The boot data stack is one guarded page [base, base
@@ -55,65 +48,6 @@ create LIT-SRC LIT-SRC-CAP allot
    s" : Z ( -- ) 1 0 do recurse loop ; Z"
    HB-TARGET-LINUX-X86-64? if MACHINE-OVERFLOW else REFUSED-LOOP then ;
 
-\ GUARDED-EXTENT? (src/habu/habu1.f) tests in order: base non-zero, capacity
-\ non-zero, base and capacity PAGE-BYTES aligned, no wrap, base outside DATA.
-\ Every clause throws E-STACK-UNGUARDED, so each case changes one field of the
-\ accepted extent (POOL, POOL-BYTES) and the order attributes the refusal.
-: ACCEPTED-EXTENT ( -- )
-   ['] EMPTY POOL POOL-BYTES run-in-stack ;
-
-: NULL-BASE-REFUSAL ( -- )
-   ['] EMPTY NULL-PTR POOL-BYTES run-in-stack ;
-
-\ A guarded base shifted by one cell still points into read/write memory: the
-\ alignment clause, not a bounds probe, catches it.
-: UNALIGNED-BASE-REFUSAL ( -- )
-   POOL {: base:ptr :}
-   ['] EMPTY base 8 + POOL-BYTES run-in-stack ;
-
-: CAPACITY-ZERO-REFUSAL ( -- )
-   ['] EMPTY POOL 0 run-in-stack ;
-
-\ One cell over a whole number of pages: a guarded mapping is only ever sized
-\ in whole PAGE-BYTES, so a capacity like this names bytes no guard page stands
-\ behind.
-: PARTIAL-PAGE-CAPACITY-REFUSAL ( -- )
-   ['] EMPTY POOL POOL-BYTES 8 + run-in-stack ;
-
-\ The wrap clause: the capacity is non-zero and PAGE-BYTES aligned, so base +
-\ capacity is the first to fail, landing one page below the base.
-: WRAPPING-EXTENT-REFUSAL ( -- )
-   ['] EMPTY POOL $FFFFFFFFFFFF0000 run-in-stack ;
-
-\ `data-base` is PAGE-BYTES aligned by construction, so only the DATA clause
-\ refuses it; a create/allot address (GBUF) is page-aligned only by accident, so
-\ the base-alignment clause decides that one.
-: DATA-REGION-REFUSAL ( -- )
-   ['] EMPTY data-base POOL-BYTES run-in-stack ;
-
-create GBUF 32 allot   \ an ordinary create/allot buffer: never a guarded mapping
-
-: PLAIN-BUFFER-REFUSAL ( -- )
-   ['] EMPTY GBUF POOL-BYTES run-in-stack ;
-
-: RUN-IN-STACK-REFUSALS ( -- )
-   s" the unchanged guarded extent is accepted" T-LABEL
-   ['] ACCEPTED-EXTENT catch 0 T=
-   s" a null base is refused" T-LABEL
-   ['] NULL-BASE-REFUSAL catch E-STACK-UNGUARDED T=
-   s" a guarded base shifted by 8 bytes is refused" T-LABEL
-   ['] UNALIGNED-BASE-REFUSAL catch E-STACK-UNGUARDED T=
-   s" capacity 0 on a real guarded pointer is refused" T-LABEL
-   ['] CAPACITY-ZERO-REFUSAL catch E-STACK-UNGUARDED T=
-   s" a capacity one cell past a whole page is refused" T-LABEL
-   ['] PARTIAL-PAGE-CAPACITY-REFUSAL catch E-STACK-UNGUARDED T=
-   s" a capacity that wraps past the base is refused" T-LABEL
-   ['] WRAPPING-EXTENT-REFUSAL catch E-STACK-UNGUARDED T=
-   s" a page-aligned address inside the DATA region is refused" T-LABEL
-   ['] DATA-REGION-REFUSAL catch E-STACK-UNGUARDED T=
-   s" a create/allot buffer is refused" T-LABEL
-   ['] PLAIN-BUFFER-REFUSAL catch E-STACK-UNGUARDED T= ;
-
 \ src/lib/task.f PREPARE gives each task guarded stacks (TASK-STACK-BYTES rounds
 \ up to whole guard pages). A task's overflow faults like the main thread's and
 \ the crash handler's exit_group ends the process: exit 102, no per-task exit.
@@ -127,10 +61,8 @@ create GBUF 32 allot   \ an ordinary create/allot buffer: never a guarded mappin
 public
 : RUN-GUARD ( -- )
    T-RESET
-   STACK-CONTRACT-AGREEMENT
    PAGE-CAPACITY
    OVERFLOW-NAMES
-   RUN-IN-STACK-REFUSALS
    TASK-OVERFLOW
    T-REPORT ;
 

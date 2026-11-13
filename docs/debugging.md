@@ -254,9 +254,6 @@ so the message names the mechanism that caught the fault
   SIGILL, SIGTRAP and SIGFPE. After the dump the process dies by that signal
   at the faulting pc, with a core when RLIMIT_CORE allows (see "gdb/lldb"
   above).
-- `E-STACK-UNGUARDED`: `run-in-stack` refused an extent that is not a guarded
-  mapping, before the callback ran. Allocate the stack with
-  `MEM:ALLOC-GUARDED`.
 
 `test/stack-guard.f`, `test/engine-stack-machine.f` and
 `test/engine-stack-wide.f` hold worked cases.

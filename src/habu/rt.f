@@ -30,8 +30,8 @@ public
 \ TWO mmap CALLS, NO mprotect: the first maps cap + 3*PAGE PROT_NONE, which IS
 \ the guard; the second reopens the middle read/write with MAP_FIXED. The third
 \ page is alignment slack: the kernel returns its own granule (16 KiB on this
-\ host) but the base must be PAGE-BYTES aligned, the granule run-in-stack
-\ proves an extent against. Everything below the low guard stays PROT_NONE, so
+\ host) but the base must be PAGE-BYTES aligned, as src/habu/crash.f's guard
+\ cases assume. Everything below the low guard stays PROT_NONE, so
 \ the slack only widens the guard. A stack mapped this way is never released.
 \
 \ It runs before any crash handler exists and, for the boot data stack, before

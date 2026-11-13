@@ -7,7 +7,6 @@
 require src/lib/error.f
 require src/lib/test.f
 require src/lib/string.f
-require src/lib/memory.f
 require src/lib/test/eval.f
 require src/lib/test/ending.f
 require src/lib/test/subject.f
@@ -27,17 +26,11 @@ TYPED-VARIABLE TS-HK [ -- ]
 : TS-RR ( r -- ) drop ;
 : TS-NN ( n -- ) drop ;
 
-\ A finished evaluation's segment on a borrowed stack, entered two levels deep
-\ (TS-R1 under TS-Z's `evaluate`), and a later one-level segment whose catch
-\ runs TS-EVD again: the dead deeper segment must not displace the live one,
-\ which holds the 5 TS-NN reads.
-PTR-VARIABLE TS-POOL-A
-STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED constant TS-POOL-CAP  TS-POOL-A !
-: TS-POOL ( -- ptr u8 ) TS-POOL-A @ ;
+\ TS-R1 leaves a dead segment two levels deep on a pool stack; TS-R2's text gets that
+\ stack one level deep, and TS-EVD under its catch must not select the dead segment.
 TRUSTED: TS-EVD ( -- ) s" 1 drop" evaluate ;
-: TS-R1 ( -- ) ['] TS-EVD TS-POOL TS-POOL-CAP run-in-stack ;
-TRUSTED: TS-EVT ( -- ) s" 5 ' TS-EVD catch drop TS-NN" evaluate ;
-: TS-R2 ( -- ) ['] TS-EVT TS-POOL TS-POOL-CAP run-in-stack ;
+: TS-R1 ( -- ) s" TS-EVD" evaluate-closed ;
+: TS-R2 ( -- ) s" 5 ' TS-EVD catch drop TS-NN" evaluate-closed ;
 TRUSTED: TS-Z ( -- ) s" TS-R1" evaluate TS-R2 ;
 
 package TOP-ROW-STORAGE-TEST

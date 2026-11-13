@@ -782,11 +782,6 @@ RSD-BUF RSD-CAP DIAG-BUFFER!
 s" a reading quotation held past its loop body's local rejects" T-LABEL
 s" CBAD-QL-PAST-LOOP ( n -- ) [: ;] swap 0 ?do drop i {: a:n :} [: a . ;] loop execute" CHECK-CANDIDATE! 0 T=
 DIAG-BUFFER$ s" a quotation that reads a local would outlive it" CONTAINS? TTRUE
-\ A primitive row read from facts text keeps its quotation inputs.
-RSD-BUF RSD-CAP DIAG-BUFFER!
-s" a reading quotation handed to run-in-stack rejects" T-LABEL
-s" CBAD-QL-IN-STACK ( n ptr u8 n -- ) {: a:n s:ptr n:n :} [: a . ;] s n run-in-stack" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s" a quotation that reads a local would outlive it" CONTAINS? TTRUE
 RSD-BUF RSD-CAP DIAG-BUFFER!
 s" a reading quotation handed to an exported runner certifies" T-LABEL
 s" COK-QL-EXPORTED ( n -- ) {: a:n :} [: a . ;] ES-QL:QL-RUN" CHECK-CANDIDATE! 0 T<>

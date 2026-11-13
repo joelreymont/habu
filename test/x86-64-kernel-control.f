@@ -17,9 +17,6 @@ using X64RT
 \ What the clobbering routines leave in every scratch register: a status in
 \ [1, 255], so an exit that read one would name it.
 9 constant CLOBBER-VALUE
-\ A STACK-ABI:PAGE-BYTES aligned extent inside DATA: run-in-stack refuses it for
-\ the one clause no alignment passes.
-STACK-ABI:PAGE-BYTES 2 * constant INSIDE-OFF
 DATA-START $10000 + constant CLOSED-SCRATCH
 
 : DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
@@ -52,16 +49,6 @@ DATA-START $10000 + constant CLOSED-SCRATCH
 
 : EXPECT-CELL, ( n n -- ) {: want:n off:n :}
    off PUSH-CELL,  want EXPECT-POP, ;
-
-: PUSH-INSIDE, ( n -- ) {: off:n :}
-   RAX DATA-REG off MEM-OFF ASM-SINK ENC-LEA  0 G-PUSH ;
-
-\ Check the loop stack's cell n bytes past its base holds n: where a callback
-\ run on that mapping pushed.
-: EXPECT-LOOP-SLOT, ( n n -- ) {: want:n off:n :}
-   RAX DATA-REG STACK-ABI:LOOP-BASE-CELL MEM-OFF ASM-SINK ENC-MOV-RM
-   RAX RAX off MEM-OFF ASM-SINK ENC-MOV-RM  0 G-PUSH
-   want EXPECT-POP, ;
 
 \ Give every scratch register CLOBBER-VALUE, as the compiled code a row calls
 \ may leave any of them.
@@ -109,29 +96,6 @@ DATA-START $10000 + constant CLOSED-SCRATCH
 
 : FINALLY-OF ( label label -- label ) {: body:label cleanup:label :}
    ROUTINE  body PUSH-XT,  cleanup PUSH-XT,  s" finally" ROW,  ;ROUTINE ;
-
-\ ( -- ) on the extent it runs on: push the data stack's capacity, then the
-\ stack pointer less the data stack's base.
-: MEASURES ( -- label )
-   ROUTINE
-   STACK-ABI:CAP-CELL PUSH-CELL,
-   RAX DSTACK-REG ASM-SINK ENC-MOV-RR
-   RAX DATA-REG STACK-ABI:BASE-CELL MEM-OFF ASM-SINK ENC-SUB-RM
-   0 G-PUSH
-   ;ROUTINE ;
-
-\ Run a callback on the loop stack's mapping, or on the extent inside DATA.
-: ON-LOOP-STACK ( label -- label ) {: cb:label :}
-   ROUTINE
-   cb PUSH-XT,  STACK-ABI:LOOP-BASE-CELL PUSH-CELL,  STACK-ABI:LOOP-BYTES PUSH,
-   s" run-in-stack" ROW,
-   ;ROUTINE ;
-
-: PUSH-INSIDE-EXTENT, ( label -- ) {: cb:label :}
-   cb PUSH-XT,  INSIDE-OFF PUSH-INSIDE,  STACK-ABI:LOOP-BYTES PUSH, ;
-
-: ON-DATA ( label -- label ) {: cb:label :}
-   ROUTINE  cb PUSH-INSIDE-EXTENT,  s" run-in-stack" ROW,  ;ROUTINE ;
 
 : CLOSED-OF ( label -- label ) {: cb:label :}
    ROUTINE  cb PUSH-XT,  s" source-file-run" ROW,  ;ROUTINE ;
@@ -216,10 +180,6 @@ DATA-START $10000 + constant CLOSED-SCRATCH
 \                                        returns and after one that throws,
 \                                        whose code is rethrown even when
 \                                        the cleanup throws too
-\    hb-x64-kernel-run-in-stack       0  a callback on the loop stack's mapping
-\                                        returns, then throws; an extent inside
-\                                        DATA throws E-STACK-UNGUARDED; each is
-\                                        caught
 \    hb-x64-kernel-source-unit        0  a clean callback, residue, a nested
 \                                        throw and an exactly full stack return
 \                                        restore the caller's stack and extent
@@ -232,7 +192,6 @@ DATA-START $10000 + constant CLOSED-SCRATCH
 \                                        the faulting stack and throws 70
 \    hb-x64-kernel-stack-clear        0  the trusted recovery row empties only
 \                                        the current data stack
-\    hb-x64-kernel-unguarded         67  E-STACK-UNGUARDED with no handler
 \    hb-x64-kernel-throw             42  42 throw with no handler: the reporter
 \                                        returns with the scratch registers
 \                                        clobbered
@@ -363,22 +322,6 @@ DATA-START $10000 + constant CLOSED-SCRATCH
    0 HND-CELL EXPECT-CELL,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
-: BUILD-RUN-IN-STACK ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   false X64HARNESS:BOOT-OPEN,
-   MEASURES ON-LOOP-STACK CALL,
-   0 X64HARNESS:EXPECT-DEPTH,
-   STACK-ABI:BOOT-BYTES STACK-ABI:CAP-CELL EXPECT-CELL,
-   STACK-ABI:LOOP-BYTES 0 EXPECT-LOOP-SLOT,
-   CELL CELL EXPECT-LOOP-SLOT,
-   13 THROWS ON-LOOP-STACK PUSH-XT,  s" catch" ROW,  13 EXPECT-POP,
-   0 X64HARNESS:EXPECT-DEPTH,
-   STACK-ABI:BOOT-BYTES STACK-ABI:CAP-CELL EXPECT-CELL,
-   MEASURES ON-DATA PUSH-XT,  s" catch" ROW,
-   STACK-ABI:E-STACK-UNGUARDED EXPECT-POP,
-   0 X64HARNESS:EXPECT-DEPTH,
-   X64HARNESS:EXPECT-BALANCED,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
-
 : BUILD-SOURCE-UNIT ( ptr u8 n -- ) {: path:ptr pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    7 PUSH,  NOTHING CLOSED-OF CALL,  7 EXPECT-POP,
@@ -391,11 +334,6 @@ DATA-START $10000 + constant CLOSED-SCRATCH
    0 X64HARNESS:EXPECT-DEPTH,
    STACK-ABI:BOOT-BYTES STACK-ABI:CAP-CELL EXPECT-CELL,
    X64HARNESS:EXPECT-BALANCED,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
-
-: BUILD-UNGUARDED ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   false X64HARNESS:BOOT-OPEN,
-   NOTHING PUSH-INSIDE-EXTENT,  s" run-in-stack" ROW,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
 \ An uncaught THROWN-CODE throw with a reporter installed.
@@ -438,13 +376,11 @@ public
    s" hb-x64-kernel-execute" TMP-PATH BUILD-EXECUTE
    s" hb-x64-kernel-catch" TMP-PATH BUILD-CATCH
    s" hb-x64-kernel-finally" TMP-PATH BUILD-FINALLY
-   s" hb-x64-kernel-run-in-stack" TMP-PATH BUILD-RUN-IN-STACK
    s" hb-x64-kernel-source-unit" TMP-PATH BUILD-SOURCE-UNIT
    s" hb-x64-kernel-eval-closed" TMP-PATH BUILD-EVAL-CLOSED
    s" hb-x64-kernel-throw-close" TMP-PATH BUILD-THROW-CLOSE
    s" hb-x64-kernel-floorrec" TMP-PATH BUILD-FLOORREC
    s" hb-x64-kernel-stack-clear" TMP-PATH BUILD-STACK-CLEAR
-   s" hb-x64-kernel-unguarded" TMP-PATH BUILD-UNGUARDED
    [: REPORTS-BACK ;] s" hb-x64-kernel-throw" TMP-PATH BUILD-THROW
    [: REPORTS-EXIT ;] s" hb-x64-kernel-throw-report" TMP-PATH BUILD-THROW
    [: RETURNS-CLOBBERED ;] 5 s" hb-x64-kernel-die" TMP-PATH BUILD-DIE
