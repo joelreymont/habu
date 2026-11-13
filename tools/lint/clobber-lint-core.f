@@ -130,8 +130,6 @@ variable RX  variable RACC
    a u s" Lheadrow" LINT-STR=CI if 0 12 CL-ADD exit then
    \ The callback accessor returns its thunk address in A (x9).
    a u s" Lcallbackaddr" LINT-STR=CI if 0 9 CL-ADD exit then
-   \ The source observer leaves the original or callback status in x15.
-   a u s" Lsourceexecfinish" LINT-STR=CI if 0 15 CL-ADD exit then
    a u s" Ltok" LINT-STR=CI if 0 0 CL-ADD exit then
    a u s" Lfind" LINT-STR=CI if 0 5 CL-ADD 11 CL-ADD 12 CL-ADD 13 CL-ADD exit then
    \ LFIND's hit shape (x5, x11-x13) plus x6 = records met; at two, x16 and

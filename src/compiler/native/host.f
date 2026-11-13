@@ -23,7 +23,7 @@ public
 \ MEMORY: memory operations and address-forming words, admitted by provenance.
 \ FIXED: a constant compiled as an immediate, or a data address the address
 \ sites carry. INDIRECT: a run of an xt or text operand, which a file's closure
-\ walk and source observer account for. CAST and UNCHECKED: an effect the
+\ walk accounts for. CAST and UNCHECKED: an effect the
 \ facts cannot name. UNKNOWN: an unmodeled op or literal, or no facts.
 \ REBIND: a compiled `is`.
 0 constant SAFE
@@ -40,8 +40,6 @@ private
 0 CWORK-VARIABLE IMPL-N n
 DYNAMIC-BUFFER IMPL-ENTRY n
 DYNAMIC-BUFFER IMPL-LEN n
-DYNAMIC-BUFFER IMPL-REASON n
-DYNAMIC-BUFFER IMPL-LOC n
 DYNAMIC-BUFFER IMPL-LIVE n
 
 UNKNOWN CWORK-VARIABLE SOURCE-REASON n
@@ -50,7 +48,7 @@ UNKNOWN CWORK-VARIABLE SOURCE-REASON n
 DYNAMIC-BUFFER SOURCE-IN n
 DYNAMIC-BUFFER SOURCE-OUT n
 
-\ Emission reads the producer's completed source facts after HIR construction.
+\ SOURCE-FREEZE's copy of the source facts; no word reads it.
 0 CWORK-VARIABLE FACT-REASON n
 0 CWORK-VARIABLE FACT-LOC n
 0 CWORK-VARIABLE FACT-FUNS n
@@ -70,8 +68,6 @@ variable SEEDED-N           SEEDED-N scratch-cell-mark
    {: count:n :}
    count IMPL-ENTRY-RESERVE
    count IMPL-LEN-RESERVE
-   count IMPL-REASON-RESERVE
-   count IMPL-LOC-RESERVE
    count IMPL-LIVE-RESERVE ;
 
 public
@@ -136,7 +132,6 @@ public
          count 1- {: row:n :}
          entry row IMPL-ENTRY !
          len row IMPL-LEN !
-         SAFE row IMPL-REASON !  0 row IMPL-LOC !
          1 row IMPL-LIVE !
          count IMPL-N !
       ENDOF
@@ -199,9 +194,6 @@ public
       loc SOURCE-LOC !
    then ;
 
-: SOURCE-REASON@ ( -- n n )
-   FACT-REASON @ FACT-LOC @ ;
-
 : SOURCE-ABANDON ( -- )
    UNKNOWN SOURCE-REASON !
    0 SOURCE-LOC !
@@ -217,12 +209,7 @@ public
    dout count 1- SOURCE-OUT !
    count SOURCE-FUNS ! ;
 
-: SOURCE-ARITY@ ( n -- n n )
-   {: ordinal:n :}
-   ordinal FACT-FUNS @ >= if -1 -1 exit then
-   ordinal FACT-IN @ ordinal FACT-OUT @ ;
-
-\ The source facts are complete before emission; TAKE reads this copy after it.
+\ The source facts are complete before emission.
 : SOURCE-FREEZE ( -- )
    SOURCE-FUNS @ {: funs:n :}
    funs FACT-IN-RESERVE
@@ -239,15 +226,13 @@ private
 
 \ Prepare all storage while publication may still throw. The publisher only
 \ exposes the row after its bytes and dictionary record are committed.
-: PREPARE ( n n n n -- n )
-   {: entry:n len:n reason:n loc:n :}
+: PREPARE ( n n -- n )
+   {: entry:n len:n :}
    entry 0 <= len 0 <= or if E-STATE throw then
    IMPL-N @ 1+ dup RESERVE-IMPL {: id:n :}
    id 1- {: row:n :}
    entry row IMPL-ENTRY !
    len row IMPL-LEN !
-   reason row IMPL-REASON !
-   loc row IMPL-LOC !
    0 row IMPL-LIVE !
    id IMPL-N !
    id ;

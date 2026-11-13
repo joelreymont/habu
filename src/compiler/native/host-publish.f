@@ -17,20 +17,10 @@ private
    then
    NEMIT:SIZE ;
 
-\ A function row's facts: the definition's host reason and location. An unknown
-\ arity or a body whose facts were abandoned forces UNKNOWN.
-: FACTS ( n -- n n )
-   {: ordinal:n :}
-   SOURCE-REASON@ {: reason:n loc:n :}
-   ordinal SOURCE-ARITY@ {: din:n dout:n :}
-   din 0 < dout 0 < or if UNKNOWN 0 exit then
-   reason loc ;
-
 : TAKE-ONE ( n n -- ) {: at:n ordinal:n :}
    ordinal NEMIT:FUNCTION-OFFSET@ {: off:n :}
    ordinal FUN-END off - {: len:n :}
-   at off + len ordinal FACTS
-      PREPARE {: id:n :}
+   at off + len PREPARE {: id:n :}
    id TAKEN-BASE @ ordinal + 1+ <> if E-STATE throw then ;
 
 : TAKE-BODY ( -- )

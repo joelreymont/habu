@@ -5496,7 +5496,7 @@ variable DUE-MADE
    a src <  a u +  src FILE-SRC-U @ +  >  or if -1 exit then
    INTERPRETER:RUN-COUNT FILE-RUN @ <= if -1 exit then
    INTERPRETER:RUN-COUNT 1 - INTERPRETER:RUN-RECORD@ {: idx:n :}
-   INTERPRETER:OBSERVE-WORD idx  idx XREF-REC XREF-START  SOURCE-UNIT:LOADER-KIND  SOURCE-UNIT:NONE = if -1 exit then
+   idx XREF-REC XREF-START  SOURCE-UNIT:LOADER-KIND  SOURCE-UNIT:NONE = if -1 exit then
    SRCLOC:INB-CELL HOST@ src <>  INE-CELL HOST@  src FILE-SRC-U @ +  <>  or
    INP-CELL HOST@  a u +  <>  or if -1 exit then
    a u + src - ;

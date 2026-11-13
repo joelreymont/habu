@@ -2100,8 +2100,7 @@ public
 1 constant PARSED-PATH
 2 constant STACK-PATH
 
-: LOADER-KIND ( n n n -- n ) {: op:n rec:n entry:n :}
-   op 5 <> if NONE exit then
+: LOADER-KIND ( n -- n ) {: entry:n :}
    entry SOURCE-ORIGINAL-INCLUDE-ENTRY @ =
    entry SOURCE-ORIGINAL-REQUIRE-ENTRY @ = or if PARSED-PATH exit then
    entry SOURCE-ORIGINAL-INCLUDED-ENTRY @ =

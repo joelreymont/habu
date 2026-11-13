@@ -207,8 +207,6 @@ DATA-START $10000 + constant CLOSED-SCRATCH
 \    hb-x64-kernel-control-negative  21  the same, expecting the wrong depth
 \    hb-x64-kernel-eval-range        76  source-range evaluation needs the
 \                                        interpreter
-\    hb-x64-kernel-source-exec      76  replay needs an interpreter; the
-\                                        source-exec-run row refuses by name
 \    hb-x64-kernel-execute            0  execute; 2>r, 2r@ and 2r>; both arms of
 \                                        execute-floor
 \    hb-x64-kernel-catch              0  catch with no throw, then a throw from
@@ -260,13 +258,6 @@ DATA-START $10000 + constant CLOSED-SCRATCH
    s" 1 2 +" X64HARNESS:PUSH-TEXT,
    2 X64HARNESS:EXPECT-DEPTH,
    s" evaluate" ROW,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
-
-: BUILD-SOURCE-EXEC ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   false X64HARNESS:BOOT-OPEN,
-   1 PUSH,  s" 1" X64HARNESS:PUSH-TEXT,
-   NOTHING PUSH-XT,  NOTHING PUSH-XT,  NOTHING PUSH-XT,
-   s" source-exec-run" ROW,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
 : BUILD-EVAL-RANGE ( ptr u8 n -- ) {: path:ptr pathu:n :}
@@ -491,7 +482,6 @@ public
    false s" hb-x64-kernel-control" TMP-PATH BUILD-EVALUATE
    true s" hb-x64-kernel-control-negative" TMP-PATH BUILD-EVALUATE
    s" hb-x64-kernel-eval-range" TMP-PATH BUILD-EVAL-RANGE
-   s" hb-x64-kernel-source-exec" TMP-PATH BUILD-SOURCE-EXEC
    s" hb-x64-kernel-execute" TMP-PATH BUILD-EXECUTE
    s" hb-x64-kernel-catch" TMP-PATH BUILD-CATCH
    s" hb-x64-kernel-finally" TMP-PATH BUILD-FINALLY

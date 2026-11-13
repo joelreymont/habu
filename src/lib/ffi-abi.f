@@ -1534,8 +1534,6 @@ private
 
 public
 
-: PENDING ( -- n ) OPEN @ ;
-
 \ Nothing is published before ;FUNCTION, and the row is registered as the text
 \ is rendered, so a refused declaration leaves no half-built word.
 : OPEN-FUNCTION ( -- )

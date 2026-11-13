@@ -2366,7 +2366,6 @@ public
    9 DATA NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:PENDING-TAKE cells + STR,
    9 DATA LVD-CELL STR,  9 DATA VSP-CELL STR,  9 DATA QPATCH-CELL STR,
    9 DATA FRAME-CELL STR,  9 DATA QFRAME-CELL STR,
-   9 DATA JIT-SNAP:SP-CELL STR,   \ the JIT's BEGIN depth dies with the definition
    9 DATA BODYLEN-CELL STR,  9 DATA EXITH-CELL STR,
    9 DATA PEND-CELL STR,  9 DATA CMM-CELL STR,
    9 DATA CMFRD-CELL STR,  9 DATA CMBK-CELL STR,
@@ -2393,61 +2392,6 @@ public
 ;package
 
 package ENGINE-EMIT
-private
-
-: EMIT-SOURCE-EXEC-FINISH ( -- )
-   LBL LBL LBL LBL LBL
-   {: absent:label callback-ok:label keep-original:label done:label current:label :}
-   LSOURCEEXECFINISH LABEL@ LBL,
-   10 DATA SOURCE-EXEC-CTX-CELL LDR,  10 absent CBZ,
-   9 10 SX-PENDING LDR,  9 absent CBZ,
-   15 current CBNZ,                    \ a thrown continuation has already left its EVAL frame
-   11 10 SX-EVAL LDR,  12 DATA EVAL-TOP-CELL LDR,
-   11 12 CMP,  C-NE absent BCOND,
-   current LBL,
-   SP SP 80 SUBI,  30 SP 0 STR,  15 SP 8 STR,  10 SP 16 STR,
-   9 DATA TKA-CELL LDR,  9 SP 24 STR,
-   9 DATA TKL-CELL LDR,  9 SP 32 STR,
-   9 DATA INP-CELL LDR,  9 SP 40 STR,
-   9 DATA INE-CELL LDR,  9 SP 48 STR,
-   9 DATA SRCLOC:INB-CELL LDR,  9 SP 56 STR,
-   10 SP 16 LDR,
-   9 0 MOVZ,  9 10 SX-PENDING STR,
-   9 DATA S0-CELL LDR,  9 XDS 9 SUB,  9 9 3 LSRI,  9 10 SX-DEPTH STR,
-   9 DATA RSP-CELL LDR,  9 10 SX-RDEPTH STR,
-   9 DATA INP-CELL LDR,  11 10 SX-SRC LDR,  9 9 11 SUB,
-   9 10 SX-POS STR,
-   9 1 MOVZ,  9 10 SX-SUSPEND STR,
-   9 10 SX-UNIT LDR,  9 G-PUSH
-   9 10 SX-TICKET LDR,  9 G-PUSH
-   9 SP 8 LDR,  9 G-PUSH
-   10 SP 16 LDR,  9 10 SX-AFTER LDR,  9 G-PUSH
-   BCATCH
-   9 G-POP  9 callback-ok CBZ,
-      XDS XDS 24 SUBI,                     \ catch restored the callback's three args
-   callback-ok LBL,
-   9 SP 64 STR,
-   9 SP 24 LDR,  9 DATA TKA-CELL STR,
-   9 SP 32 LDR,  9 DATA TKL-CELL STR,
-   9 SP 40 LDR,  9 DATA INP-CELL STR,
-   9 SP 48 LDR,  9 DATA INE-CELL STR,
-   9 SP 56 LDR,  9 DATA SRCLOC:INB-CELL STR,
-   10 SP 16 LDR,  11 0 MOVZ,  11 10 SX-SUSPEND STR,
-   15 SP 8 LDR,  15 keep-original CBNZ,
-      15 SP 64 LDR,
-   keep-original LBL,
-   16 SP 8 LDR,
-   30 SP 0 LDR,  SP SP 80 ADDI,
-   15 done CBZ,
-      16 done CBNZ,                        \ source-run returns its caught action status
-      9 DATA EVALD-CELL LDR,  9 done CBZ,   \ an after observer threw inside evaluate
-      10 DATA EVALREC-CELL LDR,  10 BR,
-   done LBL,
-   absent LBL,
-   RET, ;
-
-public
-
 private
 
 \ In x9/x10 = the token; out x13 = 0, or the FIND flags with x11 = code, x12 =
@@ -2702,7 +2646,6 @@ private
       9 13 EVAL-FRAME:SECTION LDR,  9 DATA SECTION-CELL STR,   \ and the section in force when it began
       13 EVAL-FRAME:USE-WIDS 12 9 ENGINE-EMIT:USE-WIDS-RESTORE,  \ and the includer's used publics, which the resync names
       9 1 MOVZ,  9 DATA PKGRESYNC-CELL STR,                  \ arm the checker resync (drained below, before delivery)
-      13 9 10 ENGINE-EMIT:SX-RESTORE,                   \ an adopted observer gets the evaluating word's run back
       12 13 EVAL-PREV LDR,  12 DATA EVAL-TOP-CELL STR,
       15 DATA EVALERR-CELL STR,
       12 DATA EVALD-CELL LDR,  12 12 1 SUBI,  12 DATA EVALD-CELL STR,
@@ -2922,8 +2865,7 @@ package ENGINE-EMIT
    EMIT-DIAGU
    EM-BODY-GROW-DIE
    EM-EVAL-THROW-RECOVER
-   EMIT-SHARED-EXITS
-   EMIT-SOURCE-EXEC-FINISH ;
+   EMIT-SHARED-EXITS ;
 
 ;package
 
@@ -2938,7 +2880,6 @@ package LABELS
 : CORE ( -- )
    LBL LFIND !  LBL LNUM !  LBL LDICT !
    LBL LKERNELDIGEST !
-   LBL LSOURCEEXECFINISH !
    LBL LCEMIT !  LBL LTOK !  LBL LPROTSPAN !  LBL LFLUSH !  LBL LFLUSHTO !  LBL LNCOUNT !
    LBL LDIVZERO !  LBL LUNSET-QUOTATION !  LBL LCATCH-CORRUPT !
    LBL LPROTWIDQ !  LBL LPROTWIDADD !

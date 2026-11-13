@@ -2066,7 +2066,7 @@ private
    done X64CODE:LBL, ;
 
 \ source-file-run ( xt -- ): the unit runs on the caller's extent with the cursor as its floor, compared before any push so
-\ a full extent reports residue. This kernel refuses source-exec-run, so it suspends no observer.
+\ a full extent reports residue.
 : SOURCE-FILE-RUN, ( -- )
    X64CODE:LBL X64CODE:LBL {: restore:label done:label :}
    TASK-LIVE-GUARD,
@@ -2658,8 +2658,7 @@ public
 \ and evaluate-range entries are installed by that evaluator
 \ (src/habu/interpreter.f INTERPRETER:INSTALL-EVALUATE); evaluate-closed gives
 \ the first a guarded stack. Rows still tied to ARM's interpreter refuse until
-\ supplied in Habu: the source-exec observer attaches to that interpreter's
-\ evaluator and token dispatch.
+\ supplied in Habu.
 : CONTROL, ( -- )
    FLOORREC-PENDING @ if
       false FLOORREC-PENDING !
@@ -2696,12 +2695,6 @@ public
    s" run-in-stack" [: RUN-IN-STACK, ;] PRIM
    s" die" [: DIE, ;] PRIM
    s" source-file-run" [: SOURCE-FILE-RUN, ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" source-exec-run" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
-   s" source-exec-live?" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
-   s" source-exec-boundary?" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
-   s" source-exec-loader-cut?" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
-   s" source-exec-position" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
-   s" source-exec-handler" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
    PROVIDED-XT:EVALUATE-CELL s" evaluate" [: REFUSE-BODY ;] PROVIDED-ROW
    s" evaluate-closed" [: EVAL-CLOSED, ;] PRIM
    PROVIDED-XT:EVALUATE-RANGE-CELL s" evaluate-range" [: REFUSE-BODY ;]
@@ -5425,7 +5418,6 @@ variable GROW-CELL
    RAX NCOMP-DISPATCH:DEF-TIER-CELL CELL!,
    RAX LVD-CELL CELL!,  RAX VSP-CELL CELL!,
    RAX QPATCH-CELL CELL!,  RAX FRAME-CELL CELL!,  RAX QFRAME-CELL CELL!,
-   RAX JIT-SNAP:SP-CELL CELL!,
    RAX LOCN-CELL CELL!,  RAX BODYLEN-CELL CELL!,  RAX EXITH-CELL CELL!,
    RAX PEND-CELL CELL!,  RAX CMM-CELL CELL!,
    RAX CMFRD-CELL CELL!,  RAX CMBK-CELL CELL!,

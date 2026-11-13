@@ -99,7 +99,6 @@ create TAB
    NCOMP-DISPATCH:DECL-CELL           1 cells                 CLAIM NCOMP-DECL-CELL
    NCOMP-DISPATCH:TARGET-DECL-CELL    1 cells                 CLAIM NCOMP-TARGET-DECL-CELL
    NCOMP-DISPATCH:TIER-CELL           1 cells                 CLAIM NCOMP-TIER-CELL
-   JIT-SNAP:SP-CELL                   1 cells                 CLAIM JIT-SNAP-SP-CELL
    NCOMP-DISPATCH:DEF-TIER-CELL       3 cells                 CLAIM NCOMP-DEF-TIER
    NCOMP-DISPATCH:RECOVER-CELL        1 cells                 CLAIM NCOMP-RECOVER-CELL
    LASTC-CELL                         1 cells                 CLAIM LASTC-CELL

@@ -282,15 +282,6 @@ $120 constant PEND
 \ owning the compile cuts the records back to it as it rolls the dictionary
 \ back, so no definition the rollback drops keeps a record or a pending window.
 $138 constant ROWS
-\ SX-CTX: the source observer this buffer adopted, 0 when it adopted none. An
-\ observed word that evaluates a buffer hands the observer to that buffer:
-\ SX-TICKET and SX-SRC keep the word's ticket and its source start, which the
-\ clean exit and the throw recovery put back with the word's run pending again.
-\ The observer's frame needs no cell: adoption requires it to be the frame this
-\ buffer nests in, EVAL-PREV.
-$140 constant SX-CTX
-$148 constant SX-TICKET
-$150 constant SX-SRC
 \ ENCLOSING: the enclosing package's four cells (ENCLOSING below), in its order,
 \ which a throw puts back with the open package's.
 $158 constant ENCLOSING
@@ -1339,44 +1330,18 @@ $43B8 constant B0-CELL           \ first address of the open window's code span
 \ with. Snapshot capture requires
 \ zero compile depth; the loader clears the frames, which are live only inside a
 \ definition.
-\ The depth cell stays low: it is definition-scoped like VSP-CELL, LVD-CELL and
-\ EXITH-CELL, so the colon handlers and EM-ABORT-COMPILE-STATE zero it in the
-\ same run of `9 DATA <off> STR,` from one zeroed register; up here it would
-\ need a 64-bit literal and a second register inside a routine that clobbers x9
-\ only. Left out of that run, a definition that fails after an opener leaves the
-\ depth raised.
 package JIT-SNAP
 public
 \ One frame per open IF, BEGIN, WHILE or DO entry (`else` pops one and pushes
 \ one).
 CFSTK-DEPTH-MAX constant FRAMES
 24 constant FRAME-BYTES                             \ one frame is (k, p0, p1)
-$378 constant SP-CELL                               \ depth; low, beside TIER-CELL
 SNAP-RELOC:XTCELL-END constant STK-OFF              \ base of the frame area
 STK-OFF FRAMES FRAME-BYTES * + constant END
 ;package
 
-\ The active source observer is one native stack frame per owned file.
+\ No engine word reads it; tests aim stores at it as a sealed band cell.
 $2CA8 constant SOURCE-EXEC-CTX-CELL
-208 constant SOURCE-EXEC-FRAME-BYTES
-0 constant SX-LR
-8 constant SX-PREV
-16 constant SX-UNIT
-24 constant SX-SRC
-32 constant SX-LEN
-40 constant SX-BEFORE
-48 constant SX-AFTER
-56 constant SX-CONT
-72 constant SX-ARMED
-80 constant SX-EVAL
-88 constant SX-FLOOR
-96 constant SX-RFLOOR
-104 constant SX-PENDING
-112 constant SX-TICKET
-120 constant SX-DEPTH
-128 constant SX-RDEPTH
-160 constant SX-SUSPEND
-192 constant SX-POS
 
 \ The checker overlay's replay scope.
 \ replay-open saves the dictionary and scope cells here and sets

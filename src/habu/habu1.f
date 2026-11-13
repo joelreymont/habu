@@ -1676,20 +1676,6 @@ public
    ENCLOSING:END ENCLOSING:PUB - 0 do
       tmp base off i + LDR,  tmp DATA ENCLOSING:PUB i + STR,
    CELL +loop ;
-
-\ Give the observer the evaluate frame in x<f> adopted back its frame (the one
-\ x<f> nests in, which adoption required), the evaluating word's ticket and its
-\ source start, with that word's run pending again and no callback open.
-\ Nothing when the frame adopted none. ctx and tmp are scratch.
-: SX-RESTORE, ( n n n -- ) {: f:n ctx:n tmp:n :}
-   LBL {: kept:label :}
-   ctx f EVAL-FRAME:SX-CTX LDR,  ctx kept CBZ,
-   tmp f EVAL-PREV LDR,  tmp ctx SX-EVAL STR,
-   tmp f EVAL-FRAME:SX-TICKET LDR,  tmp ctx SX-TICKET STR,
-   tmp f EVAL-FRAME:SX-SRC LDR,  tmp ctx SX-SRC STR,
-   tmp 1 MOVZ,  tmp ctx SX-PENDING STR,
-   tmp 0 MOVZ,  tmp ctx SX-SUSPEND STR,
-   kept LBL, ;
 ;package
 
 \ The source checker's operations and its record mark.
@@ -1713,7 +1699,6 @@ public
 
 package ENGINE-EMIT
 public
-variable LSOURCEEXECFINISH
 
 private
 \ B-EVAL and the bodies after it jump, their arguments on the data stack,
@@ -3684,31 +3669,15 @@ private
    done LBL, ;
 
 \ source-file-run ( xt -- ): run a file's unit on a pool stack, as B-EVAL-CLOSED
-\ runs text, its include's pending observer unpended meanwhile so no evaluate in
-\ the file adopts it; frame [32] keeps it, 0 for none.
+\ runs text.
 : B-SOURCE-FILE-RUN ( -- )
-   LBL LBL LBL LBL LBL LBL LBL LBL
-      {: have:label take:label caught:label restore:label done:label no-snap:label
-         other:label unpended:label :}
+   LBL LBL LBL LBL LBL
+      {: have:label take:label caught:label restore:label done:label :}
    s" E-TASK-COMPILE habu: source-file-run from a task" B-TASK-GUARD
    A G-POP  BCALLABLE
    \ The child uses a fresh guarded stack; retain the parent action's stack
    \ interval after the loader consumed its arguments and before that swap.
-   10 DATA SOURCE-EXEC-CTX-CELL LDR,  10 no-snap CBZ,
-   11 10 SX-ARMED LDR,  11 1 CMPI,  C-NE other BCOND,
-   11 10 SX-PENDING LDR,  11 other CBZ,
-   11 10 SX-SUSPEND LDR,  11 other CBNZ,
-   11 10 SX-EVAL LDR,  12 DATA EVAL-TOP-CELL LDR,
-   11 12 CMP,  C-NE other BCOND,
-   11 DATA S0-CELL LDR,  11 XDS 11 SUB,  11 11 3 LSRI,
-   11 10 SX-DEPTH STR,
-   11 DATA RSP-CELL LDR,  11 10 SX-RDEPTH STR,
-   11 0 MOVZ,  11 10 SX-PENDING STR,
-   no-snap B,
-   other LBL,  10 0 MOVZ,
-   no-snap LBL,
-   SP SP 48 SUBI,
-   10 SP 32 STR,
+   SP SP 32 SUBI,
    11 DATA STACK-ABI:BASE-CELL LDR,  11 SP 0 STR,
    12 DATA STACK-ABI:CAP-CELL LDR,   12 SP 8 STR,
    XDS SP 16 STR,
@@ -3759,124 +3728,10 @@ private
    12 DATA CLOSED-FREE-CELL LDR,  12 11 0 STR,  11 DATA CLOSED-FREE-CELL STR,
    12 SP 0 LDR,  12 DATA STACK-ABI:BASE-CELL STR,
    12 SP 8 LDR,  12 DATA STACK-ABI:CAP-CELL STR,
-   12 SP 32 LDR,  12 unpended CBZ,
-   11 1 MOVZ,  11 12 SX-PENDING STR,
-   unpended LBL,
-   XDS SP 16 LDR,  SP SP 48 ADDI,
+   XDS SP 16 LDR,  SP SP 32 ADDI,
    9 done CBZ,
    9 G-PUSH  BTHROW
    done LBL, ;
-
-: BSOURCEEXECRUN ( -- )
-   LBL LBL LBL {: bad:label checked:label done:label :}
-   SP SP SOURCE-EXEC-FRAME-BYTES SUBI,  30 SP SX-LR STR,
-   9 G-POP  9 SP SX-CONT STR,
-   9 G-POP  9 SP SX-AFTER STR,
-   9 G-POP  9 SP SX-BEFORE STR,
-   9 G-POP  9 SP SX-LEN STR,
-   9 G-POP  9 SP SX-SRC STR,
-   9 G-POP  9 SP SX-UNIT STR,
-   9 SP SX-LEN LDR,  9 0 CMPI,  C-LT bad BCOND,
-   9 SP SX-BEFORE LDR,  9 DBASE CMP,  C-CC bad BCOND,
-   9 CP CMP,  C-CS bad BCOND,
-   9 SP SX-AFTER LDR,  9 DBASE CMP,  C-CC bad BCOND,
-   9 CP CMP,  C-CS bad BCOND,
-   9 SP SX-CONT LDR,  9 DBASE CMP,  C-CC bad BCOND,
-   9 CP CMP,  C-CS bad BCOND,
-   9 DATA SOURCE-EXEC-CTX-CELL LDR,  9 SP SX-PREV STR,
-   9 0 MOVZ,
-   9 SP SX-ARMED STR,  9 SP SX-PENDING STR,  9 SP SX-SUSPEND STR,
-   9 0 MOVN,  9 SP SX-POS STR,
-   9 SP 0 ADDI,  9 DATA SOURCE-EXEC-CTX-CELL STR,
-   9 SP SX-CONT LDR,  9 G-PUSH
-   BCATCH
-   9 G-POP  9 SP SX-LEN STR,                \ status; source extent is no longer needed
-   15 9 0 ADDI,  LSOURCEEXECFINISH LABEL@ BL,
-   9 SP SX-PREV LDR,  9 DATA SOURCE-EXEC-CTX-CELL STR,
-   9 15 0 ADDI,
-   checked B,
-   bad LBL,
-   9 70 MOVZ,
-   checked LBL,
-   30 SP SX-LR LDR,  SP SP SOURCE-EXEC-FRAME-BYTES ADDI,
-   9 G-PUSH
-   done LBL, ;
-
-: BSOURCEEXECLIVE ( -- )
-   LBL LBL {: absent:label done:label :}
-   9 DATA SOURCE-EXEC-CTX-CELL LDR,  9 absent CBZ,
-   9 0 MOVN,  done B,
-   absent LBL,  9 0 MOVZ,
-   done LBL,  9 G-PUSH ;
-
-\ A loader cut may carry parent data cells across the child's guarded stack.
-\ All compiler state and the return stack must still be closed at that cut.
-\ The floors are the owned range's, so a loop reading a buffer an observed word
-\ evaluates (its frame's EVAL-FRAME:SX-CTX set) is never clean: no boundary, no
-\ cut and no balanced position there. x10 = the observer, whose SX-EVAL every
-\ caller has matched to EVAL-TOP-CELL.
-: BSOURCEEXECCLEAN ( -- )
-   LBL LBL {: bad:label done:label :}
-   9 10 SX-EVAL LDR,  9 9 EVAL-FRAME:SX-CTX LDR,  9 bad CBNZ,
-   9 DATA PEND-CELL LDR,  9 bad CBNZ,
-   9 DATA TXN-ACTIVE-CELL LDR,  9 bad CBNZ,
-   9 DATA P2-CELL LDR,  9 bad CBNZ,
-   9 DATA JIT-SNAP:SP-CELL LDR,  9 bad CBNZ,
-   12 CFSTK-OFF LIT64,  12 DBASE 12 ADD,  9 12 0 LDR,  9 bad CBNZ,
-   9 DATA DOESB-CELL LDR,  9 bad CBNZ,
-   9 10 SX-RDEPTH LDR,  12 10 SX-RFLOOR LDR,
-   9 12 CMP,  C-NE bad BCOND,
-   9 0 MOVN,  done B,
-   bad LBL,  9 0 MOVZ,
-   done LBL,  9 G-PUSH ;
-
-: BSOURCEEXECBALANCED ( -- )
-   LBL LBL {: bad:label done:label :}
-   BSOURCEEXECCLEAN
-   9 G-POP  9 bad CBZ,
-   9 10 SX-DEPTH LDR,  12 10 SX-FLOOR LDR,
-   9 12 CMP,  C-NE bad BCOND,
-   9 0 MOVN,  done B,
-   bad LBL,  9 0 MOVZ,
-   done LBL,  9 G-PUSH ;
-
-: BSOURCEEXECBOUNDARY ( -- )
-   LBL LBL {: bad:label done:label :}
-   10 DATA SOURCE-EXEC-CTX-CELL LDR,  10 bad CBZ,
-   11 10 SX-ARMED LDR,  11 bad CBZ,
-   11 10 SX-SUSPEND LDR,  11 1 CMPI,  C-NE bad BCOND,
-   11 10 SX-EVAL LDR,  12 DATA EVAL-TOP-CELL LDR,
-   11 12 CMP,  C-NE bad BCOND,
-   BSOURCEEXECBALANCED  done B,
-   bad LBL,  9 0 MOVZ,  9 G-PUSH
-   done LBL, ;
-
-: BSOURCEEXECLOADERCUT ( -- )
-   LBL LBL {: bad:label done:label :}
-   10 DATA SOURCE-EXEC-CTX-CELL LDR,  10 bad CBZ,
-   11 10 SX-ARMED LDR,  11 bad CBZ,
-   11 10 SX-SUSPEND LDR,  11 1 CMPI,  C-NE bad BCOND,
-   11 10 SX-EVAL LDR,  12 DATA EVAL-TOP-CELL LDR,
-   11 12 CMP,  C-NE bad BCOND,
-   BSOURCEEXECCLEAN  done B,
-   bad LBL,  9 0 MOVZ,  9 G-PUSH
-   done LBL, ;
-
-: BSOURCEEXECPOSITION ( -- )
-   LBL LBL {: absent:label done:label :}
-   10 DATA SOURCE-EXEC-CTX-CELL LDR,  10 absent CBZ,
-   11 10 SX-ARMED LDR,  11 absent CBZ,
-   11 10 SX-SUSPEND LDR,  11 1 CMPI,  C-NE absent BCOND,
-   11 10 SX-POS LDR,  11 0 CMPI,  C-LT absent BCOND,
-   12 10 SX-EVAL LDR,  13 DATA EVAL-TOP-CELL LDR,
-   12 13 CMP,  C-NE absent BCOND,
-   11 G-PUSH
-   BSOURCEEXECBALANCED done B,
-   absent LBL,  9 0 MOVZ,  9 G-PUSH  9 G-PUSH
-   done LBL, ;
-
-: BSOURCEEXECHANDLER ( -- )
-   9 0 MOVZ,  9 G-PUSH ;
 
 \ finally ( body cleanup -- ). Frame: [0] cleanup | [8] the body's code | [16] the halt its throw carried, set again
 \ once the cleanup ends or halts. A cleanup's nonzero code goes to [8] only when [8] is 0: a return or a PAUSE halt.
@@ -4720,13 +4575,7 @@ package ENGINE-EMIT
    s" body-append" ['] B-BODY-APPEND FPRIM-L
    s" postponed" ['] B-POSTPONED FPRIM-L
    s" evaluate-closed" ['] B-EVAL-CLOSED FPRIM
-   s" source-file-run" ['] B-SOURCE-FILE-RUN ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
-   s" source-exec-run" ['] BSOURCEEXECRUN FPRIM
-   s" source-exec-live?" ['] BSOURCEEXECLIVE FPRIM
-   s" source-exec-boundary?" ['] BSOURCEEXECBOUNDARY FPRIM
-   s" source-exec-loader-cut?" ['] BSOURCEEXECLOADERCUT FPRIM
-   s" source-exec-position" ['] BSOURCEEXECPOSITION FPRIM
-   s" source-exec-handler" ['] BSOURCEEXECHANDLER FPRIM ;
+   s" source-file-run" ['] B-SOURCE-FILE-RUN ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID ;
 
 : EMIT-PROCESS-PRIMS ( -- )
    s" run-rc" ['] BRUNRC FPRIM-L

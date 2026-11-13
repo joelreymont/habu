@@ -18,17 +18,6 @@
 \ runs past the next newline or `)`. A backslash comment may also run to the end
 \ of the input; a `(` comment the input ends inside is refused at the `(`.
 \
-\ The source observer arms on the range it owns. Before an action the loop
-\ stores the depths and the cursor's offset and runs the before callback, then
-\ the action is pending until the top of the next pass, which stores them again
-\ and runs the after callback under catch. The token and input cells are put
-\ back after each callback, and a callback's throw goes on to the loop's catch:
-\ an owned loop always runs under EVAL-FRAMED-RANGE's frame. A word that
-\ evaluates the owned buffer hands the observer to that evaluate's frame, with
-\ the word's ticket and its source start, and the buffer's tokens are observed
-\ with offsets relative to its start; the frame gives all three back as it
-\ ends, with the word's run pending again.
-\
 \ A float's exact value, the integer plus the fraction's remainder, is
 \ normalized to 53 retained bits and rounded once to nearest, ties to even; the
 \ sign applies even to zero.
@@ -239,9 +228,7 @@ public
 
 ;package
 
-\ The loop reads the engine's input cells, so a parsing word reads its buffer;
-\ it keeps its state off the return stack, whose depth the source observer
-\ checks.
+\ The loop reads the engine's input cells, so a parsing word reads its buffer.
 
 package INTERPRETER
 
@@ -524,99 +511,6 @@ TYPED-VARIABLE REC ptr n
    1 f DNAME-IMM and 0<> if 2 or then
    f MIN-IN 8 lshift or ;
 
-4 constant OBSERVE-TICK          \ the before callback's op for a tick's target
-public
-5 constant OBSERVE-WORD          \ the before callback's op for a word to run
-private
-
-\ The frame of the innermost loop written in Habu, as EVAL-TOP-CELL holds it, 0
-\ outside one; a native evaluate inside it moves only EVAL-TOP-CELL.
-variable LOOP-EVAL
-
-\ The frame's callback cells hold raw execution tokens.
-CAST: BEFORE-CALL ( n -- [ n n n n ptr u8 n -- n bool ] )
-CAST: AFTER-CALL ( n -- [ n n n -- ] )
-
-: OBSERVER ( -- ptr u8 )
-   SOURCE-EXEC-CTX-CELL ADDR@ ;
-
-: OWNED? ( ptr u8 -- bool ) {: ctx:ptr :}
-   ctx SX-ARMED FR@ 0= if false exit then
-   ctx SX-EVAL FR@ LOOP-EVAL @ = ;
-
-: OBSERVE-ADOPT ( ptr u8 ptr u8 ptr u8 -- ) {: ctx:ptr src:ptr f:ptr :}
-   ctx SX-EVAL FR@ LOOP-EVAL @ <> if exit then
-   ctx SX-EVAL FR@ EVAL-TOP-CELL CELL@ <> if exit then
-   ctx SX-PENDING FR@ 0= if exit then
-   ctx SX-SUSPEND FR@ 0<> if exit then
-   PEND-CELL CELL@ 0<> if exit then
-   ctx NULL-PTR - f EVAL-FRAME:SX-CTX FR!
-   ctx SX-TICKET FR@ f EVAL-FRAME:SX-TICKET FR!
-   ctx SX-SRC FR@ f EVAL-FRAME:SX-SRC FR!
-   f NULL-PTR - ctx SX-EVAL FR!
-   src NULL-PTR - ctx SX-SRC FR!
-   0 ctx SX-PENDING FR! ;
-
-: OBSERVE-ARM ( ptr u8 n ptr u8 -- ) {: src:ptr len:n f:ptr :}
-   OBSERVER dup NULL-PTR = if drop exit then {: ctx:ptr :}
-   ctx SX-ARMED FR@ 0<> if ctx src f OBSERVE-ADOPT exit then
-   ctx SX-SRC FR@ src NULL-PTR - <> if exit then
-   ctx SX-LEN FR@ len <> if exit then
-   f NULL-PTR - ctx SX-EVAL FR!
-   depth ctx SX-FLOOR FR!
-   RSP-CELL CELL@ ctx SX-RFLOOR FR!
-   1 ctx SX-ARMED FR! ;
-
-\ The observer's frame is f's EVAL-PREV, which adoption required.
-: OBSERVE-RESTORE ( ptr u8 -- ) {: f:ptr :}
-   f EVAL-FRAME:SX-CTX + 0 ptr-field @ {: ctx:ptr :}
-   ctx NULL-PTR = if exit then
-   f EVAL-PREV FR@ ctx SX-EVAL FR!
-   f EVAL-FRAME:SX-TICKET FR@ ctx SX-TICKET FR!
-   f EVAL-FRAME:SX-SRC FR@ ctx SX-SRC FR!
-   1 ctx SX-PENDING FR!
-   0 ctx SX-SUSPEND FR! ;
-
-: OBSERVE-BEFORE ( n n n -- ) {: op:n rec:n entry:n :}
-   OBSERVER dup NULL-PTR = if drop exit then {: ctx:ptr :}
-   ctx OWNED? 0= if exit then
-   ctx SX-SUSPEND FR@ 0<> if exit then
-   ctx SX-PENDING FR@ 0<> if exit then
-   TKA-CELL CELL@ TKL-CELL CELL@ INP-CELL CELL@ INE-CELL CELL@ SRCLOC:INB-CELL CELL@
-   {: tka:n tkl:n inp:n ine:n inb:n :}
-   depth ctx SX-DEPTH FR!
-   RSP-CELL CELL@ ctx SX-RDEPTH FR!
-   inp ctx SX-SRC FR@ - ctx SX-POS FR!
-   1 ctx SX-SUSPEND FR!
-   ctx SX-UNIT FR@ op rec entry TOKEN$ ctx SX-BEFORE FR@ BEFORE-CALL execute
-   drop ctx SX-TICKET FR!
-   tka TKA-CELL CELL!  tkl TKL-CELL CELL!  inp INP-CELL CELL!
-   ine INE-CELL CELL!  inb SRCLOC:INB-CELL CELL!
-   0 ctx SX-SUSPEND FR!
-   1 ctx SX-PENDING FR! ;
-
-\ A quotation reads no local.
-: AFTER-RUN ( -- )
-   OBSERVER {: ctx:ptr :}
-   ctx SX-UNIT FR@ ctx SX-TICKET FR@ 0 ctx SX-AFTER FR@ AFTER-CALL execute ;
-
-: OBSERVE-FINISH ( -- )
-   OBSERVER dup NULL-PTR = if drop exit then {: ctx:ptr :}
-   ctx SX-PENDING FR@ 0= if exit then
-   ctx OWNED? 0= if exit then
-   TKA-CELL CELL@ TKL-CELL CELL@ INP-CELL CELL@ INE-CELL CELL@ SRCLOC:INB-CELL CELL@
-   {: tka:n tkl:n inp:n ine:n inb:n :}
-   0 ctx SX-PENDING FR!
-   depth ctx SX-DEPTH FR!
-   RSP-CELL CELL@ ctx SX-RDEPTH FR!
-   inp ctx SX-SRC FR@ - ctx SX-POS FR!
-   1 ctx SX-SUSPEND FR!
-   [: AFTER-RUN ;] catch {: code:n :}
-   tka TKA-CELL CELL!  tkl TKL-CELL CELL!  inp INP-CELL CELL!
-   ine INE-CELL CELL!  inb SRCLOC:INB-CELL CELL!
-   0 ctx SX-SUSPEND FR!
-   code 0<> if code throw then ;
-
 \ The dictionary record index of each word run since RECORD-RUNS, in order.
 DYNAMIC-BUFFER RUNS n
 variable RUNS-N
@@ -640,7 +534,6 @@ TYPED-VARIABLE RUNS-ON bool
    TOP-EV-WORD flags HOOK
    REC @ XREF-NULL - XREF-ADDR>INDEX {: idx:n :}
    idx RUN+
-   OBSERVE-WORD idx xt OBSERVE-BEFORE
    xt execute-floor FLOORED ;
 
 : RUN-WORD ( -- )
@@ -814,13 +707,12 @@ CAST: TICK-ACTION ( n -- [ ptr u8 n -- bool ] )
       s" E-CAP-TRUSTED" REFUSAL  s" trusted-only tick: " REFUSE
    then ;
 
-\ The run log and then the source observer see the tick's target before the
-\ xt is pushed: the file may execute it.
+\ The run log sees the tick's target before the xt is pushed: the file may
+\ execute it.
 : TICK-OBSERVE ( -- n )
    REC @ XREF-START {: xt:n :}
    REC @ XREF-NULL - XREF-ADDR>INDEX {: idx:n :}
    idx RUN+
-   OBSERVE-TICK idx xt OBSERVE-BEFORE
    xt ;
 
 \ The hook sees the operand as the token and the record's flags.
@@ -2552,7 +2444,7 @@ private
    RC-TASK-THREAD FAIL-CLOSED ;
 
 : RUN-TOKENS ( -- )
-   TASK-GUARD  begin OBSERVE-FINISH TOKEN-MARK TOKEN while STEP repeat ;
+   TASK-GUARD  begin TOKEN-MARK TOKEN while STEP repeat ;
 
 : RUN ( -- )
    RUN-TOKENS
@@ -2621,7 +2513,6 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    DP-CELL CELL@ f FR-DP FR!
    STACK-ABI:BASE-CELL CELL@ f STACK-ABI:EVAL-BASE FR!
    STACK-ABI:CAP-CELL CELL@ f STACK-ABI:EVAL-CAP FR!
-   0 f EVAL-FRAME:SX-CTX FR!
    PEND-CELL CELL@ f EVAL-FRAME:PEND FR!
    f EVAL-PKG + {: snap:ptr :}
    CUR-CELL CELL@ snap PKGSNAP-CUR FR!
@@ -2749,12 +2640,9 @@ variable REPL-OK
    0 f EVAL-FRAME:PEND FR!
    USE-FLOOR @ {: prior:n :}
    REC @ {: found:ptr :}
-   LOOP-EVAL @ {: reading:n :}
    a INP-CELL ADDR!  a SRCLOC:INB-CELL ADDR!  a u + INE-CELL ADDR!
    f FRAME-ARG !
-   f NULL-PTR - LOOP-EVAL !
    [: FRAME-ARG @ FRAME-LINK RUN-TOKENS ;] catch {: code:n :}
-   reading LOOP-EVAL !
    code 0= if
       f FRAME-UNLINK
    else
@@ -2792,8 +2680,6 @@ public
 \ from the start of the whole source.
 : EVAL-FRAMED-RANGE ( ptr u8 n n n -- ) {: a:ptr u:n first:n end:n :}
    depth FRAME-OPEN {: f:ptr :}
-   a first + end first - f OBSERVE-ARM
-   LOOP-EVAL @ {: reading:n :}
    USE-FLOOR @ {: outer:n :}
    REC @ {: found:ptr :}
    ENTRY-PEND @ {: prior:n :}
@@ -2803,10 +2689,7 @@ public
    1 PKG-OUTSIDE-CELL CELL!
    a first + INP-CELL ADDR!  a SRCLOC:INB-CELL ADDR!  a end + INE-CELL ADDR!
    f FRAME-ARG !
-   f NULL-PTR - LOOP-EVAL !
    [: FRAME-ARG @ FRAME-LINK RUN ;] catch {: code:n :}
-   reading LOOP-EVAL !
-   f OBSERVE-RESTORE
    code 0= if
       f FRAME-LEAVE
    else
