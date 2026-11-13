@@ -19,31 +19,16 @@ package TFAM
 
 public
 
-\ FAMILY-HOOK-DEFAULTS binds these. Family identity is its exact canonical
-\ package and tail; constructor identity is an occurrence in the FILE tree.
-defer FAMILY-KEY-XT ( n -- ptr u8 n bool )
-defer FAMILY-BY-KEY-XT ( ptr u8 n -- n bool )
-defer FAMILY-KEY-MATCH-XT ( ptr u8 n ptr u8 n ptr u8 n -- bool )
+\ FAMILY-HOOK-DEFAULTS binds these.
 defer CON-DECLARED-XT ( n -- )
-defer CON-KEY-XT ( n -- ptr u8 n bool )
-defer CON-BY-KEY-XT ( ptr u8 n -- n bool )
 defer CON-BIND-XT ( n ptr u8 n -- )
 defer UNIT-FAM-RESET-XT ( -- )
 76 constant E-REG-AOT-REFUSED \ a type-registry capture or plan is refused (REG-AOT-REFUSE)
 
 private
-: FAMILY-KEY-ABSENT ( n -- ptr u8 n bool ) drop NULL-PTR 0 RES-FALSE ;
-: FAMILY-BY-KEY-ABSENT ( ptr u8 n -- n bool ) 2drop 0 RES-FALSE ;
-: FAMILY-KEY-MATCH-ABSENT ( ptr u8 n ptr u8 n ptr u8 n -- bool )
-   2drop 2drop 2drop RES-FALSE ;
 : FAMILY-BIND-ABSENT ( n ptr u8 n -- ) 2drop drop E-REG-AOT-REFUSED throw ;
 : FAMILY-HOOK-DEFAULTS ( -- )
-   [: FAMILY-KEY-ABSENT ;] is FAMILY-KEY-XT
-   [: FAMILY-BY-KEY-ABSENT ;] is FAMILY-BY-KEY-XT
-   [: FAMILY-KEY-MATCH-ABSENT ;] is FAMILY-KEY-MATCH-XT
    [: drop ;] is CON-DECLARED-XT
-   [: FAMILY-KEY-ABSENT ;] is CON-KEY-XT
-   [: FAMILY-BY-KEY-ABSENT ;] is CON-BY-KEY-XT
    [: FAMILY-BIND-ABSENT ;] is CON-BIND-XT
    [: ;] is UNIT-FAM-RESET-XT ;
 FAMILY-HOOK-DEFAULTS
@@ -100,7 +85,6 @@ CELL constant TAGW-CELL     \ default tag width: one stack cell
 7101 constant E-TFAM-CASE     \ uppercase/mixed-case or non-canonical tail token
 7102 constant E-TFAM-DUP      \ duplicate tail within the same package
 7106 constant E-TFAM-AMBIG    \ two other-package public families tie on a tail (7103 = E-SCHEMA-BAD)
-7209 constant E-UNIT-FAMILY-CHANGED \ a FILE family dependency is absent or its contract differs
 
 private
 
@@ -412,7 +396,6 @@ public
 : TFAM-FLD-START@ ( n -- n ) TF-REC@ TF.FLD-START @ ;
 : TFAM-FLD-COUNT@ ( n -- n ) TF-REC@ TF.FLD-COUNT @ ;
 : TFAM-TAGW@ ( n -- n ) TF-REC@ TF.TAGW @ ;
-: TFAM-SCHEMA-ROOT@ ( n -- n ) TF-REC@ TF.SCHEMA-ROOT @ ;
 : TFAM-SPAN@ ( n -- n n ) {: id:n :}
    id TF-REC@ {: r:ptr :}  r TF.SPAN-OFF @ r TF.SPAN-U @ ;
 : TFAM-PK@ ( n n -- n ) {: id:n i:n :}
@@ -833,9 +816,9 @@ public
 \ reproduces it. Variant rows leave only by SUMV-N rewinding, lowest id first,
 \ so a head at a retired row means the symbol has no row left and SVX-TRUNCATE
 \ needs no back-link. SVX-HI is the SUMV-N the index covers; every seam that
-\ moves SUMV-N moves it (SUMV-ADD, SVX-TRUNCATE, the unit imports, TFAM-RESET),
-\ so a difference catches a rewind outside those seams. SVX-GEN catches the
-\ shared mapping being dropped or re-laid out.
+\ moves SUMV-N moves it (SUMV-ADD, SVX-TRUNCATE, TFAM-RESET), so a difference
+\ catches a rewind outside those seams. SVX-GEN catches the shared mapping being
+\ dropped or re-laid out.
 
 private
 
@@ -999,11 +982,10 @@ variable VNX-CUR              \ private bucket-walk cursor
 
 \ Pops rows [newn, SUMV-N) before SUMV-N rewinds to newn, newest first, so each
 \ popped row is at its bucket head. It dies, as TFX-RETIRE does, on chains that
-\ do not cover exactly the live rows: SUMV-ADD, UNIT-FAM-TAKE and TFAM-REWIND
-\ move VNX-HI with SUMV-N, and TFAM-RESET and REG-AOT-INSTALL drop the chains, so
-\ unequal marks mean a caller moved the counter around those seams, and popping
-\ would unlink rows the chains never held or erase the signal VNX-ENSURE rebuilds
-\ on.
+\ do not cover exactly the live rows: SUMV-ADD and TFAM-REWIND move VNX-HI with
+\ SUMV-N, and TFAM-RESET and REG-AOT-INSTALL drop the chains, so unequal marks
+\ mean a caller moved the counter around those seams, and popping would unlink
+\ rows the chains never held or erase the signal VNX-ENSURE rebuilds on.
 : VNX-RETIRE ( n -- ) {: newn:n :}
    VNX-READY @ 0= IF EXIT THEN
    VNX-HI @ SUMV-N @ <> IF s" tfam: variant tail index retired out of step with its rows" 76 die THEN
@@ -2048,8 +2030,7 @@ public
 \ the family frame's (TF-RBF, through TFAM-REWIND): family, variant and
 \ constructor-package names interleave with field names in it, so no field
 \ frame mark bounds only its own bytes. A field rollback no enclosing family
-\ frame rewinds leaves its field names in [0, TF-STR-U), so UNIT-FAM-TILED
-\ refuses the file that made them for FILE capture.
+\ frame rewinds leaves its field names in [0, TF-STR-U).
 
 private
 
@@ -2151,8 +2132,7 @@ public
 \ The wrap guard has no test: reaching it needs 2^63 OPENs in one process, and no
 \ raw setter or TRUSTED seam for PF-TX-SERIAL is published to fake it. Without
 \ it a wrapped serial would mint token 0 or a negative token, and every phase
-\ compares tokens by equality, so a stale token could alias a live frame. A FILE
-\ import only advances the serial by a delta UNIT-FAM-PLAN-OPEN bounds, so this
+\ compares tokens by equality, so a stale token could alias a live frame. This
 \ is the one minting site.
 : OPEN ( -- n )
    WRITE-WINDOW-CK
@@ -3404,14 +3384,6 @@ create REG-AOT-END-A REG-AOT-N cells allot
    k 6 = IF SCH-N @ EXIT THEN
    SCH-ROOT-N @ ;
 
-\ The rows a family contract covers: every live row. Inside a declaration
-\ that includes its provisional field rows [PF-COMMIT-N, PF-N); a word the
-\ declaration generates is captured there, and commit moves no row, so its
-\ contract equals the one a later word computes over the committed rows.
-: REG-LIVE-COUNT ( n -- n ) {: k:n :}
-   k 3 = IF PF-N @ EXIT THEN
-   k REG-AOT-COUNT ;
-
 : REG-AOT-BASE-PTR ( n -- ptr u8 ) {: k:n :}
    k 0 = IF TF-BASE BYTE-VIEW EXIT THEN
    k 1 = IF TF-PK-BASE BYTE-VIEW EXIT THEN
@@ -3540,9 +3512,6 @@ variable REG-AOT-ERROR-U
 
 : REG-AOT-REFUSE ( ptr u8 n -- )
    REG-AOT-ERROR-U ! REG-AOT-ERROR-A ! E-REG-AOT-REFUSED throw ;
-
-: UNIT-FAM-CHANGED ( ptr u8 n -- )
-   REG-AOT-ERROR-U ! REG-AOT-ERROR-A ! E-UNIT-FAMILY-CHANGED throw ;
 
 : REG-AOT-BASE-BAD ( n n n -- )
    drop 2drop
@@ -5306,37 +5275,14 @@ private
 
 create UNIT-FAM-MARKS REG-AOT-N cells allot
 create UNIT-FAM-STABLE REG-AOT-N cells allot
-PTR-VARIABLE UNIT-FAM-AT
-\ PF-TX-SERIAL where the slice starts. Tokens outlive their declaration (see
-\ TFAM-RESET), so a slice records the serials it opened and an import advances
-\ PF-TX-SERIAL by that delta, as the cold compile's OPENs do.
-variable UNIT-FAM-SERIAL-MARK
 TFAM-N @ constant UNIT-FAM-STABLE-N
-$54464D44454C5433 constant UNIT-FAM-MAGIC
-\ Magic, store count, the transaction serial delta, then base, count and
-\ stable count per store.
-24 REG-AOT-N 24 * + constant UNIT-FAM-HDR
 PTR-VARIABLE UNIT-FAM-REFS
 variable UNIT-FAM-REFS-CAP
 PTR-VARIABLE UNIT-CON-REFS
 variable UNIT-CON-REFS-CAP
 PTR-VARIABLE UNIT-FAM-SEEN
 variable UNIT-FAM-SEEN-CAP
-variable UNIT-FAM-SEEN-EPOCH 0 UNIT-FAM-SEEN-EPOCH !
-variable UNIT-FAM-REF-N
-variable UNIT-CON-REF-N
 
-: UNIT-FAM-REFS-RESERVE ( n -- ) {: need:n :}
-   UNIT-FAM-REFS UNIT-FAM-REFS-CAP need 1 ARENA-ROWS-ENSURE ;
-: UNIT-CON-REFS-RESERVE ( n -- ) {: need:n :}
-   UNIT-CON-REFS UNIT-CON-REFS-CAP need 1 ARENA-ROWS-ENSURE ;
-: UNIT-FAM-SEEN-RESERVE ( n -- ) {: need:n :}
-   UNIT-FAM-SEEN-CAP @ {: old:n :}
-   UNIT-FAM-SEEN UNIT-FAM-SEEN-CAP need 1 ARENA-ROWS-ENSURE
-   UNIT-FAM-SEEN-CAP @ old > IF
-      UNIT-FAM-SEEN @ old cells + CELL-VIEW
-      0 UNIT-FAM-SEEN-CAP @ old - ARENA-CELLS-ZERO
-   THEN ;
 : UNIT-FAM-REFS-RELEASE ( -- )
    UNIT-FAM-REFS UNIT-FAM-REFS-CAP 1 ARENA-ROWS-RELEASE ;
 : UNIT-CON-REFS-RELEASE ( -- )
@@ -5344,63 +5290,20 @@ variable UNIT-CON-REF-N
 : UNIT-FAM-SEEN-RELEASE ( -- )
    UNIT-FAM-SEEN UNIT-FAM-SEEN-CAP 1 ARENA-ROWS-RELEASE ;
 
-\ Coverage of one FILE's string-pool delta, one cell per pool byte: capture and
-\ import each claim the bytes the delta's row strings name and prove that they
-\ tile the delta. Staging, released with the rest of the FILE scratch.
 PTR-VARIABLE UNIT-FAM-COVER
 variable UNIT-FAM-COVER-CAP
-: UNIT-FAM-COVER-OPEN ( n -- ) {: n:n :}
-   UNIT-FAM-COVER UNIT-FAM-COVER-CAP n 1 ARENA-ROWS-ENSURE
-   UNIT-FAM-COVER @ CELL-VIEW 0 n ARENA-CELLS-ZERO ;
-: UNIT-FAM-COVERED? ( n -- bool ) cells UNIT-FAM-COVER @ + @ 0 <> ;
-: UNIT-FAM-COVER! ( n -- ) -1 swap cells UNIT-FAM-COVER @ + ! ;
-: UNIT-FAM-COVER-FULL? ( n -- bool ) {: n:n :}
-   n 0 ?do i UNIT-FAM-COVERED? 0= IF RES-FALSE unloop EXIT THEN loop
-   RES-TRUE ;
 : UNIT-FAM-COVER-RELEASE ( -- )
    UNIT-FAM-COVER UNIT-FAM-COVER-CAP 1 ARENA-ROWS-RELEASE ;
 defer UNIT-FAM-SCRATCH-RESET ( -- )
 : UNIT-FAM-EXPORT-RESET ( -- )
    UNIT-FAM-MARKS 0 REG-AOT-N ARENA-CELLS-ZERO
-   NULL-PTR UNIT-FAM-AT ! 0 UNIT-FAM-REF-N ! 0 UNIT-CON-REF-N !
-   0 UNIT-FAM-SERIAL-MARK !
    UNIT-FAM-REFS-RELEASE UNIT-CON-REFS-RELEASE
-   UNIT-FAM-SEEN-RELEASE 0 UNIT-FAM-SEEN-EPOCH !
+   UNIT-FAM-SEEN-RELEASE
    UNIT-FAM-SCRATCH-RESET ;
-: UNIT-FAM-REF@ ( n -- n ) cells UNIT-FAM-REFS @ + @ ;
-: UNIT-CON-REF@ ( n -- n ) cells UNIT-CON-REFS @ + @ ;
-: UNIT-FAM-REF! ( n n -- ) cells UNIT-FAM-REFS @ + ! ;
-: UNIT-CON-REF! ( n n -- ) cells UNIT-CON-REFS @ + ! ;
 
 : UNIT-FAM-STABLE-INIT ( -- )
    REG-AOT-N 0 ?do i REG-AOT-COUNT UNIT-FAM-STABLE i cells + ! loop ;
 UNIT-FAM-STABLE-INIT
-
-: UNIT-FAM-REF+ ( n -- )
-   {: id:n :}
-   id 0 < id TFAM-N @ >= or IF E-TFAM-ARITY throw THEN
-   id UNIT-FAM-STABLE-N < IF EXIT THEN
-   id UNIT-FAM-MARKS @ >= IF EXIT THEN
-   UNIT-FAM-REF-N @ 0 ?do
-      i UNIT-FAM-REF@ id = IF UNLOOP EXIT THEN
-   loop
-   UNIT-FAM-REF-N @ 1+ UNIT-FAM-REFS-RESERVE
-   id UNIT-FAM-REF-N @ UNIT-FAM-REF!
-   1 UNIT-FAM-REF-N +! ;
-
-: UNIT-CON-REF+ ( n -- )
-   {: id:n :}
-   id CC-MAX < IF EXIT THEN
-   UNIT-CON-REF-N @ 0 ?do
-      i UNIT-CON-REF@ id = IF UNLOOP EXIT THEN
-   loop
-   UNIT-CON-REF-N @ 1+ UNIT-CON-REFS-RESERVE
-   id UNIT-CON-REF-N @ UNIT-CON-REF!
-   1 UNIT-CON-REF-N +! ;
-
-public
-: UNIT-TFAM-REF ( n -- ) UNIT-FAM-REF+ ;
-private
 
 26 constant TFC-VAR-CAP          \ internal construct scratch; not the declaration spelling cap
 create TFC-VARS TFC-VAR-CAP cells allot
@@ -6132,395 +6035,28 @@ public
 
 private
 
-: UNIT-FAM-MARK ( -- )
-   REG-AOT-N 0 ?do i REG-AOT-COUNT UNIT-FAM-MARKS i cells + ! loop
-   PF-TX-SERIAL @ UNIT-FAM-SERIAL-MARK !
-   0 UNIT-FAM-REF-N ! 0 UNIT-CON-REF-N ! ;
-
-\ The transaction serials the slice opened since its mark.
-: UNIT-FAM-SERIAL-DELTA ( -- n )
-   PF-TX-SERIAL @ UNIT-FAM-SERIAL-MARK @ - dup 0 < IF
-      drop s" tfam: FILE transaction serial moved backward" REG-AOT-REFUSE THEN ;
-
-: UNIT-FAM-BASE@ ( n -- n ) cells UNIT-FAM-MARKS + @ ;
-
-: UNIT-FAM-SCAN-NODE ( n -- ) {: node:n :}
-   UNIT-FAM-SEEN @ node cells + @ UNIT-FAM-SEEN-EPOCH @ = IF EXIT THEN
-   UNIT-FAM-SEEN-EPOCH @ UNIT-FAM-SEEN @ node cells + !
-   node SCHEMA-APP? IF
-      node SCHEMA-A@ UNIT-FAM-REF+
-      node SCHEMA-C@ 0 ?do
-         node SCHEMA-B@ i + SCHEMA-ROOT@ recurse
-      loop EXIT
-   THEN
-   node SCHEMA-CON? IF node SCHEMA-A@ UNIT-CON-REF+ EXIT THEN
-   node SCHEMA-PTR? IF node SCHEMA-A@ recurse EXIT THEN
-   node SCHEMA-QUOT? IF
-      node SCHEMA-C@ 0 ?do
-         node SCHEMA-B@ i + SCHEMA-ROOT@ recurse
-      loop
-      EXIT
-   THEN
-   node SCHEMA-ROW? IF
-      node SCHEMA-B@ 0 ?do
-         node SCHEMA-A@ i + SCHEMA-ROOT@ recurse
-      loop
-   THEN ;
-
-: UNIT-FAM-SCAN-FAMILY ( n -- ) {: fam:n :}
-   fam TFAM-SCHEMA-ROOT@ dup 0 <> IF SCHEMA-ROOT@ UNIT-FAM-SCAN-NODE
-      ELSE drop THEN
-   fam TFAM-VAR-COUNT@ 0 ?do
-      fam TFAM-VAR-START@ i + {: vid:n :}
-      vid SUMV-SCH-COUNT@ 0 ?do
-         vid SUMV-REC@ SV.SCH-START @ i + SCHEMA-ROOT@
-         UNIT-FAM-SCAN-NODE
-      loop
-   loop
-   fam TFAM-FLD-COUNT@ 0 ?do
-      fam TFAM-FLD-START@ i + PF-PENDING-SCH@
-      SCHEMA-ROOT@ UNIT-FAM-SCAN-NODE
-   loop ;
-
-: UNIT-FAM-SCAN ( -- )
-   6 REG-AOT-COUNT dup UNIT-FAM-SEEN-RESERVE
-   drop
-   UNIT-FAM-SEEN-EPOCH @ 1+ dup 0= IF
-      drop UNIT-FAM-SEEN @ CELL-VIEW 0 UNIT-FAM-SEEN-CAP @ ARENA-CELLS-ZERO
-      1
-   THEN UNIT-FAM-SEEN-EPOCH !
-   6 REG-AOT-COUNT 6 UNIT-FAM-BASE@ ?do
-      i SCHEMA-APP? IF i SCHEMA-A@ UNIT-FAM-REF+ THEN
-      i SCHEMA-CON? IF i SCHEMA-A@ UNIT-CON-REF+ THEN
-   loop
-   0
-   BEGIN dup UNIT-FAM-REF-N @ < WHILE
-      dup UNIT-FAM-REF@ UNIT-FAM-SCAN-FAMILY
-      1+
-   REPEAT drop ;
-
-: UNIT-FAM-KEY ( n -- ptr u8 n ) FAMILY-KEY-XT
-   \ tfam: FILE family lacks declaration identity
-   0= IF 2drop CHECKER-REG:UNIT-BAD THEN ;
-
-: UNIT-CON-KEY ( n -- ptr u8 n ) CON-KEY-XT
-   \ tfam: FILE constructor lacks declaration identity
-   0= IF 2drop CHECKER-REG:UNIT-BAD THEN ;
-
-defer UNIT-FAM-CONTRACT-SIZE-XT ( n -- n )
-defer UNIT-FAM-CONTRACT-WRITE-XT ( n ptr u8 -- ptr u8 )
-defer UNIT-FAM-CONTRACT-CHECK-XT ( n ptr u8 n -- )
-defer UNIT-CON-CONTRACT-SIZE-XT ( n -- n )
-defer UNIT-CON-CONTRACT-WRITE-XT ( n ptr u8 -- ptr u8 )
-defer UNIT-CON-CONTRACT-CHECK-XT ( n ptr u8 n ptr u8 n -- )
-
-: UNIT-FAM-STR-SIZE ( -- n )
-   0
-   0 REG-AOT-COUNT 0 UNIT-FAM-BASE@ ?do
-      i TF-REC@ {: row:ptr :}
-      16 row TF.PKG-U @ + +  row TF.NAME-U @ +
-   loop
-   2 REG-AOT-COUNT 2 UNIT-FAM-BASE@ ?do
-      i SUMV-REC@ {: row:ptr :}
-      16 row SV.NAME-U @ + + row SV.CTOR-PKG-U @ +
-   loop
-   3 REG-AOT-COUNT 3 UNIT-FAM-BASE@ ?do
-      i PF-REC@ PF.NAME-U @ 8 + +
-   loop ;
-
-: UNIT-FAM-SIZE ( -- n )
-   UNIT-FAM-SCAN
-   UNIT-FAM-REF-N @ UNIT-CON-REF-N @ or UNIT-FAM-SERIAL-DELTA or
-   REG-AOT-N 0 ?do
-      i 5 <> IF i REG-AOT-COUNT i UNIT-FAM-BASE@ - or THEN
-   loop
-   0= IF
-      \ tfam: FILE family pool delta holds bytes no row names
-      5 REG-AOT-COUNT 5 UNIT-FAM-BASE@ <> IF CHECKER-REG:UNIT-BAD THEN
-      0 EXIT
-   THEN
-   UNIT-FAM-HDR
-   REG-AOT-N 0 ?do
-      i 5 <> IF
-         i REG-AOT-COUNT i UNIT-FAM-BASE@ -
-         i REG-AOT-WIDTH * +
-      THEN
-   loop
-   UNIT-FAM-STR-SIZE +
-   0 REG-AOT-COUNT 0 UNIT-FAM-BASE@ ?do
-      i UNIT-FAM-KEY nip 8 + +
-   loop
-   8 +
-   UNIT-FAM-REF-N @ 0 ?do
-      i UNIT-FAM-REF@ {: id:n :}
-      id UNIT-FAM-KEY nip 24 + +
-      id UNIT-FAM-CONTRACT-SIZE-XT +
-   loop
-   8 +
-   UNIT-CON-REF-N @ 0 ?do
-      i UNIT-CON-REF@ {: id:n :}
-      id UNIT-CON-KEY nip 24 + +
-      id UNIT-CON-CONTRACT-SIZE-XT +
-   loop ;
-
-: UNIT-FAM-U64+ ( n ptr u8 -- ptr u8 )
-   {: value:n dst:ptr :}
-   value dst REG-AOT-U64! dst 8 + ;
-
-: UNIT-FAM-STR+ ( n n ptr u8 -- ptr u8 )
-   {: off:n u:n dst:ptr :}
-   u dst UNIT-FAM-U64+ {: bytes:ptr :}
-   u 0 > IF off u TF-OFF$ drop bytes u ARENA-COPY THEN
-   bytes u + ;
-
-: UNIT-FAM-KEY+ ( ptr u8 n ptr u8 -- ptr u8 )
-   {: key:ptr u:n dst:ptr :}
-   u dst UNIT-FAM-U64+ {: bytes:ptr :}
-   u 0 > IF key bytes u ARENA-COPY THEN
-   bytes u + ;
-
-: UNIT-FAM-OWN-KEY+ ( n ptr u8 -- ptr u8 )
-   {: id:n dst:ptr :}
-   id UNIT-FAM-KEY dst UNIT-FAM-KEY+ ;
-
-: UNIT-CON-OWN-KEY+ ( n ptr u8 -- ptr u8 )
-   {: id:n dst:ptr :}
-   id UNIT-CON-KEY dst UNIT-FAM-KEY+ ;
-
-\ An import rebuilds the pool delta by placing each carried string at its
-\ rebased source offset (UNIT-FAM-PUT-STRING), so the capture refuses a delta
-\ its row strings do not tile exactly. An empty string claims no byte; an empty
-\ constructor package is absent at offset 0, any other sits inside the delta.
-: UNIT-FAM-CLAIM ( n n -- ) {: off:n u:n :}
-   5 UNIT-FAM-BASE@ {: base:n :}
-   \ tfam: FILE family string lies outside its pool delta
-   off base < off 5 REG-AOT-COUNT u - > or IF CHECKER-REG:UNIT-BAD THEN
-   u 0 ?do off base - i + UNIT-FAM-COVER! loop ;
-
-: UNIT-FAM-CTOR-CLAIM ( n n -- ) {: off:n u:n :}
-   u 0 <> IF off u UNIT-FAM-CLAIM EXIT THEN
-   \ tfam: FILE variant places an absent constructor package
-   off 0 <> IF CHECKER-REG:UNIT-BAD THEN ;
-
-: UNIT-FAM-TILED ( -- )
-   5 REG-AOT-COUNT 5 UNIT-FAM-BASE@ - {: n:n :}
-   n UNIT-FAM-COVER-OPEN
-   0 REG-AOT-COUNT 0 UNIT-FAM-BASE@ ?do
-      i TF-REC@ {: row:ptr :}
-      row TF.PKG-OFF @ row TF.PKG-U @ UNIT-FAM-CLAIM
-      row TF.NAME-OFF @ row TF.NAME-U @ UNIT-FAM-CLAIM
-   loop
-   2 REG-AOT-COUNT 2 UNIT-FAM-BASE@ ?do
-      i SUMV-REC@ {: row:ptr :}
-      row SV.NAME-OFF @ row SV.NAME-U @ UNIT-FAM-CLAIM
-      row SV.CTOR-PKG-OFF @ row SV.CTOR-PKG-U @ UNIT-FAM-CTOR-CLAIM
-   loop
-   3 REG-AOT-COUNT 3 UNIT-FAM-BASE@ ?do
-      i PF-REC@ {: row:ptr :}
-      row PF.NAME-OFF @ row PF.NAME-U @ UNIT-FAM-CLAIM
-   loop
-   \ tfam: FILE family pool delta holds bytes no row names
-   n UNIT-FAM-COVER-FULL? 0= IF CHECKER-REG:UNIT-BAD THEN ;
-
-\ A variant's constructor symbol travels as its unit symbol ordinal + 1, the
-\ wire rule for symbols (checker.f UNIT-SYM-ORD); 0 stays absent. The checker
-\ maps the ordinal back to the live symbol at install (UNIT-FAM-CTORS), so a
-\ reused file leaves the variant naming its constructor word as compiling it
-\ does. A constructor word the file did not define has no ordinal it owns.
-: UNIT-FAM-CTOR-ORDS ( ptr u8 n -- ) {: rows:ptr bytes:n :}
-   bytes SUMV-REC / 0 ?do
-      rows i SUMV-REC * + CELL-VIEW SV.CTOR-SYM {: cell:ptr :}
-      cell @ {: sym:n :}
-      sym 0 <> IF
-         \ tfam: FILE variant constructor is not the file's own word
-         sym CHECKER-REG:UNIT-OWN-SYM-ORD 0= IF CHECKER-REG:UNIT-BAD THEN
-         1 + cell !
-      THEN
-   loop ;
-
-: UNIT-FAM-SAVE ( ptr u8 n -- n ) {: dst:ptr cap:n :}
-   UNIT-FAM-SIZE {: size:n :}
-   size cap > IF REG-AOT-OVERFLOW THEN
-   size 0= IF 0 EXIT THEN
-   UNIT-FAM-TILED
-   UNIT-FAM-MAGIC dst UNIT-FAM-U64+
-   REG-AOT-N swap UNIT-FAM-U64+
-   UNIT-FAM-SERIAL-DELTA swap UNIT-FAM-U64+ UNIT-FAM-AT !
-   REG-AOT-N 0 ?do
-      i UNIT-FAM-BASE@ {: base:n :}
-      i REG-AOT-COUNT {: end:n :}
-      base UNIT-FAM-AT @ UNIT-FAM-U64+
-      i 5 = IF 0 ELSE end base - THEN swap UNIT-FAM-U64+
-      UNIT-FAM-STABLE i cells + @ swap UNIT-FAM-U64+ UNIT-FAM-AT !
-   loop
-   REG-AOT-N 0 ?do
-      i 5 <> IF
-         i REG-AOT-COUNT i UNIT-FAM-BASE@ - i REG-AOT-WIDTH * {: bytes:n :}
-         bytes 0 > IF
-            i REG-AOT-BASE-PTR i UNIT-FAM-BASE@ i REG-AOT-WIDTH * +
-            UNIT-FAM-AT @ bytes ARENA-COPY
-            i 2 = IF UNIT-FAM-AT @ bytes UNIT-FAM-CTOR-ORDS THEN
-         THEN
-         UNIT-FAM-AT @ bytes + UNIT-FAM-AT !
-      THEN
-   loop
-   0 REG-AOT-COUNT 0 UNIT-FAM-BASE@ ?do
-      i TF-REC@ {: row:ptr :}
-      row TF.PKG-OFF @ row TF.PKG-U @ UNIT-FAM-AT @ UNIT-FAM-STR+
-      row TF.NAME-OFF @ row TF.NAME-U @ rot UNIT-FAM-STR+
-      UNIT-FAM-AT !
-   loop
-   2 REG-AOT-COUNT 2 UNIT-FAM-BASE@ ?do
-      i SUMV-REC@ {: row:ptr :}
-      row SV.NAME-OFF @ row SV.NAME-U @ UNIT-FAM-AT @ UNIT-FAM-STR+
-      row SV.CTOR-PKG-OFF @ row SV.CTOR-PKG-U @ rot UNIT-FAM-STR+
-      UNIT-FAM-AT !
-   loop
-   3 REG-AOT-COUNT 3 UNIT-FAM-BASE@ ?do
-      i PF-REC@ {: row:ptr :}
-      row PF.NAME-OFF @ row PF.NAME-U @ UNIT-FAM-AT @ UNIT-FAM-STR+
-      UNIT-FAM-AT !
-   loop
-   0 REG-AOT-COUNT 0 UNIT-FAM-BASE@ ?do
-      i UNIT-FAM-AT @ UNIT-FAM-OWN-KEY+ UNIT-FAM-AT !
-   loop
-   UNIT-FAM-REF-N @ UNIT-FAM-AT @ UNIT-FAM-U64+ UNIT-FAM-AT !
-   UNIT-FAM-REF-N @ 0 ?do
-      i UNIT-FAM-REF@ {: id:n :}
-      id UNIT-FAM-AT @ UNIT-FAM-U64+
-      id swap UNIT-FAM-OWN-KEY+ UNIT-FAM-AT !
-      id UNIT-FAM-CONTRACT-SIZE-XT UNIT-FAM-AT @ UNIT-FAM-U64+
-      id swap UNIT-FAM-CONTRACT-WRITE-XT UNIT-FAM-AT !
-   loop
-   UNIT-CON-REF-N @ UNIT-FAM-AT @ UNIT-FAM-U64+ UNIT-FAM-AT !
-   UNIT-CON-REF-N @ 0 ?do
-      i UNIT-CON-REF@ {: id:n :}
-      id UNIT-FAM-AT @ UNIT-FAM-U64+
-      id swap UNIT-CON-OWN-KEY+ UNIT-FAM-AT !
-      id UNIT-CON-CONTRACT-SIZE-XT UNIT-FAM-AT @ UNIT-FAM-U64+
-      id swap UNIT-CON-CONTRACT-WRITE-XT UNIT-FAM-AT !
-   loop
-   UNIT-FAM-AT @ dst - size <> IF
-      s" tfam: FILE family size drift" REG-AOT-REFUSE THEN
-   size ;
-
-\ A FILE family's source indices are local to the capture engine. Keep only
-\ the new records while preparation builds a read view over live rows and the
-\ deltas already prepared for this FILE tree. Neither preparation nor graph
-\ checking publishes a registry member.
 0 constant UFP.NEXT
 1 constant UFP.BLOB
 2 constant UFP.CAP
-3 constant UFP.SRC
-4 constant UFP.U
-5 constant UFP.KEYS
 6 constant UFP.FMAP
 7 constant UFP.FN
-8 constant UFP.CMAP
-9 constant UFP.CN
 10 constant UFP.SBASE
 18 constant UFP.COUNT
 26 constant UFP.TBASE
-34 constant UFP.SERIAL
 35 cells constant UFP.REC
 REG-AOT-N PTR-U8-TABLE UNIT-FAM-RAW
 PTR-VARIABLE UNIT-FAM-FIRST
-PTR-VARIABLE UNIT-FAM-LAST
 PTR-VARIABLE UNIT-FAM-CUR
-PTR-VARIABLE UNIT-FAM-OPEN
-PTR-VARIABLE UNIT-FAM-IN
-PTR-VARIABLE UNIT-FAM-LIMIT
-variable UNIT-FAM-ACC
-PTR-VARIABLE UNIT-FAM-MAP-CUR
-PTR-VARIABLE UNIT-FAM-KEY-AT
 
 : UFP@ ( ptr u8 n -- n ) cells + CELL-VIEW @ ;
-: UFP! ( n ptr u8 n -- ) cells + CELL-VIEW ! ;
-\ A FILE family plan is a cell row in mapped storage whose UFP.NEXT, UFP.BLOB,
-\ UFP.SRC, UFP.KEYS, UFP.FMAP and UFP.CMAP cells hold byte addresses.
+\ A FILE family plan is a cell row in mapped storage whose UFP.NEXT, UFP.BLOB
+\ and UFP.FMAP cells hold byte addresses.
 CAST: UFP-CELLS ( ptr u8 -- ptr ptr u8 )
 : UFP-PTR@ ( ptr u8 n -- ptr u8 ) cells + UFP-CELLS @ ;
-: UFP-PTR! ( ptr u8 ptr u8 n -- ) cells + UFP-CELLS ! ;
-: UNIT-FAM-RAW@ ( n -- ptr u8 ) cells UNIT-FAM-RAW + 0 ptr-field @ ;
 : UNIT-FAM-RAW! ( ptr u8 n -- ) cells UNIT-FAM-RAW + 0 ptr-field ! ;
 : UFP-SBASE@ ( ptr u8 n -- n ) UFP.SBASE + UFP@ ;
 : UFP-COUNT@ ( ptr u8 n -- n ) UFP.COUNT + UFP@ ;
 : UFP-TBASE@ ( ptr u8 n -- n ) UFP.TBASE + UFP@ ;
-
-: UNIT-FAM-READ ( n -- ptr u8 ) {: n:n :}
-   n 0 < n UNIT-FAM-LIMIT @ UNIT-FAM-IN @ - > or IF
-      s" tfam: truncated FILE family delta" REG-AOT-REFUSE THEN
-   UNIT-FAM-IN @ dup n + UNIT-FAM-IN ! ;
-
-: UNIT-FAM-CELL ( -- n ) 8 UNIT-FAM-READ REG-AOT-U64@ ;
-
-: UNIT-FAM-STR-LEN+ ( n n -- n ) {: sum:n len:n :}
-   len 0 < len UNIT-FAM-LIMIT @ UNIT-FAM-IN @ - sum - > or IF
-      s" tfam: invalid FILE family string length" REG-AOT-REFUSE THEN
-   sum len + ;
-
-: UNIT-FAM-RAW-ROW ( n n -- ptr n ) {: k:n i:n :}
-   k UNIT-FAM-RAW@ i k REG-AOT-WIDTH * + CELL-VIEW ;
-
-: UNIT-FAM-STRING-BYTES ( ptr u8 -- n ) {: plan:ptr :}
-   0
-   plan 0 UFP-COUNT@ 0 ?do
-      0 i UNIT-FAM-RAW-ROW {: row:ptr :}
-      row TF.PKG-U @ UNIT-FAM-STR-LEN+
-      row TF.NAME-U @ UNIT-FAM-STR-LEN+
-   loop
-   plan 2 UFP-COUNT@ 0 ?do
-      2 i UNIT-FAM-RAW-ROW {: row:ptr :}
-      row SV.NAME-U @ UNIT-FAM-STR-LEN+
-      row SV.CTOR-PKG-U @ UNIT-FAM-STR-LEN+
-   loop
-   plan 3 UFP-COUNT@ 0 ?do
-      3 i UNIT-FAM-RAW-ROW PF.NAME-U @ UNIT-FAM-STR-LEN+
-   loop ;
-
-: UNIT-FAM-EXTENT+ ( n n n n n -- n ) {: ext:n off:n len:n base:n bound:n :}
-   len 0= IF ext EXIT THEN
-   off base < off base - bound len - > or IF
-      s" tfam: FILE family string lies outside its pool delta" REG-AOT-REFUSE THEN
-   off base - len + ext max ;
-
-\ The string section is the pool delta the carried strings tile, measured from
-\ the source offsets their rows carry; the carried byte total bounds it. An
-\ empty string claims no byte.
-: UNIT-FAM-STRING-EXTENT ( ptr u8 -- n ) {: plan:ptr :}
-   plan UNIT-FAM-STRING-BYTES {: bound:n :}
-   plan 5 UFP-SBASE@ {: base:n :}
-   0
-   plan 0 UFP-COUNT@ 0 ?do
-      0 i UNIT-FAM-RAW-ROW {: row:ptr :}
-      row TF.PKG-OFF @ row TF.PKG-U @ base bound UNIT-FAM-EXTENT+
-      row TF.NAME-OFF @ row TF.NAME-U @ base bound UNIT-FAM-EXTENT+
-   loop
-   plan 2 UFP-COUNT@ 0 ?do
-      2 i UNIT-FAM-RAW-ROW {: row:ptr :}
-      row SV.NAME-OFF @ row SV.NAME-U @ base bound UNIT-FAM-EXTENT+
-      row SV.CTOR-PKG-OFF @ row SV.CTOR-PKG-U @ base bound UNIT-FAM-EXTENT+
-   loop
-   plan 3 UFP-COUNT@ 0 ?do
-      3 i UNIT-FAM-RAW-ROW {: row:ptr :}
-      row PF.NAME-OFF @ row PF.NAME-U @ base bound UNIT-FAM-EXTENT+
-   loop ;
-
-: UNIT-FAM-TARGET-BASE ( n -- n ) {: k:n :}
-   k REG-AOT-COUNT UNIT-FAM-ACC !
-   UNIT-FAM-FIRST @
-   BEGIN dup NULL-PTR <> WHILE
-      dup k UFP-COUNT@ UNIT-FAM-ACC +!
-      UFP.NEXT UFP-PTR@
-   REPEAT drop UNIT-FAM-ACC @ ;
-
-\ PF-TX-SERIAL once the plans prepared so far install.
-: UNIT-FAM-TARGET-SERIAL ( -- n )
-   PF-TX-SERIAL @ UNIT-FAM-FIRST @
-   BEGIN dup NULL-PTR <> WHILE
-      dup UFP.SERIAL UFP@ rot + swap
-      UFP.NEXT UFP-PTR@
-   REPEAT drop ;
 
 : UNIT-FAM-ROW ( ptr u8 n n -- ptr n ) {: plan:ptr k:n i:n :}
    plan UFP.BLOB UFP-PTR@ k REG-AOT-BLOB-STORE
@@ -6545,199 +6081,6 @@ CAST: UFP-CELLS ( ptr u8 -- ptr ptr u8 )
    REPEAT drop
    s" tfam: FILE family reference has no projected row" REG-AOT-REFUSE ;
 
-: UNIT-FAM-PLAN-HEADER ( ptr u8 -- ) {: plan:ptr :}
-   plan UFP.BLOB UFP-PTR@ {: blob:ptr :}
-   REG-AOT-N blob REG-AOT-U64!
-   REG-AOT-N 0 ?do
-      plan i UFP-TBASE@ blob i REG-AOT-ROW * 8 + + REG-AOT-U64!
-      plan i UFP-COUNT@ blob i REG-AOT-ROW * 8 + 8 + + REG-AOT-U64!
-      plan i UFP-COUNT@ i REG-AOT-WIDTH *
-      blob i REG-AOT-ROW * 8 + 16 + + REG-AOT-U64!
-   loop ;
-
-: UNIT-FAM-PLAN-ROWS ( ptr u8 -- ) {: plan:ptr :}
-   REG-AOT-N 0 ?do
-      i 5 <> IF
-         plan i UFP-COUNT@ i REG-AOT-WIDTH * {: bytes:n :}
-         bytes 0 > IF
-            i UNIT-FAM-RAW@
-            plan UFP.BLOB UFP-PTR@ i REG-AOT-BLOB-STORE
-            bytes ARENA-COPY
-         THEN
-      THEN
-   loop ;
-
-\ A FILE's strings were interned in declaration order into one pool delta, and
-\ a family's constructor package once for all its variants. Each carried string
-\ goes back to its source offset rebased into the target pool, so the section
-\ and every offset are the cold build's; strings sharing bytes must agree.
-: UNIT-FAM-PUT-STRING ( ptr n ptr u8 -- ) {: field:ptr plan:ptr :}
-   UNIT-FAM-CELL {: len:n :}
-   len field CELL + @ <> IF
-      s" tfam: FILE family string disagrees with its row" REG-AOT-REFUSE THEN
-   len UNIT-FAM-READ {: src:ptr :}
-   field @ plan 5 UFP-SBASE@ - {: at:n :}
-   at 0 < at plan 5 UFP-COUNT@ len - > or IF
-      s" tfam: FILE family string lies outside its pool delta" REG-AOT-REFUSE THEN
-   plan UFP.BLOB UFP-PTR@ 5 REG-AOT-BLOB-STORE at + {: dst:ptr :}
-   len 0 ?do
-      at i + UNIT-FAM-COVERED? IF
-         src i + c@ dst i + c@ <> IF
-            s" tfam: FILE family strings disagree where they share pool bytes"
-            REG-AOT-REFUSE THEN
-      ELSE
-         src i + c@ dst i + c!   at i + UNIT-FAM-COVER!
-      THEN
-   loop
-   at plan 5 UFP-TBASE@ + field ! ;
-
-\ An empty constructor package is absent: SUMV-ADD leaves offset 0 and only a
-\ public family's TDECL-CTOR-PUBLISH interns one.
-: UNIT-FAM-PUT-CTOR-PKG ( ptr n ptr u8 -- ) {: field:ptr plan:ptr :}
-   field CELL + @ 0 <> IF field plan UNIT-FAM-PUT-STRING EXIT THEN
-   UNIT-FAM-CELL 0 <> IF
-      s" tfam: FILE family string disagrees with its row" REG-AOT-REFUSE THEN
-   field @ 0 <> IF
-      s" tfam: FILE variant places an absent constructor package" REG-AOT-REFUSE THEN ;
-
-: UNIT-FAM-PLAN-STRINGS ( ptr u8 -- ) {: plan:ptr :}
-   plan 5 UFP-COUNT@ UNIT-FAM-COVER-OPEN
-   plan 0 UFP-COUNT@ 0 ?do
-      plan 0 i UNIT-FAM-ROW {: row:ptr :}
-      row TF.PKG-OFF plan UNIT-FAM-PUT-STRING
-      row TF.NAME-OFF plan UNIT-FAM-PUT-STRING
-   loop
-   plan 2 UFP-COUNT@ 0 ?do
-      plan 2 i UNIT-FAM-ROW {: row:ptr :}
-      row SV.NAME-OFF plan UNIT-FAM-PUT-STRING
-      row SV.CTOR-PKG-OFF plan UNIT-FAM-PUT-CTOR-PKG
-   loop
-   plan 3 UFP-COUNT@ 0 ?do
-      plan 3 i UNIT-FAM-ROW PF.NAME-OFF plan UNIT-FAM-PUT-STRING
-   loop
-   plan 5 UFP-COUNT@ UNIT-FAM-COVER-FULL? 0= IF
-      s" tfam: FILE family strings do not fill their section" REG-AOT-REFUSE THEN ;
-
-: UNIT-FAM-KEY-READ ( -- ptr u8 n )
-   UNIT-FAM-CELL {: n:n :}
-   n 0 <= IF s" tfam: empty FILE declaration key" REG-AOT-REFUSE THEN
-   n UNIT-FAM-READ n ;
-
-: UNIT-FAM-PREPARED-KEY ( ptr u8 n -- n bool ) {: key:ptr len:n :}
-   UNIT-FAM-FIRST @
-   BEGIN dup NULL-PTR <> WHILE
-      dup UFP.KEYS UFP-PTR@ UNIT-FAM-KEY-AT !
-      dup 0 UFP-COUNT@ 0 ?do
-         UNIT-FAM-KEY-AT @ REG-AOT-U64@ {: n:n :}
-         UNIT-FAM-KEY-AT @ 8 + n key len CORE-STR= IF
-            dup 0 UFP-TBASE@ i + nip RES-TRUE unloop EXIT
-         THEN
-         UNIT-FAM-KEY-AT @ 8 + n + UNIT-FAM-KEY-AT !
-      loop
-      UFP.NEXT UFP-PTR@
-   REPEAT drop 0 RES-FALSE ;
-
-: UNIT-FAM-LOOKUP-KEY ( ptr u8 n -- n bool ) {: key:ptr len:n :}
-   key len FAMILY-BY-KEY-XT IF RES-TRUE EXIT THEN drop
-   key len UNIT-FAM-PREPARED-KEY ;
-
-: UNIT-FAM-ROW-NAME ( ptr u8 n n -- ptr u8 n )
-   {: plan:ptr off:n len:n :}
-   plan UFP.BLOB UFP-PTR@ 5 REG-AOT-BLOB-STORE
-   off plan 5 UFP-TBASE@ - + len ;
-
-: UNIT-FAM-PRIOR-KEY? ( ptr u8 n ptr u8 n -- bool )
-   {: key:ptr len:n keys:ptr count:n :}
-   keys
-   count 0 ?do
-      dup REG-AOT-U64@ {: u:n :}
-      dup 8 + u key len CORE-STR= IF
-         drop RES-TRUE unloop EXIT THEN
-      8 + u +
-   loop drop RES-FALSE ;
-
-: UNIT-FAM-READ-KEYS ( ptr u8 -- ) {: plan:ptr :}
-   UNIT-FAM-IN @ plan UFP.KEYS UFP-PTR!
-   plan 0 UFP-COUNT@ 0 ?do
-      UNIT-FAM-KEY-READ {: key:ptr len:n :}
-      key len plan UFP.KEYS UFP-PTR@ i UNIT-FAM-PRIOR-KEY? IF
-         s" tfam: duplicate FILE family declaration key" REG-AOT-REFUSE
-      THEN
-      plan 0 i UNIT-FAM-ROW {: row:ptr :}
-      key len
-      plan row TF.PKG-OFF @ row TF.PKG-U @ UNIT-FAM-ROW-NAME
-      plan row TF.NAME-OFF @ row TF.NAME-U @ UNIT-FAM-ROW-NAME
-      FAMILY-KEY-MATCH-XT 0= IF
-         s" tfam: FILE family key disagrees with its declaration" REG-AOT-REFUSE
-      THEN
-      key len UNIT-FAM-LOOKUP-KEY IF drop
-         s" tfam: duplicate FILE family declaration key" REG-AOT-REFUSE
-      THEN drop
-   loop ;
-
-: UNIT-FAM-MAP-PAIR ( n n ptr u8 n ptr u8 -- )
-   {: source:n target:n key:ptr len:n plan:ptr :}
-   source UNIT-FAM-MAP-CUR @ CELL-VIEW !
-   target UNIT-FAM-MAP-CUR @ CELL + CELL-VIEW !
-   key plan UFP.SRC UFP-PTR@ -
-      UNIT-FAM-MAP-CUR @ 2 cells + CELL-VIEW !
-   len UNIT-FAM-MAP-CUR @ 3 cells + CELL-VIEW !
-   UNIT-FAM-MAP-CUR @ 4 cells + UNIT-FAM-MAP-CUR ! ;
-
-: UNIT-FAM-MAP-ROOM ( ptr u8 -- ) {: plan:ptr :}
-   UNIT-FAM-MAP-CUR @ 4 cells +
-   plan UFP.BLOB UFP-PTR@ plan UFP.CAP UFP@ + > IF
-      s" tfam: FILE family map exceeds its delta" REG-AOT-REFUSE THEN ;
-
-: UNIT-FAM-READ-FMAP ( ptr u8 -- ) {: plan:ptr :}
-   UNIT-FAM-MAP-CUR @ plan UFP.FMAP UFP-PTR!
-   UNIT-FAM-CELL {: n:n :}
-   n 0 < n UNIT-FAM-LIMIT @ UNIT-FAM-IN @ - 16 / > or IF
-      s" tfam: FILE family reference count exceeds its bytes" REG-AOT-REFUSE THEN
-   n plan UFP.FN UFP!
-   n 0 ?do
-      UNIT-FAM-CELL {: source:n :}
-      source UNIT-FAM-STABLE-N <
-      source plan 0 UFP-SBASE@ >= or IF
-         s" tfam: FILE family dependency has a local or fixed source ID" REG-AOT-REFUSE
-      THEN
-      UNIT-FAM-KEY-READ {: key:ptr len:n :}
-      key len UNIT-FAM-LOOKUP-KEY 0= IF drop
-         s" tfam: FILE family dependency is absent" UNIT-FAM-CHANGED THEN
-      {: target:n :}
-      UNIT-FAM-CELL {: bytes:n :}
-      bytes 0 < IF
-         s" tfam: FILE family contract length is negative" REG-AOT-REFUSE THEN
-      bytes UNIT-FAM-READ {: contract:ptr :}
-      target contract bytes UNIT-FAM-CONTRACT-CHECK-XT
-      plan UNIT-FAM-MAP-ROOM
-      source target key len plan UNIT-FAM-MAP-PAIR
-   loop ;
-
-: UNIT-FAM-READ-CMAP ( ptr u8 -- ) {: plan:ptr :}
-   UNIT-FAM-MAP-CUR @ plan UFP.CMAP UFP-PTR!
-   UNIT-FAM-CELL {: n:n :}
-   n 0 < n UNIT-FAM-LIMIT @ UNIT-FAM-IN @ - 16 / > or IF
-      s" tfam: FILE constructor reference count exceeds its bytes" REG-AOT-REFUSE THEN
-   n plan UFP.CN UFP!
-   n 0 ?do
-      UNIT-FAM-CELL {: source:n :}
-      UNIT-FAM-KEY-READ {: key:ptr len:n :}
-      key len CON-BY-KEY-XT 0= IF drop
-         key len CHECKER-REG:UNIT-CON-PROJECT-XT 0= IF drop
-            s" tfam: FILE constructor dependency is absent" UNIT-FAM-CHANGED
-         THEN
-      THEN
-      {: target:n :}
-      UNIT-FAM-CELL {: bytes:n :}
-      bytes 0 < IF
-         s" tfam: FILE constructor contract length is negative" REG-AOT-REFUSE THEN
-      bytes UNIT-FAM-READ {: contract:ptr :}
-      target key len contract bytes UNIT-CON-CONTRACT-CHECK-XT
-      plan UNIT-FAM-MAP-ROOM
-      source target key len plan UNIT-FAM-MAP-PAIR
-   loop ;
-
 : UNIT-FAM-FIND-MAP ( n ptr u8 n -- n bool )
    {: source:n pairs:ptr count:n :}
    count 0 ?do
@@ -6757,240 +6100,8 @@ CAST: UFP-CELLS ( ptr u8 -- ptr ptr u8 )
    IF EXIT THEN drop
    s" tfam: FILE family ID lacks an identity" REG-AOT-REFUSE ;
 
-: UNIT-CON-MAP-ID ( n -- n ) {: source:n :}
-   source CC-MAX < IF source EXIT THEN
-   UNIT-FAM-CUR @ {: plan:ptr :}
-   source plan UFP.CMAP UFP-PTR@ plan UFP.CN UFP@ UNIT-FAM-FIND-MAP
-   IF EXIT THEN drop
-   s" tfam: FILE constructor ID lacks an identity" REG-AOT-REFUSE ;
-
-: UNIT-FAM-SUBID ( ptr u8 n n -- n ) {: plan:ptr k:n source:n :}
-   source UNIT-FAM-STABLE k cells + @ < IF source EXIT THEN
-   source plan k UFP-SBASE@ >=
-   source plan k UFP-SBASE@ plan k UFP-COUNT@ + <= and IF
-      source plan k UFP-SBASE@ - plan k UFP-TBASE@ + EXIT THEN
-   s" tfam: FILE family row has an external store reference" REG-AOT-REFUSE ;
-
-: UNIT-FAM-ROW-ID! ( ptr u8 n ptr n -- ) {: plan:ptr k:n field:ptr :}
-   plan k field @ UNIT-FAM-SUBID field ! ;
-
-\ An empty range (count 0) names no row; its writers store start 0, which
-\ needs no translation.
-: UNIT-FAM-REBASE ( ptr u8 -- ) {: plan:ptr :}
-   plan 0 UFP-COUNT@ 0 ?do
-      plan 0 i UNIT-FAM-ROW {: row:ptr :}
-      plan 1 row TF.PK-START UNIT-FAM-ROW-ID!
-      row TF.VAR-COUNT @ 0 > IF
-         plan 2 row TF.VAR-START UNIT-FAM-ROW-ID! THEN
-      row TF.FLD-COUNT @ 0 > IF
-         plan 3 row TF.FLD-START UNIT-FAM-ROW-ID! THEN
-      row TF.SCHEMA-ROOT @ 0 <> IF
-         plan 7 row TF.SCHEMA-ROOT UNIT-FAM-ROW-ID! THEN
-      0 row TF.TAILNEXT !
-   loop
-   plan 2 UFP-COUNT@ 0 ?do
-      plan 2 i UNIT-FAM-ROW {: row:ptr :}
-      row SV.FAM @ UNIT-FAM-MAP-ID row SV.FAM !
-      row SV.SCH-COUNT @ 0 > IF
-         plan 7 row SV.SCH-START UNIT-FAM-ROW-ID! THEN
-   loop
-   plan 3 UFP-COUNT@ 0 ?do
-      plan 3 i UNIT-FAM-ROW {: row:ptr :}
-      row PF.FAM @ UNIT-FAM-MAP-ID row PF.FAM !
-      row PF.VAR @ -1 <> IF plan 2 row PF.VAR UNIT-FAM-ROW-ID! THEN
-      plan 7 row PF.SCH UNIT-FAM-ROW-ID!
-   loop
-   plan 4 UFP-COUNT@ 0 ?do
-      plan 4 i UNIT-FAM-ROW {: row:ptr :}
-      row LAY.FAM @ UNIT-FAM-MAP-ID row LAY.FAM !
-   loop
-   plan 6 UFP-COUNT@ 0 ?do
-      plan 6 i UNIT-FAM-ROW {: row:ptr :}
-      row @ {: tag:n :}
-      tag SCH-PTR = IF plan 6 row CELL + UNIT-FAM-ROW-ID! THEN
-      tag SCH-APP = IF
-         row CELL + @ UNIT-FAM-MAP-ID row CELL + !
-         row 2 cells + @ 0 <> IF
-            plan 7 row 2 cells + UNIT-FAM-ROW-ID! THEN
-      THEN
-      tag SCH-CON = IF
-         row CELL + @ UNIT-CON-MAP-ID row CELL + ! THEN
-      tag SCH-QUOT = IF
-         row 3 cells + @ 0 <> IF
-            plan 7 row 2 cells + UNIT-FAM-ROW-ID! THEN
-      THEN
-      tag SCH-ROW = IF
-         row 2 cells + @ 0 <> IF
-            plan 7 row CELL + UNIT-FAM-ROW-ID! THEN
-      THEN
-   loop
-   plan 7 UFP-COUNT@ 0 ?do
-      plan 7 i UNIT-FAM-ROW {: row:ptr :}
-      plan 6 row UNIT-FAM-ROW-ID!
-   loop ;
-
-: UNIT-FAM-PLAN-OPEN ( ptr u8 n -- ptr u8 ) {: src:ptr u:n :}
-   u 0= IF NULL-PTR EXIT THEN
-   u 0 <
-   u $7FFFFFFFFFFFFFFF REG-AOT-HDR - UFP.REC - 2 / > or IF
-      s" tfam: FILE family delta is too large" REG-AOT-REFUSE THEN
-   REG-AOT-HDR u 2 * + {: cap:n :}
-   UFP.REC cap + ARENA-ALLOC-BYTES {: plan:ptr :}
-   plan UNIT-FAM-OPEN !
-   NULL-PTR plan UFP.NEXT UFP-PTR!  src plan UFP.SRC UFP-PTR!
-   u plan UFP.U UFP!
-   plan UFP.REC + plan UFP.BLOB UFP-PTR!
-   cap plan UFP.CAP UFP!
-   src UNIT-FAM-IN ! src u + UNIT-FAM-LIMIT !
-   UNIT-FAM-CELL UNIT-FAM-MAGIC <> IF
-      s" tfam: FILE family delta has an invalid format" REG-AOT-REFUSE THEN
-   UNIT-FAM-CELL REG-AOT-N <> IF
-      s" tfam: FILE family delta has an invalid store count" REG-AOT-REFUSE THEN
-   UNIT-FAM-CELL {: serial:n :}
-   serial 0 < IF
-      s" tfam: FILE family delta has a negative transaction serial" REG-AOT-REFUSE THEN
-   serial $7FFFFFFFFFFFFFFF UNIT-FAM-TARGET-SERIAL - > IF
-      s" tfam: FILE family transaction serial overflows" REG-AOT-REFUSE THEN
-   serial plan UFP.SERIAL UFP!
-   REG-AOT-N 0 ?do
-      UNIT-FAM-CELL {: base:n :}
-      UNIT-FAM-CELL {: count:n :}
-      UNIT-FAM-CELL UNIT-FAM-STABLE i cells + @ <> IF
-         s" tfam: FILE family stable registry changed" REG-AOT-REFUSE THEN
-      base 0 < count 0 < or IF
-         s" tfam: FILE family delta has a negative extent" REG-AOT-REFUSE THEN
-      base UNIT-FAM-STABLE i cells + @ < IF
-         s" tfam: FILE family source predates the stable registry" REG-AOT-REFUSE THEN
-      base $7FFFFFFFFFFFFFFF count - > IF
-         s" tfam: FILE family source extent overflows" REG-AOT-REFUSE THEN
-      base plan UFP.SBASE i + UFP!
-      count plan UFP.COUNT i + UFP!
-      i UNIT-FAM-TARGET-BASE {: target:n :}
-      target $7FFFFFFFFFFFFFFF count - > IF
-         s" tfam: FILE family target extent overflows" REG-AOT-REFUSE THEN
-      target plan UFP.TBASE i + UFP!
-   loop
-   plan 5 UFP-COUNT@ 0 <> IF
-      s" tfam: FILE family delta carries raw string offsets" REG-AOT-REFUSE THEN
-   REG-AOT-N 0 ?do
-      i 5 <> IF
-         plan i UFP-COUNT@ {: count:n :}
-         count UNIT-FAM-LIMIT @ UNIT-FAM-IN @ - i REG-AOT-WIDTH / > IF
-            s" tfam: FILE family rows exceed their bytes" REG-AOT-REFUSE THEN
-         count i REG-AOT-WIDTH * UNIT-FAM-READ
-         i UNIT-FAM-RAW!
-      THEN
-   loop
-   plan UNIT-FAM-STRING-EXTENT plan UFP.COUNT 5 + UFP!
-   plan UNIT-FAM-PLAN-HEADER
-   plan UNIT-FAM-PLAN-ROWS
-   plan UNIT-FAM-PLAN-STRINGS
-   plan UNIT-FAM-READ-KEYS
-   plan UFP.BLOB UFP-PTR@ REG-AOT-HDR +
-   REG-AOT-N 0 ?do
-      plan i UFP-COUNT@ i REG-AOT-WIDTH * +
-   loop UNIT-FAM-MAP-CUR !
-   plan UNIT-FAM-READ-FMAP
-   plan UNIT-FAM-READ-CMAP
-   UNIT-FAM-IN @ UNIT-FAM-LIMIT @ <> IF
-      s" tfam: FILE family delta has trailing bytes" REG-AOT-REFUSE THEN
-   NULL-PTR UNIT-FAM-OPEN !
-   plan ;
-
 : UNIT-FAM-PLAN-DROP ( ptr u8 -- ) {: plan:ptr :}
    plan plan UFP.CAP UFP@ UFP.REC + ASIG-RELEASE ;
-
-: UNIT-FAM-PLAN-ADD ( ptr u8 -- ) {: plan:ptr :}
-   UNIT-FAM-LAST @ NULL-PTR = IF plan UNIT-FAM-FIRST !
-   ELSE plan UNIT-FAM-LAST @ UFP.NEXT UFP-PTR! THEN
-   plan UNIT-FAM-LAST !
-   plan UNIT-FAM-CUR ! ;
-
-: UNIT-FAM-BEGIN ( -- )
-   NULL-PTR UNIT-FAM-FIRST ! NULL-PTR UNIT-FAM-LAST !
-   NULL-PTR UNIT-FAM-CUR ! NULL-PTR UNIT-FAM-OPEN !
-   0 UNIT-FAM-PROJECT-ON ! ;
-
-: UNIT-FAM-PREPARE ( ptr u8 n -- ptr u8 )
-   [: 2dup UNIT-FAM-PLAN-OPEN UNIT-FAM-OPEN ! ;] catch {: rc:n :}
-   2drop
-   rc 0 <> IF
-      UNIT-FAM-OPEN @ dup NULL-PTR <> IF UNIT-FAM-PLAN-DROP
-         ELSE drop THEN
-      NULL-PTR UNIT-FAM-OPEN !
-      rc throw
-   THEN
-   UNIT-FAM-OPEN @ {: plan:ptr :}
-   NULL-PTR UNIT-FAM-OPEN !
-   plan NULL-PTR = IF NULL-PTR EXIT THEN
-   plan UNIT-FAM-PLAN-ADD
-   -1 UNIT-FAM-PROJECT-ON !
-   plan UNIT-FAM-REBASE
-   plan UFP.BLOB UFP-PTR@ plan UFP.CAP UFP@ REG-AOT-CHECK
-   plan ;
-
-: UNIT-FAM-VIEW ( ptr u8 -- ptr u8 n ) {: state:ptr :}
-   state NULL-PTR = IF NULL-PTR 0 EXIT THEN
-   state UFP.BLOB UFP-PTR@ state UFP.CAP UFP@ ;
-
-\ Each imported variant's carried constructor cell (UNIT-FAM-CTOR-ORDS) becomes
-\ what EACH answers for it with CTX: the checker checks the ordinal when it
-\ prepares the unit and names the live symbol once the unit's symbols are
-\ installed, before UNIT-FAM-TAKE copies the rows. 0 stays absent.
-: UNIT-FAM-CTORS ( ptr u8 ptr u8 [ ptr u8 n -- n ] -- ) {: plan:ptr ctx:ptr each :}
-   plan NULL-PTR = IF EXIT THEN
-   plan 2 UFP-COUNT@ 0 ?do
-      plan 2 i UNIT-FAM-ROW {: row:ptr :}
-      row SV.CTOR-SYM @ {: v:n :}
-      v 0 <> IF ctx v each execute row SV.CTOR-SYM ! THEN
-   loop ;
-
-\ The lookup indexes over the family, variant and field stores take the
-\ plan's rows as a declaration does: each store the plan grows gets its index
-\ built and sized for the grown capacity before its count moves, and each new
-\ row pushed in id order after every store holds its rows.
-: UNIT-FAM-INDEX-ENSURE ( ptr u8 -- ) {: plan:ptr :}
-   plan 0 UFP-COUNT@ 0 > IF TFX-ENSURE THEN
-   plan 2 UFP-COUNT@ 0 > IF VNX-ENSURE THEN
-   plan 3 UFP-COUNT@ 0 > IF FVX-ENSURE THEN ;
-
-: UNIT-FAM-INDEX-PUSH ( ptr u8 -- ) {: plan:ptr :}
-   plan 0 UFP-COUNT@ 0 > IF
-      TFAM-N @ plan 0 UFP-TBASE@ ?do i TFX-PUSH loop
-      TFAM-N @ TFX-HI !
-   THEN
-   plan 2 UFP-COUNT@ 0 > IF
-      SUMV-N @ plan 2 UFP-TBASE@ ?do i VNX-PUSH loop
-      SUMV-N @ VNX-HI !
-   THEN
-   plan 3 UFP-COUNT@ 0 > IF
-      PF-N @ plan 3 UFP-TBASE@ ?do i FVX-PUSH loop
-      PF-N @ FVX-HI !
-   THEN ;
-
-: UNIT-FAM-TAKE ( ptr u8 -- ) {: plan:ptr :}
-   plan NULL-PTR = IF EXIT THEN
-   REG-AOT-N 0 ?do
-      plan i UFP-TBASE@ i REG-AOT-COUNT <> IF
-         s" tfam: FILE family installation order changed" REG-AOT-REFUSE THEN
-      i plan i UFP-TBASE@ plan i UFP-COUNT@ + REG-AOT-ROOM
-   loop
-   plan UNIT-FAM-INDEX-ENSURE
-   plan UFP.SERIAL UFP@ PF-TX-SERIAL +!
-   REG-AOT-N 0 ?do
-      plan i UFP-COUNT@ i REG-AOT-WIDTH * {: bytes:n :}
-      bytes 0 > IF
-         plan UFP.BLOB UFP-PTR@ i REG-AOT-BLOB-STORE
-         i REG-AOT-BASE-PTR plan i UFP-TBASE@ i REG-AOT-WIDTH * +
-         bytes ARENA-COPY
-         \ Only a store the plan grows moves its count: the field store's
-         \ setter also moves PF-N, which inside a declaration would retire
-         \ that declaration's provisional rows.
-         i plan i UFP-TBASE@ plan i UFP-COUNT@ + REG-AOT-COUNT!
-      THEN
-   loop
-   plan UNIT-FAM-INDEX-PUSH
-   TFM-EPOCH+ 0 SVX-GEN ! SVX-STAMP ;
 
 : UNIT-FAM-END ( -- )
    0 UNIT-FAM-PROJECT-ON ! NULL-PTR UNIT-FAM-CUR !
@@ -6999,304 +6110,16 @@ CAST: UFP-CELLS ( ptr u8 -- ptr ptr u8 )
       dup UFP.NEXT UFP-PTR@ swap
       UNIT-FAM-PLAN-DROP
    REPEAT drop
-   NULL-PTR UNIT-FAM-FIRST ! NULL-PTR UNIT-FAM-LAST !
+   NULL-PTR UNIT-FAM-FIRST !
    UNIT-FAM-SCRATCH-RESET ;
 
-\ Exact semantic contracts for family dependencies. Source indices, interned
-\ offsets, diagnostic spans and derived lookup links are intentionally absent;
-\ names, parameter kinds, layout, fields and recursively expanded schemas are
-\ compared byte for byte. A schema application carries the defining FILE key
-\ of its family, so a different declaration cannot impersonate that edge.
-PTR-VARIABLE UNIT-FAM-CON-P
-variable UNIT-FAM-CON-N
-variable UNIT-FAM-CON-LIMIT
-variable UNIT-FAM-CON-MODE
 create UNIT-FAM-CON-CELL 8 allot
-
-: UNIT-FAM-CON-OUT ( ptr u8 n -- ) {: src:ptr len:n :}
-   len 0 < IF s" tfam: negative FILE family contract extent" REG-AOT-REFUSE THEN
-   UNIT-FAM-CON-MODE @ 0 <> IF
-      UNIT-FAM-CON-MODE @ 2 = IF
-         len UNIT-FAM-CON-LIMIT @ UNIT-FAM-CON-N @ - > IF
-            s" tfam: FILE family contract is truncated" REG-AOT-REFUSE THEN
-         src len UNIT-FAM-CON-P @ UNIT-FAM-CON-N @ + len CORE-STR= 0= IF
-            s" tfam: FILE family dependency changed semantics" UNIT-FAM-CHANGED
-         THEN
-      ELSE
-         src UNIT-FAM-CON-P @ UNIT-FAM-CON-N @ + len ARENA-COPY
-      THEN
-   THEN
-   len UNIT-FAM-CON-N +! ;
-
-: UNIT-FAM-CON-CELL+ ( n -- )
-   UNIT-FAM-CON-CELL REG-AOT-U64!
-   UNIT-FAM-CON-CELL 8 UNIT-FAM-CON-OUT ;
-
-: UNIT-FAM-CON-STR ( ptr u8 n -- ) {: a:ptr u:n :}
-   u UNIT-FAM-CON-CELL+
-   a u UNIT-FAM-CON-OUT ;
-
-: UNIT-FAM-CON-COUNT ( n -- n ) {: k:n :}
-   k REG-AOT-COUNT UNIT-FAM-ACC !
-   UNIT-FAM-PROJECT-ON @ IF
-      UNIT-FAM-FIRST @
-      BEGIN dup NULL-PTR <> WHILE
-         dup k UFP-COUNT@ UNIT-FAM-ACC +!
-         UFP.NEXT UFP-PTR@
-      REPEAT drop
-   THEN UNIT-FAM-ACC @ ;
-
-: UNIT-FAM-CON-ROW ( n n -- ptr n ) {: k:n id:n :}
-   UNIT-FAM-PROJECT-ON @ IF
-      k id 1 UNIT-FAM-PROJECT-VIEW CELL-VIEW EXIT THEN
-   id 0 < id k REG-LIVE-COUNT >= or IF
-      s" tfam: FILE contract row is outside the registry" REG-AOT-REFUSE THEN
-   k REG-AOT-BASE-PTR id k REG-AOT-WIDTH * + CELL-VIEW ;
-
-: UNIT-FAM-CON-NAME ( n n -- ) {: off:n len:n :}
-   UNIT-FAM-PROJECT-ON @ IF
-      5 off len UNIT-FAM-PROJECT-VIEW len UNIT-FAM-CON-STR EXIT THEN
-   off len TF-OFF$ UNIT-FAM-CON-STR ;
-
-: UNIT-FAM-CON-PLAN-KEY ( n -- ptr u8 n bool ) {: id:n :}
-   UNIT-FAM-FIRST @
-   BEGIN dup NULL-PTR <> WHILE
-      dup 0 UFP-TBASE@ {: base:n :}
-      dup 0 UFP-COUNT@ {: count:n :}
-      id base >= id base count + < and IF
-         dup UFP.KEYS UFP-PTR@ UNIT-FAM-KEY-AT !
-         id base - 0 ?do
-            UNIT-FAM-KEY-AT @ dup REG-AOT-U64@ 8 + + UNIT-FAM-KEY-AT !
-         loop
-         drop UNIT-FAM-KEY-AT @ dup REG-AOT-U64@ {: n:n :}
-         8 + n RES-TRUE EXIT
-      THEN
-      UFP.NEXT UFP-PTR@
-   REPEAT drop NULL-PTR 0 RES-FALSE ;
-
-\ While checking (mode 2), an absent identity is a changed dependency.
-: UNIT-FAM-CON-ABSENT ( ptr u8 n -- )
-   UNIT-FAM-CON-MODE @ 2 = IF UNIT-FAM-CHANGED THEN
-   2drop CHECKER-REG:UNIT-BAD ;
-
-
-: UNIT-FAM-CON-FKEY ( n -- ptr u8 n ) {: id:n :}
-   id TFAM-N @ < IF
-      id FAMILY-KEY-XT IF EXIT THEN 2drop
-   THEN
-   id UNIT-FAM-CON-PLAN-KEY IF EXIT THEN 2drop
-   s" tfam: FILE contract family identity is absent" UNIT-FAM-CON-ABSENT ;
-
-: UNIT-FAM-CON-CKEY ( n -- ptr u8 n ) {: id:n :}
-   id CTN @ < IF
-      id CON-KEY-XT IF EXIT THEN 2drop
-   THEN
-   UNIT-FAM-FIRST @
-   BEGIN dup NULL-PTR <> WHILE
-      dup UFP.CMAP UFP-PTR@ {: map:ptr :}
-      dup UFP.CN UFP@ 0 ?do
-         map i 4 cells * + {: pair:ptr :}
-         pair CELL + CELL-VIEW @ id = IF
-            dup UFP.SRC UFP-PTR@
-            pair 2 cells + CELL-VIEW @ +
-            pair 3 cells + CELL-VIEW @ rot drop unloop EXIT
-         THEN
-      loop
-      UFP.NEXT UFP-PTR@
-   REPEAT drop
-   s" tfam: FILE contract constructor identity is absent" UNIT-FAM-CON-ABSENT ;
-
-: UNIT-FAM-CON-FAMREF ( n -- ) {: id:n :}
-   id UNIT-FAM-STABLE-N < IF
-      0 UNIT-FAM-CON-CELL+ id UNIT-FAM-CON-CELL+ EXIT THEN
-   1 UNIT-FAM-CON-CELL+
-   id UNIT-FAM-CON-FKEY UNIT-FAM-CON-STR ;
-
-: UNIT-FAM-CON-CONREF ( n -- ) {: id:n :}
-   id CC-MAX < IF
-      0 UNIT-FAM-CON-CELL+ id UNIT-FAM-CON-CELL+ EXIT THEN
-   1 UNIT-FAM-CON-CELL+
-   id UNIT-FAM-CON-CKEY UNIT-FAM-CON-STR ;
-
-: UNIT-FAM-CON-SCHEMA ( n -- ) {: id:n :}
-   6 id UNIT-FAM-CON-ROW {: row:ptr :}
-   row @ {: tag:n :}
-   tag UNIT-FAM-CON-CELL+
-   tag SCH-PARAM = IF row CELL + @ UNIT-FAM-CON-CELL+ EXIT THEN
-   tag SCH-CON = IF row CELL + @ UNIT-FAM-CON-CONREF EXIT THEN
-   tag SCH-PTR = IF row CELL + @ recurse EXIT THEN
-   tag SCH-APP = IF
-      row CELL + @ UNIT-FAM-CON-FAMREF
-      row 3 cells + @ {: count:n :}
-      count UNIT-FAM-CON-CELL+
-      count 0 ?do
-         7 row 2 cells + @ i + UNIT-FAM-CON-ROW @ recurse
-      loop EXIT
-   THEN
-   tag SCH-QUOT = IF
-      row CELL + @ UNIT-FAM-CON-CELL+
-      row 3 cells + @ {: count:n :}
-      count UNIT-FAM-CON-CELL+
-      count 0 ?do
-         7 row 2 cells + @ i + UNIT-FAM-CON-ROW @ recurse
-      loop EXIT
-   THEN
-   tag SCH-ROW = IF
-      row 2 cells + @ {: count:n :}
-      count UNIT-FAM-CON-CELL+
-      count 0 ?do
-         7 row CELL + @ i + UNIT-FAM-CON-ROW @ recurse
-      loop EXIT
-   THEN
-   s" tfam: FILE contract has invalid schema" REG-AOT-REFUSE ;
-
-: UNIT-FAM-CON-FAMILY ( n -- ) {: id:n :}
-   0 id UNIT-FAM-CON-ROW {: row:ptr :}
-   row TF.PKG-OFF @ row TF.PKG-U @ UNIT-FAM-CON-NAME
-   row TF.NAME-OFF @ row TF.NAME-U @ UNIT-FAM-CON-NAME
-   row TF.VIS @ UNIT-FAM-CON-CELL+
-   row TF.ARITY @ UNIT-FAM-CON-CELL+
-   row TF.KIND @ UNIT-FAM-CON-CELL+
-   row TF.LAYOUT @ UNIT-FAM-CON-CELL+
-   row TF.SLOTS @ UNIT-FAM-CON-CELL+
-   row TF.TAGW @ UNIT-FAM-CON-CELL+
-   row TF.DERIVE @ UNIT-FAM-CON-CELL+
-   row TF.OPAQUE @ UNIT-FAM-CON-CELL+
-   row TF.SCHEMA-ROOT @ 0 <> IF
-      1 UNIT-FAM-CON-CELL+
-      7 row TF.SCHEMA-ROOT @ UNIT-FAM-CON-ROW @ UNIT-FAM-CON-SCHEMA
-   ELSE 0 UNIT-FAM-CON-CELL+ THEN
-   row TF.ARITY @ 0 ?do
-      1 row TF.PK-START @ i + UNIT-FAM-CON-ROW @ UNIT-FAM-CON-CELL+
-   loop
-   row TF.VAR-COUNT @ UNIT-FAM-CON-CELL+
-   row TF.VAR-COUNT @ 0 ?do
-      2 row TF.VAR-START @ i + UNIT-FAM-CON-ROW {: variant:ptr :}
-      variant SV.NAME-OFF @ variant SV.NAME-U @ UNIT-FAM-CON-NAME
-      variant SV.CTOR-PKG-OFF @ variant SV.CTOR-PKG-U @ UNIT-FAM-CON-NAME
-      variant SV.TAG @ UNIT-FAM-CON-CELL+
-      variant SV.PAYCELLS @ UNIT-FAM-CON-CELL+
-      variant SV.SCH-COUNT @ UNIT-FAM-CON-CELL+
-      variant SV.SCH-COUNT @ 0 ?do
-         7 variant SV.SCH-START @ i + UNIT-FAM-CON-ROW @
-         UNIT-FAM-CON-SCHEMA
-      loop
-   loop
-   row TF.FLD-COUNT @ UNIT-FAM-CON-CELL+
-   row TF.FLD-COUNT @ 0 ?do
-      3 row TF.FLD-START @ i + UNIT-FAM-CON-ROW {: field:ptr :}
-      field PF.NAME-OFF @ field PF.NAME-U @ UNIT-FAM-CON-NAME
-      field PF.VAR @ -1 = IF -1 ELSE
-         field PF.VAR @ row TF.VAR-START @ - THEN UNIT-FAM-CON-CELL+
-      field PF.SLOT @ UNIT-FAM-CON-CELL+
-      field PF.CELLS @ UNIT-FAM-CON-CELL+
-      field PF.BYTE-OFF @ UNIT-FAM-CON-CELL+
-      field PF.BYTES @ UNIT-FAM-CON-CELL+
-      field PF.ALIGN @ UNIT-FAM-CON-CELL+
-      field PF.FLAGS @ UNIT-FAM-CON-CELL+
-      7 field PF.SCH @ UNIT-FAM-CON-ROW @ UNIT-FAM-CON-SCHEMA
-   loop
-   0
-   4 UNIT-FAM-CON-COUNT 0 ?do
-      4 i UNIT-FAM-CON-ROW LAY.FAM @ id = IF 1+ THEN
-   loop
-   dup UNIT-FAM-CON-CELL+
-   drop
-   4 UNIT-FAM-CON-COUNT 0 ?do
-      4 i UNIT-FAM-CON-ROW {: lay:ptr :}
-      lay LAY.FAM @ id = IF
-         lay LAY.POLICY @ UNIT-FAM-CON-CELL+
-         lay LAY.SIZE @ UNIT-FAM-CON-CELL+
-         lay LAY.ALIGN @ UNIT-FAM-CON-CELL+
-         lay LAY.TAGW @ UNIT-FAM-CON-CELL+
-      THEN
-   loop ;
-
-: UNIT-FAM-CONTRACT-SIZE ( n -- n )
-   0 UNIT-FAM-CON-MODE ! 0 UNIT-FAM-CON-N !
-   UNIT-FAM-CON-FAMILY UNIT-FAM-CON-N @ ;
-
-: UNIT-FAM-CONTRACT-WRITE ( n ptr u8 -- ptr u8 )
-   {: id:n dst:ptr :}
-   1 UNIT-FAM-CON-MODE ! 0 UNIT-FAM-CON-N ! dst UNIT-FAM-CON-P !
-   id UNIT-FAM-CON-FAMILY
-   dst UNIT-FAM-CON-N @ + ;
-
-: UNIT-FAM-CONTRACT-CHECK ( n ptr u8 n -- )
-   {: id:n src:ptr len:n :}
-   2 UNIT-FAM-CON-MODE ! 0 UNIT-FAM-CON-N !
-   src UNIT-FAM-CON-P ! len UNIT-FAM-CON-LIMIT !
-   id UNIT-FAM-CON-FAMILY
-   UNIT-FAM-CON-N @ len <> IF
-      s" tfam: FILE family contract has trailing bytes" REG-AOT-REFUSE THEN ;
-
-: UNIT-CON-CONTRACT-CONTENT ( n -- ) {: id:n :}
-   id CT-NAME$ UNIT-FAM-CON-STR
-   id CT-PKG$ UNIT-FAM-CON-STR
-   id CT-CLASS@ UNIT-FAM-CON-CELL+
-   id CT-WIDTH@ UNIT-FAM-CON-CELL+
-   id CT-SIGN@ UNIT-FAM-CON-CELL+ ;
-
-: UNIT-CON-CONTRACT-SIZE ( n -- n )
-   0 UNIT-FAM-CON-MODE ! 0 UNIT-FAM-CON-N !
-   UNIT-CON-CONTRACT-CONTENT UNIT-FAM-CON-N @ ;
-
-: UNIT-CON-CONTRACT-WRITE ( n ptr u8 -- ptr u8 )
-   {: id:n dst:ptr :}
-   1 UNIT-FAM-CON-MODE ! 0 UNIT-FAM-CON-N ! dst UNIT-FAM-CON-P !
-   id UNIT-CON-CONTRACT-CONTENT
-   dst UNIT-FAM-CON-N @ + ;
-
-PTR-VARIABLE UNIT-CON-CON-IN
-PTR-VARIABLE UNIT-CON-CON-END
-
-: UNIT-CON-CON-READ ( n -- ptr u8 ) {: n:n :}
-   n 0 < n UNIT-CON-CON-END @ UNIT-CON-CON-IN @ - > or IF
-      s" tfam: malformed FILE constructor contract" REG-AOT-REFUSE THEN
-   UNIT-CON-CON-IN @ dup n + UNIT-CON-CON-IN ! ;
-
-: UNIT-CON-CON-CELL ( -- n ) 8 UNIT-CON-CON-READ REG-AOT-U64@ ;
-
-: UNIT-CON-CON-STR ( -- ptr u8 n )
-   UNIT-CON-CON-CELL {: len:n :}
-   len UNIT-CON-CON-READ len ;
-
-: UNIT-CON-CONTRACT-CHECK ( n ptr u8 n ptr u8 n -- )
-   {: id:n key:ptr keyu:n src:ptr len:n :}
-   id CTN @ < IF
-      2 UNIT-FAM-CON-MODE ! 0 UNIT-FAM-CON-N !
-      src UNIT-FAM-CON-P ! len UNIT-FAM-CON-LIMIT !
-      id UNIT-CON-CONTRACT-CONTENT
-      UNIT-FAM-CON-N @ len <> IF
-         s" tfam: FILE constructor contract has trailing bytes" REG-AOT-REFUSE
-      THEN EXIT
-   THEN
-   src UNIT-CON-CON-IN ! src len + UNIT-CON-CON-END !
-   UNIT-CON-CON-STR {: name:ptr nameu:n :}
-   UNIT-CON-CON-STR {: pkg:ptr pkgu:n :}
-   UNIT-CON-CON-CELL CT-LINEAR <> IF
-      s" tfam: FILE constructor class changed" REG-AOT-REFUSE THEN
-   UNIT-CON-CON-CELL 64 <> IF
-      s" tfam: FILE constructor width changed" REG-AOT-REFUSE THEN
-   UNIT-CON-CON-CELL CS-NONE <> IF
-      s" tfam: FILE constructor signedness changed" REG-AOT-REFUSE THEN
-   UNIT-CON-CON-IN @ UNIT-CON-CON-END @ <> IF
-      s" tfam: FILE constructor contract has trailing bytes" REG-AOT-REFUSE THEN
-   key keyu name nameu pkg pkgu
-      CHECKER-REG:UNIT-CON-PROJECT-CONTRACT-XT 0= IF
-      s" tfam: FILE constructor name or package changed" REG-AOT-REFUSE THEN ;
 
 \ The copied plans outlive parser and contract staging, including a capture
 \ while projection is active. Clear only the staging at its owner boundaries.
 : UNIT-FAM-SCRATCH-CLEAR ( -- )
    REG-AOT-N 0 ?do NULL-PTR i UNIT-FAM-RAW! loop
-   NULL-PTR UNIT-FAM-IN ! NULL-PTR UNIT-FAM-LIMIT !
-   0 UNIT-FAM-ACC !
-   NULL-PTR UNIT-FAM-MAP-CUR ! NULL-PTR UNIT-FAM-KEY-AT !
-   NULL-PTR UNIT-FAM-CON-P ! 0 UNIT-FAM-CON-N !
-   0 UNIT-FAM-CON-LIMIT ! 0 UNIT-FAM-CON-MODE !
    0 UNIT-FAM-CON-CELL REG-AOT-U64!
-   NULL-PTR UNIT-CON-CON-IN ! NULL-PTR UNIT-CON-CON-END !
    UNIT-FAM-COVER-RELEASE ;
 
 : UNIT-FAM-SCRATCH-INSTALL ( -- )
@@ -7304,12 +6127,6 @@ PTR-VARIABLE UNIT-CON-CON-END
 UNIT-FAM-SCRATCH-INSTALL
 
 : UNIT-FAM-CONTRACT-INSTALL ( -- )
-   [: UNIT-FAM-CONTRACT-SIZE ;] is UNIT-FAM-CONTRACT-SIZE-XT
-   [: UNIT-FAM-CONTRACT-WRITE ;] is UNIT-FAM-CONTRACT-WRITE-XT
-   [: UNIT-FAM-CONTRACT-CHECK ;] is UNIT-FAM-CONTRACT-CHECK-XT
-   [: UNIT-CON-CONTRACT-SIZE ;] is UNIT-CON-CONTRACT-SIZE-XT
-   [: UNIT-CON-CONTRACT-WRITE ;] is UNIT-CON-CONTRACT-WRITE-XT
-   [: UNIT-CON-CONTRACT-CHECK ;] is UNIT-CON-CONTRACT-CHECK-XT
    [: UNIT-FAM-PROJECT-VIEW ;] is UNIT-FAM-PROJECT-VIEW-XT ;
 UNIT-FAM-CONTRACT-INSTALL
 
@@ -7337,17 +6154,7 @@ UNIT-FAM-RESET-INSTALL
 \ The checker's friend hooks: checker.f loads before this file and reaches
 \ family resolution and arities through these defers during signature parsing.
 : TFAM-HOOK-INSTALL ( -- )
-   [: TFAM-N@ ;] is CHECKER-REG:UNIT-TFAM-N@
-   [: UNIT-FAM-MARK ;] is CHECKER-REG:UNIT-TFAM-MARK
-   [: UNIT-FAM-SIZE ;] is CHECKER-REG:UNIT-TFAM-SIZE
-   [: UNIT-FAM-SAVE ;] is CHECKER-REG:UNIT-TFAM-SAVE
-   [: UNIT-FAM-REF+ ;] is CHECKER-REG:UNIT-TFAM-REF
    [: UNIT-FAM-MAP-ID ;] is CHECKER-REG:UNIT-TFAM-MAP
-   [: UNIT-FAM-BEGIN ;] is CHECKER-REG:UNIT-TFAM-BEGIN
-   [: UNIT-FAM-PREPARE ;] is CHECKER-REG:UNIT-TFAM-PREPARE
-   [: UNIT-FAM-VIEW ;] is CHECKER-REG:UNIT-TFAM-VIEW
-   [: UNIT-FAM-TAKE ;] is CHECKER-REG:UNIT-TFAM-TAKE
-   [: UNIT-FAM-CTORS ;] is CHECKER-REG:UNIT-TFAM-CTORS
    [: UNIT-FAM-END ;] is CHECKER-REG:UNIT-TFAM-END
    [: UNIT-FAMILY-NAME? ;] is CK-UNIT-FAMILY?
    [: TFAM-SIG-RESOLVE ;] is TFAM-RESOLVE-XT

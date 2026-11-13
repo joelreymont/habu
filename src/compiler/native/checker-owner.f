@@ -394,13 +394,6 @@ private
 
 public
 
-\ The live checker's unit-export fact count (checker.f CHECKER-UNIT-FACTS), read
-\ as a field: a checked body may not call that word by name (E-CAP-TRUSTED).
-: UNIT-FACTS ( -- n bool )
-   CHECKER-OWNER-EXT:UNIT-FACTS-OFF OPTIONAL-FIELD {: xt:n :}
-   xt 0= if 0 false exit then
-   xt AS-N execute true ;
-
 \ Whether this definition binds from an unjudged scan that left a construct
 \ open (checker.f UNJUDGED-CLOSED?): its window answers no binding.
 : UNJUDGED-OPEN? ( -- bool )
