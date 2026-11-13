@@ -5,7 +5,6 @@ priority: 2
 issue-type: task
 created-at: "2026-10-28T14:52:51.680038+02:00"
 blocks:
-  - habu-delete-the-jit-d9fdaf67
   - habu-emit-wasm-from-0d5dab47
 ---
 
