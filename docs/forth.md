@@ -2647,10 +2647,10 @@ sections above.
   cannot name a family (`STRUCTURE vr` is refused).
 - **`set-check` turns no checking off.** `set-check ( xt -- )` stores the
   cell `check@` reads and `0 set-check` empties it, but hb's interpreter
-  calls the checker by name: after `0 set-check`, `' NAME set-check` or
-  `discard-check`, every definition, immediate and top-level token is
-  checked, and a cell pushed meanwhile keeps its type. Use a `PRIM: … PRIM;`
-  axiom for a genuine missing primitive model.
+  calls the checker by name: after `0 set-check` or `' NAME set-check`,
+  every definition, immediate and top-level token is checked, and a cell
+  pushed meanwhile keeps its type. Use a `PRIM: … PRIM;` axiom for a genuine
+  missing primitive model.
 - **A pre-hook word needs an external row.** A word defined
   before the check hook has no authority without a `PRIM:` axiom or a
   `TRUSTED:` declaration after the checker claiming it. A

@@ -237,7 +237,6 @@ $1B8 constant BODYLEN-CELL
 $1C0 constant RBASE-CELL
 $1C8 constant LOOPSP-CELL
 STACK-ABI:BASE-CELL constant S0-CELL
-$3640 constant REPLH-CELL               \ claimed; no code reads or writes it
 $3670 constant ARGC-CELL
 $3678 constant ARGV-CELL
 $3680 constant ENVP-CELL
@@ -842,8 +841,7 @@ COMPILE-PREFLIGHT-CELL constant ENGINE-HOOK-OFF
 2 cells constant ENGINE-HOOK-LEN
 \ SUSP-HOOK-CELL, SUSP-PREFLIGHT-CELL: the (hook, preflight) pair `0 set-check`
 \ suspends until `set-check` of the same hook resumes it. Both start zero;
-\ after the seal the set-check and discard-check prims are their only
-\ writers. The pair is a PROT-GUARD band of its own: a resume copies
+\ after the seal the set-check prim is their only writer. The pair is a PROT-GUARD band of its own: a resume copies
 \ SUSP-PREFLIGHT-CELL into COMPILE-PREFLIGHT-CELL without set-preflight's window
 \ check, so a raw post-seal store here would be a second, unchecked preflight
 \ installer.
@@ -914,16 +912,6 @@ $2838 constant TOKVSP-CELL
 \ address like TKA-CELL, zeroed at snapshot: no native-layout row, no
 \ stripped-image claim.
 $2850 constant PENDTKA-CELL
-\ JIT-QUOT: both kernels' compile reset zeroes SP-CELL; nothing else reads
-\ the band.
-package JIT-QUOT
-public
-32 constant LEVELS                                  \ quotations open at once
-32 constant FRAME-BYTES
-$2858 constant SP-CELL                              \ frames parked
-$2860 constant STK-OFF
-STK-OFF LEVELS 1- FRAME-BYTES * + constant END
-;package
 \ FLOORREC-CELL: runtime address of the underdepth throw entry, stored at
 \ startup because the crash handler that jumps there cannot name an emit-time
 \ label: a stripped image bakes the same handler. Zero means no entry, and the

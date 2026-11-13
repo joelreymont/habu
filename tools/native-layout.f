@@ -25,7 +25,6 @@ create SLOTS
    NCOMP-DISPATCH:DECL-CELL ,            1 ,
    NCOMP-DISPATCH:TARGET-DECL-CELL ,     1 ,
    APP-ENTRY:XT-CELL ,                  0 ,
-   REPLH-CELL ,                         0 ,
    BPWBASE-CELL ,                       1 ,
    LASTC-CELL ,                         0 ,
    NATIVE-OBS-CELLS:HOST-INVALIDATE ,   0 ,

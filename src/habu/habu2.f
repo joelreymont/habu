@@ -57,15 +57,6 @@ using RT
 using SYSCALL
 
 package ENGINE-EMIT
-\ Emitter selection only. Chosen offsets are baked as instruction literals;
-\ no emitted data cell can change a selected code entry's scope kind.
-variable EM-SCOPE-CHILD-OFF
-variable EM-C2-MUT-OFF
-variable EM-C2-MUT-LOAN-OFF
-variable EM-C2-INIT-OFF
-variable EM-C2-RECORDS-OFF
-variable EM-C2-RECORD-OFF
-variable EM-C2-FIELD-OFF
 private
 
 \ A carrier word with its destination field cleared: the chain emitters OR in
@@ -2379,7 +2370,6 @@ public
    9 DATA LVD-CELL STR,  9 DATA VSP-CELL STR,  9 DATA QPATCH-CELL STR,
    9 DATA FRAME-CELL STR,  9 DATA QFRAME-CELL STR,
    9 DATA JIT-SNAP:SP-CELL STR,   \ the JIT's BEGIN depth dies with the definition
-   9 DATA JIT-QUOT:SP-CELL STR,   \ ...and so do its parked quotations
    9 DATA BODYLEN-CELL STR,  9 DATA EXITH-CELL STR,
    9 DATA PEND-CELL STR,  9 DATA CMM-CELL STR,
    9 DATA CMFRD-CELL STR,  9 DATA CMBK-CELL STR,
@@ -2965,8 +2955,7 @@ package ENGINE-EMIT
 package ENGINE-EMIT
 public
 : EMIT-RESET-BUILDER ( -- )
-   ASM-INIT  ENGINE-PRIMS:RESET
-   0 DIVISION-PRIM-ROW ! ;
+   ASM-INIT  ENGINE-PRIMS:RESET ;
 ;package
 
 package LABELS
@@ -3049,12 +3038,11 @@ variable LINKED-SCOPES
 \ Kind k's chain label at cell k, k from 2 to 8.
 create SCOPE-SITES 9 cells allot
 
-\ Answers kind k for the entry in A when it equals kind k's entry: a linked
-\ engine's from a chain, an emitted image's at off past the dictionary when off
-\ >= 0. Every test binds its next label, so the emitted bytes and labels do not
-\ depend on which entries a complete runtime binds.
-: SCOPE-TEST ( n n label -- )
-   {: off:n k:n done:label :}
+\ Answers kind k for the entry in A when it equals kind k's entry, a linked
+\ engine's from a chain. Every test binds its next label, so the emitted bytes
+\ and labels do not depend on which entries a complete runtime binds.
+: SCOPE-TEST ( n label -- )
+   {: k:n done:label :}
    LBL {: next:label :}
    LINKED-SCOPES @ 0<> if
       LBL dup  SCOPE-SITES k cells +  LABEL!  LBL,
@@ -3063,28 +3051,22 @@ create SCOPE-SITES 9 cells allot
       5 next CBZ,
       A 5 CMP,  C-NE next BCOND,
       A k MOVZ,  done B,
-   else
-      off 0 >= if
-         5 DICT-SIZE off + LIT64,  5 DBASE 5 ADD,
-         A 5 CMP,  C-NE next BCOND,
-         A k MOVZ,  done B,
-      then
    then
    next LBL, ;
 
-\ Entry kinds are fixed by the image emitter or the link's chains in code,
-\ never by source declarations or writable DATA. A restored alias has the same
+\ Entry kinds are fixed by the link's chains in code, never by source
+\ declarations or writable DATA. A restored alias has the same
 \ code entry and thus the same kind.
 : BSCOPE-KIND ( -- )
    A G-POP
    LBL {: done:label :}
-   EM-C2-RECORDS-OFF @ 6 done SCOPE-TEST
-   EM-C2-RECORD-OFF @ 7 done SCOPE-TEST
-   EM-C2-FIELD-OFF @ 8 done SCOPE-TEST
-   EM-C2-INIT-OFF @ 5 done SCOPE-TEST
-   EM-C2-MUT-OFF @ 3 done SCOPE-TEST
-   EM-C2-MUT-LOAN-OFF @ 4 done SCOPE-TEST
-   EM-SCOPE-CHILD-OFF @ 2 done SCOPE-TEST
+   6 done SCOPE-TEST
+   7 done SCOPE-TEST
+   8 done SCOPE-TEST
+   5 done SCOPE-TEST
+   3 done SCOPE-TEST
+   4 done SCOPE-TEST
+   2 done SCOPE-TEST
    A 0 MOVZ,
    done LBL,
    A G-PUSH ;
@@ -3239,13 +3221,6 @@ public
    \ An emission chooses no scoped entry; a link binds entries through
    \ LINK-SCOPE-ENTRIES.
    0 LINKED-SCOPES !
-   -1 EM-SCOPE-CHILD-OFF !
-   -1 EM-C2-MUT-OFF !
-   -1 EM-C2-MUT-LOAN-OFF !
-   -1 EM-C2-INIT-OFF !
-   -1 EM-C2-RECORDS-OFF !
-   -1 EM-C2-RECORD-OFF !
-   -1 EM-C2-FIELD-OFF !
    EMIT-RESET-BUILDER
    LABELS:INIT ;
 

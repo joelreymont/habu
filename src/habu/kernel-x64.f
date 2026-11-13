@@ -3575,11 +3575,6 @@ private
    bad X64CODE:LBL,  S\" set-check: invalid checker xt\n" HOOK-BAD-RC STDERR-EXIT,
    done X64CODE:LBL, ;
 
-\ discard-check ( -- ): clears the SUSP-HOOK pair and nothing else, so no later
-\ `set-check` resumes the parked hook. The rule is habu1.f BDISCARDCHECK's.
-: DISCARD-CHECK-BODY ( -- )
-   RCX ZERO-REG,  RCX SUSP-HOOK-CELL CELL!,  RCX SUSP-PREFLIGHT-CELL CELL!, ;
-
 \ set-preflight ( xt -- ): installs once. With the cell set, the same xt is
 \ inert and any other refused; with it empty, as `0 set-check` leaves it, the
 \ xt must lie in the window.
@@ -3615,7 +3610,6 @@ private
 : HOOKS, ( -- )
    s" set-check" [: SET-CHECK-BODY ;] PRIM
    s" check@" [: RAX HOOK-CELL CELL@,  RAX PUSH, ;] PRIM
-   s" discard-check" [: DISCARD-CHECK-BODY ;] PRIM
    s" set-preflight" [: SET-PREFLIGHT-BODY ;] PRIM
    s" set-top-check" [: SET-TOP-CHECK-BODY ;] PRIM
    s" top-check@" [: RAX TOP-HOOK-CELL CELL@,  RAX PUSH, ;] PRIM ;
@@ -5431,7 +5425,7 @@ variable GROW-CELL
    RAX NCOMP-DISPATCH:DEF-TIER-CELL CELL!,
    RAX LVD-CELL CELL!,  RAX VSP-CELL CELL!,
    RAX QPATCH-CELL CELL!,  RAX FRAME-CELL CELL!,  RAX QFRAME-CELL CELL!,
-   RAX JIT-SNAP:SP-CELL CELL!,  RAX JIT-QUOT:SP-CELL CELL!,
+   RAX JIT-SNAP:SP-CELL CELL!,
    RAX LOCN-CELL CELL!,  RAX BODYLEN-CELL CELL!,  RAX EXITH-CELL CELL!,
    RAX PEND-CELL CELL!,  RAX CMM-CELL CELL!,
    RAX CMFRD-CELL CELL!,  RAX CMBK-CELL CELL!,
@@ -5894,8 +5888,8 @@ $43DFFFFFFFFFFFFF constant REALINT-TOP  \ every double above it is 2^63 or more
    XMM0 XMM0 ASM-SINK ENC-UCOMISD-RR  C-P RAX RCX ASM-SINK ENC-CMOVCC
    RAX TOP!, ;
 
-\ Register the body under the row's name and mark it scalar: habu1.f
-\ FPRIM-L-SCALAR's twin, for a straight-line ( n -- n ) body with no call.
+\ Register the body under the row's name and mark it scalar, for a
+\ straight-line ( n -- n ) body with no call.
 : SCALAR ( ptr u8 n [ -- ] -- )
    ARGS
    EMIT-ROW ENGINE-PRIMS:MARK-SCALAR ;

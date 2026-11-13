@@ -101,15 +101,13 @@ public
    end KERNEL-BEGIN @ > and if
       SEEDED-N @ 0 ?do 0 i IMPL-LIVE ! loop
       0 data-base NATIVE-HOST-CELLS:SCALAR-PRIM + !
-      0 data-base NATIVE-HOST-CELLS:DIVISION-PRIM + !
    then
    IMPL-N @ 0 ?do
       i IMPL-ENTRY @ end <
       i IMPL-ENTRY @ i IMPL-LEN @ + first > and if 0 i IMPL-LIVE ! then
    loop ;
 
-\ The digest slot follows the entire immutable kernel code interval. A marker
-\ without that producer cannot claim a kernel-owned division implementation.
+\ The digest slot follows the entire immutable kernel code interval.
 : KERNEL-OWNER ( -- )
    0 KERNEL-BEGIN !  0 KERNEL-END !
    SOURCE-PRODUCER:KERNEL$
@@ -144,31 +142,16 @@ public
       ENDOF
    ;MATCH ;
 
-\ The scalar body is call-free. Division is partial: its guard can branch to
-\ the sealed terminal (DIV-ZERO) helper and throw E-DIV-ZERO. The emitter has
-\ published the marker only after both spans finished.
+\ The scalar body is call-free.
 : SEED-SCALAR ( -- )
    data-base NATIVE-HOST-CELLS:SCALAR-PRIM + @ {: marker:n :}
    marker 0<> if marker SEED-ROW then ;
-
-: SEED-DIVISION ( -- )
-   data-base NATIVE-HOST-CELLS:DIVISION-PRIM + @ {: marker:n :}
-   marker 0= if exit then
-   KERNEL-BEGIN @ 0= if E-STATE throw then
-   marker 0< marker ndict@ > or if E-STATE throw then
-   marker 1- XREF-REC {: rec:ptr :}
-   rec XREF-START {: entry:n :}
-   rec XREF-CODE-BYTES {: len:n :}
-   entry KERNEL-BEGIN @ < entry KERNEL-END @ >= or if E-STATE throw then
-   len 0 <= len KERNEL-END @ entry - > or if E-STATE throw then
-   marker SEED-ROW ;
 
 : INSTALL ( -- )
    OWNER-INSTALLED @ 0<> if exit then
    0 IMPL-N !
    KERNEL-OWNER
    SEED-SCALAR
-   SEED-DIVISION
    IMPL-N @ SEEDED-N !
    ['] INVALIDATE data-base NATIVE-OBS-CELLS:HOST-INVALIDATE + xt!
    1 OWNER-INSTALLED ! ;

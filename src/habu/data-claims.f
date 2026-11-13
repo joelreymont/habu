@@ -142,8 +142,6 @@ create TAB
    SUSP-HOOK-OFF                      SUSP-HOOK-LEN           CLAIM SUSP-HOOK
    REFUSAL-ABI:CODE-CELL              1 cells                 CLAIM REFUSAL-ABI:CODE-CELL
    EXIT-HOOK-CELL                     1 cells                 CLAIM EXIT-HOOK-CELL
-   JIT-QUOT:SP-CELL                   1 cells                 CLAIM JIT-QUOT-SP-CELL
-   JIT-QUOT:STK-OFF                   JIT-QUOT:END JIT-QUOT:STK-OFF -  CLAIM JIT-QUOT-FRAMES
    FLOORREC-CELL                      1 cells                 CLAIM FLOORREC-CELL
    FAULT-MARK-CELL                    1 cells                 CLAIM FAULT-MARK-CELL
    DBASE-CELL                         1 cells                 CLAIM DBASE-CELL
@@ -160,12 +158,10 @@ create TAB
    NATIVE-OBS-CELLS:INVALIDATE        1 cells                 CLAIM NATIVE-OBS-CELLS:INVALIDATE
    NATIVE-OBS-CELLS:HOST-INVALIDATE   1 cells                 CLAIM NATIVE-OBS-CELLS:HOST-INVALIDATE
    NATIVE-HOST-CELLS:SCALAR-PRIM      1 cells                 CLAIM NATIVE-HOST-CELLS:SCALAR-PRIM
-   NATIVE-HOST-CELLS:DIVISION-PRIM    1 cells                 CLAIM NATIVE-HOST-CELLS:DIVISION-PRIM
    DEF-OCC:PTR-CELL                   1 cells                 CLAIM DEF-OCC:PTR-CELL
    LOCNAMES                           LOC-RECS LOC-REC *      CLAIM LOCNAMES
    CAPDEPTH-CELL                      1 cells                 CLAIM CAPDEPTH-CELL
    TOKDEPTH-CELL                      1 cells                 CLAIM TOKDEPTH-CELL
-   REPLH-CELL                         1 cells                 CLAIM REPLH-CELL
    ARGC-CELL                          1 cells                 CLAIM ARGC-CELL
    ARGV-CELL                          1 cells                 CLAIM ARGV-CELL
    ENVP-CELL                          1 cells                 CLAIM ENVP-CELL

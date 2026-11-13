@@ -26,7 +26,6 @@ DYNAMIC-BUFFER NAMES n
 variable USED
 variable NAME-BYTES
 variable SCALAR-ROW
-variable DIVISION-ROW
 \ Nonzero while an x86-64 build carries a complete captured runtime; RESET
 \ clears it and the x86-64 builder arms it (tools/native-emit-x64.f STREAM,).
 variable SEEDED
@@ -49,7 +48,7 @@ variable SEEDED
 public
 
 : COUNT ( -- n ) USED @ ;
-: RESET ( -- ) 0 USED ! 0 NAME-BYTES ! 0 SCALAR-ROW ! 0 DIVISION-ROW ! 0 SEEDED ! ;
+: RESET ( -- ) 0 USED ! 0 NAME-BYTES ! 0 SCALAR-ROW ! 0 SEEDED ! ;
 : SEEDED! ( bool -- ) if 1 else 0 then SEEDED ! ;
 : SEEDED? ( -- bool ) SEEDED @ 0<> ;
 
@@ -91,23 +90,6 @@ public
    row 1+ SCALAR-ROW ! ;
 
 : SCALAR-ROW@ ( -- n ) SCALAR-ROW @ ;
-
-\ The division emitter owns the guarded body and its terminal refusal helper.
-\ This gate checks the declared shape only; the emitter supplies the behavior.
-: MARK-DIVISION ( n -- ) {: row:n :}
-   DIVISION-ROW @ 0<> if E-INDEX throw then
-   row NAME$ PRIM-SPEC:FIND {: spec:n :}
-   spec 0 < if E-INDEX throw then
-   spec PRIM-SPEC:CODE-LEN@ 6 <> if E-INDEX throw then
-   spec 0 PRIM-SPEC:CODE@ PRIM-SPEC:A-NUM <> if E-INDEX throw then
-   spec 1 PRIM-SPEC:CODE@ PRIM-SPEC:A-IN <> if E-INDEX throw then
-   spec 2 PRIM-SPEC:CODE@ PRIM-SPEC:A-NUM <> if E-INDEX throw then
-   spec 3 PRIM-SPEC:CODE@ PRIM-SPEC:A-IN <> if E-INDEX throw then
-   spec 4 PRIM-SPEC:CODE@ PRIM-SPEC:A-NUM <> if E-INDEX throw then
-   spec 5 PRIM-SPEC:CODE@ PRIM-SPEC:A-OUT <> if E-INDEX throw then
-   row 1+ DIVISION-ROW ! ;
-
-: DIVISION-ROW@ ( -- n ) DIVISION-ROW @ ;
 
 \ The table is which primitives exist: every body registers under a name
 \ src/habu/prims.f specifies; the row states the effect, the body the machine

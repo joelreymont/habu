@@ -3,7 +3,7 @@
 package NATIVE-OBS-CELLS
 public
 \ $2CE8 is reserved for the literal store's DATA-FLOOR-CELL. The callback
-\ cells follow it, after CODE-END-CELL and JIT-QUOT:END;
+\ cells follow it, after CODE-END-CELL;
 \ src/habu/data-claims.f proves each cell disjoint at native build time.
 $2CF8 constant PUBLISHED
 $2D00 constant INVALIDATE

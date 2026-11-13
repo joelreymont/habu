@@ -72,7 +72,6 @@ defer FP-EMIT ( -- )
 : FP-A@ ( -- ptr u8 ) FP-A @ ;
 
 variable FPL  variable FPE
-variable DIVISION-PRIM-ROW
 
 : FP-ARGS ( ptr u8 n [ -- ] -- )
    is FP-EMIT  FP-U !  FP-A !
@@ -98,21 +97,6 @@ public
    FPL LABEL@ LBL,  FP-EMIT  RET,  FPE LABEL@ LBL, ;
 
 private
-: FPRIM-L-DIVISION ( ptr u8 n [ -- ] -- )
-   FP-ARGS
-   LBL FPL !  LBL FPE !
-   FP-REG 1+ DIVISION-PRIM-ROW !
-   FPL LABEL@ LBL,  FP-EMIT  RET,  FPE LABEL@ LBL, ;
-
-\ For an LR-preserving straight-line body: MARK-SCALAR records that the span
-\ has no helper or terminal call edge.
-: FPRIM-L-SCALAR ( ptr u8 n [ -- ] -- )
-   FP-ARGS
-   LBL FPL !  LBL FPE !
-   FP-REG {: row:n :}
-   FPL LABEL@ LBL,  FP-EMIT  RET,  FPE LABEL@ LBL,
-   row ENGINE-PRIMS:MARK-SCALAR ;
-
 variable FP-WID
 
 : FPRIM-WID ( ptr u8 n [ -- ] n -- )
@@ -4081,12 +4065,6 @@ private
       10 DATA NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:ORIGIN-HOOK cells + STR,
       10 DATA NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:ORIGIN-TAKE cells + STR, ;
 
-\ discard-check ( -- ): drop the hook `0 set-check` parked, with its preflight,
-\ so no later `set-check` resumes it. It clears the SUSP-HOOK pair and nothing
-\ else; while a hook is armed the pair is already empty, so it is a no-op then.
-: BDISCARDCHECK ( -- )
-   10 0 MOVZ,  10 DATA SUSP-HOOK-CELL STR,  10 DATA SUSP-PREFLIGHT-CELL STR, ;
-
 \ executable-build-enter ( -- ) and executable-build-leave ( -- ): the build
 \ scope. The outermost enter saves the caller's tier and the matching leave
 \ restores it, so a tier selected inside the scope ends with it. The scope
@@ -4688,8 +4666,8 @@ public
 package ENGINE-EMIT
 : EMIT-ARITH-PRIMS ( -- )
    s" +"    ['] B+    FPRIM-L   s" -"    ['] B-    FPRIM-L   s" *"    ['] B*    FPRIM-L
-   s" /"    ['] BDIV  FPRIM-L-DIVISION   s" mod"  ['] BMOD  FPRIM-L   s" /mod" ['] BDIVMOD FPRIM-L
-   s" abs"  ['] BABS  FPRIM-L-SCALAR   s" min"  ['] BMIN  FPRIM-L   s" max"  ['] BMAX FPRIM-L ;
+   s" /"    ['] BDIV  FPRIM-L   s" mod"  ['] BMOD  FPRIM-L   s" /mod" ['] BDIVMOD FPRIM-L
+   s" abs"  ['] BABS  FPRIM-L   s" min"  ['] BMIN  FPRIM-L   s" max"  ['] BMAX FPRIM-L ;
 
 : EMIT-COMPARE-PRIMS ( -- )
    s" ="    ['] B=    FPRIM-L   s" <>"   ['] B<>   FPRIM-L   s" <"    ['] B<    FPRIM-L
@@ -4847,7 +4825,6 @@ package ENGINE-EMIT
    s" set-current" ['] BSETCUR FPRIM-L  s" search-wl" ['] BSWL FPRIM
    s" xref-search-wl" ['] BCOMPILERSWL ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" set-check" ['] BSETCHECK FPRIM-L   s" check@" ['] BCHECKFETCH FPRIM-L
-   s" discard-check" ['] BDISCARDCHECK FPRIM-L
    s" set-tier" ['] BSETTIER FPRIM     s" tier@" ['] BTIERFETCH FPRIM-L
    s" tick-order@" ['] BTICKORDER FPRIM-L
    s" executable-build-enter" ['] BBUILDENTER ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
@@ -5141,8 +5118,7 @@ package ENGINE-EMIT
    s" (DIV-ZERO)" start LABEL>N end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
    start LBL,
    9 ARITH-ABI:E-DIV-ZERO LIT64,  9 G-PUSH  BTHROW
-   end LBL,
-   DIVISION-PRIM-ROW @ dup 0<> if 1- ENGINE-PRIMS:MARK-DIVISION else drop then ;
+   end LBL, ;
 
 : EMIT-PROT ( -- )
    EMIT-PROT-SPAN
