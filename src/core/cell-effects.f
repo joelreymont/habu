@@ -1,7 +1,6 @@
 \ cell-effects.f - effects for words needed before the checker starts.
 
 s" CELL" s" -- n" TRUST
-s" CELL-WIDTH-CHECK" s" --" TRUST
 
 \ src/core/util.f's public constants, which load before the checker: without
 \ these rows a body naming one is E-UNDEFINED on a from-source prefix boot.

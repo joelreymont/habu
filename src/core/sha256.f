@@ -5,35 +5,6 @@
 \ hash concurrently with a context each, and copying a context copies its state.
 $FFFFFFFF constant W32
 
-: M32 ( n -- n )
-   W32 and ;
-
-: ROTR ( n n -- n )
-   2dup rshift >r
-   32 swap - lshift r> or M32 ;
-
-: SHR ( n n -- n )
-   rshift ;
-
-: CH ( n n n -- n )
-   {: x:n y:n z:n :}
-   x y and  x invert z and  xor ;
-
-: MAJ ( n n n -- n )
-   {: x:n y:n z:n :}
-   x y and  x z and  y z and  xor xor ;
-
-: BSIG0 ( n -- n )
-   dup 2 ROTR  over 13 ROTR  rot 22 ROTR  xor xor ;
-
-: BSIG1 ( n -- n )
-   dup 6 ROTR  over 11 ROTR  rot 25 ROTR  xor xor ;
-
-: SSIG0 ( n -- n )
-   dup 7 ROTR  over 18 ROTR  rot 3 SHR  xor xor ;
-
-: SSIG1 ( n -- n )
-   dup 17 ROTR  over 19 ROTR  rot 10 SHR  xor xor ;
 create KK
 $428a2f98 , $71374491 , $b5c0fbcf , $e9b5dba5 , $3956c25b , $59f111f1 , $923f82a4 , $ab1c5ed5 ,
 $d807aa98 , $12835b01 , $243185be , $550c7dc3 , $72be5d74 , $80deb1fe , $9bdc06a7 , $c19bf174 ,

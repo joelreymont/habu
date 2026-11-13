@@ -30,8 +30,6 @@ $4841425543455254 constant MAGIC-V
 \ followed by guard triples {offset,tag,limit}.
 4 constant WF-NCELLS
 3 constant FETCH-NCELLS
-3 constant CHECK-NCELLS
-3 constant GUARD-NCELLS
 1 constant FETCH-BIT
 2 constant STORE-BIT
 4 constant XPAD-BIT      \ construct/MATCH extra-pad fact flag
@@ -123,8 +121,6 @@ public
 : FETCH-DATA-CELLS-CELL ( -- n ) FETCH-DATA-CELLS-I ;
 : WF-CELLS ( -- n ) WF-NCELLS ;
 : FETCH-CELLS ( -- n ) FETCH-NCELLS ;
-: CHECK-CELLS ( -- n ) CHECK-NCELLS ;
-: GUARD-CELLS ( -- n ) GUARD-NCELLS ;
 : FETCH-FLAG ( -- n ) FETCH-BIT ;
 : STORE-FLAG ( -- n ) STORE-BIT ;
 : XPAD-FLAG ( -- n ) XPAD-BIT ;

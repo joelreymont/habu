@@ -4159,7 +4159,6 @@ variable NMOFF                           \ its token's offset in the checked tex
 
 : LAYOUT-MAYBE-LINEAR? ( n -- bool ) TFAM-MAY-LIN-XT ;
 : LAYOUT-LINEAR-COUNT ( n -- n ) TFAM-LIN-N-XT ;
-: LAYOUT-LINEAR? ( n -- bool ) LAYOUT-LINEAR-COUNT 0 <> ;
 : LAYOUT-ARGS-OPEN? ( n -- bool ) {: p:n :}
    0 BEGIN dup p PARAM>ARGC < WHILE
       p over PARAM>ARG T-RES ISVAR IF drop RES-TRUE EXIT THEN
@@ -5223,9 +5222,6 @@ variable JSON-DIAGS   0 JSON-DIAGS !
 : TBASE@ ( -- ptr u8 )
    TBASE @ ;
 
-: TBASE! ( ptr u8 -- )
-   TBASE ! ;
-
 : TADDR ( n -- ptr u8 )
    TBASE@ swap + ;
 
@@ -5648,7 +5644,7 @@ CHECKER-REG:}SCRATCH
    t SEED-TERM? IF t RES-TRUE EXIT THEN
    0 RES-FALSE ;
 
-variable QTT  variable QD2  variable QR2
+variable QTT
 
 48 constant XMASK-BITS          \ window cells a mask can speak for
 $FFFFFFFFFFFF constant XMASK-ALL         \ every window cell intact
@@ -5661,7 +5657,6 @@ $FFFFFFFFFFFF constant XMASK-ALL         \ every window cell intact
 
 \ A word with more than 20 declared inputs keeps no evidence for the deeper
 \ ones, the conservative answer.
-20 constant XFER-MASK-BITS
 $FFFFF constant XFER-MASK-ALL
 20 constant XFER-DMASK-SHIFT
 40 constant XFER-RMASK-SHIFT
@@ -7343,8 +7338,6 @@ PTR-VARIABLE SIG-OVERLOAD-A   variable SIG-OVERLOAD-U
 
 : SGBAD-SYNTAX! ( ptr u8 n -- )
    SGBAD-SYNTAX-KIND SGBAD-SET ;
-: SGBAD-SYNTAX? ( -- bool )
-   SGBAD @ SGBAD-KIND @ SGBAD-SYNTAX-KIND = and ;
 : SGBAD-UNSUPPLIED! ( ptr u8 n -- )
    SGBAD-UNSUPPLIED-KIND SGBAD-SET ;
 : SGBAD-UNSUPPLIED? ( -- bool )
@@ -9068,8 +9061,6 @@ USIGS-CLEAR
    REPEAT drop ;
 
 : UALIGN 7 + $FFFFFFFFFFFFFFF8 and ;
-
-: UALIGN! UEND @ UALIGN UEND ! ;
 
 : U!+ ( n -- ) {: x:n :}
    x UEND @ USIGS-CELL-AT !
@@ -11286,10 +11277,6 @@ PTR-VARIABLE ASIG-LAST-P
 
 : CHECKER-ASIG-DISARM ( -- ) 0 ASIG-ARMED ! ;
 
-: CHECKER-ASIG-N ( -- n ) ASIG-ROW-U @ ASIG-ROW / ;
-: CHECKER-ASIG-ROW-BYTES ( -- n ) ASIG-ROW-U @ ;
-: CHECKER-ASIG-STR-BYTES ( -- n ) ASIG-STR-U @ ;
-
 \ ---- the names one check pass could not resolve ------------------------------
 \ A bounded queue: a pass that fills it drops the rest, which costs a retry
 \ pass, not an answer. Cleared at CHECK-RESET, so it describes the pass
@@ -11593,7 +11580,6 @@ CHECKER-REG:}SCRATCH
 
 -1 constant STORAGE-DEFERRED
 3 constant LDEFER-CTRL-CELLS
-
 \ --- linear kind: polarity-aware multiplicity of an applied effect ------------
 \ Counts: input side deeper, output side on top. A quotation's rows flip polarity:
 \ the word supplies the quotation's inputs and receives its outputs.
@@ -14127,20 +14113,9 @@ package CHECKER-REG
 : FIND-SIG ( ptr u8 n -- bool )
    CHECKER-FIND-ACTIVE-SYM FIND-SIG-SYM ;
 
-\ ABI query: din cell count for the active effect, including an unjudged scan.
-: SIG-MIN-IN ( ptr u8 n -- n )
-   FIND-SIG 0= IF -1 EXIT THEN
-   FEP @ E-MINI@ ;
-
 \ ---- effect-read export API -------------------------------------------------
 \ FIND-SIG, E-DIN@/E-DOUT@, E-PTR and the EN-* accessors are sig-less, so the
 \ sealed checker refuses them.
-\
-\ Family enum (stable ABI):
-0 constant EFAM-GRAY
-1 constant EFAM-SCALAR
-2 constant EFAM-POINTER
-3 constant EFAM-XT
 
 variable EFFQ-OK            \ bool: last EFFECT-QUERY resolved an active effect
 variable EFFQ-DIN           \ din row offset (E-OFF) of the queried effect, 0 = none
@@ -14158,17 +14133,8 @@ variable EFFQ-SAVE-DOUT
 : EFF-A@   ( n -- n )   E-PTR EN.A @ ;      \ EN.A field (head term offset)
 : EFF-B@   ( n -- n )   E-PTR EN.B @ ;      \ EN.B field (rest-of-row offset)
 : EFF-C@   ( n -- n )   E-PTR EN.C @ ;      \ EN.C field (on a row cell: width+1; on a quot: rin)
-: EFF-D@   ( n -- n )   E-PTR EN.D @ ;      \ EN.D field (on a quot: rout)
 : EFF-E@   ( n -- n )   E-PTR EN.E @ ;      \ EN.E field (on a param term: hidden slot+1; on a quot: has a throw edge)
 : EFF-F@   ( n -- n )   E-PTR EN.F @ ;      \ EN.F field (on a quot: the fall-through path is dead)
-
-: EFF-TERM-FAM ( n -- n )       \ n = term-node offset (E-OFF)
-   dup 0= if drop EFAM-GRAY exit then
-   EFF-TAG@
-   dup EN-PTR  = if drop EFAM-POINTER exit then
-   dup EN-QUOT = if drop EFAM-XT exit then
-   EN-CON = if EFAM-SCALAR exit then
-   EFAM-GRAY ;
 
 \ Without it `( option<n> n -- )` and `( a b n -- )` agree on term count, cell
 \ count and every family.
@@ -14200,9 +14166,6 @@ variable EFFQ-SAVE-DOUT
 : EFF-ROW-TAIL ( n -- n )
    begin dup EFF-IS-PUSH? while EFF-B@ repeat ;
 
-: EFF-ROW-FAM ( n n -- n )                    \ i-th term from the top (0-based)
-   EFF-ROW-TERM EFF-TERM-FAM ;
-
 : EFF-ROW-SLOT ( n n -- n )                   \ bundle slot+1 of the i-th term from the top (0-based)
    EFF-ROW-TERM EFF-TERM-SLOT ;
 
@@ -14227,7 +14190,6 @@ variable EFFQ-SAVE-DOUT
 
 : EFFECT-DIN-N ( -- n )        EFFQ-DIN @ EFF-ROW-N ;
 : EFFECT-DOUT-N ( -- n )       EFFQ-DOUT @ EFF-ROW-N ;
-: EFFECT-DIN-FAM ( n -- n )    EFFQ-DIN @ EFF-ROW-FAM ;    \ EFAM-* of din term i (top = 0)
 : EFFECT-DIN-CELLS ( -- n )    EFFQ-DIN @ EFF-ROW-CELLS ;  \ fixed din width in cells, or CELLS-NONE
 : EFFECT-DOUT-CELLS ( -- n )   EFFQ-DOUT @ EFF-ROW-CELLS ; \ fixed dout width in cells, or CELLS-NONE
 : EFFECT-DIN-SLOT ( n -- n )   EFFQ-DIN @ EFF-ROW-SLOT ;   \ bundle slot+1 of din term i (top = 0), 0 = logical
@@ -14922,9 +14884,6 @@ variable EV-LO   variable EV-N
    n DFER-END !
    DFER-TERM ;
 
-: DFER-NEXT ( ptr n -- ptr n )
-   DFER-REC + ;
-
 : DFER-FLAG@ ( ptr n -- bool )
    DFER.FLAG @ 0 <> ;
 
@@ -14968,9 +14927,6 @@ variable EV-LO   variable EV-N
 
 : DFER-ADD ( ptr u8 n -- )
    CHECKER-RECORD-SYM RES-TRUE DFER-ADD-SYM ;
-
-: CHECKER-FIND-ACTIVE-DEFER ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u CHECKER-FIND-ACTIVE-SYM DFER-FIND-SYM ;
 
 \ No row may carry 0: a defer row keyed 0 is DFERS' terminator and hides every
 \ later row, and an effect row keyed 0 is anonymous.
@@ -19174,9 +19130,6 @@ SCOPE-INTRO-FENCE-INSTALL
 : DEADP? ( -- bool )
    DEADP @ 0 <> ;
 
-: XSET? ( -- bool )
-   XSET @ 0 <> ;
-
 : CF-CASE-IDX ( -- n )
    #CFC @ 2 - ;
 
@@ -22713,8 +22666,6 @@ variable ARMED   0 ARMED !
    is SCAN-XT
    BY !
    1 SET ! ;
-
-: INSTALLED-BY ( -- n ) BY @ ;
 
 : ARM ( -- )
    SET @ 0= if s" checker: no source-tape observer to arm" 76 die then

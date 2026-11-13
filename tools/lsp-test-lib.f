@@ -3015,8 +3015,8 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s" 5" DEF-DEP-CANON URI-OF 2 2 9 LOCATED
    s" 6" NOWHERE ;
 
-\ roles.f's NOMINAL-PROVIDER and cell.f's CELL-WIDTH-CHECK are dictionary calls;
-\ pointer-storage.f calls nothing through the dictionary.
+\ roles.f's NOMINAL-PROVIDER is a dictionary call; pointer-storage.f calls
+\ nothing through the dictionary.
 : AIO-PATH ( -- ptr u8 n )  s" src/lib/aio.f" IN-TREE ;
 : AIO-PTR-PATH ( -- ptr u8 n )  s" src/core/pointer-storage.f" IN-TREE ;
 

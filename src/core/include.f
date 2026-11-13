@@ -31,8 +31,6 @@ PERSISTED-PTR-VARIABLE ROW-LENS
 variable ROW-CAP
 PERSISTED-PTR-U8-TABLE-VARIABLE CHUNK
 variable PREFIX-N
-variable PREFIX-EPOCH
-variable PREFIX-CUT
 
 ;package
 
@@ -909,24 +907,7 @@ public
    REQUIRE-SAVE-N @ keep > if keep REQUIRE-SAVE-N ! then
    REQUIRE-SAVE-BASE @ keep > if keep REQUIRE-SAVE-BASE ! then ;
 
-\ A core-prefix rewind can retire the registry beneath an evaluation mark.
-\ Its epoch distinguishes that deliberate cut from a malformed rollback mark;
-\ the cut is the surviving prefix to which the interrupted evaluation returns.
-: MARK ( -- n n ) REQUIRE-N @ PREFIX-EPOCH @ ;
-
-: ROLLBACK ( n n -- )
-   {: mark:n epoch:n :}
-   epoch PREFIX-EPOCH @ <> if
-      mark PREFIX-CUT @ min
-   else
-      mark
-   then
-   TRUNCATE ;
-
-: PREFIX-REWIND ( n -- )
-   TRUNCATE
-   REQUIRE-N @ PREFIX-CUT !
-   1 PREFIX-EPOCH +! ;
+: MARK ( -- n ) REQUIRE-N @ ;
 
 \ A failed require may have loaded a child in a reader or unit callback before
 \ entering evaluation. Those child definitions survive that failure; remove
@@ -949,13 +930,6 @@ public
    REQUIRE-BASE @ idx > if -1 REQUIRE-BASE +! then
    REQUIRE-SAVE-N @ idx > if -1 REQUIRE-SAVE-N +! then
    REQUIRE-SAVE-BASE @ idx > if -1 REQUIRE-SAVE-BASE +! then ;
-
-\ The caller's provisional row may already have died in a core-prefix rewind.
-\ A later row at the same index belongs to the new prefix epoch.
-: REMOVE-PROVISIONAL ( n n -- )
-   {: row:n epoch:n :}
-   epoch PREFIX-EPOCH @ <> row PREFIX-CUT @ >= and if exit then
-   row REMOVE ;
 
 \ Capture packs the live rows once; no process pointer enters the DATA block.
 \ An unchanged or discarded suffix keeps the prior block and DATA extent.
@@ -1080,12 +1054,6 @@ public
    ENGINE-INIT
    ENGINE-U @ 0= if CWD$ exit then
    CWD-RECORD ENGINE-BUF ENGINE-U @ ;
-
-\ A selected child executable uses this same fallback rule after it starts.
-\ CANON-BUF is scratch; callers copy the answer before resolving another path.
-: ENGINE-FOR$ ( ptr u8 n -- ptr u8 n )
-   ENGINE-FIND-FOR dup 0= if drop CWD$ exit then
-   CANON-BUF swap ;
 
 \ Override the fallback root; the caller restores the old one after its load.
 : ENGINE! ( ptr u8 n -- )
@@ -1319,10 +1287,10 @@ variable SCRIPT-NAMED-PEND
 \ Generated source runs as a closed program, refused E-EVAL-RESIDUE for what it
 \ leaves.
 : INCLUDE-EVALUATE ( ptr u8 n -- )
-   REQUIRE-REG:MARK {: mark:n epoch:n :}
+   REQUIRE-REG:MARK {: mark:n :}
    [: 2dup evaluate-closed ;] catch {: rc:n :}
    2drop
-   rc 0 <> if mark epoch REQUIRE-REG:ROLLBACK rc throw then ;
+   rc 0 <> if mark REQUIRE-REG:TRUNCATE rc throw then ;
 
 \ Once REQUIRE-REG is ready, generated declarations also roll back its rows
 \ on failure. Stage builders without include.f leave the evaluator unarmed.
@@ -1865,9 +1833,9 @@ private
    size frame FR-EVAL-SIZE + CELL-VIEW !
    first frame FR-EVAL-FIRST + CELL-VIEW !
    end frame FR-EVAL-END + CELL-VIEW !
-   REQUIRE-REG:MARK {: mark:n epoch:n :}
+   REQUIRE-REG:MARK {: mark:n :}
    [: INTERPRET-SAVED-RANGE ;] catch {: rc:n :}
-   rc 0 <> if mark epoch REQUIRE-REG:ROLLBACK rc throw then
+   rc 0 <> if mark REQUIRE-REG:TRUNCATE rc throw then
    -1 frame FR-EVAL-OK + CELL-VIEW ! ;
 
 create RESIDUE-DIGIT 1 allot
@@ -2076,12 +2044,12 @@ create SOURCE-ORIGINAL-INCLUDED-ENTRY 0 ,
    {: a:ptr u:n path:ptr pathu:n known:bool :}
    a u path pathu EV-REQUIRED known REQUIRE-STATE EVENT-RECORD
    known if INCLUDE-FALSE SCRIPT-NAMED-PEND! exit then
-   REQUIRE-REG:MARK {: row:n epoch:n :}
+   REQUIRE-REG:MARK {: row:n :}
    path pathu REQUIRE-STORE
    DISCOVERY? if 2drop INCLUDE-FALSE SCRIPT-NAMED-PEND! exit then
    INCLUDE-LOAD {: committed:bool rc:n :}
    rc 0 <> if
-      committed 0= if row epoch REQUIRE-REG:REMOVE-PROVISIONAL then
+      committed 0= if row REQUIRE-REG:REMOVE then
       rc throw
    then ;
 

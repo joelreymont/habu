@@ -121,7 +121,6 @@ CAST: >IMG ( n -- img )
 CAST: IMG>N ( img -- n )
 
 CAST: >SNAP ( n -- snap )
-CAST: SNAP>N ( snap -- n )
 
 : ASM-PHASE ( -- asm )
    0 >ASM ;
@@ -137,9 +136,6 @@ CAST: SNAP>N ( snap -- n )
 
 : SNAP-PHASE ( -- snap )
    0 >SNAP ;
-
-: SNAP-DROP ( snap -- )
-   SNAP>N drop ;
 
 : DEFLINEAR ( -- )
    parse-name dup 0= IF s" deflinear: missing name" 70 die THEN

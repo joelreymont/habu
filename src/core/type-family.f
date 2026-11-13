@@ -174,7 +174,6 @@ private
 
 : TF-LOWER? ( n -- bool ) {: c:n :} c 97 >= c 122 <= and ;   \ a-z
 : TF-DIGIT? ( n -- bool ) {: c:n :} c 48 >= c 57 <= and ;    \ 0-9
-: TF-UPPER? ( n -- bool ) {: c:n :} c 65 >= c 90 <= and ;    \ A-Z
 : TF-TAILBYTE? ( n -- bool ) {: c:n :}   \ lowercase, digit, or internal hyphen
    c TF-LOWER? IF RES-TRUE EXIT THEN
    c TF-DIGIT? IF RES-TRUE EXIT THEN
@@ -266,22 +265,20 @@ private
 13 cells constant TF.FLD-COUNT-OFF
 14 cells constant TF.TAGW-OFF
 15 cells constant TF.SCHEMA-ROOT-OFF
-16 cells constant TF.SPAN-OFF-AT
-17 cells constant TF.SPAN-U-OFF
-18 cells constant TF.DERIVE-OFF
+16 cells constant TF.DERIVE-OFF
 \ TF.TAILNEXT: next family id (+1) in this row's tail bucket, 0 at the end of the
 \ chain. It is the registry's own lookup index (TFX-* below), which is why it
 \ lives in the record rather than in a side table that could drift from it.
-19 cells constant TF.TAILNEXT-OFF
+17 cells constant TF.TAILNEXT-OFF
 \ TF.OPAQUE: nonzero when the family's generated words take the private-family
 \ placement (the OPAQUE header clause, structure-decl.f OPAQUE-CLAUSE).
-20 cells constant TF.OPAQUE-OFF
+18 cells constant TF.OPAQUE-OFF
 \ TF.ENTRY: the family's type entry, its record index + 1; 0 when it has none.
-21 cells constant TF.ENTRY-OFF
+19 cells constant TF.ENTRY-OFF
 
 public
 
-22 cells constant TF-REC
+20 cells constant TF-REC
 private
 
 : TF.PKG-OFF ( ptr a -- ptr a ) TF.PKG-OFF-AT + ;
@@ -306,8 +303,6 @@ private
 : TF.FLD-COUNT ( ptr a -- ptr a ) TF.FLD-COUNT-OFF + ;
 : TF.TAGW ( ptr a -- ptr a ) TF.TAGW-OFF + ;
 : TF.SCHEMA-ROOT ( ptr a -- ptr a ) TF.SCHEMA-ROOT-OFF + ;
-: TF.SPAN-OFF ( ptr a -- ptr a ) TF.SPAN-OFF-AT + ;
-: TF.SPAN-U ( ptr a -- ptr a ) TF.SPAN-U-OFF + ;
 : TF.DERIVE ( ptr a -- ptr a ) TF.DERIVE-OFF + ;
 : TF.TAILNEXT ( ptr a -- ptr a ) TF.TAILNEXT-OFF + ;
 : TF.OPAQUE ( ptr a -- ptr a ) TF.OPAQUE-OFF + ;
@@ -347,8 +342,6 @@ public
    id TF-REC * TF-BASE + ;
 
 : TFAM-N@ ( -- n ) TFAM-N @ ;            \ family high-water (rollback/tests)
-: TF-STR-U@ ( -- n ) TF-STR-U @ ;        \ interned string-pool high-water
-: TF-PK-N@ ( -- n ) TF-PK-N @ ;          \ param-kind pool high-water
 
 \ --- read-only queries.
 : TFAM-PKG$ ( n -- ptr u8 n ) {: id:n :}
@@ -378,8 +371,6 @@ public
 : TFAM-FLD-START@ ( n -- n ) TF-REC@ TF.FLD-START @ ;
 : TFAM-FLD-COUNT@ ( n -- n ) TF-REC@ TF.FLD-COUNT @ ;
 : TFAM-TAGW@ ( n -- n ) TF-REC@ TF.TAGW @ ;
-: TFAM-SPAN@ ( n -- n n ) {: id:n :}
-   id TF-REC@ {: r:ptr :}  r TF.SPAN-OFF @ r TF.SPAN-U @ ;
 : TFAM-PK@ ( n n -- n ) {: id:n i:n :}
    i 0 < i id TFAM-ARITY@ >= or IF s" tfam: bad param index" 76 die THEN
    id TF-REC@ TF.PK-START @ i + cells TF-PK-BASE + @ ;
@@ -494,9 +485,6 @@ public
    c id TF-REC@ TF.FLD-COUNT !
    TFM-EPOCH+ ;
 : TFAM-TAGW! ( n n -- ) swap TF-REC@ TF.TAGW ! ;
-: TFAM-SCHEMA-ROOT! ( n n -- ) swap TF-REC@ TF.SCHEMA-ROOT ! ;
-: TFAM-SPAN! ( n n n -- ) {: id:n off:n u:n :}
-   off id TF-REC@ TF.SPAN-OFF !  u id TF-REC@ TF.SPAN-U ! ;
 : TFAM-PK! ( n n n -- ) {: id:n i:n k:n :}
    i 0 < i id TFAM-ARITY@ >= or IF s" tfam: bad param index" 76 die THEN
    k 0 < k PK-MAX > or IF E-TFAM-KIND throw THEN
@@ -694,7 +682,6 @@ public
    0 r TF.FLD-START !          0 r TF.FLD-COUNT !
    TAGW-CELL r TF.TAGW !
    0 r TF.SCHEMA-ROOT !
-   0 r TF.SPAN-OFF !   0 r TF.SPAN-U !
    0 r TF.DERIVE !
    0 r TF.TAILNEXT !
    0 r TF.OPAQUE !
@@ -2632,7 +2619,6 @@ public
 : FIND ( n n ptr u8 n -- n bool ) PF-FIND ;
 : EACH ( n n n -- n bool ) PF-EACH ;
 : FAMILY@ ( n -- n ) PF-FAM@ ;
-: VARIANT@ ( n -- n ) PF-VAR@ ;
 : NAME$ ( n -- ptr u8 n ) PF-NAME$ ;
 : SCHEMA@ ( n -- n ) PF-SCH@ ;
 : SLOT@ ( n -- n ) PF-SLOT@ ;
@@ -2939,7 +2925,6 @@ public
 : LAY-SIZE@ ( n -- n ) LAY-REC@ LAY.SIZE @ ;
 : LAY-ALIGN@ ( n -- n ) LAY-REC@ LAY.ALIGN @ ;
 : LAY-TAGW@ ( n -- n ) LAY-REC@ LAY.TAGW @ ;
-: LAY-N@ ( -- n ) LAY-N @ ;
 
 : LAY-FIND ( n -- n bool ) {: fam:n :}
    0 BEGIN dup LAY-N @ < WHILE
@@ -3004,8 +2989,7 @@ public
 
 \ The committed init field carries T's schema and stack width. Its field row is
 \ canonical cell storage, while the value being initialized may have a narrower
-\ packed memory descriptor. Keep the element-layout decision in one place for
-\ the wrapper and the initialized-record query below.
+\ packed memory descriptor.
 private
 : INIT-ELEM-LAYOUT? ( n -- n n bool ) {: term:n :}   \ T -> bytes, alignment, known?
    term T-RES {: elem:n :}
@@ -3023,14 +3007,6 @@ private
    fam LAY-FIND IF
       dup LAY-SIZE@ swap LAY-ALIGN@ RES-TRUE
    ELSE drop 0 0 RES-FALSE THEN ;
-
-public
-: INIT-LAYOUT? ( n -- n n bool ) {: term:n :}   \ init<I,T> -> T's bytes, alignment, known?
-   term T-RES dup TAG T-PARAM <> IF drop 0 0 RES-FALSE EXIT THEN
-   dup PARAM>FAM C2-INIT-FAM @ <> IF drop 0 0 RES-FALSE EXIT THEN
-   1 PARAM>ARG INIT-ELEM-LAYOUT? ;
-
-private
 
 \ A retired family read from its type entry can be read again.
 : ENTRIES-RETIRED ( n n -- ) {: lo:n hi:n :}
@@ -3652,7 +3628,6 @@ private
    src u 2 row TF.VAR-START @ row TF.VAR-COUNT @ REG-AOT-RANGE
    src u 3 row TF.FLD-START @ row TF.FLD-COUNT @ REG-AOT-RANGE
    row TF.SCHEMA-ROOT @ 0 <> IF src u 7 row TF.SCHEMA-ROOT @ REG-AOT-ITEM drop THEN
-   row TF.SPAN-OFF @ REG-AOT-NONNEG row TF.SPAN-U @ REG-AOT-NONNEG
    row TF.KIND @ TK-CELL = row TF.KIND @ TK-EVIDENCE = or IF
       row TF.SLOTS @ row TF.VAR-COUNT @ or row TF.FLD-COUNT @ or 0 <> IF
          s" tfam: a seeded cell family has layout members" REG-AOT-REFUSE THEN

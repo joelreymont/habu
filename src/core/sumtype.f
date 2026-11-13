@@ -1589,8 +1589,6 @@ private
    i ;
 : TDPV-N@ ( n n -- n ) {: fam:n vid:n :}     \ payload element count
    TDPV-CNT-P @ fam vid TDPV-SLOT cells + @ ;
-: TDPV-CELLS@ ( n n -- n ) {: fam:n vid:n :} \ payload cell width
-   TDPV-CELLS-P @ fam vid TDPV-SLOT cells + @ ;
 : TDPV-NODE@ ( n n n -- n ) {: fam:n vid:n j:n :}   \ declaration-order schema node
    fam vid TDPV-SLOT {: i:n :}
    j 0 < j TDPV-CNT-P @ i cells + @ >= or IF

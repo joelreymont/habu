@@ -91,8 +91,6 @@ variable SCH-ROOT-N   \ next schema-root index
 
 private
 
-variable SCH-I        \ private scan index
-
 \ Retiring a node or root scrubs it back to canonical zero, as PF-SCRUB
 \ (src/core/type-family.f) does for field rows: a zeroed row is the canonical
 \ absent row, so retired rows leave no bytes in reflection or snapshot identity.
