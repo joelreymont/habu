@@ -512,6 +512,15 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
 
 : BYTES$ ( ptr a -- ptr u8 n ) BUF:SPAN$ BUF:BLEN>N ;
 
+\ OBJECT's bytes, which every field read of OBJECT reads: READ-OBJECT and WRITE-OBJECT, the
+\ only words that move them, take them again (OBJ-TAKE) before they return, as RD-OPEN does.
+PTR-VARIABLE OBJ-BASE
+
+\ Answers OBJECT's length.
+: OBJ-TAKE ( -- n ) OBJECT BYTES$ swap OBJ-BASE ! ;
+
+: OBJ-PTR ( n -- ptr u8 ) OBJ-BASE @ swap + ;
+
 : SPAN+ ( ptr u8 n ptr a -- ) {: a:ptr u:n buf:ptr :}
    a u BUF:N>BLEN buf BUF:APPEND-SPAN ;
 
@@ -760,25 +769,29 @@ variable RUN-AT                      \ the offset in SPELLS of the running run's
    loop
    dup 0= if 1 + then ;
 
+\ Whether slot s of PLACES holds a key other than the key's two cells, third cell, sum and count.
+: SLOT-OTHER? ( n n n n n n -- bool )
+   {: s:n path:n seen:n third:n sum:n count:n :}
+   s 6 * PLACES {: row:ptr :}
+   row @ {: first:n :}
+   first 0= if false exit then
+   first path 1 + <>  row 1 cells + @ seen <>  or
+   row 2 cells + @ third <>  or
+   row 3 cells + @ sum <>  or  row 4 cells + @ count <>  or ;
+
 \ The slot of PLACES that holds the key's two cells, that third cell, sum and count, else the empty
 \ slot the probe from their hash ends at.
 : PLACE-SLOT ( n n n n n -- n )
    {: path:n seen:n third:n sum:n count:n :}
    PLACES-CAP @ 1 - {: mask:n :}
    sum  path $9E3779B1 * +  seen $C2B2AE3D * +  count $85EBCA77 * +  third $27D4EB2F * +  mask and
-   begin
-      dup 6 * PLACES @ 0<> if
-         dup 6 * PLACES @ path 1 + <>  over 6 * 1 + PLACES @ seen <>  or
-         over 6 * 2 + PLACES @ third <>  or
-         over 6 * 3 + PLACES @ sum <>  or  over 6 * 4 + PLACES @ count <>  or
-      else false then
-   while 1 + mask and repeat ;
+   begin dup path seen third sum count SLOT-OTHER? while 1 + mask and repeat ;
 
 \ The value in the slot PLACE-SLOT answers for the key, third cell and identity, -1 for none.
 : PLACE-VALUE ( n n n n n -- n )
-   PLACE-SLOT 6 * {: s:n :}
-   s PLACES @ 0= if -1 exit then
-   s 5 + PLACES @ ;
+   PLACE-SLOT 6 * PLACES {: row:ptr :}
+   row @ 0= if -1 exit then
+   row 5 cells + @ ;
 
 \ The record with that sum and count of the part whose FILES row is at the address, -1 for none.
 : PLACE ( ptr u8 n n -- n )
@@ -2590,6 +2603,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    exts extsu OBJECT SPAN+
    tms tmsu OBJECT SPAN+
    pieces piecesu OBJECT SPAN+
+   OBJ-TAKE drop                       \ PIECE-PLACE reads the object with no RD-OPEN first
    files-at KEYS-OUT
    pieces-at STORES-AT +!  pieces-at FACTS-AT +!
    STAMPED? 0= if exit then
@@ -2621,11 +2635,10 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
 \ text's length cell, -1 for a retirement, which has no text.
 : FACT-ROW ( n -- n n )
    {: at:n :}
-   OBJECT BYTES$ drop {: obj:ptr :}
-   obj at + LE:U64@ {: ix:n :}
+   at OBJ-PTR LE:U64@ {: ix:n :}
    ix CHECK:HELD-RETIRED = if  at 40 +  -1 exit  then
    ix CHECK:HELD-AMENDED = if at 32 + else at 8 + then {: text:n :}
-   text 8 +  obj text + LE:U64@ +  text ;
+   text 8 +  text OBJ-PTR LE:U64@ +  text ;
 
 \ BUILT row row's build-table row for the text laid at start, FACTS row count's, with no time and
 \ no references, put into PLACES under -3; TEXT-EXTS+ sets its length.
@@ -2648,7 +2661,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    dend end = if exit then
    BUILT-N {: row:n :}
    BUILT-EXTS-N @ {: first:n :}
-   OBJECT BYTES$ drop {: obj:ptr :}
+   0 OBJ-PTR {: obj:ptr :}
    FACTS-AT @ 8 +  dend 1 -
    obj FACTS-AT @ + LE:U64@ 0 ?do
       {: at:n last:n :}
@@ -2723,7 +2736,8 @@ variable RD-END
    {: at:n end:n :}
    at RD-AT !  end RD-END !
    construct reading good READER !
-   at 0<  at end >  or  end OBJECT BYTES$ nip >  or if BAD then ;
+   OBJ-TAKE {: len:n :}
+   at 0<  at end >  or  end len >  or if BAD then ;
 
 
 \ Advances n bytes, and true; bad, and false, when they pass RD-END.
@@ -2739,7 +2753,7 @@ variable RD-END
 : RD-U64 ( -- n )
    RD-AT @ {: at:n :}
    8 RD-STEP 0= if 0 exit then
-   OBJECT BYTES$ drop at + LE:U64@ ;
+   at OBJ-PTR LE:U64@ ;
 
 
 : RD-EQ ( n -- ) RD-U64 <> if BAD then ;
@@ -2750,7 +2764,7 @@ variable RD-END
    {: a:ptr u:n :}
    RD-AT @ {: at:n :}
    u RD-STEP 0= if exit then
-   OBJECT BYTES$ drop at + u  a u  STR= 0= if BAD then ;
+   at OBJ-PTR u  a u  STR= 0= if BAD then ;
 
 
 \ A count of rows of at least n bytes each; bad, and 0, when the rest cannot hold them.
@@ -2761,7 +2775,7 @@ variable RD-END
    k ;
 
 
-: OBJ@ ( n -- n ) OBJECT BYTES$ drop swap + LE:U64@ ;
+: OBJ@ ( n -- n ) OBJ-PTR LE:U64@ ;
 : PRIOR@ ( n -- n ) PRIOR BYTES$ drop swap + LE:U64@ ;
 
 
@@ -2781,7 +2795,7 @@ variable RD-END
 \ FILES row k, from 1, in OBJECT.
 : FILES-ROW ( n -- ptr u8 )
    {: k:n :}
-   OBJECT BYTES$ drop  PAIRS-AT 16 + OBJ@  k 1 - FILES-ROW-BYTES * +  + ;
+   PAIRS-AT 16 + OBJ@  k 1 - FILES-ROW-BYTES * +  OBJ-PTR ;
 
 \ A FILES row a reference may name: one a BUILT row holds.
 : FILE-IN? ( n -- bool )
@@ -3027,7 +3041,7 @@ variable RD-END
 \ A name: its length, then its bytes, which stay in OBJECT.
 : RD-NAME ( -- ptr u8 n )
    RD-U64 {: u:n :}
-   OBJECT BYTES$ drop RD-AT @ + {: a:ptr :}
+   RD-AT @ OBJ-PTR {: a:ptr :}
    u RD-SKIP
    a u ;
 
@@ -3080,7 +3094,7 @@ variable RD-END
 \ The FIELD+ at the offset in OBJECT.
 : FIELD$ ( n -- ptr u8 n )
    {: at:n :}
-   OBJECT BYTES$ drop at 8 + +  at OBJ@ ;
+   at 8 + OBJ-PTR  at OBJ@ ;
 
 
 \ The part's time in OBJECT: the header's.
@@ -3502,7 +3516,7 @@ variable RD-END
    RD-U64 {: kind:n :}
    kind 0<>  kind 1 <>  and if BAD then
    GOOD? if
-      top EM-ARCH  OBJECT BYTES$ drop  top EM-OFFS @ 16 + +  s  site
+      top EM-ARCH  top EM-OFFS @ 16 + OBJ-PTR  s  site
       kind 0= if NEMIT:CALL else NEMIT:TAIL then  CALL?
       0= if BAD then
    then
@@ -3520,7 +3534,7 @@ variable RD-END
    RD-U64 {: kind:n :}
    kind 0<>  kind 1 <>  and if BAD then
    GOOD? if
-      top EM-ARCH  OBJECT BYTES$ drop  top EM-OFFS @ 16 + +  s  site
+      top EM-ARCH  top EM-OFFS @ 16 + OBJ-PTR  s  site
       kind 0= if NEMIT:ADDR-CODE else NEMIT:ADDR-DATA then  ADDRESS@ nip
       0= if BAD then
    then
@@ -3537,7 +3551,7 @@ variable RD-END
    p -1 = if exit then
    p LAST-CALL @ <= if BAD then
    GOOD? if
-      top EM-ARCH  OBJECT BYTES$ drop  top EM-OFFS @ 16 + +  s  p  SLOT?
+      top EM-ARCH  top EM-OFFS @ 16 + OBJ-PTR  s  p  SLOT?
       0= if BAD exit then
    then
    RD-REF {: tag:n x:n y:n z:n w:n :}
@@ -3625,7 +3639,7 @@ variable RD-END
    u 8 < if BAD exit then
    at OBJ@ {: n:n :}
    n 0<  n u 8 - >  or if BAD exit then
-   OBJECT BYTES$ drop at 8 + +  n  INTERN:FIND 0<> if BAD then ;
+   at 8 + OBJ-PTR  n  INTERN:FIND 0<> if BAD then ;
 
 
 \ Extent e of DATA's d bytes, RD-AT past the starts: TIMES span, kind (3 only first, 2 with a sum), length to the next
@@ -3807,7 +3821,7 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
 \ FILE-KEY's object, whole, into OBJECT, its keys memory keys (KEYS-IN); false when it is missing,
 \ cannot be opened or read, or a key leaves it, so the file compiles and its write replaces the object.
 : READ-OBJECT ( -- bool )
-   OBJECT$ OBJECT READ-WHOLE 0= if false exit then
+   OBJECT$ OBJECT READ-WHOLE  OBJ-TAKE drop  0= if false exit then
    OBJECT KEYS-IN ;
 
 
@@ -4405,7 +4419,7 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
    e EM-OFFS @  OBJECT BYTES$ nip  RD-OPEN
    RD-U64 RD-U64 {: s:n r:n :}
    CODE-COPY BUF:CLEAR
-   OBJECT BYTES$ drop RD-AT @ +  CODE-COPY s BUF:N>BLEN BUF:GROW SPAN:$ drop  s BYTE-COPY
+   RD-AT @ OBJ-PTR  CODE-COPY s BUF:N>BLEN BUF:GROW SPAN:$ drop  s BYTE-COPY
    s RD-SKIP
    CODE-COPY BYTES$ drop {: copy:ptr :}
    copy s r  e EM-ARCH  NEMIT:OPEN
@@ -4565,7 +4579,7 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
       RD-AT @ {: bytes:n :}
       u RD-SKIP
       GOOD? 0= if E-COMP-STATE throw then
-      pass 0 = if  OBJECT BYTES$ drop bytes +  NULL-PTR BYTE-VIEW at +  u BYTE-COPY  then
+      pass 0 = if  bytes OBJ-PTR  NULL-PTR BYTE-VIEW at +  u BYTE-COPY  then
       pass 2 =  kind 2 =  and if  at 8 + INTERN:ADOPT  then
       EDGES-N @ {: start:n :}
       RD-U64 0 ?do
