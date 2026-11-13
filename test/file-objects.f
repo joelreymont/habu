@@ -1103,8 +1103,9 @@ variable CLASS-N                        \ the class CLASS+ read
    s" x.f" REQUIRE+  s\" : MAIN ( -- ) ;\n" SRC+  s" m.f" NEST-WRITE ;
 
 \ tools/hb-build.f's build of a NEST-DIR source to the program of that name, in a fresh hb with L's
-\ directory as its out root: the boundary under test is the object another build wrote. True when it exits 0.
-: NEST-BUILD ( CMD:command ptr u8 n ptr u8 n -- CMD:command bool )
+\ directory as its out root: the boundary under test is the object another build wrote. Answers its
+\ exit code.
+: NEST-RC ( CMD:command ptr u8 n ptr u8 n -- CMD:command n )
    {: src:ptr srcu:n prog:ptr progu:n :}
    CMD:RESET
    s" --load" CMD:ARG+  s" tools/hb-build.f" CMD:ARG+
@@ -1112,7 +1113,11 @@ variable CLASS-N                        \ the class CLASS+ read
    s" -o" CMD:ARG+  L$ prog progu IN$ CMD:ARG+
    s" HABU_OUT" L$ CMD:ENV+
    ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME
-   PROCESS:ENDING>RC RC>N {: rc:n :}
+   PROCESS:ENDING>RC RC>N ;
+
+\ NEST-RC's build, true when it exits 0.
+: NEST-BUILD ( CMD:command ptr u8 n ptr u8 n -- CMD:command bool )
+   NEST-RC {: rc:n :}
    rc 0<> if rc SHOW then
    s" the build exits 0" LABEL  rc 0 T=
    rc 0 = ;
@@ -1241,6 +1246,33 @@ variable CLASS-N                        \ the class CLASS+ read
    L$ REWRITTEN {: n:n :}
    s" build three rewrites no object" LABEL  n 0 T=
    s" prog-r" s\" 1\n" s" the program prints K" NEST-RUN ;
+
+\ The clause sequence: h.f's definer FILE-OBJECTS-CL has a does> clause, w.f defines a word of the
+\ clause's name, one.f requires h.f, and two.f w.f then h.f.
+: WRITE-CLAUSE ( -- )
+   L$ s" clause" NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
+   s\" : FILE-OBJECTS-CL ( -- ) create does> ( -- ) drop ;\n" SRC+  s" h.f" NEST-WRITE
+   s\" : FILE-OBJECTS-CL;does ( -- ) ;\n" SRC+  s" w.f" NEST-WRITE
+   s" h.f" REQUIRE+  s\" : MAIN ( -- ) ;\n" SRC+  s" one.f" NEST-WRITE
+   s" w.f" REQUIRE+  s" h.f" REQUIRE+  s\" : MAIN ( -- ) ;\n" SRC+  s" two.f" NEST-WRITE ;
+
+\ two.f's build, refused since w.f's word holds the name of FILE-OBJECTS-CL's clause. Answers its
+\ exit code.
+: CLAUSE-REFUSED ( CMD:command -- CMD:command n )
+   s" two.f" s" prog-c" NEST-RC {: rc:n :}
+   CMD:ERR$ s" duplicate definition: FILE-OBJECTS-CL;does" CONTAINS? {: named:bool :}
+   named  rc 0<>  and 0= if rc SHOW then
+   s" the build refuses the clause's name" LABEL  named TTRUE
+   rc ;
+
+\ Guards a does> clause a link places: CL2 compiles h.f with no word of its clause's name live, and
+\ CL3 links that object after w.f and is refused as CL, which compiles both, is.
+: CLAUSE-CASE ( CMD:command -- CMD:command )
+   WRITE-CLAUSE
+   s" CL" WHICH!  CLAUSE-REFUSED {: cold:n :}
+   s" CL2" WHICH!  s" one.f" s" prog-c" NEST-BUILD 0= if exit then
+   s" CL3" WHICH!  CLAUSE-REFUSED {: warm:n :}
+   s" the build exits as CL does" LABEL  warm cold T= ;
 
 \ The spelled sequence's turn.f: the record turn, with a third field when the
 \ flag is true, and box<a>.
@@ -1476,7 +1508,7 @@ variable CLASS-N                        \ the class CLASS+ read
    [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE PATH-CASE STALE-CASE HIDDEN-CASE SEALED-CASE
       STORED-CASE RETIRED-CASE ORDER-CASE PART-LINK-CASE PIECE-CASE SEAL-CASE SQUAT-CASE CAUGHT-CASE
       CTOR-CASE EXPORT-CASE
-      NEST-CASE KEPT-CASE SAME-CASE RETIRE-CASE SPELLED-CASE PACKAGED-CASE EVALUATED-CASE OPENED-CASE CAST-CASE
+      NEST-CASE KEPT-CASE SAME-CASE RETIRE-CASE CLAUSE-CASE SPELLED-CASE PACKAGED-CASE EVALUATED-CASE OPENED-CASE CAST-CASE
       CROSS-CASE TARGET-CASE ;]
    CMD:WITH-COMMAND ;
 

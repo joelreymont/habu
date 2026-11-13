@@ -1301,12 +1301,9 @@ $14000000 constant ACAP-GBR-TERM
    w WID-QUAL = if a u ACAP-QUAL-XT exit then
    a u w ACAP-WL-XT ;
 
-\ The probe misses a live callee only for a does>-clause record, which is
-\ named after its definer without the duplicate wall: a
-\ public definer whose tail ends in a colon gives a two-colon spelling the
-\ qualifier path refuses, and a clause's name can already be held by a word
-\ defined as X;does before X. A definer `undefine` replaced is not one: its
-\ clause retires with it.
+\ The probe misses a live callee only for the does>-clause record of a public
+\ definer whose tail ends in a colon: the qualifier path refuses its two-colon
+\ spelling. A definer `undefine` replaced is not one: its clause retires with it.
 : ACAP-REFUSE-SITE ( n n ptr u8 n n -- ) {: s:n k:n a:ptr u:n w:n :}
    s" aot-capture: call site " type s .INT
    s"  bakes the name " type a u type

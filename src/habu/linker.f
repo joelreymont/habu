@@ -4863,6 +4863,7 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
    does if h j OWN-FUN-AT else 0 then {: hoff:n :}
    ndict@ {: want:n :}
    a u wid  flags  DKIND:MASK DNAME-CELL or DNAME-ALLOC or  and  INTERPRETER:DEF-RECORD
+   does if INTERPRETER:DEF-DOES-NAME then
    NPUB:NEXT-SLOT {: fn:n :}
    fn LINK-FN !  want LINK-OWNER !
    h e <> if

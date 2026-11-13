@@ -1894,6 +1894,7 @@ private
    BODY-TEXT:BASE-CELL ADDR@ at + {: copy:ptr :}
    copy len created-sig! ;
 
+public
 \ The pending parent is record NDICT. Its clause will be published under the
 \ parent's name plus ;does in the same wordlist. Check the live records before
 \ the signature copy or split changes any state, including a folded-case hit.
@@ -1917,6 +1918,7 @@ private
          then
       then
    loop ;
+private
 
 : DEF-DOES ( -- )
    DOESB-CELL CELL@ 0<> if
