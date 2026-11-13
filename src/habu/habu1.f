@@ -2589,6 +2589,12 @@ public
    bad LBL,  SP SP 64 ADDI,  fail B,
    ok LBL, ;
 
+\ dlopen-entry ( -- n ): the address the loader bound to dlopen.
+: DLOPEN-ENTRY ( -- )   s" dlopen" SLOT,  16 G-PUSH ;
+
+\ dlsym-entry ( -- n ): the address the loader bound to dlsym.
+: DLSYM-ENTRY ( -- )   s" dlsym" SLOT,  16 G-PUSH ;
+
 \ ( pathz dst capacity -- length | -1 | -2 )
 \ libc allocates its realpath result. Only a fitting result, including its NUL,
 \ reaches dst; free runs after both success and insufficient capacity.
@@ -4232,6 +4238,8 @@ package ENGINE-EMIT
    s" ffi-call" ['] BFFI-CALL FPRIM
    s" ffi-call-n" ['] BFFI-CALL-N FPRIM
    s" task-entry" ['] BTASK-ENTRY FPRIM
+   s" dlopen-entry" ['] LIBC-OS:DLOPEN-ENTRY FPRIM
+   s" dlsym-entry" ['] LIBC-OS:DLSYM-ENTRY FPRIM
    LBL LCALLBACKTHUNK !
    LBL LCALLBACKADDR !
    s" callback-entry" ['] BCALLBACK-ENTRY FPRIM

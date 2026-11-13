@@ -840,12 +840,8 @@ public
 : C-CALL, ( -- )
    R11 RAX ASM-SINK ENC-MOV-RR  R10 ZERO-REG,  0 SYSV-CALL, ;
 
-\ rax = dlsym(RTLD_DEFAULT, the NUL-terminated name rsi points at), 0 when the
-\ loader has no such symbol: the twin of habu1.f LIBC-OS DLSYM. The loader's
-\ slot sits LINUX-DLSYM-SLOT-OFF into the read-write segment, which starts the
-\ text's size past the image base; the image base is the text base RBASE-CELL
-\ holds less CODE-OFF, and the text size is the first program header's
-\ p_filesz, IMAGE-TEXT-SIZE-OFF into the image.
+\ rax = dlsym(RTLD_DEFAULT, the NUL-terminated name at rsi), 0 if the loader has
+\ none. The slot's segment starts the text's size past the image base.
 : DLSYM, ( -- )
    RAX DATA-REG RBASE-CELL MEM-OFF ASM-SINK ENC-MOV-RM
    RAX X64LAYOUT:CODE-OFF >IMM32 ASM-SINK ENC-SUB-RI32
@@ -5739,13 +5735,7 @@ public
    read 2 SCOPE-KIND-TEST,
    RAX ZERO-REG,  ASM-SINK ENC-RET ;
 
-\ The whole kernel: the helpers, then every section. The specification's
-\ other half runs once the linker knows which provided cells the capture fills
-\ (tools/native-emit-x64.f): ENGINE-PRIMS:COMPLETE dies 76 naming the first row
-\ of src/habu/prims.f that no section registered, as habu2.f
-\ ENGINE-EMIT:EMIT-PRIMITIVE-SECTIONS does for ARM64, and COMPLETE-PROVIDED
-\ refuses a provided row whose cell the capture leaves empty, so a row this
-\ kernel does not carry is a REFUSE or REFUSE-WID, never an absence a captured program meets.
+\ The whole kernel: the helpers, then every section.
 : KERNEL, ( -- )
    X64CODE:LBL LCLOSE-CELL !
    HELPERS,

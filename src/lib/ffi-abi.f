@@ -167,12 +167,12 @@ CAST: CELL>PTR ( n -- ptr u8 )
 : DLOPEN-RAW ( ptr u8 n -- n ) {: path:ptr flags:n :}
    path PTR>CELL FFI-DLBUF !
    flags FFI-DLBUF CELL + !
-   FFI-DLBUF 2 DLOPEN-SLOT @ ffi-call-n ;
+   FFI-DLBUF 2 dlopen-entry ffi-call-n ;
 
 : DLSYM-RAW ( n ptr u8 -- n ) {: handle:n name:ptr :}
    handle FFI-DLBUF !
    name PTR>CELL FFI-DLBUF CELL + !
-   FFI-DLBUF 2 DLSYM-SLOT @ ffi-call-n ;
+   FFI-DLBUF 2 dlsym-entry ffi-call-n ;
 
 \ ---- declared foreign functions -------------------------------------------
 

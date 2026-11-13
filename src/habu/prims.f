@@ -921,6 +921,8 @@ ETRUSTED-ONLY!
 EPRIM: task-entry PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!                       \ C ABI entry address, never a Habu quotation
 EPPRIM: TASK task-entry PE-N PE-OUT ECLOSE-PRIVATE
+EPRIM: dlopen-entry PE-N PE-OUT EPRIM;
+EPRIM: dlsym-entry PE-N PE-OUT EPRIM;
 \ callback-entry -1 answers the shared raw C thunk for a compiler-owned stub.
 \ Nonnegative IDs answer the boot stubs.
 EPRIM: callback-entry PE-N PE-IN PE-N PE-OUT EPRIM;

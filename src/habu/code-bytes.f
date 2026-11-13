@@ -14,8 +14,7 @@ CAST: N>U8 ( n -- ptr u8 )
 \ between them, or running past what is emitted, is not code.
 \ [rbase, dbase@) - the engine's baked text. dbase@ is a true upper bound: the
 \ image's read-write tail lies between the text and the region, so it admits
-\ wrongly only addresses in the process's own data. The exact text size is
-\ per target (src/os/linux/layout.f LINUX-TEXT-SIZE and its macos twin).
+\ wrongly only addresses in the process's own data.
 : TEXT-LO ( -- n ) rbase ;
 : TEXT-HI ( -- n ) dbase@ ;
 
