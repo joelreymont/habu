@@ -1158,8 +1158,7 @@ DYNAMIC-BUFFER RS-V vreg     \ reserved to EMIT-VREGS by RESET-STATE: one
    v o r EMIT-ADDR-DATA
    r PUSH-REG ;
 
-\ Cell k of a fact's descriptor, read while compiling: INTERN laid the bytes in
-\ this process at any alignment, in a build's space too (intern-table.f LAY).
+\ Cell k of a fact's descriptor, read while compiling.
 : DESC@ ( ptr u8 n -- n ) cells + LE:U64@ ;
 
 : PLAIN? ( ptr u8 -- bool ) {: d:ptr :}

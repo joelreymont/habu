@@ -105,8 +105,6 @@ CAST: FROZEN>N ( frozen -- n )
 
 public
 
-\ Byte decoding supports INTERN rows at every alignment; CELL-VIEW alone would
-\ reject a descriptor placed after a string of an odd byte length.
 : SHAPE ( ptr u8 n n -- ) {: data:ptr bytes:n width:n :}
    bytes 0 <= bytes 8 mod 0<> or width 0 <= or if BAD-DESCRIPTOR then
    bytes 8 / {: count:n :}
