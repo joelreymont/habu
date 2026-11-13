@@ -63,8 +63,8 @@ CAST: AS-QUOT-CELLS ( n -- [ n n -- n n ] )
 
 \ Checked bodies name field offsets through layout.f's NCOMP-DISPATCH:DECL-*.
 \ CHECKER-OWNER-ABI loads before the checker, so build-fixpoint's stage-built
-\ hb-host refuses a checked body naming CHECKER-OWNER-ABI:CHECK-OFF with
-\ E-UNDEFINED, while NCOMP-DISPATCH:DECL-CHECK-OFF certifies there.
+\ hb-host refuses a checked body naming CHECKER-OWNER-ABI:CALL-CELLS-OFF with
+\ E-UNDEFINED, while NCOMP-DISPATCH:DECL-CALL-CELLS-OFF certifies there.
 
 \ A field is read only after the guard bounds the record and its recorded
 \ extent.

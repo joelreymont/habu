@@ -5280,21 +5280,6 @@ TFAM-HOOK-INSTALL
 ;using
 ;using
 
-\ The native lowerer and the checker must resolve names and interpret the
-\ resulting family/variant ids in this same registry.
-package CHECKER-REG
-' TFL-MATCH-FAM?       DECLARATIONS FAMILY-MATCH-OFF + xt!
-' TFL-CON-FAM?         DECLARATIONS FAMILY-CON-OFF + xt!
-' TFAM:TFL-VAR?        DECLARATIONS FAMILY-VARIANT-OFF + xt!
-' TFAM:TFAM-SLOTS@     DECLARATIONS FAMILY-SLOTS-OFF + xt!
-' TFAM:TFAM-VAR-COUNT@ DECLARATIONS FAMILY-VARIANTS-OFF + xt!
-' TFAM:TFAM-NICHE?    DECLARATIONS CHECKER-OWNER-ABI:FAMILY-NICHE-OFF + xt!
-' TFAM-NAME$           DECLARATIONS FAMILY-NAME-OFF + xt!
-' TFAM:SUMV-TAG@       DECLARATIONS VARIANT-TAG-OFF + xt!
-' TFAM:TFL-VPADS       DECLARATIONS VARIANT-PADS-OFF + xt!
-' TFAM:SUMV-PAYCELLS@  DECLARATIONS VARIANT-PAY-CELLS-OFF + xt!
-;package
-
 \ A build's registries start with the families above, which every program
 \ starts with; a product declares the rest for itself (CHECK:OPEN), so its
 \ SPAN:span never meets hb's. The tail indexes and the memo start empty, and
