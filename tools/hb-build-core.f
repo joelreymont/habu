@@ -434,22 +434,28 @@ public
 \ writing the file, unless the last one written there still holds; then reads
 \ the object adopted or written, by the path its checksum names, for the
 \ builds that follow. A build's registry starts empty, so the writer's files
-\ load from this tree; a kernel build shares a program build's objects.
+\ load from this tree; a kernel build shares a program build's objects. The
+\ build and its adoption run from the tree's root, whatever the caller's, so
+\ the inputs file records that root and holds for every caller.
 : KERNEL-BUILD ( bool RTARGET:resolved-target -- )
    {: engine:bool target:RTARGET:resolved-target :}
    engine KERNEL-ENGINE? !  target TARGET !
    PATHS  KERNEL-PATHS
-   ADOPT? 0= if
-      NULL-PTR ROW-PATH !  0 ROW-LEN !
-      s" kernel" target ['] KERNEL-BODY LINKER:WITH
-   then
+   SOURCE-ROOT:CWD$ [:
+      ADOPT? 0= if
+         NULL-PTR ROW-PATH !  0 ROW-LEN !
+         s" kernel" target ['] KERNEL-BODY LINKER:WITH
+      then
+   ;] SOURCE-ROOT:WITH
    KERNEL-PATH KERNEL-U @ LINKER:KERNEL ;
 
 \ The path of the kernel object the last KERNEL-BUILD wrote or adopted, which
 \ names its checksum, so a later read of it reads the bytes the build linked.
 : KERNEL$ ( -- ptr u8 n ) KERNEL-PATH KERNEL-U @ ;
 
-\ The inputs file beside the object KERNEL$ names, which the last KERNEL-BUILD wrote or adopted.
+\ The tree's inputs file for the last KERNEL-BUILD's profile and kind; any
+\ kernel build of this tree may replace it with a log that holds as well, read
+\ from the tree's root.
 : KERNEL-INPUTS$ ( -- ptr u8 n ) INPUTS-PATH INPUTS-U @ ;
 
 \ The file the build is loading, for the message of a build that failed; empty
