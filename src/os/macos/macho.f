@@ -7,12 +7,11 @@
 \ The header is MH_EXECUTE for ARM64 with NOUNDEFS, DYLDLINK, TWOLEVEL and,
 \ while PIE? is set, PIE. The load commands, in order: __PAGEZERO, 4 GiB with
 \ no file bytes; __TEXT at VMBASE, sized to its content in 16 KB pages, __text
-\ at CODE-OFF; __DATA_CONST, whose __got holds the two cells dyld binds to
-\ libSystem's _dlopen and _dlsym (src/os/macos/layout.f DLOPEN-SLOT,
-\ DLSYM-SLOT), then the stripped DATA payload; __LINKEDIT, the chained-fixups
-\ blob, which the signer grows; LC_DYLD_CHAINED_FIXUPS, whose starts name the
-\ __DATA_CONST segment offset so dyld rewrites the GOT before LC_MAIN runs;
-\ /usr/lib/dyld; LC_MAIN at CODE-OFF; libSystem; and two Homebrew runpaths.
+\ at CODE-OFF; __DATA_CONST, whose __got holds one cell per IMPORT$ row, which
+\ dyld binds to libSystem; __LINKEDIT, the chained-fixups blob, which the signer
+\ grows; LC_DYLD_CHAINED_FIXUPS, whose starts name the __DATA_CONST segment
+\ offset so dyld rewrites the GOT before LC_MAIN runs; /usr/lib/dyld; LC_MAIN at
+\ CODE-OFF; libSystem; and two Homebrew runpaths.
 \ sign2.f adds LC_CODE_SIGNATURE in the header slack.
 \
 \ DETERMINISTIC. The self-rebuild gate compares successive images, so none
@@ -52,12 +51,66 @@ variable VMBASE
 CODE-CAP-BYTES CODE-OFF + constant MPAGE
 $4000     constant MACHO-PAGE
 $4000     constant DATA-CONST-SIZE
-16        constant MACHO-GOT-BYTES
-104       constant MACHO-FIXUPS-SIZE
-\ One chained start belongs to each __DATA_CONST page. The first starts the two
-\ GOT binds; remaining pages contain only the immutable stripped DATA payload.
-\ The payload can fill the assembler window, with the GOT prefix taking another
-\ page at that boundary.
+
+\ The libSystem functions and variables dyld binds into the GOT, in slot order,
+\ by C name.
+: IMPORT$ ( n -- ptr u8 n )
+   case
+      0 of s" dlopen" endof
+      1 of s" dlsym" endof
+      2 of s" free" endof
+      3 of s" realpath" endof
+      4 of s" fork" endof
+      5 of s" mach_vm_remap" endof
+      6 of s" mach_task_self_" endof
+      s" macho: no such import" 73 die
+   endcase ;
+7 constant IMPORTS
+
+\ Darwin's plain realpath is its legacy entry, which reads every parent
+\ directory of a relative path; C programs link realpath$DARWIN_EXTSN.
+: SUFFIX$ ( n -- ptr u8 n )
+   IMPORT$ s" realpath" STR= if s" $DARWIN_EXTSN" else s" " then ;
+
+\ Row n's symbol is an underscore, the name, then the suffix.
+: SYMBOL-LEN ( n -- n )
+   dup IMPORT$ nip 1 +  swap SUFFIX$ nip + ;
+
+: SYMBOL, ( n -- )
+   s" _" M-BYTES  dup IMPORT$ M-BYTES  SUFFIX$ M-BYTES ;
+
+: NAME-SUM ( n ptr u8 n -- n )
+   {: h:n a:ptr u:n :}
+   h  u 0 ?do 31 * a i + c@ + loop  31 * ;
+
+public
+\ The row whose C name this is; the build dies on a name the table lacks.
+: IMPORT-ROW ( ptr u8 n -- n )
+   {: a:ptr u:n :}
+   IMPORTS 0 ?do i IMPORT$ a u STR= if i unloop exit then loop
+   SB-RESET  s" macho: no such import " SB-APPEND  a u SB-APPEND
+   SB$ 73 die ;
+
+\ A sum over the C names in row order.
+: IMPORTS-SUM ( -- n )
+   0  IMPORTS 0 ?do i IMPORT$ NAME-SUM loop ;
+
+\ Import row n's cell, as a byte offset from the GOT's start.
+: SLOT-OFF ( n -- n ) 8 * ;
+private
+
+\ A row's symbol's offset in the symbol strings, which open with a NUL.
+: NAME-OFF ( n -- n )
+   1 swap 0 ?do i SYMBOL-LEN 1 + + loop ;
+
+IMPORTS SLOT-OFF constant MACHO-GOT-BYTES
+IMPORTS NAME-OFF constant SYMBOLS-BYTES
+\ The fixups header and image starts ($38), one page's segment starts (24), the
+\ imports and the symbol strings; the blob pads them to a cell.
+$38 24 + IMPORTS 4 * + SYMBOLS-BYTES + constant MACHO-FIXUPS-USED
+MACHO-FIXUPS-USED 7 + -8 and constant MACHO-FIXUPS-SIZE
+\ One chained start belongs to each __DATA_CONST page. The first starts the
+\ GOT binds; no other page holds a bind.
 CODE-CAP-BYTES MACHO-GOT-BYTES + MACHO-PAGE 1- + MACHO-PAGE / 1- 2 * 3 + -4 and
    MACHO-FIXUPS-SIZE + constant MACHO-FIXUPS-MAX
 \ Code and payload share the assembler window. Their two separately rounded
@@ -171,16 +224,29 @@ variable NCMDS
    M-HERE LE-OFF !
    s" __LINKEDIT" linkoff VA+ MACHO-PAGE linkoff MACHO-FIXUPS-BYTES 1 0 0 SEG, ;
 
+\ A bind per row: the import's ordinal, the bind bit and, on every row but the
+\ last, a next of two 4-byte strides.
 : MACHO-GOT, ( -- )
-   0 IMG-M32  $80100000 IMG-M32
-   1 IMG-M32  $80000000 IMG-M32 ;
+   IMPORTS 0 ?do
+      i IMG-M32
+      $80000000 i IMPORTS 1- < if $00100000 or then IMG-M32
+   loop ;
+
+\ Each import names libSystem (ordinal 1) and its name's offset.
+: MACHO-IMPORTS, ( -- )
+   IMPORTS 0 ?do i NAME-OFF 9 lshift 1 or IMG-M32 loop ;
+
+: MACHO-SYMBOLS, ( -- )
+   0 IMG-M8
+   IMPORTS 0 ?do i SYMBOL, 0 IMG-M8 loop
+   MACHO-FIXUPS-SIZE MACHO-FIXUPS-USED - M-ZEROS ;
 
 : MACHO-FIXUPS, ( n -- ) {: segoff:n :}
    0 IMG-M32                 \ fixups_version
    $20 IMG-M32               \ starts_offset
    $38 MACHO-STARTS-BYTES + IMG-M32  \ imports_offset
-   $40 MACHO-STARTS-BYTES + IMG-M32  \ symbols_offset
-   2 IMG-M32                 \ imports_count
+   $38 MACHO-STARTS-BYTES + IMPORTS 4 * + IMG-M32  \ symbols_offset
+   IMPORTS IMG-M32           \ imports_count
    1 IMG-M32                 \ DYLD_CHAINED_IMPORT
    0 IMG-M32                 \ uncompressed symbol strings
    4 M-ZEROS
@@ -195,11 +261,8 @@ variable NCMDS
    0 IMG-M16
    DATA-CONST-PAGES 1- 0 ?do $FFFF IMG-M16 loop
    DATA-CONST-PAGES 1 and 0= if 0 IMG-M16 then
-   $201 IMG-M32
-   $1201 IMG-M32
-   0 IMG-M8
-   s" _dlopen" M-BYTES 0 IMG-M8
-   s" _dlsym" M-BYTES 0 IMG-M8 ;
+   MACHO-IMPORTS,
+   MACHO-SYMBOLS, ;
 
 : MACHO-EXTRA, ( n n -- ) {: off:n segoff:n :}
    off M-OFF M-PAD-OFF
