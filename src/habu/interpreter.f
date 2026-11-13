@@ -2235,13 +2235,25 @@ variable DEF-VALUE
 \ parameter and stored type while the record is pending. A storage child's body
 \ pushes its own data address, which the declaration fills after the return.
 
-\ The entry of a private routine the engine's dictionary holds; a missing one
-\ is refused by name.
-: CHILD-ROUTINE ( ptr u8 n -- COMP:body n )
-   HANDLE-REC XREF-START COMP-BODY:routine swap ;
+\ The handle of a routine child's routine.
+: ROUTINE$ ( n -- ptr u8 n ) {: shape:n :}
+   shape CHILD-ABI:BUFFER = if s" private LBUF ELEMENT" exit then
+   shape CHILD-ABI:BIND = if s" private LBUF BIND" exit then
+   shape CHILD-ABI:GROW = if s" private LBUF GROW" exit then
+   shape CHILD-ABI:DYNAMIC = if s" private DYNAMIC-STORAGE ELEMENT" exit then
+   shape CHILD-ABI:RESERVE = if s" private DYNAMIC-STORAGE ENSURE" exit then
+   shape CHILD-ABI:RELEASE = if s" private DYNAMIC-STORAGE EMPTY" exit then
+   shape CHILD-ABI:SLOT = if s" private TASK SLOT" exit then
+   s" private TASK SLOT-AT" ;
+
+\ A routine child's entry: in hb's session the definer's tick; in a build the
+\ build's own, by name: the definer may be hb's, whose code no object names.
+: ROUTINE ( n n -- n ) {: shape:n param:n :}
+   data-base BOOT:IMAGE-BASE-CELL + @ 0= if param exit then
+   shape ROUTINE$ HANDLE-REC XREF-START ;
 
 \ An unknown shape is the calling declaration's error.
-: CHILD-BODY ( n -- COMP:body n ) {: shape:n :}
+: CHILD-BODY ( n n -- COMP:body n ) {: shape:n param:n :}
    shape CHILD-ABI:CELL-OFF =
    shape CHILD-ABI:PTR-OFF = or
    shape CHILD-ABI:BYTE-OFF = or
@@ -2249,20 +2261,9 @@ variable DEF-VALUE
    shape CHILD-ABI:INDEX = if COMP-BODY:index 0 exit then
    shape CHILD-ABI:VALUE = if COMP-BODY:value 0 exit then
    shape CHILD-ABI:STORED = if COMP-BODY:address 0 exit then
-   shape CHILD-ABI:BUFFER = if s" private LBUF ELEMENT" CHILD-ROUTINE exit then
-   shape CHILD-ABI:BIND = if s" private LBUF BIND" CHILD-ROUTINE exit then
-   shape CHILD-ABI:GROW = if s" private LBUF GROW" CHILD-ROUTINE exit then
-   shape CHILD-ABI:DYNAMIC = if
-      s" private DYNAMIC-STORAGE ELEMENT" CHILD-ROUTINE exit
+   shape CHILD-ABI:BUFFER >= shape CHILD-ABI:SLOTS <= and if
+      COMP-BODY:routine shape param ROUTINE exit
    then
-   shape CHILD-ABI:RESERVE = if
-      s" private DYNAMIC-STORAGE ENSURE" CHILD-ROUTINE exit
-   then
-   shape CHILD-ABI:RELEASE = if
-      s" private DYNAMIC-STORAGE EMPTY" CHILD-ROUTINE exit
-   then
-   shape CHILD-ABI:SLOT = if s" private TASK SLOT" CHILD-ROUTINE exit then
-   shape CHILD-ABI:SLOTS = if s" private TASK SLOT-AT" CHILD-ROUTINE exit then
    RC-REJECT throw ;
 
 : CHILD-ANCHORED? ( n -- bool ) {: shape:n :}
@@ -2287,7 +2288,7 @@ variable DEF-VALUE
 : CHILD-CLOSE ( n n ptr u8 n -- n )
    {: shape:n param:n ta:ptr tu:n :}
    DEF-CAPTURED-NAME shape param ta tu CHECK:CHILD {: val:n h:n :}
-   shape CHILD-BODY {: kind:COMP:body entry:n :}
+   shape param CHILD-BODY {: kind:COMP:body entry:n :}
    shape CHILD-ANCHORED? if DEF-ANCHOR entry else val 0 then
    kind DEF-FIXED
    DEF-CLOSE
@@ -2306,7 +2307,7 @@ variable DEF-VALUE
    {: a:ptr u:n shape:n param:n ta:ptr tu:n :}
    PEND-CELL CELL@ 0<> if s" child word" a u DEF-OPEN-REFUSE then
    a u DEF-ONE-TOKEN? 0= if s" child word" a u DEF-NAME-REFUSE then
-   shape CHILD-BODY 2drop
+   shape param CHILD-BODY 2drop
    NCOMP-DISPATCH:COMP-CELL CELL@ 0= if DEF-NO-COMPILER then
    DEF-ROOM
    OVERLAY-GUARD

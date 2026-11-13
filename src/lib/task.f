@@ -1630,13 +1630,16 @@ SLOT-LAST ROLLBACK-CELLS:MARK
 : SLOT-AT ( n ptr n -- ptr n ) {: i:n body:ptr :}
    body SLOT  i body SLOT-STRIDE + @ * + ;
 
-\ The engine's cells hold STORAGE-LINE and CHILD-RUN as raw execution tokens;
-\ inside a build a name would bind the tree's copy.
 CAST: AS-STORAGE-LINE ( n -- [ ptr u8 n -- ptr u8 n ptr u8 n n ] )
 CAST: AS-CHILD-RUN ( n -- [ ptr u8 n n n ptr u8 n -- n ] )
+\ A slot child is made over SLOT's or SLOT-AT's entry.
+CAST: AS-SLOT-ENTRY ( [ ptr n -- ptr n ] -- n )
+CAST: AS-SLOTS-ENTRY ( [ n ptr n -- ptr n ] -- n )
 
-\ Every refusal comes before the child word exists.
-: USER-ROW ( n n ptr u8 n -- ) {: count:n shape:n da:ptr du:n :}
+\ Every refusal comes before the child word exists. The child's body calls the
+\ routine at entry.
+: USER-ROW ( n n n ptr u8 n -- )
+   {: count:n shape:n entry:n da:ptr du:n :}
    da du data-base PROVIDED-XT:STORAGE-LINE-CELL + @
    AS-STORAGE-LINE execute {: na:ptr nu:n ta:ptr tu:n bytes:n :}
    bytes 0= if exit then
@@ -1645,7 +1648,7 @@ CAST: AS-CHILD-RUN ( n -- [ ptr u8 n n n ptr u8 n -- n ] )
    then
    count bytes * {: size:n :}
    size USER-NEXT {: next:n :}
-   na nu shape 0 ta tu data-base PROVIDED-XT:CHILD-CELL + @
+   na nu shape entry ta tu data-base PROVIDED-XT:CHILD-CELL + @
    AS-CHILD-RUN execute drop
    next size - size bytes SLOT-LAY
    next TASK-USER-NEXT ! ;
@@ -1654,11 +1657,13 @@ public
 
 \ Accessor ( -- ptr t ): the calling thread's copy.
 : +USER ( -- )
-   1 CHILD-ABI:SLOT s" TASK:+USER" USER-ROW ;
+   1 CHILD-ABI:SLOT ['] SLOT AS-SLOT-ENTRY
+   s" TASK:+USER" USER-ROW ;
 
 \ Accessor ( n -- ptr t ): element n of the calling thread's copy.
 : +USERS ( n -- )
-   CHILD-ABI:SLOTS s" TASK:+USERS" USER-ROW ;
+   CHILD-ABI:SLOTS ['] SLOT-AT AS-SLOTS-ENTRY
+   s" TASK:+USERS" USER-ROW ;
 
 private
 

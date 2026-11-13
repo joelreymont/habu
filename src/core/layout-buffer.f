@@ -1,11 +1,9 @@
 \ layout-buffer.f: the generative storage definers LAYOUT-BUFFER (the only
-\ introduction form for `ptr layout`), DEFER-LAYOUT-BUFFER, TYPED-VARIABLE,
-\ TYPED-BUFFER and DYNAMIC-BUFFER. Each makes its words as typed children and
-\ lays each child's block at the address its body pushes. LBUF-EVAL evaluates a
-\ generated accessor the checker authorizes once, by name, in the armed window
-\ (checker.f LBUF-PEND!). A ptr variable never gains layout identity by
-\ unification. Admission: LAYOUT-BUFFER
-\ CHECKER-LAYOUT-INFO, TYPED-* CHECKER-STORAGE-INFO, DYNAMIC-BUFFER CHECKER-DYNAMIC-INFO.
+\ introduction form for `ptr layout`), DEFER-LAYOUT-BUFFER, TYPED-VARIABLE and
+\ TYPED-BUFFER, each making its words as typed children and laying each child's
+\ block at the address its body pushes. LBUF-EVAL evaluates a generated accessor
+\ the checker authorizes once, by name, in the armed window. A ptr variable
+\ never gains layout identity by unification.
 
 using TYPE-DECL
 
@@ -101,14 +99,18 @@ variable LBUF-BYTES
 \ not move with a window.
 : LBUF-BASE$ ( -- ptr u8 n ) s" #base" ;
 
+\ The answer stays in LBUF-GEN until the next LBUF-CLEAR.
+: LBUF-SUFFIXED ( ptr u8 n ptr u8 n -- ptr u8 n )
+   {: name:ptr nameu:n sfx:ptr sfxu:n :}
+   LBUF-CLEAR  name nameu LBUF-APP  sfx sfxu LBUF-APP
+   LBUF-GEN LBUF-GEN-U @ ;
+
 \ Every derived name (the storage word, NAME-BIND, NAME-GROW, NAME-RESERVE,
 \ NAME-RELEASE) is guarded like the declared one, so a collision fails loudly
 \ instead of rebinding a word. LBUF-NAMES-OK? guards the declared name and its
 \ storage word.
 : LBUF-SUFFIX-OK? ( ptr u8 n ptr u8 n -- bool ) {: name:ptr nameu:n sfx:ptr sfxu:n :}
-   LBUF-CLEAR
-   name nameu LBUF-APP  sfx sfxu LBUF-APP
-   LBUF-GEN LBUF-GEN-U @ LBUF-NAME-OK? ;
+   name nameu sfx sfxu LBUF-SUFFIXED LBUF-NAME-OK? ;
 
 : LBUF-NAMES-OK? ( ptr u8 n -- bool ) {: name:ptr nameu:n :}
    name nameu LBUF-NAME-OK? 0= if LBUF-FALSE exit then
@@ -313,6 +315,13 @@ PRIM: LDEFER-BIND PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
 \ Effect: ( count cbase wc -- ).
 PRIM: LDEFER-GROW PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
 
+\ A companion's one cell, laid after it: it holds the block v and keeps the
+\ address across a save.
+: LDEFER-CELL ( ptr n -- ) {: v:ptr :}
+   here cell-view {: at:ptr :}
+   here ptr-cell-mark 0 ,
+   v at 0 ptr-field ! ;
+
 \ ---- LBUF: the routines a buffer child's body calls --------------------------
 \ A buffer block starts with HEAD-CELLS header cells, indexed by OFF (the
 \ elements' byte offset from the block), CAP and CNT (allotted and live element
@@ -346,6 +355,30 @@ private
    b @ {: v:ptr :}
    count v  v STRIDE cells + @  LDEFER-GROW ;
 
+\ A buffer's children are made over these routines' entries.
+CAST: AS-ENTRY ( [ n ptr n -- ptr n ] -- n )
+CAST: AS-RESIZE-ENTRY ( [ n ptr ptr n -- ] -- n )
+
+CAST: AS-CHILD-RUN ( n -- [ ptr u8 n n n ptr u8 n -- n ] )
+
+: CHILD ( ptr u8 n n n ptr u8 n -- n )
+   data-base PROVIDED-XT:CHILD-CELL + @ AS-CHILD-RUN execute ;
+
+public
+
+\ Makes the buffer child NAME over TYPE and answers its effect handle.
+: BUFFER-CHILD ( ptr u8 n ptr u8 n -- n )
+   {: name:ptr nameu:n type:ptr typeu:n :}
+   name nameu CHILD-ABI:BUFFER ['] ELEMENT AS-ENTRY
+   type typeu CHILD ;
+
+\ Lays NAME's -BIND and -GROW companions over the block v.
+: COMPANIONS ( ptr u8 n ptr n -- ) {: name:ptr nameu:n v:ptr :}
+   name nameu s" -BIND" LBUF-SUFFIXED CHILD-ABI:BIND
+   ['] BIND AS-RESIZE-ENTRY s" " CHILD drop  v LDEFER-CELL
+   name nameu s" -GROW" LBUF-SUFFIXED CHILD-ABI:GROW
+   ['] GROW AS-RESIZE-ENTRY s" " CHILD drop  v LDEFER-CELL ;
+
 ;package
 
 \ ---- LAYOUT-BUFFER ------------------------------------------------------------
@@ -353,7 +386,7 @@ private
 \ elements of LBUF-W cells, then the elements, which the checker binds.
 : LBUF-CHILD ( ptr u8 n ptr u8 n bool -- )
    {: name:ptr nameu:n type:ptr typeu:n hasaddr:bool :}
-   name nameu CHILD-ABI:BUFFER type typeu TDECL-STORAGE-CHILD {: handle:n :}
+   name nameu type typeu LBUF:BUFFER-CHILD {: handle:n :}
    here {: v:ptr :}
    LBUF:HEAD-CELLS cells ,  LBUF-N @ ,  LBUF-N @ ,  LBUF-W @ ,
    LBUF-BYTES @ allot
@@ -374,16 +407,6 @@ private
 \ axiom adds no checked-code capability.
 PRIM: LAYOUT-BUFFER PE-N PE-IN PRIM;
 
-\ The companion NAME then SFX of SHAPE: its one cell holds the block v and
-\ keeps the address across a save.
-: LDEFER-COMPANION ( ptr u8 n ptr u8 n n ptr n -- )
-   {: name:ptr nameu:n sfx:ptr sfxu:n shape:n v:ptr :}
-   LBUF-CLEAR  name nameu LBUF-APP  sfx sfxu LBUF-APP
-   LBUF-GEN LBUF-GEN-U @ shape s" " TDECL-STORAGE-CHILD drop
-   here cell-view {: at:ptr :}
-   here ptr-cell-mark 0 ,
-   v at 0 ptr-field ! ;
-
 : DEFER-LAYOUT-BUFFER ( -- )
    STORAGE-LINE-TOKEN {: name:ptr nameu:n :}
    nameu 0= if s" DEFER-LAYOUT-BUFFER" CHECKER-STORAGE-NAME-REFUSE exit then
@@ -395,12 +418,11 @@ PRIM: LAYOUT-BUFFER PE-N PE-IN PRIM;
       2drop name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE exit
    then
    LBUF-W !  drop
-   name nameu CHILD-ABI:BUFFER type typeu TDECL-STORAGE-CHILD {: handle:n :}
+   name nameu type typeu LBUF:BUFFER-CHILD {: handle:n :}
    here {: v:ptr :}
    0 ,  0 ,  0 ,  LBUF-W @ ,
    handle v CHECKER-STORAGE-DEFER
-   name nameu s" -BIND" CHILD-ABI:BIND v LDEFER-COMPANION
-   name nameu s" -GROW" CHILD-ABI:GROW v LDEFER-COMPANION ;
+   name nameu v LBUF:COMPANIONS ;
 
 \ The axiom keeps DEFER-LAYOUT-BUFFER executable at top level after the seal
 \ pass; it takes nothing from the stack (the count arrives at bind).
@@ -436,7 +458,7 @@ PRIM: DEFER-LAYOUT-BUFFER PRIM;
    name nameu LBUF-NAME-OK? 0= if exit then
    1 name nameu type typeu STORAGE-VALIDATE 0= if exit then
    type typeu STORAGE-HAS-ADDRESS? {: hasaddr:bool :}
-   name nameu CHILD-ABI:STORED type typeu TDECL-STORAGE-CHILD {: handle:n :}
+   name nameu type typeu TDECL-STORED-CHILD {: handle:n :}
    here {: v:ptr :}
    LBUF-BYTES @ allot
    handle v 1 type typeu hasaddr STORAGE-BIND ;
@@ -445,40 +467,5 @@ PRIM: DEFER-LAYOUT-BUFFER PRIM;
 \ checked bodies by UNSAFE-TOK?.
 PRIM: TYPED-BUFFER PE-N PE-IN PRIM;
 PRIM: TYPED-VARIABLE PRIM;
-
-\ ---- transient typed buffers (DYNAMIC-BUFFER) --------------------------------
-\ DYNAMIC-BUFFER lays its block at the address its children hold: the head,
-\ which holds the OS mapping, the control cells behind it, then the element
-\ width in bytes. The head and the control cells describe this process's
-\ mapping, so they are scratch: a save or a file's object writes the record
-\ released. RESERVE may move the mapping, so callers keep indices, not pointers.
-\ The width is bytes, where LBUF-W holds cells, so a byte element is
-\ expressible only here (CHECKER-DYNAMIC-INFO over CHECKER-STORAGE-INFO).
-variable DBUF-W
-\ The head cell, then the control block's exact byte capacity and registry
-\ slot + 1.
-3 cells constant DBUF-CTRL-BYTES
-
-: DBUF-VALIDATE ( ptr u8 n ptr u8 n -- bool ) {: name:ptr nameu:n type:ptr typeu:n :}
-   type typeu CHECKER-DYNAMIC-INFO 0= if
-      drop name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE LBUF-FALSE exit
-   then
-   DBUF-W ! LBUF-TRUE ;
-
-: DYNAMIC-BUFFER ( -- )
-   STORAGE-LINE-TOKEN {: name:ptr nameu:n :}
-   nameu 0= if s" DYNAMIC-BUFFER" CHECKER-STORAGE-NAME-REFUSE exit then
-   STORAGE-PARSE-TYPE {: type:ptr typeu:n :}
-   name nameu LBUF-NAME-OK? 0= if exit then
-   name nameu s" -RESERVE" LBUF-SUFFIX-OK? 0= if exit then
-   name nameu s" -RELEASE" LBUF-SUFFIX-OK? 0= if exit then
-   name nameu type typeu DBUF-VALIDATE 0= if exit then
-   name nameu CHILD-ABI:DYNAMIC type typeu TDECL-STORAGE-CHILD drop
-   here {: v:ptr :}
-   DBUF-CTRL-BYTES SCRATCH-ALLOT  DBUF-W @ ,
-   name nameu s" -RESERVE" CHILD-ABI:RESERVE v LDEFER-COMPANION
-   name nameu s" -RELEASE" CHILD-ABI:RELEASE v LDEFER-COMPANION ;
-
-PRIM: DYNAMIC-BUFFER PRIM;
 
 ;using

@@ -547,7 +547,8 @@ $3880 constant APPEND-CELL
 $3888 constant POSTPONE-CELL
 $3898 constant LITERAL-CELL
 \ A declaration makes each child word through CHILD-CELL's CHILD-RUN, with a
-\ CHILD-ABI shape code.
+\ CHILD-ABI shape code; a definer reads the cell, since inside a build a name
+\ would bind the tree's copy.
 $38B0 constant CHILD-CELL
 \ A storage definer the checker does not compile reads its declaration line
 \ through the CHECK:STORAGE-LINE this cell holds.
@@ -562,8 +563,9 @@ $38A0 constant TYPE-OP-CELL
 \ answering `ptr a` for CELL-OFF, `ptr ptr b` for PTR-OFF, `ptr u8` for BYTE-OFF.
 \ A FIELD child's parameter is a committed field id, an INDEX child's a family
 \ id, a VALUE child's the number it answers. STORED to SLOTS are storage
-\ children: the parameter is 0, and the effects of STORED, BUFFER, DYNAMIC, SLOT
-\ and SLOTS answer `ptr t` for the type the declaration spells.
+\ children: STORED's parameter is 0, that of BUFFER to SLOTS its routine's
+\ entry, and the effects of STORED, BUFFER, DYNAMIC, SLOT and SLOTS answer
+\ `ptr t` for the type the declaration spells.
 package CHILD-ABI
 public
 0 constant CELL-OFF

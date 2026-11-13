@@ -15,9 +15,7 @@ public
 7138 constant E-MAP
 7139 constant E-UNMAP
 
-\ The cells of every control block: src/core/layout-buffer.f allots
-\ DBUF-CTRL-BYTES for a record, the head cell and these behind it.
-DBUF-CTRL-BYTES CELL / 1- constant CONTROL-CELLS
+2 constant CONTROL-CELLS
 
 private
 
@@ -277,6 +275,38 @@ public
    then
    REG-U @ 0= if REG-CLOSE then ;
 
+private
+
+CAST: AS-CHILD-RUN ( n -- [ ptr u8 n n n ptr u8 n -- n ] )
+\ The children are made over the entries of ELEMENT, ENSURE and EMPTY.
+CAST: AS-ENTRY ( [ R -- S ] -- n )
+
+: CHILD ( ptr u8 n n n ptr u8 n -- n )
+   data-base PROVIDED-XT:CHILD-CELL + @ AS-CHILD-RUN execute ;
+
+public
+
+: DECLARE ( -- )
+   STORAGE-LINE-TOKEN {: na:ptr nu:n :}
+   nu 0= if s" DYNAMIC-BUFFER" CHECKER-STORAGE-NAME-REFUSE exit then
+   STORAGE-PARSE-TYPE {: ta:ptr tu:n :}
+   na nu LBUF-NAME-OK? 0= if exit then
+   na nu s" -RESERVE" LBUF-SUFFIX-OK? 0= if exit then
+   na nu s" -RELEASE" LBUF-SUFFIX-OK? 0= if exit then
+   ta tu CHECKER-DYNAMIC-INFO 0= if
+      drop na nu ta tu CHECKER-STORAGE-TYPE-REFUSE exit
+   then
+   {: bytes:n :}
+   na nu CHILD-ABI:DYNAMIC ['] ELEMENT AS-ENTRY ta tu CHILD drop
+   here {: v:ptr :}
+   WIDTH-OFF SCRATCH-ALLOT  bytes ,
+   na nu s" -RESERVE" LBUF-SUFFIXED CHILD-ABI:RESERVE
+   ['] ENSURE AS-ENTRY s" " CHILD drop  v LDEFER-CELL
+   na nu s" -RELEASE" LBUF-SUFFIXED CHILD-ABI:RELEASE
+   ['] EMPTY AS-ENTRY s" " CHILD drop  v LDEFER-CELL ;
+
 seal-package
 
 ;package
+
+: DYNAMIC-BUFFER ( -- ) DYNAMIC-STORAGE:DECLARE ;

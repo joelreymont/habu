@@ -1057,11 +1057,8 @@ variable TDECL-EVAL-ARMED
 
 private
 
-\ The engine's cell holds CHILD-RUN as a raw execution token.
 CAST: AS-STORAGE-RUN ( n -- [ ptr u8 n n n ptr u8 n -- n ] )
 
-\ A definer reaches the running engine through the cell, never by name: inside
-\ a build a name binds the tree's copy.
 : TDECL-CHILD-RUN ( ptr u8 n n n ptr u8 n -- n )
    data-base PROVIDED-XT:CHILD-CELL + @ AS-STORAGE-RUN execute ;
 
@@ -1072,11 +1069,11 @@ CAST: AS-STORAGE-RUN ( n -- [ ptr u8 n n n ptr u8 n -- n ] )
 
 public
 
-\ Makes the storage child NAME of SHAPE over the stored TYPE, as TDECL-CHILD
-\ makes a child, and answers its effect handle.
-: TDECL-STORAGE-CHILD ( ptr u8 n n ptr u8 n -- n )
-   {: na:ptr nu:n shape:n ta:ptr tu:n :}
-   na nu shape 0 ta tu TDECL-CHILD-RUN ;
+\ Makes the stored child NAME over TYPE, as TDECL-CHILD makes a child, and
+\ answers its effect handle.
+: TDECL-STORED-CHILD ( ptr u8 n ptr u8 n -- n )
+   {: na:ptr nu:n ta:ptr tu:n :}
+   na nu CHILD-ABI:STORED 0 ta tu TDECL-CHILD-RUN ;
 
 \ The structures.f field words, OFF bytes into a record.
 : TDECL-CELL-CHILD ( ptr u8 n n -- ) {: na:ptr nu:n off:n :}
