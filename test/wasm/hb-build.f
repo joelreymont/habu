@@ -246,6 +246,35 @@ variable TEXT-U
    WASM-HARNESS:OUT$ LOOPS-HOST$ T$= ;
 
 
+\ The program sha.f prints the SHA-256 of "abc", of FIPS 180's two-block message
+\ and of 200 a's, whose first three blocks SHA256-FEED compresses.
+: SHA! ( -- )
+   SB-RESET
+   S\" require src/core/sha256.f\nSHA256-CTX-BYTES BUFFER: CTX\n32 BUFFER: DG\n" SB-APPEND
+   S\" 64 BUFFER: HX\n200 BUFFER: AS\n" SB-APPEND
+   S\" : SHOW ( ptr u8 n -- ) {: a:ptr u:n :} CTX a u DG SHA256-IN  DG HX SHA256>HEX  HX 64 type cr ;\n" SB-APPEND
+   S\" : MAIN ( -- ) s\" abc\" SHOW\n" SB-APPEND
+   S\"    s\" abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq\" SHOW\n" SB-APPEND
+   S\"    200 0 do 97 AS i + c! loop  AS 200 SHOW ;\n" SB-APPEND
+   SB$ s" sha.f" SOURCE! ;
+
+: SHA-HOST$ ( -- ptr u8 n )
+   SB-RESET
+   S\" ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\n" SB-APPEND
+   S\" 248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1\n" SB-APPEND
+   S\" c2a908d98f5df987ade41b5fce213067efbcc21ef2240212a41e54b5e7c28ae5\n" SB-APPEND
+   SB$ ;
+
+\ Guards a program that hashes with SHA-256: a module's sha256-blocks compresses no block, so
+\ SHA-BLOCK compresses them all.
+: SHA-CASE ( -- )
+   SHA!
+   s" a program that hashes with SHA-256 builds into a module that prints the host's digests" T-LABEL
+   s" sha.wasm" BUILD 0 T=
+   RAN 0 T=
+   WASM-HARNESS:OUT$ SHA-HOST$ T$= ;
+
+
 \ The program nan.f prints the bits of a made NaN, then of a NaN operand on the
 \ left, on the right, the left of two, and under a unary word.
 : NAN! ( -- )
@@ -689,6 +718,7 @@ public
    DIV0-CASE
    FLOAT-CASE
    LOOP-CASE
+   SHA-CASE
    NAN-CASE
    TWICE-CASE
    REFUSAL-CASES

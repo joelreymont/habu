@@ -65,6 +65,9 @@ public
    dup 0 < if s" byte: negative length" E-BYTE-RANGE die then
    >LEN COPY-LEN ;
 
+\ Wasm has no SHA-256 instructions, so no block is compressed here.
+: SHA-BLOCKS ( ptr n ptr u8 n -- n ) 2drop drop 0 ;
+
 \ The printers match the engine's (src/habu/rt.f G-PRINT9, G-PRINTU9; habu1.f
 \ BFDOT): the digits, then a newline. F-DOT prints the integer part of the
 \ magnitude, a point and six fraction digits, both truncated by f>s (saturating,

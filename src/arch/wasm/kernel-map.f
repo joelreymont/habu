@@ -35,6 +35,7 @@ public
    a u s" +!" STR=CI if s" WKWORDS:ADD-STORE" exit then
    a u s" BYTE-COPY-LEN" STR=CI if s" WKWORDS:COPY-LEN" exit then
    a u s" BYTE-COPY" STR=CI if s" WKWORDS:COPY-BYTES" exit then
+   a u s" sha256-blocks" STR=CI if s" WKWORDS:SHA-BLOCKS" exit then
    s" " ;
 
 ;package
