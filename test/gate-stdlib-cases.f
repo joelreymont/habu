@@ -1035,6 +1035,13 @@ SUITE fs-atomic-faults
 ;SUITE
 [then]
 
+\ sd_notify(3) is Linux's: the cases bind unix datagram sockets, abstract ones too.
+HB-TARGET-LINUX? [if]
+SUITE systemd
+   src/lib/systemd-test.f
+;SUITE
+[then]
+
 SUITE exit-hook
    test/exit-hook-test.f
 ;SUITE
