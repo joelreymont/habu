@@ -53,13 +53,14 @@ FUNCTION: FFI-T-LABS labs ( n -- n ) ;FUNCTION
    FFI:KPARAM-RESET
    FFI:KPARAM-COUNT 0 T= ;
 
-\ A row no other declaration shares, by its argument and spill counts.
+\ A row no other declaration shares: k's two base-16 digits are its argument
+\ and spill counts.
 variable FFI-T-PADS
 : FFI-T-PAD ( -- n )
    FFI-T-PADS @ {: k:n :}
    1 FFI-T-PADS +!
    s" hb_pad_row" 0
-   k FFI:MAX-ARGS 1+ mod  k FFI:MAX-ARGS 1+ /  0
+   k 16 /mod  0
    FFI:DECLARE-ROW 1+ ;
 
 : FFI-T-POW2? ( n -- bool ) dup 1- and 0= ;

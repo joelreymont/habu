@@ -380,9 +380,9 @@ public
    HB-TARGET-MACOS? if -2 exit then
    E-FFI-LIBRARY throw ;
 
+private
 \ Library index idx's path, as LIBRARY-PATH and LIB-INDEX number it (from 1).
 : LIB-ROW@ ( n -- ptr u8 n ) 1- {: row:n :} row LIB-PATH row LIB-LEN@ ;
-private
 
 : LINE-BODY ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 NUM:alloc-byte-len -- )
    {: p:ptr pu:n a:ptr au:n s:ptr su:n b:ptr bu:n line:ptr extent:NUM:alloc-byte-len :}
@@ -775,12 +775,6 @@ public
    idx ;
 
 : DECLARE ( ptr u8 n n n -- n ) 0 0 DECLARE-ROW ;
-
-: FN-ROW@ ( n -- ptr u8 n n n n n )
-   {: idx:n :}
-   idx FN-NAME idx NAME-LEN idx FN-LIB@ idx FN-ARGC@ idx FN-SPILL@ idx FN-RELOC@ ;
-: MAX-ARGS ( -- n ) FFI-MAX-ARGS ;
-: SYMBOL-CAP ( -- n ) FN-NAME-CAP 1- ;
 
 \ errno is this package's own binding, written by hand because the declarer is
 \ defined after this package closes. libc's location is thread-local and the

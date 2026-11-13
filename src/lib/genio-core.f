@@ -10,9 +10,9 @@
 \ also when the operation throws, so an operation of the caller's device that
 \ runs afterwards still sees itself as SELF. An operation that may throw runs
 \ under `catch` through a RUN-*-OP word that reads its row from ACTIVE-CELL,
-\ because a quotation cannot reference a local. EMIT, WRITE, FORWARD and
-\ FORWARD-EMIT skip that catch: their operations throw only a memory fault, and
-\ the catch that takes it puts ACTIVE-CELL back itself.
+\ because a quotation cannot reference a local. EMIT and WRITE skip that catch:
+\ their operations throw only a memory fault, and the catch that takes it puts
+\ ACTIVE-CELL back itself.
 require src/lib/error.f
 require src/lib/prelude.f
 require src/lib/type/deftype.f
@@ -194,10 +194,8 @@ public
 : SELF-STATE ( -- n )
    ACTIVE-ROW SLOT-STATE @ ;
 
-\ Latch a failed write on the running device: a write or emit operation must not
-\ throw. EMIT and FORWARD-EMIT raise the funnel's re-entrancy guard around an
-\ emit with no catch, and on x86-64 a throw leaves it set. The device's next EMIT, WRITE, FLUSH, KEY, KEY?, READ or ACCEPT raises
-\ E-GENIO-IO. A zero is ignored, and a failure already latched is kept.
+\ Latch a failed write on the running device: a write or emit operation runs
+\ under the funnel's guard with no catch, and on x86-64 a throw leaves it set.
 : FAULT! ( n -- )
    ACTIVE-ROW LATCH-ROW ;
 
@@ -315,25 +313,6 @@ public
 : INPUT! ( device -- )
    ROW IN-PTR ! ;
 
-\ The write failure the device latched, 0 when healthy.
-: FAULT@ ( device -- n )
-   ROW SLOT-FAULT @ ;
-
-\ Latch a failure on the device from outside its operations, as FAULT! does
-\ inside one: a device standing in front of another starts with, or catches
-\ up to, that device's fault.
-: LATCH ( n device -- )
-   ROW LATCH-ROW ;
-
-\ The device, or the terminal once its row was closed: the device the output
-\ funnel writes to for it.
-: LIVE-DEVICE ( device -- device ) {: dev:device :}
-   dev DEVICE>N {: h:n :}
-   h ROW-MASK and {: idx:n :}
-   idx STATUS@ LIVE <> if TERMINAL-ROW ROW-HANDLE exit then
-   h GEN-SHIFT rshift idx SLOT-GEN @ <> if TERMINAL-ROW ROW-HANDLE exit then
-   dev ;
-
 private
 
 \ Restoring cannot fail over the body's own result: if the body closed the
@@ -429,30 +408,6 @@ public
    idx ACTIVE-PTR !  1 BUSY-PTR !
    bytes len idx OP-WRITE @ execute
    busy BUSY-PTR !  prev ACTIVE-PTR ! ;
-
-\ From inside a device's write operation, hand the bytes to another device's
-\ write operation as the output funnel would, with no fault check, then latch
-\ that device's fault on the running device (SELF). A closed device answers the
-\ terminal. Like any write operation, it does not throw.
-: FORWARD ( ptr u8 n device -- ) {: bytes:ptr len:n dev:device :}
-   ACTIVE-ROW {: self:n :}
-   dev LIVE-DEVICE ROW {: idx:n :}
-   BUSY-PTR @ {: busy:n :}
-   idx ACTIVE-PTR !  1 BUSY-PTR !
-   bytes len idx OP-WRITE @ execute
-   busy BUSY-PTR !  self ACTIVE-PTR !
-   idx SLOT-FAULT @ self LATCH-ROW ;
-
-\ FORWARD's twin for one emit: the other device's emit operation runs, and
-\ SELF latches that device's fault.
-: FORWARD-EMIT ( n device -- ) {: c:n dev:device :}
-   ACTIVE-ROW {: self:n :}
-   dev LIVE-DEVICE ROW {: idx:n :}
-   BUSY-PTR @ {: busy:n :}
-   idx ACTIVE-PTR !  1 BUSY-PTR !
-   c idx OP-EMIT @ execute
-   busy BUSY-PTR !  self ACTIVE-PTR !
-   idx SLOT-FAULT @ self LATCH-ROW ;
 
 : FLUSH ( -- )
    OUT-ROW {: idx:n :}
