@@ -48,6 +48,7 @@ variable REQUIRE-SAVE-N
 variable REQUIRE-SAVE-BASE
 
 -1 INCLUDE-FD !
+-1 REQUIRE-SAVE-N !                                \ no snapshot in effect
 
 : INCLUDE-FALSE ( -- bool )
    0 0= 0= ;
@@ -2203,16 +2204,20 @@ public
 ;package
 
 \ A restricted discovery pass sees a fresh require/provided registry, so a tool's
-\ preloaded paths cannot dedup-hide a later user require.
+\ preloaded paths cannot dedup-hide a later user require. One snapshot is in
+\ effect at a time, since one pair is saved: a second would lose the first.
 
 : REQUIRE-SNAPSHOT ( -- )
+   REQUIRE-SAVE-N @ 0 >= if s" require: a registry snapshot is already in effect" INCLUDE-DIE then
    REQUIRE-N @ REQUIRE-SAVE-N !
    REQUIRE-BASE @ REQUIRE-SAVE-BASE !
    REQUIRE-N @ REQUIRE-BASE ! ;
 
 : REQUIRE-RESTORE ( -- )
+   REQUIRE-SAVE-N @ 0< if s" require: no registry snapshot to restore" INCLUDE-DIE then
    REQUIRE-SAVE-BASE @ REQUIRE-BASE !
-   REQUIRE-SAVE-N @ REQUIRE-REG:REWIND ;
+   REQUIRE-SAVE-N @ REQUIRE-REG:REWIND
+   -1 REQUIRE-SAVE-N ! ;
 
 package REQUIRE-REG
 

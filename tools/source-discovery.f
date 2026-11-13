@@ -1431,8 +1431,8 @@ private
    [: SD-WALK-IN ;] catch {: rc:n :}
    pkg SD-C-PKG ! outer SD-C-OUTER !
    DISCOVERY-OFF EVENT-OFF
-   SD-HARVESTING @ if SD-R-END then
    REQUIRE-RESTORE
+   SD-HARVESTING @ if SD-R-END then
    SD-LOCALS-RELEASE
    SD-PATH-RELEASE
    SD-DEC-RELEASE
