@@ -3857,16 +3857,15 @@ private
    RAX SAVED-OFF CELL!,
    done X64CODE:LBL, ;
 
-\ set-tier ( n -- ): layout.f NCOMP-DISPATCH:TIER-CELL states the rule; a tier
-\ is not a flag, so only 0 and 1 pass, as habu1.f BSETTIER admits them.
+\ set-tier ( n -- ): tier 0 is the only native tier, so only 0 passes.
 : SET-TIER-BODY ( -- )
    X64CODE:LBL X64CODE:LBL {: bad:label done:label :}
    RAX POP,
-   RAX 1 >IMM8 ASM-SINK ENC-CMP-RI8  C-A bad JCC,        \ unsigned > 1: rejects 2.. and every negative
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE bad JCC,
    RAX TIER-OFF CELL!,
    done JMP,
    bad X64CODE:LBL,
-   S\" set-tier: tier must be 0 or 1\n" HOOK-BAD-RC STDERR-EXIT,
+   S\" E-SET-TIER habu: set-tier: tier must be 0\n" HOOK-BAD-RC STDERR-EXIT,
    done X64CODE:LBL, ;
 
 \ (MARK) takes rdi = the cell and rsi = its kind tag. Its declaration happens

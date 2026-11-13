@@ -26,9 +26,8 @@ DYNAMIC-BUFFER IMPL-LEN n
 DYNAMIC-BUFFER IMPL-LIVE n
 
 \ One process's install state (INSTALL): a save or a file's object writes it
-\ zero, as CAPTURE-PREPARE leaves it. The engine cell INSTALL fills holds no
-\ other callback, so a program whose file object kept it installed installs
-\ again over its own entries.
+\ zero. The engine cell INSTALL fills holds no other callback, so a program
+\ whose file object kept it installed installs again over its own entries.
 variable OWNER-INSTALLED    OWNER-INSTALLED scratch-cell-mark
 variable KERNEL-BEGIN       KERNEL-BEGIN scratch-cell-mark
 variable KERNEL-END         KERNEL-END scratch-cell-mark
@@ -120,13 +119,6 @@ public
    IMPL-N @ SEEDED-N !
    ['] INVALIDATE data-base NATIVE-OBS-CELLS:HOST-INVALIDATE + xt!
    1 OWNER-INSTALLED ! ;
-
-: CAPTURE-PREPARE ( -- )
-   OWNER-INSTALLED @ 0<> if
-      0 data-base NATIVE-OBS-CELLS:HOST-INVALIDATE + !
-   then
-   0 OWNER-INSTALLED !
-   0 KERNEL-BEGIN !  0 KERNEL-END !  0 SEEDED-N ! ;
 
 private
 

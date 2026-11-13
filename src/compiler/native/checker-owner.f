@@ -142,12 +142,6 @@ public
 : BY-NAME? ( -- bool )
    SOURCE-LOADED @ 0<> ;
 
-\ A baked compiler must be told which checker owns the source: clearing the
-\ latch makes the built engine refuse a missing field instead of reaching for a
-\ name.
-: CAPTURE-PREPARE ( -- )
-   0 SOURCE-LOADED ! ;
-
 \ ---- the front end the checker IS: the scan, the tape it fills, the does> split,
 \ the declared-effect row and the retract of one ----------------
 

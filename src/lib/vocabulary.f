@@ -58,7 +58,7 @@ public
 \ a `catch` around `included` takes; ALLOW-PACKAGE or RESTRICT once sealed, an
 \ unknown package, a wid at or above PROT-WID-MAX (it has no admission bit) and
 \ a package publishing a word spelled like a dispatched keyword row, case folded
-\ (tier 0 would read it as the row, tier 1 as the word), exit with it.
+\ (tier 0 would read it as the row, not the word), exit with it.
 : RESTRICT ( -- ) policy-seal ;
 
 ;package

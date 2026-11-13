@@ -172,9 +172,6 @@ variable ERRLEN
    s" empty return-stack read" T-LABEL
    s" 0 set-tier : EDGE ( -- ) 11 22 2>r 0 data-base RSP-CELL + ! 2r> 2drop ; EDGE" REFUSED-RETURN ;
 
-\ Tier-1 linear return transfers live in the compiler's value vector. Even
-\ with only one VM return slot free, 2>r/2r> leave RSP unchanged; an unmatched
-\ pop is refused while elaborating, before any native word can run.
 : PRIMITIVE-RETURN-X64 ( -- )
    s" native pair transfer preserves values and VM return depth" T-LABEL
    s" variable OLD-RSP TRUSTED: EDGE ( -- ) data-base RSP-CELL + @ OLD-RSP ! STACK-ABI:RETURN-CELLS 1 - data-base RSP-CELL + ! 11 22 2>r 2r> . . data-base RSP-CELL + @ STACK-ABI:RETURN-CELLS 1 - = . OLD-RSP @ data-base RSP-CELL + ! ; EDGE"

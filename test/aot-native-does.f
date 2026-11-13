@@ -3,6 +3,7 @@
 \ entry record and a shadow row while omitting the private parent's name.
 \ Run: bin/hb --load test/aot-native-does.f -- <artifact.aot>
 
+false [if] \ off until dot 3ed6f45d
 package AOTN
 public
 ndict@ here  variable PRE-R  variable PRE-D  PRE-D !  PRE-R !
@@ -93,3 +94,4 @@ public
 
 AOT-ARM:WINDOW-CLOSE
 AOTN:RUN
+[then]

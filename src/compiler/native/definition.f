@@ -488,7 +488,7 @@ private
 \ A refusal of a TRUSTED: body, which no scan certified, that names its token:
 \ the load ends as a reject.
 : MALFORMED? ( n -- bool ) {: rc:n :}
-   rc E-T0-CONTROL =  rc E-NELAB-CTRL = or  rc E-UNMODELED-IMMEDIATE = or
+   rc E-T0-CONTROL =  rc E-UNMODELED-IMMEDIATE = or
    rc E-T0-MATCH = or  rc E-T0-DEFER = or
    TRUSTED? and ;
 

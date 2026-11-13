@@ -908,7 +908,6 @@ $14000000 constant ACAP-GBR-TERM
 \ An in-code string literal is exactly
 \ B after-bytes; padded bytes; ADR x9,first-byte; STR x9,[x19],#8. The target
 \ and the address must agree before the skipped interval is treated as data.
-\ Tier 1 interns its literals in DATA and has no such in-code interval.
 : ACAP-GRAPH-RAW-STRING ( n -- ) {: at:n :}
    at ACAP-GSITE@ 3 = if exit then
    at ACAP-GRAPH-W32@ {: w:n :}

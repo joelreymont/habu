@@ -3,7 +3,6 @@
 \ One line per word the load defined, then the same columns totalled on a `T`
 \ line with the word count first:
 \     W <name> <bytes> <instructions> <bl> <ldr-sp> <str-sp> <mov> <movk>
-\ tools/tier-census-join.f puts two reports side by side.
 
 \ Only this require (`set-tier` is an engine word), loaded before MAIN takes its
 \ `ndict@` mark: a file this tool loads, like one the engine provides

@@ -580,7 +580,6 @@ $250 constant VVAL-OFF
 \ ENGINE-ERROR:AOT-SEED.
 package NCOMP-DISPATCH
 public
-$358 constant XT-CELL
 
 \ The callback operations are NDEFINITION's, which the COMP-CELL compiler
 \ uses. A fresh source
@@ -865,8 +864,7 @@ $2838 constant TOKVSP-CELL
 \ token (`:`, kernel:, TRUSTED:) or the word that ran def-open; a source that
 \ ends inside the definition is located there. CAST: and defer set PEND-CELL
 \ only within their keyword, so no source can end inside them. A transient
-\ address like TKA-CELL, zeroed at snapshot: no native-layout row, no
-\ stripped-image claim.
+\ address like TKA-CELL, zeroed at snapshot: no stripped-image claim.
 $2850 constant PENDTKA-CELL
 \ FLOORREC-CELL: runtime address of the underdepth throw entry, stored at
 \ startup because the crash handler that jumps there cannot name an emit-time

@@ -262,10 +262,10 @@ publication and the AOT capture only.
 
 Cross-build first, self-host second.
 
-1. **The engine is tier-1 only.** A small hand-written kernel is bound to the
-   `src/habu/prims.f` names; the outer interpreter, definers, packages, source
-   loading and `MAIN` are checked Habu captured into both products. There is no
-   x86 copy of `habu2.f`.
+1. **The engine compiles through tier 0.** A small hand-written kernel is
+   bound to the `src/habu/prims.f` names; the outer interpreter, definers,
+   packages, source loading and `MAIN` are checked Habu captured into both
+   products. There is no x86 copy of `habu2.f`.
 2. **The ARM64 engine cross-builds by dual emission.** Loading the prefix
    executes on the host, so the host cannot switch its contract; each
    definition's one HIR is emitted twice and the capture carries the shadow.

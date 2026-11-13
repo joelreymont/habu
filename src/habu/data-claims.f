@@ -88,7 +88,6 @@ create TAB
    CREATEP-CELL                       1 cells                 CLAIM CREATEP-CELL
    QPATCH-CELL                        1 cells                 CLAIM QPATCH-CELL
    VVAL-OFF                           VSMAX cells             CLAIM VVAL-STACK
-   NCOMP-DISPATCH:XT-CELL             1 cells                 CLAIM NCOMP-XT-CELL
    NCOMP-DISPATCH:COMP-CELL           1 cells                 CLAIM NCOMP-COMP-CELL
    NCOMP-DISPATCH:FIXED-COMP-CELL     1 cells                 CLAIM NCOMP-FIXED-COMP-CELL
    NCOMP-DISPATCH:DECL-CELL           1 cells                 CLAIM NCOMP-DECL-CELL

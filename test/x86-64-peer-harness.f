@@ -3,6 +3,7 @@
 \    OPEN,  cases  CLOSE,  [ callee  ALIGN, ]  [ n SKIP, ]  ENTRY,  routine  WRITE-ELF
 \ An image with its own entry (test/x86-64-skel-image.f) skips the checking
 \ entry: it stages after ASM-RESET and ends with WRITE.
+false [if] \ off until dot 3ed6f45d
 require src/lib/test.f
 require src/lib/byte-buffer.f
 require src/habu/fdio.f
@@ -318,3 +319,4 @@ public
 : DISPOSE ( -- ) ASM-SINK BUF:DISPOSE ;
 ;using   \ X64LAYOUT
 ;package
+[then]

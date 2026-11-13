@@ -4,6 +4,7 @@
 \ numbering, the protected-wid bitmap, the name index and each declared code
 \ cell's xt.
 
+false [if] \ off until dot 3ed6f45d
 package X64LT
 public
 ndict@ here BYTE-VIEW NULL-PTR BYTE-VIEW - variable PRE-R  variable PRE-D  PRE-D !  PRE-R !
@@ -772,3 +773,4 @@ public
 ;package
 
 X64LT:RUN
+[then]

@@ -67,8 +67,7 @@ rules. Build and test procedures live in [bootstrap.md](bootstrap.md) and
   index. A local binds from its group's closer to the end of its scope; names
   differing only in case are two locals; repeated declarations of one spelling
   resolve to the latest live binding; mentions before the closer resolve in the
-  preceding scope. A local named `;]` is `E-NELAB-LOCAL`; a group that writes
-  `[:` is `E-NELAB-QUOT`.
+  preceding scope.
 - **Names fold case, and a wordlist holds each once**: a top-level `: dup` is
   `duplicate definition: dup`, rc 78. A package's own word may spell a global
   or an engine word; a public one that does is refused at a bare call through
@@ -667,16 +666,11 @@ multi-cell type rationale is `docs/design.md` "Types".
   effects and `MATCH` name the family `PKG:family` (`( -- TCP4:read-result )`,
   `MATCH TCP4:read-result`); a body inside the owning package writes the bare
   family name in `MATCH`.
-- **An OPEN family instance is placeable when the width cannot read the open
-  argument.** `STRUCTURE span<a> FIELD base ptr a FIELD len n ;STRUCTURE` is two
-  cells for every argument, so `: SKIP ( span<t> n -- span<t> ) …` compiles at
-  tier 1 exactly like the `span<u8>` row. A family whose parameter IS a payload
-  cell (`FIELD it a`) has a width its argument decides: a row carrying an open
-  instance of THAT below another value is `E-NELAB-BUNDLE` until the argument is concrete; no width is guessed. A
-  `create … does>` clause's rows follow the same rule: a clause yielding a
-  multi-cell value compiles at tier 1 and the created word runs (`n
-  SPAN-BUFFER: NAME`); only a clause row carrying an instance whose
-  width reads an open argument is `E-NELAB-BUNDLE`, at the definer.
+- **An OPEN family instance is placeable.** `STRUCTURE span<a> FIELD base ptr a
+  FIELD len n ;STRUCTURE` is two cells for every argument, so `: SKIP ( span<t>
+  n -- span<t> ) …` compiles exactly like the `span<u8>` row, and so does a row
+  carrying an open instance of a family whose parameter is a payload cell
+  (`FIELD it a`) below another value.
 - `CAST: NAME ( source -- destination )` declares a checked retype: a reader
   keyword with no body and no `;`, publishing `NAME` as an identity whose call
   sites emit nothing. A conversion that can refuse is a checked word that
@@ -2006,7 +2000,7 @@ backend answers alike.
   assertions, stack-preserving outcome adapters returning the exact code. No `…
   catch drop`, no `catch 2drop`, no masking.
 - A proven-impossible state throws its owning module's named state code
-  (`E-QUEUE-STATE`, `E-IR-TYPE-STATE`). Habu has no `abort"`.
+  (`E-QUEUE-STATE`). Habu has no `abort"`.
 - **`throw` is catchable, `die` ends the process.** `throw` is the checker's
   exception edge, for recoverable and interactive paths (REPL recovery: `?`,
   rollback, reread); `die` is no-return, for build makers and CLI boundaries
@@ -2562,10 +2556,8 @@ sections above.
   absent target or one without a declared trailing string input is
   `E-NAMES-ROW`. The claim is not checked against W's body.
 - **A `TRUSTED:` body may return loose cells as a declared family value.**
-  Payload cells sit below the tag. Native elaboration groups them by its
-  signature; a checked body must build the family value explicitly
-  (`E-NELAB-JOIN` for loose cells). A wrong cell count is `E-NELAB-ARITY`
-  either way.
+  Payload cells sit below the tag. A checked body must build the family value
+  explicitly.
 - **Binding follows the engine's selected word and its own metadata.** After
   `undefine dup  : dup ( n -- n ) 100 + ;`, `5 dup` answers 105 at either
   tier. Intrinsic typing belongs to the original engine word, not the new
@@ -2649,11 +2641,10 @@ sections above.
   whatever its signature says: a use is refused as the bullet above says.
   `TRUSTED:` asserts an authoritative row, and a `defer` made before the hook
   gets its declared effect as one when the checker loads.
-- **A native build requires the scan** and refuses before publication. A
-  failed native compile retracts only the pending definition's rows,
-  preserving prior rows. If no row supplies arity it refuses with the hook's
-  reject status; if another owner's row supplies arity but the body underflows
-  it, it is `E-NELAB-UNDER`.
+- **A native build refuses a definition whose checker scan is refused**, before
+  publication. A failed native compile retracts only the pending definition's
+  rows, preserving prior rows. If no row supplies arity it refuses with the
+  hook's reject status.
 - **Native compile callbacks cannot change the checker store.** From scan
   completion through the last publication callback, a checker scan or a
   checker write (`generates:`, a linear, record or family declaration, a
@@ -2700,8 +2691,7 @@ sections above.
   through a local bound to that same tick. A fresh declared quotation
   parameter, typed `xt<effect>` cell or `defer` has no such edge and leaves
   the window typed. A tick of a never-returning callee still fits against its
-  declared output row and can be `E-NELAB-QUOT` at `[']` in native
-  elaboration.
+  declared output row.
 - **Linear and multi-cell values respect the stale boundary.** A linear
   handle cannot cross a quotation-literal catch: reading it is
   `E-STALE-READ`, and dropping it is a linear refusal. Open it inside the

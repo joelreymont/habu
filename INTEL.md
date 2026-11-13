@@ -7,7 +7,7 @@ design reference is [docs/x86-64.md](docs/x86-64.md). The seam rules are in
 
 ## Mission
 
-The goal is a tier-1-only Linux x86-64 engine:
+The goal is a Linux x86-64 engine on tier 0:
 
 - **Kernel.** Each target has a small hand-written kernel that binds the
   names in `src/habu/prims.f`.
@@ -25,12 +25,6 @@ The goal is a tier-1-only Linux x86-64 engine:
 - **Self-host.** The cross-built engine rebuilds itself on the ThinkPad to a
   byte fixpoint, which is the release artefact. A native build records the
   already published Intel emission; it does not lower or emit it a second time.
-
-The ARM64 product keeps tier 0 through the B1 hook
-(`habu-hook-tier-0-96e33c29`). A tier-1-only product on both architectures
-is a follow-on, opened once tier-1 latency is measured on spark
-(`habu-measure-tier-1-f7425ab1`, G4a) and on the ThinkPad
-(`habu-measure-tier-1-0faadb01`, G4b).
 
 ## State
 

@@ -33,12 +33,11 @@ E-SHADOWED-ARITY constant E-SHADOW-ARITY   \ src/core/checker.f SHADOW-ARITY-CK
 ;package
 
 \ === refused: the private twin's effect moves a different number of cells =====
-\ Fewer inputs than the private word: the reported shape (ncomp's -8303
-\ E-NELAB-ARITY at the return).
+\ Fewer inputs than the private word.
 s\" package SAT-A\n: F ( n n -- n ) + ;\npublic\n: F ( n -- n ) 1 + ;\n;package"
    SHADOWED-ARITY:SAE-CATCH SHADOWED-ARITY:E-SHADOW-ARITY T=
 
-\ More inputs than the private word (ncomp's -8304 E-NELAB-UNDER).
+\ More inputs than the private word.
 s\" package SAT-B\n: G ( n -- n ) 1 + ;\npublic\n: G ( n n -- n ) + ;\n;package"
    SHADOWED-ARITY:SAE-CATCH SHADOWED-ARITY:E-SHADOW-ARITY T=
 
@@ -68,8 +67,8 @@ s\" : SAT-K-CK ( -- ) SAT-K:CV 20 <> if s\q public constant lost its own value\q
    SHADOWED-ARITY:SAE-CATCH 0 T=
 
 \ The same narrowing from the other side: a definer-made public over a private
-\ COLON word of another width. The private word binds its own name, the public
-\ constant has no body, and nothing here can reach E-NELAB-ARITY.
+\ COLON word of another width. The private word binds its own name and the
+\ public constant has no body.
 s\" package SAT-L\n: CW ( n -- ) drop ;\npublic\n30 constant CW\n;package"
    SHADOWED-ARITY:SAE-CATCH 0 T=
 

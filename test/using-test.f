@@ -168,8 +168,7 @@ s" AW drop" UCE-CATCH E-REJECT T=
 \ mirror keeps UQV through the throw, and once current is back the replay
 \ agrees instead of refusing E-PKG-CONTEXT. The buffer throws E-UNDEFINED through
 \ TEST-EVAL:RC; INCLUDE-EVALUATE ends the process there instead. A buffer that
-\ only interprets (`1 drop`) runs in that scope: the tier-1 top-row tracker never
-\ refuses a line.
+\ only interprets (`1 drop`) runs in that scope.
 package UQV
 variable UQV-CUR  get-current UQV-CUR !
 0 set-current

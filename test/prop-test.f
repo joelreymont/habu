@@ -32,10 +32,6 @@ require src/lib/process-fork.f
 require src/lib/fmt.f
 require src/lib/test/eval.f
 
-\ The harness and its candidates compile at tier 0 whatever the caller chose:
-\ tier 1 refuses CLEAR-MEAS's untyped row drain (E-NELAB-UNDER).
-0 set-tier
-
 package PROP-TEST
 private
 
