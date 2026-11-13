@@ -11,7 +11,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 spargebra = { git = "https://github.com/oxigraph/oxigraph", rev = "78734be853a4bec714ba09bbfad790e64f3a1150" }
-spareval = { git = "https://github.com/oxigraph/oxigraph", rev = "78734be853a4bec714ba09bbfad790e64f3a1150" }
+spareval = { path = "vendor/spareval" }
 oxrdf = { git = "https://github.com/oxigraph/oxigraph", rev = "78734be853a4bec714ba09bbfad790e64f3a1150" }
 serde_json = "=1.0.145"
 

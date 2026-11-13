@@ -65,6 +65,7 @@ Build `native/sparql` with Cargo and make its dynamic library available to Habu.
 `native/sparql/README.md` gives the command. With a trusted installed `hb`, load
 `src/lib/sparql-test.f` for the focused callback/exception check.
 
-The delivery archive contains the W3C conformance harness and measured results.
+The [native conformance audit](../native/sparql/conformance/README.md) contains
+the W3C harness and measured results.
 Those execute the native ABI. They do not establish that the Habu wrapper or
 Zen worker has compiled; both require a trusted `hb` run.

@@ -1,0 +1,10 @@
+   Compiling habu-sparql v0.1.0 (/workspace/scratch/90031a9a4dc5/habu-sparql/native/sparql)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.30s
+     Running tests/rdf_terms.rs (native/sparql/target/debug/build/habu-sparql/ee4859eb2897981f/out/rdf_terms-ee4859eb2897981f)
+
+running 3 tests
+test conditional_selection_preserves_terms_and_short_circuits ... ok
+test extrema_and_sample_preserve_selected_terms ... ok
+test blank_nodes_share_one_solution_scope ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s

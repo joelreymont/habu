@@ -1,0 +1,46 @@
+[package]
+name = "spareval"
+version = "0.3.0-dev"
+authors = ["Tpt <thomas@pellissier-tanon.fr>"]
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+keywords = ["SPARQL"]
+repository = "https://github.com/oxigraph/oxigraph/tree/main/lib/spareval"
+documentation = "https://docs.rs/spareval"
+description = "SPARQL evaluator"
+edition = "2024"
+rust-version = "1.87"
+
+[features]
+default = []
+geosparql = ["dep:spargeo"]
+sparql-12 = ["sparopt/sparql-12", "sparesults/sparql-12"]
+sep-0002 = ["sparopt/sep-0002"]
+sep-0006 = ["sparopt/sep-0006"]
+calendar-ext = [
+  "sep-0002",
+] # Extended calendar arithmetic: gYear, gYearMonth, gMonth, gMonthDay, gDay
+
+
+[dependencies]
+hex = "0.4"
+json-event-parser = "0.2.3"
+md-5 = ">=0.10,<0.12"
+oxiri = "0.3.1"
+oxrdf = { git = "https://github.com/oxigraph/oxigraph", rev = "78734be853a4bec714ba09bbfad790e64f3a1150", features = ["oxsdatatypes"] }
+oxsdatatypes = { git = "https://github.com/oxigraph/oxigraph", rev = "78734be853a4bec714ba09bbfad790e64f3a1150" }
+oxstr = "0.2"
+rand = "0.10"
+regex = "1.7"
+rustc-hash = "2.1"
+sha1 = ">=0.10,<0.12"
+sha2 = ">=0.10,<0.12"
+spargebra = { git = "https://github.com/oxigraph/oxigraph", rev = "78734be853a4bec714ba09bbfad790e64f3a1150" }
+spargeo = { git = "https://github.com/oxigraph/oxigraph", rev = "78734be853a4bec714ba09bbfad790e64f3a1150", optional = true }
+sparopt = { git = "https://github.com/oxigraph/oxigraph", rev = "78734be853a4bec714ba09bbfad790e64f3a1150" }
+sparesults = { git = "https://github.com/oxigraph/oxigraph", rev = "78734be853a4bec714ba09bbfad790e64f3a1150" }
+thiserror = ">=1.0.50, <3.0"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

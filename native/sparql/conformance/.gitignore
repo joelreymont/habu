@@ -1,0 +1,5 @@
+/rdf-tests-*
+/readonly-manifest.json
+/binaries/
+/__pycache__/
+/*-results.json

@@ -1,0 +1,107 @@
+use crate::expression::ExpressionEvaluationError;
+use oxrdf::{NamedNode, Term, Variable};
+use spargebra::SparqlSyntaxError;
+use std::convert::Infallible;
+use std::error::Error;
+use std::ops::RangeInclusive;
+
+/// A SPARQL evaluation error
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum QueryEvaluationError {
+    /// Error from the underlying RDF dataset
+    #[error(transparent)]
+    Dataset(Box<dyn Error + Send + Sync>),
+    /// Error during `SERVICE` evaluation
+    #[error("{0}")]
+    Service(#[source] Box<dyn Error + Send + Sync>),
+    /// If a variable present in the given initial substitution is not present in the `SELECT` part of the query
+    #[error("The SPARQL query does not contains variable {0} in its SELECT projection")]
+    NotExistingSubstitutedVariable(Variable),
+    /// Error if the dataset returns the default graph even if a named graph is expected
+    #[error("The SPARQL dataset returned the default graph even if a named graph is expected")]
+    UnexpectedDefaultGraph,
+    /// The given function is not supported
+    #[error("The function {0} is not supported")]
+    UnsupportedFunction(NamedNode),
+    /// The given function arity is not supported
+    #[error("The function {name} requires between {} and {} arguments, but {actual} were given", .expected.start(), .expected.end())]
+    UnsupportedFunctionArity {
+        name: NamedNode,
+        expected: RangeInclusive<usize>,
+        actual: usize,
+    },
+    /// The variable storing the `SERVICE` name is unbound
+    #[error("The variable encoding the service name is unbound")]
+    UnboundService,
+    /// Invalid service name
+    #[error("{0} is not a valid service name")]
+    InvalidServiceName(Term),
+    /// The given `SERVICE` is not supported
+    #[error("The service {0} is not supported")]
+    UnsupportedService(NamedNode),
+    #[cfg(feature = "sparql-12")]
+    #[error("The SPARQL dataset returned a triple term that is not a valid RDF 1.2 term")]
+    InvalidStorageTripleTerm,
+    #[error("The SPARQL operation has been cancelled")]
+    Cancelled,
+    #[doc(hidden)]
+    #[error(transparent)]
+    Unexpected(Box<dyn Error + Send + Sync>),
+}
+
+impl QueryEvaluationError {
+    /// Checks if the error is ignored or not by SILENT
+    pub(crate) fn can_be_silent(&self) -> bool {
+        match self {
+            QueryEvaluationError::Dataset(_)
+            | QueryEvaluationError::Service(_)
+            | QueryEvaluationError::NotExistingSubstitutedVariable(_)
+            | QueryEvaluationError::UnexpectedDefaultGraph
+            | QueryEvaluationError::UnsupportedFunction(_)
+            | QueryEvaluationError::UnsupportedFunctionArity { .. }
+            | QueryEvaluationError::UnboundService
+            | QueryEvaluationError::InvalidServiceName(_)
+            | QueryEvaluationError::UnsupportedService(_)
+            | QueryEvaluationError::Unexpected(_) => true,
+            #[cfg(feature = "sparql-12")]
+            QueryEvaluationError::InvalidStorageTripleTerm => true,
+            QueryEvaluationError::Cancelled => false,
+        }
+    }
+}
+
+impl From<Infallible> for QueryEvaluationError {
+    #[inline]
+    fn from(error: Infallible) -> Self {
+        match error {}
+    }
+}
+
+// TODO: remove when removing the Store::update method
+#[doc(hidden)]
+impl From<SparqlSyntaxError> for QueryEvaluationError {
+    #[inline]
+    fn from(error: SparqlSyntaxError) -> Self {
+        Self::Unexpected(Box::new(error))
+    }
+}
+
+impl From<ExpressionEvaluationError<Self>> for QueryEvaluationError {
+    #[inline]
+    fn from(error: ExpressionEvaluationError<Self>) -> Self {
+        match error {
+            ExpressionEvaluationError::Context(e) => e,
+            ExpressionEvaluationError::UnsupportedFunction(name) => Self::UnsupportedFunction(name),
+            ExpressionEvaluationError::UnsupportedFunctionArity {
+                name,
+                expected,
+                actual,
+            } => Self::UnsupportedFunctionArity {
+                name,
+                expected,
+                actual,
+            },
+        }
+    }
+}

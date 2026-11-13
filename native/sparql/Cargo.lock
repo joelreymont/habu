@@ -491,7 +491,6 @@ dependencies = [
 [[package]]
 name = "spareval"
 version = "0.3.0-dev"
-source = "git+https://github.com/oxigraph/oxigraph?rev=78734be853a4bec714ba09bbfad790e64f3a1150#78734be853a4bec714ba09bbfad790e64f3a1150"
 dependencies = [
  "hex",
  "json-event-parser",
