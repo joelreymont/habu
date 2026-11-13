@@ -8,6 +8,8 @@
 require src/lib/prelude.f
 require src/lib/error.f
 require src/core/does-clause.f
+require src/core/checker.f
+require src/core/check-hook.f
 require src/compiler/target.f
 require src/compiler/binding.f
 require src/compiler/native/abi.f
@@ -185,8 +187,8 @@ create TRAILER TRAILER-BYTES allot
 \ Publishing the checker's one-shot minimum-input latch is engine authority,
 \ kept at the native publisher that consumes it for this record.
 : PENDING-FACTS ( n -- ) {: idx:n :}
-   CHECKER-OWNER:WIDE-PUBLISH
-   CHECKER-OWNER:MIN-IN {: mi:n :}
+   REC-WIDE-PUBLISH
+   REC-MIN-IN@ {: mi:n :}
    mi 0<> if idx mi MIN-IN-REC then ;
 
 : PAD-INSTRUCTION ( n -- n )
@@ -239,10 +241,10 @@ public
    idx NSHADOW:PUBLISH
    fn off + size off - NEMIT:RET-BYTES CODE-SPAN:RECORDED does-record
    idx APPEND-PENDING
-   idx XREF-REC XREF-NAME$ true CHECKER-OWNER:DOES-FINISH
+   idx XREF-REC XREF-NAME$ true CHECK:DOES-PUBLISHED
    idx PENDING-FACTS
    idx 1+ APPEND-PENDING
-   CHECKER-OWNER:DOES-COMMIT ;
+   CHECKER-NATIVE-DOES-COMMIT ;
 
 : NEXT-SLOT ( -- n )
    cp@ ;

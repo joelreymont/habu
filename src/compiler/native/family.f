@@ -3,7 +3,7 @@
 
 require src/lib/prelude.f
 require src/lib/error.f
-require src/compiler/native/checker-owner.f
+require src/core/type-family.f
 
 package NFAM
 
@@ -12,46 +12,46 @@ public
 \ ---- the family a form's first operand names ---------------------------------
 \ Signature scope: eliminating a value is allowed wherever naming its type is.
 : MATCH-FAM ( ptr u8 n -- n bool )
-   CHECKER-OWNER:FAMILY-MATCH ;
+   TFL-MATCH-FAM? ;
 
 \ Owner scope: minting a value belongs to the package that declared the family.
 : CON-FAM ( ptr u8 n -- n bool )
-   CHECKER-OWNER:FAMILY-CON ;
+   TFL-CON-FAM? ;
 
 \ ---- the variant a form's second operand names -------------------------------
 : VARIANT ( ptr u8 n n -- n bool )
-   CHECKER-OWNER:FAMILY-VARIANT ;
+   TFAM:TFL-VAR? ;
 
 \ ---- what a value of the family is on the data stack -------------------------
 \ The DECLARED width, not the instantiated one: the arg-aware width is a function
 \ of a resolved type term, and the chain holds only a family id and a token.
 : WIDTH ( n -- n )
-   CHECKER-OWNER:FAMILY-SLOTS 1+ ;
+   TFAM:TFAM-SLOTS@ 1+ ;
 
 \ The count decides where the mismatch edge of the LAST arm goes.
 : VARIANTS ( n -- n )
-   CHECKER-OWNER:FAMILY-VARIANTS ;
+   TFAM:TFAM-VAR-COUNT@ ;
 
 \ Whether MATCH makes the value's tag and construct omits it.
 : NICHE? ( n -- bool )
-   CHECKER-OWNER:FAMILY-NICHE? ;
+   TFAM:TFAM-NICHE? ;
 
 : NAME$ ( n -- ptr u8 n )
-   CHECKER-OWNER:FAMILY-NAME$ ;
+   TFAM-NAME$ ;
 
 \ ---- what one variant is -----------------------------------------------------
 : TAG ( n -- n )
-   CHECKER-OWNER:VARIANT-TAG ;
+   TFAM:SUMV-TAG@ ;
 
 \ The pads sit between the payload and the tag, so dropping the top 1 + pads cells
 \ of a matched bundle leaves exactly the payload.
 : PADS ( n n -- n )
-   CHECKER-OWNER:VARIANT-PADS ;
+   TFAM:TFL-VPADS ;
 
 \ Equal counts mean every field is one cell; a difference means at least one is a
 \ layout family, which a rename inside the arm must not take apart.
 : PAY-CELLS ( n -- n )
-   CHECKER-OWNER:VARIANT-PAY-CELLS ;
+   TFAM:SUMV-PAYCELLS@ ;
 
 seal-package
 

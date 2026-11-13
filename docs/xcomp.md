@@ -160,10 +160,9 @@ never turned into a catchable error.
 
 ## The NaN an operation makes
 
-One rule holds on every target (`src/compiler/native/hir-word.f`
-`DEF-FLOAT`): an operation that makes a NaN from numbers answers
-`$7FF8000000000000`, the positive quiet NaN, and a quiet NaN operand passes
-through unchanged, the left of two. `f.` prints `-` exactly when bit 63 is set,
+One rule holds on every target: an operation that makes a NaN from numbers
+answers `$7FF8000000000000`, the positive quiet NaN, and a quiet NaN operand
+passes through unchanged, the left of two. `f.` prints `-` exactly when bit 63 is set,
 so `-1 fsqrt f.` and `0 0 f/ f.` print `0.000000` everywhere.
 
 ARM64 answers the rule as it stands; SSE makes the negative NaN, so the x86-64
@@ -184,14 +183,11 @@ builder this section names, `tools/native-build.f`, is gone.
 
 A second architecture touches five layers: the assembler
 (`src/arch/x86-64/`), the engine primitive bodies (`src/habu/kernel-x64.f`,
-under the rows of `src/habu/prims.f`), the compiler's dialect, selector and
-emitter (`src/compiler/native/*-x64.f`, `x64ir.f`; the allocator and spill pass
-are shared, parameterised by a register file), the OS seam
-(`src/os/linux-x86-64/`, the same file set and word names as `src/os/linux/`)
-and the runtime ABI (SysV FFI, task entry, the same guard-page model). The HIR,
-the elaborator and the loop pass are target-free. A backend is one row in
-`src/compiler/native/backend.f`, registered when its `passes.f` loads: the
-driver names no backend, and `bin/hb` for one host does not carry the other.
+under the rows of `src/habu/prims.f`), the tier 0 emitter
+(`src/habu/t0-x64.f`), the OS seam (`src/os/linux-x86-64/`, the same file set
+and word names as `src/os/linux/`) and the runtime ABI (SysV FFI, task entry,
+the same guard-page model). Tier 0's front end (`src/habu/t0.f`) is
+target-free: it emits through the emitter the target selects.
 
 ### Machine model
 

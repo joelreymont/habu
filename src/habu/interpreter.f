@@ -1783,14 +1783,14 @@ private
    BODY-TEXT:BASE-CELL ADDR@ BODYLEN-CELL CELL@ TOKEN$ TRUSTED-CELL CELL@ 0<>
    CHECK:IMMEDIATE ;
 
-\ PARSE-IMM? asks the live checker: the retained one lacks a build window's
+\ NEUTRAL-PARSE-IMM? asks the live checker: the retained one lacks a build window's
 \ `parse-imm` rows.
 : DEF-IMMEDIATE ( -- ptr n bool )
    TOKEN$ FIND-SCOPE {: rec:ptr :}
    rec XREF-FOUND? 0= if NULL-PTR false exit then
    rec XREF-FLAGS DNAME-IMM and 0= if NULL-PTR false exit then
    rec POLICY-CHECK-REC
-   rec TOKEN$ CHECKER-OWNER:PARSE-IMM?
+   rec TOKEN$ NEUTRAL-PARSE-IMM?
    dup 0= s" does>" TOKEN-IS? 0= and if DEF-PREFLIGHT then ;
 
 \ The occurrence is selected before the preflight, so a preflight that retires
@@ -2226,12 +2226,12 @@ variable DEF-VALUE
    TSIG-A-CELL ADDR@ TSIG-U-CELL CELL@ NCOMP-DISPATCH:DECL-CAST-OFF
    DEF-REGISTER-IDENTITY ;
 
-\ The published record takes the facts the registrar latched, through the
-\ owner the registrar asked: the wide mark, then the minimum input arity, which
-\ the interpret dispatch refuses an underdepth call on.
+\ The published record takes the facts the checker's registrar latched: the
+\ wide mark, then the minimum input arity, which the interpret dispatch refuses
+\ an underdepth call on.
 : DEF-CAST-FACTS ( -- )
-   CHECKER-OWNER:WIDE-PUBLISH
-   CHECKER-OWNER:MIN-IN {: mi:n :}
+   REC-WIDE-PUBLISH
+   REC-MIN-IN@ {: mi:n :}
    mi 0<> if ndict@ 1- mi min-in-mark then ;
 
 \ Its name folds apart from the def-cast row: a word spelled DEF-CAST here

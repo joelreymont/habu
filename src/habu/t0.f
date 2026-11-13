@@ -6,13 +6,14 @@
 \ (src/compiler/native/definition.f), and emits through
 \ src/habu/t0-emit.f's EMIT- words to the selected emitter. A name, a tick's
 \ operand and `is`'s operand lower from the record the checker bound; spelling
-\ is looked up only by IMM-TOKEN (CHECKER-OWNER:PARSE-IMM?).
+\ is looked up only by IMM-TOKEN (NEUTRAL-PARSE-IMM?).
 \ COMPILE-FIXED builds the body of a `constant`, `create`, `defer` or child,
 \ which has no text, through the same step.
 
 require src/lib/prelude.f
 require src/lib/error.f
 require src/core/bytes.f
+require src/core/checker.f
 require src/compiler/native/checker-owner.f
 require src/compiler/fixed-body.f
 require src/compiler/native/dict.f
@@ -1660,7 +1661,7 @@ variable OP-REC                      \ the last of them
 \
 \ T0 passes over a parse-neutral immediate and refuses any other.
 : IMM-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u CHECKER-OWNER:PARSE-IMM? if exit then
+   a u NEUTRAL-PARSE-IMM? if exit then
    a u E-UNMODELED-IMMEDIATE REFUSE ;
 
 \ A fixed word is its stamped value; r files a
@@ -1833,7 +1834,7 @@ variable FIXED-ENTRY                 \ the routine a routine body calls
 \ A does> definer is scanned twice: its head (CHECK-DOES-HEAD) from the
 \ definition's start, then its clause (CHECK-DOES-CLAUSE) from M-DOES. The
 \ clause's ordinals go on from the head's, one past for the `does>` between
-\ them, which the checker files nothing for (CHECKER-OWNER:TAPE-ADVANCE), and
+\ them, which the checker files nothing for (CHECKER-TAPE:ADVANCE), and
 \ its token offsets count from the clause's start; the clause's scan first lays
 \ the `does>` row, so the tape is in text order with the checker's ordinals.
 variable SCAN-VERDICT
@@ -1886,20 +1887,20 @@ variable SCAN-LO                     \ the ordinal of its first row
 
 : KEEP-MEASURES ( -- )
    SCAN-BASE @ {: base:n :}
-   CHECKER-OWNER:WIDTH-ROWS {: rows:n :}
+   WF-N@ {: rows:n :}
    MEASURES @ {: m:n :}
    m rows + {: total:n :}
    total MEASURE-AT-RESERVE  total MEASURE-POS-RESERVE  total MEASURE-CELLS-RESERVE
    rows 0 ?do
-      i CHECKER-OWNER:WIDTH-ROW {: off:n pos:n w:n :}
+      i WF-FACT@ {: off:n pos:n w:n :}
       m i + {: k:n :}
       off base + k MEASURE-AT !  pos k MEASURE-POS !  w k MEASURE-CELLS !
    loop
    total MEASURES !
-   CHECKER-OWNER:LOCAL-COUNT {: binds:n :}
+   LOCW-HW-N@ {: binds:n :}
    BIND-COUNT @ {: b:n :}
    b binds + BIND-WIDTHS-RESERVE
-   binds 0 ?do i CHECKER-OWNER:LOCAL-WIDTH  b i + BIND-WIDTHS ! loop
+   binds 0 ?do i LOCW-HW@  b i + BIND-WIDTHS ! loop
    b binds + BIND-COUNT !
    base 0= if BIND-COUNT @ HEAD-BINDS ! then ;
 
@@ -1907,7 +1908,7 @@ variable SCAN-LO                     \ the ordinal of its first row
 : ON-DONE ( ptr u8 n n -- )
    SCAN-VERDICT !  2drop
    ROWS @ SCAN-LO @ ?do
-      i CHECKER-OWNER:TAPE-EVENT  i ROW-A1 !  i ROW-A0 !  i ROW-KIND !
+      i CHECKER-TAPE:EVENT  i ROW-A1 !  i ROW-A0 !  i ROW-KIND !
    loop
    KEEP-MEASURES ;
 
@@ -1919,7 +1920,7 @@ variable SCAN-LO                     \ the ordinal of its first row
 
 : OBSERVE ( -- )
    [: ON-SCAN ;] [: ON-TOKEN ;] [: ON-DONE ;]
-   CHECKER-OWNER:TAPE-INSTALL ;
+   CHECKER-TAPE:INSTALL ;
 
 \ A does> clause is named for a refusal by the definition's name.
 : CHECK-UNIT ( -- n )
@@ -1934,8 +1935,8 @@ variable SCAN-LO                     \ the ordinal of its first row
 : SCAN ( -- )
    OBSERVE
    0 SCAN-VERDICT !
-   CHECKER-OWNER:TAPE-ARM
-   [: CHECK-UNIT M-VERDICT ! ;] [: CHECKER-OWNER:TAPE-DISARM ;] finally
+   CHECKER-TAPE:ARM
+   [: CHECK-UNIT M-VERDICT ! ;] [: CHECKER-TAPE:DISARM ;] finally
    M-VERDICT @ 0<> if SCAN-VERDICT @ M-VERDICT ! then
    DECLARE-ROW ;
 

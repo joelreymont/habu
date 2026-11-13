@@ -5206,11 +5206,10 @@ public
 private
 
 \ Compiler-facing lowering surface: resolution and metadata for the native
-\ construct/MATCH emitters, read through the owner's DECLARATIONS cells
-\ (src/compiler/native/checker-owner.f FAMILY-CON). Same registry and scope
-\ rules as the checker's friend XTs, but no diagnostic latch and no checker-row effect:
-\ the checker still judges the definition at `;`. Raw engine token spans fold
-\ here (TOKFOLD), so `construct ZRES OK` and its lowercase spelling agree.
+\ construct/MATCH emitters. Same registry and scope rules as the checker's friend
+\ XTs, but no diagnostic latch and no checker-row effect: the checker still
+\ judges the definition at `;`. Raw engine token spans fold here (TOKFOLD), so
+\ `construct ZRES OK` and its lowercase spelling agree.
 
 public
 

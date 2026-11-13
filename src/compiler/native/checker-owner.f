@@ -111,14 +111,8 @@ BIND-SOURCE-CALLS
 
 public
 
-: RECORD? ( -- bool )
-   RECORD 0= 0= ;
-
-\ ---- the front end the checker IS: the scan, the tape it fills, the does> split,
-\ the declared-effect row and the retract of one ----------------
-
-: CHECK ( ptr u8 n -- n )
-   CHECK! ;
+\ ---- the front end the checker IS: the scan, the does> split and the retract
+\ of one ------------------------------------------------------------------------
 
 : CHECK-UNJUDGED ( ptr u8 n -- n )
    SOURCE-UNJUDGED ;
@@ -128,32 +122,6 @@ public
 
 : JSON-REPORTED? ( -- bool )
    SOURCE-JSON-REPORTED ;
-
-\ The source owner that counted a refusal decides whether compilation may
-\ continue to the next definition.
-: MULTI-ERROR? ( -- bool )
-   MULTI-ERR? ;
-
-\ Whether the definition just checked bound a refused declaration's recovery
-\ row (checker.f RECOVERY-BIND): it is checked for diagnostics, never published.
-: RECOVERY-USED? ( -- bool )
-   CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? ;
-
-\ CHECKER-TAPE token-kind constants remain part of the shared observer ABI.
-: TAPE-INSTALL ( [ ptr u8 n -- ] [ ptr u8 n n n n n -- ] [ ptr u8 n n -- ] -- )
-   CHECKER-TAPE:INSTALL ;
-
-: TAPE-ARM ( -- )
-   CHECKER-TAPE:ARM ;
-
-: TAPE-DISARM ( -- )
-   CHECKER-TAPE:DISARM ;
-
-: TAPE-ADVANCE ( -- )
-   CHECKER-TAPE:ADVANCE ;
-
-: TAPE-EVENT ( n -- n n n )
-   CHECKER-TAPE:EVENT ;
 
 \ A clause is scanned in its parent's regime (BIND-REGIME!, set by the parent's
 \ scan): unjudged under a TRUSTED: or hookless parent, so it binds and
@@ -170,27 +138,6 @@ public
 \ CHECKER-NATIVE-DOES-REPORT), while the owner still holds that scan.
 : DOES-REPORT ( n ptr u8 n -- n )
    SOURCE-DOES-REPORT ;
-
-: DOES-FINISH ( ptr u8 n bool -- )
-   CHECK:DOES-PUBLISHED ;
-
-: DOES-BEGIN ( -- )
-   CHECKER-NATIVE-DOES-BEGIN ;
-
-: DOES-COMMIT ( -- )
-   CHECKER-NATIVE-DOES-COMMIT ;
-
-: DOES-IN ( -- n )
-   CHECK-DOES-DIN-CELLS ;
-
-: DOES-OUT ( -- n )
-   CHECK-DOES-DOUT-CELLS ;
-
-: UNRECORDED-IN ( -- n )
-   CHECK-UNRECORDED-DIN ;
-
-: UNRECORDED-OUT ( -- n )
-   CHECK-UNRECORDED-DOUT ;
 
 \ Whether the checker counted a refusal of this definition's declared row
 \ (checker.f SIG-COUNTED). Read per call, not by name nor in BIND-SOURCE-CALLS:
@@ -210,21 +157,6 @@ public
 : ERROR-TOKEN ( -- ptr u8 n )
    NCOMP-DISPATCH:DECL-PIN-TOKEN-OFF s" refused token text" SOURCE-FIELD
    AS-TEXT execute ;
-
-\ The does> row's own value boundaries. A clause's rows are rows: the terms and
-\ the per-term bundle slot are read the same way a definition's DIN-N / DIN-SLOT
-\ are read, and the placer (dict.f ROW-GLUE) asks the same questions of both.
-: DOES-IN-N ( -- n )
-   CHECK-DOES-DIN-N ;
-
-: DOES-OUT-N ( -- n )
-   CHECK-DOES-DOUT-N ;
-
-: DOES-IN-SLOT ( n -- n )
-   CHECK-DOES-DIN-SLOT ;
-
-: DOES-OUT-SLOT ( n -- n )
-   CHECK-DOES-DOUT-SLOT ;
 
 \ The store's end when a definition begins, and a refused one's cut back to it:
 \ exactly the rows it recorded go, and every row recorded before it stays
@@ -312,125 +244,5 @@ public
 
 : CALL-QUOT-OUT ( n n -- n n )
    SOURCE-QUOT-OUT ;
-
-
-\ ---- the declared-effect rows -------------------------------------------------
-
-TRUSTED: DECLARED-EFFECT ( ptr u8 n ptr u8 n -- )
-   CHECK:DECLARED ;
-
-: PARSE-IMM? ( ptr u8 n -- bool )
-   NEUTRAL-PARSE-IMM? ;
-
-
-\ ---- the effect-store query group ---------------------------------------------
-\ QUERY resolves a name into the instance's query state and every reader below
-\ reads that state, so all of them must reach the same owner.
-
-: QUERY ( ptr u8 n -- bool )
-   EFFECT-QUERY ;
-
-: DIN-N ( -- n )
-   EFFECT-DIN-N ;
-
-: DOUT-N ( -- n )
-   EFFECT-DOUT-N ;
-
-: DIN-CELLS ( -- n )
-   EFFECT-DIN-CELLS ;
-
-: DOUT-CELLS ( -- n )
-   EFFECT-DOUT-CELLS ;
-
-: DIN-SLOT ( n -- n )
-   EFFECT-DIN-SLOT ;
-
-: DOUT-SLOT ( n -- n )
-   EFFECT-DOUT-SLOT ;
-
-: DIN-QUOT ( n -- bool )
-   EFFECT-DIN-QUOT ;
-
-: DOUT-QUOT ( n -- bool )
-   EFFECT-DOUT-QUOT ;
-
-: QUOT-UP ( -- bool )
-   EFFECT-QUOT-UP ;
-
-: QUOT-SIMPLE? ( -- bool )
-   EFFECT-QUOT-SIMPLE? ;
-
-: CATCH-CELLS ( n -- n n )
-   EFFECT-CATCH-CELLS ;
-
-: EXEC-CELLS ( n -- n n )
-   EFFECT-EXEC-CELLS ;
-
-: FINALLY-CELLS ( n -- n n n )
-   EFFECT-FINALLY-CELLS ;
-
-: MATCH-CELLS ( n -- n )
-   EFFECT-MATCH-CELLS ;
-
-: DEAD-TOKEN? ( ptr u8 n -- bool )
-   CTL-DEAD? ;
-
-: WIDTH-AT ( n n -- n )
-   WF-W-AT ;
-
-\ A scan's facts as its end leaves them, for a compiler that keeps them past the
-\ next scan (t0.f ON-DONE): its width-fact rows, each the token's offset in the
-\ scanned text, the operand position and its cells; and its binds, each the
-\ cells that local holds.
-: WIDTH-ROWS ( -- n )
-   WF-N@ ;
-
-: WIDTH-ROW ( n -- n n n )
-   WF-FACT@ ;
-
-: LOCAL-COUNT ( -- n )
-   LOCW-HW-N@ ;
-
-: LOCAL-WIDTH ( n -- n )
-   LOCW-HW@ ;
-
-
-\ ---- what the record a definition publishes needs from the checker ----------------
-
-: MIN-IN ( -- n )
-   REC-MIN-IN@ ;
-
-: WIDE-PUBLISH ( -- )
-   REC-WIDE-PUBLISH ;
-
-: FAMILY-MATCH ( ptr u8 n -- n bool )
-   TFL-MATCH-FAM? ;
-
-: FAMILY-CON ( ptr u8 n -- n bool )
-   TFL-CON-FAM? ;
-
-: FAMILY-VARIANT ( ptr u8 n n -- n bool )
-   TFAM:TFL-VAR? ;
-
-: FAMILY-SLOTS ( n -- n )
-   TFAM:TFAM-SLOTS@ ;
-
-: FAMILY-VARIANTS ( n -- n )
-   TFAM:TFAM-VAR-COUNT@ ;
-
-: FAMILY-NICHE? ( n -- bool )
-   TFAM:TFAM-NICHE? ;
-
-: FAMILY-NAME$ ( n -- ptr u8 n )
-   TFAM-NAME$ ;
-
-: VARIANT-TAG ( n -- n )
-   TFAM:SUMV-TAG@ ;
-
-: VARIANT-PADS ( n n -- n )
-   TFAM:TFL-VPADS ;
-
-: VARIANT-PAY-CELLS ( n -- n )
-   TFAM:SUMV-PAYCELLS@ ;
 
 ;package

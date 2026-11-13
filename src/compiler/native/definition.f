@@ -127,7 +127,7 @@ private
 \ the scan has recorded the exact source spelling from the tape: the pending
 \ dictionary record holds only the bare tail of a qualified definition.
 : REGISTER-TRUST ( ptr u8 n ptr u8 n -- )
-   CHECKER-OWNER:DECLARED-EFFECT ;
+   CHECK:DECLARED ;
 
 70 constant RC-REJECT                 \ CHECK:DEFINITION's reject status (check-hook.f CHECK-RC)
 
@@ -170,25 +170,26 @@ public
 \ `does>` token and checks the clause (CHECK-DOES-CLAUSE).
 : CHECK-DOES-HEAD ( -- )
    DOES-CUT-CK
-   CHECKER-OWNER:DOES-BEGIN
+   CHECKER-NATIVE-DOES-BEGIN
    1 M-DOES-FRAME !
    M-DOES @ {: cut:n :}
    M-SRC @ cut DOES-SPAN - CHECK-PARENT
    TRUSTED? if drop else -1 <> if E-COMP-VERDICT throw then then
-   CHECKER-OWNER:RECOVERY-USED? M-HEAD-RECOVERY !   \ the clause's scan starts its own
+   \ the clause's scan starts its own
+   CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? M-HEAD-RECOVERY !
    M-SRC @ cut DOES-SPAN - 0 NFETCH:CAPTURE ;
 
 \ The `does>` clause, named for a refusal by the unit's name. The checker's
 \ token ordinal first steps past the `does>` keyword between the two bodies.
 : CHECK-DOES-CLAUSE ( ptr u8 n -- n )
    {: na:ptr nu:n :}
-   CHECKER-OWNER:TAPE-ADVANCE
+   CHECKER-TAPE:ADVANCE
    M-DOES @ {: cut:n :}
    M-SRC @ cut + M-SCAN !
    M-SRC @ cut +  M-SRC-U @ cut -  M-DOES-SIG @ M-DOES-SIG-U @
    CHECKER-OWNER:DOES-CHECK na nu CLAUSE-CK
    M-SRC @ cut + M-SRC-U @ cut - cut NFETCH:CAPTURE
-   CHECKER-OWNER:DOES-IN 0 <  CHECKER-OWNER:DOES-OUT 0 <  or if E-COMP-ARITY throw then
+   CHECK-DOES-DIN-CELLS 0 <  CHECK-DOES-DOUT-CELLS 0 <  or if E-COMP-ARITY throw then
    \ Where the clause's values end, read here because the checker captured
    \ the clause's rows for this split and the next one replaces them. A row
    \ wider than a cell is placed from these boundaries as a definition's own
@@ -210,7 +211,7 @@ private
 \ sets RECOVER-CELL around the compile it calls (layout.f). Under any other
 \ reader a refusal is E-COMP-VERDICT, which SETTLE-UNIT reports.
 : RECOVERING? ( -- bool )
-   CHECKER-OWNER:MULTI-ERROR?
+   MULTI-ERR?
    data-base NCOMP-DISPATCH:RECOVER-CELL + @ 0<> and ;
 
 public
@@ -228,7 +229,8 @@ public
       E-COMP-VERDICT throw
    then then
    RECOVERING? if
-      CHECKER-OWNER:RECOVERY-USED? M-HEAD-RECOVERY @ or if E-COMP-RECOVERY throw then
+      CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? M-HEAD-RECOVERY @ or
+      if E-COMP-RECOVERY throw then
       TRUSTED? if CHECKER-OWNER:SIG-REFUSED? if E-COMP-RECOVERY throw then then
    then ;
 
@@ -282,11 +284,11 @@ public
 \ a scope scheme): CHECK:DEFINITION has refused every uncertified body. After a
 \ certified scan nothing reaches it either: a package opened and closed by the source is
 \ E-COMP-NAME, an unsigned body answers its inferred effect, and one whose
-\ effect is unrecorded (W-EFFECT-NOT-RECORDED) answers CHECKER-OWNER's
-\ UNRECORDED-IN and UNRECORDED-OUT cells; no row carries them for callers.
+\ effect is unrecorded (W-EFFECT-NOT-RECORDED) answers the checker's
+\ unrecorded input and output cells; no row carries them for callers.
 : ARITY-CK ( -- )
    NAME$ NDICT:SPELL-ARITY drop NDICT:ARITY-NONE <> if exit then
-   CHECKER-OWNER:UNRECORDED-IN 0 <  CHECKER-OWNER:UNRECORDED-OUT 0 <  or
+   CHECK-UNRECORDED-DIN 0 <  CHECK-UNRECORDED-DOUT 0 <  or
    if E-COMP-ARITY throw then ;
 
 private
@@ -319,7 +321,7 @@ private
 : RETRACT ( -- )
    M-DOES @ 0<> if
       M-DOES-FRAME @ 0<> if
-         NULL-PTR 0 false CHECKER-OWNER:DOES-FINISH
+         NULL-PTR 0 false CHECK:DOES-PUBLISHED
          0 M-DOES-FRAME !
       then
       exit
@@ -491,15 +493,15 @@ public
 : SETTLE-UNIT ( n n bool ptr u8 n ptr u8 -- )
    {: entry-rc:n rc:n undefined:bool a:ptr u:n p:ptr :}
    entry-rc 0<> if
-      M-DOES-FRAME @ 0<> if NULL-PTR 0 false CHECKER-OWNER:DOES-FINISH then
+      M-DOES-FRAME @ 0<> if NULL-PTR 0 false CHECK:DOES-PUBLISHED then
       entry-rc throw
    then
    rc E-COMP-RECOVERY = if
       \ A HEAD-MARKED? definer keeps its rows, as a withheld colon word does;
       \ every other withheld definer is rolled back.
       M-DOES-FRAME @ 0<> if
-         NULL-PTR 0 HEAD-MARKED? CHECKER-OWNER:DOES-FINISH
-         HEAD-MARKED? if CHECKER-OWNER:DOES-COMMIT then
+         NULL-PTR 0 HEAD-MARKED? CHECK:DOES-PUBLISHED
+         HEAD-MARKED? if CHECKER-NATIVE-DOES-COMMIT then
          0 M-DOES-FRAME !
       then
       rc throw

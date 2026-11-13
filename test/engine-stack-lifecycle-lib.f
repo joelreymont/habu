@@ -176,12 +176,11 @@ variable ERRLEN
    s" : NEST ( n -- ) dup 0= if drop exit then 1 0 do dup 1 - recurse loop drop ; STACK-ABI:LOOP-FRAMES NEST"
    CHILD-RC 0 T=
    s" one loop frame past the region" T-LABEL
+   s" : NEST ( n -- ) dup 0= if drop exit then 1 0 do dup 1 - recurse loop drop ; STACK-ABI:LOOP-FRAMES 1 + NEST"
+   \ x86-64's guard handler writes its line without the code and the lr.
    HB-TARGET-LINUX-X86-64? if
-      s" : NEST ( n -- ) dup 0= if drop exit then 1 0 do dup 1 - recurse loop drop ; STACK-ABI:LOOP-FRAMES 1 + NEST data-base LOOPSP-CELL + @ ."
-      CHILD-RC 0 T= OUT OUTLEN @ S\" 0\n" T$=
-   else
-      s" : NEST ( n -- ) dup 0= if drop exit then 1 0 do dup 1 - recurse loop drop ; STACK-ABI:LOOP-FRAMES 1 + NEST"
-      REFUSED-LOOP
-   then ;
+      CHILD-RC ENGINE-ERROR:STACK-BOUNDS T=
+      ERR ERRLEN @ S\" hb: stack bounds exceeded (loop)\n" T$=
+   else REFUSED-LOOP then ;
 
 ;package
