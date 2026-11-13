@@ -4888,10 +4888,11 @@ private
 \ has a tag cell; a PRODUCT's whole width is payload (scg<scinr>, a parametric
 \ STRUCTURE at a width-2 leaf, is width 3, all payload: subtracting a tag would
 \ report extra -1), so TFC-TAG-CELLS keys the subtraction off the family kind.
-\ A negative extra (the widest declared variant is not the widest instantiated
-\ one, or a non-widest variant grows more) is a contradiction: the lowering
-\ pushes the declared pads and can only add cells, so no sound lowering exists
-\ and it is refused unconditionally, a candidate probe included.
+\ A negative extra on a construct (the widest declared variant is not the
+\ widest instantiated one, or a non-widest variant grows more) is a
+\ contradiction: its lowering pushes the declared pads and can only add cells,
+\ so no sound lowering exists and it is refused unconditionally, a candidate
+\ probe included. A MATCH arm reads only the instantiated pads.
 : TFC-XPAD-NARROW-REJECT ( -- )   \ certified instantiated width contradicts add-only lowering: never certify
    0 OK ! -1 FAILSET ! ;
 
@@ -4928,17 +4929,12 @@ private
 \ latches nothing: the cell-accurate consumer then refuses the definition by
 \ name. A niche family counts its bundle, so its empty arm files one pad and the
 \ other none.
-: TFAM-MATCH-XPAD-RECORD ( n n -- ) {: vid:n term:n :}
+: TFAM-MATCH-PADS-RECORD ( n n -- ) {: vid:n term:n :}
    term T-RES {: rt:n :}
    rt TYPE-REP-CLOSED? 0= IF EXIT THEN           \ open value/row: leave declared width; scope identities do not affect padding
    vid SUMV-FAM@ rt TFC-BUNDLE-CELLS 1 -
    vid TFC-VAR-PAYCELLS -
-   {: ipads:n :}
-   ipads MWIN-CELLS!
-   ipads
-   vid SUMV-FAM@ TFAM-SLOTS@ vid SUMV-PAYCELLS@ - -
-   {: extra:n :}
-   extra 0 < IF TFC-XPAD-NARROW-REJECT THEN ;   \ declared-width unpack would skip a pad the bundle lacks
+   MWIN-CELLS! ;
 
 public
 
@@ -5116,7 +5112,7 @@ private
 
 : TFAM-MATCH-PAY ( n n n -- n ) {: vid:n term:n row:n :}   \ variant payload onto row
    term T-RES TFC-ARGS!
-   vid term TFAM-MATCH-XPAD-RECORD
+   vid term TFAM-MATCH-PADS-RECORD
    vid row RES-FALSE TFC-PAY-ROW ;
 
 \ Fixed storage walks a field's instantiated schema but computes its own
