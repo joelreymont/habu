@@ -8,9 +8,8 @@ public
 \ The table holds MAX paths of up to the tree's PATH-CAP bytes each
 \ (src/core/util.f), so every path include.f loads is one it records. A
 \ consumer that has to size storage for a whole closure derives it from those
-\ two: src/habu/habu2.f assembles the paths into one image table and
-\ src/habu/aot-file.f into one artifact section, and no second budget can
-\ disagree with this one.
+\ two: src/habu/aot-file.f assembles the paths into one artifact section, and
+\ no second budget can disagree with this one.
 256 constant MAX               \ closure files; the chain measures 43
 private
 

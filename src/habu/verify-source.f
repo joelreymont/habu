@@ -253,9 +253,6 @@ variable REASON-U
 PTR-VARIABLE TOKEN-A
 variable TOKEN-U
 variable BODY-U
-variable BASE-LINE
-variable BASE-COL
-variable BASE-BYTE
 PTR-VARIABLE STR-PREV-A
 variable STR-PREV-U
 PTR-VARIABLE STR-LAST-A
@@ -335,13 +332,12 @@ CSR-RESET
 : CSR-HIT ( n n n -- )
    {: prev:n start:n end:n :}
    CSR-SUBJ @ 0= IF EXIT THEN
-   BASE-BYTE @ {: b:n :}
-   CSR-STATE @ CSR-SPACE =  CSR-TOK @ 0 <  and IF b start + CSR-TOK ! EXIT THEN
+   CSR-STATE @ CSR-SPACE =  CSR-TOK @ 0 <  and IF start CSR-TOK ! EXIT THEN
    CSR-HIT? IF CSR-DONE CSR-STATE ! EXIT THEN
    CSR-STATE @ CSR-WAIT <> IF EXIT THEN
-   CSR-AT @  b end +  > IF EXIT THEN
-   CSR-AT @  b prev +  < IF CSR-DONE CSR-STATE ! EXIT THEN
-   b start + CSR-TOK !
+   CSR-AT @ end > IF EXIT THEN
+   CSR-AT @ prev < IF CSR-DONE CSR-STATE ! EXIT THEN
+   start CSR-TOK !
    CSR-AT @ CSR-TOK @ > IF CSR-PART ELSE CSR-SPACE THEN CSR-STATE ! ;
 
 \ A cursor in the opener offers nothing, nor does one still waiting, past the
@@ -359,7 +355,7 @@ CSR-RESET
    {: src:n :}
    CSR-SUBJ @ 0= IF EXIT THEN
    CSR-HIT? 0= IF EXIT THEN
-   CSR-TOK @  BASE-BYTE @ src +  <> IF EXIT THEN
+   CSR-TOK @ src <> IF EXIT THEN
    CSR-STATE @ CSR-PART = IF CSR-AT @ CSR-TOK @ - ELSE 0 THEN
    BODY-U @ + CSR-BODY !
    CSR-PLACED CSR-STATE ! ;
@@ -391,26 +387,13 @@ defer COMPOSE-FILE ( ptr u8 n ptr u8 n -- )
 : SOURCE@ ( -- ptr u8 )
    SOURCE-A @ ;
 
-: BASE-RESET ( -- )
-   1 BASE-LINE !
-   1 BASE-COL !
-   0 BASE-BYTE ! ;
-
 : SOURCE! ( ptr u8 n -- )
-   BASE-RESET
    SOURCE-U !
    SOURCE-A !
    0 TOKEN-BYTE !  0 REASON-U ! ;
 
 : REASON! ( ptr u8 n -- )
    REASON-U !  REASON-A ! ;
-
-: SOURCE-AT! ( ptr u8 n n n n -- ) {: a:ptr u:n line:n col:n byte:n :}
-   a u SOURCE!
-   line BASE-LINE !
-   col BASE-COL !
-   byte BASE-BYTE !
-   byte TOKEN-BYTE ! ;
 
 \ The flags the top-level scan knows a `[if]` may take, the top last (FLAG-STEP).
 8 constant FLAG-CAP
@@ -443,7 +426,7 @@ variable FLAG-N
    SKIP-WS
    SCAN-I @ SOURCE-U @ >= if prev SOURCE-U @ dup CSR-HIT SOURCE@ 0 exit then
    SCAN-I @ TOKEN-START !
-   BASE-BYTE @ SCAN-I @ + TOKEN-BYTE !
+   SCAN-I @ TOKEN-BYTE !
    begin SCAN-I @ SOURCE-U @ < if SCAN-C@ 32 > else 0 0= 0= then while
       SCAN-C+ drop
    repeat
@@ -452,7 +435,7 @@ variable FLAG-N
 
 : STOP-AT ( ptr u8 n -- )
    {: at:ptr code:n :}
-   at SOURCE@ - BASE-BYTE @ + TOKEN-BYTE !
+   at SOURCE@ - TOKEN-BYTE !
    code throw ;
 
 \ The scan stops at the statement it is in, at its opener: the top-level token
@@ -510,7 +493,7 @@ variable FLAG-N
    a STR-LAST-A !
    u STR-LAST-U !
    kind STR-LAST-KIND !
-   raw SOURCE@ - BASE-BYTE @ + STR-LAST-AT !
+   raw SOURCE@ - STR-LAST-AT !
    STR-LAST-AT @ rawu + STR-LAST-END ! ;
 
 \ The kinds of literal discovery tells apart before a loader: an `s"` or `S"`
@@ -597,11 +580,10 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
    0 0= 0= ;
 
 \ A file whose first two bytes are `#!` names its interpreter on that line, and
-\ the loader reads the line as a comment: a token at the first byte of scanned
-\ bytes that start their file.
+\ the loader reads the line as a comment: a token at the source's first byte.
 : SHEBANG? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
-   BASE-BYTE @ 0<>  a SOURCE@ <>  or  u 2 <  or IF 0 0= 0= EXIT THEN
+   a SOURCE@ <>  u 2 <  or IF 0 0= 0= EXIT THEN
    a c@ $23 =  a 1 + c@ $21 =  and ;
 
 \ The byte that ends the comment a token opens, as the loader reads it: the
@@ -2054,31 +2036,31 @@ ENGINE-TARGET-INIT
    {: s:n e:n :}
    TOP-CUR-A @ TOP-CUR-U @ s" :" STR=CI
    TOP-CUR-A @ TOP-CUR-U @ s" kernel:" STR=CI or
-   s BASE-BYTE @ + DEF-NAME-BYTE @ = and
-   e BASE-BYTE @ + DEF-NAME-BYTE @ DEF-NAME-U @ + = and ;
+   s DEF-NAME-BYTE @ = and
+   e DEF-NAME-BYTE @ DEF-NAME-U @ + = and ;
 
 : USE-SEEN ( n n n n n n -- )
    {: s:n e:n sym:n v:n ds:n de:n :}
    s e COLON-NAME-USE? IF EXIT THEN
-   s BASE-BYTE @ +  e BASE-BYTE @ +  sym ON-BINDING
+   s e sym ON-BINDING
    v -2 <= IF
       -2 v - PRIM-TARGET drop {: path:ptr pathu:n at:n end:n :}
-      s BASE-BYTE @ + e BASE-BYTE @ +
+      s e
       path pathu at end sym v ON-USE
       EXIT
    THEN
    v 0= IF
       sym ENGINE-TARGET {: path:ptr pathu:n at:n end:n found:bool :}
       found IF
-         s BASE-BYTE @ + e BASE-BYTE @ +
+         s e
          path pathu at end sym -1 ON-USE
          EXIT
       THEN
    THEN
    v VISIT-IN? IF
-      s BASE-BYTE @ +  e BASE-BYTE @ +  v VISIT-PATH  ds de sym v ON-USE
+      s e v VISIT-PATH  ds de sym v ON-USE
    ELSE
-      s BASE-BYTE @ +  e BASE-BYTE @ +  NULL$ 0 0 sym -1 ON-USE
+      s e NULL$ 0 0 sym -1 ON-USE
    THEN ;
 
 : DUPLICATE-STOP ( n n ptr u8 n bool -- )
@@ -2749,7 +2731,7 @@ variable STG-TYPE-U
       i 2 * BODY-ROW @ at <= IF drop i THEN
    loop
    {: row:n :}
-   row 2 * 1 + BODY-ROW @  at +  row 2 * BODY-ROW @ -  BASE-BYTE @ + ;
+   row 2 * 1 + BODY-ROW @  at +  row 2 * BODY-ROW @ - ;
 
 \ A refusal stops at the name, at the field the checker refuses or, with no
 \ field, at END-VALUE-RECORD; a checker refusal's message is its reason.
@@ -2847,7 +2829,7 @@ CAST: TOP-ACTION ( n -- [ ptr u8 n bool -- n ] )
    sym 0= IF EXIT THEN
    sym ENGINE-ORIGIN:TARGET
    {: path:ptr pathu:n start:n end:n name:ptr nameu:n found:bool :}
-   found IF at BASE-BYTE @ - dup u + sym 0 0 0 USE-SEEN THEN ;
+   found IF at dup u + sym 0 0 0 USE-SEEN THEN ;
 
 \ A definer's own `generates:` row declares the text its calls render: the row
 \ this scan read or, for a definer it never read, the engine's. A wrapper has
@@ -3895,7 +3877,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    CSR-STATE @ CSR-PART = IF CSR-AT @ CSR-TOK @ - ELSE 0 THEN {: n:n :}
    CSR-DONE CSR-STATE !
    TOP-DEFER @ 0<> IF EXIT THEN
-   SOURCE@ CSR-TOK @ BASE-BYTE @ - +  n  CHECKER-OWNER-ABI:VISIBLE-TOP
+   SOURCE@ CSR-TOK @ +  n  CHECKER-OWNER-ABI:VISIBLE-TOP
    ['] CSR-VISIT
    NCOMP-DISPATCH:DECL-VERIFY-EACH-VISIBLE-OFF OWNER-XT VISIBLE-ACTION execute ;
 
@@ -4003,7 +3985,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
 : VERIFY-SOURCE ( -- )
    SCAN-RESET
    0 DUPLICATE-U !
-   SOURCE@ SOURCE-U @ BASE-LINE @ BASE-COL @ BASE-BYTE @ CHECKER-VERIFY-SOURCE!
+   SOURCE@ SOURCE-U @ CHECKER-VERIFY-SOURCE!
    NULL-PTR TOP-PREV-A !  0 TOP-PREV-U !  NULL-PTR TOP-REFUSED !
    NULL-PTR TOP-PREV-STR-A !  0 TOP-PREV-STR-U !  0 TOP-PREV-STR-KIND !
    0 FILE-PKG !  0 FILE-USE !  PEND-N @ PEND-BASE !
@@ -4034,7 +4016,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    PEND-RELEASE ;
 
 : SOURCE-ARM ( -- )
-   SOURCE@ SOURCE-U @ BASE-LINE @ BASE-COL @ BASE-BYTE @ DIAG-SOURCE! ;
+   SOURCE@ SOURCE-U @ 1 1 0 DIAG-SOURCE! ;
 
 \ Nested files share the checker window but not the scanner cursor. The source,
 \ token and open-stretch context, the loader words the file replaced, and
@@ -4047,13 +4029,12 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    {: src:ptr srcu:n path:ptr pathu:n :}
    path pathu COMPOSE-DIAG$ {: diag:ptr diagu:n :}
    SOURCE-A @ SOURCE-U @ SCAN-I @
-   BASE-LINE @ BASE-COL @ BASE-BYTE @
    TOP-PREV-A @ TOP-PREV-U @ TOP-CUR-A @ TOP-CUR-U @
    TOP-DEFER @ TOP-DEFER-A @ TOP-DEFER-U @ TOP-REFUSED @
    COMPOSE-CUR-PATH-A @ COMPOSE-CUR-PATH-U @
    FILE-PKG @ FILE-USE @ PEND-BASE @ VISIT-CUR @ CSR-SUBJ @
    SHADOWED @ RETIRED @
-   {: olda:ptr oldu:n oldi:n oldbl:n oldbc:n oldbb:n
+   {: olda:ptr oldu:n oldi:n
       oldprev:ptr oldprevu:n oldcur:ptr oldcuru:n
       olddefer:n olddefa:ptr olddefu:n oldrefused:ptr
       oldpath:ptr oldpathu:n
@@ -4083,7 +4064,6 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
       srcu COMPOSE-STOP-SRC-U !
    THEN
    olda SOURCE-A !  oldu SOURCE-U !  oldi SCAN-I !
-   oldbl BASE-LINE !  oldbc BASE-COL !  oldbb BASE-BYTE !
    oldprev TOP-PREV-A !  oldprevu TOP-PREV-U !
    oldcur TOP-CUR-A !  oldcuru TOP-CUR-U !
    olddefer TOP-DEFER !  olddefa TOP-DEFER-A !
@@ -4098,7 +4078,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
       DIAG-SOURCE-OFF
    THEN
    \ The loader's own file goes on, so a storage refusal in it is located there.
-   oldu 0 > IF olda oldu oldbl oldbc oldbb CHECKER-VERIFY-SOURCE! THEN
+   oldu 0 > IF olda oldu CHECKER-VERIFY-SOURCE! THEN
    rc 0<> IF rc throw THEN ;
 
 : COMPOSE-INIT ( -- )
@@ -4432,10 +4412,6 @@ public
    CAND-U !  CAND-A !
    [: CANDIDATE-BODY ;] RUN-IN-SCOPE
    CAND-VERDICT @ ;
-
-: SOURCE-BUF-AT-IN-SCOPE ( ptr u8 n n n n -- )
-   SOURCE-AT!
-   RUN ;
 
 \ Verify a source in a candidate scope of its own: what it defines, and the
 \ definer rows it learns, go when CHECKER-CANDIDATE-SCOPE-DONE rewinds the scope.

@@ -95,10 +95,6 @@ public
    loop
    false ;
 
-\ Bytes the present groups store: what a writer reserves after the map.
-: STORED-BYTES ( ptr u8 n -- n ) {: bm:ptr len:n :}
-   0  len GROUPS 0 ?do  bm len i GROUP-SET? if GROUP-BYTES + then  loop ;
-
 private
 
 : MAP-BIT! ( n ptr u8 -- ) {: g:n map:ptr :}
@@ -115,9 +111,9 @@ private
 public
 
 \ The flat bitmap in; its presence map and present groups written at `dst`,
-\ which holds the group count's PMAP-BYTES plus STORED-BYTES. Answers the group
-\ count and the stored bytes. The last group holds the last present cell, so
-\ it is present, and no group past the count sets a map bit.
+\ which holds the group count's PMAP-BYTES plus the present groups' bytes.
+\ Answers the group count and the stored bytes. The last group holds the last
+\ present cell, so it is present, and no group past the count sets a map bit.
 : COMPACT ( ptr u8 n ptr u8 -- n n ) {: bm:ptr len:n dst:ptr :}
    len GROUPS {: g:n :}
    g PMAP-BYTES {: pm:n :}

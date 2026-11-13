@@ -2373,8 +2373,7 @@ RECORD-DIAG-INSTALL
    s" Declare the type before the storage, or store a closed, copyable type this definer admits." ;
 : STGR-LOCATE ( ptr u8 -- )   \ the token's place, counted from the start of the verifier's buffer
    {: ta:ptr :}
-   STGR-SRC-A @ ta STGR-SRC-LINE @ STGR-SRC-COL @ STGR-SRC-BYTE @
-   DIAG-ORIGIN-SPAN! ;
+   STGR-SRC-A @ ta 1 1 0 DIAG-ORIGIN-SPAN! ;
 : STGR-JSON ( ptr u8 n ptr u8 n n bool -- )
    {: na:ptr nu:n ta:ptr tu:n why:n at:bool :}
    s" E-BAD-STORAGE" why STGR-CLASS$ s" rejected" JHEAD

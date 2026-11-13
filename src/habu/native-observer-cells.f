@@ -6,7 +6,6 @@ public
 \ cells follow it, after CODE-END-CELL;
 \ src/habu/data-claims.f proves each cell disjoint at native build time.
 $2CF8 constant PUBLISHED
-$2D00 constant INVALIDATE
 \ ( first end -- ): retire implementation facts overlapping changed code.
 $2D10 constant HOST-INVALIDATE
 ;package

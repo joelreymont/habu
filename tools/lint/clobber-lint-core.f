@@ -162,9 +162,6 @@ variable RX  variable RACC
    a u s" RELOC-EMIT:Lscratchmark" LINT-STR=CI if $3FFFF exit then
    \ Recovery uses the same MARK-SAVE/RESTORE register frame as the registrars.
    a u s" RELOC-EMIT:Lrollback" LINT-STR=CI if $3FFFF exit then
-   \ EM-CODE-INVALIDATE saves these recovery registers around its observer call.
-   a u s" Lcodeinv" LINT-STR=CI if
-      0 10 CL-ADD 11 CL-ADD 13 CL-ADD 14 CL-ADD 15 CL-ADD 30 CL-ADD exit then
    a u s" Lbcs" LINT-STR=CI if 0 0 CL-ADD 1 CL-ADD 2 CL-ADD 16 CL-ADD exit then
    \ EMIT-CEMIT frames x12/x13 and writes no other register but CP.
    a u s" Lcemit" LINT-STR=CI if

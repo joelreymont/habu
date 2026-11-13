@@ -13485,14 +13485,12 @@ package CHECKER-REG
 15 constant STG-WIDTH-TYPE      \ the type parses and holds a `width<t>`, which no storage holds
 16 constant STG-LINEAR-TYPE     \ the type parses and may hold a linear value, which no storage holds
 PTR-VARIABLE STGR-SRC-A   variable STGR-SRC-U   \ the buffer the verifier scans
-variable STGR-SRC-LINE  variable STGR-SRC-COL  variable STGR-SRC-BYTE  \ where it starts in its file
 defer STORAGE-DIAG-XT ( ptr u8 n ptr u8 n n -- )   \ declared name, refused token, STG- reason
 : STORAGE-DIAG-DEFAULT ( -- ) [: drop 2drop 2drop ;] is STORAGE-DIAG-XT ;
 STORAGE-DIAG-DEFAULT
 
-: CHECKER-VERIFY-SOURCE! ( ptr u8 n n n n -- ) {: a:ptr u:n line:n col:n byte:n :}
-   a STGR-SRC-A !  u STGR-SRC-U !
-   line STGR-SRC-LINE !  col STGR-SRC-COL !  byte STGR-SRC-BYTE ! ;
+: CHECKER-VERIFY-SOURCE! ( ptr u8 n -- ) {: a:ptr u:n :}
+   a STGR-SRC-A !  u STGR-SRC-U ! ;
 
 : STGR-IN-SOURCE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    CHECKER-VERIFY-PKG-DEPTH @ 0= IF RES-FALSE EXIT THEN

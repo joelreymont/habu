@@ -40,7 +40,6 @@ require src/habu/address-carrier.f
 require src/habu/snapshot-format.f
 require src/habu/code-span.f
 require src/habu/aot-runtime.f
-require src/habu/native-observer-cells.f
 require src/habu/native-body-abi.f
 require src/habu/native-host-cells.f
 require src/core/sha256.f
@@ -1791,8 +1790,6 @@ public
    11 DATA REGION-ALIAS:DELTA-CELL LDR,  11 9 11 ADD,   \ x11 = the record through the alias
    10 9 16 LDR,  10 10 DNAME-IMM ORRI,  10 11 16 STR, ;
 
-variable LCODEINV
-
 private
 
 \ LEXITHOOK: EXIT-HOOK-CELL's trampoline, BL-called with the code in x0; it
@@ -2625,25 +2622,6 @@ public
 70 constant RC-REJECT
 
 private
-\ x10 is the absolute floor. Recovery calls this before replacing CP or DP;
-\ the installed owner removes every publication in the reclaimed suffix.
-\ A callback is total and leaves no value. Preserve the recovery registers it
-\ would otherwise clobber, including the throw code and active frame.
-: EM-CODE-INVALIDATE ( -- )
-   LBL {: done:label :}
-   LCODEINV LABEL@ LBL,
-   10 CP CMP,  C-CS done BCOND,
-   9 DATA NATIVE-OBS-CELLS:INVALIDATE LDR,  9 done CBZ,
-   SP SP 48 SUBI,
-   30 SP 0 STR,  11 SP 8 STR,  13 SP 16 STR,
-   14 SP 24 STR,  15 SP 32 STR,  10 SP 40 STR,
-   10 G-PUSH
-   9 BLR,
-   10 SP 40 LDR,  15 SP 32 LDR,  14 SP 24 LDR,
-   13 SP 16 LDR,  11 SP 8 LDR,  30 SP 0 LDR,
-   SP SP 48 ADDI,
-   done LBL,  RET, ;
-
 \ LEVALREC: a throw whose nearest handler lies beyond active evaluate boundaries
 \ lands here, x15 = throw code. Each escaped frame gives back its input cursor,
 \ data-stack base (XDS), package and using scope, and EVALERR-CELL records the
@@ -2699,7 +2677,6 @@ private
       13 EVAL-FRAME:ROWS kept DECL-OWNER:RETRACT-TO
       kept LBL,
       13 SP 8 LDR,  9 13 48 LDR,  EM-DEF-OCC:LRETIRE LABEL@ BL,  14 retired CBNZ,
-      10 13 40 LDR,  LCODEINV LABEL@ BL,
       9 13 40 LDR,  EM-DEF-OCC:LRECLAIM LABEL@ BL,
       13 SP 8 LDR,
       CP 13 40 LDR,
@@ -2940,8 +2917,6 @@ package ENGINE-EMIT
 
 \ The routines primitives and the Habu loop's helpers branch to.
 : EMIT-ROUTINES ( -- )
-   LBL LCODEINV !
-   EM-CODE-INVALIDATE
    EM-RECOVER-EXITS
    EM-COMPILE-DIE
    EMIT-DIAGU

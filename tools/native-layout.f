@@ -16,7 +16,6 @@ create SLOTS
    TOP-HOOK-CELL ,                      0 ,
    EXIT-HOOK-CELL ,                     0 ,
    NATIVE-OBS-CELLS:PUBLISHED ,         0 ,
-   NATIVE-OBS-CELLS:INVALIDATE ,        0 ,
    NCOMP-DISPATCH:XT-CELL ,              0 ,
    NCOMP-DISPATCH:CALLBACK-STUB-CELL ,  0 ,
    NCOMP-DISPATCH:CALLBACK-ENTRY-CELL , 0 ,

@@ -33,8 +33,6 @@ require src/habu/habu1.f
 require src/habu/prof.f
 require src/habu/fdio.f
 require src/habu/aot-decl.f
-require src/habu/aot-ident.f
-require src/habu/aot-owned.f
 require src/habu/habu2.f
 
 package A64BOOT

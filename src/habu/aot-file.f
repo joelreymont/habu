@@ -1,7 +1,6 @@
 \ aot-file.f - the AOT capture artifact: what a booted capture writes and what
-\ the metabuild host refuses to read. Both processes compile this file, so it
-\ uses ENGINE PRIMITIVES ONLY (open/read/write/close, PATH0, SHA256*, the AOT-BUF
-\ buffers, FDIO:WALL): the host carries no src/lib/ and the capture cannot load
+\ READ refuses. It uses ENGINE PRIMITIVES ONLY (open/read/write/close, PATH0,
+\ SHA256*, the AOT-BUF buffers, FDIO:WALL): the capture cannot load
 \ src/habu/driver-io.f. READ fills the buffers with the artifact; MERGE appends
 \ it to a capture already made, in that capture's coordinates.
 \

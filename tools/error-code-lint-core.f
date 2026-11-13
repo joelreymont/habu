@@ -30,8 +30,7 @@ public
 private
 
 \ Exit statuses are not claims: an uncaught throw of 0..EXIT-MAX exits with that
-\ status (src/habu/driver-io.f DRV-FAIL), so E-USAGE 64 means the same in every
-\ tool by design. A larger positive value is a throw identity, held to the same
+\ status, so E-USAGE 64 means the same in every tool by design. A larger positive value is a throw identity, held to the same
 \ uniqueness and reserved ranges as a negative one.
 255 constant EXIT-MAX
 

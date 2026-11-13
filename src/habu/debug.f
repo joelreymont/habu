@@ -55,7 +55,6 @@ private
 \ A code address reaches checked code as a number; CODE-BYTES:AT is the one
 \ bounded view of the bytes there.
 CAST: XT>N ( [ R -- S ] -- n )
-CAST: N>XT ( n -- [ -- ] )
 
 : CODE! ( n n -- ) {: w at :}
    w  at 4 CODE-BYTES:AT drop  BP-PATCH32 ;
@@ -68,22 +67,9 @@ CAST: N>XT ( n -- [ -- ] )
 \ b's 128 MB) and nothing is ever freed while a slot points at it: reserving at
 \ CP during BPADD would hand the block to a failed REPL line's CP rollback. Each
 \ word starts as a BRK, so a stray jump traps and a capture's walk over the gap
-\ finds no fall-through into the next definition. xt! declares the cell, so a
-\ snapshot and the product capture move it with the code. An instruction that
-\ reads or sets PC cannot run out of line: its breakpoint degrades to one-shot.
-\ An engine the old builder makes reserves the block here, at load. Inside a
-\ build the code band is the building hb's, so the load reserves nothing and
-\ the written program's start-up reserves the block (layout.f BPTRAMP-CELL).
+\ finds no fall-through into the next definition. An instruction that reads or
+\ sets PC cannot run out of line: its breakpoint degrades to one-shot.
 : TRAMP@ ( -- n ) data-base BPTRAMP-CELL + @ ;
-
-: TRAMP-INSTALL ( -- )
-   data-base BOOT:IMAGE-BASE-CELL + @ 0<> if exit then
-   cp@ {: base :}
-   base BPTRAMP-BYTES + cp!
-   BPTRAMP-BYTES 0 ?do BRK0 base i + CODE! 4 +loop
-   base N>XT data-base BPTRAMP-CELL + xt! ;
-
-TRAMP-INSTALL
 
 \ Slot idx's trampoline for the instruction at `at`: that instruction, then
 \ `b at+4`, whose displacement from the trampoline's second word is at - t.

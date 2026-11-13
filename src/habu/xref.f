@@ -6,7 +6,6 @@
 \ `0 set-check` span, so the engine build checks it. tools/check.f refuses it
 \ alone: it defines `undefine` (E-RESERVED-DEFINITION) and every engine already
 \ holds its words (E-DUPLICATE-DEFINITION).
-require src/habu/native-observer-cells.f
 
 \ The cold prefix loads CODE-SPAN and DOES-CLAUSE before XREF.
 
@@ -143,15 +142,6 @@ public
 
 : XREF-EXT? ( ptr n -- bool )
    XREF-FLAGS DNAME-EXT and 0= 0= ;
-
-\ DNAME-WIDE: the record's stack effect
-\ carries a wider-than-cell layout value, so interpret dispatch and interpret '
-\ fail closed before such a bundle lands on the untyped interpret stack, where
-\ scalar dup/drop/swap would corrupt it. Marked by the engine prim `wide-mark`
-\ (habu1.f BWIDEMARK, which stores through the region alias because a record's
-\ own address is read-only); monotonic, no unmark.
-: XREF-WIDE? ( ptr n -- bool )
-   XREF-FLAGS DNAME-WIDE and 0= 0= ;
 
 : XREF-INLINE-NAME ( ptr n -- ptr u8 )
    $18 XREF-REC+ XREF-A>U8 ;
@@ -476,12 +466,6 @@ CAST: GRID-RETIRE-XT ( n -- [ ptr n -- ] )
 : GRID-RETIRE-OWNER ( ptr n ptr u8 -- )
    {: rec:ptr owner:ptr :}
    owner NULL-PTR = IF EXIT THEN
-   owner CHECKER-OWNER-ABI:HEADER-BYTES - CELL-VIEW @
-      CHECKER-OWNER-ABI:MAGIC <> IF
-      s" xref: invalid checker owner" 76 die
-   THEN
-   owner CELL - CELL-VIEW @
-      CHECKER-OWNER-ABI:GRID-RETIRE-OFF CELL + < IF EXIT THEN
    owner CHECKER-OWNER-ABI:GRID-RETIRE-OFF + CELL-VIEW @ {: action:n :}
    action 0 <> IF rec action GRID-RETIRE-XT execute THEN ;
 
@@ -673,14 +657,6 @@ package CODE-RECLAIM
 
 private
 
-CAST: INVALIDATE-XT ( n -- [ n -- ] )
-
-: INVALIDATE ( n -- )
-   {: floor:n :}
-   data-base NATIVE-OBS-CELLS:INVALIDATE + @ dup 0= if drop exit then
-   INVALIDATE-XT {: q :}
-   floor q execute ;
-
 \ The raw engine primitive edits relocation metadata. Its CODE-RECLAIM row
 \ (src/habu/prims.f) admits this checked word, which TRUNCATE calls with its
 \ proved [start,start+len) span; no other checked caller reaches it.
@@ -743,14 +719,6 @@ CAST: INVALIDATE-XT ( n -- [ n -- ] )
 
 public
 
-7230 constant E-INSTALL
-
-\ A source library installs its single code owner while compilation is idle.
-\ The fixed CODE cell is declared at cold boot and relocates in saved images.
-: INVALIDATE! ( [ n -- ] -- )
-   data-base PEND-CELL + @ 0= 0= if E-INSTALL throw then
-   data-base NATIVE-OBS-CELLS:INVALIDATE + xt! ;
-
 \ A floor above the free code slot: there is nothing above the slot to reclaim,
 \ and the request would move the pointer the other way. Refused by name; public
 \ because a caller can reach it.
@@ -780,7 +748,6 @@ public
    {: floor:n :}
    floor cp@ > if E-FLOOR throw then
    floor ndict@ LIVE-SCAN <= if E-LIVE throw then
-   floor INVALIDATE
    floor cp@ over - CLEAR-MAPS
    floor cp! ;
 
