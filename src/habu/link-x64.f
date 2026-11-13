@@ -741,7 +741,6 @@ SNAP-RELOC:XTCELL-SCRATCH-TAG KIND-SHIFT rshift DATA-KEY or constant SCRATCH-KEY
    ncells 0 ?do 0 i DATA-STORAGE ! loop
    X64LAYOUT:DATA-VA VA>N HEAP-FLOOR + DP-CELL DATA-CELL!
    DATA-START BOOT:HEAP-START-CELL DATA-CELL!
-   FRIEND-ARENA-LEN FRIEND-LATCH-CELL DATA-CELL!
    \ The target window ends at SEAL-CAPTURE; link placement renumbers its
    \ records, so the seal floor is the target's complete linked count.
    REC-TOTAL @ SEAL-NDICT-CELL DATA-CELL!

@@ -1,8 +1,7 @@
 \ x86-64-kernel-atomics.f - the atomics and publication rows of the x86-64
 \ kernel (src/habu/kernel-x64.f) in the booted harness, cross-built for an
-\ x86-64 peer. Every image seals the friend latch first, so each guard a row
-\ calls walks its whole span test and clobbers what it may. The host checks
-\ each image's ELF header; running them is the peer's.
+\ x86-64 peer. The host checks each image's ELF header; running them is the
+\ peer's.
 require src/habu/code-span.f
 require test/x86-64-boot-harness.f
 
@@ -17,12 +16,6 @@ using X64RT
 2000 constant OTHER
 
 : SUM ( -- n ) VALUE DELTA + ;
-
-: SEAL, ( -- ) FRIEND-ARENA-LEN FRIEND-LATCH-CELL X64HARNESS:CELL!, ;
-
-: PUSH-CELL, ( n -- ) {: off:n :}
-   RAX ENGINE-GPR:X64-RBASE >R64 off MEM-OFF ASM-SINK ENC-LEA
-   0 G-PUSH ;
 
 : STORE-FETCH, ( -- )
    VALUE X64HARNESS:PUSH,  0 X64HARNESS:PUSH-SCRATCH,
@@ -56,17 +49,7 @@ using X64RT
 
 : BUILD ( bool ptr u8 n -- ) {: negative:bool path:ptr pathu:n :}
    negative X64HARNESS:BOOT-OPEN,
-   SEAL,  ROWS,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
-
-\ Each armed row aims at the band cell SOURCE-EXEC-CTX-CELL, so its guard exits
-\ 83, ENGINE-ERROR:SEAL-VIOLATION.
-: BUILD-ARMED ( ptr u8 n n ptr u8 n -- ) {: row:ptr rowu:n args:n path:ptr pathu:n :}
-   false X64HARNESS:BOOT-OPEN,
-   SEAL,
-   args 0 ?do 0 X64HARNESS:PUSH, loop
-   SOURCE-EXEC-CTX-CELL PUSH-CELL,
-   row rowu X64HARNESS:CALL-ROW,
+   ROWS,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
 \ ---- the publication rows ----------------------------------------------------
@@ -366,7 +349,6 @@ LONG-TAIL CELL + constant LONG-PAD
 
 : IMAGE ( [ -- ] ptr u8 n -- ) {: path:ptr pathu:n :}
    false X64HARNESS:BOOT-OPEN,
-   SEAL,
    execute
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
@@ -403,10 +385,6 @@ public
    X64HARNESS:INIT
    false s" hb-x64-kernel-atomics" TMP-PATH BUILD
    true s" hb-x64-kernel-atomics-negative" TMP-PATH BUILD
-   s" atomic!" 1 s" hb-x64-kernel-atomics-store-armed" TMP-PATH BUILD-ARMED
-   s" atomic-add" 1 s" hb-x64-kernel-atomics-add-armed" TMP-PATH BUILD-ARMED
-   s" atomic-cas" 2 s" hb-x64-kernel-atomics-cas-armed" TMP-PATH BUILD-ARMED
-   s" patch32" 1 s" hb-x64-kernel-patch32-armed" TMP-PATH BUILD-ARMED
    PUBLICATION
    X64HARNESS:DISPOSE
    T-REPORT ;

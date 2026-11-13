@@ -10,27 +10,10 @@ using X64ASM
 using X64CODE
 using X64RT
 
-\ A heap cell above every band.
-DATA-START $10000 + constant HEAP-OFF
-
-: GUARD-CELL, ( n -- ) {: off:n :}
-   R8 ENGINE-GPR:X64-RBASE >R64 off MEM-OFF ASM-SINK ENC-LEA
-   R9 CELL >IMM32 ASM-SINK ENC-MOV-RI32
-   R8 R9 X64KERNEL:PROT-SPAN-CALL, ;
-
-: SEAL, ( -- ) FRIEND-ARENA-LEN FRIEND-LATCH-CELL X64HARNESS:CELL!, ;
-
-\ The guard images seal the friend latch and guard a heap span that meets no
-\ band, which must pass: hb-x64-kernel-syscalls opens the latch first and exits
-\ 0, -negative expects the wrong balance and exits 21, -armed keeps the latch
-\ sealed and exits 83 (ENGINE-ERROR:SEAL-VIOLATION) on SOURCE-EXEC-CTX-CELL's
-\ span, as a raw store to that cell does on ARM64 (test/protection-span.f).
-: BUILD ( bool bool ptr u8 n -- ) {: negative:bool armed:bool path:ptr pathu:n :}
+\ hb-x64-kernel-syscalls exits 0; -negative expects the wrong balance and exits
+\ 21.
+: BUILD ( bool ptr u8 n -- ) {: negative:bool path:ptr pathu:n :}
    negative X64HARNESS:BOOT-OPEN,
-   SEAL,
-   HEAP-OFF GUARD-CELL,
-   armed 0= if 0 FRIEND-LATCH-CELL X64HARNESS:CELL!, then
-   SOURCE-EXEC-CTX-CELL GUARD-CELL,
    X64HARNESS:EXPECT-BALANCED,
    0 X64HARNESS:EXPECT-DEPTH,
    path pathu X64HARNESS:BOOT-CLOSE, ;
@@ -66,8 +49,6 @@ $4000 constant S-IFDIR
 $8000 constant S-IFREG
 $A000 constant S-IFLNK
 $5401 constant TCGETS
-$80087801 constant IOR-X1-8            \ _IOR('x', 1, 8): the kernel writes 8
-$5451 constant FIOCLEX                  \ unencoded, and not TCGETS or TCSETS
 24 constant DIRENT-1                    \ one getdents64 record, a name of 1 or 2
 
 1700000000 constant EPOCH-FLOOR         \ November 2023
@@ -91,7 +72,6 @@ $400001 constant PID-CEIL               \ past the kernel's pid_max ceiling
 1600000000 constant POLL-NS-CEIL
 100 constant DUP-FD
 999 constant BAD-FD
-1 61 lshift constant NFDS-WRAP          \ nfds * 8 wraps to 0
 
 : DSP ( -- r64 ) ENGINE-GPR:X64-DSTACK >R64 ;
 
@@ -219,14 +199,13 @@ $400001 constant PID-CEIL               \ past the kernel's pid_max ceiling
    s" hbk-r/s" PATH, s" unlink" ROW  DROP,
    s" hbk-r" PATH, s" rmdir" ROW  0 WANT ;
 
-\ With the latch sealed, every span here lies outside the bands: a mapping the
-\ kernel places, and one a hint inside DATA does not bind without MAP_FIXED.
+\ A mapping the kernel places, and one a hint inside DATA does not bind without
+\ MAP_FIXED.
 : MEM-CASE ( -- )
-   SEAL,
    PAGE-BYTES N, s" map-anon" ROW  0 WANT  KEPT KEEP,
    KEPT RECALL, PAGE-BYTES N, s" munmap" ROW  0 WANT
    0 N, s" map-anon" ROW  -1 WANT  0 WANT
-   SOURCE-EXEC-CTX-CELL DATA-AT, PAGE-BYTES N, PROT-RW N, MAP-FRESH N, -1 N, 0 N,
+   EXIT-HOOK-CELL DATA-AT, PAGE-BYTES N, PROT-RW N, MAP-FRESH N, -1 N, 0 N,
    s" mmap" ROW  KEPT KEEP,
    KEPT RECALL, PAGE-BYTES N, s" munmap" ROW  0 WANT
    KEPT RECALL, PAGE-BYTES N, PROT-RW N, MAP-FRESH MAP-FIXED or N, -1 N, 0 N,
@@ -241,18 +220,6 @@ $400001 constant PID-CEIL               \ past the kernel's pid_max ceiling
    KEPT RECALL,  1 X64HARNESS:MAX-CELL IN-RANGE,  1 WANT
    s" getpid" ROW  s" getpid" ROW  SUB,  0 WANT
    s" getpid" ROW  1 PID-CEIL IN-RANGE,  1 WANT ;
-
-: MMAP-ARMED-CASE ( -- )
-   SEAL,
-   SOURCE-EXEC-CTX-CELL DATA-AT, PAGE-BYTES N, PROT-RW N, MAP-FRESH MAP-FIXED or N, -1 N,
-   0 N, s" mmap" ROW ;
-
-: IOCTL-ARMED-CASE ( -- )
-   SEAL,
-   0 N, IOR-X1-8 N, SOURCE-EXEC-CTX-CELL DATA-AT, s" ioctl" ROW ;
-
-: IOCTL-CLOSED-CASE ( -- )
-   0 N, FIOCLEX N, BUF AT, s" ioctl" ROW ;
 
 \ ( pid -- pid ) after fork: the child drops the 0 and runs what the quotation
 \ emits, which ends the process through the die row with its own status before
@@ -462,18 +429,9 @@ $410 constant PID2
    s" exit 0" 3 SH-REQ,
    REQ AT, s" spawn-fds" ROW  EBADF negate WANT ;
 
-: POLL-ARMED-CASE ( -- )
-   SEAL,
-   BUF AT, NFDS-WRAP N, 0 N, s" poll" ROW ;
-
 \ A row image: the case, then the stack checks every case ends with. It exits 0
 \ when every check held, else FIRST-CASE upward at the first that did not (at
-\ most ten checks). Four row images exit 83 from a row's guard before the kernel
-\ sees the call: -sys-mmap-armed (MAP_FIXED over a band, latch sealed),
-\ -sys-ioctl-armed (that band as an _IOR target), -sys-ioctl-closed (an
-\ unencoded request the guard cannot size fails closed, latch open),
-\ -sys-poll-armed (a pollfd count whose byte length wraps, seen as every
-\ address, latch sealed).
+\ most ten checks).
 : ROWS ( [ -- ] ptr u8 n -- ) {: path:ptr pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    execute
@@ -486,18 +444,14 @@ public
 : RUN ( -- )
    T-RESET
    X64HARNESS:INIT
-   false false s" hb-x64-kernel-syscalls" TMP-PATH BUILD
-   true false s" hb-x64-kernel-syscalls-negative" TMP-PATH BUILD
-   false true s" hb-x64-kernel-syscalls-armed" TMP-PATH BUILD
+   false s" hb-x64-kernel-syscalls" TMP-PATH BUILD
+   true s" hb-x64-kernel-syscalls-negative" TMP-PATH BUILD
    [: IO-CASE ;] s" hb-x64-kernel-sys-io" TMP-PATH ROWS
    [: STAT-CASE ;] s" hb-x64-kernel-sys-stat" TMP-PATH ROWS
    [: LINK-CASE ;] s" hb-x64-kernel-sys-link" TMP-PATH ROWS
    [: DIR-CASE ;] s" hb-x64-kernel-sys-dir" TMP-PATH ROWS
    [: MEM-CASE ;] s" hb-x64-kernel-sys-mem" TMP-PATH ROWS
    [: TIME-CASE ;] s" hb-x64-kernel-sys-time" TMP-PATH ROWS
-   [: MMAP-ARMED-CASE ;] s" hb-x64-kernel-sys-mmap-armed" TMP-PATH ROWS
-   [: IOCTL-ARMED-CASE ;] s" hb-x64-kernel-sys-ioctl-armed" TMP-PATH ROWS
-   [: IOCTL-CLOSED-CASE ;] s" hb-x64-kernel-sys-ioctl-closed" TMP-PATH ROWS
    [: FORK-CASE ;] s" hb-x64-kernel-sys-fork" TMP-PATH ROWS
    [: PROC-CASE ;] s" hb-x64-kernel-sys-proc" TMP-PATH ROWS
    [: POLL-CASE ;] s" hb-x64-kernel-sys-poll" TMP-PATH ROWS
@@ -509,7 +463,6 @@ public
    [: SPAWN-FDS-CASE ;] s" hb-x64-kernel-sys-spawn-fds" TMP-PATH ROWS
    [: SPAWN-FDS-FAIL-CASE ;] s" hb-x64-kernel-sys-spawn-fds-fail" TMP-PATH ROWS
    [: SPAWN-FDS-EBADF-CASE ;] s" hb-x64-kernel-sys-spawn-fds-ebadf" TMP-PATH ROWS
-   [: POLL-ARMED-CASE ;] s" hb-x64-kernel-sys-poll-armed" TMP-PATH ROWS
    X64HARNESS:DISPOSE
    T-REPORT ;
 

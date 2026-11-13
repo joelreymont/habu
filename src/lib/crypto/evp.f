@@ -735,11 +735,10 @@ CAST: RS>BYTES ( n -- ptr u8 )
 
 : RS-SIGN-WRITE ( ptr u8 n ptr u8 n -- n )
    {: out k:n msg mu:n :}
-   FFI:RESET
    RS-MD@ 0 FFI:VALUE!
-   out k 1 FFI:WRITABLE!
-   RS-SIG-LEN RS-BUF 8 2 FFI:WRITABLE!
-   msg 3 FFI:READABLE!
+   out 1 FFI:POINTER!
+   RS-SIG-LEN RS-BUF 2 FFI:POINTER!
+   msg 3 FFI:POINTER!
    mu 4 FFI:VALUE!
    SIGN-ROW FFI:CALL $FFFFFFFF and
    dup $80000000 and 0 <> if $FFFFFFFF00000000 or then ;

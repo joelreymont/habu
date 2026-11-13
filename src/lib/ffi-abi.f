@@ -1,8 +1,8 @@
 \ ffi-abi.f - checked AAPCS64 and SysV FFI calls, package FFI. AAPCS64 passes
 \ eight integer and eight float registers, SysV six and eight. FUNCTION: is the
 \ only checked call surface: its word names a row, never an address.
-\ STORAGE CLASS. TASK-LOCAL: marshalling buffers, extent tables, kernel params
-\ and the DLSYM loader block; calls nest only through a C callback, which shares
+\ STORAGE CLASS. TASK-LOCAL: marshalling buffers, kernel params and the
+\ DLSYM loader block; calls nest only through a C callback, which shares
 \ them. PROCESS-WIDE: rows, whose addresses, handles and failures are scratch.
 \
 \ FUNCTION: names a row here and its generated word carries the row's index, so
@@ -51,9 +51,6 @@ $3B40 constant FFI-KPARAM-PBUF-OFF
 $3BC0 constant FFI-KPARAM-VBUF-OFF
 $3C40 constant FFI-DLBUF-OFF
 $3C80 constant FFI-KPARAM#-OFF
-$40C8 constant FFI-REG-LEN-BUF-OFF
-$4148 constant FFI-STACK-LEN-BUF-OFF
-$41C8 constant FFI-SCRATCH-END
 
 : FFI-BUF ( -- ptr n )
    data-base FFI-BUF-OFF + ;
@@ -85,12 +82,6 @@ $41C8 constant FFI-SCRATCH-END
 
 : FFI-KPARAM# ( -- ptr n )
    data-base FFI-KPARAM#-OFF + ;
-
-: FFI-REG-LEN-BUF ( -- ptr n )
-   data-base FFI-REG-LEN-BUF-OFF + ;
-
-: FFI-STACK-LEN-BUF ( -- ptr n )
-   data-base FFI-STACK-LEN-BUF-OFF + ;
 
 \ CELL>PTR stays private: a foreign address carries no length, so only a word
 \ that knows the callee's width may publish one.
@@ -173,41 +164,15 @@ CAST: CELL>PTR ( n -- ptr u8 )
 : FFI-KPARAMS>N ( -- n )
    FFI-KPARAM-PBUF PTR>CELL ;
 
-: REG-LEN-SLOT ( n -- ptr n ) {: idx:n :}
-   idx FFI-MAX-ARGS FFI-CHECK-INDEX
-   FFI-REG-LEN-BUF idx cells + ;
-
-: STACK-LEN-SLOT ( n -- ptr n ) {: idx:n :}
-   idx FFI-MAX-ARGS FFI-CHECK-INDEX
-   FFI-STACK-LEN-BUF idx cells + ;
-
-: REG-LEN! ( n n -- ) {: len:n idx:n :}
-   len 0 < if E-FFI-ARITY throw then
-   len idx REG-LEN-SLOT ! ;
-
-: STACK-LEN! ( n n -- ) {: len:n idx:n :}
-   len 0 < if E-FFI-ARITY throw then
-   len idx STACK-LEN-SLOT ! ;
-
-\ A writable span of 0 bytes is C's empty buffer: the bounded call guards
-\ nothing, as for a read-only pointer, and the callee is told it may write none.
-: WRITABLE-LEN ( n -- n ) {: len:n :}
-   len 0 < if E-FFI-ARITY throw then
-   len ;
-
 : DLOPEN-RAW ( ptr u8 n -- n ) {: path:ptr flags:n :}
    path PTR>CELL FFI-DLBUF !
    flags FFI-DLBUF CELL + !
-   0 FFI-DLBUF 2 cells + !
-   0 FFI-DLBUF 3 cells + !
-   FFI-DLBUF FFI-DLBUF 2 cells + 2 DLOPEN-SLOT @ ffi-call-bounded ;
+   FFI-DLBUF 2 DLOPEN-SLOT @ ffi-call-n ;
 
 : DLSYM-RAW ( n ptr u8 -- n ) {: handle:n name:ptr :}
    handle FFI-DLBUF !
    name PTR>CELL FFI-DLBUF CELL + !
-   0 FFI-DLBUF 2 cells + !
-   0 FFI-DLBUF 3 cells + !
-   FFI-DLBUF FFI-DLBUF 2 cells + 2 DLSYM-SLOT @ ffi-call-bounded ;
+   FFI-DLBUF 2 DLSYM-SLOT @ ffi-call-n ;
 
 \ ---- declared foreign functions -------------------------------------------
 
@@ -442,7 +407,7 @@ private
 \ dlerror's NULL means the loader kept no reason.
 : OPEN-REPORT ( n n n -- )
    {: dlerr:n tried:n lib:n :}
-   FFI-BUF FFI-REG-LEN-BUF 0 dlerr ffi-call-bounded
+   FFI-BUF 0 dlerr ffi-call-n
    tried lib REPORT-NAMES ;
 
 \ The first handle from lib along next and the library that holds it, or 0 and
@@ -519,7 +484,6 @@ public
 
 : BUF-OFF ( -- n ) FFI-BUF-OFF ;
 : KPARAM-END-OFF ( -- n ) FFI-KPARAM#-OFF CELL + ;
-: SCRATCH-END ( -- n ) FFI-SCRATCH-END ;
 : NOW ( -- n ) FFI-RTLD-NOW ;
 
 \ FFI:NOW alone is RTLD_LOCAL on Linux, so PROCESS-SYMBOLS cannot see the
@@ -530,53 +494,21 @@ public
 
 : >CELL ( ptr a -- n ) PTR>CELL ;
 
-: RESET ( -- )
-   FFI-MAX-ARGS 0 ?do
-      0 i REG-LEN!
-      0 i STACK-LEN!
-   loop ;
-
-: VALUE! ( n n -- ) {: value:n idx:n :}
-   value idx FFI-ARG!
-   0 idx REG-LEN! ;
-
-: READABLE! ( ptr a n -- ) {: value:ptr idx:n :}
-   value idx FFI-PTR-ARG!
-   0 idx REG-LEN! ;
-
-: WRITABLE! ( ptr a n n -- ) {: value:ptr len:n idx:n :}
-   value idx FFI-PTR-ARG!
-   len WRITABLE-LEN idx REG-LEN! ;
+: VALUE! ( n n -- ) FFI-ARG! ;
+: POINTER! ( ptr a n -- ) FFI-PTR-ARG! ;
 
 : FLOAT! ( r n -- ) FFI-FARG! ;
 : FLOAT32! ( r n -- ) {: value:r idx:n :}
    value F32:NARROW idx FFI-F32ARG! ;
 
-: STACK-VALUE! ( n n -- ) {: value:n idx:n :}
-   value idx FFI-STACK!
-   0 idx STACK-LEN! ;
-
-: STACK-FLOAT! ( r n -- ) {: value:r idx:n :}
-   value idx FFI-FSTACK!
-   0 idx STACK-LEN! ;
-
-: STACK-READABLE! ( ptr a n -- ) {: value:ptr idx:n :}
-   value PTR>CELL idx FFI-STACK!
-   0 idx STACK-LEN! ;
-
-: STACK-WRITABLE! ( ptr a n n -- ) {: value:ptr len:n idx:n :}
-   value PTR>CELL idx FFI-STACK!
-   len WRITABLE-LEN idx STACK-LEN! ;
-
-: X8-VALUE! ( n -- ) 8 VALUE! ;
-: X8-READABLE! ( ptr a -- ) 8 READABLE! ;
-: X8-WRITABLE! ( ptr a n -- ) 8 WRITABLE! ;
+: STACK-VALUE! ( n n -- ) FFI-STACK! ;
+: STACK-FLOAT! ( r n -- ) FFI-FSTACK! ;
+: STACK-POINTER! ( ptr a n -- ) {: value:ptr idx:n :}
+   value PTR>CELL idx FFI-STACK! ;
 
 : ARGS ( -- ptr n ) FFI-BUF ;
 : FLOATS ( -- ptr r ) FFI-FBUF ;
 : STACK ( -- ptr n ) FFI-STACK-BUF ;
-: REG-LENS ( -- ptr n ) FFI-REG-LEN-BUF ;
-: STACK-LENS ( -- ptr n ) FFI-STACK-LEN-BUF ;
 
 : OUT@ ( ptr n -- n ) FFI-OUT@ ;
 : OUT! ( n ptr n -- ) FFI-OUT! ;
@@ -697,21 +629,19 @@ public
 
 : CALL ( n -- n ) {: idx:n :}
    idx FN-LOOKUP {: fn:n :}
-   FFI-BUF FFI-REG-LEN-BUF idx FN-ARGC@ fn ffi-call-bounded ;
+   FFI-BUF idx FN-ARGC@ fn ffi-call-n ;
 
 : CALL-PTR ( n -- ptr u8 ) CALL CELL>PTR ;
 
 : CALL-ABI ( n -- n ) {: idx:n :}
    idx FN-LOOKUP {: fn:n :}
-   FFI-BUF FFI-FBUF FFI-STACK-BUF FFI-REG-LEN-BUF FFI-STACK-LEN-BUF
-   idx FN-SPILL@ fn ffi-call-abi-bounded ;
+   FFI-BUF FFI-FBUF FFI-STACK-BUF idx FN-SPILL@ fn ffi-call-abi ;
 
 : CALL-ABI-PTR ( n -- ptr u8 ) CALL-ABI CELL>PTR ;
 
 : CALL-ABI-R ( n -- r ) {: idx:n :}
    idx FN-LOOKUP {: fn:n :}
-   FFI-BUF FFI-FBUF FFI-STACK-BUF FFI-REG-LEN-BUF FFI-STACK-LEN-BUF
-   idx FN-SPILL@ fn ffi-call-abi-r-bounded ;
+   FFI-BUF FFI-FBUF FFI-STACK-BUF idx FN-SPILL@ fn ffi-call-abi-r ;
 
 : CALL-ABI-F32 ( n -- r )
    CALL-ABI-R IEEE754:F64>BITS $FFFFFFFF and F32:WIDEN ;
@@ -720,16 +650,15 @@ public
 \ dlopen can run constructors that call C through this task's scratch.
 : RESOLVE-ROW ( n -- ) FN-LOOKUP drop ;
 
-\ The caller's result storage rides x8, AAPCS64's indirect-result register,
-\ with its whole extent guarded. A record returned in x0/x1 ignores x8, and the
-\ guard still covers the stores made from them. Storage C writes through x8 is
+\ The caller's result storage rides x8, AAPCS64's indirect-result register. A
+\ record returned in x0/x1 ignores x8. Storage C writes through x8 is
 \ 16-byte aligned, the strictest a supported record can need; a register record
 \ stores into eight-byte-aligned storage.
 : RESULT-DEST! ( ptr u8 n -- ) {: dst:ptr len:n :}
    dst PTR>CELL {: addr:n :}
    len 16 > if 15 else 7 then {: mask:n :}
    addr 0= addr mask and 0<> or if E-FFI-SYNTAX throw then
-   dst len X8-WRITABLE! ;
+   dst 8 POINTER! ;
 
 \ The raw x0 and x1 after the call, in address order. The row's relocation
 \ mask names the staged cells that hold a private struct copy's address in
@@ -739,8 +668,7 @@ public
 \ long as the call and that no other call reuses.
 : CALL-STRUCT ( n -- n n ) {: idx:n :}
    idx FN-LOOKUP {: fn:n :}
-   FFI-BUF FFI-FBUF FFI-STACK-BUF FFI-REG-LEN-BUF FFI-STACK-LEN-BUF
-   idx FN-SPILL@ idx FN-RELOC@ fn ffi-call-struct-bounded ;
+   FFI-BUF FFI-FBUF FFI-STACK-BUF idx FN-SPILL@ idx FN-RELOC@ fn ffi-call-struct ;
 
 : CALL-STRUCT-PTR ( n -- ptr u8 ) CALL-STRUCT drop CELL>PTR ;
 
@@ -767,8 +695,7 @@ public
 \ STRUCT-ARG staging. A record of 16 bytes or fewer goes whole in consecutive
 \ integer registers from reg, or in stack cells from pos; a larger one is
 \ copied into stack cells from pay and passed by address in register reg or
-\ stack cell pos. Every staged cell has extent 0: C reads the record's
-\ copy, never the source.
+\ stack cell pos.
 : STRUCT-REGS! ( ptr u8 n n -- ) {: src:ptr len:n reg:n :}
    src len RECORD-CELLS 0 ?do src len i RECORD-CELL reg i + VALUE! loop ;
 
@@ -852,7 +779,7 @@ public
 \ defined after this package closes. libc's location is thread-local and the
 \ value is a four-byte C int.
 : ERRNO ( -- n )
-   RESET ERRNO-FN CALL-PTR LE:U32@ ;
+   ERRNO-FN CALL-PTR LE:U32@ ;
 
 ERRNO-SYMBOL$ PROCESS 0 DECLARE ERRNO-FN-CELL !
 
@@ -874,11 +801,10 @@ s" dlerror" PROCESS 0 DECLARE DLERROR-FN-CELL !
 \ a legal Habu name (__errno_location).
 \
 \ The declared effect becomes the generated word's effect, with `f32` mapped
-\ to Habu `r` on either side and an `i32` result mapped to `n`. A `ptr u8` is
-\ read-only, extent 0, unless a clause names it written: `idx len WRITES-BYTES`
-\ for a fixed width, or `idx arg WRITES-ARG` when another argument carries the
-\ length. A written pointer must state its extent because the bounded call
-\ guards exactly the span it is given. The clauses are ordinary words the
+\ to Habu `r` on either side and an `i32` result mapped to `n`. A clause names a
+\ `ptr u8` the callee writes: `idx len WRITES-BYTES` for a fixed width, or
+\ `idx arg WRITES-ARG` when another argument carries the length. The clauses
+\ are ordinary words the
 \ interpreter runs between the two keywords, so their numbers are literals and
 \ comments sit among them.
 \ Convert a nominal at the call site: a declaration speaks the C function's own
@@ -916,7 +842,7 @@ s" dlerror" PROCESS 0 DECLARE DLERROR-FN-CELL !
 \ and must not be declared. AAPCS64 returns up to 8 bytes in x0 and 9..16 in x0
 \ then x1, stored at exactly `bytes`; C writes a larger record through x8. The
 \ storage is eight-byte aligned, 16-byte aligned for a record over 16 bytes; a
-\ record type aligned beyond 16 bytes is excluded. The whole extent is guarded.
+\ record type aligned beyond 16 bytes is excluded.
 \ The destination is one of the sixteen inputs, so at most fifteen C arguments
 \ remain, placed as STRUCT-ARG's are. A null or misaligned destination is
 \ E-FFI-SYNTAX at the call.
@@ -945,9 +871,9 @@ s" dlerror" PROCESS 0 DECLARE DLERROR-FN-CELL !
 \ as `r`, never `f32`.
 \ A declaration carrying a float rides the ABI call, which packs no spill
 \ there, so it is refused past eight of either kind (E-FFI-ARITY); an
-\ integer-only declaration rides ffi-call-bounded, which spills past x7 itself.
-\ Every SysV overflow call rides the ABI trampoline so mixed kinds and bounded
-\ pointer extents keep their own stack positions; a C float past the eighth
+\ integer-only declaration rides ffi-call-n, which spills past x7 itself.
+\ Every SysV overflow call rides the ABI trampoline so mixed kinds keep their
+\ own stack positions; a C float past the eighth
 \ float register has no stack staging and is refused (E-FFI-ARITY).
 \
 \ THE GENERATED TEXT DEFINES WORDS AND LEAVES NOTHING ON THE STACK: it runs
@@ -989,7 +915,7 @@ private
 5 constant R-U32
 6 constant R-FLOAT32
 
-0 constant C-BOUNDED
+0 constant C-INT
 1 constant C-POINTER
 2 constant C-ABI
 3 constant C-ABI-R
@@ -1136,8 +1062,7 @@ SCOPE-WID scratch-cell-mark  SCOPE-SET scratch-cell-mark
    0 ARG-N @ ARG-SBYTES!
    ARG-N @ 1 + ARG-N ! ;
 
-\ A pointer is `ptr u8`: a byte span with a length the declaration states. `ptr`
-\ alone, or over any other pointee, has no extent this side can guard.
+\ A pointer is `ptr u8`: a byte span with a length the declaration states.
 : PTR-TAIL ( -- )
    TOK@
    s" u8" TOK-IS? 0= if E-FFI-SYNTAX throw then
@@ -1309,7 +1234,7 @@ private
    fres if int flt REG-ROOM int stk C-ABI-R exit then
    flt 0 > if int flt REG-ROOM int stk C-ABI exit then
    RES-KIND @ R-POINTER = if int stk C-POINTER exit then
-   int stk C-BOUNDED ;
+   int stk C-INT ;
 
 \ ---- the generated definition ----------------------------------------------
 
@@ -1317,11 +1242,6 @@ private
 : GEN-N ( n -- ) GEN CODEGEN:APPEND-DECIMAL ;
 : GEN-SP ( -- ) SP-C GEN CODEGEN:APPEND-BYTE ;
 : GEN-ARG ( n -- ) s" A" GEN+ GEN-N ;
-
-: NEEDS-LOCALS? ( -- bool )
-   false ARG-N @ 0 ?do
-      i ARG-EXT-ARG@ NO-EXT <> or
-   loop ;
 
 : LOCALS ( -- )
    ARG-N @ 0= if exit then
@@ -1344,17 +1264,8 @@ private
 : STAGE-FLOAT32 ( n -- ) {: i:n :}
    i ARG-REG@ GEN-N s"  FFI:FLOAT32! " GEN+ ;
 
-: STAGE-READABLE ( n -- ) {: i:n :}
-   i ARG-REG@ GEN-N s"  FFI:READABLE! " GEN+ ;
-
-: STAGE-WRITABLE ( n -- ) {: i:n :}
-   i ARG-EXT@ NO-EXT <> if i ARG-EXT@ GEN-N else i ARG-EXT-ARG@ GEN-ARG then
-   GEN-SP i ARG-REG@ GEN-N s"  FFI:WRITABLE! " GEN+ ;
-
 : STAGE-POINTER ( n -- ) {: i:n :}
-   i ARG-EXT@ NO-EXT <> if i STAGE-WRITABLE exit then
-   i ARG-EXT-ARG@ NO-EXT <> if i STAGE-WRITABLE exit then
-   i STAGE-READABLE ;
+   i ARG-REG@ GEN-N s"  FFI:POINTER! " GEN+ ;
 
 : STACK-POS ( n -- ) {: i:n :}
    i ARG-REG@ 0 < if i ARG-REG@ negate 1- GEN-N exit then
@@ -1364,11 +1275,7 @@ private
       i STACK-POS s"  FFI:STACK-FLOAT! " GEN+ exit then
    i ARG-KIND@ K-VALUE = if
       i STACK-POS s"  FFI:STACK-VALUE! " GEN+ exit then
-   i ARG-EXT@ NO-EXT <> i ARG-EXT-ARG@ NO-EXT <> or if
-      i ARG-EXT@ NO-EXT <> if i ARG-EXT@ GEN-N else i ARG-EXT-ARG@ GEN-ARG then
-      GEN-SP i STACK-POS s"  FFI:STACK-WRITABLE! " GEN+ exit
-   then
-   i STACK-POS s"  FFI:STACK-READABLE! " GEN+ ;
+   i STACK-POS s"  FFI:STACK-POINTER! " GEN+ ;
 
 : STAGE-REG ( n -- ) {: i:n :}
    i ARG-KIND@ K-FLOAT = if i STAGE-FLOAT exit then
@@ -1376,18 +1283,15 @@ private
    i ARG-KIND@ K-VALUE = if i STAGE-VALUE exit then
    i STAGE-POINTER ;
 
-: STAGE-ONE ( n bool -- ) {: i:n named:bool :}
-   named if i GEN-ARG GEN-SP then
+: STAGE-ONE ( n -- ) {: i:n :}
    HB-TARGET-LINUX-X86-64? i ARG-REG@ 0 < and if i STAGE-SPILL exit then
    HB-TARGET-MACOS? VAR-START @ 0 >= and i VAR-START @ >= and if
       i STAGE-SPILL exit
    then
    i STAGE-REG ;
 
-: STAGE ( bool -- ) {: named:bool :}
-   ARG-N @ 0 ?do
-      named if i else ARG-N @ i 1+ - then named STAGE-ONE
-   loop ;
+: STAGE ( -- )
+   ARG-N @ 0 ?do ARG-N @ i 1+ - STAGE-ONE loop ;
 
 : CALL-WORD ( n -- )
    {: kind:n :}
@@ -1486,7 +1390,7 @@ private
 : STRUCT-BODY ( n n -- )
    SLOT {: slot:n :}
    LOCALS
-   slot GEN-N s"  FFI:RESOLVE-ROW FFI:RESET " GEN+
+   slot GEN-N s"  FFI:RESOLVE-ROW " GEN+
    C-ARGS 0 ?do i STAGE-C-ARG loop
    STRUCT-BYTES @ 0 > if
       ARG-N @ 1- GEN-ARG GEN-SP STRUCT-BYTES @ GEN-N s"  FFI:RESULT-DEST! " GEN+
@@ -1506,12 +1410,7 @@ private
    s" : " GEN+ NAME-BUF NAME-U @ GEN+
    s"  ( " GEN+ EFF CODEGEN:CONTENTS GEN+ s" ) " GEN+
    kind C-STRUCT = if int stk STRUCT-BODY s"  ;" GEN+ exit then
-   NEEDS-LOCALS? {: named:bool :}
-   named if LOCALS then
-   \ The mixed ABI guard visits all nine register extents. Bounded calls guard
-   \ only the row's argc live slots, whose staging also writes each extent.
-   kind C-ABI = kind C-ABI-R = or if s" FFI:RESET " GEN+ then
-   named STAGE
+   STAGE
    int stk SLOT GEN-N GEN-SP
    kind CALL-WORD
    RESULT-TAIL
@@ -1585,8 +1484,8 @@ private
    fixed VAR-START !
    1 OPEN +! ;
 
-\ Argument idx is written by the callee: the bounded call guards exactly the
-\ span named here, a fixed width or the argument that carries the length.
+\ Argument idx is written by the callee over the span named here, a fixed width
+\ or the argument that carries the length.
 : EXTENT-CLAUSE ( n n -- ) {: idx:n len:n :}
    idx CLAUSE-TARGET
    len 0 <= if REFUSE then

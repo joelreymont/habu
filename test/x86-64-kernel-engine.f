@@ -366,8 +366,6 @@ REGION SLOT-BYTES - constant TOP-SLOT
    SEED,  s" SEAL-CAPTURE" ROW
    5 SEAL-NDICT-CELL X64HARNESS:EXPECT-CELL,
    s" seal-captured?" ROW  -1 X64HARNESS:EXPECT-POP,
-   s" SEAL-FRIEND" ROW
-   FRIEND-ARENA-LEN FRIEND-LATCH-CELL X64HARNESS:EXPECT-CELL,
    0 X64HARNESS:EXPECT-DEPTH,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
@@ -455,8 +453,6 @@ REGION SLOT-BYTES - constant TOP-SLOT
    0 X64HARNESS:EXPECT-DEPTH,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
-: SEAL, ( -- ) FRIEND-ARENA-LEN FRIEND-LATCH-CELL X64HARNESS:CELL!, ;
-
 : ADDRESS-HEADER, ( n -- ) {: cap:n :}
    0 SNAP-RELOC:XTCELL-N-CELL X64HARNESS:CELL!,
    ADDRESS-CELLS:MAGIC SNAP-RELOC:XTCELL-N-CELL ADDRESS-CELLS:MAGIC-FIELD + X64HARNESS:CELL!,
@@ -464,12 +460,10 @@ REGION SLOT-BYTES - constant TOP-SLOT
    cap SNAP-RELOC:XTCELL-N-CELL ADDRESS-CELLS:CAP-FIELD + X64HARNESS:CELL!,
    0 SNAP-RELOC:XTCELL-N-CELL ADDRESS-CELLS:MODE-FIELD + X64HARNESS:CELL!, ;
 
-\ With the latch sealed, xt! stores into a scratch cell and ptr-cell-mark
-\ admits one.
+\ xt! stores into a scratch cell and ptr-cell-mark admits one.
 : BUILD-XT-STORE ( ptr u8 n -- ) {: path:ptr pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    ADDRESS-CELLS:BOOT-CAP ADDRESS-HEADER,
-   SEAL,
    CELL-VALUE X64HARNESS:PUSH,  0 X64HARNESS:PUSH-SCRATCH,  s" xt!" ROW
    CELL-VALUE 0 X64HARNESS:EXPECT-SCRATCH,
    1 SNAP-RELOC:XTCELL-N-CELL X64HARNESS:EXPECT-CELL,
@@ -532,29 +526,6 @@ REGION SLOT-BYTES - constant TOP-SLOT
 : BUILD-ADDR-HEADER ( ptr u8 n -- ) {: path:ptr pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    0 X64HARNESS:PUSH-SCRATCH, s" ptr-cell-mark" ROW
-   path pathu X64HARNESS:BOOT-CLOSE, ;
-
-\ With the latch sealed, the row aimed at the band cell SOURCE-EXEC-CTX-CELL
-\ exits 83 before it stores: xt! when the flag is true, ptr-cell-mark otherwise.
-: BUILD-BAND-CELL ( bool ptr u8 n -- ) {: store:bool path:ptr pathu:n :}
-   false X64HARNESS:BOOT-OPEN,
-   SEAL,
-   store if CELL-VALUE X64HARNESS:PUSH, then
-   SOURCE-EXEC-CTX-CELL X64HARNESS:PUSH-DATA,
-   store if s" xt!" ROW else s" ptr-cell-mark" ROW then
-   path pathu X64HARNESS:BOOT-CLOSE, ;
-
-: BUILD-BAND-TASK ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   false X64HARNESS:BOOT-OPEN,
-   ADDRESS-CELLS:BOOT-CAP ADDRESS-HEADER,
-   SEAL,
-   SOURCE-EXEC-CTX-CELL X64HARNESS:PUSH-DATA,
-   X64ASM:RBP X64CODE:ASM-SINK X64ASM:ENC-PUSH
-   X64ASM:RAX X64ASM:RBP X64HARNESS:SCRATCH-OFF X64ASM:MEM-OFF
-      X64CODE:ASM-SINK X64ASM:ENC-LEA
-   X64ASM:RBP X64ASM:RAX X64CODE:ASM-SINK X64ASM:ENC-MOV-RR
-   s" ptr-cell-mark" ROW
-   X64ASM:RBP X64CODE:ASM-SINK X64ASM:ENC-POP
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
 \ The constant rows and tier 1.
@@ -702,9 +673,6 @@ public
    s" hb-x64-kernel-addr-kind" TMP-PATH BUILD-ADDR-KIND
    s" hb-x64-kernel-addr-band" TMP-PATH BUILD-ADDR-BAND
    s" hb-x64-kernel-addr-header" TMP-PATH BUILD-ADDR-HEADER
-   true s" hb-x64-kernel-xt-store-armed" TMP-PATH BUILD-BAND-CELL
-   false s" hb-x64-kernel-mark-armed" TMP-PATH BUILD-BAND-CELL
-   s" hb-x64-kernel-mark-task-armed" TMP-PATH BUILD-BAND-TASK
    s" hb-x64-kernel-tier" TMP-PATH BUILD-TIER
    s" hb-x64-kernel-scope" TMP-PATH BUILD-SCOPE
    s" hb-x64-kernel-tier-zero" TMP-PATH BUILD-TIER-ZERO

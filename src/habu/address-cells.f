@@ -6,7 +6,7 @@ package ADDRESS-CELLS
 public
 
 \ Process mutex in fixed image DATA, outside the header and row backing. The
-\ MATCH stack ends before $1A0, $1A0 is the seal fixture's poke cell.
+\ MATCH stack ends before $1A0.
 $1A8 constant LOCK-CELL
 \ Derived process storage, never an address declaration or part of the row
 \ schema: the one unused cell between BPTRAMP ($36C0) and the breakpoint records

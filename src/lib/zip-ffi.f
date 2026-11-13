@@ -87,8 +87,8 @@ s" mkstemp" FFI:PROCESS 1 FFI:DECLARE constant MKSTEMP-ROW
 
 : C-FOPEN ( ptr u8 n -- ptr u8 ) 0 FOPEN-CALL ;
 
-: C-MKSTEMP ( ptr u8 n -- n ) {: path:ptr len:n :}
-   FFI:RESET path len 0 FFI:WRITABLE!
+: C-MKSTEMP ( ptr u8 n -- n )
+   drop 0 FFI:POINTER!
    MKSTEMP-ROW FFI:CALL $FFFFFFFF and
    dup $80000000 and 0 <> if $FFFFFFFF00000000 or then ;
 

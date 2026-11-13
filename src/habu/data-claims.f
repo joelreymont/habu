@@ -8,22 +8,18 @@ require src/habu/native-body-abi.f
 require src/habu/native-host-cells.f
 
 \ Every claim on DATA states its extent. CLAIMS-ASSERT refuses an overlapping
-\ pair at engine build time, naming both; BANDS-ASSERT requires every protected
-\ band to be a declared claim, start and length both. Both run when an engine
-\ builder (src/habu/habu1.f, src/habu/kernel-x64.f) loads this file. Without the
-\ map a TASK:+USER row overran the AOT window: one $40 row crashed at teardown.
+\ pair at engine build time, naming both, when an engine builder
+\ (src/habu/habu1.f, src/habu/kernel-x64.f) loads this file. Without the map a
+\ TASK:+USER row overran the AOT window: one $40 row crashed at teardown.
 \
 \ The map holds every claim with a declared extent: everything from $3A00 up,
-\ all DATA-BANDS rows, src/habu/address-cells.f LOCK-CELL and INDEX-CELL, and
-\ the profiler band, the top PROF-CNT-BYTES of DATA as src/habu/prof-abi.f
+\ src/habu/address-cells.f LOCK-CELL and INDEX-CELL, and the profiler band, the top PROF-CNT-BYTES of DATA as src/habu/prof-abi.f
 \ PROF-BAND-AT places it for the global DATA-SIZE. An x86-64 build's
 \ X64LAYOUT:DATA-SIZE differs on a macOS host, so kernel-x64.f places the band
-\ again through BAND-ASSERT. One claim is out: the $1A0 seal fixture poke cell,
-\ which no constant names.
+\ again through BAND-ASSERT.
 \
-\ Deliberate aliases are one row: the friend arena, not its eighteen cells;
-\ VVAL-STACK of VSMAX cells, inside which DEF-TKA-CELL and DEF-TKL-CELL live at
-\ $250/$258 because they are live only while the virtual stack is empty (the
+\ Deliberate aliases are one row: VVAL-STACK of VSMAX cells, inside which
+\ DEF-TKA-CELL and DEF-TKL-CELL live at $250/$258 because they are live only while the virtual stack is empty (the
 \ note at CMM-CELL). Separate rows would assert a conflict the engine takes on
 \ purpose.
 package DATA-CLAIMS
@@ -79,7 +75,6 @@ create TAB
    DP-CELL                            1 cells                 CLAIM DP-CELL
    HND-CELL                           1 cells                 CLAIM HND-CELL
    LOCN-CELL                          1 cells                 CLAIM LOCN-CELL
-   FRIEND-ARENA                       FRIEND-ARENA-LEN        CLAIM FRIEND-ARENA
    CMBK-CELL                          1 cells                 CLAIM CMBK-CELL
    CMFRD-CELL                         1 cells                 CLAIM CMFRD-CELL
    ADDRESS-CELLS:LOCK-CELL            1 cells                 CLAIM ADDRESS-CELLS-LOCK
@@ -200,7 +195,6 @@ create TAB
    EVALREC-CELL                       1 cells                 CLAIM EVALREC-CELL
    BOOT:USER-END                      1 cells                 CLAIM BOOT-USER-END
    PROT-REG-OFF                       PROT-REG-LEN            CLAIM PROT-REG
-   $40C8                              $100                    CLAIM FFI-LEN-BUFFERS
    CB-XDS                             CB-BAND-BYTES           CLAIM CALLBACK-BAND
    CB-TLS-GET                         2 cells                 CLAIM CALLBACK-TLS
    APP-ENTRY:XT-CELL                  1 cells                 CLAIM APP-ENTRY-XT-CELL
@@ -236,7 +230,6 @@ create TAB
    SNAP-RELOC:CALLMAP-OFF             SNAP-RELOC:CALLMAP-BYTES  CLAIM SNAP-CALLMAP
    SNAP-RELOC:ADDRMAP-OFF             SNAP-RELOC:ADDRMAP-BYTES  CLAIM SNAP-ADDRMAP
    SNAP-RELOC:XTCELL-N-CELL           SNAP-RELOC:XTCELL-END SNAP-RELOC:XTCELL-N-CELL -  CLAIM SNAP-XTCELL
-   SOURCE-EXEC-CTX-CELL               1 cells                 CLAIM SOURCE-EXEC-CTX-CELL
    REPLAY-SCOPE:LATCH                 REPLAY-SCOPE:END REPLAY-SCOPE:LATCH -  CLAIM REPLAY-SCOPE
    ENCLOSING:PUB                      ENCLOSING:END ENCLOSING:PUB -  CLAIM ENCLOSING
    REPLAY-SCOPE:ENCLOSING             ENCLOSING:END ENCLOSING:PUB -  CLAIM REPLAY-SCOPE:ENCLOSING
@@ -309,39 +302,4 @@ PROF-ROW-ASSERT
    CLAIMS-ASSERT ;
 
 CLAIMS-ASSERT
-
-\ Every guarded band must be a declared claim, start and length both. The bands
-\ are src/habu/layout.f's DATA-BANDS table, which every engine's prefix carries;
-\ a guard over a $3000 TXN-STATE-LEN once refused stores across 11520 bytes no
-\ claim owned. It dies when an engine builder loads this file, so a band that
-\ outgrows or outlives its claim cannot ship.
-
-private
-
-\ The claim at band ix's offset, else -1.
-: CLAIM-AT ( n -- n )
-   {: ix:n :}
-   COUNT-ROWS 0 ?do
-      i ROW-OFF ix DATA-BANDS:OFF = if i unloop exit then
-   loop -1 ;
-
-: DECLARED-AT ( n -- )
-   {: ix:n :}
-   ix CLAIM-AT {: hit:n :}
-   hit 0 < if
-      s" data-bands: PROT-GUARD band has no DATA-CLAIMS claim at its offset" 76 die
-   then
-   hit ROW-LEN ix DATA-BANDS:LEN <> if
-      MSG-RESET
-      s" data-bands: PROT-GUARD band length differs from its claim: " MSG+
-      hit NAME-AT MSG+
-      MSG$ 76 die
-   then ;
-
-public
-
-: BANDS-ASSERT ( -- )
-   0 BEGIN dup DATA-BANDS:LEN 0 <> WHILE  dup DECLARED-AT  1+  REPEAT drop ;
-
-BANDS-ASSERT
 ;package

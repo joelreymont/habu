@@ -24,8 +24,7 @@ FUNCTION: FFI-T-MEMCPY memcpy ( ptr u8 ptr u8 n -- n ) 0 2 WRITES-ARG ;FUNCTION
    s\" 42x\z" drop {: num:ptr :}
    0 FFI-T-OUT FFI:OUT!
    num FFI-T-OUT BYTE-VIEW 10 FFI-T-STRTOL 42 T=
-   FFI-T-OUT FFI:OUT@ num FFI:>CELL 2 + T=
-   [: FFI-T-OUT -1 0 FFI:WRITABLE! ;] E-FFI-ARITY TTHROWSQ ;
+   FFI-T-OUT FFI:OUT@ num FFI:>CELL 2 + T= ;
 
 : FFI-T-KPARAM-CAP ( -- )
    FFI:KPARAM-RESET

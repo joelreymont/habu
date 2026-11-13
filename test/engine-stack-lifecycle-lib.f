@@ -121,7 +121,7 @@ variable ERRLEN
    ERR ERRLEN @ s" E-STACK-BOUNDS habu: stack bounds exceeded (loop) lr " T-PREFIX= ;
 
 \ src/habu/layout.f UNCAUGHT-RC: the exit status of an uncaught top-level throw
-\ (BTHROW), also pinned by test/protection-span.f.
+\ (BTHROW).
 67 constant CHILD-UNCAUGHT-RC
 
 : REFUSED-NATIVE-RSTACK ( ptr u8 n -- )

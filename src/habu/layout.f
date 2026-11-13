@@ -189,21 +189,8 @@ LOC-REC 8 - constant LOC-NAME-CAP
 \ token began, restored with TOKLOCN-CELL's mark.
 $2DB8 constant CAPDEPTH-CELL
 $2DC0 constant TOKDEPTH-CELL
-\ The friend arena: one write-protected band [FRIEND-ARENA,
-\ FRIEND-ARENA+FRIEND-ARENA-LEN) holding the boot-seal latch and every
-\ checker/wordlist crown-jewel cell (CUR/WIDN/HOOK/DEF-WL, the TRUSTED:
-\ TSIG/TCSIG/CRSIG cells, the PKG-* cells, the DEFER-* cells). The latch is the
-\ arena base: 0 while the engine loads its own source (guard inert),
-\ FRIEND-ARENA-LEN once SEAL-FRIEND runs at the end of the cold prefix. Post-seal
-\ any raw write into the band, the latch included, traps, so the seal is one-way.
-\ The band sits below DATA-START, out of reach of the DP heap; only sinks
-\ storing to a computed address carry the range check.
-\ SEAL-NDICT-CELL ($A8) holds the seal-time ndict watermark.
-\ HIDE-DEFS-FROM/FORGET-DEFS-FROM refuse a post-seal FORGET below it;
-\ it is in the sealed band so user source cannot lower it.
-$20 constant FRIEND-ARENA               \ arena base offset within the DATA region (x20)
-$90 constant FRIEND-ARENA-LEN           \ 18 cells: latch + 16 crown jewels + seal-ndict watermark
-FRIEND-ARENA constant FRIEND-LATCH-CELL
+\ SEAL-NDICT-CELL holds the seal-time ndict watermark.
+\ HIDE-DEFS-FROM/FORGET-DEFS-FROM refuse a post-seal FORGET below it.
 $A8 constant SEAL-NDICT-CELL
 
 67 constant UNCAUGHT-RC                 \ deterministic exit status for an uncaught top-level throw (BTHROW):
@@ -228,7 +215,6 @@ $A0 constant DEFER-XT-CELL
 \ holding a record recognises a defer's trailer by this word, never by the
 \ shape of what follows the code (an ordinary integer can hold any value).
 $4842444546455201 constant DEFER-MAGIC
-\ $1A0 is the seal suite's deliberate poke hole.
 \ CMBK-CELL and CMFRD-CELL: zeroed by both kernels' compile reset; nothing
 \ reads them.
 $B0 constant CMBK-CELL
@@ -463,14 +449,10 @@ $3CA0 constant EVALREC-CELL
 \ protected, so the set holds any subset of the WIDs the engine indexes.
 \ PROT-WID-MAX is a WID bound: $400 bytes index 8192 WIDs, and prot-wid-add
 \ names the bound when handed a WID at or above it. A wider bitmap must first
-\ move the FFI length buffers: $40C8..$41C8 is FFI:FFI-REG-LEN-BUF-OFF, and
-\ APP-ENTRY:XT-CELL, the AOT capture window and the evaluator-pointer band
-\ follow from $43A0; growing it also moves UNCGH-CELL.
+\ move CB-XDS at $41C8, and APP-ENTRY:XT-CELL, the AOT capture window and the
+\ evaluator-pointer band from $43A0; growing it also moves UNCGH-CELL.
 \ No compiled source writes the band, the DP heap is bounded >= DATA-START, and
-\ snapshots save it. [PROT-REG-OFF, +PROT-REG-LEN) is a second PROT-GUARD range,
-\ refusing user stores into the tag cell, the bitmap or the uncaught-throw hook;
-\ cp!/ndict! PROT-GUARD the address they redirect writes to, so a post-seal
-\ cp!/ndict! into either band fails closed.
+\ snapshots save it.
 $3CB8 constant PROT-REG-TAG-CELL        \ bitmap-shape tag; capture requires this exact runtime shape
 $50574249544D4150 constant PROT-REG-TAG \ "PWBITMAP": written by every path that publishes the band
 $3CC0 constant PROT-BITS-OFF
@@ -773,9 +755,8 @@ CHECKER-OWNER-ABI:VERIFY-SOURCE-CLAUSE-OFF constant DECL-VERIFY-SOURCE-CLAUSE-OF
 \ The open definition's body text lives in one mapped block the engine grows:
 \ text at [base, base+cap), then the BODY-SOURCE rows from base+cap, at most cap
 \ of them, since every run appends at least its separator and rows at or past
-\ BODYLEN drop first. The four cells are one DATA-BANDS row, so only the engine
-\ stores into them. A linked image holds 0 in them, as the engine stores them
-\ only in the running hb's header.
+\ BODYLEN drop first. A linked image holds 0 in the four cells, as the engine
+\ stores them only in the running hb's header.
 package BODY-TEXT
 public
 $800 constant BASE-CELL     \ the block's address, 0 before the first capture
@@ -821,11 +802,7 @@ $27F0 constant TOP-HOOK-CELL
 COMPILE-PREFLIGHT-CELL constant ENGINE-HOOK-OFF
 2 cells constant ENGINE-HOOK-LEN
 \ SUSP-HOOK-CELL, SUSP-PREFLIGHT-CELL: the (hook, preflight) pair `0 set-check`
-\ suspends until `set-check` of the same hook resumes it. Both start zero;
-\ after the seal the set-check prim is their only writer. The pair is a PROT-GUARD band of its own: a resume copies
-\ SUSP-PREFLIGHT-CELL into COMPILE-PREFLIGHT-CELL without set-preflight's window
-\ check, so a raw post-seal store here would be a second, unchecked preflight
-\ installer.
+\ suspends until `set-check` of the same hook resumes it. Both start zero.
 $2D80 constant SUSP-HOOK-CELL
 $2D88 constant SUSP-PREFLIGHT-CELL
 SUSP-HOOK-CELL constant SUSP-HOOK-OFF
@@ -855,9 +832,7 @@ $27F8 constant CODE-CELL
 \ hook's effect is ( -- ) and it runs on the data stack as it stands, because
 \ `die` may be running on a task thread whose stack is its own. A new process
 \ has no hook, and the library that wants one arms it at runtime.
-\ It is not in the ENGINE-HOOK-OFF band: those two are sealed against a
-\ post-seal raw store, and this vector is armed by ordinary library code after
-\ the seal. $2818 follows SRCLOC's three cells in the $2800..$3000 header band,
+\ $2818 follows SRCLOC's three cells in the $2800..$3000 header band,
 \ below $7FF8 so the engine names it with a `DATA <off> LDR/STR` 12-bit scaled
 \ immediate, and below DATA-START so no compiled source reaches it by allot.
 $2818 constant EXIT-HOOK-CELL
@@ -1010,7 +985,6 @@ $4CA8 constant CLAUSE-CELL
 \ Compiler lowering transaction: all mutable pass-2 authority lives in one engine
 \ band.
 $5000 constant TXN-STATE-OFF
-\ DATA-BANDS guards this length, so PROT-GUARD refuses a store anywhere in it.
 $300 constant TXN-STATE-LEN
 STACK-ABI:PAGE-BYTES constant PROT-PAGE-MAX   \ the mapping alignment
 
@@ -1142,9 +1116,8 @@ MEM-ABI:START constant END
 \ using ABI or relocation maps. PD-TABLE-OFF is past the scaled-immediate range,
 \ so slots use a computed base. Slot: [0]=name-len [8]=sig-len
 \ [PD-NAME-OFF..)=name bytes [PD-SIG-OFF..)=sig bytes.
-\ Unguarded engine scratch (no DATA-BANDS row): a raw store
-\ grants nothing beyond the public `trust`/`checker-defer` words, and the table
-\ is empty whenever user source runs.
+\ A raw store grants nothing beyond the public `trust`/`checker-defer` words,
+\ and the table is empty whenever user source runs.
 128 constant PD-CAP                         \ pending slots with room beyond the checker prefix
 48 constant PD-NAME-CAP
 64 constant PD-SIG-CAP
@@ -1315,19 +1288,8 @@ $43A8 constant T0-CELL           \ first wordlist id the seed allocated for the 
 $43B8 constant B0-CELL           \ first address of the open window's code span
 ;package
 
-\ No engine word reads it; tests aim stores at it as a sealed band cell.
-$2CA8 constant SOURCE-EXEC-CTX-CELL
-
-\ The checker overlay's replay scope.
-\ replay-open saves the dictionary and scope cells here and sets
-\ LATCH; replay-record raises HW, the highest NDICT a replay record reached;
-\ replay-close checks the live state against these cells, restores them and
-\ zeroes the whole band, LATCH included; replay-widn! lowers WIDN no further
-\ than the saved one. The band is zero whenever no overlay is open. It is a
-\ guarded band (DATA-BANDS below), not scratch: a raw store that forged the
-\ saved NDICT, HW or WIDN would turn replay-close into a record eraser and
-\ either into a WIDN setter.
-\ DATA-CLAIMS refuses a USE-MAX that would run this band into ENCLOSING:PUB.
+\ The checker overlay's replay scope: what an open overlay saved and restores
+\ (HW, the highest NDICT a replay record reached); all zero when none is open.
 package REPLAY-SCOPE
 public
 CB-END constant LATCH                               \ 0: no overlay open
@@ -1346,16 +1308,15 @@ USE-PKG-SAVE CELL + constant USE-WIDS
 USE-WIDS USE-MAX cells + constant END
 \ ENCLOSING: the enclosing package's four cells (ENCLOSING below), in its
 \ order, saved and restored with the scope. It takes the cells after
-\ ENCLOSING, a second guarded band, which replay-close zeroes too.
+\ ENCLOSING, which replay-close zeroes too.
 $4310 constant ENCLOSING
 ;package
 
 \ While a part is open, the package it is a part of: that package's public
 \ wid, private wid, parent wid and row, as PKG-PUB-CELL..PKG-REC-CELL held
-\ them before the part opened; all four are 0 when no part is open. They are
-\ a guarded band (DATA-BANDS): only the engine's own code and package-scope!
-\ write them, so the Habu loop moves them through package-scope!. $42E8, the
-\ cell before them, is free.
+\ them before the part opened; all four are 0 when no part is open. Only the
+\ engine's own code and package-scope! write them. $42E8, the cell before them,
+\ is free.
 package ENCLOSING
 public
 $42F0 constant PUB
@@ -1379,50 +1340,6 @@ $4DD0 constant PKG-OUTSIDE-CELL
 
 \ The section in force: 0 host, 1 target; `host` and `target` write it.
 $4DD8 constant SECTION-CELL
-
-\ The protected DATA bands, as one table.
-\ Every engine's span guard walks this table. Each builder reads it twice, for
-\ the hull [LO, HI) of its bounding test and for the per-band interval tests, so
-\ one added row widens both. The zero-length row ends every walk, so no count
-\ can fall out of step with the rows.
-package DATA-BANDS
-
-create TAB
-   FRIEND-ARENA ,                 FRIEND-ARENA-LEN ,
-   PROT-REG-OFF ,                 PROT-REG-LEN ,
-   ENGINE-HOOK-OFF ,              ENGINE-HOOK-LEN ,
-   SUSP-HOOK-OFF ,                SUSP-HOOK-LEN ,
-   NCOMP-DISPATCH:TIER-CELL ,     1 cells ,
-   NCOMP-DISPATCH:DEF-TIER-CELL , 3 cells ,
-   SOURCE-EXEC-CTX-CELL ,         1 cells ,
-   REPLAY-SCOPE:LATCH ,           REPLAY-SCOPE:END REPLAY-SCOPE:LATCH - ,
-   ENCLOSING:PUB ,                ENCLOSING:END ENCLOSING:PUB - ,
-   REPLAY-SCOPE:ENCLOSING ,       ENCLOSING:END ENCLOSING:PUB - ,
-   BODY-TEXT:BASE-CELL ,          4 cells ,
-   TXN-STATE-OFF ,                TXN-STATE-LEN ,
-   0 ,                            0 ,
-
-public
-
-: OFF ( n -- n )
-   {: ix:n :}
-   ix 2 * cells TAB + @ ;
-
-: LEN ( n -- n )
-   {: ix:n :}
-   ix 2 * 1 + cells TAB + @ ;
-
-: LO ( -- n )
-   0 OFF  1 BEGIN dup LEN 0 <> WHILE
-      dup OFF rot min swap  1+
-   REPEAT drop ;
-
-: HI ( -- n )
-   0 OFF 0 LEN +  1 BEGIN dup LEN 0 <> WHILE
-      dup OFF over LEN + rot max swap  1+
-   REPEAT drop ;
-
-;package
 
 SNAP-RELOC:XTCELL-END constant PD-TABLE-OFF
 PD-TABLE-OFF PD-SLOTS-REL + PD-CAP PD-SLOT * + constant PD-TABLE-END

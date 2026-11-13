@@ -22,7 +22,7 @@ require src/habu/stack-abi.f
 require src/habu/arith-abi.f
 require src/habu/primitive-registry.f
 require src/habu/boot-x64.f
-require src/habu/data-claims.f          \ each band (PROT-SPAN) tests is a claim
+require src/habu/data-claims.f
 require src/habu/snapshot-format.f
 require src/habu/code-span.f
 require src/habu/task-abi.f
@@ -100,7 +100,6 @@ $1000 constant PAGE-BYTES              \ the x86-64 Linux base page
 : SAME? ( r64 r64 -- bool ) R64>N swap R64>N = ;
 
 \ The helpers' labels, set by HELPERS, in the stream it emits them into.
-variable SPAN-CELL
 variable REC-CELL
 variable LIVE-CELL
 variable DPBAD-CELL
@@ -110,7 +109,6 @@ variable LCLOSE-CELL
 variable SCOPE-SEED-CELL
 variable SCOPE-SEED-END-CELL
 variable SCOPE-KIND-CELL
-: SPAN-LBL ( -- label ) SPAN-CELL @ >LABEL ;
 : REC-LBL ( -- label ) REC-CELL @ >LABEL ;
 : LIVE-LBL ( -- label ) LIVE-CELL @ >LABEL ;
 : DPBAD-LBL ( -- label ) DPBAD-CELL @ >LABEL ;
@@ -250,23 +248,6 @@ public
    RAX RAX ASM-SINK ENC-TEST-RR
    C-NE LIVE-LBL JCC, ;
 
-\ The twin of habu1.f PROT-GUARD:CALL: moves the span into the (PROT-SPAN) ABI,
-\ rdi the address and rsi the length, from whichever registers hold it. The
-\ call clobbers rax rcx rdx rsi rdi and r8-r11; the VM registers survive it.
-: PROT-SPAN-CALL, ( r64 r64 -- ) {: addr:r64 len:r64 :}
-   len RDI SAME? if
-      addr RSI SAME? if
-         RDI RSI ASM-SINK ENC-XCHG-RR                  \ crossed: swap them
-      else
-         RSI RDI ASM-SINK ENC-MOV-RR                   \ the length first
-         addr RDI SAME? 0= if RDI addr ASM-SINK ENC-MOV-RR then
-      then
-   else
-      addr RDI SAME? 0= if RDI addr ASM-SINK ENC-MOV-RR then
-      len RSI SAME? 0= if RSI len ASM-SINK ENC-MOV-RR then
-   then
-   SPAN-LBL CALL, ;
-
 private
 
 : BIT ( r64 -- n ) R64>N 1 swap lshift ;
@@ -298,71 +279,6 @@ public
    REC-LBL CALL, ;
 
 private
-
-\ One band of DATA-BANDS, the twin of habu1.f GUARD-BAND: rdi is the span's
-\ start and rdx its end.
-: BAND, ( n label -- ) {: ix:n trap:label :}
-   X64CODE:LBL {: skip:label :}
-   RAX SHARED-DATA,
-   RAX RAX ix DATA-BANDS:OFF ix DATA-BANDS:LEN + MEM-OFF ASM-SINK ENC-LEA
-   RDI RAX ASM-SINK ENC-CMP-RR  C-AE skip JCC,
-   RAX SHARED-DATA,
-   RAX RAX ix DATA-BANDS:OFF MEM-OFF ASM-SINK ENC-LEA
-   RDX RAX ASM-SINK ENC-CMP-RR  C-A trap JCC,
-   skip X64CODE:LBL, ;
-
-: BANDS, ( label -- ) {: trap:label :}
-   0 BEGIN dup DATA-BANDS:LEN 0 <> WHILE  dup trap BAND,  1+  REPEAT drop ;
-
-\ (PROT-SPAN) ( rdi = address, rsi = byte length ): the twin of habu1.f
-\ GUARD-SPAN. It passes while the friend latch is open and for an empty span;
-\ a span that wraps, meets a band or meets the body text block exits
-\ SEAL-VIOLATION. The hull test skips the band walk for a span outside
-\ [DATA-BANDS:LO, DATA-BANDS:HI), which is every DP heap address. The block,
-\ [BODY-TEXT:BASE-CELL, + BODY-TEXT:SIZE-CELL), is read on every call and
-\ tested last; SIZE 0 is no block. It clobbers rax and rdx. Registered as an
-\ engine helper, as habu1.f EMIT-PROT-SPAN registers the ARM64 body, so a
-\ compiled word that reaches it by a direct call is carried and relocated
-\ with it.
-: SPAN-HELPER, ( -- )
-   SPAN-LBL {: start:label :}
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: end:label trap:label ok:label :}
-   X64CODE:LBL X64CODE:LBL {: live:label inside:label :}
-   s" (PROT-SPAN)" start LABEL>N end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
-   start X64CODE:LBL,
-   RAX SHARED-DATA,
-   RAX RAX FRIEND-LATCH-CELL MEM-OFF ASM-SINK ENC-MOV-RM
-   RAX RAX ASM-SINK ENC-TEST-RR  C-E ok JCC,
-   RSI RSI ASM-SINK ENC-TEST-RR  C-E ok JCC,
-   RDX RDI RSI 1 0 MEM-IDX ASM-SINK ENC-LEA            \ the span's end
-   RDX RDI ASM-SINK ENC-CMP-RR  C-B trap JCC,          \ unsigned wrap
-   RAX SHARED-DATA,
-   RAX RAX DATA-BANDS:HI MEM-OFF ASM-SINK ENC-LEA
-   RDI RAX ASM-SINK ENC-CMP-RR  C-AE live JCC,         \ start >= hull end
-   RAX SHARED-DATA,
-   RAX RAX DATA-BANDS:LO MEM-OFF ASM-SINK ENC-LEA
-   RDX RAX ASM-SINK ENC-CMP-RR  C-BE live JCC,         \ end <= hull start
-   trap BANDS,
-   live X64CODE:LBL,
-   RAX SHARED-DATA,
-   RAX RAX BODY-TEXT:BASE-CELL MEM-OFF ASM-SINK ENC-MOV-RM
-   RDX RAX ASM-SINK ENC-CMP-RR  C-BE ok JCC,           \ end <= block start
-   RDI RAX ASM-SINK ENC-CMP-RR  C-AE inside JCC,
-   RAX SHARED-DATA,                                    \ it starts below the block
-   RAX RAX BODY-TEXT:SIZE-CELL MEM-OFF ASM-SINK ENC-MOV-RM
-   RAX RAX ASM-SINK ENC-TEST-RR  C-NE trap JCC,
-   ok JMP,
-   inside X64CODE:LBL,
-   RDX RDI ASM-SINK ENC-MOV-RR
-   RDX RAX ASM-SINK ENC-SUB-RR                         \ start - block start
-   RAX SHARED-DATA,
-   RAX RAX BODY-TEXT:SIZE-CELL MEM-OFF ASM-SINK ENC-MOV-RM
-   RDX RAX ASM-SINK ENC-CMP-RR  C-B trap JCC,
-   ok X64CODE:LBL,
-   ASM-SINK ENC-RET
-   trap X64CODE:LBL,
-   ENGINE-ERROR:SEAL-VIOLATION EXIT-GROUP,
-   end X64CODE:LBL, ;
 
 \ LPROTREC ( rdi = an address in the first page, rdx = prot ): mprotect the two
 \ PAGE-BYTES pages from rdi's page, as habu1.f LPROTREC flips two host pages.
@@ -791,18 +707,9 @@ public
 \ src/os/linux-x86-64/sys.f maps x0..x5 onto), stages the *at* family's
 \ AT_FDCWD and flags, traps through SYS, and pushes through X64RT:SYS-PUSH: the
 \ result, or -1 when the kernel refused.
-\
-\ A row whose kernel call writes through a caller's span guards it first. The
-\ guard clobbers every argument register, so it reads the span from the data
-\ stack before the pops.
 
 private
 
-$10 constant MAP-FIXED              \ the same bit in the BSD and Linux words
-$90 constant STAT-BYTES             \ the x86-64 struct stat newfstatat writes
-$5401 constant TCGETS
-$5402 constant TCSETS
-36 constant TERMIOS-BYTES           \ the struct termios TCGETS writes
 1000000000 constant NS-PER-S
 
 : DSP ( -- r64 ) ENGINE-GPR:X64-DSTACK >R64 ;
@@ -816,45 +723,11 @@ $5402 constant TCSETS
 : PEEK, ( r64 n -- ) {: r:r64 depth:n :}
    r DSP depth 1+ CELL * negate MEM-OFF ASM-SINK ENC-MOV-RM ;
 
-: SPAN-GUARD, ( n n -- ) {: a:n l:n :}
-   RDI a PEEK,  RSI l PEEK,  RDI RSI PROT-SPAN-CALL, ;
-
-: SIZED-GUARD, ( n n -- ) {: a:n bytes:n :}
-   RDI a PEEK,  RSI bytes IMM32,  RDI RSI PROT-SPAN-CALL, ;
-
 : OPEN-ROW ( -- )                   \ ( path flags mode -- fd|-1 )
    R10 POP,  RSI POP,  RDI POP,
    OS-OPEN-FLAGS                    \ rsi's BSD-shaped flags into rdx
    RSI RDI ASM-SINK ENC-MOV-RR  RDI AT-FDCWD,
    NR-OPEN FS-SYS-PUSH, ;
-
-\ The twin of habu1.f GUARD-IOCTL, over the request and the argument still on
-\ the stack. TCGETS writes a termios and TCSETS only reads one; an _IOC request
-\ the kernel writes through (_IOC_READ in bits 30-31) names its size in bits
-\ 16-29, and one it only reads needs no guard. Any other request has no size
-\ the guard could check, so it fails closed.
-: IOCTL-GUARD, ( -- )
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: legacy:label write:label span:label :}
-   X64CODE:LBL X64CODE:LBL {: trap:label done:label :}
-   RAX 1 PEEK,  RDI 0 PEEK,
-   RAX TCGETS >IMM32 ASM-SINK ENC-CMP-RI32  C-E legacy JCC,
-   RAX TCSETS >IMM32 ASM-SINK ENC-CMP-RI32  C-E done JCC,
-   RCX RAX ASM-SINK ENC-MOV-RR
-   RCX 30 >IMM8 ASM-SINK ENC-SHR-RI8  RCX 3 >IMM8 ASM-SINK ENC-AND-RI8
-   RCX 2 >IMM32 ASM-SINK ENC-TEST-RI32  C-NE write JCC,
-   RCX RCX ASM-SINK ENC-TEST-RR  C-NE done JCC,
-   trap JMP,
-   legacy X64CODE:LBL,
-   RSI TERMIOS-BYTES IMM32,  span JMP,
-   write X64CODE:LBL,
-   RSI RAX ASM-SINK ENC-MOV-RR
-   RSI 16 >IMM8 ASM-SINK ENC-SHR-RI8  RSI $3FFF >IMM32 ASM-SINK ENC-AND-RI32
-   C-E done JCC,
-   span X64CODE:LBL,
-   RDI RSI PROT-SPAN-CALL,  done JMP,
-   trap X64CODE:LBL,
-   ENGINE-ERROR:SEAL-VIOLATION EXIT-GROUP,
-   done X64CODE:LBL, ;
 
 \ Fresh anonymous storage: ( bytes -- ptr ior ), a null pointer and -1 for a
 \ length that is not positive or a mapping the kernel refuses.
@@ -871,13 +744,8 @@ $5402 constant TCSETS
    done X64CODE:LBL,
    0 G-PUSH  1 G-PUSH ;
 
-\ ( addr len prot flags fd off -- addr|-1 ). Only MAP_FIXED replaces a mapping
-\ that stands, so only it guards the span.
+\ ( addr len prot flags fd off -- addr|-1 ).
 : MMAP-ROW ( -- )
-   X64CODE:LBL {: placed:label :}
-   RAX 2 PEEK,  RAX MAP-FIXED >IMM32 ASM-SINK ENC-TEST-RI32  C-E placed JCC,
-   5 4 SPAN-GUARD,
-   placed X64CODE:LBL,
    R9 POP,  R8 POP,  R10 POP,  RDX POP,  RSI POP,  RDI POP,
    OS-MMAP-FLAGS
    NR-MMAP SYS-PUSH, ;
@@ -906,7 +774,6 @@ $5402 constant TCSETS
 \ in rdx after the trap, and the fix runs only when the row pushed 0.
 : STAT-ROW ( n n -- ) {: nr:n flags:n :}
    X64CODE:LBL {: done:label :}
-   0 STAT-BYTES SIZED-GUARD,
    RDX POP,  RSI POP,  RDI AT-FDCWD,  R10 flags IMM32,
    nr FS-SYS-PUSH,
    RAX RAX ASM-SINK ENC-TEST-RR  C-NE done JCC,
@@ -1020,7 +887,6 @@ $687461706C616572 constant REALPATH-NAME
    RSI RP-DST RP ASM-SINK ENC-MOV-MR
    RDX RP-CAP RP ASM-SINK ENC-MOV-MR
    RDX RDX ASM-SINK ENC-TEST-RR  C-LE badcap JCC,
-   RSI RDX PROT-SPAN-CALL,
    RAX FREE-NAME IMM32,  RAX RP-FREE-NAME RP ASM-SINK ENC-MOV-MR
    RAX REALPATH-NAME >IMM64 ASM-SINK ENC-MOV-RI64
    RAX RP-REALPATH-NAME RP ASM-SINK ENC-MOV-MR
@@ -1081,7 +947,6 @@ $80000 constant PIPE-CLOEXEC        \ O_CLOEXEC
 8 constant SIGSET-BYTES
 1000 constant MS-PER-S
 1000000 constant NS-PER-MS
-61 constant NFDS-WRAP-SHIFT         \ an nfds at or past 2^61 wraps nfds * 8
 
 \ The spawn frame on the machine stack. The first seven cells are LINUX-SPAWN's
 \ arguments; -1 in the directory or a descriptor cell means none. pipe2 writes
@@ -1447,21 +1312,11 @@ SPN-ARGV0 constant SPN-LIFTED
    done X64CODE:LBL,
    SYS-PUSH ;
 
-\ ( fds nfds ms -- n|0|-errno ): ppoll, as BPOLL. The pollfd array's nfds * 8
-\ bytes are guarded first, and an nfds whose byte length wraps is the
-\ all-address span. ms becomes a timespec, and a negative ms none, which waits
+\ ( fds nfds ms -- n|0|-errno ): ppoll, as BPOLL. ms becomes a timespec, and a negative ms none, which waits
 \ without end. rax is pushed raw: poll alone is not restarted after a signal,
 \ so its caller needs -EINTR (habu1.f's errno rule).
 : POLL-ROW ( -- )
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: scaled:label guard:label call:label :}
-   RDI 2 PEEK,  RSI 1 PEEK,
-   RAX RSI ASM-SINK ENC-MOV-RR  RAX NFDS-WRAP-SHIFT >IMM8 ASM-SINK ENC-SHR-RI8
-   RAX RAX ASM-SINK ENC-TEST-RR  C-E scaled JCC,
-   RSI MINUS-1,  guard JMP,
-   scaled X64CODE:LBL,
-   RSI 3 >IMM8 ASM-SINK ENC-SHL-RI8
-   guard X64CODE:LBL,
-   RDI RSI PROT-SPAN-CALL,
+   X64CODE:LBL {: call:label :}
    RAX POP,  RSI POP,  RDI POP,
    RSP 2 CELL * >IMM8 ASM-SINK ENC-SUB-RI8
    RDX ZERO-REG,
@@ -1479,29 +1334,28 @@ public
 
 : SYSCALLS, ( -- )
    s" open" [: OPEN-ROW ;] PRIM
-   s" read" [: 1 0 SPAN-GUARD,  RDX POP, RSI POP, RDI POP,  NR-READ FS-SYS-PUSH, ;] PRIM
+   s" read" [: RDX POP, RSI POP, RDI POP,  NR-READ FS-SYS-PUSH, ;] PRIM
    s" write" [: RDX POP, RSI POP, RDI POP,  NR-WRITE FS-SYS-PUSH, ;] PRIM
    s" close" [: RDI POP,  NR-CLOSE SYS, ;] PRIM
    s" close-rc" [: RDI POP,  NR-CLOSE SYS-PUSH, ;] PRIM
-   s" ioctl" [: IOCTL-GUARD,  RDX POP, RSI POP, RDI POP,  NR-IOCTL SYS-PUSH, ;] PRIM
+   s" ioctl" [: RDX POP, RSI POP, RDI POP,  NR-IOCTL SYS-PUSH, ;] PRIM
    s" map-anon" [: MAP-ANON-ROW ;] PRIM
    s" mmap" [: MMAP-ROW ;] PRIM
-   s" munmap" [: 1 0 SPAN-GUARD,  RSI POP, RDI POP,  NR-MUNMAP SYS-PUSH, ;] PRIM
+   s" munmap" [: RSI POP, RDI POP,  NR-MUNMAP SYS-PUSH, ;] PRIM
    s" open-rd" [: RDI POP,  RDI R64>N OS-OPEN-RD  FS-SYS-PUSH ;] PRIM
    s" access" [: RDX POP, RSI POP, RDI AT-FDCWD, R10 ZERO-REG,  NR-ACCESS FS-SYS-PUSH, ;] PRIM
    s" unlink" [: RSI POP, RDI AT-FDCWD, RDX ZERO-REG,  NR-UNLINK FS-SYS-PUSH, ;] PRIM
    s" rename" [: R10 POP, RSI POP, RDI AT-FDCWD, RDX AT-FDCWD,  NR-RENAME FS-SYS-PUSH, ;] PRIM
    s" chmod" [: RDX POP, RSI POP, RDI AT-FDCWD, R10 ZERO-REG,  NR-CHMOD FS-SYS-PUSH, ;] PRIM
    s" symlink" [: RDX POP, RDI POP, RSI AT-FDCWD,  NR-SYMLINKAT FS-SYS-PUSH, ;] PRIM
-   s" readlink" [: 1 0 SPAN-GUARD,  R10 POP, RDX POP, RSI POP, RDI AT-FDCWD,  NR-READLINKAT FS-SYS-PUSH, ;] PRIM
+   s" readlink" [: R10 POP, RDX POP, RSI POP, RDI AT-FDCWD,  NR-READLINKAT FS-SYS-PUSH, ;] PRIM
    s" realpath" [: REALPATH-ROW ;] PRIM
    s" mkdir" [: RDX POP, RSI POP, RDI AT-FDCWD,  NR-MKDIR FS-SYS-PUSH, ;] PRIM
    s" rmdir" [: RSI POP, RDI AT-FDCWD, RDX AT-REMOVEDIR IMM32,  NR-RMDIR FS-SYS-PUSH, ;] PRIM
    s" stat64" [: NR-STAT64 0 STAT-ROW ;] PRIM
    s" lstat64" [: NR-LSTAT64 AT-SYMLINK-NOFOLLOW STAT-ROW ;] PRIM
-   \ getdents64 keeps no base cookie: the pointer is guarded, as the macOS
-   \ call writes through it, and dropped.
-   s" getdirentries64" [: 2 1 SPAN-GUARD,  0 CELL SIZED-GUARD,  DROP,  RDX POP, RSI POP, RDI POP,  NR-GETDIRENTRIES64 FS-SYS-PUSH, ;] PRIM
+   \ getdents64 keeps no base cookie: the pointer is dropped.
+   s" getdirentries64" [: DROP,  RDX POP, RSI POP, RDI POP,  NR-GETDIRENTRIES64 FS-SYS-PUSH, ;] PRIM
    s" epoch-seconds" [: EPOCH-ROW ;] PRIM
    s" mono-ns" [: MONO-ROW ;] PRIM
    s" getpid" [: NR-GETPID SYS-PUSH, ;] PRIM
@@ -1770,10 +1624,10 @@ private
 
 \ Make helper labels before the sections that branch to them.
 : HELPERS, ( -- )
-   X64CODE:LBL SPAN-CELL !  X64CODE:LBL REC-CELL !  X64CODE:LBL LIVE-CELL !
+   X64CODE:LBL REC-CELL !  X64CODE:LBL LIVE-CELL !
    X64CODE:LBL DPBAD-CELL !  X64CODE:LBL LGENIOOUT !
    X64CODE:LBL OVERLAY-DIE-CELL !  X64CODE:LBL COMPILE-DIE-CELL !
-   SPAN-HELPER,  REC-HELPER,  LIVE-HELPER,  INDEX-HELPERS,
+   REC-HELPER,  LIVE-HELPER,  INDEX-HELPERS,
    DPBAD-HELPER,  GENIO-HELPER,
    X64PROF:HELPERS, ;
 
@@ -2666,13 +2520,7 @@ private
 \ The twins of habu1.f BATFETCH .. BFENCE. x86-64 orders memory as total store
 \ order: a plain load already has LDAR's acquire order, but a plain store may
 \ pass a later load, which STLR followed by LDAR forbids, so the store is the
-\ implicitly locked xchg. A row that writes guards the cell whose address is on
-\ top of the data stack, and pops its operands only after the guard, which
-\ preserves no scratch register.
-: TOP-CELL-GUARD, ( -- )
-   RDI ENGINE-GPR:X64-DSTACK >R64 CELL negate MEM-OFF ASM-SINK ENC-MOV-RM
-   RSI CELL IMM32,
-   RDI RSI PROT-SPAN-CALL, ;
+\ implicitly locked xchg.
 
 : ATOMIC-FETCH, ( -- )
    0 X64RT:G-POP
@@ -2680,13 +2528,11 @@ private
    0 X64RT:G-PUSH ;
 
 : ATOMIC-STORE, ( -- )
-   TOP-CELL-GUARD,
    1 X64RT:G-POP  0 X64RT:G-POP
    RAX RCX MEM-AT ASM-SINK ENC-XCHG-MR ;
 
 \ atomic-add ( n ptr n -- n ), answering the value the cell held.
 : ATOMIC-ADD, ( -- )
-   TOP-CELL-GUARD,
    1 X64RT:G-POP  0 X64RT:G-POP
    RAX RCX MEM-AT ASM-SINK ENC-LOCK-XADD-MR
    0 X64RT:G-PUSH ;
@@ -2695,7 +2541,6 @@ private
 \ rdx. It answers the value the cell held, which cmpxchg leaves in rax whether
 \ or not it matched.
 : ATOMIC-CAS, ( -- )
-   TOP-CELL-GUARD,
    1 X64RT:G-POP  2 X64RT:G-POP  0 X64RT:G-POP
    RDX RCX MEM-AT ASM-SINK ENC-LOCK-CMPXCHG-MR
    0 X64RT:G-PUSH ;
@@ -2987,9 +2832,9 @@ variable SITE-TRAP-CELL
    RAX RDX ASM-SINK ENC-TEST-RR  C-NE prot JCC,
    open X64CODE:LBL, ;
 
-\ patch32 ( n n -- ): guard the four bytes at the address, then store the word
-\ between two LPROTREC flips of its pages, as BPATCH32 does: the flip is keyed
-\ on the target, never on a band another bracket may hold open. A generic
+\ patch32 ( n n -- ): store the word at the address between two LPROTREC flips
+\ of its pages, as BPATCH32 does: the flip is keyed on the target, never on a
+\ band another bracket may hold open. A generic
 \ instruction write carries no optimizer proof, so the four bytes lose their
 \ native evidence before the write can publish.
 : INVALIDATE-CELL, ( n -- )
@@ -3008,7 +2853,6 @@ variable SITE-TRAP-CELL
    NATIVE-OBS-CELLS:HOST-INVALIDATE INVALIDATE-CELL, ;
 
 : PATCH32, ( -- )
-   0 PATCH-BYTES SIZED-GUARD,
    RDI 0 PEEK,  RSI RDI PATCH-BYTES MEM-OFF ASM-SINK ENC-LEA
    HOST-INVALIDATE,
    R8 POP,  R9 POP,                                    \ the address, the word
@@ -3563,16 +3407,6 @@ private
 
 74 constant COUNT-RC                   \ BNDSET's refusal
 
-\ Guard the DREC bytes of record n, n the top of the data stack, which stays:
-\ the record a new count points the next write at, as habu1.f BNDSET guards
-\ it. It clobbers what PROT-SPAN-CALL, clobbers.
-: RECORD-GUARD, ( -- )
-   RAX 0 PEEK,
-   RDI RAX DREC >IMM8 ASM-SINK ENC-IMUL-RRI8
-   RDI DBASE-REG ASM-SINK ENC-ADD-RR
-   RSI DREC IMM32,
-   RDI RSI PROT-SPAN-CALL, ;
-
 \ Exit SEAL-VIOLATION when rax, a count, lies below the floor SEAL-CAPTURE
 \ recorded; 0 is no floor. It clobbers rcx.
 : FLOOR-GUARD, ( -- )
@@ -3689,7 +3523,6 @@ private
    RAX DICT-CAP >IMM32 ASM-SINK ENC-CMP-RI32  C-BE bounded JCC,
    S\" hb: dictionary count out of range\n" COUNT-RC STDERR-EXIT,
    bounded X64CODE:LBL,
-   RECORD-GUARD,
    RAX POP,
    FLOOR-GUARD,
    RDI NDICT-REG ASM-SINK ENC-MOV-RR
@@ -3736,7 +3569,6 @@ private
    room X64CODE:LBL,
    owner X64CODE:LBL,
    FLOOR-GUARD,
-   RECORD-GUARD,
    DROP,
    RAX NDICT-REG 1 MEM-OFF ASM-SINK ENC-LEA
    OCC-COUNT,
@@ -3766,7 +3598,7 @@ private
    s" def-occ-select" [: DEF-SELECT-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" def-occ-resolve" [: DEF-RESOLVE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID ;
 
-\ The twins of habu1.f BSEALCAP, BSEALCAPQ and BSEALFRIEND and habu2.f
+\ The twins of habu1.f BSEALCAP and BSEALCAPQ and habu2.f
 \ BDRAINPRETRUST. The pending pre-trust defer table at PD-TABLE-OFF is a count
 \ and PD-SLOT byte slots, each a name and a signature with their lengths.
 
@@ -3865,7 +3697,6 @@ private
    s" seal-captured?" [:
       RAX SEAL-NDICT-CELL CELL@,
       RAX ASM-SINK ENC-NEG  RAX RAX ASM-SINK ENC-SBB-RR  RAX PUSH, ;] PRIM
-   s" SEAL-FRIEND" [: RAX FRIEND-ARENA-LEN IMM32,  RAX FRIEND-LATCH-CELL CELL!, ;] PRIM
    s" DRAIN-PRETRUST" [: DRAIN-BODY ;] PRIM ;
 
 \ The twins of habu1.f BWORDLIST, BGETCUR, BSETCUR, BPROTWIDADD, BPROTWIDROOM
@@ -4194,20 +4025,20 @@ variable MARK-CELL
 : SCOPE-ROWS, ( -- )
    MARK-BODY,
    s" xt!" [:
-      0 CELL SIZED-GUARD,  RCX POP,  RAX POP,
+      RCX POP,  RAX POP,
       RAX ASM-SINK ENC-PUSH  RCX ASM-SINK ENC-PUSH
       RDI RCX ASM-SINK ENC-MOV-RR  RSI ZERO-REG,  MARK-LBL CALL,
       RCX ASM-SINK ENC-POP  RAX ASM-SINK ENC-POP
       RAX RCX MEM-AT ASM-SINK ENC-MOV-MR ;] PRIM
    s" ptr-cell-mark" [:
-      0 CELL SIZED-GUARD,  RDI POP,
+      RDI POP,
       RSI SNAP-RELOC:XTCELL-DATA-TAG IMM64,  MARK-LBL CALL, ;] PRIM
    s" scratch-cell-mark" [:
-      0 CELL SIZED-GUARD,  RDI POP,
+      RDI POP,
       RSI SNAP-RELOC:XTCELL-DATA-TAG SNAP-RELOC:XTCELL-SCRATCH-TAG or IMM64,
       MARK-LBL CALL, ;] PRIM
    s" ptr-cell!" [:
-      0 CELL SIZED-GUARD,  RCX POP,  RAX POP,
+      RCX POP,  RAX POP,
       RAX ASM-SINK ENC-PUSH  RCX ASM-SINK ENC-PUSH
       RDI RCX ASM-SINK ENC-MOV-RR  RSI SNAP-RELOC:XTCELL-DATA-TAG IMM64,  MARK-LBL CALL,
       RCX ASM-SINK ENC-POP  RAX ASM-SINK ENC-POP
@@ -4230,26 +4061,22 @@ public
    HEAP,  PRINTERS,  HOOKS,
    DICT-COUNT,  SEAL-ROWS,  WORDLIST-ROWS,  SCOPE-ROWS, ;
 
-\ The twins of habu1.f BFFI-CALL, BFFI-CALL-N and BFFI-CALL-BOUNDED: integer
-\ SysV calls through SYSV-CALL,. argbuf holds at least eight cells, the
-\ contract ARM64's unconditional load of x0..x7 sets; SysV takes six in
-\ registers, so the other two, and every cell past eight that ffi-call-n and
-\ ffi-call-bounded pass, go on the stack.
+\ The twins of habu1.f BFFI-CALL and BFFI-CALL-N: integer SysV calls through
+\ SYSV-CALL,. argbuf holds at least eight cells, the contract ARM64's
+\ unconditional load of x0..x7 sets; SysV takes six in registers, so the other
+\ two, and every cell past eight that ffi-call-n passes, go on the stack.
 \
-\ And of BFFI-CALL-ABI(-R) and BFFI-CALL-ABI(-R)-BOUNDED, the rows src/lib/ffi-abi.f
+\ And of BFFI-CALL-ABI(-R) and BFFI-CALL-STRUCT, the rows src/lib/ffi-abi.f
 \ plans a call for: the integer arguments in argbuf, the doubles in fpbuf and
 \ the stack arguments prepacked in stackbuf. rdi..r9 take argbuf[0..6),
 \ xmm0..7 always take fpbuf[0..8), and the stack takes max(nstack, 0)
-\ stackbuf cells and nothing else. argbuf[6..9) pass nowhere, but the twins'
-\ guards over them stand. No argument carries a count of doubles, so al is
-\ VEC-REGS, the bound SysV admits.
+\ stackbuf cells and nothing else. argbuf[6..9) pass nowhere. No argument
+\ carries a count of doubles, so al is VEC-REGS, the bound SysV admits.
 
 private
 
 6 constant REG-CELLS                    \ rdi rsi rdx rcx r8 r9
 8 constant BUF-CELLS                    \ x0..x7
-8 constant SRET-SLOT                    \ x8, ARM64's indirect-result register
-SRET-SLOT 1+ constant ABI-SLOTS         \ x0..x8, the slots the twin guards
 8 constant VEC-REGS                     \ xmm0..7
 
 \ Outbound C calls publish a per-thread VM frame for callback-entry. glibc's
@@ -4335,32 +4162,6 @@ SRET-SLOT 1+ constant ABI-SLOTS         \ x0..x8, the slots the twin guards
    R8 DATA-REG CB-OWNER MEM-OFF ASM-SINK ENC-MOV-MR
    kept X64CODE:LBL, ;
 
-\ Guard argbuf[i] for each i below the count in rcx, argbuf the cell n below
-\ the top, before the pops, as BFFI-GUARD-ARGS and BFFI-GUARD-BOUNDS do with
-\ the count in x14. The quotation loads the span's length into rsi with
-\ rax = i. The guard clobbers every scratch register, so i and the count wait
-\ on the machine stack across it and argbuf and the extents are read again
-\ each turn. The compare is signed, so a count <= 0 guards nothing.
-: GUARD-ARGS, ( [ -- ] n -- ) {: buf:n :}
-   X64CODE:LBL X64CODE:LBL {: next:label done:label :}
-   RAX ZERO-REG,
-   next X64CODE:LBL,
-   RAX RCX ASM-SINK ENC-CMP-RR  C-GE done JCC,
-   RCX ASM-SINK ENC-PUSH  RAX ASM-SINK ENC-PUSH
-   RCX buf PEEK,  RDI RCX RAX CELL 0 MEM-IDX ASM-SINK ENC-MOV-RM
-   execute
-   RDI RSI PROT-SPAN-CALL,
-   RAX ASM-SINK ENC-POP  RCX ASM-SINK ENC-POP  RAX ASM-SINK ENC-INC
-   next JMP,
-   done X64CODE:LBL, ;
-
-\ The raw rows' guard: one byte at each live argument, a band pointer's test.
-: BYTE-LEN, ( -- ) RSI 1 IMM32, ;
-
-\ The bounded rows': extents[i] bytes, extents the cell n below the top.
-: EXTENT-LEN, ( n -- ) {: ext:n :}
-   RCX ext PEEK,  RSI RCX RAX CELL 0 MEM-IDX ASM-SINK ENC-MOV-RM ;
-
 \ r10 = max(nargs, BUF-CELLS) - REG-CELLS, the stack cells, from nargs in r10;
 \ signed, as BFFI-CALL-N-CORE compares.
 : STACK-CELLS, ( -- )
@@ -4389,23 +4190,13 @@ SRET-SLOT 1+ constant ABI-SLOTS         \ x0..x8, the slots the twin guards
 
 \ ffi-call ( argbuf nargs fn -- ret ): eight cells, whatever nargs is.
 : FFI-CALL-BODY ( -- )
-   RCX 1 PEEK,  [: BYTE-LEN, ;] 2 GUARD-ARGS,
    R11 POP,  DROP,  RAX POP,
    R10 BUF-CELLS REG-CELLS - IMM32,
    BUF-CALL, ;
 
-\ ffi-call-n ( argbuf nargs fn -- ret ): max(nargs, 8) cells, unguarded as
-\ BFFI-CALL-N is.
+\ ffi-call-n ( argbuf nargs fn -- ret ): max(nargs, 8) cells.
 : FFI-CALL-N-BODY ( -- )
    R11 POP,  R10 POP,  RAX POP,
-   STACK-CELLS,
-   BUF-CALL, ;
-
-\ ffi-call-bounded ( argbuf extents nargs fn -- ret ): max(nargs, 8) cells,
-\ each live argument guarded over its extent.
-: FFI-CALL-BOUNDED-BODY ( -- )
-   RCX 1 PEEK,  [: 2 EXTENT-LEN, ;] 3 GUARD-ARGS,
-   R11 POP,  R10 POP,  DROP,  RAX POP,
    STACK-CELLS,
    BUF-CALL, ;
 
@@ -4432,27 +4223,9 @@ SRET-SLOT 1+ constant ABI-SLOTS         \ x0..x8, the slots the twin guards
    CB-LEAVE,
    RSP 2 CELL * >IMM8 ASM-SINK ENC-ADD-RI8 ;
 
-\ ffi-call-abi(-r) ( argbuf fpbuf stackbuf nstack nint sret fn -- n|r ): one
-\ byte guarded at argbuf[i] for each i < nint, then at argbuf[8] when sret is
-\ nonzero, as BFFI-GUARD-ARGS guards x8.
+\ ffi-call-abi(-r) ( argbuf fpbuf stackbuf nstack fn -- n|r ).
 : FFI-CALL-ABI-BODY ( -- )
-   X64CODE:LBL {: direct:label :}
-   RCX 2 PEEK,  [: BYTE-LEN, ;] 6 GUARD-ARGS,
-   RAX 1 PEEK,  RAX RAX ASM-SINK ENC-TEST-RR  C-E direct JCC,
-   RDI 6 PEEK,  RDI RDI SRET-SLOT CELL * MOV-LOAD,  BYTE-LEN,
-   RDI RSI PROT-SPAN-CALL,
-   direct X64CODE:LBL,
-   R11 POP,  DROP,  DROP,  R10 POP,
-   ABI-CALL, ;
-
-\ ffi-call-abi(-r)-bounded ( argbuf fpbuf stackbuf regext stkext nstack fn --
-\ n|r ): regext[i] bytes at argbuf[i] for each of the ABI-SLOTS, then
-\ stkext[i] bytes at stackbuf[i] for each i < nstack, as
-\ BFFI-CALL-ABI-BOUNDED-CORE guards.
-: FFI-CALL-ABI-BOUNDED-BODY ( -- )
-   RCX ABI-SLOTS IMM32,  [: 3 EXTENT-LEN, ;] 6 GUARD-ARGS,
-   RCX 1 PEEK,  [: 2 EXTENT-LEN, ;] 4 GUARD-ARGS,
-   R11 POP,  R10 POP,  DROP,  DROP,
+   R11 POP,  R10 POP,
    ABI-CALL, ;
 
 \ The -r rows' answer: xmm0's bits.
@@ -4463,15 +4236,12 @@ public
 : FFI, ( -- )
    s" ffi-call" [: FFI-CALL-BODY ;] PRIM
    s" ffi-call-n" [: FFI-CALL-N-BODY ;] PRIM
-   s" ffi-call-bounded" [: FFI-CALL-BOUNDED-BODY ;] PRIM
    s" ffi-call-abi" [: FFI-CALL-ABI-BODY  RAX PUSH, ;] PRIM
    s" ffi-call-abi-r" [: FFI-CALL-ABI-BODY  XMM0-PUSH, ;] PRIM
-   s" ffi-call-abi-bounded" [: FFI-CALL-ABI-BOUNDED-BODY  RAX PUSH, ;] PRIM
-   s" ffi-call-abi-r-bounded" [: FFI-CALL-ABI-BOUNDED-BODY  XMM0-PUSH, ;] PRIM
    \ x86-64 refuses STRUCT-ARG declarations, so the relocation mask under fn
    \ is always zero here: it is dropped before the body reads its inputs.
-   s" ffi-call-struct-bounded"
-      [: R11 POP,  DROP,  R11 PUSH,  FFI-CALL-ABI-BOUNDED-BODY  RAX PUSH,  RDX PUSH, ;] PRIM ;
+   s" ffi-call-struct"
+      [: R11 POP,  DROP,  R11 PUSH,  FFI-CALL-ABI-BODY  RAX PUSH,  RDX PUSH, ;] PRIM ;
 
 \ The twin of habu1.f BTASK-ENTRY. `task-entry` answers an immutable pthread
 \ entry, not a Habu execution token: a SysV function whose one argument, in
@@ -5299,7 +5069,7 @@ variable GROW-CELL
    RDX BODYLEN-CELL CELL!,
    done X64CODE:LBL, ;
 
-\ ( ptr u8 n -- ): the span into the friend-arena cells aoff and uoff while a
+\ ( ptr u8 n -- ): the span into the cells aoff and uoff while a
 \ definition is pending.
 : PENDING-SPAN-BODY ( n n -- ) {: aoff:n uoff:n :}
    RCX POP,  RAX POP,
@@ -5821,15 +5591,15 @@ $43DFFFFFFFFFFFFF constant REALINT-TOP  \ every double above it is 2^63 or more
    EMIT-ROW ENGINE-PRIMS:MARK-SCALAR ;
 
 : STORE-BODY ( -- )
-   0 CELL SIZED-GUARD,  RCX POP,  RAX POP,
+   RCX POP,  RAX POP,
    RAX RCX MEM-AT ASM-SINK ENC-MOV-MR ;
 
 : CSTORE-BODY ( -- )
-   0 1 SIZED-GUARD,  RCX POP,  RAX POP,
+   RCX POP,  RAX POP,
    RAX R64>N >R8 RCX MEM-AT ASM-SINK ENC-MOV8-MR ;
 
 : ADDSTORE-BODY ( -- )
-   0 CELL SIZED-GUARD,  RCX POP,  RAX POP,
+   RCX POP,  RAX POP,
    RAX RCX MEM-AT ASM-SINK ENC-ADD-MR ;
 
 : QDUP-BODY ( -- )

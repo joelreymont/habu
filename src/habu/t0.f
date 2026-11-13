@@ -464,7 +464,7 @@ variable FREE                       \ bit k set: no entry holds vreg k
 \ An unmeasured operand is one cell: the checker files only layout values. `>r`
 \ moves a value's cells as one cell each would, so they sit reversed on the
 \ return stack and `r>` restores their order. `@` and `!` move the measured
-\ cells, `!` by the engine's guarded store once per cell. Any other inlined operation
+\ cells, `!` once per cell. Any other inlined operation
 \ over a width other than one cell, and `@` or `!` under one cell, is
 \ E-T0-BUNDLE.
 \

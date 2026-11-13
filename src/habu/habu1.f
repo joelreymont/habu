@@ -24,7 +24,7 @@
 require src/arch/arm64/icode.f
 require src/habu/primitive-registry.f
 require src/habu/native-body-abi.f
-require src/habu/data-claims.f          \ each band GUARD-SPAN tests is a claim
+require src/habu/data-claims.f
 require src/habu/arith-abi.f           \ E-DIV-ZERO, the dividing bodies' refusal
 require src/habu/task-abi.f
 require src/habu/spawn-abi.f
@@ -112,7 +112,7 @@ variable FP-WID
 public
 \ label ids (forward refs)
 variable LFIND  variable LNUM  variable LDICT
-variable LCEMIT  variable LTOK  variable LPROTSPAN  variable LFLUSH variable LFLUSHTO variable LNCOUNT
+variable LCEMIT  variable LTOK  variable LFLUSH variable LFLUSHTO variable LNCOUNT
 variable LDIVZERO                       \ the (DIV-ZERO) refusal the dividing bodies branch to
 private
 \ The count EMIT-DICT bakes into LNCOUNT. The AOT call-site binder reads this,
@@ -178,85 +178,6 @@ public
 9 constant A   10 constant B   11 constant C
 private
 12 constant DREG  13 constant EREG
-
-\ Emit one half-open interval-overlap test. x13 holds the checked span's end;
-\ x12 is scratch. The caller has already rejected address+length overflow.
-: GUARD-BAND ( n n n label -- ) {: addr:n off:n len:n trap:label :}
-   LBL {: skip:label :}
-   DREG off len + LIT64,  DREG DATA DREG ADD,   \ protected end
-   addr DREG CMP,  C-CS skip BCOND,             \ start >= protected end
-   DREG off LIT64,  DREG DATA DREG ADD,         \ protected start
-   EREG DREG CMP,  C-HI trap BCOND,             \ checked end > protected start
-   skip LBL, ;
-;package
-
-package ENGINE-EMIT
-
-variable BAND-IX
-
-: BANDS-EMIT ( n label -- ) {: addr:n trap:label :}
-   0 BAND-IX !
-   BEGIN BAND-IX @ DATA-BANDS:LEN 0 <> WHILE
-      addr BAND-IX @ DATA-BANDS:OFF BAND-IX @ DATA-BANDS:LEN trap GUARD-BAND
-      BAND-IX @ 1+ BAND-IX !
-   REPEAT ;
-
-\ addr and len name runtime registers. A zero-length write is inert; an
-\ address+length wrap traps before the band tests. Inactive only while the
-\ canonical cold prefix owns the open friend latch. The live body text block,
-\ [BODY-TEXT:BASE-CELL's base, base + SIZE), is tested last, read from the
-\ handle on every store: both hull exits and the band walk reach it, and base
-\ and SIZE 0 before the first capture mean no region. Clobbers x12/x13 only.
-: GUARD-SPAN ( n n -- )
-   {: addr:n len:n :}
-   LBL LBL LBL {: ok:label trap:label live:label :}
-   DREG DATA FRIEND-LATCH-CELL LDR,
-   DREG ok CBZ,
-   len ok CBZ,
-   EREG addr len ADD,                   \ checked end = start + length
-   EREG addr CMP,  C-CC trap BCOND,     \ unsigned wrap
-   \ Every band lies in [DATA-BANDS:LO, DATA-BANDS:HI), so a span outside that
-   \ hull skips the band walk for the live test. Every DP heap address takes
-   \ this exit: the hull ends before pending scratch and DATA-START.
-   DREG DATA-BANDS:HI LIT64,  DREG DATA DREG ADD,
-   addr DREG CMP,  C-CS live BCOND,     \ start >= hull end
-   DREG DATA-BANDS:LO LIT64,  DREG DATA DREG ADD,
-   EREG DREG CMP,  C-LS live BCOND,     \ checked end <= hull start
-   addr trap BANDS-EMIT
-   live LBL,
-   DREG DATA BODY-TEXT:BASE-CELL LDR,
-   EREG DREG CMP,  C-LS ok BCOND,       \ checked end <= base: below the block
-   addr DREG CMP,  C-CC trap BCOND,     \ start < base < checked end: across the base
-   DREG addr DREG SUB,                  \ start - base
-   EREG DATA BODY-TEXT:SIZE-CELL LDR,
-   DREG EREG CMP,  C-CC trap BCOND,     \ start - base < SIZE: in the block
-   ok B,
-   trap LBL,
-   s" E-SEAL-VIOLATION habu: a store span wraps or meets a sealed DATA band or the body text block:"
-   ENGINE-ERROR:SEAL-VIOLATION addr DIE-LINE-VALUE,
-   ok LBL, ;
-
-;package
-
-package PROT-GUARD
-
-public
-
-\ Clobbers x10-x13 and x30: a sink needing one live across the guard saves it
-\ first. The body touches only x12/x13.
-: CALL ( n n -- ) {: addr:n len:n :}
-   len 10 = if
-      addr 11 = if
-         12 11 0 ADDI,  11 10 0 ADDI,  10 12 0 ADDI,  \ crossed: swap x10/x11 via x12
-      else
-         11 10 0 ADDI,  10 addr 0 ADDI,               \ len in x10: move it up before x10 is overwritten
-      then
-   else
-      addr 10 <> if 10 addr 0 ADDI, then
-      len 11 <> if 11 len 0 ADDI, then
-   then
-   LPROTSPAN LABEL@ BL, ;
-
 ;package
 
 \ Every target selector below names the Linux-aarch64 and macOS arms and calls
@@ -269,45 +190,6 @@ public
 ;package
 
 package ENGINE-EMIT
-\ Guard the kernel-written extent encoded by the target ioctl ABI. Linux's
-\ legacy TCGETS/TCSETS pair predates _IOC direction bits and is handled
-\ explicitly; unknown unencoded requests fail closed instead of recovering an
-\ unknowable pointer extent. Runtime registers: x1=request, x2=argument.
-: GUARD-IOCTL ( -- )
-   LBL LBL LBL LBL {: legacy:label write:label done:label trap:label :}
-   HB-TARGET-LINUX? IF
-      7 $5401 LIT64,  1 7 CMP,  C-EQ legacy BCOND,
-      7 $5402 LIT64,  1 7 CMP,  C-EQ done BCOND,
-      8 1 30 LSRI,  7 8 3 ANDI,             \ _IOC_DIR
-      8 7 2 ANDI,  8 write CBNZ,             \ _IOC_READ: kernel writes
-      7 done CBNZ,                           \ _IOC_WRITE: kernel reads only
-      trap B,
-      legacy LBL,
-      7 36 MOVZ,  2 7 PROT-GUARD:CALL
-      done B,
-      write LBL,
-      7 1 16 LSRI,  8 $3FFF LIT64,  7 7 8 AND,
-      7 done CBZ,
-      2 7 PROT-GUARD:CALL
-   ELSE HB-TARGET-MACOS? IF
-      8 $40000000 LIT64,  7 1 8 AND,         \ IOC_OUT: kernel writes
-      7 write CBNZ,
-      8 $A0000000 LIT64,  7 1 8 AND,         \ IOC_IN or IOC_VOID
-      7 done CBNZ,
-      trap B,
-      write LBL,
-      7 1 16 LSRI,  8 $1FFF LIT64,  7 7 8 AND,
-      7 done CBZ,
-      2 7 PROT-GUARD:CALL
-   ELSE
-      ENGINE-EMIT:TARGET-UNKNOWN
-   THEN THEN
-   done B,
-   trap LBL,
-   s" E-SEAL-VIOLATION habu: ioctl request without an encoded argument extent:"
-   ENGINE-ERROR:SEAL-VIOLATION 1 DIE-LINE-VALUE,
-   done LBL, ;
-
 \ Primitive bodies operate on the x19 data stack.
 : B+ ( -- )
    B G-POP  A G-POP  A A B ADD,  A G-PUSH ;
@@ -941,11 +823,6 @@ private
 \ here.
 : BPOLL ( -- )                     \ ( fds nfds timeout -- rc ) rc=nready/0 or -errno
    2 G-POP  1 G-POP  0 G-POP
-   LBL LBL {: plen:label pguard:label :}
-   6 1 61 LSRI,  6 plen CBZ,                  \ nfds*8 overflow becomes an all-address span
-      6 0 MOVN,  pguard B,
-   plen LBL,  6 1 3 LSLI,
-   pguard LBL,  0 6 PROT-GUARD:CALL             \ pollfd array: nfds * 8 bytes
    LBL LNX-PNEG !
    LBL LNX-PCALL !
    HB-TARGET-LINUX? IF
@@ -1566,7 +1443,7 @@ private
    14 DICT-CAP LIT64,  A 14 CMP,  C-LS bounded BCOND,
       s" E-DICT-COUNT habu: dictionary count above DICT-CAP:" 74 A DIE-LINE-VALUE,
    bounded LBL,
-   C DREC MOVZ,  B A C MUL,  B DBASE B ADD,  7 DREC MOVZ,  B 7 PROT-GUARD:CALL
+   C DREC MOVZ,  B A C MUL,  B DBASE B ADD,
    14 DATA SEAL-NDICT-CELL LDR,  14 floor-ok CBZ,
    A 14 CMP,  C-CS floor-ok BCOND,
       0 CALLER-LR,
@@ -1609,7 +1486,6 @@ private
    14 DATA SEAL-NDICT-CELL LDR,  14 floor-ok CBZ,
    A 14 CMP,  C-CC bad BCOND,
    floor-ok LBL,
-   7 DREC MOVZ,  B 7 PROT-GUARD:CALL
    EM-DEF-OCC:LAPPEND LABEL@ BL,
    LHIDXADD LABEL@ BL,
    done B,
@@ -1859,31 +1735,30 @@ private
 
 public
 : BSTORE ( -- )
-   B G-POP A G-POP  7 8 MOVZ,  B 7 PROT-GUARD:CALL  A B 0 STR, ;
+   B G-POP A G-POP  A B 0 STR, ;
 
 private
 : BPTRFIELD ( -- )
    B G-POP  A G-POP  B B 3 LSLI,  A A B ADD,  A G-PUSH ;
 
 : BPLUSSTORE ( -- )
-   B G-POP A G-POP  7 8 MOVZ,  B 7 PROT-GUARD:CALL  C B 0 LDR,  C C A ADD,  C B 0 STR, ;
+   B G-POP A G-POP  C B 0 LDR,  C C A ADD,  C B 0 STR, ;
 
 : BCFETCH ( -- )
    A G-POP  A A 0 LDRB, A G-PUSH ;
 
 : BCSTORE ( -- )
-   B G-POP A G-POP  7 1 MOVZ,  B 7 PROT-GUARD:CALL  A B 0 STRB, ;
+   B G-POP A G-POP  A B 0 STRB, ;
 
 \ Atomic primitives (ARMv8.1 LSE). A=x9 B=x10 C=x11.
 : BATFETCH ( -- )   \ atomic@ ( ptr a -- a ) : LDAR x9,[x9]
    A G-POP  A A LDAR,  A G-PUSH ;
 : BATSTORE ( -- )   \ atomic! ( a ptr a -- ) : STLR x9,[x10]
-   B G-POP A G-POP  7 8 MOVZ,  B 7 PROT-GUARD:CALL  A B STLR, ;
+   B G-POP A G-POP  A B STLR, ;
 : BATADD ( -- )     \ atomic-add ( delta addr -- old ) : LDADDAL x9,x9,[x10]
-   B G-POP A G-POP  7 8 MOVZ,  B 7 PROT-GUARD:CALL  A A B LDADDAL,  A G-PUSH ;
+   B G-POP A G-POP  A A B LDADDAL,  A G-PUSH ;
 : BATCAS ( -- )     \ atomic-cas ( expected new addr -- actual ) : CASAL x9,x10,[x11]
-   C G-POP B G-POP A G-POP  14 B 0 ADDI,  7 8 MOVZ,     \ x14 saves new (x10) across the guard's x10/x11 clobber
-   C 7 PROT-GUARD:CALL  C B 0 ADDI,  B 14 0 ADDI,       \ restore addr->x11, new->x10 for the CASAL
+   C G-POP B G-POP A G-POP
    A B C CASAL,  A G-PUSH ;
 : BFENCE ( -- )     \ fence ( -- ) : DMB ISH
    DMB-ISH, ;
@@ -2063,17 +1938,13 @@ private
    2 G-POP  1 G-POP  0 G-POP  NR-WRITE SYS,  FS-SYS-PUSH ;
 
 : BREAD ( -- )
-   2 G-POP  1 G-POP  0 G-POP  1 2 PROT-GUARD:CALL  NR-READ SYS,  FS-SYS-PUSH ;
+   2 G-POP  1 G-POP  0 G-POP  NR-READ SYS,  FS-SYS-PUSH ;
 
 : BIOCTL ( -- )
-   2 G-POP  1 G-POP  0 G-POP  GUARD-IOCTL  NR-IOCTL SYS,  SYS-PUSH ;
+   2 G-POP  1 G-POP  0 G-POP  NR-IOCTL SYS,  SYS-PUSH ;
 
 : BMMAP ( -- )                     \ ( addr len prot flags fd off -- addr|-1 )
    5 G-POP  4 G-POP  3 G-POP  2 G-POP  1 G-POP  0 G-POP
-   LBL {: notfixed:label :}
-   6 3 $10 ANDI,  6 notfixed CBZ,            \ only MAP_FIXED replaces an existing mapping
-      0 1 PROT-GUARD:CALL
-   notfixed LBL,
    HB-TARGET-LINUX? IF OS-MMAP-FLAGS  NR-MMAP SYS,  SYS-PUSH  exit THEN
    HB-TARGET-MACOS? IF NR-MMAP SYS,  SYS-PUSH  exit THEN
    ENGINE-EMIT:TARGET-UNKNOWN ;
@@ -2095,7 +1966,6 @@ private
 
 : BMUNMAP ( -- )                   \ ( addr len -- 0|-1 )
    1 G-POP  0 G-POP
-   0 1 PROT-GUARD:CALL
    NR-MUNMAP SYS,  SYS-PUSH ;
 
 : BGETPID ( -- )                   \ ( -- pid )
@@ -2108,25 +1978,6 @@ private
 : BFFI-LOAD-X0-X7 ( -- )
    0 15 0  LDR,   1 15 8  LDR,   2 15 16 LDR,   3 15 24 LDR,
    4 15 32 LDR,   5 15 40 LDR,   6 15 48 LDR,   7 15 56 LDR, ;
-
-\ The argbuf carries no per-arg writable extents, so every LIVE integer/pointer
-\ arg is checked as a band pointer. x14 = live arg count, x15 = integer argbuf,
-\ x9 = sret flag (guard x8 = argbuf[8] when nonzero). Stale slots [nargs..8) are
-\ skipped, so a low-arity call never trips on the garbage cells above its args.
-\ x5/x6 are the only scratch; x14/x15/x9 stay live across the shared LPROTSPAN
-\ body (it touches only x10-x13,x30).
-: BFFI-GUARD-ARGS ( -- )
-   LBL LBL LBL {: loop:label done:label nosret:label :}
-   5 0 MOVZ,
-   loop LBL,
-      5 14 CMP,  C-GE done BCOND,
-      6 5 3 LSLI,  6 15 6 ADD,  10 6 0 LDR,
-      11 1 MOVZ,  LPROTSPAN LABEL@ BL,                 \ one-byte band guard on the arg value
-      5 5 1 ADDI,  loop B,
-   done LBL,
-      9 nosret CBZ,
-      10 15 $40 LDR,  11 1 MOVZ,  LPROTSPAN LABEL@ BL,
-   nosret LBL, ;
 
 public
 \ This thread's pointer, compared with CB-OWNER and a slot row: one value for a
@@ -2197,7 +2048,6 @@ private
    16 G-POP                                            \ x16 = fn
    14 G-POP                                            \ x14 = nargs
    15 G-POP                                            \ x15 = argbuf
-   9 0 MOVZ,  BFFI-GUARD-ARGS
    BCB-ENTER
    BFFI-LOAD-X0-X7
    16 BLR,
@@ -2247,18 +2097,15 @@ private
 
 \ x20 holds DATA through every load that can fault; d0-d7 load first, so x17
 \ carries the frame sp to the BLR and x20 (callee-saved) only across the BLR.
-\ A relocating call enters with the mask in x2 and keeps the prepacked buffer's
-\ address in x3 until the copy is made.
+\ A relocating call pops the mask under fn into x2 and keeps the prepacked
+\ buffer's address in x3 until the copy is made.
 : BFFI-CALL-ABI-CORE ( bool -- ) {: reloc:bool :}
    16 G-POP                                            \ x16 = fn
-   9 G-POP                                             \ x9  = sret-present flag
-   14 G-POP                                            \ x14 = int-nargs (live x0..x7 count)
-   1 G-POP                                             \ x1  = stack cell count (parked past the guard)
+   reloc if 2 G-POP then                               \ x2  = relocation mask
+   14 G-POP                                            \ x14 = stack cell count
    13 G-POP                                            \ x13 = prepacked stack cells
    17 G-POP                                            \ x17 = FP argbuf
    15 G-POP                                            \ x15 = integer argbuf
-   BFFI-GUARD-ARGS
-   14 1 0 ADDI,                                        \ x14 = stack cell count (restore for the spill copy)
    reloc if 3 13 0 ADDI, then
    BCB-ENTER
    20 SP $8 STR,
@@ -2279,35 +2126,13 @@ private
    20 SP $8 LDR,
    BCB-LEAVE ;
 
-: BFFI-STAGE-ABI-ARGS ( -- )
-   16 G-POP  14 G-POP  13 G-POP  17 G-POP  15 G-POP
-   15 G-PUSH  17 G-PUSH  13 G-PUSH  14 G-PUSH
-   9 0 MOVZ,  9 G-PUSH  9 G-PUSH  16 G-PUSH ;
-
 : BFFI-CALL-ABI ( -- )
-   BFFI-STAGE-ABI-ARGS
    false BFFI-CALL-ABI-CORE
    0 G-PUSH ;
 
 : BFFI-CALL-ABI-R ( -- )
-   BFFI-STAGE-ABI-ARGS
    false BFFI-CALL-ABI-CORE
    9 0 FMOVDX,  9 G-PUSH ;
-
-\ Sealed bindings carry one writable byte extent per live argument: zero for
-\ scalars and read-only pointers; writable pointers are guarded as whole spans
-\ before the BLR. Preconditions: x14=nargs, x15=argbuf, x17=writable-length
-\ buffer, x20=DATA. x5/x6 are the only scratch; x14/x15/x17 stay live.
-: BFFI-GUARD-BOUNDS ( -- )
-   LBL LBL {: loop:label done:label :}
-   5 0 MOVZ,
-   loop LBL,
-      5 14 CMP,  C-GE done BCOND,
-      6 5 3 LSLI,  6 15 6 ADD,  10 6 0 LDR,
-      6 5 3 LSLI,  6 17 6 ADD,  11 6 0 LDR,
-      LPROTSPAN LABEL@ BL,
-      5 5 1 ADDI,  loop B,
-   done LBL, ;
 
 \ Argbuf holds max(8,nargs) cells. x20 holds DATA through every load that can
 \ fault; x17 carries the frame sp to the BLR, and x20 (callee-saved) carries it
@@ -2343,14 +2168,6 @@ private
 
 : BFFI-CALL-N ( -- )
    16 G-POP  14 G-POP  15 G-POP
-   BFFI-CALL-N-CORE ;
-
-: BFFI-CALL-BOUNDED ( -- )
-   16 G-POP                                            \ x16 = fn
-   14 G-POP                                            \ x14 = nargs
-   17 G-POP                                            \ x17 = writable lengths
-   15 G-POP                                            \ x15 = argbuf
-   BFFI-GUARD-BOUNDS
    BFFI-CALL-N-CORE ;
 
 \ Returns an immutable pthread entry, not a Habu xt; its C argument is the
@@ -2603,55 +2420,11 @@ $58 constant CBT-LR                     \ C's x30
    BCALLBACK-THUNK
    done LBL, ;
 
-\ The two extent tables are distinct because stack slot zero is
-\ not integer slot zero.
-: BFFI-CALL-ABI-BOUNDED-CORE ( bool -- ) {: reloc:bool :}
-   16 G-POP                                            \ x16 = fn
-   reloc if 2 G-POP then                               \ x2  = relocation mask
-   14 G-POP                                            \ x14 = stack cell count
-   12 G-POP                                            \ x12 = stack extents
-   11 G-POP                                            \ x11 = x0..x8 extents
-   13 G-POP                                            \ x13 = prepacked stack cells
-   17 G-POP                                            \ x17 = FP argbuf
-   15 G-POP                                            \ x15 = integer argbuf
-   SP SP $40 SUBI,
-   15 SP 0 STR,  17 SP $8 STR,  13 SP $10 STR,  11 SP $18 STR,
-   12 SP $20 STR,  14 SP $28 STR,  16 SP $30 STR,
-   reloc if 2 SP $38 STR, then
-   17 11 0 ADDI,  14 9 MOVZ,                          \ guard x0..x8
-   BFFI-GUARD-BOUNDS
-   15 SP $10 LDR,  17 SP $20 LDR,  14 SP $28 LDR,     \ guard stack slots
-   BFFI-GUARD-BOUNDS
-   15 SP 0 LDR,  15 G-PUSH
-   17 SP $8 LDR,  17 G-PUSH
-   13 SP $10 LDR,  13 G-PUSH
-   14 SP $28 LDR,  14 G-PUSH
-   9 0 MOVZ,  9 G-PUSH  9 G-PUSH                       \ int-nargs=0, sret=0: BFFI-GUARD-BOUNDS already guarded x0..x8
-   16 SP $30 LDR,  16 G-PUSH
-   reloc if 2 SP $38 LDR, then
-   SP SP $40 ADDI,
-   reloc BFFI-CALL-ABI-CORE ;
-
-: BFFI-CALL-ABI-BOUNDED ( -- )
-   false BFFI-CALL-ABI-BOUNDED-CORE
-   0 G-PUSH ;
-
-: BFFI-CALL-ABI-R-BOUNDED ( -- )
-   false BFFI-CALL-ABI-BOUNDED-CORE
-   9 0 FMOVDX,  9 G-PUSH ;
-
 \ A C struct returned by value: x0 then x1, both intact through BCB-LEAVE.
 \ FFI stores the record they hold; an x8-indirect record is already written.
 \ The relocation mask names the cells holding private struct copies'
 \ prepacked addresses, which then point at the copies on the native stack.
-: BFFI-CALL-STRUCT-BOUNDED ( -- )
-   true BFFI-CALL-ABI-BOUNDED-CORE
-   0 G-PUSH  1 G-PUSH ;
-
 : BFFI-CALL-STRUCT ( -- )
-   16 G-POP  2 G-POP  14 G-POP  13 G-POP  17 G-POP  15 G-POP
-   15 G-PUSH  17 G-PUSH  13 G-PUSH  14 G-PUSH
-   9 0 MOVZ,  9 G-PUSH  9 G-PUSH  16 G-PUSH
    true BFFI-CALL-ABI-CORE
    0 G-PUSH  1 G-PUSH ;
 
@@ -2708,7 +2481,6 @@ $58 constant CBT-LR                     \ C's x30
 
 : BREADLINK ( -- )
    3 G-POP  2 G-POP  1 G-POP
-   2 3 PROT-GUARD:CALL
    HB-TARGET-LINUX? IF 0 99 MOVN, ELSE
       HB-TARGET-MACOS? IF 0 1 MOVN, ELSE ENGINE-EMIT:TARGET-UNKNOWN THEN
    THEN
@@ -2826,7 +2598,6 @@ public
    SP SP 48 SUBI,                        \ [24] free, [32] result, [40] length
    0 SP 0 STR,  1 SP 8 STR,  2 SP 16 STR,
    2 0 CMPI,  C-LE badcap BCOND,
-   1 2 PROT-GUARD:CALL
    s" free" SLOT,  16 SP 24 STR,
    s" realpath" SLOT,
    0 SP 0 LDR,  1 0 MOVZ,  16 BLR,
@@ -2998,7 +2769,6 @@ package ENGINE-EMIT
 
 : BSTAT64 ( -- )
    1 G-POP  0 G-POP
-   7 $90 MOVZ,  1 7 PROT-GUARD:CALL           \ x1 = kernel-written 144-byte statbuf
    LBL STAT-OK !
    LBL STAT-DONE !
    HB-TARGET-LINUX? IF
@@ -3017,7 +2787,6 @@ package ENGINE-EMIT
 
 : BLSTAT64 ( -- )
    1 G-POP  0 G-POP  2 0 MOVZ,  3 0 MOVZ,  4 0 MOVZ,  5 0 MOVZ,
-   7 $90 MOVZ,  1 7 PROT-GUARD:CALL           \ x1 = kernel-written 144-byte statbuf
    LBL STAT-OK !
    LBL STAT-DONE !
    HB-TARGET-LINUX? IF
@@ -3036,7 +2805,6 @@ package ENGINE-EMIT
 
 : BGETDIRENTRIES64 ( -- )
    3 G-POP  2 G-POP  1 G-POP  0 G-POP
-   1 2 PROT-GUARD:CALL  7 8 MOVZ,  3 7 PROT-GUARD:CALL
    NR-GETDIRENTRIES64 SYS,  FS-SYS-PUSH ;
 
 : C-FLUSH-X9-LINE ( -- )
@@ -3064,8 +2832,7 @@ package ENGINE-EMIT
 : BPATCH32 ( -- )                \ ( w addr -- ): store through the alias, cache-sync
    A G-POP  B G-POP
    SP SP 32 SUBI,
-   A SP 8 STR,  B SP 16 STR,     \ save w/addr first: the guard call clobbers x10 (B)
-   7 4 MOVZ,  A 7 PROT-GUARD:CALL \ x9 is the target; protect its exact 4-byte write
+   A SP 8 STR,  B SP 16 STR,     \ x9 is the target; the invalidate reuses x10 (w)
    \ A generic instruction write carries no optimizer proof, even if its old
    \ bytes belonged to a native body. Invalidate before the write can publish.
    9 SP 8 LDR,  10 9 4 ADDI,  HOST-INVALIDATE,
@@ -3939,8 +3706,7 @@ private
    invalid-msg LBL,  ia iu BYTES,
    done LBL, ;
 
-\ set-top-check ( xt -- ): install the top-row token hook. The cell is a
-\ PROT-GUARD band, so this direct STR is its only post-seal writer.
+\ set-top-check ( xt -- ): install the top-row token hook.
 : BSETTOPCHECK ( -- )
    LBL LBL LBL LBL {: bad:label ok:label done:label msg:label :}
    S\" set-top-check: invalid top-row hook xt\n" {: ma:ptr mu:n :}
@@ -3966,12 +3732,10 @@ package ENGINE-EMIT
    9 C-NE CSET,  9 31 9 SUB,  9 G-PUSH ;
 
 \ Capture the seal-time dictionary-truncation watermark. SEAL-CAPTURE tokens
-\ call it after engine definitions and before any user token. The friend latch
-\ is already sealed, so a raw ! would trap; this direct STR from NDICT (x27) is
-\ the sanctioned bypass. NDICT only grows once the engine is loaded, so a rerun
-\ never lowers the watermark. The pre-trust defer table must be empty by then.
-\ Loop state stays off the write-clobbered x0-x2/x9 and re-derives the band
-\ base each iteration.
+\ call it after engine definitions and before any user token. NDICT only grows
+\ once the engine is loaded, so a rerun never lowers the watermark. The
+\ pre-trust defer table must be empty by then. Loop state stays off the
+\ write-clobbered x0-x2/x9 and re-derives the band base each iteration.
 : BSEALCAP ( -- )
    LBL LBL LBL {: pdok pdloop pdexit :}
    9 PD-TABLE-OFF LIT64,  9 DATA 9 ADD,  10 9 0 LDR,  10 pdok CBZ,   \ x10 = pending count; 0 -> drained
@@ -3991,9 +3755,6 @@ package ENGINE-EMIT
 ;package
 
 package ENGINE-EMIT
-: BSEALFRIEND ( -- )
-   9 FRIEND-ARENA-LEN MOVZ,  9 DATA FRIEND-LATCH-CELL STR, ;
-
 \ wide-mark ( -- ): set DNAME-WIDE on the newest record: its effect carries a
 \ wider-than-cell layout value, so interpret-mode execute and tick refuse it.
 \ It stores through the region's RW alias: the record's own address is
@@ -4101,9 +3862,7 @@ $748f82ee , $78a5636f , $84c87814 , $8cc70208 , $90befffa , $a4506ceb , $bef9a3f
    C G-POP  B G-POP  A G-POP                    \ x11 = blocks, x10 = bytes, x9 = state
    C 0 CMPI,  C-LE none BCOND,
    HB-TARGET-LINUX? IF none SHA2-PROBE, THEN
-   15 C 0 ADDI,  14 B 0 ADDI,
-   7 64 MOVZ,  A 7 PROT-GUARD:CALL              \ the eight state cells
-   B 14 0 ADDI,  C 15 0 ADDI,  13 A 32 ADDI,
+   15 C 0 ADDI,  13 A 32 ADDI,
    SHA256-K,
    next LBL,  SHA256-BLOCK,  C C 1 SUBI,  C next CBNZ,
    SP SP 256 ADDI,  done B,
@@ -4511,7 +4270,6 @@ package ENGINE-EMIT
    s" def-occ-resolve" ['] BDEFRESOLVE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" SEAL-CAPTURE" ['] BSEALCAP FPRIM-L
    s" seal-captured?" ['] BSEALCAPQ FPRIM-L
-   s" SEAL-FRIEND" ['] BSEALFRIEND FPRIM-L
    s" wide-mark" ['] BWIDEMARK FPRIM
    s" record-facts!" ['] BRECFACTS FPRIM
    s" sha256-blocks" ['] BSHA256BLOCKS FPRIM
@@ -4536,15 +4294,11 @@ package ENGINE-EMIT
    s" munmap" ['] BMUNMAP FPRIM
    s" ffi-call" ['] BFFI-CALL FPRIM
    s" ffi-call-n" ['] BFFI-CALL-N FPRIM
-   s" ffi-call-bounded" ['] BFFI-CALL-BOUNDED FPRIM
    s" task-entry" ['] BTASK-ENTRY FPRIM
    LBL LCALLBACKTHUNK !
    LBL LCALLBACKADDR !
    s" callback-entry" ['] BCALLBACK-ENTRY FPRIM
    EMIT-CALLBACK-THUNK
-   s" ffi-call-abi-bounded" ['] BFFI-CALL-ABI-BOUNDED FPRIM
-   s" ffi-call-abi-r-bounded" ['] BFFI-CALL-ABI-R-BOUNDED FPRIM
-   s" ffi-call-struct-bounded" ['] BFFI-CALL-STRUCT-BOUNDED FPRIM
    s" ffi-call-struct" ['] BFFI-CALL-STRUCT FPRIM
    s" ffi-call-abi" ['] BFFI-CALL-ABI FPRIM
    s" ffi-call-abi-r" ['] BFFI-CALL-ABI-R FPRIM
@@ -4848,27 +4602,14 @@ package ENGINE-EMIT
    TOK-NONE LABEL@ LBL,  11 DATA INP-CELL STR,  0 0 MOVZ,  RET, ;
 ;package
 
-\ The shared runtime lowering guard body ( x10=address, x11=byte length ). It is
-\ registered as the sealed (PROT-SPAN) engine helper so a guarded primitive that
-\ reaches it by a direct branch is carried into an ahead-of-time image and
-\ relocated. The label is reserved so the record spans exactly [start, end).
 package ENGINE-EMIT
-
-: EMIT-PROT-SPAN ( -- )
-   LPROTSPAN LABEL@ {: start:label :}
-   LBL {: end:label :}
-   s" (PROT-SPAN)" start LABEL>N end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
-   start LBL,
-   10 11 GUARD-SPAN
-   RET,
-   end LBL, ;
 
 \ The dividing primitives' refusal ( no arguments; never returns ). `/`, `mod`
 \ and `/mod` each test their divisor and branch here when it is zero, so the
-\ throw exists ONCE. Registered as the sealed (DIV-ZERO) engine helper for the
-\ same reason (PROT-SPAN) is -- a direct branch out of a primitive has to be a
-\ record the ahead-of-time closure walker can follow. It inlines BTHROW, which
-\ is why it sits here and not beside the bodies.
+\ throw exists ONCE. Registered as the sealed (DIV-ZERO) engine helper because
+\ a direct branch out of a primitive has to be a record the ahead-of-time
+\ closure walker can follow. It inlines BTHROW, which is why it sits here and
+\ not beside the bodies.
 : EMIT-DIV-ZERO ( -- )
    LDIVZERO LABEL@ {: start:label :}
    LBL {: end:label :}
@@ -4876,10 +4617,6 @@ package ENGINE-EMIT
    start LBL,
    9 ARITH-ABI:E-DIV-ZERO LIT64,  9 G-PUSH  BTHROW
    end LBL, ;
-
-: EMIT-PROT ( -- )
-   EMIT-PROT-SPAN
-   EMIT-DIV-ZERO ;
 
 ;package
 

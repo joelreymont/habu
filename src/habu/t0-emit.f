@@ -361,7 +361,7 @@ ARCHES TYPED-BUFFER EMIT-LOAD-XT [ vreg vreg width -- ]
 
 \ EMIT-LOAD reads the cell or the zero-extended byte at address a into d, and
 \ does not screen the address, as the kernel's `@` and `c@` rows do not. `!` and
-\ `c!` screen a span and stay calls, so the seam has no store.
+\ `c!` stay calls, so the seam has no store.
 : EMIT-LOAD ( vreg vreg width -- ) CUR @ EMIT-LOAD-XT @ execute ;
 
 \ ---- calls -------------------------------------------------------------------

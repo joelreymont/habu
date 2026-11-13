@@ -759,7 +759,7 @@ SUITE stdlib-process-fixtures
    src/lib/process-pty-handle-test.f
 ;SUITE
 
-SUITE friend-arena-seal
+SUITE seal
    test/seal.f
 ;SUITE
 
@@ -1205,10 +1205,6 @@ SUITE dynamic-buffer-tasks
 
 SUITE layout-defer
    test/layout-defer.f
-;SUITE
-
-SUITE wide-store-seal
-   test/wide-store-seal.f
 ;SUITE
 
 SUITE protection-span

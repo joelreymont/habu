@@ -125,8 +125,8 @@ public
 \ owner's checked callers compile.
 -1 constant GLOBAL-INT-WID
 
-\ An engine helper is an engine-resident routine guarded primitives reach by a
-\ direct branch (a span guard, a bounds loop). HELPER-REGISTER records it as a
+\ An engine helper is an engine-resident routine primitives reach by a direct
+\ branch (a shared refusal, a bounds loop). HELPER-REGISTER records it as a
 \ sealed system-private record over [start-addr, end-addr) stamped
 \ OWNER-API-PRI-WID: hidden from raw searches (BSWL), and found by exact name at
 \ its code entry (src/compiler/native/dict.f HELPER-TARGET), the only entry ever

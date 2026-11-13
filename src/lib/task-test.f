@@ -199,8 +199,7 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
 \ Exact strlen fixture pauses after task-local argument staging to prove tasks
 \ do not share FFI tables.
 : TASK-CSTRLEN ( ptr u8 -- n ) {: cstr:ptr :}
-   FFI:RESET
-   cstr 0 FFI:READABLE!
+   cstr 0 FFI:POINTER!
    TASK:PAUSE
    TASK-STRLEN-ROW FFI:CALL ;
 

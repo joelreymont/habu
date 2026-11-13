@@ -291,9 +291,7 @@ keep checked code from reaching a registry by name.
 band would require a guard-bypass writer for legitimate declaration-time
 updates. Because the registry is Forth-level, that writer must be a
 Forth-callable word with no effect, which is exactly what the laundered route
-reached; the band would only trade one route for another. An engine band is
-safe for a different reason: its writers are inline machine code inside
-compiler primitives, never standalone words. Protection of a
+reached; the band would only trade one route for another. Protection of a
 Forth-level registry is therefore privacy plus the checker's refusal of opaque
 execution.
 

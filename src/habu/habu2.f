@@ -1511,7 +1511,7 @@ variable LREPLAYTRAP
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 
-\ ( ptr u8 n -- ): the span into the friend-arena cells aoff and uoff while a
+\ ( ptr u8 n -- ): the span into the cells aoff and uoff while a
 \ definition is pending.
 : PENDING-SPAN ( ptr u8 n n n -- ) {: a:ptr u:n aoff:n uoff:n :}
    LBL LBL {: bad done :}
@@ -2290,11 +2290,10 @@ ardone LBL,
 \ dispatch cells picks its cell at run time, so only the store knows. The
 \ declaration runs first, so a cell LMARK refuses is never written; LMARK wants
 \ the cell in x9, so the token is parked in x11 (scratch here; LMARK preserves
-\ x9 and saves the rest). Registered framed: the guard and LMARK are both BL.
+\ x9 and saves the rest). Registered framed: LMARK is a BL.
 : BXTSTORE ( -- )
    B G-POP  A G-POP
    B ROUTE-HEADER
-   7 8 MOVZ,  B 7 PROT-GUARD:CALL
    C A 0 ADDI,                                      \ x11 = the token
    A B 0 ADDI,                                      \ x9 = the cell, for LMARK
    LMARK LABEL@ BL,
@@ -2304,7 +2303,6 @@ ardone LBL,
 : BPTRCELLSTORE ( -- )
    B G-POP  A G-POP
    B ROUTE-HEADER
-   7 8 MOVZ,  B 7 PROT-GUARD:CALL
    C A 0 ADDI,                                      \ x11 = the pointer
    A B 0 ADDI,                                      \ x9 = the cell, for LPTRMARK
    LPTRMARK LABEL@ BL,
@@ -2858,7 +2856,7 @@ package LABELS
 : CORE ( -- )
    LBL LFIND !  LBL LNUM !  LBL LDICT !
    LBL LKERNELDIGEST !
-   LBL LCEMIT !  LBL LTOK !  LBL LPROTSPAN !  LBL LFLUSH !  LBL LFLUSHTO !  LBL LNCOUNT !
+   LBL LCEMIT !  LBL LTOK !  LBL LFLUSH !  LBL LFLUSHTO !  LBL LNCOUNT !
    LBL LDIVZERO !
    LBL LPROTWIDQ !  LBL LPROTWIDADD !
    LBL LBCS !
@@ -3057,7 +3055,7 @@ variable KERNEL-CODE-END
    EMIT-CEMIT
    EMIT-BCAP
    EMIT-TOK
-   EMIT-PROT
+   EMIT-DIV-ZERO
    EMIT-PROTWID
    EMIT-PROTWIDADD
    EMIT-FLUSH

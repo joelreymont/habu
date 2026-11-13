@@ -254,10 +254,7 @@ private
 public
 
 \ Normal completion follows die's deliberate exit path, which runs the hook.
-\ The friend arena seals before any user source or app entry runs
-\ (src/habu/layout.f FRIEND-ARENA): test/seal.f forges into it.
 : MAIN ( -- )
-   SEAL-FRIEND
    ROUTED
    NULL$ 0 die ;
 

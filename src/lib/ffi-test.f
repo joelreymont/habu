@@ -260,7 +260,7 @@ create FFI-T-LONG-PATH PATH-CAP allot
    s\" : ZZ-LIB-CHECK ( -- )\n" FFI-T-SRC+
    s\"    0 ZZ-PATH$ FFI:LIBRARY-PATH ZZ-FIRST-LIB @ <> if s\" early library\" 1 die then\n" FFI-T-SRC+
    s\"    ZZ-LAST-LIB @ ZZ-FIRST-LIB @ <= if s\" library ids\" 1 die then\n" FFI-T-SRC+
-   s\"    FFI:RESET ZZ-LIB-ROW FFI:CALL 0 <= if s\" late library call\" 1 die then ;\n" FFI-T-SRC+ ;
+   s\"    ZZ-LIB-ROW FFI:CALL 0 <= if s\" late library call\" 1 die then ;\n" FFI-T-SRC+ ;
 
 : FFI-T-GROW-SRC$ ( -- ptr u8 n )
    FFI-T-SRC CODEGEN:RESET
@@ -284,21 +284,6 @@ create FFI-T-LONG-PATH PATH-CAP allot
    FFI-T-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
    src srcu FFI-T-OUT outu LEN>N FFI-T-ERR erru LEN>N oc want T-ENDING-EXITED=
    outu erru ;
-
-\ A bounded mixed call guards every register extent, including x8. Staging a
-\ protected DATA pointer there must refuse before the foreign call. This is the
-\ same stale slot the mixed binding below must clear after a low-arity call.
-: FFI-T-STALE-SRC$ ( -- ptr u8 n )
-   s\" require src/lib/ffi-abi.f\ns\" getpid\" FFI:PROCESS 0 FFI:DECLARE constant ZZ-ROW\n: ZZ-CALL ( -- ) data-base $28 + 1 8 FFI:WRITABLE! ZZ-ROW FFI:CALL-ABI drop ;\nZZ-CALL\n" ;
-
-: FFI-T-STALE-REFUSAL ( -- )
-   s" an uncleared x8 extent into protected DATA is refused" T-LABEL
-   FFI-T-STALE-SRC$ ENGINE-ERROR:SEAL-VIOLATION FFI-T-RUN-EXITS
-   {: outu:len erru:len :}
-   outu LEN>N 0 T=
-   erru FFI-T-ERR$
-   s" E-SEAL-VIOLATION habu: a store span wraps or meets a sealed DATA band or the body text block: "
-   STARTS-WITH? TTRUE ;
 
 \ The line the child prints for an uncaught code, rendered from the name so the
 \ needle follows src/lib/error.f instead of repeating its number.
@@ -714,9 +699,6 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    s" FFI-T-ROLE-GOOD ( ffi-ctx -- rc ) FFI-T-CTX-SET" FFI-T-CHECK-PASSES
    s" FFI-T-ROLE-BAD ( ffi-dev -- rc ) FFI-T-CTX-SET" FFI-T-CHECK-REJECTS
 
-   FFI-T-STALE-REFUSAL
-   s" a stale high-register extent cannot affect a later mixed call" T-LABEL
-   data-base $28 + 1 8 FFI:WRITABLE!
    FFI-T-GETPID$ 0 T<>
    1.5 4 FFI-T-SCALBLN-CALL 24.0 f= T-ASSERT
 
@@ -778,9 +760,9 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    [: FFI-T-REDECLARE ;] 0 TTHROWSQ
    [: FFI-T-CLOSE-DANGLING ;] E-FFI-SYNTAX TTHROWSQ
 
-   s" FFI-T-RAW ( ptr a ptr a n n -- n ) ffi-call-bounded" FFI-T-CHECK-REJECTS
-   s" FFI-T-RAW-ABI ( ptr a ptr a ptr a ptr a ptr a n n -- n ) ffi-call-abi-bounded" FFI-T-CHECK-REJECTS
-   s" FFI-T-LIE ( n -- ) 8 0 FFI:WRITABLE!" FFI-T-CHECK-REJECTS
+   s" FFI-T-RAW ( ptr a n n -- n ) ffi-call-n" FFI-T-CHECK-REJECTS
+   s" FFI-T-RAW-ABI ( ptr a ptr a ptr a n n -- n ) ffi-call-abi" FFI-T-CHECK-REJECTS
+   s" FFI-T-LIE ( n -- ) 0 FFI:POINTER!" FFI-T-CHECK-REJECTS
    s" FFI-T-MULTI ( ptr u8 n -- n n ) FFI:DLOPEN" FFI-T-CHECK-REJECTS
    s" FFI:" 0 search-wl 0= TTRUE
    s" CALL0" 0 search-wl 0= TTRUE

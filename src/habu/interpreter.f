@@ -750,9 +750,8 @@ public
 
 ;package
 
-\ After the seal a store into the friend arena exits 83: rows, scope and
-\ aliases go through their primitive writers and CUR through set-current. A
-\ writer refuses silently, so the words here refuse first where they can.
+\ Rows, scope and aliases go through their primitive writers and CUR through
+\ set-current. A writer refuses silently, so the words here refuse first where they can.
 
 package INTERPRETER
 

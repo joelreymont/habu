@@ -703,8 +703,8 @@ EPRIM: def-occ-resolve PE-N PE-IN PE-N PE-IN PE-PTR-N PE-OUT EPRIM;
 ETRUSTED-ONLY!                       \ slot and nonzero process-local occurrence
 EPPRIM: DEF-OCC def-occ-resolve PE-N PE-IN PE-N PE-IN PE-PTR-N PE-OUT ECLOSE-PRIVATE
 \ What `package`, `export`, `:`, `create`, `does>`, `;`, `immediate`, `cast:`
-\ and `defer` change is sealed state after the seal: the friend arena (CUR, WIDN, DEF-WL,
-\ TSIG, TCSIG, PKG-*), the body text, DEF-TIER-CELL and the records behind the
+\ and `defer` change is sealed state after the seal: CUR, WIDN, DEF-WL, TSIG,
+\ TCSIG, PKG-*, the body text, DEF-TIER-CELL and the records behind the
 \ PROT window.
 \ These fifteen rows are how an interpreter written in Habu writes it. A
 \ refusal exits and never throws: 79 on a task's
@@ -887,7 +887,6 @@ EPPRIM: CHECKER-OVERLAY record-wid! PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 EPPRIM: CHECKER-OVERLAY replay-private PE-N PE-IN PE-F PE-IN ECLOSE-PRIVATE
 EPRIM: SEAL-CAPTURE   EPRIM;
 EPRIM: seal-captured? PE-F PE-OUT EPRIM;
-EPRIM: SEAL-FRIEND    EPRIM;
 EPRIM: DRAIN-PRETRUST EPRIM;
 \ data-base is a BASE ADDRESS: the start of the running task's DATA region, not
 \ the address of any declared element. Its pointee is TVK-DBASE, so `data-base
@@ -953,8 +952,6 @@ EPRIM: ffi-call       PE-PTR-A PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!
 EPRIM: ffi-call-n     PE-PTR-A PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!
-EPRIM: ffi-call-bounded PE-PTR-A PE-IN PE-PTR-B PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
-ETRUSTED-ONLY!
 EPRIM: task-entry PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!                       \ C ABI entry address, never a Habu quotation
 EPPRIM: TASK task-entry PE-N PE-OUT ECLOSE-PRIVATE
@@ -963,18 +960,6 @@ EPPRIM: TASK task-entry PE-N PE-OUT ECLOSE-PRIVATE
 EPRIM: callback-entry PE-N PE-IN PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!                       \ C ABI entry address, never a Habu quotation
 EPPRIM: FFI callback-entry PE-N PE-IN PE-N PE-OUT ECLOSE-PRIVATE
-EPRIM: ffi-call-abi-bounded PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN
-                           PE-PTR-D PE-IN PE-PTR-E PE-IN PE-N PE-IN PE-N PE-IN
-                           PE-N PE-OUT EPRIM;
-ETRUSTED-ONLY!
-EPRIM: ffi-call-abi-r-bounded PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN
-                             PE-PTR-D PE-IN PE-PTR-E PE-IN PE-N PE-IN PE-N PE-IN
-                             PE-R PE-OUT EPRIM;
-ETRUSTED-ONLY!
-EPRIM: ffi-call-struct-bounded PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN
-                              PE-PTR-D PE-IN PE-PTR-E PE-IN PE-N PE-IN PE-N PE-IN
-                              PE-N PE-IN PE-N PE-OUT PE-N PE-OUT EPRIM;
-ETRUSTED-ONLY!
 EPRIM: ffi-call-abi    PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN PE-N PE-IN PE-N PE-IN
                       PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!
@@ -991,16 +976,13 @@ ETRUSTED-ONLY!
 \ owner-private row, so a CHECKED body compiled inside package FFI resolves it.
 \ FFI's own words are ordinary checked Habu, and
 \ no consumer can reach a raw foreign call.
-EPPRIM: FFI ffi-call-bounded PE-PTR-A PE-IN PE-PTR-B PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT ECLOSE-PRIVATE
-EPPRIM: FFI ffi-call-abi-bounded PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN
-                                PE-PTR-D PE-IN PE-PTR-E PE-IN PE-N PE-IN PE-N PE-IN
-                                PE-N PE-OUT ECLOSE-PRIVATE
-EPPRIM: FFI ffi-call-abi-r-bounded PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN
-                                  PE-PTR-D PE-IN PE-PTR-E PE-IN PE-N PE-IN PE-N PE-IN
-                                  PE-R PE-OUT ECLOSE-PRIVATE
-EPPRIM: FFI ffi-call-struct-bounded PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN
-                                   PE-PTR-D PE-IN PE-PTR-E PE-IN PE-N PE-IN PE-N PE-IN
-                                   PE-N PE-IN PE-N PE-OUT PE-N PE-OUT ECLOSE-PRIVATE
+EPPRIM: FFI ffi-call-n PE-PTR-A PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT ECLOSE-PRIVATE
+EPPRIM: FFI ffi-call-abi PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN PE-N PE-IN PE-N PE-IN
+                        PE-N PE-OUT ECLOSE-PRIVATE
+EPPRIM: FFI ffi-call-abi-r PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN PE-N PE-IN PE-N PE-IN
+                          PE-R PE-OUT ECLOSE-PRIVATE
+EPPRIM: FFI ffi-call-struct PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN PE-N PE-IN PE-N PE-IN
+                           PE-N PE-IN  PE-N PE-OUT PE-N PE-OUT ECLOSE-PRIVATE
 
 EPRIM: f+      PE-R PE-IN PE-R PE-IN  PE-R PE-OUT EPRIM; REACH stack
 EPRIM: f-      PE-R PE-IN PE-R PE-IN  PE-R PE-OUT EPRIM; REACH stack

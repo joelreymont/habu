@@ -30,17 +30,10 @@ package ENGINE-SUITE
 1 constant OWNER-PUBLIC-WID
 2 constant OWNER-PRIVATE-WID
 
-: PROT-SPAN-WID-HIDDEN? ( n -- bool )
-   s" (PROT-SPAN)" rot search-wl 0= ;
-
 : NUM-WID-HIDDEN? ( n -- bool )
    s" (NUM)" rot search-wl 0= ;
 
 public
-
-: PROT-SPAN-HIDDEN? ( -- bool )
-   OWNER-PUBLIC-WID PROT-SPAN-WID-HIDDEN?
-   OWNER-PRIVATE-WID PROT-SPAN-WID-HIDDEN? and ;
 
 : NUM-HIDDEN? ( -- bool )
    OWNER-PUBLIC-WID NUM-WID-HIDDEN?
@@ -54,8 +47,6 @@ s" E-SEAL-PACKAGE" 0 search-wl 0 T=
 s" E-BAD-TAG" 0 search-wl 0 T=
 s" E-CODE-CERT" 0 search-wl 0 T=
 s" private engine helpers absent from the public wordlist" T-LABEL
-s" (PROT-SPAN)" 0 search-wl 0 T=
-ENGINE-SUITE:PROT-SPAN-HIDDEN? TTRUE
 s" (NUM)" 0 search-wl 0 T=
 ENGINE-SUITE:NUM-HIDDEN? TTRUE
 
@@ -2132,7 +2123,7 @@ public
    s" ES-SWL-PRIV"          PKG-PUB-WID PROBE
    s" ES-SWL-U"             0 PROBE
    s" ES-SWL-U"             RET-WID PROBE
-   s" (PROT-SPAN)"          OWNER-PRIVATE-WID PROBE
+   s" (DIV-ZERO)"           OWNER-PRIVATE-WID PROBE
    s" ES-SWL-PUB"           NO-SUCH-WID PROBE ;
 
 : CAPTURE-SECOND ( -- )

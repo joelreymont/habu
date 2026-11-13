@@ -1,8 +1,6 @@
 \ x86-64-kernel-ffi.f - the FFI rows of src/habu/kernel-x64.f FFI, in the booted
-\ harness, cross-built for an x86-64 peer: one case per image. Every image seals
-\ the friend latch first, so each guard a row calls walks its whole span test
-\ and clobbers every scratch register. No libc symbol takes nine integer
-\ arguments, so a stub stands in, as test/ffi-stub-child.f SUM10 does on ARM64.
+\ harness, cross-built for an x86-64 peer: one case per image. No libc symbol
+\ takes nine integer arguments, so a stub stands in, as test/ffi-stub-child.f SUM10 does on ARM64.
 \ The host checks each image's ELF header; running them is the peer's.
 require test/x86-64-boot-harness.f
 
@@ -11,12 +9,9 @@ using X64ASM
 using X64CODE
 using X64RT
 
-\ Scratch the harness hands out (PUSH-SCRATCH,): the argument cells, the
-\ writable extents ffi-call-bounded reads, a stack extent table apart from
-\ them, then the ABI rows' fpbuf and stackbuf and snprintf's buffer.
+\ Scratch the harness hands out (PUSH-SCRATCH,): the argument cells, then the
+\ ABI rows' fpbuf and stackbuf and snprintf's buffer.
 $40 constant ARGS
-$100 constant EXTS
-$160 constant STK-EXTS
 $180 constant FPS
 $1C0 constant STK
 $200 constant OUT
@@ -30,13 +25,10 @@ $F constant JUNK                        \ the ABI rows' argbuf[6..9): no place
 \ address pushed below that.
 8 constant ENTRY-RSP-LOW
 
-: DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
 : ROW ( ptr u8 n -- ) X64HARNESS:CALL-ROW, ;
 : N, ( n -- ) X64HARNESS:PUSH, ;
 : WANT ( n -- ) X64HARNESS:EXPECT-POP, ;
 : AT, ( n -- ) X64HARNESS:PUSH-SCRATCH, ;
-
-: SEAL, ( -- ) FRIEND-ARENA-LEN FRIEND-LATCH-CELL X64HARNESS:CELL!, ;
 
 \ Call a row with the machine stack a cell deeper than ROW leaves it, so the
 \ trampoline's alignment takes its other case.
@@ -53,17 +45,9 @@ $F constant JUNK                        \ the ABI rows' argbuf[6..9): no place
    RAX v >IMM64 ASM-SINK ENC-MOV-RI64
    RAX RCX MEM-AT ASM-SINK ENC-MOV-MR ;
 
-: BAND!, ( n -- ) {: off:n :}
-   off AT,  1 G-POP
-   RAX DATA-REG SOURCE-EXEC-CTX-CELL MEM-OFF ASM-SINK ENC-LEA
-   RAX RCX MEM-AT ASM-SINK ENC-MOV-MR ;
-
-\ Argument cell i holds i + 1, and every extent is a cell.
+\ Argument cell i holds i + 1.
 : ARGS, ( -- )
-   PLACES 0 ?do
-      i 1+ ARGS i CELL * + SCRATCH!,
-      CELL EXTS i CELL * + SCRATCH!,
-   loop ;
+   PLACES 0 ?do  i 1+ ARGS i CELL * + SCRATCH!,  loop ;
 
 : SCRATCH-AT!, ( n n -- ) {: at:n off:n :}
    off AT,  at AT,  0 G-POP  1 G-POP
@@ -83,14 +67,9 @@ $F constant JUNK                        \ the ABI rows' argbuf[6..9): no place
       JUNK ARGS REG-PLACES i + CELL * + SCRATCH!,
    loop ;
 
-\ Push ffi-call-abi's arguments below the function: nstack stackbuf cells,
-\ the register places live, no sret.
+\ Push ffi-call-abi's arguments below the function: nstack stackbuf cells.
 : ABI, ( n -- ) {: nstack:n :}
-   ARGS AT, FPS AT, STK AT, nstack N, REG-PLACES N, 0 N, ;
-
-\ And ffi-call-abi-bounded's, every extent a cell.
-: BOUNDED, ( n -- ) {: nstack:n :}
-   ARGS AT, FPS AT, STK AT, EXTS AT, EXTS AT, nstack N, ;
+   ARGS AT, FPS AT, STK AT, nstack N, ;
 
 \ A NUL-terminated copy of a string behind a jump, and its label.
 : C-TEXT, ( ptr u8 n -- label ) {: a:ptr u:n :}
@@ -164,36 +143,17 @@ $F constant JUNK                        \ the ABI rows' argbuf[6..9): no place
    ARGS AT, 8 N, s8 PUSH-XT, s" ffi-call" SHIFTED-ROW  want8 WANT
    ARGS AT, 3 N, s8 PUSH-XT, s" ffi-call-n" ROW  want8 WANT
    ARGS AT, PLACES N, s9 PUSH-XT, s" ffi-call-n" ROW  want9 WANT
-   ARGS AT, PLACES N, s9 PUSH-XT, s" ffi-call-n" SHIFTED-ROW  want9 WANT
-   ARGS AT, EXTS AT, PLACES N, s9 PUSH-XT, s" ffi-call-bounded" ROW  want9 WANT
-   ARGS AT, EXTS AT, PLACES N, s9 PUSH-XT, s" ffi-call-bounded" SHIFTED-ROW
-   want9 WANT ;
+   ARGS AT, PLACES N, s9 PUSH-XT, s" ffi-call-n" SHIFTED-ROW  want9 WANT ;
 
-\ Ten checks, the harness's whole budget.
 : CALLS-CASE ( -- )
    STUB8 STUB9 {: s8:label s9:label :}
    GETPID,
    s8 s9 STUB-CALLS, ;
 
-\ The last argument and its extent name the band cell, so the guard reaches it
-\ only by keeping its index across eight guards that pass.
-: BOUNDED-ARMED-CASE ( -- )
-   STUB9 {: s9:label :}
-   ARGS PLACES 1- CELL * + BAND!,
-   ARGS AT, EXTS AT, PLACES N, s9 PUSH-XT, s" ffi-call-bounded" ROW
-   PLACES STUB-ANSWER WANT ;
-
-: CALL-ARMED-CASE ( -- )
-   STUB8 {: s8:label :}
-   ARGS 7 CELL * + BAND!,
-   ARGS AT, 8 N, s8 PUSH-XT, s" ffi-call" ROW
-   8 STUB-ANSWER WANT ;
-
-\ The ABI rows: the float stub through all four, whose plain rows answer rax
-\ and -r rows xmm0; the nine-place stub with three stackbuf cells, at both
-\ rsp parities; the stub of register places with nstack -1, which passes
-\ nothing on the stack. Ten checks with the stack checks, the harness's whole
-\ budget.
+\ The ABI rows: the float stub through both, whose plain row answers rax and
+\ -r row xmm0; the nine-place stub with three stackbuf cells, at both rsp
+\ parities; the stub of register places with nstack -1, which passes nothing
+\ on the stack.
 : ABI-CASE ( -- )
    FSTUB STUB6 STUB9 {: f:label s6:label s9:label :}
    FSTUB-ANSWER {: fwant:n :}
@@ -202,13 +162,9 @@ $F constant JUNK                        \ the ABI rows' argbuf[6..9): no place
    ABI-ARGS,
    0 ABI, f PUSH-XT, s" ffi-call-abi" ROW  fwant invert WANT
    0 ABI, f PUSH-XT, s" ffi-call-abi-r" ROW  fwant WANT
-   0 BOUNDED, f PUSH-XT, s" ffi-call-abi-bounded" ROW  fwant invert WANT
-   0 BOUNDED, f PUSH-XT, s" ffi-call-abi-r-bounded" ROW  fwant WANT
    STACK-PLACES ABI, s9 PUSH-XT, s" ffi-call-abi" ROW  want9 WANT
-   STACK-PLACES BOUNDED, s9 PUSH-XT, s" ffi-call-abi-bounded" SHIFTED-ROW
-   want9 WANT
-   -1 ABI, s6 PUSH-XT, s" ffi-call-abi" ROW  want6 WANT
-   -1 BOUNDED, s6 PUSH-XT, s" ffi-call-abi-bounded" ROW  want6 WANT ;
+   STACK-PLACES ABI, s9 PUSH-XT, s" ffi-call-abi" SHIFTED-ROW  want9 WANT
+   -1 ABI, s6 PUSH-XT, s" ffi-call-abi" ROW  want6 WANT ;
 
 \ snprintf(buf, 8, "%.1f %.1f", 1.5, 2.5): the doubles' bits, what it answers,
 \ and the eight bytes it leaves in buf, the text and its NUL, as a
@@ -233,8 +189,8 @@ $00352E3220352E31 constant FLOATS-TEXT    \ "1.5 2.5"
    RAX v >IMM64 ASM-SINK ENC-MOV-RI64  x RAX ASM-SINK ENC-MOVQ-XR ;
 
 \ The control first: xmm0 and xmm1 loaded and ffi-call-n's al of 0, so
-\ snprintf reads its doubles from the zeroed slots. Then ffi-call-abi-bounded,
-\ whose al of 8 makes it save them.
+\ snprintf reads its doubles from the zeroed slots. Then ffi-call-abi, whose al
+\ of 8 makes it save them.
 : SNPRINTF-CASE ( -- )
    s" %.1f %.1f" C-TEXT, {: fmt:label :}
    OUT ARGS SCRATCH-AT!,
@@ -245,55 +201,12 @@ $00352E3220352E31 constant FLOATS-TEXT    \ "1.5 2.5"
    ZERO-BELOW,  XMM0 ONE-HALF XMM-BITS,  XMM1 TWO-HALF XMM-BITS,
    s" ffi-call-n" ROW  PRINTED WANT
    ZEROS-TEXT OUT X64HARNESS:EXPECT-SCRATCH,
-   0 BOUNDED, s" snprintf" LIBC, s" ffi-call-abi-bounded" ROW  PRINTED WANT
+   0 ABI, s" snprintf" LIBC, s" ffi-call-abi" ROW  PRINTED WANT
    FLOATS-TEXT OUT X64HARNESS:EXPECT-SCRATCH, ;
-
-\ The third stack cell and its stkext entry name the band cell, so the guard
-\ reaches it only past the nine register guards and two stack guards that
-\ pass. regext's entry of the same index is 0, so a stack guard that read
-\ regext would pass it, as habu1.f BFFI-CALL-ABI-BOUNDED-CORE says the two
-\ tables differ.
-: ABI-ARMED-CASE ( -- )
-   STUB9 {: s9:label :}
-   ABI-ARGS,
-   STK 2 CELL * + BAND!,
-   0 EXTS 2 CELL * + SCRATCH!,
-   STACK-PLACES 0 ?do  CELL STK-EXTS i CELL * + SCRATCH!,  loop
-   ARGS AT, FPS AT, STK AT, EXTS AT, STK-EXTS AT, STACK-PLACES N,
-   s9 PUSH-XT, s" ffi-call-abi-bounded" ROW
-   PLACES STUB-ANSWER ABI-AL + WANT ;
-
-\ The fifth register slot and its regext entry name the band cell, and the
-\ stack cells are clean, so only the register guard refuses it.
-: REGEXT-ARMED-CASE ( -- )
-   STUB9 {: s9:label :}
-   ABI-ARGS,
-   ARGS 4 CELL * + BAND!,
-   STACK-PLACES BOUNDED, s9 PUSH-XT, s" ffi-call-abi-bounded" ROW
-   PLACES STUB-ANSWER ABI-AL + WANT ;
-
-\ The sixth argument, the last below nint, names the band cell, and sret is
-\ 0, so only the nint guard refuses it.
-: NINT-ARMED-CASE ( -- )
-   STUB9 {: s9:label :}
-   ABI-ARGS,
-   ARGS REG-PLACES 1- CELL * + BAND!,
-   STACK-PLACES ABI, s9 PUSH-XT, s" ffi-call-abi" ROW
-   PLACES STUB-ANSWER ABI-AL + WANT ;
-
-\ argbuf[8] names the band cell, past the live register places: only the
-\ sret guard reaches it.
-: SRET-ARMED-CASE ( -- )
-   STUB9 {: s9:label :}
-   ABI-ARGS,
-   ARGS PLACES 1- CELL * + BAND!,
-   ARGS AT, FPS AT, STK AT, STACK-PLACES N, REG-PLACES N, 1 N,
-   s9 PUSH-XT, s" ffi-call-abi" ROW
-   PLACES STUB-ANSWER ABI-AL + WANT ;
 
 : BUILD ( [ -- ] bool ptr u8 n -- ) {: negative:bool path:ptr pathu:n :}
    negative X64HARNESS:BOOT-OPEN,
-   SEAL,  ARGS,
+   ARGS,
    execute
    0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED,
@@ -302,21 +215,14 @@ $00352E3220352E31 constant FLOATS-TEXT    \ "1.5 2.5"
 public
 
 \ The peer must see status 0 from each image but hb-x64-kernel-ffi-negative,
-\ FIRST-CASE 21 (it expects the wrong difference of the two pids), and each
-\ -armed image, SEAL-VIOLATION 83.
+\ FIRST-CASE 21 (it expects the wrong difference of the two pids).
 : RUN ( -- )
    T-RESET
    X64HARNESS:INIT
    [: CALLS-CASE ;] false s" hb-x64-kernel-ffi" TMP-PATH BUILD
    [: CALLS-CASE ;] true s" hb-x64-kernel-ffi-negative" TMP-PATH BUILD
-   [: BOUNDED-ARMED-CASE ;] false s" hb-x64-kernel-ffi-armed" TMP-PATH BUILD
-   [: CALL-ARMED-CASE ;] false s" hb-x64-kernel-ffi-call-armed" TMP-PATH BUILD
    [: ABI-CASE ;] false s" hb-x64-kernel-ffi-abi" TMP-PATH BUILD
    [: SNPRINTF-CASE ;] false s" hb-x64-kernel-ffi-snprintf" TMP-PATH BUILD
-   [: ABI-ARMED-CASE ;] false s" hb-x64-kernel-ffi-abi-armed" TMP-PATH BUILD
-   [: SRET-ARMED-CASE ;] false s" hb-x64-kernel-ffi-sret-armed" TMP-PATH BUILD
-   [: REGEXT-ARMED-CASE ;] false s" hb-x64-kernel-ffi-regext-armed" TMP-PATH BUILD
-   [: NINT-ARMED-CASE ;] false s" hb-x64-kernel-ffi-nint-armed" TMP-PATH BUILD
    X64HARNESS:DISPOSE
    T-REPORT ;
 

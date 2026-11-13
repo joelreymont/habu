@@ -39,8 +39,6 @@ TYPED-VARIABLE FLOATS bool              \ set while the float sets run
 : AT, ( n -- ) X64HARNESS:PUSH-SCRATCH, ;
 : CALL ( ptr u8 n -- ) X64HARNESS:CALL-ROW, ;
 
-: SEAL, ( -- ) FRIEND-ARENA-LEN FRIEND-LATCH-CELL X64HARNESS:CELL!, ;
-
 \ ---- the subject and its case text -------------------------------------------
 : SUBJ$ ( -- ptr u8 n ) SUBJ-BUF SUBJ-U @ ;
 
@@ -207,11 +205,6 @@ private
 \                                          overload 0 case 1` on fd 2
 \    hb-x64-kernel-pure-fdot            0  f. of eleven doubles, read back
 \                                          through a pipe on fd 1
-\    hb-x64-kernel-pure-store-armed    83  ! into a band cell
-\    hb-x64-kernel-pure-cstore-armed   83  c! into a band cell
-\    hb-x64-kernel-pure-addstore-armed 83  +! into a band cell
-\ Every image seals the friend latch first, so each store row's guard walks its
-\ whole span test.
 \ ?dup has no case set: checked Habu cannot name it, so prim-cases.f cannot
 \ hold one. Zero stays alone; anything else is doubled.
 : QDUP-CASES ( -- )
@@ -219,7 +212,7 @@ private
    CASE+  0 N,  ROW  0 WANT  SETTLED
    CASE+  5 N,  ROW  5 WANT  5 WANT  SETTLED ;
 
-: OPEN-IMAGE ( bool -- ) X64HARNESS:BOOT-OPEN,  SEAL, ;
+: OPEN-IMAGE ( bool -- ) X64HARNESS:BOOT-OPEN, ;
 
 \ The host checks each image's ELF header; the peer runs each and must see its
 \ status.
@@ -227,13 +220,6 @@ private
    0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED,
    X64HARNESS:BOOT-CLOSE, ;
-
-\ A store row whose address is the band cell SOURCE-EXEC-CTX-CELL: its guard
-\ exits 83 before the store.
-: ARMED ( ptr u8 n ptr u8 n -- ) {: row:ptr rowu:n path:ptr pathu:n :}
-   false OPEN-IMAGE
-   7 N,  SOURCE-EXEC-CTX-CELL X64HARNESS:PUSH-DATA,  row rowu CALL
-   path pathu CLOSE-IMAGE ;
 
 \ ---- f. ----------------------------------------------------------------------
 \ f. writes its line straight to fd 1, as habu1.f BFDOT does, so the image puts
@@ -317,10 +303,6 @@ false OPEN-IMAGE
 FDOT-PIPE
 FDOT-CASES
 s" hb-x64-kernel-pure-fdot" TMP-PATH CLOSE-IMAGE
-
-s" !" s" hb-x64-kernel-pure-store-armed" TMP-PATH ARMED
-s" c!" s" hb-x64-kernel-pure-cstore-armed" TMP-PATH ARMED
-s" +!" s" hb-x64-kernel-pure-addstore-armed" TMP-PATH ARMED
 
 X64HARNESS:DISPOSE
 T-REPORT
