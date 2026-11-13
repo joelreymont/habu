@@ -26,13 +26,12 @@ using MEM
 PROCESS-SYMBOLS
 FUNCTION: KQUEUE-CALL kqueue ( -- i32 ) ;FUNCTION
 
-$400000 constant PAYLOAD          \ 4 MiB: 64 default Linux pipes, and past Linux's pipe-max-size
+$400000 constant PAYLOAD          \ 4 MiB: past any default pipe and Linux's pipe-max-size
 251 constant PATTERN-MOD          \ prime, so no power-of-two chunk realigns the pattern
 200 constant READER-DELAY-MS      \ then how long it holds back, the writer blocked and the storm on
 1000000 constant STORM-LIMIT      \ profiler samples allowed; no case comes near it
 -1 constant FULL-MARK             \ OUTCOME's answer for `full`
 2 constant CHILD-MISMATCH         \ a forked reader's exit code when the bytes are wrong
-200000 constant NONBLOCK-SIZE     \ bytes, more than a pipe holds
 
 TYPED-VARIABLE SRC SPAN:span<u8>
 TYPED-VARIABLE DST SPAN:span<u8>
@@ -150,13 +149,13 @@ variable WROTE-IN                 \ WROTE>N of a write WITH-NOSIGPIPE's quotatio
 : NONBLOCK-WRITE ( -- )
    FD:PIPE-PAIR {: r:fd w:fd :}
    w NONBLOCK!
-   SRC @ $ drop {: src:ptr :}
-   w src NONBLOCK-SIZE FD:TRY-WRITE {: k:n :}
+   SRC @ $ {: src:ptr u:n :}
+   w src u FD:TRY-WRITE {: k:n :}
    k 0 > TTRUE
-   k NONBLOCK-SIZE < TTRUE
-   w src k + NONBLOCK-SIZE k - FD:TRY-WRITE 0 T=
+   k u < TTRUE
+   w src k + u k - FD:TRY-WRITE 0 T=
    r DST @ k TAKE READ-EXACT OUTCOME FULL-MARK T=
-   w src k + NONBLOCK-SIZE k - FD:TRY-WRITE 0 > TTRUE
+   w src k + u k - FD:TRY-WRITE 0 > TTRUE
    r FD>N close
    w FD>N ERR-FD !
    w [: [: NONBLOCK-BROKEN ;] E-FS-IO TTHROWSQ ;] WITH-NOSIGPIPE
