@@ -27,7 +27,7 @@ prefix. The program file of a plain `hb <file>` is an open file and is named. A
 string `evaluate`d *inside* a file keeps the file line only while it is a slice
 of the file's own bytes (`parse-name X evaluate`). Any other evaluated string
 names the file alone (`<path>: ` after `habu: `) for a refusal in it, and so
-do the native compiler's `ncomp:` and `E-UNDEFINED` lines that follow that
+do the `compiler:` and `E-UNDEFINED` lines that follow that
 refusal (src/core/checker.f SRCLOC:FILE-BUFFER?).
 
 An undefined word, `E-UNDEFINED habu: <path>:<line>: undefined word 'X'`, is located like any
@@ -39,8 +39,8 @@ ends the load). The other interpret-level refusals
 siblings) are located the same way. The checker's refusal in a body names
 the definition and the token
 (`habu: in g: at '2' expected: n actual: n n ; suggestion: Remove an extra producer or drop the surplus value.`);
-the native line after it places the token
-(`ncomp: cannot compile G at 2 in <path>:<line>`), and an undefined word adds
+the compiler's line after it places the token
+(`compiler: cannot compile G at 2 in <path>:<line>`), and an undefined word adds
 `E-UNDEFINED habu: <path>:<line>: undefined word 'x'`. A top-level refusal names the file and line
 in its own line (`habu: <path>:<line>: at '!' …`), the file alone for a token of
 an evaluated string that is not the file's own bytes, and no place outside a

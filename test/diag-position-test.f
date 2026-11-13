@@ -2073,7 +2073,7 @@ variable RC
    s"   ;" SB-APPEND LF+
    s" empty-clause-lines.f" FIXTURE!
    s" E-MISMATCH" s" ;" 3 3 37 38 REFUSED-AT
-   SB-RESET  s" ncomp: cannot compile MYK at ; in " SB-APPEND
+   SB-RESET  s" compiler: cannot compile MYK at ; in " SB-APPEND
    FX-PATH$ CANON$ SB-APPEND  s" :3" SB-APPEND  10 SB-APPEND-C
    SB$ REJECT-RC LOADED
    s" an empty does> clause of a definer with a parses: row" T-LABEL

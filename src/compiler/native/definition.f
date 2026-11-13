@@ -391,7 +391,7 @@ TKA-CELL RESERVED-PTR-U8-CELL READ-AT
 \ by SAY-WHERE.
 : REPORT-FAILURE ( ptr u8 n ptr u8 -- )
    {: a:ptr u:n p:ptr :}
-   s" ncomp: cannot compile " ERROR-TEXT:TYPE
+   s" compiler: cannot compile " ERROR-TEXT:TYPE
    NAME$ ERROR-TEXT:TYPE
    u 0 > if
       s"  at " ERROR-TEXT:TYPE a u ERROR-TEXT:TYPE

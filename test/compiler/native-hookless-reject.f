@@ -56,7 +56,7 @@ create TEXT CAP allot                  variable TEXT-U
    s" ;package package UA public : AW ( -- n ) 11 ; ;package package UC public : AW ( -- n ) 33 ; ;package using UA using UC : UT-AMB ( -- n ) AW ; ;using ;using" SESSION
    RC @ RC-REJECT T=
    s" E-USING-AMBIGUOUS habu: bare 'AW' is ambiguous under using" SAYS
-   s" ncomp: cannot compile UT-AMB at AW in" SAYS ;
+   s" compiler: cannot compile UT-AMB at AW in" SAYS ;
 
 \ A used public that shadows a global is refused the same way.
 \ Its own process: the uncaught throw ends it, and its exit status is tested.
@@ -65,7 +65,7 @@ create TEXT CAP allot                  variable TEXT-U
    s" ;package : SW ( -- n ) 11 ; package US public : SW ( -- n ) 33 ; ;package using US : UT-SHADOW ( -- n ) SW ; ;using" SESSION
    RC @ RC-REJECT T=
    s" E-USING-SHADOW-GLOBAL habu: bare 'SW' is ambiguous under using" SAYS
-   s" ncomp: cannot compile UT-SHADOW at SW in" SAYS ;
+   s" compiler: cannot compile UT-SHADOW at SW in" SAYS ;
 
 \ A TRUSTED: row whose stored signature does not parse is refused at that token.
 \ Its own process: the uncaught throw ends it, and its exit status is tested.
@@ -74,7 +74,7 @@ create TEXT CAP allot                  variable TEXT-U
    s" ;package TRUSTED: TB8 ( -- nosuch:fam ) 1 NOSUCHWORD ;" SESSION
    RC @ RC-REJECT T=
    s" habu: in tb8: bad stored signature '-- nosuch:fam'" SAYS
-   s" ncomp: cannot compile TB8 at nosuch:fam in" SAYS ;
+   s" compiler: cannot compile TB8 at nosuch:fam in" SAYS ;
 
 \ A public whose private twin moves other cells is refused at its own name.
 \ Its own process: the uncaught throw ends it, and its exit status is tested.
@@ -83,7 +83,7 @@ create TEXT CAP allot                  variable TEXT-U
    s" ;package package SAT-A : F ( n n -- n ) + ; public : F ( n -- n ) 1 + ; ;package" SESSION
    RC @ RC-REJECT T=
    s" E-SHADOWED-ARITY habu: public 'sat-a:f'" SAYS
-   s" ncomp: cannot compile F at F in" SAYS ;
+   s" compiler: cannot compile F at F in" SAYS ;
 
 \ A TRUSTED: body whose `@` cannot be applied over a two-cell family value
 \ loses that value's width, so nothing can place its cells; a does> clause that
@@ -98,9 +98,9 @@ create TEXT CAP allot                  variable TEXT-U
    s" TRUSTED: HR-LOST ( n -- n ) construct hr-v some @ ;" TEXT+
    TEXT$ SESSION
    RC @ UNCAUGHT-RC T=
-   s" ncomp: cannot compile HR-DEF" SAYS
+   s" compiler: cannot compile HR-DEF" SAYS
    S\" -8519\n" PRINTS
-   s" ncomp: cannot compile HR-LOST" SAYS
+   s" compiler: cannot compile HR-LOST" SAYS
    s" hb: uncaught throw code -8519" SAYS ;
 
 \ ---- a refused definition keeps no row ---------------------------------------

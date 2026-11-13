@@ -460,47 +460,47 @@ variable RC
    s" T0 refuses a MATCH variant with no OF" T-LABEL
    BODY$ s" SUMTYPE lrd-choice VARIANT empty ;VARIANT VARIANT scalar n ;VARIANT ;SUMTYPE TRUSTED: LRD-NOOF ( n -- n ) construct lrd-choice scalar MATCH lrd-choice scalar 10 + ENDOF ;MATCH ;" FS:WRITE-ALL
    BODY$ RUN
-   s" ncomp: cannot compile LRD-NOOF at 10 in" ASSERT-NAMED
+   s" compiler: cannot compile LRD-NOOF at 10 in" ASSERT-NAMED
    s" T0 refuses a MATCH with no value proved under it" T-LABEL
    BODY$ s" SUMTYPE lrd-choice VARIANT empty ;VARIANT VARIANT scalar n ;VARIANT ;SUMTYPE TRUSTED: LRD-UNDER ( -- n ) MATCH lrd-choice empty OF 0 ENDOF scalar OF ENDOF ;MATCH ;" FS:WRITE-ALL
    BODY$ RUN
-   s" ncomp: cannot compile LRD-UNDER at lrd-choice in" ASSERT-NAMED
+   s" compiler: cannot compile LRD-UNDER at lrd-choice in" ASSERT-NAMED
    s" T0 refuses a MATCH over an unknown family" T-LABEL
    BODY$ s" TRUSTED: LRD-NOFAM ( n -- n ) 5 swap MATCH lrd-nofam empty OF 1 ENDOF ;MATCH ;" FS:WRITE-ALL
    BODY$ RUN
-   s" ncomp: cannot compile LRD-NOFAM at lrd-nofam in" ASSERT-NAMED
+   s" compiler: cannot compile LRD-NOFAM at lrd-nofam in" ASSERT-NAMED
    s" T0 refuses a MATCH over an unknown variant at the variant" T-LABEL
    BODY$ s" SUMTYPE lrd-choice VARIANT empty ;VARIANT VARIANT scalar n ;VARIANT ;SUMTYPE TRUSTED: LRD-NOVAR ( lrd-choice -- n ) MATCH lrd-choice bogus OF 1 ENDOF scalar OF ENDOF ;MATCH ;" FS:WRITE-ALL
    BODY$ RUN
-   s" ncomp: cannot compile LRD-NOVAR at bogus in" ASSERT-NAMED
+   s" compiler: cannot compile LRD-NOVAR at bogus in" ASSERT-NAMED
    s" T0 refuses dead code after exit" T-LABEL
    BODY$ s" TRUSTED: LRD-DEAD ( -- n ) 1 exit DUP ; LRD-DEAD . cr" FS:WRITE-ALL
    BODY$ RUN
-   s" ncomp: cannot compile LRD-DEAD at DUP in" ASSERT-NAMED
+   s" compiler: cannot compile LRD-DEAD at DUP in" ASSERT-NAMED
    ERR$ s" E-UNDEFINED" CONTAINS? TFALSE
    s" T0 refuses a dead string literal at its opener" T-LABEL
    BODY$ S\" TRUSTED: LRD-DEADS ( -- n ) 1 exit s\" ab\" drop ;" FS:WRITE-ALL
    BODY$ RUN
-   S\" ncomp: cannot compile LRD-DEADS at s\" in" ASSERT-NAMED
+   S\" compiler: cannot compile LRD-DEADS at s\" in" ASSERT-NAMED
    ERR$ s" E-UNDEFINED" CONTAINS? TFALSE
    s" T0 refuses a dead quotation inside a quotation at its opener" T-LABEL
    BODY$ s" TRUSTED: LRD-DEADQ ( -- [ -- n ] ) [: 1 exit [: 2 ;] ;] ;" FS:WRITE-ALL
    BODY$ RUN
-   s" ncomp: cannot compile LRD-DEADQ at [: in" ASSERT-NAMED
+   s" compiler: cannot compile LRD-DEADQ at [: in" ASSERT-NAMED
    ERR$ s" E-UNDEFINED" CONTAINS? TFALSE
    s" T0 refuses a dead string holding ;] inside a quotation at its opener" T-LABEL
    BODY$ S\" TRUSTED: LRD-DEADQS ( -- [ -- n ] ) [: 1 exit s\" a ;] b\" drop ;] ;" FS:WRITE-ALL
    BODY$ RUN
-   S\" ncomp: cannot compile LRD-DEADQS at s\" in" ASSERT-NAMED
+   S\" compiler: cannot compile LRD-DEADQS at s\" in" ASSERT-NAMED
    ERR$ s" E-UNDEFINED" CONTAINS? TFALSE
    s" T0 refuses a construct of an unknown variant" T-LABEL
    BODY$ s" SUMTYPE lrd-choice VARIANT empty ;VARIANT VARIANT scalar n ;VARIANT ;SUMTYPE TRUSTED: LRD-BADVAR ( -- n ) construct lrd-choice bogus 1 ;" FS:WRITE-ALL
    BODY$ RUN
-   s" ncomp: cannot compile LRD-BADVAR at bogus in" ASSERT-NAMED
+   s" compiler: cannot compile LRD-BADVAR at bogus in" ASSERT-NAMED
    s" T0 refuses a construct of an unknown family" T-LABEL
    BODY$ s" TRUSTED: LRD-BADFAM ( -- n ) construct lrd-nofam scalar 1 ;" FS:WRITE-ALL
    BODY$ RUN
-   s" ncomp: cannot compile LRD-BADFAM at lrd-nofam in" ASSERT-NAMED ;
+   s" compiler: cannot compile LRD-BADFAM at lrd-nofam in" ASSERT-NAMED ;
 
 \ A refused step in a TRUSTED: body lowers as the raw effect the scan splices,
 \ so `2dup` over a two-cell view copies two cells.
@@ -621,7 +621,7 @@ variable RC
    s" the native compiler places a refusal in a slice past the evaluating line" T-LABEL
    BODY$ S\" \n\nparse-name x drop 24 + 27 evaluate\n: LRD-QQ ( -- )\n5 c@ drop ;\n" FS:WRITE-ALL
    BODY$ RUN
-   SB-RESET  10 SB-APPEND-C  s" ncomp: cannot compile LRD-QQ at c@ in " SB-APPEND  BODY$ SB-APPEND
+   SB-RESET  10 SB-APPEND-C  s" compiler: cannot compile LRD-QQ at c@ in " SB-APPEND  BODY$ SB-APPEND
    s" :5" SB-APPEND  10 SB-APPEND-C
    ERR$ SB$ CONTAINS? TTRUE
    EXITED @ TTRUE
@@ -629,7 +629,7 @@ variable RC
    s" the native compiler places a refusal at the closing ; of a slice" T-LABEL
    BODY$ S\" \n\nparse-name x drop 24 + 29 evaluate\nTRUSTED: LRD-SF ( -- ) 0 if\n;\n" FS:WRITE-ALL
    BODY$ RUN
-   SB-RESET  s" ncomp: cannot compile LRD-SF at ; in " SB-APPEND  BODY$ SB-APPEND
+   SB-RESET  s" compiler: cannot compile LRD-SF at ; in " SB-APPEND  BODY$ SB-APPEND
    s" :5" SB-APPEND  10 SB-APPEND-C
    ERR$ SB$ T$=
    EXITED @ TTRUE
@@ -648,7 +648,7 @@ variable RC
 : ASSERT-NCOMP-LINE ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: name:ptr nameu:n tok:ptr toku:n line:ptr lineu:n :}
    BODY$ RUN
-   SB-RESET  10 SB-APPEND-C  s" ncomp: cannot compile " SB-APPEND  name nameu SB-APPEND
+   SB-RESET  10 SB-APPEND-C  s" compiler: cannot compile " SB-APPEND  name nameu SB-APPEND
    s"  at " SB-APPEND  tok toku SB-APPEND  s"  in " SB-APPEND  BODY$ SB-APPEND
    line lineu SB-APPEND  10 SB-APPEND-C
    ERR$ SB$ CONTAINS? TTRUE
@@ -813,24 +813,24 @@ variable RC
    s" a trusted quotation reading its definition's local is refused" T-LABEL
    BODY$ s" TRUSTED: LRD-QLOCAL ( n -- n ) {: a:n :} [: a ;] execute ;" FS:WRITE-ALL
    BODY$ RUN
-   s" ncomp: cannot compile LRD-QLOCAL at a in" ASSERT-NAMED
+   s" compiler: cannot compile LRD-QLOCAL at a in" ASSERT-NAMED
    s" a trusted quotation reading its definition's numeric local is refused" T-LABEL
    BODY$ s" TRUSTED: LRD-QNUM ( n -- n ) {: 1:n :} [: 1 ;] execute ;" FS:WRITE-ALL
    BODY$ RUN
-   s" ncomp: cannot compile LRD-QNUM at 1 in" ASSERT-NAMED
+   s" compiler: cannot compile LRD-QNUM at 1 in" ASSERT-NAMED
    s" a trusted is with no target is refused" T-LABEL
    BODY$ s" TRUSTED: LRD-NO-TARGET ( -- ) [: ;] is ;" FS:WRITE-ALL
    BODY$ RUN
-   s" ncomp: cannot compile LRD-NO-TARGET at is in" ASSERT-NAMED
+   s" compiler: cannot compile LRD-NO-TARGET at is in" ASSERT-NAMED
    ERR$ s" E-UNDEFINED" CONTAINS? TFALSE
    s" a trusted is naming no word is refused" T-LABEL
    BODY$ s" TRUSTED: LRD-NO-DEFER ( -- ) [: ;] is LRD-NO-SUCH-DEFER ;" FS:WRITE-ALL
    BODY$ RUN
-   s" ncomp: cannot compile LRD-NO-DEFER at LRD-NO-SUCH-DEFER in" ASSERT-NAMED
+   s" compiler: cannot compile LRD-NO-DEFER at LRD-NO-SUCH-DEFER in" ASSERT-NAMED
    s" a trusted is naming a colon word is refused" T-LABEL
    BODY$ s" : LRD-PLAIN ( -- ) ; TRUSTED: LRD-IS-PLAIN ( -- ) [: ;] is LRD-PLAIN ;" FS:WRITE-ALL
    BODY$ RUN
-   s" ncomp: cannot compile LRD-IS-PLAIN at LRD-PLAIN in" ASSERT-NAMED ;
+   s" compiler: cannot compile LRD-IS-PLAIN at LRD-PLAIN in" ASSERT-NAMED ;
 
 : TEST-PREFLIGHT-POSITIVES ( -- )
    s" top-level include remains live" T-LABEL

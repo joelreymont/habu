@@ -2134,7 +2134,7 @@ variable LIT-AT
 : DEF-ADDR-PUBLISH ( -- )
    s" -- ptr a" DEF-RAW-PUBLISH ;
 
-\ The DATA address a created word's body pushes, as the number NCOMP takes.
+\ The DATA address a created word's body pushes, as a number.
 : DEF-HERE ( -- n ) here NULL-PTR - ;
 
 \ The pending record's fixed body ( val entry kind ): entry is the routine a
