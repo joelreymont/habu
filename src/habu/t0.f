@@ -1460,7 +1460,7 @@ variable CLAUSE-ORD                 \ the checker's ordinal of the clause's firs
    pads NDICT:MATCH-NONE <> MATCH-CK
    k CS-WID @ 1- pads - {: pay:n :}
    pay 0 >= MATCH-CK
-   at NDICT:MATCH-PAYLOAD drop pay = MATCH-CK
+   at CHECKER-OWNER:MATCH-PAYLOAD drop pay = MATCH-CK
    at LAST-ARM? if LAST-TEST else OF-TEST then
    pads 0 ?do DROP1 loop ;
 
@@ -1495,7 +1495,7 @@ variable CLAUSE-ORD                 \ the checker's ordinal of the clause's firs
 \ value is the bundle without its tag.
 : DO-CONSTRUCT ( n n n -- ) {: tag:n pads:n at:n :}
    tag 0 >= MATCH-CK
-   at NDICT:CALL-CELLS drop 0 >= MATCH-CK
+   at CHECKER-OWNER:CALL-CELLS drop 0 >= MATCH-CK
    at 1- ROW$ TFL-CON-FAM? MATCH-CK {: fam:n :}
    pads at NDICT:CON-PADS +  0 ?do 0 PUSH-CONST loop
    fam TFAM:TFAM-NICHE? if exit then

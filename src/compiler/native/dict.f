@@ -458,15 +458,6 @@ public
 : FINALLY-CELLS ( n -- n n n )
    EFFECT-FINALLY-CELLS ;
 
-: CALL-CELLS ( n -- n n ) CHECKER-OWNER:CALL-CELLS ;
-: INIT-LAYOUT ( n -- n n n ) CHECKER-OWNER:INIT-LAYOUT ;
-: FIELD-SPAN ( n -- n n ) CHECKER-OWNER:FIELD-SPAN ;
-: C2-STOW ( n -- n n ) CHECKER-OWNER:C2-STOW ;
-: CALL-GLUE ( n -- n n ) CHECKER-OWNER:CALL-GLUE ;
-: MATCH-PAYLOAD ( n -- n n ) CHECKER-OWNER:MATCH-PAYLOAD ;
-: CALL-QUOT-IN ( n n -- n n ) CHECKER-OWNER:CALL-QUOT-IN ;
-: CALL-QUOT-OUT ( n n -- n n ) CHECKER-OWNER:CALL-QUOT-OUT ;
-
 \ ---- and how many cells a layout token really moves ---------------------------
 -1 constant MATCH-NONE               \ no dispatch cell count was proved for that token
 
@@ -486,18 +477,18 @@ public
 \ ---- and the literal inputs a call takes on top of its checked site inputs ---
 \ Tier 0 pushes them, deepest first, just before the call.
 : CALL-EXTRAS ( n -- n ) {: ix:n :}
-   ix INIT-LAYOUT 2drop 0 >= if 3 exit then
-   ix FIELD-SPAN drop 0 >= if 2 exit then
+   ix CHECKER-OWNER:INIT-LAYOUT 2drop 0 >= if 3 exit then
+   ix CHECKER-OWNER:FIELD-SPAN drop 0 >= if 2 exit then
    ix CON-PADS ;
 
 : CALL-EXTRA ( n n -- n ) {: ix:n k:n :}
-   ix INIT-LAYOUT {: width:n bytes:n align:n :}
+   ix CHECKER-OWNER:INIT-LAYOUT {: width:n bytes:n align:n :}
    width 0 >= if
       k 0= if width exit then
       k 1 = if bytes exit then
       align exit
    then
-   ix FIELD-SPAN {: off:n extent:n :}
+   ix CHECKER-OWNER:FIELD-SPAN {: off:n extent:n :}
    off 0 >= if
       k 0= if off exit then
       extent exit
@@ -507,16 +498,8 @@ public
 \ ---- and how many cells one memory access moves ------------------------------
 \ Keyed by the token's OFFSET into the checked text, the same key the engine's
 \ own pass 2 reads. Absent is one cell, which is the checker's own answer.
-: OPERAND-CELLS ( n n -- n )
-   WF-W-AT ;
-
 : MEM-CELLS ( n -- n )
-   0 OPERAND-CELLS ;
-
-\ False for a name the checker holds no control flag for, which is every
-\ ordinary word; SPELL-ARITY refuses an uncertified name before this is reached.
-: SPELL-DEAD? ( ptr u8 n -- bool )
-   CTL-DEAD? ;
+   0 WF-W-AT ;
 
 private
 
