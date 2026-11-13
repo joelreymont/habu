@@ -422,13 +422,15 @@ TYPED-VARIABLE HBB-SAME-OUT bool
    b bu [: HBB-HELD-RESERVE ;] [: HBB-HELD ;] HBB-READ {: hu:n :}
    0 HBB-BUILT au 0 HBB-HELD hu same execute ;
 
+\ The ad hoc build and a team-signed -o hold the same code whatever signed
+\ them; the team check runs codesign, so it goes last.
 : HBB-SAME-PAIR ( -- )
-   HBB-GOT$ HBB-OUT$ [: CODESIGN:SAME-IMAGE? ;] HBB-SAME-FILE? 0= if exit then
-   HBB-MAP-SRC$ HBB-MAP-DST$ [: STR= ;] HBB-SAME-FILE? HBB-SAME-OUT ! ;
+   HBB-GOT$ HBB-OUT$ [: CODESIGN:SAME-CODE? ;] HBB-SAME-FILE? 0= if exit then
+   HBB-MAP-SRC$ HBB-MAP-DST$ [: STR= ;] HBB-SAME-FILE? 0= if exit then
+   HBB-OUT$ CODESIGN:TEAM-SIGNED? HBB-SAME-OUT ! ;
 
-\ True when -o and its map already hold what the build made, the image apart
-\ from its signature, so the install leaves both, change time and inode, as
-\ they are. An installed file that cannot be read is replaced as a differing one.
+\ True when -o is team-signed and it and its map hold what the build made, so the
+\ install leaves both untouched; an unreadable -o counts as differing.
 : HBB-SAME-OUT? ( -- bool )
    false HBB-SAME-OUT !
    [: HBB-SAME-PAIR ;] catch {: rc:n :}
@@ -454,14 +456,15 @@ TYPED-VARIABLE HBB-SAME-OUT bool
    HBB-SAME-MODULE? if exit then
    [: HBB-MODULE-FILL ;] HBB-REPLACE-OUT ;
 
-\ The build's files, whole under TMPDIR and a program team-signed, are compared
-\ with -o's before anything is staged beside -o; HBB-CLEANUP removes them either way.
+\ Only a program that replaces -o is team-signed, under TMPDIR before it is
+\ staged: an unchanged build signs nothing.
 : HBB-INSTALL-OUT ( -- )
    HBB-GOT$ FS:FILE? 0= if E-BUILD-PATH throw then
    HBB-WASM? if HBB-INSTALL-MODULE exit then
    HBB-GOT$ HBB-MAP-SRC!
    HBB-OUT$ HBB-MAP-DST!
    HBB-SAME-OUT? if exit then
+   HBB-GOT$ CODESIGN:ENSURE
    [: HBB-INSTALL-FILL ;] HBB-PAIR-RUN ;
 
 : HBB-SUCCESS ( -- )
@@ -557,12 +560,9 @@ TYPED-VARIABLE HBB-SAME-OUT bool
    then
    HBB-BUILD-RC HBB-EXIT ;
 
-\ LINKER:WRITE signs ad hoc, so a linked program is signed for the team here
-\ (src/lib/codesign.f); a Wasm module is not signed.
 : HBB-BUILD-REST ( -- )
    ['] HBB-LINK catch {: rc:n :}
    rc 0<> if rc HBB-LINK-FAILED then
-   HBB-WASM? 0= if HBB-GOT$ CODESIGN:ENSURE then
    HBB-INSTALL-OUT
    HBB-FINISH ;
 

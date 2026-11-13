@@ -7,7 +7,9 @@ require src/lib/fmt.f
 require src/lib/test.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
+require src/lib/fs-identity.f
 require src/lib/fd.f
+require src/lib/codesign.f
 require src/lib/json.f
 require src/lib/process-command.f
 require src/lib/engine-candidate.f
@@ -1130,6 +1132,31 @@ variable CLASS-N                        \ the class CLASS+ read
    s" U3" WHICH!  s" r.f" s" prog-n" NEST-BUILD 0= if exit then
    s" prog-n" s\" 2\n" s" the program prints K" NEST-RUN ;
 
+\ prog-n's inode and change time, seconds and nanoseconds.
+: PROG-N-STAMP ( -- n n n )
+   L$ s" prog-n" IN$ FS:PATH-IDENTITY nip
+   L$ s" prog-n" IN$ FS:FILE-META {: size:n ms:n mns:n cs:n cns:n :}
+   cs cns ;
+
+: STAMP= ( n n n n n n -- bool ) {: i1:n s1:n n1:n i2:n s2:n n2:n :}
+   i1 i2 = s1 s2 = and n1 n2 = and ;
+
+\ Guards the install of an unchanged program: U4, with nothing changed since U3, leaves prog-n as it
+\ was; U5, after x.f's K changes, replaces it with a team-signed one.
+: KEPT-CASE ( CMD:command -- CMD:command )
+   L$ s" prog-n" IN$ FS:FILE? 0= if exit then
+   PROG-N-STAMP {: ino:n cs:n cns:n :}
+   s" U4" WHICH!  s" r.f" s" prog-n" NEST-BUILD 0= if exit then
+   s" the build leaves the program's inode and change time" LABEL
+   ino cs cns PROG-N-STAMP STAMP= TTRUE
+   s" the program's signature is valid" LABEL  L$ s" prog-n" IN$ CODESIGN:VERIFY-RC 0 T=
+   s" 3" WRITE-X
+   s" U5" WHICH!  s" r.f" s" prog-n" NEST-BUILD 0= if exit then
+   s" the build replaces the program" LABEL  ino cs cns PROG-N-STAMP STAMP= TFALSE
+   s" the program is signed for the team" LABEL
+   L$ s" prog-n" IN$ CODESIGN:TEAM-SIGNED? TTRUE
+   s" prog-n" s\" 3\n" s" the program prints K" NEST-RUN ;
+
 \ The same-name sequence's g.f: DEF makes a word of the name it reads, or reads it and makes nothing;
 \ FLAG is true when DEF makes one.
 : WRITE-G ( bool -- ) {: make:bool :}
@@ -1444,7 +1471,7 @@ variable CLASS-N                        \ the class CLASS+ read
    [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE PATH-CASE STALE-CASE HIDDEN-CASE SEALED-CASE
       STORED-CASE RETIRED-CASE ORDER-CASE PART-LINK-CASE PIECE-CASE SEAL-CASE SQUAT-CASE CAUGHT-CASE
       CTOR-CASE EXPORT-CASE
-      NEST-CASE SAME-CASE RETIRE-CASE SPELLED-CASE PACKAGED-CASE EVALUATED-CASE OPENED-CASE CAST-CASE
+      NEST-CASE KEPT-CASE SAME-CASE RETIRE-CASE SPELLED-CASE PACKAGED-CASE EVALUATED-CASE OPENED-CASE CAST-CASE
       CROSS-CASE TARGET-CASE ;]
    CMD:WITH-COMMAND ;
 
