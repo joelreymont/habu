@@ -679,17 +679,6 @@
 \ spelling is compared with the whole prefix, so L, LSP and LSP: each reach
 \ LSP:MAIN. The selection decides, not the source.
 \
-\ Captured effect graphs: each graph the capture's freeze copies is checked in
-\ three passes (CK-GRAPH-CHECK). The structural pass proves a finite acyclic
-\ graph of well-formed nodes. The relevance pass records, per node, a mask of the binders
-\ outside it that its descendants can name; a forall body consumes bit zero and
-\ shifts its other references toward the new caller. The lexical pass checks how
-\ each reference is reached: input position, scheme placement, a family's scope
-\ slot, and whether storage has cut off scope access. A child shared at two
-\ depths is revisited at the shallower depth, where a free bound variable is
-\ visible. A memo hit needs matching domains for the outer binders the node can
-\ name, so paths differing only in unused domains share one result.
-\
 \ The cast walk: CAST-INTRO? and CAST-MAY-LINEAR? walk a cast's terms through
 \ pointees, quotation rows and layout members. A layout's members can name the
 \ layout again (an ENUM variant may hold a pointer to its own family), so the
@@ -2533,7 +2522,7 @@ CWIN-BOOT-DEFAULT
 20 constant CC-NS   21 constant CC-TOK  22 constant CC-REG   23 constant CC-LABEL
 24 constant CC-VA   25 constant CC-SYMIDX 26 constant CC-ASM
 27 constant CC-IMG  28 constant CC-SNAP  29 constant CC-F32
-30 constant CC-U16 31 constant CC-MAX
+30 constant CC-U16
 256 constant CT-CAP-INIT       \ signature type table records
 4096 constant CT-STR-INIT       \ signature type string pool
 variable CT-CAP-V   CT-CAP-INIT CT-CAP-V !
@@ -5573,10 +5562,6 @@ CTL-RENDERS CTL-PARSES or CTL-CREATES or CTL-NOMINAL or constant CTL-INHERITED
 \ CTL-NAMES means the word looks its top string operand up, so a string literal
 \ just before a call of it is a use of the word it names.
 CHECKER-OWNER-ABI:BINDING-NAMES constant CTL-NAMES
-$1000F CTL-CORE-OP or CTL-ZERO-TRUE or CTL-ZERO-FALSE or CTL-INHERITED or
-CTL-INTRINSIC-MASK or CTL-NAMES or CTL-GENERATES or
-   constant CTL-GRAPH-FLAGS
-
 
 \ The `intrinsic` tag's operand for intrinsic id n, empty for an id no
 \ INTRINSIC-* constant names.
@@ -9446,39 +9431,6 @@ $40 constant EFF-CONTENT
 : E-RVN@ ( ptr u8 -- n ) E-CONTENT EC.RVN @ ;
 : E-MINI@ ( ptr u8 -- n ) E-CONTENT EC.MINI @ ;
 
-\ The owner callback and serialized graph use this flat wire layout.
-$0 constant EW-NEXT-OFF
-$8 constant EW-ACTIVE-OFF
-$10 constant EW-DIN-OFF
-$18 constant EW-DOUT-OFF
-$20 constant EW-RIN-OFF
-$28 constant EW-ROUT-OFF
-$30 constant EW-HASR-OFF
-$38 constant EW-TVN-OFF
-$40 constant EW-RVN-OFF
-$48 constant EW-SYM-OFF
-$50 constant EW-MINI-OFF
-\ Serialized graphs require zero here; owner transfer projects the binding link.
-$58 constant EW-SYMPREV-OFF
-$60 constant EFF-WIRE
-: EW.NEXT ( ptr u8 -- ptr n ) EW-NEXT-OFF + CELL-VIEW ;
-: EW.ACTIVE ( ptr u8 -- ptr n ) EW-ACTIVE-OFF + CELL-VIEW ;
-: EW.DIN ( ptr u8 -- ptr n ) EW-DIN-OFF + CELL-VIEW ;
-: EW.DOUT ( ptr u8 -- ptr n ) EW-DOUT-OFF + CELL-VIEW ;
-: EW.RIN ( ptr u8 -- ptr n ) EW-RIN-OFF + CELL-VIEW ;
-: EW.ROUT ( ptr u8 -- ptr n ) EW-ROUT-OFF + CELL-VIEW ;
-: EW.HASR ( ptr u8 -- ptr n ) EW-HASR-OFF + CELL-VIEW ;
-: EW.TVN ( ptr u8 -- ptr n ) EW-TVN-OFF + CELL-VIEW ;
-: EW.RVN ( ptr u8 -- ptr n ) EW-RVN-OFF + CELL-VIEW ;
-: EW.SYM ( ptr u8 -- ptr n ) EW-SYM-OFF + CELL-VIEW ;
-: EW.MINI ( ptr u8 -- ptr n ) EW-MINI-OFF + CELL-VIEW ;
-: EW.SYMPREV ( ptr u8 -- ptr n ) EW-SYMPREV-OFF + CELL-VIEW ;
-
-0 constant EN-TAG-CELL
-1 constant EN-A-CELL
-2 constant EN-B-CELL
-3 constant EN-C-CELL
-4 constant EN-D-CELL
 $0 constant EN-TAG-OFF
 $8 constant EN-A-OFF
 $10 constant EN-B-OFF
@@ -10907,78 +10859,6 @@ BADSIG-DEFAULT
 : RECOVERY-RECORD ( -- )
    EFF-RECOVERY CHECKER-REC-SYM @ USIG-NEWEST 1- E-PTR ER.ACTIVE ! ;
 
-\ ---- the AOT signature pool: the capture side --------------------------------
-\ Armed while a capture window is open; the freeze writes a row per marked
-\ symbol with a stored effect.
-
-$10000 constant ASIG-ROW-INIT           \ bytes; grows geometrically
-$40000 constant ASIG-STR-INIT           \ bytes
-$800 constant ASIG-DIST-INIT            \ cells
-$2000 constant ASIG-LAST-INIT           \ cells, indexed by symbol id
-16 constant ASIG-ROW                    \ name-off, sig-off, pkg-off, vis - four u32
-$0 constant ASIG.NAME
-$4 constant ASIG.SIG
-$8 constant ASIG.PKG
-$C constant ASIG.VIS
-$FFFF constant ASIG-STR-MAX             \ what a u16 length prefix can carry
-
-variable ASIG-FROZEN
-variable ASIG-ARMED     variable ASIG-MAPPED
-variable ASIG-ROW-U     variable ASIG-ROW-CAP-V
-variable ASIG-STR-U     variable ASIG-STR-CAP-V
-variable ASIG-DIST-N    variable ASIG-DIST-CAP-V
-variable ASIG-LAST-CAP-V
-variable ASIG-I         variable ASIG-J
-PTR-VARIABLE ASIG-ROW-P
-PTR-VARIABLE ASIG-STR-P
-PTR-VARIABLE ASIG-DIST-P
-PTR-VARIABLE ASIG-LAST-P
-
-: CHECKER-ASIG-ARMED? ( -- bool ) ASIG-ARMED @ 0 <> ;
-
-: ASIG-U16! ( n n -- ) {: v:n at:n :}
-   v $FF and  ASIG-STR-P @ at + c!
-   v 8 rshift $FF and  ASIG-STR-P @ at 1 + + c! ;
-
-: ASIG-U16@ ( n -- n ) {: at:n :}
-   ASIG-STR-P @ at + c@  ASIG-STR-P @ at 1 + + c@ 8 lshift or ;
-
-: ASIG-ROW-U32! ( n n -- ) {: v:n at:n :}
-   4 0 ?do  v i 8 * rshift $FF and  ASIG-ROW-P @ at i + + c!  loop ;
-
-\ Per symbol: 1 marks a word the window captured, then the freeze stores its row
-\ offset + 1.
-: ASIG-LAST-ROOM ( n -- ) {: sym:n :}
-   sym ASIG-LAST-CAP-V @ < IF exit THEN
-   ASIG-LAST-CAP-V @ BEGIN dup sym <= WHILE 2 * REPEAT {: nc:n :}
-   ASIG-LAST-P @ ASIG-LAST-CAP-V @ cells nc cells ARENA-BYTES-GROW ASIG-LAST-P !
-   ASIG-LAST-P @ ASIG-LAST-CAP-V @ nc ARENA-CELLS-ZERO
-   nc ASIG-LAST-CAP-V ! ;
-
-: ASIG-LAST@ ( n -- n ) {: sym:n :}
-   sym ASIG-LAST-CAP-V @ >= IF 0 EXIT THEN
-   ASIG-LAST-P @ sym cells + @ ;
-
-: ASIG-LAST! ( n n -- ) {: v:n sym:n :}
-   sym ASIG-LAST-ROOM
-   v ASIG-LAST-P @ sym cells + ! ;
-
-\ Clears one symbol's entry; a symbol at or past the capacity never had one, and
-\ ASIG-LAST! would grow the arena to store a zero.
-: ASIG-LAST-FORGET ( n -- ) {: sym:n :}
-   sym ASIG-LAST-CAP-V @ >= IF EXIT THEN
-   0 sym ASIG-LAST! ;
-
-\ Clears the entries of symbols [n, SYM-N) before a scope restores SYM-N, whose
-\ ids a rollback hands back.
-: ASIG-SYMS-RETIRE ( n -- ) {: keep:n :}
-   ASIG-MAPPED @ 0= IF EXIT THEN
-   SYM-N @ 1 -
-   BEGIN dup keep >= WHILE
-      dup ASIG-LAST-FORGET
-      1 -
-   REPEAT drop ;
-
 \ A rollback lowers SYM-N and SYM-STR-U only here. The indexes retire while HIDX
 \ can read the rows; zeroed rows and bytes leave no retired symbol in an image.
 : SYM-REWIND ( n n -- ) {: symn:n symu:n :}
@@ -10986,123 +10866,10 @@ PTR-VARIABLE ASIG-LAST-P
       s" checker: symbol rewind outside the registry" 76 die
    THEN
    symn HIDX-SYMS-RETIRE
-   symn ASIG-SYMS-RETIRE
    SYMS CELL-VIEW  symn SYM-REC CELL / *  SYM-N @ SYM-REC CELL / *  ARENA-CELLS-ZERO
    SYM-STR symu +  SYM-STR-U @ symu -  ARENA-ZERO
    symn SYM-N !
    symu SYM-STR-U ! ;
-
-: ASIG-ROW-ROOM ( -- )
-   ASIG-ROW-U @ ASIG-ROW + ASIG-ROW-CAP-V @ <= IF exit THEN
-   ASIG-ROW-P @ ASIG-ROW-CAP-V @ dup 2 * {: old:ptr oc:n nc:n :}
-   old oc nc ARENA-BYTES-GROW ASIG-ROW-P !
-   nc ASIG-ROW-CAP-V ! ;
-
-: ASIG-RELEASE ( ptr u8 n -- )
-   dup 0 > IF munmap drop ELSE 2drop THEN ;
-
-: ASIG-STR-ROOM ( n -- ) {: need:n :}
-   ASIG-STR-U @ need + ASIG-STR-CAP-V @ <= IF exit THEN
-   ASIG-STR-P @ ASIG-STR-CAP-V @ {: old:ptr oc:n :}
-   oc BEGIN dup ASIG-STR-U @ need + < WHILE 2 * REPEAT {: nc:n :}
-   old oc nc ARENA-BYTES-GROW ASIG-STR-P !
-   nc ASIG-STR-CAP-V ! ;
-
-: ASIG-DIST-ROOM ( -- )
-   ASIG-DIST-N @ ASIG-DIST-CAP-V @ < IF exit THEN
-   ASIG-DIST-P @ ASIG-DIST-CAP-V @ cells dup 2 * {: old:ptr ob:n nb:n :}
-   old ob nb ARENA-BYTES-GROW ASIG-DIST-P !
-   ASIG-DIST-CAP-V @ 2 * ASIG-DIST-CAP-V ! ;
-
-\ Append `[len u16][bytes]` and answer the record's own offset.
-: ASIG-STR+ ( ptr u8 n -- n ) {: a:ptr u:n :}
-   u ASIG-STR-MAX > IF
-      s" checker: a signature-pool string is longer than the pool's length field" 76 die
-   THEN
-   u 2 + ASIG-STR-ROOM
-   ASIG-STR-U @ {: at:n :}
-   u at ASIG-U16!
-   0 ASIG-I !
-   BEGIN ASIG-I @ u < WHILE
-      a ASIG-I @ + c@  ASIG-STR-P @ at 2 + ASIG-I @ + + c!
-      ASIG-I @ 1 + ASIG-I !
-   REPEAT
-   at u + 2 + ASIG-STR-U !
-   at ;
-
-: ASIG-STR-AT= ( ptr u8 n n -- bool ) {: a:ptr u:n at:n :}
-   at ASIG-U16@ u <> IF RES-FALSE EXIT THEN
-   0 ASIG-J !
-   BEGIN ASIG-J @ u < WHILE
-      a ASIG-J @ + c@  ASIG-STR-P @ at 2 + ASIG-J @ + + c@ <> IF RES-FALSE EXIT THEN
-      ASIG-J @ 1 + ASIG-J !
-   REPEAT
-   RES-TRUE ;
-
-\ Package names repeat; ASIG-EMIT appends a word name, nearly unique, unscanned.
-: ASIG-STR-INTERN ( ptr u8 n -- n ) {: a:ptr u:n :}
-   0 ASIG-I !
-   BEGIN ASIG-I @ ASIG-DIST-N @ < WHILE
-      ASIG-DIST-P @ ASIG-I @ cells + @ {: at:n :}
-      a u at ASIG-STR-AT= IF at EXIT THEN
-      ASIG-I @ 1 + ASIG-I !
-   REPEAT
-   a u ASIG-STR+ {: at2:n :}
-   ASIG-DIST-ROOM
-   at2 ASIG-DIST-P @ ASIG-DIST-N @ cells + !
-   ASIG-DIST-N @ 1 + ASIG-DIST-N !
-   at2 ;
-
-: ASIG-ROW+ ( n n n n -- ) {: noff:n soff:n poff:n vis:n :}
-   ASIG-ROW-ROOM
-   ASIG-ROW-U @ {: at:n :}
-   noff at ASIG.NAME + ASIG-ROW-U32!
-   soff at ASIG.SIG  + ASIG-ROW-U32!
-   poff at ASIG.PKG  + ASIG-ROW-U32!
-   vis  at ASIG.VIS  + ASIG-ROW-U32!
-   at ASIG-ROW + ASIG-ROW-U ! ;
-
-\ Writes the symbol's row and points its index entry at it (the freeze only).
-: ASIG-EMIT ( n n -- ) {: sym:n soff:n :}
-   sym SYM-NAME$ ASIG-STR+ {: noff:n :}
-   sym SYM-PKG$ ASIG-STR-INTERN {: poff:n :}
-   ASIG-ROW-U @ {: at:n :}
-   noff soff poff  sym SYM-ROW SYM.VIS @  ASIG-ROW+
-   at 1 + sym ASIG-LAST! ;
-
-\ The final verified graph and control flags are copied at freeze, after
-\ publication is complete. Text is deliberately not replayed: a declared row
-\ may have acquired fixed input requirements during certification.
-: CHECKER-ASIG-CAPTURE ( ptr u8 n -- )
-   2drop
-   CHECKER-ASIG-ARMED? 0= IF EXIT THEN
-   CHECKER-REC-SYM @ dup 0= IF drop EXIT THEN
-   1 swap ASIG-LAST! ;
-
-: CHECKER-ASIG-EXPORT ( n -- ) {: src:n :}
-   CHECKER-ASIG-ARMED? 0= IF EXIT THEN
-   src 0= IF EXIT THEN
-   src ASIG-LAST@ 0= IF EXIT THEN
-   CHECKER-REC-SYM @ dup 0= IF drop EXIT THEN
-   1 swap ASIG-LAST! ;
-
-: CHECKER-ASIG-RESET ( -- )
-   0 ASIG-FROZEN !
-   0 ASIG-ROW-U !  0 ASIG-STR-U !  0 ASIG-DIST-N !
-   ASIG-LAST-P @ 0 ASIG-LAST-CAP-V @ ARENA-CELLS-ZERO ;
-
-: CHECKER-ASIG-ARM ( -- )
-   ASIG-MAPPED @ 0= IF
-      ASIG-ROW-INIT ARENA-ALLOC ASIG-ROW-P !   ASIG-ROW-INIT ASIG-ROW-CAP-V !
-      ASIG-STR-INIT ARENA-ALLOC ASIG-STR-P !   ASIG-STR-INIT ASIG-STR-CAP-V !
-      ASIG-DIST-INIT cells ARENA-ALLOC ASIG-DIST-P !  ASIG-DIST-INIT ASIG-DIST-CAP-V !
-      ASIG-LAST-INIT cells ARENA-ALLOC ASIG-LAST-P !  ASIG-LAST-INIT ASIG-LAST-CAP-V !
-      -1 ASIG-MAPPED !
-   THEN
-   CHECKER-ASIG-RESET
-   -1 ASIG-ARMED ! ;
-
-: CHECKER-ASIG-DISARM ( -- ) 0 ASIG-ARMED ! ;
 
 \ The token SGBAD names in signature SA SU, at its copy in the checked text
 \ when the scan holds SA SU's bytes there at SGA SGU, else where the parse read it.
@@ -11171,7 +10938,6 @@ PTR-VARIABLE ASIG-LAST-P
       s" checker: asserted signature cannot publish a scope scheme" 76 die THEN
    din KEEP-QUOTS
    din dout rin rout SGHASR @ external E-ADD-EFFECT
-   sa su CHECKER-ASIG-CAPTURE
    RES-TRUE ;
 
 : USIG-SYM@ ( ptr u8 -- n )
@@ -13819,38 +13585,6 @@ package CHECKER-REG
    THEN
    FEP-HIT? ;
 
-\ ---- the capture audit's two questions ---------------------------------------
-\ The scope arrives as a package name and a public flag, never a visibility
-\ number: SYM-GLOBAL/SYM-PRIVATE/SYM-PUBLIC are not reachable from checked code.
-: ASIG-AUDIT-VIS ( n bool -- n ) {: pkgu:n pub:bool :}
-   pkgu 0= IF SYM-GLOBAL EXIT THEN
-   pub IF SYM-PUBLIC EXIT THEN
-   SYM-PRIVATE ;
-
-\ A package or name longer than any name keys no row; answered before hashing.
-: ASIG-AUDIT-SYM ( ptr u8 n bool ptr u8 n -- n bool )
-   {: pkg:ptr pkgu:n pub:bool na:ptr nu:n :}
-   pkg pkgu BYTE-SPAN? na nu BYTE-SPAN? and 0= IF 0 RES-FALSE EXIT THEN
-   pkg pkgu  pkgu pub ASIG-AUDIT-VIS  na nu SYM-FIND ;
-
-: CHECKER-ASIG-KNOWN? ( ptr u8 n bool ptr u8 n -- bool )
-   ASIG-AUDIT-SYM {: sym:n hit:bool :}
-   hit 0= IF RES-FALSE EXIT THEN
-   sym CHECKER-FIND-USIG-SYM ;
-
-\ True when the word is callable here and would not be in the seeded engine.
-: CHECKER-ASIG-MISSING? ( ptr u8 n bool ptr u8 n -- bool )
-   ASIG-AUDIT-SYM {: sym:n hit:bool :}
-   hit 0= IF RES-FALSE EXIT THEN
-   sym CHECKER-FIND-USIG-SYM 0= IF RES-FALSE EXIT THEN
-   sym ASIG-LAST@ 0= ;
-
-\ The word's row offset plus one, 0 for none.
-: CHECKER-ASIG-ROW-FOR ( ptr u8 n bool ptr u8 n -- n )
-   ASIG-AUDIT-SYM {: sym:n hit:bool :}
-   hit 0= IF 0 EXIT THEN
-   sym ASIG-LAST@ ;
-
 : CHECKER-FIND-USIG ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u CHECKER-RECORD-SYM CHECKER-FIND-USIG-SYM ;
 
@@ -14692,8 +14426,8 @@ CHECKER-REG:}SCRATCH
 
 \ CHECK's publication of a declared signature. Its refusals were asked by
 \ PUBLISH-REFUSALS before the definition's first write.
-: CHECKER-USIG-CERT-PARSED ( ptr u8 n ptr u8 n -- )
-   {: sa:ptr su:n na:ptr nu:n :}
+: CHECKER-USIG-CERT-PARSED ( ptr u8 n -- )
+   {: na:ptr nu:n :}
    na nu  NMOFF @ TADDR nu  CHECKER-REC-NAME-AT!
    SG-ROWS-N @ 0 <> IF
       SG-ROWS-RESOLVE
@@ -14701,8 +14435,7 @@ CHECKER-REG:}SCRATCH
       [: CHECKER-PUBLISH-PARSED ;] catch
       SG-ROWS-RESET
        dup 0 <> IF throw THEN drop
-   ELSE CHECKER-PUBLISH-PARSED THEN
-   sa su CHECKER-ASIG-CAPTURE ;
+   ELSE CHECKER-PUBLISH-PARSED THEN ;
 
 \ Publishes certified rows as built, under the signature text SA SU, which only
 \ a refusal names. Only USIG-ADD-AS's depth bound can trip.
@@ -14711,8 +14444,7 @@ CHECKER-REG:}SCRATCH
    na nu na nu USIG-CERT-ADMIT
    sa su na nu na nu  din dout rin rout  USIG-DEPTH-FITS? 0= IF DL-TAKE EXIT THEN
    din KEEP-QUOTS
-   din dout rin rout hasr RES-TRUE E-ADD-EFFECT DL-TAKE
-   sa su CHECKER-ASIG-CAPTURE ;
+   din dout rin rout hasr RES-TRUE E-ADD-EFFECT DL-TAKE ;
 
 \ Publishes a cast's certified rows as parsed: a reparse refuses a view pack
 \ and drops the marks a gate raised.
@@ -15148,53 +14880,6 @@ CHECKER-REG:}SCRATCH
 : NORET-ENSURE {: need :}
    need NORET-CAP-U @ <= IF exit THEN
    need NORET-GROW ;
-
-\ ---- the type registry an AOT capture has to carry ---------------------------
-\ The registry delta a capture carries. The type registries load after this
-\ file and install these.
-defer REG-EXT-AOT-MARK-XT ( -- )
-defer REG-EXT-AOT-CLOSE-XT ( -- )
-defer REG-EXT-AOT-SAVE-XT ( ptr u8 n -- n )
-\ The graph node and its strings have already passed extent checks. The
-\ registry validates its canonical family identity.
-defer REG-EXT-AOT-PARAM-XT ( ptr u8 ptr u8 -- )
-\ The family's parameter kinds come from the registry row that authenticated
-\ its name and arity.
-defer REG-EXT-AOT-SCOPE-XT ( ptr u8 n -- bool )
-defer REG-EXT-AOT-REGION-XT ( ptr u8 n -- bool )
-\ Read a graph family's logical width from already validated argument widths
-\ and the registry. Hidden row fields are charged separately.
-defer REG-EXT-AOT-WIDTH-XT ( ptr u8 ptr u8 ptr u8 -- n )
-
-\ A build with no type registry has no delta to write.
-: REG-EXT-AOT-NO-SAVE ( ptr u8 n -- n ) 2drop 0 ;
-: REG-EXT-AOT-NO-PARAM ( ptr u8 ptr u8 -- )
-   2drop
-   s" checker: a captured family arrived with no registry to validate it" 76 die ;
-
-: REG-EXT-AOT-NO-SCOPE ( ptr u8 n -- bool )
-   2drop
-   s" checker: a captured scope slot arrived with no registry" 76 die ;
-
-
-\ The callback has a result contract even though this default never returns.
-: REG-EXT-AOT-NO-WIDTH ( ptr u8 ptr u8 ptr u8 -- n )
-   drop REG-EXT-AOT-NO-PARAM ;
-
-
-: REG-EXT-AOT-DEFAULTS ( -- )
-   [: ;] is REG-EXT-AOT-MARK-XT
-   [: ;] is REG-EXT-AOT-CLOSE-XT
-   [: REG-EXT-AOT-NO-SAVE ;] is REG-EXT-AOT-SAVE-XT
-   [: REG-EXT-AOT-NO-PARAM ;] is REG-EXT-AOT-PARAM-XT
-   [: REG-EXT-AOT-NO-SCOPE ;] is REG-EXT-AOT-SCOPE-XT
-   [: REG-EXT-AOT-NO-SCOPE ;] is REG-EXT-AOT-REGION-XT
-   [: REG-EXT-AOT-NO-WIDTH ;] is REG-EXT-AOT-WIDTH-XT ;
-REG-EXT-AOT-DEFAULTS
-
-: CHECKER-REG-AOT-MARK ( -- ) REG-EXT-AOT-MARK-XT ;
-: CHECKER-REG-AOT-CLOSE ( -- ) REG-EXT-AOT-CLOSE-XT ;
-: CHECKER-REG-AOT-SAVE ( ptr u8 n -- n ) REG-EXT-AOT-SAVE-XT ;
 
 : NORET-REC ( -- ptr n )
    NORET-END @ NORET-CELL ;
@@ -16397,7 +16082,6 @@ variable CURSYM
    DL-NEW @ {: effect:n :}
    DL-TAKE-TAIL
    recovery IF RECOVERY-RECORD THEN
-   src CHECKER-ASIG-EXPORT
    a u src EXPORT-META-COPY
    carries IF a u EXPORT-TAIL$ CHECKER-SOURCE-CLAUSE THEN
    \ Only the declaration callback has an engine alias to link to this row.
@@ -22322,649 +22006,6 @@ variable ARMED   0 ARMED !
 
 ;package
 
-\ ---- the captured signature graphs -------------------------------------------
-\ The capture carries the window's signatures beside its records.
-\ A row has four u32 fields (name, graph, package, visibility). Name/package
-\ offsets point at `[len u16][bytes]`; the graph offset points at the aligned
-\ self-contained verified graph below. The E record/node shapes are reused with
-\ blob-relative references: EW.ACTIVE carries the magic, EW.NEXT the byte
-\ length, EW.SYM the control/defer flags. No source symbol id or history link
-\ travels.
-$4842470000000003 constant ASIG-GRAPH-MAGIC
-$10000 constant ASIG-GRAPH-DEFER
-\ The node map is owned and reused across copies and files; its slots carry
-\ generation stamps, so a generation that restarts at 0 clears them first.
-PTR-VARIABLE ASIG-GRAPH-MAP
-variable ASIG-GRAPH-MAP-CAP
-CHECKER-REG:SCRATCH{
-variable ASIG-GRAPH-BASE
-variable ASIG-GRAPH-GEN
-CHECKER-REG:}SCRATCH
-
-: ASIG-GRAPH-DIE ( -- )
-   s" checker: invalid captured effect graph" 76 die ;
-
-: ASIG-GRAPH-EXCEPTION-DIE ( -- )
-   s" checker: exceptional quotation rows are not portable" 76 die ;
-
-: ASIG-GRAPH-PTR ( n -- ptr u8 )
-   ASIG-GRAPH-BASE @ + ASIG-STR-P @ + ;
-
-: ASIG-GRAPH-ALIGN ( -- )
-   ASIG-STR-U @ 7 + -8 and ASIG-STR-U @ - {: pad:n :}
-   pad ASIG-STR-ROOM
-   ASIG-STR-P @ ASIG-STR-U @ + pad ARENA-ZERO
-   pad ASIG-STR-U +! ;
-
-: ASIG-GRAPH-ALLOC ( n -- n ) {: bytes:n :}
-   ASIG-GRAPH-ALIGN
-   bytes ASIG-STR-ROOM
-   ASIG-STR-U @ ASIG-GRAPH-BASE @ - {: off:n :}
-   off ASIG-GRAPH-PTR bytes ARENA-ZERO
-   bytes ASIG-STR-U +!
-   off ;
-
-: ASIG-GRAPH-BYTES ( ptr u8 n -- n ) {: src:ptr bytes:n :}
-   bytes ASIG-GRAPH-ALLOC {: off:n :}
-   src off ASIG-GRAPH-PTR bytes ARENA-COPY
-   off ;
-
-\ A generation stamp avoids clearing a map proportional to USIGS for every
-\ effect. It maps only source node offsets; variable IDs remain per effect.
-: ASIG-GRAPH-MAP-ROOM ( -- )
-   UEND @ $3FFFFFFFFFFFFFFF > IF ASIG-GRAPH-DIE THEN
-   UEND @ 2 * {: bytes:n :}
-   bytes ASIG-GRAPH-MAP-CAP @ <= IF EXIT THEN
-   ASIG-GRAPH-MAP @ ASIG-GRAPH-MAP-CAP @ {: old:ptr oldcap:n :}
-   oldcap $3FFFFFFFFFFFFFFF > IF ASIG-GRAPH-DIE THEN
-   bytes oldcap 2 * max {: cap:n :}
-   old oldcap cap ARENA-BYTES-GROW ASIG-GRAPH-MAP !
-   cap ASIG-GRAPH-MAP-CAP ! ;
-
-: ASIG-GRAPH-SLOT ( n -- ptr n )
-   2 * ASIG-GRAPH-MAP @ + CELL-VIEW ;
-
-: ASIG-GRAPH-SOURCE? ( n -- ) {: off:n :}
-   off 0 < off 8 mod 0 <> or IF ASIG-GRAPH-DIE THEN
-   off UEND @ > IF ASIG-GRAPH-DIE THEN
-   EFF-NODE UEND @ off - > IF ASIG-GRAPH-DIE THEN ;
-
-: ASIG-GRAPH-STRING ( n n -- ) {: src:n dst:n :}
-   src E-PTR EN.A @ E-PTR src E-PTR EN.B @ ASIG-GRAPH-BYTES
-   dst ASIG-GRAPH-PTR EN.A ! ;
-
-defer ASIG-GRAPH-CHECK-XT ( ptr u8 n -- )
-
-: ASIG-GRAPH-NODE ( n -- n ) {: src:n :}
-   src 0= IF 0 EXIT THEN
-   src ASIG-GRAPH-SOURCE?
-   src ASIG-GRAPH-SLOT {: slot:ptr :}
-   slot @ ASIG-GRAPH-GEN @ = IF
-      slot CELL + @ dup 0 <= IF drop ASIG-GRAPH-DIE THEN
-      1- EXIT
-   THEN
-   ASIG-GRAPH-GEN @ slot !  -1 slot CELL + !
-   EFF-NODE ASIG-GRAPH-ALLOC {: dst:n :}
-   src E-PTR dst ASIG-GRAPH-PTR EFF-NODE ARENA-COPY
-   src E-PTR EN.TAG @ {: tag:n :}
-   tag EN-CON = IF
-      src E-PTR EN.A @ {: con:n :}
-      con CT-NAME$ ASIG-GRAPH-BYTES dst ASIG-GRAPH-PTR EN.A !
-      con CT-NAME$ nip dst ASIG-GRAPH-PTR EN.B !
-      con CT-CLASS@ dst ASIG-GRAPH-PTR EN.C !
-      con CT-WIDTH@ dst ASIG-GRAPH-PTR EN.D !
-      con CT-SIGN@ dst ASIG-GRAPH-PTR EN.E !
-   ELSE tag EN-PTR = IF
-      src E-PTR EN.A @ RECURSE dst ASIG-GRAPH-PTR EN.A !
-   ELSE tag EN-PUSH = IF
-      src E-PTR EN.A @ RECURSE dst ASIG-GRAPH-PTR EN.A !
-      src E-PTR EN.B @ RECURSE dst ASIG-GRAPH-PTR EN.B !
-   ELSE tag EN-QUOT = IF
-      src E-PTR EN.A @ RECURSE dst ASIG-GRAPH-PTR EN.A !
-      src E-PTR EN.B @ RECURSE dst ASIG-GRAPH-PTR EN.B !
-      src E-PTR EN.C @ RECURSE dst ASIG-GRAPH-PTR EN.C !
-      src E-PTR EN.D @ RECURSE dst ASIG-GRAPH-PTR EN.D !
-      src E-PTR EN.I @ RECURSE dst ASIG-GRAPH-PTR EN.I !
-      \ Effect records hold transient exception-row IDs in G/H, whose
-      \ type/last-write contract does not travel: a graph carrying them is
-      \ refused.
-      src E-PTR EN.E @ 0 <> IF ASIG-GRAPH-EXCEPTION-DIE THEN
-      0 dst ASIG-GRAPH-PTR EN.G !
-      0 dst ASIG-GRAPH-PTR EN.H !
-   ELSE tag EN-FORALL = IF
-      src E-PTR EN.A @ RECURSE dst ASIG-GRAPH-PTR EN.A !
-      src E-PTR EN.B @ RECURSE dst ASIG-GRAPH-PTR EN.B !
-      src E-PTR EN.C @ RECURSE dst ASIG-GRAPH-PTR EN.C !
-   ELSE tag EN-ATOM = IF
-      src dst ASIG-GRAPH-STRING
-   ELSE tag EN-PARAM = IF
-      src E-PTR EN.H @ {: fam:n :}
-      fam REG-EXT-AOT-FAMILY-NAME-XT ASIG-GRAPH-BYTES dst ASIG-GRAPH-PTR EN.A !
-      fam REG-EXT-AOT-FAMILY-NAME-XT nip dst ASIG-GRAPH-PTR EN.B !
-      fam TFAM-PKG$* ASIG-GRAPH-BYTES dst ASIG-GRAPH-PTR EN.F !
-      fam TFAM-PKG$* nip dst ASIG-GRAPH-PTR EN.G !
-      src E-PTR EN.C @ {: argc:n :}
-      argc cells ASIG-GRAPH-ALLOC {: args:n :}
-      args dst ASIG-GRAPH-PTR EN.D !
-      argc 0 ?do
-         src E-PTR EN.D @ i cells + E-PTR CELL-VIEW @ RECURSE
-         args i cells + ASIG-GRAPH-PTR CELL-VIEW !
-      loop
-   ELSE tag EN-VAR <> tag EN-ROW <> and tag EN-BVAR <> and IF ASIG-GRAPH-DIE THEN
-   THEN THEN THEN THEN THEN THEN THEN
-   dst 1+ src ASIG-GRAPH-SLOT CELL + !
-   dst ;
-
-: E-WIRE-COPY ( ptr u8 ptr u8 -- ) {: rec:ptr dst:ptr :}
-   rec E-NEXT@ dst EW.NEXT !
-   rec ER.ACTIVE @ dst EW.ACTIVE !
-   rec ER.SYM @ dst EW.SYM !
-   rec ER.SYMPREV @ dst EW.SYMPREV !
-   rec E-DIN@ dst EW.DIN ! rec E-DOUT@ dst EW.DOUT !
-   rec E-RIN@ dst EW.RIN ! rec E-ROUT@ dst EW.ROUT !
-   rec E-HASR@ dst EW.HASR ! rec E-TVN@ dst EW.TVN !
-   rec E-RVN@ dst EW.RVN ! rec E-MINI@ dst EW.MINI ! ;
-
-: ASIG-GRAPH-COPY-RECORD ( n n -- n ) {: off1:n flags:n :}
-   off1 0= IF ASIG-GRAPH-DIE THEN
-   off1 1- {: src:n :}
-   \ A failed declaration's row serves only its own run, and the wire has no
-   \ recovery state.
-   src E-PTR ER.ACTIVE @ EFF-RECOVERY = IF
-      s" checker: a failed declaration's row is not portable" 76 die
-   THEN
-   \ A retire restarted the generation: the map's stamps name earlier ones.
-   ASIG-GRAPH-GEN @ 0= IF ASIG-GRAPH-MAP @ ASIG-GRAPH-MAP-CAP @ ARENA-ZERO THEN
-   ASIG-GRAPH-MAP-ROOM
-   ASIG-GRAPH-GEN @ 1+ dup 0 <= IF drop ASIG-GRAPH-DIE THEN
-   ASIG-GRAPH-GEN !
-   ASIG-GRAPH-ALIGN
-   ASIG-STR-U @ ASIG-GRAPH-BASE !
-   EFF-WIRE ASIG-GRAPH-ALLOC drop
-   src E-PTR 0 ASIG-GRAPH-PTR E-WIRE-COPY
-   ASIG-GRAPH-MAGIC 0 ASIG-GRAPH-PTR EW.ACTIVE !
-   0 0 ASIG-GRAPH-PTR EW.SYMPREV !
-   flags 0 ASIG-GRAPH-PTR EW.SYM !
-   src E-PTR E-DIN@ ASIG-GRAPH-NODE 0 ASIG-GRAPH-PTR EW.DIN !
-   src E-PTR E-DOUT@ ASIG-GRAPH-NODE 0 ASIG-GRAPH-PTR EW.DOUT !
-   src E-PTR E-RIN@ ASIG-GRAPH-NODE 0 ASIG-GRAPH-PTR EW.RIN !
-   src E-PTR E-ROUT@ ASIG-GRAPH-NODE 0 ASIG-GRAPH-PTR EW.ROUT !
-   ASIG-STR-U @ ASIG-GRAPH-BASE @ - 0 ASIG-GRAPH-PTR EW.NEXT !
-   0 ASIG-GRAPH-PTR dup EW.NEXT @ ASIG-GRAPH-CHECK-XT
-   ASIG-GRAPH-BASE @ ;
-
-: ASIG-GRAPH-COPY ( n -- n ) {: sym:n :}
-   sym USIG-NEWEST
-   sym CTL-FLAGS-SYM
-   sym DFER-FIND-SYM IF ASIG-GRAPH-DEFER or THEN
-   ASIG-GRAPH-COPY-RECORD ;
-
-: CHECKER-PAYLOAD-ARM ( -- )
-   CHECKER-ASIG-ARM
-   CHECKER-REG-AOT-MARK ;
-
-: CHECKER-PAYLOAD-FREEZE ( -- )
-   ASIG-FROZEN @ IF EXIT THEN
-   CHECKER-ASIG-ARMED? 0= IF ASIG-GRAPH-DIE THEN
-   CHECKER-ASIG-DISARM
-   CHECKER-REG-AOT-CLOSE
-   0 ASIG-ROW-U ! 0 ASIG-STR-U ! 0 ASIG-DIST-N !
-   SYM-N @ 1 ?do
-      i ASIG-LAST@ 0 <> IF
-         0 i ASIG-LAST!
-         i CHECKER-FIND-USIG-SYM IF
-            i i ASIG-GRAPH-COPY ASIG-EMIT
-         THEN
-      THEN
-   loop
-   -1 ASIG-FROZEN ! ;
-
-: CHECKER-PAYLOAD-LOOKUP ( ptr u8 n bool ptr u8 n -- n bool )
-   {: pkg:ptr pkgu:n pub:bool name:ptr nameu:n :}
-   ASIG-FROZEN @ 0= IF ASIG-GRAPH-DIE THEN
-   pkg pkgu pkgu pub ASIG-AUDIT-VIS name nameu SYM-FIND {: sym:n hit:bool :}
-   hit 0= IF 0 RES-FALSE EXIT THEN
-   sym CHECKER-FIND-USIG-SYM 0= IF 0 RES-FALSE EXIT THEN
-   sym ASIG-LAST@ RES-TRUE ;
-
-: CHECKER-PAYLOAD-SPANS ( -- ptr u8 n ptr u8 n )
-   ASIG-FROZEN @ 0= IF ASIG-GRAPH-DIE THEN
-   ASIG-ROW-P @ ASIG-ROW-U @ ASIG-STR-P @ ASIG-STR-U @ ;
-
-\ All lengths are subtraction-bounded before an address/product is formed.
-: CK-AOT-SPAN? ( n n n -- ) {: off:n bytes:n limit:n :}
-   off 0 < bytes 0 < or IF ASIG-GRAPH-DIE THEN
-   off limit > IF ASIG-GRAPH-DIE THEN
-   bytes limit off - > IF ASIG-GRAPH-DIE THEN ;
-
-\ The map is owned: CK-GRAPH-RELEASE gives it back. The graph under check is
-\ set at each check's entry.
-PTR-VARIABLE CK-GRAPH-MAP
-variable CK-GRAPH-CAP
-CHECKER-REG:SCRATCH{
-PTR-VARIABLE CK-GRAPH-BASE
-variable CK-GRAPH-LEN
-variable CK-GRAPH-MAP-U
-variable CK-GRAPH-WIDTH-BAD
-CHECKER-REG:}SCRATCH
-PTR-VARIABLE CK-LEX-MEMO-P
-variable CK-LEX-MEMO-CAP
-variable CK-LEX-MEMO-U
-
-3 cells constant CK-LEX-MEMO-REC
-$1000 constant CK-LEX-MEMO-INIT
-
-1 constant CK-LEX-INPUT
-2 constant CK-LEX-SCHEME
-4 constant CK-LEX-SLOT
-8 constant CK-LEX-SCOPE
-16 constant CK-LEX-REGION
-CK-LEX-SCOPE CK-LEX-REGION or constant CK-LEX-TYPES
-CK-LEX-INPUT CK-LEX-SCHEME or CK-LEX-SLOT or
-CK-LEX-SCOPE or CK-LEX-REGION or constant CK-LEX-MASK
-4 constant CK-GRAPH-META-SPANS
-CK-GRAPH-META-SPANS CK-LEX-MASK 1+ + constant CK-GRAPH-SPANS
-
-: CK-GRAPH-PTR ( n -- ptr u8 ) CK-GRAPH-BASE @ + ;
-: CK-GRAPH-SLOT ( n -- ptr n ) CK-GRAPH-MAP @ + CELL-VIEW ;
-: CK-GRAPH-WIDTHS ( -- ptr u8 ) CK-GRAPH-MAP @ CK-GRAPH-MAP-U @ 2 * + ;
-: CK-GRAPH-WIDTH-SLOT ( n -- ptr n ) CK-GRAPH-WIDTHS + CELL-VIEW ;
-: CK-GRAPH-RELEVANCE-SLOT ( n -- ptr n )
-   CK-GRAPH-MAP @ CK-GRAPH-MAP-U @ 3 * + + CELL-VIEW ;
-: CK-GRAPH-LEX-SLOT ( n n -- ptr n ) {: off:n ctx:n :}
-   CK-GRAPH-MAP @ ctx CK-GRAPH-META-SPANS + CK-GRAPH-MAP-U @ * + off + CELL-VIEW ;
-
-: CK-GRAPH-RELEASE ( -- )
-   CK-GRAPH-MAP @ CK-GRAPH-CAP @ ASIG-RELEASE
-   NULL-PTR CK-GRAPH-MAP ! 0 CK-GRAPH-CAP !
-   CK-LEX-MEMO-P @ CK-LEX-MEMO-CAP @ ASIG-RELEASE
-   NULL-PTR CK-LEX-MEMO-P ! 0 CK-LEX-MEMO-CAP ! 0 CK-LEX-MEMO-U ! ;
-
-\ The first four spans track objects, variable kinds, logical widths, and
-\ outer binder references. Lexical-context spans head domain memo lists.
-\ Only accepted node offsets need lexical heads; the structural pass sets them.
-: CK-GRAPH-ROOM ( -- )
-   CK-GRAPH-LEN @ $7FFFFFFFFFFFFFFF CK-GRAPH-SPANS / -8 and > IF ASIG-GRAPH-DIE THEN
-   CK-GRAPH-LEN @ 7 + -8 and dup CK-GRAPH-MAP-U ! CK-GRAPH-SPANS * {: bytes:n :}
-   bytes CK-GRAPH-CAP @ > IF
-      CK-GRAPH-MAP @ CK-GRAPH-CAP @ {: old:ptr oldcap:n :}
-      bytes ARENA-ALLOC CK-GRAPH-MAP !
-      bytes CK-GRAPH-CAP ! old oldcap ARENA-ABANDON
-   THEN
-   CK-GRAPH-MAP @ CK-GRAPH-MAP-U @ CK-GRAPH-META-SPANS * ARENA-ZERO
-   0 CK-LEX-MEMO-U ! ;
-
-: CK-GRAPH-SPAN? ( n n -- ) {: off:n bytes:n :}
-   off EFF-WIRE < off 7 and 0 <> or IF ASIG-GRAPH-DIE THEN
-   off bytes CK-GRAPH-LEN @ CK-AOT-SPAN? ;
-
-: CK-GRAPH-CLAIM ( n n -- ) {: off:n bytes:n :}
-   off bytes CK-GRAPH-SPAN?
-   bytes 7 + 8 / 0 ?do
-      off i cells + CK-GRAPH-SLOT dup @ 0 <> IF drop ASIG-GRAPH-DIE THEN
-      -1 swap !
-   loop ;
-
-: CK-GRAPH-STRING? ( n n -- ) CK-GRAPH-CLAIM ;
-: CK-GRAPH-NAME? ( ptr u8 -- ) {: node:ptr :}
-   node EN.A @ node EN.B @ CK-GRAPH-STRING?
-   node EN.B @ 0= IF ASIG-GRAPH-DIE THEN ;
-
-: CK-GRAPH-BOOL? ( n -- ) dup 0 <> swap -1 <> and IF ASIG-GRAPH-DIE THEN ;
-
-: CK-GRAPH-VAR? ( n n n n bool -- )
-   {: id:n kind:n no-scope:n no-linear:n row:bool :}
-   no-scope CK-GRAPH-BOOL?
-   no-linear CK-GRAPH-BOOL?
-   row no-linear 0 <> and IF ASIG-GRAPH-DIE THEN
-   kind TVK-SCOPE = kind TVK-REGION = or no-scope 0 <> and IF ASIG-GRAPH-DIE THEN
-   row IF 0 CK-GRAPH-PTR EW.RVN @ ELSE 0 CK-GRAPH-PTR EW.TVN @ THEN {: count:n :}
-   id 0 < id count >= or IF ASIG-GRAPH-DIE THEN
-   row IF
-      kind 0 <> kind RVK-QUOT <> and kind RVK-INFERRED <> and IF ASIG-GRAPH-DIE THEN
-   ELSE kind ANY-KIND? 0= kind TVK-RAW <> and kind TVK-CELL <> and kind BASE-KIND? 0= and
-        kind TVK-OFF <> and kind TVK-SCOPE <> and
-        kind TVK-REGION <> and IF ASIG-GRAPH-DIE THEN THEN
-   row IF id 0 CK-GRAPH-PTR EW.TVN @ + ELSE id THEN cells
-   CK-GRAPH-MAP-U @ + CK-GRAPH-SLOT {: slot:ptr :}
-   kind 1+ no-scope 0 <> IF $100 or THEN
-   no-linear 0 <> IF $200 or THEN {: meta:n :}
-   slot @ 0 <> slot @ meta <> and IF ASIG-GRAPH-DIE THEN
-   meta slot ! ;
-
-: CK-GRAPH-CON? ( ptr u8 -- ) {: node:ptr :}
-   node CK-GRAPH-NAME?
-   node EN.A @ CK-GRAPH-PTR node EN.B @ CT-FIND {: con:n :}
-   con 0= IF
-      \ A constructor the engine lacks must have the shape CT-ADD-LINEAR makes.
-      node EN.C @ CT-LINEAR <> node EN.D @ 64 <> or
-      node EN.E @ CS-NONE <> or IF ASIG-GRAPH-DIE THEN
-      node EN.A @ CK-GRAPH-PTR node EN.B @ TYPE-RESERVED? IF ASIG-GRAPH-DIE THEN
-   ELSE
-      con CT-CLASS@ node EN.C @ <> con CT-WIDTH@ node EN.D @ <> or
-      con CT-SIGN@ node EN.E @ <> or IF ASIG-GRAPH-DIE THEN
-   THEN ;
-
-: CK-GRAPH-KIND? ( n bool -- ) {: tag:n row:bool :}
-   tag EN-ROW = tag EN-PUSH = or row IF 0= THEN IF ASIG-GRAPH-DIE THEN ;
-
-\ A width is certified metadata consumed by native call lowering. T-WIDTH
-\ charges every non-layout term one cell; ROW-TERM-CELLS also charges a hidden
-\ physical field one cell, even when its logical family spans several cells.
-: CK-GRAPH-ROW-WIDTH ( n -- n ) {: off:n :}
-   off CK-GRAPH-PTR {: node:ptr :}
-   node EN.TAG @ EN-PARAM = IF node EN.E @ 0 > IF 1 EXIT THEN THEN
-   off CK-GRAPH-WIDTH-SLOT @ ;
-
-: CK-GRAPH-WIDTH-REFUSE ( -- )
-   -1 CK-GRAPH-WIDTH-BAD ! 76 throw ;
-
-: CK-GRAPH-THROW ( n -- )
-   dup 0= IF drop EXIT THEN
-   CK-GRAPH-WIDTH-BAD @ IF
-      drop s" checker: captured row width disagrees with its type" 76 die
-   THEN throw ;
-
-: CK-GRAPH-FORALL-SHAPE? ( ptr u8 -- bool ) {: node:ptr :}
-   node EN.D @ BIND-CHILD = node EN.B @ 0= 0= and
-   node EN.D @ dup BIND-SCOPE = swap BIND-REGION = or
-   node EN.B @ 0= node EN.C @ 0= and and or ;
-
-: CK-GRAPH-NODE? ( n bool -- ) {: off:n row:bool :}
-   off 0= IF row 0= IF ASIG-GRAPH-DIE THEN EXIT THEN
-   off EFF-NODE CK-GRAPH-SPAN?
-   off CK-GRAPH-SLOT @ {: seen:n :}
-   seen 0 > IF seen 1- row CK-GRAPH-KIND? EXIT THEN
-   seen 0 < IF ASIG-GRAPH-DIE THEN
-   off EFF-NODE CK-GRAPH-CLAIM
-   off CK-GRAPH-PTR {: node:ptr :}
-   node EN.TAG @ {: tag:n :}
-   tag 0 < tag EN-BVAR > or IF ASIG-GRAPH-DIE THEN
-   tag row CK-GRAPH-KIND?
-   tag EN-CON = IF node CK-GRAPH-CON?
-   ELSE tag EN-VAR = IF
-      node EN.A @ node EN.B @ node EN.C @ node EN.D @ RES-FALSE CK-GRAPH-VAR?
-   ELSE tag EN-ROW = IF
-      node EN.A @ node EN.B @ node EN.C @ 0 RES-TRUE CK-GRAPH-VAR?
-   ELSE tag EN-PTR = IF
-      node EN.A @ RES-FALSE TWALK-DEEPER RECURSE TWALK-SHALLOWER
-   ELSE tag EN-PUSH = IF
-      node EN.A @ RES-FALSE TWALK-DEEPER RECURSE TWALK-SHALLOWER
-      node EN.B @ RES-TRUE TWALK-DEEPER RECURSE TWALK-SHALLOWER
-      node EN.A @ CK-GRAPH-ROW-WIDTH 1+ node EN.C @ <> IF CK-GRAPH-WIDTH-REFUSE THEN
-   ELSE tag EN-QUOT = IF
-      node EN.E @ 0 <> IF ASIG-GRAPH-EXCEPTION-DIE THEN
-      node EN.F @ CK-GRAPH-BOOL?
-      node EN.G @ node EN.H @ or 0 <> IF ASIG-GRAPH-DIE THEN
-      node EN.A @ RES-TRUE TWALK-DEEPER RECURSE TWALK-SHALLOWER
-      node EN.B @ RES-TRUE TWALK-DEEPER RECURSE TWALK-SHALLOWER
-      node EN.C @ RES-TRUE TWALK-DEEPER RECURSE TWALK-SHALLOWER
-      node EN.D @ RES-TRUE TWALK-DEEPER RECURSE TWALK-SHALLOWER
-      node EN.I @ RES-FALSE TWALK-DEEPER RECURSE TWALK-SHALLOWER
-      node EN.I @ CK-GRAPH-PTR
-      dup EN.TAG @ EN-VAR <> swap EN.B @ TVK-ANY <> or IF ASIG-GRAPH-DIE THEN
-   ELSE tag EN-FORALL = IF
-      node CK-GRAPH-FORALL-SHAPE? 0= IF ASIG-GRAPH-DIE THEN
-      node EN.A @ RES-FALSE TWALK-DEEPER RECURSE TWALK-SHALLOWER
-      node EN.B @ dup 0 <> IF
-         RES-FALSE TWALK-DEEPER RECURSE TWALK-SHALLOWER
-      ELSE drop THEN
-      node EN.C @ dup 0 <> IF
-         RES-FALSE TWALK-DEEPER RECURSE TWALK-SHALLOWER
-      ELSE drop THEN
-   ELSE tag EN-BVAR = IF
-      node EN.A @ 0 < IF ASIG-GRAPH-DIE THEN
-   ELSE tag EN-ATOM = IF
-      node CK-GRAPH-NAME?
-      node EN.C @ 0 > node EN.C @ EI-AK-CAP negate < or IF ASIG-GRAPH-DIE THEN
-   ELSE
-      node CK-GRAPH-NAME?
-      node EN.F @ node EN.G @ CK-GRAPH-STRING?
-      node EN.C @ {: argc:n :}
-      argc 0 < argc CK-GRAPH-LEN @ CELL / > or IF ASIG-GRAPH-DIE THEN
-      node EN.D @ argc cells CK-GRAPH-CLAIM
-      argc 0 ?do
-         node EN.D @ i cells + CK-GRAPH-PTR CELL-VIEW @
-         RES-FALSE TWALK-DEEPER RECURSE TWALK-SHALLOWER
-      loop
-      node CK-GRAPH-BASE @ REG-EXT-AOT-PARAM-XT
-   THEN THEN THEN THEN THEN THEN THEN THEN THEN
-   row 0= IF
-      tag EN-PARAM = IF
-         node CK-GRAPH-BASE @ CK-GRAPH-WIDTHS REG-EXT-AOT-WIDTH-XT
-         dup node EN.E @ < IF drop CK-GRAPH-WIDTH-REFUSE THEN
-      ELSE 1 THEN
-      off CK-GRAPH-WIDTH-SLOT !
-   THEN
-   CK-LEX-MASK 1+ 0 ?do
-      0 off i CK-GRAPH-LEX-SLOT !
-   loop
-   tag 1+ off CK-GRAPH-SLOT ! ;
-
-create CK-LEX-DOMAINS 64 cells allot
-
-\ Domain is binary, and the existing binder-depth limit is below one cell's
-\ 64 bits. Bit zero is the innermost binder, so a shallower successful visit
-\ covers a deeper one exactly when its bits match the deeper visit's suffix.
-: CK-LEX-DOMAIN-MASK ( n -- n ) {: depth:n :}
-   0 depth 0 ?do
-      1 lshift
-      i cells CK-LEX-DOMAINS + @ BIND-REGION = IF 1 or THEN
-   loop ;
-
-: CK-LEX-MEMO-PTR ( n -- ptr n ) CK-LEX-MEMO-P @ + CELL-VIEW ;
-
-: CK-LEX-MEMO-ALLOC ( -- n )
-   CK-LEX-MEMO-U @ {: at:n :}
-   at $7FFFFFFFFFFFFFFF CK-LEX-MEMO-REC - > IF ASIG-GRAPH-DIE THEN
-   at CK-LEX-MEMO-REC + {: need:n :}
-   need CK-LEX-MEMO-CAP @ > IF
-      CK-LEX-MEMO-CAP @ $7FFFFFFFFFFFFFFF 2 / <= IF
-         CK-LEX-MEMO-CAP @ 2 * CK-LEX-MEMO-INIT max need max
-      ELSE need THEN {: cap:n :}
-      CK-LEX-MEMO-P @ CK-LEX-MEMO-CAP @ {: old:ptr oldcap:n :}
-      old oldcap cap ARENA-BYTES-GROW CK-LEX-MEMO-P !
-      cap CK-LEX-MEMO-CAP !
-   THEN
-   need CK-LEX-MEMO-U !
-   at ;
-
-: CK-LEX-MEMO-MATCH? ( ptr n n n -- bool ) {: rec:ptr depth:n mask:n :}
-   rec CELL + @ {: prior:n :}
-   prior depth > IF RES-FALSE EXIT THEN
-   mask rec 2 cells + @ = ;
-
-: CK-LEX-MEMO-SEEN? ( ptr n n n -- bool ) {: head:ptr depth:n mask:n :}
-   head @ dup -1 = IF drop RES-TRUE EXIT THEN
-   BEGIN dup 0 > WHILE
-      1- CK-LEX-MEMO-PTR {: rec:ptr :}
-      rec depth mask CK-LEX-MEMO-MATCH? IF RES-TRUE EXIT THEN
-      rec @
-   REPEAT drop RES-FALSE ;
-
-: CK-LEX-MEMO-ADD ( ptr n n n -- ) {: head:ptr depth:n mask:n :}
-   depth 0= IF -1 head ! EXIT THEN
-   CK-LEX-MEMO-ALLOC CK-LEX-MEMO-PTR {: rec:ptr :}
-   head @ rec !
-   depth rec CELL + !
-   mask rec 2 cells + !
-   rec CK-LEX-MEMO-P @ - 1+ head ! ;
-
-: CK-LEX-FIELD ( n n -- n ) {: off:n field:n :}
-   off CK-GRAPH-PTR field cells + CELL-VIEW @ ;
-: CK-LEX-ARG ( n n -- n ) {: off:n idx:n :}
-   off CK-GRAPH-PTR EN.D @ idx cells + CK-GRAPH-PTR CELL-VIEW @ ;
-
-: CK-GRAPH-RELEVANCE ( n -- n ) {: off:n :}
-   off 0= IF 0 EXIT THEN
-   off CK-GRAPH-RELEVANCE-SLOT {: slot:ptr :}
-   slot @ dup 0 <> IF 1- EXIT THEN drop
-   off EN-TAG-CELL CK-LEX-FIELD {: tag:n :}
-   tag EN-BVAR = IF
-      off EN-A-CELL CK-LEX-FIELD BVAR-REGION-BIT invert and {: index:n :}
-      index 63 >= IF ASIG-GRAPH-DIE THEN
-      1 index lshift
-   ELSE tag EN-PUSH = IF
-      off EN-A-CELL CK-LEX-FIELD TWALK-DEEPER RECURSE TWALK-SHALLOWER
-      off EN-B-CELL CK-LEX-FIELD TWALK-DEEPER RECURSE TWALK-SHALLOWER or
-   ELSE tag EN-PTR = IF
-      off EN-A-CELL CK-LEX-FIELD TWALK-DEEPER RECURSE TWALK-SHALLOWER
-   ELSE tag EN-QUOT = IF
-      off EN-A-CELL CK-LEX-FIELD TWALK-DEEPER RECURSE TWALK-SHALLOWER
-      off EN-B-CELL CK-LEX-FIELD TWALK-DEEPER RECURSE TWALK-SHALLOWER or
-      off EN-C-CELL CK-LEX-FIELD TWALK-DEEPER RECURSE TWALK-SHALLOWER or
-      off EN-D-CELL CK-LEX-FIELD TWALK-DEEPER RECURSE TWALK-SHALLOWER or
-   ELSE tag EN-FORALL = IF
-      off EN-A-CELL CK-LEX-FIELD TWALK-DEEPER RECURSE TWALK-SHALLOWER 1 rshift
-      off EN-B-CELL CK-LEX-FIELD TWALK-DEEPER RECURSE TWALK-SHALLOWER or
-      off EN-C-CELL CK-LEX-FIELD TWALK-DEEPER RECURSE TWALK-SHALLOWER or
-   ELSE tag EN-PARAM = IF
-      0 off EN-C-CELL CK-LEX-FIELD 0 ?do
-         off i CK-LEX-ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER or
-      loop
-   ELSE 0 THEN THEN THEN THEN THEN THEN
-   dup 1+ slot ! ;
-
-: CK-LEX-SCOPE-SLOT? ( n n -- bool ) {: off:n idx:n :}
-   off CK-GRAPH-PTR idx REG-EXT-AOT-SCOPE-XT ;
-: CK-LEX-REGION-SLOT? ( n n -- bool ) {: off:n idx:n :}
-   off CK-GRAPH-PTR idx REG-EXT-AOT-REGION-XT ;
-: CK-GRAPH-LEX-PARAM-CTX ( n n n -- n ) {: off:n ctx:n idx:n :}
-   off idx CK-LEX-SCOPE-SLOT? IF
-      ctx CK-LEX-SCOPE and CK-LEX-SLOT or EXIT THEN
-   off idx CK-LEX-REGION-SLOT? IF
-      ctx CK-LEX-REGION and CK-LEX-SLOT or EXIT THEN
-   ctx CK-LEX-TYPES and ;
-
-: CK-GRAPH-LEX? ( n n n -- ) {: off:n ctx:n depth:n :}
-   off 0= IF EXIT THEN
-   depth TWALK-MAX-DEPTH > depth 64 >= or IF ASIG-GRAPH-DIE THEN
-   off EN-TAG-CELL CK-LEX-FIELD {: tag:n :}
-   tag EN-BVAR = IF
-      ctx CK-LEX-SLOT and 0= IF ASIG-GRAPH-DIE THEN
-      off EN-A-CELL CK-LEX-FIELD {: raw:n :}
-      raw BVAR-REGION-BIT invert and {: index:n :}
-      index depth >= IF ASIG-GRAPH-DIE THEN
-      depth index - 1- cells CK-LEX-DOMAINS + @
-      raw BVAR-REGION-BIT and 0= IF BIND-SCOPE ELSE BIND-REGION THEN
-      <> IF ASIG-GRAPH-DIE THEN
-      raw BVAR-REGION-BIT and 0= IF
-         ctx CK-LEX-SCOPE and 0= IF ASIG-GRAPH-DIE THEN
-      ELSE ctx CK-LEX-REGION and 0= IF ASIG-GRAPH-DIE THEN THEN
-      EXIT THEN
-   off ctx CK-GRAPH-LEX-SLOT {: mark:ptr :}
-   depth CK-LEX-DOMAIN-MASK
-   off CK-GRAPH-RELEVANCE-SLOT @ 1- and {: domains:n :}
-   mark depth domains CK-LEX-MEMO-SEEN? IF EXIT THEN
-   mark depth domains CK-LEX-MEMO-ADD
-   tag EN-ROW = IF
-      ctx CK-LEX-SLOT and 0 <> IF ASIG-GRAPH-DIE THEN EXIT THEN
-   tag EN-VAR = IF
-      off EN-B-CELL CK-LEX-FIELD TVK-SCOPE =
-      ctx CK-LEX-SLOT and 0 <> ctx CK-LEX-SCOPE and 0 <> and
-      xor IF ASIG-GRAPH-DIE THEN
-      off EN-B-CELL CK-LEX-FIELD TVK-REGION =
-      ctx CK-LEX-SLOT and 0 <> ctx CK-LEX-REGION and 0 <> and
-      xor IF ASIG-GRAPH-DIE THEN EXIT THEN
-   tag EN-ATOM = ctx CK-LEX-SLOT and 0 <> and IF
-      \ The signature parser admits a fresh region template in a region slot.
-      \ Its graph keeps that template as an atom, not a bound variable.
-      ctx CK-LEX-REGION and 0= IF ASIG-GRAPH-DIE THEN
-      off CK-GRAPH-PTR {: atom:ptr :}
-      atom EN.C @ 0 >= IF ASIG-GRAPH-DIE THEN
-      atom EN.A @ CK-GRAPH-PTR atom EN.B @ FRESH-REGION-NAME?
-         0= IF ASIG-GRAPH-DIE THEN
-      EXIT THEN
-   ctx CK-LEX-SLOT and 0 <> IF ASIG-GRAPH-DIE THEN
-   tag EN-CON = tag EN-ATOM = or IF EXIT THEN
-   tag EN-PUSH = IF
-      off EN-A-CELL CK-LEX-FIELD ctx depth TWALK-DEEPER RECURSE TWALK-SHALLOWER
-      off EN-B-CELL CK-LEX-FIELD ctx depth TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
-   tag EN-PTR = IF
-      off EN-A-CELL CK-LEX-FIELD 0 depth TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
-   tag EN-QUOT = IF
-      ctx CK-LEX-SCHEME CK-LEX-SCOPE CK-LEX-REGION or or and CK-LEX-INPUT or {: inctx:n :}
-      ctx CK-LEX-SCHEME CK-LEX-SCOPE CK-LEX-REGION or or and {: outctx:n :}
-      off EN-A-CELL CK-LEX-FIELD inctx depth TWALK-DEEPER RECURSE TWALK-SHALLOWER
-      off EN-B-CELL CK-LEX-FIELD outctx depth TWALK-DEEPER RECURSE TWALK-SHALLOWER
-      off EN-C-CELL CK-LEX-FIELD outctx depth TWALK-DEEPER RECURSE TWALK-SHALLOWER
-      off EN-D-CELL CK-LEX-FIELD outctx depth TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
-   tag EN-FORALL = IF
-      ctx CK-LEX-INPUT and 0= ctx CK-LEX-SCHEME and 0= or IF ASIG-GRAPH-DIE THEN
-      off EN-D-CELL CK-LEX-FIELD dup BIND-CHILD = IF drop BIND-SCOPE THEN
-      depth cells CK-LEX-DOMAINS + !
-      off EN-B-CELL CK-LEX-FIELD
-      CK-LEX-SCOPE CK-LEX-SLOT or depth TWALK-DEEPER RECURSE TWALK-SHALLOWER
-      off EN-C-CELL CK-LEX-FIELD
-      off EN-D-CELL CK-LEX-FIELD BIND-CHILD =
-      off EN-C-CELL CK-LEX-FIELD 0= 0= and IF
-         CK-LEX-INPUT CK-LEX-SCHEME or CK-LEX-TYPES or
-         CK-LEX-SCOPE or CK-LEX-REGION or
-      ELSE CK-LEX-SCOPE CK-LEX-SLOT or THEN
-      depth TWALK-DEEPER RECURSE TWALK-SHALLOWER
-      off EN-A-CELL CK-LEX-FIELD dup EN-TAG-CELL CK-LEX-FIELD dup EN-QUOT <> swap EN-FORALL <> and IF ASIG-GRAPH-DIE THEN
-      ctx off EN-D-CELL CK-LEX-FIELD BIND-REGION = IF CK-LEX-REGION or THEN depth 1+
-      TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
-   tag EN-PARAM = IF
-      off EN-C-CELL CK-LEX-FIELD 0 ?do
-         off ctx i CK-GRAPH-LEX-PARAM-CTX {: childctx:n :}
-         off i CK-LEX-ARG
-         childctx depth TWALK-DEEPER RECURSE TWALK-SHALLOWER
-      loop
-      EXIT THEN
-   ASIG-GRAPH-DIE ;
-
-: CK-GRAPH-MIN-IN ( -- n )
-   0 0 CK-GRAPH-PTR EW.DIN @
-   BEGIN dup 0 <> WHILE
-      dup CK-GRAPH-PTR EN.TAG @ EN-PUSH <> IF drop EXIT THEN
-      dup CK-GRAPH-PTR EN.C @ 1- {: width:n :}
-      swap dup 255 width - > width 255 > or IF ASIG-GRAPH-DIE THEN
-      width + swap CK-GRAPH-PTR EN.B @
-   REPEAT drop ;
-
-: CK-GRAPH-CHECK ( ptr u8 n -- ) {: graph:ptr bytes:n :}
-   0 CK-GRAPH-WIDTH-BAD !
-   bytes EFF-WIRE < IF ASIG-GRAPH-DIE THEN
-   graph CK-GRAPH-BASE ! bytes CK-GRAPH-LEN !
-   0 CK-GRAPH-PTR {: rec:ptr :}
-   rec EW.ACTIVE @ ASIG-GRAPH-MAGIC <> IF ASIG-GRAPH-DIE THEN
-   rec EW.NEXT @ bytes <> IF ASIG-GRAPH-DIE THEN
-   rec EW.SYMPREV @ 0 <>
-   rec EW.SYM @ CTL-GRAPH-FLAGS invert and 0 <> or
-   IF ASIG-GRAPH-DIE THEN
-   rec EW.HASR @ CK-GRAPH-BOOL?
-   rec EW.HASR @ 0= IF rec EW.RIN @ rec EW.ROUT @ or 0 <> IF ASIG-GRAPH-DIE THEN THEN
-   rec EW.TVN @ {: tvn:n :} rec EW.RVN @ {: rvn:n :}
-   tvn 0 < rvn 0 < or IF ASIG-GRAPH-DIE THEN
-   tvn bytes EFF-NODE / > rvn bytes EFF-NODE / > or IF ASIG-GRAPH-DIE THEN
-   tvn rvn + bytes EFF-NODE / > IF ASIG-GRAPH-DIE THEN
-   CK-GRAPH-ROOM TWALK-RESET
-   rec EW.DIN @ RES-TRUE CK-GRAPH-NODE?
-   rec EW.DOUT @ RES-TRUE CK-GRAPH-NODE?
-   rec EW.RIN @ RES-TRUE CK-GRAPH-NODE?
-   rec EW.ROUT @ RES-TRUE CK-GRAPH-NODE?
-   TWALK-RESET
-   rec EW.DIN @ CK-GRAPH-RELEVANCE drop
-   rec EW.DOUT @ CK-GRAPH-RELEVANCE drop
-   rec EW.RIN @ CK-GRAPH-RELEVANCE drop
-   rec EW.ROUT @ CK-GRAPH-RELEVANCE drop
-   TWALK-RESET
-   rec EW.DIN @ CK-LEX-INPUT CK-LEX-SCHEME or CK-LEX-TYPES or 0 CK-GRAPH-LEX?
-   rec EW.DOUT @ CK-LEX-TYPES 0 CK-GRAPH-LEX?
-   rec EW.RIN @ CK-LEX-TYPES 0 CK-GRAPH-LEX?
-   rec EW.ROUT @ CK-LEX-TYPES 0 CK-GRAPH-LEX?
-   CK-GRAPH-MIN-IN rec EW.MINI @ <> IF ASIG-GRAPH-DIE THEN ;
-
-: ASIG-GRAPH-CHECK ( ptr u8 n -- )
-   [: 2dup CK-GRAPH-CHECK ;] catch
-   \ Reuse scratch across the freeze's definitions. A refusal releases
-   \ immediately before crossing the public boundary.
-   dup 0 <> IF CK-GRAPH-RELEASE THEN
-   >r 2drop r> CK-GRAPH-THROW ;
-: ASIG-GRAPH-CHECK-INSTALL ( -- ) [: ASIG-GRAPH-CHECK ;] is ASIG-GRAPH-CHECK-XT ;
-ASIG-GRAPH-CHECK-INSTALL
-
 -1 constant VERDICT-CHECKED
 0 constant VERDICT-REFUSED
 1 constant VERDICT-UNCHECKABLE
@@ -23937,7 +22978,7 @@ variable UNREC-DOUT  CELLS-NONE UNREC-DOUT !
          sym CTLNEW @ CTLDNEW @ CTLRNEW @ NORET-ADD-SYM
       THEN
       CHECK-SIG? IF
-         SGA @ SGU @  NMA @ NMU @  CHECKER-USIG-CERT-PARSED
+         NMA @ NMU @  CHECKER-USIG-CERT-PARSED
       ELSE
          NMA @ NMU @ RECXT
       THEN
@@ -25613,12 +24654,6 @@ package CHECKER-REG
 ;package
 
 package CHECKER-REG
-' CHECKER-PAYLOAD-ARM DECLARATIONS CHECKER-OWNER-ABI:PAYLOAD-ARM-OFF + xt!
-' CHECKER-PAYLOAD-FREEZE DECLARATIONS CHECKER-OWNER-ABI:PAYLOAD-FREEZE-OFF + xt!
-' CHECKER-PAYLOAD-LOOKUP DECLARATIONS CHECKER-OWNER-ABI:PAYLOAD-LOOKUP-OFF + xt!
-' CHECKER-PAYLOAD-SPANS DECLARATIONS CHECKER-OWNER-ABI:PAYLOAD-SPANS-OFF + xt!
-' CHECKER-REG-AOT-SAVE DECLARATIONS CHECKER-OWNER-ABI:PAYLOAD-REG-SAVE-OFF + xt!
-' CHECKER-ASIG-DISARM DECLARATIONS CHECKER-OWNER-ABI:PAYLOAD-DISARM-OFF + xt!
 ' CHECKER-RECORD-SYM? DECLARATIONS CHECKER-OWNER-ABI:VERIFY-RECORD-SYM-OFF + xt!
 ' CHECKER-CTOR-DECL-AT! DECLARATIONS CHECKER-OWNER-ABI:VERIFY-CTOR-DECL-OFF + xt!
 ' CHECKER-FIND-QUIET-SYM DECLARATIONS CHECKER-OWNER-ABI:VERIFY-FIND-SYM-OFF + xt!
@@ -26026,7 +25061,6 @@ CHECKER-REG:}SCRATCH
    eff 1 - E-PTR EXPORT-EFF-INST {: din:n dout:n rin:n rout:n hasr:bool :}
    sym CHECKER-REC-SYM !
    din dout rin rout hasr from EFFECT-EXTERNAL-SYM? E-ADD-EFFECT
-   from CHECKER-ASIG-EXPORT
    sym from EXPORT-META-SYM
    ix sym USIG-NEWEST sym NORET-NEWEST RECORD-LINK-SET ;
 

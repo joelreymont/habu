@@ -80,7 +80,7 @@ TEXTS!
 : CLAUSE-SIG$ ( -- ptr u8 n ) s" ( n -- n )" ;
 
 \ The checker's pool marks, which a refused name leaves where it found them.
-13 constant MARK-N
+11 constant MARK-N
 create BEFORE MARK-N cells allot
 : MARK ( n -- n )
    case
@@ -95,8 +95,6 @@ create BEFORE MARK-N cells allot
       8 of CT-STR-U @ endof
       9 of CHECKER-PACKAGE-U @ endof
       10 of EXT-FREE-N @ endof
-      11 of ASIG-ROW-U @ endof
-      12 of ASIG-STR-U @ endof
       0 swap
    endcase ;
 : MARKS! ( -- ) MARK-N 0 ?do i MARK BEFORE i cells + ! loop ;
@@ -113,10 +111,6 @@ create BEFORE MARK-N cells allot
 : CERT-DUP ( -- ) MARKS! BAD$ CHECKER-CERT-DUP? 0= VERDICT ;
 : QUERY ( -- ) MARKS! BAD$ EFFECT-QUERY 0= VERDICT ;
 : LBUF-NAME ( -- ) MARKS! BAD$ CHECKER-LBUF-NAME-OK? 0= VERDICT ;
-: ASIG-NAME ( -- ) MARKS! s" " 0 0= BAD$ CHECKER-ASIG-KNOWN? 0= VERDICT ;
-: ASIG-PKG ( -- ) MARKS! BAD$ 0 0= s" x" CHECKER-ASIG-KNOWN? 0= VERDICT ;
-: ASIG-MISSING ( -- ) MARKS! s" " 0 0= BAD$ CHECKER-ASIG-MISSING? 0= VERDICT ;
-: ASIG-ROW ( -- ) MARKS! s" " 0 0= BAD$ CHECKER-ASIG-ROW-FOR 0= VERDICT ;
 : RESERVED ( -- ) MARKS! BAD$ TYPE-RESERVED? VERDICT ;
 : TRY-NAME ( -- ) MARKS! BAD$ s" f n" CHECKER-TRY-RECORD nip nip 0 <> VERDICT ;
 : TRY-FIELDS ( -- )
@@ -224,10 +218,6 @@ variable LBL-U
    s" CERT-DUP" RETURNS
    s" QUERY" RETURNS
    s" LBUF-NAME" RETURNS
-   s" ASIG-NAME" RETURNS
-   s" ASIG-PKG" RETURNS
-   s" ASIG-MISSING" RETURNS
-   s" ASIG-ROW" RETURNS
    s" RESERVED" RETURNS
    s" TRY-NAME" RETURNS
    s" CTOR-WORD" RETURNS

@@ -186,8 +186,7 @@ public
    at k SITE-ABS64 SITE+ ;
 
 \ Read before ASM-LINK forgets it: the number the link adds the load address
-\ to, as src/habu/link-x64.f reads each kernel body's entry into the record that
-\ names it. An unbound label is refused as the link refuses it.
+\ to. An unbound label is refused as the link refuses it.
 : LABEL-AT ( label -- n )
    ?KNOWN LBL-AT @ {: at:n :}
    at UNBOUND = if s" x64code: unresolved label" REFUSE then

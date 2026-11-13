@@ -33,7 +33,6 @@ require src/os/linux-x86-64/sys.f
 require src/os/linux-x86-64/proc-watch.f
 require src/os/linux-x86-64/proc-control.f
 require src/os/linux-x86-64/target-layout.f
-require src/habu/aot-decl.f
 require src/compiler/fixed-body.f
 
 package X64KERNEL

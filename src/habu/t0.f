@@ -1663,15 +1663,12 @@ variable OP-REC                      \ the last of them
    a u NEUTRAL-PARSE-IMM? if exit then
    a u E-UNMODELED-IMMEDIATE REFUSE ;
 
-\ A fixed word is its stamped value; r files a
-\ DATA address so publication relocates it. A created word made before the AOT
-\ window opened stays a call: the capture refuses its address. User-space code
-\ addresses and 0 lie below 2^63, so the signed >= orders them as an unsigned
-\ compare would.
+\ A fixed word is its stamped value; r files a DATA address so publication
+\ relocates it.
 : WORD-CALL ( n n n n -- )
    {: to:n kind:n r:n loc:n :}
    kind DKIND:VAL = if to COMP-BODY:value NDICT:BOUND-VALUE PUSH-CONST exit then
-   kind DKIND:ADDR = to data-base AOT-CELLS:B0-CELL + @ >= and if
+   kind DKIND:ADDR = if
       to COMP-BODY:address NDICT:BOUND-VALUE  r PUSH-ADDR exit
    then
    ORD @ 1- {: at:n :}

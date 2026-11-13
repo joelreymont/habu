@@ -21,10 +21,9 @@ require src/os/linux-x86-64/target-layout.f
 s" src/os/linux-x86-64/elf.f" required
 require src/os/image-bytes.f
 
-\ src/habu/aot-decl.f sizes its rows by src/arch/arm64/icode.f's AOT-SECTION-CAP.
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
-require src/habu/aot-decl.f
+require src/habu/address-carrier.f
 require src/compiler/target.f
 
 package X64-SEAM-TEST
@@ -260,9 +259,9 @@ create NEAR 16 allot
    ADDRESS-CARRIER:MOVABS-IMM-BYTES 8 T=
 
    \ The site kind and the assembler each state where the immediate begins.
-   \ src/habu/aot-decl.f cannot read X64ASM's constant, because aot-decl.f is in
-   \ every engine's payload and the encoder would follow it there, so the two
-   \ numbers are one fact in two files and this case is what keeps them equal.
+   \ src/habu/address-carrier.f cannot read X64ASM's constant: it is in every
+   \ engine's payload and the encoder would follow it there, so the two numbers
+   \ are one fact in two files and this case keeps them equal.
    s" the assembler names the same patch offset as the site kind" T-LABEL
    ADDRESS-CARRIER:MOVABS-IMM-OFF X64ASM:MOV-RI64-IMM-OFF T=
 

@@ -37,9 +37,6 @@ variable GJA-SRC-LEN
 variable GJA-LINE#
 variable GJA-LS
 variable GJA-LX
-variable GJA-STENCILS
-variable GJA-PADDING
-variable GJA-DIRECT
 
 : GJA-TRUE ( -- bool )
    0 0= ;
@@ -860,25 +857,6 @@ variable GJA-DIRECT
    GJA-OK1 @ 0= IF s" missing SQUARE public signature" GJA-FAIL THEN
    GJA-OK2 @ 0= IF s" missing APPLY public signature" GJA-FAIL THEN ;
 
-: GJA-AOT-COMMON ( SPAN:span<u8> -- )
-   dup GJA-SCHEMA1
-   dup s" file_bytes" GJA-REQ GJA-INT 0 <= IF s" AOT report file_bytes invalid" GJA-FAIL THEN
-   dup s" patched_call_stencils" GJA-REQ GJA-INT GJA-STENCILS !
-   dup s" padding_bytes" GJA-REQ GJA-INT GJA-PADDING !
-   s" direct_bl_instructions" GJA-REQ GJA-INT GJA-DIRECT ! ;
-
-: GJA-AOT-STRIPPED ( ptr u8 n -- )
-   GJA-PARSE-FILE GJA-AOT-COMMON
-   GJA-PADDING @ GJA-STENCILS @ 12 * <> IF s" AOT padding relation mismatch" GJA-FAIL THEN
-   GJA-STENCILS @ 0 <> IF s" AOT report found patched stencils" GJA-FAIL THEN
-   GJA-DIRECT @ 0 <= IF s" AOT report missing direct BL" GJA-FAIL THEN ;
-
-: GJA-AOT-COMPACT ( ptr u8 n -- )
-   GJA-PARSE-FILE GJA-AOT-COMMON
-   GJA-STENCILS @ 0 <> IF s" compact AOT report found patched stencils" GJA-FAIL THEN
-   GJA-PADDING @ 0 <> IF s" compact AOT report found padding" GJA-FAIL THEN
-   GJA-DIRECT @ 3 < IF s" compact AOT report missing direct BLs" GJA-FAIL THEN ;
-
 : GJA-DISPATCH-ONE-FILE-ROW ( ptr u8 n [ ptr u8 n -- ] -- bool )
    {: cmd:ptr cmdu q :}
    cmd cmdu GJA-CMD? IF
@@ -928,10 +906,6 @@ variable GJA-DIRECT
    s" sarif" [: GJA-SARIF ;]
    GJA-DISPATCH-ONE-FILE-ROW IF GJA-TRUE exit THEN
    s" public-signatures" [: GJA-PUBLIC-SIGNATURES ;]
-   GJA-DISPATCH-ONE-FILE-ROW IF GJA-TRUE exit THEN
-   s" aot-stripped" [: GJA-AOT-STRIPPED ;]
-   GJA-DISPATCH-ONE-FILE-ROW IF GJA-TRUE exit THEN
-   s" aot-compact" [: GJA-AOT-COMPACT ;]
    GJA-DISPATCH-ONE-FILE-ROW IF GJA-TRUE exit THEN
    GJA-FALSE ;
 

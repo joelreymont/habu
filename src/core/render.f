@@ -2067,13 +2067,12 @@ variable WARN-DIAGS   -1 WARN-DIAGS !
    REC-REFUSE-EMIT ;
 
 \ A sig-less word's inferred effect is recorded (CHECKER-USIG-CERT-CURRENT) unless
-\ its text sets RQM or has more than TYPE-VAR-MAX names; no capture keeps the text.
+\ its text sets RQM or has more than TYPE-VAR-MAX names.
 : REC-SIG ( ptr u8 n -- )
    {: na:ptr nu:n :}
-   REND-SIG {: sa:ptr su:n :}
+   REND-SIG 2drop
    RQM @ 0 =  NLET @ TYPE-VAR-MAX 1 + <  and IF
       na nu CHECKER-USIG-CERT-CURRENT
-      sa su CHECKER-ASIG-CAPTURE
       EXIT
    THEN
    BROW @ DCUR @ CHECK-UNRECORDED!

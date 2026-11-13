@@ -70,12 +70,6 @@ variable MUTEX
 : REG-MAP ( n -- ptr ptr u8 )
    REG-BYTES map-anon 0< if drop E-MAP throw then ;
 
-: REG-CLOSE ( -- )
-   REG @ NULL-PTR = if exit then
-   REG @ REG-CAP @ REG-BYTES munmap 0< if E-UNMAP throw then
-   NULL-PTR REG !
-   0 REG-CAP ! ;
-
 \ Capacity is secured before RESERVE publishes either mapping or membership.
 \ A failed grow leaves the old registry and every handle intact.
 : REG-ROOM ( -- )
@@ -214,66 +208,6 @@ CONTROL-CELLS 1+ cells constant WIDTH-OFF
 
 \ Releases the block the cell holds.
 : EMPTY ( ptr ptr ptr a -- ) @ dup HEAD-CTL RELEASE ;
-
-\ Whether row i's record lies wholly inside the span. A record is its head (one
-\ cell) and its control block (CONTROL-CELLS cells): it belongs to the span when
-\ both lie wholly inside it, and a span that cuts through either, or holds
-\ exactly one of them, is refused. Offsets are distances, never views: the head
-\ is a pointer cell, so its distance is taken from NULL-PTR.
-: PART-IN? ( n n n -- bool ) {: off:n extent:n size:n :}
-   off 0 < if
-      off extent + 0 > if E-SIZE throw then
-      0 0 <> exit
-   then
-   off size >= if 0 0 <> exit then
-   extent size off - > if E-SIZE throw then
-   0 0= ;
-
-: MEMBER? ( n ptr u8 n -- bool ) {: row:n start:ptr size:n :}
-   row REG-ENTRY NULL-PTR - start NULL-PTR - - CELL size PART-IN? {: head-in:bool :}
-   row REG-CTL byte-view start - CONTROL-CELLS cells size PART-IN? {: ctl-in:bool :}
-   head-in if
-      ctl-in 0= if E-SIZE throw then
-   else
-      ctl-in if E-SIZE throw then
-   then
-   head-in ;
-
-\ Refuse a cut through any live control record before releasing a member.
-: RANGE-CHECK ( ptr u8 n -- ) {: start:ptr size:n :}
-   size 0 < if E-SIZE throw then
-   size 0= if exit then
-   REG-U @ 0 ?do
-      i start size MEMBER? drop
-   loop ;
-
-public
-
-\ Removal shrinks the registry, so each successful release consumes its last
-\ entry. A refused unmap preserves that entry for the next call.
-\ Its caller runs it after every task has stopped, so registry walks need no
-\ second lock. Concurrent mutation of one buffer remains its caller's
-\ responsibility; the lock protects membership of distinct controls.
-: RELEASE-ALL ( -- )
-   begin REG-U @ 0 > while
-      REG-U @ 1- {: last:n :}
-      last REG-ENTRY last REG-CTL RELEASE
-   repeat
-   REG-CLOSE ;
-
-\ A retained runtime can own both capture-window and writer buffers. Only
-\ records wholly in this DATA span belong to that captured value; an empty span
-\ holds none.
-: RELEASE-RANGE ( ptr u8 n -- ) {: start:ptr size:n :}
-   start size RANGE-CHECK
-   size 0 > if
-      REG-U @
-      begin dup 0 > while
-         1- dup {: row:n :}
-         row start size MEMBER? if row REG-ENTRY row REG-CTL RELEASE then
-      repeat drop
-   then
-   REG-U @ 0= if REG-CLOSE then ;
 
 private
 

@@ -354,24 +354,6 @@ public
 $43B0 constant DELTA-CELL
 ;package
 
-\ AOT-CELLS holds every AOT cell this file declares: the engine bakes this file,
-\ so a cell declared in AOT-SPAN or AOT-WINDOW would make aot-decl.f,
-\ habu1.f and habu2.f reopen a baked package in a native build.
-\ AOT-CELLS:SPAN-TABLE-CELL / SPAN-N-CELL / SPAN-BASE-CELL: the baked CODE-SPAN
-\ table, its row count and the address the blob was copied to; only the x86-64
-\ linker writes them. A word with no dictionary record is accounted for only by
-\ its row. A row is a blob offset; the base makes it an address. Zero in all
-\ three means no stripped spans.
-\ They sit in the $600..$800 header hole below BODY-TEXT:BASE-CELL, above
-\ GENIO-ABI's band. The run above BOOT:HEAP-START-CELL is not free:
-\ stack-abi.f holds $47E8..$4810, then the transaction and USER-BAND.
-package AOT-CELLS
-public
-$660 constant SPAN-TABLE-CELL
-$668 constant SPAN-N-CELL
-$670 constant SPAN-BASE-CELL
-;package
-
 \ SIGNAL-ABI: the baked async-signal-safe handler stub and the word it reads.
 \ STUB-CELL is the stub's address, a program's sa_handler; FD-PTR-CELL is the
 \ address of the fd word, through which a program stores its self-pipe's write
@@ -383,7 +365,7 @@ $670 constant SPAN-BASE-CELL
 \ thread's x20 is its own task region.
 \ DATA-VA is fixed. A spawned task's region carries neither published cell, so
 \ a library reads them once from the main task and keeps them.
-\ The cells follow AOT-SPAN's in the $600..$800 hole, below $7FF8 (the boot
+\ The cells sit in the $600..$800 hole, below $7FF8 (the boot
 \ stores them as `DATA <off> STR`) and below DATA-START.
 package SIGNAL-ABI
 public
@@ -440,7 +422,6 @@ $3CA0 constant EVALREC-CELL
 \ No compiled source writes the band, the DP heap is bounded >= DATA-START, and
 \ snapshots save it.
 $3CB8 constant PROT-REG-TAG-CELL        \ bitmap-shape tag; capture requires this exact runtime shape
-$50574249544D4150 constant PROT-REG-TAG \ "PWBITMAP": written by every path that publishes the band
 $3CC0 constant PROT-BITS-OFF
 8192 constant PROT-WID-MAX
 PROT-WID-MAX 8 / constant PROT-BITS-BYTES
@@ -490,13 +471,6 @@ $4338 constant CB-TLS-KEY
 \ them, then d0..d7 from CB-FRAME-FLOATS. The dispatch leaves its result in the
 \ x0 or the d0 slot, and the thunk returns both.
 $40 constant CB-FRAME-FLOATS
-\ Compact AOT dict record: five u32 words (blob-off/public-WID, code-len/private-WID,
-\ name-off, flags|min-in, wid). The name-off word is a full u32 so the deduped name
-\ pool can outgrow 64 KiB with the captured window.
-20 constant AOT-CREC-ROW
-\ The deduplicated pool admits at most DICT-CAP entries, each containing a
-\ one-byte length and at most 255 name bytes. Storage grows to the used size.
-DICT-CAP 256 * constant AOT-NAMES-CAP
 \ Dict-name hash index: slots are a power of 2 (probes with the
 \ HIDX-SLOTS 1 - mask) and 2x DICT-CAP, so the load factor stays <= 50% and
 \ DICT-CAP stays a power of two; bytes = slots * 4 (u32 entries).
@@ -1268,16 +1242,6 @@ $43A0 constant XT-CELL
 
 : XT! ( [ -- ] -- )
    data-base XT-CELL + xt! ;
-;package
-
-\ Nothing writes B0-CELL, so it holds 0 and tier 0's test of it, which kept a
-\ mention of a created word made before a capture window opened a call, never holds.
-\ T0 is latched when the seed allocates its wordlists: later boot-run entries
-\ can allocate more, so the sealed-wordlist gate cannot derive it from WIDN.
-package AOT-CELLS
-public
-$43A8 constant T0-CELL           \ first wordlist id the seed allocated for the window
-$43B8 constant B0-CELL           \ first address of the open window's code span
 ;package
 
 \ The checker overlay's replay scope: what an open overlay saved and restores

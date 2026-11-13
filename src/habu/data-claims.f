@@ -93,7 +93,6 @@ create TAB
    RSP-CELL                           1 cells                 CLAIM RSP-CELL
    EXITH-CELL                         1 cells                 CLAIM EXITH-CELL
    GENIO-ABI:OUT-CELL                 GENIO-ABI:END GENIO-ABI:OUT-CELL -  CLAIM GENIO-ABI
-   AOT-CELLS:SPAN-TABLE-CELL          3 cells                 CLAIM AOT-SPAN
    SIGNAL-ABI:STUB-CELL               3 cells                 CLAIM SIGNAL-ABI
    COMMA-RUN-CELL                     1 cells                 CLAIM COMMA-RUN-CELL
    COMMA-END-CELL                     1 cells                 CLAIM COMMA-END-CELL
@@ -191,9 +190,7 @@ create TAB
    CB-XDS                             CB-BAND-BYTES           CLAIM CALLBACK-BAND
    CB-TLS-GET                         2 cells                 CLAIM CALLBACK-TLS
    APP-ENTRY:XT-CELL                  1 cells                 CLAIM APP-ENTRY-XT-CELL
-   AOT-CELLS:T0-CELL                  1 cells                 CLAIM AOT-WINDOW-T0
    REGION-ALIAS:DELTA-CELL            1 cells                 CLAIM REGION-ALIAS-DELTA
-   AOT-CELLS:B0-CELL                  1 cells                 CLAIM AOT-WINDOW-B0
    EVAL-TOP-CELL                      PROT:RHI EVAL-TOP-CELL -  CLAIM EVAL-POINTER-BAND
    PROT:RHI                           1 cells                 CLAIM PROT-RHI
    PROT:CF                            1 cells                 CLAIM PROT-CF

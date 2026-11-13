@@ -319,7 +319,7 @@ require src/lib/prelude.f
 -6860 constant E-CMP-FIRST
 -6879 constant E-CMP-LAST
 -6860 constant E-CMP-ROW      \ a shared checker-model vector index or table slot is outside its declared table
--6861 constant E-CMP-VOCAB    \ the checker's concrete type vocabulary - a name, code, class, width, or sign row of CT-INIT, or the CC-MAX ceiling - is not what the frozen table carries
+-6861 constant E-CMP-VOCAB    \ the checker's concrete type vocabulary - a name, code, class, width, or sign row of CT-INIT - is not what the frozen table carries
 -6862 constant E-CMP-CONTROL  \ the checker's control-flow dispatch table or a control frame kind is not what the frozen table carries
 -6863 constant E-CMP-POOL     \ the frozen schema's own string pool or table is full
 

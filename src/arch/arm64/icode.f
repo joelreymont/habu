@@ -17,15 +17,6 @@ public
 \ CODE is a demand-paged anonymous mapping taken on first use and returned by
 \ ASM-RELEASE; nothing walks the span, so the window costs reserved address
 \ space only. A B/BL across the window must fit REL26-HI words (128 MiB).
-\
-\   AOT-SECTION-CAP >= AOT-BUF:AOT-BLOB-CAP (= CODE-BAND:BYTES)
-\                      + 136 header + 272 section table + 40 scalars
-\                      + AOT-FILE:CLOSURE-CAP
-\
-\ A full-band blob plus aot-file.f's framing is the largest artifact. Below the
-\ bound AOT-BLOB-CAP and the site buffer (AOT-DSITE-MAX * 4) are unreachable and
-\ the per-section refusal is dead. At CODE-BAND:BYTES 30,404,608 the minimum is
-\ 30,536,128.
 $1E00000 constant AOT-SECTION-CAP  \ aggregate payload budget, including framing/alignment
 ADR-HI SOURCE-ARENA-CAP + AOT-SECTION-CAP + constant CODE-CAP-BYTES
 CODE-CAP-BYTES 4 / constant CODE-CAP-WORDS

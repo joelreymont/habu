@@ -261,9 +261,8 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
    {: o:n :}
    o E-NAME-OFF dup 0 < if s" imgdump: name out of range" 74 die then
    IB@ +  o E-L ;
-\ The name length floor is 0: engines from before code spans moved to the
-\ payload's AOT-SPAN table ship records with empty names, and a name length is a
-\ record field, not a plausibility test.
+\ The name length floor is 0: a name length is a record field, not a
+\ plausibility test.
 : ENT? ( n -- bool )
    {: o:n :}
    o E-CODE? if

@@ -96,71 +96,6 @@ variable DB-EVAL-U
    3 CELLROW @ 6 T=
    CELLROW-RELEASE ;
 
-\ RELEASE-RANGE (src/habu/aot-capture.f's capture window) owns a record only
-\ when both its head and its control block lie inside the span; a span holding
-\ one part, or cutting either, is E-SIZE. Each record is laid by hand as a
-\ DYNAMIC-BUFFER's block starts, head then control cells, so the record starts
-\ one cell before RNG-A#ctl.
-PTR-VARIABLE RNG-A#base
-create RNG-A#ctl DYNAMIC-STORAGE:CONTROL-CELLS cells SCRATCH-ALLOT
-PTR-VARIABLE RNG-B#base
-create RNG-B#ctl DYNAMIC-STORAGE:CONTROL-CELLS cells SCRATCH-ALLOT
-PTR-VARIABLE RNG-C#base
-create RNG-C#ctl DYNAMIC-STORAGE:CONTROL-CELLS cells SCRATCH-ALLOT
-: RNG-A-RESERVE ( n -- ) RNG-A#base RNG-A#ctl 8 DYNAMIC-STORAGE:RESERVE ;
-: RNG-B-RESERVE ( n -- ) RNG-B#base RNG-B#ctl 8 DYNAMIC-STORAGE:RESERVE ;
-: RNG-C-RESERVE ( n -- ) RNG-C#base RNG-C#ctl 8 DYNAMIC-STORAGE:RESERVE ;
-: RNG-A-RELEASE ( -- ) RNG-A#base RNG-A#ctl DYNAMIC-STORAGE:RELEASE ;
-: RNG-B-RELEASE ( -- ) RNG-B#base RNG-B#ctl DYNAMIC-STORAGE:RELEASE ;
-: RNG-C-RELEASE ( -- ) RNG-C#base RNG-C#ctl DYNAMIC-STORAGE:RELEASE ;
-\ Cell 1 of B's mapping.
-: RNG-B-1 ( -- ptr n ) RNG-B#base @ CELL + ;
-: RNG-REC ( -- ptr u8 ) RNG-A#ctl byte-view CELL - ;
-: RNG-WHOLE ( -- ) RNG-REC 3 cells DYNAMIC-STORAGE:RELEASE-RANGE ;
-: RNG-HEAD ( -- ) RNG-REC CELL DYNAMIC-STORAGE:RELEASE-RANGE ;
-: RNG-CTL ( -- ) RNG-A#ctl byte-view 2 cells DYNAMIC-STORAGE:RELEASE-RANGE ;
-: RNG-CUT-HEAD ( -- ) RNG-REC 4 DYNAMIC-STORAGE:RELEASE-RANGE ;
-: RNG-CUT-CTL ( -- ) RNG-REC 2 cells DYNAMIC-STORAGE:RELEASE-RANGE ;
-\ Starts inside A's control block and ends at A's end: only the front cut refuses.
-: RNG-CUT-TAIL ( -- ) RNG-A#ctl byte-view CELL + CELL DYNAMIC-STORAGE:RELEASE-RANGE ;
-: RNG-BEFORE ( -- ) RNG-REC 64 - 64 DYNAMIC-STORAGE:RELEASE-RANGE ;
-: RNG-EMPTY ( -- ) RNG-REC 4 + 0 DYNAMIC-STORAGE:RELEASE-RANGE ;
-: RNG-NEG ( -- ) RNG-REC -1 DYNAMIC-STORAGE:RELEASE-RANGE ;
-variable RNG-BASE
-: RNG-N ( -- n ) DYNAMIC-STORAGE:REGISTERED-N RNG-BASE @ - ;
-: RNG-SLOT ( ptr n -- n ) CELL + @ RNG-BASE @ - ;
-
-: RANGE-ROWS ( -- )
-   DYNAMIC-STORAGE:REGISTERED-N RNG-BASE !
-   4 RNG-A-RESERVE 4 RNG-B-RESERVE 4 RNG-C-RESERVE
-   RNG-N 3 T=
-   ['] RNG-HEAD 7121 TTHROWS
-   ['] RNG-CTL 7121 TTHROWS
-   ['] RNG-CUT-HEAD 7121 TTHROWS
-   ['] RNG-CUT-CTL 7121 TTHROWS
-   ['] RNG-CUT-TAIL 7121 TTHROWS
-   ['] RNG-NEG 7121 TTHROWS
-   RNG-BEFORE RNG-EMPTY
-   RNG-N 3 T=
-   RNG-A#ctl @ 64 T=
-   \ Swap removal moves the last row into the freed slot and repairs its slot.
-   RNG-A-RELEASE RNG-N 2 T=
-   RNG-C#ctl RNG-SLOT 1 T=
-   RNG-C-RELEASE RNG-N 1 T=
-   RNG-B#ctl RNG-SLOT 1 T=
-   7 RNG-B-1 !  RNG-B-1 @ 7 T=
-   RNG-B-RELEASE RNG-N 0 T=
-   RNG-B#ctl CELL + @ 0 T=
-   \ A span holding the whole record releases exactly that record.
-   4 RNG-A-RESERVE 4 RNG-B-RESERVE
-   RNG-WHOLE
-   RNG-N 1 T=
-   RNG-A#ctl @ 0 T=
-   RNG-B#ctl @ 64 T=
-   RNG-B#ctl RNG-SLOT 1 T=
-   RNG-B-RELEASE
-   RNG-N 0 T= ;
-
 : RUN ( -- )
    T-RESET
    0 map-anon nip 0< TTRUE
@@ -199,7 +134,6 @@ variable RNG-BASE
    BYTE-ROWS
    CELL-ROWS
    WIDE-ROWS
-   RANGE-ROWS
    T-REPORT ;
 
 RUN
