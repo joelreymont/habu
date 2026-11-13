@@ -530,8 +530,7 @@ s" STRUCTURE sdlbox FIELD t SDLIN:tok FIELD k n ;STRUCTURE" TEST-EVAL:RC 0 T=
 \ depth 2: a field naming that linear family.
 TYPE-FIELD:COUNT B !
 s" STRUCTURE sdlouter FIELD inner sdlbox FIELD z n ;STRUCTURE" TEST-EVAL:RC 0 T=
-B @ TYPE-FIELD:NAME$ s" inner" CORE-STR= TTRUE
-B @ TYPE-FIELD:CELLS@ 2 T=                            \ the field is the whole bundle, not one cell
+B @ TYPE-FIELD:BYTES@ 2 cells T=                      \ the field is the whole bundle, not one cell
 
 \ depth 3: the walk recurses again rather than stopping one level down.
 s" STRUCTURE sdldeep FIELD d sdlouter ;STRUCTURE" TEST-EVAL:RC 0 T=

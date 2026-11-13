@@ -1955,15 +1955,6 @@ public
       i 1 +
    REPEAT drop
    0 RES-FALSE ;
-: PF-EACH ( n n n -- n bool ) {: fam:n var:n start:n :}
-   start 0 < IF 0 RES-FALSE EXIT THEN
-   start BEGIN dup PF-COMMIT-N @ < WHILE
-      {: i:n :}
-      i PF-REC@ {: r:ptr :}
-      fam var r PF-ROW-OWNER? IF i RES-TRUE EXIT THEN
-      i 1 +
-   REPEAT drop
-   0 RES-FALSE ;
 
 \ Strict-LIFO transaction frames. COMMIT retains its rollback frame through
 \ global finalization. Nested commit keeps rows provisional; only outer commit
@@ -2613,17 +2604,11 @@ package TYPE-FIELD
 public
 
 : COUNT ( -- n ) PF-N@ ;
-: TX-DEPTH ( -- n ) PF-TX-DEPTH @ ;
 : NO-VARIANT ( -- n ) PF-NO-VARIANT ;
-: FIND ( n n ptr u8 n -- n bool ) PF-FIND ;
-: EACH ( n n n -- n bool ) PF-EACH ;
 : FAMILY@ ( n -- n ) PF-FAM@ ;
-: NAME$ ( n -- ptr u8 n ) PF-NAME$ ;
 : SCHEMA@ ( n -- n ) PF-SCH@ ;
-: CELLS@ ( n -- n ) PF-CELLS@ ;
 : BYTE-OFF@ ( n -- n ) PF-BYTE-OFF@ ;
 : BYTES@ ( n -- n ) PF-BYTES@ ;
-: ALIGN@ ( n -- n ) PF-ALIGN@ ;
 : FLAGS@ ( n -- n ) PF-FLAGS@ ;
 
 seal-package
@@ -4887,8 +4872,7 @@ private
 \ Width-aware construct/MATCH lowering. For a wide closed instantiation (a
 \ multi-cell layout argument, flat or nested) the checker records an extra-pad
 \ fact at the construct, constructor-call or `of` token: w = instantiated pads -
-\ declared pads, flagged WF-XPAD-FLAG so pass 2 fires even when w is 1. Pass 2
-\ adds those zero cells. A nested instantiation
+\ declared pads, the zero cells the lowering adds. A nested instantiation
 \ (option<result<n,pkg:prod>>) needs nothing more: every width site
 \ (TFAM-INST-WIDTH@, TFC-VAR-PAYCELLS, T-WIDTH) recurses through the argument
 \ tree, so the inner bundle gets its own pads at its own site. Every width must
@@ -4908,10 +4892,9 @@ private
 \ STRUCTURE at a width-2 leaf, is width 3, all payload: subtracting a tag would
 \ report extra -1), so TFC-TAG-CELLS keys the subtraction off the family kind.
 \ A negative extra (the widest declared variant is not the widest instantiated
-\ one, or a non-widest variant grows more) is a contradiction: pass 1 emits the
-\ declared pads and add-only pass 2 cannot remove cells, so no sound lowering
-\ exists and it is refused unconditionally, a candidate probe included. Signed
-\ pass-2 corrections would make it lowerable.
+\ one, or a non-widest variant grows more) is a contradiction: the lowering
+\ pushes the declared pads and can only add cells, so no sound lowering exists
+\ and it is refused unconditionally, a candidate probe included.
 : TFC-XPAD-NARROW-REJECT ( -- )   \ certified instantiated width contradicts add-only lowering: never certify
    0 OK ! -1 FAILSET ! ;
 
@@ -4925,14 +4908,12 @@ private
    term T-WIDTH
    fam TFAM-NICHE? IF 1 + THEN ;
 
-\ One subtraction answers both lowerings, so the number is latched here. Both
-\ push what the family declares and can only add: pass 1 emits the declared
-\ pads and pass 2 adds the WF row's cells at the same site; the native chain
-\ calls the generated constructor (declared pads and tag, whatever the
-\ instantiation) or reads the declared pads from the registry for a
-\ `construct`. MWIN-CELLS! files the difference under the judged token;
-\ the WF row carries it to pass 2. A
-\ construction that adds nothing files nothing (src/core/checker.f states the
+\ The lowering pushes what the family declares and can only add: it calls the
+\ generated constructor (declared pads and tag, whatever the instantiation) or
+\ reads the declared pads from the registry for a `construct`, and pushes the
+\ difference as zeros. MWIN-CELLS! files the difference under the judged token,
+\ and the WF row records it at the same site. A construction that adds nothing
+\ files nothing (src/core/checker.f states the
 \ absent case above the table). A niche family counts its bundle, so a construct
 \ of either variant adds nothing.
 : TFC-CON-XPAD-RECORD ( n n n -- ) {: fam:n vid:n famterm:n :}
@@ -4940,18 +4921,16 @@ private
    vid TFC-VAR-PAYCELLS -
    fam TFAM-SLOTS@ vid SUMV-PAYCELLS@ - -
    {: extra:n :}
-   extra 0 > IF extra MWIN-CELLS!  0 fam 0 extra WF-XPAD-FLAG WF-ADD-FULL EXIT THEN
+   extra 0 > IF extra MWIN-CELLS!  0 fam 0 extra WF-ADD-FULL EXIT THEN
    extra 0 < IF TFC-XPAD-NARROW-REJECT THEN ;   \ add-only lowering cannot remove the surplus
 
 \ MATCH sees only a SUM or ENUM family: TFAM-MATCH-FAM and TFL-MATCH-FAM? reject
 \ any other kind (MD-FAM-KIND) before an arm is recorded, and a product's UNMAKE
 \ records no pad fact. So `rt T-WIDTH 1 -` needs no kind guard.
 \
-\ Pass 2 needs the difference from the declared pads (its lowering emitted them
-\ and can only add); a compiler that models the stack cell by cell needs the
-\ pad count itself. Both come off one subtraction: MWIN-CELLS! files the count
-\ under this `of` token, and the WF row
-\ carries the difference to pass 2. An arm whose term is not closed latches
+\ The compiler models the stack cell by cell and needs the pad count itself:
+\ MWIN-CELLS! files it under this `of` token, and the WF row records the
+\ difference from the declared pads. An arm whose term is not closed latches
 \ nothing: the cell-accurate consumer then refuses the definition by name. A
 \ niche family counts its bundle, so its empty arm files one pad and the other
 \ none.
@@ -4965,7 +4944,7 @@ private
    ipads
    vid SUMV-FAM@ TFAM-SLOTS@ vid SUMV-PAYCELLS@ - -
    {: extra:n :}
-   extra 0 > IF 0 vid SUMV-FAM@ 0 extra WF-XPAD-FLAG WF-ADD-FULL EXIT THEN
+   extra 0 > IF 0 vid SUMV-FAM@ 0 extra WF-ADD-FULL EXIT THEN
    extra 0 < IF TFC-XPAD-NARROW-REJECT THEN ;   \ declared-width unpack would skip a pad the bundle lacks
 
 public

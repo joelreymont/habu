@@ -626,7 +626,6 @@ variable CASE-EXP
    s" : PROP-PC ( -- n ) prot-wid-room ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) get-current ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) checker-scope-depth ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- n ) type-field:tx-depth ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) wf-n@ ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( n n -- n ) wf-w-at ; " s" 7 7 " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) locw-hw-n@ ; " s" " 1 CHECK-CASE

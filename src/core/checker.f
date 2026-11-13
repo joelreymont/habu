@@ -16781,14 +16781,12 @@ $8 constant WF.POS-OFF
 $10 constant WF.FAM-OFF
 $18 constant WF.W-OFF
 $20 constant WF.TERM-OFF
-$28 constant WF.FLAGS-OFF
-$30 constant WF-REC
+$28 constant WF-REC
 : WF.OFF ( ptr a -- ptr a ) WF.OFF-OFF + ;
 : WF.POS ( ptr a -- ptr a ) WF.POS-OFF + ;
 : WF.FAM ( ptr a -- ptr a ) WF.FAM-OFF + ;
 : WF.W ( ptr a -- ptr a ) WF.W-OFF + ;
 : WF.TERM ( ptr a -- ptr a ) WF.TERM-OFF + ;
-: WF.FLAGS ( ptr a -- ptr a ) WF.FLAGS-OFF + ;
 
 
 $80 constant WF-INIT
@@ -16796,12 +16794,6 @@ CHECKER-REG:SCRATCH{
 PTR-VARIABLE WFS-P   variable WF-CAP   variable WF-N
 variable WF-CURROW   variable WF-POS-I
 CHECKER-REG:}SCRATCH
-
-1 constant WF-FETCH-FLAG
-2 constant WF-STORE-FLAG
-4 constant WF-XPAD-FLAG   \ construct/MATCH extra-pad fact (w = instantiated_pads - declared_pads)
-8 constant WF-INIT-FLAG   \ authenticated WITH-INIT call's fixed record width
-16 constant WF-FIELD-FLAG \ an authenticated initialized-field loan needs pass 2
 
 : WFS ( -- ptr n ) WFS-P @ ;
 
@@ -16827,7 +16819,6 @@ CHECKER-REG:}SCRATCH
 : WF-FAM@ ( n -- n ) WF-ROW@ WF.FAM @ ;
 : WF-WIDTH@ ( n -- n ) WF-ROW@ WF.W @ ;
 : WF-TERM@ ( n -- n ) WF-ROW@ WF.TERM @ ;
-: WF-FLAGS@ ( n -- n ) WF-ROW@ WF.FLAGS @ ;
 : WF-FACT@ ( n -- n n n ) {: i:n :} i WF-OFF@  i WF-POS@  i WF-WIDTH@ ;
 
 : WF-ROW-COPY ( n n -- ) {: src:n dst:n :}
@@ -16840,11 +16831,10 @@ CHECKER-REG:}SCRATCH
 : WF-KEY= ( n n n -- bool ) {: off:n pos:n row:n :}
    off row WF-OFF@ = pos row WF-POS@ = and ;
 
-: WF-SAME? ( n n n n n -- bool ) {: fam:n term:n w:n flags:n row:n :}
+: WF-SAME? ( n n n n -- bool ) {: fam:n term:n w:n row:n :}
    fam row WF-FAM@ =
    term row WF-TERM@ = and
-   w row WF-WIDTH@ = and
-   flags row WF-FLAGS@ = and ;
+   w row WF-WIDTH@ = and ;
 
 : WF-SEEK ( n n -- n )
    {: off:n pos:n :}
@@ -16854,13 +16844,13 @@ CHECKER-REG:}SCRATCH
       1 +
    repeat ;
 
-: WF-ADD-FULL ( n n n n n -- )
-   {: pos:n fam:n term:n w:n flags:n :}
+: WF-ADD-FULL ( n n n n -- )
+   {: pos:n fam:n term:n w:n :}
    TSTART @ {: off:n :}
    off pos WF-SEEK {: idx:n :}
    idx WF-N @ < if
       off pos idx WF-KEY= if
-         fam term w flags idx WF-SAME? 0= if s" checker: conflicting width fact" 76 die then
+         fam term w idx WF-SAME? 0= if s" checker: conflicting width fact" 76 die then
          exit
       then
    then
@@ -16871,14 +16861,14 @@ CHECKER-REG:}SCRATCH
    repeat drop
    idx WF-ROW {: r:ptr :}
    off r WF.OFF !  pos r WF.POS !  fam r WF.FAM !  w r WF.W !
-   term r WF.TERM !  flags r WF.FLAGS !
+   term r WF.TERM !
    WF-N @ 1 + WF-N ! ;
 
 : WF-ADD ( n n n -- ) {: pos:n fam:n w:n :}
-   pos fam 0 w 0 WF-ADD-FULL ;
+   pos fam 0 w WF-ADD-FULL ;
 
-: WF-MEM-RECORD ( n n -- ) {: t:n flags:n :}
-   0 t PARAM>FAM t t T-WIDTH flags WF-ADD-FULL ;
+: WF-MEM-RECORD ( n -- ) {: t:n :}
+   0 t PARAM>FAM t t T-WIDTH WF-ADD-FULL ;
 
 : LAYOUT-MEM-INNER ( -- n bool )
    DCUR @ R-RES {: node:n :}
@@ -16894,7 +16884,7 @@ CHECKER-REG:}SCRATCH
 : LAYOUT-FETCH-STEP ( n -- )   \ ( ptr fam -- fam ) from the pointee term
    {: t:n :}
    t LAYOUT-MEM-OK? 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
-   t LAYOUT-PARAM? IF t WF-FETCH-FLAG WF-MEM-RECORD THEN
+   t LAYOUT-PARAM? IF t WF-MEM-RECORD THEN
    FRESH MK-ROW {: rest:n :}
    t MK-PTR rest MK-PUSH
    t rest PUSH-LOGICAL
@@ -16903,7 +16893,7 @@ CHECKER-REG:}SCRATCH
 : LAYOUT-STORE-STEP ( n -- )   \ ( fam ptr fam -- ) from the pointee term
    {: t:n :}
    t LAYOUT-MEM-OK? 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
-   t LAYOUT-PARAM? IF t WF-STORE-FLAG WF-MEM-RECORD THEN
+   t LAYOUT-PARAM? IF t WF-MEM-RECORD THEN
    FRESH MK-ROW {: rest:n :}
    t rest PUSH-LOGICAL
    t MK-PTR swap MK-PUSH
@@ -17396,7 +17386,7 @@ defer SCOPE-EXTERIOR-XT ( n -- bool )
    OK @ 0= IF EXIT THEN
    scope SCOPE-EXTERIOR-XT IF
       SCOPE-WITNESS @ MD-C2-ESCAPE C2-REJECT EXIT THEN
-   1 0 0 width WF-INIT-FLAG WF-ADD-FULL
+   1 0 0 width WF-ADD-FULL
    REC-ON @ IF
       REC-IX @ width bytes CW-INIT-WIDTH CWIN-ADD
       REC-IX @ bytes align CW-INIT-EXTENT CWIN-ADD
@@ -17457,7 +17447,7 @@ defer SCOPE-EXTERIOR-XT ( n -- bool )
    OK @ 0= IF EXIT THEN
    scope SCOPE-EXTERIOR-XT IF
       SCOPE-WITNESS @ MD-C2-ESCAPE C2-REJECT EXIT THEN
-   1 0 0 width WF-INIT-FLAG WF-ADD-FULL
+   1 0 0 width WF-ADD-FULL
    REC-ON @ IF
       REC-IX @ width bytes CW-INIT-WIDTH CWIN-ADD
       REC-IX @ bytes align CW-INIT-EXTENT CWIN-ADD
@@ -17508,7 +17498,7 @@ defer SCOPE-EXTERIOR-XT ( n -- bool )
    OK @ 0= IF EXIT THEN
    scope SCOPE-EXTERIOR-XT IF
       SCOPE-WITNESS @ MD-C2-ESCAPE C2-REJECT EXIT THEN
-   1 0 0 width WF-INIT-FLAG WF-ADD-FULL
+   1 0 0 width WF-ADD-FULL
    REC-ON @ IF
       REC-IX @ width bytes CW-INIT-WIDTH CWIN-ADD
       REC-IX @ bytes align CW-INIT-EXTENT CWIN-ADD
@@ -17571,8 +17561,8 @@ defer SCOPE-EXTERIOR-XT ( n -- bool )
    THEN
    TSTART @ {: selector-off:n :}
    FIELD-LOAN-OFF @ TSTART !
-   1 0 0 off 1+ WF-FIELD-FLAG WF-ADD-FULL
-   2 0 0 bytes WF-FIELD-FLAG WF-ADD-FULL
+   1 0 0 off 1+ WF-ADD-FULL
+   2 0 0 bytes WF-ADD-FULL
    selector-off TSTART ! ;
 
 : SCOPE-FIELD-SCHEME? ( n n -- bool ) {: supplied:n ceiling:n :}
@@ -18368,7 +18358,7 @@ create LOCVAL LOC-RECS cells allot  \ per-local chain of captured physical cells
 variable LOC-CAP-HEAD
 variable #LOC  variable LMODE  variable LGRP  variable LI  variable LRF
 \ LOCW is live-indexed and branch-scoped locals are popped at their join with
-\ their slots rebound by sibling arms, so the pass-2 recompiler must not read
+\ their slots rebound by sibling arms, so the compiler must not read
 \ LOCW by live index after the verdict. LOCW-HW records every bind
 \ occurrence's FINAL width keyed by a monotone bind sequence that is never
 \ popped.
