@@ -60,10 +60,11 @@ require src/lib/time.f
 \ journal input, purpose, model, tier as last sent and cache key. A CANCEL
 \ or REQUEST-STOP during the rest wakes the starter, and the call lands
 \ E-CANCELLED with a cancelled record when its request was dispatched. SERVE
-\ and AWAIT of a started call run on the task that started it; a halt while
-\ AWAIT waits on a transfer lands the call first; one served during a rest
-\ leaves it resting, and one served where a send that ended E-TIER is to
-\ be sent again lands the call with that send's outcome.
+\ and AWAIT of a started call run on the task that started it; a halt pending
+\ at their take gives the transfer up, a ready answer included, and lands the
+\ call first, and one at a SERVE with nothing to take leaves it started; one
+\ served during a rest leaves it resting, and one served where a send that
+\ ended E-TIER is to be sent again lands the call with that send's outcome.
 \ A task that may be halted CANCELs, then AWAITs, each call still started in a
 \ finally, catching each AWAIT's fault.
 
@@ -4777,10 +4778,8 @@ CAST: N>TASK ( n -- ptr n )
    c receive catch {: code:n :} drop code c LAND-FAULT ;
 
 
-\ The receive runs deferred: a halt pending while AWAIT waits settles the call,
-\ one in SERVE leaves it started; ACCOUNT and the tier machine's step follow
-\ outside it, where it is served. A resting call has nothing to receive; the
-\ resend machine steps last.
+\ Deferred, a halt pending at the receive's take settles the call instead of
+\ unwinding out of the take.
 : RECEIVE-STARTED ( [ ptr call -- ptr call ] ptr call -- )
    {: receive c :}
    c REQUIRE-STARTER

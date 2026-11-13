@@ -94,10 +94,10 @@ Takers == {"serve", "await"}
 Moves == {"landcut", "resent", "sense", "publish", "begun", "cut"}
 Places == {<<"free">>, <<"parked">>, <<"halting">>, <<"unwinding">>,
            <<"finally">>, <<"ended">>}
-          \cup ({"await", "abandon"} \X Calls)
+          \cup ({"await"} \X Calls)
           \cup ({"dispatch"} \X Calls \X Froms \X Kinds)
           \cup (Moves \X Calls \X Froms)
-          \cup ({"cleanup"} \X Calls \X Takers)
+          \cup ({"abandon", "cleanup"} \X Calls \X Takers)
           \cup ({"account"} \X Calls \X Takers \X {"receive", "cancel"})
 
 (* The owner is inside a step of c's send. *)
@@ -217,19 +217,20 @@ Throws(c) ==
 (* up: a DONE one is freed at once (LEAVE-DONE, REC-RELEASE) and the call  *)
 (* lands; any other is marked LEAVING and the owner waits in ABANDON       *)
 (* (CleanupStep) before the call lands.                                    *)
-TakeFault(c) ==
-    \E t \in Throws(c) :
-        /\ transport' = [transport EXCEPT ![c] = FALSE]
-        /\ IF t[2] = "done"
-           THEN /\ rec' = [rec EXCEPT ![c] = "none"]
-                /\ req' = [req EXCEPT ![c] = "none"]
-                /\ held' = [held EXCEPT ![c] = FALSE]
-                /\ lc' = [lc EXCEPT ![c] = "landed"]
-                /\ ecan' = [ecan EXCEPT ![c] = cancelled[c]]
-           ELSE /\ rec' = [rec EXCEPT ![c] = "leaving"]
-                /\ req' = [req EXCEPT ![c] = t[1]]
-                /\ UNCHANGED <<held, lc, ecan>>
-        /\ UNCHANGED <<rest, tierOut, resend>>
+FaultAs(c, t) ==
+    /\ transport' = [transport EXCEPT ![c] = FALSE]
+    /\ IF t[2] = "done"
+       THEN /\ rec' = [rec EXCEPT ![c] = "none"]
+            /\ req' = [req EXCEPT ![c] = "none"]
+            /\ held' = [held EXCEPT ![c] = FALSE]
+            /\ lc' = [lc EXCEPT ![c] = "landed"]
+            /\ ecan' = [ecan EXCEPT ![c] = cancelled[c]]
+       ELSE /\ rec' = [rec EXCEPT ![c] = "leaving"]
+            /\ req' = [req EXCEPT ![c] = t[1]]
+            /\ UNCHANGED <<held, lc, ecan>>
+    /\ UNCHANGED <<rest, tierOut, resend>>
+
+TakeFault(c) == \E t \in Throws(c) : FaultAs(c, t)
 
 (* NEXT-TAKE of an answered request (STREAM-RESULT-TAKE), as SERVE and     *)
 (* AWAIT do it: a chunk is fed and the next read armed at once, or it      *)
@@ -343,13 +344,32 @@ Tail(c, f, l) ==
 
 (* NEXT-TAKE's TASK:PAUSE after ABANDON runs inside RECEIVE-STARTED's      *)
 (* DEFER-ENTER, so it only yields: the take answers failed CURLE_ABORTED,  *)
-(* TAKE-WAIT or DISCARD-WAIT answers done and the receive lands the call.  *)
-PauseAfter(c) ==
+(* TAKE-WAIT or DISCARD-WAIT answers done and the receive lands the call;  *)
+(* SERVE goes on to ACCOUNT, AWAIT to its DEFER-LEAVE (AwaitStep). Unless  *)
+(* cut, or a chat whose stream had ended, it lands failed (E-TRANSPORT),   *)
+(* which REST-OUT? may rest.                                               *)
+PauseAfter(c, f) ==
     /\ lc' = [lc EXCEPT ![c] = "landed"]
     /\ ecan' = [ecan EXCEPT ![c] = cancelled[c]]
     /\ transport' = [transport EXCEPT ![c] = FALSE]
-    /\ opc' = <<"await", c>>
+    /\ \E o \in IF ~cancelled[c] /\ CanRest(c) THEN BOOLEAN ELSE {FALSE} :
+          resend' = [resend EXCEPT ![c].out = o]
+    /\ opc' = IF f = "serve" THEN <<"account", c, "serve", "receive">>
+               ELSE <<"await", c>>
     /\ UNCHANGED unwound
+
+(* NEXT-TAKE's ABANDON on a pending halt, for SERVE or AWAIT (f), as       *)
+(* CLEANUP's in FaultAs: a DONE record's call lands at once                *)
+(* (PauseAfter), any other's after the owner's wait (AbandonStep).         *)
+HaltAbandon(c, f) ==
+    IF rec[c] = "done"
+    THEN /\ rec' = [rec EXCEPT ![c] = "none"]
+         /\ req' = [req EXCEPT ![c] = "none"]
+         /\ held' = [held EXCEPT ![c] = FALSE]
+         /\ PauseAfter(c, f)
+    ELSE /\ rec' = [rec EXCEPT ![c] = "leaving"]
+         /\ opc' = <<"abandon", c, f>>
+         /\ UNCHANGED <<lc, transport, unwound, req, held, ecan, resend>>
 
 (* CANCEL-RECORD of a send a stop or CANCEL kept from being sent again,    *)
 (* its outcome E-CANCELLED already, stored by the gate hold that decided   *)
@@ -552,27 +572,36 @@ Cut(c) ==
 (* SERVE's started arm (RECEIVE-STARTED) as one step: the receive only     *)
 (* polls, deferred; a take that throws may wait in CLEANUP's ABANDON; then *)
 (* DEFER-LEAVE, and a landed call's ACCOUNT, TIER-STEP and RESEND-STEP     *)
-(* before HALT-UNWIND. A halted owner's poll that takes nothing leaves the *)
-(* call started and the owner unwinding.                                   *)
+(* before HALT-UNWIND. A halted owner's poll of an answered read may throw *)
+(* before the halt check (FaultAs), else gives the record up before        *)
+(* NEXT-TAKE takes it, waiting in ABANDON while the loop holds it          *)
+(* (HaltAbandon), and the call lands; its poll of a read with nothing      *)
+(* leaves the call started and the owner unwinding.                        *)
 (* REQUIRE-STARTER passes: the one owner starts every call.                *)
 (* OWNED-INDEX's refusal of a left owner's record never fires: no TCB is   *)
 (* reused.                                                                 *)
 Serve(c) ==
     /\ opc = <<"free">>
     /\ lc[c] = "started"
-    /\ \/ /\ req[c] \in Answered
-          /\ Take(c)
-       \/ /\ halted
-          /\ req[c] = "waiting"
-          /\ UNCHANGED <<lc, rest, transport, rec, req, held, tierOut,
-                         resend, ecan>>
-    /\ IF rec'[c] = "leaving"
-       THEN /\ opc' = <<"cleanup", c, "serve">>
-            /\ UNCHANGED unwound
-       ELSE IF lc'[c] = "landed"
-            THEN /\ opc' = <<"account", c, "serve", "receive">>
-                 /\ UNCHANGED unwound
-            ELSE ServeEnd
+    /\ \/ /\ \/ /\ req[c] \in Answered
+                /\ IF halted /\ ~unwound
+                      THEN FaultAs(c, <<req[c], rec[c]>>)
+                      ELSE Take(c)
+             \/ /\ halted
+                /\ req[c] = "waiting"
+                /\ UNCHANGED <<lc, rest, transport, rec, req, held, tierOut,
+                               resend, ecan>>
+          /\ IF rec'[c] = "leaving"
+             THEN /\ opc' = <<"cleanup", c, "serve">>
+                  /\ UNCHANGED unwound
+             ELSE IF lc'[c] = "landed"
+                  THEN /\ opc' = <<"account", c, "serve", "receive">>
+                       /\ UNCHANGED unwound
+                  ELSE ServeEnd
+       \/ /\ halted /\ ~unwound
+          /\ req[c] \in Answered
+          /\ HaltAbandon(c, "serve")
+          /\ UNCHANGED <<rest, tierOut>>
     /\ UNCHANGED <<cancelled, stopped, span, starts, hints, halted,
                    deferred, left, ends, wroteFreed, wokeEnded, rule, tier,
                    due, said, crecs, sent, hcut>>
@@ -628,13 +657,13 @@ Await(c) ==
                    wroteFreed, wokeEnded, rule, tier, tierOut, resend, due,
                    seen>>
 
-(* AWAIT's started arm, deferred: take what is answered, else NEXT-TAKE's  *)
-(* TASK:WAIT and its TASK:HALT-PENDING? check, which starts ABANDON        *)
-(* (curl.f) on a halt whose unwind has not begun; in the unwind it waits   *)
-(* as an unhalted owner does. After TASK:WAIT, NEXT-TAKE checks the halt   *)
-(* before an answered read, so an owner with a halt pending gives the      *)
-(* record up even when its read was answered. Once the call lands,         *)
-(* DEFER-LEAVE, then ACCOUNT, TIER-STEP and RESEND-STEP (PutDone).         *)
+(* AWAIT's started arm, deferred, as NEXT-TAKE's loop runs it: a halt      *)
+(* whose unwind has not begun (TASK:HALT-PENDING?) gives the record up     *)
+(* (HaltAbandon) before an answered read is taken, though the receive may  *)
+(* throw before that check (FaultAs); else an answered read is taken; else *)
+(* TASK:WAIT takes a hint, the halt's post among them. In the unwind it    *)
+(* waits as an unhalted owner does. Once the call lands, DEFER-LEAVE, then *)
+(* ACCOUNT, TIER-STEP and RESEND-STEP (PutDone).                           *)
 AwaitStep(c) ==
     /\ opc = <<"await", c>>
     /\ \/ /\ lc[c] = "landed"
@@ -643,28 +672,22 @@ AwaitStep(c) ==
                          held, tierOut, resend, ecan>>
        \/ /\ lc[c] = "started"
           /\ req[c] \in Answered
-          /\ Take(c)
+          /\ IF halted /\ ~unwound
+                THEN FaultAs(c, <<req[c], rec[c]>>)
+                ELSE Take(c)
           /\ opc' = IF rec'[c] = "leaving" THEN <<"cleanup", c, "await">> ELSE opc
           /\ UNCHANGED <<hints, unwound>>
        \/ /\ lc[c] = "started"
-          /\ req[c] = "waiting" \/ (halted /\ ~unwound /\ req[c] \in Answered)
+          /\ req[c] = "waiting"
           /\ hints > 0
           /\ hints' = hints - 1
-          /\ UNCHANGED <<tierOut, resend>>
-          /\ IF ~(halted /\ ~unwound)
-             THEN UNCHANGED <<lc, rest, transport, opc, unwound, rec, req, held,
-                              ecan>>
-             ELSE IF rec[c] = "done"
-                  \* ABANDON: a DONE record is out of the multi handle; freed here.
-                  THEN /\ rec' = [rec EXCEPT ![c] = "none"]
-                       /\ req' = [req EXCEPT ![c] = "none"]
-                       /\ held' = [held EXCEPT ![c] = FALSE]
-                       /\ PauseAfter(c)
-                       /\ UNCHANGED rest
-                  ELSE /\ rec' = [rec EXCEPT ![c] = "leaving"]
-                       /\ opc' = <<"abandon", c>>
-                       /\ UNCHANGED <<lc, rest, transport, unwound, req, held,
-                                      ecan>>
+          /\ UNCHANGED <<lc, rest, transport, opc, unwound, rec, req, held,
+                         tierOut, resend, ecan>>
+       \/ /\ lc[c] = "started"
+          /\ halted /\ ~unwound
+          /\ req[c] \in {"waiting"} \cup Answered
+          /\ HaltAbandon(c, "await")
+          /\ UNCHANGED <<rest, hints, tierOut>>
     /\ UNCHANGED <<cancelled, stopped, span, starts, halted, deferred, left,
                    ends, wroteFreed, wokeEnded, rule, tier, due, said, crecs,
                    sent, hcut>>
@@ -672,20 +695,22 @@ AwaitStep(c) ==
 (* ABANDON's wait: the span is the owner's again only once the loop has   *)
 (* let go (LEFT); the owner frees the record itself.                       *)
 AbandonStep(c) ==
-    /\ opc = <<"abandon", c>>
-    /\ \/ /\ rec[c] = "left"
-          /\ rec' = [rec EXCEPT ![c] = "none"]
-          /\ req' = [req EXCEPT ![c] = "none"]
-          /\ held' = [held EXCEPT ![c] = FALSE]
-          /\ PauseAfter(c)
-          /\ UNCHANGED hints
-       \/ /\ rec[c] /= "left"
-          /\ hints > 0
-          /\ hints' = hints - 1
-          /\ UNCHANGED <<lc, transport, opc, unwound, rec, req, held, ecan>>
-    /\ UNCHANGED <<rest, cancelled, stopped, span, starts, halted, deferred,
-                   left, ends, wroteFreed, wokeEnded, rule, tier, tierOut,
-                   resend, due, said, crecs, sent, hcut>>
+    \E f \in Takers :
+        /\ opc = <<"abandon", c, f>>
+        /\ \/ /\ rec[c] = "left"
+              /\ rec' = [rec EXCEPT ![c] = "none"]
+              /\ req' = [req EXCEPT ![c] = "none"]
+              /\ held' = [held EXCEPT ![c] = FALSE]
+              /\ PauseAfter(c, f)
+              /\ UNCHANGED hints
+           \/ /\ rec[c] /= "left"
+              /\ hints > 0
+              /\ hints' = hints - 1
+              /\ UNCHANGED <<lc, transport, opc, unwound, rec, req, held,
+                             ecan, resend>>
+        /\ UNCHANGED <<rest, cancelled, stopped, span, starts, halted,
+                       deferred, left, ends, wroteFreed, wokeEnded, rule,
+                       tier, tierOut, due, said, crecs, sent, hcut>>
 
 (* CLEANUP's ABANDON in LAND-FAULT's SETTLE-SENSE: the same wait; once the *)
 (* owner has freed the record, END-RUN lands the call, then ACCOUNT runs.  *)

@@ -1584,6 +1584,14 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
    idx REC-RELEASE
    CURL-LOCK TASK:RELEASE ;
 
+\ With a halt pending, gives the record up and serves the halt; PAUSE returns
+\ only when termination is deferred, and the caller must not touch the record.
+: HALT-LEFT? ( n -- bool ) {: idx:n :}
+   TASK:HALT-PENDING? 0= if false exit then
+   idx ABANDON
+   TASK:PAUSE
+   true ;
+
 
 : OWNER-MARK ( ptr n n -- bool ) {: owner:ptr idx:n :}
    idx REC-STATE@ dup STATE-FREE = swap STATE-CLAIMING = or if false exit then
@@ -1784,26 +1792,19 @@ public
    request REQUEST-WAITING <> ;
 
 
-\ Takes the armed read's answer, waiting for it if it has none yet; its wait
-\ answers a halt as AWAIT's does.
+\ Takes the armed read's answer, waiting for it if it has none yet. A pending
+\ halt comes first: the record is given up even when the answer is ready.
 : NEXT-TAKE ( handle -- chunk-result )
    {: subject:handle :}
    subject HANDLE-CELL OWNED-INDEX {: idx:n :}
    idx REC R.REQUEST atomic@ {: request:n :}
    request REQUEST-NONE = if E-STATE throw then
-   request REQUEST-WAITING <> if idx STREAM-RESULT-TAKE exit then
    begin
-      TASK:WAIT
-      TASK:HALT-PENDING? if
-         idx ABANDON
-         TASK:PAUSE
-         \ PAUSE returns when termination is deferred. The record is already
-         \ given back, so never read or park on it again.
-         CURLE-ABORTED >CODE CURL-CHUNK--RESULT:failed exit
-      then
+      idx HALT-LEFT? if CURLE-ABORTED >CODE CURL-CHUNK--RESULT:failed exit then
       idx REC R.REQUEST atomic@ REQUEST-WAITING <> if
          idx STREAM-RESULT-TAKE exit
       then
+      TASK:WAIT
    again ;
 
 
@@ -1817,19 +1818,15 @@ public
 \ would have. It gives the record back, so every started transfer is awaited
 \ once, cancelled ones included, unless its owner's CLEANUP gives it up. A
 \ handle with no transfer in flight, and one another task started, are E-STATE.
-\ While TASK:HALT-PENDING? the TASK:WAIT loop gives the record up and ends the
-\ task at the PAUSE below, or answers failed CURLE-ABORTED where PAUSE cannot.
+\ A pending halt comes before a ready result: the record is given up and the
+\ task ends, or answers failed CURLE-ABORTED where termination is deferred.
 : AWAIT ( handle -- fetch-result ) {: subject:handle :}
    subject HANDLE-CELL OWNED-INDEX {: idx:n :}
    idx REC-MODE@ MODE-WHOLE <> if E-STATE throw then
    begin
+      idx HALT-LEFT? if CURLE-ABORTED FETCH-FAILED exit then
       idx REC-STATE@ STATE-DONE = if idx RESULT-TAKE exit then
       TASK:WAIT
-      TASK:HALT-PENDING? if
-         idx ABANDON
-         TASK:PAUSE
-         CURLE-ABORTED FETCH-FAILED exit
-      then
    again ;
 
 

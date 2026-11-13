@@ -1446,8 +1446,8 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
 \ Starts the transfer and receives the whole reply into the reply buffer,
 \ which grows with it: NEXT writes each chunk into the room past the bytes
 \ received, and appending the chunk from where it lies keeps it. NEXT follows
-\ STREAM-START with no PAUSE between, so a pending halt is read in NEXT's wait,
-\ which gives the transfer up.
+\ STREAM-START with no PAUSE between, so NEXT reads a pending halt and gives
+\ the transfer up.
 : TRANSFER ( n CURL:handle -- )
    {: idx:n h:CURL:handle :}
    idx REPLY-BUF {: buf:ptr :}

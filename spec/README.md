@@ -28,19 +28,22 @@ throws only E-STATE (MODEL's CALL-HANDLE, CHAT-CHUNK and LOST; CURL's
 NEXT-ARM, NEXT-READY?, NEXT-TAKE and CANCEL), CURL's E-OPERAND (NEXT-ARM), or a
 buffer's, span's or memory's fault while it copies a chunk. None is in
 RESENDS?'s class, so REST-OUT? keeps the call landed. A failed transfer is no
-throw: NEXT-TAKE answers it as an end, which Take lands. SERVE and AWAIT
+throw: NEXT-TAKE answers it as an end, which Take lands; so is the transfer a
+halted owner's take gives up, which lands failed E-TRANSPORT unless cut or a
+chat whose stream had ended, and may rest. SERVE and AWAIT
 run a started call's receive deferred: a halt while AWAIT waits gives up the
 record and lands the call before the owner unwinds, even when its read was
 answered meanwhile, since NEXT-TAKE checks the halt first; a halted owner's
-SERVE that lands nothing leaves the call started and the owner unwinding. A
-landed call's recorder and journal put (ACCOUNT) run after the deferred
-section: a halt pending while they wait unwinds the owner there, and the call
-still ends landed. OwnerEnds, with the put's end fair only while no halt is
-pending, shows that a halt does not wait for the recorder or put to end. Each
-owner step is one hold of a call's gate, or a step another task cannot tell
-from one, so another task's CANCEL or stop may come between any two; a
-machine's next state is stored only once its transition's action has
-returned, so a CANCEL or a halt inside that action finds the old state. With
+SERVE gives the record up and lands the call when its read is answered, and
+leaves the call started and the owner unwinding when it is not. A landed
+call's recorder and journal put (ACCOUNT) run after the deferred section: a
+halt pending while they wait unwinds the owner there, and the call still ends
+landed. OwnerEnds, with the put's end fair only while no halt is pending,
+shows that a halt does not wait for the recorder or put to end. Each owner
+step is one hold of a call's gate, or a step another task cannot tell from
+one, so another task's CANCEL or stop may come between any two; a machine's
+next state is stored only once its transition's action has returned, so a
+CANCEL or a halt inside that action finds the old state. With
 TIER-RESEND!, a landed call whose send ended E-TIER is started again once by
 its starter inside SERVE or AWAIT, uncounted in its starts, never when it is
 stopped or was cancelled as or after it landed; the same properties hold. With

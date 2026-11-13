@@ -1846,14 +1846,11 @@ TEST-ALIGN8
 variable DURING-THREADS
 variable HALT-PARKED
 variable HALT-RC
-variable HALT-GO
 variable HALT-PASSED
 variable EARLY-MODE
-variable DONE-PARKED
 variable DONE-COLLECTED
 variable DONE-RC
-variable DONE-ATTEMPTS
-variable DONE-ABANDONED
+variable DONE-SETTLED
 variable OWNER-RC
 
 8 BUFFER: DONE-STATE-CELL
@@ -2589,8 +2586,11 @@ variable EXIT-BEGUN
    HALT-HANDLE @ CURL:CLEANUP ;
 
 
-\ Spins: a PAUSE here would serve the halt before AWAIT, and a TASK:WAIT would
-\ take the hint AWAIT's wait needs.
+\ Waits for this task's halt without a PAUSE, which would serve it before AWAIT.
+: WAIT-HALT ( -- )
+   begin TASK:HALT-PENDING? 0= while TASK:WAIT repeat ;
+
+
 : LATE-WORK ( -- )
    HALT-HANDLE @ BODY-BUF BODY-CAP >LEN CURL:START
    MATCH CURL:status
@@ -2598,7 +2598,7 @@ variable EXIT-BEGUN
       failed OF CURL:CODE>N HALT-RC ! ENDOF
    ;MATCH
    1 HALT-PARKED atomic!
-   begin HALT-GO atomic@ 0<> until
+   WAIT-HALT
    HALT-HANDLE @ CURL:AWAIT DROP-FETCH
    1 HALT-PASSED atomic! ;
 
@@ -2608,7 +2608,6 @@ variable EXIT-BEGUN
 : CASE-HALTED-LATE ( -- )
    0 HALT-PARKED !
    0 HALT-RC !
-   0 HALT-GO !
    0 HALT-PASSED !
    PATH-STALL$ GET-READY HALT-HANDLE !
    SERVER-HITS atomic@ {: before:n :}
@@ -2616,7 +2615,6 @@ variable EXIT-BEGUN
    HALT-PARKED 1 HALT-TASK TEST-WAIT:FOR-CELL
    before HALT-HIT
    HALT-TASK TASK:HALT
-   1 HALT-GO atomic!
    HALT-TASK AWAIT-END
    HALT-TASK TASK:KILL
    s" a task halted before its AWAIT gives the transfer up and ends there" T-LABEL
@@ -2838,67 +2836,38 @@ variable DEFER-RETURNED
 : DONE-PUBLISHED? ( ptr n -- bool ) $18 + atomic@ 0<> ;
 
 
-\ Never pauses, since a pause gives DONE-TASK, woken by the same publication,
-\ time to collect before the halt; DONE-TASK ending unpublished ends it too.
-: WAIT-PUBLISHED ( ptr n -- )
-   begin dup DONE-PUBLISHED? DONE-TASK TASK:DONE? or until drop ;
-
-
+\ The wake that finds the response published leaves the record done, so the
+\ halt meets a ready result.
 : DONE-WORK ( -- )
+   DONE-HANDLE @ DONE-STATE {: state:ptr :}
    DONE-HANDLE @ BODY-BUF BODY-CAP >LEN CURL:START
    MATCH CURL:status
       ok OF ENDOF
       failed OF CURL:CODE>N DONE-RC ! ENDOF
    ;MATCH
-   1 DONE-PARKED atomic!
+   DONE-RC @ 0<> if 1 DONE-SETTLED atomic! exit then
+   begin TASK:WAIT state DONE-PUBLISHED? until
+   1 DONE-SETTLED atomic!
+   WAIT-HALT
    DONE-HANDLE @ AWAIT-ONE
    1 DONE-COLLECTED atomic! ;
 
 
-: CASE-HALTED-DONE-ONE ( -- bool )
-   0 DONE-PARKED ! 0 DONE-COLLECTED ! 0 DONE-RC !
+: CASE-HALTED-DONE ( -- )
+   0 DONE-SETTLED ! 0 DONE-COLLECTED ! 0 DONE-RC !
    PATH-HEADERS$ GET-READY DONE-HANDLE !
-   DONE-HANDLE @ DONE-STATE {: state:ptr :}
    ['] DONE-WORK DONE-TASK TASK:ACTIVATE
-   DONE-PARKED 1 DONE-TASK TEST-WAIT:FOR-CELL
-   state WAIT-PUBLISHED
+   DONE-SETTLED 1 DONE-TASK TEST-WAIT:FOR-CELL
    DONE-TASK TASK:HALT
    DONE-TASK AWAIT-END
    DONE-TASK TASK:KILL
+   s" a halted owner gives up a completed transfer" T-LABEL
    DONE-RC @ 0 T=
    STOP-LOOP
-   DONE-COLLECTED atomic@ if
-      s" a collected response retains its successful final headers" T-LABEL
-      LAST-KIND @ KIND-RESPONSE T=
-      LAST-STATUS @ 200 T=
-      BODY$ JSON$ T$=
-      DONE-HANDLE @ HEADERS$ HEADER-EXACT
-      DONE-HANDLE @ CURL:CLEANUP
-      false exit
-   then
+   DONE-COLLECTED atomic@ 0 T=
    s" a completed transfer abandoned by its waiter has no headers" T-LABEL
    DONE-HANDLE @ HEADER-REFUSED
-   DONE-HANDLE @ CURL:CLEANUP
-   true ;
-
-
-8 constant DONE-TRIES
-
-: CASE-HALTED-DONE ( -- )
-   0 DONE-ATTEMPTS ! 0 DONE-ABANDONED !
-   DONE-TRIES 0 do
-      i 0 > if CURL:LOOP-START EXPECT-OK then
-      1 DONE-ATTEMPTS +!
-      CASE-HALTED-DONE-ONE if
-         1 DONE-ABANDONED +!
-         leave
-      then
-   loop
-   s" curl collection attempts=" type DONE-ATTEMPTS @ FMT:.U
-   s"  collected=" type DONE-ATTEMPTS @ DONE-ABANDONED @ - FMT:.U
-   s"  abandoned=" type DONE-ABANDONED @ FMT:.U cr
-   s" a completed transfer is abandoned within the attempt bound" T-LABEL
-   DONE-ABANDONED @ 1 T= ;
+   DONE-HANDLE @ CURL:CLEANUP ;
 
 
 : CASE-RESTART ( -- )
@@ -2977,7 +2946,7 @@ variable DEFER-RETURNED
    SERVER-BAD @ 0 T=
    SERVER-ERRNO @ 0 T=
    SERVER-HITS atomic@
-   96 MANY-N MANY-ROUNDS * + DONE-ATTEMPTS @ + CEILING-HITS @ + T= ;
+   97 MANY-N MANY-ROUNDS * + CEILING-HITS @ + T= ;
 
 
 : NET-TESTS? ( -- bool )
