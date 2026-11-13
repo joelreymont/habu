@@ -7,6 +7,8 @@ require src/habu/verify-source.f
 require test/replay-scope.f
 require test/decl-diag-capture.f   \ DECL-DIAG: the check tool's own declaration-packet capture
 require src/lib/test.f
+require src/lib/vector.f
+require src/lib/heap.f
 
 \ Capture every reject's declaration diagnostic from the start; the last
 \ section asserts the rendered lines.
@@ -267,6 +269,29 @@ s" SDSPX ( ptr sdsplist<n> -- ptr sdsplist<f> ) SDSPLIST:NEXT @" CHECK-QUIET-CAN
 STRUCTURE sdsplistn<a> DERIVE addr FIELD v a FIELD next ptr sdsplistn<n> ;STRUCTURE
 s" SDSNG ( ptr sdsplistn<a> -- ptr sdsplistn<n> ) SDSPLISTN:NEXT @" CHECK-QUIET-CANDIDATE! -1 T=
 s" SDSNC ( ptr sdsplistn<n> -- ptr sdsplistn<n> ) SDSPLISTN:NEXT @" CHECK-QUIET-CANDIDATE! -1 T=
+
+\ An addr family's parameter takes a record through its words and generic ones.
+package SDVEC
+public
+STRUCTURE sdvbox<t> OPAQUE DERIVE addr FIELD k n FIELD j n ;STRUCTURE
+ENUM sdvshade
+   VARIANT dark FIELD k n ;VARIANT
+   VARIANT light FIELD k n ;VARIANT
+;ENUM
+TYPED-VARIABLE SDV-BOX sdvbox<sdvshade>
+: SDV-K ( ptr sdvbox<sdvshade> -- ptr n ) SDVBOX-K ;
+: SDV-CNT ( ptr sdvbox<t> -- n ) SDVBOX-K @ ;
+: SDV-SHADE-CNT ( ptr sdvbox<sdvshade> -- n ) SDV-CNT ;
+: SDV-PICK ( ptr VEC:vector<sdvshade> n -- ptr sdvshade ) VEC:AT ;
+: SDV-STRIDE? ( ptr VEC:vector<sdvshade> -- bool )
+   {: v:ptr :}
+   v 1 SDV-PICK v 0 SDV-PICK -  [type] sdvshade width>n = ;
+: SDV-RUN ( -- n bool )
+   7 SDV-BOX SDV-K !  SDV-BOX SDV-SHADE-CNT
+   HEAP:ALLOCATOR 2 [type] sdvshade VEC:NEW {: v:ptr :}
+   v SDV-STRIDE?  v VEC:DELETE ;
+;package
+SDVEC:SDV-RUN TTRUE 7 T=
 
 \ The declaring package's own `*` does not reach its structure's AT: another
 \ package reads element 2 of three through it.

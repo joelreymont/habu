@@ -5284,12 +5284,28 @@ TFAM-MEMBERS-INSTALL
    shape CHILD-ABI:BYTE-OFF = IF CC-U8 MK-CON EXIT THEN
    s" tfam: unknown child shape" 76 die ;
 
+\ Letters the type variable ID in NMAP as a signature spells parameter INDEX.
+: FRESH-LETTER ( n n -- ) {: id:n index:n :}
+   index TFAM-DECL-PARAM>CHAR 0= IF drop EXIT THEN
+   97 - cells NMAP + id swap ! ;
+
+\ A fresh variable for parameter INDEX of FAM, lettered and kinded as a
+\ signature letters and kinds the parameter it spells there.
+: FRESH-PARAM ( n n -- n ) {: fam:n index:n :}
+   FRESH {: id:n :}
+   id index FRESH-LETTER
+   fam index TFAM-PK@ {: pk:n :}
+   pk PK-SCOPE = IF id TVK-SCOPE! THEN
+   pk PK-REGION = IF id TVK-REGION! THEN
+   id MK-VAR ;
+
 public
 
-\ The family FAM over fresh type variables, one per parameter.
+\ The family FAM over fresh type variables, one per parameter and lettered as
+\ it: a built row's stored kinds are decided for lettered variables only.
 : TFAM-FRESH-TERM ( n -- n ) {: fam:n :}
    PARAM-SCR-N @ {: base:n :}
-   fam TFAM-ARITY@ 0 ?do FRESH MK-VAR PARAM-SCR+ loop
+   fam TFAM-ARITY@ 0 ?do fam i FRESH-PARAM PARAM-SCR+ loop
    base fam TFAM-NAME$ fam MK-PARAM ;
 
 private
@@ -5356,9 +5372,10 @@ public
    term MK-PTR base MK-PUSH ;
 
 \ A child word's input row, output row and body value, from its CHILD-ABI SHAPE
-\ and PARAM, in fresh checker terms.
+\ and PARAM, in fresh checker terms. NEW restarts the variable ids, so NMAP is
+\ cleared with it: a stale letter would name a fresh variable.
 : TFAM-CHILD-ROWS ( n n -- n n n ) {: shape:n param:n :}
-   NEW
+   NEW NMAP-RESET
    shape CHILD-ABI:FIELD = IF param TFAM-FIELD-ROWS EXIT THEN
    shape CHILD-ABI:INDEX = IF param TFAM-AT-ROWS EXIT THEN
    shape CHILD-ABI:VALUE = IF param VALUE-ROWS EXIT THEN

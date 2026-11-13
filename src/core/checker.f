@@ -8086,6 +8086,27 @@ CHECKER-REG:}SCRATCH
       2drop  -1 SGHASR !  RRTAIL PSTACK
    ELSE PK! RR-SHARED @ THEN ;
 
+\ The rules a signature's rows pass, parsed or built; a refusal sets SGBAD at
+\ the token A U. HASR says the rows carry a return clause, whose check names
+\ the parse's text. SCOPE-SUPPLIED? reads the inputs from PD-IN and PR-IN.
+: SIG-ROWS-CHECK ( ptr u8 n n n n n bool -- )
+   {: a:ptr u:n din:n dout:n rin:n rout:n hasr:bool :}
+   din PD-IN !  rin PR-IN !
+   SGBAD @ IF EXIT THEN
+   \ The supplied check runs last and SGBAD-SET is first-wins, so its own kind
+   \ is latched only when the return-clause, sort and forall checks passed.
+   hasr IF rin rout RCLAUSE-CHECK THEN
+   din SCOPE-SORT? dout SCOPE-SORT? and
+   rin SCOPE-SORT? rout SCOPE-SORT? and and 0= IF a u SGBAD-SYNTAX! THEN
+   din RES-TRUE FORALL-PLACE? dout RES-FALSE FORALL-PLACE? and
+   rin RES-FALSE FORALL-PLACE? rout RES-FALSE FORALL-PLACE? and and 0= IF
+      a u SGBAD-SYNTAX! THEN
+   \ Facts text skips this rule: a cast's certified view pack has outputs
+   \ that no input supplies.
+   SIG-FACTS-MODE @ 0= IF
+      dout SCOPE-SUPPLIED? rout SCOPE-SUPPLIED? and 0= IF a u SGBAD-UNSUPPLIED! THEN
+   THEN ;
+
 : PSIG ( -- n n n n )
    PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET  0 SQUOT-N !  0 BIND-DEPTH !  0 SIG-LEVEL !  0 SGHASR !  0 RR-SHARED !
    FRESH MK-ROW dup PD-BASE ! {: dr :}
@@ -8094,21 +8115,7 @@ CHECKER-REG:}SCRATCH
    s" --" EXPECT-SIG
    dr PSIDE  PR-OUT ! PD-OUT !
    NEXT-SIG-TOK dup 0 <> IF SGBAD-SYNTAX! ELSE 2drop THEN
-   \ The supplied check runs last and SGBAD-SET is first-wins, so its own kind
-   \ is latched only when the return-clause, sort and forall checks passed.
-   SGBAD @ 0= IF
-      SGHASR @ IF PR-IN @ PR-OUT @ RCLAUSE-CHECK THEN
-      PD-IN @ SCOPE-SORT? PD-OUT @ SCOPE-SORT? and
-      PR-IN @ SCOPE-SORT? PR-OUT @ SCOPE-SORT? and and 0= IF SB@ SL @ SGBAD-SYNTAX! THEN
-      PD-IN @ RES-TRUE FORALL-PLACE? PD-OUT @ RES-FALSE FORALL-PLACE? and
-      PR-IN @ RES-FALSE FORALL-PLACE? PR-OUT @ RES-FALSE FORALL-PLACE? and and 0= IF
-         SB@ SL @ SGBAD-SYNTAX! THEN
-      \ Facts text skips this rule: a cast's certified view pack has outputs
-      \ that no input supplies.
-      SIG-FACTS-MODE @ 0= IF
-         PD-OUT @ SCOPE-SUPPLIED? PR-OUT @ SCOPE-SUPPLIED? and 0= IF SB@ SL @ SGBAD-UNSUPPLIED! THEN
-      THEN
-   THEN
+   SB@ SL @ PD-IN @ PD-OUT @ PR-IN @ PR-OUT @ SGHASR @ SIG-ROWS-CHECK
    PD-IN @ PD-OUT @ PR-IN @ PR-OUT @ ;
 
 : TAG-VAR ( ptr u8 n bool bool -- n )
@@ -15068,15 +15075,6 @@ CHECKER-REG:}SCRATCH
 : CHECKER-USIG-CERT-ROWS ( ptr u8 n ptr u8 n -- )
    {: sa:ptr su:n na:ptr nu:n :}
    sa su na nu  SGIN @ SGOUT @ SGRIN @ SGROUT @ SGHASR @  CHECKER-ROWS-PUBLISH ;
-
-\ A child word's effect, rows a declaration built, for the pending record named
-\ NA NU: it has no signature text and no return clause. Answers the effect's
-\ handle, its offset+1.
-: CHECKER-CHILD-ROWS ( ptr u8 n n n -- n )
-   {: na:ptr nu:n din:n dout:n :}
-   NULL-PTR 0 na nu din dout 0 0 RES-FALSE CHECKER-ROWS-PUBLISH
-   CHECKER-REC-SYM @ CK-CLOSE!
-   CHECKER-REC-SYM @ USIG-NEWEST-VISIBLE ;
 
 $7FFFFFFFFFFFFFFF constant LBUF-COUNT-MAX
 create LBUF-SIG-BUF LBUF-SIG-CAP allot
@@ -22401,15 +22399,37 @@ variable SD-PASS
       REPEAT drop
    THEN ;
 
-: SD-ROWS ( -- )
+: SD-ROWS ( n n n n bool -- )
+   {: din:n dout:n rin:n rout:n hasr:bool :}
    TWALK-RESET
-   SGIN @ 0 SD-TERM  SGOUT @ 0 SD-TERM
-   SGHASR @ IF SGRIN @ 0 SD-TERM  SGROUT @ 0 SD-TERM THEN ;
+   din 0 SD-TERM  dout 0 SD-TERM
+   hasr IF rin 0 SD-TERM  rout 0 SD-TERM THEN ;
 
-\ A declared ANY variable whose every occurrence is a stored position is STORED.
+\ A declared ANY variable whose every occurrence in the rows is a stored
+\ position is STORED. Declared means lettered in NMAP.
+: STORED-DERIVE-ROWS ( n n n n bool -- )
+   {: din:n dout:n rin:n rout:n hasr:bool :}
+   0 SD-PASS !  din dout rin rout hasr SD-ROWS
+   1 SD-PASS !  din dout rin rout hasr SD-ROWS ;
+
 : STORED-DERIVE ( -- )
-   0 SD-PASS !  SD-ROWS
-   1 SD-PASS !  SD-ROWS ;
+   SGIN @ SGOUT @ SGRIN @ SGROUT @ SGHASR @ STORED-DERIVE-ROWS ;
+
+\ A child word's effect, rows a declaration built, for the pending record named
+\ NA NU: it has no signature text and no return clause. It passes the rules
+\ and gets the kinds a parsed signature does, and rows a rule refuses are a bad
+\ stored signature naming NA. Answers the effect's handle, its offset+1.
+: CHECKER-CHILD-ROWS ( ptr u8 n n n -- n )
+   {: na:ptr nu:n din:n dout:n :}
+   din dout 0 0 RES-FALSE STORED-DERIVE-ROWS
+   SGBAD-CLEAR
+   NULL-PTR 0 din dout 0 0 RES-FALSE SIG-ROWS-CHECK
+   SGBAD @ IF
+      na nu na nu USIG-CERT-ADMIT
+      NULL-PTR 0 na nu na nu USIG-ADD-BAD DL-TAKE
+   ELSE NULL-PTR 0 na nu din dout 0 0 RES-FALSE CHECKER-ROWS-PUBLISH THEN
+   CHECKER-REC-SYM @ CK-CLOSE!
+   CHECKER-REC-SYM @ USIG-NEWEST-VISIBLE ;
 
 : NP-FAM ( n -- n )   \ resolved family id of a T-PARAM term, else -1
    T-RES dup TAG T-PARAM = IF PARAM>FAM ELSE drop -1 THEN ;

@@ -29,6 +29,8 @@ public
    s" variable C2V-SLOT : C2V-STORE ( c2vinner<p,q> -- ) C2V-SLOT ! ;" 70 SUBJECT:EXITED? TTRUE
    s" raw pointer field access cannot expose a view" T-LABEL
    s" STRUCTURE c2vaddr<a,b> DERIVE addr FIELD source read-view<a,b,u8> ;STRUCTURE" 70 SUBJECT:EXITED? TTRUE
+   s" raw pointer field access cannot expose a nested record's view" T-LABEL
+   s" STRUCTURE c2vi<a,b> FIELD source read-view<a,b,u8> ;STRUCTURE STRUCTURE c2vo<a,b> DERIVE addr FIELD inner c2vi<a,b> ;STRUCTURE" 70 SUBJECT:EXITED? TTRUE
    C2-VIEW-RECORD-USE-REFUSALS:CASES
    T-REPORT
    s" c2-view-record-refusals: ok" type cr ;
