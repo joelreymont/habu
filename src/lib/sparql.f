@@ -5,6 +5,7 @@
 \ returns a JSON array of row values, [] at end. A returned span lasts until
 \ the next READ. SELECT rows are binding objects, ASK one boolean, graph rows
 \ objects with s/p/o RDF terms. WRITE receives result chunks synchronously.
+\ READ and WRITE are stable quotations; per-call state goes through context.
 \ The caller owns authorization, one read-only snapshot, cursor cleanup and
 \ its output bound. Discard partial output when QUERY throws.
 \ STORAGE CLASS. CALLER-OWNED: all compilation and result storage is released

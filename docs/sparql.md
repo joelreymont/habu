@@ -21,6 +21,7 @@ backend schema, absolute monotonic deadline and callbacks.
 `QUERY` owns one arena for syntax, SQL construction and result writing.
 Callbacks run synchronously on the caller's task. A returned batch remains
 valid until the next `read`; a write span expires when `write` returns.
+Both callbacks are stable quotations; pass per-call state through `context`.
 Callback and library errors propagate as Habu throws. The host discards
 partial output after an error and always closes its cursor and transaction.
 
