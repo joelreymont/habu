@@ -774,17 +774,17 @@ public
 private
 : BUILD-TEMP-TRY ( ptr u8 n ptr u8 n n n -- ptr u8 n ) {: base:ptr baseu prefix:ptr prefixu seed attempt :}
    baseu prefixu TEMP-DIR-BASE-MAX > if E-FS-CAPACITY throw then
-   SB-RESET
-   base baseu SB-APPEND
-   base baseu JOIN-SEPARATED? 0= if SLASH SB-APPEND-C then
-   prefix prefixu SB-APPEND
-   DASH SB-APPEND-C
-   seed FMT:SB-U
-   DASH SB-APPEND-C
-   attempt FMT:SB-U
-   SB$ {: a:ptr u :}
-   a u TMP-PATH-BUF SPAN:COPY
-   TMP-PATH-BUF u SPAN:TAKE SPAN:$ ;
+   TMP-PATH-BUF {: dst :}
+   base baseu dst SPAN:COPY
+   base baseu JOIN-SEPARATED? if baseu else
+      SLASH dst baseu SPAN:U8! baseu 1+
+   then {: off:n :}
+   prefix prefixu dst off SPAN:SKIP SPAN:COPY
+   DASH dst off prefixu + SPAN:U8!
+   seed dst off prefixu + 1+ ATOMIC-U+ {: next:n :}
+   DASH dst next SPAN:U8!
+   attempt dst next 1+ ATOMIC-U+ {: u:n :}
+   dst u SPAN:TAKE SPAN:$ ;
 
 : TMP-COLLISION? ( ptr u8 n -- bool ) {: a:ptr u :}
    a u PATH-COLLISION? ;
@@ -826,7 +826,7 @@ public
 private
 \ realpath of a temp root into this task's PATHZ2 buffer: the canonical
 \ spelling's length, below 0 when realpath refuses the root. FS:MKTEMP-DIR-IN
-\ and FS:MKTEMP build and make their candidates through SB, TMP-PATH-BUF and
+\ and FS:MKTEMP build and make their candidates through TMP-PATH-BUF and
 \ >PATHZ only, so the spelling stands through every attempt.
 : TEMP-REAL ( ptr u8 n -- n )
    >PATHZ PATHZ2-BUF SPAN:$ drop PATHZ-CAP realpath ;

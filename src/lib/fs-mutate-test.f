@@ -896,10 +896,18 @@ public
    FMT-READ-BUF 6 s" capped" T$= ;
 ;package
 
+\ A base of the longest length FS:MKTEMP-DIR-IN builds in still takes a temp.
+: FMT-TEMP-BASE-MAX ( -- )
+   s" max" nip FS:TEMP-DIR-BASE-MAX FMT-DEEP-DIR {: base:ptr baseu:n :}
+   base baseu s" max" FS:MKTEMP-DIR-IN {: temp:ptr tempu:n :}
+   temp tempu FS:DIR? TTRUE
+   temp baseu base baseu T$= ;
+
 : FMT-TEST-TEMPS ( -- )
    FMT-TEMP-BASE s" one" FS:MKTEMP-DIR-IN 2dup FS:DIR? TTRUE FS:CLEANUP-DIR+
    FMT-TEMP-BASE s" two" FS:MKTEMP-DIR-IN 2dup FS:DIR? TTRUE FS:CLEANUP-DIR+
-   s" habu-fs-mut" FS:MKTEMP-DIR 2dup FS:DIR? TTRUE FS:CLEANUP-DIR+ ;
+   s" habu-fs-mut" FS:MKTEMP-DIR 2dup FS:DIR? TTRUE FS:CLEANUP-DIR+
+   FMT-TEMP-BASE-MAX ;
 
 \ A base that already ends in a slash, as macOS's TMPDIR does, takes no second
 \ one. FMT-TEST-DIRS left FMT-MKDIR-PATH for the base.
