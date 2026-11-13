@@ -3,59 +3,53 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/* Synchronous, caller-owned SPARQL query over a caller-owned RDF dataset.
- * No store, network client, worker thread, or SQL enters this ABI.
- * The provider runs on the calling thread and must not unwind through C.
- * All input spans are copied. Returned views live until the next operation
- * on that query, or free. A query is used by one thread at a time.
+/* One synchronous query. All callbacks run on its calling thread.
+ * No store, SQL, network client, retained handle or background thread.
+ * Callbacks must not unwind through C. Input spans remain valid until return.
  */
-typedef struct HbSparql HbSparql;
 typedef struct HbSparqlReply HbSparqlReply;
-typedef int32_t (*HbSparqlSource)(void *context, const uint8_t *request,
-                                size_t length, HbSparqlReply *reply);
+typedef int32_t (*HbSparqlSource)(void *, const uint8_t *, size_t, HbSparqlReply *);
+typedef int32_t (*HbSparqlWrite)(void *, int32_t status, const uint8_t *, size_t);
 
-/* Provider requests/replies are UTF-8 JSON. A term is a SPARQL Results JSON
- * binding: {"type":"uri"|"bnode"|"literal","value":"...", ...}.
- * Literals may carry "datatype" or "xml:lang". Null means unbound only.
+/* Request JSON:
+ * {"query":"...", "base_iri":"...", "bindings":{"name":term},
+ *  "timeout_ms":5000, "max_rows":1000, "max_bytes":1048576,
+ *  "max_scan_rows":100000}
+ * Only base_iri and bindings are optional. Limits are positive integers chosen
+ * by the application, never by untrusted query text. max_bytes bounds query
+ * text, each source reply and the complete result. max_scan_rows counts fetched
+ * quads/graph names, with at least one charged per empty page or contains call.
+ * Deadlines are checked at source/output boundaries; a host that needs a hard
+ * CPU deadline runs this call in a process with a timeout (as Zen does).
+ * SELECT/ASK stream SPARQL Results JSON; CONSTRUCT/DESCRIBE stream N-Triples.
+ * FROM selects local supplied graphs; there is no remote SERVICE handler.
+ * No update syntax is accepted.
+ *
+ * WRITE gets status 0 for result bytes, positive status for a final diagnostic.
+ * A nonzero callback return stops evaluation. Discard all result bytes if RUN
+ * fails: a result cap fails explicitly and never silently truncates an answer.
+ * Status: 0 success, 1 syntax, 2 callback/source, 3 evaluation, 4 argument,
+ * 5 native panic, 6 limit/deadline. Missing WRITE returns 4 without a diagnostic.
+ */
+int32_t hb_sparql_run(const uint8_t *request, size_t length, void *context,
+                      HbSparqlSource read, HbSparqlWrite write);
+
+/* READ exchanges UTF-8 JSON. RDF terms use SPARQL Results JSON binding objects.
  * scan: {"op":"scan","s":term|null,"p":term|null,"o":term|null,
- *        "graph":{"kind":"default"|"any"|"named","name":term?}}
- *   any means ANY NAMED GRAPH, never the default graph.
- *   reply: {"quads":[{"s":term,"p":term,"o":term,"g":term|null},...]}
- * graphs: {"op":"graphs"}; reply: {"graphs":[term,...]}
+ *        "graph":{"kind":"default"|"any"|"named","name":term?},
+ *        "cursor":null|string,"limit":256}
+ *   reply: {"quads":[{"s":term,"p":term,"o":term,"g":term|null}],
+ *           "next":null|string}
+ * graphs: {"op":"graphs","cursor":null|string,"limit":256}
+ *   reply: {"graphs":[term,...],"next":null|string}
  * contains: {"op":"contains","graph":term}; reply: {"contains":bool}
- * Named-graph enumeration includes empty graphs. The provider must return
- * only authorized data, RDF-set quads (no duplicates), and a stable snapshot.
- * On a provider failure set {"error":"..."}, then return a nonzero status.
- * The reply belongs to the active callback and may not be retained.
+ * "any" means named graphs only; an explicit null g means the default graph.
+ * Empty named graphs remain enumerable. A page has at most limit items, and
+ * next is null at end, otherwise a nonempty, advancing opaque cursor.
+ * The source supplies distinct matching quads/graph names from one authorized
+ * snapshot. Duplicates across pages violate the source contract.
+ * On failure reply with {"error":"..."} and return nonzero.
+ * REPLY_SET copies bytes; its token is borrowed for the current READ only.
  */
 void hb_sparql_reply_set(HbSparqlReply *, const uint8_t *, size_t);
-
-/* Status: 0 success, 1 syntax, 2 source, 3 evaluation, 4 argument,
- * 5 caught native panic, 6 no parsed query. Diagnostics belong to the query.
- */
-HbSparql *hb_sparql_new(void);
-void hb_sparql_free(HbSparql *);
-int32_t hb_sparql_parse(HbSparql *, const uint8_t *, size_t,
-                       const uint8_t *base_iri, size_t base_length);
-/* Parse clears old query, bindings, result and diagnostics even on failure.
- * No update syntax is accepted; this is the SPARQL Query library.
- * Form: 0 unparsed, 1 SELECT, 2 ASK, 3 CONSTRUCT, 4 DESCRIBE.
- */
-int32_t hb_sparql_form(const HbSparql *);
-int32_t hb_sparql_bind(HbSparql *, const uint8_t *name, size_t name_length,
-                      const uint8_t *term_json, size_t term_length);
-int32_t hb_sparql_query(HbSparql *, void *context, HbSparqlSource);
-/* SELECT/ASK results are SPARQL Results JSON; graph results are N-Triples.
- * FROM/FROM NAMED select only the supplied dataset; nothing is fetched.
- * No SERVICE handler is installed. No request can write to the dataset.
- */
-const uint8_t *hb_sparql_result_ptr(const HbSparql *);
-size_t hb_sparql_result_len(const HbSparql *);
-const uint8_t *hb_sparql_error_ptr(const HbSparql *);
-size_t hb_sparql_error_len(const HbSparql *);
-/* Dataset description: null when implicit; otherwise
- * {"default":["IRI",...],"named":["IRI",...]}.
- */
-const uint8_t *hb_sparql_dataset_ptr(const HbSparql *);
-size_t hb_sparql_dataset_len(const HbSparql *);
 #endif
