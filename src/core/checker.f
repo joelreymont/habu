@@ -14755,7 +14755,7 @@ public
 6 constant K-PRINTED-STRING
 \ The kinds below are what the checker judged a token to be, which its
 \ spelling does not say: a local named 1 is a K-LOCAL-REF of class K-INT.
-7 constant K-CONTROL            \ a0: the marker's place in CF-TOK?'s list, or RS-KEYWORD's
+7 constant K-CONTROL            \ a0: the marker's place in CF-CODE's list, or RS-KEYWORD's
 8 constant K-LOCAL-DECL         \ a0: the local's bind sequence
 9 constant K-LOCAL-REF          \ a0: the bind sequence it reads
 10 constant K-LOCAL-CLOSE       \ the `:}` that binds the group
@@ -16937,12 +16937,14 @@ defer C2-STOW-BORROW-HOOK ( -- )
    CP-LIT v 0 0 CP-NEW copy P-PROOF!
    copy DCUR ! ;
 
+: INT-STEP ( n -- )
+   dup CHECKER-TAPE:K-INT swap 0 EVENT!  STEP-N-OUT  LIT-FACT! ;
+
 \ A literal the engine does not admit fails and files nothing.
 : LITERAL-TOK? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    a u ALLDIG? IF
-      a u INTEGER-LITERAL-ADMITTED? IF
-         dup CHECKER-TAPE:K-INT swap 0 EVENT!  STEP-N-OUT  LIT-FACT!
+      a u INTEGER-LITERAL-ADMITTED? IF INT-STEP
       ELSE drop  0 OK !  -1 FAILSET ! THEN
       RES-TRUE EXIT
    THEN
@@ -17930,7 +17932,7 @@ public
 
 
 \ The engine's `>r` `r>` `r@` are compile keywords with no record: a call bound
-\ to one is filed as a control event, 25 through 27 after CF-TOK?'s list, so a
+\ to one is filed as a control event, 25 through 27 after CF-CODE's list, so a
 \ codegen tells them from an unbound name.
 : RS-KEYWORD ( -- )
    TOK-SYM @ {: sym:n :}
@@ -18626,15 +18628,18 @@ CHECKER-REG:}SCRATCH
 : LOC-SHOW-ON! ( n -- ) {: idx:n :}
    -1 idx cells LOCSHOW + ! ;
 
+\ A layout type is stored as the asserted term: a layout binds no variable
+\ outside a transport, and the capture in LOC-BIND checks it.
+: LOC-TYPE-SET ( n n -- ) {: t:n idx:n :}
+   t T-RES LAYOUT-PARAM? IF  t idx cells LOCTV + !  EXIT THEN
+   t idx cells LOCTV + @ UNIFY OK @ and OK ! ;
+
 : LOC-ANN ( ptr u8 n n n -- ) {: a:ptr u:n col:n idx:n :}
    a u col LOC-SUFFIX$ LOC-SHOW-SUFFIX? if
       idx LOC-SHOW-ON!
       exit
    then
-   a u col LOC-SUFFIX$ LOCAL-TYPE {: t:n :}
-   t T-RES LAYOUT-PARAM? IF                 \ layout annotation: STORE the asserted term
-      t idx cells LOCTV + !  EXIT THEN      \ (a layout binds no var outside a transport;
-   t idx cells LOCTV + @ UNIFY OK @ and OK ! ;   \ the capture in LOC-BIND checks it)
+   a u col LOC-SUFFIX$ LOCAL-TYPE idx LOC-TYPE-SET ;
 
 : LOC-DECL-TERM ( n -- n ) {: t:n :}
    t HIDDEN-PARAM? IF t MK-LOGICAL ELSE t THEN ;
@@ -18670,26 +18675,32 @@ CHECKER-REG:}SCRATCH
    FAILSET @ 0=  RCOMPILE @ 0=  and IF kind LOCALBAD-KIND !  0 LOCALBAD-LEN ! THEN
    -1 LOCALBAD !  0 OK !  -1 FAILSET ! ;
 
+\ Makes the slot at #LOC for the name's raw spelling, which a reference must
+\ match; false when a limit refuses it.
+: LOC-OPEN ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   #LOC @ LOC-RECS 1 - > IF 0 1 LOC-REJECT RES-FALSE EXIT THEN
+   u LOC-NAME-CAP > IF u 2 LOC-REJECT RES-FALSE EXIT THEN
+   LOCSEQ @ 1 + LOC-HW-ENSURE
+   #LOC @ LOC-SHOW-OFF!
+   a  LOCNB #LOC @ LOC-NAME-CAP * +  u CCOPY
+   u #LOC @ cells LOCLN + !
+   FRESH MK-VAR #LOC @ cells LOCTV + !
+   0 #LOC @ cells LOCVAL + !
+   1 #LOC @ cells LOCW + !
+   LOCSEQ @ #LOC @ cells LOCSEQIX + !
+   1 LOCSEQ @ cells LOC-HW + !
+   CHECKER-TAPE:K-LOCAL-DECL LOCSEQ @ 0 EVENT!
+   LOCSEQ @ 1 + LOCSEQ !
+   RES-TRUE ;
+
 : LOC-ADD ( ptr u8 ptr u8 n -- )   \ raw declaration, folded declaration, their shared length
    {: ra:ptr a:ptr u:n :}
    a u LCOLON {: col:n :}
-   #LOC @ LOC-RECS 1 - > IF 0 1 LOC-REJECT ELSE
-   col LOC-NAME-CAP > IF col 2 LOC-REJECT ELSE
-     LOCSEQ @ 1 + LOC-HW-ENSURE
-     #LOC @ LOC-SHOW-OFF!
-     ra  LOCNB #LOC @ LOC-NAME-CAP * +  col CCOPY   \ the spelling a reference must match
-     col #LOC @ cells LOCLN + !
-     FRESH MK-VAR #LOC @ cells LOCTV + !
-     0 #LOC @ cells LOCVAL + !
-     1 #LOC @ cells LOCW + !
-     LOCSEQ @ #LOC @ cells LOCSEQIX + !
-     1 LOCSEQ @ cells LOC-HW + !
-     CHECKER-TAPE:K-LOCAL-DECL LOCSEQ @ 0 EVENT!
-     LOCSEQ @ 1 + LOCSEQ !
-     col u < IF
+   ra col LOC-OPEN 0= IF EXIT THEN
+   col u < IF
       ra u col #LOC @ LOC-ANN
-     THEN
-     #LOC @ 1 + #LOC ! THEN THEN ;
+   THEN
+   #LOC @ 1 + #LOC ! ;
 
 \ Linear values may not launder through locals: a local reference re-pushes its
 \ binding outside LIN-SNAPSHOT/LIN-CHECK, so two references would duplicate and
@@ -20116,9 +20127,7 @@ variable MTCH-W                      \ the bundle width the walk below really co
    DCUR @ MTCH-ROW !  0 MTCH-TAGT !
    fam 0 MATCH-OPEN ;
 
-: MATCH-FAM-TOK ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   a u MATCH-FAM-XT 0= IF drop CHECKER-TAPE:K-MATCH -1 0 EVENT!  MATCH-ABANDON EXIT THEN
+: MATCH-FAM-STEP ( n -- )
    {: fam:n :}
    CHECKER-TAPE:K-MATCH fam 0 EVENT!
    #CFC @ CF-FRAMES-MAX 2 - > IF MD-DEPTH MDIAG! MATCH-ABANDON EXIT THEN   \ two CFS frames per match: reject, never UNCK
@@ -20126,6 +20135,11 @@ variable MTCH-W                      \ the bundle width the walk below really co
    DCUR @ MTCH-W @ ROW-TOP-LOST {: lost:n :}
    MTCH-W @ MWIN-CELLS!                      \ the bundle a cell-accurate consumer has to pop
    fam lost MATCH-OPEN ;
+
+: MATCH-FAM-TOK ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   a u MATCH-FAM-XT 0= IF drop CHECKER-TAPE:K-MATCH -1 0 EVENT!  MATCH-ABANDON EXIT THEN
+   MATCH-FAM-STEP ;
 
 
 : MATCH-ACCUM ( -- )
@@ -20234,41 +20248,66 @@ variable MTCH-W                      \ the bundle width the walk below really co
    CF@K 10 = IF MATCH-ENDOF EXIT THEN
    CF-ENDOF ;
 
-\ CODE is the word's place in CF-TOK?'s list, [: 0 through recurse 24.
-: CF-IS? ( ptr u8 n ptr u8 n n -- bool )
-   {: a:ptr u:n b:ptr v:n code:n :}
-   a u b v CORE-STR= 0= IF RES-FALSE EXIT THEN
-   CHECKER-TAPE:K-CONTROL code 0 EVENT!
-   RES-TRUE ;
-
-: CF-TOK? ( ptr u8 n -- bool )
+\ A control keyword's code is its place in this list, the K-CONTROL event's
+\ a0; -1 for any other spelling.
+: CF-CODE ( ptr u8 n -- n )
    {: a:ptr u:n :}
-   a u s" [:" 0 CF-IS? IF CF-QUOT RES-TRUE EXIT THEN
-   a u s" ;]" 1 CF-IS? IF CF-SEMIQ RES-TRUE EXIT THEN
-   a u s" if" 2 CF-IS? IF CF-IF RES-TRUE EXIT THEN
-   a u s" else" 3 CF-IS? IF CF-ELSE RES-TRUE EXIT THEN
-   a u s" then" 4 CF-IS? IF CF-THEN RES-TRUE EXIT THEN
-   a u s" case" 5 CF-IS? IF CF-CASE RES-TRUE EXIT THEN
-   a u s" of" 6 CF-IS? IF CF-OF RES-TRUE EXIT THEN
-   a u s" endof" 7 CF-IS? IF CF-ENDOF-DISPATCH RES-TRUE EXIT THEN
-   a u s" endcase" 8 CF-IS? IF CF-ENDCASE RES-TRUE EXIT THEN
-   a u s" ;match" 9 CF-IS? IF MD-STRAY MDIAG-COMPILE! MD-STRAY CF-FAIL RES-TRUE EXIT THEN
-   a u s" begin" 10 CF-IS? IF CF-BEGIN RES-TRUE EXIT THEN
-   a u s" until" 11 CF-IS? IF CF-UNTIL RES-TRUE EXIT THEN
-   a u s" again" 12 CF-IS? IF CF-AGAIN RES-TRUE EXIT THEN
-   a u s" while" 13 CF-IS? IF CF-WHILE RES-TRUE EXIT THEN
-   a u s" repeat" 14 CF-IS? IF CF-REPEAT RES-TRUE EXIT THEN
-   a u s" do" 15 CF-IS? IF CF-DO RES-TRUE EXIT THEN
-   a u s" ?do" 16 CF-IS? IF CF-?DO RES-TRUE EXIT THEN
-   a u s" loop" 17 CF-IS? IF CF-LOOP RES-TRUE EXIT THEN
-   a u s" +loop" 18 CF-IS? IF CF-+LOOP RES-TRUE EXIT THEN
-   a u s" i" 19 CF-IS? IF CF-I RES-TRUE EXIT THEN
-   a u s" j" 20 CF-IS? IF CF-J RES-TRUE EXIT THEN
-   a u s" exit" 21 CF-IS? IF CF-EXIT RES-TRUE EXIT THEN
-   a u s" leave" 22 CF-IS? IF CF-LEAVE RES-TRUE EXIT THEN
-   a u s" unloop" 23 CF-IS? IF CF-UNLOOP RES-TRUE EXIT THEN
-   a u s" recurse" 24 CF-IS? IF CF-RECURSE RES-TRUE EXIT THEN
-   RES-FALSE ;
+   a u s" [:" CORE-STR= IF 0 EXIT THEN
+   a u s" ;]" CORE-STR= IF 1 EXIT THEN
+   a u s" if" CORE-STR= IF 2 EXIT THEN
+   a u s" else" CORE-STR= IF 3 EXIT THEN
+   a u s" then" CORE-STR= IF 4 EXIT THEN
+   a u s" case" CORE-STR= IF 5 EXIT THEN
+   a u s" of" CORE-STR= IF 6 EXIT THEN
+   a u s" endof" CORE-STR= IF 7 EXIT THEN
+   a u s" endcase" CORE-STR= IF 8 EXIT THEN
+   a u s" ;match" CORE-STR= IF 9 EXIT THEN
+   a u s" begin" CORE-STR= IF 10 EXIT THEN
+   a u s" until" CORE-STR= IF 11 EXIT THEN
+   a u s" again" CORE-STR= IF 12 EXIT THEN
+   a u s" while" CORE-STR= IF 13 EXIT THEN
+   a u s" repeat" CORE-STR= IF 14 EXIT THEN
+   a u s" do" CORE-STR= IF 15 EXIT THEN
+   a u s" ?do" CORE-STR= IF 16 EXIT THEN
+   a u s" loop" CORE-STR= IF 17 EXIT THEN
+   a u s" +loop" CORE-STR= IF 18 EXIT THEN
+   a u s" i" CORE-STR= IF 19 EXIT THEN
+   a u s" j" CORE-STR= IF 20 EXIT THEN
+   a u s" exit" CORE-STR= IF 21 EXIT THEN
+   a u s" leave" CORE-STR= IF 22 EXIT THEN
+   a u s" unloop" CORE-STR= IF 23 EXIT THEN
+   a u s" recurse" CORE-STR= IF 24 EXIT THEN
+   -1 ;
+
+: CF-STEP ( n -- ) {: code:n :}
+   CHECKER-TAPE:K-CONTROL code 0 EVENT!
+   code case
+      0 of CF-QUOT endof
+      1 of CF-SEMIQ endof
+      2 of CF-IF endof
+      3 of CF-ELSE endof
+      4 of CF-THEN endof
+      5 of CF-CASE endof
+      6 of CF-OF endof
+      7 of CF-ENDOF-DISPATCH endof
+      8 of CF-ENDCASE endof
+      9 of MD-STRAY MDIAG-COMPILE! MD-STRAY CF-FAIL endof
+      10 of CF-BEGIN endof
+      11 of CF-UNTIL endof
+      12 of CF-AGAIN endof
+      13 of CF-WHILE endof
+      14 of CF-REPEAT endof
+      15 of CF-DO endof
+      16 of CF-?DO endof
+      17 of CF-LOOP endof
+      18 of CF-+LOOP endof
+      19 of CF-I endof
+      20 of CF-J endof
+      21 of CF-EXIT endof
+      22 of CF-LEAVE endof
+      23 of CF-UNLOOP endof
+      24 of CF-RECURSE endof
+   endcase ;
 \ The first token of the checked text is the word's name (skipped, kept for the
 \ recorder). RECXT records certified sigs by name and DIAGXT renders a
 \ reject/uncheckable diagnostic. DIAG-QUIET counts nested quiet-check scopes.
@@ -22138,14 +22177,18 @@ variable POST-ON      \ did the token just judged compile a handle?
    sym 0= IF s" checker: no symbol for INTERPRETER's postponed" 76 die THEN
    run sym ;
 
+\ Binds the token to the record and its symbol, so BIND-TOK looks nothing up.
+: CALL-PRESET ( ptr n n -- ) {: run:ptr sym:n :}
+   -1 TOK-DONE !  sym TOK-SYM !  0 TOK-CTL !  0 TOK-DEAD !
+   run TOK-REC !  0 TOK-PEND-IX !  0 TOK-PEND-OFF !  0 TOK-SEEDED !
+   -1 TOK-LIVE-REC ! ;
+
 \ The handle, pushed as a string literal is, then the call, judged as a call
 \ the body spelled.
 : POSTPONE-CALL ( ptr n n -- ) {: run:ptr sym:n :}
    -1 PPAY-ON !  -1 POST-ON !
    s" [package]" PE-SYM-OF PRIM-FIRST-SYM E-PTR EFF-APPLY
-   -1 TOK-DONE !  sym TOK-SYM !  0 TOK-CTL !  0 TOK-DEAD !
-   run TOK-REC !  0 TOK-PEND-IX !  0 TOK-PEND-OFF !  0 TOK-SEEDED !
-   -1 TOK-LIVE-REC !
+   run sym CALL-PRESET
    DCUR @ XE-PD !  RCUR @ XE-PR !
    run CHECKER-RESOLVE:CK-REC-NAME$ DO-TOK
    OK @ IF THROW-CUR? IF CALL-THROW-EDGE THEN THEN ;
@@ -22182,7 +22225,10 @@ variable POST-ON      \ did the token just judged compile a handle?
    TSTART @ u POSTPONED-REC NULL-PTR <> IF RES-FALSE EXIT THEN
    a u LOC-REF? ;
 
-: DO-TOK1 {: a u :}
+\ Answers whether the token is unjudged and unsafe, and the OK, UNCK and
+\ FAILSET it came in with, for DO-TOK-TAIL.
+: DO-TOK-HEAD ( ptr u8 n -- bool bool n n n )
+   {: a:ptr u:n :}
    0 CALL-HIT !  0 TOK-DONE !  0 BWIN-HIT !
    NULL-PTR TOK-EFF !  NULL-PTR TOK-ABI-EFF !  0 TOK-ABI-DONE !
    a TOK-SPELL-A !  u TOK-SPELL-U !  0 CREFUSE !  0 CRTGT !
@@ -22202,6 +22248,32 @@ variable POST-ON      \ did the token just judged compile a handle?
    TKF TKFU @ LAYOUT-XPORT-TOK? IF
       TKF TKFU @ TOK-CORE-OP?
    ELSE RES-FALSE THEN LAYOUT-XPORT !
+   unj unsafe ok-in unck-in pin-in ;
+
+: DO-TOK-TAIL ( ptr u8 n bool bool n n n -- )
+   {: a:ptr u:n unj:bool unsafe:bool ok-in:n unck-in:n pin-in:n :}
+   EXEC-OPAQUE @ IF MD-EXEC-OPAQUE MDIAG! THEN   \ name the opaque-execute reject on the pinned 'execute' token
+   CATCH-OPAQUE @ IF MD-CATCH-OPAQUE MDIAG! THEN   \ name the opaque-catch reject on the pinned 'catch' token
+   \ The raw-cell and base-address refusals name themselves where they are
+   \ raised. The flags are dropped here because TRY-PRIMS applies candidate
+   \ rows in turn and the next token must start clean.
+   0 RAW-PTR-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 STALE-HIT !  0 SCOPE-HIT !  0 XT-DECL !
+   LIN-TAINT-SCAN
+   unj IF
+      OK @ 0=  UNCK @ 0 <>  or IF unsafe UNJ-SETTLE THEN
+      OK @ ok-in and OK !
+      pin-in 0= IF UNCK @ unck-in or ELSE unck-in THEN UNCK !   \ a mark past the pin only settles
+      0 UNJ-TOK !
+   THEN
+   OK @ 0=  FAILSET @ 0=  and IF -1 FAILSET ! THEN
+   UNCK @  FAILSET @ 0=  and IF -1 FAILSET ! THEN
+   0 USING-HOLD !
+   a u REFUSAL-STEP
+   TOKIX @ 1 + TOKIX ! ;
+
+: DO-TOK1 {: a u :}
+   a u DO-TOK-HEAD
+   {: unj unsafe ok-in unck-in pin-in :}
    TOK0 @ IF NAME-TOK ELSE
    TKF TKFU @ LIVE-TOKEN? 0= IF -1 DEADERR ! 0 OK !  TKF TKFU @ DEAD-TOK ELSE
    LMODE @ IF a TKF TKFU @ LOC-TOK ELSE
@@ -22225,10 +22297,12 @@ variable POST-ON      \ did the token just judged compile a handle?
    TKF TKFU @ s" is" CORE-STR= IF IS-TOK ELSE
    TKF TKFU @ BTICK-CAND? IF BTICK-TOK ELSE
    TKF TKFU @ s" postpone" CORE-STR= IF POSTPONE-TOK ELSE
-   OK @ IF TKF TKFU @ s" exit" CORE-STR= IF a u DEAD-OWNER! THEN THEN
-   OK @ IF TKF TKFU @ s" leave" CORE-STR= IF a u DEAD-OWNER! THEN THEN
-   OK @ IF TKF TKFU @ s" again" CORE-STR= IF a u DEAD-OWNER! THEN THEN
-   TKF TKFU @ CF-TOK? 0= IF
+   TKF TKFU @ CF-CODE {: cf:n :}
+   OK @ IF cf 21 = IF a u DEAD-OWNER! THEN THEN   \ exit
+   OK @ IF cf 22 = IF a u DEAD-OWNER! THEN THEN   \ leave
+   OK @ IF cf 12 = IF a u DEAD-OWNER! THEN THEN   \ again
+   cf 0 >= IF cf CF-STEP THEN
+   cf 0 < IF
    TKF TKFU @ SPELLED-STEP? 0= IF
    TKF TKFU @ CHECKER-PREFLIGHT:BODY-TOK? IF REJECT-IMMEDIATE THEN
    DCUR @ XE-PD !  RCUR @ XE-PR !          \ the pre-op rows ROW-COMMON needs below
@@ -22244,24 +22318,7 @@ variable POST-ON      \ did the token just judged compile a handle?
    THEN
    THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
    THEN THEN THEN THEN
-   EXEC-OPAQUE @ IF MD-EXEC-OPAQUE MDIAG! THEN   \ name the opaque-execute reject on the pinned 'execute' token
-   CATCH-OPAQUE @ IF MD-CATCH-OPAQUE MDIAG! THEN   \ name the opaque-catch reject on the pinned 'catch' token
-   \ The raw-cell and base-address refusals name themselves where they are
-   \ raised. The flags are dropped here because TRY-PRIMS applies candidate
-   \ rows in turn and the next token must start clean.
-   0 RAW-PTR-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 STALE-HIT !  0 SCOPE-HIT !  0 XT-DECL !
-   LIN-TAINT-SCAN
-   unj IF
-      OK @ 0=  UNCK @ 0 <>  or IF unsafe UNJ-SETTLE THEN
-      OK @ ok-in and OK !
-      pin-in 0= IF UNCK @ unck-in or ELSE unck-in THEN UNCK !   \ a mark past the pin only settles
-      0 UNJ-TOK !
-   THEN
-   OK @ 0=  FAILSET @ 0=  and IF -1 FAILSET ! THEN
-   UNCK @  FAILSET @ 0=  and IF -1 FAILSET ! THEN
-   0 USING-HOLD !
-   a u REFUSAL-STEP
-   TOKIX @ 1 + TOKIX ! ;
+   a u unj unsafe ok-in unck-in pin-in DO-TOK-TAIL ;
 
 \ A declared type variable must remain a distinct variable after checking the
 \ body. Specializing it to any concrete type would publish a more general
@@ -23987,6 +24044,35 @@ variable CUR-OPEN   variable CUR-PSIG
    CUR-AT @ CUR-GAP @ < IF -1 CUR-DONE ! EXIT THEN
    TBASE@ 0 CHECKER-OWNER-ABI:VISIBLE-BODY CUR-FIRE ;
 
+\ Installs a parsed signature's rows ( din dout rin rout ); true when a type it
+\ names is unresolved, which ends the walk.
+: SIG-INSTALL ( n n n n -- bool )
+   SIG-INPUT-FRESH
+   SGBAD-FAIL!
+   SIG-UNRES @ SGBAD @ 0= and IF
+      2drop 2drop
+      SIG-UNRES-A @ TBASE@ - FAILB !
+      FAILB @ SIG-UNRES-U @ + FAILE !
+      RES-TRUE EXIT
+   THEN
+   PD-BASE @ SGDBASE !
+   SGHASR @ IF
+     SGROUT !  dup SGRIN !  RCUR !  SGOUT !  dup SGIN !  DCUR !
+   ELSE
+     2drop  SGOUT !  dup SGIN !  DCUR !
+   THEN  -1 SGSEEN !
+   \ The return tail a body may not bind: the row the `|` clause carries
+   \ (SGRIN), or without a return clause the implicit base RBROW.
+   SGHASR @ IF SGRIN @ ELSE RBROW @ THEN SGRBASE !
+   SG-ROWS-COLLECT
+   \ Cached first: RECURSE must not see a stored kind the body may lose.
+   SIG-EFF-CACHE!
+   STORED-DERIVE
+   NP-COLLECT
+   SIG-BODY-FRESH
+   SGBAD @ UNFIT @ or SGDECL-BAD !
+   RES-FALSE ;
+
 : CHECK-SCAN-WALK ( -- )
    0 SCAN-TOKS !  0 SPAY-S !
    EV-START
@@ -24005,31 +24091,8 @@ variable CUR-OPEN   variable CUR-PSIG
          \ not touch any signature state.
          VSIG @  SGSEEN @ 0= and  TOKIX @ 2 < and  IF
            TSTART @ TADDR SGA !  TI @ TSTART @ - SGU !
-           TSTART @ TADDR  TI @ TSTART @ -  PARSE-SIG-RAW   \ ( din dout rin rout )
-           SIG-INPUT-FRESH
-           SGBAD-FAIL!
-           SIG-UNRES @ SGBAD @ 0= and IF
-              2drop 2drop
-              SIG-UNRES-A @ TBASE@ - FAILB !
-              FAILB @ SIG-UNRES-U @ + FAILE !
-              EXIT
-           THEN
-           PD-BASE @ SGDBASE !
-           SGHASR @ IF
-             SGROUT !  dup SGRIN !  RCUR !  SGOUT !  dup SGIN !  DCUR !
-           ELSE
-             2drop  SGOUT !  dup SGIN !  DCUR !
-           THEN  -1 SGSEEN !
-           \ The return tail a body may not bind: the row the `|` clause carries
-           \ (SGRIN), or without a return clause the implicit base RBROW.
-           SGHASR @ IF SGRIN @ ELSE RBROW @ THEN SGRBASE !
-           SG-ROWS-COLLECT
-           \ Cached first: RECURSE must not see a stored kind the body may lose.
-           SIG-EFF-CACHE!
-           STORED-DERIVE
-           NP-COLLECT
-           SIG-BODY-FRESH
-           SGBAD @ UNFIT @ or SGDECL-BAD !
+           TSTART @ TADDR  TI @ TSTART @ -  PARSE-SIG-RAW
+           SIG-INSTALL IF EXIT THEN
          THEN
          TI @ TBLEN @ < IF TI @ 1 + TI ! THEN
          CUR-PAREN

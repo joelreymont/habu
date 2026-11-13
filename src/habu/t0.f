@@ -59,7 +59,7 @@ variable BODIES-N
 variable ROWS                        \ the rows laid
 variable SPLIT                       \ a does> definer's `does>` row, or -1
 -1 constant K-NONE                   \ a row the checker filed no event for: the `does>`
-0 constant CF-QUOT-OPEN              \ a K-CONTROL row's a0 for `[:` (src/core/checker.f CF-TOK?)
+0 constant CF-QUOT-OPEN              \ a K-CONTROL row's a0 for `[:` (src/core/checker.f CF-CODE)
 1 constant CF-QUOT-CLOSE             \ and for `;]`
 2 constant CF-IF                     \ `if`, and so on in the checker's list
 3 constant CF-ELSE
@@ -1614,7 +1614,7 @@ variable OP-REC                      \ the last of them
    endcase ;
 
 \ A K-CONTROL row at a: code is the marker's place in the checker's list
-\ (src/core/checker.f CF-TOK?, then RS-KEYWORD's `>r` `r>` `r@`). The `;]`
+\ (src/core/checker.f CF-CODE, then RS-KEYWORD's `>r` `r>` `r@`). The `;]`
 \ ends its unit before it is compiled (BODY), and a stray `;MATCH` (9) never
 \ certifies.
 : DO-CONTROL ( ptr u8 n -- ) {: a:ptr code:n :}
