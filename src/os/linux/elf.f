@@ -104,9 +104,6 @@ private
 : ELF-RELA-OFF ( -- n ) ELF-DYNSTR-OFF ELF-DYNSTR-SZ + ELF-ALIGN8 ;
 : ELF-RELA-SZ ( -- n ) IMPORT-NAMES:COUNT ELF-RELA-ENT-SZ * ;
 : ELF-TABLES-END ( -- n ) ELF-RELA-OFF ELF-RELA-SZ + ;
-\ The generated executable window: everything the assembler can emit, behind the
-\ header page it sits at.
-CODE-CAP-BYTES CODE-OFF + constant MPAGE
 public
 variable CODELEN
 private
@@ -114,9 +111,6 @@ variable ELF-TEXT-SIZE
 
 : ELF-PAGE-UP ( n -- n )
    PROT-PAGE-MAX 1- + PROT-PAGE-MAX 1- invert and ;
-
-\ The image buffer holds the maximum-page-rounded text and its RW tail.
-: ELF-MSIZE! ( -- ) MPAGE ELF-PAGE-UP ELF-RW-SZ + MSIZE! ;
 
 : ASM-CODELEN! ( -- )
    ASM-LEN CODELEN ! ;
@@ -129,6 +123,9 @@ public
 : TEXTSZ ( -- n )  CODE-OFF CODELEN @ + ELF-PAGE-UP ;
 
 private
+\ The buffer fits the file BUILD-ELF writes.
+: ELF-MSIZE! ( -- ) TEXTSZ ELF-RW-SZ + MSIZE! ;
+
 : ELF-VA ( n -- n )
    VMBASE @ + ;
 
@@ -259,7 +256,6 @@ private
 
 : BUILD-ELF ( -- )
    ASM-CODELEN!  ELF-MSIZE!  M-RESET
-   CODELEN @  MPAGE CODE-OFF -  > IF s" elf: code exceeds text window" 73 die THEN
    ELF-TABLES-END CODE-OFF > if
       SB-RESET  s" elf: " SB-APPEND  IMPORT-NAMES:COUNT FMT:SB-U
       s"  imports outgrow the header page's " SB-APPEND  CODE-OFF FMT:SB-U
