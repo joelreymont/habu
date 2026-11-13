@@ -1580,12 +1580,14 @@ MEM-MAX-N TASK-REGION-BYTES - STACK-ABI:PAGE-BYTES - constant USER-END-MAX
    data-base TASKS-LIVE-CELL + atomic@ 0<> if E-TASK-USER throw then
    off size + ;
 
-\ A slot body: area offset, size, previous body (null ends), main's copy.
-\ Only main's region holds 0 at TASK-AREA-OFF; a task's holds its area.
+\ A slot body: area offset, size, previous body (null ends), element bytes,
+\ main's copy. Only main's region holds 0 at TASK-AREA-OFF; a task's holds its
+\ area.
 0 constant SLOT-OFF
 CELL constant SLOT-SIZE
 2 cells constant SLOT-PREV
-3 cells constant SLOT-DATA
+3 cells constant SLOT-STRIDE
+4 cells constant SLOT-DATA
 
 PERSISTED-PTR-VARIABLE SLOT-LAST
 
@@ -1595,28 +1597,60 @@ PERSISTED-PTR-VARIABLE SLOT-LAST
 : SLOT-LAST! ( ptr n -- )
    SLOT-LAST ! ;
 
-: SLOT-LAY ( n n -- ) {: off:n size:n :}
+: SLOT-LAY ( n n n -- ) {: off:n size:n stride:n :}
    here CELL-VIEW {: body:ptr :}
    off , size ,
    here ptr-cell-mark 0 ,
+   stride ,
    size SCRATCH-ALLOT
    SLOT-LAST@ body SLOT-PREV + 0 ptr-field !
    body SLOT-LAST! ;
+
+\ The calling thread's copy of the slot.
+: SLOT ( ptr n -- ptr n ) {: body:ptr :}
+   data-base TASK-AREA-OFF + @ dup 0= if
+      drop body SLOT-DATA +
+   else
+      body SLOT-OFF + @ + TASK-N>PTR
+   then ;
+
+: SLOT-AT ( n ptr n -- ptr n ) {: i:n body:ptr :}
+   body SLOT  i body SLOT-STRIDE + @ * + ;
+
+\ The engine's cells hold STORAGE-LINE and CHILD-RUN as raw execution tokens;
+\ inside a build a name would bind the tree's copy.
+CAST: AS-STORAGE-LINE ( n -- [ ptr u8 n -- ptr u8 n ptr u8 n n ] )
+CAST: AS-CHILD-RUN ( n -- [ ptr u8 n n n ptr u8 n -- n ] )
+
+\ Every refusal comes before the child word exists.
+: USER-ROW ( n n ptr u8 n -- ) {: count:n shape:n da:ptr du:n :}
+   da du data-base PROVIDED-XT:STORAGE-LINE-CELL + @
+   AS-STORAGE-LINE execute {: na:ptr nu:n ta:ptr tu:n bytes:n :}
+   bytes 0= if exit then
+   count 1 <  count USER-END-MAX bytes / >  or if
+      E-TASK-USER throw
+   then
+   TASK-USER-NEXT @ CELL 1 - + CELL negate and {: off:n :}
+   count bytes * {: size:n :}
+   off size USER-NEXT {: next:n :}
+   na nu shape 0 ta tu data-base PROVIDED-XT:CHILD-CELL + @
+   AS-CHILD-RUN execute drop
+   off size bytes SLOT-LAY
+   next TASK-USER-NEXT ! ;
 
 public
 
 : +USER ( n n -- n ) {: off:n size:n :}
    off size USER-NEXT {: next:n :}
    TASK-ALIGN8
-   create off size SLOT-LAY
+   create off size size SLOT-LAY
    next TASK-USER-NEXT !
    next
-   does> ( -- ptr n ) {: body:ptr :}
-   data-base TASK-AREA-OFF + @ dup 0= if
-      drop body SLOT-DATA +
-   else
-      body SLOT-OFF + @ + TASK-N>PTR
-   then ;
+   does> ( -- ptr n ) SLOT ;
+
+\ Accessor ( n -- ptr t ): element n of the calling thread's copy.
+: +USERS ( n -- )
+   CHILD-ABI:SLOTS s" TASK:+USERS" USER-ROW ;
 
 private
 
