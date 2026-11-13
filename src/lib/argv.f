@@ -32,14 +32,10 @@ variable ARGV-SCAN-NPOS
 DYNAMIC-BUFFER ARGV-POS span
 
 TYPED-VARIABLE ARGV-JSON bool
-TYPED-VARIABLE ARGV-ALL-ERRORS bool
 TYPED-VARIABLE ARGV-STRICT-BOUNDARY bool
 
 TYPED-VARIABLE ARGV-LABEL configured-value
-TYPED-VARIABLE ARGV-LABEL-DEFAULT span
-
 TYPED-VARIABLE ARGV-OUT configured-value
-TYPED-VARIABLE ARGV-OUT-DEFAULT span
 
 TYPED-VARIABLE ARGV-USAGE span
 variable ARGV-QUIET
@@ -117,10 +113,9 @@ public
    0 ARGV-I !
    0 ARGV-NPOS !
    ARGV-FALSE ARGV-JSON !
-   ARGV-FALSE ARGV-ALL-ERRORS !
    ARGV-FALSE ARGV-STRICT-BOUNDARY !
-   ARGV-LABEL-DEFAULT @ construct configured-value defaulted ARGV-LABEL !
-   ARGV-OUT-DEFAULT @ construct configured-value defaulted ARGV-OUT ! ;
+   NULL$ >SPAN construct configured-value defaulted ARGV-LABEL !
+   NULL$ >SPAN construct configured-value defaulted ARGV-OUT ! ;
 
 : USE-SCRIPT ( -- )  0 ARGV-USE-MOCK? ! ;
 
@@ -178,11 +173,6 @@ public
 : LABEL? ( -- bool )
    ARGV-LABEL @ EXPLICIT? ;
 
-: LABEL-DEFAULT! ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u >SPAN {: value:span :}
-   value ARGV-LABEL-DEFAULT !
-   LABEL? 0= if value construct configured-value defaulted ARGV-LABEL ! then ;
-
 : LABEL$ ( -- ptr u8 n )
    ARGV-LABEL @ VALUE$ ;
 
@@ -192,17 +182,10 @@ public
 : OUT? ( -- bool )
    ARGV-OUT @ EXPLICIT? ;
 
-: OUT-DEFAULT! ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u >SPAN {: value:span :}
-   value ARGV-OUT-DEFAULT !
-   OUT? 0= if value construct configured-value defaulted ARGV-OUT ! then ;
-
 : OUT$ ( -- ptr u8 n )
    ARGV-OUT @ VALUE$ ;
 
 : JSON? ( -- bool )  ARGV-JSON @ ;
-
-: ALL-ERRORS? ( -- bool )  ARGV-ALL-ERRORS @ ;
 
 : STRICT-BOUNDARY? ( -- bool )  ARGV-STRICT-BOUNDARY @ ;
 
@@ -220,9 +203,6 @@ private
    arg SPAN$ s" --label" ARGV-BYTES= if
       arg ARGV-TAKE-NEXT
       dry if drop else construct configured-value explicit ARGV-LABEL ! then exit
-   then
-   arg SPAN$ s" --all-errors" ARGV-BYTES= if
-      dry 0= if ARGV-TRUE ARGV-ALL-ERRORS ! then exit
    then
    arg SPAN$ s" --strict-boundary" ARGV-BYTES= if
       dry 0= if ARGV-TRUE ARGV-STRICT-BOUNDARY ! then exit
@@ -272,9 +252,6 @@ public
 : EXPECT-POS-EXACT ( n -- ) {: n:n :}
    n n EXPECT-POS ;
 
-: REQUIRE-OUT ( -- )
-   OUT? 0= if s" missing -o OUT" FAIL then ;
-
 : REQUIRE-LABEL ( -- )
    LABEL? 0= if s" missing --label NAME" FAIL then ;
 
@@ -282,8 +259,6 @@ private
 
 : ARGV-INIT ( -- )
    USE-SCRIPT
-   NULL$ >SPAN ARGV-LABEL-DEFAULT !
-   NULL$ >SPAN ARGV-OUT-DEFAULT !
    RESET
    0 QUIET!
    s" hb script.f [options] file ..." USAGE! ;

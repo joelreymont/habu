@@ -30,7 +30,7 @@ NEWTYPE ticket
 \ was given.
 NEWTYPE group
 
-\ The handle a READ or a WRITE answers with. It is a second type and not a
+\ The handle a READ answers with. It is a second type and not a
 \ ticket because it is also the ownership rule: the MEM allocation goes in with
 \ the submission and comes back out of AWAIT-XFER and nowhere else, so AWAIT,
 \ GROUP+ and GROUP- cannot name one and no checked code can read, write or
@@ -88,14 +88,10 @@ $10000000 constant OFF-SQES
 0 constant OP-NOP
 6 constant OP-POLL-ADD
 11 constant OP-TIMEOUT
-13 constant OP-ACCEPT
 14 constant OP-ASYNC-CANCEL
 15 constant OP-LINK-TIMEOUT
-16 constant OP-CONNECT
 22 constant OP-READ
-23 constant OP-WRITE
 
-$80000 constant ACCEPT-FLAGS        \ SOCK_CLOEXEC
 -1 constant OFF-CURRENT             \ the file's own position, used and advanced
 
 \ struct io_uring_params: seven __u32, three reserved, then the two offset
@@ -158,18 +154,15 @@ $10 constant SPEC-BYTES             \ struct __kernel_timespec: two __s64
 1 constant KIND-TIMEOUT
 2 constant KIND-LINK                \ the link timeout of a poll with a deadline
 3 constant KIND-READ
-4 constant KIND-WRITE
-5 constant KIND-ACCEPT
-6 constant KIND-CONNECT
 
 \ The io_uring opcode each kind submits, one row per kind in kind order: a new
 \ kind is a row here and a constant above.
 create KIND-OPS
    OP-POLL-ADD ,  OP-TIMEOUT ,  OP-LINK-TIMEOUT ,
-   OP-READ ,  OP-WRITE ,  OP-ACCEPT ,  OP-CONNECT ,
+   OP-READ ,
 
 : KIND>OP ( n -- n ) {: kind:n :}
-   kind KIND-POLL < kind KIND-CONNECT > or
+   kind KIND-POLL < kind KIND-READ > or
       if s" aio: operation kind" E-AIO-STATE die then
    KIND-OPS kind cells + @ ;
 
@@ -279,7 +272,6 @@ TASK:MIN-STACK TASK:TASK AIO-LOOP
 defer HOST-POLL ( n n n -- n n )
 defer HOST-TIMEOUT ( n -- n n )
 defer HOST-XFER ( n ptr u8 NUM:alloc-byte-len n n n -- n n )
-defer HOST-SOCKET ( n n n n -- n n )
 defer HOST-CANCEL ( n -- n )
 defer HOST-WAKE ( -- n )
 defer HOST-SETUP ( -- )
@@ -676,18 +668,6 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
 : SQE-BUF! ( n ptr u8 -- ) {: slot:n buf :}
    buf FFI:>CELL slot SQE-AT SQE-ADDR + LE:U64! ;
 
-\ IORING_OP_ACCEPT with addr and addr2 both zero asks for no peer address, so
-\ nothing of the caller's has to stay alive for it. IORING_OP_CONNECT puts the
-\ sockaddr in addr and its length in the addr2 half of the off field.
-: SQE-SOCK ( n n n n n n -- ) {: slot:n id:n op:n f:n addr:n off:n :}
-   slot op id SQE-COMMON
-   f slot SQE-AT SQE-FD + LE:U32!
-   addr slot SQE-AT SQE-ADDR + LE:U64!
-   off slot SQE-AT SQE-OFF + LE:U64! ;
-
-: SQE-OPFLAGS! ( n n -- ) {: slot:n v:n :}
-   v slot SQE-AT SQE-OPFLAGS + LE:U32! ;
-
 \ ---- completion --------------------------------------------------------------
 \ The count is exact: the kernel posts both CQEs of a linked pair (POLL-LINKED)
 \ and one per cancel (CANCEL-STAGE), so the last one owed settles the record.
@@ -874,15 +854,6 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
    SQ-PUBLISH
    idx SUBMIT-OR-FORGET idx ;
 
-: SOCK-STAGE ( n n n n -- n n ) {: f:n addr:n off:n kind:n :}
-   CLAIM-ONE {: rc:n idx:n :}
-   rc 0<> if rc -1 exit then
-   idx kind 1 REC-ARM
-   SQ-SLOT dup idx kind KIND>OP f addr off SQE-SOCK
-   kind KIND-ACCEPT = if dup ACCEPT-FLAGS SQE-OPFLAGS! then
-   SQ-PUBLISH
-   idx SUBMIT-OR-FORGET idx ;
-
 \ A link (its poll's cancel ends it), an ended or a cancelled record answers 0.
 : CANCEL-STAGE ( n -- n ) {: target:n :}
    target REC {: r:ptr :}
@@ -905,7 +876,6 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
    ['] POLL-STAGE is HOST-POLL
    ['] TIMEOUT-STAGE is HOST-TIMEOUT
    ['] XFER-STAGE is HOST-XFER
-   ['] SOCK-STAGE is HOST-SOCKET
    ['] CANCEL-STAGE is HOST-CANCEL
    ['] NOP-STAGE is HOST-WAKE
    ['] RING-SETUP is HOST-SETUP
@@ -1073,10 +1043,6 @@ INSTALL-HOST
    SUBMIT-ENTER
    f buf cap count off kind HOST-XFER SUBMIT-LEAVE >XFER ;
 
-: SOCK-SUBMIT ( n n n n -- ticket ) {: f:n addr:n off:n kind:n :}
-   SUBMIT-ENTER
-   f addr off kind HOST-SOCKET SUBMIT-LEAVE >TICKET ;
-
 \ ---- groups ------------------------------------------------------------------
 : ROW-SLOT ( n n -- ptr n ) {: row:n i:n :}
    row i 2 * cells + AIO-N>PTR ;
@@ -1093,9 +1059,6 @@ INSTALL-HOST
 
 : E-TAG ( ptr n n -- ptr n ) {: e:ptr i:n :}
    e G.ROW @ i ROW-TAG ;
-
-: G-COUNT@ ( n -- n )
-   G-ENTRY G.COUNT @ ;
 
 : G-FIND ( n n -- n ) {: g:n h:n :}
    g G-ENTRY {: e:ptr :}
@@ -1253,12 +1216,6 @@ public
 : CANCEL ( ticket -- )
    TICKET>N CANCEL-HANDLE ;
 
-\ The same for a transfer. A cancel of a READ on a regular file may lose the
-\ race and the outcome is then ready, because such a read can be served without
-\ ever becoming cancellable; a cancel is a request, not a guarantee.
-: CANCEL-XFER ( xfer -- )
-   XFER>N CANCEL-HANDLE ;
-
 \ Blocks until that operation has ended and answers its outcome, releasing the
 \ record. Only the task that submitted the ticket may await it, and only once:
 \ a ticket whose record is free, one another task owns, and one whose record has
@@ -1269,12 +1226,12 @@ public
    t TICKET>N OWNED-CHECK AWAIT-ONE ;
 
 \ ---- the completion operations -----------------------------------------------
-\ READ and WRITE hand the transfer a MEM allocation and it owns those bytes
+\ READ hands the transfer a MEM allocation and it owns those bytes
 \ until AWAIT-XFER gives them back. Nothing else in this module answers them
-\ again, so while the kernel is reading or writing that memory no checked code
+\ again, so while the kernel is writing that memory no checked code
 \ holds a way to touch it. count is the bytes to transfer and must fit the
 \ allocation; off is a file offset, or -1 for the descriptor's own position,
-\ which the operation uses and advances the way read(2) and write(2) do. A count
+\ which the operation uses and advances the way read(2) does. A count
 \ past the allocation, a count below zero or an offset below -1 is E-AIO-BOUNDS.
 \ E-AIO-BOUNDS, E-AIO-STATE, E-AIO-FULL and E-AIO-POLL-BOUND happen before any
 \ entry is written and leave the allocation the caller's. E-AIO-ENTER does not: the entry is
@@ -1286,26 +1243,6 @@ public
 : READ ( fd ptr u8 NUM:alloc-byte-len n n -- xfer )
    {: f:fd buf cap:NUM:alloc-byte-len count:n off:n :}
    f FD>N buf cap count off KIND-READ XFER-SUBMIT ;
-
-: WRITE ( fd ptr u8 NUM:alloc-byte-len n n -- xfer )
-   {: f:fd buf cap:NUM:alloc-byte-len count:n off:n :}
-   f FD>N buf cap count off KIND-WRITE XFER-SUBMIT ;
-
-\ Accepts one connection on a listening descriptor. The ready arm carries the
-\ new descriptor, which the caller owns and closes; no peer address is asked
-\ for, so nothing of the caller's has to outlive the submission. The accepted
-\ descriptor is close-on-exec.
-: ACCEPT ( fd -- ticket ) {: f:fd :}
-   f FD>N 0 0 KIND-ACCEPT SOCK-SUBMIT ;
-
-\ Connects a socket to the address in the caller's bytes. THE ADDRESS BYTES ARE
-\ THE CALLER'S AND MUST STAY MAPPED AND UNCHANGED UNTIL THE TICKET'S OUTCOME IS
-\ TAKEN: this module does not copy them and does not model when the kernel
-\ does. The ready arm carries zero; a refused connect is `refused` with the
-\ errno.
-: CONNECT ( fd ptr u8 n -- ticket ) {: f:fd addr alen:n :}
-   alen 0 <= if E-AIO-BOUNDS throw then
-   f FD>N addr FFI:>CELL alen KIND-CONNECT SOCK-SUBMIT ;
 
 \ This is the only word that gives the bytes back. Only the task that submitted
 \ the transfer may await it, and only once, as for a ticket.
@@ -1336,9 +1273,6 @@ public
    g GROUP>N t TICKET>N G-FIND {: at:n :}
    at 0 < if E-AIO-GROUP throw then
    g GROUP>N at G-REMOVE-AT ;
-
-: GROUP-COUNT ( group -- n )
-   GROUP>N G-COUNT@ ;
 
 \ The number GROUP+ was given with the first wait of the group whose operation
 \ has ended, with its outcome. That ticket leaves the group and its record is

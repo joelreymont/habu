@@ -80,7 +80,6 @@ $1000 constant XFER-N
 $800 constant XFER-HALF
 251 constant PAT-MOD
 $7F000001 constant LOOPBACK
-$10 constant SOCKADDR-N              \ sockaddr_in
 4 constant STREAM-BACKLOG
 $10 constant REUSE-N
 
@@ -122,8 +121,6 @@ create XFER-PAT XFER-N allot
 AIO-TEST-ALIGN8
 create XFER-PATH-BUF PATH-CAP allot
 AIO-TEST-ALIGN8
-create XFER-SA SOCKADDR-N allot
-AIO-TEST-ALIGN8
 create FAN-R FAN-TASKS cells allot
 AIO-TEST-ALIGN8
 create FAN-W FAN-TASKS cells allot
@@ -156,7 +153,7 @@ TYPED-VARIABLE XC TCP4:connection
 AIO:GROUP ANY-GROUP
 AIO:GROUP WIDE-GROUP
 AIO:GROUP OWNED-GROUP
-AIO:GROUP ACCEPT-GROUP
+AIO:GROUP LISTEN-GROUP
 
 DEFS-N TYPED-BUFFER DEF-GROUPS AIO:group
 AIO:GROUP D0  D0 0 DEF-GROUPS !
@@ -187,7 +184,7 @@ TASK:MIN-STACK TASK:TASK XFER-OWNER-TASK
 TASK:MIN-STACK TASK:TASK XFER-FORGET-TASK
 TASK:MIN-STACK TASK:TASK OWN-EXIT-TASK
 TASK:MIN-STACK TASK:TASK REUSE-TASK
-TASK:MIN-STACK TASK:TASK ACCEPT-TASK
+TASK:MIN-STACK TASK:TASK LISTEN-TASK
 TASK:MIN-STACK TASK:TASK CLEAN-TASK
 TASK:MIN-STACK TASK:TASK FAN0
 TASK:MIN-STACK TASK:TASK FAN1
@@ -385,16 +382,13 @@ TASK:MIN-STACK TASK:TASK FAN7
 : CASE-AWAIT-ANY ( -- )
    0 ANY-CANCELLED !
    ANY-N 0 ?do i ANY-ARM loop
-   ANY-GROUP AIO:GROUP-COUNT ANY-N T=
    SETTLE-MS TASK:SLEEP
    ANY-W CELL-VIEW 0 SLOT @ POKE
    ANY-GROUP AIO:AWAIT-ANY OUTCOME>N {: got:n :}
    0 T=                                     \ the number of the wait on pipe 0
    got AIO:READABLE and AIO:READABLE T=
-   ANY-GROUP AIO:GROUP-COUNT ANY-N 1 - T=
    ANY-N 0 ?do i ANY-REST loop
    ANY-CANCELLED @ ANY-N 1 - T=
-   ANY-GROUP AIO:GROUP-COUNT 0 T=
    ANY-N 0 ?do ANY-R CELL-VIEW i SLOT ANY-W CELL-VIEW i SLOT PIPE-CLOSE loop ;
 
 : FAN-R@ ( n -- n ) {: id:n :}
@@ -558,43 +552,12 @@ TASK:MIN-STACK TASK:TASK FAN7
    XFER-FD @ XFER-N XFER-N 0 READ-ONCE 0 T=
    XFER-FD @ close-rc drop ;
 
-\ The WRITE is submitted first and awaited second: a transfer is not a call, and
-\ nothing about the order they are awaited in changes what they answer.
-: CASE-XFER-PIPE ( -- )
-   P-R P-W PIPE-OPEN
-   XFER-ALLOC {: wbuf wcap:NUM:alloc-byte-len :}
-   wbuf PAT-FILL
-   XFER-ALLOC {: rbuf rcap:NUM:alloc-byte-len :}
-   P-W @ >FD wbuf wcap XFER-N 0 AIO:WRITE {: wx:AIO:xfer :}
-   P-R @ >FD rbuf rcap XFER-N 0 AIO:READ {: rx:AIO:xfer :}
-   rx AIO:AWAIT-XFER {: rb rc2:NUM:alloc-byte-len rout:AIO:outcome :}
-   wx AIO:AWAIT-XFER {: wb wc2:NUM:alloc-byte-len wout:AIO:outcome :}
-   rout OUTCOME>N XFER-N T=
-   wout OUTCOME>N XFER-N T=
-   rb 0 XFER-N PAT-CHECK TTRUE
-   rb rc2 MEM:RELEASE-BYTES
-   wb wc2 MEM:RELEASE-BYTES
-   P-R P-W PIPE-CLOSE ;
-
-\ Empty transfers complete without waiting for readiness. A broken write
-\ reports EPIPE, returns the owned allocation, and never raises SIGPIPE.
-: CASE-XFER-EMPTY-BROKEN ( -- )
+\ Empty transfers complete without waiting for readiness.
+: CASE-XFER-EMPTY ( -- )
    P-R P-W PIPE-OPEN
    P-R @ 3 0 fcntl {: oldflags:n :}
    P-R @ 0 0 0 READ-ONCE 0 T=
    P-R @ 3 0 fcntl oldflags T=
-   P-R @ close -1 P-R !
-   P-W @ >FD FD:FD-NOSIGPIPE!
-   XFER-ALLOC {: buf cap:NUM:alloc-byte-len :}
-   P-W @ >FD buf cap 1 0 AIO:WRITE AIO:AWAIT-XFER
-      {: rb rc2:NUM:alloc-byte-len out:AIO:outcome :}
-   out MATCH AIO:outcome
-      ready OF drop false TTRUE ENDOF
-      timed-out OF false TTRUE ENDOF
-      cancelled OF false TTRUE ENDOF
-      refused OF 32 T= ENDOF
-   ;MATCH
-   rb rc2 MEM:RELEASE-BYTES
    P-R P-W PIPE-CLOSE ;
 
 : CASE-XFER-ALIASES ( -- )
@@ -604,10 +567,9 @@ TASK:MIN-STACK TASK:TASK FAN7
    P-R @ 3 0 fcntl {: flags:n :}
    P-R @ >FD XFER-ALLOC 1 0 AIO:READ {: first:AIO:xfer :}
    alias >FD XFER-ALLOC 1 0 AIO:READ {: second:AIO:xfer :}
-   first AIO:CANCEL-XFER
-   first AIO:AWAIT-XFER OUTCOME>N MARK-CANCELLED T= MEM:RELEASE-BYTES
-   second AIO:CANCEL-XFER
-   second AIO:AWAIT-XFER OUTCOME>N MARK-CANCELLED T= MEM:RELEASE-BYTES
+   P-W @ POKE P-W @ POKE
+   first AIO:AWAIT-XFER OUTCOME>N 1 T= MEM:RELEASE-BYTES
+   second AIO:AWAIT-XFER OUTCOME>N 1 T= MEM:RELEASE-BYTES
    P-R @ 3 0 fcntl flags T=
    alias close P-R P-W PIPE-CLOSE ;
 
@@ -620,18 +582,6 @@ TASK:MIN-STACK TASK:TASK FAN7
       refused OF 9 T= ENDOF
    ;MATCH
    MEM:RELEASE-BYTES ;
-
-: XFER-SA! ( n n -- ) {: addr:n port:n :}
-   SOCKADDR-N 0 ?do 0 XFER-SA i + c! loop
-   HB-TARGET-MACOS? if
-      SOCKADDR-N XFER-SA c! 2 XFER-SA 1+ c!
-   else 2 XFER-SA c! then
-   port 8 rshift $FF and XFER-SA 2 + c!
-   port $FF and XFER-SA 3 + c!
-   addr $18 rshift $FF and XFER-SA 4 + c!
-   addr $10 rshift $FF and XFER-SA 5 + c!
-   addr 8 rshift $FF and XFER-SA 6 + c!
-   addr $FF and XFER-SA 7 + c! ;
 
 : STATUS-OK ( TCP4:status -- )
    MATCH TCP4:status
@@ -652,38 +602,18 @@ TASK:MIN-STACK TASK:TASK FAN7
       failed OF drop E-AIO-SETUP throw ENDOF
    ;MATCH ;
 
-: OPEN-SOCKET ( -- )
-   TCP4:SOCKET MATCH TCP4:socket-result
-      opened OF XC ! ENDOF
+: CONNECT-XC ( -- )
+   LOOPBACK TCP4:ADDRESS LISTEN-PORT TCP4:PORT TCP4:CONNECT
+   MATCH TCP4:connect-result
+      connected OF XC ! ENDOF
       failed OF drop E-AIO-SETUP throw ENDOF
    ;MATCH ;
 
-: STREAM-XCHG ( n n -- ) {: wfd:n rfd:n :}
-   XFER-ALLOC {: sbuf scap:NUM:alloc-byte-len :}
-   sbuf PAT-FILL
-   wfd >FD sbuf scap XFER-N 0 AIO:WRITE AIO:AWAIT-XFER
-      {: wb wc:NUM:alloc-byte-len wout:AIO:outcome :}
-   wout OUTCOME>N XFER-N T=
-   wb wc MEM:RELEASE-BYTES
-   rfd XFER-N 0 0 READ-ONCE XFER-N T= ;
-
-\ The accept's ready arm is the new descriptor, the connect's is zero. The
-\ sockaddr XFER-SA holds is the caller's and stays unchanged until the connect's
-\ outcome is taken, which is what CONNECT requires of it.
-: CASE-XFER-STREAM ( -- )
-   BIND-LISTENER
-   OPEN-SOCKET
-   LOOPBACK LISTEN-PORT XFER-SA!
-   XL @ TCP4:LISTENER-FD AIO:ACCEPT {: ax:AIO:ticket :}
-   XC @ TCP4:CONNECTION-FD XFER-SA SOCKADDR-N AIO:CONNECT {: cx:AIO:ticket :}
-   ax AWAIT>N {: peer:n :}
-   cx AWAIT>N 0 T=
-   peer 0 > TTRUE
-   XC @ TCP4:CONNECTION-FD FD>N peer STREAM-XCHG
-   peer XC @ TCP4:CONNECTION-FD FD>N STREAM-XCHG
-   peer close-rc drop
-   XC @ TCP4:CLOSE STATUS-OK
-   XL @ TCP4:CLOSE-LISTENER STATUS-OK ;
+: ACCEPT-FD ( -- n )
+   XL @ TCP4:ACCEPT MATCH TCP4:accept-result
+      accepted OF drop drop TCP4:CONNECTION-FD FD>N ENDOF
+      failed OF drop E-AIO-SETUP throw ENDOF
+   ;MATCH ;
 
 : CASE-XFER-BOUNDS ( -- )
    P-R P-W PIPE-OPEN
@@ -707,9 +637,9 @@ TASK:MIN-STACK TASK:TASK FAN7
    XFER-OWNER-TASK AWAIT-END
    XFER-OWNER-RC @ E-AIO-STATE T=
    XFER-OWNER-TASK TASK:KILL
-   LONE-XFER @ AIO:CANCEL-XFER
+   P-W @ POKE
    LONE-XFER @ AIO:AWAIT-XFER {: rb rcap:NUM:alloc-byte-len out:AIO:outcome :}
-   out OUTCOME>N MARK-CANCELLED T=
+   out OUTCOME>N 1 T=
    rb rcap MEM:RELEASE-BYTES
    [: LONE-XFER @ AIO:AWAIT-XFER XFER-DROP ;] E-AIO-STATE TTHROWSQ
    P-R P-W PIPE-CLOSE ;
@@ -732,7 +662,6 @@ CAST: XFER>N ( AIO:xfer -- n )
    [: STALE-TICKET @ AIO:AWAIT OUTCOME>N drop ;] E-AIO-STATE TTHROWSQ
    [: STALE-TICKET @ 0 ANY-GROUP AIO:GROUP+ ;] E-AIO-STATE TTHROWSQ
    [: STALE-TICKET @ ANY-GROUP AIO:GROUP- ;] E-AIO-GROUP TTHROWSQ
-   ANY-GROUP AIO:GROUP-COUNT 0 T=
    LIVE-TICKET @ AWAIT>N MARK-TIMED-OUT T= ;
 
 \ The record now holds a timer, whose buffer rows are null: without the
@@ -813,8 +742,7 @@ CAST: XFER>N ( AIO:xfer -- n )
    GROW-N 0 ?do
       P-R @ >FD AIO:READABLE -1 >MS AIO:POLL i WIDE-GROUP AIO:GROUP+
       0 i WIDE-SEEN !
-   loop
-   WIDE-GROUP AIO:GROUP-COUNT GROW-N T= ;
+   loop ;
 
 \ One byte makes every member ready, and AWAIT-ANY hands each number back once,
 \ through the row's doublings and the removals that move its last entry.
@@ -833,8 +761,7 @@ CAST: XFER>N ( AIO:xfer -- n )
       tag WIDE-COUNT
    loop
    FAN-READY @ GROW-N T=
-   GROW-N 0 ?do i WIDE-SEEN @ 1 T= loop
-   WIDE-GROUP AIO:GROUP-COUNT 0 T= ;
+   GROW-N 0 ?do i WIDE-SEEN @ 1 T= loop ;
 
 : CASE-GROUP-WIDE ( -- )
    P-R P-W PIPE-OPEN
@@ -851,7 +778,6 @@ CAST: XFER>N ( AIO:xfer -- n )
    DEFS-N 0 ?do
       i DEF-GROUPS @ AIO:AWAIT-ANY OUTCOME>N AIO:READABLE and AIO:READABLE T=
       i T=
-      i DEF-GROUPS @ AIO:GROUP-COUNT 0 T=
    loop
    P-R P-W PIPE-CLOSE ;
 
@@ -882,7 +808,6 @@ CAST: XFER>N ( AIO:xfer -- n )
    THIEF-ADD-RC @ E-AIO-STATE T=
    THIEF-DROP-RC @ E-AIO-STATE T=
    THIEF-ANY-RC @ E-AIO-STATE T=
-   OWNED-GROUP AIO:GROUP-COUNT 1 T=
    LONE-TICKET @ AIO:CANCEL
    OWNED-GROUP AIO:AWAIT-ANY OUTCOME>N MARK-CANCELLED T=
    0 T=
@@ -890,7 +815,6 @@ CAST: XFER>N ( AIO:xfer -- n )
    TAKEOVER-TASK AWAIT-END
    TAKEOVER-TASK TASK:KILL
    TAKEOVER-GOT @ MARK-CANCELLED T=
-   OWNED-GROUP AIO:GROUP-COUNT 0 T=
    P-R P-W PIPE-CLOSE ;
 
 \ A task that ends holding a group gives it back with the ticket it left in
@@ -978,10 +902,7 @@ CAST: XFER>N ( AIO:xfer -- n )
 
 \ XC connected to the listener; the accepted end comes back.
 : STREAM-PAIR ( -- n )
-   OPEN-SOCKET
-   XL @ TCP4:LISTENER-FD AIO:ACCEPT {: ax:AIO:ticket :}
-   XC @ TCP4:CONNECTION-FD XFER-SA SOCKADDR-N AIO:CONNECT AWAIT>N 0 T=
-   ax AWAIT>N ;
+   CONNECT-XC ACCEPT-FD ;
 
 \ The cleanup closes the socket the READ waits on, then holds the task on the
 \ gate pipe until the case has put bytes on the socket that took its number.
@@ -1003,7 +924,6 @@ CAST: XFER>N ( AIO:xfer -- n )
    0 REUSE-CLOSED !
    P-R P-W PIPE-OPEN
    BIND-LISTENER
-   LOOPBACK LISTEN-PORT XFER-SA!
    STREAM-PAIR {: old-peer:n :}
    XC @ TCP4:CONNECTION-FD FD>N {: num:n :}
    ['] REUSE-WORK REUSE-TASK TASK:ACTIVATE
@@ -1036,64 +956,57 @@ CAST: XFER>N ( AIO:xfer -- n )
    XL @ TCP4:CLOSE-LISTENER STATUS-OK
    P-R P-W PIPE-CLOSE ;
 
-\ The cleanup closes the listener the group's ACCEPT waits on, then holds the
+\ The cleanup closes the listener the group's POLL waits on, then holds the
 \ task on the gate pipe until the case has connected to the next listener there.
-: ACCEPT-CLOSE ( -- )
+: LISTEN-CLOSE ( -- )
    XL @ TCP4:CLOSE-LISTENER STATUS-OK
    1 REUSE-CLOSED atomic!
    P-R @ POKE-BYTE 1 read drop ;
 
-: ACCEPT-WORK ( -- )
-   [: XL @ TCP4:LISTENER-FD AIO:ACCEPT 0 ACCEPT-GROUP AIO:GROUP+
+: LISTEN-WORK ( -- )
+   [: XL @ TCP4:LISTENER-FD AIO:READABLE -1 >MS AIO:POLL 0 LISTEN-GROUP AIO:GROUP+
       1 REUSE-PARKED atomic!
-      ACCEPT-GROUP AIO:AWAIT-ANY OUTCOME>N drop drop ;]
-   [: ACCEPT-CLOSE ;] finally ;
+      LISTEN-GROUP AIO:AWAIT-ANY OUTCOME>N drop drop ;]
+   [: LISTEN-CLOSE ;] finally ;
 
-\ A READ cannot join a group, so the group holds an ACCEPT, which Darwin's poll
-\ thread also runs by number. The POLL beside it answers in the ACCEPT's turn.
+\ The group holds a POLL on the listener, which Darwin's poll thread runs by
+\ number. The POLL beside it answers in the group POLL's turn.
 : CASE-HALTED-ANY-REUSE ( -- )
    0 REUSE-PARKED !
    0 REUSE-CLOSED !
    P-R P-W PIPE-OPEN
    BIND-LISTENER
    XL @ TCP4:LISTENER-FD FD>N {: num:n :}
-   ['] ACCEPT-WORK ACCEPT-TASK TASK:ACTIVATE
+   ['] LISTEN-WORK LISTEN-TASK TASK:ACTIVATE
    REUSE-PARKED 1 REACH
    SETTLE-MS TASK:SLEEP
-   ACCEPT-TASK TASK:HALT
+   LISTEN-TASK TASK:HALT
    REUSE-CLOSED 1 REACH
    BIND-LISTENER
    XL @ TCP4:LISTENER-FD FD>N num T=
-   LOOPBACK LISTEN-PORT XFER-SA!
    XL @ TCP4:LISTENER-FD AIO:READABLE WAIT-MS >MS AIO:POLL {: px:AIO:ticket :}
-   OPEN-SOCKET
-   XC @ TCP4:CONNECTION-FD XFER-SA SOCKADDR-N AIO:CONNECT AWAIT>N 0 T=
+   CONNECT-XC
    px AWAIT>N 0 > TTRUE
    P-W @ POKE
-   ACCEPT-TASK AWAIT-END
-   ACCEPT-TASK TASK:KILL
+   LISTEN-TASK AWAIT-END
+   LISTEN-TASK TASK:KILL
    XL @ TCP4:LISTENER-FD AIO:READABLE SILENT-MS >MS AIO:POLL AWAIT>N {: got:n :}
    got 0 > TTRUE
    got 0 > if
-      XL @ TCP4:LISTENER-FD AIO:ACCEPT AWAIT>N close-rc drop
+      ACCEPT-FD close-rc drop
    then
    XC @ TCP4:CLOSE STATUS-OK
    XL @ TCP4:CLOSE-LISTENER STATUS-OK
    P-R P-W PIPE-CLOSE ;
 
-: CLEAN-WRITE ( -- )
-   XFER-ALLOC {: buf cap:NUM:alloc-byte-len :}
-   buf PAT-FILL
-   P-W @ >FD buf cap 1 0 AIO:WRITE AIO:AWAIT-XFER
-      {: wb wc:NUM:alloc-byte-len out:AIO:outcome :}
-   out OUTCOME>N CLEAN-GOT !
-   wb wc MEM:RELEASE-BYTES ;
+: CLEAN-WAIT ( -- )
+   TIMER-MS >MS AIO:TIMEOUT AWAIT>N CLEAN-GOT ! ;
 
 : CLEAN-WORK ( -- )
-   [: HALT-WORK ;] [: CLEAN-WRITE ;] finally ;
+   [: HALT-WORK ;] [: CLEAN-WAIT ;] finally ;
 
 \ A halted task's cleanup that starts its own I/O sees it to the end: inside the
-\ halt's unwind TASK:PAUSE only yields, so the WRITE's wait keeps waiting.
+\ halt's unwind TASK:PAUSE only yields, so the TIMEOUT's wait keeps waiting.
 : CASE-HALTED-CLEANUP-IO ( -- )
    0 HALT-PARKED !
    0 CLEAN-GOT !
@@ -1104,7 +1017,7 @@ CAST: XFER>N ( AIO:xfer -- n )
    CLEAN-TASK TASK:HALT
    CLEAN-TASK AWAIT-END
    CLEAN-TASK TASK:KILL
-   CLEAN-GOT @ 1 T=
+   CLEAN-GOT @ MARK-TIMED-OUT T=
    P-R P-W PIPE-CLOSE ;
 
 : CASE-RESTART ( -- )
@@ -1200,11 +1113,9 @@ CAST: XFER>N ( AIO:xfer -- n )
    CASE-GROUP-OWNER
    CASE-GROUP-ABANDONED
    CASE-XFER-FILE
-   CASE-XFER-PIPE
-   CASE-XFER-EMPTY-BROKEN
+   CASE-XFER-EMPTY
    CASE-XFER-ALIASES
    CASE-XFER-BAD-FD
-   CASE-XFER-STREAM
    CASE-XFER-BOUNDS
    CASE-XFER-STATE
    CASE-XFER-FORGOTTEN

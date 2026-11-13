@@ -36,10 +36,6 @@ variable TEST-FAIL
    [: PARSE ;] catch dup 0 <> if exit then drop
    [: EXPECT-ONE-POS ;] catch ;
 
-: NEED-OUT-RC ( -- n )
-   [: PARSE ;] catch dup 0 <> if exit then drop
-   [: REQUIRE-OUT ;] catch ;
-
 : NEED-LABEL-RC ( -- n )
    [: PARSE ;] catch dup 0 <> if exit then drop
    [: REQUIRE-LABEL ;] catch ;
@@ -53,7 +49,6 @@ variable TEST-FAIL
    s" --json" MOCK+
    s" --label" MOCK+
    s" NAME" MOCK+
-   s" --all-errors" MOCK+
    s" --strict-boundary" MOCK+
    s" -o" MOCK+
    s" OUT" MOCK+
@@ -62,11 +57,8 @@ variable TEST-FAIL
 : TEST-COMMON ( -- )
    COMMON-ARGS
    s" usage" USAGE!
-   s" DEFAULT" LABEL-DEFAULT!
-   s" STDOUT" OUT-DEFAULT!
    PARSE
    JSON? ASSERT
-   ALL-ERRORS? ASSERT
    STRICT-BOUNDARY? ASSERT
    LABEL? ASSERT
    OUT? ASSERT
@@ -78,13 +70,9 @@ variable TEST-FAIL
 : TEST-DEFAULTS ( -- )
    QUIET-MOCK
    s" file.f" MOCK+
-   s" DEFAULT" LABEL-DEFAULT!
-   s" STDOUT" OUT-DEFAULT!
    PARSE
    LABEL? 0= ASSERT
-   OUT? 0= ASSERT
-   LABEL$ s" DEFAULT" ASSERT$
-   OUT$ s" STDOUT" ASSERT$ ;
+   OUT? 0= ASSERT ;
 
 : TEST-DASHDASH ( -- )
    QUIET-MOCK
@@ -146,11 +134,6 @@ variable TEST-FAIL
    s" b.f" MOCK+
    ONE-POS-RC E-USAGE ASSERT-RC ;
 
-: TEST-REQUIRE-OUT ( -- )
-   QUIET-MOCK
-   s" file.f" MOCK+
-   NEED-OUT-RC E-USAGE ASSERT-RC ;
-
 : TEST-REQUIRE-LABEL ( -- )
    QUIET-MOCK
    s" file.f" MOCK+
@@ -173,14 +156,8 @@ variable TEST-FAIL
 
 : TEST-CONFIGURED-VALUES ( -- )
    RESET
-   s" first" LABEL-DEFAULT!
-   s" first" OUT-DEFAULT!
-   LABEL$ s" first" ASSERT$
-   OUT$ s" first" ASSERT$
    s" chosen" LABEL!
    s" chosen" OUT!
-   s" second" LABEL-DEFAULT!
-   s" second" OUT-DEFAULT!
    LABEL? ASSERT OUT? ASSERT
    LABEL$ s" chosen" ASSERT$
    OUT$ s" chosen" ASSERT$
@@ -189,9 +166,7 @@ variable TEST-FAIL
    LABEL$ s" replaced" ASSERT$
    OUT$ s" replaced" ASSERT$
    RESET
-   LABEL? 0= ASSERT OUT? 0= ASSERT
-   LABEL$ s" second" ASSERT$
-   OUT$ s" second" ASSERT$ ;
+   LABEL? 0= ASSERT OUT? 0= ASSERT ;
 
 : TEST-REPEATED-OPTIONS ( -- )
    QUIET-MOCK
@@ -208,7 +183,6 @@ variable TEST-FAIL
 
 : ASSERT-PRIOR-PARSE ( -- )
    JSON? ASSERT
-   ALL-ERRORS? ASSERT
    STRICT-BOUNDARY? ASSERT
    POS# 1 ASSERT=
    0 POS$ s" file.f" ASSERT$
@@ -310,7 +284,6 @@ create MSG-TEXT MSG-LEN allot
    TEST-MSG-BOUNDS
    TEST-POS-LOW
    TEST-POS-HIGH
-   TEST-REQUIRE-OUT
    TEST-REQUIRE-LABEL
    TEST-TOKEN-BOUNDS
    TEST-CONFIGURED-VALUES

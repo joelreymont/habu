@@ -112,11 +112,17 @@ CAST: SOCK>N ( WS:socket -- n )
    HB-TARGET-LINUX-KERNEL? if 8 exit then
    HB-TARGET-MACOS? if $1002 exit then
    E-PLATFORM throw ;
+: ERRNO-INPROGRESS ( -- n )
+   HB-TARGET-LINUX-KERNEL? if 115 exit then
+   HB-TARGET-MACOS? if 36 exit then
+   E-PLATFORM throw ;
+$18 constant POLL-FAILED          \ POLLERR and POLLHUP
 
 \ Linux and macOS grow a loopback socket's buffers as traffic goes, and grown
 \ ones take a whole push into the kernel, where no byte waits in WS's queue.
 PROCESS-SYMBOLS
 FUNCTION: SET-OPT-CALL setsockopt ( n n n ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: CONNECT-CALL connect ( n ptr u8 n -- i32 ) ;FUNCTION
 
 BUF-CAP SPAN-BUFFER: PATTERN
 BUF-CAP SPAN-BUFFER: CLIENT-TX
@@ -133,7 +139,7 @@ RAW-CAP SPAN-BUFFER: RAW-BUF
 2 SPAN-BUFFER: STATUS-BUF
 2 SPAN-BUFFER: HEX-PAIR
 4 SPAN-BUFFER: OPT-VAL
-SOCKADDR-N SPAN-BUFFER: PEER-SA  \ the server's address, for a connect the loop makes
+SOCKADDR-N SPAN-BUFFER: PEER-SA  \ the server's address, for DIAL-SMALL's connect
 SCRIPT-CAP SPAN-BUFFER: SCRIPT-BUF  \ the transcript this run captured
 SCRIPT-CAP SPAN-BUFFER: WANT-BUF    \ the transcript this file expects
 SCRIPT-CAP SPAN-BUFFER: BACK-BUF    \ the transcript read back from its file
@@ -279,8 +285,22 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    port $FF and PEER-SA 3 SPAN:U8!
    4 0 ?do LOOPBACK 3 i - 8 * rshift $FF and PEER-SA i 4 + SPAN:U8! loop ;
 
+\ The socket is non-blocking, so its connect completes when POLL finds it
+\ writable; an error or hang-up there is a refused connect.
+: CONNECTED? ( TCP4:connection -- bool ) {: conn:TCP4:connection :}
+   conn TCP4:CONNECTION-FD {: f:fd :}
+   f FD>N PEER-SA SPAN:$ CONNECT-CALL 0 = if true exit then
+   FFI:ERRNO ERRNO-INPROGRESS <> if false exit then
+   f AIO:WRITABLE -1 >MS AIO:POLL AIO:AWAIT
+   MATCH AIO:outcome
+      ready OF POLL-FAILED and 0= ENDOF
+      timed-out OF false ENDOF
+      cancelled OF false ENDOF
+      refused OF drop false ENDOF
+   ;MATCH ;
+
 \ A connection whose receive buffer is PEER-RCVBUF from its first byte: the
-\ option is set before the loop connects it, and holds the buffer at that size.
+\ option is set before it connects, and holds the buffer at that size.
 : DIAL-SMALL ( -- TCP4:connection )
    0 STREAM-AT ! 0 STREAM-U !
    TCP4:SOCKET
@@ -292,13 +312,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    conn TCP4:CONNECTION-FD FD>N SOL-SOCKET SO-RCVBUF OPT-VAL SPAN:$ SET-OPT-CALL
    0 <> if conn TCP4:CLOSE DROP-STATUS E-DIAL throw then
    PEER-SA!
-   conn TCP4:CONNECTION-FD PEER-SA SPAN:$ AIO:CONNECT AIO:AWAIT
-   MATCH AIO:outcome
-      ready OF drop ENDOF
-      timed-out OF conn TCP4:CLOSE DROP-STATUS E-DIAL throw ENDOF
-      cancelled OF conn TCP4:CLOSE DROP-STATUS E-DIAL throw ENDOF
-      refused OF drop conn TCP4:CLOSE DROP-STATUS E-DIAL throw ENDOF
-   ;MATCH
+   conn CONNECTED? 0= if conn TCP4:CLOSE DROP-STATUS E-DIAL throw then
    conn ;
 
 : SEND-RAW ( TCP4:connection ptr u8 n -- ) {: conn:TCP4:connection a u:n :}

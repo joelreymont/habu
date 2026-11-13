@@ -2,8 +2,7 @@
 \ One poll thread services all records; a nonblocking pipe wakes it when a
 \ submission changes the descriptor set or the nearest deadline. The caller
 \ keeps a pending operation's descriptor open and its flags unchanged. Regular
-\ files use pread/pwrite on the poll thread, so slow disk I/O delays other
-\ completions.
+\ files use pread on the poll thread, so slow disk I/O delays other completions.
 require src/lib/string.f
 require src/lib/aio.f
 require src/lib/le.f
@@ -13,8 +12,6 @@ package AIO
 private
 
 35 constant MAC-AGAIN
-36 constant MAC-INPROGRESS
-37 constant MAC-ALREADY
 9 constant MAC-BADF
 22 constant MAC-INVAL
 29 constant MAC-SPIPE
@@ -36,7 +33,6 @@ BEGIN-STRUCTURE MAC-REC-BYTES
    CELL +FIELD MR.DEADLINE
    CELL +FIELD MR.OWNS-FLAGS
    CELL +FIELD MR.OLD-FLAGS
-   CELL +FIELD MR.OLD-SIGPIPE
    CELL +FIELD MR.SEEKABLE
    CELL +FIELD MR.GEN               \ the generation MAC-PREPARE polled it at, or -1
    CELL +FIELD MR.SLOT              \ its descriptor's pollfd entry that turn, or -1
@@ -65,7 +61,6 @@ variable MAC-TURN
 
 PTR-VARIABLE MAC-POLLS
 variable MAC-POLL-COUNT
-8 BUFFER: MAC-SOCKERR
 create MAC-BYTE 1 c,
 64 BUFFER: MAC-DRAIN
 variable MAC-READ-FD
@@ -79,13 +74,7 @@ FUNCTION: MAC-POLL poll ( ptr u8 n n -- i32 )
 FUNCTION: MAC-READ read ( n ptr u8 n -- n ) 1 2 WRITES-ARG ;FUNCTION
 FUNCTION: MAC-PREAD pread ( n ptr u8 n n -- n ) 1 2 WRITES-ARG ;FUNCTION
 FUNCTION: MAC-WRITE write ( n ptr u8 n -- n ) ;FUNCTION
-FUNCTION: MAC-PWRITE pwrite ( n ptr u8 n n -- n ) ;FUNCTION
 FUNCTION: MAC-SEEK lseek ( n n n -- n ) ;FUNCTION
-FUNCTION: MAC-ACCEPT accept ( n n n -- i32 ) ;FUNCTION
-FUNCTION: MAC-CONNECT connect ( n ptr u8 n -- i32 ) ;FUNCTION
-FUNCTION: MAC-SOCKET-ERROR getsockopt ( n n n ptr u8 ptr u8 -- i32 )
-   3 4 WRITES-BYTES 4 4 WRITES-BYTES
-;FUNCTION
 
 : MR ( n -- ptr n ) REC REC.HOST ;
 
@@ -158,10 +147,6 @@ FUNCTION: MAC-SOCKET-ERROR getsockopt ( n n n ptr u8 ptr u8 -- i32 )
 
 : MAC-FCNTL ( n n n -- n ) MAC-FCNTL-CALL MAC-RESULT ;
 
-\ CONNECT supplies the caller's borrowed sockaddr through SOCK-SUBMIT's cell
-\ ABI. The caller retains it until AWAIT, exactly as on the Linux backend.
-CAST: MAC-SOCKADDR ( n -- ptr u8 )
-
 : MAC-NOTIFY ( -- n )
    MAC-WRITE-FD @ MAC-BYTE 1 MAC-WRITE MAC-RESULT
    dup 1 = swap MAC-AGAIN negate = or if 0 else E-AIO-ENTER then ;
@@ -193,10 +178,9 @@ CAST: MAC-SOCKADDR ( n -- ptr u8 )
 : MAC-TAKE-FLAGS ( n -- n ) {: idx:n :}
    idx MR {: row:ptr :} row MR.FD @ {: fd:n :}
    fd 3 0 MAC-FCNTL dup 0 < if negate exit then {: flags:n :}
-   fd 74 0 MAC-FCNTL dup 0 < if negate exit then row MR.OLD-SIGPIPE !
    fd 4 flags MAC-NONBLOCK or MAC-FCNTL dup 0 < if negate exit then drop
    flags row MR.OLD-FLAGS ! 1 row MR.OWNS-FLAGS !
-   fd 73 1 MAC-FCNTL negate ;
+   0 ;
 
 : MAC-GIVE-FLAGS ( n -- ) {: idx:n :}
    idx MR {: row:ptr :}
@@ -204,9 +188,6 @@ CAST: MAC-SOCKADDR ( n -- ptr u8 )
    0 row MR.OWNS-FLAGS !
    row MR.FD @ 4 row MR.OLD-FLAGS @ MAC-FCNTL 0 < if
       s" aio: descriptor flags could not be restored" E-AIO-STATE die
-   then
-   row MR.FD @ 73 row MR.OLD-SIGPIPE @ MAC-FCNTL 0 < if
-      s" aio: descriptor SIGPIPE flag could not be restored" E-AIO-STATE die
    then ;
 
 : MAC-FINISH ( n n -- ) {: idx:n result:n :}
@@ -241,27 +222,12 @@ CAST: MAC-SOCKADDR ( n -- ptr u8 )
    rc 0<> if rc -1 exit then
    buf idx REC-BUF ! cap idx REC-BUF-LEN! 1 idx REC REC.HOLD !
    count idx MR MR.COUNT ! off idx MR MR.OFFSET !
-   kind KIND-READ = if EV-READABLE else EV-WRITABLE then idx MR MR.EVENTS !
+   EV-READABLE idx MR MR.EVENTS !
    fd 1 0 MAC-FCNTL dup 0 < if idx swap MAC-FINISH MAC-NOTIFY idx exit then drop
    count 0= if idx 0 MAC-FINISH MAC-NOTIFY idx exit then
    fd 0 1 MAC-SEEK 0 >= if 1 idx MR MR.SEEKABLE !
    else FFI:ERRNO MAC-SPIPE <> if idx FFI:ERRNO negate MAC-FINISH then then
    MAC-NOTIFY idx ;
-
-: MAC-SOCKET-STAGE ( n n n n -- n n ) {: fd:n addr:n len:n kind:n :}
-   fd kind MAC-CLAIM {: rc:n idx:n :}
-   rc 0<> if rc -1 exit then
-   len idx MR MR.COUNT !
-   fd 0 < if idx MAC-BADF negate MAC-FINISH MAC-NOTIFY idx exit then
-   kind KIND-ACCEPT = if EV-READABLE else EV-WRITABLE then idx MR MR.EVENTS !
-   kind KIND-CONNECT = if
-      idx MAC-TAKE-FLAGS dup 0 <> if negate idx swap MAC-FINISH MAC-NOTIFY idx exit then drop
-      fd addr MAC-SOCKADDR len MAC-CONNECT MAC-RESULT {: result:n :}
-      idx MAC-GIVE-FLAGS
-      result MAC-INPROGRESS negate <> result MAC-ALREADY negate <> and if
-         idx result MAC-FINISH
-      then
-   then MAC-NOTIFY idx ;
 
 : MAC-CANCEL-STAGE ( n -- n ) {: idx:n :}
    idx MAC-ACTIVE? if idx ERR-CANCELED negate MAC-FINISH then
@@ -299,35 +265,15 @@ CAST: MAC-SOCKADDR ( n -- ptr u8 )
    row MR.FD @ {: fd:n :} idx REC-BUF @ {: buf:ptr :}
    row MR.COUNT @ {: count:n :} row MR.OFFSET @ {: off:n :}
    row MR.SEEKABLE @ 0 <> off 0 >= and {: positioned:bool :}
-   idx REC REC.KIND @ KIND-READ = if
-      positioned if fd buf count off MAC-PREAD else fd buf count MAC-READ then
-   else
-      positioned if fd buf count off MAC-PWRITE else fd buf count MAC-WRITE then
-   then MAC-RESULT ;
-
-: MAC-ACCEPT-READY ( n -- n )
-   MR MR.FD @ 0 0 MAC-ACCEPT MAC-RESULT
-   dup 0 < if exit then {: fd:n :}
-   fd 2 1 MAC-FCNTL dup 0 < if fd close exit then drop
-   \ accept inherits O_NONBLOCK on Darwin; the public accepted socket is blocking.
-   fd 3 0 MAC-FCNTL dup 0 < if fd close exit then
-   MAC-NONBLOCK invert and fd 4 rot MAC-FCNTL dup 0 < if fd close exit then drop
-   fd ;
-
-: MAC-CONNECT-READY ( n -- n )
-   0 MAC-SOCKERR LE:U32! 4 MAC-SOCKERR 4 + LE:U32!
-   MR MR.FD @ $FFFF $1007 MAC-SOCKERR MAC-SOCKERR 4 + MAC-SOCKET-ERROR
-   MAC-RESULT dup 0 < if exit then drop
-   MAC-SOCKERR LE:U32@ negate ;
+   positioned if fd buf count off MAC-PREAD else fd buf count MAC-READ then
+   MAC-RESULT ;
 
 : MAC-SERVICE ( n n -- ) {: idx:n events:n :}
    idx REC REC.KIND @ {: kind:n :}
    kind KIND-POLL = if idx events MAC-FINISH exit then
    events $20 and 0<> if idx MAC-BADF negate MAC-FINISH exit then
    idx MAC-TAKE-FLAGS dup 0 <> if negate idx swap MAC-FINISH exit then drop
-   kind KIND-ACCEPT = if idx MAC-ACCEPT-READY else
-      kind KIND-CONNECT = if idx MAC-CONNECT-READY else idx MAC-TRANSFER then
-   then {: result:n :}
+   idx MAC-TRANSFER {: result:n :}
    idx MAC-GIVE-FLAGS
    result MAC-AGAIN negate = result ERR-INTR negate = or if exit then
    idx result MAC-FINISH ;
@@ -404,7 +350,6 @@ CAST: MAC-SOCKADDR ( n -- ptr u8 )
    ['] MAC-POLL-STAGE is HOST-POLL
    ['] MAC-TIMEOUT-STAGE is HOST-TIMEOUT
    ['] MAC-XFER-STAGE is HOST-XFER
-   ['] MAC-SOCKET-STAGE is HOST-SOCKET
    ['] MAC-CANCEL-STAGE is HOST-CANCEL
    ['] MAC-NOTIFY is HOST-WAKE
    ['] MAC-SETUP is HOST-SETUP
