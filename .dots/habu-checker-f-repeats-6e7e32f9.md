@@ -1,6 +1,6 @@
 ---
 title: checker.f repeats layout.f constants with nothing checking they agree
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-11-11T19:09:01.250464+02:00"
