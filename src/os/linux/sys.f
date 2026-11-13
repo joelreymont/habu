@@ -50,6 +50,9 @@ public
 24  constant NR-DUP2
 25  constant NR-FCNTL
 103 constant NR-SETITIMER
+163 constant NR-GETRLIMIT
+3   constant RLIMIT-STACK
+-1  constant RLIM-INFINITY
 132 constant NR-SIGALTSTACK
 169 constant NR-GETTIMEOFDAY
 222 constant NR-MMAP

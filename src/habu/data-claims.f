@@ -148,6 +148,7 @@ create TAB
    FLOORREC-CELL                      1 cells                 CLAIM FLOORREC-CELL
    FAULT-MARK-CELL                    1 cells                 CLAIM FAULT-MARK-CELL
    DBASE-CELL                         1 cells                 CLAIM DBASE-CELL
+   MAIN-STACK-TOP-CELL                1 cells                 CLAIM MAIN-STACK-TOP-CELL
    CLOSED-FREE-CELL                   1 cells                 CLAIM CLOSED-FREE-CELL
    CODE-END-CELL                      1 cells                 CLAIM CODE-END-CELL
    PRIM-TABLE-CELL                    1 cells                 CLAIM PRIM-TABLE-CELL

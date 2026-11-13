@@ -293,11 +293,12 @@ phase measurement:
   `by inclusive`. The second section shows a phase word, such as a compiler
   pass, that does no work of its own. `prof-json` prints every attributed word
   and caller edge.
-- A sample scans at most `PROF-WALK-CELLS` machine-stack cells above the
-  interrupted stack pointer, and none past its 4 KiB block (`src/habu/prof.f`
-  C-PROF-WALK), so a word whose frame lies further out is not counted and an
-  outer word's inclusive count can fall far short. The word a whole program
-  build runs under took 42 inclusive samples of 37,215.
+- A sample whose stack pointer lies on the main thread's stack scans every
+  cell from it up to the stack's top, so every word with a frame there counts
+  inclusively. Any other sample scans at most `PROF-WALK-CELLS` cells and
+  none past its 4 KiB block (`src/habu/prof.f` C-PROF-WALK). In a warm
+  `--engine` build profile, `LINKER:WITH` took 14,704 inclusive samples of
+  14,707 Habu samples (15,726 less 1,019 foreign).
 - `n prof-row` prints one word's row whatever its rank.
 - A non-zero `prof-on` limit reports from inside the signal handler and exits
   99 at that many samples. Words compiled after `prof-on` stay in the `defer`

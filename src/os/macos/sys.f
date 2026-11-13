@@ -48,6 +48,9 @@ $49  constant NR-MUNMAP
 $5A  constant NR-DUP2
 $5C  constant NR-FCNTL
 $53  constant NR-SETITIMER
+$C2  constant NR-GETRLIMIT
+3    constant RLIMIT-STACK
+$7FFFFFFFFFFFFFFF constant RLIM-INFINITY
 $35  constant NR-SIGALTSTACK
 $74  constant NR-GETTIMEOFDAY
 $C5  constant NR-MMAP

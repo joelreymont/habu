@@ -186,6 +186,7 @@ public
    16 DBASE 17 ADD,  linked text0 rlist rlist-end 16 SLIDE-AT,
    linked text0 image image-end list list-end DATA,
    17 DATA REGION-ALIAS:DELTA-CELL STR,
+   9 SP 0 ADDI,  9 DATA MAIN-STACK-TOP-CELL STR,
    DBASE DATA DBASE-CELL STR,
    TRAMPOLINES,
    EM-DEF-OCC:LINIT LABEL@ BL,

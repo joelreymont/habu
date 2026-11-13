@@ -13,10 +13,13 @@
 \ never stores it, and a word that has not called anything yet still holds its
 \ own caller there. When x30 points into the sampled word itself - the word
 \ called something that has already returned - the stack scan answers instead,
-\ because the word's own prologue saved the real return address. The scan never
-\ leaves SP's 4 KiB block: SP is mapped, so every byte of its block is; one cell
-\ further could be the unmapped page above a thread stack, and a SIGSEGV inside
-\ a SIGALRM handler is not a diagnosis anybody can use.
+\ because the word's own prologue saved the real return address. A sample whose
+\ SP lies on the main stack, [ARN-STACK-LOW, ARN-STACK-TOP), scans from SP up to
+\ the top boot recorded, every Habu frame on that thread. Any other SP scans at
+\ most ARN-WALK cells and never leaves SP's 4 KiB block: SP is mapped, so every
+\ byte of its block is; one cell further could be the unmapped page above a
+\ thread stack, and a SIGSEGV inside a SIGALRM handler is not a diagnosis
+\ anybody can use.
 \
 \ Report rows and a row's callers are selected by repeated maximum, not sorted:
 \ each pass takes the largest count below the one before it. No second array is
@@ -58,6 +61,7 @@ PROF-TARGET-OK
 
 DATA-VA VA>N DATA-SIZE PROF-BAND-AT constant PROF-BAND-VA   \ absolute: DATA is fixed at DATA-VA
 PROF-BAND-VA PROF-STATE-BYTES + constant PROF-CNT-VA
+DATA-VA VA>N MAIN-STACK-TOP-CELL + constant PROF-TOP-VA
 $0043 constant MACOS-SA-PROF-FLAGS        \ SA_ONSTACK | SA_RESTART | SA_SIGINFO
 
 : C-PROF-MCTX>R21 ( -- )
@@ -167,7 +171,7 @@ public
    done LBL, ;
 
 : C-PROF-WALK ( -- )
-   LBL LBL LBL LBL {: wl wlr wdone wret :}
+   LBL LBL LBL LBL LBL {: wl wlr wdone wret wblock :}
    25 22 0 ADDI,                                     \ dedup seed: the sampled word
    19 0 MOVZ,                                        \ no caller edge recorded yet
    30 9 C-PROF-CTX-X>R
@@ -183,6 +187,9 @@ public
    LPROFEDGE LABEL@ BL,
    wlr LBL,
    31 23 C-PROF-CTX-X>R                              \ the interrupted machine stack
+   10 8 ARN-STACK-LOW LDR,  23 10 CMP,  C-CC wblock BCOND,
+   24 8 ARN-STACK-TOP LDR,  23 24 CMP,  C-CC wl BCOND,
+   wblock LBL,                                       \ not the main stack
    10 8 ARN-WALK LDR,  10 10 3 LSLI,  24 23 10 ADD,
    10 23 PROF-PAGE-MASK ORRI,  10 10 1 ADDI,
    24 10 CMP,  24 24 10 C-LS CSEL,
@@ -1090,6 +1097,24 @@ private
    23 SP 40 LDR,  24 SP 48 LDR,  25 SP 56 LDR,  17 SP 64 LDR,
    SP SP 96 ADDI,  RET, ;
 
+\ The main stack's bounds into the arena: the top boot stored, less the soft
+\ RLIMIT_STACK, or less PROF-STACK-BYTES when getrlimit fails, answers no
+\ limit or one above the top. Leaves x0 = arena, x7 = band; clobbers x1, x2,
+\ x9-x11 and the syscall's registers.
+: C-PROF-STACK-BOUNDS ( -- )
+   LBL LBL {: dflt have :}
+   SP SP 16 SUBI,
+   0 RLIMIT-STACK MOVZ,  1 SP 0 ADDI,  NR-GETRLIMIT SYS,
+   10 SP 0 LDR,  SP SP 16 ADDI,
+   C-CS dflt BCOND,
+   11 RLIM-INFINITY LIT64,  10 11 CMP,  C-EQ dflt BCOND,
+   9 PROF-TOP-VA LIT64,  9 9 0 LDR,  10 9 CMP,  C-LS have BCOND,
+   dflt LBL,  10 PROF-STACK-BYTES LIT64,
+   have LBL,
+   7 PROF-BAND-VA LIT64,  0 7 PROF-ARENA LDR,
+   9 PROF-TOP-VA LIT64,  9 9 0 LDR,  9 0 ARN-STACK-TOP STR,
+   9 9 10 SUB,  9 0 ARN-STACK-LOW STR, ;
+
 \ The handler counts nothing until the arm: a clock already running keeps
 \ ticking through the clears and the rebuild.
 : BPROF-ON ( -- )
@@ -1103,7 +1128,7 @@ private
    zl LBL,  8 zd CBZ,  9 0 MOVZ,  9 14 0 STR,  14 14 8 ADDI,  8 8 1 SUBI,  zl B,
    zd LBL,
    C-PROF-ARENA-MAP
-   7 PROF-BAND-VA LIT64,  0 7 PROF-ARENA LDR,
+   C-PROF-STACK-BOUNDS
    C-PROF-SESSION-START
    C-PROF-SNAPSHOT
    C-PROF-INDEX-BUILD

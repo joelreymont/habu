@@ -54,13 +54,15 @@ variable LPROFRECLAIM
 32 constant ARN-NEW         \ samples at or above ARN-HI: code compiled after the build
 40 constant ARN-DROP        \ caller edges dropped: the probe window was full
 48 constant ARN-FRAMES      \ caller frames attributed out of the machine stack
-56 constant ARN-WALK        \ machine-stack cells one sample may scan
+56 constant ARN-WALK        \ cells a sample off the main stack may scan
 64 constant ARN-USEC        \ sampling interval in microseconds, 0 = the 1000 default
 72 constant ARN-SPILL       \ new-code samples the deferred buffer had no room for
 80 constant ARN-DEFER       \ deferred samples waiting for the next report to name them
 88 constant ARN-OLDHI       \ the high mark before a rebuild: what the handler could name
 96 constant ARN-IDS         \ profile identities issued this session, at most DICT-CAP
 104 constant ARN-CHUNKS      \ linked chunks holding copied names
+112 constant ARN-STACK-TOP   \ the main stack's top, as boot recorded it
+120 constant ARN-STACK-LOW   \ the top less the stack limit
 32 constant PROF-ENT        \ index entry bytes
 0  constant ENT-START
 8  constant ENT-END
@@ -79,8 +81,9 @@ DICT-CAP constant PROF-CALLER-NONE      \ no record index reaches it: the unknow
 16 constant PROF-CALL-ENT               \ key+1, then the count
 8  constant PROF-CALL-PROBE
 $9E3779B97F4A7C15 constant PROF-HASH    \ golden-ratio multiplier; the top 16 bits index
-64 constant PROF-WALK-CELLS             \ default machine-stack scan, in cells
-$FFF constant PROF-PAGE-MASK            \ a sample never reads past its own 4 KiB block
+64 constant PROF-WALK-CELLS             \ off the main stack: the scan, in cells
+$FFF constant PROF-PAGE-MASK            \ off the main stack: never past SP's 4 KiB block
+$800000 constant PROF-STACK-BYTES       \ the main stack's limit when getrlimit has none
 \ A tick in code compiled after prof-on has no index entry. The handler keeps the
 \ pc and the interrupted return address (two cells, fixed stride, no walk, no
 \ allocation); the next report rebuilds the index and replays them, the only

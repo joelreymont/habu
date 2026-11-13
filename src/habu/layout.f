@@ -944,6 +944,10 @@ $2D48 constant FAULT-MARK-CELL
 \ DBASE. An engine's boot stores it; a stripped program, which has no live
 \ region, leaves it at its mapping's zero.
 $2D90 constant DBASE-CELL
+\ MAIN-STACK-TOP-CELL: the main thread's SP once an engine's boot has stored
+\ the DATA image; every frame a Habu word makes on that thread lies below it.
+\ A stripped program leaves it at its mapping's zero.
+$2D30 constant MAIN-STACK-TOP-CELL
 \ CLOSED-FREE-CELL heads the idle closed-text data stacks, each idle stack's
 \ first cell linking the next. The stacks are this process's mappings, so a
 \ process starts with the cell zero.
