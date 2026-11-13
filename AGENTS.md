@@ -47,6 +47,9 @@ differs where a cold build would not.
   Compression shrinks code or data through a codec; dropping zero-filled,
   unused or unreachable storage, packing allocations tightly and choosing a
   compact table encoding are not compression.
+- There are no runtime checks: check things statically as much as possible.
+  Code instrumented with bounds and other checks may be generated on demand,
+  never by default.
 
 ## Where findings go
 
