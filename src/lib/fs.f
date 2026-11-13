@@ -43,15 +43,11 @@ private
 
 public
 FS-ABI:S-IFMT constant S-IFMT
-
-private
-$1000 constant S-IFIFO
 FS-ABI:S-IFDIR constant S-IFDIR
-
-public
 FS-ABI:S-IFREG constant S-IFREG
 
 private
+$1000 constant S-IFIFO
 FS-ABI:S-IFLNK constant S-IFLNK
 
 public
@@ -334,6 +330,7 @@ FRAME-DIR-OFF DIR-CAP + constant FRAME-BYTES
 : CHECK-JOIN-CAP ( n -- )
    dup PATH-CAP > if CAUSE-CLEAR E-FS-CAPACITY throw then drop ;
 
+public
 \ FS owns the length gate: a path longer than PATH-CAP is E-FS-PATH, the
 \ refusal every fs consumer tests for, whatever buffer it is copied into.
 \ FFI:CSTR owns the copy, the terminator and the 0-byte refusal (E-FFI-NUL),
@@ -345,7 +342,6 @@ FRAME-DIR-OFF DIR-CAP + constant FRAME-BYTES
    u PATH-CAP > if E-FS-PATH throw then
    a u dst FFI:CSTR ;
 
-public
 : >PATHZ ( ptr u8 n -- ptr u8 )
    PATHZ-BUF PATHZ-INTO ;
 
