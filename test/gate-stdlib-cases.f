@@ -21,9 +21,13 @@ SUITE lsp-boundary
 ;SUITE
 [then]
 
+\ A cross-build: a linux-aarch64 host builds this target natively, where no
+\ word is a target word.
+HB-TARGET-LINUX? 0= [if]
 SUITE linux-engine-build
    test/linux-engine-build.f
 ;SUITE
+[then]
 
 \ RFC 6455 connections on the HTTP server, spoken to by a Habu client over
 \ TCP4; writes build/ws-transcript.txt and compares it whole.
