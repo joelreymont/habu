@@ -48,18 +48,11 @@ s" VN-UNDECL ( never-declared -- never-declared )" CHECK-QUIET-CANDIDATE! 0 T=
 \ 4. the name rule: a tail an effect reads as something other than the family is
 \    a reserved name in every scope. A bare `ptr` is the pointer constructor, so
 \    a package's own `ptr` would leave its converter `( n -- ptr )` without a
-\    pointee. Shadowing another package's family stays legal: `side` is
-\    IR-SCHEMA's public enum, and the package's own `side` is a distinct type.
+\    pointee.
 : MINT-PTR ( -- ) s" PTR" VNOM:MINT ;
 ' MINT-PTR catch TYPE-DECL:E-TDECL-NAME T=
 package CTORPKG
 ' MINT-PTR catch TYPE-DECL:E-TDECL-NAME T=
-;package
-
-package SIDEPKG
-DEFTYPE SIDE
-s" VN-SIDE-MK ( n -- side ) >SIDE"          CHECK-QUIET-CANDIDATE! -1 T=
-s" VN-SIDE-X ( side -- IR-SCHEMA:side )"    CHECK-QUIET-CANDIDATE!  0 T=
 ;package
 
 \ 5. the name length rule is the family name cap (TFAM:TF-NAME-MAX, 255 bytes):

@@ -33,11 +33,8 @@ Nothing else knows what a keyword means: there are no keyword lists, no second
 reading and no pass that rebuilds the definition's structure.
 **Now:** each definition is read twice. The interpreter keeps its text, and at
 `;` the checker reads that text again (`src/core/check-hook.f` DEFINITION),
-filling a token tape (`src/compiler/native/tape.f`) from which the compiler
-rebuilds the structure: tier 0 in `src/habu/t0.f`, tier 1 in an elaborator of
-its own (`src/compiler/native/elaborate.f`). What the control words mean is
-written down in several places, among them `src/compiler/native/hir-word.f`
-and `src/core/type-family.f`.
+and tier 0 (`src/habu/t0.f`) lowers the definition from the events the
+checker's scan files.
 
 **The checker records what the codegen reads, and nothing more.** Each
 construct is one event:
@@ -55,10 +52,7 @@ construct is one event:
 The events go in a buffer the checker reserves once and reuses for each
 definition. Bytes the definition lays down while it is read, such as its
 string literals, go at `HERE`, into its body.
-**Now:** the tape keeps the token stream with names, modes, spans and digests
-(`src/compiler/native/tape.f:24-33`), and tier 1 recovers the rest by reading
-the definition again. Beside the tape, the checker files each token's event, a
-kind and two arguments, under the token's ordinal in a table every pass of the
+**Now:** the checker files each token's event, a kind and two arguments, under the token's ordinal in a table every pass of the
 scan refills (`src/core/checker.f` `EV-COMMIT`). An observer reads it with
 `CHECKER-TAPE:EVENT` while it is told the verdict, so what it reads is the scan
 that publishes.
@@ -67,8 +61,7 @@ A definition becomes visible only after its code is in place. The publisher
 places the emission in the code space, resolving each of its rows against the
 running engine ([unplaced code](architecture.md#cross-compilation)), and only
 then publishes the header (`src/compiler/native/publish.f` `PUBLISH-PENDING`).
-A refused definition leaves no word behind
-(`src/compiler/native/compiler.f:15-16`).
+A refused definition leaves no word behind.
 
 ## Building an image
 
