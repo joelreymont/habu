@@ -59,7 +59,6 @@ private
 
 1 13 lshift constant NIS-LIM     \ packed N:immr:imms of a logical immediate
 1  6 lshift constant SHIFT-LIM
-1  3 lshift constant LANEH-LIM
 
 : OUT? ( n n -- bool )  swap dup 0 < swap rot >= or ;
 
@@ -97,10 +96,6 @@ private
 
 : ?HW ( n -- n )
    dup HW-LIM OUT? IF s" asm: move-wide half out of range" ASM-EXIT-RC die THEN ;
-
-\ UMOV's 16-bit lane index: three bits, since the two bits below it are opcode.
-: ?LANEH ( n -- n )
-   dup LANEH-LIM OUT? IF s" asm: vector lane index out of range" ASM-EXIT-RC die THEN ;
 
 31 constant ARM-ZERO-REG
 
@@ -263,8 +258,6 @@ public
 \ MUL is MADD with the addend field set to register 31 ($7C00).
 : ENC-MUL ( n n n -- n ) XR3 $9B007C00 RRR ;
 
-: ENC-SMULH ( n n n -- n ) XR3 $9B407C00 RRR ;
-
 : ENC-MADD ( n n n n -- n ) XR4 $9B000000 RRRA ;
 
 : ENC-MSUB ( n n n n -- n ) XR4 $9B008000 RRRA ;
@@ -412,12 +405,7 @@ public
 
 : ENC-FMUL ( n n n -- n ) DR3 $1E600800 RRR ;
 
-\ The V registers are the D registers. UADDLV sums 16 bytes into 16 bits and
-\ cannot overflow.
-: ENC-LD1V ( n n -- n ) DR2 XREG? $4C407000 RR ;
-
-: ENC-UADDLV ( n n -- n ) DR2 $6E303800 RR ;
-
+\ The V registers are the D registers.
 \ A post-indexed load advances its base by the bytes it moved: 16 per register.
 : ENC-LD1V-POST ( n n -- n ) DR2 XREG? $4CDF7000 RR ;
 
@@ -444,11 +432,6 @@ public
 
 : ENC-SHA256SU1 ( n n n -- n ) DR3 $5E006000 RRR ;
 
-: ENC-UMOVH ( n n n -- n )
-   ?LANEH {: lane:n :}
-   DR2 XR2ND {: rd:n rn:n :}
-   $0E023C00 rd or  rn 5 lshift or  lane 18 lshift or MSK ;
-
 \ cset is csinc rd, xzr, xzr, invert(cond).
 : ENC-CSET ( n n -- n )
    XR2ND ?COND {: rd:n cond:n :}
@@ -470,8 +453,6 @@ public
 : ENC-LSLV ( n n n -- n ) XR3 $9AC02000 RRR ;
 
 : ENC-LSRV ( n n n -- n ) XR3 $9AC02400 RRR ;
-
-: ENC-ASRV ( n n n -- n ) XR3 $9AC02800 RRR ;
 
 : ENC-SDIV ( n n n -- n ) XR3 $9AC00C00 RRR ;
 

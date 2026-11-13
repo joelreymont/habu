@@ -4280,8 +4280,6 @@ variable MARK-CELL
    s" ptr-cell-mark" [:
       0 CELL SIZED-GUARD,  RDI POP,
       RSI SNAP-RELOC:XTCELL-DATA-TAG IMM64,  MARK-LBL CALL, ;] PRIM
-   s" addr-cells-abi" [:
-      RAX ADDRESS-CELLS:ABI-VERSION IMM32,  RAX PUSH, ;] PRIM
    s" scratch-cell-mark" [:
       0 CELL SIZED-GUARD,  RDI POP,
       RSI SNAP-RELOC:XTCELL-DATA-TAG SNAP-RELOC:XTCELL-SCRATCH-TAG or IMM64,

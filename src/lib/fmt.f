@@ -37,9 +37,9 @@ package FMT
 STR-I64-DIGITS 1+ constant FMT-NUM-CAP
 \ src/habu/layout.f is loaded before src/lib/string.f and cannot see
 \ STR-I64-DIGITS, so FMT-ABI:NUM-BUF-BYTES states the width there and this
-\ executes the agreement once at load, the way src/habu/rt.f executes
-\ RT:DSTACK-AGREE. A narrower band would let the renderer overrun the band's
-\ top into STRING-ABI; a wider one would reserve bytes no renderer uses.
+\ executes the agreement once at load. A narrower band would let the renderer
+\ overrun the band's top into STRING-ABI; a wider one would reserve bytes no
+\ renderer uses.
 : BAND-AGREE ( -- )
    FMT-NUM-CAP FMT-ABI:NUM-BUF-BYTES <> if E-FMT-BAND throw then ;
 BAND-AGREE

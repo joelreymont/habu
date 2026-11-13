@@ -93,18 +93,12 @@ public
 
 \ ---- the register files -------------------------------------------------------
 : FILE-SIZE ( -- n )      FILE-N ;
-: RESERVED-GPRS ( -- n )  RESERVED-MASK ;
-: ENGINE-GPRS ( -- n )    ENGINE-GPR:A64-MASK ;
 : SLOT-WIDTH ( -- n )     SLOT-WIDTH-N ;
 
-\ Declared by src/habu/layout.f; RT:DSTACK-AGREE holds it equal to
-\ src/arch/arm64/mnem.f XDS. Read by name for the reason RESERVED-MASK reads
-\ A64-MASK.
 : DSTACK-GPR ( -- n )     ENGINE-GPR:A64-DSTACK ;
 
 \ ---- the registers that are not general state ---------------------------------
 : LINK-GPR ( -- n )       LINK-N ;
-: ZERO-GPR ( -- n )       ZERO-N ;
 
 \ Operand 31 in the forms that reach a frame slot is the stack pointer, not the
 \ zero register.

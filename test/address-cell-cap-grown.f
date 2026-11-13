@@ -24,8 +24,6 @@ variable CUT
 
 : RUN ( -- )
    T-RESET
-   ADDRESS-CELLS:CURRENT? TTRUE
-   addr-cells-abi ADDRESS-CELLS:ABI-VERSION T=
    ROWS dup BASE-N !
    ROW-N >= if s" address-cell-growth: fixture has no new rows" 76 die then
    BASE-N @ 0 ?do i ADDRESS-CELLS:ROW@ SAVED i cells + ! loop

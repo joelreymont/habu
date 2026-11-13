@@ -499,7 +499,6 @@ EPRIM: !          PE-A PE-IN PE-PTR-A PE-IN EPRIM; REACH memory
 \ A plain `!` of a quotation into such a cell is already refused.
 EPRIM: xt!        PE-A PE-IN PE-PTR-A PE-IN EPRIM; REACH memory EFIXED-ABI!
 EPRIM: ptr-cell-mark PE-PTR-A PE-IN EPRIM; REACH dict
-EPRIM: addr-cells-abi PE-N PE-OUT EPRIM;
 EPRIM: scratch-cell-mark PE-PTR-A PE-IN EPRIM; REACH dict
 \ ptr-cell! is xt!'s store for a cell that holds a DATA pointer: it writes the
 \ value and declares the cell as ptr-cell-mark declares it.

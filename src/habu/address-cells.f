@@ -1,19 +1,16 @@
 \ The engine owns address-cell declarations. Readers acquire a fresh span:
 \ appending a row may move its backing storage, but never changes a row's index.
 s" src/habu/layout.f" required
-s" src/habu/xref.f" required
-s" src/habu/wl.f" required
 
 package ADDRESS-CELLS
 public
 
-1 constant ABI-VERSION
 \ Process mutex in fixed image DATA, outside the header and row backing. The
 \ MATCH stack ends before $1A0, $1A0 is the seal fixture's poke cell.
 $1A8 constant LOCK-CELL
 \ Derived process storage, never an address declaration or part of the row
 \ schema: the one unused cell between BPTRAMP ($36C0) and the breakpoint records
-\ ($36D0..$37D0). Storage-v1 engines leave it zero.
+\ ($36D0..$37D0).
 $36C8 constant INDEX-CELL
 0 constant INDEX-SLOTS
 8 constant INDEX-COUNT
@@ -31,65 +28,14 @@ SNAP-RELOC:XTCELL-END BOOT-OFF - CELL / constant BOOT-CAP
 $7FFFFFFFFFFFFFFF CELL / constant MAX-ROWS
 
 private
-CAST: VERSION-XT ( n -- [ -- n ] )
-
-\ Engine emitters publish these primitives consecutively in a global wordlist.
-\ Retirement changes a marker's wordlist but keeps its name and position; a
-\ later redefinition must not replace the original pair. Resolved on each call:
-\ a captured image's code addresses differ from its build host's, and a foreign
-\ target layout's header offsets do not describe the running engine.
-: ENGINE-ABI-XT ( -- n )
-   ndict@ 1- 0 ?do
-      i XREF-REC {: rec:ptr :}
-      rec XREF-NAME$ s" ptr-cell-mark" CORE-STR=CI if
-         rec XREF-WORDLIST {: wid:n :}
-         wid WL:GLOBAL? 0= wid XREF-RETIRED-WL <> and if 0 unloop exit then
-         i 1+ XREF-REC {: next:ptr :}
-         next XREF-WORDLIST WL:GLOBAL? if
-            next XREF-NAME$ s" addr-cells-abi" CORE-STR=CI if
-               next XREF-START unloop exit
-            then
-         then
-         0 unloop exit
-      then
-   loop
-   0 ;
-
-public
-\ A same-named source word is not read; another word aliased into the built-ins'
-\ wordlist is refused. Recovery and old native hosts answer false.
-: CURRENT? ( -- bool )
-   s" addr-cells-abi" WL:PRIMITIVES search-wl {: xt:n :}
-   xt 0= if 0 0 <> exit then
-   xt ENGINE-ABI-XT <> if
-      s" address-cells: version probe is not an engine primitive" 96 die
-   then
-   xt VERSION-XT execute {: version:n :}
-   version 0= if 0 0 <> exit then
-   version ABI-VERSION <> if
-      s" address-cells: unsupported engine storage version" 96 die
-   then
-   0 0= ;
-
-private
 
 : REFUSE ( -- ) s" address-cells: invalid storage header" 96 die ;
 : SHAPE ( n n -- ) {: count:n cap:n :}
    cap 0 <= cap MAX-ROWS > or count 0 < or if REFUSE then
    count cap > if REFUSE then ;
 
-\ Native-build runs newly compiled target cleanup inside its older donor. That
-\ cleanup must read the donor's live registry; the target image uses its own
-\ address-cell offset after the scoped handover ends.
-variable LIVE-N-CELL
-SNAP-RELOC:XTCELL-N-CELL LIVE-N-CELL !
+: HEADER ( -- ptr n ) data-base SNAP-RELOC:XTCELL-N-CELL + ;
 
-: HEADER ( -- ptr n ) data-base LIVE-N-CELL @ + ;
-
-: WITH-HOST-HEADER ( n [ -- ] -- )
-   {: off:n action :}
-   off LIVE-N-CELL !
-   action [: SNAP-RELOC:XTCELL-N-CELL LIVE-N-CELL ! ;] finally ;
 \ The header's base and the index cell hold an outside mapping's address as an integer.
 CAST: N>ROWS ( n -- ptr n )
 : ROWS>N ( ptr n -- n ) BYTE-VIEW NULL-PTR BYTE-VIEW - ;
@@ -154,28 +100,12 @@ private
 public
 
 : LIVE-SPAN ( -- ptr n n )
-   CURRENT? if LIVE-HEADER 2drop HEADER @ exit then
-   HEADER @ SNAP-RELOC:XTCELL-CAP SHAPE
-   SNAP-RELOC:XTCELL-ROWS-OFF DATA-ROWS HEADER @ ;
+   LIVE-HEADER 2drop HEADER @ ;
 
 : ROW@ ( n -- n ) {: row:n :}
    LIVE-SPAN {: base:ptr count:n :}
    row 0 < row count >= or if REFUSE then
    base row cells + @ ;
-
-\ Match the registrar's declaration rule without adding a live row. Prepared
-\ FILE slots also compare their own earlier declarations before publication.
-: COMPATIBLE? ( n -- bool ) {: raw:n :}
-   raw SNAP-RELOC:XTCELL-OFF-MASK and {: off:n :}
-   off SNAP-RELOC:XTCELL-OFF-MAX > if false exit then
-   LIVE-SPAN {: rows:ptr count:n :}
-   count 0 ?do
-      rows i cells + @ {: prior:n :}
-      prior SNAP-RELOC:XTCELL-OFF-MASK and off = if
-         prior raw = unloop exit
-      then
-   loop
-   true ;
 
 private
 
@@ -226,9 +156,7 @@ public
 \ Native-build owns the explicit lifetime cut through its retired source heap.
 \ Preserve registration order and invalidate even when the count is unchanged.
 : KEEP-BELOW ( n -- )
-   CURRENT? if
-      [: KEEP-LOCKED ;] WITH-LOCK
-   else KEEP-ROWS then ;
+   [: KEEP-LOCKED ;] WITH-LOCK ;
 
 \ Drop every row in [first, limit), code and data alike; rows outside stay.
 private
@@ -257,11 +185,9 @@ public
 \ allocation inside ptr-cell-mark would split `here ptr-cell-mark 0 ,`.
 \ An already DATA-backed vector still releases its process-owned index.
 : PERSIST ( -- )
-   CURRENT? 0= if exit then
    [: INDEX-ADDR INDEX-RELEASE PERSIST-ROWS ;] WITH-LOCK ;
 
-\ Strict v9 reader for a complete snapshot DATA copy. Legacy admission is a
-\ separate caller decision; malformed v9 headers never take that branch.
+\ Reads a complete snapshot DATA copy.
 : DATA-SPAN ( ptr u8 n -- ptr n n ) {: data:ptr bytes:n :}
    bytes SNAP-RELOC:XTCELL-N-CELL HEADER-BYTES + < if REFUSE then
    data SNAP-RELOC:XTCELL-N-CELL + cell-view {: h:ptr :}

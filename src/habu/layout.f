@@ -9,9 +9,6 @@
 \ The general registers the running engine occupies.
 \ A compiled routine that writes one of these destroys the engine.
 \ A register claimed here is refused by every GPR allocation path.
-\ ENGINE-GPR:A64-DSTACK is stated here, not read from src/arch/arm64/mnem.f XDS:
-\ mnem.f is not in every engine's prefix, so a derivation compiles in the build
-\ and dies E-UNDEFINED at run time.
 \ Both targets' registers are declared on every target: this file cannot branch
 \ at top level and an ARM64 engine emits x86-64 code.
 package ENGINE-GPR
@@ -1313,12 +1310,9 @@ ADDRMAP-END SITE-ROWS-OFF - SITE-ROW-BYTES / constant SITE-CAP
 \ A scratch pointer cell is a DATA-pointer row that also carries bit 62: every
 \ save writes it as null and never reads it, so a reader that knows only bit 63
 \ treats it as a DATA pointer, never as an xt.
-\ Legacy layout: a count, then XTCELL-CAP tagged offset cells; bit 63 is the
-\ DATA-pointer kind and the low 62 bits the DATA offset. The engine appends an
-\ identical declaration only once and refuses one cell declared with two kinds.
-\ These coordinates freeze the original band and heap floor. New engines use
-\ ADDRESS-CELLS' header and inline boot rows in this band, then grow into mmap.
-\ XTCELL-CAP bounds only legacy host rows; it is not a runtime declaration limit.
+\ The engine appends an identical declaration only once and refuses one cell
+\ declared with two kinds. ADDRESS-CELLS' header and inline boot rows use this
+\ band, then grow into mmap.
 65536 constant XTCELL-CAP
 $8000000000000000 constant XTCELL-DATA-TAG
 $4000000000000000 constant XTCELL-SCRATCH-TAG

@@ -568,7 +568,6 @@ REGION SLOT-BYTES - constant TOP-SLOT
 \ The constant rows and tier 1.
 : BUILD-TIER ( ptr u8 n -- ) {: path:ptr pathu:n :}
    false X64HARNESS:BOOT-OPEN,
-   s" addr-cells-abi" ROW  ADDRESS-CELLS:ABI-VERSION X64HARNESS:EXPECT-POP,
    s" snapshot-format" ROW  SNAPSHOT-FORMAT:VERSION X64HARNESS:EXPECT-POP,
    1 X64HARNESS:PUSH,  s" set-tier" ROW
    s" tier@" ROW  1 X64HARNESS:EXPECT-POP,
