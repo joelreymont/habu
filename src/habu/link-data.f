@@ -513,12 +513,14 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    {: sig:ptr sigu:n path:ptr pathu:n :}
    TARGET @ RTARGET:IMAGE@ MATCH RTARGET:image
       macho OF
+         sig sigu MACHO:SET-SIGID
          MACHO:ASM-CODE ARM64:TEXT-VA ARM64:MACHO-IMPORTS$ MACHO:BUILD-IMAGE
-         sig sigu MACHO:SET-SIGID MACHO:CODESIG2
+         MACHO:CODESIG2
       ENDOF
       elf OF
+         sig sigu ELF:SET-SIGID
          ELF:ASM-CODE ARM64:TEXT-VA ARM64:ELF-IMPORTS$ ELF:BUILD-IMAGE
-         sig sigu ELF:SET-SIGID ELF:CODESIG2
+         ELF:CODESIG2
       ENDOF
       pe OF s" link: no file writer for a PE target" 74 die ENDOF
       wasm OF s" link: a Wasm target's module is written by WASM:WRITE-MODULE" 74 die ENDOF

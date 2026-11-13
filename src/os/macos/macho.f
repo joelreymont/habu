@@ -47,9 +47,6 @@ $80000034 constant LC-DYLD-CHAINED-FIXUPS
 $1D       constant LC-CODE-SIG
 \ Where the file's first byte maps; BUILD-IMAGE stores it.
 variable VMBASE
-\ The maximum generated executable window: everything the assembler can emit,
-\ behind the header page it sits at.
-CODE-CAP-BYTES CODE-OFF + constant MPAGE
 $4000     constant MACHO-PAGE
 $4000     constant DATA-CONST-SIZE
 
@@ -112,22 +109,6 @@ private
 
 : MACHO-FIXUPS-SIZE ( -- n ) MACHO-FIXUPS-USED 7 + -8 and ;
 
-\ The largest blob: one chained start per page of the largest __DATA_CONST, the
-\ GOT and an assembler window of payload.
-: MACHO-FIXUPS-MAX ( -- n )
-   CODE-CAP-BYTES MACHO-GOT-BYTES + MACHO-PAGE 1- + MACHO-PAGE /
-   1- 2 * 3 + -4 and  MACHO-FIXUPS-SIZE + ;
-
-\ Code and payload share the assembler window and the GOT precedes the payload,
-\ so the two page-rounded segments fit MPAGE, the GOT and two pages.
-: MACHO-IMAGE-MAX ( -- n ) MPAGE MACHO-GOT-BYTES + DATA-CONST-SIZE + MACHO-PAGE + ;
-
-\ CODESIG2's largest signature, spelt from sign2.f's CS-PAGE, CS-HASH, CD-HDR and
-\ $14 SuperBlob header, which load later, and a $40 id; more throws M-BOUNDS-RC.
-: MACHO-SIG-MAX ( -- n )
-   MACHO-IMAGE-MAX MACHO-FIXUPS-MAX +
-   $FFF + $1000 / $20 *   $14 + $58 + $40 + ;
-
 $10       constant SG-READ-ONLY
 $6        constant S-NON-LAZY-SYMBOL-POINTERS
 6         constant DYLD-CHAINED-PTR-64-OFFSET
@@ -136,7 +117,7 @@ variable CODELEN
 private
 
 : DATA-CONST-BYTES ( -- n )
-   MACHO-GOT-BYTES IMG-PAYLOAD-N @ + MACHO-PAGE 1- + MACHO-PAGE 1- invert and
+   MACHO-GOT-BYTES MACHO-PAGE 1- + MACHO-PAGE 1- invert and
    DATA-CONST-SIZE max ;
 
 : DATA-CONST-PAGES ( -- n ) DATA-CONST-BYTES MACHO-PAGE / ;
@@ -147,16 +128,8 @@ private
 : MACHO-STARTS-BYTES ( -- n )
    24 DATA-CONST-PAGES 1- 2 * + 3 + -4 and ;
 
-\ The buffer fits the largest image any code and import count emit, so too much
-\ code meets the MPAGE guard, never an M-BOUNDS-RC throw from the byte cursor.
-: MACHO-MSIZE! ( -- )
-   MACHO-IMAGE-MAX MACHO-FIXUPS-MAX + MACHO-SIG-MAX + MSIZE! ;
-
 : ASM-CODELEN! ( -- )
-   IMG-PAYLOAD-N @ 0 > if
-      IMG-CODE-N @ ASM-LEN > if s" image: invalid code/payload boundary" 73 die then
-      IMG-CODE-N @
-   else ASM-LEN then CODELEN ! ;
+   ASM-LEN CODELEN ! ;
 
 public
 : ASM-CODE ( -- asm )
@@ -165,6 +138,38 @@ public
 
 : TEXTSZ ( -- n )  CODE-OFF CODELEN @ +  $3FFF +  $3FFF invert and ;
 private
+PTR-VARIABLE SIGA  variable SIGU
+: SIGA@ ( -- ptr u8 )
+   SIGA @ ;
+
+: SIGA! ( ptr u8 -- )
+   SIGA ! ;
+
+public
+: SET-SIGID ( ptr u8 n -- ) {: a:ptr u:n :}
+   a SIGA!
+   u SIGU ! ;
+
+private
+: SIG-IDLEN ( -- n )  SIGU @ 1 + ;
+88        constant CD-HDR
+$1000     constant CS-PAGE
+32        constant CS-HASH
+
+: NCSLOTS ( n -- n )   CS-PAGE 1 - +  CS-PAGE / ;
+
+: HASH-OFF ( -- n )  CD-HDR SIG-IDLEN + ;
+
+: CD-SIZE ( n -- n )   NCSLOTS CS-HASH *  HASH-OFF + ;
+
+: SB-SIZE ( n -- n )   CD-SIZE 20 + ;
+
+: MACHO-FILE-BYTES ( -- n ) TEXTSZ DATA-CONST-BYTES + MACHO-FIXUPS-BYTES + ;
+
+\ The buffer fits the file BUILD-MACHO writes and its signature.
+: MACHO-MSIZE! ( -- )
+   MACHO-FILE-BYTES dup SB-SIZE + MSIZE! ;
+
 variable LE-OFF                      \ file offset of the __LINKEDIT LC (sign post-pass)
 variable LE-BASE-SIZE
 32 constant MH-HDR-SZ
@@ -285,13 +290,10 @@ variable NCMDS
    MACHO-IMPORTS,
    MACHO-SYMBOLS, ;
 
-: MACHO-EXTRA, ( n n -- ) {: off:n segoff:n :}
-   off M-OFF M-PAD-OFF
+: MACHO-EXTRA, ( -- )
    MACHO-GOT,
-   IMG-PAYLOAD-N @ 0 > if IMG-PAYLOAD-A @ IMG-PAYLOAD-N @ M-BYTES then
-   DATA-CONST-BYTES MACHO-GOT-BYTES - IMG-PAYLOAD-N @ - M-ZEROS
-   off DATA-CONST-BYTES + M-OFF M-PAD-OFF
-   segoff MACHO-FIXUPS,
+   TEXTSZ DATA-CONST-BYTES + M-OFF M-PAD-OFF
+   TEXTSZ MACHO-FIXUPS,
    MACHO-FIXUPS-BYTES LE-BASE-SIZE ! ;
 
 : MACHO-CMDS, ( n n -- ) {: textsz:n textlen:n :}
@@ -320,13 +322,11 @@ variable NCMDS
    MH-HDR,
    TEXTSZ CODELEN @ MACHO-CMDS,
    PATCH-HDR
-   CODELEN @  MPAGE CODE-OFF -  > IF s" macho: code exceeds __TEXT page" 73 die THEN
    CODE-OFF M-OFF M-PAD-OFF
    CODE CODELEN @ M-LEN M-BYTES-LEN
    TEXTSZ M-OFF M-PAD-OFF
-   TEXTSZ TEXTSZ MACHO-EXTRA,
-   M-HERE MLEN!
-   IMG-PAYLOAD-CLEAR ;
+   MACHO-EXTRA,
+   M-HERE MLEN! ;
 
 public
 \ The program in icode's CODE as a Mach-O file whose code maps at the address,

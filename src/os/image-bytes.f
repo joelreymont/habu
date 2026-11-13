@@ -20,17 +20,6 @@ private
 PTR-VARIABLE M-A
 variable M-N
 variable M-O
-public
-\ The code/payload boundary macho.f reads to put payload bytes in __DATA_CONST;
-\ only IMG-PAYLOAD-CLEAR stores it, as zero, so no image carries a payload.
-PTR-VARIABLE IMG-PAYLOAD-A
-variable IMG-PAYLOAD-N
-variable IMG-CODE-N
-
-: IMG-PAYLOAD-CLEAR ( -- )
-   0 IMG-PAYLOAD-N !  0 IMG-CODE-N ! ;
-
-private
 : M-ALLOC-BUF ( -- ptr u8 )
    MSIZE map-anon 0 <> if drop s" image-bytes: mmap failed" 74 die then ;
 
@@ -48,8 +37,9 @@ private
    NULL-PTR MBUF-A! ;
 
 public
-\ A target writer names its largest image at load or before an image's M-RESET;
-\ the largest wins, and one above a mapped buffer's unmaps it for the next use.
+\ A target writer names the bytes its next image takes, at load or before that
+\ image's M-RESET; the largest wins, and one above a mapped buffer's unmaps it for
+\ the next use.
 : MSIZE! ( n -- )
    $FFFF + $10000 / $10000 * {: n:n :}
    n MSIZE > if
