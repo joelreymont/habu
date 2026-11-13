@@ -51,6 +51,10 @@ private
 TYPED-VARIABLE ENGINE? bool          \ the mode is "engine"
 TYPED-VARIABLE KERNEL? bool          \ the mode is "kernel": hb's own layout, no program
 TYPED-VARIABLE TARGET RTARGET:resolved-target   \ the target the build's program runs on
+\ The machines of an object's even and odd emissions: SHADOW fixes them while the shadow it
+\ opens stands.
+TYPED-VARIABLE EVEN-ARCH CTARGET:arch
+TYPED-VARIABLE ODD-ARCH CTARGET:arch
 variable BASE                        \ the space's address, its distance from NULL-PTR
 variable SPACE-SIZE                  \ the space's size; MAP maps ROUTED-BYTES more below BASE
 variable FIRST-REC                   \ ndict@ at the open: records from here are the space's
@@ -3502,13 +3506,10 @@ variable RD-END
    n 0 ?do i ENTRY-CK loop ;
 
 
-\ The machine this object's emission e holds: the host's for a host copy, a cross object's odd
-\ emission (COPIES), else the target's.
+\ The machine this object's emission e holds: a cross object's odd emission is its host copy
+\ (COPIES), every other one the target's.
 : EM-ARCH ( n -- CTARGET:arch )
-   {: e:n :}
-   COPIES 2 =  e 1 and 1 =  and if  RTARGET:HOST-TARGET RTARGET:NATIVE-BINDING
-   else  NSHADOW:BINDING  then
-   CBIND:TARGET@ CTARGET:ARCH@ ;
+   1 and 1 = if ODD-ARCH @ else EVEN-ARCH @ then ;
 
 
 \ A call row of emission top, s bytes; its site, above the row before it, holds the compile's
@@ -4787,7 +4788,10 @@ variable DUE-MADE
 
 \ hb's native shadow, or a cross build's for the target's code.
 : SHADOW ( -- )
-   TARGET @ RTARGET:NATIVE-BINDING  CROSS? if NSHADOW:OPEN else NSHADOW:OPEN-NATIVE then
+   TARGET @ RTARGET:NATIVE-BINDING {: b:CBIND:binding :}
+   b CBIND:TARGET@ CTARGET:ARCH@ dup EVEN-ARCH !  ODD-ARCH !
+   CROSS? if  RTARGET:HOST-TARGET RTARGET:NATIVE-BINDING CBIND:TARGET@ CTARGET:ARCH@ ODD-ARCH !  then
+   b  CROSS? if NSHADOW:OPEN else NSHADOW:OPEN-NATIVE then
    construct step shadowed PROGRESS ! ;
 
 \ The flags cell of hb's newest record: an `immediate` before the space's first
