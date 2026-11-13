@@ -4938,13 +4938,12 @@ variable GROW-CELL
 
 $C3 constant RET-OP
 
-\ A created word's routine ends `jmp rel32; ret`, its last six bytes
-\ (src/compiler/native/emit-x64.f PUT-RET): the jump falls through to the
-\ return while its displacement is 0, and does-patch aims it at a clause,
-\ where ARM64 rewrites the routine's final RET word (habu2.f LDOESPATCH). The
-\ slot is found by its position in the record's exact span. The clause lies in
-\ the code region or the kernel's text, as every routine a linked call reaches
-\ does, so its displacement fits rel32.
+\ A created word's routine ends `jmp rel32; ret`, its last six bytes: the jump
+\ falls through to the return while its displacement is 0, and does-patch aims
+\ it at a clause, where ARM64 rewrites the routine's final RET word (habu2.f
+\ LDOESPATCH). The slot is found by its position in the record's exact span.
+\ The clause lies in the code region or the kernel's text, as every routine a
+\ linked call reaches does, so its displacement fits rel32.
 
 $E9 constant JMP-REL32                 \ the slot's jump
 CALL-REL32-OFF 4 + constant JMP-BYTES  \ the jump, to its displacement's end

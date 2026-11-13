@@ -19,9 +19,7 @@ using X64ASM
 using X64CODE
 
 \ ENGINE-GPR:X64-DSTACK by name, not the target-selected ENGINE-GPR:DSTACK: an
-\ ARM64 engine cross-builds x86-64 with this file. X64M:DSTACK-GPR, which
-\ src/compiler/native/emit-x64.f reads, is the same declaration, so emitted and
-\ compiled code share one stack.
+\ ARM64 engine cross-builds x86-64 with this file.
 : DSP ( -- r64 )  ENGINE-GPR:X64-DSTACK >R64 ;
 : DATA-REG ( -- r64 )  ENGINE-GPR:X64-RBASE >R64 ;
 
@@ -40,10 +38,9 @@ using X64CODE
 public
 
 \ The stack pointer stands just past the top cell and the stack grows upward,
-\ as XDS does on ARM64 and as the compiler's own crossings assume
-\ (emit-x64.f PUT-DMOVE, PUT-DSTORE): a push stores at the pointer and then
-\ advances it, a pop retreats it and then loads. x86-64 has no write-back
-\ addressing, so each is two instructions where ARM64's is one.
+\ as XDS does on ARM64: a push stores at the pointer and then advances it, a
+\ pop retreats it and then loads. x86-64 has no write-back addressing, so each
+\ is two instructions where ARM64's is one.
 : G-PUSH ( n -- ) {: r:n :}
    r >R64  DSP MEM-AT  ASM-SINK ENC-MOV-MR
    DSP  CELL >IMM8  ASM-SINK ENC-ADD-RI8 ;
