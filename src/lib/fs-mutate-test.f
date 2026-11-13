@@ -1843,18 +1843,30 @@ public
    FMT-TMPDIR:RUN
    FMT-TEST-SYMLINK
    FMT-TEST-BROKEN-SYMLINK
+   s" removing a missing file is E-FS-IO" T-LABEL
    [: FMT-REMOVE-MISSING ;] E-FS-IO TTHROWSQ
+   s" renaming a missing file is E-FS-IO" T-LABEL
    [: FMT-RENAME-MISSING ;] E-FS-IO TTHROWSQ
+   s" making a missing file executable is E-FS-STAT" T-LABEL
    [: FMT-CHMOD-MISSING ;] E-FS-STAT TTHROWSQ
+   s" setting a missing file's mode is E-FS-IO" T-LABEL
    [: FMT-CHMOD-MODE-MISSING ;] E-FS-IO TTHROWSQ
+   s" removing a missing directory is E-FS-IO" T-LABEL
    [: FMT-RMDIR-MISSING ;] E-FS-IO TTHROWSQ
+   s" making a directory that exists is E-FS-IO" T-LABEL
    [: FMT-MKDIR-EXISTS ;] E-FS-IO TTHROWSQ
    FMT-LONG!
+   s" a cleanup path past PATH-CAP is E-FS-PATH" T-LABEL
    [: FMT-CLEANUP-PATH-TOO-LONG ;] E-FS-PATH TTHROWSQ
+   s" an atomic target join past PATH-CAP is E-FS-CAPACITY" T-LABEL
    [: FS-TEST:ATOMIC-TARGET-NO-ROOM ;] E-FS-CAPACITY TTHROWSQ
+   s" a suffixed path past its span is E-FS-CAPACITY" T-LABEL
    [: FMT-SUFFIX-NO-ROOM ;] E-FS-CAPACITY TTHROWSQ
+   s" a temp base with no room for the name is E-FS-CAPACITY" T-LABEL
    [: FMT-TEMP-BASE-NO-ROOM ;] E-FS-CAPACITY TTHROWSQ
+   s" removing a tree at an empty path is E-FS-PATH" T-LABEL
    [: FMT-REMOVE-TREE-EMPTY ;] E-FS-PATH TTHROWSQ
+   T-LABEL-CLEAR
    FMT-TEST-REMOVE-TREE
    FMT-SPECIAL:RUN
    FMT-TEST-REMOVE-TREE-SYMLINK-DIR
