@@ -67,7 +67,7 @@ When TRUSTED-CELL goes, B12 must seal, as one mechanism, every product-reachable
 The installed hb resolves each of these from a file (`' NAME drop` run as `hb --load probe.f`: rc 0):
 - The public CHECKER-OWNER writers in src/compiler/native/checker-owner.f: TAPE-INSTALL (190), TAPE-ARM (195), TAPE-DISARM (200), TAPE-ADVANCE (205), DOES-FINISH (237), DOES-BEGIN (242), DOES-COMMIT (247), ROWS-END (317), DECLARED-EFFECT (432) and WIDE-PUBLISH (564).
 - RETRACT-ROWS (322), the successor of RETRACT-OWN-ROW. It takes a raw store offset, so a top-level caller cuts at any offset.
-- CHECKER-USIGS-TRUNCATE-FROM-RAW (src/core/checker.f:13574), a prefix word that truncates any row from top level.
+- CHECKER-USIGS-TRUNCATE-FROM-RAW (src/core/checker.f:13591), a prefix word that truncates any row from top level.
 - More checker.f writers: CHECKER-USIGS-TRUNCATE-FROM (14009), CHECKER-SCOPE-START (24659), CHECKER-SCOPE-START-NEUTRAL (24666), CHECKER-SCOPE-FINALIZE (24673), CHECKER-SCOPE-DONE (24676), REC-WIDE-PUBLISH (10920) and REC-MIN-IN@ (10931).
 - CHECKER-OWNER:WRITE-WINDOW (checker-owner.f:330) and CHECKER-OWNER:BIND-REGIME! (353): a checked callback can shut the write window or change the binding regime.
 - The declaration-transaction publics: every public word of DECL-EVENT (src/core/decl-event.f:553-591, OPEN through REQUIRE-POINTEES), TYPE-FIELD-OWNER:OPEN, COMMIT, ADD, FINALIZE and ROLLBACK (src/core/type-family.f), and GENERATED-DECL-CTOR:ARM (src/core/generated-declaration.f:434). They write no checker store directly; their store writes reach the guarded appenders. Seal them with the rest or show each write path is guarded.

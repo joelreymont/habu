@@ -13,7 +13,7 @@ Problem: no build writes a snapshot image. Deleting snap-rebase removed the arm6
 
 The call and address maps and the x86-64 site rows go with habu-find-whether-anything-b457bf9c. The cost column of tools/data-table-census.f measures cell-grid.f's form, so it goes with it.
 
-The comments that still describe a snapshot writer or loader go with the code they describe: layout.f's snapshot comments, habu2.f:156, genio-core.f, elaborate.f, dict.f, docs/xcomp.md "Live-region sites", and test/xt-cell-band-bad.f.
+The comments that still describe a snapshot writer or loader go with the code they describe: layout.f's snapshot comments, genio-core.f, elaborate.f, dict.f, docs/xcomp.md "Live-region sites", and test/xt-cell-band-bad.f.
 
 Acceptance: what only a snapshot reads is deleted, with the tests that only exercise it; whatever remains has a reader that acts on it; the chain build reaches its fixpoint and the full suite passes.
 
