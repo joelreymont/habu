@@ -2,7 +2,6 @@
 mod source;
 mod terms;
 
-use oxrdf::Variable;
 use serde_json::{Map, Value, json};
 use spareval::{QueryEvaluator, QueryResults};
 use spargebra::SparqlParser;
@@ -14,7 +13,7 @@ use std::io::{self, Write};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
-use terms::{parse_term, term_json};
+use terms::term_json;
 
 type Read = unsafe extern "C" fn(*mut c_void, *const u8, usize, *mut HbSparqlReply) -> i32;
 type WriteCallback = unsafe extern "C" fn(*mut c_void, i32, *const u8, usize) -> i32;
@@ -171,6 +170,11 @@ fn emit(results: QueryResults<'_>, output: &mut Output) -> Result<()> {
 
 fn run(request: &[u8], context: *mut c_void, read: Read, write: WriteCallback) -> Result<()> {
     let request: Value = serde_json::from_slice(request).map_err(|e| invalid(e.to_string()))?;
+    for name in request.as_object().ok_or_else(|| invalid("request must be an object"))?.keys() {
+        if !["query", "base_iri", "timeout_ms", "max_rows", "max_bytes", "max_scan_rows"].contains(&name.as_str()) {
+            return Err(invalid(format!("unknown request field {name}; use SPARQL VALUES for bindings")));
+        }
+    }
     let control = Rc::new(Control::new(&request)?);
     let query = request.get("query").and_then(Value::as_str).ok_or_else(|| invalid("query must be a string"))?;
     if query.len() > control.max_bytes { return Err(Failure(6, "query byte limit exceeded".into())); }
@@ -182,14 +186,7 @@ fn run(request: &[u8], context: *mut c_void, read: Read, write: WriteCallback) -
     let query = parser.parse_query(query).map_err(|e| Failure(1, e.to_string()))?;
     control.check()?;
     let evaluator = QueryEvaluator::new();
-    let mut prepared = evaluator.prepare(&query);
-    if let Some(bindings) = request.get("bindings") {
-        for (name, value) in bindings.as_object().ok_or_else(|| invalid("bindings must be an object"))? {
-            let variable = Variable::new(name.to_owned()).map_err(|e| invalid(e.to_string()))?;
-            let term = parse_term(value).map_err(|e| invalid(e.1))?;
-            prepared = prepared.substitute_variable(variable, term);
-        }
-    }
+    let prepared = evaluator.prepare(&query);
     let source = source::Source { context, read, control: control.clone() };
     let mut output = Output { context, write, control: control.clone(), bytes: 0 };
     let outcome = prepared.execute(source).map_err(|e| Failure(3, e.to_string()))

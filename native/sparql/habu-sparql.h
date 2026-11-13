@@ -12,10 +12,11 @@ typedef int32_t (*HbSparqlSource)(void *, const uint8_t *, size_t, HbSparqlReply
 typedef int32_t (*HbSparqlWrite)(void *, int32_t status, const uint8_t *, size_t);
 
 /* Request JSON:
- * {"query":"...", "base_iri":"...", "bindings":{"name":term},
+ * {"query":"...", "base_iri":"...",
  *  "timeout_ms":5000, "max_rows":1000, "max_bytes":1048576,
  *  "max_scan_rows":100000}
- * Only base_iri and bindings are optional. Limits are positive integers chosen
+ * Only base_iri is optional. Use SPARQL VALUES/BIND for query values.
+ * Limits are positive integers chosen
  * by the application, never by untrusted query text. max_bytes bounds query
  * text, each source reply and the complete result. max_scan_rows counts fetched
  * quads/graph names, with at least one charged per empty page or contains call.

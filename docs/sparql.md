@@ -10,8 +10,8 @@ One public operation: `SPARQL:QUERY`.
 `write` has effect `[ context status bytes length -- ]`.
 The exact checked effects are in `src/lib/sparql.f`.
 
-The caller supplies SPARQL text, optional typed variable bindings and explicit
-limits in one JSON request. The C header is the sole definition of this small
+The caller supplies SPARQL text and explicit limits in one JSON request.
+Use standard SPARQL `VALUES` or `BIND` for query values. The C header defines the
 byte protocol: `native/sparql/habu-sparql.h`.
 
 ## Ownership
