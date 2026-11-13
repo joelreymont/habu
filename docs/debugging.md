@@ -334,7 +334,7 @@ bin/hb --load tools/build-profile.f -- --target wasm app.f /tmp/app.wasm /tmp/ap
 ```
 
 It samples every 100 us, so a warm build of 1.3 s gives about 13,000 samples
-and takes about a tenth longer. Read a row as a ranking only above about 100
+and takes a few percent longer. Read a row as a ranking only above about 100
 samples, and repeat the run to compare a smaller one.
 
 This is the method for "what does the build spend its time on". `strace -c` and
