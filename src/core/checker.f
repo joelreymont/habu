@@ -6024,10 +6024,6 @@ variable EXEC-OPAQUE   \ RSEXEC rejected an execute of an opaque (untyped-memory
 variable CATCH-OPAQUE  \ RSCATCH rejected a catch of an opaque (untyped-memory) xt this token; latched the same way so the prose names 'catch' not 'execute'
 CHECKER-REG:}SCRATCH
 
-\ The native compiler consumes the effect of the quotation at each catch.
-variable CWIN-HIT
-variable CWIN-IN
-variable CWIN-OUT
 variable CWIN-DTERMS  variable CWIN-RTERMS   \ the window in row terms (mask positions)
 variable CWIN-DOUT-TERMS  variable CWIN-ROUT-TERMS
 variable CWIN-DMASK                 \ the callee's intact bits over the live window's cells
@@ -6064,18 +6060,8 @@ variable CWIN-DMASK                 \ the callee's intact bits over the live win
    cells swap ;
 
 
-: ROW-TOP-CELLS ( n n -- n )
-   {: row:n cnt:n :}
-   cnt 0= IF 0 EXIT THEN
-   row R-RES {: node:n :}
-   node TAG S-PUSH <> IF 0 EXIT THEN
-   node P>TYPE ROW-TERM-CELLS  node P>REST cnt 1 - RECURSE + ;
-
-
 : CWIN-LIVE ( -- )
    QTT @ Q>DIN CWIN-DTERMS @ QTT @ Q>XDMASK 0 0 CWIN-SPREAD CWIN-DMASK ! {: live:n :}
-   QTT @ Q>DIN CWIN-DTERMS @ ROW-TOP-CELLS CWIN-IN !
-   QTT @ Q>XDEAD IF CELLS-NONE ELSE QTT @ Q>DOUT CWIN-DOUT-TERMS @ ROW-TOP-CELLS THEN CWIN-OUT !
    DCUR @ live ROW-EXPAND-TERMS DCUR !
    live CWIN-DTERMS ! ;
 
@@ -6114,7 +6100,6 @@ variable QUOT-LOSS
    THEN ;
 
 : RSEXEC
-   0 CWIN-HIT !
    FRESH MK-VAR FRESH MK-ROW {: tv rest :}
    DCUR @  tv rest MK-PUSH  UNIFY OK @ and OK !
    rest DCUR !
@@ -6185,7 +6170,6 @@ variable QUOT-LOSS
 : RSCATCH
    \ Catchable `throw` is not process no-return. `die` remains separate
    \ no-return metadata because it cannot be recovered by a quotation catch.
-   0 CWIN-HIT !  0 CWIN-IN !  0 CWIN-OUT !
    FRESH MK-VAR FRESH MK-ROW {: tv rest :}
    DCUR @  tv rest MK-PUSH  UNIFY OK @ and OK !
    rest DCUR !
@@ -6195,7 +6179,7 @@ variable QUOT-LOSS
      QTT @ Q>XDEAD QTT @ Q>XHAS 0= and 0=
    ELSE RES-TRUE THEN {: returns:bool :}
    QTT @ TAG T-QUOT = IF
-     QUOT-WINDOW  -1 CWIN-HIT !
+     QUOT-WINDOW
      CATCH-N @ 1 + CATCH-N !
      QTT @ QUOT-STEP-IN
      QTT @ Q>XDEAD IF
@@ -13904,20 +13888,12 @@ variable EFFQ-OK            \ bool: last EFFECT-QUERY resolved an active effect
 variable EFFQ-DIN           \ din row offset (E-OFF) of the queried effect, 0 = none
 variable EFFQ-DOUT          \ dout row offset
 
-\ ---- reading inside a quotation term -----------------------------------------
-\ The two row cells are one latch: a descent saves the displaced row pair. A
-\ second descent while one is open is refused: the save is one deep.
-variable EFFQ-QUOT          \ the EN-QUOT node the latch is currently inside, 0 = none
-variable EFFQ-SAVE-DIN
-variable EFFQ-SAVE-DOUT
-
 \ EN nodes live in the byte-addressed USIGS arena; E-PTR addresses one node.
 : EFF-TAG@ ( n -- n )   E-PTR EN.TAG @ ;
 : EFF-A@   ( n -- n )   E-PTR EN.A @ ;      \ EN.A field (head term offset)
 : EFF-B@   ( n -- n )   E-PTR EN.B @ ;      \ EN.B field (rest-of-row offset)
 : EFF-C@   ( n -- n )   E-PTR EN.C @ ;      \ EN.C field (on a row cell: width+1; on a quot: rin)
 : EFF-E@   ( n -- n )   E-PTR EN.E @ ;      \ EN.E field (on a param term: hidden slot+1; on a quot: has a throw edge)
-: EFF-F@   ( n -- n )   E-PTR EN.F @ ;      \ EN.F field (on a quot: the fall-through path is dead)
 
 \ Without it `( option<n> n -- )` and `( a b n -- )` agree on term count, cell
 \ count and every family.
@@ -13952,10 +13928,7 @@ variable EFFQ-SAVE-DOUT
 : EFF-ROW-SLOT ( n n -- n )                   \ bundle slot+1 of the i-th term from the top (0-based)
    EFF-ROW-TERM EFF-TERM-SLOT ;
 
-\ A fresh query closes any open quotation descent, or EFFECT-QUOT-SIMPLE? and
-\ EFFECT-QUOT-UP would answer about the previous name.
 : EFFECT-QUERY ( ptr u8 n -- bool )
-   0 EFFQ-QUOT !  0 EFFQ-SAVE-DIN !  0 EFFQ-SAVE-DOUT !
    FIND-SIG dup EFFQ-OK !
    if FEP @ E-DIN@ EFFQ-DIN !  FEP @ E-DOUT@ EFFQ-DOUT !
    else 0 EFFQ-DIN !  0 EFFQ-DOUT ! then
@@ -13975,46 +13948,10 @@ variable EFFQ-SAVE-DOUT
 : EFFECT-DOUT-N ( -- n )       EFFQ-DOUT @ EFF-ROW-N ;
 : EFFECT-DIN-CELLS ( -- n )    EFFQ-DIN @ EFF-ROW-CELLS ;  \ fixed din width in cells, or CELLS-NONE
 : EFFECT-DOUT-CELLS ( -- n )   EFFQ-DOUT @ EFF-ROW-CELLS ; \ fixed dout width in cells, or CELLS-NONE
-: EFFECT-DIN-SLOT ( n -- n )   EFFQ-DIN @ EFF-ROW-SLOT ;   \ bundle slot+1 of din term i (top = 0), 0 = logical
-: EFFECT-DOUT-SLOT ( n -- n )  EFFQ-DOUT @ EFF-ROW-SLOT ;  \ bundle slot+1 of dout term i (top = 0), 0 = logical
 
 : EFF-ROW-CON ( n n -- n )
    EFF-ROW-TERM dup 0= if exit then
    dup EFF-TAG@ EN-CON = if EFF-A@ else drop 0 then ;
-
-\ ---- the quotation descent ----------------------------------------------------
-: EFF-DESCEND ( n -- bool )     \ n = term-node offset
-   {: t:n :}
-   EFFQ-QUOT @ 0= 0= if 0 0= 0= exit then
-   t 0= if 0 0= 0= exit then
-   t EFF-TAG@ EN-QUOT = 0= if 0 0= 0= exit then
-   EFFQ-DIN @ EFFQ-SAVE-DIN !
-   EFFQ-DOUT @ EFFQ-SAVE-DOUT !
-   t EFFQ-QUOT !
-   t EFF-A@ EFFQ-DIN !
-   t EFF-B@ EFFQ-DOUT !
-   0 0= ;
-
-: EFFECT-DIN-QUOT ( n -- bool )    EFFQ-DIN @ EFF-ROW-TERM EFF-DESCEND ;
-: EFFECT-DOUT-QUOT ( n -- bool )   EFFQ-DOUT @ EFF-ROW-TERM EFF-DESCEND ;
-
-: EFFECT-QUOT-UP ( -- bool )
-   EFFQ-QUOT @ 0= if 0 0= 0= exit then
-   EFFQ-SAVE-DIN @ EFFQ-DIN !
-   EFFQ-SAVE-DOUT @ EFFQ-DOUT !
-   0 EFFQ-QUOT !  0 EFFQ-SAVE-DIN !  0 EFFQ-SAVE-DOUT !
-   0 0= ;
-
-\ A quotation a caller may compile as an ordinary routine: no throw edge and a
-\ live fall-through.
-: EFF-QUOT-SIMPLE? ( n -- bool )
-   {: q:n :}
-   q 0= if 0 0= 0= exit then
-   q EFF-E@ 0= 0= if 0 0= 0= exit then
-   q EFF-F@ 0= ;
-
-: EFFECT-QUOT-SIMPLE? ( -- bool )
-   EFFQ-QUOT @ EFF-QUOT-SIMPLE? ;
 
 \ Quotation call metadata is recorded at the token the checker consumed.
 \ Its input width is measured before unification binds the quotation's open
@@ -14199,8 +14136,8 @@ variable BWIN-EPOCH
 16 constant CWIN-INIT
 $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
 0 constant CW-ORD                    \ the token ordinal the site stands on
-1 constant CW-IN                     \ its window in cells
-2 constant CW-OUT                    \ what the body leaves, or CELLS-NONE for one that never returns
+1 constant CW-IN                     \ the kind's first answer
+2 constant CW-OUT                    \ and its second
 3 constant CW-KIND
 4 constant CW-ROW                    \ cells one recorded site occupies
 -4 constant CW-MATCH-CELLS           \ instantiated bundle width, pads, or construction growth
@@ -14210,7 +14147,6 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
 -7 constant CW-FIELD-SPAN            \ authenticated field offset and extent
 2 constant CW-CALL-RAW               \ frozen row spines with live type terms
 3 constant CW-CALL
-0 constant CW-CATCH                  \ a catch's window and what its body leaves
 
 : CWIN-P ( -- ptr ptr n ) CWIN-STATE drop drop ;
 : CWIN-N ( -- ptr n ) CWIN-STATE drop nip ;
@@ -14226,7 +14162,6 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
    0 CALL-DIN !  0 CALL-DOUT !  0 QTT !
    QAPP-OLD 0 4 ARENA-CELLS-ZERO
    QAPP-NEW 0 4 ARENA-CELLS-ZERO  0 QAPP-N !
-   0 CWIN-HIT !  0 CWIN-IN !  0 CWIN-OUT !
    0 CWIN-DTERMS !  0 CWIN-RTERMS !
    0 CWIN-DOUT-TERMS !  0 CWIN-ROUT-TERMS ! ;
 
@@ -14378,10 +14313,6 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
 CALL-FREEZE-INSTALL
 
 : CWIN-COMMIT ( -- )
-   CWIN-HIT @ IF
-      0 CWIN-HIT !
-      REC-IX @ CWIN-IN @ CWIN-OUT @ CW-CATCH CWIN-ADD
-   THEN
    CALL-HIT @ IF
       0 CALL-HIT !
       REC-IX @ CALL-DIN @ CALL-DOUT @ CW-CALL-RAW CWIN-ADD
@@ -14536,9 +14467,6 @@ variable EV-LO   variable EV-N
 : REC-COMMIT ( -- )
    REC-ON @ 0= IF EXIT THEN
    CWIN-COMMIT  MWIN-COMMIT  BWIN-COMMIT ;
-
-\ A catch whose body never returns answers its input width and CELLS-NONE.
-: EFFECT-CATCH-CELLS ( n -- n n ) CW-CATCH CWIN-FIND ;
 
 \ CELLS-NONE for a token that published no number, or a definition nobody
 \ recorded.
@@ -16011,13 +15939,7 @@ CHECKER-REG:}SCRATCH
    NORET-FMEND @ HIDX-CTL-DEP+
    NORET-CTL @ ;
 
-: CTL-WORD {: a:ptr u:n :}
-   a u CHECKER-FIND-ACTIVE-SYM CTL-WORD-SYM ;
-
 : CTL-FLAGS-SYM ( n -- n ) CTL-WORD-SYM XFER-FLAGS ;
-
-: CTL-FLAGS {: a:ptr u:n :}
-   a u CHECKER-FIND-ACTIVE-SYM CTL-FLAGS-SYM ;
 
 \ `>r` `r>` `r@` are compile keywords the engine matches before any lookup, so
 \ their spelling is the word. Every other row is an engine word a package or a
@@ -16236,9 +16158,6 @@ seal-package
    na nu CHECKER-REC-NAME!
    rec E-HASR@ 0 <> RES-TRUE E-ADD-EFFECT DL-TAKE
    RES-TRUE ;
-
-: CTL-DEAD? ( ptr u8 n -- bool )
-   CTL-FLAGS CTL-DEAD and 0 <> ;
 
 : PTX-BARRIER-SET ( n -- ) {: sym:n :}
    sym CTL-FLAGS-SYM CTL-BARRIER or {: flags:n :}
