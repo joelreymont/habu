@@ -169,7 +169,7 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
 : SLOT-CELL ( n n -- ptr n ) {: k:n off:n :}
    TASK:MAIN-BASE {: base :}
    base CB-ROWS + atomic@ base FFI:>CELL - {: table:n :}
-   base table + k 4 cells * + off + ;
+   base table + k CB-ROW-BYTES * + off + ;
 
 \ CMP-CALLER's slot: the one idle caller row while it is bound; -1 if none is.
 : CALLER-SLOT ( -- n )

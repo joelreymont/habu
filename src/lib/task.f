@@ -853,7 +853,6 @@ SCRATCH-VARIABLE CALLER-KEY
 \ (CB-ROW-OWNER) and the count of region stores. A caller row's region is 0, so
 \ ROW-END never matches it.
 \ The rows are scratch, so a program starts with every row unbound and idle.
-4 cells constant ROW-BYTES
 2 cells constant ROW-MOVES-OFF
 PERSISTED-PTR-VARIABLE ROW-TABLE
 variable ROW-CAP
@@ -871,14 +870,14 @@ variable ROW-N
    ROW-TABLE @ {: old:ptr :}
    ROW-CAP @ {: oldcap:n :}
    oldcap dup 0= if drop 1 else 2 * then {: cap:n :}
-   cap ROW-BYTES * ROW-ALLOC {: rows:ptr :}
-   ROW-N @ 0 > if old rows ROW-N @ ROW-BYTES * BYTE-COPY then
+   cap CB-ROW-BYTES * ROW-ALLOC {: rows:ptr :}
+   ROW-N @ 0 > if old rows ROW-N @ CB-ROW-BYTES * BYTE-COPY then
    rows ROW-TABLE !
    cap ROW-CAP !
    rows FFI:>CELL data-base CB-ROWS + atomic!
    \ No task or callback is running. After publication the former rows are
    \ unreachable, including their per-process region-store counters.
-   oldcap ROW-BYTES * CELL / 0 ?do 0 old i cells + CELL-VIEW ! loop ;
+   oldcap CB-ROW-BYTES * CELL / 0 ?do 0 old i cells + CELL-VIEW ! loop ;
 
 : ROW-DECLARE ( n -- ) {: k:n :}
    k ROW-N @ <> if E-TASK-STATE throw then
@@ -886,7 +885,7 @@ variable ROW-N
    1 ROW-N +! ;
 
 : ROW ( n -- ptr n )
-   ROW-BYTES * ROW-TABLE @ + CELL-VIEW ;
+   CB-ROW-BYTES * ROW-TABLE @ + CELL-VIEW ;
 
 : ROW-REGION ( ptr n -- ptr n )
    CB-ROW-REGION + ;

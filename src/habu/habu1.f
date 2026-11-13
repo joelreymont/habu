@@ -2458,7 +2458,7 @@ $58 constant CBT-LR                     \ C's x30
    10 DATA-VA VA>N LIT64,                              \ x10 = the main region
    11 CB-ROWS MOVZ,  11 10 11 ADD,  11 11 LDAR,
    11 no-table CBZ,
-   12 9 5 LSLI,  11 11 12 ADD,                         \ x11 = the row (four cells)
+   12 CB-ROW-BYTES MOVZ,  12 9 12 MUL,  11 11 12 ADD,  \ x11 = the row
    11 SP CBT-ROW STR,
    12 CB-SELF,
    13 11 CB-ROW-OWNER ADDI,

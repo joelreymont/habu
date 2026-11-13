@@ -264,7 +264,7 @@ STACK-ABI:EVAL-BYTES constant EVAL-FRAME-SIZE
 $40 constant EVAL-PREV
 $48 constant EVAL-PKG
 \ EVAL-INB: the outer evaluate's input-buffer start, which a nested evaluate restores. The frame
-\ ends at STACK-ABI:EVAL-BYTES ($180), a multiple of 16; $128 is held for WIDN and $130 is free.
+\ ends at STACK-ABI:EVAL-BYTES ($170), a multiple of 16; $128 is held for WIDN and $130 is free.
 $90 constant EVAL-INB
 package EVAL-FRAME
 public
@@ -284,10 +284,10 @@ $120 constant PEND
 $138 constant ROWS
 \ ENCLOSING: the enclosing package's four cells (ENCLOSING below), in its order,
 \ which a throw puts back with the open package's.
-$158 constant ENCLOSING
+$140 constant ENCLOSING
 \ PKG-OUTSIDE: PKG-OUTSIDE-CELL as the buffer began, which a throw puts back.
 \ A clean exit does too unless a `package` ran; one left open is the includer's.
-$178 constant PKG-OUTSIDE
+$160 constant PKG-OUTSIDE
 \ SECTION: SECTION-CELL as the buffer began, which its end puts back.
 $98 constant SECTION
 ;package
@@ -495,7 +495,7 @@ $40C0 constant UNCGH-CELL
 \   CB-FRAME       the live marshal frame of the innermost callback.
 \   CB-XTS/ROWS    growable descriptor and binding tables, read through the
 \                  main region at absolute address DATA-VA.
-\ A binding row holds region, owner, move count and claim region. The owner is
+\ A binding row holds region, owner and move count. The owner is
 \ 0 idle, a thread pointer inside the slot, CB-ROW-BUSY while a mover holds it,
 \ or 4*n + CB-ROW-CALLER for a row bound to the caller's context with n threads
 \ inside; such a row's region is 0.
@@ -510,7 +510,7 @@ $4200 constant CB-ROWS
 $4208 constant CB-END
 CB-END CB-XDS - constant CB-BAND-BYTES
 16 constant CB-POOL                \ boot stubs retained for seed compatibility
-32 constant CB-ROW-BYTES
+24 constant CB-ROW-BYTES
 0 constant CB-ROW-REGION
 8 constant CB-ROW-OWNER
 1 constant CB-ROW-BUSY
@@ -1315,20 +1315,6 @@ $43A8 constant T0-CELL           \ first wordlist id the seed allocated for the 
 $43B8 constant B0-CELL           \ first address of the open window's code span
 ;package
 
-\ The frames sit far above $7FF8, in a band no header growth can collide
-\ with. Snapshot capture requires
-\ zero compile depth; the loader clears the frames, which are live only inside a
-\ definition.
-package JIT-SNAP
-public
-\ One frame per open IF, BEGIN, WHILE or DO entry (`else` pops one and pushes
-\ one).
-CFSTK-DEPTH-MAX constant FRAMES
-24 constant FRAME-BYTES                             \ one frame is (k, p0, p1)
-SNAP-RELOC:XTCELL-END constant STK-OFF              \ base of the frame area
-STK-OFF FRAMES FRAME-BYTES * + constant END
-;package
-
 \ No engine word reads it; tests aim stores at it as a sealed band cell.
 $2CA8 constant SOURCE-EXEC-CTX-CELL
 
@@ -1438,7 +1424,7 @@ public
 
 ;package
 
-JIT-SNAP:END constant PD-TABLE-OFF
+SNAP-RELOC:XTCELL-END constant PD-TABLE-OFF
 PD-TABLE-OFF PD-SLOTS-REL + PD-CAP PD-SLOT * + constant PD-TABLE-END
 
 \ Rows (text offset, input-buffer offset or NONE) for the runs
