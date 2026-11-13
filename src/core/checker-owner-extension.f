@@ -1,5 +1,5 @@
-\ The checker owner's later fields, and the kinds of a dictionary record's
-\ fixed body. This module loads before the checker owner is published.
+\ The checker owner's later fields. This module loads before the checker owner
+\ is published.
 
 package CHECKER-OWNER-EXT
 public
@@ -53,9 +53,5 @@ $410 constant PIN-TOKEN-OFF
 \ ( n -- bool ) whether a family is niche-null (type-family.f TFAM-NICHE?).
 $418 constant FAMILY-NICHE-OFF
 FAMILY-NICHE-OFF CELL + constant OWNER-BYTES
-
-0 constant FIXED-NONE
-1 constant FIXED-VAL
-2 constant FIXED-ADDR
 
 ;package

@@ -44,7 +44,7 @@ $0FFFFFFFFFFFFFFF constant MAX-CELLS
 create BUF-BOOT BUF-INIT cells allot
 \ PERSISTED: the slot holds a data address across a capture, and only marked
 \ cells are rebased when the window's DATA moves to the image's base.
-\ BUF-ENSURE also grows into process-local mmap, which BUF-SNAP-RESET undoes.
+\ BUF-ENSURE also grows into process-local mmap.
 PERSISTED-PTR-VARIABLE BUF-P   BUF-BOOT BUF-P !
 variable BUF-CAP BUF-INIT BUF-CAP !
 variable BUF-N
@@ -80,14 +80,6 @@ variable FULL-SET   0 FULL-SET !
    need BUF-CAP @ GROW-CAP {: cap:n :}
    BUF-P @ BUF-CAP @ cells cap cells ARENA-BYTES-GROW BUF-P !
    cap BUF-CAP ! ;
-
-\ Put the certificate buffer back on its boot buffer for the capture; MAKE
-\ re-emits the whole certificate per definition, so nothing live is lost.
-\ layout-valid.f SNAP-RESET calls this.
-: BUF-SNAP-RESET ( -- )
-   BUF-BOOT BUF-P !   BUF-INIT BUF-CAP !
-   BUF-BOOT 0 BUF-INIT ARENA-CELLS-ZERO
-   0 BUF-N ! 0 BODY-LEN ! 0 BODY-HASH ! ;
 
 : BUF, ( n -- )
    BUF-N @ 1 + BUF-ENSURE

@@ -5217,7 +5217,6 @@ private
    RES-FALSE ;
 
 create UNIT-FAM-STABLE REG-AOT-N cells allot
-TFAM-N @ constant UNIT-FAM-STABLE-N
 PTR-VARIABLE UNIT-FAM-COVER
 variable UNIT-FAM-COVER-CAP
 : UNIT-FAM-COVER-RELEASE ( -- )
@@ -5917,9 +5916,6 @@ private
 0 constant UFP.NEXT
 1 constant UFP.BLOB
 2 constant UFP.CAP
-6 constant UFP.FMAP
-7 constant UFP.FN
-10 constant UFP.SBASE
 18 constant UFP.COUNT
 26 constant UFP.TBASE
 35 cells constant UFP.REC
@@ -5928,12 +5924,11 @@ PTR-VARIABLE UNIT-FAM-FIRST
 PTR-VARIABLE UNIT-FAM-CUR
 
 : UFP@ ( ptr u8 n -- n ) cells + CELL-VIEW @ ;
-\ A FILE family plan is a cell row in mapped storage whose UFP.NEXT, UFP.BLOB
-\ and UFP.FMAP cells hold byte addresses.
+\ A FILE family plan is a cell row in mapped storage whose UFP.NEXT and
+\ UFP.BLOB cells hold byte addresses.
 CAST: UFP-CELLS ( ptr u8 -- ptr ptr u8 )
 : UFP-PTR@ ( ptr u8 n -- ptr u8 ) cells + UFP-CELLS @ ;
 : UNIT-FAM-RAW! ( ptr u8 n -- ) cells UNIT-FAM-RAW + 0 ptr-field ! ;
-: UFP-SBASE@ ( ptr u8 n -- n ) UFP.SBASE + UFP@ ;
 : UFP-COUNT@ ( ptr u8 n -- n ) UFP.COUNT + UFP@ ;
 : UFP-TBASE@ ( ptr u8 n -- n ) UFP.TBASE + UFP@ ;
 
@@ -5959,25 +5954,6 @@ CAST: UFP-CELLS ( ptr u8 -- ptr ptr u8 )
       UFP.NEXT UFP-PTR@
    REPEAT drop
    s" tfam: FILE family reference has no projected row" REG-AOT-REFUSE ;
-
-: UNIT-FAM-FIND-MAP ( n ptr u8 n -- n bool )
-   {: source:n pairs:ptr count:n :}
-   count 0 ?do
-      pairs i 4 cells * + dup CELL-VIEW @ source = IF
-         CELL + CELL-VIEW @ RES-TRUE unloop EXIT THEN drop
-   loop 0 RES-FALSE ;
-
-: UNIT-FAM-MAP-ID ( n -- n ) {: source:n :}
-   source UNIT-FAM-STABLE-N < IF source EXIT THEN
-   UNIT-FAM-CUR @ {: plan:ptr :}
-   plan NULL-PTR = IF
-      s" tfam: FILE family map has no active unit" REG-AOT-REFUSE THEN
-   source plan 0 UFP-SBASE@ >=
-   source plan 0 UFP-SBASE@ plan 0 UFP-COUNT@ + < and IF
-      source plan 0 UFP-SBASE@ - plan 0 UFP-TBASE@ + EXIT THEN
-   source plan UFP.FMAP UFP-PTR@ plan UFP.FN UFP@ UNIT-FAM-FIND-MAP
-   IF EXIT THEN drop
-   s" tfam: FILE family ID lacks an identity" REG-AOT-REFUSE ;
 
 : UNIT-FAM-PLAN-DROP ( ptr u8 -- ) {: plan:ptr :}
    plan plan UFP.CAP UFP@ UFP.REC + ASIG-RELEASE ;
@@ -6033,8 +6009,6 @@ UNIT-FAM-RESET-INSTALL
 \ The checker's friend hooks: checker.f loads before this file and reaches
 \ family resolution and arities through these defers during signature parsing.
 : TFAM-HOOK-INSTALL ( -- )
-   [: UNIT-FAM-MAP-ID ;] is CHECKER-REG:UNIT-TFAM-MAP
-   [: UNIT-FAM-END ;] is CHECKER-REG:UNIT-TFAM-END
    [: UNIT-FAMILY-NAME? ;] is CK-UNIT-FAMILY?
    [: TFAM-SIG-RESOLVE ;] is TFAM-RESOLVE-XT
    [: TFAM-CLAIMED? ;] is TFAM-CLAIMED?-XT

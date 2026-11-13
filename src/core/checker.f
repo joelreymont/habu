@@ -11604,11 +11604,6 @@ defer E-I-UNIT-CON ( ptr u8 ptr u8 -- n )
 
 -1 constant STORAGE-DEFERRED
 3 constant LDEFER-CTRL-CELLS
-defer CHECKER-GRID-UNBIND-XT ( -- )
-: CHECKER-GRID-UNBIND-DEFAULT ( -- ) ;
-: CHECKER-GRID-CELLS-INSTALL ( -- )
-   [: CHECKER-GRID-UNBIND-DEFAULT ;] is CHECKER-GRID-UNBIND-XT ;
-CHECKER-GRID-CELLS-INSTALL
 
 \ --- linear kind: polarity-aware multiplicity of an applied effect ------------
 \ Counts: input side deeper, output side on top. A quotation's rows flip polarity:
@@ -15572,20 +15567,6 @@ CHECKER-REG:}SCRATCH
    need NORET-CAP-U @ <= IF exit THEN
    need NORET-GROW ;
 
-\ Capture copies these DATA buffers into the image; the last definition's
-\ scratch is dead by the quiescent-capture contract.
-: ARENA-SNAP-BOOT ( ptr ptr n ptr n n -- ) {: pv:ptr boot:ptr cells:n :}
-   boot 0 cells ARENA-CELLS-ZERO
-   boot pv ! ;
-
-\ The lowering-certificate producer owns it: per-definition arena bases that
-\ must be back on their baked boot buffers before capture, since a grown base
-\ lives in process-local mmap.
-defer REG-CERT-SNAP-XT ( -- )
-: REG-EXT-DEFAULTS ( -- )
-   [: ;] is REG-CERT-SNAP-XT ;
-REG-EXT-DEFAULTS
-
 \ ---- the type registry an AOT capture has to carry ---------------------------
 \ A seeded word's signature is text the intake parses: `( IR-ARENA:view -- )`
 \ resolves family `view` through the type-family registry, so a window that
@@ -15721,16 +15702,13 @@ REG-EXT-AOT-DEFAULTS
 \ A facts read that links no effect (CHECK READ-LINK) keeps where its rows
 \ start, plus one, in READ: a rewind below it takes the read's rows, so it
 \ clears the row and the next bind reads the text again.
-8 constant RLINK-CELLS
+5 constant RLINK-CELLS
 RLINK-CELLS cells constant RECORD-LINK-ROW
 0 constant RLINK.OCC
 1 constant RLINK.EFFECT
 2 constant RLINK.CONTROL
-3 constant RLINK.DEFER
-4 constant RLINK.FIXED-KIND
-5 constant RLINK.FIXED-VALUE
-6 constant RLINK.GRID
-7 constant RLINK.READ
+3 constant RLINK.GRID
+4 constant RLINK.READ
 package CHECKER-REG
 public
 defer RECORD-FIXED-READ-XT ( ptr n -- n n bool )
@@ -15789,7 +15767,7 @@ RECORD-PEND-EFF 0 CELL-ROW+
       RECORD-LINK-CONTROL-HI @ max RECORD-LINK-CONTROL-HI ! ;
 
 \ The engine primitive selects the live occurrence; only this small boundary
-\ can call it, so later contract queries compare the selected identity.
+\ can call it, so a saved link compares the identity it selected.
 TRUSTED: RECORD-LINK-OCC ( n -- n n ) {: ord:n :}
    ord CHECKER-RESOLVE:REC-AT def-occ-select ;
 
@@ -15932,16 +15910,13 @@ PENDING-MARKED 0 CELL-ROW+
    ord PENDING-DIRTY-N @ cells PENDING-DIRTY-P @ + CELL-VIEW !
    1 PENDING-DIRTY-N +! ;
 
-: RECORD-LINK-WRITE ( n n n bool n -- )
-   {: ord:n effect:n control:n deferred:bool occurrence:n :}
+: RECORD-LINK-WRITE ( n n n n -- )
+   {: ord:n effect:n control:n occurrence:n :}
    ord RECORD-LINK-ROOM
    ord RECORD-LINK-CELL {: row:ptr :}
    occurrence row RLINK.OCC cells + !
    effect row RLINK.EFFECT cells + !
    control row RLINK.CONTROL cells + !
-   deferred IF 1 ELSE 0 THEN row RLINK.DEFER cells + !
-   0 row RLINK.FIXED-KIND cells + !
-   0 row RLINK.FIXED-VALUE cells + !
    0 row RLINK.GRID cells + !
    0 row RLINK.READ cells + !
    row RECORD-LINK-BOUND-ROW
@@ -15953,32 +15928,12 @@ PENDING-MARKED 0 CELL-ROW+
    read row RLINK.READ cells + !
    row RECORD-LINK-BOUND-ROW ;
 
-: RECORD-LINK-SET ( n n n bool -- )
-   {: ord:n effect:n control:n deferred:bool :}
+: RECORD-LINK-SET ( n n n -- )
+   {: ord:n effect:n control:n :}
    ord effect control RECORD-LINK-VALID? 0= IF EXIT THEN
    ord RECORD-LINK-OCC {: slot:n occurrence:n :}
    slot ord <> IF EXIT THEN
-   ord effect control deferred occurrence RECORD-LINK-WRITE ;
-
-: RECORD-LINK-FIXED! ( n ptr n -- ) {: ord:n rec:ptr :}
-   rec CHECKER-REG:RECORD-FIXED-READ-XT {: kind:n value:n ready:bool :}
-   ready 0= IF
-      \ Before the native dictionary installs its reader, even an ordinary
-      \ record might be a fixed producer; no exact contract is available.
-      -1 ord RECORD-LINK-CELL RLINK.FIXED-KIND cells + !
-      ord PENDING-DIRTY+
-      EXIT
-   THEN
-   kind CHECKER-OWNER-ABI:RECORD-FIXED-NONE <
-   kind CHECKER-OWNER-ABI:RECORD-FIXED-ADDR > or IF
-      s" checker: fixed reader returned an invalid kind" 76 die THEN
-   \ An address record keeps only its kind: address reads use the live
-   \ owner, so its value never enters a contract, a unit or an image.
-   ord RECORD-LINK-CELL {: row:ptr :}
-   kind row RLINK.FIXED-KIND cells + !
-   kind CHECKER-OWNER-ABI:RECORD-FIXED-VAL = IF value ELSE 0 THEN
-      row RLINK.FIXED-VALUE cells + !
-   ord PENDING-DIRTY+ ;
+   ord effect control occurrence RECORD-LINK-WRITE ;
 
 : RECORD-LINK-REWIND-EFFECT ( n -- ) {: end:n :}
    RECORD-PEND-EFF @ end > IF
@@ -15995,9 +15950,6 @@ PENDING-MARKED 0 CELL-ROW+
       row RLINK.EFFECT cells + @ end > IF
          0 row RLINK.EFFECT cells + !
          0 row RLINK.CONTROL cells + !
-         0 row RLINK.DEFER cells + !
-         0 row RLINK.FIXED-KIND cells + !
-         0 row RLINK.FIXED-VALUE cells + !
       THEN
       row RLINK.EFFECT cells + @ 0=
       row RLINK.GRID cells + @ 0= and
@@ -16013,7 +15965,6 @@ PENDING-MARKED 0 CELL-ROW+
       i RECORD-LINK-CELL {: row:ptr :}
       row RLINK.CONTROL cells + @ end > IF
          0 row RLINK.CONTROL cells + !
-         0 row RLINK.DEFER cells + !
       THEN
       row RLINK.CONTROL cells + @
          RECORD-LINK-CONTROL-HI @ max RECORD-LINK-CONTROL-HI !
@@ -16165,8 +16116,7 @@ BODY-PEND-BASE 0 CELL-ROW+
       CREATED-BODY-ABI:COMMA-BASE-CELL COMMA-CELL-OFF BODY-PEND-BASE !
    THEN
    ord effect control RECORD-LINK-VALID? 0= IF EXIT THEN
-   ord effect control RES-FALSE occurrence RECORD-LINK-WRITE
-   ord rec RECORD-LINK-FIXED! ;
+   ord effect control occurrence RECORD-LINK-WRITE ;
 
 : RECORD-LINK-HOOKS ( -- )
    [: RECORD-LINK-REWIND-EFFECT ;] is RECORD-EFFECT-REWIND-XT
@@ -16223,15 +16173,6 @@ package CHECKER-REG
    ord CHECKER-RESOLVE:REC-AT owner <> IF E-CHECKER-LAYOUT-BUFFER throw THEN
    ord grid RECORD-LINK-GRID-ATTACH ;
 
-: RECORD-GRID-UNBIND ( -- )
-   RECORD-LINK-CAP @ 0 ?do
-      i RECORD-LINK-CELL RECORD-GRID-DISCARD
-   loop ;
-
-: RECORD-GRID-HOOKS ( -- )
-   [: RECORD-GRID-UNBIND ;] is CHECKER-GRID-UNBIND-XT ;
-RECORD-GRID-HOOKS
-
 \ The registrar records the next ordinal while the engine still holds its
 \ dictionary word unpublished. Publication joins that ordinal with the exact
 \ row the registrar just accepted; another spelling cannot substitute a row.
@@ -16248,20 +16189,13 @@ RECORD-GRID-HOOKS
    THEN
    ord RECORD-LINK-CLEAR
    ord RECORD-PEND-IX @ = IF
-      ord RECORD-PEND-EFF@ RECORD-PEND-SYM @ NORET-NEWEST
-      RECORD-PEND-SYM @ DFER-FIND-SYM RECORD-LINK-SET
-      \ An EXPORT alias copies a constant's DKIND:VAL stamp with its body,
-      \ so the export keeps the constant's fixed value.
-      ord RECORD-LINK-CURRENT? IF
-         ord ord CHECKER-RESOLVE:REC-AT RECORD-LINK-FIXED!
-      THEN
+      ord RECORD-PEND-EFF@ RECORD-PEND-SYM @ NORET-NEWEST RECORD-LINK-SET
       -1 RECORD-PEND-IX ! 0 RECORD-PEND-SYM ! 0 RECORD-PEND-EFF !
       EXIT
    THEN
    ord CK-CLOSED-IX @ = CK-CLOSED-SYM @ 0 <> and CK-CLOSED-OPEN @ 0 <> and IF  0 CK-CLOSED-OPEN !
       CK-CLOSED-SYM @ USIG-NEWEST CK-CLOSED-OFF@ = IF
-         ord CK-CLOSED-OFF@ CK-CLOSED-SYM @ NORET-NEWEST
-         CK-CLOSED-SYM @ DFER-FIND-SYM RECORD-LINK-SET
+         ord CK-CLOSED-OFF@ CK-CLOSED-SYM @ NORET-NEWEST RECORD-LINK-SET
       THEN
    THEN ;
 
@@ -16290,7 +16224,7 @@ CAST: AS-RECORD-PUBLISHED ( n -- [ n -- ] )
 
 \ A later annotation updates the record the registrar actually selected.
 \ Its symbol chooses the new control row only at this acceptance boundary;
-\ the contract query never follows a name to a newer row. Its facts text, written
+\ a link never follows a name to a newer row. Its facts text, written
 \ before, lacks the new tag: a build holds the amendment for its file's end.
 : RECORD-CONTROL-AT! ( ptr n n -- ) {: rec:ptr sym:n :}
    rec NULL-PTR = IF EXIT THEN
@@ -16300,7 +16234,6 @@ CAST: AS-RECORD-PUBLISHED ( n -- [ n -- ] )
    sym NORET-NEWEST {: control:n :}
    control row RLINK.CONTROL cells + !
    control RECORD-LINK-CONTROL-HI @ max RECORD-LINK-CONTROL-HI !
-   sym DFER-FIND-SYM IF 1 ELSE 0 THEN row RLINK.DEFER cells + !
    ord PENDING-OWNER-RECORD
    ord PENDING-DIRTY+
    ord sym CHECK:HOLD-AMENDED ;
@@ -23009,7 +22942,6 @@ CHECKER-REG:}SCRATCH
    dst ASIG-GRAPH-PTR EN.A ! ;
 
 defer ASIG-GRAPH-CHECK-XT ( ptr u8 n -- )
-variable ASIG-GRAPH-UNIT-OFF   0 ASIG-GRAPH-UNIT-OFF !
 
 : ASIG-GRAPH-NODE ( n -- n ) {: src:n :}
    src 0= IF 0 EXIT THEN
@@ -23110,7 +23042,7 @@ variable ASIG-GRAPH-UNIT-OFF   0 ASIG-GRAPH-UNIT-OFF !
    ASIG-GRAPH-BASE @ ;
 
 : ASIG-GRAPH-COPY ( n -- n ) {: sym:n :}
-   ASIG-GRAPH-UNIT-OFF @ dup 0= IF drop sym USIG-NEWEST THEN
+   sym USIG-NEWEST
    sym CTL-FLAGS-SYM
    sym DFER-FIND-SYM IF ASIG-GRAPH-DEFER or THEN
    ASIG-GRAPH-COPY-RECORD ;
@@ -23371,9 +23303,6 @@ CK-UNIT-FAMILY-INSTALL
    node EN.D @ dup BIND-SCOPE = swap BIND-REGION = or
    node EN.B @ 0= node EN.C @ 0= and and or ;
 
-defer CK-GRAPH-FAMILY-MAP-XT ( n -- n )
-variable CK-GRAPH-UNIT-MAP
-
 : CK-GRAPH-NODE? ( n bool -- ) {: off:n row:bool :}
    off 0= IF row 0= IF ASIG-GRAPH-DIE THEN EXIT THEN
    off EFF-NODE CK-GRAPH-SPAN?
@@ -23422,9 +23351,6 @@ variable CK-GRAPH-UNIT-MAP
       node CK-GRAPH-NAME?
       node EN.C @ 0 > node EN.C @ EI-AK-CAP negate < or IF ASIG-GRAPH-DIE THEN
    ELSE
-      CK-GRAPH-UNIT-MAP @ IF
-         node EN.H @ CK-GRAPH-FAMILY-MAP-XT node EN.H !
-      THEN
       node CK-GRAPH-NAME?
       node EN.F @ node EN.G @ CK-GRAPH-STRING?
       node EN.C @ {: argc:n :}
@@ -26156,7 +26082,7 @@ NAMED-OPERAND-INSTALL
    {: a:ptr u:n :}
    a u NAMED-SYM a u NAV-USE-NOW ;
 
-\ How a unit's effect graphs resolve their families and constructors.
+\ How a unit's effect graphs resolve their constructors.
 package CHECKER-REG
 
 public
@@ -26165,14 +26091,8 @@ private
 
 : UNIT-FORMAT-BAD ( -- ) E-UNIT-FORMAT throw ;
 public
-defer UNIT-TFAM-MAP ( n -- n )
-defer UNIT-TFAM-END ( -- )
 defer UNIT-CON-VALID-XT ( n -- bool )
 private
-
-: UNIT-GRAPH-MAP-INSTALL ( -- )
-   [: UNIT-TFAM-MAP ;] is CK-GRAPH-FAMILY-MAP-XT ;
-UNIT-GRAPH-MAP-INSTALL
 
 : UNIT-CON-RESOLVE ( ptr u8 ptr u8 -- n ) {: node:ptr pool:ptr :}
    node EN.A @ pool + node EN.B @ CT-FIND
@@ -26180,34 +26100,10 @@ UNIT-GRAPH-MAP-INSTALL
 : UNIT-CON-INSTALL ( -- ) [: UNIT-CON-RESOLVE ;] is E-I-UNIT-CON ;
 UNIT-CON-INSTALL
 
-0 constant UP.NEXT
-13 constant UP.CONS
-14 constant UP.NCONS
-
-7 cells constant UPN.CELLS
-6 constant UPN.ID
-
-: UP-AT ( ptr u8 n -- ptr n ) cells + CELL-VIEW ;
-: UP@ ( ptr u8 n -- n ) UP-AT @ ;
-: UP-PTR@ ( ptr u8 n -- ptr u8 ) cells + REG-PTR-CELLS @ ;
-: UP-CON ( ptr u8 n -- ptr u8 ) {: plan:ptr idx:n :}
-   plan UP.CONS UP-PTR@ idx UPN.CELLS * + ;
-
-PTR-VARIABLE UNIT-PLAN-FIRST
-
 : UP-CON-VALID ( n -- bool ) {: id:n :}
-   id CT-LIVE? IF
-      id CT-CLASS@ CT-LINEAR = id CT-WIDTH@ 64 = and
-      id CT-SIGN@ CS-NONE = and EXIT
-   THEN
-   UNIT-PLAN-FIRST @
-   BEGIN dup NULL-PTR <> WHILE
-      dup UP.NCONS UP@ 0 ?do
-         dup i UP-CON UPN.ID UP@ id = IF
-            drop RES-TRUE unloop EXIT THEN
-      loop
-      UP.NEXT UP-PTR@
-   REPEAT drop RES-FALSE ;
+   id CT-LIVE? 0= IF RES-FALSE EXIT THEN
+   id CT-CLASS@ CT-LINEAR = id CT-WIDTH@ 64 = and
+   id CT-SIGN@ CS-NONE = and ;
 
 : UNIT-CON-PROJECT-INSTALL ( -- )
    [: UP-CON-VALID ;] is UNIT-CON-VALID-XT ;
@@ -27078,20 +26974,19 @@ CHECKER-REG:}SCRATCH
 \ none: LINKED? answers it read, RECORD-LINK-CURRENT? does not, and the row
 \ keeps mark, the effect store's end when the read began, for a rewind to clear
 \ it by (RLINK.READ).
-: READ-LINK ( ptr n n n n -- ) {: rec:ptr ix:n sym:n mark:n :}
+: READ-LINK ( n n n -- ) {: ix:n sym:n mark:n :}
    sym USIG-NEWEST 0 <> IF
-      ix sym USIG-NEWEST sym NORET-NEWEST sym DFER-FIND-SYM RECORD-LINK-SET
-      ix RECORD-LINK-CURRENT? IF ix rec RECORD-LINK-FIXED! THEN
+      ix sym USIG-NEWEST sym NORET-NEWEST RECORD-LINK-SET
       EXIT
    THEN
    ix RECORD-LINK-OCC {: slot:n occurrence:n :}
    slot ix <> IF EXIT THEN
-   ix 0 sym NORET-NEWEST sym DFER-FIND-SYM occurrence RECORD-LINK-WRITE
+   ix 0 sym NORET-NEWEST occurrence RECORD-LINK-WRITE
    ix mark 1 + RECORD-LINK-READ! ;
 
-: READ-TAGS ( ptr n n n n n -- ) {: rec:ptr ix:n sym:n ctl:n mark:n :}
+: READ-TAGS ( n n n n -- ) {: ix:n sym:n ctl:n mark:n :}
    sym sym ctl READ-FLAGS ctl XFER-DMASK ctl XFER-RMASK 0 NORET-ADD-CREATES
-   rec ix sym mark READ-LINK ;
+   ix sym mark READ-LINK ;
 
 : READ-BODY ( ptr u8 n n -- )
    {: a:ptr u:n ix:n :}
@@ -27112,7 +27007,7 @@ CHECKER-REG:}SCRATCH
       ctl XFER-FLAGS CHECKER-OWNER-ABI:BINDING-DEFER and 0 <> or IF
          a u name nameu READ-REFUSE EXIT
       THEN
-      rec ix sym ctl mark READ-TAGS EXIT
+      ix sym ctl mark READ-TAGS EXIT
    THEN
    din dout rin rout hasr sym pe ou 0 <> READ-FIRST
    oa ou sym READ-OVERLOADS 0= IF a u name nameu READ-REFUSE EXIT THEN
@@ -27121,7 +27016,7 @@ CHECKER-REG:}SCRATCH
    sym sym ctl READ-FLAGS ctl XFER-DMASK ctl XFER-RMASK made NORET-ADD-CREATES
    ctl XFER-FLAGS CHECKER-OWNER-ABI:BINDING-DEFER and 0 <> IF sym RES-TRUE DFER-ADD-SYM THEN
    pimm 0 >=  sym PIMM-IX 0 <  and IF sym pimm PIMM-ADD THEN
-   rec ix sym mark READ-LINK ;
+   ix sym mark READ-LINK ;
 
 \ Whether record ix has a link row: its compile, or a read, taught the checker.
 : LINKED? ( n -- bool ) {: ix:n :}
@@ -27154,8 +27049,7 @@ CHECKER-REG:}SCRATCH
    din dout rin rout hasr from EFFECT-EXTERNAL-SYM? E-ADD-EFFECT
    from CHECKER-ASIG-EXPORT
    sym from EXPORT-META-SYM
-   ix sym USIG-NEWEST sym NORET-NEWEST sym DFER-FIND-SYM RECORD-LINK-SET
-   ix RECORD-LINK-CURRENT? IF ix ix CHECKER-RESOLVE:REC-AT RECORD-LINK-FIXED! THEN ;
+   ix sym USIG-NEWEST sym NORET-NEWEST RECORD-LINK-SET ;
 
 \ A record `undefine` retired has no symbol.
 : HAS-SYM? ( n -- bool ) CHECKER-RESOLVE:REC-AT REC-SYM 0 <> ;

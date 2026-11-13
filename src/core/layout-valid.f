@@ -15,8 +15,7 @@ $100 constant TASK-INIT
 
 \ Every base below is PERSISTED: each holds a data address across a capture, and
 \ only a marked cell is rebased when the capture moves the window's DATA to the
-\ image's base. Each *-ENSURE also grows into process-local mmap, which
-\ SNAP-RESET at the foot of this file undoes.
+\ image's base. Each *-ENSURE also grows into process-local mmap.
 create DATA-BOOT DATA-INIT cells allot
 PERSISTED-PTR-VARIABLE DATA-P   DATA-BOOT DATA-P !
 variable DATA-CAP DATA-INIT DATA-CAP !
@@ -362,41 +361,11 @@ variable CHECKS
    verdict -1 = BWIN-UNJUDGED @ 0 <> or if a u MAKE exit then
    a u EMPTY ;
 
-\ The certificate is dead when REG-CERT-SNAP-XT runs: empty the boot buffers
-\ before capture and reset their cursors with the bases; MAKE rebuilds every row
-\ for the next definition. No certificate scratch or grown mmap address belongs
-\ in the image.
-: SNAP-RESET ( -- )
-   BUF-SNAP-RESET
-   DATA-P DATA-BOOT DATA-INIT ARENA-SNAP-BOOT
-   DATA-INIT DATA-CAP ! 0 DATA-N !
-   ENV-P ENV-BOOT ENV-INIT ARENA-SNAP-BOOT
-   ENV-INIT ENV-CAP ! 0 ENV-OWNER !
-   GUARD-OFF-P GUARD-OFF-BOOT GUARD-INIT ARENA-SNAP-BOOT
-   GUARD-TAG-P GUARD-TAG-BOOT GUARD-INIT ARENA-SNAP-BOOT
-   GUARD-LIM-P GUARD-LIM-BOOT GUARD-INIT ARENA-SNAP-BOOT
-   GUARD-INIT GUARD-CAP ! 0 GUARD-N !
-   TASK-KIND-P TASK-KIND-BOOT TASK-INIT ARENA-SNAP-BOOT
-   TASK-A-P TASK-A-BOOT TASK-INIT ARENA-SNAP-BOOT
-   TASK-B-P TASK-B-BOOT TASK-INIT ARENA-SNAP-BOOT
-   TASK-C-P TASK-C-BOOT TASK-INIT ARENA-SNAP-BOOT
-   TASK-INIT TASK-CAP ! 0 TASK-N !
-   FETCH-KEY-P FETCH-KEY-BOOT FETCH-INIT ARENA-SNAP-BOOT
-   FETCH-OFF-P FETCH-OFF-BOOT FETCH-INIT ARENA-SNAP-BOOT
-   FETCH-LEN-P FETCH-LEN-BOOT FETCH-INIT ARENA-SNAP-BOOT
-   FETCH-INIT FETCH-CAP ! 0 FETCH-N !
-   0 HAS-VALID ! 0 CHECKS ! ;
-
-
 \ One-shot install seam: a quotation is a compile-time construct, so the full
 \ producer is handed to the dispatch cell from inside a definition rather than
 \ from the top level. The seal retires this word with FULL-PRODUCE itself.
 : FULL-PRODUCE-INSTALL ( -- ) [: FULL-PRODUCE ;] FULL-INSTALL ;
 FULL-PRODUCE-INSTALL
-
-\ Same seam, same reason, for the capture-time reset.
-: SNAP-RESET-INSTALL ( -- ) [: SNAP-RESET ;] is REG-CERT-SNAP-XT ;
-SNAP-RESET-INSTALL
 
 ;package
 

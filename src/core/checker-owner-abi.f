@@ -236,10 +236,6 @@ CHECKER-OWNER-EXT:PIN-TOKEN-OFF constant PIN-TOKEN-OFF \ ( -- ptr u8 n )
 CHECKER-OWNER-EXT:FAMILY-NICHE-OFF constant FAMILY-NICHE-OFF \ ( n -- bool )
 CHECKER-FETCH-ABI:BYTES constant BYTES
 
-CHECKER-OWNER-EXT:FIXED-NONE constant RECORD-FIXED-NONE
-CHECKER-OWNER-EXT:FIXED-VAL constant RECORD-FIXED-VAL
-CHECKER-OWNER-EXT:FIXED-ADDR constant RECORD-FIXED-ADDR
-
 \ These cells precede the record; callable offsets count from the record
 \ pointer, after them.
 $4842434B4F574E01 constant MAGIC
