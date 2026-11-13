@@ -2037,7 +2037,7 @@ backend answers alike.
 
   ```forth
   ARG s" child" TOK= if CHILD-MAIN exit then
-  \ habu: in dispatch: at 'exit' after 'CHILD-MAIN'; suggestion: Remove tokens after the terminating control word, or move the work before it.
+  \ habu: in dispatch: at 'exit' after 'CHILD-MAIN'; suggestion: Nothing after a word that never returns runs (throw, die, exit, or a call whose body always ends in one): remove the tokens after it, or move the work before it.
   \ hook: non-certified definition: dispatch at 'exit'
   ```
 

@@ -1643,7 +1643,7 @@ variable MDV-I   variable MDV-F
    k RF-QUAL = IF s" Use one ':' qualifier, e.g. PKG:WORD." EXIT THEN
    k RF-LOCAL = IF LOCALBAD-SUGGEST$ EXIT THEN
    k RF-SIG = IF SGBAD-SUGGEST$ EXIT THEN
-   k RF-DEAD = IF s" Remove tokens after the terminating control word, or move the work before it." EXIT THEN
+   k RF-DEAD = IF s" Nothing after a word that never returns runs (throw, die, exit, or a call whose body always ends in one): remove the tokens after it, or move the work before it." EXIT THEN
    k RF-NP = IF NP-SUGGEST$ EXIT THEN
    k RF-CAP = IF s" Move this compiler or runtime boundary behind audited TRUST." EXIT THEN
    k RF-UNSAFE = IF s" Remove it from the checked body; to evaluate text there, use evaluate-closed." EXIT THEN
