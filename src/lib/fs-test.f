@@ -32,6 +32,8 @@ $78 constant FS-TEST-FILL-C
 8 constant FS-TEST-READ-CAP
 40 constant FS-TEST-DEEP-LIMIT
 292 constant FS-TEST-MODE-READONLY
+420 constant FS-TEST-MODE-UNSEARCHABLE   \ 0644: read, no search
+493 constant FS-TEST-MODE-DIR            \ 0755
 $40 constant FS-TEST-PAR-CAP
 150 constant FS-TEST-PAR-ITERS
 $61 constant FS-TEST-PAR-A-C
@@ -49,6 +51,7 @@ variable FS-TEST-NEST-N
 variable FS-TEST-AFTER-IDX
 variable FS-TEST-BETA-IDX
 variable FS-TEST-FILE-COUNT
+variable FS-TEST-GONE-N
 variable FS-TEST-FD
 variable FS-TEST-BASE-U
 variable FS-TEST-PAR-A-U
@@ -263,7 +266,13 @@ create FS-TEST-READ-BUF FS-TEST-READ-CAP allot
    FS-TEST-ROOT-JJ s" ignored.txt" s" " FS-TEST-WRITE-CHILD
    FS-TEST-ROOT-DOTS s" ignored.txt" s" " FS-TEST-WRITE-CHILD
    FS-TEST-ALPHA-GIT s" ignored.txt" s" " FS-TEST-WRITE-CHILD
-   FS-TEST-CHILD-OUT s" ignored.txt" s" " FS-TEST-WRITE-CHILD ;
+   FS-TEST-CHILD-OUT s" ignored.txt" s" " FS-TEST-WRITE-CHILD
+   FS-TEST-ALPHA s" dangling" FS-TEST-OUT FS:JOIN-PATH {: linku :}
+   s" no-target" FS-TEST-OUT linku FS:MAKE-SYMLINK
+   FS-TEST-OUT linku FS:CLEANUP+
+   FS-TEST-ALPHA s" loop" FS-TEST-OUT FS:JOIN-PATH {: loopu :}
+   s" loop" FS-TEST-OUT loopu FS:MAKE-SYMLINK
+   FS-TEST-OUT loopu FS:CLEANUP+ ;
 
 : FS-TEST-WRITE-WALK-TREE-FILES ( -- )
    FS-TEST-WA s" a1.txt" s" " FS-TEST-WRITE-PLAIN drop
@@ -362,6 +371,22 @@ create FS-TEST-READ-BUF FS-TEST-READ-CAP allot
 
 : FS-TEST-MISSING-WALK ( -- )
    s" no-such-habu-fs-path-for-stdlib-test" [: 2drop ;] FS:WALK-FILES ;
+
+: FS-TEST-UNDER$ ( ptr u8 n -- ptr u8 n )
+   {: na:ptr nu :}
+   FS-TEST-BASE na nu FS-TEST-JOIN$ ;
+
+\ kept.txt's stat in a directory that can be read but not searched is EACCES.
+: FS-TEST-UNSEARCHABLE-WALK ( -- )
+   s" locked-walk" FS-TEST-UNDER$ 2dup FS:MAKE-DIR FS:CLEANUP-TREE+
+   s" locked-walk/locked" FS-TEST-UNDER$ FS:MAKE-DIR
+   s" locked-walk/locked/kept.txt" FS-TEST-UNDER$ s" k" FS:WRITE-ALL
+   s" locked-walk/locked" FS-TEST-UNDER$
+   FS-TEST-MODE-UNSEARCHABLE FS:CHMOD-MODE
+   [: s" locked-walk" FS-TEST-UNDER$ [: 2drop ;] FS:WALK-FILES ;]
+   E-FS-STAT TTHROWSQ
+   FS:ERRNO FS:EACCES FS-TEST=
+   s" locked-walk/locked" FS-TEST-UNDER$ FS-TEST-MODE-DIR FS:CHMOD-MODE ;
 
 : FS-TEST-WALK-ROOT-TOO-LONG ( -- )
    FS-TEST-LONG PATH-CAP 1 + [: 2drop ;] FS:WALK-FILES ;
@@ -485,6 +510,24 @@ create FS-TEST-READ-BUF FS-TEST-READ-CAP allot
    FS-TEST-ROOT s" beta.txt" FS-TEST-OUT FS:JOIN-PATH
    FS-TEST-OUT swap [: FS-TEST-FILE-CB ;] FS:WALK-FILES
    FS-TEST-FILE-COUNT @ 1 FS-TEST= ;
+
+: FS-TEST-GONE-CB ( ptr u8 n -- ) {: a:ptr u :}
+   FS-TEST-GONE-N @ 1 + FS-TEST-GONE-N !
+   FS-TEST-GONE-N @ 1 = if
+      a u s" /one.txt" ENDS-WITH? if s" gone-walk/two.txt"
+      else s" gone-walk/one.txt" then
+      FS-TEST-UNDER$ FS:REMOVE-FILE
+   then ;
+
+\ An entry removed after its directory was read is skipped, not E-FS-STAT.
+: FS-TEST-WALK-GONE ( -- )
+   0 FS-TEST-GONE-N !
+   s" gone-walk" FS-TEST-UNDER$ 2dup FS:MAKE-DIR FS:CLEANUP-TREE+
+   s" gone-walk/one.txt" FS-TEST-UNDER$ s" 1" FS:WRITE-ALL
+   s" gone-walk/two.txt" FS-TEST-UNDER$ s" 2" FS:WRITE-ALL
+   [: s" gone-walk" FS-TEST-UNDER$ [: FS-TEST-GONE-CB ;] FS:WALK-FILES ;]
+   catch 0 FS-TEST=
+   FS-TEST-GONE-N @ 1 FS-TEST= ;
 
 : FS-TEST-WALK-THROW-CB ( ptr u8 n -- )
    2drop E-A-BOUNDS throw ;       \ no walk path raises the callback's code
@@ -705,6 +748,7 @@ TASK:MIN-STACK TASK:TASK FS-TEST-WALK-B-TASK
    [: FS-TEST-MISSING-FILE-SIZE ;] E-FS-STAT TTHROWSQ
    [: FS-TEST-DIR-FILE-SIZE ;] E-FS-STAT TTHROWSQ
    [: FS-TEST-MISSING-WALK ;] E-FS-STAT TTHROWSQ
+   FS-TEST-UNSEARCHABLE-WALK
    [: FS-TEST-WALK-ROOT-TOO-LONG ;] E-FS-PATH TTHROWSQ
    [: FS-TEST-NUL-EXISTS ;] E-FFI-NUL TTHROWSQ
    [: FS-TEST-NUL-WRITE ;] E-FFI-NUL TTHROWSQ
@@ -899,11 +943,6 @@ TASK:MIN-STACK TASK:TASK FS-TEST-RACE-TASK
    FS-TEST-FREE-FD before FS-TEST=
    FS-TEST-RACE-LIVE FS:REMOVE-FILE ;
 
-\ A real FIFO, made by the system mkfifo, read by the system cat. With no
-\ reader an attempt answers none and holds no descriptor. Once cat has the read
-\ end, the retry loop below opens the write end, and the bytes written before it
-\ is closed are exactly what cat prints before it exits 0. The fixture's cleanup
-\ registry is full, so RUN removes the FIFO and its link itself.
 package FS-TEST-FIFO
 private
 
@@ -915,13 +954,19 @@ $20 constant OUT-CAP
 : NONBLOCK ( -- n )
    HB-TARGET-MACOS? if 4 else $800 then ;
 
+create DIR-BUF PATH-CAP allot
 create FIFO-BUF PATH-CAP allot
 create LINK-BUF PATH-CAP allot
 create TOOL-BUF PATH-CAP allot
 create OUT-BUF OUT-CAP allot
+variable DIR-U
 variable FIFO-U
 variable LINK-U
 variable WRITER
+variable VISITS
+
+: DIR$ ( -- ptr u8 n )
+   DIR-BUF DIR-U @ ;
 
 : FIFO$ ( -- ptr u8 n )
    FIFO-BUF FIFO-U @ ;
@@ -1029,19 +1074,29 @@ variable WRITER
    then
    r FD>N close ;
 
+: VISIT ( ptr u8 n -- )
+   2drop VISITS @ 1 + VISITS ! ;
+
+: WALK-DIR ( -- )
+   0 VISITS !
+   DIR$ [: VISIT ;] FS:WALK-FILES
+   VISITS @ 0 FS-TEST= ;
+
 public
 
 : RUN ( -- )
-   FS-TEST-BASE s" fifo" FIFO-BUF FIFO-U FS-TEST-PATH!
-   FS-TEST-BASE s" fifo-link" LINK-BUF LINK-U FS-TEST-PATH!
+   FS-TEST-BASE s" fifo-dir" DIR-BUF DIR-U FS-TEST-PATH!
+   DIR$ s" fifo" FIFO-BUF FIFO-U FS-TEST-PATH!
+   DIR$ s" fifo-link" LINK-BUF LINK-U FS-TEST-PATH!
+   DIR$ FS:MAKE-DIR
+   DIR$ FS:CLEANUP-TREE+
    MAKE-FIFO
    FIFO$ LINK$ FS:MAKE-SYMLINK
+   WALK-DIR
    PREDICATES
    NO-READER
    REFUSALS
-   READER
-   LINK$ FS:REMOVE-FILE
-   FIFO$ FS:REMOVE-FILE ;
+   READER ;
 
 ;package
 
@@ -1058,6 +1113,7 @@ public
    FS-TEST-BASENAME
    FS-TEST-JOIN
    FS-TEST-WALK
+   FS-TEST-WALK-GONE
    FS-TEST-PATH-CAP-EDGE
    FS-TEST-DEEP-TREE
    FS-TEST-WALK-SECOND

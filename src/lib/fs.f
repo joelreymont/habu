@@ -867,6 +867,22 @@ private
 : ASCEND-PATH ( ptr n -- ) {: ctx:ptr :}
    ctx WALK-DEPTH@ 1 - ctx WALK-DEPTH! ;
 
+\ The entry's S-IFREG or S-IFDIR, or 0 for one below the root the walk skips.
+\ stat leaves errno in ERRNO's slot, not libc's; SYMLINK?'s lstat overwrites it.
+: WALK-TYPE ( ptr n ptr u8 n -- n ) {: ctx:ptr a:ptr u :}
+   a u TRY-STAT-MODE MATCH option
+     none OF -1 ENDOF
+     some OF S-IFMT and ENDOF
+   ;MATCH ERRNO {: fmt e :}
+   fmt S-IFREG = fmt S-IFDIR = or if fmt exit then
+   ctx WALK-DEPTH@ 0<> if
+      fmt 0 >= if 0 exit then
+      e ENOENT = if 0 exit then
+      a u SYMLINK? if 0 exit then
+   then
+   fmt 0< if e CAUSE! then
+   E-FS-STAT throw ;
+
 \ The callback is executed straight off the stack: it needs no cell, and its
 \ throw needs no catch here because WALK-UNMAP closes this context's
 \ descriptors for every way out of WALK-RUN. The path `a u` lies in the
@@ -876,8 +892,9 @@ private
    {: ctx:ptr a:ptr u allow q :}
    a u SKIP-DIR? if exit then
    a u allow execute 0= if exit then
-   a u FILE? if a u q execute exit then
-   a u DIR? 0= if E-FS-STAT throw then
+   ctx a u WALK-TYPE {: fmt :}
+   fmt S-IFREG = if a u q execute exit then
+   fmt S-IFDIR <> if exit then
    ctx a u OPEN-WALK-DIR
    begin ctx READ-DIR while
       ctx DIR-BLOCK-BEGIN
@@ -914,10 +931,12 @@ private
 public
 \ The walk visits regular files only, depth-first, in the order the directory
 \ stream returns (a caller that needs lexical order sorts), skips SKIP-DIR?'s
-\ directories and closes every descriptor it opened however it ends. A
-\ callback's path is valid only during the callback. Two walks in flight cover
-\ disjoint trees: getdirentries64 on a directory removed meanwhile answers -1
-\ and the walk reports E-FS-DIR.
+\ directories and, below the root, special files, links stat cannot follow and
+\ entries gone since the read; any other entry stat refuses, and a root that is
+\ neither a file nor a directory, is E-FS-STAT. It closes every descriptor it
+\ opened however it ends. A callback's path is valid only during the callback.
+\ Two walks in flight cover disjoint trees: getdirentries64 on a directory
+\ removed meanwhile answers -1 and the walk reports E-FS-DIR.
 : WALK-FILES-IF ( ptr u8 n [ ptr u8 n -- bool ] [ ptr u8 n -- ] -- )
    WALK-HANDLE-BYTES MEM:BYTES-ALLOC-LEN [: WALK-SCOPE ;] MEM:WITH-BYTES ;
 
