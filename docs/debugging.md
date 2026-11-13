@@ -359,7 +359,7 @@ perf script | bin/hb --load tools/perf-map.f
 - A tick delivered to a thread C started that is not inside a callback runs on
   that thread's own stack.
 - When the limit's last sample is foreign the report waits for the next Habu
-  sample, so a program that exits or stays blocked in a foreign call from that
+  sample that weighs an interval, so a program that exits or stays blocked in a foreign call from that
   point on never reports; call `prof-report` yourself.
 
 ## Timing a change

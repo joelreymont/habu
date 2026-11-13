@@ -82,7 +82,7 @@ variable LPROFRECLAIM
 \ the bounded scan names one, so that weight is in the word's counter and not in
 \ PROF-FOREIGN.
 152 constant ARN-FCALLED     \ the weight of foreign samples charged to a calling word
-160 constant ARN-CARRY       \ CNTVCT_EL0 ticks elapsed and not yet counted, below ARN-TICKS
+160 constant ARN-CARRY       \ CNTVCT_EL0 ticks elapsed and not yet counted; a hold can lift it past ARN-TICKS
 \ A SIGALRM reaches any thread that does not block it, and macOS gives the
 \ process's to the main thread: the aarch64 handler counts only on ARN-OWNER
 \ and forwards a delivery on any other thread to ARN-OWNER-TID.

@@ -55,10 +55,14 @@
 \ signals would show a blocked second as about one sample. The handler reads
 \ CNTVCT_EL0 and counts (now - ARN-LAST + ARN-CARRY) / ARN-TICKS wherever it
 \ counts a sample, and keeps the remainder in ARN-CARRY, so the weights sum to
-\ the whole intervals armed: a sample that lands within an interval of the
-\ last one weighs 0. Arming sets ARN-LAST, so time the clock was held or
-\ stopped is never counted. ARN-SEQ still counts samples one by one, a weight
-\ of 0 included, for the inclusive stamps.
+\ the whole intervals armed. A hold of a running clock adds the armed time
+\ since the last sample to ARN-CARRY, which can then exceed ARN-TICKS. Arming
+\ sets ARN-LAST, and a resume's first expiry falls at the interval less the
+\ carry, so the first sample after it weighs the carry, held or stopped time is
+\ never counted, and a program that holds the clock more often than the
+\ interval is still sampled. The time lost at prof-off is the carry left, under
+\ one interval. A sample that weighs 0 moves ARN-SEQ and ends there: no count,
+\ edge, deferred slot or walk.
 \
 \ A foreign sample (x20 not the owner's DATA, ARN-OWNER-DATA, which on a task
 \ is the task's own region, or x26 not the recorded DBASE) is inside C a
@@ -692,10 +696,11 @@ public
    fself LBL,  9 OS-THREAD-RELEASE ;
 
 \ x7 = band: x3 = this sample's weight, as the file header states; ARN-LAST
-\ moves to now, ARN-CARRY keeps the remainder and ARN-SEQ counts the sample.
-\ Plain loads and stores suffice: only the owner's handler reaches here, and a
-\ word that leaves ARMED-RUNS waits for it. The ISB keeps CNTVCT_EL0 from being
-\ read before the admission's load-acquire, ahead of the ARN-LAST a resume wrote.
+\ moves to now, ARN-CARRY keeps the remainder and ARN-SEQ counts the sample,
+\ whatever its weight. Plain loads and stores suffice: only the owner's handler
+\ reaches here, and a word that leaves ARMED-RUNS waits for it. The ISB keeps
+\ CNTVCT_EL0 from being read before the admission's load-acquire, ahead of the
+\ ARN-LAST a resume wrote.
 \ Clobbers x8 and x10-x12.
 : C-PROF-WEIGHT ( -- )
    LBL {: wdone :}
@@ -771,9 +776,9 @@ public
 \ counted in PROF-IN, so prof-on cannot release that handle under it.
 \
 \ Weigh the sample, attribute the interrupted pc, THEN add the weight to
-\ PROF-TOT and test the limit, so every sample the running clock delivers is
-\ counted, including the sample that reaches the limit. x3 holds the weight:
-\ no word the handler calls writes it.
+\ PROF-TOT and test the limit, so every sample the running clock delivers that
+\ weighs an interval is counted, including the sample that reaches the limit.
+\ x3 holds the weight: no word the handler calls writes it.
 : EMIT-PROF ( -- )
    LPROFH LABEL@ LBL,
    LBL LBL LBL LBL LBL LBL LBL {: pnew pother pdone pforeign plost psig pexit :}
@@ -786,6 +791,7 @@ public
    10 CB-SELF,  11 8 ARN-OWNER LDR,  10 11 CMP,  C-NE pfwd BCOND,
    powner LBL,
    C-PROF-WEIGHT
+   3 pleave CBZ,
    C-PROF-MCTX>R21  C-PROF-PC>R9
    17 1 MOVZ,                                        \ x17 = 1: a Habu context, its count may report (x16 is the Darwin syscall number, never kept across a sys)
    8 7 PROF-ARENA LDR,  8 pdone CBZ,
@@ -824,7 +830,9 @@ public
    10 7 PROF-TOT LDR,  10 10 3 ADD,  10 7 PROF-TOT STR,
    11 7 PROF-LIM LDR,  11 pleave CBZ,                \ limit 0: sample until prof-off
    10 11 CMP,  C-LT pleave BCOND,
-   17 pleave CBZ,                                    \ the limit reached on a foreign sample: the next Habu sample reports
+   \ the limit reached on a foreign sample: the next Habu sample that weighs
+   \ an interval reports
+   17 pleave CBZ,
    LPROFDUMP LABEL@ BL,
    7 PROF-BAND-VA LIT64,  -1 C-PROF-IN-ADD
    0 PROF-LIMIT-RC MOVZ,  NR-EXIT-GROUP SYS,
@@ -896,6 +904,22 @@ private
 
 : C-PROF-TIMER-DONE ( -- )
    SP SP 32 ADDI, ;
+
+\ x0 = arena, a C-PROF-TIMER-FRAME frame on SP: its first expiry becomes the
+\ interval less ARN-CARRY, the carry in microseconds by the ratio of ARN-USEC
+\ to ARN-TICKS, or 1 us once the carry reaches a whole interval. Clobbers
+\ x9-x11.
+: C-PROF-TIMER-REST ( -- )
+   LBL LBL {: whole split :}
+   9 0 ARN-CARRY LDR,  10 0 ARN-TICKS LDR,  11 0 ARN-USEC LDR,
+   9 10 CMP,  C-CS whole BCOND,
+   9 9 11 MUL,  9 9 10 UDIV,  9 11 9 SUB,
+   split B,
+   whole LBL,  9 1 MOVZ,
+   split LBL,
+   11 USEC-PER-SEC LIT64,  10 9 11 UDIV,
+   11 10 11 MUL,  9 9 11 SUB,
+   10 SP 16 STR,  9 SP 24 STR, ;
 
 : C-PROF-ARENA-MAP ( -- )
    LBL LBL LBL {: have mok amsg :}
@@ -1391,25 +1415,33 @@ private
    0 0 MOVZ,  1 SP 0 ADDI,  2 0 MOVZ,  NR-SETITIMER SYS,
    SP SP 32 ADDI, ;
 
-\ Hold the clock for a walk or a clear: an armed clock goes to ARMED-HELD before
-\ the timer stops, so the handler counts nothing from here on. Clobbers x0-x2,
-\ x7, x9 and x10.
+\ Hold the clock for a walk or a clear: a running clock goes to ARMED-HELD
+\ before the timer stops, so the handler counts nothing from here on, and its
+\ time since the last sample goes to ARN-CARRY once its handler is out; a held
+\ or stopped clock only has its timer stopped. Clobbers x0-x2, x7, x9 and x10.
 : C-PROF-CLOCK-HOLD ( -- )
    LBL {: off :}
-   7 PROF-BAND-VA LIT64,  9 7 PROF-ARMED LDR,  9 off CBZ,
+   7 PROF-BAND-VA LIT64,  9 7 PROF-ARMED LDR,
+   9 ARMED-RUNS CMPI,  C-NE off BCOND,
    ARMED-HELD C-PROF-LEAVE-RUNS
+   0 7 PROF-ARENA LDR,  0 off CBZ,
+   9 CNTVCT>R  1 0 ARN-LAST LDR,  9 9 1 SUB,
+   1 0 ARN-CARRY LDR,  9 9 1 ADD,  9 0 ARN-CARRY STR,
    off LBL,
    C-PROF-TIMER-STOP ;
 
-\ Start a held clock again at the recorded interval; one prof-off stopped stays
-\ stopped. Clobbers x0-x2, x7 and x9-x12.
+\ Start a held clock again at the recorded interval, its first expiry at the
+\ interval's remainder after ARN-CARRY; only a held clock moves, so one
+\ prof-off stopped stays stopped. Clobbers x0-x2, x7 and x9-x12.
 : C-PROF-CLOCK-RESUME ( -- )
    LBL {: off :}
-   7 PROF-BAND-VA LIT64,  9 7 PROF-ARMED LDR,  9 off CBZ,
+   7 PROF-BAND-VA LIT64,  9 7 PROF-ARMED LDR,
+   9 ARMED-HELD CMPI,  C-NE off BCOND,
    0 7 PROF-ARENA LDR,
    C-PROF-CLOCK-MARK
    C-PROF-ARM
    C-PROF-TIMER-FRAME
+   C-PROF-TIMER-REST
    C-PROF-TIMER
    C-PROF-TIMER-DONE
    off LBL, ;
