@@ -2303,11 +2303,18 @@ private
    20 SP $8 LDR,
    BCB-LEAVE ;
 
+: BFFI-STAGE-ABI-ARGS ( -- )
+   16 G-POP  14 G-POP  13 G-POP  17 G-POP  15 G-POP
+   15 G-PUSH  17 G-PUSH  13 G-PUSH  14 G-PUSH
+   9 0 MOVZ,  9 G-PUSH  9 G-PUSH  16 G-PUSH ;
+
 : BFFI-CALL-ABI ( -- )
+   BFFI-STAGE-ABI-ARGS
    false BFFI-CALL-ABI-CORE
    0 G-PUSH ;
 
 : BFFI-CALL-ABI-R ( -- )
+   BFFI-STAGE-ABI-ARGS
    false BFFI-CALL-ABI-CORE
    9 0 FMOVDX,  9 G-PUSH ;
 
@@ -2663,6 +2670,13 @@ $58 constant CBT-LR                     \ C's x30
 \ prepacked addresses, which then point at the copies on the native stack.
 : BFFI-CALL-STRUCT-BOUNDED ( -- )
    true BFFI-CALL-ABI-BOUNDED-CORE
+   0 G-PUSH  1 G-PUSH ;
+
+: BFFI-CALL-STRUCT ( -- )
+   16 G-POP  2 G-POP  14 G-POP  13 G-POP  17 G-POP  15 G-POP
+   15 G-PUSH  17 G-PUSH  13 G-PUSH  14 G-PUSH
+   9 0 MOVZ,  9 G-PUSH  9 G-PUSH  16 G-PUSH
+   true BFFI-CALL-ABI-CORE
    0 G-PUSH  1 G-PUSH ;
 
 : BOPENRD ( -- )
@@ -4644,6 +4658,7 @@ package ENGINE-EMIT
    s" ffi-call-abi-bounded" ['] BFFI-CALL-ABI-BOUNDED FPRIM
    s" ffi-call-abi-r-bounded" ['] BFFI-CALL-ABI-R-BOUNDED FPRIM
    s" ffi-call-struct-bounded" ['] BFFI-CALL-STRUCT-BOUNDED FPRIM
+   s" ffi-call-struct" ['] BFFI-CALL-STRUCT FPRIM
    s" ffi-call-abi" ['] BFFI-CALL-ABI FPRIM
    s" ffi-call-abi-r" ['] BFFI-CALL-ABI-R FPRIM
    s" open-rd" ['] BOPENRD FPRIM-L

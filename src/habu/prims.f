@@ -975,11 +975,14 @@ EPRIM: ffi-call-struct-bounded PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN
                               PE-PTR-D PE-IN PE-PTR-E PE-IN PE-N PE-IN PE-N PE-IN
                               PE-N PE-IN PE-N PE-OUT PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!
-EPRIM: ffi-call-abi   PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN PE-N PE-IN PE-N PE-IN
-                     PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
+EPRIM: ffi-call-abi    PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN PE-N PE-IN PE-N PE-IN
+                      PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!
-EPRIM: ffi-call-abi-r PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN PE-N PE-IN PE-N PE-IN
-                     PE-N PE-IN PE-N PE-IN  PE-R PE-OUT EPRIM;
+EPRIM: ffi-call-abi-r  PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN PE-N PE-IN PE-N PE-IN
+                      PE-R PE-OUT EPRIM;
+ETRUSTED-ONLY!
+EPRIM: ffi-call-struct PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN PE-N PE-IN PE-N PE-IN
+                      PE-N PE-IN  PE-N PE-OUT PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!
 
 \ Each primitive here keeps the global ETRUSTED-ONLY! row above — the outside
