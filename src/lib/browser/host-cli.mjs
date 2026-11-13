@@ -62,8 +62,9 @@
 // <JSON>, mesh <handle> <V> <T>, unmesh <handle>, highlight <words> <words in
 // hex, little-endian>, draw <count> then each row's
 // <handle>/<id>/<flags>/<offset or ->/<rrggbb>/<metallic>/<roughness>, the
-// last two the u16s in decimal, svg <length> <bytes in hex>, input <0|1>, text
-// <string>; a highlight or draw of none prints only its count. At the end,
+// last two the u16s in decimal, ground <nx> <ny> <nz> <d> or ground none, svg
+// <length> <bytes in hex>, input <0|1>, text <string>; a highlight or draw of
+// none prints only its count. At the end,
 // outstanding <fetch|post> <path>, outstanding request <method> <path> <id>,
 // outstanding rpc <method> <id>, outstanding pick <id> or outstanding occlude
 // <id>. A --tick with no after
@@ -461,6 +462,7 @@ try {
         words.byteLength).toString("hex");
       print(`highlight ${words.length}${words.length ? ` ${hex}` : ""}`);
     },
+    ground: (plane) => print(`ground ${plane ? plane.join(" ") : "none"}`),
     svg: (bytes) => print(`svg ${bytes.length} ${Buffer.from(bytes).toString("hex")}`),
     input: (enabled) => print(`input ${enabled ? 1 : 0}`),
     text: (s) => print(`text ${s}`),

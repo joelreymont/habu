@@ -30,7 +30,8 @@
 \ through twice the identity moved by x 0.4, y -0.2 and z 0.5, so w is 2,
 \ and picks with id 5 a pixel of their face 1 that the identity leaves
 \ empty. Each picked event comes back as the text picked and its a, b, c and
-\ d in decimal.
+\ d in decimal. Typed "ground" sends the ground z = 0 with +z up,
+\ "ground-none" no ground.
 \ Built by `tools/hb-build.f -- --target wasm`, whose entry is MAIN.
 require src/lib/string.f
 require src/lib/browser/event.f
@@ -50,6 +51,7 @@ CAST: BYTES>N ( ptr u8 -- n )
 8 BUFFER: WORDS
 64 BUFFER: MATRIX
 64 BUFFER: SHIFTED
+16 BUFFER: PLANE
 4097 24 * BUFFER: BOXES
 512 BUFFER: IMAGE
 variable IMAGE-U
@@ -249,6 +251,18 @@ variable ECHO-U
    2 INSTANCE-ROWS 360 + BYTES>N 2 SHIFTED BYTES>N RECORD
    5 2 5 PICK ;
 
+: PLANE! ( n n n n -- )
+   \ The ground's nx, ny, nz and d, f32 bits.
+   {: x:n y:n z:n d:n :}
+   x PLANE U32!  y PLANE 4 + U32!  z PLANE 8 + U32!  d PLANE 12 + U32! ;
+
+: UP ( -- )
+   0 0 $3F800000 0 PLANE! ;
+
+: GROUND ( n n -- )
+   {: b:n c:n :}
+   17 PLANE BYTES>N b c RECORD ;
+
 : IS? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    2 EVENT@ u <> if false exit then
@@ -282,7 +296,17 @@ variable ECHO-U
    s" flag" IS? if 9 2 0 0 RECORD exit then
    s" negative-flag" IS? if 9 -1 0 0 RECORD exit then
    s" input-b" IS? if 9 1 1 0 RECORD exit then
-   s" input-c" IS? if 9 0 0 1 RECORD exit then ;
+   s" input-c" IS? if 9 0 0 1 RECORD exit then
+   s" ground" IS? if UP 16 0 GROUND exit then
+   s" ground-none" IS? if 17 0 0 0 RECORD exit then
+   s" ground-c" IS? if UP 16 1 GROUND exit then
+   s" ground-b" IS? if UP 12 0 GROUND exit then
+   s" ground-outside" IS? if 17 -1 16 0 RECORD exit then
+   \ Refused planes: nz NaN, n zero, and nz the least subnormal with d 1,
+   \ so d / |n| is past f32's range.
+   s" ground-nan" IS? if 0 0 $7FC00000 0 PLANE! 16 0 GROUND exit then
+   s" ground-flat" IS? if 0 0 0 $3F800000 PLANE! 16 0 GROUND exit then
+   s" ground-far" IS? if 0 0 1 $3F800000 PLANE! 16 0 GROUND exit then ;
 
 : CHAR+ ( n -- )
    ECHO-U @ ECHO-CAP >= if -1 throw then

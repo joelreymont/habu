@@ -115,8 +115,9 @@
 //     before it in record order, as that draw's rows, meshes, highlight and
 //     matrix stand: a pick after a draw in the same run reads that draw. A
 //     pick before any draw, of a draw of 0 rows, or of a pixel outside the
-//     buffer answers none. A pick that fails, the device lost, reaches error
-//     as a reply failure does, and sends no event
+//     buffer answers none. The ground is never picked: a pick on it answers
+//     none, as the background does. A pick that fails, the device lost,
+//     reaches error as a reply failure does, and sends no event
 //   16 occlude: a, b a span of boxes, six f32 each in world space (the lowest
 //     x, y, z, then the highest), so b is a multiple of 24; c a positive i64
 //     id. It tests against the last draw before it in record order: its matrix
@@ -128,7 +129,12 @@
 //     with corners on both sides of the near plane passes: only its faces are
 //     drawn, and the plane can cut every face away while its inside is in
 //     view. After a draw of 0 rows, or after a resize and before the next
-//     draw, nothing is drawn, so every box in view passes
+//     draw, nothing is drawn, so every box in view passes. The ground
+//     leaves no depth, so it hides no box
+//   17 ground: a, b a span of 16 bytes, four f32 nx, ny, nz, d, the world
+//     plane n·p + d = 0, n of any nonzero length toward the side that is up;
+//     or b 0 for none, the state before the first. c 0. It holds for every
+//     later draw
 // A post or request is answered for every HTTP status. Request, rpc, read,
 // pick and occlude records are tagged. A host that takes tagged records, or
 // fetches and posts from a run that throws, provides error(error): the first
@@ -213,8 +219,10 @@ const MESH = 13n;
 const UNMESH = 14n;
 const PICK = 15n;
 const OCCLUDE = 16n;
+const GROUND = 17n;
 const TAGGED = new Set([REQUEST, RPC, READ, PICK, OCCLUDE]);
 const BOX_BYTES = 24n; // an occlude's box: six f32
+const PLANE_BYTES = 16n; // a ground's plane: four f32
 
 const utf8 = new TextDecoder("utf-8", { fatal: true });
 // A request's leading BOM bytes are content, including at the start of a path.
@@ -247,9 +255,10 @@ export class Module {
   // is as request's. Also
   // mesh(handle, vertexCount, triangleCount, vertices, triangles) with copied
   // Uint16Arrays, unmesh(handle), draw(rows, count, matrix) with the rows'
-  // bytes copied, highlight(words) with a copied Uint32Array, text(string),
-  // tree(rows, selected), svg(copiedBytes), input(enabled), and size() ->
-  // [width, height] of the drawing buffer.
+  // bytes copied, highlight(words) with a copied Uint32Array,
+  // ground(plane) with a copied Float32Array of four, or null for none,
+  // text(string), tree(rows, selected), svg(copiedBytes), input(enabled), and
+  // size() -> [width, height] of the drawing buffer.
   static async load(bytes, host) {
     const { instance } = await WebAssembly.instantiate(bytes);
     return new Module(instance.exports, host);
@@ -624,6 +633,9 @@ export class Module {
       case UNMESH:
         this.unmesh(a, b, c);
         return;
+      case GROUND:
+        this.ground(a, b, c);
+        return;
       case SVG:
         if (c !== 0n) throw new Error("svg c must be zero");
         if (b <= 0n) throw new RangeError("svg needs a positive byte length");
@@ -728,6 +740,28 @@ export class Module {
       face = Math.max(face, vertices[k]);
     this.host.mesh(handle, vertexCount, triangleCount, vertices, triangles);
     this.meshes.set(handle, Math.floor(face / 32) + 1);
+  }
+
+  // A ground's plane, copied, or none for b 0. d / |n| is the plane's
+  // distance from the origin, which a host's f32 must hold.
+  ground(a, b, c) {
+    if (c !== 0n) throw new Error("ground c must be zero");
+    if (b === 0n) {
+      this.host.ground(null);
+      return;
+    }
+    if (b !== PLANE_BYTES)
+      throw new RangeError(`a ground of ${b} bytes, not 0 or ${PLANE_BYTES}`);
+    const plane = new Float32Array(this.span(a, b).slice().buffer);
+    if (!plane.every(Number.isFinite))
+      throw new RangeError(`a ground of ${plane.join(", ")}, not all finite`);
+    const [x, y, z, d] = plane;
+    const length = Math.hypot(x, y, z);
+    if (length === 0) throw new RangeError("a ground whose normal is (0, 0, 0)");
+    if (!Number.isFinite(Math.fround(d / length)))
+      throw new RangeError(`a ground whose d / |n|, ${d / length}, ` +
+        "is not a finite f32");
+    this.host.ground(plane);
   }
 
   unmesh(a, b, c) {

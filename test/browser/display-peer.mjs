@@ -18,6 +18,7 @@ const host = {
   svg: (bytes) => records.push(["svg", bytes]),
   input: (enabled) => records.push(["input", enabled]),
   draw: () => records.push(["draw"]),
+  ground: (plane) => records.push(["ground", plane]),
   tree() {}, text: (text) => records.push(["text", text]),
 };
 let module = await Module.load(bytes, host);
@@ -44,6 +45,9 @@ for (const [command, reason] of [
   ["flag", /input a must be 0 or 1/], ["negative-flag", /input a must be 0 or 1/],
   ["input-b", /input b and c must be zero/], ["input-c", /input b and c must be zero/],
   ["occlude", /occlude 7 before any draw/],
+  ["ground-c", /ground c must be zero/], ["ground-b", /a ground of 12 bytes, not 0 or 16/],
+  ["ground-outside", /outside the module/], ["ground-nan", /not all finite/],
+  ["ground-flat", /normal is \(0, 0, 0\)/], ["ground-far", /is not a finite f32/],
 ]) {
   const count = records.length;
   await assert.rejects(module.typed(command), reason, command);
@@ -72,7 +76,7 @@ assert.equal(memory(), before, "turns that throw must free their deliveries");
 const scene = join(output, "scene.bin");
 writeFileSync(scene, Uint8Array.of(0, 255, 16));
 const cli = Bun.spawn([process.execPath, "src/lib/browser/host-cli.mjs", file, "--typed", "on", "--typed", "zero",
-  "--typed", "draw", "--typed", "unmesh", "--load", scene,
+  "--typed", "draw", "--typed", "unmesh", "--typed", "ground", "--typed", "ground-none", "--load", scene,
   "--focus", "00".repeat(15) + "Ff",
   "--highlight", ""], { stdout: "pipe", stderr: "pipe" });
 const [stdout, stderr, code] = await Promise.all([
@@ -85,7 +89,7 @@ assert.equal(stdout, `hello\ninput 0\nsvg ${original.length} ${Buffer.from(origi
   "draw 5 1/1/0/0/ff7314/0/32768 2/2/0/0/30a040/65535/16384 " +
   "1/3/1/-/ffffff/0/0 1/4/0/-/2060c0/0/65535 3/5/0/-/30a040/0/0\n" +
   "draw 1 2/2/0/0/30a040/65535/16384\nunmesh 1\n" +
-  "draw 1 2/2/0/0/30a040/65535/16384\n" +
+  "draw 1 2/2/0/0/30a040/65535/16384\nground 0 0 1 0\nground none\n" +
   `text load 00ff10\ntext focus ${"00".repeat(15)}ff\ntext highlight \n`);
 console.log("SVG/input protocol, independent copy, rejected records, identities, refused delivery and CLI passed");
 
