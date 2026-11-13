@@ -13,7 +13,7 @@ blocks:
   - habu-read-each-def-f7ce769a
 ---
 
-Why: Joel, 2026-11-04 ("how Habu builds Habu", "one compiler"): an arm64 build is a cross-build whose product is data the build writes, and every machine runs one typed interpreter; the front end is shared and only code generation differs per architecture. What remains of the build and compiler work sits under this dot.
+Why: Joel, 2026-11-04 (docs/design.md "Machinery being replaced"): an arm64 build is a cross-build whose product is data the build writes, and every machine runs one typed interpreter; the front end is shared and only code generation differs per architecture. What remains of the build and compiler work sits under this dot.
 
 Order (each step lands as small green commits; a later step starts when the one before it lands; Joel, 2026-11-09: arm64 to arm64, then Wasm, then x86-64):
 1. The cross-build and the one linker (habu-make-a-file-dfc7e030), under habu-make-incremental-builds-41fd3214. Prerequisite: checker working state outside DATA (habu-take-checker-working-6703bc4f).
