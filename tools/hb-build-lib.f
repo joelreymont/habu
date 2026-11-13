@@ -33,8 +33,6 @@ create HBB-SRC-PATH PATH-CAP allot
 create HBB-OUT-PATH PATH-CAP allot
 create HBB-MAP-SRC PATH-CAP allot
 create HBB-MAP-DST PATH-CAP allot
-create HBB-PAIR-STAGE PATH-CAP allot
-create HBB-PAIR-BACKUP PATH-CAP allot
 create HBB-GOT-PATH PATH-CAP allot
 create HBB-LF-BUF 1 allot
 HBB-LF HBB-LF-BUF c!
@@ -43,13 +41,7 @@ variable HBB-SRC-U
 variable HBB-OUT-U
 variable HBB-MAP-SRC-U
 variable HBB-MAP-DST-U
-variable HBB-PAIR-STAGE-U
-variable HBB-PAIR-BACKUP-U
 variable HBB-GOT-U
-variable HBB-PAIR-HAD-MAP
-variable HBB-PAIR-MOVED
-variable HBB-PAIR-COMMITTED
-variable HBB-PAIR-KEEP-BACKUP
 variable HBB-I
 variable HBB-REPL
 variable HBB-ENGINE
@@ -61,12 +53,6 @@ variable HBB-START-NS
 variable HBB-ELAPSED-NS
 
 : HBB-WASM? ( -- bool ) HBB-TARGET @ RTARGET:ARCH@ CTARGET-ARCH:WASM CTARGET-ARCH:EQ ;
-
-: HBB-TRUE ( -- bool )
-   0 0= ;
-
-: HBB-FALSE ( -- bool )
-   HBB-TRUE 0= ;
 
 : HBB-EXIT ( n -- )
    s" " rot die ;
@@ -128,12 +114,6 @@ variable HBB-ELAPSED-NS
 : HBB-MAP-DST$ ( -- ptr u8 n ) HBB-MAP-DST HBB-MAP-DST-U @ ;
 
 : HBB-MAP-FILL ( ptr u8 n -- ) HBB-MAP-SRC$ 2swap FS:COPY-FILE-STREAM ;
-: HBB-MAP-COPY ( ptr u8 n ptr u8 n -- )
-   {: src:ptr srcu:n dst:ptr dstu:n :}
-   src srcu HBB-MAP-SRC!
-   dst dstu HBB-MAP-DST!
-   HBB-MAP-SRC$ FS:FILE? 0= if E-BUILD-PATH throw then
-   HBB-MAP-DST$ [: HBB-MAP-FILL ;] FS:REPLACE-STAGED ;
 
 : HBB-WERR ( ptr u8 n -- ) {: a:ptr u :}
    u 0= if exit then
@@ -144,8 +124,8 @@ variable HBB-ELAPSED-NS
 
 : HBB-PATH-HAS-DQ? ( ptr u8 n -- bool )
    STR:LENGTH HBB-DQ STR:INDEX-OF MATCH option
-     none OF HBB-FALSE ENDOF
-     some OF drop HBB-TRUE ENDOF
+     none OF false ENDOF
+     some OF drop true ENDOF
    ;MATCH ;
 
 : HBB-RESET-OPTIONS ( -- )
@@ -177,17 +157,17 @@ variable HBB-ELAPSED-NS
    HBB-INC-I ;
 
 : HBB-PARSE-OPTION? ( -- bool )
-   HBB-I @ SCRIPT-ARGC >= if HBB-FALSE exit then
-   HBB-I @ s" --repl" HBB-ARG= if -1 HBB-REPL ! HBB-INC-I HBB-TRUE exit then
-   HBB-I @ s" --engine" HBB-ARG= if -1 HBB-ENGINE ! HBB-INC-I HBB-TRUE exit then
-   HBB-I @ s" --json-errors" HBB-ARG= if -1 HBB-JSON ! HBB-INC-I HBB-TRUE exit then
-   HBB-I @ s" --report-json" HBB-ARG= if -1 HBB-REPORT-JSON ! HBB-INC-I HBB-TRUE exit then
-   HBB-I @ s" --size-report" HBB-ARG= if -1 HBB-SIZE-REPORT ! HBB-INC-I HBB-TRUE exit then
-   HBB-I @ s" --target" HBB-ARG= if HBB-TARGET-OPTION HBB-TRUE exit then
-   HBB-I @ HBB-ARG$ s" --" STR= if HBB-INC-I HBB-FALSE exit then
-   HBB-ENGINE @ if HBB-I @ s" -o" HBB-ARG= if HBB-FALSE exit then then
+   HBB-I @ SCRIPT-ARGC >= if false exit then
+   HBB-I @ s" --repl" HBB-ARG= if -1 HBB-REPL ! HBB-INC-I true exit then
+   HBB-I @ s" --engine" HBB-ARG= if -1 HBB-ENGINE ! HBB-INC-I true exit then
+   HBB-I @ s" --json-errors" HBB-ARG= if -1 HBB-JSON ! HBB-INC-I true exit then
+   HBB-I @ s" --report-json" HBB-ARG= if -1 HBB-REPORT-JSON ! HBB-INC-I true exit then
+   HBB-I @ s" --size-report" HBB-ARG= if -1 HBB-SIZE-REPORT ! HBB-INC-I true exit then
+   HBB-I @ s" --target" HBB-ARG= if HBB-TARGET-OPTION true exit then
+   HBB-I @ HBB-ARG$ s" --" STR= if HBB-INC-I false exit then
+   HBB-ENGINE @ if HBB-I @ s" -o" HBB-ARG= if false exit then then
    HBB-I @ HBB-ARG$ s" -" STARTS-WITH? if HBB-USAGE then
-   HBB-FALSE ;
+   false ;
 
 : HBB-PARSE-OPTIONS ( -- )
    begin HBB-PARSE-OPTION? while repeat ;
@@ -242,155 +222,18 @@ variable HBB-ELAPSED-NS
 : HBB-CLEANUP ( -- )
    FS:CLEANUP-RUN ;
 
-\ Every file hb-build writes at -o is written to its sibling and renamed over
-\ -o only once it is whole, a program executable (src/lib/fs-mutate.f FS:REPLACE-STAGED), so
-\ a failed install leaves -o as it was and no sibling.
-\ HBB-FILLING is set only while the fill runs, so HBB-REPLACE-OUT tells the
-\ fill's own failure (its source, the bytes it writes) from the replace's: a
-\ sibling the host will not make beside -o, or a rename it refuses, is an
-\ output hb-build cannot replace, and the CLI names it (HBB-CLI-CODE).
-defer HBB-FILL ( ptr u8 n -- )
-variable HBB-FILLING
-
-: HBB-FILL-RUN ( ptr u8 n -- )
-   -1 HBB-FILLING !
-   HBB-FILL
-   0 HBB-FILLING ! ;
-
-: HBB-REPLACE-RUN ( -- )
-   HBB-OUT$ [: HBB-FILL-RUN ;] FS:REPLACE-STAGED ;
-
-: HBB-REPLACE-OUT ( [ ptr u8 n -- ] -- )
-   is HBB-FILL
-   0 HBB-FILLING !
-   [: HBB-REPLACE-RUN ;] catch {: rc:n :}
+\ Each file hb-build writes, the map and then -o, is written to its sibling
+\ and renamed over it only once it is whole (FS:REPLACE-STAGED), so a failed
+\ install leaves that file as it was and no sibling. A sibling the host will
+\ not make, a write or rename it refuses, or a failed read of the build's own
+\ output the fill copies, is an output hb-build cannot replace, and the CLI
+\ names it (HBB-CLI-CODE).
+: HBB-REPLACE ( ptr u8 n [ ptr u8 n -- ] -- )
+   {: a:ptr u:n fill :}
+   [: a u fill FS:REPLACE-STAGED ;] catch {: rc:n :}
    rc 0= if exit then
-   HBB-FILLING @ if rc throw then
    rc E-FS-OPEN = rc E-FS-IO = or if E-BUILD-INSTALL throw then
    rc throw ;
-
-\ The executable's FS:REPLACE-STAGED fill publishes the already staged map only
-\ after its executable copy and chmod have completed. The outer rename is the
-\ last step; a refusal there puts the prior map back from its sibling.
-defer HBB-PAIR-EXE-FILL ( ptr u8 n -- )
-
-: HBB-PAIR-STAGE$ ( -- ptr u8 n )
-   HBB-PAIR-STAGE HBB-PAIR-STAGE-U @ ;
-
-: HBB-PAIR-BACKUP$ ( -- ptr u8 n )
-   HBB-PAIR-BACKUP HBB-PAIR-BACKUP-U @ ;
-
-: HBB-PAIR-RESERVE ( ptr u8 ptr n -- )
-   {: dst:ptr up:ptr :}
-   HBB-MAP-DST$ FS:RESERVE-SIBLING {: a:ptr u:n fd:n :}
-   a u dst up HBB-COPY-PATH!
-   fd FS:CLOSE-FD 0<> if E-FS-IO throw then
-   dst up @ FS:CLEANUP+ ;
-
-: HBB-PAIR-STAGE-RESERVE ( -- )
-   HBB-PAIR-STAGE HBB-PAIR-STAGE-U HBB-PAIR-RESERVE ;
-
-: HBB-PAIR-BACKUP-RESERVE ( -- )
-   HBB-PAIR-BACKUP HBB-PAIR-BACKUP-U HBB-PAIR-RESERVE ;
-
-: HBB-PAIR-RESERVE-CODE ( n -- )
-   {: code:n :}
-   code 0= if exit then
-   code E-FS-OPEN = code E-FS-IO = or if E-BUILD-INSTALL throw then
-   code throw ;
-
-: HBB-PAIR-STAGE-MAP ( -- )
-   HBB-MAP-SRC$ FS:FILE? 0= if E-BUILD-PATH throw then
-   [: HBB-PAIR-STAGE-RESERVE ;] catch HBB-PAIR-RESERVE-CODE
-   HBB-MAP-SRC$ HBB-PAIR-STAGE$ FS:COPY-FILE-STREAM
-   HBB-MAP-DST$ FS:TRY-LSTAT if
-      [: HBB-PAIR-BACKUP-RESERVE ;] catch HBB-PAIR-RESERVE-CODE
-      -1 HBB-PAIR-HAD-MAP !
-   then ;
-
-: HBB-PAIR-FILL ( ptr u8 n -- )
-   2dup HBB-PAIR-EXE-FILL
-   2drop
-   HBB-PAIR-HAD-MAP @ if
-      HBB-MAP-DST$ HBB-PAIR-BACKUP$ FS:RENAME-FILE
-      -1 HBB-PAIR-MOVED !
-   then
-   HBB-PAIR-STAGE$ HBB-MAP-DST$ FS:RENAME-FILE
-   -1 HBB-PAIR-COMMITTED ! ;
-
-: HBB-PAIR-ROLLBACK ( -- )
-   HBB-PAIR-MOVED @ if
-      HBB-PAIR-BACKUP$ HBB-MAP-DST$ FS:RENAME-FILE
-   else
-      HBB-PAIR-COMMITTED @ if HBB-MAP-DST$ FS:REMOVE-FILE then
-   then ;
-
-: HBB-PAIR-CLEAN-ONE ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   u 0= if exit then
-   a u FS:ATOMIC-CLEAN-TEMP
-   a u FS:CLEANUP-FORGET ;
-
-: HBB-PAIR-CLEAN-BACKUP ( -- )
-   HBB-PAIR-KEEP-BACKUP @ if
-      HBB-PAIR-BACKUP$ FS:CLEANUP-FORGET
-   else
-      HBB-PAIR-BACKUP$ HBB-PAIR-CLEAN-ONE
-   then ;
-
-: HBB-PAIR-CLEAN ( -- n n )
-   [: HBB-PAIR-CLEAN-BACKUP ;] catch
-   [: HBB-PAIR-STAGE$ HBB-PAIR-CLEAN-ONE ;] catch ;
-
-: HBB-PAIR-REPORT ( ptr u8 n n ptr u8 n -- )
-   {: label:ptr labelu:n code:n path:ptr pathu:n :}
-   SB-RESET
-   s" hb-build: " SB-APPEND
-   label labelu SB-APPEND
-   s"  (code " SB-APPEND
-   code FMT:SB-INT
-   s" ) at " SB-APPEND
-   \ A report must not replace the failure it describes, including when stderr
-   \ is closed. The path can exceed the string builder's 1 KiB capacity.
-   2 SB$ write drop
-   2 path pathu write drop
-   2 HBB-LF-BUF 1 write drop ;
-
-: HBB-PAIR-REPORT-ROLLBACK ( n -- )
-   {: code:n :}
-   HBB-PAIR-MOVED @ if
-      s" map rollback failed; prior map retained" code HBB-PAIR-BACKUP$ HBB-PAIR-REPORT
-   else
-      s" map rollback failed; new map retained" code HBB-MAP-DST$ HBB-PAIR-REPORT
-   then ;
-
-: HBB-PAIR-REPORT-CLEAN ( n n -- )
-   {: backup:n stage:n :}
-   backup 0<> if
-      s" cannot clean map backup" backup HBB-PAIR-BACKUP$ HBB-PAIR-REPORT
-   then
-   stage 0<> if
-      s" cannot clean staged map" stage HBB-PAIR-STAGE$ HBB-PAIR-REPORT
-   then ;
-
-: HBB-PAIR-RUN ( [ ptr u8 n -- ] -- )
-   is HBB-PAIR-EXE-FILL
-   0 HBB-PAIR-STAGE-U ! 0 HBB-PAIR-BACKUP-U !
-   0 HBB-PAIR-HAD-MAP ! 0 HBB-PAIR-MOVED ! 0 HBB-PAIR-COMMITTED !
-   0 HBB-PAIR-KEEP-BACKUP !
-   [: HBB-PAIR-STAGE-MAP [: HBB-PAIR-FILL ;] HBB-REPLACE-OUT ;] catch {: code:n :}
-   code 0<> if
-      [: HBB-PAIR-ROLLBACK ;] catch {: recover:n :}
-      recover 0<> HBB-PAIR-MOVED @ 0<> and HBB-PAIR-KEEP-BACKUP !
-      HBB-PAIR-CLEAN {: backup:n stage:n :}
-      recover 0<> if recover HBB-PAIR-REPORT-ROLLBACK then
-      backup stage HBB-PAIR-REPORT-CLEAN
-      code throw
-   then
-   HBB-PAIR-CLEAN {: backup:n stage:n :}
-   backup stage HBB-PAIR-REPORT-CLEAN
-   backup 0<> if backup throw then
-   stage 0<> if stage throw then ;
 
 \ The program a build wrote under TMPDIR may be on another filesystem, so it is
 \ copied; the copy keeps the team signature the product already carries.
@@ -454,7 +297,7 @@ TYPED-VARIABLE HBB-SAME-OUT bool
 
 : HBB-INSTALL-MODULE ( -- )
    HBB-SAME-MODULE? if exit then
-   [: HBB-MODULE-FILL ;] HBB-REPLACE-OUT ;
+   HBB-OUT$ [: HBB-MODULE-FILL ;] HBB-REPLACE ;
 
 \ Only a program that replaces -o is team-signed, under TMPDIR before it is
 \ staged: an unchanged build signs nothing.
@@ -464,8 +307,10 @@ TYPED-VARIABLE HBB-SAME-OUT bool
    HBB-GOT$ HBB-MAP-SRC!
    HBB-OUT$ HBB-MAP-DST!
    HBB-SAME-OUT? if exit then
+   HBB-MAP-SRC$ FS:FILE? 0= if E-BUILD-PATH throw then
    HBB-GOT$ CODESIGN:ENSURE
-   [: HBB-INSTALL-FILL ;] HBB-PAIR-RUN ;
+   HBB-MAP-DST$ [: HBB-MAP-FILL ;] HBB-REPLACE
+   HBB-OUT$ [: HBB-INSTALL-FILL ;] HBB-REPLACE ;
 
 : HBB-SUCCESS ( -- )
    s" hb-build OK: " type
@@ -579,10 +424,7 @@ TYPED-VARIABLE HBB-SAME-OUT bool
 : HBB-CLI-CODE ( n -- ) {: rc:n :}
    rc 0= if exit then
    rc E-BUILD-INSTALL = if
-      [: HBB-CLEANUP ;] catch {: clean:n :}
-      clean 0<> if
-         s" build cleanup failed" clean HBB-OUT$ HBB-PAIR-REPORT
-      then
+      HBB-CLEANUP
       s" hb-build: cannot replace output" HBB-BUILD-RC die
    then
    rc CODESIGN:E-IDENTITY = if
