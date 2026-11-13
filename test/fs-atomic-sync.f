@@ -1,0 +1,149 @@
+\ fs-atomic-sync.f - an atomic write whose directory sync fails after the
+\ rename throws E-FS-SYNC with the host's errno, the target holding the new
+\ bytes. A preloaded shim fails with EIO a directory fsync the host accepted:
+\ the file's sync passes, the rename lands, and the reopened directory's sync
+\ fails.
+HB-TARGET-LINUX? ?TARGET
+
+require src/lib/string.f
+require src/lib/test.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/fmt.f
+require src/lib/codegen.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/engine-candidate.f
+
+package ATOMIC-SYNC-TEST
+private
+
+$1000 constant IO-CAP
+5 constant EIO
+
+$800 CODEGEN:BUFFER SHIM
+$800 CODEGEN:BUFFER PROG
+create ROOT PATH-CAP allot   variable ROOT-U
+create SHIM-C PATH-CAP allot   variable SHIM-C-U
+create SHIM-SO PATH-CAP allot   variable SHIM-SO-U
+create TARGET PATH-CAP allot   variable TARGET-U
+create OUT IO-CAP allot
+create ERR IO-CAP allot
+create GOT IO-CAP allot
+
+: ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
+: SHIM-C$ ( -- ptr u8 n ) SHIM-C SHIM-C-U @ ;
+: SHIM-SO$ ( -- ptr u8 n ) SHIM-SO SHIM-SO-U @ ;
+: TARGET$ ( -- ptr u8 n ) TARGET TARGET-U @ ;
+
+: C+ ( ptr u8 n -- )
+   SHIM CODEGEN:APPEND-STRING
+   10 SHIM CODEGEN:APPEND-BYTE ;
+
+: P+ ( ptr u8 n -- )
+   PROG CODEGEN:APPEND-STRING
+   10 PROG CODEGEN:APPEND-BYTE ;
+
+: SHIM-SOURCE ( -- )
+   SHIM CODEGEN:RESET
+   s" #define _GNU_SOURCE" C+
+   s" #include <dlfcn.h>" C+
+   s" #include <errno.h>" C+
+   s" #include <sys/stat.h>" C+
+   s" int fsync(int fd) {" C+
+   s"    int (*real)(int) =" C+
+   S\"       (int (*)(int))dlsym(RTLD_NEXT, \"fsync\");" C+
+   s"    int rc = real(fd);" C+
+   s"    struct stat st;" C+
+   s"    if (rc == 0 && fstat(fd, &st) == 0 && S_ISDIR(st.st_mode)) {" C+
+   s"       errno = EIO; return -1; }" C+
+   s"    return rc; }" C+ ;
+
+\ The child prints the code its write threw and FS:ERRNO, one per line.
+: CHILD-SOURCE ( -- )
+   PROG CODEGEN:RESET
+   s" require src/lib/fs-mutate.f" P+
+   s" require src/lib/fmt.f" P+
+   s" : GO ( -- )" P+
+   S\"    s\" ATOMIC_SYNC_TARGET\" GETENV {: p:ptr u:n :}" P+
+   S\"    [: p u s\" new bytes\" FS:ATOMIC-WRITE-FILE ;] catch" P+
+   s"    FS:ERRNO {: code:n e:n :}" P+
+   s"    code FMT:INT$ type cr e FMT:INT$ type cr ;" P+
+   s" GO" P+ ;
+
+\ cc inherits this process's environment: its driver finds ld through PATH.
+: CC ( -- )
+   PROC-ARGV-ENV-RESET
+   s" -shared" >LEN PROC-ARGV+
+   s" -fPIC" >LEN PROC-ARGV+
+   s" -std=gnu11" >LEN PROC-ARGV+
+   s" -Wall" >LEN PROC-ARGV+
+   s" -Werror" >LEN PROC-ARGV+
+   s" -o" >LEN PROC-ARGV+
+   SHIM-SO$ >LEN PROC-ARGV+
+   SHIM-C$ >LEN PROC-ARGV+
+   PROC-ENV-INHERIT-MISSING
+   s" /usr/bin/cc" >LEN -1 >FD -1 >FD -1 >FD PROC-RUN-ARGV-ENV-IO-RC MATCH result
+      ok OF drop ENDOF
+      err OF drop s" fs-atomic-sync: cc failed" T-EX-FAIL die ENDOF
+   ;MATCH ;
+
+: SETUP ( -- )
+   FS:CLEANUP-RESET
+   s" habu-atomic-sync" FS:MKTEMP-DIR {: a:ptr u:n :}
+   a ROOT u BYTE-COPY  u ROOT-U !
+   ROOT$ FS:CLEANUP-TREE+
+   ROOT$ s" shim.c" SHIM-C FS:JOIN-PATH SHIM-C-U !
+   ROOT$ s" shim.so" SHIM-SO FS:JOIN-PATH SHIM-SO-U !
+   ROOT$ s" target" TARGET FS:JOIN-PATH TARGET-U !
+   SHIM-SOURCE
+   SHIM-C$ SHIM CODEGEN:CONTENTS FS:WRITE-ALL
+   CC
+   CHILD-SOURCE
+   TARGET$ s" old bytes" FS:WRITE-ALL ;
+
+\ A fresh engine: LD_PRELOAD reaches only a process it starts.
+: RUN ( -- n n n )   \ outu erru rc
+   ENGINE-CANDIDATE:PATH$ {: engine:ptr engineu:n :}
+   PROG CODEGEN:CONTENTS {: prog:ptr progu:n :}
+   PROC-ARGV-ENV-RESET
+   s" LD_PRELOAD" >LEN SHIM-SO$ >LEN PROC-ENV+
+   s" ATOMIC_SYNC_TARGET" >LEN TARGET$ >LEN PROC-ENV+
+   PROC-ENV-INHERIT-MISSING
+   engine engineu >LEN prog progu >LEN
+   OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
+   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N
+   {: outu:len erru:len rc:n :}
+   outu LEN>N erru LEN>N rc ;
+
+: WANT$ ( -- ptr u8 n )
+   SB-RESET
+   E-FS-SYNC FMT:SB-INT 10 SB-APPEND-C
+   EIO FMT:SB-INT 10 SB-APPEND-C
+   SB$ ;
+
+: SYNC-CASE ( -- )
+   RUN {: outu:n erru:n rc:n :}
+   OUT outu WANT$ STR= 0= rc 0 <> or if ERR erru type cr then
+   s" a failed directory sync is E-FS-SYNC, errno EIO" T-LABEL
+   OUT outu WANT$ T$=
+   s" the child engine exits cleanly" T-LABEL
+   rc 0 T=
+   s" ... and the target holds the new bytes" T-LABEL
+   TARGET$ GOT IO-CAP FS:READ-ALL {: gotu:n :}
+   GOT gotu s" new bytes" T$= ;
+
+public
+
+: ATOMIC-SYNC-TEST-MAIN ( -- )
+   T-RESET
+   SETUP
+   SYNC-CASE
+   FS:CLEANUP-RUN
+   T-REPORT
+   s" fs-atomic-sync: ok" type cr ;
+
+;package
+
+ATOMIC-SYNC-TEST:ATOMIC-SYNC-TEST-MAIN

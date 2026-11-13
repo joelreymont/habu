@@ -30,6 +30,7 @@ require src/lib/prelude.f
 -2106 constant E-FS-CAPACITY
 -2107 constant E-FS-PATH-UNSAFE
 -2108 constant E-FS-BAND        \ layout FS-ABI band widths disagree with the caps here
+-2109 constant E-FS-SYNC        \ the target holds the new bytes; its directory sync failed
 -2110 constant E-FS-TIMEOUT     \ a descriptor transfer reached its deadline
 
 \ Strings: -2200..-2299

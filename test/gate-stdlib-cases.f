@@ -1024,6 +1024,13 @@ SUITE fs-mutate
    src/lib/fs-rename-noreplace-test.f
 ;SUITE
 
+\ The directory sync fails through an LD_PRELOAD shim of glibc's fsync.
+HB-TARGET-LINUX? [if]
+SUITE fs-atomic-sync
+   test/fs-atomic-sync.f
+;SUITE
+[then]
+
 SUITE exit-hook
    test/exit-hook-test.f
 ;SUITE

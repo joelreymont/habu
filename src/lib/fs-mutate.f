@@ -632,22 +632,22 @@ FUNCTION: FCNTL-CALL fcntl ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
    fd ATOMIC-SYNC drop
    fd src srcu mode ;
 
-\ Linux refuses fsync on a search-only descriptor (EBADF), so dir is reopened
-\ to read; one the caller may not list stays unsynced.
+\ Runs after the publish, hence E-FS-SYNC. Linux won't fsync a search-only dir
+\ (EBADF), so it is reopened to read; one the caller cannot list stays unsynced.
 : ATOMIC-SYNC-DIR ( n -- n ) {: dir :}
    dir [: ATOMIC-SYNC ;] catch {: first:n :}
    drop
    first 0= if dir exit then
-   ERRNO EBADF <> if first throw then
+   ERRNO EBADF <> if E-FS-SYNC throw then
    dir S\" .\z" drop OPEN-DIR-FLAGS OPEN-AT-CALL {: rd:n :}
    rd 0 < if
       FFI:ERRNO EACCES = if dir exit then
-      E-FS-IO ERRNO-FAIL
+      E-FS-SYNC ERRNO-FAIL
    then
    rd [: ATOMIC-SYNC ;] catch {: code:n :}
    drop
    rd CLOSE-FD drop
-   code 0<> if code throw then
+   code 0<> if E-FS-SYNC throw then
    dir ;
 
 \ Closed exactly once, before publish: a failed close may already have freed
@@ -735,7 +735,8 @@ public
    E-FS-IO ERRNO-FAIL ;
 
 \ Replace path's file with src's bytes; a reader or crash sees old or whole new,
-\ durable as ATOMIC-SYNC-DIR says. A throw, even past the rename, sets FS:ERRNO.
+\ durable as ATOMIC-SYNC-DIR says. A throw sets FS:ERRNO; one from the
+\ directory sync after the rename is E-FS-SYNC, the new file in place.
 : ATOMIC-WRITE-FILE ( ptr u8 n ptr u8 n -- )
    {: path:ptr pathu src:ptr srcu :}
    path pathu src srcu ATOMIC-SEED false false ATOMIC-WRITE-SEED drop ;
