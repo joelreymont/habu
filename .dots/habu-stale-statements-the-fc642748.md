@@ -1,5 +1,5 @@
 ---
-title: Stale statements the DECISIONS.md census met
+title: Stale statements the decisions census met
 status: open
 priority: 2
 issue-type: task

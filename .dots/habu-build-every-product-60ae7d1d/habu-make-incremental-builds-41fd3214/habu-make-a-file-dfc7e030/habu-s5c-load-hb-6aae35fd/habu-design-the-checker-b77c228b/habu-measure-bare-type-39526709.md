@@ -5,7 +5,7 @@ priority: 2
 issue-type: task
 created-at: "2026-11-06T13:19:27.306571+02:00"
 closed-at: "2026-11-06T17:13:11.613625+02:00"
-close-reason: "Measured: the counts are in this dot (suite 65 sites, Tender 63, Etch and Maki not loadable). Joel ruled on them 2026-11-06 (DECISIONS 'type names'): the fallback goes, in the tfb lane after C2."
+close-reason: "Measured: the counts are in this dot (suite 65 sites, Tender 63, Etch and Maki not loadable). Joel ruled on them 2026-11-06 (docs/forth.md 'Rows, variables, and lexing'): the fallback goes, in the tfb lane after C2."
 ---
 
 Problem: facts design item 5: how many bare type names in the tree, Etch, Maki and Tender resolve only through the type registry's unique public fallback (src/core/type-family.f:729-746 TFAM-FIND-PUBLIC, reached from TFAM-RESOLVE :787). Joel's question (types follow the word scope rules) needs the count. Acceptance: a list of every fallback hit (type, owning package, file:line) from the suite and the three clients, deduplicated, with totals per repository. Files: src/core/type-family.f (instrumentation only, never landed). Verify: the counts. Depends: none. Ownership: the jerry-tfam workspace. Claim: agent=worker workspace=.jj-ws.noindex/jerry-tfam

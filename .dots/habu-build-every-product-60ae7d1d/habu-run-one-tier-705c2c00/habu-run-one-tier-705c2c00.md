@@ -82,9 +82,10 @@ native-runtime.f manifest, tools/build-fixpoint.f; mirror list xcomp.md:497-504)
 gen2 by T0-arm64, fixpoint gen2->3 (tools/two-generation-build.f). No snapshot/capture file references the JIT.
 Machine code stays: primitive bodies, interpreter loop, boot, snapshot relocation, seed dictionary writers.
 Switching arm64 to the Habu loop is enabled, not required (separate decision).
-Gforth seed RETIRED (Joel 2026-10-28): delete bootstrap/, tools/bootstrap.sh, ddc-verify.f Gforth leg; recovery =
+Gforth seed RETIRED (Joel 2026-10-28): delete bootstrap/, ddc-verify.f Gforth leg; recovery =
 trusted native seed or cross-build from another host; DDC = cross-host double compile (x86 host builds arm64
 product vs arm64 self-build, byte compare). Update CLAUDE.md/docs that name Gforth recovery.
+tools/bootstrap.sh is gone: recovery is a trusted hb run through tools/seed-main.f, which builds bin/hb with tools/hb-build.f (docs/bootstrap.md "Recovery").
 
 ## 4. Wasm (host-side only; no Wasm runtime compiler)
 t0-wasm.f writes WLINK's call and address rows (CALL row = padded 5-byte index; ADDR row = padded 10-byte

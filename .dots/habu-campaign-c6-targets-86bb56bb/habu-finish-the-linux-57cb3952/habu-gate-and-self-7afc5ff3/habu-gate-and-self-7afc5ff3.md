@@ -5,7 +5,7 @@ priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.397922+03:00"
 closed-at: "2026-11-04T11:48:49.168736+02:00"
-close-reason: "Census 2026-11-04: goes with habu-delete-tier-1-f5c44fb4, T0 compiling every target, tier 1 and the JIT kept only for experiments (DECISIONS \"editing tier 1\", \"the T0 release\"). Lane G targets a tier-1-only x86 engine self-hosting through native-build.f; premise gone (x86 on T0, 120d2f54)."
+close-reason: "Census 2026-11-04: goes with habu-delete-tier-1-f5c44fb4, T0 compiling every target, tier 1 and the JIT kept only for experiments. Lane G targets a tier-1-only x86 engine self-hosting through native-build.f; premise gone (x86 on T0, 120d2f54)."
 blocks:
   - habu-pass-the-full-07316f5a
   - habu-measure-tier-1-0faadb01

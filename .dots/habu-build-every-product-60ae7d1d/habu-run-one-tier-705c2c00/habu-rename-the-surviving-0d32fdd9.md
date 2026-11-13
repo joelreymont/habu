@@ -5,7 +5,7 @@ priority: 2
 issue-type: task
 created-at: "2026-10-29T12:42:17.556282+02:00"
 closed-at: "2026-11-04T11:48:49.753653+02:00"
-close-reason: "Census 2026-11-04: goes with habu-make-a-file-dfc7e030, the cross-build whose product is data (DECISIONS \"how Habu builds Habu\"). native-runtime.f provided rows exist for out-of-date hosts and the reloaded prefix; cross-build and hard cutover remove them."
+close-reason: "Census 2026-11-04: goes with habu-make-a-file-dfc7e030, the cross-build whose product is data (docs/design.md \"Machinery being replaced\"). native-runtime.f provided rows exist for out-of-date hosts and the reloaded prefix; cross-build and hard cutover remove them."
 ---
 
 After B1 (habu-build-a-tree-d00185b1: the host reloads the tree's whole prefix), nothing here needs a name; it goes. Hard cutover.

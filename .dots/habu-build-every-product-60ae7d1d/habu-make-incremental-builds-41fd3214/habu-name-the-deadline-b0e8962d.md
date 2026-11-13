@@ -5,7 +5,7 @@ priority: 2
 issue-type: task
 created-at: "2026-11-06T16:22:18.902939+02:00"
 closed-at: "2026-11-10T21:50:20.704717+02:00"
-close-reason: "obsolete: src/lib/keyed-image.f and HBB-RUN-MAKER-CMD are gone; DECISIONS.md:1203-1210 removes the maker child and HB_BUILD_TIMEOUT_MS"
+close-reason: "obsolete: src/lib/keyed-image.f and HBB-RUN-MAKER-CMD are gone; Joel 2026-11-09 chose in-process builds: the maker image, the child and HB_BUILD_TIMEOUT_MS go"
 ---
 
 Workspace: none yet (finding by jerry, 2026-11-06).

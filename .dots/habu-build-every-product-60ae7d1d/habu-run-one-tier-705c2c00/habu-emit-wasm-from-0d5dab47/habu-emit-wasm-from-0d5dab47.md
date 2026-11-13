@@ -6,7 +6,7 @@ issue-type: task
 created-at: "2026-10-28T14:52:51.664135+02:00"
 ---
 
-Campaign. Design settled 2026-11-09 (DECISIONS.md "Wasm through the one linker"; the Plan agent's full text, read-only and never run, in .jj-ws.noindex/jerry-wasm/.out/wasm-design.md). Goals step 2 ("Wasm and x86-64 after arm64"): after arm64, before x86-64 (habu-re-enable-the-959502b5 waits on this dot).
+Campaign. Design settled 2026-11-09 (the Plan agent's full text, read-only and never run, in .jj-ws.noindex/jerry-wasm/.out/wasm-design.md). Goals step 2 ("Wasm and x86-64 after arm64"): after arm64, before x86-64 (habu-re-enable-the-959502b5 waits on this dot).
 
 Problem: no command builds a Wasm module. tools/wasm-build.f builds by capturing the running hb's memory (machinery being replaced) and dies at load on the landing tree; tier 1 makes every Wasm body; T0 has an empty Wasm slot in its emitter seam (src/habu/t0-emit.f). Acceptance: `tools/hb-build.f -- --target wasm source.f -o out.wasm` links a module through LINKER:WITH/WRITE that src/lib/browser/turn.js loads (same exports, WPROF layout); Maki's viewer (~/Work/maki/viewer.f) builds and runs through it; the capture tests' subject is gone and the Wasm device check and browser tests run on the new command.
 

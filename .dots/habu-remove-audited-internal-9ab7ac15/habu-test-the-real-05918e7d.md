@@ -9,3 +9,4 @@ close-reason: "Triage 2026-10-22, DONE: tools/bootstrap.sh:155 appends src/habu/
 ---
 
 hide.f BFR twin is tested while bootstrap.sh emits separately maintained BOOT implementation. Share actual bootstrap lookup source or exercise generated prefix; preserve first match, case folding, duplicate/missing marker behavior. Remove duplicate inverse implementation. Existing bootstrap-codegen cases and no-binary recovery check.
+tools/bootstrap.sh is gone: recovery is a trusted hb run through tools/seed-main.f, which builds bin/hb with tools/hb-build.f (docs/bootstrap.md "Recovery").

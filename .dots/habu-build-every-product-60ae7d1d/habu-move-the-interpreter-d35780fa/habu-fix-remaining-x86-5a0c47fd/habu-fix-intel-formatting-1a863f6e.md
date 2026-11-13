@@ -5,7 +5,7 @@ priority: 2
 issue-type: task
 created-at: "2026-10-23T11:37:54.221597+00:00"
 closed-at: "2026-11-04T11:48:48.034170+02:00"
-close-reason: "Census 2026-11-04: goes with habu-make-a-file-dfc7e030, the cross-build whose product is data (DECISIONS \"how Habu builds Habu\"). Exit 84 from x86 capture closures differing from arm64 (whitebox rows); workspace pulsar-intel-numbers not listed, idle since 2026-10-23."
+close-reason: "Census 2026-11-04: goes with habu-make-a-file-dfc7e030, the cross-build whose product is data (docs/design.md \"Machinery being replaced\"). Exit 84 from x86 capture closures differing from arm64 (whitebox rows); workspace pulsar-intel-numbers not listed, idle since 2026-10-23."
 ---
 
 Pulsar owner: number_rows worker in .jj-ws.noindex/pulsar-intel-numbers at intel 184663fe. fmt-numbers exits 84 after FMT, tail-pure-fixtures after BUF; establish whether same x86 root. Fix source, preserve master tests, run affected existing E2E. Shared-code ARM check remains open for Mac; independent review before intel landing.
