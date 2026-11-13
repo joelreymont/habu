@@ -30136,9 +30136,11 @@ package CHECK
 
 \ Per wordlist id, one plus the index of the newest namespace record whose public
 \ or private wordlist it is, 0 for none, over the records below NS-SEEN. A lookup
-\ first indexes the records made since; it indexes from 0 again when the count
-\ went down, or when the answer is missing or no longer holds, as after a package
-\ gains its private wordlist. The cells rest in a scratch span: SR-RETIRE empties it.
+\ first indexes the records made since. When the count went down it drops the rows
+\ naming a record at or above it, which can empty a row an older record holds; it
+\ indexes from 0 again when the answer is missing or no longer holds, as after a
+\ package gains its private wordlist. The cells rest in a scratch span: SR-RETIRE
+\ empties it.
 CHECKER-REG:SCRATCH{
 PTR-VARIABLE NS-ROWS-P   variable NS-CAP   variable NS-SEEN
 CHECKER-REG:}SCRATCH
@@ -30161,8 +30163,17 @@ CHECKER-REG:}SCRATCH
 
 : NS-CLEAR ( -- ) NS-ROWS-P @ 0 NS-CAP @ ARENA-CELLS-ZERO  0 NS-SEEN ! ;
 
+: NS-UNNAME ( ptr n n -- )
+   {: row:ptr top:n :}
+   row @ top > IF 0 row ! THEN ;
+
+: NS-DROP ( n -- )
+   {: top:n :}
+   NS-CAP @ 0 ?DO NS-ROWS-P @ i cells + top NS-UNNAME LOOP
+   top NS-SEEN ! ;
+
 : NS-INDEX ( -- )
-   ndict@ NS-SEEN @ < IF NS-CLEAR THEN
+   ndict@ NS-SEEN @ < IF ndict@ NS-DROP THEN
    ndict@ NS-SEEN @ ?DO i NS-NOTE LOOP
    ndict@ NS-SEEN ! ;
 
@@ -30174,10 +30185,11 @@ CHECKER-REG:}SCRATCH
    row 1 - CHECKER-RESOLVE:REC-AT {: ns:ptr :}
    ns CK-REC-WID BOOT:NAMESPACE-WL =  wid ns @ =  wid ns CELL + @ =  or  and ;
 
-\ The global and namespace wordlists are no package's: a miss on them would
-\ index every record again.
+\ The global wordlists and any wid at or below 0 are no package's: a miss on
+\ them would index every record again. The namespace marker is negative, and so
+\ is the WL:RETIRED of a retired record the linker's NAME-PKG asks about.
 : NS-FIND ( n -- n ) {: wid:n :}
-   wid WL:GLOBAL?  wid BOOT:NAMESPACE-WL =  or IF 0 EXIT THEN
+   wid 0 <=  wid WL:GLOBAL?  or IF 0 EXIT THEN
    NS-INDEX
    wid  wid NS-ROW@  NS-HOLDS? 0= IF NS-CLEAR NS-INDEX THEN
    wid NS-ROW@ {: row:n :}
