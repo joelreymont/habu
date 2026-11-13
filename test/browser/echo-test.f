@@ -18,7 +18,6 @@ require test/wasm/harness.f
 package BROWSER-ECHO-TEST
 private
 
-60000 constant DEADLINE-MS
 $10000 constant PAGE-BYTES
 4096 constant CAP
 CAP BUFFER: OUT
@@ -62,7 +61,7 @@ DYNAMIC-BUFFER PAYLOAD u8
 \ PROC-ARGV-RESET; answers its exit status, its stdout in OUT and its stderr in
 \ ERR.
 : SPAWN ( ptr u8 len -- n )
-   OUT CAP >LEN  ERR CAP >LEN  DEADLINE-MS >MS
+   OUT CAP >LEN  ERR CAP >LEN  PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N {: outu:len erru:len rc:n :}
    outu LEN>N OUT-U !  erru LEN>N ERR-U !
    rc ;

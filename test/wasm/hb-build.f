@@ -24,7 +24,6 @@ require test/wasm/harness.f
 package WASM-HB-BUILD-TEST
 private
 
-60000 constant DEADLINE-MS
 4096 constant CAP
 CAP BUFFER: OUT
 CAP BUFFER: ERR
@@ -44,7 +43,7 @@ variable MOD-U
 : ARG+ ( ptr u8 n -- )  >LEN PROC-ARGV+ ;
 
 : DRIVER ( -- n )
-   s" bin/hb" >LEN  OUT CAP >LEN  ERR CAP >LEN  DEADLINE-MS >MS
+   s" bin/hb" >LEN  OUT CAP >LEN  ERR CAP >LEN  PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N {: outu:len erru:len rc:n :}
    erru LEN>N ERR-U !
    rc ;

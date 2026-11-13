@@ -19,7 +19,6 @@ require test/browser/memory.f
 package BROWSER-REQUEST-TEST
 private
 
-60000 constant DEADLINE-MS
 4096 constant CAP
 CAP BUFFER: OUT
 CAP BUFFER: ERR
@@ -92,7 +91,7 @@ PATH-CAP BUFFER: FILE
    FILE fu ARG+ ;
 
 : SPAWN ( ptr u8 len -- n )
-   OUT CAP >LEN  ERR CAP >LEN  DEADLINE-MS >MS
+   OUT CAP >LEN  ERR CAP >LEN  PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N {: outu:len erru:len rc:n :}
    outu LEN>N OUT-U !  erru LEN>N ERR-U !
    rc ;

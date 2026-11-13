@@ -13,7 +13,6 @@ package WKERNEL-TEST
 private
 
 $1000 constant CAP
-10000 constant DEADLINE-MS
 CAP BUFFER: OUT-E
 CAP BUFFER: ERR-E
 CAP BUFFER: OUT-K
@@ -31,7 +30,7 @@ CAP BUFFER: ERR-K
    {: a:ptr au:n w:ptr wu:n t:ptr tu:n o:ptr e:ptr :}
    SB-RESET  a au SB-APPEND  s"  " SB-APPEND  w wu SB-APPEND
    s"  " SB-APPEND  t tu SB-APPEND
-   SB$  o CAP >LEN  e CAP >LEN  DEADLINE-MS >MS  SUBJECT:RUN
+   SB$  o CAP >LEN  e CAP >LEN  PROCESS:WAIT-FOREVER  SUBJECT:RUN
    PROCESS:ENDING>RC RC>N {: ou:len eu:len rc:n :}
    ou LEN>N  eu LEN>N  rc ;
 

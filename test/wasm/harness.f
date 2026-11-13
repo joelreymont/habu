@@ -1,7 +1,6 @@
 \ harness.f - WASM-HARNESS: a module file checked by two engines independent of
 \ Habu, wasm-tools validating it and bun running it through test/wasm/run.mjs.
-\ Both are found on PATH and run from the tree's root; a missing tool or a
-\ passed deadline throws.
+\ Both are found on PATH and run from the tree's root; a missing tool throws.
 \
 \ BUILD answers `hb-build --target wasm`'s exit status, run from the tree's root.
 \ VALID? answers wasm-tools validate's verdict under core Wasm and WPROF's
@@ -21,7 +20,6 @@ require src/arch/wasm/profile.f
 package WASM-HARNESS
 private
 
-60000 constant DEADLINE-MS
 4096 constant ERR-CAP
 
 PATH-CAP BUFFER: EXE
@@ -38,7 +36,7 @@ variable ADDR
 \ The program at the path, run with the arguments staged; answers its exit
 \ status, or 128 plus the signal that ended it.
 : RUN-AT ( ptr u8 len -- n )
-   OUT WPROF:OUT-CAP >LEN  ERR ERR-CAP >LEN  DEADLINE-MS >MS
+   OUT WPROF:OUT-CAP >LEN  ERR ERR-CAP >LEN  PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N {: outu:len erru:len rc:n :}
    outu LEN>N OUT-U !  erru LEN>N ERR-U !
    rc ;

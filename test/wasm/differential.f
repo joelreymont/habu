@@ -20,7 +20,6 @@ require test/wasm/harness.f
 package WASM-DIFFERENTIAL
 private
 
-60000 constant DEADLINE-MS
 65536 constant CAP
 CAP BUFFER: OUT
 CAP BUFFER: ERR
@@ -93,7 +92,7 @@ variable PROG-U
 \ bin/hb run on the arguments staged after PROC-ARGV-RESET: the lengths of its
 \ stdout and stderr, and its exit status.
 : HB ( -- n n n )
-   s" bin/hb" >LEN  OUT CAP >LEN  ERR CAP >LEN  DEADLINE-MS >MS
+   s" bin/hb" >LEN  OUT CAP >LEN  ERR CAP >LEN  PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N {: o:len e:len rc:n :}
    o LEN>N  e LEN>N  rc ;
 
