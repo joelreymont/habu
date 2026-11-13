@@ -16,12 +16,14 @@
 \ CALL and TOOLS, TOOLS's over all its pages, the Mcp-Name encoding,
 \ event-stream replies and one that is not UTF-8, TOOLS's limit shared by its
 \ pages, CLOSE after a halt mid-receive, a closed client refused once its row
-\ is reused, and CANCEL of a CALL, of TOOLS's second page, of an idle client
-\ and of a closed one. Then /mcp guarded by BEARER:ADMIT?: VISIBLE! hiding a
-\ tool by the caller's claim from tools/list and tools/call, and refused while
-\ HTTP serves; a client's TOKEN!, E-DENIED for no token, an empty one and a
-\ 403, E-UNAVAILABLE for a 503 and a 429, E-RESPONSE for a 418, and TOKEN! of a
-\ closed client.
+\ is reused, CANCEL of a CALL, of TOOLS's second page, of an idle client
+\ and of a closed one, and REQUEST-STOP of an idle client and of a CALL, after
+\ which CALL and TOOLS throw sending nothing, a client on the row a stopped one
+\ left calling normally, and REQUEST-STOP of a closed one. Then /mcp guarded
+\ by BEARER:ADMIT?: VISIBLE! hiding a tool by the caller's claim from
+\ tools/list and tools/call, and refused while HTTP serves; a client's TOKEN!,
+\ E-DENIED for no token, an empty one and a 403, E-UNAVAILABLE for a 503 and a
+\ 429, E-RESPONSE for a 418, and TOKEN! of a closed client.
 \ Run: bin/hb --load src/lib/net/mcp-test.f
 
 require src/lib/test.f
@@ -106,6 +108,7 @@ variable CLOSED
 variable PAGES-END                  \ when /endless answers its last page, a mono-ns
 variable CANCEL-CODE                \ what the cancelled TOOLS or CALL threw, 0 for none
 1 constant RUNNING                  \ CANCEL-CODE until that call ends: no throw code
+variable HITS                       \ the requests /counted has had
 TASK:MIN-STACK TASK:TASK STALLER
 
 \ The end of a wait's WAIT-MS window, an absolute mono-ns.
@@ -963,6 +966,10 @@ TASK:MIN-STACK TASK:TASK STALLER
    answer S\" {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[],\"nextCursor\":\"late\"}}"
    HTTP:BODY! ;
 
+\ /mcp, counting each request in HITS.
+: COUNTED-ROUTE ( HTTP:request HTTP:response -- )
+   1 HITS atomic-add drop MCP:HANDLE ;
+
 \ An empty tools/list answered once the test sets RELEASED.
 : SLOW-ROUTE ( HTTP:request HTTP:response -- )
    nip {: answer:HTTP:response :}
@@ -1207,14 +1214,15 @@ $A constant LF
 : CANCEL-CALL ( -- ) [: STALL-CALL ;] CANCEL-STORE ;
 : CANCEL-TOOLS ( -- ) [: ROUTE-CLIENT @ 0 >MS MCP:TOOLS 2drop ;] CANCEL-STORE ;
 
-\ Runs the call on STALLER and cancels the client once the server has its
-\ request: the call ends E-TRANSFER while the server still holds it.
-: CANCELLED ( [ -- ] MCP:client -- )
-   {: work who:MCP:client :}
+\ Runs the call on STALLER and stops the client, by CANCEL or REQUEST-STOP,
+\ once the server has its request: the call ends E-TRANSFER while the server
+\ still holds it.
+: CANCELLED ( [ -- ] MCP:client [ MCP:client -- ] -- )
+   {: work who:MCP:client stop :}
    ARM RUNNING CANCEL-CODE atomic!
    work STALLER TASK:ACTIVATE
    [: ENTERED atomic@ 0<> ;] DEADLINE s" mcp-test ENTERED" TEST-WAIT:POLL
-   who MCP:CANCEL
+   who stop execute
    [: CANCEL-CODE atomic@ RUNNING <> ;] DEADLINE s" mcp-test CANCEL" TEST-WAIT:POLL
    CANCEL-CODE atomic@ MCP:E-TRANSFER T=
    STALLER TASK:JOIN MATCH result ok OF drop ENDOF err OF drop ENDOF ;MATCH
@@ -1226,7 +1234,7 @@ $A constant LF
 : CLIENT-CANCEL ( -- )
    s" CANCEL from another task ends a CALL in flight with E-TRANSFER" T-LABEL
    s" /mcp" URL MCP:OPEN STALL-CLIENT !
-   [: ['] CANCEL-CALL STALL-CLIENT @ CANCELLED ;] CAPTURED
+   [: ['] CANCEL-CALL STALL-CLIENT @ ['] MCP:CANCEL CANCELLED ;] CAPTURED
    s" the cancelled CALL logs nothing: the program ended it" T-LABEL
    LINES 0 T=
    s" the cancelled client then serves a CALL" T-LABEL
@@ -1239,8 +1247,40 @@ $A constant LF
    [: STALL-CLIENT @ MCP:CANCEL ;] MCP:E-STATE TTHROWSQ
    s" CANCEL during TOOLS's second page ends it with E-TRANSFER" T-LABEL
    s" /late" URL MCP:OPEN ROUTE-CLIENT !
-   ['] CANCEL-TOOLS ROUTE-CLIENT @ CANCELLED
+   ['] CANCEL-TOOLS ROUTE-CLIENT @ ['] MCP:CANCEL CANCELLED
    ROUTE-CLIENT @ MCP:CLOSE ;
+
+: STOP-CALL ( -- ) STALL-CLIENT @ s" echo" s" {}" 0 >MS MCP:CALL 2drop drop ;
+: STOP-TOOLS ( -- ) STALL-CLIENT @ 0 >MS MCP:TOOLS 2drop ;
+
+\ A stopped client's CALL and TOOLS throw at once: /counted has had no
+\ request past the hits it had.
+: STOP-REFUSED ( n -- )
+   {: hits:n :}
+   ['] STOP-CALL MCP:E-TRANSFER TTHROWSQ
+   ['] STOP-TOOLS MCP:E-TRANSFER TTHROWSQ
+   HITS atomic@ hits T= ;
+
+\ Every row is free, so the second OPEN gives the stopped client's row.
+: CLIENT-STOP ( -- )
+   s" REQUEST-STOP of an idle client: CALL and TOOLS throw, sending nothing"
+   T-LABEL
+   0 HITS atomic!
+   s" /counted" URL MCP:OPEN STALL-CLIENT !
+   STALL-CLIENT @ MCP:REQUEST-STOP
+   0 STOP-REFUSED
+   STALL-CLIENT @ MCP:CLOSE
+   s" a client OPEN gives the stopped one's row calls normally" T-LABEL
+   s" /counted" URL MCP:OPEN STALL-CLIENT !
+   STALL-CLIENT @ s" echo" s" {}" 0 >MS MCP:CALL TFALSE 2drop
+   HITS atomic@ 1 T=
+   s" REQUEST-STOP during a CALL ends it with E-TRANSFER" T-LABEL
+   ['] CANCEL-CALL STALL-CLIENT @ ['] MCP:REQUEST-STOP CANCELLED
+   s" then CALL and TOOLS throw, sending nothing" T-LABEL
+   2 STOP-REFUSED
+   STALL-CLIENT @ MCP:CLOSE
+   s" REQUEST-STOP refuses a closed client" T-LABEL
+   [: STALL-CLIENT @ MCP:REQUEST-STOP ;] MCP:E-STATE TTHROWSQ ;
 
 TYPED-VARIABLE NEVER MCP:client
 
@@ -1258,7 +1298,7 @@ TYPED-VARIABLE NEVER MCP:client
    CLIENT-NAMES CLIENT-EVENTS CLIENT-LIST-TIMEOUT CLIENT-LIST-PAGES-TIMEOUT
    CLIENT-LIST-LATE-PAGE
    CLIENT @ MCP:CLOSE
-   CLIENT-HALTED CLIENT-CANCEL CLIENT-NEVER
+   CLIENT-HALTED CLIENT-CANCEL CLIENT-STOP CLIENT-NEVER
    s" no transfer is left in flight" T-LABEL
    [: CURL:LOOP-STOP ;] catch 0 T= ;
 
@@ -1485,6 +1525,7 @@ CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
    s" POST" s" /slow" [: SLOW-ROUTE ;] HTTP:ROUTE
    s" POST" s" /endless" [: ENDLESS-ROUTE ;] HTTP:ROUTE
    s" POST" s" /late" [: LATE-ROUTE ;] HTTP:ROUTE
+   s" POST" s" /counted" [: COUNTED-ROUTE ;] HTTP:ROUTE
    s" test-server" s" 1.0" MCP:SERVER-INFO!
    GUIDE$ MCP:INSTRUCTIONS!
    BIG-FILL
