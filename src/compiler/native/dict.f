@@ -213,13 +213,12 @@ public
    EFFECT-DIN-N EFFECT-DIN-CELLS EFFECT-DOUT-N EFFECT-DOUT-CELLS ;
 
 public
-0 constant GLUE-NONE                 \ every cell of the row is a value of its own
-
 \ ---- which cells of a row may not be separated from one another --------------
 \ Bit i says the i-th cell from the BOTTOM of the row and the one below it are
 \ cells of ONE value, so bit 0 is always clear and all-bits is an impossible row.
 -1 constant GLUE-UNKNOWN
 private
+0 constant GLUE-NONE                 \ every cell of the row is a value of its own
 
 64 constant GLUE-MAX                 \ cells of one row a mask can describe
 
@@ -385,9 +384,7 @@ public
 \ symbol and latches its rows, so separate readers would resolve one name twice.
 \ ARITY-NONE in the first answer refuses as SPELL-ARITY does and voids the rest.
 \ No return-stack answer: no declaration moves a return-stack cell
-\ (docs/forth.md "The return-stack clause"). Result glue only. Deadness stays
-\ apart: CTL-DEAD? reads the control-flag table, a second query wherever it is
-\ asked.
+\ (docs/forth.md "The return-stack clause"). Result glue only.
 : SPELL-CALL ( ptr u8 n -- n n n )  \ din cells, dout cells, result glue
    EFFECT-QUERY 0= if ARITY-NONE ARITY-NONE GLUE-NONE exit then
    EFFECT-DIN-CELLS {: din:n :}
@@ -451,13 +448,6 @@ public
    out 0 < if in CATCH-NONE exit then
    in out ;
 
-: EXEC-CELLS ( n -- n n )
-   EFFECT-EXEC-CELLS ;
-
-
-: FINALLY-CELLS ( n -- n n n )
-   EFFECT-FINALLY-CELLS ;
-
 \ ---- and how many cells a layout token really moves ---------------------------
 -1 constant MATCH-NONE               \ no dispatch cell count was proved for that token
 
@@ -496,8 +486,8 @@ public
    0 ;
 
 \ ---- and how many cells one memory access moves ------------------------------
-\ Keyed by the token's OFFSET into the checked text, the same key the engine's
-\ own pass 2 reads. Absent is one cell, which is the checker's own answer.
+\ Keyed by the token's OFFSET into the checked text. Absent is one cell, which
+\ is the checker's own answer.
 : MEM-CELLS ( n -- n )
    0 WF-W-AT ;
 

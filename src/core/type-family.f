@@ -3015,7 +3015,7 @@ public
    0 SUMV-N @ SUMV-SCRUB   0 PF-N @ PF-SCRUB   0 LAY-N @ LAY-SCRUB   \ scrub the rows it retires
    0 TFAM-N !   0 TF-STR-U !   0 TF-PK-N !
    0 SUMV-N !   0 SVX-HI !   0 PF-N !   0 PF-COMMIT-N !   0 LAY-N !
-   -1 FIELD-FAM !  -1 LOAN-FIELD-FAM !  -1 C2-STOW-FAM !
+   -1 FIELD-FAM !  -1 LOAN-FIELD-FAM !
    EXT-FREE-CLEAR ;   \ drop free-extent marks with the families they name
 TFAM-RESET
 
@@ -3034,7 +3034,6 @@ TFAM-RESET
 \ Product-field rows and schema nodes have their own frames; a caller that owns
 \ them rewinds them after this (field rows through PF-REWIND).
 : TFAM-REWIND ( n n n n n -- ) {: tfamn:n stru:n pkn:n sumvn:n layn:n :}
-   C2-STOW-FAM @ tfamn >= IF -1 C2-STOW-FAM ! THEN
    tfamn TFAM-N @ ENTRIES-RETIRED
    tfamn TFX-RETIRE                      \ unchain the rows before their ids go out of range
    sumvn SVX-TRUNCATE                    \ and the constructor heads those rows own
@@ -3808,11 +3807,9 @@ variable VIEW-FIELD-BASE
    RECORDS-FAM @ 3 PK-TYPE TFAM-PK!
    RECORDS-FAM @ REGISTER-VIEW-FIELDS ;
 
-\ The runtime's three machine descriptors form one private value. The family
-\ identity, rather than its spelling or shape, authorizes a native transfer.
+\ The runtime's three machine descriptors form one private value.
 : REGISTER-STOW ( -- )
    s" C2-MEM" CHECKER-PACKAGE-PRIVATE s" stow-layout" 0 TK-PRODUCT TFAM-DECL STOW-FAM !
-   STOW-FAM @ C2-STOW-FAM !
    TYPE-FIELD:COUNT VIEW-FIELD-BASE !
    TYPE-FIELD-OWNER:OPEN VIEW-TX !
    VIEW-TX @ STOW-FAM @ TYPE-FIELD:NO-VARIANT s" width"

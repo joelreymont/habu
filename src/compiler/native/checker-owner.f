@@ -23,13 +23,9 @@ defer SOURCE-CALL-CELLS ( n -- n n )
 defer SOURCE-CALL-BINDING ( n -- ptr u8 n )
 defer SOURCE-UNJUDGED-BINDING ( n -- ptr u8 n )
 defer SOURCE-BINDING-WINDOW ( -- n )
-defer SOURCE-CALL-GLUE ( n -- n n )
 defer SOURCE-MATCH-PAYLOAD ( n -- n n )
-defer SOURCE-QUOT-IN ( n n -- n n )
-defer SOURCE-QUOT-OUT ( n n -- n n )
 defer SOURCE-INIT-LAYOUT ( n -- n n n )
 defer SOURCE-FIELD-SPAN ( n -- n n )
-defer SOURCE-C2-STOW ( n -- n n )
 defer SOURCE-ROWS-END ( -- n )
 defer SOURCE-RETRACT-ROWS ( n -- )
 defer SOURCE-WRITE-WINDOW ( n -- )
@@ -59,12 +55,6 @@ CAST: AS-MARK-ACTION ( n -- [ n -- ] )
 CAST: AS-CELLS ( n -- [ n -- n n ] )
 CAST: AS-BINDING ( n -- [ n -- ptr u8 n ] )
 CAST: AS-INIT-LAYOUT ( n -- [ n -- n n n ] )
-CAST: AS-QUOT-CELLS ( n -- [ n n -- n n ] )
-
-\ Checked bodies name field offsets through layout.f's NCOMP-DISPATCH:DECL-*.
-\ CHECKER-OWNER-ABI loads before the checker, so build-fixpoint's stage-built
-\ hb-host refuses a checked body naming CHECKER-OWNER-ABI:CALL-CELLS-OFF with
-\ E-UNDEFINED, while NCOMP-DISPATCH:DECL-CALL-CELLS-OFF certifies there.
 
 \ A field is read only after the guard bounds the record and its recorded
 \ extent.
@@ -92,13 +82,9 @@ CAST: AS-QUOT-CELLS ( n -- [ n n -- n n ] )
    NCOMP-DISPATCH:DECL-CALL-BINDING-OFF s" source call binding" PAIRED-FIELD AS-BINDING is SOURCE-CALL-BINDING
    NCOMP-DISPATCH:DECL-UNJUDGED-BINDING-OFF s" source unjudged binding" PAIRED-FIELD AS-BINDING is SOURCE-UNJUDGED-BINDING
    CHECKER-OWNER-ABI:BINDING-WINDOW-OFF s" source binding window" PAIRED-FIELD AS-N is SOURCE-BINDING-WINDOW
-   NCOMP-DISPATCH:DECL-CALL-GLUE-OFF s" source call glue" PAIRED-FIELD AS-CELLS is SOURCE-CALL-GLUE
    NCOMP-DISPATCH:DECL-CALL-MATCH-OFF s" source match payload" PAIRED-FIELD AS-CELLS is SOURCE-MATCH-PAYLOAD
-   NCOMP-DISPATCH:DECL-CALL-QUOT-IN-OFF s" source quotation inputs" PAIRED-FIELD AS-QUOT-CELLS is SOURCE-QUOT-IN
-   NCOMP-DISPATCH:DECL-CALL-QUOT-OUT-OFF s" source quotation outputs" PAIRED-FIELD AS-QUOT-CELLS is SOURCE-QUOT-OUT
    NCOMP-DISPATCH:DECL-INIT-LAYOUT-OFF s" source init layout" PAIRED-FIELD AS-INIT-LAYOUT is SOURCE-INIT-LAYOUT
    NCOMP-DISPATCH:DECL-FIELD-SPAN-OFF s" source field span" PAIRED-FIELD AS-CELLS is SOURCE-FIELD-SPAN
-   NCOMP-DISPATCH:DECL-C2-STOW-OFF s" source C2 stow" PAIRED-FIELD AS-CELLS is SOURCE-C2-STOW
    NCOMP-DISPATCH:DECL-ROWS-END-OFF s" source rows end" PAIRED-FIELD AS-N is SOURCE-ROWS-END
    NCOMP-DISPATCH:DECL-RETRACT-ROWS-OFF s" source rows retract" PAIRED-FIELD AS-MARK-ACTION is SOURCE-RETRACT-ROWS
    NCOMP-DISPATCH:DECL-WRITE-WINDOW-OFF s" source write window" PAIRED-FIELD AS-MARK-ACTION is SOURCE-WRITE-WINDOW
@@ -234,19 +220,7 @@ public
 : FIELD-SPAN ( n -- n n )
    SOURCE-FIELD-SPAN ;
 
-: C2-STOW ( n -- n n )
-   SOURCE-C2-STOW ;
-
-: CALL-GLUE ( n -- n n )
-   SOURCE-CALL-GLUE ;
-
 : MATCH-PAYLOAD ( n -- n n )
    SOURCE-MATCH-PAYLOAD ;
-
-: CALL-QUOT-IN ( n n -- n n )
-   SOURCE-QUOT-IN ;
-
-: CALL-QUOT-OUT ( n n -- n n )
-   SOURCE-QUOT-OUT ;
 
 ;package

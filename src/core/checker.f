@@ -759,11 +759,7 @@ CHECKER-OWNER-ABI:END-PACKAGE-OFF constant END-PACKAGE-OFF
 CHECKER-OWNER-ABI:EXPORT-OFF constant EXPORT-OFF
 CHECKER-OWNER-ABI:DOES-CHECK-OFF constant DOES-CHECK-OFF
 CHECKER-OWNER-ABI:CALL-CELLS-OFF constant CALL-CELLS-OFF
-CHECKER-OWNER-ABI:CALL-GLUE-OFF constant CALL-GLUE-OFF
 CHECKER-OWNER-ABI:CALL-MATCH-OFF constant CALL-MATCH-OFF
-CHECKER-OWNER-ABI:CALL-QUOT-IN-OFF constant CALL-QUOT-IN-OFF
-CHECKER-OWNER-ABI:CALL-QUOT-OUT-OFF constant CALL-QUOT-OUT-OFF
-CHECKER-OWNER-ABI:TRUST-DECL-OFF constant TRUST-DECL-OFF
 CHECKER-OWNER-ABI:FIELD-SPAN-OFF constant FIELD-SPAN-OFF
 CHECKER-OWNER-ABI:REC-MIN-IN-OFF constant REC-MIN-IN-OFF
 CHECKER-OWNER-ABI:REC-WIDE-PUBLISH-OFF constant REC-WIDE-PUBLISH-OFF
@@ -790,8 +786,7 @@ private
    0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
    0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
    0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
-   0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
-   0 , 0 , 0 , 0 ,
+   0 , 0 , 0 , 0 , 0 , 0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here DECLARATIONS - constant OWNER-COMMITTED
 OWNER-BYTES constant OWNER-CELLS-BYTES
@@ -1727,7 +1722,6 @@ variable C2-MUT-FAM    -1 C2-MUT-FAM ! \ reserved bounded exclusive-view family
 variable C2-INIT-FAM   -1 C2-INIT-FAM ! \ reserved initialized-storage element family
 variable WIDTH-FAM  -1 WIDTH-FAM !
 variable C2-RECORDS-FAM -1 C2-RECORDS-FAM ! \ reserved initialized table control
-variable C2-STOW-FAM -1 C2-STOW-FAM ! \ private C2 descriptor product
 
 \ The `tile` and `uniform` family ids, captured by type-family.f at
 \ registration. A word whose declared effect consumes a `tile` and produces a
@@ -6038,7 +6032,6 @@ variable CWIN-KIND                  \ 0 catch, 1 execute, -1 finally
 variable CWIN-DTERMS  variable CWIN-RTERMS   \ the window in row terms (mask positions)
 variable CWIN-DOUT-TERMS  variable CWIN-ROUT-TERMS
 variable CWIN-DMASK                 \ the callee's intact bits over the live window's cells
-variable FINALLY-CLEANUP-OUT
 
 : QUOT-WINDOW ( n -- ) {: kind:n :}
    kind CWIN-KIND !
@@ -6263,7 +6256,6 @@ variable QUOT-LOSS
    rest DCUR !
    tv T-RES {: cleanup:n :}
    cleanup CLEANUP-QUOT? 0= IF 0 OK ! EXIT THEN
-   cleanup Q>XDEAD IF CELLS-NONE ELSE 0 THEN FINALLY-CLEANUP-OUT !
    RSEXEC
    -1 CWIN-KIND !
    OK @ 0= IF EXIT THEN
@@ -6292,7 +6284,6 @@ variable QUOT-LOSS
    body-row DCUR !
    clean-term T-RES {: cleanup:n :}
    cleanup CLEANUP-QUOT? 0= IF 0 OK ! EXIT THEN
-   cleanup Q>XDEAD IF CELLS-NONE ELSE 0 THEN FINALLY-CLEANUP-OUT !
    RSEXEC
    -1 CWIN-KIND !
    OK @ 0= IF EXIT THEN
@@ -14228,12 +14219,8 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
 -5 constant CW-INIT-WIDTH            \ initialized record width and byte extent
 -6 constant CW-INIT-EXTENT           \ initialized byte extent and alignment
 -7 constant CW-FIELD-SPAN            \ authenticated field offset and extent
--8 constant CW-C2-STOW               \ borrowed trusted transfer window and kind
 2 constant CW-CALL-RAW               \ frozen row spines with live type terms
 3 constant CW-CALL
-4 constant CW-GLUE
-5 constant CW-QUOT-IN                \ + twice the input cell index from the top
-6 constant CW-QUOT-OUT               \ + twice the output cell index from the top
 
 : CWIN-P ( -- ptr ptr n ) CWIN-STATE drop drop ;
 : CWIN-N ( -- ptr n ) CWIN-STATE drop nip ;
@@ -14357,12 +14344,6 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
    UWIN-VALID @ 0= if -1 -1 exit then
    ord SELECTED-CALL-ABI 2drop ;
 
-: CWIN-GLUE ( n -- n n )
-   {: ord:n :}
-   ord CW-GLUE CWIN-FIND? if exit then
-   2drop
-   UWIN-VALID @ 0= if -1 -1 exit then
-   ord SELECTED-CALL-ABI 2swap 2drop ;
 : CWIN-MATCH-PAYLOAD ( n -- n n ) CW-MATCH-PAYLOAD CWIN-FIND ;
 : EFFECT-INIT-LAYOUT ( n -- n n n ) {: ord:n :}
    ord CW-INIT-WIDTH CWIN-FIND {: width:n bytes:n :}
@@ -14371,52 +14352,6 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
    extent bytes <> IF s" checker: init layout rows disagree" 76 die THEN
    width bytes align ;
 : EFFECT-FIELD-SPAN ( n -- n n ) CW-FIELD-SPAN CWIN-FIND ;
-
-: EFFECT-C2-STOW ( n -- n n )
-   {: ord:n :}
-   UWIN-VALID @ 0= IF CHECKER-OWNER-ABI:BINDING-RC throw THEN
-   ord REC-UNJUDGED-BINDING {: row:ptr size:n :}
-   size 0= IF 0 -1 EXIT THEN
-   size CHECKER-OWNER-ABI:BOUND-CELLS cells <> IF CHECKER-OWNER-ABI:BINDING-RC throw THEN
-   row CHECKER-OWNER-ABI:BOUND-ENTRY cells + CELL-VIEW @ 0= IF 0 -1 EXIT THEN
-   ord CW-C2-STOW CWIN-FIND {: width:n kind:n :}
-   kind 0< IF 0 -1 ELSE kind width THEN ;
-\ A trusted scan can finish without CWIN quotation rows. Its selected effect
-\ still names the declaration the source used.
-: SELECTED-QUOT-IN ( n n -- n n )
-   {: ord:n idx:n :}
-   idx 0< if -1 -1 exit then
-   ord REC-UNJUDGED-BINDING {: row:ptr size:n :}
-   size 0= if -1 -1 exit then
-   size CHECKER-OWNER-ABI:BOUND-CELLS cells <> if CHECKER-OWNER-ABI:BINDING-RC throw then
-   row CHECKER-OWNER-ABI:BOUND-KIND cells + CELL-VIEW @
-      CHECKER-OWNER-ABI:BOUND-DICT <> if -1 -1 exit then
-   row CHECKER-OWNER-ABI:BOUND-EFFECT cells + CELL-VIEW @ {: eff:n :}
-   eff 0= if -1 -1 exit then
-   eff 1- E-PTR E-TVN@ 0= 0= if -1 -1 exit then
-   eff 1- E-PTR E-DIN@ {: din:n :}
-   din EFF-ROW-N din EFF-ROW-CELLS <> if -1 -1 exit then
-   idx din EFF-ROW-TERM {: q:n :}
-   q 0= if -1 -1 exit then
-   q EFF-TAG@ EN-QUOT <> if -1 -1 exit then
-   q EFF-QUOT-SIMPLE? 0= if -1 -1 exit then
-   q EFF-A@ {: qi:n :}  q EFF-B@ {: qo:n :}
-   qi EFF-ROW-TAIL {: qt:n :}
-   qt EFF-TAG@ EN-ROW <> if -1 -1 exit then
-   qt EFF-B@ RVK-QUOT <> if -1 -1 exit then
-   qo EFF-ROW-TAIL qt <> if -1 -1 exit then
-   qi EFF-ROW-N qi EFF-ROW-CELLS {: in-terms:n in-cells:n :}
-   qo EFF-ROW-N qo EFF-ROW-CELLS {: out-terms:n out-cells:n :}
-   in-terms in-cells <> out-terms out-cells <> or if -1 -1 exit then
-   in-cells out-cells ;
-
-: CWIN-QUOT-IN ( n n -- n n )
-   {: ord:n idx:n :}
-   ord idx 2 * CW-QUOT-IN + CWIN-FIND? if exit then
-   2drop
-   UWIN-VALID @ 0= if -1 -1 exit then
-   ord idx SELECTED-QUOT-IN ;
-: CWIN-QUOT-OUT ( n n -- n n ) {: ord:n idx:n :} ord idx 2 * CW-QUOT-OUT + CWIN-FIND ;
 
 \ Copy only the fixed row spine. Its fresh tail never participates in
 \ unification; the shared type terms can still acquire their final widths.
@@ -14456,9 +14391,6 @@ CALL-FREEZE-INSTALL
    CWIN-HIT @ IF
       0 CWIN-HIT !
       REC-IX @ CWIN-IN @ CWIN-OUT @ CWIN-KIND @ CWIN-ADD
-      CWIN-KIND @ -1 = IF
-         REC-IX @ 0 FINALLY-CLEANUP-OUT @ -2 CWIN-ADD
-      THEN
    THEN
    CALL-HIT @ IF
       0 CALL-HIT !
@@ -14492,34 +14424,15 @@ CALL-FREEZE-INSTALL
    THEN {: glue:n :}
    REC-IX @ width glue CW-MATCH-PAYLOAD CWIN-ADD ;
 
-: CALL-ROW-QUOTS ( n n n -- ) {: ord:n row:n kind:n :}
-   0 row
-   BEGIN dup TAG S-PUSH = WHILE
-      dup P>TYPE T-RES {: t:n :}
-      t
-      BEGIN dup TAG T-FORALL = WHILE F>BODY T-RES REPEAT {: q:n :}
-      q TAG T-QUOT = IF
-         over 2 * kind + {: k:n :}
-         ord q Q>DIN ROW-CELLS
-         q Q>XDEAD IF CELLS-NONE ELSE q Q>DOUT ROW-CELLS THEN
-         k CWIN-ADD
-      THEN
-      swap t ROW-TERM-CELLS + swap P>REST
-   REPEAT 2drop ;
-
 : CALL-FINALIZE ( -- )
    REC-ON @ 0= IF EXIT THEN
    CWIN-N @ 0 ?do
       i CW-KIND CWIN-AT @ CW-CALL-RAW = IF
-         i CW-ORD CWIN-AT @ {: ord:n :}
          i CW-IN CWIN-AT @ {: din:n :}
          i CW-OUT CWIN-AT @ {: dout:n :}
          din ROW-CELLS i CW-IN CWIN-AT !
          dout ROW-CELLS i CW-OUT CWIN-AT !
          CW-CALL i CW-KIND CWIN-AT !
-         ord din CALL-ROW-GLUE dout CALL-ROW-GLUE CW-GLUE CWIN-ADD
-         ord din CW-QUOT-IN CALL-ROW-QUOTS
-         ord dout CW-QUOT-OUT CALL-ROW-QUOTS
       THEN
    loop ;
 
@@ -14647,13 +14560,6 @@ variable EV-LO   variable EV-N
 
 : EFFECT-CATCH-CELLS ( n -- n n )
    0 EFFECT-QUOT-CALL-CELLS ;
-
-: EFFECT-EXEC-CELLS ( n -- n n )
-   1 EFFECT-QUOT-CALL-CELLS ;
-
-: EFFECT-FINALLY-CELLS ( n -- n n n ) {: ix:n :}
-   ix -1 EFFECT-QUOT-CALL-CELLS
-   ix -2 EFFECT-QUOT-CALL-CELLS nip ;
 
 \ CELLS-NONE for a token that published no number, or a definition nobody
 \ recorded.
@@ -16657,8 +16563,6 @@ CHECKER-REG:}SCRATCH
    IF TRIAL-REST-SG RES-TRUE ELSE TRIAL-REST RES-FALSE THEN
    TRIAL-DEPTH @ 1 - TRIAL-DEPTH ! ;
 
-defer C2-STOW-BORROW-HOOK ( -- )
-
 : TRY-PRIMS ( n -- bool ) {: sym:n :}
    0 TSEEN !  0 TSOK !  0 TFA !
    sym PRIM-FIRST-IDX dup 0 = IF drop RES-FALSE EXIT THEN
@@ -16667,7 +16571,6 @@ defer C2-STOW-BORROW-HOOK ( -- )
       PE-I @ PE-TAKES? IF
          PE-I @ PE-SYM@ sym = IF
             PE-I @ PE-TRUSTED-ONLY? TOP-STEP @ 0= and IF   \ reached only from a CHECKED body -> reject fail-closed
-               C2-STOW-BORROW-HOOK
                -1 CAPREQ !  0 OK !  -1 FAILSET !  RES-TRUE EXIT THEN
             TSEEN @ 0= IF PE-I @ PE-EFF@ TFA ! THEN
             -1 TSEEN !
@@ -16717,7 +16620,6 @@ defer C2-STOW-BORROW-HOOK ( -- )
    \ elaboration calls that exact binding, so its judged site needs call facts.
    REC-ON @ IF
       REC-IX @ 0 0 CW-CALL CWIN-ADD
-      REC-IX @ 0 0 CW-GLUE CWIN-ADD
    THEN
    RES-TRUE ;
 
@@ -17778,82 +17680,6 @@ public
    FEP @ ER.ACTIVE @ EFF-RECOVERY = IF CALL-REFUSED EXIT THEN
    CALL-APPLIES ;
 
-\ A trusted scan still refuses this primitive. Before that refusal, borrow the
-\ physical window only when the selected seeded primitive and the complete
-\ private carrier are present at the exact source token.
-: C2-STOW-CELL? ( n n -- n bool )
-   {: row:n slot:n :}
-   row R-RES dup TAG S-PUSH <> IF drop row RES-FALSE EXIT THEN
-   dup P>TYPE T-RES {: t:n :}
-   t HIDDEN-PARAM? 0= IF drop row RES-FALSE EXIT THEN
-   t CELL>FAM C2-STOW-FAM @ <> IF drop row RES-FALSE EXIT THEN
-   t HIDDEN-SLOT@ slot <> IF drop row RES-FALSE EXIT THEN
-   t T-WIDTH 3 <> IF drop row RES-FALSE EXIT THEN
-   P>REST R-RES RES-TRUE ;
-
-: C2-STOW-ENVELOPE? ( n -- bool )
-   {: kind:n :}
-   DCUR @ R-RES dup TAG S-PUSH <> IF drop RES-FALSE EXIT THEN
-   dup P>TYPE T-RES TAG T-PTR <> IF drop RES-FALSE EXIT THEN
-   P>REST R-RES
-   2 C2-STOW-CELL? 0= IF drop RES-FALSE EXIT THEN
-   1 C2-STOW-CELL? 0= IF drop RES-FALSE EXIT THEN
-   0 C2-STOW-CELL? 0= IF drop RES-FALSE EXIT THEN
-   dup TAG S-PUSH <> IF drop RES-FALSE EXIT THEN
-   dup P>TYPE T-RES TAG T-QUOT <> IF drop RES-FALSE EXIT THEN
-   P>REST R-RES dup TAG S-PUSH <> IF drop RES-FALSE EXIT THEN
-   dup P>TYPE T-RES T-WIDTH 1 <> IF drop RES-FALSE EXIT THEN
-   P>REST R-RES
-   kind 2 = IF
-      dup TAG S-PUSH <> IF drop RES-FALSE EXIT THEN
-      dup P>TYPE T-RES T-WIDTH 1 <> IF drop RES-FALSE EXIT THEN
-      P>REST R-RES
-   THEN
-   dup TAG S-PUSH <> IF drop RES-FALSE EXIT THEN
-   dup P>TYPE T-RES T-WIDTH 1 <> IF drop RES-FALSE EXIT THEN
-   P>REST R-RES dup TAG S-PUSH <> IF drop RES-FALSE EXIT THEN
-   dup P>TYPE T-RES TAG T-PTR <> IF drop RES-FALSE EXIT THEN
-   P>REST R-RES TAG S-ROW = ;
-
-: C2-STOW-PRIM-KIND ( -- n )
-   CURSYM @ PRIM-FIRST-IDX dup 0= IF drop 0 EXIT THEN
-   1- {: row:n :}
-   row PE-ACTIVE? 0= row PE-TRUSTED-ONLY? 0= or IF 0 EXIT THEN
-   TOK-ABI-EFF @ row PE-EFF@ E-PTR <> IF 0 EXIT THEN
-   row PE-FLAGS@ dup PE-C2-INIT and 0 <> IF drop 1 EXIT THEN
-   PE-C2-RECORDS and 0 <> IF 2 ELSE 0 THEN ;
-
-: C2-STOW-BORROW ( -- )
-   BWIN-UNJUDGED @ 0= IF EXIT THEN
-   REC-ON @ 0= IF EXIT THEN
-   OK @ 0= IF EXIT THEN
-   FAILSET @ 0 <> IF EXIT THEN
-   UNCK @ 0 <> IF EXIT THEN
-   UNSEEN @ 0 <> IF EXIT THEN
-   UNDEFERR @ 0 <> IF EXIT THEN
-   UNFIT @ 0 <> IF EXIT THEN
-   UNSAFE @ 0 <> IF EXIT THEN
-   RETIRED @ 0 <> IF EXIT THEN
-   LOCALBAD @ 0 <> IF EXIT THEN
-   LINLOCBAD @ 0 <> IF EXIT THEN
-   QDUPBAD @ 0 <> IF EXIT THEN
-   QUALBAD @ 0 <> IF EXIT THEN
-   CAPREQ @ 0 <> IF EXIT THEN
-   NPBAD @ 0 <> IF EXIT THEN
-   SGBAD @ 0 <> IF EXIT THEN
-   TOK-SEEDED @ 0= IF EXIT THEN
-   TOK-ABI-EFF @ NULL-PTR = IF EXIT THEN
-   TOK-REC @ NULL-PTR = IF EXIT THEN
-   TOK-SYM @ CURSYM @ <> IF EXIT THEN
-   TOK-REC @ @ 0= IF EXIT THEN
-   C2-STOW-PRIM-KIND {: kind:n :}
-   kind 0= IF EXIT THEN
-   kind C2-STOW-ENVELOPE? 0= IF EXIT THEN
-   REC-IX @ DCUR @ ROW-CELLS kind CW-C2-STOW CWIN-ADD ;
-: C2-STOW-BORROW-INSTALL ( -- )
-   [: C2-STOW-BORROW ;] is C2-STOW-BORROW-HOOK ;
-C2-STOW-BORROW-INSTALL
-
 \ A prefix probe observes only misses in the token it just captured; earlier
 \ body text is the caller's and may still await its own `;`.
 variable CHECKER-PREFIX-ACTIVE
@@ -17895,7 +17721,7 @@ variable CHECKER-PREFIX-ROLLBACK
    a u BIND-SOURCE-CALL
    CUSING @ 0= TOK-SYM @ SYM-EFFECT-UNRESOLVED? and IF
       TOK-SYM @ PRIM-TRUSTED-SYM? IF
-         TOP-STEP @ 0= IF C2-STOW-BORROW  -1 CAPREQ !  0 OK !  -1 FAILSET !  EXIT THEN
+         TOP-STEP @ 0= IF -1 CAPREQ !  0 OK !  -1 FAILSET !  EXIT THEN
       ELSE UNSEEN-RAISE  EXIT THEN
    THEN
    \ What the call may do at run time is its symbol's, read before an identity
@@ -17929,7 +17755,7 @@ variable CHECKER-PREFIX-ROLLBACK
    CURSYM @ CTOR-STEP-XT IF EXIT THEN
    FEP-HIT? IF
       CURSYM @ CALL-AUTHORITY
-      dup CALL-REFUSED = IF drop C2-STOW-BORROW  -1 CAPREQ !  0 OK !  -1 FAILSET !  EXIT THEN
+      dup CALL-REFUSED = IF drop -1 CAPREQ !  0 OK !  -1 FAILSET !  EXIT THEN
       dup CALL-RECOVERS = IF RES-TRUE CHECKER-EFFECT-AUTHORITY:RECOVERY-USED! THEN
       CALL-PRIMS <> IF FEP @ EFF-APPLY EXIT THEN
    THEN
@@ -24756,59 +24582,19 @@ public
 : DOES-DIN ( n -- n )
    FRESH MK-VAR MK-PTR swap MK-PUSH ;
 
-\ Capture both rows' physical widths, the wide-layout fact and the per-cell
-\ value boundaries before checking binds either row tail; they are read after
-\ the scan, so they are taken by value. The slot arrays are bounded by what a
-\ glue mask can describe: a row with more cells than a mask has bits is refused
-\ by the reader that asks before any slot is read, so the cap loses no usable
-\ answer.
-64 constant CD-SLOT-CAP
+\ Capture both rows' physical widths before checking binds either row tail;
+\ they are read after the scan, so they are taken by value.
 CHECKER-REG:SCRATCH{
 variable CD-DIN-CELLS
 variable CD-DOUT-CELLS
-variable CD-DIN-N
-variable CD-DOUT-N
-variable CD-I
-create CD-DIN-SLOTS CD-SLOT-CAP cells allot
-create CD-DOUT-SLOTS CD-SLOT-CAP cells allot
 CHECKER-REG:}SCRATCH
-
-\ The bundle slot+1 of one row entry's type, which is what EFF-TERM-SLOT answers
-\ for a stored row: a hidden physical field carries its position, every other
-\ term is a logical value of its own and answers 0.
-: CD-TERM-SLOT ( n -- n ) {: t:n :}
-   t HIDDEN-PARAM? 0= IF 0 EXIT THEN
-   t HIDDEN-SLOT@ 1 + ;
-
-: CD-ROW-CAPTURE ( n ptr n -- n ) {: s:n a:ptr :}
-   0 CD-I !
-   s
-   BEGIN R-RES dup TAG S-PUSH = WHILE
-      CD-I @ CD-SLOT-CAP < IF
-         dup P>TYPE CD-TERM-SLOT  CD-I @ cells a + !
-      THEN
-      CD-I @ 1 + CD-I !
-      P>REST
-   REPEAT drop
-   CD-I @ ;
 
 : CHECK-DOES-EFFECT! ( n n -- ) {: din:n dout:n :}
    din ROW-CELLS CD-DIN-CELLS !
-   dout ROW-CELLS CD-DOUT-CELLS !
-   din CD-DIN-SLOTS CD-ROW-CAPTURE CD-DIN-N !
-   dout CD-DOUT-SLOTS CD-ROW-CAPTURE CD-DOUT-N ! ;
+   dout ROW-CELLS CD-DOUT-CELLS ! ;
 
 : CHECK-DOES-DIN-CELLS ( -- n ) CD-DIN-CELLS @ ;
 : CHECK-DOES-DOUT-CELLS ( -- n ) CD-DOUT-CELLS @ ;
-: CHECK-DOES-DIN-N ( -- n ) CD-DIN-N @ ;
-: CHECK-DOES-DOUT-N ( -- n ) CD-DOUT-N @ ;
-
-: CD-SLOT@ ( n ptr n -- n ) {: i:n a:ptr :}
-   i 0 < i CD-SLOT-CAP >= or IF 0 EXIT THEN
-   i cells a + @ ;
-
-: CHECK-DOES-DIN-SLOT ( n -- n ) CD-DIN-SLOTS CD-SLOT@ ;
-: CHECK-DOES-DOUT-SLOT ( n -- n ) CD-DOUT-SLOTS CD-SLOT@ ;
 
 : RAW-SIG! ( n n n n -- )
    PD-BASE @ SGDBASE !
@@ -25878,15 +25664,9 @@ package CHECKER-REG
 ' PIN-SPAN                          DECLARATIONS CHECKER-OWNER-ABI:PIN-SPAN-OFF + xt!
 ' PIN-TOKEN                         DECLARATIONS CHECKER-OWNER-ABI:PIN-TOKEN-OFF + xt!
 ' REC-BINDING-WINDOW                DECLARATIONS CHECKER-OWNER-ABI:BINDING-WINDOW-OFF + xt!
-' CWIN-GLUE                         DECLARATIONS CALL-GLUE-OFF + xt!
 ' CWIN-MATCH-PAYLOAD                DECLARATIONS CALL-MATCH-OFF + xt!
-' CWIN-QUOT-IN                      DECLARATIONS CALL-QUOT-IN-OFF + xt!
-' CWIN-QUOT-OUT                     DECLARATIONS CALL-QUOT-OUT-OFF + xt!
 ' EFFECT-INIT-LAYOUT                DECLARATIONS CHECKER-OWNER-ABI:INIT-LAYOUT-OFF + xt!
 ' EFFECT-FIELD-SPAN                 DECLARATIONS FIELD-SPAN-OFF + xt!
-' EFFECT-C2-STOW                    DECLARATIONS CHECKER-OWNER-ABI:C2-STOW-OFF + xt!
-' TRUST-DECL                        DECLARATIONS TRUST-DECL-OFF + xt!
-' LOCW-HW@                          DECLARATIONS CHECKER-OWNER-ABI:LOCAL-WIDTH-OFF + xt!
 ' REC-MIN-IN@                       DECLARATIONS REC-MIN-IN-OFF + xt!
 ' REC-WIDE-PUBLISH                  DECLARATIONS REC-WIDE-PUBLISH-OFF + xt!
 ' CHECK-UNJUDGED!                   DECLARATIONS CHECK-UNJUDGED-OFF + xt!
