@@ -51,16 +51,6 @@ variable BUF-N
 variable BODY-LEN
 variable BODY-HASH
 
-\ FULL-XT is a defer, as CHECKER-CERT:PRODUCER-XT is: the cell holds an
-\ execution token persisted in the DP heap, and only `defer`/`is` declare such a
-\ cell to the snapshot address-cell table.
-defer FULL-XT ( ptr u8 n n -- )
-
-\ DISPATCH must ask whether the full producer is installed, and a dispatch cell
-\ cannot be asked, so the grant is an integer flag, also the single-assignment
-\ guard below.
-variable FULL-SET   0 FULL-SET !
-
 : BUF ( -- ptr n ) BUF-P @ ;
 
 : GROW-CAP ( n n -- n ) {: need:n cap:n :}
@@ -108,19 +98,13 @@ variable FULL-SET   0 FULL-SET !
    idx 0 < idx BUF-N @ >= or if s" lowering certificate cell index" 76 die then
    idx cells BUF + @ ;
 
-: FULL-INSTALL ( [ ptr u8 n n -- ] -- )
-   FULL-SET @ 0 <> if s" lowering certificate full producer already installed" 76 die then
-   is FULL-XT
-   1 FULL-SET ! ;
-
 : DISPATCH ( ptr u8 n n -- ) {: a:ptr u:n verdict:n :}
-   FULL-SET @ 0 <> if a u verdict FULL-XT exit then
    WF-N@ 0 <> if s" lowering certificate facts before full producer" 76 die then
    a u EMPTY ;
 
 \ One-shot install seam. A quotation is a compile-time construct, so the
 \ producer is handed over from inside a definition rather than from the top
-\ level; the seal retires this word with the rest of the install surface.
+\ level.
 : DISPATCH-INSTALL ( -- ) [: DISPATCH ;] CHECKER-CERT:INSTALL ;
 
 public

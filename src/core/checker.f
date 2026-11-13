@@ -12846,20 +12846,11 @@ package CHECKER-CERT
 \ `variable` read by `execute`: a variable's xt would restore as a dead address.
 defer PRODUCER-XT ( ptr u8 n n -- )
 
-\ Producer authority is granted once. `is` stores any number of times and an
-\ unset cell reports only "unset execution vector", so the grant is tracked in
-\ an integer flag.
-variable PRODUCER-SET   0 PRODUCER-SET !
-
 public
 
-: INSTALL ( [ ptr u8 n n -- ] -- )
-   PRODUCER-SET @ 0 <> if s" checker: lowering certificate producer already installed" 76 die then
-   is PRODUCER-XT
-   1 PRODUCER-SET ! ;
+: INSTALL ( [ ptr u8 n n -- ] -- ) is PRODUCER-XT ;
 
 : PRODUCE ( ptr u8 n n -- ) {: a:ptr u:n verdict:n :}
-   PRODUCER-SET @ 0= if s" checker: lowering certificate producer unavailable" 76 die then
    a u verdict PRODUCER-XT ;
 
 ;package

@@ -363,8 +363,8 @@ variable CHECKS
 
 \ One-shot install seam: a quotation is a compile-time construct, so the full
 \ producer is handed to the dispatch cell from inside a definition rather than
-\ from the top level. The seal retires this word with FULL-PRODUCE itself.
-: FULL-PRODUCE-INSTALL ( -- ) [: FULL-PRODUCE ;] FULL-INSTALL ;
+\ from the top level.
+: FULL-PRODUCE-INSTALL ( -- ) [: FULL-PRODUCE ;] CHECKER-CERT:INSTALL ;
 FULL-PRODUCE-INSTALL
 
 ;package
