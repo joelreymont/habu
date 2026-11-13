@@ -170,7 +170,6 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
    s" src/habu/stepper.f" REQUIRE-FILE
    s" src/habu/debug.f" REQUIRE-FILE
    s" src/lib/c2-owner.f" REQUIRE-FILE
-   s" src/lib/executable-build.f" REQUIRE-FILE
    s" src/habu/link-data.f" REQUIRE-FILE
    s" src/habu/verify-source.f" REQUIRE-FILE
    s" src/lib/fs-anchored.f" REQUIRE-FILE
