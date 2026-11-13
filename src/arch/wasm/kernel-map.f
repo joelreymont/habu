@@ -30,7 +30,6 @@ public
    a u s" f<=" STR=CI if s" WKWORDS:F-AT-MOST?" exit then
    a u s" f>=" STR=CI if s" WKWORDS:F-AT-LEAST?" exit then
    a u s" NULL-PTR" STR=CI if s" WKWORDS:NIL" exit then
-   a u s" field-project" STR=CI if s" WKWORDS:PROJECT-FIELD" exit then
    a u s" data-base" STR=CI if s" WKWORDS:DATA-START" exit then
    a u s" +!" STR=CI if s" WKWORDS:ADD-STORE" exit then
    a u s" BYTE-COPY-LEN" STR=CI if s" WKWORDS:COPY-LEN" exit then

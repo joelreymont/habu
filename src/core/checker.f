@@ -91,14 +91,6 @@
 \ cell pairs only with a var or an equally stale cell, so every typed use of
 \ the group is still E-STALE-READ.
 \
-\ The field-projection window: a generated FAMILY:FIELD accessor body may mint
-\ `ptr <field-type>` from a `ptr family<args>` and a committed field id, a
-\ retyping no checked operation performs. The structure definer arms the
-\ window around the one accessor eval it audits, keyed on the accessor's
-\ name; the window fires once at that body's `field-project` token and
-\ disarms. Its trusted-only effect and record protection keep the arming
-\ closed even when a source owner supplies a user signature.
-\
 \ Raw cells: a raw storage definer (create, variable, constant) mints a RAW
 \ type var, and a fetch from the cell yields that var. RAW-OK? admits a plain
 \ scalar, a role con or an atom and raises a var argument to RAW; it refuses a
@@ -1866,7 +1858,6 @@ defer MATCH-VTAG-XT ( n -- n )                           \ SUMV id -> declaratio
 defer VARIANT-PADS-XT ( n n -- n )                       \ family id + SUMV id -> the pads its family declares for that variant
 defer MATCH-VCOUNT-XT ( n -- n )                        \ family id -> variant count (exhaustiveness domain)
 defer MATCH-PAY-XT ( n n n -- n )                        \ vid famterm row -- row + instantiated payload
-defer FIELD-PROJ-XT ( n n n -- n bool )                 \ field-id off famterm -- fieldterm ok : instantiated field type from a committed field id + the input pointer's family args
 variable FIELD-FAM   -1 FIELD-FAM !              \ reserved family-id of the internal `field` ctor
 variable LOAN-FIELD-FAM -1 LOAN-FIELD-FAM !
 variable C2-READ-FAM   -1 C2-READ-FAM ! \ reserved bounded shared-view family
@@ -2319,8 +2310,7 @@ variable EXT-FREE-N   0 EXT-FREE-N !
    [: 2drop 0 RES-FALSE ;] is CONSTRUCT-FAM-XT
    [: 2drop 0 RES-FALSE ;] is MATCH-FAM-XT
    [: drop RES-FALSE ;] is CTOR-STEP-XT
-   [: drop RES-FALSE ;] is CTOR-ROW?-XT
-   [: 2drop drop 0 RES-FALSE ;] is FIELD-PROJ-XT ;
+   [: drop RES-FALSE ;] is CTOR-ROW?-XT ;
 TFAM-QUERY-DEFAULTS
 
 \ Rebound once PTX-BARRIER-SET is defined below.
@@ -4124,13 +4114,6 @@ variable LAYOUT-INTRO
 \ one generic-pointer call a layout pointer may enter.
 variable LAYOUT-RELEASE
 CHECKER-REG:}SCRATCH
-PTR-VARIABLE FIELD-PROJ-A
-variable FIELD-PROJ-U   0 FIELD-PROJ-U !
-variable FIELD-PROJ-FID \ committed field id (the authority: offset/type/role derive from it)
-variable FIELD-PROJ-OFF \ baked byte offset (cross-checked against the committed offset)
-
-TRUSTED: FIELD-PROJ-NAME$ ( -- ptr u8 n ) FIELD-PROJ-A @ FIELD-PROJ-U @ ;
-TRUSTED: FIELD-PROJ-SCHEMA ( -- n n ) FIELD-PROJ-FID @ FIELD-PROJ-OFF @ ;
 PTR-VARIABLE LBUF-PEND-A
 variable LBUF-PEND-U   0 LBUF-PEND-U !
 variable LBUF-EVAL-OFF  0 LBUF-EVAL-OFF !  \ accessor effect offset + 1 in this eval window
@@ -5698,7 +5681,6 @@ CTL-CORE-OP CTL-INTRINSIC-MASK or constant CTL-IDENTITY
 4 constant INTRINSIC-HIDE-ROW                  \ depth .s
 5 constant INTRINSIC-RAW-FIELD                 \ ptr-field
 6 constant INTRINSIC-RECORD-AT                 \ record-at
-7 constant INTRINSIC-FIELD-PROJECT             \ field-project
 8 constant INTRINSIC-CREATE                    \ create
 9 constant INTRINSIC-VARIABLE                  \ variable
 10 constant INTRINSIC-CONSTANT                 \ constant
@@ -5744,7 +5726,6 @@ CTL-INTRINSIC-MASK or CTL-NAMES or CTL-GENERATES or
    id INTRINSIC-HIDE-ROW = IF s" hide-row" EXIT THEN
    id INTRINSIC-RAW-FIELD = IF s" raw-field" EXIT THEN
    id INTRINSIC-RECORD-AT = IF s" record-at" EXIT THEN
-   id INTRINSIC-FIELD-PROJECT = IF s" field-project" EXIT THEN
    id INTRINSIC-CREATE = IF s" create" EXIT THEN
    id INTRINSIC-VARIABLE = IF s" variable" EXIT THEN
    id INTRINSIC-CONSTANT = IF s" constant" EXIT THEN
@@ -21899,46 +21880,8 @@ variable IS-PEND-U                   \ and its length
    THEN
    0 CONM ! ;
 
-\ --- field-projection op. `field-project` is a reserved checker operation:
-\ inside the sealed armed window it consumes `ptr family<args>` plus a baked
-\ byte-offset literal and produces `ptr <instantiated field type>`. It is the
-\ only checked retype of a layout pointer: the layout fence refuses `+`/`cell+`
-\ on one, and a pointer CAST: is an unchecked private class mint.
-TRUSTED: FIELD-PROJ! ( ptr u8 n n n -- ) {: a:ptr u:n fid:n off:n :}
-   a FIELD-PROJ-A !  u FIELD-PROJ-U !  fid FIELD-PROJ-FID !  off FIELD-PROJ-OFF ! ;
-TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
-: FIELD-PROJ-MATCH? ( -- bool )
-   FIELD-PROJ-NAME$ {: a:ptr u:n :}
-   u 0 >  NMU @ 0 >  and 0= IF RES-FALSE EXIT THEN
-   a u NMA @ NMU @ CORE-STR=CI ;   \ NMA is case-folded; the armed name is verbatim
-: FIELD-PROJ-REJECT ( -- ) TKF TKFU @ CAP-FAIL  0 OK ! ;
-\ The step goes through RECORDED-STEP so the native call gets its widths and
-\ glue. The peeked family term is used verbatim in the step's input row, so its
-\ `family ~ family` pairing is the sanctioned same-family bind, not a fenced
-\ var<->layout bind.
-: FIELD-PROJ-STEP ( -- )
-   FIELD-PROJ-CLEAR                                       \ single shot, even on reject
-   DCUR @ R-RES {: r0:n :}                                \ top = baked offset literal
-   r0 TAG S-PUSH <> IF FIELD-PROJ-REJECT EXIT THEN
-   r0 P>REST R-RES {: r1:n :}                             \ below = ptr family<args>
-   r1 TAG S-PUSH <> IF FIELD-PROJ-REJECT EXIT THEN
-   r1 P>TYPE T-RES {: pt:n :}
-   pt TAG T-PTR <> IF FIELD-PROJ-REJECT EXIT THEN
-   pt PTR>INNER T-RES {: famterm:n :}
-   famterm LAYOUT-PARAM? 0= IF FIELD-PROJ-REJECT EXIT THEN
-   FIELD-PROJ-SCHEMA famterm FIELD-PROJ-XT {: fieldterm:n ok:bool :}
-   ok 0= IF FIELD-PROJ-REJECT EXIT THEN                   \ wrong offset / off-past-width / arity / role / uncommitted id
-   FRESH MK-ROW {: base:n :}
-   famterm MK-PTR base MK-PUSH FRESH MK-VAR swap MK-PUSH {: din:n :}   \ base, ptr family<args>, offset-var
-   fieldterm MK-PTR base MK-PUSH {: dout:n :}                          \ base, ptr field-type
-   din dout RECORDED-STEP ;
-: FIELD-PROJ-STEP? ( -- bool )
-   FIELD-PROJ-MATCH? 0= IF RES-FALSE EXIT THEN
-   FIELD-PROJ-STEP RES-TRUE ;
-
-\ --- record-at: the record-address half that needs no window. It consumes
-\ `ptr F` and a cell count and answers `ptr F`, preserving the family, so
-\ nothing is retyped and bounds stay the caller's.
+\ --- record-at consumes `ptr F` and a cell count and answers `ptr F`,
+\ preserving the family, so nothing is retyped and bounds stay the caller's.
 \ A WIDE INSTANTIATION IS REFUSED: `F:AT` bakes the family's committed width,
 \ which describes the layout only while every type argument is one cell.
 : RECORD-AT-REJECT ( -- ) TKF TKFU @ CAP-FAIL  0 OK ! ;
@@ -21976,7 +21919,6 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    a u XPORT-STEP? IF RES-TRUE EXIT THEN
    a u a u TOK-CORE-OP? RS-TOK? IF RES-TRUE EXIT THEN
    id INTRINSIC-RECORD-AT = IF RECORD-AT-STEP? EXIT THEN
-   id INTRINSIC-FIELD-PROJECT = IF FIELD-PROJ-STEP? EXIT THEN
    RES-FALSE ;
 
 \ The first token names the definition. Inside a verifier scope the text replays

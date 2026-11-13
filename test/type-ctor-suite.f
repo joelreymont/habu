@@ -552,8 +552,8 @@ s" WNSTBAD ( wopt<n> -- wnst ) WNST:NESTED" CHECK-QUIET-CANDIDATE! 0 T=
 s" WSXDROP ( wsx<a> -- ) drop" CHECK-QUIET-CANDIDATE! -1 T=
 s" WAPDROP ( wapplied<a> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 \ record-at refuses a widened application: wapplied<wleaf> is 4 cells over 3
-\ committed slots. An accessor refuses a family argument at any width, so
-\ record-at is the reachable twin of the field projection's width condition.
+\ committed slots. An accessor refuses a family argument at any width, so only
+\ record-at reaches the width condition.
 s" WAPAT ( ptr wapplied<wleaf> n -- ptr wapplied<wleaf> ) record-at" CHECK-QUIET-CANDIDATE! 0 T=
 s" WAPAT1 ( ptr wapplied<n> n -- ptr wapplied<n> ) record-at" CHECK-QUIET-CANDIDATE! -1 T=
 \ UNMAKE's empty body must give back exactly the bundle's cells: wapplied<wleaf>

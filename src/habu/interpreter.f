@@ -1531,21 +1531,10 @@ private
    s" not in vocabulary: " ERROR-TEXT:TYPE
    a u ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE  ENGINE-ERROR:POLICY throw ;
 
-: DEF-RESERVED-REFUSE ( ptr u8 n -- ) {: a:ptr u:n :}
-   s" E-RESERVED-DEFINITION" REFUSAL
-   s" reserved word cannot be a definition name: " ERROR-TEXT:TYPE
-   a u ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE  RC-REJECT throw ;
-
 : DEF-NUMBER-REFUSE ( ptr u8 n -- ) {: a:ptr u:n :}
    s" E-NUMERIC-DEFINITION" REFUSAL
    s" number cannot be a definition name: " ERROR-TEXT:TYPE
    a u ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE  RC-REJECT throw ;
-
-\ Generated bodies bind STRUCTURE-MAKE:PROJECT-NAME$ by name, so once sealed
-\ no definition takes it.
-: DEF-RESERVED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   SEAL-NDICT@ 0= if false exit then
-   a u STRUCTURE-MAKE:PROJECT-NAME$ FOLDED= ;
 
 : DEF-WALL ( ptr u8 n -- ) {: a:ptr u:n :}
    POLICY-NDICT-CELL CELL@ 0<> if
@@ -1555,8 +1544,7 @@ private
       a u DEF-KEYWORD? if a u DEF-KEYWORD-REFUSE then
    then
    a u NUMBER {: v:n flt:bool num:bool range:bool :}
-   num range or if a u DEF-NUMBER-REFUSE then
-   a u DEF-RESERVED? if a u DEF-RESERVED-REFUSE then ;
+   num range or if a u DEF-NUMBER-REFUSE then ;
 
 \ A signature starts at the first byte past the blanks when that byte is `(`,
 \ whole token or not: where it starts, and whether one does.
@@ -2253,8 +2241,7 @@ variable DEF-VALUE
 \ ---- child words a declaration makes ------------------------------------------
 \ CHILD-RUN makes the word NAME for a declaration, with no text: a fixed body of
 \ its CHILD-ABI shape, whose value and effect CHECK:CHILD makes from the shape
-\ and parameter while the record is pending. A private child goes into the
-\ package's private section.
+\ and parameter while the record is pending.
 
 \ An unknown shape is the calling declaration's error.
 : CHILD-BODY ( n -- COMP:body ) {: shape:n :}
@@ -2286,16 +2273,8 @@ variable DEF-VALUE
    [: shape param CHILD-CLOSE ;] catch {: rc:n :}
    rc 0<> if DEF-ABORT rc throw then ;
 
-\ True when the public section was left for the private one.
-: CHILD-PRIVATE ( bool -- bool ) {: priv:bool :}
-   priv 0= if false exit then
-   get-current PKG-PUB-CELL CELL@ <> if false exit then
-   PKG-PRI-CELL NCOMP-DISPATCH:DECL-PRIVATE-OFF PKG-SECTION
-   true ;
-
-: CHILD-PUBLIC ( bool -- )
-   if PKG-PUB-CELL NCOMP-DISPATCH:DECL-PUBLIC-OFF PKG-SECTION then ;
-
+\ The bool is unread. A build's definers call the running hb's CHILD-RUN through
+\ the cell, so this effect must be that hb's: one that differs faults the build.
 : CHILD-RUN ( ptr u8 n bool n n -- )
    {: a:ptr u:n priv:bool shape:n param:n :}
    PEND-CELL CELL@ 0<> if s" child word" a u DEF-OPEN-REFUSE then
@@ -2306,10 +2285,7 @@ variable DEF-VALUE
    then
    DEF-ROOM
    OVERLAY-GUARD
-   priv CHILD-PRIVATE {: left:bool :}
-   [: a u shape param CHILD-DEFINE ;] catch {: rc:n :}
-   left CHILD-PUBLIC
-   rc 0<> if rc throw then ;
+   a u shape param CHILD-DEFINE ;
 
 \ A qualified linear name is refused by the certifier before DEF-QUALIFY can
 \ create its namespace. A second colon is left to DEF-QUALIFY's syntax refusal.

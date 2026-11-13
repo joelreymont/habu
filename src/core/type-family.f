@@ -5633,44 +5633,8 @@ private
    vid term TFAM-MATCH-XPAD-RECORD
    vid row RES-FALSE TFC-PAY-ROW ;
 
-\ Field projection, the registry half of the checker's FIELD-PROJ-XT hook. The
-\ committed field id is the sole authority: offset, family, extent, role and
-\ schema derive from it through TYPE-FIELD reflection, so a forged offset, an
-\ offset past the family width, a foreign family, a wrong generic arity or a
-\ non-addressable role each answer 0 and false. It lives here because the field
-\ and schema registries and TFC-SCH-TERM belong to this file; the checker
-\ reaches it only through the sealed friend hook.
-: TFAM-FIELD-PROJ-DO ( n n n n -- n bool )   \ fid off famterm ffam -- fieldterm ok
-   {: fid:n off:n fam:n ffam:n :}
-   ffam fam PARAM>FAM <> IF 0 RES-FALSE EXIT THEN                \ field not owned by the input family
-   off fid TYPE-FIELD:BYTE-OFF@ <> IF 0 RES-FALSE EXIT THEN      \ baked offset disagrees with the committed offset (forged access)
-   fid TYPE-FIELD:FLAGS@ PF-FLAGS-NONE <> IF 0 RES-FALSE EXIT THEN   \ non-addressable field role (niche/boxed/custom): no projection
-   fam PARAM>ARGC ffam TFAM-ARITY@ <> IF 0 RES-FALSE EXIT THEN   \ generic arity mismatch
-   fam TFAM-INST-WIDTH@ ffam TFAM-SLOTS@ <> IF 0 RES-FALSE EXIT THEN   \ a wide instantiation moves every field past the first: the committed offsets no longer describe it (see the note below)
-   off fid TYPE-FIELD:BYTES@ +  ffam TFAM-SLOTS@ CELL *  > IF 0 RES-FALSE EXIT THEN   \ field extent past the family width
-   fam TFC-ARGS!
-   fid TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ RES-FALSE TFC-SCH-TERM RES-TRUE ;   \ root index -> node -> instantiate the field schema over the input args
-\ Only the committed field-family lookup is caught: an E-PF-ID there means the
-\ expected absent field, and every other error propagates.
-: TFAM-FIELD-PROJ ( n n n -- n bool )   \ fid off famterm -- fieldterm ok
-   {: fid:n off:n fam:n :}
-   fid [: TYPE-FIELD:FAMILY@ ;] catch
-   dup 0= IF drop {: ffam:n :} fid off fam ffam TFAM-FIELD-PROJ-DO EXIT THEN
-   nip dup E-PF-ID <> IF throw THEN
-   drop 0 RES-FALSE ;
-
-\ The width condition above, like the forged-offset and role conditions, guards
-\ the arming boundary: only a generator that armed a window with an id its text
-\ does not describe reaches it. A family type argument does not bind an
-\ accessor's parameter (measured: `expected: ptr sdagen<a> actual: ptr
-\ sdagen<sdaw1>`), and every other argument is one cell. Its judgeable twin is
-\ RECORD-AT-EXACT? in src/core/checker.f, which a written-out `record-at` call
-\ reaches with a concrete wide pointee (test/structure-decl-suite.f case 15,
-\ SDAW3); the two must keep the same condition, or the two halves of one address
-\ surface describe different instantiations.
-
-\ Fixed storage walks the same instantiated schema that field projection uses,
-\ but computes its own offsets: a wide argument moves every following field.
+\ Fixed storage walks a field's instantiated schema but computes its own
+\ offsets: a wide argument moves every following field.
 \ The stored type has already passed CHECKER-STORAGE-INFO's closed-layout gate.
 public
 
@@ -5808,8 +5772,7 @@ private
    [: SUMV-TAG@ ;]          is MATCH-VTAG-XT    \ variant id -> declaration-order tag (bitset index)
    [: TFL-VPADS ;]          is VARIANT-PADS-XT  \ family id + variant id -> declared pads (the tape's construct and arm events)
    [: TFAM-VAR-COUNT@ ;]    is MATCH-VCOUNT-XT  \ exhaustiveness domain size
-   [: TFAM-MATCH-PAY ;]     is MATCH-PAY-XT     \ branch payload row from the scrutinee's args
-   [: TFAM-FIELD-PROJ ;]    is FIELD-PROJ-XT ;  \ instantiated field type for the FAMILY:FIELD projection window
+   [: TFAM-MATCH-PAY ;]     is MATCH-PAY-XT ;   \ branch payload row from the scrutinee's args
 TFAM-HOOK-INSTALL
 
 ;package

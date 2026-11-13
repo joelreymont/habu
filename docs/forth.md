@@ -2578,15 +2578,6 @@ sections above.
   `E-ARENA-CALL`, in a body, a quotation or text `evaluate` runs at top level
   (there with `word` null). Exporting the two words is admitted; only the call
   or tick is refused.
-- **`field-project` is not a definition name once the engine is sealed.**
-  Every `STRUCTURE` accessor spells it unqualified, so it binds through the
-  declaring scope's search order; a qualified spelling would carry no checker
-  identity. A word of that name, by any definer, in any package and in any
-  letter case, is refused at its definition with `E-RESERVED-DEFINITION`,
-  `reserved word cannot be a definition name:` and the name as spelled, such
-  as `Field-Project`, rc 70. Admitted, a package's own `field-project` would
-  send an accessor's store to another variable. The engine's own definition
-  loads before the seal.
 - **Package `private` is visibility, not sealing.** Another file may reopen
   an application package and call its private words until its `seal-package`;
   an engine package is sealed by its build, and a sealed reopen is refused.

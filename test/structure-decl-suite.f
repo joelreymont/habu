@@ -814,15 +814,6 @@ TYPE-FIELD:COUNT PFB @ T=
 s" STRUCTURE sdaroll DERIVE addr FIELD z n ;STRUCTURE" TEST-EVAL:RC 0 T=
 s" SDAR1 ( ptr sdaroll -- ptr n ) SDAROLL:Z" CHECK-QUIET-CANDIDATE! -1 T=
 
-\ `field-project` is reserved: a package's own is refused at its definition (70,
-\ `E-RESERVED-DEFINITION habu: ... reserved word cannot be a definition name:
-\ field-project` on fd 2).
-package SDAFP
-variable V
-s" : field-project ( a n -- ptr n ) drop drop V ;" TEST-EVAL:RC 70 T=
-s" field-project" get-current search-wl 0= TTRUE      \ the definition did not take
-;package
-
 \ A package's own `*`, RECORD-AT, `+` or `swap`, defined before a STRUCTURE with
 \ DERIVE addr, captures none of the words it makes: each reads its own field
 \ and AT element. Each is undefined before the storage, whose definer spells it.

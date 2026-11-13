@@ -42,8 +42,6 @@ public
 
 : NIL ( -- ptr n ) 0 ZERO>PTR ;
 
-: PROJECT-FIELD ( ptr a n -- ptr a ) + ;
-
 \ src/core/bytes.f is below the rewind mark. Keep its forward-copy behavior,
 \ including a narrow overlap where written bytes become later source bytes.
 : COPY-LEN ( ptr u8 ptr u8 len -- ) {: src:ptr dst:ptr u:len :}

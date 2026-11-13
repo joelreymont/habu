@@ -39,7 +39,7 @@ Seed:
 Checker, src/core/checker.f:
 - PE-TRUSTED-ONLY (9629), PE-TRUSTED-ONLY? (9685) and PRIM-TRUSTED-ONLY! (9703).
 - The use of PRIM-TRUSTED-ONLY! in PE-SPEC-ROW (10038).
-- Its rows (10120-10147): CHECKER-VERIFY-PKG-START, CHECKER-VERIFY-PKG-DONE, CHECKER-RESET-SOURCE, CHECKER-TRUSTED-TICK?, FIELD-PROJ!, FIELD-PROJ-A, FIELD-PROJ-U, FIELD-PROJ-FID and FIELD-PROJ-OFF. Also CHECK-DOES! (10269), LOWER-CERT:BYTES (10455) and LOWER-CERT:FOR-HASH (10457).
+- Its rows: CHECKER-VERIFY-PKG-START, CHECKER-VERIFY-PKG-DONE and CHECKER-TRUSTED-TICK?. Also CHECK-DOES! (10269), LOWER-CERT:BYTES (10455) and LOWER-CERT:FOR-HASH (10457).
 - The comment at 11731.
 
 src/habu/prims.f: FL-TRUSTED-ONLY (108), ETRUSTED-ONLY! (256), TRUSTED-ONLY? (307) and the 44 ETRUSTED-ONLY! row marks (346-928).
@@ -118,6 +118,6 @@ Acceptance case 2026-11-10 (bob; merged from habu-keep-the-declaration-16209954 
 
 Acceptance case 2026-11-11 (carl-hcdd fix zkmnmrls f455cb19, dot 6dd65911): the pre-pass (src/habu/verify-source.f VERIFY-DOES) still records a TRUSTED: create-less does> word as a definer, where the load runs it as a patch of the last created word; deleting TRUSTED: removes the path, so no fix is made in it.
 
-Acceptance cases (2026-11-12, from habu-a-foreign-pkg-a9c9e60d's probes): a foreign package's public `TRUSTED: FAKE ( n -- Q:tok ) ;` forges a linear token and a TRUSTED: word erases or retypes one with no memory and no cast; the tree does it at src/lib/xml/c2.f:120 and :123 (package XML-C2 mints and erases XML:reader, declared in src/lib/xml/state.f:11-13), and tender src/answers.f:52-54 is the mint, state and consume trio docs/forth.md says never to write. Each stops loading when TRUSTED: goes.
+Acceptance cases (2026-11-12, from habu-a-foreign-pkg-a9c9e60d's probes): a foreign package's public `TRUSTED: FAKE ( n -- Q:tok ) ;` forges a linear token and a TRUSTED: word erases or retypes one with no memory and no cast; the tree does it at src/lib/xml/c2.f:118 and :121 (package XML-C2 mints and erases XML:reader, declared in src/lib/xml/state.f:11-13), and tender src/answers.f:52-54 is the mint, state and consume trio docs/forth.md says never to write. Each stops loading when TRUSTED: goes.
 
 Acceptance case 2026-11-12 (jerry; from habu-print-the-one-ea184772's census): SEAL-CAPTURE (src/habu/habu1.f BSEALCAP :4335) exits 73 writing 'hb: undrained pre-trust defer: <name>' per entry, off the shape `<class> habu: <text>[ <16 hex>] lr <16 hex>`. Pre-trust defers belong to TRUSTED:; accepted when they go with it.

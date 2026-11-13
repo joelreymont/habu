@@ -1103,11 +1103,9 @@ PTR-VARIABLE TDGEN-NA   variable TDGEN-NU  \ word-name span inside TDGEN-BUF
 \ relocation-safe offsets for its name and checker definition span. The symbol
 \ table rejects collisions within the plan; post-xref name and capacity hooks
 \ validate live visibility and every plan-determined fixed registry.
-\ A row also carries a field-projection arming, FID -1 for none; no generator
-\ arms one.
 $1000 constant TDPLAN-CAP-INIT
 4 constant TDPLAN-ROW-CAP-INIT
-8 cells constant TDPLAN-REC
+5 cells constant TDPLAN-REC
 $7FFFFFFFFFFFFFFF constant TDPLAN-BYTE-MAX
 TDPLAN-BYTE-MAX TDPLAN-REC / constant TDPLAN-ROW-MAX
 0 cells constant TDPLAN.SYM-OFF
@@ -1115,10 +1113,6 @@ TDPLAN-BYTE-MAX TDPLAN-REC / constant TDPLAN-ROW-MAX
 2 cells constant TDPLAN.DEF-U-OFF
 3 cells constant TDPLAN.NAME-OFF-OFF
 4 cells constant TDPLAN.NAME-U-OFF
-5 cells constant TDPLAN.FID-OFF
-6 cells constant TDPLAN.FOFF-OFF
-7 cells constant TDPLAN.BUILT-OFF
--1 constant TDPLAN-NO-ARM
 create TDPLAN-BOOT TDPLAN-CAP-INIT allot
 create TDPLAN-ROW-BOOT TDPLAN-ROW-CAP-INIT TDPLAN-REC * allot
 PERSISTED-PTR-VARIABLE TDPLAN-P       TDPLAN-BOOT TDPLAN-P !
@@ -1225,9 +1219,6 @@ private
 : TDPLAN.DEF-U ( ptr a -- ptr a ) TDPLAN.DEF-U-OFF + ;
 : TDPLAN.NAME-OFF ( ptr a -- ptr a ) TDPLAN.NAME-OFF-OFF + ;
 : TDPLAN.NAME-U ( ptr a -- ptr a ) TDPLAN.NAME-U-OFF + ;
-: TDPLAN.FID ( ptr a -- ptr a ) TDPLAN.FID-OFF + ;
-: TDPLAN.FOFF ( ptr a -- ptr a ) TDPLAN.FOFF-OFF + ;
-: TDPLAN.BUILT ( ptr a -- ptr a ) TDPLAN.BUILT-OFF + ;
 
 : TDPLAN-SYM@ ( n -- n )
    TDPLAN-ROW TDPLAN.SYM @ ;
@@ -1264,20 +1255,8 @@ private
    TDGEN-U @ 3 - r TDPLAN.DEF-U !
    noff TDPLAN-BYTE-NEED r TDPLAN.NAME-OFF !
    TDGEN-NU @ r TDPLAN.NAME-U !
-   TDPLAN-NO-ARM r TDPLAN.FID !
-   0 r TDPLAN.FOFF !
-   0 r TDPLAN.BUILT !
    TDGEN-BUF TDGEN-U @ TDPLAN-APP
    10 TDPLAN-C, ;
-
-\ The committed field id and the baked byte offset of the row just planned. The
-\ id is the window's whole authority (the checker derives family, offset, extent,
-\ role and schema from it), and the offset is cross-checked against it, so an
-\ accessor whose text and arming disagree is refused rather than published.
-: TDPLAN-ARM+ ( n n -- ) {: fid:n off:n :}
-   TDPLAN-N @ 1 - TDPLAN-ROW {: r:ptr :}
-   fid r TDPLAN.FID !
-   off r TDPLAN.FOFF ! ;
 
 : TDPLAN-NAME+ ( -- n )
    TDGEN-NA @ TDGEN-NU @ CHECKER-DEFINED-HERE? IF
@@ -1323,8 +1302,6 @@ public
 
 private
 
-: TDPLAN-TEXT? ( n -- bool ) TDPLAN-ROW TDPLAN.BUILT @ 0= ;
-
 \ The whole row text, ": NAME ( sig ) body ;", as the evaluator reads it;
 \ TDPLAN-DEF$ is the same span without ': ' and ';', the candidate form CHECK!
 \ takes. Both come from the recorded definition span so they cannot drift.
@@ -1332,33 +1309,12 @@ private
    TDPLAN-ROW {: r:ptr :}
    r TDPLAN.DEF-OFF @ 2 -  r TDPLAN.DEF-U @ 3 +  TDPLAN-SPAN$ ;
 
-\ Arms the sealed field-projection window for one generated definition.
-\ ARENA (arena.f) arms its NAME-NEW and NAME-RELEASE through it too.
-public
-: FIELD-ARM ( ptr u8 n n n -- ) FIELD-PROJ! ;
-private
-
-\ Arms the window for this row, if it carries one, before each of the two
-\ readings of its text: the window is single-shot and disarms at the
-\ `field-project` token even on a reject.
-: TDPLAN-ARM ( n -- ) {: i:n :}
-   i TDPLAN-ROW {: r:ptr :}
-   r TDPLAN.FID @ TDPLAN-NO-ARM = IF EXIT THEN
-   i TDPLAN-NAME$ r TDPLAN.FID @ r TDPLAN.FOFF @ FIELD-ARM ;
-
 : TDPLAN-PREFLIGHT-NAMES ( -- )
    TDPLAN-N @ 0 ?do i TDPLAN-NAME$ TDECL-NAME-PREFLIGHT-XT loop ;
 
-\ A built row registers its signature; a bad or duplicate one is refused here.
 : TDPLAN-PREFLIGHT-ROWS ( -- )
    TDPLAN-N @ 0 ?do
-      i TDPLAN-TEXT? IF
-         i TDPLAN-ARM
-         i TDPLAN-DEF$ CHECK! -1 <> IF 70 throw THEN
-      ELSE
-         i TDPLAN-DEF$ 4 - swap 2 + swap
-         i TDPLAN-NAME$ CHECKER-USIG-CERT-ADD
-      THEN
+      i TDPLAN-DEF$ CHECK! -1 <> IF 70 throw THEN
    loop
    CTOR-PEND-REQUIRE-DONE ;
 
