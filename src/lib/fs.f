@@ -617,11 +617,11 @@ public
 \ writer renaming a new file over the path or a remover unlinking it cannot
 \ change what READ-SIZED reads. A missing file (ENOENT) is `fd 0 false` with no
 \ descriptor open; any other open failure is E-FS-OPEN, and a descriptor that
-\ is not a regular file is closed and E-FS-STAT. The open blocks, as READ-ALL's
-\ does, so a FIFO at the path waits for a writer: name files the caller owns.
+\ is not a regular file is closed and E-FS-STAT. The open does not block: a
+\ FIFO at the path opens at once and is E-FS-STAT, as any file not regular is.
 \ A true flag hands the caller an open descriptor that READ-SIZED closes.
 : OPEN-SIZED ( ptr u8 n -- fd n bool ) {: pa:ptr pu :}
-   pa pu READ-PATHZ open-rd {: file :}
+   pa pu READ-PATHZ O-NONBLOCK 0 open {: file :}
    file 0 < if
       ERRNO ENOENT = if -1 >FD 0 false exit then
       E-FS-OPEN throw

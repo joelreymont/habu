@@ -479,6 +479,12 @@ SUITE bearer
    src/lib/net/bearer-test.f
 ;SUITE
 
+\ SECRET:DIR-BIND over a directory under TMPDIR. Its own suite: the bind holds
+\ SECRET's store for the whole process.
+SUITE secret-dir
+   src/lib/secret/dir-test.f
+;SUITE
+
 \ MODEL against an in-process OpenAI- and Ollama-shaped peer on a loopback port.
 SUITE model
    src/lib/net/model-test.f
