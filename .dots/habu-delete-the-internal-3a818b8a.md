@@ -11,7 +11,7 @@ blocks:
 Problem: three marks say "not for everyone" and overlap: DNAME-INT (hidden engine word), the trusted-only flag (src/habu/prims.f ETRUSTED-ONLY!; src/core/checker.f PRIM-TRUSTED-ONLY!) and DNAME-OWNED (owner-only). With internal words private to the system package and stripped from the product, none of them carries anything privacy does not.
 Ruling (Joel, 2026-10-08): none survive; privacy plus the build's strip only.
 Acceptance: DNAME-INT, DNAME-OWNED and the trusted-only flag, with every reader and writer (src/core/internal-mark.f's marking, the refusals "internal engine word" and "trusted-only tick" in src/habu/interpreter.f, the AOT capture's mark field), are deleted; a hidden word is simply absent from the product.
-Files: src/habu/layout.f (DNAME-* bits), src/core/internal-mark.f, src/habu/prims.f, src/habu/primitive-registry.f, src/core/checker.f, src/habu/aot-capture.f, src/habu/interpreter.f, src/compiler/native/dict.f, tests naming the marks (test/c2-memory-entry.f expects "internal engine word").
+Files: src/habu/layout.f (DNAME-* bits), src/core/internal-mark.f, src/habu/prims.f, src/habu/primitive-registry.f, src/core/checker.f, src/habu/interpreter.f, src/compiler/native/dict.f, tests naming the marks (test/c2-memory-entry.f expects "internal engine word").
 Verify: full suite on the built hb; product probes for formerly internal names answer E-UNDEFINED.
 Depends: the dot moving internal primitives into the system package. Ownership: lead. Claim: unassigned.
 

@@ -106,6 +106,5 @@ to each, as dyld and ld.so do for a position-independent C program. The boot
 maps DATA at its address and refuses to run when it cannot get it.
 **Now:** every ARM64 image hb-build makes follows this rule: it builds hb or
 the program in its own process (`tools/hb-build-core.f`) and `LINKER:WRITE`
-writes it (`src/habu/link-data.f` `LINK-ENGINE`, `LINK-STRIPPED`). The
-x86-64 linker places code at a fixed address (`src/habu/link-x64.f` `LAYOUT`),
-and nothing in the product build calls it.
+writes it (`src/habu/link-data.f` `LINK-ENGINE`, `LINK-STRIPPED`). Nothing
+links an x86-64 image.

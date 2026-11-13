@@ -10,4 +10,4 @@ Problem: only the deleted native-runtime.f called NCOMP:CAPTURE-PREPARE (compile
 
 Note 2026-11-10 (bob): src/habu/aot-x64.f and src/habu/patch-x64.f are deleted (habu-nothing-loads-src-66ea20d9); nothing loaded them.
 
-Moved from habu-delete-the-dead-c212d5a2 (words only the x86-64/Wasm capture path keeps): AOT-RUNTIME:COMPLETE?'s NATIVE-RUNTIME clause (src/habu/aot-runtime.f:49; a capture holding CHECKER-REG now dies 'incomplete captured runtime', :10); AOT-CAPTURE MAP-N, MAP-NAMED, MAP-NAME$, DECLARED-IN, SIG-KNOWN, SIG-EXEMPT and CAPTURE-WITH-NAMES (src/habu/aot-capture.f); AOT-SPAN PUBLISH (src/habu/aot-decl.f:343, habu2.f:7635, called at habu2.f:7726, no arm64 reader). Each goes with the capture path, after an rg for other callers.
+Moved from habu-delete-the-dead-c212d5a2 (words only the x86-64/Wasm capture path keeps): AOT-RUNTIME:COMPLETE?'s NATIVE-RUNTIME clause (src/habu/aot-runtime.f:49; a capture holding CHECKER-REG now dies 'incomplete captured runtime', :10); AOT-SPAN PUBLISH (src/habu/aot-decl.f:343, habu2.f:7635, called at habu2.f:7726, no arm64 reader). Each goes with the capture path, after an rg for other callers.

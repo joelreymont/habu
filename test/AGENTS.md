@@ -3,8 +3,8 @@
 `caffeinate -i bin/hb --load test/run.f </dev/null` runs the full native test
 suite; `bin/hb --load test/run.f -- name ... </dev/null` runs only the named
 tests. `gate-stdlib.f` loads
-the tests of `gate-stdlib-cases.f`, which adds `gate-arm-cases.f` or
-`gate-x64-cases.f` for the host, and runs them in `gate-pool.f`'s process pool.
+the tests of `gate-stdlib-cases.f`, which adds `gate-arm-cases.f` on an arm64
+host, and runs them in `gate-pool.f`'s process pool.
 `load-graph.f` reads the tests' load graph, which `gate-entry-guard.f` walks.
 Keep stdin at end of file: the tests' process groups inherit it, and a read
 from a terminal stops them with SIGTTIN. Give a run its own `TMPDIR` outside

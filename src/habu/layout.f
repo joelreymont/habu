@@ -1270,8 +1270,8 @@ $43A0 constant XT-CELL
    data-base XT-CELL + xt! ;
 ;package
 
-\ AOT-ARM:OPEN writes B0-CELL, and WINDOW-CLOSE clears it. Tier 0 reads it to
-\ keep a mention of a created word made before the window opened a call.
+\ Nothing writes B0-CELL, so it holds 0 and tier 0's test of it, which kept a
+\ mention of a created word made before a capture window opened a call, never holds.
 \ T0 is latched when the seed allocates its wordlists: later boot-run entries
 \ can allocate more, so the sealed-wordlist gate cannot derive it from WIDN.
 package AOT-CELLS

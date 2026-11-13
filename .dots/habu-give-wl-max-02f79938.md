@@ -6,4 +6,4 @@ issue-type: task
 created-at: "2026-11-05T12:39:52.468259+02:00"
 ---
 
-Found by the WL rename review (2026-11-05). src/habu/layout.f:142-143 says WL:MAX ($FFFFFFFE) 'bounds every WID-indexed table and the snapshot's registry validation', but no code reads it (master had no reader of WID:MAX either); habu2.f:12703 names it in a comment. src/habu/aot-decl.f:105 defines WID-QUAL with the same value as the sentinel for a qualified pooled name (readers aot-capture.f:578, :1428, aot-file.f:1451, habu2.f:6961, :13587). Acceptance: either a wid-indexed table or validation reads WL:MAX and the comment is true, or WL:MAX, its mirror and the comments go. Workspace: none yet. Claim: unassigned.
+Found by the WL rename review (2026-11-05). src/habu/layout.f:142-143 says WL:MAX ($FFFFFFFE) 'bounds every WID-indexed table and the snapshot's registry validation', but no code reads it (master had no reader of WID:MAX either); habu2.f:12703 names it in a comment. Acceptance: either a wid-indexed table or validation reads WL:MAX and the comment is true, or WL:MAX, its mirror and the comments go. Workspace: none yet. Claim: unassigned.

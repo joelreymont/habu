@@ -199,28 +199,18 @@ target-free: it emits through the emitter the target selects.
   patch (`src/habu/address-carrier.f`).
 - **Traps** use the same mmap protections; the handler reads `RIP` and `RSP`.
 
-### The capture's reach
+### The shadow
 
 A host word's names are bound as it compiles, so its target routine cannot be
 lowered later from the tape: while the shadow (`src/compiler/native/shadow.f`)
 is open, `src/habu/t0.f` walks the same tape for the target before the host,
 and a shadow refusal refuses the definition.
 
-The capture carries the shadow's map (`src/habu/aot-shadow.f`). Code bytes
-carry no host address: call fields stay zero, a code literal holds 0, a DATA
-literal holds its window coordinate. Two reaches decide what ships, because
-x86-64 and ARM64 optimise differently and ARM64 reach cannot answer which x86
-routines are needed: the capture's reach decides which stripped or retired
-records are live, and the shadow's reach follows the x86 shadow's own call and
-code-address sites. Every record index is a shipped row, never a window index,
-because stripping and `undefine` renumber records. A merge refuses a shadow on
-either side, because the merged engine is the ARM64 seed.
-
 ### The OS seam
 
 `src/os/linux-x86-64/` is a seam of the same shape as `src/os/linux/`
 (Porting). Both Linux targets share `src/os/linux/layout.f`, so
-captured DATA pointers need no translation between the two Linux hosts. Seam
+DATA pointers need no translation between the two Linux hosts. Seam
 register arguments are x86-64 register numbers moving through an
 upward-growing data stack, and the seam's instruction stencils are byte strings
 of whole instructions appended as they stand.
@@ -245,9 +235,7 @@ ARM64 the record is two bitmaps, one bit per four-byte word; an x86-64 site
 starts at any byte, so the same bytes hold a band of ascending rows. A site's
 offset is its instruction's first byte on both targets. Both views are declared
 on every target, because `src/` has no load-time target selection; the running
-engine picks one, and one reader (`src/habu/sites.f`) serves both. Snapshot
-relocation does not apply: the region and DATA are fixed, so the rows serve
-publication and the AOT capture only.
+engine picks one.
 
 ### Build and bootstrap
 
@@ -260,8 +248,8 @@ Cross-build first, self-host second.
 2. **The ARM64 engine cross-builds through tier 0.** Loading the prefix
    executes on the host, so the host cannot switch its contract; while a
    shadow is open tier 0 walks each definition for the target and then for
-   the host, and the capture carries the shadow.
-3. **A host-side Habu linker writes the image** (`src/habu/link-x64.f`). It
+   the host.
+3. **A host-side Habu linker writes the image.** It
    resolves every record, call, literal and DATA cell at write time; no
    relocation runs at boot or snapshot restore.
 4. **The cross-built engine self-hosts** on an x86-64 host, two

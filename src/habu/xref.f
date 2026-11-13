@@ -535,7 +535,6 @@ public
 \ one slot above the definer, in its wordlist, under its name with `;does`
 \ added, and starting inside its body. Record k+1 is k's clause when it is all
 \ four; the body test is what tells the clause from a word someone named X;does.
-\ aot-capture.f ACAP-DOES-COMPANION? asks the same of a captured record.
 : XREF-DOES-COMPANION? ( n -- bool ) {: k:n :}
    k 1+ ndict@ >= if XREF-FALSE exit then
    k XREF-REC {: parent:ptr :}

@@ -2636,7 +2636,7 @@ variable SITE-TRAP-CELL
 \ rows of a u32 region offset and a u8 kind, strictly ascending by offset.
 
 \ r8 = the first row, rcx = the count and r9 = past the last row. A count above
-\ SITE-CAP is a corrupt band, SITE-RC's, as src/habu/sites.f refuses it.
+\ SITE-CAP is a corrupt band, SITE-RC's.
 : ROWS, ( -- )
    R8 DATA-REG SNAP-RELOC:SITE-ROWS-OFF MEM-OFF ASM-SINK ENC-LEA
    RCX DATA-REG SNAP-RELOC:SITE-N-CELL MOV-LOAD,

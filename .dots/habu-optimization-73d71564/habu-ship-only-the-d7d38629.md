@@ -20,5 +20,5 @@ Children, in order:
 1. habu-give-every-baked-9ca94f18 and habu-drop-private-signatures-974304d0, in parallel. Closed on evidence: habu-zero-the-type-96a51b7e (those planes never reach the image) and habu-certify-engine-src-0746d42c (certification replays its own private words, so it stays on the build host).
 2. habu-seal-every-captured-c550102f after 9ca94f18, and habu-compact-the-effect-130fd5d0 after 974304d0.
 3. habu-declare-the-surface-89e9aed0.
-Files: `src/core/checker.f`, `src/core/internal-mark.f`, `src/habu/aot-capture.f`, `src/habu/habu2.f`, `tools/engine-size.f`, `docs/forth.md`.
+Files: `src/core/checker.f`, `src/core/internal-mark.f`, `src/habu/habu2.f`, `tools/engine-size.f`, `docs/forth.md`.
 Ownership: heron (campaign lead).

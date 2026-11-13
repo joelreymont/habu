@@ -5,8 +5,7 @@
 \ Linux layout constants (src/os/linux/layout.f) are replayed here,
 \ privately, once for every x86-64 file that builds against them: the image
 \ writer (elf.f), the boot (src/habu/boot-x64.f), the kernel
-\ (src/habu/kernel-x64.f), the record layout (src/habu/link-x64.f) and the
-\ profiler (src/habu/prof-x64.f).
+\ (src/habu/kernel-x64.f) and the profiler (src/habu/prof-x64.f).
 \ Read each value qualified, X64LAYOUT:DATA-VA, never bare: a bare read binds
 \ the host's global, which a Linux host gives the same value and a macOS host
 \ does not. So each x86 source opens `using X64LAYOUT` after its last load and

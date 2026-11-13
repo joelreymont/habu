@@ -30,7 +30,7 @@ $F2800000 constant DATA-MOVK0
 private
 
 \ The chain's own instruction word, a private copy as every reader of this
-\ shape keeps one (aot-decl.f W32@, aot-capture.f ACAP-W32@).
+\ shape keeps one.
 : W32@ ( ptr u8 -- n ) {: p:ptr :}
    p c@  p 1+ c@ 8 lshift or  p 2 + c@ 16 lshift or  p 3 + c@ 24 lshift or ;
 

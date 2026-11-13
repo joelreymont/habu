@@ -89,14 +89,9 @@ variable LBUF-BYTES
 
 \ ---- how a generated accessor reaches its storage ----------------------------
 \ Every generated accessor addresses its storage through a `create`d word: habu2.f
-\ C-DATA-ADDR emits a recorded DATA carrier (RELOC-EMIT:MARK-SITE), and every pass
-\ that moves persisted DATA (snapshot restore, aot-file.f MERGE)
-\ rewrites those and nothing else; a scalar literal never reads as an
-\ address. `data-base <baked offset> +` is invisible to them: it survives a
-\ snapshot but not a capture, where a merged window lands at another offset
-\ (measured: 152 bytes low, so BKEY's accessor wrote BMID's cells).
-\ `data-base <engine-layout constant> +` stays correct: src/habu/layout.f cells do
-\ not move with a window.
+\ C-DATA-ADDR emits a recorded DATA carrier (RELOC-EMIT:MARK-SITE), and snapshot
+\ restore, which moves persisted DATA, rewrites those and nothing else; a scalar
+\ literal never reads as an address.
 : LBUF-BASE$ ( -- ptr u8 n ) s" #base" ;
 
 \ The answer stays in LBUF-GEN until the next LBUF-CLEAR.

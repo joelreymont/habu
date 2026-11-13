@@ -157,16 +157,12 @@ SUITE compiler-x86-64-asm
    test/compiler/x86-64-asm.f
 ;SUITE
 
-\ Tests for one host live in test/gate-arm-cases.f and test/gate-x64-cases.f;
-\ tests for both hosts stay here.
+\ Tests that need an arm64 host live in test/gate-arm-cases.f; tests for every
+\ host stay here.
 package STDLIB-GATE
 private
 : HOST-ROWS ( -- )
-   HB-TARGET-LINUX-X86-64? if
-      s" test/gate-x64-cases.f"
-   else
-      s" test/gate-arm-cases.f"
-   then included ;
+   HB-TARGET-LINUX-X86-64? 0= if s" test/gate-arm-cases.f" included then ;
 HOST-ROWS
 ;package
 

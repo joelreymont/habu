@@ -79,9 +79,8 @@ public
 
 \ A writer first builds the FLAT bitmap, one bit a cell with cell c in bit c mod
 \ 8 of byte c div 8, ending at the byte of its last present cell, and this turns
-\ it into the image form. The flat form is the writers' working state: an AOT
-\ merge appends to it (src/habu/aot-file.f PLACE-WDATA) and it never reaches an
-\ image.
+\ it into the image form. The flat form is the writers' working state and never
+\ reaches an image.
 
 \ Groups a flat bitmap of `len` bytes covers, and the presence map's bytes.
 : GROUPS ( n -- n ) GROUP-BYTES 1- + GROUP-BYTES / ;
