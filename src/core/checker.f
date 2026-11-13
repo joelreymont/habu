@@ -7095,8 +7095,6 @@ CHECKER-REG:}SCRATCH
 1 constant PE-ACTIVE
 2 constant PE-TRUSTED-ONLY       \ prim is a trust boundary: rejected from CHECKED code, TRUSTED: only
 4 constant PE-FIXED-ABI
-8 constant PE-C2-INIT
-16 constant PE-C2-RECORDS
 32 constant PE-TOP-ONLY           \ prim types a top-level keyword: a body token never takes the row
 
 \ While set, every type var the signature parser mints is TVK-RAW, so raw
@@ -11830,10 +11828,6 @@ variable BUILD-SYM-END   0 BUILD-SYM-END !
 : PRIM-TOP-ONLY! ( -- ) PE-TOP-ONLY PE-LAST-FLAG! ;
 
 : PRIM-FIXED-ABI! ( -- ) PE-FIXED-ABI PE-LAST-FLAG! ;
-
-: PRIM-C2-STOW! ( n -- )
-   {: kind:n :}
-   kind 1 = IF PE-C2-INIT ELSE PE-C2-RECORDS THEN PE-LAST-FLAG! ;
 
 variable PRM-FIRST
 
@@ -26127,18 +26121,17 @@ public
 : PRIM-ATOM ( n -- ) PE-SPEC-ATOM ;
 
 \ Closes the open row on pkg's private symbol, or the global one for an empty
-\ pkg, with its flags and stow kind; a symbol the prefix holds, a grammar
-\ word's, states nothing.
-: PRIM-CLOSE ( ptr u8 n bool bool n -- )
-   {: pkg:ptr pkgu:n trusted:bool fixed:bool stow:n :}
+\ pkg, with its flags; a symbol the prefix holds, a grammar word's, states
+\ nothing.
+: PRIM-CLOSE ( ptr u8 n bool bool -- )
+   {: pkg:ptr pkgu:n trusted:bool fixed:bool :}
    PE-SPEC-TOS @ 0 <> IF s" checker: primitive-spec operand left over" 76 die THEN
    pkgu 0= IF  PE-NA@ PE-NU @ PE-SYM-OF
    ELSE  pkg pkgu SYM-PRIVATE PE-NA@ PE-NU @ SYM-INTERN  THEN {: sym:n :}
    sym BUILD-SYM-END @ < IF  -1 PE-LAST !  EXIT  THEN
    PE-DIN @ PE-DOUT @ PE-RIN @ PE-ROUT @ PE-HASR @ sym 0 READ-ROW
    trusted IF PRIM-TRUSTED-ONLY! THEN
-   fixed IF PRIM-FIXED-ABI! THEN
-   stow 0= 0= IF stow PRIM-C2-STOW! THEN ;
+   fixed IF PRIM-FIXED-ABI! THEN ;
 
 \ The stated symbols join the prefix; the primitives' axioms follow
 \ (NORET-AXIOM names prefix symbols only).

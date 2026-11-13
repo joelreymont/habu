@@ -165,7 +165,7 @@ variable PATH-U
 \ One row, stated by kind: a package's private row on its package's private
 \ symbol, kept for the record linker.f OWNED+ lays of it.
 : STATE-ROW ( -- )
-   NEXT NEXT NEXT NEXT {: kind:n trusted:n fixed:n stow:n :}
+   NEXT NEXT NEXT {: kind:n trusted:n fixed:n :}
    AT @ 8 + {: name-at:n :}
    NAME-NEXT {: name:ptr nameu:n :}
    AT @ 8 + {: pkg-at:n :}
@@ -183,7 +183,7 @@ variable PATH-U
    kind PRIM-SPEC:K-PRIM =  owned or if
       name nameu CHECK:PRIM-OPEN
       atoms 0 ?do NEXT CHECK:PRIM-ATOM loop
-      pkg  pkgu  trusted 0<>  fixed 0<>  stow CHECK:PRIM-CLOSE
+      pkg  pkgu  trusted 0<>  fixed 0<>  CHECK:PRIM-CLOSE
       exit
    then
    atoms 8 * SKIP
