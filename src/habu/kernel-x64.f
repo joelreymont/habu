@@ -3806,34 +3806,23 @@ private
    s" wide-mark" [: WIDE-MARK-BODY ;] PRIM ;
 
 \ Capture needs address-cell declarations at fixed x86-64 addresses too.
-\ The ARM64 twins are habu2.f RELOC-EMIT's primitives and habu1.f's build and tier primitives.
+\ The ARM64 twins are habu2.f RELOC-EMIT's primitives and habu1.f's build primitives.
 
-: TIER-OFF ( -- n ) NCOMP-DISPATCH:TIER-CELL ;
 : DEPTH-OFF ( -- n ) NCOMP-DISPATCH:BUILD-DEPTH-CELL ;
-: SAVED-OFF ( -- n ) NCOMP-DISPATCH:BUILD-TIER-CELL ;
 
-\ executable-build-enter ( -- ): open a build scope. The outermost saves the
-\ caller's tier. The scope never selects a tier itself: what it compiles uses
-\ the caller's.
+\ executable-build-enter ( -- ): open a build scope.
 : BUILD-ENTER-BODY ( -- )
-   X64CODE:LBL {: nested:label :}
    RAX DEPTH-OFF CELL@,
-   RAX RAX ASM-SINK ENC-TEST-RR  C-NE nested JCC,
-   RCX TIER-OFF CELL@,  RCX SAVED-OFF CELL!,
-   nested X64CODE:LBL,
    RAX ASM-SINK ENC-INC  RAX DEPTH-OFF CELL!, ;
 
-\ executable-build-leave ( -- ): close a scope. The outermost restores the
-\ saved tier and clears the copy; with no scope open it does nothing.
+\ executable-build-leave ( -- ): close a scope; with no scope open it does
+\ nothing.
 : BUILD-LEAVE-BODY ( -- )
    X64CODE:LBL {: done:label :}
    RAX DEPTH-OFF CELL@,
    RAX RAX ASM-SINK ENC-TEST-RR  C-E done JCC,
    RAX ASM-SINK ENC-DEC
-   RAX DEPTH-OFF CELL!,                               \ mov keeps dec's flags
-   C-NE done JCC,
-   RCX SAVED-OFF CELL@,  RCX TIER-OFF CELL!,
-   RAX SAVED-OFF CELL!,
+   RAX DEPTH-OFF CELL!,
    done X64CODE:LBL, ;
 
 \ (MARK) takes rdi = the cell and rsi = its kind tag. Its declaration happens
@@ -4780,8 +4769,6 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RAX TSIG-A-CELL CELL!,  RAX TSIG-U-CELL CELL!,
    RAX TCSIG-A-CELL CELL!,  RAX TCSIG-U-CELL CELL!,
    RAX DOESB-CELL CELL!,  RAX TRUSTED-CELL CELL!,  RAX CLAUSE-CELL CELL!,
-   RAX NCOMP-DISPATCH:TIER-CELL CELL@,
-   RAX RAX ASM-SINK ENC-TEST-RR  C-NE latched JCC,
    RAX NCOMP-DISPATCH:COMP-CELL CELL@,
    RAX RAX ASM-SINK ENC-TEST-RR  C-E latched JCC,
    RAX 2 IMM32,

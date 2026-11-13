@@ -1332,9 +1332,9 @@ CAST: AS-COMPILE-FIXED ( n -- [ n n COMP:body -- ] )
 CAST: AS-BODY-HOOK ( n -- [ -- ptr u8 bool ] )
 CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
 
-\ A head at tier 0 with no tier-0 compiler (TIER-CELL and COMP-CELL 0), or a
-\ body token or fixed body latched to the JIT, refuses: this loop cannot call
-\ the JIT. `immediate` passes.
+\ A head with no tier-0 compiler (COMP-CELL 0), or a body token or fixed body
+\ latched to the JIT, refuses: this loop cannot call the JIT. `immediate`
+\ passes.
 : DEF-TIER-0 ( -- )
    s" E-TIER-0" REFUSAL
    s" tier 0 is not in the Habu loop: " ERROR-TEXT:TYPE
@@ -1658,7 +1658,7 @@ private
    true ;
 
 : DEF-HEAD ( bool -- ) {: trusted:bool :}
-   NCOMP-DISPATCH:TIER-CELL CELL@ NCOMP-DISPATCH:COMP-CELL CELL@ or 0= if
+   NCOMP-DISPATCH:COMP-CELL CELL@ 0= if
       DEF-TIER-0
    then
    DEF-ROOM
@@ -1978,7 +1978,7 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    PEND-CELL CELL@ 0<> if s" define-word" a u DEF-OPEN-REFUSE then
    a u DEF-ONE-TOKEN? 0= if s" define-word" a u DEF-NAME-REFUSE then
    a u s su DEF-GIVEN-SIG {: p:ptr pu:n :}
-   NCOMP-DISPATCH:TIER-CELL CELL@ NCOMP-DISPATCH:COMP-CELL CELL@ or 0= if
+   NCOMP-DISPATCH:COMP-CELL CELL@ 0= if
       DEF-TIER-0
    then
    DEF-ROOM
@@ -2322,9 +2322,7 @@ variable DEF-VALUE
    PEND-CELL CELL@ 0<> if s" child word" a u DEF-OPEN-REFUSE then
    a u DEF-ONE-TOKEN? 0= if s" child word" a u DEF-NAME-REFUSE then
    shape CHILD-BODY 2drop
-   NCOMP-DISPATCH:TIER-CELL CELL@ NCOMP-DISPATCH:COMP-CELL CELL@ or 0= if
-      DEF-TIER-0
-   then
+   NCOMP-DISPATCH:COMP-CELL CELL@ 0= if DEF-TIER-0 then
    DEF-ROOM
    OVERLAY-GUARD
    a u shape param ta tu CHILD-DEFINE ;

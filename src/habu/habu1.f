@@ -3566,25 +3566,15 @@ private
       10 DATA NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:ORIGIN-TAKE cells + STR, ;
 
 \ executable-build-enter ( -- ) and executable-build-leave ( -- ): the build
-\ scope. The outermost enter saves the caller's tier and the matching leave
-\ restores it, so a tier selected inside the scope ends with it. The scope
-\ never selects a tier itself: what it compiles uses the caller's.
+\ scope, nested scopes counted; a leave with no scope open does nothing.
 : BBUILDENTER ( -- )
-   LBL {: nested:label :}
-   9 DATA NCOMP-DISPATCH:BUILD-DEPTH-CELL LDR,  9 nested CBNZ,
-   10 DATA NCOMP-DISPATCH:TIER-CELL LDR,
-   10 DATA NCOMP-DISPATCH:BUILD-TIER-CELL STR,
-   nested LBL,
+   9 DATA NCOMP-DISPATCH:BUILD-DEPTH-CELL LDR,
    9 9 1 ADDI,  9 DATA NCOMP-DISPATCH:BUILD-DEPTH-CELL STR, ;
 
 : BBUILDLEAVE ( -- )
    LBL {: done:label :}
    9 DATA NCOMP-DISPATCH:BUILD-DEPTH-CELL LDR,  9 done CBZ,
    9 9 1 SUBI,  9 DATA NCOMP-DISPATCH:BUILD-DEPTH-CELL STR,
-   9 done CBNZ,
-   10 DATA NCOMP-DISPATCH:BUILD-TIER-CELL LDR,
-   10 DATA NCOMP-DISPATCH:TIER-CELL STR,
-   9 DATA NCOMP-DISPATCH:BUILD-TIER-CELL STR,
    done LBL, ;
 
 \ The same readiness supplies the live tick gate and the verifier's entry
@@ -3612,7 +3602,6 @@ public
 \ Register n gets the DEF-TIER-CELL latch the next `:` takes.
 : TIER-LATCH ( n -- ) {: r:n :}
    LBL {: done:label :}
-   r DATA NCOMP-DISPATCH:TIER-CELL LDR,  r done CBNZ,
    r DATA NCOMP-DISPATCH:COMP-CELL LDR,  r done CBZ,
    r 2 MOVZ,
    done LBL, ;

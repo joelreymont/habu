@@ -3,7 +3,6 @@ require src/habu/boot-cells.f
 require src/habu/layout.f
 require src/habu/address-cells.f
 require src/habu/prof-abi.f
-require src/habu/native-observer-cells.f
 require src/habu/native-body-abi.f
 
 \ Every claim on DATA states its extent. CLAIMS-ASSERT refuses an overlapping
@@ -91,8 +90,7 @@ create TAB
    NCOMP-DISPATCH:FIXED-COMP-CELL     1 cells                 CLAIM NCOMP-FIXED-COMP-CELL
    NCOMP-DISPATCH:DECL-CELL           1 cells                 CLAIM NCOMP-DECL-CELL
    NCOMP-DISPATCH:TARGET-DECL-CELL    1 cells                 CLAIM NCOMP-TARGET-DECL-CELL
-   NCOMP-DISPATCH:TIER-CELL           1 cells                 CLAIM NCOMP-TIER-CELL
-   NCOMP-DISPATCH:DEF-TIER-CELL       3 cells                 CLAIM NCOMP-DEF-TIER
+   NCOMP-DISPATCH:DEF-TIER-CELL       2 cells                 CLAIM NCOMP-DEF-TIER
    NCOMP-DISPATCH:RECOVER-CELL        1 cells                 CLAIM NCOMP-RECOVER-CELL
    LASTC-CELL                         1 cells                 CLAIM LASTC-CELL
    RSP-CELL                           1 cells                 CLAIM RSP-CELL
@@ -147,7 +145,6 @@ create TAB
    DPHW-CELL                          1 cells                 CLAIM DPHW-CELL
    NDICT-HW-CELL                      1 cells                 CLAIM NDICT-HW-CELL
    DATA-FLOOR-CELL                    1 cells                 CLAIM DATA-FLOOR-CELL
-   NATIVE-OBS-CELLS:PUBLISHED         1 cells                 CLAIM NATIVE-OBS-CELLS:PUBLISHED
    DEF-OCC:PTR-CELL                   1 cells                 CLAIM DEF-OCC:PTR-CELL
    LOCNAMES                           LOC-RECS LOC-REC *      CLAIM LOCNAMES
    CAPDEPTH-CELL                      1 cells                 CLAIM CAPDEPTH-CELL

@@ -257,13 +257,11 @@ variable SNAP-END
       RAX DATA-START IMM,  RAX BOOT:HEAP-START-CELL CELL!
       RAX RBASE-REG DATA-START MEM-OFF ASM-SINK ENC-LEA  RAX DP-CELL CELL!
    then
-   \ Every process starts at tier 0 with no definition or build scope open,
-   \ whatever DATA carried.
+   \ Every process starts with no definition or build scope open, whatever
+   \ DATA carried.
    RAX ZERO-REG,
-   RAX NCOMP-DISPATCH:TIER-CELL CELL!
    RAX NCOMP-DISPATCH:DEF-TIER-CELL CELL!
-   RAX NCOMP-DISPATCH:BUILD-DEPTH-CELL CELL!
-   RAX NCOMP-DISPATCH:BUILD-TIER-CELL CELL! ;
+   RAX NCOMP-DISPATCH:BUILD-DEPTH-CELL CELL! ;
 
 \ This process's definition occurrence allocation (layout.f DEF-OCC): a fresh
 \ mapping whatever DATA the image carried, whose pointer DATA-INIT's caller

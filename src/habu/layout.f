@@ -638,20 +638,11 @@ $3840 constant COMP-CELL
 \ COMP-CELL; the Habu loop's `constant`, `create` and `defer` call it.
 $6C0 constant FIXED-COMP-CELL
 
-\ TIER-CELL ( 0 ) -- which compiler the `:` handlers dispatch to: tier 0, the
-\ compiler in COMP-CELL; with COMP-CELL zero, the Habu loop refuses a
-\ definition. Every process starts at 0.
-\
-\ Read by emitted code as `DATA TIER-CELL LDR` (12-bit scaled immediate), so it
-\ stays 8-aligned and below $7FF8.
-$370 constant TIER-CELL
 \ Latched at the colon (0 no compiler, 2 COMP-CELL); an
 \ immediate may only select the NEXT definition.
 $388 constant DEF-TIER-CELL
-\ The outer executable-build scope saves the caller's selection once and
-\ restores it when it closes; nested scopes only count depth.
+\ How many executable-build scopes are open.
 $390 constant BUILD-DEPTH-CELL
-$398 constant BUILD-TIER-CELL
 \ RECOVER-CELL ( 0 | -1 ) -- whether the reader whose `;` called the compiler
 \ recovers from a refused definition: DEF-SEMI? sets it around its compile,
 \ catches E-COMP-RECOVERY and reads on. In a multi-error run the compiler then

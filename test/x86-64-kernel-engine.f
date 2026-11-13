@@ -535,30 +535,19 @@ REGION SLOT-BYTES - constant TOP-SLOT
    0 X64HARNESS:EXPECT-DEPTH,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
-\ Not a tier: the caller's cell, which only the saved copy can restore.
-$5A constant CALLER-TIER
-
+\ The executable-build scope rows.
 : ENTER, ( -- ) s" executable-build-enter" ROW ;
 : LEAVE, ( -- ) s" executable-build-leave" ROW ;
-: TIER-CELL?, ( n -- ) NCOMP-DISPATCH:TIER-CELL X64HARNESS:EXPECT-CELL, ;
+: DEPTH?, ( n -- ) NCOMP-DISPATCH:BUILD-DEPTH-CELL X64HARNESS:EXPECT-CELL, ;
 
-\ Two nested scopes keep the caller's tier and save it once; a tier selected
-\ inside survives the inner leave, the outermost leave restores the caller's
-\ and clears the saved copy, and a leave with no scope open changes nothing.
+\ Two nested scopes count depth, each leave closes one, and a leave with no
+\ scope open changes nothing.
 : BUILD-SCOPE ( ptr u8 n -- ) {: path:ptr pathu:n :}
    false X64HARNESS:BOOT-OPEN,
-   CALLER-TIER NCOMP-DISPATCH:TIER-CELL X64HARNESS:CELL!,
-   ENTER,  ENTER,
-   CALLER-TIER TIER-CELL?,
-   2 NCOMP-DISPATCH:BUILD-DEPTH-CELL X64HARNESS:EXPECT-CELL,
-   CALLER-TIER NCOMP-DISPATCH:BUILD-TIER-CELL X64HARNESS:EXPECT-CELL,
-   1 NCOMP-DISPATCH:TIER-CELL X64HARNESS:CELL!,
-   LEAVE,  1 TIER-CELL?,
-   LEAVE,  CALLER-TIER TIER-CELL?,
-   0 NCOMP-DISPATCH:BUILD-TIER-CELL X64HARNESS:EXPECT-CELL,
-   LEAVE,
-   0 NCOMP-DISPATCH:BUILD-DEPTH-CELL X64HARNESS:EXPECT-CELL,
-   CALLER-TIER TIER-CELL?,
+   ENTER,  ENTER,  2 DEPTH?,
+   LEAVE,  1 DEPTH?,
+   LEAVE,  0 DEPTH?,
+   LEAVE,  0 DEPTH?,
    0 X64HARNESS:EXPECT-DEPTH,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 

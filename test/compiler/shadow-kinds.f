@@ -52,12 +52,11 @@ CAST: CODE>BYTES ( n -- ptr u8 )
    n 10 mod $30 + emit ;
 
 : T0? ( -- bool )
-   data-base NCOMP-DISPATCH:TIER-CELL + @ 0=
-   data-base NCOMP-DISPATCH:COMP-CELL + @ 0<> and ;
+   data-base NCOMP-DISPATCH:COMP-CELL + @ 0<> ;
 
 : TIER-CK ( -- )
    T0? 0= if
-      s" shadow-kinds: the tier is not T0 (TIER-CELL 0 and COMP-CELL set)" 1 die
+      s" shadow-kinds: the tier is not T0 (COMP-CELL 0)" 1 die
    then ;
 
 \ Whether a section line starts at byte at.
