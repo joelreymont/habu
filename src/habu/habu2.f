@@ -2061,8 +2061,7 @@ public
    13 4 0 STR, ;
 
 \ Raise register rd to DATA plus the DATA floor when it is lower, through the
-\ scratch register rt: a rewind of DATA puts DP no lower than the end of the last
-\ segment the literal store published.
+\ scratch register rt: a rewind of DATA puts DP no lower than the floor.
 : FLOOR-CLAMP, ( n n -- ) {: rd:n rt:n :}
    rt DATA DATA-FLOOR-CELL LDR,  rt DATA rt ADD,
    rd rt CMP,  rd rd rt C-HI CSEL, ;

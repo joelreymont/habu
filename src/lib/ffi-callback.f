@@ -2,14 +2,17 @@
 \ clauses ;CALLBACK declares a C entry; FFI-CB:ENTRY binds it to a context
 \ (src/lib/task.f CONTEXT-BIND) and answers the C function pointer.
 \ STORAGE CLASS. PROCESS-WIDE: the slots, descriptor and dispatch tables and
-\ fault cells are one set for the image. The tables grow contiguously and a
-\ slot is never given back, so a C pointer stays valid; binding rows are task.f's.
+\ fault cells are one set for the image. The tables grow contiguously and only
+\ the rollback of the text that declared a slot gives it back, so a C pointer
+\ stays valid; binding rows are task.f's.
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/codegen.f
 require src/lib/ffi-abi.f
 require src/lib/task.f
 require src/habu/address-cells.f
+require src/core/rollback-cells.f
+require src/habu/data-floor.f
 
 package FFI-CB
 public
@@ -62,6 +65,7 @@ CAST: N>BYTES ( n -- ptr u8 )
 PERSISTED-PTR-VARIABLE TABLE
 variable CAP
 variable SLOTS
+SLOTS ROLLBACK-CELLS:MARK
 
 CAST: >DISPATCH-CELL ( ptr n -- ptr [ -- ] )
 CAST: >FLOAT-CELL ( ptr n -- ptr r )
@@ -98,6 +102,8 @@ CAST: >ENTRY-XT ( n -- [ -- ] )
    CAP @ {: oldcap:n :}
    oldcap dup 0= if drop 1 else 2 * then {: next:n :}
    next ROW-BYTES * ALIGNED-ROWS {: rows:ptr :}
+   \ No rollback cuts a grown table.
+   DATA-FLOOR:RAISE
    SLOTS @ 0 > if
       old rows SLOTS @ ROW-BYTES * BYTE-COPY
       SLOTS @ 0 ?do

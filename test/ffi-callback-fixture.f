@@ -1,7 +1,8 @@
 \ ffi-callback-fixture.f - what src/lib/ffi-callback-test.f and the child it
 \ spawns (test/ffi-callback-child.f) share: libc's qsort, bsearch and pthread
-\ entry points, the callbacks C is handed, and the cells their bodies report
-\ through. Each file reopens package FFI-CB-TEST.
+\ entry points, the callbacks C is handed, the cells their bodies report
+\ through, and the words that pad the slot tables to their edge. Each file
+\ reopens package FFI-CB-TEST.
 \ Every row sorted here is ROW-N cells, which is the extent QSORT declares
 \ written.
 require src/lib/error.f
@@ -9,6 +10,7 @@ require src/lib/string.f
 require src/lib/ffi-abi.f
 require src/lib/ffi-callback.f
 require src/lib/task.f
+require src/lib/codegen.f
 require src/lib/adt/result.f
 
 package FFI-CB-TEST
@@ -304,6 +306,28 @@ CALLBACK: CMP-CALLER ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
 
 : WORK-CALLER-A ( -- ) ROW-A 1 CALLER-SORT 1 MASK-BIT TASK:RETURN ;
 : WORK-CALLER-B ( -- ) ROW-B 2 CALLER-SORT 1 MASK-BIT TASK:RETURN ;
+
+\ The declared slot count: ENTRY-ADDRESS refuses the first undeclared slot.
+: SLOT? ( n -- bool ) {: k:n :}
+   [: k ENTRY-ADDRESS drop ;] catch 0= ;
+
+: DECLARED ( -- n ) 0 begin dup SLOT? while 1 + repeat ;
+
+128 CODEGEN:BUFFER PAD-TEXT
+variable PADS
+
+: PAD ( -- )
+   PAD-TEXT CODEGEN:RESET
+   s" CALLBACK: CBT-PAD-" PAD-TEXT CODEGEN:APPEND-STRING
+   PADS @ PAD-TEXT CODEGEN:APPEND-DECIMAL
+   s"  ( -- ) ;CALLBACK" PAD-TEXT CODEGEN:APPEND-STRING
+   PAD-TEXT CODEGEN:CONTENTS INCLUDE-EVALUATE
+   1 PADS +! ;
+
+\ A count that is a power of two fills both tables: the next declaration grows
+\ them.
+: POW2? ( n -- bool ) dup 1 - and 0= ;
+: PAD-TO-EDGE ( -- ) begin DECLARED POW2? 0= while PAD repeat ;
 
 ;using
 ;package

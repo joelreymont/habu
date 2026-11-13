@@ -1,5 +1,6 @@
-\ ffi-callback-child.f - one refused scenario per run, since its refusal ends
-\ the process; the released case runs the two that exit 0.
+\ ffi-callback-child.f - one scenario per run, since a refusal ends the process;
+\ the released case runs two that exit 0, and grown-bind exits 0 unless its
+\ binding was lost.
 \ Run: bin/hb --load test/ffi-callback-child.f -- <case>
 require test/ffi-callback-fixture.f
 require src/lib/string.f
@@ -153,6 +154,23 @@ variable PAST-PAUSE                  \ 1 if the worker ran past that TASK:PAUSE
    10000 >MS TASK:SLEEP
    s" ffi-callback-child: caller-thread was not refused" SURVIVED-RC die ;
 
+\ Left unbound until a text that grows the tables binds it and throws.
+CALLBACK: CMP-GROWN ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
+' ROW-ORDER CMP-GROWN-BODY !
+variable GROWN-FN                     \ the C entry the thrown text answered
+
+: GROWN$ ( -- ptr u8 n )
+   s" CALLBACK: CBC-GROW ( -- ) ;CALLBACK  CMP-GROWN TASK:SELF-CONTEXT FFI-CB:ENTRY GROWN-FN !  1 throw" ;
+
+: GROWN-BIND ( -- )
+   PAD-TO-EDGE
+   [: GROWN$ evaluate-closed ;] catch 1 <> if
+      s" ffi-callback-child: grown-bind's text did not throw 1" SURVIVED-RC die
+   then
+   OUTER 10 ROW-FILL
+   OUTER BYTE-VIEW ROW-N CELL GROWN-FN @ QSORT
+   OUTER 10 ROW-SORTED? if s" grown-bind: sorted" type cr then ;
+
 : CASE? ( ptr u8 n -- bool )
    0 SCRIPT-ARGV$ STR= ;
 
@@ -165,6 +183,7 @@ variable PAST-PAUSE                  \ 1 if the worker ran past that TASK:PAUSE
    s" body-defines" CASE? if BODY-DEFINES then
    s" caller-thread" CASE? if CALLER-THREAD then
    s" released" CASE? if HALTED KILLED exit then
+   s" grown-bind" CASE? if GROWN-BIND exit then
    s" ffi-callback-child: unknown case" SURVIVED-RC die ;
 
 DISPATCH

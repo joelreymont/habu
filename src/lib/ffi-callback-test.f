@@ -264,6 +264,74 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    [: DECL-NAME-65 ;] catch E-FFI-SYNTAX = s" a 65-byte name: E-FFI-SYNTAX" FACT
    [: DECL-NAME-64 ;] catch 0= s" a 64-byte name is accepted" FACT ;
 
+: PAD-PAST-EDGE ( -- ) begin DECLARED POW2? while PAD repeat ;
+
+: THROWING$ ( -- ptr u8 n )
+   s" CALLBACK: CBT-RB-IN ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK  1 throw" ;
+
+\ Non-zero cells laid over the cut, where a grown table the rollback did not
+\ keep would lie.
+: JUNK ( -- )
+   s" create CBT-RB-JUNK" INCLUDE-EVALUATE
+   4000 0 ?do 777 , loop ;
+
+: DECLARE-LATE ( -- )
+   s" : CBT-RB-ORDER ( ptr u8 ptr u8 -- n ) {: a b :} a CELL-VIEW @ b CELL-VIEW @ - ;" INCLUDE-EVALUATE
+   s" CALLBACK: CBT-RB-LATE ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK" INCLUDE-EVALUATE
+   s" ' CBT-RB-ORDER CBT-RB-LATE-BODY !" INCLUDE-EVALUATE ;
+
+: SORTED-BY? ( n -- bool ) {: fn:n :}
+   OUTER 0 ROW-FILL
+   OUTER BYTE-VIEW ROW-N CELL fn QSORT
+   OUTER 0 ROW-SORTED? ;
+
+: BOUND$ ( -- ptr u8 n )
+   s" CALLBACK: CBT-RB-BOUND ( -- ) ;CALLBACK  CBT-RB-BOUND TASK:SELF-CONTEXT FFI-CB:ENTRY drop  1 throw" ;
+
+\ CBT-RB-NEXT takes slot n. A caller bind refuses a row that still names a
+\ region, which a main-region bind of the region the thrown text left would accept.
+: NEXT-BINDS? ( n -- bool ) {: k:n :}
+   s" CALLBACK: CBT-RB-NEXT ( -- ) ;CALLBACK" INCLUDE-EVALUATE
+   DECLARED k 1 + =
+   s" CBT-RB-NEXT TASK:CALLER-CONTEXT FFI-CB:ENTRY drop" TEST-EVAL:RC 0= and ;
+
+\ Only a caller bind leaves the row owner set when the text throws.
+: CALLER-BOUND$ ( -- ptr u8 n )
+   s" CALLBACK: CBT-RB-CALLER ( -- ) ;CALLBACK  CBT-RB-CALLER TASK:CALLER-CONTEXT FFI-CB:ENTRY drop  1 throw" ;
+
+: SELF-BINDS? ( n -- bool ) {: k:n :}
+   s" CALLBACK: CBT-RB-SELF ( -- ) ;CALLBACK" INCLUDE-EVALUATE
+   DECLARED k 1 + =
+   s" CBT-RB-SELF TASK:SELF-CONTEXT FFI-CB:ENTRY drop" TEST-EVAL:RC 0= and ;
+
+\ The THROWING$ text at the edge grows the descriptor and task-row tables; C
+\ then calls through the grown tables the main region publishes.
+: CASE-ROLLBACK ( -- )
+   s" == a callback declared in a text that throws" SAY
+   PAD-PAST-EDGE DECLARED {: before:n :}
+   THROWING$ TEST-EVAL:RC 1 = DECLARED before = and
+      s" the rollback leaves the slot count as it was" FACT
+   BOUND$ TEST-EVAL:RC 1 = before NEXT-BINDS? and
+      s" the next declaration takes the slot a thrown text bound, unbound" FACT
+   s" CBT-RB-NEXT FFI-CB:UNBIND" INCLUDE-EVALUATE
+   DECLARED {: slot:n :}
+   CALLER-BOUND$ TEST-EVAL:RC 1 = slot SELF-BINDS? and
+      s" a slot a thrown text bound as the caller binds to this context" FACT
+   s" CBT-RB-SELF FFI-CB:UNBIND" INCLUDE-EVALUATE
+   PAD-TO-EDGE DECLARED {: edge:n :}
+   CMP TASK:SELF-CONTEXT ENTRY {: early:n :}
+   THROWING$ TEST-EVAL:RC 1 = DECLARED edge = and
+      s" a throw after a declaration that grew the tables keeps the slot count" FACT
+   JUNK
+   early SORTED-BY?
+      s" storage laid over the cut, a callback bound before it sorts" FACT
+   DECLARE-LATE
+   s" CBT-RB-LATE TASK:SELF-CONTEXT FFI-CB:ENTRY" TEST-EVAL:N SORTED-BY?
+      s" a callback declared after the rollback sorts" FACT
+   early SORTED-BY? s" and the earlier one still does" FACT
+   s" CBT-RB-LATE FFI-CB:UNBIND" INCLUDE-EVALUATE
+   CMP UNBIND ;
+
 \ A kernel exit line ends ` lr <16 hex>`; the transcript keeps ` lr` and drops
 \ the digits, which vary with the build.
 : LR-LINE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
@@ -314,7 +382,8 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    s" worker-stale" CHILD-CASE
    s" body-defines" CHILD-CASE
    HB-TARGET-LINUX-X86-64? 0= if s" caller-thread" CHILD-CASE then
-   s" released" CHILD-CASE ;
+   s" released" CHILD-CASE
+   s" grown-bind" CHILD-CASE ;
 
 \ Every comparison answers the declared fallback, so bsearch matches its first
 \ probe under UNSET's 0 and no row under UNSET-ONE's 1.
@@ -438,6 +507,16 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    s" ok   a 65-byte name: E-FFI-SYNTAX" W
    s" ok   a 64-byte name is accepted" W ;
 
+: WANT-ROLLBACK ( -- )
+   s" == a callback declared in a text that throws" W
+   s" ok   the rollback leaves the slot count as it was" W
+   s" ok   the next declaration takes the slot a thrown text bound, unbound" W
+   s" ok   a slot a thrown text bound as the caller binds to this context" W
+   s" ok   a throw after a declaration that grew the tables keeps the slot count" W
+   s" ok   storage laid over the cut, a callback bound before it sorts" W
+   s" ok   a callback declared after the rollback sorts" W
+   s" ok   and the earlier one still does" W ;
+
 : WANT-CHILDREN ( -- )
    s" == child outside: exit 106" W
    s" outside: a thread is parked on its own context" W
@@ -471,6 +550,9 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    s" killed: its sort completed" W
    s" killed: the worker ended at its first TASK:PAUSE after the sort" W
    s" --" W
+   s" == child grown-bind: exit 0" W
+   s" grown-bind: sorted" W
+   s" --" W
    s" == a stripped image" W
    s" ok   hb-build links test/stripped-callback-subject.f stripped" W
    s" == child stripped: exit 0" W
@@ -479,7 +561,7 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
 
 : WANT-TRANSCRIPT ( -- )
    0 WANT-U !
-   WANT-TASKS WANT-ACCESSOR WANT-DECLARATIONS WANT-CHILDREN ;
+   WANT-TASKS WANT-ACCESSOR WANT-DECLARATIONS WANT-ROLLBACK WANT-CHILDREN ;
 
 \ The artifact as another reader will find it: read back from its file and
 \ compared whole.
@@ -503,6 +585,7 @@ public
    HB-TARGET-LINUX-X86-64? 0= if CASE-CALLER CASE-CALLER-HELD then
    CASE-ACCESSOR
    CASE-DECLARATIONS
+   CASE-ROLLBACK
    CASE-CHILDREN
    CASE-STRIPPED
    TRANSCRIPT-CASE

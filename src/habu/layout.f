@@ -898,9 +898,9 @@ $2CD8 constant CLOSED-FREE-CELL
 \ primitives by it.
 $2CE0 constant CODE-END-CELL
 \ DATA-FLOOR-CELL: the lowest DATA offset a rewind of DATA may return DP to, 0
-\ for none. The literal store opens a segment at `here` inside whatever is
-\ running and raises the floor to the segment's end, so the segment and every
-\ address it answered outlive a failed evaluation and a rolled-back generated
+\ for none. Storage published inside whatever is running (a literal segment, a
+\ grown callback or task-row table) raises the floor to its end, so it and every
+\ address into it outlive a failed evaluation and a rolled-back generated
 \ declaration: each puts DP at the higher of its saved value and the floor. An
 \ offset rather than an address, so nothing relocates it: a snapshot carries it
 \ with the rest of DATA, and a native or stripped image starts at 0, which no

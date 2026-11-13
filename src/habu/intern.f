@@ -13,6 +13,7 @@ require src/lib/prelude.f
 require src/lib/error.f
 require src/lib/string.f
 require src/habu/layout.f
+require src/habu/data-floor.f
 require src/habu/intern-table.f
 
 package INTERN
@@ -89,13 +90,6 @@ variable PROBE
 : ROW$ ( n -- ptr u8 n ) {: k:n :}
    STRING-ARENA k ROW-OFF +  k ROW-LEN ;
 
-\ A segment can open inside work later undone (a failed evaluation or REPL
-\ line, a rolled-back declaration) while its addresses are already compiled
-\ into published routines, so its end becomes the DATA floor and no rewind of
-\ DATA frees it.
-: FLOOR-RAISE ( -- )
-   here PTR>N data-base PTR>N -  data-base DATA-FLOOR-CELL + ! ;
-
 \ ---- finding a body that is already here --------------------------------------
 \ Masked by an `and` against a positive constant so a hash whose top bit ran
 \ into the sign still lands inside the table.
@@ -142,7 +136,7 @@ private
    here {: arena:ptr :}
    ARENA-CAP CELL + allot
    owner arena OWNER-INIT
-   FLOOR-RAISE
+   DATA-FLOOR:RAISE
    owner WRITE-P !
    SLOT-CLEAR ;
 

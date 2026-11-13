@@ -66,6 +66,7 @@ require src/lib/le.f
 s" src/lib/adt/result.f" required
 require src/core/quotation-storage.f
 require src/core/rollback-cells.f
+require src/habu/data-floor.f
 require src/habu/task-abi.f
 require src/habu/stack-abi.f
 require src/habu/boot-cells.f
@@ -850,6 +851,7 @@ SCRATCH-VARIABLE CALLER-KEY
 PERSISTED-PTR-VARIABLE ROW-TABLE
 variable ROW-CAP
 variable ROW-N
+ROW-N ROLLBACK-CELLS:MARK
 
 : ROW-ALLOC ( n -- ptr u8 ) {: size:n :}
    TASK-ALIGN8
@@ -864,6 +866,8 @@ variable ROW-N
    ROW-CAP @ {: oldcap:n :}
    oldcap dup 0= if drop 1 else 2 * then {: cap:n :}
    cap CB-ROW-BYTES * ROW-ALLOC {: rows:ptr :}
+   \ No rollback cuts a grown table.
+   DATA-FLOOR:RAISE
    ROW-N @ 0 > if old rows ROW-N @ CB-ROW-BYTES * BYTE-COPY then
    rows ROW-TABLE !
    cap ROW-CAP !
@@ -871,11 +875,6 @@ variable ROW-N
    \ No task or callback is running. After publication the former rows are
    \ unreachable, including their per-process region-store counters.
    oldcap CB-ROW-BYTES * CELL / 0 ?do 0 old i cells + CELL-VIEW ! loop ;
-
-: ROW-DECLARE ( n -- ) {: k:n :}
-   k ROW-N @ <> if E-TASK-STATE throw then
-   k ROW-CAP @ >= if ROW-GROW then
-   1 ROW-N +! ;
 
 : ROW ( n -- ptr n )
    CB-ROW-BYTES * ROW-TABLE @ + CELL-VIEW ;
@@ -895,6 +894,14 @@ variable ROW-N
 : ROW-NAME! ( n n -- ) {: r:n k:n :}
    r k ROW ROW-REGION atomic!
    k ROW-MOVES atomic@ 1 + k ROW-MOVES atomic! ;
+
+\ A rollback can give row k back bound.
+: ROW-DECLARE ( n -- ) {: k:n :}
+   k ROW-N @ <> if E-TASK-STATE throw then
+   k ROW-CAP @ >= if ROW-GROW then
+   0 k ROW-NAME!
+   0 k ROW ROW-OWNER atomic!
+   1 ROW-N +! ;
 
 : ROW-NAMES? ( n n -- bool ) {: k:n reg:n :}
    k ROW ROW-REGION atomic@ reg = ;
