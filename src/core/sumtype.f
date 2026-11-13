@@ -2008,9 +2008,7 @@ private
 \ pointee and adds cells, as `cells +` does on any other pointer.
 : TDECL-ADDR-AT-WORD ( n n -- ) {: fam:n row:n :}
    row TDPLAN-NAME$  row TDPLAN-DEF$  define-word
-   TDGEN-CLEAR
-   fam TFAM-SLOTS@ TDGEN-DEC
-   TDGEN-BUF TDGEN-U @ body-append
+   fam TFAM-SLOTS@ literal
    postpone *
    postpone record-at
    postpone ; ;
