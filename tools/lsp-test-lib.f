@@ -1474,9 +1474,7 @@ variable OPEN-N
 
 : WRITABLE ( -- )
    IN-W @ FD:POLLOUT PROCESS:PFD!
-   1 DEADLINE @ PROCESS:LEFT-MS MS>N DEADLINE @ PROCESS:POLL-RESTART {: rc:n :}
-   rc 0 < if E-PROC-OUTPUT throw then
-   rc 0= if E-PROC-TIMEOUT throw then ;
+   1 DEADLINE @ PROCESS:LEFT-MS PROCESS:POLL drop ;
 
 : PIECE ( -- )
    IN$ {: a:ptr u:n :}
