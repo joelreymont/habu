@@ -168,8 +168,9 @@ CFSTK-REGION-CAP CFSTK-SANE-MAX min constant CFSTK-DEPTH-MAX
 \ at the very top of the DATA region [DATA-SIZE - PROF-CNT-BYTES, DATA-SIZE).
 \ The band opens with PROF-STATE-BYTES of the profiler's own cells (sample
 \ total and limit, the two buckets, the dictionary base recorded by prof-on, the
-\ arena, the clock) and the counters follow.
-56 constant PROF-STATE-BYTES
+\ arena, the clock, the handlers inside and the control words' ticket lock) and
+\ the counters follow.
+80 constant PROF-STATE-BYTES
 DICT-CAP cells PROF-STATE-BYTES + constant PROF-CNT-BYTES
 
 \ The cold prefix, argv files and stdin share this allowance, less an EOF probe;
@@ -948,6 +949,9 @@ $2D90 constant DBASE-CELL
 \ the DATA image; every frame a Habu word makes on that thread lies below it.
 \ A stripped program leaves it at its mapping's zero.
 $2D30 constant MAIN-STACK-TOP-CELL
+\ MAIN-THREAD-CELL: the main thread's pointer, CB-SELF's value, stored by an
+\ engine's boot beside MAIN-STACK-TOP-CELL. A stripped program leaves it zero.
+$2D38 constant MAIN-THREAD-CELL
 \ CLOSED-FREE-CELL heads the idle closed-text data stacks, each idle stack's
 \ first cell linking the next. The stacks are this process's mappings, so a
 \ process starts with the cell zero.

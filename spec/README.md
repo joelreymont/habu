@@ -61,3 +61,39 @@ tlc -workers auto -metadir /tmp/habu-tlc -config spec/ModelCall.cfg spec/ModelCa
 ```
 
 A pass ends "Model checking completed. No error has been found."
+
+## ProfClock
+
+`ProfClock.tla` models the profiler clock's handshake in `src/habu/prof.f`:
+the SIGALRM handler EMIT-PROF against the public control words prof-on,
+prof-off, prof-reset and prof-report, run by two threads, main and a task,
+either of which takes a SIGALRM at any step of its own code. A handler counts
+itself into PROF-IN, reads PROF-ARMED again, and only then tests ARN-OWNER:
+the owner samples, any other thread forwards to ARN-OWNER-TID while still
+counted. A control word takes PROF-CTL, a ticket lock (CtlNext, CtlServe),
+leaves ARMED-RUNS by a store, waits until PROF-IN reads 0, works, and arms
+again when it is prof-on or held a running clock. It proves that no handler
+samples while a control word works, that control words work one at a time,
+that only the owner samples, that a forward reads ARN-OWNER-TID only while
+neither prof-on nor prof-off is changing it, that every started control word
+ends, and that a delivery pending on the live owner of a running clock runs
+its handler. A thread's own code is strongly fair, since a SIGALRM may arrive
+again as each handler returns; handler steps and delivery are weakly fair.
+The header says why one atomic step per release store, acquire load or atomic
+add is sound on ARMv8. The bounds are two threads and tickets modulo NTickets
+= 3.
+
+Check it from the repository root:
+
+```sh
+tlc -workers auto -metadir /tmp/habu-tlc -config spec/ProfClock.cfg spec/ProfClock.tla
+```
+
+A pass ends "Model checking completed. No error has been found."
+
+Two mutants, each a copy of `ProfClock.cfg` with one constant changed, must
+fail: `Wait = FALSE`, a controller that does not wait for PROF-IN, violates
+HandlerExcludesControl in 18 states; `OwnerFirst = TRUE`, a handler that tests
+the owner before it counts itself in, violates ForwardHandleStable in 18
+states, and OnlyOwnerCounts in 21 with ForwardHandleStable left out of the
+copy.

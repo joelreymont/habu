@@ -105,7 +105,15 @@ public
 
 : DSB-ISH, ( -- ) ENC-DSB-ISH EMITW ;
 
+: DMB-ISH, ( -- ) ENC-DMB-ISH EMITW ;
+
 : ISB, ( -- ) ENC-ISB EMITW ;
+
+: YIELD, ( -- ) ENC-YIELD EMITW ;
+
+: CASAL, ( n n n -- )  ENC-CASAL EMITW ;
+
+: LDADDAL, ( n n n -- )  ENC-LDADDAL EMITW ;
 
 : FMOVXD, ( n n -- )  ENC-FMOVXD EMITW ;
 

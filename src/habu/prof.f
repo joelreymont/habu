@@ -15,11 +15,13 @@
 \ called something that has already returned - the stack scan answers instead,
 \ because the word's own prologue saved the real return address. A sample whose
 \ SP lies on the main stack, [ARN-STACK-LOW, ARN-STACK-TOP), scans from SP up to
-\ the top boot recorded, every Habu frame on that thread. Any other SP scans at
-\ most ARN-WALK cells and never leaves SP's 4 KiB block: SP is mapped, so every
-\ byte of its block is; one cell further could be the unmapped page above a
-\ thread stack, and a SIGSEGV inside a SIGALRM handler is not a diagnosis
-\ anybody can use.
+\ the top boot recorded, every Habu frame on that thread: every sample runs on
+\ the owner thread, and the bounds are set only when that is the main thread,
+\ so SP up to the top is the interrupted thread's live stack. Any other SP
+\ scans at most ARN-WALK cells and never leaves SP's 4 KiB block: SP is
+\ mapped, so every byte of its block is; one cell further could be the
+\ unmapped page above a thread stack, and a SIGSEGV inside a SIGALRM handler
+\ is not a diagnosis anybody can use.
 \
 \ Report rows and a row's callers are selected by repeated maximum, not sorted:
 \ each pass takes the largest count below the one before it. No second array is
@@ -33,6 +35,20 @@
 \ the entries into the per-record array, the durable home, and historical rows
 \ remain readable after their code leaves the searchable index.
 \
+\ Only the thread that ran prof-on counts. setitimer's SIGALRM is
+\ process-directed: the kernel delivers it to any thread that does not block it,
+\ and Habu tasks are threads that do not; macOS delivers it to the main thread
+\ unless that thread blocks it, so a task that ran prof-on would get no sample.
+\ A delivery on another thread sends SIGALRM to the owner, ARN-OWNER-TID, and
+\ returns, writing no profiler state, so only the owner's handler writes
+\ profiler state from a handler, and every word that leaves ARMED-RUNS waits
+\ until that handler is out; the public control words and the engine's trim
+\ and reclaim run one at a time, in the order they asked (PROF-CTL-NEXT). A
+\ forked child starts with a free profiler: prof-child-reset, which the fork
+\ runs in the child, lets go of every handler, ticket and owner the fork
+\ copied, and keeps the counters and index for a report. The forwarded
+\ signal is the owner's sample, weighed by every interval since ARN-LAST.
+\
 \ A sample is weighed by the time since the last one. SIGALRM does not queue:
 \ every tick that expires while the process waits in a syscall (an fsync, a
 \ regular-file read) or is descheduled arrives as one signal, so a count of
@@ -44,13 +60,14 @@
 \ stopped is never counted. ARN-SEQ still counts samples one by one, a weight
 \ of 0 included, for the inclusive stamps.
 \
-\ A foreign sample (x20 not DATA, or x26 not the recorded DBASE) whose SP lies
-\ on the main stack is inside C a Habu word called: an FFI word, libSystem's
-\ fsync. Its weight goes to the nearest Habu word, the one the interrupted x30
-\ returns into, else the first the scan up from SP finds, as that word's own
+\ A foreign sample (x20 not the owner's DATA, ARN-OWNER-DATA, which on a task
+\ is the task's own region, or x26 not the recorded DBASE) is inside C a
+\ Habu word called: an FFI word, libSystem's fsync. Its weight goes to the
+\ nearest Habu word, the one the interrupted x30 returns into, else the first
+\ the scan up from SP finds, bounded as the walk's, as that word's own
 \ exclusive sample, and the walk names its callers from there. ARN-FCALLED
-\ counts that weight; PROF-FOREIGN counts only the foreign samples charged to
-\ no word: off the main stack, or with no Habu word above SP.
+\ counts that weight; PROF-FOREIGN counts only the foreign samples for which
+\ neither names a Habu word.
 require src/habu/prof-abi.f
 
 require src/arch/arm64/icode.f
@@ -81,6 +98,7 @@ PROF-TARGET-OK
 DATA-VA VA>N DATA-SIZE PROF-BAND-AT constant PROF-BAND-VA   \ absolute: DATA is fixed at DATA-VA
 PROF-BAND-VA PROF-STATE-BYTES + constant PROF-CNT-VA
 DATA-VA VA>N MAIN-STACK-TOP-CELL + constant PROF-TOP-VA
+DATA-VA VA>N MAIN-THREAD-CELL + constant PROF-THREAD-VA
 $0043 constant MACOS-SA-PROF-FLAGS        \ SA_ONSTACK | SA_RESTART | SA_SIGINFO
 
 : C-PROF-MCTX>R21 ( -- )
@@ -160,6 +178,13 @@ public
    ehit LBL,  16 15 8 LDR,  16 16 3 ADD,  16 15 8 STR,
    edone LBL,  RET, ;
 
+\ x23 = SP off the main stack: x24 = the scan's end, ARN-WALK cells above SP
+\ or the end of SP's 4 KiB block, whichever is lower. Clobbers x10.
+: C-PROF-BLOCK-END ( -- )
+   10 8 ARN-WALK LDR,  10 10 3 LSLI,  24 23 10 ADD,
+   10 23 PROF-PAGE-MASK ORRI,  10 10 1 ADDI,
+   24 10 CMP,  24 24 10 C-LS CSEL, ;
+
 \ x8 = arena, x6 = an index entry, x10 = its record index, x3 = the sample's
 \ weight: one inclusive sample for that record, and only the first time THIS
 \ sample reaches it. The conservative walk can see one word twice - a recursive call, or a
@@ -213,10 +238,7 @@ public
    31 23 C-PROF-CTX-X>R                              \ the interrupted machine stack
    10 8 ARN-STACK-LOW LDR,  23 10 CMP,  C-CC wblock BCOND,
    24 8 ARN-STACK-TOP LDR,  23 24 CMP,  C-CC wl BCOND,
-   wblock LBL,                                       \ not the main stack
-   10 8 ARN-WALK LDR,  10 10 3 LSLI,  24 23 10 ADD,
-   10 23 PROF-PAGE-MASK ORRI,  10 10 1 ADDI,
-   24 10 CMP,  24 24 10 C-LS CSEL,
+   wblock LBL,  C-PROF-BLOCK-END                     \ not the main stack
    wl LBL,
       23 24 CMP,  C-CS wdone BCOND,
       9 23 0 LDR,  23 23 8 ADDI,
@@ -656,14 +678,30 @@ public
    s" profiler: no row for that record" C-PROF-SAY  C-PROF-NL
    C-PROF-REP-CLOSE ;
 
+\ x8 = arena, on a thread that is not ARN-OWNER: SIGALRM to ARN-OWNER-TID. An
+\ owner that exited leaves a handle the kernel can give this thread; that
+\ delivery is dropped: a signal to itself would arrive again at its sigreturn,
+\ and the thread would never run its own code.
+\ Clobbers x0-x2, x8-x11 and x16.
+: C-PROF-FORWARD ( -- )
+   LBL {: fself :}
+   10 8 ARN-OWNER-TID LDR,
+   9 OS-THREAD-HANDLE
+   9 10 CMP,  C-EQ fself BCOND,
+   11 SIGALRM MOVZ,  11 10 OS-SIGNAL-THREAD
+   fself LBL,  9 OS-THREAD-RELEASE ;
+
 \ x7 = band: x3 = this sample's weight, as the file header states; ARN-LAST
 \ moves to now, ARN-CARRY keeps the remainder and ARN-SEQ counts the sample.
+\ Plain loads and stores suffice: only the owner's handler reaches here, and a
+\ word that leaves ARMED-RUNS waits for it. The ISB keeps CNTVCT_EL0 from being
+\ read before the admission's load-acquire, ahead of the ARN-LAST a resume wrote.
 \ Clobbers x8 and x10-x12.
 : C-PROF-WEIGHT ( -- )
    LBL {: wdone :}
    3 1 MOVZ,
    8 7 PROF-ARENA LDR,  8 wdone CBZ,
-   10 CNTVCT>R
+   ISB,  10 CNTVCT>R
    11 8 ARN-LAST LDR,  10 8 ARN-LAST STR,
    12 8 ARN-SEQ LDR,  12 12 1 ADDI,  12 8 ARN-SEQ STR,
    12 8 ARN-TICKS LDR,  12 wdone CBZ,
@@ -673,14 +711,17 @@ public
    wdone LBL, ;
 
 \ x8 = arena, x21 = mcontext, a foreign sample: x6 = the index entry of the
-\ Habu word nearest it, or 0 when SP is off the main stack or no Habu word lies
-\ above it. x30 and each scanned cell are tested as C-PROF-WALK tests them.
+\ Habu word nearest it, or 0 when neither x30 nor the scan names one. Off the
+\ main stack, a task owner's stack among them, the scan stays in SP's block.
+\ x30 and each scanned cell are tested as C-PROF-WALK tests them.
 \ Clobbers x9-x13, x23 and x24.
 : C-PROF-FCALLER ( -- )
-   LBL LBL LBL {: fl fnone fdone :}
+   LBL LBL LBL LBL LBL {: fl fnone fdone fblock fx30 :}
    31 23 C-PROF-CTX-X>R
-   10 8 ARN-STACK-LOW LDR,  23 10 CMP,  C-CC fnone BCOND,
-   24 8 ARN-STACK-TOP LDR,  23 24 CMP,  C-CS fnone BCOND,
+   10 8 ARN-STACK-LOW LDR,  23 10 CMP,  C-CC fblock BCOND,
+   24 8 ARN-STACK-TOP LDR,  23 24 CMP,  C-CC fx30 BCOND,
+   fblock LBL,  C-PROF-BLOCK-END
+   fx30 LBL,
    30 9 C-PROF-CTX-X>R
    9 9 4 SUBI,
    10 8 ARN-LO LDR,  9 10 CMP,  C-CC fl BCOND,
@@ -709,10 +750,25 @@ public
    10 6 ENT-IDX LDR,  C-PROF-INCL-ONCE                \ a word is inside itself
    22 6 ENT-IDX LDR, ;
 
+\ x7 = band: PROF-IN += n, 1 or -1, by an acquire-release atomic add.
+\ Clobbers x9 and x10.
+: C-PROF-IN-ADD ( n -- ) {: n:n :}
+   n 0 < IF 9 0 MOVN, ELSE 9 n MOVZ, THEN
+   10 7 PROF-IN ADDI,  9 9 10 LDADDAL, ;
+
 \ THE HANDLER TAKES NOTHING FROM THE LIVE REGISTERS: a foreign callee (libc's
 \ dlsym, libzip's inflate) reuses x20 (DATA), x26 (DBASE) and x27 (NDICT).
 \ The handler runs on the crash handler's alternate signal stack, so a deep
 \ machine stack never pushes the frame over the data stack.
+\
+\ PROF-ARMED is read with a load-acquire, the pair of C-PROF-ARM's release. An
+\ admitted handler adds 1 to PROF-IN, reads PROF-ARMED again and takes 1 away
+\ on every way out; a word that leaves ARMED-RUNS stores the new state by
+\ store-release and waits for PROF-IN to read 0. A store-release is ordered
+\ before a later load-acquire, so either the handler reads the new state and
+\ leaves, or the word waits for it. A delivery off the owner thread forwards
+\ SIGALRM to the owner, which would otherwise miss the sample, while still
+\ counted in PROF-IN, so prof-on cannot release that handle under it.
 \
 \ Weigh the sample, attribute the interrupted pc, THEN add the weight to
 \ PROF-TOT and test the limit, so every sample the running clock delivers is
@@ -721,15 +777,21 @@ public
 : EMIT-PROF ( -- )
    LPROFH LABEL@ LBL,
    LBL LBL LBL LBL LBL LBL LBL {: pnew pother pdone pforeign plost psig pexit :}
+   LBL LBL LBL {: powner pfwd pleave :}
    7 PROF-BAND-VA LIT64,
-   9 7 PROF-ARMED LDR,  9 ARMED-RUNS CMPI,  C-NE pexit BCOND,
+   9 7 PROF-ARMED ADDI,  9 9 LDAR,  9 ARMED-RUNS CMPI,  C-NE pexit BCOND,
+   1 C-PROF-IN-ADD
+   9 7 PROF-ARMED ADDI,  9 9 LDAR,  9 ARMED-RUNS CMPI,  C-NE pleave BCOND,
+   8 7 PROF-ARENA LDR,  8 powner CBZ,
+   10 CB-SELF,  11 8 ARN-OWNER LDR,  10 11 CMP,  C-NE pfwd BCOND,
+   powner LBL,
    C-PROF-WEIGHT
    C-PROF-MCTX>R21  C-PROF-PC>R9
-   20 10 C-PROF-CTX-X>R  11 DATA-VA VA>N LIT64,  10 11 CMP,  C-NE pforeign BCOND,
-   26 10 C-PROF-CTX-X>R  11 7 PROF-DBASE LDR,  10 11 CMP,  C-NE pforeign BCOND,
    17 1 MOVZ,                                        \ x17 = 1: a Habu context, its count may report (x16 is the Darwin syscall number, never kept across a sys)
    8 7 PROF-ARENA LDR,  8 pdone CBZ,
-   LPROFFIND LABEL@ BL,                              \ the handler never returns, so x30 needs no frame
+   20 10 C-PROF-CTX-X>R  11 8 ARN-OWNER-DATA LDR,  10 11 CMP,  C-NE pforeign BCOND,
+   26 10 C-PROF-CTX-X>R  11 7 PROF-DBASE LDR,  10 11 CMP,  C-NE pforeign BCOND,
+   LPROFFIND LABEL@ BL,                            \ the handler never returns, so x30 needs no frame
    6 pnew CBZ,
    C-PROF-CHARGE
    C-PROF-WALK
@@ -760,10 +822,14 @@ public
    12 7 PROF-FOREIGN LDR,  12 12 3 ADD,  12 7 PROF-FOREIGN STR,
    psig LBL,
    10 7 PROF-TOT LDR,  10 10 3 ADD,  10 7 PROF-TOT STR,
-   11 7 PROF-LIM LDR,  11 pexit CBZ,                 \ limit 0: sample until prof-off
-   10 11 CMP,  C-LT pexit BCOND,
-   17 pexit CBZ,                                     \ the limit reached on a foreign sample: the next Habu sample reports
-   LPROFDUMP LABEL@ BL,  0 PROF-LIMIT-RC MOVZ,  NR-EXIT-GROUP SYS,
+   11 7 PROF-LIM LDR,  11 pleave CBZ,                \ limit 0: sample until prof-off
+   10 11 CMP,  C-LT pleave BCOND,
+   17 pleave CBZ,                                    \ the limit reached on a foreign sample: the next Habu sample reports
+   LPROFDUMP LABEL@ BL,
+   7 PROF-BAND-VA LIT64,  -1 C-PROF-IN-ADD
+   0 PROF-LIMIT-RC MOVZ,  NR-EXIT-GROUP SYS,
+   pfwd LBL,  C-PROF-FORWARD
+   pleave LBL,  -1 C-PROF-IN-ADD
    pexit LBL,  0 4 0 ADDI,  NR-SIGRETURN SYS,  BRK, ;
 
 private
@@ -1213,12 +1279,27 @@ private
    23 SP 40 LDR,  24 SP 48 LDR,  25 SP 56 LDR,  17 SP 64 LDR,
    SP SP 96 ADDI,  RET, ;
 
-\ The main stack's bounds into the arena: the top boot stored, less the soft
-\ RLIMIT_STACK, or less PROF-STACK-BYTES when getrlimit fails, answers no
-\ limit or one above the top. Leaves x0 = arena, x7 = band; clobbers x1, x2,
-\ x9-x11 and the syscall's registers.
-: C-PROF-STACK-BOUNDS ( -- )
-   LBL LBL {: dflt have :}
+\ Clear ARN-OWNER-TID, so a forwarding handler reads 0, which names no thread,
+\ then give the handle back. Clobbers x0-x2, x7-x9 and x16.
+: C-PROF-OWNER-RELEASE ( -- )
+   LBL {: none :}
+   7 PROF-BAND-VA LIT64,  9 7 PROF-ARENA LDR,  9 none CBZ,
+   2 9 ARN-OWNER-TID LDR,
+   0 0 MOVZ,  0 9 ARN-OWNER-TID STR,
+   2 none CBZ,
+   2 OS-THREAD-RELEASE
+   none LBL, ;
+
+\ The calling thread into ARN-OWNER and ARN-OWNER-TID, its x20 into
+\ ARN-OWNER-DATA (prof-on runs on the owner, in Habu code), the previous handle
+\ given back, and the main stack's bounds into the arena: the top boot stored,
+\ less the soft RLIMIT_STACK, or less PROF-STACK-BYTES when getrlimit fails,
+\ answers no limit or one above the top. An owner that is not the main thread
+\ gets bounds of 0: its own stack's extent is unknown, so every walk stays
+\ block-bounded. Leaves x0 = arena, x7 = band; clobbers x1, x2, x9-x11 and the
+\ syscall's registers.
+: C-PROF-OWNER ( -- )
+   LBL LBL LBL LBL {: dflt have other done :}
    SP SP 16 SUBI,
    0 RLIMIT-STACK MOVZ,  1 SP 0 ADDI,  NR-GETRLIMIT SYS,
    10 SP 0 LDR,  SP SP 16 ADDI,
@@ -1226,17 +1307,58 @@ private
    11 RLIM-INFINITY LIT64,  10 11 CMP,  C-EQ dflt BCOND,
    9 PROF-TOP-VA LIT64,  9 9 0 LDR,  10 9 CMP,  C-LS have BCOND,
    dflt LBL,  10 PROF-STACK-BYTES LIT64,
-   have LBL,
+   have LBL,  C-PROF-OWNER-RELEASE  2 OS-THREAD-HANDLE
    7 PROF-BAND-VA LIT64,  0 7 PROF-ARENA LDR,
+   2 0 ARN-OWNER-TID STR,  DATA 0 ARN-OWNER-DATA STR,
+   11 CB-SELF,  11 0 ARN-OWNER STR,
+   9 PROF-THREAD-VA LIT64,  9 9 0 LDR,  9 11 CMP,  C-NE other BCOND,
    9 PROF-TOP-VA LIT64,  9 9 0 LDR,  9 0 ARN-STACK-TOP STR,
-   9 9 10 SUB,  9 0 ARN-STACK-LOW STR, ;
+   9 9 10 SUB,  9 0 ARN-STACK-LOW STR,  done B,
+   other LBL,
+   9 0 MOVZ,  9 0 ARN-STACK-TOP STR,  9 0 ARN-STACK-LOW STR,
+   done LBL, ;
+
+\ x7 = band: PROF-ARMED = ARMED-RUNS by store-release, so a handler on any
+\ thread that sees ARMED-RUNS sees ARN-OWNER and the session's cells. Clobbers
+\ x9 and x10.
+: C-PROF-ARM ( -- )
+   9 ARMED-RUNS MOVZ,  10 7 PROF-ARMED ADDI,  9 10 STLR, ;
+
+\ x7 = band: PROF-ARMED = state by store-release, then wait until PROF-IN reads
+\ 0. On the owner thread it reads 0 at once: its handler is never suspended by
+\ the code it interrupted. Clobbers x9 and x10.
+: C-PROF-LEAVE-RUNS ( n -- ) {: state:n :}
+   LBL LBL {: spin out :}
+   9 state MOVZ,  10 7 PROF-ARMED ADDI,  9 10 STLR,
+   10 7 PROF-IN ADDI,
+   spin LBL,  9 10 LDAR,  9 out CBZ,  YIELD,  spin B,
+   out LBL, ;
+
+\ The ticket lock: take a ticket from PROF-CTL-NEXT by an acquire-release
+\ atomic add, then wait until PROF-CTL-SERVE reads it. The handler never
+\ touches either cell, so the owner's handler cannot wait on its own thread.
+\ Clobbers x9-x11.
+: C-PROF-CTL-TAKE ( -- )
+   LBL LBL {: spin got :}
+   9 1 MOVZ,  10 PROF-BAND-VA PROF-CTL-NEXT + LIT64,
+   9 9 10 LDADDAL,
+   11 PROF-BAND-VA PROF-CTL-SERVE + LIT64,
+   spin LBL,  10 11 LDAR,  10 9 CMP,  C-EQ got BCOND,  YIELD,  spin B,
+   got LBL, ;
+
+\ PROF-CTL-SERVE + 1 by store-release: the next ticket runs. Clobbers x10 and
+\ x11.
+: C-PROF-CTL-FREE ( -- )
+   11 PROF-BAND-VA PROF-CTL-SERVE + LIT64,
+   10 11 0 LDR,  10 10 1 ADDI,  10 11 STLR, ;
 
 \ The handler counts nothing until the arm: a clock already running keeps
 \ ticking through the clears and the rebuild.
 : BPROF-ON ( -- )
    LBL LBL {: zl zd :}
+   C-PROF-CTL-TAKE
    7 PROF-BAND-VA LIT64,
-   9 0 MOVZ,  9 7 PROF-ARMED STR,
+   0 C-PROF-LEAVE-RUNS
    A G-POP  A 7 PROF-LIM STR,
    9 0 MOVZ,  9 7 PROF-TOT STR,  9 7 PROF-OTHER STR,  9 7 PROF-FOREIGN STR,
    DBASE 7 PROF-DBASE STR,
@@ -1244,7 +1366,7 @@ private
    zl LBL,  8 zd CBZ,  9 0 MOVZ,  9 14 0 STR,  14 14 8 ADDI,  8 8 1 SUBI,  zl B,
    zd LBL,
    C-PROF-ARENA-MAP
-   C-PROF-STACK-BOUNDS
+   C-PROF-OWNER
    C-PROF-SESSION-START
    C-PROF-SNAPSHOT
    C-PROF-INDEX-BUILD
@@ -1256,10 +1378,11 @@ private
    C-PROF-SIGACTION-DONE
    7 PROF-BAND-VA LIT64,  0 7 PROF-ARENA LDR,   \ the sigaction calls above own x0
    C-PROF-CLOCK-MARK
-   9 ARMED-RUNS MOVZ,  9 7 PROF-ARMED STR,
+   C-PROF-ARM
    C-PROF-TIMER-FRAME
    C-PROF-TIMER
-   C-PROF-TIMER-DONE ;
+   C-PROF-TIMER-DONE
+   C-PROF-CTL-FREE ;
 
 \ Clobbers x0-x2 and x9.
 : C-PROF-TIMER-STOP ( -- )
@@ -1270,11 +1393,11 @@ private
 
 \ Hold the clock for a walk or a clear: an armed clock goes to ARMED-HELD before
 \ the timer stops, so the handler counts nothing from here on. Clobbers x0-x2,
-\ x7 and x9.
+\ x7, x9 and x10.
 : C-PROF-CLOCK-HOLD ( -- )
    LBL {: off :}
    7 PROF-BAND-VA LIT64,  9 7 PROF-ARMED LDR,  9 off CBZ,
-   9 ARMED-HELD MOVZ,  9 7 PROF-ARMED STR,
+   ARMED-HELD C-PROF-LEAVE-RUNS
    off LBL,
    C-PROF-TIMER-STOP ;
 
@@ -1285,23 +1408,27 @@ private
    7 PROF-BAND-VA LIT64,  9 7 PROF-ARMED LDR,  9 off CBZ,
    0 7 PROF-ARENA LDR,
    C-PROF-CLOCK-MARK
-   9 ARMED-RUNS MOVZ,  9 7 PROF-ARMED STR,
+   C-PROF-ARM
    C-PROF-TIMER-FRAME
    C-PROF-TIMER
    C-PROF-TIMER-DONE
    off LBL, ;
 
 \ Retirement is reached from engine helpers whose scratch registers still
-\ belong to their caller.
+\ belong to their caller. It holds the ticket lock from before its first read
+\ to its one exit, as a control word does, so a trim on one thread never
+\ rebuilds the index under another thread's report. x9 is the bodies' input.
 : C-PROF-RETIRE-OPEN ( label -- )
    {: absent:label :}
    SP SP 160 SUBI,
    18 0 ?do i SP i cells STR, loop
    30 SP 144 STR,
+   C-PROF-CTL-TAKE  9 SP 9 cells LDR,
    7 PROF-BAND-VA LIT64,  8 7 PROF-ARENA LDR,  8 absent CBZ,
    10 8 ARN-IDS LDR,  10 absent CBZ, ;
 
 : C-PROF-RETIRE-CLOSE ( -- )
+   C-PROF-CTL-FREE
    18 0 ?do i SP i cells LDR, loop
    30 SP 144 LDR,  SP SP 160 ADDI,  RET, ;
 
@@ -1405,12 +1532,16 @@ private
    C-PROF-CLOCK-RESUME
    30 SP 0 LDR,  SP SP 16 ADDI, ;
 
-\ prof-off stops the clock and nothing else: the handler, the index and every
-\ counter stay, so the phase can be reported afterwards. PROF-ARMED goes to 0
-\ before the timer stops, so a tick that arrives after the stop counts nothing.
+\ prof-off stops the clock and gives back the owner's handle, nothing else: the
+\ handler, the index and every counter stay, so the phase can be reported
+\ afterwards. PROF-ARMED goes to 0 before the timer stops, so a tick that
+\ arrives after the stop counts nothing.
 : BPROF-OFF ( -- )
-   7 PROF-BAND-VA LIT64,  9 0 MOVZ,  9 7 PROF-ARMED STR,
-   C-PROF-TIMER-STOP ;
+   C-PROF-CTL-TAKE
+   7 PROF-BAND-VA LIT64,  0 C-PROF-LEAVE-RUNS
+   C-PROF-TIMER-STOP
+   C-PROF-OWNER-RELEASE
+   C-PROF-CTL-FREE ;
 
 \ prof-reset clears the counts and keeps the index, so a second phase skips the
 \ sort. The clock is held for the clears: PROF-TOT is cleared first and each
@@ -1418,6 +1549,7 @@ private
 \ not in its bucket, and the identity would be off by one.
 : BPROF-RESET ( -- )
    LBL LBL LBL {: zl zd noarena :}
+   C-PROF-CTL-TAKE
    C-PROF-CLOCK-HOLD
    7 PROF-BAND-VA LIT64,
    9 0 MOVZ,  9 7 PROF-TOT STR,  9 7 PROF-OTHER STR,  9 7 PROF-FOREIGN STR,
@@ -1428,15 +1560,19 @@ private
    C-PROF-COUNTERS-CLEAR
    C-PROF-CALL-CLEAR
    noarena LBL,
-   C-PROF-CLOCK-RESUME ;
+   C-PROF-CLOCK-RESUME
+   C-PROF-CTL-FREE ;
 
-: BPROF-REPORT ( -- )  LPROFDUMP LABEL@ C-PROF-REPORT-CALL ;
+: BPROF-REPORT ( -- )
+   C-PROF-CTL-TAKE  LPROFDUMP LABEL@ C-PROF-REPORT-CALL  C-PROF-CTL-FREE ;
 
-: BPROF-JSON ( -- )  LPROFJSON LABEL@ C-PROF-REPORT-CALL ;
+: BPROF-JSON ( -- )
+   C-PROF-CTL-TAKE  LPROFJSON LABEL@ C-PROF-REPORT-CALL  C-PROF-CTL-FREE ;
 
 \ prof-row ( n -- ): the row for dictionary record n, whatever its rank.
 : BPROF-ROW ( -- )
    LBL LBL {: bad ready :}
+   C-PROF-CTL-TAKE
    SP SP 16 SUBI,  30 SP 0 STR,
    6 G-POP  6 SP 8 STR,
    C-PROF-CLOCK-HOLD
@@ -1452,6 +1588,7 @@ private
    ready LBL,
    LPROFROW LABEL@ BL,
    C-PROF-CLOCK-RESUME
+   C-PROF-CTL-FREE
    30 SP 0 LDR,  SP SP 16 ADDI, ;
 
 \ prof-rate sets the interval the NEXT prof-on arms, rather than re-arming here:
@@ -1460,17 +1597,21 @@ private
 \ x0-x5, x7-x9 and x16.
 : BPROF-RATE ( -- )
    LBL {: ok :}
+   C-PROF-CTL-TAKE
    10 G-POP
    10 0 CMPI,  C-GE ok BCOND,
+      C-PROF-CTL-FREE
       9 PROF-ABI:E-PROF-RATE LIT64,  9 G-PUSH  BTHROW
    ok LBL,
    C-PROF-ARENA-MAP
    7 PROF-BAND-VA LIT64,  0 7 PROF-ARENA LDR,
-   10 0 ARN-USEC STR, ;
+   10 0 ARN-USEC STR,
+   C-PROF-CTL-FREE ;
 
 \ prof-pc>rec ( pc -- n ): the record index the armed index gives that pc, or -1.
 : BPROF-PCREC ( -- )
    LBL LBL {: miss out :}
+   C-PROF-CTL-TAKE
    SP SP 16 SUBI,  30 SP 0 STR,
    9 G-POP
    7 PROF-BAND-VA LIT64,  8 7 PROF-ARENA LDR,  8 miss CBZ,
@@ -1482,7 +1623,23 @@ private
    9 9 RID-OWNER LDR,  out B,
    miss LBL,  9 0 MOVN,
    out LBL,  9 G-PUSH
+   C-PROF-CTL-FREE
    30 SP 0 LDR,  SP SP 16 ADDI, ;
+
+\ prof-child-reset ( -- ): in a process just forked, which has only the forking
+\ thread, the profiler state other threads were part way through: no handler
+\ counted in, no ticket waiting, the clock stopped (POSIX fork(): the child's
+\ interval timers are cleared), and no owner. The owner's handle is cleared,
+\ never released: a Mach port name is the parent's, never the child's. Plain
+\ stores, no lock, no syscall: it runs where FORK-CHILD's resets run.
+: BPROF-CHILD-RESET ( -- )
+   LBL {: none :}
+   7 PROF-BAND-VA LIT64,
+   9 0 MOVZ,  9 7 PROF-IN STR,  9 7 PROF-ARMED STR,
+   10 7 PROF-CTL-NEXT LDR,  10 7 PROF-CTL-SERVE STR,
+   8 7 PROF-ARENA LDR,  8 none CBZ,
+   9 8 ARN-OWNER STR,  9 8 ARN-OWNER-TID STR,
+   none LBL, ;
 
 public
 
@@ -1491,7 +1648,8 @@ public
    s" prof-off" ['] BPROF-OFF FPRIM-L  s" prof-reset" ['] BPROF-RESET FPRIM-L
    s" prof-rate" ['] BPROF-RATE FPRIM-L  s" prof-json" ['] BPROF-JSON FPRIM-L
    s" prof-row" ['] BPROF-ROW FPRIM-L
-   s" prof-pc>rec" ['] BPROF-PCREC FPRIM-L ;
+   s" prof-pc>rec" ['] BPROF-PCREC FPRIM-L
+   s" prof-child-reset" ['] BPROF-CHILD-RESET FPRIM-L ;
 
 : EMIT-PROF-REPORTS ( -- )
    EMIT-PROFNUM  EMIT-PROFPCT  EMIT-PROFNAME  EMIT-PROFSYNC

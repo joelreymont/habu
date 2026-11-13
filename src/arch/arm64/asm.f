@@ -511,7 +511,24 @@ public
 
 : ENC-DSB-ISH ( -- n ) $D5033B9F ;
 
+: ENC-DMB-ISH ( -- n ) $D5033BBF ;
+
 : ENC-ISB ( -- n ) $D5033FDF ;
+
+\ YIELD, HINT #1 (Arm ARM C6.2, YIELD): a spin-wait hint, no effect on state.
+: ENC-YIELD ( -- n ) $D503203F ;
+
+\ CASAL Xs, Xt, [Xn] (Arm ARM C6.2, CAS, CASA, CASAL, CASL): Xs holds the
+\ expected value and receives the old one.
+: ENC-CASAL ( n n n -- n )
+   XR3 {: s:n t:n n:n :}
+   s 16 lshift  n 5 lshift or  t or  $C8E0FC00 or MSK ;
+
+\ LDADDAL Xs, Xt, [Xn] (Arm ARM C6.2, LDADD, LDADDA, LDADDAL, LDADDL): [Xn]
+\ += Xs, Xt receives the old value.
+: ENC-LDADDAL ( n n n -- n )
+   XR3 {: s:n t:n n:n :}
+   s 16 lshift  n 5 lshift or  t or  $F8E00000 or MSK ;
 
 private
 

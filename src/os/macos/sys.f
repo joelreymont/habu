@@ -34,7 +34,11 @@ $14  constant NR-GETPID
 private
 $148 constant NR-PTHREAD-KILL  \ __pthread_kill(thread port, sig) — BSD syscall 328
 $149 constant NR-PTHREAD-SIGMASK  \ __pthread_sigmask(how, set, oset) — BSD syscall 329
-26   constant MACH-THREAD-SELF  \ thread_self_trap is Mach trap -27, so x16 = ~26
+\ Mach trap numbers from XNU osfmk/kern/syscall_sw.c: trap -n is svc $80 with
+\ x16 = ~(n - 1).
+26   constant MACH-THREAD-SELF      \ thread_self_trap, Mach trap -27
+27   constant MACH-TASK-SELF        \ task_self_trap, Mach trap -28
+17   constant MACH-PORT-DEALLOCATE  \ _kernelrpc_mach_port_deallocate_trap, -18
 public
 $16A constant NR-KQUEUE
 $171 constant NR-KEVENT64
@@ -89,11 +93,35 @@ $20 constant AT-SYMLINK-NOFOLLOW   \ sys/fcntl.h AT_SYMLINK_NOFOLLOW; only Linux
 : OS-OPEN-RD ( n -- )
    0 swap 0 ADDI,  1 0 MOVZ,  2 0 MOVZ,  NR-OPEN SYS, ;
 
+\ x(n) = this thread's Mach thread port. The trap adds a user reference to the
+\ port on every call; the caller gives it back with OS-THREAD-RELEASE.
+\ Clobbers x0 and x16.
+: OS-THREAD-HANDLE ( n -- )
+   {: reg :}
+   16 MACH-THREAD-SELF MOVN,  $80 SVC,  reg 0 0 ADDI, ;
+
+\ __pthread_kill(the port in x(t), the signal in x(s)); s is not x16.
 \ Clobbers x0, x1 and x16.
+: OS-SIGNAL-THREAD ( n n -- )
+   {: sigreg treg :}
+   16 treg 0 ADDI,  1 sigreg 0 ADDI,  0 16 0 ADDI,  NR-PTHREAD-KILL SYS, ;
+
+\ mach_port_deallocate(mach_task_self(), the port in x(n)), then the same for
+\ the reference task_self_trap adds to the task port. Each is the deallocate
+\ trap: libSystem's mach_port_deallocate falls back to a MIG message on the
+\ thread's reply port, which is not async-signal-safe: the interrupted code may
+\ be in an exchange on that port. Clobbers x0-x2 and x16.
+: OS-THREAD-RELEASE ( n -- )
+   {: reg :}
+   1 reg 0 ADDI,
+   16 MACH-TASK-SELF MOVN,  $80 SVC,  2 0 0 ADDI,
+   16 MACH-PORT-DEALLOCATE MOVN,  $80 SVC,
+   0 2 0 ADDI,  1 2 0 ADDI,  16 MACH-PORT-DEALLOCATE MOVN,  $80 SVC, ;
+
+\ Clobbers x0-x2 and x16, none of which holds the signal.
 : OS-RAISE-SELF ( n -- )
    {: sigreg :}
-   16 MACH-THREAD-SELF MOVN,  $80 SVC,
-   1 sigreg 0 ADDI,  NR-PTHREAD-KILL SYS, ;
+   2 OS-THREAD-HANDLE  sigreg 2 OS-SIGNAL-THREAD  2 OS-THREAD-RELEASE ;
 
 \ __pthread_sigmask(SIG_BLOCK, set, NULL) on this thread, the 4-byte set in a
 \ frame on sp that it gives back. Clobbers x0, x1, x2, x10 and x16.

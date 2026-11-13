@@ -1936,17 +1936,17 @@ private
 
 \ Atomic primitives (ARMv8.1 LSE). A=x9 B=x10 C=x11.
 : BATFETCH ( -- )   \ atomic@ ( ptr a -- a ) : LDAR x9,[x9]
-   A G-POP  $C8DFFD29 EMITW  A G-PUSH ;
+   A G-POP  A A LDAR,  A G-PUSH ;
 : BATSTORE ( -- )   \ atomic! ( a ptr a -- ) : STLR x9,[x10]
-   B G-POP A G-POP  7 8 MOVZ,  B 7 PROT-GUARD:CALL  $C89FFD49 EMITW ;
+   B G-POP A G-POP  7 8 MOVZ,  B 7 PROT-GUARD:CALL  A B STLR, ;
 : BATADD ( -- )     \ atomic-add ( delta addr -- old ) : LDADDAL x9,x9,[x10]
-   B G-POP A G-POP  7 8 MOVZ,  B 7 PROT-GUARD:CALL  $F8E90149 EMITW  A G-PUSH ;
+   B G-POP A G-POP  7 8 MOVZ,  B 7 PROT-GUARD:CALL  A A B LDADDAL,  A G-PUSH ;
 : BATCAS ( -- )     \ atomic-cas ( expected new addr -- actual ) : CASAL x9,x10,[x11]
    C G-POP B G-POP A G-POP  14 B 0 ADDI,  7 8 MOVZ,     \ x14 saves new (x10) across the guard's x10/x11 clobber
    C 7 PROT-GUARD:CALL  C B 0 ADDI,  B 14 0 ADDI,       \ restore addr->x11, new->x10 for the CASAL
-   $C8E9FD6A EMITW  A G-PUSH ;
+   A B C CASAL,  A G-PUSH ;
 : BFENCE ( -- )     \ fence ( -- ) : DMB ISH
-   $D5033BBF EMITW ;
+   DMB-ISH, ;
 
 : BCELLS ( -- )
    A G-POP  A A 3 LSLI, A G-PUSH ;
@@ -2188,6 +2188,7 @@ private
       10 15 $40 LDR,  11 1 MOVZ,  LPROTSPAN LABEL@ BL,
    nosret LBL, ;
 
+public
 \ This thread's pointer, compared with CB-OWNER and a slot row: one value for a
 \ thread's life, distinct across live threads. Linux: TPIDR_EL0, the TLS base
 \ clone gives each thread. macOS: TPIDRRO_EL0, the kernel's current cthread
@@ -2200,14 +2201,7 @@ private
       $D53BD060 r or EMITW
       r r 3 LSRI,  r r 3 LSLI,
    THEN ;
-
-\ CASAL Xs, Xt, [Xn]: Xs holds the expected value and receives the old one.
-: CASAL, ( n n n -- ) {: s:n t:n n:n :}
-   $C8E0FC00 s 16 lshift or n 5 lshift or t or EMITW ;
-
-\ YIELD, the spin-wait hint: this thread is waiting on another.
-: YIELD, ( -- ) $D503203F EMITW ;
-
+private
 
 \ Every outbound core runs this after its pops and guards, before its BLR. The
 \ owner comes first: LDAR CB-OWNER; this thread already is nested and claims

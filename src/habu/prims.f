@@ -684,6 +684,7 @@ EPRIM: prof-on       PE-N PE-IN EPRIM;
 EPRIM: prof-report   EPRIM;
 EPRIM: prof-off      EPRIM;
 EPRIM: prof-reset    EPRIM;
+EPRIM: prof-child-reset EPRIM;                   \ in a forked child alone: frees the profiler the fork copied
 EPRIM: prof-rate     PE-N PE-IN EPRIM;
 EPRIM: prof-json     EPRIM;
 EPRIM: prof-row      PE-N PE-IN EPRIM;                \ the report row for one dictionary record

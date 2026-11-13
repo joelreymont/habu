@@ -6247,7 +6247,10 @@ public
    s" prof-pc>rec" [: X64PROF:PCREC-BODY ;] PRIM
    s" prof-report" [: X64PROF:REPORT-BODY ;] PRIM
    s" prof-json" [: X64PROF:JSON-BODY ;] PRIM
-   s" prof-row" [: X64PROF:ROW-BODY ;] PRIM ;
+   s" prof-row" [: X64PROF:ROW-BODY ;] PRIM
+   \ The x86-64 profiler's one process-wide state is the armed clock, which
+   \ prof-off's body clears; a forked child has no interval timer to stop.
+   s" prof-child-reset" [: X64PROF:OFF-BODY ;] PRIM ;
 
 \ A seeded provider needs a non-null code xt in the linked DATA cell. The
 \ capture's address-row metadata alone does not prove the final value.

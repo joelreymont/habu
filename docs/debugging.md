@@ -299,15 +299,19 @@ phase measurement:
   most `PROF-WALK-CELLS` cells and none past its 4 KiB block
   (`src/habu/prof.f` C-PROF-WALK). In a warm arm64 `--engine` build profile,
   `LINKER:WITH` took 19,660 inclusive samples of 19,663, none of them foreign.
-- On arm64 a sample inside C on the main stack (an FFI call, libSystem's
-  `fsync`) is charged to the nearest Habu return address: the interrupted
-  return register's, else the first code address the scan up from the stack
-  pointer finds. The scan is conservative, so a stale code-shaped cell left on
+- On arm64 a sample inside C (an FFI call, libSystem's `fsync`) is charged to
+  the nearest Habu return address: the interrupted return register's, else the
+  first code address the scan up from the stack pointer finds, to the stack's
+  top on the main stack and within its 4 KiB block elsewhere. The scan is conservative, so a stale code-shaped cell left on
   the stack can take the sample. Its callers are walked from there. The
   header's `foreign charged to callers` says how many; `foreign` counts only
   the foreign samples charged to no word. On x86-64 every sample inside C
   counts in `foreign`, and the header has no `foreign charged to callers`.
 - `n prof-row` prints one word's row whatever its rank.
+- On arm64 only the thread that ran `prof-on` is sampled: a tick the kernel
+  delivers to another thread is sent on to it, so a task's work shows only in
+  a profile that task started. On x86-64 a tick counts on whichever thread it
+  lands.
 - On arm64 a sample counts the sampling intervals elapsed since the last one,
   so time blocked in a syscall (an fsync, a file read) is charged where the
   sample that ends it lands, though the ticks of that wait arrive as one

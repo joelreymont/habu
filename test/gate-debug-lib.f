@@ -150,6 +150,28 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    s" habu-crash" s" profiler foreign no-crash" GE-EXPECT-ERR-LACKS
    s" PASS: profiler counts ticks inside foreign code instead of dying" type cr ;
 
+\ On arm64 a tick the kernel delivers to a thread other than prof-on's is sent
+\ on to that thread: a task that profiles itself while the main thread waits
+\ in its join still gets the samples. x86-64 counts a tick where it lands.
+: GDB-PROFILER-TASK ( -- )
+   HB-TARGET-LINUX-X86-64? if exit then
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" require src/lib/task.f" GE-SRC-LINE
+   s" : GDB-BUSY ( -- ) 80000000 begin 1- dup dup * drop dup 0= until drop ;" GE-SRC-LINE
+   s" TASK:MIN-STACK TASK:TASK GDB-WORKER" GE-SRC-LINE
+   s" : GDB-PROFILE ( -- ) 0 prof-on GDB-BUSY prof-off prof-report 0 TASK:RETURN ;" GE-SRC-LINE
+   S\" : GDB-JOIN ( -- ) GDB-WORKER TASK:JOIN MATCH result ok OF drop ENDOF err OF drop s\" task failed\" 78 die ENDOF ;MATCH ;" GE-SRC-LINE
+   s" : GDB-GO ( -- ) ['] GDB-PROFILE GDB-WORKER TASK:ACTIVATE GDB-JOIN ; GDB-GO" GE-SRC-LINE
+   GDB-PROF-RUN
+   s" profiler on a task" GE-EXPECT-OK
+   s" GDB-BUSY" s" a task's profile names its busy word" GE-EXPECT-OUT-HAS
+   GT-OUT$ GDB-SAMPLES 0 <= if
+      s" a task's profile took no sample" GE-FAIL
+   then
+   GT-OUT$ -1 GDB-ACCOUNT
+   s" PASS: a task that runs prof-on gets its own samples" type cr ;
+
 : GDB-PROFILER-CLOCK ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -576,6 +598,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    s" hb-gate-debug" GT-START
    GDB-PROFILER
    GDB-PROFILER-FOREIGN
+   GDB-PROFILER-TASK
    GDB-PROFILER-CLOCK
    GDB-PROFILER-LIMIT1
    GDB-PROFILER-EXACT-ALL

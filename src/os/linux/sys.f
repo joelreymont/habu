@@ -87,12 +87,25 @@ $100 constant AT-SYMLINK-NOFOLLOW
    {: pathreg :}
    1 pathreg 0 ADDI,  0 99 MOVN,  2 0 MOVZ,  3 0 MOVZ,  NR-OPEN SYS, ;
 
-\ Clobbers x0, x1, x2, x8, x10 and x16.
+\ x(n) = this thread's tid. Clobbers x0, x8 and x16.
+: OS-THREAD-HANDLE ( n -- )
+   {: reg :}
+   NR-GETTID SYS,  reg 0 0 ADDI, ;
+
+\ tgkill(getpid(), the tid in x(t), the signal in x(s)); s is not x8.
+\ Clobbers x0-x2, x8 and x16.
+: OS-SIGNAL-THREAD ( n n -- )
+   {: sigreg treg :}
+   8 treg 0 ADDI,  2 sigreg 0 ADDI,  1 8 0 ADDI,
+   NR-GETPID SYS,  NR-TGKILL SYS, ;
+
+\ A tid holds no reference: nothing to give back.
+: OS-THREAD-RELEASE ( n -- ) drop ;
+
+\ Clobbers x0-x2, x8 and x16, none of which holds the signal.
 : OS-RAISE-SELF ( n -- )
    {: sigreg :}
-   NR-GETPID SYS,  10 0 0 ADDI,
-   NR-GETTID SYS,  1 0 0 ADDI,
-   0 10 0 ADDI,  2 sigreg 0 ADDI,  NR-TGKILL SYS, ;
+   1 OS-THREAD-HANDLE  sigreg 1 OS-SIGNAL-THREAD ;
 
 \ rt_sigprocmask(SIG_BLOCK, set, NULL, 8) on this thread, the 8-byte set in a
 \ frame on sp that it gives back. Clobbers x0..x3, x8, x10 and x16.

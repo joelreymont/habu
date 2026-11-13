@@ -33,6 +33,11 @@ variable LPROFRECLAIM
 \ clears or reads the counters leaves ARMED-RUNS before it stops the timer. The
 \ x86-64 twin stores 0 and ARMED-RUNS and never holds: Linux delivers a raised
 \ tick before setitimer returns (src/habu/prof-x64.f, prof-off).
+56 constant PROF-IN         \ the handlers between their increment and decrement, on any thread;
+                            \ a word that leaves ARMED-RUNS waits for 0
+\ The public control words' ticket lock: words run in the order they asked.
+64 constant PROF-CTL-NEXT   \ the next ticket to hand out
+72 constant PROF-CTL-SERVE  \ the ticket that may run; only its holder writes it
 
 \ The arena holds the pc index the handler searches.
 \ THE HANDLER NEVER WALKS THE DICTIONARY: it searches a pc-sorted live-range
@@ -46,7 +51,7 @@ variable LPROFRECLAIM
 \ and its original) in dictionary order; the search lands on the last of them.
 \ Records with no code (a namespace row, a retired row, a zero-length body) are
 \ not in the index.
-168 constant ARN-HDR        \ arena header bytes, then the index
+192 constant ARN-HDR        \ arena header bytes, then the index
 0  constant ARN-COUNT       \ index entries
 8  constant ARN-LO          \ lowest code address in the index
 16 constant ARN-HI          \ one past the highest
@@ -61,6 +66,7 @@ variable LPROFRECLAIM
 88 constant ARN-OLDHI       \ the high mark before a rebuild: what the handler could name
 96 constant ARN-IDS         \ profile identities issued this session, at most DICT-CAP
 104 constant ARN-CHUNKS      \ linked chunks holding copied names
+\ Both are 0 when ARN-OWNER is not the main thread: no SP lies in [0, 0).
 112 constant ARN-STACK-TOP   \ the main stack's top, as boot recorded it
 120 constant ARN-STACK-LOW   \ the top less the stack limit
 \ A standard signal does not queue: the ticks that expire while the process is
@@ -72,10 +78,19 @@ variable LPROFRECLAIM
 \ The x86-64 twin weighs nothing and keeps no ARN-SEQ: its stamp is PROF-TOT + 1,
 \ which is the serial only while every sample adds exactly one to PROF-TOT.
 144 constant ARN-SEQ         \ samples taken, one each whatever their weight: the stamps' serial
-\ aarch64 charges a sample inside C on the main stack to the Habu word that
-\ called it, so that weight is in the word's counter and not in PROF-FOREIGN.
+\ aarch64 charges a sample inside C to the Habu word that called it when x30 or
+\ the bounded scan names one, so that weight is in the word's counter and not in
+\ PROF-FOREIGN.
 152 constant ARN-FCALLED     \ the weight of foreign samples charged to a calling word
 160 constant ARN-CARRY       \ CNTVCT_EL0 ticks elapsed and not yet counted, below ARN-TICKS
+\ A SIGALRM reaches any thread that does not block it, and macOS gives the
+\ process's to the main thread: the aarch64 handler counts only on ARN-OWNER
+\ and forwards a delivery on any other thread to ARN-OWNER-TID.
+168 constant ARN-OWNER       \ the thread pointer of the thread that ran prof-on
+176 constant ARN-OWNER-TID   \ that thread's kernel handle (Mach thread port, Linux tid), 0 for none
+\ A task has its own DATA region, so the handler tells the owner's Habu code by
+\ this x20, not by DATA-VA.
+184 constant ARN-OWNER-DATA  \ the owner's x20, its DATA region
 32 constant PROF-ENT        \ index entry bytes
 0  constant ENT-START
 8  constant ENT-END
