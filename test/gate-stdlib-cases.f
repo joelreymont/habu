@@ -619,6 +619,10 @@ SUITE unicode-class-exhaustive
    tools/unicode/class-verify-main.f
 ;SUITE
 
+SUITE unicode-script-exhaustive
+   tools/unicode/script-verify-main.f
+;SUITE
+
 SUITE argv-stdlib-mocks
    src/lib/argv-test.f
 ;SUITE

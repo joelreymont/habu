@@ -1,9 +1,11 @@
-# Unicode class data provenance
+# Unicode data provenance
 
 This directory pins the final Unicode Character Database for Unicode 16.0.0.
-The generator reads only the three authoritative property files below. The
-`ReadMe.txt` file identifies them as final Version 16.0.0 data, and
-`LICENSE.txt` records the Unicode Data Files and Software License.
+The class generator reads only `UnicodeData.txt`, `PropList.txt` and
+`BidiBrackets.txt`; the script generator reads only `Scripts.txt` and
+`PropertyValueAliases.txt`. The `ReadMe.txt` file identifies them as final
+Version 16.0.0 data, and `LICENSE.txt` records the Unicode Data Files and
+Software License.
 
 | File | Source | SHA-256 |
 |---|---|---|
@@ -11,11 +13,14 @@ The generator reads only the three authoritative property files below. The
 | `UnicodeData.txt` | `https://www.unicode.org/Public/16.0.0/ucd/UnicodeData.txt` | `ff58e5823bd095166564a006e47d111130813dcf8bf234ef79fa51a870edb48f` |
 | `PropList.txt` | `https://www.unicode.org/Public/16.0.0/ucd/PropList.txt` | `53d614508e2a0b2305a8aa21cd60d993de9326cdf65993660dfcce4503548583` |
 | `BidiBrackets.txt` | `https://www.unicode.org/Public/16.0.0/ucd/BidiBrackets.txt` | `b8f32554c6f658821fb0ee742d21c5b1f2086b9bf13071fed04894b022f93d67` |
+| `Scripts.txt` | `https://www.unicode.org/Public/16.0.0/ucd/Scripts.txt` | `9e88f0a677df47311106340be8ede2ecdacd9c1c931831218d2be6d5508e0039` |
+| `PropertyValueAliases.txt` | `https://www.unicode.org/Public/16.0.0/ucd/PropertyValueAliases.txt` | `440fd3e5460b9bfe31da67b6f923992e1989d31fe2ed91e091c4b8f8e2620bf9` |
 | `LICENSE.txt` | `https://www.unicode.org/license.txt` | `e7a93b009565cfce55919a381437ac4db883e9da2126fa28b91d12732bc53d96` |
 
-The generator verifies all three input digests before parsing and writes the
-table atomically. The independent verifier checks every scalar against the source
-properties and compares the table with a fresh byte-identical regeneration.
+Each generator verifies its input digests before parsing and writes its
+table atomically. Each independent verifier checks every scalar against the
+source properties and compares the table with a fresh byte-identical
+regeneration.
 
 ## Why this version matches the GPT-2 reference
 

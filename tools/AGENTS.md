@@ -12,4 +12,5 @@ also a library; `-core.f` and `-lib.f` hold what tests and other tools reuse;
 - Profiling a build: `build-profile.f`.
 - Checks: `check.f`, the `*-lint.f` entries over `lint/`, `lsp.f` and `lsp-*.f`.
 - Inspection: `engine-size.f`, `imagedisasm.f`, `jitdump.f`.
-- `unicode/` generates and verifies `src/lib/unicode/class-data.f`.
+- `unicode/` generates and verifies `src/lib/unicode/class-data.f` and
+  `src/lib/unicode/script-data.f`.

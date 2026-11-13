@@ -261,16 +261,35 @@ variable PENDING-NAME-U
    a pos TRIM PARSE-HEX
    a pos 2 + + u pos 2 + - TRIM PARSE-HEX ;
 
-: SPACE-PROPERTY? ( ptr u8 n -- bool )
-   TRIM s" White_Space" STR= ;
-
-: PROP-ROW ( ptr u8 n -- ) {: line:ptr lineu:n :}
+: RANGE-ROW ( ptr u8 n [ n n ptr u8 n -- ] -- )
+   {: line:ptr lineu:n q :}
    line lineu HASH BYTE-INDEX {: comment:n :}
    line comment TRIM {: row:ptr rowu:n :}
    rowu 0= if exit then
    row rowu 0 NEXT-FIELD {: range:ptr rangeu:n next:n :}
-   row next + rowu next - TRIM {: prop:ptr propu:n :}
-   range rangeu TRIM RANGE-PART {: lo:n hi:n :}
+   range rangeu TRIM RANGE-PART
+   row next + rowu next - TRIM q execute ;
+
+public
+
+\ Calls q with the first and last scalar and the trimmed value of each
+\ `XXXX ; Value` or `XXXX..YYYY ; Value` row of a UCD file, skipping blank
+\ and comment text.
+: RANGE-ROWS ( ptr u8 n [ n n ptr u8 n -- ] -- ) {: a:ptr u:n q :}
+   0 begin dup u <= while
+      {: start:n :}
+      a u LINE-FEED start SPLIT-NEXT {: line:ptr lineu:n next:n valid:bool :}
+      valid 0= if E-SYNTAX throw then
+      line lineu q RANGE-ROW
+      next
+   repeat drop ;
+
+private
+
+: SPACE-PROPERTY? ( ptr u8 n -- bool )
+   TRIM s" White_Space" STR= ;
+
+: PROP+ ( n n ptr u8 n -- ) {: lo:n hi:n prop:ptr propu:n :}
    prop propu s" Other_Uppercase" STR= if
       lo hi 0 OTHER-UPPER-LO 0 OTHER-UPPER-HI OTHER-UPPER-N RANGE-APPEND exit
    then
@@ -280,14 +299,8 @@ variable PENDING-NAME-U
    prop propu SPACE-PROPERTY? 0= if lo hi SCALAR-RANGE exit then
    lo hi 0 SPACE-LO 0 SPACE-HI SPACE-N RANGE-APPEND ;
 
-: SCAN-PROPS ( ptr u8 n -- ) {: a:ptr u:n :}
-   0 begin dup u <= while
-      {: start:n :}
-      a u LINE-FEED start SPLIT-NEXT {: line:ptr lineu:n next:n valid:bool :}
-      valid 0= if E-SYNTAX throw then
-      line lineu PROP-ROW
-      next
-   repeat drop ;
+: SCAN-PROPS ( ptr u8 n -- )
+   [: PROP+ ;] RANGE-ROWS ;
 
 \ A table of scalar and paired-bracket cells, kept strictly ascending by scalar.
 : PAIR-APPEND ( n n ptr n ptr n ptr n -- )
