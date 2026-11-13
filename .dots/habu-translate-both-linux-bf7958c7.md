@@ -1,6 +1,6 @@
 ---
 title: "Translate both Linux seams' flags from one list"
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-11-13T19:23:39.883991+01:00"
