@@ -14,6 +14,9 @@ require src/lib/process-argv.f
 require src/lib/process-pty-io.f
 require src/lib/process-env.f
 require src/lib/engine-candidate.f
+require src/lib/engine-id.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
 require src/lib/process-tree.f
 
 package PROC-TREE-TEST
@@ -243,6 +246,29 @@ PROCESS:NO-FD CROWD-WR !
 : CROWD ( -- )
    [: CROWD-BODY ;] [: CROWD-END ;] finally ;
 
+create RUNS-DIR PATH-CAP allot
+variable RUNS-DIR-U
+create IDLE-COPY PATH-CAP allot
+variable IDLE-COPY-U
+
+: RUNS-DIR$ ( -- ptr u8 n ) RUNS-DIR RUNS-DIR-U @ ;
+: IDLE-COPY$ ( -- ptr u8 n ) IDLE-COPY IDLE-COPY-U @ ;
+
+: RUNS-BODY ( -- )
+   RUNS-DIR$ s" hb" IDLE-COPY FS:JOIN-PATH IDLE-COPY-U !
+   ENGINE-ID:PATH$ IDLE-COPY$ FS:COPY-FILE-STREAM
+   s" runs: the running engine runs its own path" T-LABEL
+   ENGINE-ID:PATH$ PROC-TREE:RUNS? TTRUE
+   s" runs: nothing runs a byte copy of the engine" T-LABEL
+   IDLE-COPY$ PROC-TREE:RUNS? TFALSE ;
+
+\ MKTEMP-DIR's answer lasts until this task's next temp, so RUNS-DIR keeps it.
+: RUNS ( -- )
+   s" proc-tree-runs" FS:MKTEMP-DIR {: dir:ptr diru:n :}
+   dir RUNS-DIR diru BYTE-COPY
+   diru RUNS-DIR-U !
+   [: RUNS-BODY ;] [: RUNS-DIR$ FS:REMOVE-TREE ;] finally ;
+
 : SANDBOX$ ( -- ptr u8 n )
    s" sandbox-exec" >LEN SANDBOX FIND-EXECUTABLE MATCH option
       none OF s" process-tree-test: required executable missing on PATH: sandbox-exec" 1 die ENDOF
@@ -314,6 +340,7 @@ PROCESS:NO-FD CROWD-WR !
 : CASES ( -- )
    T-RESET
    CROWD
+   RUNS
    HB-TARGET-MACOS? 0= if
       s" process-tree-test: the refusal cases need macOS sandbox-exec" type cr
       exit

@@ -177,12 +177,18 @@ application against newer source while still compiling the current engine.
 ## Stable local command
 
 Keep the checkout's `bin/hb` for development and build candidates privately.
-Use one installed tree at a stable path for the executable, map and matching
-library sources, `~/.local/lib/habu`, with `~/.local/bin/hb` pointing to its
-`bin/hb`. Update it by running `bin/hb --load tools/install.f` from the root of
-the tree that passed its checks; the tool's header says what it writes. Do not
-create per-revision release directories; ordinary development does not require
-installation or publication.
+The one installed Habu is the tree the link `~/.local/lib/habu` names, with
+`~/.local/bin/hb` pointing to its `bin/hb`; a tree the link no longer names
+lasts only while a process runs it. Update it by running
+`bin/hb --load tools/install.f` from the root of the tree that passed its
+checks; the tool's header says what it writes. Ordinary development does not
+require installation or publication.
+
+A shell that changes into `~/.local/lib/habu` stays in the tree of that moment,
+and an hb started there, by any name, reads that tree's sources. Run `./bin/hb`
+there, never `hb` or `~/.local/lib/habu/bin/hb`, whose engine may be a newer
+tree's, and change into the link again for each command: between commands
+nothing runs the tree, so an install may remove it.
 
 Build and test candidates in a workspace or a temporary directory. An install
 never waits for a client: a client that needs an older Habu keeps its own copy.

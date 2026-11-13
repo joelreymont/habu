@@ -1144,6 +1144,10 @@ SUITE boot-relocation
    test/boot-relocation-e2e.f
 ;SUITE
 
+SUITE install-e2e
+   test/install-e2e.f
+;SUITE
+
 SUITE source-discovery
    tools/source-discovery-test.f
 ;SUITE

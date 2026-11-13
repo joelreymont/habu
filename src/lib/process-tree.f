@@ -1,8 +1,10 @@
 \ process-tree.f - end a process and every process descended from it
-\ (KILL-TREE), or read the CPU time they have run (CPU-NS). macOS asks
-\ libproc; Linux reads /proc, written from proc(5) and run on no host here.
-\ STORAGE CLASS. PROCESS-WIDE, one walk or CPU reading at a time (WALKING): the
-\ member table and listings grow with the tree and are released as each ends.
+\ (KILL-TREE), read the CPU time they have run (CPU-NS), or ask whether any
+\ process runs a file (RUNS?). macOS asks libproc; Linux reads /proc, written
+\ from proc(5).
+\ STORAGE CLASS. PROCESS-WIDE, one walk, CPU reading or RUNS? at a time
+\ (WALKING): the member table and listings grow with the tree and are released
+\ as each ends.
 \
 \ THE TREE is the process named, every process whose parent is in it, and every
 \ process whose group a member leads (a forked orphan keeps its group). A zombie
@@ -43,6 +45,7 @@ require src/lib/le.f
 require src/lib/ffi-abi.f
 require src/lib/fs.f
 require src/lib/fs-list.f
+require src/lib/fs-identity.f
 require src/lib/task.f
 
 package PROC-TREE
@@ -59,7 +62,7 @@ variable SELF
 variable ROOT
 variable ADDED
 variable AWAKE
-variable WALKING                    \ 1 while a walk, a CATCHES? or a CPU-NS holds the storage above and below
+variable WALKING                    \ 1 while a walk, a CATCHES?, a CPU-NS or a RUNS? holds the storage above and below
 
 \ SIGKILL is 9 on every host; SIGSTOP is not one number.
 9 constant SIGKILL
@@ -631,6 +634,66 @@ FUNCTION: TIMEBASE-INFO mach_timebase_info ( ptr u8 -- i32 )
 : CPU-READ ( n -- n )
    [: CPU-HOST ;] [: STORAGE-RELEASE ;] finally ;
 
+1 constant LIST-ALL                 \ proc_listpids' PROC_ALL_PIDS
+11 constant PATH-FLAVOR             \ proc_pidinfo's PROC_PIDPATHINFO
+1024 constant EXE-PATH-BYTES        \ PROC_PIDPATHINFO_SIZE
+
+create EXE-PATH EXE-PATH-BYTES allot
+variable RUN-DEVICE
+variable RUN-INODE
+variable RUN-N
+
+\ An executable the caller may not stat (on Linux, another user's) is skipped.
+: EXE-MATCH ( ptr u8 n -- )
+   FS:TRY-PATH-IDENTITY 0= if 2drop exit then
+   RUN-INODE @ = swap RUN-DEVICE @ = and if 1 RUN-N +! then ;
+
+\ The NUL-terminated path, empty for a pid that ended (errno ESRCH, cleared
+\ first) or that names no executable.
+: EXE-PATH-MACOS ( n -- ptr u8 n ) {: pid:n :}
+   0 EXE-PATH c!
+   ERRNO-CLEAR
+   pid PATH-FLAVOR 0 EXE-PATH EXE-PATH-BYTES PID-INFO drop
+   ERRNO@ ESRCH = if EXE-PATH 0 exit then
+   ERRNO@ 0<> if E-PROC-OUTPUT throw then
+   EXE-PATH dup ZLEN ;
+
+: RUNS-MACOS ( -- )
+   LIST-ALL 0 LIST! 0 ?do
+      i LISTED@ EXE-PATH-MACOS {: path:ptr pathu:n :}
+      pathu 0 > if path pathu EXE-MATCH then
+   loop ;
+
+: EXE-PATH-LINUX ( ptr u8 n -- ptr u8 n ) {: name:ptr nameu:n :}
+   TASK-DIR-U BUF-RESET
+   s" /proc/" TASK-DIR+
+   name nameu TASK-DIR+
+   s" /exe" TASK-DIR+
+   TASK-DIR TASK-DIR-U BUF-LEN@ ;
+
+: EXE-VISIT-LINUX ( ptr u8 n -- ) {: name:ptr nameu:n :}
+   name nameu STR>NUMBER? MATCH option
+      none OF ENDOF
+      some OF drop name nameu EXE-PATH-LINUX EXE-MATCH ENDOF
+   ;MATCH ;
+
+\ A /proc that will not open or read is a process table that cannot be listed.
+: RUNS-LINUX ( -- )
+   [: s" /proc" [: EXE-VISIT-LINUX ;] FS-LIST:EACH ;] catch {: code:n :}
+   code 0= if exit then
+   code FS-LIST:E-OPEN = code FS-LIST:E-READ = or if E-PROC-OUTPUT throw then
+   code throw ;
+
+: RUNS-SCAN ( n n -- bool )
+   RUN-INODE ! RUN-DEVICE !
+   0 RUN-N !
+   HB-TARGET-MACOS? if RUNS-MACOS else RUNS-LINUX then
+   RUN-N @ 0 > ;
+
+\ RUNS?'s scan, run with WALKING held.
+: RUNS-READ ( n n -- bool )
+   [: RUNS-SCAN ;] [: STORAGE-RELEASE ;] finally ;
+
 public
 
 \ SIGKILL pid and every process descended from it. A spawned child leads a
@@ -660,6 +723,13 @@ public
    pid PID>N 1 <= if E-PROC-OUTPUT throw then
    WALK-GET
    pid PID>N [: CPU-READ ;] [: WALK-RELEASE ;] finally ;
+
+\ TRUE when a process the caller may inspect, itself included, runs the path's
+\ file (device and inode). E-FS-STAT: no stat; E-PROC-OUTPUT: no process list.
+: RUNS? ( ptr u8 n -- bool )
+   FS:PATH-IDENTITY {: device:n inode:n :}
+   WALK-GET
+   device inode [: RUNS-READ ;] [: WALK-RELEASE ;] finally ;
 
 \ Frees the walk a forked child inherits held (no walk forks), or its first walk
 \ waits for ever; it runs in the child alone.
