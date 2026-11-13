@@ -39,6 +39,7 @@
 \ Built by `tools/hb-build.f -- --target wasm`, whose entry is MAIN.
 require src/lib/string.f
 require src/lib/browser/event.f
+require test/browser/turn-revision.f
 
 package DISPLAY
 private
@@ -429,7 +430,7 @@ variable ECHO-U
 
 : DISPATCH ( -- )
    0 EVENT@ 0 = if
-      0 EVENT BYTES>N PROTOCOL 0 RECORD
+      0 EVENT BYTES>N TURN-REVISION:PROTOCOL 0 RECORD
       9 0 0 0 RECORD
       RED exit
    then

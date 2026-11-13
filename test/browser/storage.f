@@ -15,6 +15,7 @@
 \ answers "typed 1000". A failed check throws its code, which the host shows.
 require src/lib/string.f
 require src/lib/browser/event.f
+require test/browser/turn-revision.f
 package STORAGE-TURN
 private
 using BROWSER-EVENT
@@ -59,7 +60,7 @@ variable TYPED-N
    131072 HELD-RESERVE
    0 HELD FIRST !
    42 131071 HELD c!
-   0 EVENT BYTES>N PROTOCOL 0 RECORD
+   0 EVENT BYTES>N TURN-REVISION:PROTOCOL 0 RECORD
    s" fixture" {: path:ptr u:n :}
    1 path BYTES>N u 0 RECORD
    0 TEXT-U !

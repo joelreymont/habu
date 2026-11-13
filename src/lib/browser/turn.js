@@ -10,8 +10,8 @@
 // that names them. The module frees them (src/lib/browser/event.f) once it no
 // longer needs them. An empty delivery reserves nothing and is named 0, 0.
 //
-// PROTOCOL is this protocol's revision: a change to any event's or record's
-// fields or meaning raises it by one.
+// PROTOCOL is this protocol's revision: any change to the module's exports,
+// events or records, a kind added or removed included, raises it by one.
 //
 // An event is 56 bytes at the address hello names: kind, a, b, c, d, buttons,
 // mods. Kinds: 0 start, 1 bytes, 2 pointer, 3 answered, 4 typed, 5 moved,
@@ -60,7 +60,8 @@
 //
 // A record is 32 bytes, kind a b c:
 //   0 hello: a is the event's address, b the turn protocol revision the
-//     module's events and records follow, which must be PROTOCOL
+//     module's events and records follow, which must be PROTOCOL; any other
+//     ends the instance, naming both revisions
 //   1 fetch: a, b a path fetched relative to the page; outside 2xx it fails
 //   2 draw: a, b instance rows, b rows of 72 bytes: twelve f32, a column-major
 //     3x4 transform from the mesh's grid position (its origin plus a vertex's
@@ -286,7 +287,7 @@ export class Module {
     this.x = exports;
     this.host = host;
     this.event = null; // the address hello named
-    this.ended = null; // why the instance ended: a trap or end()
+    this.ended = null; // why the instance ended: a trap, a hello of another revision, or end()
     this.meshes = new Map(); // a held mesh handle -> the words its faces need
     this.words = 0; // the last highlight's word count, 0 before the first
     this.drawn = new Set(); // the handles the last draw's rows name
@@ -470,7 +471,7 @@ export class Module {
     this.ended ??= "the host ended the module";
   }
 
-  // Refuses the instance a trap or end() ended.
+  // Refuses the instance a trap, a hello of another revision or end() ended.
   live() {
     if (this.ended) throw new Error(this.ended);
   }

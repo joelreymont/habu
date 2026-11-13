@@ -12,6 +12,7 @@
 \ which the host shows.
 require src/lib/string.f
 require src/lib/browser/event.f
+require test/browser/turn-revision.f
 package TAKE-TURN
 private
 using BROWSER-EVENT
@@ -63,7 +64,7 @@ variable HELD-U
 
 : DISPATCH ( -- )
    0 EVENT@ {: kind:n :}
-   kind 0 = if  0 EVENT BYTES>N PROTOCOL 0 RECORD exit  then
+   kind 0 = if  0 EVENT BYTES>N TURN-REVISION:PROTOCOL 0 RECORD exit  then
    kind 4 = if TYPED then ;
 
 public

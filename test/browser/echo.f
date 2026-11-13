@@ -7,6 +7,7 @@
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/browser/event.f
+require test/browser/turn-revision.f
 
 package ECHO
 private
@@ -57,11 +58,12 @@ DYNAMIC-BUFFER ANSWER u8              \ the last answer's body
    s" fixture" {: path:ptr u:n :}
    1 path BYTES>N u 0 RECORD ;
 
-\ The zero event: hello with the event's address and PROTOCOL, a fetch of `fixture`, then
-\ "loading" in the buffer the bytes, answered and pointer texts share, so a host
-\ that answers the fetch before it shows that text shows the bytes run's text.
+\ The zero event: hello with the event's address and the fixtures' revision, a
+\ fetch of `fixture`, then "loading" in the buffer the bytes, answered and
+\ pointer texts share, so a host that answers the fetch before it shows that
+\ text shows the bytes run's text.
 : START ( -- )
-   0 EVENT BYTES>N PROTOCOL 0 RECORD
+   0 EVENT BYTES>N TURN-REVISION:PROTOCOL 0 RECORD
    FETCH-FIXTURE
    0 TEXT-U !  s" loading" SAY  TEXT-RECORD ;
 

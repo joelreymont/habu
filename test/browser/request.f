@@ -4,6 +4,7 @@
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/browser/event.f
+require test/browser/turn-revision.f
 
 package REQUEST-TURN
 private
@@ -178,7 +179,7 @@ variable TEXT-U
 
 : DISPATCH ( -- )
    0 EVENT@ {: kind:n :}
-   kind 0 = if 0 EVENT BYTES>N PROTOCOL 0 RECORD exit then
+   kind 0 = if 0 EVENT BYTES>N TURN-REVISION:PROTOCOL 0 RECORD exit then
    kind 4 = if TYPED exit then
    kind 3 = if ANSWERED exit then
    kind 1 = if BYTES exit then ;

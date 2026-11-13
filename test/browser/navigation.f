@@ -4,6 +4,7 @@
 \ event's fields come back as text, as any event's do.
 require src/lib/string.f
 require src/lib/browser/event.f
+require test/browser/turn-revision.f
 
 package NAV
 private
@@ -134,7 +135,7 @@ variable PRESS-MODS
 
 : START ( -- )
    INIT-GEOMETRY
-   0 EVENT BYTES>N PROTOCOL 0 RECORD
+   0 EVENT BYTES>N TURN-REVISION:PROTOCOL 0 RECORD
    ROWS s\" ,\"more\":true}]" SB-APPEND SB$ 2 TREE
    104 7 MESH 1 HIGHLIGHT 2 DRAW ;
 
