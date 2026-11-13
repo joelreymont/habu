@@ -35,10 +35,8 @@ package STACK-LIFECYCLE-TEST
    DEBUGGER-VALUES 2 T=
    DEBUGGER-LINES 7 T= ;
 
-\ A PERSISTENT breakpoint keeps its BRK planted, so the word's entry instruction
-\ never runs in place: the SIGTRAP handler emulates `str x30,[sp,#-16]!` and
-\ runs any other entry in debug.f's trampoline, as T0's KEEP (`ret`) and TWICE
-\ (`ldr x9,[x19,#-8]!`) are. The second call proves the BRK stays planted.
+\ T0 enters KEEP with `ret`, TWICE with `ldr x9,[x19,#-8]!` and CALLS with
+\ `str x30,[sp,#-16]!`; the planted BRK displaces each on every call.
 : PERSISTENT-BOUNDARIES ( -- )
    s" persistent breakpoint on a leaf word resumes it" T-LABEL
    s" require src/habu/debug.f package PBP : KEEP ( n -- n ) ; ' KEEP DEBUG:BP* : GO ( -- ) 17 KEEP . 25 KEEP . ; GO ;package"
@@ -46,11 +44,17 @@ package STACK-LIFECYCLE-TEST
    OUT OUTLEN @ s" 17" CONTAINS? TTRUE
    OUT OUTLEN @ s" 25" CONTAINS? TTRUE
    DEBUGGER-HITS 2 T=
-   s" persistent breakpoint on a calling word returns" T-LABEL
+   s" persistent breakpoint runs an entry out of line and resumes" T-LABEL
    s" require src/habu/debug.f package PBP : TWICE ( n -- n ) dup + ; ' TWICE DEBUG:BP* : GO ( -- ) 21 TWICE . 3 TWICE . ; GO ;package"
    CHILD-RC 0 T=
    OUT OUTLEN @ s" 42" CONTAINS? TTRUE
    OUT OUTLEN @ s" 6" CONTAINS? TTRUE
+   DEBUGGER-HITS 2 T=
+   s" persistent breakpoint on a calling word returns" T-LABEL
+   s" require src/habu/debug.f package PBP : INC ( n -- n ) 1+ ; : CALLS ( n -- n ) INC 2 * ; ' CALLS DEBUG:BP* : GO ( -- ) 20 CALLS . 4 CALLS . ; GO ;package"
+   CHILD-RC 0 T=
+   OUT OUTLEN @ s" 42" CONTAINS? TTRUE
+   OUT OUTLEN @ s" 10" CONTAINS? TTRUE
    DEBUGGER-HITS 2 T= ;
 
 public
