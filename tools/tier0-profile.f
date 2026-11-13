@@ -127,7 +127,7 @@ public
    usec 0 > 0= if USAGE then
    0 script-argv$ {: mode:ptr mu :}
    \ set-tier is engine-global and only code compiled after it takes the tier,
-   \ so this precedes the first corpus token (as in tools/tier-census.f).
+   \ so this precedes the first corpus token.
    0 set-tier
    usec prof-rate
    mode mu s" corpus" STR= if

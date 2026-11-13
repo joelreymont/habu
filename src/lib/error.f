@@ -648,8 +648,6 @@ require src/lib/prelude.f
 -9415 constant E-WS-STATE         \ ACCEPT or STOP outside a run or while START still starts it, a START while one starts or runs, a STOP while another STOP runs or on WS's own task
 -9417 constant E-WS-LIMIT         \ a WS:START limit below 1 or past the handle's 32-bit slot field
 
-\ Native host facts: -9440..-9449, minted by src/compiler/native/host.f,
-\ which owns package NHOST.
 \ SSE owns -9450..-9459. DECIMAL owns -9460..-9469.
 \ JSONL framing (package JSONL, src/lib/jsonl.f): -9470..-9479.
 \ MCP tool server and client (package MCP, src/lib/net/mcp.f): -9480..-9489,

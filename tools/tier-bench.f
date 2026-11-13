@@ -1,42 +1,10 @@
-\ tier-bench.f - run time of tier-0 and tier-1 code on the same real words.
-\ Run: bin/hb --load tools/tier-bench.f -- <tier> <source-file>
+\ tier-bench.f - run time of compiled code on the benchmark corpus.
+\ Run: bin/hb --load tools/tier-bench.f -- <source-file>
 \ Per benchmark: `B <name> <run1> ... <run15> <median>` in microseconds of thread
 \ CPU, then `R <name> <value>`, its result over the whole output. Every round
 \ must compute run 0's value. Subtract `harness`, the bare timing loop.
 
-\ The clock loads ahead of the selection, at the engine's tier: after it, its FFI
-\ and task runtime cost a tier-1 run about a second of compiling. The files it
-\ shares with the targets are baked (src/lib/error.f, string.f, memory.f,
-\ adt/option.f), so no word under test compiles before the selection.
 require src/lib/time-cpu.f
-
-package TIER-SELECT
-private
-
-64 constant USAGE-RC                \ sysexits EX_USAGE
-48 constant ZERO-C
-
-public
-
-\ Top-level code ahead of the targets' requires: only code compiled after
-\ `set-tier` is the selected tier's, and baked words (the checker, the compiler,
-\ src/lib/string.f, the cold prefix) read the same at both tiers. Every word under
-\ test comes from src/lib/array.f or tools/lint/text.f, loaded after this.
-: APPLY ( -- )
-   script-argc 2 < if
-      s" usage: bin/hb --load tools/tier-bench.f -- <tier> <source-file>"
-      USAGE-RC die
-   then
-   0 script-argv$ {: a:ptr u :}
-   u 1 <> if s" tier-bench: tier must be 0 or 1" USAGE-RC die then
-   a c@ ZERO-C - {: t :}
-   t 0 < t 1 > or if s" tier-bench: tier must be 0 or 1" USAGE-RC die then
-   t set-tier ;
-
-;package
-
-TIER-SELECT:APPLY
-
 require src/lib/array.f
 require tools/lint/text.f
 
@@ -52,13 +20,14 @@ $100000 constant TEXT-CAP           \ destination for the byte-moving benchmarks
 $0A constant LF
 $20 constant SP
 48 constant ZERO-C
+64 constant USAGE-RC                \ sysexits EX_USAGE
 74 constant IO-RC                   \ sysexits EX_IOERR
 70 constant WRONG-RC                \ sysexits EX_SOFTWARE
 64 constant MSG-CAP
 
 \ Repeat counts, one per benchmark, chosen so a run lands in tens of
-\ milliseconds at tier 0 on this machine: long enough to swamp the clock read,
-\ short enough that fifteen rounds cost about half a second of CPU at tier 0.
+\ milliseconds on this machine: long enough to swamp the clock read, short
+\ enough that fifteen rounds cost about half a second of CPU.
 8 constant ARITH-REPS
 8 constant BRANCH-REPS
 1 constant SEARCH-REPS
@@ -312,9 +281,8 @@ variable NEEDLE-N                   \ bytes of the text's tail B-SEARCH looks fo
 \ to back on one slow core: thread CPU time excludes a neighbour's slice but not
 \ a slow core or an evicted cache, which only ever read slower. The gate judges
 \ the least run, so the rounds must outlast a slow stretch: on a 12-core machine
-\ at load 90 (32 runs of 101 rounds per tier) a benchmark ran over budget at most
-\ five rounds in a row, never seven. A round costs about 31 ms of CPU at tier 0
-\ and 8 ms at tier 1.
+\ at load 90 (32 runs of 101 rounds) a benchmark ran over budget at most five
+\ rounds in a row, never seven. A round costs about 31 ms of CPU.
 : ROUND ( n -- ) {: run :}
    run TIME-HARNESS
    run TIME-ARITH
@@ -327,7 +295,10 @@ variable NEEDLE-N                   \ bytes of the text's tail B-SEARCH looks fo
 public
 
 : MAIN ( -- )
-   1 script-argv$ LOAD-SOURCE
+   script-argc 1 < if
+      s" usage: bin/hb --load tools/tier-bench.f -- <source-file>" USAGE-RC die
+   then
+   0 script-argv$ LOAD-SOURCE
    PICK-NEEDLE
    FILL-CELLS
    RUNS 0 ?do i ROUND loop

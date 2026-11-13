@@ -12,7 +12,6 @@ require src/compiler/fixed-body.f
 require src/habu/terminal-call.f
 require src/core/checker.f
 require src/compiler/native/checker-owner.f
-require src/compiler/native/host.f
 require src/compiler/workspace.f
 
 package NDICT

@@ -5015,12 +5015,9 @@ variable DUE-MADE
 \ ---- the open ------------------------------------------------------------------
 \ Installed while IMAGE-BASE-CELL is 0, so its xt! stores reach hb's own cells.
 \ Installing again adds no address-cell row: EMIT-MARK keeps one row per cell.
-\ NHOST would otherwise install on the process's first compile, which can be
-\ a file the build compiles.
 : INSTALL-LOOP ( -- )
    INTERPRETER:INSTALL-EVALUATE
-   INTERPRETER:INSTALL-CREATE
-   NHOST:INSTALL ;
+   INTERPRETER:INSTALL-CREATE ;
 
 \ Lays the boot's address-cell header, so EMIT-MARK records address cells in the
 \ space; it and its cap's rows lie at hb's offsets, below the target's DATA-START.

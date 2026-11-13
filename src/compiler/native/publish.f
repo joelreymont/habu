@@ -17,7 +17,6 @@ require src/compiler/native/checker-owner.f
 require src/compiler/native/dict.f
 require src/compiler/native/emission.f
 require src/compiler/native/shadow.f
-require src/compiler/native/host-publish.f
 require src/habu/code-span.f
 
 package NPUB
@@ -118,7 +117,7 @@ $4000 constant CODE-RESERVE
    fn size NEMIT:RET-BYTES CODE-SPAN:RECORDED idx PUBLISH-REC ;
 
 \ One routine's commit, held where COMMIT-OWNED's quotations read it. Compiler
-\ working storage, as NHOST's TAKEN-* are: an image carries none of it.
+\ working storage: an image carries none of it.
 0 CWORK-VARIABLE HELD-IDX n
 0 CWORK-VARIABLE HELD-FN n
 0 CWORK-VARIABLE HELD-SIZE n
@@ -147,13 +146,9 @@ create TRAILER TRAILER-BYTES allot
    then
    HELD-IDX @ HELD-FN @ HELD-SIZE @ COMMIT ;
 
-\ A take TAKE refuses is its own to abandon; one it made is abandoned here.
 : COMMIT-OWNED-BODY ( -- )
    0 CHECKER-OWNER:WRITE-WINDOW
-   HELD-FN @ NHOST:TAKE
-   [: COMMIT-HELD ;] catch {: rc:n :}
-   rc 0<> if NHOST:ABANDON-TAKEN rc throw then
-   NHOST:PUBLISH-TAKEN ;
+   COMMIT-HELD ;
 
 \ The held routine is cleared on every exit, so a refused commit leaves nothing
 \ the next one could read.
@@ -293,8 +288,8 @@ private
 public
 
 \ A prepared definition reuses the interpreter's pending row, whose name and
-\ wordlist the source definition wrote. All references and implementation
-\ facts are prepared before this call.
+\ wordlist the source definition wrote. All references are prepared before
+\ this call.
 : IMPORT-PENDING ( ptr u8 n n ptr n n ptr n n bool n -- n )
    {: code:ptr size:n recorded:n calls:ptr calln:n
       addrs:ptr addrn:n wide:bool minin:n :}
@@ -302,7 +297,6 @@ public
    code size recorded calls calln addrs addrn 0 IMPORT-CODE drop {: idx:n :}
    idx APPEND-PENDING
    idx wide minin IMPORT-MARKS
-   NHOST:PUBLISH-TAKEN
    idx ;
 
 \ A prepared `does>` definer: its `;does` clause starts `off` bytes into the
@@ -321,7 +315,6 @@ public
    at APPEND-PENDING
    at wide minin IMPORT-MARKS
    at 1+ APPEND-PENDING
-   NHOST:PUBLISH-TAKEN
    at ;
 
 \ A prepared defer body: its record spans the whole body; the trailer naming `cell` follows at
@@ -335,7 +328,6 @@ public
    cell fn size + TRAILER-PLACE
    idx APPEND-PENDING
    idx wide minin IMPORT-MARKS
-   NHOST:PUBLISH-TAKEN
    idx ;
 
 \ A record for code already in place, a kernel primitive's: the pending row

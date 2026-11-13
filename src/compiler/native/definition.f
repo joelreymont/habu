@@ -13,7 +13,6 @@ require src/compiler/workspace.f
 require src/core/checker.f
 require src/core/check-hook.f
 require src/compiler/native/checker-owner.f
-require src/compiler/native/host.f
 require src/compiler/native/dict.f
 require src/compiler/native/emission.f
 require src/compiler/native/publish.f
@@ -522,7 +521,6 @@ public
    0 CHECKER-OWNER:BIND-REGIME!
    sa M-SRC ! su M-SRC-U !
    NULL-PTR M-SCAN !
-   NHOST:INSTALL
    0 M-VERDICT !
    CHECKER-OWNER:ROWS-END M-ROWS !
    0 M-DOES-FRAME !
