@@ -199,7 +199,7 @@ private
   engine files made before it reads program source; an application package
   without `seal-package` stays reopenable. So a stripped program cannot
   require an engine file that opens one of those packages (the compiler,
-  linker, interpreter and debugger files, `src/lib/executable-build.f`); a
+  linker, interpreter and debugger files); a
   `--repl` build holds them.
 - `host` and `target` are the section words
   ([xcomp.md](xcomp.md#host-and-target-words)). At top level a bare `host` or

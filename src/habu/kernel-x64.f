@@ -3805,23 +3805,6 @@ private
 
 \ Capture needs address-cell declarations at fixed x86-64 addresses too.
 
-: DEPTH-OFF ( -- n ) NCOMP-DISPATCH:BUILD-DEPTH-CELL ;
-
-\ executable-build-enter ( -- ): open a build scope.
-: BUILD-ENTER-BODY ( -- )
-   RAX DEPTH-OFF CELL@,
-   RAX ASM-SINK ENC-INC  RAX DEPTH-OFF CELL!, ;
-
-\ executable-build-leave ( -- ): close a scope; with no scope open it does
-\ nothing.
-: BUILD-LEAVE-BODY ( -- )
-   X64CODE:LBL {: done:label :}
-   RAX DEPTH-OFF CELL@,
-   RAX RAX ASM-SINK ENC-TEST-RR  C-E done JCC,
-   RAX ASM-SINK ENC-DEC
-   RAX DEPTH-OFF CELL!,
-   done X64CODE:LBL, ;
-
 \ (MARK) takes rdi = the cell and rsi = its kind tag. Its declaration happens
 \ before xt! writes, so a refused cell cannot leave an untracked address.
 \ The row vector is authoritative; a linear search keeps the original ordinal
@@ -4000,8 +3983,6 @@ variable MARK-CELL
    s" record-facts!" REFUSE
    \ No SHA-256 instructions here yet: sha256.f compresses every block itself.
    s" sha256-blocks" [: RAX POP,  RAX POP,  RAX POP,  RAX ZERO-REG,  RAX PUSH, ;] PRIM
-   s" executable-build-enter" [: BUILD-ENTER-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" executable-build-leave" [: BUILD-LEAVE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" tick-order@" [: RAX ZERO-REG,  RAX PUSH,  RAX PUSH, ;] PRIM ;
 
 public

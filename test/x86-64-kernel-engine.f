@@ -534,21 +534,6 @@ REGION SLOT-BYTES - constant TOP-SLOT
    0 X64HARNESS:EXPECT-DEPTH,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
-: ENTER, ( -- ) s" executable-build-enter" ROW ;
-: LEAVE, ( -- ) s" executable-build-leave" ROW ;
-: DEPTH?, ( n -- ) NCOMP-DISPATCH:BUILD-DEPTH-CELL X64HARNESS:EXPECT-CELL, ;
-
-\ Two nested scopes count depth, each leave closes one, and a leave with no
-\ scope open changes nothing.
-: BUILD-SCOPE ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   false X64HARNESS:BOOT-OPEN,
-   ENTER,  ENTER,  2 DEPTH?,
-   LEAVE,  1 DEPTH?,
-   LEAVE,  0 DEPTH?,
-   LEAVE,  0 DEPTH?,
-   0 X64HARNESS:EXPECT-DEPTH,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
-
 \ Exercise the booted kernel's reader through its public primitive. Rejected
 \ tokens must discard any partial value and clear both flags.
 : NUM-CASE, ( ptr u8 n n n n -- )
@@ -653,7 +638,6 @@ public
    s" hb-x64-kernel-addr-band" TMP-PATH BUILD-ADDR-BAND
    s" hb-x64-kernel-addr-header" TMP-PATH BUILD-ADDR-HEADER
    s" hb-x64-kernel-constants" TMP-PATH BUILD-CONSTANTS
-   s" hb-x64-kernel-scope" TMP-PATH BUILD-SCOPE
    0 s" hb-x64-kernel-number-00" TMP-PATH BUILD-NUM
    1 s" hb-x64-kernel-number-01" TMP-PATH BUILD-NUM
    2 s" hb-x64-kernel-number-02" TMP-PATH BUILD-NUM

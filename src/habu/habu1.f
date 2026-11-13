@@ -3564,18 +3564,6 @@ private
       10 DATA NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:ORIGIN-HOOK cells + STR,
       10 DATA NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:ORIGIN-TAKE cells + STR, ;
 
-\ executable-build-enter ( -- ) and executable-build-leave ( -- ): the build
-\ scope, nested scopes counted; a leave with no scope open does nothing.
-: BBUILDENTER ( -- )
-   9 DATA NCOMP-DISPATCH:BUILD-DEPTH-CELL LDR,
-   9 9 1 ADDI,  9 DATA NCOMP-DISPATCH:BUILD-DEPTH-CELL STR, ;
-
-: BBUILDLEAVE ( -- )
-   LBL {: done:label :}
-   9 DATA NCOMP-DISPATCH:BUILD-DEPTH-CELL LDR,  9 done CBZ,
-   9 9 1 SUBI,  9 DATA NCOMP-DISPATCH:BUILD-DEPTH-CELL STR,
-   done LBL, ;
-
 \ The same readiness supplies the live tick gate and the verifier's entry
 \ observation. x11 is the installed query, x12 its owner, both zero if absent.
 : C-TICK-QUERY ( -- )
@@ -3583,8 +3571,7 @@ private
    11 0 MOVZ,  12 0 MOVZ,
    \ The cold prefix installs the bridge before its seal watermark exists.
    9 DATA SEAL-NDICT-CELL LDR,  9 noquery CBZ,
-   \ An executable build and a replacement target bypass the source query.
-   9 DATA NCOMP-DISPATCH:BUILD-DEPTH-CELL LDR,  9 noquery CBNZ,
+   \ A replacement target bypasses the source query.
    13 DATA NCOMP-DISPATCH:TARGET-DECL-CELL LDR,  13 query CBZ,
    12 DATA NCOMP-DISPATCH:DECL-CELL LDR,
    13 12 CMP,  C-NE noquery BCOND,
@@ -4282,8 +4269,6 @@ package ENGINE-EMIT
    s" xref-search-wl" ['] BCOMPILERSWL ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" set-check" ['] BSETCHECK FPRIM-L   s" check@" ['] BCHECKFETCH FPRIM-L
    s" tick-order@" ['] BTICKORDER FPRIM-L
-   s" executable-build-enter" ['] BBUILDENTER ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
-   s" executable-build-leave" ['] BBUILDLEAVE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" set-preflight" ['] BSETPREFLIGHT FPRIM-L
    s" set-top-check" ['] BSETTOPCHECK FPRIM-L   s" top-check@" ['] BTOPCHECKFETCH FPRIM-L ;
 ;package

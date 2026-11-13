@@ -681,7 +681,6 @@ CAST: CELL-TAKE ( [ n -- ] -- n )
 \ The active checker owner supplies the trusted-only query, not a source name.
 : TICK-QUERY-READY? ( -- bool )
    SEAL-NDICT@ 0= if false exit then
-   NCOMP-DISPATCH:BUILD-DEPTH-CELL CELL@ 0<> if false exit then
    NCOMP-DISPATCH:TARGET-DECL-A @ dup 0= if drop true exit then
    NCOMP-DISPATCH:DECL-A @ = ;
 

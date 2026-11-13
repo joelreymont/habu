@@ -641,8 +641,6 @@ $6C0 constant FIXED-COMP-CELL
 \ Latched at the colon (0 no compiler, 1 COMP-CELL); an
 \ immediate may only select the NEXT definition.
 $388 constant COMP-LATCH-CELL
-\ How many executable-build scopes are open.
-$390 constant BUILD-DEPTH-CELL
 \ RECOVER-CELL ( 0 | -1 ) -- whether the reader whose `;` called the compiler
 \ recovers from a refused definition: DEF-SEMI? sets it around its compile,
 \ catches E-COMP-RECOVERY and reads on. In a multi-error run the compiler then

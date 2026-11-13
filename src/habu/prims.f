@@ -29,7 +29,7 @@ public
 3 constant R-DATA            \ reads or moves the DATA pointer
 4 constant R-SOURCE          \ reads the input after its token
 5 constant R-DICT            \ records and wordlist state an object carries
-6 constant R-BUILD           \ the tracked kernel cells: build scope, dispatch
+6 constant R-BUILD           \ the tracked kernel cells: dispatch
 7 constant R-RUN             \ runs its xt or text operand; the effect is the
                              \ operand's, accounted by the operand's own edges
                              \ and the nested runs it makes
@@ -653,12 +653,6 @@ EPRIM: check@         PE-N PE-OUT EPRIM;
 \ The compiler's prospective trusted-tick order and the owner whose installed
 \ query established it. Order 0 is checking first; 1 is trusted gate first.
 EPRIM: tick-order@    PE-N PE-OUT PE-PTR-U8 PE-OUT EPRIM;
-\ Choosing the build scope belongs to package EXECUTABLE-BUILD, and these rows
-\ are that owner's alone: its WITH is the checked caller every other scope
-\ calls, and a checked body outside EXECUTABLE-BUILD does not find the names.
-\ No TRUSTED: body outside it calls either, so no global row is kept for one.
-EPPRIM: EXECUTABLE-BUILD executable-build-enter ECLOSE-PRIVATE REACH build
-EPPRIM: EXECUTABLE-BUILD executable-build-leave ECLOSE-PRIVATE REACH build
 EPRIM: set-check     PE-A PE-IN EPRIM;
 ETRUSTED-ONLY!
 EFIXED-ABI!
