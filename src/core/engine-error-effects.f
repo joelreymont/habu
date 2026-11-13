@@ -2,8 +2,8 @@
 
 package ENGINE-ERROR
 public
-\ AOT-SEED .. CODE-CERT are early-engine constants loaded before checker publication.
-s" AOT-SEED" s" -- n" TRUST
+\ DISPATCH-UNSET .. CODE-CERT are early-engine constants loaded before checker publication.
+s" DISPATCH-UNSET" s" -- n" TRUST
 s" SEAL-VIOLATION" s" -- n" TRUST
 s" SEAL-PACKAGE" s" -- n" TRUST
 s" BAD-TAG" s" -- n" TRUST

@@ -881,7 +881,7 @@ public
    RAX ASM-SINK ENC-CALL-REG
    exit X64CODE:LBL,
    RDI ZERO-REG,  NR-EXIT-GROUP SYS,
-   none S\" hb: no entry\n" ENGINE-ERROR:AOT-SEED FAIL, ;
+   none S\" hb: no entry\n" ENGINE-ERROR:DISPATCH-UNSET FAIL, ;
 
 \ A write-time resolved boot-run row has its linked XT in the mapped record.
 \ Called only after SNAP-START has installed the VM registers and dictionary.

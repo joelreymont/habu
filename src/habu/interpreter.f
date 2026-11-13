@@ -874,8 +874,8 @@ CAST: PKG-AS-NAME-ACTION ( n -- [ ptr u8 n -- ] )
    NCOMP-DISPATCH:DECL-A NCOMP-DISPATCH:DECL-EXPORT-OFF PKG-OPERATION
       {: xt:n :}
    xt 0= if
-      s" E-AOT-SEED" REFUSAL
-      s" checker-export dispatch unset" ENGINE-ERROR:AOT-SEED FAIL-CLOSED
+      s" E-DISPATCH-UNSET" REFUSAL
+      s" checker-export dispatch unset" ENGINE-ERROR:DISPATCH-UNSET FAIL-CLOSED
    then
    TOKEN$ xt PKG-AS-NAME-ACTION execute ;
 
@@ -1597,9 +1597,9 @@ private
 \ ends.
 : DEF-DISPATCH ( -- )
    DEF-COMPILER 0<> if exit then
-   s" E-AOT-SEED" REFUSAL
+   s" E-DISPATCH-UNSET" REFUSAL
    s" native compiler dispatch unset" ERROR-TEXT:TYPE
-   s" " ENGINE-ERROR:AOT-SEED FAIL-CLOSED ;
+   s" " ENGINE-ERROR:DISPATCH-UNSET FAIL-CLOSED ;
 
 public
 \ The tail passes the wall, room, duplicate, code room and protected-wordlist
@@ -2103,8 +2103,8 @@ variable LIT-AT
    own 0<> if own exit then
    NCOMP-DISPATCH:DECL-RAW-OFF PKG-TARGET {: target:n :}
    target 0= if
-      s" E-AOT-SEED" REFUSAL
-      s" trust-raw dispatch unset" ENGINE-ERROR:AOT-SEED FAIL-CLOSED
+      s" E-DISPATCH-UNSET" REFUSAL
+      s" trust-raw dispatch unset" ENGINE-ERROR:DISPATCH-UNSET FAIL-CLOSED
    then
    target ;
 

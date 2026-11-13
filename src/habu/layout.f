@@ -579,8 +579,6 @@ $250 constant VVAL-OFF
 32 constant VSMAX
 
 
-\ A latch whose compiler cell (COMP-CELL) is zero dies with
-\ ENGINE-ERROR:AOT-SEED.
 package NCOMP-DISPATCH
 public
 
