@@ -199,6 +199,7 @@ public
       cast OF E-NDICT-KIND throw ENDOF
       offset OF E-NDICT-KIND throw ENDOF
       index OF E-NDICT-KIND throw ENDOF
+      routine OF E-NDICT-KIND throw ENDOF
    ;MATCH
    entry READ-FIXED ;
 

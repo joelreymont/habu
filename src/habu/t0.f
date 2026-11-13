@@ -7,8 +7,8 @@
 \ src/habu/t0-emit.f's EMIT- words to the selected emitter. A name, a tick's
 \ operand and `is`'s operand lower from the record the checker bound; spelling
 \ is looked up only by IMM-TOKEN (CHECKER-OWNER:PARSE-IMM?).
-\ COMPILE-FIXED builds the body of a `constant`, `create` or `defer`, which has
-\ no text, through the same step.
+\ COMPILE-FIXED builds the body of a `constant`, `create`, `defer` or child,
+\ which has no text, through the same step.
 
 require src/lib/prelude.f
 require src/lib/error.f
@@ -1812,6 +1812,7 @@ using NDEFINITION
 \ fixed body's kind.
 TYPED-VARIABLE BODY-KIND body
 variable FIXED-VAL                   \ the fixed body's value or dispatch cell
+variable FIXED-ENTRY                 \ the routine a routine body calls
 
 \ ---- the runtime compiler ----------------------------------------------------
 \ INSTALL stores COMPILE in the cell the tier 0 `:` dispatches through
@@ -1822,9 +1823,8 @@ variable FIXED-VAL                   \ the fixed body's value or dispatch cell
 \ CALLBACK STUB); that compile ends the pending stub on every exit. A shadow
 \ open while it compiles adds a walk (THE WALKS).
 \
-\ T0 owns PUBLISH-IT,
-\ with BODY-KIND and FIXED-VAL; from NDEFINITION it calls the front end and the
-\ callback group only.
+\ T0 owns PUBLISH-IT, with BODY-KIND, FIXED-VAL and FIXED-ENTRY; from
+\ NDEFINITION it calls the front end and the callback group only.
 \
 \ The scan's recording unit latches the facts the capture and the call targets
 \ read. T0's observer keeps the verdict the scan reached, and lays the tape the walk reads (THE
@@ -2001,6 +2001,7 @@ variable SCAN-LO                     \ the ordinal of its first row
       cast OF NPUB:PUBLISH-RAW ENDOF
       offset OF NPUB:PUBLISH-RAW ENDOF
       index OF NPUB:PUBLISH-RAW ENDOF
+      routine OF NPUB:PUBLISH-RAW ENDOF
    ;MATCH ;
 
 : HOSTED ( [ -- ] -- )
@@ -2064,7 +2065,8 @@ variable SCAN-LO                     \ the ordinal of its first row
    kind COMP-BODY:defer COMP-BODY:EQ or
    kind COMP-BODY:cast COMP-BODY:EQ or
    kind COMP-BODY:offset COMP-BODY:EQ or
-   kind COMP-BODY:index COMP-BODY:EQ or ;
+   kind COMP-BODY:index COMP-BODY:EQ or
+   kind COMP-BODY:routine COMP-BODY:EQ or ;
 
 : FIXED-BODY ( -- )
    FIXED-VAL @ {: val:n :}
@@ -2088,6 +2090,10 @@ variable SCAN-LO                     \ the ordinal of its first row
          val PUSH-CONST  MUL2  [: + ;] OP-ADD true ALU2
          SPILL-ALL  EMIT-RETURN  EMIT-CLOSE
       ENDOF
+      routine OF
+         val -1 PUSH-ADDR  SPILL-ALL  FIXED-ENTRY @ 0 EMIT-CALL
+         EMIT-RETURN  EMIT-CLOSE
+      ENDOF
    ;MATCH ;
 
 : FIXED-LOWER ( -- )
@@ -2103,14 +2109,14 @@ variable SCAN-LO                     \ the ordinal of its first row
    if UNSUPPORTED$ exit then
    NULL-PTR 0 ;
 
-\ Compile the pending record's fixed body for ( val kind ): no body text and no
-\ checker scan.
-: COMPILE-FIXED ( n body -- )
-   {: val:n kind:body :}
+\ Compile the pending record's fixed body for ( val entry kind ): no body text
+\ and no checker scan.
+: COMPILE-FIXED ( n n body -- )
+   {: val:n entry:n kind:body :}
    kind FIXED-KIND? 0= if E-COMP-STATE throw then
    IDLE-CK
    NULL-PTR 0 STAGE-UNIT
-   val FIXED-VAL !  kind BODY-KIND !
+   val FIXED-VAL !  entry FIXED-ENTRY !  kind BODY-KIND !
    CHECKER-OWNER:RESET-REPORT
    1 M-OPEN !
    [: FIXED-RUN ;] catch {: rc:n :}

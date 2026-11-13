@@ -1328,7 +1328,7 @@ private
 \ The engine's cells hold the compiler entries, the body hook and the checker's
 \ declaration operations as raw execution tokens.
 CAST: AS-COMPILE ( n -- [ ptr u8 n -- ] )
-CAST: AS-COMPILE-FIXED ( n -- [ n COMP:body -- ] )
+CAST: AS-COMPILE-FIXED ( n -- [ n n COMP:body -- ] )
 CAST: AS-BODY-HOOK ( n -- [ -- ptr u8 bool ] )
 CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
 
@@ -2135,18 +2135,20 @@ variable LIT-AT
 \ The DATA address a created word's body pushes, as the number NCOMP takes.
 : DEF-HERE ( -- n ) here NULL-PTR - ;
 
-\ The pending record's fixed body ( val kind ).
-: DEF-FIXED ( n COMP:body -- )
+\ The pending record's fixed body ( val entry kind ): entry is the routine a
+\ routine body calls, 0 for every other kind.
+: DEF-FIXED ( n n COMP:body -- )
    NCOMP-DISPATCH:DEF-TIER-CELL CELL@ {: latch:n :}
    latch 0= if DEF-TIER-0 then
    NCOMP-DISPATCH:FIXED-COMP-CELL CELL@ AS-COMPILE-FIXED execute ;
 
-\ The fixed body pushes the cell-aligned here, and ends in the
-\ slot a `does>` patches.
+\ The cell-aligned here a created body pushes, kept as the latest body start.
+: DEF-ANCHOR ( -- n )
+   align DEF-HERE dup COMMA-BASE-CELL CELL! ;
+
+\ The fixed body pushes the anchor, and ends in the slot a `does>` patches.
 : DEF-ADDR-TAIL ( -- )
-   align
-   DEF-HERE COMMA-BASE-CELL CELL!
-   DEF-HERE COMP-BODY:address DEF-FIXED
+   DEF-ANCHOR 0 COMP-BODY:address DEF-FIXED
    DEF-CLOSE ;
 
 \ No record slot left is refused after the name, naming it. CP at the code
@@ -2179,7 +2181,7 @@ variable DEF-VALUE
    DKIND:VAL DEF-START
    depth 0= if UNDERFLOW then
    [: DEF-VALUE ! ;] CELL-TAKE RUN-LITERAL
-   DEF-VALUE @ COMP-BODY:value DEF-FIXED
+   DEF-VALUE @ 0 COMP-BODY:value DEF-FIXED
    DEF-CLOSE
    s" constant" DEF-HOOK
    s" -- a" DEF-RAW-PUBLISH ;
@@ -2235,7 +2237,7 @@ variable DEF-VALUE
    DEF-CAST-NAME
    DEF-CAST-HEAD
    DEF-REGISTER-CAST
-   0 COMP-BODY:cast DEF-FIXED  DEF-CLOSE
+   0 0 COMP-BODY:cast DEF-FIXED  DEF-CLOSE
    DEF-CAST-FACTS ;
 
 \ ---- child words a declaration makes ------------------------------------------
@@ -2263,7 +2265,7 @@ variable DEF-VALUE
 
 : CHILD-CLOSE ( n n -- ) {: shape:n param:n :}
    DEF-CAPTURED-NAME shape param CHECK:CHILD {: val:n :}
-   val shape CHILD-BODY DEF-FIXED
+   val 0 shape CHILD-BODY DEF-FIXED
    DEF-CLOSE
    DEF-CAST-FACTS ;
 
@@ -2308,7 +2310,7 @@ variable DEF-VALUE
    s end DEF-SIG-INNER
    TSIG-A-CELL ADDR@ TSIG-U-CELL CELL@ NCOMP-DISPATCH:DECL-LINEAR-OFF
    DEF-REGISTER-IDENTITY
-   0 COMP-BODY:cast DEF-FIXED  DEF-CLOSE
+   0 0 COMP-BODY:cast DEF-FIXED  DEF-CLOSE
    DEF-CAST-FACTS ;
 
 \ `defer NAME ( in -- out )` declares a word that calls the execution token in
@@ -2400,7 +2402,7 @@ TRUSTED: DEF-XT! ( n n -- ) xt! ;
    DEF-QUALIFY 0 DEF-RECORD
    s end DEF-SIG-INNER
    s 1 + end s - 2 - DEFER-REGISTER
-   cell COMP-BODY:defer DEF-FIXED
+   cell 0 COMP-BODY:defer DEF-FIXED
    DEF-CLOSE ;
 
 \ `immediate` marks the newest record, whatever it is, and checks nothing.
