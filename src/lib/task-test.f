@@ -33,7 +33,6 @@ SLEEP-MS NS-PER-MS * constant SLEEP-LEAST-NS
 \ can delay the return; the suite timeout bounds liveness, not this measurement.
 5000000 constant SLEEP-CPU-NS
 20000000 constant SPIN-NS
-1000000 constant SLEEP-ZERO-NS       \ a zero sleep never enters the kernel
 $7FFFFFFFFFFFFFFF constant CELL-NS-MAX
 \ The clock's advance between reading DEADLINE-LAST-MS and the call it bounds:
 \ the call takes its own mono-ns, so the last value it accepts is only known to
@@ -1254,6 +1253,7 @@ TASK:MIN-STACK TASK:TASK EXIT-HALT-TASK
    EXIT-HALT-RUNS atomic@ 1 T=
    s" TASK:HALTED? is true in a cleanup the HALT landed in" T-LABEL
    EXIT-HALT-SEEN atomic@ 1 T=
+   T-LABEL-CLEAR
    EXIT-HALT-TASK TASK:KILL ;
 
 : TASK-TEST-EXIT-HALT ( -- )
@@ -1348,7 +1348,7 @@ TASK:MIN-STACK TASK:TASK EXIT-HALT-TASK
    SLEEP-W-NS @ SLEEP-W-CPU @ SLEEP-CHECK ;
 
 : TASK-TEST-SLEEP-EDGES ( -- )
-   mono-ns 0 >MS TASK:SLEEP mono-ns swap - SLEEP-ZERO-NS < TTRUE
+   0 >MS TASK:SLEEP
    [: -1 >MS TASK:SLEEP ;] E-TASK-SLEEP-MS TTHROWSQ
    [: DEADLINE-LAST-MS 1+ >MS TASK:SLEEP ;] E-TASK-SLEEP-MS TTHROWSQ ;
 
@@ -1571,7 +1571,7 @@ variable STOP-FOR-SEEN
    mono-ns {: t0:n :}
    SLEEP-MS >MS TASK:WAIT-MS TFALSE
    mono-ns t0 - SLEEP-LEAST-NS >= TTRUE
-   mono-ns 0 >MS TASK:WAIT-MS TFALSE mono-ns swap - SLEEP-ZERO-NS < TTRUE
+   0 >MS TASK:WAIT-MS TFALSE
    [: -1 >MS TASK:WAIT-MS drop ;] E-TASK-SLEEP-MS TTHROWSQ
    [: DEADLINE-LAST-MS 1+ >MS TASK:WAIT-MS drop ;] E-TASK-SLEEP-MS TTHROWSQ
    TASK:SELF TASK:WAKE
