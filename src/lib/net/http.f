@@ -688,10 +688,10 @@ MEM-MAX-N NS-PER-MS / constant MAX-DEADLINE-MS
 \ here polls a clock, and the stopper re-reads the count after every hint, as the
 \ hint protocol requires (src/lib/task.f).
 : AWAIT-TASKS ( -- )
-   STOP-BOUND-MS >MS AIO:TIMEOUT {: timer:AIO:ticket :}
    STOP-BOUND-MS DEADLINE-AT {: deadline:n :}
+   STOP-BOUND-MS >MS AIO:TIMEOUT {: timer:AIO:ticket :}
    begin
-      TASKS-LEFT? mono-ns deadline > or if timer DROP-TIMER exit then
+      TASKS-LEFT? mono-ns deadline >= or if timer DROP-TIMER exit then
       TASK:WAIT
    again ;
 
