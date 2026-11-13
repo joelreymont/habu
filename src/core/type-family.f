@@ -4908,17 +4908,15 @@ private
 \ The lowering pushes what the family declares and can only add: it calls the
 \ generated constructor (declared pads and tag, whatever the instantiation) or
 \ reads the declared pads from the registry for a `construct`, and pushes the
-\ difference as zeros. MWIN-CELLS! files the difference under the judged token,
-\ and the WF row records it at the same site. A construction that adds nothing
-\ files nothing (src/core/checker.f states the
-\ absent case above the table). A niche family counts its bundle, so a construct
-\ of either variant adds nothing.
+\ difference as zeros. MWIN-CELLS! files the difference under the judged token;
+\ a construction that adds nothing files nothing. A niche family counts its
+\ bundle, so a construct of either variant adds nothing.
 : TFC-CON-XPAD-RECORD ( n n n -- ) {: fam:n vid:n famterm:n :}
    fam famterm TFC-BUNDLE-CELLS fam TFC-TAG-CELLS -
    vid TFC-VAR-PAYCELLS -
    fam TFAM-SLOTS@ vid SUMV-PAYCELLS@ - -
    {: extra:n :}
-   extra 0 > IF extra MWIN-CELLS!  0 fam 0 extra WF-ADD-FULL EXIT THEN
+   extra 0 > IF extra MWIN-CELLS! EXIT THEN
    extra 0 < IF TFC-XPAD-NARROW-REJECT THEN ;   \ add-only lowering cannot remove the surplus
 
 \ MATCH sees only a SUM or ENUM family: TFAM-MATCH-FAM and TFL-MATCH-FAM? reject
@@ -4926,11 +4924,10 @@ private
 \ records no pad fact. So `rt T-WIDTH 1 -` needs no kind guard.
 \
 \ The compiler models the stack cell by cell and needs the pad count itself:
-\ MWIN-CELLS! files it under this `of` token, and the WF row records the
-\ difference from the declared pads. An arm whose term is not closed latches
-\ nothing: the cell-accurate consumer then refuses the definition by name. A
-\ niche family counts its bundle, so its empty arm files one pad and the other
-\ none.
+\ MWIN-CELLS! files it under this `of` token. An arm whose term is not closed
+\ latches nothing: the cell-accurate consumer then refuses the definition by
+\ name. A niche family counts its bundle, so its empty arm files one pad and the
+\ other none.
 : TFAM-MATCH-XPAD-RECORD ( n n -- ) {: vid:n term:n :}
    term T-RES {: rt:n :}
    rt TYPE-REP-CLOSED? 0= IF EXIT THEN           \ open value/row: leave declared width; scope identities do not affect padding
@@ -4941,7 +4938,6 @@ private
    ipads
    vid SUMV-FAM@ TFAM-SLOTS@ vid SUMV-PAYCELLS@ - -
    {: extra:n :}
-   extra 0 > IF 0 vid SUMV-FAM@ 0 extra WF-ADD-FULL EXIT THEN
    extra 0 < IF TFC-XPAD-NARROW-REJECT THEN ;   \ declared-width unpack would skip a pad the bundle lacks
 
 public
