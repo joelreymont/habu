@@ -13,6 +13,8 @@ require src/arch/arm64/icode.f
 require src/arch/arm64/mnem.f
 require src/habu/layout.f
 require src/habu/code-bytes.f
+require src/os/macos/macho.f
+require src/os/linux/elf.f
 
 package LINKER
 private
@@ -76,6 +78,16 @@ variable PATH-U
 : BAD ( -- )
    SAY-OBJECT
    s" link: the kernel object is cut short or malformed" 74 die ;
+
+\ hb's writer lays the image and the tree's kernel reads each libc slot at the
+\ row the tree's writer gives it, so an import table that is not hb's dies.
+: SAME ( n n ptr u8 n -- )
+   {: mine:n theirs:n a:ptr u:n :}
+   mine theirs = if exit then
+   SAY-OBJECT
+   s" link: its " SAY a u SAY s"  is " SAY theirs SAY-INT
+   s" , hb's is " SAY mine SAY-INT SAY-CR
+   s" link: the kernel object's import table is not hb's" 74 die ;
 
 : KOBJ@ ( n -- n ) 0 KOBJ swap + LE:U64@ ;
 
@@ -292,6 +304,8 @@ public
       s" , hb's is " SAY DATA-START SAY-INT SAY-CR
       s" link: a target may not raise DATA-START above the running hb's" 74 die
    then
+   MACHO:IMPORTS-SUM  s" MACHO-IMPORTS" SYM  s" MACHO-IMPORTS" SAME
+   ELF:IMPORTS-SUM  s" ELF-IMPORTS" SYM  s" ELF-IMPORTS" SAME
    s" TEXT-VA" SYM KTEXT-VA !  s" DATA-VA" SYM KDATA-VA ! ;
 
 \ States READ's object's primitive rows to the open build's checker in table

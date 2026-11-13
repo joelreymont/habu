@@ -2,9 +2,9 @@
 \ Linux targets (linux-aarch64, linux-x86-64).
 \ The image offsets are ELF64 format facts: IMAGE-TEXT-SIZE-OFF is the first
 \ program header's p_filesz (64-byte header, then type, flags, offset, vaddr and
-\ paddr), and the two loader slots sit past the read-write segment's dynamic
-\ table. DATA-VA is a Linux fixed mapping, not an architecture fact: 13 GiB is
-\ as free above a non-PIE image at $400000 and its brk on x86_64
+\ paddr), and the dlopen and dlsym slots open the GOT past the read-write
+\ segment's dynamic table. DATA-VA is a Linux fixed mapping, not an architecture
+\ fact: 13 GiB is as free above a non-PIE image at $400000 and its brk on x86_64
 \ as it is on aarch64.
 \
 \ DATA is one lazy anonymous reservation of DATA-SIZE bytes at DATA-VA, taken by

@@ -30,6 +30,8 @@ require src/habu/task-abi.f
 require src/habu/spawn-abi.f
 require src/habu/code-span.f
 require src/habu/prof-abi.f
+require src/os/macos/macho.f
+require src/os/linux/elf.f
 package ENGINE-EMIT
 public
 variable STDIN?   0 0= 0= STDIN? !
@@ -2716,26 +2718,23 @@ $58 constant CBT-LR                     \ C's x30
 
 package LIBC-OS
 
-\ Read this process's loader slot. Neither a library handle nor a resolved
-\ function survives this call. x16 = this run's __text base, x1 = the
-\ NUL-terminated symbol name.
-: DLSYM-AT ( -- )
+\ x16 = the address the loader bound to the named import, from x16 = this
+\ run's __text base. Read on every call: an image saves no libc address.
+\ Clobbers x15, x17.
+: SLOT-AT, ( ptr u8 n -- ) {: name:ptr u:n :}
    15 CODE-OFF LIT64,  16 16 15 SUB,
    17 16 IMAGE-TEXT-SIZE-OFF LDR,
    HB-TARGET-LINUX? if
-      16 16 17 ADD,  16 16 $B8 LDR,
-      0 0 MOVZ,
+      16 16 17 ADD,  16 16 name u ELF:IMPORT-ROW ELF:SLOT-OFF LDR,
    else HB-TARGET-MACOS? if
       15 CODE-OFF LIT64,  17 17 15 ADD,  15 $3FFF LIT64,
       17 17 15 ADD,  15 $3FFF invert LIT64,  17 17 15 AND,
-      16 16 17 ADD,  16 16 8 LDR,
-      0 1 MOVN,
+      16 16 17 ADD,  16 16 name u MACHO:IMPORT-ROW MACHO:SLOT-OFF LDR,
    else
       ENGINE-EMIT:TARGET-UNKNOWN
-   then then
-   16 BLR, ;
+   then then ;
 
-: DLSYM ( -- )   16 DATA RBASE-CELL LDR,  DLSYM-AT ;
+: SLOT, ( ptr u8 n -- )   16 DATA RBASE-CELL LDR,  SLOT-AT, ;
 
 \ Copy [x1, x2) of the region to the same offsets x12 bytes away, a cell at a
 \ time; x1 and x2 are 8-byte aligned. Clobbers x1, x3, x4.
@@ -2794,84 +2793,65 @@ public
 \ A forked child inherits the alias as a private copy, like the RX view: libc's
 \ fork handlers allocate in the child before fork() returns, so the alias range
 \ must stay mapped until the child replaces it. Clobbers x0-x17; jumps to
-\ fail with SP restored if a lookup or the remap fails. Frame: [0] &cur [8]
-\ &max [16] inheritance (the call's stack arguments), [24] task port, [32]
-\ "mach_vm_remap", [48] "mach_task_self_", [64] alias, [72] cur [76] max, [80]
-\ RX base, [88] __text base.
+\ fail with SP restored if the remap fails. Frame: [0] &cur [8] &max [16]
+\ inheritance (the call's stack arguments), [24] task port, [32] alias, [40]
+\ cur [44] max, [48] RX base, [56] __text base.
 : REGION-REMAP ( bool label -- ) {: fixed:bool fail:label :}
    LBL LBL {: bad:label ok:label :}
-   SP SP 96 SUBI,
-   0 SP 80 STR,  16 SP 88 STR,
-   9 SP 72 ADDI,  9 SP 0 STR,  9 SP 76 ADDI,  9 SP 8 STR,
+   SP SP 64 SUBI,
+   0 SP 48 STR,  16 SP 56 STR,
+   9 SP 40 ADDI,  9 SP 0 STR,  9 SP 44 ADDI,  9 SP 8 STR,
    9 1 MOVZ,  9 SP 16 STR,                          \ VM_INHERIT_COPY
-   fixed if 1 SP 64 STR, else 9 0 MOVZ,  9 SP 64 STR, then
-   9 $5F6D765F6863616D LIT64,  9 SP 32 STR,
-   9 $70616D6572 LIT64,  9 SP 40 STR,
-   9 $7361745F6863616D LIT64,  9 SP 48 STR,
-   9 $005F666C65735F6B LIT64,  9 SP 56 STR,
-   1 SP 48 ADDI,  DLSYM-AT
-   0 bad CBZ,  0 0 0 LDRW,  0 SP 24 STR,
-   16 SP 88 LDR,  1 SP 32 ADDI,  DLSYM-AT
-   0 bad CBZ,  16 0 0 ADDI,
-   0 SP 24 LDR,  1 SP 64 ADDI,  2 REGION LIT64,  3 0 MOVZ,
+   fixed if 1 SP 32 STR, else 9 0 MOVZ,  9 SP 32 STR, then
+   s" mach_task_self_" SLOT-AT,  0 16 0 LDRW,  0 SP 24 STR,
+   16 SP 56 LDR,  s" mach_vm_remap" SLOT-AT,
+   0 SP 24 LDR,  1 SP 32 ADDI,  2 REGION LIT64,  3 0 MOVZ,
    fixed if 4 $4000 MOVZ, else 4 1 MOVZ, then       \ VM_FLAGS_FIXED | _OVERWRITE, or _ANYWHERE
-   5 0 0 ADDI,  6 SP 80 LDR,  7 0 MOVZ,             \ copy FALSE
+   5 0 0 ADDI,  6 SP 48 LDR,  7 0 MOVZ,             \ copy FALSE
    16 BLR,
    0 0 $FFFFFFFF ANDI,  0 bad CBNZ,                 \ kern_return_t
-   0 SP 64 LDR,  1 SP 80 LDR,  0 0 1 SUB,
-   SP SP 96 ADDI,  ok B,
-   bad LBL,  SP SP 96 ADDI,  fail B,
+   0 SP 32 LDR,  1 SP 48 LDR,  0 0 1 SUB,
+   SP SP 64 ADDI,  ok B,
+   bad LBL,  SP SP 64 ADDI,  fail B,
    ok LBL, ;
 
 \ ( pathz dst capacity -- length | -1 | -2 )
 \ libc allocates its realpath result. Only a fitting result, including its NUL,
 \ reaches dst; free runs after both success and insufficient capacity.
-\ -1 = resolution/loader failure, -2 = no room for the complete C string.
+\ -1 = resolution failure, -2 = no room for the complete C string.
 : REALPATH ( -- )
    LBL LBL LBL LBL {: badcap:label failed:label short:label done:label :}
    LBL LBL LBL LBL {: count:label counted:label copy:label release:label :}
    2 G-POP  1 G-POP  0 G-POP
-   SP SP 96 SUBI,
+   SP SP 48 SUBI,                        \ [24] free, [32] result, [40] length
    0 SP 0 STR,  1 SP 8 STR,  2 SP 16 STR,
    2 0 CMPI,  C-LE badcap BCOND,
    1 2 PROT-GUARD:CALL
-   9 $65657266 LIT64,  9 SP 56 STR,
-   9 $687461706C616572 LIT64,  9 SP 64 STR,
-   \ Darwin's plain "realpath" is its legacy entry, which reads every parent
-   \ directory of a relative path; C programs link realpath$DARWIN_EXTSN.
-   HB-TARGET-MACOS? IF
-      9 $5F4E495752414424 LIT64,  9 SP 72 STR,
-      9 $4E53545845 LIT64,  9 SP 80 STR,
-   ELSE
-      9 0 MOVZ,  9 SP 72 STR,
-   THEN
-   1 SP 56 ADDI,  DLSYM
-   0 failed CBZ,  0 SP 24 STR,
-   1 SP 64 ADDI,  DLSYM
-   0 failed CBZ,  16 0 0 ADDI,
+   s" free" SLOT,  16 SP 24 STR,
+   s" realpath" SLOT,
    0 SP 0 LDR,  1 0 MOVZ,  16 BLR,
-   0 failed CBZ,  0 SP 40 STR,
+   0 failed CBZ,  0 SP 32 STR,
    9 0 0 ADDI,  10 0 MOVZ,
    count LBL,
       11 9 0 LDRB,  11 counted CBZ,
       9 9 1 ADDI,  10 10 1 ADDI,  count B,
    counted LBL,
-   10 SP 48 STR,  12 SP 16 LDR,
+   10 SP 40 STR,  12 SP 16 LDR,
    10 12 CMP,  C-CS short BCOND,
-   9 SP 40 LDR,  11 10 1 ADDI,  10 SP 8 LDR,
+   9 SP 32 LDR,  11 10 1 ADDI,  10 SP 8 LDR,
    copy LBL,
       12 9 0 LDRB,  12 10 0 STRB,
       9 9 1 ADDI,  10 10 1 ADDI,  11 11 1 SUBI,
       11 copy CBNZ,
    release LBL,
-   0 SP 40 LDR,  16 SP 24 LDR,  16 BLR,
-   0 SP 48 LDR,  done B,
+   0 SP 32 LDR,  16 SP 24 LDR,  16 BLR,
+   0 SP 40 LDR,  done B,
    short LBL,
-   9 1 MOVN,  9 SP 48 STR,  release B,
+   9 1 MOVN,  9 SP 40 STR,  release B,
    badcap LBL,  0 1 MOVN,  done B,
    failed LBL,  0 0 MOVN,
    done LBL,
-   SP SP 96 ADDI,  0 G-PUSH ;
+   SP SP 48 ADDI,  0 G-PUSH ;
 
 \ Darwin's libc fork reinitializes libSystem's child state, including Mach
 \ reply ports. A raw syscall child can execute Habu but subsequent Mach VM
@@ -2962,11 +2942,8 @@ public
       exit
    THEN
    HB-TARGET-MACOS? IF
-      LBL LBL LBL {: failed:label done:label dead:label :}
-      SP SP 16 SUBI,
-      9 $6B726F66 LIT64,  9 SP 0 STR,    \ "fork" + NUL
-      1 SP 0 ADDI,  DLSYM
-      0 failed CBZ,  16 0 0 ADDI,  16 BLR,
+      LBL LBL {: done:label dead:label :}
+      s" fork" SLOT,  16 BLR,
       0 0 32 LSLI,  0 0 32 ASRI,        \ signed pid_t -> Habu cell
       0 done CBNZ,
       \ The child: its RX view and alias are private copies, so it replaces the
@@ -2982,9 +2959,8 @@ public
       dead LBL,
          S\" hb: fork: cannot map the child's region alias\n" ERR-TEXT,
          0 78 MOVZ,  NR-EXIT-GROUP SYS,
-      failed LBL,  0 0 MOVN,
       done LBL,
-      SP SP 16 ADDI,  0 G-PUSH
+      0 G-PUSH
       exit
    THEN
    ENGINE-EMIT:TARGET-UNKNOWN ;

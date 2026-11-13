@@ -30,6 +30,8 @@ require src/habu/prims.f
 require src/habu/primitive-registry.f
 require src/arch/arm64/icode.f
 require src/arch/arm64/boot.f
+require src/os/macos/macho.f
+require src/os/linux/elf.f
 using CRASH
 using ENGINE-EMIT
 
@@ -181,7 +183,9 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
    s" RBASE-CELL" RBASE-CELL SYM+
    s" UNCGH-CELL" UNCGH-CELL SYM+
    s" STUB-CELL" SIGNAL-ABI:STUB-CELL SYM+
-   s" CODE-END-CELL" CODE-END-CELL SYM+ ;
+   s" CODE-END-CELL" CODE-END-CELL SYM+
+   s" MACHO-IMPORTS" MACHO:IMPORTS-SUM SYM+
+   s" ELF-IMPORTS" ELF:IMPORTS-SUM SYM+ ;
 
 : ENGINE-SYMBOLS ( -- )
    s" RECS" 4 TAIL@ LSYM+
