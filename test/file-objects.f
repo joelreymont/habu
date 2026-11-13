@@ -1041,22 +1041,25 @@ variable CLASS-N                        \ the class CLASS+ read
    s" the build links ctor-sum.f" CTOR-SUM LINKED ;
 
 \ export-main.f's image, run in its own process, since the boundary under test is the written
-\ file: its input calls each export in a definition, then at top level.
+\ file: its input calls each export in a definition, then at top level, and defines a
+\ word with the exported does> definer.
 : EXPORT-RUN ( CMD:command -- CMD:command )
    CMD:RESET
    SB-RESET
    S\" : FILE-OBJECTS-EXP-SHOW ( -- ) FILE-OBJECTS-EXP:HIDDEN . FILE-OBJECTS-EXP:PUB . FILE-OBJECTS-EXP:THREE . ;\n"
    SB-APPEND
    S\" FILE-OBJECTS-EXP-SHOW\nFILE-OBJECTS-EXP:HIDDEN . FILE-OBJECTS-EXP:PUB . FILE-OBJECTS-EXP:THREE .\n" SB-APPEND
+   S\" 11 FILE-OBJECTS-EXP:CELLED FILE-OBJECTS-EXP-ELEVEN  FILE-OBJECTS-EXP-ELEVEN .\n" SB-APPEND
    SB$ CMD:IN!
    L$ s" prog" IN$ 60000 >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
    rc 0<> if rc SHOW then
    s" the image's definition and top level call the exports" LABEL
-   CMD:OUT$ s\" 42\n5\n3\n42\n5\n3\n" T$=
+   CMD:OUT$ s\" 42\n5\n3\n42\n5\n3\n11\n" T$=
    s" the image exits 0" LABEL  rc 0 T= ;
 
 \ Guards an image's exports: EX compiles export-main.f into a --repl image, EX2 links its object
-\ into another, and each resolves an exported private word, another package's public word and a constant.
+\ into another, and each resolves an exported private word, another package's public word, a
+\ constant and a does> definer.
 : EXPORT-CASE ( CMD:command -- CMD:command )
    s" EX" WHICH!  s" test/fixtures/file-objects/export-main.f" REPL-BUILD 0= if exit then
    EXPORT-RUN  EXPORT-MAIN KEEP

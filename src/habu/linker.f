@@ -4380,6 +4380,9 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
    a u src wid INTERPRETER:ALIAS-RECORD
    flags want SET-FLAGS
    EDGES-N @ {: start:n :}  src REC-EDGE+  want start REC-EDGES!
+   \ An exported definer's alias of its does> clause carries no checker facts
+   \ in a compile, so READ-ALIASES skips it.
+   src 1 - XREF-DOES-COMPANION? if exit then
    ALIASES-N @ 2 + ALIASES-RESERVE
    want ALIASES-N @ ALIASES !  src ALIASES-N @ 1 + ALIASES !  2 ALIASES-N +! ;
 

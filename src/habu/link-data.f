@@ -286,14 +286,17 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    s" link: a record enters code the target does not place" 74 die ;
 
 
-\ Build record r's source when r is an alias, else -1; an owned primitive's record has
-\ a facts text, an alias none. Asked in index order from SHADOW-AT 0.
+\ Build record r's source when r is an alias but not of a does> clause, else -1; an owned
+\ primitive's record has a facts text, an alias none. Asked in index order from SHADOW-AT 0.
 : EXPORT-SOURCE ( n -- n )
    {: r:n :}
    r XREF-REC {: rec:ptr :}
    rec CK-REC-FACTS-SLOT XREF-CELL@ 0<> if -1 exit then
    r SHADOW-ROW  rec XREF-WORDLIST  KIND  KIND-ALIAS <> if -1 exit then
-   r SAME-START ;
+   r SAME-START {: src:n :}
+   src 0 < if -1 exit then
+   src 1 - XREF-DOES-COMPANION? if -1 exit then
+   src ;
 
 \ Build record r at target index k: [32], the facts text's offset from the image's DATA,
 \ holds in the target's, as does an export's source index.
