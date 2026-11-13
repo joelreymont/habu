@@ -2,7 +2,7 @@
 \ PAGE-SIZE reports the running host's page size for OS mappings; Habu's guard
 \ window uses the fixed STACK-ABI:PAGE-BYTES and PROT-PAGE-MAX instead.
 \ The FFI binding resolves at its first call in each process: a function
-\ address is scratch (src/lib/ffi-abi.f FN-RESOLVE).
+\ address is scratch (src/lib/ffi-abi.f FN-LOOKUP).
 require src/lib/error.f
 require src/lib/ffi-abi.f
 

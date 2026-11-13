@@ -695,30 +695,21 @@ public
 
 : LIBRARY-PATH ( ptr u8 n -- n ) 0 LIBRARY-PATH-OR ;
 
-private
-
-: FN-RESOLVE ( n -- n ) {: idx:n :}
-   idx FN-ADDR@ dup 0 <> if exit then
-   drop
-   idx FN-LOOKUP ;
-
-public
-
 : CALL ( n -- n ) {: idx:n :}
-   idx FN-RESOLVE {: fn:n :}
+   idx FN-LOOKUP {: fn:n :}
    FFI-BUF FFI-REG-LEN-BUF idx FN-ARGC@ fn ffi-call-bounded ;
 
 : CALL-PTR ( n -- ptr u8 ) CALL CELL>PTR ;
 
 : CALL-ABI ( n -- n ) {: idx:n :}
-   idx FN-RESOLVE {: fn:n :}
+   idx FN-LOOKUP {: fn:n :}
    FFI-BUF FFI-FBUF FFI-STACK-BUF FFI-REG-LEN-BUF FFI-STACK-LEN-BUF
    idx FN-SPILL@ fn ffi-call-abi-bounded ;
 
 : CALL-ABI-PTR ( n -- ptr u8 ) CALL-ABI CELL>PTR ;
 
 : CALL-ABI-R ( n -- r ) {: idx:n :}
-   idx FN-RESOLVE {: fn:n :}
+   idx FN-LOOKUP {: fn:n :}
    FFI-BUF FFI-FBUF FFI-STACK-BUF FFI-REG-LEN-BUF FFI-STACK-LEN-BUF
    idx FN-SPILL@ fn ffi-call-abi-r-bounded ;
 
@@ -727,7 +718,7 @@ public
 
 \ A struct-returning declaration resolves its row before staging: a first-call
 \ dlopen can run constructors that call C through this task's scratch.
-: RESOLVE-ROW ( n -- ) FN-RESOLVE drop ;
+: RESOLVE-ROW ( n -- ) FN-LOOKUP drop ;
 
 \ The caller's result storage rides x8, AAPCS64's indirect-result register,
 \ with its whole extent guarded. A record returned in x0/x1 ignores x8, and the
@@ -747,7 +738,7 @@ public
 \ named cell to the copy there, so C receives storage that lives exactly as
 \ long as the call and that no other call reuses.
 : CALL-STRUCT ( n -- n n ) {: idx:n :}
-   idx FN-RESOLVE {: fn:n :}
+   idx FN-LOOKUP {: fn:n :}
    FFI-BUF FFI-FBUF FFI-STACK-BUF FFI-REG-LEN-BUF FFI-STACK-LEN-BUF
    idx FN-SPILL@ idx FN-RELOC@ fn ffi-call-struct-bounded ;
 
