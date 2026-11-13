@@ -137,23 +137,56 @@ TASK:FACILITY DIR-LOCK
    2drop 2drop E-ACCESS throw ;
 
 
+\ Within PATH-CAP and holding no NUL: a path the host takes and a line shows.
+: DIR-TEXT? ( ptr u8 n -- bool )
+   {: dir:ptr dir-u:n :}
+   dir-u 0 < dir-u PATH-CAP > or if false exit then
+   dir-u 0 ?do dir i + c@ 0= if unloop false exit then loop
+   true ;
+
+
+\ Opens a refused bind's ERROR line up to its reason, which DIR-REFUSED ends.
+: DIR-REFUSING ( ptr u8 n -- )
+   {: dir:ptr dir-u:n :}
+   LOG:ERROR s" secret" LOG:LINE
+   s" cannot bind the directory store" LOG:TEXT+
+   dir dir-u DIR-TEXT? if s"  at " LOG:TEXT+ dir dir-u LOG:TEXT+ then
+   s" : " LOG:TEXT+ ;
+
+
+: DIR-REFUSED ( ptr u8 n -- ) LOG:TEXT+ LOG:;LINE E-CONFIG throw ;
+
+
 \ A directory past PATH-CAP or holding a NUL, or one this process cannot list
-\ and search, is E-CONFIG.
+\ and search, is E-CONFIG, logged as one ERROR line tagged secret.
 : DIR-CHECK ( ptr u8 n -- )
    {: dir:ptr dir-u:n :}
-   dir-u 0 < dir-u PATH-CAP > or if E-CONFIG throw then
-   dir-u 0 ?do dir i + c@ 0= if E-CONFIG throw then loop
-   dir dir-u FS:DIR? 0= if E-CONFIG throw then
-   dir dir-u FS:>PATHZ DIR-ACCESS access 0<> if E-CONFIG throw then ;
+   dir-u 0 < dir-u PATH-CAP > or if
+      dir dir-u DIR-REFUSING s" a path of " LOG:TEXT+
+      dir-u LOG:INT+ s"  bytes" DIR-REFUSED
+   then
+   dir dir-u DIR-TEXT? 0= if
+      dir dir-u DIR-REFUSING s" its path holds a NUL byte" DIR-REFUSED
+   then
+   dir dir-u FS:DIR? 0= if
+      dir dir-u DIR-REFUSING s" no directory is there" DIR-REFUSED
+   then
+   dir dir-u FS:>PATHZ DIR-ACCESS access 0<> if
+      FS:ERRNO dir dir-u DIR-REFUSING FS:ERRNO$ DIR-REFUSED
+   then ;
 
 public
 
-\ Binds with STORE! the store over the directory, for the service given; a
-\ directory DIR-CHECK refuses, or a service SECRET refuses, is E-CONFIG and
-\ binds nothing. Run once, before anything reads a secret.
+\ Binds with STORE! the store over the directory for the service, once, before
+\ any read; a refusal binds nothing: E-CONFIG, one ERROR line tagged secret.
 : DIR-BIND ( ptr u8 n ptr u8 n -- )
    {: dir:ptr dir-u:n svc:ptr svc-u:n :}
-   svc svc-u INPUT
+   [: svc svc-u INPUT ;] catch {: code:n :}
+   code E-CONFIG = if
+      dir dir-u DIR-REFUSING
+      s" the service is empty or not text" DIR-REFUSED
+   then
+   code 0<> if code throw then
    dir dir-u DIR-CHECK
    svc-u 1 max DIR-SERVICE-RESERVE
    svc 0 DIR-SERVICE svc-u BYTE-COPY svc-u DIR-SERVICE-U !
