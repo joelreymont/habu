@@ -215,13 +215,6 @@ CHECKER-OWNER-EXT:GRID-BEFORE-OFF constant GRID-BEFORE-OFF               \ ( ptr
 CHECKER-OWNER-EXT:GRID-AFTER-OFF constant GRID-AFTER-OFF                 \ ( ptr n n -- )
 CHECKER-OWNER-EXT:GRID-REVOKE-OFF constant GRID-REVOKE-OFF               \ ( n -- )
 CHECKER-OWNER-EXT:GRID-RETIRE-OFF constant GRID-RETIRE-OFF               \ ( ptr n -- )
-\ Borrowed FILE name-resolution rows. The source owner copies the spelling and
-\ namespace into each six-cell row before exposing it to the native feed.
-$388 constant RESOLUTION-COUNT-OFF       \ ( -- n )
-$390 constant RESOLUTION-ROW-OFF         \ ( n -- ptr u8 n )
-$398 constant RESOLUTION-TOP-OFF         \ ( ptr u8 n [ ptr u8 n -- ] -- )
-$3A0 constant RESOLUTION-NS-INSTALL-OFF  \ ( [ ptr u8 n -- ] -- )
-$3A8 constant RESOLUTION-NS-DEFAULT-OFF  \ ( -- )
 CHECKER-OWNER-EXT:PUBLICATION-USE-OFF constant PUBLICATION-USE-OFF \ ( [ n -- ] -- )
 CHECKER-OWNER-EXT:RECORD-CAPTURE-OFF constant RECORD-CAPTURE-OFF \ ( [ n -- n ] [ -- ] -- )
 CHECKER-OWNER-EXT:VERIFY-CTOR-DECL-OFF constant VERIFY-CTOR-DECL-OFF \ ( sym name len visit start end -- )
@@ -244,23 +237,6 @@ CHECKER-OWNER-EXT:UNJUDGED-CLOSED-OFF constant UNJUDGED-CLOSED-OFF \ ( -- bool )
 CHECKER-OWNER-EXT:PIN-SPAN-OFF constant PIN-SPAN-OFF \ ( -- n n bool )
 CHECKER-OWNER-EXT:PIN-TOKEN-OFF constant PIN-TOKEN-OFF \ ( -- ptr u8 n )
 CHECKER-OWNER-EXT:FAMILY-NICHE-OFF constant FAMILY-NICHE-OFF \ ( n -- bool )
-0 constant RES-ORD
-1 constant RES-ROLE
-2 constant RES-RECORD
-3 constant RES-SHAPE
-4 constant RES-SPELL-U
-5 constant RES-PACKAGE-U
-6 constant RES-HEADER-CELLS
-0 constant RES-ROLE-GLOBAL
-1 constant RES-ROLE-OPEN-PUBLIC
-2 constant RES-ROLE-OPEN-PRIVATE
-3 constant RES-ROLE-USING-PUBLIC
-4 constant RES-ROLE-QUALIFIED-PUBLIC
-5 constant RES-ROLE-OPEN-NAMESPACE
-6 constant RES-ROLE-USING-NAMESPACE
-7 constant RES-ROLE-QUALIFIED-NAMESPACE
-8 constant RES-ROLE-PACKAGE-DECISION
-9 constant RES-ROLE-USING-DECISION
 CHECKER-FETCH-ABI:BYTES constant BYTES
 
 CHECKER-OWNER-EXT:CONTRACT-MAGIC constant RECORD-CONTRACT-MAGIC

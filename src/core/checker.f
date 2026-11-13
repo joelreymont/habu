@@ -906,7 +906,7 @@ private
    0 ,
    0 , 0 , 0 , 0 ,
    0 ,
-   0 , 0 , 0 , 0 , 0 , 0 ,
+   0 ,
    0 , 0 , 0 , 0 ,
    0 , 0 ,
    0 ,
@@ -12889,18 +12889,6 @@ public
    a u BOOT:NAMESPACE-WL WL-PROBE ;
 ;package
 
-\ The FILE observer is installed after the source reader below. These hooks
-\ are inert until that owner is loaded, and again once NS-DEFAULT or the
-\ capture seam ends observation.
-defer RESOLUTION-SOURCE-XT ( ptr u8 n ptr u8 n -- )
-defer RESOLUTION-NAMESPACE-XT ( ptr u8 n n -- )
-: RESOLUTION-SOURCE-NONE ( ptr u8 n ptr u8 n -- ) 2drop 2drop ;
-: RESOLUTION-NAMESPACE-NONE ( ptr u8 n n -- ) 2drop drop ;
-: RESOLUTION-SOURCE-DEFAULT ( -- )
-   ['] RESOLUTION-SOURCE-NONE is RESOLUTION-SOURCE-XT
-   ['] RESOLUTION-NAMESPACE-NONE is RESOLUTION-NAMESPACE-XT ;
-RESOLUTION-SOURCE-DEFAULT
-
 : CHECKER-USING ( ptr u8 n -- ) {: a:ptr u:n :}
    a u CHECKER-PACKAGE-LONG? IF E-PACKAGE-NAME-CAP throw THEN
    a u BYTE-SPAN? 0= IF s" checker: using name length describes no memory" 76 die THEN
@@ -12908,7 +12896,6 @@ RESOLUTION-SOURCE-DEFAULT
    d USE-MAX >= IF s" checker: using stack overflow" 76 die THEN
    a u CHECKER-RESOLVE:HEAD-ROW {: row:ptr :}
    row NULL-PTR = IF a u ELSE row CHECKER-RESOLVE:CK-REC-NAME$ THEN {: ra:ptr ru:n :}
-   ra ru 9 RESOLUTION-NAMESPACE-XT
    ra ru d CHECKER-USE:NAME! ;
 package CHECKER-REG
 ' CHECKER-USING DECLARATIONS USING-OFF + xt!
@@ -13626,7 +13613,6 @@ public
 : CHECKER-PACKAGE ( ptr u8 n -- )
    2dup CHECKER-PACKAGE-LONG? IF E-PACKAGE-NAME-CAP throw THEN
    2dup CTOR-PKG?-XT IF E-CTOR-PROTECTED throw THEN
-   2dup 8 RESOLUTION-NAMESPACE-XT
    CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF 2dup CHECKER-OVERLAY:OPEN-PACKAGE THEN
    CHECKER-PACKAGE-COPY
    CHECKER-PACKAGE-PRIVATE CHECKER-PACKAGE-MODE ! ;
@@ -14151,7 +14137,6 @@ CHECKER-REG:}SCRATCH
 : CHECKER-BIND-WHY ( ptr u8 n ptr u8 n -- n n )
    {: a:ptr u:n s:ptr su:n :}
    a u CHECKER-RESOLVE:WALK {: sym:n why:n :}
-   a u s su RESOLUTION-SOURCE-XT
    why 0 <> IF s su why CHECKER-RESOLVE:RAISE THEN
    sym why ;
 
@@ -15073,14 +15058,6 @@ variable EV-LO   variable EV-N
    EV-P EV-CAP EV-ROW ARENA-ROWS-RELEASE
    0 EV-LO !  0 EV-N ! ;
 
-defer RESOLUTION-RESET-XT ( -- )
-defer RESOLUTION-RELEASE-XT ( -- )
-: RESOLUTION-NOTHING ( -- ) ;
-: RESOLUTION-LIFETIME-DEFAULT ( -- )
-   ['] RESOLUTION-NOTHING is RESOLUTION-RESET-XT
-   ['] RESOLUTION-NOTHING is RESOLUTION-RELEASE-XT ;
-RESOLUTION-LIFETIME-DEFAULT
-
 \ Every report files one row as it takes its ordinal, so ORD is always the next
 \ row.
 : EV-FILE ( n n n n -- )
@@ -15097,7 +15074,7 @@ RESOLUTION-LIFETIME-DEFAULT
 \ The rows outlive the unit: the consumer reads them after it closes.
 : REC-RESET ( -- )
    0 REC-IX !  -1 REC-ON !
-   CWIN-RESET  MWIN-RESET  BWIN-RESET  RESOLUTION-RESET-XT ;
+   CWIN-RESET  MWIN-RESET  BWIN-RESET ;
 
 : REC-OFF ( -- )
    0 REC-ON ! ;
@@ -15105,7 +15082,7 @@ RESOLUTION-LIFETIME-DEFAULT
 : REC-RELEASE ( -- )
    REC-OFF
    0 REC-IX !
-   MWIN-RESET  CWIN-RELEASE  BWIN-RELEASE  EV-RELEASE  RESOLUTION-RELEASE-XT ;
+   MWIN-RESET  CWIN-RELEASE  BWIN-RELEASE  EV-RELEASE ;
 
 : REC-COMMIT ( -- )
    REC-ON @ 0= IF EXIT THEN
@@ -24662,212 +24639,6 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
 : TAPE-FEED? ( -- bool )
    CHECKER-TAPE:ARMED @ 0 <>  RESCAN @ 0=  and ;
 
-\ FILE lookup facts belong to the source owner that made the decision. A row
-\ holds six cells followed by copied token and namespace bytes. The consumer
-\ resolves record indices to declaration keys before storing an object; no
-\ pointer, wordlist number, or scratch token span is persisted from this table.
-package CHECKER-RESOLUTION
-public
-0 constant ORD
-1 constant ROLE
-2 constant RECORD
-3 constant SHAPE
-4 constant SPELL-U
-5 constant PACKAGE-U
-6 constant HEADER-CELLS
-0 constant GLOBAL
-1 constant OPEN-PUBLIC
-2 constant OPEN-PRIVATE
-3 constant USING-PUBLIC
-4 constant QUALIFIED-PUBLIC
-5 constant OPEN-NAMESPACE
-6 constant USING-NAMESPACE
-7 constant QUALIFIED-NAMESPACE
-8 constant PACKAGE-DECISION
-9 constant USING-DECISION
-;package
-
-PTR-VARIABLE RWIN-P   variable RWIN-CAP   variable RWIN-U
-PTR-VARIABLE RWIN-OFF-P   variable RWIN-OFF-CAP   variable RWIN-N
-PTR-VARIABLE RWIN-FOLD-P   variable RWIN-FOLD-CAP
-variable RWIN-FILE-ON
-defer RWIN-NS-CB ( ptr u8 n -- )
-
-: RWIN-CLEAR ( -- ) 0 RWIN-U !  0 RWIN-N ! ;
-: RWIN-DEFAULT ( -- )
-   RESOLUTION-SOURCE-DEFAULT
-   [: 2drop ;] is RWIN-NS-CB
-   0 RWIN-FILE-ON ! ;
-RWIN-DEFAULT
-
-\ Releasing the rows keeps the observer: a child load retires checker scratch
-\ while its parent's file is still observed. NS-DEFAULT and the capture seam
-\ (CHECKER-QUIESCE-CORE) are where observation ends.
-: RWIN-RELEASE ( -- )
-   RWIN-P RWIN-CAP 1 ARENA-ROWS-RELEASE
-   RWIN-OFF-P RWIN-OFF-CAP 1 ARENA-ROWS-RELEASE
-   RWIN-FOLD-P RWIN-FOLD-CAP 1 ARENA-ROWS-RELEASE
-   RWIN-CLEAR ;
-
-: RWIN-FIELD ( ptr u8 n -- n ) {: row:ptr field:n :}
-   row field cells + CELL-VIEW @ ;
-: RWIN-FIELD! ( n ptr u8 n -- ) {: v:n row:ptr field:n :}
-   v row field cells + CELL-VIEW ! ;
-
-\ The byte arena grows in cells and rows start at cell boundaries. It is given
-\ back together at capture, while a new source scan reuses its space.
-: RWIN-ADD ( n n n n ptr u8 n ptr u8 n -- )
-   {: ord:n role:n record:n shape:n spell:ptr su:n pkg:ptr pu:n :}
-   su 0 < pu 0 < or IF CHECKER-OWNER-ABI:BINDING-RC throw THEN
-   su $7FFFFFFFFFFFFFFF CHECKER-RESOLUTION:HEADER-CELLS cells - pu - > IF
-      CHECKER-OWNER-ABI:BINDING-RC throw THEN
-   CHECKER-RESOLUTION:HEADER-CELLS cells su + pu + {: size:n :}
-   size CELL 1- + CELL / cells {: padded:n :}
-   RWIN-U @ padded + {: end:n :}
-   RWIN-P RWIN-CAP end CELL / 1 ARENA-ROWS-ENSURE
-   RWIN-OFF-P RWIN-OFF-CAP RWIN-N @ 1+ 1 ARENA-ROWS-ENSURE
-   RWIN-U @ RWIN-N @ cells RWIN-OFF-P @ + !
-   RWIN-P @ BYTE-VIEW RWIN-U @ + {: row:ptr :}
-   ord row CHECKER-RESOLUTION:ORD RWIN-FIELD!
-   role row CHECKER-RESOLUTION:ROLE RWIN-FIELD!
-   record row CHECKER-RESOLUTION:RECORD RWIN-FIELD!
-   shape row CHECKER-RESOLUTION:SHAPE RWIN-FIELD!
-   su row CHECKER-RESOLUTION:SPELL-U RWIN-FIELD!
-   pu row CHECKER-RESOLUTION:PACKAGE-U RWIN-FIELD!
-   spell row CHECKER-RESOLUTION:HEADER-CELLS cells + su ARENA-COPY
-   pkg row CHECKER-RESOLUTION:HEADER-CELLS cells + su + pu ARENA-COPY
-   end RWIN-U !
-   RWIN-N @ 1+ RWIN-N ! ;
-
-: RWIN-ROW ( n -- ptr u8 n ) {: ix:n :}
-   ix 0 < ix RWIN-N @ >= or IF CHECKER-OWNER-ABI:BINDING-RC throw THEN
-   ix cells RWIN-OFF-P @ + @ RWIN-P @ BYTE-VIEW + {: row:ptr :}
-   row
-   CHECKER-RESOLUTION:HEADER-CELLS cells
-   row CHECKER-RESOLUTION:SPELL-U RWIN-FIELD +
-   row CHECKER-RESOLUTION:PACKAGE-U RWIN-FIELD + ;
-
-\ Every namespace reference includes the declaration row and whether it has a
-\ private leg. A qualified definition may have created only a public leg.
-: RWIN-NS-SHAPE ( ptr n -- n ) {: rec:ptr :}
-   rec NULL-PTR = IF 0 EXIT THEN
-   rec CELL + @ 0 <> IF 3 ELSE 1 THEN ;
-
-: RWIN-NS ( ptr u8 n ptr u8 n n n -- n n n )
-   {: spell:ptr su:n pkg:ptr pu:n role:n ord:n :}
-   pkg pu BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: rec:ptr :}
-   rec RWIN-NS-SHAPE {: shape:n :}
-   ord role rec CHECKER-RESOLVE:REC>INDEX shape spell su pkg pu RWIN-ADD
-   rec NULL-PTR = IF -1 -1 shape EXIT THEN
-   rec @ {: pub:n :}
-   rec CELL + @ {: pri:n :}
-   pub 0= IF -1 ELSE pub THEN
-   pri 0= IF -1 ELSE pri THEN
-   shape ;
-
-: RWIN-CAND ( ptr u8 n ptr u8 n ptr u8 n n n n n -- )
-   {: spell:ptr su:n pkg:ptr pu:n name:ptr nu:n role:n wid:n shape:n ord:n :}
-   wid 0< IF -1 ELSE
-      name nu wid CHECKER-RESOLVE:WL-PROBE CHECKER-RESOLVE:REC>INDEX
-   THEN {: record:n :}
-   ord role record shape spell su pkg pu RWIN-ADD ;
-
-\ Used publics are eligible even when an earlier leg binds: their presence can
-\ make a global shadow fail.
-: RWIN-NAME ( ptr u8 n ptr u8 n n -- )
-   {: folded:ptr fu:n spell:ptr su:n ord:n :}
-   folded fu CHECKER-QUALIFIED? IF
-      CHECKER-QPKG$ {: pkg:ptr pu:n :}
-      CHECKER-QTAIL$ {: name:ptr nu:n :}
-      spell su pkg pu CHECKER-RESOLUTION:QUALIFIED-NAMESPACE ord RWIN-NS
-         {: pub:n pri:n shape:n :}
-      spell su pkg pu name nu CHECKER-RESOLUTION:QUALIFIED-PUBLIC pub shape ord RWIN-CAND
-      CHECKER-RESOLVE:AUTHORITY {: open:ptr ou:n mode:n ok:bool :}
-      ok mode CHECKER-PACKAGE-NONE <> and
-      open ou pkg pu CORE-STR=CI and IF
-         spell su s" " name nu CHECKER-RESOLUTION:GLOBAL BOOT:GLOBAL-WL 0 ord RWIN-CAND
-      THEN
-      EXIT
-   THEN
-   CHECKER-QBAD-TOK @ IF EXIT THEN
-   CHECKER-RESOLVE:AUTHORITY {: pkg:ptr pu:n mode:n ok:bool :}
-   ok mode CHECKER-PACKAGE-NONE <> and IF
-      spell su pkg pu CHECKER-RESOLUTION:OPEN-NAMESPACE ord RWIN-NS
-         {: pub:n pri:n shape:n :}
-      spell su pkg pu folded fu CHECKER-RESOLUTION:OPEN-PRIVATE pri shape ord RWIN-CAND
-      spell su pkg pu folded fu CHECKER-RESOLUTION:OPEN-PUBLIC pub shape ord RWIN-CAND
-      data-base ENCLOSING:PUB + @ 0 <> IF
-         pkg pu CHECKER-RESOLVE:TOP$ {: top:ptr tu:n :}
-         spell su top tu CHECKER-RESOLUTION:OPEN-NAMESPACE ord RWIN-NS
-            {: tpub:n tpri:n tshape:n :}
-         spell su top tu folded fu CHECKER-RESOLUTION:OPEN-PRIVATE tpri tshape ord RWIN-CAND
-         spell su top tu folded fu CHECKER-RESOLUTION:OPEN-PUBLIC tpub tshape ord RWIN-CAND
-      THEN
-   THEN
-   CK-USE-SCAN-N 0 ?DO
-      i CK-USE-SLOT i CK-USE-LEN@ {: ua:ptr uu:n :}
-      spell su ua uu CHECKER-RESOLUTION:USING-NAMESPACE ord RWIN-NS
-         {: pub:n pri:n shape:n :}
-      spell su ua uu folded fu CHECKER-RESOLUTION:USING-PUBLIC pub shape ord RWIN-CAND
-   LOOP
-   spell su s" " folded fu CHECKER-RESOLUTION:GLOBAL BOOT:GLOBAL-WL 0 ord RWIN-CAND ;
-
-: RWIN-SOURCE ( ptr u8 n ptr u8 n -- )
-   {: folded:ptr fu:n spell:ptr su:n :}
-   RWIN-FILE-ON @ 0= IF EXIT THEN
-   REC-ON @ 0=  TAPE-FEED? 0=  CHK-PROBE @ 0= 0= or or IF EXIT THEN
-   CHECKER-VERIFY-PKG-DEPTH @ 0= 0=  CHK-CAND @ 0= 0= or IF EXIT THEN
-   folded fu spell su REC-IX @ RWIN-NAME ;
-
-\ `package` and `using` ask for their namespace before changing the scope.
-\ Send that single copied row while the active FILE frame is known; a nested
-\ load then belongs to the nested frame rather than its caller's range.
-: RWIN-NAMESPACE ( ptr u8 n n -- ) {: pkg:ptr pu:n role:n :}
-   RWIN-FILE-ON @ 0= IF EXIT THEN
-   CHECKER-VERIFY-PKG-DEPTH @ 0= 0=  CHK-PROBE @ 0= 0= or
-   CHK-CAND @ 0= 0= or IF EXIT THEN
-   RWIN-CLEAR
-   pkg pu pkg pu role -1 RWIN-NS 2drop drop
-   0 RWIN-ROW RWIN-NS-CB ;
-
-package CHECKER-RESOLUTION
-public
-: COUNT ( -- n ) RWIN-N @ ;
-: ROW ( n -- ptr u8 n ) RWIN-ROW ;
-\ The legs probe the token folded as the body walk's TOKFOLD folds it, in a
-\ buffer of its own because a run can fire while that walk holds TKF; a
-\ qualifier's namespace row then matches a compiled reference's.
-: TOP ( ptr u8 n [ ptr u8 n -- ] -- ) {: spell:ptr su:n visit :}
-   RWIN-FILE-ON @ 0= IF EXIT THEN
-   RWIN-FOLD-P RWIN-FOLD-CAP su CELL 1- + CELL / 1 ARENA-ROWS-ENSURE
-   RWIN-FOLD-P @ BYTE-VIEW {: fold:ptr :}
-   su 0 ?DO spell i + c@ CHECKER-FOLD-C fold i + c! LOOP
-   RWIN-N @ {: first:n :}
-   RWIN-U @ {: used:n :}
-   fold su spell su -1 RWIN-NAME
-   RWIN-N @ first ?DO i RWIN-ROW visit execute LOOP
-   first RWIN-N !
-   used RWIN-U ! ;
-: NS-INSTALL ( [ ptr u8 n -- ] -- )
-   is RWIN-NS-CB
-   -1 RWIN-FILE-ON !
-   ['] RWIN-SOURCE is RESOLUTION-SOURCE-XT
-   ['] RWIN-NAMESPACE is RESOLUTION-NAMESPACE-XT ;
-: NS-DEFAULT ( -- ) RWIN-DEFAULT ;
-;package
-
-: RWIN-INSTALL-LIFETIME ( -- )
-   ['] RWIN-CLEAR is RESOLUTION-RESET-XT
-   ['] RWIN-RELEASE is RESOLUTION-RELEASE-XT ;
-RWIN-INSTALL-LIFETIME
-package CHECKER-REG
-' CHECKER-RESOLUTION:COUNT DECLARATIONS CHECKER-OWNER-ABI:RESOLUTION-COUNT-OFF + xt!
-' CHECKER-RESOLUTION:ROW DECLARATIONS CHECKER-OWNER-ABI:RESOLUTION-ROW-OFF + xt!
-' CHECKER-RESOLUTION:TOP DECLARATIONS CHECKER-OWNER-ABI:RESOLUTION-TOP-OFF + xt!
-' CHECKER-RESOLUTION:NS-INSTALL DECLARATIONS CHECKER-OWNER-ABI:RESOLUTION-NS-INSTALL-OFF + xt!
-' CHECKER-RESOLUTION:NS-DEFAULT DECLARATIONS CHECKER-OWNER-ABI:RESOLUTION-NS-DEFAULT-OFF + xt!
-;package
-
 \ These three read byte i only inside TBLEN: `and` evaluates both operands, so a
 \ bound test beside the read reads past a text that ends where its mapping does.
 : TBYTE=? ( n n -- bool ) {: i:n c:n :}
@@ -27852,7 +27623,6 @@ CHECKER-REG:}SCRATCH
    SR-RETIRE
    LOC-SNAP-RESET
    CHECKER-CAPTURE-SCRATCH-PREPARE
-   RWIN-DEFAULT                         \ a captured image observes no file
    ASIG-POOL-RELEASE
    CHECKER-PERSIST-PRIMS
    PES-BOOT-RETIRE
