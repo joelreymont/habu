@@ -52,7 +52,6 @@ private
 93 constant JW-RBRACK
 123 constant JW-LBRACE
 125 constant JW-RBRACE
-255 constant JW-BYTE-MAX
 
 10 constant JW-RADIX
 1 constant JW-PLAIN-N            \ escaped width of an ordinary byte
@@ -160,7 +159,6 @@ create JW-ESC-W
    buf n BUF:N>BLEN BUF:GROW ;
 
 : JW-C ( ptr writer n -- ptr writer ) {: w c:n :}
-   c 0 < c JW-BYTE-MAX > or if E-JSON-WRITE-BYTE throw then
    w JW-BUF@ {: buf:ptr :}
    buf 0= if
       w JW-LIVE {: vp:ptr cap:n used:n :}

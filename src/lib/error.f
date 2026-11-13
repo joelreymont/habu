@@ -102,7 +102,7 @@ require src/lib/prelude.f
 -3100 constant E-JSON-WRITE-FIRST
 -3199 constant E-JSON-WRITE-LAST
 -3100 constant E-JSON-WRITE-CAPACITY   \ the value does not fit the caller's output buffer
--3101 constant E-JSON-WRITE-BYTE       \ a byte outside 0-255, a negative U or indent, or string, key or part text that is not UTF-8
+-3101 constant E-JSON-WRITE-BYTE       \ a negative U or indent, or string, key or part text that is not UTF-8
 -3102 constant E-JSON-WRITE-STATE      \ writer not open, or a call its layout refuses
 -3103 constant E-JSON-WRITE-OUTPUT     \ output buffer is null, or its capacity is negative
 -3104 constant E-JSON-WRITE-SOURCE     \ appended span is negative, null with a positive length, or inside a growable output past its written bytes
