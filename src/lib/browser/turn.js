@@ -59,18 +59,20 @@
 //   0 hello: a is the event's address
 //   1 fetch: a, b a path fetched relative to the page; outside 2xx it fails
 //   2 draw: a, b instance rows, b rows of 72 bytes: twelve f32, a column-major
-//     3x4 transform from the mesh's u16 grid to world, then u32s: a held mesh
-//     handle, the instance's id, flags (bit 0 every face selected, the others
-//     0), the highlight word where the instance's face bits start, or
-//     0xFFFFFFFF for none, the colour, its bytes r, g, b (sRGB-encoded) and 0,
-//     and one whose low u16 is metallic and high u16 roughness, each 0 to
-//     65535 for 0 to 1. A row's offset plus the words its mesh's faces need
-//     (record 13) is at most the highlight's word count, and that sum is the
-//     words the row needs. c a column-major f32 4x4 matrix to clip space (x, y
-//     in [-1, 1], z in [0, 1], 0 nearest). A draw of 0 rows clears, names no
-//     handle and needs no words; a draw removes a shown SVG. A host may draw
-//     the last draw's rows again on its own, so records 6 and 14 keep them
-//     valid until the next draw
+//     3x4 transform from the mesh's grid position (its origin plus a vertex's
+//     u16s, record 13, an integer below 2^24 so exact in f32, which lets a
+//     host fit bounds to the same integers its shader places) to world, then
+//     u32s: a held mesh handle, the instance's id, flags (bit 0 every face
+//     selected, the others 0), the highlight word where the instance's face
+//     bits start, or 0xFFFFFFFF for none, the colour, its bytes r, g, b
+//     (sRGB-encoded) and 0, and one whose low u16 is metallic and high u16
+//     roughness, each 0 to 65535 for 0 to 1. A row's offset plus the words
+//     its mesh's faces need (record 13) is at most the highlight's word
+//     count, and that sum is the words the row needs. c a column-major f32
+//     4x4 matrix to clip space (x, y in [-1, 1], z in [0, 1], 0 nearest). A
+//     draw of 0 rows clears, names no handle and needs no words; a draw
+//     removes a shown SVG. A host may draw the last draw's rows again on its
+//     own, so records 6 and 14 keep them valid until the next draw
 //   3 text: a, b UTF-8 text
 //   4 post: span a, b whose first c bytes are the path and the rest the body
 //   5 tree: a, b strict UTF-8 JSON rows {key, parent, label} with an optional
@@ -94,16 +96,23 @@
 //   12 read: a a file number a file event delivered, b an offset, c a length of
 //     at least 1, with b + c at most the file's size; each gets its own chunk
 //   13 mesh: a, b a span of a u32 vertex count V, 1 to 65,536, a u32 triangle
-//     count T, V vertices of 12 bytes and T triangles of three u16 indices
-//     below V, so b is 8 + 12V + 6T. A vertex is four u16, x, y, z on the
-//     mesh's grid and its face, then its surface normal as two i16,
+//     count T, the mesh's origin as three u32 x, y, z, each at most
+//     16,711,680 (2^24 - 65,536) so that it plus a u16 is below 2^24 and
+//     exact in f32, V vertices of 12 bytes and T triangles of three u16
+//     indices below V, so b is 20 + 12V + 6T. A vertex is four u16, x, y, z
+//     on the mesh's grid and its face, then its surface normal as two i16,
 //     octahedral: x, y of the unit vector's projection onto the octahedron,
 //     folded for z < 0, each in [-1, 1] as the i16 / 32767. The normal is in
 //     the grid's space, so the host takes it to world by the inverse
 //     transpose of the instance's 3x3 and normalises it, taking the
 //     triangle's own normal where the 3x3 is flat and the normal is
 //     perpendicular to the grid axis it collapses; how a module quantizes is
-//     the module's. c a handle not held, 1 to 0xFFFFFFFF, as a draw row's u32
+//     the module's. A vertex's grid position is the origin plus its x, y, z,
+//     added in u32 and taken exactly to f32 once before a row's transform,
+//     so the host and the shader see the same integers, and two
+//     meshes that reach one grid position by different origins draw it at
+//     the same clip position, bit for bit, under the same transform and
+//     matrix. c a handle not held, 1 to 0xFFFFFFFF, as a draw row's u32
 //     names it. Its faces need floor(F / 32) + 1 highlight words, F the
 //     highest face of its vertices. The host copies the mesh and holds it by
 //     c until an unmesh
@@ -175,6 +184,8 @@ const ROW_BYTES = 72;
 const NO_OFFSET = 0xFFFFFFFF; // an instance row that reads no highlight words
 const MAX_HANDLE = 0xFFFFFFFFn; // a draw row's u32 names a mesh handle
 const MAX_VERTICES = 65536; // a mesh's u16 indices name at most this many
+const MAX_ORIGIN = 0xFF0000; // a mesh origin plus a u16 is exact in f32
+const MESH_HEAD = 20; // a mesh's counts and origin, in bytes
 const MAX_KEY = BigInt(Number.MAX_SAFE_INTEGER);
 // A tree row's keys, sorted: more is optional.
 const TREE_KEYS = new Set(["key,label,parent", "key,label,more,parent"]);
@@ -253,8 +264,9 @@ export class Module {
   // request's. occlude(boxes, id) with a copied Float32Array ->
   // Promise<Uint8Array> of a byte per box, called as the record is read; id
   // is as request's. Also
-  // mesh(handle, vertexCount, triangleCount, vertices, triangles) with copied
-  // Uint16Arrays, unmesh(handle), draw(rows, count, matrix) with the rows'
+  // mesh(handle, vertexCount, triangleCount, origin, vertices, triangles),
+  // origin the record's three u32s as numbers, with copied Uint16Arrays,
+  // unmesh(handle), draw(rows, count, matrix) with the rows'
   // bytes copied, highlight(words) with a copied Uint32Array,
   // ground(plane) with a copied Float32Array of four, or null for none,
   // text(string), tree(rows, selected), svg(copiedBytes), input(enabled), and
@@ -715,22 +727,30 @@ export class Module {
     const handle = Number(c);
     if (this.meshes.has(handle))
       throw new Error(`a mesh of handle ${handle}, which is already held`);
-    if (b < 8n) throw new RangeError(`a mesh's counts need 8 bytes, got ${b}`);
+    if (b < BigInt(MESH_HEAD))
+      throw new RangeError(`a mesh's counts and origin need ${MESH_HEAD} ` +
+        `bytes, got ${b}`);
     const span = this.span(a, b);
-    const counts = new DataView(span.buffer, span.byteOffset, 8);
-    const vertexCount = counts.getUint32(0, true);
-    const triangleCount = counts.getUint32(4, true);
+    const head = new DataView(span.buffer, span.byteOffset, MESH_HEAD);
+    const vertexCount = head.getUint32(0, true);
+    const triangleCount = head.getUint32(4, true);
     if (vertexCount === 0 || vertexCount > MAX_VERTICES)
       throw new RangeError(`a mesh of ${vertexCount} vertices, ` +
         `not 1 to ${MAX_VERTICES}`);
-    const size = 8n + 12n * BigInt(vertexCount) + 6n * BigInt(triangleCount);
+    const size = BigInt(MESH_HEAD) + 12n * BigInt(vertexCount) +
+      6n * BigInt(triangleCount);
     if (b !== size)
       throw new RangeError(`a mesh of ${vertexCount} vertices and ` +
         `${triangleCount} triangles is ${size} bytes, not ${b}`);
+    const origin = [8, 12, 16].map((k) => head.getUint32(k, true));
+    for (const o of origin)
+      if (o > MAX_ORIGIN)
+        throw new RangeError(`a mesh origin ${o} is past ${MAX_ORIGIN}, ` +
+          `so its grid positions would not all be exact in f32`);
     const bytes = span.slice();
-    const vertices = new Uint16Array(bytes.buffer, 8, 6 * vertexCount);
-    const triangles = new Uint16Array(bytes.buffer, 8 + 12 * vertexCount,
-      3 * triangleCount);
+    const vertices = new Uint16Array(bytes.buffer, MESH_HEAD, 6 * vertexCount);
+    const triangles = new Uint16Array(bytes.buffer,
+      MESH_HEAD + 12 * vertexCount, 3 * triangleCount);
     for (const index of triangles)
       if (index >= vertexCount)
         throw new RangeError(`a mesh index ${index} is not below its ` +
@@ -738,7 +758,9 @@ export class Module {
     let face = 0;
     for (let k = 3; k < vertices.length; k += 6)
       face = Math.max(face, vertices[k]);
-    this.host.mesh(handle, vertexCount, triangleCount, vertices, triangles);
+    this.host.mesh(handle, vertexCount, triangleCount, origin, vertices,
+      triangles);
+
     this.meshes.set(handle, Math.floor(face / 32) + 1);
   }
 

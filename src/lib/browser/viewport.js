@@ -146,10 +146,13 @@ struct Vertex {
   @location(6) octahedral: vec2<f32>,
   @location(7) paint: vec4<f32>, // r, g, b and the 0 byte
   @location(8) surface: vec2<f32>, // metallic, roughness
+  @location(9) origin: vec3<u32>, // the mesh's origin (record 13)
 }
 
+// @invariant: vs, the pick's vs and caster place a vertex at the same clip
+// position for the same grid position, columns and matrix.
 struct Corner {
-  @builtin(position) at: vec4<f32>,
+  @builtin(position) @invariant at: vec4<f32>,
   @location(0) n: vec3<f32>,
   @location(1) @interpolate(flat) face: u32,
   @location(2) @interpolate(flat) bits: vec2<u32>,
@@ -167,8 +170,11 @@ fn unfold(e: vec2<f32>) -> vec3<f32> {
   return normalize(n);
 }
 
+// The vertex in world: its grid position, origin plus u16s added in u32 and
+// taken to f32 once, so a position two meshes reach by different origins
+// has the same bits, through the row's columns.
 fn placed(v: Vertex) -> vec3<f32> {
-  let g = vec3<f32>(v.grid.xyz);
+  let g = vec3<f32>(v.grid.xyz + v.origin);
   return v.c0 * g.x + v.c1 * g.y + v.c2 * g.z + v.c3;
 }
 
@@ -301,7 +307,7 @@ fn keyed(n: vec3<f32>, v: vec3<f32>, f0: vec3<f32>, diffuse: vec3<f32>,
   return vec4<u32>(c.id, c.face, bitcast<u32>(c.at.z), 1u);
 }
 
-@vertex fn caster(v: Vertex) -> @builtin(position) vec4<f32> {
+@vertex fn caster(v: Vertex) -> @builtin(position) @invariant vec4<f32> {
   return light.clip * vec4<f32>(placed(v), 1.0);
 }
 
@@ -507,6 +513,7 @@ fn corner(c: u32, lo: vec3<f32>, hi: vec3<f32>) -> vec4<f32> {
 const NONE = [-1, 0, 0x3F800000];
 
 const ROW = 72; // bytes in an instance row
+const PLACED = ROW + 12; // a row with its mesh's origin, as grouped writes it
 const QUERIES = 4096; // WebGPU's most queries in one query set
 
 // The rows of the inverse of m, a column-major 4x4, in binary64 by
@@ -672,8 +679,9 @@ async function gpu(canvas, fail) {
 }
 
 // The rows regrouped by handle, each handle in the order it first appears,
-// and the [handle, first, count] runs over them.
-function grouped(rows, count) {
+// each followed by origin(handle)'s three u32s in PLACED bytes, and the
+// [handle, first, count] runs over them.
+function grouped(rows, count, origin) {
   const v = new DataView(rows.buffer, rows.byteOffset, rows.byteLength);
   const groups = new Map();
   for (let i = 0; i < count; i++) {
@@ -681,20 +689,26 @@ function grouped(rows, count) {
     if (!groups.has(handle)) groups.set(handle, []);
     groups.get(handle).push(i);
   }
-  const ordered = new Uint8Array(count * ROW);
+  const ordered = new Uint8Array(count * PLACED);
+  const out = new DataView(ordered.buffer);
   const runs = [];
   let at = 0;
   for (const [handle, list] of groups) {
     runs.push([handle, at, list.length]);
-    for (const i of list)
-      ordered.set(rows.subarray(i * ROW, (i + 1) * ROW), ROW * at++);
+    const o = origin(handle);
+    for (const i of list) {
+      ordered.set(rows.subarray(i * ROW, (i + 1) * ROW), PLACED * at);
+      o.forEach((v, k) => out.setUint32(PLACED * at + ROW + 4 * k, v, true));
+      at++;
+    }
   }
   return [ordered, runs];
 }
 
 // The renderer holds each mesh by handle as a vertex buffer of its 12-byte
-// vertices and an index buffer of its u16 triangles; draw writes the rows to
-// an instance buffer and issues one indexed, instanced draw per handle, and
+// vertices and an index buffer of its u16 triangles, and its origin; draw
+// writes the rows, each with its mesh's origin, to an instance buffer and
+// issues one indexed, instanced draw per handle, and
 // highlight writes the words to a storage buffer. Each buffer is padded to
 // the 4 bytes WebGPU's sizes and writes need, and the instance and highlight
 // buffers grow when a write needs more. draw samples 4 times per pixel: into
@@ -728,11 +742,12 @@ function setup(canvas, context, device, release, fail) {
     { arrayStride: 12, attributes: [
       { shaderLocation: 0, offset: 0, format: "uint16x4" },
       { shaderLocation: 6, offset: 8, format: "snorm16x2" }] },
-    { arrayStride: ROW, stepMode: "instance", attributes: [
+    { arrayStride: PLACED, stepMode: "instance", attributes: [
       column(0), column(1), column(2), column(3),
       { shaderLocation: 5, offset: 52, format: "uint32x3" },
       { shaderLocation: 7, offset: 64, format: "unorm8x4" },
-      { shaderLocation: 8, offset: 68, format: "unorm16x2" }] },
+      { shaderLocation: 8, offset: 68, format: "unorm16x2" },
+      { shaderLocation: 9, offset: ROW, format: "uint32x3" }] },
   ];
   const pipeline = device.createRenderPipeline({
     layout: "auto",
@@ -852,9 +867,10 @@ function setup(canvas, context, device, release, fail) {
   });
   let depth = depthTexture();
   let color = colorTexture();
-  // A held handle -> { vertices, indices, count, lo, hi }, lo and hi the
-  // corners of the grid box of the vertices its triangles name, null for a
-  // mesh of no triangles: record 13 allows vertices no triangle names.
+  // A held handle -> { vertices, indices, count, origin, lo, hi }, lo and hi
+  // the corners of the box of the grid positions (origin plus u16s) of the
+  // vertices its triangles name, null for a mesh of no triangles: record 13
+  // allows vertices no triangle names.
   const meshes = new Map();
   let instances = null;
   let words = null;
@@ -891,7 +907,8 @@ function setup(canvas, context, device, release, fail) {
   };
   // A failed mesh holds nothing: the vertex buffer goes if the index
   // buffer's creation throws.
-  const mesh = (handle, vertexCount, triangleCount, vertices, triangles) => {
+  const mesh = (handle, vertexCount, triangleCount, origin, vertices,
+      triangles) => {
     const held = filled(vertices, VERTEX);
     let indices;
     try {
@@ -902,11 +919,13 @@ function setup(canvas, context, device, release, fail) {
     }
     let lo = null, hi = null;
     for (const k of triangles) {
-      const g = vertices.subarray(6 * k, 6 * k + 3);
-      lo = lo ? lo.map((v, j) => Math.min(v, g[j])) : Array.from(g);
-      hi = hi ? hi.map((v, j) => Math.max(v, g[j])) : Array.from(g);
+      const g = Array.from(vertices.subarray(6 * k, 6 * k + 3),
+        (v, j) => v + origin[j]);
+      lo = lo ? lo.map((v, j) => Math.min(v, g[j])) : g;
+      hi = hi ? hi.map((v, j) => Math.max(v, g[j])) : g;
     }
-    meshes.set(handle, { vertices: held, indices, count: 3 * triangleCount, lo, hi });
+    meshes.set(handle, { vertices: held, indices, count: 3 * triangleCount,
+      origin: origin.slice(), lo, hi });
   };
   const unmesh = (handle) => {
     const { vertices, indices } = meshes.get(handle);
@@ -943,8 +962,8 @@ function setup(canvas, context, device, release, fail) {
     const lo = [Infinity, Infinity], hi = [-Infinity, -Infinity];
     let near = -Infinity, far = Infinity, tall = 0;
     for (let i = 0; i < count; i++) {
-      const c = Array.from({ length: 12 }, (_, k) => v.getFloat32(i * ROW + 4 * k, true));
-      const { lo: g0, hi: g1 } = meshes.get(v.getUint32(i * ROW + 48, true));
+      const c = Array.from({ length: 12 }, (_, k) => v.getFloat32(i * PLACED + 4 * k, true));
+      const { lo: g0, hi: g1 } = meshes.get(v.getUint32(i * PLACED + 48, true));
       if (!g0) continue;
       const corners = [];
       for (let k = 0; k < 8; k++) {
@@ -972,7 +991,8 @@ function setup(canvas, context, device, release, fail) {
 
   // rows, count instance rows of held meshes (turn.js); 0 rows clears.
   const draw = (rows, count, clip) => {
-    const [ordered, runs] = grouped(rows, count);
+    const [ordered, runs] = grouped(rows, count, (h) => meshes.get(h).origin);
+
     last = { runs, clip: new Float32Array(clip.slice().buffer) };
     if (count) {
       instances = grown(instances, ordered.byteLength, VERTEX | COPY_DST);

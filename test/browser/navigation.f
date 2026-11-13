@@ -16,7 +16,9 @@ CAST: BYTES>N ( ptr u8 -- n )
 variable TEXT-U
 variable PRESS-BUTTONS
 variable PRESS-MODS
-92 BUFFER: GEOMETRY
+\ Mesh 7: counts and origin, 0, 0, 0, in 20 bytes, six vertices in 72, six
+\ indices in 12.
+104 BUFFER: GEOMETRY
 144 BUFFER: INSTANCE-ROWS
 4 BUFFER: WORDS
 64 BUFFER: MATRIX
@@ -81,13 +83,13 @@ variable PRESS-MODS
    \ Vertex k at x, y and z 16384 on the grid, of a face; its normal, +z, is
    \ octahedral 0, 0, the zeroed bytes after it.
    {: k:n x:n y:n face:n :}
-   GEOMETRY 8 + k 12 * + {: at:ptr :}
+   GEOMETRY 20 + k 12 * + {: at:ptr :}
    x at U16!  y at 2 + U16!  16384 at 4 + U16!  face at 6 + U16! ;
 
 : INDEX! ( n n -- )
-   \ Vertex v at triangle corner k, the vertices ending at byte 80.
+   \ Vertex v at triangle corner k, the vertices ending at byte 92.
    {: v:n k:n :}
-   v GEOMETRY 80 + k 2 * + U16! ;
+   v GEOMETRY 92 + k 2 * + U16! ;
 
 : ROW ( n n n n n -- )
    \ Instance row r: scale 2^-15 and x, y moved by tx (f32 bits) and -1.
@@ -134,7 +136,7 @@ variable PRESS-MODS
    INIT-GEOMETRY
    0 EVENT BYTES>N 0 0 RECORD
    ROWS s\" ,\"more\":true}]" SB-APPEND SB$ 2 TREE
-   92 7 MESH 1 HIGHLIGHT 2 DRAW ;
+   104 7 MESH 1 HIGHLIGHT 2 DRAW ;
 
 : OPENED ( -- )
    \ The tree again with Shelf's two children.
@@ -201,18 +203,19 @@ variable PRESS-MODS
    then
    s" selected" IS? if
       s\" [{\"key\":1,\"parent\":0,\"label\":\"A\"}]" 2 TREE exit then
-   s" length" IS? if 91 8 MESH exit then
-   s" index" IS? if 6 5 INDEX! 92 8 MESH exit then
+   s" length" IS? if 103 8 MESH exit then
+   s" index" IS? if 6 5 INDEX! 104 8 MESH exit then
    s" unheld" IS? if 9 INSTANCE-ROWS 48 + U32! 2 DRAW exit then
    s" unmesh" IS? if 9 UNMESH exit then
    s" offset" IS? if
-      5 32768 16384 32 VERTEX 92 8 MESH
+      5 32768 16384 32 VERTEX 104 8 MESH
       8 INSTANCE-ROWS 48 + U32! 2 DRAW exit then
-   s" handle" IS? if 92 $100000000 MESH exit then
-   s" held" IS? if 92 7 MESH exit then
+   s" handle" IS? if 104 $100000000 MESH exit then
+   s" held" IS? if 104 7 MESH exit then
    s" shown" IS? if 7 UNMESH exit then
    s" short" IS? if 0 HIGHLIGHT exit then
-   s" remesh" IS? if 0 DRAW 7 UNMESH 92 7 MESH 2 DRAW exit then
+   s" remesh" IS? if 0 DRAW 7 UNMESH 104 7 MESH 2 DRAW exit then
+
    s" flags" IS? if 2 INSTANCE-ROWS 56 + U32! 2 DRAW exit then
    s" colour" IS? if 1 INSTANCE-ROWS 67 + c! 2 DRAW exit then
    s" zero" IS? if 0 DRAW 0 HIGHLIGHT exit then

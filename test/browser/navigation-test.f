@@ -80,7 +80,7 @@ PATH-CAP BUFFER: FILE
    SB-RESET
    s" hello" LINE
    ROWS-WANT s\" ,\"more\":true}]" LINE
-   s" mesh 7 6 2" LINE
+   s" mesh 7 6 2 0 0 0" LINE
    s" highlight 1 01000000" LINE
    s" draw 2 7/10/0/0/ff7314/0/32768 7/11/1/-/2060c0/65535/0"
       LINE ;
@@ -138,7 +138,7 @@ PATH-CAP BUFFER: FILE
    START-WANT
    s" draw 0" LINE
    s" unmesh 7" LINE
-   s" mesh 7 6 2" LINE
+   s" mesh 7 6 2 0 0 0" LINE
    s" draw 2 7/10/0/0/ff7314/0/32768 7/11/1/-/2060c0/65535/0"
       LINE
    s" a mesh no row draws unmeshes and meshes again by its handle" T-LABEL
@@ -203,7 +203,7 @@ PATH-CAP BUFFER: FILE
    s" more" s" more must be a boolean" REJECT
    s" unsent" s" parent 1 has more" REJECT
    s" selected" s" selected tree key" REJECT
-   s" length" s" triangles is 92 bytes, not 91" REJECT
+   s" length" s" triangles is 104 bytes, not 103" REJECT
    s" index" s" index 6 is not below its 6 vertices" REJECT
    s" unheld" s" a draw of handle 9, which is not held" REJECT
    s" unmesh" s" an unmesh of handle 9, which is not held" REJECT

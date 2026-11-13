@@ -31,7 +31,11 @@
 \ and picks with id 5 a pixel of their face 1 that the identity leaves
 \ empty. Each picked event comes back as the text picked and its a, b, c and
 \ d in decimal. Typed "ground" sends the ground z = 0 with +z up,
-\ "ground-none" no ground.
+\ "ground-none" no ground. Typed "seam", once, sends meshes 4 and 5, two
+\ orange rectangles in one grid plane with origins 100000, 200000, 300000
+\ and 139000, 190000, 299000 that share the edge from grid 140000, 200000,
+\ 300000 to 140000, 240000, 300000, and draws them, ids 8 and 9, through one
+\ transform rotated about x then y.
 \ Built by `tools/hb-build.f -- --target wasm`, whose entry is MAIN.
 require src/lib/string.f
 require src/lib/browser/event.f
@@ -43,9 +47,14 @@ using BROWSER-EVENT
 CAST: >BYTES ( n -- ptr u8 )
 CAST: BYTES>N ( ptr u8 -- n )
 
-92 BUFFER: SQUARE-MESH
-50 BUFFER: TRIANGLE-MESH
-50 BUFFER: FLAT-MESH
+\ A mesh's counts and origin take 20 bytes; these three keep origin 0.
+104 BUFFER: SQUARE-MESH
+62 BUFFER: TRIANGLE-MESH
+62 BUFFER: FLAT-MESH
+80 BUFFER: SEAM-A
+80 BUFFER: SEAM-B
+144 BUFFER: SEAM-ROWS
+64 BUFFER: SEAM-MATRIX
 504 BUFFER: INSTANCE-ROWS
 360 BUFFER: METAL-ROWS
 8 BUFFER: WORDS
@@ -96,26 +105,76 @@ variable ECHO-U
 : VERTEX ( ptr u8 n n n n -- )
    \ Vertex k of the mesh at m, at x, y and z 0 on the grid, of a face.
    {: m:ptr k:n x:n y:n face:n :}
-   m 8 + k 12 * + {: at:ptr :}
+   m 20 + k 12 * + {: at:ptr :}
    x at U16!  y at 2 + U16!  0 at 4 + U16!  face at 6 + U16! ;
 
 : SQUARE ( -- )
    \ The unit square's lower-left triangle is face 0, its upper-right face 1;
-   \ its normals are +z, octahedral 0, 0; the six indices end at byte 92.
+   \ its normals are +z, octahedral 0, 0; the six indices end at byte 104.
    SQUARE-MESH {: m:ptr :}
    6 m U32!  2 m 4 + U32!
    m 0 0 0 0 VERTEX  m 1 1 0 0 VERTEX  m 2 0 1 0 VERTEX
    m 3 1 0 1 VERTEX  m 4 1 1 1 VERTEX  m 5 0 1 1 VERTEX
-   6 0 do i m 80 + i 2 * + U16! loop ;
+   6 0 do i m 92 + i 2 * + U16! loop ;
 
 : TRIANGLE ( ptr u8 n n -- )
    \ The unit square's lower-left half as face 34, whose highlight bit is bit
-   \ 2 of the second word; the indices end at byte 50.
+   \ 2 of the second word; the indices end at byte 62.
    {: m:ptr ox:n oy:n :}
    3 m U32!  1 m 4 + U32!
    m 0 0 0 34 VERTEX  m 1 1 0 34 VERTEX  m 2 0 1 34 VERTEX
-   3 0 do ox m 16 + i 12 * + U16!  oy m 18 + i 12 * + U16! loop
-   3 0 do i m 44 + i 2 * + U16! loop ;
+   3 0 do ox m 28 + i 12 * + U16!  oy m 30 + i 12 * + U16! loop
+   3 0 do i m 56 + i 2 * + U16! loop ;
+
+: ORIGIN ( ptr u8 n n n -- )
+   \ The mesh at m's origin x, y, z.
+   {: m:ptr x:n y:n z:n :}
+   x m 8 + U32!  y m 12 + U32!  z m 16 + U32! ;
+
+: CORNER ( ptr u8 n n n n -- )
+   \ Vertex k of the mesh at m at x, y and z on its grid, of face 0, its
+   \ normal +z, octahedral 0, 0.
+   {: m:ptr k:n x:n y:n z:n :}
+   m 20 + k 12 * + {: at:ptr :}
+   x at U16!  y at 2 + U16!  z at 4 + U16! ;
+
+: QUAD ( ptr u8 n n n n n -- )
+   \ The mesh at m, the rectangle x0..x1 by y0..y1 at z on its grid: vertices
+   \ 0 to 3 counterclockwise from x0, y0 and triangles 0 1 2 and 0 2 3, so
+   \ each side is a whole triangle edge; the indices end at byte 80.
+   {: m:ptr x0:n y0:n x1:n y1:n z:n :}
+   4 m U32!  2 m 4 + U32!
+   m 0 x0 y0 z CORNER  m 1 x1 y0 z CORNER
+   m 2 x1 y1 z CORNER  m 3 x0 y1 z CORNER
+   0 m 68 + U16!  1 m 70 + U16!  2 m 72 + U16!
+   0 m 74 + U16!  2 m 76 + U16!  3 m 78 + U16! ;
+
+: SEAM-ROW ( n n -- )
+   \ Seam row r draws mesh handle orange, id handle + 4, through 2^-15 R
+   \ about the grid's 140000, 220000, 300000, R a turn about x of cos 0.6,
+   \ sin 0.8, then one about y of cos 0.8, sin 0.6 (f32 bits, column-major).
+   {: r:n handle:n :}
+   SEAM-ROWS r 72 * + {: at:ptr :}
+   $37CCCCCD at U32!  0 at 4 + U32!  $B799999A at 8 + U32!
+   $3775C28F at 12 + U32!  $3799999A at 16 + U32!  $37A3D70A at 20 + U32!
+   $373851EC at 24 + U32!  $B7CCCCCD at 28 + U32!  $3775C28F at 32 + U32!
+   $C11EFC00 at 36 + U32!  $4052F000 at 40 + U32!  $C0C41800 at 44 + U32!
+   handle at 48 + U32!  handle 4 + at 52 + U32!  $FFFFFFFF at 60 + U32!
+   $FF at 64 + c!  $73 at 65 + c!  $14 at 66 + c!  32768 at 70 + U16! ;
+
+: SEAM ( -- )
+   \ Mesh 4 spans grid x 100000..140000, mesh 5 140000..180000; both y
+   \ 200000..240000 at z 300000. The matrix takes x and y by 0.6 and z to
+   \ 0.3z + 0.5.
+   SEAM-A 100000 200000 300000 ORIGIN  SEAM-A 0 0 40000 40000 0 QUAD
+   SEAM-B 139000 190000 299000 ORIGIN
+   SEAM-B 1000 10000 41000 50000 1000 QUAD
+   0 4 SEAM-ROW  1 5 SEAM-ROW
+   $3F19999A SEAM-MATRIX U32!  $3F19999A SEAM-MATRIX 20 + U32!
+   $3E99999A SEAM-MATRIX 40 + U32!  $3F000000 SEAM-MATRIX 56 + U32!
+   $3F800000 SEAM-MATRIX 60 + U32!
+   13 SEAM-A BYTES>N 80 4 RECORD  13 SEAM-B BYTES>N 80 5 RECORD
+   2 SEAM-ROWS BYTES>N 2 SEAM-MATRIX BYTES>N RECORD ;
 
 : PLACE ( n n n n -- )
    \ Row r draws mesh handle scaled by 0.8 and moved to x tx and y ty (f32
@@ -173,9 +232,9 @@ variable ECHO-U
    SQUARE  TRIANGLE-MESH 14043 32767 TRIANGLE
    FLAT-MESH 32767 0 TRIANGLE
    2 WORDS U32!  4 WORDS 4 + U32!  IDENTITY  INSTANCES
-   13 SQUARE-MESH BYTES>N 92 1 RECORD
-   13 TRIANGLE-MESH BYTES>N 50 2 RECORD
-   13 FLAT-MESH BYTES>N 50 3 RECORD
+   13 SQUARE-MESH BYTES>N 104 1 RECORD
+   13 TRIANGLE-MESH BYTES>N 62 2 RECORD
+   13 FLAT-MESH BYTES>N 62 3 RECORD
    6 WORDS BYTES>N 2 0 RECORD
    INSTANCE-ROWS 5 DRAW ;
 
@@ -281,6 +340,8 @@ variable ECHO-U
    s" many" IS? if MANY exit then
    s" pick" IS? if PICKS exit then
    s" nearer" IS? if NEARER exit then
+   s" seam" IS? if SEAM exit then
+
    s" broken" IS? if s" <svg>" SVG exit then
    s" on" IS? if 9 1 0 0 RECORD exit then
    s" off" IS? if 9 0 0 0 RECORD exit then
