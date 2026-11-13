@@ -561,8 +561,7 @@ $3880 constant APPEND-CELL
 $3888 constant POSTPONE-CELL
 $3898 constant LITERAL-CELL
 \ A declaration makes each child word through CHILD-CELL's CHILD-RUN, with a
-\ CHILD-ABI shape code; FIVE-CHILD-CELL holds its five-operand form.
-$38A8 constant FIVE-CHILD-CELL
+\ CHILD-ABI shape code.
 $38B0 constant CHILD-CELL
 \ A definer's type and effect values are schema nodes the running engine's
 \ CHECK:TYPE-OP, which this cell holds, makes from a TYPE-OP-ABI code.

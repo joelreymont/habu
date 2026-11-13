@@ -1057,16 +1057,18 @@ variable TDECL-EVAL-ARMED
 
 private
 
-\ The engine's cells hold INTERPRETER:CHILD-RUN-FIVE and CHILD-RUN as raw
-\ execution tokens.
-CAST: AS-CHILD-RUN ( n -- [ ptr u8 n n n -- ] )
+\ The engine's cell holds CHILD-RUN as a raw execution token.
 CAST: AS-STORAGE-RUN ( n -- [ ptr u8 n n n ptr u8 n -- n ] )
 
-\ Makes the child word NAME through CHILD-RUN, of a CHILD-ABI SHAPE and PARAM. A
-\ definer reaches the running engine through the cell, never by name: inside a
-\ build a name binds the tree's copy.
+\ A definer reaches the running engine through the cell, never by name: inside
+\ a build a name binds the tree's copy.
+: TDECL-CHILD-RUN ( ptr u8 n n n ptr u8 n -- n )
+   data-base PROVIDED-XT:CHILD-CELL + @ AS-STORAGE-RUN execute ;
+
+\ Makes the child word NAME through CHILD-RUN, of a CHILD-ABI SHAPE and PARAM.
 : TDECL-CHILD ( ptr u8 n n n -- )
-   data-base PROVIDED-XT:FIVE-CHILD-CELL + @ AS-CHILD-RUN execute ;
+   {: na:ptr nu:n shape:n param:n :}
+   na nu shape param NULL-PTR 0 TDECL-CHILD-RUN drop ;
 
 public
 
@@ -1074,8 +1076,7 @@ public
 \ makes a child, and answers its effect handle.
 : TDECL-STORAGE-CHILD ( ptr u8 n n ptr u8 n -- n )
    {: na:ptr nu:n shape:n ta:ptr tu:n :}
-   na nu shape 0 ta tu
-   data-base PROVIDED-XT:CHILD-CELL + @ AS-STORAGE-RUN execute ;
+   na nu shape 0 ta tu TDECL-CHILD-RUN ;
 
 \ The structures.f field words, OFF bytes into a record.
 : TDECL-CELL-CHILD ( ptr u8 n n -- ) {: na:ptr nu:n off:n :}

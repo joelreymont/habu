@@ -2325,9 +2325,6 @@ variable DEF-VALUE
    OVERLAY-GUARD
    a u shape param ta tu CHILD-DEFINE ;
 
-: CHILD-RUN-FIVE ( ptr u8 n n n -- )
-   NULL-PTR 0 CHILD-RUN drop ;
-
 \ A qualified linear name is refused by the certifier before DEF-QUALIFY can
 \ create its namespace. A second colon is left to DEF-QUALIFY's syntax refusal.
 : LINEAR-QUALIFIED? ( -- bool )
@@ -2879,7 +2876,6 @@ public
    ['] DEFINE-RUN data-base PROVIDED-XT:DEFINE-CELL + xt!
    ['] APPEND-RUN data-base PROVIDED-XT:APPEND-CELL + xt!
    ['] POSTPONE-RUN data-base PROVIDED-XT:POSTPONE-CELL + xt!
-   ['] CHILD-RUN-FIVE data-base PROVIDED-XT:FIVE-CHILD-CELL + xt!
    ['] CHILD-RUN data-base PROVIDED-XT:CHILD-CELL + xt!
    ['] LITERAL-RUN data-base PROVIDED-XT:LITERAL-CELL + xt!
    ['] CHECK:TYPE-OP data-base PROVIDED-XT:TYPE-OP-CELL + xt! ;

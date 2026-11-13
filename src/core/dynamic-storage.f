@@ -201,8 +201,9 @@ CONTROL-CELLS 1+ cells constant WIDTH-OFF
 : HEAD-CTL ( ptr ptr a -- ptr n ) CTL-OFF + byte-view cell-view ;
 : HEAD-WIDTH ( ptr ptr a -- n ) WIDTH-OFF + byte-view cell-view @ ;
 
-\ Element idx of the block; it reads the width inline so an access stays one
-\ call deep.
+\ Element idx of the block. Growth can replace the mapping, so it fetches the
+\ head on every access; the width is read inline so an access stays one call
+\ deep.
 : ELEMENT ( n ptr ptr a -- ptr a )
    {: idx:n cb:ptr :}
    cb @  idx  cb WIDTH-OFF + byte-view cell-view @  * + ;
