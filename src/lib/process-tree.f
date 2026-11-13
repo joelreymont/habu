@@ -64,9 +64,7 @@ variable WALKING                    \ 1 while a walk, a CATCHES? or a CPU-NS hol
 \ SIGKILL is 9 on every host; SIGSTOP is not one number.
 9 constant SIGKILL
 : SIGSTOP ( -- n )
-   HB-TARGET-MACOS? if 17 exit then
-   HB-TARGET-LINUX-KERNEL? if 19 exit then
-   E-PROC-HOST throw ;
+   HB-TARGET-MACOS? if 17 else 19 then ;
 
 : MEMBER ( n -- n ) {: i:n :}
    i MEMBERS @ ;
@@ -385,9 +383,7 @@ variable CUR
    loop ;
 
 : SCAN ( -- )
-   HB-TARGET-MACOS? if SCAN-MACOS exit then
-   HB-TARGET-LINUX-KERNEL? if SCAN-LINUX exit then
-   E-PROC-HOST throw ;
+   HB-TARGET-MACOS? if SCAN-MACOS else SCAN-LINUX then ;
 
 : PASS ( -- bool )
    0 ADDED !
@@ -520,9 +516,7 @@ FUNCTION: SYSCTL sysctl ( ptr u8 n ptr u8 ptr u8 ptr u8 n -- i32 )
    SIGCGT-AT HEX-AT sig CAUGHT-BIT? ;
 
 : CATCHES-HOST? ( n n -- bool ) {: pid:n sig:n :}
-   HB-TARGET-MACOS? if pid sig CATCHES-MACOS? exit then
-   HB-TARGET-LINUX-KERNEL? if pid sig CATCHES-LINUX? exit then
-   E-PROC-HOST throw ;
+   HB-TARGET-MACOS? if pid sig CATCHES-MACOS? else pid sig CATCHES-LINUX? then ;
 
 \ macOS: proc_pid_rusage with RUSAGE_INFO_V2 (2) fills a struct rusage_info_v2
 \ of 160 bytes (sys/resource.h in the local SDK): ri_user_time and
@@ -631,9 +625,7 @@ FUNCTION: TIMEBASE-INFO mach_timebase_info ( ptr u8 -- i32 )
 : CPU-HOST ( n -- n ) {: pid:n :}
    0 MEMBER-N !
    pid JOIN
-   HB-TARGET-MACOS? if CPU-MACOS exit then
-   HB-TARGET-LINUX-KERNEL? if CPU-LINUX exit then
-   E-PROC-HOST throw ;
+   HB-TARGET-MACOS? if CPU-MACOS else CPU-LINUX then ;
 
 \ CPU-NS's reading, run with WALKING held.
 : CPU-READ ( n -- n )

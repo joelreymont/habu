@@ -76,19 +76,13 @@ private
 5 constant SIGTRAP
 
 : SIGBUS ( -- n )
-   HB-TARGET-LINUX-KERNEL? if 7 exit then
-   HB-TARGET-MACOS? if 10 exit then
-   E-PROC-HOST throw ;
+   HB-TARGET-LINUX-KERNEL? if 7 else 10 then ;
 
 : SIG-BLOCK ( -- n )
-   HB-TARGET-LINUX-KERNEL? if 0 exit then
-   HB-TARGET-MACOS? if 1 exit then
-   E-PROC-HOST throw ;
+   HB-TARGET-LINUX-KERNEL? if 0 else 1 then ;
 
 : SIG-SETMASK ( -- n )
-   HB-TARGET-LINUX-KERNEL? if 2 exit then
-   HB-TARGET-MACOS? if 3 exit then
-   E-PROC-HOST throw ;
+   HB-TARGET-LINUX-KERNEL? if 2 else 3 then ;
 
 PROCESS-SYMBOLS
 

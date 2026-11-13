@@ -1,9 +1,9 @@
 ---
-title: Drop the host arms the target line makes dead
+title: Delete E-PROC-HOST once Tender stops naming it
 status: open
 priority: 2
 issue-type: task
 created-at: "2026-11-12T20:21:50.955112+02:00"
 ---
 
-Problem: words such as src/lib/signal.f SIGUSR1 (:36-39) and src/lib/time-cpu.f THREAD-CPU-CLOCK (:33-36) end in 'E-PROC-HOST throw' for a host that is neither Linux nor macOS. src/lib/ffi-abi.f:28 states its targets with ?TARGET, so a file that reaches it through its requires cannot load on any other target, so in those files that arm never runs and E-PROC-HOST (src/lib/error.f:58) states a second time what the target line states. Acceptance: in every file that reaches ffi-abi.f, the words choose between the targets the line admits with no third arm; E-PROC-HOST is deleted if nothing else throws it; the chain build reaches its fixpoint and the suite passes. Depends: none. Claim: unassigned.
+Problem: nothing in Habu throws E-PROC-HOST (src/lib/error.f:59): every file that threw it reaches src/lib/ffi-abi.f, whose target line admits only Linux and macOS. Tender's src/failures.f:423 still maps it, so deleting it now breaks Tender's load. Acceptance: Tender no longer names E-PROC-HOST and error.f no longer defines it. Depends: Tender drops its arm (asked of kevin). Claim: unassigned.

@@ -134,13 +134,9 @@ $10 constant SPEC-BYTES             \ struct __kernel_timespec: two __s64
 
 4 constant ERR-INTR
 : ERR-TIME ( -- n )
-   HB-TARGET-LINUX-KERNEL? if $3E exit then
-   HB-TARGET-MACOS? if 101 exit then
-   E-PROC-HOST throw ;
+   HB-TARGET-LINUX-KERNEL? if $3E else 101 then ;
 : ERR-CANCELED ( -- n )
-   HB-TARGET-LINUX-KERNEL? if $7D exit then
-   HB-TARGET-MACOS? if 89 exit then
-   E-PROC-HOST throw ;
+   HB-TARGET-LINUX-KERNEL? if $7D else 89 then ;
 
 1000 constant MS-PER-S
 1000000 constant NS-PER-MS

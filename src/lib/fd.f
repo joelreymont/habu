@@ -5,8 +5,7 @@
 \ asked one are E-FS-IO, which TRY-WRITE-FULL answers as how far its write got;
 \ a negative length is E-SPAN-LENGTH. A refused
 \ PIPE-PAIR, FD-CLOEXEC!, FD-NOSIGPIPE! or WITH-NOSIGPIPE fcntl is
-\ E-PROC-OUTPUT, and O-NONBLOCK and F-DUPFD-CLOEXEC throw E-PROC-HOST on a host
-\ that is neither Linux nor macOS.
+\ E-PROC-OUTPUT.
 \ Signals and descriptors stay the caller's.
 \ STORAGE CLASS. TASK-LOCAL: one pollfd row, and src/lib/fs.f's task-local path
 \ and stat buffers for TRY-FIFO-WRITER; byte spans stay with the caller.
@@ -56,16 +55,12 @@ ENUM wrote all none part ;ENUM
 \ silently drops a bit the host does not know, so the wrong constant arms
 \ nothing at all and the descriptor stays blocking.
 : O-NONBLOCK ( -- n )
-   HB-TARGET-LINUX-KERNEL? if $800 exit then
-   HB-TARGET-MACOS? if 4 exit then
-   E-PROC-HOST throw ;
+   HB-TARGET-LINUX-KERNEL? if $800 else 4 then ;
 
 \ F_DUPFD_CLOEXEC is not one number either: 1030 (F_LINUX_SPECIFIC_BASE + 6) on
 \ both Linux targets, 67 on macOS.
 : F-DUPFD-CLOEXEC ( -- n )
-   HB-TARGET-LINUX-KERNEL? if 1030 exit then
-   HB-TARGET-MACOS? if 67 exit then
-   E-PROC-HOST throw ;
+   HB-TARGET-LINUX-KERNEL? if 1030 else 67 then ;
 
 : FD-CLOEXEC! ( fd -- ) {: fd :}
    fd FD>N F-SETFD FD-CLOEXEC fcntl 0 <> if E-PROC-OUTPUT throw then ;

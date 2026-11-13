@@ -27,34 +27,22 @@ private
 \ would make this suite red on the other target. A third target is refused by
 \ name.
 : EXPECT-SIGUSR1 ( -- n )
-   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if 10 exit then
-   HB-TARGET-MACOS? if 30 exit then
-   E-PROC-HOST throw ;
+   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if 10 else 30 then ;
 
 : EXPECT-SIGUSR2 ( -- n )
-   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if 12 exit then
-   HB-TARGET-MACOS? if 31 exit then
-   E-PROC-HOST throw ;
+   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if 12 else 31 then ;
 
 : EXPECT-SIGSTOP ( -- n )
-   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if 19 exit then
-   HB-TARGET-MACOS? if 17 exit then
-   E-PROC-HOST throw ;
+   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if 19 else 17 then ;
 
 : EXPECT-SIGCONT ( -- n )
-   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if 18 exit then
-   HB-TARGET-MACOS? if 19 exit then
-   E-PROC-HOST throw ;
+   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if 18 else 19 then ;
 
 : SA-FLAGS-OFF ( -- n )
-   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if $88 exit then
-   HB-TARGET-MACOS? if $0C exit then
-   E-PROC-HOST throw ;
+   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if $88 else $0C then ;
 
 : SA-RESTART ( -- n )
-   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if $10000000 exit then
-   HB-TARGET-MACOS? if 2 exit then
-   E-PROC-HOST throw ;
+   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if $10000000 else 2 then ;
 
 \ glibc supplies the x86-64 restorer when it installs a sigaction, including
 \ the default disposition restored by RELEASE. It is part of the observed

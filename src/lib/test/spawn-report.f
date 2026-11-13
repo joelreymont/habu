@@ -60,9 +60,7 @@ variable MARK-U
    fd FD:F-GETFL 0 fcntl ;
 
 : TIO-GET ( -- n )
-   HB-TARGET-MACOS? if TIO-GET-BSD exit then
-   HB-TARGET-LINUX-KERNEL? if TIO-GET-SYSV exit then
-   E-PROC-HOST throw ;
+   HB-TARGET-MACOS? if TIO-GET-BSD else TIO-GET-SYSV then ;
 
 : FD-TTY? ( n -- bool ) {: fd:n :}
    fd TIO-GET TIO-BUF ioctl 0 = ;
