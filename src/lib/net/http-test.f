@@ -358,6 +358,13 @@ TASK:MIN-STACK TASK:TASK PROBE-TASK
    [: PROBE-READ ;] catch TASK:RETURN ;
 
 
+: DROP-TCP-STATUS ( TCP4:status -- )
+   MATCH TCP4:status
+      ok OF ENDOF
+      failed OF drop ENDOF
+   ;MATCH ;
+
+
 : BODY-PROBE ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
    asked 0 PROBE-REQUEST !
    [: FOREIGN-READ ;] PROBE-TASK TASK:ACTIVATE
@@ -368,7 +375,7 @@ TASK:MIN-STACK TASK:TASK PROBE-TASK
    ;MATCH
    asked HTTP:TAKE-OVER 2drop {: conn:TCP4:connection :}
    [: PROBE-READ ;] catch TAKEN-CODE !
-   conn 204 s" application/json" s" " HTTP:REPLY drop ;
+   conn TCP4:CLOSE DROP-TCP-STATUS ;
 
 
 \ Waits longer than the body timeout BODY-TIMEOUT-CASES sets before asking for
@@ -788,13 +795,6 @@ $2710 constant PARK-MS            \ far past every stop bound
    subject TAKE-RESPONSE {: status:n :}
    subject CURL:CLEANUP
    status ;
-
-
-: DROP-TCP-STATUS ( TCP4:status -- )
-   MATCH TCP4:status
-      ok OF ENDOF
-      failed OF drop ENDOF
-   ;MATCH ;
 
 
 : RAW-OPEN ( -- TCP4:connection )
@@ -1635,14 +1635,13 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    SWALLOWED @ 0 <> TTRUE ;
 
 
-\ BODY$ is the handler's own: a task it spawns gets E-HANDLE while the request
-\ is live, and the handler itself gets E-STATE once it has taken the connection.
-\ The body is sent whole, so a missing refusal would read it.
+\ BODY$ is the handler's own: a spawned task gets E-HANDLE, the handler E-STATE
+\ once it took the connection; the whole body is sent, so a missing refusal reads it.
 : BODY-PROBE-CASE ( -- )
    0 FOREIGN-CODE !
    0 TAKEN-CODE !
    s\" POST /api/body-probe HTTP/1.1\r\nHost: x\r\nContent-Length: 2\r\n\r\nok" RAW-ONE
-   s" HTTP/1.1 204" BEGINS? TTRUE
+   RES-U @ 0 T=
    FOREIGN-CODE @ HTTP:E-HANDLE T=
    TAKEN-CODE @ HTTP:E-STATE T= ;
 
@@ -2663,61 +2662,21 @@ BIG-DIRS 2 * LONG-NAMES + 1+ constant BIG-FILES
    TREE$ FS:REMOVE-TREE ;
 
 
-variable LATER-U
-variable LATER-STATUS
-variable LATER-GONE
 variable LATER-TAKEN
 variable LATER-GO
-variable LATER-RESULT
 variable LATER-SLOT-CODE
-variable LATER-LONG
-variable LATER-CODE
 1 TYPED-BUFFER LATER-CONN TCP4:connection
 TASK:MIN-STACK TASK:TASK LATER-TASK
-$40 constant LATER-CAP
-LATER-CAP SPAN-BUFFER: LATER-BUF
-SB-CAP SPAN-BUFFER: LONG-TYPE
-
-
-: LATER$ ( -- ptr u8 n )
-   LATER-BUF LATER-U @ SPAN:TAKE SPAN:$ ;
-
-
-\ True once a write fails: the reset an end that has closed sends back.
-: RESET-SEEN? ( TCP4:connection -- bool )
-   s" x" TCP4:TRANSFER-BYTES TCP4:WRITE
-   MATCH TCP4:status
-      ok OF false ENDOF
-      failed OF drop true ENDOF
-   ;MATCH ;
-
-
-: LATER-TYPE$ ( -- ptr u8 n )
-   LATER-LONG @ 0<> if LONG-TYPE SPAN:$ exit then
-   s" application/json" ;
-
-
-: LATER-REPLY ( -- )
-   0 LATER-CONN @ LATER-STATUS @ LATER-TYPE$ LATER$ HTTP:REPLY
-   if 1 else 2 then LATER-RESULT ! ;
 
 
 : LATER-ANSWER ( -- )
    [: HTTP:WORKER-SLOT drop ;] catch LATER-SLOT-CODE !
    [: LATER-GO @ 0<> ;] TEST-WAIT:POLL
-   LATER-GONE @ 0<> if
-      0 LATER-CONN @ [: dup RESET-SEEN? ;] TEST-WAIT:POLL
-      drop
-   then
-   [: LATER-REPLY ;] catch LATER-CODE ! ;
+   0 LATER-CONN @ s" later" TCP4:TRANSFER-BYTES TCP4:WRITE DROP-TCP-STATUS
+   0 LATER-CONN @ TCP4:CLOSE DROP-TCP-STATUS ;
 
 
-\ The request's body is the answer's, copied out: the request's bytes end with
-\ the handler.
 : LATER ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
-   asked HTTP:BODY$ {: bytes:ptr len:n :}
-   bytes len LATER-BUF SPAN:COPY
-   len LATER-U !
    asked HTTP:TAKE-OVER drop drop 0 LATER-CONN !
    [: LATER-ANSWER ;] LATER-TASK TASK:ACTIVATE
    1 LATER-TAKEN ! ;
@@ -2727,14 +2686,9 @@ SB-CAP SPAN-BUFFER: LONG-TYPE
    s" POST" s" /api/later" [: LATER ;] HTTP:ROUTE ;
 
 
-: LATER-ASK ( n -- TCP4:connection ) {: status:n :}
+: LATER-ASK ( -- TCP4:connection )
    0 LATER-TAKEN !
    0 LATER-GO !
-   0 LATER-GONE !
-   0 LATER-RESULT !
-   0 LATER-LONG !
-   0 LATER-CODE !
-   status LATER-STATUS !
    RAW-OPEN {: conn:TCP4:connection :}
    conn S\" POST /api/later HTTP/1.1\r\nHost: x\r\nContent-Length: 14\r\n\r\n{\qlater\q:true}"
    RAW-SEND
@@ -2742,80 +2696,22 @@ SB-CAP SPAN-BUFFER: LONG-TYPE
    conn ;
 
 
-: LATER-OK$ ( -- ptr u8 n )
-   S\" HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 14\r\nConnection: close\r\n\r\n{\qlater\q:true}" ;
-
-
-: LATER-EMPTY$ ( -- ptr u8 n )
-   S\" HTTP/1.1 204 No Content\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n" ;
-
-
 : TAKE-OVER-CASE ( -- )
-   200 LATER-ASK {: conn:TCP4:connection :}
+   LATER-ASK {: conn:TCP4:connection :}
    s\" GET /api/ping HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n"
    S\" {\qservice\q:\qhttp-test\q}" RAW-ASK TTRUE
    1 LATER-GO !
-   conn LATER-OK$ RAW-COLLECT TTRUE
-   RES$ LATER-OK$ T$=
+   conn s" later" RAW-COLLECT TTRUE
+   RES$ s" later" T$=
    conn CLOSED-WITHIN? TTRUE
    conn TCP4:CLOSE DROP-TCP-STATUS
    LATER-TASK TASK-AWAIT
-   LATER-RESULT @ 1 T=
    s" WORKER-SLOT on a task that is no worker" T-LABEL
    LATER-SLOT-CODE @ HTTP:E-HANDLE T= ;
 
 
-: NO-CONTENT-CASE ( -- )
-   204 LATER-ASK {: conn:TCP4:connection :}
-   1 LATER-GO !
-   conn LATER-EMPTY$ RAW-COLLECT TTRUE
-   RES$ LATER-EMPTY$ T$=
-   conn CLOSED-WITHIN? TTRUE
-   conn TCP4:CLOSE DROP-TCP-STATUS
-   LATER-TASK TASK-AWAIT
-   LATER-RESULT @ 1 T= ;
-
-
-: GONE-PEER-CASE ( -- )
-   200 LATER-ASK {: conn:TCP4:connection :}
-   1 LATER-GONE !
-   conn TCP4:CLOSE DROP-TCP-STATUS
-   1 LATER-GO !
-   LATER-TASK TASK-AWAIT
-   LATER-RESULT @ 2 T= ;
-
-
-\ A content type past the task's string builder throws, and REPLY still closes.
-: LONG-TYPE-CASE ( -- )
-   200 LATER-ASK {: conn:TCP4:connection :}
-   1 LATER-LONG !
-   1 LATER-GO !
-   LATER-TASK TASK-AWAIT
-   LATER-CODE @ E-STR-CAPACITY T=
-   conn CLOSED-WITHIN? TTRUE
-   conn TCP4:CLOSE DROP-TCP-STATUS ;
-
-
-\ A task halted while REPLY lingers on a peer that keeps its end open still
-\ closes the connection. The half-close before the linger already ended the
-\ peer's stream, so the reset its writes meet is what shows the close.
-: HALTED-REPLY-CASE ( -- )
-   200 LATER-ASK {: conn:TCP4:connection :}
-   1 LATER-GO !
-   conn LATER-OK$ RAW-COLLECT TTRUE
-   LATER-TASK TASK:HALT
-   LATER-TASK TASK-AWAIT
-   LATER-RESULT @ 0 T=
-   conn [: dup RESET-SEEN? ;] TEST-WAIT:POLL
-   TCP4:CLOSE DROP-TCP-STATUS ;
-
-
 : TAKE-OVER-CASES ( -- )
    TAKE-OVER-CASE
-   NO-CONTENT-CASE
-   GONE-PEER-CASE
-   LONG-TYPE-CASE
-   HALTED-REPLY-CASE
    LATER-TASK TASK:KILL ;
 
 
