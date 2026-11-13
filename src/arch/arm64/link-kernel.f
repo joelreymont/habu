@@ -57,6 +57,8 @@ variable SCOPES-AT
 variable SCOPES-N
 variable SYMS-AT
 variable SYMS-N
+variable KTEXT-VA                    \ the values of the object's TEXT-VA and DATA-VA symbols, which READ fills
+variable KDATA-VA
 variable PRESETS-AT
 variable PRESETS-N
 variable CHECK-ROWS-AT               \ the checker rows' bytes in KOBJ
@@ -209,10 +211,10 @@ public
 : SYM-LABEL ( ptr u8 n -- label ) SYM >LABEL ;
 
 \ The address the target links its code at, from the kernel object.
-: TEXT-VA ( -- n ) s" TEXT-VA" SYM ;
+: TEXT-VA ( -- n ) KTEXT-VA @ ;
 
 \ The address the target maps its DATA at, from the kernel object.
-: DATA-VA ( -- n ) s" DATA-VA" SYM ;
+: DATA-VA ( -- n ) KDATA-VA @ ;
 
 \ The object's primitive rows, as the tree's writer registered them.
 : ROW-N ( -- n ) PRIMS-N @ ;
@@ -259,7 +261,8 @@ public
    file 0 KOBJ size FS:READ-SIZED
    size KOBJ-U !
    CHECK SECTIONS
-   DATA-START  s" DATA-START" SYM  s" DATA-START" SAME ;
+   DATA-START  s" DATA-START" SYM  s" DATA-START" SAME
+   s" TEXT-VA" SYM KTEXT-VA !  s" DATA-VA" SYM KDATA-VA ! ;
 
 \ States READ's object's primitive rows to the open build's checker in table
 \ order, which overloads keep; the section ends the object, which NEXT bounds.
