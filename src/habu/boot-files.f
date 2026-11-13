@@ -85,6 +85,7 @@ private
    CHECKER COMMON s" src/core/check-hook.f" ROW
    CHECKER COMMON s" src/core/cell-effects.f" ROW
    CHECKER COMMON s" src/core/declaration-transaction.f" ROW
+   CHECKER COMMON s" src/core/rollback-cells.f" ROW
    CHECKER COMMON s" src/core/generated-declaration.f" ROW
    DECL COMMON s" src/core/decl-event.f" ROW
    DECL COMMON s" src/core/structure-make.f" ROW
