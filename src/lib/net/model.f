@@ -160,6 +160,7 @@ STRUCTURE call DERIVE addr
    FIELD stopped bool
    FIELD key-split n
    FIELD dims n
+   FIELD deadline n
    FIELD input-tokens n
    FIELD cached-tokens n
    FIELD counted n
@@ -269,8 +270,10 @@ CAST: >RECEIPT ( ptr u8 -- ptr receipt )
 
 256 constant SCRATCH-INITIAL
 1000000 constant NS-PER-MS
-\ No byte for this long ends an exchange, curl 28 logged. A thinking model's
-\ reasoning items arrive at most 9 s apart (OpenAI, measured to 2 minutes).
+\ No byte for this long ends a chat, count or compaction, curl 28 logged; an
+\ embedding reply comes whole, so its call ends at its caller's deadline. A
+\ thinking model's reasoning items arrive at most 9 s apart (OpenAI, measured
+\ to 2 minutes).
 60 constant STALL-SECONDS
 \ The room each read of an event stream lands in; an event may span reads.
 16384 constant CHUNK-BYTES
@@ -786,6 +789,7 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    OPENAI c MODEL-CALL:EMBEDDING-KIND !
    construct call-kind chat c MODEL-CALL:KIND !
    0 c MODEL-CALL:DIMS !
+   0 c MODEL-CALL:DEADLINE !
    0 c MODEL-CALL:INPUT-COUNT !
    0 c MODEL-CALL:INPUT-U !
    0 c MODEL-CALL:RESPONSE-U !
@@ -876,6 +880,16 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
       tally OF c COUNT-URL$ ENDOF
       compaction OF c COMPACT-URL$ ENDOF
    ;MATCH ;
+
+: DIMS-DEADLINE? ( n n -- )
+   {: dims:n deadline:n :}
+   dims 0 <= deadline 0 <= or deadline CURL:MAX-TIMEOUT > or
+   if E-CONFIG throw then ;
+
+: DIMS-DEADLINE! ( n n ptr call -- )
+   {: dims:n deadline:n c :}
+   dims c MODEL-CALL:DIMS !
+   deadline c MODEL-CALL:DEADLINE ! ;
 
 public
 
@@ -1022,12 +1036,14 @@ public
    c ROW-NEW-AT ROW-BYTES REGION SPAN:$ BUF:N>BLEN c ROWS-BUF BUF:APPEND-SPAN
    c FORGET-GEN-REPLAY ;
 
-: EMBEDDING-MODEL! ( ptr u8 n n ptr call -- )
-   {: a:ptr u:n dims:n c :}
+\ The embedding model, its dimensions and the deadline in milliseconds that
+\ ends each embedding call, connect included.
+: EMBEDDING-MODEL! ( ptr u8 n n n ptr call -- )
+   {: a:ptr u:n dims:n deadline:n c :}
    c REQUIRE-REST
-   dims 0 <= if E-CONFIG throw then
+   dims deadline DIMS-DEADLINE?
    a u c EMBED-BUF REPLACE-SOME
-   dims c MODEL-CALL:DIMS !
+   dims deadline c DIMS-DEADLINE!
    construct call-kind embed c REPLAYED? if
       OPTION:NONE c MODEL-CALL:REPLAY-KIND !
    then
@@ -1269,16 +1285,17 @@ public
 \ such as its manifest digest, and is the vector space's identity: a changed
 \ artifact needs a new one even under the same tag, and the endpoint is a
 \ producer input outside it. Requests send truncate:false because Ollama
-\ truncates by default; a context overflow fails the call.
-: OLLAMA! ( ptr u8 n ptr u8 n ptr u8 n n ptr call -- )
-   {: endpoint:ptr endpoint-u:n model:ptr model-u:n identity:ptr identity-u:n dims:n c :}
+\ truncates by default; a context overflow fails the call. dims and the
+\ deadline in milliseconds are as EMBEDDING-MODEL! takes them.
+: OLLAMA! ( ptr u8 n ptr u8 n ptr u8 n n n ptr call -- )
+   {: endpoint:ptr endpoint-u:n model:ptr model-u:n identity:ptr identity-u:n dims:n deadline:n c :}
    c REQUIRE-REST
-   dims 0 <= if E-CONFIG throw then
+   dims deadline DIMS-DEADLINE?
    endpoint endpoint-u BASE-URL? 0= if E-CONFIG throw then
    endpoint endpoint-u c ENDPOINT-BUF REPLACE-SOME
    model model-u c EMBED-BUF REPLACE-SOME
    identity identity-u c IDENTITY-BUF REPLACE-SOME
-   dims c MODEL-CALL:DIMS !
+   dims deadline c DIMS-DEADLINE!
    OLLAMA c MODEL-CALL:EMBEDDING-KIND !
    construct call-kind embed c REPLAYED? if
       OPTION:NONE c MODEL-CALL:REPLAY-KIND !
@@ -3811,6 +3828,15 @@ ENUM dispatch-event armed faulted ;ENUM
    if c RESTORE construct lookup-event replayed exit then
    construct lookup-event missed ;
 
+: BOUND ( CURL:handle ptr call -- CURL:status )
+   {: h:CURL:handle c :}
+   c MODEL-CALL:KIND @ MATCH call-kind
+      embed OF h c MODEL-CALL:DEADLINE @ >MS CURL:TIMEOUT! ENDOF
+      chat OF h 1 STALL-SECONDS CURL:LOW-SPEED! ENDOF
+      tally OF h 1 STALL-SECONDS CURL:LOW-SPEED! ENDOF
+      compaction OF h 1 STALL-SECONDS CURL:LOW-SPEED! ENDOF
+   ;MATCH ;
+
 \ Sends the request on a fresh handle the land machine cleans up; the key is
 \ read once and wiped once libcurl copies it.
 : POST ( ptr call -- ptr call )
@@ -3826,7 +3852,7 @@ ENUM dispatch-event armed faulted ;ENUM
    c OPEN-HANDLE OPTION:SOME c MODEL-CALL:HANDLE !
    c CALL-HANDLE {: h:CURL:handle :}
    h c SET-HEADERS
-   h 1 STALL-SECONDS CURL:LOW-SPEED! c CHECK-STATUS
+   h c BOUND c CHECK-STATUS
    c REQUEST-URL$ c BODY$ c AS-POST
    c MODEL-CALL:KIND @ MATCH call-kind
       chat OF

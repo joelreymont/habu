@@ -1047,6 +1047,8 @@ variable KEPT-U
    i i-u s" bad-count" STR= if
       response [: S\" {\qembeddings\q:[]}" JSON:WRITE-RAW ;] HTTP:JSON! exit
    then
+   \ No reply: the connection stays open until the client closes it.
+   i i-u s" hold" STR= if r HTTP:TAKE-OVER 2drop HOLD-OPEN exit then
    i i-u s" bad-dims" STR= if
       response [: S\" {\qembeddings\q:[[0,1]]}" JSON:WRITE-RAW ;] HTTP:JSON! exit
    then
@@ -1184,7 +1186,7 @@ variable CHAT-NS    \ TIME:MONO-NS as the last CHAT-CODE began
 : CHAT ( -- ) s" valid" PREP M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT ;
 : FAILS ( ptr u8 n n -- ) {: a:ptr u:n want:n :} a u PREP CHAT-CODE want = ASSERT ;
 : INPUT-LEN ( n -- n ) {: u:n :} PAD u M MODEL:INPUT+ u ;
-: DIMS ( n -- n ) {: d:n :} s" test-embedding" d M MODEL:EMBEDDING-MODEL! d ;
+: DIMS ( n -- n ) {: d:n :} s" test-embedding" d 60000 M MODEL:EMBEDDING-MODEL! d ;
 
 
 : XS ( ptr u8 n -- ) {: a:ptr u:n :} u 0 ?do [char] x a i + c! loop ;
@@ -1333,7 +1335,7 @@ variable REFUSED-BASE-U
    c MODEL:OPEN
    MODEL-PEER:BASE-URL$ c MODEL:BASE-URL!
    s" test-generation" c MODEL:GENERATION-MODEL!
-   s" test-embedding" 3 c MODEL:EMBEDDING-MODEL!
+   s" test-embedding" 3 60000 c MODEL:EMBEDDING-MODEL!
    KEY-SERVICE$ KEY-ACCOUNT$ c MODEL:API-KEY!
    s" Read source evidence." c MODEL:SYSTEM!
    SCHEMA$ c MODEL:SCHEMA! ;
@@ -2058,7 +2060,7 @@ variable LANDED
 
 \ The call answers the embedding model it was last given.
 : EMBEDDING-NAMED ( -- )
-   s" named-embedding" 3 M MODEL:EMBEDDING-MODEL!
+   s" named-embedding" 3 60000 M MODEL:EMBEDDING-MODEL!
    M MODEL:EMBEDDING-MODEL$ s" named-embedding" STR= ASSERT
    3 DIMS drop
    M MODEL:EMBEDDING-MODEL$ s" test-embedding" STR= ASSERT ;
@@ -2073,7 +2075,7 @@ variable LANDED
 : SLASH-BASE ( n -- n ) s" http://x/" M MODEL:BASE-URL! ;
 : USER-BASE ( n -- n ) s" https://user:token@x" M MODEL:BASE-URL! ;
 : QUERY-BASE ( n -- n ) s" https://x/v1?key=k" M MODEL:BASE-URL! ;
-: USER-OLLAMA ( n -- n ) s" http://user:token@x/api/embed" s" bge-m3" s" bge-m3" 3 M MODEL:OLLAMA! ;
+: USER-OLLAMA ( n -- n ) s" http://user:token@x/api/embed" s" bge-m3" s" bge-m3" 3 60000 M MODEL:OLLAMA! ;
 : BASES ( -- )
    0 [: FTP-BASE ;] CODE-OF MODEL:E-CONFIG = ASSERT
    0 [: BARE-BASE ;] CODE-OF MODEL:E-CONFIG = ASSERT
@@ -3493,9 +3495,22 @@ variable COUNTED-U
 : IDENTITY$ ( -- ptr u8 n ) s" 7907646426070047a77226ac3e684fbbe8410524f7b4a74d02837e43f2146bab" ;
 
 
-: OLLAMA-DIMS ( n -- n )
-   {: d:n :}
-   MODEL-PEER:OLLAMA-URL$ s" bge-m3:567m" IDENTITY$ d M MODEL:OLLAMA! d ;
+: OLLAMA-AT ( n n -- )
+   {: d:n deadline:n :}
+   MODEL-PEER:OLLAMA-URL$ s" bge-m3:567m" IDENTITY$ d deadline M MODEL:OLLAMA! ;
+
+: OLLAMA-DIMS ( n -- n ) {: d:n :} d 60000 OLLAMA-AT d ;
+
+
+\ A held embedding reply ends the call at its 300 ms deadline, within 2 s.
+2000000000 constant DEADLINE-NS
+: DEADLINE-ENDS ( -- )
+   3 300 OLLAMA-AT
+   s" hold" INPUTS
+   mono-ns {: t0:n :}
+   EMBED-CODE MODEL:E-TRANSPORT = ASSERT
+   mono-ns t0 - DEADLINE-NS < ASSERT
+   MODEL-PEER:AWAIT-HOLD ;
 
 
 : OLLAMA-CASES ( -- )
@@ -3513,6 +3528,7 @@ variable COUNTED-U
    s" too-large" INPUTS
    EMBED-CODE MODEL:E-CAPACITY = ASSERT
    M MODEL:HTTP-STATUS 400 = ASSERT
+   DEADLINE-ENDS
    0 [: OLLAMA-DIMS ;] CODE-OF MODEL:E-CONFIG = ASSERT ;
 
 

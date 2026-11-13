@@ -97,6 +97,8 @@ E-CURL-PLATFORM constant E-PLATFORM
 E-CURL-STATE constant E-STATE
 E-CURL-RESULT constant E-RESULT
 
+$7FFFFFFF constant MAX-TIMEOUT            \ a C long option's own ceiling
+
 private
 
 0 constant OPT-LONG                       \ CURLOPTTYPE_LONG
@@ -139,7 +141,6 @@ INFO-STRING 21 + constant INFO-PRIVATE    \ CURLINFO_PRIVATE
 2 constant PROTO-HTTPS                    \ CURLPROTO_HTTPS
 PROTO-HTTP PROTO-HTTPS or constant PROTO-WEB
 
-$7FFFFFFF constant MAX-TIMEOUT            \ a C long option's own ceiling
 999 constant MAX-STATUS
 $08 constant CELL-BYTES
 
