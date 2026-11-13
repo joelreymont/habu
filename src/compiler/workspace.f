@@ -81,8 +81,6 @@ TRUSTED: DECLARE ( n n -- ) {: operand:n kind:n :}
    s"  : " LBUF-APP name nameu LBUF-NAME, {: pna:ptr pnu:n :}
    kind BUFFER-KIND = if
       s"  ( n -- ptr " LBUF-APP type typeu LBUF-APP s"  ) " LBUF-APP
-      LBUF-N @ LBUF-DEC,
-      s"  DYNAMIC-STORAGE:BOUNDS " LBUF-APP
    else
       s"  ( -- ptr " LBUF-APP type typeu LBUF-APP s"  ) " LBUF-APP
    then

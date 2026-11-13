@@ -131,8 +131,6 @@ variable LBUF-BYTES
    name nameu LBUF-NAME, {: pna:ptr pnu:n :}
    s"  ( n -- ptr " LBUF-APP  type typeu LBUF-APP
    s"  ) " LBUF-APP
-   LBUF-N @ LBUF-DEC,
-   s"  DYNAMIC-STORAGE:BOUNDS " LBUF-APP
    name nameu LBUF-BASE,
    s"  swap " LBUF-APP
    LBUF-W @ cells LBUF-DEC,
@@ -293,8 +291,7 @@ PRIM: LAYOUT-BUFFER PE-N PE-IN PRIM;
 \ Three control cells (offset, capacity, live count; all 0 = unbound) and an
 \ accessor that reads them; NAME-BIND ( count -- ) allots count*width cells. The
 \ armed window keys on the accessor name and signature (checker.f
-\ LBUF-PEND-MATCH?), not the body, so it mints the LAYOUT-BUFFER signature. An
-\ access before the first bind throws E-LAYOUT-UNBOUND, never a zero-offset read.
+\ LBUF-PEND-MATCH?), not the body, so it mints the LAYOUT-BUFFER signature.
 \ NAME-BIND reuses the region when the count fits, else allots a larger one and
 \ retires the old; its cells are fresh and zeroed. NAME-GROW carries the live
 \ cells over. A count past LDEFER-CELL-MAX throws E-LAYOUT-CEIL before any allot
@@ -377,17 +374,9 @@ PRIM: LDEFER-GROW PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
    s"  : " LBUF-APP
    name nameu LBUF-NAME, {: pna:ptr pnu:n :}
    s"  ( n -- ptr " LBUF-APP  type typeu LBUF-APP
-   s"  ) {: i:n :} i 0 < if " LBUF-APP
-   E-LAYOUT-BOUNDS LBUF-DEC,
-   s"  throw then " LBUF-APP  name nameu LBUF-BASE,
-   s"  " LBUF-APP  2 CELL * LBUF-DEC,
-   s"  + @ {: c:n :} c 0= if " LBUF-APP
-   E-LAYOUT-UNBOUND LBUF-DEC,
-   s"  throw then i c >= if " LBUF-APP
-   E-LAYOUT-BOUNDS LBUF-DEC,
-   s"  throw then " LBUF-APP
+   s"  ) " LBUF-APP
    name nameu LBUF-BASE,  s"  " LBUF-APP  name nameu LBUF-BASE,
-   s"  @ + i " LBUF-APP  LBUF-W @ cells LBUF-DEC,
+   s"  @ + swap " LBUF-APP  LBUF-W @ cells LBUF-DEC,
    s"  * + ; : " LBUF-APP
    name nameu LBUF-APP  s" -BIND ( n -- ) " LBUF-APP
    name nameu LBUF-BASE,  s"  " LBUF-APP  LBUF-W @ LBUF-DEC,
@@ -483,8 +472,8 @@ PRIM: TYPED-VARIABLE PRIM;
 \ The control head owns an OS mapping; RESERVE preserves old cells and may move
 \ it, so callers keep indices, not pointers. The registry handle is registered on
 \ first allocation and unregistered by RELEASE, so a declaration stays reusable
-\ after capture and restore. dynamic-storage.f states when the accessor trusts
-\ the cached element bound.
+\ after capture and restore. The accessor fetches the head on every call and
+\ adds index times width, with no index check.
 \ The head is a declared PTR-VARIABLE, not `create`d: a raw storage cell never
 \ holds an address. NAME#ctl names the numeric cells, so DYNAMIC-STORAGE never
 \ views the head's pointer cell as bytes.
@@ -524,9 +513,9 @@ variable DBUF-W
    s"  create " LBUF-APP name nameu DBUF-CTL,  DBUF-MARKS,  DBUF-CTRL-BYTES CELL - LBUF-ALLOT,
    s"  : " LBUF-APP name nameu LBUF-NAME, {: pna:ptr pnu:n :}
    s"  ( n -- ptr " LBUF-APP type typeu LBUF-APP
-   s"  ) " LBUF-APP name nameu DBUF-RECORD,
-   s"  " LBUF-APP DBUF-W @ LBUF-DEC,
-   s"  DYNAMIC-STORAGE:ADDRESS ; : " LBUF-APP name nameu LBUF-APP
+   s"  ) " LBUF-APP name nameu LBUF-BASE,
+   s"  @ swap " LBUF-APP DBUF-W @ LBUF-DEC,
+   s"  * + ; : " LBUF-APP name nameu LBUF-APP
    s" -RESERVE ( n -- ) " LBUF-APP name nameu DBUF-RECORD,
    s"  " LBUF-APP DBUF-W @ LBUF-DEC,
    s"  DYNAMIC-STORAGE:RESERVE ; : " LBUF-APP name nameu LBUF-APP
