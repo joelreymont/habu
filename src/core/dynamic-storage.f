@@ -117,8 +117,6 @@ variable MUTEX
    last REG-U !
    0 ctl SLOT ! ;
 
-public
-
 \ The mapping and its capacity change together: PUBLISH and RELEASE are their
 \ only writers, each under LOCK.
 : PUBLISH ( ptr a n ptr ptr a ptr n -- )
@@ -151,6 +149,8 @@ public
    then
    fresh cap cb ctl PUBLISH
    UNLOCK ;
+
+public
 
 : RESERVE ( n ptr ptr a ptr n n -- ) {: count:n cb:ptr ctl:ptr width:n :}
    count width * {: need:n :}
