@@ -45,29 +45,6 @@ private
    state kind text front + size front - back - TEXT-NODE
    state NEXT-TOKEN ;
 
-: CODEPOINT! ( n ptr u8 -- n )
-   {: point:n out :}
-   point 0 < point $10FFFF > or
-   point $D800 $DFFF BETWEEN? or if E-SYNTAX throw then
-   point $80 < if point out c! 1 exit then
-   point $800 < if
-      point 6 rshift $C0 or out c!
-      point $3F and $80 or out 1+ c! 2 exit
-   then
-   point $10000 < if
-      point 12 rshift $E0 or out c!
-      point 6 rshift $3F and $80 or out 1+ c!
-      point $3F and $80 or out 2 + c! 3 exit
-   then
-   point 18 rshift $F0 or out c!
-   point 12 rshift $3F and $80 or out 1+ c!
-   point 6 rshift $3F and $80 or out 2 + c!
-   point $3F and $80 or out 3 + c! 4 ;
-
-: HEX-CODEPOINT ( ptr u8 n -- n )
-   {: text size:n :}
-   0 size 0 ?do 16 * text i + c@ HEX-VALUE + loop ;
-
 : ESCAPE-BYTE ( n -- n )
    case
       116 of 9 endof 98 of 8 endof 110 of 10 endof
@@ -80,12 +57,6 @@ private
    {: text size:n out mode:n :}
    size 2 < if E-SYNTAX throw then
    text 1+ c@ {: char:n :}
-   char 117 = char 85 = or if
-      char 117 = if 4 else 8 then {: digits:n :}
-      size digits 2 + < if E-SYNTAX throw then
-      text 2 + digits HEX-CODEPOINT out CODEPOINT!
-      digits 2 + swap exit
-   then
    mode 0= if char ESCAPE-BYTE out c! 2 1 exit then
    mode 2 = char LOCAL-ESCAPE? and if
       char out c! 2 1 exit
@@ -97,6 +68,7 @@ private
       ALLOC:BYTES drop {: out :}
    0 0 begin over size < while
       {: offset:n used:n :}
+      state CHECK-BUDGET
       text offset + c@ 92 = if
          text offset + size offset - out used + mode
          DECODE-ESCAPE {: consumed:n written:n :}

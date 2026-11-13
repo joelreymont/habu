@@ -1,5 +1,5 @@
-\ SPARQL tokens retain source spans. UTF-8 and escapes are validated before
-\ grammar parsing; decoded strings and IRIs are allocated in the call arena.
+\ Tokens retain spans in the arena-owned, codepoint-decoded query.
+\ String and local-name escapes are decoded later, when reading terms.
 
 require src/lib/sparql/syntax.f
 require src/lib/utf8-scalar.f
@@ -89,6 +89,60 @@ private
    state SYNTAX-SOURCE @ state SYNTAX-LENGTH @
    state SYNTAX-POSITION @ SPAN-SCALAR ;
 
+: CODEPOINT! ( n ptr u8 -- n )
+   {: point:n out :}
+   point 0 < point $10FFFF > or
+   point $D800 $DFFF BETWEEN? or if E-SYNTAX throw then
+   point $80 < if point out c! 1 exit then
+   point $800 < if
+      point 6 rshift $C0 or out c!
+      point $3F and $80 or out 1+ c! 2 exit
+   then
+   point $10000 < if
+      point 12 rshift $E0 or out c!
+      point 6 rshift $3F and $80 or out 1+ c!
+      point $3F and $80 or out 2 + c! 3 exit
+   then
+   point 18 rshift $F0 or out c!
+   point 12 rshift $3F and $80 or out 1+ c!
+   point 6 rshift $3F and $80 or out 2 + c!
+   point $3F and $80 or out 3 + c! 4 ;
+
+: HEX-CODEPOINT ( ptr u8 n -- n )
+   {: text size:n :}
+   0 size 0 ?do 16 * text i + c@ HEX-VALUE + loop ;
+
+: ESCAPE-DIGITS ( ptr syntax -- n )
+   {: state :}
+   state PEEK 92 <> if 0 exit then
+   state state SYNTAX-POSITION @ 1+ AT-BYTE
+   case 117 of 4 endof 85 of 8 endof 0 swap endcase ;
+
+: ESCAPED-SCALAR ( ptr syntax -- n n )
+   {: state :}
+   state ESCAPE-DIGITS {: digits:n :}
+   digits 0= if state SCALAR exit then
+   state SYNTAX-POSITION @ {: offset:n :}
+   state SYNTAX-LENGTH @ offset - digits 2 + <
+      if E-SYNTAX throw then
+   state SYNTAX-SOURCE @ offset 2 + + digits HEX-CODEPOINT
+   offset digits 2 + + ;
+
+\ SPARQL 1.1 section 19.2 precedes the grammar, even in comments.
+\ Read only original input; an emitted backslash is never rescanned.
+: CODEPOINT-ESCAPES ( ptr syntax -- )
+   {: state :}
+   state CHECK-BUDGET
+   state SYNTAX-ARENA @ ARENA:ALLOCATOR
+      state SYNTAX-LENGTH @ ALLOC:BYTES drop {: out :}
+   0 begin state PEEK -1 <> while
+      {: used:n :}
+      state ESCAPED-SCALAR {: point:n next:n :}
+      point out used + CODEPOINT! used +
+      next state SYNTAX-POSITION !
+   repeat state SYNTAX-LENGTH !
+   out state SYNTAX-SOURCE ! 0 state SYNTAX-POSITION ! ;
+
 : SKIP-COMMENT ( ptr syntax -- )
    {: state :}
    begin state PEEK dup -1 <> over 10 <> and swap 13 <> and while
@@ -125,18 +179,9 @@ private
       some OF drop true ENDOF
    ;MATCH ;
 
-: UNICODE-ESCAPE ( ptr syntax -- )
-   {: state :}
-   state PEEK 117 = if state STEP state 4 REQUIRE-HEX exit then
-   state PEEK 85 = if state STEP state 8 REQUIRE-HEX exit then
-   E-SYNTAX throw ;
-
 : STRING-ESCAPE ( ptr syntax -- )
    {: state :}
    state STEP
-   state PEEK dup 117 = swap 85 = or if
-      state UNICODE-ESCAPE exit
-   then
    state PEEK dup 34 = over 39 = or over 92 = or if
       drop state STEP exit
    then
@@ -172,7 +217,7 @@ private
 : IRI-BYTE? ( n -- bool )
    {: value:n :}
    value 32 <= if false exit then
-   value 34 = if false exit then
+   value 34 = value 92 = or if false exit then
    value s" <>{}|^`" rot INDEX-OF
    MATCH option
       none OF true ENDOF
@@ -195,9 +240,7 @@ private
    state STEP
    begin state PEEK 62 <> while
       state PEEK IRI-BYTE? 0= if E-SYNTAX throw then
-      state PEEK 92 = if
-         state STEP state UNICODE-ESCAPE
-      else state STEP then
+      state STEP
    repeat state STEP state T-IRI start TOKEN+ ;
 
 : SCAN-DIGITS ( ptr syntax -- )
@@ -375,9 +418,7 @@ private
 
 : LEX ( ptr syntax -- )
    {: state :}
-   begin state PEEK -1 <> while
-      state SCALAR nip state SYNTAX-POSITION !
-   repeat 0 state SYNTAX-POSITION !
+   state CODEPOINT-ESCAPES
    state SKIP-WHITE
    begin state PEEK -1 <> while
       state LEX-ONE state SKIP-WHITE

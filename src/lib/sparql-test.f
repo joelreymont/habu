@@ -58,6 +58,20 @@ public
    s\" {\"head\":{\"vars\":[\"x\"]},\"results\":{\"bindings\":[{\"x\":{\"type\":\"literal\",\"value\":\"one\"}}]}}"
       JSON:VALUE= TTRUE
 
+   RESET 1 KIND !
+   s" codepoint escapes form names, comments and punctuation" T-LABEL
+   s" \u0023 comment\U0000000A\u0050REFIX \u03B1\u003A <urn:\u0061:> \u0053ELECT ?\u0078 \u0057HERE \u007B ?x \u03B1:p\~ '\t\\' \u007D"
+      RUN-QUERY
+   OUTPUT CODEGEN:CONTENTS
+   s\" {\"head\":{\"vars\":[\"x\"]},\"results\":{\"bindings\":[{\"x\":{\"type\":\"literal\",\"value\":\"one\"}}]}}"
+      JSON:VALUE= TTRUE
+
+   s" a decoded backslash does not restart Unicode decoding" T-LABEL
+   [: s" ASK { ?s ?p '\u005cU00000031' }" RUN-QUERY ;]
+      SPARQL:E-SYNTAX TTHROWSQ
+   [: s" ASK { <urn:\U0000005cu0031> ?p ?o }" RUN-QUERY ;]
+      SPARQL:E-SYNTAX TTHROWSQ
+
    RESET 2 KIND !
    s" graph terms escape literals and preserve blank node identity" T-LABEL
    s\" CONSTRUCT { _:a <urn:p> \"x\\n\\\"\" } WHERE {}" RUN-QUERY
