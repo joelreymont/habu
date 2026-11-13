@@ -94,6 +94,12 @@ does not yet need it, with the running hb; then build the tree with that stage:
     (cd "$TMP/stage" && TMPDIR="$TMP" hb --load tools/hb-build.f -- --engine -o "$TMP/stage-hb")
     TMPDIR="$TMP" "$TMP/stage-hb" --load tools/hb-build.f -- --engine -o "$OUT"
 
+A tree word that calls hb's word through a `PROVIDED-XT` cell calls the running
+hb's copy in a build, so a change to that word's stack effect is two commits.
+The first stores the new form in a new cell and keeps the old cell, holding an
+adapter, for the callers; the second moves the callers and drops the old cell.
+Each builds with the engine of the commit before it.
+
 The link refuses a kernel object the running hb cannot read
 (src/arch/arm64/link-kernel.f READ). A change to the object's format needs a
 stage that changes the reader before the tree changes the writer. READ also

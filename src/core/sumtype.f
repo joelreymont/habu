@@ -1057,14 +1057,14 @@ variable TDECL-EVAL-ARMED
 
 private
 
-\ The engine's cell holds INTERPRETER:CHILD-RUN as a raw execution token.
+\ The engine's cell holds INTERPRETER:CHILD-RUN-BOOL as a raw execution token.
 CAST: AS-CHILD-RUN ( n -- [ ptr u8 n bool n n -- ] )
 
 \ Makes the child word NAME through CHILD-RUN, of a CHILD-ABI SHAPE and PARAM. A
 \ definer reaches the running engine through the cell, never by name: inside a
 \ build a name binds the tree's copy.
 : TDECL-CHILD ( ptr u8 n bool n n -- )
-   data-base PROVIDED-XT:CHILD-CELL + @ AS-CHILD-RUN execute ;
+   data-base PROVIDED-XT:BOOL-CHILD-CELL + @ AS-CHILD-RUN execute ;
 
 public
 

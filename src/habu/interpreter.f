@@ -2273,10 +2273,8 @@ variable DEF-VALUE
    [: shape param CHILD-CLOSE ;] catch {: rc:n :}
    rc 0<> if DEF-ABORT rc throw then ;
 
-\ The bool is unread. A build's definers call the running hb's CHILD-RUN through
-\ the cell, so this effect must be that hb's: one that differs faults the build.
-: CHILD-RUN ( ptr u8 n bool n n -- )
-   {: a:ptr u:n priv:bool shape:n param:n :}
+: CHILD-RUN ( ptr u8 n n n -- )
+   {: a:ptr u:n shape:n param:n :}
    PEND-CELL CELL@ 0<> if s" child word" a u DEF-OPEN-REFUSE then
    a u DEF-ONE-TOKEN? 0= if s" child word" a u DEF-NAME-REFUSE then
    shape CHILD-BODY drop
@@ -2286,6 +2284,11 @@ variable DEF-VALUE
    DEF-ROOM
    OVERLAY-GUARD
    a u shape param CHILD-DEFINE ;
+
+\ Serves callers built against the six-operand form until they move.
+: CHILD-RUN-BOOL ( ptr u8 n bool n n -- )
+   {: a:ptr u:n priv:bool shape:n param:n :}
+   a u shape param CHILD-RUN ;
 
 \ A qualified linear name is refused by the certifier before DEF-QUALIFY can
 \ create its namespace. A second colon is left to DEF-QUALIFY's syntax refusal.
@@ -2838,6 +2841,7 @@ public
    ['] DEFINE-RUN data-base PROVIDED-XT:DEFINE-CELL + xt!
    ['] APPEND-RUN data-base PROVIDED-XT:APPEND-CELL + xt!
    ['] POSTPONE-RUN data-base PROVIDED-XT:POSTPONE-CELL + xt!
+   ['] CHILD-RUN-BOOL data-base PROVIDED-XT:BOOL-CHILD-CELL + xt!
    ['] CHILD-RUN data-base PROVIDED-XT:CHILD-CELL + xt!
    ['] LITERAL-RUN data-base PROVIDED-XT:LITERAL-CELL + xt! ;
 

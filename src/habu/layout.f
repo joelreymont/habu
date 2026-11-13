@@ -560,9 +560,10 @@ $3878 constant DEFINE-CELL
 $3880 constant APPEND-CELL
 $3888 constant POSTPONE-CELL
 $3898 constant LITERAL-CELL
-\ A declaration makes each child word through the interpreter's CHILD-RUN,
-\ which this cell holds, with a CHILD-ABI shape code.
-$3890 constant CHILD-CELL
+\ A declaration makes each child word through CHILD-CELL's CHILD-RUN, with a
+\ CHILD-ABI shape code; BOOL-CHILD-CELL holds the six-operand adapter.
+$3890 constant BOOL-CHILD-CELL
+$38A8 constant CHILD-CELL
 ;package
 
 \ A child word's shape: from it the engine makes the child's body and the effect
