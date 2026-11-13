@@ -3557,27 +3557,10 @@ private
          RES-FALSE unloop EXIT THEN
    loop RES-TRUE ;
 
-PTR-VARIABLE REG-AOT-PROJECTED
-variable REG-AOT-PROJECTED-U
-
 : REG-AOT-BLOB-STORE ( ptr u8 n -- ptr u8 ) {: src:ptr k:n :}
    REG-AOT-HDR
    k 0 ?do src i REG-AOT-ROW@ nip nip + loop
    src + ;
-
-: REG-AOT-PREFIX= ( ptr u8 n n n -- bool )
-   {: src:ptr k:n base:n bytes:n :}
-   REG-AOT-PROJECTED-U @ 0= IF src k base bytes REG-AOT-SAME? EXIT THEN
-   REG-AOT-PROJECTED @ k REG-AOT-BLOB-STORE
-   base k REG-AOT-WIDTH * + {: prior:ptr :}
-   bytes 0 ?do
-      src i k REG-AOT-CANON-C@ prior i k REG-AOT-CANON-C@ <> IF
-         RES-FALSE unloop EXIT THEN
-   loop RES-TRUE ;
-
-: REG-AOT-PROJECTED-COUNT ( n -- n ) {: k:n :}
-   REG-AOT-PROJECTED-U @ 0= IF k REG-AOT-COUNT EXIT THEN
-   REG-AOT-PROJECTED @ k REG-AOT-ROW@ drop + ;
 
 \ Validate every base and byte span before reserving or publishing any store.
 \ Subtraction bounds the product and endpoint before either is computed.
@@ -3602,10 +3585,10 @@ variable REG-AOT-PROJECTED-U
          s" tfam: a seeded type registry section is not a whole number of records" REG-AOT-REFUSE THEN
       base $7FFFFFFFFFFFFFFF i REG-AOT-WIDTH / cnt - > IF
          s" tfam: a seeded type registry endpoint overflows" REG-AOT-REFUSE THEN
-      i REG-AOT-PROJECTED-COUNT {: live:n :}
+      i REG-AOT-COUNT {: live:n :}
       live base <> live base cnt + <> and IF
          i base live REG-AOT-BASE-BAD THEN
-      src REG-AOT-CUR @ + i 0 base i REG-AOT-WIDTH * REG-AOT-PREFIX= 0= IF
+      src REG-AOT-CUR @ + i 0 base i REG-AOT-WIDTH * REG-AOT-SAME? 0= IF
          s" tfam: a seeded type registry differs from its captured prefix" REG-AOT-REFUSE THEN
       cnt 0 > IF
          live base = IF 1 ELSE 2 THEN {: next:n :}
@@ -3614,7 +3597,7 @@ variable REG-AOT-PROJECTED-U
          next REG-AOT-STATE !
          next 2 = IF
             src REG-AOT-CUR @ + base i REG-AOT-WIDTH * +
-            i base cnt i REG-AOT-WIDTH * REG-AOT-PREFIX= 0= IF
+            i base cnt i REG-AOT-WIDTH * REG-AOT-SAME? 0= IF
                s" tfam: a seeded type registry differs from the installed records" REG-AOT-REFUSE THEN
          THEN
       THEN
@@ -3711,8 +3694,7 @@ variable REG-AOT-PROJECTED-U
 
 : REG-AOT-CON-VALID? ( n -- bool ) {: id:n :}
    id CC-N < IF RES-FALSE EXIT THEN
-   id CC-MAX < IF RES-TRUE EXIT THEN
-   RES-FALSE ;
+   id CC-MAX < ;
 
 : REG-AOT-LIMIT ( n n -- ) {: value:n ceiling:n :}
    value 0 < value ceiling > or IF
@@ -4274,15 +4256,6 @@ REG-AOT-FAM-W-INSTALL
       REG-AOT-ERROR-U @ 0= IF throw THEN
       drop 2drop REG-AOT-ERROR-A @ REG-AOT-ERROR-U @ 76 die
    THEN drop 2drop ;
-
-: REG-AOT-PREPARE ( ptr u8 n ptr u8 n -- n )
-   {: src:ptr u:n prior:ptr prioru:n :}
-   prior REG-AOT-PROJECTED ! prioru REG-AOT-PROJECTED-U !
-   src u [: 2dup REG-AOT-CHECK ;] catch {: rc:n :}
-   2drop
-   NULL-PTR REG-AOT-PROJECTED ! 0 REG-AOT-PROJECTED-U !
-   rc 0 <> IF rc throw THEN
-   REG-AOT-STATE @ ;
 
 : REG-AOT-APPEND ( ptr u8 n -- ) {: src:ptr u:n :}
    u 0= IF EXIT THEN
@@ -5876,7 +5849,7 @@ public
 
 private
 
-: UNIT-FAMILY-NAME? ( ptr u8 n ptr u8 n -- bool )
+: REG-AOT-FAMILY? ( ptr u8 n ptr u8 n -- bool )
    {: name:ptr nameu:n src:ptr u:n :}
    u 0= IF RES-FALSE EXIT THEN
    src 0 REG-AOT-ROW@ drop + 0 ?do
@@ -5888,7 +5861,7 @@ private
 \ The checker's friend hooks: checker.f loads before this file and reaches
 \ family resolution and arities through these defers during signature parsing.
 : TFAM-HOOK-INSTALL ( -- )
-   [: UNIT-FAMILY-NAME? ;] is CK-UNIT-FAMILY?
+   [: REG-AOT-FAMILY? ;] is CK-AOT-FAMILY?
    [: TFAM-SIG-RESOLVE ;] is TFAM-RESOLVE-XT
    [: TFAM-CLAIMED? ;] is TFAM-CLAIMED?-XT
    \ The constructor checks answer from the rows read: a linked family is read first.

@@ -11501,23 +11501,15 @@ CHECKER-REG:}SCRATCH
       EN-ATOM of  node E-AK-BIND-SLOT  endof
    endcase ;
 
-defer E-I-UNIT-CON ( ptr u8 ptr u8 -- n )
-
 : E-INST-PUSH? ( n ptr u8 -- bool ) {: off:n pool:ptr :}
    off 0= IF RES-FALSE EXIT THEN
    pool off + EN.TAG @ EN-PUSH = ;
 
-\ A pool other than USIGS and the top-level row's names its constructors by
-\ spelling, not by this owner's ids.
 : E-INST-FROM ( n ptr u8 -- n ) {: off:n pool:ptr :}
    off 0= if 0 exit then
    pool off + >r
    r@ EN.TAG @ case
-      EN-CON of
-         pool USIGS <> pool TOP-READ-P @ BYTE-VIEW <> and IF
-            r@ pool E-I-UNIT-CON
-         ELSE r@ EN.A @ THEN MK-CON r> drop
-      endof
+      EN-CON of  r@ EN.A @ MK-CON r> drop  endof
       EN-VAR of
          r@ EN.A @ E-I-TV
          r@ EN.B @ TVK-RAW = IF dup PAY TVK-RAW! THEN       \ restore persisted RAW kind on the fresh var
@@ -23234,12 +23226,12 @@ CK-GRAPH-META-SPANS CK-LEX-MASK 1+ + constant CK-GRAPH-SPANS
    slot @ 0 <> slot @ meta <> and IF ASIG-GRAPH-DIE THEN
    meta slot ! ;
 
-defer CK-UNIT-FAMILY? ( ptr u8 n ptr u8 n -- bool )
-: CK-UNIT-FAMILY-DEFAULT ( ptr u8 n ptr u8 n -- bool )
+defer CK-AOT-FAMILY? ( ptr u8 n ptr u8 n -- bool )
+: CK-AOT-FAMILY-DEFAULT ( ptr u8 n ptr u8 n -- bool )
    2drop 2drop RES-FALSE ;
-: CK-UNIT-FAMILY-INSTALL ( -- )
-   [: CK-UNIT-FAMILY-DEFAULT ;] is CK-UNIT-FAMILY? ;
-CK-UNIT-FAMILY-INSTALL
+: CK-AOT-FAMILY-INSTALL ( -- )
+   [: CK-AOT-FAMILY-DEFAULT ;] is CK-AOT-FAMILY? ;
+CK-AOT-FAMILY-INSTALL
 
 : CK-GRAPH-CON? ( ptr u8 -- ) {: node:ptr :}
    node CK-GRAPH-NAME?
@@ -23251,7 +23243,7 @@ CK-UNIT-FAMILY-INSTALL
       node EN.E @ CS-NONE <> or IF ASIG-GRAPH-DIE THEN
       node EN.A @ CK-GRAPH-PTR node EN.B @ TYPE-RESERVED? IF ASIG-GRAPH-DIE THEN
       node EN.A @ CK-GRAPH-PTR node EN.B @ CK-GRAPH-REG$
-         CK-UNIT-FAMILY? IF ASIG-GRAPH-DIE THEN
+         CK-AOT-FAMILY? IF ASIG-GRAPH-DIE THEN
    ELSE
       con CT-CLASS@ node EN.C @ <> con CT-WIDTH@ node EN.D @ <> or
       con CT-SIGN@ node EN.E @ <> or IF ASIG-GRAPH-DIE THEN
@@ -23535,8 +23527,6 @@ create CK-LEX-DOMAINS 64 cells allot
       width + swap CK-GRAPH-PTR EN.B @
    REPEAT drop ;
 
-variable CK-GRAPH-EXTRA-FLAGS
-
 : CK-GRAPH-CHECK ( ptr u8 n ptr u8 n -- ) {: graph:ptr bytes:n reg:ptr regu:n :}
    0 CK-GRAPH-WIDTH-BAD !
    bytes EFF-WIRE < IF ASIG-GRAPH-DIE THEN
@@ -23546,7 +23536,7 @@ variable CK-GRAPH-EXTRA-FLAGS
    rec EW.ACTIVE @ ASIG-GRAPH-MAGIC <> IF ASIG-GRAPH-DIE THEN
    rec EW.NEXT @ bytes <> IF ASIG-GRAPH-DIE THEN
    rec EW.SYMPREV @ 0 <>
-   rec EW.SYM @ CTL-GRAPH-FLAGS CK-GRAPH-EXTRA-FLAGS @ or invert and 0 <> or
+   rec EW.SYM @ CTL-GRAPH-FLAGS invert and 0 <> or
    IF ASIG-GRAPH-DIE THEN
    rec EW.HASR @ CK-GRAPH-BOOL?
    rec EW.HASR @ 0= IF rec EW.RIN @ rec EW.ROUT @ or 0 <> IF ASIG-GRAPH-DIE THEN THEN
@@ -26060,23 +26050,6 @@ NAMED-OPERAND-INSTALL
 : CHECKER-NAMED-USE ( ptr u8 n -- )
    {: a:ptr u:n :}
    a u NAMED-SYM a u NAV-USE-NOW ;
-
-\ How a unit's effect graphs resolve their constructors.
-package CHECKER-REG
-
-public
-7159 constant E-UNIT-FORMAT   \ 7161-7164 are decl-event.f's E-DEV block
-private
-
-: UNIT-FORMAT-BAD ( -- ) E-UNIT-FORMAT throw ;
-
-: UNIT-CON-RESOLVE ( ptr u8 ptr u8 -- n ) {: node:ptr pool:ptr :}
-   node EN.A @ pool + node EN.B @ CT-FIND
-   dup 0= IF UNIT-FORMAT-BAD THEN ;
-: UNIT-CON-INSTALL ( -- ) [: UNIT-CON-RESOLVE ;] is E-I-UNIT-CON ;
-UNIT-CON-INSTALL
-
-;package
 
 \ ---- the interpret row: saved between top-level events -----------------------
 0 constant TS.BASE   1 constant TS.RP    2 constant TS.RC   3 constant TS.WP
