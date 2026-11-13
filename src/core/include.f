@@ -1056,9 +1056,13 @@ private
    CANON-BUF n TREE? 0= if 0 exit then
    n ;
 
+\ A target with no executable path, as Wasm, loads no source.
 : ENGINE-FIND ( -- n )
-   HB-TARGET-MACOS? if APPLE-EXE else s" /proc/self/exe" then
-   ENGINE-FIND-FOR ;
+   HB-TARGET-MACOS? if APPLE-EXE ENGINE-FIND-FOR exit then
+   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if
+      s" /proc/self/exe" ENGINE-FIND-FOR exit
+   then
+   s" include: no engine path on this target" INCLUDE-IO-RC die ;
 
 : ENGINE-INIT ( -- )
    ENGINE-READ @ 0= 0= if exit then
