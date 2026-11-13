@@ -563,6 +563,9 @@ $3898 constant LITERAL-CELL
 \ A declaration makes each child word through CHILD-CELL's CHILD-RUN, with a
 \ CHILD-ABI shape code.
 $38B0 constant CHILD-CELL
+\ A storage definer the checker does not compile reads its declaration line
+\ through the CHECK:STORAGE-LINE this cell holds.
+$38A8 constant STORAGE-LINE-CELL
 \ A definer's type and effect values are schema nodes the running engine's
 \ CHECK:TYPE-OP, which this cell holds, makes from a TYPE-OP-ABI code.
 $38A0 constant TYPE-OP-CELL

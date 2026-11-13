@@ -2877,6 +2877,7 @@ public
    ['] APPEND-RUN data-base PROVIDED-XT:APPEND-CELL + xt!
    ['] POSTPONE-RUN data-base PROVIDED-XT:POSTPONE-CELL + xt!
    ['] CHILD-RUN data-base PROVIDED-XT:CHILD-CELL + xt!
+   ['] CHECK:STORAGE-LINE data-base PROVIDED-XT:STORAGE-LINE-CELL + xt!
    ['] LITERAL-RUN data-base PROVIDED-XT:LITERAL-CELL + xt!
    ['] CHECK:TYPE-OP data-base PROVIDED-XT:TYPE-OP-CELL + xt! ;
 
