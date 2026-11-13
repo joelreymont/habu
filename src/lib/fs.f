@@ -327,12 +327,9 @@ FRAME-DIR-OFF DIR-CAP + constant FRAME-BYTES
    ctx cap grown FDS-CLEAR
    old MEM:FREE-SPAN ;
 
-: CHECK-JOIN-CAP ( n -- )
-   dup PATH-CAP > if CAUSE-CLEAR E-FS-CAPACITY throw then drop ;
-
 public
-\ FS owns the length gate: a path longer than PATH-CAP is E-FS-PATH, the
-\ refusal every fs consumer tests for, whatever buffer it is copied into.
+\ FS owns the length gate: a caller's path longer than PATH-CAP, stored or
+\ opened as given, is E-FS-PATH, the refusal every fs consumer tests for.
 \ FFI:CSTR owns the copy, the terminator and the 0-byte refusal (E-FFI-NUL),
 \ bounded by the destination's reach.
 : PATHZ-INTO ( ptr u8 n SPAN:span<u8> -- ptr u8 )
@@ -495,10 +492,15 @@ private
    pu 1 + nu + ;
 
 public
+\ A join that does not fit dst is E-FS-CAPACITY, with nothing written. Each
+\ length meets dst's on its own first, so a huge one cannot wrap the sum.
 : JOIN-PATH-INTO ( ptr u8 n ptr u8 n SPAN:span<u8> -- n ) {: pa:ptr pu na:ptr nu dst :}
    CAUSE-CLEAR
    pu 0 < if E-FS-PATH throw then
    nu 0 < if E-FS-PATH throw then
+   dst SPAN:LEN {: cap :}
+   pu cap > nu cap > or if E-FS-CAPACITY throw then
+   pa pu nu JOIN-LEN cap > if E-FS-CAPACITY throw then
    pa pu dst SPAN:COPY
    pa pu JOIN-SEPARATED? if
       na nu dst pu SPAN:SKIP SPAN:COPY
@@ -508,20 +510,9 @@ public
    na nu dst pu 1 + SPAN:SKIP SPAN:COPY
    pu 1 + nu + ;
 
-\ The destination is a bare ptr, so CHECK-JOIN-CAP stays: E-FS-CAPACITY is what
-\ JOIN-PATH promises its callers, and the reach minted below is the PATH-CAP
-\ destination they owe. A negative length is refused first; each length then
-\ meets the capacity on its own before the sum, since a length near the
-\ maximum cell would wrap the join under PATH-CAP, and the parent's last byte
-\ is read only once the parent fits.
-: JOIN-PATH ( ptr u8 n ptr u8 n ptr u8 -- n ) {: pa:ptr pu na:ptr nu dst:ptr :}
-   CAUSE-CLEAR
-   pu 0 < if E-FS-PATH throw then
-   nu 0 < if E-FS-PATH throw then
-   pu CHECK-JOIN-CAP
-   nu CHECK-JOIN-CAP
-   pa pu nu JOIN-LEN CHECK-JOIN-CAP
-   pa pu na nu  dst PATH-CAP SPAN:MAKE  JOIN-PATH-INTO ;
+\ dst holds PATH-CAP bytes: the reach minted here is the caller's promise.
+: JOIN-PATH ( ptr u8 n ptr u8 n ptr u8 -- n )
+   PATH-CAP SPAN:MAKE JOIN-PATH-INTO ;
 
 private
 : PATH= ( ptr u8 n ptr u8 n -- bool )
@@ -807,20 +798,14 @@ private
    dup 0 < if drop E-FS-DIR throw then
    dup ctx N! 0 > ;
 
-\ A root too long for the depth-0 slot is refused by the copy (E-SPAN-CAPACITY).
+\ The root reaches the depth-0 slot before any >PATHZ judges it, so the length
+\ gate's refusal is made here.
 : WALK-ROOT! ( ptr n ptr u8 n -- ) {: ctx:ptr a:ptr u :}
    CAUSE-CLEAR
    u 0 < if E-FS-PATH throw then
+   u PATH-CAP > if E-FS-PATH throw then
    a u ctx 0 PATH-SLOT SPAN:COPY
    u ctx 0 PATH-U ! ;
-
-: WALK-JOIN-LEN ( ptr u8 n n -- n ) {: pa:ptr pu nu :}
-   pu 0 < if CAUSE-CLEAR E-FS-PATH throw then
-   nu 0 < if CAUSE-CLEAR E-FS-PATH throw then
-   pa pu nu JOIN-LEN ;
-
-: CHECK-WALK-JOIN-CAP ( ptr u8 n n -- )
-   WALK-JOIN-LEN PATH-CAP > if CAUSE-CLEAR E-FS-CAPACITY throw then ;
 
 : OPEN-WALK-DIR ( ptr n ptr u8 n -- ) {: ctx:ptr a:ptr u :}
    a u OPEN-DIR-READ ctx FD!
@@ -860,7 +845,6 @@ private
    ctx d ENSURE-DEPTH
    ctx CUR-PATH$ {: pa:ptr pu :}
    ctx CUR-ENTRY DIRENT-NAME {: na:ptr nu :}
-   pa pu nu CHECK-WALK-JOIN-CAP
    pa pu na nu ctx d PATH-SLOT JOIN-PATH-INTO ctx d PATH-U !
    d ctx WALK-DEPTH!
    ctx ctx CUR-PATH$ ;

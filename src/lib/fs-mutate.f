@@ -89,9 +89,14 @@ SCRATCH-BAND-AGREE
    PATHZ2-BUF PATHZ-INTO ;
 
 public
+\ A path that does not fit dst is E-FS-CAPACITY, with nothing written: the
+\ suffix meets the room the path leaves, which no length can wrap.
 : SUFFIX-PATH ( ptr u8 n ptr u8 n SPAN:span<u8> -- n ) {: a:ptr u s:ptr su dst :}
+   CAUSE-CLEAR
    u 0 < if E-FS-PATH throw then
    su 0 < if E-FS-PATH throw then
+   dst SPAN:LEN {: cap :}
+   su cap u - > if E-FS-CAPACITY throw then
    a u dst SPAN:COPY
    s su dst u SPAN:SKIP SPAN:COPY
    u su + ;
@@ -431,12 +436,12 @@ ATOMIC-RETRIES 1- U-DIGITS + constant SIBLING-LEN-MAX
 \ `<prefix>.tmp-<seed>-<attempt>` in this task's ATOMIC-PATH. The prefix
 \ is a destination's directory with its slash, or empty for a name relative to
 \ that directory's descriptor. A prefix that leaves no room within PATH-CAP
-\ for the longest sibling name is E-SPAN-CAPACITY whatever the seed, a semantic
+\ for the longest sibling name is E-FS-CAPACITY whatever the seed, a semantic
 \ refusal.
 : BUILD-SIBLING ( ptr u8 n n n -- ptr u8 n ) {: pre:ptr preu seed attempt :}
    CAUSE-CLEAR
    preu 0 < if E-FS-PATH throw then
-   preu SIBLING-LEN-MAX + PATH-CAP > if E-SPAN-CAPACITY throw then
+   preu SIBLING-LEN-MAX + PATH-CAP > if E-FS-CAPACITY throw then
    ATOMIC-PATH {: dst :}
    pre preu dst SPAN:COPY
    s" .tmp-" dst preu SPAN:SKIP SPAN:COPY
@@ -503,7 +508,7 @@ public
    {: path:ptr pathu:n :}
    path pathu >PATHZ {: input:ptr :}
    input PATHZ2-BUF SPAN:$ drop PATHZ-CAP realpath {: u:n :}
-   u -2 = if CAUSE-CLEAR E-FS-PATH throw then
+   u -2 = if CAUSE-CLEAR E-FS-CAPACITY throw then
    u 0 >= if PATHZ2-BUF SPAN:$ drop u exit then
    input pathu SYMLINK? if E-FS-STAT throw then
    input pathu ATOMIC-BASE-OFF {: off:n :}
@@ -515,7 +520,7 @@ public
       then
    then {: parent:ptr :}
    parent PATHZ2-BUF SPAN:$ drop PATHZ-CAP realpath {: parentu:n :}
-   parentu -2 = if CAUSE-CLEAR E-FS-PATH throw then
+   parentu -2 = if CAUSE-CLEAR E-FS-CAPACITY throw then
    parentu 0 < if E-FS-STAT ERRNO-FAIL then
    PATHZ2-BUF SPAN:$ drop parentu
    ATOMIC-PATH SPAN:$ drop pathu off -
@@ -761,7 +766,7 @@ public
 
 private
 : BUILD-TEMP-TRY ( ptr u8 n ptr u8 n n n -- ptr u8 n ) {: base:ptr baseu prefix:ptr prefixu seed attempt :}
-   baseu prefixu TEMP-DIR-BASE-MAX > if E-SPAN-CAPACITY throw then
+   baseu prefixu TEMP-DIR-BASE-MAX > if E-FS-CAPACITY throw then
    SB-RESET
    base baseu SB-APPEND
    base baseu JOIN-SEPARATED? 0= if SLASH SB-APPEND-C then
@@ -819,21 +824,16 @@ private
 : TEMP-REAL ( ptr u8 n -- n )
    >PATHZ PATHZ2-BUF SPAN:$ drop PATHZ-CAP realpath ;
 
-\ A temp root that cannot hold the temp is refused before anything is made,
-\ with one line on fd 2 naming TMPDIR, why, and the root, then a throw: a root
-\ past PATH-CAP or with no room for the temp name (TEMP-DIR-BASE-MAX) is
-\ E-SPAN-CAPACITY, one that is not a directory E-FS-DIR, and one realpath
-\ refuses (a canonical spelling past PATH-CAP) E-FS-IO. Without the check each
-\ dies later on an error that does not name TMPDIR. The answer is the canonical
-\ spelling, borrowed from this task's PATHZ2 buffer.
+\ One line on fd 2 naming TMPDIR, why and the root, before anything is made:
+\ without it each refusal dies later on an error that does not name TMPDIR.
 : TMPDIR-REFUSE ( ptr u8 n ptr u8 n n n -- )
    {: a:ptr u why:ptr whyu code e :}
    code SAY-CLASS  a u SAY  why whyu SAY-TEXT  e SAY-END ;
 
 : TMPDIR-LONG ( ptr u8 n -- ) {: a:ptr u :}
-   a u s" TMPDIR is too long for a temp path" E-SPAN-CAPACITY 0
+   a u s" TMPDIR is too long for a temp path" E-FS-CAPACITY 0
    TMPDIR-REFUSE
-   E-SPAN-CAPACITY throw ;
+   E-FS-CAPACITY throw ;
 
 \ DIR? recording no read: a temp made in the root moves its change time, which
 \ no compile's answer depends on.
@@ -841,6 +841,7 @@ private
    >PATHZ STAT-Z? 0= if false exit then
    STAT-MODE@ S-IFMT and S-IFDIR = ;
 
+\ The answer is the canonical spelling, borrowed from this task's PATHZ2 buffer.
 : TMPDIR-CHECK ( ptr u8 n n -- ptr u8 n ) {: a:ptr u prefixu :}
    u PATH-CAP > if a u TMPDIR-LONG then
    a u TMPDIR-DIR? 0= if
@@ -848,10 +849,10 @@ private
       E-FS-DIR throw
    then
    a u TEMP-REAL {: real:n :}
-   \ -2 is a spelling past PATHZ-CAP, which realpath gave with no errno.
-   real -1 = if FFI:ERRNO else 0 then {: e:n :}
+   \ -2: the canonical spelling and its NUL do not fit PATHZ-CAP.
+   real -2 = if a u TMPDIR-LONG then
    real 0 < if
-      a u s" TMPDIR has no canonical path" E-FS-IO e TMPDIR-REFUSE
+      a u s" TMPDIR has no canonical path" E-FS-IO FFI:ERRNO TMPDIR-REFUSE
       E-FS-IO throw
    then
    real prefixu TEMP-DIR-BASE-MAX > if a u TMPDIR-LONG then
@@ -957,10 +958,11 @@ private
 \ REGISTRATION IS SAFE FROM ANY TASK although the table is the process's: it
 \ runs under CLEANUP-LOCK, which a refusal releases too. The row grows
 \ when it is full, the slot is written, and only then is it counted, so every
-\ counted slot names a path and a refused registration - a path past the slot
-\ (E-SPAN-CAPACITY) or a row that cannot grow - leaves the count it found.
+\ counted slot names a path and a refused registration - a path past PATH-CAP
+\ (E-FS-PATH) or a row that cannot grow - leaves the count it found.
 : CLEANUP-APPEND ( ptr u8 n n -- ) {: a:ptr u kind :}
    CLEANUP-N @ {: idx :}
+   u PATH-CAP > if E-FS-PATH throw then
    idx CLEANUP-CAP @ = if CLEANUP-GROW then
    a u idx CLEANUP-SLOT SPAN:COPY
    u idx CLEANUP-AT !
