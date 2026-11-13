@@ -2774,10 +2774,12 @@ variable DEFER-RETURNED
    then ;
 
 
-\ A throw after submission can reach task exit without either wait's explicit
-\ HALTED? branch. The loop must not keep a record that can wake this dead owner.
+\ The request has reached the server when the throw ends the owner, so the
+\ loop holds a live record that must not wake the dead owner.
 : EARLY-WORK ( -- )
+   SERVER-HITS atomic@ {: before:n :}
    START-EARLY
+   before WAIT-HIT
    -12345 throw ;
 
 : CASE-EARLY-EXIT ( n -- )
@@ -2975,7 +2977,7 @@ variable DEFER-RETURNED
    SERVER-BAD @ 0 T=
    SERVER-ERRNO @ 0 T=
    SERVER-HITS atomic@
-   94 MANY-N MANY-ROUNDS * + DONE-ATTEMPTS @ + CEILING-HITS @ + T= ;
+   96 MANY-N MANY-ROUNDS * + DONE-ATTEMPTS @ + CEILING-HITS @ + T= ;
 
 
 : NET-TESTS? ( -- bool )
