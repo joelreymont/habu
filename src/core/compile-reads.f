@@ -1,11 +1,12 @@
 \ compile-reads.f - what a compile reads besides its source: the roots it looked
-\ up and what they resolved to, the environment variables it read and the texts
-\ it evaluated.
+\ up and what they resolved to, the environment variables it read, the texts it
+\ evaluated and the files it read through FS.
 \ A recording is one mapping of reads. Each read is three cells (kind, first
 \ length, second length), the first bytes, the second bytes, then zero bytes to
 \ the next cell boundary: ROOT-READ holds an absolute spelling and its canonical
 \ directory, ENV-READ a name and its value, ENV-ABSENT a name and no bytes,
-\ TEXT-READ a text the compile evaluates and no bytes.
+\ TEXT-READ a text the compile evaluates and no bytes, FILE-READ a path and the
+\ three cells of its file's STAMP.
 package COMPILE-READS
 public
 
@@ -13,6 +14,7 @@ public
 2 constant ENV-READ
 3 constant ENV-ABSENT
 4 constant TEXT-READ
+5 constant FILE-READ
 
 private
 
@@ -58,6 +60,18 @@ CAST: REC-CELLS ( ptr u8 -- ptr ptr u8 )
 : PAD ( n -- n ) CELL 1- + CELL / CELL * ;
 : AT ( n -- ptr u8 ) MAP @ + ;
 : CELL@ ( n -- n ) AT CELL-VIEW @ ;
+
+\ A stat64 buffer of this file's own: src/lib/fs.f, which owns the per-task
+\ one, loads after it.
+create STAT-BUF FS-ABI:STAT-BYTES allot
+
+: STAT-CELL@ ( n -- n ) STAT-BUF + CELL-VIEW @ ;
+
+: STAT-REGULAR? ( -- bool )
+   STAT-BUF FS-ABI:STAT-MODE-OFF + {: m:ptr :}
+   m c@  m 1 + c@ 256 * or  FS-ABI:S-IFMT and  FS-ABI:S-IFREG = ;
+
+create STAMP-BUF 3 cells SCRATCH-ALLOT   \ FILE+'s second bytes
 
 \ The bytes from the start of the read at off to the start of the next.
 : SPAN ( n -- n ) {: off:n :}
@@ -131,5 +145,24 @@ public
 : TEXT+ ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 <= if exit then
    TEXT-READ a u a 0 APPEND ;
+
+\ The file at the NUL-terminated path: its change time seconds, nanoseconds and
+\ size, or 0 0 -1 when it is missing or not a regular file.
+: STAMP ( ptr u8 -- n n n )
+   STAT-BUF stat64 0 < if 0 0 -1 exit then
+   STAT-REGULAR? 0= if 0 0 -1 exit then
+   FS-ABI:STAT-CTIME-SEC-OFF STAT-CELL@
+   FS-ABI:STAT-CTIME-NS-OFF STAT-CELL@
+   FS-ABI:STAT-SIZE-OFF STAT-CELL@ ;
+
+\ A path a word reads through FS and z, its NUL-terminated copy, which STAMP
+\ stats only while a recording is active.
+: FILE+ ( ptr u8 n ptr u8 -- ) {: a:ptr u:n z:ptr :}
+   ACTIVE @ 0= if exit then
+   z STAMP {: sec:n ns:n size:n :}
+   sec STAMP-BUF CELL-VIEW !
+   ns STAMP-BUF CELL + CELL-VIEW !
+   size STAMP-BUF 2 cells + CELL-VIEW !
+   FILE-READ a u STAMP-BUF 3 cells APPEND ;
 
 ;package

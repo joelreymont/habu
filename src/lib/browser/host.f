@@ -8,7 +8,6 @@
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/fs.f
-require src/lib/build-input.f
 require src/lib/net/http.f
 
 package BROWSER-HOST
@@ -26,7 +25,6 @@ private
 : READ ( ptr u8 n ptr u8 n -- )
    {: a:ptr u:n dst:ptr cap:n :}
    a u PATH {: path:ptr pathu:n :}
-   path pathu BUILD-INPUT:FILE
    path pathu dst cap FS:READ-ALL cap <> if E-FS-IO throw then ;
 
 s" index.html" PATH FS:FILE-SIZE constant INDEX-U

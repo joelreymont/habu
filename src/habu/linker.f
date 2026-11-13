@@ -3311,6 +3311,14 @@ variable RD-END
    u PATH-CAP > if false exit then
    a u NUL-FREE? ;
 
+\ Whether the file has the stamp (COMPILE-READS:STAMP) whose three cells are the bytes.
+: FILE-HOLDS? ( ptr u8 n ptr u8 n -- bool )
+   {: a:ptr u:n b:ptr v:n :}
+   v 24 <> if false exit then
+   a u PATH-OK? 0= if false exit then
+   a u FS:>PATHZ COMPILE-READS:STAMP {: sec:n ns:n size:n :}
+   sec b LE:U64@ =  ns b 8 + LE:U64@ =  and  size b 16 + LE:U64@ =  and ;
+
 \ Whether the read of the kind (COMPILE-READS) reads the same now; false for a spelling holding a NUL, which ROOT?
 \ would refuse with a throw (E-PATH-NUL).
 : READ-HOLDS? ( n ptr u8 n ptr u8 n -- bool )
@@ -3319,6 +3327,7 @@ variable RD-END
    kind COMPILE-READS:ROOT-READ = if a u b v ROOT-HOLDS? exit then
    kind COMPILE-READS:ENV-READ = if a u b v ENV-HOLDS? exit then
    kind COMPILE-READS:ENV-ABSENT = if a u NULL-PTR 0 ENV-HOLDS? exit then
+   kind COMPILE-READS:FILE-READ = if a u b v FILE-HOLDS? exit then
    false ;
 
 \ Whether every read in the bytes, an INPUT reads field in COMPILE-READS' layout, reads the same now: false when a

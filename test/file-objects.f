@@ -1278,6 +1278,32 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" CL3" WHICH!  CLAUSE-REFUSED {: warm:n :}
    s" the build exits as CL does" LABEL  warm cold T= ;
 
+\ The read sequence's d.txt, the text f.f reads as it loads.
+: WRITE-DATA ( ptr u8 n -- ) SRC+  s" d.txt" NEST-WRITE ;
+
+\ f.f's K is d.txt's first byte, which it reads by its absolute path through FS:READ-ALL.
+: WRITE-READ ( -- )
+   L$ s" read" NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
+   s" 1" WRITE-DATA
+   s\" require src/lib/fs.f\npackage FILE-OBJECTS-READ\n1 BUFFER: B\ns\" " SRC+
+   s" d.txt" NEST-PATH$ SRC+
+   s\" \" B 1 FS:READ-ALL drop\npublic B c@ constant K ;package\n" SRC+  s" f.f" NEST-WRITE
+   s" f.f" REQUIRE+  s\" : MAIN ( -- ) FILE-OBJECTS-READ:K . ;\n" SRC+  s" main.f" NEST-WRITE ;
+
+\ Guards a file a load reads: RD2, after d.txt's byte changes and its size does not, prints a cold
+\ build's 50; RD3, with nothing changed, links every file.
+: READ-CASE ( CMD:command -- CMD:command )
+   WRITE-READ
+   s" RD" WHICH!  s" main.f" s" prog-d" NEST-BUILD 0= if exit then
+   s" prog-d" s\" 49\n" s" the program prints d.txt's byte" NEST-RUN
+   s" 2" WRITE-DATA
+   s" RD2" WHICH!  s" main.f" s" prog-d" NEST-BUILD 0= if exit then
+   s" prog-d" s\" 50\n" s" the program prints d.txt's byte" NEST-RUN  L$ MARK
+   s" RD3" WHICH!  s" main.f" s" prog-d" NEST-BUILD 0= if exit then
+   L$ REWRITTEN {: n:n :}
+   s" build three rewrites no object" LABEL  n 0 T=
+   s" prog-d" s\" 50\n" s" the program prints d.txt's byte" NEST-RUN ;
+
 \ The spelled sequence's turn.f: the record turn, with a third field when the
 \ flag is true, and box<a>.
 : WRITE-TURN ( bool -- )
@@ -1512,7 +1538,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE PATH-CASE STALE-CASE HIDDEN-CASE SEALED-CASE
       STORED-CASE RETIRED-CASE ORDER-CASE PART-LINK-CASE PIECE-CASE SEAL-CASE SQUAT-CASE CAUGHT-CASE
       CTOR-CASE EXPORT-CASE
-      NEST-CASE KEPT-CASE SAME-CASE RETIRE-CASE CLAUSE-CASE SPELLED-CASE PACKAGED-CASE EVALUATED-CASE OPENED-CASE CAST-CASE
+      NEST-CASE KEPT-CASE SAME-CASE RETIRE-CASE CLAUSE-CASE READ-CASE SPELLED-CASE PACKAGED-CASE EVALUATED-CASE OPENED-CASE CAST-CASE
       CROSS-CASE TARGET-CASE ;]
    CMD:WITH-COMMAND ;
 

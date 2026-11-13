@@ -1664,26 +1664,15 @@ variable LAST-LOAD-EVAL-OK
    INCLUDE-U @ INCLUDE-RD @ + INCLUDE-U !
    INCLUDE-FALSE ;
 
-\ A stat64 buffer of this file's own: src/lib/fs.f, which owns the per-task
-\ one, loads after it.
-create STAT-BUF FS-ABI:STAT-BYTES allot
-
-: STAT-CELL@ ( n -- n ) STAT-BUF + CELL-VIEW @ ;
-
-: STAT-REGULAR? ( -- bool )
-   STAT-BUF FS-ABI:STAT-MODE-OFF + {: m:ptr :}
-   m c@  m 1 + c@ 256 * or  FS-ABI:S-IFMT and  FS-ABI:S-IFREG = ;
-
 \ The open frame's stamp, from a stat of the path taken before the file is
 \ opened, so a change during the read leaves a stamp no later load matches. A
-\ path that is not a regular file keeps 0 0 -1: its bytes have no stamp.
+\ path that is not a regular file gets 0 0 -1: its bytes have no stamp.
 : STAMP! ( ptr u8 -- )
-   STAT-BUF stat64 0 < if exit then
-   STAT-REGULAR? 0= if exit then
+   COMPILE-READS:STAMP {: sec:n ns:n size:n :}
    TOP@ {: frame:ptr :}
-   FS-ABI:STAT-CTIME-SEC-OFF STAT-CELL@ frame FR-CTIME-SEC + CELL-VIEW !
-   FS-ABI:STAT-CTIME-NS-OFF STAT-CELL@ frame FR-CTIME-NS + CELL-VIEW !
-   FS-ABI:STAT-SIZE-OFF STAT-CELL@ frame FR-STAMP-SIZE + CELL-VIEW ! ;
+   sec frame FR-CTIME-SEC + CELL-VIEW !
+   ns frame FR-CTIME-NS + CELL-VIEW !
+   size frame FR-STAMP-SIZE + CELL-VIEW ! ;
 
 \ Refuses PATH unless the top frame awaits its bytes (FR-SIZE -1 from PUSH until
 \ HOLD). A word's read finds its own file's frame held, or no frame; in a build,

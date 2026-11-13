@@ -12,6 +12,7 @@ require src/lib/le.f
 require src/lib/span.f
 require src/lib/ffi-abi.f
 require src/lib/memory.f
+require src/core/compile-reads.f
 
 package FS
 
@@ -348,8 +349,17 @@ public
 : >PATHZ ( ptr u8 n -- ptr u8 )
    PATHZ-BUF PATHZ-INTO ;
 
+private
+\ >PATHZ of a path whose file a word reads, the read recorded
+\ (COMPILE-READS:FILE+).
+: READ-PATHZ ( ptr u8 n -- ptr u8 ) {: a:ptr u:n :}
+   a u >PATHZ {: z:ptr :}
+   a u z COMPILE-READS:FILE+
+   z ;
+
+public
 : EXISTS? ( ptr u8 n -- bool )
-   >PATHZ 0 access 0= ;
+   READ-PATHZ 0 access 0= ;
 
 : STAT-MODE@ ( -- n )
    STAT-BUF FS-ABI:STAT-MODE-OFF + LE:U16@ ;
@@ -370,11 +380,11 @@ public
    STAT-BUF FS-ABI:STAT-CTIME-NS-OFF + LE:U64@ ;
 
 : TRY-STAT ( ptr u8 n -- bool )
-   >PATHZ STAT-BUF stat64 0 < if false exit then
+   READ-PATHZ STAT-BUF stat64 0 < if false exit then
    true ;
 
 : TRY-LSTAT ( ptr u8 n -- bool )
-   >PATHZ STAT-BUF lstat64 0 < if false exit then
+   READ-PATHZ STAT-BUF lstat64 0 < if false exit then
    true ;
 
 private
@@ -455,7 +465,7 @@ public
    ;MATCH ;
 
 : EXECUTABLE? ( ptr u8 n -- bool )
-   >PATHZ X-OK access 0= ;
+   READ-PATHZ X-OK access 0= ;
 
 : BASENAME ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
    u begin dup 0 > while
@@ -541,7 +551,7 @@ private
 public
 : READ-ALL ( ptr u8 n ptr u8 n -- n ) {: pa:ptr pu dst:ptr cap :}
    cap 0 < if CAUSE-CLEAR E-FS-CAPACITY throw then
-   pa pu >PATHZ open-rd IO-FD !
+   pa pu READ-PATHZ open-rd IO-FD !
    IO-FD @ 0 < if E-FS-OPEN throw then
    dst cap READ-FILL {: got :}
    got cap = if READ-MORE? if IO-FD @ close E-FS-CAPACITY throw then then
@@ -583,7 +593,7 @@ public
 : READ-AT ( ptr u8 n n ptr u8 n -- )
    {: pa:ptr pu off dst:ptr len :}
    off 0 < len 0 < or if CAUSE-CLEAR E-FS-CAPACITY throw then
-   pa pu >PATHZ open-rd {: file :}
+   pa pu READ-PATHZ open-rd {: file :}
    file 0 < if E-FS-OPEN throw then
    file off dst len PREAD-FILL
    file close ;
@@ -613,7 +623,7 @@ public
 \ does, so a FIFO at the path waits for a writer: name files the caller owns.
 \ A true flag hands the caller an open descriptor that READ-SIZED closes.
 : OPEN-SIZED ( ptr u8 n -- fd n bool ) {: pa:ptr pu :}
-   pa pu >PATHZ open-rd {: file :}
+   pa pu READ-PATHZ open-rd {: file :}
    file 0 < if
       ERRNO ENOENT = if -1 >FD 0 false exit then
       E-FS-OPEN throw
