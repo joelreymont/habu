@@ -379,6 +379,7 @@ async function browser() {
     assert.equal(open, "occluded 0101 7",
       `after a draw of 0 rows both boxes pass, got ${open}`);
     console.log(`Headless Chrome occlude after 0 rows: ${open}`);
+    await shadowed();
     await evaluate("oldError?.call(oldImage,new Event('error'))");
     assert.equal((await state()).error, "");
     await command("broken");
@@ -400,6 +401,123 @@ async function browser() {
       "draw clearing, stale callbacks, errors, input control and tree " +
       "opening passed");
     await mounted();
+
+    // display.f's ground z = 0, +z up, under an orange unit box on it at x
+    // and y -0.5 to 0.5, mesh 100 drawn by the host straight from the page,
+    // seen straight down through x / 2, y / 2. The key, from the studio's
+    // front left, casts the box's shadow up and right on screen. Mesh 101 is
+    // the box with one more vertex, at grid 65535 on each axis, that no
+    // triangle names. box(m, handle, k) draws the box of that mesh scaled by
+    // k about the world's origin.
+    async function shadowed() {
+      await evaluate(`(() => {
+        // +-x, +-y and +-z as octahedral i16s.
+        const octahedral = [[[-32767, 0], [32767, 0]], [[0, -32767], [0, 32767]],
+          [[32767, 32767], [0, 0]]];
+        const vertices = new Int16Array(25 * 6), triangles = new Uint16Array(36);
+        for (let f = 0; f < 6; f++) {
+          const [j, s] = [f >> 1, f & 1];
+          [[0, 0], [1, 0], [1, 1], [0, 1]].forEach(([p, q], k) => {
+            const g = [0, 0, 0];
+            [g[j], g[(j + 1) % 3], g[(j + 2) % 3]] = [s, p, q];
+            vertices.set([...g, 0, ...octahedral[j][s]], 6 * (4 * f + k));
+          });
+          triangles.set([0, 1, 2, 0, 2, 3].map((k) => 4 * f + k), 6 * f);
+        }
+        vertices.set([-1, -1, -1, 0, 0, 0], 6 * 24); // grid 65535 as u16s
+        subject.host.mesh(100, 24, 12, new Uint16Array(vertices.buffer, 0, 6 * 24), triangles);
+        subject.host.mesh(101, 25, 12, new Uint16Array(vertices.buffer), triangles);
+        window.box = (m, handle = 100, k = 1) => {
+          const row = new DataView(new ArrayBuffer(72));
+          [1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, -0.5, 0].forEach((v, j) =>
+            row.setFloat32(4 * j, k * v, true));
+          row.setUint32(48, handle, true); row.setUint32(60, 0xFFFFFFFF, true);
+          [0xff, 0x73, 0x14].forEach((v, j) => row.setUint8(64 + j, v));
+          row.setUint16(70, 32768, true);
+          subject.host.draw(new Uint8Array(row.buffer), 1, Float32Array.from(m));
+        };
+      })()`);
+      const down = [0.5, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, -0.25, 0, 0, 0, 0.5, 1];
+      // down orbited 180° about +z, and turned 180° about x to look up.
+      const orbited = [-0.5, 0, 0, 0, 0, -0.5, 0, 0, 0, 0, -0.25, 0, 0, 0, 0.5, 1];
+      const below = [0.5, 0, 0, 0, 0, -0.5, 0, 0, 0, 0, 0.25, 0, 0, 0, 0.5, 1];
+      // In clip space: the floor in the box's shadow, its mirror through the
+      // box's centre, a floor point far from both and the box's top.
+      const points = [[0.2, 0.4], [-0.2, -0.4], [-0.5, -0.5], [0, 0]];
+      // The shade is 190 by the studio's terms.
+      const grey = (c) => c.every((v) => v >= 175 && v <= 205) &&
+        Math.max(...c) - Math.min(...c) <= 20;
+      await command("ground");
+      await evaluate(`box(${JSON.stringify(down)})`);
+      const shot = await call("Page.captureScreenshot", { format: "png" });
+      writeFileSync(join(output, "shadow.png"), Buffer.from(shot.data, "base64"));
+      const [shade, mirror, far, top] = await pixels(points);
+      assert.ok(grey(shade), `the floor away from the key is in neutral grey shadow, got ${shade}`);
+      assert.deepEqual(mirror, background, `its mirror on the key's side is white, got ${mirror}`);
+      assert.deepEqual(far, background, `the floor far from the box is white, got ${far}`);
+      assert.ok(top[0] > top[1] && top[1] > top[2], `the box keeps its orange, got ${top}`);
+      const picked = await evaluate(`(() => {
+        const [x, y] = ${JSON.stringify(points[0])}, c = document.querySelector("canvas");
+        return subject.host.pick(BigInt(Math.floor((x + 1) * c.width / 2)),
+          BigInt(Math.floor((1 - y) * c.height / 2))); })()`);
+      assert.deepEqual(picked, [-1, 0, 0x3F800000], `a pick on the shadow answers none, got ${picked}`);
+      // The canvas's pixel row through the shadow's floor point, from its
+      // darkest pixel out to each end: the penumbra brightens without a band
+      // or a step, and the row ends on the white floor.
+      const width = await evaluate(`document.querySelector("canvas").width`);
+      const row = await pixels(Array.from({ length: width }, (_, k) =>
+        [(2 * k + 1) / width - 1, points[0][1]]));
+      const darkest = row.reduce((d, c, k) => (c[0] < row[d][0] ? k : d), 0);
+      let rise = 0;
+      for (const step of [-1, 1]) {
+        const end = step < 0 ? 0 : width - 1;
+        for (let k = darkest; k !== end; k += step) {
+          const [c, next] = [row[k], row[k + step]];
+          rise = Math.max(rise, ...next.map((v, j) => v - c[j]));
+          assert.ok(next.every((v, j) => v >= c[j] && v - c[j] <= 6),
+            `along the row out from pixel ${darkest}, pixel ${k} ${c} then ${next}`);
+        }
+        assert.deepEqual(row[end], background, `the row ends on white floor, got ${row[end]}`);
+      }
+      // The turntable keeps the key's place on screen as the camera orbits.
+      await evaluate(`box(${JSON.stringify(orbited)})`);
+      const [turned, turnedMirror] = await pixels(points);
+      assert.ok(grey(turned) && Math.abs(turned[0] - shade[0]) <= 20,
+        `orbited 180°, the shadow stays on the same screen side, got ${turned}`);
+      assert.deepEqual(turnedMirror, background, `orbited, the mirror stays white, got ${turnedMirror}`);
+      // A vertex no triangle names, however far, leaves the shadow as it is.
+      await evaluate(`box(${JSON.stringify(down)}, 101)`);
+      const [unnamed] = await pixels(points);
+      assert.ok(grey(unnamed), `a far vertex no triangle names keeps the shadow, got ${unnamed}`);
+      // The box and the camera scaled by 1e-12 draw the same picture.
+      const small = down.map((v, k) => (k < 12 ? v * 1e12 : v));
+      await evaluate(`box(${JSON.stringify(small)}, 100, 1e-12)`);
+      const [tiny] = await pixels(points);
+      assert.ok(grey(tiny), `the box at 1e-12 scale casts the shadow, got ${tiny}`);
+      // Tilted 45° about x, the camera's right is down's, so the turntable
+      // keeps the key where it was; were the studio the view's own frame, the
+      // key would stand nearly overhead and leave this floor point, x 0.6 and
+      // y 1, white.
+      const h = Math.SQRT1_2;
+      const tilted = [0.5, 0, 0, 0, 0, 0.5 * h, 0.2 * h, 0, 0, 0.5 * h, -0.2 * h, 0, 0, 0, 0.5, 1];
+      await evaluate(`box(${JSON.stringify(tilted)})`);
+      const [leaning] = await pixels([[0.3, 0.5 * h]]);
+      assert.ok(grey(leaning), `tilted 45°, the floor behind the box is in shadow, got ${leaning}`);
+      // From below, the floor point shadowed from above is at y -0.4.
+      await evaluate(`box(${JSON.stringify(below)})`);
+      const [under] = await pixels([[0.2, -0.4]]);
+      assert.deepEqual(under, background, `a camera below the ground shows no shadow, got ${under}`);
+      await command("ground-none");
+      await evaluate(`box(${JSON.stringify(down)})`);
+      const [none] = await pixels(points);
+      assert.deepEqual(none, background, `with no ground the floor is white, got ${none}`);
+      await evaluate(`subject.host.draw(new Uint8Array(0), 0, Float32Array.from(${JSON.stringify(down)}));
+        subject.host.unmesh(100); subject.host.unmesh(101)`);
+      console.log(`Headless Chrome ground: shadow ${shade}, mirror ${mirror}, far ${far}, ` +
+        `box ${top}, row darkest ${row[darkest]} rising at most ${rise}, orbited ${turned}, ` +
+        `unnamed vertex ${unnamed}, 1e-12 scale ${tiny}, tilted ${leaning}, ` +
+        `from below ${under}, no ground ${none}`);
+    }
 
     // viewport.js alone on a page that owns only a canvas: mount, turns,
     // dispose, and a second mount of the same canvas.

@@ -70,18 +70,43 @@
 // metallic-roughness surface lit by a studio, env, and a directional key
 // light along env's key softbox, tone-mapped by Khronos PBR Neutral and
 // encoded to sRGB, the only encoding, since the preferred canvas format is
-// never an -srgb one. The studio and key light are fixed in view coordinates,
-// view's right, up and back, so they turn with the camera; V points from the
-// fragment toward view's eye, a point when its w is 1 and a direction when 0.
-// The normal is turned toward V: meshes are drawn without culling and may be
-// open. hit, after vs, marks the nearest fragment in pick's one texel, with 1
-// in its fourth channel to tell a hit from the clear.
+// never an -srgb one. The studio and key light are fixed in view's right, up
+// and back, which studio() sets: with no ground they are the view's own, so
+// the studio turns with the camera; with a ground, up is the ground's normal
+// and right and back turn about it with the camera, a turntable. V points
+// from the fragment toward view's eye, a point when its w is 1 and a
+// direction when 0. The normal is turned toward V: meshes are drawn without
+// culling and may be open. hit, after vs, marks the nearest fragment in
+// pick's one texel, with 1 in its fourth channel to tell a hit from the clear.
+// The key casts the instances' soft shadow on the ground: caster draws them
+// into a depth map by light.clip, whose x and y run along the key softbox's
+// tangents and whose depth runs away from the key; rows and columns sum the
+// map's blockers into summed-area tables, counts and heights; and ground
+// draws the catcher, the quad light.corners on the plane, whose fragment,
+// shadow, finds by PCSS over those tables the share V of the softbox it sees
+// past the casters. The ground is not in the map: the plane's depth at light
+// x, y is light.ground.x x + light.ground.y y + light.ground.z,
+// light.reach.xy is the softbox's half extents in light x and y per unit of
+// depth, and light.reach.z the tallest caster's height above the plane in
+// units of depth. A caster below the plane neither shades it nor hides one
+// above it from the key. The catcher reads white times
+// (env(up, 1) + key V) / (env(up, 1) + key), key the key's irradiance on the
+// ground, in linear light and not tone-mapped, so an unshadowed ground reads
+// white as the clear does.
 // box draws one occlude box per instance as the 12 triangles of its faces:
 // vertex k takes corner corners[k], whose bit j picks the highest coordinate j
 // in place of the lowest. A box whose corners' clip z lie on both sides of 0,
 // the near plane, draws the full-viewport quad at depth 0 from vertices 0 to
 // 5 in place of its faces, which that plane can cut away while the box's
 // inside is in view.
+//
+// KEY is the key light's direction and KEY_BOX its softbox's half extents,
+// per unit along KEY, in studio coordinates. SHADOW_SIDE is the shadow map's
+// largest side, the most at which 255 side² still fits a u32 table's sums;
+// WebGPU guarantees textures that wide.
+const KEY = [-0.4, 0.6, 0.7];
+const KEY_BOX = [0.45, 0.27];
+const SHADOW_SIDE = Math.floor(Math.sqrt(2 ** 32 / 255));
 const SHADER = `
 @group(0) @binding(0) var<uniform> clip: mat4x4<f32>;
 @group(0) @binding(1) var<storage, read> words: array<u32>;
@@ -94,6 +119,20 @@ struct View {
 }
 
 @group(0) @binding(2) var<uniform> view: View;
+
+struct Light {
+  clip: mat4x4<f32>,
+  corners: array<vec4<f32>, 4>,
+  ground: vec4<f32>,
+  reach: vec4<f32>,
+}
+
+@group(0) @binding(3) var<uniform> light: Light;
+@group(0) @binding(4) var depths: texture_depth_2d;
+@group(0) @binding(5) var counts: texture_storage_2d<r32uint, read_write>;
+@group(0) @binding(6) var heights: texture_storage_2d<r32uint, read_write>;
+@group(0) @binding(7) var countSums: texture_2d<u32>;
+@group(0) @binding(8) var heightSums: texture_2d<u32>;
 
 const PI = 3.14159265358979;
 
@@ -128,9 +167,13 @@ fn unfold(e: vec2<f32>) -> vec3<f32> {
   return normalize(n);
 }
 
-@vertex fn vs(v: Vertex) -> Corner {
+fn placed(v: Vertex) -> vec3<f32> {
   let g = vec3<f32>(v.grid.xyz);
-  let p = v.c0 * g.x + v.c1 * g.y + v.c2 * g.z + v.c3;
+  return v.c0 * g.x + v.c1 * g.y + v.c2 * g.z + v.c3;
+}
+
+@vertex fn vs(v: Vertex) -> Corner {
+  let p = placed(v);
   let cofactor = mat3x3<f32>(cross(v.c1, v.c2), cross(v.c2, v.c0),
     cross(v.c0, v.c1));
   let side = select(1.0, -1.0, dot(v.c0, cofactor[0]) < 0.0);
@@ -193,14 +236,14 @@ fn softbox(d: vec3<f32>, c: vec3<f32>, h: vec2<f32>, s: f32) -> f32 {
 }
 
 fn keyward() -> vec3<f32> {
-  return normalize(vec3<f32>(-0.4, 0.6, 0.7));
+  return normalize(vec3<f32>(${KEY.join(", ")}));
 }
 
 // The studio's linear radiance along view direction d, its highlights
 // softened by perceptual roughness.
 fn env(d: vec3<f32>, rough: f32) -> vec3<f32> {
   let s = 0.02 + 0.5 * rough;
-  let key = softbox(d, keyward(), vec2<f32>(0.45, 0.27), s);
+  let key = softbox(d, keyward(), vec2<f32>(${KEY_BOX.join(", ")}), s);
   let rim = softbox(d, normalize(vec3<f32>(0.8, 0.3, -0.5)),
     vec2<f32>(0.09, 0.7), s);
   return vec3<f32>(mix(0.05, 0.6, smoothstep(-0.3, 0.6, d.y)) + 6.0 * key +
@@ -256,6 +299,184 @@ fn keyed(n: vec3<f32>, v: vec3<f32>, f0: vec3<f32>, diffuse: vec3<f32>,
 
 @fragment fn hit(c: Corner) -> @location(0) vec4<u32> {
   return vec4<u32>(c.id, c.face, bitcast<u32>(c.at.z), 1u);
+}
+
+@vertex fn caster(v: Vertex) -> @builtin(position) vec4<f32> {
+  return light.clip * vec4<f32>(placed(v), 1.0);
+}
+
+struct Floor {
+  @builtin(position) at: vec4<f32>,
+  @location(0) seen: vec3<f32>, // light-space x, y and z
+}
+
+// The catcher at depth 0.5, where the pipeline's compare always passes.
+@vertex fn ground(@builtin(vertex_index) k: u32) -> Floor {
+  var order = array<u32, 6>(0u, 1u, 2u, 0u, 2u, 3u);
+  let p = light.corners[order[k]];
+  let c = clip * p;
+  return Floor(vec4<f32>(c.xy, 0.5 * c.w, c.w), (light.clip * p).xyz);
+}
+
+// Light-space x, y, the map's clip space, as a texture coordinate.
+fn mapped(q: vec2<f32>) -> vec2<f32> {
+  return vec2<f32>(0.5 + 0.5 * q.x, 0.5 - 0.5 * q.y);
+}
+
+fn plane(q: vec2<f32>) -> f32 {
+  return dot(light.ground.xy, q) + light.ground.z;
+}
+
+// Map texel p's blocker count, 1 when its nearest caster lies above the
+// plane, and that caster's height above the plane along the key in 255ths of
+// light.reach.z; 0, 0 when none does. A cleared texel, 1, holds no caster:
+// the casters' depths lie inside 0 to 1.
+fn blocker(p: vec2<u32>, side: u32) -> vec2<u32> {
+  let q = (vec2<f32>(p) + 0.5) / f32(side) * vec2<f32>(2.0, -2.0) +
+    vec2<f32>(-1.0, 1.0);
+  let z = plane(q);
+  let b = textureLoad(depths, vec2<i32>(p), 0);
+  if (b >= min(z, 1.0)) { return vec2<u32>(0u); }
+  return vec2<u32>(1u, u32(clamp(round((z - b) / light.reach.z * 255.0), 0.0,
+    255.0)));
+}
+
+var<workgroup> scan: array<vec2<u32>, 256>;
+
+// The inclusive prefix sum of value over the workgroup's invocations, by
+// Hillis-Steele, then the sum of all.
+fn prefix(t: u32, value: vec2<u32>) -> vec4<u32> {
+  scan[t] = value;
+  for (var d = 1u; d < 256u; d *= 2u) {
+    workgroupBarrier();
+    var before = vec2<u32>(0u);
+    if (t >= d) { before = scan[t - d]; }
+    workgroupBarrier();
+    scan[t] += before;
+  }
+  workgroupBarrier();
+  let sums = vec4<u32>(scan[t], scan[255]);
+  workgroupBarrier();
+  return sums;
+}
+
+// rows turns each map row's blockers into their running sums along x, in 256
+// texel chunks; columns then sums those along y in place, so a texel holds
+// the sums over the texels at or before it in both. The sums are u32 and
+// cannot overflow: a count is at most side², a height sum at most 255 side²,
+// and SHADOW_SIDE keeps that below 2³².
+@compute @workgroup_size(256) fn rows(@builtin(workgroup_id) g: vec3<u32>,
+    @builtin(local_invocation_index) t: u32) {
+  let side = textureDimensions(depths).x;
+  var carry = vec2<u32>(0u);
+  for (var x0 = 0u; x0 < side; x0 += 256u) {
+    let p = vec2<u32>(x0 + t, g.x);
+    var value = vec2<u32>(0u);
+    if (p.x < side) { value = blocker(p, side); }
+    let sums = prefix(t, value);
+    if (p.x < side) {
+      textureStore(counts, p, vec4<u32>(carry.x + sums.x, 0u, 0u, 0u));
+      textureStore(heights, p, vec4<u32>(carry.y + sums.y, 0u, 0u, 0u));
+    }
+    carry += sums.zw;
+  }
+}
+
+@compute @workgroup_size(256) fn columns(@builtin(workgroup_id) g: vec3<u32>,
+    @builtin(local_invocation_index) t: u32) {
+  let side = textureDimensions(counts).y;
+  var carry = vec2<u32>(0u);
+  for (var y0 = 0u; y0 < side; y0 += 256u) {
+    let p = vec2<u32>(g.x, y0 + t);
+    var value = vec2<u32>(0u);
+    if (p.y < side) {
+      value = vec2<u32>(textureLoad(counts, p).x, textureLoad(heights, p).x);
+    }
+    let sums = prefix(t, value);
+    if (p.y < side) {
+      textureStore(counts, p, vec4<u32>(carry.x + sums.x, 0u, 0u, 0u));
+      textureStore(heights, p, vec4<u32>(carry.y + sums.y, 0u, 0u, 0u));
+    }
+    carry += sums.zw;
+  }
+}
+
+// The blockers' count and height sum over map texels x < c.x and y < c.y.
+fn summed(c: vec2<i32>) -> vec2<u32> {
+  if (c.x == 0 || c.y == 0) { return vec2<u32>(0u); }
+  return vec2<u32>(textureLoad(countSums, c - 1, 0).x,
+    textureLoad(heightSums, c - 1, 0).x);
+}
+
+// The blockers' count and height sum over the rectangle lo to hi of map
+// texel coordinates, texel i covering i to i + 1, as an exact box filter: a
+// sum from the origin to a point is bilinear between whole coordinates, so
+// each corner's is the bilinear blend of the four summed there. The result
+// is the blend's 16 terms, each the exact u32 sum over a rectangle between
+// the corners' whole coordinates, so no large total is rounded; such a
+// rectangle runs backwards, and its sum is negative, when one of its sides
+// lies inside one texel's width. The map's outside holds no blocker.
+fn boxed(lo: vec2<f32>, hi: vec2<f32>) -> vec2<f32> {
+  let size = vec2<i32>(textureDimensions(countSums));
+  let a = clamp(lo, vec2<f32>(0.0), vec2<f32>(size));
+  let b = clamp(hi, vec2<f32>(0.0), vec2<f32>(size));
+  let i0 = min(vec2<i32>(floor(a)), size - 1);
+  let i1 = min(vec2<i32>(floor(b)), size - 1);
+  let f0 = a - vec2<f32>(i0);
+  let f1 = b - vec2<f32>(i1);
+  // at[4 y + x]: x and y index i0, i0 + 1, i1 and i1 + 1.
+  var at: array<vec2<u32>, 16>;
+  for (var k = 0; k < 16; k++) {
+    let j = vec2<i32>(k % 4, k / 4);
+    at[k] = summed(select(i0, i1, j >= vec2<i32>(2)) + j % 2);
+  }
+  var sum = vec2<f32>(0.0);
+  for (var k = 0; k < 16; k++) {
+    // k's bits pick lo's lattice point in x and y, then hi's.
+    let l = vec2<i32>(k & 1, (k >> 1) & 1);
+    let h = vec2<i32>((k >> 2) & 1, (k >> 3) & 1);
+    let w = select(1.0 - f0, f0, l == vec2<i32>(1)) *
+      select(1.0 - f1, f1, h == vec2<i32>(1));
+    let x = vec2<i32>(l.x, 2 + h.x);
+    let y = vec2<i32>(l.y, 2 + h.y);
+    let g = at[4 * y.y + x.y] - at[4 * y.y + x.x] - at[4 * y.x + x.y] +
+      at[4 * y.x + x.x];
+    let back = i1 + h < i0 + l;
+    let s = select(vec2<f32>(g), -vec2<f32>(vec2<u32>(0u) - g),
+      back.x != back.y);
+    sum += w.x * w.y * s;
+  }
+  return sum;
+}
+
+// q's rectangle of half extents e in light x and y, as map texel
+// coordinates, its lowest corner then its highest.
+fn texels(q: vec2<f32>, e: vec2<f32>) -> mat2x2<f32> {
+  let side = f32(textureDimensions(countSums).x);
+  return mat2x2<f32>(mapped(q + vec2<f32>(-e.x, e.y)) * side,
+    mapped(q + vec2<f32>(e.x, -e.y)) * side);
+}
+
+// The search region is the softbox as the fragment sees it at the tallest
+// caster's height; the blockers' mean height there sets the penumbra
+// rectangle, the softbox as the fragment sees it at that height and at least
+// a texel wide, and V is 1 less the share of it the blockers cover. No
+// blocker in the search region leaves V 1.
+@fragment fn shadow(f: Floor) -> @location(0) vec4<f32> {
+  let side = f32(textureDimensions(countSums).x);
+  let search = texels(f.seen.xy, light.reach.z * light.reach.xy);
+  let found = boxed(search[0], search[1]);
+  var v = 1.0;
+  if (found.x > 0.0) {
+    let height = found.y / found.x / 255.0 * light.reach.z;
+    let r = texels(f.seen.xy, max(height * light.reach.xy, vec2<f32>(1.0 / side)));
+    let e = r[1] - r[0];
+    v = clamp(1.0 - boxed(r[0], r[1]).x / (e.x * e.y), 0.0, 1.0);
+  }
+  let ambient = env(vec3<f32>(0.0, 1.0, 0.0), 1.0).x;
+  let key = 3.0 * keyward().y / PI;
+  return vec4<f32>(encoded(vec3<f32>((ambient + key * v) / (ambient + key))),
+    1.0);
 }
 
 fn corner(c: u32, lo: vec3<f32>, hi: vec3<f32>) -> vec4<f32> {
@@ -349,6 +570,85 @@ function viewer(m) {
   return view.every(Number.isFinite) ? view : null;
 }
 
+const cross3 = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2],
+  a[0] * b[1] - a[1] * b[0]];
+const scaled = (a, k) => a.map((v) => v * k);
+const plus = (...vs) => [0, 1, 2].map((k) => vs.reduce((s, v) => s + v[k], 0));
+
+// The studio's view, viewer's view with the studio's axes, in binary64: the
+// view's own with no plane; with a ground plane, up is its normal n, right r
+// the view's right laid on the plane, or, where that right lies along n, s
+// times n cross the view's back laid on it, and back s r cross n, s the sign
+// of the view's right · (up × back), so the studio keeps the view's
+// handedness. A right laid shorter than 1e-6 lies along n: an f32 matrix
+// rolled 90° leaves about 4e-8.
+function studio(view, plane) {
+  if (!plane) return view.slice();
+  const [right, up, back] = [4, 8, 12].map((k) => Array.from(view.subarray(k, k + 3)));
+  const n = unit(Array.from(plane.subarray(0, 3)));
+  const laid = (a) => plus(a, scaled(n, -dot3(a, n)));
+  const s = Math.sign(dot3(right, cross3(up, back)));
+  const along = laid(right);
+  const r = Math.hypot(...along) >= 1e-6 ? unit(along)
+    : scaled(unit(cross3(n, laid(back))), s);
+  return Float32Array.of(...view.subarray(0, 4), ...r, 0, ...n, 0,
+    ...scaled(cross3(r, n), s), 0);
+}
+
+// The key light's world axes from the studio's view and the ground plane: x
+// and y the key softbox's tangents, z toward the key, as shader's softbox
+// takes them in studio coordinates; and the plane's unit normal n and d.
+function keyAxes(axes, plane) {
+  const c = unit(KEY);
+  const across = unit(cross3([0, 1, 0], c));
+  const [right, up, back] = [4, 8, 12].map((k) => Array.from(axes.subarray(k, k + 3)));
+  const world = (a) => plus(scaled(right, a[0]), scaled(up, a[1]), scaled(back, a[2]));
+  const length = Math.hypot(plane[0], plane[1], plane[2]);
+  return { x: world(across), y: world(cross3(c, across)), z: world(c),
+    n: Array.from(plane.subarray(0, 3), (v) => v / length), d: plane[3] / length };
+}
+
+// The Light uniform, 40 f32s, for the casters fit found with the key's axes.
+// The map's x and y cover the casters; its depth runs from the nearest
+// caster, 0, to the farthest, 1, 1% to spare at each end, so a cleared 1
+// holds none. The catcher grows the casters' rectangle on each side by
+// h D / (1 - h |slope|), the farthest past them a point of the plane can
+// see a caster against the softbox: h the softbox's half extent, D the tallest caster's
+// distance to the plane along the key and slope the plane's rise along the
+// key per unit along that axis. The growth is finite, since the key stands
+// 36.6° above the ground, more than the softbox's half-angle atan(0.45) =
+// 24.2°. An axis in which the casters have no extent, all of them a point or
+// a sheet seen edge-on, takes a spare of a millionth of their largest extent,
+// so the fit keeps the casters' own scale whatever the scene's units.
+// Casters with no extent at all draw no shadow: fit answers null for them.
+function lit(fitted, a) {
+  const { lo, hi, near, far, tall } = fitted;
+  const nx = dot3(a.n, a.x), ny = dot3(a.n, a.y), nz = dot3(a.n, a.z);
+  const spare = Math.max(hi[0] - lo[0], hi[1] - lo[1], near - far) * 1e-6;
+  const [cx, cy] = [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2];
+  const ex = Math.max((hi[0] - lo[0]) / 2, spare);
+  const ey = Math.max((hi[1] - lo[1]) / 2, spare);
+  const pad = Math.max(near - far, spare) / 100;
+  const top = near + pad;
+  const span = near - far + 2 * pad;
+  // The clip matrix's rows: x, y, depth and w.
+  const rows = [[...scaled(a.x, 1 / ex), -cx / ex], [...scaled(a.y, 1 / ey), -cy / ey],
+    [...scaled(a.z, -1 / span), top / span], [0, 0, 0, 1]];
+  const D = tall / nz;
+  const gx = KEY_BOX[0] * D / (1 - KEY_BOX[0] * Math.abs(nx / nz));
+  const gy = KEY_BOX[1] * D / (1 - KEY_BOX[1] * Math.abs(ny / nz));
+  const corner = (x, y) => [...plus(scaled(a.x, x), scaled(a.y, y),
+    scaled(a.z, -(a.d + x * nx + y * ny) / nz)), 1];
+  const out = new Float32Array(40);
+  for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) out[4 * c + r] = rows[r][c];
+  out.set([...corner(lo[0] - gx, lo[1] - gy), ...corner(hi[0] + gx, lo[1] - gy),
+    ...corner(hi[0] + gx, hi[1] + gy), ...corner(lo[0] - gx, hi[1] + gy)], 16);
+  out.set([ex * nx / (nz * span), ey * ny / (nz * span),
+    (top + (a.d + cx * nx + cy * ny) / nz) / span, 0], 32);
+  out.set([span * KEY_BOX[0] / ex, span * KEY_BOX[1] / ey, D / span, 0], 36);
+  return out;
+}
+
 // WebGPU on the canvas: setup's renderer, whose release destroys the device
 // and everything allocated from it. A canvas holding another context is
 // refused before a device exists; a later setup failure releases the device.
@@ -400,8 +700,14 @@ function grouped(rows, count) {
 // buffers grow when a write needs more. draw samples 4 times per pixel: into
 // a 4x colour texture resolved into the canvas's, then discarded, against a
 // 4x depth texture. The depth texture keeps the last draw's depth, cleared
-// to 1 when made, the matrix buffer its matrix and the view buffer the last
-// view viewer gave, the identity matrix's before any; occlude draws its boxes
+// to 1 when made, the matrix buffer its matrix and the view buffer studio's
+// view of the ground held then and of the last view viewer gave, the identity
+// matrix's before any. While a ground is held, a square depth32float shadow
+// map whose side is the drawing buffer's larger side, at most SHADOW_SIDE,
+// exists with its two r32uint tables, and a draw whose eye is above the plane
+// and some of whose instances rise above it first draws them into the map
+// along the key, sums the tables from it, then draws the catcher first in its
+// main pass. occlude draws its boxes
 // against them in passes of at most QUERIES occlusion queries, one per box,
 // and reads the resolved sample counts back through buffers of its own,
 // released once read, so a box passes when any sample does. pick,
@@ -456,18 +762,69 @@ function setup(canvas, context, device, release, fail) {
     depthStencil: { format: "depth24plus", depthWriteEnabled: false, depthCompare: "less-equal" },
     multisample: { count: 4 },
   });
+  const caster = device.createRenderPipeline({
+    layout: "auto",
+    vertex: { module, entryPoint: "caster", buffers: layouts },
+    primitive: { topology: "triangle-list", cullMode: "none" },
+    depthStencil: { format: "depth32float", depthWriteEnabled: true, depthCompare: "less" },
+  });
+  const catcher = device.createRenderPipeline({
+    layout: "auto",
+    vertex: { module, entryPoint: "ground" },
+    fragment: { module, entryPoint: "shadow", targets: [{ format }] },
+    primitive: { topology: "triangle-list", cullMode: "none" },
+    depthStencil: { format: "depth24plus", depthWriteEnabled: false, depthCompare: "always" },
+    multisample: { count: 4 },
+  });
+  const rowScan = device.createComputePipeline({ layout: "auto",
+    compute: { module, entryPoint: "rows" } });
+  const columnScan = device.createComputePipeline({ layout: "auto",
+    compute: { module, entryPoint: "columns" } });
   const { UNIFORM, STORAGE, VERTEX, INDEX, COPY_DST, COPY_SRC, QUERY_RESOLVE, MAP_READ } =
     GPUBufferUsage;
   const matrix = device.createBuffer({ size: 64, usage: UNIFORM | COPY_DST });
+  // The last view viewer gave, kept for a draw whose matrix is singular.
+  let seen = viewer(Float32Array.of(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1));
   const view = device.createBuffer({ size: 64, usage: UNIFORM | COPY_DST,
     mappedAtCreation: true });
-  new Float32Array(view.getMappedRange()).set(
-    viewer(Float32Array.of(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)));
+  new Float32Array(view.getMappedRange()).set(seen);
   view.unmap();
   const boxBind = device.createBindGroup({
     layout: occluder.getBindGroupLayout(0),
     entries: [{ binding: 0, resource: { buffer: matrix } }],
   });
+  const light = device.createBuffer({ size: 160, usage: UNIFORM | COPY_DST });
+  const casterBind = device.createBindGroup({
+    layout: caster.getBindGroupLayout(0),
+    entries: [{ binding: 3, resource: { buffer: light } }],
+  });
+  let plane = null; // the ground held, or null
+  // The shadow map, its tables and the bind groups of rows, columns and the
+  // catcher, while a ground is held.
+  let shadows = null;
+  const shadowMap = () => {
+    const side = Math.min(Math.max(canvas.width, canvas.height), SHADOW_SIDE);
+    const { RENDER_ATTACHMENT, TEXTURE_BINDING, STORAGE_BINDING } = GPUTextureUsage;
+    const map = device.createTexture({ size: [side, side], format: "depth32float",
+      usage: RENDER_ATTACHMENT | TEXTURE_BINDING });
+    const table = () => device.createTexture({ size: [side, side], format: "r32uint",
+      usage: STORAGE_BINDING | TEXTURE_BINDING });
+    const [counts, heights] = [table(), table()];
+    const bound = (user, entries) => device.createBindGroup({
+      layout: user.getBindGroupLayout(0),
+      entries: entries.map(([binding, resource]) => ({ binding, resource })),
+    });
+    shadows = { map, counts, heights,
+      rows: bound(rowScan, [[3, { buffer: light }], [4, map.createView()],
+        [5, counts.createView()], [6, heights.createView()]]),
+      columns: bound(columnScan, [[5, counts.createView()], [6, heights.createView()]]),
+      catcher: bound(catcher, [[0, { buffer: matrix }], [3, { buffer: light }],
+        [7, counts.createView()], [8, heights.createView()]]) };
+  };
+  const unshadow = () => {
+    for (const texture of [shadows.map, shadows.counts, shadows.heights]) texture.destroy();
+    shadows = null;
+  };
   const probeMatrix = device.createBuffer({ size: 64, usage: UNIFORM | COPY_DST });
   const probeBind = device.createBindGroup({
     layout: prober.getBindGroupLayout(0),
@@ -495,7 +852,10 @@ function setup(canvas, context, device, release, fail) {
   });
   let depth = depthTexture();
   let color = colorTexture();
-  const meshes = new Map(); // a held handle -> { vertices, indices, count }
+  // A held handle -> { vertices, indices, count, lo, hi }, lo and hi the
+  // corners of the grid box of the vertices its triangles name, null for a
+  // mesh of no triangles: record 13 allows vertices no triangle names.
+  const meshes = new Map();
   let instances = null;
   let words = null;
   let bind = null;
@@ -540,7 +900,13 @@ function setup(canvas, context, device, release, fail) {
       held.destroy();
       throw e;
     }
-    meshes.set(handle, { vertices: held, indices, count: 3 * triangleCount });
+    let lo = null, hi = null;
+    for (const k of triangles) {
+      const g = vertices.subarray(6 * k, 6 * k + 3);
+      lo = lo ? lo.map((v, j) => Math.min(v, g[j])) : Array.from(g);
+      hi = hi ? hi.map((v, j) => Math.max(v, g[j])) : Array.from(g);
+    }
+    meshes.set(handle, { vertices: held, indices, count: 3 * triangleCount, lo, hi });
   };
   const unmesh = (handle) => {
     const { vertices, indices } = meshes.get(handle);
@@ -554,6 +920,50 @@ function setup(canvas, context, device, release, fail) {
     color.destroy();
     depth = depthTexture();
     color = colorTexture();
+    if (shadows) {
+      unshadow();
+      shadowMap();
+    }
+  };
+
+  const ground = (held) => {
+    plane = held && held.slice();
+    if (plane && !shadows) shadowMap();
+    if (!plane && shadows) unshadow();
+  };
+
+  // The casters among the count rows of ordered, by their meshes' grid boxes
+  // taken to world, in the key's axes: lo and hi the x, y rectangle covering
+  // them, near and far their greatest and least z, tall the most any rises
+  // above the plane; null when none does or when they have no extent in any
+  // of x, y and z. A row wholly on or below the plane, or of a mesh of no
+  // triangles, casts nothing.
+  const fit = (ordered, count, axes) => {
+    const v = new DataView(ordered.buffer, ordered.byteOffset, ordered.byteLength);
+    const lo = [Infinity, Infinity], hi = [-Infinity, -Infinity];
+    let near = -Infinity, far = Infinity, tall = 0;
+    for (let i = 0; i < count; i++) {
+      const c = Array.from({ length: 12 }, (_, k) => v.getFloat32(i * ROW + 4 * k, true));
+      const { lo: g0, hi: g1 } = meshes.get(v.getUint32(i * ROW + 48, true));
+      if (!g0) continue;
+      const corners = [];
+      for (let k = 0; k < 8; k++) {
+        const g = [0, 1, 2].map((j) => ((k >> j) & 1 ? g1[j] : g0[j]));
+        corners.push([0, 1, 2].map((j) => c[j] * g[0] + c[3 + j] * g[1] +
+          c[6 + j] * g[2] + c[9 + j]));
+      }
+      const rise = Math.max(...corners.map((p) => dot3(axes.n, p) + axes.d));
+      if (!(rise > 0)) continue;
+      tall = Math.max(tall, rise);
+      for (const p of corners) {
+        const [x, y, z] = [dot3(axes.x, p), dot3(axes.y, p), dot3(axes.z, p)];
+        lo[0] = Math.min(lo[0], x); hi[0] = Math.max(hi[0], x);
+        lo[1] = Math.min(lo[1], y); hi[1] = Math.max(hi[1], y);
+        near = Math.max(near, z); far = Math.min(far, z);
+      }
+    }
+    const wide = Math.max(hi[0] - lo[0], hi[1] - lo[1], near - far);
+    return tall > 0 && wide > 0 ? { lo, hi, near, far, tall } : null;
   };
 
   // The last draw's runs and its matrix, copied, as a pick reads them; null
@@ -569,9 +979,37 @@ function setup(canvas, context, device, release, fail) {
       device.queue.writeBuffer(instances, 0, ordered);
     }
     device.queue.writeBuffer(matrix, 0, clip);
-    const seen = viewer(last.clip);
-    if (seen) device.queue.writeBuffer(view, 0, seen);
+    seen = viewer(last.clip) ?? seen;
+    const axes = studio(seen, plane);
+    device.queue.writeBuffer(view, 0, axes);
+    const key = plane && keyAxes(axes, plane);
+    const above = key && dot3(key.n, seen) + key.d * seen[3] > 0;
+    const cast = above ? fit(ordered, count, key) : null;
     const encoder = device.createCommandEncoder();
+    if (cast) {
+      device.queue.writeBuffer(light, 0, lit(cast, key));
+      const shade = encoder.beginRenderPass({ colorAttachments: [],
+        depthStencilAttachment: { view: shadows.map.createView(), depthClearValue: 1,
+          depthLoadOp: "clear", depthStoreOp: "store" } });
+      shade.setPipeline(caster);
+      shade.setBindGroup(0, casterBind);
+      shade.setVertexBuffer(1, instances);
+      for (const [handle, first, n] of runs) {
+        const { vertices, indices, count: indexCount } = meshes.get(handle);
+        shade.setVertexBuffer(0, vertices);
+        shade.setIndexBuffer(indices, "uint16");
+        shade.drawIndexed(indexCount, n, 0, 0, first);
+      }
+      shade.end();
+      const sum = encoder.beginComputePass();
+      sum.setPipeline(rowScan);
+      sum.setBindGroup(0, shadows.rows);
+      sum.dispatchWorkgroups(shadows.map.height);
+      sum.setPipeline(columnScan);
+      sum.setBindGroup(0, shadows.columns);
+      sum.dispatchWorkgroups(shadows.map.width);
+      sum.end();
+    }
     const pass = encoder.beginRenderPass({
       colorAttachments: [{
         view: color.createView(),
@@ -582,6 +1020,11 @@ function setup(canvas, context, device, release, fail) {
       }],
       depthStencilAttachment: { view: depth.createView(), depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: "store" },
     });
+    if (cast) {
+      pass.setPipeline(catcher);
+      pass.setBindGroup(0, shadows.catcher);
+      pass.draw(6);
+    }
     pass.setPipeline(pipeline);
     pass.setBindGroup(0, bind);
     if (count) pass.setVertexBuffer(1, instances);
@@ -688,7 +1131,7 @@ function setup(canvas, context, device, release, fail) {
     }
   };
 
-  return { mesh, unmesh, highlight, draw, pick, occlude, resize, release };
+  return { mesh, unmesh, highlight, ground, draw, pick, occlude, resize, release };
 }
 
 function modifiers(e) {
@@ -801,6 +1244,7 @@ export async function mount(canvas, { Module, module: url, fetch: load, rpc, onT
       mesh: live((...args) => renderer.mesh(...args)),
       unmesh: live((handle) => renderer.unmesh(handle)),
       highlight: live((words) => renderer.highlight(words)),
+      ground: live((plane) => renderer.ground(plane)),
       pick: live((x, y) => renderer.pick(x, y)),
       occlude: live((boxes) => renderer.occlude(boxes)),
       draw: live((...args) => {
