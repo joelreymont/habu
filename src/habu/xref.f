@@ -54,7 +54,6 @@ CAST: N>U8 ( n -- ptr u8 )
 public
 : REC ( n -- ptr n ) XREF-REC-ADDR N>REC ;
 : PTR@ ( ptr n n -- ptr u8 ) XREF-CELL@ N>U8 ;
-: INDEXED-WL ( ptr u8 n n -- ptr n ) xref-search-wl ;
 ;package
 
 : XREF-REC ( n -- ptr n ) XREF:REC ;
@@ -286,7 +285,7 @@ INSTALL
    \ A retired row stays indexed under the wordlist it left, so WL:RETIRED takes
    \ the descending scan.
    wid 0 >= wid BOOT:NAMESPACE-WL = or if
-      a u wid XREF:INDEXED-WL exit
+      a u wid CHECKER-RESOLVE:WL-PROBE exit
    then
    u XREF-FU !  a XREF-FN!
    ndict@ 1-
@@ -388,23 +387,17 @@ $7FFFFFFFFFFFFFFF constant COUNT-MAX
    split 0 < IF s" xref: generated declaration is not qualified" 76 die THEN
    XREF-SN@ split BOOT:NAMESPACE-WL XREF-FIND-WL XREF-FOUND? ;
 
-\ One wordlist's record for a name, from the dictionary's hash index (habu1.f
-\ WLFIND), the index the definer's own duplicate wall asks. xref-search-wl's
-\ row is this package's own (src/habu/prims.f), as INTERPRETER's is for
-\ interpreter.f WL-PROBE.
-: WL-RECORD ( ptr u8 n n -- ptr n ) xref-search-wl ;
-
-\ The record a generated name would meet in the scope it will LAND in: a
-\ qualified name in the public wordlist its namespace row carries, a bare one in
-\ the current wordlist. XREF-FIND-TARGET-INDEX answers the same question by
+\ The record a generated name would meet in the scope it will LAND in, from the
+\ hash index the definer's own duplicate wall asks: a qualified name in the
+\ public wordlist its namespace row carries, a bare one in the current wordlist. XREF-FIND-TARGET-INDEX answers the same question by
 \ walking every record, which a declaration asked once per generated word.
 : TARGET-RECORD ( ptr u8 n -- ptr n ) {: a:ptr u:n :}
    a u XREF-QUAL-INDEX {: q:n :}
    q -2 = IF XREF-NULL EXIT THEN
-   q 0 < IF a u get-current WL-RECORD EXIT THEN
-   a q BOOT:NAMESPACE-WL WL-RECORD {: ns:ptr :}
+   q 0 < IF a u get-current CHECKER-RESOLVE:WL-PROBE EXIT THEN
+   a q BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: ns:ptr :}
    ns XREF-FOUND? 0= IF XREF-NULL EXIT THEN
-   a q 1+ ZPTR+  u q - 1-  ns XREF-PKG-PUBLIC WL-RECORD ;
+   a q 1+ ZPTR+  u q - 1-  ns XREF-PKG-PUBLIC CHECKER-RESOLVE:WL-PROBE ;
 
 \ A generated declaration is qualified exactly when it reserves a constructor
 \ namespace; a private family's bare words (TF-CTOR-PRIV$) allocate no wordlist.

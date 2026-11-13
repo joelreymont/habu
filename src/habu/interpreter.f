@@ -200,7 +200,7 @@ package INTERPRETER
 private
 
 \ Not the lookup: the row one wordlist holds under a name, whatever its flags.
-: WL-PROBE ( ptr u8 n n -- ptr n ) xref-search-wl ;
+: WL-PROBE ( ptr u8 n n -- ptr n ) CHECKER-RESOLVE:WL-PROBE ;
 
 : COLON-AT ( ptr u8 n n -- n )
    {: a:ptr u:n from:n :}

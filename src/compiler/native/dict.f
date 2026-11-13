@@ -29,10 +29,6 @@ public
 private
 
 \ ---- which record a spelling denotes -----------------------------------------
-\ The raw indexed record stays inside this protected package. Visibility is
-\ checked after namespace resolution. xref-search-wl's row is NDICT's own
-\ (src/habu/prims.f).
-: WL-RECORD ( ptr u8 n n -- ptr n ) xref-search-wl ;
 
 1 constant SCOPE-SEEDED              \ LSCOPEREC flag: the bound record is a seeded primitive
 
@@ -248,14 +244,15 @@ private
    rec REC-BINDING ;
 
 \ A `PACKAGE:WORD` spelling's record among the publics of the top-level package
-\ BOOT:NAMESPACE-WL holds; any other spelling binds none.
+\ BOOT:NAMESPACE-WL holds, whatever its visibility, which REC-CALL checks; any
+\ other spelling binds none.
 : TOP-REC ( ptr u8 n -- ptr n )
    {: a:ptr u:n :}
    a u XREF-QUAL-INDEX {: q:n :}
    q 0 < if XREF-NULL exit then
-   a q BOOT:NAMESPACE-WL WL-RECORD {: pkg:ptr :}
+   a q BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: pkg:ptr :}
    pkg XREF-FOUND? 0= if XREF-NULL exit then
-   a q 1+ +  u q - 1-  pkg XREF-PKG-PUBLIC WL-RECORD ;
+   a q 1+ +  u q - 1-  pkg XREF-PKG-PUBLIC CHECKER-RESOLVE:WL-PROBE ;
 
 public
 
