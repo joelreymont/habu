@@ -8,9 +8,9 @@ require src/habu/prof-abi.f
 \ pair at engine build time, naming both, when an engine builder
 \ (src/habu/habu1.f, src/habu/kernel-x64.f) loads this file.
 \
-\ The map holds every claim with a declared extent: everything from $3A00 up,
-\ src/habu/address-cells.f LOCK-CELL and INDEX-CELL, and the profiler band, the top PROF-CNT-BYTES of DATA as src/habu/prof-abi.f
-\ PROF-BAND-AT places it for the global DATA-SIZE. An x86-64 build's
+\ The map holds every claim with a declared extent, the profiler band among
+\ them: the top PROF-CNT-BYTES of DATA, as src/habu/prof-abi.f PROF-BAND-AT
+\ places it for the global DATA-SIZE. An x86-64 build's
 \ X64LAYOUT:DATA-SIZE differs on a macOS host, so kernel-x64.f places the band
 \ again through BAND-ASSERT.
 \
@@ -159,6 +159,7 @@ create TAB
    ENGINE-MAIN:XT-CELL                1 cells                 CLAIM ENGINE-MAIN-XT-CELL
    NCOMP-DISPATCH:CALLBACK-STUB-CELL  1 cells                 CLAIM NCOMP-DISPATCH:CALLBACK-STUB-CELL
    NCOMP-DISPATCH:CALLBACK-ENTRY-CELL  1 cells                 CLAIM NCOMP-DISPATCH:CALLBACK-ENTRY-CELL
+   POINTER-STORAGE:DATUM-CELL         1 cells                 CLAIM DATUM-CELL
    NCOMP-DISPATCH:BODY-HOOK-CELL      1 cells                 CLAIM NCOMP-DISPATCH:BODY-HOOK-CELL
    PROVIDED-XT:EVALUATE-CELL          1 cells                 CLAIM PROVIDED-XT-EVALUATE-CELL
    PROVIDED-XT:EVALUATE-RANGE-CELL    1 cells                 CLAIM PROVIDED-XT-EVALUATE-RANGE-CELL

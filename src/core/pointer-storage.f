@@ -28,7 +28,20 @@
 package POINTER-STORAGE
 public
 : DATA-CELL ( n -- ptr ptr u8 ) data-base swap + 0 ptr-field ;
+\ The DATA cell holding the newest datum's address, 0 before the first.
+$3820 constant DATUM-CELL
 ;package
+
+\ Starts a nameless row laid at top level: a build cuts the data from here to
+\ the next definition or datum as an extent of its own. The scratch first cell
+\ holds the previous datum's address and DATUM-CELL the newest, so a build
+\ finds each datum it lays.
+: datum ( -- )
+   align here CELL-VIEW {: at:ptr :}
+   1 cells SCRATCH-ALLOT
+   data-base POINTER-STORAGE:DATUM-CELL + 0 ptr-field {: newest:ptr :}
+   newest @  at 0 ptr-field !
+   at newest ! ;
 
 \ Scratch slots (PTR-VARIABLE, PTR-U8-TABLE, PTR-U8-TABLE-VARIABLE) are saved as null; a slot
 \ whose value must survive an image or capture uses this definer.

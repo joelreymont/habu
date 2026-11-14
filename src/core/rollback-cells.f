@@ -17,7 +17,7 @@ public
 
 : MARK ( ptr t -- )
    >CELL {: cell:ptr :}
-   align here CELL-VIEW {: row:ptr :}
+   datum here CELL-VIEW {: row:ptr :}
    here ptr-cell-mark 0 ,
    here ptr-cell-mark 0 ,
    CELLS-LAST @ row 0 ptr-field !

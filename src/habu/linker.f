@@ -80,6 +80,7 @@ variable SAVED-TYPES-WL
 variable SAVED-COMMA-RUN
 variable SAVED-COMMA-END
 variable SAVED-COMMA-BASE
+variable SAVED-DATUM
 variable SAVED-LASTC
 variable SAVED-CURRENT
 variable SAVED-FLAGS                 \ hb's newest record's flags (NEWEST-FLAGS)
@@ -1424,23 +1425,39 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    start b 2 * EXT-EDGES !  EDGES-N @ start -  b 2 * 1 + EXT-EDGES ! ;
 
 
-\ An address in the running part's data: tag 3 or 6 and its offset in the word's or string's extent (EXT-OF), else tag
-\ 7 and its offset from FILE-DP. Its edge names the extent holding it, the head included; none when no extent does.
+\ The reference tag naming an extent of the kind by its identity: 3 a word's, 6 a string's or laid text's, 8 a
+\ datum's; the head, kind 3, has none.
+: KIND>TAG ( n -- n )
+   {: kind:n :}
+   kind 1 = if 3 exit then
+   kind 2 = if 6 exit then
+   8 ;
+
+\ The extent kind a reference tag names by identity (KIND>TAG), 0 for any other tag.
+: TAG>KIND ( n -- n )
+   {: tag:n :}
+   tag 3 = if 1 exit then
+   tag 6 = if 2 exit then
+   tag 8 = if 4 exit then
+   0 ;
+
+\ An address in the running part's data: its extent's tag (KIND>TAG) and its offset in the extent (EXT-OF), the head's
+\ tag 7 and its offset from FILE-DP. Its edge names the extent holding it, the head included; none when no extent does.
 : OWN-DATA-REF+ ( n -- )
    {: v:n :}
    v EXT-OF {: e:n :}
    e 0 >= if
       BUILT-EXTS-N @ e + DATA-EDGE+
       e 1 EXT @ {: kind:n :}
-      kind 1 =  kind 2 =  or if
-         kind 1 = if 3 else 6 then PIECES U64+  0 PIECES U64+
+      kind 3 <> if
+         kind KIND>TAG PIECES U64+  0 PIECES U64+
          e 2 EXT @ PIECES U64+  e 3 EXT @ PIECES U64+  v e 0 EXT @ - PIECES U64+ exit
       then
    then
    7 PIECES U64+  0 PIECES U64+  v FILE-DP @ - PIECES U64+ ;
 
-\ An address in BUILT row row's data, end included, and true: tag 3 or 6 by the build-table row holding it (ROW-EXT-OF)
-\ or the head's tag 7, then the offset; its FILES row and edge name that row. False, writing nothing, if none holds it.
+\ An address in BUILT row row's data, end included, and true: the tag of the build-table row holding it (ROW-EXT-OF,
+\ KIND>TAG) or the head's tag 7, then the offset; its FILES row and edge name that row. False, writing nothing, if none holds it.
 : ROW-DATA-REF+ ( n n -- bool )
    {: v:n row:n :}
    v row ROW-EXT-OF {: b:n :}
@@ -1450,7 +1467,7 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    b row EXT-FILE {: k:n :}
    b DATA-EDGE+
    kind 3 = if  7 PIECES U64+  k PIECES U64+  v start - PIECES U64+  true exit  then
-   kind 1 = if 3 else 6 then PIECES U64+  k PIECES U64+
+   kind KIND>TAG PIECES U64+  k PIECES U64+
    b 2 BUILT-EXT @ PIECES U64+  b 3 BUILT-EXT @ PIECES U64+  v start - PIECES U64+  true ;
 
 \ A data address's reference, and true: a file's data a row names (ROW-DATA-REF+) or the open's header data, else
@@ -1946,13 +1963,14 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
 \ among that part's records with the sum); 1 hb's own code (offset from rbase: the kernel's, or
 \ in a host copy any of hb's word entries, HB-CODE?); 2 a function of a definition, a quotation,
 \ a clause, a callback's stub or one of the emission's own (file, its owning definition's name
-\ sum and count as tag 0's, function); 3 a word's data and 6 a
-\ string's (file, the extent's sum and count, offset in the extent, at most its length) or a text
-\ an earlier part laid (sum 0 and its FACTS row's number for the extent's); 7 a file's head (file,
+\ sum and count as tag 0's, function); 3 a word's data, 6 a
+\ string's and 8 a datum's (file, the extent's sum and count, offset in the extent, at most its
+\ length), 6 also a text an earlier part laid (sum 0 and its FACTS row's number for the extent's), 8
+\ a datum's sum 0 and its number in the piece; 7 a file's head (file,
 \ offset from that file's first data byte, at most the head's length, 0 for this object's part
 \ with no extent); 4 the open's header data (offset from BASE); 5 none: a patch target, a cell
 \ row's 0 or scratch cell, or a definition with no dispatch cell. A file field is 0 for this
-\ object, else its FILES row from 1 (REF-FILE). Tags 3 and 6 name data by its owner, so data that
+\ object, else its FILES row from 1 (REF-FILE). Tags 3, 6 and 8 name data by its owner, so data that
 \ only moved keeps its references' bytes.
 : CODE+ ( -- )
    ENTRIES
@@ -1981,7 +1999,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
 : BODY-U ( n -- n ) CELL - BASE @ - SPACE-AT @ ;
 
 \ ---- extents ---------------------------------------------------------------------
-\ Extents cut a piece's data at its anchors: kind 1 a record's (REC-ID), 2 a string's (STRING-COUNTS), 3 the head (0 0).
+\ Extents cut a piece's data at its anchors: kind 1 a record's (REC-ID), 2 a string's (STRING-COUNTS), 3 the head (0 0),
+\ 4 a datum's (0 and its number, in address order, among the piece's datums).
 
 \ An anchor of the given rank at the address, when it lies in [FILE-DP, FILE-END].
 : ANCHOR+ ( n n n -- )
@@ -2014,6 +2033,15 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
    loop
    -1 ;
 
+
+\ Each datum the piece laid as an anchor: the chain from DATUM-CELL falls through each datum's first cell, which holds
+\ the previous datum's address, and leaves the piece's data at the first datum an earlier piece laid.
+: DATUMS+ ( -- )
+   POINTER-STORAGE:DATUM-CELL HOST@
+   begin  dup FILE-DP @ >=  over FILE-END @ <  and  while
+      dup 4 0 ANCHOR+
+      BASE @ - SPACE-AT @
+   repeat drop ;
 
 \ Whether anchor j sorts before anchor k: by address, then rank, then record index.
 : ANCHOR< ( n n -- bool )
@@ -2067,8 +2095,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
    loop 2drop ;
 
 
-\ The running piece's extents into EXTS: anchors at each DNAME-ALLOC record's body (EM-DATA) and dispatch cell and each
-\ string's length cell, sorted, after a head when D > 0 and no anchor is at FILE-DP; each runs to the next or FILE-END.
+\ The running piece's extents into EXTS: anchors at each DNAME-ALLOC record's body (EM-DATA) and dispatch cell, each
+\ string's length cell and each datum (DATUMS+), sorted, after a head when D > 0 and no anchor is at FILE-DP; each runs to the next or FILE-END.
 : EXTENTS! ( -- )
    0 ANCHORS-N !  0 EXTS-N !
    ndict@ FILE-REC @ ?do
@@ -2081,6 +2109,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
       cell 0<> if cell 1 i ANCHOR+ then
    loop
    ['] STRING+ INTERN:EACH-STRING
+   DATUMS+
    ANCHORS-N @ {: n:n :}
    n ORDER-RESERVE
    n 0 ?do i i ORDER ! loop
@@ -2089,15 +2118,18 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
       n 0= if true else 0 ORDER @ 3 * ANCHORS @ FILE-DP @ > then
       if FILE-DP @ 3 0 0 EXT+ then
    then
-   n 0 ?do
+   0  n 0 ?do
+      {: d:n :}
       i ORDER @ 3 * {: k:n :}
       k ANCHORS @  k 1 + ANCHORS @  k 2 + ANCHORS @ {: at:n rank:n x:n :}
       rank 1 = if
-         at 1 x REC-ID EXT+
+         at 1 x REC-ID EXT+  d
+      else rank 4 = if
+         at 4 0 d EXT+  d 1 +
       else
-         at 2  NULL-PTR BYTE-VIEW x +  x BODY-U  BYTES-SUM  0 EXT+
-      then
-   loop
+         at 2  NULL-PTR BYTE-VIEW x +  x BODY-U  BYTES-SUM  0 EXT+  d
+      then then
+   loop drop
    EXTS-N @ 0 ?do
       i 1 +  EXTS-N @ < if  i 1 + 0 EXT @  else  FILE-END @  then  i 0 EXT @ -  i 9 EXT !
    loop
@@ -2167,7 +2199,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
 \                          and its body follows
 \   S, then S store rows   each cell below FILE-DP the compile stored into, other than a scratch
 \                          cell, or gave an address-cell row, ascending by address: its
-\                          reference (tag 3, 6 or 7 with a FILES row, or 4), kind (ROW-KIND, 3 for
+\                          reference (tag 3, 6, 8 or 7 with a FILES row, or 4), kind (ROW-KIND, 3 for
 \                          none), bytes (the cell's value for kind 3, else 0), its value's
 \                          reference (CELL-REF+ for kinds 0-2, else 5)
 \   F, then F facts rows   each entry the file's compile held, in order (FACTS+): CHECK:HELD-RETIRED
@@ -2508,12 +2540,25 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
    loop ;
 
 
+\ A linked file's top level never runs, so what a piece stores in scratch ends with it: every
+\ scratch cell in file data, [OPEN-DP, DP), reads zero after each piece.
+: RESET-SCRATCH ( -- )
+   ROWS {: rows:ptr count:n :}
+   count 0 ?do
+      rows i cells + @ {: row:n :}
+      row SCRATCH-ROW? if
+         row ROW-AT OPEN-DP @ >= if  0 row ROW-OFF SPACE-AT !  then
+      then
+   loop ;
+
+
 \ Records by index, each late private wordlist before the first record marked above its id, so ids mint in entry order;
 \ sealed packages last, so a link seals once the definitions are in. req: 0 a request ends the part, -1 the file ends.
+\ Scratch resets after EXTENTS!, which walks the datums' scratch cells, and before CODE+ and DATA+ write the piece.
 : PIECE+ ( n -- )
    {: req:n :}
    false CHANGED-EARLIER !
-   IDENTIFY  EXTENTS!
+   IDENTIFY  EXTENTS!  RESET-SCRATCH
    LATE BUF:CLEAR
    FILE-ROW @ SHADOW-AT !
    LATE-COLLECT
@@ -2839,7 +2884,7 @@ variable RD-END
    RD-U64 {: tag:n :}
    tag 0 = if tag RD-U64 RD-U64 RD-U64 0 exit then
    tag 1 = if tag RD-U64 0 0 0 exit then
-   tag 2 =  tag 3 =  tag 6 =  or or if tag RD-U64 RD-U64 RD-U64 RD-U64 exit then
+   tag 2 =  tag TAG>KIND 0<>  or if tag RD-U64 RD-U64 RD-U64 RD-U64 exit then
    tag 7 = if tag RD-U64 RD-U64 0 0 exit then
    tag 4 = if tag RD-U64 0 0 0 exit then
    tag 5 = if tag 0 0 0 0 exit then
@@ -2914,14 +2959,14 @@ variable RD-END
    tag x y z w top bound CODE-REF-CK ;
 
 
-\ A data reference (RD-REF): a word's (tag 3), string's or laid text's (tag 6) extent here (OWN-EXT) or built (ROW-EXT),
+\ A data reference (RD-REF): an extent by identity (TAG>KIND) here (OWN-EXT) or built (ROW-EXT),
 \ or a part's head (tag 7, HEAD-LEN; 0 when none here), the offset at most its length; or header data (tag 4).
 : DATA-REF-CK ( n n n n n -- )
    {: tag:n x:n y:n z:n w:n :}
    GOOD? 0= if exit then
-   tag 3 =  tag 6 =  or if
+   tag TAG>KIND {: kind:n :}
+   kind 0<> if
       w 0< if BAD exit then
-      tag 3 = if 1 else 2 then {: kind:n :}
       x 0= if
          kind y z OWN-EXT {: e:n :}
          e 0< if BAD exit then
@@ -3606,7 +3651,7 @@ variable RD-END
    at 8 + OBJ-PTR  n  INTERN:FIND 0<> if BAD then ;
 
 
-\ Extent e of DATA's d bytes, RD-AT past the starts: TIMES span, kind (3 only first, 2 with a sum), length to the next
+\ Extent e of DATA's d bytes, RD-AT past the starts: TIMES span, kind (3 only first, 2 with a sum, 4 with none), length to the next
 \ start or d and identity as OWN-IDS! put them in EXTS; then bytes, cell rows (CELL-ROW-CK), length cell (STRING-CK).
 : EXTENT-CK ( n n -- )
    {: e:n d:n :}
@@ -3616,7 +3661,8 @@ variable RD-END
    e 1 +  EXTS-AT @ OBJ@ < if at 8 + OBJ@ else d then {: end:n :}
    RD-AT @  PIECE-AT @  e TIMES-EXT 8 + OBJ@ +  <> if BAD exit then
    RD-U64 RD-U64 RD-U64 RD-U64 {: kind:n sum:n count:n u:n :}
-   kind 1 <  kind 3 >  or  kind 3 =  e 0<>  and  or  kind 2 =  sum 0=  and  or if BAD exit then
+   kind 1 <  kind 4 >  or  kind 3 =  e 0<>  and  or  kind 2 =  sum 0=  and  or if BAD exit then
+   kind 4 =  sum 0<>  and if BAD exit then
    u  end s -  <> if BAD exit then
    kind e 1 EXT @ <>  sum e 2 EXT @ <>  or  count e 3 EXT @ <>  or  u e 9 EXT @ <>  or
    s FILE-DP @ +  e 0 EXT @ <>  or if BAD exit then
@@ -3626,15 +3672,16 @@ variable RD-END
    24 RD-COUNT 0 ?do s u CELL-ROW-CK loop ;
 
 
-\ A store row, as FIND-STORES admits it: a cell 8-aligned from an earlier part's first data byte, in a word's, string's
-\ or laid text's extent (tag 3, 6), the head (tag 7; may pass an unaligned end: main.f's D is 98), header data (tag 4).
+\ A store row, as FIND-STORES admits it: a cell 8-aligned from an earlier part's first data byte, in an extent by
+\ identity (TAG>KIND), the head (tag 7; may pass an unaligned end: main.f's D is 98), header data (tag 4).
 : STORE-CK ( -- )
    RD-REF {: tag:n x:n y:n z:n w:n :}
-   tag 3 =  tag 6 =  tag 7 =  or or  x 1 >=  and  tag 4 =  or 0= if BAD exit then
+   tag TAG>KIND {: ekind:n :}
+   ekind 0<>  tag 7 =  or  x 1 >=  and  tag 4 =  or 0= if BAD exit then
    tag x y z w DATA-REF-CK
    GOOD? 0= if exit then
-   tag 3 =  tag 6 =  or if
-      x FILE-ROWS @  tag 3 = if 1 else 2 then  y z ROW-EXT {: b:n :}
+   ekind 0<> if
+      x FILE-ROWS @  ekind y z ROW-EXT {: b:n :}
       w b 5 BUILT-EXT @ >= if BAD exit then
       b 4 BUILT-EXT @  x BUILT-DP BUILT@ -  w +  7 and 0<> if BAD exit then
    then
@@ -4536,8 +4583,8 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
    then
    tag 1 = if rbase x + exit then
    tag 2 = if x y z w FN-ADDR exit then
-   tag 3 =  tag 6 =  or if
-      tag 3 = if 1 else 2 then {: kind:n :}
+   tag TAG>KIND {: kind:n :}
+   kind 0<> if
       x 0= if
          kind y z OWN-EXT {: e:n :}
          e 0< if E-COMP-STATE throw then
@@ -5074,6 +5121,7 @@ TYPED-VARIABLE EXITER [ -- ]
    COMMA-RUN-CELL HOST@ SAVED-COMMA-RUN !
    COMMA-END-CELL HOST@ SAVED-COMMA-END !
    COMMA-BASE-CELL HOST@ SAVED-COMMA-BASE !
+   POINTER-STORAGE:DATUM-CELL HOST@ SAVED-DATUM !
    LASTC-CELL HOST@ SAVED-LASTC !
    data-base BYTE-VIEW GENIO-ABI:OUT-CELL +  SAVED-ROUTING
    GENIO-ABI:END GENIO-ABI:OUT-CELL - BYTE-COPY
@@ -5091,6 +5139,7 @@ TYPED-VARIABLE EXITER [ -- ]
    BASE @ LAYOUT-CEILING + BOOT:DP-CEILING-CELL HOST!
    0 DPHW-CELL HOST!
    0 LASTC-CELL HOST!
+   0 POINTER-STORAGE:DATUM-CELL HOST!
    start DATA-N - DATA-FLOOR-CELL HOST!
    global BOOT:GLOBAL-WL-CELL HOST!
    ns BOOT:NAMESPACE-WL-CELL HOST!
@@ -5259,18 +5308,6 @@ TYPED-VARIABLE EXITER [ -- ]
    loop ;
 
 
-\ A linked file's top level never runs, so what a piece stores in scratch ends with it: every
-\ scratch cell in file data, [OPEN-DP, DP), reads zero after each piece.
-: RESET-SCRATCH ( -- )
-   ROWS {: rows:ptr count:n :}
-   count 0 ?do
-      rows i cells + @ {: row:n :}
-      row SCRATCH-ROW? if
-         row ROW-AT OPEN-DP @ >= if  0 row ROW-OFF SPACE-AT !  then
-      then
-   loop ;
-
-
 \ Calls the space's exit runner until a call returns: the first code an action ended with, or 0.
 : SPACE-EXIT ( -- n )
    EXIT-HOOK-CELL SPACE-AT @ {: hook:n :}
@@ -5296,7 +5333,7 @@ TYPED-VARIABLE EXITER [ -- ]
    then ;
 
 
-\ The piece's checks, RESET-SCRATCH, then PIECES (PIECE+): E-STORE (CHECK-EARLIER, FIND-STORES),
+\ The piece's checks, then PIECES (PIECE+, which resets scratch): E-STORE (CHECK-EARLIER, FIND-STORES),
 \ E-WORDLIST for an id no record holds.
 : PIECE-END ( n -- )
    {: req:n :}
@@ -5306,7 +5343,6 @@ TYPED-VARIABLE EXITER [ -- ]
    here NULL-PTR - FILE-END !
    RETIRED!  CHECK-EARLIER  FIND-STORES
    STORED-N @ 0 ?do i STORED @ dup HSTORE+ STORER+ loop
-   RESET-SCRATCH
    WIDN-CELL HOST@ FILE-WID @ -  MINTED {: ids:n held:n :}
    ids held > if E-WORDLIST throw then
    req PIECE+  RAN+ ;
@@ -5707,6 +5743,7 @@ TYPED-VARIABLE EXITER [ -- ]
    SAVED-COMMA-RUN @ COMMA-RUN-CELL HOST!
    SAVED-COMMA-END @ COMMA-END-CELL HOST!
    SAVED-COMMA-BASE @ COMMA-BASE-CELL HOST!
+   SAVED-DATUM @ POINTER-STORAGE:DATUM-CELL HOST!
    SAVED-LASTC @ LASTC-CELL HOST!
    SAVED-ROUTING  data-base BYTE-VIEW GENIO-ABI:OUT-CELL +
    GENIO-ABI:END GENIO-ABI:OUT-CELL - BYTE-COPY

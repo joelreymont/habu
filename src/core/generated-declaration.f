@@ -189,7 +189,7 @@ public
 : EXPLAIN ( ptr u8 n n -- ) {: a:ptr u:n code:n :}
    code REASON-ROW NULL-PTR <> IF E-REASON-DUP throw THEN
    u CAPPED {: len:n :}
-   align here CELL-VIEW {: row:ptr :}
+   datum here CELL-VIEW {: row:ptr :}
    here ptr-cell-mark 0 ,
    NEWEST @ row 0 ptr-field !
    code ,  len ,

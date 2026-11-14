@@ -836,7 +836,7 @@ create NL $0A c,
 \ the text's length and the fault flag (-1 or 0), then the name and the text.
 : ROW, ( n ptr u8 n ptr u8 n bool -- )
    {: code:n name:ptr nameu:n text:ptr textu:n fault:bool :}
-   align
+   datum
    PKG$ {: p:ptr pu:n :}
    here CELL-VIEW {: at:ptr :}
    here ptr-cell-mark 0 ,

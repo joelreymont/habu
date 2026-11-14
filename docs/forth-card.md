@@ -365,6 +365,7 @@ width, cell count or byte count worked out by hand: a type's width can change.
 |---|---|---|
 | `variable V` | a raw scalar, role or atom cell | `V @` / `V !` |
 | `SCRATCH-VARIABLE V` | a `variable` whose value a build leaves out | `( -- ptr a )` |
+| `datum` | a nameless row laid at top level | none: the row's address is `here` after it |
 | `create B 256 allot` | static dictionary storage | `B`, pointee bound by the use (`B 4 type`, `B @`) |
 | `n BUFFER: B` | a fixed zeroed byte row | `( -- ptr u8 )`; bytes are never a `TYPED-BUFFER` element |
 | `n SCRATCH-BUFFER: B` | a `BUFFER:` whose bytes a build leaves out | `( -- ptr u8 )` |
@@ -392,6 +393,11 @@ reaches replaces it with the clause effect; a branch that `exit`s before
 Lay a created body's data right after its `create`, before the next definition
 or row: a definition's `;` may lay its facts text at `here`, so data laid after
 it no longer follows the body.
+
+Start a nameless row laid at top level with `datum`, which aligns `here`: the
+data up to the next definition or `datum` is kept only through an address a
+declared cell holds, so a stripped program keeps the row only when it reaches
+that cell.
 
 A definer that writes its word as text (`ERROR:CODE`) states what it makes with
 `generates: D ( effect )` after D's definition, so `tools/check.f` checks that
