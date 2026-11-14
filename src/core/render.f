@@ -771,17 +771,6 @@ variable DSUGE  variable DSUGA
    CHECK:TOP-SITE IF 58 EMIT1 EMIT-U ELSE drop THEN
    s" : " EMIT-STR ;
 : JROW {: s :}  JSON-OPEN  s DROW  JSON-CLOSE ;
-: SIG-WS? {: c :}  c 32 <= ;
-: SIG-LTRIM ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   0 BEGIN dup u < WHILE
-      dup a + c@ SIG-WS? 0= IF dup a + u rot - EXIT THEN
-      1 +
-   REPEAT drop a 0 ;
-: SIG-RTRIM ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   u BEGIN dup 0 > WHILE
-      a over 1 - + c@ SIG-WS? IF 1 - ELSE a swap EXIT THEN
-   REPEAT drop a 0 ;
-: SIG-TRIM ( ptr u8 n -- ptr u8 n )  SIG-LTRIM SIG-RTRIM ;
 
 
 \ Under RNAMES each row is named as REND-EFFECT names it (RROW-NAME).
@@ -1054,23 +1043,10 @@ variable MDV-I   variable MDV-F
    endcase ;
 
 
-\ Shared by a definition's refusal and a stored signature's (BADSIG-REASON).
-: DEPTH-REASON$ ( -- ptr u8 n )
-   s" effect too deep to record" ;
-
 \ Shared by a definition's depth refusal (MD-SUGGEST$) and a signature's
 \ (SGBAD-SUGGEST$): a row is deep by its cells or by the types it nests.
 : DEPTH-SUGGEST$ ( -- ptr u8 n )
    s" Keep bulk values in a buffer, not on the stack, and name an inner callback's effect in a word of its own." ;
-
-: WIDTH-REASON$ ( -- ptr u8 n )
-   s" input row too wide to record" ;
-
-\ More than BINDER-DEPTH-MAX nested binders: a signature's (checker.f
-\ SGBAD-BINDERS-KIND) or an inferred effect's (RBIND-FULL).
-: BINDERS-REASON ( -- )
-   s" more than " EMIT-STR  BINDER-DEPTH-MAX EMIT-U
-      s"  nested binders" EMIT-STR ;
 
 
 \ Shared by a token of unknown effect (SUGGEST-TEXT) and a deferral whose cause
@@ -1266,19 +1242,6 @@ variable MDV-I   variable MDV-F
    s"  (needs " EMIT-STR  MDIAG-NEED @ EMIT-U
    s" , has " EMIT-STR  MDIAG-HAVE @ EMIT-U  s" )" EMIT-STR ;
 
-: CAP-DEPTH-COUNTS ( n n -- )
-   {: depth:n cap:n :}
-   s"  (depth " EMIT-STR  depth EMIT-U
-   s" , at most " EMIT-STR  cap EMIT-U  s" )" EMIT-STR ;
-
-: DEPTH-COUNTS ( n -- )
-   EFFECT-DEPTH-MAX CAP-DEPTH-COUNTS ;
-
-: WIDTH-COUNTS ( n -- )
-   {: width:n :}
-   s"  (" EMIT-STR  width EMIT-U
-   s"  cells, at most " EMIT-STR  EFFECT-MIN-IN-MAX EMIT-U  s" )" EMIT-STR ;
-
 \ The literal that does not fit and its type's range, after the reason's
 \ `literal`: `300` does not fit `u8` (`0`..`255`).
 : LIT-FIT-COUNTS ( -- )
@@ -1447,8 +1410,7 @@ variable MDV-I   variable MDV-F
    k RF-RETURN = IF s" fix_return_stack" EXIT THEN
    k RF-MISMATCH <> IF s" unknown_rejection" EXIT THEN
    ['] ROW-VALUES ROWS-CLASS$ ;
-\ Shared by SUGGEST-TEXT, a bad stored signature's diagnostic and a refused
-\ `generates:` row's.
+\ Shared by SUGGEST-TEXT and a refused `generates:` row's.
 : SGBAD-SUGGEST$ ( -- ptr u8 n )
    SGBAD-RETURN? IF s" Declare no return-stack effect: after '|' write one row variable, the same on both sides, or no '|'; park a value with >r and take it back with r> in one definition." EXIT THEN
    SGBAD-UNKNOWN? IF s" Use a known stack-signature type or a single-letter type variable." EXIT THEN
@@ -1729,13 +1691,6 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    DIAG-MAPPED? IF EXIT THEN   \ mapped text no source holds
    JLOC-ORIGIN JLOC-FIELDS ;
 
-\ The reason a signature too large to record names its bound, count and limit
-\ by: a definition's packet (DIAG-JSON) and a stored row's (BADSIG-JSON).
-: BADSIG-REASON ( -- )
-   SGBAD-BINDERS? IF BINDERS-REASON EXIT THEN
-   SGBAD-DEPTH? IF DEPTH-REASON$ EMIT-STR  SGBAD-SIZE @ DEPTH-COUNTS EXIT THEN
-   WIDTH-REASON$ EMIT-STR  SGBAD-SIZE @ WIDTH-COUNTS ;
-
 
 \ A field that belongs to one refusal goes only on that refusal's packet: the
 \ flags of a failure the refusal outranks leave their fields behind. A top-level
@@ -1825,36 +1780,6 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    JSON @ IF CHECKER-REPORT-MARK THEN ;
 
 
-
-\ Bad stored-signature diagnostics (checker.f USIG-ADD-BAD, every mode). SGBAD's
-\ state from the failed parse is still live, so class and suggestion are a
-\ signature's; a row that parsed but is too deep or too wide to record has its
-\ own class and a reason naming the bound, count and limit. The JSON is a refused
-\ record (its tools/diag-code.f row), placed at the declaring name AT in the
-\ checked text.
-: BADSIG-JSON ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: sa:ptr su:n na:ptr nu:n at:ptr atu:n :}
-   s" E-BAD-STORED-SIGNATURE" SGBAD-CLASS$ s" rejected" JHEAD
-   s" token" JSON-KEY na nu JSON-STRING 44 EMIT1
-   s" signature" JSON-KEY sa su SIG-TRIM JSON-STRING 44 EMIT1
-   SGBAD-SIZE? IF s" reason" JSON-KEY JSON-OPEN BADSIG-REASON JSON-CLOSE
-      44 EMIT1 THEN
-   at atu SGBAD-SUGGEST$ JTAIL ;
-: BADSIG-PROSE ( ptr u8 n ptr u8 n -- )
-   {: sa:ptr su:n na:ptr nu:n :}
-   s" habu: in " EMIT-STR  na nu EMIT-STR  s" : bad stored signature '" EMIT-STR
-   sa su SIG-TRIM EMIT-STR  s" '" EMIT-STR
-   SGBAD-SIZE? IF s"  " EMIT-STR BADSIG-REASON THEN
-   SGBAD-RETURN? IF s" ; return-stack effect: " EMIT-STR
-      RCLAUSE-FIX$ EMIT-STR THEN ;
-: BADSIG-DIAG ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: sa:ptr su:n na:ptr nu:n at:ptr atu:n :}
-   1 DEST !  0 TEXT-LEN !
-   JSON @ IF sa su na nu at atu BADSIG-JSON ELSE sa su na nu BADSIG-PROSE THEN
-   10 EMIT1
-   FLUSH ;
-: BADSIG-DIAG-INSTALL ( -- ) [: BADSIG-DIAG ;] is BADSIG-XT ;
-BADSIG-DIAG-INSTALL
 
 \ A bad NEWTYPE or SUMTYPE declaration reports a declaration-shaped packet (kind,
 \ family, token, reason) with no definition fields.

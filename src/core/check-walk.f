@@ -802,10 +802,11 @@ variable CTOR-PEND-POS
    RES-FALSE ;
 \ True for an error the checker reports itself before throwing it.
 : REPORTED-ERROR? ( n -- bool ) {: rc:n :}
-   rc E-USING-SHADOW-GLOBAL =
+   rc CHECKER-REJECT-RC =
+   rc E-USING-SHADOW-GLOBAL = or
    rc E-USING-AMBIGUOUS = or  rc E-TRUST-UNRESOLVED = or
    rc E-SHADOWED-ARITY = or  rc E-GENERATES-ROW = or  rc E-PARSES-ROW = or
-   rc E-NAMES-ROW = or  rc E-BAD-STORED-SIGNATURE = or
+   rc E-NAMES-ROW = or
    rc E-CAST-ARITY = or  rc E-CAST-CLASS = or  rc E-CAST-FAM = or
    rc E-CAST-LINEAR = or  rc E-CAST-MINT = or
    rc E-CAST-SCOPE = or  rc E-LINEAR-PAYLOAD = or  rc E-LINEAR-OWNER = or
@@ -830,9 +831,9 @@ public
    code CHECKER-REFUSE ;
 \ Refuses signature sa su of name na nu that does not parse.
 : REFUSE-SIGNATURE ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
-   sa su na nu na nu BADSIG-XT
+   sa su na nu na nu SGBAD-REJECTION
    sa su na nu SGBAD-PIN
-   E-BAD-STORED-SIGNATURE CHECKER-REFUSE ;
+   CHECKER-REJECT-RC REJECTION:STOP ;
 : SKIP ( n -- ) {: rc:n :}
    rc REPORTED-ERROR? IF 1 REJECTION:TALLY +! EXIT THEN
    rc throw ;

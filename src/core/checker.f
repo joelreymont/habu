@@ -10735,21 +10735,8 @@ variable MULTI-ERR
 variable SIG-COUNTED
 0 SIG-COUNTED !
 : SIG-COUNTED? ( -- bool ) SIG-COUNTED @ 0 <> ;
-: SIG-COUNT ( -- ) -1 SIG-COUNTED !  1 REJECTION:TALLY +! ;
+: SIG-COUNT ( -- ) -1 SIG-COUNTED ! ;
 7156 constant E-BAD-STORED-SIGNATURE
-\ Bad stored-signature diagnostic hook, given the signature, stored name and
-\ declaring name. BADSIG-PLAIN writes on fd 2 so a row the boot refuses names
-\ itself; its write results are dropped, since the refusal follows at once.
-defer BADSIG-XT ( ptr u8 n ptr u8 n ptr u8 n -- )
-: BADSIG-PLAIN ( ptr u8 n ptr u8 n ptr u8 n -- )
-   2drop
-   {: sa:ptr su:n na:ptr nu:n :}
-   2 na nu write drop
-   2 s" : " write drop
-   2 sa su write drop
-   2 S\" : bad stored signature\n" write drop ;
-: BADSIG-DEFAULT ( -- ) [: BADSIG-PLAIN ;] is BADSIG-XT ;
-BADSIG-DEFAULT
 
 : MULTI-ERR? ( -- bool ) MULTI-ERR @ 0 <> ;
 
@@ -10792,13 +10779,94 @@ BADSIG-DEFAULT
    SGA @ SGU @ sa su CORE-STR= 0= IF SGBAD-A @ EXIT THEN
    SGA @ off + ;
 
-\ A refused stored signature SA SU pins the token SGBAD names, or the declaring
-\ name AT ATU when SGBAD names none or the whole row; never a token the walk pinned.
-: SGBAD-PIN ( ptr u8 n ptr u8 n -- )
+\ The token a rejected stored signature SA SU names: the one SGBAD names, or
+\ the declaring name AT ATU when SGBAD names none or the whole row.
+: SGBAD-TOKEN ( ptr u8 n ptr u8 n -- ptr u8 n )
    {: sa:ptr su:n at:ptr atu:n :}
    SGBAD @ 0=  SGBAD-U @ 0=  or  SGBAD-A @ sa =  SGBAD-U @ su =  and  or
-   IF at atu RF-SIG PIN-REFUSED! EXIT THEN
-   sa su SGBAD-AT SGBAD-U @ RF-SIG PIN-REFUSED! ;
+   IF at atu EXIT THEN
+   sa su SGBAD-AT SGBAD-U @ ;
+
+\ Pins SGBAD-TOKEN; never a token the walk pinned.
+: SGBAD-PIN ( ptr u8 n ptr u8 n -- )
+   SGBAD-TOKEN RF-SIG PIN-REFUSED! ;
+
+\ The return, width and unsupplied kinds name the whole row, so their label
+\ sits on the declaring name.
+: SGBAD-LABEL$ ( -- ptr u8 n )
+   SGBAD-RETURN? IF s" its signature moves the return stack" EXIT THEN
+   SGBAD-UNKNOWN? IF s" no type has this name" EXIT THEN
+   SGBAD-BAREPTR? IF s" `ptr` with no element type" EXIT THEN
+   SGBAD-ARITY? IF s" wrong number of type arguments" EXIT THEN
+   SGBAD-BINDERS? IF s" too many binders nest here" EXIT THEN
+   SGBAD-DEPTH? IF s" nested too deep to record" EXIT THEN
+   SGBAD-WIDTH? IF s" its input row is too wide to record" EXIT THEN
+   SGBAD-UNSUPPLIED? IF s" its outputs name a variable no input supplies" EXIT THEN
+   s" the signature does not parse here" ;
+
+: SGBAD-HELP$ ( -- ptr u8 n )
+   SGBAD-RETURN? IF s" after `|` write one row variable, the same on both sides, or write no `|`" EXIT THEN
+   SGBAD-UNKNOWN? IF s" write a declared type, such as `n` or `ptr u8`, or a single-letter type variable such as `a`" EXIT THEN
+   SGBAD-BAREPTR? IF s" give `ptr` its element type, as `ptr u8` or `ptr a`" EXIT THEN
+   SGBAD-ARITY? IF s" give the type family exactly as many arguments as it declares" EXIT THEN
+   SGBAD-BINDERS? IF s" name an inner callback's effect in a word of its own, so fewer binders nest" EXIT THEN
+   SGBAD-DEPTH? IF s" name an inner callback's effect in a word of its own, and keep bulk values in a buffer instead of on the stack" EXIT THEN
+   SGBAD-WIDTH? IF s" take fewer input cells by keeping bulk values in a buffer instead of on the stack" EXIT THEN
+   SGBAD-UNSUPPLIED? IF s" name each output scope or region variable in an input too, or drop it from the outputs" EXIT THEN
+   s" write the signature as `( inputs -- outputs )`, with one `--` between the rows" ;
+
+: SIG-WS? {: c :}  c 32 <= ;
+: SIG-LTRIM ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   0 BEGIN dup u < WHILE
+      dup a + c@ SIG-WS? 0= IF dup a + u rot - EXIT THEN
+      1 +
+   REPEAT drop a 0 ;
+: SIG-RTRIM ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   u BEGIN dup 0 > WHILE
+      a over 1 - + c@ SIG-WS? IF 1 - ELSE a swap EXIT THEN
+   REPEAT drop a 0 ;
+: SIG-TRIM ( ptr u8 n -- ptr u8 n )  SIG-LTRIM SIG-RTRIM ;
+
+: DEPTH-REASON$ ( -- ptr u8 n )
+   s" effect too deep to record" ;
+
+: WIDTH-REASON$ ( -- ptr u8 n )
+   s" input row too wide to record" ;
+
+: BINDERS-REASON ( -- )
+   s" more than " REJECTION:EMIT-STR  BINDER-DEPTH-MAX REJECTION:EMIT-U
+      s"  nested binders" REJECTION:EMIT-STR ;
+
+: CAP-DEPTH-COUNTS ( n n -- )
+   {: depth:n cap:n :}
+   s"  (depth " REJECTION:EMIT-STR  depth REJECTION:EMIT-U
+   s" , at most " REJECTION:EMIT-STR  cap REJECTION:EMIT-U  s" )" REJECTION:EMIT-STR ;
+
+: DEPTH-COUNTS ( n -- )
+   EFFECT-DEPTH-MAX CAP-DEPTH-COUNTS ;
+
+: WIDTH-COUNTS ( n -- )
+   {: width:n :}
+   s"  (" REJECTION:EMIT-STR  width REJECTION:EMIT-U
+   s"  cells, at most " REJECTION:EMIT-STR  EFFECT-MIN-IN-MAX REJECTION:EMIT-U  s" )" REJECTION:EMIT-STR ;
+
+\ The reason a signature too large to record names its bound, count and limit.
+: BADSIG-REASON ( -- )
+   SGBAD-BINDERS? IF BINDERS-REASON EXIT THEN
+   SGBAD-DEPTH? IF DEPTH-REASON$ REJECTION:EMIT-STR  SGBAD-SIZE @ DEPTH-COUNTS EXIT THEN
+   WIDTH-REASON$ REJECTION:EMIT-STR  SGBAD-SIZE @ WIDTH-COUNTS ;
+
+\ Prints the rejection of stored signature SA SU of name NA NU, placed at
+\ SGBAD-TOKEN, up to its help; the caller ends it.
+: SGBAD-REJECTION ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: sa:ptr su:n na:ptr nu:n at:ptr atu:n :}
+   s" E-BAD-STORED-SIGNATURE" REJECTION:OPEN
+   s" the signature of `" REJECTION:EMIT-STR  na nu REJECTION:EMIT-STR
+   s" ` cannot be recorded" REJECTION:EMIT-STR
+   sa su at atu SGBAD-TOKEN REJECTION:AT  SGBAD-LABEL$ REJECTION:EMIT-STR
+   s" signature" REJECTION:NOTE  sa su SIG-TRIM REJECTION:EMIT-STR
+   SGBAD-SIZE? IF s" reason" REJECTION:NOTE  BADSIG-REASON THEN
+   REJECTION:HELP  SGBAD-HELP$ REJECTION:EMIT-STR ;
 
 \ AT is the declaring name as the caller read it, used to place the record.
 : USIG-ADD-BAD ( ptr u8 n ptr u8 n ptr u8 n -- )
@@ -10806,10 +10874,10 @@ BADSIG-DEFAULT
    WRITE-WINDOW-CK                       \ a refusal moves the latches too
    0 RECW !                              \ no record stored: nothing to publish wide
    0 RECMI !                             \ ... and no min-in to poke
-   sa su na nu at atu BADSIG-XT
-   MULTI-ERR? IF SIG-COUNT EXIT THEN
+   sa su na nu at atu SGBAD-REJECTION
+   MULTI-ERR? IF REJECTION:KEEP SIG-COUNT EXIT THEN
    sa su at atu SGBAD-PIN
-   E-BAD-STORED-SIGNATURE CHECKER-REFUSE ;
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ An effect with these rows deeper than a record holds is a stored signature
 \ no record can hold, whatever path records it: refused as a bad one by the
