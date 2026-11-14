@@ -335,11 +335,12 @@ variable TDECL-FAM-ARITY
 \ family (nominal scalar, the reference a signature admits). Resolution is
 \ signature scope (TFAM-SIG-RESOLVE): a private family in another package never
 \ resolves. A resolved id equal to the declared family is the qualified
-\ self-reference and rejects recursive. Linear payloads and evidence families
-\ are refused.
+\ self-reference and rejects recursive. A family UNSTORED-REASON names, linear
+\ payloads and evidence families are rejected.
 : TDECL-PAY-FAM? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
    TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE 0= IF drop 0 RES-FALSE EXIT THEN
    {: id:n :}
+   id UNSTORED-REASON IF a u 2swap E-TDECL-PAYLOAD TDECL-THROW THEN 2drop
    id TDECL-CUR-FAM @ = IF
       a u s" invalid layout policy for recursive sum" E-TDECL-RECURSIVE TDECL-THROW
    THEN
@@ -403,13 +404,8 @@ defer TDV-ELEM-XT ( ptr u8 n -- n )   \ forward ref for the ELEM<->ARGS<->QUOT r
 : TDECL-VPAY-FAM? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
    TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE 0= IF drop 0 RES-FALSE EXIT THEN
    {: id:n :}
+   id UNSTORED-REASON IF a u 2swap E-TDECL-PAYLOAD TDECL-THROW THEN 2drop
    id C2-READ-FAM @ = IF 0 RES-FALSE EXIT THEN
-   id WIDTH-FAM @ = IF
-      a u s" a width is not stored: keep its bytes (width>n)"
-      E-TDECL-PAYLOAD TDECL-THROW THEN
-   id EFFECT-TYPE-FAM @ = IF
-      a u s" a definer's type ends with the load that built it: build it where it is used"
-      E-TDECL-PAYLOAD TDECL-THROW THEN
    id TFAM-LAYOUT? id TFAM-CELL? or 0= IF 0 RES-FALSE EXIT THEN
    id RES-TRUE ;
 

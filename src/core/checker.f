@@ -8175,6 +8175,15 @@ variable LBI-LINEAR   \ the refused stored type parsed and may hold a linear val
 \ An EFFECT:type's id is reused once the load that built it ends.
 : EFFECT-STORED? ( n -- bool ) TWALK-RESET EFFECT-TYPE-FAM @ FAM-STORED?* ;
 
+\ Why no storage, field or payload holds family n's value; false if it may.
+: UNSTORED-REASON ( n -- ptr u8 n bool ) {: fam:n :}
+   fam WIDTH-FAM @ = IF
+      s" a width is not stored: keep its bytes (width>n)" RES-TRUE EXIT THEN
+   fam EFFECT-TYPE-FAM @ = IF
+      s" a definer's type ends with the load that built it: build it where it is used"
+      RES-TRUE EXIT THEN
+   s" " RES-FALSE ;
+
 \ The state a stored type's read starts from, whether its text is parsed or
 \ its node read.
 : STORAGE-RESET ( -- )

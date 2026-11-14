@@ -2196,8 +2196,8 @@ RECORD-DIAG-INSTALL
    why STG-UNSTORABLE-TYPE = IF s" type this definer cannot store" EXIT THEN
    why STG-SCHEME-TYPE = IF s" scheme in a stored type" EXIT THEN
    why STG-XT-TYPE = IF s" xt in a stored type" EXIT THEN
-   why STG-WIDTH-TYPE = IF s" a width is not stored: keep its bytes (width>n)" EXIT THEN
-   why STG-EFFECT-TYPE = IF s" a definer's type ends with the load that built it: build it where it is used" EXIT THEN
+   why STG-WIDTH-TYPE = IF WIDTH-FAM @ UNSTORED-REASON drop EXIT THEN
+   why STG-EFFECT-TYPE = IF EFFECT-TYPE-FAM @ UNSTORED-REASON drop EXIT THEN
    why STG-LINEAR-TYPE = IF s" stored type may hold a linear value" EXIT THEN
    why STG-MALFORMED-NAME = IF s" more than one ':' in name" EXIT THEN
    why STG-BAD-COUNT = IF s" count outside the buffer's extent" EXIT THEN

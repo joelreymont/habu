@@ -60,13 +60,8 @@ SD-RESET
 : FIELD-FAM? ( ptr u8 n -- n bool )
    TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE 0= IF drop 0 NO EXIT THEN
    {: id:n :}
+   id UNSTORED-REASON IF E-PAYLOAD DECL-REJECT:REJECT throw THEN 2drop
    id TFAM-LAYOUT? id TFAM-CELL? or 0= IF 0 NO EXIT THEN
-   id WIDTH-FAM @ = IF
-      s" a width is not stored: keep its bytes (width>n)"
-      E-PAYLOAD DECL-REJECT:REJECT throw THEN
-   id EFFECT-TYPE-FAM @ = IF
-      s" a definer's type ends with the load that built it: build it where it is used"
-      E-PAYLOAD DECL-REJECT:REJECT throw THEN
    id FAM @ = POINTEE @ 0= and IF
       s" field type cannot recursively name its owner"
       E-PAYLOAD DECL-REJECT:REJECT throw THEN

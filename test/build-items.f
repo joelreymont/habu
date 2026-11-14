@@ -506,9 +506,11 @@ PATH-CAP BUFFER: APP  variable APP-U
    PROCESS:ENDING>RC RC>N ;
 
 : STORED ( CMD:command -- CMD:command )
-   BUILD 74 T=
-   CMD:ERR$ s" habu: in HELD: a definer's type ends with the load that built it: build it where it is used 'EFFECT:type'"
-   CONTAINS? TTRUE ;
+   BUILD {: rc:n :}
+   CMD:ERR$ s" a definer's type ends with the load that built it: build it where it is used"
+   CONTAINS? TTRUE
+   CMD:ERR$ s" HELD" CONTAINS? TTRUE
+   rc 74 T= ;
 
 : CHECKS ( -- ) [: STORED ;] CMD:WITH-COMMAND ;
 : REMOVE ( -- ) DIR$ FS:REMOVE-TREE ;
