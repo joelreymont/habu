@@ -1312,30 +1312,23 @@ variable MDV-I   variable MDV-F
 : IMM-SUGGEST$ ( -- ptr u8 n )
    s" Declare a stack-neutral parsing immediate with parse-imm, or remove it from the compiled body." ;
 
-\ The LOCALBAD kinds come from checker.f LOC-REJECT and LOC-GROUP-REJECT.
 : LOCALBAD-CODE$ ( -- ptr u8 n )
-   LOCALBAD-KIND @ 2 = IF s" E-LOCAL-NAME-TOO-LONG" EXIT THEN
-   LOCALBAD-KIND @ 1 = IF s" E-TOO-MANY-LOCALS" EXIT THEN
    s" E-BAD-LOCAL-SHAPE" ;
 
 : LOCALBAD-CLASS$ ( -- ptr u8 n )
-   LOCALBAD-KIND @ 2 = IF s" shorten_local_name" EXIT THEN
-   LOCALBAD-KIND @ 1 = IF s" reduce_local_count" EXIT THEN
    s" factor_local_shape" ;
 
 : LOCALBAD-SUGGEST$ ( -- ptr u8 n )
-   LOCALBAD-KIND @ 2 = IF s" Shorten the local name to at most 16 bytes." EXIT THEN
-   LOCALBAD-KIND @ 1 = IF s" Bind at most 64 locals in one definition, or factor a helper." EXIT THEN
-   LOCALBAD-KIND @ 3 >= IF s" Remove the token: a locals group lists only the names to bind." EXIT THEN
+   LOCALBAD-KIND @ LOCALBAD-SCOPE <> IF s" Remove the token: a locals group lists only the names to bind." EXIT THEN
    s" Move locals to a live top-level path or factor a helper." ;
 
-\ Kinds 3 and 4, a locals group token that names no local, state why; the
-\ prose prints it after the token and the packet as its reason.
+\ A locals group token that names no local states why; the prose prints it
+\ after the token and the packet as its reason.
 : LOCALBAD-GROUP? ( -- bool )
-   LOCALBAD-KIND @ 3 >= ;
+   LOCALBAD-KIND @ LOCALBAD-SCOPE <> ;
 
 : LOCALBAD-REASON$ ( -- ptr u8 n )
-   LOCALBAD-KIND @ 3 = IF s" a locals group names only locals; the signature declares the outputs" EXIT THEN
+   LOCALBAD-KIND @ LOCALBAD-DASH = IF s" a locals group names only locals; the signature declares the outputs" EXIT THEN
    s" a locals group names only locals; Habu has no uninitialised locals" ;
 
 \ FAILTK is the declaration token pinned by the first failure, so a later body
@@ -1344,15 +1337,6 @@ variable MDV-I   variable MDV-F
    LOCALBAD-CODE$ EMIT-STR  s"  " EMIT-STR  DSITE
    LOCALBAD-GROUP? IF
      s" at '" EMIT-STR  FAILTK FAILTU @ EMIT-STR  s" ': " EMIT-STR  LOCALBAD-REASON$ EMIT-STR EXIT
-   THEN
-   LOCALBAD-KIND @ 2 = IF
-     s" local '" EMIT-STR  FAILTK FAILTU @ EMIT-STR  s" ' has a " EMIT-STR  LOCALBAD-LEN @ EMIT-U
-     s" -byte name; the limit is " EMIT-STR  LOC-NAME-CAP EMIT-U
-        s"  bytes" EMIT-STR EXIT
-   THEN
-   LOCALBAD-KIND @ 1 = IF
-     s" local '" EMIT-STR  FAILTK FAILTU @ EMIT-STR  s" ' is one over the " EMIT-STR  LOC-RECS EMIT-U
-     s"  locals a definition may bind" EMIT-STR EXIT
    THEN
    s" at '" EMIT-STR  FAILTK FAILTU @ EMIT-STR
    s" ': a local cannot be bound inside a quotation, or bound on a dead path" EMIT-STR ;

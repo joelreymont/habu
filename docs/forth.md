@@ -981,11 +981,6 @@ named words, with one word that runs them in order.
      {: v:n lo:n hi:n :}
      v lo max hi min ;
   ```
-
-  A local name is at most
-  16 bytes and a definition binds at most 64 locals. The compiler refuses
-  either before storing anything; the checker reports
-  `E-LOCAL-NAME-TOO-LONG` or `E-TOO-MANY-LOCALS` with the limit.
 - A local binds once. Keep a loop's changing cursor on the stack or in a cell:
   `begin {: cursor:n :} … cursor' again` pushes the next value before the
   back edge. Use `RECURSE` for a cursor only when depth is bounded; a

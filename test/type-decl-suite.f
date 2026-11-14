@@ -1773,6 +1773,46 @@ TDHP-H TTRUE
 TDHP-D1 TFALSE
 TDHP-D2 TFALSE
 
+\ A PRODUCT of 256 one-cell fields derives eq and hash; its EQ binds a local
+\ per field of each value.
+package WIDE-DERIVE-TEST
+
+$2000 constant BUF-CAP
+create BUF BUF-CAP allot
+variable BUF-N
+
+: C+ ( n -- )
+   BUF-N @ BUF-CAP >= IF s" wide derive test source overflow" 76 die THEN
+   BUF BUF-N @ + c!  BUF-N @ 1 + BUF-N ! ;
+: APPEND ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0 ?do  a i + c@ C+  loop ;
+: NUM+ ( n -- ) {: v:n :}   \ three decimal digits
+   v 100 / 48 + C+  v 10 / 10 mod 48 + C+  v 10 mod 48 + C+ ;
+: DECL$ ( -- ptr u8 n )
+   0 BUF-N !  s" PRODUCT tdeq256 DERIVE eq hash" APPEND
+   256 0 ?do  s"  FIELD f" APPEND  i NUM+  s"  n" APPEND  loop
+   s"  ;PRODUCT" APPEND  BUF BUF-N @ ;
+: VALUE+ ( n -- ) {: odd:n :}   \ field i holds i, field odd holds 999
+   256 0 ?do
+      i odd = IF 999 ELSE i THEN NUM+  32 C+
+   loop  s" TDEQ256:MAKE " APPEND ;
+\ A word comparing the value with every field i to one whose field odd is 999.
+: EQ$ ( ptr u8 n n -- ptr u8 n ) {: a:ptr u:n odd:n :}
+   0 BUF-N !  s" : " APPEND  a u APPEND  s"  ( -- bool ) " APPEND
+   -1 VALUE+  odd VALUE+  s" TDEQ256:EQ ; " APPEND  a u APPEND
+   BUF BUF-N @ ;
+
+public
+
+: RUN ( -- )
+   DECL$ TDT-EVAL-CATCH 0 T=
+   s" TDEQ256-SAME" -1 EQ$ TEST-EVAL:FLAG TTRUE
+   s" TDEQ256-DIFF" 200 EQ$ TEST-EVAL:FLAG TFALSE ;
+
+;package
+
+WIDE-DERIVE-TEST:RUN
+
 \ hash-alone: HASH + TAG generated, EQ absent (undefined -> refused);
 \ the derived HASH is undefine-protected like a constructor.
 ENUM tdho DERIVE hash oa ob ;ENUM

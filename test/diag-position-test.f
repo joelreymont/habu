@@ -869,12 +869,12 @@ variable RC
    s" that undefined word alone" T-LABEL
    s" : X ( n -- n ) NOPE ;" s" undefined.f" LINE-FIXTURE
    s" E-UNDEFINED" s" NOPE" 1 16 15 19 REFUSED-AT
-   s" that signature and a local name over 16 bytes" T-LABEL
-   s" : X ( n -- zz ) {: abcdefghijklmnopq :} 1 ;" s" badsig-local.f" LINE-FIXTURE
-   s" E-LOCAL-NAME-TOO-LONG" s" abcdefghijklmnopq" 1 20 19 36 REFUSED-MODES
    s" that signature and an unsafe word" T-LABEL
    s" : X ( n -- zz ) evaluate ;" s" badsig-unsafe.f" LINE-FIXTURE
-   s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 1 12 11 13 REFUSED-AT ;
+   s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 1 12 11 13 REFUSED-AT
+   s" that signature and a quotation local" T-LABEL
+   s" : X ( n -- zz ) [: {: y:n :} ;] drop 1 ;" s" badsig-local.f" LINE-FIXTURE
+   s" E-BAD-LOCAL-SHAPE" s" {:" 1 20 19 21 REFUSED-MODES ;
 
 \ The load binds `--` and `|` in a locals group as locals; the checker refuses
 \ the definition at that token with the reason, and a body reference to it
@@ -1066,6 +1066,9 @@ variable RC
    s" a mismatch before a refused locals group token" T-LABEL
    s" : X ( n -- n ) dup c@ {: a -- b :} a ;" s" mismatch-local.f" LINE-FIXTURE
    s" E-MISMATCH" s" c@" 1 20 19 21 REFUSED-AT
+   s" a mismatch before a quotation local" T-LABEL
+   s" : X ( n -- n ) dup c@ [: {: y:n :} ;] drop 1 ;" s" mismatch-qlocal.f" LINE-FIXTURE
+   s" E-BAD-LOCAL-SHAPE" s" {:" 1 26 25 27 REFUSED-AT
    s" a signature that does not parse and a TRUSTED-only primitive" T-LABEL
    s" : X ( n -- zz ) 1 c2-invoke ;" s" badsig-cap.f" LINE-FIXTURE
    s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 1 12 11 13 REFUSED-AT ;

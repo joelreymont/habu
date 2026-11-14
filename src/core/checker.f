@@ -6780,12 +6780,14 @@ variable SGBAD-KIND
 variable SGBAD-AR-DECL   \ arity kind: the family's declared arity
 variable SGBAD-AR-GOT    \ arity kind: the argument count actually written
 variable SGBAD-SIZE      \ depth and width kinds: the levels or cells measured
+0 constant LOCALBAD-SCOPE    \ a local inside a quotation or on a dead path
+1 constant LOCALBAD-DASH     \ `--` in a locals group
+2 constant LOCALBAD-BAR      \ `|` in a locals group
 CHECKER-REG:SCRATCH{
 variable UNSAFE
 variable RETIRED             \ a permanently retired token was named in a checked body
 variable LOCALBAD
-variable LOCALBAD-KIND       \ 0 = locals opened inside a quotation or on a dead path; 1 = more than LOC-RECS locals; 2 = a name over LOC-NAME-CAP; 3 = `--` in a locals group; 4 = `|` in one
-variable LOCALBAD-LEN        \ kind 2: the rejected local's bare-name width in bytes
+variable LOCALBAD-KIND       \ the LOCALBAD-* kind of the rejected local
 variable LINLOCBAD           \ a linear-counting value was bound into a {: :} local
 variable UNDEFERR
 variable UNSEEN               \ an undefined token a rendering statement in scope may define (UNSEEN-COVERS?)
@@ -17094,16 +17096,35 @@ variable CHECKER-PREFIX-ROLLBACK
    a u WF-XPORT-K  WF-ROW-SCAN ;
 
 
-LOC-RECS constant XG-GCAP      \ max logical groups per op
-256 constant XG-TCAP           \ max total cells across one op's groups
-create XG-TERMS XG-TCAP cells allot
-create XG-NODES XG-TCAP cells allot
-create XG-START XG-GCAP cells allot
-create XG-LEN XG-GCAP cells allot
+\ XG-TERMS and XG-NODES hold one cell per transported cell, XG-START and
+\ XG-LEN one per logical group.
+64 constant XG-INIT
+CHECKER-REG:SCRATCH{
+PTR-VARIABLE XG-TERMS-P   PTR-VARIABLE XG-NODES-P   variable XG-CELL-CAP
+PTR-VARIABLE XG-START-P   PTR-VARIABLE XG-LEN-P   variable XG-GROUP-CAP
+CHECKER-REG:}SCRATCH
+: XG-TERMS ( -- ptr n ) XG-TERMS-P @ ;
+: XG-NODES ( -- ptr n ) XG-NODES-P @ ;
+: XG-START ( -- ptr n ) XG-START-P @ ;
+: XG-LEN ( -- ptr n ) XG-LEN-P @ ;
 variable XG-N   variable XG-TN   variable XG-ROW
 
+: XG-CELLS-ENSURE ( n -- ) {: need:n :}
+   need XG-CELL-CAP @ <= IF EXIT THEN
+   need XG-CELL-CAP @ 2 * max XG-INIT max {: nc:n :}
+   XG-TERMS-P @ XG-CELL-CAP @ cells nc cells SR-GROW XG-TERMS-P !
+   XG-NODES-P @ XG-CELL-CAP @ cells nc cells SR-GROW XG-NODES-P !
+   nc XG-CELL-CAP ! ;
+
+: XG-GROUPS-ENSURE ( n -- ) {: need:n :}
+   need XG-GROUP-CAP @ <= IF EXIT THEN
+   need XG-GROUP-CAP @ 2 * max XG-INIT max {: nc:n :}
+   XG-START-P @ XG-GROUP-CAP @ cells nc cells SR-GROW XG-START-P !
+   XG-LEN-P @ XG-GROUP-CAP @ cells nc cells SR-GROW XG-LEN-P !
+   nc XG-GROUP-CAP ! ;
+
 : XG-T+ ( n n -- ) {: term:n node:n :}   \ term and occurrence travel together
-   XG-TN @ XG-TCAP >= IF s" checker: transport group scratch full" 76 die THEN
+   XG-TN @ 1 + XG-CELLS-ENSURE
    term XG-TN @ cells XG-TERMS + !
    node XG-TN @ cells XG-NODES + !
    XG-TN @ 1 + XG-TN ! ;
@@ -17156,7 +17177,7 @@ variable XG-N   variable XG-TN   variable XG-ROW
    XG-N @ 1 + XG-N ! ;
 
 : XG-READ ( n n -- bool ) {: row:n k:n :}   \ k logical groups off row; XG-ROW = rest
-   k XG-GCAP > IF s" checker: transport group cap" 76 die THEN
+   k XG-GROUPS-ENSURE
    row XG-ROW !  0 XG-N !  0 XG-TN !
    0 BEGIN dup k < WHILE
       XG-TN @ XG-START XG-N @ cells + !
@@ -17396,13 +17417,24 @@ variable XG-N   variable XG-TN   variable XG-ROW
    0 OK !  -1 FAILSET !
    RES-TRUE ;
 
-create LOCNB LOC-RECS LOC-NAME-CAP * allot   create LOCLN LOC-RECS cells allot   create LOCTV LOC-RECS cells allot
-create LOCSHOW LOC-RECS cells allot
+\ The per-local tables grow together to LOC-CAP locals. LOCNB holds the
+\ names end to end; LOCEND holds where each ends.
+64 constant LOC-INIT
+CHECKER-REG:SCRATCH{
+PTR-VARIABLE LOCNB-P   variable LOCNB-CAP   PTR-VARIABLE LOCEND-P
+PTR-VARIABLE LOCTV-P   PTR-VARIABLE LOCSHOW-P
+PTR-VARIABLE LOCW-P   PTR-VARIABLE LOCVAL-P   PTR-VARIABLE LOCSEQIX-P
+variable LOC-CAP
+CHECKER-REG:}SCRATCH
+: LOCNB ( -- ptr u8 ) LOCNB-P @ ;
+: LOCEND ( -- ptr n ) LOCEND-P @ ;
+: LOCTV ( -- ptr n ) LOCTV-P @ ;
+: LOCSHOW ( -- ptr n ) LOCSHOW-P @ ;
 \ LOCW: logical width of each local's binding. 1 = one cell: LOCTV holds a
 \ scalar's type var or a one-cell bundle's tag term (an enum). >1 = a whole
 \ hidden-field bundle: LOCTV holds the group's TAG term.
-create LOCW LOC-RECS cells allot
-create LOCVAL LOC-RECS cells allot  \ per-local chain of captured physical cells
+: LOCW ( -- ptr n ) LOCW-P @ ;
+: LOCVAL ( -- ptr n ) LOCVAL-P @ ;  \ per-local chain of captured physical cells
 variable LOC-CAP-HEAD
 variable #LOC  variable LMODE  variable LGRP  variable LI  variable LRF
 \ LOCW is live-indexed and branch-scoped locals are popped at their join with
@@ -17410,12 +17442,33 @@ variable #LOC  variable LMODE  variable LGRP  variable LI  variable LRF
 \ LOCW by live index after the verdict. LOCW-HW records every bind
 \ occurrence's FINAL width keyed by a monotone bind sequence that is never
 \ popped.
-LOC-RECS 4 * constant LOC-HW-INIT
+256 constant LOC-HW-INIT
 $0FFFFFFFFFFFFFFF constant LOC-HW-MAX-CELLS
 CHECKER-REG:SCRATCH{
 PTR-VARIABLE LOC-HW-P   variable LOC-HW-CAP   variable LOCSEQ
 CHECKER-REG:}SCRATCH
-create LOCSEQIX LOC-RECS cells allot
+: LOCSEQIX ( -- ptr n ) LOCSEQIX-P @ ;
+: LOC-ENSURE ( n -- ) {: need:n :}
+   need LOC-CAP @ <= IF EXIT THEN
+   need LOC-CAP @ 2 * max LOC-INIT max {: nc:n :}
+   LOCEND-P @ LOC-CAP @ cells nc cells SR-GROW LOCEND-P !
+   LOCTV-P @ LOC-CAP @ cells nc cells SR-GROW LOCTV-P !
+   LOCSHOW-P @ LOC-CAP @ cells nc cells SR-GROW LOCSHOW-P !
+   LOCW-P @ LOC-CAP @ cells nc cells SR-GROW LOCW-P !
+   LOCVAL-P @ LOC-CAP @ cells nc cells SR-GROW LOCVAL-P !
+   LOCSEQIX-P @ LOC-CAP @ cells nc cells SR-GROW LOCSEQIX-P !
+   nc LOC-CAP ! ;
+: LOCNB-ENSURE ( n -- ) {: need:n :}
+   need LOCNB-CAP @ <= IF EXIT THEN
+   need LOCNB-CAP @ 2 * max LOC-INIT 16 * max {: nc:n :}
+   LOCNB-P @ LOCNB-CAP @ nc SR-GROW LOCNB-P !
+   nc LOCNB-CAP ! ;
+: LOC-START ( n -- n ) {: idx:n :}
+   idx 0= IF 0 EXIT THEN
+   idx 1 - cells LOCEND + @ ;
+: LOC-NAME$ ( n -- ptr u8 n ) {: idx:n :}
+   idx LOC-START {: start:n :}
+   LOCNB start +  idx cells LOCEND + @ start - ;
 : LOC-HW ( -- ptr n ) LOC-HW-P @ ;
 : LOC-HW-GROW-CAP ( n -- n ) {: need:n :}
    need 0 <= need LOC-HW-MAX-CELLS > or IF s" checker: local bind capacity overflow" 76 die THEN
@@ -17482,7 +17535,7 @@ CHECKER-REG:}SCRATCH
 : LOC-SHOW-ONE ( n -- ) {: idx:n :}
    idx cells LOCSHOW + @ 0= if exit then
    idx cells LOCTV + @ {: t:n :}
-   LOCNB idx LOC-NAME-CAP * +  idx cells LOCLN + @
+   idx LOC-NAME$
    t LOC-DECL-TERM
    LOCSHOWXT ;
 
@@ -17493,12 +17546,13 @@ CHECKER-REG:}SCRATCH
       1 +
    repeat drop ;
 
-\ The load refuses such a local while compiling the body, so the fault refuses
-\ the definition at its token unless an earlier compile-time refusal holds the
-\ diagnostic.
-: LOC-REJECT ( n n -- ) {: len:n kind:n :}
+\ A local bound inside a quotation or on a dead path, which the load rejects
+\ while compiling the body, or read inside an unjudged body's quotation: the
+\ fault rejects the definition at its token unless an earlier compile-time
+\ rejection holds the diagnostic.
+: LOC-REJECT ( -- )
    RCOMPILE @ 0= IF
-      kind LOCALBAD-KIND !  len LOCALBAD-LEN !  RF-LOCAL CREFUSE!
+      LOCALBAD-SCOPE LOCALBAD-KIND !  RF-LOCAL CREFUSE!
    THEN
    -1 LOCALBAD !  0 OK !  -1 FAILSET ! ;
 
@@ -17506,31 +17560,32 @@ CHECKER-REG:}SCRATCH
 \ does, and `|` opens no uninitialised locals. The load binds either token as a
 \ local, so this is a check failure, not a compile-time refusal.
 : LOC-GROUP-REJECT ( n -- ) {: kind:n :}
-   FAILSET @ 0=  RCOMPILE @ 0=  and IF kind LOCALBAD-KIND !  0 LOCALBAD-LEN ! THEN
+   FAILSET @ 0=  RCOMPILE @ 0=  and IF kind LOCALBAD-KIND ! THEN
    -1 LOCALBAD !  0 OK !  -1 FAILSET ! ;
 
 \ Makes the slot at #LOC for the name's raw spelling, which a reference must
-\ match; false when a limit refuses it.
-: LOC-OPEN ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   #LOC @ LOC-RECS 1 - > IF 0 1 LOC-REJECT RES-FALSE EXIT THEN
-   u LOC-NAME-CAP > IF u 2 LOC-REJECT RES-FALSE EXIT THEN
+\ match; the name's bytes follow the previous local's.
+: LOC-OPEN ( ptr u8 n -- ) {: a:ptr u:n :}
+   #LOC @ {: ix:n :}
+   ix 1 + LOC-ENSURE
+   ix LOC-START {: off:n :}
+   off u + LOCNB-ENSURE
    LOCSEQ @ 1 + LOC-HW-ENSURE
-   #LOC @ LOC-SHOW-OFF!
-   a  LOCNB #LOC @ LOC-NAME-CAP * +  u CCOPY
-   u #LOC @ cells LOCLN + !
-   FRESH MK-VAR #LOC @ cells LOCTV + !
-   0 #LOC @ cells LOCVAL + !
-   1 #LOC @ cells LOCW + !
-   LOCSEQ @ #LOC @ cells LOCSEQIX + !
+   ix LOC-SHOW-OFF!
+   a  LOCNB off +  u CCOPY
+   off u + ix cells LOCEND + !
+   FRESH MK-VAR ix cells LOCTV + !
+   0 ix cells LOCVAL + !
+   1 ix cells LOCW + !
+   LOCSEQ @ ix cells LOCSEQIX + !
    1 LOCSEQ @ cells LOC-HW + !
    CHECKER-TAPE:K-LOCAL-DECL LOCSEQ @ 0 EVENT!
-   LOCSEQ @ 1 + LOCSEQ !
-   RES-TRUE ;
+   LOCSEQ @ 1 + LOCSEQ ! ;
 
 : LOC-ADD ( ptr u8 ptr u8 n -- )   \ raw declaration, folded declaration, their shared length
    {: ra:ptr a:ptr u:n :}
    a u LCOLON {: col:n :}
-   ra col LOC-OPEN 0= IF EXIT THEN
+   ra col LOC-OPEN
    col u < IF
       ra u col #LOC @ LOC-ANN
    THEN
@@ -17772,19 +17827,19 @@ CHECKER-REG:}SCRATCH
    LIN-LOCAL-BIND-CHECK ;
 
 \ `--` and `|` bind as in the load, so a body reference finds them and they
-\ count toward LOC-RECS. In a checked body the token has failed, so LOC-BIND
+\ take a local's slot. In a checked body the token has failed, so LOC-BIND
 \ exits on OK 0 and binds no cell to them; an unjudged scan sets OK afresh for
 \ each token, so its LOC-BIND binds them as the runtime does.
 : LOC-TOK
    {: ra a u :}
    a u s" :}" CORE-STR= IF CHECKER-TAPE:K-LOCAL-CLOSE 0 0 EVENT!  0 LMODE ! LOC-BIND ELSE
    ra a u LOC-ADD
-   a u s" --" CORE-STR= IF 3 LOC-GROUP-REJECT THEN
-   a u s" |" CORE-STR= IF 4 LOC-GROUP-REJECT THEN THEN ;
+   a u s" --" CORE-STR= IF LOCALBAD-DASH LOC-GROUP-REJECT THEN
+   a u s" |" CORE-STR= IF LOCALBAD-BAR LOC-GROUP-REJECT THEN THEN ;
 
 : LOC-BEGIN ( -- )
    EV-OPERAND
-   QDEPTH @ 0 >  DEADP @ or IF 0 0 LOC-REJECT ELSE
+   QDEPTH @ 0 >  DEADP @ or IF LOC-REJECT ELSE
    1 LMODE !  #LOC @ LGRP ! THEN ;
 
 : LOC-REF-ROW ( n n -- n ) {: head:n rest:n :}
@@ -17969,9 +18024,9 @@ SCOPE-INTRO-FENCE-INSTALL
    0 LRF !  #LOC @ LI !
    BEGIN LI @ 0 >  LRF @ 0=  and WHILE
      LI @ 1 - LI !
-     a u  LOCNB LI @ LOC-NAME-CAP * +  LI @ cells LOCLN + @  CORE-STR= IF
+     a u  LI @ LOC-NAME$  CORE-STR= IF
        QDEPTH @ 0 >  BWIN-UNJUDGED @ 0 <>  and IF
-          0 0 LOC-REJECT
+          LOC-REJECT
        ELSE
           QDEPTH @ 0 > IF LI @ LOC-OWNER QRD-MARK THEN
           CHECKER-TAPE:K-LOCAL-REF  LI @ cells LOCSEQIX + @  0 EVENT!
@@ -19580,7 +19635,7 @@ variable RTL-I                        \ retired-token local scan index
 : LOC-NAME? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    0 RTL-I !
    BEGIN RTL-I @ #LOC @ < WHILE
-      a u  LOCNB RTL-I @ LOC-NAME-CAP * +  RTL-I @ cells LOCLN + @  CORE-STR=
+      a u  RTL-I @ LOC-NAME$  CORE-STR=
          IF RES-TRUE EXIT THEN
       RTL-I @ 1 + RTL-I !
    REPEAT RES-FALSE ;
@@ -19965,7 +20020,7 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
 
 : VIS-LOCAL= ( ptr u8 n n -- bool )
    {: a:ptr u:n ix:n :}
-   a u  LOCNB ix LOC-NAME-CAP * +  ix cells LOCLN + @  CORE-STR= ;
+   a u  ix LOC-NAME$  CORE-STR= ;
 
 \ A live local below IX is spelled A U exactly: that spelling is the local's.
 : VIS-HELD? ( ptr u8 n n -- bool )
@@ -20090,7 +20145,7 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
 
 : VIS-LOCAL ( n -- )
    {: ix:n :}
-   LOCNB ix LOC-NAME-CAP * +  ix cells LOCLN + @ {: a:ptr u:n :}
+   ix LOC-NAME$ {: a:ptr u:n :}
    a u VIS-PREFIX? 0= IF EXIT THEN
    a u ix VIS-HELD? IF EXIT THEN
    a u 0 0 0 VIS-VISIT ;
@@ -21346,7 +21401,7 @@ CHECKER-REG:}SCRATCH
    0 THDMASK !  0 THRMASK !  0 THSET !  0 INHSET !
    0 REFUSAL !  0 CREFUSE !  0 CRTGT !  0 RCOMPILE !  0 CUSING !
    SGBAD-CLEAR  SIG-UNRES-CLEAR
-   0 UNSAFE !  0 RETIRED !  0 IMMERR !  0 LOCALBAD !  0 LOCALBAD-KIND !  0 LOCALBAD-LEN !  0 LINLOCBAD !  0 UNDEFERR !  0 UNSEEN !  0 QUALBAD !  0 QDUPBAD !  0 CAPREQ !
+   0 UNSAFE !  0 RETIRED !  0 IMMERR !  0 LOCALBAD !  0 LOCALBAD-KIND !  0 LINLOCBAD !  0 UNDEFERR !  0 UNSEEN !  0 QUALBAD !  0 QDUPBAD !  0 CAPREQ !
    0 NP-ORIG-N !  0 CALL-MINT-N !  0 RECUR-MAP-N !  0 RECUR-INST-N !
    CHECKER-QUOT-FRESH:CLEAR  SG-ROWS-RESET
    0 NPBAD !  0 NPBAD-KIND !  0 NPBAD-Q1 !  0 NPBAD-Q2 !  0 NPBAD-TERM !

@@ -175,9 +175,6 @@ $400000 constant SOURCE-ARENA-CAP
 0 constant DP-CELL
 8 constant HND-CELL
 16 constant LOCN-CELL
-\ The checker's locals limits.
-16 constant LOC-NAME-CAP
-64 constant LOC-RECS
 \ The capture's block depth, which scopes the locals it records, and raw state:
 \ 0 none, -1 a parsing keyword's operand, d+1 inside a `[type]` span at depth d.
 $2DB8 constant CAPDEPTH-CELL
