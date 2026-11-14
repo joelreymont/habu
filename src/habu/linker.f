@@ -4830,12 +4830,11 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
    LINK-CLEAR ;
 
 
-\ MAKE-DEF; a throw drops the open definition (DEF-ABORT) and an emission not yet filed, and passes on:
-\ the build then fails, and its close drops the filed shadow emissions (NSHADOW:CLOSE), the records and
-\ the code (FORGET-SPACE).
+\ MAKE-DEF; a throw drops an emission not yet filed and passes on: the build then fails, and its close drops the
+\ filed shadow emissions (NSHADOW:CLOSE), the records and the code (FORGET-SPACE).
 : LINK-DEF ( n -- )
    [: dup MAKE-DEF ;] catch {: i:n rc:n :}
-   rc 0<> if NEMIT:CLEAR  NSHADOW:ABANDON  INTERPRETER:DEF-ABORT  LINK-CLEAR  rc throw then ;
+   rc 0<> if NEMIT:CLEAR  NSHADOW:ABANDON  LINK-CLEAR  rc throw then ;
 
 \ ---- linking data --------------------------------------------------------------
 \ An xt cell's value is a code address the link writes with xt!.
@@ -5664,16 +5663,11 @@ TYPED-VARIABLE EXITER [ -- ]
    src XREF-FLAGS  DNAME-IMM DNAME-WIDE or DNAME-MIN-IN-MASK or  and  want SET-FLAGS
    r 5 OWNED$  want CHECK:FACTS! ;
 
-\ MAKE-OWNED; a throw drops the open definition and passes on, failing the open.
-: LINK-OWNED ( n -- )
-   [: dup MAKE-OWNED ;] catch {: r:n rc:n :}
-   rc 0<> if INTERPRETER:DEF-ABORT rc throw then ;
-
 \ After IMAGE-IN, the records OWNED+ gathered as BUILT row 0, laid before any file as header data: key the empty path's, which no
 \ load has; piece 0 at time 0, its content following from hb, whose stamp names the objects' dir (BUILD-OUT:OBJ$).
 : OWNED-RECORDS ( -- )
    FIRST-REC @ FILE-REC !  NSHADOW:EMISSIONS FILE-EM !  false HOLDS-HEADER !
-   OWNED-N @ 0 ?do i LINK-OWNED loop
+   OWNED-N @ 0 ?do i MAKE-OWNED loop
    0 CHECK:PLACE-FACTS
    s" " KEY-PATHS PATH-IN FILE-KEY LE:U64!  0 FILE-KEY 8 + LE:U64!  0 FILE-PART !
    FILE-KEY KEY-BYTES LOAD-PATHS SPAN+  s" " LOAD-PATHS FIELD+

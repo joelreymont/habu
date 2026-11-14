@@ -2017,11 +2017,9 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    -1 BODY-ITEMS:RAW-CELL CELL!
    a u DEF-CAPTURE ;
 
-\ What `;` runs: it ends the definition, abandoning it if the end throws.
+\ What `;` runs: it ends the definition.
 : END-RUN ( -- )
-   s" ;" BUILT-PENDING
-   [: DEF-END ;] catch {: rc:n :}
-   rc 0<> if DEF-ABORT rc throw then ;
+   s" ;" BUILT-PENDING DEF-END ;
 
 \ A quotation is its code's entry, which a word's tick shares with its record.
 CAST: QUOT-ENTRY ( [ R -- S ] -- n )
@@ -2048,13 +2046,9 @@ CAST: QUOT-ENTRY ( [ R -- S ] -- n )
    rec CALLEE-CHECK
    BODY-ITEM-KIND:CALL r 0 rec XREF-NAME$ ITEM+ ;
 
-\ What `compile,` runs: it calls the word whose entry the quotation is,
-\ abandoning the definition if the call is refused.
+\ What `compile,` runs: it appends a call of the word whose entry the quotation is.
 : COMPILE-RUN ( [ R -- S ] -- )
-   s" compile," BUILT-PENDING
-   QUOT-ENTRY {: e:n :}
-   [: e COMPILE-CALL ;] catch {: rc:n :}
-   rc 0<> if DEF-ABORT rc throw then ;
+   s" compile," BUILT-PENDING QUOT-ENTRY COMPILE-CALL ;
 
 \ A cell's decimal spelling, written from the end of LIT-DIGITS: 20 bytes
 \ hold any i64 and its sign. `/` truncates, so a negative value's remainders
@@ -2323,10 +2317,7 @@ variable DEF-VALUE
 
 : CHILD-DEFINE ( ptr u8 n n n ptr u8 n -- n )
    {: a:ptr u:n shape:n param:n ta:ptr tu:n :}
-   a u shape CHILD-RECORD
-   0 [: drop shape param ta tu CHILD-CLOSE ;] catch {: h rc:n :}
-   rc 0= if h exit then
-   DEF-ABORT rc throw ;
+   a u shape CHILD-RECORD  shape param ta tu CHILD-CLOSE ;
 
 \ Answers the child's effect handle. TYPE is empty for the shapes before STORED.
 : CHILD-RUN ( ptr u8 n n n ptr u8 n -- n )

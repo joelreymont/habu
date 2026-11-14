@@ -2942,16 +2942,42 @@ package ENGINE-EMIT
    above LBL,
    B G-PUSH ;
 
+public
+\ No local outlives its definition. Wherever one ends, published or abandoned,
+\ its locals' count, frame and block depth clear with their token-start marks,
+\ so the next definition starts with none and no image holds them.
+: C-CLEAR-LOCALS ( -- )
+   9 0 MOVZ,
+   9 DATA LOCN-CELL STR,  9 DATA CAPDEPTH-CELL STR,
+   9 DATA TOKLOCN-CELL STR,  9 DATA TOKDEPTH-CELL STR, ;
+
+\ Definition state only: a Habu catch that survived the engine's BTHROW still owns
+\ the handler, return and loop stacks that receive the error.
+: EM-ABORT-COMPILE-STATE ( -- )
+   9 0 MOVZ,
+   9 DATA NCOMP-DISPATCH:COMP-LATCH-CELL STR,
+   9 DATA VSP-CELL STR,
+   9 DATA BODYLEN-CELL STR,  9 DATA EXITH-CELL STR,
+   9 DATA PEND-CELL STR,  9 DATA CMM-CELL STR,
+   9 0 MOVZ,
+   9 DATA TSIG-A-CELL STR,   9 DATA TSIG-U-CELL STR,
+   9 DATA TCSIG-A-CELL STR,  9 DATA TCSIG-U-CELL STR,
+   9 DATA CRSIG-A-CELL STR,  9 DATA CRSIG-U-CELL STR,
+   9 DATA DOESB-CELL STR,  9 DATA CLAUSE-CELL STR,
+   9 DATA TRUSTED-CELL STR,
+   C-CLEAR-LOCALS ;
+private
+
 \ catch ( xt -- exc ): a STACK-ABI:CATCH-BYTES handler frame chained through
-\ HND-CELL saves the complete caller execution frame so a caught throw resumes
-\ it. Frame: 0 prev-HND | 8 data-sp(x19) | 16 machine-sp | 24 resume-pc |
-\ 32 link | 40 saved-RSP | 48 saved-LOOPSP | 56 unused | 64 saved base |
-\ 72 saved capacity | 80 saved BUSY-CELL | 88 saved ACTIVE-CELL. A normal
-\ return branches to CATCH-PUSH with x9 = 0; a throw resumes at CATCH-RES,
-\ where it ends, with the code in x9 and the frame already unlinked; CATCH-RES
-\ clears FAULT-MARK-CELL, as a delivered memory fault ends at its catch. Its
-\ caller places CATCH-PUSH.
+\ HND-CELL saves the caller's execution frame: 0 prev-HND | 8 data-sp(x19) |
+\ 16 machine-sp | 24 resume-pc | 32 link | 40 saved-RSP | 48 saved-LOOPSP, then
+\ the STACK-ABI:CATCH-PEND cells. A return branches to CATCH-PUSH with x9 = 0; a
+\ throw resumes at CATCH-RES with the code in x9, the saved PEND-CELL in x14 and
+\ the frame unlinked below SP. CATCH-RES clears FAULT-MARK-CELL, as a delivered
+\ memory fault ends at its catch, and abandons a definition opened since the
+\ catch began, keeping one open before it. Its caller places CATCH-PUSH.
 : BCATCH-RUN ( -- )
+   LBL {: kept:label :}
    LBL CATCH-RES !
    LBL CATCH-PUSH !
    A G-POP  BRECORD  BCALLABLE
@@ -2963,6 +2989,7 @@ package ENGINE-EMIT
    12 CATCH-RES LABEL@ ADR,  12 SP 24 STR,
    11 DATA RSP-CELL LDR,     11 SP 40 STR,
    11 DATA LOOPSP-CELL LDR,  11 SP 48 STR,
+   11 DATA PEND-CELL LDR,  11 SP STACK-ABI:CATCH-PEND STR,
    11 DATA STACK-ABI:BASE-CELL LDR,  11 SP STACK-ABI:CATCH-BASE STR,
    11 DATA STACK-ABI:CAP-CELL LDR,  11 SP STACK-ABI:CATCH-CAP STR,
    11 DATA GENIO-ABI:BUSY-CELL LDR,  11 SP STACK-ABI:CATCH-BUSY STR,
@@ -2973,7 +3000,11 @@ package ENGINE-EMIT
    30 SP 32 LDR,  SP SP STACK-ABI:CATCH-BYTES ADDI,
    9 0 MOVZ,  CATCH-PUSH LABEL@ B,
    CATCH-RES LABEL@ LBL,
-   31 DATA FAULT-MARK-CELL STR, ;
+   31 DATA FAULT-MARK-CELL STR,
+   10 DATA PEND-CELL LDR,  10 kept CBZ,
+   10 14 CMP,  C-EQ kept BCOND,
+   10 9 0 ADDI,  EM-ABORT-COMPILE-STATE  9 10 0 ADDI,   \ it clobbers x9, the code
+   kept LBL, ;
 
 private
 \ The unwind of a throw whose code is in x9: to the nearest catch handler. With
@@ -2991,6 +3022,7 @@ private
    14 11 STACK-ABI:CATCH-BASE LDR,
    19 11 8 LDR,
    14 DATA STACK-ABI:BASE-CELL STR,
+   14 11 STACK-ABI:CATCH-PEND LDR,
    10 11 STACK-ABI:CATCH-CAP LDR,  10 DATA STACK-ABI:CAP-CELL STR,
    10 11 STACK-ABI:CATCH-BUSY LDR,  10 DATA GENIO-ABI:BUSY-CELL STR,
    10 11 STACK-ABI:CATCH-ACTIVE LDR,  10 DATA GENIO-ABI:ACTIVE-CELL STR,

@@ -893,14 +893,6 @@ public
    9 DATA DOESB-CELL STR,  9 DATA CLAUSE-CELL STR,
    9 DATA TRUSTED-CELL STR, ;
 
-\ No local outlives its definition. Wherever one ends, published or abandoned,
-\ its locals' count, frame and block depth clear with their token-start marks,
-\ so the next definition starts with none and no image holds them.
-: C-CLEAR-LOCALS ( -- )
-   9 0 MOVZ,
-   9 DATA LOCN-CELL STR,  9 DATA CAPDEPTH-CELL STR,
-   9 DATA TOKLOCN-CELL STR,  9 DATA TOKDEPTH-CELL STR, ;
-
 ;package
 
 \ The bodies of the definition and replay writers: each checks before it writes
@@ -2009,22 +2001,6 @@ private
       C-CALL-X11-SAVED
    nosync LBL, ;
 
-public
-\ Definition state only: a Habu catch that survived the engine's BTHROW still owns
-\ the handler, return and loop stacks that receive the error.
-: EM-ABORT-COMPILE-STATE ( -- )
-   9 0 MOVZ,
-   9 DATA NCOMP-DISPATCH:COMP-LATCH-CELL STR,
-   9 DATA VSP-CELL STR,
-   9 DATA BODYLEN-CELL STR,  9 DATA EXITH-CELL STR,
-   9 DATA PEND-CELL STR,  9 DATA CMM-CELL STR,
-   9 0 MOVZ,
-   9 DATA TSIG-A-CELL STR,   9 DATA TSIG-U-CELL STR,
-   9 DATA TCSIG-A-CELL STR,  9 DATA TCSIG-U-CELL STR,
-   9 DATA CRSIG-A-CELL STR,  9 DATA CRSIG-U-CELL STR,
-   9 DATA DOESB-CELL STR,  9 DATA CLAUSE-CELL STR,
-   9 DATA TRUSTED-CELL STR,
-   C-CLEAR-LOCALS ;
 ;package
 
 \ The def-abort and stack-clear bodies; FPRIM-WID frames x30 around each.
@@ -2311,6 +2287,7 @@ private
    14 11 STACK-ABI:CATCH-BASE LDR,
    19 11 8 LDR,
    14 DATA STACK-ABI:BASE-CELL STR,
+   14 11 STACK-ABI:CATCH-PEND LDR,
    10 11 STACK-ABI:CATCH-CAP LDR,  10 DATA STACK-ABI:CAP-CELL STR,
    10 11 STACK-ABI:CATCH-BUSY LDR,  10 DATA GENIO-ABI:BUSY-CELL STR,
    10 11 STACK-ABI:CATCH-ACTIVE LDR,  10 DATA GENIO-ABI:ACTIVE-CELL STR,

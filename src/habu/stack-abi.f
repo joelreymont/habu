@@ -45,8 +45,9 @@ LOOP-BYTES LOOP-FRAME-BYTES / constant LOOP-FRAMES
 \ same (code, name) pair is re-registered here.
 -3804 constant E-EVAL-RESIDUE
 
-\ The active allocation descriptor follows the frame's existing fields, then
-\ the output device state, GENIO-ABI:BUSY-CELL and ACTIVE-CELL.
+\ The cells a catch frame saves past its first seven, as the catch began:
+\ PEND-CELL, the allocation descriptor and GENIO-ABI:BUSY-CELL and ACTIVE-CELL.
+$38 constant CATCH-PEND
 $40 constant CATCH-BASE
 $48 constant CATCH-CAP
 $50 constant CATCH-BUSY

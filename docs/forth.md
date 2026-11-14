@@ -1553,12 +1553,13 @@ exceptional edge for catchable `throw` paths:
   whose every path throws kills its caller's normal path, and the edge stays
   catchable.
 - `catch` consumes a quotation that preserves both stacks, then pushes a throw
-  code (`0` on normal completion). Its exceptional path restores the depth of
-  both stacks, not their contents, so a cell of the quotation's declared input
-  window that a throw path may have overwritten comes back as `stale<t>`: it may
-  be moved, dropped or bound to an untyped local; reading it is `E-STALE-READ`
-  (`keep_value_before_catch`). A cell every throw path left untouched keeps its
-  type (**Rules learned by refusal**).
+  code (`0` on normal completion). A throw it takes abandons a definition
+  opened since it began and keeps one open before it. Its exceptional path
+  restores the depth of both stacks, not their contents, so a cell of the
+  quotation's declared input window that a throw path may have overwritten
+  comes back as `stale<t>`: it may be moved, dropped or bound to an untyped
+  local; reading it is `E-STALE-READ` (`keep_value_before_catch`). A cell every
+  throw path left untouched keeps its type (**Rules learned by refusal**).
 
 A guard may therefore throw directly, with no dummy value for the join:
 
@@ -2520,10 +2521,10 @@ sections above.
   the quotation is: a primitive's tick is an `xt`, which it refuses, and a
   quotation no named word enters is `E-NAMELESS-WORD`. `; ( -- )` ends the
   definition. Any of them with no definition open is `E-NO-DEFINITION`, and a
-  refusal at `compile,` or at the end abandons the definition. `postpone` is
-  syntax, never a definition name. One limit: after `undefine W`, a definer
-  compiled before refuses W, whose record is retired, instead of appending the
-  new W.
+  throw a `catch` takes abandons a definition opened since that `catch` began.
+  `postpone` is syntax, never a definition name. One limit: after `undefine W`,
+  a definer compiled before refuses W, whose record is retired, instead of
+  appending the new W.
 - **Top-level source checking follows source order without executing it.** A
   token outside a known declaration is resolved as the loader would resolve
   it. Numbers use the engine's parser; `-3`, `$FF` and `1.5` are literals,

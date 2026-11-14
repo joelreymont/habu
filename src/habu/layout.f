@@ -928,14 +928,6 @@ $4CA8 constant CLAUSE-CELL
 5 constant TOP-EV-TICK      \ ' pushed a found word's xt
 6 constant TOP-EV-WORD      \ found word about to execute (pre-BLR)
 
-\ The catch/throw handler frame.
-\ A STACK-ABI:CATCH-BYTES machine-stack frame chained through HND-CELL
-\ ([DATA+8]).
-\ frame layout: 0 prev-HND | 8 data-sp(x19) | 16 machine-sp | 24 resume-pc
-\               32 link | 40 saved-RSP | 48 saved-LOOPSP | 56 unused
-\               64 saved-base | 72 saved-capacity | 80 saved-BUSY
-\               88 saved-ACTIVE
-
 STACK-ABI:PAGE-BYTES constant PROT-PAGE-MAX   \ the mapping alignment
 
 \ USER-BAND is the run of the per-task header src/lib/task.f keeps its own cells
