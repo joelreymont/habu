@@ -2059,11 +2059,40 @@ variable SCAN-LO                     \ the ordinal of its first row
    b binds + BIND-COUNT !
    base 0= if BIND-COUNT @ HEAD-BINDS ! then ;
 
-\ Offsets are made whole by the scan's base. A scan that lost a width fact
-\ leaves no cells to place a wide value from, so nothing lowers.
+\ A scan that lost a width fact leaves no cells to place a wide value from, so
+\ nothing lowers. ON-DONE keeps the unit's first loss, across a does> unit's
+\ two scans, as its token's place in SRC$ and the value's family; LOWER rejects
+\ it while the body's source is armed, so the record places the token.
+variable LOST-OFF   -1 LOST-OFF !     \ the token's offset in SRC$, -1 for none
+variable LOST-U                       \ its bytes
+variable LOST-AT-FAM                  \ the value's family id, -1 for none
+
+: LOST-KEEP ( -- )
+   LOST-OFF @ 0< 0= if exit then
+   LOST-TOK-A @ SRC$ drop - LOST-OFF !
+   LOST-TOK-U @ LOST-U !
+   LOST-FAM @ LOST-AT-FAM ! ;
+
+: LOST-WIDTH ( -- )
+   s" E-NELAB-BUNDLE" REJECTION:OPEN
+   s" the body of " SAY  NAME-A @ NAME-U @ TICKS
+   s"  loses the width of a multi-cell value, so its cells cannot be placed" SAY
+   SRC$ drop LOST-OFF @ +  LOST-U @ REJECTION:AT  s" the value's width is lost here" SAY
+   LOST-AT-FAM @ 0< 0= if
+      s" family" REJECTION:NOTE  LOST-AT-FAM @ TFAM-NAME$ SAY
+   then
+   REJECTION:HELP
+   s" take the value apart with " SAY  s" MATCH" TICKS
+   s"  before a word that reads one cell, or pass it whole to a word whose signature takes its type" SAY
+   REJECT ;
+
+: LOST-CK ( -- )
+   LOST-OFF @ 0< 0= if LOST-WIDTH then ;
+
+\ Offsets are made whole by the scan's base.
 : ON-DONE ( ptr u8 n n -- )
    SCAN-VERDICT !  2drop
-   SCAN-INCOMPLETE @ 0<> if E-NELAB-BUNDLE throw then
+   SCAN-INCOMPLETE @ 0<> if LOST-KEEP then
    ROWS @ SCAN-LO @ ?do
       i CHECKER-TAPE:EVENT  i ROW-A1 !  i ROW-A0 !  i ROW-KIND !
    loop
@@ -2091,7 +2120,7 @@ variable SCAN-LO                     \ the ordinal of its first row
 \ answer stands over the scan's.
 : SCAN ( -- )
    OBSERVE
-   0 SCAN-VERDICT !
+   0 SCAN-VERDICT !  -1 LOST-OFF !
    CHECKER-TAPE:ARM
    [: CHECK-UNIT M-VERDICT ! ;] [: CHECKER-TAPE:DISARM ;] finally
    M-VERDICT @ 0<> if SCAN-VERDICT @ M-VERDICT ! then
@@ -2193,6 +2222,7 @@ variable SCAN-LO                     \ the ordinal of its first row
    loop ;
 
 : LOWER ( n -- ) {: before:n :}
+   LOST-CK
    before SOURCE-PUBLICATION-CK
    RECORD-NAME-CK
    ARITY-CK

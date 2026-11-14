@@ -5662,8 +5662,11 @@ CHECKER-REG:}SCRATCH
    pre common ROW-WINDOW-LOST {: lost:n :}
    post common lost ROW-OUTPUT-LOSS ;
 
+PTR-VARIABLE TOK-SPELL-A   variable TOK-SPELL-U   \ the token being judged
 CHECKER-REG:SCRATCH{
 variable SCAN-INCOMPLETE   \ sticky per scan: a width fact may be missing
+PTR-VARIABLE LOST-TOK-A   variable LOST-TOK-U   \ the token that set it
+variable LOST-FAM          \ the wide value's family there, -1 for none
 variable UNJ-TOK           \ inside an unjudged token: the splice is armed
 variable UNJ-SPLICED       \ a committed step settled this token's rows
 variable STEP-R            \ the applying effect has a return-stack part (EFF-APPLY)
@@ -5680,20 +5683,29 @@ CHECKER-REG:}SCRATCH
    t T-RES HIDDEN-PARAM? IF RES-TRUE EXIT THEN
    t ROW-TERM-CELLS 1 > IF RES-TRUE EXIT THEN
    t SPLICE-OPEN? ;
-: ROW-HOLDS-WIDE? ( n -- bool )
+: ROW-WIDE-TYPE ( n -- n )   \ the first wide cell's type, -1 for none
    BEGIN R-RES dup TAG S-PUSH = WHILE
-      dup P>TYPE CELL-WIDE? IF drop RES-TRUE EXIT THEN
+      dup P>TYPE CELL-WIDE? IF P>TYPE EXIT THEN
       P>REST
-   REPEAT drop RES-FALSE ;
+   REPEAT drop -1 ;
 : SPLICE-ROW-OPEN? ( n -- bool )
    BEGIN R-RES dup TAG S-PUSH = WHILE
       dup P>TYPE SPLICE-OPEN? IF drop RES-TRUE EXIT THEN
       P>REST
    REPEAT drop RES-FALSE ;
 
+\ The scan loses a width fact at the current token over a wide cell t; the
+\ first such token, and its value's family, are the ones a rejection names.
+: SCAN-LOST ( n -- ) {: t:n :}
+   SCAN-INCOMPLETE @ 0 <> IF EXIT THEN
+   -1 SCAN-INCOMPLETE !
+   TOK-SPELL-A @ LOST-TOK-A !  TOK-SPELL-U @ LOST-TOK-U !
+   t CELL>FAM dup 0 < IF drop -1 THEN LOST-FAM ! ;
+
 : UNJ-LOST ( -- )   \ an unspliced failure is incomplete only where a width is at stake
-   UNJ-PD @ ROW-HOLDS-WIDE? IF -1 SCAN-INCOMPLETE ! EXIT THEN
-   UNJ-PR @ ROW-HOLDS-WIDE? IF -1 SCAN-INCOMPLETE ! THEN ;
+   UNJ-PD @ ROW-WIDE-TYPE dup -1 = IF drop UNJ-PR @ ROW-WIDE-TYPE THEN
+   dup -1 = IF drop EXIT THEN
+   SCAN-LOST ;
 
 \ Cells to pop and terms to push, read before the unify binds din's tail;
 \ -1 cells when the effect cannot be spliced over `pre`.
@@ -13984,7 +13996,6 @@ CHECKER-REG:}SCRATCH
 variable TOK-SYM   variable TOK-CTL   variable TOK-DONE
 variable TOK-LIVE-REC
 variable TOK-DEAD
-PTR-VARIABLE TOK-SPELL-A   variable TOK-SPELL-U
 variable TOK-PEND-IX   variable TOK-PEND-OFF
 variable TOK-SEEDED
 variable BWIN-HIT
@@ -18190,13 +18201,14 @@ CHECKER-REG:}SCRATCH
       dup LOC-DECL-GROUP
       1 +
    REPEAT drop ;
-: LOC-WIDE-FROM? ( n -- bool ) {: idx:n :}   \ a local LGRP..idx is declared wide
-   idx LGRP @ < IF RES-FALSE EXIT THEN
-   idx cells LOCTV + @ CELL-WIDE? IF RES-TRUE EXIT THEN
+: LOC-WIDE-TYPE ( n -- n ) {: idx:n :}   \ the type of the last local LGRP..idx declared wide, -1 for none
+   idx LGRP @ < IF -1 EXIT THEN
+   idx cells LOCTV + @ {: t:n :}
+   t CELL-WIDE? IF t EXIT THEN
    idx 1 - RECURSE ;
 : LOC-UNJ-BIND ( n n n n -- ) {: decl:n pre:n rpre:n wf0:n :}
    decl 0= IF
-      #LOC @ 1 - LOC-WIDE-FROM? IF -1 SCAN-INCOMPLETE ! THEN
+      #LOC @ 1 - LOC-WIDE-TYPE dup -1 = IF drop ELSE SCAN-LOST THEN
       pre rpre -1 0 0 UNJ-SPLICE EXIT
    THEN
    decl wf0 LOC-DECL-GROUPS
