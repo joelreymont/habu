@@ -899,23 +899,26 @@ variable SEALS-N
 : SEALED-LOAD? ( -- bool )
    COMPOSE-ON @ 0<>  SEAL-NDICT@ 0<>  and ;
 
-: SEAL-STOP ( n -- )
-   TOKEN-BYTE !  ENGINE-ERROR:SEAL-PACKAGE throw ;
+\ The record is placed at the name a u, the token written at byte AT.
+: SEAL-STOP ( ptr u8 n n -- ) {: a:ptr u:n at:n :}
+   at TOKEN-BYTE !
+   a u INTERPRETER:SEALED-REJECT
+   ENGINE-ERROR:SEAL-PACKAGE REJECTION:STOP ;
 
-: SEALED-OPEN ( n -- ) {: at:n :}
+: SEALED-OPEN ( ptr u8 n n -- ) {: a:ptr u:n at:n :}
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF EXIT THEN
-   CHECKER-AUTH-PACKAGE$ SEAL-LISTED? IF at SEAL-STOP THEN ;
+   CHECKER-AUTH-PACKAGE$ SEAL-LISTED? IF a u at SEAL-STOP THEN ;
 
 \ A head resolves as the definition's does: a part is asked by its path.
 : SEALED-NAME ( ptr u8 n n -- ) {: a:ptr u:n at:n :}
    a u XREF-QUAL-INDEX {: q:n :}
-   q 0 < IF at SEALED-OPEN EXIT THEN
+   q 0 < IF a u at SEALED-OPEN EXIT THEN
    a q CHECKER-RESOLVE:HEAD-ROW {: row:ptr :}
-   row NULL-PTR = IF a q ELSE row XREF-NAME$ THEN SEAL-LISTED? IF at SEAL-STOP THEN
-   row NULL-PTR <> IF row XREF:SEALED? IF at SEAL-STOP THEN THEN
+   row NULL-PTR = IF a q ELSE row XREF-NAME$ THEN SEAL-LISTED? IF a u at SEAL-STOP THEN
+   row NULL-PTR <> IF row XREF:SEALED? IF a u at SEAL-STOP THEN THEN
    SEALED-LOAD? 0= IF EXIT THEN
    row NULL-PTR = IF EXIT THEN
-   row XREF-PKG-PUBLIC XREF-WID-PROTECTED? IF at SEAL-STOP THEN ;
+   row XREF-PKG-PUBLIC XREF-WID-PROTECTED? IF a u at SEAL-STOP THEN ;
 
 \ The text of a literal from the rest STRING-REST read after its opener, a
 \ string opener: past the one delimiting space, short of the closing quote, as
@@ -2110,11 +2113,13 @@ DUPLICATE-INIT
    row XREF-FOUND? 0= IF false EXIT THEN
    row XREF:SEALED? ;
 
-: SEALED-PACKAGE ( ptr u8 n n -- ) {: a:ptr u:n at:n :}
-   a u SEAL-LISTED? IF at SEAL-STOP THEN
-   a u ROW-SEALED? IF at SEAL-STOP THEN
+\ The package path a u, named NAME as written at byte AT.
+: SEALED-PACKAGE ( ptr u8 n ptr u8 n n -- )
+   {: a:ptr u:n name:ptr nameu:n at:n :}
+   a u SEAL-LISTED? IF name nameu at SEAL-STOP THEN
+   a u ROW-SEALED? IF name nameu at SEAL-STOP THEN
    SEALED-LOAD? 0= IF EXIT THEN
-   a u PUBLIC-WID XREF-WID-PROTECTED? IF at SEAL-STOP THEN ;
+   a u PUBLIC-WID XREF-WID-PROTECTED? IF name nameu at SEAL-STOP THEN ;
 
 \ Where a guard refused a live record before the registrar ran, one there now
 \ is the record that registrar retained. A declaration DECL-SIGNATURE registers
@@ -2308,7 +2313,7 @@ variable TRUSTED-DOES
    nameu 0= IF E-MISSING-NAME throw THEN
    name nameu CHECKER-RESOLVE:PART-PATH {: pa:ptr pu:n :}
    pa pu CHECKER-PACKAGE
-   pa pu at SEALED-PACKAGE ;
+   pa pu name nameu at SEALED-PACKAGE ;
 
 : RECORD-PUBLIC ( -- )
    CHECKER-PUBLIC ;
@@ -3046,7 +3051,7 @@ CAST: TOP-ACTION ( n -- [ ptr u8 n bool -- n ] )
    NAME-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF EXIT THEN
-   at SEALED-OPEN
+   name nameu at SEALED-OPEN
    name nameu TOP-BINDING drop PRS-FIND {: from:n :}
    name DEF-NAME-A !  nameu DEF-NAME-U !
    name nameu at nameu ARM-UNSEALED   \ the checker spells the record by the tail it keeps

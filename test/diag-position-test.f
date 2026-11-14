@@ -22,6 +22,7 @@ package DIAG-POSITION-TEST
 
 PATH-CAP 1+ 4 * constant CAP
 70 constant REJECT-RC
+ENGINE-ERROR:SEAL-PACKAGE constant SEAL-RC   \ a sealed package's rejection exits 84, as the load does
 67 constant THROW-RC
 78 constant DUP-RC                    \ a duplicate definition's code, $4E, outside --verify-only
 7194 constant BAD-ESCAPE-THROW
@@ -460,7 +461,7 @@ variable RC
 : NOT-RECORDED ( ptr u8 n -- )
    {: path:ptr pathu:n :}
    0 s" code" s" W-EFFECT-NOT-RECORDED" FIELD=
-   0 s" message" s" `wide`" FIELD-HAS
+   0 s" message" s" `WIDE`" FIELD-HAS
    0 s" WIDE" 3 5 68 72 path pathu FX$ AT-IN
    1 begin dup GJA-LINE# @ < while
       dup GJA-LINE$ s" W-EFFECT-NOT-RECORDED" CONTAINS? TFALSE
@@ -667,15 +668,20 @@ variable RC
    c cu REJECTED-AS
    0 tok toku line col bs be AT ;
 
-: REFUSED-MODES ( ptr u8 n ptr u8 n n n n n -- )
-   {: c:ptr cu:n tok:ptr toku:n line:n col:n bs:n be:n :}
-   s" " CHECK
+: REFUSED-MODES-RC ( ptr u8 n ptr u8 n n n n n n -- )
+   {: c:ptr cu:n tok:ptr toku:n line:n col:n bs:n be:n rc:n :}
+   s" " rc CHECK-EXIT
    c cu REJECTED-AS
    0 tok toku line col bs be AT
-   c cu tok toku line col bs be REFUSED-AT
-   s" --verify-only" CHECK
+   s" --all-errors" rc CHECK-EXIT
+   c cu REJECTED-AS
+   0 tok toku line col bs be AT
+   s" --verify-only" rc CHECK-EXIT
    c cu REJECTED-AS
    0 tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
+
+: REFUSED-MODES ( ptr u8 n ptr u8 n n n n n -- )
+   REJECT-RC REFUSED-MODES-RC ;
 
 \ A word ARENA derives that is taken in the other section is the duplicate,
 \ refused at the declared name.
@@ -914,26 +920,26 @@ variable RC
 
 \ A stored signature that does not parse is rejected at the type it cannot
 \ read, or at the name its declaration reads when the signature holds no type,
-\ and the record names the word by the fold the row is stored under.
+\ and the record names the word as written.
 : TEST-STORED-SIGNATURE ( -- )
    s" a FUNCTION: whose group is empty" T-LABEL
    SB-RESET
    s" require src/lib/ffi-abi.f" SB-APPEND LF+
    s" FUNCTION: F getpid ( )" SB-APPEND LF+
    s" stored-ffi.f" FIXTURE!
-   s" `f`" s" F" 2 11 36 37 STORED-AT
+   s" `F`" s" F" 2 11 36 37 STORED-AT
    s" a TRUSTED: definition" T-LABEL
    s" TRUSTED: X ( n -- zz ) 1 ;" s" stored-trusted.f" LINE-FIXTURE
-   s" `x`" s" zz" 1 19 18 20 STORED-AT
+   s" `X`" s" zz" 1 19 18 20 STORED-AT
    s" a defer" T-LABEL
    s" defer W ( n -- zz )" s" stored-defer.f" LINE-FIXTURE
-   s" `w`" s" zz" 1 16 15 17 STORED-AT
+   s" `W`" s" zz" 1 16 15 17 STORED-AT
    s" a trust row" T-LABEL
    SB-RESET
    s" : Y ( n -- n ) ;" SB-APPEND LF+
    s\" s\" Y\" s\" n -- zz\" trust" SB-APPEND LF+
    s" stored-trust.f" FIXTURE!
-   s" `y`" s" zz" 2 15 31 33 STORED-AT
+   s" `Y`" s" zz" 2 15 31 33 STORED-AT
    s" a cast" T-LABEL
    s" cast: >X ( ptr -- n )" s" stored-cast.f" LINE-FIXTURE
    s" `>X`" s" ptr" 1 12 11 14 STORED-AT ;
@@ -945,14 +951,14 @@ variable RC
    s" undefine X" SB-APPEND LF+
    s" TRUSTED: X ( -- zz ) ;" SB-APPEND LF+
    s" replaced-trusted.f" FIXTURE!
-   s" `x`" s" zz" 3 17 40 42 STORED-AT
+   s" `X`" s" zz" 3 17 40 42 STORED-AT
    s" a defer replacing an undefined word" T-LABEL
    SB-RESET
    s" : X ( -- ) ;" SB-APPEND LF+
    s" undefine X" SB-APPEND LF+
    s" defer X ( -- zz )" SB-APPEND LF+
    s" replaced-defer.f" FIXTURE!
-   s" `x`" s" zz" 3 14 37 39 STORED-AT
+   s" `X`" s" zz" 3 14 37 39 STORED-AT
    s" a TRUSTED: definition in a package, under a global's tail" T-LABEL
    SB-RESET
    s" : X ( -- ) ;" SB-APPEND LF+
@@ -960,7 +966,7 @@ variable RC
    s" TRUSTED: X ( -- zz ) ;" SB-APPEND LF+
    s" ;package" SB-APPEND LF+
    s" replaced-same-tail.f" FIXTURE!
-   s" `x`" s" zz" 3 17 46 48 STORED-AT ;
+   s" `X`" s" zz" 3 17 46 48 STORED-AT ;
 
 \ A `:` definition's binder is stored with its signature when CHECK leaves the
 \ body unjudged: deferred to the run, the file checks clean; rejected, the next
@@ -2161,7 +2167,7 @@ variable RC
 : TEST-SEALED-DEFINE ( -- )
    s" a definition into an engine-sealed package names its whole name" T-LABEL
    s" : ENGINE-INTERNAL:FOO ( -- ) ;" s" sealed-engine.f" LINE-FIXTURE
-   s" " CHECK
+   s" " SEAL-RC CHECK-EXIT
    s" E-SEALED-PACKAGE" REJECTED-AS
    0 s" ENGINE-INTERNAL:FOO" 1 3 2 21 AT
    s" a definition into a package the source sealed names its whole name" T-LABEL
@@ -2169,7 +2175,7 @@ variable RC
    SEALED-SP+
    s" : SP:B ( -- ) ;" SB-APPEND LF+
    s" sealed-source.f" FIXTURE!
-   s" " CHECK
+   s" " SEAL-RC CHECK-EXIT
    s" E-SEALED-PACKAGE" REJECTED-AS
    0 s" SP:B" 6 3 55 59 AT ;
 
@@ -2181,7 +2187,7 @@ variable RC
    SEALED-SP+
    s" : SP:A ( -- ) ;" SB-APPEND LF+
    s" sealed-dup-define.f" FIXTURE!
-   s" " CHECK
+   s" " SEAL-RC CHECK-EXIT
    s" E-SEALED-PACKAGE" REJECTED-AS
    0 s" SP:A" 6 3 55 59 AT
    s" a duplicate variable into a sealed package names the seal" T-LABEL
@@ -2193,7 +2199,7 @@ variable RC
    s" ;package" SB-APPEND LF+
    s" variable SP:X" SB-APPEND LF+
    s" sealed-dup-variable.f" FIXTURE!
-   s" E-SEALED-PACKAGE" s" SP:X" 6 10 60 64 REFUSED-MODES
+   s" E-SEALED-PACKAGE" s" SP:X" 6 10 60 64 SEAL-RC REFUSED-MODES-RC
    s" a duplicate export into a sealed package names the seal" T-LABEL
    SB-RESET
    s" package SP2" SB-APPEND LF+
@@ -2209,7 +2215,7 @@ variable RC
    S\" s\" ACCEPTED\" type cr" SB-APPEND LF+
    s" ;package" SB-APPEND LF+
    s" sealed-dup-export.f" FIXTURE!
-   s" " CHECK
+   s" " SEAL-RC CHECK-EXIT
    s" E-SEALED-PACKAGE" REJECTED-AS
    0 s" SP2:A" 10 8 134 139 AT ;
 

@@ -409,15 +409,19 @@ variable LISTED
    s" the global word has no qualified form" SAY
    ENGINE-ERROR:USING-SHADOW-GLOBAL REJECTION:STOP ;
 
-: SEALED-FAIL ( ptr u8 n -- ) {: a:ptr u:n :}
+public
+\ Writes the record through its help and leaves it open: the caller ends it.
+: SEALED-REJECT ( ptr u8 n -- ) {: a:ptr u:n :}
    s" E-SEALED-PACKAGE" REJECTION:OPEN
    a u TICKS  s"  would change a sealed package" SAY
    a u REJECTION:AT  s" sealed" SAY
    REJECTION:HELP
    s" put this in a package of your own: a sealed package takes no new words"
-   SAY
-   REJECTION:KEEP
-   s" " ENGINE-ERROR:SEAL-PACKAGE die-closed ;
+   SAY ;
+private
+
+: SEALED-FAIL ( ptr u8 n -- )
+   SEALED-REJECT  REJECTION:KEEP  s" " ENGINE-ERROR:SEAL-PACKAGE die-closed ;
 
 \ While a checker overlay is open a definer head, a new package row or private
 \ wid, or an export throws by name: the overlay's close would drop what it
