@@ -306,10 +306,6 @@ create NL NEWLINE c,
    t s - TKL-CELL CELL!
    true ;
 
-: REFUSAL ( ptr u8 n -- )
-   SRCLOC:PATH-CELL ADDR@ SRCLOC:PATHLEN-CELL CELL@ SRCLOC:LINE
-   ERROR-TEXT:PREFIX ;
-
 : SAY ( ptr u8 n -- ) REJECTION:EMIT-STR ;
 
 \ Code in a rejection's text sits in backticks.
