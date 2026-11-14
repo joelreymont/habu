@@ -388,7 +388,7 @@ BI-U8-WIDTH BI-WIDTH width>n 1 T=
 : VIEW ( -- n )
    [: s" BI-VIEW" s" read-view<p,q,u8>" EFFECT:READ MAKE-ID ;] catch ;
 : LETTER-FIX ( -- )
-   s" = help: a definer's type has no letters: take its parameters from EFFECT:NAMED"
+   s" = help: a built definition's types are concrete: write one such as n or ptr u8"
    DECL-DIAG:HAS? TTRUE ;
 : NAMED-BAD ( -- n ) [: s" no-such-family" EFFECT:NAMED drop ;] catch ;
 : IN-BAD ( -- n ) [: EFFECT:N EFFECT:N EFFECT:IN drop ;] catch ;
@@ -403,40 +403,40 @@ BI-U8-WIDTH BI-WIDTH width>n 1 T=
    s" hid" OPND  s" of" KW  s" endof" KW  s" ;match" KW
    postpone ; ;
 : PEEK-BAD ( -- n ) [: s" BI-PEEK" MAKE-PEEK ;] catch ;
-: RAN-HERE ( -- ) s" the definer ran here" DECL-DIAG:HAS? TTRUE ;
+: READING-HERE ( -- ) s" the definer was reading here" DECL-DIAG:HAS? TTRUE ;
 : FAMILY-FIX ( -- )
    s" = help: name n, bool, r or a family the package running the definer can name"
    DECL-DIAG:HAS? TTRUE ;
 
 DECL-DIAG:PROSE  PTR-A 70 T=
-s" error[E-NOT-EFFECT]: EFFECT:READ found the letter 'a' in the type 'ptr a'"
+s" error[E-BAD-SIGNATURE]: the type 'ptr a' has the letter 'a', which names no type"
 DECL-DIAG:HAS? TTRUE
 s" --> " DECL-DIAG:HAS? TTRUE  s" build-items.f:" DECL-DIAG:HAS? TTRUE
 s" | DECL-DIAG:PROSE  PTR-A 70 T=" DECL-DIAG:HAS? TTRUE
-s" |                  ^^^^^ the definer ran here" DECL-DIAG:HAS? TTRUE
-LETTER-FIX
+s" |                  ^^^^^ the definer was reading here" DECL-DIAG:HAS? TTRUE
+LETTER-FIX  s" ptr u8 in place of 'a'" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE  VIEW 70 T=
-s" error[E-NOT-EFFECT]: EFFECT:READ found the letter 'p' in the type 'read-view<p,q,u8>'"
+s" error[E-BAD-SIGNATURE]: the type 'read-view<p,q,u8>' has the letter 'p', which names no type"
 DECL-DIAG:HAS? TTRUE
 s" --> " DECL-DIAG:HAS? TTRUE  s" build-items.f:" DECL-DIAG:HAS? TTRUE
 s" | DECL-DIAG:PROSE  VIEW 70 T=" DECL-DIAG:HAS? TTRUE
-s" |                  ^^^^ the definer ran here" DECL-DIAG:HAS? TTRUE
-LETTER-FIX
+s" |                  ^^^^ the definer was reading here" DECL-DIAG:HAS? TTRUE
+LETTER-FIX  s" ptr u8 in place of 'p'" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE  NAMED-BAD 70 T=
 s" error[E-UNKNOWN-SIGNATURE-TYPE]: EFFECT:NAMED found no type named 'no-such-family'"
-DECL-DIAG:HAS? TTRUE  RAN-HERE  FAMILY-FIX
+DECL-DIAG:HAS? TTRUE  READING-HERE  FAMILY-FIX
 DECL-DIAG:PROSE  PEEK-BAD 70 T=
 s" error[E-UNKNOWN-SIGNATURE-TYPE]: EFFECT:NAMED found no type named 'bitem-own:secret'"
-DECL-DIAG:HAS? TTRUE  RAN-HERE  FAMILY-FIX
+DECL-DIAG:HAS? TTRUE  READING-HERE  FAMILY-FIX
 DECL-DIAG:PROSE  IN-BAD 70 T=
 s" error[E-NOT-EFFECT]: EFFECT:IN or EFFECT:OUT was given a type that is no effect"
-DECL-DIAG:HAS? TTRUE  RAN-HERE
+DECL-DIAG:HAS? TTRUE  READING-HERE
 s" = help: pass the effect EFFECT:NEW made, or one EFFECT:IN or EFFECT:OUT answered"
 DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE  READ-BAD 70 T=
 s" error[E-UNKNOWN-SIGNATURE-TYPE]: " DECL-DIAG:HAS? TTRUE
 S\" 'no-such-family' in EFFECT:READ\n" DECL-DIAG:HAS? TTRUE
-RAN-HERE  FAMILY-FIX  DECL-DIAG:OFF
+READING-HERE  FAMILY-FIX  DECL-DIAG:OFF
 
 public
 : WIDE-GO ( -- ) s" BI-WIDE" MAKE-WIDE ;

@@ -284,9 +284,11 @@ using SCHEMA-REG
    node SCHEMA-NODE-OK? if node SCHEMA-ROW? 0= if node exit then then
    E-SCHEMA-BAD throw ;
 
-\ Places the rejection at the token read last, which ran the definer.
+\ Places the rejection at the token read last, the definer's own or
+\ one it parsed.
 : DEFINER-PLACE ( -- )
-   SRCLOC:TOKEN$ REJECTION:AT  s" the definer ran here" REJECTION:EMIT-STR ;
+   SRCLOC:TOKEN$ REJECTION:AT  s" the definer was reading here"
+   REJECTION:EMIT-STR ;
 
 : UNKNOWN-HELP$ ( -- ptr u8 n )
    s" name n, bool, r or a family the package running the definer can name" ;
@@ -358,17 +360,18 @@ CAST: >BYTES ( n -- ptr u8 )
    REJECTION:EMIT-STR
    CHECK-RC REJECTION:STOP ;
 
-\ The record for a letter in the type a READ was given, placed at the token
-\ the engine read last, which ran the definer.
+\ Rejects a type variable's or region's letter in a type EFFECT:READ was
+\ given, placed at the token the engine read last, which ran the definer.
 : TEXT-LETTER-REFUSE ( ptr u8 n ptr u8 n -- ) {: la:ptr lu:n xa:ptr xu:n :}
-   s" E-NOT-EFFECT" REJECTION:OPEN
-   s" EFFECT:READ found the letter '" REJECTION:EMIT-STR
-   la lu REJECTION:EMIT-STR  s" ' in the type '" REJECTION:EMIT-STR
-   xa xu REJECTION:EMIT-STR  s" '" REJECTION:EMIT-STR
+   s" E-BAD-SIGNATURE" REJECTION:OPEN
+   s" the type '" REJECTION:EMIT-STR
+   xa xu REJECTION:EMIT-STR  s" ' has the letter '" REJECTION:EMIT-STR
+   la lu REJECTION:EMIT-STR  s" ', which names no type" REJECTION:EMIT-STR
    DEFINER-PLACE
    REJECTION:HELP
-   s" a definer's type has no letters: take its parameters from EFFECT:NAMED"
-   REJECTION:EMIT-STR
+   s" a built definition's types are concrete: " REJECTION:EMIT-STR
+   s" write one such as n or ptr u8 in place of '" REJECTION:EMIT-STR
+   la lu REJECTION:EMIT-STR  s" '" REJECTION:EMIT-STR
    CHECK-RC REJECTION:STOP ;
 
 : TEXT-TYPE ( n n -- n ) {: a:n u:n :}
