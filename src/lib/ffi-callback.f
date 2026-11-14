@@ -239,7 +239,6 @@ variable RES-KIND
 variable FB-SET
 variable FB-VALUE
 TYPED-VARIABLE FFB-VALUE r
-TYPED-VARIABLE BODY-TYPE EFFECT:type    \ the body's effect, as its tokens are read
 variable OPEN
 
 \ A rejection of the declaration is SYNTAX-OPEN, its message, then SYNTAX-HELP
@@ -321,12 +320,6 @@ variable OPEN
    a u WORD-NAME CODEGEN:APPEND-STRING
    WORD-NAME CODEGEN:CONTENTS ;
 
-: IN+ ( EFFECT:type -- ) {: t:EFFECT:type :}
-   BODY-TYPE @ t EFFECT:IN BODY-TYPE ! ;
-
-: OUT+ ( EFFECT:type -- ) {: t:EFFECT:type :}
-   BODY-TYPE @ t EFFECT:OUT BODY-TYPE ! ;
-
 : ARG+ ( n n -- ) {: i:n by:n :}
    i READS @ READ-AT !
    by READS @ READ-BY !
@@ -342,20 +335,20 @@ variable OPEN
 
 : IN-TOKEN ( n n ptr u8 n -- n n )
    {: i:n f:n a:ptr u:n :}
-   a u s" n" STR= if EFFECT:N IN+ i f BY-N INT+ exit then
-   a u s" i32" STR= if EFFECT:N IN+ i f BY-I32 INT+ exit then
-   a u s" u32" STR= if EFFECT:N IN+ i f BY-U32 INT+ exit then
+   a u s" n" STR= if i f BY-N INT+ exit then
+   a u s" i32" STR= if i f BY-I32 INT+ exit then
+   a u s" u32" STR= if i f BY-U32 INT+ exit then
    a u s" ptr" STR= if
       TOK@ {: pa:ptr pu:n :}
       pa pu s" u8" STR= 0= if
          s" expected u8 after ptr, found " pa pu
          s" a pointer argument is ptr u8" TOKEN-REJECT
       then
-      s" ptr u8" EFFECT:READ-TYPE IN+ i f BY-PTR INT+ exit
+      i f BY-PTR INT+ exit
    then
    a u s" r" STR= if
       f FLOAT-REGS >= if FLOAT-REGS s"  float arguments" TOO-MANY then
-      s" r" EFFECT:NAMED IN+ f BY-R ARG+
+      f BY-R ARG+
       i f 1 + exit
    then
    s" unknown argument type " a u
@@ -367,9 +360,9 @@ variable OPEN
       s" a callback has at most one result"
       s" keep one result after --: n, i32, u32 or r" SYNTAX-REJECT
    then
-   a u s" r" STR= if s" r" EFFECT:NAMED OUT+ R-FLOAT RES-KIND ! exit then
+   a u s" r" STR= if R-FLOAT RES-KIND ! exit then
    a u s" n" STR= a u s" i32" STR= or a u s" u32" STR= or if
-      EFFECT:N OUT+ R-VALUE RES-KIND ! exit
+      R-VALUE RES-KIND ! exit
    then
    s" unknown result type " a u
    s" a result is n, i32, u32 or r; no result is nothing after --"
@@ -434,12 +427,24 @@ variable OPEN
    s" ;]" EFFECT:KEYWORD
    k literal  RES-KIND @ literal  postpone RUN  postpone ; ;
 
+\ The type the body leaves for reader BY (BY-*) to take.
+: ARG-TYPE ( n -- EFFECT:type ) {: by:n :}
+   by BY-PTR = if s" ptr u8" EFFECT:READ-TYPE exit then
+   by BY-R = if s" r" EFFECT:NAMED exit then
+   EFFECT:N ;
+
+: BODY-EFFECT ( -- EFFECT:type )
+   EFFECT:EMPTY
+   READS @ 0 ?do i READ-BY @ ARG-TYPE EFFECT:IN loop
+   RES-KIND @ R-FLOAT = if s" r" EFFECT:NAMED EFFECT:OUT exit then
+   RES-KIND @ R-VALUE = if EFFECT:N EFFECT:OUT then ;
+
 \ The accessor's ordinary native emission carries an anonymous C entry after
 \ its Habu return. The native compiler publishes both as one owned record; only
 \ the entry is handed to C, while the accessor can read its relocated
 \ descriptor address.
 : EMIT ( n -- ) {: k:n :}
-   s" -BODY" NAME+ BODY-TYPE @ EFFECT:VARIABLE-OF
+   s" -BODY" NAME+ BODY-EFFECT EFFECT:VARIABLE-OF
    LATEST-XT k DISPATCH-WORD
    LATEST-XT k INSTALL
    k -1 FFI:CALLBACK-ENTRY ARM-STUB
@@ -466,7 +471,7 @@ public
       s" end the open declaration with ;CALLBACK first" REJECT
    then
    R-NONE RES-KIND ! 0 FB-SET !
-   EFFECT:EMPTY BODY-TYPE ! 0 READS !
+   0 READS !
    TOK@ NAME!
    TOK@ {: a:ptr u:n :}
    a u s" (" STR= 0= if
