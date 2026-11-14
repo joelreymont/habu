@@ -956,12 +956,13 @@ s" dlerror" PROCESS 0 DECLARE DLERROR-FN-CELL !
 \ A float result reads only the low 32 bits of its FP slot and widens to Habu
 \ `r`. Variadic positions use C default promotions, so declare a promoted float
 \ as `r`, never `f32`.
-\ A declaration carrying a float rides the ABI call, which packs no spill
-\ there, so it is refused past eight of either kind (E-FFI-ARITY); an
-\ integer-only declaration rides ffi-call-n, which spills past x7 itself.
-\ Every SysV overflow call rides the ABI trampoline so mixed kinds keep their
-\ own stack positions; a C float past the eighth
-\ float register has no stack staging and is refused (E-FFI-ARITY).
+\ An input past its kind's registers takes the next stack cell in argument
+\ order, and the call rides the ABI trampoline, which copies the cells to the
+\ native stack. A C float past the eighth float register has no stack staging
+\ and is rejected (E-FFI-ARITY). Apple arm64 packs a stack input at its C
+\ width, so there an input narrower than a cell (`u8`, `u16`, `u32`, `char`)
+\ past x7 is rejected (E-FFI-ARITY). A macOS variadic call passes its fixed
+\ inputs in registers only, and is rejected past eight of either kind.
 \
 \ ;FUNCTION builds the declared word with define-word: its
 \ effect from the types read where the declaration stands, its body from
@@ -1303,9 +1304,9 @@ private
 
 : INT-REGS-FULL ( -- )
    ARITY-OPEN
-   s" the call passes at most " REJECTION:EMIT-STR
+   s" a variadic call passes at most " REJECTION:EMIT-STR
    REG-MAX REJECTION:EMIT-U
-   s"  integer inputs, each in a register" REJECTION:EMIT-STR
+   s"  fixed integer inputs, each in a register" REJECTION:EMIT-STR
    s" call it through a C function that takes the inputs in a record"
    ARITY-HELP ;
 
@@ -1323,8 +1324,19 @@ private
    ARITY-OPEN
    s" an f32 input past the " REJECTION:EMIT-STR
    REG-MAX REJECTION:EMIT-U
-   s"  float registers has no stack slot on x86-64" REJECTION:EMIT-STR
+   s"  float registers has no stack slot on " REJECTION:EMIT-STR
+   HB-TARGET$ REJECTION:EMIT-STR
    s" declare it r and call a C function that takes a double"
+   ARITY-HELP ;
+
+: NARROW-SPILL ( n -- ) {: i:n :}
+   ARITY-OPEN
+   s" a " REJECTION:EMIT-STR  i ARG-TEXT$ REJECTION:EMIT-STR
+   s"  input past the " REJECTION:EMIT-STR
+   REG-MAX REJECTION:EMIT-U
+   s"  integer registers takes its C width on the macOS stack, not a cell"
+   REJECTION:EMIT-STR
+   s" call it through a C function that takes the inputs in a record"
    ARITY-HELP ;
 
 : STAGING-FULL ( [ -- ] -- )
@@ -1356,29 +1368,43 @@ private
    {: argc:n :}
    0 0 argc 0 ?do i PLACE-REG loop ;
 
-: X86-SPILL ( n n -- n ) {: stk:n i:n :}
+\ An integer input whose C type is narrower than a cell.
+: NARROW? ( n -- bool )
+   ARG-TEXT$ {: a:ptr u:n :}
+   a u s" u8" STR=  a u s" u16" STR= or
+   a u s" u32" STR= or  a u s" char" STR= or ;
+
+\ STAGE-SPILL stages no f32.
+: SPILL-ARG ( n n -- n ) {: stk:n i:n :}
+   i ARG-KIND@ K-FLOAT32 = if F32-UNSTAGED then
+   HB-TARGET-MACOS? i NARROW? and if i NARROW-SPILL then
    stk 1+ negate ARG-REG i cells + !
    stk 1+ ;
 
-: X86-PLACE ( n n n n -- n n n )
-   {: int:n flt:n stk:n i:n :}
+\ Input i takes the next of max integer or REG-MAX float registers, else
+\ the next stack cell.
+: PLACE-NEXT ( n n n n n -- n n n )
+   {: int:n flt:n stk:n max:n i:n :}
    i FLOAT-ARG? if
       flt REG-MAX < if flt ARG-REG i cells + ! int flt 1+ stk exit then
-      i ARG-KIND@ K-FLOAT32 = if F32-UNSTAGED then
-      int flt stk i X86-SPILL exit
+   else
+      int max < if int ARG-REG i cells + ! int 1+ flt stk exit then
    then
-   int X86-INT-REG-MAX < if int ARG-REG i cells + ! int 1+ flt stk exit then
-   int flt stk i X86-SPILL ;
+   int flt stk i SPILL-ARG ;
 
-: PLAN-X86 ( -- n n n )
-   0 0 0 ARG-N @ 0 ?do i X86-PLACE loop ;
+\ Places the inputs in argument order over max integer registers and
+\ answers the integer registers, float registers and stack cells taken.
+: PLAN-IN-ORDER ( n -- n n n )
+   {: max:n :}
+   0 0 0 ARG-N @ 0 ?do max i PLACE-NEXT loop ;
 
 \ A macOS variadic argument takes a stack cell, so the registers taken are the
 \ fixed arguments'.
 : PLAN-SPILLS ( -- n n n )
-   ARG-N @ PLAN-REGS
-   VAR-START @ 0 < HB-TARGET-MACOS? 0= or if 0 exit then
-   2drop
+   VAR-START @ 0 < HB-TARGET-MACOS? 0= or if
+      REG-MAX PLAN-IN-ORDER exit
+   then
+   ARG-N @ PLAN-REGS 2drop
    VAR-START @ PLAN-REGS
    2dup REG-ROOM
    ARG-N @ VAR-START @ - ;
@@ -1450,7 +1476,7 @@ private
    false ARG-N @ 0 ?do i ARG-SBYTES@ 0 > or loop ;
 
 : PLAN-TARGET ( -- n n n )
-   HB-TARGET-LINUX-X86-64? if PLAN-X86 exit then
+   HB-TARGET-LINUX-X86-64? if X86-INT-REG-MAX PLAN-IN-ORDER exit then
    HB-TARGET-LINUX? HB-TARGET-MACOS? or if PLAN-SPILLS exit then
    E-FFI-LIBRARY throw ;
 
@@ -1460,9 +1486,8 @@ private
    STRUCT-BYTES @ 0 > RECORDS? or if PLAN-STRUCT C-STRUCT exit then
    PLAN-TARGET {: int:n flt:n stk:n :}
    RES-KIND @ R-FLOAT = RES-KIND @ R-FLOAT32 = or {: fres:bool :}
-   stk 0 > if int stk fres if C-ABI-R else C-ABI then exit then
-   fres if int flt REG-ROOM int stk C-ABI-R exit then
-   flt 0 > if int flt REG-ROOM int stk C-ABI exit then
+   fres if int stk C-ABI-R exit then
+   stk 0 > flt 0 > or if int stk C-ABI exit then
    RES-KIND @ R-POINTER = if int stk C-POINTER exit then
    int stk C-INT ;
 
@@ -1511,7 +1536,7 @@ private
    i STAGE-POINTER ;
 
 : STAGE-ONE ( n -- ) {: i:n :}
-   HB-TARGET-LINUX-X86-64? i ARG-REG@ 0 < and if i STAGE-SPILL exit then
+   i ARG-REG@ 0 < if i STAGE-SPILL exit then
    HB-TARGET-MACOS? VAR-START @ 0 >= and i VAR-START @ >= and if
       i STAGE-SPILL exit
    then

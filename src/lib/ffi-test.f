@@ -120,11 +120,8 @@ FFI-T-DEPTH-BEFORE FFI-T-DEPTH!
 FUNCTION: FFI-T-DEPTH-PROBE getpid ( -- i32 ) ;FUNCTION
 FFI-T-DEPTH-AFTER FFI-T-DEPTH!
 
-\ Declarations the declarer must refuse. Each rides evaluate-closed so the
-\ refusal is the throw a file-level declaration would raise, and each names one
-\ structural rule: a pointer without its byte pointee, two results, an extent
-\ that is not a positive width, an extent argument that is not a value, an
-\ extent index past the arity, and more registers than the ABI call packs.
+\ Declarations the declarer rejects, each by one rule; evaluate-closed raises
+\ the throw a file-level declaration would.
 : FFI-T-BAD-PTR ( -- )
    s" FUNCTION: FFI-T-X1 getpid ( ptr -- n ) ;FUNCTION" evaluate-closed ;
 : FFI-T-BAD-RESULTS ( -- )
@@ -135,10 +132,6 @@ FFI-T-DEPTH-AFTER FFI-T-DEPTH!
    s" FUNCTION: FFI-T-X4 getpid ( ptr u8 ptr u8 -- n ) 0 1 WRITES-ARG ;FUNCTION" evaluate-closed ;
 : FFI-T-BAD-EXTENT-INDEX ( -- )
    s" FUNCTION: FFI-T-X5 getpid ( ptr u8 -- n ) 3 $10 WRITES-BYTES ;FUNCTION" evaluate-closed ;
-: FFI-T-BAD-FLOAT-ARITY ( -- )
-   s" FUNCTION: FFI-T-X6 getpid ( r r r r r r r r r -- r ) ;FUNCTION" evaluate-closed ;
-: FFI-T-BAD-INT-ARITY ( -- )
-   s" FUNCTION: FFI-T-X7 getpid ( n n n n n n n n n r -- n ) ;FUNCTION" evaluate-closed ;
 : FFI-T-BAD-F32-ARITY ( -- )
    s" FUNCTION: FFI-T-XF getpid ( f32 f32 f32 f32 f32 f32 f32 f32 f32 -- f32 ) ;FUNCTION" evaluate-closed ;
 
@@ -346,25 +339,17 @@ create FFI-T-LONG-PATH PATH-CAP allot
    {: h:ptr hu:n :}
    E-FFI-SYNTAX h hu FFI-T-RECORD ;
 
-: FFI-T-FLOAT-ARITY ( [ -- ] -- )
-   E-FFI-ARITY
-   s" error[E-FFI-ARITY]: the call passes at most 8 float inputs, each in a register"
-   FFI-T-RECORD ;
-
 : FFI-T-SCOPE-RECORD ( [ -- ] -- )
    E-FFI-LIBRARY
    s" error[E-FFI-LIBRARY]: the library selected last belongs to another package section or to top level"
    FFI-T-RECORD ;
 
-: FFI-T-INT-ARITY ( [ -- ] -- )
-   E-FFI-ARITY
-   s" error[E-FFI-ARITY]: the call passes at most 8 integer inputs, each in a register"
-   FFI-T-RECORD ;
-
+\ The record names the target the case runs on.
 : FFI-T-F32-UNSTAGED ( [ -- ] -- )
-   E-FFI-ARITY
-   s" error[E-FFI-ARITY]: an f32 input past the 8 float registers has no stack slot on x86-64"
-   FFI-T-RECORD ;
+   FFI-T-SRC CODEGEN:RESET
+   s" error[E-FFI-ARITY]: an f32 input past the 8 float registers has no stack slot on "
+   FFI-T-SRC+  HB-TARGET$ FFI-T-SRC+
+   E-FFI-ARITY FFI-T-SRC CODEGEN:CONTENTS FFI-T-RECORD ;
 
 \ The overflowing path carries no extension: it stands for a literal LIBRARY row
 \ on either target, which the spelling rule below leaves alone.
@@ -521,14 +506,12 @@ FUNCTION: FFI-T-MPROTECT mprotect ( ptr u8 n n -- i32 ) ;FUNCTION
    FFI-T-PRINT-BUF swap s" 11 22 33" T$=
    FFI-T-COUNT LE:U32@ 8 T= ;
 
-\ SysV's ninth float spills after eight XMM registers. The declaration is
-\ target-conditional because the AAPCS64 planner keeps an eight-float limit.
+\ snprintf's ninth double goes on the stack on every target.
 : FFI-T-F9-FORMAT ( -- ptr u8 )
    s\" %.0f %.0f %.0f %.0f %.0f %.0f %.0f %.0f %.0f\z" drop ;
 : FFI-T-F9-WANT ( -- ptr u8 n )
    s" 1 2 3 4 5 6 7 8 9" ;
-: FFI-T-X86-FLOAT-SPILL ( -- )
-   HB-TARGET-LINUX-X86-64? 0= if exit then
+: FFI-T-FLOAT-SPILL ( -- )
    s" FUNCTION: FFI-T-PRINTF-F9 snprintf ( ptr u8 n ptr u8 r r r r r r r r r -- i32 ) 3 VARIADIC 0 1 WRITES-ARG ;FUNCTION"
       evaluate-closed
    FFI-T-SRC CODEGEN:RESET
@@ -819,21 +802,7 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    s" error[E-FFI-SYNTAX]: WRITES-ARG's length input is not an integer" FFI-T-SYNTAX
    [: FFI-T-BAD-EXTENT-INDEX ;]
    s" error[E-FFI-SYNTAX]: the clause names no input of the declaration" FFI-T-SYNTAX
-   HB-TARGET-LINUX-X86-64? if
-      [: FFI-T-BAD-FLOAT-ARITY ;] 0 TTHROWSQ
-   else
-      [: FFI-T-BAD-FLOAT-ARITY ;] FFI-T-FLOAT-ARITY
-   then
-   HB-TARGET-LINUX-X86-64? if
-      [: FFI-T-BAD-INT-ARITY ;] 0 TTHROWSQ
-   else
-      [: FFI-T-BAD-INT-ARITY ;] FFI-T-INT-ARITY
-   then
-   HB-TARGET-LINUX-X86-64? if
-      [: FFI-T-BAD-F32-ARITY ;] FFI-T-F32-UNSTAGED
-   else
-      [: FFI-T-BAD-F32-ARITY ;] FFI-T-FLOAT-ARITY
-   then
+   [: FFI-T-BAD-F32-ARITY ;] FFI-T-F32-UNSTAGED
    [: FFI-T-BAD-F32-VARARG ;]
    s" error[E-FFI-SYNTAX]: an f32 variadic argument" FFI-T-SYNTAX
    [: FFI-T-F32-FIXED ;] 0 TTHROWSQ
@@ -921,7 +890,7 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    FFI-T-VERSIONED-CALL
    FFI-T-VARARGS
    FFI-T-VARARG-KEY
-   FFI-T-X86-FLOAT-SPILL
+   FFI-T-FLOAT-SPILL
 
    FFI-T-GROW-ALIAS
    FFI-T-LIBRARY-SHARED
@@ -943,6 +912,12 @@ FFI-RUN
       s" test/ffi-struct-verify.f" required
    then ;
 FFI-T-STRUCT-LOAD
+
+: FFI-T-SPILL-LOAD ( -- )
+   HB-TARGET-MACOS? HB-TARGET-LINUX? or if
+      s" test/ffi-spill.f" required
+   then ;
+FFI-T-SPILL-LOAD
 
 T-REPORT
 
