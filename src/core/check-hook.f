@@ -289,7 +289,7 @@ using SCHEMA-REG
    SRCLOC:TOKEN$ REJECTION:AT  s" the definer ran here" REJECTION:EMIT-STR ;
 
 : UNKNOWN-HELP$ ( -- ptr u8 n )
-   s" name n, bool, r or a family declared before the definer runs" ;
+   s" name n, bool, r or a family the package running the definer can name" ;
 
 \ An effect; any other type is rejected.
 : EFFECT-ARG ( n -- n ) {: node:n :}
@@ -327,7 +327,8 @@ CAST: >BYTES ( n -- ptr u8 )
 : NAMED-FAMILY ( n n -- n n )
    {: a:n u:n :}
    a u BUILT-IN dup 0 <> if 0 exit then drop
-   a >BYTES u TFAM:TFAM-FIND-SPELLED if 0 swap exit then
+   TFAM:TFAM-ACTIVE-PKG$ a >BYTES u TFAM:TFAM-SIG-RESOLVE
+   if 0 swap exit then
    drop
    s" E-UNKNOWN-SIGNATURE-TYPE" REJECTION:OPEN
    s" EFFECT:NAMED found no type named '" REJECTION:EMIT-STR

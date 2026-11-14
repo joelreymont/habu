@@ -19,7 +19,8 @@
 \ by two is rejected. EFFECT:READ reads a linear and a width type as a
 \ signature does, and rejects a letter, a type variable's or a view's region's,
 \ at the line that ran the definer, with the fix, as EFFECT:NAMED and
-\ EFFECT:READ reject an unknown family and EFFECT:IN a type that is no effect.
+\ EFFECT:READ reject an unknown family, which a definer names as source in its
+\ package would, and EFFECT:IN a type that is no effect.
 
 require src/lib/test.f
 require src/lib/c2-memory.f
@@ -30,6 +31,11 @@ require test/decl-diag-capture.f
 package BITEM-PKG
 public
 : ANSWER ( -- n ) 1 ;
+;package
+
+package BITEM-OWN
+private
+SUMTYPE secret VARIANT hid n ;VARIANT ;SUMTYPE
 ;package
 
 package BITEM
@@ -388,9 +394,18 @@ BI-U8-WIDTH BI-WIDTH width>n 1 T=
 : IN-BAD ( -- n ) [: EFFECT:N EFFECT:N EFFECT:IN drop ;] catch ;
 : READ-BAD ( -- n )
    [: s" BI-UNK" s" no-such-family" EFFECT:READ MAKE-ID ;] catch ;
+: SECRET ( -- EFFECT:type ) s" bitem-own:secret" EFFECT:NAMED ;
+
+\ : NAME ( bitem-own:secret -- n ) match secret hid of endof ;match ;
+: MAKE-PEEK ( ptr u8 n -- )
+   EFFECT:NEW SECRET EFFECT:IN EFFECT:N EFFECT:OUT define-word
+   s" match" KW  s" secret" SECRET EFFECT:TYPE-ITEM
+   s" hid" OPND  s" of" KW  s" endof" KW  s" ;match" KW
+   postpone ; ;
+: PEEK-BAD ( -- n ) [: s" BI-PEEK" MAKE-PEEK ;] catch ;
 : RAN-HERE ( -- ) s" the definer ran here" DECL-DIAG:HAS? TTRUE ;
 : FAMILY-FIX ( -- )
-   s" = help: name n, bool, r or a family declared before the definer runs"
+   s" = help: name n, bool, r or a family the package running the definer can name"
    DECL-DIAG:HAS? TTRUE ;
 
 DECL-DIAG:PROSE  PTR-A 70 T=
@@ -409,6 +424,9 @@ s" |                  ^^^^ the definer ran here" DECL-DIAG:HAS? TTRUE
 LETTER-FIX
 DECL-DIAG:PROSE  NAMED-BAD 70 T=
 s" error[E-UNKNOWN-SIGNATURE-TYPE]: EFFECT:NAMED found no type named 'no-such-family'"
+DECL-DIAG:HAS? TTRUE  RAN-HERE  FAMILY-FIX
+DECL-DIAG:PROSE  PEEK-BAD 70 T=
+s" error[E-UNKNOWN-SIGNATURE-TYPE]: EFFECT:NAMED found no type named 'bitem-own:secret'"
 DECL-DIAG:HAS? TTRUE  RAN-HERE  FAMILY-FIX
 DECL-DIAG:PROSE  IN-BAD 70 T=
 s" error[E-NOT-EFFECT]: EFFECT:IN or EFFECT:OUT was given a type that is no effect"

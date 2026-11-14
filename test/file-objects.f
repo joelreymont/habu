@@ -1818,14 +1818,14 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" : MAIN ( -- ) " SRC+  warm if s" 42" SRC+ else s" 41" SRC+ then
    s\"  . cr ;\n" SRC+  s" main.f" NEST-WRITE ;
 
-\ lib.f's definer MAKE-EAT names PL's private plsecret by its spelling. It is
-\ written once: a rewritten file is compiled again, which reads its entry.
+\ lib.f's definer MAKE-EAT names PL's plbox by its spelling. It is written
+\ once: a rewritten file is compiled again, which reads its entry.
 : WRITE-BUILT ( -- )
    L$ s" built" NEST-DIR FS:JOIN-PATH NEST-DIR-U !
    NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
-   s\" package PL\nprivate\nSTRUCTURE plsecret FIELD v n ;STRUCTURE\n" SRC+
-   s\" public\n: MAKE-EAT ( ptr u8 n -- )\n" SRC+
-   s\"    s\" PL:plsecret\" EFFECT:NAMED EFFECT:PTR {: p :}\n" SRC+
+   s\" package PL\npublic\nSTRUCTURE plbox FIELD v n ;STRUCTURE\n" SRC+
+   s\" : MAKE-EAT ( ptr u8 n -- )\n" SRC+
+   s\"    s\" PL:plbox\" EFFECT:NAMED EFFECT:PTR {: p :}\n" SRC+
    s\"    EFFECT:NEW p EFFECT:IN define-word\n" SRC+
    s\"    postpone drop\n   postpone ; ;\n;package\n" SRC+  s" lib.f" NEST-WRITE
    false WRITE-EAT ;

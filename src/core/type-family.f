@@ -4803,8 +4803,8 @@ public
    TFAM-ACTIVE-PKG$ na nu TFAM-SIG-RESOLVE 0= IF drop MD-FAM-UNKNOWN MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
    TFAM-MATCH-KIND ;
 
-\ The family a node applies, matched with no scope resolve: the definer named
-\ it exactly.
+\ The family a node applies. EFFECT:NAMED resolved it as source does, so a
+\ built match needs no scope resolve.
 : TFAM-MATCH-NODE ( n -- n bool )
    TFAM-NODE-FAM 0= IF drop MD-FAM-UNKNOWN MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
    TFAM-MATCH-KIND ;

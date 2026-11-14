@@ -1,7 +1,7 @@
 \ postpone-effect.f - an effect a definer builds renders as the signature its
 \ built word records, naming a private family by its package, and its nodes
 \ are transient: no persistent schema root takes one. A multi-error load that
-\ refuses a built body keeps its effect, which names the definer's private
+\ refuses a built body keeps its effect, which names the definer's
 \ structure, for a caller in another package. A word built over EFFECT:READ
 \ or EFFECT:NAMED of a type takes the type its text form declares, and READ
 \ refuses a family the running package does not know. The file calls the
@@ -11,11 +11,13 @@ require src/lib/test.f
 require src/lib/adt/nullable.f
 
 package POSTPONE-CELL
-private
+public
 STRUCTURE pdcell FIELD v n ;STRUCTURE
+private
+STRUCTURE pdhidden FIELD v n ;STRUCTURE
 1 TYPED-BUFFER PD-CELLS pdcell
 
-\ ( ptr pdcell -- ptr pdcell ), a type no other package can spell.
+\ ( ptr pdcell -- ptr pdcell ).
 : CELL-EFFECT ( -- EFFECT:type )
    s" POSTPONE-CELL:pdcell" EFFECT:NAMED EFFECT:PTR
    {: p :}  EFFECT:NEW p EFFECT:IN  p EFFECT:OUT ;
@@ -114,7 +116,7 @@ s" : PE-U8-WIDE ( -- n ) 300 PE-U8 ;" TEST-EVAL:RC 70 T=
 s" true PE-N drop" TEST-EVAL:RC 70 T=
 
 \ POSTPONE-CELL's private family is unknown here.
-: READ-HIDDEN ( -- n ) [: s" pdcell" EFFECT:READ drop ;] catch ;
+: READ-HIDDEN ( -- n ) [: s" pdhidden" EFFECT:READ drop ;] catch ;
 READ-HIDDEN 70 T=
 ;package
 
