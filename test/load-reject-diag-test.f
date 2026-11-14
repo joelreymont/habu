@@ -17,7 +17,6 @@ require src/lib/process.f
 require src/lib/process-argv.f
 require tools/gate-json-assert-core.f
 require src/lib/argv.f
-require tools/repair-packet-core.f
 require src/lib/test/ending.f
 require src/lib/engine-candidate.f
 
@@ -348,7 +347,7 @@ variable RC
    BODY$ place placeu ASSERT-AT ;
 
 \ The immediate's record names TOKEN at LINE and COLUMN, and its help models it
-\ with `parse-imm`.
+\ with `parse-imm`, in the record form.
 : ASSERT-IMM-DIAG ( n n ptr u8 n -- )
    {: line:n col:n token:ptr tokenu:n :}
    ERR$ GJA-PARSE dup GJA-OBJ {: root:SPAN:span<u8> :}
@@ -357,12 +356,7 @@ variable RC
    root s" column" col GJA-ASSERT-INT-FIELD
    root s" token" GJA-REQ token tokenu GJA-ASSERT-STR
    ERR$ s" declare it with `parse-imm`" CONTAINS? TTRUE
-   ERR$ 2dup RP-COUNT dup 1 T= >r RP-FIRST r> RP-PACKET
-   {: pa:ptr pu:n :}
-   pa OUT pu BYTE-COPY
-   OUT pu GJA-PARSE dup GJA-OBJ {: packet:SPAN:span<u8> :}
-   packet s" model_compile_immediate" GJA-REPAIR-HEAD
-   packet GJA-REPAIR-DEF ;
+   root GJA-RECORD-FORM ;
 
 : TEST-STORE-SIGNALED ( -- )
    s" signaled outcome remains distinguishable from exit" T-LABEL
@@ -900,23 +894,17 @@ variable RC
    s" E-UNMODELED-IMMEDIATE" ASSERT-NAMED
    1 89 s" LRD-TRUST-IMM" ASSERT-IMM-DIAG ;
 
-\ A refusal at a token an immediate evaluated into the body, which no source
-\ holds, gets a record and a repair packet that meet the contract with no place.
-: TEST-UNSOURCED-PACKET ( -- )
-   s" a refusal at an evaluated token gets a repair packet with no place" T-LABEL
+\ A rejection at a token an immediate evaluated into the body, which no source
+\ holds, gets one record in the record form with no place.
+: TEST-UNSOURCED-RECORD ( -- )
+   s" a rejection at an evaluated token gets a record with no place" T-LABEL
    BODY$ S\" true REJECTION:JSON !\nTRUSTED: EV ( -- ) s\" drop\" evaluate ; immediate\ns\" EV\" 0 parse-imm\n: P ( -- ) ( a comment here ) 1 drop EV ;\n" FS:WRITE-ALL
    BODY$ RUN
    s" E-INPUT-UNDERFLOW" ASSERT-NAMED
    ERR$ GJA-PARSE dup GJA-OBJ {: root:SPAN:span<u8> :}
    root s" token" GJA-REQ s" drop" GJA-ASSERT-STR
    root s" line" GJA-HAS? TFALSE
-   ERR$ 2dup RP-COUNT dup 1 T= >r RP-FIRST r> RP-PACKET
-   {: pa:ptr pu:n :}
-   pa OUT pu BYTE-COPY
-   OUT pu GJA-PARSE dup GJA-OBJ {: packet:SPAN:span<u8> :}
-   packet s" supply_missing_input" GJA-REPAIR-HEAD
-   packet GJA-REPAIR-DEF
-   packet s" line" GJA-HAS? TFALSE ;
+   root GJA-RECORD-FORM ;
 
 \ T0 refuses a body no scan certified where the checker's scan bound nothing
 \ or `is` names no deferred word.
@@ -986,7 +974,7 @@ variable RC
    TEST-IMM-REQUIRE
    TEST-IMM-CALLER
    TEST-IMM-TRUSTED
-   TEST-UNSOURCED-PACKET
+   TEST-UNSOURCED-RECORD
    TEST-BIG-LITERAL
    TEST-SECTION-CLASH
    HB-TARGET-LINUX-X86-64? 0= if
