@@ -1,7 +1,9 @@
 \ rejection.f - every byte a diagnostic writes: the growable text a record is
 \ built in, its JSON escaping and numbers, and the sink that sends a finished
-\ record to a file descriptor or to a caller's buffer. Loads before the checker,
-\ where no emit exists, so bytes go out through a one-byte buffer.
+\ record to a file descriptor or to a caller's buffer. It also holds where a
+\ diagnostic's source sits: the armed source, its map and the loader's file
+\ path. Loads before the checker, where no emit exists, so bytes go out through
+\ a one-byte buffer.
 package REJECTION
 private
 
@@ -161,4 +163,164 @@ public
    JSON-OPEN EMIT-STR JSON-CLOSE ;
 : JSON-KEY ( ptr u8 n -- ) {: a:ptr u:n :}
    a u JSON-STRING  58 EMIT1 ;
+
+\ Where a top step's token sits: the active file's path, which an inner
+\ `evaluate` never changes. FILE-PATH is private so no program writes it.
+private
+SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL FILE-PATH
+public
+
+\ The active file's path; empty when no file is being read.
+: PATH$ ( -- ptr u8 n )
+   FILE-PATH @ data-base SRCLOC:PATHLEN-CELL + @ ;
+
+\ The file a rejection names when no file holds its source.
+: NO-FILE$ ( -- ptr u8 n ) s" <input>" ;
+
+private
+create FILE-BUF PATH-CAP 1 + allot   variable FILE-U
+public
+variable ORIGIN-LINE  variable ORIGIN-COLUMN  variable ORIGIN-BYTE
+: FILE$ ( -- ptr u8 n ) FILE-BUF FILE-U @ ;
+private
+\ A tool's label names one file, the one the load was reading when the tool set
+\ it; a label set with no file open names the steps that have no file. LABEL-BUF
+\ holds that file's path, empty for none; a top-level step in it names the
+\ label, and one in any other file names its own path.
+\ The boot's NO-FILE$ is no label.
+variable LABELED
+create LABEL-BUF PATH-CAP allot   variable LABEL-U
+: COPY ( ptr u8 ptr u8 n -- ) {: a:ptr d:ptr u:n :}
+   0 BEGIN dup u < WHILE
+      dup a + c@
+      over d + c!
+      1 +
+   REPEAT drop ;
+: PATH-COPY ( ptr u8 n ptr u8 -- n ) {: a:ptr u:n d:ptr :}
+   u PATH-CAP > IF s" diag: file path too long" 76 die THEN
+   a d u COPY  u ;
+: FILE-COPY ( ptr u8 n -- )
+   FILE-BUF PATH-COPY FILE-U ! ;
+public
+: FILE! ( ptr u8 n -- )
+   FILE-COPY
+   PATH$ LABEL-BUF PATH-COPY LABEL-U !
+   -1 LABELED ! ;
+: LABELS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   LABELED @ 0= IF 0 0= 0= EXIT THEN
+   a u LABEL-BUF LABEL-U @ CORE-STR= ;
+: ORIGIN! {: line col byte :}
+   line ORIGIN-LINE !  col ORIGIN-COLUMN !  byte ORIGIN-BYTE ! ;
+\ The file line, column and byte of the byte p points at in a buffer whose first
+\ byte sits at file line bl, column bc and byte bb. LF ends a line, a column
+\ counts bytes, and only the buffer's first line starts at column bc.
+private
+variable POS-OFF  variable POS-LINE  variable POS-COLUMN  variable POS-I
+public
+: POSITION ( ptr u8 ptr u8 n n n -- n n n )
+   {: base:ptr p:ptr bl:n bc:n bb:n :}
+   p base - POS-OFF !
+   1 POS-LINE !  1 POS-COLUMN !  0 POS-I !
+   BEGIN POS-I @ POS-OFF @ < WHILE
+      base POS-I @ + c@ 10 = IF
+         POS-LINE @ 1 + POS-LINE !  1 POS-COLUMN !
+      ELSE
+         POS-COLUMN @ 1 + POS-COLUMN !
+      THEN
+      POS-I @ 1 + POS-I !
+   REPEAT
+   bl POS-LINE @ + 1 -
+   POS-LINE @ 1 = IF bc POS-COLUMN @ + 1 - ELSE POS-COLUMN @ THEN
+   bb POS-OFF @ + ;
+\ Set ORIGIN! to the FILE position of a definition's name token, given the
+\ eval-buffer base ptr, the name-token ptr into that buffer, and the buffer
+\ start's own file line/col/byte.
+: ORIGIN-SPAN! ( ptr u8 ptr u8 n n n -- )
+   POSITION ORIGIN! ;
+
+private
+PTR-VARIABLE SOURCE-A  variable SOURCE-U
+variable SOURCE-LINE  variable SOURCE-COLUMN
+public
+variable SOURCE-BYTE
+private
+PTR-VARIABLE MAP-A  variable MAP-U
+PTR-VARIABLE ROW-A  variable ROW-N
+\ The rows' source offset of the armed source's first byte, subtracted from
+\ each row's: the engine's rows count from the input buffer's start.
+variable ROW-BIAS
+PTR-VARIABLE CLOSER-A  variable CLOSER-U
+: CLOSER-OFF ( -- )
+   NULL-PTR CLOSER-A !  0 CLOSER-U ! ;
+: MAP-OFF ( -- )
+   NULL-PTR MAP-A !  0 MAP-U !  NULL-PTR ROW-A !  0 ROW-N !  0 ROW-BIAS !
+   CLOSER-OFF ;
+public
+: SOURCE-OFF ( -- )
+   NULL-PTR SOURCE-A !  0 SOURCE-U !
+   MAP-OFF ;
+: SOURCE! ( ptr u8 n n n n -- )
+   {: a:ptr u:n line:n col:n byte:n :}
+   a SOURCE-A !  u SOURCE-U !
+   line SOURCE-LINE !  col SOURCE-COLUMN !  byte SOURCE-BYTE !
+   MAP-OFF ;
+: MAP! ( ptr u8 n ptr n n -- )
+   {: a:ptr u:n rows:ptr count:n :}
+   a MAP-A !  u MAP-U !  rows ROW-A !  count ROW-N !  0 ROW-BIAS !
+   CLOSER-OFF ;
+\ Set after MAP!, which clears it.
+: MAP-BIAS! ( n -- )
+   ROW-BIAS ! ;
+: CLOSER! ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   a CLOSER-A !  u CLOSER-U ! ;
+: SOURCE$ ( -- ptr u8 n ) SOURCE-A @ SOURCE-U @ ;
+: MAPPED? ( ptr u8 -- bool ) MAP-A @ - 0= ROW-N @ 0 > and ;
+: MAP-BASE? ( ptr u8 -- bool ) MAP-A @ - 0= ;
+: CLOSER$ ( -- ptr u8 n ) CLOSER-A @ CLOSER-U @ ;
+private
+: ROW@ ( n -- n )
+   ROW-A @ {: i:n rows:ptr :}
+   i cells rows + @ ;
+\ The first cell of the last row at or before text offset x.
+: MAP-ROW ( n -- n )
+   {: x:n :}
+   0 BEGIN
+      dup 1 + ROW-N @ < IF dup 1 + 2 * ROW@ x <= ELSE 0 0= 0= THEN
+   WHILE 1 + REPEAT
+   2 * ;
+\ Whether text offset x lies in a run with no source.
+: MAP-NONE? ( n -- bool )
+   MAP-ROW 1 + ROW@ BODY-SOURCE:NONE = ;
+\ The separator after a run maps to the byte after the run, where its last
+\ token ends.
+: MAP>SOURCE ( n -- n )
+   {: x:n :}
+   x MAP-ROW {: row:n :}
+   row 1 + ROW@  x +  row ROW@ -  ROW-BIAS @ - ;
+: IN-SPAN? ( n n -- bool )  \ an end pointer sits at len
+   {: off:n len:n :}
+   off 0 >=  off len <= and ;
+: SOURCE-POSITION ( n -- n n n )
+   {: off:n :}
+   SOURCE-A @  SOURCE-A @ off +
+   SOURCE-LINE @ SOURCE-COLUMN @ SOURCE-BYTE @  POSITION ;
+public
+: >SOURCE ( ptr u8 -- n bool )
+   {: p:ptr :}
+   SOURCE-U @ 0 = IF 0 0 0= 0= EXIT THEN
+   ROW-N @ 0 >  p MAP-A @ -  MAP-U @ IN-SPAN?  and IF
+      p MAP-A @ - MAP-NONE? IF 0 0 0= 0= EXIT THEN
+      p MAP-A @ - MAP>SOURCE 0 0= EXIT
+   THEN
+   p SOURCE-A @ -  SOURCE-U @ IN-SPAN? IF
+      p SOURCE-A @ - 0 0= EXIT
+   THEN
+   0 0 0= 0= ;
+\ 0 0 0 false when there is no map for p.
+: LOCATE ( ptr u8 -- n n n bool )
+   >SOURCE 0= IF drop 0 0 0 0 0= 0= EXIT THEN
+   SOURCE-POSITION 0 0= ;
+NO-FILE$ FILE-COPY
+1 1 0 ORIGIN!
 ;package

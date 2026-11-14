@@ -72,7 +72,7 @@ create SLOT-SRC-U  SLOTS cells allot  \ and its length
    s SPAN-CAP * SPAN-BUF +  s cells SPAN-LEN + @ ;
 
 \ The offending token: the span it was copied from when that lies in text a
-\ driver armed for locating packets (checker.f DIAG>SRC), so the packet carries
+\ driver armed for locating packets (REJECTION:>SOURCE), so the packet carries
 \ its file position; else the copy. An armed text stays put while its
 \ declaration runs; a span in an input buffer the engine refills lies in no
 \ armed text, so stale bytes are never read. SPAN-CAP bounds only the copy, so a
@@ -80,7 +80,7 @@ create SLOT-SRC-U  SLOTS cells allot  \ and its length
 : TOKEN-SPAN@ ( -- ptr u8 n )
    S-TOKEN SRC@
    {: a:ptr u:n :}
-   a DIAG>SRC nip IF a u EXIT THEN
+   a REJECTION:>SOURCE nip IF a u EXIT THEN
    S-TOKEN SLOT@ ;
 
 \ A reason row is the explaining file's data, laid by EXPLAIN where it runs:

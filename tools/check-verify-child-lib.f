@@ -518,8 +518,8 @@ variable OF-U                           \ 0 for the other forms
 \ stops it with its loader line, from which the parent writes its packet and
 \ its status line.
 : VERIFY-ALL ( -- )
-   SUBJECT-PATH$ DIAG-FILE!
-   1 1 0 DIAG-ORIGIN!
+   SUBJECT-PATH$ REJECTION:FILE!
+   1 1 0 REJECTION:ORIGIN!
    ['] DUPLICATE-LINE is VERIFY:ON-DUPLICATE
    ['] FILE-LINE is VERIFY:ON-FILE
    ['] DEFINITION-LINE is VERIFY:ON-DEFINITION

@@ -711,9 +711,9 @@ private
    loop
    CHK-E-USAGE CHK-THROW ;
 
-\ The run stage quotes the label into DIAG-FILE! only after the stages that
-\ read the source, so a label the materializer takes from its caller is judged
-\ as soon as it is set. stdin and a source list carry fixed labels.
+\ The run stage quotes the label into REJECTION:FILE! only after the stages
+\ that read the source, so a label the materializer takes from its caller is
+\ judged as soon as it is set. stdin and a source list carry fixed labels.
 : CHK-CHECK-LABEL ( -- )
    CHK-LABEL SOURCE-QPATH-CHECK ;
 
@@ -789,8 +789,8 @@ private
 
 \ E-FS-PATH-UNSAFE is a path or label the run cannot quote (a named file's
 \ canonical spelling or a listed one as CHK-APPEND-LISTED spells it, in its
-\ loader line; the label, in the run stage's DIAG-FILE!); E-FFI-NUL is a path
-\ holding a NUL, which the file system refuses to look up. Both are usage
+\ loader line; the label, in the run stage's REJECTION:FILE!); E-FFI-NUL is a
+\ path holding a NUL, which the file system refuses to look up. Both are usage
 \ errors. The materializers judge each
 \ spelling after the existence check, so a missing path is still NOINPUT, and
 \ before discovery or any later stage reads the source, so the answer does not
@@ -861,7 +861,7 @@ private
 \ statement.
 : CHK-BUILD-PREFIX ( -- )
    CHK-LABEL CHK-RUN-QPATH+
-   s"  DIAG-FILE!" CHK-RUN-SP
+   s"  REJECTION:FILE!" CHK-RUN-SP
    CHK-JSON @ if s" -1 REJECTION:JSON !" CHK-RUN-SP then
    s" 0 WARN-DIAGS !" CHK-RUN-SP ;
 

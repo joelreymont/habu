@@ -403,7 +403,7 @@ TKA-CELL RESERVED-PTR-U8-CELL READ-AT
 : REPORT-UNDEFINED ( ptr u8 n ptr u8 -- )
    {: a:ptr u:n p:ptr :}
    SRCLOC:FILE-BUFFER? if p LINE-OF else 0 then {: ln:n :}
-   s" E-UNDEFINED" CHECK:TOP-SITE-PATH$ ln ERROR-TEXT:PREFIX
+   s" E-UNDEFINED" REJECTION:PATH$ ln ERROR-TEXT:PREFIX
    s" undefined word '" ERROR-TEXT:TYPE  a u ERROR-TEXT:TYPE
    S\" '\n" ERROR-TEXT:TYPE ;
 
@@ -417,7 +417,7 @@ public
    SRCLOC:FILE-BUFFER? if
       FILE-START @ SRCLOC:CURSOR @ ERROR-TEXT:LINE
    else 0 then {: ln:n :}
-   s" E-TARGET-WORD" CHECK:TOP-SITE-PATH$ ln ERROR-TEXT:PREFIX
+   s" E-TARGET-WORD" REJECTION:PATH$ ln ERROR-TEXT:PREFIX
    s" '" ERROR-TEXT:TYPE  r XREF-REC XREF-NAME$ ERROR-TEXT:TYPE
    S\" ' is a target word: a build cannot run it\n" ERROR-TEXT:TYPE
    RC-REJECT throw ;

@@ -660,13 +660,13 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
 : BODY$ ( -- ptr u8 n )
    BODY-U @ 1 max BODY-BUF-RESERVE
    BODY-ROWS @ 2 * 1 max BODY-ROW-RESERVE
-   0 BODY-BUF BODY-U @ 0 BODY-ROW BODY-ROWS @ DIAG-MAP!
+   0 BODY-BUF BODY-U @ 0 BODY-ROW BODY-ROWS @ REJECTION:MAP!
    0 BODY-BUF BODY-U @ ;
 
 \ The body holds no closer, so the checker is told where it stands and refuses
 \ a structure still open there.
 : DEF-BODY$ ( -- ptr u8 n )
-   BODY$  TOKEN-A @ TOKEN-U @ DIAG-CLOSER! ;
+   BODY$  TOKEN-A @ TOKEN-U @ REJECTION:CLOSER! ;
 
 \ The signature ahead of the scan, read as the engine reads a definition head's:
 \ from its `(` through its `)`, and whether one opens there. The scan passes it.
@@ -4040,7 +4040,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    PEND-RELEASE ;
 
 : SOURCE-ARM ( -- )
-   SOURCE@ SOURCE-U @ 1 1 0 DIAG-SOURCE! ;
+   SOURCE@ SOURCE-U @ 1 1 0 REJECTION:SOURCE! ;
 
 \ Nested files share the checker window but not the scanner cursor. The source,
 \ token and open-stretch context, the loader words the file replaced, and
@@ -4067,7 +4067,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    src srcu SOURCE!
    SOURCE-ARM
    path COMPOSE-CUR-PATH-A !  pathu COMPOSE-CUR-PATH-U !
-   diag diagu DIAG-FILE!
+   diag diagu REJECTION:FILE!
    path pathu VISIT-OPEN
    VISIT-CUR @ VISIT-FIRST @ = CSR-SUBJ !
    [: FILE$ SOURCE@ SOURCE-U @ ON-FILE ;] catch
@@ -4096,10 +4096,10 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    oldpkg FILE-PKG !  olduse FILE-USE !  oldbase PEND-BASE !
    oldshadowed SHADOWED !  oldretired RETIRED !
    oldpathu 0 > IF
-      oldpath oldpathu COMPOSE-DIAG$ DIAG-FILE!
+      oldpath oldpathu COMPOSE-DIAG$ REJECTION:FILE!
       SOURCE-ARM
    ELSE
-      DIAG-SOURCE-OFF
+      REJECTION:SOURCE-OFF
    THEN
    \ The loader's own file goes on, so a storage refusal in it is located there.
    oldu 0 > IF olda oldu CHECKER-VERIFY-SOURCE! THEN
@@ -4129,7 +4129,7 @@ COMPOSE-INIT
 : VERIFY-ARMED ( -- )
    SOURCE-ARM
    [: VERIFY-SOURCE ;] catch
-   DIAG-SOURCE-OFF
+   REJECTION:SOURCE-OFF
    THROW-RESULT ;
 
 : RUN ( -- )

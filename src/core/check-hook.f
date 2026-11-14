@@ -20,7 +20,7 @@ BODY-TEXT:BASE-CELL RESERVED-PTR-U8-CELL BODY-BASE
 SRCLOC:INB-CELL RESERVED-PTR-U8-CELL INPUT-START
 INE-CELL RESERVED-PTR-U8-CELL INPUT-END
 
-\ Arms the checker's source map (checker.f DIAG-SOURCE!, DIAG-MAP!) for the
+\ Arms the checker's source map (REJECTION:SOURCE!, REJECTION:MAP!) for the
 \ check of text a u, from the rows the engine's capture records (layout.f
 \ BODY-SOURCE), and answers whether it did. It arms only for the pending
 \ definition's text from the body text's base, its name in the buffer being
@@ -28,7 +28,7 @@ INE-CELL RESERVED-PTR-U8-CELL INPUT-END
 \ source starts at the name, placed in the file by the checker.
 : ROWS-ARM ( ptr u8 n -- bool )
    {: a:ptr u:n :}
-   DSRC-U @ 0 <> if RES-FALSE exit then
+   REJECTION:SOURCE$ nip 0 <> if RES-FALSE exit then
    SRCLOC:FILE-BUFFER? 0= if RES-FALSE exit then
    data-base PEND-CELL + @ 0= if RES-FALSE exit then
    BODY-BASE @ {: base:ptr :}
@@ -38,13 +38,13 @@ INE-CELL RESERVED-PTR-U8-CELL INPUT-END
    rows 0 <= if RES-FALSE exit then
    SRC-NAME @ INPUT-START @ INPUT-END @ {: nm:ptr b:ptr e:ptr :}
    nm b - 0 <  e nm - 0 <= or if RES-FALSE exit then
-   nm  e nm -  nm FILE-POS  DIAG-SOURCE!
-   a u  base data-base BODY-TEXT:CAP-CELL + @ + CELL-VIEW  rows  DIAG-MAP!
-   nm b - DIAG-MAP-BIAS!
+   nm  e nm -  nm FILE-POS  REJECTION:SOURCE!
+   a u  base data-base BODY-TEXT:CAP-CELL + @ + CELL-VIEW  rows  REJECTION:MAP!
+   nm b - REJECTION:MAP-BIAS!
    RES-TRUE ;
 
 \ Gives the checker the token that closes the text a u ROWS-ARM armed, which
-\ the text does not hold (checker.f DIAG-CLOSER!), so a structure still open
+\ the text does not hold (REJECTION:CLOSER!), so a structure still open
 \ there is refused at it as the load refuses it. A definer's head (DOES-SPLIT,
 \ as the checker tells it) ends at the `does>` just past it in the captured
 \ body, placed by the rows; any other body ends at the `;` the engine read last.
@@ -52,14 +52,14 @@ INE-CELL RESERVED-PTR-U8-CELL INPUT-END
 : CLOSER-ARM ( ptr u8 n -- )
    {: a:ptr u:n :}
    DOES-SPLIT @ 0 <> if
-      a u + DIAG>SRC 0= if drop exit then
-      DSRC-A @ + 5                                  \ `does>`
+      a u + REJECTION:>SOURCE 0= if drop exit then
+      REJECTION:SOURCE$ drop + 5                     \ `does>`
    else
       LAST-TOKEN @  data-base TKL-CELL + @
    then {: c:ptr cu:n :}
-   c DSRC-A @ - {: off:n :}
-   off 0 <  off cu + DSRC-U @ > or if exit then
-   c cu DIAG-CLOSER! ;
+   c REJECTION:SOURCE$ drop - {: off:n :}
+   off 0 <  off cu + REJECTION:SOURCE$ nip > or if exit then
+   c cu REJECTION:CLOSER! ;
 
 \ ROWS-ARM, then CLOSER-ARM when it armed.
 : BODY-ARM ( ptr u8 n -- bool )
@@ -68,7 +68,7 @@ INE-CELL RESERVED-PTR-U8-CELL INPUT-END
 
 \ The cleanup that takes back what BODY-ARM or ROWS-ARM armed, or nothing.
 : DISARMER ( bool -- [ -- ] )
-   if [: DIAG-SOURCE-OFF ;] else [: ;] then ;
+   if [: REJECTION:SOURCE-OFF ;] else [: ;] then ;
 
 
 public
@@ -264,7 +264,7 @@ using SCHEMA-REG
 \ An effect; any other type is refused, E-NOT-EFFECT.
 : EFFECT-ARG ( n -- n ) {: node:n :}
    node TYPE-ARG SCHEMA-QUOT? if node exit then
-   s" E-NOT-EFFECT" TOP-SITE-PATH$ SRCLOC:LINE ERROR-TEXT:PREFIX
+   s" E-NOT-EFFECT" REJECTION:PATH$ SRCLOC:LINE ERROR-TEXT:PREFIX
    S\" EFFECT:IN or EFFECT:OUT given a type that is no effect\n" ERROR-TEXT:TYPE
    CHECK-RC throw ;
 
@@ -282,7 +282,7 @@ CAST: >BYTES ( n -- ptr u8 )
    {: a:n u:n :}
    a >BYTES u TFAM:TFAM-FIND-SPELLED if exit then
    drop
-   s" E-UNKNOWN-SIGNATURE-TYPE" TOP-SITE-PATH$ SRCLOC:LINE ERROR-TEXT:PREFIX
+   s" E-UNKNOWN-SIGNATURE-TYPE" REJECTION:PATH$ SRCLOC:LINE ERROR-TEXT:PREFIX
    s" unknown type '" ERROR-TEXT:TYPE  a >BYTES u ERROR-TEXT:TYPE
    S\" ' in EFFECT:FAMILY\n" ERROR-TEXT:TYPE
    CHECK-RC throw ;

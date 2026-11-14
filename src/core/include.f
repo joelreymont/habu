@@ -2201,7 +2201,7 @@ public
 \ before its requires; on another target its load stops there.
 : ?TARGET ( bool -- )
    if exit then
-   s" E-TARGET" CHECK:TOP-SITE-PATH$ SRCLOC:LINE ERROR-TEXT:PREFIX
+   s" E-TARGET" REJECTION:PATH$ SRCLOC:LINE ERROR-TEXT:PREFIX
    s" the file does not build for " ERROR-TEXT:TYPE
    HB-TARGET$ ERROR-TEXT:TYPE  S\" \n" ERROR-TEXT:TYPE
    INCLUDE-IO-RC throw ;

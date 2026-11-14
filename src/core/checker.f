@@ -351,8 +351,8 @@
 \ at that moment, the newest one under BIND-HORIZON, never an older row's, and
 \ 0 0 0 when that record has none: a word the image holds has none. A primitive
 \ has no record, but its binding still reports its symbol. A tombstone reports
-\ nothing. The use is the spelling's byte range in its source (NAV-SRC-XT); a
-\ spelling the source map does not hold reports nothing.
+\ nothing. The use is the spelling's byte range in its source
+\ (REJECTION:>SOURCE); a spelling the source map does not hold reports nothing.
 \
 \ The completion cursor: the verifier arms a cursor's offset in the next text
 \ it checks, with the visitor its candidates go to (CHECKER-CURSOR!). The check
@@ -646,19 +646,20 @@
 \ payload and leaves SKF clear.
 \
 \ Source map: a refusal packet names where its token lies in the checked file.
-\ A driver that checks text it copied out of a file arms DIAG-SOURCE! with the
-\ scanned bytes and the file line, column and byte of their first byte, and
-\ before each check hands DIAG-MAP! the text it built with a table of the runs
-\ it copied: one two-cell row per run (text offset, source offset), ascending
-\ from text offset 0. DIAG-LOCATE maps a pointer into that text, or into the
-\ source, to a file position. The engine arms the map for a definition it
-\ captured from a file buffer, from the rows the capture records, and gives a
-\ body its closer. Text with no map keeps the DIAG-ORIGIN! rule: `evaluate`
-\ text other than a slice of the file being loaded, stdin and a program file
-\ read without `--load`, a definition whose name lies outside the buffer being
-\ read, and the definitions the checker generates for a declaration.
-\ DIAG-CLOSER! takes the source token that closes the mapped definition (its
-\ `;` or a definer's `does>`), which the text does not hold: a control
+\ A driver that checks text it copied out of a file arms REJECTION:SOURCE! with
+\ the scanned bytes and the file line, column and byte of their first byte, and
+\ before each check hands REJECTION:MAP! the text it built with a table of the
+\ runs it copied: one two-cell row per run (text offset, source offset),
+\ ascending from text offset 0. REJECTION:LOCATE maps a pointer into that
+\ text, or into the source, to a file position. The engine arms the map for a
+\ definition it captured from a file buffer, from the rows the capture records,
+\ and gives a body its closer. Text with no map keeps the REJECTION:ORIGIN!
+\ rule: `evaluate` text other than a slice of the file being loaded, stdin and
+\ a program file read without `--load`, a definition whose name lies outside
+\ the buffer being read, and the definitions the checker generates for a
+\ declaration.
+\ REJECTION:CLOSER! takes the source token that closes the mapped definition
+\ (its `;` or a definer's `does>`), which the text does not hold: a control
 \ structure still open there is refused at that token, as the load's compiler
 \ refuses it.
 \
@@ -10298,7 +10299,6 @@ RECORD-HOOK-DEFAULTS
    1 - E-PTR ER.ACTIVE @ EFF-UNRESOLVED = ;
 
 \ ---- navigation: what a use bound ---------------------------------------------
-defer NAV-SRC-XT ( ptr u8 -- n bool )
 \ A use: its start and end, selected symbol, and its declaration's visit,
 \ start and end, 0 0 0 when it has no location.
 defer CHECKER-ON-USE ( n n n n n n -- )
@@ -10354,7 +10354,7 @@ ON-USE-DEFAULT
    ELSE
       sym NAV-PRIM-ROW dup 0 >= IF -2 swap - 0 0 ELSE drop 0 0 0 THEN
    THEN {: v:n ds:n de:n :}
-   a NAV-SRC-XT {: s:n mapped:bool :}
+   a REJECTION:>SOURCE {: s:n mapped:bool :}
    mapped 0= IF NAV-NO-USE EXIT THEN
    s s u + rec1 sym v ds de RES-TRUE ;
 
@@ -19332,158 +19332,26 @@ variable CPAY-ON
 
 : CAP-FAIL ( ptr u8 n -- )
    FAILSET @ 0= IF FAIL-PIN! ELSE 2drop THEN ;
-\ Where a top step's token sits: the active file's path and the execution bytes
-\ the loader owns for it, which an inner `evaluate` never changes.
-\ SRC-PATH and SRC-OWNED are private to package CHECK so no program writes them.
+\ The execution bytes the loader owns for the active file, which an inner
+\ `evaluate` never changes. SRC-OWNED is private to package CHECK so no program
+\ writes it.
 package CHECK
-SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL SRC-PATH
 SRCLOC:OWNED-CELL RESERVED-PTR-U8-CELL SRC-OWNED
-public
-
-\ The active file's path; empty when no file is being read.
-: TOP-SITE-PATH$ ( -- ptr u8 n )
-   SRC-PATH @ data-base SRCLOC:PATHLEN-CELL + @ ;
 ;package
 
-\ What a refusal with no file names in its packet.
-: DIAG-NO-FILE$ ( -- ptr u8 n ) s" <input>" ;
-
-create DIAGFB PATH-CAP 1 + allot   variable DIAGFU
-variable DIAGL0  variable DIAGC0  variable DIAGB0
-\ A tool's label names one file, the one the load was reading when the tool set
-\ it; a label set with no file open names the steps that have no file. DIAGLB
-\ holds that file's path, empty for none; a top-level step in it names the
-\ label, and one in any other file names its own path.
-\ The boot's DIAG-NO-FILE$ is no label.
-variable DIAG-LABELED
-create DIAGLB PATH-CAP allot   variable DIAGLU
-: DIAG-COPY ( ptr u8 n ptr u8 -- n ) {: a:ptr u:n d:ptr :}
-   u PATH-CAP > IF s" diag: file path too long" 76 die THEN
-   a d u CCOPY  u ;
-: DIAG-FILE-COPY ( ptr u8 n -- )
-   DIAGFB DIAG-COPY DIAGFU ! ;
-: DIAG-FILE! ( ptr u8 n -- )
-   DIAG-FILE-COPY
-   CHECK:TOP-SITE-PATH$ DIAGLB DIAG-COPY DIAGLU !
-   -1 DIAG-LABELED ! ;
-: DIAG-LABELS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   DIAG-LABELED @ 0= IF RES-FALSE EXIT THEN
-   a u DIAGLB DIAGLU @ CORE-STR= ;
-: DIAG-ORIGIN! {: line col byte :}
-   line DIAGL0 !  col DIAGC0 !  byte DIAGB0 ! ;
-\ The file line, column and byte of the byte p points at in a buffer whose first
-\ byte sits at file line bl, column bc and byte bb. LF ends a line, a column
-\ counts bytes, and only the buffer's first line starts at column bc.
-variable DOS-OFF  variable DOS-LN  variable DOS-CL  variable DOS-P
-: DIAG-POS ( ptr u8 ptr u8 n n n -- n n n )
-   {: base:ptr p:ptr bl:n bc:n bb:n :}
-   p base - DOS-OFF !
-   1 DOS-LN !  1 DOS-CL !  0 DOS-P !
-   BEGIN DOS-P @ DOS-OFF @ < WHILE
-      base DOS-P @ + c@ 10 = IF
-         DOS-LN @ 1 + DOS-LN !  1 DOS-CL !
-      ELSE
-         DOS-CL @ 1 + DOS-CL !
-      THEN
-      DOS-P @ 1 + DOS-P !
-   REPEAT
-   bl DOS-LN @ + 1 -
-   DOS-LN @ 1 = IF bc DOS-CL @ + 1 - ELSE DOS-CL @ THEN
-   bb DOS-OFF @ + ;
-\ Set DIAG-ORIGIN! to the FILE position of a definition's name token, given the
-\ eval-buffer base ptr, the name-token ptr into that buffer, and the buffer
-\ start's own file line/col/byte.
-: DIAG-ORIGIN-SPAN! ( ptr u8 ptr u8 n n n -- )
-   DIAG-POS DIAG-ORIGIN! ;
-
-PTR-VARIABLE DSRC-A  variable DSRC-U
-variable DSRC-L  variable DSRC-C  variable DSRC-B
-PTR-VARIABLE DMAP-A  variable DMAP-U
-PTR-VARIABLE DROW-A  variable DROW-N
-\ The rows' source offset of the armed source's first byte, subtracted from
-\ each row's: the engine's rows count from the input buffer's start.
-variable DROW-BIAS
-PTR-VARIABLE DCLOSE-A  variable DCLOSE-U
-: DIAG-CLOSER-OFF ( -- )
-   NULL-PTR DCLOSE-A !  0 DCLOSE-U ! ;
-: DIAG-MAP-OFF ( -- )
-   NULL-PTR DMAP-A !  0 DMAP-U !  NULL-PTR DROW-A !  0 DROW-N !  0 DROW-BIAS !
-   DIAG-CLOSER-OFF ;
-: DIAG-SOURCE-OFF ( -- )
-   NULL-PTR DSRC-A !  0 DSRC-U !
-   DIAG-MAP-OFF ;
-: DIAG-SOURCE! ( ptr u8 n n n n -- )
-   {: a:ptr u:n line:n col:n byte:n :}
-   a DSRC-A !  u DSRC-U !
-   line DSRC-L !  col DSRC-C !  byte DSRC-B !
-   DIAG-MAP-OFF ;
-: DIAG-MAP! ( ptr u8 n ptr n n -- )
-   {: a:ptr u:n rows:ptr count:n :}
-   a DMAP-A !  u DMAP-U !  rows DROW-A !  count DROW-N !  0 DROW-BIAS !
-   DIAG-CLOSER-OFF ;
-\ Set after DIAG-MAP!, which clears it.
-: DIAG-MAP-BIAS! ( n -- )
-   DROW-BIAS ! ;
-: DIAG-CLOSER! ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   a DCLOSE-A !  u DCLOSE-U ! ;
-: DROW@ ( n -- n )
-   DROW-A @ {: i:n rows:ptr :}
-   i cells rows + @ ;
-\ The first cell of the last row at or before text offset x.
-: DMAP-ROW ( n -- n )
-   {: x:n :}
-   0 BEGIN
-      dup 1 + DROW-N @ < IF dup 1 + 2 * DROW@ x <= ELSE 0 0= 0= THEN
-   WHILE 1 + REPEAT
-   2 * ;
-\ Whether text offset x lies in a run with no source.
-: DMAP-NONE? ( n -- bool )
-   DMAP-ROW 1 + DROW@ BODY-SOURCE:NONE = ;
-\ The separator after a run maps to the byte after the run, where its last
-\ token ends.
-: DMAP>SRC ( n -- n )
-   {: x:n :}
-   x DMAP-ROW {: row:n :}
-   row 1 + DROW@  x +  row DROW@ -  DROW-BIAS @ - ;
-: DLOC-IN? ( n n -- bool )  \ an end pointer sits at len
-   {: off:n len:n :}
-   off 0 >=  off len <= and ;
-: DSRC-POS ( n -- n n n )
-   {: off:n :}
-   DSRC-A @  DSRC-A @ off +  DSRC-L @ DSRC-C @ DSRC-B @  DIAG-POS ;
-: DIAG>SRC ( ptr u8 -- n bool )
-   {: p:ptr :}
-   DSRC-U @ 0 = IF 0 0 0= 0= EXIT THEN
-   DROW-N @ 0 >  p DMAP-A @ -  DMAP-U @ DLOC-IN?  and IF
-      p DMAP-A @ - DMAP-NONE? IF 0 0 0= 0= EXIT THEN
-      p DMAP-A @ - DMAP>SRC 0 0= EXIT
-   THEN
-   p DSRC-A @ -  DSRC-U @ DLOC-IN? IF
-      p DSRC-A @ - 0 0= EXIT
-   THEN
-   0 0 0= 0= ;
-: DIAG-MAPPED? ( -- bool )  TBASE @ DMAP-A @ - 0=  DROW-N @ 0 > and ;
+: DIAG-MAPPED? ( -- bool ) TBASE @ REJECTION:MAPPED? ;
 
 \ The pre-verifier needs the pinned token in the source it read, not in its
 \ reused body buffer: it may check a does> parent after its clause, then report
 \ the clause only if the parent was not deferred.
 : CHECKER-VERIFY-DEFERRED-BODY ( -- ptr u8 n )
-   TBASE@ FAILB @ + DIAG>SRC 0= IF
+   TBASE@ FAILB @ + REJECTION:>SOURCE 0= IF
       drop s" checker: deferred body pin outside source" 76 die
    THEN {: start:n :}
-   TBASE@ FAILE @ + DIAG>SRC 0= IF
+   TBASE@ FAILE @ + REJECTION:>SOURCE 0= IF
       drop s" checker: deferred body end outside source" 76 die
    THEN {: end:n :}
-   DSRC-A @ start +  end start - ;
-\ 0 0 0 false when there is no map for p.
-: DIAG-LOCATE ( ptr u8 -- n n n bool )
-   DIAG>SRC 0= IF drop 0 0 0 0 0= 0= EXIT THEN
-   DSRC-POS 0 0= ;
-: NAV-SRC-INSTALL ( -- ) [: DIAG>SRC ;] is NAV-SRC-XT ;
-NAV-SRC-INSTALL
-DIAG-NO-FILE$ DIAG-FILE-COPY
-1 1 0 DIAG-ORIGIN!
+   REJECTION:SOURCE$ drop start +  end start - ;
 
 \ Whether the signature token SGBAD names lies in the text at A U.
 : SGBAD-IN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
@@ -19497,8 +19365,8 @@ DIAG-NO-FILE$ DIAG-FILE-COPY
 : SGBAD-IN-SOURCE? ( -- bool )
    TBASE @ TBLEN @ SGBAD-IN? IF RES-TRUE EXIT THEN
    SGA @ SGU @ SGBAD-IN? 0= IF RES-FALSE EXIT THEN
-   SGBAD-A @ DIAG>SRC nip 0= IF RES-FALSE EXIT THEN
-   SGBAD-A @ SGBAD-U @ + DIAG>SRC nip ;
+   SGBAD-A @ REJECTION:>SOURCE nip 0= IF RES-FALSE EXIT THEN
+   SGBAD-A @ SGBAD-U @ + REJECTION:>SOURCE nip ;
 
 : SGBAD-COPY-TOKEN ( -- )
    SGBAD-U @ TOKBUF-ENSURE
@@ -20718,9 +20586,9 @@ variable IS-PEND-U                   \ and its length
 \ Pins the closer CA CU one past the body's end, or the mapped closer at its own byte.
 : CLOSER-PIN! ( ptr u8 n -- )
    {: ca:ptr cu:n :}
-   TBASE @ DMAP-A @ - 0= IF
-      DCLOSE-A @ DCLOSE-U @ FAIL-PIN!
-      DCLOSE-A @ TBASE @ - FAILB !
+   TBASE @ REJECTION:MAP-BASE? IF
+      REJECTION:CLOSER$ FAIL-PIN!
+      REJECTION:CLOSER$ drop TBASE @ - FAILB !
    ELSE
       ca cu FAIL-PIN!
       TBLEN @ FAILB !
@@ -20733,7 +20601,7 @@ variable IS-PEND-U                   \ and its length
    {: ca:ptr cu:n :}
    CF-OPEN? 0=  RCOMPILE @ 0 <>  or  CF-OVER @ 0 <>  or IF EXIT THEN
    DIAG-MAPPED? {: mapped:bool :}
-   mapped IF DCLOSE-U @ ELSE cu THEN 0= IF EXIT THEN
+   mapped IF REJECTION:CLOSER$ nip ELSE cu THEN 0= IF EXIT THEN
    CONM @ 0 <> IF MD-CON-TRUNC ELSE
       CHECKER-MATCH-MODE @ 0 <>  MF-DEPTH @ 0 <>  or IF MD-TRUNC ELSE MD-CF-OPEN THEN
    THEN {: why:n :}
@@ -21754,7 +21622,7 @@ public
    SRC-OWNED @ {: b:ptr :}
    t b - {: at:n :}
    at 0 <  at data-base SRCLOC:OWNEDLEN-CELL + @ >= or IF 0 RES-FALSE EXIT THEN
-   b t 1 1 0 DIAG-POS drop drop RES-TRUE ;
+   b t 1 1 0 REJECTION:POSITION drop drop RES-TRUE ;
 private
 \ The token the engine read last (TKA-CELL, TKL-CELL).
 TKA-CELL RESERVED-PTR-U8-CELL LAST-TOKEN

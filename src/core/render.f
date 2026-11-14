@@ -759,11 +759,11 @@ variable FACTS-REC   variable FACTS-MARK   variable FACTS-WAS   variable FACTS-N
 
 \ `JSON ON` emits one JSON object per reject or uncheckable verdict.
 variable DSUGE  variable DSUGA
-\ A tool's label (checker.f DIAG-FILE!) names a top step's file in place of its
+\ A tool's label (FILE!) names a top step's file in place of its
 \ path while the load reads that file or none.
 : TOP-FILE$ ( -- ptr u8 n )
-   CHECK:TOP-SITE-PATH$ {: pa:ptr pu:n :}
-   pa pu DIAG-LABELS? IF DIAGFB DIAGFU @ EXIT THEN
+   PATH$ {: pa:ptr pu:n :}
+   pa pu LABELS? IF FILE$ EXIT THEN
    pa pu ;
 \ A top step names its file, then the line checker.f CHECK:TOP-SITE
 \ gives, if any; a step with no file and no label names no place.
@@ -1516,20 +1516,21 @@ variable MDV-I   variable MDV-F
 \ A packet's position: the file line, column and byte of its token's first byte,
 \ and the byte after its last.
 variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
-\ False when the token's text has no map (src/core/checker.f DIAG-LOCATE). The
+\ False when the token's text has no map (LOCATE). The
 \ end is the source's first file byte plus the end's offset in the source.
 : JLOCATE ( ptr u8 ptr u8 -- bool )
    {: a:ptr e:ptr :}
-   e DIAG>SRC 0= IF drop 0 0= 0= EXIT THEN
-   DSRC-B @ + JLOC-E !
-   a DIAG-LOCATE 0= IF drop drop drop 0 0= 0= EXIT THEN
+   e >SOURCE 0= IF drop 0 0= 0= EXIT THEN
+   SOURCE-BYTE @ + JLOC-E !
+   a LOCATE 0= IF drop drop drop 0 0= 0= EXIT THEN
    JLOC-B !  JLOC-C !  JLOC-L !
    0 0= ;
 \ With no map: the definition's origin plus the token's offset in the checked text.
 : JLOC-ORIGIN ( -- )
-   TBASE@  TBASE@ FAILB @ +  DIAGL0 @ DIAGC0 @ DIAGB0 @  DIAG-POS
+   TBASE@  TBASE@ FAILB @ +
+   ORIGIN-LINE @ ORIGIN-COLUMN @ ORIGIN-BYTE @  POSITION
    JLOC-B !  JLOC-C !  JLOC-L !
-   DIAGB0 @ FAILE @ + JLOC-E ! ;
+   ORIGIN-BYTE @ FAILE @ + JLOC-E ! ;
 : JLOC-FIELDS ( -- )
    s" line" JSON-KEY  JLOC-L @ EMIT-U  44 EMIT1
    s" column" JSON-KEY  JLOC-C @ EMIT-U  44 EMIT1
@@ -1559,7 +1560,7 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    s" verdict" JSON-KEY va vu JSON-STRING 44 EMIT1 ;
 : JTAIL ( ptr u8 n ptr u8 n -- )
    {: aa:ptr au:n sa:ptr su:n :}
-   s" file" JSON-KEY DIAGFB DIAGFU @ JSON-STRING 44 EMIT1
+   s" file" JSON-KEY FILE$ JSON-STRING 44 EMIT1
    aa au JTOKEN-FIELDS
    s" suggestion" JSON-KEY sa su JSON-STRING
    125 EMIT1 ;                                            \ }
@@ -1726,9 +1727,9 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
 \ CHECK:TOP-SITE gives (DLOC-FIELDS); else the checked token in its
 \ mapped or origin source.
 : DFILE$ ( -- ptr u8 n )
-   TOP-STEP @ 0= IF DIAGFB DIAGFU @ EXIT THEN
+   TOP-STEP @ 0= IF FILE$ EXIT THEN
    TOP-FILE$ dup 0 > IF EXIT THEN drop drop
-   DIAG-NO-FILE$ ;
+   NO-FILE$ ;
 : DLOC-FIELDS ( -- )
    TOP-STEP @ IF
       CHECK:TOP-SITE IF s" line" JSON-KEY  EMIT-U  44 EMIT1 ELSE drop THEN
@@ -1917,7 +1918,7 @@ BADSIG-DIAG-INSTALL
    {: na:ptr nu:n :}
    s" W-EFFECT-NOT-RECORDED" JSTART
    s" word" JSON-KEY na nu JSON-STRING 44 EMIT1
-   s" file" JSON-KEY DIAGFB DIAGFU @ JSON-STRING 44 EMIT1
+   s" file" JSON-KEY FILE$ JSON-STRING 44 EMIT1
    NM-SPAN JTOKEN-FIELDS
    s" reason" JSON-KEY JSON-OPEN REC-REFUSE-WHY JSON-CLOSE
    125 EMIT1 ;
@@ -1995,7 +1996,7 @@ variable WARN-DIAGS   -1 WARN-DIAGS !
    {: code:ptr codeu:n class:ptr classu:n sug:ptr sugu:n :}
    code codeu class classu s" rejected" JHEAD
    s" token" JSON-KEY USH-TOK-A @ USH-TOK-U @ JSON-STRING 44 EMIT1
-   s" file" JSON-KEY DIAGFB DIAGFU @ JSON-STRING 44 EMIT1
+   s" file" JSON-KEY FILE$ JSON-STRING 44 EMIT1
    USH-TOK-A @ USH-TOK-U @ JTOKEN-FIELDS
    s" used_packages" JSON-KEY 91 EMIT1
    [: 0= IF 44 EMIT1 THEN  UPKG-NAME$ JSON-STRING ;] UPKG-EACH
@@ -2075,7 +2076,7 @@ variable WARN-DIAGS   -1 WARN-DIAGS !
    {: c:ptr cu:n t:ptr tu:n :}
    c cu EMIT-STR  s"  habu: " EMIT-STR
    USH-TOK-A @  USH-TOK-A @ USH-TOK-U @ +  JLOCATE IF
-      DIAGFB DIAGFU @ EMIT-STR  58 EMIT1  JLOC-L @ EMIT-U  58 EMIT1  JLOC-C @ EMIT-U  s" : " EMIT-STR
+      FILE$ EMIT-STR  58 EMIT1  JLOC-L @ EMIT-U  58 EMIT1  JLOC-C @ EMIT-U  s" : " EMIT-STR
    THEN
    t tu EMIT-STR  s"  '" EMIT-STR  USH-TOK-A @ USH-TOK-U @ EMIT-STR  39 EMIT1 ;
 : TOP-UNDEF-DIAG ( -- )
@@ -2250,17 +2251,17 @@ RECORD-DIAG-INSTALL
    s" Declare the type before the storage, or store a closed, copyable type this definer admits." ;
 : STGR-LOCATE ( ptr u8 -- )   \ the token's place, counted from the start of the verifier's buffer
    {: ta:ptr :}
-   STGR-SRC-A @ ta 1 1 0 DIAG-ORIGIN-SPAN! ;
+   STGR-SRC-A @ ta 1 1 0 ORIGIN-SPAN! ;
 : STGR-JSON ( ptr u8 n ptr u8 n n bool -- )
    {: na:ptr nu:n ta:ptr tu:n why:n at:bool :}
    s" E-BAD-STORAGE" why STGR-CLASS$ s" rejected" JHEAD
    s" word" JSON-KEY na nu JSON-STRING 44 EMIT1
    s" token" JSON-KEY ta tu JSON-STRING 44 EMIT1
    s" reason" JSON-KEY why STGR-REASON$ JSON-STRING 44 EMIT1
-   s" file" JSON-KEY DIAGFB DIAGFU @ JSON-STRING 44 EMIT1
+   s" file" JSON-KEY FILE$ JSON-STRING 44 EMIT1
    at IF
-      DIAGL0 @ JLOC-L !  DIAGC0 @ JLOC-C !  DIAGB0 @ JLOC-B !
-      DIAGB0 @ tu + JLOC-E !
+      ORIGIN-LINE @ JLOC-L !  ORIGIN-COLUMN @ JLOC-C !  ORIGIN-BYTE @ JLOC-B !
+      ORIGIN-BYTE @ tu + JLOC-E !
       JLOC-FIELDS
    THEN
    s" suggestion" JSON-KEY why STGR-SUGGEST$ JSON-STRING
@@ -2268,8 +2269,8 @@ RECORD-DIAG-INSTALL
 : STGR-PROSE ( ptr u8 n ptr u8 n n bool -- )
    {: na:ptr nu:n ta:ptr tu:n why:n at:bool :}
    at IF
-      DIAGFB DIAGFU @ EMIT-STR  58 EMIT1  DIAGL0 @ EMIT-U  58 EMIT1
-         DIAGC0 @ EMIT-U
+      FILE$ EMIT-STR  58 EMIT1  ORIGIN-LINE @ EMIT-U  58 EMIT1
+         ORIGIN-COLUMN @ EMIT-U
       s" : " EMIT-STR
    THEN
    s" habu: in " EMIT-STR  na nu EMIT-STR  s" : " EMIT-STR
@@ -2389,7 +2390,7 @@ package CAST-ERROR
 \ else the place is the signature's line in the file the load reads, as DSITE's.
 : SITE ( -- ptr u8 n n bool bool )
    WORD-A @  WORD-A @ WORD-U @ +  JLOCATE IF
-      DIAGFB DIAGFU @ JLOC-L @ RES-TRUE RES-TRUE EXIT
+      FILE$ JLOC-L @ RES-TRUE RES-TRUE EXIT
    THEN
    TOP-FILE$  SIG-A @ CHECK:LINE-AT  RES-FALSE ;
 : PLACE ( -- )
@@ -2408,7 +2409,7 @@ package CAST-ERROR
    s" token" JSON-KEY WORD$ JSON-STRING 44 EMIT1
    s" reason" JSON-KEY JSON-OPEN REASON JSON-CLOSE 44 EMIT1
    SITE {: fa:ptr fu:n line:n known:bool mapped:bool :}
-   s" file" JSON-KEY  fu 0= IF DIAG-NO-FILE$ ELSE fa fu THEN JSON-STRING
+   s" file" JSON-KEY  fu 0= IF NO-FILE$ ELSE fa fu THEN JSON-STRING
       44 EMIT1
    mapped IF JLOC-FIELDS ELSE
       known IF s" line" JSON-KEY line EMIT-U 44 EMIT1 THEN

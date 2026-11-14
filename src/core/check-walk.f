@@ -2500,8 +2500,8 @@ public
 FILE-POS-CLEAR
 
 \ The file line, column and byte of t, which lies in the bytes the loader owns,
-\ counted as DIAG-POS counts from their first byte. It counts on from its last
-\ answer when t is at or past it, so a file costs one pass.
+\ counted as REJECTION:POSITION counts from their first byte. It counts on from
+\ its last answer when t is at or past it, so a file costs one pass.
 : FILE-POS ( ptr u8 -- n n n )
    {: t:ptr :}
    SRC-OWNED @ {: b:ptr :}
@@ -2541,7 +2541,7 @@ PENDTKA-CELL RESERVED-PTR-U8-CELL SRC-NAME
 public
 : REFUSE-DUPLICATE ( ptr u8 n -- )
    {: a:ptr u:n :}
-   s" E-DUPLICATE-DEFINITION" TOP-SITE-PATH$
+   s" E-DUPLICATE-DEFINITION" REJECTION:PATH$
    SRCLOC:FILE-BUFFER? if NAME-LINE else 0 then
    ERROR-TEXT:PREFIX
    s" duplicate definition: " ERROR-TEXT:TYPE

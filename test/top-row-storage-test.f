@@ -344,11 +344,11 @@ variable ERR-U
    S\" \"code\":\"E-REJECTED\"" HAS?  S\" \"token\":\";]\"" HAS?
    DISARM ;
 
-\ A child: DIAG-FILE! has no inverse; the label stays on this test file for
+\ A child: REJECTION:FILE! has no inverse; the label stays on this test file for
 \ every later case.
 : CASE-LABEL ( -- )
    s" a tool's file label names a top-level refusal's file" T-LABEL
-   S\" s\" /subject/label.f\" DIAG-FILE! true REJECTION:JSON ! here TS-V !"
+   S\" s\" /subject/label.f\" REJECTION:FILE! true REJECTION:JSON ! here TS-V !"
    CHECK-RC EXITS
    S\" \"file\":\"/subject/label.f\"" ERR-HAS?
    S\" \"code\":\"E-RAW-CELL-PTR\"" ERR-HAS? ;
