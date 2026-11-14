@@ -16,6 +16,6 @@ Files: .dots/habu-optimization-73d71564/habu-optimization-73d71564.md.
 
 Verify: `bin/hb --load tools/hb-build.f -- --engine -o $OUT/hb` on master, then `bin/hb --load tools/engine-size.f -- $OUT/hb`; the dot states the size and the user's goal.
 
-Depends: open children habu-declare-the-surface-89e9aed0, habu-delete-the-dead-11e9a4f3, habu-dispatch-do-tok1-e63cab6f, habu-ship-only-the-d7d38629, habu-a-store-s-d7f6c4cb.
+Depends: open children habu-declare-the-surface-89e9aed0, habu-delete-the-dead-11e9a4f3, habu-dispatch-do-tok1-e63cab6f, habu-ship-only-the-d7d38629.
 
 Ownership: unassigned. Claim: unassigned.

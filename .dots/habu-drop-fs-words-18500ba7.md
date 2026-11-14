@@ -6,4 +6,4 @@ issue-type: task
 created-at: "2026-10-29T20:53:13.964701+02:00"
 ---
 
-FS packaging review (rxrusvvk): private ENOTDIR, ELOOP, ENAMETOOLONG (fs.f:71-75), READ-LINK (src/core/checker.f:24991), RENAME-NOREPLACE with LINK-NEW? (fs-mutate.f:246) and COPY-FILE (fs-mutate.f:412) have no production caller and are reached only by test forwarders; fs-anchored.f's public OPEN-DIR, OPEN-DIR-AT, READ-FILE-AT and CLOSE(-DIR) have only test callers in habu and the clients. Decide per word: production need, else delete with its tests. After the FS lane lands.
+FS packaging review (rxrusvvk): private ENOTDIR and ELOOP (fs.f:75-77) have no caller, and the public ENAMETOOLONG (fs.f:71-72) has only test callers; fs-anchored.f's public OPEN-DIR, OPEN-DIR-AT, READ-FILE-AT and CLOSE(-DIR) have only test callers in habu and the clients. Decide per word: production need, else delete with its tests. After the FS lane lands.

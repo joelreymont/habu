@@ -17,7 +17,7 @@ macOS evidence (kevin's SECRET lane, 2026-10-31): after the parent used Security
 Acceptance cases folded in by the 2026-11-04 census (the closed dots' full text is in the history before the census commit):
 - habu-show-a-refused-f0b3b80b (closed): a failed REFUSED? showing the child's output must hold in SNIPPET after the subject library's spawn conversion
 - habu-give-gate-pool-c515de30 (closed): gate pool's orphan reaping must hold once it forks only to exec; readiness via process-fork.f (dot text)
-Waiting case (from the test prune, 'Drop tests the suite no longer keeps', 2026-11-06): src/lib/process-fork.f FORK-CALL (:45-49), a defer only a dropped test refilled, has no other setter; it goes with fork without exec.
+
 Done in part (2026-11-09, "Drop the test framework's waiting tests"): test/gate-pool.f's forked slots had no caller and went, GT-POOL-START-FORK, GT-POOL-FORK, its worker-side GT-POOL-ARM-REAPER and tools/why-threw.f with them. The pool's one remaining fork-and-continue is the spawned slots' PROC-FORK:SPAWN-REAPER.
 
 Consumers: Zen loads neither src/lib/process-fork.f nor process-pty-io.f, and its two dots that named this one are closed.
