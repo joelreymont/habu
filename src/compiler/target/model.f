@@ -84,10 +84,7 @@ ENUM core-result
 \ RTARGET owns recoverable selection/action errors in an unallocated block.
 -9420 constant E-FIRST
 -9429 constant E-LAST
--9420 constant E-UNKNOWN
 -9421 constant E-ACTIVE
--9422 constant E-UNSET
--9423 constant E-UNSUPPORTED
 
 private
 
@@ -184,35 +181,84 @@ private
 
 : NAME? ( ptr u8 n ptr u8 n -- bool ) STR= ;
 
+\ Q runs on each profile, in declaration order.
+: EACH-PROFILE ( R [ R profile-id -- R ] -- R )
+   {: q :}
+   RTARGET-PROFILE--ID:AARCH64-APPLE-DARWIN q execute
+   RTARGET-PROFILE--ID:AARCH64-UNKNOWN-LINUX-GNU q execute
+   RTARGET-PROFILE--ID:X86-64-UNKNOWN-LINUX-GNU q execute
+   RTARGET-PROFILE--ID:AARCH64-PC-WINDOWS-MSVC q execute
+   RTARGET-PROFILE--ID:X86-64-PC-WINDOWS-MSVC q execute
+   RTARGET-PROFILE--ID:WASM32-UNKNOWN-UNKNOWN q execute
+   RTARGET-PROFILE--ID:WASM64-UNKNOWN-UNKNOWN q execute ;
+
+\ A target's platform name, one per target; empty for a profile with none.
+: PLATFORM-NAME ( profile-id -- ptr u8 n )
+   MATCH profile-id
+      aarch64-apple-darwin OF s" macos-aarch64" ENDOF
+      aarch64-unknown-linux-gnu OF s" linux-aarch64" ENDOF
+      x86-64-unknown-linux-gnu OF s" linux-x86-64" ENDOF
+      wasm32-unknown-unknown OF s" wasm" ENDOF
+      aarch64-pc-windows-msvc OF s" " ENDOF
+      x86-64-pc-windows-msvc OF s" " ENDOF
+      wasm64-unknown-unknown OF s" " ENDOF
+   ;MATCH ;
+
+\ The profile found and true; else p and true when NAMES spells p as the name.
+: FIND-STEP ( profile-id bool profile-id ptr u8 n [ profile-id -- ptr u8 n ] -- profile-id bool )
+   {: found:profile-id hit:bool p:profile-id name:ptr size:n names :}
+   hit if found true exit then
+   p names execute {: a:ptr u:n :}
+   u 0<> a u name size NAME? and if p true exit then
+   found false ;
+
+\ The profile NAMES spells as the name and true; else false over a filler.
+: FIND ( ptr u8 n [ profile-id -- ptr u8 n ] -- profile-id bool )
+   {: name:ptr size:n names :}
+   RTARGET-PROFILE--ID:AARCH64-APPLE-DARWIN false
+   [: name size names FIND-STEP ;] EACH-PROFILE ;
+
 \ A platform name's profile and true; else false over a filler profile the caller drops.
 : PLATFORM ( ptr u8 n -- profile-id bool )
-   {: name:ptr size:n :}
-   name size s" macos-aarch64" NAME? if RTARGET-PROFILE--ID:AARCH64-APPLE-DARWIN true exit then
-   name size s" linux-aarch64" NAME? if RTARGET-PROFILE--ID:AARCH64-UNKNOWN-LINUX-GNU true exit then
-   name size s" linux-x86-64" NAME? if RTARGET-PROFILE--ID:X86-64-UNKNOWN-LINUX-GNU true exit then
-   name size s" wasm" NAME? if RTARGET-PROFILE--ID:WASM32-UNKNOWN-UNKNOWN true exit then
-   RTARGET-PROFILE--ID:AARCH64-APPLE-DARWIN false ;
+   ['] PLATFORM-NAME FIND ;
 
-: PROFILE ( ptr u8 n -- profile-id )
+\ A platform name's or a triple's profile and true; else false over a filler.
+: PROFILE ( ptr u8 n -- profile-id bool )
    {: name:ptr size:n :}
-   name size PLATFORM if exit then drop
-   name size s" aarch64-apple-darwin" NAME? if RTARGET-PROFILE--ID:AARCH64-APPLE-DARWIN exit then
-   name size s" aarch64-unknown-linux-gnu" NAME? if RTARGET-PROFILE--ID:AARCH64-UNKNOWN-LINUX-GNU exit then
-   name size s" x86_64-unknown-linux-gnu" NAME? if RTARGET-PROFILE--ID:X86-64-UNKNOWN-LINUX-GNU exit then
-   name size s" aarch64-pc-windows-msvc" NAME? if RTARGET-PROFILE--ID:AARCH64-PC-WINDOWS-MSVC exit then
-   name size s" x86_64-pc-windows-msvc" NAME? if RTARGET-PROFILE--ID:X86-64-PC-WINDOWS-MSVC exit then
-   name size s" wasm32-unknown-unknown" NAME? if RTARGET-PROFILE--ID:WASM32-UNKNOWN-UNKNOWN exit then
-   name size s" wasm64-unknown-unknown" NAME? if RTARGET-PROFILE--ID:WASM64-UNKNOWN-UNKNOWN exit then
-   E-UNKNOWN throw ;
+   name size PLATFORM if true exit then drop
+   name size ['] LABEL FIND ;
 
-: LOOKUP-KEEP ( ptr u8 n -- ptr u8 n )
-   2dup PROFILE drop ;
+\ Writes a comma before the name unless it is the first; an empty name is skipped.
+: SAY-ITEM ( bool ptr u8 n -- bool )
+   {: more:bool a:ptr u:n :}
+   u 0= if more exit then
+   more if s" , " REJECTION:EMIT-STR then
+   a u REJECTION:EMIT-STR true ;
+
+: SAY-NAMES ( -- )
+   false [: PLATFORM-NAME SAY-ITEM ;] EACH-PROFILE
+   [: LABEL SAY-ITEM ;] EACH-PROFILE drop ;
+
+\ The name came from a caller at run time, so the rejection has no source token.
+: UNKNOWN ( ptr u8 n -- )
+   {: name:ptr size:n :}
+   s" E-UNKNOWN-TARGET" REJECTION:OPEN
+   96 REJECTION:EMIT1  name size REJECTION:EMIT-STR  96 REJECTION:EMIT1
+   s"  is not a target Habu knows" REJECTION:EMIT-STR
+   s" targets" REJECTION:NOTE  SAY-NAMES
+   REJECTION:HELP
+   s" name one of the targets listed, as `aarch64-unknown-linux-gnu`"
+   REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 : DETECT-NATIVE-PROFILE ( -- native-profile-id )
    HB-TARGET-LINUX? if RTARGET-NATIVE--PROFILE--ID:LINUX-ARM64 exit then
    HB-TARGET-MACOS? if RTARGET-NATIVE--PROFILE--ID:DARWIN-ARM64 exit then
    HB-TARGET-LINUX-X86-64? if RTARGET-NATIVE--PROFILE--ID:LINUX-X64 exit then
-   E-UNSET throw ;
+   s" rtarget: the engine was built for no host it knows" 76 die ;
+
+: WINDOWS-CORE ( -- )
+   s" rtarget: CORE reached the ABI of a Windows profile it answers unsupported" 76 die ;
 
 \ The action owner calls HOST before opening the target source window. A
 \ product engine later calls this same mapping against its own baked flags.
@@ -239,17 +285,15 @@ private
 
 public
 
-: KNOWN? ( ptr u8 n -- bool )
-   [: LOOKUP-KEEP ;] catch >r 2drop r>
-   dup 0= if drop true exit then
-   dup E-UNKNOWN = if drop false exit then
-   throw ;
+: KNOWN? ( ptr u8 n -- bool ) PROFILE nip ;
 
 \ True for a platform name, one per target; false for a triple.
 : PLATFORM? ( ptr u8 n -- bool ) PLATFORM nip ;
 
 : RESOLVE ( ptr u8 n -- resolved-target )
-   PROFILE dup DEFAULT-FEATURES RTARGET-RESOLVED--TARGET:MAKE ;
+   {: name:ptr size:n :}
+   name size PROFILE 0= if drop name size UNKNOWN then
+   dup DEFAULT-FEATURES RTARGET-RESOLVED--TARGET:MAKE ;
 
 : PROFILE@ ( resolved-target -- profile-id )
    RTARGET-RESOLVED--TARGET:UNMAKE drop ;
@@ -300,8 +344,8 @@ public
       x86-64-unknown-linux-gnu OF CTARGET-ABI:SYSV-AMD64 ENDOF
       wasm32-unknown-unknown OF CTARGET-ABI:HABU-WASM-CELL64-V1 ENDOF
       wasm64-unknown-unknown OF CTARGET-ABI:HABU-WASM-CELL64-V1 ENDOF
-      aarch64-pc-windows-msvc OF E-UNSUPPORTED throw ENDOF
-      x86-64-pc-windows-msvc OF E-UNSUPPORTED throw ENDOF
+      aarch64-pc-windows-msvc OF WINDOWS-CORE ENDOF
+      x86-64-pc-windows-msvc OF WINDOWS-CORE ENDOF
    ;MATCH
    p PROFILE-ENDIAN p PROFILE-PTR target FEATURES@ CTARGET:CONTRACT
    RTARGET-CORE--RESULT:SUPPORTED ;
