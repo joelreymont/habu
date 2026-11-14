@@ -2078,8 +2078,9 @@ cannot grow definition body text to <n> bytes`.
 - **A family, variant, field or package name**: `SUMTYPE`, `PRODUCT`,
   `NEWTYPE`, `STRUCTURE` and `ENUM` refuse a longer one, `tools/check.f`
   reporting `E-BAD-DECLARATION` with the name as its token and the reason
-  `name longer than <cap> bytes`; `package` and `using` throw
-  `E-PACKAGE-NAME-CAP` out of the statement, reported as `E-STATEMENT-THROW`.
+  `name longer than <cap> bytes`. `package` rejects a name over 255 bytes,
+  `E-PACKAGE-NAME-CAP` at the name, rc 70, and so does a public type whose
+  constructor package name, `<PKG>-<TYPE>`, would be longer.
   A type qualified by a longer name names no package,
   `E-UNKNOWN-SIGNATURE-TYPE`. Shorten the name.
 - **A definition's effect depth**: a row of cells, where a cell's type adds the

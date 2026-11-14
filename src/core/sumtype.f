@@ -789,19 +789,14 @@ create TDV-BADLETTER 1 allot
 \ declaring package's private wordlist; a private SUM or ENUM publishes no word
 \ and constructs through `construct`. The name is interned after the escaped
 \ spelling is built, so the transient package/tail pointers are consumed before
-\ any pool grow. The reason is armed only while TF-CTOR-PKG$ builds the name: a
-\ code the intern throws is no declaration's.
+\ any pool grow.
 
 public
 
 : TDECL-CTOR-PUBLISH ( n n n -- ) {: fam:n vstart:n count:n :}
    fam TFAM-GEN-PUBLIC? 0= IF EXIT THEN
    TDN-A @ TDN-U @ TDECL-TOK!
-   s" constructor package name exceeds 255 bytes"
-      s" shorten the package or family name so the constructor package name fits in 255 bytes"
-      TDECL-WHY!
    fam TFAM-PKG$ fam TFAM-NAME$ TF-CTOR-PKG$ {: ca:ptr cu:n :}
-   s" " s" " TDECL-WHY!
    ca cu TF-INTERN {: coff:n :}
    count 0 DO  vstart i +  coff cu SUMV-CTOR-PKG!  LOOP ;
 

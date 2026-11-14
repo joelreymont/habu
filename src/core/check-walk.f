@@ -1105,10 +1105,11 @@ public
    FRESH-CLAIM ;
 
 \ A recorded name's refusals (closed constructor package, duplicate tail) come
-\ before the record step's later-wins first write.
+\ before the record step's later-wins first write. a u is the copy NMA NMU of
+\ the name at NMOFF, where a rejection is placed.
 : CHECK-REC-ADMIT ( ptr u8 n -- )
    {: a:ptr u:n :}
-   a u CTOR-EXTEND?-XT IF E-CTOR-PROTECTED throw THEN
+   a u CTOR-EXTEND?-XT IF NMOFF @ TADDR NMU @ CTOR-EXTEND-REJECT THEN
    a u CHECKER-CERT-DUP? IF CHECKER-DUP-DEFINITION THEN ;
 
 \ Every refusal a certified definition can meet at publication, asked before its

@@ -266,9 +266,6 @@ E-TFAM-CASE EXPLAIN
 s" duplicate name in this package"
 s" give each family, variant and field a name no other declaration in this package uses"
 E-TFAM-DUP EXPLAIN
-s" constructor package name exceeds 255 bytes"
-s" shorten the package or family name so the constructor package name fits in 255 bytes"
-E-PACKAGE-NAME-CAP EXPLAIN
 s" invalid or uncommitted field id"
 s" report this declaration as a Habu defect: no declaration text should reach this state"
 E-PF-ID EXPLAIN
