@@ -79,16 +79,14 @@ CAST: AS-WORKS-ENTRY ( [ n ptr n -- ptr u8 ] -- n )
    then
    na nu CHILD-ABI:WORK ['] WORK AS-WORK-ENTRY ta tu CHILD drop ;
 
-\ Every element is one CHECK:STORAGE-LINE admits: the mapping moves, so an
-\ element that lives in place is refused for a variable too. A variable's
-\ element is a whole cell.
+\ A variable's element is whole cells, a buffer's or span's may be a byte.
+\ The line reader reports a refused type and answers 0 bytes.
 : DECLARE ( n n -- ) {: operand:n kind:n :}
-   kind DEFINER$ data-base PROVIDED-XT:STORAGE-LINE-CELL + @
+   kind VARIABLE-KIND = if PROVIDED-XT:CELL-LINE-CELL
+   else PROVIDED-XT:STORAGE-LINE-CELL then {: reader:n :}
+   kind DEFINER$ data-base reader + @
    AS-STORAGE-LINE execute {: na:ptr nu:n ta:ptr tu:n w:n :}
    w 0= if exit then
-   kind VARIABLE-KIND = w CELL mod 0<> and if
-      na nu ta tu CHECKER-STORAGE-TYPE-REFUSE exit
-   then
    operand kind w EXTENT {: bytes:n :}
    \ A full default table refuses before FIT, so USED keeps no refused bytes.
    kind VARIABLE-KIND = operand 0<> and

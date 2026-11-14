@@ -79,6 +79,7 @@ CWKW:HITS @ 0 T=
 s" : CWK-MEM ( -- ) CWKT:CWK-FOOB CWORK:MEM#base ! ;" TEST-EVAL:RC CHECKER-REJECT-RC T=
 s" : CWK-CTL ( -- ) 0 CWORK:MEM#ctl ! ;" TEST-EVAL:RC CHECKER-REJECT-RC T=
 s" : CWK-OFF ( -- ) 0 CWKC:V#base ! ;" TEST-EVAL:RC CHECKER-REJECT-RC T=
+s" 0 CWORK-VARIABLE CWK-U8 u8" TEST-EVAL:RC CHECKER-REJECT-RC T=
 
 \ Defaults fill the table; the refused declaration lays nothing, so the
 \ variables declared around it are one cell apart.
