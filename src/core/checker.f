@@ -2470,12 +2470,18 @@ variable CT-STR-CAP-V   CT-STR-INIT CT-STR-CAP-V !
 package CHECK
 private
 64 constant ROW-CAP
-7 constant ROW-WIDTH
+4 constant ROW-WIDTH
 create ROWS ROW-CAP ROW-WIDTH * cells allot
 variable ROW-N   0 ROW-N !
 \ Each row's saved pointer, null outside a build:
 \ a `create` cell holds no address.
 ROW-CAP PTR-U8-TABLE SAVED-PTRS
+\ The link columns hold addresses, not DATA offsets: a warm build replays a
+\ later file's store here, relocating a pointer cell and copying an integer as
+\ is.
+ROW-CAP PERSISTED-PTR-U8-TABLE PTR-LINKS
+ROW-CAP PERSISTED-PTR-U8-TABLE CAP-LINKS
+ROW-CAP PERSISTED-PTR-U8-TABLE COUNT-LINKS
 
 
 : ROW-CELL ( n n -- ptr n )
@@ -2483,26 +2489,14 @@ ROW-CAP PTR-U8-TABLE SAVED-PTRS
    ROWS row ROW-WIDTH * at + cells + ;
 
 
-: ROW.PTR ( n -- ptr n ) 0 ROW-CELL ;
-: ROW.CAP ( n -- ptr n ) 1 ROW-CELL ;
-: ROW.BYTES ( n -- ptr n ) 2 ROW-CELL ;
-: ROW.COUNT ( n -- ptr n ) 3 ROW-CELL ;
-: ROW.PREFIX ( n -- ptr n ) 4 ROW-CELL ;
-: ROW.SAVED-CAP ( n -- ptr n ) 5 ROW-CELL ;
-: ROW.SAVED-COUNT ( n -- ptr n ) 6 ROW-CELL ;
+: ROW.PTR ( n -- ptr ptr u8 ) cells PTR-LINKS + 0 ptr-field ;
+: ROW.CAP ( n -- ptr ptr u8 ) cells CAP-LINKS + 0 ptr-field ;
+: ROW.BYTES ( n -- ptr n ) 0 ROW-CELL ;
+: ROW.COUNT ( n -- ptr ptr u8 ) cells COUNT-LINKS + 0 ptr-field ;
+: ROW.PREFIX ( n -- ptr n ) 1 ROW-CELL ;
+: ROW.SAVED-CAP ( n -- ptr n ) 2 ROW-CELL ;
+: ROW.SAVED-COUNT ( n -- ptr n ) 3 ROW-CELL ;
 : ROW.SAVED-PTR ( n -- ptr ptr u8 ) cells SAVED-PTRS + 0 ptr-field ;
-
-
-\ A field naming a cell holds the cell's distance from the field; LINK@ answers
-\ the cell's DATA offset now.
-: LINK! ( ptr a ptr n -- )
-   {: cell:ptr field:ptr :}
-   cell DATA-OFF field DATA-OFF - field ! ;
-
-
-: LINK@ ( ptr n -- n )
-   {: field:ptr :}
-   field DATA-OFF field @ + ;
 
 
 \ Records a store's pointer and capacity cells, with its bytes per unit of
@@ -2511,10 +2505,10 @@ ROW-CAP PTR-U8-TABLE SAVED-PTRS
    {: pv:ptr capv:ptr bytes:n :}
    ROW-N @ ROW-CAP >= IF s" checker: store rows full" 76 die THEN
    ROW-N @ {: row:n :}
-   pv row ROW.PTR LINK!
-   capv row ROW.CAP LINK!
+   pv BYTE-VIEW row ROW.PTR !
+   capv BYTE-VIEW row ROW.CAP !
    bytes row ROW.BYTES !
-   0 row ROW.COUNT !
+   NULL-PTR row ROW.COUNT !
    0 row ROW.PREFIX !
    0 row ROW.SAVED-CAP !
    0 row ROW.SAVED-COUNT !
@@ -2528,20 +2522,20 @@ public
 : STORE+ ( ptr ptr a ptr n n ptr n -- )
    {: countv:ptr :}
    ROW+ {: row:n :}
-   countv row ROW.COUNT LINK!
+   countv BYTE-VIEW row ROW.COUNT !
    countv @ row ROW.PREFIX ! ;
 
 
-\ A table has no count and no prefix: its count field holds 0, the null link,
-\ since a field's distance to another cell is never 0.
+\ A table has no count and no prefix: its count field holds the null link.
 : TABLE+ ( ptr ptr a ptr n n -- ) ROW+ drop ;
 private
-: COUNTED? ( n -- bool ) ROW.COUNT @ 0 <> ;
+: COUNTED? ( n -- bool ) ROW.COUNT @ NULL-PTR <> ;
 
 64 constant CELL-ROW-CAP
-3 constant CELL-ROW-WIDTH
+2 constant CELL-ROW-WIDTH
 create CELL-ROWS CELL-ROW-CAP CELL-ROW-WIDTH * cells allot
 variable CELL-ROW-N   0 CELL-ROW-N !
+CELL-ROW-CAP PERSISTED-PTR-U8-TABLE CELL-LINKS
 
 
 : CELL-ROW ( n n -- ptr n )
@@ -2549,9 +2543,9 @@ variable CELL-ROW-N   0 CELL-ROW-N !
    CELL-ROWS row CELL-ROW-WIDTH * at + cells + ;
 
 
-: CELL-ROW.CELL ( n -- ptr n ) 0 CELL-ROW ;
-: CELL-ROW.VALUE ( n -- ptr n ) 1 CELL-ROW ;
-: CELL-ROW.SAVED ( n -- ptr n ) 2 CELL-ROW ;
+: CELL-ROW.CELL ( n -- ptr ptr u8 ) cells CELL-LINKS + 0 ptr-field ;
+: CELL-ROW.VALUE ( n -- ptr n ) 0 CELL-ROW ;
+: CELL-ROW.SAVED ( n -- ptr n ) 1 CELL-ROW ;
 
 
 public
@@ -2560,7 +2554,7 @@ public
    {: cv:ptr v:n :}
    CELL-ROW-N @ CELL-ROW-CAP >= IF s" checker: cell rows full" 76 die THEN
    CELL-ROW-N @ {: row:n :}
-   cv row CELL-ROW.CELL LINK!
+   cv BYTE-VIEW row CELL-ROW.CELL !
    v row CELL-ROW.VALUE !
    0 row CELL-ROW.SAVED !
    row 1 + CELL-ROW-N ! ;
@@ -9188,8 +9182,7 @@ HIDX-MEM-CLEAR
    HIDX-EPOCH+ ;
 
 package CHECK
-: PTR-CELL ( n -- ptr ptr u8 ) ROW.PTR LINK@ POINTER-STORAGE:DATA-CELL ;
-: NUM-CELL ( n -- ptr n ) data-base BYTE-VIEW swap + CELL-VIEW ;
+: PTR-CELL ( n -- ptr ptr u8 ) ROW.PTR @ DATA-OFF POINTER-STORAGE:DATA-CELL ;
 
 
 : ROW-BYTES ( n n -- n )
@@ -9206,8 +9199,8 @@ package CHECK
 : SAVE-ROW ( n -- )
    {: row:n :}
    row PTR-CELL @ row ROW.SAVED-PTR !
-   row ROW.CAP LINK@ NUM-CELL @ row ROW.SAVED-CAP !
-   row COUNTED? IF row ROW.COUNT LINK@ NUM-CELL @ row ROW.SAVED-COUNT ! THEN ;
+   row ROW.CAP @ CELL-VIEW @ row ROW.SAVED-CAP !
+   row COUNTED? IF row ROW.COUNT @ CELL-VIEW @ row ROW.SAVED-COUNT ! THEN ;
 
 
 : FRESH-ROW ( n -- )
@@ -9216,20 +9209,20 @@ package CHECK
    row row ROW.PREFIX @ ROW-BYTES CELL + 1- CELL / {: n:n :}
    row ROW.SAVED-PTR @ dst n ARENA-CELLS-COPY
    dst row PTR-CELL !
-   row COUNTED? IF row ROW.PREFIX @ row ROW.COUNT LINK@ NUM-CELL ! THEN ;
+   row COUNTED? IF row ROW.PREFIX @ row ROW.COUNT @ CELL-VIEW ! THEN ;
 
 
 \ A store that grew in the build has its own pointer and capacity by now.
 : DROP-ROW ( n -- )
    {: row:n :}
-   row PTR-CELL @  row row ROW.CAP LINK@ NUM-CELL @ ROW-BYTES  ARENA-UNMAP ;
+   row PTR-CELL @  row row ROW.CAP @ CELL-VIEW @ ROW-BYTES  ARENA-UNMAP ;
 
 
 : RESTORE-ROW ( n -- )
    {: row:n :}
    row ROW.SAVED-PTR @ row PTR-CELL !
-   row ROW.SAVED-CAP @ row ROW.CAP LINK@ NUM-CELL !
-   row COUNTED? IF row ROW.SAVED-COUNT @ row ROW.COUNT LINK@ NUM-CELL ! THEN
+   row ROW.SAVED-CAP @ row ROW.CAP @ CELL-VIEW !
+   row COUNTED? IF row ROW.SAVED-COUNT @ row ROW.COUNT @ CELL-VIEW ! THEN
    NULL-PTR row ROW.SAVED-PTR !
    0 row ROW.SAVED-CAP !
    0 row ROW.SAVED-COUNT ! ;
@@ -9237,17 +9230,17 @@ package CHECK
 
 : SAVE-CELL ( n -- )
    {: row:n :}
-   row CELL-ROW.CELL LINK@ NUM-CELL @ row CELL-ROW.SAVED ! ;
+   row CELL-ROW.CELL @ CELL-VIEW @ row CELL-ROW.SAVED ! ;
 
 
 : FRESH-CELL ( n -- )
    {: row:n :}
-   row CELL-ROW.VALUE @ row CELL-ROW.CELL LINK@ NUM-CELL ! ;
+   row CELL-ROW.VALUE @ row CELL-ROW.CELL @ CELL-VIEW ! ;
 
 
 : RESTORE-CELL ( n -- )
    {: row:n :}
-   row CELL-ROW.SAVED @ row CELL-ROW.CELL LINK@ NUM-CELL !
+   row CELL-ROW.SAVED @ row CELL-ROW.CELL @ CELL-VIEW !
    0 row CELL-ROW.SAVED ! ;
 
 
