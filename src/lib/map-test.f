@@ -5,6 +5,7 @@ require src/lib/error.f
 require src/lib/string.f
 require src/lib/map.f
 require src/lib/fmt.f                   \ FMT:.INT - report numbers inline
+require src/lib/siphash.f
 
 \ White-box test: reopen the module's package so the fixtures reach its private
 \ layout, probe and locate words by their bare package-local names.
@@ -395,6 +396,27 @@ create MT-KEY-Z 122 c,
    26 0 ?do MT-ORDER i + c@ MT-ORDER 26 + i + c@ <> or loop
    MT-ASSERT ;
 
+: MT-KEYED-FILL ( ptr n -- ) {: m:ptr :}
+   m MT-SPREAD-CAP >COUNT $5EED $C0DE INIT-KEYED
+   26 0 ?do i m MT-SPREAD-CAP i MT-LETTER 1 MT-MAP-SET loop ;
+
+\ A map keyed by INIT-KEYED hashes under the caller's k0 and k1, and two maps
+\ keyed alike given the same SETs in the same order visit alike.
+: MT-TEST-INIT-KEYED ( -- )
+   MT-FILL-LETTERS
+   MT-SPREAD-A MT-KEYED-FILL
+   MT-SPREAD-B MT-KEYED-FILL
+   MT-SPREAD-A MT-SPREAD-CAP 2 MT-LETTER 1 2 MT-ASSERT-HIT
+   MT-SPREAD-A 0 MT-LETTER 1 MT-MAP-HASH
+   $5EED $C0DE 0 MT-LETTER 1 SIPHASH:BYTES HASH-MASK and MT=
+   0 MT-EACH-COUNT !
+   MT-SPREAD-A MT-SPREAD-CAP [: MT-ORDER-RECORD ;] MT-MAP-EACH
+   MT-SPREAD-B MT-SPREAD-CAP [: MT-ORDER-RECORD ;] MT-MAP-EACH
+   MT-EACH-COUNT @ 52 MT=
+   0 0=
+   26 0 ?do MT-ORDER i + c@ MT-ORDER 26 + i + c@ = and loop
+   MT-ASSERT ;
+
 : MT-REPORT ( -- )
    MT-FAIL @ 0= if s" map-test: ok" type cr exit then
    s" map-test: " type MT-FAIL @ FMT:.INT s"  failure(s)" type cr
@@ -411,6 +433,7 @@ create MT-KEY-Z 122 c,
    MT-TEST-MAP-EACH-UPDATES
    MT-TEST-MAP-EACH-COLLISIONS
    MT-TEST-MAP-KEYED
+   MT-TEST-INIT-KEYED
    MT-REPORT ;
 
 MT-MAIN

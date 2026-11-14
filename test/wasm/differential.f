@@ -319,6 +319,12 @@ s" WJSON:STEP"
 S\" require src/lib/json.f\npackage WJSON\nprivate\nTYPED-VARIABLE W JSON:writer\n128 BUFFER: B\npublic\n: STEP ( -- )\n   W B 128 JSON:WRITE-OPEN JSON:WRITE-OBJECT-START\n   s\" name\" s\" é\" JSON:WRITE-FIELD-S\n   JSON:WRITE-COMMA\n   s\" min\" STR-MIN-I64 JSON:WRITE-FIELD-INT\n   JSON:WRITE-OBJECT-END JSON:WRITTEN$ type cr ;\n;package\n"
 S\" {\"name\":\"é\",\"min\":-9223372036854775808}\n" ROW
 
+\ MAP's keyed words, held to one order on native and wasm: INIT-KEYED under a
+\ fixed key, SET, GET and EACH's visit order.
+s" WMAP:STEP"
+S\" require src/lib/map-core.f\npackage WMAP\nprivate\n8 constant ROOM\ncreate M ROOM >COUNT MAP:CELL-COUNT COUNT>N cells allot\n: SHOW ( ptr u8 len n -- ) {: a:ptr u:len v:n :}\n   a u LEN>N type space v . ;\npublic\n: STEP ( -- )\n   M ROOM >COUNT $5EED $C0DE MAP:INIT-KEYED\n   1 M ROOM >COUNT s\" one\" >LEN MAP:SET\n   2 M ROOM >COUNT s\" two\" >LEN MAP:SET\n   3 M ROOM >COUNT s\" three\" >LEN MAP:SET\n   M ROOM >COUNT s\" two\" >LEN MAP:GET MATCH option\n     none OF -1 . ENDOF\n     some OF . ENDOF\n   ;MATCH\n   M ROOM >COUNT ['] SHOW MAP:EACH ;\n;package\n"
+S\" 2\ntwo 2\nthree 3\none 1\n" ROW
+
 \ Core byte copying is forward, including when the destination overlaps the
 \ source by less than a cell. A memmove-style provider prints different bytes.
 s" WBYTES:STEP"
