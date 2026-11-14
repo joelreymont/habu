@@ -6,6 +6,7 @@
 require src/lib/le.f
 require src/lib/string.f
 require src/lib/fs.f
+require src/lib/sort.f
 require src/core/bytes.f
 require src/core/sha256.f
 require src/arch/arm64/asm.f
@@ -402,12 +403,9 @@ private
 : FIND ( n -- n )
    {: a:n :}
    0 N-HOSTS @
-   begin 2dup < while
-      2dup + 2 /
-      dup HOSTS @ a = if nip nip exit then
-      dup HOSTS @ a < if rot drop 1 + swap else nip then
-   repeat
-   2drop -1 ;
+   [: HOSTS @ a < ;] SORT:PARTITION-POINT {: i:n :}
+   i N-HOSTS @ <  if i HOSTS @ a = if i exit then then
+   -1 ;
 
 
 \ The kernel's first word position. Nothing emits code between ADOPT and CUT,
@@ -498,22 +496,14 @@ variable N-KEPT
 : FIRST-REF ( n -- n )
    {: a:n :}
    0 A64ICODE:REFS
-   begin 2dup < while
-      2dup + 2 /
-      dup A64ICODE:REF-SITE a < if rot drop 1 + swap else nip then
-   repeat
-   drop ;
+   [: A64ICODE:REF-SITE a < ;] SORT:PARTITION-POINT ;
 
 
 \ The first data span ending after word position a.
 : FIRST-SPAN ( n -- n )
    {: a:n :}
    0 A64ICODE:DATA-SPANS
-   begin 2dup < while
-      2dup + 2 /
-      dup A64ICODE:DATA-SPAN-END a <= if rot drop 1 + swap else nip then
-   repeat
-   drop ;
+   [: A64ICODE:DATA-SPAN-END a <= ;] SORT:PARTITION-POINT ;
 
 \ True when word position a lies in a data span.
 : DATA? ( n -- bool )

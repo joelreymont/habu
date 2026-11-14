@@ -836,13 +836,7 @@ PTR-VARIABLE OBJ-BASE
 \ The extent holding the address: the last whose start is at most it, -1 for none.
 : EXT-OF ( n -- n )
    {: at:n :}
-   0 EXTS-N @
-   begin 2dup < while
-      {: lo:n hi:n :}
-      lo hi + 2 / {: mid:n :}
-      mid 0 EXT @ at <= if mid 1 + hi else lo mid then
-   repeat
-   drop 1 - ;
+   0 EXTS-N @ [: 0 EXT @ at <= ;] SORT:PARTITION-POINT 1 - ;
 
 \ Cell f of BUILT-EXTS row b.
 : BUILT-EXT ( n n -- ptr n ) swap BUILT-EXT-CELLS * + BUILT-EXTS ;
@@ -853,12 +847,8 @@ PTR-VARIABLE OBJ-BASE
    {: at:n row:n :}
    row 2 * ROW-EXTS @ {: first:n :}
    first  first row 2 * 1 + ROW-EXTS @ +
-   begin 2dup < while
-      {: lo:n hi:n :}
-      lo hi + 2 / {: mid:n :}
-      mid 4 BUILT-EXT @ at <= if mid 1 + hi else lo mid then
-   repeat
-   drop 1 -  dup first < if drop -1 then ;
+   [: 4 BUILT-EXT @ at <= ;] SORT:PARTITION-POINT
+   1 -  dup first < if drop -1 then ;
 
 
 \ PLACES grown to have room for n more slots at half full; growing drops a finished check's slots
@@ -1191,12 +1181,8 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    {: h:n :}
    h HOST-COPY? if h 1 - else h then {: e:n :}
    0 NSHADOW:RECORDS
-   begin 2dup < while
-      {: lo:n hi:n :}
-      lo hi + 2 / {: mid:n :}
-      mid NSHADOW:EMISSION@ e < if mid 1 + hi else lo mid then
-   repeat
-   drop NSHADOW:RECORD@ ;
+   [: NSHADOW:EMISSION@ e < ;] SORT:PARTITION-POINT
+   NSHADOW:RECORD@ ;
 
 \ An earlier piece's emission e: its owning record's rows (NAMED-REC+), so a
 \ reader of e's code compiles when that record's time changes.
@@ -1639,12 +1625,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
 : OWNER-EM ( n -- n )
    {: r:n :}
    0 NSHADOW:RECORDS
-   begin 2dup < while
-      {: lo:n hi:n :}
-      lo hi + 2 / {: mid:n :}
-      mid NSHADOW:RECORD@ r < if mid 1 + hi else lo mid then
-   repeat
-   drop {: row:n :}
+   [: NSHADOW:RECORD@ r < ;] SORT:PARTITION-POINT
+   {: row:n :}
    row NSHADOW:RECORDS >= if -1 exit then
    row NSHADOW:RECORD@ r <> if -1 exit then
    row NSHADOW:ENTRY@ 0<> if -1 exit then

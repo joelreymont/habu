@@ -131,12 +131,8 @@ variable EXT-I                       \ BY-EXT's next row to lay
 \ included, hold data address v; -1 for none.
 : STRING-OF ( n -- n )
    {: v:n :}
-   0 STR-N @
-   begin 2dup < while
-      2dup + 1 rshift {: mid:n :}
-      mid STR-AT @ CELL - v <= if nip mid 1 + swap else drop mid then
-   repeat
-   drop 1 - {: k:n :}
+   0 STR-N @ [: STR-AT @ CELL - v <= ;] SORT:PARTITION-POINT
+   1 - {: k:n :}
    k 0< if -1 exit then
    k STR-AT @ {: b:n :}
    v  b  b BODY-U 1 + +  < if k exit then
@@ -374,13 +370,8 @@ variable EXT-I                       \ BY-EXT's next row to lay
 \ The segment holding the byte at v or ending at it, -1 for none.
 : SEG-OF ( n -- n )
    {: v:n :}
-   0 SEG-N @
-   begin 2dup < while
-      {: lo:n hi:n :}
-      lo hi + 2 / {: mid:n :}
-      mid 0 SEG @ v <= if mid 1 + hi else lo mid then
-   repeat
-   drop 1 - {: s:n :}
+   0 SEG-N @ [: 0 SEG @ v <= ;] SORT:PARTITION-POINT
+   1 - {: s:n :}
    s 0< if -1 exit then
    s 0 SEG @  s 1 SEG @ +  v >= if s else -1 then ;
 
