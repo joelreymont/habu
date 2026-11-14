@@ -419,6 +419,14 @@ private
    INPUT-START @ src + x + r cells rows + @ - {: p:ptr :}
    INPUT$ p tu HOLDS? IF p EXIT THEN
    t ;
+public
+\ Whether PLACE finds the byte p points at in a source it knows.
+: PLACES? ( ptr u8 -- bool ) {: p:ptr :}
+   p >SOURCE nip IF 0 0= EXIT THEN
+   p 1 BODY>INPUT {: s:ptr :}
+   OWNED$ s 1 HOLDS? IF 0 0= EXIT THEN
+   INPUT$ s 1 HOLDS? ;
+private
 \ The armed source holding the token's first byte, else the loader's owned
 \ bytes, else the buffer read, holding the whole token, as itself or as the
 \ bytes a body's text copied it from; else no place.
