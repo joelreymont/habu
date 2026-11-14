@@ -1523,6 +1523,76 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" KD3" WHICH!  s" main.f" s" prog-k" NEST-BUILD 0= if exit then
    s" prog-k" s\" 0\n" s" the program prints whether k is a directory" NEST-RUN ;
 
+\ The arena sequence: kt.f keeps an arena in A, kb.f a block of one, ht.f a heap record in Q, and
+\ da.f drops an arena; each x-main.f requires x.f, and o.f none of them.
+: WRITE-ARENA ( -- )
+   L$ s" arena" NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
+   s\" require src/lib/arena.f\npackage FILE-OBJECTS-ARENA\npublic\n" SRC+
+   s\" TYPED-VARIABLE A ptr ARENA:arena\nARENA:NEW A !\n;package\n" SRC+  s" kt.f" NEST-WRITE
+   s" kt.f" REQUIRE+
+   s\" : MAIN ( -- ) FILE-OBJECTS-ARENA:A @ NULL-PTR - 0 = bool>n . ;\n" SRC+
+   s" kt-main.f" NEST-WRITE
+   s\" require src/lib/arena.f\npackage FILE-OBJECTS-ARENA\npublic\n" SRC+
+   s\" PTR-VARIABLE A\nARENA:NEW 8 ARENA:ALLOC drop A !\n;package\n" SRC+  s" kb.f" NEST-WRITE
+   s" kb.f" REQUIRE+  s\" : KEPT ( -- ptr u8 ) FILE-OBJECTS-ARENA:A @ ;\n" SRC+
+   s\" : MAIN ( -- ) KEPT NULL-PTR - 0 = bool>n . ;\n" SRC+  s" kb-main.f" NEST-WRITE
+   s\" require src/lib/arena.f\npackage FILE-OBJECTS-DROPPED\nARENA:NEW drop\n;package\n" SRC+
+   s" da.f" NEST-WRITE
+   s" da.f" REQUIRE+  s\" : MAIN ( -- ) 0 . ;\n" SRC+  s" da-main.f" NEST-WRITE
+   s\" package FILE-OBJECTS-HEAP\nHEAP H n\npublic\nTYPED-VARIABLE Q ptr n\nH-NEW Q !\n;package\n"
+   SRC+  s" ht.f" NEST-WRITE
+   s" ht.f" REQUIRE+
+   s\" : MAIN ( -- ) FILE-OBJECTS-HEAP:Q @ NULL-PTR - 0 = bool>n . ;\n" SRC+
+   s" ht-main.f" NEST-WRITE
+   s\" : MAIN ( -- ) ;\n" SRC+  s" o.f" NEST-WRITE ;
+
+\ The main's build, refused at link naming the fixture and the cell that holds the address. Answers
+\ its exit code.
+: ARENA-REFUSED ( CMD:command ptr u8 n ptr u8 n ptr u8 n -- CMD:command n )
+   {: main:ptr mainu:n f:ptr fu:n cell:ptr cellu:n :}
+   main mainu s" prog-ar" NEST-RC {: rc:n :}
+   CMD:ERR$ f fu NEST-PATH$ CONTAINS? {: named:bool :}
+   CMD:ERR$ cell cellu CONTAINS? {: celled:bool :}
+   CMD:ERR$ s" which an object cannot name" CONTAINS? {: unnamed:bool :}
+   named celled and unnamed and  rc 0<> and 0= if rc SHOW then
+   s" the build fails" LABEL  rc 0<> TTRUE
+   s" the refusal names the fixture" LABEL  named TTRUE
+   s" the refusal names the cell" LABEL  celled TTRUE
+   s" the refusal says no object can name the address" LABEL  unnamed TTRUE
+   rc ;
+
+: ARENA-OTHER ( CMD:command -- CMD:command ) s" o.f" s" prog-ao" NEST-BUILD drop ;
+
+: ARENA-KT ( CMD:command -- CMD:command )
+   s" AR" WHICH!  s" kt-main.f" s" kt.f" s"  in A +0 holds" ARENA-REFUSED {: cold:n :}
+   s" AR2" WHICH!  ARENA-OTHER
+   s" AR3" WHICH!  s" kt-main.f" s" kt.f" s"  in A +0 holds" ARENA-REFUSED {: warm:n :}
+   s" the build exits as AR does" LABEL  warm cold T= ;
+
+: ARENA-KB ( CMD:command -- CMD:command )
+   s" AR4" WHICH!  s" kb-main.f" s" prog-ar" NEST-BUILD drop
+   s" prog-ar" s\" -1\n" s" the program reads A null" NEST-RUN
+   s" AR5" WHICH!  ARENA-OTHER
+   s" AR6" WHICH!  s" kb-main.f" s" prog-ar" NEST-BUILD drop
+   s" prog-ar" s\" -1\n" s" the program reads A null" NEST-RUN ;
+
+: ARENA-DA ( CMD:command -- CMD:command )
+   s" AR7" WHICH!  s" da-main.f" s" prog-ar" NEST-BUILD drop
+   s" prog-ar" s\" 0\n" s" the program prints 0" NEST-RUN
+   s" AR8" WHICH!  ARENA-OTHER
+   s" AR9" WHICH!  s" da-main.f" s" prog-ar" NEST-BUILD drop
+   s" prog-ar" s\" 0\n" s" the program prints 0" NEST-RUN ;
+
+: ARENA-HT ( CMD:command -- CMD:command )
+   s" AR10" WHICH!  s" ht-main.f" s" ht.f" s"  in Q +0 holds" ARENA-REFUSED {: cold:n :}
+   s" AR11" WHICH!  ARENA-OTHER
+   s" AR12" WHICH!  s" ht-main.f" s" ht.f" s"  in Q +0 holds" ARENA-REFUSED {: warm:n :}
+   s" the build exits as AR10 does" LABEL  warm cold T= ;
+
+\ Guards that a build gives a program no address of memory a top level mapped.
+: ARENA-CASE ( CMD:command -- CMD:command )
+   WRITE-ARENA  ARENA-KT ARENA-KB ARENA-DA ARENA-HT ;
+
 \ The device sequence's f.f: K is the byte count a read of /dev/null answers, a file whose change time
 \ does not track its bytes.
 : WRITE-DEVICE ( -- )
@@ -1776,7 +1846,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
       STORED-CASE RETIRED-CASE ORDER-CASE PART-LINK-CASE PIECE-CASE SEAL-CASE SQUAT-CASE CAUGHT-CASE
       CTOR-CASE EXPORT-CASE
       NEST-CASE KEPT-CASE SAME-CASE RETIRE-CASE CLAUSE-CASE READ-CASE LIST-CASE LINK-CASE TASK-CASE
-      SAMEFILE-CASE ANCHORED-CASE SPAWN-CASE ZIP-CASE JSONL-CASE KIND-CASE
+      SAMEFILE-CASE ANCHORED-CASE SPAWN-CASE ZIP-CASE JSONL-CASE KIND-CASE ARENA-CASE
       DEVICE-CASE SPELLED-CASE PACKAGED-CASE EVALUATED-CASE OPENED-CASE CAST-CASE
       CROSS-CASE TARGET-CASE ;]
    CMD:WITH-COMMAND ;
