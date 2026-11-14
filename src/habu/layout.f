@@ -533,7 +533,8 @@ $38C8 constant VARIABLE-CELL
 \ ARENA-NEW and ARENA-DISPOSE answer `ptr t` for the type t the declaration
 \ spells or STORED's node is; HEAP-NEW answers it and HEAP-RELEASE takes it. An
 \ INIT-GET or INIT-SET child's parameter is the committed field id it reads or
-\ writes through its receiver.
+\ writes through its receiver. A MAKE or UNMAKE child's parameter is its
+\ product family: MAKE takes the fields and answers the value, UNMAKE the reverse.
 
 package CHILD-ABI
 public
@@ -560,6 +561,8 @@ public
 20 constant ARENA-DISPOSE
 21 constant INIT-GET
 22 constant INIT-SET
+23 constant MAKE
+24 constant UNMAKE
 
 ;package
 

@@ -4501,19 +4501,6 @@ public
    shape term base STORED-IN
    term MK-PTR base MK-PUSH ;
 
-\ A child word's input row, output row and body value, from its CHILD-ABI SHAPE
-\ and PARAM, in fresh checker terms. NEW restarts the variable ids, so NMAP is
-\ cleared with it: a stale letter would name a fresh variable.
-: TFAM-CHILD-ROWS ( n n -- n n n ) {: shape:n param:n :}
-   NEW NMAP-RESET
-   shape CHILD-ABI:FIELD = IF param TFAM-FIELD-ROWS EXIT THEN
-   shape CHILD-ABI:INDEX = IF param TFAM-AT-ROWS EXIT THEN
-   shape CHILD-ABI:VALUE = IF param VALUE-ROWS EXIT THEN
-   shape CHILD-ABI:INIT-GET = IF shape param TFAM-INIT-ROWS EXIT THEN
-   shape CHILD-ABI:INIT-SET = IF shape param TFAM-INIT-ROWS EXIT THEN
-   shape COMPANION? IF shape COMPANION-ROWS EXIT THEN
-   shape param OFFSET-ROWS ;
-
 private
 
 \ Payload transport uses the canonical logical-value seam. PUSH-LOGICAL expands
@@ -4539,6 +4526,39 @@ private
       TFC-I @ 1 + TFC-I !
    REPEAT
    base fam TFAM-NAME$ fam MK-PARAM ;
+
+\ A product's MAKE or UNMAKE rows over FAM's lettered variables, from its make
+\ or unmake variant: MAKE takes the fields and answers the value, UNMAKE the
+\ reverse. Its body is a cast, so its value is unread.
+: PROD-ROWS ( n n -- n n n ) {: shape:n fam:n :}
+   fam TFAM-FRESH-TERM {: term:n :}
+   term TFC-ARGS!
+   fam TFAM-VAR-START@
+   shape CHILD-ABI:UNMAKE = IF 1 + THEN {: vid:n :}
+   FRESH MK-ROW {: base:n :}
+   vid base RES-FALSE TFC-PAY-ROW {: pay:n :}
+   term base PUSH-LOGICAL {: value:n :}
+   shape CHILD-ABI:MAKE = IF pay value ELSE value pay THEN
+   0 ;
+
+public
+
+\ A child word's input row, output row and body value, from its CHILD-ABI SHAPE
+\ and PARAM, in fresh checker terms. NEW restarts the variable ids, so NMAP is
+\ cleared with it: a stale letter would name a fresh variable.
+: TFAM-CHILD-ROWS ( n n -- n n n ) {: shape:n param:n :}
+   NEW NMAP-RESET
+   shape CHILD-ABI:FIELD = IF param TFAM-FIELD-ROWS EXIT THEN
+   shape CHILD-ABI:INDEX = IF param TFAM-AT-ROWS EXIT THEN
+   shape CHILD-ABI:VALUE = IF param VALUE-ROWS EXIT THEN
+   shape CHILD-ABI:INIT-GET = IF shape param TFAM-INIT-ROWS EXIT THEN
+   shape CHILD-ABI:INIT-SET = IF shape param TFAM-INIT-ROWS EXIT THEN
+   shape CHILD-ABI:MAKE = IF shape param PROD-ROWS EXIT THEN
+   shape CHILD-ABI:UNMAKE = IF shape param PROD-ROWS EXIT THEN
+   shape COMPANION? IF shape COMPANION-ROWS EXIT THEN
+   shape param OFFSET-ROWS ;
+
+private
 
 \ Width-aware construct/MATCH lowering. For a wide closed instantiation (a
 \ multi-cell layout argument, flat or nested) the checker records an extra-pad

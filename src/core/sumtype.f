@@ -984,7 +984,7 @@ public
    s" sumtype" na nu ba bu TDECL-CTX!
    [: CHECKER-DEFSUM-BODY ;] TDECL-RUN ;
 
-\ A PRODUCT is a single-shape TK-PRODUCT record (MAKE and UNMAKE: TDECL-PROD-WORD). Field tails are
+\ A PRODUCT is a single-shape TK-PRODUCT record (MAKE and UNMAKE: TDECL-PROD-PLAN). Field tails are
 \ their own namespace, one-letter names legal; linear instantiations are refused at the sig and bind layers.
 
 private
@@ -1253,6 +1253,8 @@ TDPLAN-BYTE-MAX TDPLAN-REC / constant TDPLAN-ROW-MAX
 2 constant TDPLAN-EQ
 3 constant TDPLAN-HASH
 4 constant TDPLAN-CTOR
+5 constant TDPLAN-MAKE
+6 constant TDPLAN-UNMAKE
 create TDPLAN-BOOT TDPLAN-CAP-INIT allot
 create TDPLAN-ROW-BOOT TDPLAN-ROW-CAP-INIT TDPLAN-REC * allot
 PERSISTED-PTR-VARIABLE TDPLAN-P       TDPLAN-BOOT TDPLAN-P !
@@ -1413,18 +1415,6 @@ private
 : TDPLAN-CTOR-NAME+ ( n -- n ) {: vid:n :}
    TDPLAN-NAME+ dup vid swap SUMV-CTOR-SYM! ;
 
-: TDPLAN-SUM-CTOR+ ( n -- ) {: vid:n :}
-   vid TDPLAN-CTOR-NAME+ drop
-   TDPLAN-WORD+
-   TDPLAN-N @ 1 - TDPLAN-ROW {: r:ptr :}
-   TDPLAN-CTOR r TDPLAN.BUILT !
-   vid SUMV-FAM@ r TDPLAN.FAM !
-   vid r TDPLAN.VID ! ;
-
-: TDPLAN-PROD-CTOR+ ( n -- )
-   TDPLAN-CTOR-NAME+ CTOR-PEND-SYM+
-   TDPLAN-WORD+ ;
-
 : TDPLAN-DERIVED+ ( -- )
    TDPLAN-NAME+ drop
    TDPLAN-WORD+ ;
@@ -1435,6 +1425,13 @@ private
    TDPLAN-DERIVED+
    TDPLAN-N @ 1 - TDPLAN-ROW {: r:ptr :}
    kind r TDPLAN.BUILT !  fam r TDPLAN.FAM ! ;
+
+\ A built row whose name is variant VID's constructor symbol.
+: TDPLAN-CTOR-BUILT+ ( n n n -- ) {: vid:n fam:n kind:n :}
+   vid TDPLAN-CTOR-NAME+ drop
+   TDPLAN-WORD+
+   TDPLAN-N @ 1 - TDPLAN-ROW {: r:ptr :}
+   kind r TDPLAN.BUILT !  fam r TDPLAN.FAM !  vid r TDPLAN.VID ! ;
 
 : TDPLAN-SPAN$ ( n n -- ptr u8 n ) {: off:n u:n :}
    off 0 < u 0 < or off TDPLAN-U @ > or IF
@@ -1464,6 +1461,19 @@ private
 : TDPLAN-KIND@ ( n -- n ) TDPLAN-ROW TDPLAN.BUILT @ ;
 : TDPLAN-FAM@ ( n -- n ) TDPLAN-ROW TDPLAN.FAM @ ;
 : TDPLAN-VID@ ( n -- n ) TDPLAN-ROW TDPLAN.VID @ ;
+
+: TDPLAN-PROD? ( n -- bool ) {: kind:n :}
+   kind TDPLAN-MAKE =  kind TDPLAN-UNMAKE = or ;
+
+\ The CHILD-ABI shape of a MAKE or UNMAKE row's word.
+: TDPLAN-SHAPE ( n -- n )
+   TDPLAN-MAKE = IF CHILD-ABI:MAKE ELSE CHILD-ABI:UNMAKE THEN ;
+
+\ Registers row N's MAKE or UNMAKE effect, as CHILD-RUN would.
+: TDPLAN-PROD-REG ( n -- ) {: row:n :}
+   row TDPLAN-KIND@ TDPLAN-SHAPE  row TDPLAN-FAM@
+   TFAM-CHILD-ROWS {: din:n dout:n val:n :}
+   row TDPLAN-NAME$ din dout CHECKER-CHILD-ROWS drop ;
 
 : TDPLAN-TEXT-N ( -- n )
    0 BEGIN
@@ -1525,10 +1535,12 @@ private
    TDPLAN-N @ 0 ?do
       i TDPLAN-TEXT? IF
          i TDPLAN-DEF$ CHECK! -1 <> IF 70 throw THEN
+      ELSE i TDPLAN-KIND@ TDPLAN-PROD? IF
+         i TDPLAN-PROD-REG
       ELSE
          i TDPLAN-NAME$  i TDECL-DRV-EFFECT EFFECT-SIG 2drop
          CHECKER-CHILD-ROWS drop
-      THEN
+      THEN THEN
    loop
    CTOR-PEND-REQUIRE-DONE ;
 
@@ -1563,82 +1575,18 @@ private
    u 0 ?do a i + c@ TDGEN-C, loop ;
 : TDGEN-UPPER ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 ?do a i + c@ TF-UPPER-C TDGEN-C, loop ;
-: TDGEN-LETTER ( n -- )                   \ positional param -> shared spelling
-   TFAM-DECL-PARAM>CHAR 0= IF
-      drop s" sumtype: declaration parameter index out of range" 76 die
-   THEN
-   TDGEN-C, ;
-
-\ A family-application field renders as PKG:tail when the family lives in a
-\ package (the generated eval runs while the declaring package is still open,
-\ so own-private fields resolve too), else as the bare tail. PKG is the last
-\ segment of the package path: a part A:B's family renders B:tail, which
-\ names the part from inside A and its parts; a top-level package's path is
-\ its one segment.
-: TDGEN-FAM-REF ( n -- ) {: fam:n :}
-   fam TFAM-PKG$ TYPE-NAME:LAST-SEGMENT$ {: pa:ptr pu:n :}
-   pu 0 > IF pa pu TDGEN-APP 58 TDGEN-C, THEN
-   fam TFAM-NAME$ TDGEN-APP ;
-
-\ A quotation side renders each element followed by a space, so an empty side
-\ emits nothing. Deferred because SCH-QUOT in TDGEN-SCH reaches it before its
-\ body, which calls TDGEN-SCH back, is defined.
-defer TDGEN-QUOT-ROW ( n -- )   \ ( rownode -- )
-
-: TDGEN-SCH ( n -- ) {: node:n :}
-   node SCHEMA-PARAM? IF node SCHEMA-A@ TDGEN-LETTER EXIT THEN
-   node SCHEMA-CON?   IF node SCHEMA-A@ CT-NAME$ TDGEN-APP EXIT THEN
-   node SCHEMA-PTR?   IF s" ptr " TDGEN-APP node SCHEMA-A@ RECURSE EXIT THEN
-   node SCHEMA-QUOT? IF               \ "[ din -- dout | rin -- rout ]" (row per side)
-      s" [ " TDGEN-APP
-      node SCHEMA-QUOT-DIN@ TDGEN-QUOT-ROW
-      s" -- " TDGEN-APP
-      node SCHEMA-QUOT-DOUT@ TDGEN-QUOT-ROW
-      node SCHEMA-QUOT-HASR@ 0= 0= IF
-         s" | " TDGEN-APP
-         node SCHEMA-QUOT-RIN@ TDGEN-QUOT-ROW
-         s" -- " TDGEN-APP
-         node SCHEMA-QUOT-ROUT@ TDGEN-QUOT-ROW
-      THEN
-      s" ] " TDGEN-APP
-      EXIT
-   THEN
-   node SCHEMA-APP? IF               \ "fam" or "fam<arg,arg,..>" (RECURSE per arg)
-      node SCHEMA-A@ TDGEN-FAM-REF
-      node SCHEMA-C@ {: c:n :}
-      c 0 > IF
-         60 TDGEN-C,
-         0 BEGIN dup c < WHILE
-            dup 0 > IF 44 TDGEN-C, THEN
-            node SCHEMA-B@ over + SCHEMA-ROOT@ RECURSE
-            1 +
-         REPEAT drop
-         62 TDGEN-C,
-      THEN
-      EXIT
-   THEN
-   s" sumtype: unsupported constructor payload schema" 76 die ;
-
-: TDGEN-QUOT-ROW-IMPL ( n -- ) {: rownode:n :}
-   0 BEGIN dup rownode SCHEMA-ROW-COUNT@ < WHILE
-      rownode over SCHEMA-ROW-ELEM@ TDGEN-SCH  32 TDGEN-C,  1 +
-   REPEAT drop ;
-: TDGEN-QUOT-ROW-INSTALL ( -- ) [: TDGEN-QUOT-ROW-IMPL ;] is TDGEN-QUOT-ROW ;
-TDGEN-QUOT-ROW-INSTALL
-
-\ --- payload provider. Everything below renders constructor text and builds
-\ DERIVE words from a PROVIDER: one opaque context cell and three quotation
-\ capabilities.
+\ --- payload provider. Everything below builds DERIVE words from a PROVIDER:
+\ one opaque context cell and three quotation capabilities.
 \   qn  [ n n n -- n ]    ( ctx fam vid -- count )       payload element count
 \   qr  [ n n n n -- n ]  ( ctx fam vid index -- root )  declaration-order schema root
 \   qc  [ n n n -- n ]    ( ctx fam vid -- cells )       payload cell width
 \ The SUMTYPE / ENUM / PRODUCT definers pass TDECL-SUMV-PROVIDER, which reads the
 \ committed SUMV rows; a front end whose declaration is not yet published passes
 \ capabilities over its own live declaration token.
-\ The provider is asked once, before any text renders; its answers are validated
-\ together and copied into the snapshot every render word and DERIVE walker
-\ reads. The validated view is the rendered view, and no untrusted quotation runs
-\ while a render cursor is live. Validation proves the answers are consistent
+\ The provider is asked once, before any word is built; its answers are
+\ validated together and copied into the snapshot the DERIVE walkers read, so
+\ the validated view is the built one and no untrusted quotation runs during a
+\ build. Validation proves the answers are consistent
 \ and fit the family (count within payload slots, roots exist and are at least
 \ one cell wide, cell width equals the roots' widths and fits the slots). It
 \ does not prove the provider described the right payload: the provider is the
@@ -1788,79 +1736,6 @@ public
 
 private
 
-: TDGEN-PAYLOAD ( n n -- ) {: fam:n vid:n :}
-   fam vid TDPV-N@ {: k:n :}              \ declared inputs, one per schema root
-   k 0 ?do
-      fam vid i TDPV-NODE@ TDGEN-SCH
-      32 TDGEN-C,
-   loop ;
-
-\ Qualified for the reason TDGEN-FAM-REF qualifies every payload family: a
-\ public family's generated word is interned into its ctor package, so its
-\ signature text has no scope in which a bare tail means this family.
-: TDGEN-OUT-TYPE ( n -- ) {: fam:n :}    \ PKG:family<a,b,..>
-   fam TDGEN-FAM-REF
-   fam TFAM-ARITY@ {: ar:n :}
-   ar 0= IF EXIT THEN
-   60 TDGEN-C,
-   ar 0 ?do
-      i 0 > IF 44 TDGEN-C, THEN
-      i TDGEN-LETTER
-   loop
-   62 TDGEN-C, ;
-
-\ "PKG:VARIANT" when the family's generated words are public, "FAMILY-MEMBER"
-\ for a private or OPAQUE family (TFAM-GEN-PUBLIC?), with the name span recorded
-\ either way. Those families' words go into the declaring package's private
-\ wordlist, where a name carrying a colon can never land (TF-CTOR-PKG$ /
-\ TF-CTOR-PRIV$, type-family.f).
-: TDGEN-CTOR-NAME ( n -- ) {: vid:n :}
-   TDGEN-U @ {: n0:n :}
-   vid SUMV-FAM@ {: fam:n :}
-   fam TFAM-GEN-PUBLIC? IF
-      vid SUMV-CTOR-PKG$ TDGEN-APP
-      58 TDGEN-C,
-      vid SUMV-NAME$ TDGEN-UPPER
-   ELSE
-      fam TFAM-NAME$ vid SUMV-NAME$ TF-CTOR-PRIV$ TDGEN-APP
-   THEN
-   TDGEN-BUF n0 + TDGEN-NA !
-   TDGEN-U @ n0 - TDGEN-NU ! ;
-
-: TDGEN-NAME ( n -- )
-   s" : " TDGEN-APP  TDGEN-CTOR-NAME  32 TDGEN-C, ;
-
-public
-
-: TDECL-CTOR-WORD ( n n -- ) {: fam:n vid:n :}
-   TDGEN-CLEAR
-   vid TDGEN-CTOR-NAME
-   vid TDPLAN-SUM-CTOR+ ;
-
-
-private
-
-\ `: PKG:MAKE ( fields -- fam<..> ) ;` and `: PKG:UNMAKE ( fam<..> -- fields ) ;`:
-\ empty bodies under a k=0 pending window, because a product bundle is its field
-\ cells in slot order (no pads, no tag); the declared sig, rendered from the PF
-\ field schemas, is the checker's truth. mk nonzero means make.
-: TDECL-PROD-WORD ( n n n -- ) {: fam:n vid:n mk:n :}
-   TDGEN-CLEAR
-   vid TDGEN-NAME
-   s" ( " TDGEN-APP
-   mk 0 <> IF
-      fam vid TDGEN-PAYLOAD
-      s" -- " TDGEN-APP
-      fam TDGEN-OUT-TYPE
-      s"  ) ;" TDGEN-APP
-   ELSE
-      fam TDGEN-OUT-TYPE
-      s"  -- " TDGEN-APP
-      fam vid TDGEN-PAYLOAD
-      s" ) ;" TDGEN-APP
-   THEN
-   vid TDPLAN-PROD-CTOR+ ;
-
 \ --- derived typed equality. `DERIVE eq` builds checked words into the family's
 \ constructor package from items, their engine words found where this file is
 \ compiled: no pending window, no trust rows, no engine lowering, so equality is semantic and
@@ -1875,7 +1750,7 @@ private
 \    and compare field-wise. A family-typed slot binds as its family and
 \    compares through that family's EQ.
 \ A derived word is "PKG-FAMILY:TAIL" for a public family and "FAMILY-TAIL" for a
-\ private or OPAQUE one, as TDGEN-NAME spells a constructor. Neither stamps a
+\ private or OPAQUE one, as a constructor is spelled. Neither stamps a
 \ constructor package (TDECL-CTOR-PUBLISH exits early), so SUMV-CTOR-PKG$ would
 \ name nothing. A private or OPAQUE family's words bind in the declaring package,
 \ so only a declaration in that package derives through them
@@ -2079,6 +1954,9 @@ $100000001b3 constant DRV-FNV-PRIME        \ FNV-1a 64-bit prime
    kind TDPLAN-TAG = IF fam row TDECL-TAG-BUILD EXIT THEN
    kind TDPLAN-EQ = IF fam row TDECL-EQ-BUILD EXIT THEN
    kind TDPLAN-HASH = IF fam row TDECL-HASH-BUILD EXIT THEN
+   kind TDPLAN-PROD? IF
+      row TDPLAN-NAME$ kind TDPLAN-SHAPE fam TDECL-CHILD EXIT
+   THEN
    s" sumtype: no builder for this plan row" 76 die ;
 
 : TDECL-GEN-EVAL-BODY ( n -- ) {: fam:n :}
@@ -2098,11 +1976,22 @@ $100000001b3 constant DRV-FNV-PRIME        \ FNV-1a 64-bit prime
    rc 0 <> IF rc throw THEN
    drop ;
 
+\ A product's MAKE or UNMAKE row of KIND for variant VID. Its word is a cast: a
+\ product value is its field cells in slot order, with no pads and no tag.
+: TDECL-PROD-ROW ( n n n -- ) {: fam:n vid:n kind:n :}
+   TDGEN-CLEAR
+   fam vid SUMV-NAME$ TDGEN-DRV-NAME
+   vid fam kind TDPLAN-CTOR-BUILT+ ;
+
+\ Variant VID's constructor row.
+: TDECL-CTOR-ROW ( n n -- ) {: fam:n vid:n :}
+   fam vid TDPLAN-CTOR TDECL-PROD-ROW ;
+
 : TDECL-PROD-PLAN ( n -- ) {: fam:n :}   \ make (row 0) + unmake (row 1)
    fam TFAM-VAR-START@ {: vstart:n :}
    TDPLAN-BEGIN
-   fam vstart 1 TDECL-PROD-WORD
-   fam vstart 1 + 0 TDECL-PROD-WORD
+   fam vstart TDPLAN-MAKE TDECL-PROD-ROW
+   fam vstart 1 + TDPLAN-UNMAKE TDECL-PROD-ROW
    fam TDECL-DRV-WORDS ;
 
 \ A live declaration's switch runs the `private` / `public` keyword's
@@ -2318,7 +2207,7 @@ private
    \ open argument.
    TDPLAN-BEGIN
    fam TFAM-VAR-COUNT@ 0 ?do
-      fam  fam TFAM-VAR-START@ i +  TDECL-CTOR-WORD
+      fam  fam TFAM-VAR-START@ i +  TDECL-CTOR-ROW
    loop
    fam TDECL-DRV-WORDS
    ctx qn qr qc fam ;

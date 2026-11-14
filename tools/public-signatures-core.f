@@ -723,8 +723,8 @@ TFAM-N@ constant FAM-BASE
 private
 
 \ Each public ENUM this load declared publishes a nullary `PKG:VARIANT` (from
-\ SUMV-CTOR-PKG$/SUMV-NAME$) with signature `-- family<args>`, typed as sumtype.f
-\ TDGEN-OUT-TYPE types it, from registry metadata, never a hidden field.
+\ SUMV-CTOR-PKG$/SUMV-NAME$) with signature `-- family<args>`, from registry
+\ metadata, never a hidden field.
 3 constant PS-TK-ENUM                    \ TK-ENUM: payload-free sum
 create PS-CSIG-BUF PS-SIG-CAP allot   variable PS-CSIG-W
 
