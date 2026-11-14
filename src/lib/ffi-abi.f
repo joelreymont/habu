@@ -994,6 +994,8 @@ private
 4 constant R-I32
 5 constant R-U32
 6 constant R-FLOAT32
+7 constant R-U16
+8 constant R-U8
 
 0 constant C-INT
 1 constant C-POINTER
@@ -1231,6 +1233,34 @@ private
    then
    a  b u + a - ;
 
+\ The integer types and addr an input or an output may be: C passes each
+\ whole, in one register or one stack slot.
+: SCALAR? ( -- bool )
+   s" n" TOK-IS? s" i64" TOK-IS? or s" cell" TOK-IS? or
+   s" addr" TOK-IS? or s" u8" TOK-IS? or s" u16" TOK-IS? or
+   s" u32" TOK-IS? or s" char" TOK-IS? or ;
+
+\ A declaration spells the C prototype's types; a role, a bool, an enum or a
+\ sum is Habu's, so the caller converts it.
+: TYPE-REJECT ( ptr u8 n ptr u8 n -- )
+   {: w:ptr wu:n l:ptr lu:n :}
+   SYNTAX-OPEN  s" '" REJECTION:EMIT-STR  TOK$ REJECTION:EMIT-STR
+   s" ' is not " REJECTION:EMIT-STR  w wu REJECTION:EMIT-STR
+   s"  type: " REJECTION:EMIT-STR  w wu REJECTION:EMIT-STR
+   s"  is " REJECTION:EMIT-STR  l lu REJECTION:EMIT-STR
+   s" declare the C prototype's type and convert the value where the word is called"
+   SYNTAX-HELP ;
+
+: IN-REJECT ( -- )
+   s" an input"
+   s" ptr u8, f32, r, n, i64, cell, addr, u8, u16, u32 or char"
+   TYPE-REJECT ;
+
+: OUT-REJECT ( -- )
+   s" an output"
+   s" ptr u8, f32, i32, nullable<u8>, r, n, i64, cell, addr, u8, u16, u32 or char"
+   TYPE-REJECT ;
+
 \ Each type is read where it is written, so a rejected one names its token;
 \ DECLARED-EFFECT reads the recorded text again.
 : IN-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -1241,9 +1271,16 @@ private
    s" f32" TOK-IS? if
       s" r" EFFECT:NAMED drop K-FLOAT32 ARG+ s" r" IN-TEXT exit
    then
+   s" r" TOK-IS? SCALAR? or 0= if IN-REJECT then
    a u EFFECT:READ-TYPE drop
    s" r" TOK-IS? if K-FLOAT ARG+ else K-VALUE ARG+ then
    a u IN-TEXT ;
+
+: SCALAR-KIND ( -- n )
+   s" u32" TOK-IS? if R-U32 exit then
+   s" u16" TOK-IS? if R-U16 exit then
+   s" u8" TOK-IS? s" char" TOK-IS? or if R-U8 exit then
+   R-VALUE ;
 
 : OUT-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
    RES-KIND @ R-NONE <> if
@@ -1260,11 +1297,13 @@ private
       s" r" RES-TEXT! R-FLOAT32 RES-KIND ! exit
    then
    s" i32" TOK-IS? if s" n" RES-TEXT! R-I32 RES-KIND ! exit then
+   s" nullable<u8>" TOK-IS? s" r" TOK-IS? or SCALAR? or 0= if
+      OUT-REJECT
+   then
    a u EFFECT:READ-TYPE drop  a u RES-TEXT!
    s" nullable<u8>" TOK-IS? if R-POINTER RES-KIND ! 1 RES-NULLABLE ! exit then
    s" r" TOK-IS? if R-FLOAT RES-KIND ! exit then
-   s" u32" TOK-IS? if R-U32 RES-KIND ! exit then
-   R-VALUE RES-KIND ! ;
+   SCALAR-KIND RES-KIND ! ;
 
 : INPUTS ( -- )
    begin
@@ -1614,11 +1653,15 @@ private
    SYM-BUF SYM-U @ CUR-LIB @ int stk RELOC-MASK DECLARE-ROW ;
 
 \ A niche value's zero cell is none, so `some` of the returned cell reads NULL as none.
+\ AAPCS64 and SysV leave the register bits above a u8, u16 or u32 result
+\ unspecified.
 : RESULT-TAIL ( -- )
    RES-NULLABLE @ 0<> if postpone NULLABLE:SOME exit then
    RES-KIND @ R-NONE = if postpone drop exit then
    RES-KIND @ R-I32 = if postpone I32-RESULT exit then
-   RES-KIND @ R-U32 = if $FFFFFFFF literal postpone and then ;
+   RES-KIND @ R-U32 = if $FFFFFFFF literal postpone and exit then
+   RES-KIND @ R-U16 = if $FFFF literal postpone and exit then
+   RES-KIND @ R-U8 = if $FF literal postpone and then ;
 
 : STAGE-RECORD ( n -- ) {: i:n :}
    i ARG-SBYTES@ literal

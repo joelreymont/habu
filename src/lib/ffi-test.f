@@ -101,6 +101,9 @@ FUNCTION: FFI-T-MEMCPY memcpy ( ptr u8 ptr u8 n -- n )
 \ through `u32` must be $FFFFFFFF, never -1.
 FUNCTION: FFI-T-CLOSE close ( n -- i32 ) ;FUNCTION
 FUNCTION: FFI-T-CLOSE-U32 close ( n -- u32 ) ;FUNCTION
+FUNCTION: FFI-T-LABS-I64 labs ( i64 -- i64 ) ;FUNCTION
+FUNCTION: FFI-T-LABS-CELL labs ( cell -- cell ) ;FUNCTION
+FUNCTION: FFI-T-LABS-ADDR labs ( addr -- addr ) ;FUNCTION
 FUNCTION: FFI-T-ATOI atoi ( ptr u8 -- i32 ) ;FUNCTION
 
 \ Nominal-input fixture proves ABI-cell identity does not erase a role: the
@@ -134,6 +137,10 @@ FFI-T-DEPTH-AFTER FFI-T-DEPTH!
    s" FUNCTION: FFI-T-X5 getpid ( ptr u8 -- n ) 3 $10 WRITES-BYTES ;FUNCTION" evaluate-closed ;
 : FFI-T-BAD-F32-ARITY ( -- )
    s" FUNCTION: FFI-T-XF getpid ( f32 f32 f32 f32 f32 f32 f32 f32 f32 -- f32 ) ;FUNCTION" evaluate-closed ;
+: FFI-T-BAD-IN-TYPE ( -- )
+   s" FUNCTION: FFI-T-XI getpid ( fd -- n ) ;FUNCTION" evaluate-closed ;
+: FFI-T-BAD-OUT-TYPE ( -- )
+   s" FUNCTION: FFI-T-XO getpid ( -- bool ) ;FUNCTION" evaluate-closed ;
 
 \ A version list with an empty piece or a piece that is not a number.
 : FFI-T-LIST-END ( -- )
@@ -759,6 +766,10 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    FFI:ERRNO 9 T=                                \ EBADF immediately after close(-1)
    s" an unsigned int result is masked to its low half" T-LABEL
    -1 FFI-T-CLOSE-U32 $FFFFFFFF T=
+   s" i64, cell and addr pass a whole register" T-LABEL
+   $123456789 negate FFI-T-LABS-I64 $123456789 T=
+   $123456789 negate FFI-T-LABS-CELL $123456789 T=
+   $123456789 negate FFI-T-LABS-ADDR $123456789 T=
 
    FFI-T-GETPID$ 0 T<>
    FFI-T-VOID$  FFI-T-GETPID$ 0 T<>               \ void-return wrapper is stack-neutral
@@ -803,6 +814,12 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    [: FFI-T-BAD-EXTENT-INDEX ;]
    s" error[E-FFI-SYNTAX]: the clause names no input of the declaration" FFI-T-SYNTAX
    [: FFI-T-BAD-F32-ARITY ;] FFI-T-F32-UNSTAGED
+   [: FFI-T-BAD-IN-TYPE ;]
+   s" error[E-FFI-SYNTAX]: 'fd' is not an input type: an input is ptr u8, f32, r, n, i64, cell, addr, u8, u16, u32 or char"
+   FFI-T-SYNTAX
+   [: FFI-T-BAD-OUT-TYPE ;]
+   s" error[E-FFI-SYNTAX]: 'bool' is not an output type: an output is ptr u8, f32, i32, nullable<u8>, r, n, i64, cell, addr, u8, u16, u32 or char"
+   FFI-T-SYNTAX
    [: FFI-T-BAD-F32-VARARG ;]
    s" error[E-FFI-SYNTAX]: an f32 variadic argument" FFI-T-SYNTAX
    [: FFI-T-F32-FIXED ;] 0 TTHROWSQ
@@ -913,11 +930,11 @@ FFI-RUN
    then ;
 FFI-T-STRUCT-LOAD
 
-: FFI-T-SPILL-LOAD ( -- )
+: FFI-T-C-CALLS-LOAD ( -- )
    HB-TARGET-MACOS? HB-TARGET-LINUX? or if
-      s" test/ffi-spill.f" required
+      s" test/ffi-c-calls.f" required
    then ;
-FFI-T-SPILL-LOAD
+FFI-T-C-CALLS-LOAD
 
 T-REPORT
 
