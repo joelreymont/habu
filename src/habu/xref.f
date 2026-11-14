@@ -379,70 +379,6 @@ names: XREF-FIND-INDEX
    dup 0 >= if exit then
    s" xref: word not found" 76 die ;
 
-: XREF-REQUIRE-UNDEFINE ( n -- n )
-   dup 0 >= if exit then
-   s" undefine: word not found" 70 die ;
-
-package GENERATED-DECL-NAME-PREFLIGHT
-
-private
-
-$7FFFFFFFFFFFFFFF constant COUNT-MAX
-
-: NAMESPACE-EXISTS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u XREF-QUAL-INDEX {: split:n :}
-   split 0 < IF s" xref: generated declaration is not qualified" 76 die THEN
-   XREF-SN@ split BOOT:NAMESPACE-WL XREF-FIND-WL XREF-FOUND? ;
-
-\ The record a generated name would meet in the scope it will LAND in, from the
-\ hash index the definer's own duplicate wall asks: a qualified name in the
-\ public wordlist its namespace row carries, a bare one in the current wordlist. XREF-FIND-TARGET-INDEX answers the same question by
-\ walking every record, which a declaration asked once per generated word.
-: TARGET-RECORD ( ptr u8 n -- ptr n ) {: a:ptr u:n :}
-   a u XREF-QUAL-INDEX {: q:n :}
-   q -2 = IF XREF-NULL EXIT THEN
-   q 0 < IF a u get-current CHECKER-RESOLVE:WL-PROBE EXIT THEN
-   a q BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: ns:ptr :}
-   ns XREF-FOUND? 0= IF XREF-NULL EXIT THEN
-   a q 1+ ZPTR+  u q - 1-  ns XREF-PKG-PUBLIC CHECKER-RESOLVE:WL-PROBE ;
-
-\ A generated declaration is qualified exactly when it reserves a constructor
-\ namespace; a private family's bare words (TF-CTOR-PRIV$) allocate no wordlist.
-: NAMESPACED? ( ptr u8 n -- bool )
-   XREF-QUAL-INDEX 0 >= ;
-
-\ The duplicate test is asked in the scope the definition will LAND in: qualified
-\ names resolve through their namespace, a bare one through the current wordlist.
-\ XREF-FIND would answer a bare name from the global wordlist instead, and a
-\ global word of the same spelling is not this package's private word.
-: CHECK ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u TFAM-CTOR-WORD? 0= IF
-      s" xref: generated declaration visibility mismatch" 76 die
-   THEN
-   a u TARGET-RECORD XREF-FOUND? IF
-      s" xref: generated declaration already exists" 76 die
-   THEN ;
-
-public
-
-: DICTIONARY-RECORDS ( ptr u8 n n -- n ) {: a:ptr u:n words:n :}
-   words 0 <= words COUNT-MAX >= or IF
-      s" xref: generated declaration word count overflow" 76 die
-   THEN
-   a u NAMESPACED? 0= IF words EXIT THEN
-   a u NAMESPACE-EXISTS? IF words EXIT THEN
-   words 1 + ;
-
-private
-
-: INSTALL ( -- )
-   [: CHECK ;] is TYPE-DECL:TDECL-NAME-PREFLIGHT-XT ;
-
-INSTALL
-seal-package
-
-;package
-
 \ RETIRE and SEAL rewrite a write-protected record cell through patch32, which
 \ this package's row in src/habu/prims.f (EPPRIM: XREF patch32) types for it.
 package XREF
@@ -527,6 +463,101 @@ public
 
 ;package
 
+\ A rejection's name between backticks.
+: XREF-EMIT-TICKS ( ptr u8 n -- ) {: a:ptr u:n :}
+   96 REJECTION:EMIT1  a u REJECTION:EMIT-STR  96 REJECTION:EMIT1 ;
+
+\ The scope a lookup of the name a u searched: a qualified name its package's
+\ public words, a bare one wid.
+: XREF-EMIT-SCOPE ( ptr u8 n n -- ) {: a:ptr u:n wid:n :}
+   a u XREF-QUAL-INDEX {: q:n :}
+   q -2 = if s" none: the name holds more than one `:`" REJECTION:EMIT-STR exit then
+   q 0 >= if
+      s" the public words of package " REJECTION:EMIT-STR  a q XREF-EMIT-TICKS exit
+   then
+   wid BOOT:GLOBAL-WL = if s" the global words" REJECTION:EMIT-STR exit then
+   wid XREF:NS-ROW 0= if drop s" the current wordlist" REJECTION:EMIT-STR exit then
+   {: row:ptr :}
+   row XREF-PKG-PUBLIC wid = if s" the public words of package "
+   else s" the private words of package " then REJECTION:EMIT-STR
+   row XREF-NAME$ XREF-EMIT-TICKS ;
+
+\ A call of the word w wu, which takes a name: `s" MY-WORD" W`.
+: XREF-EMIT-CALL ( ptr u8 n -- ) {: w:ptr wu:n :}
+   96 REJECTION:EMIT1  115 REJECTION:EMIT1  34 REJECTION:EMIT1
+   s"  MY-WORD" REJECTION:EMIT-STR  34 REJECTION:EMIT1  32 REJECTION:EMIT1
+   w wu REJECTION:EMIT-STR  96 REJECTION:EMIT1 ;
+
+package GENERATED-DECL-NAME-PREFLIGHT
+
+private
+
+$7FFFFFFFFFFFFFFF constant COUNT-MAX
+
+: NAMESPACE-EXISTS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u XREF-QUAL-INDEX {: split:n :}
+   split 0 < IF s" xref: generated declaration is not qualified" 76 die THEN
+   XREF-SN@ split BOOT:NAMESPACE-WL XREF-FIND-WL XREF-FOUND? ;
+
+\ The record a generated name would meet in the scope it will LAND in, from the
+\ hash index the definer's own duplicate wall asks: a qualified name in the
+\ public wordlist its namespace row carries, a bare one in the current wordlist. XREF-FIND-TARGET-INDEX answers the same question by
+\ walking every record, which a declaration asked once per generated word.
+: TARGET-RECORD ( ptr u8 n -- ptr n ) {: a:ptr u:n :}
+   a u XREF-QUAL-INDEX {: q:n :}
+   q -2 = IF XREF-NULL EXIT THEN
+   q 0 < IF a u get-current CHECKER-RESOLVE:WL-PROBE EXIT THEN
+   a q BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: ns:ptr :}
+   ns XREF-FOUND? 0= IF XREF-NULL EXIT THEN
+   a q 1+ ZPTR+  u q - 1-  ns XREF-PKG-PUBLIC CHECKER-RESOLVE:WL-PROBE ;
+
+\ A generated declaration is qualified exactly when it reserves a constructor
+\ namespace; a private family's bare words (TF-CTOR-PRIV$) allocate no wordlist.
+: NAMESPACED? ( ptr u8 n -- bool )
+   XREF-QUAL-INDEX 0 >= ;
+
+\ The duplicate test is asked in the scope the definition will LAND in: qualified
+\ names resolve through their namespace, a bare one through the current wordlist.
+\ XREF-FIND would answer a bare name from the global wordlist instead, and a
+\ global word of the same spelling is not this package's private word.
+\ A program's clash with its own word is rejected before this, so a name that
+\ exists here is a sealed package's.
+: CHECK ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u TFAM-CTOR-WORD? 0= IF
+      s" xref: generated declaration visibility mismatch" 76 die
+   THEN
+   a u TARGET-RECORD {: rec:ptr :}
+   rec XREF-FOUND? 0= IF EXIT THEN
+   rec XREF-WORDLIST XREF:WID-SEALED? 0= IF
+      s" xref: generated declaration already exists" 76 die
+   THEN
+   s" E-SEALED-PACKAGE" REJECTION:OPEN
+   a u XREF-EMIT-TICKS  s"  would change a sealed package" REJECTION:EMIT-STR
+   a u REJECTION:AT  s" sealed" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" rename the family: a sealed package takes no new words" REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
+public
+
+: DICTIONARY-RECORDS ( ptr u8 n n -- n ) {: a:ptr u:n words:n :}
+   words 0 <= words COUNT-MAX >= or IF
+      s" xref: generated declaration word count overflow" 76 die
+   THEN
+   a u NAMESPACED? 0= IF words EXIT THEN
+   a u NAMESPACE-EXISTS? IF words EXIT THEN
+   words 1 + ;
+
+private
+
+: INSTALL ( -- )
+   [: CHECK ;] is TYPE-DECL:TDECL-NAME-PREFLIGHT-XT ;
+
+INSTALL
+seal-package
+
+;package
+
 : XREF-RETIRE-WL ( ptr u8 n n -- ) {: a:ptr u:n wid:n :}
    u XREF-FU !  a XREF-FN!
    ndict@ 1-
@@ -594,10 +625,25 @@ DOES-COMPANION-INSTALL
    2 S\" \n" write drop
    ENGINE-ERROR:OVERLAY-OPEN throw ;
 
+: XREF-REQUIRE-UNDEFINE ( n ptr u8 n -- n ) {: idx:n a:ptr u:n :}
+   idx 0 < if
+      s" E-UNDEFINED" REJECTION:OPEN
+      a u XREF-EMIT-TICKS
+      s"  is not defined here, so `undefine` cannot retire it" REJECTION:EMIT-STR
+      a u REJECTION:AT  s" not found" REJECTION:EMIT-STR
+      s" scope" REJECTION:NOTE  a u get-current XREF-EMIT-SCOPE
+      REJECTION:HELP
+      s" name a word this scope defines, or drop the `undefine` line"
+      REJECTION:EMIT-STR
+      CHECKER-REJECT-RC REJECTION:STOP
+   then
+   idx ;
+
 : UNDEFINE-NAME ( ptr u8 n -- )
    XREF-SU ! XREF-SN!
    XREF-SN@ XREF-SU @ XREF-UNDEFINE-GUARD
-   XREF-SN@ XREF-SU @ XREF-FIND-TARGET-INDEX XREF-REQUIRE-UNDEFINE XREF-IDX !
+   XREF-SN@ XREF-SU @ XREF-FIND-TARGET-INDEX
+   XREF-SN@ XREF-SU @ XREF-REQUIRE-UNDEFINE XREF-IDX !
    XREF-SN@ XREF-SU @ CHECKER-UNDEFINE   \ guarded checker mutation completes before retirement
    XREF-IDX @ XREF-RETIRE-INDEX ;
 
@@ -620,24 +666,50 @@ DOES-COMPANION-INSTALL
    image 0 <> if NULL-PTR BYTE-VIEW image + SEAL-NDICT-CELL + CELL-VIEW @ exit then
    data-base SEAL-NDICT-CELL + @ ;
 
+\ idx is the record FORGET-DEFS-FROM or HIDE-DEFS-FROM, the word w wu, found
+\ for the name a u, -1 for none; a name that is not defined is rejected.
+: XREF-REQUIRE-DEFINED ( n ptr u8 n ptr u8 n -- n )
+   {: idx:n a:ptr u:n w:ptr wu:n :}
+   idx 0 < if
+      s" E-UNDEFINED" REJECTION:OPEN
+      a u XREF-EMIT-TICKS  s"  is not defined, so " REJECTION:EMIT-STR
+      w wu XREF-EMIT-TICKS  s"  has no word to start from" REJECTION:EMIT-STR
+      s" scope" REJECTION:NOTE  a u BOOT:GLOBAL-WL XREF-EMIT-SCOPE
+      REJECTION:HELP  s" pass a word this program defined, as in " REJECTION:EMIT-STR
+      w wu XREF-EMIT-CALL
+      CHECKER-REJECT-RC REJECTION:STOP
+   then
+   idx ;
+
 \ Sealed-dictionary truncation guard: once the namespace watermark is set, a
 \ FORGET/HIDE lowering ndict below it would retire engine definitions and
-\ (FORGET) rewind CP into engine code, so it fails closed with
-\ ENGINE-ERROR:SEAL-VIOLATION. A zero watermark is the open build namespace;
+\ (FORGET) rewind CP into engine code, so the word w wu given the engine word
+\ a u at index idx is rejected. A zero watermark is the open build namespace;
 \ post-seal marks at or above the watermark pass. The floor is hb's own, in a
 \ build too.
-: SEAL-DICT-GUARD ( n -- n )
+: SEAL-DICT-GUARD ( n ptr u8 n ptr u8 n -- n )
+   {: idx:n a:ptr u:n w:ptr wu:n :}
    data-base SEAL-NDICT-CELL + @ {: floor:n :}
-   floor 0= if exit then
-   dup floor < if
-      s" seal: cannot FORGET/HIDE sealed engine definitions" ENGINE-ERROR:SEAL-VIOLATION die
-   then ;
+   floor 0= 0=  idx floor <  and if
+      s" E-SEAL-VIOLATION" REJECTION:OPEN
+      a u XREF-EMIT-TICKS  s"  is an engine definition, which " REJECTION:EMIT-STR
+      w wu XREF-EMIT-TICKS  s"  cannot remove" REJECTION:EMIT-STR
+      s" record" REJECTION:NOTE  idx REJECTION:EMIT-U
+      s" sealed" REJECTION:NOTE  s" records below " REJECTION:EMIT-STR
+      floor REJECTION:EMIT-U  s"  belong to the engine" REJECTION:EMIT-STR
+      REJECTION:HELP  s" pass a word this program defined, as in " REJECTION:EMIT-STR
+      w wu XREF-EMIT-CALL
+      CHECKER-REJECT-RC REJECTION:STOP
+   then
+   idx ;
 
 \ A snapshot builder truncates a refresh tail with HIDE-DEFS-FROM and retires
 \ one word with `undefine NAME`; it never replays baked sources to hide one.
 : HIDE-DEFS-FROM ( ptr u8 n -- )
    XREF-SU ! XREF-SN!
-   XREF-SN@ XREF-SU @ XREF-FIND-INDEX XREF-REQUIRE-INDEX SEAL-DICT-GUARD {: idx:n :}
+   XREF-SN@ XREF-SU @ XREF-FIND-INDEX
+   XREF-SN@ XREF-SU @ s" HIDE-DEFS-FROM" XREF-REQUIRE-DEFINED
+   XREF-SN@ XREF-SU @ s" HIDE-DEFS-FROM" SEAL-DICT-GUARD {: idx:n :}
    XREF-SN@ XREF-SU @ CHECKER-USIGS-TRUNCATE-FROM-RAW
    idx ndict! ;
 
@@ -775,7 +847,9 @@ seal-package
 
 : FORGET-DEFS-FROM ( ptr u8 n -- )
    XREF-SU ! XREF-SN!
-   XREF-SN@ XREF-SU @ XREF-FIND-INDEX XREF-REQUIRE-INDEX SEAL-DICT-GUARD {: idx:n :}
+   XREF-SN@ XREF-SU @ XREF-FIND-INDEX
+   XREF-SN@ XREF-SU @ s" FORGET-DEFS-FROM" XREF-REQUIRE-DEFINED
+   XREF-SN@ XREF-SU @ s" FORGET-DEFS-FROM" SEAL-DICT-GUARD {: idx:n :}
    idx CODE-RECLAIM:FLOOR-FROM {: floor:n :}
    XREF-SN@ XREF-SU @ CHECKER-USIGS-TRUNCATE-FROM-RAW
    idx ndict!
@@ -804,8 +878,19 @@ seal-package
 : SEE ( -- )
    XREF ;
 
+\ The `undefine` token is kept at entry: parse-name moves the token cells.
 : undefine ( -- )
-   parse-name dup 0= if s" undefine: missing name" 70 die then
+   data-base TKA-CELL + 0 ptr-field @  data-base TKL-CELL + @
+   {: ta:ptr tu:n :}
+   parse-name dup 0= if
+      s" E-MISSING-NAME" REJECTION:OPEN
+      s" `undefine` needs the name of the word to retire" REJECTION:EMIT-STR
+      ta tu REJECTION:AT  s" no name follows" REJECTION:EMIT-STR
+      s" source" REJECTION:NOTE  s" ended before a name" REJECTION:EMIT-STR
+      REJECTION:HELP
+      s" write the word after it, as in `undefine NAME`" REJECTION:EMIT-STR
+      CHECKER-REJECT-RC REJECTION:STOP
+   then
    UNDEFINE-NAME ;
 
 : WORDS ( -- )
