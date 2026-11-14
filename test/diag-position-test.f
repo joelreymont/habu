@@ -690,33 +690,22 @@ variable RC
 \ A word ARENA derives that is taken in the other section is the duplicate,
 \ refused at the declared name.
 : TEST-ARENA ( -- )
-   s" an ARENA outside any package" T-LABEL
-   s" ARENA X n" s" arena-top.f" LINE-FIXTURE
-   s" E-BAD-STORAGE" s" X" 1 7 6 7 REFUSED-MODES
-   0 s" reason" s" declared outside any package" FIELD=
-   s" an ARENA whose cast is taken in the private section" T-LABEL
+   s" an ARENA whose word is taken in the private section" T-LABEL
    SB-RESET
    s" package P" SB-APPEND LF+
-   s" : X-NEW-PTR ( -- ) ;" SB-APPEND LF+
+   s" : X-NEW-DISPOSE ( -- ) ;" SB-APPEND LF+
    s" public" SB-APPEND LF+
    s" ARENA X n" SB-APPEND LF+
    s" ;package" SB-APPEND LF+
    s" arena-taken.f" FIXTURE!
    s" " DUP-RC CHECK-EXIT
-   s" E-DUPLICATE-DEFINITION" REJECTED-AS  0 s" X" 4 7 44 45 AT
+   s" E-DUPLICATE-DEFINITION" REJECTED-AS  0 s" X" 4 7 48 49 AT
    s" --all-errors" DUP-RC CHECK-EXIT
-   s" E-DUPLICATE-DEFINITION" REJECTED-AS  0 s" X" 4 7 44 45 AT
+   s" E-DUPLICATE-DEFINITION" REJECTED-AS  0 s" X" 4 7 48 49 AT
    s" --verify-only" CHECK
    s" E-DUPLICATE-DEFINITION" REJECTED-AS
-   0 s" X" 4 7 44 45 FX-PATH$ CANON$ FX$ AT-IN
-   s" an ARENA with a qualified name" T-LABEL
-   SB-RESET
-   s" package P" SB-APPEND LF+
-   s" ARENA P:X n" SB-APPEND LF+
-   s" ;package" SB-APPEND LF+
-   s" arena-qualified.f" FIXTURE!
-   s" E-BAD-STORAGE" s" P:X" 2 7 16 19 REFUSED-MODES
-   s" an ARENA whose element type its casts would refuse" T-LABEL
+   0 s" X" 4 7 48 49 FX-PATH$ CANON$ FX$ AT-IN
+   s" an ARENA whose element type may hold a linear value" T-LABEL
    SB-RESET
    s" package P" SB-APPEND LF+
    s" DEFLINEAR lin" SB-APPEND LF+

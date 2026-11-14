@@ -2242,17 +2242,13 @@ runtime or analysis layer.
   `extent-a`) and no `width<t>` in an introduction position, as `CAST:`
   defines them: the stored type is a pointee,
   so `[ -- xt ]`, `[ xt -- ]`, `[ -- extent-a ]` and `[ width<n> -- ]` all hand
-  one out. Inside a package it defines `NAME-NEW ( ptr ARENA:arena -- ptr
-  Type )`, a fresh zeroed record, and `NAME-NEW-DISPOSE ( ptr ARENA:arena
-  [ ptr Type -- ] -- ptr Type )`, whose action runs once when the arena is reset
-  or released and must accept a zeroed record. The width is the declared
-  type's, so a record's size always comes from the declaration. The definer
-  makes the casts both words use in the declaring package's private section, so
-  a declaration outside a package or by a qualified NAME is refused with
-  `E-BAD-STORAGE`, as an unknown type is; NAME-NEW, NAME-NEW-DISPOSE,
-  NAME-NEW-PTR and NAME-NEW-ACT must be free in both sections
-  (`E-DUP-DEFINITION`). Nothing is defined when any check refuses, under
-  `--all-errors` too.
+  one out. It defines `NAME-NEW ( ptr ARENA:arena -- ptr Type )`, a fresh
+  zeroed record, and `NAME-NEW-DISPOSE ( ptr ARENA:arena [ ptr Type -- ] --
+  ptr Type )`, whose action runs once when the arena is reset or released and
+  must accept a zeroed record. The width is the declared type's, so a record's
+  size always comes from the declaration. Inside a package both words must be
+  free in both sections (`E-DUP-DEFINITION`). Nothing is defined when any check
+  refuses, under `--all-errors` too.
 - **`HEAP NAME Type` for a record with its own lifetime**: `NAME-NEW ( -- ptr
   Type )` answers a fresh zero-filled record on its own OS mapping, rounded up
   to a page, and `NAME-RELEASE ( ptr Type -- )` unmaps it. A pointer kept

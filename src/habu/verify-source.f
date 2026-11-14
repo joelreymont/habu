@@ -2669,30 +2669,22 @@ variable STG-TYPE-U
    gen genu CHECKER-CERT-DUP? 0= IF true EXIT THEN
    at TOKEN-BYTE !  nameu DUPLICATE!  false ;
 
-\ Whether none of ARENA's four words NAME derives is taken in the checker's
+\ Whether neither of ARENA's words NAME derives is taken in the checker's
 \ current section.
 : ARENA-WORDS-FREE? ( ptr u8 n n -- bool )
    {: name:ptr nameu:n at:n :}
    name nameu s" -NEW" at ARENA-WORD-FREE? 0= IF false EXIT THEN
-   name nameu s" -NEW-DISPOSE" at ARENA-WORD-FREE? 0= IF false EXIT THEN
-   name nameu s" -NEW-PTR" at ARENA-WORD-FREE? 0= IF false EXIT THEN
-   name nameu s" -NEW-ACT" at ARENA-WORD-FREE? ;
+   name nameu s" -NEW-DISPOSE" at ARENA-WORD-FREE? ;
 
 \ ARENA's row asks the definer's questions in the order its run asks them and
-\ registers the four words; without it the rest of the source defers to the run.
+\ registers both words; without it the rest of the source defers to the run.
 : RECORD-ARENA ( -- )
    SCAN-LINE-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF TOP-CUR-A @ TOP-CUR-U @ CHECKER-STORAGE-NAME-REFUSE EXIT THEN
    name nameu NAME-DECLARED
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
    name nameu CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
-   name nameu CHECKER-QUALIFIED? IF
-      name nameu name nameu STG-QUALIFIED-NAME CHECKER-STORAGE-REFUSE EXIT
-   THEN
    CHECKER-AUTH-PACKAGE-MODE@ {: mode:n :}
-   mode CHECKER-PACKAGE-NONE = IF
-      name nameu name nameu STG-NO-PACKAGE CHECKER-STORAGE-REFUSE EXIT
-   THEN
    name nameu at ARENA-WORDS-FREE? 0= IF EXIT THEN
    mode CHECKER-PACKAGE-PUBLIC = {: pub:bool :}
    pub IF CHECKER-PRIVATE ELSE CHECKER-PUBLIC THEN

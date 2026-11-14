@@ -12935,8 +12935,6 @@ package CHECKER-REG
 10 constant STG-NO-TYPE         \ no token follows the name on its line to be its type
 11 constant STG-NO-NAME         \ no token follows the definer on its line to be its name
 12 constant STG-XT-TYPE         \ the type parses and names `xt`, which no storage holds
-13 constant STG-NO-PACKAGE      \ the definer mints its records in the declaring package's private section
-14 constant STG-QUALIFIED-NAME  \ the definer declares its words in its own package, by a bare name
 15 constant STG-WIDTH-TYPE      \ the type parses and holds a `width<t>`, which no storage holds
 16 constant STG-LINEAR-TYPE     \ the type parses and may hold a linear value, which no storage holds
 PTR-VARIABLE STGR-SRC-A   variable STGR-SRC-U   \ the buffer the verifier scans
@@ -14605,15 +14603,6 @@ PTR-VARIABLE SFX-GEN-A   variable SFX-GEN-U
 
 : CHECKER-DEFARENA ( ptr u8 n ptr u8 n -- )
    {: type:ptr typeu:n name:ptr nameu:n :}
-   CHECKER-AUTH-PACKAGE-MODE@ CHECKER-PACKAGE-PUBLIC = {: pub:bool :}
-   pub IF CHECKER-PRIVATE THEN
-   0 LBUF-SIG-U !
-   s" ptr u8 -- ptr " LBUF-SIG-APP  type typeu LBUF-SIG-APP
-   name nameu s" -NEW-PTR" LBUF-SIG-BUF LBUF-SIG-U @ CHECKER-DEFSUFFIX-NAME
-   0 LBUF-SIG-U !
-   s" [ ptr " LBUF-SIG-APP  type typeu LBUF-SIG-APP  s"  -- ] -- [ ptr u8 -- ]" LBUF-SIG-APP
-   name nameu s" -NEW-ACT" LBUF-SIG-BUF LBUF-SIG-U @ CHECKER-DEFSUFFIX-NAME
-   pub IF CHECKER-PUBLIC THEN
    0 LBUF-SIG-U !
    s" ptr ARENA:arena -- ptr " LBUF-SIG-APP  type typeu LBUF-SIG-APP
    name nameu s" -NEW" LBUF-SIG-BUF LBUF-SIG-U @ CHECKER-DEFSUFFIX-NAME

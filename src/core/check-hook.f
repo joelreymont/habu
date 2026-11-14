@@ -211,7 +211,8 @@ CAST: REG-XT ( n -- [ ptr u8 n ptr u8 n -- ] )
    shape CHILD-ABI:DYNAMIC = or  shape CHILD-ABI:SLOT = or
    shape CHILD-ABI:SLOTS = or  shape CHILD-ABI:WORK = or
    shape CHILD-ABI:WORKS = or  shape CHILD-ABI:HEAP-NEW = or
-   shape CHILD-ABI:HEAP-RELEASE = or ;
+   shape CHILD-ABI:HEAP-RELEASE = or  shape CHILD-ABI:ARENA-NEW = or
+   shape CHILD-ABI:ARENA-DISPOSE = or ;
 
 \ A refused type is reported, naming the child, before the throw.
 : STORED-ROWS ( ptr u8 n ptr u8 n n -- n n )

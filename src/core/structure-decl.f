@@ -48,10 +48,6 @@ SD-RESET
 : NAME-GATE ( ptr u8 n -- )         \ the packet names the family, then REQUIRE-NAME judges it
    2dup DECL-REJECT:FAMILY! REQUIRE-NAME ;
 
-\ The name NAME-OK? judges, held across its catch: a quotation carries no
-\ locals. NAME-OK? empties it again, so no borrowed span outlives the call.
-PTR-VARIABLE GATE-A   variable GATE-U
-
 : SD-KIND$ ( -- ptr u8 n ) s" structure" ;
 
 \ A family that owns a linear value is an accepted field type: the structure owns
@@ -484,20 +480,6 @@ SD-QUOT-INSTALL
 public
 
 : SD-RUN ( -- ) SD-FRONT DECL-FRONT:RUN ;
-
-\ NAME-OK? ( name -- bool ) : judge a family name as a bare `STRUCTURE name`
-\ does, for a definer that declares a STRUCTURE in text it generates from that
-\ name (src/core/arena.f), before it spells anything from the name: the same
-\ gate in the same packet, rendered and rethrown with the same code. False only
-\ when a multi-error load counted the refusal.
-: NAME-OK? ( ptr u8 n -- bool )
-   GATE-U ! GATE-A !
-   SD-KIND$ DECL-REJECT:OPEN
-   GATE-A @ GATE-U @ DECL-REJECT:TOKEN!
-   [: GATE-A @ GATE-U @ NAME-GATE ;] catch {: rc:n :}
-   NULL-PTR GATE-A ! 0 GATE-U !
-   rc DECL-REJECT:GUARD-CODE
-   rc 0= ;
 
 \ Registers a STRUCTURE from a body a tool lexed, by SD-RUN's grammar, defining
 \ no word; a body without ;STRUCTURE is refused "missing ;STRUCTURE".

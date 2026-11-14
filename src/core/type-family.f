@@ -4445,21 +4445,37 @@ private
    shape CHILD-ABI:BIND =  shape CHILD-ABI:GROW = or
    shape CHILD-ABI:RESERVE = or  shape CHILD-ABI:RELEASE = or ;
 
+\ ROW with `ptr ARENA:arena` pushed.
+: ARENA-ARG ( n -- n ) {: row:n :}
+   s" ARENA" s" arena" TFAM-FIND 0= IF s" tfam: no ARENA:arena family" 76 die THEN
+   TFAM-FRESH-TERM MK-PTR row MK-PUSH ;
+
+\ ROW with the action `[ ptr T -- ]` pushed.
+: ACTION-ARG ( n n -- n ) {: term:n row:n :}
+   FRESH MK-QROW {: q:n :}
+   term MK-PTR q MK-PUSH  q  FRESH MK-QROW dup MK-QUOT  row MK-PUSH ;
+
+: STORED-IN ( n n n -- n ) {: shape:n term:n base:n :}
+   shape CHILD-ABI:STORED =  shape CHILD-ABI:SLOT = or
+   shape CHILD-ABI:WORK = or  shape CHILD-ABI:HEAP-NEW = or IF base EXIT THEN
+   shape CHILD-ABI:ARENA-NEW = IF base ARENA-ARG EXIT THEN
+   shape CHILD-ABI:ARENA-DISPOSE = IF term  base ARENA-ARG  ACTION-ARG EXIT THEN
+   CC-N MK-CON base MK-PUSH ;
+
 public
 
 \ A typed storage child's input and output rows over the stored type's term T:
 \ STORED, SLOT, WORK and HEAP-NEW answer `( -- ptr T )`, the indexed shapes
-\ `( n -- ptr T )`, HEAP-RELEASE `( ptr T -- )`.
-\ It takes no NEW, so T, which the storage parse just made, stays live.
+\ `( n -- ptr T )`, HEAP-RELEASE `( ptr T -- )`, ARENA-NEW
+\ `( ptr ARENA:arena -- ptr T )` and ARENA-DISPOSE
+\ `( ptr ARENA:arena [ ptr T -- ] -- ptr T )`. It takes no NEW, so T, which the
+\ storage parse just made, stays live.
 : TFAM-STORED-ROWS ( n n -- n n ) {: shape:n term:n :}
    FRESH MK-ROW {: base:n :}
    shape CHILD-ABI:HEAP-RELEASE = IF
       term MK-PTR base MK-PUSH  base EXIT
    THEN
-   shape CHILD-ABI:STORED =  shape CHILD-ABI:SLOT = or
-   shape CHILD-ABI:WORK = or
-   shape CHILD-ABI:HEAP-NEW = or
-   IF base ELSE CC-N MK-CON base MK-PUSH THEN
+   shape term base STORED-IN
    term MK-PTR base MK-PUSH ;
 
 \ A child word's input row, output row and body value, from its CHILD-ABI SHAPE

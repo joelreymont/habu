@@ -2260,7 +2260,9 @@ variable DEF-VALUE
    then
    shape CHILD-ABI:SLOTS = if s" private TASK SLOT-AT" exit then
    shape CHILD-ABI:WORK = if s" private CWORK WORK" exit then
-   s" private CWORK WORK-AT" ;
+   shape CHILD-ABI:WORKS = if s" private CWORK WORK-AT" exit then
+   shape CHILD-ABI:ARENA-NEW = if s" private ARENA-DECL NEW" exit then
+   s" private ARENA-DECL NEW-DISPOSE" ;
 
 \ A routine child's entry: in hb's session the definer's tick; in a build the
 \ build's own, by name: the definer may be hb's, whose code no object names.
@@ -2277,13 +2279,13 @@ variable DEF-VALUE
    shape CHILD-ABI:INDEX = if COMP-BODY:index 0 exit then
    shape CHILD-ABI:VALUE = if COMP-BODY:value 0 exit then
    shape CHILD-ABI:STORED = if COMP-BODY:address 0 exit then
-   shape CHILD-ABI:BUFFER >= shape CHILD-ABI:HEAP-RELEASE <= and if
+   shape CHILD-ABI:BUFFER >= shape CHILD-ABI:ARENA-DISPOSE <= and if
       COMP-BODY:routine shape param ROUTINE exit
    then
    RC-REJECT throw ;
 
 : CHILD-ANCHORED? ( n -- bool ) {: shape:n :}
-   shape CHILD-ABI:STORED >= shape CHILD-ABI:HEAP-RELEASE <= and ;
+   shape CHILD-ABI:STORED >= shape CHILD-ABI:ARENA-DISPOSE <= and ;
 
 \ A value child is recorded as a constant, which a call folds to its number, a
 \ STORED child as an address, which a call folds to an inline push.

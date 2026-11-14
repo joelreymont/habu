@@ -1,8 +1,8 @@
 \ ARENA records come from the real definer and runtime: NAME-NEW's records are
 \ zeroed, cell-aligned and distinct, NAME-NEW-DISPOSE's actions run once,
 \ newest first, at the arena's reset or release, a public declaration publishes
-\ NAME-NEW and keeps its casts private, a HEAP or DYNAMIC-BUFFER element holds
-\ an arena handle, and a refused declaration defines none of its four words.
+\ NAME-NEW, a HEAP or DYNAMIC-BUFFER element holds an arena handle, and a
+\ refused declaration defines neither of its two words.
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/arena.f
@@ -21,6 +21,25 @@ private
 ARENA PRECS rec
 public
 : PRIV-NEW ( ptr ARENA:arena -- ptr rec ) PRECS-NEW ;
+;package
+
+\ The declaring package spells `drop` and `swap` before its ARENA; the words
+\ ARENA makes still call the engine's.
+package ARENA-CAP
+: drop ( n -- n ) ;
+: swap ( n n -- n n ) ;
+ARENA CRECS n
+undefine drop
+undefine swap
+variable HITS
+public
+: GO ( -- n n n )
+   0 HITS !
+   ARENA:NEW {: a:ptr :}
+   a CRECS-NEW {: r:ptr :}
+   7 r !
+   a [: drop 1 HITS +! ;] CRECS-NEW-DISPOSE {: s:ptr :}
+   r @  s @  a ARENA:RELEASE  HITS @ ;
 ;package
 
 package ARENA-TEST
@@ -56,26 +75,7 @@ variable EVAL-U
 : NO-WORDS ( ptr u8 n -- )
    {: name:ptr nameu:n :}
    name nameu s" -NEW" ABSENT
-   name nameu s" -NEW-DISPOSE" ABSENT
-   name nameu s" -NEW-PTR" ABSENT
-   name nameu s" -NEW-ACT" ABSENT ;
-
-
-\ `ARENA ovf ptr<spaces>n`: an element type padded until the declaration's
-\ text passes the generator's buffer, refused with 7121 while that text is
-\ built.
-4000 constant OVF-PAD
-OVF-PAD 32 + BUFFER: OVF-SRC
-variable OVF-U
-: OVF, ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   u 0 ?do a i + c@ OVF-SRC OVF-U @ + c! OVF-U @ 1 + OVF-U ! loop ;
-
-
-: OVF-TEXT ( -- ptr u8 n )
-   0 OVF-U !  s" ARENA ovf ptr" OVF,
-   OVF-PAD 0 ?do s"  " OVF, loop
-   s" n" OVF,  OVF-SRC OVF-U @ ;
+   name nameu s" -NEW-DISPOSE" ABSENT ;
 
 
 \ TAKEN-N records span three chunks of one arena; a record that moved, or one
@@ -136,6 +136,11 @@ variable OVF-U
    2 LOG-ID @ 3 T=  2 LOG-AT @ at3 T= ;
 
 
+: CAPTURE ( -- )
+   s" a package's own drop and swap before its ARENA capture neither word" T-LABEL
+   ARENA-CAP:GO 1 T= 0 T= 7 T= ;
+
+
 \ RECORDS and DISPOSALS call ARENA-FIX's public RECS-NEW and RECS-NEW-DISPOSE.
 : VISIBILITY ( -- )
    s" a public declaration leaves its package's section public" T-LABEL
@@ -143,11 +148,6 @@ variable OVF-U
    s" a private declaration's words are not found from another package" T-LABEL
    s" : P1 ( ptr ARENA:arena -- ptr ARENA-FIX:rec ) ARENA-FIX:PRECS-NEW ;" EVAL CHECKER-REJECT-RC T=
    s" : P2 ( ptr ARENA:arena [ ptr ARENA-FIX:rec -- ] -- ptr ARENA-FIX:rec ) ARENA-FIX:PRECS-NEW-DISPOSE ;" EVAL CHECKER-REJECT-RC T=
-   s" nor are either declaration's casts" T-LABEL
-   s" : P3 ( ptr u8 -- ptr ARENA-FIX:rec ) ARENA-FIX:RECS-NEW-PTR ;" EVAL CHECKER-REJECT-RC T=
-   s" : P4 ( [ ptr ARENA-FIX:rec -- ] -- [ ptr u8 -- ] ) ARENA-FIX:RECS-NEW-ACT ;" EVAL CHECKER-REJECT-RC T=
-   s" : P5 ( ptr u8 -- ptr ARENA-FIX:rec ) ARENA-FIX:PRECS-NEW-PTR ;" EVAL CHECKER-REJECT-RC T=
-   s" : P6 ( [ ptr ARENA-FIX:rec -- ] -- [ ptr u8 -- ] ) ARENA-FIX:PRECS-NEW-ACT ;" EVAL CHECKER-REJECT-RC T=
    s" P1" get-current search-wl 0= TTRUE ;
 
 
@@ -170,7 +170,7 @@ variable OVF-U
    a ARENA:RELEASE ;
 
 
-\ Whether NAME+SFX (PUB-ABSENT) or each of NAME's four words (PUB-NO-WORDS) is
+\ Whether NAME+SFX (PUB-ABSENT) or each of NAME's two words (PUB-NO-WORDS) is
 \ absent from ARENA-TEST's public section; the caller is in its private one.
 : PUB-ABSENT ( ptr u8 n ptr u8 n -- )
    {: name:ptr nameu:n sfx:ptr sfxu:n :}
@@ -181,10 +181,7 @@ variable OVF-U
 
 
 : TAKEN-NEW-DISPOSE ( -- ) ;
-: TAKEN2-NEW-PTR ( -- ) ;
-\ Each taken in the section other than its ARENA's.
-: PUBPTR-NEW-PTR ( -- ) ;
-: PUBACT-NEW-ACT ( -- ) ;
+\ Taken in the section other than its ARENA's.
 : PUBDIS-NEW-DISPOSE ( -- ) ;
 public
 : PRIVNEW-NEW ( -- ) ;
@@ -192,12 +189,12 @@ private
 
 
 : REFUSALS ( -- )
-   s" a refused element type defines none of the four words" T-LABEL
+   s" a refused element type defines neither of the two words" T-LABEL
    s" ARENA BAD u16" EVAL CHECKER-REJECT-RC T=
    s" BAD" NO-WORDS
    s" ARENA WORSE no-such-type" EVAL CHECKER-REJECT-RC T=
    s" WORSE" NO-WORDS
-   s" an element type ARENA's casts would refuse defines none of the four words" T-LABEL
+   s" an element type ARENA cannot store defines neither word" T-LABEL
    s" ARENA XQ [ -- xt ]" EVAL CHECKER-REJECT-RC T=
    s" XQ" NO-WORDS
    s" ARENA XC [ xt -- ]" EVAL CHECKER-REJECT-RC T=
@@ -208,40 +205,28 @@ private
    s" XV" NO-WORDS
    s" ARENA OPENQ [ a -- a ]" EVAL CHECKER-REJECT-RC T=
    s" OPENQ" NO-WORDS
-   s" a name whose derived word is taken defines none of the others" T-LABEL
+   s" a name whose derived word is taken defines neither word" T-LABEL
    s" ARENA TAKEN n" EVAL E-DUP-DEFINITION T=
-   s" TAKEN" s" -NEW" ABSENT  s" TAKEN" s" -NEW-PTR" ABSENT  s" TAKEN" s" -NEW-ACT" ABSENT
-   s" ARENA TAKEN2 n" EVAL E-DUP-DEFINITION T=
-   s" TAKEN2" s" -NEW" ABSENT  s" TAKEN2" s" -NEW-DISPOSE" ABSENT  s" TAKEN2" s" -NEW-ACT" ABSENT
-   s" a declaration refused while it is built defines nothing" T-LABEL
-   OVF-TEXT EVAL 7121 T=
-   s" OVF" NO-WORDS
-   s" ARENA OVF n" EVAL 0 T=
-   s" ARENA:NEW dup OVF-NEW drop ARENA:RELEASE" EVAL 0 T=
+   s" TAKEN" s" -NEW" ABSENT
    s" a refusal counted by a multi-error load defines nothing" T-LABEL
    s" ARENA MBAD u16" MULTI 1 T= 0 T=
    s" MBAD" NO-WORDS
-   s" a name whose word is taken in the other section defines none of the others" T-LABEL
-   s" public ARENA PUBPTR n" EVAL E-DUP-DEFINITION T=  s" private" EVAL 0 T=
-   s" PUBPTR" PUB-NO-WORDS
-   s" PUBPTR" s" -NEW" ABSENT  s" PUBPTR" s" -NEW-DISPOSE" ABSENT  s" PUBPTR" s" -NEW-ACT" ABSENT
-   s" public ARENA PUBACT n" EVAL E-DUP-DEFINITION T=  s" private" EVAL 0 T=
-   s" PUBACT" PUB-NO-WORDS
-   s" PUBACT" s" -NEW" ABSENT  s" PUBACT" s" -NEW-DISPOSE" ABSENT  s" PUBACT" s" -NEW-PTR" ABSENT
+   s" a name whose word is taken in the other section defines neither word" T-LABEL
    s" public ARENA PUBDIS n" EVAL E-DUP-DEFINITION T=  s" private" EVAL 0 T=
    s" PUBDIS" PUB-NO-WORDS
-   s" PUBDIS" s" -NEW" ABSENT  s" PUBDIS" s" -NEW-PTR" ABSENT  s" PUBDIS" s" -NEW-ACT" ABSENT
+   s" PUBDIS" s" -NEW" ABSENT
    s" ARENA PRIVNEW n" EVAL E-DUP-DEFINITION T=
    s" PRIVNEW" NO-WORDS
-   s" PRIVNEW" s" -NEW-DISPOSE" PUB-ABSENT  s" PRIVNEW" s" -NEW-PTR" PUB-ABSENT
-   s" PRIVNEW" s" -NEW-ACT" PUB-ABSENT
-   s" a qualified name defines none of the four words" T-LABEL
-   s" ARENA ARENA-TEST:QUAL n" EVAL CHECKER-REJECT-RC T=
-   s" QUAL" NO-WORDS  s" QUAL" PUB-NO-WORDS ;
+   s" PRIVNEW" s" -NEW-DISPOSE" PUB-ABSENT
+   s" a qualified name declares both words in that package's public section" T-LABEL
+   s" ARENA ARENA-TEST:QUAL n" EVAL 0 T=
+   s" ARENA:NEW dup ARENA-TEST:QUAL-NEW drop ARENA:RELEASE" EVAL 0 T=
+   s" : QUAL-USE ( ptr ARENA:arena -- ptr n ) [: drop ;] ARENA-TEST:QUAL-NEW-DISPOSE ;"
+   EVAL 0 T= ;
 
 
 : VERIFY-USES-SRC$ ( -- ptr u8 n )
-   S\" require src/lib/arena.f\npackage Q public\nSTRUCTURE rec DERIVE addr FIELD id n ;STRUCTURE\nARENA X rec\n: INSIDE ( ptr ARENA:arena -- ptr rec ) [: drop ;] X-NEW-DISPOSE ;\nprivate\n: OWNCAST ( ptr u8 -- ptr rec ) X-NEW-PTR ;\n;package\npackage R public\n: U ( ptr ARENA:arena -- ptr Q:rec ) dup Q:X-NEW drop [: drop ;] Q:X-NEW-DISPOSE ;\n;package\npackage P\nprivate\nARENA X n\n: OWNCAST ( ptr u8 -- ptr n ) X-NEW-PTR ;\npublic\n: MK ( ptr ARENA:arena -- ptr n ) X-NEW ;\n;package\n" ;
+   S\" require src/lib/arena.f\npackage Q public\nSTRUCTURE rec DERIVE addr FIELD id n ;STRUCTURE\nARENA X rec\n: INSIDE ( ptr ARENA:arena -- ptr rec ) [: drop ;] X-NEW-DISPOSE ;\n;package\npackage R public\n: U ( ptr ARENA:arena -- ptr Q:rec ) dup Q:X-NEW drop [: drop ;] Q:X-NEW-DISPOSE ;\n;package\npackage P\nprivate\nARENA X n\npublic\n: MK ( ptr ARENA:arena -- ptr n ) X-NEW ;\n;package\n" ;
 
 : VERIFY-WRONG-SRC$ ( -- ptr u8 n )
    S\" require src/lib/arena.f\npackage Q public\nARENA X n\n;package\npackage R public\n: U ( ptr ARENA:arena -- ptr u8 ) Q:X-NEW ;\n: V ( ptr ARENA:arena -- ptr n ) [: c@ drop ;] Q:X-NEW-DISPOSE ;\n;package\n" ;
@@ -275,7 +260,7 @@ private
 
 : RUN ( -- )
    T-RESET
-   RECORDS DISPOSALS VISIBILITY HANDLES REFUSALS VERIFY-USES ;
+   RECORDS DISPOSALS CAPTURE VISIBILITY HANDLES REFUSALS VERIFY-USES ;
 
 RUN
 
@@ -283,9 +268,10 @@ public
 
 \ Run at top level, where no package is open.
 : TOP-LEVEL ( -- )
-   s" a declaration outside any package defines none of the four words" T-LABEL
-   s" ARENA TOP n" EVAL CHECKER-REJECT-RC T=
-   s" TOP" NO-WORDS ;
+   s" a declaration outside any package defines both words" T-LABEL
+   s" ARENA TOP n" EVAL 0 T=
+   s" ARENA:NEW dup TOP-NEW drop ARENA:RELEASE" EVAL 0 T=
+   s" : TOP-USE ( ptr ARENA:arena -- ptr n ) [: drop ;] TOP-NEW-DISPOSE ;" EVAL 0 T= ;
 
 ;package
 
