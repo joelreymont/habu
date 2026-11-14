@@ -1313,12 +1313,30 @@ public
    a u src wid alias-record ;
 private
 
-\ In a package, publish an existing word under its tail into the current
-\ wordlist: its code, its immediate, wide and certified-input bits, and a
-\ does> definer's clause in the slot above. At top level the name is consumed
-\ and nothing else happens: there `export` is a build directive.
+\ Both name the `EXPORT` token, before its operand is read.
+: EXPORT-NO-PACKAGE ( -- )
+   s" E-EXPORT-NO-PACKAGE" REJECTION:OPEN
+   s" EXPORT" TICKS  s"  publishes a word from a package, and no package is open here" SAY
+   TOKEN$ REJECTION:AT  s" outside a package" SAY
+   REJECTION:HELP  s" write " SAY  s" EXPORT NAME" TICKS
+   s"  in a package's public section, after " SAY  s" package P" TICKS
+   s"  and " SAY  s" public" TICKS
+   RC-REJECT REJECTION:STOP ;
+
+: EXPORT-PRIVATE ( -- )
+   s" E-EXPORT-NO-PACKAGE" REJECTION:OPEN
+   s" EXPORT" TICKS  s"  publishes a word, and this is the package's private section" SAY
+   TOKEN$ REJECTION:AT  s" private section" SAY
+   REJECTION:HELP  s" move " SAY  s" EXPORT NAME" TICKS  s"  after " SAY
+   s" public" TICKS
+   RC-REJECT REJECTION:STOP ;
+
+\ In a package's public section, publish an existing word under its tail into
+\ the current wordlist: its code, its immediate, wide and certified-input bits,
+\ and a does> definer's clause in the slot above.
 : PKG-EXPORT ( -- )
-   PKG-PUB-CELL CELL@ 0= if PKG-NAME exit then
+   PKG-PUB-CELL CELL@ 0= if EXPORT-NO-PACKAGE then
+   get-current PKG-PRI-CELL CELL@ = if EXPORT-PRIVATE then
    PKG-NAME
    OVERLAY-GUARD
    PKG-EXPORT-SOURCE {: src:ptr :}

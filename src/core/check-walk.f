@@ -3418,9 +3418,9 @@ CHECKER-REG:}SCRATCH
    {: ix:n src:n :}
    ix CHECKER-RESOLVE:REC-AT REC-SYM {: sym:n :}
    src CHECKER-RESOLVE:REC-AT REC-SYM {: from:n :}
-   sym 0=  from 0= or IF E-EXPORT-UNDEFINED throw THEN
+   sym 0=  from 0= or IF s" checker: an export or its source has no checked symbol" 76 die THEN
    from USIG-NEWEST {: eff:n :}
-   eff 0= IF E-EXPORT-UNDEFINED throw THEN
+   eff 0= IF s" checker: an export's source has no checked effect" 76 die THEN
    eff 1 - E-PTR EXPORT-EFF-INST {: din:n dout:n rin:n rout:n hasr:bool :}
    sym CHECKER-REC-SYM !
    din dout rin rout hasr from EFFECT-EXTERNAL-SYM? E-ADD-EFFECT

@@ -2328,7 +2328,8 @@ variable TRUSTED-DOES
    nameu 0= IF E-MISSING-NAME throw THEN
    name nameu CHECKER-USING-PUSH ;
 
-: RECORD-END-USING ( -- )
+\ Takes the `;using` token.
+: RECORD-END-USING ( ptr u8 n -- )
    CHECKER-USING-POP ;
 
 \ DEFTYPE NAME declares a value nominal: a package-scoped arity-0 type family
@@ -3710,7 +3711,7 @@ variable PARSE-IMM-XT s" parse-imm" PARSE-IMM-XT LIBRARY-XT!
    a u s" ;package" STR=CI IF RECORD-END-PACKAGE 0 0= EXIT THEN
    a u s" seal-package" STR=CI IF SEAL-ROW 0 0= EXIT THEN
    a u s" using" STR=CI IF RECORD-USING 0 0= EXIT THEN
-   a u s" ;using" STR=CI IF RECORD-END-USING 0 0= EXIT THEN
+   a u s" ;using" STR=CI IF a u RECORD-END-USING 0 0= EXIT THEN
    a u s" deftype" STR=CI IF RECORD-DEFTYPE 0 0= EXIT THEN
    a u s" deflinear" STR=CI IF RECORD-DEFLINEAR 0 0= EXIT THEN
    a u s" value-record" STR=CI IF
