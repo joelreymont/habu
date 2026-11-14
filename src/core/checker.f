@@ -77,8 +77,9 @@
 \ stands in a row as W hidden physical field terms (PUSH-LOGICAL), payload
 \ slots 0 to W-2 and the tag at W-1 on top. Each reuses the logical family id,
 \ name and argument terms and carries its slot plus one in PARAMHID, 0 meaning
-\ logical. A hidden term pairs only with the same family and slot and never
-\ binds a var, con, ptr or atom. A call expands a logical cell whose width it
+\ logical. A hidden term pairs only with the same family and slot and binds
+\ no con, ptr or atom, and no var but a MOVED one when the value is one cell
+\ wide. A call expands a logical cell whose width it
 \ resolved the same way (OUTPUT-COPY). Whole-bundle transports (dup, swap,
 \ >r and kin) move the group by row surgery (XPORT-STEP?). A layout whose
 \ width reads an open argument (LAYOUT-WIDTH-OPEN?) stays one logical cell: a
@@ -571,7 +572,7 @@
 \ Layout transport: a layout value is W consecutive hidden cells, tag on top
 \ and slot 0 deepest. A stack op (`swap`, `rot`, `>r` and the rest) whose top
 \ k logical operands include such a group cannot use the primitive's
-\ variable-based effect, since a hidden field never binds a variable, so the
+\ variable-based effect, since a hidden field binds no plain variable, so the
 \ checker reads k logical groups off the row and pushes them back in the op's
 \ output order. A hidden tag opens a group of exactly W cells, checked from
 \ slot W-1 down to 0 as one family; a malformed group dies 76. Any other cell
@@ -1042,6 +1043,10 @@ TV-CLEAR
 \ TVK-ADDR: the pointee of a row that reads, writes and sizes nothing through
 \ the pointer, so any type, any family included; an inferred signature keeps it.
 12 constant TVK-ADDR
+\ TVK-MOVED: a var of a checked `:` signature named only in stack positions
+\ whose body only moves it, so it takes a one-cell layout value; any other
+\ use makes it TVK-CELL.
+13 constant TVK-MOVED
 : TVK@ ( n -- n ) cells TVK + @ ;
 : TVK! ( n n -- ) cells TVK + ! ;
 : TVK-RAW? ( n -- bool ) TVK@ TVK-RAW = ;
@@ -1061,19 +1066,24 @@ TV-CLEAR
 : TVK-BASE-ONLY! ( n -- ) TVK-BASE-ONLY swap cells TVK + ! ;
 : TVK-STORED! ( n -- ) TVK-STORED swap cells TVK + ! ;
 : TVK-ADDR! ( n -- ) TVK-ADDR swap cells TVK + ! ;
+: TVK-MOVED! ( n -- ) TVK-MOVED swap cells TVK + ! ;
 
 \ The fence lattice: ADDR < STORED < ANY < CELL < NULL < DBASE < RAW. A meet
 \ keeps the stricter kind. Row kinds are not on this lattice and rank 0 (a row
-\ var never meets a type var).
+\ var never meets a type var). MOVED meets MOVED as itself and any other kind
+\ as CELL.
 : TVK-RANK ( n -- n )
    dup TVK-RAW = IF drop 4 EXIT THEN
    dup TVK-DBASE = IF drop 3 EXIT THEN
    dup TVK-NULL = IF drop 2 EXIT THEN
    dup TVK-STORED = IF drop -1 EXIT THEN
    dup TVK-ADDR = IF drop -2 EXIT THEN
-   TVK-CELL = IF 1 EXIT THEN
+   dup TVK-CELL = swap TVK-MOVED = or IF 1 EXIT THEN
    0 ;
-: TVK-MEET ( n n -- n ) {: k1:n k2:n :}
+: MOVED>CELL ( n -- n ) dup TVK-MOVED = IF drop TVK-CELL THEN ;
+: TVK-MEET ( n n -- n ) {: m1:n m2:n :}
+   m1 TVK-MOVED = m2 TVK-MOVED = and IF TVK-MOVED EXIT THEN
+   m1 MOVED>CELL m2 MOVED>CELL {: k1:n k2:n :}
    k1 TVK-SCOPE = k2 TVK-SCOPE = or IF TVK-SCOPE EXIT THEN
    k1 TVK-REGION = k2 TVK-REGION = or IF TVK-REGION EXIT THEN
    k1 TVK-OFF = k2 TVK-RANK 0 < and  k2 TVK-OFF = k1 TVK-RANK 0 < and  or IF
@@ -1119,11 +1129,12 @@ TV-CLEAR
    kind TVK-BASE-ONLY = IF s" base-only" EXIT THEN
    kind TVK-STORED = IF s" stored" EXIT THEN
    kind TVK-ADDR = IF s" addr" EXIT THEN
+   kind TVK-MOVED = IF s" moved" EXIT THEN
    s" " ;
 
 : TAG>KIND ( ptr u8 n -- n ) {: a:ptr u:n :}
    u 0 = IF TVK-ANY EXIT THEN
-   TVK-ADDR 1 + 1 ?do
+   TVK-MOVED 1 + 1 ?do
       i KIND>TAG$ a u CORE-STR= IF i unloop EXIT THEN
    loop
    TVK-ANY ;
@@ -1275,6 +1286,12 @@ CHECKER-REG:}SCRATCH
    dup id TVK@ = IF drop EXIT THEN
    id TVK@  id 2 TRAIL-LINK
    id cells TVK + ! ;
+
+\ Sets var id's kind, trailed, even below its meet.
+: TVK-LOWER-TO ( n n -- ) {: id:n kind:n :}
+   id TVK@ kind = IF EXIT THEN
+   id TVK@  id 2 TRAIL-LINK
+   kind id cells TVK + ! ;
 
 : NSCOPE-RAISE ( n -- )
    dup NSCOPE@ IF drop EXIT THEN
@@ -3469,9 +3486,9 @@ public
 ;package
 
 
-\ A one-cell primitive (dup, drop, swap, over, nip, >r, ...) that would bind or
-\ consume a logical layout cell fails closed in U-TYPE; only a var, con, ptr or
-\ atom pairing reaches this guard.
+\ A var that would bind or consume a layout cell outside a transport step fails
+\ closed in U-TYPE unless LAYOUT-BLOCK? admits the pairing; only a var, con, ptr
+\ or atom pairing reaches this guard.
 : LAYOUT-PARAM? ( n -- bool ) {: t:n :}
    t T-UNSTALE {: r:n :}                    \ a stale cell is still a cell of its family
    r TAG T-PARAM <> IF RES-FALSE EXIT THEN
@@ -4026,6 +4043,16 @@ variable NMOFF                           \ its token's offset in the checked tex
    t TYPE-CLOSED? 0= IF RES-FALSE EXIT THEN
    t LAYOUT-MEM-OK? ;
 
+\ A MOVED var takes a one-cell layout value its body never reads, the hidden
+\ cell a signature expands it to included: that cell is the whole value.
+: MOVED-TAKES? ( n n -- bool ) {: v:n t:n :}
+   v ISVAR 0= IF RES-FALSE EXIT THEN
+   v PAY TVK@ TVK-MOVED <> IF RES-FALSE EXIT THEN
+   t TAG T-PARAM <> IF RES-FALSE EXIT THEN
+   t TYPE-CLOSED? 0= IF RES-FALSE EXIT THEN
+   t LAYOUT-MAYBE-LINEAR? IF RES-FALSE EXIT THEN
+   t T-WIDTH 1 = ;
+
 : LAYOUT-BLOCK? ( n n -- bool ) {: a:n b:n :}
    a b LAYOUT-EITHER? 0= IF a b NOMPTR-BLOCK? EXIT THEN
    \ Let RAW-BLOCK? apply the literal null's existing pointee exception.
@@ -4037,6 +4064,8 @@ variable NMOFF                           \ its token's offset in the checked tex
    a ADDR-VAR? b ADDR-VAR? or IF RES-FALSE EXIT THEN
    a b STORED-TAKES? IF RES-FALSE EXIT THEN
    b a STORED-TAKES? IF RES-FALSE EXIT THEN
+   a b MOVED-TAKES? IF RES-FALSE EXIT THEN
+   b a MOVED-TAKES? IF RES-FALSE EXIT THEN
    RES-TRUE ;
 
 CHECKER-REG:SCRATCH{
@@ -4143,10 +4172,29 @@ CHECKER-REG:}SCRATCH
    t ISVAR 0= IF EXIT THEN
    t PAY TVK@ TVK-RANK kind TVK-RANK < IF t PAY kind TVK-RAISE-TO THEN ;
 
+\ A move keeps a MOVED var: a pairing with another MOVED var, or in a
+\ transport step with a plain var, which takes its kind. Any other pairing
+\ reads the cell, so its MOVED side becomes CELL and is judged as one. True
+\ for a move.
+: MOVED-KEEP? ( n n -- bool ) {: vid:n term:n :}
+   term T-RES {: t:n :}
+   t ISVAR IF t PAY TVK@ ELSE -1 THEN {: tk:n :}
+   vid TVK@ {: vk:n :}
+   vk TVK-MOVED <> tk TVK-MOVED <> and IF RES-FALSE EXIT THEN
+   vk tk = IF RES-TRUE EXIT THEN
+   LAYOUT-XPORT @ 0 <> t ISVAR and IF
+      vk TVK-ANY = IF RES-TRUE EXIT THEN
+      tk TVK-ANY = IF t PAY TVK-MOVED TVK-LOWER-TO RES-TRUE EXIT THEN
+   THEN
+   vk TVK-MOVED = IF vid TVK-CELL TVK-RAISE-TO THEN
+   tk TVK-MOVED = IF t PAY TVK-CELL TVK-RAISE-TO THEN
+   RES-FALSE ;
+
 : RAW-BLOCK? ( n n -- bool )
    {: vid:n term:n :}
    vid TVK@ TVK-BASE-ONLY =  term BASE-ONLY-VAR? or IF vid term BASE-ONLY-BLOCK? EXIT THEN
    vid term SCOPE-BLOCK? IF RES-TRUE EXIT THEN
+   vid term MOVED-KEEP? IF RES-FALSE EXIT THEN
    vid TVK@ TVK-CELL = IF
       term T-RES dup ISVAR IF PAY TVK-CELL TVK-RAISE-TO RES-FALSE EXIT THEN
       \ A generic ! or atomic! still reads its one-cell value.
@@ -10946,6 +10994,7 @@ BADSIG-DEFAULT
          r@ EN.B @ TVK-BASE-ONLY = IF dup PAY TVK-BASE-ONLY! THEN
          r@ EN.B @ TVK-STORED = IF dup PAY TVK-STORED! THEN
          r@ EN.B @ TVK-ADDR = IF dup PAY TVK-ADDR! THEN
+         r@ EN.B @ TVK-MOVED = IF dup PAY TVK-MOVED! THEN
          r@ EN.C @ 0 <> IF dup PAY NSCOPE! THEN
          r@ EN.D @ 0 <> IF dup PAY NLINEAR! THEN
          r> drop
@@ -11185,7 +11234,7 @@ CHECKER-REG:}SCRATCH
       i cells NP-ORIG + @ RECUR-MARK@ i cells RECUR-MARK + !
    loop ;
 
-: RECUR-MOVED? ( -- bool )
+: RECUR-CHANGED? ( -- bool )
    NP-ORIG-N @ 0 ?do
       i cells NP-ORIG + @ RECUR-MARK@ i cells RECUR-MARK + @ <> IF
          RES-TRUE unloop EXIT
@@ -11227,7 +11276,7 @@ CHECKER-REG:}SCRATCH
 : RECUR-CHECK ( -- )
    BEGIN
       RECUR-MARKS!  RECUR-PASS
-      OK @ 0=  RECUR-MOVED? 0=  or
+      OK @ 0=  RECUR-CHANGED? 0=  or
    UNTIL ;
 
 \ The domain of the identity a bound name holds, -1 for none. A caller's
@@ -20823,13 +20872,19 @@ variable NP-SEEN-N
    SGHASR @ IF SGRIN @ NP-COLLECT-ROW  SGROUT @ NP-COLLECT-ROW THEN ;
 
 variable SD-PASS
+variable SD-MOVES   \ a checked `:` signature's rows: its body proves MOVED
 
-: SD-VAR ( n bool -- ) {: id:n stored:bool :}
+\ At is 0 for a stack position, 1 for a stored one, 2 for any other.
+: SD-VAR ( n n -- ) {: id:n at:n :}
    id NP-LETTER 63 = IF EXIT THEN
    SD-PASS @ 0= IF
-      stored id TVK@ TVK-ANY = and IF id TVK-STORED! THEN EXIT
+      at 1 = id TVK@ TVK-ANY = and IF id TVK-STORED! THEN
+      SD-MOVES @ IF
+         at 0= id TVK@ TVK-CELL = and IF id TVK-MOVED! THEN
+      THEN EXIT
    THEN
-   stored 0= id TVK@ TVK-STORED = and IF TVK-ANY id TVK! THEN ;
+   at 1 <> id TVK@ TVK-STORED = and IF TVK-ANY id TVK! THEN
+   at 0 <> id TVK@ TVK-MOVED = and IF TVK-CELL id TVK! THEN ;
 
 : SD-ARG-AT ( n n n -- n ) {: x:n slot:n at:n :}
    at 2 = IF 2 EXIT THEN
@@ -20844,7 +20899,7 @@ variable SD-PASS
       REPEAT drop EXIT
    THEN drop
    t T-RES {: x:n :}
-   x ISVAR IF x PAY at 1 = SD-VAR EXIT THEN
+   x ISVAR IF x PAY at SD-VAR EXIT THEN
    x TAG T-PTR = IF
       x PTR>INNER at 2 = IF 2 ELSE 1 THEN TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
    THEN
@@ -20871,14 +20926,20 @@ variable SD-PASS
    hasr IF rin 0 SD-TERM  rout 0 SD-TERM THEN ;
 
 \ A declared ANY variable whose every occurrence in the rows is a stored
-\ position is STORED. Declared means lettered in NMAP.
-: STORED-DERIVE-ROWS ( n n n n bool -- )
-   {: din:n dout:n rin:n rout:n hasr:bool :}
+\ position is STORED. Declared means lettered in NMAP. With moves, a declared
+\ CELL variable whose every occurrence is a stack position is MOVED.
+: STORED-DERIVE-ROWS ( n n n n bool bool -- )
+   {: din:n dout:n rin:n rout:n hasr:bool moves:bool :}
+   moves SD-MOVES !
    0 SD-PASS !  din dout rin rout hasr SD-ROWS
    1 SD-PASS !  din dout rin rout hasr SD-ROWS ;
 
 : STORED-DERIVE ( -- )
-   SGIN @ SGOUT @ SGRIN @ SGROUT @ SGHASR @ STORED-DERIVE-ROWS ;
+   SGIN @ SGOUT @ SGRIN @ SGROUT @ SGHASR @ RES-FALSE STORED-DERIVE-ROWS ;
+
+\ A checked `:` signature's kinds: its body is checked to keep MOVED.
+: BODY-KINDS-DERIVE ( -- )
+   SGIN @ SGOUT @ SGRIN @ SGROUT @ SGHASR @ RES-TRUE STORED-DERIVE-ROWS ;
 
 \ A child word's effect, rows a declaration built, for the pending record named
 \ NA NU: it has no signature text and no return clause. It passes the rules
@@ -20886,7 +20947,7 @@ variable SD-PASS
 \ stored signature naming NA. Answers the effect's handle, its offset+1.
 : CHECKER-CHILD-ROWS ( ptr u8 n n n -- n )
    {: na:ptr nu:n din:n dout:n :}
-   din dout 0 0 RES-FALSE STORED-DERIVE-ROWS
+   din dout 0 0 RES-FALSE RES-FALSE STORED-DERIVE-ROWS
    SGBAD-CLEAR
    NULL-PTR 0 din dout 0 0 RES-FALSE SIG-ROWS-CHECK
    SGBAD @ IF
@@ -20981,10 +21042,10 @@ variable NP-VARSET   \ which set NP-INVARS-WALK fills: 0 = inputs, 1 = outputs
 \ what a NULL meeting that quantifier becomes. A quantifier that comes back
 \ marked is therefore still preserved.
 : NP-KIND-SEEN ( n -- n )
-   dup TVK-OFF = over ANY-KIND? or IF drop TVK-ANY THEN ;
+   dup TVK-OFF = over ANY-KIND? or IF drop TVK-ANY THEN MOVED>CELL ;
 : NP-CHECK-ONE ( n n -- )   \ preserve the declared quantifier and its kind
    {: oid:n k0:n :}
-   k0 ANY-KIND? IF TVK-ANY ELSE k0 THEN {: kind:n :}
+   k0 ANY-KIND? IF TVK-ANY ELSE k0 MOVED>CELL THEN {: kind:n :}
    oid MK-VAR T-RES {: rt:n :}
    rt ISVAR 0= IF
       oid rt NP-FAIL-SPEC
@@ -21492,7 +21553,7 @@ variable CUR-OPEN   variable CUR-PSIG
    SG-ROWS-COLLECT
    \ Cached first: RECURSE must not see a stored kind the body may lose.
    SIG-EFF-CACHE!
-   STORED-DERIVE
+   BODY-KINDS-DERIVE
    NP-COLLECT
    SIG-BODY-FRESH
    SGBAD @ UNFIT @ or SGDECL-BAD !

@@ -357,6 +357,31 @@ s" TDLINC-S-STORE ( tdlins ptr tdlins -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDLINC-S-FETCH ( ptr tdlins -- tdlins ) @" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDLINC-S-ID ( tdlins -- tdlins )" CHECK-QUIET-CANDIDATE! -1 T=
 
+\ --- a checked word that only moves its var takes a one-cell layout value --
+\ A var the callee's body only moves (a stack word, a local, a call that only
+\ moves it) takes tdlight or tdcolor at the call; one the body hands to a
+\ defer, a two-cell value and a one-cell value holding a linear field, which a
+\ `dup` body would copy, are rejected, the last even by an identity body.
+PRODUCT tdmvlin
+  FIELD owned tdown
+;PRODUCT
+: TDMV-SW ( a b -- b a ) swap ;
+: TDMV-ID ( a -- a ) ;
+: TDMV-DUP ( a -- a a ) dup ;
+: TDMV-LOC ( a -- a ) {: x :} x ;
+: TDMV-SW2 ( a b -- b a ) TDMV-SW ;
+defer TDMV-DF ( a -- a )
+: TDMV-RD ( a -- a ) dup TDMV-DF drop ;
+s" TDMV-1 ( n tdlight -- tdlight n ) TDMV-SW" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDMV-2 ( tdcolor tdcolor -- tdcolor tdcolor ) TDMV-SW" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDMV-3 ( tdlight -- tdlight ) TDMV-ID" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDMV-4 ( tdlight -- tdlight tdlight ) TDMV-DUP" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDMV-5 ( tdlight -- tdlight ) TDMV-LOC" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDMV-6 ( n tdlight -- tdlight n ) TDMV-SW2" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDMV-7 ( tdlight -- tdlight ) TDMV-RD" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDMV-8 ( n tdres<n,n> -- tdres<n,n> n ) TDMV-SW" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDMV-9 ( tdmvlin -- tdmvlin ) TDMV-ID" CHECK-QUIET-CANDIDATE! 0 T=
+
 \ --- interpret-mode + frame-metadata boundaries (docs/design.md
 \ "Families and layout policies"). A layout value is a whole logical bundle, so
 \ introspection and frame-crossing words either see it whole or fail closed.

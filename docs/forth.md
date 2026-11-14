@@ -1219,7 +1219,13 @@ and as `E-BAD-STORED-SIGNATURE` in a stored signature.
   ptr t ) ;` takes `ptr turn`. A body that fetches, stores or steps through the
   pointer, or hands the var to a word whose var stands for one cell (a
   primitive such as `=`, a `defer`, the word's own `RECURSE`), makes it one
-  cell again, and a record is refused at the call (`E-MISMATCH`).
+  cell again, and a record is refused at the call (`E-MISMATCH`). A var a
+  checked `:` definition's effect names only on the stack, and whose body only
+  moves it (stack words but `?dup`, locals, calls of words that only move
+  theirs), takes a one-cell enum, sum or product too; handing it to any other
+  word (a primitive, a `defer`, the word's own `RECURSE`) makes it one plain
+  cell, and a value wider than one cell or one that may be linear is rejected
+  at the call.
 - Type, role and family names are lower case and case-sensitive: `I64` and
   `IDX` reject as bad signatures.
 - Blanks separate tokens, and a line break or a tab is one, so a long effect

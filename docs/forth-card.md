@@ -127,6 +127,11 @@ open, linear, `xt`, `u32` or quotation type (`E-BAD-STORAGE`).
   takes `ptr turn`. Fetching, storing or stepping through it, or passing it to
   a `defer`, `RECURSE` or any primitive but a distance and `PTR>N`, makes it
   one cell: a record is `E-MISMATCH` at the call.
+- A type var named only on the stack, whose body only moves it (stack words
+  but `?dup`, locals, calls of words that only move theirs), also takes a
+  one-cell enum, sum or product; passing it to a primitive, a `defer` or
+  `RECURSE` makes it one plain cell, and a wider or possibly linear value is
+  rejected at the call.
 - Concrete integers widen when lossless (`u8 → u16 → u32 → cell/i64`). Generic
   `n` accepts structural integer stack cells in either direction: `n` can pass
   to `u32`, while `i64` needs an explicit conversion. In a definition's body a
