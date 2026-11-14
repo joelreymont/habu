@@ -279,16 +279,22 @@ private
 
 using SCHEMA-REG
 
-\ A type: a live node, never an effect side's row.
-: TYPE-ARG ( n -- n ) {: node:n :}
-   node SCHEMA-NODE-OK? if node SCHEMA-ROW? 0= if node exit then then
-   E-SCHEMA-BAD throw ;
-
 \ Places the rejection at the token read last, the definer's own or
 \ one it parsed.
 : DEFINER-PLACE ( -- )
    SRCLOC:TOKEN$ REJECTION:AT  s" the definer was reading here"
    REJECTION:EMIT-STR ;
+
+\ A type: a live node, never an effect side's row.
+: TYPE-ARG ( n -- n ) {: node:n :}
+   node SCHEMA-NODE-OK? if node SCHEMA-ROW? 0= if node exit then then
+   s" E-NOT-TYPE" REJECTION:OPEN
+   s" a definer was given a value that is no type" REJECTION:EMIT-STR
+   DEFINER-PLACE
+   REJECTION:HELP
+   s" pass a type EFFECT:N, EFFECT:NAMED, EFFECT:READ or EFFECT:PTR made in this file: a type ends with the file that built it"
+   REJECTION:EMIT-STR
+   CHECK-RC REJECTION:STOP ;
 
 : UNKNOWN-HELP$ ( -- ptr u8 n )
    s" name n, bool, r or a family the package running the definer can name" ;
@@ -389,11 +395,19 @@ CAST: >BYTES ( n -- ptr u8 )
    code TYPE-OP-ABI:IN = if a EFFECT-ARG b TYPE-ARG EFFECT-IN exit then
    code TYPE-OP-ABI:OUT = if a EFFECT-ARG b TYPE-ARG EFFECT-OUT exit then
    code TYPE-OP-ABI:READ = if a b TEXT-TYPE exit then
-   E-SCHEMA-BAD throw ;
+   s" E-TYPE-OP" REJECTION:OPEN
+   s" the checker has no type operation " REJECTION:EMIT-STR
+   code REJECTION:EMIT-N
+   DEFINER-PLACE
+   REJECTION:HELP
+   s" this engine is older than the tree it loads: " REJECTION:EMIT-STR
+   s\" build the engine in stages (docs/bootstrap.md \"Staged hosts\")"
+   REJECTION:EMIT-STR
+   CHECK-RC REJECTION:STOP ;
 
 public
 
-\ The transient schema node a TYPE-OP-ABI code makes of a and b, else E-SCHEMA-BAD.
+\ The transient schema node a TYPE-OP-ABI code makes of a and b, else rejected.
 \ NAMED's lookup, and the type entries READ's lookups would read, come first:
 \ the transient region would drop an entry a lookup reads.
 : TYPE-OP ( n n n -- n )
