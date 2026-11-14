@@ -877,23 +877,17 @@ s" dlerror" PROCESS 0 DECLARE DLERROR-FN-CELL !
 \ own stack positions; a C float past the eighth
 \ float register has no stack staging and is refused (E-FFI-ARITY).
 \
-\ THE GENERATED TEXT DEFINES WORDS AND LEAVES NOTHING ON THE STACK: it runs
-\ through the loader's evaluate-closed INCLUDE-EVALUATE, where residue is
-\ E-EVAL-RESIDUE, so each declaration is one complete colon definition with no
-\ interpreted residue.
+\ ;FUNCTION builds the declared word with define-word, never from text: its
+\ effect from the types read where the declaration stands, its body from
+\ literals and the words found here, which no word of the declaring package
+\ can capture.
 
 private
 
-$800 constant GEN-CAP
-$100 constant EFF-CAP
 $40 constant TOK-CAP
 $10 constant ARG-MAX
 8 constant REG-MAX                        \ AAPCS64 integer / both ABIs' float slots
 6 constant X86-INT-REG-MAX                \ SysV rdi, rsi, rdx, rcx, r8, r9
-10 constant DEC-BASE
-16 constant HEX-BASE
-$20 constant SP-C
-$24 constant HEX-C                        \ '$' - the hex literal prefix
 
 PATH-CAP 128 + constant DIAG-CAP
 
@@ -925,8 +919,6 @@ private
 -1 constant NO-EXT
 
 LIBRARY-PATH-CAP 1 - CODEGEN:BUFFER LIB-NAME
-GEN-CAP CODEGEN:BUFFER GEN
-EFF-CAP CODEGEN:BUFFER EFF
 DIAG-CAP CODEGEN:BUFFER DIAG
 
 \ One declaration's working state: a declaration word writes each cell before
@@ -954,6 +946,7 @@ variable RES-KIND
 variable RES-NULLABLE                      \ 1 for a nullable<u8> result
 variable VAR-START
 variable STRUCT-BYTES                      \ STRUCT-RESULT's record width; 0 when none
+TYPED-VARIABLE EFF-TYPE EFFECT:type        \ the effect, built as it is read
 variable CUR-LIB
 CUR-LIB ROLLBACK-CELLS:MARK
 variable OPEN                              \ 0 closed, else 1 + the open declaration's clauses
@@ -961,6 +954,9 @@ variable SCOPE-WID                         \ the wordlist LIBRARY/PROCESS-SYMBOL
 variable SCOPE-SET
 SCOPE-WID scratch-cell-mark  SCOPE-SET scratch-cell-mark
 SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
+
+\ The rest value of EFF-TYPE, a node no effect has.
+CAST: >EFFECT ( n -- EFFECT:type )
 
 \ The token cells a library selection shares with a declaration, at rest.
 : REST-TOKENS ( -- )
@@ -976,14 +972,15 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
       0 ARG-EXT-ARG i cells + ! 0 ARG-SBYTES i cells + ! 0 ARG-PAY i cells + !
    loop
    0 ARG-N ! 0 RES-KIND ! 0 RES-NULLABLE !
-   0 VAR-START ! 0 STRUCT-BYTES ! ;
+   0 VAR-START ! 0 STRUCT-BYTES ! 0 >EFFECT EFF-TYPE ! ;
 
 : KEEP-REST ( R [ R -- S ] -- S )
    [: OPEN @ 0= if REST else REST-TOKENS then ;] finally ;
 
 \ ---- the declaration token stream -----------------------------------------
-\ parse-name's span is transient, so every token is copied before the next one
-\ is read and every comparison reads the copy.
+\ parse-name's span lasts while its line is read, so every token is copied
+\ as it is read and every comparison reads the copy. A declaration's effect
+\ is on its line, so its types are read from their spans.
 
 : TOK! ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0= if E-FFI-SYNTAX throw then
@@ -993,6 +990,9 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
 
 : TOK@ ( -- )
    parse-name TOK! ;
+
+: TOK-SPAN ( -- ptr u8 n )
+   parse-name 2dup TOK! ;
 
 : TOK$ ( -- ptr u8 n )
    TOK-BUF TOK-U @ ;
@@ -1049,12 +1049,9 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
 : ARG-PAY@ ( n -- n ) {: i:n :} ARG-PAY i cells + @ ;
 : ARG-PAY! ( n n -- ) {: v:n i:n :} v ARG-PAY i cells + ! ;
 
-: EFF+ ( ptr u8 n -- )
-   EFF CODEGEN:APPEND-STRING
-   SP-C EFF CODEGEN:APPEND-BYTE ;
-
-: TOK-KEEP ( -- )
-   TOK$ EFF+ ;
+\ The effect with T as its next input, or its output.
+: IN+ ( EFFECT:type -- ) EFF-TYPE @ swap EFFECT:IN EFF-TYPE ! ;
+: OUT+ ( EFFECT:type -- ) EFF-TYPE @ swap EFFECT:OUT EFF-TYPE ! ;
 
 : ARG+ ( n -- )
    {: kind:n :}
@@ -1066,41 +1063,46 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
    ARG-N @ 1 + ARG-N ! ;
 
 \ A pointer is `ptr u8`: a byte span with a length the declaration states.
-: PTR-TAIL ( -- )
-   TOK@
+\ Answers the span from `ptr`, at A, through `u8`.
+: PTR-TAIL ( ptr u8 -- ptr u8 n ) {: a:ptr :}
+   TOK-SPAN {: b:ptr u:n :}
    s" u8" TOK-IS? 0= if E-FFI-SYNTAX throw then
-   TOK-KEEP ;
+   a  b u + a - ;
 
-: IN-TOKEN ( -- )
-   s" ptr" TOK-IS? if TOK-KEEP PTR-TAIL K-POINTER ARG+ exit then
-   s" r" TOK-IS? if TOK-KEEP K-FLOAT ARG+ exit then
-   s" f32" TOK-IS? if s" r" EFF+ K-FLOAT32 ARG+ exit then
-   TOK-KEEP K-VALUE ARG+ ;
-
-: OUT-TOKEN ( -- )
-   RES-KIND @ R-NONE <> if E-FFI-SYNTAX throw then
-   s" ptr" TOK-IS? if TOK-KEEP PTR-TAIL R-POINTER RES-KIND ! exit then
-   s" nullable<u8>" TOK-IS? if
-      TOK-KEEP R-POINTER RES-KIND ! 1 RES-NULLABLE ! exit
+: IN-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
+   s" ptr" TOK-IS? if
+      a PTR-TAIL EFFECT:READ IN+ K-POINTER ARG+ exit
    then
-   s" r" TOK-IS? if TOK-KEEP R-FLOAT RES-KIND ! exit then
-   s" f32" TOK-IS? if s" r" EFF+ R-FLOAT32 RES-KIND ! exit then
-   s" i32" TOK-IS? if s" n" EFF+ R-I32 RES-KIND ! exit then
-   s" u32" TOK-IS? if TOK-KEEP R-U32 RES-KIND ! exit then
-   TOK-KEEP R-VALUE RES-KIND ! ;
+   s" f32" TOK-IS? if s" r" EFFECT:NAMED IN+ K-FLOAT32 ARG+ exit then
+   a u EFFECT:READ IN+
+   s" r" TOK-IS? if K-FLOAT ARG+ exit then
+   K-VALUE ARG+ ;
+
+: OUT-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
+   RES-KIND @ R-NONE <> if E-FFI-SYNTAX throw then
+   s" ptr" TOK-IS? if
+      a PTR-TAIL EFFECT:READ OUT+ R-POINTER RES-KIND ! exit
+   then
+   s" f32" TOK-IS? if s" r" EFFECT:NAMED OUT+ R-FLOAT32 RES-KIND ! exit then
+   s" i32" TOK-IS? if EFFECT:N OUT+ R-I32 RES-KIND ! exit then
+   a u EFFECT:READ OUT+
+   s" nullable<u8>" TOK-IS? if R-POINTER RES-KIND ! 1 RES-NULLABLE ! exit then
+   s" r" TOK-IS? if R-FLOAT RES-KIND ! exit then
+   s" u32" TOK-IS? if R-U32 RES-KIND ! exit then
+   R-VALUE RES-KIND ! ;
 
 : INPUTS ( -- )
    begin
-      TOK@
-      s" --" TOK-IS? if TOK-KEEP exit then
+      TOK-SPAN
+      s" --" TOK-IS? if 2drop exit then
       s" )" TOK-IS? if E-FFI-SYNTAX throw then
       IN-TOKEN
    again ;
 
 : OUTPUTS ( -- )
    begin
-      TOK@
-      s" )" TOK-IS? if exit then
+      TOK-SPAN
+      s" )" TOK-IS? if 2drop exit then
       s" --" TOK-IS? if E-FFI-SYNTAX throw then
       OUT-TOKEN
    again ;
@@ -1108,7 +1110,7 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
 : EFFECT ( -- )
    TOK@
    s" (" TOK-IS? 0= if E-FFI-SYNTAX throw then
-   EFF CODEGEN:RESET
+   EFFECT:NEW EFF-TYPE !
    INPUTS
    OUTPUTS ;
 
@@ -1239,46 +1241,43 @@ private
    RES-KIND @ R-POINTER = if int stk C-POINTER exit then
    int stk C-INT ;
 
-\ ---- the generated definition ----------------------------------------------
+\ ---- the built definition -------------------------------------------------
 
-: GEN+ ( ptr u8 n -- ) GEN CODEGEN:APPEND-STRING ;
-: GEN-N ( n -- ) GEN CODEGEN:APPEND-DECIMAL ;
-: GEN-SP ( -- ) SP-C GEN CODEGEN:APPEND-BYTE ;
-: GEN-ARG ( n -- ) s" A" GEN+ GEN-N ;
+\ The type of argument I's local, by its kind.
+: LOCAL-TYPE ( n -- EFFECT:type ) {: i:n :}
+   i ARG-KIND@ K-VALUE = if EFFECT:N exit then
+   i ARG-KIND@ K-POINTER = if s" u8" EFFECT:NAMED EFFECT:PTR exit then
+   s" r" EFFECT:NAMED ;
 
+\ One local per argument: the definition declares no other, so argument I's
+\ local has index I.
 : LOCALS ( -- )
    ARG-N @ 0= if exit then
-   s" {: " GEN+
-   ARG-N @ 0 ?do
-      i GEN-ARG
-      i ARG-KIND@ K-VALUE = if s" :n" GEN+ then
-      i ARG-KIND@ K-FLOAT = if s" :r" GEN+ then
-      i ARG-KIND@ K-FLOAT32 = if s" :r" GEN+ then
-      GEN-SP
-   loop
-   s" :} " GEN+ ;
+   s" {:" EFFECT:KEYWORD
+   ARG-N @ 0 ?do i LOCAL-TYPE EFFECT:LOCAL drop loop
+   s" :}" EFFECT:KEYWORD ;
 
 : STAGE-VALUE ( n -- ) {: i:n :}
-   i ARG-REG@ GEN-N s"  FFI:VALUE! " GEN+ ;
+   i ARG-REG@ literal postpone VALUE! ;
 
 : STAGE-FLOAT ( n -- ) {: i:n :}
-   i ARG-REG@ GEN-N s"  FFI:FLOAT! " GEN+ ;
+   i ARG-REG@ literal postpone FLOAT! ;
 
 : STAGE-FLOAT32 ( n -- ) {: i:n :}
-   i ARG-REG@ GEN-N s"  FFI:FLOAT32! " GEN+ ;
+   i ARG-REG@ literal postpone FLOAT32! ;
 
 : STAGE-POINTER ( n -- ) {: i:n :}
-   i ARG-REG@ GEN-N s"  FFI:POINTER! " GEN+ ;
+   i ARG-REG@ literal postpone POINTER! ;
 
 : STACK-POS ( n -- ) {: i:n :}
-   i ARG-REG@ 0 < if i ARG-REG@ negate 1- GEN-N exit then
-   i VAR-START @ - GEN-N ;
+   i ARG-REG@ 0 < if i ARG-REG@ negate 1- literal exit then
+   i VAR-START @ - literal ;
 : STAGE-SPILL ( n -- ) {: i:n :}
    i ARG-KIND@ K-FLOAT = if
-      i STACK-POS s"  FFI:STACK-FLOAT! " GEN+ exit then
+      i STACK-POS postpone STACK-FLOAT! exit then
    i ARG-KIND@ K-VALUE = if
-      i STACK-POS s"  FFI:STACK-VALUE! " GEN+ exit then
-   i STACK-POS s"  FFI:STACK-POINTER! " GEN+ ;
+      i STACK-POS postpone STACK-VALUE! exit then
+   i STACK-POS postpone STACK-POINTER! ;
 
 : STAGE-REG ( n -- ) {: i:n :}
    i ARG-KIND@ K-FLOAT = if i STAGE-FLOAT exit then
@@ -1298,14 +1297,14 @@ private
 
 : CALL-WORD ( n -- )
    {: kind:n :}
-   RES-KIND @ R-FLOAT32 = if s" FFI:CALL-ABI-F32" GEN+ exit then
-   kind C-ABI-R = if s" FFI:CALL-ABI-R" GEN+ exit then
+   RES-KIND @ R-FLOAT32 = if postpone CALL-ABI-F32 exit then
+   kind C-ABI-R = if postpone CALL-ABI-R exit then
    kind C-ABI = if
-      RES-KIND @ R-POINTER = if s" FFI:CALL-ABI-PTR"
-      else s" FFI:CALL-ABI" then GEN+ exit
+      RES-KIND @ R-POINTER = if postpone CALL-ABI-PTR
+      else postpone CALL-ABI then exit
    then
-   kind C-POINTER = if s" FFI:CALL-PTR" GEN+ exit then
-   s" FFI:CALL" GEN+ ;
+   kind C-POINTER = if postpone CALL-PTR exit then
+   postpone CALL ;
 
 \ ---- the row this declaration takes ----------------------------------------
 
@@ -1369,55 +1368,56 @@ private
 
 \ A niche value's zero cell is none, so `some` of the returned cell reads NULL as none.
 : RESULT-TAIL ( -- )
-   RES-NULLABLE @ 0<> if s"  NULLABLE:SOME" GEN+ exit then
-   RES-KIND @ R-NONE = if s"  drop" GEN+ exit then
-   RES-KIND @ R-I32 = if s"  FFI:I32-RESULT" GEN+ exit then
-   RES-KIND @ R-U32 = if s"  $FFFFFFFF and" GEN+ then ;
+   RES-NULLABLE @ 0<> if postpone NULLABLE:SOME exit then
+   RES-KIND @ R-NONE = if postpone drop exit then
+   RES-KIND @ R-I32 = if postpone I32-RESULT exit then
+   RES-KIND @ R-U32 = if $FFFFFFFF literal postpone and then ;
 
 : STAGE-RECORD ( n -- ) {: i:n :}
-   i ARG-SBYTES@ GEN-N GEN-SP
+   i ARG-SBYTES@ literal
    i ARG-SBYTES@ 16 <= if
-      i ARG-REG@ 0 < if i STACK-POS s"  FFI:STRUCT-STACK! " GEN+ exit then
-      i ARG-REG@ GEN-N s"  FFI:STRUCT-REGS! " GEN+ exit
+      i ARG-REG@ 0 < if i STACK-POS postpone STRUCT-STACK! exit then
+      i ARG-REG@ literal postpone STRUCT-REGS! exit
    then
-   i ARG-PAY@ GEN-N GEN-SP
-   i ARG-REG@ 0 < if i STACK-POS s"  FFI:STRUCT-COPY-STACK! " GEN+ exit then
-   i ARG-REG@ GEN-N s"  FFI:STRUCT-COPY-REG! " GEN+ ;
+   i ARG-PAY@ literal
+   i ARG-REG@ 0 < if i STACK-POS postpone STRUCT-COPY-STACK! exit then
+   i ARG-REG@ literal postpone STRUCT-COPY-REG! ;
 
 : STAGE-C-ARG ( n -- ) {: i:n :}
-   i GEN-ARG GEN-SP
+   i EFFECT:LOCAL@
    i ARG-SBYTES@ 0 > if i STAGE-RECORD exit then
    i ARG-REG@ 0 < if i STAGE-SPILL exit then
    i STAGE-REG ;
 
-: STRUCT-BODY ( n n -- )
-   SLOT {: slot:n :}
+\ The STRUCT-RESULT destination, the last argument, and its width.
+: DEST ( -- )
+   ARG-N @ 1- EFFECT:LOCAL@ STRUCT-BYTES @ literal ;
+
+: STRUCT-BODY ( n -- ) {: slot:n :}
    LOCALS
-   slot GEN-N s"  FFI:RESOLVE-ROW " GEN+
+   slot literal postpone RESOLVE-ROW
    C-ARGS 0 ?do i STAGE-C-ARG loop
+   STRUCT-BYTES @ 0 > if DEST postpone RESULT-DEST! then
+   slot literal
    STRUCT-BYTES @ 0 > if
-      ARG-N @ 1- GEN-ARG GEN-SP STRUCT-BYTES @ GEN-N s"  FFI:RESULT-DEST! " GEN+
+      postpone CALL-STRUCT DEST postpone STORE-RESULT exit
    then
-   slot GEN-N
-   STRUCT-BYTES @ 0 > if
-      s"  FFI:CALL-STRUCT " GEN+
-      ARG-N @ 1- GEN-ARG GEN-SP STRUCT-BYTES @ GEN-N s"  FFI:STORE-RESULT" GEN+ exit
+   RES-KIND @ R-POINTER = if
+      postpone CALL-STRUCT-PTR RESULT-TAIL exit
    then
-   RES-KIND @ R-POINTER = if s"  FFI:CALL-STRUCT-PTR" GEN+ RESULT-TAIL exit then
-   s"  FFI:CALL-STRUCT drop" GEN+
+   postpone CALL-STRUCT postpone drop
    RESULT-TAIL ;
 
 : EMIT ( n n n -- )
    {: int:n stk:n kind:n :}
-   GEN CODEGEN:RESET
-   s" : " GEN+ NAME-BUF NAME-U @ GEN+
-   s"  ( " GEN+ EFF CODEGEN:CONTENTS GEN+ s" ) " GEN+
-   kind C-STRUCT = if int stk STRUCT-BODY s"  ;" GEN+ exit then
+   int stk SLOT {: slot:n :}
+   NAME-BUF NAME-U @ EFF-TYPE @ define-word
+   kind C-STRUCT = if slot STRUCT-BODY postpone ; exit then
    STAGE
-   int stk SLOT GEN-N GEN-SP
+   slot literal
    kind CALL-WORD
    RESULT-TAIL
-   s"  ;" GEN+ ;
+   postpone ; ;
 
 \ The selection scope is the current wordlist, not the loading file:
 \ INCLUDE-PATH names the last file opened, so every consumer would share one
@@ -1436,8 +1436,8 @@ private
 
 public
 
-\ Nothing is published before ;FUNCTION, and the row is registered as the text
-\ is rendered, so a refused declaration leaves no half-built word.
+\ Nothing is published before ;FUNCTION, and the row is registered as the word
+\ is built, so a refused declaration leaves no half-built word.
 : OPEN-FUNCTION ( -- )
    [: CHECK-SCOPE
       OPEN @ 0 <> if E-FFI-SYNTAX throw then
@@ -1448,14 +1448,11 @@ public
       EFFECT
       1 OPEN ! ;] KEEP-REST ;
 
-\ The rendered text calls only FFI words, which no scratch cell reaches, so
-\ the scratch rests before the text runs.
 : CLOSE-FUNCTION ( -- )
    [: OPEN @ 0= if E-FFI-SYNTAX throw then
       0 OPEN !
       PLAN-CALL
-      EMIT ;] KEEP-REST
-   GEN CODEGEN:CONTENTS INCLUDE-EVALUATE ;
+      EMIT ;] KEEP-REST ;
 
 private
 

@@ -14,6 +14,23 @@ create FFI-T-KP-DST 2 cells allot
 \ A kernel-parameter entry is an address handed to C as a cell.
 CAST: FFI-T-CELL-AT ( n -- ptr n )
 
+\ A part whose own `and` and `drop` spell the engine words a declared word
+\ runs after a u32 result and after none: the declared words never call them.
+package SHADOW
+variable SEEN
+: and ( n n -- n ) + ;
+: drop ( n -- ) SEEN ! ;
+PROCESS-SYMBOLS
+FUNCTION: LOW labs ( n -- u32 ) ;FUNCTION
+FUNCTION: GONE labs ( n -- ) ;FUNCTION
+public
+: GO ( -- n ) -6 GONE SEEN @ -5 LOW + ;
+;package
+
+: FFI-T-SHADOW ( -- )
+   s" a declared word calls no word of its package" T-LABEL
+   SHADOW:GO 5 T= ;
+
 \ C writes through a staged cell: strtol stores its end pointer in argument 1,
 \ an eight-byte output. memcpy copies the kernel-parameter block out whole.
 PROCESS-SYMBOLS
@@ -106,6 +123,7 @@ variable FFI-T-PADS
    FFI-T-OUT-PARAM
    FFI-T-KPARAMS
    FFI-T-ROLLBACK
+   FFI-T-SHADOW
    T-REPORT ;
 
 FFI-ABI-RUN
