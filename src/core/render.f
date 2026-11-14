@@ -1140,6 +1140,60 @@ variable MDV-I   variable MDV-F
 \ A reason's label: a few words under its token.
 : MD-LABEL$ ( n -- ptr u8 n )
    case
+      MD-SCOPE-STORE  of s" scoped value in memory" endof
+      MD-LINEAR-MEMORY of s" linear value in memory" endof
+      MD-MEMORY-ARG   of s" type argument may be linear" endof
+      MD-MEMORY-EMPTY of s" zero-width value" endof
+      MD-FAM-UNKNOWN  of s" names no visible family" endof
+      MD-FAM-KIND     of s" family of another kind" endof
+      MD-SCRUT        of s" no matchable value on top" endof
+      MD-FAM-MISMATCH of s" top value of another family" endof
+      MD-VAR-UNKNOWN  of s" not a variant of the family" endof
+      MD-VAR-DUP      of s" variant already has an arm" endof
+      MD-MISSING-OF   of s" in place of `OF`" endof
+      MD-NONEXH       of s" some variants have no arm" endof
+      MD-STRAY        of s" innermost is no `MATCH`" endof
+      MD-TRUNC        of s" ends with a `MATCH` open" endof
+      MD-DEPTH        of s" nested past the frame limit" endof
+      MD-QUOT         of s" inside a quotation" endof
+      MD-OPEN-ARGS    of s" arguments not concrete" endof
+      MD-JOIN         of s" arms leave different types" endof
+      MD-CON-FAM      of s" no family of this package" endof
+      MD-CON-KIND     of s" family of another kind" endof
+      MD-CON-VAR      of s" not a variant of the family" endof
+      MD-CON-TRUNC    of s" ends before both operands" endof
+      MD-DIVBAR       of s" not reached by every thread" endof
+      MD-EXEC-OPAQUE  of s" runs an xt of unknown type" endof
+      MD-CATCH-OPAQUE of s" catches an xt of unknown type" endof
+      MD-RIGID-REGION of s" value from another allocation" endof
+      MD-RIGID-EXTENT of s" value of another extent" endof
+      MD-RIGID-GEN    of s" generation from before a mutation" endof
+      MD-RIGID-XDOM   of s" identity of another domain" endof
+      MD-RAW-PTR      of s" pointer through an untyped cell" endof
+      MD-RAW-FIELD    of s" field of an undeclared cell" endof
+      MD-UNDERFLOW    of s" reaches below the inputs" endof
+      MD-NULL-PTR     of s" reaches through `NULL-PTR`" endof
+      MD-DBASE-PTR    of s" reaches through a base address" endof
+      MD-RAW-EXEC     of s" code through an untyped cell" endof
+      MD-STALE-READ   of s" cell stale after `catch`" endof
+      MD-SCOPE-KIND   of s" scope used as a value type" endof
+      MD-C2-COPY      of s" second reference made" endof
+      MD-C2-DROP      of s" only reference dropped" endof
+      MD-C2-ESCAPE    of s" result outlives its scope" endof
+      MD-EFFECT-DEPTH of s" too many nested levels" endof
+      MD-INPUT-WIDTH  of s" too many input cells" endof
+      MD-TOP-UNKNOWN  of s" cell from before checking" endof
+      MD-TAIL-ESCAPE  of s" row escapes the callable" endof
+      MD-LIT-FIT      of s" out of the type's range" endof
+      MD-IS-UNKNOWN   of s" not found" endof
+      MD-IS-NOT-DEFER of s" declared without `defer`" endof
+      MD-IS-MISSING   of s" no name after it" endof
+      MD-TYPE-FORM    of s" needs a closed storable type" endof
+      MD-STORED-LINEAR of s" linear type for a stored variable" endof
+      MD-STORED-CLASS of s" atom or width for a stored variable" endof
+      MD-IS-STORED    of s" takes only storable types" endof
+      MD-DIV-ZERO     of s" divides by literal 0" endof
+      MD-THROW-ZERO   of s" throws code 0" endof
       MD-FINALLY-CLEANUP of s" cleanup not stack-neutral" endof
       MD-CALLABLE-NARROW of s" callable narrower than the cell" endof
       MD-QDUP-LAYOUT  of s" not a one-cell value" endof
@@ -1149,19 +1203,35 @@ variable MDV-I   variable MDV-F
       MD-LINEAR-COPY  of s" linear value copied" endof
       MD-LINEAR-TAINT of s" copied before its type was known" endof
       MD-LINEAR-EFFECT of s" binds a linear type" endof
-      MD-LINEAR-MEMORY of s" linear value in memory" endof
-      MD-MEMORY-ARG   of s" type argument may be linear" endof
-      MD-MEMORY-EMPTY of s" zero-width value" endof
       MD-C2-BINDER    of s" binder does not fit this entry" endof
       MD-C2-RECORDS-BINDER of s" binder does not fit this entry" endof
       MD-C2-CHILD-BINDER of s" binder does not fit this entry" endof
       MD-C2-FIELD-BINDER of s" binder does not fit this entry" endof
       MD-C2-ROOT-BINDER of s" binder does not fit this entry" endof
       MD-FIELD-NAME   of s" no field name" endof
-      MD-C2-FIELD-UNKNOWN of s" no such field" endof
       MD-CALLBACK-NOT-GENERIC of s" callback bound to an outer scope" endof
       MD-SCOPED-TICK  of s" scoped entry" endof
       MD-C2-INIT-RECORD of s" not an initializable record" endof
+      MD-C2-FIELD-UNKNOWN of s" no such field" endof
+      MD-LOOP-DEPTH   of s" depth unlike the loop's start" endof
+      MD-LOOP-RDEPTH  of s" return depth unlike the start" endof
+      MD-LOOP-CARRIED of s" carried cell changed" endof
+      MD-NO-LOOP      of s" no open `do` in this body" endof
+      MD-NO-OUTER-LOOP of s" fewer than two loops open" endof
+      MD-CLOSES-NOTHING of s" does not close the innermost" endof
+      MD-NO-CASE      of s" innermost is no `case`" endof
+      MD-ELSE-TWICE   of s" second `else`" endof
+      MD-EXIT-LOOP    of s" loop still open" endof
+      MD-UNLOOP-JOIN  of s" paths disagree on `unloop`" endof
+      MD-CF-OPEN      of s" ends with a structure open" endof
+      MD-CF-DEPTH     of s" one structure too deep" endof
+      MD-RECURSE-SIG  of s" no effect to call" endof
+      MD-RECURSE-DOES of s" inside a `does>` clause" endof
+      MD-IF-DEPTH     of s" arm ends at another depth" endof
+      MD-ARMS-DEPTH   of s" arms end at other depths" endof
+      MD-LOCAL-ESCAPE of s" quotation outlives its locals" endof
+      MD-BINDER-PLACE of s" binder outside a callback" endof
+      MD-DEPTH-WIDE   of s" row with a wide or open value" endof
       s" here" rot
    endcase ;
 
