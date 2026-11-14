@@ -822,13 +822,12 @@ s" TPC-FACTS-OWN-REPLAY ( TDPM:span<n,n,n,n,n,n> -- TDPM:span<n,n,n,n,n,n> ) TDP
 PRODUCT tfx-nest<a> FIELD a a FIELD b n ;PRODUCT
 : TFX-DEEP ( tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<tfx-nest<n>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> -- ) drop ;
 
-\ Prose row rendering and JSON arity diagnostics keep the package qualifier, and
-\ render it case-folded: the declaring package was written `package TDPM`, but a
-\ rendered family name is spelled canonically (render.f FAM-QNAME-REND), the way
-\ word names and the used-package row already are. `token` is the opposite kind
-\ of field — a raw echo of what the author typed — so it keeps `TDPM:span`. The
-\ folded row still names the family back, because a signature's qualifier folds
-\ before lookup.
+\ The record's `found` note, in prose and JSON, keeps the package qualifier and
+\ renders it case-folded: the declaring package was written `package TDPM`, but
+\ a rendered family name is spelled canonically, the way word names and the
+\ used-package row already are. `token` and the arity message echo what the
+\ author typed, so they keep `TDPM:span`. The folded row still names the family
+\ back, because a signature's qualifier folds before lookup.
 TDIAG-BUF 8192 REJECTION:BUFFER!
 s" TPC-RENDER ( TDPM:span<n,n,n,n,n,n> -- n )" CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s\"   = found: tdpm:span<n,n,n,n,n,n>\n" CONTAINS? TTRUE
@@ -840,8 +839,7 @@ REJECTION:BUFFER$ s\" \"token\":\";\"" CONTAINS? TTRUE
 TDIAG-BUF 8192 REJECTION:BUFFER!
 s" TPC-JSON-ARITY ( TDPM:span<n,n,n> -- ) drop" CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s\" \"token\":\"TDPM:span\"" CONTAINS? TTRUE
-REJECTION:BUFFER$ s\" \"arity_expected\":6" CONTAINS? TTRUE
-REJECTION:BUFFER$ s\" \"arity_actual\":3" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" takes 6 type arguments, not 3" CONTAINS? TTRUE
 false REJECTION:JSON !
 TDIAG-BUF 8192 REJECTION:BUFFER!
 
@@ -2086,7 +2084,7 @@ s" TDLB9 ( n -- tdlnom ) {: x:tdlnom :} x" CHECK-QUIET-CANDIDATE! 0 T=
 \ reads, and the signature's own arity diagnostic is what comes out.
 TDIAG-BUF 8192 REJECTION:BUFFER!
 s" TDLRA1 ( tdres<n,n> -- n ) {: x:tdres<n> :} 5" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" wrong arity for type family 'x:tdres<n>'" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\"   = help: give `x:tdres<n>` 2 type arguments\n" CONTAINS? TTRUE
 TDIAG-BUF 8192 REJECTION:BUFFER!
 s" TDLR1 ( tdlnom -- n ) {: q:tdlnom :} q dup drop" CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s\" error[E-MISMATCH]: the body ends with tdlnom on the stack; the signature promises n\n" CONTAINS? TTRUE
@@ -2150,11 +2148,10 @@ REJECTION:BUFFER$ s" found: tdlrpku:tdlrfamu" CONTAINS? TFALSE
 ;package
 TDIAG-BUF 8192 REJECTION:BUFFER!
 
-\ E-MISMATCH JSON 'family' hint: the machine packet's family field carries the
-\ same interned qualified spelling as the rendered expected/actual rows: bare
-\ tail for a global-package sum family, pkg:tail for a foreign-package one.
-\ Layout families only: the hint fires through TERM-FAM/LAYOUT-PARAM?, so both
-\ fixtures are SUMTYPEs.
+\ E-MISMATCH's `family` note carries the same interned qualified spelling as its
+\ `expected` and `found` notes: bare tail for a global-package sum family,
+\ pkg:tail for a foreign-package one.
+\ Only a layout family gets the note, so both fixtures are SUMTYPEs.
 SUMTYPE tdlrjg VARIANT keep n ;VARIANT ;SUMTYPE
 package tdlrjp
 public

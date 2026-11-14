@@ -890,9 +890,9 @@ variable MDV-I   variable MDV-F
 
 : ROWS-SUGGEST$ ( [ n -- n ] -- ptr u8 n )
    ROWS-DEPTHS
-   DSUGA @ DSUGE @ > IF s" Remove an extra producer or drop the surplus value." EXIT THEN
-   DSUGA @ DSUGE @ < IF s" Add the missing producer or stop consuming a required value." EXIT THEN
-   s" Change the body so produced types match the signature." ;
+   DSUGA @ DSUGE @ > IF s" drop the extra value, or remove the word that pushes it" EXIT THEN
+   DSUGA @ DSUGE @ < IF s" push the missing value before it is taken, or stop taking it" EXIT THEN
+   s" change the body so the values it leaves have the types the signature declares" ;
 
 
 : MD-CODE$ ( n -- ptr u8 n )
@@ -963,17 +963,12 @@ variable MDV-I   variable MDV-F
 
 
 \ Shared by a definition's depth refusal (MD-SUGGEST$) and a signature's
-\ (SGBAD-SUGGEST$): a row is deep by its cells or by the types it nests.
+\ (SIG-HELP): a row is deep by its cells or by the types it nests.
 : DEPTH-SUGGEST$ ( -- ptr u8 n )
-   s" Keep bulk values in a buffer, not on the stack, and name an inner callback's effect in a word of its own." ;
-
-
-\ A token of unknown effect (SUGGEST-TEXT).
-: UNCK-SUGGEST$ ( -- ptr u8 n )
-   s" Rewrite with modeled words or isolate an audited primitive." ;
+   s" keep bulk values in a buffer instead of on the stack, and name an inner callback's effect in a word of its own" ;
 
 : TAIL-SUGGEST$ ( -- ptr u8 n )
-   s" The callee declares this callable with an implicit input row, [ -- S ], so it may run the callable on any stack and expects S back; a callable that keeps or reads the stack it runs on cannot promise that. Declare the callable [ R -- S ] from the word's input row, as in ( R [ R -- S ] -- S ), or pass a callable whose output does not depend on the stack beneath it." ;
+   s" declare the callable `[ R -- S ]` from the word's input row, as in `( R [ R -- S ] -- S )`, or pass a callable whose output does not depend on the stack beneath it" ;
 
 
 : MD-SUGGEST$ ( n -- ptr u8 n )
@@ -1181,8 +1176,6 @@ variable MDV-I   variable MDV-F
    s" E-UNMODELED-IMMEDIATE" ;
 
 
-: IMM-SUGGEST$ ( -- ptr u8 n )
-   s" Declare a stack-neutral parsing immediate with parse-imm, or remove it from the compiled body." ;
 
 \ The LOCALBAD kinds come from checker.f LOC-REJECT and LOC-GROUP-REJECT.
 : LOCALBAD-CODE$ ( -- ptr u8 n )
@@ -1190,12 +1183,6 @@ variable MDV-I   variable MDV-F
    LOCALBAD-KIND @ 1 = IF s" E-TOO-MANY-LOCALS" EXIT THEN
    s" E-BAD-LOCAL-SHAPE" ;
 
-
-: LOCALBAD-SUGGEST$ ( -- ptr u8 n )
-   LOCALBAD-KIND @ 2 = IF s" Shorten the local name to at most 16 bytes." EXIT THEN
-   LOCALBAD-KIND @ 1 = IF s" Bind at most 64 locals in one definition, or factor a helper." EXIT THEN
-   LOCALBAD-KIND @ 3 >= IF s" Remove the token: a locals group lists only the names to bind." EXIT THEN
-   s" Move locals to a live top-level path or factor a helper." ;
 
 \ Kinds 3 and 4, a locals group token that names no local, state why in the
 \ message.
@@ -1232,60 +1219,6 @@ variable MDV-I   variable MDV-F
    k RF-UNCHECKABLE = IF s" E-UNCHECKABLE" EXIT THEN
    k RF-MISMATCH = IF s" E-MISMATCH" EXIT THEN
    s" E-REJECTED" ;
-: SGBAD-SUGGEST$ ( -- ptr u8 n )
-   SGBAD-RETURN? IF s" Declare no return-stack effect: after '|' write one row variable, the same on both sides, or no '|'; park a value with >r and take it back with r> in one definition." EXIT THEN
-   SGBAD-UNKNOWN? IF s" Use a known stack-signature type or a single-letter type variable." EXIT THEN
-   SGBAD-BAREPTR? IF s" Give 'ptr' an element type, e.g. 'ptr u8' or 'ptr a'." EXIT THEN
-   SGBAD-ARITY? IF s" Give the type family its exact declared number of arguments." EXIT THEN
-   SGBAD-BINDERS? IF s" Nest fewer binders: name an inner callback's binders in a word of its own." EXIT THEN
-   SGBAD-DEPTH? IF DEPTH-SUGGEST$ EXIT THEN
-   SGBAD-SIZE? IF s" Declare fewer cells: keep bulk values in a buffer, not on the stack." EXIT THEN
-   s" Repair the stack-effect comment syntax, including --." ;
-: NP-SUGGEST$ ( -- ptr u8 n )
-   NPBAD-KIND @ 4 = IF
-      s" Declare the pointee this base address really reaches (ptr n, ptr u8, ...); a pointer derived from data-base cannot be published under a type variable, nor handed to one a caller instantiates." EXIT
-   THEN
-   NPBAD-KIND @ 5 = IF
-      s" Declare the pointee this null stands in for (ptr n, ptr u8, ...); NULL-PTR may be stored through a declared parameter, but not published under a type variable." EXIT
-   THEN
-   NPBAD-KIND @ 3 = IF
-      s" Declare the concrete storage type, or keep the body polymorphic over the type variable." EXIT
-   THEN
-   NPBAD-KIND @ 0= IF
-      s" Declare the concrete family in the signature, or keep the body polymorphic over the type variable." EXIT
-   THEN
-   NPBAD-KIND @ 1 = IF
-      s" Keep each declared type variable distinct; do not unify two quantifiers in the body." EXIT
-   THEN
-   NPBAD-KIND @ 6 = IF
-      s" Keep each declared row distinct: declare the row the body really leaves, or reach the declared output row on every path, as by running the quotation that yields it." EXIT
-   THEN
-   NPBAD-KIND @ 7 = IF
-      s" Declare the cells the body leaves on the row, or keep the body polymorphic over the row variable." EXIT
-   THEN
-   s" Bind the minted phantom's type arguments to the inputs, or mint it behind an audited TRUSTED: boundary." ;
-: SUGGEST-TEXT ( -- ptr u8 n )
-   REFUSAL@ {: k:n :}
-   k RF-IMM = IF IMM-SUGGEST$ EXIT THEN
-   k RF-UNDEF = IF s" Inspect the token, signature, and raw stack evidence." EXIT THEN
-   k RF-QUAL = IF s" Use one ':' qualifier, e.g. PKG:WORD." EXIT THEN
-   k RF-LOCAL = IF LOCALBAD-SUGGEST$ EXIT THEN
-   k RF-SIG = IF SGBAD-SUGGEST$ EXIT THEN
-   k RF-DEAD = IF s" Nothing after a word that never returns runs (throw, die, exit, or a call whose body always ends in one): remove the tokens after it, or move the work before it." EXIT THEN
-   k RF-NP = IF NP-SUGGEST$ EXIT THEN
-   k RF-CAP = IF s" Move this compiler or runtime boundary behind audited TRUST." EXIT THEN
-   k RF-UNSAFE = IF s" Remove it from the checked body; to evaluate text there, use evaluate-closed." EXIT THEN
-   k RF-LINLOCAL = IF s" Keep the linear value on the stack; do not bind it to a local." EXIT THEN
-   k RF-REASON = IF MDIAG @ MD-SUGGEST$ EXIT THEN
-   k RF-UNCHECKABLE = IF UNCK-SUGGEST$ EXIT THEN
-   k RF-RETURN = IF
-      RSBAD @ 2 = IF s" Read or pop only return-row cells this definition pushed with >r; below them lies the caller's frame." EXIT THEN
-      RSBAD @ 3 = IF s" Balance return-stack transfers before the quotation returns." EXIT THEN
-      RSBAD @ 4 = IF s" Read or pop only return-row cells this quotation pushed with >r; below them lies the caller's frame." EXIT THEN
-      s" Balance return-stack transfers before the definition exits." EXIT
-   THEN
-   k RF-MISMATCH <> IF s" Inspect the token, signature, and raw stack evidence." EXIT THEN
-   ['] ROW-VALUES ROWS-SUGGEST$ ;
 \ A packet's position: the file line, column and byte of its token's first byte,
 \ and the byte after its last.
 variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
@@ -1662,11 +1595,147 @@ PTR-VARIABLE HOLDER-FIRST
    THEN
    t tu RES-TRUE HOLDER-SCAN  s" : write it qualified, as " EMIT-STR  t tu QUALIFIED ;
 
+: IMM-HELP ( -- )
+   s" remove " EMIT-STR  TOK-SPAN
+   s"  from the body, or declare it with `parse-imm` if it parses tokens and leaves the stack as it found it"
+   EMIT-STR ;
+
+: QUAL-HELP ( -- )
+   s" write " EMIT-STR  TOK-SPAN
+   s"  with one `:` between the package and the word, as `PKG:WORD`" EMIT-STR ;
+
+: LOCAL-HELP ( -- )
+   LOCALBAD-KIND @ 2 = IF
+      s" shorten the name in " EMIT-STR  TOK-SPAN  s"  to at most " EMIT-STR
+      LOC-NAME-CAP EMIT-U  s"  bytes" EMIT-STR EXIT
+   THEN
+   LOCALBAD-KIND @ 1 = IF
+      s" bind at most " EMIT-STR  LOC-RECS EMIT-U
+      s"  locals here, and move part of the body into a word of its own" EMIT-STR EXIT
+   THEN
+   LOCALBAD-GROUP? IF
+      s" remove " EMIT-STR  TOK-SPAN  s"  from the locals group" EMIT-STR EXIT
+   THEN
+   s" bind the local outside the quotation, on a path that runs, or move this code into a word of its own"
+   EMIT-STR ;
+
+: ARITY-HELP ( -- )
+   s" give " EMIT-STR  TOK-SPAN  32 EMIT1  SGBAD-AR-DECL @ EMIT-U
+   SGBAD-AR-DECL @ 1 = IF s"  type argument" ELSE s"  type arguments" THEN
+   EMIT-STR ;
+: SIG-HELP ( -- )
+   SGBAD-RETURN? IF
+      s" remove the return-stack clause, or write `| U -- U` with one row variable on both sides"
+      EMIT-STR EXIT
+   THEN
+   SGBAD-UNKNOWN? IF
+      s" write a type in scope or a one-letter type variable in place of " EMIT-STR
+      TOK-SPAN EXIT
+   THEN
+   SGBAD-BAREPTR? IF
+      s" follow `ptr` with its element type, as `ptr u8` or `ptr a`" EMIT-STR EXIT
+   THEN
+   SGBAD-ARITY? IF ARITY-HELP EXIT THEN
+   SGBAD-BINDERS? IF
+      s" name an inner callback's effect in a word of its own, so this signature nests fewer binders"
+      EMIT-STR EXIT
+   THEN
+   SGBAD-DEPTH? IF DEPTH-SUGGEST$ EMIT-STR EXIT THEN
+   SGBAD-SIZE? IF
+      s" pass bulk values in a buffer instead of on the stack, so the signature declares fewer cells"
+      EMIT-STR EXIT
+   THEN
+   s" write the stack effect as `( inputs -- outputs )`, type tokens on each side of one `--`"
+   EMIT-STR ;
+
+: DEAD-HELP ( -- )
+   s" remove " EMIT-STR  TOK-SPAN
+   s"  and what follows it in this branch, or move that work before " EMIT-STR
+   DEADTA @ DEADTU @ CODE-SPAN ;
+
+\ A declared type or row variable's letter in backticks.
+: VAR-SPAN ( n -- ) {: q:n :}
+   96 EMIT1  q EMIT1  96 EMIT1 ;
+: NP-GENERIC ( -- )
+   s" , or keep the body generic over " EMIT-STR  NPBAD-Q1 @ VAR-SPAN ;
+: NP-POINTEE ( ptr u8 n -- ) {: a:ptr u:n :}
+   s" declare the pointee the " EMIT-STR  a u EMIT-STR
+   s" , as `ptr n` or `ptr u8`, in place of " EMIT-STR  NPBAD-Q1 @ VAR-SPAN ;
+: NP-ROW ( -- )
+   NPBAD-Q1 @ IF s" row " EMIT-STR  NPBAD-Q1 @ VAR-SPAN EXIT THEN
+   s" the unnamed row" EMIT-STR ;
+: NP-HELP ( -- )
+   NPBAD-KIND @ case
+      4 of s" base address reaches" NP-POINTEE endof
+      5 of s" null stands in for" NP-POINTEE endof
+      3 of s" declare the type the raw storage holds in place of " EMIT-STR
+         NPBAD-Q1 @ VAR-SPAN  NP-GENERIC endof
+      0 of s" declare " EMIT-STR  NP-FAM-REND  s"  in place of " EMIT-STR
+         NPBAD-Q1 @ VAR-SPAN  NP-GENERIC endof
+      1 of s" write one type variable for " EMIT-STR  NPBAD-Q1 @ VAR-SPAN
+         s"  and " EMIT-STR  NPBAD-Q2 @ VAR-SPAN
+         s" , or keep the body from making them one type" EMIT-STR endof
+      6 of s" run the quotation that yields the output row on every path, or declare the row the body leaves"
+         EMIT-STR endof
+      7 of s" declare the cells the body leaves in place of " EMIT-STR  NP-ROW
+         s" , or keep the body generic over it" EMIT-STR endof
+      s" declare an input that carries " EMIT-STR  NPBAD-Q1 @ VAR-SPAN
+      s" , or write a concrete type in its place" EMIT-STR
+   endcase ;
+
+: CAP-HELP ( -- )
+   s" call a checked word that wraps " EMIT-STR  TOK-SPAN
+   s"  in place of calling it from this body" EMIT-STR ;
+
+: UNSAFE-HELP ( -- )
+   PIN-TOK$ s" evaluate" CORE-STR=CI IF
+      s" call `evaluate-closed` in place of " EMIT-STR  TOK-SPAN EXIT
+   THEN
+   s" move " EMIT-STR  TOK-SPAN  s"  out of the body to top level" EMIT-STR ;
+
+: LINLOCAL-HELP ( -- )
+   s" keep the linear value on the stack and pass it on with stack words, in place of binding it to a local"
+   EMIT-STR ;
+
+: UNCK-HELP ( -- )
+   s" call a word whose stack effect the checker knows in place of " EMIT-STR
+   TOK-SPAN ;
+
+: RETURN-HELP ( -- )
+   RSBAD @ 2 = IF
+      s" read or pop with `r@` and `r>` only cells this definition pushed with `>r`"
+      EMIT-STR EXIT
+   THEN
+   RSBAD @ 3 = IF
+      s" take back with `r>` every cell the quotation pushes with `>r` before its `;]`"
+      EMIT-STR EXIT
+   THEN
+   RSBAD @ 4 = IF
+      s" read or pop with `r@` and `r>` only cells this quotation pushed with `>r`"
+      EMIT-STR EXIT
+   THEN
+   s" take back with `r>` every cell the definition pushes with `>r` before it exits"
+   EMIT-STR ;
+
+\ A mismatch with no captured pair (DKIND) takes the depth repair.
 : DIAG-HELP ( -- )
    DKIND {: k:n :}
    k RF-MISMATCH = IF DEND @ 0 <> IF END-HELP ELSE TAKES-HELP THEN EXIT THEN
    k RF-UNDEF = IF PIN-TOK$ UNDEF-HELP EXIT THEN
-   SUGGEST-TEXT EMIT-STR ;
+   k RF-IMM = IF IMM-HELP EXIT THEN
+   k RF-QUAL = IF QUAL-HELP EXIT THEN
+   k RF-LOCAL = IF LOCAL-HELP EXIT THEN
+   k RF-SIG = IF SIG-HELP EXIT THEN
+   k RF-DEAD = IF DEAD-HELP EXIT THEN
+   k RF-NP = IF NP-HELP EXIT THEN
+   k RF-CAP = IF CAP-HELP EXIT THEN
+   k RF-UNSAFE = IF UNSAFE-HELP EXIT THEN
+   k RF-LINLOCAL = IF LINLOCAL-HELP EXIT THEN
+   k RF-REASON = IF MDIAG @ MD-SUGGEST$ EMIT-STR EXIT THEN
+   k RF-UNCHECKABLE = IF UNCK-HELP EXIT THEN
+   k RF-RETURN = IF RETURN-HELP EXIT THEN
+   REFUSAL@ RF-MISMATCH = IF ['] ROW-VALUES ROWS-SUGGEST$ EMIT-STR EXIT THEN
+   s" Inspect the token, signature, and raw stack evidence." EMIT-STR ;
 
 : DIAG-PRINT
    0 RQM !  SEEN-RESET 0 NLET !  0 RROW-N !
