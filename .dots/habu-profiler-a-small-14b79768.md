@@ -6,7 +6,7 @@ issue-type: task
 created-at: "2026-11-10T10:52:28.704734+02:00"
 ---
 
-Problem: under 'by inclusive' the profiler lists words that were not on the call path. In a warm engine build LINKER:CROSS? (src/habu/linker.f:132, a one-line predicate LOAD calls before LINKED?) shows 4,337 of 13,085 samples, between LINKED? and LOAD. A reader who does not know the code is misled.
+Problem: under 'by inclusive' the profiler lists words that were not on the call path. In a warm engine build LINKER:CROSS? (src/habu/linker.f:133, a one-line predicate LOAD calls before LINKED?) shows 4,337 of 13,085 samples, between LINKED? and LOAD. A reader who does not know the code is misled.
 
 Cause, shown by the program below: C-PROF-WALK (src/habu/prof.f:192-199) takes every cell between sp and the end of its 4 KiB block whose value lies in indexed code for a return address, and a tier-0 frame holds unwritten cells. CLOSE (src/habu/t0-arm64.f:388-391) saves x30 at entry sp - 16 and then lowers sp by the frame's slots (FRAME-CELLS x 8, rounded to 16) with a bare sub; a slot is written only when a value is spilled into it. A return address that a returned word's callee saved stays in such a slot. C-PROF-INCL-ONCE (prof.f:124-132) counts its word once per sample, and the first hit becomes the sampled word's caller edge (prof.f:204-206). Second path: prof.f:197 subtracts 4 before the lookup, so a stale cell holding a word's start address is credited to the word laid out just before it, which may never have run.
 
