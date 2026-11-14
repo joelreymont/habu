@@ -2396,7 +2396,6 @@ public
    s" evaluate-closed" [: EVAL-CLOSED, ;] PRIM
    s" evaluate-range" [: REFUSE-BODY ;]
       ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" body-append" [: REFUSE-BODY ;] PRIM
    s" literal" [: REFUSE-BODY ;] PRIM
    s" compile," [: REFUSE-BODY ;] PRIM
    s" ;" [: REFUSE-BODY ;] PRIM

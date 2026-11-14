@@ -1481,10 +1481,6 @@ private
    s" E-TASK-COMPILE habu: evaluate-range from a task" B-TASK-GUARD
    9 DATA PROVIDED-XT:EVALUATE-RANGE-CELL LDR,  9 BR, ;
 
-: B-BODY-APPEND ( -- )
-   s" E-TASK-COMPILE habu: body-append from a task" B-TASK-GUARD
-   9 DATA PROVIDED-XT:APPEND-CELL LDR,  9 BR, ;
-
 : B-LITERAL ( -- )
    s" E-TASK-COMPILE habu: literal from a task" B-TASK-GUARD
    9 DATA PROVIDED-XT:LITERAL-CELL LDR,  9 BR, ;
@@ -4073,7 +4069,6 @@ package ENGINE-EMIT
    s" num-parse" ['] ENGINE-EMIT:BNUMPARSE FPRIM
    s" evaluate" ['] B-EVAL FPRIM-L
    s" evaluate-range" ['] B-EVAL-RANGE FPRIM-L
-   s" body-append" ['] B-BODY-APPEND FPRIM-L
    s" literal" ['] B-LITERAL FPRIM-L
    s" compile," ['] B-COMPILE FPRIM-L
    s" ;" ['] B-END FPRIM-L

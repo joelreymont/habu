@@ -2505,11 +2505,8 @@ sections above.
   In the definer's body `postpone W` appends W bound to the record W names
   there, so no word the running package defines captures it, and is refused
   where `['] W` is; when W is immediate it compiles a call of W, so
-  `postpone ;` ends the definition as its `;` would. `body-append
-  ( ptr u8 n -- )` appends text, whose names bind where the definition is
-  built; an immediate word in it, `;` included, is `E-UNMODELED-IMMEDIATE`
-  unless `parse-imm` declares it stack-neutral, while keywords such as `if`
-  compile. `compile, ( [ R -- S ] -- )` appends a call of the word whose entry
+  `postpone ;` ends the definition as its `;` would. `compile, ( [ R -- S ]
+  -- )` appends a call of the word whose entry
   the quotation is: a primitive's tick is an `xt`, which it refuses, and a
   quotation no named word enters is `E-NAMELESS-WORD`. `EFFECT:KEYWORD`,
   `EFFECT:OPERAND` (the variant an `of` arm or a `construct` takes),

@@ -415,13 +415,17 @@ through a `defer` or an executed xt), is `E-GENERATES-ROW`.
 A definer that builds a word from words it found writes no text:
 `name$ EFFECT:NEW EFFECT:N EFFECT:IN EFFECT:N EFFECT:OUT define-word` opens
 the word (`s" bool" EFFECT:NAMED` names a built-in type or a family,
-`s" ptr u8" EFFECT:READ` reads one type where the definer runs), `postpone W` appends the W found where the definer was compiled,
-which no package the definer later runs in can shadow, `body-append` appends
-text that binds where it runs, and `postpone ;` ends the word: `postpone` of
-an immediate W compiles a call of W, and `postpone W` is refused where
-`['] W` is. `['] W compile, ( [ R -- S ] -- )` appends a call of W, a word
+`s" ptr u8" EFFECT:READ` reads one type with no letters where the definer
+runs), `postpone W` appends the W found where the definer was compiled, which
+no package the definer later runs in can shadow, and `postpone ;` ends the
+word: `postpone` of an immediate W compiles a call of W, and `postpone W` is
+rejected where `['] W` is. `EFFECT:KEYWORD`, `EFFECT:OPERAND`,
+`EFFECT:TYPE-ITEM` and `EFFECT:CALL` append the keyword, variant, type or call
+the string spells, the call bound where the definer runs; `EFFECT:LOCAL` and
+`EFFECT:LOCAL@` declare and read a local, and `EFFECT:VARIABLE` declares a
+typed variable. `['] W compile, ( [ R -- S ] -- )` appends a call of W, a word
 whose tick is a quotation (a primitive's tick is an `xt`, which `compile,`
-refuses), and `; ( -- )` ends the word.
+rejects), and `; ( -- )` ends the word.
 
 `PTR-U8-TABLE-VARIABLE` is a cell holding a `PTR-U8-TABLE`'s base
 (`( -- ptr ptr ptr u8 )`). An image save writes `PTR-VARIABLE`, `PTR-U8-TABLE` and

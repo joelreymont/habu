@@ -496,10 +496,9 @@ package PROVIDED-XT
 public
 $3848 constant EVALUATE-CELL
 $3860 constant EVALUATE-RANGE-CELL
-\ `define-word`, `body-append`, `compile,`, `;` and `literal` run the running
+\ `define-word`, `compile,`, `;` and `literal` run the running
 \ engine's interpreter words these cells hold.
 $3878 constant DEFINE-CELL
-$3880 constant APPEND-CELL
 $3890 constant COMPILE-CELL
 $38B8 constant END-CELL
 $3898 constant LITERAL-CELL

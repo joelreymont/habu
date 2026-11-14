@@ -1889,7 +1889,7 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
 
 \ ---- definitions built by a running word -------------------------------------
 \ The source cursor stays at the running definer's call, where a refusal of
-\ define-word, literal, body-append, compile, or ; locates.
+\ define-word, literal, compile, or ; locates.
 
 \ WHO names the operation refused: `define-word`, a declaration's child or
 \ an item.
@@ -1987,11 +1987,6 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    s" E-NO-DEFINITION" REFUSAL
    a u ERROR-TEXT:TYPE  s"  with no definition open" ERROR-TEXT:TYPE
    NL 1 ERROR-TEXT:TYPE  RC-REJECT throw ;
-
-: APPEND-RUN ( ptr u8 n -- ) {: a:ptr u:n :}
-   s" body-append" BUILT-PENDING
-   -1 BODY-ITEMS:RAW-CELL CELL!
-   a u DEF-CAPTURE ;
 
 \ What `;` runs: it ends the definition.
 : END-RUN ( -- )
@@ -2924,7 +2919,6 @@ public
    ['] EVAL-FRAMED data-base PROVIDED-XT:EVALUATE-CELL + xt!
    ['] EVAL-FRAMED-RANGE data-base PROVIDED-XT:EVALUATE-RANGE-CELL + xt!
    ['] DEFINE-RUN data-base PROVIDED-XT:DEFINE-CELL + xt!
-   ['] APPEND-RUN data-base PROVIDED-XT:APPEND-CELL + xt!
    ['] COMPILE-RUN data-base PROVIDED-XT:COMPILE-CELL + xt!
    ['] END-RUN data-base PROVIDED-XT:END-CELL + xt!
    ['] ITEM-RUN data-base PROVIDED-XT:ITEM-CELL + xt!

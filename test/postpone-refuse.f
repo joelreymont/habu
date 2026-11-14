@@ -1,10 +1,10 @@
-\ postpone-refuse.f - a definition a definer builds is refused for a `;` in
-\ appended text, for compile, of a quotation literal and for a postponed word
-\ since undefined, and the next definition compiles; a definer is refused for
-\ postponing a word its tick is refused for; a catch abandons a definition
-\ opened inside it and keeps one opened before it, and the lines after it run;
-\ a catch of a throw from an evaluate the definer runs keeps the definition,
-\ and a word postponed after it binds.
+\ postpone-refuse.f - a definition a definer builds is refused for compile, of
+\ a quotation literal and for a postponed word since undefined, and the next
+\ definition compiles; a definer is refused for postponing a word its tick is
+\ refused for; a catch abandons a definition opened inside it and keeps one
+\ opened before it, and the lines after it run; a catch of a throw from an
+\ evaluate the definer runs keeps the definition, and a word postponed after it
+\ binds.
 
 require src/lib/string.f
 require src/lib/test/ending.f
@@ -13,12 +13,6 @@ require src/lib/test.f
 
 package POSTPONE-REFUSE
 private
-
-\ : NAME ( -- n ) 5 ; with the `;` appended as text.
-: MAKE-TEXT-END ( ptr u8 n -- )
-   EFFECT:NEW EFFECT:N EFFECT:OUT define-word
-   s" 5 ;" body-append
-   postpone ; ;
 
 \ : NAME ( n -- n ) 1 + ; through compile, of a quotation.
 : MAKE-QUOT-CALL ( ptr u8 n -- )
@@ -34,9 +28,6 @@ private
    postpone ; ;
 undefine ONE
 : ONE ( -- n ) 2 ;
-
-: TEXT-END ( -- n ) [: s" TEXT-ENDED" MAKE-TEXT-END ;] catch ;
-TEXT-END 70 T=
 
 : TRUSTED-POSTPONE ( -- n )
    [: s\" : MAKE-TRUSTED ( ptr u8 n -- ) EFFECT:NEW EFFECT:N EFFECT:OUT define-word postpone reloc-maps-clear postpone ; ;"

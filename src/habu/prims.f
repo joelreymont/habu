@@ -688,9 +688,6 @@ EPPRIM: INTERPRETER def-open PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN EC
 EPRIM: body-capture PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
 EPPRIM: INTERPRETER body-capture PE-PTR-U8 PE-IN PE-N PE-IN ECLOSE-PRIVATE
-\ body-append ( ptr u8 n -- ): append the bytes to the definition `define-word`
-\ or `:` opened; it refuses when no definition is open.
-EPRIM: body-append PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
 \ literal ( n -- ): append n to the definition `define-word` opened, which the
 \ checker reads as that number; it refuses when no definition is open.
 EPRIM: literal PE-N PE-IN EPRIM;
