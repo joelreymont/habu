@@ -61,6 +61,8 @@ INE-CELL RESERVED-PTR-U8-CELL INPUT-END
    off 0 <  off cu + REJECTION:SOURCE$ nip > or if exit then
    c cu REJECTION:CLOSER! ;
 
+public
+
 \ ROWS-ARM, then CLOSER-ARM when it armed.
 : BODY-ARM ( ptr u8 n -- bool )
    {: a:ptr u:n :}
@@ -69,9 +71,6 @@ INE-CELL RESERVED-PTR-U8-CELL INPUT-END
 \ The cleanup that takes back what BODY-ARM or ROWS-ARM armed, or nothing.
 : DISARMER ( bool -- [ -- ] )
    if [: REJECTION:SOURCE-OFF ;] else [: ;] then ;
-
-
-public
 
 \ An immediate word met inside a definition, before it runs: one the checker
 \ has no model for is refused unless it parses nothing.
