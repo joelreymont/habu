@@ -14171,10 +14171,6 @@ CHECKER-REG:}SCRATCH
 : EV-OPERAND ( -- )
    CHECKER-TAPE:K-OPERAND 0 0 EVENT! ;
 
-: EV-VARIANT ( n n n -- )
-   {: kind:n fam:n vid:n :}
-   kind  vid MATCH-VTAG-XT  fam vid VARIANT-PADS-XT  EVENT! ;
-
 \ One row (kind, a0, a1) per reported token; row i is the token at ordinal
 \ EV-LO + i.
 PTR-VARIABLE EV-P   variable EV-CAP
@@ -16824,59 +16820,6 @@ defer SCOPE-EXTERIOR-XT ( n -- bool )
       P>REST
    loop ;
 
-\ WITH-INIT is the only public entry that changes a byte view's element.
-\ Its dictionary code entry authenticates this transition.
-: SCOPE-INIT-STEP ( -- )
-   DCUR @ R-RES dup TAG S-PUSH <> IF drop 0 OK ! -1 FAILSET ! EXIT THEN
-   {: callback-node:n :}
-   callback-node P>TYPE T-RES {: supplied:n :}
-   callback-node P>REST R-RES dup TAG S-PUSH <> IF drop 0 OK ! -1 FAILSET ! EXIT THEN
-   {: value-node:n :}
-   value-node P>TYPE T-RES {: value-cell:n :}
-   value-cell HIDDEN-PARAM? IF value-cell MK-LOGICAL ELSE value-cell THEN {: value:n :}
-   value INIT-VALUE-OK? 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
-   value TFAM-INIT-RECORD-XT 0= IF drop drop drop 0 OK ! -1 FAILSET ! EXIT THEN
-   {: width:n bytes:n align:n :}
-   value-node P>REST width 1- SCOPE-INIT-DROP R-RES dup TAG S-PUSH <> IF
-      drop 0 OK ! -1 FAILSET ! EXIT THEN
-   {: parent-node:n :}
-   parent-node P>TYPE T-RES {: parent-cell:n :}
-   parent-node P>REST {: rest:n :}
-   parent-cell HIDDEN-PARAM? IF parent-cell MK-LOGICAL ELSE parent-cell THEN {: parent:n :}
-   parent TAG T-STALE = IF parent parent STALE-WHY C2-REJECT EXIT THEN
-   parent MUT-VIEW? 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
-   parent 3 PARAM>ARG PE-U8 UNIFY-EXACT 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
-   parent 1 PARAM>ARG T-RES {: ceiling:n :}
-   supplied TAG T-FORALL = IF
-      supplied F>DOMAIN BIND-CHILD <>
-      supplied F>PARENT 0= or supplied F>SECOND 0= or IF
-         0 OK ! -1 FAILSET ! EXIT THEN
-      supplied F>PARENT ceiling UNIFY-EXACT 0=
-      supplied F>SECOND value UNIFY-EXACT 0= or IF
-         0 OK ! -1 FAILSET ! EXIT THEN
-   THEN
-   ceiling value SCOPE-DOUBLE-FRESH {: scope:n :}
-   supplied TAG T-FORALL = IF
-      supplied F>BODY scope SCOPE-INST
-      DCUR @ P>REST MK-PUSH DCUR !
-   THEN
-   FRESH MK-ROW {: r:n :}
-   FRESH MK-ROW {: s:n :}
-   FRESH MK-ROW {: u:n :}
-   parent scope value SCOPE-INIT-VIEW {: view:n :}
-   view r PUSH-LOGICAL view s PUSH-LOGICAL u u MK-QUOT {: callback:n :}
-   callback value parent r PUSH-LOGICAL PUSH-LOGICAL MK-PUSH
-   parent s PUSH-LOGICAL {: output:n :}
-   output SCOPE-RECORDED-STEP
-   OK @ 0= IF EXIT THEN
-   scope SCOPE-EXTERIOR-XT IF
-      SCOPE-WITNESS @ MD-C2-ESCAPE C2-REJECT EXIT THEN
-   1 0 0 width WF-ADD-FULL
-   REC-ON @ IF
-      REC-IX @ width bytes CW-INIT-WIDTH CWIN-ADD
-      REC-IX @ bytes align CW-INIT-EXTENT CWIN-ADD
-   THEN ;
-
 : SCOPE-RECORDS-TYPE ( n n n -- n ) {: parent:n scope:n value:n :}
    PARAM-SCR-N @ {: base:n :}
    parent 0 PARAM>ARG PARAM-SCR+
@@ -16884,59 +16827,6 @@ defer SCOPE-EXTERIOR-XT ( n -- bool )
    parent 2 PARAM>ARG PARAM-SCR+
    value PARAM-SCR+
    base s" records" C2-RECORDS-FAM @ MK-PARAM ;
-
-: SCOPE-RECORDS-STEP ( -- )
-   DCUR @ R-RES dup TAG S-PUSH <> IF drop 0 OK ! -1 FAILSET ! EXIT THEN
-   {: callback-node:n :}
-   callback-node P>TYPE T-RES {: supplied:n :}
-   callback-node P>REST R-RES dup TAG S-PUSH <> IF drop 0 OK ! -1 FAILSET ! EXIT THEN
-   {: value-node:n :}
-   value-node P>TYPE T-RES {: value-cell:n :}
-   value-cell HIDDEN-PARAM? IF value-cell MK-LOGICAL ELSE value-cell THEN {: value:n :}
-   value INIT-VALUE-OK? 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
-   value TFAM-INIT-RECORD-XT 0= IF drop drop drop 0 OK ! -1 FAILSET ! EXIT THEN
-   {: width:n bytes:n align:n :}
-   value-node P>REST width 1- SCOPE-INIT-DROP R-RES dup TAG S-PUSH <> IF
-      drop 0 OK ! -1 FAILSET ! EXIT THEN
-   {: count-node:n :}
-   count-node P>REST R-RES dup TAG S-PUSH <> IF drop 0 OK ! -1 FAILSET ! EXIT THEN
-   {: parent-node:n :}
-   parent-node P>TYPE T-RES {: parent-cell:n :}
-   parent-node P>REST {: rest:n :}
-   parent-cell HIDDEN-PARAM? IF parent-cell MK-LOGICAL ELSE parent-cell THEN {: parent:n :}
-   parent TAG T-STALE = IF parent parent STALE-WHY C2-REJECT EXIT THEN
-   parent MUT-VIEW? 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
-   parent 3 PARAM>ARG PE-U8 UNIFY-EXACT 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
-   parent 1 PARAM>ARG T-RES {: ceiling:n :}
-   supplied TAG T-FORALL = IF
-      supplied F>DOMAIN BIND-CHILD <>
-      supplied F>PARENT 0= or supplied F>SECOND 0= or IF
-         0 OK ! -1 FAILSET ! EXIT THEN
-      supplied F>PARENT ceiling UNIFY-EXACT 0=
-      supplied F>SECOND value UNIFY-EXACT 0= or IF
-         0 OK ! -1 FAILSET ! EXIT THEN
-   THEN
-   ceiling value SCOPE-DOUBLE-FRESH {: scope:n :}
-   supplied TAG T-FORALL = IF
-      supplied F>BODY scope SCOPE-INST
-      DCUR @ P>REST MK-PUSH DCUR !
-   THEN
-   FRESH MK-ROW {: r:n :}
-   FRESH MK-ROW {: s:n :}
-   FRESH MK-ROW {: u:n :}
-   parent scope value SCOPE-RECORDS-TYPE {: records:n :}
-   records r PUSH-LOGICAL records s PUSH-LOGICAL u u MK-QUOT {: callback:n :}
-   parent r PUSH-LOGICAL PE-N swap MK-PUSH
-   value swap PUSH-LOGICAL callback swap MK-PUSH
-   parent s PUSH-LOGICAL RECORDED-STEP
-   OK @ 0= IF EXIT THEN
-   scope SCOPE-EXTERIOR-XT IF
-      SCOPE-WITNESS @ MD-C2-ESCAPE C2-REJECT EXIT THEN
-   1 0 0 width WF-ADD-FULL
-   REC-ON @ IF
-      REC-IX @ width bytes CW-INIT-WIDTH CWIN-ADD
-      REC-IX @ bytes align CW-INIT-EXTENT CWIN-ADD
-   THEN ;
 
 : SCOPE-RECORD-VIEW ( n n -- n ) {: parent:n scope:n :}
    parent 1 PARAM>ARG parent 3 PARAM>ARG SCOPE-INIT-ELEM {: elem:n :}
@@ -16946,48 +16836,6 @@ defer SCOPE-EXTERIOR-XT ( n -- bool )
    parent 2 PARAM>ARG PARAM-SCR+
    elem PARAM-SCR+
    base s" mut-view" C2-MUT-FAM @ MK-PARAM ;
-
-: SCOPE-RECORD-STEP ( -- )
-   DCUR @ R-RES dup TAG S-PUSH <> IF drop 0 OK ! -1 FAILSET ! EXIT THEN
-   dup P>TYPE T-RES {: supplied:n :}
-   P>REST R-RES dup TAG S-PUSH <> IF drop 0 OK ! -1 FAILSET ! EXIT THEN
-   P>REST R-RES dup TAG S-PUSH <> IF drop 0 OK ! -1 FAILSET ! EXIT THEN
-   dup P>TYPE T-RES {: parent-cell:n :}
-   P>REST {: rest:n :}
-   parent-cell HIDDEN-PARAM? IF parent-cell MK-LOGICAL ELSE parent-cell THEN {: parent:n :}
-   parent TAG T-STALE = IF parent parent STALE-WHY C2-REJECT EXIT THEN
-   parent RECORDS? 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
-   parent 3 PARAM>ARG {: value:n :}
-   value INIT-VALUE-OK? 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
-   value TFAM-INIT-RECORD-XT 0= IF drop drop drop 0 OK ! -1 FAILSET ! EXIT THEN
-   {: width:n bytes:n align:n :}
-   parent 1 PARAM>ARG T-RES {: ceiling:n :}
-   supplied TAG T-FORALL = IF
-      supplied F>DOMAIN BIND-CHILD <> supplied F>PARENT 0= or IF
-         0 OK ! -1 FAILSET ! EXIT THEN
-      supplied F>PARENT ceiling UNIFY-EXACT 0= IF
-         0 OK ! -1 FAILSET ! EXIT THEN
-   THEN
-   ceiling SCOPE-CHILD-FRESH {: scope:n :}
-   supplied TAG T-FORALL = IF
-      supplied F>BODY scope SCOPE-INST
-      DCUR @ P>REST MK-PUSH DCUR !
-   THEN
-   FRESH MK-ROW {: r:n :}
-   FRESH MK-ROW {: s:n :}
-   FRESH MK-ROW {: u:n :}
-   parent scope SCOPE-RECORD-VIEW {: view:n :}
-   view r PUSH-LOGICAL view s PUSH-LOGICAL u u MK-QUOT {: callback:n :}
-   parent r PUSH-LOGICAL PE-N swap MK-PUSH callback swap MK-PUSH
-   parent s PUSH-LOGICAL RECORDED-STEP
-   OK @ 0= IF EXIT THEN
-   scope SCOPE-EXTERIOR-XT IF
-      SCOPE-WITNESS @ MD-C2-ESCAPE C2-REJECT EXIT THEN
-   1 0 0 width WF-ADD-FULL
-   REC-ON @ IF
-      REC-IX @ width bytes CW-INIT-WIDTH CWIN-ADD
-      REC-IX @ bytes align CW-INIT-EXTENT CWIN-ADD
-   THEN ;
 
 : SCOPE-FIELD-REGION ( n n -- n ) {: parent:n descriptor:n :}
    PARAM-SCR-N @ {: base:n :}
@@ -17058,47 +16906,6 @@ defer SCOPE-EXTERIOR-XT ( n -- bool )
 
 : SCOPE-FIELD-MAY-THROW? ( n -- bool )
    dup TAG T-QUOT = IF Q>XHAS ELSE drop RES-TRUE THEN ;
-
-\ The selector is a token, never a runtime field id. The callback may change
-\ the field, but it cannot return the child view or the projected region.
-: SCOPE-FIELD-STEP ( ptr u8 n -- ) {: name:ptr size:n :}
-   DCUR @ R-RES dup TAG S-PUSH <> IF drop SCOPE-FIELD-REJECT EXIT THEN
-   dup P>TYPE T-RES {: supplied:n :}
-   supplied SCOPE-FIELD-MAY-THROW? {: may-throw:bool :}
-   P>REST R-RES dup TAG S-PUSH <> IF drop SCOPE-FIELD-REJECT EXIT THEN
-   dup P>TYPE T-RES {: parent-cell:n :}
-   P>REST {: rest:n :}
-   parent-cell HIDDEN-PARAM? IF parent-cell MK-LOGICAL ELSE parent-cell THEN {: parent:n :}
-   parent TAG T-STALE = IF SCOPE-FIELD-REJECT EXIT THEN
-   parent MUT-VIEW? 0= IF SCOPE-FIELD-REJECT EXIT THEN
-   parent 3 PARAM>ARG T-RES {: initialized:n :}
-   initialized TAG T-PARAM <> IF SCOPE-FIELD-REJECT EXIT THEN
-   initialized PARAM>FAM C2-INIT-FAM @ <> IF SCOPE-FIELD-REJECT EXIT THEN
-   initialized 0 PARAM>ARG T-RES {: init-scope:n :}
-   initialized 1 PARAM>ARG T-RES {: record:n :}
-   record INIT-VALUE-OK? 0= IF SCOPE-FIELD-REJECT EXIT THEN
-   record name size TFAM-INIT-FIELD-XT 0= IF 2drop drop SCOPE-FIELD-REJECT EXIT THEN
-   {: descriptor:n off:n bytes:n :}
-   descriptor FIELD-PARAM? 0= IF SCOPE-FIELD-REJECT EXIT THEN
-   descriptor FIELD-INNER {: field:n :}
-   parent 1 PARAM>ARG T-RES {: ceiling:n :}
-   supplied ceiling SCOPE-FIELD-SCHEME? 0= IF SCOPE-FIELD-REJECT EXIT THEN
-   ceiling SCOPE-CHILD-FRESH {: child:n :}
-   parent descriptor SCOPE-FIELD-REGION {: projected:n :}
-   supplied ceiling child projected SCOPE-FIELD-OPEN
-   OK @ 0= IF EXIT THEN
-   DCUR @ XE-PD !  RCUR @ XE-PR !
-   parent child projected init-scope field SCOPE-FIELD-CALLBACK
-   OK @ 0= IF EXIT THEN
-   child SCOPE-EXTERIOR-XT projected SCOPE-EXTERIOR-XT or IF
-      SCOPE-FIELD-REJECT EXIT THEN
-   THROW-CUR? may-throw or IF CALL-THROW-EDGE THEN
-   off bytes SCOPE-FIELD-FACTS ;
-
-: SCOPE-FIELD-TOK ( ptr u8 n -- )
-   EV-OPERAND                       \ the loaned field's name; the loan step compiles it
-   0 FIELD-LOAN-PENDING !
-   SCOPE-FIELD-STEP ;
 
 \ A bound call of a word a `names:` row marks (CTL-NAMES) publishes the string
 \ literal just before it as a use of the word it names.
@@ -17315,56 +17122,6 @@ variable CHECKER-PREFIX-ROLLBACK
    CALL-UNDEFINED IF EXIT THEN
    CHECKER-QBAD-TOK @ 0 <> IF RF-QUAL ELSE RF-UNDEF THEN CREFUSE! ;
 
-: DO-TOK-BODY ( ptr u8 n -- ) {: a:ptr u:n :}
-   0 CURSYM !
-   a u LITERAL-TOK? IF EXIT THEN
-   a u TOK-INTRINSIC {: id:n :}
-   a u BIND-SOURCE-CALL
-   CUSING @ 0= TOK-SYM @ SYM-EFFECT-UNRESOLVED? and IF
-      TOK-SYM @ PRIM-TRUSTED-SYM? IF
-         TOP-STEP @ 0= IF -1 CAPREQ !  0 OK !  -1 FAILSET !  EXIT THEN
-      ELSE UNSEEN-RAISE  EXIT THEN
-   THEN
-   \ What the call may do at run time is its symbol's, read before an identity
-   \ arm takes the token: `create` leaves through DEFINER-TOK and still carries
-   \ its axiom.
-   TOK-SYM @ CTL-FLAGS-SYM CTL-INHERITED and INHSET @ or INHSET !
-   id DEFINER-TOK IF EXIT THEN
-   id INTRINSIC-CELL-FETCH = IF CELL-FETCH-TOK EXIT THEN
-   id INTRINSIC-CELL-STORE = IF RES-TRUE CELL-STORE-TOK EXIT THEN
-   id INTRINSIC-ATOMIC-STORE = id INTRINSIC-XT-STORE = or IF RES-FALSE CELL-STORE-TOK EXIT THEN
-   id INTRINSIC-ATOMIC-CAS = IF ATOMIC-CAS-TOK EXIT THEN
-   id INTRINSIC-RAW-FIELD = IF RAW-FIELD-TOK? IF EXIT THEN THEN
-   TOK-SYM @ CURSYM !
-   CURSYM @ SCOPE-KIND-SYM dup 2 = IF SCOPE-CHILD-STEP EXIT THEN
-   dup 3 = IF drop SCOPE-MUT-ROOT-STEP EXIT THEN
-   dup 4 = IF SCOPE-CHILD-STEP EXIT THEN
-   dup 5 = IF drop SCOPE-INIT-STEP EXIT THEN
-   dup 6 = IF drop SCOPE-RECORDS-STEP EXIT THEN
-   dup 7 = IF drop SCOPE-RECORD-STEP EXIT THEN
-   dup 8 = IF drop REC-IX @ FIELD-LOAN-ORD ! TSTART @ FIELD-LOAN-OFF !
-      -1 FIELD-LOAN-PENDING ! EXIT THEN drop
-   \ a call to a definer, counted for the straight-line-wrapper rule above. A
-   \ top-level step's is not: it walks no body, and the next record published is
-   \ the one the definer makes when it runs, which is no wrapper.
-   TOP-STEP @ 0= IF
-      CURSYM @ NORET-CREATES@ dup 0 <> IF WRAPC !  WRAPN @ 1 + WRAPN ! ELSE drop THEN
-   THEN
-   FEP-CLEAR
-   CURSYM @ CHECKER-FIND-USIG-SYM drop
-   FEP-HIT? IF FEP @ TOK-EFF ! THEN
-   CURSYM @ CTOR-STEP-XT IF EXIT THEN
-   FEP-HIT? IF
-      CURSYM @ CALL-AUTHORITY
-      dup CALL-REFUSED = IF drop -1 CAPREQ !  0 OK !  -1 FAILSET !  EXIT THEN
-      dup CALL-RECOVERS = IF RES-TRUE CHECKER-EFFECT-AUTHORITY:RECOVERY-USED! THEN
-      CALL-PRIMS <> IF FEP @ EFF-APPLY EXIT THEN
-   THEN
-   CURSYM @ TRY-PRIMS IF EXIT THEN
-   TSEEN @ 0 <> IF TFA @ E-PTR EFF-APPLY EXIT THEN
-   TOK-LIVE-REC @ IF a u CALL-UNDEFINED drop EXIT THEN
-   a u REFUSE-UNDEFINED ;
-
 : ZERO-USE-TEST ( n n -- ) {: pre:n prer:n :}
    OK @ 0= IF EXIT THEN
    CURSYM @ CTL-FLAGS-SYM {: flags:n :}
@@ -17385,11 +17142,6 @@ variable CHECKER-PREFIX-ROLLBACK
    output output P>REST P-COPY {: copy:n :}
    proof copy P-PROOF!
    copy DCUR ! ;
-
-: DO-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
-   DCUR @ {: pre:n :}  RCUR @ {: prer:n :}
-   a u DO-TOK-BODY
-   pre prer ZERO-USE-TEST ;
 
 : ROW-DROP-1 ( n -- n )
    R-RES dup TAG S-PUSH <> IF s" checker: hidden group underruns row" 76 die THEN
@@ -19279,53 +19031,6 @@ variable MTCH-W                      \ the bundle width the walk below really co
    t HIDDEN-PARAM? 0= IF MD-OPEN-ARGS MDIAG! EXIT THEN
    MD-SCRUT MDIAG! ;
 
-\ Open the frames of a match on family FAM: its branches start from MTCH-ROW,
-\ their payloads come from MTCH-TAGT (0: none), and LOST says whether a
-\ scrutinee cell was lost.
-: MATCH-OPEN ( n n -- )
-   {: fam:n lost:n :}
-   MF-ENSURE
-   MF-DEPTH @ 1 + MF-DEPTH !
-   MF-CUR
-   {: r:ptr :}
-   fam r MF.FAM !
-   MTCH-TAGT @ r MF.TERM !
-   MTCH-ROW @ r MF.BASE !
-   RCUR @ r MF.RBASE !
-   0 r MF.OUT !  0 r MF.ROUT !  0 r MF.HAS !
-   fam MATCH-VCOUNT-XT dup r MF.VCNT !
-   MSEEN-ALLOC r MF.SEEN !
-   TOKIX @ r MF.TIX !
-   MTCH-ROW @ DCUR !                         \ bundle popped; branches re-derive their rows
-   9 DCUR @ 0 RCUR @ 0 CF-PUSH
-   lost CF-TOP CF.FT !
-   2 CHECKER-MATCH-MODE ! ;
-
-\ A scrutinee that does not fit refuses the match at its family token, but the
-\ family still gives the match's tokens their roles: the walk reads its
-\ variants and compiles its branch words as the load does, each branch from the
-\ row the scrutinee left and binding no payload.
-: MATCH-SCRUT-FAIL ( n -- )
-   {: fam:n :}
-   fam MATCH-SCRUT-DIAG
-   0 OK !  -1 FAILSET !  -1 MREJ !
-   DCUR @ MTCH-ROW !  0 MTCH-TAGT !
-   fam 0 MATCH-OPEN ;
-
-: MATCH-FAM-STEP ( n -- )
-   {: fam:n :}
-   CHECKER-TAPE:K-MATCH fam 0 EVENT!
-   #CFC @ CF-FRAMES-MAX 2 - > IF MD-DEPTH MDIAG! MATCH-ABANDON EXIT THEN   \ two CFS frames per match: reject, never UNCK
-   fam MATCH-SCRUT? 0= IF fam MATCH-SCRUT-FAIL EXIT THEN
-   DCUR @ MTCH-W @ ROW-TOP-LOST {: lost:n :}
-   MTCH-W @ MWIN-CELLS!                      \ the bundle a cell-accurate consumer has to pop
-   fam lost MATCH-OPEN ;
-
-: MATCH-FAM-TOK ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   a u MATCH-FAM-XT 0= IF drop CHECKER-TAPE:K-MATCH -1 0 EVENT!  MATCH-ABANDON EXIT THEN
-   MATCH-FAM-STEP ;
-
 
 : MATCH-ACCUM ( -- )
    DEADP @ IF EXIT THEN
@@ -19386,47 +19091,6 @@ variable MTCH-W                      \ the bundle width the walk below really co
    CF-DROP
    MF-DEPTH @ 1 - MF-DEPTH !
    0 CHECKER-MATCH-MODE ! ;
-
-: MATCH-VARIANT-TOK ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   a u s" ;match" CORE-STR= IF
-      CHECKER-TAPE:K-MATCH-END MF-CUR MF.FAM @ 0 EVENT!
-      MATCH-SEMI EXIT THEN
-   a u MF-CUR MF.FAM @ MATCH-VAR-XT 0= IF
-      drop CHECKER-TAPE:K-MATCH-ARM -1 0 EVENT!  MD-VAR-UNKNOWN MDIAG-COMPILE! 0 OK !  -1 MREJ !  -1 MPEND !  3 CHECKER-MATCH-MODE !  EXIT THEN
-   {: vid:n :}
-   CHECKER-TAPE:K-MATCH-ARM  MF-CUR MF.FAM @  vid EV-VARIANT
-   vid MATCH-VTAG-XT {: tag:n :}
-   MF-CUR MF.SEEN @ tag MSEEN-GET IF MD-VAR-DUP MDIAG! 0 OK !  -1 MREJ ! THEN
-   MF-CUR MF.SEEN @ tag MSEEN-SET
-   vid MPEND !
-   3 CHECKER-MATCH-MODE ! ;
-
-: MATCH-OF-TOK ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   a u s" of" CORE-STR= IF CHECKER-TAPE:K-MATCH-OF 0 0 EVENT!
-   ELSE MD-MISSING-OF MDIAG-COMPILE! 0 OK !  -1 MREJ ! THEN
-   MF-CUR {: r:ptr :}
-   r MF.BASE @ DCUR !
-   r MF.RBASE @ RCUR !
-   CF-ENTRY-FACTS
-   MPEND @ 0 < 0=  r MF.TERM @ 0 <>  and IF
-      MPEND @  r MF.TERM @  DCUR @  MATCH-PAY-XT DCUR !
-      CF-TOP CF.FT @ 0 <> IF
-         DCUR @ ROW-TERMS r MF.BASE @ ROW-TERMS - 0 max {: count:n :}
-         DCUR @ count -1 ROW-TOP-OUTPUT-LOSS DCUR !
-      THEN
-      DCUR @ r MF.BASE @ MATCH-PAYLOAD-RECORD
-   THEN
-   10  r MF.BASE @  0  r MF.RBASE @  0  CF-PUSH
-   0 DEADP !
-   0 CHECKER-MATCH-MODE ! ;
-
-: MATCH-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
-   CHECKER-MATCH-MODE @ 1 = IF a u MATCH-FAM-TOK EXIT THEN
-   CHECKER-MATCH-MODE @ 2 = IF a u MATCH-VARIANT-TOK EXIT THEN
-   CHECKER-MATCH-MODE @ 4 = IF a u MATCH-SKIP-TOK EXIT THEN
-   a u MATCH-OF-TOK ;
 
 : CF-ENDOF-DISPATCH ( -- )
    CF-MT? IF CF-ENDOF EXIT THEN
@@ -21039,25 +20703,6 @@ variable IS-PEND-U                   \ and its length
 : CONSTRUCT-NONE ( -- )
    CHECKER-TAPE:K-CONSTRUCT -1 0 EVENT! ;
 
-\ A failed family resolve still consumes the variant token (CONFAM -1): the
-\ three-token form always captures whole, so the trailing operand never falls
-\ through to locals or word lookup.
-: CONSTRUCT-TOK ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   EV-OPERAND                          \ the family compiles nothing, nor does a variant of no family
-   CONM @ 1 = IF
-      a u CONSTRUCT-FAM-XT IF CONFAM ! ELSE drop 0 OK !  -1 CONFAM !  CONSTRUCT-NONE THEN
-      2 CONM !
-      EXIT THEN
-   CONFAM @ 0 < 0= IF
-      a u CONFAM @ MATCH-VAR-XT IF                           \ latch variant SUMV id for the mismatch capture
-         dup CVLIVE !  CHECKER-TAPE:K-CONSTRUCT CONFAM @ rot EV-VARIANT
-      ELSE drop CONSTRUCT-NONE THEN
-      a u CONFAM @ CONSTRUCT-STEP-XT 0= IF 0 OK ! THEN
-      -1 CVLIVE !                                                      \ variant leaves scope with the step
-   THEN
-   0 CONM ! ;
-
 \ --- record-at consumes `ptr F` and a cell count and answers `ptr F`,
 \ preserving the family, so nothing is retyped and bounds stay the caller's.
 \ A WIDE INSTANTIATION IS REFUSED: `F:AT` bakes the family's committed width,
@@ -21345,16 +20990,6 @@ variable POST-ON      \ did the token just judged compile a handle?
    run TOK-REC !  0 TOK-PEND-IX !  0 TOK-PEND-OFF !  0 TOK-SEEDED !
    -1 TOK-LIVE-REC ! ;
 
-\ The handle, pushed as a string literal is, then the call, judged as a call
-\ the body spelled.
-: POSTPONE-CALL ( ptr n n -- ) {: run:ptr sym:n :}
-   -1 PPAY-ON !  -1 POST-ON !
-   s" [package]" PE-SYM-OF PRIM-FIRST-SYM E-PTR EFF-APPLY
-   run sym CALL-PRESET
-   DCUR @ XE-PD !  RCUR @ XE-PR !
-   run CHECKER-RESOLVE:CK-REC-NAME$ DO-TOK
-   OK @ IF THROW-CUR? IF CALL-THROW-EDGE THEN THEN ;
-
 : POSTPONE-UNDEFINED ( -- )
    TICK-PIN  TKF TKFU @ REFUSE-UNDEFINED  IS-FAIL ;
 
@@ -21365,21 +21000,6 @@ variable POST-ON      \ did the token just judged compile a handle?
    rec NULL-PTR <> IF rec EXIT THEN
    BIND-PEND-IX @ 0 = IF NULL-PTR EXIT THEN
    BIND-PEND-IX @ CHECKER-RESOLVE:REC-AT ;
-
-: POSTPONE-TOK ( -- )
-   IS-TARGET-TOK? 0= IF IS-FAIL EXIT THEN
-   -1 CRTGT !                              \ a refusal names the operand, as a tick's does
-   POSTPONE-RUN-REC {: run:ptr sym:n :}
-   IS-TA@ IS-TU @ s" ;" CORE-STR= IF
-      0 POST-ENSURE  0 POST-U !  s" end" POST+
-      run sym POSTPONE-CALL EXIT
-   THEN
-   POSTPONE-TARGET {: rec:ptr :}
-   rec NULL-PTR = IF POSTPONE-UNDEFINED EXIT THEN
-   rec REC-HOME {: pa:ptr pu:n vis:n homed:bool :}
-   homed 0= IF POSTPONE-UNDEFINED EXIT THEN
-   pa pu vis rec CHECKER-RESOLVE:CK-REC-NAME$ POST-HANDLE!
-   run sym POSTPONE-CALL ;
 
 \ A postponed token names its record even where a local of its spelling is
 \ in scope.
@@ -21432,59 +21052,6 @@ variable POST-ON      \ did the token just judged compile a handle?
    0 USING-HOLD !
    a u REFUSAL-STEP
    TOKIX @ 1 + TOKIX ! ;
-
-\ The steps of a token no keyword, mode or literal form took, a call's or a
-\ number's; a call's binding is made on the first ask.
-: CALL-STEP ( ptr u8 n -- ) {: a:ptr u:n :}
-   TKF TKFU @ SPELLED-STEP? IF EXIT THEN
-   TKF TKFU @ CHECKER-PREFLIGHT:BODY-TOK? IF REJECT-IMMEDIATE THEN
-   DCUR @ XE-PD !  RCUR @ XE-PR !          \ the pre-op rows ROW-COMMON needs below
-   TKF TKFU @ RELEASE-CALL? LAYOUT-RELEASE !
-   TKF TKFU @ DO-TOK
-   0 LAYOUT-RELEASE !
-   OK @ IF THROW-CUR? IF CALL-THROW-EDGE THEN THEN
-   OK @ IF DEAD-CUR? IF a u DEAD-OWNER! -1 DEADP ! THEN THEN
-   OK @ #CFC @ 0 > and IF BARRIER-CUR? IF ALL-CF-UNIFORM? 0= IF REJECT-DIVBAR THEN THEN THEN
-   LITERAL-PAYLOAD-STEP
-   PIMM-STREAM @ 0 = IF
-      CURSYM @ PIMM-IX dup 0 < 0= IF PIMM-CNT@ PIMM-SKIP ELSE drop THEN
-   THEN ;
-
-: DO-TOK1 {: a u :}
-   a u DO-TOK-HEAD
-   {: unj unsafe ok-in unck-in pin-in :}
-   TOK0 @ IF NAME-TOK ELSE
-   TKF TKFU @ LIVE-TOKEN? 0= IF -1 DEADERR ! 0 OK !  TKF TKFU @ DEAD-TOK ELSE
-   LMODE @ IF a TKF TKFU @ LOC-TOK ELSE
-   FIELD-LOAN-PENDING @ IF TKF TKFU @ SCOPE-FIELD-TOK ELSE
-   CONM @ 0 <> IF TKF TKFU @ CONSTRUCT-TOK ELSE
-   CHECKER-MATCH-MODE @ 0 <> IF
-      CHECKER-MATCH-MODE @ 4 = IF LITERAL-PAYLOAD-STEP THEN
-      TKF TKFU @ MATCH-TOK
-   ELSE
-   a u BODY-LOC-REF? IF ELSE
-   TKF TKFU @ PARSE-LIT? IF TKF TKFU @ CHAR-LIT-TOK ELSE
-   TKF TKFU @ PKG-LIT? IF TKF TKFU @ PKG-LIT-TOK ELSE
-   TKF TKFU @ s" [type]" CORE-STR= IF TYPE-LIT-TOK ELSE
-   TKF TKFU @ s" construct" CORE-STR= IF CONSTRUCT-BEGIN ELSE
-   TKF TKFU @ s" match" CORE-STR= IF MATCH-BEGIN ELSE
-   TKF TKFU @ s" {:" CORE-STR= IF LOC-BEGIN ELSE
-   TKF TKFU @ UNSAFE-TOK? IF
-      BWIN-UNJUDGED @ IF TKF TKFU @ BIND-SOURCE-CALL THEN
-      REJECT-UNSAFE ELSE
-   a u RETIRED-GLOBAL? IF REJECT-RETIRED ELSE
-   TKF TKFU @ s" is" CORE-STR= IF IS-TOK ELSE
-   TKF TKFU @ BTICK-CAND? IF BTICK-TOK ELSE
-   TKF TKFU @ s" postpone" CORE-STR= IF POSTPONE-TOK ELSE
-   TKF TKFU @ CF-CODE {: cf:n :}
-   OK @ IF cf 21 = IF a u DEAD-OWNER! THEN THEN   \ exit
-   OK @ IF cf 22 = IF a u DEAD-OWNER! THEN THEN   \ leave
-   OK @ IF cf 12 = IF a u DEAD-OWNER! THEN THEN   \ again
-   cf 0 >= IF cf CF-STEP THEN
-   cf 0 < IF a u CALL-STEP THEN
-   THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
-   THEN THEN
-   a u unj unsafe ok-in unck-in pin-in DO-TOK-TAIL ;
 
 \ A declared type variable must remain a distinct variable after checking the
 \ body. Specializing it to any concrete type would publish a more general
