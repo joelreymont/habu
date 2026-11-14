@@ -183,7 +183,7 @@ variable KERNEL-N                    \ the kernel routines this link added
 \ offset and an xt cell its function's table slot, which WLINK:LINK stores.
 : ROW+ ( n -- )
    {: row:n :}
-   row ROW-OFF {: off:n :}
+   row IMAGE-OFF {: off:n :}
    off CELL-FITS
    row SCRATCH-ROW? if 0 off COPY-AT LE:U64! exit then
    row CELL-VALUE {: v:n :}

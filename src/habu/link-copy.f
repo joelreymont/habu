@@ -1,7 +1,7 @@
 \ link-copy.f - the data a program reaches and the link's copy of the open
-\ space: REACH-DATA marks the units and address rows a stripped program reads;
-\ the copy is the space's bytes without its dead units, its kept rows listed in
-\ cell order. A machine's writer gives each kept cell its image value.
+\ space: REACH-DATA marks the units and address rows a stripped program reads
+\ and lays its data out; the copy is that data, its kept rows listed in cell
+\ order. A machine's writer gives each kept cell its image value.
 \
 \ THE DATA A STRIPPED PROGRAM REACHES.
 \ A stripped program keeps the extents of the build's data it reaches: unit b,
@@ -21,10 +21,17 @@
 \ whose ends lie in their bodies; one where a piece ends and no piece starts
 \ is the piece's. An address in an interned body keeps that body alone: a
 \ header body lies in the header, any other in the piece that first interned
-\ it, and every later piece spelling it shares it. The copy holds the dead
-\ units and the header's bodies, all but the kept bodies, and every address
-\ cell not read as zeros, and lists none of them. An engine keeps every unit
-\ and cell.
+\ it, and every later piece spelling it shares it.
+\
+\ THE IMAGE'S DATA. A stripped program's is the header as the build left it,
+\ its bodies the program does not keep zeroed; then the live units in build
+\ order, each laid at the first offset past the one before that keeps its
+\ offset modulo a cell, a monotone map, so an interior or end address keeps its
+\ meaning; then the kept bodies whose unit is dead, sorted by length then
+\ bytes, each from a cell boundary with its length cell and the byte past it.
+\ The alignment bytes no unit holds are not laid. An address cell not read
+\ holds zeros where it is laid, and the list names none of them. An engine's
+\ is the space as is.
 
 require src/lib/le.f
 require src/lib/sort.f
@@ -39,18 +46,6 @@ require src/habu/link-band.f
 package LINKER
 private
 
-: DATA-IMAGE-LEN ( -- n ) SPACE-DATA nip ;
-
-
-\ A host address in the open space as its offset from the space's start.
-: DATA-OFFSET ( n -- n )
-   {: v:n :}
-   v BASE @ - {: off:n :}
-   off 0 >=  off SPACE-SIZE @ < and if off exit then
-   s" link: a DATA pointer outside the build's space: " SAY v SAY-INT SAY-CR
-   s" link: a DATA pointer outside the build's space" 74 die ;
-
-
 DYNAMIC-BUFFER ROW-REACHED n         \ 1 once BUILT row r's piece is reached
 DYNAMIC-BUFFER UNIT-LIVE n           \ 1 once the unit is live
 DYNAMIC-BUFFER CELL-UNIT n           \ address row i's cell's unit
@@ -64,6 +59,16 @@ variable KEPT-N                      \ the rows KEEP-LIST kept
 DYNAMIC-BUFFER STR-AT n              \ the build's string bodies, ascending
 DYNAMIC-BUFFER STR-KEPT n            \ 1 once body k is kept
 variable STR-N
+\ LAY-DATA's segments, in build order: build start from NULL-PTR, length,
+\ image offset.
+3 constant SEG-CELLS
+DYNAMIC-BUFFER SEGS n
+variable SEG-N
+DYNAMIC-BUFFER LAID-AT n             \ body k's image offset, 0 for a body not laid
+DYNAMIC-BUFFER BY-BODY n             \ the laid bodies in laid order
+variable LAID-END                    \ where LAY-DATA lays next; then the laid length
+variable EXT-I                       \ BY-EXT's next row to lay
+variable EXTS-END                    \ where the extents laid so far end
 
 : HEADER-UNIT ( -- n ) BUILT-EXTS-N @ ;
 : REST-UNIT ( -- n ) BUILT-EXTS-N @ 1 + ;
@@ -159,6 +164,22 @@ variable STR-N
    k STR-AT @ {: b:n :}
    v  b  b BODY-U 1 + +  < if k exit then
    -1 ;
+
+\ Whether body j sorts before body k: the shorter first, then by the first
+\ byte that differs.
+: BODY< ( n n -- bool )
+   {: j:n k:n :}
+   j STR-AT @ {: a:n :}
+   k STR-AT @ {: b:n :}
+   a BODY-U {: au:n :}
+   b BODY-U {: bu:n :}
+   au bu <> if au bu < exit then
+   NULL-PTR BYTE-VIEW a + {: p:ptr :}
+   NULL-PTR BYTE-VIEW b + {: q:ptr :}
+   au 0 ?do
+      p i + c@  q i + c@  2dup <> if < unloop exit then  2drop
+   loop
+   false ;
 
 
 : REACH-ADDRESS ( n -- )
@@ -266,6 +287,114 @@ variable STR-N
    loop ;
 
 
+\ The build's DP, where the space's data ends.
+: SPACE-END ( -- n ) SPACE-DATA nip BASE @ + ;
+
+: SEG ( n n -- ptr n ) swap SEG-CELLS * + SEGS ;
+
+\ The len bytes at build address start, laid at the first offset from LAID-END
+\ that keeps their offset modulo a cell.
+: SEG+ ( n n -- )
+   {: start:n len:n :}
+   len 0= if exit then
+   LAID-END @ {: at:n :}
+   start BASE @ -  at -  CELL 1- and  at + {: img:n :}
+   SEG-N @ {: s:n :}
+   s 1 + SEG-CELLS * SEGS-RESERVE
+   start s 0 SEG !  len s 1 SEG !  img s 2 SEG !
+   1 SEG-N +!
+   img len + LAID-END ! ;
+
+\ BUILT-EXTS row b, laid when live. An extent with no data, as one at another's
+\ start is, holds no byte.
+: LAY-EXT ( n -- )
+   {: b:n :}
+   b EXT-SPAN {: start:n len:n :}
+   len 0= if exit then
+   start EXTS-END @ < if
+      s" link: two extents of the build hold the data at offset " SAY start BASE @ - SAY-INT SAY-CR
+      s" link: two extents of the build hold one byte" 74 die
+   then
+   start len + EXTS-END !
+   b REACHED? if start len SEG+ then ;
+
+\ Each extent not yet laid that starts below v, in data order.
+: EXTS-BELOW ( n -- )
+   {: v:n :}
+   begin
+      EXT-I @ BUILT-EXTS-N @ < if EXT-I @ BY-EXT @ EXT-SPAN drop v < else false then
+   while
+      EXT-I @ BY-EXT @ LAY-EXT  1 EXT-I +!
+   repeat ;
+
+: SORT-EXTS ( -- )
+   BUILT-EXTS-N @ {: n:n :}
+   n BY-EXT-RESERVE
+   n 0 ?do i i BY-EXT ! loop
+   n 0 > if 0 BY-EXT n [: swap EXT-SPAN drop swap EXT-SPAN drop < ;] SORT:SORT! then ;
+
+: SORT-PIECES ( -- )
+   BUILT-N {: n:n :}
+   n BY-START-RESERVE
+   n 0 ?do i i BY-START ! loop
+   n 0 > if 0 BY-START n [: swap PIECE-SPAN drop swap PIECE-SPAN drop < ;] SORT:SORT! then ;
+
+\ The live units from OPEN-DP in data order: the extents, and when the rest
+\ unit is live each span no piece holds, before, between and after the pieces.
+: LAY-UNITS ( -- )
+   SORT-EXTS  SORT-PIECES
+   0 SEG-N !  0 EXT-I !  OPEN-DP @ EXTS-END !
+   REST-UNIT REACHED? {: rest:bool :}
+   OPEN-DP @
+   BUILT-N 0 ?do
+      {: at:n :}
+      i BY-START @ PIECE-SPAN {: from:n to:n :}
+      at EXTS-BELOW
+      rest  from at >  and if at  from at -  SEG+ then
+      at to max
+   loop
+   {: last:n :}
+   last EXTS-BELOW
+   rest  SPACE-END last >  and if last  SPACE-END last -  SEG+ then
+   BASE @ SPACE-SIZE @ + EXTS-BELOW ;
+
+
+\ Whether body k is laid after the units: kept, its length cell past the
+\ header and its unit dead.
+: LAID? ( n -- bool )
+   {: k:n :}
+   k STR-KEPT @ 0= if false exit then
+   k STR-AT @ CELL - {: at:n :}
+   at OPEN-DP @ < if false exit then
+   at UNIT-OF {: u:n :}
+   u 0< if true exit then
+   u REACHED? 0= ;
+
+\ Body k's length cell at the next cell boundary, its bytes and the byte past.
+: LAY-BODY ( n -- )
+   {: k:n :}
+   LAID-END @ CELL 1- +  CELL negate and {: at:n :}
+   at CELL + {: img:n :}
+   img k LAID-AT !
+   img  k STR-AT @ BODY-U +  1 +  CELL 1- +  CELL negate and  LAID-END ! ;
+
+: LAY-BODIES ( -- )
+   STR-N @ LAID-AT-RESERVE
+   0
+   STR-N @ 0 ?do
+      0 i LAID-AT !
+      i LAID? if  dup 1 + BY-BODY-RESERVE  i over BY-BODY !  1 +  then
+   loop
+   {: n:n :}
+   n 0 > if 0 BY-BODY n [: BODY< ;] SORT:SORT! then
+   n 0 ?do i BY-BODY @ LAY-BODY loop ;
+
+\ A stripped program's image data: the header, the live units, the laid bodies.
+: LAY-DATA ( -- )
+   OPEN-DP @ BASE @ - LAID-END !
+   LAY-UNITS  LAY-BODIES ;
+
+
 \ The units the program reaches from the header. A round that makes no unit
 \ live and reaches no piece has read every live unit's cells and every
 \ emission placed so far.
@@ -276,7 +405,59 @@ variable STR-N
       0 WENT-LIVE !
       READ-CELLS  READ-EMS
       WENT-LIVE @ 0=
-   until ;
+   until
+   ENGINE? @ 0= if LAY-DATA then ;
+
+
+: DATA-IMAGE-LEN ( -- n )
+   ENGINE? @ if SPACE-DATA nip exit then
+   LAID-END @ ;
+
+\ The segment holding the byte at v or ending at it, -1 for none.
+: SEG-OF ( n -- n )
+   {: v:n :}
+   0 SEG-N @
+   begin 2dup < while
+      {: lo:n hi:n :}
+      lo hi + 2 / {: mid:n :}
+      mid 0 SEG @ v <= if mid 1 + hi else lo mid then
+   repeat
+   drop 1 - {: s:n :}
+   s 0< if -1 exit then
+   s 0 SEG @  s 1 SEG @ +  v >= if s else -1 then ;
+
+\ Host address v's offset in a stripped program's image data; past the
+\ space's end, the profiler band and ceiling stay where they are.
+: LAID-OFFSET ( n -- n )
+   {: v:n :}
+   v STRING-OF {: k:n :}
+   k 0 >= if k LAID-AT @ else 0 then {: img:n :}
+   img 0<> if img  v +  k STR-AT @ - exit then
+   v SEG-OF {: s:n :}
+   s 0 >= if s 2 SEG @  v +  s 0 SEG @ - exit then
+   v OPEN-DP @ < if v BASE @ - exit then
+   SPACE-END {: end:n :}
+   v end = if LAID-END @ exit then
+   v end > if v BASE @ - exit then
+   s" link: a DATA pointer into data the link dropped: " SAY v SAY-INT SAY-CR
+   s" link: a DATA pointer into data the link dropped" 74 die ;
+
+\ A host address in the open space as its offset in the image's data: an
+\ engine's from the space's start.
+: DATA-OFFSET ( n -- n )
+   {: v:n :}
+   v BASE @ - {: off:n :}
+   off 0<  off SPACE-SIZE @ >=  or if
+      s" link: a DATA pointer outside the build's space: " SAY v SAY-INT SAY-CR
+      s" link: a DATA pointer outside the build's space" 74 die
+   then
+   ENGINE? @ if off exit then
+   v LAID-OFFSET ;
+
+\ Address row n's cell's offset in the image, and the row with that offset.
+: IMAGE-OFF ( n -- n ) ROW-OFF BASE @ + DATA-OFFSET ;
+: IMAGE-ROW ( n -- n )
+   dup SNAP-RELOC:XTCELL-OFF-MASK invert and  swap IMAGE-OFF or ;
 
 
 : ROW-KEPT? ( n -- bool )
@@ -300,12 +481,32 @@ variable STR-N
 : COPY-N ( -- n ) DATA-IMAGE-LEN CELL 1- + CELL / ;
 : COPY-AT ( n -- ptr u8 ) 0 COPY-CELLS BYTE-VIEW swap + ;
 
+: COPY-SPACE ( -- )
+   SPACE-DATA {: p:ptr u:n :}
+   p 0 COPY-AT u BYTE-COPY ;
+
+\ The space's u bytes from offset from at image offset at.
+: COPY-BYTES-AT ( n n n -- )
+   {: from:n at:n u:n :}
+   from SPACE-BYTES  at COPY-AT  u BYTE-COPY ;
+
+\ The header, each segment and each laid body with its length cell.
+: COPY-LAID ( -- )
+   0 0  OPEN-DP @ BASE @ -  COPY-BYTES-AT
+   SEG-N @ 0 ?do  i 0 SEG @ BASE @ -  i 2 SEG @  i 1 SEG @  COPY-BYTES-AT  loop
+   STR-N @ 0 ?do
+      i LAID-AT @ {: img:n :}
+      img 0<> if
+         i STR-AT @ CELL - BASE @ -  img CELL -  CELL i STR-AT @ BODY-U +  COPY-BYTES-AT
+      then
+   loop ;
+
 : FILL-COPY ( -- )
    COPY-N {: n:n :}
    n COPY-CELLS-RESERVE
-   0  n 1- COPY-CELLS !
-   SPACE-DATA {: p:ptr u:n :}
-   p 0 COPY-AT u BYTE-COPY ;
+   ENGINE? @ if  0 n 1- COPY-CELLS !  COPY-SPACE exit  then
+   n 0 ?do 0 i COPY-CELLS ! loop
+   COPY-LAID ;
 
 
 \ The copy's bytes [from, to), as offsets from the space, zeroed.
@@ -313,75 +514,15 @@ variable STR-N
    {: from:n to:n :}
    to from ?do 0 i COPY-AT c! loop ;
 
-
-\ The data no piece holds zeroed: before, between and after the pieces.
-: CUT-REST ( -- )
-   BUILT-N {: n:n :}
-   n BY-START-RESERVE
-   n 0 ?do i i BY-START ! loop
-   n 0 > if 0 BY-START n [: swap PIECE-SPAN drop swap PIECE-SPAN drop < ;] SORT:SORT! then
-   OPEN-DP @ BASE @ -
-   n 0 ?do
-      {: at:n :}
-      i BY-START @ PIECE-SPAN BASE @ - swap BASE @ - swap {: from:n to:n :}
-      from at > if at from ZERO-COPY then
-      at to max
-   loop
-   DATA-IMAGE-LEN ZERO-COPY ;
-
-\ Each dead extent's data zeroed. An extent with no data, as one at another's
-\ start is, holds no byte.
-: CUT-EXTS ( -- )
-   BUILT-EXTS-N @ {: n:n :}
-   n BY-EXT-RESERVE
-   n 0 ?do i i BY-EXT ! loop
-   n 0 > if 0 BY-EXT n [: swap EXT-SPAN drop swap EXT-SPAN drop < ;] SORT:SORT! then
-   OPEN-DP @ BASE @ -
-   n 0 ?do
-      {: at:n :}
-      i BY-EXT @ {: b:n :}
-      b EXT-SPAN {: start:n len:n :}
-      start BASE @ - {: from:n :}
-      len 0= if
-         at
-      else
-         from at < if
-            s" link: two extents of the build hold the data at offset " SAY from SAY-INT SAY-CR
-            s" link: two extents of the build hold one byte" 74 die
-         then
-         b REACHED? 0= if from from len + ZERO-COPY then
-         from len +
-      then
-   loop
-   drop ;
-
-\ Each body whose length cell lies in the header zeroed, over the span
-\ KEEP-STRINGS copies back.
+\ Each body in the header the program does not keep zeroed, its length cell
+\ with it.
 : CUT-HEADER-STRINGS ( -- )
    STR-N @ 0 ?do
       i STR-AT @ {: b:n :}
       b CELL - {: at:n :}
       at BASE @ -  {: from:n :}
-      from 0 >=  at OPEN-DP @ <  and if
+      from 0 >=  at OPEN-DP @ <  and  i STR-KEPT @ 0=  and if
          from  from CELL + b BODY-U +  ZERO-COPY
-      then
-   loop ;
-
-\ A stripped program's copy without its dead units. A piece's alignment bytes,
-\ which no unit holds, keep theirs.
-: CUT-DEAD ( -- )
-   REST-UNIT REACHED? 0= if CUT-REST then
-   CUT-EXTS  CUT-HEADER-STRINGS ;
-
-
-\ Each kept body's bytes and length cell back in the copy, after CUT-DEAD.
-: KEEP-STRINGS ( -- )
-   SPACE-DATA drop {: p:ptr :}
-   STR-N @ 0 ?do
-      i STR-KEPT @ 0<> if
-         i STR-AT @ {: b:n :}
-         b CELL - BASE @ - {: from:n :}
-         p from +  from COPY-AT  CELL b BODY-U +  BYTE-COPY
       then
    loop ;
 
@@ -390,17 +531,23 @@ variable STR-N
 : LIST-AT ( -- n )
    SNAP-RELOC:XTCELL-N-CELL ADDRESS-CELLS:BASE-FIELD +  SPACE-AT @ CELL / ;
 
-\ A stripped program's copy lists only its kept rows, after CUT-DEAD, which may
-\ have zeroed the list; a dropped row's cell and its list slot hold 0.
+\ Whether address row i's cell lies in a live unit, whose bytes the image lays.
+: CELL-LAID? ( n -- bool )
+   CELL-UNIT @ {: u:n :}
+   u 0< if false exit then
+   u REACHED? ;
+
+\ A stripped program's copy lists only its kept rows, at their image offsets;
+\ a dropped row's laid cell and its list slot hold 0.
 : KEEP-LIST ( -- )
    0 KEPT-N !
    ROWS {: rows:ptr count:n :}
    count 0 ?do
       rows i cells + @ {: row:n :}
       i ROW-KEPT? if
-         row  LIST-AT KEPT-N @ +  COPY-CELLS !  1 KEPT-N +!
+         row IMAGE-ROW  LIST-AT KEPT-N @ +  COPY-CELLS !  1 KEPT-N +!
       else
-         0 row ROW-OFF COPY-AT LE:U64!
+         i CELL-LAID? if 0 row IMAGE-OFF COPY-AT LE:U64! then
       then
    loop
    count KEPT-N @ ?do 0  LIST-AT i + COPY-CELLS ! loop
@@ -417,7 +564,7 @@ variable STR-N
 
 : KEPT-COPY ( -- )
    FILL-COPY
-   ENGINE? @ 0= if CUT-DEAD KEEP-STRINGS KEEP-LIST then
+   ENGINE? @ 0= if CUT-HEADER-STRINGS KEEP-LIST then
    SORT-ROWS ;
 
 ;package

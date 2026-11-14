@@ -95,7 +95,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 
 : COPY-ROW ( n -- )
    {: row:n :}
-   row ROW-OFF {: off:n :}
+   row IMAGE-OFF {: off:n :}
    off CELL-FITS
    row CELL-VALUE {: v:n :}
    row SCRATCH-ROW? if 0 off COPY-AT LE:U64! exit then
@@ -112,7 +112,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    row XT-ROW? 0= if exit then
    row CELL-VALUE 0= if exit then
    LISTED-N @ 1 + LISTED-RESERVE
-   row ROW-OFF LISTED-N @ LISTED !  1 LISTED-N +! ;
+   row IMAGE-OFF LISTED-N @ LISTED !  1 LISTED-N +! ;
 
 : LIST, ( -- )
    LISTED-N @ {: n:n :}

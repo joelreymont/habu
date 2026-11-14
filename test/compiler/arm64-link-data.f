@@ -1,12 +1,14 @@
 \ arm64-link-data.f - a stripped program's DATA, written by LINKER:WRITE and
 \ run, its kernel the tree's kernel object. One build writes two programs. main
-\ prints `12 6 0 11 11 0`: the word an xt cell holds, which reads a variable
-\ through a data address; the quotation an xt cell holds, stored as the build
-\ ran; a scratch cell the build set to 7; a plain cell; a DATA pointer's
-\ target; its `here` less the build's as it linked. The program is PIE: these
-\ hold only if the start-up slides each code cell once and no DATA cell. over
-\ allots past its ceiling and exits 76 naming its DP and ceiling as the build's
-\ floor and ceiling place them. A second link of main writes the same bytes.
+\ prints `12 6 0 11 11 ld-text`: the word an xt cell holds, which reads a
+\ variable through a data address; the quotation an xt cell holds, stored as
+\ the build ran; a scratch cell the build set to 7; a plain cell; a DATA
+\ pointer's target; a string it types after filling 4096 bytes at its `here`,
+\ which shows its DP lies past its data, the string's body included. The
+\ program is PIE: these hold only if the start-up slides each code cell once
+\ and no DATA cell. over allots past its ceiling and exits 76 naming the
+\ ceiling the build's ceiling places. A second link of main writes the same
+\ bytes.
 \ Each refusal (arm64-link-data-bad.f) dies, so each runs in its own child.
 \ The data child also runs on three malformed copies of the kernel object, one
 \ failing its checksum, one whose DATA-START is off a cell and one whose Mach-O
@@ -50,8 +52,7 @@ create PROG-BUF PATH-CAP allot
    PROG-BUF u ;
 
 
-\ LD-LEAF2 is reached only from the quotation LD-MAKE stores. LD-HERE holds
-\ the build's LD-DIST as it links main.
+\ LD-LEAF2 is reached only from the quotation LD-MAKE stores.
 : FIXTURE ( -- )
    s" variable LD-V  11 LD-V !" evaluate-closed
    s" : LD-PTR ( -- ) create here ptr-cell-mark 0 , does> ( -- ptr ptr n ) ;" evaluate-closed
@@ -66,22 +67,19 @@ create PROG-BUF PATH-CAP allot
    s" : LD-MAKE ( -- ) [: LD-LEAF2 ;] LD-Q xt! ;" evaluate-closed
    s" LD-MAKE" evaluate-closed
    s" : LD-PV ( -- n ) LD-P @ @ ;" evaluate-closed
-   s" : LD-DIST ( -- n ) here NULL-PTR - LD-V NULL-PTR - - ;" evaluate-closed
+   s" : LD-FILL ( -- ) here {: p:ptr :} 4096 allot 4096 0 ?do [char] x p i + c! loop ;" evaluate-closed
    s" : LD-U ( n -- ) dup 9 > if dup 10 / recurse then 10 mod 48 + emit ;" evaluate-closed
    s" : LD-U_ ( n -- ) LD-U 32 emit ;" evaluate-closed
-   s" variable LD-HERE" evaluate-closed
-   s" : LD-MAIN ( -- ) 1 LD-XT @ execute LD-U_  1 LD-Q @ execute LD-U_  LD-SCR @ LD-U_  LD-V @ LD-U_  LD-PV LD-U_  LD-DIST LD-HERE @ - LD-U cr ;" evaluate-closed
+   s\" : LD-MAIN ( -- ) 1 LD-XT @ execute LD-U_  1 LD-Q @ execute LD-U_  LD-SCR @ LD-U_  LD-V @ LD-U_  LD-PV LD-U_  LD-FILL  s\" ld-text\" type cr ;" evaluate-closed
    s" : LD-OVER ( -- ) 1 41 lshift allot ;" evaluate-closed ;
 
 
-\ What over's refusal names: its DP and ceiling less the heap floor, read
-\ from the build's cells as the kernel reads the program's.
-variable OVER-DP
+\ The ceiling over's refusal names, less the heap floor, read from the build's
+\ cells as the kernel reads the program's.
 variable OVER-CEILING
 
 : OVER-EXPECT ( -- )
    data-base BOOT:DP-FLOOR-CELL + @ {: base:n :}
-   here NULL-PTR - 1 41 lshift + base - OVER-DP !
    data-base BOOT:DP-CEILING-CELL + @ base - OVER-CEILING ! ;
 
 
@@ -116,7 +114,6 @@ DYNAMIC-BUFFER SECOND-LINK u8
 : BODY ( -- )
    FIXTURE
    OVER-EXPECT
-   s" LD-DIST LD-HERE !" evaluate-closed
    s" LD-OVER" STORE-ENTRY  s" over" PROG$ LINKER:WRITE
    s" LD-MAIN" STORE-ENTRY  s" main" PROG$ LINKER:WRITE
    SECOND-CASE ;
@@ -128,15 +125,14 @@ DYNAMIC-BUFFER SECOND-LINK u8
 
 : RUN-MAIN ( CMD:command -- CMD:command )
    s" main" RUN-PROG {: rc:n :}
-   s" main: xt cell, quotation, scratch, plain, DATA pointer, DP" T-LABEL
-   CMD:OUT$ s\" 12 6 0 11 11 0\n" T$=
+   s" main: xt cell, quotation, scratch, plain, DATA pointer, text past DP" T-LABEL
+   CMD:OUT$ s\" 12 6 0 11 11 ld-text\n" T$=
    s" main exits 0" T-LABEL  rc 0 T= ;
 
 : RUN-OVER ( CMD:command -- CMD:command )
    s" over" RUN-PROG {: rc:n :}
-   s" over names its DP and ceiling as the build's floor and ceiling place them"
-      T-LABEL
-   SB-RESET  OVER-DP @ FMT:SB-INT  s"  of " SB-APPEND  OVER-CEILING @ FMT:SB-INT
+   s" over names the ceiling the build's ceiling places" T-LABEL
+   SB-RESET  s"  of " SB-APPEND  OVER-CEILING @ FMT:SB-INT
    CMD:ERR$ SB$ CONTAINS? TTRUE
    s" over exits 76" T-LABEL  rc 76 T= ;
 
