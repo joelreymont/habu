@@ -137,6 +137,8 @@ FFI-T-DEPTH-AFTER FFI-T-DEPTH!
    s" FUNCTION: FFI-T-X5 getpid ( ptr u8 -- n ) 3 $10 WRITES-BYTES ;FUNCTION" evaluate-closed ;
 : FFI-T-BAD-FLOAT-ARITY ( -- )
    s" FUNCTION: FFI-T-X6 getpid ( r r r r r r r r r -- r ) ;FUNCTION" evaluate-closed ;
+: FFI-T-BAD-INT-ARITY ( -- )
+   s" FUNCTION: FFI-T-X7 getpid ( n n n n n n n n n r -- n ) ;FUNCTION" evaluate-closed ;
 : FFI-T-BAD-F32-ARITY ( -- )
    s" FUNCTION: FFI-T-XF getpid ( f32 f32 f32 f32 f32 f32 f32 f32 f32 -- f32 ) ;FUNCTION" evaluate-closed ;
 
@@ -352,6 +354,16 @@ create FFI-T-LONG-PATH PATH-CAP allot
 : FFI-T-FLOAT-ARITY ( [ -- ] -- )
    E-FFI-ARITY
    s" error[E-FFI-ARITY]: the call passes at most 8 float inputs, each in a register"
+   FFI-T-RECORD ;
+
+: FFI-T-INT-ARITY ( [ -- ] -- )
+   E-FFI-ARITY
+   s" error[E-FFI-ARITY]: the call passes at most 8 integer inputs, each in a register"
+   FFI-T-RECORD ;
+
+: FFI-T-F32-UNSTAGED ( [ -- ] -- )
+   E-FFI-ARITY
+   s" error[E-FFI-ARITY]: an f32 input past the 8 float registers has no stack slot on x86-64"
    FFI-T-RECORD ;
 
 \ The overflowing path carries no extension: it stands for a literal LIBRARY row
@@ -792,13 +804,21 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    s" error[E-FFI-SYNTAX]: WRITES-ARG's length input is not an integer" FFI-T-SYNTAX
    [: FFI-T-BAD-EXTENT-INDEX ;]
    s" error[E-FFI-SYNTAX]: the clause names no input of the declaration" FFI-T-SYNTAX
-   \ A ninth C float has no stack staging on either ABI.
    HB-TARGET-LINUX-X86-64? if
       [: FFI-T-BAD-FLOAT-ARITY ;] 0 TTHROWSQ
    else
       [: FFI-T-BAD-FLOAT-ARITY ;] FFI-T-FLOAT-ARITY
    then
-   [: FFI-T-BAD-F32-ARITY ;] FFI-T-FLOAT-ARITY
+   HB-TARGET-LINUX-X86-64? if
+      [: FFI-T-BAD-INT-ARITY ;] 0 TTHROWSQ
+   else
+      [: FFI-T-BAD-INT-ARITY ;] FFI-T-INT-ARITY
+   then
+   HB-TARGET-LINUX-X86-64? if
+      [: FFI-T-BAD-F32-ARITY ;] FFI-T-F32-UNSTAGED
+   else
+      [: FFI-T-BAD-F32-ARITY ;] FFI-T-FLOAT-ARITY
+   then
    [: FFI-T-BAD-F32-VARARG ;]
    s" error[E-FFI-SYNTAX]: an f32 variadic argument" FFI-T-SYNTAX
    [: FFI-T-F32-FIXED ;] 0 TTHROWSQ

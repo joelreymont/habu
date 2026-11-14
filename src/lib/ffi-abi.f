@@ -1187,8 +1187,6 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
    a RES-TEXT u BYTE-COPY
    u RES-TEXT-U ! ;
 
-\ A declaration past a limit of its call is ARITY-OPEN, the limit, then
-\ ARITY-HELP with the fix.
 : ARITY-OPEN ( -- )
    s" E-FFI-ARITY" REJECTION:OPEN ;
 
@@ -1293,14 +1291,10 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
 
 \ ---- which call the declaration rides --------------------------------------
 
-: INT-REGS ( -- n )
-   HB-TARGET-LINUX-X86-64? if X86-INT-REG-MAX exit then
-   REG-MAX ;
-
 : INT-REGS-FULL ( -- )
    ARITY-OPEN
    s" the call passes at most " REJECTION:EMIT-STR
-   INT-REGS REJECTION:EMIT-U
+   REG-MAX REJECTION:EMIT-U
    s"  integer inputs, each in a register" REJECTION:EMIT-STR
    s" call it through a C function that takes the inputs in a record"
    ARITY-HELP ;
@@ -1315,9 +1309,9 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
 
 : F32-UNSTAGED ( -- )
    ARITY-OPEN
-   s" an f32 input past float register " REJECTION:EMIT-STR
+   s" an f32 input past the " REJECTION:EMIT-STR
    REG-MAX REJECTION:EMIT-U
-   s"  has no stack slot on x86-64" REJECTION:EMIT-STR
+   s"  float registers has no stack slot on x86-64" REJECTION:EMIT-STR
    s" declare it r and call a C function that takes a double"
    ARITY-HELP ;
 
@@ -1331,7 +1325,7 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
 
 : REG-ROOM ( n n -- )
    {: int:n flt:n :}
-   int INT-REGS > if INT-REGS-FULL then
+   int REG-MAX > if INT-REGS-FULL then
    flt REG-MAX > if FLOAT-REGS-FULL then ;
 
 : FLOAT-ARG? ( n -- bool )

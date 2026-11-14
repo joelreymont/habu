@@ -177,8 +177,7 @@ CALLBACK: FFI-T-SA-CB ( -- n ) 0 FALLBACK ;CALLBACK
    s"  15 $7FFFFFFFFFFFFF7F STRUCT-ARG ;FUNCTION" FFI-T-SRC+
    FFI-T-SRC CODEGEN:CONTENTS ;
 
-\ Runs a declaration past a limit of the struct call with its record
-\ captured, and asserts the record's header and help.
+\ The record is captured, so stderr carries none.
 : FFI-T-SA-ARITY ( [ -- ] ptr u8 n ptr u8 n -- )
    {: h:ptr hu:n p:ptr pu:n :}
    DECL-DIAG:PROSE
