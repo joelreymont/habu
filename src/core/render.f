@@ -1520,8 +1520,8 @@ variable MDV-I   variable MDV-F
 
 : EFFECT-NOTES? ( n -- bool ) {: k:n :}
    RECEFF-ON? TOP-STEP @ 0= and 0= IF RES-FALSE EXIT THEN
-   k RF-MISMATCH =  k RF-RETURN = or  k RF-NP = or
-   k RF-REASON =  DEXP @ 0 <> and  or ;
+   k RF-MISMATCH =  k RF-RETURN = or  k RF-NP = or  REFUSAL-UNCHECKABLE? or
+   k RF-REASON =  DEXP @ 0 <>  MDIAG @ MD-UNDERFLOW = or  and  or ;
 : EFFECT-NOTES ( -- )
    s" declared" REJECTION:NOTE  SGA @ SGU @ SIG-BARE EMIT-STR
    s" inferred" REJECTION:NOTE
@@ -1809,10 +1809,12 @@ PTR-VARIABLE HOLDER-FIRST
 \ a session the run's program starts turns it on (CHECK-ALL-ERRORS:SESSION).
 variable WARN-DIAGS   -1 WARN-DIAGS !
 
-\ W-EFFECT-NOT-RECORDED warns that the word na nu certified and loaded, but a
-\ later call rejects it as undefined; the run's status stands.
-: REC-REFUSE-DIAG ( ptr u8 n -- ) {: na:ptr nu:n :}
+\ W-EFFECT-NOT-RECORDED warns that the word certified and loaded, but a later
+\ call rejects it as undefined; the run's status stands. It names the word as
+\ its source token is spelled.
+: REC-REFUSE-DIAG ( -- )
    WARN-DIAGS @ 0= IF EXIT THEN
+   NM-SPAN {: na:ptr nu:n :}
    s" W-EFFECT-NOT-RECORDED" REJECTION:WARN
    s" the effect of `" EMIT-STR  na nu EMIT-STR
    s" ` cannot be recorded, so a later call of it is rejected as undefined"
@@ -1832,7 +1834,7 @@ variable WARN-DIAGS   -1 WARN-DIAGS !
       EXIT
    THEN
    BROW @ DCUR @ CHECK-UNRECORDED!
-   na nu REC-REFUSE-DIAG ;
+   REC-REFUSE-DIAG ;
 
 \ The text of a rejected `cast:` or `linear:` declaration.
 package CAST-ERROR
