@@ -115,7 +115,9 @@ s" package UJ using UA public : UT-J1 ( -- n ) AW ; ;package AW drop" UCE-CATCH 
 \ coming undone at `;package` and leaving AW resolving past it.
 s" using UA package UQ ;using ;package AW drop ;using" UCE-CATCH E-OUTER T=
 \ the production source verifier refuses the same nesting
-s" using UA package UQ ;using ;package" VS-CATCH E-USING-OUTER T=
+REJECTION:CAPTURE
+s" using UA package UQ ;using ;package" VS-CATCH E-OUTER T=
+REJECTION:BUFFER$ s" error[E-USING-OUTER]" CONTAINS? TTRUE  REJECTION:BUFFER-OFF
 \ a using opened and closed inside the package, and one opened before `package`
 \ and closed after `;package`, are unchanged on both routes
 s" package UQ using UA AW drop ;using ;package" UCE-CATCH 0 T=
@@ -293,7 +295,9 @@ s" using UB ;using ;using" UCE-CATCH E-OUTER T=
 s" AW drop" UCE-CATCH 0 T=
 s" BW drop" UCE-CATCH E-REJECT T=
 s" using UB BW drop ;using AW drop" UCE-CATCH 0 T=
-s" ;using" VS-CATCH E-USING-OUTER T=
+REJECTION:CAPTURE
+s" ;using" VS-CATCH E-OUTER T=
+REJECTION:BUFFER$ s" error[E-USING-OUTER]" CONTAINS? TTRUE  REJECTION:BUFFER-OFF
 s" using UB ;using" VS-CATCH 0 T=
 ;using
 
@@ -305,7 +309,9 @@ s" using UB ;using" VS-CATCH 0 T=
 \ close its own using there but not UP; the verifier's replay agrees.
 using UP
 package UQK using UA
-s" ;package ;using" VS-CATCH E-USING-OUTER T=
+REJECTION:CAPTURE
+s" ;package ;using" VS-CATCH E-OUTER T=
+REJECTION:BUFFER$ s" error[E-USING-OUTER]" CONTAINS? TTRUE  REJECTION:BUFFER-OFF
 s" ;package using UB BW drop ;using" VS-CATCH 0 T=
 s" ;package ;using" UCE-CATCH E-OUTER T=
 s" ;package" UCE-CATCH 0 T=

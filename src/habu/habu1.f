@@ -2155,9 +2155,16 @@ $150 constant CBT-BYTES
 $50 constant CBT-FP                     \ C's x29
 $58 constant CBT-LR                     \ C's x30
 
-\ A callback refusal at the label, sp at the thunk's frame, printing C's lr.
-: CBT-DIE, ( ptr u8 n label -- ) {: a u at:label :}
-   at LBL,  CBT-LR CALLER-LR,  a u ENGINE-ERROR:CALLBACK DIE-LINE, ;
+\ A callback rejection at the label, sp at the thunk's frame: its record with
+\ the slot and C's lr, which no word owns, then exit ENGINE-ERROR:CALLBACK.
+\ FAULT-OPEN, moves sp and the record writes no x3 or x4, so both are read first.
+: CBT-DIE, ( ptr u8 n ptr u8 n label -- ) {: msg:ptr mu:n help:ptr hu:n at:label :}
+   at LBL,
+   3 SP CBT-SLOT LDR,  4 SP CBT-LR LDR,
+   s" E-CALLBACK" msg mu FAULT-OPEN,
+   s" slot" 3 FAULT-NUMBER,
+   s" caller" 4 FAULT-ADDRESS,
+   help hu ENGINE-ERROR:CALLBACK FAULT-STOP, ;
 
 \ Entered from a stub with the slot in x9. The row is claimed before the region
 \ it names is read: LDAR the row owner; a thread already nested through this
@@ -2303,14 +2310,24 @@ $58 constant CBT-LR                     \ C's x30
       16 14 CMP,  C-NE caller-leave BCOND,
       row-kept B,
    row-wait LBL,  YIELD,  row-read B,
-   s" E-CALLBACK habu: no slot has been bound" no-table CBT-DIE,
-   s" E-CALLBACK habu: slot held by another thread" row-busy CBT-DIE,
-   s" E-CALLBACK habu: slot is not bound" unbound CBT-DIE,
-   s" E-CALLBACK habu: thread has no region of its own" no-region CBT-DIE,
-   s" E-CALLBACK habu: context busy on another thread" owner-busy CBT-DIE,
-   s" E-CALLBACK habu: context is not inside a foreign call" no-frame CBT-DIE,
-   s" E-CALLBACK habu: slot has no dispatch" no-xt CBT-DIE,
-   s" E-CALLBACK habu: the body defined" defined CBT-DIE, ;
+   s" C called a callback before any callback was bound"
+      s" bind it with `FFI-CB:ENTRY` before C can call it" no-table CBT-DIE,
+   s" C called the callback on a second thread while another thread runs it"
+      s" bind it to `TASK:CALLER-CONTEXT` for calls from many threads at once"
+      row-busy CBT-DIE,
+   s" C called a callback whose slot is not bound"
+      s" keep the callback bound until the C library drops the pointer"
+      unbound CBT-DIE,
+   s" C called a callback bound to the caller's context on a thread with no region of its own"
+      s" call it only on a thread a Habu task runs" no-region CBT-DIE,
+   s" C called the callback on one thread while another thread runs in its context"
+      s" call it only on the thread whose context it is bound to" owner-busy CBT-DIE,
+   s" C called the callback outside the foreign call that passed it"
+      s" call it only while that foreign call runs" no-frame CBT-DIE,
+   s" C called a callback slot that no `CALLBACK:` declared"
+      s" pass C only the pointer `FFI-CB:ENTRY` answers" no-xt CBT-DIE,
+   s" the callback's body defined a word"
+      s" define words on the main thread, outside callbacks" defined CBT-DIE, ;
 
 \ -1 answers the shared C thunk for the native compiler's marked address
 \ carrier; other indices answer the seed stubs boot uses. This primitive ends

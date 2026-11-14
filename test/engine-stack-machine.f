@@ -2,7 +2,8 @@
 \ machine stack ran past its bounds` on fd 2 and the ENGINE-ERROR:STACK-BOUNDS
 \ exit, from the crash handler on the thread's alternate signal stack. Control:
 \ a data-stack overflow's record is the one package REJECTION writes for the
-\ same parts, byte for byte, in prose and in JSON.
+\ same parts, byte for byte, in prose and in JSON; so is a memory fault's JSON
+\ record, which has notes and no help.
 \ Every subject recurses through a self call with work after it, so it cannot
 \ become a jump.
 require src/lib/process.f
@@ -131,11 +132,34 @@ variable IMAGE-U
    SB$ true s" a data-stack overflow under REJECTION:JSON" CONTROL
    s" PASS: the data-stack control, in prose and in JSON" type cr ;
 
+: FAULT$ ( -- ptr u8 n )
+   S\" -1 REJECTION:JSON !\n: W ( -- ) NULL-PTR BYTE-VIEW c@ drop ;\nW\n" ;
+
+\ The JSON record REJECTION writes for a load from address 0 in W.
+: FAULT-RECORD$ ( -- ptr u8 n )
+   REJECTION:JSON @ {: was:n :}
+   -1 REJECTION:JSON !  REJECTION:CAPTURE
+   s" E-MEMORY-FAULT" REJECTION:OPEN
+   s" a read or write faulted" REJECTION:EMIT-STR
+   s" address" REJECTION:NOTE  s" 0x0000000000000000" REJECTION:EMIT-STR
+   s" in" REJECTION:NOTE  s" W" REJECTION:EMIT-STR
+   REJECTION:KEEP  REJECTION:BUFFER-OFF  was REJECTION:JSON !
+   REJECTION:BUFFER$ ;
+
+\ The record closes its notes and itself, so it parses.
+: FAULT-CONTROL ( -- )
+   s" a memory fault under REJECTION:JSON" {: label:ptr labelu:n :}
+   FAULT$ RUN-SRC
+   ENGINE-ERROR:MEMORY-FAULT label labelu GE-EXPECT-RC
+   FAULT-RECORD$ label labelu GE-EXPECT-ERR
+   GT-ERR$ S\" }}\n" ENDS-WITH? 0= if label labelu GE-FAIL then
+   s" PASS: a memory fault's JSON record, notes and no help" type cr ;
+
 : BODY ( -- )
    s" engine-stack-machine" GT-START
    s" subject.f" SUBJECT GT-PATH SUBJECT-U !
    s" application" IMAGE GT-PATH IMAGE-U !
-   REPRODUCERS THREADS STRIPPED CONTROLS ;
+   REPRODUCERS THREADS STRIPPED CONTROLS FAULT-CONTROL ;
 
 public
 : RUN ( -- ) [: BODY ;] [: GT-CLEANUP ;] finally ;

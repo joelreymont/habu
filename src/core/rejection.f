@@ -433,10 +433,11 @@ private
    AT-LINE @ EMIT-U  s"  | " EMIT-STR  LINE-A @ LINE-U @ EMIT-STR  10 EMIT1
    MARGIN s" | " EMIT-STR  LEAD  tu CARETS  32 EMIT1 ;
 
-\ Sends the record, or drops it under QUIET.
+\ Closes a notes object no HELP closed, then the record; sends the record,
+\ or drops it under QUIET.
 : END-RECORD ( -- )
    END-TEXT
-   JSON @ IF 125 EMIT1 THEN  10 EMIT1
+   JSON @ IF  NOTES @ IF 125 EMIT1 THEN  125 EMIT1  THEN  10 EMIT1
    NO-PART PART !
    QUIET @ 0= IF FLUSH ELSE 0 TEXT-LEN !  0 DEST ! THEN ;
 

@@ -281,7 +281,7 @@ variable PUB                                  \ the open section is public
 public
 
 \ Appends one record per definition in source order: `: NAME`, and `EXPORT NAME`
-\ inside an open package (at top level EXPORT is a build directive). Other
+\ inside an open package (the engine rejects EXPORT outside one). Other
 \ definers make no record. `package P` opens P, reopened or not, in its private
 \ section; `package B` inside P opens its part P:B; `public` and `private` switch
 \ sections; `;package` closes the part or P, a part's returning to P's private

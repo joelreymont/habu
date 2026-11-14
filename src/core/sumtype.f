@@ -458,6 +458,10 @@ variable TDECL-FAM-ARITY
 : TDECL-ABSENT-MAY? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE IF drop RES-FALSE EXIT THEN drop
    a u TFAM-MAY-ARRIVE? ;
+: TDECL-WIDTH-THROW ( ptr u8 n -- )
+   s" a width is not stored: keep its bytes (width>n)"
+   s" declare the payload `n` and store the width's byte count in it with `width>n`"
+   E-TDECL-PAYLOAD TDECL-THROW ;
 : TDECL-PAY-ELEM ( ptr u8 n -- n ) {: a:ptr u:n :}
    u 0= IF a u s" missing ;VARIANT"
       s" close each `VARIANT` with `;VARIANT`, and write a type after each `FIELD` name and each `ptr`"
@@ -478,6 +482,9 @@ variable TDECL-FAM-ARITY
    a u CON-OF dup 0 <> IF SCHEMA-CON EXIT THEN drop
    a u TDECL-PAY-FAM? IF 0 0 SCHEMA-APP EXIT THEN drop
    a u TDECL-ABSENT-MAY? IF a u SIG-UNRES! 0 EXIT THEN
+   TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE IF
+      WIDTH-FAM @ = IF a u TDECL-WIDTH-THROW THEN
+   ELSE drop THEN
    a u s" unknown payload type"
       s" name a type declared before this declaration: `n`, `ptr u8`, a header parameter or a family; only a `SUMTYPE` variant may apply a family to arguments, as in `box<n>`"
       E-TDECL-PAYLOAD TDECL-THROW ;
@@ -641,10 +648,7 @@ private
 \ STRUCTURE marks `width<n>`.
 : TDECL-VPAY-WIDTH ( n ptr u8 ptr u8 -- ) {: fam:n a:ptr end:ptr :}
    fam WIDTH-FAM @ <> IF EXIT THEN
-   a end NULL-PTR - a NULL-PTR - -
-   s" a width is not stored: keep its bytes (width>n)"
-   s" declare the payload `n` and store the width's byte count in it with `width>n`"
-   E-TDECL-PAYLOAD TDECL-THROW ;
+   a end NULL-PTR - a NULL-PTR - - TDECL-WIDTH-THROW ;
 
 \ a resolved family head followed by `<` is a parametric application; any other
 \ next token is pushed back and reported as not-an-application so the head falls
