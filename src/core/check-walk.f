@@ -2304,32 +2304,80 @@ variable TOP-ASK-ANSWER
    close u = IF open 0 EXIT THEN
    open close 1 + ;
 
-\ The longest effect a row states. The source pre-verifier refuses a longer one
-\ at the same bound.
-$100 constant GENR-SIG-CAP
+\ The first token on the line A U starts, empty when none is left on it.
+: GENR-NEXT-TOKEN ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   0 BEGIN
+      dup u < IF a over + c@ dup 33 <  swap 10 <>  and ELSE RES-FALSE THEN
+   WHILE 1 + REPEAT
+   {: start:n :}
+   start BEGIN dup u < IF a over + c@ 32 > ELSE RES-FALSE THEN WHILE 1 + REPEAT
+   {: end:n :}
+   a start +  end start - ;
 
-: GENR-SIG-READ ( ptr u8 -- ptr u8 n )
-   {: at:ptr :}
+: GENR-SHAPE-OPEN ( ptr u8 n -- ) {: na:ptr nu:n :}
+   s" E-GENERATES-ROW" REJECTION:OPEN
+   s" the `generates:` row for " REJECTION:EMIT-STR  na nu STGR-CODE ;
+
+\ Ends a malformed row's help with an example row for D's name NA NU, and
+\ throws.
+: GENR-SHAPE-STOP ( ptr u8 n -- ) {: na:ptr nu:n :}
+   s" , as `generates: " REJECTION:EMIT-STR  na nu REJECTION:EMIT-STR
+   s"  ( n -- )`" REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
+\ D's name NA NU, followed by the input A U, which opens with no `(`.
+: GENR-NO-EFFECT ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n a:ptr u:n :}
+   na nu GENR-SHAPE-OPEN  s"  states no effect" REJECTION:EMIT-STR
+   a u GENR-NEXT-TOKEN {: ta:ptr tu:n :}
+   tu 0= IF
+      na nu REJECTION:AT  s" no effect follows" REJECTION:EMIT-STR
+   ELSE
+      ta tu REJECTION:AT  s" an effect opens with `(`" REJECTION:EMIT-STR
+   THEN
+   REJECTION:HELP
+   s" write the effect of the words " REJECTION:EMIT-STR  na nu STGR-CODE
+   s"  creates after its name" REJECTION:EMIT-STR  na nu GENR-SHAPE-STOP ;
+
+\ D's name NA NU, and the `(` at OPEN that no `)` closes.
+: GENR-UNCLOSED ( ptr u8 n ptr u8 -- ) {: na:ptr nu:n open:ptr :}
+   na nu GENR-SHAPE-OPEN  s"  has no closing `)`" REJECTION:EMIT-STR
+   open 1 REJECTION:AT  s" not closed" REJECTION:EMIT-STR
+   REJECTION:HELP  s" end the effect with `)`" REJECTION:EMIT-STR
+   na nu GENR-SHAPE-STOP ;
+
+\ The keyword KA KU, with no name after it.
+: GENR-NO-NAME ( ptr u8 n -- ) {: ka:ptr ku:n :}
+   s" E-GENERATES-ROW" REJECTION:OPEN
+   ka ku STGR-CODE  s"  has no definer name after it" REJECTION:EMIT-STR
+   ka ku REJECTION:AT  s" no name follows" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" write the definer's name and the effect of the words it creates after "
+   REJECTION:EMIT-STR  ka ku STGR-CODE  s" D" GENR-SHAPE-STOP ;
+
+\ The effect after D's name NA NU, read as a definition head reads a signature.
+: GENR-SIG-READ ( ptr u8 n -- ptr u8 n )
+   {: na:ptr nu:n :}
+   na nu + {: at:ptr :}
    data-base INE-CELL + @  at NULL-PTR - -
    {: left:n :}
    at left CHECKER-SIG-SPAN
    {: open:n close:n :}
-   open left = IF s" checker: generates: effect must open with (" 76 die THEN
-   close 0= IF s" checker: generates: unterminated effect" 76 die THEN
-   close open - 2 -
-   {: su:n :}
-   su GENR-SIG-CAP > IF s" checker: generates: effect too long" 76 die THEN
+   open left = IF na nu at left GENR-NO-EFFECT THEN
+   close 0= IF na nu at open + GENR-UNCLOSED THEN
    at close + NULL-PTR - data-base INP-CELL + !
-   at open + 1 +  su ;
+   at open + 1 +  close open - 2 - ;
 
 \ generates: D ( effect ) at top level, after D's definition: a declared
 \ boundary, not a checked body. UNSAFE-TOK? bars both `checker-generates` and
-\ `generates:` from checked bodies.
+\ `generates:` from checked bodies. The keyword is the last token the engine
+\ read when the word starts (TKA-CELL).
 TRUSTED: generates: ( -- )
+   data-base TKA-CELL + @  data-base TKL-CELL + @
+   {: ka:ptr ku:n :}
    parse-name
    {: na:ptr nu:n :}
-   nu 0= IF s" checker: generates: needs a definer name" 76 die THEN
-   na nu + GENR-SIG-READ
+   nu 0= IF ka ku GENR-NO-NAME THEN
+   na nu GENR-SIG-READ
    {: sa:ptr su:n :}
    na nu sa su RES-FALSE CHECKER-GENERATES
    {: sym:n rec:n :}

@@ -10952,6 +10952,35 @@ variable SIG-COUNTED
    din ROW-CELLS {: width:n :}
    width EFFECT-MIN-IN-MAX > IF sa su SGBAD-WIDTH-KIND width SGBAD-SIZE! THEN ;
 
+\ The binder that opens a scope scheme in signature SA SU, `forall` through
+\ its `<`; the declaring name AT ATU when the text holds none.
+: SCHEME-BINDER ( ptr u8 n ptr u8 n -- ptr u8 n )
+   {: sa:ptr su:n at:ptr atu:n :}
+   0 BEGIN dup 6 + su <= WHILE
+      sa over + 6 s" forall" CORE-STR= IF
+         dup BEGIN dup su < IF sa over + c@ 60 <> ELSE RES-FALSE THEN WHILE 1 + REPEAT
+         {: start:n end:n :}
+         end su < IF sa start +  end start - 1 + EXIT THEN
+         at atu EXIT
+      THEN
+      1 +
+   REPEAT drop at atu ;
+
+\ A stored signature SA SU, declared at the name AT ATU as read, that binds a
+\ callback scope.
+: USIG-SCHEME-REJECT ( ptr u8 n ptr u8 n -- )
+   {: sa:ptr su:n at:ptr atu:n :}
+   s" E-BAD-SIGNATURE" REJECTION:OPEN
+   s" the declared signature of `" REJECTION:EMIT-STR  at atu REJECTION:EMIT-STR
+   s" ` binds a callback scope" REJECTION:EMIT-STR
+   sa su at atu SCHEME-BINDER REJECTION:AT
+   s" binder in a declared signature" REJECTION:EMIT-STR
+   s" signature" REJECTION:NOTE  sa su SIG-TRIM REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" drop the binder from the signature of `" REJECTION:EMIT-STR  at atu REJECTION:EMIT-STR
+   s" `: only a checked `:` definition binds a callback scope" REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
 \ USIG-ADD-AS past its parse, given the rows of signature text SA.
 : USIG-ADD-ROWS ( ptr u8 n ptr u8 n ptr u8 n n n n n bool -- bool )
    {: sa:ptr su:n na:ptr nu:n at:ptr atu:n din dout rin rout external:bool :}
@@ -10964,7 +10993,8 @@ variable SIG-COUNTED
    \ binder.
    din SCHEME-TYPE? dout SCHEME-TYPE? or
    rin SCHEME-TYPE? or rout SCHEME-TYPE? or IF
-      s" checker: asserted signature cannot publish a scope scheme" 76 die THEN
+      sa su at atu USIG-SCHEME-REJECT
+   THEN
    din KEEP-QUOTS
    din dout rin rout SGHASR @ external E-ADD-EFFECT
    RES-TRUE ;

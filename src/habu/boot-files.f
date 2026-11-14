@@ -48,7 +48,6 @@ private
    CHECKER COMMON s" src/core/pointer-storage.f" ROW
    CHECKER COMMON s" src/core/arena-pages.f" ROW
    CHECKER COMMON s" src/core/engine-error.f" ROW
-   CHECKER COMMON s" src/core/exec-vector.f" ROW
    CHECKER COMMON s" src/core/checker-owner-extension.f" ROW
    CHECKER COMMON s" src/core/checker-owner-abi.f" ROW
    CHECKER COMMON s" src/habu/boot-cells.f" ROW
@@ -71,6 +70,7 @@ private
    CHECKER COMMON s" src/habu/layout.f" ROW
    CHECKER COMMON s" src/habu/intern-table.f" ROW
    CHECKER COMMON s" src/core/rejection.f" ROW
+   CHECKER COMMON s" src/core/exec-vector.f" ROW
    CHECKER COMMON s" src/core/conditional.f" ROW
    CHECKER COMMON s" src/core/checker.f" ROW
    CHECKER COMMON s" src/core/type-schema.f" ROW
