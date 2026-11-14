@@ -845,7 +845,6 @@ variable GJA-LX
 : GJA-PUBLIC-SIGNATURES ( ptr u8 n -- )
    0 GJA-OK1 ! 0 GJA-OK2 !
    GJA-PARSE-FILE GJA-ROOT !
-   GJA-ROOT @ GJA-SCHEMA1
    GJA-ROOT @ s" definitions" GJA-REQ dup GJA-ARR-KIND GJA-ARR !
    0 GJA-I !
    begin GJA-I @ GJA-ARR @ GJA-COUNT < while
