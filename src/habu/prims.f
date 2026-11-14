@@ -735,11 +735,6 @@ EPRIM: body-append PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
 \ literal ( n -- ): append n to the definition `define-word` opened, which the
 \ checker reads as that number; it refuses when no definition is open.
 EPRIM: literal PE-N PE-IN EPRIM;
-\ postponed ( ptr u8 n -- ): what `postpone W` compiles a call of; only the
-\ checker binds it.
-EPRIM: postponed PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
-ETRUSTED-ONLY!
-EPPRIM: INTERPRETER postponed PE-PTR-U8 PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ compile, ( [ R -- S ] -- ): append a call of the word whose entry the
 \ quotation is to the definition define-word opened; it refuses when none is
 \ open.

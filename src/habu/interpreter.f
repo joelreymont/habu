@@ -2056,16 +2056,6 @@ CAST: QUOT-ENTRY ( [ R -- S ] -- n )
    [: e COMPILE-CALL ;] catch {: rc:n :}
    rc 0<> if DEF-ABORT rc throw then ;
 
-\ What `postponed` runs, for a definer an engine older than `compile,` compiled:
-\ `end` ends the definition as `;` does; any other handle appends a call of its
-\ record, which the checker binds.
-: POSTPONE-RUN ( ptr u8 n -- ) {: h:ptr hu:n :}
-   s" postpone" BUILT-PENDING
-   h hu s" end" STR= if END-RUN exit then
-   h hu HANDLE-REC {: rec:ptr :}
-   rec XREF-NULL - XREF-ADDR>INDEX {: ix:n :}
-   BODY-ITEM-KIND:CALL ix 0 rec XREF-NAME$ ITEM+ ;
-
 \ A cell's decimal spelling, written from the end of LIT-DIGITS: 20 bytes
 \ hold any i64 and its sign. `/` truncates, so a negative value's remainders
 \ are at most 0.
@@ -2911,7 +2901,6 @@ public
    ['] EVAL-FRAMED-RANGE data-base PROVIDED-XT:EVALUATE-RANGE-CELL + xt!
    ['] DEFINE-RUN data-base PROVIDED-XT:DEFINE-CELL + xt!
    ['] APPEND-RUN data-base PROVIDED-XT:APPEND-CELL + xt!
-   ['] POSTPONE-RUN data-base PROVIDED-XT:POSTPONE-CELL + xt!
    ['] COMPILE-RUN data-base PROVIDED-XT:COMPILE-CELL + xt!
    ['] END-RUN data-base PROVIDED-XT:END-CELL + xt!
    ['] CHILD-RUN data-base PROVIDED-XT:CHILD-CELL + xt!

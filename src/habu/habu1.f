@@ -1489,10 +1489,6 @@ private
    s" E-TASK-COMPILE habu: literal from a task" B-TASK-GUARD
    9 DATA PROVIDED-XT:LITERAL-CELL LDR,  9 BR, ;
 
-: B-POSTPONED ( -- )
-   s" E-TASK-COMPILE habu: postponed from a task" B-TASK-GUARD
-   9 DATA PROVIDED-XT:POSTPONE-CELL LDR,  9 BR, ;
-
 : B-COMPILE ( -- )
    s" E-TASK-COMPILE habu: compile, from a task" B-TASK-GUARD
    9 DATA PROVIDED-XT:COMPILE-CELL LDR,  9 BR, ;
@@ -4042,7 +4038,6 @@ package ENGINE-EMIT
    s" evaluate-range" ['] B-EVAL-RANGE FPRIM-L
    s" body-append" ['] B-BODY-APPEND FPRIM-L
    s" literal" ['] B-LITERAL FPRIM-L
-   s" postponed" ['] B-POSTPONED FPRIM-L
    s" compile," ['] B-COMPILE FPRIM-L
    s" ;" ['] B-END FPRIM-L
    s" evaluate-closed" ['] B-EVAL-CLOSED FPRIM

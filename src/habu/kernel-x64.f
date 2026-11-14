@@ -2388,8 +2388,6 @@ public
       ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" body-append" [: REFUSE-BODY ;] PRIM
    s" literal" [: REFUSE-BODY ;] PRIM
-   s" postponed" [: REFUSE-BODY ;]
-      ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" compile," [: REFUSE-BODY ;] PRIM
    s" ;" [: REFUSE-BODY ;] PRIM
    s" create" [: CREATE-BODY ;] PRIM
