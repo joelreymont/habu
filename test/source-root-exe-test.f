@@ -306,14 +306,17 @@ variable DEEP-U
    OUT$ want wantu STR= 0= if SHOW then
    OUT$ want wantu T$= ;
 
-\ The loader's open failure for <dir><name>, exit 74.
+\ The loader's rejection of the missing request name, which it looked for at
+\ <dir>/<name> among others, exit 74.
 : CANNOT-OPEN ( ptr u8 n ptr u8 n -- )
    {: dir:ptr diru:n name:ptr nameu:n :}
    SB-RESET s" error[E-MISSING-SOURCE]: cannot open `" SB-APPEND
-   dir diru SB-APPEND name nameu SB-APPEND 96 SB-APPEND-C
+   name nameu SB-APPEND 96 SB-APPEND-C
    RC @ INCLUDE-IO-RC = ERR$ SB$ CONTAINS? and 0= if SHOW then
    RC @ INCLUDE-IO-RC T=
-   ERR$ SB$ CONTAINS? TTRUE ;
+   ERR$ SB$ CONTAINS? TTRUE
+   SB-RESET dir diru SB-APPEND 47 SB-APPEND-C name nameu SB-APPEND
+   ERR$ SB$ CONTAINS? dup 0= if SHOW then TTRUE ;
 
 \ A rejection record: exit CHECKER-REJECT-RC, nothing on stdout, this code on
 \ stderr.
@@ -380,7 +383,7 @@ variable DEEP-U
    s" x/hb" HB-AT$ FOREIGN$ S\" SOURCE-ROOT:ENGINE$ type cr\nrequire test/fixtures/source-root-exe/inner.f\n"
    RUN-EXE
    SB-RESET FOREIGN$ LINE SB$ STDOUT
-   FOREIGN$ s" /test/fixtures/source-root-exe/inner.f" CANNOT-OPEN ;
+   FOREIGN$ s" test/fixtures/source-root-exe/inner.f" CANNOT-OPEN ;
 
 \ The tree's lib is missing, so its frozen rows answer by name, also under a
 \ discovery base, and a library is refused naming the owner's path.
@@ -401,7 +404,7 @@ variable DEEP-U
    PROC-ARGV-RESET
    s" p/bin/hb" HB-AT$ FOREIGN$ PROG$ RUN-EXE
    SB-RESET s" p" A$ LINE s" yes" LINE s" yes" LINE SB$ STDOUT
-   FOREIGN$ s" /test/fixtures/source-root-exe/inner.f" CANNOT-OPEN ;
+   FOREIGN$ s" test/fixtures/source-root-exe/inner.f" CANNOT-OPEN ;
 
 \ After the program's load lines: the root, and whether q's file loaded.
 : NOT-TREE-RUN ( -- )
@@ -473,7 +476,7 @@ variable DEEP-U
    s" test/fixtures/source-root-exe/inner.f" >LEN PROC-ARGV+
    s" tree/bin/hb" HB-AT$ FOREIGN$ RUN-ARGS
    NULL$ STDOUT
-   FOREIGN$ s" /test/fixtures/source-root-exe/inner.f" CANNOT-OPEN ;
+   FOREIGN$ s" test/fixtures/source-root-exe/inner.f" CANNOT-OPEN ;
 
 \ The root's src is a symlink into the gate tree; branch is a symlink
 \ elsewhere, so branch/../src/lib/error.f only reads like the root's file.
@@ -536,6 +539,7 @@ variable DEEP-U
    S\"    SOURCE-ROOT:CWD$ s\q x.f\q SOURCE-ROOT:JOIN required ;" PLINE
    s" RUN" PLINE
    s" ;package" PLINE
+   s" foreign/x.f" NULL$ TEXT
    RUN-TREE
    s" error[E-SOURCE-ROOT]" REJECTED
    SB-RESET 96 SB-APPEND-C s" foreign/x.f" A$ SB-APPEND
