@@ -191,7 +191,7 @@ private
   order.
 - `seal-package` is a package keyword beside `public`. Inside a package it
   seals it: reopening it, defining into either of its wordlists or `EXPORT`
-  into it then exits 84 with `E-SEALED-PACKAGE habu: <file>:<line>: '<name>' is sealed`,
+  into it then exits 84 with ``error[E-SEALED-PACKAGE]: `<name>` would change a sealed package``,
   naming the package or word, and `tools/check.f` refuses it as
   `E-SEALED-PACKAGE` at the name. Outside a package it is refused:
   `E-PKG-CONTEXT habu: <loc>: seal-package`, rc 75. Like `public` it names no word: in a body
