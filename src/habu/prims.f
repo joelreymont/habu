@@ -587,6 +587,7 @@ ETRUSTED-ONLY!                       \ records a certified minimum input arity o
 EPPRIM: NPUB min-in-mark PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 EPPRIM: INTERPRETER min-in-mark PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 EPPRIM: NPUB wide-mark ECLOSE-PRIVATE
+EPPRIM: CHECK wide-mark ECLOSE-PRIVATE
 EPRIM: reloc-maps-clear PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ clears metadata over reclaimed code
 EPPRIM: CODE-RECLAIM reloc-maps-clear PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
@@ -842,7 +843,6 @@ EPRIM: parse-name     PE-PTR-U8 PE-OUT PE-N PE-OUT EPRIM; REACH source
 \ literal spelling stands for asks this rather than reading the spelling back
 \ with a second decoder.
 EPRIM: num-parse      PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PE-F PE-OUT EPRIM; REACH memory
-EPRIM: wide-mark EPRIM;
 \ record-facts! ( n n -- ) offset, index: stores where a record's facts text
 \ lies.
 EPRIM: record-facts! PE-N PE-IN PE-N PE-IN EPRIM;
@@ -938,11 +938,9 @@ ELAB: 2>r REACH stack
 ELAB: 2r> REACH stack
 ELAB: 2r@ REACH stack
 
-\ Bodies with no declaration anywhere, so no checked program can name one: a
-\ checked caller of `run-rc` is E-UNDEFINED. Only unchecked source
-\ or the kernel harness reaches them. They are
-\ rows so the gap is stated instead of silent.
-UNROWED: run-rc
+\ A body with no declaration anywhere, so no checked program can name it: a
+\ checked caller of `top-check@` is E-UNDEFINED. Only unchecked source or the
+\ kernel harness reaches it. It is a row so the gap is stated instead of silent.
 UNROWED: top-check@
 
 ;package

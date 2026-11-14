@@ -10721,10 +10721,13 @@ CHECKER-REG:}SCRATCH
 CHECKER-REG:SCRATCH{
 variable RECW   0 RECW !
 CHECKER-REG:}SCRATCH
+package CHECK
+public
 : REC-WIDE-PUBLISH ( -- )
    RECW @ 0 <> IF wide-mark THEN
    0 RECW !
    DOES-EFF-CLEAR ;                   \ no definition's clause outlives its own publication
+;package
 
 \ RECMI: the din cell count of the last effect record, the certified minimum
 \ input arity, with RECW's discipline, read after ndict++ into DNAME-MIN-IN

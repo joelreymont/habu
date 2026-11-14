@@ -1195,12 +1195,6 @@ s" CBAD-FIELD ( ptr n n -- ) swap ES-BYTE-FIELD !" T-CHECK-REJECTS
 s" CBAD-LOCAL-SCOPE ( i64 bool -- i64 ) if {: drop:i64 :} drop else drop 0 then drop" T-CHECK-REJECTS
 s" CBAD-LOCAL-DEAD ( i64 -- i64 ) exit {: x:i64 :} x" T-CHECK-REJECTS
 
-\ run-rc spawns a child and waits (paths need a NUL); it has no checker row, so
-\ only a TRUSTED: body reaches it.
-TRUSTED: ES-RUN-RC ( ptr u8 n -- n ) PATH0 run-rc ;
-s" /usr/bin/true" ES-RUN-RC 0 T=
-s" /usr/bin/false" ES-RUN-RC 1 T=
-
 \ spawn-fds: the child's descriptor table is exactly the request's map, through
 \ the primitive itself.
 require src/habu/spawn-abi.f
@@ -1375,8 +1369,6 @@ TFNEG TTRUE
 0 TQX 99 T=
 
 s" " nip 0 T=
-
-s" /nonexistent-habu-x" ES-RUN-RC -1 T=
 
 $340000000 constant ES-LINUX-DATA-VA
 $44000000000 constant ES-MACOS-DATA-VA

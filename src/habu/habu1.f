@@ -636,64 +636,6 @@ variable NUM-LINT
    leave LBL,
    SP SP LINUX-SPAWN-FRAME ADDI, ;
 
-: BRUNRC ( -- )                    \ ( pathz -- rc ) spawn+wait; -1 = spawn failed
-   A G-POP
-   LBL {: ok:label :}
-   LBL {: done:label :}
-   LBL {: waitok:label :}
-   HB-TARGET-LINUX? IF
-      SP SP 64 SUBI,
-      9 SP 16 STR,
-      10 0 MOVZ,  10 SP 24 STR,
-      10 SP 48 STR,
-      10 SP 16 ADDI,
-      11 SP 48 ADDI,
-      13 0 MOVN,
-      9 >REG 10 >REG 11 >REG 13 >REG 13 >REG 13 >REG 13 >REG LINUX-SPAWN
-      9 G-POP
-      9 0 CMPI,  C-LT done BCOND,
-      0 9 0 ADDI,
-      1 SP 8 ADDI,  2 0 MOVZ,  3 0 MOVZ,
-      NR-WAIT4 SYS,
-      10 C-CS CSET,  10 waitok CBZ,
-         9 0 MOVN,  done B,
-      waitok LBL,
-      9 SP 8 LDRW,
-      9 9 8 LSRI,  9 9 $FF ANDI,
-      done LBL,
-      9 G-PUSH
-      SP SP 64 ADDI,
-      exit
-   THEN
-   HB-TARGET-MACOS? IF
-      SP SP 64 SUBI,
-      9 SP 16 STR,                      \ argv[0] = path
-      10 0 MOVZ,  10 SP 24 STR,         \ argv[1] = 0
-      10 SP 48 STR,                     \ envp[0] = 0
-      0 SP 0 ADDI,                      \ &pid
-      1 9 0 ADDI,
-      2 0 MOVZ,                         \ adesc = 0 (kernel API: 5 args, not libc's 6)
-      3 SP 16 ADDI,  4 SP 48 ADDI,      \ argv, envp
-      NR-SPAWN SYS,
-      9 2 CSET,  9 9 0 ORR,             \ error = carry set OR errno in x0
-      9 ok CBZ,                         \ either -> rc -1
-         9 0 MOVN,  done B,
-      ok LBL,
-      0 SP 0 LDR,                       \ pid
-      1 SP 8 ADDI,  2 0 MOVZ,  3 0 MOVZ,
-      NR-WAIT4 SYS,
-      9 2 CSET,  9 waitok CBZ,          \ wait4 error (no child) -> rc -1
-         9 0 MOVN,  done B,
-      waitok LBL,
-      9 SP 8 LDRW,
-      9 9 8 LSRI,  9 9 $FF ANDI,        \ WEXITSTATUS
-      done LBL,
-      9 G-PUSH
-      SP SP 64 ADDI,
-      exit
-   THEN
-   ENGINE-EMIT:TARGET-UNKNOWN ;
-
 : BPIPE ( -- )                     \ ( -- rfd wfd rc ) rc=0, or -1 -1 -1
    LBL LNX-OK !
    LBL LNX-DONE !
@@ -4097,7 +4039,6 @@ package ENGINE-EMIT
    s" source-file-run" ['] B-SOURCE-FILE-RUN ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID ;
 
 : EMIT-PROCESS-PRIMS ( -- )
-   s" run-rc" ['] BRUNRC FPRIM-L
    s" pipe" ['] BPIPE FPRIM-L   s" dup2" ['] BDUP2 FPRIM-L
    s" fcntl" ['] BFCNTL FPRIM-L   s" poll" ['] BPOLL FPRIM
    s" kill" ['] BKILL FPRIM-L
@@ -4128,7 +4069,7 @@ package ENGINE-EMIT
    s" def-occ-resolve" ['] BDEFRESOLVE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" SEAL-CAPTURE" ['] BSEALCAP FPRIM-L
    s" seal-captured?" ['] BSEALCAPQ FPRIM-L
-   s" wide-mark" ['] BWIDEMARK FPRIM
+   s" wide-mark" ['] BWIDEMARK ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" record-facts!" ['] BRECFACTS FPRIM
    s" sha256-blocks" ['] BSHA256BLOCKS FPRIM
    s" int-mark" ['] BINTMARK ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
@@ -4172,10 +4113,10 @@ package ENGINE-EMIT
    s" getdirentries64" ['] BGETDIRENTRIES64 FPRIM
    s" patch32" ['] BPATCH32 FPRIM
    s" reloc-maps-clear" ['] RELOC-EMIT:BCLEAR-MAPS FPRIM-L
-   s" code-publish" ['] NPUBWIN:BCODEPUBLISH FPRIM
+   s" code-publish" ['] NPUBWIN:BCODEPUBLISH ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" callmap-set" ['] NPUBWIN:BCALLMAPSET FPRIM
    s" addrmap-set" ['] NPUBWIN:BADDRMAPSET FPRIM
-   s" xref-retarget" ['] NPUBWIN:BXREFRETARGET FPRIM
+   s" xref-retarget" ['] NPUBWIN:BXREFRETARGET ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" close" ['] BCLOSE FPRIM-L
    s" close-rc" ['] BCLOSE-RC FPRIM-L
    s" rbase" ['] BRBASE FPRIM-L ;

@@ -2218,7 +2218,7 @@ variable DEF-VALUE
 \ The record takes what the checker's registrar latched: the wide mark, then
 \ the minimum input arity, under which the interpret dispatch refuses a call.
 : DEF-CAST-FACTS ( -- )
-   REC-WIDE-PUBLISH
+   CHECK:REC-WIDE-PUBLISH
    REC-MIN-IN@ {: mi:n :}
    mi 0<> if ndict@ 1- mi min-in-mark then ;
 

@@ -183,7 +183,7 @@ create TRAILER TRAILER-BYTES allot
 \ Publishing the checker's one-shot minimum-input latch is engine authority,
 \ kept at the native publisher that consumes it for this record.
 : PENDING-FACTS ( n -- ) {: idx:n :}
-   REC-WIDE-PUBLISH
+   CHECK:REC-WIDE-PUBLISH
    REC-MIN-IN@ {: mi:n :}
    mi 0<> if idx mi MIN-IN-REC then ;
 
