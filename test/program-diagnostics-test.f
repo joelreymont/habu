@@ -98,6 +98,7 @@ package PROGRAM-DIAGNOSTICS
    s" test/enum-ctor-collide-bad.f"
       s" = at `ecol`: generated declaration already defined" DIAGNOSTIC
    s" error[E-BAD-DECLARATION]" s" test/enum-ctor-collide-bad.f" GE-EXPECT-ERR-HAS
+   s" = word: ECOL:RED" s" test/enum-ctor-collide-bad.f" GE-EXPECT-ERR-HAS
    s" test/deftype-dup-bad.f" 70
       s" DEFTYPE-DUP-ARMED" s" duplicate family" NEGATIVE
    s" test/bootstrap-created-effect-src.f"
