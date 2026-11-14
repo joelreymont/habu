@@ -1743,7 +1743,7 @@ CAST: >SLOT-AT ( n -- ptr t )
 
 : SEMAPHORE ( -- )
    TASK-ALIGN8
-   create TASK-SEMAPHORE-BYTES allot
+   create TASK-SEMAPHORE-BYTES SCRATCH-ALLOT
    does> ( -- TASK:sem ) FFI:>CELL >SEM ;
 
 \ ---- sleeping ----------------------------------------------------------------
@@ -2075,6 +2075,7 @@ TASK-MIN-STACK constant MIN-STACK
 \ Defines one counted semaphore, shared by every task:
 \    TASK:SEMAPHORE ITEMS       \ ITEMS ( -- TASK:sem )
 \    0 ITEMS TASK:SEMAPHORE-INIT
+\ Its record is scratch, so a program starts with it uninitialized.
 : SEMAPHORE ( -- )
    SEMAPHORE ;
 
