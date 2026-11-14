@@ -255,8 +255,8 @@ s" MS2=" type s" S2 ( mpub:mpres -- n ) MATCH mpres yes OF ENDOF ;MATCH" CHECK-Q
 s" MS3=" type s" S3 ( mpub:mpres -- n ) MATCH mpub:mpres yes OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
 s" MATCH-SCOPE" type cr
 
-\ Diagnostics: every match/construct reject class carries a stable code, repair
-\ class, reason and suggestion; nonexhaustive lists the missing variant names.
+\ Diagnostics: every match/construct rejection carries a stable code and a label
+\ naming its fault; nonexhaustive lists the missing variant names.
 \ Captured through the render diag buffer in JSON mode; one prose case pins the
 \ `bad match: missing variants` text.
 : MDG< ( ptr u8 n -- )   \ run one candidate with JSON diags into the buffer
@@ -277,26 +277,26 @@ SUMTYPE mtri
 
 s" G1 ( mres -- n ) MATCH nofam ok OF ENDOF ;MATCH" MDG<
 s\" \"code\":\"E-MATCH-UNKNOWN-FAMILY\"" MDG?
-s\" \"repair_class\":\"fix_family_reference\"" MDG?
+s\" \"label\":\"names no visible family\"" MDG?
 s" G2 ( mres -- n ) MATCH span ok OF ENDOF ;MATCH" MDG<
 s\" \"code\":\"E-MATCH-FAMILY-KIND\"" MDG?
 s" G3 ( n -- n ) MATCH mres ok OF ENDOF err OF ENDOF ;MATCH" MDG<
 s\" \"code\":\"E-MATCH-SCRUTINEE\"" MDG?
-s\" \"reason\":\"bad match: expected sum or enum value on stack\"" MDG?
+s\" \"message\":\"bad match: expected sum or enum value on stack\"" MDG?
 s" G4 ( mmix -- n ) MATCH mres ok OF ENDOF err OF ENDOF ;MATCH" MDG<
 s\" \"code\":\"E-MATCH-FAMILY-MISMATCH\"" MDG?
 s" G5 ( mres -- n ) MATCH mres small OF ENDOF ;MATCH" MDG<
 s\" \"code\":\"E-MATCH-UNKNOWN-VARIANT\"" MDG?
-s\" \"repair_class\":\"fix_variant_reference\"" MDG?
+s\" \"label\":\"not a variant of the family\"" MDG?
 s" G6 ( mres -- n ) MATCH mres ok OF ENDOF ok OF ENDOF err OF ENDOF ;MATCH" MDG<
 s\" \"code\":\"E-MATCH-DUPLICATE-VARIANT\"" MDG?
-s\" \"repair_class\":\"remove_duplicate_branch\"" MDG?
+s\" \"label\":\"variant already has an arm\"" MDG?
 s" G7 ( mres -- n ) MATCH mres ok drop OF ENDOF ;MATCH" MDG<
 s\" \"code\":\"E-MATCH-MISSING-OF\"" MDG?
 s" G8 ( mtri -- n ) MATCH mtri bb OF ENDOF ;MATCH" MDG<
 s\" \"code\":\"E-MATCH-NONEXHAUSTIVE\"" MDG?
-s\" \"repair_class\":\"add_missing_branches\"" MDG?
-s\" \"missing_variants\":\"aa cc\"" MDG?
+s\" \"label\":\"some variants have no arm\"" MDG?
+s\" \"missing\":\"aa cc\"" MDG?
 s" G9 ( n -- n ) ;match" MDG<
 s\" \"code\":\"E-MATCH-STRAY\"" MDG?
 s" G10 ( mres -- n ) MATCH mres ok OF ENDOF err OF ENDOF" MDG<
@@ -307,7 +307,7 @@ s" G12 ( mres -- n ) [: MATCH mres ok OF ENDOF err OF ENDOF ;MATCH ;] execute" M
 s\" \"code\":\"E-MATCH-QUOTATION\"" MDG?
 s" G13 ( mjoin -- n ) MATCH mjoin ok OF ENDOF err OF ENDOF ;MATCH" MDG<
 s\" \"code\":\"E-MATCH-BRANCH-JOIN\"" MDG?
-s\" \"repair_class\":\"fix_branch_outputs\"" MDG?
+s\" \"label\":\"arms leave different types\"" MDG?
 s" G14 ( mres -- n ) construct nofam ok" MDG<
 s\" \"code\":\"E-CONSTRUCT-UNKNOWN-FAMILY\"" MDG?
 s" G15 ( mres -- n ) construct span ok" MDG<
@@ -328,7 +328,7 @@ s" GP2 ( n -- mprod ) construct mprod make" MDG<
 s\" \"code\":\"E-CONSTRUCT-FAMILY-KIND\"" MDG?
 31 MD-BODY MDG<
 s\" \"code\":\"E-MATCH-DEPTH\"" MDG?
-s\" \"repair_class\":\"factor_match_nesting\"" MDG?
+s\" \"label\":\"nested past the frame limit\"" MDG?
 MDG-END
 \ prose shape: the `bad match: missing variants` text, prose mode.
 REJECTION:CAPTURE
@@ -391,7 +391,6 @@ s" NEN1=" type s" NEN1 ( nen -- n ) MATCH nen wrap OF MATCH nec red OF 0 ENDOF g
 
 s" NED1 ( n ptr u8 -- nep ) construct nep mk" MDG<
 s\" \"variant\":\"mk\"" MDG?
-s\" \"payload_pos\":1" MDG?
 s\" \"field\":\"y\"" MDG?
 MDG-END
 s" ENUM-CONSTRUCT-MATCH" type cr

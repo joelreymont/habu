@@ -96,7 +96,7 @@ package PROGRAM-DIAGNOSTICS
    s" test/checker-decl-depth0-bad.f" 76
       s" CHECKER-DECL-DEPTH0-ARMED" s" declaration rollback failed" NEGATIVE
    s" test/enum-ctor-collide-bad.f"
-      s" name is reserved or already taken" DIAGNOSTIC
+      s" = at `ecol`: generated declaration already defined" DIAGNOSTIC
    s" error[E-BAD-DECLARATION]" s" test/enum-ctor-collide-bad.f" GE-EXPECT-ERR-HAS
    s" test/deftype-dup-bad.f" 70
       s" DEFTYPE-DUP-ARMED" s" duplicate family" NEGATIVE
@@ -138,15 +138,15 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    GT-OUT$ S\" 1\n1\n1\nok\n" STR= 0= if s" badsig counts" GE-FAIL then
    RECORDS 3 <> if s" badsig reports" GE-FAIL then
    s" error[E-UNKNOWN-SIGNATURE-TYPE]: unknown type `zz` in signature" path pathu GE-EXPECT-ERR-HAS
-   s" error[E-BAD-STORED-SIGNATURE]: the signature of `pdb-trusted`" path pathu GE-EXPECT-ERR-HAS
-   s" error[E-BAD-STORED-SIGNATURE]: the signature of `pdb-defer`" path pathu GE-EXPECT-ERR-HAS ;
+   s" error[E-BAD-STORED-SIGNATURE]: the signature of `PDB-TRUSTED`" path pathu GE-EXPECT-ERR-HAS
+   s" error[E-BAD-STORED-SIGNATURE]: the signature of `PDB-DEFER`" path pathu GE-EXPECT-ERR-HAS ;
 
 : BADSIG-WIDE-ONCE ( -- )
    s" test/program-diagnostic-wide-native.f" {: path:ptr pathu:n :}
    path pathu RUN-LOAD
    path pathu GE-EXPECT-OK
    GT-OUT$ S\" 0\n1\nok\n" STR= 0= if s" wide badsig count" GE-FAIL then
-   s" error[E-BAD-STORED-SIGNATURE]: the signature of `pdb-wide`" path pathu GE-EXPECT-ERR-HAS
+   s" error[E-BAD-STORED-SIGNATURE]: the signature of `PDB-WIDE`" path pathu GE-EXPECT-ERR-HAS
    s" input row too wide to record (256 cells, at most 255)" path pathu GE-EXPECT-ERR-HAS ;
 
 \ A multi-error load counts the rejections it renders: a quiet scan's rejection
