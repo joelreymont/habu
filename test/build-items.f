@@ -16,11 +16,11 @@
 \ diagnostic. Inside an open match an item's kind decides its role: a call in
 \ an abandoned one is skipped, a call where the family belongs and a type where
 \ a variant belongs get the match's rejection. An item spelled by no token or
-\ by two is rejected. EFFECT:READ reads a linear and a width type as a
+\ by two is rejected. EFFECT:READ-TYPE reads a linear and a width type as a
 \ signature does, and rejects a letter, a type variable's or a view's region's,
 \ at the line that ran the definer, with the fix, as EFFECT:NAMED and
-\ EFFECT:READ reject an unknown family, which a definer names as source in its
-\ package would, and EFFECT:IN a type that is no effect.
+\ EFFECT:READ-TYPE reject an unknown family, which a definer names as source
+\ in its package would, and EFFECT:IN a type that is no effect.
 
 require src/lib/test.f
 require src/lib/c2-memory.f
@@ -63,7 +63,7 @@ CAST: AS-ITEM ( n -- [ ptr u8 n n n -- ] )
 
 \ : NAME ( bfam -- n ) match bfam ba of 1 endof X of 2 endof ;match ;
 : MAKE-MATCH ( ptr u8 n ptr u8 n -- ) {: xa:ptr xu:n :}
-   EFFECT:NEW BFAM EFFECT:IN EFFECT:N EFFECT:OUT define-word
+   EFFECT:EMPTY BFAM EFFECT:IN EFFECT:N EFFECT:OUT define-word
    s" match" KW  BFAM-ITEM
    s" ba" OPND  s" of" KW  1 literal  s" endof" KW
    xa xu OPND  s" of" KW  2 literal  s" endof" KW
@@ -73,7 +73,7 @@ CAST: AS-ITEM ( n -- [ ptr u8 n n n -- ] )
 \ : NAME ( n -- n )
 \    dup 0 > if begin 1 - dup 3 < until 100 + else drop 20 then ;
 : MAKE-FLOW ( ptr u8 n -- )
-   EFFECT:NEW EFFECT:N EFFECT:IN EFFECT:N EFFECT:OUT define-word
+   EFFECT:EMPTY EFFECT:N EFFECT:IN EFFECT:N EFFECT:OUT define-word
    postpone dup  0 literal  postpone >  s" if" KW
    s" begin" KW  1 literal  postpone -  postpone dup  3 literal  postpone <
    s" until" KW  100 literal  postpone +
@@ -82,13 +82,13 @@ CAST: AS-ITEM ( n -- [ ptr u8 n n n -- ] )
 
 \ : NAME ( -- bfam ) construct bfam bb ;
 : MAKE-CONSTRUCT ( ptr u8 n -- )
-   EFFECT:NEW BFAM EFFECT:OUT define-word
+   EFFECT:EMPTY BFAM EFFECT:OUT define-word
    s" construct" KW  BFAM-ITEM  s" bb" OPND
    postpone ; ;
 
 \ : NAME ( -- n ) X ; with X found by OP.
 : MAKE-CALL ( ptr u8 n ptr u8 n n -- ) {: xa:ptr xu:n op:n :}
-   EFFECT:NEW EFFECT:N EFFECT:OUT define-word
+   EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word
    op ITEM-ABI:CALL = if xa xu EFFECT:CALL else xa xu 0 op ITEM then
    postpone ; ;
 
@@ -132,7 +132,7 @@ BI-BAD-CALL 4 T=
 
 \ : NAME ( n n -- n ) {: a:n b:n :} b a - ;
 : MAKE-SUB ( ptr u8 n -- )
-   EFFECT:NEW EFFECT:N EFFECT:IN EFFECT:N EFFECT:IN EFFECT:N EFFECT:OUT
+   EFFECT:EMPTY EFFECT:N EFFECT:IN EFFECT:N EFFECT:IN EFFECT:N EFFECT:OUT
    define-word
    s" {:" KW  EFFECT:N EFFECT:LOCAL  EFFECT:N EFFECT:LOCAL  s" :}" KW
    {: a:n b:n :}
@@ -142,7 +142,7 @@ BI-BAD-CALL 4 T=
 \ : NAME ( bfam -- n ) {: x:bfam :}
 \    x match bfam ba of 1 endof bb of 2 endof ;match ;
 : MAKE-LOCAL-MATCH ( ptr u8 n -- )
-   EFFECT:NEW BFAM EFFECT:IN EFFECT:N EFFECT:OUT define-word
+   EFFECT:EMPTY BFAM EFFECT:IN EFFECT:N EFFECT:OUT define-word
    s" {:" KW  BFAM EFFECT:LOCAL  s" :}" KW  EFFECT:LOCAL@
    s" match" KW  BFAM-ITEM
    s" ba" OPND  s" of" KW  1 literal  s" endof" KW
@@ -154,7 +154,7 @@ BI-BAD-CALL 4 T=
 
 \ : NAME ( n n -- n ) {: a:n :} {: b:n :} a b - ;
 : MAKE-GROUPS ( ptr u8 n -- )
-   EFFECT:NEW EFFECT:N EFFECT:IN EFFECT:N EFFECT:IN EFFECT:N EFFECT:OUT
+   EFFECT:EMPTY EFFECT:N EFFECT:IN EFFECT:N EFFECT:IN EFFECT:N EFFECT:OUT
    define-word
    GROUP GROUP {: a:n b:n :}
    a EFFECT:LOCAL@  b EFFECT:LOCAL@  postpone -
@@ -181,7 +181,7 @@ s" BI-GROUPS" MAKE-GROUPS
 
 \ : NAME ( -- ) l0 ; with the local outside a group.
 : MAKE-STRAY ( ptr u8 n -- )
-   EFFECT:NEW define-word  EFFECT:N EFFECT:LOCAL drop  postpone ; ;
+   EFFECT:EMPTY define-word  EFFECT:N EFFECT:LOCAL drop  postpone ; ;
 : BAD-STRAY ( -- n ) [: s" BI-BAD-STRAY" MAKE-STRAY ;] catch ;
 BAD-STRAY 70 T=
 s" : BI-BAD-STRAY ( -- n ) 5 ;" evaluate-closed
@@ -189,7 +189,7 @@ BI-BAD-STRAY 5 T=
 
 \ : NAME ( -- n ) l9 ; with no local declared.
 : MAKE-UNREAD ( ptr u8 n -- )
-   EFFECT:NEW EFFECT:N EFFECT:OUT define-word  9 EFFECT:LOCAL@  postpone ; ;
+   EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word  9 EFFECT:LOCAL@  postpone ; ;
 : BAD-UNREAD ( -- n ) [: s" BI-BAD-UNREAD" MAKE-UNREAD ;] catch ;
 BAD-UNREAD 70 T=
 s" : BI-BAD-UNREAD ( -- n ) 6 ;" evaluate-closed
@@ -202,7 +202,7 @@ BI-BAD-UNREAD 6 T=
 : NUL ( -- EFFECT:type ) s" nullable" EFFECT:NAMED ;
 : MAKE-KEEP ( ptr u8 n -- )
    NUL NUL NUL NUL {: b c d t :}
-   EFFECT:NEW t EFFECT:IN b EFFECT:IN c EFFECT:IN d EFFECT:IN t EFFECT:OUT
+   EFFECT:EMPTY t EFFECT:IN b EFFECT:IN c EFFECT:IN d EFFECT:IN t EFFECT:OUT
    define-word
    postpone drop  postpone drop  postpone drop
    s" {:" KW  t EFFECT:LOCAL  s" :}" KW  EFFECT:LOCAL@
@@ -226,7 +226,7 @@ s" Q" drop NULLABLE:SOME NONES BI-KEEP-TEXT NUL-BYTE 81 T=
 
 \ : NAME ( bfam -- n ) {: x:bfam :} x 1 + ;
 : MAKE-WRONG ( ptr u8 n -- )
-   EFFECT:NEW BFAM EFFECT:IN EFFECT:N EFFECT:OUT define-word
+   EFFECT:EMPTY BFAM EFFECT:IN EFFECT:N EFFECT:OUT define-word
    s" {:" KW  BFAM EFFECT:LOCAL  s" :}" KW  EFFECT:LOCAL@
    1 literal  postpone +
    postpone ; ;
@@ -238,7 +238,7 @@ BI-BAD-WRONG 7 T=
 \ : NAME ( n bool -- n ) if {: a:n :} a then {: b:n :} a ; with b in the
 \ slot a's block left.
 : MAKE-ENDED ( ptr u8 n -- )
-   EFFECT:NEW EFFECT:N EFFECT:IN s" bool" EFFECT:NAMED EFFECT:IN
+   EFFECT:EMPTY EFFECT:N EFFECT:IN s" bool" EFFECT:NAMED EFFECT:IN
    EFFECT:N EFFECT:OUT define-word
    s" if" KW  GROUP {: a:n :}  a EFFECT:LOCAL@  s" then" KW
    GROUP drop  a EFFECT:LOCAL@
@@ -250,14 +250,14 @@ BI-BAD-ENDED 8 T=
 
 \ : NAME ( n -- n ) {: a:n :} l-1 ; inside a's block.
 : MAKE-LNEG ( ptr u8 n -- )
-   EFFECT:NEW EFFECT:N EFFECT:IN EFFECT:N EFFECT:OUT define-word
+   EFFECT:EMPTY EFFECT:N EFFECT:IN EFFECT:N EFFECT:OUT define-word
    GROUP drop  -1 EFFECT:LOCAL@
    postpone ; ;
 
 \ : NAME ( nullable<a> ... -- ) {: x:nullable<z> :} drop ... ; with 23
 \ inputs, so the local's z is a 24th parameter.
 : MAKE-WIDE ( ptr u8 n -- )
-   EFFECT:NEW  23 0 ?do NUL EFFECT:IN loop  define-word
+   EFFECT:EMPTY  23 0 ?do NUL EFFECT:IN loop  define-word
    s" {:" KW  NUL EFFECT:LOCAL drop  s" :}" KW
    22 0 ?do postpone drop loop
    postpone ; ;
@@ -278,7 +278,7 @@ BI-BAD-TEXT 9 T=
 
 \ TYPED-VARIABLE NAME [ n -- n ]
 : MAKE-QVAR ( ptr u8 n -- )
-   EFFECT:NEW EFFECT:N EFFECT:IN EFFECT:N EFFECT:OUT EFFECT:VARIABLE ;
+   EFFECT:EMPTY EFFECT:N EFFECT:IN EFFECT:N EFFECT:OUT EFFECT:VARIABLE-OF ;
 
 s" BI-QVAR" MAKE-QVAR
 : BI-QSTORE ( -- ) [: 1 + ;] BI-QVAR ! ;
@@ -291,8 +291,8 @@ BAD-QSTORE 70 T=
 
 \ TYPED-VARIABLE NAME [ n -- option<a> ]
 : MAKE-OVAR ( ptr u8 n -- )
-   EFFECT:NEW EFFECT:N EFFECT:IN s" option" EFFECT:NAMED EFFECT:OUT
-   EFFECT:VARIABLE ;
+   EFFECT:EMPTY EFFECT:N EFFECT:IN s" option" EFFECT:NAMED EFFECT:OUT
+   EFFECT:VARIABLE-OF ;
 : BAD-OVAR ( -- n ) [: s" BI-BAD-OVAR" MAKE-OVAR ;] catch ;
 DECL-DIAG:PROSE  BAD-OVAR 70 T=
 s" '[ n -- option<a> ]'" DECL-DIAG:HAS? TTRUE  DECL-DIAG:OFF
@@ -306,7 +306,7 @@ variable BUILT-DIAG-U
 
 \ : NAME ( -- ) C2-MEM:WITH-FIELD inner ; with no view to lend a field of.
 : MAKE-LOAN ( ptr u8 n -- )
-   EFFECT:NEW define-word
+   EFFECT:EMPTY define-word
    s" C2-MEM:WITH-FIELD" EFFECT:CALL  s" inner" OPND
    postpone ; ;
 
@@ -320,7 +320,7 @@ BUILT-DIAG$ DECL-DIAG:TEXT$ T$=  DECL-DIAG:OFF
 \ : NAME ( bfam -- n ) match zz ba of evaluate endof ;match ; whose family
 \ resolves nothing: the call is skipped through `;match` as its text is.
 : MAKE-ABANDONED ( ptr u8 n -- )
-   EFFECT:NEW BFAM EFFECT:IN EFFECT:N EFFECT:OUT define-word
+   EFFECT:EMPTY BFAM EFFECT:IN EFFECT:N EFFECT:OUT define-word
    s" match" KW  s" zz" EFFECT:N EFFECT:TYPE-ITEM
    s" ba" OPND  s" of" KW  s" evaluate" EFFECT:CALL  s" endof" KW
    s" ;match" KW
@@ -333,7 +333,7 @@ s" unsafe" DECL-DIAG:HAS? TFALSE  DECL-DIAG:OFF
 \ : NAME ( bfam -- n ) match BFAM ba of 1 endof bb of 2 endof ;match ;
 \ with BFAM a call: a call names no family, though a family spells it.
 : MAKE-CALL-FAMILY ( ptr u8 n -- )
-   EFFECT:NEW BFAM EFFECT:IN EFFECT:N EFFECT:OUT define-word
+   EFFECT:EMPTY BFAM EFFECT:IN EFFECT:N EFFECT:OUT define-word
    s" match" KW  s" BFAM" EFFECT:CALL
    s" ba" OPND  s" of" KW  1 literal  s" endof" KW
    s" bb" OPND  s" of" KW  2 literal  s" endof" KW
@@ -346,7 +346,7 @@ s" bad match: unknown type family" DECL-DIAG:HAS? TTRUE  DECL-DIAG:OFF
 \ : NAME ( bfam -- n ) match bfam zz of 1 endof bb of 2 endof ;match ; with
 \ zz a type where the variant belongs: the match's own rejection.
 : MAKE-TYPE-VARIANT ( ptr u8 n -- )
-   EFFECT:NEW BFAM EFFECT:IN EFFECT:N EFFECT:OUT define-word
+   EFFECT:EMPTY BFAM EFFECT:IN EFFECT:N EFFECT:OUT define-word
    s" match" KW  BFAM-ITEM
    s" zz" BFAM EFFECT:TYPE-ITEM  s" of" KW  1 literal  s" endof" KW
    s" bb" OPND  s" of" KW  2 literal  s" endof" KW
@@ -359,7 +359,7 @@ s" bad match: unknown variant" DECL-DIAG:HAS? TTRUE  DECL-DIAG:OFF
 \ : NAME ( -- n ) 5 S ; with S an item spelled by the string: an item's
 \ spelling is one token, else it is rejected as define-word's name is, 74.
 : MAKE-SPELLED ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n :}
-   EFFECT:NEW EFFECT:N EFFECT:OUT define-word
+   EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word
    5 literal  sa su KW
    postpone ; ;
 : EMPTY-ITEM ( -- n ) [: s" BI-EMPTY-ITEM" s" " MAKE-SPELLED ;] catch ;
@@ -379,33 +379,33 @@ LINEAR: LTOK>N ( BITEM:ltok -- n )
 
 \ : NAME ( t -- t ) ;
 : MAKE-ID ( ptr u8 n EFFECT:type -- ) {: t :}
-   EFFECT:NEW t EFFECT:IN  t EFFECT:OUT  define-word  postpone ; ;
+   EFFECT:EMPTY t EFFECT:IN  t EFFECT:OUT  define-word  postpone ; ;
 
 SUMTYPE blin VARIANT owned BITEM:ltok ;VARIANT ;SUMTYPE
 : BI-LIN-MAKE ( n -- blin ) LTOK construct blin owned ;
 : BI-LIN-N ( blin -- n ) match blin owned of LTOK>N endof ;match ;
 
-s" BI-LIN" s" blin" EFFECT:READ MAKE-ID
+s" BI-LIN" s" blin" EFFECT:READ-TYPE MAKE-ID
 : BI-LIN-RUN ( -- n ) 5 BI-LIN-MAKE BI-LIN BI-LIN-N ;
 BI-LIN-RUN 5 T=
-s" BI-WIDTH" s" width<u8>" EFFECT:READ MAKE-ID
+s" BI-WIDTH" s" width<u8>" EFFECT:READ-TYPE MAKE-ID
 BI-U8-WIDTH BI-WIDTH width>n 1 T=
 
-: PTR-A ( -- n ) [: s" BI-PTR-A" s" ptr a" EFFECT:READ MAKE-ID ;] catch ;
+: PTR-A ( -- n ) [: s" BI-PTR-A" s" ptr a" EFFECT:READ-TYPE MAKE-ID ;] catch ;
 : VIEW ( -- n )
-   [: s" BI-VIEW" s" read-view<p,q,u8>" EFFECT:READ MAKE-ID ;] catch ;
+   [: s" BI-VIEW" s" read-view<p,q,u8>" EFFECT:READ-TYPE MAKE-ID ;] catch ;
 : LETTER-FIX ( -- )
    s" = help: a built definition's types are concrete: write one such as n or ptr u8"
    DECL-DIAG:HAS? TTRUE ;
 : NAMED-BAD ( -- n ) [: s" no-such-family" EFFECT:NAMED drop ;] catch ;
 : IN-BAD ( -- n ) [: EFFECT:N EFFECT:N EFFECT:IN drop ;] catch ;
 : READ-BAD ( -- n )
-   [: s" BI-UNK" s" no-such-family" EFFECT:READ MAKE-ID ;] catch ;
+   [: s" BI-UNK" s" no-such-family" EFFECT:READ-TYPE MAKE-ID ;] catch ;
 : SECRET ( -- EFFECT:type ) s" bitem-own:secret" EFFECT:NAMED ;
 
 \ : NAME ( bitem-own:secret -- n ) match secret hid of endof ;match ;
 : MAKE-PEEK ( ptr u8 n -- )
-   EFFECT:NEW SECRET EFFECT:IN EFFECT:N EFFECT:OUT define-word
+   EFFECT:EMPTY SECRET EFFECT:IN EFFECT:N EFFECT:OUT define-word
    s" match" KW  s" secret" SECRET EFFECT:TYPE-ITEM
    s" hid" OPND  s" of" KW  s" endof" KW  s" ;match" KW
    postpone ; ;
@@ -438,7 +438,7 @@ DECL-DIAG:HAS? TTRUE  READING-HERE  FAMILY-FIX
 DECL-DIAG:PROSE  IN-BAD 70 T=
 s" error[E-NOT-EFFECT]: EFFECT:IN or EFFECT:OUT was given a type that is no effect"
 DECL-DIAG:HAS? TTRUE  READING-HERE
-s" = help: pass the effect EFFECT:NEW made, or one EFFECT:IN or EFFECT:OUT answered"
+s" = help: pass the effect EFFECT:EMPTY made, or one EFFECT:IN or EFFECT:OUT answered"
 DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE  READ-BAD 70 T=
 s" error[E-UNKNOWN-SIGNATURE-TYPE]: " DECL-DIAG:HAS? TTRUE

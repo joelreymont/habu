@@ -2515,9 +2515,10 @@ sections above.
   the definer runs, under that file's policy. Inside a `{:` group
   it appended with `EFFECT:KEYWORD`, `EFFECT:LOCAL ( EFFECT:type -- n )`
   declares a local of the type and answers its index, which
-  `EFFECT:LOCAL@ ( n -- )` reads. `EFFECT:VARIABLE ( ptr u8 n EFFECT:type --
-  )` declares the variable the string names as `TYPED-VARIABLE` does; a type
-  that may hold a linear value is rejected. `; ( -- )` ends the
+  `EFFECT:LOCAL@ ( n -- )` reads.
+  `EFFECT:VARIABLE-OF ( ptr u8 n EFFECT:type -- )` declares the variable the
+  string names as `TYPED-VARIABLE` does; a type that may hold a linear value
+  is rejected. `; ( -- )` ends the
   definition. Any of them with no definition open is `E-NO-DEFINITION`, and a
   throw a `catch` takes abandons a definition opened since that `catch` began.
   `postpone` is syntax, never a definition name. One limit: after `undefine W`,

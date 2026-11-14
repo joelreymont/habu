@@ -1071,21 +1071,21 @@ CAST: >EFFECT ( n -- EFFECT:type )
 
 : IN-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
    s" ptr" TOK-IS? if
-      a PTR-TAIL EFFECT:READ IN+ K-POINTER ARG+ exit
+      a PTR-TAIL EFFECT:READ-TYPE IN+ K-POINTER ARG+ exit
    then
    s" f32" TOK-IS? if s" r" EFFECT:NAMED IN+ K-FLOAT32 ARG+ exit then
-   a u EFFECT:READ IN+
+   a u EFFECT:READ-TYPE IN+
    s" r" TOK-IS? if K-FLOAT ARG+ exit then
    K-VALUE ARG+ ;
 
 : OUT-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
    RES-KIND @ R-NONE <> if E-FFI-SYNTAX throw then
    s" ptr" TOK-IS? if
-      a PTR-TAIL EFFECT:READ OUT+ R-POINTER RES-KIND ! exit
+      a PTR-TAIL EFFECT:READ-TYPE OUT+ R-POINTER RES-KIND ! exit
    then
    s" f32" TOK-IS? if s" r" EFFECT:NAMED OUT+ R-FLOAT32 RES-KIND ! exit then
    s" i32" TOK-IS? if EFFECT:N OUT+ R-I32 RES-KIND ! exit then
-   a u EFFECT:READ OUT+
+   a u EFFECT:READ-TYPE OUT+
    s" nullable<u8>" TOK-IS? if R-POINTER RES-KIND ! 1 RES-NULLABLE ! exit then
    s" r" TOK-IS? if R-FLOAT RES-KIND ! exit then
    s" u32" TOK-IS? if R-U32 RES-KIND ! exit then
@@ -1110,7 +1110,7 @@ CAST: >EFFECT ( n -- EFFECT:type )
 : EFFECT ( -- )
    TOK@
    s" (" TOK-IS? 0= if E-FFI-SYNTAX throw then
-   EFFECT:NEW EFF-TYPE !
+   EFFECT:EMPTY EFF-TYPE !
    INPUTS
    OUTPUTS ;
 

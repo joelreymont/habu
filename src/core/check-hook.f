@@ -292,7 +292,7 @@ using SCHEMA-REG
    s" a definer was given a value that is no type" REJECTION:EMIT-STR
    DEFINER-PLACE
    REJECTION:HELP
-   s" pass a type EFFECT:N, EFFECT:NAMED, EFFECT:READ or EFFECT:PTR made in this file: a type ends with the file that built it"
+   s" pass a type EFFECT:N, EFFECT:NAMED, EFFECT:READ-TYPE or EFFECT:PTR made in this file: a type ends with the file that built it"
    REJECTION:EMIT-STR
    CHECK-RC REJECTION:STOP ;
 
@@ -307,7 +307,7 @@ using SCHEMA-REG
    REJECTION:EMIT-STR
    DEFINER-PLACE
    REJECTION:HELP
-   s" pass the effect EFFECT:NEW made, or one EFFECT:IN or EFFECT:OUT answered"
+   s" pass the effect EFFECT:EMPTY made, or one EFFECT:IN or EFFECT:OUT answered"
    REJECTION:EMIT-STR
    CHECK-RC REJECTION:STOP ;
 
@@ -366,7 +366,7 @@ CAST: >BYTES ( n -- ptr u8 )
    REJECTION:EMIT-STR
    CHECK-RC REJECTION:STOP ;
 
-\ Rejects a type variable's or region's letter in a type EFFECT:READ was
+\ Rejects a type variable's or region's letter in a type EFFECT:READ-TYPE was
 \ given, placed at the token the engine read last, which ran the definer.
 : TEXT-LETTER-REFUSE ( ptr u8 n ptr u8 n -- ) {: la:ptr lu:n xa:ptr xu:n :}
    s" E-BAD-SIGNATURE" REJECTION:OPEN

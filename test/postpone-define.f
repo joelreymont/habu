@@ -23,7 +23,7 @@ public
 
 private
 \ ( n -- n )
-: N>N ( -- EFFECT:type ) EFFECT:NEW EFFECT:N EFFECT:IN EFFECT:N EFFECT:OUT ;
+: N>N ( -- EFFECT:type ) EFFECT:EMPTY EFFECT:N EFFECT:IN EFFECT:N EFFECT:OUT ;
 
 public
 \ nullable on a parameter no other value holds.
@@ -53,7 +53,7 @@ public
 
 \ : NAME ( -- n ) -6 7 * ;
 : MAKE-NEG-ANSWER ( ptr u8 n -- )
-   EFFECT:NEW EFFECT:N EFFECT:OUT define-word
+   EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word
    -6 literal  7 literal
    postpone *
    postpone ; ;
@@ -62,13 +62,13 @@ public
 \ all three places.
 : MAKE-DUP ( ptr u8 n -- )
    NULLABLE-T {: t :}
-   EFFECT:NEW t EFFECT:IN  t EFFECT:OUT  t EFFECT:OUT  define-word
+   EFFECT:EMPTY t EFFECT:IN  t EFFECT:OUT  t EFFECT:OUT  define-word
    postpone dup
    postpone ; ;
 
 \ : NAME ( nullable<a> nullable<b> ... -- ) drop drop ... ; K inputs.
 : MAKE-WIDE ( ptr u8 n n -- ) {: k:n :}
-   EFFECT:NEW  k 0 ?do NULLABLE-T EFFECT:IN loop  define-word
+   EFFECT:EMPTY  k 0 ?do NULLABLE-T EFFECT:IN loop  define-word
    k 0 ?do postpone drop loop
    postpone ; ;
 
@@ -91,13 +91,13 @@ public
 
 \ : NAME ( -- n ) drop ;, an underflow the checker refuses.
 : MAKE-BROKEN ( ptr u8 n -- )
-   EFFECT:NEW EFFECT:N EFFECT:OUT define-word
+   EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word
    postpone drop
    postpone ; ;
 
 \ : NAME ( -- read-view<a,b,c> ) 1 throw ;, a view no input supplies.
 : MAKE-RV ( ptr u8 n -- )
-   EFFECT:NEW s" read-view" EFFECT:NAMED EFFECT:OUT define-word
+   EFFECT:EMPTY s" read-view" EFFECT:NAMED EFFECT:OUT define-word
    1 literal
    postpone throw
    postpone ; ;

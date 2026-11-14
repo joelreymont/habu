@@ -288,7 +288,7 @@ variable OPEN
    a u s" u32" STR= if EFFECT:N IN+ i f BY-U32 INT+ exit then
    a u s" ptr" STR= if
       TOK@ s" u8" STR= 0= if E-FFI-SYNTAX throw then
-      s" ptr u8" EFFECT:READ IN+ i f BY-PTR INT+ exit
+      s" ptr u8" EFFECT:READ-TYPE IN+ i f BY-PTR INT+ exit
    then
    a u s" r" STR= if
       f FLOAT-REGS >= if E-FFI-ARITY throw then
@@ -350,7 +350,7 @@ variable OPEN
 \ NAME-DISPATCH ( -- ): [: NAME-BODY BODY-CHECK <reads> NAME-BODY @ execute
 \ <store> ;] k kind RUN
 : DISPATCH-WORD ( [ -- ] n -- ) {: body k:n :}
-   s" -DISPATCH" NAME+ EFFECT:NEW define-word
+   s" -DISPATCH" NAME+ EFFECT:EMPTY define-word
    s" [:" EFFECT:KEYWORD
    body compile,  postpone BODY-CHECK
    READS @ 0 ?do i READ-ITEMS loop
@@ -364,14 +364,14 @@ variable OPEN
 \ the entry is handed to C, while the accessor can read its relocated
 \ descriptor address.
 : EMIT ( n -- ) {: k:n :}
-   s" -BODY" NAME+ BODY-TYPE @ EFFECT:VARIABLE
+   s" -BODY" NAME+ BODY-TYPE @ EFFECT:VARIABLE-OF
    LATEST-XT k DISPATCH-WORD
    LATEST-XT k INSTALL
    k -1 FFI:CALLBACK-ENTRY ARM-STUB
-   s" -ENTRY" NAME+ EFFECT:NEW EFFECT:N EFFECT:OUT define-word
+   s" -ENTRY" NAME+ EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word
    k literal  postpone ENTRY-ADDRESS  postpone ;
    STUB-ENTRY k INSTALL-ENTRY
-   NAME$ EFFECT:NEW s" FFI-CB:callback" EFFECT:NAMED EFFECT:OUT define-word
+   NAME$ EFFECT:EMPTY s" FFI-CB:callback" EFFECT:NAMED EFFECT:OUT define-word
    k literal  postpone DESCRIPTOR  postpone ; ;
 
 \ A refusal between the two keywords abandons the declaration, so nothing is
@@ -385,7 +385,7 @@ public
 : OPEN-CALLBACK ( -- )
    OPEN @ 0 <> if REFUSE then
    R-NONE RES-KIND ! 0 FB-SET !
-   EFFECT:NEW BODY-TYPE ! 0 READS !
+   EFFECT:EMPTY BODY-TYPE ! 0 READS !
    TOK@ NAME!
    TOK@ s" (" STR= 0= if E-FFI-SYNTAX throw then
    INPUTS

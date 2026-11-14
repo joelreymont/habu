@@ -434,9 +434,9 @@ PRIM: DEFER-LAYOUT-BUFFER PRIM;
    handle v 1 type typeu hasaddr STORAGE-BIND ;
 
 \ TYPED-VARIABLE's run over the name and the type node, which no text spells:
-\ a definer's variable (EFFECT:VARIABLE), through PROVIDED-XT:VARIABLE-CELL.
+\ a definer's variable (EFFECT:VARIABLE-OF), through PROVIDED-XT:VARIABLE-CELL.
 : TYPED-VARIABLE-NODE ( ptr u8 n n -- ) {: name:ptr nameu:n node:n :}
-   nameu 0= if s" EFFECT:VARIABLE" CHECKER-STORAGE-NAME-REFUSE exit then
+   nameu 0= if s" EFFECT:VARIABLE-OF" CHECKER-STORAGE-NAME-REFUSE exit then
    name nameu LBUF-NAME-OK? 0= if exit then
    1 name nameu node NODE-VALIDATE 0= if exit then
    node NODE-HAS-ADDRESS? {: hasaddr:bool :}

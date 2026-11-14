@@ -2,10 +2,10 @@
 \ built word records, naming a private family by its package, and its nodes
 \ are transient: no persistent schema root takes one. A multi-error load that
 \ refuses a built body keeps its effect, which names the definer's
-\ structure, for a caller in another package. A word built over EFFECT:READ
-\ or EFFECT:NAMED of a type takes the type its text form declares, and READ
-\ refuses a family the running package does not know. The file calls the
-\ running checker's words, so it is loaded, never built.
+\ structure, for a caller in another package. A word built over
+\ EFFECT:READ-TYPE or EFFECT:NAMED of a type takes the type its text form
+\ declares, and READ-TYPE refuses a family the running package does not know.
+\ The file calls the running checker's words, so it is loaded, never built.
 
 require src/lib/test.f
 require src/lib/adt/nullable.f
@@ -20,7 +20,7 @@ STRUCTURE pdhidden FIELD v n ;STRUCTURE
 \ ( ptr pdcell -- ptr pdcell ).
 : CELL-EFFECT ( -- EFFECT:type )
    s" POSTPONE-CELL:pdcell" EFFECT:NAMED EFFECT:PTR
-   {: p :}  EFFECT:NEW p EFFECT:IN  p EFFECT:OUT ;
+   {: p :}  EFFECT:EMPTY p EFFECT:IN  p EFFECT:OUT ;
 
 public
 : PD-CELL ( -- ptr pdcell ) 0 PD-CELLS ;
@@ -43,7 +43,7 @@ CAST: >NODE ( EFFECT:type -- n )
 \ ( ptr peslot n -- ptr peslot ), one pointer node in both rows.
 : SLOT-EFFECT ( -- EFFECT:type )
    SLOT-PTR {: p :}
-   EFFECT:NEW p EFFECT:IN  EFFECT:N EFFECT:IN  p EFFECT:OUT ;
+   EFFECT:EMPTY p EFFECT:IN  EFFECT:N EFFECT:IN  p EFFECT:OUT ;
 
 \ The text a built word records as its signature.
 : SLOT-TEXT ( -- ptr u8 n ) SLOT-EFFECT >NODE CHECK:EFFECT-TEXT ;
@@ -80,13 +80,13 @@ CAST: R>N ( r -- n )
 
 \ : NAME ( t -- t ) ;
 : MAKE-ID ( ptr u8 n EFFECT:type -- ) {: t :}
-   EFFECT:NEW t EFFECT:IN  t EFFECT:OUT  define-word
+   EFFECT:EMPTY t EFFECT:IN  t EFFECT:OUT  define-word
    postpone ; ;
 
-s" PE-U32" s" u32" EFFECT:READ MAKE-ID
-s" PE-BYTES" s" ptr u8" EFFECT:READ MAKE-ID
-s" PE-NUL" s" nullable<u8>" EFFECT:READ MAKE-ID
-s" PE-SLOT" s" ptr peslot" EFFECT:READ MAKE-ID
+s" PE-U32" s" u32" EFFECT:READ-TYPE MAKE-ID
+s" PE-BYTES" s" ptr u8" EFFECT:READ-TYPE MAKE-ID
+s" PE-NUL" s" nullable<u8>" EFFECT:READ-TYPE MAKE-ID
+s" PE-SLOT" s" ptr peslot" EFFECT:READ-TYPE MAKE-ID
 s" PE-R" s" r" EFFECT:NAMED MAKE-ID
 s" PE-BOOL" s" bool" EFFECT:NAMED MAKE-ID
 s" PE-U8" s" u8" EFFECT:NAMED MAKE-ID
@@ -116,7 +116,7 @@ s" : PE-U8-WIDE ( -- n ) 300 PE-U8 ;" TEST-EVAL:RC 70 T=
 s" true PE-N drop" TEST-EVAL:RC 70 T=
 
 \ POSTPONE-CELL's private family is unknown here.
-: READ-HIDDEN ( -- n ) [: s" pdhidden" EFFECT:READ drop ;] catch ;
+: READ-HIDDEN ( -- n ) [: s" pdhidden" EFFECT:READ-TYPE drop ;] catch ;
 READ-HIDDEN 70 T=
 ;package
 

@@ -2,7 +2,7 @@
 \ type is a schema node, an effect a type whose node is a quotation, its
 \ inputs and outputs deepest first, and `define-word` opens a definition from a
 \ name and an effect; KEYWORD, OPERAND, TYPE-ITEM, CALL, LOCAL and LOCAL@
-\ append its items. VARIABLE declares a variable of a type.
+\ append its items. VARIABLE-OF declares a variable of a type.
 \ Each word asks the running engine's checker through its cell, never by name:
 \ in a build a definer is the tree's copy, whose checker certifies nothing, and
 \ a node only the checker that certifies made can reach it. The nodes are
@@ -38,14 +38,14 @@ public
 
 \ The one type the text spells (`ptr u8`, `nullable<u8>`), read as a declaration
 \ where the definer runs reads it; a letter is rejected.
-: READ ( ptr u8 n -- type ) {: a:ptr u:n :}
+: READ-TYPE ( ptr u8 n -- type ) {: a:ptr u:n :}
    TYPE-OP-ABI:READ a NULL-PTR - u OP ;
 
 : PTR ( type -- type ) {: t:type :}
    TYPE-OP-ABI:PTR t TYPE>N 0 OP ;
 
 \ The effect with no inputs and no outputs.
-: NEW ( -- type ) TYPE-OP-ABI:EFFECT 0 0 OP ;
+: EMPTY ( -- type ) TYPE-OP-ABI:EFFECT 0 0 OP ;
 
 \ Effect E with T as its new top input.
 : IN ( type type -- type ) {: e:type t:type :}
@@ -97,7 +97,7 @@ public
 
 \ Declares the variable the string names, holding one T, as
 \ TYPED-VARIABLE does.
-: VARIABLE ( ptr u8 n type -- ) {: t:type :}
+: VARIABLE-OF ( ptr u8 n type -- ) {: t:type :}
    t TYPE>N data-base PROVIDED-XT:VARIABLE-CELL + @ AS-VARIABLE execute ;
 
 ;package

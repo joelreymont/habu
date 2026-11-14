@@ -184,8 +184,8 @@ variable WORD-LEN
 : STEP-NAME ( -- ptr u8 n )
    0 WORD-LEN ! NAME$ WORD+ s" -STEP" WORD+ WORD$ ;
 
-: CTX-TYPE ( -- EFFECT:type ) CTX$ EFFECT:READ ;
-: STATES-TYPE ( -- EFFECT:type ) STATES$ EFFECT:READ ;
+: CTX-TYPE ( -- EFFECT:type ) CTX$ EFFECT:READ-TYPE ;
+: STATES-TYPE ( -- EFFECT:type ) STATES$ EFFECT:READ-TYPE ;
 
 \ `construct <states> <state>`.
 : NEW-STATE ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -195,7 +195,7 @@ variable WORD-LEN
 
 \ <word> ( CTX -- ) runs the ACTION, `drop` for `-`.
 : ACT-WORD ( ptr u8 n ptr u8 n -- ) {: w:ptr wu:n a:ptr au:n :}
-   w wu EFFECT:NEW CTX-TYPE EFFECT:IN define-word
+   w wu EFFECT:EMPTY CTX-TYPE EFFECT:IN define-word
    a au s" -" STR= if postpone drop else a au EFFECT:CALL then
    postpone ; ;
 
@@ -230,9 +230,9 @@ variable WORD-LEN
 : ROW-WORD ( n -- ) {: r:n :}
    r ROW-AT @ {: k:n :}
    k STATE-NAME
-   EFFECT:NEW CTX-TYPE EFFECT:IN STATES-TYPE EFFECT:OUT define-word
+   EFFECT:EMPTY CTX-TYPE EFFECT:IN STATES-TYPE EFFECT:OUT define-word
    postpone dup  k 1+ TOK$ EFFECT:CALL
-   s" match" EFFECT:KEYWORD  k 2 + TOK$ 2dup EFFECT:READ EFFECT:TYPE-ITEM
+   s" match" EFFECT:KEYWORD  k 2 + TOK$ 2dup EFFECT:READ-TYPE EFFECT:TYPE-ITEM
    r ROW-LINES @ 0 ?do k  k i LINE-TOK  LINE-ARM loop
    s" ;match" EFFECT:KEYWORD  postpone ; ;
 
@@ -250,7 +250,7 @@ variable WORD-LEN
    k STATE-NAME EFFECT:CALL  s" endof" EFFECT:KEYWORD ;
 
 : STEP-EFFECT ( -- EFFECT:type )
-   EFFECT:NEW CTX-TYPE EFFECT:IN STATES-TYPE EFFECT:IN
+   EFFECT:EMPTY CTX-TYPE EFFECT:IN STATES-TYPE EFFECT:IN
    STATES-TYPE EFFECT:OUT s" bool" EFFECT:NAMED EFFECT:OUT ;
 
 \ <NAME>-STEP ( CTX STATES -- STATES bool ) match <states> … ;match swap
@@ -262,7 +262,7 @@ variable WORD-LEN
 
 \ <NAME> ( CTX STATES -- ) begin over swap <NAME>-STEP until 2drop
 : RUN-WORD ( -- )
-   NAME$ EFFECT:NEW CTX-TYPE EFFECT:IN STATES-TYPE EFFECT:IN define-word
+   NAME$ EFFECT:EMPTY CTX-TYPE EFFECT:IN STATES-TYPE EFFECT:IN define-word
    s" begin" EFFECT:KEYWORD  postpone over  postpone swap
    STEP-NAME EFFECT:CALL  s" until" EFFECT:KEYWORD
    postpone 2drop  postpone ; ;
