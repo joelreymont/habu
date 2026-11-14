@@ -17,9 +17,10 @@
 \ cell roots the code it names and a read pointer cell makes its target's unit
 \ live; each placed emission's data addresses make theirs live. An address
 \ where one extent ends and the next starts may be either one's end or the
-\ other's start, and makes both live; one where a piece ends and no piece
-\ starts is the piece's. An address in an interned body keeps that body alone:
-\ a header body lies in the header, any other in the piece that first interned
+\ other's start, and makes both live, unless the one ending holds strings,
+\ whose ends lie in their bodies; one where a piece ends and no piece starts
+\ is the piece's. An address in an interned body keeps that body alone: a
+\ header body lies in the header, any other in the piece that first interned
 \ it, and every later piece spelling it shares it. The copy holds the dead
 \ units and the header's bodies, all but the kept bodies, and every address
 \ cell not read as zeros, and lists none of them. An engine keeps every unit
@@ -110,15 +111,16 @@ variable STR-N
    u BUILT-EXTS-N @ < if u 0 BUILT-EXT @ ROW-REACH then ;
 
 
-\ Each extent of BUILT row row from b down that ends at v: those starting at v
-\ hold no byte, and the first starting below v ends the walk.
+\ Each extent of BUILT row row from b down that ends at v, but one of strings,
+\ whose ends lie in their bodies: those starting at v hold no byte, and the
+\ first starting below v ends the walk.
 : REACH-ENDS ( n n n -- )
    {: v:n row:n b:n :}
    row 2 * ROW-EXTS @ {: first:n :}
    b begin dup first >= while
       {: k:n :}
       k EXT-SPAN {: start:n len:n :}
-      start len + v = if k REACH-UNIT then
+      start len + v =  k 1 BUILT-EXT @ 2 <>  and if k REACH-UNIT then
       start v < if exit then
       k 1 -
    repeat
@@ -143,8 +145,8 @@ variable STR-N
    n 0 ?do 0 i STR-KEPT ! loop ;
 
 
-\ The body whose bytes [b, b + its length) hold data address v, -1 for none; an
-\ empty body holds the byte LAY gives it.
+\ The body whose bytes [b, b + its length] hold data address v, -1 for none;
+\ LAY gives every body the byte past its text.
 : STRING-OF ( n -- n )
    {: v:n :}
    0 STR-N @
@@ -155,7 +157,7 @@ variable STR-N
    drop 1 - {: k:n :}
    k 0< if -1 exit then
    k STR-AT @ {: b:n :}
-   v  b  b BODY-U 1 max +  < if k exit then
+   v  b  b BODY-U 1 + +  < if k exit then
    -1 ;
 
 
