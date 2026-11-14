@@ -405,6 +405,16 @@ public
    k ku NOTE+  PIECE,
    LFAULT-DEC LABEL@ BL, ;
 
+\ A note with the bytes at the pointer register, the length register's count of
+\ them. Both are among x3..x7, which the record's parts keep until a note writes
+\ x6 or x7.
+: FAULT-TEXT, ( ptr u8 n n n -- ) {: k:ptr ku:n p:n l:n :}
+   p 3 < p 7 > or  l 3 < or  l 7 > or IF
+      s" crash: a FAULT-TEXT, register is outside x3..x7" 76 die
+   THEN
+   k ku NOTE+  PIECE,
+   10 p 0 ADDI,  11 l 0 ADDI,  9 17 0 ADDI,  LFAULT-PUT LABEL@ BL, ;
+
 \ A note with the address in the register, `0x` and 16 hex digits; the
 \ register is copied first.
 : FAULT-ADDRESS, ( ptr u8 n n -- ) {: k:ptr ku:n r:n :}

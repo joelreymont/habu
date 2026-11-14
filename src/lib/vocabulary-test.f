@@ -68,26 +68,12 @@ variable CODE                          \ the last child's exit code, -1 when it 
      some OF IDX>N a swap ENDOF
    ;MATCH ;
 
-\ The span from its `test/policy/` on; the whole span when it has none.
-: TREE-PATH ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   a u DIR$ FIND-SUB MATCH option
-     none OF a u ENDOF
-     some OF IDX>N {: at:n :} a at + u at - ENDOF
-   ;MATCH ;
-
-\ Append the first stderr line to the builder, the absolute path after
-\ `habu: ` cut back to the one the harness was given.
+\ Append the first stderr line to the builder.
 : SAID+ ( CMD:command -- CMD:command )
-   ERR-LINE$ {: a:ptr u:n :}
-   a u s" habu: /" FIND-SUB MATCH option
-     none OF a u SB-APPEND ENDOF
-     some OF IDX>N 6 + {: cut:n :}
-        a cut SB-APPEND
-        a cut + u cut - TREE-PATH SB-APPEND ENDOF
-   ;MATCH ;
+   ERR-LINE$ SB-APPEND ;
 
-\ The first `want` bytes of that line, so a row states as much of a diagnostic
-\ as the seal owns: a policy line whole, a checker line by its head.
+\ The first `want` bytes of that line, so a case pins a record's first line
+\ whole or by its head.
 : SAID-HEAD$ ( CMD:command n -- CMD:command ptr u8 n ) {: want:n :}
    SB-RESET SAID+
    SB$ {: a:ptr u:n :}
@@ -120,12 +106,34 @@ variable CODE                          \ the last child's exit code, -1 when it 
 : RUNS ( ptr u8 n n ptr u8 n ptr u8 n -- )
    [: RUNS-IN ;] CMD:WITH-COMMAND ;
 
-\ The engine's one refusal: the located line, ENGINE-ERROR:POLICY, no output.
-: REFUSES ( ptr u8 n ptr u8 n -- ) {: name:ptr nu:n line:ptr lu:n :}
-   name nu ENGINE-ERROR:POLICY line lu s" " RUNS ;
+\ RUNS, and a span the whole stderr holds: the record's place or its notes.
+: SAYS-IN ( ptr u8 n n ptr u8 n ptr u8 n ptr u8 n CMD:command -- CMD:command )
+   >r {: name:ptr nu:n rc:n line:ptr lu:n span:ptr su:n out:ptr ou:n :} r>
+   >r name nu rc line lu out ou r> RUNS-IN
+   name nu s" stderr span" LABEL
+   CMD:ERR$ span su CONTAINS? TTRUE ;
 
-: TIER0-REFUSES ( ptr u8 n ptr u8 n -- ) {: name:ptr nu:n line:ptr lu:n :}
-   TIER0 name nu line lu REFUSES ;
+: SAYS ( ptr u8 n n ptr u8 n ptr u8 n ptr u8 n -- )
+   [: SAYS-IN ;] CMD:WITH-COMMAND ;
+
+\ A rejection the engine throws: the record's first line and its place,
+\ ENGINE-ERROR:POLICY, no output.
+: REFUSES ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: name:ptr nu:n line:ptr lu:n place:ptr pu:n :}
+   name nu ENGINE-ERROR:POLICY line lu place pu s" " SAYS ;
+
+: TIER0-REFUSES ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: name:ptr nu:n line:ptr lu:n place:ptr pu:n :}
+   TIER0 name nu line lu place pu REFUSES ;
+
+\ A harness the engine stops with an E-POLICY record: its first line, the
+\ notes span, the stdout.
+: STOPS ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: line:ptr lu:n notes:ptr nu:n out:ptr ou:n :}
+   s" " ENGINE-ERROR:POLICY line lu notes nu out ou SAYS ;
+
+: SEALED$ ( -- ptr u8 n ) s" error[E-POLICY]: the vocabulary is sealed" ;
+: KEYWORD$ ( -- ptr u8 n ) s" error[E-POLICY]: a package publishes a word spelled like a keyword" ;
 
 : OK-OUT$ ( -- ptr u8 n ) S\" 42\n5\n5\n42\n0\n11\n" ;
 
@@ -135,10 +143,10 @@ variable CODE                          \ the last child's exit code, -1 when it 
 
 : ESCAPED ( -- )
    TIER0 s" escaped" 0 s" " S\" Bracket \\ \"Café\"Bracket \\ \"Café\"" RUNS
-   TIER0 s" escaped-tail" 107 s" E-POLICY habu: test/policy/escaped-tail.f:3: not in vocabulary: required" S\" Bracket \\ \"Café\"" RUNS
-   s" escaped-body-tail" s" E-POLICY habu: test/policy/escaped-body-tail.f:2: not in vocabulary: required" TIER0-REFUSES
-   s" escaped-c" S\" E-POLICY habu: test/policy/escaped-c.f:2: not in vocabulary: C\\\q" TIER0-REFUSES
-   s" escaped-dotq" S\" E-POLICY habu: test/policy/escaped-dotq.f:2: not in vocabulary: .\\\q" TIER0-REFUSES ;
+   TIER0 s" escaped-tail" 107 s" error[E-POLICY]: `required` is not in the vocabulary this source may use" s" test/policy/escaped-tail.f:3:" S\" Bracket \\ \"Café\"" SAYS
+   s" escaped-body-tail" s" error[E-POLICY]: `required` is not in the vocabulary this source may use" s" test/policy/escaped-body-tail.f:2:" TIER0-REFUSES
+   s" escaped-c" S\" error[E-POLICY]: `C\\\q` is not in the vocabulary this source may use" s" test/policy/escaped-c.f:2:" TIER0-REFUSES
+   s" escaped-dotq" S\" error[E-POLICY]: `.\\\q` is not in the vocabulary this source may use" s" test/policy/escaped-dotq.f:2:" TIER0-REFUSES ;
 
 \ The seal removes words; it does not change what an admitted program does, what
 \ the checker refuses, how a throw ends the process, or the refusal of a source
@@ -147,46 +155,46 @@ variable CODE                          \ the last child's exit code, -1 when it 
    TIER0 s" ok" 0 s" " OK-OUT$ RUNS
    TIER0 s" dead" 67 s" hb: uncaught throw code -30001" s" " RUNS
    TIER0 s" throw" 67 s" hb: uncaught throw code -30001" s" " RUNS
-   TIER0 s" checked" 70 s" habu: in bad: at 'BAD' expected: n" s" " RUNS
-   TIER0 s" eof" 74 s" E-VS-UNTERMINATED-DEFINITION habu: test/policy/eof.f:2: source ended inside definition: X" s" " RUNS
+   TIER0 s" checked" 70 s" error[E-MISMATCH]: the body ends with nothing on the stack; the signature promises n" s" test/policy/checked.f:2:" s" " SAYS
+   TIER0 s" eof" 74 s" error[E-VS-UNTERMINATED-DEFINITION]: the source ends inside the definition of `X`" s" test/policy/eof.f:2:" s" " SAYS
    LOCALS ESCAPED ;
 
 : LOADERS ( -- )
-   s" bypass" s" E-POLICY habu: test/policy/bypass.f:2: not in vocabulary: require" TIER0-REFUSES
-   s" included" s" E-POLICY habu: test/policy/included.f:1: not in vocabulary: included" TIER0-REFUSES
-   s" evaluate" s" E-POLICY habu: test/policy/evaluate.f:1: not in vocabulary: evaluate" TIER0-REFUSES ;
+   s" bypass" s" error[E-POLICY]: `require` is not in the vocabulary this source may use" s" test/policy/bypass.f:2:" TIER0-REFUSES
+   s" included" s" error[E-POLICY]: `included` is not in the vocabulary this source may use" s" test/policy/included.f:1:" TIER0-REFUSES
+   s" evaluate" s" error[E-POLICY]: `evaluate` is not in the vocabulary this source may use" s" test/policy/evaluate.f:1:" TIER0-REFUSES ;
 
 : KEYWORDS ( -- )
-   s" trusted" s" E-POLICY habu: test/policy/trusted.f:1: not in vocabulary: trusted:" TIER0-REFUSES
-   s" tick" s" E-POLICY habu: test/policy/tick.f:2: not in vocabulary: '" TIER0-REFUSES
-   s" string" S\" E-POLICY habu: test/policy/string.f:2: not in vocabulary: c\q" TIER0-REFUSES ;
+   s" trusted" s" error[E-POLICY]: `trusted:` is not in the vocabulary this source may use" s" test/policy/trusted.f:1:" TIER0-REFUSES
+   s" tick" s" error[E-POLICY]: `'` is not in the vocabulary this source may use" s" test/policy/tick.f:2:" TIER0-REFUSES
+   s" string" S\" error[E-POLICY]: `c\q` is not in the vocabulary this source may use" s" test/policy/string.f:2:" TIER0-REFUSES ;
 
 \ A global a used package also exports is outside the vocabulary before it is
 \ shadowed: the seal refuses it ahead of the shadowing rule, as in a body.
 \ A package loaded before the seal, admitted or not, cannot be reopened: inside
 \ it its private words come first. ok.f reopens the design's own package.
 : SCOPES ( -- )
-   s" using-ffi" s" E-POLICY habu: test/policy/using-ffi.f:3: not in vocabulary: NOW" TIER0-REFUSES
-   s" shadow" s" E-POLICY habu: test/policy/shadow.f:3: not in vocabulary: emit" TIER0-REFUSES
-   s" private" s" E-POLICY habu: test/policy/private.f:2: not in vocabulary: PDEP:HIDDEN" TIER0-REFUSES
-   s" reopen" s" E-POLICY habu: test/policy/reopen.f:2: policy: package PDEP predates the seal" TIER0-REFUSES
-   s" reopen-foreign" s" E-POLICY habu: test/policy/reopen-foreign.f:2: policy: package PFOREIGN predates the seal" TIER0-REFUSES
-   s" foreign-call" s" E-POLICY habu: test/policy/foreign-call.f:2: not in vocabulary: PFOREIGN:LEAK" TIER0-REFUSES
-   s" undefined" s" E-POLICY habu: test/policy/undefined.f:1: not in vocabulary: NOSUCHWORD" TIER0-REFUSES ;
+   s" using-ffi" s" error[E-POLICY]: `NOW` is not in the vocabulary this source may use" s" test/policy/using-ffi.f:3:" TIER0-REFUSES
+   s" shadow" s" error[E-POLICY]: `emit` is not in the vocabulary this source may use" s" test/policy/shadow.f:3:" TIER0-REFUSES
+   s" private" s" error[E-POLICY]: `PDEP:HIDDEN` is not in the vocabulary this source may use" s" test/policy/private.f:2:" TIER0-REFUSES
+   s" reopen" s" error[E-POLICY]: package `PDEP` predates the seal, so sealed source cannot reopen it" s" test/policy/reopen.f:2:" TIER0-REFUSES
+   s" reopen-foreign" s" error[E-POLICY]: package `PFOREIGN` predates the seal, so sealed source cannot reopen it" s" test/policy/reopen-foreign.f:2:" TIER0-REFUSES
+   s" foreign-call" s" error[E-POLICY]: `PFOREIGN:LEAK` is not in the vocabulary this source may use" s" test/policy/foreign-call.f:2:" TIER0-REFUSES
+   s" undefined" s" error[E-POLICY]: `NOSUCHWORD` is not in the vocabulary this source may use" s" test/policy/undefined.f:1:" TIER0-REFUSES ;
 
 : WIDENING ( -- )
-   s" allow-call" s" E-POLICY habu: test/policy/allow-call.f:2: not in vocabulary: VOCABULARY:ALLOW-PACKAGE" TIER0-REFUSES
-   s" seal-call" s" E-POLICY habu: test/policy/seal-call.f:2: not in vocabulary: VOCABULARY:RESTRICT" TIER0-REFUSES ;
+   s" allow-call" s" error[E-POLICY]: `VOCABULARY:ALLOW-PACKAGE` is not in the vocabulary this source may use" s" test/policy/allow-call.f:2:" TIER0-REFUSES
+   s" seal-call" s" error[E-POLICY]: `VOCABULARY:RESTRICT` is not in the vocabulary this source may use" s" test/policy/seal-call.f:2:" TIER0-REFUSES ;
 
 \ Tier 0 refuses at its compile rows and call lookup.
 : BODIES ( -- )
-   s" capture" s" E-POLICY habu: test/policy/capture.f:2: not in vocabulary: require" TIER0-REFUSES
-   s" execute" s" E-POLICY habu: test/policy/execute.f:1: not in vocabulary: execute" TIER0-REFUSES
-   s" store" s" E-POLICY habu: test/policy/store.f:1: not in vocabulary: !" TIER0-REFUSES
-   s" arith" s" E-POLICY habu: test/policy/arith.f:1: not in vocabulary: +" TIER0-REFUSES
-   s" dotq" S\" E-POLICY habu: test/policy/dotq.f:2: not in vocabulary: .\q" TIER0-REFUSES
-   s" used" s" E-POLICY habu: test/policy/used.f:3: not in vocabulary: LEAK" TIER0-REFUSES
-   s" internal" s" E-POLICY habu: test/policy/internal.f:4: not in vocabulary: STEP" TIER0-REFUSES ;
+   s" capture" s" error[E-POLICY]: `require` is not in the vocabulary this source may use" s" test/policy/capture.f:2:" TIER0-REFUSES
+   s" execute" s" error[E-POLICY]: `execute` is not in the vocabulary this source may use" s" test/policy/execute.f:1:" TIER0-REFUSES
+   s" store" s" error[E-POLICY]: `!` is not in the vocabulary this source may use" s" test/policy/store.f:1:" TIER0-REFUSES
+   s" arith" s" error[E-POLICY]: `+` is not in the vocabulary this source may use" s" test/policy/arith.f:1:" TIER0-REFUSES
+   s" dotq" S\" error[E-POLICY]: `.\q` is not in the vocabulary this source may use" s" test/policy/dotq.f:2:" TIER0-REFUSES
+   s" used" s" error[E-POLICY]: `LEAK` is not in the vocabulary this source may use" s" test/policy/used.f:3:" TIER0-REFUSES
+   s" internal" s" error[E-POLICY]: `STEP` is not in the vocabulary this source may use" s" test/policy/internal.f:4:" TIER0-REFUSES ;
 
 \ A keyword the native compiler models itself, a character literal, a call to
 \ the definition being compiled and a `:}` outside a `{:` group are neither
@@ -194,18 +202,18 @@ variable CODE                          \ the last child's exit code, -1 when it 
 \ the checker reads the body. `[package]`, in the design span, compiles.
 : MODELED ( -- )
    TIER0 s" package-literal" 0 s" " s" pdesign-name" RUNS
-   s" begin" s" E-POLICY habu: test/policy/begin.f:1: not in vocabulary: begin" TIER0-REFUSES
-   s" recurse" s" E-POLICY habu: test/policy/recurse.f:1: not in vocabulary: recurse" TIER0-REFUSES
-   s" quote" s" E-POLICY habu: test/policy/quote.f:1: not in vocabulary: [:" TIER0-REFUSES
-   s" btick" s" E-POLICY habu: test/policy/btick.f:2: not in vocabulary: [']" TIER0-REFUSES
-   s" char-literal" s" E-POLICY habu: test/policy/char-literal.f:2: not in vocabulary: [char]" TIER0-REFUSES
-   s" self" s" E-POLICY habu: test/policy/self.f:1: not in vocabulary: R" TIER0-REFUSES
-   s" exit" s" E-POLICY habu: test/policy/exit.f:1: not in vocabulary: exit" TIER0-REFUSES
-   s" bracket" s" E-POLICY habu: test/policy/bracket.f:2: not in vocabulary: [" TIER0-REFUSES
-   s" postpone" s" E-POLICY habu: test/policy/postpone.f:1: not in vocabulary: postpone" TIER0-REFUSES
-   s" rstack" s" E-POLICY habu: test/policy/rstack.f:1: not in vocabulary: >r" TIER0-REFUSES
-   s" do" s" E-POLICY habu: test/policy/do.f:1: not in vocabulary: do" TIER0-REFUSES
-   s" stray-close" s" E-POLICY habu: test/policy/stray-close.f:1: not in vocabulary: :}" TIER0-REFUSES ;
+   s" begin" s" error[E-POLICY]: `begin` is not in the vocabulary this source may use" s" test/policy/begin.f:1:" TIER0-REFUSES
+   s" recurse" s" error[E-POLICY]: `recurse` is not in the vocabulary this source may use" s" test/policy/recurse.f:1:" TIER0-REFUSES
+   s" quote" s" error[E-POLICY]: `[:` is not in the vocabulary this source may use" s" test/policy/quote.f:1:" TIER0-REFUSES
+   s" btick" s" error[E-POLICY]: `[']` is not in the vocabulary this source may use" s" test/policy/btick.f:2:" TIER0-REFUSES
+   s" char-literal" s" error[E-POLICY]: `[char]` is not in the vocabulary this source may use" s" test/policy/char-literal.f:2:" TIER0-REFUSES
+   s" self" s" error[E-POLICY]: `R` is not in the vocabulary this source may use" s" test/policy/self.f:1:" TIER0-REFUSES
+   s" exit" s" error[E-POLICY]: `exit` is not in the vocabulary this source may use" s" test/policy/exit.f:1:" TIER0-REFUSES
+   s" bracket" s" error[E-POLICY]: `[` is not in the vocabulary this source may use" s" test/policy/bracket.f:2:" TIER0-REFUSES
+   s" postpone" s" error[E-POLICY]: `postpone` is not in the vocabulary this source may use" s" test/policy/postpone.f:1:" TIER0-REFUSES
+   s" rstack" s" error[E-POLICY]: `>r` is not in the vocabulary this source may use" s" test/policy/rstack.f:1:" TIER0-REFUSES
+   s" do" s" error[E-POLICY]: `do` is not in the vocabulary this source may use" s" test/policy/do.f:1:" TIER0-REFUSES
+   s" stray-close" s" error[E-POLICY]: `:}` is not in the vocabulary this source may use" s" test/policy/stray-close.f:1:" TIER0-REFUSES ;
 
 \ No keyword row: at tier 0 the row would answer a global name before any
 \ lookup. A row outside the design span is refused as a token; a row inside it
@@ -214,44 +222,44 @@ variable CODE                          \ the last child's exit code, -1 when it 
 \ first. So do `:}` (in the span), `kernel:` and `;match`, compared only inside
 \ their construct.
 : NAMES ( -- )
-   s" kwname" s" E-POLICY habu: test/policy/kwname.f:2: not in vocabulary: begin" TIER0-REFUSES
-   s" own-keyword" s" E-POLICY habu: test/policy/own-keyword.f:4: not in vocabulary: dup" TIER0-REFUSES
-   s" defname-p2" s" E-POLICY habu: test/policy/defname-p2.f:2: not in vocabulary: tuck" TIER0-REFUSES
-   s" own-p2-keyword" s" E-POLICY habu: test/policy/own-p2-keyword.f:5: not in vocabulary: tuck" TIER0-REFUSES
-   s" defname-interpret" s" E-POLICY habu: test/policy/defname-interpret.f:2: not in vocabulary: create" TIER0-REFUSES
-   TIER0 s" defname-span" 70 s" E-RESERVED-DEFINITION habu: test/policy/defname-span.f:2: compile keyword cannot be a definition name: package" s" " RUNS
-   TIER0 s" defname-endloc" 70 s" E-RESERVED-DEFINITION habu: test/policy/defname-endloc.f:4: compile keyword cannot be a definition name: :}" s" " RUNS
-   s" defname-kernel" s" E-POLICY habu: test/policy/defname-kernel.f:4: not in vocabulary: kernel:" TIER0-REFUSES
-   s" defname-semimatch" s" E-POLICY habu: test/policy/defname-semimatch.f:4: not in vocabulary: ;match" TIER0-REFUSES ;
+   s" kwname" s" error[E-POLICY]: `begin` is an engine keyword outside the vocabulary and cannot name a definition" s" test/policy/kwname.f:2:" TIER0-REFUSES
+   s" own-keyword" s" error[E-POLICY]: `dup` is an engine keyword outside the vocabulary and cannot name a definition" s" test/policy/own-keyword.f:4:" TIER0-REFUSES
+   s" defname-p2" s" error[E-POLICY]: `tuck` is an engine keyword outside the vocabulary and cannot name a definition" s" test/policy/defname-p2.f:2:" TIER0-REFUSES
+   s" own-p2-keyword" s" error[E-POLICY]: `tuck` is an engine keyword outside the vocabulary and cannot name a definition" s" test/policy/own-p2-keyword.f:5:" TIER0-REFUSES
+   s" defname-interpret" s" error[E-POLICY]: `create` is an engine keyword outside the vocabulary and cannot name a definition" s" test/policy/defname-interpret.f:2:" TIER0-REFUSES
+   TIER0 s" defname-span" 70 s" error[E-RESERVED-DEFINITION]: `package` is a compile keyword and cannot name a definition" s" test/policy/defname-span.f:2:" s" " SAYS
+   TIER0 s" defname-endloc" 70 s" error[E-RESERVED-DEFINITION]: `:}` is a compile keyword and cannot name a definition" s" test/policy/defname-endloc.f:4:" s" " SAYS
+   s" defname-kernel" s" error[E-POLICY]: `kernel:` is an engine keyword outside the vocabulary and cannot name a definition" s" test/policy/defname-kernel.f:4:" TIER0-REFUSES
+   s" defname-semimatch" s" error[E-POLICY]: `;match` is an engine keyword outside the vocabulary and cannot name a definition" s" test/policy/defname-semimatch.f:4:" TIER0-REFUSES ;
 
 : HARNESSES ( -- )
    s" allow-sealed-admit" HARNESS!
-   s" " ENGINE-ERROR:POLICY s" E-POLICY habu: policy: sealed lr " s" " RUNS
+   SEALED$ s" = in: ALLOW-PACKAGE" s" " STOPS
    s" allow-seal-twice" HARNESS!
-   s" " ENGINE-ERROR:POLICY s" E-POLICY habu: policy: sealed lr " s" " RUNS
+   SEALED$ s" = in: RESTRICT" s" " STOPS
    s" allow-no-package" HARNESS!
-   s" " ENGINE-ERROR:POLICY s" E-POLICY habu: policy: no package NOPE lr " s" " RUNS
+   s" error[E-POLICY]: no package" s" = package: NOPE" s" " STOPS
    s" allow-keyword-package" HARNESS!
-   s" " ENGINE-ERROR:POLICY s" E-POLICY habu: policy: package PKW publishes keyword DUP lr " s" " RUNS
+   KEYWORD$ S\" = package: PKW\n  = keyword: DUP\n" s" " STOPS
    s" allow-design-keyword-package" HARNESS!
-   s" " ENGINE-ERROR:POLICY s" E-POLICY habu: policy: package PSYNTAX publishes keyword package lr " s" " RUNS
+   KEYWORD$ S\" = package: PSYNTAX\n  = keyword: package\n" s" " STOPS
    s" allow-ordinary-keyword-package" HARNESS!
    s" ordinary-keyword" 0 s" " S\" 42\n" RUNS
    s" allow-p2-package" HARNESS!
-   s" " ENGINE-ERROR:POLICY s" E-POLICY habu: policy: package PTUCK publishes keyword TUCK lr " s" " RUNS
+   KEYWORD$ S\" = package: PTUCK\n  = keyword: TUCK\n" s" " STOPS
    s" allow-seal-keyword-package" HARNESS!
-   s" " ENGINE-ERROR:POLICY s" E-POLICY habu: policy: package PSEAL publishes keyword seal-package lr " s" " RUNS
+   KEYWORD$ S\" = package: PSEAL\n  = keyword: seal-package\n" s" " STOPS
    s" allow-task-package" HARNESS!
-   s" " ENGINE-ERROR:POLICY s" E-POLICY habu: policy: package PTKW publishes keyword DUP lr " S\" admitted\n0\n" RUNS
+   KEYWORD$ S\" = package: PTKW\n  = keyword: DUP\n" S\" admitted\n0\n" STOPS
    s" allow-catch" HARNESS!
-   s" evaluate" 0 s" E-POLICY habu: test/policy/evaluate.f:1: not in vocabulary: evaluate" S\" 107\n" RUNS ;
+   s" evaluate" 0 s" error[E-POLICY]: `evaluate` is not in the vocabulary this source may use" s" test/policy/evaluate.f:1:" S\" 107\n" SAYS ;
 
 \ A wordlist id at or above PROT-WID-MAX has no bit in the admission bitmap: it
 \ cannot be admitted, and a record in it is never in the vocabulary.
 : BOUND ( -- )
    s" allow-bound" HARNESS!
    s" " ENGINE-ERROR:POLICY s" E-POLICY habu: policy: package wid above the bound lr " s" " RUNS
-   s" far" s" E-POLICY habu: test/policy/far.f:2: not in vocabulary: PBIG:FAR" REFUSES ;
+   s" far" s" error[E-POLICY]: `PBIG:FAR` is not in the vocabulary this source may use" s" test/policy/far.f:2:" REFUSES ;
 
 \ A harness that bound the loaded-bytes seam to the interpret loop written in
 \ Habu, which reads no seal: a sealed load is read by the engine's loop all the
@@ -259,32 +267,35 @@ variable CODE                          \ the last child's exit code, -1 when it 
 : SEAM ( -- )
    s" allow-interpreter" HARNESS!
    s" ok" 0 s" " OK-OUT$ RUNS
-   s" bypass" s" E-POLICY habu: test/policy/bypass.f:2: not in vocabulary: require" REFUSES ;
+   s" bypass" s" error[E-POLICY]: `require` is not in the vocabulary this source may use" s" test/policy/bypass.f:2:" REFUSES ;
+
+\ A record that names a path outside the root, whose head is the same for each.
+: ROOT$ ( -- ptr u8 n ) s" error[E-POLICY]: `" ;
 
 \ Confined static require uses the original source paths through nested loads.
 \ A registry hit or a symlink still has to pass the resolved path boundary.
 : CONFINED ( -- )
    s" allow-root" HARNESS!
    s" confined/scene" 0 s" " S\" 42\n" RUNS
-   s" confined/parent" s" E-POLICY habu: policy: source outside root: " REFUSES
-   s" confined/known" s" E-POLICY habu: policy: source outside root: " REFUSES
-   s" confined/library" s" E-POLICY habu: policy: source outside root: " REFUSES
-   s" confined/absolute" s" E-POLICY habu: policy: source outside root: " REFUSES
-   s" confined/symlink" s" E-POLICY habu: policy: source outside root: " REFUSES
-   s" confined/forbidden" s" E-POLICY habu: test/policy/confined/forbidden.f:1: not in vocabulary: included" REFUSES
-   s" confined/body" s" E-POLICY habu: test/policy/confined/body.f:1: not in vocabulary: require" REFUSES
-   s" confined/string-required" s" E-POLICY habu: test/policy/confined/string-required.f:1: not in vocabulary: required" REFUSES
-   s" confined/root-call" s" E-POLICY habu: test/policy/confined/root-call.f:1: not in vocabulary: VOCABULARY:SOURCE-ROOT!" REFUSES
+   s" confined/parent" ROOT$ s" /test/policy/outside.f` lies outside the source root" REFUSES
+   s" confined/known" ROOT$ s" /test/policy/dep.f` lies outside the source root" REFUSES
+   s" confined/library" ROOT$ s" /src/lib/string.f` lies outside the source root" REFUSES
+   s" confined/absolute" ROOT$ s" /etc/passwd` lies outside the source root" REFUSES
+   s" confined/symlink" ROOT$ s" /test/policy/outside.f` lies outside the source root" REFUSES
+   s" confined/forbidden" s" error[E-POLICY]: `included` is not in the vocabulary this source may use" s" test/policy/confined/forbidden.f:1:" REFUSES
+   s" confined/body" s" error[E-POLICY]: `require` is not in the vocabulary this source may use" s" test/policy/confined/body.f:1:" REFUSES
+   s" confined/string-required" s" error[E-POLICY]: `required` is not in the vocabulary this source may use" s" test/policy/confined/string-required.f:1:" REFUSES
+   s" confined/root-call" s" error[E-POLICY]: `VOCABULARY:SOURCE-ROOT!` is not in the vocabulary this source may use" s" test/policy/confined/root-call.f:1:" REFUSES
    s" allow-root-direct" HARNESS!
-   s" " 107 s" E-POLICY habu: policy: source outside root: " s" " RUNS
+   s" " 107 ROOT$ s" /test/policy/confined/link.f` lies outside the source root" s" " SAYS
    s" allow-root-preflight" HARNESS!
-   s" " 0 s" E-POLICY habu: policy: source outside root: " S\" 0\n107\n0\n\n" RUNS
+   s" " 0 ROOT$ s" /test/policy/outside.f` lies outside the source root" S\" 0\n107\n0\n\n" SAYS
    s" allow-root-scope-throw" HARNESS!
    s" " 0 s" " S\" -30001\n0\n\n" RUNS
    s" allow-root-scope-nested" HARNESS!
-   s" " 0 s" E-POLICY habu: policy: source outside root: " S\" 107\n0\n0\n\n" RUNS
+   s" " 0 ROOT$ s" /test/policy/confined/value.f` lies outside the source root" S\" 107\n0\n0\n\n" SAYS
    s" allow-root-scope-seal" HARNESS!
-   s" " 0 s" E-POLICY habu: policy: sealed" S\" 107\n107\n107\n107\n\n" RUNS ;
+   s" " 0 s" error[E-POLICY]: the source policy is already sealed" s" test/policy/allow-root-scope-seal.f:14:" S\" 107\n107\n107\n107\n\n" SAYS ;
 
 public
 
