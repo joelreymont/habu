@@ -81,7 +81,7 @@ create TEXT CAP allot                  variable TEXT-U
    s" a public its private tail shadows is refused naming the definition" T-LABEL
    s" ;package package SAT-A : F ( n n -- n ) + ; public : F ( n -- n ) 1 + ; ;package" SESSION
    RC @ RC-REJECT T=
-   s" error[E-SHADOWED-ARITY]: public `sat-a:f` has a different stack effect" SAYS
+   s" error[E-SHADOWED-ARITY]: public `SAT-A:F` has a different stack effect" SAYS
    s" --> <input>:1:54" SAYS
    s" ^ its name binds the private word" SAYS ;
 
