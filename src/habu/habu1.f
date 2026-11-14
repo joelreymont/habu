@@ -3767,46 +3767,47 @@ private
    9 G-POP  LPROTWIDADD LABEL@ BL, ;
 
 \ The design seal's two writers. The harness admits packages and seals before
-\ it loads the design; once POLICY-NDICT-CELL is set either prim prints
-\ POLICY-SEALED$ and exits ENGINE-ERROR:POLICY, so nothing the design can reach
+\ it loads the design; once POLICY-NDICT-CELL is set either prim writes the
+\ sealed record and exits ENGINE-ERROR:POLICY, so nothing the design can reach
 \ widens its own vocabulary.
-: POLICY-SEALED$ ( -- ptr u8 n ) s" E-POLICY habu: policy: sealed" ;
-: POLICY-NOPKG$ ( -- ptr u8 n ) s" E-POLICY habu: policy: no package " ;
 : POLICY-BOUND$ ( -- ptr u8 n ) s" E-POLICY habu: policy: package wid above the bound" ;
-: POLICY-LR$ ( -- ptr u8 n ) s"  lr " ;
-: POLICY-PKG$ ( -- ptr u8 n ) s" E-POLICY habu: policy: package " ;
-: POLICY-KEYWORD$ ( -- ptr u8 n ) s"  publishes keyword " ;
+
+\ x3 = the caller's lr, read from FPRIM's frame.
+: POLICY-LR, ( -- )  3 SP 0 LDR, ;
+
+\ Note `in` and help, the dictionary read through x26/x27; never returns.
+: POLICY-STOP, ( ptr u8 n -- ) {: h:ptr hu:n :}
+   4 DBASE 0 ADDI,  6 NDICT 0 ADDI,  FAULT-IN,
+   h hu ENGINE-ERROR:POLICY FAULT-STOP, ;
 
 \ Unsealed it falls through, having written x9 only.
 : POLICY-OPEN, ( -- )
    LBL {: open:label :}
    9 DATA POLICY-NDICT-CELL LDR,  9 open CBZ,
-      POLICY-SEALED$ ENGINE-ERROR:POLICY DIE-LINE,
+      POLICY-LR,
+      s" E-POLICY" s" the vocabulary is sealed" FAULT-OPEN,
+      s" admit every package before `VOCABULARY:RESTRICT`" POLICY-STOP,
    open LBL, ;
 
 \ policy-admit ( ptr u8 n -- ): admit the public wordlist of the package the
 \ span names, found as a top-level `using` finds it.
 : BPOLICYADMIT ( -- )
-   LBL LBL LBL LBL LBL LBL LBL
-   {: found:label bounded:label nopkg:label lrmsg:label pkgmsg:label kwmsg:label walked:label :}
+   LBL LBL LBL {: found:label bounded:label walked:label :}
    POLICY-OPEN,
    1 G-POP  0 G-POP                                  \ x1 = name length, x0 = name
-   13 0 0 ADDI,                                      \ the name, for the refusals: the lookup leaves x13 and x1 alone
+   13 0 0 ADDI,                                      \ the name, for the records: the lookup leaves x13 and x1 alone
    2 DATA BOOT:NAMESPACE-WL-CELL LDR,
    WLFIND:LENTRY LABEL@ BL,                          \ x11 = public wid, x12 = the row or 0
    14 1 0 ADDI,                                      \ the kernel's writes keep x13/x14
    12 found CBNZ,
-      0 2 MOVZ,  1 nopkg ADR,  2 POLICY-NOPKG$ nip MOVZ,  NR-WRITE SYS,
-      0 2 MOVZ,  1 13 0 ADDI,  2 14 0 ADDI,  NR-WRITE SYS,
-      0 2 MOVZ,  1 lrmsg ADR,  2 POLICY-LR$ nip MOVZ,  NR-WRITE SYS,
-      9 SP 0 LDR,  LHEX LABEL@ BL,                   \ the caller's lr, FPRIM's frame
-      0 ENGINE-ERROR:POLICY MOVZ,  NR-EXIT-GROUP SYS,
+      4 13 0 ADDI,  5 14 0 ADDI,  POLICY-LR,
+      s" E-POLICY" s" no package has the name the program admits" FAULT-OPEN,
+      s" package" 4 5 FAULT-TEXT,
+      s" admit a package the program defines" POLICY-STOP,
    found LBL,
    15 PROT-WID-MAX MOVZ,  11 15 CMP,  C-CC bounded BCOND,
       0 CALLER-LR,                                   \ WLFIND's BL replaced x30
       POLICY-BOUND$ ENGINE-ERROR:POLICY DIE-LINE,
-   nopkg LBL,  POLICY-NOPKG$ BYTES,
-   lrmsg LBL,  POLICY-LR$ BYTES,
    bounded LBL,
    \ A public word spelled like a keyword would mean the keyword in one place and
    \ the word in another.
@@ -3815,16 +3816,11 @@ private
    15 G-POP  10 G-POP  9 G-POP
    11 SP 0 LDR,  13 SP 8 LDR,  14 SP 16 LDR,  SP SP 32 ADDI,
    15 walked CBZ,
-      SP SP 16 SUBI,  9 SP 0 STR,  10 SP 8 STR,
-      0 2 MOVZ,  1 pkgmsg ADR,  2 POLICY-PKG$ nip MOVZ,  NR-WRITE SYS,
-      0 2 MOVZ,  1 13 0 ADDI,  2 14 0 ADDI,  NR-WRITE SYS,
-      0 2 MOVZ,  1 kwmsg ADR,  2 POLICY-KEYWORD$ nip MOVZ,  NR-WRITE SYS,
-      0 2 MOVZ,  1 SP 0 LDR,  2 SP 8 LDR,  NR-WRITE SYS,
-      0 2 MOVZ,  1 lrmsg ADR,  2 POLICY-LR$ nip MOVZ,  NR-WRITE SYS,
-      9 SP 16 LDR,  LHEX LABEL@ BL,                  \ the caller's lr, above the keyword's slots
-      0 ENGINE-ERROR:POLICY MOVZ,  NR-EXIT-GROUP SYS,
-   pkgmsg LBL,  POLICY-PKG$ BYTES,
-   kwmsg LBL,  POLICY-KEYWORD$ BYTES,
+      4 13 0 ADDI,  5 14 0 ADDI,  6 9 0 ADDI,  7 10 0 ADDI,  POLICY-LR,
+      s" E-POLICY" s" a package publishes a word spelled like a keyword" FAULT-OPEN,
+      s" package" 4 5 FAULT-TEXT,
+      s" keyword" 6 7 FAULT-TEXT,
+      s" rename the word in that package" POLICY-STOP,
    walked LBL,
    14 POLICY-BITS-OFF MOVZ,  14 DATA 14 ADD,
    14 11 15 14 16 PROT-BITS-AT,                      \ x15 = &word, x14 = mask

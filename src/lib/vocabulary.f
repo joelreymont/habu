@@ -14,7 +14,7 @@ TYPED-VARIABLE REQUIRE-XT [ -- ]
 public
 
 \ Admit the public words of the package this span names. A name no package
-\ owns is `E-POLICY habu: policy: no package <name> lr <hex>`.
+\ owns exits with an E-POLICY record whose note `package` holds the name.
 : ALLOW-PACKAGE ( ptr u8 n -- ) policy-admit ;
 
 \ Opt in to ordinary static require within this canonical searchable directory.
@@ -52,13 +52,15 @@ public
 \ parsing word reads boundedly many tokens, no word stores to an address its caller
 \ supplies, and no word widens what the design can name (set-current,
 \ prot-wid-add, evaluate or included on caller data).
-\ Refusals are one stderr line of class E-POLICY and code 107. A token outside
-\ the vocabulary (at the token), a package that predates the seal, SOURCE-ROOT!
-\ or WITH-SOURCE-ROOT once sealed, and a source outside the root throw it, which
-\ a `catch` around `included` takes; ALLOW-PACKAGE or RESTRICT once sealed, an
-\ unknown package, a wid at or above PROT-WID-MAX (it has no admission bit) and
-\ a package publishing a word spelled like a dispatched keyword row, case folded
-\ (tier 0 would read it as the row, not the word), exit with it.
+\ Rejections print an E-POLICY rejection record and use code 107. A token
+\ outside the vocabulary (placed at the token), a package that predates the
+\ seal, SOURCE-ROOT! or WITH-SOURCE-ROOT once sealed, and a source outside the
+\ root throw it, which a `catch` around `included` takes. ALLOW-PACKAGE or
+\ RESTRICT once sealed, an unknown package and a package publishing a word
+\ spelled like a dispatched keyword row, case folded (tier 0 would read it as
+\ the row, not the word), exit with it; their records note `package`, `keyword`
+\ and `in`, the caller. A wid at or above PROT-WID-MAX (it has no admission bit)
+\ prints one line and exits with it.
 : RESTRICT ( -- ) policy-seal ;
 
 ;package
