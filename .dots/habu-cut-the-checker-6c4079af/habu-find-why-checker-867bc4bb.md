@@ -12,4 +12,4 @@ Finding 2026-11-06 (carl, worker on base hb 590a52d7, lldb counts on syn-8): 945
 
 Parked 2026-11-09 (carl): no lane runs and no commit was made; workspace carl-ck-guard is retired. The counts were taken on a tier-1-built hb at 590a52d7; the landed hb is built differently, so they are taken again on master first.
 
-On master the guard this dot measures is gone: ed77a82f "Delete the store guard" removed it, no PROT-SPAN, GUARD-BAND, GUARD-SPAN or DATA-BANDS is left in src, tools or test, habu1.f BSTORE (:1741) is a plain STR, and tier 1's src/compiler/native/emit.f is deleted.
+On master the guard this dot measures is gone: ed77a82f "Delete the store guard" removed it, no PROT-SPAN, GUARD-BAND, GUARD-SPAN or DATA-BANDS is left in src, tools or test, habu1.f BSTORE (:1709) is a plain STR, and tier 1's src/compiler/native/emit.f is deleted.

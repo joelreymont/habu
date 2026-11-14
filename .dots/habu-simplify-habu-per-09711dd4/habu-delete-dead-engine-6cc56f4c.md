@@ -6,7 +6,7 @@ issue-type: task
 created-at: "2026-10-15T17:16:30.800206+03:00"
 ---
 
-Problem: the variable RDP (src/core/util.f:89) has no caller in src, tools, test, zen, tender or maki (rg on master). src/core/roles.f VRDEF-FOLD-C and VRDEF-STR=CI (:179-190) duplicate src/core/util.f:47-54 CORE-FOLD-C and CORE-STR=CI, which load first. Words in habu1.f and habu2.f are left out: they are machinery being replaced (docs/design.md "Machinery being replaced").
+Problem: the variable RDP (src/core/util.f:56) has no caller in src, tools, test, zen, tender or maki (rg on master). src/core/roles.f VRDEF-FOLD-C and VRDEF-STR=CI (:184-195) duplicate src/core/util.f:47-54 CORE-FOLD-C and CORE-STR=CI, which load first. Words in habu1.f and habu2.f are left out: they are machinery being replaced (docs/design.md "Machinery being replaced").
 
 Acceptance: each word above deleted, or kept with the caller found, after rg shows no caller in src, tools, test, zen, tender or maki; roles.f uses util.f's two words; hb's behaviour unchanged apart from the removed words.
 

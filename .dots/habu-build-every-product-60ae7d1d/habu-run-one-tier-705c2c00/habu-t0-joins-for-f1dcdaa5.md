@@ -8,7 +8,7 @@ created-at: "2026-10-29T05:11:01.114852+02:00"
 
 Source, Joel: "T0 takes the JIT's techniques."
 
-Problem: T0, the tier 0 compiler, keeps the top of the data stack in registers (its virtual stack) where paths meet at `else`/`then`, a `begin` loop and a counted loop: the opener records a layout (SNAPSHOT) and each joining path reconciles to it (RECONCILE). Counted loops landed in a215caf3c3 and 4a80ee47f3. But "every `case` and MATCH join spills the whole virtual stack, so those paths meet with it empty" (src/habu/t0.f:173-174): `of`/`endof`/`endcase` (t0.f DO-ENDOF :1046, DO-ENDCASE :1054) and a MATCH's arms and its closing `;MATCH` (t0.f :1356-1369) store every value to memory and reload it after the join.
+Problem: T0, the tier 0 compiler, keeps the top of the data stack in registers (its virtual stack) where paths meet at `else`/`then`, a `begin` loop and a counted loop: the opener records a layout (SNAPSHOT) and each joining path reconciles to it (RECONCILE). Counted loops landed in a215caf3c3 and 4a80ee47f3. But "every `case` and MATCH join spills the whole virtual stack, so those paths meet with it empty" (src/habu/t0.f:173-174): `of`/`endof`/`endcase` (t0.f DO-ENDOF :1034, DO-ENDCASE :1043) and a MATCH's arms and its closing `;MATCH` (t0.f :1356-1369) store every value to memory and reload it after the join.
 
 Acceptance: `case` and MATCH record a layout at the opener and each arm's end reconciles to it, as `if`/`else`/`then` do; values live before a `case` or MATCH stay in registers across it; the comment at t0.f:168-174 says so.
 
