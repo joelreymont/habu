@@ -3860,18 +3860,9 @@ variable CAST-PATH-N
 
 CHECKER-REG:SCRATCH{
 variable LAYOUT-XPORT
-variable LAYOUT-INTRO
-CHECKER-REG:}SCRATCH
-PTR-VARIABLE LBUF-PEND-A
-variable LBUF-PEND-U   0 LBUF-PEND-U !
-variable LBUF-EVAL-OFF  0 LBUF-EVAL-OFF !  \ accessor effect offset + 1 in this eval window
-CHECKER-REG:SCRATCH{
 PTR-VARIABLE NMA  variable NMU           \ current definition name (set by DO-TOK1)
 CHECKER-REG:}SCRATCH
 variable NMOFF                           \ its token's offset in the checked text (NAME-TOK)
-: LBUF-PEND-MATCH? ( -- bool )
-   LBUF-PEND-U @ 0 > NMU @ 0 > and 0= IF RES-FALSE EXIT THEN
-   LBUF-PEND-A @ LBUF-PEND-U @ NMA @ NMU @ CORE-STR=CI ;
 
 \ An unresolved value parameter is possibly linear for a guard, but contributes
 \ nothing to the concrete count until it binds.
@@ -4016,7 +4007,6 @@ variable NMOFF                           \ its token's offset in the checked tex
 \ The reverse direction would introduce an identity through an untyped pointer.
 : NOMPTR-BLOCK? ( n n -- bool ) {: actual:n expected:n :}
    CUR-STRICT @ 0= IF RES-FALSE EXIT THEN
-   LAYOUT-INTRO @ 0 <> IF RES-FALSE EXIT THEN
    actual NOM-SCALAR? expected ISVAR and IF
       UNIFY-KIND @ UK-INPUT = IF
          expected PAY TVK-RAW? 0= IF RES-FALSE EXIT THEN
@@ -4044,12 +4034,6 @@ variable NMOFF                           \ its token's offset in the checked tex
       b ISVAR IF b PAY TVK@ TVK-NULL = IF RES-FALSE EXIT THEN THEN
    THEN
    a b LAYOUT-XPORT-ALLOW? IF RES-FALSE EXIT THEN
-   LAYOUT-INTRO @ 0 <> CUR-STRICT @ 0 <> and IF
-      a HIDDEN-PARAM? b HIDDEN-PARAM? or 0= IF
-         a LAYOUT-PARAM? b ISVAR and IF a T-RES LAYOUT-MEM-OK? 0= EXIT THEN
-         b LAYOUT-PARAM? a ISVAR and IF b T-RES LAYOUT-MEM-OK? 0= EXIT THEN
-      THEN
-   THEN
    a ADDR-VAR? b ADDR-VAR? or IF RES-FALSE EXIT THEN
    a b STORED-TAKES? IF RES-FALSE EXIT THEN
    b a STORED-TAKES? IF RES-FALSE EXIT THEN
@@ -4113,8 +4097,6 @@ CHECKER-REG:}SCRATCH
    drop
    kind TVK-NULL =  CUR-STRICT @ 0 <> and IF RES-FALSE EXIT THEN   \ the null inside a pointee: the pointer, not the cell
    kind BASE-PTR-HIT ! RES-TRUE ;
-\ LAYOUT-INTRO is set only while CHECK coerces the output row of the accessor a
-\ storage definer just generated, and user source cannot arm it.
 : OFF-RIDE ( n -- ) T-RES dup ISVAR IF PAY TVK-OFF TVK-RAISE-TO ELSE drop THEN ;
 : REGION-ATOM? ( n -- bool ) {: t:n :}
    t TAG T-ATOM <> IF RES-FALSE EXIT THEN
@@ -4171,7 +4153,6 @@ CHECKER-REG:}SCRATCH
       dup TAG T-STALE = IF STALE-HIT ! RES-TRUE EXIT THEN
       T-WIDTH 1 <> EXIT
    THEN
-   LAYOUT-INTRO @ 0 <> IF RES-FALSE EXIT THEN
    vid TVK-RAW? IF term RAW-OK? 0= EXIT THEN
    vid TVK@ TVK-OFF = IF term OFF-RIDE RES-FALSE EXIT THEN   \ offset row's pointee: provenance, never a fence
    vid TVK@ dup ANY-KIND? IF term STORED-LIFT RES-FALSE EXIT THEN drop
@@ -4873,7 +4854,7 @@ CHECKER-REG:}SCRATCH
 : NEW-WALK ( -- )
    0 CALL-ARMED !  0 CALL-HIT !
    -1 OK ! 0 UNCK ! 0 CATCH-PF-N ! 0 CATCH-N ! 0 FACTS ! 0 XFACT ! 0 USP !
-   0 LAYOUT-XPORT !  0 LAYOUT-INTRO !
+   0 LAYOUT-XPORT !
    TRAIL-RESET   0 TRIAL-DEPTH !   LIN-TAINT-RESET
    FRESH MK-ROW dup BROW ! DCUR !
    FRESH MK-ROW dup RBROW ! RCUR ! ;
@@ -10648,17 +10629,6 @@ CHECKER-REG:}SCRATCH
 : REC-MIN-IN@ ( -- n )
    RECMI @  0 RECMI ! ;
 
-\ E-ADD-EFFECT/E-ADD-DELETED are the only creators of USER records, so they own
-\ the in-place cache update. The cache stores offset+1 because offset 0 is a
-\ record's.
-: LBUF-EFFECT-RESULT ( n ptr u8 n -- )
-   {: handle:n name:ptr nameu:n :}
-   LBUF-PEND-U @ 0 > nameu 0 > and IF
-      LBUF-PEND-A @ LBUF-PEND-U @ name nameu CORE-STR=CI IF
-         handle LBUF-EVAL-OFF !
-      THEN
-   THEN ;
-
 : E-ADD-EFFECT ( n n n n bool bool -- )
    {: din:n dout:n rin:n rout:n hasr:bool external:bool :}
    WRITE-WINDOW-CK                       \ before RECW moves
@@ -10668,7 +10638,6 @@ CHECKER-REG:}SCRATCH
    RECW !
    din dout rin rout hasr E-BUILD-EFFECT {: off:n :}
    off 1 + DL-NEW !                     \ the record a registrar's DL-TAKE locates
-   off 1+ NMA @ NMU @ LBUF-EFFECT-RESULT
    external IF off E-PTR E-MINI@ ELSE 0 THEN RECMI !
    CHECKER-REC-SYM @ 0 <> HIDX-VALID @ and IF
       off 1 + CHECKER-REC-SYM @ HIDX-EFF!

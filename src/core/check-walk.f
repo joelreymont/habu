@@ -995,15 +995,6 @@ public
       s" the row is outside its owner's private section" E-LINEAR-SCOPE CAST-ERROR:RAISE
    THEN ;
 
-\ Generative layout-buffer authorization. Every arming-state dictionary name is
-\ erased once the allocator and CHECK are compiled, leaving only their baked
-\ direct references, so user source cannot arm or mutate the one-shot boundary.
-: LBUF-PEND! ( ptr u8 n -- ) {: a:ptr u:n :}
-   0 LBUF-EVAL-OFF !
-   a LBUF-PEND-A !  u LBUF-PEND-U ! ;
-: LBUF-PEND-CLEAR ( -- )
-   NULL-PTR LBUF-PEND-A !  0 LBUF-PEND-U !  0 LAYOUT-INTRO ! ;
-
 \ A body-supplied name left unbound takes a new identity, and only a region name may
 \ be bound: to one this body minted that no other name claims and FITS? admits.
 : FB-OWNED? ( n -- bool ) {: idx:n :}
@@ -1129,13 +1120,7 @@ public
          SGIN @ SUNI-COERCE
          SGIN @ KEEP-QUOTS
       ELSE
-         LBUF-PEND-MATCH? IF
-            -1 LAYOUT-INTRO !
-            CHECK-FRESH-OUTPUT
-            0 LAYOUT-INTRO !
-         ELSE
-            CHECK-FRESH-OUTPUT
-         THEN
+         CHECK-FRESH-OUTPUT
       THEN
       OK @ IF SGIN @ BROW !  SGOUT @ DCUR ! THEN
    THEN
@@ -2961,7 +2946,7 @@ CHECKER-REG:}SCRATCH
 \ The latches E-ADD-EFFECT sets for the record the engine publishes next.
 : GUEST-LATCHES ( n bool -- n ) {: save:bool :}
    DL-NEW save GUEST-CELL  RECW save GUEST-CELL  RECMI save GUEST-CELL
-   LBUF-EVAL-OFF save GUEST-CELL  CHECKER-REC-SYM save GUEST-CELL ;
+   CHECKER-REC-SYM save GUEST-CELL ;
 
 : GUEST-POINTERS ( bool -- ) {: save:bool :}
    0  SB 1 save GUEST-PTRS  SS 1 save GUEST-PTRS  PKA 1 save GUEST-PTRS

@@ -1,9 +1,8 @@
 \ layout-buffer.f: the generative storage definers LAYOUT-BUFFER (the only
 \ introduction form for `ptr layout`), DEFER-LAYOUT-BUFFER, TYPED-VARIABLE and
 \ TYPED-BUFFER, each making its words as typed children and laying each child's
-\ block at the address its body pushes. LBUF-EVAL evaluates a generated accessor
-\ the checker authorizes once, by name, in the armed window. A ptr variable
-\ never gains layout identity by unification.
+\ block at the address its body pushes. A ptr variable never gains layout
+\ identity by unification.
 
 using TYPE-DECL
 
@@ -36,10 +35,6 @@ variable LBUF-BYTES
       a LBUF-I @ + c@ LBUF-C,
       LBUF-I @ 1 + LBUF-I !
    repeat ;
-
-: LBUF-DEC, ( n -- ) {: n:n :}
-   n 10 >= if n 10 / recurse then
-   n 10 mod 48 + LBUF-C, ;
 
 : LBUF-EXTENT? ( n n -- n bool ) {: count:n width:n :}
    count 0 <= width 0 <= or if 0 LBUF-FALSE exit then
@@ -94,31 +89,9 @@ variable LBUF-BYTES
 : LBUF-SUFFIX-OK? ( ptr u8 n ptr u8 n -- bool ) {: name:ptr nameu:n sfx:ptr sfxu:n :}
    name nameu sfx sfxu LBUF-SUFFIXED LBUF-NAME-OK? ;
 
-PTR-VARIABLE LBUF-EVAL-A
-variable LBUF-EVAL-U
 PTR-VARIABLE STGT-A
 variable STGT-U
 PTR-VARIABLE STGT-START
-
-: LBUF-EVAL-RUN ( -- )
-   LBUF-EVAL-A 0 ptr-field @ LBUF-EVAL-U @ TDECL-EVAL-XT ;
-
-: LBUF-EVAL ( ptr u8 n ptr u8 n -- n n )
-   {: src:ptr srcu:n name:ptr nameu:n :}
-   TDECL-EVAL-ARMED @ 0= if E-LAYOUT-BUFFER throw then
-   name nameu LBUF-PEND!
-   src LBUF-EVAL-A 0 ptr-field !  srcu LBUF-EVAL-U !
-   [: LBUF-EVAL-RUN ;] catch {: rc:n :}
-   NULL-PTR LBUF-EVAL-A !  0 LBUF-EVAL-U !
-   LBUF-EVAL-OFF @ {: handle:n :}
-   0 LBUF-EVAL-OFF !
-   LBUF-PEND-CLEAR
-   handle rc ;
-
-: LBUF-EVAL! ( ptr u8 n ptr u8 n -- n )
-   LBUF-EVAL {: handle:n rc:n :}
-   rc 0 <> if rc throw then
-   handle ;
 
 \ Every region here holds cells, so DP is rounded to a cell before a definer
 \ measures it.
@@ -245,8 +218,8 @@ CAST: width>n ( width<t> -- n )
    count  cb 2 CELL * +  !                             \ cnt-cell = live bound
    oldoff oldcap wc cb LDEFER-RETIRE ;
 
-\ The axiom keeps the shared binder executable after the seal pass; a raw-memory
-\ surface like allot and !, so not UNSAFE-TOK?.
+\ The axiom keeps the shared binder executable; a raw-memory surface like allot
+\ and !, so not UNSAFE-TOK?.
 \ Effect: ( count cbase wc -- ).
 PRIM: LDEFER-BIND PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
 
@@ -274,7 +247,7 @@ PRIM: LDEFER-BIND PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
    count  cb 2 CELL * +  !
    oldoff oldcap wc cb LDEFER-RETIRE ;
 
-\ Same seal treatment as LDEFER-BIND.
+\ The same axiom as LDEFER-BIND's.
 \ Effect: ( count cbase wc -- ).
 PRIM: LDEFER-GROW PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
 
@@ -387,8 +360,8 @@ PRIM: LAYOUT-BUFFER PE-N PE-IN PRIM;
    handle v CHECKER-STORAGE-DEFER
    name nameu v LBUF:COMPANIONS ;
 
-\ The axiom keeps DEFER-LAYOUT-BUFFER executable at top level after the seal
-\ pass; it takes nothing from the stack (the count arrives at bind).
+\ The axiom keeps DEFER-LAYOUT-BUFFER executable at top level; it takes nothing
+\ from the stack (the count arrives at bind).
 PRIM: DEFER-LAYOUT-BUFFER PRIM;
 
 \ ---- TYPED-VARIABLE / TYPED-BUFFER --------------------------------------------
@@ -426,8 +399,8 @@ PRIM: DEFER-LAYOUT-BUFFER PRIM;
    LBUF-BYTES @ allot
    handle v 1 type typeu hasaddr STORAGE-BIND ;
 
-\ As for LAYOUT-BUFFER: top-level executable after the seal pass, refused inside
-\ checked bodies by UNSAFE-TOK?.
+\ As for LAYOUT-BUFFER: top-level executable, refused inside checked bodies by
+\ UNSAFE-TOK?.
 PRIM: TYPED-BUFFER PE-N PE-IN PRIM;
 PRIM: TYPED-VARIABLE PRIM;
 
