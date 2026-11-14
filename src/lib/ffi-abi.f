@@ -956,12 +956,15 @@ create ARG-EXT ARG-MAX cells allot
 create ARG-EXT-ARG ARG-MAX cells allot
 create ARG-SBYTES ARG-MAX cells allot         \ STRUCT-ARG's record width; 0 when none
 create ARG-PAY ARG-MAX cells allot            \ planned: a large record's first copy cell
+create ARG-TEXT ARG-MAX TOK-CAP * allot       \ each input's type as DECLARED-EFFECT reads it
+create ARG-TEXT-U ARG-MAX cells allot
 variable ARG-N
 variable RES-KIND
 variable RES-NULLABLE                      \ 1 for a nullable<u8> result
 variable VAR-START
 variable STRUCT-BYTES                      \ STRUCT-RESULT's record width; 0 when none
-TYPED-VARIABLE EFF-TYPE EFFECT:type        \ the effect, built as it is read
+create RES-TEXT TOK-CAP allot              \ the result's type as DECLARED-EFFECT reads it
+variable RES-TEXT-U
 variable CUR-LIB
 CUR-LIB ROLLBACK-CELLS:MARK
 variable OPEN                              \ 0 closed, else 1 + the open declaration's clauses
@@ -970,24 +973,25 @@ variable SCOPE-SET
 SCOPE-WID scratch-cell-mark  SCOPE-SET scratch-cell-mark
 SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
 
-\ The rest value of EFF-TYPE, a node no effect has.
-CAST: >EFFECT ( n -- EFFECT:type )
-
 \ The token cells a library selection shares with a declaration, at rest.
 : REST-TOKENS ( -- )
    TOK-CAP 0 ?do 0 TOK-BUF i + c! 0 BASE-BUF i + c! loop
    0 TOK-U ! 0 BASE-U ! ;
 
 : REST ( -- )
-   TOK-CAP 0 ?do 0 NAME-BUF i + c! 0 SYM-BUF i + c! loop
-   0 NAME-U ! 0 SYM-U !
+   TOK-CAP 0 ?do
+      0 NAME-BUF i + c! 0 SYM-BUF i + c! 0 RES-TEXT i + c!
+   loop
+   0 NAME-U ! 0 SYM-U ! 0 RES-TEXT-U !
    REST-TOKENS
+   ARG-MAX TOK-CAP * 0 ?do 0 ARG-TEXT i + c! loop
    ARG-MAX 0 ?do
       0 ARG-KIND i cells + ! 0 ARG-REG i cells + ! 0 ARG-EXT i cells + !
       0 ARG-EXT-ARG i cells + ! 0 ARG-SBYTES i cells + ! 0 ARG-PAY i cells + !
+      0 ARG-TEXT-U i cells + !
    loop
    0 ARG-N ! 0 RES-KIND ! 0 RES-NULLABLE !
-   0 VAR-START ! 0 STRUCT-BYTES ! 0 >EFFECT EFF-TYPE ! ;
+   0 VAR-START ! 0 STRUCT-BYTES ! ;
 
 : KEEP-REST ( R [ R -- S ] -- S )
    [: OPEN @ 0= if REST else REST-TOKENS then ;] finally ;
@@ -1105,9 +1109,18 @@ CAST: >EFFECT ( n -- EFFECT:type )
 : ARG-PAY@ ( n -- n ) {: i:n :} ARG-PAY i cells + @ ;
 : ARG-PAY! ( n n -- ) {: v:n i:n :} v ARG-PAY i cells + ! ;
 
-\ The effect with T as its next input, or its output.
-: IN+ ( EFFECT:type -- ) EFF-TYPE @ swap EFFECT:IN EFF-TYPE ! ;
-: OUT+ ( EFFECT:type -- ) EFF-TYPE @ swap EFFECT:OUT EFF-TYPE ! ;
+: ARG-TEXT$ ( n -- ptr u8 n ) {: i:n :}
+   ARG-TEXT i TOK-CAP * +  ARG-TEXT-U i cells + @ ;
+
+\ Records the type text of the input ARG+ added last.
+: IN-TEXT ( ptr u8 n -- ) {: a:ptr u:n :}
+   ARG-N @ 1 - {: i:n :}
+   a ARG-TEXT i TOK-CAP * + u BYTE-COPY
+   u ARG-TEXT-U i cells + ! ;
+
+: RES-TEXT! ( ptr u8 n -- ) {: a:ptr u:n :}
+   a RES-TEXT u BYTE-COPY
+   u RES-TEXT-U ! ;
 
 \ A catch reads E-FFI-ARITY; uncaught, the load exits 70.
 : ARITY-REJECT ( -- )
@@ -1140,14 +1153,19 @@ CAST: >EFFECT ( n -- EFFECT:type )
    then
    a  b u + a - ;
 
+\ Each type is read where it is written, so a rejected one names its token;
+\ DECLARED-EFFECT reads the recorded text again.
 : IN-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
    s" ptr" TOK-IS? if
-      a PTR-TAIL EFFECT:READ-TYPE IN+ K-POINTER ARG+ exit
+      a PTR-TAIL EFFECT:READ-TYPE drop
+      K-POINTER ARG+ s" ptr u8" IN-TEXT exit
    then
-   s" f32" TOK-IS? if s" r" EFFECT:NAMED IN+ K-FLOAT32 ARG+ exit then
-   a u EFFECT:READ-TYPE IN+
-   s" r" TOK-IS? if K-FLOAT ARG+ exit then
-   K-VALUE ARG+ ;
+   s" f32" TOK-IS? if
+      s" r" EFFECT:NAMED drop K-FLOAT32 ARG+ s" r" IN-TEXT exit
+   then
+   a u EFFECT:READ-TYPE drop
+   s" r" TOK-IS? if K-FLOAT ARG+ else K-VALUE ARG+ then
+   a u IN-TEXT ;
 
 : OUT-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
    RES-KIND @ R-NONE <> if
@@ -1156,11 +1174,15 @@ CAST: >EFFECT ( n -- EFFECT:type )
       SYNTAX-REJECT
    then
    s" ptr" TOK-IS? if
-      a PTR-TAIL EFFECT:READ-TYPE OUT+ R-POINTER RES-KIND ! exit
+      a PTR-TAIL EFFECT:READ-TYPE drop
+      s" ptr u8" RES-TEXT! R-POINTER RES-KIND ! exit
    then
-   s" f32" TOK-IS? if s" r" EFFECT:NAMED OUT+ R-FLOAT32 RES-KIND ! exit then
-   s" i32" TOK-IS? if EFFECT:N OUT+ R-I32 RES-KIND ! exit then
-   a u EFFECT:READ-TYPE OUT+
+   s" f32" TOK-IS? if
+      s" r" EFFECT:NAMED drop
+      s" r" RES-TEXT! R-FLOAT32 RES-KIND ! exit
+   then
+   s" i32" TOK-IS? if s" n" RES-TEXT! R-I32 RES-KIND ! exit then
+   a u EFFECT:READ-TYPE drop  a u RES-TEXT!
    s" nullable<u8>" TOK-IS? if R-POINTER RES-KIND ! 1 RES-NULLABLE ! exit then
    s" r" TOK-IS? if R-FLOAT RES-KIND ! exit then
    s" u32" TOK-IS? if R-U32 RES-KIND ! exit then
@@ -1197,7 +1219,6 @@ CAST: >EFFECT ( n -- EFFECT:type )
       s" write FUNCTION: NAME symbol ( inputs -- output ) ;FUNCTION"
       SYNTAX-REJECT
    then
-   EFFECT:EMPTY EFF-TYPE !
    INPUTS
    OUTPUTS ;
 
@@ -1495,10 +1516,18 @@ private
    postpone CALL-STRUCT postpone drop
    RESULT-TAIL ;
 
+\ An effect node ends with the load that made it, so the effect is built here
+\ from the recorded texts, never kept from the FUNCTION: line.
+: DECLARED-EFFECT ( -- EFFECT:type )
+   EFFECT:EMPTY
+   ARG-N @ 0 ?do i ARG-TEXT$ EFFECT:READ-TYPE EFFECT:IN loop
+   RES-KIND @ R-NONE = if exit then
+   RES-TEXT RES-TEXT-U @ EFFECT:READ-TYPE EFFECT:OUT ;
+
 : EMIT ( n n n -- )
    {: int:n stk:n kind:n :}
    int stk SLOT {: slot:n :}
-   NAME-BUF NAME-U @ EFF-TYPE @ define-word
+   NAME-BUF NAME-U @ DECLARED-EFFECT define-word
    kind C-STRUCT = if slot STRUCT-BODY postpone ; exit then
    STAGE
    slot literal
