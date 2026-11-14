@@ -1482,8 +1482,8 @@ variable DEFER-REPORT                            \ the child reports deferrals
 \ it, and each writes the packet that locates it when the child asks for one.
 variable DEFER-SEEN
 
-\ WHY is the deferral's cause, which picks its packet's suggestion; 0 when the
-\ site cannot tell.
+\ WHY is the deferral's cause, which picks its warning's message and help; 0
+\ when the site cannot tell.
 CAST: STRETCH-ACTION ( n -- [ ptr u8 n -- ] )
 : REPORT-STRETCH ( ptr u8 n n -- )
    CHECKER-DEFER-WHY!

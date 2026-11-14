@@ -4,11 +4,11 @@
 \ diagnostic's source sits: the armed source, its map and the loader's file
 \ path. Loads before the checker, where no emit exists, so bytes go out through
 \ a one-byte buffer.
-\ A rejection is printed in parts, called in this order: OPEN, at most one AT,
-\ any NOTEs, HELP, then STOP or KEEP. The caller writes each part's text with
-\ EMIT-STR, EMIT-U or EMIT1 before the next part word, which ends it. The
-\ record is built in TEXT, so a renderer that resets TEXT-LEN cannot run inside
-\ one.
+\ A rejection is printed in parts, called in this order: OPEN, or WARN for a
+\ warning, at most one AT, any NOTEs, HELP, then STOP or KEEP. The caller
+\ writes each part's text with EMIT-STR, EMIT-U or EMIT1 before the next part
+\ word, which ends it. The record is built in TEXT, so a renderer that resets
+\ TEXT-LEN cannot run inside one.
 package REJECTION
 private
 
@@ -452,18 +452,25 @@ private
    NO-PART PART !
    QUIET @ 0= IF FLUSH ELSE 0 TEXT-LEN !  0 DEST ! THEN ;
 
-public
-\ Opens a record with its code; the message follows.
-: OPEN ( ptr u8 n -- ) {: code:ptr cu:n :}
+variable WARNING   0 WARNING !           \ the open record is a warning
+: BEGIN-RECORD ( ptr u8 n ptr u8 n -- ) {: sev:ptr su:n code:ptr cu:n :}
    1 DEST !  0 TEXT-LEN !  0 NOTES !  1 GUTTER !
    JSON @ IF
-      123 EMIT1  s" severity" JSON-KEY  s" error" JSON-STRING
+      123 EMIT1  s" severity" JSON-KEY  sev su JSON-STRING
       s" code" FIELD  code cu JSON-STRING
       s" message" FIELD  JSON-OPEN
    ELSE
-      s" error[" EMIT-STR  code cu EMIT-STR  s" ]: " EMIT-STR
+      sev su EMIT-STR  91 EMIT1  code cu EMIT-STR  s" ]: " EMIT-STR
    THEN
    MESSAGE-PART PART ! ;
+
+public
+\ Opens a record with its code; the message follows.
+: OPEN ( ptr u8 n -- ) {: code:ptr cu:n :}
+   0 WARNING !  s" error" code cu BEGIN-RECORD ;
+\ Opens a warning with its code, which KEEP does not count; the message follows.
+: WARN ( ptr u8 n -- ) {: code:ptr cu:n :}
+   -1 WARNING !  s" warning" code cu BEGIN-RECORD ;
 \ Places the token t tu; its label follows.
 : AT ( ptr u8 n -- ) {: t:ptr tu:n :}
    END-TEXT
@@ -494,8 +501,8 @@ public
 \ Ends the record and throws status n.
 : STOP ( n -- )
    END-RECORD throw ;
-\ Ends the record and returns; a sent record counts in TALLY.
+\ Ends the record and returns; a sent rejection counts in TALLY.
 : KEEP ( -- )
    END-RECORD
-   QUIET @ 0= IF TALLY @ 1 + TALLY ! THEN ;
+   QUIET @ 0=  WARNING @ 0=  and IF TALLY @ 1 + TALLY ! THEN ;
 ;package

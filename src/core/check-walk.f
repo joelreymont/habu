@@ -2049,12 +2049,26 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    sym PRIM-FIRST-IDX 0 <> IF RES-TRUE EXIT THEN
    sym a u TOK-IDENTITY 0 <> ;
 
-: TOP-REFUSE ( ptr u8 n n -- n )
-   {: a:ptr u:n sel:n :}
-   a USH-TOK-A !  u USH-TOK-U !
-   sel SHADOW-DIAG-XT
-   MULTI-ERR? IF 1 REJECTION:TALLY +! 0 EXIT THEN
-   CHECKER-REJECT-RC throw ;
+\ A top-level token no scope defines, or one with a malformed qualifier when
+\ bad is set.
+: TOP-REFUSE ( ptr u8 n bool -- n )
+   {: a:ptr u:n bad:bool :}
+   bad IF
+      s" E-BAD-QUALIFIED-TOP-LEVEL" REJECTION:OPEN
+      s" the qualified name `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+      s" ` is malformed" REJECTION:EMIT-STR
+      a u REJECTION:AT  s" malformed qualified name" REJECTION:EMIT-STR
+      REJECTION:HELP
+      s" write `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+      s" ` with one `:` between the package and the word, as `PKG:WORD`" REJECTION:EMIT-STR
+   ELSE
+      s" E-UNDEFINED-TOP-LEVEL" REJECTION:OPEN
+      s" cannot find word `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR  96 REJECTION:EMIT1
+      a u REJECTION:AT  s" not found" REJECTION:EMIT-STR
+      REJECTION:HELP  a u UNDEF-HELP
+   THEN
+   MULTI-ERR? IF REJECTION:KEEP 0 EXIT THEN
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ What the load does with a top-level token it runs, or ticks when RUNS is
 \ false. The answer is -1 when it resolves, or 2 when it resolves to a word that
@@ -2080,7 +2094,7 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
       THEN drop
       a u UNSEEN-COVERS? IF 3 EXIT THEN
    THEN
-   a u  CHECKER-QBAD-TOK @ IF 4 ELSE 3 THEN  TOP-REFUSE ;
+   a u  CHECKER-QBAD-TOK @ 0 <>  TOP-REFUSE ;
 
 PTR-VARIABLE TOP-ASK-A   variable TOP-ASK-U   variable TOP-ASK-RUNS
 variable TOP-ASK-ANSWER

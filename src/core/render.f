@@ -968,23 +968,9 @@ variable MDV-I   variable MDV-F
    s" Keep bulk values in a buffer, not on the stack, and name an inner callback's effect in a word of its own." ;
 
 
-\ Shared by a token of unknown effect (SUGGEST-TEXT) and a deferral whose cause
-\ no site recorded (DEFER-SUGGEST$).
+\ A token of unknown effect (SUGGEST-TEXT).
 : UNCK-SUGGEST$ ( -- ptr u8 n )
    s" Rewrite with modeled words or isolate an audited primitive." ;
-
-\ What lifts the deferral whose cause DEFER-WHY holds (checker.f DW-PARSER ..).
-: DEFER-SUGGEST$ ( -- ptr u8 n )
-   DEFER-WHY @ case
-      DW-PARSER   of s" State what this word reads after its definition: `parses: W n` or `parses-through: W n ( END )`; call a primitive through a word that has such a row." endof
-      DW-DEFER    of s" Call this deferred word from a definition: a top-level `defer` may read any of the source after it, and no row bounds it." endof
-      DW-PARSES   of s" Nothing to write: the check went on after the operands its row states; the run decides what the word reads." endof
-      DW-RENDERER of s" If this renderer reads the name of the word it makes (`D NAME`), declare that word's effect with `generates: D ( effect )` after its definition; a foreign function is declared by a `FUNCTION:` group; other rendered text is the run's to check." endof
-      DW-RENDERED of s" Make this name with a definer called as `D NAME` and declare it with `generates: D ( effect )` after its definition or with a `does>` clause; otherwise the run defines it or refuses a misspelling." endof
-      DW-TYPE     of s" Declare this type in the source before its use (`NEWTYPE`, `STRUCTURE`, `SUMTYPE`); a type only rendered text makes is the run's to check." endof
-      DW-TICK     of s" Tick this trusted-only word inside a `TRUSTED:` body; checked code may tick it only if the run's checker allows it." endof
-      UNCK-SUGGEST$ rot
-   endcase ;
 
 : TAIL-SUGGEST$ ( -- ptr u8 n )
    s" The callee declares this callable with an implicit input row, [ -- S ], so it may run the callable on any stack and expects S back; a callable that keeps or reads the stack it runs on cannot promise that. Declare the callable [ R -- S ] from the word's input row, as in ( R [ R -- S ] -- S ), or pass a callable whose output does not depend on the stack beneath it." ;
@@ -1641,51 +1627,52 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    s" : convert or replace the value before it" EMIT-STR ;
 
 \ The package record at dictionary index i whose public wordlist holds the
-\ pinned token, else NULL-PTR. A part, named A:B, is left out: no qualifier
+\ token t tu, else NULL-PTR. A part, named A:B, is left out: no qualifier
 \ outside A reaches it.
-: PUBLIC-IN ( n -- ptr n ) {: i:n :}
+: PUBLIC-IN ( ptr u8 n n -- ptr n ) {: t:ptr tu:n i:n :}
    i CHECKER-RESOLVE:REC-AT {: rec:ptr :}
    rec CK-REC-WID BOOT:NAMESPACE-WL <> IF NULL-PTR EXIT THEN
    rec @ {: wid:n :}
    rec CHECKER-RESOLVE:CK-REC-NAME$ CHECKER-COLON-SCAN drop {: colons:n :}
    wid 0=  colons 0 <>  or IF NULL-PTR EXIT THEN
-   PIN-TOK$ wid CHECKER-RESOLVE:WL-PROBE NULL-PTR = IF NULL-PTR EXIT THEN
+   t tu wid CHECKER-RESOLVE:WL-PROBE NULL-PTR = IF NULL-PTR EXIT THEN
    rec ;
 variable HOLDER-N
 PTR-VARIABLE HOLDER-FIRST
 : HOLDER-NAME ( ptr n -- ) CHECKER-RESOLVE:CK-REC-NAME$ CODE-SPAN ;
-\ Counts the packages, writes their names when list is set.
-: HOLDER-SCAN ( bool -- ) {: list:bool :}
+\ Counts the packages whose public wordlist holds t tu, writes their names when
+\ list is set.
+: HOLDER-SCAN ( ptr u8 n bool -- ) {: t:ptr tu:n list:bool :}
    0 HOLDER-N !
    ndict@ 0 ?do
-      i PUBLIC-IN {: rec:ptr :}
+      t tu i PUBLIC-IN {: rec:ptr :}
       rec NULL-PTR <> IF
          HOLDER-N @ 0= IF rec HOLDER-FIRST ! THEN
          list IF HOLDER-N @ 0 > IF s" , " EMIT-STR THEN  rec HOLDER-NAME THEN
          HOLDER-N @ 1 + HOLDER-N !
       THEN
    loop ;
-: QUALIFIED ( -- )
+: QUALIFIED ( ptr u8 n -- ) {: t:ptr tu:n :}
    96 EMIT1  HOLDER-FIRST @ CHECKER-RESOLVE:CK-REC-NAME$ EMIT-STR
-   58 EMIT1  PIN-TOK$ EMIT-STR  96 EMIT1 ;
-: UNDEF-HELP ( -- )
-   RES-FALSE HOLDER-SCAN
+   58 EMIT1  t tu EMIT-STR  96 EMIT1 ;
+: UNDEF-HELP ( ptr u8 n -- ) {: t:ptr tu:n :}
+   t tu RES-FALSE HOLDER-SCAN
    HOLDER-N @ 0= IF
-      s" define " EMIT-STR  TOK-SPAN
+      s" define " EMIT-STR  t tu CODE-SPAN
       s"  before this point, or check its spelling" EMIT-STR EXIT
    THEN
-   TOK-SPAN  s"  is public in " EMIT-STR
+   t tu CODE-SPAN  s"  is public in " EMIT-STR
    HOLDER-N @ 1 = IF
-      HOLDER-FIRST @ HOLDER-NAME  s" : write " EMIT-STR  QUALIFIED
+      HOLDER-FIRST @ HOLDER-NAME  s" : write " EMIT-STR  t tu QUALIFIED
       s" , or call it inside `using " EMIT-STR
       HOLDER-FIRST @ CHECKER-RESOLVE:CK-REC-NAME$ EMIT-STR  s" ` … `;using`" EMIT-STR EXIT
    THEN
-   RES-TRUE HOLDER-SCAN  s" : write it qualified, as " EMIT-STR  QUALIFIED ;
+   t tu RES-TRUE HOLDER-SCAN  s" : write it qualified, as " EMIT-STR  t tu QUALIFIED ;
 
 : DIAG-HELP ( -- )
    DKIND {: k:n :}
    k RF-MISMATCH = IF DEND @ 0 <> IF END-HELP ELSE TAKES-HELP THEN EXIT THEN
-   k RF-UNDEF = IF UNDEF-HELP EXIT THEN
+   k RF-UNDEF = IF PIN-TOK$ UNDEF-HELP EXIT THEN
    SUGGEST-TEXT EMIT-STR ;
 
 : DIAG-PRINT
@@ -1768,60 +1755,6 @@ variable WARN-DIAGS   -1 WARN-DIAGS !
    THEN
    BROW @ DCUR @ CHECK-UNRECORDED!
    na nu REC-REFUSE-DIAG ;
-
-\ A top-level token the load refuses, a stretch the pre-pass deferred, or a
-\ deferred definition: records at the token, no definition fields. A
-\ refusal has its own code (tools/diag-code.f) with the class and suggestion a
-\ body's reference gets; a deferral is no refusal, under W-CHECK-DEFERRED.
-: TOP-SPAN-JSON ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
-   {: c:ptr cu:n k:ptr ku:n v:ptr vu:n g:ptr gu:n :}
-   c cu k ku v vu JHEAD
-   s" token" JSON-KEY USH-TOK-A @ USH-TOK-U @ JSON-STRING 44 EMIT1
-   USH-TOK-A @ USH-TOK-U @ g gu JTAIL ;
-\ `CODE habu: FILE:LINE:COLUMN: TEXT 'TOKEN'`, the place when the token locates.
-: TOP-SPAN-PROSE ( ptr u8 n ptr u8 n -- )
-   {: c:ptr cu:n t:ptr tu:n :}
-   c cu EMIT-STR  s"  habu: " EMIT-STR
-   USH-TOK-A @  USH-TOK-A @ USH-TOK-U @ +  JLOCATE IF
-      FILE$ EMIT-STR  58 EMIT1  JLOC-L @ EMIT-U  58 EMIT1  JLOC-C @ EMIT-U  s" : " EMIT-STR
-   THEN
-   t tu EMIT-STR  s"  '" EMIT-STR  USH-TOK-A @ USH-TOK-U @ EMIT-STR  39 EMIT1 ;
-: TOP-UNDEF-DIAG ( -- )
-   1 DEST !  0 TEXT-LEN !  0 RQM !
-   JSON @ IF
-      s" E-UNDEFINED-TOP-LEVEL" s" unknown_rejection" s" rejected"
-      s" Inspect the token, signature, and raw stack evidence." TOP-SPAN-JSON
-   ELSE s" E-UNDEFINED-TOP-LEVEL" s" undefined word" TOP-SPAN-PROSE THEN
-   10 EMIT1
-   FLUSH ;
-: TOP-BADQUAL-DIAG ( -- )
-   1 DEST !  0 TEXT-LEN !  0 RQM !
-   JSON @ IF
-      s" E-BAD-QUALIFIED-TOP-LEVEL" s" fix_qualified_name" s" rejected"
-      s" Use one ':' qualifier, e.g. PKG:WORD." TOP-SPAN-JSON
-   ELSE s" E-BAD-QUALIFIED-TOP-LEVEL" s" malformed qualified name" TOP-SPAN-PROSE THEN
-   10 EMIT1
-   FLUSH ;
-\ Only the verifier's child reports a deferral, and it writes packets. Its
-\ cause is cleared once written, so a report that records none prints none.
-: TOP-DEFERRED-DIAG ( -- )
-   1 DEST !  0 TEXT-LEN !  0 RQM !
-   s" W-CHECK-DEFERRED" s" rewrite_uncheckable" s" deferred"
-   DEFER-SUGGEST$ TOP-SPAN-JSON
-   10 EMIT1
-   FLUSH
-   0 DEFER-WHY ! ;
-\ checker.f SHADOW-DIAG-XT selects: 3 and 4 a top-level token undefined or
-\ malformed, 5 a deferred top-level stretch or definition. One hook because
-\ every defer before `: TRUST` takes a slot of the engine's pre-trust pending
-\ table (src/habu/layout.f PD-CAP).
-: SHADOW-DIAG ( n -- )
-   {: sel:n :}
-   sel 3 = IF TOP-UNDEF-DIAG EXIT THEN
-   sel 4 = IF TOP-BADQUAL-DIAG EXIT THEN
-   TOP-DEFERRED-DIAG ;
-: SHADOW-DIAG-INSTALL ( -- ) [: SHADOW-DIAG ;] is SHADOW-DIAG-XT ;
-SHADOW-DIAG-INSTALL
 
 \ A `generates:` row the checker cannot keep: the kind says which of four
 \ claims failed, each with its own repair (correct the name, delete the row,
