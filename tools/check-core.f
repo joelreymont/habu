@@ -663,7 +663,7 @@ private
 \
 \ The engine carries its own sources, so a run loads nothing from one and checks
 \ nothing there; rebuilding the engine checks it. An input set that is all such
-\ sources - a single file is a set of one - is refused at each input, as the
+\ sources - a single file is a set of one - is rejected at each input, as the
 \ input is given. Any other input is checked even when this process has loaded
 \ it: the pre-pass verifies it in the verifier child and the run loads it, each
 \ in an engine of its own.
@@ -673,33 +673,45 @@ private
    loop
    true ;
 
-: CHK-ENGINE-SUG$ ( -- ptr u8 n )
-   s" The engine provides this source; rebuild bin/hb to check a change to it." ;
+\ check.f's own command line holds no source, so its records name the input
+\ file by NO-FILE$, as the loader names a missing entry, in the run's mode.
+: CHK-INPUT-OPEN ( ptr u8 n -- ) {: code:ptr codeu:n :}
+   CHK-JSON @ REJECTION:JSON !
+   REJECTION:NO-FILE$ REJECTION:FILE!
+   code codeu REJECTION:OPEN ;
 
-: CHK-ENGINE-JSON ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   CHK-JSON-WRITER JSON:WRITE-OBJECT-START
-   s" schema_version" 1 JSON:WRITE-FIELD-U JSON:WRITE-COMMA
-   s" code" s" E-ENGINE-PROVIDED" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" repair_class" s" rebuild_engine" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" verdict" s" uncheckable" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" file" path pathu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" line" 1 JSON:WRITE-FIELD-U JSON:WRITE-COMMA
-   s" column" 1 JSON:WRITE-FIELD-U JSON:WRITE-COMMA
-   s" suggestion" CHK-ENGINE-SUG$ JSON:WRITE-FIELD-S
-   JSON:WRITE-OBJECT-END JSON:WRITTEN$ CHK-ERR-LN ;
+\ An input that is no file is rejected as the loader rejects a missing entry,
+\ looked up from the directory hb runs in.
+: CHK-NO-INPUT ( ptr u8 n -- ) {: a:ptr u:n :}
+   s" E-MISSING-SOURCE" CHK-INPUT-OPEN
+   s" cannot open `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR  96 REJECTION:EMIT1
+   a u REJECTION:AT
+   a u FS:EXISTS? if s" not a file" else s" not found" then REJECTION:EMIT-STR
+   s" searched" REJECTION:NOTE
+   u 0= if true else a c@ 47 <> then if
+      SOURCE-ROOT:CWD$ REJECTION:EMIT-STR  47 REJECTION:EMIT1
+   then
+   a u REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" name a source file; a path given on the command line is looked up from " REJECTION:EMIT-STR
+   s" the directory hb runs in" REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
-: CHK-ENGINE-PROSE ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   s" E-ENGINE-PROVIDED " CHK-ERR
-   path pathu CHK-ERR
-   s" :1:1: " CHK-ERR
-   CHK-ENGINE-SUG$ CHK-ERR-LN ;
+: CHK-ENGINE-PROVIDED ( ptr u8 n -- ) {: a:ptr u:n :}
+   s" E-ENGINE-PROVIDED" CHK-INPUT-OPEN
+   s" the engine provides `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" `, so a check loads nothing from it" REJECTION:EMIT-STR
+   a u REJECTION:AT  s" provided by bin/hb" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" rebuild bin/hb to check a change to it" REJECTION:EMIT-STR
+   REJECTION:KEEP ;
 
 : CHK-CHECK-INPUTS ( -- )
-   [: FS:FILE? ;] CHK-INPUTS-ALL? 0= if s" check.f: no such source" CHK-E-NOINPUT CHK-FAIL then
-   [: ENGINE-PROVIDES? ;] CHK-INPUTS-ALL? 0= if exit then
    CHK-POS-N @ 0 ?do
-      i CHK-POS$ CHK-JSON @ if CHK-ENGINE-JSON else CHK-ENGINE-PROSE then
+      i CHK-POS$ 2dup FS:FILE? if 2drop else CHK-NO-INPUT then
    loop
+   [: ENGINE-PROVIDES? ;] CHK-INPUTS-ALL? 0= if exit then
+   CHK-POS-N @ 0 ?do  i CHK-POS$ CHK-ENGINE-PROVIDED  loop
    CHK-E-USAGE CHK-THROW ;
 
 \ The run stage quotes the label into REJECTION:FILE! only after the stages
@@ -1232,7 +1244,7 @@ private
 \ the file system refuses to read fails the check as it fails the walk.
 : CHK-VERIFY-FILE ( -- ptr u8 n )
    0 CHK-POS$ {: a:ptr u:n :}
-   a u FS:FILE? 0= if s" check.f: no such source" CHK-E-NOINPUT CHK-FAIL then
+   a u FS:FILE? 0= if a u CHK-NO-INPUT then
    [: CHK-VERIFY-READ ;] CHK-READ-RC 0<> if a u CANONICAL drop CHK-READ-FAIL then
    a u ;
 
