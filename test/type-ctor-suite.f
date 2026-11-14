@@ -36,9 +36,13 @@ TYPED-VARIABLE TCE-A ptr u8   variable TCE-U
 : TCE-CATCH ( ptr u8 n -- n )
    TCE-U ! TCE-A !
    [: TCE-GO ;] catch ;
+: TCE-PROTECTED ( ptr u8 n -- )   \ the text is rejected with E-CTOR-PROTECTED
+   REJECTION:CAPTURE  TCE-CATCH CHECKER-REJECT-RC T=
+   REJECTION:BUFFER$ s" error[E-CTOR-PROTECTED]" CONTAINS? TTRUE
+   REJECTION:BUFFER-OFF ;
 
 \ An engine family's generated word is protected before anything names the family.
-s" undefine SPAN-SPAN:MAKE" TCE-CATCH E-CTOR-PROTECTED T=
+s" undefine SPAN-SPAN:MAKE" TCE-PROTECTED
 
 : TWX-MULTI-ERR-BEGIN ( -- ) MULTI-ERR-BEGIN ;
 : TWX-MULTI-ERR-END ( -- n ) MULTI-ERR-END ;
@@ -188,19 +192,19 @@ TWX-MULTI-ERR-BEGIN
 s" SUMTYPE zlin VARIANT keep own ;VARIANT ;SUMTYPE" TCE-CATCH 0 T=
 TWX-MULTI-ERR-END 1 T=
 
-s" package zres" TCE-CATCH E-CTOR-PROTECTED T=
-s" package ZRES" TCE-CATCH E-CTOR-PROTECTED T=
-s" package Zres" TCE-CATCH E-CTOR-PROTECTED T=
+s" package zres" TCE-PROTECTED
+s" package ZRES" TCE-PROTECTED
+s" package Zres" TCE-PROTECTED
 s" package zok ;package" TCE-CATCH 0 T=
 \ undefine of a generated word rejects before retirement...
-s" undefine ZRES:OK" TCE-CATCH E-CTOR-PROTECTED T=
-s" undefine zres:ok" TCE-CATCH E-CTOR-PROTECTED T=
+s" undefine ZRES:OK" TCE-PROTECTED
+s" undefine zres:ok" TCE-PROTECTED
 \ ...and the constructor is still fully usable afterwards.
 : ZMK-OK3 ( n -- zres ) ZRES:OK ;
 s" UNDEF-SAFE" type cr
 \ a new tail in a generated package rejects in the checker.
-s" : ZRES:EXTRA ( -- n ) 1 ;" TCE-CATCH E-CTOR-PROTECTED T=
-s" : ZRES:EXTRA2 1 ;" TCE-CATCH E-CTOR-PROTECTED T=
+s" : ZRES:EXTRA ( -- n ) 1 ;" TCE-PROTECTED
+s" : ZRES:EXTRA2 1 ;" TCE-PROTECTED
 : ZDOOMED ( -- n ) 5 ;
 s" undefine ZDOOMED" TCE-CATCH 0 T=
 
@@ -330,10 +334,10 @@ PRODUCT phid
 ;PRODUCT
 ;package
 s" PS1 ( n -- n ) ZPSEC-PHID:MAKE" CHECK-QUIET-CANDIDATE! 0 T=   \ undefined word -> refused
-s" package zpt" TCE-CATCH E-CTOR-PROTECTED T=
-s" package ZPT" TCE-CATCH E-CTOR-PROTECTED T=
-s" undefine ZPT:MAKE" TCE-CATCH E-CTOR-PROTECTED T=
-s" undefine zpt:unmake" TCE-CATCH E-CTOR-PROTECTED T=
+s" package zpt" TCE-PROTECTED
+s" package ZPT" TCE-PROTECTED
+s" undefine ZPT:MAKE" TCE-PROTECTED
+s" undefine zpt:unmake" TCE-PROTECTED
 : ZPT-MK2 ( n n -- zpt ) ZPT:MAKE ;
 s" PRODUCT-PROTECTED" type cr
 
@@ -715,7 +719,7 @@ TYPED-VARIABLE RFB-ON option<n>
 s" RFB-SOME-DROP ( rfbtag -- ) OPTION:SOME drop" CHECK-QUIET-CANDIDATE! -1 T=
 REJECTION:CAPTURE
 s" RFB-SOME-WRONG ( rfbtag -- ) OPTION:SOME RFB-ON !" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" actual: option<rfbtag>" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" found: option<rfbtag>" CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
 s" RFB-OK-FREE ( rfbtag -- ) RESULT:OK drop" CHECK-QUIET-CANDIDATE! 0 T=
 : RFB-REST# ( option<rfbtag> -- n ) MATCH option some OF RFB-TAG# ENDOF none OF 0 ENDOF ;MATCH ;

@@ -100,18 +100,22 @@ s" STRUCTURE scdg FIELD x n FIELD y ptr n ;STRUCTURE" evaluate-closed
 s" D1 ( n -- scdg ) SCDG:MAKE" SCG<
 s\" \"code\":\"E-MISMATCH\"" SCG?
 s\" \"token\":\"SCDG:MAKE\"" SCG?
-s\" \"expected\":\"n ptr n \"" SCG?                               \ the exact field-derived shape (x:n, y:ptr n)
+s\" \"expected\":\"n ptr n\"" SCG?                               \ the exact field-derived shape (x:n, y:ptr n)
 SCG-END
 
 \ 7. The derived package is closed but callable: reopening it (any case),
-\    undefining a generated word or deferring a new word into it throws
-\    E-CTOR-PROTECTED, as for sum and product constructors.
+\    undefining a generated word or deferring a new word into it is rejected
+\    with E-CTOR-PROTECTED, as for sum and product constructors.
+: SC-PROTECTED ( ptr u8 n -- )   \ the text is rejected with E-CTOR-PROTECTED
+   REJECTION:CAPTURE  TEST-EVAL:RC CHECKER-REJECT-RC T=
+   REJECTION:BUFFER$ s" error[E-CTOR-PROTECTED]" CONTAINS? TTRUE
+   REJECTION:BUFFER-OFF ;
 s" STRUCTURE scprot FIELD x n FIELD y n ;STRUCTURE" evaluate-closed
-s" package scprot" TEST-EVAL:RC E-CTOR-PROTECTED T=
-s" package SCPROT" TEST-EVAL:RC E-CTOR-PROTECTED T=               \ case-insensitive
-s" undefine SCPROT:MAKE" TEST-EVAL:RC E-CTOR-PROTECTED T=
-s" undefine scprot:unmake" TEST-EVAL:RC E-CTOR-PROTECTED T=
-s" defer SCPROT:EXTRA ( -- n )" TEST-EVAL:RC E-CTOR-PROTECTED T=
+s" package scprot" SC-PROTECTED
+s" package SCPROT" SC-PROTECTED                                     \ case-insensitive
+s" undefine SCPROT:MAKE" SC-PROTECTED
+s" undefine scprot:unmake" SC-PROTECTED
+s" defer SCPROT:EXTRA ( -- n )" SC-PROTECTED
 s" package scok ;package" TEST-EVAL:RC 0 T=                       \ an ordinary package still opens
 : SCPRT ( -- n n ) 3 4 SCPROT:MAKE SCPROT:UNMAKE ;               \ still callable after the rejects
 SCPRT 4 T= 3 T=
