@@ -2246,8 +2246,9 @@ runtime or analysis layer.
   zeroed record, and `NAME-NEW-DISPOSE ( ptr ARENA:arena [ ptr Type -- ] --
   ptr Type )`, whose action runs once when the arena is reset or released and
   must accept a zeroed record. The width is the declared type's, so a record's
-  size always comes from the declaration. Inside a package both words must be
-  free in both sections (`E-DUP-DEFINITION`). Nothing is defined when any check
+  size always comes from the declaration. Both words must be free in both
+  sections of the package they land in, Q for a qualified `Q:NAME`
+  (`E-DUP-DEFINITION`). Nothing is defined when any check
   refuses, under `--all-errors` too.
 - **`HEAP NAME Type` for a record with its own lifetime**: `NAME-NEW ( -- ptr
   Type )` answers a fresh zero-filled record on its own OS mapping, rounded up

@@ -98,6 +98,13 @@ public
 : XREF-PKG-PRIVATE ( ptr n -- n )
    XREF-LEN-SLOT XREF-CELL@ ;
 
+\ The private wid of the package the string names, 0 for no such package or
+\ no private section.
+: XREF-PRIVATE-WL ( ptr u8 n -- n )
+   BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: rec:ptr :}
+   rec NULL-PTR = if 0 exit then
+   rec XREF-PKG-PRIVATE ;
+
 package XREF
 public
 \ Every marker is negative. RETIRED marks a retired word, whose row keeps code;

@@ -46,9 +46,32 @@ CAST: AS-ENTRY ( [ R -- S ] -- n )
    name nameu sfx sfxu LBUF-SUFFIXED {: a:ptr u:n :}
    a u wid search-wl 0 <> if a u CHECK:REFUSE-DUPLICATE then ;
 
+\ TAIL+SFX taken in Q's private section, for NAME Q:TAIL, throws
+\ E-DUP-DEFINITION.
+: PRIVATE-FREE ( ptr u8 n ptr u8 n -- )
+   {: name:ptr nameu:n sfx:ptr sfxu:n :}
+   name nameu CHECKER-QUALIFIED? drop
+   CHECKER-QPKG$ XREF-PRIVATE-WL {: wid:n :}
+   wid 0= if exit then
+   CHECKER-QTAIL$ sfx sfxu LBUF-SUFFIXED wid search-wl 0= if exit then
+   name nameu sfx sfxu LBUF-SUFFIXED CHECK:REFUSE-DUPLICATE ;
+
+\ NAME's words taken in the section the declaration does not write throw
+\ E-DUP-DEFINITION: a qualified Q:TAIL writes Q's public one.
+: OTHERS-FREE ( ptr u8 n -- ) {: name:ptr nameu:n :}
+   name nameu CHECKER-QUALIFIED? if
+      name nameu s" -NEW" PRIVATE-FREE
+      name nameu s" -NEW-DISPOSE" PRIVATE-FREE exit
+   then
+   CHECKER-AUTH-PACKAGE-MODE@ {: mode:n :}
+   mode CHECKER-PACKAGE-NONE = if exit then
+   mode OTHER-WID {: wid:n :}
+   name nameu s" -NEW" wid OTHER-FREE
+   name nameu s" -NEW-DISPOSE" wid OTHER-FREE ;
+
 public
 
-\ Inside a package both words must be free in both sections: the package's
+\ Both words must be free in both sections of the package they land in: its
 \ bare calls resolve private-first.
 : RUN ( -- )
    STORAGE-LINE-TOKEN {: name:ptr nameu:n :}
@@ -56,12 +79,7 @@ public
    STORAGE-PARSE-TYPE {: type:ptr typeu:n :}
    name nameu CHECKER-LBUF-NAME-OK? 0= if exit then
    name nameu FREE? 0= if exit then
-   CHECKER-AUTH-PACKAGE-MODE@ {: mode:n :}
-   mode CHECKER-PACKAGE-NONE <> if
-      mode OTHER-WID {: wid:n :}
-      name nameu s" -NEW" wid OTHER-FREE
-      name nameu s" -NEW-DISPOSE" wid OTHER-FREE
-   then
+   name nameu OTHERS-FREE
    type typeu CHECKER-ARENA-INFO 0= if
       drop name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE exit
    then {: width:n :}

@@ -19,6 +19,8 @@ ARENA RECS rec
 : AFTER ( -- bool ) true ;
 private
 ARENA PRECS rec
+\ Taken in this private section for the qualified declaration TOP-LEVEL makes.
+: TOP-TAKEN-NEW ( -- ) ;
 public
 : PRIV-NEW ( ptr ARENA:arena -- ptr rec ) PRECS-NEW ;
 ;package
@@ -222,7 +224,11 @@ private
    s" ARENA ARENA-TEST:QUAL n" EVAL 0 T=
    s" ARENA:NEW dup ARENA-TEST:QUAL-NEW drop ARENA:RELEASE" EVAL 0 T=
    s" : QUAL-USE ( ptr ARENA:arena -- ptr n ) [: drop ;] ARENA-TEST:QUAL-NEW-DISPOSE ;"
-   EVAL 0 T= ;
+   EVAL 0 T=
+   s" and refuses one whose word is taken in that package's private section" T-LABEL
+   s" public ARENA ARENA-TEST:TAKEN n" EVAL E-DUP-DEFINITION T=  s" private" EVAL 0 T=
+   s" ARENA ARENA-TEST:PUBDIS n" EVAL E-DUP-DEFINITION T=
+   s" ARENA ARENA-FIX:PRECS n" EVAL E-DUP-DEFINITION T= ;
 
 
 : VERIFY-USES-SRC$ ( -- ptr u8 n )
@@ -230,6 +236,12 @@ private
 
 : VERIFY-WRONG-SRC$ ( -- ptr u8 n )
    S\" require src/lib/arena.f\npackage Q public\nARENA X n\n;package\npackage R public\n: U ( ptr ARENA:arena -- ptr u8 ) Q:X-NEW ;\n: V ( ptr ARENA:arena -- ptr n ) [: c@ drop ;] Q:X-NEW-DISPOSE ;\n;package\n" ;
+
+: VERIFY-TAKEN-SRC$ ( -- ptr u8 n )
+   S\" require src/lib/arena.f\npackage Q\nprivate\n: X-NEW ( -- ) ;\n;package\nARENA Q:X n\n" ;
+
+: VERIFY-QUAL-SRC$ ( -- ptr u8 n )
+   S\" require src/lib/arena.f\npackage Q public\n;package\nARENA Q:Y n\npackage R public\n: U ( ptr ARENA:arena -- ptr n ) Q:Y-NEW ;\n;package\n" ;
 
 : VERIFY-FILE ( ptr u8 n -- )
    {: rel:ptr relu:n :}
@@ -246,6 +258,8 @@ private
    E2E-TREE:ROOT$ FS:CLEANUP-TREE+
    s" test/arena-uses.f" E2E-TREE:AT-A VERIFY-USES-SRC$ FS:WRITE-ALL
    s" test/arena-wrong.f" E2E-TREE:AT-A VERIFY-WRONG-SRC$ FS:WRITE-ALL
+   s" test/arena-taken.f" E2E-TREE:AT-A VERIFY-TAKEN-SRC$ FS:WRITE-ALL
+   s" test/arena-qual.f" E2E-TREE:AT-A VERIFY-QUAL-SRC$ FS:WRITE-ALL
    s" test/arena-uses.f" VERIFY-FILE
    E2E-TREE:OUT$ s" deferred to the run" CONTAINS? 0= TTRUE
    E2E-TREE:ERR$ nip 0 T=
@@ -256,7 +270,18 @@ private
    E2E-TREE:ERR$ S\" \"code\":\"E-MISMATCH\"" COUNT-SUB 2 T=
    E2E-TREE:ERR$ S\" \"token\":\"Q:X-NEW\"," COUNT-SUB 1 T=
    E2E-TREE:ERR$ S\" \"token\":\"Q:X-NEW-DISPOSE\"," COUNT-SUB 1 T=
-   E2E-TREE:RC@ 0 <> TTRUE ;
+   E2E-TREE:RC@ 0 <> TTRUE
+   s" and rejects a qualified one whose word is taken in that package's private section" T-LABEL
+   s" test/arena-taken.f" VERIFY-FILE
+   E2E-TREE:ERR$ S\" \"code\":\"" COUNT-SUB 1 T=
+   E2E-TREE:ERR$ S\" \"code\":\"E-DUPLICATE-DEFINITION\"" COUNT-SUB 1 T=
+   E2E-TREE:ERR$ S\" \"token\":\"Q:X\"," COUNT-SUB 1 T=
+   E2E-TREE:RC@ 0 <> TTRUE
+   s" and admits a qualified one whose words are free, called as declared" T-LABEL
+   s" test/arena-qual.f" VERIFY-FILE
+   E2E-TREE:OUT$ s" deferred to the run" CONTAINS? 0= TTRUE
+   E2E-TREE:ERR$ nip 0 T=
+   E2E-TREE:RC@ 0 T= ;
 
 : RUN ( -- )
    T-RESET
@@ -271,7 +296,9 @@ public
    s" a declaration outside any package defines both words" T-LABEL
    s" ARENA TOP n" EVAL 0 T=
    s" ARENA:NEW dup TOP-NEW drop ARENA:RELEASE" EVAL 0 T=
-   s" : TOP-USE ( ptr ARENA:arena -- ptr n ) [: drop ;] TOP-NEW-DISPOSE ;" EVAL 0 T= ;
+   s" : TOP-USE ( ptr ARENA:arena -- ptr n ) [: drop ;] TOP-NEW-DISPOSE ;" EVAL 0 T=
+   s" and a qualified one whose word is taken in that package's private section is refused" T-LABEL
+   s" ARENA ARENA-FIX:TOP-TAKEN n" EVAL E-DUP-DEFINITION T= ;
 
 ;package
 

@@ -2676,6 +2676,17 @@ variable STG-TYPE-U
    name nameu s" -NEW" at ARENA-WORD-FREE? 0= IF false EXIT THEN
    name nameu s" -NEW-DISPOSE" at ARENA-WORD-FREE? ;
 
+\ Whether Q's private section, which the qualified NAME Q:TAIL never writes,
+\ holds no TAIL+SFX; NAME is read from byte AT.
+: ARENA-PRIVATE-FREE? ( ptr u8 n ptr u8 n n -- bool )
+   {: name:ptr nameu:n sfx:ptr sfxu:n at:n :}
+   name nameu CHECKER-QUALIFIED? drop
+   CHECKER-QPKG$ XREF-PRIVATE-WL {: wid:n :}
+   wid 0= IF true EXIT THEN
+   SB-RESET  CHECKER-QTAIL$ SB-APPEND  sfx sfxu SB-APPEND
+   SB$ wid CHECKER-RESOLVE:WL-PROBE NULL-PTR = IF true EXIT THEN
+   at TOKEN-BYTE !  nameu DUPLICATE!  false ;
+
 \ ARENA's row asks the definer's questions in the order its run asks them and
 \ registers both words; without it the rest of the source defers to the run.
 : RECORD-ARENA ( -- )
@@ -2686,12 +2697,17 @@ variable STG-TYPE-U
    name nameu CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
    CHECKER-AUTH-PACKAGE-MODE@ {: mode:n :}
    name nameu at ARENA-WORDS-FREE? 0= IF EXIT THEN
-   mode CHECKER-PACKAGE-PUBLIC = {: pub:bool :}
-   pub IF CHECKER-PRIVATE ELSE CHECKER-PUBLIC THEN
-   true [: drop name nameu at ARENA-WORDS-FREE? ;] catch {: rc:n :}
-   pub IF CHECKER-PUBLIC ELSE CHECKER-PRIVATE THEN
-   rc 0 <> IF rc throw THEN
-   0= IF EXIT THEN
+   name nameu CHECKER-QUALIFIED? IF
+      name nameu s" -NEW" at ARENA-PRIVATE-FREE? 0= IF EXIT THEN
+      name nameu s" -NEW-DISPOSE" at ARENA-PRIVATE-FREE? 0= IF EXIT THEN
+   ELSE
+      mode CHECKER-PACKAGE-PUBLIC = {: pub:bool :}
+      pub IF CHECKER-PRIVATE ELSE CHECKER-PUBLIC THEN
+      true [: drop name nameu at ARENA-WORDS-FREE? ;] catch {: rc:n :}
+      pub IF CHECKER-PUBLIC ELSE CHECKER-PRIVATE THEN
+      rc 0 <> IF rc throw THEN
+      0= IF EXIT THEN
+   THEN
    type typeu CHECKER-ARENA-INFO 0= IF
       drop name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE EXIT
    THEN drop
