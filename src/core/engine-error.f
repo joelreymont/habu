@@ -39,6 +39,5 @@ package DEF-OCC
 public
 -7231 constant E-STALE
 -7232 constant E-SELECT
--7233 constant E-NONCALLABLE
 -7234 constant E-EXHAUSTED
 ;package

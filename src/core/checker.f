@@ -363,8 +363,8 @@
 \ visitor gets a spelling, borrowed for the call, and the file visit and
 \ half-open byte range of the declaration row that gave it, or 0 0 0 when no
 \ row locates it. One arm at a time: arming over an arm, and arming, disarming
-\ or enumerating while a check owns one or a visitor runs, throws
-\ E-CURSOR-NESTED before it touches either.
+\ or enumerating while a check owns one or a visitor runs, is rejected before
+\ it touches either.
 \
 \ Created effects: DOESEFF carries the effect a `create … does>` definer gives
 \ its created words from the clause check, which sees the clause but not the
@@ -10349,10 +10349,16 @@ variable USES-OPEN                      \ a CHECKER-WITH-USES scope is running
 ON-USE-DEFAULT
 
 \ One uses scope at a time: src/core has no action-of to save a caller's
-\ handler, so a nested scope is refused.
-7183 constant E-USES-NESTED   \ CHECKER-WITH-USES inside a running uses scope
+\ handler, so a nested scope is rejected.
+: USES-NESTED ( -- )
+   s" E-USES-NESTED" REJECTION:OPEN
+   s" `CHECKER-WITH-USES` ran inside a running uses scope" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" call `CHECKER-WITH-USES` after the running scope returns, never from its quotations"
+   REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
 : USES-INSTALL ( [ n n n n n n -- ] -- )
-   USES-OPEN @ 0 <> IF E-USES-NESTED throw THEN
+   USES-OPEN @ 0 <> IF USES-NESTED THEN
    is CHECKER-ON-USE
    1 USES-OPEN ! ;
 
@@ -10460,7 +10466,6 @@ ON-USE-DEFAULT
    rc 0= 0= IF rc throw THEN ;
 
 \ ---- completion: the cursor a body check fires at ------------------------------
-7185 constant E-CURSOR-NESTED   \ a cursor or an enumeration inside a running one
 \ A candidate: its spelling, then its declaration's visit, start and end.
 defer CHECKER-ON-CAND ( ptr u8 n n n n -- )
 : NO-CAND ( ptr u8 n n n n -- ) 2drop 2drop drop ;
@@ -10474,6 +10479,18 @@ variable VIS-OPEN                       \ an enumeration or a visitor runs
 PTR-VARIABLE CUR-RP   variable CUR-RCAP   variable CUR-RN    \ pending candidates, in rows
 PTR-VARIABLE CB-P   variable CB-CAP   variable CB-N    \ their spellings: cells, bytes
 5 constant CUR-ROW                       \ spelling offset, length, visit, start, end
+\ WORD did WHAT while a cursor or an enumeration runs; FIX says what to write.
+: CURSOR-NESTED ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: w:ptr wu:n what:ptr whatu:n fix:ptr fixu:n :}
+   s" E-CURSOR-NESTED" REJECTION:OPEN
+   96 REJECTION:EMIT1  w wu REJECTION:EMIT-STR  s" ` " REJECTION:EMIT-STR
+   what whatu REJECTION:EMIT-STR
+   REJECTION:HELP  fix fixu REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
+: CURSOR-BUSY ( ptr u8 n -- ) {: w:ptr wu:n :}
+   w wu s" ran while a check owns the cursor or a visitor runs"
+   s" arm, disarm or enumerate before the check runs or after it returns, never from a visitor"
+   CURSOR-NESTED ;
 
 : CUR-DEFAULT ( -- )
    ['] NO-CAND is CHECKER-ON-CAND
@@ -10483,9 +10500,15 @@ CUR-DEFAULT
 \ The owner slot: arm the next checked text's cursor at N for visitor XT, or
 \ disarm with a negative N.
 : CHECKER-CURSOR! ( n [ ptr u8 n n n n -- ] -- )
-   CUR-OWNED @ 0 <>  VIS-OPEN @ 0 <> or  IF E-CURSOR-NESTED throw THEN
+   CUR-OWNED @ 0 <>  VIS-OPEN @ 0 <> or  IF
+      s" CHECKER-CURSOR!" CURSOR-BUSY
+   THEN
    over 0 < IF 2drop CUR-DEFAULT EXIT THEN
-   CUR-AT @ 0 >= IF E-CURSOR-NESTED throw THEN
+   CUR-AT @ 0 >= IF
+      s" CHECKER-CURSOR!" s" armed a cursor while another is armed"
+      s" disarm the armed cursor with a negative offset before arming another"
+      CURSOR-NESTED
+   THEN
    is CHECKER-ON-CAND
    CUR-AT ! ;
 
@@ -20578,7 +20601,9 @@ public
 \ The owner slot: the spellings that bind under PREFIX at a position of KIND
 \ (CHECKER-OWNER-ABI:VISIBLE-*), each to VISIT once with its location.
 : EACH-VISIBLE ( ptr u8 n n [ ptr u8 n n n n -- ] -- )
-   CUR-OWNED @ 0 <>  VIS-OPEN @ 0 <> or  IF E-CURSOR-NESTED throw THEN
+   CUR-OWNED @ 0 <>  VIS-OPEN @ 0 <> or  IF
+      s" CHECKER-RESOLVE:EACH-VISIBLE" CURSOR-BUSY
+   THEN
    is VIS-VISIT
    VIS-ENUM ;
 ;package

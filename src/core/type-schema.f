@@ -35,10 +35,6 @@ public
 
 4 constant SCH-QUOT-ROWS
 
-\ --- named reject code. Thrown (not `die`d) so the parser/CHECK path and unit
-\ tests can trap a malformed schema node with `catch` instead of aborting.
-7103 constant E-SCHEMA-BAD
-
 \ --- node record layout (interleaved cell arena, one grow buffer).
 private
 
@@ -145,10 +141,23 @@ SCRATCH-VARIABLE SCH-MODE        \ 0 persistent, 1 transient
 
 : TRANSIENT-MODE? ( -- bool ) SCH-MODE @ 0 <> ;
 
-\ A persistent node or root never names a transient one: E-SCHEMA-BAD.
-: KEEP-CK ( n -- ) {: id:n :}
+\ SCHEMA-REG:WORD was given V, which is WHAT; FIX says what to pass instead.
+: SCHEMA-BAD ( n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: v:n w:ptr wu:n what:ptr whatu:n fix:ptr fixu:n :}
+   s" E-SCHEMA-BAD" REJECTION:OPEN
+   s" `SCHEMA-REG:" REJECTION:EMIT-STR  w wu REJECTION:EMIT-STR
+   s" ` was given " REJECTION:EMIT-STR  what whatu REJECTION:EMIT-STR
+   s" value" REJECTION:NOTE  v REJECTION:EMIT-N
+   REJECTION:HELP  fix fixu REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
+\ A persistent node or root never names a transient one.
+: KEEP-CK ( n ptr u8 n -- ) {: id:n w:ptr wu:n :}
    TRANSIENT-MODE? IF EXIT THEN
-   id TRANSIENT-BASE >= IF E-SCHEMA-BAD throw THEN ;
+   id TRANSIENT-BASE >= IF
+      id w wu s" a transient node outside transient mode"
+      s" pass a node made outside transient mode" SCHEMA-BAD
+   THEN ;
 
 : T-NODE? ( n -- bool ) {: id:n :}
    id TRANSIENT-BASE - {: i:n :}
@@ -197,21 +206,31 @@ public
 
 : SCHEMA-NEW ( n n n n -- n ) {: tag:n a:n b:n c:n :}
    WRITE-WINDOW-CK                        \ src/core/checker.f WRITE-WINDOW
-   tag SCHEMA-KIND? 0= IF E-SCHEMA-BAD throw THEN
+   tag SCHEMA-KIND? 0= IF
+      tag s" SCHEMA-NEW" s" a tag that is no schema node kind"
+      s" pass a kind from `SCHEMA-REG:SCH-PARAM` to `SCHEMA-REG:SCH-ROW`"
+      SCHEMA-BAD
+   THEN
    SCH-NEW-ID {: id:n :}
    id SCH-REC@ {: r:ptr :}
    tag r SCH.TAG !   a r SCH.A !   b r SCH.B !   c r SCH.C !
    id ;
 
 : SCHEMA-PARAM ( n -- n )
-   dup 0 < IF drop E-SCHEMA-BAD throw THEN
+   dup 0 < IF
+      s" SCHEMA-PARAM" s" a negative parameter index"
+      s" pass a parameter index of 0 or more" SCHEMA-BAD
+   THEN
    SCH-PARAM swap 0 0 SCHEMA-NEW ;
 : SCHEMA-CON ( n -- n )
    SCH-CON swap 0 0 SCHEMA-NEW ;
 : SCHEMA-APP ( n n n -- n )
    {: fam:n start:n count:n :}
-   count 0 < IF E-SCHEMA-BAD throw THEN
-   start KEEP-CK
+   count 0 < IF
+      count s" SCHEMA-APP" s" a negative argument count"
+      s" pass an argument count of 0 or more" SCHEMA-BAD
+   THEN
+   start s" SCHEMA-APP" KEEP-CK
    \ A nullary application (`fam<>`) has an empty argument range: start 0,
    \ as for SCHEMA-ROW.
    SCH-APP fam count 0= IF 0 ELSE start THEN count SCHEMA-NEW ;
@@ -229,7 +248,7 @@ public
 \ product fields reference as contiguous [start,start+count) ranges.
 : SCHEMA-ROOT+ ( n -- n ) {: node:n :}
    WRITE-WINDOW-CK
-   node KEEP-CK
+   node s" SCHEMA-ROOT+" KEEP-CK
    TRANSIENT-MODE? IF node T-ROOT+ EXIT THEN
    node 0 <= IF s" tfam: bad schema root" 76 die THEN
    node SCH-N @ >= IF s" tfam: bad schema root" 76 die THEN
@@ -273,8 +292,11 @@ public
 \ An empty row (count 0) is start 0, never the root store's high-water: it
 \ names no root, so its start is the same whatever an earlier file left.
 : SCHEMA-ROW ( n n -- n ) {: start:n count:n :}   \ row over [start,start+count) element roots
-   count 0 < IF E-SCHEMA-BAD throw THEN
-   start KEEP-CK
+   count 0 < IF
+      count s" SCHEMA-ROW" s" a negative element count"
+      s" pass an element count of 0 or more" SCHEMA-BAD
+   THEN
+   start s" SCHEMA-ROW" KEEP-CK
    SCH-ROW count 0= IF 0 ELSE start THEN count 0 SCHEMA-NEW ;
 : SCHEMA-ROW? ( n -- bool ) SCHEMA-TAG@ SCH-ROW = ;
 : SCHEMA-ROW-START@ ( n -- n ) SCHEMA-A@ ;
@@ -287,9 +309,14 @@ public
 
 \ --- SCH-QUOT quotation payload node: the checker's quotation effect sides (din,
 \ dout, rin, rout) as four SCH-ROW roots plus a hasr flag, so a schema can carry a
-\ quotation-typed argument. A side that is not a live SCH-ROW node throws
-\ E-SCHEMA-BAD.
+\ quotation-typed argument. A side that is not a live SCH-ROW node is rejected.
 private
+
+: QUOT-SIDE-CK ( n -- ) {: side:n :}
+   side s" SCHEMA-QUOT" KEEP-CK
+   side SCHEMA-ROW-OK? IF EXIT THEN
+   side s" SCHEMA-QUOT" s" a side that is not a live row node"
+   s" pass four sides `SCHEMA-REG:SCHEMA-ROW` made" SCHEMA-BAD ;
 
 : SCH-FLAG ( n -- n )                       \ canonical 0/-1 flag as a plain cell (any nonzero -> -1)
    0= IF 0 ELSE -1 THEN ;
@@ -298,9 +325,7 @@ public
 
 : SCHEMA-QUOT ( n n n n n -- n )
    {: din:n dout:n rin:n rout:n hasr:n :}
-   din KEEP-CK  dout KEEP-CK  rin KEEP-CK  rout KEEP-CK
-   din SCHEMA-ROW-OK? dout SCHEMA-ROW-OK? and
-   rin SCHEMA-ROW-OK? and rout SCHEMA-ROW-OK? and 0= IF E-SCHEMA-BAD throw THEN
+   din QUOT-SIDE-CK  dout QUOT-SIDE-CK  rin QUOT-SIDE-CK  rout QUOT-SIDE-CK
    din SCHEMA-ROOT+ {: start:n :}          \ first side root; dout/rin/rout follow contiguously
    dout SCHEMA-ROOT+ drop
    rin SCHEMA-ROOT+ drop
@@ -347,10 +372,13 @@ public
    eff SCHEMA-QUOT-HASR@ SCHEMA-QUOT ;
 
 \ --- SCH-PTR: a `ptr T` variant payload element. A malformed child (nil or out
-\ of range) throws E-SCHEMA-BAD.
+\ of range) is rejected.
 : SCHEMA-PTR ( n -- n )
-   dup KEEP-CK
-   dup SCHEMA-NODE-OK? 0= IF drop E-SCHEMA-BAD throw THEN
+   dup s" SCHEMA-PTR" KEEP-CK
+   dup SCHEMA-NODE-OK? 0= IF
+      s" SCHEMA-PTR" s" a node that is not a live schema node"
+      s" pass a node a `SCHEMA-REG` word made" SCHEMA-BAD
+   THEN
    SCH-PTR swap 0 0 SCHEMA-NEW ;
 : SCHEMA-PTR? ( n -- bool ) SCHEMA-TAG@ SCH-PTR = ;
 
