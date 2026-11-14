@@ -1,9 +1,9 @@
 ---
-title: "Spill a macOS variadic call's fixed inputs past x7"
-status: active
+title: "Run the FFI C-call tests on macOS"
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-11-14T23:36:25.876217+01:00"
 ---
 
-Problem: on macOS a variadic FUNCTION: with more than 8 fixed integer inputs is rejected (src/lib/ffi-abi.f PLAN-SPILLS REG-ROOM), though Apple arm64 passes fixed inputs past the registers on the stack before the variadic ones. Acceptance: such a call works on macOS, with a test run there. Depends: none. Claim: agent=carl workspace=.jj-ws.noindex/carl-width.
+Problem: the Apple arm64 stack layout of FUNCTION: calls (src/lib/ffi-abi.f SLOT-BYTES, SPILL-ARG and PLACE-NEXT: a fixed input past the registers packed at its C width, every variadic input in an 8-byte slot) is checked only by reading; no macOS host has run test/ffi-c-calls.f, whose callees hb_cc_f9, hb_cc_l8n, hb_cc_l9v and hb_cc_l9vu pin it. Acceptance: test/ffi-c-calls.f passes on macOS arm64. Depends: none. Claim: unassigned.

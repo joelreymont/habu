@@ -1,9 +1,9 @@
 ---
-title: Stage FFI stack inputs at their C width
+title: "Place a struct call's inputs by the call rule"
 status: active
 priority: 2
 issue-type: task
 created-at: "2026-11-14T23:57:06.697829+01:00"
 ---
 
-Problem: src/lib/ffi-abi.f SPILL-ARG rejects an f32 past the float registers on every target (F32-UNSTAGED) and, on macOS, an integer input narrower than a cell past x7 (NARROW-SPILL), because STAGE-SPILL writes whole cells. The C ABIs give both a stack slot: AAPCS64 and SysV an 8-byte slot holding the value in its low bytes, Apple arm64 the type's own size and alignment. These are limits of Habu's own, and F32-UNSTAGED's 'has no stack slot' is false. NARROW? repeats the checker's narrow-type set by name, and the struct path (PLACE-ARG, STAGE-C-ARG) does not apply it. Acceptance: test/ffi-c-calls.f calls C functions with f32, u8, u16 and u32 inputs past the registers on Linux arm64 and gets the right results; F32-UNSTAGED, NARROW-SPILL and NARROW? are gone; the planner lays out Apple's stack by Apple's rule. Depends: none. Claim: agent=carl workspace=.jj-ws.noindex/carl-width.
+Problem: a FUNCTION: call with a STRUCT-ARG or STRUCT-RESULT clause is planned by src/lib/ffi-abi.f PLACE-ARG (:1468), not by the call rule PLACE-NEXT applies: it puts every float in a register and rejects a ninth (FLOAT-REGS-FULL :1391, from PLAN-ROOM :1499), a limit of Habu's own, and stages every integer input past x7 as a whole cell, so on macOS a u8, u16, u32 or char there is mis-staged with no rejection; the header's 'cell-wide C types' rule (:982) is checked nowhere. Acceptance: a struct call takes floats and narrow integers past the registers by the call rule, and C functions taking them beside a record return C's answer on Linux arm64 (test/ffi-struct-arg.f); tools/check.f plans the same layout; FLOAT-REGS-FULL is gone. Depends: none. Claim: agent=carl workspace=.jj-ws.noindex/carl-struct.

@@ -33,17 +33,34 @@ variable FFI-T-CC-LIB-U
    FFI-T-CC-L+
    s"    return a + 2*b + 3*c + 4*d + 5*e + 6*f + 7*g + 8*h + 9*i + 10*j; }"
    FFI-T-CC-L+
-   s" L hb_cc_l9dl(L a, L b, L c, L d, L e, L f, L g, L h, L i, D j) {"
-   FFI-T-CC-L+
-   s"    return a + 2*b + 3*c + 4*d + 5*e + 6*f + 7*g + 8*h + 9*i + (L)(10*j); }"
-   FFI-T-CC-L+
    s" D hb_cc_mix(L a, L b, L c, L d, L e, L f, L g, L h, D i, L j, L k," FFI-T-CC-L+
    s"    D l, D m, D n, D o, D p) {" FFI-T-CC-L+
    s"    return a + 2*b + 3*c + 4*d + 5*e + 6*f + 7*g + 8*h + 9*i + 10*j" FFI-T-CC-L+
    s"       + 11*k + 12*l + 13*m + 14*n + 15*o + 16*p; }" FFI-T-CC-L+
    s" unsigned char hb_cc_u8(L x) { return x; }" FFI-T-CC-L+
    s" unsigned short hb_cc_u16(L x) { return x; }" FFI-T-CC-L+
-   s" char hb_cc_char(L x) { return x; }" FFI-T-CC-L+ ;
+   s" char hb_cc_char(L x) { return x; }" FFI-T-CC-L+
+   s" float hb_cc_f9(float a, float b, float c, float d, float e," FFI-T-CC-L+
+   s"    float f, float g, float h, float i) {" FFI-T-CC-L+
+   s"    return a + 2*b + 3*c + 4*d + 5*e + 6*f + 7*g + 8*h + 9*i; }"
+   FFI-T-CC-L+
+   s" L hb_cc_l8n(L a, L b, L c, L d, L e, L f, L g, L h," FFI-T-CC-L+
+   s"    unsigned char i, unsigned short j, unsigned int k) {" FFI-T-CC-L+
+   s"    return a + 2*b + 3*c + 4*d + 5*e + 6*f + 7*g + 8*h" FFI-T-CC-L+
+   s"       + 9*(L)i + 10*(L)j + 11*(L)k; }" FFI-T-CC-L+
+   s" #include <stdarg.h>" FFI-T-CC-L+
+   s" L hb_cc_l9v(L a, L b, L c, L d, L e, L f, L g, L h, L i, ...) {"
+   FFI-T-CC-L+
+   s"    va_list ap; va_start(ap, i); L j = va_arg(ap, L); va_end(ap);"
+   FFI-T-CC-L+
+   s"    return a + 2*b + 3*c + 4*d + 5*e + 6*f + 7*g + 8*h + 9*i + 10*j; }"
+   FFI-T-CC-L+
+   s" L hb_cc_l9vu(L a, L b, L c, L d, L e, L f, L g, L h, L i, ...) {"
+   FFI-T-CC-L+
+   s"    va_list ap; va_start(ap, i); int j = va_arg(ap, int); va_end(ap);"
+   FFI-T-CC-L+
+   s"    return a + 2*b + 3*c + 4*d + 5*e + 6*f + 7*g + 8*h + 9*i + 10*j; }"
+   FFI-T-CC-L+ ;
 
 : FFI-T-CC-LIB$ ( -- ptr u8 n )
    HB-TARGET-MACOS? if s" libhbccalls.dylib" exit then
@@ -66,18 +83,32 @@ FFI-T-CC-BUILD
 
 FUNCTION: FFI-T-CC-L9D hb_cc_l9d ( n n n n n n n n n r -- r ) ;FUNCTION
 FUNCTION: FFI-T-CC-D10 hb_cc_d10 ( r r r r r r r r r r -- r ) ;FUNCTION
-FUNCTION: FFI-T-CC-L9DL hb_cc_l9dl ( n n n n n n n n n r -- n ) ;FUNCTION
 FUNCTION: FFI-T-CC-MIX hb_cc_mix
    ( n n n n n n n n r n n r r r r r -- r )
 ;FUNCTION
 FUNCTION: FFI-T-CC-U8 hb_cc_u8 ( n -- u8 ) ;FUNCTION
 FUNCTION: FFI-T-CC-U16 hb_cc_u16 ( n -- u16 ) ;FUNCTION
 FUNCTION: FFI-T-CC-CHAR hb_cc_char ( n -- char ) ;FUNCTION
+FUNCTION: FFI-T-CC-F9 hb_cc_f9
+   ( f32 f32 f32 f32 f32 f32 f32 f32 f32 -- f32 )
+;FUNCTION
+FUNCTION: FFI-T-CC-L8N hb_cc_l8n ( n n n n n n n n u8 u16 u32 -- n ) ;FUNCTION
+FUNCTION: FFI-T-CC-L9V hb_cc_l9v ( n n n n n n n n n n -- n )
+   9 VARIADIC
+;FUNCTION
+FUNCTION: FFI-T-CC-L9VU hb_cc_l9vu ( n n n n n n n n n u8 -- n )
+   9 VARIADIC
+;FUNCTION
 
-\ The input at position p, from 1: a long or a double, distinct and nonzero
-\ at every position, so that a sum weighed by position is exact.
+\ The input at position p, from 1: a long or a double, distinct and nonzero at
+\ every position, so a misplaced input changes the weighted sum. Each double is
+\ a multiple of 1/4, so every sum is exact.
 : FFI-T-CC-N ( n -- n ) {: p:n :} p p * p * p 9 * - 1+ ;
 : FFI-T-CC-R ( n -- r ) s>f 0.75 f* 0.5 f+ ;
+
+: FFI-T-CC-NINE ( -- n n n n n n n n n )
+   1 FFI-T-CC-N 2 FFI-T-CC-N 3 FFI-T-CC-N 4 FFI-T-CC-N 5 FFI-T-CC-N
+   6 FFI-T-CC-N 7 FFI-T-CC-N 8 FFI-T-CC-N 9 FFI-T-CC-N ;
 
 \ The inputs at positions lo through hi, weighed by position.
 : FFI-T-CC-NS ( n n -- n ) {: lo:n hi:n :}
@@ -87,16 +118,8 @@ FUNCTION: FFI-T-CC-CHAR hb_cc_char ( n -- char ) ;FUNCTION
 
 : FFI-T-CC-LONGS ( -- )
    s" nine longs and a double: the ninth long on the stack" T-LABEL
-   1 FFI-T-CC-N 2 FFI-T-CC-N 3 FFI-T-CC-N 4 FFI-T-CC-N 5 FFI-T-CC-N
-   6 FFI-T-CC-N 7 FFI-T-CC-N 8 FFI-T-CC-N 9 FFI-T-CC-N
-   10 FFI-T-CC-R FFI-T-CC-L9D
-   1 9 FFI-T-CC-NS s>f 10 10 FFI-T-CC-RS f+ f= T-ASSERT
-
-   s" the same inputs with a long result" T-LABEL
-   1 FFI-T-CC-N 2 FFI-T-CC-N 3 FFI-T-CC-N 4 FFI-T-CC-N 5 FFI-T-CC-N
-   6 FFI-T-CC-N 7 FFI-T-CC-N 8 FFI-T-CC-N 9 FFI-T-CC-N
-   10 FFI-T-CC-R FFI-T-CC-L9DL
-   1 9 FFI-T-CC-NS 10 10 FFI-T-CC-RS f>s + T= ;
+   FFI-T-CC-NINE 10 FFI-T-CC-R FFI-T-CC-L9D
+   1 9 FFI-T-CC-NS s>f 10 10 FFI-T-CC-RS f+ f= T-ASSERT ;
 
 : FFI-T-CC-DOUBLES ( -- )
    s" ten doubles: the ninth and tenth on the stack" T-LABEL
@@ -122,7 +145,41 @@ FUNCTION: FFI-T-CC-CHAR hb_cc_char ( n -- char ) ;FUNCTION
    s" a char result reads its 8 bits" T-LABEL
    $1FF FFI-T-CC-CHAR $FF T= ;
 
+\ Each narrow input sets its type's top bit, so a store of too few bytes fails.
+$A5 constant FFI-T-CC-U8-IN
+$B7C6 constant FFI-T-CC-U16-IN
+$D9E8F7A6 constant FFI-T-CC-U32-IN
+
+: FFI-T-CC-FLOATS ( -- )
+   s" nine floats: the ninth on the stack" T-LABEL
+   1 FFI-T-CC-R 2 FFI-T-CC-R 3 FFI-T-CC-R 4 FFI-T-CC-R 5 FFI-T-CC-R
+   6 FFI-T-CC-R 7 FFI-T-CC-R 8 FFI-T-CC-R 9 FFI-T-CC-R
+   FFI-T-CC-F9
+   1 9 FFI-T-CC-RS f= T-ASSERT ;
+
+: FFI-T-CC-NARROW-STACK ( -- )
+   s" eight longs, then a u8, a u16 and a u32 on the stack" T-LABEL
+   1 FFI-T-CC-N 2 FFI-T-CC-N 3 FFI-T-CC-N 4 FFI-T-CC-N 5 FFI-T-CC-N
+   6 FFI-T-CC-N 7 FFI-T-CC-N 8 FFI-T-CC-N
+   FFI-T-CC-U8-IN FFI-T-CC-U16-IN FFI-T-CC-U32-IN FFI-T-CC-L8N
+   1 8 FFI-T-CC-NS  FFI-T-CC-U8-IN 9 * +
+   FFI-T-CC-U16-IN 10 * +  FFI-T-CC-U32-IN 11 * + T= ;
+
+\ L9V with -1 leaves $FF bytes in the variadic slot, so a u8 stored in fewer
+\ than an int's 4 bytes reads them as a negative int.
+: FFI-T-CC-VARIADIC ( -- )
+   s" nine fixed longs, then a variadic long on the stack" T-LABEL
+   FFI-T-CC-NINE 10 FFI-T-CC-N FFI-T-CC-L9V
+   1 10 FFI-T-CC-NS T=
+   s" a variadic u8 on the stack writes its whole slot" T-LABEL
+   FFI-T-CC-NINE -1 FFI-T-CC-L9V drop
+   FFI-T-CC-NINE FFI-T-CC-U8-IN FFI-T-CC-L9VU
+   1 9 FFI-T-CC-NS  FFI-T-CC-U8-IN 10 * + T= ;
+
 FFI-T-CC-LONGS
 FFI-T-CC-DOUBLES
+FFI-T-CC-FLOATS
+FFI-T-CC-NARROW-STACK
+FFI-T-CC-VARIADIC
 FFI-T-CC-MIXED
 FFI-T-CC-NARROW

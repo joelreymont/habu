@@ -59,9 +59,6 @@ variable FFI-T-MATH
 DEFTYPE FFI-DEV
 DEFTYPE FFI-CTX
 
-\ No C function witnesses an x8 result on Linux, macOS fixed integers past x7, a
-\ double register beside a stack double, or binary32 beside a double or in s7.
-
 PROCESS-SYMBOLS
 FUNCTION: FFI-T-STRLEN$ strlen ( ptr u8 -- n ) ;FUNCTION
 FUNCTION: FFI-T-STRNCMP$ strncmp ( ptr u8 ptr u8 n -- i32 ) ;FUNCTION
@@ -135,8 +132,6 @@ FFI-T-DEPTH-AFTER FFI-T-DEPTH!
    s" FUNCTION: FFI-T-X4 getpid ( ptr u8 ptr u8 -- n ) 0 1 WRITES-ARG ;FUNCTION" evaluate-closed ;
 : FFI-T-BAD-EXTENT-INDEX ( -- )
    s" FUNCTION: FFI-T-X5 getpid ( ptr u8 -- n ) 3 $10 WRITES-BYTES ;FUNCTION" evaluate-closed ;
-: FFI-T-BAD-F32-ARITY ( -- )
-   s" FUNCTION: FFI-T-XF getpid ( f32 f32 f32 f32 f32 f32 f32 f32 f32 -- f32 ) ;FUNCTION" evaluate-closed ;
 : FFI-T-BAD-IN-TYPE ( -- )
    s" FUNCTION: FFI-T-XI getpid ( fd -- n ) ;FUNCTION" evaluate-closed ;
 : FFI-T-BAD-OUT-TYPE ( -- )
@@ -350,13 +345,6 @@ create FFI-T-LONG-PATH PATH-CAP allot
    E-FFI-LIBRARY
    s" error[E-FFI-LIBRARY]: the library selected last belongs to another package section or to top level"
    FFI-T-RECORD ;
-
-\ The record names the target the case runs on.
-: FFI-T-F32-UNSTAGED ( [ -- ] -- )
-   FFI-T-SRC CODEGEN:RESET
-   s" error[E-FFI-ARITY]: an f32 input past the 8 float registers has no stack slot on "
-   FFI-T-SRC+  HB-TARGET$ FFI-T-SRC+
-   E-FFI-ARITY FFI-T-SRC CODEGEN:CONTENTS FFI-T-RECORD ;
 
 \ The overflowing path carries no extension: it stands for a literal LIBRARY row
 \ on either target, which the spelling rule below leaves alone.
@@ -813,7 +801,6 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    s" error[E-FFI-SYNTAX]: WRITES-ARG's length input is not an integer" FFI-T-SYNTAX
    [: FFI-T-BAD-EXTENT-INDEX ;]
    s" error[E-FFI-SYNTAX]: the clause names no input of the declaration" FFI-T-SYNTAX
-   [: FFI-T-BAD-F32-ARITY ;] FFI-T-F32-UNSTAGED
    [: FFI-T-BAD-IN-TYPE ;]
    s" error[E-FFI-SYNTAX]: 'fd' is not an input type: an input is ptr u8, f32, r, n, i64, cell, addr, u8, u16, u32 or char"
    FFI-T-SYNTAX

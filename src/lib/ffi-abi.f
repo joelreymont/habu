@@ -22,8 +22,8 @@
 \ argument, to a private copy in the native call frame that lives exactly as
 \ long as the call; the copy follows every stack argument from an even cell,
 \ 16-byte aligned on the 16-byte aligned native stack. A planned register is
-\ kept as its number and a stack cell as -1-cell; a record of 16 bytes or fewer
-\ has no copy, kept as 0.
+\ kept as its number and a stack cell as -1 less its byte offset; a record of
+\ 16 bytes or fewer has no copy, kept as 0.
 
 HB-TARGET-MACOS? HB-TARGET-LINUX-KERNEL? or ?TARGET
 s" src/lib/error.f" required
@@ -62,13 +62,17 @@ $3C80 constant FFI-KPARAM#-OFF
 : FFI-F32BUF ( -- ptr n )
    data-base FFI-FBUF-OFF + ;
 
-\ A spill slot holds an integer or a float as the marshalled signature says, so
-\ FFI-STACK-BUF and FFI-STACK-FBUF declare one offset at the two pointees rather
-\ than one `( -- ptr a )` that would let a caller pick engine DATA's type.
+\ A spill slot holds an integer, a float or narrower C bytes as the marshalled
+\ signature says, so FFI-STACK-BUF, FFI-STACK-FBUF and FFI-STACK-BYTES declare
+\ one offset at three pointees rather than one `( -- ptr a )` that would let a
+\ caller pick engine DATA's type.
 : FFI-STACK-BUF ( -- ptr n )
    data-base FFI-STACK-BUF-OFF + ;
 
 : FFI-STACK-FBUF ( -- ptr r )
+   data-base FFI-STACK-BUF-OFF + ;
+
+: FFI-STACK-BYTES ( -- ptr u8 )
    data-base FFI-STACK-BUF-OFF + ;
 
 : FFI-KPARAM-PBUF ( -- ptr n )
@@ -89,8 +93,8 @@ $3C80 constant FFI-KPARAM#-OFF
 CAST: CELL>PTR ( n -- ptr u8 )
 
 \ ---- argument marshalling -------------------------------------------------
-\ Integer slot 8 is x8, the AAPCS64 indirect-result register. Stack slots are
-\ copied to the C stack exactly as prepacked by the caller on either ABI.
+\ Integer slot 8 is x8, the AAPCS64 indirect-result register. The stack buffer
+\ is addressed by byte offset and copied to the C stack exactly as prepacked.
 : FFI-CHECK-INDEX ( n n -- ) {: idx:n cap:n :}
    idx 0 < if E-FFI-ARITY throw then
    idx cap >= if E-FFI-ARITY throw then ;
@@ -106,12 +110,22 @@ CAST: CELL>PTR ( n -- ptr u8 )
 : FFI-F32SLOT ( n -- ptr n ) {: idx:n :}
    idx FFI-REG-ARGS FFI-CHECK-INDEX
    FFI-F32BUF idx cells + ;
-: FFI-STACK-SLOT ( n -- ptr n ) {: idx:n :}
-   idx FFI-MAX-ARGS FFI-CHECK-INDEX
-   FFI-STACK-BUF idx cells + ;
-: FFI-STACK-FSLOT ( n -- ptr r ) {: idx:n :}
-   idx FFI-MAX-ARGS FFI-CHECK-INDEX
-   FFI-STACK-FBUF idx cells + ;
+: FFI-CHECK-STACK ( n n -- )
+   {: off:n width:n :}
+   off 0 < if E-FFI-ARITY throw then
+   off width + FFI-MAX-ARGS cells > if E-FFI-ARITY throw then ;
+: FFI-STACK-SLOT ( n -- ptr n )
+   {: off:n :}
+   off CELL FFI-CHECK-STACK
+   FFI-STACK-BUF off + ;
+: FFI-STACK-FSLOT ( n -- ptr r )
+   {: off:n :}
+   off CELL FFI-CHECK-STACK
+   FFI-STACK-FBUF off + ;
+: FFI-STACK-AT ( n n -- ptr u8 )
+   {: off:n width:n :}
+   off width FFI-CHECK-STACK
+   FFI-STACK-BYTES off + ;
 : FFI-ARG! ( n n -- ) {: v:n idx:n :}
    v idx FFI-SLOT ! ;
 : FFI-PTR-ARG! ( ptr a n -- ) {: p:ptr idx:n :}
@@ -120,10 +134,21 @@ CAST: CELL>PTR ( n -- ptr u8 )
    v idx FFI-FSLOT ! ;
 : FFI-F32ARG! ( n n -- ) {: bits:n idx:n :}
    bits idx FFI-F32SLOT ! ;
-: FFI-STACK! ( n n -- ) {: v:n idx:n :}
-   v idx FFI-STACK-SLOT ! ;
-: FFI-FSTACK! ( r n -- ) {: v:r idx:n :}
-   v idx FFI-STACK-FSLOT ! ;
+: FFI-STACK! ( n n -- )
+   {: v:n off:n :}
+   v off FFI-STACK-SLOT ! ;
+: FFI-FSTACK! ( r n -- )
+   {: v:r off:n :}
+   v off FFI-STACK-FSLOT ! ;
+: FFI-STACK-U8! ( n n -- )
+   {: v:n off:n :}
+   v $FF and off 1 FFI-STACK-AT c! ;
+: FFI-STACK-U16! ( n n -- )
+   {: v:n off:n :}
+   v off 2 FFI-STACK-AT LE:U16! ;
+: FFI-STACK-U32! ( n n -- )
+   {: v:n off:n :}
+   v off 4 FFI-STACK-AT LE:U32! ;
 : FFI-X8! ( n -- )
    8 FFI-ARG! ;
 
@@ -594,10 +619,18 @@ public
 : FLOAT32! ( r n -- ) {: value:r idx:n :}
    value F32:NARROW idx FFI-F32ARG! ;
 
+\ The stack stores take a byte offset into the stack buffer.
 : STACK-VALUE! ( n n -- ) FFI-STACK! ;
+: STACK-U8! ( n n -- ) FFI-STACK-U8! ;
+: STACK-U16! ( n n -- ) FFI-STACK-U16! ;
+: STACK-U32! ( n n -- ) FFI-STACK-U32! ;
 : STACK-FLOAT! ( r n -- ) FFI-FSTACK! ;
-: STACK-POINTER! ( ptr a n -- ) {: value:ptr idx:n :}
-   value PTR>CELL idx FFI-STACK! ;
+: STACK-FLOAT32! ( r n -- )
+   {: value:r off:n :}
+   value F32:NARROW off FFI-STACK-U32! ;
+: STACK-POINTER! ( ptr a n -- )
+   {: value:ptr off:n :}
+   value PTR>CELL off FFI-STACK! ;
 
 : ARGS ( -- ptr n ) FFI-BUF ;
 : FLOATS ( -- ptr r ) FFI-FBUF ;
@@ -779,21 +812,27 @@ private
    src PTR>CELL 0= len 0 <= or if E-FFI-SYNTAX throw then
    len 1- 8 / 1+ ;
 
-: RECORD-COPY ( ptr u8 n n -- n ) {: src:ptr len:n pay:n :}
-   src len RECORD-CELLS 0 ?do src len i RECORD-CELL pay i + STACK-VALUE! loop
-   pay FFI-STACK-SLOT PTR>CELL ;
+: RECORD-COPY ( ptr u8 n n -- n )
+   {: src:ptr len:n pay:n :}
+   src len RECORD-CELLS 0 ?do
+      src len i RECORD-CELL pay i + cells STACK-VALUE!
+   loop
+   pay cells FFI-STACK-SLOT PTR>CELL ;
 
 public
 
 \ STRUCT-ARG staging. A record of 16 bytes or fewer goes whole in consecutive
-\ integer registers from reg, or in stack cells from pos; a larger one is
-\ copied into stack cells from pay and passed by address in register reg or
-\ stack cell pos.
+\ integer registers from reg, or in stack cells from byte offset pos; a larger
+\ one is copied into stack cells from cell pay and passed by address in
+\ register reg or the stack cell at byte offset pos.
 : STRUCT-REGS! ( ptr u8 n n -- ) {: src:ptr len:n reg:n :}
    src len RECORD-CELLS 0 ?do src len i RECORD-CELL reg i + VALUE! loop ;
 
-: STRUCT-STACK! ( ptr u8 n n -- ) {: src:ptr len:n pos:n :}
-   src len RECORD-CELLS 0 ?do src len i RECORD-CELL pos i + STACK-VALUE! loop ;
+: STRUCT-STACK! ( ptr u8 n n -- )
+   {: src:ptr len:n pos:n :}
+   src len RECORD-CELLS 0 ?do
+      src len i RECORD-CELL pos i cells + STACK-VALUE!
+   loop ;
 
 : STRUCT-COPY-REG! ( ptr u8 n n n -- ) {: src:ptr len:n pay:n reg:n :}
    src len pay RECORD-COPY reg VALUE! ;
@@ -956,13 +995,9 @@ s" dlerror" PROCESS 0 DECLARE DLERROR-FN-CELL !
 \ A float result reads only the low 32 bits of its FP slot and widens to Habu
 \ `r`. Variadic positions use C default promotions, so declare a promoted float
 \ as `r`, never `f32`.
-\ An input past its kind's registers takes the next stack cell in argument
-\ order, and the call rides the ABI trampoline, which copies the cells to the
-\ native stack. A C float past the eighth float register has no stack staging
-\ and is rejected (E-FFI-ARITY). Apple arm64 packs a stack input at its C
-\ width, so there an input narrower than a cell (`u8`, `u16`, `u32`, `char`)
-\ past x7 is rejected (E-FFI-ARITY). A macOS variadic call passes its fixed
-\ inputs in registers only, and is rejected past eight of either kind.
+\ Outside a struct call an input past its kind's registers takes the next
+\ 8-byte stack slot, the value in its low bytes; Apple arm64 packs a fixed one
+\ at its C width and alignment and puts every variadic input in a slot.
 \
 \ ;FUNCTION builds the declared word with define-word: its
 \ effect from the types read where the declaration stands, its body from
@@ -1022,6 +1057,7 @@ variable TOK-U
 variable BASE-U
 
 create ARG-KIND ARG-MAX cells allot
+create ARG-WIDTH ARG-MAX cells allot          \ each input's C width in bytes
 create ARG-REG ARG-MAX cells allot
 create ARG-EXT ARG-MAX cells allot
 create ARG-EXT-ARG ARG-MAX cells allot
@@ -1057,7 +1093,8 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
    REST-TOKENS
    ARG-MAX TOK-CAP * 0 ?do 0 ARG-TEXT i + c! loop
    ARG-MAX 0 ?do
-      0 ARG-KIND i cells + ! 0 ARG-REG i cells + ! 0 ARG-EXT i cells + !
+      0 ARG-KIND i cells + ! 0 ARG-WIDTH i cells + !
+      0 ARG-REG i cells + ! 0 ARG-EXT i cells + !
       0 ARG-EXT-ARG i cells + ! 0 ARG-SBYTES i cells + ! 0 ARG-PAY i cells + !
       0 ARG-TEXT-U i cells + !
    loop
@@ -1170,6 +1207,9 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
 \ ---- the declared effect ---------------------------------------------------
 
 : ARG-KIND@ ( n -- n ) {: i:n :} ARG-KIND i cells + @ ;
+: ARG-WIDTH@ ( n -- n )
+   {: i:n :}
+   ARG-WIDTH i cells + @ ;
 : ARG-REG@ ( n -- n ) {: i:n :} ARG-REG i cells + @ ;
 : ARG-EXT@ ( n -- n ) {: i:n :} ARG-EXT i cells + @ ;
 : ARG-EXT-ARG@ ( n -- n ) {: i:n :} ARG-EXT-ARG i cells + @ ;
@@ -1213,10 +1253,11 @@ private
    s" call it through a C function that takes the inputs in a record"
    ARITY-HELP ;
 
-: ARG+ ( n -- )
-   {: kind:n :}
+: ARG+ ( n n -- )
+   {: kind:n width:n :}
    ARG-N @ ARG-MAX >= if INPUTS-FULL then
    kind ARG-KIND ARG-N @ cells + !
+   width ARG-WIDTH ARG-N @ cells + !
    NO-EXT ARG-N @ ARG-EXT!
    NO-EXT ARG-N @ ARG-EXT-ARG!
    0 ARG-N @ ARG-SBYTES!
@@ -1261,19 +1302,25 @@ private
    s" ptr u8, f32, i32, nullable<u8>, r, n, i64, cell, addr, u8, u16, u32 or char"
    TYPE-REJECT ;
 
+: SCALAR-WIDTH ( -- n )
+   s" u8" TOK-IS? s" char" TOK-IS? or if 1 exit then
+   s" u16" TOK-IS? if 2 exit then
+   s" u32" TOK-IS? if 4 exit then
+   8 ;
+
 \ Each type is read where it is written, so a rejected one names its token;
 \ DECLARED-EFFECT reads the recorded text again.
 : IN-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
    s" ptr" TOK-IS? if
       a PTR-TAIL EFFECT:READ-TYPE drop
-      K-POINTER ARG+ s" ptr u8" IN-TEXT exit
+      K-POINTER 8 ARG+ s" ptr u8" IN-TEXT exit
    then
    s" f32" TOK-IS? if
-      s" r" EFFECT:NAMED drop K-FLOAT32 ARG+ s" r" IN-TEXT exit
+      s" r" EFFECT:NAMED drop K-FLOAT32 4 ARG+ s" r" IN-TEXT exit
    then
    s" r" TOK-IS? SCALAR? or 0= if IN-REJECT then
    a u EFFECT:READ-TYPE drop
-   s" r" TOK-IS? if K-FLOAT ARG+ else K-VALUE ARG+ then
+   s" r" TOK-IS? if K-FLOAT 8 ARG+ else K-VALUE SCALAR-WIDTH ARG+ then
    a u IN-TEXT ;
 
 : SCALAR-KIND ( -- n )
@@ -1341,14 +1388,6 @@ private
 
 \ ---- which call the declaration rides --------------------------------------
 
-: INT-REGS-FULL ( -- )
-   ARITY-OPEN
-   s" a variadic call passes at most " REJECTION:EMIT-STR
-   REG-MAX REJECTION:EMIT-U
-   s"  fixed integer inputs, each in a register" REJECTION:EMIT-STR
-   s" call it through a C function that takes the inputs in a record"
-   ARITY-HELP ;
-
 : FLOAT-REGS-FULL ( [ -- ] -- )
    {: place :}
    ARITY-OPEN
@@ -1358,25 +1397,6 @@ private
    place execute
    s" call it through a C function that takes the floats in a record"
    ARITY-END ;
-
-: F32-UNSTAGED ( -- )
-   ARITY-OPEN
-   s" an f32 input past the " REJECTION:EMIT-STR
-   REG-MAX REJECTION:EMIT-U
-   s"  float registers has no stack slot on " REJECTION:EMIT-STR
-   HB-TARGET$ REJECTION:EMIT-STR
-   s" declare it r and call a C function that takes a double"
-   ARITY-HELP ;
-
-: NARROW-SPILL ( n -- ) {: i:n :}
-   ARITY-OPEN
-   s" a " REJECTION:EMIT-STR  i ARG-TEXT$ REJECTION:EMIT-STR
-   s"  input past the " REJECTION:EMIT-STR
-   REG-MAX REJECTION:EMIT-U
-   s"  integer registers takes its C width on the macOS stack, not a cell"
-   REJECTION:EMIT-STR
-   s" call it through a C function that takes the inputs in a record"
-   ARITY-HELP ;
 
 : STAGING-FULL ( [ -- ] -- )
    {: place :}
@@ -1388,65 +1408,51 @@ private
    s" pass the large records by address through a C function"
    ARITY-END ;
 
-: REG-ROOM ( n n -- )
-   {: int:n flt:n :}
-   int REG-MAX > if INT-REGS-FULL then
-   flt REG-MAX > if [: CHECK:DEFINER-PLACE ;] FLOAT-REGS-FULL then ;
-
 : FLOAT-ARG? ( n -- bool )
    ARG-KIND@ {: kind:n :}
    kind K-FLOAT = kind K-FLOAT32 = or ;
 
-: PLACE-REG ( n n n -- n n )
-   {: int:n flt:n i:n :}
-   i FLOAT-ARG? if flt ARG-REG i cells + ! int flt 1+ exit then
-   int ARG-REG i cells + ! int 1+ flt ;
+: ALIGN-UP ( n n -- n )
+   {: v:n a:n :}
+   v a + 1- a / a * ;
 
-\ Answers the integer and float registers taken.
-: PLAN-REGS ( n -- n n )
-   {: argc:n :}
-   0 0 argc 0 ?do i PLACE-REG loop ;
+: VARIADIC? ( n -- bool )
+   {: i:n :}
+   VAR-START @ 0 >= i VAR-START @ >= and ;
 
-\ An integer input whose C type is narrower than a cell.
-: NARROW? ( n -- bool )
-   ARG-TEXT$ {: a:ptr u:n :}
-   a u s" u8" STR=  a u s" u16" STR= or
-   a u s" u32" STR= or  a u s" char" STR= or ;
+\ A macOS variadic input goes on the stack whatever registers are free.
+: VARIADIC-STACK? ( n -- bool ) HB-TARGET-MACOS? swap VARIADIC? and ;
 
-\ STAGE-SPILL stages no f32.
-: SPILL-ARG ( n n -- n ) {: stk:n i:n :}
-   i ARG-KIND@ K-FLOAT32 = if F32-UNSTAGED then
-   HB-TARGET-MACOS? i NARROW? and if i NARROW-SPILL then
-   stk 1+ negate ARG-REG i cells + !
-   stk 1+ ;
+: SLOT-BYTES ( n -- n )
+   {: i:n :}
+   HB-TARGET-MACOS? 0= i VARIADIC? or if 8 exit then
+   i ARG-WIDTH@ ;
 
-\ Input i takes the next of max integer or REG-MAX float registers, else
-\ the next stack cell.
+\ Places input i at the next free stack byte offset, aligned to its slot, and
+\ answers the offset past it.
+: SPILL-ARG ( n n -- n )
+   {: off:n i:n :}
+   i SLOT-BYTES {: bytes:n :}
+   off bytes ALIGN-UP {: at:n :}
+   at 1+ negate ARG-REG i cells + !
+   at bytes + ;
+
 : PLACE-NEXT ( n n n n n -- n n n )
-   {: int:n flt:n stk:n max:n i:n :}
+   {: int:n flt:n off:n max:n i:n :}
+   i VARIADIC-STACK? if int flt off i SPILL-ARG exit then
    i FLOAT-ARG? if
-      flt REG-MAX < if flt ARG-REG i cells + ! int flt 1+ stk exit then
+      flt REG-MAX < if flt ARG-REG i cells + ! int flt 1+ off exit then
    else
-      int max < if int ARG-REG i cells + ! int 1+ flt stk exit then
+      int max < if int ARG-REG i cells + ! int 1+ flt off exit then
    then
-   int flt stk i SPILL-ARG ;
+   int flt off i SPILL-ARG ;
 
 \ Places the inputs in argument order over max integer registers and
 \ answers the integer registers, float registers and stack cells taken.
 : PLAN-IN-ORDER ( n -- n n n )
    {: max:n :}
-   0 0 0 ARG-N @ 0 ?do max i PLACE-NEXT loop ;
-
-\ A macOS variadic argument takes a stack cell, so the registers taken are the
-\ fixed arguments'.
-: PLAN-SPILLS ( -- n n n )
-   VAR-START @ 0 < HB-TARGET-MACOS? 0= or if
-      REG-MAX PLAN-IN-ORDER exit
-   then
-   ARG-N @ PLAN-REGS 2drop
-   VAR-START @ PLAN-REGS
-   2dup REG-ROOM
-   ARG-N @ VAR-START @ - ;
+   0 0 0 ARG-N @ 0 ?do max i PLACE-NEXT loop
+   8 ALIGN-UP 8 / ;
 
 : C-ARGS ( -- n )
    ARG-N @ STRUCT-BYTES @ 0 > if 1- then ;
@@ -1461,7 +1467,7 @@ private
    kind K-FLOAT = kind K-FLOAT32 = or if int flt 1+ stack flt exit then
    bytes INT-WORDS {: words:n :}
    int words + REG-MAX <= if int words + flt stack int exit then
-   REG-MAX flt stack words + stack 1+ negate ;
+   REG-MAX flt stack words + stack cells 1+ negate ;
 
 : PLACE-COPY ( n n -- n n ) {: pos:n bytes:n :}
    bytes 16 <= if pos 0 exit then
@@ -1516,7 +1522,7 @@ private
 
 : PLAN-TARGET ( -- n n n )
    HB-TARGET-LINUX-X86-64? if X86-INT-REG-MAX PLAN-IN-ORDER exit then
-   HB-TARGET-LINUX? HB-TARGET-MACOS? or if PLAN-SPILLS exit then
+   HB-TARGET-LINUX? HB-TARGET-MACOS? or if REG-MAX PLAN-IN-ORDER exit then
    E-FFI-LIBRARY throw ;
 
 \ Answers the integer registers and stack cells the call takes, which its row
@@ -1558,15 +1564,27 @@ private
 : STAGE-POINTER ( n -- ) {: i:n :}
    i ARG-REG@ literal postpone POINTER! ;
 
-: STACK-POS ( n -- ) {: i:n :}
-   i ARG-REG@ 0 < if i ARG-REG@ negate 1- literal exit then
-   i VAR-START @ - literal ;
+: STACK-POS ( n -- )
+   {: i:n :}
+   i ARG-REG@ negate 1- literal ;
+
+\ C promotes a variadic integer narrower than an int, so its slot is written
+\ whole.
+: STAGE-INT-SPILL ( n -- )
+   {: i:n :}
+   i VARIADIC? if postpone STACK-VALUE! exit then
+   i ARG-WIDTH@ {: width:n :}
+   width 1 = if postpone STACK-U8! exit then
+   width 2 = if postpone STACK-U16! exit then
+   width 4 = if postpone STACK-U32! exit then
+   postpone STACK-VALUE! ;
+
 : STAGE-SPILL ( n -- ) {: i:n :}
-   i ARG-KIND@ K-FLOAT = if
-      i STACK-POS postpone STACK-FLOAT! exit then
-   i ARG-KIND@ K-VALUE = if
-      i STACK-POS postpone STACK-VALUE! exit then
-   i STACK-POS postpone STACK-POINTER! ;
+   i STACK-POS
+   i ARG-KIND@ K-FLOAT = if postpone STACK-FLOAT! exit then
+   i ARG-KIND@ K-FLOAT32 = if postpone STACK-FLOAT32! exit then
+   i ARG-KIND@ K-POINTER = if postpone STACK-POINTER! exit then
+   i STAGE-INT-SPILL ;
 
 : STAGE-REG ( n -- ) {: i:n :}
    i ARG-KIND@ K-FLOAT = if i STAGE-FLOAT exit then
@@ -1576,9 +1594,6 @@ private
 
 : STAGE-ONE ( n -- ) {: i:n :}
    i ARG-REG@ 0 < if i STAGE-SPILL exit then
-   HB-TARGET-MACOS? VAR-START @ 0 >= and i VAR-START @ >= and if
-      i STAGE-SPILL exit
-   then
    i STAGE-REG ;
 
 : STAGE ( -- )
@@ -1642,7 +1657,7 @@ private
 : RELOC-MASK ( -- n )
    0 C-ARGS 0 ?do
       i ARG-SBYTES@ 16 > if
-         i ARG-REG@ 0 < if 1 i ARG-REG@ negate 1- 8 + lshift
+         i ARG-REG@ 0 < if 1 i ARG-REG@ negate 1- 8 / 8 + lshift
          else 1 i ARG-REG@ lshift then
          or
       then
