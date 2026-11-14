@@ -3933,15 +3933,31 @@ variable TFQ-COLON
    RES-TRUE ;
 
 variable TFSR-HIDDEN
-: TFAM-QUAL-RESOLVE ( ptr u8 n -- n bool ) {: pa:ptr pu:n :}
+
+private
+
+\ The split tail's family in package qa, seen from package pa.
+: TFAM-QUAL-IN ( ptr u8 n ptr u8 n -- n bool )
+   {: qa:ptr qu:n pa:ptr pu:n :}
    TFQ-TA @ TFQ-TU @ TF-CANON? 0= IF 0 RES-FALSE EXIT THEN
-   TFQ-BUF TFQ-U @ TFQ-HEAD$ {: qa:ptr qu:n :}
    qa qu TFQ-TA @ TFQ-TU @ TFAM-FIND 0= IF drop 0 RES-FALSE EXIT THEN
    {: id:n :}
    id TFAM-PUBLIC? IF id RES-TRUE EXIT THEN
    qa qu pa pu CORE-STR=CI IF id RES-TRUE EXIT THEN   \ own private rows
    -1 TFSR-HIDDEN !
    0 RES-FALSE ;
+
+public
+
+: TFAM-QUAL-RESOLVE ( ptr u8 n -- n bool ) {: pa:ptr pu:n :}
+   TFQ-BUF TFQ-U @ TFQ-HEAD$ pa pu TFAM-QUAL-IN ;
+
+\ A qualified spelling's family in the package its qualifier names as
+\ written, which no part of package pa shadows; a bare one answers false.
+: TFAM-EXACT-RESOLVE ( ptr u8 n ptr u8 n -- n bool )
+   {: pa:ptr pu:n na:ptr nu:n :}
+   na nu TFQ-SPLIT? 0= IF 0 RES-FALSE EXIT THEN
+   TFQ-BUF TFQ-U @ pa pu TFAM-QUAL-IN ;
 
 \ TFAM-RESOLVE may throw E-TFAM-AMBIG; a checked `catch` needs a stack-neutral
 \ quotation that cannot read locals, so buffer the (pkg,name) args and the

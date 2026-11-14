@@ -414,9 +414,11 @@ through a `defer` or an executed xt), is `E-GENERATES-ROW`.
 
 A definer that builds a word from words it found writes no text:
 `name$ EFFECT:EMPTY EFFECT:N EFFECT:IN EFFECT:N EFFECT:OUT define-word` opens
-the word (`s" bool" EFFECT:NAMED` names a built-in type or a family and
-`s" ptr u8" EFFECT:READ-TYPE` reads one type with no letters, each as source
-where the definer runs would), `postpone W` appends the W found where the
+the word (`s" bool" EFFECT:NAMED` names a built-in type or a family: a
+qualified spelling, `ARENA:arena`, names that package's family whatever the
+running package holds, and a bare one is looked up as source where the
+definer runs would; `s" ptr u8" EFFECT:READ-TYPE` reads one type with no
+letters as that source would), `postpone W` appends the W found where the
 definer was compiled, which no package the definer later runs in can shadow,
 and `postpone ;` ends the word: `postpone` of an immediate W compiles a call
 of W, and `postpone W` is rejected where `['] W` is. `EFFECT:KEYWORD`,

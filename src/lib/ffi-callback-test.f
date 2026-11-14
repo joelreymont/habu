@@ -363,6 +363,15 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
       s" C sorts through it by the body stored" FACT
    loaded if s" CBT-QUALIFIED:CMP FFI-CB:UNBIND" INCLUDE-EVALUATE then ;
 
+\ A package with a part named FFI-CB declares a callback: the callback's type
+\ FFI-CB:callback is still FFI-CB's.
+: PART$ ( -- ptr u8 n )
+   S\" package CBT-PART\npackage FFI-CB\n: HELD ( -- ) ;\n;package\nCALLBACK: CMP ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK\n;package\n" ;
+
+: CASE-PART ( -- )
+   s" == a callback declared beside a part named FFI-CB" SAY
+   [: PART$ INCLUDE-EVALUATE ;] catch 0= s" the declaration loads" FACT ;
+
 \ A kernel exit line ends ` lr <16 hex>`; the transcript keeps ` lr` and drops
 \ the digits, which vary with the build.
 : LR-LINE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
@@ -558,6 +567,10 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    s" ok   the declaration loads" W
    s" ok   C sorts through it by the body stored" W ;
 
+: WANT-PART ( -- )
+   s" == a callback declared beside a part named FFI-CB" W
+   s" ok   the declaration loads" W ;
+
 : WANT-CHILDREN ( -- )
    s" == child outside: exit 106" W
    s" outside: a thread is parked on its own context" W
@@ -603,7 +616,7 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
 : WANT-TRANSCRIPT ( -- )
    0 WANT-U !
    WANT-TASKS WANT-ACCESSOR WANT-DECLARATIONS WANT-ROLLBACK WANT-CAPTURE
-   WANT-QUALIFIED WANT-CHILDREN ;
+   WANT-QUALIFIED WANT-PART WANT-CHILDREN ;
 
 \ The artifact as another reader will find it: read back from its file and
 \ compared whole.
@@ -630,6 +643,7 @@ public
    CASE-ROLLBACK
    CASE-CAPTURE
    CASE-QUALIFIED
+   CASE-PART
    CASE-CHILDREN
    CASE-STRIPPED
    TRANSCRIPT-CASE

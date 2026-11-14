@@ -442,8 +442,9 @@ s" = help: pass the effect EFFECT:EMPTY made, or one EFFECT:IN or EFFECT:OUT ans
 DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE  READ-BAD 70 T=
 s" error[E-UNKNOWN-SIGNATURE-TYPE]: " DECL-DIAG:HAS? TTRUE
-S\" 'no-such-family' in EFFECT:READ\n" DECL-DIAG:HAS? TTRUE
-READING-HERE  FAMILY-FIX  DECL-DIAG:OFF
+S\" 'no-such-family'\n" DECL-DIAG:HAS? TTRUE  READING-HERE
+s" = help: declare a type of that name, or correct its spelling"
+DECL-DIAG:HAS? TTRUE  DECL-DIAG:OFF
 
 $400 constant LNEG-CAP
 LNEG-CAP BUFFER: LNEG-OUT

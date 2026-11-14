@@ -335,7 +335,9 @@ CAST: >BYTES ( n -- ptr u8 )
 : NAMED-FAMILY ( n n -- n n )
    {: a:n u:n :}
    a u BUILT-IN dup 0 <> if 0 exit then drop
-   TFAM:TFAM-ACTIVE-PKG$ a >BYTES u TFAM:TFAM-SIG-RESOLVE
+   TFAM:TFAM-ACTIVE-PKG$ a >BYTES u
+   a >BYTES u TFAM:TFQ-SPLIT? if TFAM:TFAM-EXACT-RESOLVE
+   else TFAM:TFAM-SIG-RESOLVE then
    if 0 swap exit then
    drop
    s" E-UNKNOWN-SIGNATURE-TYPE" REJECTION:OPEN
@@ -354,14 +356,14 @@ CAST: >BYTES ( n -- ptr u8 )
    unknown if s" E-UNKNOWN-SIGNATURE-TYPE" else s" E-BAD-SIGNATURE" then
    REJECTION:OPEN
    wa wu REJECTION:EMIT-STR  s"  '" REJECTION:EMIT-STR
-   na nu REJECTION:EMIT-STR  s" ' in EFFECT:READ" REJECTION:EMIT-STR
+   na nu REJECTION:EMIT-STR  s" '" REJECTION:EMIT-STR
    tu xu <> if
-      s" 's type '" REJECTION:EMIT-STR  xa xu REJECTION:EMIT-STR
+      s"  in the type '" REJECTION:EMIT-STR  xa xu REJECTION:EMIT-STR
       s" '" REJECTION:EMIT-STR
    then
    DEFINER-PLACE
    REJECTION:HELP
-   unknown if UNKNOWN-HELP$
+   unknown if s" declare a type of that name, or correct its spelling"
    else s" write the type as a signature writes it" then
    REJECTION:EMIT-STR
    CHECK-RC REJECTION:STOP ;
