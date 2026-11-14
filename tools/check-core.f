@@ -527,7 +527,7 @@ private
 \ The --all-errors core writes its records to standard error in the run's mode.
 : CHK-ALL-STREAM ( -- )
    FD:STDERR CHECK-ALL-ERRORS:STREAM!
-   CHK-JSON @ CHECK-ALL-ERRORS:JSON! ;
+   CHK-JSON @ REJECTION:JSON ! ;
 
 \ The pre-pass or discovery stops in one file of the composition: the subject,
 \ by its label, or any other file, by its canonical path. Its bytes are the
@@ -1014,7 +1014,7 @@ private
    id CHK-ALL-ID !
    [: CHK-ALL-ID-ACT ;] catch {: rc:n :}
    rc 0= if exit then
-   rc CHK-E-CHECK = rc CHECK-ALL-ERRORS:DUP-RC = or if rc CHK-ALL-RC-NOTE exit then
+   rc CHK-E-CHECK = if rc CHK-ALL-RC-NOTE exit then
    rc throw ;
 
 : CHK-RUN-ALL-ORDER ( -- )

@@ -5,6 +5,7 @@
 
 require src/lib/error.f
 require src/lib/string.f
+require src/lib/fmt.f
 require src/lib/test.f
 require src/lib/test/ending.f
 require src/lib/test/runner.f
@@ -696,7 +697,7 @@ variable RC
    s" arena-taken.f" FIXTURE!
    s" " DUP-RC CHECK-EXIT
    s" E-DUPLICATE-DEFINITION" REJECTED-AS  0 s" X" 4 7 48 49 AT
-   s" --all-errors" DUP-RC CHECK-EXIT
+   s" --all-errors" CHECK
    s" E-DUPLICATE-DEFINITION" REJECTED-AS  0 s" X" 4 7 48 49 AT
    s" --verify-only" CHECK
    s" E-DUPLICATE-DEFINITION" REJECTED-AS
@@ -731,7 +732,7 @@ variable RC
    s" --all-errors" CHECK
    s" E-STATEMENT-THROW" REJECTED-AS
    0 tok toku line col bs be AT
-   code THREW
+   0 s" message" code FMT:INT$ FIELD-HAS
    s" --verify-only" CHECK
    s" E-STATEMENT-THROW" REJECTED-AS
    0 tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN
@@ -779,7 +780,7 @@ variable RC
    s" a duplicate VALUE-RECORD field's reason under --all-errors" T-LABEL
    s" --all-errors" CHECK
    s" E-BAD-RECORD-FIELD" REJECTED-AS
-   0 s" reason" s" checker: duplicate value-record field" FIELD= ;
+   0 s" reason" s" checker: duplicate value-record field" NOTE= ;
 
 : TEST-PREPASS-OPEN ( -- )
    s" an unclosed VALUE-RECORD under --verify-only" T-LABEL
