@@ -1,10 +1,10 @@
 \ ffi-struct-verify.f - LSP-CHECK:VERIFY-BYTES, the check of tools/check.f
-\ --verify-only, reads FUNCTION:'s struct clauses. Loaded by src/lib/ffi-test.f
-\ on macOS arm64, inside package FFI-TEST. Each declaration is its own source,
-\ checked in a verifier child that stops at its first refusal. Sources select
-\ PROCESS-SYMBOLS (LIBRARY leaves the rest of its file to the run and would
-\ hide the clauses) and name no defined symbol, so a clean certify shows the
-\ check resolves none.
+\ --verify-only, reads FUNCTION:'s struct clauses. Loaded by
+\ src/lib/ffi-test.f on macOS and Linux arm64, inside package FFI-TEST. Each
+\ declaration is its own source, checked in a verifier child that stops at its
+\ first refusal. Sources select PROCESS-SYMBOLS (LIBRARY leaves the rest of
+\ its file to the run and would hide the clauses) and name no defined symbol,
+\ so a clean certify shows the check resolves none.
 
 : FFI-SV-HEAD$ ( -- ptr u8 n )
    S\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\n24 constant FFI-SV-W\n" ;

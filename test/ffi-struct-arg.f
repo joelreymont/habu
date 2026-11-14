@@ -1,17 +1,14 @@
 \ ffi-struct-arg.f - C structs passed by value through FUNCTION:.
-\ Loaded by src/lib/ffi-test.f on macOS arm64, inside package FFI-TEST, after
-\ test/ffi-struct-result.f, whose canaried destination it reuses.
+\ Loaded by src/lib/ffi-test.f on macOS and Linux arm64, inside package
+\ FFI-TEST, after test/ffi-struct-result.f, whose canaried destination it
+\ reuses. Its callees are the run's fixture library (test/ffi-struct-fixture.f).
 \
 \ AAPCS64 passes a record of up to 16 bytes in consecutive integer registers, or
 \ wholly on the stack once they run short, and a larger one as the address of a
 \ copy the caller owns. Every checksum weighs each member by position, so a
 \ member read from the wrong offset, register or stack slot fails its case.
 
-: FFI-T-SA-LIBRARY ( -- )
-   s" habu-ffi-struct" FS:MKTEMP-DIR {: dir:ptr diru :}
-   dir diru FS:CLEANUP-TREE+
-   dir diru STRUCT-FIXTURE:BUILD FFI:SELECT-LIBRARY ;
-FFI-T-SA-LIBRARY
+STRUCT-FIXTURE:SELECT
 
 FUNCTION: FFI-T-SUM8 hb_sum8 ( ptr u8 -- n ) 0 8 STRUCT-ARG ;FUNCTION
 FUNCTION: FFI-T-SUM12 hb_sum12 ( ptr u8 -- i32 ) 0 12 STRUCT-ARG ;FUNCTION

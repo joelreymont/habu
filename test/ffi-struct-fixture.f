@@ -1,14 +1,15 @@
 \ ffi-struct-fixture.f - the C library the struct-by-value FFI cases call.
-\ test/ffi-struct-arg.f and the full-image restore case build it with the
-\ system compiler: no system library takes integer records of every
-\ AAPCS64 argument class by value. The layouts are asserted at compile time,
-\ and every checksum weighs each member by its position (MIX), so a member
-\ read from the wrong offset, register or stack slot changes the answer.
+\ test/ffi-struct-result.f and test/ffi-struct-arg.f select it, and the first
+\ SELECT builds it with the system compiler: no system library takes integer
+\ records of every AAPCS64 argument class by value, and glibc returns no
+\ 24-byte record. The layouts are asserted at compile time, and every checksum
+\ weighs each member by its position (MIX), so a member read from the wrong
+\ offset, register or stack slot changes the answer.
 require src/lib/fs.f
 require src/lib/fs-mutate.f
-require src/lib/process-argv.f
 require src/lib/codegen.f
-require src/lib/test/assert.f
+require src/lib/ffi-abi.f
+require src/lib/test/c-library.f
 
 package STRUCT-FIXTURE
 
@@ -16,7 +17,7 @@ $1800 CODEGEN:BUFFER SRC
 create SRC-PATH PATH-CAP allot
 create LIB-PATH PATH-CAP allot
 variable SRC-U
-variable LIB-U
+variable LIB-U                    \ 0 until BUILD makes the library
 
 : L+ ( ptr u8 n -- )
    SRC CODEGEN:APPEND-STRING
@@ -80,38 +81,47 @@ variable LIB-U
    s" static s16 parked;" L+
    s" s16 *hb_park16(s16 s) { parked = s; return &parked; }" L+ ;
 
+\ The s24 makers: a value, a timescale, flags 1 and an epoch.
+: TIMES ( -- )
+   s" s24 hb_time24(i64 v, int32_t s) { s24 r = { v, s, 1, 0 }; return r; }" L+
+   s" s24 hb_time24_epoch(i64 v, int32_t s, i64 e) {" L+
+   s"    s24 r = { v, s, 1, e }; return r; }" L+
+   s" s24 hb_time24_seconds(double t, int32_t s) {" L+
+   s"    s24 r = { (i64)(t * s), s, 1, 0 }; return r; }" L+ ;
+
 : RESULTS ( -- )
    s" s16 hb_swap16(s16 s) { s16 r = { s.b, s.a }; return r; }" L+
    s" s32 hb_echo32(i64 k, s32 s) {" L+
    s"    s32 r = { s.a + k, s.b + k, s.c + k, s.d + k }; return r; }" L+
    s" s32 hb_ret9(i64 a, i64 b, i64 c, i64 d, i64 e, i64 f, i64 g, i64 k, i64 i) {" L+
-   s"    s32 r = { (i64)hb_fold8(a, b, c, d, e, f, g, k), i, a, k }; return r; }" L+ ;
+   s"    s32 r = { (i64)hb_fold8(a, b, c, d, e, f, g, k), i, a, k }; return r; }" L+
+   TIMES ;
 
-: CC ( -- )
-   PROC-ARGV-RESET
-   s" -shared" >LEN PROC-ARGV+
-   s" -O2" >LEN PROC-ARGV+
-   s" -std=c11" >LEN PROC-ARGV+
-   s" -Wall" >LEN PROC-ARGV+
-   s" -Werror" >LEN PROC-ARGV+
-   s" -o" >LEN PROC-ARGV+
-   LIB-PATH LIB-U @ >LEN PROC-ARGV+
-   SRC-PATH SRC-U @ >LEN PROC-ARGV+
-   s" /usr/bin/cc" >LEN -1 >FD -1 >FD -1 >FD PROC-RUN-ARGV-IO-RC MATCH result
-      ok OF drop ENDOF
-      err OF drop s" struct-fixture: cc failed" T-EX-FAIL die ENDOF
-   ;MATCH ;
+: LIB-NAME$ ( -- ptr u8 n )
+   HB-TARGET-MACOS? if s" libhbstruct.dylib" exit then
+   s" libhbstruct.so" ;
+
+: SRC$ ( -- ptr u8 n ) SRC-PATH SRC-U @ ;
+: LIB$ ( -- ptr u8 n ) LIB-PATH LIB-U @ ;
+
+: PATHS ( ptr u8 n -- )
+   {: dir:ptr diru :}
+   dir diru s" hb-struct.c" SRC-PATH FS:JOIN-PATH SRC-U !
+   dir diru LIB-NAME$ LIB-PATH FS:JOIN-PATH LIB-U ! ;
+
+: BUILD ( -- )
+   s" habu-ffi-struct" FS:MKTEMP-DIR {: dir:ptr diru :}
+   dir diru FS:CLEANUP-TREE+
+   dir diru PATHS
+   SRC CODEGEN:RESET
+   TYPES SUMS PLACEMENTS OWNERSHIP RESULTS
+   SRC$ SRC CODEGEN:CONTENTS FS:WRITE-ALL
+   SRC$ LIB$ C-LIBRARY:BUILD ;
 
 public
 
-\ Answer the library's path, which stays valid until the next BUILD.
-: BUILD ( ptr u8 n -- ptr u8 n ) {: dir:ptr diru :}
-   SRC CODEGEN:RESET
-   TYPES SUMS PLACEMENTS OWNERSHIP RESULTS
-   dir diru s" hb-struct.c" SRC-PATH FS:JOIN-PATH SRC-U !
-   dir diru s" libhbstruct.dylib" LIB-PATH FS:JOIN-PATH LIB-U !
-   SRC-PATH SRC-U @ SRC CODEGEN:CONTENTS FS:WRITE-ALL
-   CC
-   LIB-PATH LIB-U @ ;
+: SELECT ( -- )
+   LIB-U @ 0= if BUILD then
+   LIB$ FFI:SELECT-LIBRARY ;
 
 ;package

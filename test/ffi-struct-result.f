@@ -1,29 +1,37 @@
 \ ffi-struct-result.f - C structs returned by value through FUNCTION:.
-\ Loaded by src/lib/ffi-test.f on macOS arm64, inside package FFI-TEST.
+\ Loaded by src/lib/ffi-test.f on macOS and Linux arm64, inside package
+\ FFI-TEST.
 \
 \ System functions return integer records in each AAPCS64 convention:
-\ inet_makeaddr's 4-byte struct in_addr and div's 8-byte div_t in x0,
-\ lldiv's 16-byte lldiv_t in x0:x1, and CoreMedia's 24-byte CMTime
-\ { int64 value; int32 timescale; uint32 flags; int64 epoch } through the x8
-\ destination. CoreMedia has no scalar-only function returning a larger record
-\ (its CMTimeRange makers take CMTime by value), so CMTime stands for every
-\ indirect width. No system function returns a 12-byte integer record; every
-\ 9..16-byte integer record arrives in x0:x1 alike, so lldiv declared at
-\ 12 bytes is the same call and shows the second register stored at its
+\ inet_makeaddr's 4-byte struct in_addr and div's 8-byte div_t in x0, and
+\ lldiv's 16-byte lldiv_t in x0:x1, from libSystem on macOS and glibc on
+\ Linux. The fixture library's (test/ffi-struct-fixture.f) 24-byte record
+\ { int64 value; int32 timescale; uint32 flags; int64 epoch } arrives through
+\ the x8 destination, as every larger integer record does, so it stands for
+\ every indirect width. No system function returns a 12-byte integer record;
+\ every 9..16-byte integer record arrives in x0:x1 alike, so lldiv declared
+\ at 12 bytes is the same call and shows the second register stored at its
 \ exact width.
 
-LIBRARY /usr/lib/libSystem.B.dylib
+: FFI-T-SR-LIBC ( -- )
+   HB-TARGET-MACOS? if
+      s" /usr/lib/libSystem.B.dylib"
+   else
+      s" libc.so.6"
+   then FFI:SELECT-LIBRARY ;
+FFI-T-SR-LIBC
+
 FUNCTION: FFI-T-MAKEADDR inet_makeaddr ( n n ptr u8 -- ) 4 STRUCT-RESULT ;FUNCTION
 FUNCTION: FFI-T-DIV div ( n n ptr u8 -- ) 8 STRUCT-RESULT ;FUNCTION
 FUNCTION: FFI-T-LLDIV12 lldiv ( n n ptr u8 -- ) 12 STRUCT-RESULT ;FUNCTION
 FUNCTION: FFI-T-LLDIV lldiv ( n n ptr u8 -- ) 16 STRUCT-RESULT ;FUNCTION
 
-LIBRARY /System/Library/Frameworks/CoreMedia.framework/CoreMedia
-FUNCTION: FFI-T-CMTIME CMTimeMake ( n n ptr u8 -- ) 24 STRUCT-RESULT ;FUNCTION
-FUNCTION: FFI-T-CMTIME-EPOCH CMTimeMakeWithEpoch ( n n n ptr u8 -- )
+STRUCT-FIXTURE:SELECT
+FUNCTION: FFI-T-TIME24 hb_time24 ( n n ptr u8 -- ) 24 STRUCT-RESULT ;FUNCTION
+FUNCTION: FFI-T-TIME24-EPOCH hb_time24_epoch ( n n n ptr u8 -- )
    24 STRUCT-RESULT
 ;FUNCTION
-FUNCTION: FFI-T-CMTIME-SECONDS CMTimeMakeWithSeconds ( r n ptr u8 -- )
+FUNCTION: FFI-T-TIME24-SECONDS hb_time24_seconds ( r n ptr u8 -- )
    24 STRUCT-RESULT
 ;FUNCTION
 
@@ -51,7 +59,8 @@ create FFI-T-SR-BUF 64 allot
    FFI-T-SR-OFF 0 do FFI-T-SR-BUF i + c@ FFI-T-SR-FILL T= loop
    8 0 do FFI-T-SR-DST size + i + c@ FFI-T-SR-FILL T= loop ;
 
-: FFI-T-SR-CMTIME ( n n n n -- ) {: value:n scale:n flags:n epoch:n :}
+: FFI-T-SR-TIME24 ( n n n n -- )
+   {: value:n scale:n flags:n epoch:n :}
    FFI-T-SR-DST LE:U64@ value T=
    FFI-T-SR-DST 8 + LE:S32@ scale T=
    FFI-T-SR-DST 12 + LE:U32@ flags T=
@@ -120,23 +129,23 @@ create FFI-T-SR-BUF 64 allot
 
    s" a 24-byte struct result is written through x8" T-LABEL
    FFI-T-SR-RESET
-   1001 30000 FFI-T-SR-DST FFI-T-CMTIME
-   1001 30000 1 0 FFI-T-SR-CMTIME
+   1001 30000 FFI-T-SR-DST FFI-T-TIME24
+   1001 30000 1 0 FFI-T-SR-TIME24
    FFI-T-SR-RESET
-   -5 600 7 FFI-T-SR-DST FFI-T-CMTIME-EPOCH
-   -5 600 1 7 FFI-T-SR-CMTIME
+   -5 600 7 FFI-T-SR-DST FFI-T-TIME24-EPOCH
+   -5 600 1 7 FFI-T-SR-TIME24
 
    s" a double argument rides d0 beside an x8 struct result" T-LABEL
    FFI-T-SR-RESET
-   2.5 600 FFI-T-SR-DST FFI-T-CMTIME-SECONDS
-   1500 600 1 0 FFI-T-SR-CMTIME
+   2.5 600 FFI-T-SR-DST FFI-T-TIME24-SECONDS
+   1500 600 1 0 FFI-T-SR-TIME24
 
    s" a misaligned result destination is refused before the call" T-LABEL
    FFI-T-SR-RESET
    [: 1 2 FFI-T-SR-DST 4 + FFI-T-DIV ;] E-FFI-SYNTAX TTHROWSQ
    FFI-T-SR-UNTOUCHED
    s" an x8 result destination needs 16-byte alignment" T-LABEL
-   [: 1 2 FFI-T-SR-DST 8 + FFI-T-CMTIME ;] E-FFI-SYNTAX TTHROWSQ
+   [: 1 2 FFI-T-SR-DST 8 + FFI-T-TIME24 ;] E-FFI-SYNTAX TTHROWSQ
    FFI-T-SR-UNTOUCHED
 
    s" malformed struct-result declarations are refused" T-LABEL

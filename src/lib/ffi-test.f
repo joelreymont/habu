@@ -15,7 +15,7 @@ require src/lib/test/ending.f
 require src/lib/test/guard-page.f      \ a path whose bytes end where memory does
 require src/lib/ffi-callback.f         \ a struct argument held across a callback
 require src/lib/task.f
-require test/ffi-struct-fixture.f      \ the struct-argument callee
+require test/ffi-struct-fixture.f      \ the struct cases' callee
 require test/e2e-tree.f                \ the struct clauses' load children
 require tools/check-verify-core.f       \ LSP-CHECK:VERIFY-BYTES - the struct clauses' check
 require test/decl-diag-capture.f
@@ -919,10 +919,9 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
 
 FFI-RUN
 
-\ Structs by value are AAPCS64, results against macOS libraries and arguments
-\ against a fixture library built for the run.
+\ Only the AAPCS64 targets pass structs by value.
 : FFI-T-STRUCT-LOAD ( -- )
-   HB-TARGET-MACOS? if
+   HB-TARGET-MACOS? HB-TARGET-LINUX? or if
       s" test/ffi-struct-result.f" required
       s" test/ffi-struct-arg.f" required
       s" test/ffi-struct-verify.f" required
