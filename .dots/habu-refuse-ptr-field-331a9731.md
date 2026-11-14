@@ -19,7 +19,7 @@ then migrate only storage/accessors needed by the chosen checker rule.
 Preserve legitimate declared/foreign storage boundaries and rejected controls;
 do not require every private record or BEGIN-STRUCTURE user to be converted.
 
-Status 2026-10-21: reproduced on master 662cbf3d; designed and landed together with habu-refuse-a-scalar-030be3ad after the same census. Claim: agent=carl workspace=.jj-ws.noindex/carl-launder-census.
+Status 2026-10-21: reproduced on master 662cbf3d; designed and landed together with habu-refuse-a-scalar-030be3ad after the same census.
 
 Design 2026-10-22 (Fable Plan from the census; lead decisions): at the `ptr-field` token the checker refuses any base whose resolved pointee is not a pointer term (rule F1, 205 sites), new MD-FIELD-BASE-KIND naming the kind (parameter, scalar cell, DATA region, null, family/quotation); a TVK-RAW pointee keeps MD-RAW-FIELD. `data-base <k> +` bases are refused too: `: W ( n -- ) data-base $3900 + ! ; : R ( -- n ) data-base $3900 + 0 ptr-field @ c@ ;` certifies today. Admitted: any pointer pointee (declared cells, table elements, DERIVE addr accessors, `ptr ptr x` parameters, fetched pointers); a `ptr ptr b` result only ever receives a `ptr b`. F3 is dropped (adds nothing beyond F2, misfires on 30 of 39 sites). PTR-FIELD: is retired; RESERVED-PTR-U8-CELL reads through a private POINTER-STORAGE cast; every `data-base k + 0 ptr-field` site becomes a RESERVED-PTR-U8-CELL declaration. Top-level interpret-time ptr-field is unchecked (checker.f:178 unaffected). Lanes shared with habu-refuse-a-scalar-030be3ad (see its design note).
 
@@ -38,7 +38,7 @@ only the concrete storage/accessors required by the chosen checker rule.
 Special wire and relocation layouts retain their explicit owner boundaries;
 no tree-wide zero-cast count or unrelated layout feature blocks the fix.
 
-Status 2026-10-21: reproduced on master 662cbf3d (the fixtures certify rc 0). A log-only census of candidate rules (V1 BYTE-VIEW over a pointer pointee; F1-F3 ptr-field base and RAW pointee) runs before the rule is designed together with habu-refuse-ptr-field-331a9731. Claim: agent=carl workspace=.jj-ws.noindex/carl-launder-census.
+Status 2026-10-21: reproduced on master 662cbf3d (the fixtures certify rc 0). A log-only census of candidate rules (V1 BYTE-VIEW over a pointer pointee; F1-F3 ptr-field base and RAW pointee) runs before the rule is designed together with habu-refuse-ptr-field-331a9731.
 
 Design 2026-10-22 (Fable Plan from the census; lead decisions): the sound rule. At the `byte-view` token the checker refuses a base whose resolved pointee is a pointer (V1) and a base whose pointee is an unfenced type variable (kind ANY/CELL/OFF) or a quotation (V1P), new MD-VIEW-PTR-BASE; admits non-pointer cons/atoms and TVK-RAW, TVK-DBASE, TVK-NULL pointees; `cell-view` gets no rule. The dot's narrower rule (V1 only) leaves `: L ( ptr a -- ptr u8 ) byte-view ;` as a public launder (certifies on the installed hb (2026-11-13); src/core/structures.f:11 STRUCT-BYTE+). Definitional sites take a private `CAST:` in their owning package (no new TRUSTED:; that definer is being retired); DYNAMIC-STORAGE splits into a head PTR-VARIABLE plus a created control block. Lanes (two at a time, refusal last, shared with habu-refuse-ptr-field-331a9731): 0 V1P census (log-only), A1 pointer-storage boundary, A2 CWIN columns, A3 dynamic storage, A4 include.f, A5a/b checker.f, A6 src/habu+compiler+os, A7 tools/tests, B2 tool records, C1-C9 libraries, D tests, E the two refusals with docs and refusal tests.
 
