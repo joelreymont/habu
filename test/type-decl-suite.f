@@ -2001,7 +2001,7 @@ TDNU-HASH-ORDER TFALSE
 \ commit.
 s" ENUM-DECL:ED-RUN tdnu-bad DERIVE eq VARIANT hold FIELD raw ptr u8 ;VARIANT ;ENUM"
 s\" error[E-BAD-DECLARATION]: bad enum declaration `tdnu-bad`\n"
-s\"   = at `tdnu-bad`: a payload type or role has no derived equality\n" TDT-REJ
+s\"   = at `tdnu-bad`: pointer payloads have no derived equality\n" TDT-REJ
 
 \ typed locals for family types: a bare arity-0 family tail is a
 \ legal {: x:fam :} annotation. Enum-tier layouts (W=1 sum/enum) assert the

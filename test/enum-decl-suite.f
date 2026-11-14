@@ -380,7 +380,7 @@ DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN rollctor DERIVE eq VARIANT one FIELD a n ;VARIANT VARIANT two FIELD b r ;VARIANT ;ENUM"
    70 enum-ctor-test:CTOR-REJECT
 s\" error[E-BAD-DECLARATION]: bad enum declaration `rollctor`\n" DECL-DIAG:HAS? TTRUE
-s\"   = at `rollctor`: a payload type or role has no derived equality\n" DECL-DIAG:HAS? TTRUE
+s\"   = at `rollctor`: payload type has no derived equality\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN rollctor2 DERIVE eq VARIANT tag FIELD a n ;VARIANT ;ENUM"
    70 enum-ctor-test:CTOR-REJECT
@@ -393,7 +393,7 @@ DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN rollcoll fresh taken ;ENUM"
    70 enum-ctor-test:CTOR-REJECT
 s\" error[E-BAD-DECLARATION]: bad enum declaration `rollcoll`\n" DECL-DIAG:HAS? TTRUE
-s\"   = at `rollcoll`: name is reserved or already taken\n" DECL-DIAG:HAS? TTRUE
+s\"   = at `rollcoll`: generated declaration already defined\n" DECL-DIAG:HAS? TTRUE
 enum-ctor-test:PENDING 0 T=
 DECLARATION-TRANSACTION:ACTIVE? 0= TTRUE
 s" RC-FRESH ( -- n ) ROLLCOLL:FRESH" CHECK-QUIET-CANDIDATE! 0 T=
@@ -411,7 +411,7 @@ DECL-DIAG:PROSE
 s" STRUCTURE rollp FIELD value n ;STRUCTURE"
    70 enum-ctor-test:CTOR-REJECT
 s\" error[E-BAD-DECLARATION]: bad structure declaration `rollp`\n" DECL-DIAG:HAS? TTRUE
-s\"   = at `rollp`: name is reserved or already taken\n" DECL-DIAG:HAS? TTRUE
+s\"   = at `rollp`: generated declaration already defined\n" DECL-DIAG:HAS? TTRUE
 enum-ctor-test:PENDING 0 T=
 DECLARATION-TRANSACTION:ACTIVE? 0= TTRUE
 s" RP-MAKE ( n -- n ) ROLLP:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
@@ -426,7 +426,7 @@ s" ENUM-DECL:ED-RUN lay-keep POLICY packed-tag DERIVE eq VARIANT one FIELD p n ;
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN lay-drop POLICY packed-tag DERIVE eq VARIANT one FIELD p ptr n ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `lay-drop`\n" DECL-DIAG:HAS? TTRUE
-s\"   = at `lay-drop`: a payload type or role has no derived equality\n" DECL-DIAG:HAS? TTRUE
+s\"   = at `lay-drop`: pointer payloads have no derived equality\n" DECL-DIAG:HAS? TTRUE
 
 \ 22. Each case asserts the whole rendered line, so text the declaration
 \     supplies cannot satisfy it by appearing elsewhere in the buffer.
@@ -687,11 +687,11 @@ s\"   = at `eq`: derive requires a concrete (arity 0) family\n" DECL-DIAG:HAS? T
 s\"   = help: drop the type parameters or the `DERIVE` clause: only an arity-0 family derives\n" DECL-DIAG:HAS? TTRUE
 
 \      7119 raised by the constructor participant's payload-role check, two
-\      phases after the body: no reason is armed for it, so the table answers.
+\      phases after the body, with the reason that check arms.
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dgroleq DERIVE eq VARIANT vv FIELD p ptr n ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `dgroleq`\n" DECL-DIAG:HAS? TTRUE
-s\"   = at `dgroleq`: a payload type or role has no derived equality\n" DECL-DIAG:HAS? TTRUE
+s\"   = at `dgroleq`: pointer payloads have no derived equality\n" DECL-DIAG:HAS? TTRUE
 
 \      7110 raised by the variant-name gate, and 7101 raised by the field record:
 \      both are deeper owners, both answered from the table.

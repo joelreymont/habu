@@ -1176,7 +1176,7 @@ DECL-DIAG:PROSE
 s" STRUCTURE oroll<a> OPAQUE DERIVE init FIELD value a FIELD tail n ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `oroll`\n" DECL-DIAG:HAS? TTRUE
 s\"   = at `oroll`: derive init requires a canonical fixed-cell record\n" DECL-DIAG:HAS? TTRUE
-s\"   = help: drop `init` from `DERIVE`, or declare the structure in a package with fields of a fixed" DECL-DIAG:HAS? TTRUE
+s\"   = help: drop `init` from `DERIVE`, or declare it in a package with fields of a fixed" DECL-DIAG:HAS? TTRUE
 REJ-SAME
 STRUCTURE oroll OPAQUE FIELD z n ;STRUCTURE
 : ORR ( n -- n ) OROLL-MAKE OROLL-UNMAKE ;
@@ -1195,7 +1195,7 @@ REJ-MARK
 DECL-DIAG:PROSE
 s" STRUCTURE oclash OPAQUE DERIVE addr FIELD x n ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `oclash`\n" DECL-DIAG:HAS? TTRUE
-s\"   = at `oclash`: name is reserved or already taken\n" DECL-DIAG:HAS? TTRUE
+s\"   = at `oclash`: generated declaration already defined\n" DECL-DIAG:HAS? TTRUE
 REJ-SAME
 private
 OCLASH-X 77 T=
