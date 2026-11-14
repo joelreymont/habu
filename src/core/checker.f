@@ -5098,6 +5098,15 @@ CHECKER-REG:}SCRATCH
 70 constant MD-IS-STORED     \ a callable's cast-stored type variable meets a cell's unrestricted one (QCON-OK?); E-CAST-LINEAR
 71 constant MD-DIV-ZERO      \ a literal 0 divisor reached the engine's `/`, `mod` or `/mod` (ZERO-OPERAND?)
 72 constant MD-THROW-ZERO    \ a literal 0 reached the engine's `throw` (ZERO-OPERAND?)
+\ A C2 entry's callback binder that does not fit the scope it opens; E-C2-BINDER.
+73 constant MD-C2-BINDER     \ WITH-INIT's callback is not `forall<i inside [l,T],…>` (SCOPE-INIT-STEP)
+74 constant MD-C2-RECORDS-BINDER \ the same for WITH-RECORDS (SCOPE-RECORDS-STEP)
+75 constant MD-C2-CHILD-BINDER \ a child loan's callback is not `forall<j inside l,…>` (SCOPE-CHILD-STEP, SCOPE-RECORD-STEP)
+76 constant MD-C2-FIELD-BINDER \ WITH-FIELD's callback is not `forall<j inside i,forall-region<c,…>>`
+77 constant MD-C2-ROOT-BINDER \ WITH-MUT's callback is not `forall<p,forall-region<a,…>>` (SCOPE-MUT-ROOT-OPEN)
+78 constant MD-FIELD-NAME    \ the body ends after `WITH-FIELD` before its field name; E-MISSING-NAME
+79 constant MD-CALLBACK-NOT-GENERIC \ a scope the call opens occurs in its rows or outside it (SCOPE-INTRO-FENCE)
+80 constant MD-SCOPED-TICK   \ a body ticks a scoped entry, which only a direct call reaches (TICK-REFUSED?); E-UNSAFE
 \ A data depth change is E-MISMATCH and prints the loop's start row and the
 \ row at its back edge or leave; the others are E-REJECTED.
 48 constant MD-LOOP-DEPTH    \ a loop's back edge or leave holds another data depth than its start (CF-CARRIED=)
@@ -16930,10 +16939,10 @@ defer SCOPE-EXTERIOR-XT ( n -- bool )
 : SCOPE-MUT-ROOT-OPEN ( n n n -- n ) {: supplied:n scope:n region:n :}
    supplied TAG T-FORALL <> IF supplied EXIT THEN
    supplied SCOPE-MUT-ROOT-SHAPE? 0= IF
-      0 OK ! -1 FAILSET ! supplied EXIT THEN
+      supplied MD-C2-ROOT-BINDER C2-REJECT supplied EXIT THEN
    supplied F>BODY scope SCOPE-INST T-RES {: inner:n :}
    inner SCOPE-MUT-REGION-SHAPE? 0= IF
-      0 OK ! -1 FAILSET ! supplied EXIT THEN
+      supplied MD-C2-ROOT-BINDER C2-REJECT supplied EXIT THEN
    inner F>BODY region SCOPE-INST ;
 
 \ The fixed mutable root consumes a nominal allocation length and a callback.
@@ -16982,9 +16991,10 @@ defer SCOPE-EXTERIOR-XT ( n -- bool )
    parent 1 PARAM>ARG T-RES {: ceiling:n :}
    supplied TAG T-FORALL = IF
       supplied F>DOMAIN BIND-CHILD <>
-      supplied F>PARENT 0= or IF 0 OK ! -1 FAILSET ! EXIT THEN
+      supplied F>PARENT 0= or IF
+         supplied MD-C2-CHILD-BINDER C2-REJECT EXIT THEN
       supplied F>PARENT ceiling UNIFY-EXACT 0= IF
-         0 OK ! -1 FAILSET ! EXIT THEN
+         supplied MD-C2-CHILD-BINDER C2-REJECT EXIT THEN
    THEN
    ceiling SCOPE-CHILD-FRESH {: scope:n :}
    supplied TAG T-FORALL = IF
@@ -17111,7 +17121,8 @@ defer SCOPE-EXTERIOR-XT ( n -- bool )
 
 : SCOPE-FIELD-REGION-OPEN ( n n -- n ) {: term:n projected:n :}
    term T-RES dup TAG T-FORALL = IF
-      dup SCOPE-FIELD-BINDER? 0= IF SCOPE-FIELD-REJECT EXIT THEN
+      dup SCOPE-FIELD-BINDER? 0= IF
+         dup MD-C2-FIELD-BINDER C2-REJECT EXIT THEN
       F>BODY projected SCOPE-INST
    THEN ;
 
@@ -18259,7 +18270,7 @@ SCOPE-EXTERIOR-INSTALL
          scope SCOPE-EXTERIOR-XT
          scope din SCOPE-OCC? or scope dout SCOPE-OCC? or
          scope rin SCOPE-OCC? or scope rout SCOPE-OCC? or IF
-            0 OK ! -1 FAILSET ! THEN
+            MD-CALLBACK-NOT-GENERIC MDIAG!  0 OK ! -1 FAILSET ! THEN
       THEN
       1 +
    REPEAT drop
@@ -18269,7 +18280,7 @@ SCOPE-EXTERIOR-INSTALL
          region SCOPE-EXTERIOR-XT
          region din SCOPE-OCC? or region dout SCOPE-OCC? or
          region rin SCOPE-OCC? or region rout SCOPE-OCC? or IF
-            0 OK ! -1 FAILSET ! THEN
+            MD-CALLBACK-NOT-GENERIC MDIAG!  0 OK ! -1 FAILSET ! THEN
       THEN
       1 +
    REPEAT drop ;
@@ -20691,7 +20702,9 @@ variable IS-PEND-U                   \ and its length
 \ Files the refusal a tick of SYM meets, true when it files one; when it
 \ files none, FEP holds SYM's user signature, if it has one.
 : TICK-REFUSED? ( n -- bool ) {: sym:n :}
-   sym SCOPE-AUTH-SYM? IF 0 OK ! -1 FAILSET ! RES-TRUE EXIT THEN
+   sym SCOPE-AUTH-SYM? IF
+      TICK-PIN  MD-SCOPED-TICK MDIAG!  0 OK ! -1 FAILSET ! RES-TRUE EXIT
+   THEN
    sym PRIM-TRUSTED-SYM? IF
       TORDER-ACTIVE @ TORDER-GATE = TORDER-ACTIVE @ TORDER-PARENT-GATE = or
       IF RF-CAP CREFUSE! THEN

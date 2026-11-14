@@ -909,6 +909,14 @@ variable MDV-I   variable MDV-F
       MD-ARMS-DEPTH   of s" E-MISMATCH" endof
       MD-LOCAL-ESCAPE of s" E-LOCAL-ESCAPE" endof
       MD-BINDER-PLACE of s" E-BINDER-PLACE" endof
+      MD-C2-BINDER    of s" E-C2-BINDER" endof
+      MD-C2-RECORDS-BINDER of s" E-C2-BINDER" endof
+      MD-C2-CHILD-BINDER of s" E-C2-BINDER" endof
+      MD-C2-FIELD-BINDER of s" E-C2-BINDER" endof
+      MD-C2-ROOT-BINDER of s" E-C2-BINDER" endof
+      MD-FIELD-NAME   of s" E-MISSING-NAME" endof
+      MD-CALLBACK-NOT-GENERIC of s" E-CALLBACK-NOT-GENERIC" endof
+      MD-SCOPED-TICK  of s" E-UNSAFE" endof
       s" E-REJECTED" rot
    endcase ;
 
@@ -993,6 +1001,13 @@ variable MDV-I   variable MDV-F
       MD-EXIT-LOOP    of s" write `unloop` before `exit` once for each loop the `exit` leaves, or `leave` the loop and return after it" endof
       MD-UNLOOP-JOIN  of s" write `unloop` for the same loops on every path that meets here, or `exit` from each path right after its `unloop`" endof
       MD-CF-OPEN      of s" close every `if`, `do`, `begin`, `case` and `[:` before the `;`" endof
+      MD-C2-BINDER    of s" declare the callback `forall<i inside [l,T],[ mut-view<p,i,a,init<i,T>> -- … ]>`, with `l` the view's scope and `T` the record" endof
+      MD-C2-RECORDS-BINDER of s" declare the callback `forall<i inside [l,T],[ records<p,i,a,T> -- … ]>`, with `l` the view's scope and `T` the record" endof
+      MD-C2-CHILD-BINDER of s" declare the callback `forall<j inside l,[ … ]>`, with `l` the parent view's scope" endof
+      MD-C2-FIELD-BINDER of s" declare the callback `forall<j inside i,forall-region<c,[ mut-view<p,j,c,init<i,F>> -- … ]>>`, with `i` the view's scope and `F` the field's type" endof
+      MD-C2-ROOT-BINDER of s" declare the callback `forall<p,forall-region<a,[ mut-view<p,p,a,u8> -- … ]>>`" endof
+      MD-FIELD-NAME   of s" write the field after it, as `C2-MEM:WITH-FIELD first`" endof
+      MD-CALLBACK-NOT-GENERIC of s" pass a quotation written at the call whose types name no outer scope, or declare the parameter `forall<q,…>` too" endof
       s" close each `MATCH family` with `;MATCH` after its `variant OF ... ENDOF` arms, and write `construct family variant` with both operands" rot
    endcase ;
 
@@ -1069,12 +1084,28 @@ variable MDV-I   variable MDV-F
       MD-EXIT-LOOP    of s" exit inside a loop needs unloop first" endof
       MD-UNLOOP-JOIN  of s" the paths that meet here have unlooped different loops" endof
       MD-CF-OPEN      of s" a control structure is still open at the end of the definition" endof
+      MD-C2-BINDER    of s" the callback's binder does not fit this entry's scope and record" endof
+      MD-C2-RECORDS-BINDER of s" the callback's binder does not fit this entry's scope and record" endof
+      MD-C2-CHILD-BINDER of s" the callback's binder does not fit the scope this entry lends inside" endof
+      MD-C2-FIELD-BINDER of s" the callback's binder does not fit the scope and field region this entry lends" endof
+      MD-C2-ROOT-BINDER of s" the callback's binder does not fit the scope and region this entry opens" endof
+      MD-FIELD-NAME   of s" `C2-MEM:WITH-FIELD` names the field it lends, and the definition ends first" endof
+      MD-CALLBACK-NOT-GENERIC of s" the callback must work for every scope, and this one names an outer scope" endof
+      MD-SCOPED-TICK  of s"  is a scoped entry, which only a direct call may reach" endof
       s" bad match: rejected" rot
    endcase ;
 
 \ A reason's label: a few words under its token.
 : MD-LABEL$ ( n -- ptr u8 n )
    case
+      MD-C2-BINDER    of s" binder does not fit this entry" endof
+      MD-C2-RECORDS-BINDER of s" binder does not fit this entry" endof
+      MD-C2-CHILD-BINDER of s" binder does not fit this entry" endof
+      MD-C2-FIELD-BINDER of s" binder does not fit this entry" endof
+      MD-C2-ROOT-BINDER of s" binder does not fit this entry" endof
+      MD-FIELD-NAME   of s" no field name" endof
+      MD-CALLBACK-NOT-GENERIC of s" callback bound to an outer scope" endof
+      MD-SCOPED-TICK  of s" scoped entry" endof
       s" here" rot
    endcase ;
 
@@ -1315,6 +1346,7 @@ variable MDV-I   variable MDV-F
    endcase ;
 
 : REASON-MESSAGE ( -- )
+   MDIAG @ MD-SCOPED-TICK = IF TOK-SPAN THEN
    MDIAG @ MD-REASON$ EMIT-STR
    MDIAG @ MD-NONEXH = IF MDIAG-MISSING-PROSE THEN
    MDIAG-COUNTS ;
@@ -1611,6 +1643,10 @@ PTR-VARIABLE HOLDER-FIRST
    THEN
    s" move " EMIT-STR  TOK-SPAN  s"  out of the body to top level" EMIT-STR ;
 
+: SCOPED-TICK-HELP ( -- )
+   s" call " EMIT-STR  TOK-SPAN
+   s"  directly where the checker proves its scope instead of ticking it" EMIT-STR ;
+
 : LINLOCAL-HELP ( -- )
    s" keep the linear value on the stack and pass it on with stack words, in place of binding it to a local"
    EMIT-STR ;
@@ -1649,7 +1685,10 @@ PTR-VARIABLE HOLDER-FIRST
    k RF-CAP = IF CAP-HELP EXIT THEN
    k RF-UNSAFE = IF UNSAFE-HELP EXIT THEN
    k RF-LINLOCAL = IF LINLOCAL-HELP EXIT THEN
-   k RF-REASON = IF MDIAG @ MD-SUGGEST$ EMIT-STR EXIT THEN
+   k RF-REASON = IF
+      MDIAG @ MD-SCOPED-TICK = IF SCOPED-TICK-HELP EXIT THEN
+      MDIAG @ MD-SUGGEST$ EMIT-STR EXIT
+   THEN
    k RF-UNCHECKABLE = IF UNCK-HELP EXIT THEN
    k RF-RETURN = IF RETURN-HELP EXIT THEN
    REFUSAL@ RF-MISMATCH = IF ['] ROW-VALUES ROWS-SUGGEST$ EMIT-STR EXIT THEN
