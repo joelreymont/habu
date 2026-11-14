@@ -89,7 +89,6 @@ private
    DECL COMMON s" src/core/decl-event.f" ROW
    DECL COMMON s" src/core/structure-make.f" ROW
    DECL COMMON s" src/core/structure-decl.f" ROW
-   DECL COMMON s" src/core/arena.f" ROW
    DECL COMMON s" src/core/enum-decl.f" ROW
    CORE COMMON s" src/core/structures.f" ROW
    CORE COMMON s" src/core/roles.f" ROW
@@ -122,6 +121,7 @@ private
    RESTLIB COMMON s" src/lib/memory.f" ROW
    RESTLIB COMMON s" src/lib/allocator.f" ROW
    RESTLIB COMMON s" src/lib/arena.f" ROW
+   RESTLIB COMMON s" src/core/arena.f" ROW
    RESTLIB COMMON s" src/compiler/fixed-body.f" ROW ;
 
 
