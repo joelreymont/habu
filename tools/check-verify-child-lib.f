@@ -553,7 +553,7 @@ variable OF-U                           \ 0 for the other forms
 : INDEX-SUBJECT ( -- )
    0 IDX-N !
    true DIAG-JSON!
-   OUT-FD DIAG-FD!
+   OUT-FD REJECTION:FD!
    ['] IDX-DEFINITION is VERIFY:ON-DEFINITION
    ['] IDX-DUPLICATE is VERIFY:ON-DUPLICATE
    MULTI-ERR-BEGIN
@@ -571,7 +571,7 @@ variable OF-U                           \ 0 for the other forms
 \ checker renders a packet on stdout: the code it threw, 0 for none.
 : SCOPED ( [ -- ] -- n ) {: q :}
    0 0= DIAG-JSON!
-   OUT-FD DIAG-FD!
+   OUT-FD REJECTION:FD!
    CHECKER-SCOPE-START-NEUTRAL
    q catch
    CHECKER-SCOPE-DONE ;

@@ -129,13 +129,13 @@ private
 create DIAG-BUF DIAG-CAP allot
 
 : ARM ( -- )   \ capture the next diagnostic as JSON instead of printing it
-   DIAG-BUF DIAG-CAP DIAG-BUFFER!  true DIAG-JSON! ;
+   DIAG-BUF DIAG-CAP REJECTION:BUFFER!  true DIAG-JSON! ;
 
 : DISARM ( -- )
-   false DIAG-JSON!  DIAG-BUFFER-OFF ;
+   false DIAG-JSON!  REJECTION:BUFFER-OFF ;
 
 : HAS? ( ptr u8 n -- )
-   DIAG-BUFFER$ 2swap CONTAINS? TTRUE ;
+   REJECTION:BUFFER$ 2swap CONTAINS? TTRUE ;
 
 \ The refusal is a mismatch at the call token the string names.
 : MISMATCH-AT ( ptr u8 n -- )

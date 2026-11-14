@@ -15,7 +15,7 @@ T-RESET
 \ per refusal.
 package CN-DIAG
 create BUF 65536 allot
-BUF 65536 DIAG-BUFFER!
+BUF 65536 REJECTION:BUFFER!
 ;package
 
 package CN

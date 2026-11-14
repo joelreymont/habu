@@ -261,14 +261,14 @@ s" MATCH-SCOPE" type cr
 \ `bad match: missing variants` text.
 create MDG-BUF 8192 allot
 : MDG< ( ptr u8 n -- )   \ run one candidate with JSON diags into the buffer
-   MDG-BUF 8192 DIAG-BUFFER!  0 0= DIAG-JSON!
+   MDG-BUF 8192 REJECTION:BUFFER!  0 0= DIAG-JSON!
    CHECK-CANDIDATE! 0 T= ;
 : MDG? ( ptr u8 n -- )
    T-NEXT
-   DIAG-BUFFER$ 2swap CONTAINS? 0= if
+   REJECTION:BUFFER$ 2swap CONTAINS? 0= if
       s" diag needle missing" T-ASSERT-DETAIL
    then ;
-: MDG-END ( -- ) 0 0= 0= DIAG-JSON! DIAG-BUFFER-OFF ;
+: MDG-END ( -- ) 0 0= 0= DIAG-JSON! REJECTION:BUFFER-OFF ;
 
 SUMTYPE mtri
   VARIANT aa n ;VARIANT
@@ -332,10 +332,10 @@ s\" \"code\":\"E-MATCH-DEPTH\"" MDG?
 s\" \"repair_class\":\"factor_match_nesting\"" MDG?
 MDG-END
 \ prose shape: the `bad match: missing variants` text, prose mode.
-MDG-BUF 8192 DIAG-BUFFER!
+MDG-BUF 8192 REJECTION:BUFFER!
 s" G18 ( mtri -- n ) MATCH mtri bb OF ENDOF ;MATCH" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s" bad match: missing variants: aa cc" CONTAINS? TTRUE
-DIAG-BUFFER-OFF
+REJECTION:BUFFER$ s" bad match: missing variants: aa cc" CONTAINS? TTRUE
+REJECTION:BUFFER-OFF
 s" MATCH-DIAG" type cr
 
 \ MATCH on a named multi-cell layout arg: the some-branch payload expands the

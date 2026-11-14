@@ -165,7 +165,7 @@ TYPED-VARIABLE SRC-U len
 
 
 create PKT-BUF 8192 allot
-: PACKET-OPEN ( -- )   PKT-BUF 8192 DIAG-BUFFER!  0 0= DIAG-JSON! ;
+: PACKET-OPEN ( -- )   PKT-BUF 8192 REJECTION:BUFFER!  0 0= DIAG-JSON! ;
 
 \ REFUSES reads prose from a fork that inherits the format, and a run under
 \ `tools/check.f --json-errors` starts in JSON; a packet sets prose back.
@@ -176,7 +176,7 @@ variable JSON-WAS   JSON-DIAGS @ JSON-WAS !   false DIAG-JSON!
 \ diagnostics captured; it stays in PKT-BUF until the next capture.
 : PACKET$ ( -- ptr u8 n )
    PACKET-OPEN  SRC$ CHECK-CANDIDATE! drop
-   DIAG-BUFFER$ nip  0 0= 0= DIAG-JSON! DIAG-BUFFER-OFF  PKT-BUF swap ;
+   REJECTION:BUFFER$ nip  0 0= 0= DIAG-JSON! REJECTION:BUFFER-OFF  PKT-BUF swap ;
 
 
 : PACKET-PASSES ( -- )
@@ -187,10 +187,10 @@ variable JSON-WAS   JSON-DIAGS @ JSON-WAS !   false DIAG-JSON!
 \ holds all three: checked as a candidate, or compiled to walk a does> clause.
 : PACKET-HOLDS ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: code:ptr codeu:n verdict:ptr verdictu:n why:ptr whyu:n :}
-   DIAG-BUFFER$ code codeu CONTAINS? TTRUE
-   DIAG-BUFFER$ verdict verdictu CONTAINS? TTRUE
-   DIAG-BUFFER$ why whyu CONTAINS? TTRUE
-   0 0= 0= DIAG-JSON! DIAG-BUFFER-OFF ;
+   REJECTION:BUFFER$ code codeu CONTAINS? TTRUE
+   REJECTION:BUFFER$ verdict verdictu CONTAINS? TTRUE
+   REJECTION:BUFFER$ why whyu CONTAINS? TTRUE
+   0 0= 0= DIAG-JSON! REJECTION:BUFFER-OFF ;
 
 
 \ CHECK-CANDIDATE! also answers ANSWER: VERDICT-REFUSED or VERDICT-UNCHECKABLE.

@@ -11,7 +11,7 @@ T-RESET
 
 \ silence expected rejection diagnostics (verdicts are asserted, not printed).
 create VNDIAG-BUF 8192 allot
-VNDIAG-BUF 8192 DIAG-BUFFER!
+VNDIAG-BUF 8192 REJECTION:BUFFER!
 
 \ 1. a declared value nominal, checked inside its own package; test/engine-suite.f
 \    checks the converters and the refused crossings in signatures.

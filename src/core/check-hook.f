@@ -94,7 +94,8 @@ private
    a swap ;
 
 
-\ Appends sym's tags at RSN, after the effect FACTS-SAME? left in RSBUF.
+\ Appends sym's tags at REJECTION:TEXT-LEN, after the effect FACTS-SAME? left
+\ in REJECTION:TEXT.
 : FACTS-TAGS ( n -- )
    {: sym:n :}
    sym CTL-WORD-SYM  sym DFER-FIND-SYM if CHECKER-OWNER-ABI:BINDING-DEFER or then
@@ -120,18 +121,19 @@ private
       CK-LIVE-PEND? 0= if exit then
       DOES-SPLIT @ 0 <> if exit then
       sym FACTS-TAGS
-      RQM @ 0= if RSBUF RSN @ ndict@ FACTS! exit then
+      RQM @ 0= if REJECTION:TEXT REJECTION:TEXT-LEN @ ndict@ FACTS! exit then
    then
    RQM @ 0 <> if s" hook: facts text cannot say: " else s" hook: facts text differs: " then
    ERROR-TEXT:TYPE
    NMB NMU @ ERROR-TEXT:TYPE
    s" : " ERROR-TEXT:TYPE
-   RSBUF RSN @ ERROR-TEXT:TYPE
+   REJECTION:TEXT REJECTION:TEXT-LEN @ ERROR-TEXT:TYPE
    S\" \n" ERROR-TEXT:TYPE
    CHECK-RC throw ;
 
 
-\ Whether sym's newest effect has a facts text that says it, left in RSBUF.
+\ Whether sym's newest effect has a facts text that says it, left in
+\ REJECTION:TEXT.
 : FACTS-TEXT? ( n -- bool )
    {: sym:n :}
    sym 0= if RES-FALSE exit then
@@ -156,10 +158,10 @@ public
    sym FACTS-TEXT? 0= if exit then
    sym VIS-SYM-REC CHECKER-RESOLVE:REC>INDEX {: ix:n :}
    ix ndict@ 1 - <> if exit then
-   RSBUF RSN @ ix FACTS!
+   REJECTION:TEXT REJECTION:TEXT-LEN @ ix FACTS!
    sym NORET-CREATES@ {: made:n :}
    made 0= if exit then
-   0 RSN !  made 1 - REND-RECORD
+   0 REJECTION:TEXT-LEN !  made 1 - REND-RECORD
    RQM @ 0 <> if 2drop exit then
    LAY-FACTS ;
 
@@ -184,7 +186,9 @@ CAST: REG-XT ( n -- [ ptr u8 n ptr u8 n -- ] )
    rec NULL-PTR = if exit then
    rec CHECKER-RESOLVE:REC>INDEX {: ix:n :}
    ix 0 < if exit then
-   LASTC-LINK-SYM FACTS-TEXT? if RSBUF RSN @ else NULL-PTR 0 then
+   LASTC-LINK-SYM FACTS-TEXT? if
+      REJECTION:TEXT REJECTION:TEXT-LEN @
+   else NULL-PTR 0 then
    ix FIND-FACTS! ;
 
 
@@ -198,7 +202,7 @@ CAST: REG-XT ( n -- [ ptr u8 n ptr u8 n -- ] )
    CK-CLOSED-SYM @ CK-CLOSED-IX @ CK-CLOSED-OFF@ CK-PEND-SYM {: sym:n :}
    sym 0= if exit then
    a u CHECKER-RECORD-SYM? sym <> if exit then
-   sym FACTS-TEXT? if RSBUF RSN @ CK-CLOSED-IX @ FACTS!
+   sym FACTS-TEXT? if REJECTION:TEXT REJECTION:TEXT-LEN @ CK-CLOSED-IX @ FACTS!
    else NULL-PTR 0 CK-CLOSED-IX @ FIND-FACTS! then ;
 
 \ The shapes whose child answers `ptr t` for its declared type t.
@@ -388,9 +392,9 @@ public
 \ buffer past its recorded text, where the next rendering replaces it.
 : EFFECT-TEXT ( n -- ptr u8 n ) {: node:n :}
    node EFFECT-SIG 2drop {: din:n dout:n :}
-   RSN @ {: at:n :}
+   REJECTION:TEXT-LEN @ {: at:n :}
    din dout 0 0 RES-FALSE REND-FACTS {: buf:ptr len:n :}
-   at RSN !
+   at REJECTION:TEXT-LEN !
    buf at +  len at -  THROUGH-CLOSE ;
 
 private
@@ -458,7 +462,7 @@ public
             S\" \n" ERROR-TEXT:TYPE
             CHECK-RC throw
          then
-         RSBUF RSN @ now FACTS!
+         REJECTION:TEXT REJECTION:TEXT-LEN @ now FACTS!
       then
    loop ;
 
@@ -481,18 +485,19 @@ public
    RES-TRUE ;
 
 
-\ Sym's tags alone in RSBUF, the facts text of a primitive the checker types by
-\ what it does (`execute`, `?dup`). False when it has none or a text cannot say
-\ them.
+\ Sym's tags alone in REJECTION:TEXT, the facts text of a primitive the checker
+\ types by what it does (`execute`, `?dup`). False when it has none or a text
+\ cannot say them.
 : TAGS-TEXT? ( n -- bool )
    {: sym:n :}
-   0 RSN !  0 RQM !
+   0 REJECTION:TEXT-LEN !  0 RQM !
    sym FACTS-TAGS
-   RSN @ 0 >  RQM @ 0=  and ;
+   REJECTION:TEXT-LEN @ 0 >  RQM @ 0=  and ;
 
 
-\ Sym's primitive rows as one facts text in RSBUF: the first row's effect and
-\ tags, then each further row after `overload`; with no row, its tags alone.
+\ Sym's primitive rows as one facts text in REJECTION:TEXT: the first row's
+\ effect and tags, then each further row after `overload`; with no row, its tags
+\ alone.
 \ False when a text cannot say them, or a created effect, whose text ends the
 \ facts, would hide the rows.
 : ROWS-TEXT? ( n -- bool )
@@ -511,14 +516,15 @@ public
 
 \ Rec's own facts text as it stands, else, in an hb whose records carry none,
 \ sym's rows' (ROWS-TEXT?); rec NULL-PTR or sym 0 is none. Empty when neither
-\ says them. A rendered text lies in RSBUF, which the next render reuses.
+\ says them. A rendered text lies in REJECTION:TEXT, which the next render
+\ reuses.
 : OWN-OR-ROWS ( ptr n n -- ptr u8 n )
    {: rec:ptr sym:n :}
    rec NULL-PTR <> if
       rec CHECKER-RESOLVE:REC>INDEX CHECK:FACTS@ dup 0 <> if exit then 2drop
    then
    sym 0= if NULL-PTR 0 exit then
-   sym ROWS-TEXT? if RSBUF RSN @ else NULL-PTR 0 then ;
+   sym ROWS-TEXT? if REJECTION:TEXT REJECTION:TEXT-LEN @ else NULL-PTR 0 then ;
 
 \ A linked engine's facts text for primitive na nu: what the open build's rows
 \ say of its global symbol (ROWS-TEXT?), empty when no text can.

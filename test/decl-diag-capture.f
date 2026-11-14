@@ -14,11 +14,11 @@ create BUF CAP allot
 \ true; CAPTURE-OFF restores prose mode; CAPTURED$ returns the production buffer.
 : CAPTURE-ON ( bool -- )
    DIAG-JSON!
-   BUF CAP DIAG-BUFFER! ;
+   BUF CAP REJECTION:BUFFER! ;
 : CAPTURE-OFF ( -- )
-   DIAG-BUFFER-OFF
+   REJECTION:BUFFER-OFF
    false DIAG-JSON! ;
-: CAPTURED$ ( -- ptr u8 n ) DIAG-BUFFER$ ;
+: CAPTURED$ ( -- ptr u8 n ) REJECTION:BUFFER$ ;
 
 variable SI
 

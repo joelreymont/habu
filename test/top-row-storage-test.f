@@ -52,13 +52,13 @@ variable OUT-U
 variable ERR-U
 
 : ARM ( -- )   \ capture the next diagnostic as JSON instead of printing it
-   DIAG-BUF DIAG-CAP DIAG-BUFFER!  true DIAG-JSON! ;
+   DIAG-BUF DIAG-CAP REJECTION:BUFFER!  true DIAG-JSON! ;
 
 : DISARM ( -- )
-   false DIAG-JSON!  DIAG-BUFFER-OFF ;
+   false DIAG-JSON!  REJECTION:BUFFER-OFF ;
 
 : HAS? ( ptr u8 n -- )
-   DIAG-BUFFER$ 2swap CONTAINS? TTRUE ;
+   REJECTION:BUFFER$ 2swap CONTAINS? TTRUE ;
 
 : CLEAR ( -- )   \ every cell a refused store would have written
    0 TS-V !  0 TS-BN !  NULL-PTR TS-PV ! ;
@@ -230,20 +230,20 @@ variable ERR-U
 
 : CASE-SITE ( -- )
    s" a top-level refusal names its file and line" T-LABEL
-   CLEAR  DIAG-BUF DIAG-CAP DIAG-BUFFER!
+   CLEAR  DIAG-BUF DIAG-CAP REJECTION:BUFFER!
    INCLUDE-SITE
    s" /test/fixtures/top-row-site.f:4: at '!' raw storage cell" HAS?
-   DIAG-BUFFER-OFF
+   REJECTION:BUFFER-OFF
    ARM  INCLUDE-SITE
    S\" /test/fixtures/top-row-site.f\",\"line\":4,\"definition_source\"" HAS?  RAW-PTR
    DISARM UNTOUCHED ;
 
 : CASE-EVAL-SITE ( -- )
    s" a top-level refusal in an evaluated string names its file alone" T-LABEL
-   CLEAR  DIAG-BUF DIAG-CAP DIAG-BUFFER!
+   CLEAR  DIAG-BUF DIAG-CAP REJECTION:BUFFER!
    INCLUDE-EVAL
    s" /test/fixtures/top-row-eval.f: at '!' raw storage cell" HAS?
-   DIAG-BUFFER-OFF
+   REJECTION:BUFFER-OFF
    ARM  INCLUDE-EVAL
    S\" /test/fixtures/top-row-eval.f\",\"definition_source\"" HAS?  RAW-PTR
    DISARM UNTOUCHED ;
@@ -307,10 +307,10 @@ variable ERR-U
 \ return-stack reason.
 : CASE-RETURN-BELOW ( -- )
    s" r> below a body's return frame names the return-stack reason" T-LABEL
-   DIAG-BUF DIAG-CAP DIAG-BUFFER!
+   DIAG-BUF DIAG-CAP REJECTION:BUFFER!
    [: s" : TS-B15 ( -- ) r> drop ;" evaluate-closed ;] CHECK-RC TTHROWSQ
    s" habu: in ts-b15: at 'r>' return stack: this reads below the return-stack cells pushed here expected: a actual: " HAS?
-   DIAG-BUFFER-OFF
+   REJECTION:BUFFER-OFF
    s" 2r> below the saved return cells is refused with the same reason" T-LABEL
    s" 1 2 2>r 2r> 2r> 2drop" CHECK-RC EXITS
    s" at '2r>' return stack: this reads below the return-stack cells pushed here expected: a b actual: " ERR-HAS? ;

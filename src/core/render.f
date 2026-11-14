@@ -3,35 +3,9 @@
 \ sig-less word's inferred effect under its name, so its callers certify;
 \ rendering only decides whether that effect is declarable
 \ (RQM, NLET). Compiles after checker.f and before any src/lib/ file: no emit or
-\ +!, so bytes go out through the one-byte ECH buffer.
+\ +!; bytes go out through REJECTION.
 using TFAM
-
-create ECH 1 allot
-variable RDST   0 RDST !                 \ 0 = stdout, 1 = RSBUF (sig recording)
-\ RSBUF, mapped on first use, holds the text being recorded, RSN bytes of it;
-\ RSBUF-FLUSH zeroes RSN.
-16384 constant RSBUF-FIRST                \ bytes of the first mapping
-PERSISTED-PTR-VARIABLE RSBUF-P   NULL-PTR RSBUF-P !
-variable RSBUF-CAP   0 RSBUF-CAP !        \ bytes mapped at RSBUF-P, 0 for none
-variable RSN
-
-
-: RSBUF-MAP ( -- )
-   RSBUF-FIRST ARENA-ALLOC-BYTES RSBUF-P !  RSBUF-FIRST RSBUF-CAP ! ;
-
-
-: RSBUF ( -- ptr u8 )
-   RSBUF-CAP @ 0= IF RSBUF-MAP THEN
-   RSBUF-P @ ;
-
-
-\ Doubles RSBUF, keeping its bytes; a span taken from it before is stale.
-: RSBUF-GROW ( -- )
-   RSBUF-CAP @ 0= IF RSBUF-MAP EXIT THEN
-   RSBUF-CAP @ {: oc:n :}
-   RSBUF-P @ oc oc 2 * ARENA-BYTES-GROW RSBUF-P !
-   oc 2 * RSBUF-CAP ! ;
-
+using REJECTION
 
 \ RQM: the text cannot say the effect, so REC-SIG does not record it; set where the
 \ text writes `?` and where it meets a type or row no signature spells.
@@ -40,21 +14,6 @@ variable RQM
 variable RROW-UNSAID
 \ RBIND-FULL: a forall past BINDER-DEPTH-MAX nested binders, for REC-REFUSE-WHY.
 variable RBIND-FULL
-variable RJSON   0 RJSON !               \ inside a JSON string: EMIT1 escapes
-variable RDIAG-ON
-variable RDIAG-FD   2 RDIAG-FD !
-PTR-VARIABLE RDIAG-A
-variable RDIAG-CAP
-variable RDIAG-U
-variable RDIAG-I
-
-\ E-DIAG-CAPACITY refuses a record that does not fit the caller's buffer.
-\ src/lib/error.f owns it but compiles after this file, so the same (code, name)
-\ pair is re-registered here, the one form tools/error-code-lint.f admits.
-package RDIAG
-public
--2901 constant E-DIAG-CAPACITY
-;package
 
 \ RTAILS is set while TAIL-CAPTURE renders: every quotation then shows its row
 \ tails.
@@ -68,82 +27,7 @@ variable RDECL   0 RDECL !
 : RFACTS? ( -- bool ) RNAMES @ 0 <>  RDECL @ 0=  and ;
 
 
-: EMIT-RAW ( n -- )
-   {: c:n :}
-   RDST @ IF
-     RSN @ RSBUF-CAP @ 2 - > IF RSBUF-GROW THEN
-     c RSBUF RSN @ + c!  RSN @ 1 + RSN !
-   ELSE c ECH c! ECH 1 type THEN ;
-
-
-: JHEX ( n -- ) {: d:n :}
-   d 10 < IF d 48 + ELSE d 55 + THEN EMIT-RAW ;
-
-\ Escapes per RFC 8259 section 7: \n \r \t \" \\ by letter, every other control
-\ byte as \u00XX in uppercase hex.
-: JCHAR {: c :}
-   c case
-      10 of 92 EMIT-RAW 110 EMIT-RAW endof
-      13 of 92 EMIT-RAW 114 EMIT-RAW endof
-      9 of 92 EMIT-RAW 116 EMIT-RAW endof
-      34 of 92 EMIT-RAW c EMIT-RAW endof
-      92 of 92 EMIT-RAW c EMIT-RAW endof
-      c 32 < IF
-         92 EMIT-RAW 117 EMIT-RAW 48 EMIT-RAW 48 EMIT-RAW
-         c 4 rshift JHEX  c 15 and JHEX
-      ELSE c EMIT-RAW THEN
-   endcase ;
-
-\ Between JOPEN and JCLOSE every byte is escaped: a package may be named `\`.
-: EMIT1 {: c :}
-   RJSON @ IF c JCHAR ELSE c EMIT-RAW THEN ;
 : EMIT-UNSAID ( -- ) 1 RQM !  63 EMIT1 ;
-: JOPEN ( -- )   34 EMIT-RAW  -1 RJSON ! ;
-: JCLOSE ( -- )  0 RJSON !  34 EMIT-RAW ;
-
-: DIAG-BUFFER! ( ptr u8 n -- )
-   {: a:ptr cap:n :}
-   a RDIAG-A !
-   cap RDIAG-CAP !
-   0 RDIAG-U !
-   -1 RDIAG-ON ! ;
-
-: DIAG-BUFFER-OFF ( -- )
-   0 RDIAG-ON !
-   0 RDIAG-U ! ;
-
-: DIAG-FD! ( n -- )
-   RDIAG-FD ! ;
-
-\ RDIAG-A is a pointer cell, so a plain fetch keeps the ptr u8 view the byte
-\ store in RDIAG-COPY needs.
-: DIAG-BUFFER$ ( -- ptr u8 n )
-   RDIAG-A @ RDIAG-U @ ;
-
-: RDIAG-COPY ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   0 RDIAG-I !
-   BEGIN RDIAG-I @ u < WHILE
-      a RDIAG-I @ + c@
-      RDIAG-A @ RDIAG-U @ + RDIAG-I @ + c!
-      RDIAG-I @ 1 + RDIAG-I !
-   REPEAT ;
-
-\ The caller's buffer cannot grow: a record that does not fit is refused whole by
-\ a throw, and the buffer keeps every record before it.
-: RDIAG-APPEND ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   RDIAG-ON @ 0= IF RDIAG-FD @ a u write drop EXIT THEN
-   RDIAG-U @ u + RDIAG-CAP @ > IF RDIAG:E-DIAG-CAPACITY throw THEN
-   a u RDIAG-COPY
-   RDIAG-U @ u + RDIAG-U ! ;
-
-\ Rendering returns to stdout before the append, so a refused record leaves the
-\ renderer as a delivered one does.
-: RSBUF-FLUSH ( -- )
-   RSBUF RSN @
-   0 RDST !  0 RSN !
-   RDIAG-APPEND ;
 PERSISTED-PTR-VARIABLE SEEN-P   NULL-PTR SEEN-P !
 variable SEEN-CAP   0 SEEN-CAP !
 \ Only the assigned prefix needs clearing; allocation initializes every cell
@@ -596,15 +480,15 @@ variable RSHOW-DST
    RBN @ BEGIN dup 0 > WHILE 1 - dup cells RBUF + @ REND-TYPE 32 EMIT1 REPEAT drop ;
 
 : SHOW-LOCAL-TYPE ( ptr u8 n n -- ) {: name:ptr nameu:n t:n :}
-   RDST @ RSHOW-DST !
-   0 RDST !
+   DEST @ RSHOW-DST !
+   0 DEST !
    s" inferred " RSTR
    name nameu RSTR
    s" : " RSTR
    SEEN-RESET RATOM-RESET 0 NLET !
    t REND-TYPE
    10 EMIT1
-   RSHOW-DST @ RDST ! ;
+   RSHOW-DST @ DEST ! ;
 : LOCSHOW-INSTALL ( -- ) [: SHOW-LOCAL-TYPE ;] is LOCSHOWXT ;
 LOCSHOW-INSTALL
 
@@ -612,9 +496,6 @@ LOCSHOW-INSTALL
 \   habu: in NAME: at 'TOK' expected: <row> actual: <row> ; suggestion: <text>
 \ A top-level step's line names its place instead (DSITE): habu: PATH:LINE: ...
 \ expected and actual appear only when the failing unify was captured.
-: DTXT ( ptr u8 n -- ) {: a:ptr u:n :}
-   0 BEGIN dup u < WHILE dup a + c@ EMIT1 1 + REPEAT drop ;
-
 : DROW {: s :}  s REND-COLLECT
    RBN @ BEGIN dup 0 > WHILE 1 - dup cells RBUF + @ REND-TYPE 32 EMIT1 REPEAT drop ;
 
@@ -623,33 +504,34 @@ LOCSHOW-INSTALL
    {: din:n dout:n rin:n rout:n hasr:bool :}
    0 RQM !  0 RROW-UNSAID !  0 RBIND-FULL !  SEEN-RESET RATOM-RESET 0 NLET !  0 RROW-N !  0 RVISIT !
    din 0 RROW-NAME  din DROW
-   hasr IF  s" | " DTXT  rin 1 RROW-NAME  rin DROW  THEN
+   hasr IF  s" | " EMIT-STR  rin 1 RROW-NAME  rin DROW  THEN
    45 EMIT1  45 EMIT1
    dout 0 RPOS-LETTER {: lo:n :}
    lo 0 <> IF 32 EMIT1 lo EMIT1 THEN
    dout REND-COLLECT
    RBN @ BEGIN dup 0 > WHILE 1 - 32 EMIT1 dup cells RBUF + @ REND-TYPE REPEAT drop
-   hasr IF  s"  | " DTXT  rout 1 RROW-NAME  rout DROW  THEN ;
+   hasr IF  s"  | " EMIT-STR  rout 1 RROW-NAME  rout DROW  THEN ;
 
 
-\ Both passes write from the RSN it is called with, after what the caller wrote:
-\ the first records the row tails, the second writes them as RPOS-NAMED? names them.
+\ Both passes write from the TEXT-LEN it is called with, after what the caller
+\ wrote: the first records the row tails, the second writes them as RPOS-NAMED?
+\ names them.
 : REND-EFFECT ( n n n n bool -- ptr u8 n )
    {: din:n dout:n rin:n rout:n hasr:bool :}
-   RSN @ {: base:n :}
-   1 RDST !  0 RPOS-N !
-   1 RNAMES !  base RSN !  din dout rin rout hasr REND-PASS
-   2 RNAMES !  base RSN !  din dout rin rout hasr REND-PASS
-   0 RNAMES !  0 RDST !  RSBUF RSN @ ;
+   TEXT-LEN @ {: base:n :}
+   1 DEST !  0 RPOS-N !
+   1 RNAMES !  base TEXT-LEN !  din dout rin rout hasr REND-PASS
+   2 RNAMES !  base TEXT-LEN !  din dout rin rout hasr REND-PASS
+   0 RNAMES !  0 DEST !  TEXT TEXT-LEN @ ;
 
 
 : FACT-TAG ( ptr u8 n n -- ) {: a:ptr u:n letter:n :}
-   a u DTXT  32 EMIT1  letter EMIT1  32 EMIT1 ;
+   a u EMIT-STR  32 EMIT1  letter EMIT1  32 EMIT1 ;
 
 
 : VAR-FACT-TAG ( ptr u8 n n -- )
    {: a:ptr u:n idx:n :}
-   a u DTXT  32 EMIT1  idx VAR-NAME  32 EMIT1 ;
+   a u EMIT-STR  32 EMIT1  idx VAR-NAME  32 EMIT1 ;
 
 \ The type variable REND-EFFECT gave name index idx, -1 for a forall's name.
 : SEEN-VAR ( n -- n ) {: idx:n :}
@@ -693,23 +575,23 @@ LOCSHOW-INSTALL
    q RQUOT@ ISVAR 0= IF EXIT THEN
    q RQUOT-FIRST {: first:n :}
    first q = IF EXIT THEN
-   s" block " DTXT  first RNUM  32 EMIT1  q RNUM  32 EMIT1 ;
+   s" block " EMIT-STR  first RNUM  32 EMIT1  q RNUM  32 EMIT1 ;
 
 \ `noblock q` when quotation q's block part is a flagged variable no earlier one's is.
 : QUOT-NOBLOCK-TAG ( n -- ) {: q:n :}
    q RQUOT@ ISVAR 0= IF EXIT THEN
    q RQUOT-FIRST q <> IF EXIT THEN
    q RQUOT@ PAY NSCOPE@ 0= IF EXIT THEN
-   s" noblock " DTXT  q RNUM  32 EMIT1 ;
+   s" noblock " EMIT-STR  q RNUM  32 EMIT1 ;
 
 \ Facts text, `( E ) offset a noscope A nolinear a block 1 2 noblock 1 `,
-\ written from the RSN it is called with: a caller that wants a fresh text sets
-\ `0 RSN !` first.
+\ written from the TEXT-LEN it is called with: a caller that wants a fresh text
+\ sets `0 TEXT-LEN !` first.
 : REND-FACTS ( n n n n bool -- ptr u8 n )
    {: din:n dout:n rin:n rout:n hasr:bool :}
-   1 RDST !  s" ( " DTXT
+   1 DEST !  s" ( " EMIT-STR
    din dout rin rout hasr REND-EFFECT 2drop
-   1 RDST !  s"  ) " DTXT
+   1 DEST !  s"  ) " EMIT-STR
    0 BEGIN dup NLET @ < WHILE dup VAR-KIND-TAG 1 + REPEAT drop
    0 BEGIN dup NLET @ < WHILE dup VAR-SCOPE-TAG 1 + REPEAT drop
    0 BEGIN dup RROW-N @ < WHILE dup ROW-KIND-TAG 1 + REPEAT drop
@@ -717,7 +599,7 @@ LOCSHOW-INSTALL
    RVISIT @ SQUOT-CAP min 1 + {: nq:n :}
    2 BEGIN dup nq < WHILE dup QUOT-BLOCK-TAG 1 + REPEAT drop
    1 BEGIN dup nq < WHILE dup QUOT-NOBLOCK-TAG 1 + REPEAT drop
-   0 RDST !  RSBUF RSN @ ;
+   0 DEST !  TEXT TEXT-LEN @ ;
 
 
 : CTL-FLAG-TAG ( n n -- )
@@ -725,13 +607,13 @@ LOCSHOW-INSTALL
    ctl 1 bit lshift and 0= IF EXIT THEN
    bit CTL-BIT>TAG$ {: a:ptr u:n :}
    u 0 = IF EXIT THEN
-   a u DTXT  32 EMIT1 ;
+   a u EMIT-STR  32 EMIT1 ;
 
 
 : CTL-THROWS-TAG ( n -- )
    {: ctl:n :}
    ctl CTL-THROW and 0= IF EXIT THEN
-   s" throws " DTXT  ctl XFER-DMASK RNUM  32 EMIT1  ctl XFER-RMASK RNUM  32 EMIT1 ;
+   s" throws " EMIT-STR  ctl XFER-DMASK RNUM  32 EMIT1  ctl XFER-RMASK RNUM  32 EMIT1 ;
 
 
 : CTL-INTRINSIC-TAG ( n -- )
@@ -740,14 +622,14 @@ LOCSHOW-INSTALL
    id 0 = IF EXIT THEN
    id INTRINSIC-NAME$ {: a:ptr u:n :}
    u 0 = IF 1 RQM ! EXIT THEN
-   s" intrinsic " DTXT  a u DTXT  32 EMIT1 ;
+   s" intrinsic " EMIT-STR  a u EMIT-STR  32 EMIT1 ;
 
 
-\ Control word n's tags for checker.f SIG-CTL-TAG, in bit order, appended at RSN.
+\ Control word n's tags for checker.f SIG-CTL-TAG, in bit order, appended at TEXT-LEN.
 \ RQM: a bit XFER-PACK does not keep, an unnamed intrinsic id, masks without CTL-THROW.
 : REND-CTL ( n -- ptr u8 n )
    {: ctl:n :}
-   1 RDST !
+   1 DEST !
    ctl XFER-FLAGS  ctl XFER-DMASK  ctl XFER-RMASK  XFER-PACK  ctl <> IF 1 RQM ! THEN
    ctl CTL-THROW and 0=  ctl XFER-DMASK ctl XFER-RMASK or 0 <>  and IF 1 RQM ! THEN
    ctl 0 CTL-FLAG-TAG
@@ -756,32 +638,33 @@ LOCSHOW-INSTALL
       i CTL-INTRINSIC-SHIFT = IF ctl CTL-INTRINSIC-TAG THEN
       ctl i CTL-FLAG-TAG
    loop
-   0 RDST !  RSBUF RSN @ ;
+   0 DEST !  TEXT TEXT-LEN @ ;
 
 
-\ A PE row's flags as facts tags appended at RSN; the PE-ACTIVE, PE-TRUSTED-ONLY
-\ and PE-TOP-ONLY bits are facts a caller's check reads. `primitive` (PE-ACTIVE)
-\ makes the read a primitive row, whose tick is an opaque xt: without it a text
-\ reads as the word's declaration, whose tick is its quotation (`['] die`).
+\ A PE row's flags as facts tags appended at TEXT-LEN; the PE-ACTIVE,
+\ PE-TRUSTED-ONLY and PE-TOP-ONLY bits are facts a caller's check reads.
+\ `primitive` (PE-ACTIVE) makes the read a primitive row, whose tick is an
+\ opaque xt: without it a text reads as the word's declaration, whose tick is
+\ its quotation (`['] die`).
 : REND-PE ( n -- ptr u8 n )
    {: flags:n :}
-   1 RDST !
-   flags PE-ACTIVE and 0 <> IF s" primitive " DTXT THEN
-   flags PE-TRUSTED-ONLY and 0 <> IF s" trusted-only " DTXT THEN
-   flags PE-TOP-ONLY and 0 <> IF s" top-only " DTXT THEN
-   0 RDST !  RSBUF RSN @ ;
+   1 DEST !
+   flags PE-ACTIVE and 0 <> IF s" primitive " EMIT-STR THEN
+   flags PE-TRUSTED-ONLY and 0 <> IF s" trusted-only " EMIT-STR THEN
+   flags PE-TOP-ONLY and 0 <> IF s" top-only " EMIT-STR THEN
+   0 DEST !  TEXT TEXT-LEN @ ;
 
 
-\ A parsing immediate's payload count as a facts tag appended at RSN, nothing
-\ for -1.
+\ A parsing immediate's payload count as a facts tag appended at TEXT-LEN,
+\ nothing for -1.
 : REND-PIMM ( n -- ptr u8 n )
    {: cnt:n :}
-   1 RDST !
-   cnt 0 >= IF s" parse-imm " DTXT  cnt RNUM  32 EMIT1 THEN
-   0 RDST !  RSBUF RSN @ ;
+   1 DEST !
+   cnt 0 >= IF s" parse-imm " EMIT-STR  cnt RNUM  32 EMIT1 THEN
+   0 DEST !  TEXT TEXT-LEN @ ;
 
 
-\ Record off's facts text, appended at RSN.
+\ Record off's facts text, appended at TEXT-LEN.
 : REND-RECORD ( n -- ptr u8 n )
    {: off:n :}
    off E-PTR E-INST-RESET
@@ -792,22 +675,23 @@ LOCSHOW-INSTALL
 
 
 \ `creates-effect ` and the facts text of n, a created effect as checker.f
-\ NORET-CREATES@ answers it, appended at RSN; 0 appends nothing. RQM stays set.
+\ NORET-CREATES@ answers it, appended at TEXT-LEN; 0 appends nothing. RQM stays
+\ set.
 : REND-CREATES ( n -- ptr u8 n )
    {: n:n :}
-   n 0= IF 0 RDST !  RSBUF RSN @ EXIT THEN
+   n 0= IF 0 DEST !  TEXT TEXT-LEN @ EXIT THEN
    RQM @ {: qm:n :}
-   1 RDST !  s" creates-effect " DTXT
+   1 DEST !  s" creates-effect " EMIT-STR
    n 1 - REND-RECORD
    qm 0 <> IF 1 RQM ! THEN ;
 
 
-\ `overload `, primitive row k's effect and its tags, appended at RSN; checker.f
-\ SIG-TAGS reads the rest of the text as the primitive's next row, so the row
-\ needs no `primitive`.
+\ `overload `, primitive row k's effect and its tags, appended at TEXT-LEN;
+\ checker.f SIG-TAGS reads the rest of the text as the primitive's next row, so
+\ the row needs no `primitive`.
 : REND-OVERLOAD ( n -- ptr u8 n )
    {: k:n :}
-   1 RDST !  s" overload " DTXT
+   1 DEST !  s" overload " EMIT-STR
    k PE-EFF@ REND-RECORD 2drop
    k PE-FLAGS@ PE-ACTIVE invert and REND-PE ;
 
@@ -817,14 +701,14 @@ LOCSHOW-INSTALL
 variable FACTS-REC   variable FACTS-MARK   variable FACTS-WAS   variable FACTS-NEW
 
 
-\ Writes record off's facts text into RSBUF from its start.
+\ Writes record off's facts text into TEXT from its start.
 : FACTS-REND ( n -- )
-   NEW  0 RSN !  REND-RECORD 2drop ;
+   NEW  0 TEXT-LEN !  REND-RECORD 2drop ;
 
 
 : FACTS-PARSE ( -- n n n n )
    RES-TRUE SIG-FACTS!
-   [: RSBUF RSN @ PARSE-SIG-RAW ;] [: RES-FALSE SIG-FACTS! ;] finally ;
+   [: TEXT TEXT-LEN @ PARSE-SIG-RAW ;] [: RES-FALSE SIG-FACTS! ;] finally ;
 
 
 \ The record is built under symbol 0, as CREATED-RECORD-BUILD builds one, so no
@@ -833,7 +717,7 @@ variable FACTS-REC   variable FACTS-MARK   variable FACTS-WAS   variable FACTS-N
    NEW
    FACTS-PARSE {: din:n dout:n rin:n rout:n :}
    SGBAD @ 0 <>  SIG-UNRES @ 0 <>  or IF EXIT THEN
-   RSBUF RSN @ din dout rin rout SGBAD-UNFIT!
+   TEXT TEXT-LEN @ din dout rin rout SGBAD-UNFIT!
    SGBAD @ 0 <> IF EXIT THEN
    0 CHECKER-REC-SYM !
    din dout rin rout SGHASR @ E-BUILD-EFFECT 1 + FACTS-NEW ! ;
@@ -855,7 +739,7 @@ variable FACTS-REC   variable FACTS-MARK   variable FACTS-WAS   variable FACTS-N
 
 
 \ Whether record off, sym's, survives its facts text: rendered, parsed in the
-\ symbol's package and built again, the same content. RSBUF and RSN keep the text.
+\ symbol's package and built again, the same content. TEXT and TEXT-LEN keep the text.
 : FACTS-SAME-AT? ( n n -- bool )
    {: sym:n off:n :}
    off FACTS-REND
@@ -871,29 +755,10 @@ variable FACTS-REC   variable FACTS-MARK   variable FACTS-WAS   variable FACTS-N
 
 \ Inputs from the base row's instantiation (BROW), outputs from DCUR.
 : REND-SIG ( -- ptr u8 n )
-   0 RSN !  BROW @ DCUR @ 0 0 RES-FALSE REND-EFFECT ;
+   0 TEXT-LEN !  BROW @ DCUR @ 0 0 RES-FALSE REND-EFFECT ;
 
 \ `JSON-DIAGS ON` emits one JSON object per reject or uncheckable verdict.
-create JNBUF 20 allot  variable JNV  variable JNN
 variable DSUGE  variable DSUGA
-: JNUM
-   JNV !  0 JNN !
-   JNV @ 0= IF 48 EMIT1 EXIT THEN
-   BEGIN JNV @ 0 > WHILE
-      JNV @ 10 mod 48 +  JNBUF JNN @ + c!
-      JNN @ 1 + JNN !
-      JNV @ 10 / JNV !
-   REPEAT
-   JNN @ BEGIN dup 0 > WHILE
-      1 - dup JNBUF + c@ EMIT1
-   REPEAT drop ;
-
-\ A signed number in decimal, as JNUM prints one from 0 up.
-: SNUM ( n -- ) {: v:n :}
-   v 0 >= IF v JNUM EXIT THEN
-   45 EMIT1
-   v 1 63 lshift = IF s" 9223372036854775808" DTXT EXIT THEN
-   v negate JNUM ;
 \ A tool's label (checker.f DIAG-FILE!) names a top step's file in place of its
 \ path while the load reads that file or none.
 : TOP-FILE$ ( -- ptr u8 n )
@@ -903,18 +768,15 @@ variable DSUGE  variable DSUGA
 \ A top step names its file, then the line checker.f CHECK:TOP-SITE
 \ gives, if any; a step with no file and no label names no place.
 : DSITE ( -- )
-   TOP-STEP @ 0= IF s" habu: in " DTXT  NMA @ NMU @ DTXT  s" : " DTXT EXIT THEN
-   s" habu: " DTXT
+   TOP-STEP @ 0= IF s" habu: in " EMIT-STR  NMA @ NMU @ EMIT-STR
+      s" : " EMIT-STR EXIT THEN
+   s" habu: " EMIT-STR
    TOP-FILE$ {: fa:ptr fu:n :}
    fu 0= IF EXIT THEN
-   fa fu DTXT
-   CHECK:TOP-SITE IF 58 EMIT1 JNUM ELSE drop THEN
-   s" : " DTXT ;
-: JSTR ( ptr u8 n -- )
-   JOPEN DTXT JCLOSE ;
-: JKEY ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u JSTR  58 EMIT1 ;
-: JROW {: s :}  JOPEN  s DROW  JCLOSE ;
+   fa fu EMIT-STR
+   CHECK:TOP-SITE IF 58 EMIT1 EMIT-U ELSE drop THEN
+   s" : " EMIT-STR ;
+: JROW {: s :}  JSON-OPEN  s DROW  JSON-CLOSE ;
 : SIG-WS? {: c :}  c 32 <= ;
 : SIG-LTRIM ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    0 BEGIN dup u < WHILE
@@ -931,17 +793,17 @@ variable DSUGE  variable DSUGA
 \ Under RNAMES each row is named as REND-EFFECT names it (RROW-NAME).
 : JEFFECT-TEXT ( n n n n bool -- )
    {: din:n dout:n rin:n rout:n hasr:bool :}
-   din 0 RROW-NAME  din DROW  s" -- " DTXT  dout 0 RROW-NAME  dout DROW
+   din 0 RROW-NAME  din DROW  s" -- " EMIT-STR  dout 0 RROW-NAME  dout DROW
    hasr IF
-      s" | " DTXT  rin 1 RROW-NAME  rin DROW  s" -- " DTXT  rout 1 RROW-NAME  rout DROW
+      s" | " EMIT-STR  rin 1 RROW-NAME  rin DROW  s" -- " EMIT-STR  rout 1 RROW-NAME  rout DROW
    THEN ;
 
 
-\ One DECL-EFFECT pass over the declared rows, written from RSN at with the
+\ One DECL-EFFECT pass over the declared rows, written from TEXT-LEN at with the
 \ names it started from.
 : DECL-PASS ( n n n n bool n n n n -- )
    {: din:n dout:n rin:n rout:n hasr:bool at:n nlet:n rrow:n ratom:n :}
-   at RSN !  nlet SEEN-FORGET  nlet NLET !  rrow RROW-N !  ratom RATOM-N !  0 RVISIT !
+   at TEXT-LEN !  nlet SEEN-FORGET  nlet NLET !  rrow RROW-N !  ratom RATOM-N !  0 RVISIT !
    din dout rin rout hasr JEFFECT-TEXT ;
 
 
@@ -955,16 +817,16 @@ variable DSUGE  variable DSUGA
    off E-PTR E-DIN@ E-INST  off E-PTR E-DOUT@ E-INST
    hasr IF off E-PTR E-RIN@ E-INST  off E-PTR E-ROUT@ E-INST ELSE 0 0 THEN
    {: din:n dout:n rin:n rout:n :}
-   JOPEN  RSN @ {: from:n :}
+   JSON-OPEN  TEXT-LEN @ {: from:n :}
    -1 RDECL !  0 RPOS-N !
    1 RNAMES !  din dout rin rout hasr from nlet rrow ratom DECL-PASS
    2 RNAMES !  din dout rin rout hasr from nlet rrow ratom DECL-PASS
    0 RNAMES !  0 RDECL !
-   JCLOSE
+   JSON-CLOSE
    nlet NLET !  rrow RROW-N !  ratom RATOM-N !
-   RSN @ {: at:n :}
+   TEXT-LEN @ {: at:n :}
    SGIN @ SGOUT @ SGRIN @ SGROUT @ SGHASR @ JEFFECT-TEXT
-   at RSN ! ;
+   at TEXT-LEN ! ;
 
 
 : INFERRED-EFFECT ( -- )   \ the body's effect so far: the declared inputs to the current rows
@@ -1014,20 +876,20 @@ variable TCAP-INF   variable TCAP-EXP   variable TCAP-ACT   variable TCAP-HELD
 
 
 : TAIL-CAPTURE ( -- )
-   RDST @ {: dst:n :}  RSN @ {: base:n :}  RQM @ {: qm:n :}
-   1 RDST !  SEEN-RESET 0 NLET !  0 RROW-N !
-   INFERRED-EFFECT  RSN @ base - TCAP-INF !
+   DEST @ {: dst:n :}  TEXT-LEN @ {: base:n :}  RQM @ {: qm:n :}
+   1 DEST !  SEEN-RESET 0 NLET !  0 RROW-N !
+   INFERRED-EFFECT  TEXT-LEN @ base - TCAP-INF !
    -1 RTAILS !
-   DF-EXP @ REND-TYPE 32 EMIT1  RSN @ base - TCAP-EXP !
-   DF-ACT @ REND-TYPE 32 EMIT1  RSN @ base - TCAP-ACT !
-   TAIL-SKOLEM @ ROW-TAIL RROW-LETTER EMIT1  s"  would escape into " DTXT
-   TAIL-ROW @ TCAP-ROW  RSN @ base - TCAP-HELD !
+   DF-EXP @ REND-TYPE 32 EMIT1  TEXT-LEN @ base - TCAP-EXP !
+   DF-ACT @ REND-TYPE 32 EMIT1  TEXT-LEN @ base - TCAP-ACT !
+   TAIL-SKOLEM @ ROW-TAIL RROW-LETTER EMIT1  s"  would escape into " EMIT-STR
+   TAIL-ROW @ TCAP-ROW  TEXT-LEN @ base - TCAP-HELD !
    0 RTAILS !
    TCAP-HELD @ TCAP-ROOM
    0 BEGIN dup TCAP-HELD @ < WHILE
-      dup base + RSBUF + c@  over TCAP + c!  1 +
+      dup base + TEXT + c@  over TCAP + c!  1 +
    REPEAT drop
-   base RSN !  qm RQM !  dst RDST ! ;
+   base TEXT-LEN !  qm RQM !  dst DEST ! ;
 
 
 : TAIL-CAPTURE-INSTALL ( -- ) [: TAIL-CAPTURE ;] is TAIL-CAPTURE-XT ;
@@ -1215,7 +1077,8 @@ variable MDV-I   variable MDV-F
 \ More than BINDER-DEPTH-MAX nested binders: a signature's (checker.f
 \ SGBAD-BINDERS-KIND) or an inferred effect's (RBIND-FULL).
 : BINDERS-REASON ( -- )
-   s" more than " DTXT  BINDER-DEPTH-MAX JNUM  s"  nested binders" DTXT ;
+   s" more than " EMIT-STR  BINDER-DEPTH-MAX EMIT-U
+      s"  nested binders" EMIT-STR ;
 
 
 \ Shared by a token of unknown effect (SUGGEST-TEXT) and a deferral whose cause
@@ -1396,59 +1259,60 @@ variable MDV-I   variable MDV-F
    0 MDV-I !  0 MDV-F !
    BEGIN MDV-I @ MDIAG-VCNT @ < WHILE
       MDIAG-SEEN @ MDV-I @ MSEEN-GET 0= IF
-         json MDV-F @ 0= and 0= IF s"  " DTXT THEN
-         vstart MDV-I @ + SUMV-NAME$ DTXT
+         json MDV-F @ 0= and 0= IF s"  " EMIT-STR THEN
+         vstart MDV-I @ + SUMV-NAME$ EMIT-STR
          -1 MDV-F !
       THEN
       MDV-I @ 1 + MDV-I !
    REPEAT ;
 
 : MDIAG-MISSING-JSTR ( -- )
-   JOPEN  0 0= MDIAG-MISSING-WALK  JCLOSE ;
+   JSON-OPEN  0 0= MDIAG-MISSING-WALK  JSON-CLOSE ;
 
 : MDIAG-MISSING-PROSE ( -- )
    0 0= 0= MDIAG-MISSING-WALK ;
 
 : MDIAG-UF-COUNTS ( -- )
-   s"  (needs " DTXT  MDIAG-NEED @ JNUM
-   s" , has " DTXT  MDIAG-HAVE @ JNUM  s" )" DTXT ;
+   s"  (needs " EMIT-STR  MDIAG-NEED @ EMIT-U
+   s" , has " EMIT-STR  MDIAG-HAVE @ EMIT-U  s" )" EMIT-STR ;
 
 : CAP-DEPTH-COUNTS ( n n -- )
    {: depth:n cap:n :}
-   s"  (depth " DTXT  depth JNUM
-   s" , at most " DTXT  cap JNUM  s" )" DTXT ;
+   s"  (depth " EMIT-STR  depth EMIT-U
+   s" , at most " EMIT-STR  cap EMIT-U  s" )" EMIT-STR ;
 
 : DEPTH-COUNTS ( n -- )
    EFFECT-DEPTH-MAX CAP-DEPTH-COUNTS ;
 
 : WIDTH-COUNTS ( n -- )
    {: width:n :}
-   s"  (" DTXT  width JNUM
-   s"  cells, at most " DTXT  EFFECT-MIN-IN-MAX JNUM  s" )" DTXT ;
+   s"  (" EMIT-STR  width EMIT-U
+   s"  cells, at most " EMIT-STR  EFFECT-MIN-IN-MAX EMIT-U  s" )" EMIT-STR ;
 
 \ The literal that does not fit and its type's range, after the reason's
 \ `literal`: `300` does not fit `u8` (`0`..`255`).
 : LIT-FIT-COUNTS ( -- )
-   s"  `" DTXT  MDIAG-LITV @ SNUM
-   s" ` does not fit `" DTXT  MDIAG-LITT @ CT-NAME$ DTXT
-   s" ` (`0`..`" DTXT  MDIAG-LITT @ LIT-HI JNUM  s" `)" DTXT ;
+   s"  `" EMIT-STR  MDIAG-LITV @ EMIT-N
+   s" ` does not fit `" EMIT-STR  MDIAG-LITT @ CT-NAME$ EMIT-STR
+   s" ` (`0`..`" EMIT-STR  MDIAG-LITT @ LIT-HI EMIT-U  s" `)" EMIT-STR ;
 
 \ The wide value `depth` or `.s` met and its cells, or that they are not known
 \ where its width is open, after the reason's `cannot count`.
 : DEPTH-WIDE-COUNTS ( -- )
    AT-PIN
-   s"  `" DTXT  MDIAG-WIDE @ REND-TYPE
+   s"  `" EMIT-STR  MDIAG-WIDE @ REND-TYPE
    MDIAG-OPEN @ IF
-      s" `: it is one value, and how many cells it holds is not known here" DTXT
+      s" `: it is one value, and how many cells it holds is not known here" EMIT-STR
    ELSE
-      s" `: it is one value held in " DTXT  MDIAG-WIDE @ T-WIDTH JNUM  s"  cells" DTXT
+      s" `: it is one value held in " EMIT-STR  MDIAG-WIDE @ T-WIDTH EMIT-U  s"  cells" EMIT-STR
    THEN
    ;AT-PIN ;
 
 
 \ What a reason carries after its prose, in text and JSON alike.
 : MDIAG-COUNTS ( -- )
-   MDIAG @ MD-TAIL-ESCAPE = IF s" ; held row " DTXT  TCAP-HELD$ DTXT EXIT THEN
+   MDIAG @ MD-TAIL-ESCAPE = IF s" ; held row " EMIT-STR
+      TCAP-HELD$ EMIT-STR EXIT THEN
    MDIAG @ MD-LIT-FIT = IF LIT-FIT-COUNTS EXIT THEN
    MDIAG @ MD-DEPTH-WIDE = IF DEPTH-WIDE-COUNTS EXIT THEN
    MDIAG @ MD-UNDERFLOW = IF MDIAG-UF-COUNTS EXIT THEN
@@ -1495,20 +1359,21 @@ variable MDV-I   variable MDV-F
 \ FAILTK is the declaration token pinned by the first failure, so a later body
 \ reference to the rejected name cannot relabel the reject as an undefined word.
 : LOCALBAD-PROSE ( -- )
-   LOCALBAD-CODE$ DTXT  s"  " DTXT  DSITE
+   LOCALBAD-CODE$ EMIT-STR  s"  " EMIT-STR  DSITE
    LOCALBAD-GROUP? IF
-     s" at '" DTXT  FAILTK FAILTU @ DTXT  s" ': " DTXT  LOCALBAD-REASON$ DTXT EXIT
+     s" at '" EMIT-STR  FAILTK FAILTU @ EMIT-STR  s" ': " EMIT-STR  LOCALBAD-REASON$ EMIT-STR EXIT
    THEN
    LOCALBAD-KIND @ 2 = IF
-     s" local '" DTXT  FAILTK FAILTU @ DTXT  s" ' has a " DTXT  LOCALBAD-LEN @ JNUM
-     s" -byte name; the limit is " DTXT  LOC-NAME-CAP JNUM  s"  bytes" DTXT EXIT
+     s" local '" EMIT-STR  FAILTK FAILTU @ EMIT-STR  s" ' has a " EMIT-STR  LOCALBAD-LEN @ EMIT-U
+     s" -byte name; the limit is " EMIT-STR  LOC-NAME-CAP EMIT-U
+        s"  bytes" EMIT-STR EXIT
    THEN
    LOCALBAD-KIND @ 1 = IF
-     s" local '" DTXT  FAILTK FAILTU @ DTXT  s" ' is one over the " DTXT  LOC-RECS JNUM
-     s"  locals a definition may bind" DTXT EXIT
+     s" local '" EMIT-STR  FAILTK FAILTU @ EMIT-STR  s" ' is one over the " EMIT-STR  LOC-RECS EMIT-U
+     s"  locals a definition may bind" EMIT-STR EXIT
    THEN
-   s" at '" DTXT  FAILTK FAILTU @ DTXT
-   s" ': a local cannot be bound inside a quotation, or bound on a dead path" DTXT ;
+   s" at '" EMIT-STR  FAILTK FAILTU @ EMIT-STR
+   s" ': a local cannot be bound inside a quotation, or bound on a dead path" EMIT-STR ;
 
 \ A definition's signature, a local's type or a stored signature that does not
 \ parse; SGBAD's state from the failed parse names the kind.
@@ -1530,21 +1395,22 @@ variable MDV-I   variable MDV-F
 : SGBAD-PROSE ( -- )
    DSITE
    SGBAD-UNKNOWN? IF
-     s" unknown type '" DTXT  FAILTK FAILTU @ DTXT  s" ' in signature" DTXT EXIT
+     s" unknown type '" EMIT-STR  FAILTK FAILTU @ EMIT-STR
+        s" ' in signature" EMIT-STR EXIT
    THEN
    SGBAD-BAREPTR? IF
-     s" 'ptr' needs an element type" DTXT EXIT
+     s" 'ptr' needs an element type" EMIT-STR EXIT
    THEN
    SGBAD-ARITY? IF
-     s" wrong arity for type family '" DTXT  FAILTK FAILTU @ DTXT  s" '" DTXT EXIT
+     s" wrong arity for type family '" EMIT-STR  FAILTK FAILTU @ EMIT-STR  s" '" EMIT-STR EXIT
    THEN
    SGBAD-RETURN? IF
-     s" return-stack effect in signature '" DTXT  FAILTK FAILTU @ DTXT
-     s" '" DTXT EXIT
+     s" return-stack effect in signature '" EMIT-STR  FAILTK FAILTU @ EMIT-STR
+     s" '" EMIT-STR EXIT
    THEN
-   SGBAD-BINDERS? IF BINDERS-REASON s"  at '" DTXT  FAILTK FAILTU @ DTXT  s" '" DTXT EXIT THEN
-   SGBAD-DEPTH? IF DEPTH-REASON$ DTXT  SGBAD-SIZE @ DEPTH-COUNTS  s"  at '" DTXT  FAILTK FAILTU @ DTXT  s" '" DTXT EXIT THEN
-   s" at '" DTXT  FAILTK FAILTU @ DTXT  s" '" DTXT ;
+   SGBAD-BINDERS? IF BINDERS-REASON s"  at '" EMIT-STR  FAILTK FAILTU @ EMIT-STR  s" '" EMIT-STR EXIT THEN
+   SGBAD-DEPTH? IF DEPTH-REASON$ EMIT-STR  SGBAD-SIZE @ DEPTH-COUNTS  s"  at '" EMIT-STR  FAILTK FAILTU @ EMIT-STR  s" '" EMIT-STR EXIT THEN
+   s" at '" EMIT-STR  FAILTK FAILTU @ EMIT-STR  s" '" EMIT-STR ;
 
 \ The code, repair class, suggestion, prose and per-code JSON fields all name
 \ the one refusal checker.f REFUSAL@ chose.
@@ -1665,10 +1531,10 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    JLOC-B !  JLOC-C !  JLOC-L !
    DIAGB0 @ FAILE @ + JLOC-E ! ;
 : JLOC-FIELDS ( -- )
-   s" line" JKEY  JLOC-L @ JNUM  44 EMIT1
-   s" column" JKEY  JLOC-C @ JNUM  44 EMIT1
-   s" byte_start" JKEY  JLOC-B @ JNUM  44 EMIT1
-   s" byte_end" JKEY  JLOC-E @ JNUM  44 EMIT1 ;
+   s" line" JSON-KEY  JLOC-L @ EMIT-U  44 EMIT1
+   s" column" JSON-KEY  JLOC-C @ EMIT-U  44 EMIT1
+   s" byte_start" JSON-KEY  JLOC-B @ EMIT-U  44 EMIT1
+   s" byte_end" JSON-KEY  JLOC-E @ EMIT-U  44 EMIT1 ;
 : JTOKEN-FIELDS ( ptr u8 n -- )
    {: a:ptr u:n :}
    u 0 > IF
@@ -1684,61 +1550,61 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
 : JSTART ( ptr u8 n -- )
    {: ca:ptr cu:n :}
    123 EMIT1                                              \ {
-   s" schema_version" JKEY 1 JNUM 44 EMIT1
-   s" code" JKEY ca cu JSTR 44 EMIT1 ;
+   s" schema_version" JSON-KEY 1 EMIT-U 44 EMIT1
+   s" code" JSON-KEY ca cu JSON-STRING 44 EMIT1 ;
 : JHEAD ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: ca:ptr cu:n ka:ptr ku:n va:ptr vu:n :}
    ca cu JSTART
-   s" repair_class" JKEY ka ku JSTR 44 EMIT1
-   s" verdict" JKEY va vu JSTR 44 EMIT1 ;
+   s" repair_class" JSON-KEY ka ku JSON-STRING 44 EMIT1
+   s" verdict" JSON-KEY va vu JSON-STRING 44 EMIT1 ;
 : JTAIL ( ptr u8 n ptr u8 n -- )
    {: aa:ptr au:n sa:ptr su:n :}
-   s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
+   s" file" JSON-KEY DIAGFB DIAGFU @ JSON-STRING 44 EMIT1
    aa au JTOKEN-FIELDS
-   s" suggestion" JKEY sa su JSTR
+   s" suggestion" JSON-KEY sa su JSON-STRING
    125 EMIT1 ;                                            \ }
 : NP-FAM-REND ( -- )
    NPBAD-TERM @ NP-FAM {: fam:n :}
-   fam 0 >= IF s" family '" DTXT  fam FAM-QNAME-REND  s" '" DTXT
-   ELSE s" a concrete type" DTXT THEN ;
+   fam 0 >= IF s" family '" EMIT-STR  fam FAM-QNAME-REND  s" '" EMIT-STR
+   ELSE s" a concrete type" EMIT-STR THEN ;
 : NP-PROSE ( -- )
-   s" E-NONPARAMETRIC-EFFECT " DTXT  DSITE
+   s" E-NONPARAMETRIC-EFFECT " EMIT-STR  DSITE
    NPBAD-KIND @ 4 = IF
-     s" declared type variable '" DTXT  NPBAD-Q1 @ EMIT1
-     s" ' is restricted to a base address -- the DATA region, or a pointer computed off NULL-PTR; its declared kind must stay unchanged" DTXT EXIT
+     s" declared type variable '" EMIT-STR  NPBAD-Q1 @ EMIT1
+     s" ' is restricted to a base address -- the DATA region, or a pointer computed off NULL-PTR; its declared kind must stay unchanged" EMIT-STR EXIT
    THEN
    NPBAD-KIND @ 5 = IF
-     s" declared type variable '" DTXT  NPBAD-Q1 @ EMIT1
-     s" ' is restricted to the null address; its declared kind must stay unchanged" DTXT EXIT
+     s" declared type variable '" EMIT-STR  NPBAD-Q1 @ EMIT1
+     s" ' is restricted to the null address; its declared kind must stay unchanged" EMIT-STR EXIT
    THEN
    NPBAD-KIND @ 3 = IF
-     s" declared type variable '" DTXT  NPBAD-Q1 @ EMIT1
-     s" ' is restricted by raw storage; its declared kind must stay unchanged" DTXT EXIT
+     s" declared type variable '" EMIT-STR  NPBAD-Q1 @ EMIT1
+     s" ' is restricted by raw storage; its declared kind must stay unchanged" EMIT-STR EXIT
    THEN
    NPBAD-KIND @ 0= IF
-     s" declared type variable '" DTXT  NPBAD-Q1 @ EMIT1
-     s" ' is specialized to " DTXT  NP-FAM-REND
-     s" ; a declared effect must stay parametric over its quantifier" DTXT EXIT
+     s" declared type variable '" EMIT-STR  NPBAD-Q1 @ EMIT1
+     s" ' is specialized to " EMIT-STR  NP-FAM-REND
+     s" ; a declared effect must stay parametric over its quantifier" EMIT-STR EXIT
    THEN
    NPBAD-KIND @ 1 = IF
-     s" declared type variables '" DTXT  NPBAD-Q1 @ EMIT1
-     s" ' and '" DTXT  NPBAD-Q2 @ EMIT1
-     s" ' are unified; each declared quantifier must stay a distinct variable" DTXT EXIT
+     s" declared type variables '" EMIT-STR  NPBAD-Q1 @ EMIT1
+     s" ' and '" EMIT-STR  NPBAD-Q2 @ EMIT1
+     s" ' are unified; each declared quantifier must stay a distinct variable" EMIT-STR EXIT
    THEN
    NPBAD-KIND @ 6 = IF
-     s" declared row variable '" DTXT  NPBAD-Q1 @ EMIT1
-     NPBAD-Q2 @ IF s" ' and row '" DTXT  NPBAD-Q2 @ EMIT1  s" '" DTXT
-     ELSE s" ' and the unnamed row" DTXT THEN
-     s"  are unified; each declared row must stay a distinct row variable" DTXT EXIT
+     s" declared row variable '" EMIT-STR  NPBAD-Q1 @ EMIT1
+     NPBAD-Q2 @ IF s" ' and row '" EMIT-STR  NPBAD-Q2 @ EMIT1  s" '" EMIT-STR
+     ELSE s" ' and the unnamed row" EMIT-STR THEN
+     s"  are unified; each declared row must stay a distinct row variable" EMIT-STR EXIT
    THEN
    NPBAD-KIND @ 7 = IF
-     NPBAD-Q1 @ IF s" declared row variable '" DTXT  NPBAD-Q1 @ EMIT1  s" '" DTXT
-     ELSE s" the unnamed row" DTXT THEN
-     s"  is bound to fixed cells; a declared effect must stay polymorphic over its row" DTXT EXIT
+     NPBAD-Q1 @ IF s" declared row variable '" EMIT-STR  NPBAD-Q1 @ EMIT1  s" '" EMIT-STR
+     ELSE s" the unnamed row" EMIT-STR THEN
+     s"  is bound to fixed cells; a declared effect must stay polymorphic over its row" EMIT-STR EXIT
    THEN
-   s" declared type variable '" DTXT  NPBAD-Q1 @ EMIT1
-   s" ' is minted into " DTXT  NP-FAM-REND
-   s"  but is unbound in the inputs; a checked definition cannot mint a phantom of input-unrelated type" DTXT ;
+   s" declared type variable '" EMIT-STR  NPBAD-Q1 @ EMIT1
+   s" ' is minted into " EMIT-STR  NP-FAM-REND
+   s"  but is unbound in the inputs; a checked definition cannot mint a phantom of input-unrelated type" EMIT-STR ;
 \ The return rows `return_stack` names, expected then actual: a quotation
 \ literal's own when its seal refused it (RSBAD 3, 4), else the definition's.
 : RS-ROWS ( -- n n )
@@ -1759,61 +1625,63 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
 : DIAG-PROSE
    REFUSAL@ {: k:n :}
    k RF-IMM = IF
-     IMM-CODE$ DTXT  s"  " DTXT  DSITE
-     s" compile-time immediate '" DTXT  FAILTK FAILTU @ DTXT
-     s" ' is not a stack-neutral parsing immediate" DTXT EXIT
+     IMM-CODE$ EMIT-STR  s"  " EMIT-STR  DSITE
+     s" compile-time immediate '" EMIT-STR  FAILTK FAILTU @ EMIT-STR
+     s" ' is not a stack-neutral parsing immediate" EMIT-STR EXIT
    THEN
    k RF-SIG = IF SGBAD-PROSE EXIT THEN
    k RF-NP = IF NP-PROSE EXIT THEN
    k RF-CAP = IF
-     DCODE DTXT  s"  " DTXT  DSITE
-     s" '" DTXT  FAILTK FAILTU @ DTXT
-     s" ' is a trust-boundary primitive" DTXT EXIT
+     DCODE EMIT-STR  s"  " EMIT-STR  DSITE
+     s" '" EMIT-STR  FAILTK FAILTU @ EMIT-STR
+     s" ' is a trust-boundary primitive" EMIT-STR EXIT
    THEN
    k RF-UNSAFE = IF
-     DCODE DTXT  s"  " DTXT  DSITE
-     s" '" DTXT  FAILTK FAILTU @ DTXT
-     s" ' reads source or changes the compiler's or checker's state, which no stack" DTXT
-     s"  effect describes, so a checked body cannot use it" DTXT EXIT
+     DCODE EMIT-STR  s"  " EMIT-STR  DSITE
+     s" '" EMIT-STR  FAILTK FAILTU @ EMIT-STR
+     s" ' reads source or changes the compiler's or checker's state, which no stack" EMIT-STR
+     s"  effect describes, so a checked body cannot use it" EMIT-STR EXIT
    THEN
    k RF-LOCAL = IF LOCALBAD-PROSE EXIT THEN
    k RF-QUAL = IF
-     s" E-BAD-QUALIFIED " DTXT  DSITE
-     s" malformed qualified name '" DTXT  FAILTK FAILTU @ DTXT
-     s" ' (more than one ':')" DTXT EXIT
+     s" E-BAD-QUALIFIED " EMIT-STR  DSITE
+     s" malformed qualified name '" EMIT-STR  FAILTK FAILTU @ EMIT-STR
+     s" ' (more than one ':')" EMIT-STR EXIT
    THEN
    k RF-UNDEF = IF
-     s" E-UNDEFINED " DTXT  DSITE
-     s" undefined word '" DTXT  FAILTK FAILTU @ DTXT  s" '" DTXT EXIT
+     s" E-UNDEFINED " EMIT-STR  DSITE
+     s" undefined word '" EMIT-STR  FAILTK FAILTU @ EMIT-STR
+        s" '" EMIT-STR EXIT
    THEN
    k RF-LINLOCAL = IF
-     s" E-LINEAR-LOCAL " DTXT  DSITE
-     s" linear value cannot be bound to a local" DTXT EXIT
+     s" E-LINEAR-LOCAL " EMIT-STR  DSITE
+     s" linear value cannot be bound to a local" EMIT-STR EXIT
    THEN
-   DSITE  s" at '" DTXT  FAILTK FAILTU @ DTXT
-   s" '" DTXT
+   DSITE  s" at '" EMIT-STR  FAILTK FAILTU @ EMIT-STR
+   s" '" EMIT-STR
    k RF-REASON = IF
-     s"  " DTXT  MDIAG @ MD-REASON$ DTXT
+     s"  " EMIT-STR  MDIAG @ MD-REASON$ EMIT-STR
      MDIAG @ MD-NONEXH = IF MDIAG-MISSING-PROSE THEN
      MDIAG-COUNTS
    THEN
-   k RF-DEAD = IF s"  after '" DTXT DEADTA @ DEADTU @ DTXT s" '" DTXT THEN
+   k RF-DEAD = IF s"  after '" EMIT-STR DEADTA @ DEADTU @ EMIT-STR
+      s" '" EMIT-STR THEN
    k RF-RETURN = IF
-     s"  " DTXT  RS-REASON$ DTXT
+     s"  " EMIT-STR  RS-REASON$ EMIT-STR
      RS-ROWS {: exp:n act:n :}
-     s"  expected: " DTXT  exp DROW
-     s" actual: " DTXT  act DROW EXIT
+     s"  expected: " EMIT-STR  exp DROW
+     s" actual: " EMIT-STR  act DROW EXIT
    THEN
    k ROWS-REFUSAL? 0= IF EXIT THEN
    MDIAG @ MD-TAIL-ESCAPE = IF
-     s"  expected: " DTXT  TCAP-EXP$ DTXT
-     s" actual: " DTXT  TCAP-ACT$ DTXT EXIT THEN
+     s"  expected: " EMIT-STR  TCAP-EXP$ EMIT-STR
+     s" actual: " EMIT-STR  TCAP-ACT$ EMIT-STR EXIT THEN
    AT-PIN
    DEXP @ 0 <> IF
-     s"  expected: " DTXT  DEXP @ DROW
-     s" actual: " DTXT  DACT @ DROW THEN
+     s"  expected: " EMIT-STR  DEXP @ DROW
+     s" actual: " EMIT-STR  DACT @ DROW THEN
    DF-ACT @ 0 <>  DEXP @ 0= and IF
-     s"  actual: " DTXT  DF-ACT @ REND-TYPE THEN
+     s"  actual: " EMIT-STR  DF-ACT @ REND-TYPE THEN
    ;AT-PIN ;
 
 
@@ -1839,19 +1707,19 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    DVAR @ SUMV-PAY-N {: cnt:n :}
    DPOS @ cnt < 0= IF EXIT THEN
    cnt 1 - DPOS @ - {: pos:n :}
-   44 EMIT1 s" payload_pos" JKEY  pos JNUM
+   44 EMIT1 s" payload_pos" JSON-KEY  pos EMIT-U
    DVAR @ pos SUMV-PAY-FIELD IF
-      44 EMIT1 s" field" JKEY  PF-NAME$ JSTR
+      44 EMIT1 s" field" JSON-KEY  PF-NAME$ JSON-STRING
    ELSE drop THEN ;
 : DIAG-VARIANT ( -- )                    \ "variant":"<name>","tag":<n> for the captured arm
    DVAR @ 0 < IF EXIT THEN
-   44 EMIT1 s" variant" JKEY  DVAR @ SUMV-NAME$ JSTR
-   44 EMIT1 s" tag" JKEY  DVAR @ SUMV-TAG@ JNUM
+   44 EMIT1 s" variant" JSON-KEY  DVAR @ SUMV-NAME$ JSON-STRING
+   44 EMIT1 s" tag" JSON-KEY  DVAR @ SUMV-TAG@ EMIT-U
    DIAG-PAYLOAD-POS ;
 : DIAG-FAMILY ( -- )
    DF-EXP @ TERM-FAM  DF-ACT @ TERM-FAM  DIAG-FAM-ID {: fam:n :}
    fam 0 >= IF
-      44 EMIT1 s" family" JKEY  JOPEN fam FAM-QNAME-REND JCLOSE
+      44 EMIT1 s" family" JSON-KEY  JSON-OPEN fam FAM-QNAME-REND JSON-CLOSE
    THEN
    DIAG-VARIANT ;
 \ A top step's file as its prose names it (DSITE), its line the one checker.f
@@ -1863,7 +1731,7 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    DIAG-NO-FILE$ ;
 : DLOC-FIELDS ( -- )
    TOP-STEP @ IF
-      CHECK:TOP-SITE IF s" line" JKEY  JNUM  44 EMIT1 ELSE drop THEN
+      CHECK:TOP-SITE IF s" line" JSON-KEY  EMIT-U  44 EMIT1 ELSE drop THEN
       EXIT
    THEN
    TBASE@ FAILB @ +  TBASE@ FAILE @ +  JLOCATE IF JLOC-FIELDS EXIT THEN
@@ -1874,8 +1742,8 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
 \ by: a definition's packet (DIAG-JSON) and a stored row's (BADSIG-JSON).
 : BADSIG-REASON ( -- )
    SGBAD-BINDERS? IF BINDERS-REASON EXIT THEN
-   SGBAD-DEPTH? IF DEPTH-REASON$ DTXT  SGBAD-SIZE @ DEPTH-COUNTS EXIT THEN
-   WIDTH-REASON$ DTXT  SGBAD-SIZE @ WIDTH-COUNTS ;
+   SGBAD-DEPTH? IF DEPTH-REASON$ EMIT-STR  SGBAD-SIZE @ DEPTH-COUNTS EXIT THEN
+   WIDTH-REASON$ EMIT-STR  SGBAD-SIZE @ WIDTH-COUNTS ;
 
 
 \ A field that belongs to one refusal goes only on that refusal's packet: the
@@ -1885,82 +1753,84 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
 : DIAG-JSON
    REFUSAL@ {: k:n :}
    DCODE REPAIR-CLASS DVERDICT JHEAD
-   s" word" JKEY
-   TOP-STEP @ IF s" null" DTXT ELSE NMA @ NMU @ JSTR THEN  44 EMIT1
-   s" token" JKEY  FAILTK FAILTU @ JSTR  44 EMIT1
-   k RF-DEAD = IF s" dead_owner" JKEY DEADTA @ DEADTU @ JSTR 44 EMIT1 THEN
+   s" word" JSON-KEY
+   TOP-STEP @ IF s" null" EMIT-STR ELSE NMA @ NMU @ JSON-STRING THEN  44 EMIT1
+   s" token" JSON-KEY  FAILTK FAILTU @ JSON-STRING  44 EMIT1
+   k RF-DEAD = IF s" dead_owner" JSON-KEY DEADTA @ DEADTU @ JSON-STRING
+      44 EMIT1 THEN
    k RF-REASON = IF
-     s" reason" JKEY
+     s" reason" JSON-KEY
      \ A reason's counts go inside its string, after its text.
-     JOPEN  MDIAG @ MD-REASON$ DTXT  MDIAG-COUNTS  JCLOSE
+     JSON-OPEN  MDIAG @ MD-REASON$ EMIT-STR  MDIAG-COUNTS  JSON-CLOSE
      44 EMIT1
-     MDIAG @ MD-NONEXH = IF s" missing_variants" JKEY MDIAG-MISSING-JSTR 44 EMIT1 THEN
+     MDIAG @ MD-NONEXH = IF s" missing_variants" JSON-KEY MDIAG-MISSING-JSTR 44 EMIT1 THEN
    THEN
-   k RF-SIG = SGBAD-SIZE? and IF s" reason" JKEY JOPEN BADSIG-REASON JCLOSE 44 EMIT1 THEN
-   k RF-LOCAL = LOCALBAD-GROUP? and IF s" reason" JKEY LOCALBAD-REASON$ JSTR 44 EMIT1 THEN
-   k RF-RETURN = IF s" reason" JKEY RS-REASON$ JSTR 44 EMIT1 THEN   \ the sentence the load's prose prints
-   s" token_index" JKEY
-   TOP-STEP @ IF s" null" DTXT ELSE FAILIX @ JNUM THEN  44 EMIT1
-   s" file" JKEY  DFILE$ JSTR  44 EMIT1
+   k RF-SIG = SGBAD-SIZE? and IF s" reason" JSON-KEY JSON-OPEN BADSIG-REASON JSON-CLOSE 44 EMIT1 THEN
+   k RF-LOCAL = LOCALBAD-GROUP? and IF s" reason" JSON-KEY LOCALBAD-REASON$ JSON-STRING 44 EMIT1 THEN
+   k RF-RETURN = IF s" reason" JSON-KEY RS-REASON$ JSON-STRING 44 EMIT1 THEN   \ the sentence the load's prose prints
+   s" token_index" JSON-KEY
+   TOP-STEP @ IF s" null" EMIT-STR ELSE FAILIX @ EMIT-U THEN  44 EMIT1
+   s" file" JSON-KEY  DFILE$ JSON-STRING  44 EMIT1
    DLOC-FIELDS
-   s" definition_source" JKEY
-   TOP-STEP @ IF s" null" DTXT ELSE TBASE @ TBLEN @ JSTR THEN  44 EMIT1
-   s" declared_effect" JKEY
-   RECEFF-ON? TOP-STEP @ 0= and IF AT-PIN DECL-EFFECT ;AT-PIN ELSE s" null" DTXT THEN
+   s" definition_source" JSON-KEY
+   TOP-STEP @ IF s" null" EMIT-STR ELSE TBASE @ TBLEN @ JSON-STRING THEN
+      44 EMIT1
+   s" declared_effect" JSON-KEY
+   RECEFF-ON? TOP-STEP @ 0= and IF AT-PIN DECL-EFFECT ;AT-PIN ELSE s" null" EMIT-STR THEN
    44 EMIT1
-   s" declared_effect_source" JKEY
-   RECEFF-ON? TOP-STEP @ 0= and IF SGA @ SGU @ SIG-TRIM JSTR ELSE s" null" DTXT THEN
+   s" declared_effect_source" JSON-KEY
+   RECEFF-ON? TOP-STEP @ 0= and IF SGA @ SGU @ SIG-TRIM JSON-STRING ELSE s" null" EMIT-STR THEN
    44 EMIT1
-   s" inferred_effect" JKEY
-   TOP-STEP @ IF s" null" DTXT ELSE
-      MDIAG @ MD-TAIL-ESCAPE = IF TCAP-INF$ JSTR ELSE JOPEN INFERRED-EFFECT JCLOSE THEN
+   s" inferred_effect" JSON-KEY
+   TOP-STEP @ IF s" null" EMIT-STR ELSE
+      MDIAG @ MD-TAIL-ESCAPE = IF TCAP-INF$ JSON-STRING ELSE JSON-OPEN INFERRED-EFFECT JSON-CLOSE THEN
    THEN
    44 EMIT1
-   s" return_stack" JKEY
+   s" return_stack" JSON-KEY
    123 EMIT1
    RS-ROWS swap
-   s" expected" JKEY  JROW  44 EMIT1
-   s" actual" JKEY    JROW
+   s" expected" JSON-KEY  JROW  44 EMIT1
+   s" actual" JSON-KEY    JROW
    125 EMIT1
    k ROWS-REFUSAL? IF
      MDIAG @ MD-TAIL-ESCAPE = IF
-       44 EMIT1 s" expected" JKEY TCAP-EXP$ JSTR
-       44 EMIT1 s" actual"   JKEY TCAP-ACT$ JSTR
+       44 EMIT1 s" expected" JSON-KEY TCAP-EXP$ JSON-STRING
+       44 EMIT1 s" actual"   JSON-KEY TCAP-ACT$ JSON-STRING
      ELSE
        AT-PIN
        DEXP @ 0 <> IF
-         44 EMIT1 s" expected" JKEY DEXP @ JROW
-         44 EMIT1 s" actual"   JKEY DACT @ JROW
+         44 EMIT1 s" expected" JSON-KEY DEXP @ JROW
+         44 EMIT1 s" actual"   JSON-KEY DACT @ JROW
          DIAG-FAMILY THEN
        DF-ACT @ 0 <>  DEXP @ 0= and IF
-          44 EMIT1 s" actual_type" JKEY 34 EMIT1 DF-ACT @ REND-TYPE 34 EMIT1 THEN
+          44 EMIT1 s" actual_type" JSON-KEY 34 EMIT1 DF-ACT @ REND-TYPE 34 EMIT1 THEN
        ;AT-PIN
      THEN
    THEN
    k RF-NP = IF                                           \ non-parametric declared effect
-     NPBAD-Q1 @ IF 44 EMIT1 s" quantifier" JKEY JOPEN NPBAD-Q1 @ EMIT1 JCLOSE THEN
+     NPBAD-Q1 @ IF 44 EMIT1 s" quantifier" JSON-KEY JSON-OPEN NPBAD-Q1 @ EMIT1 JSON-CLOSE THEN
      NPBAD-Q2 @ IF
-       44 EMIT1 s" quantifier2" JKEY JOPEN NPBAD-Q2 @ EMIT1 JCLOSE
+       44 EMIT1 s" quantifier2" JSON-KEY JSON-OPEN NPBAD-Q2 @ EMIT1 JSON-CLOSE
      ELSE
        NPBAD-TERM @ NP-FAM dup 0 >= IF
-         44 EMIT1 s" family" JKEY JOPEN FAM-QNAME-REND JCLOSE
+         44 EMIT1 s" family" JSON-KEY JSON-OPEN FAM-QNAME-REND JSON-CLOSE
        ELSE drop THEN
      THEN
    THEN
    k RF-SIG =  SGBAD-ARITY? and IF                        \ E-WRONG-ARITY counts
-     44 EMIT1 s" arity_expected" JKEY SGBAD-AR-DECL @ JNUM
-     44 EMIT1 s" arity_actual" JKEY SGBAD-AR-GOT @ JNUM THEN
-   44 EMIT1 s" suggestion" JKEY SUGGEST-TEXT JSTR
+     44 EMIT1 s" arity_expected" JSON-KEY SGBAD-AR-DECL @ EMIT-U
+     44 EMIT1 s" arity_actual" JSON-KEY SGBAD-AR-GOT @ EMIT-U THEN
+   44 EMIT1 s" suggestion" JSON-KEY SUGGEST-TEXT JSON-STRING
    125 EMIT1 ;                                            \ }
 
 
 : DIAG-PRINT
-   1 RDST !  0 RSN !  0 RQM !  SEEN-RESET 0 NLET !  0 RROW-N !
+   1 DEST !  0 TEXT-LEN !  0 RQM !  SEEN-RESET 0 NLET !  0 RROW-N !
    JSON-DIAGS @ IF DIAG-JSON ELSE
-     DIAG-PROSE  s" ; suggestion: " DTXT  SUGGEST-TEXT DTXT
+     DIAG-PROSE  s" ; suggestion: " EMIT-STR  SUGGEST-TEXT EMIT-STR
    THEN
    10 EMIT1
-   RSBUF-FLUSH
+   FLUSH
    JSON-DIAGS @ IF CHECKER-REPORT-MARK THEN ;
 
 
@@ -1974,22 +1844,24 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
 : BADSIG-JSON ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: sa:ptr su:n na:ptr nu:n at:ptr atu:n :}
    s" E-BAD-STORED-SIGNATURE" SGBAD-CLASS$ s" rejected" JHEAD
-   s" token" JKEY na nu JSTR 44 EMIT1
-   s" signature" JKEY sa su SIG-TRIM JSTR 44 EMIT1
-   SGBAD-SIZE? IF s" reason" JKEY JOPEN BADSIG-REASON JCLOSE 44 EMIT1 THEN
+   s" token" JSON-KEY na nu JSON-STRING 44 EMIT1
+   s" signature" JSON-KEY sa su SIG-TRIM JSON-STRING 44 EMIT1
+   SGBAD-SIZE? IF s" reason" JSON-KEY JSON-OPEN BADSIG-REASON JSON-CLOSE
+      44 EMIT1 THEN
    at atu SGBAD-SUGGEST$ JTAIL ;
 : BADSIG-PROSE ( ptr u8 n ptr u8 n -- )
    {: sa:ptr su:n na:ptr nu:n :}
-   s" habu: in " DTXT  na nu DTXT  s" : bad stored signature '" DTXT
-   sa su SIG-TRIM DTXT  s" '" DTXT
-   SGBAD-SIZE? IF s"  " DTXT BADSIG-REASON THEN
-   SGBAD-RETURN? IF s" ; return-stack effect: " DTXT RCLAUSE-FIX$ DTXT THEN ;
+   s" habu: in " EMIT-STR  na nu EMIT-STR  s" : bad stored signature '" EMIT-STR
+   sa su SIG-TRIM EMIT-STR  s" '" EMIT-STR
+   SGBAD-SIZE? IF s"  " EMIT-STR BADSIG-REASON THEN
+   SGBAD-RETURN? IF s" ; return-stack effect: " EMIT-STR
+      RCLAUSE-FIX$ EMIT-STR THEN ;
 : BADSIG-DIAG ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: sa:ptr su:n na:ptr nu:n at:ptr atu:n :}
-   1 RDST !  0 RSN !
+   1 DEST !  0 TEXT-LEN !
    JSON-DIAGS @ IF sa su na nu at atu BADSIG-JSON ELSE sa su na nu BADSIG-PROSE THEN
    10 EMIT1
-   RSBUF-FLUSH ;
+   FLUSH ;
 : BADSIG-DIAG-INSTALL ( -- ) [: BADSIG-DIAG ;] is BADSIG-XT ;
 BADSIG-DIAG-INSTALL
 
@@ -2000,42 +1872,43 @@ BADSIG-DIAG-INSTALL
 : TDECL-DIAG-JSON ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: ka:ptr ku:n fa:ptr fu:n ta:ptr tu:n wa:ptr wu:n :}
    s" E-BAD-DECLARATION" s" fix_family_declaration" s" rejected" JHEAD
-   s" decl" JKEY ka ku JSTR 44 EMIT1
-   s" family" JKEY fa fu JSTR 44 EMIT1
-   s" token" JKEY ta tu JSTR 44 EMIT1
-   s" reason" JKEY wa wu JSTR 44 EMIT1
+   s" decl" JSON-KEY ka ku JSON-STRING 44 EMIT1
+   s" family" JSON-KEY fa fu JSON-STRING 44 EMIT1
+   s" token" JSON-KEY ta tu JSON-STRING 44 EMIT1
+   s" reason" JSON-KEY wa wu JSON-STRING 44 EMIT1
    ta tu TDECL-SUGGEST$ JTAIL ;
 : TDECL-DIAG-PROSE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: ka:ptr ku:n fa:ptr fu:n ta:ptr tu:n wa:ptr wu:n :}
-   s" habu: bad " DTXT  ka ku DTXT  s"  declaration '" DTXT  fa fu DTXT
-   s" ': " DTXT  wa wu DTXT
-   tu 0 > IF s"  at '" DTXT  ta tu DTXT  s" '" DTXT THEN ;
+   s" habu: bad " EMIT-STR  ka ku EMIT-STR  s"  declaration '" EMIT-STR
+      fa fu EMIT-STR
+   s" ': " EMIT-STR  wa wu EMIT-STR
+   tu 0 > IF s"  at '" EMIT-STR  ta tu EMIT-STR  s" '" EMIT-STR THEN ;
 : TDECL-DIAG ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: ka:ptr ku:n fa:ptr fu:n ta:ptr tu:n wa:ptr wu:n :}
-   1 RDST !  0 RSN !
+   1 DEST !  0 TEXT-LEN !
    ka ku fa fu ta tu wa wu
    JSON-DIAGS @ IF TDECL-DIAG-JSON ELSE TDECL-DIAG-PROSE THEN
    10 EMIT1
-   RSBUF-FLUSH ;
+   FLUSH ;
 
 \ Why REC-SIG left a certified sig-less word unrecorded; the last arm answers
 \ every other RQM cause, a stale or scoped type among them, as an unmodeled tag.
 : REC-REFUSE-WHY ( -- )
    NLET @ TYPE-VAR-MAX > IF
-      s" more than " DTXT  TYPE-VAR-MAX JNUM
-      s"  type variables or binders in inferred effect" DTXT EXIT
+      s" more than " EMIT-STR  TYPE-VAR-MAX EMIT-U
+      s"  type variables or binders in inferred effect" EMIT-STR EXIT
    THEN
-   RBIND-FULL @ IF BINDERS-REASON s"  in inferred effect" DTXT EXIT THEN
+   RBIND-FULL @ IF BINDERS-REASON s"  in inferred effect" EMIT-STR EXIT THEN
    RROW-UNSAID @ IF
-      s" quotation return-stack clause or more than " DTXT  RROW-CAP JNUM
-      s"  named rows the effect text cannot say" DTXT EXIT
+      s" quotation return-stack clause or more than " EMIT-STR  RROW-CAP EMIT-U
+      s"  named rows the effect text cannot say" EMIT-STR EXIT
    THEN
-   s" unmodeled type tag in inferred effect" DTXT ;
+   s" unmodeled type tag in inferred effect" EMIT-STR ;
 
 : REC-REFUSE-PROSE ( ptr u8 n -- )
    {: na:ptr nu:n :}
-   s" habu: in " DTXT  na nu DTXT
-   s" : effect not recorded: " DTXT  REC-REFUSE-WHY ;
+   s" habu: in " EMIT-STR  na nu EMIT-STR
+   s" : effect not recorded: " EMIT-STR  REC-REFUSE-WHY ;
 
 \ W-EFFECT-NOT-RECORDED is a warning outside the repair contract: the word
 \ certified and loaded, but a later call refuses it as undefined. The JSON
@@ -2043,18 +1916,18 @@ BADSIG-DIAG-INSTALL
 : REC-REFUSE-JSON ( ptr u8 n -- )
    {: na:ptr nu:n :}
    s" W-EFFECT-NOT-RECORDED" JSTART
-   s" word" JKEY na nu JSTR 44 EMIT1
-   s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
+   s" word" JSON-KEY na nu JSON-STRING 44 EMIT1
+   s" file" JSON-KEY DIAGFB DIAGFU @ JSON-STRING 44 EMIT1
    NM-SPAN JTOKEN-FIELDS
-   s" reason" JKEY JOPEN REC-REFUSE-WHY JCLOSE
+   s" reason" JSON-KEY JSON-OPEN REC-REFUSE-WHY JSON-CLOSE
    125 EMIT1 ;
 
 : REC-REFUSE-EMIT ( ptr u8 n -- )
    {: na:ptr nu:n :}
-   1 RDST !  0 RSN !
+   1 DEST !  0 TEXT-LEN !
    na nu JSON-DIAGS @ IF REC-REFUSE-JSON ELSE REC-REFUSE-PROSE THEN
    10 EMIT1
-   RSBUF-FLUSH ;
+   FLUSH ;
 
 \ Check's run turns this off, as the check before it wrote the placed warnings;
 \ a session the run's program starts turns it on (CHECK-ALL-ERRORS:SESSION).
@@ -2082,20 +1955,21 @@ variable WARN-DIAGS   -1 WARN-DIAGS !
 \ resolver, so rendering cannot re-trigger the shadow throw.
 : USH-EFF ( n -- )                        \ append " (Din -- Dout)" for a sym's effect, " (?)" if none
    {: sym:n :}
-   sym CHECKER-FIND-USIG-SYM 0= IF s"  (?)" DTXT EXIT THEN
-   s"  (" DTXT
+   sym CHECKER-FIND-USIG-SYM 0= IF s"  (?)" EMIT-STR EXIT THEN
+   s"  (" EMIT-STR
    FEP @ E-DIN@ EFF-ROW-N RNUM
-   s"  -- " DTXT
+   s"  -- " EMIT-STR
    FEP @ E-DOUT@ EFF-ROW-N RNUM
    41 EMIT1 ;
 : USHADOW-PROSE ( -- )
-   s" E-USING-SHADOW-GLOBAL habu: bare '" DTXT  USH-TOK-A @ USH-TOK-U @ DTXT
-   s" ' is ambiguous under using: the global '" DTXT  USH-TOK-A @ USH-TOK-U @ DTXT  39 EMIT1
+   s" E-USING-SHADOW-GLOBAL habu: bare '" EMIT-STR
+      USH-TOK-A @ USH-TOK-U @ EMIT-STR
+   s" ' is ambiguous under using: the global '" EMIT-STR  USH-TOK-A @ USH-TOK-U @ EMIT-STR  39 EMIT1
    USH-GSYM @ USH-EFF
-   s"  and used public '" DTXT  USH-PKG-A @ USH-PKG-U @ DTXT  58 EMIT1  USH-TOK-A @ USH-TOK-U @ DTXT  39 EMIT1
+   s"  and used public '" EMIT-STR  USH-PKG-A @ USH-PKG-U @ EMIT-STR  58 EMIT1  USH-TOK-A @ USH-TOK-U @ EMIT-STR  39 EMIT1
    USH-USYM @ USH-EFF
-   s"  export the same name; qualify " DTXT  USH-PKG-A @ USH-PKG-U @ DTXT  58 EMIT1  USH-TOK-A @ USH-TOK-U @ DTXT
-   s"  for the package word, or rename the collision to reach the global" DTXT ;
+   s"  export the same name; qualify " EMIT-STR  USH-PKG-A @ USH-PKG-U @ EMIT-STR  58 EMIT1  USH-TOK-A @ USH-TOK-U @ EMIT-STR
+   s"  for the package word, or rename the collision to reach the global" EMIT-STR ;
 \ The used packages a bare token resolves in: the slots checker.f CK-USED-MARK
 \ set in CK-USED-MASK, in using-scan order, each package once.
 : UPKG-MATCHED? ( n -- bool )             \ used-scan slot n exports the token
@@ -2120,23 +1994,23 @@ variable WARN-DIAGS   -1 WARN-DIAGS !
 : USING-JSON ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: code:ptr codeu:n class:ptr classu:n sug:ptr sugu:n :}
    code codeu class classu s" rejected" JHEAD
-   s" token" JKEY USH-TOK-A @ USH-TOK-U @ JSTR 44 EMIT1
-   s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
+   s" token" JSON-KEY USH-TOK-A @ USH-TOK-U @ JSON-STRING 44 EMIT1
+   s" file" JSON-KEY DIAGFB DIAGFU @ JSON-STRING 44 EMIT1
    USH-TOK-A @ USH-TOK-U @ JTOKEN-FIELDS
-   s" used_packages" JKEY 91 EMIT1
-   [: 0= IF 44 EMIT1 THEN  UPKG-NAME$ JSTR ;] UPKG-EACH
+   s" used_packages" JSON-KEY 91 EMIT1
+   [: 0= IF 44 EMIT1 THEN  UPKG-NAME$ JSON-STRING ;] UPKG-EACH
    93 EMIT1 44 EMIT1
-   s" suggestion" JKEY sug sugu JSTR
+   s" suggestion" JSON-KEY sug sugu JSON-STRING
    125 EMIT1 ;
 : USHADOW-JSON ( -- )
    s" E-USING-SHADOW-GLOBAL" s" disambiguate_using_shadow"
    s" A global word and a used package public share this name. Qualify the package word as PKG:WORD, or rename the collision; the global has no bare qualifier."
    USING-JSON ;
 : USHADOW-DIAG ( -- )
-   1 RDST !  0 RSN !  0 RQM !
+   1 DEST !  0 TEXT-LEN !  0 RQM !
    JSON-DIAGS @ IF USHADOW-JSON ELSE USHADOW-PROSE THEN
    10 EMIT1
-   RSBUF-FLUSH ;
+   FLUSH ;
 
 \ A package public its own private tail shadows (checker.f SHADOW-ARITY-CK). The
 \ widths come from the check, not the store: the rule runs before the append, so
@@ -2145,47 +2019,48 @@ variable WARN-DIAGS   -1 WARN-DIAGS !
 \ folded.
 : SBA-CELLS-TXT ( n n -- )                \ append " (in -- out)"
    {: in:n out:n :}
-   s"  (" DTXT  in RNUM  s"  -- " DTXT  out RNUM  41 EMIT1 ;
+   s"  (" EMIT-STR  in RNUM  s"  -- " EMIT-STR  out RNUM  41 EMIT1 ;
 : SBARITY-PROSE ( -- )
-   s" E-SHADOWED-ARITY habu: public '" DTXT
-   SBA-TWIN @ SYM-PKG$ DTXT  58 EMIT1  SBA-TWIN @ SYM-NAME$ DTXT  39 EMIT1
+   s" E-SHADOWED-ARITY habu: public '" EMIT-STR
+   SBA-TWIN @ SYM-PKG$ EMIT-STR  58 EMIT1  SBA-TWIN @ SYM-NAME$ EMIT-STR
+      39 EMIT1
    SBA-NIN @ SBA-NOUT @ SBA-CELLS-TXT
-   s"  does not bind its own name: the same package's private '" DTXT
-   SBA-TWIN @ SYM-NAME$ DTXT  39 EMIT1
+   s"  does not bind its own name: the same package's private '" EMIT-STR
+   SBA-TWIN @ SYM-NAME$ EMIT-STR  39 EMIT1
    SBA-PIN @ SBA-POUT @ SBA-CELLS-TXT
-   s"  owns that bare tail, a definition's contract is read from the binding its" DTXT
-   s"  own name has, and the two do not move the same cells - so the public word" DTXT
-   s"  would be compiled against the private word's arity. Declare the same" DTXT
-   s"  effect on both (a public forwarder repeats its private word's signature)" DTXT
-   s"  or rename one of the two" DTXT ;
+   s"  owns that bare tail, a definition's contract is read from the binding its" EMIT-STR
+   s"  own name has, and the two do not move the same cells - so the public word" EMIT-STR
+   s"  would be compiled against the private word's arity. Declare the same" EMIT-STR
+   s"  effect on both (a public forwarder repeats its private word's signature)" EMIT-STR
+   s"  or rename one of the two" EMIT-STR ;
 : SBARITY-JSON ( -- )
    s" E-SHADOWED-ARITY" s" match_shadowed_private_effect" s" rejected" JHEAD
-   s" token" JKEY SBA-TWIN @ SYM-NAME$ JSTR 44 EMIT1
-   s" package" JKEY SBA-TWIN @ SYM-PKG$ JSTR 44 EMIT1
+   s" token" JSON-KEY SBA-TWIN @ SYM-NAME$ JSON-STRING 44 EMIT1
+   s" package" JSON-KEY SBA-TWIN @ SYM-PKG$ JSON-STRING 44 EMIT1
    NM-SPAN s" A private word of this package owns the same tail, and a bare tail binds the private word first, so the native compiler reads this definition's arity from it. Give the public definition the private word's effect, or rename one of the two." JTAIL ;
 : SBARITY-DIAG ( -- )
-   1 RDST !  0 RSN !  0 RQM !
+   1 DEST !  0 TEXT-LEN !  0 RQM !
    JSON-DIAGS @ IF SBARITY-JSON ELSE SBARITY-PROSE THEN
    10 EMIT1
-   RSBUF-FLUSH ;
+   FLUSH ;
 \ A bare token two used publics export: the
 \ reject names each package it resolves in.
 : UAMB-PROSE ( -- )
-   s" E-USING-AMBIGUOUS habu: bare '" DTXT  USH-TOK-A @ USH-TOK-U @ DTXT
-   s" ' is ambiguous under using: used publics " DTXT
-   [: 0= IF s" , " DTXT THEN
-      39 EMIT1  UPKG-NAME$ DTXT  58 EMIT1  USH-TOK-A @ USH-TOK-U @ DTXT  39 EMIT1 ;] UPKG-EACH
-   s"  export the same name; qualify the one meant as PKG:" DTXT  USH-TOK-A @ USH-TOK-U @ DTXT
-   s" , or rename the collision" DTXT ;
+   s" E-USING-AMBIGUOUS habu: bare '" EMIT-STR  USH-TOK-A @ USH-TOK-U @ EMIT-STR
+   s" ' is ambiguous under using: used publics " EMIT-STR
+   [: 0= IF s" , " EMIT-STR THEN
+      39 EMIT1  UPKG-NAME$ EMIT-STR  58 EMIT1  USH-TOK-A @ USH-TOK-U @ EMIT-STR  39 EMIT1 ;] UPKG-EACH
+   s"  export the same name; qualify the one meant as PKG:" EMIT-STR  USH-TOK-A @ USH-TOK-U @ EMIT-STR
+   s" , or rename the collision" EMIT-STR ;
 : UAMB-JSON ( -- )
    s" E-USING-AMBIGUOUS" s" disambiguate_using_ambiguous"
    s" Used publics of more than one package share this name. Qualify the one meant as PKG:WORD, or rename the collision."
    USING-JSON ;
 : UAMB-DIAG ( -- )
-   1 RDST !  0 RSN !  0 RQM !
+   1 DEST !  0 TEXT-LEN !  0 RQM !
    JSON-DIAGS @ IF UAMB-JSON ELSE UAMB-PROSE THEN
    10 EMIT1
-   RSBUF-FLUSH ;
+   FLUSH ;
 \ A top-level token the load refuses, a stretch the pre-pass deferred, or a
 \ deferred definition: records at the token, no definition fields. A
 \ refusal has its own code (tools/diag-code.f) with the class and suggestion a
@@ -2193,48 +2068,48 @@ variable WARN-DIAGS   -1 WARN-DIAGS !
 : TOP-SPAN-JSON ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: c:ptr cu:n k:ptr ku:n v:ptr vu:n g:ptr gu:n :}
    c cu k ku v vu JHEAD
-   s" token" JKEY USH-TOK-A @ USH-TOK-U @ JSTR 44 EMIT1
+   s" token" JSON-KEY USH-TOK-A @ USH-TOK-U @ JSON-STRING 44 EMIT1
    USH-TOK-A @ USH-TOK-U @ g gu JTAIL ;
 \ `CODE habu: FILE:LINE:COLUMN: TEXT 'TOKEN'`, the place when the token locates.
 : TOP-SPAN-PROSE ( ptr u8 n ptr u8 n -- )
    {: c:ptr cu:n t:ptr tu:n :}
-   c cu DTXT  s"  habu: " DTXT
+   c cu EMIT-STR  s"  habu: " EMIT-STR
    USH-TOK-A @  USH-TOK-A @ USH-TOK-U @ +  JLOCATE IF
-      DIAGFB DIAGFU @ DTXT  58 EMIT1  JLOC-L @ JNUM  58 EMIT1  JLOC-C @ JNUM  s" : " DTXT
+      DIAGFB DIAGFU @ EMIT-STR  58 EMIT1  JLOC-L @ EMIT-U  58 EMIT1  JLOC-C @ EMIT-U  s" : " EMIT-STR
    THEN
-   t tu DTXT  s"  '" DTXT  USH-TOK-A @ USH-TOK-U @ DTXT  39 EMIT1 ;
+   t tu EMIT-STR  s"  '" EMIT-STR  USH-TOK-A @ USH-TOK-U @ EMIT-STR  39 EMIT1 ;
 : TOP-UNDEF-DIAG ( -- )
-   1 RDST !  0 RSN !  0 RQM !
+   1 DEST !  0 TEXT-LEN !  0 RQM !
    JSON-DIAGS @ IF
       s" E-UNDEFINED-TOP-LEVEL" s" unknown_rejection" s" rejected"
       s" Inspect the token, signature, and raw stack evidence." TOP-SPAN-JSON
    ELSE s" E-UNDEFINED-TOP-LEVEL" s" undefined word" TOP-SPAN-PROSE THEN
    10 EMIT1
-   RSBUF-FLUSH ;
+   FLUSH ;
 : TOP-BADQUAL-DIAG ( -- )
-   1 RDST !  0 RSN !  0 RQM !
+   1 DEST !  0 TEXT-LEN !  0 RQM !
    JSON-DIAGS @ IF
       s" E-BAD-QUALIFIED-TOP-LEVEL" s" fix_qualified_name" s" rejected"
       s" Use one ':' qualifier, e.g. PKG:WORD." TOP-SPAN-JSON
    ELSE s" E-BAD-QUALIFIED-TOP-LEVEL" s" malformed qualified name" TOP-SPAN-PROSE THEN
    10 EMIT1
-   RSBUF-FLUSH ;
+   FLUSH ;
 : TOP-ARENA-DIAG ( -- )
-   1 RDST !  0 RSN !  0 RQM !
+   1 DEST !  0 TEXT-LEN !  0 RQM !
    JSON-DIAGS @ IF
       s" E-ARENA-CALL-TOP-LEVEL"  MD-ARENA-CALL MD-CLASS$  s" rejected"
       MD-ARENA-CALL MD-SUGGEST$ TOP-SPAN-JSON
    ELSE s" E-ARENA-CALL-TOP-LEVEL"  MD-ARENA-CALL MD-REASON$ TOP-SPAN-PROSE THEN
    10 EMIT1
-   RSBUF-FLUSH ;
+   FLUSH ;
 \ Only the verifier's child reports a deferral, and it writes packets. Its
 \ cause is cleared once written, so a report that records none prints none.
 : TOP-DEFERRED-DIAG ( -- )
-   1 RDST !  0 RSN !  0 RQM !
+   1 DEST !  0 TEXT-LEN !  0 RQM !
    s" W-CHECK-DEFERRED" s" rewrite_uncheckable" s" deferred"
    DEFER-SUGGEST$ TOP-SPAN-JSON
    10 EMIT1
-   RSBUF-FLUSH
+   FLUSH
    0 DEFER-WHY ! ;
 \ checker.f SHADOW-DIAG-XT selects: 0 the using-shadow reference site, 1 the
 \ arity-shadow definition site, 2 a using ambiguity, 3 and 4 a top-level token
@@ -2259,49 +2134,49 @@ SHADOW-DIAG-INSTALL
 \ row's name (checker.f TRUST) when that lies in checked text.
 : TSTALE-PROSE ( ptr u8 n -- )
    {: na:ptr nu:n :}
-   s" E-TRUST-UNRESOLVED habu: trust row for '" DTXT  na nu DTXT
-   s" ' names no word where its record lands: nothing in the open" DTXT
-   s"  section's wordlist, the global wordlist outside a package, or PKG's" DTXT
-   s"  public wordlist for PKG:TAIL is" DTXT
-   s"  spelled that way, so the effect would be recorded against a symbol" DTXT
-   s"  the engine never defined. Delete the row, correct the name to the" DTXT
-   s"  word it was meant to describe, or write it in the section that" DTXT
-   s"  defines that word" DTXT ;
+   s" E-TRUST-UNRESOLVED habu: trust row for '" EMIT-STR  na nu EMIT-STR
+   s" ' names no word where its record lands: nothing in the open" EMIT-STR
+   s"  section's wordlist, the global wordlist outside a package, or PKG's" EMIT-STR
+   s"  public wordlist for PKG:TAIL is" EMIT-STR
+   s"  spelled that way, so the effect would be recorded against a symbol" EMIT-STR
+   s"  the engine never defined. Delete the row, correct the name to the" EMIT-STR
+   s"  word it was meant to describe, or write it in the section that" EMIT-STR
+   s"  defines that word" EMIT-STR ;
 : TSTALE-JSON ( ptr u8 n ptr u8 n -- )
    {: na:ptr nu:n pa:ptr pu:n :}
    s" E-TRUST-UNRESOLVED" s" fix_stale_trust_row" s" rejected" JHEAD
-   s" token" JKEY na nu JSTR 44 EMIT1
+   s" token" JSON-KEY na nu JSON-STRING 44 EMIT1
    pa pu s" This trust row names no word in the wordlist its record lands in: the open section's, the global wordlist outside a package, or PKG's public wordlist for PKG:TAIL. Delete the row if the word is gone, correct the spelling, or write the row in the section that defines the word." JTAIL ;
 : TSTALE-DIAG ( ptr u8 n ptr u8 n -- )
    {: na:ptr nu:n pa:ptr pu:n :}
-   1 RDST !  0 RSN !  0 RQM !
+   1 DEST !  0 TEXT-LEN !  0 RQM !
    JSON-DIAGS @ IF na nu pa pu TSTALE-JSON ELSE na nu TSTALE-PROSE THEN
    10 EMIT1
-   RSBUF-FLUSH ;
+   FLUSH ;
 
 \ A storage registrar called outside the verifier window (checker.f
 \ CHECKER-REPLAY-NAME-OK?): names the word and the definer that makes it soundly.
 \ The name is the run's, so the packet carries no place.
 : REPLAY-ONLY-PROSE ( ptr u8 n -- )
    {: na:ptr nu:n :}
-   s" E-PKG-CONTEXT habu: storage record for '" DTXT  na nu DTXT
-   s" ' refused outside the engine's verifier window: a checker storage" DTXT
-   s"  registrar records a definer's accessor only while the source pre-pass" DTXT
-   s"  replays the definer that defines the word, so from source the record" DTXT
-   s"  would certify callers against an effect the engine never binds to that" DTXT
-   s"  name. Define the storage with its definer: TYPED-VARIABLE, TYPED-BUFFER," DTXT
-   s"  LAYOUT-BUFFER or DYNAMIC-BUFFER" DTXT ;
+   s" E-PKG-CONTEXT habu: storage record for '" EMIT-STR  na nu EMIT-STR
+   s" ' refused outside the engine's verifier window: a checker storage" EMIT-STR
+   s"  registrar records a definer's accessor only while the source pre-pass" EMIT-STR
+   s"  replays the definer that defines the word, so from source the record" EMIT-STR
+   s"  would certify callers against an effect the engine never binds to that" EMIT-STR
+   s"  name. Define the storage with its definer: TYPED-VARIABLE, TYPED-BUFFER," EMIT-STR
+   s"  LAYOUT-BUFFER or DYNAMIC-BUFFER" EMIT-STR ;
 : REPLAY-ONLY-JSON ( ptr u8 n ptr u8 n -- )
    {: na:ptr nu:n pa:ptr pu:n :}
    s" E-PKG-CONTEXT" s" use_storage_definer" s" rejected" JHEAD
-   s" token" JKEY na nu JSTR 44 EMIT1
+   s" token" JSON-KEY na nu JSON-STRING 44 EMIT1
    pa pu s" A checker storage registrar records a definer's accessor only inside the engine's verifier window. Define the storage with its definer (TYPED-VARIABLE, TYPED-BUFFER, LAYOUT-BUFFER, DYNAMIC-BUFFER) instead of calling the registrar." JTAIL ;
 : REPLAY-ONLY-DIAG ( ptr u8 n ptr u8 n -- )
    {: na:ptr nu:n pa:ptr pu:n :}
-   1 RDST !  0 RSN !  0 RQM !
+   1 DEST !  0 TEXT-LEN !  0 RQM !
    JSON-DIAGS @ IF na nu pa pu REPLAY-ONLY-JSON ELSE na nu REPLAY-ONLY-PROSE THEN
    10 EMIT1
-   RSBUF-FLUSH ;
+   FLUSH ;
 
 \ A malformed qualified name's record (checker.f CHECKER-RECORD-NAME) has the
 \ class and suggestion of E-BAD-QUALIFIED, and a code of its own in a refused
@@ -2310,21 +2185,21 @@ SHADOW-DIAG-INSTALL
 \ checked text.
 : BADQUAL-PROSE ( ptr u8 n -- )
    {: na:ptr nu:n :}
-   s" E-BAD-QUALIFIED-RECORD habu: record for '" DTXT  na nu DTXT
-   s" ' refused: malformed qualified name, where one non-edge ':' selects a" DTXT
-   s"  package and a second ':' names no word. Use one ':' qualifier, e.g." DTXT
-   s"  PKG:WORD" DTXT ;
+   s" E-BAD-QUALIFIED-RECORD habu: record for '" EMIT-STR  na nu EMIT-STR
+   s" ' refused: malformed qualified name, where one non-edge ':' selects a" EMIT-STR
+   s"  package and a second ':' names no word. Use one ':' qualifier, e.g." EMIT-STR
+   s"  PKG:WORD" EMIT-STR ;
 : BADQUAL-JSON ( ptr u8 n ptr u8 n -- )
    {: na:ptr nu:n pa:ptr pu:n :}
    s" E-BAD-QUALIFIED-RECORD" s" fix_qualified_name" s" rejected" JHEAD
-   s" token" JKEY na nu JSTR 44 EMIT1
+   s" token" JSON-KEY na nu JSON-STRING 44 EMIT1
    pa pu s" Use one ':' qualifier, e.g. PKG:WORD." JTAIL ;
 : BADQUAL-DIAG ( ptr u8 n ptr u8 n -- )
    {: na:ptr nu:n pa:ptr pu:n :}
-   1 RDST !  0 RSN !  0 RQM !
+   1 DEST !  0 TEXT-LEN !  0 RQM !
    JSON-DIAGS @ IF na nu pa pu BADQUAL-JSON ELSE na nu BADQUAL-PROSE THEN
    10 EMIT1
-   RSBUF-FLUSH ;
+   FLUSH ;
 \ checker.f RECORD-DIAG-XT selects: 0 the stale trust row, 1 the storage
 \ record, 2 the malformed name.
 : RECORD-DIAG ( ptr u8 n ptr u8 n n -- )
@@ -2379,37 +2254,39 @@ RECORD-DIAG-INSTALL
 : STGR-JSON ( ptr u8 n ptr u8 n n bool -- )
    {: na:ptr nu:n ta:ptr tu:n why:n at:bool :}
    s" E-BAD-STORAGE" why STGR-CLASS$ s" rejected" JHEAD
-   s" word" JKEY na nu JSTR 44 EMIT1
-   s" token" JKEY ta tu JSTR 44 EMIT1
-   s" reason" JKEY why STGR-REASON$ JSTR 44 EMIT1
-   s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
+   s" word" JSON-KEY na nu JSON-STRING 44 EMIT1
+   s" token" JSON-KEY ta tu JSON-STRING 44 EMIT1
+   s" reason" JSON-KEY why STGR-REASON$ JSON-STRING 44 EMIT1
+   s" file" JSON-KEY DIAGFB DIAGFU @ JSON-STRING 44 EMIT1
    at IF
       DIAGL0 @ JLOC-L !  DIAGC0 @ JLOC-C !  DIAGB0 @ JLOC-B !
       DIAGB0 @ tu + JLOC-E !
       JLOC-FIELDS
    THEN
-   s" suggestion" JKEY why STGR-SUGGEST$ JSTR
+   s" suggestion" JSON-KEY why STGR-SUGGEST$ JSON-STRING
    125 EMIT1 ;
 : STGR-PROSE ( ptr u8 n ptr u8 n n bool -- )
    {: na:ptr nu:n ta:ptr tu:n why:n at:bool :}
    at IF
-      DIAGFB DIAGFU @ DTXT  58 EMIT1  DIAGL0 @ JNUM  58 EMIT1  DIAGC0 @ JNUM
-      s" : " DTXT
+      DIAGFB DIAGFU @ EMIT-STR  58 EMIT1  DIAGL0 @ EMIT-U  58 EMIT1
+         DIAGC0 @ EMIT-U
+      s" : " EMIT-STR
    THEN
-   s" habu: in " DTXT  na nu DTXT  s" : " DTXT  why STGR-REASON$ DTXT
-   s"  '" DTXT  ta tu DTXT  s" '" DTXT ;
+   s" habu: in " EMIT-STR  na nu EMIT-STR  s" : " EMIT-STR
+      why STGR-REASON$ EMIT-STR
+   s"  '" EMIT-STR  ta tu EMIT-STR  s" '" EMIT-STR ;
 : STGR-DIAG ( ptr u8 n ptr u8 n n -- )
    {: na:ptr nu:n ta:ptr tu:n why:n :}
    ta tu STGR-IN-SOURCE? {: at:bool :}
    at IF ta STGR-LOCATE THEN
-   1 RDST !  0 RSN !  0 RQM !
+   1 DEST !  0 TEXT-LEN !  0 RQM !
    JSON-DIAGS @ IF
       na nu ta tu why at STGR-JSON
    ELSE
       na nu ta tu why at STGR-PROSE
    THEN
    10 EMIT1
-   RSBUF-FLUSH ;
+   FLUSH ;
 : STGR-DIAG-INSTALL ( -- ) [: STGR-DIAG ;] is STORAGE-DIAG-XT ;
 STGR-DIAG-INSTALL
 
@@ -2419,35 +2296,36 @@ STGR-DIAG-INSTALL
 \ the signature refusal's class and text). Placed at the name where the pre-pass scanner read it.
 : GENR-BADSIG-PROSE ( -- )
    SGBAD-UNKNOWN? IF
-      s" unknown type '" DTXT  SGBAD-A @ SGBAD-U @ DTXT  s" ' in its effect" DTXT EXIT
+      s" unknown type '" EMIT-STR  SGBAD-A @ SGBAD-U @ EMIT-STR  s" ' in its effect" EMIT-STR EXIT
    THEN
-   SGBAD-BAREPTR? IF s" 'ptr' needs an element type, e.g. 'ptr u8' or 'ptr a'" DTXT EXIT THEN
+   SGBAD-BAREPTR? IF s" 'ptr' needs an element type, e.g. 'ptr u8' or 'ptr a'" EMIT-STR EXIT THEN
    SGBAD-ARITY? IF
-      s" wrong arity for type family '" DTXT  SGBAD-A @ SGBAD-U @ DTXT  s" '" DTXT EXIT
+      s" wrong arity for type family '" EMIT-STR  SGBAD-A @ SGBAD-U @ EMIT-STR  s" '" EMIT-STR EXIT
    THEN
-   SGBAD-RETURN? IF s" return-stack effect: " DTXT  RCLAUSE-FIX$ DTXT EXIT THEN
+   SGBAD-RETURN? IF s" return-stack effect: " EMIT-STR
+      RCLAUSE-FIX$ EMIT-STR EXIT THEN
    SGBAD-SIZE? IF BADSIG-REASON EXIT THEN
-   s" its effect is not a stack-effect comment" DTXT ;
+   s" its effect is not a stack-effect comment" EMIT-STR ;
 : GENR-PROSE ( ptr u8 n n -- )
    {: ta:ptr tu:n kind:n :}
-   s" E-GENERATES-ROW habu: generates: row for '" DTXT  ta tu DTXT
+   s" E-GENERATES-ROW habu: generates: row for '" EMIT-STR  ta tu EMIT-STR
    kind GENR-UNRESOLVED = IF
-      s" ' names no word here: the row follows its definer's definition and" DTXT
-      s"  names it as the code there spells it. Define the definer first or" DTXT
-      s"  correct the name" DTXT EXIT
+      s" ' names no word here: the row follows its definer's definition and" EMIT-STR
+      s"  names it as the code there spells it. Define the definer first or" EMIT-STR
+      s"  correct the name" EMIT-STR EXIT
    THEN
    kind GENR-CREATES = IF
-      s" ' already creates: its does> clause, an earlier generates: row or the" DTXT
-      s"  definer it wraps already states what it makes. Delete the row" DTXT EXIT
+      s" ' already creates: its does> clause, an earlier generates: row or the" EMIT-STR
+      s"  definer it wraps already states what it makes. Delete the row" EMIT-STR EXIT
    THEN
    kind GENR-READS-NONE = IF
-      s" ' is deferred, or no parse-name reaches it through the words it calls" DTXT
-      s"  (a call through a defer or an executed xt shows none), so the check" DTXT
-      s"  cannot take the next token as the word a call makes. Delete the row," DTXT
-      s"  or make the definer read its name with parse-name, called directly or" DTXT
-      s"  through words it calls by name" DTXT EXIT
+      s" ' is deferred, or no parse-name reaches it through the words it calls" EMIT-STR
+      s"  (a call through a defer or an executed xt shows none), so the check" EMIT-STR
+      s"  cannot take the next token as the word a call makes. Delete the row," EMIT-STR
+      s"  or make the definer read its name with parse-name, called directly or" EMIT-STR
+      s"  through words it calls by name" EMIT-STR EXIT
    THEN
-   s" ': " DTXT  GENR-BADSIG-PROSE ;
+   s" ': " EMIT-STR  GENR-BADSIG-PROSE ;
 : GENR-SUGGEST$ ( n -- ptr u8 n )
    {: kind:n :}
    kind GENR-UNRESOLVED = IF
@@ -2469,14 +2347,14 @@ STGR-DIAG-INSTALL
 : GENR-JSON ( ptr u8 n n -- )
    {: ta:ptr tu:n kind:n :}
    s" E-GENERATES-ROW" kind GENR-CLASS$ s" rejected" JHEAD
-   s" token" JKEY ta tu JSTR 44 EMIT1
+   s" token" JSON-KEY ta tu JSON-STRING 44 EMIT1
    ta tu kind GENR-SUGGEST$ JTAIL ;
 : GENR-DIAG ( ptr u8 n n -- )
    {: ta:ptr tu:n kind:n :}
-   1 RDST !  0 RSN !  0 RQM !
+   1 DEST !  0 TEXT-LEN !  0 RQM !
    JSON-DIAGS @ IF ta tu kind GENR-JSON ELSE ta tu kind GENR-PROSE THEN
    10 EMIT1
-   RSBUF-FLUSH ;
+   FLUSH ;
 
 \ A refused `cast:` or `linear:` declaration.
 package CAST-ERROR
@@ -2504,8 +2382,9 @@ package CAST-ERROR
    CODE @ throw ;
 : WORD$ ( -- ptr u8 n ) WORD-A @ WORD-U @ ;
 : REASON ( -- )
-   WHY-A @ WHY-U @ DTXT
-   TOK-U @ 0 > IF s"  '" DTXT  TOK-A @ TOK-U @ DTXT  s" '" DTXT THEN ;
+   WHY-A @ WHY-U @ EMIT-STR
+   TOK-U @ 0 > IF s"  '" EMIT-STR  TOK-A @ TOK-U @ EMIT-STR
+      s" '" EMIT-STR THEN ;
 \ Mapped: the word lies in the text the pre-pass checks, its place in JLOC-*;
 \ else the place is the signature's line in the file the load reads, as DSITE's.
 : SITE ( -- ptr u8 n n bool bool )
@@ -2516,28 +2395,30 @@ package CAST-ERROR
 : PLACE ( -- )
    SITE {: fa:ptr fu:n line:n known:bool mapped:bool :}
    fu 0= IF EXIT THEN
-   fa fu DTXT
-   known IF 58 EMIT1 line JNUM THEN
-   mapped IF 58 EMIT1 JLOC-C @ JNUM THEN
-   s" : " DTXT ;
+   fa fu EMIT-STR
+   known IF 58 EMIT1 line EMIT-U THEN
+   mapped IF 58 EMIT1 JLOC-C @ EMIT-U THEN
+   s" : " EMIT-STR ;
 : PROSE ( -- )
-   CODE$ DTXT  s"  habu: " DTXT  PLACE
-   KEY-A @ KEY-U @ DTXT  s"  '" DTXT  WORD$ DTXT  s" ': " DTXT  REASON ;
+   CODE$ EMIT-STR  s"  habu: " EMIT-STR  PLACE
+   KEY-A @ KEY-U @ EMIT-STR  s"  '" EMIT-STR  WORD$ EMIT-STR  s" ': " EMIT-STR
+      REASON ;
 : PACKET ( -- )
    CODE$ s" fix_cast_declaration" s" rejected" JHEAD
-   s" token" JKEY WORD$ JSTR 44 EMIT1
-   s" reason" JKEY JOPEN REASON JCLOSE 44 EMIT1
+   s" token" JSON-KEY WORD$ JSON-STRING 44 EMIT1
+   s" reason" JSON-KEY JSON-OPEN REASON JSON-CLOSE 44 EMIT1
    SITE {: fa:ptr fu:n line:n known:bool mapped:bool :}
-   s" file" JKEY  fu 0= IF DIAG-NO-FILE$ ELSE fa fu THEN JSTR  44 EMIT1
+   s" file" JSON-KEY  fu 0= IF DIAG-NO-FILE$ ELSE fa fu THEN JSON-STRING
+      44 EMIT1
    mapped IF JLOC-FIELDS ELSE
-      known IF s" line" JKEY line JNUM 44 EMIT1 THEN
+      known IF s" line" JSON-KEY line EMIT-U 44 EMIT1 THEN
    THEN
-   s" suggestion" JKEY SUGGEST$ JSTR  125 EMIT1 ;
+   s" suggestion" JSON-KEY SUGGEST$ JSON-STRING  125 EMIT1 ;
 : RENDER ( -- )
-   1 RDST !  0 RSN !  0 RQM !
+   1 DEST !  0 TEXT-LEN !  0 RQM !
    JSON-DIAGS @ IF PACKET ELSE PROSE THEN
    10 EMIT1
-   RSBUF-FLUSH ;
+   FLUSH ;
 ;package
 
 \ A `parses:` or `parses-through:` row the checker refused (checker.f
@@ -2548,33 +2429,33 @@ package CAST-ERROR
 : PRS-REASON ( n -- )
    {: kind:n :}
    kind PARSES-UNDEFINED = IF
-      s" ' names no word here: the row follows the word's definition and names" DTXT
-      s"  it as the code there spells it" DTXT EXIT
+      s" ' names no word here: the row follows the word's definition and names" EMIT-STR
+      s"  it as the code there spells it" EMIT-STR EXIT
    THEN
    kind PARSES-QUALIFIED = IF
-      s" ' is a malformed qualified name: one colon between a package and a" DTXT
-      s"  public tail" DTXT EXIT
+      s" ' is a malformed qualified name: one colon between a package and a" EMIT-STR
+      s"  public tail" EMIT-STR EXIT
    THEN
    kind PARSES-SHADOW = IF
-      s" ' is refused here: a used package's public shadows the global word of" DTXT
-      s"  that name" DTXT EXIT
+      s" ' is refused here: a used package's public shadows the global word of" EMIT-STR
+      s"  that name" EMIT-STR EXIT
    THEN
    kind PARSES-AMBIGUOUS = IF
-      s" ' is refused here: two used packages export that name" DTXT EXIT
+      s" ' is refused here: two used packages export that name" EMIT-STR EXIT
    THEN
    kind PARSES-READS-NONE = IF
-      s" ' names a word that reads no source after it: only a word that parses" DTXT
-      s"  takes a row" DTXT EXIT
+      s" ' names a word that reads no source after it: only a word that parses" EMIT-STR
+      s"  takes a row" EMIT-STR EXIT
    THEN
-   kind PARSES-NO-TARGET = IF s" ' has no target after it" DTXT EXIT THEN
+   kind PARSES-NO-TARGET = IF s" ' has no target after it" EMIT-STR EXIT THEN
    kind PARSES-COUNT = IF
-      s" ': its count is not a number of tokens, 0 or more" DTXT EXIT
+      s" ': its count is not a number of tokens, 0 or more" EMIT-STR EXIT
    THEN
-   s" ': its terminators are not a standalone ( , at least one terminator and a" DTXT
-   s"  standalone )" DTXT ;
+   s" ': its terminators are not a standalone ( , at least one terminator and a" EMIT-STR
+   s"  standalone )" EMIT-STR ;
 : PRS-PROSE ( ptr u8 n n -- )
    {: ta:ptr tu:n kind:n :}
-   s" E-PARSES-ROW habu: parses: row '" DTXT  ta tu DTXT
+   s" E-PARSES-ROW habu: parses: row '" EMIT-STR  ta tu EMIT-STR
    kind PRS-REASON ;
 : PRS-SUGGEST$ ( n -- ptr u8 n )
    PRS-SYNTAX? IF
@@ -2587,18 +2468,18 @@ package CAST-ERROR
 : ROW-JSON ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: ta:ptr tu:n ca:ptr cu:n la:ptr lu:n sa:ptr su:n :}
    ca cu la lu s" rejected" JHEAD
-   s" token" JKEY ta tu JSTR 44 EMIT1
+   s" token" JSON-KEY ta tu JSON-STRING 44 EMIT1
    ta tu sa su JTAIL ;
 : PRS-DIAG ( ptr u8 n n -- )
    {: ta:ptr tu:n kind:n :}
-   1 RDST !  0 RSN !  0 RQM !
+   1 DEST !  0 TEXT-LEN !  0 RQM !
    JSON-DIAGS @ IF
       ta tu s" E-PARSES-ROW" kind PRS-CLASS$ kind PRS-SUGGEST$ ROW-JSON
    ELSE
       ta tu kind PRS-PROSE
    THEN
    10 EMIT1
-   RSBUF-FLUSH ;
+   FLUSH ;
 
 \ A `names:` row the checker refused: with no
 \ target fix_names_syntax, else fix_names_row.
@@ -2606,10 +2487,10 @@ package CAST-ERROR
    PARSES-NO-TARGET = ;
 : NMS-PROSE ( ptr u8 n n -- )
    {: ta:ptr tu:n kind:n :}
-   s" E-NAMES-ROW habu: names: row '" DTXT  ta tu DTXT
+   s" E-NAMES-ROW habu: names: row '" EMIT-STR  ta tu EMIT-STR
    kind NAMES-NO-STRING = IF
-      s" ' names a word that takes no string: only a word whose input row ends in" DTXT
-      s"  ptr u8 n takes a row" DTXT EXIT
+      s" ' names a word that takes no string: only a word whose input row ends in" EMIT-STR
+      s"  ptr u8 n takes a row" EMIT-STR EXIT
    THEN
    kind PRS-REASON ;
 : NMS-SUGGEST$ ( n -- ptr u8 n )
@@ -2622,14 +2503,14 @@ package CAST-ERROR
    s" fix_names_row" ;
 : NMS-DIAG ( ptr u8 n n -- )
    {: ta:ptr tu:n kind:n :}
-   1 RDST !  0 RSN !  0 RQM !
+   1 DEST !  0 TEXT-LEN !  0 RQM !
    JSON-DIAGS @ IF
       ta tu s" E-NAMES-ROW" kind NMS-CLASS$ kind NMS-SUGGEST$ ROW-JSON
    ELSE
       ta tu kind NMS-PROSE
    THEN
    10 EMIT1
-   RSBUF-FLUSH ;
+   FLUSH ;
 
 ;using
 

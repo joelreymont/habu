@@ -230,9 +230,9 @@ CHK-DIAG-CAP BUFFER: CHK-DIAG
 : CHK  ( ptr u8 n -- )
    SRC-U !
    SRC-A !
-   CHK-DIAG CHK-DIAG-CAP DIAG-BUFFER!
-   ['] COMPILE catch  DIAG-BUFFER$ nip {: rc:n diag-u:n :}
-   DIAG-BUFFER-OFF
+   CHK-DIAG CHK-DIAG-CAP REJECTION:BUFFER!
+   ['] COMPILE catch  REJECTION:BUFFER$ nip {: rc:n diag-u:n :}
+   REJECTION:BUFFER-OFF
    rc 0= IF  -1 VERD !  EXIT  THEN
    rc CHECKER-REJECT-RC <>  diag-u 0=  or IF  rc throw  THEN
    0 VERD ! ;

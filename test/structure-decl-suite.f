@@ -172,7 +172,7 @@ public
 
 \ Reject diagnostics. STRUCTURE renders through render.f's TDECL-DIAG, the
 \ legacy definers' producer; the assertions read the bytes captured through
-\ DIAG-BUFFER! / DIAG-BUFFER$, the pair tools/check-all-errors-core.f
+\ REJECTION:BUFFER! / REJECTION:BUFFER$, the pair tools/check-all-errors-core.f
 \ CA-DIAG-FULL-START and CA-DIAG-FINISH use. This proves the channel, not a check-tool run. Each case
 \ asserts the whole rendered line.
 

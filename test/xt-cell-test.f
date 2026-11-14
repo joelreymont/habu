@@ -119,11 +119,11 @@ STRUCTURE xbox<a> FIELD item a ;STRUCTURE
 \ The typed xt cell above is the sound alternative.
 create XC-DBUF 8192 allot
 : XC-CODE< ( ptr u8 n -- )   \ run a candidate with JSON diags captured; assert reject (verdict 0)
-   XC-DBUF 8192 DIAG-BUFFER!  0 0= DIAG-JSON!
+   XC-DBUF 8192 REJECTION:BUFFER!  0 0= DIAG-JSON!
    CHECK-CANDIDATE! 0 T= ;
 : XC-CODE? ( ptr u8 n -- )   \ assert the captured diagnostic names this code
-   DIAG-BUFFER$ 2swap CONTAINS? TTRUE ;
-: XC-CODE-END ( -- ) 0 0= 0= DIAG-JSON! DIAG-BUFFER-OFF ;
+   REJECTION:BUFFER$ 2swap CONTAINS? TTRUE ;
+: XC-CODE-END ( -- ) 0 0= 0= DIAG-JSON! REJECTION:BUFFER-OFF ;
 
 \ The raw cell and the defer below are compiled here, because a candidate binds
 \ the record the compiler binds: a name only the source pre-scan registered has
@@ -160,7 +160,7 @@ defer XC-DF ( n -- n )
 \ XE declares it. A cast may take it but never yields one, and no storage holds
 \ one, directly or in a field; a quotation row may name it.
 : XC-EVAL< ( ptr u8 n -- )   \ evaluate with JSON diags captured; assert reject
-   XC-DBUF 8192 DIAG-BUFFER!  0 0= DIAG-JSON!
+   XC-DBUF 8192 REJECTION:BUFFER!  0 0= DIAG-JSON!
    XC-EVAL CHECKER-REJECT-RC T= ;
 : XC-STORE-XT? ( -- )   \ the captured refusal is the stored-xt one
    s\" \"code\":\"E-BAD-STORAGE\"" XC-CODE?

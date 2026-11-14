@@ -11,13 +11,13 @@ create DIAG 8192 allot
 \ Captures the refusal diagnostic of one evaluated definition, in prose, which
 \ SAYS reads; answers its throw code, 0 when the definition loaded.
 : DEF-RC ( ptr u8 n -- n )
-   DIAG 8192 DIAG-BUFFER!
+   DIAG 8192 REJECTION:BUFFER!
    JSON-DIAGS @ {: was:n :}
    false DIAG-JSON!  TEST-EVAL:RC
    was JSON-DIAGS ! ;
 
 : SAYS ( ptr u8 n -- )
-   DIAG-BUFFER$ 2swap CONTAINS? TTRUE  DIAG-BUFFER-OFF ;
+   REJECTION:BUFFER$ 2swap CONTAINS? TTRUE  REJECTION:BUFFER-OFF ;
 
 : LOW8 ( -- u8 ) 300 >U8 ;
 : LOW16 ( -- u16 ) 70000 >U16 ;
@@ -35,7 +35,7 @@ WIDE -1 T=
 
 \ Signatures: a word declared with a wider or different output would let the
 \ result pass where its declared type is refused, or refuse a fitting use.
-s" : P ( n -- u8 ) >U8 ;" DEF-RC 0 T=  DIAG-BUFFER-OFF
+s" : P ( n -- u8 ) >U8 ;" DEF-RC 0 T=  REJECTION:BUFFER-OFF
 s" : X8 ( n -- bool ) >U8 ;" DEF-RC 70 T=  s" actual: u8" SAYS
 s" : X16 ( n -- bool ) >U16 ;" DEF-RC 70 T=  s" actual: u16" SAYS
 s" : X32 ( n -- bool ) >U32 ;" DEF-RC 70 T=  s" actual: u32" SAYS

@@ -74,11 +74,11 @@ variable CS-TICK
 
 create CS-DBUF 8192 allot
 : CS-CODE< ( ptr u8 n -- )
-   CS-DBUF 8192 DIAG-BUFFER!  0 0= DIAG-JSON!
+   CS-DBUF 8192 REJECTION:BUFFER!  0 0= DIAG-JSON!
    CHECK-CANDIDATE! 0 T= ;
 : CS-CODE? ( ptr u8 n -- )
-   DIAG-BUFFER$ 2swap CONTAINS? TTRUE ;
-: CS-CODE-END ( -- ) 0 0= 0= DIAG-JSON! DIAG-BUFFER-OFF ;
+   REJECTION:BUFFER$ 2swap CONTAINS? TTRUE ;
+: CS-CODE-END ( -- ) 0 0= 0= DIAG-JSON! REJECTION:BUFFER-OFF ;
 \ A body's stale read is the catch's, never the interpret row's unknown cell,
 \ so its repair keeps the value before the catch.
 : CS-STALE? ( -- )
@@ -510,7 +510,7 @@ TYPED-VARIABLE CS-XT [ ptr u8 -- ptr u8 ]
    \ WBOOM leaves nothing where its window was, and that is the refusal, not the
    \ stale rule, which would need the dead flag the tick does not take
    s" T11 ( ptr u8 -- n ) ['] WBOOM catch {: v code:n :} code" CS-CODE<
-   s\" \"code\":\"E-STALE-READ\"" DIAG-BUFFER$ 2swap CONTAINS? TFALSE
+   s\" \"code\":\"E-STALE-READ\"" REJECTION:BUFFER$ 2swap CONTAINS? TFALSE
    CS-CODE-END
    \ and the intact cell is honest at run time through the tick as well: WMAYBE
    \ reads the byte and throws, and the catch hands back the address pushed here

@@ -49,10 +49,10 @@ create DIAG-BUF 8192 allot
 8192 constant DIAG-CAP
 
 : ARM ( -- )
-   DIAG-BUF DIAG-CAP DIAG-BUFFER!  true DIAG-JSON! ;
+   DIAG-BUF DIAG-CAP REJECTION:BUFFER!  true DIAG-JSON! ;
 
 : DISARM ( -- )
-   false DIAG-JSON!  DIAG-BUFFER-OFF ;
+   false DIAG-JSON!  REJECTION:BUFFER-OFF ;
 
 : CODE$ ( -- ptr u8 n )
    S\" \"code\":\"E-RAW-CELL-PTR\"" ;
@@ -86,10 +86,10 @@ create DIAG-BUF 8192 allot
    S\" Declare the pointee this base address really reaches" ;
 
 : HAS? ( ptr u8 n -- )
-   DIAG-BUFFER$ 2swap CONTAINS? TTRUE ;
+   REJECTION:BUFFER$ 2swap CONTAINS? TTRUE ;
 
 : LACKS? ( ptr u8 n -- )
-   DIAG-BUFFER$ 2swap CONTAINS? TFALSE ;
+   REJECTION:BUFFER$ 2swap CONTAINS? TFALSE ;
 
 \ Asserting the reason, not only the code, keeps each rule's prose its own.
 : REFUSED-CODE ( ptr u8 n -- )   \ leaves the diagnostic armed for the reason assertions

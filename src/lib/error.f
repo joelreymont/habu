@@ -89,7 +89,7 @@ require src/lib/prelude.f
 -2900 constant E-DIAG-FIRST
 -2999 constant E-DIAG-LAST
 -2900 constant E-DIAG-SCHEMA
--2901 constant E-DIAG-CAPACITY \ re-registered as the same (code, name) in src/core/render.f package RDIAG, which compiles before src/lib/
+-2901 constant E-DIAG-CAPACITY \ re-registered as the same (code, name) in src/core/rejection.f package REJECTION, which compiles before src/lib/
 -2902 constant E-DIAG-ORIGIN
 
 \ Tables: -3000..-3099

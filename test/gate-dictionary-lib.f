@@ -566,14 +566,14 @@ variable CANDIDATE-VERDICT
 : CANDIDATE-STORE ( n -- ) {: rc:n :}
    rc CANDIDATE-RC PROCESS-ENDING:exited GT-OUTCOME!
    0 GT-OUT-U !
-   DIAG-BUFFER$ nip GT-ERR-U !
-   DIAG-BUFFER-OFF ;
+   REJECTION:BUFFER$ nip GT-ERR-U !
+   REJECTION:BUFFER-OFF ;
 
 : CANDIDATE-RUN ( ptr u8 n ptr u8 n -- ) {: body:ptr bodyu:n label:ptr labelu:n :}
    label labelu GT-PROGRESS-RUN
    body bodyu CANDIDATE!
    -1 CANDIDATE-VERDICT !
-   GT-ERR-BUF GT-ERR-CAP DIAG-BUFFER!
+   GT-ERR-BUF GT-ERR-CAP REJECTION:BUFFER!
    [: CANDIDATE-ACT ;] catch CANDIDATE-STORE ;
 
 : CANDIDATE-BAD ( ptr u8 n n ptr u8 n ptr u8 n -- )

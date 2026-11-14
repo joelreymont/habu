@@ -33,10 +33,10 @@ $4E constant DUP-RC
    {: a:ptr u:n :}
    a SRC-A !
    u SRC-U !
-   DIAG-BUF $1000 DIAG-BUFFER!
+   DIAG-BUF $1000 REJECTION:BUFFER!
    [: ACT ;] catch {: rc:n :}
-   DIAG-BUFFER$ nip DIAG-U !
-   DIAG-BUFFER-OFF
+   REJECTION:BUFFER$ nip DIAG-U !
+   REJECTION:BUFFER-OFF
    rc ;
 
 \ The same span in multi-error mode, where a refused body is recorded with

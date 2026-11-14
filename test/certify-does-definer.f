@@ -445,10 +445,10 @@ create CDD-DIAG 4096 allot
 
 : CDD-NOT-CERTIFIED ( ptr u8 n ptr u8 n -- )
    {: sa:ptr su:n wa:ptr wu:n :}
-   CDD-DIAG 4096 DIAG-BUFFER!
+   CDD-DIAG 4096 REJECTION:BUFFER!
    sa su TEST-EVAL:RC  70 T=
-   DIAG-BUFFER$ wa wu CONTAINS? TTRUE
-   DIAG-BUFFER-OFF ;
+   REJECTION:BUFFER$ wa wu CONTAINS? TTRUE
+   REJECTION:BUFFER-OFF ;
 
 : CDD-NP-REFUSED ( ptr u8 n -- )
    s" E-NONPARAMETRIC-EFFECT" CDD-NOT-CERTIFIED ;
@@ -487,15 +487,15 @@ CDD-FIT-CAP CODEGEN:BUFFER CDD-FIT-WANT
    ka ku CDD-FIT-WANT CODEGEN:APPEND-STRING
    CDD-FIT-WANT CDD-FIT-ROW
    ta tu CDD-FIT-WANT CODEGEN:APPEND-STRING
-   DIAG-BUFFER$ CDD-FIT-WANT CODEGEN:CONTENTS CONTAINS? TTRUE ;
+   REJECTION:BUFFER$ CDD-FIT-WANT CODEGEN:CONTENTS CONTAINS? TTRUE ;
 
 : CDD-FIT-DECLARED ( -- )
-   CDD-DIAG 4096 DIAG-BUFFER!
+   CDD-DIAG 4096 REJECTION:BUFFER!
    CDD-FIT$ TEST-EVAL:RC  70 T=
-   DIAG-BUFFER$ s" input row too wide to record (256 cells, at most 255)" CONTAINS? TTRUE
+   REJECTION:BUFFER$ s" input row too wide to record (256 cells, at most 255)" CONTAINS? TTRUE
    s\" \"declared_effect\":\"" s\" -- n \"" CDD-FIT-FIELD
    s\" \"declared_effect_source\":\"" s\" -- n\"" CDD-FIT-FIELD
-   DIAG-BUFFER-OFF
+   REJECTION:BUFFER-OFF
    s" 0 JSON-DIAGS !" TEST-EVAL:RC 0 T= ;
 
 : CDD-SECTION-CLAUSE-TAIL ( -- )
@@ -535,13 +535,13 @@ CDD-FIT-CAP CODEGEN:BUFFER CDD-FIT-WANT
 : CDD-SECTION-QUIET-CLAUSE ( -- )
    s" a clause naming a type a renderer may declare is deferred at that type" T-LABEL
    true VERIFY:REPORT-DEFERRALS
-   CDD-DIAG 4096 DIAG-BUFFER!
+   CDD-DIAG 4096 REJECTION:BUFFER!
    CHECKER-SCOPE-START-NEUTRAL
    [: CDD-QUIET$ s" cdd-quiet.f" VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;] catch
    CHECKER-SCOPE-DONE
    0 T=
-   DIAG-BUFFER$ s\" \"verdict\":\"deferred\",\"token\":\"cdd-qt\"" CONTAINS? TTRUE
-   DIAG-BUFFER-OFF
+   REJECTION:BUFFER$ s\" \"verdict\":\"deferred\",\"token\":\"cdd-qt\"" CONTAINS? TTRUE
+   REJECTION:BUFFER-OFF
    VERIFY:CENSUS 1 T= drop ;
 
 \ Section 15: a does> word patches the latest created word, which takes the
