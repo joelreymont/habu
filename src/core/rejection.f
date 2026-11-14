@@ -345,6 +345,13 @@ variable PLACED
 PTR-VARIABLE PLACE-FILE-A  variable PLACE-FILE-U
 variable AT-LINE  variable AT-COLUMN  variable AT-BYTE  variable AT-END
 PTR-VARIABLE LINE-A  variable LINE-U  variable LEAD-U
+\ A token in an evaluated text is placed at the token INVOKED-A INVOKED-U where
+\ the evaluation was run, and its note, the line EVALUATED-A EVALUATED-U of that
+\ text that holds it, follows the label.
+variable EVALUATED   0 EVALUATED !
+PTR-VARIABLE EVALUATED-A  variable EVALUATED-U
+PTR-VARIABLE INVOKED-A  variable INVOKED-U
+EVAL-TOP-CELL RESERVED-PTR-U8-CELL EVAL-TOP
 
 : END-TEXT ( -- )
    PART @ NO-PART = IF EXIT THEN
@@ -400,7 +407,7 @@ private
 : BUFFER-PLACE ( ptr u8 n ptr u8 n -- ) {: b:ptr bu:n t:ptr tu:n :}
    b t 1 1 0 POSITION POSITION!
    AT-BYTE @ tu + AT-END !
-   t CUT ;
+   b bu t LINE! ;
 \ The bytes of the buffer read that the pending definition's body text
 \ copied the token t tu from, by the rows the copy records (layout.f
 \ BODY-SOURCE); else t. Rows count from the buffer's first byte, and they
@@ -423,22 +430,87 @@ private
    INPUT-START @ src + x + r cells rows + @ - {: p:ptr :}
    INPUT$ p tu HOLDS? IF p EXIT THEN
    t ;
+\ Each evaluate frame saved the input it interrupted, its start, end and read
+\ position (layout.f EVAL-INB), and links to the frame it runs in (EVAL-PREV).
+\ A loaded file and a REPL line run in frames of their own.
+: FRAME@ ( ptr u8 n -- ptr u8 ) + 0 ptr-field @ ;
+: OUTER ( ptr u8 -- ptr u8 )   EVAL-PREV FRAME@ ;
+: SAVED$ ( ptr u8 -- ptr u8 n ) {: f:ptr :}
+   f EVAL-INB FRAME@ {: b:ptr :}
+   b  f EVAL-INE FRAME@ b - ;
+\ Whether frame f is the first evaluation its input ran: f interrupted the
+\ active file's bytes, or the frame it runs in is the outermost, a REPL line's.
+: INVOKED? ( ptr u8 -- bool ) {: f:ptr :}
+   OWNED$ f EVAL-INB FRAME@ 0 HOLDS?
+   f OUTER OUTER NULL-PTR =  or ;
+\ The frame of the first evaluation, outward from the innermost; NULL-PTR when
+\ the input read is no evaluated text.
+: INVOKER ( -- ptr u8 )
+   EVAL-TOP @
+   dup NULL-PTR = IF EXIT THEN
+   dup OUTER NULL-PTR = IF drop NULL-PTR EXIT THEN
+   BEGIN dup INVOKED? 0= WHILE OUTER REPEAT ;
+\ Whether an evaluated text inside the invoker inv holds the token t tu: the
+\ buffer read, or one an inner frame interrupted. Sets EVALUATED-A and
+\ EVALUATED-U to that text's line holding the token, and answers the token in it.
+: IN-EVALUATED? ( ptr u8 n ptr u8 -- ptr u8 bool ) {: t:ptr tu:n inv:ptr :}
+   t tu BODY>INPUT {: s:ptr :}
+   INPUT$ s tu HOLDS? IF
+      INPUT$ s LINE!  LINE-A @ EVALUATED-A !  LINE-U @ EVALUATED-U !
+      s 0 0= EXIT
+   THEN
+   EVAL-TOP @ BEGIN dup inv = 0= WHILE
+      dup SAVED$ t tu HOLDS? IF
+         SAVED$ t LINE!  LINE-A @ EVALUATED-A !  LINE-U @ EVALUATED-U !
+         t 0 0= EXIT
+      THEN
+      OUTER
+   REPEAT drop
+   t 0 0= 0= ;
+\ The token in b that ends at or before p: back over blanks, then over the
+\ token's bytes, never before b.
+: READ-BACK ( ptr u8 ptr u8 -- ptr u8 n ) {: b:ptr p:ptr :}
+   p b - BEGIN dup 0 > IF dup 1 - b + c@ 33 < ELSE 0 0= 0= THEN WHILE 1 - REPEAT
+   {: e:n :}
+   e BEGIN dup 0 > IF dup 1 - b + c@ 32 > ELSE 0 0= 0= THEN WHILE 1 - REPEAT
+   {: s:n :}
+   b s +  e s - ;
+\ Places at the token the invoker's input had read as the evaluation began, in
+\ the active file or else the line it interrupted.
+: INVOKE-PLACE ( ptr u8 -- ) {: inv:ptr :}
+   inv SAVED$ {: b:ptr bu:n :}
+   b inv EVAL-INP FRAME@ READ-BACK {: a:ptr u:n :}
+   u 0= IF EXIT THEN
+   -1 EVALUATED !  a INVOKED-A !  u INVOKED-U !
+   OWNED$ a u HOLDS? IF OWNED$ a u BUFFER-PLACE LOAD-FILE$ PLACE-FILE! EXIT THEN
+   b bu a u BUFFER-PLACE NO-FILE$ PLACE-FILE! ;
 public
 \ Whether PLACE finds the byte p points at in a source it knows.
 : PLACES? ( ptr u8 -- bool ) {: p:ptr :}
    p >SOURCE nip IF 0 0= EXIT THEN
    p 1 BODY>INPUT {: s:ptr :}
    OWNED$ s 1 HOLDS? IF 0 0= EXIT THEN
-   INPUT$ s 1 HOLDS? ;
+   INPUT$ s 1 HOLDS? IF 0 0= EXIT THEN
+   INVOKER {: inv:ptr :}
+   inv NULL-PTR = IF 0 0= 0= EXIT THEN
+   p 1 inv IN-EVALUATED? nip ;
 private
 \ The armed source holding the token's first byte, else the loader's owned
-\ bytes, else the buffer read, holding the whole token, as itself or as the
-\ bytes a body's text copied it from; else no place.
+\ bytes, else an evaluated text, which places it where the evaluation was run,
+\ else the buffer read, holding the whole token, as itself or as the bytes a
+\ body's text copied it from; else no place.
 : PLACE ( ptr u8 n -- ) {: t:ptr tu:n :}
-   0 PLACED !
+   0 PLACED !  0 EVALUATED !
    t >SOURCE IF t tu SOURCE-PLACE EXIT THEN drop
    t tu BODY>INPUT {: s:ptr :}
    OWNED$ s tu HOLDS? IF OWNED$ s tu BUFFER-PLACE LOAD-FILE$ PLACE-FILE! EXIT THEN
+   INVOKER {: inv:ptr :}
+   inv NULL-PTR = 0= IF
+      t tu inv IN-EVALUATED? nip IF
+         inv INVOKE-PLACE  PLACED @ IF EXIT THEN
+         0 EVALUATED !
+      THEN
+   THEN
    INPUT$ s tu HOLDS? IF INPUT$ s tu BUFFER-PLACE NO-FILE$ PLACE-FILE! EXIT THEN
    LOAD-FILE$ {: fa:ptr fu:n :}
    fu 0 > IF fa fu ELSE NO-FILE$ THEN PLACE-FILE! ;
@@ -474,17 +546,35 @@ private
    AT-LINE @ EMIT-U  s"  | " EMIT-STR  LINE-A @ LINE-U @ EMIT-STR  10 EMIT1
    MARGIN s" | " EMIT-STR  LEAD  tu CARETS  32 EMIT1 ;
 
+\ A note's key; its value follows.
+: NOTE-KEY ( ptr u8 n -- ) {: k:ptr ku:n :}
+   JSON @ IF
+      NOTES @ IF 44 EMIT1 ELSE s" notes" FIELD  123 EMIT1  -1 NOTES ! THEN
+      k ku JSON-KEY  JSON-OPEN
+   ELSE
+      MARGIN  s" = " EMIT-STR  k ku EMIT-STR  s" : " EMIT-STR
+   THEN
+   VALUE-PART PART ! ;
+\ Ends the open text; the label's end writes the evaluated note.
+: CLOSE-PART ( -- )
+   END-TEXT
+   PART @ LABEL-PART = 0= IF EXIT THEN
+   EVALUATED @ 0= IF EXIT THEN
+   0 EVALUATED !
+   s" evaluated" NOTE-KEY  EVALUATED-A @ EVALUATED-U @ EMIT-STR
+   END-TEXT ;
+
 \ Closes a notes object no HELP closed, then the record; sends the record,
 \ or drops it under QUIET.
 : END-RECORD ( -- )
-   END-TEXT
+   CLOSE-PART
    JSON @ IF  NOTES @ IF 125 EMIT1 THEN  125 EMIT1  THEN  10 EMIT1
    NO-PART PART !
    QUIET @ 0= IF FLUSH ELSE 0 TEXT-LEN !  0 DEST ! THEN ;
 
 variable WARNING   0 WARNING !           \ the open record is a warning
 : BEGIN-RECORD ( ptr u8 n ptr u8 n -- ) {: sev:ptr su:n code:ptr cu:n :}
-   1 DEST !  0 TEXT-LEN !  0 NOTES !  1 GUTTER !
+   1 DEST !  0 TEXT-LEN !  0 NOTES !  1 GUTTER !  0 EVALUATED !
    JSON @ IF
       123 EMIT1  s" severity" JSON-KEY  sev su JSON-STRING
       s" code" FIELD  code cu JSON-STRING
@@ -506,21 +596,15 @@ public
    END-TEXT
    t tu PLACE
    PLACED @ IF AT-LINE @ DIGITS ELSE 1 THEN GUTTER !
-   JSON @ IF t tu PLACE-JSON ELSE t tu PLACE-PROSE THEN
+   EVALUATED @ IF INVOKED-A @ INVOKED-U @ ELSE t tu THEN {: p:ptr pu:n :}
+   JSON @ IF p pu PLACE-JSON ELSE p pu PLACE-PROSE THEN
    LABEL-PART PART ! ;
 \ A note's key; its value follows.
-: NOTE ( ptr u8 n -- ) {: k:ptr ku:n :}
-   END-TEXT
-   JSON @ IF
-      NOTES @ IF 44 EMIT1 ELSE s" notes" FIELD  123 EMIT1  -1 NOTES ! THEN
-      k ku JSON-KEY  JSON-OPEN
-   ELSE
-      MARGIN  s" = " EMIT-STR  k ku EMIT-STR  s" : " EMIT-STR
-   THEN
-   VALUE-PART PART ! ;
+: NOTE ( ptr u8 n -- )
+   CLOSE-PART NOTE-KEY ;
 \ The help text follows.
 : HELP ( -- )
-   END-TEXT
+   CLOSE-PART
    JSON @ IF
       NOTES @ IF 125 EMIT1  0 NOTES ! THEN
       s" help" FIELD  JSON-OPEN

@@ -2952,8 +2952,6 @@ private
 \ pops the frame and reads these fields where they sit. The clean-exit
 \ continuation at $10 stays zero: nothing reads it for a buffer this frame
 \ bounds.
-0 constant FR-INP
-8 constant FR-INE
 $18 constant FR-BOUND
 $20 constant FR-XDS
 $28 constant FR-CP
@@ -2993,8 +2991,8 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    EVAL-FRAME-SIZE CELL + ROLLBACK-CELLS:BYTES + {: total:n :}
    total MEM-ALLOC-PTR {: f:ptr :}
    total f EVAL-FRAME-SIZE FR!
-   INP-CELL CELL@ f FR-INP FR!
-   INE-CELL CELL@ f FR-INE FR!
+   INP-CELL CELL@ f EVAL-INP FR!
+   INE-CELL CELL@ f EVAL-INE FR!
    SRCLOC:INB-CELL CELL@ f EVAL-INB FR!
    STACK-ABI:BASE-CELL CELL@ cells-in cells + f FR-XDS FR!
    cp@ f FR-CP FR!
@@ -3036,8 +3034,8 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
 : FRAME-UNLINK ( ptr u8 -- ) {: f:ptr :}
    f EVAL-PREV FR@ EVAL-TOP-CELL CELL!
    EVALD-CELL CELL@ 1- EVALD-CELL CELL!
-   f FR-INP FR@ INP-CELL CELL!
-   f FR-INE FR@ INE-CELL CELL!
+   f EVAL-INP FR@ INP-CELL CELL!
+   f EVAL-INE FR@ INE-CELL CELL!
    f EVAL-INB FR@ SRCLOC:INB-CELL CELL! ;
 
 : FRAME-LEAVE ( ptr u8 -- ) {: f:ptr :}
@@ -3098,8 +3096,8 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
 
 : FRAME-RECOVER ( ptr u8 n -- ) {: f:ptr code:n :}
    f EVAL-FRAME:PEND FR@ 0= if f FRAME-ROLLBACK-CODE else FRAME-ROLLBACK-TOKEN then
-   f FR-INP FR@ INP-CELL CELL!
-   f FR-INE FR@ INE-CELL CELL!
+   f EVAL-INP FR@ INP-CELL CELL!
+   f EVAL-INE FR@ INE-CELL CELL!
    f EVAL-INB FR@ SRCLOC:INB-CELL CELL!
    f FRAME-RESTORE-SCOPE
    f EVAL-PREV FR@ EVAL-TOP-CELL CELL!
@@ -3127,8 +3125,8 @@ variable REPL-OK
 
 : REPL-RECOVER ( ptr u8 n ptr n -- ) {: f:ptr prior:n found:ptr :}
    f FRAME-ROLLBACK-CODE
-   f FR-INP FR@ INP-CELL CELL!
-   f FR-INE FR@ INE-CELL CELL!
+   f EVAL-INP FR@ INP-CELL CELL!
+   f EVAL-INE FR@ INE-CELL CELL!
    f EVAL-INB FR@ SRCLOC:INB-CELL CELL!
    f FRAME-RESTORE-SCOPE
    prior USE-FLOOR !
