@@ -30,12 +30,10 @@ private
    SB$ HAS? ;
 
 : DIV-ZERO ( -- )
-   S\" \"code\":\"E-DIV-ZERO\"" HAS?
-   S\" \"repair_class\":\"fix_divisor\"" HAS? ;
+   S\" \"code\":\"E-DIV-ZERO\"" HAS? ;
 
 : THROW-ZERO ( -- )
-   S\" \"code\":\"E-THROW-ZERO\"" HAS?
-   S\" \"repair_class\":\"fix_throw_code\"" HAS? ;
+   S\" \"code\":\"E-THROW-ZERO\"" HAS? ;
 
 \ ---- the refusals ------------------------------------------------------------
 

@@ -96,7 +96,7 @@ variable STATUS
 \ shallower stack before the body runs, names the token and exits 70.
 : NAMED-UNDERDEPTH ( ptr u8 n ptr u8 n -- ) {: src:ptr size:n diag:ptr diagu:n :}
    src size CHILD-RC 70 T=
-   ERR ERRLEN @ diag diagu T$= ;
+   ERR ERRLEN @ diag diagu CONTAINS? TTRUE ;
 
 \ Tier-0 2>r/2r> use the guarded VM return mapping (src/habu/stack-abi.f). A raw
 \ RSP store inside the compiled word sets each row's slots: the interpreter
@@ -116,7 +116,7 @@ variable STATUS
 : PRIMITIVE-BOUNDARIES ( -- )
    HB-TARGET-LINUX-X86-64? 0= if PRIMITIVE-RETURN-ARM then
    s" empty data-stack adjustment" T-LABEL
-   s" drop" S\" E-UNDERFLOW habu: interpret stack underdepth: drop\n" NAMED-UNDERDEPTH
+   s" drop" s" error[E-UNDERFLOW]: `drop` takes more values than the stack holds" NAMED-UNDERDEPTH
    s" the last loop frame" T-LABEL
    s" : NEST ( n -- ) dup 0= if drop exit then 1 0 do dup 1 - recurse loop drop ; STACK-ABI:LOOP-FRAMES NEST"
    CHILD-RC 0 T=

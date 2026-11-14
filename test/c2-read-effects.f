@@ -80,7 +80,7 @@ public
    s" defer C2-DEFER ( a -- a ) NEWTYPE c2-dholder<a> : C2-DEFER-STORE ( [ c2-dholder<read-view<p,q,u8>> -- c2-dholder<read-view<p,q,u8>> ] -- ) is C2-DEFER ;" 70 SUBJECT:EXITED? TTRUE
    s" a phantom wrapper cannot erase a scoped dependency" T-LABEL
    s" NEWTYPE c2-phantom<a> CAST: C2-ERASE ( c2-phantom<read-view<p,q,u8>> -- n )"
-      70 s" cast: 'C2-ERASE': a scoped cast is not two cells on each side" SUBJECT:REFUSED? TTRUE
+      70 s" error[E-CAST-SCOPE]: in `cast: C2-ERASE`, a scoped cast is not two cells on each side" SUBJECT:REFUSED? TTRUE
    s" exclusive views remain inadmissible until loan accounting" T-LABEL
    s" : C2-MUT ( mut-view<p,q,u8> -- ) drop ;" 70 SUBJECT:EXITED? TTRUE
    s" direct borrowed schemas wait for scoped storage" T-LABEL

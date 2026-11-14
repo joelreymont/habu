@@ -27,7 +27,10 @@ private
 
 : STORED ( -- )
    S\" \"code\":\"E-BAD-STORAGE\"" HAS?
-   s" a width is not stored: keep its bytes (width>n)" HAS? ;
+   S\" \"label\":\"width in a stored type\"" HAS? ;
+
+: MISMATCH ( ptr u8 n -- )   \ the notes' expected and found
+   S\" \"code\":\"E-MISMATCH\"" HAS?  HAS? ;
 
 : CASE-GENERIC ( -- )
    s" a width of any type is read and passed on" T-LABEL
@@ -43,38 +46,38 @@ private
    s" a width of one type is not a width of another" T-LABEL
    ARM
    [: s" : W5 ( width<n> -- n ) W3 ;" evaluate-closed ;] CHECK-RC TTHROWSQ
-   S\" \"expected\":\"width<turn> \",\"actual\":\"width<n> \"" HAS?
+   S\" \"expected\":\"width<turn>\",\"found\":\"width<n>\"" MISMATCH
    DISARM
    ARM
    [: s" : W8 ( width<u8> -- width<u32> ) ;" evaluate-closed ;]
    CHECK-RC TTHROWSQ
-   S\" \"expected\":\"width<u32> \",\"actual\":\"width<u8> \"" HAS?
+   S\" \"expected\":\"width<u32>\",\"found\":\"width<u8>\"" MISMATCH
    DISARM
    ARM
    [: s" : W9 ( width<n> -- width<u8> ) ;" evaluate-closed ;] CHECK-RC TTHROWSQ
-   S\" \"expected\":\"width<u8> \",\"actual\":\"width<n> \"" HAS?
+   S\" \"expected\":\"width<u8>\",\"found\":\"width<n>\"" MISMATCH
    DISARM
    [: s" : W10 ( width<u32> -- n ) width>n ;" evaluate-closed ;] 0 TTHROWSQ
    ARM
    [: s" : W11 ( width<u8> -- n ) W10 ;" evaluate-closed ;] CHECK-RC TTHROWSQ
-   S\" \"expected\":\"width<u32> \",\"actual\":\"width<u8> \"" HAS?
+   S\" \"expected\":\"width<u32>\",\"found\":\"width<u8>\"" MISMATCH
    DISARM
    ARM
    [: s" : W12 ( [ -- width<u8> ] -- [ -- width<u32> ] ) ;" evaluate-closed ;]
    CHECK-RC TTHROWSQ
-   S\" \"expected\":\"[ -- width<u32> ] \",\"actual\":\"[ -- width<u8> ] \""
-   HAS?
+   S\" \"expected\":\"[ -- width<u32> ]\",\"found\":\"[ -- width<u8> ]\""
+   MISMATCH
    DISARM ;
 
 : CASE-NOT-N ( -- )
    s" an n is not a width, and a width takes no arithmetic" T-LABEL
    ARM
    [: s" : W6 ( n -- width<n> ) ;" evaluate-closed ;] CHECK-RC TTHROWSQ
-   S\" \"expected\":\"width<n> \",\"actual\":\"n \"" HAS?
+   S\" \"expected\":\"width<n>\",\"found\":\"n\"" MISMATCH
    DISARM
    ARM
    [: s" : W7 ( width<n> -- n ) 1 + ;" evaluate-closed ;] CHECK-RC TTHROWSQ
-   S\" \"expected\":\"n n \",\"actual\":\"width<n> n \"" HAS?
+   S\" \"expected\":\"n n\",\"found\":\"width<n> n\"" MISMATCH
    DISARM ;
 
 : CASE-STORAGE ( -- )
@@ -91,7 +94,8 @@ private
 : DECL-REFUSED ( ptr u8 n -- )
    {: a:ptr u:n :}
    ARM
-   [: a u evaluate-closed ;] 7109 TTHROWSQ
+   [: a u evaluate-closed ;] CHECK-RC TTHROWSQ
+   S\" \"code\":\"E-BAD-DECLARATION\"" HAS?
    s" a width is not stored: keep its bytes (width>n)" HAS?
    DISARM ;
 

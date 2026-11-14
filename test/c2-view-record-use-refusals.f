@@ -16,7 +16,7 @@ public
    s" defer C2V-COPY-T ( ptr t ptr t -- ) : C2V-COPY-CELL ( ptr t ptr t -- ) swap @ swap ! ; : C2V-INSTALL ( -- ) [: C2V-COPY-CELL ;] is C2V-COPY-T ; C2V-INSTALL : C2V-CALL-ONE ( ptr n ptr n -- ) C2V-COPY-T ;" 70 SUBJECT:EXITED? TTRUE
    s" a typed quotation cell over a type variable is refused at its declaration" T-LABEL
    s" TYPED-VARIABLE C2V-SLOT [ ptr t ptr t -- ]" 70
-   s" in C2V-SLOT: stored type may hold a linear value '[ ptr t ptr t -- ]'" SUBJECT:REFUSED? TTRUE
+   s" error[E-BAD-STORAGE]: the type of `C2V-SLOT` may hold a linear value" SUBJECT:REFUSED? TTRUE
    s" a defer accepts a fully generic pointer-only implementation" T-LABEL
    s" defer C2V-PASS-T ( ptr t ptr t -- ) : C2V-PASS ( ptr t ptr t -- ) 2drop ; : C2V-INSTALL ( -- ) [: C2V-PASS ;] is C2V-PASS-T ; C2V-INSTALL : C2V-CALL-ONE ( ptr n ptr n -- ) C2V-PASS-T ;" 0 SUBJECT:EXITED? TTRUE
    s" a defer cannot retain a fixed-row implementation as a generic row" T-LABEL

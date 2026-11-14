@@ -418,7 +418,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" : MAIN ( -- ) 1 ;" s" unchecked.f" SOURCE!
    s" an unchecked MAIN is refused with 74 and no module" T-LABEL
    s" unchecked.wasm" BUILD 74 T=
-   s" hook: non-certified definition: main" ERR-HAS
+   s" error[E-MISMATCH]" ERR-HAS
+   s" unchecked.f:1:15" ERR-HAS
    s" threw 70" ERR-HAS
    NO-MODULE
    s" require src/lib/span.f : MAIN ( -- ) 8 SPAN-BUFFER: ;" s" reached-definer.f" SOURCE!

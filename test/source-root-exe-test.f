@@ -311,7 +311,8 @@ variable DEEP-U
 \ The loader's open failure for <dir><name>, exit 74.
 : CANNOT-OPEN ( ptr u8 n ptr u8 n -- )
    {: dir:ptr diru:n name:ptr nameu:n :}
-   SB-RESET s" include: cannot open " SB-APPEND dir diru SB-APPEND name nameu SB-APPEND
+   SB-RESET s" error[E-MISSING-SOURCE]: cannot open `" SB-APPEND
+   dir diru SB-APPEND name nameu SB-APPEND 96 SB-APPEND-C
    RC @ INCLUDE-IO-RC = ERR$ SB$ CONTAINS? and 0= if SHOW then
    RC @ INCLUDE-IO-RC T=
    ERR$ SB$ CONTAINS? TTRUE ;
@@ -323,6 +324,20 @@ variable DEEP-U
    RC @ INCLUDE-IO-RC T=
    OUT-U @ 0 T=
    ERR$ want wantu T$= ;
+
+\ A rejection record: exit CHECKER-REJECT-RC, nothing on stdout, this code on
+\ stderr.
+: REJECTED ( ptr u8 n -- )
+   {: code:ptr codeu:n :}
+   RC @ CHECKER-REJECT-RC = OUT-U @ 0= and ERR$ code codeu CONTAINS? and 0= if SHOW then
+   RC @ CHECKER-REJECT-RC T=
+   OUT-U @ 0 T=
+   ERR$ code codeu CONTAINS? TTRUE ;
+
+\ The record says this too.
+: SAYS ( ptr u8 n -- )
+   {: want:ptr wantu:n :}
+   ERR$ want wantu CONTAINS? dup 0= if SHOW then TTRUE ;
 
 \ The root, whether a frozen row answers, then a library only a root holds.
 : ROOT-PROGRAM ( -- )
@@ -538,10 +553,12 @@ variable DEEP-U
 : CD-PROG ( ptr u8 n -- ) {: rel:ptr relu:n :}
    PROG-RESET s" SOURCE-ROOT:CD" rel relu PATH-LINE ;
 
-\ The refusal want, then <tmp>/<rel>.
+\ CD's rejection naming <tmp>/<rel>, and why.
 : CD-WANT ( ptr u8 n ptr u8 n -- )
    {: rel:ptr relu:n want:ptr wantu:n :}
-   SB-RESET want wantu SB-APPEND rel relu A$ LINE SB$ REFUSAL ;
+   s" error[E-SOURCE-ROOT]" REJECTED
+   SB-RESET s" `SOURCE-ROOT:CD` got `" SB-APPEND rel relu A$ SB-APPEND 96 SB-APPEND-C SB$ SAYS
+   want wantu SAYS ;
 
 : CD-REFUSED ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: label:ptr labelu:n rel:ptr relu:n want:ptr wantu:n :}
@@ -558,7 +575,7 @@ variable DEEP-U
    s" locked" A$ NO-ACCESS FS:CHMOD-MODE
    s" locked/inner" CD-PROG
    [: RUN-TREE ;] [: s" locked" A$ MODE-DIR FS:CHMOD-MODE ;] finally
-   s" locked/inner" s" source root: does not resolve to a directory: " CD-WANT ;
+   s" locked/inner" s" does not resolve to a directory" CD-WANT ;
 
 : CD-SEARCH-ONLY ( -- )
    s" a directory searchable without read permission is a current path" T-LABEL
@@ -575,7 +592,9 @@ variable DEEP-U
    PROG-RESET s" SOURCE-ROOT:CD" s" deep" PATH-LINE
    DEEP-LEVELS 1+ 0 do SB-RESET s" SOURCE-ROOT:CD " SB-APPEND LONG LONG-NAME SB-APPEND SB$ PLINE loop
    RUN-TREE
-   S\" source root: path is too long\n" REFUSAL ;
+   s" error[E-PATH-RANGE]" REJECTED
+   s" `SOURCE-ROOT:CD` got a path" SAYS
+   s" bytes a path may have" SAYS ;
 
 \ A path word in <tmp>/<file>, the --load entry.
 : IN-LOAD ( ptr u8 n ptr u8 n -- )
@@ -584,14 +603,15 @@ variable DEEP-U
    s" --load" >LEN PROC-ARGV+
    file fileu A$ >LEN PROC-ARGV+
    s" tree/bin/hb" HB-AT$ FOREIGN$ RUN-ARGS
-   want wantu REFUSAL ;
+   s" error[E-SOURCE-ROOT]" REJECTED
+   want wantu SAYS ;
 
 \ A load holds the path it replaced, so none of the words may move it.
 : PATH-IN-LOAD ( -- )
    s" the path words are refused inside a loaded file" T-LABEL
-   s" cd-load.f" S\" CD: refused inside a load or a root scope; scope a root with SOURCE-ROOT:WITH\n" IN-LOAD
-   s" push-load.f" S\" PUSHPATH: refused inside a load or a root scope; scope a root with SOURCE-ROOT:WITH\n" IN-LOAD
-   s" pop-load.f" S\" POPPATH: refused inside a load or a root scope; scope a root with SOURCE-ROOT:WITH\n" IN-LOAD ;
+   s" cd-load.f" s" `SOURCE-ROOT:CD` runs inside a load or a root scope" IN-LOAD
+   s" push-load.f" s" `SOURCE-ROOT:PUSHPATH` runs inside a load or a root scope" IN-LOAD
+   s" pop-load.f" s" `SOURCE-ROOT:POPPATH` runs inside a load or a root scope" IN-LOAD ;
 
 \ A root scope holds the path it replaced too, with no file loaded.
 : PATH-IN-ROOT ( -- )
@@ -600,7 +620,8 @@ variable DEEP-U
    S\" : G ( -- ) s\q /tmp\q [: SOURCE-ROOT:CD ;] SOURCE-ROOT:WITH ;" PLINE
    s" G" PLINE
    RUN-TREE
-   S\" CD: refused inside a load or a root scope; scope a root with SOURCE-ROOT:WITH\n" REFUSAL ;
+   s" error[E-SOURCE-ROOT]" REJECTED
+   s" `SOURCE-ROOT:CD` runs inside a load or a root scope" SAYS ;
 
 \ A null slot is the working directory, which the last POPPATH restores. The
 \ round trip spells the words bare under `using SOURCE-ROOT`.
@@ -623,7 +644,8 @@ variable DEEP-U
    s" POPPATH on an empty stack is refused by name" T-LABEL
    PROG-RESET s" SOURCE-ROOT:POPPATH" PLINE
    RUN-TREE
-   S\" POPPATH: directory stack is empty\n" REFUSAL
+   s" error[E-SOURCE-ROOT]" REJECTED
+   s" `SOURCE-ROOT:POPPATH` runs with no directory saved" SAYS
    s" PUSHPATH on a full stack is refused by name" T-LABEL
    PROG-RESET OVER-DEPTH 0 do s" SOURCE-ROOT:PUSHPATH" PLINE loop
    RUN-TREE
@@ -641,10 +663,10 @@ variable DEEP-U
    RUN-TREE
    SB-RESET s" from cd" LINE s" cd/sub" A$ LINE SB$ 0 EXPECT
    s" CD to a missing directory is refused by name" s" absent"
-   s" source root: does not resolve to a directory: " CD-REFUSED
+   s" does not resolve to a directory" CD-REFUSED
    CD-LOCKED
    s" CD to a file is refused by name" s" cd/x.f"
-   s" source root: is not a searchable directory: " CD-REFUSED
+   s" is not a directory this process can search" CD-REFUSED
    CD-SEARCH-ONLY CD-TOO-LONG PATH-IN-LOAD PATH-IN-ROOT PATH-STACK ;
 
 : MAIN ( -- )

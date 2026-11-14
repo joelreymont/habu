@@ -24,7 +24,8 @@ public
    s" package C2-FORALL-INPUT public : BOUND-GENERIC ( read-view<p,p,u8> forall<q inside p,[ read-view<p,q,u8> -- read-view<p,q,u8> ]> -- read-view<p,p,u8> ) TAKE-SCOPE ; ;package" 70 SUBJECT:EXITED? TTRUE
    s" a view borrowed after surplus specialization cannot leave its loan" T-LABEL
    s" package C2-FORALL-INPUT public : LOAN-ESCAPE ( R read-view<p,p,u8> forall<q,[ read-view<q,q,u8> -- read-view<q,q,u8> ]> forall<j inside p,[ read-view<p,j,u8> -- read-view<p,j,u8> read-view<p,j,u8> ]> | U -- S read-view<p,p,u8> | U ) {: loan :} GENERIC-SCOPE loan C2-MEM:WITH-READ ; ;package"
-   70 s" at 'C2-MEM:WITH-READ'" SUBJECT:REFUSED? TTRUE
+   2dup 70 s" error[E-C2-SCOPE-ESCAPE]: scoped value escapes its owner or loan" SUBJECT:REFUSED? TTRUE
+   70 s" at `C2-MEM:WITH-READ`" SUBJECT:REFUSED? TTRUE
    T-REPORT
    s" c2-forall-input-refusals: ok" type cr ;
 ;package

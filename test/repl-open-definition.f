@@ -62,7 +62,7 @@ using PTY-HARNESS
       then
    then
    74 EXIT=
-   s" E-VS-UNTERMINATED-DEFINITION habu: source ended inside definition: EOF-Y" IN-BUF? TTRUE ;
+   s" error[E-VS-UNTERMINATED-DEFINITION]" s" `EOF-Y`" AFTER? TTRUE ;
 
 \ A failed definition must unwind through the line savepoint, then accept a
 \ new definition.
@@ -125,8 +125,8 @@ using PTY-HARNESS
    s" ." STEP TTRUE
    s" 33" IN-BUF? TTRUE
    BUF-CLEAR s" 5 NO-SUCH-WORD" SEND-LINE
-   s" E-UNDEFINED habu: undefined word 'NO-SUCH-WORD'" WAIT-FOR TTRUE
-   s" E-UNDEFINED habu: undefined word 'NO-SUCH-WORD'" s" habu> " WAIT-AFTER TTRUE
+   s" error[E-UNDEFINED]" s" `NO-SUCH-WORD`" WAIT-AFTER TTRUE
+   s" `NO-SUCH-WORD`" s" habu> " WAIT-AFTER TTRUE
    s" depth ." STEP TTRUE
    s" 0" IN-BUF? TTRUE
    s" 22 TWICE ." STEP TTRUE
