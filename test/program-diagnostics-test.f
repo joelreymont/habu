@@ -74,6 +74,18 @@ package PROGRAM-DIAGNOSTICS
    path pathu rc marker markeru text textu NEGATIVE
    text textu path pathu EXPECT-DIE-LINE ;
 
+\ A bootstrap-created word's cell refused where its signature promises another
+\ type: the record names both.
+: CREATED-MISMATCH ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: path:ptr pathu:n want:ptr wantu:n found:ptr foundu:n :}
+   path pathu 70 s" BOOTSTRAP-CREATED-ARMED" s" error[E-MISMATCH]" NEGATIVE
+   want wantu path pathu GE-EXPECT-ERR-HAS
+   found foundu path pathu GE-EXPECT-ERR-HAS ;
+
+\ How many rejection records stderr holds.
+: RECORDS ( -- n )
+   GT-ERR$ s" error[" COUNT-SUB ;
+
 : NEGATIVES ( -- )
    s" test/address-cell-kind-bad.f" 99 s" ADDRESS-CELL-KIND-ARMED"
       s" E-XTKIND habu: snapshot address cell kind mismatch" NEGATIVE-LINE
@@ -85,16 +97,17 @@ package PROGRAM-DIAGNOSTICS
       s" CHECKER-DECL-DEPTH0-ARMED" s" declaration rollback failed" NEGATIVE
    s" test/enum-ctor-collide-bad.f"
       s" name is reserved or already taken" DIAGNOSTIC
+   s" error[E-BAD-DECLARATION]" s" test/enum-ctor-collide-bad.f" GE-EXPECT-ERR-HAS
    s" test/deftype-dup-bad.f" 70
       s" DEFTYPE-DUP-ARMED" s" duplicate family" NEGATIVE
-   s" test/bootstrap-created-effect-src.f" 70
-      s" BOOTSTRAP-CREATED-ARMED" s" actual: ptr a" NEGATIVE
-   s" test/bootstrap-created-raw-src.f" 70
-      s" BOOTSTRAP-CREATED-ARMED" s" expected: nom-id actual: a" NEGATIVE
-   s" test/bootstrap-created-const-src.f" 70
-      s" BOOTSTRAP-CREATED-ARMED" s" expected: kon-id actual: a" NEGATIVE
-   s" test/bootstrap-created-does-src.f" 70
-      s" BOOTSTRAP-CREATED-ARMED" s" expected: dow-id actual: a" NEGATIVE ;
+   s" test/bootstrap-created-effect-src.f"
+      S\" = expected: (nothing)\n" S\" = found: ptr a\n" CREATED-MISMATCH
+   s" test/bootstrap-created-raw-src.f"
+      S\" = expected: nom-id\n" S\" = found: a\n" CREATED-MISMATCH
+   s" test/bootstrap-created-const-src.f"
+      S\" = expected: kon-id\n" S\" = found: a\n" CREATED-MISMATCH
+   s" test/bootstrap-created-does-src.f"
+      S\" = expected: dow-id\n" S\" = found: a\n" CREATED-MISMATCH ;
 
 false [if] \ off until dot habu-add-the-checks-a49d054d
 \ The trap ends the load's process, so its exit code and stderr are what is checked.
@@ -116,53 +129,49 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
       s" E-BAD-TAG habu: layout tag 2 outside 0..1" NEGATIVE ;
 [then]
 
-\ Each refused signature of a multi-error load is counted once and written once:
-\ a second report of one would be a second line on stderr and a count of 2.
+\ Each rejected signature of a multi-error load is counted once and written once:
+\ a second report of one would be a fourth record on stderr and a count of 2.
 : BADSIG-ONCE ( -- )
    s" test/program-diagnostic-badsig.f" {: path:ptr pathu:n :}
    path pathu RUN-LOAD
    path pathu GE-EXPECT-OK
    GT-OUT$ S\" 1\n1\n1\nok\n" STR= 0= if s" badsig counts" GE-FAIL then
-   SB-RESET
-   S\" habu: in pdb-colon: unknown type 'zz' in signature; suggestion: Use a known stack-signature type or a single-letter type variable.\n" SB-APPEND
-   S\" habu: in pdb-trusted: bad stored signature '-- zz'\n" SB-APPEND
-   S\" habu: in pdb-defer: bad stored signature '-- zz'\n" SB-APPEND
-   GT-ERR$ SB$ STR= 0= if s" badsig reports" GE-FAIL then ;
+   RECORDS 3 <> if s" badsig reports" GE-FAIL then
+   s" error[E-UNKNOWN-SIGNATURE-TYPE]: unknown type `zz` in signature" path pathu GE-EXPECT-ERR-HAS
+   s" error[E-BAD-STORED-SIGNATURE]: the signature of `pdb-trusted`" path pathu GE-EXPECT-ERR-HAS
+   s" error[E-BAD-STORED-SIGNATURE]: the signature of `pdb-defer`" path pathu GE-EXPECT-ERR-HAS ;
 
 : BADSIG-WIDE-ONCE ( -- )
    s" test/program-diagnostic-wide-native.f" {: path:ptr pathu:n :}
    path pathu RUN-LOAD
    path pathu GE-EXPECT-OK
    GT-OUT$ S\" 0\n1\nok\n" STR= 0= if s" wide badsig count" GE-FAIL then
-   s" habu: in pdb-wide: bad stored signature" path pathu GE-EXPECT-ERR-HAS
+   s" error[E-BAD-STORED-SIGNATURE]: the signature of `pdb-wide`" path pathu GE-EXPECT-ERR-HAS
    s" input row too wide to record (256 cells, at most 255)" path pathu GE-EXPECT-ERR-HAS ;
 
-\ A multi-error load counts the refusals it renders: a quiet scan's refusal is
-\ neither printed nor counted, so the count is 1 and stderr holds BADC's line.
+\ A multi-error load counts the rejections it renders: a quiet scan's rejection
+\ is neither printed nor counted, so the count is 1 and stderr holds one record.
 : QUIET-COUNT-ONCE ( -- )
    s" test/program-diagnostic-quiet-count.f" {: path:ptr pathu:n :}
    path pathu RUN-LOAD
    path pathu GE-EXPECT-OK
    GT-OUT$ S\" 0\n1\n1\nok\n" STR= 0= if s" quiet count" GE-FAIL then
-   SB-RESET
-   s" habu: in badc: at 'drop' input underflow: the call takes more cells than " SB-APPEND
-   s" the definition's declared inputs leave (needs 1, has 0); suggestion: " SB-APPEND
-   s" Push the missing inputs before the call, or declare them in the signature; " SB-APPEND
-   S\" a definition may not consume below its declared inputs.\n" SB-APPEND
-   GT-ERR$ SB$ STR= 0= if s" quiet count reports" GE-FAIL then ;
+   RECORDS 1 <> if s" quiet count reports" GE-FAIL then
+   s" error[E-INPUT-UNDERFLOW]" path pathu GE-EXPECT-ERR-HAS
+   s" (needs 1, has 0)" path pathu GE-EXPECT-ERR-HAS ;
 
 : DIAGNOSTICS ( -- )
    BADSIG-ONCE
    BADSIG-WIDE-ONCE
    QUIET-COUNT-ONCE
    s" test/program-diagnostic-me.f" s" habu: in mea1:" DIAGNOSTIC
-   s" test/native-multi-error-recovery.f" s" habu: in bad:" HABU-DIAGNOSTIC
-   s" native-multi-error-recovery.f: at 'c@' expected: ptr u8 actual: n" s" test/native-multi-error-recovery.f" GE-EXPECT-ERR-HAS
-   s" test/native-multi-error-recovery.f" s" habu: in bad:" DIAGNOSTIC
-   s" native-multi-error-recovery.f: at 'c@' expected: ptr u8 actual: n" s" test/native-multi-error-recovery.f" GE-EXPECT-ERR-HAS
+   s" test/native-multi-error-recovery.f" s" native-multi-error-recovery.f:25:18" HABU-DIAGNOSTIC
+   s" error[E-MISMATCH]: `c@` takes ptr u8; the stack holds n" s" test/native-multi-error-recovery.f" GE-EXPECT-ERR-HAS
+   s" test/native-multi-error-recovery.f" s" native-multi-error-recovery.f:25:18" DIAGNOSTIC
+   s" error[E-MISMATCH]: `c@` takes ptr u8; the stack holds n" s" test/native-multi-error-recovery.f" GE-EXPECT-ERR-HAS
    s" test/program-diagnostic-ctor.f" s" duplicate family" DIAGNOSTIC
-   s" test/program-diagnostic-using.f" s" E-USING-UNKNOWN habu: " DIAGNOSTIC
-   s" using: unknown package: NOPE-PKG" s" test/program-diagnostic-using.f" GE-EXPECT-ERR-HAS
+   s" test/program-diagnostic-using.f" s" error[E-USING-UNKNOWN]" DIAGNOSTIC
+   s" no package is named `NOPE-PKG`" s" test/program-diagnostic-using.f" GE-EXPECT-ERR-HAS
    s" test/program-diagnostic-export.f" s" habu: in xpu3:" DIAGNOSTIC
    s" test/program-diagnostic-lower.f" s" habu: in lc-named-bad:" DIAGNOSTIC ;
 

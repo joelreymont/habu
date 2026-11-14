@@ -98,7 +98,7 @@ variable ERR-U         \ bytes the last child wrote to fd 2
 : MISSING-DEFINITION-NAME ( -- )
    s" a lone colon rejects at the engine reader" T-LABEL
    HB$ s" :" RUN-SOURCE $4A T=
-   ERR$ s" habu: missing definition name after :" CONTAINS? TTRUE ;
+   ERR$ s" error[E-MISSING-NAME]: `:` has no definition name" CONTAINS? TTRUE ;
 
 : EXACT-EXITS ( -- )
    s" code certificate exits 88" T-LABEL
@@ -116,7 +116,9 @@ variable ERR-U         \ bytes the last child wrote to fd 2
    s" compile keyword definition rejects at its name" T-LABEL
    HB$ src srcu RUN-SOURCE 70 T=
    s" compile keyword definition names the constraint" T-LABEL
-   ERR$ s" compile keyword cannot be a definition name: " CONTAINS? TTRUE
+   SB-RESET s" error[E-RESERVED-DEFINITION]: `" SB-APPEND tok toku SB-APPEND
+   s" ` is a compile keyword" SB-APPEND
+   ERR$ SB$ CONTAINS? TTRUE
    s" compile keyword definition stops before later source" T-LABEL
    OUT$ s" AFTER" CONTAINS? 0= TTRUE ;
 
@@ -144,10 +146,10 @@ variable ERR-U         \ bytes the last child wrote to fd 2
    s" compile keyword definition names CASE" T-LABEL
    HB$ S\" package KW-UPPER private : CASE ( -- ) ; s\" AFTER\" type ;package"
       RUN-SOURCE 70 T=
-   ERR$ s" compile keyword cannot be a definition name: CASE" CONTAINS? TTRUE
+   ERR$ s" error[E-RESERVED-DEFINITION]: `CASE` is a compile keyword" CONTAINS? TTRUE
    s" qualified compile keyword definition rejects at its tail" T-LABEL
    HB$ s" : KW-QUAL:CASE ( -- ) ;" RUN-SOURCE 70 T=
-   ERR$ s" compile keyword cannot be a definition name: CASE" CONTAINS? TTRUE
+   ERR$ s" error[E-RESERVED-DEFINITION]: `CASE` is a compile keyword" CONTAINS? TTRUE
    \ FOLD is a normal, non-immediate dictionary word, not engine syntax. Its
    \ same-name private definition must remain callable through ordinary lookup.
    s" ordinary FOLD definition remains callable" T-LABEL

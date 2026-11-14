@@ -1,4 +1,5 @@
-\ A generated constructor collision reports a catchable declaration error.
+\ A generated constructor collision prints its rejection record and throws the
+\ checker's status, which the caller catches.
 require src/lib/test.f
 
 package ENUM-CTOR-COLLIDE-BAD
@@ -11,7 +12,7 @@ public
 \ Run outside the package so the declaration publishes public constructors.
 : MAIN ( -- )
    T-RESET
-   [: DECLARE ;] TYPE-DECL:E-TDECL-NAME TTHROWSQ
+   [: DECLARE ;] CHECKER-REJECT-RC TTHROWSQ
    DECLARATION-TRANSACTION:ACTIVE? TFALSE
    ECOL:RED 37 T=
    T-REPORT ;

@@ -7,7 +7,7 @@ require src/lib/test.f
 package INT-CONVERT-TEST
 
 
-\ Captures the refusal diagnostic of one evaluated definition, in prose, which
+\ Captures the rejection record of one evaluated definition, in prose, which
 \ SAYS reads; answers its throw code, 0 when the definition loaded.
 : DEF-RC ( ptr u8 n -- n )
    REJECTION:CAPTURE
@@ -15,8 +15,9 @@ package INT-CONVERT-TEST
    false REJECTION:JSON !  TEST-EVAL:RC
    was REJECTION:JSON ! ;
 
-: SAYS ( ptr u8 n -- )
-   REJECTION:BUFFER$ 2swap CONTAINS? TTRUE  REJECTION:BUFFER-OFF ;
+: SAYS ( ptr u8 n ptr u8 n -- ) {: code:ptr codeu:n note:ptr noteu:n :}
+   REJECTION:BUFFER$ code codeu CONTAINS? TTRUE
+   REJECTION:BUFFER$ note noteu CONTAINS? TTRUE  REJECTION:BUFFER-OFF ;
 
 : LOW8 ( -- u8 ) 300 >U8 ;
 : LOW16 ( -- u16 ) 70000 >U16 ;
@@ -35,19 +36,19 @@ WIDE -1 T=
 \ Signatures: a word declared with a wider or different output would let the
 \ result pass where its declared type is refused, or refuse a fitting use.
 s" : P ( n -- u8 ) >U8 ;" DEF-RC 0 T=  REJECTION:BUFFER-OFF
-s" : X8 ( n -- bool ) >U8 ;" DEF-RC 70 T=  s" actual: u8" SAYS
-s" : X16 ( n -- bool ) >U16 ;" DEF-RC 70 T=  s" actual: u16" SAYS
-s" : X32 ( n -- bool ) >U32 ;" DEF-RC 70 T=  s" actual: u32" SAYS
-s" : X64 ( n -- bool ) >I64 ;" DEF-RC 70 T=  s" actual: i64" SAYS
-s" : Y8 ( bool -- ) >U8 drop ;" DEF-RC 70 T=  s" actual: bool" SAYS
-s" : Y16 ( bool -- ) >U16 drop ;" DEF-RC 70 T=  s" actual: bool" SAYS
-s" : Y32 ( bool -- ) >U32 drop ;" DEF-RC 70 T=  s" actual: bool" SAYS
-s" : Y64 ( bool -- ) >I64 drop ;" DEF-RC 70 T=  s" actual: bool" SAYS
+s" : X8 ( n -- bool ) >U8 ;" DEF-RC 70 T=  s" E-MISMATCH" s" found: u8" SAYS
+s" : X16 ( n -- bool ) >U16 ;" DEF-RC 70 T=  s" E-MISMATCH" s" found: u16" SAYS
+s" : X32 ( n -- bool ) >U32 ;" DEF-RC 70 T=  s" E-MISMATCH" s" found: u32" SAYS
+s" : X64 ( n -- bool ) >I64 ;" DEF-RC 70 T=  s" E-MISMATCH" s" found: i64" SAYS
+s" : Y8 ( bool -- ) >U8 drop ;" DEF-RC 70 T=  s" E-MISMATCH" s" found: bool" SAYS
+s" : Y16 ( bool -- ) >U16 drop ;" DEF-RC 70 T=  s" E-MISMATCH" s" found: bool" SAYS
+s" : Y32 ( bool -- ) >U32 drop ;" DEF-RC 70 T=  s" E-MISMATCH" s" found: bool" SAYS
+s" : Y64 ( bool -- ) >I64 drop ;" DEF-RC 70 T=  s" E-MISMATCH" s" found: bool" SAYS
 
 \ Retirement: a raw cast left defined retypes an n without masking it.
-s" : R8 ( n -- u8 ) >U8-RAW ;" DEF-RC 70 T=  s" undefined word '>U8-RAW'" SAYS
-s" : R16 ( n -- u16 ) >U16-RAW ;" DEF-RC 70 T=  s" undefined word '>U16-RAW'" SAYS
-s" : R32 ( n -- u32 ) >U32-RAW ;" DEF-RC 70 T=  s" undefined word '>U32-RAW'" SAYS
+s" : R8 ( n -- u8 ) >U8-RAW ;" DEF-RC 70 T=  s" E-UNDEFINED" s" cannot find word `>U8-RAW`" SAYS
+s" : R16 ( n -- u16 ) >U16-RAW ;" DEF-RC 70 T=  s" E-UNDEFINED" s" cannot find word `>U16-RAW`" SAYS
+s" : R32 ( n -- u32 ) >U32-RAW ;" DEF-RC 70 T=  s" E-UNDEFINED" s" cannot find word `>U32-RAW`" SAYS
 
 T-REPORT
 
