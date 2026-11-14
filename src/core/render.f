@@ -909,6 +909,11 @@ variable MDV-I   variable MDV-F
       MD-ARMS-DEPTH   of s" E-MISMATCH" endof
       MD-LOCAL-ESCAPE of s" E-LOCAL-ESCAPE" endof
       MD-BINDER-PLACE of s" E-BINDER-PLACE" endof
+      MD-FINALLY-CLEANUP of s" E-FINALLY-CLEANUP" endof
+      MD-CALLABLE-NARROW of s" E-CALLABLE-NARROW" endof
+      MD-QDUP-LAYOUT  of s" E-QDUP-LAYOUT" endof
+      MD-RECORD-AT-WIDE of s" E-RECORD-AT-WIDE" endof
+      MD-CONSTRUCT-WIDE of s" E-CONSTRUCT-WIDE" endof
       s" E-REJECTED" rot
    endcase ;
 
@@ -993,6 +998,11 @@ variable MDV-I   variable MDV-F
       MD-EXIT-LOOP    of s" write `unloop` before `exit` once for each loop the `exit` leaves, or `leave` the loop and return after it" endof
       MD-UNLOOP-JOIN  of s" write `unloop` for the same loops on every path that meets here, or `exit` from each path right after its `unloop`" endof
       MD-CF-OPEN      of s" close every `if`, `do`, `begin`, `case` and `[:` before the `;`" endof
+      MD-FINALLY-CLEANUP of s" put a cleanup of effect `[ -- ]` on top, as `[: body ;] [: cleanup ;] finally`" endof
+      MD-CALLABLE-NARROW of s" store a callable whose effect works for every type the cell's effect names, or declare the cell's effect with the types this one takes" endof
+      MD-QDUP-LAYOUT  of s" take the value apart with `MATCH` and test the arm you need" endof
+      MD-RECORD-AT-WIDE of s" index a `LAYOUT-BUFFER` or `TYPED-BUFFER` of the instantiated type, which steps by its width" endof
+      MD-CONSTRUCT-WIDE of s" declare the widest variant over the type argument, or hold the argument through a one-cell `ptr`" endof
       s" close each `MATCH family` with `;MATCH` after its `variant OF ... ENDOF` arms, and write `construct family variant` with both operands" rot
    endcase ;
 
@@ -1069,12 +1079,22 @@ variable MDV-I   variable MDV-F
       MD-EXIT-LOOP    of s" exit inside a loop needs unloop first" endof
       MD-UNLOOP-JOIN  of s" the paths that meet here have unlooped different loops" endof
       MD-CF-OPEN      of s" a control structure is still open at the end of the definition" endof
+      MD-FINALLY-CLEANUP of s" the cleanup `finally` runs must take and leave nothing" endof
+      MD-CALLABLE-NARROW of s" the callable works on fewer types than the cell or defer it goes into holds" endof
+      MD-QDUP-LAYOUT  of s" `?dup` tests one cell, and this value is held in more than one" endof
+      MD-RECORD-AT-WIDE of s" `record-at` steps by the record's declared width, and this instantiation is wider" endof
+      MD-CONSTRUCT-WIDE of s" the variant is wider than the declared widest variant once its type argument is filled in" endof
       s" bad match: rejected" rot
    endcase ;
 
 \ A reason's label: a few words under its token.
 : MD-LABEL$ ( n -- ptr u8 n )
    case
+      MD-FINALLY-CLEANUP of s" cleanup not stack-neutral" endof
+      MD-CALLABLE-NARROW of s" callable narrower than the cell" endof
+      MD-QDUP-LAYOUT  of s" not a one-cell value" endof
+      MD-RECORD-AT-WIDE of s" wide instantiation" endof
+      MD-CONSTRUCT-WIDE of s" variant wider than declared" endof
       s" here" rot
    endcase ;
 

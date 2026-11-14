@@ -4561,7 +4561,7 @@ private
 \ so no sound lowering exists and it is refused unconditionally, a candidate
 \ probe included. A MATCH arm reads only the instantiated pads.
 : TFC-XPAD-NARROW-REJECT ( -- )   \ certified instantiated width contradicts add-only lowering: never certify
-   0 OK ! -1 FAILSET ! ;
+   MD-CONSTRUCT-WIDE MDIAG!  0 OK ! -1 FAILSET ! ;
 
 : TFC-TAG-CELLS ( n -- n )   \ layout tag cells for a family: 1 for a tagged SUM/ENUM, 0 for a tagless PRODUCT/STRUCTURE
    dup TFAM-SUM? IF drop 1 EXIT THEN

@@ -5098,6 +5098,11 @@ CHECKER-REG:}SCRATCH
 70 constant MD-IS-STORED     \ a callable's cast-stored type variable meets a cell's unrestricted one (QCON-OK?); E-CAST-LINEAR
 71 constant MD-DIV-ZERO      \ a literal 0 divisor reached the engine's `/`, `mod` or `/mod` (ZERO-OPERAND?)
 72 constant MD-THROW-ZERO    \ a literal 0 reached the engine's `throw` (ZERO-OPERAND?)
+73 constant MD-FINALLY-CLEANUP \ a cleanup `finally` or a C2 invoke runs is not `[ -- ]` (CLEANUP-QUOT?, C2-FINISH-QUOT?)
+74 constant MD-CALLABLE-NARROW \ a callable stored or installed takes fewer types than the cell's or defer's effect (QCON-OK?)
+75 constant MD-QDUP-LAYOUT   \ `?dup` met a layout value (QDUP-STEP)
+76 constant MD-RECORD-AT-WIDE \ `record-at` met an instantiation wider than its family's declared width (RECORD-AT-STEP)
+77 constant MD-CONSTRUCT-WIDE \ a construct's instantiated variant is wider than the declared widest one
 \ A data depth change is E-MISMATCH and prints the loop's start row and the
 \ row at its back edge or leave; the others are E-REJECTED.
 48 constant MD-LOOP-DEPTH    \ a loop's back edge or leave holds another data depth than its start (CF-CARRIED=)
@@ -6138,7 +6143,7 @@ variable QUOT-LOSS
    DCUR @ tv rest MK-PUSH UNIFY OK @ and OK !
    rest DCUR !
    tv T-RES {: cleanup:n :}
-   cleanup CLEANUP-QUOT? 0= IF 0 OK ! EXIT THEN
+   cleanup CLEANUP-QUOT? 0= IF MD-FINALLY-CLEANUP MDIAG! 0 OK ! EXIT THEN
    RSEXEC
    OK @ 0= IF EXIT THEN
    QTT @ Q>XDEAD QTT @ Q>XHAS 0= and IF EXIT THEN
@@ -6160,12 +6165,12 @@ variable QUOT-LOSS
    FRESH MK-VAR FRESH MK-ROW {: finish-term rest :}
    DCUR @ finish-term rest MK-PUSH UNIFY OK @ and OK !
    rest DCUR !
-   finish-term T-RES C2-FINISH-QUOT? 0= IF 0 OK ! EXIT THEN
+   finish-term T-RES C2-FINISH-QUOT? 0= IF MD-FINALLY-CLEANUP MDIAG! 0 OK ! EXIT THEN
    FRESH MK-VAR FRESH MK-ROW {: clean-term body-row :}
    DCUR @ clean-term body-row MK-PUSH UNIFY OK @ and OK !
    body-row DCUR !
    clean-term T-RES {: cleanup:n :}
-   cleanup CLEANUP-QUOT? 0= IF 0 OK ! EXIT THEN
+   cleanup CLEANUP-QUOT? 0= IF MD-FINALLY-CLEANUP MDIAG! 0 OK ! EXIT THEN
    RSEXEC
    OK @ 0= IF EXIT THEN
    QTT @ Q>XDEAD QTT @ Q>XHAS 0= and IF EXIT THEN
@@ -8583,7 +8588,7 @@ CHECKER-REG:}SCRATCH
 \ for a wide instantiation. A CHECK-CANDIDATE probe still certifies the type.
 : CONSTRUCT-WIDE-STAGED-REJECT ( -- )
    CHK-CAND @ 0 <> IF EXIT THEN
-   0 OK !  -1 FAILSET ! ;
+   MD-CONSTRUCT-WIDE MDIAG!  0 OK !  -1 FAILSET ! ;
 
 : USIGS-ROUND-CAP {: need :}
    need 0 <= IF s" checker: bad user sig cap" 76 die THEN
@@ -16669,7 +16674,9 @@ CHECKER-REG:}SCRATCH
    STORE-QUOT-CONTRACT {: contract:n retained:bool :}
    retained IF contract QCON-BEGIN THEN
    STEP-STORE
-   retained OK @ and IF QCON-OK? 0= IF 0 OK ! -1 FAILSET ! THEN THEN
+   retained OK @ and IF QCON-OK? 0= IF
+      MD-CALLABLE-NARROW MDIAG!  0 OK !  -1 FAILSET !
+   THEN THEN
    bad IF MEM-BYTE-PTR-REJECT THEN ;
 
 : ATOMIC-CAS-TOK ( -- )
@@ -16678,7 +16685,9 @@ CHECKER-REG:}SCRATCH
    STORE-QUOT-CONTRACT {: contract:n retained:bool :}
    retained IF contract QCON-BEGIN THEN
    STEP-ATOMIC-CAS
-   retained OK @ and IF QCON-OK? 0= IF 0 OK ! -1 FAILSET ! THEN THEN
+   retained OK @ and IF QCON-OK? 0= IF
+      MD-CALLABLE-NARROW MDIAG!  0 OK !  -1 FAILSET !
+   THEN THEN
    bad IF MEM-BYTE-PTR-REJECT THEN ;
 
 \ `ptr-field` is one prim row for every base, so the base is checked here
@@ -20589,7 +20598,7 @@ variable IS-PEND-U                   \ and its length
    q QCON-BEGIN
    FRESH MK-ROW {: rest :}   q rest MK-PUSH {: want:n :}
    want SUNI-IN   \ the callable meets the defer's effect as a call's argument does
-   OK @ IF QCON-OK? 0= IF IS-FAIL THEN THEN
+   OK @ IF QCON-OK? 0= IF MD-CALLABLE-NARROW MDIAG! IS-FAIL THEN THEN
    rest DCUR ! ;
 
 
@@ -20762,7 +20771,7 @@ variable IS-PEND-U                   \ and its length
 
 : QDUP-STEP ( -- )
    DCUR-TOP-LAYOUT? IF
-      0 OK !  -1 FAILSET !  -1 QDUPBAD !
+      MD-QDUP-LAYOUT MDIAG!  0 OK !  -1 FAILSET !  -1 QDUPBAD !
    ELSE
       -1 UNDEFERR !  UNCK-RAISE                  \ no row models a scalar ?dup: refused as an undefined word
    THEN ;
@@ -20785,7 +20794,8 @@ variable IS-PEND-U                   \ and its length
 \ preserving the family, so nothing is retyped and bounds stay the caller's.
 \ A WIDE INSTANTIATION IS REFUSED: `F:AT` bakes the family's committed width,
 \ which describes the layout only while every type argument is one cell.
-: RECORD-AT-REJECT ( -- ) TKF TKFU @ CAP-FAIL  0 OK ! ;
+: RECORD-AT-REJECT ( -- )
+   MD-RECORD-AT-WIDE MDIAG!  TKF TKFU @ CAP-FAIL  0 OK ! ;
 : RECORD-AT-EXACT? ( n -- bool ) {: famterm:n :}   \ declared layout == instantiated layout
    famterm TFAM-INST-WIDTH-XT  famterm PARAM>FAM TFAM-WIDTH@*  = ;
 : RECORD-AT-STEP ( n -- )
