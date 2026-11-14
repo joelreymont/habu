@@ -553,8 +553,9 @@ holds an address**.
   writes `E-TASK-COMPILE habu: source read on a task's thread; only the main
   thread compiles`. The main thread compiles while tasks run; `cp!` and
   `ndict!` exit 79 on it too while any task is live, writing
-  `E-TASK-COMPILE habu: <primitive> while a task is live lr <lr>`. `NLEASE`'s
-  checks throw `NLEASE:E-TASK` on a task's thread.
+  `E-TASK-COMPILE habu: <primitive> while a task is live lr <lr>`.
+  `NSHADOW:OPEN` and `NSHADOW:CLOSE`, which `LINKER:WITH` reaches, reject a
+  call on a task's thread as `E-TASK-COMPILE`, status 70.
 - A literal `0 throw` is refused (`E-THROW-ZERO`): 0 means no error. A computed
   0 unwinds unchecked, a caller bug: its `catch` answers 0.
 - A read or write that faults in Habu code throws `ENGINE-ERROR:MEMORY-FAULT`

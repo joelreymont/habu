@@ -9,7 +9,14 @@ TYPED-VARIABLE ACTION RTARGET:build-action
 variable ACTIVE
 
 : REFUSE-ACTIVE ( -- )
-   ACTIVE @ 0<> if RTARGET:E-ACTIVE throw then ;
+   ACTIVE @ 0= if exit then
+   s" E-BUILD-ACTIVE" REJECTION:OPEN
+   s" the build target cannot change while `BUILD-TARGET:WITH` runs its action"
+   REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" select the target before `BUILD-TARGET:WITH` or after its action returns"
+   REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 : END-ACTION ( -- )
    0 ACTIVE ! ;
@@ -31,12 +38,6 @@ public
 : LINUX-X86-64? ( -- bool )
    CURRENT RTARGET:PROFILE@ RTARGET-PROFILE--ID:X86-64-UNKNOWN-LINUX-GNU
    RTARGET-PROFILE--ID:EQ ;
-
-: IDLE-CK ( -- ) REFUSE-ACTIVE ;
-
-: ACTION@ ( -- RTARGET:build-action )
-   ACTIVE @ 0= if s" build-target: ACTION@ with no build action open" 76 die then
-   ACTION @ ;
 
 : HOST! ( -- )
    REFUSE-ACTIVE
