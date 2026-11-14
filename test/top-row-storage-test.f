@@ -70,24 +70,22 @@ variable ERR-U
 \ ---- the diagnostics a colon body gives -------------------------------------
 
 : MISMATCH ( -- )
-   S\" \"code\":\"E-MISMATCH\"" HAS?  S\" \"repair_class\":\"fix_type\"" HAS? ;
+   S\" \"code\":\"E-MISMATCH\"" HAS? ;
 
 : RAW-PTR ( -- )
    S\" \"code\":\"E-RAW-CELL-PTR\"" HAS?
-   S\" \"repair_class\":\"declare_pointer_cell\"" HAS?
-   S\" \"reason\":\"raw storage cell: a pointer cannot be stored in or fetched from an undeclared cell\"" HAS? ;
+   S\" \"message\":\"raw storage cell: a pointer cannot be stored in or fetched from an undeclared cell\"" HAS? ;
 
 : RAW-XT ( -- )
    S\" \"code\":\"E-RAW-CELL-PTR\"" HAS?
-   S\" \"repair_class\":\"declare_xt_cell\"" HAS?
-   S\" \"reason\":\"raw storage cell: an undeclared cell cannot hold an execution token / a quotation\"" HAS? ;
+   S\" \"message\":\"raw storage cell: an undeclared cell cannot hold an execution token / a quotation\"" HAS? ;
 
 : AT-COMMA ( -- )   S\" \"token\":\",\"" HAS? ;
 : AT-STORE ( -- )   S\" \"token\":\"!\"" HAS? ;
 : AT-ADD ( -- )     S\" \"token\":\"+!\"" HAS? ;
 : AT-CSTORE ( -- )  S\" \"token\":\"c!\"" HAS? ;
-: GOT-PTR ( -- )    S\" \"actual\":\"ptr " HAS? ;
-: GOT-XT ( -- )     S\" \"actual\":\"xt " HAS? ;
+: GOT-PTR ( -- )    S\" \"found\":\"ptr " HAS? ;
+: GOT-XT ( -- )     S\" \"found\":\"xt" HAS? ;
 
 \ ---- the refused programs, each beside its colon-body twin --------------------
 
@@ -189,20 +187,20 @@ variable ERR-U
    S\" s\" abc\" + . : a byte pointer into a scalar consumer is refused as in a body" T-LABEL
    ARM
    [: S\" : TS-B11 ( -- ) s\" abc\" + . ;" evaluate-closed ;] CHECK-RC TTHROWSQ
-   MISMATCH S\" \"token\":\".\"" HAS?  S\" \"actual\":\"ptr u8 " HAS?
+   MISMATCH S\" \"token\":\".\"" HAS?  S\" \"found\":\"ptr u8\"" HAS?
    ARM
    [: S\" s\" abc\" + ." evaluate-closed ;] CHECK-RC TTHROWSQ
-   MISMATCH S\" \"token\":\".\"" HAS?  S\" \"actual\":\"ptr u8 " HAS?
+   MISMATCH S\" \"token\":\".\"" HAS?  S\" \"found\":\"ptr u8\"" HAS?
    DISARM ;
 
 : CASE-REAL-TO-N ( -- )
    s" 0.5 N with N ( n -- ) : a real into a scalar consumer is refused as in a body" T-LABEL
    ARM
    [: s" : TS-B14 ( -- ) 0.5 TS-NN ;" evaluate-closed ;] CHECK-RC TTHROWSQ
-   MISMATCH S\" \"token\":\"TS-NN\"" HAS?  S\" \"actual\":\"r " HAS?
+   MISMATCH S\" \"token\":\"TS-NN\"" HAS?  S\" \"found\":\"r\"" HAS?
    ARM
    [: s" 0.5 TS-NN" evaluate-closed ;] CHECK-RC TTHROWSQ
-   MISMATCH S\" \"token\":\"TS-NN\"" HAS?  S\" \"actual\":\"r " HAS?
+   MISMATCH S\" \"token\":\"TS-NN\"" HAS?  S\" \"found\":\"r\"" HAS?
    DISARM ;
 
 \ The row knows a TRUSTED: body's declared effect, not the cells it leaves: it
@@ -212,14 +210,13 @@ variable ERR-U
    CLEAR ARM
    [: s" TRUSTED: TS-L1 ( -- ) here ;  TS-L1 TS-PV !" evaluate-closed ;] CHECK-RC TTHROWSQ
    S\" \"code\":\"E-STALE-READ\"" HAS?  AT-STORE
-   S\" \"repair_class\":\"drop_unknown_cell\"" HAS?
-   S\" \"reason\":\"unknown cell: this reads a cell beneath the cells the interpret row knows" HAS?
+   S\" \"message\":\"unknown cell: this reads a cell beneath the cells the interpret row knows" HAS?
    DISARM UNTOUCHED ;
 
-\ A top-level refusal names the file and line, in prose and JSON, and no
-\ definition; the JSON has no column or byte. A string `evaluate` runs lies
-\ outside the file's bytes, so its refusal names the file alone. The load holds
-\ the resolved path, so the assertions match its tail.
+\ A top-level rejection names the file, line and column, in prose and JSON. A
+\ string `evaluate` runs lies outside the file's bytes, so its rejection names
+\ `<input>` and the string's own line. The load holds the resolved path, so the
+\ assertions match its tail.
 : INCLUDE-SITE ( -- )
    [: s" include test/fixtures/top-row-site.f" evaluate-closed ;] CHECK-RC TTHROWSQ ;
 
@@ -230,20 +227,20 @@ variable ERR-U
    s" a top-level refusal names its file and line" T-LABEL
    CLEAR  REJECTION:CAPTURE
    INCLUDE-SITE
-   s" /test/fixtures/top-row-site.f:4: at '!' raw storage cell" HAS?
+   s" /test/fixtures/top-row-site.f:4:11" HAS?  s" error[E-RAW-CELL-PTR]" HAS?
    REJECTION:BUFFER-OFF
    ARM  INCLUDE-SITE
-   S\" /test/fixtures/top-row-site.f\",\"line\":4,\"definition_source\"" HAS?  RAW-PTR
+   S\" /test/fixtures/top-row-site.f\",\"line\":4,\"column\":11," HAS?  RAW-PTR
    DISARM UNTOUCHED ;
 
 : CASE-EVAL-SITE ( -- )
-   s" a top-level refusal in an evaluated string names its file alone" T-LABEL
+   s" a top-level rejection in an evaluated string names <input> and the string's line" T-LABEL
    CLEAR  REJECTION:CAPTURE
    INCLUDE-EVAL
-   s" /test/fixtures/top-row-eval.f: at '!' raw storage cell" HAS?
+   s" --> <input>:3:11" HAS?  s" error[E-RAW-CELL-PTR]" HAS?
    REJECTION:BUFFER-OFF
    ARM  INCLUDE-EVAL
-   S\" /test/fixtures/top-row-eval.f\",\"definition_source\"" HAS?  RAW-PTR
+   S\" \"file\":\"<input>\",\"line\":3,\"column\":11," HAS?  RAW-PTR
    DISARM UNTOUCHED ;
 
 \ ---- children -----------------------------------------------------------------
@@ -283,7 +280,7 @@ variable ERR-U
    DISARM
    s" true REJECTION:JSON ! 0 0 catch" CHECK-RC EXITS
    S\" \"code\":\"E-MISMATCH\"" ERR-HAS?  S\" \"token\":\"catch\"" ERR-HAS?
-   S\" \"actual\":\"n \"" ERR-HAS? ;
+   S\" \"found\":\"n\"" ERR-HAS? ;
 
 \ A child: unchecked, this program branches to the address `here` the TRUSTED:
 \ body left, which crashes the process.
@@ -307,11 +304,13 @@ variable ERR-U
    s" r> below a body's return frame names the return-stack reason" T-LABEL
    REJECTION:CAPTURE
    [: s" : TS-B15 ( -- ) r> drop ;" evaluate-closed ;] CHECK-RC TTHROWSQ
-   s" habu: in ts-b15: at 'r>' return stack: this reads below the return-stack cells pushed here expected: a actual: " HAS?
+   s" error[E-REJECTED]: return stack: this reads below the return-stack cells pushed here" HAS?
+   s" at `r>`" HAS?
    REJECTION:BUFFER-OFF
    s" 2r> below the saved return cells is refused with the same reason" T-LABEL
    s" 1 2 2>r 2r> 2r> 2drop" CHECK-RC EXITS
-   s" at '2r>' return stack: this reads below the return-stack cells pushed here expected: a b actual: " ERR-HAS? ;
+   s" error[E-REJECTED]: return stack: this reads below the return-stack cells pushed here" ERR-HAS?
+   s" = expected: a b" ERR-HAS? ;
 
 \ A signature naming one row as data and after `|` binds its caller's return
 \ base at the call, with no read token: the seal refuses the bound base
@@ -343,12 +342,13 @@ variable ERR-U
    DISARM ;
 
 \ A child: REJECTION:FILE! has no inverse; the label stays on this test file for
-\ every later case.
+\ every later case. A step in an evaluated buffer is outside the labeled file,
+\ so its rejection names `<input>`.
 : CASE-LABEL ( -- )
-   s" a tool's file label names a top-level refusal's file" T-LABEL
+   s" a tool's file label leaves an evaluated step's rejection on <input>" T-LABEL
    S\" s\" /subject/label.f\" REJECTION:FILE! true REJECTION:JSON ! here TS-V !"
    CHECK-RC EXITS
-   S\" \"file\":\"/subject/label.f\"" ERR-HAS?
+   S\" \"file\":\"<input>\"" ERR-HAS?
    S\" \"code\":\"E-RAW-CELL-PTR\"" ERR-HAS? ;
 
 \ A child: unchecked, `c@` reads through a cell TS-L3 left, which crashes the
@@ -399,7 +399,7 @@ variable ERR-U
    s" 0 set-current in a package: a mistyped use of its word is refused by its type" T-LABEL
    SB-RESET PKW PKW-MISUSE  SB$ CHECK-RC EXITS
    S\" \"code\":\"E-MISMATCH\"" ERR-HAS?  S\" \"token\":\"c@\"" ERR-HAS?
-   S\" \"actual\":\"n \"" ERR-HAS?
+   S\" \"found\":\"n\"" ERR-HAS?
    s" a retired used public shadowing a global: 1 drop runs, rc 0" T-LABEL
    SB-RESET SHADOW AFTER  s" E-USING-SHADOW-GLOBAL" RUNS-AFTER
    s" a retired used public shadowing a global: p3 is refused by its own diagnostic" T-LABEL
@@ -501,7 +501,7 @@ variable ERR-U
    ENGINE-CANDIDATE:PATH$ SPAWN-ON-PTY
    s" habu> " WAIT-FOR TTRUE
    s" variable TS-RV  here TS-RV !" STEP TFALSE
-   s" habu: at '!' raw storage cell" IN-BUF? TTRUE
+   s" error[E-RAW-CELL-PTR]: raw storage cell" IN-BUF? TTRUE
    s" a REPL line that throws, then a fresh line storing a pointer typed" T-LABEL
    s" PTR-VARIABLE TS-RP" STEP TTRUE
    s" here 7 throw" STEP TFALSE

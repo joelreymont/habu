@@ -401,13 +401,17 @@ variable CDD-SRC-U
    s" through a sibling scope's pop" T-LABEL
    s\" 5 CDD-SK CDD-SKMADE\n: CDD-SKU ( -- ptr n ) CDD-SKMADE ;\n" CDD-OWN 0 T= ;
 
-\ Section 12: the engine refuses a row it cannot keep. A refused row prints its
-\ E-GENERATES-ROW line on stderr before it throws, as section 5's refused clause
-\ does. A row on a word that reads no name after it, `evaluate` or a deferred
-\ word is refused too: kept, it makes the pre-pass take the token after a call
-\ as a made name the load never makes. The checker's own error constant, read
-\ at load time under a local name.
-E-GENERATES-ROW constant E-GEN-ROW
+\ Section 12: the engine rejects a row it cannot keep with an E-GENERATES-ROW
+\ record that names the row's word and why. A row on a word that reads no name
+\ after it, `evaluate` or a deferred word is rejected too: kept, it makes the
+\ pre-pass take the token after a call as a made name the load never makes.
+: CDD-ROW-REJECTED ( [ -- ] ptr u8 n -- )
+   {: wa:ptr wu:n :}
+   REJECTION:CAPTURE
+   CHECKER-REJECT-RC TTHROWSQ
+   REJECTION:BUFFER$ s" error[E-GENERATES-ROW]" CONTAINS? TTRUE
+   REJECTION:BUFFER$ wa wu CONTAINS? TTRUE
+   REJECTION:BUFFER-OFF ;
 
 \ Values of 2 to 128 cells, for a row of 256 input cells short enough to state.
 STRUCTURE cdd-c2 FIELD a n FIELD b n ;STRUCTURE
@@ -420,23 +424,30 @@ STRUCTURE cdd-c128 FIELD a cdd-c64 FIELD b cdd-c64 ;STRUCTURE
 
 : CDD-SECTION-GENERATES-REFUSED ( -- )
    s" a row read before its definer is defined is refused" T-LABEL
-   [: s\" generates: CDD-GL ( -- ptr n )\n: CDD-GL ( n -- ) CDD-GEN:MAKE ;\n" evaluate-closed ;] E-GEN-ROW TTHROWSQ
+   [: s\" generates: CDD-GL ( -- ptr n )\n: CDD-GL ( n -- ) CDD-GEN:MAKE ;\n" evaluate-closed ;]
+      s" `CDD-GL`, which is not defined here" CDD-ROW-REJECTED
    s" a row on a definer whose clause states its word is refused" T-LABEL
-   [: s\" generates: CDD-RES-D ( -- ptr n )\n" evaluate-closed ;] E-GEN-ROW TTHROWSQ
+   [: s\" generates: CDD-RES-D ( -- ptr n )\n" evaluate-closed ;]
+      s" `CDD-RES-D`, which already states what it makes" CDD-ROW-REJECTED
    s\" : CDD-G2 ( n -- ) CDD-GEN:MAKE ;\ngenerates: CDD-G2 ( -- ptr n )\n" evaluate-closed
    s" a second row on one definer is refused" T-LABEL
-   [: s\" generates: CDD-G2 ( -- ptr n )\n" evaluate-closed ;] E-GEN-ROW TTHROWSQ
+   [: s\" generates: CDD-G2 ( -- ptr n )\n" evaluate-closed ;]
+      s" `CDD-G2`, which already states what it makes" CDD-ROW-REJECTED
    s" an effect the checker cannot parse is refused" T-LABEL
-   [: s\" : CDD-GI ( n -- ) CDD-GEN:MAKE ;\ngenerates: CDD-GI ( -- i32 )\n" evaluate-closed ;] E-GEN-ROW TTHROWSQ
+   [: s\" : CDD-GI ( n -- ) CDD-GEN:MAKE ;\ngenerates: CDD-GI ( -- i32 )\n" evaluate-closed ;]
+      s" `CDD-GI` with an effect that cannot be recorded" CDD-ROW-REJECTED
    s" an effect too wide to record is refused" T-LABEL
    [: s\" : CDD-GW ( n -- ) CDD-GEN:MAKE ;\ngenerates: CDD-GW ( cdd-c128 cdd-c64 cdd-c32 cdd-c16 cdd-c8 cdd-c4 cdd-c2 n n -- )\n" evaluate-closed ;]
-      E-GEN-ROW TTHROWSQ
+      s" input row too wide to record (256 cells, at most 255)" CDD-ROW-REJECTED
    s" a row on a word that reads no name after it is refused" T-LABEL
-   [: s\" : CDD-GN ( n -- ) drop ;\ngenerates: CDD-GN ( -- ptr n )\n" evaluate-closed ;] E-GEN-ROW TTHROWSQ
+   [: s\" : CDD-GN ( n -- ) drop ;\ngenerates: CDD-GN ( -- ptr n )\n" evaluate-closed ;]
+      s" `CDD-GN`, which is deferred or reads no name" CDD-ROW-REJECTED
    s" a row on a deferred word is refused" T-LABEL
-   [: s\" defer CDD-GF ( n -- )\ngenerates: CDD-GF ( -- ptr n )\n" evaluate-closed ;] E-GEN-ROW TTHROWSQ
+   [: s\" defer CDD-GF ( n -- )\ngenerates: CDD-GF ( -- ptr n )\n" evaluate-closed ;]
+      s" `CDD-GF`, which is deferred or reads no name" CDD-ROW-REJECTED
    s" a row on evaluate, which reads no name, is refused" T-LABEL
-   [: s\" generates: evaluate ( -- )\n" evaluate-closed ;] E-GEN-ROW TTHROWSQ ;
+   [: s\" generates: evaluate ( -- )\n" evaluate-closed ;]
+      s" `evaluate`, which is deferred or reads no name" CDD-ROW-REJECTED ;
 
 \ Section 13: a clause's body ends as its colon twin's does (checker.f
 \ CHECK-DOES-RUN); refused clauses' diagnostics are captured, not printed.
@@ -510,14 +521,14 @@ CDD-FIT-CAP CODEGEN:BUFFER CDD-FIT-WANT
    \ The return-stack seal's, not the parametric pass's (checker.f RS-BORROWS?).
    s" a clause that reads below its declared return row is refused at the read" T-LABEL
    s" : CDD-RB1 ( n -- ) create , does> ( | R -- | R ) drop r> drop 5 throw ;"
-      s" at 'r>' return stack: this reads below the return-stack cells pushed here" CDD-NOT-CERTIFIED
+      s" error[E-REJECTED]: return stack: this reads below the return-stack cells pushed here" CDD-NOT-CERTIFIED
    s" a clause too wide to record is uncheckable, and the load goes on" T-LABEL
    CDD-WIDE$ s" input row too wide to record (257 cells, at most 255)" CDD-NOT-CERTIFIED
    s" a clause whose signature fits a record declares it, though its body is too wide" T-LABEL
    CDD-FIT-DECLARED
    s" a clause's unknown signature type is reported at that type, as its colon twin's is" T-LABEL
    s" : CDD-UX ( n -- ) create , does> ( cdd-zz -- cdd-zz ) drop drop 5 ;"
-      s" unknown type 'cdd-zz'" CDD-NOT-CERTIFIED
+      s" error[E-UNKNOWN-SIGNATURE-TYPE]: unknown type `cdd-zz`" CDD-NOT-CERTIFIED
    s" compiled natively, the clause's unknown type is placed at that type in its text" T-LABEL
    s" -1 REJECTION:JSON ! : CDD-UXJ ( n -- ) create , does> ( cdd-zz -- cdd-zz ) drop drop 5 ;"
       S\" \"token\":\"cdd-zz\",\"token_index\":0,\"file\":\"<input>\",\"line\":1,\"column\":4,\"byte_start\":3,\"byte_end\":9,"
@@ -539,7 +550,7 @@ CDD-FIT-CAP CODEGEN:BUFFER CDD-FIT-WANT
    [: CDD-QUIET$ s" cdd-quiet.f" VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;] catch
    CHECKER-SCOPE-DONE
    0 T=
-   REJECTION:BUFFER$ s\" \"verdict\":\"deferred\",\"token\":\"cdd-qt\"" CONTAINS? TTRUE
+   REJECTION:BUFFER$ s" warning[W-CHECK-DEFERRED]: the check cannot follow the source from `cdd-qt`" CONTAINS? TTRUE
    REJECTION:BUFFER-OFF
    VERIFY:CENSUS 1 T= drop ;
 

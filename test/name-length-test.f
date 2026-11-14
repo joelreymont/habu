@@ -17,7 +17,7 @@ require src/habu/layout.f
 package NAME-LENGTH-TEST
 
 $400 constant OUT-CAP
-$8000 constant ERR-CAP             \ a diagnostic that names a whole name
+$10000 constant ERR-CAP            \ a record names a whole name up to three times
 -1 1 rshift constant MAX-CELL
 \ A name has no ceiling: a definer captures a word's name and one separator
 \ into the definition's body text, which grows with the definition, before it
@@ -211,6 +211,18 @@ variable LBL-U
    RELABEL outu LEN>N 0 T=
    RELABEL ERR erru LEN>N want wantu T$= ;
 
+\ The child ends with one rejection record: `rc`, a record that starts with
+\ `head`, holds `note` and is followed by no other.
+: REJECTS-AT ( n ptr u8 n ptr u8 n n ptr u8 n ptr u8 n -- )
+   {: u:n at:ptr atu:n src:ptr srcu:n rc:n head:ptr headu:n note:ptr noteu:n :}
+   at atu src srcu LABEL-AT
+   u src srcu RUN-AT {: outu:len erru:len oc :}
+   RELABEL src srcu OUT outu LEN>N ERR erru LEN>N oc rc T-ENDING-EXITED=
+   RELABEL outu LEN>N 0 T=
+   RELABEL ERR erru LEN>N head headu STARTS-WITH? TTRUE
+   RELABEL ERR erru LEN>N note noteu CONTAINS? TTRUE
+   RELABEL ERR erru LEN>N S\" \nerror[" CONTAINS? TFALSE ;
+
 \ -1, the cap plus one and the maximum cell: no text the cap bounds has any of
 \ them.
 : RETURNS-PAST ( n ptr u8 n -- )
@@ -228,6 +240,10 @@ variable LBL-U
    {: src:ptr srcu:n rc:n want:ptr wantu:n :}
    -1 s" -1" src srcu rc want wantu DIES-AT
    MAX-CELL s" max" src srcu rc want wantu DIES-AT ;
+: REJECTS ( ptr u8 n n ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n rc:n head:ptr headu:n note:ptr noteu:n :}
+   -1 s" -1" src srcu rc head headu note noteu REJECTS-AT
+   MAX-CELL s" max" src srcu rc head headu note noteu REJECTS-AT ;
 
 : TEST-QUERIES ( -- )
    s" RESOLVES" RETURNS
@@ -292,20 +308,20 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    s" DEFER-IT" 76 S\" checker: symbol string capacity overflow\n" DIES
    s" UNDEFINE-IT" 76 S\" checker: symbol string capacity overflow\n" DIES
    s" HERE-IT" 76 S\" checker: symbol string capacity overflow\n" DIES
-   s" LINEAR-IT" 70 S\" checker: bad or duplicate signature type\n" DIES
-   s" RECORD-IT" 70 S\" checker: bad or duplicate value-record type\n" DIES
+   s" LINEAR-IT" 76 S\" checker: a linear type's name describes no memory\n" DIES
+   s" RECORD-IT" 76 S\" checker: a value record's name describes no memory\n" DIES
    s" TRUNCATE-RAW-IT" 76 S\" checker: missing signature truncation mark\n" DIES
-   s" TRUNCATE-IT" 83 S\" seal: cannot truncate sealed checker signatures\n" DIES
+   s" TRUNCATE-IT" 76 S\" seal: cannot truncate sealed checker signatures\n" DIES
    s" PACKAGE-IT" 76 S\" checker: package name too long\n" DIES
    LONG-LEN s" long" s" PACKAGE-IT" 70 CAP-WANT$ DIES-AT
    s" USING-IT" 76 S\" checker: using name length describes no memory\n" DIES
    LONG-LEN s" long" s" USING-IT" 70 CAP-WANT$ DIES-AT
    s" USING-PUSH-IT" 67 S\" hb: uncaught throw code 7136\n" DIES
    s" EXPORT-IT" 67 S\" hb: uncaught throw code 7113\n" DIES
-   s" FAMILY-IT" 70 S\" habu: bad newtype declaration '': missing name\nhb: uncaught throw code 7107\n" DIES
-   s" SUM-IT" 70 S\" habu: bad sumtype declaration '': missing name\nhb: uncaught throw code 7107\n" DIES
-   s" SUM-NOEND-IT" 70 S\" habu: bad sumtype declaration '': missing ;SUMTYPE\nhb: uncaught throw code 7107\n" DIES
-   s" PRODUCT-IT" 70 S\" habu: bad product declaration '': missing name\nhb: uncaught throw code 7107\n" DIES
+   s" FAMILY-IT" 70 S\" error[E-BAD-DECLARATION]: bad newtype declaration\n" s" = at ``: missing name" REJECTS
+   s" SUM-IT" 70 S\" error[E-BAD-DECLARATION]: bad sumtype declaration\n" s" = at ``: missing name" REJECTS
+   s" SUM-NOEND-IT" 70 S\" error[E-BAD-DECLARATION]: bad sumtype declaration\n" s" = at ``: missing ;SUMTYPE" REJECTS
+   s" PRODUCT-IT" 70 S\" error[E-BAD-DECLARATION]: bad product declaration\n" s" = at ``: missing name" REJECTS
    s" FIELD-ADD-IT" 67 S\" hb: uncaught throw code 7101\n" DIES ;
 
 \ TRUST, CHECKER-DEFCAST and CHECKER-NAMED-USE have no effect a
@@ -315,22 +331,6 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
 \ TRUST-RAW are sealed (src/core/checker.f: the interpreter refuses them), so a
 \ TRUSTED: body calls them, as the engine's own callers do. A cast reaches
 \ its name once its signature certifies, and stores it.
-$400 constant WANT-CAP
-create WANT WANT-CAP allot
-variable WANT-U
-: WANT+ ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   a WANT WANT-U @ + u BYTE-COPY
-   WANT-U @ u + WANT-U ! ;
-
-: STALE$ ( ptr u8 n -- ptr u8 n )
-   {: a:ptr u:n :}
-   0 WANT-U !
-   s" E-TRUST-UNRESOLVED habu: trust row for '" WANT+
-   a u WANT+
-   S\" ' names no word where its record lands: nothing in the open section's wordlist, the global wordlist outside a package, or PKG's public wordlist for PKG:TAIL is spelled that way, so the effect would be recorded against a symbol the engine never defined. Delete the row, correct the name to the word it was meant to describe, or write it in the section that defines that word\nhb: uncaught throw code 7143\n" WANT+
-   WANT WANT-U @ ;
-
 : TEST-TOP-LEVEL ( -- )
    s" TRUSTED: NL-NU ( -- ) MARKS! BAD$ CHECKER-NAMED-USE 0 0= VERDICT ; NL-NU"
       RETURNS
@@ -345,25 +345,30 @@ variable WANT-U
 \ symbol for it names it as malformed and throws. Each refusal is rendered
 \ before its throw, so the child exits 70.
 : MAL$ ( -- ptr u8 n ) s" q:q:q" ;
-: MALFORMED$ ( -- ptr u8 n )
-   S\" E-BAD-QUALIFIED-RECORD habu: record for 'q:q:q' refused: malformed qualified name, where one non-edge ':' selects a package and a second ':' names no word. Use one ':' qualifier, e.g. PKG:WORD\nhb: uncaught throw code 7152\n" ;
-: MAL-DIES ( ptr u8 n n ptr u8 n -- )
-   {: src:ptr srcu:n rc:n want:ptr wantu:n :}
-   0 s" two inner colons" src srcu rc want wantu DIES-AT ;
+: MALFORMED-HEAD$ ( -- ptr u8 n )
+   S\" error[E-BAD-QUALIFIED-RECORD]: the record name `q:q:q` has more than one `:`\n" ;
+: MALFORMED-NOTE$ ( -- ptr u8 n ) s" = at `q:q:q`: malformed qualified name" ;
+: STALE-HEAD$ ( -- ptr u8 n )
+   S\" error[E-TRUST-UNRESOLVED]: the `trust` row for `q:q:q` names no word where its record lands\n" ;
+: STALE-NOTE$ ( -- ptr u8 n ) s" = at `q:q:q`: no word here has this name" ;
+: MAL-REJECTS ( ptr u8 n n ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n rc:n head:ptr headu:n note:ptr noteu:n :}
+   0 s" two inner colons" src srcu rc head headu note noteu REJECTS-AT ;
 : TEST-MALFORMED ( -- )
-   s" MAL$ CHECKER-DEFER" 70 MALFORMED$ MAL-DIES
-   s" MAL$ CHECKER-UNDEFINE" 70 MALFORMED$ MAL-DIES
-   s" MAL$ CAST$ CHECKER-DEFCAST" 70 MALFORMED$ MAL-DIES
-   s" MAL$ SIG$ TRUST" 70 MAL$ STALE$ MAL-DIES
-   s" TRUSTED: NL-TD ( -- ) MAL$ SIG$ TRUST-DECL ; NL-TD" 70 MALFORMED$ MAL-DIES
-   s" TRUSTED: NL-TR ( -- ) MAL$ SIG$ TRUST-RAW ; NL-TR" 70 MALFORMED$ MAL-DIES ;
+   s" MAL$ CHECKER-DEFER" 70 MALFORMED-HEAD$ MALFORMED-NOTE$ MAL-REJECTS
+   s" MAL$ CHECKER-UNDEFINE" 70 MALFORMED-HEAD$ MALFORMED-NOTE$ MAL-REJECTS
+   s" MAL$ CAST$ CHECKER-DEFCAST" 70 MALFORMED-HEAD$ MALFORMED-NOTE$ MAL-REJECTS
+   s" MAL$ SIG$ TRUST" 70 STALE-HEAD$ STALE-NOTE$ MAL-REJECTS
+   s" TRUSTED: NL-TD ( -- ) MAL$ SIG$ TRUST-DECL ; NL-TD" 70 MALFORMED-HEAD$ MALFORMED-NOTE$ MAL-REJECTS
+   s" TRUSTED: NL-TR ( -- ) MAL$ SIG$ TRUST-RAW ; NL-TR" 70 MALFORMED-HEAD$ MALFORMED-NOTE$ MAL-REJECTS ;
 
 \ CHECKER-DEFRECORD's and CHECKER-TRY-RECORD's second string is the record's
 \ field text, which is no name, so only -1 and the maximum cell describe no
 \ text.
 : TEST-FIELD-TEXT ( -- )
    s" TRY-FIELDS" RETURNS
-   s" FIELDS-IT" 70 S\" checker: empty value-record\n" DIES ;
+   s" FIELDS-IT" 70 S\" error[E-BAD-DECLARATION]: value record `zzrec` has no fields\n"
+      s" = at `zzrec`: no fields" REJECTS ;
 
 \ A definition's source text, which CHECK and its entries judge, and a
 \ signature, which CHECK-DOES! and CHECKER-DEFCAST parse, are no names either:
@@ -378,13 +383,8 @@ variable WANT-U
 \ checked hb's definitions), so the first top-level CHECK-DOES! interns its row:
 \ the child runs one with a signature that parses before it takes the marks.
 : TOO-LARGE$ ( -- ptr u8 n ) S\" checker: token buffer too large\n" ;
-: CAST-WANT$ ( -- ptr u8 n )
-   SB-RESET
-   s" E-CAST-ARITY habu: " SB-APPEND
-   LOADING @ data-base SRCLOC:PATHLEN-CELL + @ SB-APPEND
-   s" : cast: 'nltcast': the signature's length describes no memory" SB-APPEND
-   S\" \nhb: uncaught throw code 7129\n" SB-APPEND
-   SB$ ;
+: CAST-HEAD$ ( -- ptr u8 n )
+   S\" error[E-CAST-ARITY]: in `cast: nltcast`, the signature's length describes no memory\n" ;
 : TEST-TEXTS ( -- )
    TEXT-CAP s" LAYOUT-TEXT" RETURNS-PAST
    TEXT-CAP s" STORAGE-TEXT" RETURNS-PAST
@@ -395,23 +395,13 @@ variable WANT-U
    s" HOOK-IT" 76 TOO-LARGE$ DIES
    s" CLAUSE$ CLAUSE-SIG$ CHECK-DOES! drop MARKS! CLAUSE$ BAD$ CHECK-DOES! 0= VERDICT"
    RETURNS
-   s" CAST-NAME$ BAD$ CHECKER-DEFCAST" 70 CAST-WANT$ DIES ;
+   s" CAST-NAME$ BAD$ CHECKER-DEFCAST" 70 CAST-HEAD$ s" = at `nltcast`" REJECTS ;
 
 \ No token is -1 or the maximum cell long, so `package` meets only a long part
 \ name, whose path is past its row: refused, naming it.
-: PART-WANT$ ( -- ptr u8 n )
-   s" E-PKG-CONTEXT habu: " {: h:ptr hu:n :}
-   LOADING @ data-base SRCLOC:PATHLEN-CELL + @ {: f:ptr fu:n :}
-   hu fu + 2 + LONG-LEN + 1 + {: wu:n :}
-   wu MEM-ALLOC-BYTES drop {: p:ptr :}
-   h p hu BYTE-COPY
-   f p hu + fu BYTE-COPY
-   58 p hu + fu + c!  32 p hu + fu + 1 + c!
-   LONG-LEN TAIL drop p hu + fu + 2 + LONG-LEN BYTE-COPY
-   10 p wu + 1 - c!
-   p wu ;
 : TEST-PART ( -- )
-   LONG-LEN s" long" s" PART$ evaluate" 75 PART-WANT$ DIES-AT ;
+   LONG-LEN s" long" s" PART$ evaluate" 75 s" error[E-PKG-CONTEXT]: `"
+      LONG-LEN TAIL REJECTS-AT ;
 
 \ ---- a long name -------------------------------------------------------------
 \ `: <u bytes of c> ;`, in a fresh mapping.

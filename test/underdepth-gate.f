@@ -1,9 +1,9 @@
 \ underdepth-gate.f - a word with a checker-known effect (certified `:`,
 \ TRUSTED:, defer) carries its input arity in its record (DNAME-MIN-IN, flags
 \ bits 52-59), poked by the publish tails. Run bare at top level on a shallower
-\ stack it fails closed with `E-UNDERFLOW ... interpret stack underdepth:
-\ <token>` and rc 70 before its body runs. hb's startup words are defined by
-\ the same interpreter, so an engine-prefix word carries its arity too.
+\ stack it fails closed with an E-UNDERFLOW record naming the word and rc 70
+\ before its body runs. hb's startup words are defined by the same
+\ interpreter, so an engine-prefix word carries its arity too.
 
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
 \   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f
@@ -39,6 +39,7 @@ create UDG-IN UDG-CAP allot         \ stdin-piped program
 create UDG-OUT UDG-CAP allot
 create UDG-ERR UDG-CAP allot
 create UDG-EMPTY 1 allot            \ zero-length stdin
+create UDG-TICKED-BUF 64 allot
 
 : UDG-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: src:ptr u:n dst:ptr lenp:ptr :}
    u PATH-CAP > if E-FS-CAPACITY throw then
@@ -114,11 +115,18 @@ public
    UDG-LINE
    SB$ ;
 
+: UDG-TICKED ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}   \ the word as a record quotes it
+   u 62 > if E-STR-CAPACITY throw then
+   96 UDG-TICKED-BUF c!
+   a UDG-TICKED-BUF 1 + u BYTE-COPY
+   96 UDG-TICKED-BUF u + 1 + c!
+   UDG-TICKED-BUF u 2 + ;
+
 : UDG-ASSERT-UNDERDEPTH ( ptr u8 n -- ) {: a:ptr u:n :}   \ fail-closed reject naming the word
    UDG-EXITED @ TTRUE
    UDG-RC @ UDG-REJECT-RC T=
-   UDG-ERR$ s" interpret stack underdepth: " CONTAINS? TTRUE
-   UDG-ERR$ a u CONTAINS? TTRUE ;
+   UDG-ERR$ s" error[E-UNDERFLOW]: " CONTAINS? TTRUE
+   UDG-ERR$ a u UDG-TICKED CONTAINS? TTRUE ;
 
 : UDG-ASSERT-OK ( -- )
    UDG-EXITED @ TTRUE
@@ -146,7 +154,7 @@ package UDG-MINIMUM
 : ASSERT-WIDE ( -- )
    UDG-EXITED @ TTRUE
    UDG-RC @ WIDE-RC T=
-   UDG-ERR$ s" habu: in minimum-probe: bad stored signature" CONTAINS? TTRUE
+   UDG-ERR$ s" error[E-BAD-STORED-SIGNATURE]" CONTAINS? TTRUE
    UDG-ERR$ s" input row too wide to record (256 cells, at most 255)" CONTAINS? TTRUE ;
 
 public

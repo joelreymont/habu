@@ -279,7 +279,8 @@ variable CANDIDATE-VERDICT
    GE-HB-RESET
    GE-SRC-RESET
    s" TRUSTED: BADARR ( n -- ) create cells allot does> ( n -- ptr a ) drop ;" GE-SRC-LINE
-   70 s" habu: in badarr;does: at 'drop'" s" hb bad trusted DOES> diagnostic" GE-EVAL-FORK-BAD
+   70 s" error[E-MISMATCH]: the body ends with n on the stack; the signature promises ptr a" s" hb bad trusted DOES> diagnostic" GE-EVAL-FORK-BAD
+   s" at `drop`" s" hb bad trusted DOES> diagnostic names drop" GE-EXPECT-ERR-HAS
    GE-HB-RESET
    GE-SRC-RESET
    s" TRUSTED: BADDEF ( n -- ) create cells allot does> drop ;" GE-SRC-LINE
@@ -293,22 +294,24 @@ variable CANDIDATE-VERDICT
    s" defer DHOOK ( -- )" GE-SRC-LINE
    s" : DMINE ( -- ) ;" GE-SRC-LINE
    s" : DARM ( -- ) [: DMINE ;] is DNOSUCH ;" GE-SRC-LINE
-   70 s" at 'DNOSUCH' names no word" s" hb is-target-not-found names the word" GE-EVAL-FORK-BAD
+   70 s" error[E-UNDEFINED]" s" hb is-target-not-found names the word" GE-EVAL-FORK-BAD
+   s" at `DNOSUCH`" s" hb is-target-not-found names DNOSUCH" GE-EXPECT-ERR-HAS
    GE-HB-RESET
    GE-SRC-RESET
    s" : DPLAIN ( -- ) ;" GE-SRC-LINE
    s" : DMINE3 ( -- ) ;" GE-SRC-LINE
    s" : DARM3 ( -- ) [: DMINE3 ;] is DPLAIN ;" GE-SRC-LINE
-   70 s" at 'DPLAIN' is not a deferred word" s" hb is-target-not-a-defer names the word" GE-EVAL-FORK-BAD
+   70 s" error[E-NOT-DEFERRED]" s" hb is-target-not-a-defer names the word" GE-EVAL-FORK-BAD
+   s" at `DPLAIN`" s" hb is-target-not-a-defer names DPLAIN" GE-EXPECT-ERR-HAS
    GE-HB-RESET
    GE-SRC-RESET
    s" : DMINE4 ( -- ) ;" GE-SRC-LINE
    s" : DARM4 ( -- ) [: DMINE4 ;] is ;" GE-SRC-LINE
-   70 s" at 'is' missing target word after is" s" hb is-missing-target names the cause" GE-EVAL-FORK-BAD
+   70 s" error[E-MISSING-NAME]: missing target word after is" s" hb is-missing-target names the cause" GE-EVAL-FORK-BAD
    GE-HB-RESET
    GE-SRC-RESET
    s" defer" GE-SRC-LINE
-   74 s" defer: missing name after" s" hb defer-missing-name names the cause" GE-EVAL-FORK-BAD ;
+   74 s" error[E-MISSING-NAME]: `defer` has no name after it" s" hb defer-missing-name names the cause" GE-EVAL-FORK-BAD ;
 
 : ROW-QUOT-CHECKS ( -- )
    GE-HB-RESET
@@ -630,7 +633,8 @@ variable CANDIDATE-VERDICT
    s" : STOP ( -- ) 1 throw ;" GE-SRC-LINE
    s" ;package" GE-SRC-LINE
    s" : GD-NR-BAD ( n -- n ) dup 0 < if GD-NR:STOP 0 then 1 + ;" GE-SRC-LINE
-   $46 s" gd-nr-bad" s" checker package no-return rejects live tail" CHECK-BUF-BAD
+   $46 s" E-DEAD-CODE" s" checker package no-return rejects live tail" CHECK-BUF-BAD
+   s" `GD-NR:STOP`" s" checker package no-return names GD-NR:STOP" GE-EXPECT-ERR-HAS
    GE-SRC-RESET
    s" package GD-NRA" GE-SRC-LINE
    s" public" GE-SRC-LINE
@@ -643,7 +647,8 @@ variable CANDIDATE-VERDICT
    s" : STOP ( -- n ) 7 ;" GE-SRC-LINE
    s" ;package" GE-SRC-LINE
    s" : GD-NRA-BAD ( n -- n ) dup 0 < if GD-NRA:STOP 0 then 1 + ;" GE-SRC-LINE
-   $46 s" gd-nra-bad" s" package undefine keeps other no-return symbol" CHECK-BUF-BAD ;
+   $46 s" E-DEAD-CODE" s" package undefine keeps other no-return symbol" CHECK-BUF-BAD
+   s" `GD-NRA:STOP`" s" package undefine keeps GD-NRA:STOP no-return" GE-EXPECT-ERR-HAS ;
 
 : RUN-BAD-SOURCE ( n ptr u8 n ptr u8 n -- )
    GE-EVAL-FORK-BAD ;
@@ -695,11 +700,11 @@ variable CANDIDATE-VERDICT
    GE-HB-RESET
    GE-SRC-RESET
    s" 5. ." GE-SRC-LINE
-   70 s" E-UNDEFINED habu: undefined word '5.'" s" hb engine keeps trailing-dot token a word" RUN-BAD-CHILD
+   70 s" error[E-UNDEFINED]: cannot find word `5.`" s" hb engine keeps trailing-dot token a word" RUN-BAD-CHILD
    GE-HB-RESET
    GE-SRC-RESET
    s" ..5 ." GE-SRC-LINE
-   70 s" E-UNDEFINED habu: undefined word '..5'" s" hb engine keeps double-dot token a word" RUN-BAD-CHILD ;
+   70 s" error[E-UNDEFINED]: cannot find word `..5`" s" hb engine keeps double-dot token a word" RUN-BAD-CHILD ;
 
 : LITERAL-FLOAT-EVAL ( -- )
    GE-HB-RESET
@@ -852,22 +857,22 @@ variable CANDIDATE-VERDICT
    GE-SRC-RESET
    s" variable GD-TV" GE-SRC-LINE
    s" TYPED-VARIABLE GD-TV n" GE-SRC-LINE
-   $4E s" duplicate definition: GD-TV" s" TYPED-VARIABLE names a defined name it refuses" RUN-BAD-SOURCE
+   $4E s" error[E-DUPLICATE-DEFINITION]: `GD-TV` is already defined" s" TYPED-VARIABLE names a defined name it refuses" RUN-BAD-SOURCE
    GE-SRC-RESET
    s" TYPED-VARIABLE over n" GE-SRC-LINE
-   $4E s" duplicate definition: over" s" TYPED-VARIABLE names an engine word it refuses" RUN-BAD-SOURCE
+   $4E s" error[E-DUPLICATE-DEFINITION]: `over` is already defined" s" TYPED-VARIABLE names an engine word it refuses" RUN-BAD-SOURCE
    GE-SRC-RESET
    s" : dup ( n -- n n ) dup ;" GE-SRC-LINE
-   $4E s" duplicate definition" s" primitive shadow attempt rejects without undefine" RUN-BAD-SOURCE
+   $4E s" error[E-DUPLICATE-DEFINITION]: `dup` is already defined" s" primitive shadow attempt rejects without undefine" RUN-BAD-SOURCE
    GE-SRC-RESET
    s" variable over" GE-SRC-LINE
-   $4E s" duplicate definition" s" global variable named like a built-in rejects" RUN-BAD-SOURCE
+   $4E s" error[E-DUPLICATE-DEFINITION]: `over` is already defined" s" global variable named like a built-in rejects" RUN-BAD-SOURCE
    GE-SRC-RESET
    s" create swap 1 ," GE-SRC-LINE
-   $4E s" duplicate definition" s" global create named like a built-in rejects" RUN-BAD-SOURCE
+   $4E s" error[E-DUPLICATE-DEFINITION]: `swap` is already defined" s" global create named like a built-in rejects" RUN-BAD-SOURCE
    GE-SRC-RESET
    s" 5 constant drop" GE-SRC-LINE
-   $4E s" duplicate definition" s" global constant named like a built-in rejects" RUN-BAD-SOURCE
+   $4E s" error[E-DUPLICATE-DEFINITION]: `drop` is already defined" s" global constant named like a built-in rejects" RUN-BAD-SOURCE
    GE-SRC-RESET
    s" package P4" GE-SRC-LINE
    s" : dup ( n -- n n ) 7 ;" GE-SRC-LINE
@@ -940,10 +945,11 @@ variable CANDIDATE-VERDICT
    s" 5" GE-OUT-LINE
    s" 0" GE-OUT-LINE
    s" 42" GE-OUT-LINE
-   s" 7111" GE-OUT-LINE
+   s" 70" GE-OUT-LINE
    s" -1" GE-OUT-LINE
    s" checker-kept" GE-OUT-LINE
-   SB$ s" hb explicit undefine redefinition output" GE-EXPECT-OUT ;
+   SB$ s" hb explicit undefine redefinition output" GE-EXPECT-OUT
+   s" error[E-CTOR-PROTECTED]: `PCAP-CAPTURED:MAKE`" s" undefine of a generated constructor is rejected" GE-EXPECT-ERR-HAS ;
 
 : REDEF-CHECK-BODY ( -- )
    s" : GD-CRED ( -- n ) 1 ;" GE-SRC-LINE
@@ -1056,7 +1062,7 @@ variable CANDIDATE-VERDICT
    s" : H ( -- n ) 2 ;" SB-LINE
    s" ;package" SB-LINE
    INC-MAIN$ SB$ FS:WRITE-ALL
-   $4E s" duplicate definition" s" hb include rejects duplicate package reopen" RUN-LOAD-BAD ;
+   $4E s" error[E-DUPLICATE-DEFINITION]: `H` is already defined" s" hb include rejects duplicate package reopen" RUN-LOAD-BAD ;
 
 : PACKAGE-MISUSE ( -- )
    GE-HB-RESET
@@ -1065,7 +1071,7 @@ variable CANDIDATE-VERDICT
    GE-SRC-RESET  s" private" GE-SRC-LINE
    $4B s" private" s" package rejects private outside" RUN-BAD-SOURCE
    GE-SRC-RESET  s" end-package" GE-SRC-LINE
-   $46 s" E-UNDEFINED habu: undefined word 'end-package'" s" package rejects legacy closer" RUN-BAD-CHILD
+   $46 s" error[E-UNDEFINED]: cannot find word `end-package`" s" package rejects legacy closer" RUN-BAD-CHILD
    GE-SRC-RESET  s" ;package" GE-SRC-LINE
    $4B s" ;package" s" package rejects semicolon closer outside" RUN-BAD-SOURCE
    GE-SRC-RESET  s" package A" GE-SRC-LINE  s" package B" GE-SRC-LINE
@@ -1088,7 +1094,7 @@ variable CANDIDATE-VERDICT
    s" : GD-PRIV ( -- n ) 1 ;" GE-SRC-LINE
    s" ;package" GE-SRC-LINE
    s" : BAD ( -- n ) GD-PRIV ;" GE-SRC-LINE
-   $46 s" E-UNDEFINED habu: in bad: undefined word 'GD-PRIV'" s" package rejects private checked call" RUN-BAD-CHILD
+   $46 s" error[E-UNDEFINED]: cannot find word `GD-PRIV`" s" package rejects private checked call" RUN-BAD-CHILD
    GE-SRC-RESET
    s" package P" GE-SRC-LINE
    s" public" GE-SRC-LINE
@@ -1178,20 +1184,20 @@ variable CANDIDATE-VERDICT
 
 : STRUCTURE-BAD ( -- )
    s" GD-BAD-FLAGS ( ptr a -- n ) POINT.FLAGS @"
-   $46 s" gd-bad-flags" s" structures reject byte field cell load" CANDIDATE-BAD ;
+   $46 s" error[E-MISMATCH]: `@` takes ptr a; the stack holds ptr u8" s" structures reject byte field cell load" CANDIDATE-BAD ;
 
 : STRUCTURE-MISUSE ( -- )
    GE-HB-RESET
    GE-SRC-RESET
    \ Depth satisfies +FIELD's declared inputs ( ptr a n n ) so the body's own
-   \ state check is reached; an underdepth bare call fails earlier with
-   \ `E-UNDERFLOW ... interpret stack underdepth:` (test/underdepth-gate.f).
+   \ state check is reached; an underdepth bare call fails earlier with an
+   \ E-UNDERFLOW record (test/underdepth-gate.f).
    s" NULL-PTR 0 CELL +FIELD GD-NO-STRUCT.FIELD" GE-SRC-LINE
-   $4C s" structure: no active structure" s" structures reject field outside begin" RUN-BAD-SOURCE
+   70 s" error[E-BAD-DECLARATION]: `+FIELD` is outside a structure" s" structures reject field outside begin" RUN-BAD-SOURCE
    GE-SRC-RESET
    s" BEGIN-STRUCTURE OUTER" GE-SRC-LINE
    s" BEGIN-STRUCTURE INNER" GE-SRC-LINE
-   $4C s" structure: nested begin" s" structures reject nesting" RUN-BAD-SOURCE
+   70 s" error[E-BAD-DECLARATION]: `BEGIN-STRUCTURE` opens a structure while `OUTER` is still open" s" structures reject nesting" RUN-BAD-SOURCE
    GE-SRC-RESET
    s" BEGIN-STRUCTURE POINT" GE-SRC-LINE
    s" CFIELD: POINT.FLAGS" GE-SRC-LINE
@@ -1293,7 +1299,7 @@ variable CANDIDATE-VERDICT
    GE-SRC-RESET
    s" defer GD-XV-UNSET ( -- i64 )" GE-SRC-LINE
    s" GD-XV-UNSET ." GE-SRC-LINE
-   $4C s" defer: unset execution vector" s" execution vector rejects unset call" RUN-BAD-SOURCE
+   70 s" error[E-DEFER-UNSET]" s" execution vector rejects unset call" RUN-BAD-SOURCE
    GE-SRC-RESET
    s" defer GD-XV-ACTION-A ( -- i64 )" GE-SRC-LINE
    s" : GD-XV-BAD-A ( -- ) [: 1 2 ;] is GD-XV-ACTION-A ;" GE-SRC-LINE
@@ -1309,10 +1315,12 @@ variable CANDIDATE-VERDICT
    s" defer GD-XV-READER-D ( -- ptr u8 n )" GE-SRC-LINE
    s" : GD-XV-BAD-READER-D ( -- ) [: 1 ;] is GD-XV-READER-D ;" GE-SRC-LINE
    s" check.f rejects execution vector misuse batch" CHECK-BAD-ALL
-   s" gd-xv-bad-a" s" check.f rejects effect-mismatched execution vector assignment" GE-EXPECT-ERR-HAS
-   s" gd-xv-bad-tick-b" s" check.f rejects effect-mismatched tick execution vector assignment" GE-EXPECT-ERR-HAS
-   s" gd-xv-bad-target-c" s" check.f rejects non-defer execution vector target" GE-EXPECT-ERR-HAS
-   s" gd-xv-bad-reader-d" s" check.f rejects reader-shaped effect mismatch" GE-EXPECT-ERR-HAS ;
+   s" E-MISMATCH" s" check.f rejects an execution vector effect mismatch" GE-EXPECT-ERR-HAS
+   s" E-NOT-DEFERRED" s" check.f rejects a non-defer execution vector target" GE-EXPECT-ERR-HAS
+   s" : GD-XV-BAD-A (" s" check.f rejects effect-mismatched execution vector assignment" GE-EXPECT-ERR-HAS
+   s" : GD-XV-BAD-TICK-B (" s" check.f rejects effect-mismatched tick execution vector assignment" GE-EXPECT-ERR-HAS
+   s" : GD-XV-BAD-TARGET-C (" s" check.f rejects non-defer execution vector target" GE-EXPECT-ERR-HAS
+   s" : GD-XV-BAD-READER-D (" s" check.f rejects reader-shaped effect mismatch" GE-EXPECT-ERR-HAS ;
 
 : CASE-BODY ( -- )
    s" : GD-CASE-PICK ( n -- n ) case 1 of 10 endof 2 of 20 endof 30 swap endcase ;" GE-SRC-LINE
@@ -1364,9 +1372,12 @@ variable CANDIDATE-VERDICT
    s" : GD-CASE-MISSING-END ( n -- n ) case 1 of 10 endof ;" GE-SRC-LINE
    s" : GD-CASE-ORPHAN-OF ( n -- n ) 1 of 2 endof ;" GE-SRC-LINE
    s" check.f rejects case misuse batch" CHECK-BAD-ALL
-   s" gd-case-bad-arm" s" check.f rejects case effect mismatch" GE-EXPECT-ERR-HAS
-   s" gd-case-missing-end" s" check.f rejects unterminated case" GE-EXPECT-ERR-HAS
-   s" gd-case-orphan-of" s" check.f rejects of outside case" GE-EXPECT-ERR-HAS ;
+   s" E-MISMATCH" s" check.f rejects case effect mismatch" GE-EXPECT-ERR-HAS
+   s" : GD-CASE-BAD-ARM (" s" check.f rejects case effect mismatch in GD-CASE-BAD-ARM" GE-EXPECT-ERR-HAS
+   s" a control structure is still open" s" check.f rejects unterminated case" GE-EXPECT-ERR-HAS
+   s" : GD-CASE-MISSING-END (" s" check.f rejects unterminated case in GD-CASE-MISSING-END" GE-EXPECT-ERR-HAS
+   s" no case is open here" s" check.f rejects of outside case" GE-EXPECT-ERR-HAS
+   s" : GD-CASE-ORPHAN-OF (" s" check.f rejects of outside case in GD-CASE-ORPHAN-OF" GE-EXPECT-ERR-HAS ;
 
 : PARSING-SOURCE ( -- )
    GE-SRC-RESET
