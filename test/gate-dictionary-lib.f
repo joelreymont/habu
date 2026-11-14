@@ -280,7 +280,7 @@ variable CANDIDATE-VERDICT
    GE-SRC-RESET
    s" TRUSTED: BADARR ( n -- ) create cells allot does> ( n -- ptr a ) drop ;" GE-SRC-LINE
    70 s" error[E-MISMATCH]: the body ends with n on the stack; the signature promises ptr a" s" hb bad trusted DOES> diagnostic" GE-EVAL-FORK-BAD
-   s" at `drop`" s" hb bad trusted DOES> diagnostic names drop" GE-EXPECT-ERR-HAS
+   s" <input>:1:66" s" hb bad trusted DOES> diagnostic names drop" GE-EXPECT-ERR-HAS
    GE-HB-RESET
    GE-SRC-RESET
    s" TRUSTED: BADDEF ( n -- ) create cells allot does> drop ;" GE-SRC-LINE
