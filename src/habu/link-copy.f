@@ -55,6 +55,7 @@ DYNAMIC-BUFFER ROW-REACHED n         \ 1 once BUILT row r's piece is reached
 DYNAMIC-BUFFER UNIT-STATE n          \ DEAD-UNIT, LAID-UNIT or LIVE-UNIT
 DYNAMIC-BUFFER CELL-UNIT n           \ address row i's cell's unit
 DYNAMIC-BUFFER CELL-READ n           \ 1 once address row i is read
+DYNAMIC-BUFFER BY-OFF n              \ the address rows in offset order
 DYNAMIC-BUFFER EM-LAID n             \ 1 once emission e's data addresses are laid
 DYNAMIC-BUFFER REC-READ n            \ 1 once live record r's data addresses are read
 DYNAMIC-BUFFER BY-START n            \ the BUILT rows in data order
@@ -187,6 +188,11 @@ variable EXT-I                       \ BY-EXT's next row to lay
    v UNIT-OF LAY-UNIT ;
 
 
+\ Address row n's cell's offset.
+: NTH-OFF ( n -- n )
+   {: n:n :}
+   ROWS drop n cells + @ ROW-OFF ;
+
 \ Each address row's cell's unit; no unit live, no piece reached.
 : UNITS ( -- )
    BUILT-N ROW-REACHED-RESERVE
@@ -201,6 +207,9 @@ variable EXT-I                       \ BY-EXT's next row to lay
       rows i cells + @ ROW-OFF BASE @ + UNIT-OF  i CELL-UNIT !
       0 i CELL-READ !
    loop
+   count BY-OFF-RESERVE
+   count 0 ?do i i BY-OFF ! loop
+   count 0 > if 0 BY-OFF count [: swap NTH-OFF swap NTH-OFF < ;] SORT:SORT! then
    NSHADOW:EMISSIONS EM-LAID-RESERVE
    NSHADOW:EMISSIONS 0 ?do 0 i EM-LAID ! loop
    NSHADOW:RECORDS REC-READ-RESERVE
@@ -241,13 +250,16 @@ variable EXT-I                       \ BY-EXT's next row to lay
    off STORED? 0= if true exit then
    off STORED-LIVE? ;
 
+\ Rows are read in offset order: a cold build lists them in mark order and an
+\ object in extent order.
 : READ-CELLS ( -- )
    ROWS {: rows:ptr count:n :}
    count CELLS-N @ <> if E-COMP-STATE throw then
    count 0 ?do
-      rows i cells + @ {: row:n :}
-      i CELL-READ @ 0= if
-         i row ROW-LIVE? if  1 i CELL-READ !  row READ-ROW  then
+      i BY-OFF @ {: k:n :}
+      rows k cells + @ {: row:n :}
+      k CELL-READ @ 0= if
+         k row ROW-LIVE? if  1 k CELL-READ !  row READ-ROW  then
       then
    loop ;
 
