@@ -2113,23 +2113,20 @@ private
       fam fs i + RES-TRUE TDINIT-NAME  CHILD-ABI:INIT-SET fs i +  xt execute
    loop ;
 
-: TDINIT-FREE ( ptr u8 n n n -- ) {: na:ptr nu:n shape:n param:n :}
-   na nu TDECL-NAME-PREFLIGHT-XT ;
-
 : TDINIT-ROOM ( n -- ) {: fam:n :}
    fam  fam TFAM-FLD-START@ RES-FALSE TDINIT-NAME
    fam TFAM-FLD-COUNT@ 2 * TDECL-CAPACITY-PREFLIGHT-XT ;
 
-: TDINIT-CHECK ( n -- n )
-   dup [: TDINIT-FREE ;] TDINIT-EACH
+: TDINIT-CHECK ( n [ ptr u8 n n n -- ] -- n )
+   over swap TDINIT-EACH
    dup TDINIT-ROOM ;
 
 : TDINIT-LIVE ( n -- n )
-   TDINIT-CHECK
+   [: TDECL-ADDR-LIVE-FREE ;] TDINIT-CHECK
    dup [: TDECL-ADDR-MAKE ;] TDINIT-EACH ;
 
 : TDINIT-REPLAY-REG ( n -- n )
-   TDINIT-CHECK
+   [: TDECL-ADDR-FREE ;] TDINIT-CHECK
    dup [: TDECL-ADDR-REG ;] TDINIT-EACH ;
 
 public
