@@ -16,12 +16,14 @@
 \ file shrank after the scan.
 \
 \ The checker reports a definition it refuses and returns, but a statement can
-\ also throw out of it with nothing reported: a `;using` with no `using` open
-\ throws E-USING-UNBALANCED. That throw is reported under the code and message,
-\ its throw number standing in for an empty message, at the token the checker
-\ read last, after whatever it reported before it, and fails the source like a
-\ refusal, so the run ends with the checker's status. The rest of the source is
-\ not checked. Both renderings are built in the JSON writer's buffer.
+\ also throw out of it. A status in 1..255 follows the record its rejection
+\ printed, as a `;using` with no `using` open throws 93 after E-USING-UNBALANCED,
+\ and fails the source with that record alone (THREW?). Any other code was
+\ thrown with nothing reported: it is reported under the code and message, its
+\ throw number standing in for an empty message, at the token the checker read
+\ last, after whatever it reported before it, and fails the source like a
+\ rejection, so the run ends with the checker's status. The rest of the source
+\ is not checked. Both renderings are built in the JSON writer's buffer.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -59,7 +61,7 @@ private
 
 10 constant CA-LF
 123 constant CA-LBRACE
-70 constant CA-REFUSED                  \ the status of a refusal the checker reported
+70 constant CA-REFUSED                  \ the status of a rejection the checker reported
 
 public
 
@@ -447,11 +449,11 @@ variable CA-COMPOSE-LABEL-U
 
 public
 
-\ True for the status of a check a statement threw out of unreported. A refusal
-\ the checker reported keeps its packet and no throw record.
+\ True for the status of a check a statement threw out of unreported: a code
+\ outside 0..255. A code in 1..255 is a status a rejection threw after printing
+\ its record, so it gets no throw record.
 : THREW? ( n -- bool ) {: rc:n :}
-   rc 0 <> rc CA-REFUSED <> and rc DUP-RC <> and
-   rc REPORTED-ERROR? 0= and ;
+   rc 0 < rc 255 > or ;
 
 private
 
