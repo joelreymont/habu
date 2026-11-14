@@ -1455,15 +1455,16 @@ public
 private
 
 \ LEXITHOOK: EXIT-HOOK-CELL's trampoline, BL-called with the code in x0; it
-\ keeps x0 and LR only.
+\ keeps x0 and LR only. The vector is the main region's, at DATA-VA from any
+\ thread; the handler chain it empties is this thread's.
 : EMIT-EXITHOOK ( -- )
    LBL LBL {: nohk:label end:label :}
    LEXITHOOK LABEL@ {: start:label :}
    s" (LEXITHOOK)" start LABEL>N end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
    start LBL,
-   9 DATA EXIT-HOOK-CELL LDR,  9 nohk CBZ,
+   11 DATA-VA VA>N LIT64,  9 11 EXIT-HOOK-CELL LDR,  9 nohk CBZ,
    SP SP 16 SUBI,  30 SP 0 STR,  0 SP 8 STR,
-   10 0 MOVZ,  10 DATA EXIT-HOOK-CELL STR,  10 DATA HND-CELL STR,
+   10 0 MOVZ,  10 11 EXIT-HOOK-CELL STR,  10 DATA HND-CELL STR,
    9 BLR,
    0 SP 8 LDR,  30 SP 0 LDR,  SP SP 16 ADDI,
    nohk LBL,

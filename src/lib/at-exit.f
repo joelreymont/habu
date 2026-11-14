@@ -2,9 +2,9 @@
 \ engine's process-exit vector: the engine clears it and calls it once just
 \ before the exit_group of a normal top-level exit, a `die`, an uncaught throw
 \ or a stripped program's return from MAIN, and the vector runs the actions.
-\ One copy: its load arms the loading thread's vector, and a task's ADD the
-\ task's. A build's space loads a second copy, whose RUN goes to the space's
-\ own vector cell, which only the linker calls.
+\ The vector is the process's, the main region's cell, so any thread's exit
+\ runs every action. A build's space loads a second copy, whose RUN goes to
+\ the space's own vector cell, which only the linker calls.
 \ STORAGE CLASS. PROCESS-WIDE action table.
 
 require src/lib/prelude.f
@@ -34,7 +34,7 @@ CAST: >VECTOR ( n -- ptr [ -- ] )
 CAST: XT>N ( [ -- ] -- n )
 
 : VECTOR ( -- ptr [ -- ] )
-   data-base BYTE-VIEW NULL-PTR BYTE-VIEW - EXIT-HOOK-CELL + >VECTOR ;
+   BOOT:EXIT-VECTOR NULL-PTR - >VECTOR ;
 
 \ The newest action, taken off the table, or false when none is left.
 : TAKE ( -- [ -- ] bool )
@@ -67,7 +67,7 @@ TYPED-VARIABLE RUNNER [ -- ]
 RUNNER-INIT
 
 : VECTOR-INIT ( -- )
-   RUNNER @ data-base EXIT-HOOK-CELL + xt! ;
+   RUNNER @ VECTOR xt! ;
 VECTOR-INIT
 
 : APPEND ( [ -- ] -- ) {: q :}
@@ -81,9 +81,8 @@ VECTOR-INIT
 public
 
 \ Adds an action the process runs once when it exits, after every action added
-\ later; an action already added is not added again. Each thread's DATA region
-\ holds its own vector, so a task's ADD arms only the task's; the main
-\ thread's, armed when this file loads, runs a task's actions too.
+\ later; an action already added is not added again. The vector is the
+\ process's, so any thread's exit runs every action.
 : ADD ( [ -- ] -- )
    LOCK [: APPEND ;] [: UNLOCK ;] finally
    ARM ;

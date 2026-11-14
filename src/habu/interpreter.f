@@ -345,7 +345,7 @@ create NL NEWLINE c,
 \ which would otherwise call it.
 : FAIL-CLOSED ( ptr u8 n n -- ) {: a:ptr u:n rc:n :}
    a u ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
-   0 EXIT-HOOK-CELL CELL!
+   0 BOOT:EXIT-VECTOR !
    s" " rc die ;
 
 : SEALED-FAIL ( ptr u8 n -- ) {: a:ptr u:n :}

@@ -793,6 +793,18 @@ $27F8 constant CODE-CELL
 \ below $7FF8 so the engine names it with a `DATA <off> LDR/STR` 12-bit scaled
 \ immediate, and below DATA-START so no compiled source reaches it by allot.
 $2818 constant EXIT-HOOK-CELL
+package BOOT
+private
+CAST: >PTR ( n -- ptr n )
+public
+\ The main region's EXIT-HOOK-CELL from any thread, the process's one vector.
+\ Main reads data-base: a cross build's host is not mapped at DATA-VA.
+: EXIT-VECTOR ( -- ptr n )
+   data-base TASK-TCB-CELL + @ 0= if
+      data-base EXIT-HOOK-CELL + exit
+   then
+   DATA-VA EXIT-HOOK-CELL + >PTR ;
+;package
 \ TOKBODY-CELL .. TOKVSP-CELL, TOKDEPTH-CELL and TOKRAW-CELL: the token-start
 \ mark, six cells. Before every token the interpret loop stores BODYLEN-CELL,
 \ LOCN-CELL, CAPDEPTH-CELL, RAWNEXT-CELL, CP (as an offset from the region

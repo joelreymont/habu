@@ -296,6 +296,22 @@ variable STAGED-FILES
    outu 0 T=
    TREE$ FS:EXISTS? TFALSE ;
 
+\ A task that never added an action dies: its exit runs the process's vector,
+\ so the action the main thread added removes the tree.
+: CASE-TASK-DIE ( -- )
+   s" task-die.f" s" task-die-tree" CASE-PATHS
+   S\" require src/lib/task.f\n$10000 TASK:TASK CHILD-TASK\n" TEXT+
+   S\" : CHILD-WORK ( -- ) s\q task: dying\q 3 die ;\n" TEXT+
+   S\" : CHILD-MAIN ( -- ) CHILD-TREE FS:MAKE-DIR CHILD-TREE FS:CLEANUP-TREE+\n" TEXT+
+   S\"    [: CHILD-WORK ;] CHILD-TASK TASK:ACTIVATE\n" TEXT+
+   S\"    CHILD-TASK TASK:JOIN MATCH result ok OF drop ENDOF err OF drop ENDOF ;MATCH ;\n" TEXT+
+   S\" CHILD-MAIN\n" TEXT+
+   RUN-CHILD {: outu:n erru:n rc:n :}
+   s" a task's die runs the action the main thread added" T-LABEL
+   outu erru rc 3 EXPECT-RC
+   erru s" task: dying" ERR-HAS? TTRUE
+   TREE$ FS:EXISTS? TFALSE ;
+
 \ hb-build loads its source in its own process, so a source whose top level
 \ ends the process ends hb-build inside the build: the build fails 74 naming
 \ the source, and -o keeps its bytes.
@@ -329,6 +345,23 @@ variable STAGED-FILES
    erru s" ended the process during the build" ERR-HAS? TTRUE
    outu s" bye" OUT-HAS? TTRUE
    erru s" older hb-build: " ERR-HAS? TTRUE ;
+
+\ The source's task dies during the build: its exit runs hb's vector, so the
+\ source's action runs and hb-build fails 74 with its line.
+: CASE-BUILD-TASK ( -- )
+   s" build-task.f" s" build-task-out" CASE-PATHS
+   0 TEXT-U !
+   S\" require src/lib/task.f\nrequire src/lib/at-exit.f\n$10000 TASK:TASK CHILD-TASK\n" TEXT+
+   S\" : BYE ( -- ) s\q bye\q type cr ;\n: WORK ( -- ) s\q task: dying\q 3 die ;\n" TEXT+
+   S\" : GO ( -- ) [: BYE ;] AT-EXIT:ADD [: WORK ;] CHILD-TASK TASK:ACTIVATE\n" TEXT+
+   S\"    CHILD-TASK TASK:JOIN MATCH result ok OF drop ENDOF err OF drop ENDOF ;MATCH ;\n" TEXT+
+   S\" GO\n: MAIN ( -- ) ;\n" TEXT+
+   RUN-BUILD {: outu:n erru:n rc:n :}
+   s" a build whose task dies fails 74 after the source's action" T-LABEL
+   outu erru rc 74 EXPECT-RC
+   erru SCRIPT$ ERR-HAS? TTRUE
+   erru s" ended the process during the build" ERR-HAS? TTRUE
+   outu s" bye" OUT-HAS? TTRUE ;
 
 create RUN-FILE-BUF PATH-CAP allot
 variable RUN-FILE-U
@@ -438,8 +471,10 @@ variable RUN-FILE-U
    CASE-RESETS-FULL
    CASE-STAGED
    CASE-TASK-ADD
+   CASE-TASK-DIE
    CASE-BUILD
    CASE-BUILD-EXIT
+   CASE-BUILD-TASK
    CASE-BUILT
    CASE-BUILD-ACTION
    CASE-BUILD-CLEANUPS
