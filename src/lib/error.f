@@ -689,6 +689,8 @@ require src/lib/prelude.f
 \ BASE85.
 \ Finite binary64 text: -9860..-9869, minted in src/lib/f64-text.f, which owns
 \ package F64-TEXT.
+\ JSON Pointers: -9870..-9879, minted in src/lib/json/pointer.f, a file of
+\ package JSON (src/lib/json.f).
 
 \ T0 (src/habu/t0.f): -9600..-9609, minted here, not in package COMP, because
 \ src/compiler/native/definition.f MALFORMED? reads them.

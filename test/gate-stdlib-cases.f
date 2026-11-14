@@ -619,6 +619,7 @@ SUITE memory
 SUITE tail-pure-fixtures
    src/lib/json-write-test.f
    src/lib/json-read-test.f
+   src/lib/json-pointer-test.f
    src/lib/jsonl-test.f
    src/lib/decimal-test.f
    src/lib/vector-test.f
