@@ -3,8 +3,9 @@
 \ refuses the whole packet for one. A control byte is a blank inside a stack
 \ effect, so none reaches a token, and `( n<c>jesc-nosuch -- n )` carries each
 \ c from 0x00 to 0x1F into an unknown-signature-type packet's source text.
-\ Every stream must parse with the strict JSONL reader, its "definition_source"
-\ must decode back to the bytes written and its "token" to jesc-nosuch alone.
+\ Every stream must parse with the strict JSONL reader, its "source_line" must
+\ decode back to the line written and its "token" to jesc-nosuch alone. A line
+\ feed ends the line, so its "source_line" is the token's line, after it.
 
 require src/lib/string.f
 require test/gate-common.f
@@ -45,8 +46,8 @@ TYPED-VARIABLE READER-STORAGE JSON:cursor
    [: CHECK-ACT ;] GE-CAPTURE-ACTION
    GT-RC@ 0= if s" the check tool accepted the rejected fixture" FAIL then ;
 
-\ "token" precedes "definition_source" in the packet, and READ-FIND-KEY only
-\ reads forward.
+\ "token" precedes "source_line" in the packet, and READ-FIND-KEY only reads
+\ forward.
 : TOKEN-AND-SOURCE ( ptr u8 n -- )
    READER-STORAGE -rot JSON:READ-INIT JSON:READ-NEXT drop
    s" token" JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE s" packet has no token field" FAIL then
@@ -54,16 +55,17 @@ TYPED-VARIABLE READER-STORAGE JSON:cursor
    s" jesc-nosuch" JSON:READ-STR-EQ? 0= if JSON:READ-CLOSE
       s" packet token field does not decode to jesc-nosuch alone" FAIL
    then JSON:READ-SKIP-VALUE
-   s" definition_source" JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE
-      s" packet has no definition_source field" FAIL
+   s" source_line" JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE
+      s" packet has no source_line field" FAIL
    then
    JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE
-      s" packet definition_source field is not a string" FAIL
+      s" packet source_line field is not a string" FAIL
    then
-   SB-RESET  s" JESC-BAD ( n" SB-APPEND  BYTE @ SB-APPEND-C
-   s" jesc-nosuch -- n ) dup " SB-APPEND
+   SB-RESET
+   BYTE @ GE-LF <> if s" : JESC-BAD ( n" SB-APPEND  BYTE @ SB-APPEND-C then
+   s" jesc-nosuch -- n ) dup ;" SB-APPEND
    SB$ JSON:READ-STR-EQ? 0= if JSON:READ-CLOSE
-      s" packet definition_source field does not decode to the source written" FAIL
+      s" packet source_line field does not decode to the line written" FAIL
    then JSON:READ-CLOSE ;
 
 : BLANK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
