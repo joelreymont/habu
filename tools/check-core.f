@@ -975,8 +975,6 @@ private
    loop ;
 
 : CHK-RUN-BOUNDARY ( -- )
-   FD:STDERR CHECKED-BOUNDARY-LINT:OUT-FD!
-   CHK-JSON @ CHECKED-BOUNDARY-LINT:JSON!
    LINT-TRUE CHECKED-BOUNDARY-LINT:STRICT!
    CHK-SEL-MODE @ CHK-SEL-LIST = if
       [: CHECKED-BOUNDARY-LINT:FILE ;] CHK-LINT-LISTED
@@ -987,8 +985,6 @@ private
 
 : CHK-RUN-RESERVED-NAMES ( -- )
    RESERVED-NAME-LINT:RESET
-   FD:STDERR RESERVED-NAME-LINT:OUT-FD!
-   CHK-JSON @ RESERVED-NAME-LINT:JSON!
    CHK-SEL-MODE @ CHK-SEL-LIST = if
       [: RESERVED-NAME-LINT:FILE ;] CHK-LINT-LISTED
    else
@@ -1202,6 +1198,8 @@ private
 
 : CHK-RUN-STATIC-LINTS ( -- )
    \ Zero-byte input traverses every phase; a bypass is publicly unobservable.
+   \ The lints write their records in the run's mode.
+   CHK-JSON @ REJECTION:JSON !
    CHK-RUN-RESERVED-NAMES
    CHK-RUN-BOUNDARY
    CHK-ALL @ if CHK-RUN-ALL then ;
