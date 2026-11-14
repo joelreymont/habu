@@ -1357,6 +1357,11 @@ variable MDV-I   variable MDV-F
    s" type family " EMIT-STR  TOK-SPAN
    s"  takes " EMIT-STR  SGBAD-AR-DECL @ EMIT-U
    s"  type arguments, not " EMIT-STR  SGBAD-AR-GOT @ EMIT-U ;
+\ A signature that ended where the parser expected a word.
+: SIG-END-MESSAGE ( -- )
+   SGBAD-EXP-U @ 0= IF s" the signature ends before it is complete" EMIT-STR EXIT THEN
+   s" expected " EMIT-STR  SGBAD-EXP-A @ SGBAD-EXP-U @ CODE-SPAN
+   s" , found the end of the signature" EMIT-STR ;
 : SIG-MESSAGE ( -- )
    SGBAD-UNKNOWN? IF
       s" unknown type " EMIT-STR  TOK-SPAN  s"  in signature" EMIT-STR EXIT
@@ -1365,6 +1370,7 @@ variable MDV-I   variable MDV-F
    SGBAD-ARITY? IF ARITY-MESSAGE EXIT THEN
    SGBAD-RETURN? IF s" return-stack effect in signature " EMIT-STR  TOK-SPAN EXIT THEN
    SGBAD-SIZE? IF BADSIG-REASON  s"  at " EMIT-STR  TOK-SPAN EXIT THEN
+   PIN-TOK$ nip 0= IF SIG-END-MESSAGE EXIT THEN
    s" bad signature at " EMIT-STR  TOK-SPAN ;
 
 : NP-FAM-REND ( -- )
