@@ -26,7 +26,6 @@ variable DEFAULT-N
    off ;
 
 : DEFAULT ( n n -- ) {: off:n value:n :}
-   DEFAULT-N @ DEFAULT-CAP >= if E-LAYOUT-BUFFER throw then
    off DEFAULT-OFF DEFAULT-N @ cells + !
    value DEFAULT-VALUE DEFAULT-N @ cells + !
    DEFAULT-N @ 1+ DEFAULT-N !
@@ -91,6 +90,9 @@ CAST: AS-WORKS-ENTRY ( [ n ptr n -- ptr u8 ] -- n )
       na nu ta tu CHECKER-STORAGE-TYPE-REFUSE exit
    then
    operand kind w EXTENT {: bytes:n :}
+   \ A full default table refuses before FIT, so USED keeps no refused bytes.
+   kind VARIABLE-KIND = operand 0<> and
+   DEFAULT-N @ DEFAULT-CAP >= and if E-LAYOUT-BUFFER throw then
    bytes FIT {: off:n :}
    na nu ta tu kind ACCESSOR
    off ,  w ,
