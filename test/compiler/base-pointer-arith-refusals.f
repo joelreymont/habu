@@ -56,32 +56,26 @@ private
    S\" \"code\":\"E-RAW-CELL-PTR\"" ;
 
 : DB-REASON$ ( -- ptr u8 n )
-   S\" \"reason\":\"base address: a cell reached from data-base, or from a pointer computed off NULL-PTR, holds a plain value at every pointee depth, never a nominal type or a pointer\"" ;
+   S\" \"message\":\"base address: a cell reached from data-base, or from a pointer computed off NULL-PTR, holds a plain value at every pointee depth, never a nominal type or a pointer\"" ;
 
 : NULL-REASON$ ( -- ptr u8 n )
-   S\" \"reason\":\"null address: nothing is read through NULL-PTR, so it is never a nominal type and never the address of one\"" ;
-
-: REPAIR$ ( -- ptr u8 n )
-   S\" \"repair_class\":\"declare_pointer_cell\"" ;
+   S\" \"message\":\"null address: nothing is read through NULL-PTR, so it is never a nominal type and never the address of one\"" ;
 
 \ The raw-storage rule's reason. No base fixture may answer it: they name no
 \ `variable`, `create`, `constant` or `here`.
 : RAW-REASON$ ( -- ptr u8 n )
-   S\" \"reason\":\"raw storage cell: a pointer cannot be stored in or fetched from an undeclared cell\"" ;
+   S\" \"message\":\"raw storage cell: a pointer cannot be stored in or fetched from an undeclared cell\"" ;
 
 \ An executable value reached through either base or an undeclared cell answers
-\ the raw rule's reason and repair class: declare the cell that holds the xt.
+\ the raw rule's reason for code: declare the cell that holds the xt.
 : EXEC-REASON$ ( -- ptr u8 n )
-   S\" \"reason\":\"raw storage cell: an undeclared cell cannot hold an execution token / a quotation\"" ;
-
-: EXEC-REPAIR$ ( -- ptr u8 n )
-   S\" \"repair_class\":\"declare_xt_cell\"" ;
+   S\" \"message\":\"raw storage cell: an undeclared cell cannot hold an execution token / a quotation\"" ;
 
 : NP-CODE$ ( -- ptr u8 n )
    S\" \"code\":\"E-NONPARAMETRIC-EFFECT\"" ;
 
 : NP-SUGGEST$ ( -- ptr u8 n )
-   S\" Declare the pointee this base address really reaches" ;
+   s" declare the pointee the base address reaches" ;
 
 : HAS? ( ptr u8 n -- )
    REJECTION:BUFFER$ 2swap CONTAINS? TTRUE ;
@@ -93,7 +87,7 @@ private
 : REFUSED-CODE ( ptr u8 n -- )   \ leaves the diagnostic armed for the reason assertions
    ARM
    CHECK-CANDIDATE! 0 T=
-   CODE$ HAS?  REPAIR$ HAS?  RAW-REASON$ LACKS? ;
+   CODE$ HAS?  RAW-REASON$ LACKS? ;
 
 : DB-REFUSED ( ptr u8 n -- )
    REFUSED-CODE  DB-REASON$ HAS?  NULL-REASON$ LACKS?  DISARM ;
@@ -112,8 +106,8 @@ private
 : EXEC-REFUSED ( ptr u8 n -- )
    ARM
    CHECK-CANDIDATE! 0 T=
-   CODE$ HAS?  EXEC-REPAIR$ HAS?  EXEC-REASON$ HAS?
-   REPAIR$ LACKS?  DB-REASON$ LACKS?  NULL-REASON$ LACKS?  RAW-REASON$ LACKS?
+   CODE$ HAS?  EXEC-REASON$ HAS?
+   DB-REASON$ LACKS?  NULL-REASON$ LACKS?  RAW-REASON$ LACKS?
    DISARM ;
 
 : CERTIFIES ( ptr u8 n -- )
@@ -195,8 +189,8 @@ private
    s" ptr-cell! refuses a byte pointer as its cell, as ! does" T-LABEL
    ARM
    s" BPA-PCB ( u8 ptr u8 -- ) ptr-cell!" CHECK-CANDIDATE! 0 T=
-   S\" \"code\":\"E-MISMATCH\"" HAS?  S\" \"repair_class\":\"fix_type\"" HAS?
-   S\" \"expected\":\"ptr a \"" HAS?  S\" \"actual\":\"ptr u8 \"" HAS?
+   S\" \"code\":\"E-MISMATCH\"" HAS?
+   S\" \"expected\":\"ptr a\",\"found\":\"ptr u8\"" HAS?
    DISARM ;
 
 \ ---- the ways around it ------------------------------------------------------
@@ -474,7 +468,7 @@ private
    s" and a null is not that pointee" T-LABEL
    ARM
    s" BPA-NSN ( -- n ) NULL-PTR BPA-TVDIST" CHECK-CANDIDATE! 0 T=
-   S\" \"code\":\"E-MISMATCH\"" HAS?  S\" \"expected\":\"ptr bpathing \"" HAS?
+   S\" \"code\":\"E-MISMATCH\"" HAS?  S\" \"expected\":\"ptr bpathing\"" HAS?
    DISARM ;
 
 \ A null whose distance was taken is still the null: a read through it answers
@@ -483,7 +477,7 @@ private
    s" a read through the null a distance was taken from is still refused" T-LABEL
    ARM
    s" BPA-NDR ( ptr a -- a ) NULL-PTR dup rot - drop @" CHECK-CANDIDATE! 0 T=
-   NP-CODE$ HAS?  s" Declare the pointee this null stands in for" HAS?
+   NP-CODE$ HAS?  s" declare the pointee the null stands in for" HAS?
    DISARM ;
 
 : CASE-NULL-ZEROTEST ( -- )

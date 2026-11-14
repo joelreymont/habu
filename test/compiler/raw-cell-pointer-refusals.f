@@ -41,24 +41,18 @@ private
    S\" \"code\":\"E-RAW-CELL-PTR\"" ;
 
 : VALUE-REASON$ ( -- ptr u8 n )
-   S\" \"reason\":\"raw storage cell: a pointer cannot be stored in or fetched from an undeclared cell\"" ;
+   S\" \"message\":\"raw storage cell: a pointer cannot be stored in or fetched from an undeclared cell\"" ;
 
 : FIELD-REASON$ ( -- ptr u8 n )
-   S\" \"reason\":\"ptr-field: base is an undeclared raw storage cell, not a declared pointer cell\"" ;
-
-: REPAIR$ ( -- ptr u8 n )
-   S\" \"repair_class\":\"declare_pointer_cell\"" ;
+   S\" \"message\":\"ptr-field: base is an undeclared raw storage cell, not a declared pointer cell\"" ;
 
 \ An EXECUTABLE value through the same cell answers the same code with its own
-\ reason and repair class: a declared CODE cell, not a declared pointer cell.
+\ reason: a declared CODE cell, not a declared pointer cell.
 : EXEC-REASON$ ( -- ptr u8 n )
-   S\" \"reason\":\"raw storage cell: an undeclared cell cannot hold an execution token / a quotation\"" ;
+   S\" \"message\":\"raw storage cell: an undeclared cell cannot hold an execution token / a quotation\"" ;
 
-: EXEC-REPAIR$ ( -- ptr u8 n )
-   S\" \"repair_class\":\"declare_xt_cell\"" ;
-
-: RETURN-REPAIR$ ( -- ptr u8 n )
-   S\" \"repair_class\":\"fix_return_stack\"" ;
+: RETURN-REASON$ ( -- ptr u8 n )
+   S\" \"message\":\"return stack: the return row does not balance at exit\"" ;
 
 : HAS? ( ptr u8 n -- )
    REJECTION:BUFFER$ 2swap CONTAINS? TTRUE ;
@@ -68,15 +62,13 @@ private
 
 \ Each shape is refused with its own named diagnostic (the code and the prose
 \ naming what was laundered), not a bare mismatch.
-\ Every value-position refusal answers one code, one repair class and one
-\ reason. Asserting the reason keeps the prose from silently becoming a
-\ different rule's prose.
+\ Every value-position refusal answers one code and one reason. Asserting the
+\ reason keeps the prose from silently becoming a different rule's prose.
 : NAMED ( -- )
-   CODE$ HAS?  REPAIR$ HAS?  VALUE-REASON$ HAS? ;
+   CODE$ HAS?  VALUE-REASON$ HAS? ;
 
 : NAMED-EXEC ( -- )
-   CODE$ HAS?  EXEC-REPAIR$ HAS?  EXEC-REASON$ HAS?
-   VALUE-REASON$ LACKS?  REPAIR$ LACKS? ;
+   CODE$ HAS?  EXEC-REASON$ HAS?  VALUE-REASON$ LACKS? ;
 
 \ The cases run the live engine's checker through `evaluate-closed`; a refusal
 \ is a throw out of the compile, not a value.
@@ -144,7 +136,7 @@ private
    ARM
    [: s" : RCP-FORGE ( n -- n ) RCP-V ! RCP-V 0 ptr-field @ @ ;" evaluate-closed ;]
       CHECK-RC TTHROWSQ
-   CODE$ HAS?  REPAIR$ HAS?  FIELD-REASON$ HAS?
+   CODE$ HAS?  FIELD-REASON$ HAS?
    DISARM ;
 
 \ The same program with a NOMINAL result, the forgery the seal in
@@ -156,7 +148,7 @@ private
    ARM
    [: s" : RCP-FORGE-N ( n -- rcpthing ) RCP-V ! RCP-V 0 ptr-field @ @ ;" evaluate-closed ;]
       CHECK-RC TTHROWSQ
-   CODE$ HAS?  REPAIR$ HAS?  FIELD-REASON$ HAS?
+   CODE$ HAS?  FIELD-REASON$ HAS?
    DISARM ;
 
 \ A refusal with no token to sit on: every token accepts the value (`@` takes
@@ -219,12 +211,12 @@ private
    DISARM ;
 
 \ Control for the return-row case: a return row that does not balance keeps the
-\ return-stack repair class and stays unnamed.
+\ return-stack reason and stays unnamed.
 : CASE-RETURN-BALANCE ( -- )
    s" an ordinary return-stack mismatch is still not named by this rule" T-LABEL
    ARM
    [: s" : RCP-RBAL ( -- ) 1 >r ;" evaluate-closed ;] CHECK-RC TTHROWSQ
-   CODE$ LACKS?  VALUE-REASON$ LACKS?  RETURN-REPAIR$ HAS?
+   CODE$ LACKS?  VALUE-REASON$ LACKS?  RETURN-REASON$ HAS?
    DISARM ;
 
 \ A `create`d byte buffer is the honest use of raw storage: the pointee binds to

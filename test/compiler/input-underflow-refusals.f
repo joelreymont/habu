@@ -1,7 +1,7 @@
 \ input-underflow-refusals.f - rejected programs for "a definition may not
 \ consume below its declared inputs". The refusal names the consuming token and
 \ both counts. Controls: a short and mistyped call keeps its own mismatch, and a
-\ body spending exactly what it declared still certifies. The packet's declared
+\ body spending exactly what it declared still certifies. The record's declared
 \ effect is the signature's rows, whatever the body bound. Cases run through
 \ `evaluate-closed`, the path `bin/hb --load` takes; a refusal is a throw.
 
@@ -34,9 +34,6 @@ private
 : CODE$ ( -- ptr u8 n )
    S\" \"code\":\"E-INPUT-UNDERFLOW\"" ;
 
-: REPAIR$ ( -- ptr u8 n )
-   S\" \"repair_class\":\"supply_missing_input\"" ;
-
 : MISMATCH$ ( -- ptr u8 n )
    S\" \"code\":\"E-MISMATCH\"" ;
 
@@ -64,23 +61,18 @@ private
    SB$ HAS? ;
 
 : NAMED ( -- )
-   CODE$ HAS?  REPAIR$ HAS? ;
+   CODE$ HAS? ;
 
-: DECLARED? ( ptr u8 n -- )
+: DECLARED? ( ptr u8 n -- )   \ the record's declared note
    SB-RESET
-   S\" \"declared_effect\":\"" SB-APPEND  SB-APPEND  34 SB-APPEND-C
+   S\" \"declared\":\"" SB-APPEND  SB-APPEND  34 SB-APPEND-C
    SB$ HAS? ;
 
-: SOURCED? ( ptr u8 n -- )
-   SB-RESET
-   S\" \"declared_effect_source\":\"" SB-APPEND  SB-APPEND  34 SB-APPEND-C
-   SB$ HAS? ;
-
-: ROWS? ( ptr u8 n ptr u8 n -- )   \ the packet's expected and actual rows
+: ROWS? ( ptr u8 n ptr u8 n -- )   \ the record's expected and found notes
    {: e:ptr eu:n a:ptr au:n :}
    SB-RESET
    S\" \"expected\":\"" SB-APPEND  e eu SB-APPEND
-   S\" \",\"actual\":\"" SB-APPEND  a au SB-APPEND  34 SB-APPEND-C
+   S\" \",\"found\":\"" SB-APPEND  a au SB-APPEND  34 SB-APPEND-C
    SB$ HAS? ;
 
 \ ---- the shortfall itself ----------------------------------------------------
@@ -199,39 +191,39 @@ private
 \ ---- the declared effect -----------------------------------------------------
 
 \ A step that reaches under the declared inputs binds the row below them; the
-\ packet still declares only the one input the signature wrote.
+\ record still declares only the one input the signature wrote.
 : CASE-DECLARED-ROWS ( -- )
    s" an underflow's declared effect is the signature as written" T-LABEL
    ARM
    [: s" : IUF-PLUS ( n -- n ) + ;" evaluate-closed ;] CHECK-RC TTHROWSQ
-   NAMED  s" n -- n " DECLARED?
+   NAMED  s" n -- n" DECLARED?
    DISARM ;
 
-\ A body that specialises a declared variable binds it; the packet still
+\ A body that specialises a declared variable binds it; the record still
 \ declares the variable.
 : CASE-DECLARED-VARIABLE ( -- )
    s" a specialised variable stays a variable in the declared effect" T-LABEL
    ARM
    [: s" : IUF-PARAM ( a -- a ) 1 + ;" evaluate-closed ;] CHECK-RC TTHROWSQ
-   s" a -- a " DECLARED?
+   s" a -- a" DECLARED?
    DISARM ;
 
-\ A quotation's own rows hold no cells; the packet names them, in the
+\ A quotation's own rows hold no cells; the record names them, in the
 \ renderer's letters, where the signature wrote R and S.
 : CASE-DECLARED-QUOTATION-ROWS ( -- )
    s" a quotation's own rows stay named in the declared effect" T-LABEL
    ARM
    [: s" : IUF-QROW ( [ R -- S ] -- [ R -- S ] ) swap ;" evaluate-closed ;] CHECK-RC TTHROWSQ
-   s" [ A -- B ] -- [ A -- B ] " DECLARED?
+   s" [ A -- B ] -- [ A -- B ]" DECLARED?
    DISARM ;
 
-\ A fresh name is one identity per spelling in a signature, so the packet
+\ A fresh name is one identity per spelling in a signature, so the record
 \ writes it as the signature does, with no ordinal.
 : CASE-DECLARED-FRESH ( -- )
    s" a fresh name stays as written in the declared effect" T-LABEL
    ARM
    [: s" : IUF-FRESH ( n -- fresh-region-a ) + ;" evaluate-closed ;] CHECK-RC TTHROWSQ
-   s" n -- fresh-region-a " DECLARED?
+   s" n -- fresh-region-a" DECLARED?
    DISARM ;
 
 \ A quantifier after a free variable takes the next letter in both passes, not
@@ -240,7 +232,7 @@ private
    s" a quantifier keeps its own name in the declared effect" T-LABEL
    ARM
    [: s" : IUF-FORALL ( a forall<p,[ read-view<p,p,u8> -- ]> -- a ) drop drop drop ;" evaluate-closed ;] CHECK-RC TTHROWSQ
-   s" a forall<b,[ read-view<b,b,u8> -- ]> -- a " DECLARED?
+   s" a forall<b,[ read-view<b,b,u8> -- ]> -- a" DECLARED?
    DISARM ;
 
 \ A does> clause declares its own signature, not the created word's runtime
@@ -249,38 +241,38 @@ private
    s" a refused does> clause's declared effect is its signature as written" T-LABEL
    ARM
    [: s" : IUF-DOES-UF ( n -- ) create , does> ( n -- n ) @ + + ;" evaluate-closed ;] CHECK-RC TTHROWSQ
-   NAMED  s" n -- n " DECLARED?  s" n -- n" SOURCED?
+   NAMED  s" n -- n" DECLARED?
    DISARM ;
 
 : CASE-DECLARED-CLAUSE-MISMATCH ( -- )
    s" a mismatched does> clause's declared effect is its signature as written" T-LABEL
    ARM
    [: s" : IUF-DOES-MM ( n -- ) create , does> ( n -- n ) @ ;" evaluate-closed ;] CHECK-RC TTHROWSQ
-   MISMATCH$ HAS?  s" n -- n " DECLARED?  s" n -- n" SOURCED?
+   MISMATCH$ HAS?  s" n -- n" DECLARED?
    DISARM ;
 
 \ RECURSE in a does> clause leaves it uncheckable (MD-RECURSE-DOES).
 : CASE-DECLARED-CLAUSE-RECURSE ( -- )
-   s" an uncheckable does> clause's packet declares its signature too" T-LABEL
+   s" an uncheckable does> clause's record declares its signature too" T-LABEL
    ARM
    [: s" : IUF-DOES-RC ( n -- ) create , does> ( n -- n ) drop dup 0 > IF 1 - RECURSE THEN ;" evaluate-closed ;] CHECK-RC TTHROWSQ
-   S\" \"code\":\"E-UNCHECKABLE\"" HAS?  S\" \"verdict\":\"uncheckable\"" HAS?
-   s" n -- n " DECLARED?  s" n -- n" SOURCED?
+   S\" \"code\":\"E-UNCHECKABLE\"" HAS?
+   s" n -- n" DECLARED?
    DISARM ;
 
 \ A malformed signature declares nothing, whatever cells the body leaves.
 : CASE-DECLARED-BAD-SIG ( -- )
-   s" a malformed signature's packet declares no effect" T-LABEL
+   s" a malformed signature's record declares no effect" T-LABEL
    ARM
    [: s" : IUF-BAD-SIG ( ) + ;" evaluate-closed ;] CHECK-RC TTHROWSQ
-   S\" \"declared_effect\":null" HAS?  S\" \"declared_effect_source\":null" HAS?
+   S\" \"code\":\"E-BAD-SIGNATURE\"" HAS?  S\" \"declared\":" LACKS?
    DISARM ;
 
 : CASE-DECLARED-CLAUSE-BAD-SIG ( -- )
-   s" a malformed does> clause signature's packet declares no effect" T-LABEL
+   s" a malformed does> clause signature's record declares no effect" T-LABEL
    ARM
    [: s" : IUF-DOES-BAD ( n -- ) create , does> ( n n ) + ;" evaluate-closed ;] CHECK-RC TTHROWSQ
-   S\" \"declared_effect\":null" HAS?  S\" \"declared_effect_source\":null" HAS?
+   S\" \"code\":\"E-BAD-SIGNATURE\"" HAS?  S\" \"declared\":" LACKS?
    DISARM ;
 
 \ ---- the refusal's rows ------------------------------------------------------
@@ -292,7 +284,7 @@ private
    ARM
    [: s" : IUF-LATE ( ptr u8 bool -- ) if 1 then drop drop drop ;" evaluate-closed ;] CHECK-RC TTHROWSQ
    MISMATCH$ HAS?  s" then" TOKEN?
-   s" ptr u8 " s" ptr u8 n " ROWS?
+   s" ptr u8" s" ptr u8 n" ROWS?
    DISARM ;
 
 \ A row variable a later token specialises keeps its letter in the refusal's rows.
@@ -300,16 +292,16 @@ private
    s" a refusal's rows keep the letters a later token binds" T-LABEL
    ARM
    [: s" : IUF-NAMES ( a b bool -- ) if 1 else 0 0 = then rot 1 + drop drop ;" evaluate-closed ;] CHECK-RC TTHROWSQ
-   s" a b bool " s" a b n " ROWS?
+   s" a b bool" s" a b n" ROWS?
    DISARM ;
 
-\ The repair class is read from the rows the refused call saw, not from the
-\ deeper rows the drops after it bind.
+\ The help is read from the rows the refused call saw, not from the deeper rows
+\ the drops after it bind: a mistyped value, not a missing one.
 : CASE-ROWS-REPAIR ( -- )
-   s" a refusal's repair class reads the rows its token saw" T-LABEL
+   s" a refusal's help reads the rows its token saw" T-LABEL
    ARM
    [: s" : IUF-LATE-CALL ( ptr u8 bool -- ) UFC2 drop drop drop drop ;" evaluate-closed ;] CHECK-RC TTHROWSQ
-   s" n n " s" ptr u8 bool " ROWS?  S\" \"repair_class\":\"fix_type\"" HAS?
+   s" n n" s" ptr u8 bool" ROWS?  s" convert or replace the value" HAS?
    DISARM ;
 
 \ ---- the controls ------------------------------------------------------------
@@ -320,7 +312,7 @@ private
    s" a short call that is also mistyped keeps its own mismatch" T-LABEL
    ARM
    [: s" : IUF-TYPE ( r -- n ) UFC2 0 ;" evaluate-closed ;] CHECK-RC TTHROWSQ
-   MISMATCH$ HAS?  CODE$ LACKS?  REPAIR$ LACKS?
+   MISMATCH$ HAS?  CODE$ LACKS?
    s" UFC2" TOKEN?
    DISARM ;
 
