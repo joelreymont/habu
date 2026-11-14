@@ -885,6 +885,7 @@ variable MDV-I   variable MDV-F
       MD-C2-COPY      of s" E-C2-COPY" endof
       MD-C2-DROP      of s" E-C2-DROP" endof
       MD-C2-ESCAPE    of s" E-C2-SCOPE-ESCAPE" endof
+      MD-C2-INIT-RECORD of s" E-C2-INIT-RECORD" endof
       MD-UNDERFLOW    of s" E-INPUT-UNDERFLOW" endof
       MD-RIGID-REGION of s" E-RIGID-REGION-MISMATCH" endof
       MD-RIGID-EXTENT of s" E-RIGID-EXTENT-MISMATCH" endof
@@ -963,6 +964,7 @@ variable MDV-I   variable MDV-F
       MD-C2-COPY      of s" move the exclusive value once, or lend it with `WITH-MUT-LOAN`, instead of copying it" endof
       MD-C2-DROP      of s" return the exclusive value or pass it to a word that consumes it instead of dropping it" endof
       MD-C2-ESCAPE    of s" return only values that do not depend on the owner or loan this operation opened" endof
+      MD-C2-INIT-RECORD of s" pass a `STRUCTURE … DERIVE init` value made by its `MAKE`, with no linear, unique or open field" endof
       MD-EFFECT-DEPTH of DEPTH-SUGGEST$ endof
       MD-INPUT-WIDTH  of s" take fewer input cells by passing bulk values in a buffer" endof
       MD-CF-DEPTH     of s" move the inner control structures into a named word and call that word here" endof
@@ -1034,6 +1036,7 @@ variable MDV-I   variable MDV-F
       MD-C2-COPY      of s" exclusive value copied" endof
       MD-C2-DROP      of s" exclusive value discarded" endof
       MD-C2-ESCAPE    of s" scoped value escapes its owner or loan" endof
+      MD-C2-INIT-RECORD of s" the entry initializes a fixed-cell record, and this value is not one" endof
       MD-RIGID-REGION of s" rigid host: region mismatch (different allocation)" endof
       MD-RIGID-EXTENT of s" rigid host: extent mismatch (different bounds identity)" endof
       MD-RIGID-GEN    of s" rigid host: stale mutation generation" endof
@@ -1075,6 +1078,7 @@ variable MDV-I   variable MDV-F
 \ A reason's label: a few words under its token.
 : MD-LABEL$ ( n -- ptr u8 n )
    case
+      MD-C2-INIT-RECORD of s" not an initializable record" endof
       s" here" rot
    endcase ;
 

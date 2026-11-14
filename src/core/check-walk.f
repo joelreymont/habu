@@ -8,24 +8,26 @@
 \ WITH-INIT is the only public entry that changes a byte view's element.
 \ Its dictionary code entry authenticates this transition.
 : SCOPE-INIT-STEP ( -- )
-   DCUR @ R-RES dup TAG S-PUSH <> IF drop 0 OK ! -1 FAILSET ! EXIT THEN
+   DCUR @ R-RES dup TAG S-PUSH <> IF drop 4 C2-UNDERFLOW EXIT THEN
    {: callback-node:n :}
    callback-node P>TYPE T-RES {: supplied:n :}
-   callback-node P>REST R-RES dup TAG S-PUSH <> IF drop 0 OK ! -1 FAILSET ! EXIT THEN
+   callback-node P>REST R-RES dup TAG S-PUSH <> IF drop 4 C2-UNDERFLOW EXIT THEN
    {: value-node:n :}
    value-node P>TYPE T-RES {: value-cell:n :}
    value-cell HIDDEN-PARAM? IF value-cell MK-LOGICAL ELSE value-cell THEN {: value:n :}
-   value INIT-VALUE-OK? 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
-   value TFAM:INIT-RECORD? 0= IF drop drop drop 0 OK ! -1 FAILSET ! EXIT THEN
+   value INIT-VALUE-OK? 0= IF value MD-C2-INIT-RECORD C2-REJECT EXIT THEN
+   value TFAM:INIT-RECORD? 0= IF
+      drop drop drop value MD-C2-INIT-RECORD C2-REJECT EXIT THEN
    {: width:n bytes:n align:n :}
    value-node P>REST width 1- SCOPE-INIT-DROP R-RES dup TAG S-PUSH <> IF
-      drop 0 OK ! -1 FAILSET ! EXIT THEN
+      drop width 3 + C2-UNDERFLOW EXIT THEN
    {: parent-node:n :}
    parent-node P>TYPE T-RES {: parent-cell:n :}
    parent-node P>REST {: rest:n :}
    parent-cell HIDDEN-PARAM? IF parent-cell MK-LOGICAL ELSE parent-cell THEN {: parent:n :}
    parent TAG T-STALE = IF parent parent STALE-WHY C2-REJECT EXIT THEN
-   parent MUT-VIEW? 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
+   parent MUT-VIEW? 0= IF
+      PE-U8 C2-WANT-MUT parent C2-PARENT-MISMATCH EXIT THEN
    parent 3 PARAM>ARG PE-U8 UNIFY-EXACT 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
    parent 1 PARAM>ARG T-RES {: ceiling:n :}
    supplied TAG T-FORALL = IF
@@ -59,26 +61,28 @@
    THEN ;
 
 : SCOPE-RECORDS-STEP ( -- )
-   DCUR @ R-RES dup TAG S-PUSH <> IF drop 0 OK ! -1 FAILSET ! EXIT THEN
+   DCUR @ R-RES dup TAG S-PUSH <> IF drop 5 C2-UNDERFLOW EXIT THEN
    {: callback-node:n :}
    callback-node P>TYPE T-RES {: supplied:n :}
-   callback-node P>REST R-RES dup TAG S-PUSH <> IF drop 0 OK ! -1 FAILSET ! EXIT THEN
+   callback-node P>REST R-RES dup TAG S-PUSH <> IF drop 5 C2-UNDERFLOW EXIT THEN
    {: value-node:n :}
    value-node P>TYPE T-RES {: value-cell:n :}
    value-cell HIDDEN-PARAM? IF value-cell MK-LOGICAL ELSE value-cell THEN {: value:n :}
-   value INIT-VALUE-OK? 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
-   value TFAM:INIT-RECORD? 0= IF drop drop drop 0 OK ! -1 FAILSET ! EXIT THEN
+   value INIT-VALUE-OK? 0= IF value MD-C2-INIT-RECORD C2-REJECT EXIT THEN
+   value TFAM:INIT-RECORD? 0= IF
+      drop drop drop value MD-C2-INIT-RECORD C2-REJECT EXIT THEN
    {: width:n bytes:n align:n :}
    value-node P>REST width 1- SCOPE-INIT-DROP R-RES dup TAG S-PUSH <> IF
-      drop 0 OK ! -1 FAILSET ! EXIT THEN
+      drop width 4 + C2-UNDERFLOW EXIT THEN
    {: count-node:n :}
-   count-node P>REST R-RES dup TAG S-PUSH <> IF drop 0 OK ! -1 FAILSET ! EXIT THEN
+   count-node P>REST R-RES dup TAG S-PUSH <> IF drop width 4 + C2-UNDERFLOW EXIT THEN
    {: parent-node:n :}
    parent-node P>TYPE T-RES {: parent-cell:n :}
    parent-node P>REST {: rest:n :}
    parent-cell HIDDEN-PARAM? IF parent-cell MK-LOGICAL ELSE parent-cell THEN {: parent:n :}
    parent TAG T-STALE = IF parent parent STALE-WHY C2-REJECT EXIT THEN
-   parent MUT-VIEW? 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
+   parent MUT-VIEW? 0= IF
+      PE-U8 C2-WANT-MUT parent C2-PARENT-MISMATCH EXIT THEN
    parent 3 PARAM>ARG PE-U8 UNIFY-EXACT 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
    parent 1 PARAM>ARG T-RES {: ceiling:n :}
    supplied TAG T-FORALL = IF
@@ -112,18 +116,20 @@
    THEN ;
 
 : SCOPE-RECORD-STEP ( -- )
-   DCUR @ R-RES dup TAG S-PUSH <> IF drop 0 OK ! -1 FAILSET ! EXIT THEN
+   DCUR @ R-RES dup TAG S-PUSH <> IF drop 4 C2-UNDERFLOW EXIT THEN
    dup P>TYPE T-RES {: supplied:n :}
-   P>REST R-RES dup TAG S-PUSH <> IF drop 0 OK ! -1 FAILSET ! EXIT THEN
-   P>REST R-RES dup TAG S-PUSH <> IF drop 0 OK ! -1 FAILSET ! EXIT THEN
+   P>REST R-RES dup TAG S-PUSH <> IF drop 4 C2-UNDERFLOW EXIT THEN
+   P>REST R-RES dup TAG S-PUSH <> IF drop 4 C2-UNDERFLOW EXIT THEN
    dup P>TYPE T-RES {: parent-cell:n :}
    P>REST {: rest:n :}
    parent-cell HIDDEN-PARAM? IF parent-cell MK-LOGICAL ELSE parent-cell THEN {: parent:n :}
    parent TAG T-STALE = IF parent parent STALE-WHY C2-REJECT EXIT THEN
-   parent RECORDS? 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
+   parent RECORDS? 0= IF
+      C2-WANT-RECORDS parent C2-PARENT-MISMATCH EXIT THEN
    parent 3 PARAM>ARG {: value:n :}
-   value INIT-VALUE-OK? 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
-   value TFAM:INIT-RECORD? 0= IF drop drop drop 0 OK ! -1 FAILSET ! EXIT THEN
+   value INIT-VALUE-OK? 0= IF value MD-C2-INIT-RECORD C2-REJECT EXIT THEN
+   value TFAM:INIT-RECORD? 0= IF
+      drop drop drop value MD-C2-INIT-RECORD C2-REJECT EXIT THEN
    {: width:n bytes:n align:n :}
    parent 1 PARAM>ARG T-RES {: ceiling:n :}
    supplied TAG T-FORALL = IF
@@ -153,24 +159,32 @@
       REC-IX @ bytes align CW-INIT-EXTENT CWIN-ADD
    THEN ;
 
+\ WITH-FIELD lends from a view of an initialized record.
+: FIELD-PARENT-MISMATCH ( n -- ) {: parent:n :}
+   FRESH MK-VAR FRESH MK-VAR SCOPE-INIT-ELEM C2-WANT-MUT
+   parent C2-PARENT-MISMATCH ;
+
 \ The selector is a token, never a runtime field id. The callback may change
 \ the field, but it cannot return the child view or the projected region.
 : SCOPE-FIELD-STEP ( ptr u8 n -- ) {: name:ptr size:n :}
-   DCUR @ R-RES dup TAG S-PUSH <> IF drop SCOPE-FIELD-REJECT EXIT THEN
+   DCUR @ R-RES dup TAG S-PUSH <> IF drop 3 C2-UNDERFLOW EXIT THEN
    dup P>TYPE T-RES {: supplied:n :}
    supplied SCOPE-FIELD-MAY-THROW? {: may-throw:bool :}
-   P>REST R-RES dup TAG S-PUSH <> IF drop SCOPE-FIELD-REJECT EXIT THEN
+   P>REST R-RES dup TAG S-PUSH <> IF drop 3 C2-UNDERFLOW EXIT THEN
    dup P>TYPE T-RES {: parent-cell:n :}
    P>REST {: rest:n :}
    parent-cell HIDDEN-PARAM? IF parent-cell MK-LOGICAL ELSE parent-cell THEN {: parent:n :}
-   parent TAG T-STALE = IF SCOPE-FIELD-REJECT EXIT THEN
-   parent MUT-VIEW? 0= IF SCOPE-FIELD-REJECT EXIT THEN
+   parent TAG T-STALE = IF parent FIELD-PARENT-MISMATCH EXIT THEN
+   parent MUT-VIEW? 0= IF parent FIELD-PARENT-MISMATCH EXIT THEN
    parent 3 PARAM>ARG T-RES {: initialized:n :}
-   initialized TAG T-PARAM <> IF SCOPE-FIELD-REJECT EXIT THEN
-   initialized PARAM>FAM C2-INIT-FAM @ <> IF SCOPE-FIELD-REJECT EXIT THEN
+   initialized TAG T-PARAM <> IF parent FIELD-PARENT-MISMATCH EXIT THEN
+   initialized PARAM>FAM C2-INIT-FAM @ <> IF
+      parent FIELD-PARENT-MISMATCH EXIT THEN
    initialized 0 PARAM>ARG T-RES {: init-scope:n :}
    initialized 1 PARAM>ARG T-RES {: record:n :}
-   record INIT-VALUE-OK? 0= IF SCOPE-FIELD-REJECT EXIT THEN
+   record INIT-VALUE-OK? 0= IF record MD-C2-INIT-RECORD C2-REJECT EXIT THEN
+   record TFAM:INIT-RECORD? nip nip nip 0= IF
+      record MD-C2-INIT-RECORD C2-REJECT EXIT THEN
    record name size TFAM:INIT-FIELD-NAME? 0= IF 2drop drop SCOPE-FIELD-REJECT EXIT THEN
    {: descriptor:n off:n bytes:n :}
    descriptor FIELD-PARAM? 0= IF SCOPE-FIELD-REJECT EXIT THEN

@@ -5098,6 +5098,7 @@ CHECKER-REG:}SCRATCH
 70 constant MD-IS-STORED     \ a callable's cast-stored type variable meets a cell's unrestricted one (QCON-OK?); E-CAST-LINEAR
 71 constant MD-DIV-ZERO      \ a literal 0 divisor reached the engine's `/`, `mod` or `/mod` (ZERO-OPERAND?)
 72 constant MD-THROW-ZERO    \ a literal 0 reached the engine's `throw` (ZERO-OPERAND?)
+73 constant MD-C2-INIT-RECORD \ a C2 entry's record operand is no fixed-cell record it can initialize (INIT-VALUE-OK?, INIT-RECORD?)
 \ A data depth change is E-MISMATCH and prints the loop's start row and the
 \ row at its back edge or leave; the others are E-REJECTED.
 48 constant MD-LOOP-DEPTH    \ a loop's back edge or leave holds another data depth than its start (CF-CARRIED=)
@@ -16962,23 +16963,60 @@ defer SCOPE-EXTERIOR-XT ( n -- bool )
          SCOPE-WITNESS @ MD-C2-ESCAPE C2-REJECT THEN
    THEN ;
 
+\ A C2 entry short of an operand. `need` counts its operands' cells, a record
+\ operand not yet read as one cell.
+: C2-UNDERFLOW ( n -- ) {: need:n :}
+   MDIAG @ 0=  FAILSET @ 0=  and IF
+      need MDIAG-NEED !  DCUR @ ROW-CELLS MDIAG-HAVE !
+   THEN
+   MD-UNDERFLOW MDIAG!  0 OK !  -1 FAILSET ! ;
+
+: FRESH-ARGS ( n -- ) 0 ?do FRESH MK-VAR PARAM-SCR+ loop ;
+
+\ The parent a C2 entry lends from, a fresh variable in each slot it leaves
+\ open.
+: C2-WANT-READ ( -- n )
+   PARAM-SCR-N @ {: base:n :}
+   3 FRESH-ARGS  base s" read-view" C2-READ-FAM @ MK-PARAM ;
+: C2-WANT-MUT ( n -- n ) {: elem:n :}
+   PARAM-SCR-N @ {: base:n :}
+   3 FRESH-ARGS  elem PARAM-SCR+
+   base s" mut-view" C2-MUT-FAM @ MK-PARAM ;
+: C2-WANT-RECORDS ( -- n )
+   PARAM-SCR-N @ {: base:n :}
+   4 FRESH-ARGS  base s" records" C2-RECORDS-FAM @ MK-PARAM ;
+
+\ A parent that is not the view a C2 entry lends from: the pair names the
+\ view the entry takes and the value the stack holds there.
+: C2-PARENT-MISMATCH ( n n -- ) {: want:n found:n :}
+   MDIAG @ 0=  FAILSET @ 0=  and IF
+      CAPTURE-CLEAR
+      want FRESH MK-ROW MK-PUSH DEXP !
+      found C2-LOGICAL FRESH MK-ROW MK-PUSH DACT !
+      ROWS-PIN
+   THEN
+   0 OK !  -1 FAILSET ! ;
+
 \ The authenticated child entry consumes a parent view and its callback,
 \ executes on a new child scope, then restores the same parent view.
 : SCOPE-CHILD-STEP ( n -- ) {: kind:n :}
    DCUR @ XE-PD !  RCUR @ XE-PR !
-   DCUR @ R-RES dup TAG S-PUSH <> IF drop 0 OK ! -1 FAILSET ! EXIT THEN
+   DCUR @ R-RES dup TAG S-PUSH <> IF drop 3 C2-UNDERFLOW EXIT THEN
    dup P>TYPE T-RES {: supplied:n :}
    \ A direct quotation has its measured edge; a quantified callback parameter
    \ has no body that could prove it cannot throw.
    supplied TAG T-QUOT = IF supplied Q>XHAS ELSE RES-TRUE THEN
    {: callback-throws:bool :}
-   P>REST R-RES dup TAG S-PUSH <> IF drop 0 OK ! -1 FAILSET ! EXIT THEN
+   P>REST R-RES dup TAG S-PUSH <> IF drop 3 C2-UNDERFLOW EXIT THEN
    dup P>TYPE T-RES {: parent-cell:n :}
    P>REST {: rest:n :}
    parent-cell HIDDEN-PARAM? IF parent-cell MK-LOGICAL
    ELSE parent-cell THEN {: parent:n :}
-   kind 4 = IF parent MUT-VIEW? 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
-   ELSE parent READ-VIEW? parent MUT-VIEW? or 0= IF 0 OK ! -1 FAILSET ! EXIT THEN THEN
+   kind 4 = IF parent MUT-VIEW? 0= IF
+         FRESH MK-VAR C2-WANT-MUT parent C2-PARENT-MISMATCH EXIT THEN
+   ELSE parent READ-VIEW? parent MUT-VIEW? or 0= IF
+         C2-WANT-READ parent C2-PARENT-MISMATCH EXIT THEN
+   THEN
    parent 1 PARAM>ARG T-RES {: ceiling:n :}
    supplied TAG T-FORALL = IF
       supplied F>DOMAIN BIND-CHILD <>
