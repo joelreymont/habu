@@ -102,7 +102,7 @@ variable UNSAFE-COUNT
       q NSHADOW:ENTRY@ r NSHADOW:ENTRY@ = and if exit then
       s" link: " SAY r NSHADOW:RECORD@ XREF-REC XREF-NAME$ SAY
       s"  enters at two link addresses" SAY SAY-CR
-      s" link: one host entry at two link addresses" 74 die
+      s" link: one host entry at two link addresses" 76 die
    then
    1 s ENTRY-USED !  key s ENTRY-KEYS !  r s ENTRY-RECS ! ;
 
@@ -227,9 +227,8 @@ variable UNSAFE-COUNT
    NSHADOW:BINDING CBIND:TARGET@ CTARGET:ARCH@  CTARGET-ARCH:WASM CTARGET-ARCH:EQ ;
 
 
-\ The refusal of an emission of a machine with no part of LINKER.
 : NO-PART ( -- )
-   s" link: an emission of a machine the linker has no part for" 74 die ;
+   s" link: an emission of a machine the linker has no part for" 76 die ;
 
 
 \ The address value machine a's emission bytes b, s of them, hold at site for a row of
@@ -396,7 +395,7 @@ variable UNSAFE-COUNT
    e  e f NSHADOW:FUNCTION-OFFSET@  RANGE-REC {: r:n :}
    r 0< if
       s" link: no record holds the function at " SAY a SAY-INT SAY-CR
-      s" link: a function lies outside every record" 74 die
+      s" link: a function lies outside every record" 76 die
    then
    r MAKE-LIVE DRAIN ;
 
@@ -430,7 +429,7 @@ variable UNSAFE-COUNT
       cell 0<> if
          RANGE-END  e NSHADOW:SIZE <> if
             s" link: the defer " SAY rec XREF-NAME$ SAY s"  does not end its routine" SAY SAY-CR
-            s" link: a defer does not end its routine" 74 die
+            s" link: a defer does not end its routine" 76 die
          then
          cell exit
       then
@@ -451,7 +450,7 @@ variable UNSAFE-COUNT
       else
          i NSHADOW:SIZE 3 and 0<> if
             s" link: " SAY i ROUTINE. s"  is not whole 4-byte words" SAY SAY-CR
-            s" link: a routine is not whole 4-byte words" 74 die
+            s" link: a routine is not whole 4-byte words" 76 die
          then
          dup i OFFSETS !  i NSHADOW:SIZE +
          dict if i EM-TRAILER else 0 then {: cell:n :}
@@ -489,7 +488,7 @@ variable UNSAFE-COUNT
    to -1 <> if to exit then
    s" link: " SAY PLACING @ ROUTINE. s"  names " SAY a TARGET.
    s" , neither a target word nor a kernel primitive" SAY SAY-CR
-   s" link: a target routine names a word outside the target" 74 die ;
+   s" link: a target routine names a word outside the target" 76 die ;
 
 
 \ Emission e's code, then a defer's trailer: DEFER-MAGIC and its dispatch cell

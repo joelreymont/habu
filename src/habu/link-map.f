@@ -40,7 +40,7 @@ private
    {: wid:n r:n :}
    s" link: record " SAY r XREF-REC XREF-NAME$ SAY s"  holds wordlist " SAY wid SAY-INT
    s" , which the build did not make" SAY SAY-CR
-   s" link: a record holds a wordlist the target cannot name" 74 die ;
+   s" link: a record holds a wordlist the target cannot name" 76 die ;
 
 \ Build record r's wordlist id wid as the target numbers it.
 : WID-MAP ( n n -- n )
@@ -301,7 +301,7 @@ variable REGION-N
    k NAMES-KIND = if s" names" exit then
    k RECORDS-KIND = if s" records" exit then
    k RECORD-LIST-KIND = if s" record-list" exit then
-   s" link: a map region has no kind past 4" 74 die ;
+   s" link: a map region has no kind past 4" 76 die ;
 
 \ The link appended bytes [start, end) of kind k after the code.
 : REGION+ ( n n n -- )
@@ -323,7 +323,7 @@ variable REGION-N
 : REGION-ROW+ ( n -- )
    {: i:n :}
    i REGION-START @ {: start:n :}
-   start MAP-AT @ < if s" link: the map's regions overlap" 74 die then
+   start MAP-AT @ < if s" link: the map's regions overlap" 76 die then
    s" pad" MAP-AT @ start TAIL-ROW+
    i REGION-KIND @ KIND$  start  i REGION-END @  TAIL-ROW+
    i REGION-END @ MAP-AT ! ;
@@ -332,7 +332,7 @@ variable REGION-N
    MAP-AT !
    REGION-N @ 0 ?do i REGION-ROW+ loop
    MAP-AT @ A64ICODE:ASM-LEN <> if
-      s" link: the map's regions do not end at the code buffer's end" 74 die
+      s" link: the map's regions do not end at the code buffer's end" 76 die
    then ;
 
 : PACKAGE-ROWS ( -- )

@@ -77,8 +77,6 @@ E-DEV-OPAQUE-PACKAGE DECL-REJECT:EXPLAIN
 \ checked body cannot name that pre-hook constant on a from-source build.
 TYPE-DECL:E-TDECL-ARITY constant E-DEV-ARITY  \ arity outside [0, cap] — the shared malformed-arity code
 
-72 constant DEV-BUG-RC          \ internal invariant violation (bad id / oob): fail-closed die
-
 \ Event scratch: interleaved integer cells, so a grow is a plain cell copy. OWNER
 \ is the first event id of the frame that emitted the row, so finalized nested
 \ declarations stay distinguishable from their still-open parent.
@@ -116,8 +114,8 @@ variable DEV-CUR-VAR  \ current-variant selector: open variant id, else DEV-NO-V
    DEV-N @ 1 + DEV-GROW ;
 
 : DEV-ROW ( n -- ptr n ) {: id:n :}
-   id 0 < IF s" decl-event: bad event id" DEV-BUG-RC die THEN
-   id DEV-N @ >= IF s" decl-event: bad event id" DEV-BUG-RC die THEN
+   id 0 < IF s" decl-event: bad event id" 76 die THEN
+   id DEV-N @ >= IF s" decl-event: bad event id" 76 die THEN
    id DEV-REC * DEV-BASE + ;
 \ Strict-LIFO transaction frames. A nested COMMIT keeps events and field rows
 \ reversible; the outer release reuses the event scratch. Rollback restores the

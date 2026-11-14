@@ -90,7 +90,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    v LINK-ADDRESS {: to:n :}
    to -1 <> if to exit then
    s" link: the xt cell at offset " SAY off SAY-INT s"  holds " SAY v SAY-INT SAY-CR
-   s" link: an xt cell names a routine the target does not place" 74 die ;
+   s" link: an xt cell names a routine the target does not place" 76 die ;
 
 
 : COPY-ROW ( n -- )
@@ -125,7 +125,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    ARM64:HEADER-CELL {: v:n off:n :}
    off SPACE-AT @ 0<> if
       s" link: the build stored into the header cell at offset " SAY off SAY-INT SAY-CR
-      s" link: a build stored into a header cell the link writes" 74 die
+      s" link: a build stored into a header cell the link writes" 76 die
    then
    v off COPY-AT LE:U64! ;
 
@@ -277,7 +277,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    to -1 <> if to exit then
    s" link: record " SAY r XREF-REC XREF-NAME$ SAY s"  enters at " SAY a SAY-INT
    s" , which the target does not place" SAY SAY-CR
-   s" link: a record enters code the target does not place" 74 die ;
+   s" link: a record enters code the target does not place" 76 die ;
 
 
 \ Build record r's source when r is an alias but not of a does> clause, else -1; an owned
@@ -461,7 +461,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    k 6 = if s" WITH-RECORDS" exit then
    k 7 = if s" WITH-RECORD" exit then
    k 8 = if s" WITH-FIELD" exit then
-   s" link: scope-kind? has no kind past 8" 74 die ;
+   s" link: scope-kind? has no kind past 8" 76 die ;
 
 
 \ Kind k's chain in the kernel becomes adrp+add of the entry of k's word in
@@ -471,10 +471,10 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    k SCOPE-WORD$ wid CHECKER-RESOLVE:WL-PROBE {: rec:ptr :}
    rec XREF-FOUND? 0= if
       s" link: C2-MEM has no " SAY k SCOPE-WORD$ SAY SAY-CR
-      s" link: C2-MEM lacks a scope entry" 74 die
+      s" link: C2-MEM lacks a scope entry" 76 die
    then
    rec XREF-START LINK-ADDRESS {: to:n :}
-   to -1 = if s" link: a C2-MEM scope entry is code the target does not place" 74 die then
+   to -1 = if s" link: a C2-MEM scope entry is code the target does not place" 76 die then
    k ARM64:SCOPE-SITE ARM64:OFFSET {: at:n :}
    to  ARM64:TEXT-VA at +  A64ICODE:CODE at +  ARM64:CODE-ADDRESS! ;
 
@@ -502,10 +502,10 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 
 
 : OBJECT-KIND ( -- )
-   KERNEL? @ if s" link: a kernel build writes no program" 74 die then
-   ARM64:READ? 0= if s" link: no kernel object was read for this build" 74 die then
+   KERNEL? @ if s" link: a kernel build writes no program" 76 die then
+   ARM64:READ? 0= if s" link: no kernel object was read for this build" 76 die then
    ENGINE? @ if 1 else 0 then  s" ENGINE" ARM64:SYM <> if
-      s" link: the kernel object is another kind of build's" 74 die
+      s" link: the kernel object is another kind of build's" 76 die
    then ;
 
 
@@ -522,8 +522,8 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
          ELF:ASM-CODE ARM64:TEXT-VA ARM64:ELF-IMPORTS$ ELF:BUILD-IMAGE
          ELF:CODESIG2
       ENDOF
-      pe OF s" link: no file writer for a PE target" 74 die ENDOF
-      wasm OF s" link: a Wasm target's module is written by WASM:WRITE-MODULE" 74 die ENDOF
+      pe OF s" link: no file writer for a PE target" 76 die ENDOF
+      wasm OF s" link: a Wasm target's module is written by WASM:WRITE-MODULE" 76 die ENDOF
    ;MATCH
    path pathu DRV-WRITE-IMAGE ;
 
@@ -539,7 +539,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    ENGINE? @ if 0 CHECK:PLACE-FACTS then
    s" ENTRY-CELL" ARM64:SYM ARM64:HEADER-CELL {: entry:n :}
    entry SPACE-AT @ 0= if
-      s" link: the build stored no entry for the program" 74 die
+      s" link: the build stored no entry for the program" 76 die
    then
    ENGINE? @ if LINK-ENGINE else LINK-STRIPPED then
    path pathu [: 2dup ENGINE? @ if SIGN-ID:ENGINE$ else SIGN-ID:PROG$ then 2swap EMIT-IMAGE
