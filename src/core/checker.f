@@ -7579,6 +7579,7 @@ defer SIG-TYPE-XT ( ptr u8 n -- n )
 \ must always reach the MK-PTR case below, even when `ptr` is no live family:
 \ only `family<...>` takes the family branch.
 : SIG-TYPE-ONE ( ptr u8 n -- n ) {: a:ptr u:n :}
+   u 0= IF a u SGBAD-SYNTAX! 1 MK-CON EXIT THEN
    a u s" [" CORE-STR= IF SIG-QUOT-XT EXIT THEN
    a u s" forall" CORE-STR= IF SIG-FORALL EXIT THEN
    a u s" forall-region" CORE-STR= IF SIG-FORALL-REGION EXIT THEN
