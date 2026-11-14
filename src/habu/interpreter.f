@@ -328,16 +328,16 @@ create NL NEWLINE c,
 : UNDEFINED ( -- )
    TOKEN$ UNDEFINED-NAME ;
 
-: AMBIGUOUS ( -- )
+: AMBIGUOUS ( ptr u8 n -- ) {: a:ptr u:n :}
    s" E-USING-AMBIGUOUS" REFUSAL
    s" ambiguous bare word resolves in multiple used packages: " ERROR-TEXT:TYPE
-   TOKEN$ ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
+   a u ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
    ENGINE-ERROR:USING-AMBIGUOUS throw ;
 
-: SHADOWED ( -- )
+: SHADOWED ( ptr u8 n -- ) {: a:ptr u:n :}
    s" E-USING-SHADOW-GLOBAL" REFUSAL
    s" bare word a global and a used package both export: " ERROR-TEXT:TYPE
-   TOKEN$ ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
+   a u ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
    ENGINE-ERROR:USING-SHADOW-GLOBAL throw ;
 
 : FAIL-CLOSED ( ptr u8 n n -- ) {: a:ptr u:n rc:n :}
@@ -452,20 +452,20 @@ TYPED-VARIABLE REC ptr n
    rec POLICY-REQUIRE? if exit then
    rec POLICY-CHECK-REC ;
 
-: LOOKUP-GO ( -- )
-   TOKEN$ FIND REC !
-   REC @ POLICY-CHECK-TOP
-   REC @ XREF-FOUND? 0= if exit then
-   REC @ XREF-WORDLIST WL:GLOBAL? 0= if exit then
-   TOKEN$ scope-find {: rec:ptr used:ptr used2:ptr flags:n :}
-   flags SCOPE-FIND-AMBIGUOUS and 0<> if E-USING-AMBIGUOUS throw then
-   used XREF-FOUND? if SHADOWED then ;
+\ The record the name binds, refused, naming it, where a bare name meets two
+\ used publics that export it, or a global and a used public that do.
+: LOOKUP-NAME ( ptr u8 n -- ptr n ) {: a:ptr u:n :}
+   a u scope-find {: rec:ptr used:ptr used2:ptr flags:n :}
+   flags SCOPE-FIND-AMBIGUOUS and 0<> {: amb:bool :}
+   rec XREF-FOUND? 0= if amb if a u AMBIGUOUS then rec exit then
+   rec XREF-WORDLIST WL:GLOBAL? 0= if rec exit then
+   amb if a u AMBIGUOUS then
+   used XREF-FOUND? if a u SHADOWED then
+   rec ;
 
 : SEARCH ( -- )
-   XREF-NULL REC !
-   [: LOOKUP-GO ;] catch {: code:n :}
-   code E-USING-AMBIGUOUS = if AMBIGUOUS then
-   code 0<> if code throw then ;
+   TOKEN$ LOOKUP-NAME REC !
+   REC @ POLICY-CHECK-TOP ;
 
 : LOOKUP ( -- )
    SEARCH
@@ -2103,7 +2103,7 @@ variable LIT-AT
    op ITEM-ABI:LOCAL-REF = if
       a u LOCAL-UNBUILT  BODY-ITEM-KIND:LOCAL-REF v 0 v LOCAL$ ITEM+ exit
    then
-   op ITEM-ABI:CALL = if a u  a u FIND  FOUND-CALL exit then
+   op ITEM-ABI:CALL = if a u  a u LOOKUP-NAME  FOUND-CALL exit then
    op ITEM-ABI:CALL-EXACT = if a u  a u XREF-FIND  FOUND-CALL exit then
    ITEM-OP-REFUSE ;
 

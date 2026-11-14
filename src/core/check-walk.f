@@ -403,11 +403,17 @@
    FREE-QUOT BTICK-PUSH
    COMPILE-CALL-REC POSTPONE-CALL ;
 
+\ Whether the call is of an immediate: a CALL item's record REC says, and the
+\ spelling does for a text token, whose REC is NULL-PTR.
+: CALL-IMM? ( ptr n -- bool ) {: rec:ptr :}
+   rec NULL-PTR = IF TKF TKFU @ CHECKER-PREFLIGHT:BODY-TOK? EXIT THEN
+   rec POSTPONE-IMM? ;
+
 \ The steps of a token no keyword, mode or literal form took, a call's or a
 \ number's; a call's binding is made on the first ask.
-: CALL-STEP ( ptr u8 n -- ) {: a:ptr u:n :}
+: CALL-STEP ( ptr u8 n ptr n -- ) {: a:ptr u:n rec:ptr :}
    TKF TKFU @ SPELLED-STEP? IF EXIT THEN
-   TKF TKFU @ CHECKER-PREFLIGHT:BODY-TOK? IF REJECT-IMMEDIATE THEN
+   rec CALL-IMM? IF REJECT-IMMEDIATE THEN
    DCUR @ XE-PD !  RCUR @ XE-PR !          \ the pre-op rows ROW-COMMON needs below
    TKF TKFU @ DO-TOK
    OK @ IF THROW-CUR? IF CALL-THROW-EDGE THEN THEN
@@ -457,7 +463,7 @@
    OK @ IF cf 22 = IF a u DEAD-OWNER! THEN THEN   \ leave
    OK @ IF cf 12 = IF a u DEAD-OWNER! THEN THEN   \ again
    cf 0 >= IF cf CF-STEP THEN
-   cf 0 < IF a u CALL-STEP THEN
+   cf 0 < IF a u NULL-PTR CALL-STEP THEN
    THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
    a u unj unsafe ok-in unck-in pin-in DO-TOK-TAIL ;
 
@@ -647,12 +653,13 @@ public
    v kind ITEM-MATCH RES-TRUE ;
 
 : ITEM-CALL ( ptr u8 n n -- ) {: a:ptr u:n ix:n :}
-   ix CHECKER-RESOLVE:REC-AT  TKF TKFU @ BIND-RECORD
+   ix CHECKER-RESOLVE:REC-AT {: rec:ptr :}
+   rec TKF TKFU @ BIND-RECORD
    TKF TKFU @ UNSAFE-TOK? IF
       BWIN-UNJUDGED @ IF TKF TKFU @ BIND-SOURCE-CALL THEN
       REJECT-UNSAFE EXIT
    THEN
-   a u CALL-STEP ;
+   a u rec CALL-STEP ;
 
 : ITEM-INT ( n -- ) {: v:n :}
    BIND-CLEAR

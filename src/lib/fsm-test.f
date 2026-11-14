@@ -457,10 +457,15 @@ variable SRC-LEN
    s"  : true ( -- bool ) 1000000 C +! 0 0= ;" SRC+
    s"  : false ( -- bool ) 1000000 C +! 1 0= ; private" SRC+ ;
 
+\ An immediate of the package named as an engine word the machine's words
+\ call is not the word they call, so it rejects none of them.
+: IMMEDIATE-WORDS ( -- )
+   s"  : dup ( -- ) ; immediate" SRC+ ;
+
 
 \ The trace of a machine with `>state` and picker NEXTs, each with and
 \ without an ACTION, and FINAL rows with and without one; K 1 adds the
-\ shadowing words.
+\ shadowing words, K 2 the immediate ones.
 : SHADOW-TRACE ( n -- n )
    {: k:n :}
    0 SRC-LEN !
@@ -471,7 +476,8 @@ variable SRC-LEN
    s"  : PICK ( ptr n -- ph ) @ 20 < if construct ph busy else construct ph done then ;" SRC+
    s"  : ADD1 ( ptr n -- ) 1 swap +! ; : ADD10 ( ptr n -- ) 10 swap +! ;" SRC+
    s"  : ADD100 ( ptr n -- ) 100 swap +! ;" SRC+
-   k 0<> if SHADOW-WORDS then
+   k 1 = if SHADOW-WORDS then
+   k 2 = if IMMEDIATE-WORDS then
    s"  using FSM DEFINE M ( ptr n ) ph sig" SRC+
    s"  IN idle S go ADD1 >busy stop - >done" SRC+
    s"  IN busy S go ADD10 PICK stop - PICK" SRC+
@@ -486,7 +492,17 @@ variable SRC-LEN
 : SHADOWED ( -- )
    0 SHADOW-TRACE {: plain:n :}
    plain 428 T=
-   1 SHADOW-TRACE plain T= ;
+   1 SHADOW-TRACE plain T=
+   2 SHADOW-TRACE plain T= ;
+
+\ An ACTION a global and a used public both name is the load's
+\ E-USING-SHADOW-GLOBAL, and the next DEFINE runs.
+: USING-SHADOW ( -- )
+   s" : FSM-USING-ACT ( n -- ) drop ; package FSM-USING-PUB public : FSM-USING-ACT ( n -- ) drop ; ;package"
+   TEST-EVAL:RC 0 T=
+   s" package FSM-USING ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; using FSM-USING-PUB using FSM DEFINE M ( n ) ph sig IN idle S go FSM-USING-ACT >busy halt - >idle FINAL busy - ;DEFINE ;using ;using ;package"
+   TEST-EVAL:RC ENGINE-ERROR:USING-SHADOW-GLOBAL T=
+   14 VALID 2 T= ;
 
 \ The size table: STATES rows of INPUTS lines, each naming one long action, so
 \ each line word outgrows its line and the generated text the 1 MiB table.
@@ -546,6 +562,7 @@ public
    SYNTAX
    REJECTED
    SHADOWED
+   USING-SHADOW
    SIZE
    SRC-RELEASE
    T-REPORT ;
