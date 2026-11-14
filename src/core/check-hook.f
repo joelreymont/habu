@@ -209,7 +209,8 @@ CAST: REG-XT ( n -- [ ptr u8 n ptr u8 n -- ] )
 : STORED-SHAPE? ( n -- bool ) {: shape:n :}
    shape CHILD-ABI:STORED =  shape CHILD-ABI:BUFFER = or
    shape CHILD-ABI:DYNAMIC = or  shape CHILD-ABI:SLOT = or
-   shape CHILD-ABI:SLOTS = or ;
+   shape CHILD-ABI:SLOTS = or  shape CHILD-ABI:WORK = or
+   shape CHILD-ABI:WORKS = or ;
 
 \ A refused type is reported, naming the child, before the throw.
 : STORED-ROWS ( ptr u8 n ptr u8 n n -- n n )

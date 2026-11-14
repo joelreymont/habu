@@ -82,34 +82,17 @@ variable LBUF-BYTES
       LBUF-I @ CELL + LBUF-I !
    repeat ;
 
-: LBUF-NAME, ( ptr u8 n -- ptr u8 n ) {: name:ptr nameu:n :}
-   LBUF-GEN-U @ {: start:n :}
-   name nameu LBUF-APP
-   LBUF-GEN start + nameu ;
-
-\ ---- how a generated accessor reaches its storage ----------------------------
-\ Every generated accessor addresses its storage through a `create`d word.
-: LBUF-BASE$ ( -- ptr u8 n ) s" #base" ;
-
 \ The answer stays in LBUF-GEN until the next LBUF-CLEAR.
 : LBUF-SUFFIXED ( ptr u8 n ptr u8 n -- ptr u8 n )
    {: name:ptr nameu:n sfx:ptr sfxu:n :}
    LBUF-CLEAR  name nameu LBUF-APP  sfx sfxu LBUF-APP
    LBUF-GEN LBUF-GEN-U @ ;
 
-\ Every derived name (the storage word, NAME-BIND, NAME-GROW, NAME-RESERVE,
-\ NAME-RELEASE) is guarded like the declared one, so a collision fails loudly
-\ instead of rebinding a word. LBUF-NAMES-OK? guards the declared name and its
-\ storage word.
+\ Every derived name (NAME-BIND, NAME-GROW, NAME-RESERVE, NAME-RELEASE) is
+\ guarded like the declared one, so a collision fails loudly instead of
+\ rebinding a word.
 : LBUF-SUFFIX-OK? ( ptr u8 n ptr u8 n -- bool ) {: name:ptr nameu:n sfx:ptr sfxu:n :}
    name nameu sfx sfxu LBUF-SUFFIXED LBUF-NAME-OK? ;
-
-: LBUF-NAMES-OK? ( ptr u8 n -- bool ) {: name:ptr nameu:n :}
-   name nameu LBUF-NAME-OK? 0= if LBUF-FALSE exit then
-   name nameu LBUF-BASE$ LBUF-SUFFIX-OK? ;
-
-: LBUF-BASE, ( ptr u8 n -- ) {: name:ptr nameu:n :}
-   name nameu LBUF-APP  LBUF-BASE$ LBUF-APP ;
 
 PTR-VARIABLE LBUF-EVAL-A
 variable LBUF-EVAL-U

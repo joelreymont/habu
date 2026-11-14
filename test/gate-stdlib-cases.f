@@ -125,6 +125,10 @@ SUITE compiler-target-policy
    test/compiler/target-policy.f
 ;SUITE
 
+SUITE compiler-workspace
+   test/compiler/workspace.f
+;SUITE
+
 \ The N01-N06 and W32 numeric rows of test/wasm/numeric-rows.f, each forked and
 \ its printed bytes compared.
 SUITE wasm-numeric
