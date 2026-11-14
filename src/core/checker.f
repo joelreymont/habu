@@ -683,9 +683,8 @@
 \ sign it was reached at, and expands an instance once per path: the same family
 \ over the same argument terms, reached at the same sign, has the same members
 \ and gives the same answer. A member is instantiated over its owner's own
-\ argument terms, so a recursive member names the same terms, not copies; past
-\ CAST-PATH-CAP nested layouts the walk dies rather than guess. An expansion
-\ pops what it pushed; CAST-WALK-RESET empties the path after a throw.
+\ argument terms, so a recursive member names the same terms, not copies. An
+\ expansion pops what it pushed; CAST-WALK-RESET empties the path after a throw.
 \ CAST-MAY-LINEAR? counts a type variable without NLINEAR, as TV! checks each
 \ binding of one with it, and walks pointees, quotation rows and layout
 \ members, since a projection hands out what they reach; cell-family arguments
@@ -1450,9 +1449,14 @@ variable RIGID-N
 variable RGN-N   variable EXT-N   variable GEN-N
 variable RGN-MARK   \ the first region id a definition body mints (SIG-INPUT-FRESH)
 variable FB-N       \ fresh-name keys below FB-N may be body-supplied (SIG-BODY-FRESH)
-64 constant FAM-CAP
-create FB-VAR FAM-CAP cells allot    \ per fresh-name key: the body's variable, 0 if none
-create FB-NAME FAM-CAP cells allot   \ per fresh-name key: one atom spelling the name
+\ One row per fresh-name key: the body's variable, 0 if none, and one atom
+\ spelling the name.
+CHECKER-REG:SCRATCH{
+PTR-VARIABLE FB-P   variable FB-CAP
+CHECKER-REG:}SCRATCH
+2 constant FB-ROW
+: FB-VAR ( n -- ptr n ) FB-ROW * cells FB-P @ + ;
+: FB-NAME ( n -- ptr n ) FB-ROW * 1 + cells FB-P @ + ;
 variable SCOPE-N   1 SCOPE-N !
 256 constant SCOPE-PARENT-INIT
 create SCOPE-PARENT-BOOT SCOPE-PARENT-INIT cells allot
@@ -3510,10 +3514,14 @@ public
       t PARAM>FAM WIDTH-FAM @ = EXIT
    THEN
    t TAG T-PTR =  t TAG T-QUOT =  or ;
-64 constant CAST-PATH-CAP
-create CAST-PATH-TERM CAST-PATH-CAP cells allot
-create CAST-PATH-SIGN CAST-PATH-CAP cells allot
+\ One row per layout on the path: its term and the sign it was reached at.
+CHECKER-REG:SCRATCH{
+PTR-VARIABLE CAST-PATH-P   variable CAST-PATH-CAP
+CHECKER-REG:}SCRATCH
 variable CAST-PATH-N
+2 constant CAST-PATH-ROW
+: CAST-PATH-TERM ( n -- ptr n ) CAST-PATH-ROW * cells CAST-PATH-P @ + ;
+: CAST-PATH-SIGN ( n -- ptr n ) CAST-PATH-ROW * 1 + cells CAST-PATH-P @ + ;
 : CAST-WALK-RESET ( -- ) TWALK-RESET 0 CAST-PATH-N ! ;
 : CAST-SAME-INSTANCE? ( n n -- bool ) {: a:n b:n :}
    a PARAM>FAM b PARAM>FAM <> IF RES-FALSE EXIT THEN
@@ -3530,16 +3538,15 @@ variable CAST-PATH-N
    dup CAST-POS = IF drop CAST-NEG THEN ;
 : CAST-ON-PATH? ( n n -- bool ) {: t:n sign:n :}
    0 BEGIN dup CAST-PATH-N @ < WHILE
-      dup cells CAST-PATH-SIGN + @ sign = IF
-         dup cells CAST-PATH-TERM + @ t CAST-SAME-INSTANCE? IF drop RES-TRUE EXIT THEN
+      dup CAST-PATH-SIGN @ sign = IF
+         dup CAST-PATH-TERM @ t CAST-SAME-INSTANCE? IF drop RES-TRUE EXIT THEN
       THEN
       1 +
    REPEAT drop RES-FALSE ;
 : CAST-PATH-PUSH ( n n -- ) {: t:n sign:n :}
-   CAST-PATH-N @ CAST-PATH-CAP >= IF
-      s" checker: cast walk nests layouts too deep" 76 die THEN
-   t CAST-PATH-N @ cells CAST-PATH-TERM + !
-   sign CAST-PATH-N @ cells CAST-PATH-SIGN + !
+   CAST-PATH-P CAST-PATH-CAP CAST-PATH-N @ 1 + CAST-PATH-ROW ARENA-ROWS-ENSURE
+   t CAST-PATH-N @ CAST-PATH-TERM !
+   sign CAST-PATH-N @ CAST-PATH-SIGN !
    CAST-PATH-N @ 1 + CAST-PATH-N ! ;
 : CAST-PATH-POP ( -- ) CAST-PATH-N @ 1 - CAST-PATH-N ! ;
 \ A destination position introduces unless negative; consumed rows flip the sign
@@ -3691,7 +3698,7 @@ variable CAST-PATH-N
 \ Whether variable id is a body-supplied fresh name's (SIG-BODY-FRESH).
 : FB-VAR? ( n -- bool ) {: id:n :}
    0 BEGIN dup FB-N @ < WHILE
-      dup cells FB-VAR + @ dup 0 <> IF PAY id = IF drop RES-TRUE EXIT THEN ELSE drop THEN
+      dup FB-VAR @ dup 0 <> IF PAY id = IF drop RES-TRUE EXIT THEN ELSE drop THEN
       1 +
    REPEAT drop RES-FALSE ;
 
@@ -6771,9 +6778,11 @@ CHECKER-REG:}SCRATCH
    0 BEGIN dup TYPE-VAR-MAX 3 + < WHILE dup cells NMAP + UNBOUND swap ! 1 + REPEAT drop ;
 
 
+\ A signature's fresh names, by index: each spelling's address and length.
 CHECKER-REG:SCRATCH{
-FAM-CAP PTR-U8-TABLE FAM-A       \ name pointers: declared storage
-create FAM-U FAM-CAP cells allot
+PTR-U8-TABLE-VARIABLE FAM-A-P
+PTR-VARIABLE FAM-U-P
+variable FAM-CAP
 variable FAM-N
 variable FAM-I
 variable FAM-K
@@ -6783,7 +6792,17 @@ CHECKER-REG:}SCRATCH
    0 FAM-N ! ;
 
 : FAM-A-FIELD ( n -- ptr ptr u8 )
-   cells FAM-A + 0 ptr-field ;
+   FAM-A-P @ swap ptr-field ;
+
+: FAM-U-FIELD ( n -- ptr n )
+   cells FAM-U-P @ + ;
+
+: FAM-ENSURE ( n -- ) {: need:n :}
+   need FAM-CAP @ <= IF EXIT THEN
+   need FAM-CAP @ 2 * max 64 max {: nc:n :}
+   FAM-A-P FAM-CAP @ cells nc cells REG-GROW1
+   FAM-U-P FAM-CAP @ cells nc cells REG-GROW1
+   nc FAM-CAP ! ;
 
 : FAM-A@ ( n -- ptr u8 )
    FAM-A-FIELD @ ;
@@ -6792,7 +6811,7 @@ CHECKER-REG:}SCRATCH
    1+ negate ;
 
 : FAM-MATCH? ( ptr u8 n n -- bool ) {: a:ptr u:n idx:n :}
-   idx FAM-A@ idx cells FAM-U + @ a u CORE-STR= ;
+   idx FAM-A@ idx FAM-U-FIELD @ a u CORE-STR= ;
 
 : FAM-FIND ( ptr u8 n -- n bool ) {: a:ptr u:n :}
    0 FAM-I !
@@ -6803,9 +6822,9 @@ CHECKER-REG:}SCRATCH
    0 RES-FALSE ;
 
 : FAM-ADD ( ptr u8 n -- n ) {: a:ptr u:n :}
-   FAM-N @ FAM-CAP >= IF s" checker: fresh atom table full" 76 die THEN
+   FAM-N @ 1 + FAM-ENSURE
    a FAM-N @ FAM-A-FIELD !
-   u FAM-N @ cells FAM-U + !
+   u FAM-N @ FAM-U-FIELD !
    FAM-N @ FAM-IDX>KEY
    FAM-N @ 1 + FAM-N ! ;
 
@@ -8132,14 +8151,15 @@ variable FB-PASS                     \ 0 mints the caller's names, else makes th
       EXIT
    THEN
    t ATOM>K negate 1- {: idx:n :}
-   idx cells FB-VAR + @ 0= IF
+   FB-P FB-CAP idx 1+ FB-ROW ARENA-ROWS-ENSURE
+   idx FB-VAR @ 0= IF
       FRESH {: id:n :}
       t ATOM>A t ATOM>U FRESH-REGION-NAME? IF id TVK-REGION! THEN
-      id MK-VAR idx cells FB-VAR + !
-      t idx cells FB-NAME + !
+      id MK-VAR idx FB-VAR !
+      t idx FB-NAME !
       idx 1+ FB-N @ max FB-N !
    THEN
-   idx cells FB-VAR + @ cell ! ;
+   idx FB-VAR @ cell ! ;
 
 \ Visits each fresh-name atom in a signature cell. The caller supplies it on
 \ the input side; an input quotation's input flips that.
@@ -8182,8 +8202,7 @@ variable FB-PASS                     \ 0 mints the caller's names, else makes th
 \ Each body-supplied name becomes one variable for the body to bind. Run after
 \ SIG-EFF-CACHE!, so a recursive call still mints the name per call.
 : SIG-BODY-FRESH ( -- )
-   FB-VAR 0 FAM-CAP ARENA-CELLS-ZERO
-   FB-NAME 0 FAM-CAP ARENA-CELLS-ZERO
+   FB-P @ 0 FB-CAP @ FB-ROW * ARENA-CELLS-ZERO
    -1 FB-PASS !  FB-WALK-SIG ;
 
 CHECKER-REG:SCRATCH{
@@ -9526,13 +9545,21 @@ $50 constant EFF-NODE
 : EN.I ( ptr u8 -- ptr n ) EN-I-OFF + CELL-VIEW ;
 
 \ EC-TV/EC-RV/EI-TV/EI-RV are var-id maps in the growable TV arena (top).
-64 constant EI-AK-CAP
-create EI-AK EI-AK-CAP cells allot
+\ One row per record slot: the identity E-I-AK minted, UNBOUND until then;
+\ and, for a slot E-AK-BIND bound, the variable that takes the argument's
+\ identity and an atom spelling the name, 0 for a slot E-I-AK mints.
+CHECKER-REG:SCRATCH{
+PTR-VARIABLE EI-AK-P   variable EI-AK-CAP
 variable EI-AK-HW              \ E-I-AK-RESET clears only [0, EI-AK-HW), the span E-I-AK and E-AK-BIND wrote
-\ Per slot E-AK-BIND bound: the variable that takes the argument's identity and
-\ an atom spelling the name; 0 for a slot E-I-AK mints.
-create EI-AK-VAR EI-AK-CAP cells allot
-create EI-AK-NAME EI-AK-CAP cells allot
+CHECKER-REG:}SCRATCH
+3 constant EI-AK-ROW
+: EI-AK ( n -- ptr n ) EI-AK-ROW * cells EI-AK-P @ + ;
+: EI-AK-VAR ( n -- ptr n ) EI-AK-ROW * 1 + cells EI-AK-P @ + ;
+: EI-AK-NAME ( n -- ptr n ) EI-AK-ROW * 2 + cells EI-AK-P @ + ;
+: EI-AK-ENSURE ( n -- ) {: need:n :}
+   EI-AK-CAP @ {: oc:n :}
+   EI-AK-P EI-AK-CAP need EI-AK-ROW ARENA-ROWS-ENSURE
+   EI-AK-CAP @ oc ?do UNBOUND i EI-AK ! loop ;
 
 \ One copy's counters and rigid identities (E-COPY-MAPS-RESET) rest in the span,
 \ so neither an image nor a file object carries the last check's atom terms.
@@ -9541,13 +9568,14 @@ variable EC-TVN
 variable EC-RVN
 \ A record's rigid identities in first-seen order. E-COPY* stores each as the
 \ slot key -(idx+1), so a record never holds a live counter value.
-create EC-AK EI-AK-CAP cells allot
+PTR-VARIABLE EC-AK-P   variable EC-AK-CAP
 variable EC-AKN
 PTR-VARIABLE FEP
 PTR-VARIABLE TOK-EFF
 variable FEP-OFF
 variable CHECKER-REC-SYM
 CHECKER-REG:}SCRATCH
+: EC-AK ( n -- ptr n ) cells EC-AK-P @ + ;
 
 \ The written span of EC-TV / EC-RV is [LW, HW): a top step mints variable ids
 \ from the last definition's FV mark, which can sit far above 0.
@@ -9578,18 +9606,8 @@ NULL-PTR TOP-READ-P !  0 TOP-READ-CAP !  NULL-PTR TOP-WRITE-P !  0 TOP-WRITE-CAP
 : E-WOFF ( ptr u8 -- n ) E-WBASE - ;
 : E-WPTR ( n -- ptr u8 ) E-WBASE + ;
 
-: E-MAP-CLEAR ( ptr n n -- ) {: p:ptr hw:n :}
-   0 begin dup hw < while
-      UNBOUND over cells p + !
-      1 +
-   repeat drop ;
-
 \ Allocation establishes zero maps.
 0 EC-TV-HW !   0 EC-RV-HW !   0 EC-TV-LW !   0 EC-RV-LW !
-\ A high-water reset restores only what was written, so every cell above the
-\ mark has to be UNBOUND already.
-EI-AK EI-AK-CAP E-MAP-CLEAR   0 EI-AK-HW !
-EI-AK-VAR 0 EI-AK-CAP ARENA-CELLS-ZERO   EI-AK-NAME 0 EI-AK-CAP ARENA-CELLS-ZERO
 
 : E-COPY-MAPS-RESET ( -- )
    EC-TV EC-TV-LW @ EC-TV-HW @ ARENA-CELLS-ZERO
@@ -9601,9 +9619,9 @@ EI-AK-VAR 0 EI-AK-CAP ARENA-CELLS-ZERO   EI-AK-NAME 0 EI-AK-CAP ARENA-CELLS-ZERO
    0 EC-AKN ! ;
 
 : E-I-AK-RESET ( -- )
-   EI-AK EI-AK-HW @ E-MAP-CLEAR
-   EI-AK-VAR 0 EI-AK-HW @ ARENA-CELLS-ZERO
-   EI-AK-NAME 0 EI-AK-HW @ ARENA-CELLS-ZERO
+   EI-AK-HW @ 0 ?do
+      UNBOUND i EI-AK !  0 i EI-AK-VAR !  0 i EI-AK-NAME !
+   loop
    0 EI-AK-HW ! ;
 
 : E-TV-ID ( n -- n ) {: id:n :}
@@ -9626,11 +9644,11 @@ EI-AK-VAR 0 EI-AK-CAP ARENA-CELLS-ZERO   EI-AK-NAME 0 EI-AK-CAP ARENA-CELLS-ZERO
 : E-AK-SLOT ( n -- n ) {: t:n :}
    t ATOM>K 0= IF 0 EXIT THEN
    0 BEGIN dup EC-AKN @ < WHILE
-      dup cells EC-AK + @ t E-AK-SAME? IF 1+ negate EXIT THEN
+      dup EC-AK @ t E-AK-SAME? IF 1+ negate EXIT THEN
       1+
-   REPEAT
-   EI-AK-CAP >= IF s" checker: fresh atom record table full" 76 die THEN
-   t EC-AKN @ cells EC-AK + !
+   REPEAT drop
+   EC-AK-P EC-AK-CAP EC-AKN @ 1+ 1 ARENA-ROWS-ENSURE
+   t EC-AKN @ EC-AK !
    EC-AKN @ 1+ dup EC-AKN ! negate ;
 
 : E-OFF ( ptr u8 -- n )
@@ -11190,9 +11208,9 @@ variable SIG-COUNTED
 
 : E-I-AK ( ptr u8 n n -- ptr u8 n n ) {: a:ptr u:n k:n :}
    k 0 >= if a u k exit then
-   k E-I-AK-IDX dup EI-AK-CAP >= if s" checker: fresh atom inst table full" 76 die then
+   k E-I-AK-IDX dup 1+ EI-AK-ENSURE
    dup 1+ EI-AK-HW @ max EI-AK-HW !
-   cells EI-AK + dup @ UNBOUND = if a u RIGID-AK-MINT over ! then @
+   EI-AK dup @ UNBOUND = if a u RIGID-AK-MINT over ! then @
    {: id:n :}
    a u id ;
 
@@ -11204,7 +11222,7 @@ variable SIG-COUNTED
    k 0 >= IF 0 EXIT THEN
    k E-I-AK-IDX {: idx:n :}
    idx EI-AK-HW @ >= IF 0 EXIT THEN
-   idx cells EI-AK-VAR + @ ;
+   idx EI-AK-VAR @ ;
 
 \ A called word's fresh name on a plain input is a variable at every occurrence,
 \ which the input unify binds to the argument's identity; E-I-AK mints the rest.
@@ -11212,11 +11230,11 @@ variable SIG-COUNTED
    node EN.C @ {: k:n :}
    k 0 >= IF EXIT THEN
    k E-I-AK-IDX {: idx:n :}
-   idx EI-AK-CAP >= IF s" checker: fresh atom inst table full" 76 die THEN
-   idx cells EI-AK-VAR + @ 0 <> IF EXIT THEN
+   idx 1+ EI-AK-ENSURE
+   idx EI-AK-VAR @ 0 <> IF EXIT THEN
    node USIGS E-I-STR {: a:ptr u:n :}
-   FRESH MK-VAR idx cells EI-AK-VAR + !
-   a u 0 MK-ATOM-K idx cells EI-AK-NAME + !
+   FRESH MK-VAR idx EI-AK-VAR !
+   a u 0 MK-ATOM-K idx EI-AK-NAME !
    idx 1+ EI-AK-HW @ max EI-AK-HW ! ;
 
 : E-AK-BIND ( n -- ) {: off:n :}
@@ -11563,10 +11581,10 @@ CHECKER-REG:}SCRATCH
    held ATOM>A held ATOM>U RIGID-NAME-DOMAIN ;
 
 : E-AK-NAME-DOMAIN ( n -- n )
-   cells EI-AK-NAME + @ dup ATOM>A swap ATOM>U RIGID-NAME-DOMAIN ;
+   EI-AK-NAME @ dup ATOM>A swap ATOM>U RIGID-NAME-DOMAIN ;
 
 : E-AK-CLASH? ( n n n -- bool ) {: j:n held:n de:n :}
-   j cells EI-AK-VAR + @ {: v:n :}
+   j EI-AK-VAR @ {: v:n :}
    v 0= IF RES-FALSE EXIT THEN
    j E-AK-NAME-DOMAIN de <> IF RES-FALSE EXIT THEN
    v T-RES {: other:n :}
@@ -11618,17 +11636,17 @@ CHECKER-REG:}SCRATCH
 \ A bound name holds an identity of its own domain that no other holds; a
 \ quantifier outside it is a domain confusion.
 : E-AK-CLAIM-SLOT ( n -- ) {: idx:n :}
-   idx cells EI-AK-VAR + @ {: v:n :}
+   idx EI-AK-VAR @ {: v:n :}
    v 0= IF EXIT THEN
    v T-RES {: r:n :}
    idx E-AK-NAME-DOMAIN {: de:n :}
    r de E-AK-HELD-DOMAIN {: da:n :}
-   da de = IF r idx cells EI-AK-NAME + @ E-AK-HOLD-NEW ELSE r THEN {: held:n :}
+   da de = IF r idx EI-AK-NAME @ E-AK-HOLD-NEW ELSE r THEN {: held:n :}
    OK @ 0= IF EXIT THEN
    da de = IF idx held de E-AK-CLASH-BELOW? 0= IF EXIT THEN THEN
    de 0 <> da 0 >= and IF de da RIGID-DOMAIN-REASON MDIAG! THEN
    held ISVAR IF held NP-DECLARED? IF MD-RIGID-XDOM MDIAG! THEN THEN
-   held  idx cells EI-AK-NAME + @ FB-MINT  RIGID-HELD-REFUSE ;
+   held  idx EI-AK-NAME @ FB-MINT  RIGID-HELD-REFUSE ;
 
 : E-AK-CLAIM ( -- )
    0 BEGIN dup EI-AK-HW @ <  OK @ 0 <>  and WHILE
@@ -12168,7 +12186,7 @@ PTR-VARIABLE CHECKER-TA
 variable CHECKER-TU
 CHECKER-REG:}SCRATCH
 
-$10000 constant DFER-CAP
+$10000 constant DFER-INIT
 
 $0 constant DFER-SYM-OFF
 $8 constant DFER-FLAG-OFF
@@ -12180,9 +12198,9 @@ $10 constant DFER-REC
 \ Its rows name symbols by id, and a build numbers its symbols anew, so the
 \ table is reached through a pointer a build points at a copy of its own
 \ (CHECK:OPEN); none of hb's rows is a prefix symbol's.
-create DFERS-BOOT DFER-CAP allot
+create DFERS-BOOT DFER-INIT allot
 PERSISTED-PTR-VARIABLE DFERS-P   variable DFER-CAP-V   variable DFER-END
-DFERS-BOOT DFERS-P !   DFER-CAP DFER-CAP-V !
+DFERS-BOOT DFERS-P !   DFER-INIT DFER-CAP-V !
 0 DFERS-BOOT !
 0 DFER-END !
 : DFERS ( -- ptr n ) DFERS-P @ ;
@@ -14640,8 +14658,11 @@ variable EV-LO   variable EV-N
 : HIDX-DFR-SYNC
    DFER-END @ HIDX-DFR-HI @ < IF HIDX-EPOCH+ THEN ;
 
-: DFER-ENSURE ( n -- )
-   DFER-CAP > IF s" checker: defer table full" 76 die THEN ;
+: DFER-ENSURE ( n -- ) {: need:n :}
+   need DFER-CAP-V @ <= IF EXIT THEN
+   need DFER-CAP-V @ 2 * max {: nc:n :}
+   DFERS-P DFER-CAP-V @ nc CHECKER-REG:GROW
+   nc DFER-CAP-V ! ;
 
 : DFER-CUR ( -- ptr n )
    DFERS DFER-END @ + ;
@@ -17746,21 +17767,25 @@ variable CHECKER-PREFIX-ROLLBACK
 
 
 LOC-RECS constant XG-GCAP      \ max logical groups per op
-256 constant XG-TCAP           \ max total cells across one op's groups
-create XG-TERMS XG-TCAP cells allot
-create XG-NODES XG-TCAP cells allot
 create XG-START XG-GCAP cells allot
 create XG-LEN XG-GCAP cells allot
+\ One row per cell across one op's groups: its term and its occurrence.
+CHECKER-REG:SCRATCH{
+PTR-VARIABLE XG-P   variable XG-CAP
+CHECKER-REG:}SCRATCH
+2 constant XG-ROW-CELLS
+: XG-TERM ( n -- ptr n ) XG-ROW-CELLS * cells XG-P @ + ;
+: XG-NODE ( n -- ptr n ) XG-ROW-CELLS * 1 + cells XG-P @ + ;
 variable XG-N   variable XG-TN   variable XG-ROW
 
 : XG-T+ ( n n -- ) {: term:n node:n :}   \ term and occurrence travel together
-   XG-TN @ XG-TCAP >= IF s" checker: transport group scratch full" 76 die THEN
-   term XG-TN @ cells XG-TERMS + !
-   node XG-TN @ cells XG-NODES + !
+   XG-P XG-CAP XG-TN @ 1 + XG-ROW-CELLS ARENA-ROWS-ENSURE
+   term XG-TN @ XG-TERM !
+   node XG-TN @ XG-NODE !
    XG-TN @ 1 + XG-TN ! ;
 
 : XG-TERM0@ ( n -- n ) {: gi:n :}
-   XG-START gi cells + @ cells XG-TERMS + @ ;
+   XG-START gi cells + @ XG-TERM @ ;
 
 : XG-CELL-HID@ ( n n -- ) {: fam:n slot:n :}
    XG-ROW @ R-RES {: node:n :}
@@ -17820,7 +17845,7 @@ variable XG-N   variable XG-TN   variable XG-ROW
    XG-START gi cells + @ {: st:n :}
    XG-LEN gi cells + @ {: len:n :}
    st len + 1 - BEGIN dup st >= WHILE
-      dup cells XG-NODES + @
+      dup XG-NODE @
       rot P-COPY swap
       1 -
    REPEAT drop ;
@@ -18233,7 +18258,7 @@ CHECKER-REG:}SCRATCH
    XG-START gi cells + @ {: start:n :}
    start XG-LEN gi cells + @ + 1 -
    BEGIN dup start >= WHILE
-      dup cells XG-NODES + @ {: node:n :}
+      dup XG-NODE @ {: node:n :}
       CP-LOCAL 0 node LOC-CAP-HEAD @ CP-NEW LOC-CAP-HEAD !
       1 -
    REPEAT drop

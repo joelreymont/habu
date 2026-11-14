@@ -1055,11 +1055,11 @@ public
 \ A body-supplied name left unbound takes a new identity, and only a region name may
 \ be bound: to one this body minted that no other name claims and FITS? admits.
 : FB-OWNED? ( n -- bool ) {: idx:n :}
-   idx cells FB-NAME + @ {: name:n :}
-   idx cells FB-VAR + @ T-RES {: r:n :}
+   idx FB-NAME @ {: name:n :}
+   idx FB-VAR @ T-RES {: r:n :}
    r ISVAR IF name FB-MINT r PAY TV! THEN
    name ATOM>A name ATOM>U FRESH-REGION-NAME? 0= IF r ISVAR EXIT THEN
-   idx cells FB-VAR + @ T-RES {: id:n :}
+   idx FB-VAR @ T-RES {: id:n :}
    id TAG T-ATOM <> IF RES-FALSE EXIT THEN
    id ATOM>K RGN-MARK @ < IF RES-FALSE EXIT THEN
    id ATOM>A id ATOM>U FRESH-REGION-NAME? 0= IF RES-FALSE EXIT THEN
@@ -1070,10 +1070,10 @@ public
    id ATOM>K idx FO-MATCH? ;
 
 : FB-CLAIM ( n -- ) {: idx:n :}
-   idx cells FB-NAME + @ {: name:n :}
+   idx FB-NAME @ {: name:n :}
    name 0= IF EXIT THEN
    idx FB-OWNED? IF EXIT THEN
-   idx cells FB-VAR + @ T-RES  name FB-MINT  RIGID-HELD-REFUSE ;
+   idx FB-VAR @ T-RES  name FB-MINT  RIGID-HELD-REFUSE ;
 
 : FRESH-CLAIM ( -- )
    OK @ 0= IF EXIT THEN
@@ -3175,12 +3175,16 @@ CHECKER-REG:}SCRATCH
 \ there, as a top step is (TOP-GUEST): it parses above the term pools' marks,
 \ and the parser's and recorder's cells, which the caller may hold, are saved
 \ and given back however the read ends. One read is open at a time.
-512 constant GUEST-CAP
-80 constant GUEST-PTRS-CAP
+\ GUEST-POOLS saves 16 cells, GUEST-PARSER 37 and its three tables,
+\ GUEST-LATCHES 4; GUEST-POINTERS saves 8 pointers.
+16 37 + 4 +  BINDER-DEPTH-MAX +  TYPE-VAR-MAX 3 + +  26 +  constant GUEST-CAP
+8 constant GUEST-PTRS-CAP
 CHECKER-REG:SCRATCH{
 create GUEST-SAVED GUEST-CAP cells allot
 GUEST-PTRS-CAP PTR-U8-TABLE GUEST-SAVED-PTRS
 variable GUEST-OPEN
+PTR-U8-TABLE-VARIABLE GUEST-FAM-A-P
+PTR-VARIABLE GUEST-FAM-U-P   variable GUEST-FAM-CAP
 CHECKER-REG:}SCRATCH
 
 : GUEST-CELLS ( n ptr n n bool -- n )
@@ -3219,7 +3223,6 @@ CHECKER-REG:}SCRATCH
    BIND-DOMAINS BINDER-DEPTH-MAX save GUEST-CELLS
    NMAP TYPE-VAR-MAX 3 + save GUEST-CELLS  ROWMAP 26 save GUEST-CELLS
    FAM-N save GUEST-CELL  FAM-I save GUEST-CELL  FAM-K save GUEST-CELL
-   FAM-U FAM-CAP save GUEST-CELLS
    NRES save GUEST-CELL  NDI save GUEST-CELL  NDH save GUEST-CELL
    SGBAD save GUEST-CELL  SGBAD-U save GUEST-CELL  SGBAD-KIND save GUEST-CELL
    SGBAD-AR-DECL save GUEST-CELL  SGBAD-AR-GOT save GUEST-CELL  SGBAD-SIZE save GUEST-CELL
@@ -3238,12 +3241,18 @@ CHECKER-REG:}SCRATCH
    0  SB 1 save GUEST-PTRS  SS 1 save GUEST-PTRS  PKA 1 save GUEST-PTRS
    SGBAD-A 1 save GUEST-PTRS  SIG-UNRES-A 1 save GUEST-PTRS
    SIG-CREATES-A 1 save GUEST-PTRS  SIG-OVERLOAD-A 1 save GUEST-PTRS
-   SIGSCOPE-P 1 save GUEST-PTRS
-   FAM-A FAM-CAP save GUEST-PTRS  drop ;
+   SIGSCOPE-P 1 save GUEST-PTRS  drop ;
+
+\ A read parses its fresh names into a table of its own, which this swaps
+\ with the caller's on entry and back on leaving.
+: GUEST-FAMS ( -- )
+   FAM-A-P @  GUEST-FAM-A-P @ FAM-A-P !  GUEST-FAM-A-P !
+   FAM-U-P @  GUEST-FAM-U-P @ FAM-U-P !  GUEST-FAM-U-P !
+   FAM-CAP @  GUEST-FAM-CAP @ FAM-CAP !  GUEST-FAM-CAP ! ;
 
 : GUEST-KEEP ( bool -- ) {: save:bool :}
    0 save GUEST-POOLS save GUEST-PARSER save GUEST-LATCHES drop
-   save GUEST-POINTERS ;
+   save GUEST-POINTERS  GUEST-FAMS ;
 
 : READ-ENTER ( -- )
    GUEST-OPEN @ IF s" checker: a facts read inside another" 76 die THEN
