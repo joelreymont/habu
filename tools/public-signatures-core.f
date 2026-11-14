@@ -568,7 +568,6 @@ private
 
 : PS-EMIT-DEF ( bool ptr u8 n -- ) {: exported?:bool file-a:ptr file-u:n :}
    PS-DEF-START
-   s" schema_version" PS-JSON-KEY 1 PS-JSON-U PS-PAIR-COMMA
    s" word" PS-JSON-KEY PS-WORD$ PS-JSON-STRING PS-PAIR-COMMA
    s" file" PS-JSON-KEY file-a file-u PS-JSON-STRING PS-PAIR-COMMA
    s" line" PS-JSON-KEY PS-NAME-LINE @ PS-JSON-U PS-PAIR-COMMA
@@ -775,7 +774,6 @@ private
 
 : PS-EMIT-CTOR ( n n ptr u8 n -- ) {: fam:n vid:n file-a:ptr file-u:n :}
    PS-DEF-START
-   s" schema_version" PS-JSON-KEY 1 PS-JSON-U PS-PAIR-COMMA
    s" word" PS-JSON-KEY vid PS-CTOR-WORD$ PS-JSON-STRING PS-PAIR-COMMA
    s" file" PS-JSON-KEY file-a file-u PS-JSON-STRING PS-PAIR-COMMA
    s" line" PS-JSON-KEY 0 PS-JSON-U PS-PAIR-COMMA
@@ -810,7 +808,6 @@ private
 : PS-EMIT-DRV ( n ptr u8 n ptr u8 n n -- )
    {: fam:n ta:ptr tu:n file-a:ptr file-u:n eq:n :}
    PS-DEF-START
-   s" schema_version" PS-JSON-KEY 1 PS-JSON-U PS-PAIR-COMMA
    s" word" PS-JSON-KEY fam ta tu PS-DRV-WORD$ PS-JSON-STRING PS-PAIR-COMMA
    s" file" PS-JSON-KEY file-a file-u PS-JSON-STRING PS-PAIR-COMMA
    s" line" PS-JSON-KEY 0 PS-JSON-U PS-PAIR-COMMA
@@ -864,7 +861,6 @@ public
    -1 PS-FIRST? !
    PS-TRUST @ IF exit THEN
    PS-JSON-OBJECT-START
-   s" schema_version" PS-JSON-KEY 1 PS-JSON-U PS-JSON-COMMA
    s" definitions" PS-JSON-KEY PS-JSON-ARRAY-START ;
 
 : PS-JSON-DOC-END ( -- )
