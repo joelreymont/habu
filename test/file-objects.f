@@ -427,9 +427,10 @@ variable CLASS-N                        \ the class CLASS+ read
    s\" after: 0\n" E-LINE  s\" wrap: 0\n" E-LINE  s\" Hi\n" E-LINE  s\" after ran\n" E-LINE
    s\" misuse: 70\n" E-LINE  s\" dead: 70\n" E-LINE
    s" the misuse refusal names TAKE" LABEL
-   ERR-E ERR-E-U @ s" fob-misuse at 'FILE-OBJECTS-FACTS:TAKE'" CONTAINS? TTRUE
+   ERR-E ERR-E-U @ s" error[E-MISMATCH]" CONTAINS? TTRUE
+   ERR-E ERR-E-U @ s" `FILE-OBJECTS-FACTS:TAKE`" CONTAINS? TTRUE
    s" the dead-code refusal names FAIL" LABEL
-   ERR-E ERR-E-U @ s" at '2' after 'FILE-OBJECTS-FACTS:FAIL'" CONTAINS? TTRUE ;
+   ERR-E ERR-E-U @ s" error[E-DEAD-CODE]: `2` never runs: `FILE-OBJECTS-FACTS:FAIL`" CONTAINS? TTRUE ;
 
 : COLD ( CMD:command -- CMD:command )
    s" A" WHICH!  A$ s" " s\" compiled 7\n" STATE-A BUILD 0 max STATE-A-U !
@@ -587,7 +588,7 @@ variable CLASS-N                        \ the class CLASS+ read
    s" the build exits nonzero" LABEL  rc 0<> TTRUE
    s" the build says a task is still running at the file's end" LABEL  said TTRUE ;
 
-\ The loader's refusal TEXT of word-load-inc.f, by its canonical path, as the
+\ The loader's rejection TEXT, then word-load-inc.f's canonical path, as the
 \ next build of a fixture whose word reaches that file should say it.
 : REFUSAL! ( ptr u8 n -- ) {: a:ptr u:n :}
    a REFUSAL u BYTE-COPY
@@ -611,12 +612,11 @@ variable CLASS-N                        \ the class CLASS+ read
 \ because hb's top frame is held. SOURCE-INPUT:READ reaches the same READ-OS
 \ through the default reader, so it needs no build of its own.
 : WORD-LOAD-BUILD ( CMD:command -- CMD:command )
-   s" include: a word loaded or provided a file during a build; do it at the file's top level: "
-   REFUSAL!
+   s" error[E-SOURCE-ROOT]: `included` got `" REFUSAL!
    s" X" WHICH!  s" test/fixtures/file-objects/word-load-main.f" REFUSED-BUILD
+   s" error[E-SOURCE-ROOT]: `provided` got `" REFUSAL!
    s" X4" WHICH!  s" test/fixtures/file-objects/word-provided-main.f" REFUSED-BUILD
-   s" include: READ-OS reads only the file a load is opening; a word read: "
-   REFUSAL!
+   s" error[E-SOURCE-ROOT]: `SOURCE-ROOT:READ-OS` got `" REFUSAL!
    s" X2" WHICH!  s" test/fixtures/file-objects/word-read-main.f" REFUSED-BUILD ;
 
 \ Darwin's first lock of a mutex sets its signature, $4D55545A (the bytes ZTUM), and unlocking leaves it.
@@ -997,8 +997,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 \ with E-SEALED-PACKAGE naming the definition and seal-main.f's line.
 : SEAL-REFUSED ( CMD:command -- CMD:command )
    s" test/fixtures/file-objects/seal-main.f" false BUILD-RC {: rc:n :}
-   CMD:ERR$ s" E-SEALED-PACKAGE habu: " CONTAINS? {: classed:bool :}
-   CMD:ERR$ s" 'FILE-OBJECTS-SEAL:D' is sealed" CONTAINS? classed and {: named:bool :}
+   CMD:ERR$ s" error[E-SEALED-PACKAGE]" CONTAINS? {: classed:bool :}
+   CMD:ERR$ s" `FILE-OBJECTS-SEAL:D` would change a sealed package" CONTAINS? classed and {: named:bool :}
    CMD:ERR$ s" test/fixtures/file-objects/seal-main.f:6" CONTAINS? {: placed:bool :}
    named placed and  rc ENGINE-ERROR:SEAL-PACKAGE =  and 0= if rc SHOW then
    s" the build exits 84" LABEL  rc ENGINE-ERROR:SEAL-PACKAGE T=
@@ -1015,8 +1015,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 \ it exits 84 with E-SEALED-PACKAGE naming CHECKER-RESOLVE and squat-main.f's line 4.
 : SQUAT-REFUSED ( CMD:command bool -- CMD:command ) {: repl:bool :}
    s" test/fixtures/file-objects/squat-main.f" repl BUILD-RC {: rc:n :}
-   CMD:ERR$ s" E-SEALED-PACKAGE habu: " CONTAINS? {: classed:bool :}
-   CMD:ERR$ s" 'CHECKER-RESOLVE' is sealed" CONTAINS? classed and {: named:bool :}
+   CMD:ERR$ s" error[E-SEALED-PACKAGE]" CONTAINS? {: classed:bool :}
+   CMD:ERR$ s" `CHECKER-RESOLVE` would change a sealed package" CONTAINS? classed and {: named:bool :}
    CMD:ERR$ s" test/fixtures/file-objects/squat-main.f:4" CONTAINS? {: placed:bool :}
    named placed and  rc ENGINE-ERROR:SEAL-PACKAGE =  and 0= if rc SHOW then
    s" the build exits 84" LABEL  rc ENGINE-ERROR:SEAL-PACKAGE T=
@@ -1040,11 +1040,11 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" the build says rollback.f gave back data space" LABEL  said TTRUE ;
 
 \ ctor-main.f's build, in a fresh hb since the refusal ends the build: it fails with
-\ E-CTOR-PROTECTED's code. Answers its exit code.
+\ E-CTOR-PROTECTED at ctor-main.f's line 6. Answers its exit code.
 : CTOR-REFUSED ( CMD:command -- CMD:command n )
    s" test/fixtures/file-objects/ctor-main.f" false BUILD-RC {: rc:n :}
-   SB-RESET  s" threw " SB-APPEND  E-CTOR-PROTECTED FMT:SB-INT
-   CMD:ERR$ SB$ CONTAINS? {: named:bool :}
+   CMD:ERR$ s" error[E-CTOR-PROTECTED]" CONTAINS? {: coded:bool :}
+   CMD:ERR$ s" test/fixtures/file-objects/ctor-main.f:6:" CONTAINS? coded and {: named:bool :}
    named  rc 0<>  and 0= if rc SHOW then
    s" the build fails" LABEL  rc 0<> TTRUE
    s" the build refuses with E-CTOR-PROTECTED" LABEL  named TTRUE
@@ -1076,7 +1076,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" the image's definition and top level call the exports" LABEL
    CMD:OUT$ s\" 42\n5\n3\n9\n42\n5\n3\n9\n11\n" T$=
    s" the image refuses the undefined export" LABEL
-   CMD:ERR$ s\" E-UNDEFINED habu: undefined word 'FILE-OBJECTS-EXP:GONE'\n" T$=
+   CMD:ERR$ s\" error[E-UNDEFINED]: cannot find word `FILE-OBJECTS-EXP:GONE`\n --> <input>:5:1\n"
+   CONTAINS? TTRUE
    s" the image exits 70" LABEL  rc 70 T= ;
 
 \ Guards an image's exports: EX compiles export-main.f into a --repl image, EX2 links its object
@@ -1276,7 +1277,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 \ clause. Answers its exit code.
 : CLAUSE-REFUSED ( CMD:command -- CMD:command n )
    s" two.f" s" prog-c" NEST-RC {: rc:n :}
-   CMD:ERR$ s" h.f:1: duplicate definition: FILE-OBJECTS-CL;does" CONTAINS? {: named:bool :}
+   CMD:ERR$ s" error[E-DUPLICATE-DEFINITION]: `FILE-OBJECTS-CL;does`" CONTAINS? {: coded:bool :}
+   CMD:ERR$ s" /h.f:1:33" CONTAINS? coded and {: named:bool :}
    named  rc 0<>  and 0= if rc SHOW then
    s" the build refuses the clause's name" LABEL  named TTRUE
    rc ;
@@ -1849,11 +1851,12 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" b.f" NEST-WRITE ;
 
 \ A build of b.f the cast's restriction refuses; answers its exit code. The
-\ build prints E-CAST-LINEAR's reason at the call, not the code.
+\ build rejects with E-CAST-LINEAR at the call of AT, b.f's line 4.
 : CAST-REFUSED ( CMD:command -- CMD:command n )
    s" b.f" NEST-PATH$ FAILING-BUILD {: rc:n :}
-   CMD:ERR$ s" at 'FILE-OBJECTS-CAST:AT' a cast's stored type would hold a linear value"
-   CONTAINS? {: said:bool :}
+   CMD:ERR$ s" error[E-CAST-LINEAR]: a cast's stored type would hold a linear value"
+   CONTAINS? {: coded:bool :}
+   CMD:ERR$ s" /b.f:4:33" CONTAINS? coded and {: said:bool :}
    rc 0 =  said 0=  or if rc SHOW then
    s" the build exits nonzero" LABEL  rc 0<> TTRUE
    s" the build refuses AT at a linear type" LABEL  said TTRUE
@@ -1902,9 +1905,9 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" TR" WHICH!
    TOOL-ARGS  s" --target" CMD:ARG+  s" wasm" CMD:ARG+
    s" test/fixtures/file-objects/target-run.f" TOOL-RUN {: rc:n :}
-   CMD:ERR$ s" E-TARGET-WORD habu: " CONTAINS? {: classed:bool :}
-   CMD:ERR$ s" test/fixtures/file-objects/target-run.f:8: 'FO-TAIL' is a target word"
-      CONTAINS? {: placed:bool :}
+   CMD:ERR$ s" error[E-TARGET-WORD]" CONTAINS? {: classed:bool :}
+   CMD:ERR$ s" target word `FO-TAIL`" CONTAINS? {: tail:bool :}
+   CMD:ERR$ s" test/fixtures/file-objects/target-run.f:8:" CONTAINS? tail and {: placed:bool :}
    classed placed and  rc 0<> and 0= if rc SHOW then
    s" the build fails" LABEL  rc 0<> TTRUE
    s" the refusal is E-TARGET-WORD" LABEL  classed TTRUE

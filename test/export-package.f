@@ -272,7 +272,7 @@ create XPK-EMPTY 1 allot
    XPK-NONAME-FORGE$ XPK-RUN-STDIN XPK-NONAME-RC XPK-ASSERT-RC
    s" duplicate tail rejects with labeled diagnosis" T-LABEL
    XPK-DUP-FORGE$ XPK-RUN-STDIN XPK-DUP-RC XPK-ASSERT-RC
-   s" duplicate definition: " XPK-ERR?
+   s" error[E-DUPLICATE-DEFINITION]" XPK-ERR?
    s" self-export rejects as duplicate" T-LABEL
    XPK-SELF-FORGE$ XPK-RUN-STDIN XPK-DUP-RC XPK-ASSERT-RC
    s" primitive source rejects (E-EXPORT-PRIM)" T-LABEL

@@ -49,7 +49,7 @@ private
    s" tools/check.f refuses the replayed pair through OP's public wordlist" T-LABEL
    RC@ 70 T=
    S\" \"code\":\"E-UNDEFINED\"" ERR-HAS
-   S\" \"word\":\"forge\"" ERR-HAS
+   S\" \"line\":5," ERR-HAS
    S\" \"token\":\"OP:BOX-MAKE\"" ERR-HAS ;
 
 public

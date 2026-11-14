@@ -182,7 +182,7 @@ create XE-EMPTY 1 allot
 : XE-AMB-DIED ( -- )
    XE-EXITED @ TTRUE
    XE-RC @ XE-UNDEF-RC T=
-   XE-ERR$ s" E-USING-AMBIGUOUS habu: bare 'XEU-W'" CONTAINS? TTRUE ;
+   XE-ERR$ s" error[E-USING-AMBIGUOUS]: `XEU-W`" CONTAINS? TTRUE ;
 
 : XE-USING ( -- )
    XE-USING-PROG$ XE-RUN

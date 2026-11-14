@@ -158,7 +158,8 @@ private
 : UNDEFINED-CASE ( -- )
    s" a differently-cased mention with no word of that name is undefined by name" T-LABEL
    s" : LSP-BAD ( n -- n ) {: zork:n :} ZORK ;" LSP-CHILD:RUN LSP-CHILD:UNDEF-RC T=
-   LSP-CHILD:ERR$ s" E-UNDEFINED habu: in lsp-bad: undefined word 'ZORK'" CONTAINS? TTRUE ;
+   LSP-CHILD:ERR$ s" error[E-UNDEFINED]" CONTAINS? TTRUE
+   LSP-CHILD:ERR$ s" `ZORK`" CONTAINS? TTRUE ;
 
 public
 
