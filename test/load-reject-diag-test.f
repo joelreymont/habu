@@ -5,6 +5,7 @@
 \ require-chain and checked-body legs on generated fixtures; the child engine is
 \ HABU_UNDER_TEST when set, else the running engine. A file `?TARGET` stops is
 \ rejected in REJECTION's form: prose, or one JSON line under REJECTION:JSON.
+\ A bare word a global and a used package both define is rejected in that form.
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
@@ -26,6 +27,7 @@ $1000 constant CAP
 67 constant UNCAUGHT-RC
 76 constant BAD-SIG-RC
 84 constant SEALED-RC
+105 constant SHADOW-RC
 78 constant DUP-RC
 3 constant TEST-OUT-U
 5 constant TEST-ERR-U
@@ -56,6 +58,7 @@ create RCATCH-P PATH-CAP allot
 create CF-P PATH-CAP allot
 create TARGET-P PATH-CAP allot
 create TARGET-JSON-P PATH-CAP allot
+create SHADOW-P PATH-CAP allot
 
 variable BASE-U
 variable UNDEF-U
@@ -80,6 +83,7 @@ variable RCATCH-U
 variable CF-U
 variable TARGET-U
 variable TARGET-JSON-U
+variable SHADOW-U
 variable OUT-U
 variable ERR-U
 variable EXITED
@@ -154,6 +158,9 @@ variable RC
 : TARGET-JSON$ ( -- ptr u8 n )
    TARGET-JSON-P TARGET-JSON-U @ ;
 
+: SHADOW$ ( -- ptr u8 n )
+   SHADOW-P SHADOW-U @ ;
+
 : FRAG-FIXTURE! ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: pre:ptr preu:n frag:ptr fragu:n post:ptr postu:n path:ptr pathu:n :}
    SB-RESET
@@ -195,7 +202,8 @@ variable RC
    s" residue-nest.f" RNEST-P RNEST-U PATH!
    s" residue-caught.f" RCATCH-P RCATCH-U PATH!
    s" target.f" TARGET-P TARGET-U PATH!
-   s" target-json.f" TARGET-JSON-P TARGET-JSON-U PATH! ;
+   s" target-json.f" TARGET-JSON-P TARGET-JSON-U PATH!
+   s" shadow.f" SHADOW-P SHADOW-U PATH! ;
 
 : REJECT-FIXTURES! ( -- )
    UNDEF$ s" : LRD-X ( -- ) LRD-NO-SUCH-WORD-XYZ ;" FS:WRITE-ALL
@@ -207,6 +215,8 @@ variable RC
    BPF$ s" TYPED-VARIABLE LRD-Q ptr u8 : LRD-QBASE ( -- ptr u8 ) LRD-Q @ ; : LRD-BPF ( -- n ) LRD-QBASE @ ;" FS:WRITE-ALL
    TARGET$ s" false ?TARGET" FS:WRITE-ALL
    TARGET-JSON$ S\" -1 REJECTION:JSON !\nfalse ?TARGET" FS:WRITE-ALL
+   SHADOW$ S\" : LRD-SHADOW ( -- ) ;\npackage LRD-SH\npublic\n: LRD-SHADOW ( -- ) ;\n;package\nusing LRD-SH\nLRD-SHADOW\n"
+   FS:WRITE-ALL
    \ A loaded file is a closed program, so the fragment shows it ran by
    \ printing: it can take no cell from its loader and leave none.
    FRAG$ s" 74 ." FS:WRITE-ALL
@@ -796,6 +806,22 @@ variable RC
    SB-APPEND
    ASSERT-TARGET ;
 
+: TEST-SHADOW ( -- )
+   s" a bare word a global and a used package share is rejected" T-LABEL
+   SHADOW$ RUN
+   SB-RESET
+   s" error[E-USING-SHADOW-GLOBAL]: `LRD-SHADOW` names both a global word" SB-APPEND
+   S\"  and a word of package `LRD-SH`\n --> " SB-APPEND  SHADOW$ SB-APPEND
+   S\" :7:1\n  |\n7 | LRD-SHADOW\n  | ^^^^^^^^^^ names two words\n" SB-APPEND
+   S\"   = global: LRD-SHADOW\n  = package: LRD-SH:LRD-SHADOW\n" SB-APPEND
+   s"   = help: write `LRD-SH:LRD-SHADOW` to call the package's word," SB-APPEND
+   S\"  or rename one of the two: the global word has no qualified form\n\n"
+   SB-APPEND
+   ERR$ SB$ T$=
+   OUT-U @ 0 T=
+   EXITED @ TTRUE
+   RC @ SHADOW-RC T= ;
+
 : TEST-IMM-INCLUDE ( -- )
    s" checked include rejects before executing its fragment" T-LABEL
    INC$ RUN
@@ -906,6 +932,7 @@ variable RC
    TEST-REQUIRE-CHAIN
    TEST-RESIDUE
    TEST-TARGET
+   TEST-SHADOW
    TEST-IMM-INCLUDE
    TEST-IMM-REQUIRE
    TEST-IMM-CALLER
