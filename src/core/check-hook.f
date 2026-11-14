@@ -222,6 +222,27 @@ CAST: REG-XT ( n -- [ ptr u8 n ptr u8 n -- ] )
    then
    shape swap TFAM:TFAM-STORED-ROWS ;
 
+\ Type t's bytes in storage: whole cells only when WHOLE, else as DYNAMIC
+\ admits, which takes `u8` too.
+: TYPE-BYTES ( ptr u8 n bool -- n bool )
+   {: ta:ptr tu:n whole:bool :}
+   whole 0= if ta tu CHECKER-DYNAMIC-INFO exit then
+   ta tu CHECKER-STORAGE-INFO {: w:n ok:bool :}
+   w CELL * ok ;
+
+\ A storage declaration's name, stored type and that type's bytes. A missing
+\ name or a refused type is reported, naming the definer, and answers 0 bytes.
+: DECL-LINE ( ptr u8 n bool -- ptr u8 n ptr u8 n n )
+   {: da:ptr du:n whole:bool :}
+   STORAGE-LINE-TOKEN {: na:ptr nu:n :}
+   nu 0= if da du CHECKER-STORAGE-NAME-REFUSE na 0 na 0 0 exit then
+   STORAGE-PARSE-TYPE {: ta:ptr tu:n :}
+   na nu CHECKER-LBUF-NAME-OK? 0= if na nu ta tu 0 exit then
+   ta tu whole TYPE-BYTES 0= if
+      drop na nu ta tu CHECKER-STORAGE-TYPE-REFUSE na nu ta tu 0 exit
+   then {: bytes:n :}
+   na nu ta tu bytes ;
+
 public
 
 \ The declaration registrars' field entries: each runs its registrar, then lays
@@ -242,18 +263,11 @@ public
    na nu PENDING-FACTS
    val h ;
 
-\ A storage declaration's name, stored type and that type's bytes. A missing
-\ name or a refused type is reported, naming the definer, and answers 0 bytes.
-: STORAGE-LINE ( ptr u8 n -- ptr u8 n ptr u8 n n )
-   {: da:ptr du:n :}
-   STORAGE-LINE-TOKEN {: na:ptr nu:n :}
-   nu 0= if da du CHECKER-STORAGE-NAME-REFUSE na 0 na 0 0 exit then
-   STORAGE-PARSE-TYPE {: ta:ptr tu:n :}
-   na nu CHECKER-LBUF-NAME-OK? 0= if na nu ta tu 0 exit then
-   ta tu CHECKER-DYNAMIC-INFO 0= if
-      drop na nu ta tu CHECKER-STORAGE-TYPE-REFUSE na nu ta tu 0 exit
-   then {: bytes:n :}
-   na nu ta tu bytes ;
+\ The line of a definer whose element may be a byte.
+: STORAGE-LINE ( ptr u8 n -- ptr u8 n ptr u8 n n ) RES-FALSE DECL-LINE ;
+
+\ The line of a definer whose element is whole cells.
+: CELL-LINE ( ptr u8 n -- ptr u8 n ptr u8 n n ) RES-TRUE DECL-LINE ;
 
 private
 

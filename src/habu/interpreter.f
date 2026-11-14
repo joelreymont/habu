@@ -2887,6 +2887,7 @@ public
    ['] END-RUN data-base PROVIDED-XT:END-CELL + xt!
    ['] CHILD-RUN data-base PROVIDED-XT:CHILD-CELL + xt!
    ['] CHECK:STORAGE-LINE data-base PROVIDED-XT:STORAGE-LINE-CELL + xt!
+   ['] CHECK:CELL-LINE data-base PROVIDED-XT:CELL-LINE-CELL + xt!
    ['] LITERAL-RUN data-base PROVIDED-XT:LITERAL-CELL + xt!
    ['] CHECK:TYPE-OP data-base PROVIDED-XT:TYPE-OP-CELL + xt! ;
 
