@@ -2774,6 +2774,24 @@ public
 : WL-PROBE ( ptr u8 n n -- ptr n ) xref-search-wl ;
 ;package
 
+\ A dictionary record's cell at a slot. No record is NULL-PTR (src/habu/xref.f
+\ XREF-NULL), whose cells would be read from the page at address 0, so reading
+\ one is rejected; a caller that may hold no record tests for it first.
+\ src/habu/xref.f XREF-CELL@ and CK-REC-WID read through this word, and
+\ CHECKER-RESOLVE:CK-REC-NAME$ reads its flags through it before any other
+\ cell, so this one guard covers all three.
+: DICT-CELL@ ( ptr n n -- n )
+   over NULL-PTR = IF
+      s" E-XREF-NULL" REJECTION:OPEN
+      s" a dictionary record read was given `XREF-NULL`, the record a failed lookup answers"
+      REJECTION:EMIT-STR
+      REJECTION:HELP
+      s" test the lookup's answer with `XREF-FOUND?` before reading its record"
+      REJECTION:EMIT-STR
+      CHECKER-REJECT-RC REJECTION:STOP
+   THEN
+   cells + @ ;
+
 : CK-REC-WID ( ptr n -- n ) DICT-WORDLIST-SLOT DICT-CELL@ ;
 
 2 constant CK-REC-FLAGS-SLOT                \ = xref.f XREF-FLAGS-SLOT
