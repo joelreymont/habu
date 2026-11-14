@@ -1670,10 +1670,9 @@ CHECKER-REG:}SCRATCH
 \ --- resolved type-family (TFAM) identity for T-PARAM terms. The registry
 \ lives in src/core/type-family.f, loaded after checker.f, so its queries are
 \ friend hooks. Each gets a registry-not-loaded default here and is rebound by
-\ type-family.f at prefix load. The CONSTRUCT-STEP, MATCH-*,
-\ TFAM-CON-LIN and TFAM-MEMBERS hooks have no default: their call sites never
-\ run before type-family.f installs them, and an unset one fails closed
-\ (DEFER-UNSET).
+\ type-family.f at prefix load. The TFAM-CON-LIN, TFAM-MEMBERS, TFAM-LIN-N
+\ and TFAM-MAY-LIN hooks have no default: their call sites never run before
+\ type-family.f installs them, and an unset one fails closed (DEFER-UNSET).
 defer TFAM-RESOLVE-XT ( ptr u8 n ptr u8 n -- n bool )   \ pkg + name -> family id, true | false
 defer TFAM-CLAIMED?-XT ( ptr u8 n -- bool )             \ some scope reads the token as a family (any package, either visibility)
 defer TFAM-ARITY-XT ( n -- n )                          \ family id -> declared arity
@@ -1693,18 +1692,7 @@ defer TFAM-CON-LIN-XT ( n -- bool )                     \ family schemas contain
 defer TFAM-MEMBERS-XT ( n -- n )                        \ layout term -> row of its field and variant payload types, instantiated over its args
 defer TFAM-LIN-N-XT ( n -- n )                         \ instantiated owning schema's linear capability count
 defer TFAM-MAY-LIN-XT ( n -- bool )                    \ possible ownership in an open schema
-defer TFAM-INIT-RECORD-XT ( n -- n n n bool )          \ committed fixed-cell product: cells, bytes, align
-defer TFAM-INIT-FIELD-XT ( n ptr u8 n -- n n n bool ) \ committed field descriptor, offset, bytes
-defer CONSTRUCT-FAM-XT ( ptr u8 n -- n bool )           \ construct family resolve, active package only
-defer CONSTRUCT-STEP-XT ( ptr u8 n n -- bool )          \ construct variant resolve + step effect
-defer CTOR-STEP-XT ( n -- bool )                        \ generated-constructor CALL seeded by a direct closed layout arg (a product UNMAKE's live input) takes the construct step; scalar/pointer/open/linear args fall through
 defer CTOR-ROW?-XT ( n -- bool )                       \ symbol is a generated constructor row (sum variant, product make/unmake)
-defer MATCH-FAM-XT ( ptr u8 n -- n bool )               \ MATCH family resolve, signature scope
-defer MATCH-VAR-XT ( ptr u8 n n -- n bool )             \ variant tail -> SUMV id within a family
-defer MATCH-VTAG-XT ( n -- n )                           \ SUMV id -> declaration-order tag (seen-bitset index)
-defer VARIANT-PADS-XT ( n n -- n )                       \ family id + SUMV id -> the pads its family declares for that variant
-defer MATCH-VCOUNT-XT ( n -- n )                        \ family id -> variant count (exhaustiveness domain)
-defer MATCH-PAY-XT ( n n n -- n )                        \ vid famterm row -- row + instantiated payload
 variable FIELD-FAM   -1 FIELD-FAM !              \ reserved family-id of the internal `field` ctor
 variable LOAN-FIELD-FAM -1 LOAN-FIELD-FAM !
 variable C2-READ-FAM   -1 C2-READ-FAM ! \ reserved bounded shared-view family
@@ -2151,11 +2139,6 @@ variable EXT-FREE-N   0 EXT-FREE-N !
    [: 2drop RES-FALSE ;] is TFAM-REGION-SLOT-XT
    [: 2drop RES-FALSE ;] is TFAM-TYPE-SLOT-XT
    [: 2drop RES-TRUE ;] is TFAM-STORE-SLOT-XT
-   [: drop 0 0 0 RES-FALSE ;] is TFAM-INIT-RECORD-XT
-   [: 2drop drop 0 0 0 RES-FALSE ;] is TFAM-INIT-FIELD-XT
-   [: 2drop 0 RES-FALSE ;] is CONSTRUCT-FAM-XT
-   [: 2drop 0 RES-FALSE ;] is MATCH-FAM-XT
-   [: drop RES-FALSE ;] is CTOR-STEP-XT
    [: drop RES-FALSE ;] is CTOR-ROW?-XT ;
 TFAM-QUERY-DEFAULTS
 

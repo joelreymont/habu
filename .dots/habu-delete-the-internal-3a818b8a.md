@@ -17,7 +17,7 @@ Depends: the dot moving internal primitives into the system package. Ownership: 
 
 Acceptance case: inside a build (LINKER:WITH), after the product's src/core/internal-mark.f has run, the startup driver's top-level REQUIRE-BOOT-FREEZE (src/core/include.f; tools/hb-build-core.f queues it) is refused "internal engine word" (rc 70), so a build cannot finish hb's startup list. With the marks deleted, the build's driver completes the list's freeze step.
 
-Acceptance case: a linked hb carries no DNAME-INT mark, so the strip has to make an engine variable absent instead: source cannot store into the reserved view family `-1 C2-READ-FAM !` (src/core/checker.f:1725, a global variable read by checker.f, type-family.f and sumtype.f; the suite once asserted "source cannot replace the reserved view family identity"). C2-READ-FAM needs a package's private section before the strip can remove it.
+Acceptance case: a linked hb carries no DNAME-INT mark, so the strip has to make an engine variable absent instead: source cannot store into the reserved view family `-1 C2-READ-FAM !` (src/core/checker.f:1713, a global variable read by checker.f, type-family.f and sumtype.f; the suite once asserted "source cannot replace the reserved view family identity"). C2-READ-FAM needs a package's private section before the strip can remove it.
 
 Acceptance case: a cold build of hb's startup files inside LINKER:WITH ends at src/core/internal-mark.f with LINKER:E-STORE (-9691): its marking changes the flags of records earlier files made, which the linker refuses for any file. With the marks deleted, the file changes no earlier record.
 

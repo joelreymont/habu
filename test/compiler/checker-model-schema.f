@@ -121,8 +121,8 @@ private
       s" CMV14 ( i64 -- i64 )" FRAME-CEIL 1+ V-UNCK FRAME-CAP-ROW ;
 
 \ `MATCH`'s own depth guard, a different rule from the ceiling above. A match
-\ form opens two frames (the form's and a branch's), and `MATCH-FAM-TOK`
-\ (src/core/checker.f) hard-rejects once the frame stack is deeper than the
+\ form opens two frames (the form's and a branch's), and `MATCH-FAM-STEP`
+\ (src/core/check-walk.f) hard-rejects once the frame stack is deeper than the
 \ number below, so a match never installs one frame and overflows on the other.
 \ At that depth the form takes the ceiling's last two slots and the next opener
 \ makes the definition uncheckable; one deeper the guard refuses first, and a
@@ -160,7 +160,7 @@ FRAME-CEIL MATCH-FRAMES - constant MATCH-DEPTH-MAX
 \ the inline step that turns a variant payload into the family's bundle.
 \ The first pair is the step: certifies with its payload on the row, refused
 \ without it. The second pair is the capture: `construct` takes its two operands
-\ whatever they spell (`CONSTRUCT-TOK`, src/core/checker.f), so an operand naming
+\ whatever they spell (`CONSTRUCT-TOK`, src/core/check-walk.f), so an operand naming
 \ no variant is refused as E-CONSTRUCT-UNKNOWN-VARIANT, and the same token outside
 \ the form as an undefined word. Both are refusals, so these rows cannot see an
 \ operand that fell through to word lookup; test/type-match-suite.f G16 pins the

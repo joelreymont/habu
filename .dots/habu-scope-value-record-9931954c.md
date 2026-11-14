@@ -16,4 +16,4 @@ Joel 2026-10-30 (interview): a package declares its linear type bare (`DEFLINEAR
 
 2026-10-31: workspace jerry-vrec retired; it held no edits. The lane starts from master in a new workspace after the T0 release.
 
-Status 2026-11-02 (census against master 430a53e317): not done. The packaged DEFLINEAR PKG:tail form the ruling refuses is still used (test/type-linear-suite.f:130, test/c2-mut-records.f:11); TYPE-RESERVED? (src/core/checker.f:7403) is still program-wide.
+Status 2026-11-02 (census against master 430a53e317): not done. The packaged DEFLINEAR PKG:tail form the ruling refuses is still used (test/type-linear-suite.f:130, test/c2-mut-records.f:11); TYPE-RESERVED? (src/core/checker.f:7385) is still program-wide.

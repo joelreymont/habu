@@ -4498,13 +4498,15 @@ public
 : TFAM-ACTIVE-PKG$ ( -- ptr u8 n )        \ authenticated package ("" at top level)
    CHECKER-AUTH-PACKAGE$ ;
 
-private
+public
 
 : TFAM-CONSTRUCT-FAM ( ptr u8 n -- n bool ) {: na:ptr nu:n :}   \ folded family token -> id
    TFAM-ACTIVE-PKG$ na nu TFAM-FIND 0= IF drop MD-CON-FAM MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
    {: id:n :}
    id TFAM-SUM? id TFAM-ENUM? or 0= IF MD-CON-KIND MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
    id RES-TRUE ;
+
+private
 
 \ Whether ROW's top cell is the unstale hidden slot SLOT of family FAM.
 : TFC-GROUP-CELL? ( n n n -- bool )
@@ -4600,6 +4602,8 @@ private
       dt TYPE-REP-CLOSED? 0= IF CONSTRUCT-WIDE-STAGED-REJECT THEN   \ open value/row: stay staged fail-closed
    THEN ;
 
+public
+
 : TFAM-CONSTRUCT-STEP ( ptr u8 n n -- bool ) {: na:ptr nu:n fam:n :}
    fam na nu SUMV-FIND 0= IF drop MD-CON-VAR MDIAG-COMPILE! RES-FALSE EXIT THEN
    {: vid:n :}
@@ -4608,8 +4612,6 @@ private
 
 \ TFAM-CTOR-STEP? ( sym -- bool ): a generated-constructor call TFC-SEED seeds takes the construct
 \ step, a product's UNMAKE the reversed one (TFAM-UNMAKE-STEP?); any other runs DO-TOK's word call.
-
-public
 
 : SUMV-FROM-CTOR-SYM ( n -- n bool ) {: sym:n :}   \ constructor word symbol -> variant id
    sym 0 <= IF 0 RES-FALSE EXIT THEN
@@ -4640,6 +4642,8 @@ private
    din dout RECORDED-STEP
    dt TYPE-REP-CLOSED? 0= IF CONSTRUCT-WIDE-STAGED-REJECT THEN
    RES-TRUE ;
+
+public
 
 : TFAM-CTOR-STEP? ( n -- bool ) {: sym:n :}
    sym SUMV-FROM-CTOR-SYM 0= IF drop RES-FALSE EXIT THEN
@@ -4675,8 +4679,6 @@ private
 \ Fixed storage walks a field's instantiated schema but computes its own
 \ offsets: a wide argument moves every following field.
 \ The stored type has already passed CHECKER-STORAGE-INFO's closed-layout gate.
-public
-
 : TFAM-STORAGE-QUOT? ( n -- bool ) T-RES TAG T-QUOT = ;
 : TFAM-STORAGE-PRODUCT? ( n -- n bool )
    T-RES dup TAG T-PARAM <> IF drop 0 RES-FALSE EXIT THEN
@@ -4778,23 +4780,12 @@ private
    [: TFAM-PKG$ ;]    is TFAM-PKG-XT       \ a signature graph's family package
    [: TFAM-WIDTH@ ;]  is TFAM-WIDTH-XT     \ checker reads DECLARED logical widths (params-as-cells) for the boot fallback
    [: TFAM-INST-WIDTH@ ;] is TFAM-INST-WIDTH-XT   \ arg-aware instantiated width for T-WIDTH and the WF fact surface
-   [: INIT-RECORD? ;] is TFAM-INIT-RECORD-XT
-   [: INIT-FIELD-NAME? ;] is TFAM-INIT-FIELD-XT
    [: TFAM-WIDTH-SLOT? ;] is TFAM-WIDTH-SLOT-XT   \ which argument slots that width reads: an open slot it does not read is still placeable
    [: TFAM-PK@ PK-SCOPE = ;] is TFAM-SCOPE-SLOT-XT
    [: TFAM-PK@ PK-REGION = ;] is TFAM-REGION-SLOT-XT
    [: 2dup TFAM-PK@ PK-TYPE = >r TFAM-WIDTH-SLOT? 0= r> and ;] is TFAM-TYPE-SLOT-XT
    [: TFAM-STORE-SLOT? ;] is TFAM-STORE-SLOT-XT   \ which argument slots reach storage: a pair of one demands both sides
-   [: TFAM-CONSTRUCT-FAM ;]  is CONSTRUCT-FAM-XT   \ construct family resolution (active package only)
-   [: TFAM-CONSTRUCT-STEP ;] is CONSTRUCT-STEP-XT  \ construct variant resolve + inline constructor effect
-   [: TFAM-CTOR-STEP? ;]     is CTOR-STEP-XT        \ a generated-constructor call on a multi-cell layout arg takes the arg-aware step
-   [: SUMV-FROM-CTOR-SYM nip ;] is CTOR-ROW?-XT   \ a generated constructor row moves exactly its payload (checker.f LIN-EFF-PASS)
-   [: TFAM-MATCH-FAM ;]     is MATCH-FAM-XT     \ MATCH family resolution (signature scope)
-   [: TFAM-MATCH-VARIANT ;] is MATCH-VAR-XT     \ MATCH branch variant resolve
-   [: SUMV-TAG@ ;]          is MATCH-VTAG-XT    \ variant id -> declaration-order tag (bitset index)
-   [: TFL-VPADS ;]          is VARIANT-PADS-XT  \ family id + variant id -> declared pads (the tape's construct and arm events)
-   [: TFAM-VAR-COUNT@ ;]    is MATCH-VCOUNT-XT  \ exhaustiveness domain size
-   [: TFAM-MATCH-PAY ;]     is MATCH-PAY-XT ;   \ branch payload row from the scrutinee's args
+   [: SUMV-FROM-CTOR-SYM nip ;] is CTOR-ROW?-XT ;   \ a generated constructor row moves exactly its payload (checker.f LIN-EFF-PASS)
 TFAM-HOOK-INSTALL
 
 ;package

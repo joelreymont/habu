@@ -10,7 +10,7 @@ Order: retain this project and its partial work, but resume it only after
 incremental builds and test-suite work. Joel confirmed that sequence during
 the unfinished-work interview. No build-speed benefit is claimed.
 
-Problem: after the sweeps, the TRUSTED: definer, PE-TRUSTED-ONLY / PRIM-TRUSTED-ONLY! / PE-TRUSTED-ONLY? in src/core/checker.f, the E-CAP-TRUSTED code, and the docs/forth.md passages that list TRUSTED: among ordinary definers (lines ~76, ~325, ~2358, ~2436) still exist, so the idiom can come back. Acceptance: `TRUSTED:` is an undefined word in the engine (a regression asserts E-UNDEFINED); the flag words and error code are gone or repurposed to the owner-bound capability with one name; docs/forth.md names PRIM axioms inside the owning package as the only foreign boundary and never TRUSTED:; docs/debugging.md gains nothing but a dated note; `rg -i "trusted:" --glob "*.f" --glob "*.md" .` returns nothing; engine byte fixpoint; full gate green. Files: src/core/checker.f, the definer site (engine or checker; locate), docs/forth.md. Verify: rg; regression; the engine byte fixpoint; bin/hb --load test/run.f. Depends: the three sweep dots, aspen FFI sweeps, and habu-honour-owner-private-0a19f45d (the seal honours owner-private rows, so the transitional global trusted-only rows can go). Mechanism decision (hazel, 2026-09-16, for Joel to confirm or veto): retire PE-TRUSTED-ONLY altogether instead of replacing it with an owner-bound gate (habu-pkg-owned-prim-e08e345f, an agent proposal); every primitive is a typed axiom and every caller is checked, as docs/forth.md already requires; the six code-injection primitives become PRIVATE to the packages that own the publisher (package privacy is the existing location-bound mechanism) and ffi-call-bounded becomes private to package FFI behind the typed FFI declarer aspen builds. Rationale: no new checker mechanism, one rule, and the protection the bit gave (only an audited body may inject code) is kept by privacy rather than by an unchecked-body definer. Ownership: checker. Claim: unassigned. Parent: habu-trusted-dies-prim-4fd12d60.
+Problem: after the sweeps, the TRUSTED: definer, PE-TRUSTED-ONLY / PRIM-TRUSTED-ONLY! / PE-TRUSTED-ONLY? in src/core/checker.f, the E-CAP-TRUSTED code, and the docs/forth.md passages that list TRUSTED: among ordinary definers (lines ~76, ~325, ~2341, ~2419) still exist, so the idiom can come back. Acceptance: `TRUSTED:` is an undefined word in the engine (a regression asserts E-UNDEFINED); the flag words and error code are gone or repurposed to the owner-bound capability with one name; docs/forth.md names PRIM axioms inside the owning package as the only foreign boundary and never TRUSTED:; docs/debugging.md gains nothing but a dated note; `rg -i "trusted:" --glob "*.f" --glob "*.md" .` returns nothing; engine byte fixpoint; full gate green. Files: src/core/checker.f, the definer site (engine or checker; locate), docs/forth.md. Verify: rg; regression; the engine byte fixpoint; bin/hb --load test/run.f. Depends: the three sweep dots, aspen FFI sweeps, and habu-honour-owner-private-0a19f45d (the seal honours owner-private rows, so the transitional global trusted-only rows can go). Mechanism decision (hazel, 2026-09-16, for Joel to confirm or veto): retire PE-TRUSTED-ONLY altogether instead of replacing it with an owner-bound gate (habu-pkg-owned-prim-e08e345f, an agent proposal); every primitive is a typed axiom and every caller is checked, as docs/forth.md already requires; the six code-injection primitives become PRIVATE to the packages that own the publisher (package privacy is the existing location-bound mechanism) and ffi-call-bounded becomes private to package FFI behind the typed FFI declarer aspen builds. Rationale: no new checker mechanism, one rule, and the protection the bit gave (only an audited body may inject code) is kept by privacy rather than by an unchecked-body definer. Ownership: checker. Claim: unassigned. Parent: habu-trusted-dies-prim-4fd12d60.
 
 ## Deletion list (B12, last)
 
@@ -26,9 +26,9 @@ src/habu/interpreter.f:
 - The TRUSTED: writer boundaries: DEF-TRUST-SIG (1289), DEF-POSTPONED-CLEAR, DEF-POSTPONED-CUT and DEF-POSTPONED-ADD (1292-1294), DEF-PREFIX-BIND (1898) and DEF-XT! (2379).
 
 Checker, src/core/checker.f:
-- PE-TRUSTED-ONLY (7216), PE-TRUSTED-ONLY? (11888) and PRIM-TRUSTED-ONLY! (11947).
+- PE-TRUSTED-ONLY (7198), PE-TRUSTED-ONLY? (11516) and PRIM-TRUSTED-ONLY! (11575).
 - The use of PRIM-TRUSTED-ONLY! in PRIM-CLOSE (26588).
-- The verifier-window comment (13346).
+- The verifier-window comment (13328).
 
 src/habu/prims.f: FL-TRUSTED-ONLY (88), ETRUSTED-ONLY! (237), TRUSTED-ONLY? (317) and the 45 ETRUSTED-ONLY! row marks (366-1026).
 
@@ -51,7 +51,7 @@ A census of TRUSTED-named words and `trusted:` keyword handling over src finds m
   - verify-source.f TRUSTED-REACH (1381), TRUSTED-CLAUSE (1386), TICK-NATIVE-DEFINER? (1949), TRUSTED-DOES (2191), TRUSTED-CALL (2195), SCAN-TRUSTED-BODY (2211), TRUSTED-DEFINITION (2238; `trusted:` at 3770) and RECORD-DEFINER? (3696).
 - A generator: src/core/sumtype.f TDINIT-NAME-START (2022) emits `TRUSTED: ` definitions at run time.
 - The trusted tick:
-  - checker.f PRIM-TRUSTED-SYM? (12001) and CHECKER-TRUSTED-TICK? (13843);
+  - checker.f PRIM-TRUSTED-SYM? (11625) and CHECKER-TRUSTED-TICK? (13449);
   - checker-owner-abi.f TRUSTED-TICK-OFF ($258, 86);
   - layout.f DECL-TRUSTED-TICK-OFF (682), read by habu1.f C-TICK-QUERY (3647) and interpreter.f TRUSTED-TICK? (695).
 - Diagnostics: render.f E-CAP-TRUSTED texts in DCODE (1543) and DIAG-PROSE (1751).
@@ -67,8 +67,8 @@ When TRUSTED-CELL goes, B12 must seal, as one mechanism, every product-reachable
 The installed hb resolves each of these from a file (`' NAME drop` run as `hb --load probe.f`: rc 0):
 - The public CHECKER-OWNER writers in src/compiler/native/checker-owner.f: TAPE-INSTALL (190), TAPE-ARM (195), TAPE-DISARM (200), TAPE-ADVANCE (205), DOES-FINISH (237), DOES-BEGIN (242), DOES-COMMIT (247), ROWS-END (317), DECLARED-EFFECT (432) and WIDE-PUBLISH (564).
 - RETRACT-ROWS (322), the successor of RETRACT-OWN-ROW. It takes a raw store offset, so a top-level caller cuts at any offset.
-- CHECKER-USIGS-TRUNCATE-FROM-RAW (src/core/checker.f:13591), a prefix word that truncates any row from top level.
-- More checker.f writers: CHECKER-USIGS-TRUNCATE-FROM (14009), CHECKER-SCOPE-START (24659), CHECKER-SCOPE-START-NEUTRAL (24666), CHECKER-SCOPE-FINALIZE (24673), CHECKER-SCOPE-DONE (24676), REC-WIDE-PUBLISH (10920) and REC-MIN-IN@ (10931).
+- CHECKER-USIGS-TRUNCATE-FROM-RAW (src/core/checker.f:13573), a prefix word that truncates any row from top level.
+- More checker.f writers: CHECKER-USIGS-TRUNCATE-FROM (13583), CHECKER-SCOPE-START (24659), CHECKER-SCOPE-START-NEUTRAL (24666), CHECKER-SCOPE-FINALIZE (24673), CHECKER-SCOPE-DONE (24676), REC-WIDE-PUBLISH (10724) and REC-MIN-IN@ (10735).
 - CHECKER-OWNER:WRITE-WINDOW (checker-owner.f:163) and CHECKER-OWNER:BIND-REGIME! (353): a checked callback can shut the write window or change the binding regime.
 - The declaration-transaction publics: every public word of DECL-EVENT (src/core/decl-event.f:553-591, OPEN through REQUIRE-POINTEES), TYPE-FIELD-OWNER:OPEN, COMMIT, ADD, FINALIZE and ROLLBACK (src/core/type-family.f), and GENERATED-DECL-CTOR:ARM (src/core/generated-declaration.f:434). They write no checker store directly; their store writes reach the guarded appenders. Seal them with the rest or show each write path is guarded.
 
@@ -88,7 +88,7 @@ Acceptance case added 2026-11-10 (bob; was habu-a-trusted-definer-7d6ee093): a T
 
 Acceptance case added 2026-11-10 (bob; was habu-check-f-json-ea3b54a5): `bin/hb --load tools/check.f -- --json-errors` on a TRUSTED: definer whose clause is refused places the record at 1:18, and on a TRUSTED: body with an open `if` writes no record, only prose on stdout; the same programs under `:` give 4:3 and 2:10. Cause: the pre-verifier's SCAN-TRUSTED-BODY (src/habu/verify-source.f) judges no body token and publishes the clause unchecked, so the refusal comes from the run stage, which has no source map; SETTLE-UNIT's MALFORMED? branch (definition.f) writes prose only. A fix would add an owner-ABI entry for a clause checked from source: not added. Once the definer is gone both programs exist only under `:` and must keep the controls' records.
 
-Acceptance case 2026-11-10 (review of habu-an-uncheckable-token-fc4ec7cb): a file holding a TRUSTED: definer's clause alone, which only TRUSTED: reaches, gets rc 0 under --verify-only while its load refuses with E-MISMATCH at IF; src/core/checker.f DO-TOK1 (:21454, through DO-TOK-TAIL :21416) puts UNCK back after an unjudged token but not UNSEEN. With TRUSTED: deleted the path is gone: check that no checked form reaches it.
+Acceptance case 2026-11-10 (review of habu-an-uncheckable-token-fc4ec7cb): a file holding a TRUSTED: definer's clause alone, which only TRUSTED: reaches, gets rc 0 under --verify-only while its load refuses with E-MISMATCH at IF; src/core/check-walk.f DO-TOK1 (:401, through checker.f DO-TOK-TAIL :21018) puts UNCK back after an unjudged token but not UNSEEN. With TRUSTED: deleted the path is gone: check that no checked form reaches it.
 
 Acceptance cases 2026-11-10 (TRUSTED: is machinery being replaced, so these are not patched): (1) the check tool places the tokens of a TRUSTED: definer's clause inside the engine's copied text: 'TRUSTED: TK ( n -- ) drop does> ( -- ) cr ;' puts cr at 1/10, not 1/39. (2) A TRUSTED: body the unjudged scan cannot settle is refused as a bare 'uncaught throw code -8519' with no token. (3) After fix one of habu-a-stack-word-5dd345f9 a TRUSTED: body whose stack word reaches under its declared inputs through a multi-cell value compiles at its raw effect or is refused: 'TRUSTED: TW ( tp -- tp ) 2>r 2r> ;' printed 4 3 1 0 on master and is refused after it (the lead's runs).
 

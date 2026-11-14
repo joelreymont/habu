@@ -3,7 +3,7 @@
 
 : EV-VARIANT ( n n n -- )
    {: kind:n fam:n vid:n :}
-   kind  vid MATCH-VTAG-XT  fam vid VARIANT-PADS-XT  EVENT! ;
+   kind  vid TFAM:SUMV-TAG@  fam vid TFAM:TFL-VPADS  EVENT! ;
 
 \ WITH-INIT is the only public entry that changes a byte view's element.
 \ Its dictionary code entry authenticates this transition.
@@ -16,7 +16,7 @@
    value-node P>TYPE T-RES {: value-cell:n :}
    value-cell HIDDEN-PARAM? IF value-cell MK-LOGICAL ELSE value-cell THEN {: value:n :}
    value INIT-VALUE-OK? 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
-   value TFAM-INIT-RECORD-XT 0= IF drop drop drop 0 OK ! -1 FAILSET ! EXIT THEN
+   value TFAM:INIT-RECORD? 0= IF drop drop drop 0 OK ! -1 FAILSET ! EXIT THEN
    {: width:n bytes:n align:n :}
    value-node P>REST width 1- SCOPE-INIT-DROP R-RES dup TAG S-PUSH <> IF
       drop 0 OK ! -1 FAILSET ! EXIT THEN
@@ -67,7 +67,7 @@
    value-node P>TYPE T-RES {: value-cell:n :}
    value-cell HIDDEN-PARAM? IF value-cell MK-LOGICAL ELSE value-cell THEN {: value:n :}
    value INIT-VALUE-OK? 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
-   value TFAM-INIT-RECORD-XT 0= IF drop drop drop 0 OK ! -1 FAILSET ! EXIT THEN
+   value TFAM:INIT-RECORD? 0= IF drop drop drop 0 OK ! -1 FAILSET ! EXIT THEN
    {: width:n bytes:n align:n :}
    value-node P>REST width 1- SCOPE-INIT-DROP R-RES dup TAG S-PUSH <> IF
       drop 0 OK ! -1 FAILSET ! EXIT THEN
@@ -123,7 +123,7 @@
    parent RECORDS? 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
    parent 3 PARAM>ARG {: value:n :}
    value INIT-VALUE-OK? 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
-   value TFAM-INIT-RECORD-XT 0= IF drop drop drop 0 OK ! -1 FAILSET ! EXIT THEN
+   value TFAM:INIT-RECORD? 0= IF drop drop drop 0 OK ! -1 FAILSET ! EXIT THEN
    {: width:n bytes:n align:n :}
    parent 1 PARAM>ARG T-RES {: ceiling:n :}
    supplied TAG T-FORALL = IF
@@ -171,7 +171,7 @@
    initialized 0 PARAM>ARG T-RES {: init-scope:n :}
    initialized 1 PARAM>ARG T-RES {: record:n :}
    record INIT-VALUE-OK? 0= IF SCOPE-FIELD-REJECT EXIT THEN
-   record name size TFAM-INIT-FIELD-XT 0= IF 2drop drop SCOPE-FIELD-REJECT EXIT THEN
+   record name size TFAM:INIT-FIELD-NAME? 0= IF 2drop drop SCOPE-FIELD-REJECT EXIT THEN
    {: descriptor:n off:n bytes:n :}
    descriptor FIELD-PARAM? 0= IF SCOPE-FIELD-REJECT EXIT THEN
    descriptor FIELD-INNER {: field:n :}
@@ -232,7 +232,7 @@
    FEP-CLEAR
    CURSYM @ CHECKER-FIND-USIG-SYM drop
    FEP-HIT? IF FEP @ TOK-EFF ! THEN
-   CURSYM @ CTOR-STEP-XT IF EXIT THEN
+   CURSYM @ TFAM:TFAM-CTOR-STEP? IF EXIT THEN
    FEP-HIT? IF
       CURSYM @ CALL-AUTHORITY
       dup CALL-REFUSED = IF drop -1 CAPREQ !  0 OK !  -1 FAILSET !  EXIT THEN
@@ -263,7 +263,7 @@
    MTCH-ROW @ r MF.BASE !
    RCUR @ r MF.RBASE !
    0 r MF.OUT !  0 r MF.ROUT !  0 r MF.HAS !
-   fam MATCH-VCOUNT-XT dup r MF.VCNT !
+   fam TFAM:TFAM-VAR-COUNT@ dup r MF.VCNT !
    MSEEN-ALLOC r MF.SEEN !
    TOKIX @ r MF.TIX !
    MTCH-ROW @ DCUR !                         \ bundle popped; branches re-derive their rows
@@ -293,7 +293,7 @@
 
 : MATCH-FAM-TOK ( ptr u8 n -- )
    {: a:ptr u:n :}
-   a u MATCH-FAM-XT 0= IF drop CHECKER-TAPE:K-MATCH -1 0 EVENT!  MATCH-ABANDON EXIT THEN
+   a u TFAM:TFAM-MATCH-FAM 0= IF drop CHECKER-TAPE:K-MATCH -1 0 EVENT!  MATCH-ABANDON EXIT THEN
    MATCH-FAM-STEP ;
 
 : MATCH-VARIANT-TOK ( ptr u8 n -- )
@@ -301,11 +301,11 @@
    a u s" ;match" CORE-STR= IF
       CHECKER-TAPE:K-MATCH-END MF-CUR MF.FAM @ 0 EVENT!
       MATCH-SEMI EXIT THEN
-   a u MF-CUR MF.FAM @ MATCH-VAR-XT 0= IF
+   a u MF-CUR MF.FAM @ TFAM:TFAM-MATCH-VARIANT 0= IF
       drop CHECKER-TAPE:K-MATCH-ARM -1 0 EVENT!  MD-VAR-UNKNOWN MDIAG-COMPILE! 0 OK !  -1 MREJ !  -1 MPEND !  3 CHECKER-MATCH-MODE !  EXIT THEN
    {: vid:n :}
    CHECKER-TAPE:K-MATCH-ARM  MF-CUR MF.FAM @  vid EV-VARIANT
-   vid MATCH-VTAG-XT {: tag:n :}
+   vid TFAM:SUMV-TAG@ {: tag:n :}
    MF-CUR MF.SEEN @ tag MSEEN-GET IF MD-VAR-DUP MDIAG! 0 OK !  -1 MREJ ! THEN
    MF-CUR MF.SEEN @ tag MSEEN-SET
    vid MPEND !
@@ -320,7 +320,7 @@
    r MF.RBASE @ RCUR !
    CF-ENTRY-FACTS
    MPEND @ 0 < 0=  r MF.TERM @ 0 <>  and IF
-      MPEND @  r MF.TERM @  DCUR @  MATCH-PAY-XT DCUR !
+      MPEND @  r MF.TERM @  DCUR @  TFAM:TFAM-MATCH-PAY DCUR !
       CF-TOP CF.FT @ 0 <> IF
          DCUR @ ROW-TERMS r MF.BASE @ ROW-TERMS - 0 max {: count:n :}
          DCUR @ count -1 ROW-TOP-OUTPUT-LOSS DCUR !
@@ -344,14 +344,14 @@
    {: a:ptr u:n :}
    EV-OPERAND                          \ the family compiles nothing, nor does a variant of no family
    CONM @ 1 = IF
-      a u CONSTRUCT-FAM-XT IF CONFAM ! ELSE drop 0 OK !  -1 CONFAM !  CONSTRUCT-NONE THEN
+      a u TFAM:TFAM-CONSTRUCT-FAM IF CONFAM ! ELSE drop 0 OK !  -1 CONFAM !  CONSTRUCT-NONE THEN
       2 CONM !
       EXIT THEN
    CONFAM @ 0 < 0= IF
-      a u CONFAM @ MATCH-VAR-XT IF                           \ latch variant SUMV id for the mismatch capture
+      a u CONFAM @ TFAM:TFAM-MATCH-VARIANT IF                           \ latch variant SUMV id for the mismatch capture
          dup CVLIVE !  CHECKER-TAPE:K-CONSTRUCT CONFAM @ rot EV-VARIANT
       ELSE drop CONSTRUCT-NONE THEN
-      a u CONFAM @ CONSTRUCT-STEP-XT 0= IF 0 OK ! THEN
+      a u CONFAM @ TFAM:TFAM-CONSTRUCT-STEP 0= IF 0 OK ! THEN
       -1 CVLIVE !                                                      \ variant leaves scope with the step
    THEN
    0 CONM ! ;

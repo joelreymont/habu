@@ -11,7 +11,7 @@ Problem: a refusal in text the checked file did not hand the engine as its own b
 Causes (hunts), still open on master:
 (1) text with no map keeps the DIAG-ORIGIN! rule (src/core/checker.f header :670), an origin trusted for any text: evaluated text other than a slice of the file being loaded takes the last definition's origin plus the token's offset in the checked text, which skips comments;
 (2) ROWS-ARM (src/core/check-hook.f :31) arms no source map for an evaluated string, whose bytes lie outside the file's;
-(3) the does> clause check (check-walk.f CHECK-DOES! :1486) is never mapped, so JLOC-ORIGIN (src/core/render.f :1660) adds the token's offset in the clause to the name's place, in file text too: 'create does> ( a -- ) MADE 1 ;' answers 3/19 for 3/39;
+(3) the does> clause check (check-walk.f CHECK-DOES! :1919) is never mapped, so JLOC-ORIGIN (src/core/render.f :1660) adds the token's offset in the clause to the name's place, in file text too: 'create does> ( a -- ) MADE 1 ;' answers 3/19 for 3/39;
 (4) DFILE$ (render.f :1857) names the run's label, DIAGFB, for every definition packet, where TOP-FILE$ uses the label only while the load reads that file, so a refusal in a required file names the subject;
 (5) the check tool's stdin run reads the subject inlined after a prefix (tools/check-core.f CHK-BUILD-PREFIX :862) and marked by the origin pass (CHK-RUN-ORIGIN+), so a place counted in the bytes the engine reads (the cast place, PLACE-AT) is the copy's.
 Remaining fix, in this order: a packet names the file the token lies in; the does> clause check gets its own arming over the whole body; the stdin run's places are the subject's. A token in an evaluated string has no bytes in the file: its packet shape is a public item, not yet settled.
