@@ -2154,8 +2154,7 @@ private
    loop ;
 
 : TDINIT-NAME ( n n bool -- ptr u8 n ) {: fam:n fid:n store:bool :}
-   TDGEN-CLEAR  fam fid store TFAM-INIT-MEMBER$ TDGEN-DRV-REF
-   TDGEN-BUF TDGEN-U @ ;
+   fam  fid store TFAM-INIT-MEMBER$  TDECL-ADDR-NAME ;
 
 \ Runs XT on each accessor of FAM, with its name, shape and field id.
 : TDINIT-EACH ( n [ ptr u8 n n n -- ] -- ) {: fam:n xt :}
