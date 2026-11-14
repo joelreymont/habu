@@ -2197,18 +2197,6 @@ public
 : ENGINE-PROVIDES? ( ptr u8 n -- bool )
    ENGINE-KNOWN? ;
 
-\ A bundle carries the modules this engine does NOT have
-\ and states the ones it assumes. Stating the assumption is the bundle's half;
-\ checking it is the engine's, so a bundle built against a richer engine and run
-\ on a barer one refuses here, by name, instead of dying later on a missing word
-\ or - worse - loading a second copy of a module the engine already carries.
-: ?ENGINE-PROVIDES ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u ENGINE-PROVIDES? if exit then
-   INCLUDE-DIAG-RESET
-   s" bundle: this engine does not provide " INCLUDE-DIAG+
-   a u INCLUDE-DIAG+
-   INCLUDE-DIAG$ INCLUDE-DIE ;
-
 \ A file that builds for some targets only states them on its first code line,
 \ before its requires; on another target its load stops there.
 : ?TARGET ( bool -- )

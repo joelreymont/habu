@@ -164,20 +164,11 @@ variable RC
    s" plain.f" SB-AT
    ERR$ SB$ T$= ;
 
-\ The statement a bundle (tools/bundle-lib.f) makes for each file it assumes.
-: BUNDLE-ABSENT ( -- )
-   0 PROG-U !
-   S\" s\q src/lib/absent.f\q ?ENGINE-PROVIDES" PLINE
-   s" bundle-absent" LOAD-CASE
-   s" a bundle assuming a file the engine lacks exits 74 by name" T-LABEL
-   EXITS-74
-   ERR$ S\" bundle: this engine does not provide src/lib/absent.f\n" T$= ;
-
 public
 
 : RUN ( -- )
    T-RESET SETUP
-   WITH-REFUSED REQUIRE-ABSENT CANON-NONE READ-OS-WORD BUNDLE-ABSENT
+   WITH-REFUSED REQUIRE-ABSENT CANON-NONE READ-OS-WORD
    T-REPORT ;
 
 ;package
