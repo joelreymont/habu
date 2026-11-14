@@ -976,7 +976,7 @@ private
 DECL-DIAG:PROSE
 s" SDAP1 ( n -- n ) HREC-X" CHECK-CANDIDATE! 0 T=
 s\" error[E-UNDEFINED]: cannot find word `HREC-X`\n" DECL-DIAG:HAS? TTRUE
-s\"   = at `HREC-X`: not found\n" DECL-DIAG:HAS? TTRUE
+s\"  --> <input>:1:18\n" DECL-DIAG:HAS? TTRUE
 s" SDAP2 ( ptr SDAPRIV:hrec -- n ) drop 0" CHECK-QUIET-CANDIDATE! 0 T=
 public
 ;package

@@ -503,8 +503,8 @@ CDD-FIT-CAP CODEGEN:BUFFER CDD-FIT-WANT
    REJECTION:CAPTURE
    CDD-FIT$ TEST-EVAL:RC  70 T=
    REJECTION:BUFFER$ s" input row too wide to record (256 cells, at most 255)" CONTAINS? TTRUE
-   s\" \"declared_effect\":\"" s\" -- n \"" CDD-FIT-FIELD
-   s\" \"declared_effect_source\":\"" s\" -- n\"" CDD-FIT-FIELD
+   REJECTION:BUFFER$ s\" \"code\":\"E-UNCHECKABLE\"" CONTAINS? TTRUE
+   s\" \"notes\":{\"declared\":\"" s\" -- n\"" CDD-FIT-FIELD
    REJECTION:BUFFER-OFF
    s" 0 REJECTION:JSON !" TEST-EVAL:RC 0 T= ;
 
@@ -531,7 +531,7 @@ CDD-FIT-CAP CODEGEN:BUFFER CDD-FIT-WANT
       s" error[E-UNKNOWN-SIGNATURE-TYPE]: unknown type `cdd-zz`" CDD-NOT-CERTIFIED
    s" compiled natively, the clause's unknown type is placed at that type in its text" T-LABEL
    s" -1 REJECTION:JSON ! : CDD-UXJ ( n -- ) create , does> ( cdd-zz -- cdd-zz ) drop drop 5 ;"
-      S\" \"token\":\"cdd-zz\",\"token_index\":0,\"file\":\"<input>\",\"line\":1,\"column\":4,\"byte_start\":3,\"byte_end\":9,"
+      S\" \"file\":\"<input>\",\"line\":1,\"column\":57,\"byte_start\":56,\"byte_end\":62,\"token\":\"cdd-zz\""
       CDD-NOT-CERTIFIED
    s" 0 REJECTION:JSON !" TEST-EVAL:RC 0 T=
    s" a clause that never returns owes no output" T-LABEL

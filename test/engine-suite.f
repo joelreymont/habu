@@ -853,7 +853,7 @@ s" quotation local before a wide local rejects" T-LABEL
 s" CBAD-LOC-SHAPE-THEN-WIDE ( n -- n ) [: {: y:n :} ;] drop {: abcdefghijklmnopq:n :} 1" CHECK-CANDIDATE! 0 T=
 s" quotation local before a wide local keeps the shape code on '{:'" T-LABEL
 REJECTION:BUFFER$ s" error[E-BAD-LOCAL-SHAPE]" CONTAINS? TTRUE
-REJECTION:BUFFER$ s" `{:`" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" --> <input>:1:40" CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" wide local before a quotation local rejects" T-LABEL
 s" CBAD-LOC-WIDE-THEN-SHAPE ( n -- n ) {: abcdefghijklmnopq:n :} [: {: y:n :} ;] drop 1" CHECK-CANDIDATE! 0 T=

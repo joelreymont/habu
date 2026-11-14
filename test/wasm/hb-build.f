@@ -431,7 +431,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" a MAIN that takes a cell is refused with 74 and no module" T-LABEL
    s" cells.wasm" BUILD 74 T=
    s" APP-ENTRY:XT!" ERR-HAS
-   s" expected: [ -- ] actual: [ n -- ]" ERR-HAS
+   s\" = expected: [ -- ]\n  = found: [ n -- ]" ERR-HAS
    NO-MODULE
    s" require src/lib/fs.f" s" native-only.f" SOURCE!
    s" a file that does not build for Wasm stops its load with 74 and no module" T-LABEL
