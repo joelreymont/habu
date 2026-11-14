@@ -85,7 +85,8 @@ raises where DATA starts. One to what the running hb's compiler does with the
 tree's code (code layout, records, wordlist numbering, the address list), a
 body that calls a primitive its own change adds, a new primitive-spec atom code
 (the running checker replays the tree's rows and dies `checker: unknown
-primitive-spec atom`), an existing atom code given a new meaning (the running
+primitive-spec atom`), a built-in type family the tree's source names
+(the running checker stops `unknown type`), an existing atom code given a new meaning (the running
 checker replays the rows with the old meaning and says nothing), or a tool that
 calls a word hb carries (the linker) by a name or effect its own change gives
 it, or a change to which files a build

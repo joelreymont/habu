@@ -1638,6 +1638,7 @@ variable C2-READ-FAM   -1 C2-READ-FAM ! \ reserved bounded shared-view family
 variable C2-MUT-FAM    -1 C2-MUT-FAM ! \ reserved bounded exclusive-view family
 variable C2-INIT-FAM   -1 C2-INIT-FAM ! \ reserved initialized-storage element family
 variable WIDTH-FAM  -1 WIDTH-FAM !
+variable EFFECT-TYPE-FAM  -1 EFFECT-TYPE-FAM !
 variable C2-RECORDS-FAM -1 C2-RECORDS-FAM ! \ reserved initialized table control
 
 \ The `tile` and `uniform` family ids, captured by type-family.f at
