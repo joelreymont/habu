@@ -27,6 +27,7 @@ require src/compiler/native/abi.f
 require src/compiler/native/shadow.f
 require src/compiler/native/publish.f
 require src/habu/link-band.f
+require src/habu/address-carrier.f
 
 package LINKER
 private
