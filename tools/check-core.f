@@ -1291,7 +1291,9 @@ private
    CHK-TRUNCATED-LN
    CHK-E-UNAVAILABLE CHK-THROW ;
 
+\ A record this process writes is in the run's mode.
 : CHK-RUN-INNER ( -- )
+   CHK-JSON @ 0<> REJECTION:JSON !
    CHK-VERIFY @ if CHK-RUN-VERIFY exit then
    CHK-STDIN-PATH-U @ 0<> if CHK-USAGE then
    CHECKED-BOUNDARY-LINT:RESET

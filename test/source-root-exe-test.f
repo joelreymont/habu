@@ -307,13 +307,13 @@ variable DEEP-U
    OUT$ want wantu T$= ;
 
 \ The loader's rejection of the missing request name, which it looked for at
-\ <dir>/<name> among others, exit 74.
+\ <dir>/<name> among others, a rejection.
 : CANNOT-OPEN ( ptr u8 n ptr u8 n -- )
    {: dir:ptr diru:n name:ptr nameu:n :}
    SB-RESET s" error[E-MISSING-SOURCE]: cannot open `" SB-APPEND
    name nameu SB-APPEND 96 SB-APPEND-C
-   RC @ INCLUDE-IO-RC = ERR$ SB$ CONTAINS? and 0= if SHOW then
-   RC @ INCLUDE-IO-RC T=
+   RC @ CHECKER-REJECT-RC = ERR$ SB$ CONTAINS? and 0= if SHOW then
+   RC @ CHECKER-REJECT-RC T=
    ERR$ SB$ CONTAINS? TTRUE
    SB-RESET dir diru SB-APPEND 47 SB-APPEND-C name nameu SB-APPEND
    ERR$ SB$ CONTAINS? dup 0= if SHOW then TTRUE ;

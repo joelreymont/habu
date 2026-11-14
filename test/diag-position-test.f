@@ -1615,7 +1615,7 @@ variable RC
    s\" : L ( -- ) s\\\" inc-t\\yarget.f\" included ;" SB-APPEND LF+
    s" require missing-dep.f" SB-APPEND LF+
    s" escaped-bad-body-path.f" FIXTURE!
-   s" E-MISSING-SOURCE" s" require" 2 1 42 49 RUN-REFUSED-AT
+   s" E-MISSING-SOURCE" s" missing-dep.f" 2 9 50 63 RUN-REFUSED-AT
    s" --verify-only" CHECK
    GJA-LINE# @ 2 T=
    0 s" E-REJECTED" s\" s\\\"" 1 12 11 14 VERIFY-REJECTED-AT
@@ -1626,7 +1626,7 @@ variable RC
    s\" kernel: L ( -- ) s\\\" inc-t\\yarget.f\" included ;" SB-APPEND LF+
    s" require missing-dep.f" SB-APPEND LF+
    s" escaped-bad-kernel-path.f" FIXTURE!
-   s" E-MISSING-SOURCE" s" require" 2 1 48 55 RUN-REFUSED-AT
+   s" E-MISSING-SOURCE" s" missing-dep.f" 2 9 56 69 RUN-REFUSED-AT
    s" --verify-only" CHECK
    GJA-LINE# @ 2 T=
    0 s" E-REJECTED" s\" s\\\"" 1 18 17 20 VERIFY-REJECTED-AT

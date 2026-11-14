@@ -184,6 +184,26 @@ variable CHK-EXPAND-TOP
    CHK-DISC-ID @ {: id:n :}
    id CHK-DEP$ id CHK-DEP-ROOT$ DISCOVER:READ-IN ;
 
+: CHK-FILE-NAME$ ( n -- ptr u8 n )
+   {: id:n :}
+   id CHK-BYTES-ID @ = if CHK-BYTES-LABEL-A @ CHK-BYTES-LABEL-U @ exit then
+   id CHK-DEP$ ;
+
+\ The file the walk reads is the rejection source, so a loader that rejects a
+\ path places its record at the path in that file.
+: CHK-ARM ( ptr u8 n -- ) {: a:ptr u:n :}
+   CHK-DISC-ID @ CHK-FILE-NAME$ REJECTION:FILE!
+   a u 1 1 0 REJECTION:SOURCE! ;
+
+: CHK-RUN-BYTES ( -- )
+   CHK-DISC-ID @ {: id:n :}
+   CHK-BYTES-A @ CHK-BYTES-U @ CHK-ARM
+   id CHK-DEP$ id CHK-DEP-ROOT$ CHK-BYTES-A @ CHK-BYTES-U @ DISCOVER:RUN-BYTES ;
+
+: CHK-RUN-READ ( -- )
+   DISCOVER:BYTES$ CHK-ARM
+   DISCOVER:RUN-READ ;
+
 : CHK-FS-RC? ( n -- bool )
    {: rc:n :}
    rc E-FS-FIRST <= rc E-FS-LAST >= and ;
@@ -200,13 +220,10 @@ variable CHK-EXPAND-TOP
 \ A file the file system refuses to read is the walk's CHK-E-IOERR, placed at
 \ the loader word that names it.
 : CHK-DISCOVER-ACT ( -- )
-   CHK-DISC-ID @ {: id:n :}
-   id CHK-BYTES-ID @ = if
-      id CHK-DEP$ id CHK-DEP-ROOT$ CHK-BYTES-A @ CHK-BYTES-U @ DISCOVER:RUN-BYTES exit
-   then
+   CHK-DISC-ID @ CHK-BYTES-ID @ = if CHK-RUN-BYTES exit then
    [: CHK-READ-ACT ;] CHK-READ-RC {: rc:n :}
    rc 0<> if rc throw then
-   DISCOVER:RUN-READ ;
+   CHK-RUN-READ ;
 
 : CHK-EVENT-DEP+ ( n -- ) {: ix:n :}
    ix EVENT-PATH@ ix SOURCE-EVENT:ROOT@ ix EVENT-TOK@ CHK-DEP-DIRECT+ ;
@@ -218,12 +235,9 @@ variable CHK-EXPAND-TOP
    repeat drop ;
 
 : CHK-HARVEST-ACT ( -- )
-   CHK-DISC-ID @ {: id:n :}
-   id CHK-BYTES-ID @ = if
-      id CHK-DEP$ id CHK-DEP-ROOT$ CHK-BYTES-A @ CHK-BYTES-U @ DISCOVER:RUN-BYTES exit
-   then
+   CHK-DISC-ID @ CHK-BYTES-ID @ = if CHK-RUN-BYTES exit then
    CHK-READ-ACT
-   DISCOVER:RUN-READ ;
+   CHK-RUN-READ ;
 
 : CHK-HARVEST-ID ( n -- ) {: id:n :}
    id CHK-DISC-ID !
@@ -283,6 +297,7 @@ variable CHK-EXPAND-TOP
    CHK-EXPAND-TOP !
    -1 CHK-EDGE !
    [: CHK-EXPAND-TOP-ACT ;] catch {: rc:n :}
+   REJECTION:SOURCE-OFF
    rc CHK-DISC-RC? rc CHK-E-NOINPUT = or rc CHK-E-IOERR = or rc 0= or 0= if rc throw then
    rc ;
 
@@ -322,11 +337,6 @@ DYNAMIC-BUFFER CHK-FILE-SRC u8          \ a closure file's bytes, read for a rec
    {: id:n :}
    id CHK-BYTES-ID @ = if CHK-BYTES-A @ CHK-BYTES-U @ exit then
    id CHK-DEP$ CHK-FILE-READ ;
-
-: CHK-FILE-NAME$ ( n -- ptr u8 n )
-   {: id:n :}
-   id CHK-BYTES-ID @ = if CHK-BYTES-LABEL-A @ CHK-BYTES-LABEL-U @ exit then
-   id CHK-DEP$ ;
 
 \ The packet for the fault RC that ended the walk, CHK-EXPAND's code, at the
 \ token that shows it: the form discovery refused in the file it read, or the

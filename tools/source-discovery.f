@@ -55,6 +55,7 @@ PTR-VARIABLE SD-A
 variable SD-U
 variable SD-I
 variable SD-PATH-U
+PTR-VARIABLE SD-PATH-SRC                \ the bytes SD-PATH copies: the source's, unless decoded
 variable SD-PATH-AT                     \ where the last string literal's payload starts
 variable SD-PATH-SPAN                   \ and its length in the source
 variable SD-PEND
@@ -953,6 +954,7 @@ variable SD-TERM-END
 
 \ One byte more than the path, so an empty one still has a byte 0.
 : SD-PATH-FILL ( ptr u8 n -- ) {: a:ptr u:n :}
+   a SD-PATH-SRC !
    u 1+ SD-PATH-RESERVE
    a 0 SD-PATH u BYTE-COPY
    u SD-PATH-U ! ;
@@ -1038,11 +1040,14 @@ $FF constant SD-NAMES                    \ loaders and family openers
    bit SD-SHADOWED @ and 0<> if E-DISC-SHADOW throw then
    bit SD-RETIRED @ and 0<> if E-DISC-RETIRE throw then ;
 
+\ The loader is given the path as the source holds it, so a rejection of it is
+\ placed there; a decoded literal's bytes are in no source.
 : SD-CALL-ACT ( -- )
    SD-CALL-KIND @ {: kind:n :}
-   kind SD-K-INCLUDED = if SD-PATH$ included exit then
-   kind SD-K-REQUIRED = if SD-PATH$ required exit then
-   SD-PATH$ provided ;
+   SD-PATH-SRC @ SD-PATH-U @ {: a:ptr u:n :}
+   kind SD-K-INCLUDED = if a u included exit then
+   kind SD-K-REQUIRED = if a u required exit then
+   a u provided ;
 
 \ False, and nothing recorded, for a path the loader's resolver refuses
 \ (E-PATH-NUL, a NUL in the path; E-PATH-RANGE).
