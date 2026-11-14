@@ -628,23 +628,36 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    TASK-OUT outu LEN>N S\" 301\n" T$=
    erru LEN>N 0 T= ;
 
-\ The refusal's line, up to its lr's digits.
-: TASK-EXPECT-REFUSED-EXIT ( ptr u8 n ptr u8 n -- )
+\ The record's first line, which names the primitive; answers stderr's length.
+: TASK-REFUSED-ERR ( ptr u8 n ptr u8 n -- len )
    {: src:ptr srcu:n line:ptr lineu:n :}
    src srcu TASK-REFUSED-RC TASK-RUN-EXITS {: outu:len erru:len :}
    TASK-OUT outu LEN>N S\" 7\n" T$=
-   TASK-ERR erru LEN>N line lineu STARTS-WITH? TTRUE ;
+   TASK-ERR erru LEN>N line lineu STARTS-WITH? TTRUE
+   erru ;
+
+: TASK-EXPECT-REFUSED-EXIT ( ptr u8 n ptr u8 n -- )
+   TASK-REFUSED-ERR drop ;
+
+\ The record's first line and its note `in`, the word that called the
+\ primitive.
+: TASK-EXPECT-REFUSED-IN ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n line:ptr lineu:n in:ptr inu:n :}
+   src srcu line lineu TASK-REFUSED-ERR {: erru:len :}
+   TASK-ERR erru LEN>N in inu CONTAINS? TTRUE ;
 
 : TASK-TEST-LOWER-LIVE ( -- )
    TASK-LOWER-LIVE$
-   s" E-TASK-COMPILE habu: ndict! while a task is live lr " TASK-EXPECT-REFUSED-EXIT ;
+   s" error[E-TASK-COMPILE]: `ndict!` ran while a task is live"
+   TASK-EXPECT-REFUSED-EXIT ;
 
 : TASK-TEST-TASK-COMPILES ( -- )
    TASK-COMPILES$
-   s" E-TASK-COMPILE habu: evaluate-closed from a task lr " TASK-EXPECT-REFUSED-EXIT ;
+   s" error[E-TASK-COMPILE]: `evaluate-closed` ran on a task's thread"
+   S\" \n  = in: TTC-BODY\n" TASK-EXPECT-REFUSED-IN ;
 
 : TASK-FRAMED-REFUSAL$ ( -- ptr u8 n )
-   s" E-TASK-COMPILE habu: source read on a task's thread; only the main thread compiles" ;
+   s" error[E-TASK-COMPILE]: source is read on a task's thread" ;
 
 : TASK-TEST-FRAMED-COMPILES ( -- )
    TASK-FRAMED-COMPILES$ TASK-REFUSED-RC TASK-RUN-EXITS {: outu:len erru:len :}
@@ -653,12 +666,13 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
 
 : TASK-TEST-TASK-CREATES ( -- )
    TASK-CREATES$
-   s" E-TASK-COMPILE habu: create from a task lr " TASK-EXPECT-REFUSED-EXIT ;
+   s" error[E-TASK-COMPILE]: `create` ran on a task's thread"
+   S\" \n  = in: DEF\n" TASK-EXPECT-REFUSED-IN ;
 
 : TASK-TEST-ROLLBACK-LIVE ( -- )
    TASK-ROLLBACK-LIVE$ 0 TASK-RUN-EXITS {: outu:len erru:len :}
    TASK-OUT outu LEN>N S\" -1\n771\n" T$=
-   TASK-ERR erru LEN>N s" undefined word 'MISSING-WORD'" CONTAINS? TTRUE ;
+   TASK-ERR erru LEN>N s" error[E-UNDEFINED]: cannot find word `MISSING-WORD`" CONTAINS? TTRUE ;
 
 : TASK-EXPECT-FAIL ( ptr u8 n n ptr u8 n -- ) {: src:ptr srcu:n want:n needle:ptr needleu:n :}
    src srcu want TASK-RUN-EXITS {: outu:len erru:len :}
@@ -734,12 +748,12 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    TASK-USER-WRAP$ TASK-UNCAUGHT-RC needle needleu TASK-EXPECT-FAIL
    TASK-USER-LIVE$ 0 TASK-RUN-EXITS {: liveu:len liverr:len :}
    TASK-OUT liveu LEN>N S\" -1\n" T$=
-   TASK-ERR liverr LEN>N s" undefined word 'LIVE'" CONTAINS? TTRUE
+   TASK-ERR liverr LEN>N s" error[E-UNDEFINED]: cannot find word `LIVE`" CONTAINS? TTRUE
    TASK-USER-HUGE$ 0 TASK-RUN-EXITS {: hugeu:len hugerr:len :}
    TASK-OUT hugeu LEN>N S\" 76\n-1\n-1\n70\n76\n76\n5\n0\n" T$=
    TASK-ERR hugerr LEN>N s" data space out of range" CONTAINS? TTRUE
-   TASK-ERR hugerr LEN>N s" unknown type 'no-such-type'" CONTAINS? TTRUE
-   TASK-ERR hugerr LEN>N s" undefined word 'PT'" CONTAINS? TTRUE ;
+   TASK-ERR hugerr LEN>N s" error[E-BAD-STORAGE]: the type of `PT` names no known type" CONTAINS? TTRUE
+   TASK-ERR hugerr LEN>N s" error[E-UNDEFINED]: cannot find word `PT`" CONTAINS? TTRUE ;
 
 : TASK-TEST-ROLLBACK-SLOT ( -- )
    TASK-ROLLBACK-SLOT$ 0 TASK-RUN-EXITS {: outu:len erru:len :}
@@ -2298,7 +2312,8 @@ variable BIND-PAIR-Q-WON
 
 : TASK-TEST-WORKER-ACTIVATES ( -- )
    TASK-WORKER-ACTIVATES$
-   s" E-TASK-COMPILE habu: cp! while a task is live lr " TASK-EXPECT-REFUSED-EXIT ;
+   s" error[E-TASK-COMPILE]: `cp!` ran while a task is live"
+   TASK-EXPECT-REFUSED-EXIT ;
 
 $30 constant NEW-N                   \ past one pool chunk of 42 records
 300 constant NEW-ROUNDS

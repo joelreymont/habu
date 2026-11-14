@@ -1286,25 +1286,54 @@ $4000 constant POSIX-SPAWN-CLOEXEC-DEFAULT
 : BCHECKFETCH ( -- ) 9 DATA HOOK-CELL LDR,  A G-PUSH ;  \ ( -- xt ) live checker hook — getter for set-check ([x20/DATA + HOOK-CELL])
 : BTOPCHECKFETCH ( -- ) 9 DATA TOP-HOOK-CELL LDR,  A G-PUSH ;  \ ( -- xt ) live top-row hook — getter for set-top-check ([x20/DATA + TOP-HOOK-CELL])
 
+private
+128 constant GUARD-MSG-CAP
+create GUARD-MSG GUARD-MSG-CAP allot
+TYPED-VARIABLE GUARD-MSG-U len
+: GUARD-MSG+ ( ptr u8 n -- )
+   GUARD-MSG GUARD-MSG-CAP GUARD-MSG-U BUF-APPEND ;
+\ "`<name>` <rest>", held in GUARD-MSG until the next call.
+: GUARD-MSG$ ( ptr u8 n ptr u8 n -- ptr u8 n )
+   {: p:ptr pu:n r:ptr ru:n :}
+   GUARD-MSG-U BUF-RESET
+   s" `" GUARD-MSG+  p pu GUARD-MSG+  s" ` " GUARD-MSG+
+   r ru GUARD-MSG+
+   GUARD-MSG GUARD-MSG-U BUF-LEN@ ;
+\ x3 = the lr, copied before FAULT-OPEN,'s calls replace x30.
+: GUARD-RECORD, ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: c:ptr cu:n p:ptr pu:n r:ptr ru:n h:ptr hu:n :}
+   3 30 0 ADDI,
+   c cu  p pu r ru GUARD-MSG$  FAULT-OPEN,
+   4 DBASE 0 ADDI,  6 NDICT 0 ADDI,  FAULT-IN,
+   h hu $4F FAULT-STOP, ;
+
 public
 \ The main thread is the compiler: only the thread whose DATA is the main
 \ region, TASK-TCB-CELL 0, defines, allots, evaluates or changes package scope.
 \ A task and a callback thread hold a TCB there, and B-TASK-GUARD exits $4F
 \ on one. B-LOWER-GUARD exits $4F while any task is live, for the sinks that
 \ lower CP or NDICT: lowering frees code a task may be running and records it
-\ may reference. Each prints the caller's text and the primitive's lr, so it
-\ runs before the body's first BL. Clobbers x9.
-: B-TASK-GUARD ( ptr u8 n -- ) {: a:ptr u:n :}
+\ may reference. Each takes the code and the primitive's name and prints a
+\ record naming the primitive, its note `in` the word whose code holds the
+\ lr, so it runs before the body's first BL. Clobbers x9.
+: B-TASK-GUARD ( ptr u8 n ptr u8 n -- )
+   {: c:ptr cu:n p:ptr pu:n :}
    LBL {: ok:label :}
    9 DATA TASK-TCB-CELL LDR,  9 ok CBZ,
-      a u $4F DIE-LINE,
+      c cu p pu
+      s" ran on a task's thread, and only the main thread defines and allots"
+      s" define and allot on the main thread before the task starts"
+      GUARD-RECORD,
    ok LBL, ;
 
 private
-: B-LOWER-GUARD ( ptr u8 n -- ) {: a:ptr u:n :}
+: B-LOWER-GUARD ( ptr u8 n ptr u8 n -- )
+   {: c:ptr cu:n p:ptr pu:n :}
    LBL {: ok:label :}
    9 DATA TASKS-LIVE-CELL LDR,  9 ok CBZ,
-      a u $4F DIE-LINE,
+      c cu p pu  s" ran while a task is live"
+      s" wait for every task to end before forgetting definitions"
+      GUARD-RECORD,
    ok LBL, ;
 ;package
 
@@ -1324,8 +1353,8 @@ package ENGINE-EMIT
 \ cp! and ndict! are the FORGET sinks: cp! moves emission to the popped CP,
 \ ndict! the next record write to DBASE+n*DREC.
 : BCPSET ( -- )
-   s" E-TASK-COMPILE habu: cp! from a task" B-TASK-GUARD
-   s" E-TASK-COMPILE habu: cp! while a task is live" B-LOWER-GUARD
+   s" E-TASK-COMPILE" s" cp!" B-TASK-GUARD
+   s" E-TASK-COMPILE" s" cp!" B-LOWER-GUARD
    A G-POP
    EM-DEF-OCC:LRECLAIM LABEL@ BL,  CP A 0 ADDI, ;   \ ( addr -- ) set CP
 \ LASTC-CELL names the record the last create, variable or constant wrote;
@@ -1353,8 +1382,8 @@ private
 \ re-exposes records whose slots later publications may have reused, so a raise
 \ rebuilds the table from [0,NDICT) in place.
 : BNDSET ( -- )                                     \ ( n -- ) set NDICT — forget dict entries past a mark
-   s" E-TASK-COMPILE habu: ndict! from a task" B-TASK-GUARD
-   s" E-TASK-COMPILE habu: ndict! while a task is live" B-LOWER-GUARD
+   s" E-TASK-COMPILE" s" ndict!" B-TASK-GUARD
+   s" E-TASK-COMPILE" s" ndict!" B-LOWER-GUARD
    A G-POP
    LBL LBL LBL LBL {: bounded:label floor-ok:label keep:label done:label :}
    \ NDICT is a count: DICT-CAP is valid. Unsigned comparison also rejects negatives.
@@ -1385,7 +1414,7 @@ private
 \ its parent, then its one prepared companion, which CLAUSE-CELL admits; no
 \ other row is eligible.
 : BNDAPPEND ( -- )                                  \ ( expected-index -- )
-   s" E-TASK-COMPILE habu: ndict-append from a task" B-TASK-GUARD  A G-POP
+   s" E-TASK-COMPILE" s" ndict-append" B-TASK-GUARD  A G-POP
    LBL LBL LBL LBL LBL {: parent:label owner:label floor-ok:label bad:label done:label :}
    A NDICT CMP,  C-NE bad BCOND,
    14 DICT-CAP LIT64,  A 14 CMP,  C-CS bad BCOND,
@@ -1474,31 +1503,31 @@ private
 \ B-EVAL and the bodies after it jump, their arguments on the data stack,
 \ through their PROVIDED-XT cell.
 : B-EVAL ( -- )
-   s" E-TASK-COMPILE habu: evaluate from a task" B-TASK-GUARD
+   s" E-TASK-COMPILE" s" evaluate" B-TASK-GUARD
    9 DATA PROVIDED-XT:EVALUATE-CELL LDR,  9 BR, ;
 
 : B-EVAL-RANGE ( -- )
-   s" E-TASK-COMPILE habu: evaluate-range from a task" B-TASK-GUARD
+   s" E-TASK-COMPILE" s" evaluate-range" B-TASK-GUARD
    9 DATA PROVIDED-XT:EVALUATE-RANGE-CELL LDR,  9 BR, ;
 
 : B-BODY-APPEND ( -- )
-   s" E-TASK-COMPILE habu: body-append from a task" B-TASK-GUARD
+   s" E-TASK-COMPILE" s" body-append" B-TASK-GUARD
    9 DATA PROVIDED-XT:APPEND-CELL LDR,  9 BR, ;
 
 : B-LITERAL ( -- )
-   s" E-TASK-COMPILE habu: literal from a task" B-TASK-GUARD
+   s" E-TASK-COMPILE" s" literal" B-TASK-GUARD
    9 DATA PROVIDED-XT:LITERAL-CELL LDR,  9 BR, ;
 
 : B-COMPILE ( -- )
-   s" E-TASK-COMPILE habu: compile, from a task" B-TASK-GUARD
+   s" E-TASK-COMPILE" s" compile," B-TASK-GUARD
    9 DATA PROVIDED-XT:COMPILE-CELL LDR,  9 BR, ;
 
 : B-END ( -- )
-   s" E-TASK-COMPILE habu: ; from a task" B-TASK-GUARD
+   s" E-TASK-COMPILE" s" ;" B-TASK-GUARD
    9 DATA PROVIDED-XT:END-CELL LDR,  9 BR, ;
 
 : BCREATE ( -- )
-   s" E-TASK-COMPILE habu: create from a task" B-TASK-GUARD
+   s" E-TASK-COMPILE" s" create" B-TASK-GUARD
    15 0 MOVZ,  16 20 CREATEP-CELL LDR,  16 BLR, ;   \ ( "name" -- ) runtime CREATE via the
                                      \ startup-stored cell: subsets emit prims w/o labels;
                                      \ LCREATE publishes the word's `-- ptr a` in both modes
@@ -1759,7 +1788,7 @@ private
    done LBL, ;
 
 : BALIGN ( -- )
-   s" E-TASK-COMPILE habu: align from a task" B-TASK-GUARD
+   s" E-TASK-COMPILE" s" align" B-TASK-GUARD
    7 DATA 0 LDR,  7 7 7 ADDI,  7 7 3 LSRI,  7 7 3 LSLI,  7 DP-CHECK  7 DATA 0 STR, ;
 
 \ `,` keeps the latest run of its cells that starts at a created body: a cell
@@ -1767,7 +1796,7 @@ private
 \ written at the run's end extends it.
 : BCOMMA ( -- )
    LBL LBL LBL {: more:label grow:label done:label :}
-   s" E-TASK-COMPILE habu: , from a task" B-TASK-GUARD
+   s" E-TASK-COMPILE" s" ," B-TASK-GUARD
    A G-POP  7 DATA 0 LDR,  C 7 8 ADDI,  C DP-CHECK  A 7 0 STR,  C DATA 0 STR,
    A DATA COMMA-BASE-CELL LDR,  A 7 CMP,  C-NE more BCOND,
    7 DATA COMMA-RUN-CELL STR,  grow B,
@@ -1776,7 +1805,7 @@ private
    done LBL, ;
 
 : BCCOMMA ( -- )
-   s" E-TASK-COMPILE habu: c, from a task" B-TASK-GUARD
+   s" E-TASK-COMPILE" s" c," B-TASK-GUARD
    A G-POP  7 DATA 0 LDR,  C 7 1 ADDI,  C DP-CHECK  A 7 0 STRB, C DATA 0 STR, ;
 
 public
@@ -3103,7 +3132,7 @@ private
 \ high-water instead.
 : BALLOT ( -- )
    LBL LBL LBL LBL LBL {: grow:label zero:label store:label no-owner:label missing:label :}
-   s" E-TASK-COMPILE habu: allot from a task" B-TASK-GUARD
+   s" E-TASK-COMPILE" s" allot" B-TASK-GUARD
    A G-POP  7 DATA 0 LDR,  7 7 A ADD,  7 DP-CHECK
    A 0 CMPI,  C-GE grow BCOND,
    SP SP 32 SUBI,  30 SP 0 STR,  7 SP 8 STR,
@@ -3207,7 +3236,7 @@ private
 \ which gives the stack back before throwing on.
 : B-EVAL-CLOSED ( -- )
    LBL LBL LBL LBL {: have:label take:label done:label thrown:label :}
-   s" E-TASK-COMPILE habu: evaluate-closed from a task" B-TASK-GUARD
+   s" E-TASK-COMPILE" s" evaluate-closed" B-TASK-GUARD
    B G-POP  A G-POP                                  \ x10 = u, x9 = a
    SP SP 32 SUBI,
    11 DATA STACK-ABI:BASE-CELL LDR,  11 SP 0 STR,
@@ -3241,7 +3270,7 @@ private
 : B-SOURCE-FILE-RUN ( -- )
    LBL LBL LBL LBL LBL
       {: have:label take:label caught:label restore:label done:label :}
-   s" E-TASK-COMPILE habu: source-file-run from a task" B-TASK-GUARD
+   s" E-TASK-COMPILE" s" source-file-run" B-TASK-GUARD
    A G-POP  BCALLABLE
    \ The child uses a fresh guarded stack; retain the parent action's stack
    \ interval after the loader consumed its arguments and before that swap.
@@ -3640,7 +3669,7 @@ package ENGINE-EMIT
 \ of a record from the seal floor (as BNDAPPEND tests it) to the pending one.
 : BRECFACTS ( -- )
    LBL LBL LBL {: done:label bad:label floor-ok:label :}
-   s" E-TASK-COMPILE habu: record-facts! from a task" B-TASK-GUARD
+   s" E-TASK-COMPILE" s" record-facts!" B-TASK-GUARD
    A G-POP  B G-POP                              \ x9 = record index, x10 = offset
    A NDICT CMP,  C-HI bad BCOND,                 \ negative, or past the pending record
    14 DICT-CAP LIT64,  A 14 CMP,  C-CS bad BCOND,  \ slot DICT-CAP is the control-flow band
