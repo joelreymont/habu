@@ -3286,8 +3286,8 @@ private
 \ source-file-run ( xt -- ): run a file's unit on a pool stack and rethrow
 \ what it throws; the unit checks the cells the file leaves.
 : B-SOURCE-FILE-RUN ( -- )
-   LBL LBL LBL LBL LBL
-      {: have:label take:label caught:label restore:label done:label :}
+   LBL LBL LBL LBL
+      {: have:label take:label caught:label done:label :}
    s" E-TASK-COMPILE" s" source-file-run" B-TASK-GUARD
    A G-POP  BCALLABLE
    \ The child uses a fresh guarded stack; retain the parent action's stack
@@ -3331,8 +3331,6 @@ private
    9 0 MOVZ,
    caught LBL,
    31 DATA FAULT-MARK-CELL STR,
-   9 restore CBNZ,
-   restore LBL,
    11 SP 24 LDR,
    12 DATA CLOSED-FREE-CELL LDR,  12 11 0 STR,  11 DATA CLOSED-FREE-CELL STR,
    12 SP 0 LDR,  12 DATA STACK-ABI:BASE-CELL STR,

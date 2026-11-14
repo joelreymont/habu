@@ -21317,8 +21317,8 @@ variable IS-PEND-U                   \ and its length
    THEN
    FAILB @ FAILTU @ + FAILE ! ;
 
-\ Refuses a structure open at closer CA CU, or at the given closer, as the load's
-\ compiler does, unless a compile refusal or CF-OVER holds the pin.
+\ Rejects a structure open at closer CA CU, or at the given closer, as the load's
+\ compiler does, unless a compile rejection or CF-OVER holds the pin.
 : CLOSER-REFUSE ( ptr u8 n -- )
    {: ca:ptr cu:n :}
    CF-OPEN? 0=  RCOMPILE @ 0 <>  or  CF-OVER @ 0 <>  or IF EXIT THEN
