@@ -4439,3 +4439,8 @@ public
    THROW-RESULT ;
 
 ;package
+
+\ Only `package` and RECORD-PACKAGE open a part: once both bind these, they are
+\ retired.
+undefine CHECKER-RESOLVE:PART-GUARD
+undefine CHECKER-RESOLVE:PART-PATH

@@ -141,7 +141,15 @@ create BEFORE MARK-N cells allot
 : PACKAGE-IT ( -- ) BAD$ CHECKER-PACKAGE ;
 : USING-IT ( -- ) BAD$ CHECKER-USING ;
 : USING-PUSH-IT ( -- ) BAD$ CHECKER-USING-PUSH ;
-: PART-PATH-IT ( -- ) BAD$ CHECKER-RESOLVE:PART-PATH 2drop ;
+\ `;package`, then NLTP and its part named BAD$: the part opens in NLTP's
+\ buffer, so `package` reaches the part's path.
+: PART$ ( -- ptr u8 n )
+   s" ;package package NLTP package " {: h:ptr hu:n :}
+   BAD$ {: a:ptr u:n :}
+   hu u + MEM-ALLOC-BYTES drop {: p:ptr :}
+   h p hu BYTE-COPY
+   a p hu + u BYTE-COPY
+   p hu u + ;
 : EXPORT-IT ( -- ) BAD$ CHECKER-EXPORT ;
 : FAMILY-IT ( -- ) BAD$ BAD$ CHECKER-DEFFAMILY ;
 : SUM-IT ( -- ) BAD$ s" VARIANT vacant ;VARIANT" CHECKER-DEFSUM ;
@@ -242,7 +250,6 @@ variable LBL-U
    s" CON-FAM" FAM-DIES-AT-MAX ;
 
 \ An uncaught code above 255 exits 70 when the checker rendered it, else 67.
-\ In this file's package PART-PATH refuses a long path (7136).
 : TEST-DECLARERS ( -- )
    s" DEFER-IT" 76 S\" checker: symbol string capacity overflow\n" DIES
    s" UNDEFINE-IT" 76 S\" checker: symbol string capacity overflow\n" DIES
@@ -256,9 +263,6 @@ variable LBL-U
    s" USING-IT" 76 S\" checker: using name length describes no memory\n" DIES
    LONG-LEN s" long" s" USING-IT" 67 S\" hb: uncaught throw code 7154\n" DIES-AT
    s" USING-PUSH-IT" 67 S\" hb: uncaught throw code 7136\n" DIES
-   -1 s" -1" s" PART-PATH-IT" 67 S\" hb: uncaught throw code 7154\n" DIES-AT
-   LONG-LEN s" long" s" PART-PATH-IT" 67 S\" hb: uncaught throw code 7136\n" DIES-AT
-   MAX-CELL s" max" s" PART-PATH-IT" 67 S\" hb: uncaught throw code 7136\n" DIES-AT
    s" EXPORT-IT" 67 S\" hb: uncaught throw code 7113\n" DIES
    s" FAMILY-IT" 70 S\" habu: bad newtype declaration '': missing name\nhb: uncaught throw code 7107\n" DIES
    s" SUM-IT" 70 S\" habu: bad sumtype declaration '': missing name\nhb: uncaught throw code 7107\n" DIES
@@ -356,6 +360,22 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    RETURNS
    s" CAST-NAME$ BAD$ CHECKER-DEFCAST" 70 CAST-WANT$ DIES ;
 
+\ No token is -1 or the maximum cell long, so `package` meets only a long part
+\ name, whose path is past its row: refused, naming it.
+: PART-WANT$ ( -- ptr u8 n )
+   s" E-PKG-CONTEXT habu: " {: h:ptr hu:n :}
+   LOADING @ data-base SRCLOC:PATHLEN-CELL + @ {: f:ptr fu:n :}
+   hu fu + 2 + LONG-LEN + 1 + {: wu:n :}
+   wu MEM-ALLOC-BYTES drop {: p:ptr :}
+   h p hu BYTE-COPY
+   f p hu + fu BYTE-COPY
+   58 p hu + fu + c!  32 p hu + fu + 1 + c!
+   LONG-LEN TAIL drop p hu + fu + 2 + LONG-LEN BYTE-COPY
+   10 p wu + 1 - c!
+   p wu ;
+: TEST-PART ( -- )
+   LONG-LEN s" long" s" PART$ evaluate" 75 PART-WANT$ DIES-AT ;
+
 \ ---- a long name -------------------------------------------------------------
 \ `: <u bytes of c> ;`, in a fresh mapping.
 : DEF-SRC ( n n -- ptr u8 n )
@@ -448,6 +468,7 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    TEST-QUERIES
    TEST-FAMILIES
    TEST-DECLARERS
+   TEST-PART
    TEST-TOP-LEVEL
    TEST-MALFORMED
    TEST-FIELD-TEXT
