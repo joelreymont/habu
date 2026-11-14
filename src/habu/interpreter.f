@@ -3107,7 +3107,30 @@ variable REPL-OK
    found REC !
    0 EVALERR-CELL CELL! ;
 
+\ A copy of the line that opened the pending definition: the reader reuses its
+\ buffer for each line, and the line's frame puts back the input cells, so an
+\ end of input inside the definition is placed on this copy.
+TYPED-VARIABLE OPENER-A ptr u8
+variable OPENER-U
+
+: OPENER-DROP ( -- )
+   OPENER-U @ {: u:n :}
+   u 0= if exit then
+   OPENER-A @ u munmap 0<> if E-MEM-UNMAP throw then
+   0 OPENER-U ! ;
+
+\ The opener's token moves into the copy.
+: OPENER-KEEP ( ptr u8 n -- ) {: a:ptr u:n :}
+   OPENER-DROP
+   PENDTKA-CELL ADDR@ a - {: off:n :}
+   off 0 >=  off u < and 0= if exit then
+   u MEM-ALLOC-PTR {: c:ptr :}
+   a c u BYTE-COPY
+   c OPENER-A !  u OPENER-U !
+   c off + PENDTKA-CELL ADDR! ;
+
 : REPL-LINE ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   PEND-CELL CELL@ {: open:n :}
    depth FRAME-OPEN {: f:ptr :}
    \ The session, not this line, owns a pending definition from an earlier
    \ line, yet a failed line abandons it through this savepoint's full rollback.
@@ -3119,6 +3142,8 @@ variable REPL-OK
    [: FRAME-ARG @ FRAME-LINK RUN-TOKENS ;] catch {: code:n :}
    code 0= if
       f FRAME-UNLINK
+      PEND-CELL CELL@ {: now:n :}
+      now 0<>  now open <> and if a u OPENER-KEEP then
    else
       f NULL-PTR - EVAL-TOP-CELL CELL@ = if f FRAME-UNLINK then
       f prior found REPL-RECOVER
@@ -3133,6 +3158,11 @@ variable REPL-OK
    true ;
 
 : REPL-END ( -- )
+   OPENER-U @ {: u:n :}
+   u 0<> if
+      OPENER-A @ {: c:ptr :}
+      c SRCLOC:INB-CELL ADDR!  c u + INE-CELL ADDR!
+   then
    ['] DEF-SOURCE-END catch {: code:n :}
    code 0<> if NULL$ code die then ;
 
