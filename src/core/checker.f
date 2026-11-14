@@ -1675,7 +1675,7 @@ DEFAULT
 
 public
 : ENFORCED? ( -- bool ) ABI-DEPTH @ 0 = ;
-: SCAN ( [ -- ] -- n )
+: SCAN ( n [ n -- n ] -- n n )
    1 ABI-DEPTH +! catch -1 ABI-DEPTH +! ;
 : PUBLISH ( n bool -- ) PUBLISH-XT ;
 

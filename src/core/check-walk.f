@@ -1515,11 +1515,6 @@ package CHECKER-DECL-FRAME
    WRAP-CLEAR          \ a candidate body armed like any other; the next real record is not its heir
    RBF-POP ;
 
-CHECKER-REG:SCRATCH{
-PTR-VARIABLE CAND-A   variable CAND-U
-CHECKER-REG:}SCRATCH
-variable CAND-VERDICT
-
 : CHECKER-CANDIDATE-SCOPE-START ( -- )
    CHECK-CANDIDATE-START ;
 
@@ -1531,12 +1526,8 @@ variable CAND-VERDICT
    WRITE-WINDOW-CK
    a u CHECK ;
 
-: CHECK-CANDIDATE-BODY ( -- )
-   CAND-A @ CAND-U @ CHECK-WINDOWED CAND-VERDICT ! ;
-
 : CHECK-CANDIDATE! ( ptr u8 n -- n ) {: a:ptr u:n :}
    WRITE-WINDOW-CK
-   a CAND-A !  u CAND-U !
    CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? {: recovery0:bool :}
    BIND-HORIZON @ {: horizon0:n :}
    CHK-PROBE @ {: probe0:n :}
@@ -1546,7 +1537,7 @@ variable CAND-VERDICT
    CHECK-CANDIDATE-START
    -1 CHK-PROBE !
    -1 CUR-DONE !                       \ a candidate's text is not the cursor's
-   [: CHECK-CANDIDATE-BODY ;] catch {: rc:n :}
+   0 [: drop a u CHECK-WINDOWED ;] catch {: v rc:n :}
    done0 CUR-DONE !
    gap0 CUR-GAP !
    probe0 CHK-PROBE !
@@ -1554,21 +1545,17 @@ variable CAND-VERDICT
    pu0 PU-N !                          \ a candidate's uses are never published
    recovery0 CHECKER-EFFECT-AUTHORITY:RECOVERY-USED!
    horizon0 BIND-HORIZON !
-   rc 0 <> IF rc throw THEN
-   CAND-VERDICT @ ;
+   rc 0= IF v EXIT THEN
+   rc throw ;
 
 package CHECKER-PREFIX
 
-PTR-VARIABLE SOURCE-A
-variable SOURCE-U
-variable ANSWER
-
-: SCAN ( -- )
+: SCAN ( ptr u8 n -- bool )
    0 CHECKER-PREFIX-MISS !
    CHECKER-PREFIX-CUT @ CHECKER-PREFIX-ROLLBACK !
-   SOURCE-A @ SOURCE-U @ CHECK-RESET
+   CHECK-RESET
    s" " CHECK-SCAN                     \ a prefix: no closer
-   CHECKER-PREFIX-MISS @ 0= ANSWER ! ;
+   CHECKER-PREFIX-MISS @ 0= ;
 
 public
 
@@ -1577,7 +1564,7 @@ public
 \ the caller's eventual `;`. No immediate word runs during this read.
 : BIND? ( ptr u8 n n -- n bool ) {: a:ptr u:n cut:n :}
    WRITE-WINDOW-CK
-   a SOURCE-A !  u SOURCE-U !  cut CHECKER-PREFIX-CUT !
+   cut CHECKER-PREFIX-CUT !
    CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? {: recovery0:bool :}
    BIND-HORIZON @ {: horizon0:n :}
    CHK-PROBE @ {: probe0:n :}
@@ -1589,7 +1576,7 @@ public
    -1 CUR-DONE !                    \ a prefix's text is not the cursor's
    -1 PIMM-STREAM !                 \ the engine's body capture has spent parser operands
    -1 CHECKER-PREFIX-ACTIVE !
-   [: SCAN ;] catch {: rc:n :}
+   RES-FALSE [: drop a u SCAN ;] catch {: answer rc:n :}
    0 CHECKER-PREFIX-ACTIVE !
    done0 CUR-DONE !
    gap0 CUR-GAP !
@@ -1598,8 +1585,8 @@ public
    pu0 PU-N !                       \ a prefix's uses are never published
    recovery0 CHECKER-EFFECT-AUTHORITY:RECOVERY-USED!
    horizon0 BIND-HORIZON !
-   rc 0 <> IF rc throw THEN
-   CHECKER-PREFIX-ROLLBACK @ ANSWER @ ;
+   rc 0= IF CHECKER-PREFIX-ROLLBACK @ answer EXIT THEN
+   rc throw ;
 
 ;package
 
@@ -1609,26 +1596,13 @@ package CHECKER-REG
 
 \ The quiet probe: a caller that wants a verdict without a rejection diagnostic
 \ asks here, so the render counter stays inside this file.
-CHECKER-REG:SCRATCH{
-PTR-VARIABLE QCAND-A   variable QCAND-U   variable QCAND-VERDICT
-CHECKER-REG:}SCRATCH
-
-: QCAND-BODY ( -- )
-   QCAND-A @ QCAND-U @ CHECK-CANDIDATE! QCAND-VERDICT ! ;
-
 : CHECK-QUIET-CANDIDATE! ( ptr u8 n -- n ) {: a:ptr u:n :}
    WRITE-WINDOW-CK
-   a QCAND-A !  u QCAND-U !
    1 REJECTION:QUIET +!
-   [: QCAND-BODY ;] catch {: rc:n :}
+   0 [: drop a u CHECK-CANDIDATE! ;] catch {: v rc:n :}
    -1 REJECTION:QUIET +!
-   rc 0 <> IF rc throw THEN
-   QCAND-VERDICT @ ;
-
-PTR-VARIABLE CK-DEF-A   variable CK-DEF-U   variable CK-DEF-VERDICT
-
-: CHECK-DEF-BODY ( -- )
-   CK-DEF-A @ CK-DEF-U @ CHECK-WINDOWED CK-DEF-VERDICT ! ;
+   rc 0= IF v EXIT THEN
+   rc throw ;
 
 \ The code of the last refusal that rendered its packet and stopped a load by its
 \ throw, 0 before one.
@@ -1645,8 +1619,7 @@ variable DEF-STOPPED
 : CHECK-DEF-THREW ( n -- )
    0 PARSE-COMPLETE !
    DEF-REFUSED
-   MULTI-REFUSED
-   0 CK-DEF-VERDICT ! ;
+   MULTI-REFUSED ;
 
 \ Like CHECK, but verifies the body against a leading ( in -- out ) declared
 \ sig and rejects on mismatch.
@@ -1655,21 +1628,20 @@ variable DEF-STOPPED
    0 BWIN-VALID !  0 UWIN-VALID !
    CHECKER-REPORT-RESET
    -1 VSIG !
-   a CK-DEF-A !  u CK-DEF-U !  0 DEF-REFUSAL !
+   0 DEF-REFUSAL !
    TORDER-ACTIVE @ TORDER-SCAN-UNKNOWN @ {: oldactive:n oldunknown:n :}
    1 TORDER-DEPTH +!
    TORDER-CHECKING TORDER-ACTIVE !  0 TORDER-SCAN-UNKNOWN !
    PU-N @ {: pu0:n :}
    CUR-TAKE {: took:bool :}
-   [: CHECK-DEF-BODY ;] catch {: rc:n :}
-   NULL-PTR CK-DEF-A !  0 CK-DEF-U !
+   0 [: drop a u CHECK-WINDOWED ;] catch {: v rc:n :}
    -1 TORDER-DEPTH +!
    TORDER-SCAN-UNKNOWN @ {: unknown:n :}
    oldactive TORDER-ACTIVE !  oldunknown TORDER-SCAN-UNKNOWN !
    pu0 took PUBLISH-EXIT {: prc:n :}   \ the body's uses, its resolved prefix if it
    rc 0 <> IF rc CHECK-DEF-THREW THEN  \ stopped, and its candidates; the arm goes either way
    prc 0 <> IF prc throw THEN
-   CK-DEF-VERDICT @ {: verdict:n :}
+   rc 0= IF v ELSE 0 THEN {: verdict:n :}
    0 VSIG !
    CHECKER-TAPE:ARMED @ 0 <> {: recording:bool :}
    unknown 0= recording and IF a u verdict CHECKER-TAPE:DONE THEN
@@ -1688,21 +1660,12 @@ variable DEF-STOPPED
 \ its record grants no authority. A scan that throws abandons the definition,
 \ so it clears the latch: a restored arm would be stepped by the next body
 \ check into the record of whatever is defined next.
-CHECKER-REG:SCRATCH{
-PTR-VARIABLE UNJ-A   variable UNJ-U
-variable UNJ-VERDICT
-CHECKER-REG:}SCRATCH
-
-: CHECK-UNJUDGED-BODY ( -- )
-   UNJ-A @ UNJ-U @ CHECK! UNJ-VERDICT ! ;
-
 : CHECK-UNJUDGED! ( ptr u8 n -- n ) {: a:ptr u:n :}
    WRITE-WINDOW-CK
-   a UNJ-A !  u UNJ-U !
    DOESEFF @ DOESPEND @ {: eff:n pend:n :}
    -1 BWIN-UNJUDGED !
    1 REJECTION:QUIET +!
-   [: CHECK-UNJUDGED-BODY ;] CHECKER-EFFECT-AUTHORITY:SCAN {: rc:n :}
+   0 [: drop a u CHECK! ;] CHECKER-EFFECT-AUTHORITY:SCAN {: v rc:n :}
    -1 REJECTION:QUIET +!
    0 BWIN-UNJUDGED !
    rc 0 <> IF DOES-EFF-CLEAR rc throw THEN
@@ -1710,7 +1673,7 @@ CHECKER-REG:}SCRATCH
    CHECKER-TAPE:ARMED @ 0= 0=  LMODE @ 0= and  #CFC @ 0= and
    CONM @ 0= and  CHECKER-MATCH-MODE @ 0= and  MF-DEPTH @ 0= and
    FIELD-LOAN-PENDING @ 0= and PARSE-COMPLETE @ 0= 0= and UWIN-VALID !
-   UNJ-VERDICT @ ;
+   v ;
 
 package CHECKER-PREFLIGHT
 
@@ -1952,21 +1915,14 @@ package CHECKER-REG
 \ authority, as tier 0 checks it. With authority, a clause would be refused a
 \ call its parent's body may make (E-CAP-TRUSTED on a colon word defined with
 \ checking off).
-PTR-VARIABLE UNJ-DOES-BA   variable UNJ-DOES-BU
-PTR-VARIABLE UNJ-DOES-SA   variable UNJ-DOES-SU   variable UNJ-DOES-VERDICT
-
-: UNJ-DOES-BODY ( -- )
-   UNJ-DOES-BA @ UNJ-DOES-BU @ UNJ-DOES-SA @ UNJ-DOES-SU @ CHECK-DOES-RUN
-   UNJ-DOES-VERDICT ! ;
-
 : CHECK-DOES-UNJUDGED! ( ptr u8 n ptr u8 n -- n ) {: ba:ptr bu:n sa:ptr su:n :}
-   ba UNJ-DOES-BA !  bu UNJ-DOES-BU !  sa UNJ-DOES-SA !  su UNJ-DOES-SU !
    -1 BWIN-UNJUDGED !
-   [: UNJ-DOES-BODY ;] CHECKER-EFFECT-AUTHORITY:SCAN {: rc:n :}
+   0 [: drop ba bu sa su CHECK-DOES-RUN ;]
+   CHECKER-EFFECT-AUTHORITY:SCAN {: v rc:n :}
    0 BWIN-UNJUDGED !
    rc 0 <> IF rc throw THEN
    sa su DOES-EFF-LATCH!
-   UNJ-DOES-VERDICT @ ;
+   v ;
 
 \ The pre-verifier's entry also reports what it refuses, since CHECK-DOES-RUN
 \ renders nothing. An uncheckable clause is rendered here too: the pre-pass
@@ -2076,20 +2032,13 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    THEN
    a u  CHECKER-QBAD-TOK @ IF 4 ELSE 3 THEN  TOP-REFUSE ;
 
-PTR-VARIABLE TOP-ASK-A   variable TOP-ASK-U   variable TOP-ASK-RUNS
-variable TOP-ASK-ANSWER
-
-: TOP-ASK-BODY ( -- )
-   TOP-ASK-A @ TOP-ASK-U @ TOP-ASK-RUNS @ TOP-ANSWER TOP-ASK-ANSWER ! ;
-
 : CHECKER-VERIFY-TOP ( ptr u8 n bool -- n )
    {: a:ptr u:n runs:bool :}
    WRITE-WINDOW-CK
-   a TOP-ASK-A !  u TOP-ASK-U !  runs TOP-ASK-RUNS !
    0 DEF-REFUSAL !
-   [: TOP-ASK-BODY ;] catch {: rc:n :}
-   rc 0 <> IF rc DEF-REFUSED  1 REJECTION:TALLY +!  0 EXIT THEN
-   TOP-ASK-ANSWER @ ;
+   0 [: drop a u runs TOP-ANSWER ;] catch {: v rc:n :}
+   rc 0= IF v EXIT THEN
+   rc DEF-REFUSED  1 REJECTION:TALLY +!  0 ;
 
 \ One rollback frame spans the head's scan, the clause's and publication; while
 \ open, RBF-DEPTH stays nonzero so compaction relocates none of its cursors.

@@ -1944,7 +1944,7 @@ $100000001b3 constant DRV-FNV-PRIME        \ FNV-1a 64-bit prime
    loop ;
 
 \ The constructor queue is an authority: this boundary clears it on every exit
-\ and the body proves it consumed; TDECL-CTOR-WORDS-BODY's covers rendering.
+\ and the body proves it consumed.
 : TDECL-GEN-EVAL ( n -- )
    [: dup TDECL-GEN-EVAL-BODY ;] catch {: rc:n :}
    CTOR-PEND-CLEAR
@@ -1978,7 +1978,7 @@ $100000001b3 constant DRV-FNV-PRIME        \ FNV-1a 64-bit prime
 \ will land in (xref.f TARGET-RECORD), and CHECKER-RECORD-SYM interns a plan's
 \ constructor authorities per section, so a plan rendered in another section
 \ queues authorities CTOR-PEND-MATCH? never finds. Q takes and returns the
-\ family: a quotation cannot read this word's locals, and catch takes only a
+\ family, which each caller's generator takes; catch takes only a
 \ stack-preserving quotation.
 : TDECL-GEN-PLACED ( n bool [ n -- n ] -- ) {: fam:n replay:bool q :}
    fam TFAM-GEN-PUBLIC? IF fam q execute drop EXIT THEN
@@ -2148,9 +2148,6 @@ private
    [: TDECL-INIT-ARM-MISSING ;] is TDECL-INIT-ARM-XT ;
 TDECL-INIT-ARM-DEFAULT
 
-\ TDECL-CTOR-WORDS-BODY clears the authority queue rendering fills, on any exit;
-\ provider and family ride the stack, as a quotation cannot read caller locals.
-
 private
 
 \ A PUBLIC family always publishes generated words: into the reserved
@@ -2205,16 +2202,12 @@ public
    rc 0 <> IF rc throw THEN
    drop ;
 
+\ Clears the constructor queue that rendering fills, on any exit.
 : TDECL-CTOR-WORDS-BODY ( n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n -- n )
-   \ `catch` restores the DEPTH of both stacks and never their contents, so the
-   \ five cells the body was handed come back stale: the family this word
-   \ answers with is kept in a local BEFORE the catch, and the cells the
-   \ generation left are dropped.
-   dup {: fam:n :}
-   [: TDECL-GEN-BODY ;] catch {: rc:n :}
+   {: ctx:n qn qr qc fam:n :}
+   [: ctx qn qr qc fam TDECL-GEN-BODY 2drop 2drop drop ;] catch {: rc:n :}
    CTOR-PEND-CLEAR
    rc 0 <> IF rc throw THEN
-   2drop 2drop drop
    fam ;
 
 \ The SUMTYPE / ENUM / PRODUCT definers announce their family through

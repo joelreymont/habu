@@ -4152,13 +4152,7 @@ COMPOSE-INIT
 : COMPOSE-WITH-USES ( -- )
    ['] USE-SEEN ['] RUN-COMPOSE WITH-USES ;
 
-\ Stash-and-body: a quotation cannot read its caller's locals.
-PTR-VARIABLE CAND-A
-variable CAND-U
 variable CAND-VERDICT
-
-: CANDIDATE-BODY ( -- )
-   CAND-A @ CAND-U @ CHECK-QUIET-CANDIDATE! CAND-VERDICT ! ;
 
 TYPED-VARIABLE THEN-ACTION [ -- ]
 
@@ -4270,15 +4264,6 @@ create ENGINE-PATH PATH-CAP allot
 : ENGINE-TARGET-INSTALL ( -- ) ['] ENGINE-TARGET-READ is ENGINE-TARGET ;
 ENGINE-TARGET-INSTALL
 
-private
-
-\ The source a quiet composition verifies and its path, for the composition
-\ it runs under catch: a quotation cannot read its caller's locals.
-PTR-VARIABLE QUIET-SRC-A
-variable QUIET-SRC-U
-PTR-VARIABLE QUIET-PATH-A
-variable QUIET-PATH-U
-
 public
 
 \ ACTION runs while both checker scopes still own the declaration symbols; a
@@ -4379,12 +4364,10 @@ public
 : SOURCE-COMPOSE-QUIET-IN-SCOPE ( ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n path:ptr pathu:n :}
    COMPOSE-ON @ 0<> IF E-PKG-CONTEXT throw THEN
-   src QUIET-SRC-A !  srcu QUIET-SRC-U !
-   path QUIET-PATH-A !  pathu QUIET-PATH-U !
    0 FAULT-LEN !  0 FAULT-U !
    [: SOURCE-ROOT:CANON-OS ;] [: QUIET-READ ;] SOURCE-INPUT:USE
    true QUIET !
-   [: QUIET-SRC-A @ QUIET-SRC-U @ QUIET-PATH-A @ QUIET-PATH-U @ SOURCE-COMPOSE-IN-SCOPE ;]
+   [: src srcu path pathu SOURCE-COMPOSE-IN-SCOPE ;]
    catch {: rc:n :}
    false QUIET !
    SOURCE-INPUT:RESET
@@ -4440,8 +4423,8 @@ public
 \ registered has no engine record, so a live candidate cannot bind it; here it
 \ binds where the scan recorded it.
 : CANDIDATE-IN-SCOPE ( ptr u8 n -- n )
-   CAND-U !  CAND-A !
-   [: CANDIDATE-BODY ;] RUN-IN-SCOPE
+   {: a:ptr u:n :}
+   [: a u CHECK-QUIET-CANDIDATE! CAND-VERDICT ! ;] RUN-IN-SCOPE
    CAND-VERDICT @ ;
 
 \ Verify a source in a candidate scope of its own: what it defines, and the
