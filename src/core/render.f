@@ -1072,6 +1072,12 @@ variable MDV-I   variable MDV-F
       s" bad match: rejected" rot
    endcase ;
 
+\ A reason's label: a few words under its token.
+: MD-LABEL$ ( n -- ptr u8 n )
+   case
+      s" here" rot
+   endcase ;
+
 
 : MDIAG-MISSING-WALK ( bool -- ) {: json:bool :}   \ unseen variant tails, space-led
    MDIAG-FAM @ TFAM-VAR-START@ {: vstart:n :}
@@ -1373,6 +1379,7 @@ variable MDV-I   variable MDV-F
       RF-SIG of SIG-LABEL endof
       RF-DEAD of s" never runs" EMIT-STR endof
       RF-UNCHECKABLE of s" checking stops here" EMIT-STR endof
+      RF-REASON of MDIAG @ MD-LABEL$ EMIT-STR endof
       s" here" EMIT-STR
    endcase ;
 
