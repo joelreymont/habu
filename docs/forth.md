@@ -1520,8 +1520,8 @@ types, write two accessors, each naming what it reaches.
 #### Reading code bytes
 
 A code address reaches checked code as a number. Reading the bytes there goes
-through `CODE-BYTES:AT ( n n -- ptr u8 n )` alone, which refuses a span not
-wholly inside the image's code (`hb: span outside the code region`). A site that
+through `CODE-BYTES:AT ( n n -- ptr u8 n )` alone, which rejects a span not
+wholly inside the image's code with `E-CODE-SPAN` and status 70. A site that
 only carries a code address keeps it a number.
 
 ### Declared polymorphic effects stay parametric

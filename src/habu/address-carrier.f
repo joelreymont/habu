@@ -83,9 +83,9 @@ public
 
 : SET-CHAIN-VALUE ( ptr u8 n n -- ) {: p:ptr val:n size:n :}
    size ADDR-CHAIN-BYTES = if p val SET-CHAIN exit then
-   size DATA-CHAIN-BYTES <> if s" address chain: invalid size" 74 die then
+   size DATA-CHAIN-BYTES <> if s" address chain: invalid size" 76 die then
    val 0 < val $FFFFFFFFFFFF > or if
-      s" address chain: DATA address exceeds 48 bits" 74 die
+      s" address chain: DATA address exceeds 48 bits" 76 die
    then
    3 0 ?do
       p i 4 * + W32@ ADDR-OPC-MASK and
