@@ -5,7 +5,7 @@
 \ directory.
 
 \    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT < STDIN
-\    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT LABEL < STDIN
+\    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT LABEL [--prose] < STDIN
 \    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT --at N < STDIN
 \    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT --of TAIL < STDIN
 \    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT --index < STDIN
@@ -142,8 +142,10 @@
 \
 \ The second form is check.f's pre-pass. The first definition the checker
 \ refuses stops the composition, as it stops the load, and the subject's packets
-\ name it LABEL. SUBJECT is check.f's own copy of the text, which nothing holds.
-\ It answers
+\ name it LABEL. With `--prose`, for a check.f run without --json-errors, the
+\ checker writes each rejection on stdout as a prose record where the other
+\ forms write a packet. SUBJECT is check.f's own copy of the text, which nothing
+\ holds. It answers
 \
 \    check-verify: verified | stopped RC BYTE DUP-AT DUP-LEN IN-SUBJECT FILE
 \

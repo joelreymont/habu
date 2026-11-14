@@ -54,6 +54,7 @@ DYNAMIC-BUFFER IDX-EVENTS n              \ symbol, start, end for each declarati
 variable IDX-N
 TYPED-VARIABLE OF-A ptr u8              \ the fourth form's TAIL,
 variable OF-U                           \ 0 for the other forms
+variable JSON?   true JSON? !           \ SCOPED's diagnostics are packets, false after `--prose`
 
 
 : WRITE ( n ptr u8 n -- ) {: fd:n a:ptr u:n :}
@@ -568,9 +569,10 @@ variable OF-U                           \ 0 for the other forms
 
 
 \ Run the verification in one neutral checker scope, every diagnostic the
-\ checker renders a packet on stdout: the code it threw, 0 for none.
+\ checker renders on stdout, a packet unless `--prose` asked for a prose
+\ record: the code it threw, 0 for none.
 : SCOPED ( [ -- ] -- n ) {: q :}
-   0 0= REJECTION:JSON !
+   JSON? @ REJECTION:JSON !
    OUT-FD REJECTION:FD!
    CHECKER-SCOPE-START-NEUTRAL
    q catch
@@ -617,7 +619,7 @@ variable OF-U                           \ 0 for the other forms
 public
 
 : USAGE ( -- )
-   s" usage: check-verify-child.f -- SUBJECT [LABEL | --at N | --of TAIL | --index]" 64 die ;
+   s" usage: check-verify-child.f -- SUBJECT [LABEL [--prose] | --at N | --of TAIL | --index]" 64 die ;
 
 \ N in the third form's `--at N`; -1 for none.
 : CURSOR-ARG ( -- n )
@@ -680,6 +682,9 @@ public
    SCRIPT-ARGC 2 = if
       1 SCRIPT-ARGV$ s" --index" CORE-STR= if READ-STDIN INDEX-SUBJECT exit then
       READ-STDIN PREVERIFY exit
+   then
+   SCRIPT-ARGC 3 = if
+      2 SCRIPT-ARGV$ s" --prose" CORE-STR= if false JSON? ! READ-STDIN PREVERIFY exit then
    then
    CURSOR-ARG {: at:n :}
    at 0 >= if at VERIFY:CURSOR! then

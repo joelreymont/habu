@@ -1131,7 +1131,7 @@ private
    ;MATCH ;
 
 : CHK-PREVERIFY-ACT ( -- )
-   CHK-SOURCE-BYTES CHK-SRC-PATH CHK-LABEL CHK-DEADLINE@ PREVERIFY-BYTES
+   CHK-SOURCE-BYTES CHK-SRC-PATH CHK-LABEL CHK-DEADLINE@ CHK-JSON @ 0<> PREVERIFY-BYTES
    CHK-PREVERIFY-REPORT ;
 
 \ More output than the child's capture holds leaves no answer: the packets and
