@@ -1,9 +1,7 @@
-\ codegen.f - a shared bounded byte buffer for building generated Forth source.
-\ A definer that builds source for an audited `evaluate` (DEFTYPE in
-\ src/lib/type/deftype.f, generator tools) builds the text
-\ here and keeps only its own `evaluate` wrapper: the trust boundary stays per
-\ package. STORAGE CLASS. CALLER-OWNED: each buffer's header is its definer's
-\ dictionary storage and its text a dynamic mapping; the module keeps no state.
+\ codegen.f - a shared bounded byte buffer for building text: a generated word's
+\ name, or a generator tool's output. STORAGE CLASS. CALLER-OWNED: each buffer's
+\ header is its definer's dictionary storage and its text a dynamic mapping; the
+\ module keeps no state.
 
 require src/lib/prelude.f
 require src/core/dynamic-storage.f
@@ -48,8 +46,8 @@ CAST: CB-HEAD-CELL ( ptr n -- ptr ptr u8 )
 public
 
 \ Defines NAME as a buffer descriptor with explicit cap-err and val-err codes, so
-\ a package keeps the throw code its callers see (deftype.f keeps E-VNOM-CAP)
-\ without a catch-and-remap wrapper.
+\ a package keeps the throw code its callers see (src/lib/ffi-callback.f's NAME
+\ throws E-FFI-SYNTAX) without a catch-and-remap wrapper.
 : BUFFER-E ( n n n -- )   \ cap cap-err val-err --
    create CB-HEADER,  does> ( -- ptr n ) ;
 

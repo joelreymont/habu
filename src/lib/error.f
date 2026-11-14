@@ -260,9 +260,7 @@ require src/lib/prelude.f
 -5901 constant E-FMT-OVERFLOW    \ SB-FIX scaled magnitude |x|*10^k does not fit an i64
 -5902 constant E-FMT-BAND        \ layout FMT-ABI band width disagrees with FMT-NUM-CAP
 
-\ Bounded pointers (package SPAN, src/lib/span.f): -6100..-6199. The block sits
-\ after src/lib/type/deftype.f's own -6001/-6002; that file keeps its codes to
-\ itself and reserves no range.
+\ Bounded pointers (package SPAN, src/lib/span.f): -6100..-6199.
 -6100 constant E-SPAN-FIRST
 -6199 constant E-SPAN-LAST
 -6100 constant E-SPAN-RANGE      \ a narrowing or an index outside the span's byte reach
