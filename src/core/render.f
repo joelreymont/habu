@@ -1358,10 +1358,13 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    k ;
 
 \ A pinned token where its source holds it: a top step's as the step read it,
-\ a body's in the checked text. FAILTK is a copy no source holds.
+\ a body's in the checked text. A closer past the text's end that no source
+\ holds, as a checked string's, is FAILTK, the copy of its spelling.
 : DIAG-TOKEN ( -- ptr u8 n )
    TOP-STEP @ IF TOK-SPELL-A @ TOK-SPELL-U @ EXIT THEN
-   TBASE@ FAILB @ +  FAILE @ FAILB @ - ;
+   TBASE@ FAILB @ + {: p:ptr :}
+   FAILE @ TBLEN @ >  p REJECTION:HELD? 0=  and IF FAILTK FAILTU @ EXIT THEN
+   p FAILE @ FAILB @ - ;
 
 : PIN-TOK$ ( -- ptr u8 n ) FAILTK FAILTU @ ;
 : CODE-SPAN ( ptr u8 n -- ) 96 EMIT1 EMIT-STR 96 EMIT1 ;

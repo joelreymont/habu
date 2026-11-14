@@ -107,6 +107,33 @@ private
    sym NORET-CREATES@ REND-CREATES 2drop ;
 
 
+\ Ends the process with the sentence REJECTION:TEXT holds from byte t on: a
+\ facts text the checker cannot keep is an engine defect.
+: TEXT-DIE ( n -- ) {: t:n :}
+   REJECTION:TEXT t +  REJECTION:TEXT-LEN @ t -  76 die ;
+
+\ Dies naming na nu, a u saying what is wrong with the facts text written for
+\ it, which REJECTION:TEXT holds. The sentence goes after the text in TEXT,
+\ which may move as it grows, so the text is copied by offset.
+: FACTS-DIE ( ptr u8 n ptr u8 n -- )
+   {: na:ptr nu:n a:ptr u:n :}
+   REJECTION:TEXT-LEN @ {: t:n :}
+   1 REJECTION:DEST !
+   s" hook: the facts text written for `" REJECTION:EMIT-STR
+   na nu REJECTION:EMIT-STR  s" ` " REJECTION:EMIT-STR
+   a u REJECTION:EMIT-STR  s" : " REJECTION:EMIT-STR
+   t 0 ?do REJECTION:TEXT i + c@ REJECTION:EMIT1 loop
+   t TEXT-DIE ;
+
+\ Dies naming na nu: its amended effect has no record, or no facts text that
+\ says it.
+: AMENDED-DIE ( ptr u8 n -- )
+   {: na:ptr nu:n :}
+   0 REJECTION:TEXT-LEN !  1 REJECTION:DEST !
+   s" hook: no facts text says the amended effect of `" REJECTION:EMIT-STR
+   na nu REJECTION:EMIT-STR  96 REJECTION:EMIT1
+   0 TEXT-DIE ;
+
 \ Only a record this check published, at or above MARK and still active, is
 \ asked: a duplicate or an unrecorded effect publishes none.
 : CHECK-FACTS ( ptr u8 n n -- )
@@ -123,13 +150,9 @@ private
       sym FACTS-TAGS
       RQM @ 0= if REJECTION:TEXT REJECTION:TEXT-LEN @ ndict@ FACTS! exit then
    then
-   RQM @ 0 <> if s" hook: facts text cannot say: " else s" hook: facts text differs: " then
-   ERROR-TEXT:TYPE
-   NMB NMU @ ERROR-TEXT:TYPE
-   s" : " ERROR-TEXT:TYPE
-   REJECTION:TEXT REJECTION:TEXT-LEN @ ERROR-TEXT:TYPE
-   S\" \n" ERROR-TEXT:TYPE
-   CHECK-RC throw ;
+   NMB NMU @
+   RQM @ 0 <> if s" cannot say its effect" else s" reads back as another effect" then
+   FACTS-DIE ;
 
 
 \ Whether sym's newest effect has a facts text that says it, left in
@@ -281,9 +304,14 @@ using SCHEMA-REG
 \ An effect; any other type is refused, E-NOT-EFFECT.
 : EFFECT-ARG ( n -- n ) {: node:n :}
    node TYPE-ARG SCHEMA-QUOT? if node exit then
-   s" E-NOT-EFFECT" REJECTION:PATH$ SRCLOC:LINE ERROR-TEXT:PREFIX
-   S\" EFFECT:IN or EFFECT:OUT given a type that is no effect\n" ERROR-TEXT:TYPE
-   CHECK-RC throw ;
+   s" E-NOT-EFFECT" REJECTION:OPEN
+   s" `EFFECT:IN` or `EFFECT:OUT` was given a type that is not an effect"
+   REJECTION:EMIT-STR
+   SRCLOC:TOKEN$ REJECTION:AT  s" not given an effect" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" pass an effect built from `EFFECT:NEW` beneath the type it adds"
+   REJECTION:EMIT-STR
+   CHECK-RC REJECTION:STOP ;
 
 : FAMILY-NODE ( n -- n ) {: fam:n :}
    fam TFAM:TFAM-ARITY@ {: k:n :}
@@ -299,10 +327,14 @@ CAST: >BYTES ( n -- ptr u8 )
    {: a:n u:n :}
    a >BYTES u TFAM:TFAM-FIND-SPELLED if exit then
    drop
-   s" E-UNKNOWN-SIGNATURE-TYPE" REJECTION:PATH$ SRCLOC:LINE ERROR-TEXT:PREFIX
-   s" unknown type '" ERROR-TEXT:TYPE  a >BYTES u ERROR-TEXT:TYPE
-   S\" ' in EFFECT:FAMILY\n" ERROR-TEXT:TYPE
-   CHECK-RC throw ;
+   s" E-UNKNOWN-SIGNATURE-TYPE" REJECTION:OPEN
+   s" no type is named `" REJECTION:EMIT-STR
+   a >BYTES u REJECTION:EMIT-STR  96 REJECTION:EMIT1
+   SRCLOC:TOKEN$ REJECTION:AT  s" unknown type" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" declare `" REJECTION:EMIT-STR  a >BYTES u REJECTION:EMIT-STR
+   s" ` before this point, or check its spelling" REJECTION:EMIT-STR
+   CHECK-RC REJECTION:STOP ;
 
 : TYPE-NODE ( n n n -- n ) {: code:n a:n b:n :}
    code TYPE-OP-ABI:INT = if CC-N SCHEMA-CON exit then
@@ -472,12 +504,7 @@ public
          i HELD-AMENDED@ {: ix:n sym:n :}
          sym VIS-SYM-REC CHECKER-RESOLVE:REC>INDEX {: now:n :}
          now ix <> if NULL-PTR 0 ix FACTS! then
-         now 0 >=  sym FACTS-TEXT?  and 0= if
-            s" hook: facts text cannot say: " ERROR-TEXT:TYPE
-            sym SYM-NAME$ ERROR-TEXT:TYPE
-            S\" \n" ERROR-TEXT:TYPE
-            CHECK-RC throw
-         then
+         now 0 >=  sym FACTS-TEXT?  and 0= if sym SYM-NAME$ AMENDED-DIE then
          REJECTION:TEXT REJECTION:TEXT-LEN @ now FACTS!
       then
    loop ;

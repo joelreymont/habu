@@ -2661,7 +2661,7 @@ FILE-POS-CLEAR
    FPOS-LN @ FPOS-CL @ at ;
 ;package
 
-\ The wall's line and code for a duplicate refused off the wall.
+\ The wall's rejection of a duplicate, for one refused off the wall.
 package CHECK
 private
 \ The source tools classify $4E themselves.
@@ -2669,27 +2669,29 @@ $4E constant DUP-RC
 INP-CELL RESERVED-PTR-U8-CELL SRC-CURSOR
 PENDTKA-CELL RESERVED-PTR-U8-CELL SRC-NAME
 
-\ The line of the definition's name, where the wall places a duplicate. At a
+\ The name a u as the source holds it, where the wall places a duplicate. At a
 \ colon definition's closing `;` the definition is pending (PEND-CELL) and its
 \ opener kept where its name starts (PENDTKA-CELL); create, variable and
 \ constant run the hook with nothing pending, PENDTKA-CELL
 \ still at the last colon definition's name and the cursor just past their own.
-\ A name not between the file's first owned byte and the cursor is not counted
-\ to, since the count would read outside the file: it is placed at the cursor.
-: NAME-LINE ( -- n )
+\ Only a name between the file's first owned byte and the cursor is taken
+\ from there; any other is a u.
+: SOURCE-NAME$ ( ptr u8 n -- ptr u8 n )
+   {: a:ptr u:n :}
    SRC-OWNED @ SRC-NAME @ SRC-CURSOR @ {: o:ptr nm:ptr p:ptr :}
    data-base PEND-CELL + @ 0 <>  nm o - 0 >= and  p nm - 0 >= and
-   if o nm ERROR-TEXT:LINE else SRCLOC:LINE then ;
+   if nm u else a u then ;
 
 public
 : REFUSE-DUPLICATE ( ptr u8 n -- )
    {: a:ptr u:n :}
-   s" E-DUPLICATE-DEFINITION" REJECTION:PATH$
-   SRCLOC:FILE-BUFFER? if NAME-LINE else 0 then
-   ERROR-TEXT:PREFIX
-   s" duplicate definition: " ERROR-TEXT:TYPE
-   a u ERROR-TEXT:TYPE  S\" \n" ERROR-TEXT:TYPE
-   DUP-RC throw ;
+   s" E-DUPLICATE-DEFINITION" REJECTION:OPEN
+   96 REJECTION:EMIT1  a u REJECTION:EMIT-STR
+   s" ` is already defined" REJECTION:EMIT-STR
+   a u SOURCE-NAME$ REJECTION:AT  s" already defined" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" rename this word, or remove the earlier definition" REJECTION:EMIT-STR
+   DUP-RC REJECTION:STOP ;
 ;package
 
 \ The token's verdict as DO-TOK1 and CHECK take it: a checked step runs, as

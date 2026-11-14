@@ -967,7 +967,8 @@ private
 \ be refused too; SDAP2 refuses for that type.
 DECL-DIAG:PROSE
 s" SDAP1 ( n -- n ) HREC-X" CHECK-CANDIDATE! 0 T=
-s" undefined word 'HREC-X'" DECL-DIAG:HAS? TTRUE
+s\" error[E-UNDEFINED]: cannot find word `HREC-X`\n" DECL-DIAG:HAS? TTRUE
+s\"   = at `HREC-X`: not found\n" DECL-DIAG:HAS? TTRUE
 s" SDAP2 ( ptr SDAPRIV:hrec -- n ) drop 0" CHECK-QUIET-CANDIDATE! 0 T=
 public
 ;package

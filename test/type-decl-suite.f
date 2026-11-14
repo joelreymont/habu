@@ -640,7 +640,8 @@ s" TDW34-REPLAY ( tdw34 -- tdw34 ) TDW34-STORED" TD-MIN-IN 34 T=
 s" TDW34-BAD ( tdw34 -- n )" CHECK-QUIET-CANDIDATE! 0 T=
 TDIAG-BUF 8192 REJECTION:BUFFER!
 s" TDW34-BAD-USE ( tdw34 -- n ) TDW34-BAD" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" undefined word 'TDW34-BAD'" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" error[E-UNDEFINED]: cannot find word `TDW34-BAD`\n" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\"   = at `TDW34-BAD`: not found\n" CONTAINS? TTRUE
 s" TDW34-REPLAY2 ( tdw34 -- tdw34 ) TDW34-STORED" TD-MIN-IN 34 T=
 \ A product containing W34 has the same physical width and minimum, not W34^2.
 PRODUCT tdw34nest
@@ -830,11 +831,12 @@ PRODUCT tfx-nest<a> FIELD a a FIELD b n ;PRODUCT
 \ before lookup.
 TDIAG-BUF 8192 REJECTION:BUFFER!
 s" TPC-RENDER ( TDPM:span<n,n,n,n,n,n> -- n )" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" actual: tdpm:span<n,n,n,n,n,n> " CONTAINS? TTRUE
-REJECTION:BUFFER$ s" actual: TDPM:span<n,n,n,n,n,n> " CONTAINS? TFALSE
+REJECTION:BUFFER$ s\"   = found: tdpm:span<n,n,n,n,n,n>\n" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" found: TDPM:span<n,n,n,n,n,n>" CONTAINS? TFALSE
 TDIAG-BUF 8192 REJECTION:BUFFER!  true REJECTION:JSON !
 s" TPC-JSON-RENDER ( TDPM:span<n,n,n,n,n,n> -- n )" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s\" \"actual\":\"tdpm:span<n,n,n,n,n,n> \"" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"found\":\"tdpm:span<n,n,n,n,n,n>\"" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"token\":\";\"" CONTAINS? TTRUE
 TDIAG-BUF 8192 REJECTION:BUFFER!
 s" TPC-JSON-ARITY ( TDPM:span<n,n,n> -- ) drop" CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s\" \"token\":\"TDPM:span\"" CONTAINS? TTRUE
@@ -2087,14 +2089,17 @@ s" TDLRA1 ( tdres<n,n> -- n ) {: x:tdres<n> :} 5" CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s" wrong arity for type family 'x:tdres<n>'" CONTAINS? TTRUE
 TDIAG-BUF 8192 REJECTION:BUFFER!
 s" TDLR1 ( tdlnom -- n ) {: q:tdlnom :} q dup drop" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" expected: n actual: tdlnom " CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" error[E-MISMATCH]: the body ends with tdlnom on the stack; the signature promises n\n" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\"   = expected: n\n  = found: tdlnom\n" CONTAINS? TTRUE
 TDIAG-BUF 8192 REJECTION:BUFFER!
 s" TDLR2 ( tdlnom -- n ) dup drop" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" expected: n actual: tdlnom " CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" error[E-MISMATCH]: the body ends with tdlnom on the stack; the signature promises n\n" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\"   = expected: n\n  = found: tdlnom\n" CONTAINS? TTRUE
 \ enum-tier annotation term on the EXPECTED side of the :} bind check.
 TDIAG-BUF 8192 REJECTION:BUFFER!
 s" TDLR3 ( tdlp -- n ) {: q:tdlv :} q dup drop" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" expected: tdlv actual: tdlp " CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" error[E-MISMATCH]: `:}` takes tdlv; the stack holds tdlp\n" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\"   = expected: tdlv\n  = found: tdlp\n" CONTAINS? TTRUE
 \ foreign-package family: the interned name renders qualified pkg:tail. Use the
 \ real package path; checker mirror mutation is not namespace authority.
 package tdlrpk
@@ -2103,7 +2108,8 @@ NEWTYPE tdlrfam
 ;package
 TDIAG-BUF 8192 REJECTION:BUFFER!
 s" TDLR4 ( tdlrpk:tdlrfam -- n ) {: q:tdlrpk:tdlrfam :} q dup drop" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" expected: n actual: tdlrpk:tdlrfam " CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" error[E-MISMATCH]: the body ends with tdlrpk:tdlrfam on the stack; the signature promises n\n" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\"   = expected: n\n  = found: tdlrpk:tdlrfam\n" CONTAINS? TTRUE
 
 \ Same row, but the package was declared in UPPER case (TDLR4's `tdlrpk` is
 \ already lowercase). A family stores the package name as the source `package`
@@ -2117,18 +2123,20 @@ NEWTYPE tdlrfamu
 ;package
 TDIAG-BUF 8192 REJECTION:BUFFER!
 s" TDLR5 ( TDLRPKU:tdlrfamu -- n ) {: q:TDLRPKU:tdlrfamu :} q dup drop" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" expected: n actual: tdlrpku:tdlrfamu " CONTAINS? TTRUE
-REJECTION:BUFFER$ s" actual: TDLRPKU:tdlrfamu " CONTAINS? TFALSE
+REJECTION:BUFFER$ s\" error[E-MISMATCH]: the body ends with tdlrpku:tdlrfamu on the stack; the signature promises n\n" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\"   = expected: n\n  = found: tdlrpku:tdlrfamu\n" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" found: TDLRPKU:tdlrfamu" CONTAINS? TFALSE
 TDIAG-BUF 8192 REJECTION:BUFFER!
 s" TDLR6 ( TDLRPKU:tdlrfamu -- n ) dup drop" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" expected: n actual: tdlrpku:tdlrfamu " CONTAINS? TTRUE
-REJECTION:BUFFER$ s" actual: TDLRPKU:tdlrfamu " CONTAINS? TFALSE
+REJECTION:BUFFER$ s\" error[E-MISMATCH]: the body ends with tdlrpku:tdlrfamu on the stack; the signature promises n\n" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\"   = expected: n\n  = found: tdlrpku:tdlrfamu\n" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" found: TDLRPKU:tdlrfamu" CONTAINS? TFALSE
 \ the folded qualifier still names the family back: a signature may spell it either way.
 s" TDLR6R ( tdlrpku:tdlrfamu -- TDLRPKU:tdlrfamu )" CHECK-QUIET-CANDIDATE! -1 T=
 TDIAG-BUF 8192 REJECTION:BUFFER!  true REJECTION:JSON !
 s" TDLR7 ( n -- TDLRPKU:tdlrfamu )" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s\" \"expected\":\"tdlrpku:tdlrfamu \"" CONTAINS? TTRUE
-REJECTION:BUFFER$ s\" \"expected\":\"TDLRPKU:tdlrfamu \"" CONTAINS? TFALSE
+REJECTION:BUFFER$ s\" \"expected\":\"tdlrpku:tdlrfamu\"" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"expected\":\"TDLRPKU:tdlrfamu\"" CONTAINS? TFALSE
 false REJECTION:JSON !
 \ a package reopened under different capitalisation is the SAME package: the
 \ engine reports the first-registered spelling, so the family renders bare
@@ -2136,8 +2144,9 @@ false REJECTION:JSON !
 package tdlrpku
 TDIAG-BUF 8192 REJECTION:BUFFER!
 s" TDLR8 ( tdlrfamu -- n ) dup drop" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" expected: n actual: tdlrfamu " CONTAINS? TTRUE
-REJECTION:BUFFER$ s" actual: tdlrpku:tdlrfamu " CONTAINS? TFALSE
+REJECTION:BUFFER$ s\" error[E-MISMATCH]: the body ends with tdlrfamu on the stack; the signature promises n\n" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\"   = expected: n\n  = found: tdlrfamu\n" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" found: tdlrpku:tdlrfamu" CONTAINS? TFALSE
 ;package
 TDIAG-BUF 8192 REJECTION:BUFFER!
 
@@ -2192,7 +2201,7 @@ s" TDPN7 ( n -- tdpbres<tdpbw2,n> ) TDPBRES:ERR" CHECK-QUIET-CANDIDATE! -1 T=
 TDIAG-BUF 8192 REJECTION:BUFFER!  true REJECTION:JSON !
 s" TDPA1 ( n -- tdpbopt<tdpbw2> ) TDPBOPT:SOME" CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s\" \"code\":\"E-MISMATCH\"" CONTAINS? TTRUE
-REJECTION:BUFFER$ s\" \"inferred_effect\":\"n -- tdpbopt<tdpbw2> \"" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"inferred\":\"n -- tdpbopt<tdpbw2>\"" CONTAINS? TTRUE
 false REJECTION:JSON !
 REJECTION:BUFFER-OFF
 s" TDPA2 ( tdpbw2 -- tdpbopt<n> ) TDPBOPT:SOME" CHECK-QUIET-CANDIDATE! 0 T=
@@ -2226,7 +2235,7 @@ REJECTION:BUFFER-OFF
 TDIAG-BUF 8192 REJECTION:BUFFER!  true REJECTION:JSON !
 s" TDNA1 ( tdnres<n,n> -- tdnopt<tdnres<tdnw2,n>> ) TDNOPT:SOME" CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s\" \"code\":\"E-MISMATCH\"" CONTAINS? TTRUE
-REJECTION:BUFFER$ s\" \"expected\":\"tdnres<tdnw2,n> \"" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"expected\":\"tdnres<tdnw2,n>\"" CONTAINS? TTRUE
 TDIAG-BUF 8192 REJECTION:BUFFER!
 s" TDNA2 ( tdnopt<n> -- tdnopt<tdnres<n,n>> ) TDNOPT:SOME" CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s\" \"code\":\"E-MISMATCH\"" CONTAINS? TTRUE

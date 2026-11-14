@@ -5179,7 +5179,7 @@ CHECKER-REG:}SCRATCH
    dup HIDDEN-PARAM? IF MK-LOGICAL THEN ;
 
 : CAPTURE-CLEAR ( -- )
-   0 DF-ACT !  0 DF-EXP !  0 DEXP !  0 DACT !  -1 DVAR !  -1 DPOS !  0 TRAIL-PIN ! ;
+   0 DF-ACT !  0 DF-EXP !  0 DEXP !  0 DACT !  0 DEND !  -1 DVAR !  -1 DPOS !  0 TRAIL-PIN ! ;
 
 : C2-REJECT ( n n -- ) {: actual:n reason:n :}
    MDIAG @ 0 <> FAILSET @ 0 <> or IF 0 OK ! -1 FAILSET ! EXIT THEN

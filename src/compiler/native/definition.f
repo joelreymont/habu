@@ -410,17 +410,20 @@ TKA-CELL RESERVED-PTR-U8-CELL READ-AT
 public
 
 \ The record entering at xt has no host code: a cross-build's host routine for
-\ it ends here, placed on the cursor's line.
+\ it ends here, placed at the token the interpreter read last.
 : TARGET-ERROR ( n -- )
    XREF:ENTRY-REC {: r:n :}
    r -1 = if E-COMP-STATE throw then
-   SRCLOC:FILE-BUFFER? if
-      FILE-START @ SRCLOC:CURSOR @ ERROR-TEXT:LINE
-   else 0 then {: ln:n :}
-   s" E-TARGET-WORD" REJECTION:PATH$ ln ERROR-TEXT:PREFIX
-   s" '" ERROR-TEXT:TYPE  r XREF-REC XREF-NAME$ ERROR-TEXT:TYPE
-   S\" ' is a target word: a build cannot run it\n" ERROR-TEXT:TYPE
-   RC-REJECT throw ;
+   r XREF-REC XREF-NAME$ {: na:ptr nu:n :}
+   s" E-TARGET-WORD" REJECTION:OPEN
+   s" a build cannot run target word `" REJECTION:EMIT-STR
+   na nu REJECTION:EMIT-STR  96 REJECTION:EMIT1
+   SRCLOC:TOKEN$ REJECTION:AT  s" runs a target word" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" define `" REJECTION:EMIT-STR  na nu REJECTION:EMIT-STR
+   s" ` in a `host` section if the build runs it, or call it only from target words"
+   REJECTION:EMIT-STR
+   RC-REJECT REJECTION:STOP ;
 
 \ The `;` that ends the definition: the token the engine read last, whose
 \ address in the input places a refusal there on its line.
