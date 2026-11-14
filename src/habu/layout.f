@@ -532,7 +532,10 @@ $38A0 constant TYPE-OP-CELL
 \ storage children: STORED's parameter is 0, that of BUFFER to ARENA-DISPOSE
 \ its routine's entry, and the effects of STORED, BUFFER, DYNAMIC, SLOT, SLOTS,
 \ WORK, WORKS, ARENA-NEW and ARENA-DISPOSE answer `ptr t` for the type the
-\ declaration spells; HEAP-NEW answers it and HEAP-RELEASE takes it.
+\ declaration spells; HEAP-NEW answers it and HEAP-RELEASE takes it. An
+\ INIT-GET or INIT-SET child's parameter is the committed field id it reads or
+\ writes through its receiver.
+
 package CHILD-ABI
 public
 0 constant CELL-OFF
@@ -556,6 +559,9 @@ public
 18 constant HEAP-RELEASE
 19 constant ARENA-NEW
 20 constant ARENA-DISPOSE
+21 constant INIT-GET
+22 constant INIT-SET
+
 ;package
 
 \ TYPE-OP's codes on a and b: INT n, PTR a pointer to a, EFFECT an empty effect,

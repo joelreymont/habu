@@ -2279,6 +2279,8 @@ variable DEF-VALUE
    shape CHILD-ABI:INDEX = if COMP-BODY:index 0 exit then
    shape CHILD-ABI:VALUE = if COMP-BODY:value 0 exit then
    shape CHILD-ABI:STORED = if COMP-BODY:address 0 exit then
+   shape CHILD-ABI:INIT-GET = if COMP-BODY:getter 0 exit then
+   shape CHILD-ABI:INIT-SET = if COMP-BODY:setter 0 exit then
    shape CHILD-ABI:BUFFER >= shape CHILD-ABI:ARENA-DISPOSE <= and if
       COMP-BODY:routine shape param ROUTINE exit
    then

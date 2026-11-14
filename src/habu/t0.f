@@ -1815,7 +1815,7 @@ using NDEFINITION
 \ The unit's body kind: COMP-BODY:compiled for a colon definition, else the
 \ fixed body's kind.
 TYPED-VARIABLE BODY-KIND body
-variable FIXED-VAL                   \ the fixed body's value or dispatch cell
+variable FIXED-VAL                   \ the fixed body's value, dispatch cell or field id
 variable FIXED-ENTRY                 \ the routine a routine body calls
 
 \ ---- the runtime compiler ----------------------------------------------------
@@ -2008,6 +2008,8 @@ variable SCAN-LO                     \ the ordinal of its first row
       offset OF NPUB:PUBLISH-RAW ENDOF
       index OF NPUB:PUBLISH-RAW ENDOF
       routine OF NPUB:PUBLISH-RAW ENDOF
+      getter OF NPUB:PUBLISH-RAW ENDOF
+      setter OF NPUB:PUBLISH-RAW ENDOF
    ;MATCH ;
 
 : HOSTED ( [ -- ] -- )
@@ -2072,7 +2074,31 @@ variable SCAN-LO                     \ the ordinal of its first row
    kind COMP-BODY:cast COMP-BODY:EQ or
    kind COMP-BODY:offset COMP-BODY:EQ or
    kind COMP-BODY:index COMP-BODY:EQ or
-   kind COMP-BODY:routine COMP-BODY:EQ or ;
+   kind COMP-BODY:routine COMP-BODY:EQ or
+   kind COMP-BODY:getter COMP-BODY:EQ or
+   kind COMP-BODY:setter COMP-BODY:EQ or ;
+
+\ A getter's view is on top, its base under its bound: it pushes the field
+\ FID's cells, lowest first, from the base plus the field's offset.
+: GET-CELLS ( n -- ) {: fid:n :}
+   fid TYPE-FIELD:BYTE-OFF@ {: off:n :}
+   fid TYPE-FIELD:CELLS@ 0 ?do
+      i 1+ DEEP  off i cells + PUSH-CONST  [: + ;] OP-ADD true ALU2
+      CELL-W FETCH
+   loop ;
+
+\ A setter's cells are over the view: it stores each where GET-CELLS reads it
+\ and drops them. T0 has no inline store, so each cell is a call, as in
+\ DO-STORE.
+: SET-CELLS ( n -- ) {: fid:n :}
+   fid TYPE-FIELD:BYTE-OFF@ {: off:n :}
+   fid TYPE-FIELD:CELLS@ {: k:n :}
+   k 0 ?do
+      k 1- i - DEEP  k 2 + DEEP
+      off i cells + PUSH-CONST  [: + ;] OP-ADD true ALU2
+      SPILL-ALL  ['] ! XT>N 0 EMIT-CALL
+   loop
+   k negate EMIT-DSP+ ;
 
 : FIXED-BODY ( -- )
    FIXED-VAL @ {: val:n :}
@@ -2100,6 +2126,8 @@ variable SCAN-LO                     \ the ordinal of its first row
          val -1 PUSH-ADDR  SPILL-ALL  FIXED-ENTRY @ 0 EMIT-CALL
          EMIT-RETURN  EMIT-CLOSE
       ENDOF
+      getter OF val GET-CELLS  SPILL-ALL  EMIT-RETURN  EMIT-CLOSE ENDOF
+      setter OF val SET-CELLS  EMIT-RETURN  EMIT-CLOSE ENDOF
    ;MATCH ;
 
 : FIXED-LOWER ( -- )

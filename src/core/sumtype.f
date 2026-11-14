@@ -1115,7 +1115,7 @@ private
    [: 0 0= 0= ;] is TDECL-EVENT-ARMED ;
 TDECL-PREFLIGHT-DEFAULTS
 
-$4000 constant TDGEN-CAP   \ wide initialized accessors render up to 32 cell operations
+$4000 constant TDGEN-CAP
 create TDGEN-BUF TDGEN-CAP allot
 variable TDGEN-U
 PTR-VARIABLE TDGEN-NA   variable TDGEN-NU  \ word-name span inside TDGEN-BUF
@@ -2072,18 +2072,12 @@ public
 : TDECL-ADDR-REPLAY ( n -- )
    RES-TRUE [: TDECL-ADDR-REPLAY-REG ;] TDECL-GEN-PLACED ;
 
-\ Initialized fields publish through a trusted path: a checked TDPLAN row is
-\ ": NAME ..." and CHECK! judges its body, and neither describes the fixed
-\ representation crossing here. The rows render as complete TRUSTED:
-\ definitions and replay their declared effects through the same registrar as
-\ source TRUSTED: declarations.
+\ --- initialized-field accessors (`DERIVE init`).
+\ A getter FIELD@ and a setter FIELD! per field, in the family's own spelling,
+\ each made by the engine's CHILD-RUN from its CHILD-ABI shape and committed
+\ field id: no text, so no word of the declaring package can capture one.
+
 private
-
-variable TDINIT-SIG-OFF
-variable TDINIT-SIG-U
-
-TRUSTED: TDINIT-MARK-LAST ( -- ) ndict@ 1 - int-mark ;
-TRUSTED: TDINIT-DECLARE ( ptr u8 n ptr u8 n -- ) TRUST-DECL ;
 
 : TDINIT-TERM ( n -- n ) TFAM-FRESH-TERM ;
 
@@ -2107,180 +2101,43 @@ TRUSTED: TDINIT-DECLARE ( ptr u8 n ptr u8 n -- ) TRUST-DECL ;
       2drop 2drop
    loop ;
 
-: TDINIT-H ( n -- ) {: fam:n :}
-   s" mut-view<" TDGEN-APP
-   fam TFAM-ARITY@ dup TDGEN-LETTER 44 TDGEN-C,
-   1 + dup TDGEN-LETTER 44 TDGEN-C,
-   1 + dup TDGEN-LETTER s" ,init<" TDGEN-APP
-   1 + TDGEN-LETTER 44 TDGEN-C,
-   fam TDGEN-OUT-TYPE s" >>" TDGEN-APP ;
+: TDINIT-NAME ( n n bool -- ptr u8 n ) {: fam:n fid:n store:bool :}
+   TDGEN-CLEAR  fam fid store TFAM-INIT-MEMBER$ TDGEN-DRV-REF
+   TDGEN-BUF TDGEN-U @ ;
 
-: TDINIT-F ( n -- ) PF-SCH@ SCHEMA-ROOT@ TDGEN-SCH ;
-
-: TDINIT-NAME-START ( -- )
-   TDGEN-CLEAR
-   s" TRUSTED: " TDGEN-APP
-   TDGEN-BUF TDGEN-U @ + TDGEN-NA ! ;
-
-: TDINIT-NAME-END ( -- )
-   TDGEN-U @ TDGEN-NA @ TDGEN-BUF - - TDGEN-NU !
-   32 TDGEN-C, ;
-
-: TDINIT-HELP-NAME ( n n -- ) {: fam:n fid:n :}
-   TDINIT-NAME-START
-   fam fid TFAM-INIT-HELPER$ TDGEN-APP
-   TDINIT-NAME-END ;
-
-: TDINIT-RECEIVER-NAME ( n -- ) {: fam:n :}
-   TDINIT-NAME-START
-   fam TFAM-INIT-RECEIVER$ TDGEN-APP
-   TDINIT-NAME-END ;
-
-: TDINIT-PUB-NAME ( n n bool -- ) {: fam:n fid:n store:bool :}
-   TDINIT-NAME-START
-   fam fid store TFAM-INIT-MEMBER$ TDGEN-DRV-REF
-   TDINIT-NAME-END ;
-
-\ The recorded span is the effect between the parentheses, the text TRUSTED:
-\ hands TRUST-DECL, so a replay row declares it as is.
-: TDINIT-SIG-BEGIN ( -- )
-   s" ( " TDGEN-APP
-   TDGEN-U @ TDINIT-SIG-OFF ! ;
-
-: TDINIT-SIG-END ( -- )
-   TDGEN-U @ TDINIT-SIG-OFF @ - TDINIT-SIG-U !
-   s"  ) " TDGEN-APP ;
-
-: TDINIT-RAW-ROW ( n -- ) {: cellsn:n :}
-   cellsn 0 ?do s" n " TDGEN-APP loop ;
-
-\ The receiver is one logical, two-cell mutable view. Split it through its
-\ exact original type before a trusted body binds the address and bound.
-: TDINIT-RECEIVER ( n -- ) {: fam:n :}
-   fam TDINIT-RECEIVER-NAME
-   TDINIT-SIG-BEGIN
-   fam TDINIT-H s"  -- ptr u8 n" TDGEN-APP
-   TDINIT-SIG-END
-   s" ;" TDGEN-APP ;
-
-\ A helper has the precise original F as input and exactly its committed
-\ number of raw cells as output. Its empty body changes only stack grouping.
-\ It lives in the author's private wordlist and is marked DNAME-INT before any
-\ public accessor can refer to it.
-: TDINIT-HELP ( n n -- ) {: fam:n fid:n :}
-   fam fid TDINIT-HELP-NAME
-   TDINIT-SIG-BEGIN
-   fid TDINIT-F
-   s"  -- " TDGEN-APP
-   fid PF-CELLS@ TDINIT-RAW-ROW
-   TDINIT-SIG-END
-   s" ;" TDGEN-APP ;
-
-: TDINIT-GET ( n n -- ) {: fam:n fid:n :}
-   fam fid RES-FALSE TDINIT-PUB-NAME
-   TDINIT-SIG-BEGIN
-   fam TDINIT-H s"  -- " TDGEN-APP
-   fam TDINIT-H 32 TDGEN-C, fid TDINIT-F
-   TDINIT-SIG-END
-   fam TFAM-INIT-RECEIVER$ TDGEN-APP
-   s"  {: p:ptr b:n :} p b " TDGEN-APP
-   fid PF-CELLS@ 0 ?do
-      s" p " TDGEN-APP
-      fid PF-BYTE-OFF@ i CELL * + TDGEN-DEC
-      s"  + cell-view @ " TDGEN-APP
-   loop
-   s" ;" TDGEN-APP ;
-
-: TDINIT-SET ( n n -- ) {: fam:n fid:n :}
-   fam fid RES-TRUE TDINIT-PUB-NAME
-   TDINIT-SIG-BEGIN
-   fam TDINIT-H 32 TDGEN-C, fid TDINIT-F
-   s"  -- " TDGEN-APP fam TDINIT-H
-   TDINIT-SIG-END
-   fam fid TFAM-INIT-HELPER$ TDGEN-APP
-   s"  {: " TDGEN-APP
-   fid PF-CELLS@ 0 ?do
-      99 TDGEN-C, i TDGEN-DEC s" :n " TDGEN-APP
-   loop
-   s" :} " TDGEN-APP
-   fam TFAM-INIT-RECEIVER$ TDGEN-APP
-   s"  {: p:ptr b:n :} " TDGEN-APP
-   fid PF-CELLS@ 0 ?do
-      99 TDGEN-C, i TDGEN-DEC s"  p " TDGEN-APP
-      fid PF-BYTE-OFF@ i CELL * + TDGEN-DEC
-      s"  + cell-view ! " TDGEN-APP
-   loop
-   s" p b ;" TDGEN-APP ;
-
-: TDINIT-NAME-PREFLIGHT ( -- )
-   TDGEN-NA @ TDGEN-NU @ TDECL-NAME-PREFLIGHT-XT ;
-
-\ The receiver and helpers are private whatever the family's placement; the
-\ public GET/SET members follow the family (TDINIT-ROW).
-: TDINIT-HELP-NAME-CHECK ( n bool -- ) {: fam:n replay:bool :}
-   replay TDECL-GEN-PRIVATE
-   [: TDINIT-NAME-PREFLIGHT ;] catch {: rc:n :}
-   fam replay TDECL-GEN-RESTORE
-   rc 0 <> IF rc throw THEN ;
-
-: TDINIT-HELP-EVAL ( n -- ) {: fam:n :}
-   RES-FALSE TDECL-GEN-PRIVATE
-   [: TDGEN-BUF TDGEN-U @ TDECL-EVAL-XT TDINIT-MARK-LAST ;] catch {: rc:n :}
-   fam RES-FALSE TDECL-GEN-RESTORE
-   rc 0 <> IF rc throw THEN ;
-
-: TDINIT-HELP-REPLAY ( n -- ) {: fam:n :}
-   RES-TRUE TDECL-GEN-PRIVATE
-   NAV-PAUSE {: on:n new:n :}
-   [: TDGEN-NA @ TDGEN-NU @
-      TDGEN-BUF TDINIT-SIG-OFF @ + TDINIT-SIG-U @ TDINIT-DECLARE ;]
-      catch {: rc:n :}
-   on new NAV-RESUME
-   fam RES-TRUE TDECL-GEN-RESTORE
-   rc 0 <> IF rc throw THEN ;
-
-\ An initialized-field row is generated, so it is declared paused (NAV-PAUSE).
-: TDINIT-REPLAY-ROW ( -- )
-   NAV-PAUSE {: on:n new:n :}
-   [: TDGEN-NA @ TDGEN-NU @
-      TDGEN-BUF TDINIT-SIG-OFF @ + TDINIT-SIG-U @ TDINIT-DECLARE ;]
-      catch {: rc:n :}
-   on new NAV-RESUME
-   rc 0 <> IF rc throw THEN ;
-
-\ Placed as the family's generated words are.
-: TDINIT-ROW ( n bool -- ) {: fam:n replay:bool :}
-   replay IF fam replay [: TDINIT-REPLAY-ROW ;] TDECL-GEN-PLACED EXIT THEN
-   fam replay [: TDGEN-BUF TDGEN-U @ TDECL-EVAL-XT ;] TDECL-GEN-PLACED ;
-
-: TDINIT-PREFLIGHT ( n bool -- ) {: fam:n replay:bool :}
-   fam TDINIT-REQUIRE
+\ Runs XT on each accessor of FAM, with its name, shape and field id.
+: TDINIT-EACH ( n [ ptr u8 n n n -- ] -- ) {: fam:n xt :}
    fam TFAM-FLD-START@ {: fs:n :}
-   fam TDINIT-RECEIVER fam replay TDINIT-HELP-NAME-CHECK
-   TDGEN-NA @ TDGEN-NU @ fam TFAM-FLD-COUNT@ 3 * 1 +
-       TDECL-CAPACITY-PREFLIGHT-XT
-   fs fam TFAM-FLD-COUNT@ + fs ?do
-      fam i TDINIT-HELP fam replay TDINIT-HELP-NAME-CHECK
-      fam i TDINIT-GET fam replay [: TDINIT-NAME-PREFLIGHT ;] TDECL-GEN-PLACED
-      fam i TDINIT-SET fam replay [: TDINIT-NAME-PREFLIGHT ;] TDECL-GEN-PLACED
+   fam TFAM-FLD-COUNT@ 0 ?do
+      fam fs i + RES-FALSE TDINIT-NAME  CHILD-ABI:INIT-GET fs i +  xt execute
+      fam fs i + RES-TRUE TDINIT-NAME  CHILD-ABI:INIT-SET fs i +  xt execute
    loop ;
 
-: TDINIT-GENERATE ( n bool -- ) {: fam:n replay:bool :}
-   fam replay TDINIT-PREFLIGHT
-   fam TFAM-FLD-START@ {: fs:n :}
-   fam TDINIT-RECEIVER
-   replay IF fam TDINIT-HELP-REPLAY ELSE fam TDINIT-HELP-EVAL THEN
-   fs fam TFAM-FLD-COUNT@ + fs ?do
-      fam i TDINIT-HELP
-      replay IF fam TDINIT-HELP-REPLAY ELSE fam TDINIT-HELP-EVAL THEN
-      fam i TDINIT-GET fam replay TDINIT-ROW
-      fam i TDINIT-SET fam replay TDINIT-ROW
-   loop ;
+: TDINIT-FREE ( ptr u8 n n n -- ) {: na:ptr nu:n shape:n param:n :}
+   na nu TDECL-NAME-PREFLIGHT-XT ;
+
+: TDINIT-ROOM ( n -- ) {: fam:n :}
+   fam  fam TFAM-FLD-START@ RES-FALSE TDINIT-NAME
+   fam TFAM-FLD-COUNT@ 2 * TDECL-CAPACITY-PREFLIGHT-XT ;
+
+: TDINIT-CHECK ( n -- n )
+   dup [: TDINIT-FREE ;] TDINIT-EACH
+   dup TDINIT-ROOM ;
+
+: TDINIT-LIVE ( n -- n )
+   TDINIT-CHECK
+   dup [: TDECL-ADDR-MAKE ;] TDINIT-EACH ;
+
+: TDINIT-REPLAY-REG ( n -- n )
+   TDINIT-CHECK
+   dup [: TDECL-ADDR-REG ;] TDINIT-EACH ;
 
 public
 
-: TDECL-INIT-WORDS ( n -- ) RES-FALSE TDINIT-GENERATE ;
-: TDECL-INIT-REPLAY ( n -- ) RES-TRUE TDINIT-GENERATE ;
+: TDECL-INIT-WORDS ( n -- )
+   dup TDINIT-REQUIRE  RES-FALSE [: TDINIT-LIVE ;] TDECL-GEN-PLACED ;
+: TDECL-INIT-REPLAY ( n -- )
+   dup TDINIT-REQUIRE  RES-TRUE [: TDINIT-REPLAY-REG ;] TDECL-GEN-PLACED ;
 
 \ PRODUCT's outer declaration runner arms the same commit participant as
 \ STRUCTURE after its constructors exist; structure-make.f installs the

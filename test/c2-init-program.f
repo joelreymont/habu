@@ -5,6 +5,52 @@ require src/lib/c2-memory.f
 require src/lib/task.f
 require src/lib/test/wait.f
 
+\ A package's own `+`, `@` or `!`, defined before a DERIVE init, captures none
+\ of the accessors it makes: each reads and writes its own field.
+package C2IPCAPA
+: + ( n n -- n ) - ;
+public
+STRUCTURE cp DERIVE init FIELD first n FIELD second n ;STRUCTURE
+private
+undefine +
+: CHANGE ( mut-view<p,i,a,init<i,cp>> -- mut-view<p,i,a,init<i,cp>> )
+   C2IPCAPA-CP:SECOND@ 91 T=  41 C2IPCAPA-CP:SECOND!
+   C2IPCAPA-CP:SECOND@ 41 T=  C2IPCAPA-CP:FIRST@ 23 T= ;
+: BODY ( mut-view<p,l,a,u8> -- mut-view<p,l,a,u8> )
+   23 91 C2IPCAPA-CP:MAKE [: CHANGE ;] C2-MEM:WITH-INIT ;
+public
+: GO ( -- ) 16 MEM:BYTES-ALLOC-LEN [: BODY ;] C2-MEM:WITH-MUT ;
+;package
+
+package C2IPCAPF
+: @ ( ptr n -- n ) drop 7 ;
+public
+STRUCTURE cp DERIVE init FIELD first n FIELD second n ;STRUCTURE
+private
+undefine @
+: CHANGE ( mut-view<p,i,a,init<i,cp>> -- mut-view<p,i,a,init<i,cp>> )
+   C2IPCAPF-CP:SECOND@ 91 T=  C2IPCAPF-CP:FIRST@ 23 T= ;
+: BODY ( mut-view<p,l,a,u8> -- mut-view<p,l,a,u8> )
+   23 91 C2IPCAPF-CP:MAKE [: CHANGE ;] C2-MEM:WITH-INIT ;
+public
+: GO ( -- ) 16 MEM:BYTES-ALLOC-LEN [: BODY ;] C2-MEM:WITH-MUT ;
+;package
+
+package C2IPCAPS
+: ! ( n ptr n -- ) drop drop ;
+public
+STRUCTURE cp DERIVE init FIELD first n FIELD second n ;STRUCTURE
+private
+undefine !
+: CHANGE ( mut-view<p,i,a,init<i,cp>> -- mut-view<p,i,a,init<i,cp>> )
+   41 C2IPCAPS-CP:FIRST!  C2IPCAPS-CP:FIRST@ 41 T=
+   C2IPCAPS-CP:SECOND@ 91 T= ;
+: BODY ( mut-view<p,l,a,u8> -- mut-view<p,l,a,u8> )
+   23 91 C2IPCAPS-CP:MAKE [: CHANGE ;] C2-MEM:WITH-INIT ;
+public
+: GO ( -- ) 16 MEM:BYTES-ALLOC-LEN [: BODY ;] C2-MEM:WITH-MUT ;
+;package
+
 package C2-INIT-PROGRAM
 public
 STRUCTURE c2ipair DERIVE init FIELD first n FIELD second n ;STRUCTURE
@@ -101,6 +147,12 @@ public
    THROW-RESULT TTRUE
    s" task halt drains initialized and allocation frames" T-LABEL
    HALT-RESULT TTRUE
+   s" a package's own + captures no accessor" T-LABEL
+   C2IPCAPA:GO
+   s" a package's own @ captures no getter" T-LABEL
+   C2IPCAPF:GO
+   s" a package's own ! captures no setter" T-LABEL
+   C2IPCAPS:GO
    T-REPORT
    s" c2-init-program: ok" type cr ;
 

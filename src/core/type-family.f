@@ -1103,11 +1103,11 @@ public
 
 \ The longest family, variant or field name is the longest package name
 \ (PACKAGE-PATH:CAP - 1), so every derived spelling fits TF-CTOR-BUF: at most
-\ 2*255 + 1 + 2*255 = 1021 bytes escaped, 255 + 1 + 255 + 12 for a private
-\ member. sumtype.f, structure-decl.f and enum-decl.f refuse a longer name with
-\ E-TDECL-CAP and TF-NAME-LONG$'s reason, and ARENA (arena.f) runs STRUCTURE's
-\ gate on its name first; the dies in `TF-CTOR-C,` and TFAM-INIT-MEMBER$ guard
-\ only that arithmetic.
+\ 2*255 + 1 + 2*255 = 1021 bytes escaped, 255 + 1 + 255 + 1 for a private
+\ initialized member. sumtype.f, structure-decl.f and enum-decl.f refuse a
+\ longer name with E-TDECL-CAP and TF-NAME-LONG$'s reason, and ARENA (arena.f)
+\ runs STRUCTURE's gate on its name first; the dies in `TF-CTOR-C,` and
+\ TFAM-INIT-MEMBER$ guard only that arithmetic.
 PACKAGE-PATH:CAP 1 - constant TF-NAME-MAX
 
 \ The reason refusing a name longer than TF-NAME-MAX. It is static text: no
@@ -2607,6 +2607,7 @@ public
 : SCHEMA@ ( n -- n ) PF-SCH@ ;
 : BYTE-OFF@ ( n -- n ) PF-BYTE-OFF@ ;
 : BYTES@ ( n -- n ) PF-BYTES@ ;
+: CELLS@ ( n -- n ) PF-CELLS@ ;
 : FLAGS@ ( n -- n ) PF-FLAGS@ ;
 
 seal-package
@@ -2715,18 +2716,6 @@ public
    store IF 33 ELSE 64 THEN TF-INIT-TAIL u + c!
    TF-INIT-TAIL u 1 + ;
 
-\ The helper lives in the declaring package's private wordlist even when the
-\ record and its accessor are public. This spelling is shared with the
-\ generated-name protection predicate below.
-: TFAM-INIT-HELPER$ ( n n -- ptr u8 n ) {: fam:n fid:n :}
-   fam TFAM-NAME$ fid PF-NAME$ TF-CTOR-PRIV$ 2drop
-   s" -INIT-UNPACK" TF-CTOR-TAIL
-   TF-CTOR-BUF TF-CTOR-U @ ;
-
-: TFAM-INIT-RECEIVER$ ( n -- ptr u8 n ) {: fam:n :}
-   fam TFAM-NAME$ s" init-view-unpack" TF-CTOR-PRIV$ 2drop
-   TF-CTOR-BUF TF-CTOR-U @ ;
-
 private
 
 : TFAM-INIT-TAIL? ( ptr u8 n n -- bool ) {: a:ptr u:n fam:n :}
@@ -2751,12 +2740,10 @@ private
    fam TFAM-DERIVE-INIT? 0= IF RES-FALSE EXIT THEN
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF RES-FALSE EXIT THEN
    CHECKER-AUTH-PACKAGE$ fam TFAM-PKG-MATCH? 0= IF RES-FALSE EXIT THEN
-   a u fam TFAM-INIT-RECEIVER$ CORE-STR=CI IF RES-TRUE EXIT THEN
    fam TFAM-FLD-START@ {: fs:n :}
    fam TFAM-FLD-COUNT@ 0 ?do
       fs i + {: fid:n :}
       fid PF-N@ < IF
-         a u fam fid TFAM-INIT-HELPER$ CORE-STR=CI IF RES-TRUE unloop EXIT THEN
          fam TFAM-GEN-PUBLIC? 0= IF
             a u fam TFAM-NAME$ fid RES-FALSE TFAM-INIT-MEMBER$
                TF-CTOR-PRIV$ CORE-STR=CI IF RES-TRUE unloop EXIT THEN
@@ -4374,15 +4361,17 @@ TFAM-MEMBERS-INSTALL
    index TFAM-DECL-PARAM>CHAR 0= IF drop EXIT THEN
    97 - cells NMAP + id swap ! ;
 
-\ A fresh variable for parameter INDEX of FAM, lettered and kinded as a
-\ signature letters and kinds the parameter it spells there.
-: FRESH-PARAM ( n n -- n ) {: fam:n index:n :}
+\ A fresh variable for parameter INDEX of FAM, kinded as a signature kinds the
+\ parameter it spells there and lettered as signature parameter LETTER.
+: FRESH-LETTERED ( n n n -- n ) {: fam:n index:n letter:n :}
    FRESH {: id:n :}
-   id index FRESH-LETTER
+   id letter FRESH-LETTER
    fam index TFAM-PK@ {: pk:n :}
    pk PK-SCOPE = IF id TVK-SCOPE! THEN
    pk PK-REGION = IF id TVK-REGION! THEN
    id MK-VAR ;
+
+: FRESH-PARAM ( n n -- n ) dup FRESH-LETTERED ;
 
 public
 
@@ -4421,6 +4410,33 @@ private
    term MK-PTR base MK-PUSH  CC-N MK-CON swap MK-PUSH
    term MK-PTR base MK-PUSH
    fam TFAM-SLOTS@ CELL * ;
+
+\ An initialized record's receiver over the family term TERM of arity AR,
+\ `mut-view<p,q,a,init<i,TERM>>`, its variables lettered after TERM's.
+: INIT-RECEIVER ( n n -- n ) {: term:n ar:n :}
+   C2-INIT-FAM @ 0 ar 3 + FRESH-LETTERED {: scope:n :}
+   PARAM-SCR-N @ {: base:n :}
+   scope PARAM-SCR+ term PARAM-SCR+
+   base s" init" C2-INIT-FAM @ MK-PARAM {: elem:n :}
+   PARAM-SCR-N @ {: vbase:n :}
+   3 0 ?do C2-MUT-FAM @ i ar i + FRESH-LETTERED PARAM-SCR+ loop
+   elem PARAM-SCR+
+   vbase s" mut-view" C2-MUT-FAM @ MK-PARAM ;
+
+\ An initialized field accessor's rows and field id, from its shape and the
+\ committed field id FID: INIT-GET takes the receiver and answers it and the
+\ field's T over the family's arguments; INIT-SET takes both and answers the
+\ receiver.
+: TFAM-INIT-ROWS ( n n -- n n n ) {: shape:n fid:n :}
+   fid TYPE-FIELD:FAMILY@ {: fam:n :}
+   fam TFAM-FRESH-TERM {: term:n :}
+   term TFC-ARGS!
+   fid TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ RES-FALSE TFC-SCH-TERM {: ft:n :}
+   term fam TFAM-ARITY@ INIT-RECEIVER {: view:n :}
+   view FRESH MK-ROW PUSH-LOGICAL {: bare:n :}
+   ft bare PUSH-LOGICAL {: full:n :}
+   shape CHILD-ABI:INIT-GET = IF bare full ELSE full bare THEN
+   fid ;
 
 \ A value child's rows: it answers its number, `( -- n )`.
 : VALUE-ROWS ( n -- n n n ) {: v:n :}
@@ -4486,6 +4502,8 @@ public
    shape CHILD-ABI:FIELD = IF param TFAM-FIELD-ROWS EXIT THEN
    shape CHILD-ABI:INDEX = IF param TFAM-AT-ROWS EXIT THEN
    shape CHILD-ABI:VALUE = IF param VALUE-ROWS EXIT THEN
+   shape CHILD-ABI:INIT-GET = IF shape param TFAM-INIT-ROWS EXIT THEN
+   shape CHILD-ABI:INIT-SET = IF shape param TFAM-INIT-ROWS EXIT THEN
    shape COMPANION? IF shape COMPANION-ROWS EXIT THEN
    shape param OFFSET-ROWS ;
 
