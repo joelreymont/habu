@@ -85,7 +85,10 @@ s" AW drop" UCE-CATCH E-REJECT T=
 s" using UA using UC AW drop ;using ;using" UCE-CATCH E-AMBIGUOUS T=
 \ ambiguous in a compiled body: the checker refuses it (checker.f LIVE-BIND)
 s" using UA using UC : UT-AMB ( -- n ) AW ; ;using ;using" UCE-CATCH E-USING-AMBIGUOUS T=
-s" using UA using UC : UT-AMB2 ( -- n ) AW ; ;using ;using" VS-CATCH E-USING-AMBIGUOUS T=
+REJECTION:CAPTURE
+s" using UA using UC : UT-AMB2 ( -- n ) AW ; ;using ;using" VS-CATCH E-REJECT T=
+REJECTION:BUFFER$ s" error[E-USING-AMBIGUOUS]" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" `AW`" CONTAINS? TTRUE  REJECTION:BUFFER-OFF
 \ a top-level `target` where a word of that name is in scope, and where none is
 s" package UT-CLASH : TARGET ( -- ) ; target ;package" VS-CATCH VERIFY:E-SECTION-WORD T=
 s" package UT-SECT : UT-SECT-W ( -- ) ; target ;package" VS-CATCH 0 T=

@@ -29,18 +29,24 @@ STRUCTURE wide FIELD lo n FIELD hi n ;STRUCTURE
 ;package
 
 \ Evaluates one declaration through the engine's `cast:` keyword and the live
-\ checker; the answer is the E-CAST-* code a refusal threw, or 0 when the cast
-\ was published.
-\ Each case evaluates the production `cast:` keyword as source; a refusal throws
-\ its named code and leaves no name behind.
+\ checker; the answer is the status a rejection stopped with, its record left
+\ in the capture, or 0 when the cast was published. A rejection leaves no name
+\ behind.
 package CN-RUN
 public
 TYPED-VARIABLE SRC-A ptr u8
 variable SRC-U
 : EVAL ( -- ) SRC-A @ SRC-U @ INCLUDE-EVALUATE ;
-: DECL ( ptr u8 n -- n )               \ ( decl-source -- thrown-code | 0 )
+: DECL ( ptr u8 n -- n )               \ ( decl-source -- status | 0 )
    SRC-U !  SRC-A !
+   REJECTION:CAPTURE
    [: EVAL ;] catch ;
+\ The status was the checker's and the captured record carries the code and
+\ the word.
+: REJECTS ( n ptr u8 n ptr u8 n -- ) {: rc:n c:ptr cu:n w:ptr wu:n :}
+   rc CHECKER-REJECT-RC T=
+   REJECTION:BUFFER$ c cu CONTAINS? TTRUE
+   REJECTION:BUFFER$ w wu CONTAINS? TTRUE ;
 ;package
 \ arity: more than one input, or more than one output term.
 s" cast: CNA1 ( n n -- CN:cnfam )"              CN-RUN:DECL E-CAST-ARITY T=
@@ -85,17 +91,17 @@ s" cast: CNWD12 ( ptr [ n -- ] -- ptr [ xt -- ] )"        CN-RUN:DECL E-CAST-CLA
 s" cast: CNWD13 ( ptr [ -- xt ] -- ptr [ -- n ] )"        CN-RUN:DECL E-CAST-CLASS T=
 ;package
 \ undeclared family in the signature.
-s" cast: CNF1 ( n -- neverdecl )"    CN-RUN:DECL E-CAST-FAM T=
+s" cast: CNF1 ( n -- neverdecl )"    CN-RUN:DECL s" error[E-CAST-FAM]" s" `neverdecl`" CN-RUN:REJECTS
 \ A family applied to the wrong number of arguments is malformed the same way:
 \ the declaration is refused by name, not by a later death.
-s" cast: CNF2 ( n -- cnpbox )"       CN-RUN:DECL E-CAST-FAM T=
-s" cast: CNF3 ( n -- ptr cnpbox )"   CN-RUN:DECL E-CAST-FAM T=
-s" cast: CNF4 ( cnpbox<n,n> -- n )"  CN-RUN:DECL E-CAST-FAM T=
+s" cast: CNF2 ( n -- cnpbox )"       CN-RUN:DECL s" error[E-CAST-FAM]" s" `cnpbox`" CN-RUN:REJECTS
+s" cast: CNF3 ( n -- ptr cnpbox )"   CN-RUN:DECL s" error[E-CAST-FAM]" s" `cnpbox`" CN-RUN:REJECTS
+s" cast: CNF4 ( cnpbox<n,n> -- n )"  CN-RUN:DECL s" error[E-CAST-FAM]" s" `cnpbox`" CN-RUN:REJECTS
 \ Any other signature fault, here a bare `ptr`, is refused before a walk reads
 \ the row, as a stored signature that does not parse is. The first fault names
 \ the class, so CNB1's wrong-arity `cnpbox` never reaches a walk.
-s" cast: CNB1 ( ptr -- cnpbox )"     CN-RUN:DECL E-BAD-STORED-SIGNATURE T=
-s" cast: CNB2 ( n -- ptr )"          CN-RUN:DECL E-BAD-STORED-SIGNATURE T=
+s" cast: CNB1 ( ptr -- cnpbox )"     CN-RUN:DECL s" error[E-BAD-STORED-SIGNATURE]" s" `CNB1`" CN-RUN:REJECTS
+s" cast: CNB2 ( n -- ptr )"          CN-RUN:DECL s" error[E-BAD-STORED-SIGNATURE]" s" `CNB2`" CN-RUN:REJECTS
 \ Neither direction, linear-to-linear, nor transitive containment may cross
 \ CAST:, even when both sides occupy one machine cell.
 s" cast: CNL1 ( n -- CAST-NEG:lease )" CN-RUN:DECL E-CAST-LINEAR T=
@@ -344,7 +350,7 @@ s" cast: CNSA0 ( n -- CN-SPOOF-A:spoof )" CN-RUN:DECL 0 T=
 CHECKER-END-PACKAGE
 ;package
 package CN-SPOOF-B
-s" cast: CNSB1 ( n -- CN-SPOOF-B:spoof )" CN-RUN:DECL E-CAST-FAM T=
+s" cast: CNSB1 ( n -- CN-SPOOF-B:spoof )" CN-RUN:DECL s" error[E-CAST-FAM]" s" `CN-SPOOF-B:spoof`" CN-RUN:REJECTS
 ;package
 
 \ Visibility comes from the real current WID. A mirror-public declaration in a
@@ -357,8 +363,8 @@ s" cast: CNVP0 ( n -- hidden )" CN-RUN:DECL 0 T=
 CHECKER-END-PACKAGE
 ;package
 package CN-VIS-FOREIGN
-s" cast: CNVP1 ( n -- CN-VIS-PRI:hidden )" CN-RUN:DECL E-CAST-FAM T=
-s" cast: CNVP2 ( n -- hidden )" CN-RUN:DECL E-CAST-FAM T=
+s" cast: CNVP1 ( n -- CN-VIS-PRI:hidden )" CN-RUN:DECL s" error[E-CAST-FAM]" s" `CN-VIS-PRI:hidden`" CN-RUN:REJECTS
+s" cast: CNVP2 ( n -- hidden )" CN-RUN:DECL s" error[E-CAST-FAM]" s" `hidden`" CN-RUN:REJECTS
 ;package
 
 \ A mirror-private declaration in a public engine section stays public: foreign
@@ -413,11 +419,13 @@ public
 ;package
 
 ' CN-CAST-TEST:CN-VRF-VERIFY catch 0 T=
-s" cast: CNVR0 ( n -- CN-VRF:vfam )" CN-RUN:DECL E-CAST-FAM T=
+s" cast: CNVR0 ( n -- CN-VRF:vfam )" CN-RUN:DECL s" error[E-CAST-FAM]" s" `CN-VRF:vfam`" CN-RUN:REJECTS
 ' CN-CAST-TEST:CN-VRF-MINT catch 0 T=
-' CN-CAST-TEST:CN-VRF-PUBMINT catch E-CAST-MINT T=
+REJECTION:CAPTURE ' CN-CAST-TEST:CN-VRF-PUBMINT catch
+   s" error[E-CAST-MINT]" s" `cast: CVP0`" CN-RUN:REJECTS
 
-' CN-CAST-TEST:CN-VRF-FAIL catch 7102 T=
+REJECTION:CAPTURE ' CN-CAST-TEST:CN-VRF-FAIL catch
+   s" error[E-BAD-DECLARATION]" s" `efam`" CN-RUN:REJECTS
 package CN-VRF-LIVE
 NEWTYPE live
 s" CN-VRF-POISON" CHECKER-PACKAGE
@@ -453,45 +461,52 @@ variable ERR-U
      timeout OF src u OUT outu LEN>N ERR erru LEN>N SUBJECT:TIMED-OUT ENDOF
    ;MATCH ;
 : ERR$ ( -- ptr u8 n ) ERR ERR-U @ ;
+\ The child's record carries the code and the word.
+: SAYS ( ptr u8 n ptr u8 n -- ) {: c:ptr cu:n w:ptr wu:n :}
+   ERR$ c cu CONTAINS? TTRUE
+   ERR$ w wu CONTAINS? TTRUE ;
 ;package
+
+\ A forked child keeps the capture, so records go to stderr again for ERR$.
+REJECTION:BUFFER-OFF
 
 \ A cast's record carries its certified minimum input arity, so a bare call at
 \ an empty interpret stack is refused by name instead of reading the cell below
 \ the base. The cast's publish tail pokes the bits; this case is the one that
 \ notices that step missing (measured).
 s" NEWTYPE cnmrole  cast: >CNMROLE ( n -- cnmrole )  >CNMROLE" CN-CHILD:RUN CN-CHILD:UNDEF-RC T=
-CN-CHILD:ERR$ s" interpret stack underdepth: >CNMROLE" CONTAINS? TTRUE
+s" error[E-UNDERFLOW]" s" `>CNMROLE`" CN-CHILD:SAYS
 
 \ The trailing `;` of the retired spelling ends no definition.
 s" cast: CNZ1 ( n -- n ) ;" CN-CHILD:RUN CN-CHILD:UNDEF-RC T=
-CN-CHILD:ERR$ s" ; with no definition open" CONTAINS? TTRUE
+s" error[E-NO-DEFINITION]" s" `;`" CN-CHILD:SAYS
 \ A reader keyword that needs a name and reaches the end of its stream fails
 \ closed, and says which keyword and where.
 s" cast:" CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
-CN-CHILD:ERR$ s" cast: missing name after" CONTAINS? TTRUE
+s" error[E-MISSING-NAME]" s" `cast:`" CN-CHILD:SAYS
 
 \ Required reader operands fail before stale token bytes can be consumed.
 \ These are child checks because the reader exits after its diagnostic.
 s" create"   CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
-CN-CHILD:ERR$ s" reader keyword needs a name: create" CONTAINS? TTRUE
+s" error[E-MISSING-NAME]" s" `create`" CN-CHILD:SAYS
 s" trusted:" CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
-CN-CHILD:ERR$ s" reader keyword needs a name: trusted:" CONTAINS? TTRUE
+s" error[E-MISSING-NAME]" s" `trusted:`" CN-CHILD:SAYS
 s" variable" CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
 \ `variable` shares the CREATE emitter, so its stable diagnostic names the
 \ implementation keyword that owns the common name reader.
-CN-CHILD:ERR$ s" reader keyword needs a name: create" CONTAINS? TTRUE
+s" error[E-MISSING-NAME]" s" `create`" CN-CHILD:SAYS
 s" constant" CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
-CN-CHILD:ERR$ s" reader keyword needs a name: constant" CONTAINS? TTRUE
+s" error[E-MISSING-NAME]" s" `constant`" CN-CHILD:SAYS
 s" char"     CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
-CN-CHILD:ERR$ s" reader keyword needs a name: char" CONTAINS? TTRUE
+s" error[E-MISSING-NAME]" s" `char`" CN-CHILD:SAYS
 \ The interpreter reads a whole definition before it binds the body's tokens,
 \ so at EOF this unfinished one is refused before [char] or ['] reads an operand.
 s" : x [char]" CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
-CN-CHILD:ERR$ s" source ended inside definition: x" CONTAINS? TTRUE
+s" error[E-VS-UNTERMINATED-DEFINITION]" s" `x`" CN-CHILD:SAYS
 s" '"        CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
-CN-CHILD:ERR$ s" reader keyword needs a name: '" CONTAINS? TTRUE
+s" error[E-MISSING-NAME]" s" `'`" CN-CHILD:SAYS
 s" : x [']"   CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
-CN-CHILD:ERR$ s" source ended inside definition: x" CONTAINS? TTRUE
+s" error[E-VS-UNTERMINATED-DEFINITION]" s" `x`" CN-CHILD:SAYS
 package CN
 
 \ the cast: declarer used inside a checked body is rejected unsafe (verdict 0);

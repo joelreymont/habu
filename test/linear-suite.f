@@ -31,7 +31,8 @@ NEWTYPE ofam
 DEFLINEAR lin-free
 
 \ The engine reads the text as it reads a file, so a `linear:` row meets the
-\ live keyword and checker. DECL answers the code a refusal threw, or 0.
+\ live keyword and checker. DECL answers the status a rejection stopped with,
+\ its record left in the capture, or 0.
 package LIN-RUN
 public
 TYPED-VARIABLE SRC-A ptr u8
@@ -39,7 +40,14 @@ variable SRC-U
 : EVAL ( -- ) SRC-A @ SRC-U @ INCLUDE-EVALUATE ;
 : DECL ( ptr u8 n -- n )
    SRC-U !  SRC-A !
+   REJECTION:CAPTURE
    [: EVAL ;] catch ;
+\ The status was the checker's and the captured record carries the code and
+\ the word.
+: REJECTS ( n ptr u8 n ptr u8 n -- ) {: rc:n c:ptr cu:n w:ptr wu:n :}
+   rc CHECKER-REJECT-RC T=
+   REJECTION:BUFFER$ c cu CONTAINS? TTRUE
+   REJECTION:BUFFER$ w wu CONTAINS? TTRUE ;
 ;package
 
 T-RESET
@@ -89,7 +97,8 @@ s" LINEAR: LP10 ( [ -- ] -- LIN-OWN:tok )"         LIN-RUN:DECL E-LINEAR-PAYLOAD
 s" the shapes cast: refuses" T-LABEL
 s" LINEAR: LA1 ( n n -- LIN-OWN:tok )"             LIN-RUN:DECL E-CAST-ARITY T=
 s" LINEAR: LA2 ( -- LIN-OWN:tok )"                 LIN-RUN:DECL E-CAST-ARITY T=
-s" LINEAR: LA3 ( n -- neverdecl )"                 LIN-RUN:DECL E-CAST-FAM T=
+s" LINEAR: LA3 ( n -- neverdecl )"                 LIN-RUN:DECL
+   s" error[E-CAST-FAM]" s" `neverdecl`" LIN-RUN:REJECTS
 \ An output scope variable no input supplies is a bad signature here: only a
 \ cast: view pack leaves that fault to its scope rule.
 s" LINEAR: LA4 ( n -- read-view<p,q,u8> )"         LIN-RUN:DECL E-BAD-STORED-SIGNATURE T=
@@ -173,16 +182,18 @@ public
 s" the pre-pass certifies a row in the owner and its checked caller" T-LABEL
 ' LIN-VRF:OWNED catch 0 T=
 s" and refuses a public row, a foreign owner and a row with no token" T-LABEL
-' LIN-VRF:IN-PUBLIC catch E-LINEAR-SCOPE T=
-' LIN-VRF:FOREIGN catch E-LINEAR-OWNER T=
-' LIN-VRF:NO-TOKEN catch E-LINEAR-PAYLOAD T=
-' LIN-VRF:QUALIFIED catch E-LINEAR-SCOPE T=
-' LIN-VRF:DISTINCT-TAILS catch E-CAST-ARITY T=
+REJECTION:CAPTURE ' LIN-VRF:IN-PUBLIC catch s" error[E-LINEAR-SCOPE]" s" `linear: WM`" LIN-RUN:REJECTS
+REJECTION:CAPTURE ' LIN-VRF:FOREIGN catch s" error[E-LINEAR-OWNER]" s" `linear: YM`" LIN-RUN:REJECTS
+REJECTION:CAPTURE ' LIN-VRF:NO-TOKEN catch s" error[E-LINEAR-PAYLOAD]" s" `linear: ZM`" LIN-RUN:REJECTS
+REJECTION:CAPTURE ' LIN-VRF:QUALIFIED catch s" error[E-LINEAR-SCOPE]" s" `linear: LV-F:QM`" LIN-RUN:REJECTS
+REJECTION:CAPTURE ' LIN-VRF:DISTINCT-TAILS catch s" error[E-CAST-ARITY]" s" `linear: TM`" LIN-RUN:REJECTS
 ' LIN-VRF:SAME-TAIL catch 0 T=
-' LIN-VRF:CAST-TAIL catch E-CAST-ARITY T=
+REJECTION:CAPTURE ' LIN-VRF:CAST-TAIL catch s" error[E-CAST-ARITY]" s" `cast: LV-BAD-TAIL`" LIN-RUN:REJECTS
 
 \ ---- what the engine itself refuses at top level --------------------------------
-\ The reader exits after these diagnostics, so each runs in a child.
+\ The reader exits after these diagnostics, so each runs in a child. A forked
+\ child keeps the capture, so records go to stderr again for ERR$.
+REJECTION:BUFFER-OFF
 package LIN-CHILD
 public
 $400 constant CAP
@@ -199,14 +210,18 @@ variable ERR-U
      timeout OF src u OUT outu LEN>N ERR erru LEN>N SUBJECT:TIMED-OUT ENDOF
    ;MATCH ;
 : ERR$ ( -- ptr u8 n ) ERR ERR-U @ ;
+\ The child's record carries the code and the word.
+: SAYS ( ptr u8 n ptr u8 n -- ) {: c:ptr cu:n w:ptr wu:n :}
+   ERR$ c cu CONTAINS? TTRUE
+   ERR$ w wu CONTAINS? TTRUE ;
 ;package
 s" the keyword with nothing after it names itself" T-LABEL
 s" linear:" LIN-CHILD:RUN $4A T=
-LIN-CHILD:ERR$ s" reader keyword needs a name: linear:" CONTAINS? TTRUE
+s" error[E-MISSING-NAME]" s" `linear:`" LIN-CHILD:SAYS
 s" a row's bare call at an empty stack is refused by name" T-LABEL
 s" package LCH public DEFLINEAR LCH:tok ;package package LCH LINEAR: LCM ( n -- LCH:tok ) LCM"
    LIN-CHILD:RUN 70 T=
-LIN-CHILD:ERR$ s" interpret stack underdepth: LCM" CONTAINS? TTRUE
+s" error[E-UNDERFLOW]" s" `LCM`" LIN-CHILD:SAYS
 
 \ ---- tools/check.f, an hb built with --repl and a built program -----------------
 package LIN-FILES
@@ -427,20 +442,20 @@ SLOTS TYPED-BUFFER KEPT-NS n
    s" and refuses a row in a public section by its code" T-LABEL
    BAD-FIXTURE s" lin-bad.f" CHECK
    RC @ 70 T=
-   ERR$ S\" \"code\":\"E-LINEAR-SCOPE\",\"repair_class\":\"fix_cast_declaration\"" CONTAINS? TTRUE
-   ERR$ S\" \"token\":\"MINT\",\"reason\":\"the row is outside its owner's private section\"" CONTAINS? TTRUE
+   ERR$ S\" \"code\":\"E-LINEAR-SCOPE\"" CONTAINS? TTRUE
+   ERR$ S\" \"message\":\"in `linear: MINT`, the row is outside its owner's private section\"" CONTAINS? TTRUE
    ERR$ S\" lin-bad.f\",\"line\":4," CONTAINS? TTRUE
    s" and refuses a qualified public destination" T-LABEL
    QUAL-FIXTURE s" lin-qual.f" CHECK
    RC @ 70 T=
-   ERR$ S\" \"code\":\"E-LINEAR-SCOPE\",\"repair_class\":\"fix_cast_declaration\"" CONTAINS? TTRUE
-   ERR$ S\" \"token\":\"LIN-FQ:MINT\",\"reason\":\"a qualified name publishes past the private section\"" CONTAINS? TTRUE
+   ERR$ S\" \"code\":\"E-LINEAR-SCOPE\"" CONTAINS? TTRUE
+   ERR$ S\" \"message\":\"in `linear: LIN-FQ:MINT`, a qualified name publishes past the private section\"" CONTAINS? TTRUE
    ERR$ S\" lin-qual.f\",\"line\":6," CONTAINS? TTRUE
    s" and refuses an identity whose stack tails differ" T-LABEL
    TAIL-FIXTURE s" lin-tail.f" CHECK
    RC @ 70 T=
-   ERR$ S\" \"code\":\"E-CAST-ARITY\",\"repair_class\":\"fix_cast_declaration\"" CONTAINS? TTRUE
-   ERR$ S\" \"token\":\"MINT\",\"reason\":\"the input and output rows end in different tails\"" CONTAINS? TTRUE
+   ERR$ S\" \"code\":\"E-CAST-ARITY\"" CONTAINS? TTRUE
+   ERR$ S\" \"message\":\"in `linear: MINT`, the input and output rows end in different tails\"" CONTAINS? TTRUE
    ERR$ S\" lin-tail.f\",\"line\":6," CONTAINS? TTRUE
    s" an hb built with --repl keeps the owner of a type in its grown table" T-LABEL
    SAVE
@@ -449,7 +464,7 @@ SLOTS TYPED-BUFFER KEPT-NS n
    s" so it knows its source, its reopened owner mints and erases, and another package may not" T-LABEL
    REOPEN
    OUT$ s\" 42\n" CONTAINS? TTRUE
-   ERR$ S\" E-LINEAR-OWNER habu: linear: 'XM': the linear type belongs to package 'LIM'\nhb: uncaught throw code 7196\n" CONTAINS? TTRUE
+   ERR$ s" error[E-LINEAR-OWNER]: in `linear: XM`, the linear type belongs to package `LIM`" CONTAINS? TTRUE
    RC @ 70 T=
    s" a build compiles a linear type its own file and another file name" T-LABEL
    LINK-SOURCES
@@ -474,11 +489,11 @@ SLOTS TYPED-BUFFER KEPT-NS n
    TWICE-SOURCE
    s" lb-twice.f" s" twice-objs" LINK-BUILD
    RC @  dup 0 T<>
-   ERR$ s" checker: bad or duplicate signature type" CONTAINS? TTRUE
+   ERR$ s" error[E-BAD-DECLARATION]: `DEFLINEAR LB:tok`" CONTAINS? TTRUE
    s" /lb-own.f.hfo" 0 KEEP
    s" lb-twice.f" s" twice-objs" LINK-BUILD
    RC @ T=
-   ERR$ s" checker: bad or duplicate signature type" CONTAINS? TTRUE
+   ERR$ s" error[E-BAD-DECLARATION]: `DEFLINEAR LB:tok`" CONTAINS? TTRUE
    s" and the second build links the file's first load" 0 LINKED
    FS:CLEANUP-RUN ;
 
