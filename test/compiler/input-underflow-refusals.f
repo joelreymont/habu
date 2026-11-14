@@ -208,13 +208,13 @@ private
    s" a -- a" DECLARED?
    DISARM ;
 
-\ A quotation's own rows hold no cells; the record names them, in the
-\ renderer's letters, where the signature wrote R and S.
+\ A quotation's own rows hold no cells; the record names them as the
+\ signature wrote them.
 : CASE-DECLARED-QUOTATION-ROWS ( -- )
    s" a quotation's own rows stay named in the declared effect" T-LABEL
    ARM
    [: s" : IUF-QROW ( [ R -- S ] -- [ R -- S ] ) swap ;" evaluate-closed ;] CHECK-RC TTHROWSQ
-   s" [ A -- B ] -- [ A -- B ]" DECLARED?
+   s" [ R -- S ] -- [ R -- S ]" DECLARED?
    DISARM ;
 
 \ A fresh name is one identity per spelling in a signature, so the record
@@ -226,13 +226,12 @@ private
    s" n -- fresh-region-a" DECLARED?
    DISARM ;
 
-\ A quantifier after a free variable takes the next letter in both passes, not
-\ the variable's.
+\ A quantifier after a free variable keeps the name the signature gave it.
 : CASE-DECLARED-BINDER ( -- )
    s" a quantifier keeps its own name in the declared effect" T-LABEL
    ARM
    [: s" : IUF-FORALL ( a forall<p,[ read-view<p,p,u8> -- ]> -- a ) drop drop drop ;" evaluate-closed ;] CHECK-RC TTHROWSQ
-   s" a forall<b,[ read-view<b,b,u8> -- ]> -- a" DECLARED?
+   s" a forall<p,[ read-view<p,p,u8> -- ]> -- a" DECLARED?
    DISARM ;
 
 \ A does> clause declares its own signature, not the created word's runtime

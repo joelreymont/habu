@@ -562,7 +562,7 @@ variable DEEP-U
 \ missing directory; the parent's mode comes back even when the run throws, so
 \ the cleanup can remove the tree.
 : CD-LOCKED ( -- )
-   s" CD to a directory behind an unsearchable parent is refused by name" T-LABEL
+   s" CD to a directory behind an unsearchable parent is rejected by name" T-LABEL
    s" locked" A$ NO-ACCESS FS:CHMOD-MODE
    s" locked/inner" CD-PROG
    [: RUN-TREE ;] [: s" locked" A$ MODE-DIR FS:CHMOD-MODE ;] finally
@@ -579,7 +579,7 @@ variable DEEP-U
 \ Each step is one prompt line, so the path grows past the cap only by joining.
 \ The first DEEP-LEVELS steps reach existing paths that fit; the next is over.
 : CD-TOO-LONG ( -- )
-   s" a current path longer than a loader path is refused by name" T-LABEL
+   s" a current path longer than a loader path is rejected by name" T-LABEL
    PROG-RESET s" SOURCE-ROOT:CD" s" deep" PATH-LINE
    DEEP-LEVELS 1+ 0 do SB-RESET s" SOURCE-ROOT:CD " SB-APPEND LONG LONG-NAME SB-APPEND SB$ PLINE loop
    RUN-TREE
@@ -632,7 +632,7 @@ variable DEEP-U
    s" ;using" PLINE
    RUN-TREE
    SB-RESET s" cd/sub" A$ LINE s" cd" A$ LINE FOREIGN$ LINE SB$ 0 EXPECT
-   s" POPPATH on an empty stack is refused by name" T-LABEL
+   s" POPPATH on an empty stack is rejected by name" T-LABEL
    PROG-RESET s" SOURCE-ROOT:POPPATH" PLINE
    RUN-TREE
    s" error[E-SOURCE-ROOT]" REJECTED
@@ -649,10 +649,10 @@ variable DEEP-U
    s" SOURCE-ROOT:CD" PLINE
    RUN-TREE
    SB-RESET s" from cd" LINE s" cd/sub" A$ LINE SB$ 0 EXPECT
-   s" CD to a missing directory is refused by name" s" absent"
+   s" CD to a missing directory is rejected by name" s" absent"
    s" does not resolve to a directory" CD-REFUSED
    CD-LOCKED
-   s" CD to a file is refused by name" s" cd/x.f"
+   s" CD to a file is rejected by name" s" cd/x.f"
    s" is not a directory this process can search" CD-REFUSED
    CD-SEARCH-ONLY CD-TOO-LONG PATH-IN-LOAD PATH-IN-ROOT PATH-STACK ;
 

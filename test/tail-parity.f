@@ -21,23 +21,16 @@ variable SAVED-RC
    src dst u BYTE-COPY
    u used ! ;
 
-\ Past a leading absolute `<path>:<line>: ` or `<path>: `; prose has no
-\ leading `/`, so text without one is returned whole.
-: PAST-PATH ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   a u s" /" STARTS-WITH? if
-      a u s" : " FIND-SUB MATCH option
-        none OF a u ENDOF
-        some OF IDX>N 2 + {: at:n :} a at + u at - ENDOF
-      ;MATCH
-   else a u then ;
-
-\ A refusal split at ` habu: `: the class before it and the text after its
-\ location; with no ` habu: ` the whole is the class.
+\ A record split at its place line ` --> file:L:C`: the text before it and
+\ the text after it; with no place line the whole is the head.
 : UNLOCATED ( ptr u8 n -- ptr u8 n ptr u8 n ) {: a:ptr u:n :}
-   a u s"  habu: " FIND-SUB MATCH option
+   a u s"  --> " FIND-SUB MATCH option
      none OF a u a 0 ENDOF
      some OF IDX>N {: at:n :}
-        a at  a at + 7 +  u at - 7 -  PAST-PATH ENDOF
+        a at + u at - 10 INDEX-OF MATCH option
+          none OF a at a 0 ENDOF
+          some OF IDX>N 1 + at + {: end:n :} a at  a end +  u end - ENDOF
+        ;MATCH ENDOF
    ;MATCH ;
 
 \ Short of a trailing ` lr <16 hex>` and newline: a kernel exit line ends in
@@ -61,16 +54,16 @@ public
    out outu SAVED-OUT SAVED-OUT-U @ T$=
    err erru PAST-LR SAVED-ERR SAVED-ERR-U @ PAST-LR T$= ;
 
-\ As SAME, but stderr's location may differ: a run names the file it reads
-\ and line, the file with no line, or nothing.
+\ As SAME, but stderr's place line may differ: a run names the file it reads
+\ or `<input>`.
 : SAME-UNLOCATED ( ptr u8 n ptr u8 n n -- )
    {: out:ptr outu:n err:ptr erru:n rc:n :}
    rc SAVED-RC @ T=
    out outu SAVED-OUT SAVED-OUT-U @ T$=
-   err erru UNLOCATED {: cls:ptr cu:n tail:ptr tu:n :}
+   err erru UNLOCATED {: head:ptr hu:n tail:ptr tu:n :}
    SAVED-ERR SAVED-ERR-U @ UNLOCATED
-   {: was:ptr wu:n wtail:ptr wtu:n :}
-   cls cu was wu T$=
+   {: whead:ptr whu:n wtail:ptr wtu:n :}
+   head hu whead whu T$=
    tail tu wtail wtu T$= ;
 
 ;package

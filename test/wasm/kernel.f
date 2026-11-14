@@ -43,7 +43,7 @@ CAP BUFFER: ERR-K
    ;MATCH ;
 
 \ The engine name on args, its results consumed by tail, against the word the
-\ map names for it.
+\ map names for it; both exit 0, so two alike rejections fail the case.
 : SAME ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: a:ptr au:n nm:ptr nu:n t:ptr tu:n :}
    SB-RESET  a au SB-APPEND  s"  " SB-APPEND  nm nu SB-APPEND  SB$ T-LABEL
@@ -51,7 +51,7 @@ CAP BUFFER: ERR-K
    a au  nm nu WORD$  t tu OUT-K ERR-K CHILD {: ok:n ek:n rk:n :}
    OUT-K ok OUT-E oe T$=
    ERR-K ek HEAD ERR-E ee HEAD T$=
-   rk re T= ;
+   re 0 T=  rk 0 T= ;
 
 : INTEGERS ( -- )
    s" 0" s" ." s" " SAME

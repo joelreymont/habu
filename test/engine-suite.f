@@ -566,7 +566,7 @@ REJECTION:CAPTURE
 s" 276 type variables certify" T-LABEL
 s" RSQ276 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23" CHECK-CANDIDATE! -1 T=
 s" 276 type variables: the warning names the word" T-LABEL
-REJECTION:BUFFER$ s" warning[W-EFFECT-NOT-RECORDED]: the effect of `rsq276`" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" warning[W-EFFECT-NOT-RECORDED]: the effect of `RSQ276`" CONTAINS? TTRUE
 s" 276 type variables: the warning names the reason" T-LABEL
 REJECTION:BUFFER$ s" = reason: more than 256 type variables or binders" CONTAINS? TTRUE
 \ RSF33's inferred effect nests one binder per call of T-UN, 33 in all.
@@ -575,7 +575,7 @@ defer T-MK ( -- a )
 s" 33 nested binders certify" T-LABEL
 s" RSF33 T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN" CHECK-CANDIDATE! -1 T=
 s" 33 nested binders: the warning names the reason" T-LABEL
-REJECTION:BUFFER$ s" warning[W-EFFECT-NOT-RECORDED]: the effect of `rsf33`" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" warning[W-EFFECT-NOT-RECORDED]: the effect of `RSF33`" CONTAINS? TTRUE
 REJECTION:BUFFER$ s" = reason: more than 32 nested binders" CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
 s" a source signature cannot name a type variable by its ordinal" T-LABEL
