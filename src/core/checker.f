@@ -11799,6 +11799,11 @@ variable PE-QDOUT
    PE-Q ;PE-Q PE-IN
    PE-Q PE-N PE-QIN ;PE-Q PE-IN ;
 
+\ [ R -- S ]: two fresh data rows, as SIG-PARSE-QUOT builds them from that text.
+: PE-QANY ( -- )
+   FRESH MK-ROW PE-QDIN !  FRESH MK-ROW PE-QDOUT !
+   ;PE-Q PE-IN ;
+
 : PTABLE-START ( -- )
    NAV-CLEAR
    0 #PE !
@@ -11857,6 +11862,7 @@ variable PE-SPEC-TOS
    code PRIM-SPEC:A-QUOT-END = IF ;PE-Q PE-SPEC-PUSH EXIT THEN
    code PRIM-SPEC:A-FINALLY  = IF PE-FINALLY EXIT THEN
    code PRIM-SPEC:A-C2-INVOKE = IF PE-C2-INVOKE EXIT THEN
+   code PRIM-SPEC:A-QUOT-ANY = IF PE-QANY EXIT THEN
    s" checker: unknown primitive-spec atom" 76 die ;
 
 \ A source row reads its effect tokens and runs each as the table's atoms,
@@ -11874,6 +11880,7 @@ variable PE-SPEC-TOS
    a u s" PE-QIN"    CORE-STR=CI IF PRIM-SPEC:A-QUOT-IN  0 EXIT THEN
    a u s" PE-QOUT"   CORE-STR=CI IF PRIM-SPEC:A-QUOT-OUT 0 EXIT THEN
    a u s" ;PE-Q"     CORE-STR=CI IF PRIM-SPEC:A-QUOT-END 0 EXIT THEN
+   a u s" PE-QANY"   CORE-STR=CI IF PRIM-SPEC:A-QUOT-ANY 0 EXIT THEN
    a u s" PE-PTR-A"  CORE-STR=CI IF PRIM-SPEC:A-VAR-A PRIM-SPEC:A-PTR EXIT THEN
    a u s" PE-PTR-N"  CORE-STR=CI IF PRIM-SPEC:A-NUM   PRIM-SPEC:A-PTR EXIT THEN
    a u s" PE-PTR-U8" CORE-STR=CI IF PRIM-SPEC:A-U8    PRIM-SPEC:A-PTR EXIT THEN

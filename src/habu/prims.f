@@ -61,6 +61,8 @@ public
 \ ADDR-kind the pending pointee: any type, any family, for a row that reads,
 \ writes and sizes nothing through it.
 24 constant A-ADDR
+\ A quotation input whose input and output rows are independent: [ R -- S ].
+25 constant A-QUOT-ANY
 
 private
 
@@ -162,6 +164,7 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
 : ;PE-Q          A-QUOT-END CODE, ;
 : PE-FINALLY     A-FINALLY CODE, ;
 : PE-C2-INVOKE   A-C2-INVOKE CODE, ;
+: PE-QANY        A-QUOT-ANY CODE, ;
 
 : ROW-OPEN ( n -- ) {: kind:n :}
    kind CUR-KIND !
@@ -178,7 +181,8 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
 : IN-ATOM ( n -- ) {: code:n :}
    code A-QUOT = IF IN-DEPTH @ 1 + IN-DEPTH ! EXIT THEN
    code A-QUOT-END = IF IN-DEPTH @ 1 - IN-DEPTH ! EXIT THEN
-   code A-IN = IN-DEPTH @ 0 = and IF IN-N @ 1 + IN-N ! THEN ;
+   code A-IN =  code A-QUOT-ANY =  or  IN-DEPTH @ 0 = and
+   IF IN-N @ 1 + IN-N ! THEN ;
 
 : IN-COUNT ( -- n )
    0 IN-N !  0 IN-DEPTH !
