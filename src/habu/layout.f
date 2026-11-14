@@ -535,6 +535,8 @@ $38C8 constant VARIABLE-CELL
 \ INIT-GET or INIT-SET child's parameter is the committed field id it reads or
 \ writes through its receiver. A MAKE or UNMAKE child's parameter is its
 \ product family: MAKE takes the fields and answers the value, UNMAKE the reverse.
+\ A NOMINAL-IN or NOMINAL-OUT child's parameter is its DEFTYPE family:
+\ NOMINAL-IN takes n and answers the nominal, NOMINAL-OUT the reverse.
 
 package CHILD-ABI
 public
@@ -563,6 +565,8 @@ public
 22 constant INIT-SET
 23 constant MAKE
 24 constant UNMAKE
+25 constant NOMINAL-IN
+26 constant NOMINAL-OUT
 
 ;package
 

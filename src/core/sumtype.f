@@ -143,7 +143,7 @@ private
 
 public
 
-variable TDECL-FAM-REG   \ family id registered by the LAST successful sum (-1 = none)
+variable TDECL-FAM-REG   \ family id registered by the LAST successful declaration (-1 = none)
 
 \ PF-N / PF-COMMIT-N are NOT snapshot here. PRODUCT records fields inside the
 \ one declaration transaction, whose event participant owns the field frame
@@ -178,7 +178,7 @@ private
 : TDECL-RUN ( [ -- ] -- )
    READ-PENDING                     \ no type entry is read inside the declaration
    TDECL-MARK
-   -1 TDECL-FAM-REG !               \ set by a successful sum registration only
+   -1 TDECL-FAM-REG !               \ set by a successful declaration only
    catch {: rc:n :}
    TDECL-SEEN-CLEAR
    rc 0= IF EXIT THEN
@@ -1143,7 +1143,7 @@ private
 : CHECKER-DEFFAMILY-BODY ( -- )
    TDECL-HEADER! {: ar:n :}
    TDN-A @ TDN-U @ TDECL-REQUIRE-FAMILY-NAME
-   ar TK-CELL TDECL-FAMILY drop ;
+   ar TK-CELL TDECL-FAMILY TDECL-FAM-REG ! ;
 
 
 public
@@ -2107,6 +2107,23 @@ public
 : TDECL-ADDR-REPLAY ( n -- )
    RES-TRUE [: TDECL-ADDR-REPLAY-REG ;] TDECL-GEN-PLACED ;
 
+\ Declares DEFTYPE's family, tail TA TU named by surface NA NU, and makes each
+\ converter, >NAME then NAME>N. A family refused under a multi-error load
+\ leaves -1 and has no converters.
+: TDECL-DEFTYPE ( ptr u8 n ptr u8 n -- )
+   {: na:ptr nu:n ta:ptr tu:n :}
+   ta tu na nu TDECL-DEFFAMILY
+   TDECL-FAM-REG @ {: fam:n :}
+   fam 0 < IF EXIT THEN
+   TDGEN-CLEAR  [char] > TDGEN-C,  na nu TDGEN-APP
+   TDGEN-BUF TDGEN-U @  CHILD-ABI:NOMINAL-IN fam  TDECL-CHILD
+   TDGEN-CLEAR  na nu TDGEN-APP  s" >N" TDGEN-APP
+   TDGEN-BUF TDGEN-U @  CHILD-ABI:NOMINAL-OUT fam  TDECL-CHILD ;
+
+\ Registers converter NA NU's effect, of SHAPE, over the last declared family.
+: TDECL-NOMINAL-REPLAY ( ptr u8 n n -- ) {: na:ptr nu:n shape:n :}
+   na nu shape TDECL-FAM-REG @ TDECL-ADDR-REG ;
+
 \ --- initialized-field accessors (`DERIVE init`).
 \ A getter FIELD@ and a setter FIELD! per field, in the family's own spelling,
 \ each made by the engine's CHILD-RUN from its CHILD-ABI shape and committed
@@ -2246,12 +2263,12 @@ public
    rc 0 <> IF rc throw THEN
    fam ;
 
-\ The SUMTYPE / ENUM / PRODUCT definers announce their family through
-\ TDECL-FAM-REG; that ambient read lives only in the two adapters below, which
-\ also choose the committed payload view (TDECL-SUMV-PROVIDER). A SUMTYPE
-\ refused under a multi-error load leaves -1 (TDECL-RUN's continue path) and
-\ generates nothing; PRODUCT generates inside the body TDECL-RUN guards, so a
-\ refused one never reaches generation.
+\ Every declaration announces its family through TDECL-FAM-REG; that ambient
+\ read lives only in the adapters below, which also choose the committed payload
+\ view (TDECL-SUMV-PROVIDER), and in TDECL-DEFTYPE and TDECL-NOMINAL-REPLAY. A
+\ SUMTYPE refused under a multi-error load leaves -1 (TDECL-RUN's continue path)
+\ and generates nothing; PRODUCT generates inside the body TDECL-RUN guards, so
+\ a refused one never reaches generation.
 
 private
 
@@ -2372,10 +2389,13 @@ using TYPE-DECL
 : SUMTYPE ( -- ) TDECL-SUMTYPE ;
 : PRODUCT ( -- ) TDECL-PRODUCT ;
 
-\ Reached by the preverify and all-errors replay paths (verify-source.f) and by
-\ checked declarers built on them (src/lib/type/deftype.f DEFTYPE).
+\ The preverify and all-errors replay paths (verify-source.f) reach
+\ CHECKER-DEFFAMILY and CHECKER-NOMINAL-REPLAY; DEFTYPE reaches CHECKER-DEFTYPE.
 : CHECKER-DEFFAMILY ( ptr u8 n ptr u8 n -- ) TDECL-DEFFAMILY ;
 NOMINAL-PROVIDER
+: CHECKER-DEFTYPE ( ptr u8 n ptr u8 n -- ) TDECL-DEFTYPE ;
+NOMINAL-PROVIDER
+: CHECKER-NOMINAL-REPLAY ( ptr u8 n n -- ) TDECL-NOMINAL-REPLAY ;
 : CHECKER-DEFSUM ( ptr u8 n ptr u8 n -- ) TDECL-DEFSUM ;
 NOMINAL-PROVIDER
 : CHECKER-DEFSUM-NOEND ( ptr u8 n ptr u8 n -- ) TDECL-DEFSUM-NOEND ;

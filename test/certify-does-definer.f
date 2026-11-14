@@ -198,7 +198,7 @@ package CERTIFY-DOES-DEFINER
 \ Section 5: a definer the scanner never read. CDD-RES-D and CDD-RESP:CDD-RP-D
 \ were compiled by the engine here; what they create is known only from the
 \ store the checker wrote when it certified their clause. Without that store,
-\ `bin/hb tools/check.f src/lib/queue.f` refused NG-BUFFER, created in
+\ `bin/hb tools/check.f src/lib/queue.f` refused NM-BUFFER, created in
 \ src/lib/type/deftype.f by the resident CODEGEN:BUFFER-E, as E-UNDEFINED. The
 \ last rows are the latch's lifetime: the store is written between two checker
 \ entry points. The engine checks a clause and then the definer's body; the

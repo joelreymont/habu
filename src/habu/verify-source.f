@@ -1819,9 +1819,6 @@ TRUSTED: NAMES-CHECK ( ptr u8 n ptr u8 n -- )
 TRUSTED: NAMED-USE ( ptr u8 n -- )
    CHECKER-NAMED-USE ;
 
-: CAST-TRUST ( -- bool )
-   DTC-NAME$ DTC-SIG$ DECL-SIGNATURE ;
-
 \ The checker's own guard refuses a colon definition, a cast, a typed storage
 \ definition and a re-export whose name its scope already holds, but a colon
 \ definition only once its body is checked, a storage definition once its type
@@ -2345,9 +2342,8 @@ DYNAMIC-BUFFER NOM-TAIL u8
    REPEAT drop
    0 NOM-TAIL u ;
 
-: CAST-DEFINED ( bool n n -- )
-   {: kept:bool at:n u:n :}
-   kept 0= IF EXIT THEN
+: CAST-DEFINED ( n n -- )
+   {: at:n u:n :}
    TOP-CUR-A @ TOP-CUR-U @ DTC-NAME$ DTC-SIG$ at at u + DEF-WORD DEFINED ;
 
 : RECORD-DEFTYPE ( -- )
@@ -2360,12 +2356,12 @@ DYNAMIC-BUFFER NOM-TAIL u8
    REJECTION:TALLY @ refused <> IF EXIT THEN   \ a refused family declares no converters
    name nameu tail tailu DTC-BUILD-IN
    DTC-NAME$ at nameu ARM              \ the converter's own name, the TYPE's span
-   CAST-TRUST
+   DTC-NAME$ CHILD-ABI:NOMINAL-IN CHECKER-NOMINAL-REPLAY
    DISARM
    at nameu CAST-DEFINED
    name nameu tail tailu DTC-BUILD-OUT
    DTC-NAME$ at nameu ARM
-   CAST-TRUST
+   DTC-NAME$ CHILD-ABI:NOMINAL-OUT CHECKER-NOMINAL-REPLAY
    DISARM
    at nameu CAST-DEFINED ;
 
