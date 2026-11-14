@@ -710,13 +710,9 @@ package ERROR
 private
 
 255 constant NAME-CAP
-\ `-`, 19 digits, ` constant ` and the name.
-NAME-CAP 30 + constant LINE-CAP
 
 PERSISTED-PTR-VARIABLE HEAD
 HEAD ROLLBACK-CELLS:MARK
-create LINE LINE-CAP allot
-variable LINE-U
 create NL $0A c,
 
 : ROW-PREV ( ptr n -- ptr n )  0 ptr-field @ ;
@@ -808,21 +804,13 @@ create NL $0A c,
    s" , declared again as " SAY name nameu SAY-NAME REFUSE ;
 
 
-: LINE+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   a LINE LINE-U @ + u BYTE-COPY
-   u LINE-U +! ;
+CAST: AS-CHILD-RUN ( n -- [ ptr u8 n n n ptr u8 n -- n ] )
 
-
-: LINE-INT+ ( n -- )
-   dup 0< if s" -" LINE+ then
-   ERROR-TEXT:DIGITS$ LINE+ ;
-
-
-\ Evaluated text keeps every E- word a folded constant in the current wordlist.
+\ The name becomes a folded constant in the current wordlist, made with no
+\ text: a value child, whose type is empty.
 : DEFINE ( n ptr u8 n -- ) {: code:n name:ptr nameu:n :}
-   0 LINE-U !
-   code LINE-INT+ s"  constant " LINE+ name nameu LINE+
-   LINE LINE-U @ evaluate-closed ;
+   name nameu CHILD-ABI:VALUE code NULL-PTR 0
+   data-base PROVIDED-XT:CHILD-CELL + @ AS-CHILD-RUN execute drop ;
 
 
 : BYTES, ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -865,8 +853,8 @@ create NL $0A c,
 
 public
 
-\ A name `constant` refuses is refused as `constant` refuses it,
-\ E-DUPLICATE-DEFINITION for one the wordlist holds.
+\ A name the wordlist holds is E-DUPLICATE-DEFINITION; a keyword or a number
+\ is rejected as any definition's name is.
 : CODE ( n ptr u8 n -- )  false DECLARE ;
 generates: CODE ( -- n )
 
