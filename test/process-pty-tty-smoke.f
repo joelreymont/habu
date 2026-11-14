@@ -120,7 +120,7 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
    BAD-DEF$ TELL
    ARITH$ TELL
    PROCESS-PTY:END-INPUT
-   s" non-certified definition: tty-bad" EXPECT!
+   s" error[E-INPUT-UNDERFLOW]" s" TTY-BAD" EXPECT-AFTER!
    EXPECT-EXIT
    DRAIN-ALL
    answered NEVER-SEEN? TTRUE ;
@@ -138,7 +138,7 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
       PROCESS-PTY:LAUNCH
       ANYWHERE$ SETTLE
       BAD-DEF$ TELL
-      s" tty-bad" EXPECT!
+      s" error[E-INPUT-UNDERFLOW]" s" TTY-BAD" EXPECT-AFTER!
       BUF-CLEAR
       ARITH$ TELL
       s" 42" PROMPT-AFTER!
