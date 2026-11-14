@@ -1330,6 +1330,7 @@ private
 
 public
 
+\ Row N's definition span without ': ' and ';', as CHECK! takes a candidate.
 : TDPLAN-DEF$ ( n -- ptr u8 n )
    TDPLAN-ROW {: r:ptr :}
    r TDPLAN.DEF-OFF @ r TDPLAN.DEF-U @ TDPLAN-SPAN$ ;
@@ -1344,13 +1345,6 @@ private
 : TDPLAN-TEXT? ( n -- bool ) TDPLAN-ROW TDPLAN.BUILT @ 0= ;
 : TDPLAN-KIND@ ( n -- n ) TDPLAN-ROW TDPLAN.BUILT @ ;
 : TDPLAN-FAM@ ( n -- n ) TDPLAN-ROW TDPLAN.FAM @ ;
-
-\ The whole row text, ": NAME ( sig ) body ;", as the evaluator reads it;
-\ TDPLAN-DEF$ is the same span without ': ' and ';', the candidate form CHECK!
-\ takes. Both come from the recorded definition span so they cannot drift.
-: TDPLAN-FULL$ ( n -- ptr u8 n )
-   TDPLAN-ROW {: r:ptr :}
-   r TDPLAN.DEF-OFF @ 2 -  r TDPLAN.DEF-U @ 3 +  TDPLAN-SPAN$ ;
 
 : TDPLAN-TEXT-N ( -- n )
    0 BEGIN
