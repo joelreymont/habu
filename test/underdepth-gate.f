@@ -139,10 +139,6 @@ public
 
 package UDG-MINIMUM
 
-70 constant WIDE-RC                 \ rendered before its code is thrown (RC-REJECT)
-
-\ The DNAME-MIN-IN byte accepts 255 and rejects 256: a wider declared row is a
-\ stored signature no record holds, refused by its width.
 : MIN-SIG$ ( n -- ptr u8 n ) {: width:n :}
    SB-RESET
    s" defer MINIMUM-PROBE ( " SB-APPEND
@@ -153,26 +149,14 @@ package UDG-MINIMUM
    s" -- )" UDG-LINE
    SB$ ;
 
-: ASSERT-WIDE ( -- )
-   UDG-EXITED @ TTRUE
-   UDG-RC @ WIDE-RC T=
-   UDG-ERR$ s" habu: in minimum-probe: bad stored signature" CONTAINS? TTRUE
-   UDG-ERR$ s" input row too wide to record (256 cells, at most 255)" CONTAINS? TTRUE ;
-
 public
 
 : BOUNDARY ( -- )
-   s" 255-cell physical minimum is representable" T-LABEL
-   255 MIN-SIG$ UDG-EXEC:SUBJECT
-   UDG-ASSERT-OK
    s" 255-cell defer still refuses an empty interpret stack" T-LABEL
    255 MIN-SIG$ 2drop
    s" MINIMUM-PROBE" UDG-LINE
    SB$ UDG-EXEC:SUBJECT
-   s" MINIMUM-PROBE" UDG-ASSERT-UNDERDEPTH
-   s" 256-cell physical minimum rejects deterministically" T-LABEL
-   256 MIN-SIG$ UDG-EXEC:SUBJECT
-   ASSERT-WIDE ;
+   s" MINIMUM-PROBE" UDG-ASSERT-UNDERDEPTH ;
 
 ;package
 

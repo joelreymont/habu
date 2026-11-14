@@ -712,7 +712,7 @@ variable FACTS-REC   variable FACTS-MARK   variable FACTS-WAS   variable FACTS-N
 
 
 \ The record is built under symbol 0, as CREATED-RECORD-BUILD builds one, so no
-\ lookup sees it; a row no record can hold is refused before E-BUILD-EFFECT dies.
+\ lookup sees it; a row too deep to record is refused before E-BUILD-EFFECT dies.
 : FACTS-BUILD ( -- )
    NEW
    FACTS-PARSE {: din:n dout:n rin:n rout:n :}
@@ -960,7 +960,6 @@ variable MDV-I   variable MDV-F
       MD-RIGID-GEN    of s" E-RIGID-STALE-GENERATION" endof
       MD-RIGID-XDOM   of s" E-RIGID-DOMAIN-CONFUSION" endof
       MD-EFFECT-DEPTH of s" E-UNCHECKABLE" endof
-      MD-INPUT-WIDTH  of s" E-UNCHECKABLE" endof
       MD-CF-DEPTH     of s" E-UNCHECKABLE" endof
       MD-RECURSE-SIG  of s" E-UNCHECKABLE" endof
       MD-RECURSE-DOES of s" E-UNCHECKABLE" endof
@@ -1022,7 +1021,6 @@ variable MDV-I   variable MDV-F
       MD-RIGID-GEN    of s" fix_stale_generation" endof
       MD-RIGID-XDOM   of s" fix_rigid_domain" endof
       MD-EFFECT-DEPTH of s" rewrite_uncheckable" endof
-      MD-INPUT-WIDTH  of s" rewrite_uncheckable" endof
       MD-CF-DEPTH     of s" rewrite_uncheckable" endof
       MD-RECURSE-SIG  of s" rewrite_uncheckable" endof
       MD-RECURSE-DOES of s" rewrite_uncheckable" endof
@@ -1065,8 +1063,6 @@ variable MDV-I   variable MDV-F
 : DEPTH-SUGGEST$ ( -- ptr u8 n )
    s" Keep bulk values in a buffer, not on the stack, and name an inner callback's effect in a word of its own." ;
 
-: WIDTH-REASON$ ( -- ptr u8 n )
-   s" input row too wide to record" ;
 
 \ More than BINDER-DEPTH-MAX nested binders: a signature's (checker.f
 \ SGBAD-BINDERS-KIND) or an inferred effect's (RBIND-FULL).
@@ -1137,7 +1133,6 @@ variable MDV-I   variable MDV-F
       MD-C2-DROP      of s" Return or consume the exclusive value instead of discarding it." endof
       MD-C2-ESCAPE    of s" Return only values independent of the owner or loan opened by this operation." endof
       MD-EFFECT-DEPTH of DEPTH-SUGGEST$ endof
-      MD-INPUT-WIDTH  of s" Take fewer cells: pass bulk values in a buffer, not on the stack." endof
       MD-CF-DEPTH     of s" Move the inner control structures into a named word and call it there; each definition counts its own control frames." endof
       MD-RECURSE-SIG  of s" Declare the definition's stack effect after its name." endof
       MD-RECURSE-DOES of s" Move the recursion into a named word with a declared effect and call it from the clause." endof
@@ -1214,7 +1209,6 @@ variable MDV-I   variable MDV-F
       MD-RIGID-XDOM   of s" rigid host: identity domain confusion" endof
       MD-UNDERFLOW    of s" input underflow: the call takes more cells than the definition's declared inputs leave" endof
       MD-EFFECT-DEPTH of DEPTH-REASON$ endof
-      MD-INPUT-WIDTH  of WIDTH-REASON$ endof
       MD-CF-DEPTH     of s" control flow nested too deep to check" endof
       MD-RECURSE-SIG  of s" recursion needs a declared stack effect" endof
       MD-RECURSE-DOES of s" recurse in a does> clause would call the defining word" endof
@@ -1278,11 +1272,6 @@ variable MDV-I   variable MDV-F
 : DEPTH-COUNTS ( n -- )
    EFFECT-DEPTH-MAX CAP-DEPTH-COUNTS ;
 
-: WIDTH-COUNTS ( n -- )
-   {: width:n :}
-   s"  (" EMIT-STR  width EMIT-U
-   s"  cells, at most " EMIT-STR  EFFECT-MIN-IN-MAX EMIT-U  s" )" EMIT-STR ;
-
 \ The literal that does not fit and its type's range, after the reason's
 \ `literal`: `300` does not fit `u8` (`0`..`255`).
 : LIT-FIT-COUNTS ( -- )
@@ -1311,8 +1300,7 @@ variable MDV-I   variable MDV-F
    MDIAG @ MD-DEPTH-WIDE = IF DEPTH-WIDE-COUNTS EXIT THEN
    MDIAG @ MD-UNDERFLOW = IF MDIAG-UF-COUNTS EXIT THEN
    MDIAG @ MD-EFFECT-DEPTH = IF MDIAG-DEPTH @ DEPTH-COUNTS EXIT THEN
-   MDIAG @ MD-CF-DEPTH = IF CF-FRAMES-MAX 1 + CF-FRAMES-MAX CAP-DEPTH-COUNTS EXIT THEN
-   MDIAG @ MD-INPUT-WIDTH = IF MDIAG-WIDTH @ WIDTH-COUNTS THEN ;
+   MDIAG @ MD-CF-DEPTH = IF CF-FRAMES-MAX 1 + CF-FRAMES-MAX CAP-DEPTH-COUNTS THEN ;
 
 
 : IMM-CODE$ ( -- ptr u8 n )
@@ -1460,7 +1448,6 @@ variable MDV-I   variable MDV-F
    SGBAD-ARITY? IF s" Give the type family its exact declared number of arguments." EXIT THEN
    SGBAD-BINDERS? IF s" Nest fewer binders: name an inner callback's binders in a word of its own." EXIT THEN
    SGBAD-DEPTH? IF DEPTH-SUGGEST$ EXIT THEN
-   SGBAD-SIZE? IF s" Declare fewer cells: keep bulk values in a buffer, not on the stack." EXIT THEN
    s" Repair the stack-effect comment syntax, including --." ;
 : NP-SUGGEST$ ( -- ptr u8 n )
    NPBAD-KIND @ 4 = IF
@@ -1737,8 +1724,7 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
 \ by: a definition's packet (DIAG-JSON) and a stored row's (BADSIG-JSON).
 : BADSIG-REASON ( -- )
    SGBAD-BINDERS? IF BINDERS-REASON EXIT THEN
-   SGBAD-DEPTH? IF DEPTH-REASON$ EMIT-STR  SGBAD-SIZE @ DEPTH-COUNTS EXIT THEN
-   WIDTH-REASON$ EMIT-STR  SGBAD-SIZE @ WIDTH-COUNTS ;
+   DEPTH-REASON$ EMIT-STR  SGBAD-SIZE @ DEPTH-COUNTS ;
 
 
 \ A field that belongs to one refusal goes only on that refusal's packet: the
@@ -1832,7 +1818,7 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
 
 \ Bad stored-signature diagnostics (checker.f USIG-ADD-BAD, every mode). SGBAD's
 \ state from the failed parse is still live, so class and suggestion are a
-\ signature's; a row that parsed but is too deep or too wide to record has its
+\ signature's; a row that parsed but is too deep to record has its
 \ own class and a reason naming the bound, count and limit. The JSON is a refused
 \ record (its tools/diag-code.f row), placed at the declaring name AT in the
 \ checked text.

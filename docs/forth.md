@@ -1606,11 +1606,8 @@ edge) are refused unless they are structural closers (`else`, `then`, `loop`,
   `DOES>` body is checked as a colon body declared `( in ptr a -- out )`. The
   body binds the data-field pointee `a` (`does> ( -- n ) @` is admitted); the
   created effect's own quantifiers and rows stay parametric, a body that never
-  returns owes no output, and an effect too wide or deep to record is
-  uncheckable. The body's input counts the data-field pointer: a clause
-  declaring 255 input cells is uncheckable, as its colon twin `( 255 cells ptr
-  a -- … )` is at 256 cells. Step through the data field with `cell+`, not
-  raw `+`.
+  returns owes no output, and an effect too deep to record is uncheckable.
+  Step through the data field with `cell+`, not raw `+`.
 
 ### Rigid host-allocation identity domains
 
@@ -2095,12 +2092,6 @@ cannot grow definition body text to <n> bytes`.
   `more than 32 nested binders at '<token>'`; a `trust`, `defer` or `TRUSTED:`
   row is `E-BAD-STORED-SIGNATURE` with the same reason. Name an inner
   callback's binders in a word of its own.
-- **A definition's input row**: declared or inferred, a wider row makes the
-  definition uncheckable: `E-UNCHECKABLE`, `input row too wide to record
-  (<cells> cells, at most <cap>)`. A `RECURSE` in a body declared that wide is
-  refused for the same reason. Nothing is recorded for it, so callers find no
-  effect. A stored signature that wide is `E-BAD-STORED-SIGNATURE` under
-  `fix_signature_size`. Pass bulk values in a buffer, not on the stack.
 - **Data space**: `allot`, `align`, `,`, `c,`, `create`/`variable`/`defer` and
   the interpret-mode string literals that keep their text (all but `."`)
   advance the dictionary pointer. Past the DATA reservation: `E-DATA-SPACE

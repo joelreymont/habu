@@ -176,7 +176,6 @@ variable UNSAFE-COUNT
    a u s" ndict!" XREF-STR=CI or
    a u s" int-mark" XREF-STR=CI or
    a u s" rep-mark" XREF-STR=CI or
-   a u s" min-in-mark" XREF-STR=CI or
    a u s" wide-mark" XREF-STR=CI or
    a u s" record-facts!" XREF-STR=CI or
    a u s" evaluate" XREF-STR=CI or

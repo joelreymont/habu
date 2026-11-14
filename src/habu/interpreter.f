@@ -2207,12 +2207,9 @@ variable DEF-VALUE
    TSIG-A-CELL ADDR@ TSIG-U-CELL CELL@ NCOMP-DISPATCH:DECL-CAST-OFF
    DEF-REGISTER-IDENTITY ;
 
-\ The record takes what the checker's registrar latched: the wide mark, then
-\ the minimum input arity, under which the interpret dispatch refuses a call.
+\ The record takes the wide mark the checker's registrar latched.
 : DEF-CAST-FACTS ( -- )
-   CHECK:REC-WIDE-PUBLISH
-   REC-MIN-IN@ {: mi:n :}
-   mi 0<> if ndict@ 1- mi min-in-mark then ;
+   CHECK:REC-WIDE-PUBLISH ;
 
 : DEF-CAST-ROW ( -- )
    DEF-ROOM

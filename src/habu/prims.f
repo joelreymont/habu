@@ -71,7 +71,7 @@ $4C constant SPEC-RC
 \ Rows hold offsets into NAMES and CODES, not addresses, so the table can be
 \ walked by index from any consumer.
 $180 constant ROW-CAP
-12 constant ROW-CELLS
+11 constant ROW-CELLS
 $2000 constant NAME-CAP
 $1000 constant CODE-CAP
 
@@ -85,8 +85,7 @@ $1000 constant CODE-CAP
 7 constant F-FLAGS
 8 constant F-REF-OFF
 9 constant F-REF-LEN
-10 constant F-MIN-IN
-11 constant F-REACH
+10 constant F-REACH
 
 1 constant FL-TRUSTED-ONLY
 2 constant FL-FIXED-ABI
@@ -99,8 +98,6 @@ variable ROW-N
 variable NAME-U
 variable CODE-U
 variable BI
-variable IN-N
-variable IN-DEPTH
 
 variable CUR-KIND
 variable CUR-NAME-OFF   variable CUR-NAME-LEN
@@ -177,23 +174,6 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
    NAME-U @ CUR-NAME-OFF !
    parse-name dup CUR-NAME-LEN ! NAME-SPAN, ;
 
-\ An input between A-QUOT and A-QUOT-END belongs to the quotation's own
-\ effect, not to the row's.
-: IN-ATOM ( n -- ) {: code:n :}
-   code A-QUOT = IF IN-DEPTH @ 1 + IN-DEPTH ! EXIT THEN
-   code A-QUOT-END = IF IN-DEPTH @ 1 - IN-DEPTH ! EXIT THEN
-   code A-IN =  code A-QUOT-ANY =  or  IN-DEPTH @ 0 = and
-   IF IN-N @ 1 + IN-N ! THEN ;
-
-: IN-COUNT ( -- n )
-   0 IN-N !  0 IN-DEPTH !
-   CUR-CODE-OFF @ BI !
-   BEGIN BI @ CODE-U @ < WHILE
-      CODES BI @ + c@ IN-ATOM
-      BI @ 1 + BI !
-   REPEAT
-   IN-N @ ;
-
 : ROW-WRITE ( -- )
    ROW-N @ ROW-CAP >= IF s" prims: specification table full" SPEC-RC die THEN
    CUR-KIND @      ROW-N @ F-KIND SLOT !
@@ -206,7 +186,6 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
    0               ROW-N @ F-FLAGS SLOT !
    CUR-REF-OFF @   ROW-N @ F-REF-OFF SLOT !
    CUR-REF-LEN @   ROW-N @ F-REF-LEN SLOT !
-   IN-COUNT        ROW-N @ F-MIN-IN SLOT !
    R-NONE          ROW-N @ F-REACH SLOT !
    ROW-N @ 1 + ROW-N ! ;
 
@@ -250,17 +229,6 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
 : EFIXED-ABI! ( -- )
    ROW-N @ 0 <= IF s" prims: fixed ABI before any row" SPEC-RC die THEN
    ROW-N @ 1 - F-FLAGS ROW-FIELD dup @ FL-FIXED-ABI or swap ! ;
-
-\ The just-written row's minimum input depth, for a primitive whose body reads
-\ the stack although its atoms state no input: the elaborated `execute`,
-\ `catch`, `evaluate`, `?dup` and `2>r`, and `finally`. A row whose atoms state
-\ its inputs is refused, so a depth has one source.
-: EMIN-IN! ( n -- ) {: depth:n :}
-   ROW-N @ 0 <= IF s" prims: min-in before any row" SPEC-RC die THEN
-   depth 0 <= IF s" prims: min-in must be positive" SPEC-RC die THEN
-   ROW-N @ 1 - F-MIN-IN ROW-FIELD @ 0 <>
-      IF s" prims: min-in on a row whose atoms state its inputs" SPEC-RC die THEN
-   depth ROW-N @ 1 - F-MIN-IN ROW-FIELD ! ;
 
 : REACH-CODE ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u s" stack" CORE-STR= IF R-STACK EXIT THEN
@@ -310,9 +278,6 @@ public
 : IMMEDIATE? ( n -- bool )
    F-FLAGS ROW-FIELD @ FL-IMMEDIATE and 0 <> ;
 
-: MIN-IN ( n -- n )
-   F-MIN-IN ROW-FIELD @ ;
-
 : REACH@ ( n -- n )
    F-REACH ROW-FIELD @ ;
 
@@ -343,9 +308,7 @@ private
 \ only by the engine rebuilding itself through these rows and by the programs
 \ the gate runs on it.
 EPRIM: finally PE-FINALLY EPRIM; REACH run
-2 EMIN-IN!                           \ the body xt and the cleanup xt
 EPRIM: c2-invoke PE-C2-INVOKE EPRIM;
-3 EMIN-IN!                           \ body, cleanup, and result-code finisher
 ETRUSTED-ONLY!                       \ the C2 runtime owns the exceptional row
 \ The trusted runtime passes the frame pointer. The authenticated call site's
 \ private width descriptors are consumed by this narrow machine transfer.
@@ -595,10 +558,6 @@ EPRIM: int-mark      PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ sets DNAME-INT on one live record
 EPRIM: rep-mark      PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ sets DNAME-REP on one live CAST: record
-EPRIM: min-in-mark   PE-N PE-IN PE-N PE-IN EPRIM;
-ETRUSTED-ONLY!                       \ records a certified minimum input arity on one live record
-EPPRIM: NPUB min-in-mark PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
-EPPRIM: INTERPRETER min-in-mark PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 EPPRIM: NPUB wide-mark ECLOSE-PRIVATE
 EPPRIM: CHECK wide-mark ECLOSE-PRIVATE
 EPRIM: reloc-maps-clear PE-N PE-IN PE-N PE-IN EPRIM;
@@ -942,15 +901,10 @@ EPPRIM: INTERPRETER execute-floor PE-N PE-IN  PE-F PE-OUT ECLOSE-PRIVATE
 \ call site. A row here
 \ states that, so the completeness gate accepts the body without an effect.
 ELAB: execute REACH run
-1 EMIN-IN!
 ELAB: catch REACH run
-1 EMIN-IN!
 ELAB: evaluate
-2 EMIN-IN!
 ELAB: ?dup REACH stack
-1 EMIN-IN!
 ELAB: 2>r REACH stack
-2 EMIN-IN!
 ELAB: 2r> REACH stack
 ELAB: 2r@ REACH stack
 

@@ -3724,17 +3724,6 @@ $748f82ee , $78a5636f , $84c87814 , $8cc70208 , $90befffa , $a4506ceb , $bef9a3f
    none LBL,  15 0 MOVZ,
    done LBL,  15 G-PUSH ;
 
-\ min-in-mark ( rec-idx min -- ): OR the certified minimum input arity into
-\ DNAME-MIN-IN (flags bits 52-59) of record rec-idx. The publisher and the Habu
-\ loop's definers set it on a certified word. Monotonic. The registry stamps
-\ this prim's own record DNAME-INT, so user source cannot re-drive it.
-: BMININMARK ( -- )
-   B G-POP                               \ x10 = min-in cells
-   A G-POP                               \ x9  = record index
-   C DREC MOVZ,  A A C MUL,  A DBASE A ADD,   \ x9 = &record[n]
-   B B $FF ANDI,  B B 52 LSLI,
-   12 DATA REGION-ALIAS:DELTA-CELL LDR,  12 A 12 ADD,   \ x12 = the record through the alias
-   C 12 16 LDR,  C C B ORR,  C 12 16 STR, ;
 ;package
 
 package ENGINE-EMIT
@@ -4127,7 +4116,6 @@ package ENGINE-EMIT
    s" sha256-blocks" ['] BSHA256BLOCKS FPRIM
    s" int-mark" ['] BINTMARK ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" rep-mark" ['] BREPMARK ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
-   s" min-in-mark" ['] BMININMARK ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" prot-wid-add" ['] BPROTWIDADD FPRIM
    s" prot-wid-room" ['] BPROTWIDROOM FPRIM
    s" policy-admit" ['] BPOLICYADMIT FPRIM
@@ -4966,8 +4954,7 @@ private
 
 \ LFIND's register ABI. In: x9 = name address, x10 = name length. Out:
 \ x13 = 0 when the name is not in scope, else 1 | the folded record flags
-\ (bit 1 immediate, bit 3 wide-effect, bit 4 internal, bits 8-15 certified
-\ min-in); on a hit x11 = the record's code cell [0], x12 = its length cell [8],
+\ (bit 1 immediate, bit 3 wide-effect, bit 4 internal); on a hit x11 = the record's code cell [0], x12 = its length cell [8],
 \ and x5 = the matched record, zero on a miss. It clobbers x2-x17 and
 \ preserves XDS (x19) and DATA (x20).
 \ x5 is the only way to read another cell of the record the name resolved to
@@ -5063,8 +5050,6 @@ private
          15 14 DNAME-WIDE ANDI,  15 15 59 LSRI,
          16 14 DNAME-INT ANDI,  16 16 59 LSRI,
          15 15 16 ORR,
-         16 14 DNAME-MIN-IN-MASK ANDI,  16 16 44 LSRI,
-         15 15 16 ORR,
          14 14 DNAME-IMM ANDI,  14 14 59 LSRI,
          14 14 15 ORR,
          13 1 MOVZ,  13 13 14 ORR,  RET,
@@ -5095,8 +5080,6 @@ private
          14 5 16 LDR,
          15 14 DNAME-WIDE ANDI,  15 15 59 LSRI,
          16 14 DNAME-INT ANDI,  16 16 59 LSRI,
-         15 15 16 ORR,
-         16 14 DNAME-MIN-IN-MASK ANDI,  16 16 44 LSRI,
          15 15 16 ORR,
          14 14 DNAME-IMM ANDI,  14 14 59 LSRI,
          14 14 15 ORR,

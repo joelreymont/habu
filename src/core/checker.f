@@ -753,7 +753,6 @@ CHECKER-OWNER-ABI:DOES-CHECK-OFF constant DOES-CHECK-OFF
 CHECKER-OWNER-ABI:CALL-CELLS-OFF constant CALL-CELLS-OFF
 CHECKER-OWNER-ABI:CALL-MATCH-OFF constant CALL-MATCH-OFF
 CHECKER-OWNER-ABI:FIELD-SPAN-OFF constant FIELD-SPAN-OFF
-CHECKER-OWNER-ABI:REC-MIN-IN-OFF constant REC-MIN-IN-OFF
 CHECKER-OWNER-ABI:REC-WIDE-PUBLISH-OFF constant REC-WIDE-PUBLISH-OFF
 \ CHECK-UNJUDGED: the scan whose verdict nobody enforces, with its render
 \ suppressed.
@@ -5092,7 +5091,6 @@ CHECKER-REG:}SCRATCH
 36 constant MD-C2-DROP       \ a C2 exclusive value was discarded by a transport
 37 constant MD-C2-ESCAPE     \ a C2 owner or loan survived its scope boundary
 38 constant MD-EFFECT-DEPTH  \ an effect deeper than EFFECT-DEPTH-MAX levels (CHECK-DEPTH-FITS)
-39 constant MD-INPUT-WIDTH   \ an input row wider than EFFECT-MIN-IN-MAX cells (CHECK-DEPTH-FITS)
 40 constant MD-TOP-UNKNOWN   \ a top-level token read a cell beneath the cells the interpret row knows (TOP-UNKNOWN); same E-STALE-READ code, its own prose and repair class
 41 constant MD-TAIL-ESCAPE   \ a declared callable's implicit tail escaped into a row that outlives the comparison (QUOT-PAIR TAIL-HIT); same E-MISMATCH code, its own prose and suggestion
 42 constant MD-LIT-FIT       \ a literal reached a fixed-width type it does not fit (LIT-FITS? LIT-HIT); same E-MISMATCH code, its own prose and suggestion
@@ -5155,7 +5153,6 @@ variable MDIAG-VCNT   \ nonexhaustive: variant count
 variable MDIAG-NEED   \ underflow: cells the refused step's input row needs
 variable MDIAG-HAVE   \ underflow: cells the declared inputs left above the base
 variable MDIAG-DEPTH  \ effect depth: the levels TERM-DEPTH counted in the deepest row
-variable MDIAG-WIDTH  \ input width: the cells of the input row a record would hold
 variable MDIAG-LITV   \ literal misfit: the literal's value
 variable MDIAG-LITT   \ literal misfit: the type code it does not fit
 variable MDIAG-WIDE   \ wide value: the logical type depth or .s met
@@ -6776,7 +6773,6 @@ variable NRES  variable NDI  variable NDH
 2 constant SGBAD-BAREPTR-KIND
 3 constant SGBAD-ARITY-KIND
 4 constant SGBAD-DEPTH-KIND
-5 constant SGBAD-WIDTH-KIND
 \ An output scope or region variable no input supplies.
 6 constant SGBAD-UNSUPPLIED-KIND
 \ A `|` clause that moves the return stack (RCLAUSE-CHECK).
@@ -6799,7 +6795,7 @@ variable LOCALBAD-LEN        \ kind 2: the rejected local's bare-name width in b
 variable LINLOCBAD           \ a linear-counting value was bound into a {: :} local
 variable UNDEFERR
 variable UNSEEN               \ an undefined token a rendering statement in scope may define (UNSEEN-COVERS?)
-variable UNFIT                \ the effect a record would hold is too deep or too wide (ROWS-FIT?)
+variable UNFIT                \ the effect a record would hold is too deep (ROWS-FIT?)
 variable QUALBAD
 variable QDUPBAD             \ ?dup applied to a layout value (width-breaking)
 variable CAPREQ              \ a TRUSTED-only capability prim (patch32/code-gen sink) called from checked code
@@ -7096,18 +7092,16 @@ PTR-VARIABLE SIG-OVERLOAD-A   variable SIG-OVERLOAD-U
    a u SGBAD-ARITY-KIND SGBAD-SET ;
 : SGBAD-ARITY? ( -- bool )
    SGBAD @ SGBAD-KIND @ SGBAD-ARITY-KIND = and ;
-: SGBAD-SIZE! ( ptr u8 n n n -- )   \ a row too deep or too wide for a record
+: SGBAD-SIZE! ( ptr u8 n n n -- )   \ a row too deep for a record
    {: a:ptr u:n kind:n size:n :}
    SGBAD @ 0= IF size SGBAD-SIZE ! THEN
    a u kind SGBAD-SET ;
 : SGBAD-DEPTH? ( -- bool )
    SGBAD @ SGBAD-KIND @ SGBAD-DEPTH-KIND = and ;
-: SGBAD-WIDTH? ( -- bool )
-   SGBAD @ SGBAD-KIND @ SGBAD-WIDTH-KIND = and ;
 : SGBAD-BINDERS? ( -- bool )
    SGBAD @ SGBAD-KIND @ SGBAD-BINDERS-KIND = and ;
 : SGBAD-SIZE? ( -- bool )
-   SGBAD-DEPTH? SGBAD-WIDTH? or SGBAD-BINDERS? or ;
+   SGBAD-DEPTH? SGBAD-BINDERS? or ;
 
 \ A quiet signature can contain a nominal type whose declaration an earlier
 \ reached producer may have made. Keep that status apart from SGBAD: the parser
@@ -9341,8 +9335,8 @@ $40 constant EFF-REC
 : ER.STORAGE-N ( ptr u8 -- ptr n ) ER-STORAGE-N-OFF + CELL-VIEW ;
 : ER.STORAGE-KIND ( ptr u8 -- ptr n ) ER-STORAGE-KIND-OFF + CELL-VIEW ;
 
-8 constant EFF-CONTENT-CELLS
-$40 constant EFF-CONTENT
+7 constant EFF-CONTENT-CELLS
+$38 constant EFF-CONTENT
 : EC.DIN ( ptr u8 -- ptr n ) CELL-VIEW ;
 : EC.DOUT ( ptr u8 -- ptr n ) $8 + CELL-VIEW ;
 : EC.RIN ( ptr u8 -- ptr n ) $10 + CELL-VIEW ;
@@ -9350,7 +9344,6 @@ $40 constant EFF-CONTENT
 : EC.HASR ( ptr u8 -- ptr n ) $20 + CELL-VIEW ;
 : EC.TVN ( ptr u8 -- ptr n ) $28 + CELL-VIEW ;
 : EC.RVN ( ptr u8 -- ptr n ) $30 + CELL-VIEW ;
-: EC.MINI ( ptr u8 -- ptr n ) $38 + CELL-VIEW ;
 
 : E-CONTENT ( ptr u8 -- ptr u8 ) ER.CONTENT @ USIGS + ;
 : E-DIN@ ( ptr u8 -- n ) E-CONTENT EC.DIN @ ;
@@ -9360,7 +9353,6 @@ $40 constant EFF-CONTENT
 : E-HASR@ ( ptr u8 -- n ) E-CONTENT EC.HASR @ ;
 : E-TVN@ ( ptr u8 -- n ) E-CONTENT EC.TVN @ ;
 : E-RVN@ ( ptr u8 -- n ) E-CONTENT EC.RVN @ ;
-: E-MINI@ ( ptr u8 -- n ) E-CONTENT EC.MINI @ ;
 
 $0 constant EN-TAG-OFF
 $8 constant EN-A-OFF
@@ -10171,12 +10163,12 @@ CHX-RESET
    THEN
    off b CHX-ADD off ;
 
-: E-CONTENT-NEW ( n n n n n n n n -- n )
-   {: din:n dout:n rin:n rout:n hasr:n tvn:n rvn:n mini:n :}
+: E-CONTENT-NEW ( n n n n n n n -- n )
+   {: din:n dout:n rin:n rout:n hasr:n tvn:n rvn:n :}
    UEND @ EFF-CONTENT + CELL + USIGS-ENSURE
    UEND @ {: off:n :}
    din U!+ dout U!+ rin U!+ rout U!+
-   hasr U!+ tvn U!+ rvn U!+ mini U!+
+   hasr U!+ tvn U!+ rvn U!+
    off E-CONTENT-INTERN ;
 
 : USIG-NEXT ( ptr u8 -- ptr u8 )
@@ -10579,23 +10571,14 @@ CUR-DEFAULT
    UEND @ rec E-OFF - CELL / rec ER.NEXT !
    UTERM! ;
 
-\ THE WIDEST INPUT ROW AN EFFECT RECORDS: 255 cells, the minimum a call must
-\ provide, which the publish tail keeps in eight bits. Only a primitive-axiom
-\ row, which the engine's maker writes, reaches the die below.
-255 constant EFFECT-MIN-IN-MAX
-
-: EFFECT-MIN-IN ( n -- n )
-   ROW-CELLS dup EFFECT-MIN-IN-MAX > if s" checker: min-in exceeds record field" 76 die then ;
-
 : E-BUILD-EFFECT ( n n n n bool -- n ) {: din:n dout:n rin:n rout:n hasr:bool :}
-   din EFFECT-MIN-IN {: minin:n :}
    E-REC-START E-OFF {: rec:n :}
    E-COPY-MAPS-RESET
    EFF-ACTIVE rec E-PTR ER.ACTIVE !
    din E-COPY {: di:n :}
    dout E-COPY {: doff:n :}
    hasr IF rin E-COPY rout E-COPY ELSE 0 0 THEN {: ri:n ro:n :}
-   di doff ri ro hasr IF -1 ELSE 0 THEN EC-TVN @ EC-RVN @ minin
+   di doff ri ro hasr IF -1 ELSE 0 THEN EC-TVN @ EC-RVN @
    E-CONTENT-NEW rec E-PTR ER.CONTENT !
    rec E-PTR E-REC-FINISH
    rec ;
@@ -10677,25 +10660,14 @@ public
    DOES-EFF-CLEAR ;                   \ no definition's clause outlives its own publication
 ;package
 
-\ RECMI: the din cell count of the last effect record, the certified minimum
-\ input arity, with RECW's discipline, read after ndict++ into DNAME-MIN-IN
-\ bits 52-59.
-CHECKER-REG:SCRATCH{
-variable RECMI   0 RECMI !
-CHECKER-REG:}SCRATCH
-: REC-MIN-IN@ ( -- n )
-   RECMI @  0 RECMI ! ;
-
 : E-ADD-EFFECT ( n n n n bool bool -- )
    {: din:n dout:n rin:n rout:n hasr:bool external:bool :}
    WRITE-WINDOW-CK                       \ before RECW moves
-   din EFFECT-MIN-IN drop
    din ROW-WIDE?  dout ROW-WIDE? or
    hasr IF rin ROW-WIDE? or  rout ROW-WIDE? or THEN
    RECW !
    din dout rin rout hasr E-BUILD-EFFECT {: off:n :}
    off 1 + DL-NEW !                     \ the record a registrar's DL-TAKE locates
-   external IF off E-PTR E-MINI@ ELSE 0 THEN RECMI !
    CHECKER-REC-SYM @ 0 <> HIDX-VALID @ and IF
       off 1 + CHECKER-REC-SYM @ HIDX-EFF!
       UEND @ HIDX-EFF-DEP+
@@ -10710,10 +10682,9 @@ CHECKER-REG:}SCRATCH
    WRITE-WINDOW-CK
    0 DL-NEW !
    0 RECW !
-   0 RECMI !
    E-REC-START E-OFF >r
    EFF-DELETED r@ E-PTR ER.ACTIVE !
-   0 0 0 0 0 0 0 0 E-CONTENT-NEW r@ E-PTR ER.CONTENT !
+   0 0 0 0 0 0 0 E-CONTENT-NEW r@ E-PTR ER.CONTENT !
    r> E-PTR E-REC-FINISH
    CHECKER-REC-SYM @ 0 <> HIDX-VALID @ and IF
       0 CHECKER-REC-SYM @ HIDX-EFF!
@@ -10725,7 +10696,7 @@ CHECKER-REG:}SCRATCH
 \ assertion supersede it.
 : E-ADD-UNRESOLVED ( -- )
    WRITE-WINDOW-CK
-   0 DL-NEW !  0 RECW !  0 RECMI !
+   0 DL-NEW !  0 RECW !
    E-REC-START {: rec:ptr :}
    EFF-UNRESOLVED rec ER.ACTIVE !
    rec E-REC-FINISH
@@ -10814,7 +10785,6 @@ BADSIG-DEFAULT
    {: sa:ptr su:n na:ptr nu:n at:ptr atu:n :}
    WRITE-WINDOW-CK                       \ a refusal moves the latches too
    0 RECW !                              \ no record stored: nothing to publish wide
-   0 RECMI !                             \ ... and no min-in to poke
    sa su na nu at atu BADSIG-XT
    MULTI-ERR? IF SIG-COUNT EXIT THEN
    sa su at atu SGBAD-PIN
@@ -10834,9 +10804,7 @@ BADSIG-DEFAULT
 : SGBAD-UNFIT! ( ptr u8 n n n n n -- )
    {: sa:ptr su:n din:n dout:n rin:n rout:n :}
    din dout rin rout ROWS-DEPTH {: depth:n :}
-   depth EFFECT-DEPTH-MAX > IF sa su SGBAD-DEPTH-KIND depth SGBAD-SIZE! EXIT THEN
-   din ROW-CELLS {: width:n :}
-   width EFFECT-MIN-IN-MAX > IF sa su SGBAD-WIDTH-KIND width SGBAD-SIZE! THEN ;
+   depth EFFECT-DEPTH-MAX > IF sa su SGBAD-DEPTH-KIND depth SGBAD-SIZE! THEN ;
 
 \ USIG-ADD-AS past its parse, given the rows of signature text SA.
 : USIG-ADD-ROWS ( ptr u8 n ptr u8 n ptr u8 n n n n n bool -- bool )
@@ -11633,7 +11601,6 @@ variable PE-EFF-ID
 
 : PE-CLOSE-SYM ( n -- )
    dup PREFIX-SYM? IF  drop  -1 PE-LAST !  EXIT  THEN
-   PE-DIN @ EFFECT-MIN-IN drop
    dup PE-SYM-ID ! CHECKER-REC-SYM !
    PE-DIN @ KEEP-QUOTS
    PE-DIN @ PE-DOUT @ PE-RIN @ PE-ROUT @ PE-HASR @
@@ -18236,18 +18203,13 @@ CHECKER-REG:}SCRATCH
    {: in:n out:n rin:n rout:n :}
    in out rin rout ROWS-DEPTH {: d:n :}
    d EFFECT-DEPTH-MAX > IF d MDIAG-DEPTH !  -1 UNFIT !  RES-FALSE EXIT THEN
-   in ROW-CELLS {: w:n :}
-   w EFFECT-MIN-IN-MAX > IF w MDIAG-WIDTH !  -1 UNFIT !  RES-FALSE EXIT THEN
    RES-TRUE ;
-
-: UNFIT-WHY ( -- n )
-   MDIAG-DEPTH @ 0 <> IF MD-EFFECT-DEPTH ELSE MD-INPUT-WIDTH THEN ;
 
 \ Whether a reason leaves its definition uncheckable, where every other reason
 \ refuses one.
 : UNCK-REASON? ( n -- bool )
    {: why:n :}
-   why MD-EFFECT-DEPTH =  why MD-INPUT-WIDTH =  or
+   why MD-EFFECT-DEPTH =
    why MD-CF-DEPTH =  or  why MD-RECURSE-SIG =  or  why MD-RECURSE-DOES =  or ;
 
 : REFUSAL-UNCHECKABLE? ( -- bool )
@@ -18361,7 +18323,7 @@ CHECKER-REG:}SCRATCH
 : CF-RECURSE
    -1 WRAPBENT !
    RECURSE-CACHE? IF RECEFF @ E-PTR CF-RECURSE-EFF EXIT THEN
-   UNFIT @ IF UNFIT-WHY ELSE
+   UNFIT @ IF MD-EFFECT-DEPTH ELSE
       CLAUSE-WALK @ 0 <> IF MD-RECURSE-DOES ELSE MD-RECURSE-SIG THEN
    THEN MDIAG!
    UNCK-RAISE ;
@@ -21380,7 +21342,7 @@ CHECKER-REG:}SCRATCH
    0 ZSHAPE !
    0 CHECKER-MATCH-MODE !  0 MPEND !  0 MREJ !  0 MF-DEPTH !  0 MSEEN-N !
    0 MDIAG !  0 MDIAG-FAM !  0 MDIAG-SEEN !  0 MDIAG-VCNT !  0 MDIAG-NEED !  0 MDIAG-HAVE !
-   0 MDIAG-DEPTH !  0 MDIAG-WIDTH !  0 MDIAG-LITV !  0 MDIAG-LITT !  0 UNFIT !
+   0 MDIAG-DEPTH !  0 MDIAG-LITV !  0 MDIAG-LITT !  0 UNFIT !
    0 RAW-PTR-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 SCOPE-HIT !  0 XT-DECL !
    0 FAILSET !  0 DEXP !  0 DACT !  0 TRAIL-PIN !  0 RSBAD !  0 DF-ACT !  0 DF-EXP !  -1 DVAR !  -1 CVLIVE !  -1 DPOS !  0 FAILTU !  0 SGSEEN !  0 SGDECL-BAD !  0 SGHASR !
    0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGDBASE !
@@ -21396,7 +21358,7 @@ CHECKER-REG:}SCRATCH
    CHECKER-QUOT-FRESH:CLEAR  SG-ROWS-RESET
    0 NPBAD !  0 NPBAD-KIND !  0 NPBAD-Q1 !  0 NPBAD-Q2 !  0 NPBAD-TERM !
    0 LOCSEQ !
-   0 WF-N !  0 RECW !  0 RECMI !  0 SCAN-INCOMPLETE !  0 UNJ-TOK !
+   0 WF-N !  0 RECW !  0 SCAN-INCOMPLETE !  0 UNJ-TOK !
    0 RECEFF !  0 RECEFF-ON !  0 RECEFF-UEND !  0 CLAUSE-WALK ! ;
 
 : CHECK-RESET {: a u :}

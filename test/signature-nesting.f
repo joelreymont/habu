@@ -7,16 +7,14 @@
 \ declared effect has a null declared_effect, which the diagnostics gate
 \ accepts. A token that fails before the frames overflow keeps its mismatch in
 \ prose, packet and CHECK-CANDIDATE!'s answer; a failure pinned before a name a
-\ rendering statement may define, or a compile-time refusal after it in an unfit
-\ definition, keeps its packet and answer, and that name alone defers its
-\ definition, or makes an unfit one uncheckable for its width. An undefined word
-\ is refused in packet and answer, alone or after a covered name in an unfit
-\ definition. A refusal's prose line ends with its packet's suggestion, after
-\ the rows when it prints them. A mismatch over cells below prints its expected
-\ row over them too, so it is classed by type and a surplus by depth; one over
-\ an open input (a quotation's or an unsigned definition's) prints its actual
-\ row over the cells it would take, so it is classed by type too, while one over
-\ a row the signature declares is a missing value. The tokens after a refusal
+\ rendering statement may define keeps its packet and answer, and that name
+\ alone defers its definition. An undefined word is refused in packet and
+\ answer. A refusal's prose line ends with its packet's suggestion, after the
+\ rows when it prints them. A mismatch over cells below prints its expected row
+\ over them too, so it is classed by type and a surplus by depth; one over an
+\ open input (a quotation's or an unsigned definition's) prints its actual row
+\ over the cells it would take, so it is classed by type too, while one over a
+\ row the signature declares is a missing value. The tokens after a refusal
 \ check in CPU time linear in their count.
 \ A refusal ends the load, so each refused text runs in a child; the deepest
 \ are stored rows (`trust`). A packet is read in this process. An effect split
@@ -133,13 +131,6 @@ TYPED-VARIABLE SRC-U len
 
 : RECURSE-NOSIG ( -- )
    SRC-RESET  s" : " S+  RECURSE-TEXT  s"  ;" S+ ;
-
-\ A definition NAME taking 256 cells, one more than a record holds, whose body
-\ is BODY, then drops them all.
-: WIDE-TEXT ( ptr u8 n ptr u8 n -- )
-   {: name:ptr nameu:n body:ptr bodyu:n :}
-   SRC-RESET  name nameu S+  s"  ( " S+  s" n " 256 S+N  s" -- ) " S+
-   body bodyu S+  s"  drop" 256 S+N ;
 
 \ A definer whose does> clause recurses.
 : RECURSE-DOES ( -- )
@@ -383,30 +374,14 @@ public
    s" an is target the run may define defers its definition to the run" T-LABEL
    SRC-RESET  s" SN-IS-UNSEEN ( -- ) ['] T-RESET is MADE-D" S+
    SRC$ CHECK-CANDIDATE! VERDICT-DEFERRED T=
-   s" a covered name alone in an unfit definition is uncheckable for its width" T-LABEL
-   s" SN-WIDE-UNSEEN" s" MADE" WIDE-TEXT
-   S\" \"code\":\"E-UNCHECKABLE\"" S\" \"verdict\":\"uncheckable\""
-   S\" \"reason\":\"input row too wide to record (256 cells, at most 255)\"" VERDICT-UNCHECKABLE PACKET-HAS
-   s" a covered name after a pinned reason in an unfit definition keeps the reason" T-LABEL
-   s" SN-LOOPLESS" s" i drop MADE" WIDE-TEXT
+   s" a covered name after a pinned reason keeps the reason" T-LABEL
+   SRC-RESET  s" SN-LOOPLESS ( -- ) i drop MADE" S+
    S\" \"code\":\"E-REJECTED\"" S\" \"verdict\":\"rejected\""
    S\" \"reason\":\"no loop is open here\"" VERDICT-REFUSED PACKET-HAS
-   s" a structure left open after a covered name in an unfit definition keeps its reason" T-LABEL
-   s" SN-OPEN-UNSEEN" s" MADE" WIDE-TEXT  s"  0 0= IF" S+
-   S\" \"code\":\"E-REJECTED\"" S\" \"verdict\":\"rejected\""
-   S\" \"reason\":\"a control structure is still open at the end of the definition\"" VERDICT-REFUSED PACKET-HAS
    s" a covered name after a pinned mismatch keeps the mismatch" T-LABEL
    SRC-RESET  s" SN-MISMATCH ( -- ) 1 IF THEN MADE" S+
    S\" \"code\":\"E-MISMATCH\"" S\" \"verdict\":\"rejected\""
    S\" \"expected\":\"bool \",\"actual\":\"n \"" VERDICT-REFUSED PACKET-HAS ;
-
-\ Run from a package no mark covers, so a bare name nothing defines is undefined
-\ while SN-MARKED:MADE is a name the run may define.
-: COVERED-CASES ( -- )
-   s" an undefined word after a covered name in an unfit definition is refused" T-LABEL
-   s" SN-WIDE-UNDEF" s" SN-MARKED:MADE SN-NO-SUCH-WORD" WIDE-TEXT
-   S\" \"code\":\"E-UNDEFINED\"" S\" \"verdict\":\"rejected\""
-   S\" \"token\":\"SN-NO-SUCH-WORD\"" VERDICT-REFUSED PACKET-HAS ;
 
 : REPORT ( -- )
    JSON-WAS @ REJECTION:JSON !
@@ -420,16 +395,6 @@ SIGNATURE-NESTING:RUN
 package UNSEEN-NAMES
 CHECKER-UNSEEN-MARK
 SIGNATURE-NESTING:UNSEEN-CASES
-;package
-
-\ A mark in a package's public words covers that package's qualified names.
-package SN-MARKED
-public
-CHECKER-UNSEEN-MARK
-;package
-
-package SN-UNMARKED
-SIGNATURE-NESTING:COVERED-CASES
 ;package
 
 SIGNATURE-NESTING:REPORT

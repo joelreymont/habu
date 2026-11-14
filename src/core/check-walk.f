@@ -663,17 +663,17 @@ public
    FAILSET @ 0=  OK @ and IF 1 RSBAD !  -1 FAILSET ! THEN
    0 OK ! ;
 
-\ An effect too deep or wide to record is uncheckable for it; a deferral would
+\ An effect too deep to record is uncheckable for it; a deferral would
 \ record it, so a covered name yields; a pinned refusal stands.
 : UNFIT-UNCHECKABLE ( -- )
    UNFIT @ 0= IF EXIT THEN
    UNSEEN @ 0 <> IF
       0 UNSEEN !  0 UNDEFERR !
       RCOMPILE @ 0 <> IF EXIT THEN
-      UNFIT-WHY MDIAG !  UNCK-RAISE  EXIT
+      MD-EFFECT-DEPTH MDIAG !  UNCK-RAISE  EXIT
    THEN
    OK @ 0=  UNCK @ 0 <>  or IF EXIT THEN
-   UNFIT-WHY MDIAG!  UNCK-RAISE ;
+   MD-EFFECT-DEPTH MDIAG!  UNCK-RAISE ;
 
 \ Every record of a checked declaration holds the declared rows, which
 \ SIG-EFF-CACHE! measured; an inferred effect is measured here.
@@ -2763,7 +2763,6 @@ package CHECKER-REG
 ' CWIN-MATCH-PAYLOAD                DECLARATIONS CALL-MATCH-OFF + xt!
 ' EFFECT-INIT-LAYOUT                DECLARATIONS CHECKER-OWNER-ABI:INIT-LAYOUT-OFF + xt!
 ' EFFECT-FIELD-SPAN                 DECLARATIONS FIELD-SPAN-OFF + xt!
-' REC-MIN-IN@                       DECLARATIONS REC-MIN-IN-OFF + xt!
 ' CHECK:REC-WIDE-PUBLISH            DECLARATIONS REC-WIDE-PUBLISH-OFF + xt!
 ' CHECK-UNJUDGED!                   DECLARATIONS CHECK-UNJUDGED-OFF + xt!
 ;package
@@ -2949,7 +2948,7 @@ CHECKER-REG:}SCRATCH
 
 \ The latches E-ADD-EFFECT sets for the record the engine publishes next.
 : GUEST-LATCHES ( n bool -- n ) {: save:bool :}
-   DL-NEW save GUEST-CELL  RECW save GUEST-CELL  RECMI save GUEST-CELL
+   DL-NEW save GUEST-CELL  RECW save GUEST-CELL
    CHECKER-REC-SYM save GUEST-CELL ;
 
 : GUEST-POINTERS ( bool -- ) {: save:bool :}

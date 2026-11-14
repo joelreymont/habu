@@ -161,7 +161,7 @@
 \ - a duplicate declaration with a malformed effect published other than as
 \   a duplicate, or listed beside the declaration retained before it
 \   ................................................ workspace-symbol-retained
-\ - a duplicate declaration with a row too wide to record, or with the
+\ - a duplicate declaration with another effect, or with the
 \   effect of the one before it, published other than as a duplicate or
 \   listed; the declaration retained before it, a definition after it, or a
 \   refused body whose signature the checker kept not listed; a malformed
@@ -2708,10 +2708,9 @@ USE-MAX 1 + constant OVER-USINGS
 : TEXT-RETAINED ( -- ptr u8 n )
    s\" TRUSTED: NAV-RETAIN ( -- n ) 1 ;\nTRUSTED: NAV-RETAIN ( -- ptr ) ;\n" ;
 
-\ NAV-WIDE declared, then declared again taking 256 cells, a row too wide to
-\ record; NAV-SAME declared twice with one effect; NAV-ODD malformed with
-\ nothing declared before it; NAV-KEPT's body refused with its signature kept;
-\ NAV-LATER after them.
+\ NAV-WIDE declared, then declared again taking 256 cells; NAV-SAME declared
+\ twice with one effect; NAV-ODD malformed with nothing declared before it;
+\ NAV-KEPT's body refused with its signature kept; NAV-LATER after them.
 : REDECLARED-TEXT ( -- )
    TXT-B CLEAR
    s\" TRUSTED: NAV-WIDE ( n -- ) drop ;\nTRUSTED: NAV-WIDE (" N>BLEN TXT-B APPEND-SPAN

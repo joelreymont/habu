@@ -103,7 +103,7 @@ REGION DICT-SIZE - constant BYTES
 \ kind for a declared identity retype: its body stays callable, but a compiled
 \ mention only renames the checked value.
 \ A stamped record's body is the definer's own.
-\ Band: bits 50-51 of the record flags cell [16] (map at DNAME-MIN-IN-MASK).
+\ Band: bits 50-51 of the record flags cell [16].
 package DKIND
 public
 $0004000000000000 constant VAL       \ kind 1: the body pushes a decided number
@@ -129,9 +129,6 @@ $0000100000000000 constant DNAME-TARGET
 \ [16] bits 44-63: flags above the name length, which every length read clears by this count.
 20 constant DNAME-FLAG-BITS
 -1 DNAME-FLAG-BITS rshift constant DNAME-LEN-MASK
-\ DNAME-MIN-IN (bits 52-59): certified minimum input arity in cells, 0 when unmarked;
-\ a definer's publish tail or a primitive's seed record writes it.
-$0FF0000000000000 constant DNAME-MIN-IN-MASK
 $1000000000000000 constant DNAME-IMM
 $2000000000000000 constant DNAME-EXT
 \ DNAME-WIDE (bit 62): the word's recorded effect carries a wider-than-cell
@@ -657,7 +654,6 @@ CHECKER-OWNER-ABI:UNJUDGED-BINDING-OFF constant DECL-UNJUDGED-BINDING-OFF
 CHECKER-OWNER-ABI:CALL-MATCH-OFF constant DECL-CALL-MATCH-OFF
 CHECKER-OWNER-ABI:INIT-LAYOUT-OFF constant DECL-INIT-LAYOUT-OFF
 CHECKER-OWNER-ABI:FIELD-SPAN-OFF constant DECL-FIELD-SPAN-OFF
-CHECKER-OWNER-ABI:REC-MIN-IN-OFF constant DECL-REC-MIN-IN-OFF
 CHECKER-OWNER-ABI:REC-WIDE-PUBLISH-OFF constant DECL-REC-WIDE-PUBLISH-OFF
 \ The scan whose verdict nobody enforces, with the render suppressed for it.
 \ A TRUSTED: body is scanned only to fill the tape, so the suppression has to

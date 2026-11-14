@@ -1755,27 +1755,6 @@ variable RC
    s\" \"line\":4,\"column\":10,\"byte_start\":97,\"byte_end\":102" REJECT-RC LOADED
    ERR$ s\" \"token\":\"does>\"" CONTAINS? TTRUE ;
 
-\ A word nothing defines after a name another package's public mark covers, in
-\ a definition too wide to record, is refused there as the load refuses it.
-: TEST-UNSEEN-UNDEFINED ( -- )
-   s" a covered qualified name, then a word nothing defines, in an unfit definition" T-LABEL
-   BASE$ s" unseen-undefined.f" FX-P FS:JOIN-PATH FX-PU !
-   0 FX-U !
-   s\" package PM\npublic\ns\" : MADE ( -- ) ;\" evaluate\n;package\n" FX+
-   s\" package QX\n: X ( " FX+
-   256 0 ?do s" n " FX+ loop
-   s" -- ) PM:MADE NOPE" FX+
-   256 0 ?do s"  drop" FX+ loop
-   s\"  ;\n;package\n" FX+
-   FX-PATH$ FX$ FS:WRITE-ALL
-   s" E-UNDEFINED" s" NOPE" 6 532 598 602 RUN-REFUSED-AT
-   s" --verify-only" CHECK
-   GJA-LINE# @ 2 T=
-   0 s" code" s" W-CHECK-DEFERRED" FIELD=
-   0 s" evaluate" 3 21 38 46 FX-PATH$ CANON$ FX$ AT-IN
-   1 s" E-UNDEFINED" s" NOPE" 6 532 598 602 VERIFY-REJECTED-AT
-   s" E-UNDEFINED habu: in x: undefined word 'NOPE'" REJECT-RC LOADED ;
-
 : GEN-LINES ( -- )
    SB-RESET
    s\" : GEN ( -- ) s\" : MADE ( -- ) ;\" INCLUDE-EVALUATE ;" SB-APPEND LF+
@@ -2318,7 +2297,6 @@ variable RC
    TEST-RUN-CAPTURED
    TEST-RUN-UNSOURCED
    TEST-HEAD-CLOSER
-   TEST-UNSEEN-UNDEFINED
    TEST-DEFER-SUGGEST
    TEST-CONTROL-ORPHAN
    TEST-CONTROL-REASON

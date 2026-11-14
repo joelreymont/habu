@@ -409,15 +409,6 @@ variable CDD-SRC-U
 \ at load time under a local name.
 E-GENERATES-ROW constant E-GEN-ROW
 
-\ Values of 2 to 128 cells, for a row of 256 input cells short enough to state.
-STRUCTURE cdd-c2 FIELD a n FIELD b n ;STRUCTURE
-STRUCTURE cdd-c4 FIELD a cdd-c2 FIELD b cdd-c2 ;STRUCTURE
-STRUCTURE cdd-c8 FIELD a cdd-c4 FIELD b cdd-c4 ;STRUCTURE
-STRUCTURE cdd-c16 FIELD a cdd-c8 FIELD b cdd-c8 ;STRUCTURE
-STRUCTURE cdd-c32 FIELD a cdd-c16 FIELD b cdd-c16 ;STRUCTURE
-STRUCTURE cdd-c64 FIELD a cdd-c32 FIELD b cdd-c32 ;STRUCTURE
-STRUCTURE cdd-c128 FIELD a cdd-c64 FIELD b cdd-c64 ;STRUCTURE
-
 : CDD-SECTION-GENERATES-REFUSED ( -- )
    s" a row read before its definer is defined is refused" T-LABEL
    [: s\" generates: CDD-GL ( -- ptr n )\n: CDD-GL ( n -- ) CDD-GEN:MAKE ;\n" evaluate-closed ;] E-GEN-ROW TTHROWSQ
@@ -428,9 +419,6 @@ STRUCTURE cdd-c128 FIELD a cdd-c64 FIELD b cdd-c64 ;STRUCTURE
    [: s\" generates: CDD-G2 ( -- ptr n )\n" evaluate-closed ;] E-GEN-ROW TTHROWSQ
    s" an effect the checker cannot parse is refused" T-LABEL
    [: s\" : CDD-GI ( n -- ) CDD-GEN:MAKE ;\ngenerates: CDD-GI ( -- i32 )\n" evaluate-closed ;] E-GEN-ROW TTHROWSQ
-   s" an effect too wide to record is refused" T-LABEL
-   [: s\" : CDD-GW ( n -- ) CDD-GEN:MAKE ;\ngenerates: CDD-GW ( cdd-c128 cdd-c64 cdd-c32 cdd-c16 cdd-c8 cdd-c4 cdd-c2 n n -- )\n" evaluate-closed ;]
-      E-GEN-ROW TTHROWSQ
    s" a row on a word that reads no name after it is refused" T-LABEL
    [: s\" : CDD-GN ( n -- ) drop ;\ngenerates: CDD-GN ( -- ptr n )\n" evaluate-closed ;] E-GEN-ROW TTHROWSQ
    s" a row on a deferred word is refused" T-LABEL
@@ -453,51 +441,6 @@ create CDD-DIAG 4096 allot
 : CDD-NP-REFUSED ( ptr u8 n -- )
    s" E-NONPARAMETRIC-EFFECT" CDD-NOT-CERTIFIED ;
 
-\ A clause declaring 256 input cells, whose body takes 257 with the data field.
-$600 constant CDD-WIDE-CAP
-CDD-WIDE-CAP CODEGEN:BUFFER CDD-WIDE
-: CDD-WIDE-ROW ( -- ) 256 0 do s" n " CDD-WIDE CODEGEN:APPEND-STRING loop ;
-: CDD-WIDE$ ( -- ptr u8 n )
-   CDD-WIDE CODEGEN:RESET
-   s" : CDD-W1 ( n -- ) create , does> ( " CDD-WIDE CODEGEN:APPEND-STRING
-   CDD-WIDE-ROW  s" -- " CDD-WIDE CODEGEN:APPEND-STRING
-   CDD-WIDE-ROW  s" ) drop ;" CDD-WIDE CODEGEN:APPEND-STRING
-   CDD-WIDE CODEGEN:CONTENTS ;
-
-\ A clause declaring 255 input cells, whose body takes 256 with the data field;
-\ its packet declares the signature as written.
-$800 constant CDD-FIT-CAP
-CDD-FIT-CAP CODEGEN:BUFFER CDD-FIT
-CDD-FIT-CAP CODEGEN:BUFFER CDD-FIT-WANT
-: CDD-FIT-ROW ( ptr n -- )
-   {: d:ptr :}
-   255 0 do s" n " d CODEGEN:APPEND-STRING loop ;
-: CDD-FIT$ ( -- ptr u8 n )
-   CDD-FIT CODEGEN:RESET
-   s" -1 REJECTION:JSON ! : CDD-F1 ( n -- ) create , does> ( " CDD-FIT CODEGEN:APPEND-STRING
-   CDD-FIT CDD-FIT-ROW  s" -- n ) " CDD-FIT CODEGEN:APPEND-STRING
-   255 0 do s" drop " CDD-FIT CODEGEN:APPEND-STRING loop
-   s" ;" CDD-FIT CODEGEN:APPEND-STRING
-   CDD-FIT CODEGEN:CONTENTS ;
-
-\ The packet field named by its key text, holding the 255-input row then the tail.
-: CDD-FIT-FIELD ( ptr u8 n ptr u8 n -- )
-   {: ka:ptr ku:n ta:ptr tu:n :}
-   CDD-FIT-WANT CODEGEN:RESET
-   ka ku CDD-FIT-WANT CODEGEN:APPEND-STRING
-   CDD-FIT-WANT CDD-FIT-ROW
-   ta tu CDD-FIT-WANT CODEGEN:APPEND-STRING
-   REJECTION:BUFFER$ CDD-FIT-WANT CODEGEN:CONTENTS CONTAINS? TTRUE ;
-
-: CDD-FIT-DECLARED ( -- )
-   CDD-DIAG 4096 REJECTION:BUFFER!
-   CDD-FIT$ TEST-EVAL:RC  70 T=
-   REJECTION:BUFFER$ s" input row too wide to record (256 cells, at most 255)" CONTAINS? TTRUE
-   s\" \"declared_effect\":\"" s\" -- n \"" CDD-FIT-FIELD
-   s\" \"declared_effect_source\":\"" s\" -- n\"" CDD-FIT-FIELD
-   REJECTION:BUFFER-OFF
-   s" 0 REJECTION:JSON !" TEST-EVAL:RC 0 T= ;
-
 : CDD-SECTION-CLAUSE-TAIL ( -- )
    s" a clause that specializes a declared quantifier is refused" T-LABEL
    s" : CDD-NP1 ( n -- ) create , does> ( a -- n ) drop ;" CDD-NP-REFUSED
@@ -512,10 +455,6 @@ CDD-FIT-CAP CODEGEN:BUFFER CDD-FIT-WANT
    s" a clause that reads below its declared return row is refused at the read" T-LABEL
    s" : CDD-RB1 ( n -- ) create , does> ( | R -- | R ) drop r> drop 5 throw ;"
       s" at 'r>' return stack: this reads below the return-stack cells pushed here" CDD-NOT-CERTIFIED
-   s" a clause too wide to record is uncheckable, and the load goes on" T-LABEL
-   CDD-WIDE$ s" input row too wide to record (257 cells, at most 255)" CDD-NOT-CERTIFIED
-   s" a clause whose signature fits a record declares it, though its body is too wide" T-LABEL
-   CDD-FIT-DECLARED
    s" a clause's unknown signature type is reported at that type, as its colon twin's is" T-LABEL
    s" : CDD-UX ( n -- ) create , does> ( cdd-zz -- cdd-zz ) drop drop 5 ;"
       s" unknown type 'cdd-zz'" CDD-NOT-CERTIFIED

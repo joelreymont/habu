@@ -129,14 +129,6 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    S\" habu: in pdb-defer: bad stored signature '-- zz'\n" SB-APPEND
    GT-ERR$ SB$ STR= 0= if s" badsig reports" GE-FAIL then ;
 
-: BADSIG-WIDE-ONCE ( -- )
-   s" test/program-diagnostic-wide-native.f" {: path:ptr pathu:n :}
-   path pathu RUN-LOAD
-   path pathu GE-EXPECT-OK
-   GT-OUT$ S\" 0\n1\nok\n" STR= 0= if s" wide badsig count" GE-FAIL then
-   s" habu: in pdb-wide: bad stored signature" path pathu GE-EXPECT-ERR-HAS
-   s" input row too wide to record (256 cells, at most 255)" path pathu GE-EXPECT-ERR-HAS ;
-
 \ A multi-error load counts the refusals it renders: a quiet scan's refusal is
 \ neither printed nor counted, so the count is 1 and stderr holds BADC's line.
 : QUIET-COUNT-ONCE ( -- )
@@ -153,7 +145,6 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 
 : DIAGNOSTICS ( -- )
    BADSIG-ONCE
-   BADSIG-WIDE-ONCE
    QUIET-COUNT-ONCE
    s" test/program-diagnostic-me.f" s" habu: in mea1:" DIAGNOSTIC
    s" test/native-multi-error-recovery.f" s" habu: in bad:" HABU-DIAGNOSTIC

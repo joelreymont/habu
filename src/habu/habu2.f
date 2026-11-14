@@ -395,7 +395,6 @@ private
 package ENGINE-EMIT
 private
 : RECWPUB$ ( -- ptr u8 n )      s" rec-wide-publish" ;
-: RECMIQ$ ( -- ptr u8 n )       s" rec-min-in@" ;
 ;package
 
 \ The baked `trust-raw` and `trust-decl` strings a missing checker word names.
@@ -548,27 +547,16 @@ public
    ready LBL, ;
 
 \ After ndict++ the checker's rec-wide-publish consumes the RECW latch for this
-\ definition's effect and, when wide, marks record ndict-1 DNAME-WIDE. Both
-\ calls go through the source owner's record, so the tail runs once checker.f
+\ definition's effect and, when wide, marks record ndict-1 DNAME-WIDE. The
+\ call goes through the source owner's record, so the tail runs once checker.f
 \ has stored it (DECL-CELL), not on the checking switch: a linker-built hb has
 \ no HOOK-CELL, and its does> runtime publishes here. The engine prefix
-\ self-load before checker.f has no owner. The same tail drains the RECMI latch
-\ through rec-min-in@ into DNAME-MIN-IN (flags bits 52-59) through the alias;
-\ min-in 0 (unchecked) pokes nothing.
+\ self-load before checker.f has no owner.
 : EM-REC-WIDE-PUBLISH ( -- )
-   LBL LBL {: nohook:label nomark:label :}
+   LBL {: nohook:label :}
    9 DATA NCOMP-DISPATCH:DECL-CELL LDR,  9 nohook CBZ,
    NCOMP-DISPATCH:DECL-REC-WIDE-PUBLISH-OFF RECWPUB$ C-OWNER-FIELD
    C-CALL-X11-SAVED
-   NCOMP-DISPATCH:DECL-REC-MIN-IN-OFF RECMIQ$ C-OWNER-FIELD
-   C-CALL-X11-SAVED
-   10 G-POP                                            \ x10 = latched min-in cells (0 = none)
-   10 nomark CBZ,
-      9 NDICT 0 ADDI,  9 9 1 SUBI,  12 DREC MOVZ,  9 9 12 MUL,  9 DBASE 9 ADD,   \ x9 = &record[NDICT-1] (x10 latch survives via kernel x2-x15)
-      10 10 $FF ANDI,  10 10 52 LSLI,
-      11 DATA REGION-ALIAS:DELTA-CELL LDR,  11 9 11 ADD,   \ x11 = the record through the alias
-      12 11 16 LDR,  12 12 10 ORR,  12 11 16 STR,
-   nomark LBL,
    nohook LBL, ;
 
 public
@@ -589,9 +577,8 @@ public
 \ earlier clause patched gets its RET back but keeps the cleared kind (LASTC may
 \ name a constant, so the bare body is no evidence of a DATA push). The publish
 \ tail is the colon tail: after LASTC-TRUST:PUBLISH, EM-REC-WIDE-PUBLISH drains
-\ the checker's latches, so a wide clause effect marks the created record
-\ (ndict-1, as `create` counted it) DNAME-WIDE and declared inputs poke
-\ DNAME-MIN-IN.
+\ the checker's latch, so a wide clause effect marks the created record
+\ (ndict-1, as `create` counted it) DNAME-WIDE.
 package DOESPATCH
 
 : GRID-BEFORE ( -- )
@@ -747,9 +734,9 @@ public
    9 DATA CRSIG-U-CELL LDR,  9 nocr CBZ,
       LASTC-TRUST:PUBLISH
       \ A second does> may replace an existing clause. Its new effect replaces
-      \ the old guard facts, including a zero min-in or a scalar result.
+      \ the old wide mark, so a scalar result clears it.
       9 DATA LASTC-CELL LDR,
-      12 9 16 LDR,  10 DNAME-WIDE DNAME-MIN-IN-MASK or -1 xor LIT64,
+      12 9 16 LDR,  10 DNAME-WIDE -1 xor LIT64,
       11 DATA REGION-ALIAS:DELTA-CELL LDR,  11 9 11 ADD,              \ x11 = the record through the alias
       12 12 10 AND,  12 11 16 STR,
       EM-REC-WIDE-PUBLISH
@@ -1087,7 +1074,7 @@ variable LREPLAYTRAP
    14 5 0 LDR,  14 11 0 STR,                           \ [0] = the source's entry
    14 5 8 LDR,  14 11 8 STR,                           \ [8] = its recorded length
    16 5 16 LDR,
-   15 DNAME-IMM DNAME-WIDE or DNAME-MIN-IN-MASK or DNAME-TARGET or LIT64,  14 16 15 AND,
+   15 DNAME-IMM DNAME-WIDE or DNAME-TARGET or LIT64,  14 16 15 AND,
    15 DKIND:MASK LIT64,  16 16 15 AND,
    15 DKIND:VAL LIT64,  16 15 CMP,  C-NE notval BCOND,
       14 14 15 ORR,                                    \ only an immutable value keeps its fixed kind
@@ -2145,8 +2132,6 @@ private
    15 14 DNAME-WIDE ANDI,  15 15 59 LSRI,
    16 14 DNAME-INT ANDI,  16 16 59 LSRI,
    15 15 16 ORR,
-   16 14 DNAME-MIN-IN-MASK ANDI,  16 16 44 LSRI,
-   15 15 16 ORR,
    14 14 DNAME-IMM ANDI,  14 14 59 LSRI,
    14 14 15 ORR,
    13 1 MOVZ,  13 13 14 ORR,
@@ -2572,7 +2557,7 @@ package ENGINE-EMIT
 \ holds x30 across the BL.
 : BTOKIMM ( -- )
    10 G-POP  9 G-POP                   \ x10 = len (TOS), x9 = addr: LFIND's token registers
-   LFIND LABEL@ BL,                    \ x13 = found | imm<<1 | min-in byte | int flags
+   LFIND LABEL@ BL,                    \ x13 = found | imm<<1 | int flags
    9 13 2 ANDI,
    A G-PUSH ;
 ;package
