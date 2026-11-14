@@ -7369,8 +7369,22 @@ variable PKHAVE
    a u TYPE-VAR-TOK? IF RES-TRUE EXIT THEN
    a u TYPE-BAD-CHAR? ;
 
+: LINEAR-TAKEN ( ptr u8 n -- ) {: a:ptr u:n :}
+   s" E-BAD-DECLARATION" REJECTION:OPEN
+   s" `DEFLINEAR " REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" ` names a type that already exists or a reserved name" REJECTION:EMIT-STR
+   a u REJECTION:AT  s" already a type or reserved" REJECTION:EMIT-STR
+   s" rule" REJECTION:NOTE
+   s" a type's name is no type, type variable, atom or `field`, and holds none of "
+   REJECTION:EMIT-STR
+   S\" `<`, `>`, `,`, `[`, `]`, `(`, `)`, `\q` or `\\`" REJECTION:EMIT-STR
+   REJECTION:HELP  s" give the linear type a name no other type has" REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
+\ DEFLINEAR hands a name it read; any other caller is the engine's.
 : CT-ADD-LINEAR ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n pa:ptr pu:n :}
-   a u TYPE-RESERVED? IF s" checker: bad or duplicate signature type" 70 die THEN
+   a u BYTE-SPAN? 0= IF s" checker: a linear type's name describes no memory" 76 die THEN
+   a u TYPE-RESERVED? IF a u LINEAR-TAKEN THEN
    a u pa pu CT-LINEAR-SET ;
 
 \ A linear type's type entry text, the form CHECK:HEAD$ states.
@@ -8352,69 +8366,161 @@ variable LBI-LINEAR   \ the refused stored type parsed and may hold a linear val
    u 0= IF RES-TRUE EXIT THEN
    a u DELIM? ;
 
+\ Why a record is refused, 0 when it is not.
+1 constant VREC-WHY-NAME     \ the name is a type already, or reserved
+2 constant VREC-WHY-FIELD    \ a field's name is a delimiter
+3 constant VREC-WHY-DUP      \ a field's name repeats
+4 constant VREC-WHY-TYPE     \ a field's type is missing or bad
+5 constant VREC-WHY-SCOPED   \ a field's type has a scoped dependency
+6 constant VREC-WHY-EMPTY    \ no field
+
+: VREC-WHY$ ( n -- ptr u8 n ) {: why:n :}
+   why VREC-WHY-NAME = IF s" checker: bad or duplicate value-record type" EXIT THEN
+   why VREC-WHY-FIELD = IF s" checker: bad value-record field" EXIT THEN
+   why VREC-WHY-DUP = IF s" checker: duplicate value-record field" EXIT THEN
+   why VREC-WHY-TYPE = IF s" checker: bad value-record field type" EXIT THEN
+   why VREC-WHY-SCOPED = IF s" checker: value-record field contains a scoped dependency" EXIT THEN
+   why VREC-WHY-EMPTY = IF s" checker: empty value-record" EXIT THEN
+   s" " ;
+
 \ A refused field is answered, not died on. VREC-AT is the byte offset in the
 \ field text of the field being parsed.
 variable VREC-AT
 
-: VREC-REFUSE ( ptr u8 n -- n ptr u8 n ) {: msg:ptr msgu:n :}
-   VREC-AT @ msg msgu ;
+: VREC-REFUSE ( n -- n n ) VREC-AT @ swap ;
 
 \ A field text whose length describes no memory holds no field, so its record
 \ is refused as an empty one before a byte of it is read.
-: VREC-PARSE-FIELDS ( n ptr u8 n ptr u8 n -- n ptr u8 n )
+: VREC-PARSE-FIELDS ( n ptr u8 n ptr u8 n -- n n )
    {: id:n rec:ptr recu:n fields:ptr fieldsu:n :}
    SIG-UNRES-CLEAR
-   fields fieldsu BYTE-SPAN? 0= IF fieldsu fields 0 EXIT THEN
+   fields fieldsu BYTE-SPAN? 0= IF fieldsu 0 EXIT THEN
    fields SB! fieldsu SL ! 0 SI !
    PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET SGBAD-CLEAR
    VREC-COPY-RESET
    fieldsu VREC-AT !
    BEGIN
       NEXT-SIG-TOK dup 0= IF
-         2drop SGBAD @ IF s" checker: bad value-record field type" VREC-REFUSE EXIT THEN
-         fieldsu fields 0 EXIT
+         2drop SGBAD @ IF VREC-WHY-TYPE VREC-REFUSE EXIT THEN
+         fieldsu 0 EXIT
       THEN
       over fields - VREC-AT !
-      2dup VREC-FIELD-BAD? IF 2dup SGBAD-SYNTAX! 2drop s" checker: bad value-record field" VREC-REFUSE EXIT THEN
-      2dup id VREC-FIELD-DUP? IF 2drop s" checker: duplicate value-record field" VREC-REFUSE EXIT THEN
-      NEXT-SIG-TOK dup 0= IF 2drop 2drop s" checker: bad value-record field type" VREC-REFUSE EXIT THEN
+      2dup VREC-FIELD-BAD? IF 2dup SGBAD-SYNTAX! 2drop VREC-WHY-FIELD VREC-REFUSE EXIT THEN
+      2dup id VREC-FIELD-DUP? IF 2drop VREC-WHY-DUP VREC-REFUSE EXIT THEN
+      NEXT-SIG-TOK dup 0= IF 2drop 2drop VREC-WHY-TYPE VREC-REFUSE EXIT THEN
       SIG-TYPE
       dup SCOPED-TYPE? IF
-         drop 2drop s" checker: value-record field contains a scoped dependency" VREC-REFUSE EXIT
+         drop 2drop VREC-WHY-SCOPED VREC-REFUSE EXIT
       THEN
       >r rec recu 2swap r> VREC-FIELD-STORE
-      SGBAD @ IF s" checker: bad value-record field type" VREC-REFUSE EXIT THEN
+      SGBAD @ IF VREC-WHY-TYPE VREC-REFUSE EXIT THEN
    AGAIN ;
 
-: VREC-DEFINE ( n ptr u8 n ptr u8 n -- n ptr u8 n )
+: VREC-DEFINE ( n ptr u8 n ptr u8 n -- n n )
    {: id:n rec:ptr recu:n fields:ptr fieldsu:n :}
-   id rec recu fields fieldsu VREC-PARSE-FIELDS {: at:n msg:ptr msgu:n :}
-   msgu 0 <> IF at msg msgu EXIT THEN
-   VREC-FIELD-N @ id VREC-START@ = IF fieldsu s" checker: empty value-record" EXIT THEN
+   id rec recu fields fieldsu VREC-PARSE-FIELDS {: at:n why:n :}
+   why 0 <> IF at why EXIT THEN
+   VREC-FIELD-N @ id VREC-START@ = IF fieldsu VREC-WHY-EMPTY EXIT THEN
    id VREC-FINISH
-   at msg msgu ;
+   at 0 ;
 
-\ CHECKER-TRY-RECORD registers the record, or leaves every record table as it
-\ found it and answers the byte offset of the field it refuses and the refusal;
-\ an empty refusal means registered.
-: CHECKER-TRY-RECORD ( ptr u8 n ptr u8 n -- n ptr u8 n )
+\ Registers the record, or leaves every record table as it found it and
+\ answers the byte offset of the field it refuses and why.
+: VREC-TRY ( ptr u8 n ptr u8 n -- n n )
    {: name:ptr nameu:n fields:ptr fieldsu:n :}
-   name nameu TYPE-RESERVED? IF 0 s" checker: bad or duplicate value-record type" EXIT THEN
+   name nameu TYPE-RESERVED? IF 0 VREC-WHY-NAME EXIT THEN
    VREC-N @ VREC-FIELD-N @ VREC-NODE-N @ VNARG-N @ VREC-STR-U @
    {: rn:n fn:n dn:n an:n su:n :}
    name nameu VREC-BEGIN {: id:n :}
-   id name nameu fields fieldsu VREC-DEFINE {: at:n msg:ptr msgu:n :}
-   msgu 0 <> IF rn fn dn an su VREC-REWIND THEN
-   SIG-UNRES @ 0 <> msgu 0= and IF
+   id name nameu fields fieldsu VREC-DEFINE {: at:n why:n :}
+   why 0 <> IF rn fn dn an su VREC-REWIND THEN
+   SIG-UNRES @ 0 <> why 0= and IF
       rn fn dn an su VREC-REWIND
       E-CHECKER-RECORD-UNRESOLVED throw
    THEN
-   at msg msgu ;
+   at why ;
 
+\ CHECKER-TRY-RECORD answers VREC-TRY's offset and its refusal's text; an
+\ empty refusal means registered.
+: CHECKER-TRY-RECORD ( ptr u8 n ptr u8 n -- n ptr u8 n )
+   VREC-TRY VREC-WHY$ ;
+
+\ The token of field text f that starts at byte at: a delimiter alone, else the
+\ bytes up to a blank or a delimiter.
+: VREC-TOKEN ( ptr u8 n n -- ptr u8 n ) {: f:ptr fu:n at:n :}
+   at BEGIN
+      dup fu < IF f over + c@ dup 32 > swap SIG-DELIM-CHAR? 0= and ELSE RES-FALSE THEN
+   WHILE 1 + REPEAT
+   {: e:n :}
+   e at = at fu < and IF at 1 + ELSE e THEN {: end:n :}
+   f at + end at - ;
+
+: VREC-OF ( ptr u8 n -- ) {: a:ptr u:n :}
+   s" ` of value record `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   96 REJECTION:EMIT1 ;
+
+\ A refusal of the record as a whole: its name is taken, or it has no field.
+: VREC-REJECT-RECORD ( ptr u8 n n -- ) {: a:ptr u:n why:n :}
+   s" E-BAD-DECLARATION" REJECTION:OPEN
+   s" value record `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   why VREC-WHY-NAME = IF
+      s" ` names a type that already exists or a reserved name" REJECTION:EMIT-STR
+      a u REJECTION:AT  s" already a type or reserved" REJECTION:EMIT-STR
+      REJECTION:HELP  s" give the value record a name no other type has"
+      REJECTION:EMIT-STR
+   ELSE
+      s" ` has no fields" REJECTION:EMIT-STR
+      a u REJECTION:AT  s" no fields" REJECTION:EMIT-STR
+      REJECTION:HELP
+      s" list each field's name and type before `END-VALUE-RECORD`, as `x n`"
+      REJECTION:EMIT-STR
+   THEN
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
+\ A refusal of the field whose token is t.
+: VREC-REJECT-FIELD ( ptr u8 n ptr u8 n n -- )
+   {: a:ptr u:n t:ptr tu:n why:n :}
+   s" E-BAD-DECLARATION" REJECTION:OPEN
+   why VREC-WHY-FIELD = IF
+      96 REJECTION:EMIT1  t tu REJECTION:EMIT-STR
+      s" ` cannot name a field of value record `" REJECTION:EMIT-STR
+      a u REJECTION:EMIT-STR  96 REJECTION:EMIT1
+      t tu REJECTION:AT  s" not a field name" REJECTION:EMIT-STR
+      REJECTION:HELP  s" name each field with a word and give its type, as `x n`"
+      REJECTION:EMIT-STR
+   THEN
+   why VREC-WHY-DUP = IF
+      s" field `" REJECTION:EMIT-STR  t tu REJECTION:EMIT-STR  a u VREC-OF
+      s"  is declared twice" REJECTION:EMIT-STR
+      t tu REJECTION:AT  s" declared again" REJECTION:EMIT-STR
+      REJECTION:HELP  s" give each field of `" REJECTION:EMIT-STR
+      a u REJECTION:EMIT-STR  s" ` a name of its own" REJECTION:EMIT-STR
+   THEN
+   why VREC-WHY-TYPE = IF
+      s" field `" REJECTION:EMIT-STR  t tu REJECTION:EMIT-STR  a u VREC-OF
+      s"  has a missing or unknown type" REJECTION:EMIT-STR
+      t tu REJECTION:AT  s" no valid type follows" REJECTION:EMIT-STR
+      REJECTION:HELP  s" write a declared type after the field's name, as `"
+      REJECTION:EMIT-STR  t tu REJECTION:EMIT-STR  s"  n`" REJECTION:EMIT-STR
+   THEN
+   why VREC-WHY-SCOPED = IF
+      s" field `" REJECTION:EMIT-STR  t tu REJECTION:EMIT-STR  a u VREC-OF
+      s"  has a type with a scoped dependency" REJECTION:EMIT-STR
+      t tu REJECTION:AT  s" scoped type" REJECTION:EMIT-STR
+      REJECTION:HELP  s" give the field a type that names no callback scope"
+      REJECTION:EMIT-STR
+   THEN
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
+\ VALUE-RECORD's registrar: a refused record is rejected at the field the
+\ refusal names, or at the record's name.
 : CHECKER-DEFRECORD ( ptr u8 n ptr u8 n -- )
    {: name:ptr nameu:n fields:ptr fieldsu:n :}
-   name nameu fields fieldsu CHECKER-TRY-RECORD {: at:n msg:ptr msgu:n :}
-   msgu 0 <> IF msg msgu 70 die THEN ;
+   name nameu BYTE-SPAN? 0= IF s" checker: a value record's name describes no memory" 76 die THEN
+   name nameu fields fieldsu VREC-TRY {: at:n why:n :}
+   why 0= IF EXIT THEN
+   why VREC-WHY-NAME = why VREC-WHY-EMPTY = or IF name nameu why VREC-REJECT-RECORD THEN
+   name nameu fields fieldsu at VREC-TOKEN why VREC-REJECT-FIELD ;
 
 \ Structured internal effects. Textual signatures are source-boundary input
 \ only; checker-owned token semantics construct rows directly.
