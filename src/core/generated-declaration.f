@@ -266,27 +266,12 @@ E-TFAM-CASE EXPLAIN
 s" duplicate name in this package"
 s" give each family, variant and field a name no other declaration in this package uses"
 E-TFAM-DUP EXPLAIN
-s" invalid or uncommitted field id"
-s" report this declaration as a Habu defect: no declaration text should reach this state"
-E-PF-ID EXPLAIN
-s" stale or out-of-order field transaction"
-s" report this declaration as a Habu defect: no declaration text should reach this state"
-E-PF-TX EXPLAIN
-s" invalid field owner family or variant"
-s" report this declaration as a Habu defect: no declaration text should reach this state"
-E-PF-OWNER EXPLAIN
 s" reserved field name"
 s" rename the field: a keyword or a generated word such as `make`, `tag` or `eq` is taken"
 E-PF-NAME EXPLAIN
 s" malformed or owner-incompatible field schema"
 s" give the field a type whose parameters match the kinds its family declares"
 E-PF-SCHEMA EXPLAIN
-s" invalid field layout metadata"
-s" report this declaration as a Habu defect: no declaration text should reach this state"
-E-PF-LAYOUT EXPLAIN
-s" undefined field flag bits"
-s" report this declaration as a Habu defect: no declaration text should reach this state"
-E-PF-FLAGS EXPLAIN
 s" a declaration is already open"
 s" close the open declaration with `;STRUCTURE` or `;ENUM` before starting another"
 DECLARATION-TRANSACTION:E-ACTIVE EXPLAIN

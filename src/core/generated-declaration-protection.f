@@ -10,8 +10,9 @@ package DECLARATION-TRANSACTION
    [: PLAN-PREFLIGHT ;] is TYPE-DECL:TDECL-CAPACITY-PREFLIGHT-XT ;
 INSTALL
 
-\ DECL-EVENT's savepoint can throw E-PF-TX (TX-PARENT-REQUIRE); only the checker
-\ frame's is taken before it, and the three after it cannot fail.
+\ DECL-EVENT's savepoint opens a field transaction, which a committed one
+\ rejects (TX-PARENT-REQUIRE); only the checker frame's is taken before it, and
+\ the three after it cannot fail.
 : SAVEPOINTS ( -- )
    CHECKER-DECL-FRAME:PART-SNAPSHOT
    [: DECL-EVENT:PART-SNAPSHOT ;] catch {: rc:n :}
