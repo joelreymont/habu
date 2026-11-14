@@ -1868,13 +1868,11 @@ private
    fam TFAM-VAR-START@ SUMV-CTOR-PKG$ TDGEN-APP
    58 TDGEN-C,
    ta tu TDGEN-UPPER ;
-: TDGEN-DRV-NAME ( n ptr u8 n -- ) {: fam:n ta:ptr tu:n :}   \ ": PKG:TAIL " span-recorded
-   s" : " TDGEN-APP
+: TDGEN-DRV-NAME ( n ptr u8 n -- ) {: fam:n ta:ptr tu:n :}   \ the name alone, span-recorded
    TDGEN-U @ {: n0:n :}
    fam ta tu TDGEN-DRV-REF
    TDGEN-BUF n0 + TDGEN-NA !
-   TDGEN-U @ n0 - TDGEN-NU !
-   32 TDGEN-C, ;
+   TDGEN-U @ n0 - TDGEN-NU ! ;
 : TDGEN-KW ( ptr u8 n -- ) 0 ITEM-ABI:KEYWORD TDGEN-ITEM ;
 : TDGEN-OF ( ptr u8 n -- )                \ a variant's `of`
    0 ITEM-ABI:OPERAND TDGEN-ITEM  s" of" TDGEN-KW ;
