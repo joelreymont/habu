@@ -1,6 +1,5 @@
 \ The engine owns address-cell declarations. Readers acquire a fresh span:
 \ appending a row may move its backing storage, but never changes a row's index.
-s" src/habu/layout.f" required
 
 package ADDRESS-CELLS
 public
@@ -52,14 +51,14 @@ public
 : INDEX-RELEASE ( ptr n -- )
    {: held:ptr :}
    held @ dup 0= if drop exit then {: address:n :}
-   address 0 < address 7 and 0<> or
+   address 0 < address 7 and 0 <> or
    address $7FFFFFFFFFFFFFFF INDEX-HEADER - > or if REFUSE then
    address N>ROWS INDEX-SLOTS + @ {: slots:n :}
    slots 2 < slots INDEX-MAX-SLOTS > or if REFUSE then
-   slots slots 1- and 0<> if REFUSE then
+   slots slots 1- and 0 <> if REFUSE then
    slots cells INDEX-HEADER + {: bytes:n :}
    bytes $7FFFFFFFFFFFFFFF address - > if REFUSE then
-   address N>ROWS bytes munmap 0<> if
+   address N>ROWS bytes munmap 0 <> if
       s" address-cells: cannot release index" 96 die then
    0 held ! ;
 private

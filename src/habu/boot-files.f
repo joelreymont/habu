@@ -77,6 +77,7 @@ private
    CHECKER COMMON s" src/core/engine-error-effects.f" ROW
    CHECKER COMMON s" src/core/sumtype.f" ROW
    CHECKER COMMON s" src/core/effect.f" ROW
+   CHECKER COMMON s" src/habu/address-cells.f" ROW
    CHECKER COMMON s" src/core/layout-buffer.f" ROW
    CHECKER COMMON s" src/core/check-hook.f" ROW
    CHECKER COMMON s" src/core/cell-effects.f" ROW
@@ -111,7 +112,6 @@ private
    TOPROW COMMON s" src/core/top-row.f" ROW
    BASELIB COMMON s" src/lib/prelude.f" ROW
    BASELIB COMMON s" src/lib/error.f" ROW
-   BASELIB COMMON s" src/habu/address-cells.f" ROW
    BASELIB COMMON s" src/core/layout-buffer-address.f" ROW
    RESTLIB COMMON s" src/lib/span.f" ROW
    RESTLIB COMMON s" src/lib/adt/option.f" ROW
