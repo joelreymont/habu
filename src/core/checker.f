@@ -22204,17 +22204,12 @@ variable SCAN-TOK0
 : TAPE-FEED? ( -- bool )
    CHECKER-TAPE:ARMED @ 0 <> ;
 
-\ These three read byte i only inside TBLEN: `and` evaluates both operands, so a
+\ These two read byte i only inside TBLEN: `and` evaluates both operands, so a
 \ bound test beside the read reads past a text that ends where its mapping does.
 : TBYTE=? ( n n -- bool ) {: i:n c:n :}
    i TBLEN @ >= IF RES-FALSE EXIT THEN
    i TBYTE@ c = ;
-\ A captured token ends at a space.
-: TBREAK? ( n -- bool ) {: i:n :}
-   i TBLEN @ >= IF RES-TRUE EXIT THEN
-   i TBYTE@ 32 = ;
-\ The byte after the head's `(` is the source's, and the engine ends a token at
-\ any byte at or below 32.
+\ A captured token ends at any byte at or below 32, as the engine's does.
 : TBLANK? ( n -- bool ) {: i:n :}
    i TBLEN @ >= IF RES-TRUE EXIT THEN
    i TBYTE@ 32 <= ;
