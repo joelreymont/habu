@@ -123,3 +123,18 @@ immediate
 
 : [then] ( -- ) ;
 immediate
+
+package KERNEL-SEARCH
+public
+\ The first index of [lo, hi) where q answers false, hi when none does: q answers
+\ true on a leading run of the range and false after it.
+\ The kernel's copy: the engine loads src/lib/sort.f after the kernel.
+: PARTITION-POINT ( n n [ n -- bool ] -- n )
+   {: q :}
+   begin 2dup < while
+      {: lo:n hi:n :}
+      lo hi + 2 / {: mid:n :}
+      mid q execute if mid 1 + hi else lo mid then
+   repeat
+   drop ;
+;package

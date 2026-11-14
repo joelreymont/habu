@@ -1508,12 +1508,16 @@ s" SUMTYPE tdpoldg<a> POLICY boxed VARIANT some a ;VARIANT ;SUMTYPE" E-TDECL-POL
 REJECTION:BUFFER$ s" bad sumtype declaration" CONTAINS? TTRUE
 REJECTION:BUFFER$ s" layout policy not yet supported" CONTAINS? TTRUE
 
-\ No byte count caps a declaration's body: the fixture's 4.7 KB SUMTYPE loads,
-\ and its constructor and derived HASH run.
+\ No byte count caps a declaration's body: the fixture's SUMTYPE loads, and its
+\ constructor and derived EQ and HASH run.
 require test/fixtures/big-decl.f
 : BIGSUM-HASH ( -- bool )
    5 BIG-BIGSUM:V7 BIG-BIGSUM:HASH 5 BIG-BIGSUM:V7 BIG-BIGSUM:HASH = ;
+: BIGSUM-EQ ( -- bool ) 5 BIG-BIGSUM:V7 5 BIG-BIGSUM:V7 BIG-BIGSUM:EQ ;
+: BIGSUM-NEQ ( -- bool ) 5 BIG-BIGSUM:V7 5 BIG-BIGSUM:V199 BIG-BIGSUM:EQ ;
 BIGSUM-HASH TTRUE
+BIGSUM-EQ TTRUE
+BIGSUM-NEQ TFALSE
 
 \ multi-error load mode: a bad top-level declaration is reported + counted +
 \ rolled back, without a fake declared signature, and the load continues.

@@ -287,13 +287,11 @@ private
 : ROW@ ( n -- n )
    ROW-A @ {: i:n rows:ptr :}
    i cells rows + @ ;
-\ The first cell of the last row at or before text offset x.
+\ The first cell of the last row at or before text offset x, row 0 when
+\ none is. The rows ascend by text offset.
 : MAP-ROW ( n -- n )
    {: x:n :}
-   0 BEGIN
-      dup 1 + ROW-N @ < IF dup 1 + 2 * ROW@ x <= ELSE 0 0= 0= THEN
-   WHILE 1 + REPEAT
-   2 * ;
+   1 ROW-N @ [: 2 * ROW@ x <= ;] KERNEL-SEARCH:PARTITION-POINT 1 - 2 * ;
 \ Whether text offset x lies in a run with no source.
 : MAP-NONE? ( n -- bool )
    MAP-ROW 1 + ROW@ BODY-SOURCE:NONE = ;

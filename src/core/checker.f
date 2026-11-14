@@ -13775,11 +13775,14 @@ variable BWIN-EPOCH
 : REC-BINDING-ROW ( n -- ptr u8 n ) {: ord:n :}
    ord 0< ord REC-IX @ >= or IF
       CHECKER-OWNER-ABI:BINDING-RC throw THEN
-   BWIN-N @ 0 ?DO
+   0 BWIN-N @
+   [: CHECKER-OWNER-ABI:BOUND-ORD BWIN-AT @ ord < ;]
+   KERNEL-SEARCH:PARTITION-POINT {: i:n :}
+   i BWIN-N @ < IF
       i CHECKER-OWNER-ABI:BOUND-ORD BWIN-AT @ ord = IF
-         i 0 BWIN-AT BYTE-VIEW CHECKER-OWNER-ABI:BOUND-CELLS cells UNLOOP EXIT
+         i 0 BWIN-AT BYTE-VIEW CHECKER-OWNER-ABI:BOUND-CELLS cells EXIT
       THEN
-   LOOP
+   THEN
    NULL-PTR 0 ;
 
 : REC-CALL-BINDING ( n -- ptr u8 n )
@@ -13864,9 +13867,17 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
 \ ---- the finalized call facts, read back by name-independent dispatch --------
 \ These read the rows through the same CWIN-STATE the writer used: a second
 \ checker may own the source while the compiler reads the first one's rows.
+
+\ The first row at or past ordinal ord. Rows ascend by ordinal: a field
+\ loan's go under its WITH-FIELD token's, before any of its selector's.
+: CWIN-FIRST ( n -- n ) {: ord:n :}
+   0 CWIN-N @ [: CW-ORD CWIN-AT @ ord < ;]
+   KERNEL-SEARCH:PARTITION-POINT ;
+
 : CWIN-FIND? ( n n -- n n bool ) {: ord:n kind:n :}
-   CWIN-N @ 0 ?do
-      i CW-ORD CWIN-AT @ ord =  i CW-KIND CWIN-AT @ kind =  and if
+   CWIN-N @ ord CWIN-FIRST ?do
+      i CW-ORD CWIN-AT @ ord <> if unloop -1 -1 RES-FALSE exit then
+      i CW-KIND CWIN-AT @ kind = if
          i CW-IN CWIN-AT @  i CW-OUT CWIN-AT @  RES-TRUE unloop exit
       then
    loop
@@ -16847,15 +16858,23 @@ public
 
 : ITEM-COUNT ( -- n ) data-base BODY-ITEMS:COUNT-CELL + @ ;
 
+private
+\ The first item at or past body offset off. Items ascend by offset: each is
+\ appended at the body's end, and a rollback drops those at or past its cut.
+: ITEM-FIRST ( n -- n ) {: off:n :}
+   0 ITEM-COUNT [: BODY-ITEMS:OFF ITEM-CELL@ off < ;]
+   KERNEL-SEARCH:PARTITION-POINT ;
+public
+
 \ The record of the CALL item spanning the u-byte token at offset off,
 \ NULL-PTR for none: items apply only to a walk of the pending definition's
 \ body text.
 : POSTPONED-REC ( n n -- ptr n ) {: off:n u:n :}
    ITEM-COUNT 0= IF NULL-PTR EXIT THEN
    TBASE@ NULL-PTR -  data-base BODY-TEXT:BASE-CELL + @ <> IF NULL-PTR EXIT THEN
-   ITEM-COUNT 0 ?DO
+   ITEM-COUNT off ITEM-FIRST ?DO
+      i BODY-ITEMS:OFF ITEM-CELL@ off <> IF NULL-PTR UNLOOP EXIT THEN
       i BODY-ITEMS:KIND ITEM-CELL@ BODY-ITEM-KIND:CALL =
-      i BODY-ITEMS:OFF ITEM-CELL@ off =  and
       i BODY-ITEMS:LEN ITEM-CELL@ u =  and IF
          i BODY-ITEMS:A ITEM-CELL@ CHECKER-RESOLVE:REC-AT UNLOOP EXIT
       THEN
