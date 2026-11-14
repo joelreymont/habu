@@ -137,7 +137,6 @@ create TAB
    NDICT-HW-CELL                      1 cells                 CLAIM NDICT-HW-CELL
    DATA-FLOOR-CELL                    1 cells                 CLAIM DATA-FLOOR-CELL
    DEF-OCC:PTR-CELL                   1 cells                 CLAIM DEF-OCC:PTR-CELL
-   LOCNAMES                           LOC-RECS LOC-REC *      CLAIM LOCNAMES
    CAPDEPTH-CELL                      1 cells                 CLAIM CAPDEPTH-CELL
    TOKDEPTH-CELL                      1 cells                 CLAIM TOKDEPTH-CELL
    RAWNEXT-CELL                       1 cells                 CLAIM RAWNEXT-CELL

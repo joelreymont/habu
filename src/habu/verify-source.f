@@ -564,9 +564,9 @@ variable STR-DEC-TURN
 \ A body token is looked up among the live locals, byte for byte, after
 \ comments and before every keyword but `;`. Each body reader resets the table;
 \ a block's end retires its locals.
-LOC-RECS TYPED-BUFFER LOCAL-A ptr u8
-LOC-RECS TYPED-BUFFER LOCAL-U n
-LOC-RECS TYPED-BUFFER LOCAL-D n               \ the block depth that declared it
+DYNAMIC-BUFFER LOCAL-A ptr u8
+DYNAMIC-BUFFER LOCAL-U n
+DYNAMIC-BUFFER LOCAL-D n                      \ the block depth that declared it
 variable LOCAL-N
 variable LOCAL-DEPTH                          \ blocks open, counted while a local lives
 
@@ -1031,11 +1031,10 @@ variable SEALS-N
 : LOCAL-TOKEN? ( -- bool )
    TOKEN-A @ TOKEN-U @ LOCAL? ;
 
-\ The engine refuses a live local past its LOC-RECS records, and the checker
-\ names that local (E-TOO-MANY-LOCALS) when this body registers, so the table
-\ only stops recording.
 : LOCAL-ADD ( ptr u8 n -- ) {: a:ptr u:n :}
-   LOCAL-N @ LOC-RECS >= IF EXIT THEN
+   LOCAL-N @ 1 + LOCAL-A-RESERVE
+   LOCAL-N @ 1 + LOCAL-U-RESERVE
+   LOCAL-N @ 1 + LOCAL-D-RESERVE
    0 BEGIN dup u < IF a over + c@ $3A <> ELSE 0 0= 0= THEN WHILE 1 + REPEAT
    LOCAL-N @ LOCAL-U !
    a LOCAL-N @ LOCAL-A !

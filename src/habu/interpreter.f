@@ -1241,7 +1241,11 @@ private
 
 \ The capture reads locals before syntax. These cells describe lexical
 \ lifetime only.
-LOC-RECS TYPED-BUFFER BODY-LOCAL-DEPTH n
+DYNAMIC-BUFFER BODY-LOCAL-DEPTH n
+\ Each local's bare name ends at its LOCAL-END offset in LOCAL-NAMES, which
+\ holds the names end to end in binding order.
+DYNAMIC-BUFFER LOCAL-NAMES u8
+DYNAMIC-BUFFER LOCAL-END n
 
 76 constant DEF-RC-NO-COMPILER   \ the code of the engine head's first refusal
 \ `trusted:` or `does>` with no signature, or define-word given no effect.
@@ -1654,14 +1658,17 @@ private
    S\" c\\\q" TOKEN-IS? if DEF-ESC-TEXT exit then
    S\" .\\\q" TOKEN-IS? if DEF-ESC-TEXT then ;
 
+: LOCAL-START ( n -- n ) {: idx:n :}
+   idx 0= if 0 exit then
+   idx 1- LOCAL-END @ ;
+
 \ The capture records each `{:` declaration here; the compiler reads it from the
 \ body text at `;`.
 : BODY-LOCAL? ( -- bool )
    TOKEN$ {: a:ptr u:n :}
    LOCN-CELL CELL@ 0 ?do
-      data-base LOCNAMES + i LOC-REC * + BYTE-VIEW {: row:ptr :}
-      row CELL-VIEW @ u = if
-         a u row 8 + u STR= if true unloop exit then
+      i LOCAL-END @ i LOCAL-START - u = if
+         a u  i LOCAL-START LOCAL-NAMES  u STR= if true unloop exit then
       then
    loop
    false ;
@@ -1669,21 +1676,13 @@ private
 : BODY-LOCAL-ONE ( -- )
    TOKEN$ {: a:ptr u:n :}
    LOCN-CELL CELL@ {: idx:n :}
-   idx LOC-RECS >= if
-      s" E-TOO-MANY-LOCALS" REFUSAL
-      s" more than 64 locals in one definition: " ERROR-TEXT:TYPE
-      TOKEN$ ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE  RC-REJECT throw
-   then
    a u 0 COLON-AT {: colon:n :}
    colon 0 < if u else colon then {: len:n :}
-   len LOC-NAME-CAP > if
-      s" E-LOCAL-NAME-TOO-LONG" REFUSAL
-      s" local name over 16 bytes: " ERROR-TEXT:TYPE
-      TOKEN$ ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE  RC-REJECT throw
-   then
-   data-base LOCNAMES + idx LOC-REC * + BYTE-VIEW {: row:ptr :}
-   len row CELL-VIEW !
-   a row 8 + len BYTE-COPY
+   idx LOCAL-START {: at:n :}
+   idx 1+ BODY-LOCAL-DEPTH-RESERVE  idx 1+ LOCAL-END-RESERVE
+   at len + LOCAL-NAMES-RESERVE
+   at len + idx LOCAL-END !
+   a  at LOCAL-NAMES  len BYTE-COPY
    CAPDEPTH-CELL CELL@ idx BODY-LOCAL-DEPTH !
    idx 1+ LOCN-CELL CELL! ;
 
