@@ -1237,7 +1237,7 @@ PTR-VARIABLE TDGEN-NA   variable TDGEN-NU  \ word-name span inside TDGEN-BUF
 \ validate live visibility and every plan-determined fixed registry.
 $1000 constant TDPLAN-CAP-INIT
 4 constant TDPLAN-ROW-CAP-INIT
-7 cells constant TDPLAN-REC
+8 cells constant TDPLAN-REC
 $7FFFFFFFFFFFFFFF constant TDPLAN-BYTE-MAX
 TDPLAN-BYTE-MAX TDPLAN-REC / constant TDPLAN-ROW-MAX
 0 cells constant TDPLAN.SYM-OFF
@@ -1247,10 +1247,12 @@ TDPLAN-BYTE-MAX TDPLAN-REC / constant TDPLAN-ROW-MAX
 4 cells constant TDPLAN.NAME-U-OFF
 5 cells constant TDPLAN.BUILT-OFF
 6 cells constant TDPLAN.FAM-OFF
+7 cells constant TDPLAN.VID-OFF
 \ The builder kinds TDPLAN.BUILT holds; a text row holds 0.
 1 constant TDPLAN-TAG
 2 constant TDPLAN-EQ
 3 constant TDPLAN-HASH
+4 constant TDPLAN-CTOR
 create TDPLAN-BOOT TDPLAN-CAP-INIT allot
 create TDPLAN-ROW-BOOT TDPLAN-ROW-CAP-INIT TDPLAN-REC * allot
 PERSISTED-PTR-VARIABLE TDPLAN-P       TDPLAN-BOOT TDPLAN-P !
@@ -1359,6 +1361,7 @@ private
 : TDPLAN.NAME-U ( ptr a -- ptr a ) TDPLAN.NAME-U-OFF + ;
 : TDPLAN.BUILT ( ptr a -- ptr a ) TDPLAN.BUILT-OFF + ;
 : TDPLAN.FAM ( ptr a -- ptr a ) TDPLAN.FAM-OFF + ;
+: TDPLAN.VID ( ptr a -- ptr a ) TDPLAN.VID-OFF + ;
 
 : TDPLAN-SYM@ ( n -- n )
    TDPLAN-ROW TDPLAN.SYM @ ;
@@ -1397,6 +1400,7 @@ private
    TDGEN-NU @ r TDPLAN.NAME-U !
    0 r TDPLAN.BUILT !
    0 r TDPLAN.FAM !
+   0 r TDPLAN.VID !
    TDGEN-BUF TDGEN-U @ TDPLAN-APP
    10 TDPLAN-C, ;
 
@@ -1409,9 +1413,13 @@ private
 : TDPLAN-CTOR-NAME+ ( n -- n ) {: vid:n :}
    TDPLAN-NAME+ dup vid swap SUMV-CTOR-SYM! ;
 
-: TDPLAN-SUM-CTOR+ ( n -- )
-   TDPLAN-CTOR-NAME+ drop
-   TDPLAN-WORD+ ;
+: TDPLAN-SUM-CTOR+ ( n -- ) {: vid:n :}
+   vid TDPLAN-CTOR-NAME+ drop
+   TDPLAN-WORD+
+   TDPLAN-N @ 1 - TDPLAN-ROW {: r:ptr :}
+   TDPLAN-CTOR r TDPLAN.BUILT !
+   vid SUMV-FAM@ r TDPLAN.FAM !
+   vid r TDPLAN.VID ! ;
 
 : TDPLAN-PROD-CTOR+ ( n -- )
    TDPLAN-CTOR-NAME+ CTOR-PEND-SYM+
@@ -1455,6 +1463,7 @@ private
 : TDPLAN-TEXT? ( n -- bool ) TDPLAN-ROW TDPLAN.BUILT @ 0= ;
 : TDPLAN-KIND@ ( n -- n ) TDPLAN-ROW TDPLAN.BUILT @ ;
 : TDPLAN-FAM@ ( n -- n ) TDPLAN-ROW TDPLAN.FAM @ ;
+: TDPLAN-VID@ ( n -- n ) TDPLAN-ROW TDPLAN.VID @ ;
 
 : TDPLAN-TEXT-N ( -- n )
    0 BEGIN
@@ -1479,14 +1488,35 @@ private
 : TDECL-SELF-NODE ( n -- n ) {: fam:n :}
    fam 0 0 SCHEMA-APP ;
 
-\ The effect a derived word of KIND over FAM takes, a transient node.
-: TDECL-DRV-EFFECT ( n n -- n ) {: fam:n kind:n :}
+\ The effect a derived word of KIND over FAM takes.
+: TDECL-KIND-EFFECT ( n n -- n ) {: fam:n kind:n :}
+   fam TDECL-SELF-NODE  EMPTY-EFFECT over EFFECT-IN
+   kind TDPLAN-EQ = IF
+      over EFFECT-IN  CC-BOOL SCHEMA-CON EFFECT-OUT
+   ELSE CC-N SCHEMA-CON EFFECT-OUT THEN
+   nip ;
+
+\ FAM applied to its own parameters, fam<p0,..>.
+: TDECL-FAM-NODE ( n -- n ) {: fam:n :}
+   SCHEMA-ROOT-N@ {: start:n :}
+   fam TFAM-ARITY@ {: ar:n :}
+   ar 0 ?do i SCHEMA-PARAM SCHEMA-ROOT+ drop loop
+   fam start ar SCHEMA-APP ;
+
+\ Variant VID's constructor: its payload in declaration order to FAM's value.
+: TDECL-CTOR-EFFECT ( n n -- n ) {: fam:n vid:n :}
+   EMPTY-EFFECT
+   vid SUMV-PAY-N 0 ?do
+      vid i SUMV-PAY-ROOT SCHEMA-ROOT@ EFFECT-IN
+   loop
+   fam TDECL-FAM-NODE EFFECT-OUT ;
+
+\ The effect built row ROW's word takes, a transient node.
+: TDECL-DRV-EFFECT ( n -- n ) {: row:n :}
+   row TDPLAN-FAM@  row TDPLAN-KIND@ {: fam:n kind:n :}
    TRANSIENT-ON
-   [: fam TDECL-SELF-NODE  EMPTY-EFFECT over EFFECT-IN
-      kind TDPLAN-EQ = IF
-         over EFFECT-IN  CC-BOOL SCHEMA-CON EFFECT-OUT
-      ELSE CC-N SCHEMA-CON EFFECT-OUT THEN
-      nip ;]
+   [: kind TDPLAN-CTOR = IF fam row TDPLAN-VID@ TDECL-CTOR-EFFECT
+      ELSE fam kind TDECL-KIND-EFFECT THEN ;]
    [: TRANSIENT-OFF ;] finally ;
 
 \ A text row's definition is checked; a built row registers the effect its
@@ -1496,8 +1526,7 @@ private
       i TDPLAN-TEXT? IF
          i TDPLAN-DEF$ CHECK! -1 <> IF 70 throw THEN
       ELSE
-         i TDPLAN-NAME$
-         i TDPLAN-FAM@ i TDPLAN-KIND@ TDECL-DRV-EFFECT EFFECT-SIG 2drop
+         i TDPLAN-NAME$  i TDECL-DRV-EFFECT EFFECT-SIG 2drop
          CHECKER-CHILD-ROWS drop
       THEN
    loop
@@ -1780,13 +1809,12 @@ private
    loop
    62 TDGEN-C, ;
 
-\ ": PKG:VARIANT " when the family's generated words are public, ": FAMILY-MEMBER "
+\ "PKG:VARIANT" when the family's generated words are public, "FAMILY-MEMBER"
 \ for a private or OPAQUE family (TFAM-GEN-PUBLIC?), with the name span recorded
 \ either way. Those families' words go into the declaring package's private
 \ wordlist, where a name carrying a colon can never land (TF-CTOR-PKG$ /
 \ TF-CTOR-PRIV$, type-family.f).
-: TDGEN-NAME ( n -- ) {: vid:n :}
-   s" : " TDGEN-APP
+: TDGEN-CTOR-NAME ( n -- ) {: vid:n :}
    TDGEN-U @ {: n0:n :}
    vid SUMV-FAM@ {: fam:n :}
    fam TFAM-GEN-PUBLIC? IF
@@ -1797,26 +1825,16 @@ private
       fam TFAM-NAME$ vid SUMV-NAME$ TF-CTOR-PRIV$ TDGEN-APP
    THEN
    TDGEN-BUF n0 + TDGEN-NA !
-   TDGEN-U @ n0 - TDGEN-NU !
-   32 TDGEN-C, ;
+   TDGEN-U @ n0 - TDGEN-NU ! ;
 
-: TDGEN-CONSTRUCT-BODY ( n n -- ) {: fam:n vid:n :}
-   s" construct " TDGEN-APP
-   fam TFAM-NAME$ TDGEN-APP  32 TDGEN-C,
-   vid SUMV-NAME$ TDGEN-APP
-   s"  ;" TDGEN-APP ;
+: TDGEN-NAME ( n -- )
+   s" : " TDGEN-APP  TDGEN-CTOR-NAME  32 TDGEN-C, ;
 
 public
 
 : TDECL-CTOR-WORD ( n n -- ) {: fam:n vid:n :}
    TDGEN-CLEAR
-   vid TDGEN-NAME
-   s" ( " TDGEN-APP
-   fam vid TDGEN-PAYLOAD
-   s" -- " TDGEN-APP
-   fam TDGEN-OUT-TYPE
-   s"  ) " TDGEN-APP
-   fam vid TDGEN-CONSTRUCT-BODY
+   vid TDGEN-CTOR-NAME
    vid TDPLAN-SUM-CTOR+ ;
 
 
@@ -2033,8 +2051,7 @@ $100000001b3 constant DRV-FNV-PRIME        \ FNV-1a 64-bit prime
    fam TFAM-DERIVE-HASH? IF fam TDECL-HASH-WORD THEN ;
 
 : TDECL-BUILT-OPEN ( n -- ) {: row:n :}
-   row TDPLAN-NAME$
-   row TDPLAN-FAM@ row TDPLAN-KIND@ TDECL-DRV-EFFECT
+   row TDPLAN-NAME$  row TDECL-DRV-EFFECT
    TDECL-DEFINE-RUN ;
 : TDECL-BUILT-END ( -- ) postpone ; ;
 : TDECL-TAG-BUILD ( n n -- ) {: fam:n row:n :}
@@ -2050,8 +2067,15 @@ $100000001b3 constant DRV-FNV-PRIME        \ FNV-1a 64-bit prime
    row TDECL-BUILT-OPEN
    fam TFAM-PRODUCT? IF fam TDGEN-HASH-PROD ELSE fam TDGEN-HASH-BODY THEN
    TDECL-BUILT-END ;
+: TDECL-CTOR-BUILD ( n n -- ) {: fam:n row:n :}
+   row TDECL-BUILT-OPEN
+   s" construct" TDGEN-KW
+   fam TFAM-NAME$  fam TDGEN-SELF-NODE  ITEM-ABI:TYPE TDGEN-ITEM
+   row TDPLAN-VID@ SUMV-NAME$ 0 ITEM-ABI:OPERAND TDGEN-ITEM
+   TDECL-BUILT-END ;
 : TDECL-DRV-BUILD ( n n -- ) {: fam:n row:n :}
    row TDPLAN-KIND@ {: kind:n :}
+   kind TDPLAN-CTOR = IF fam row TDECL-CTOR-BUILD EXIT THEN
    kind TDPLAN-TAG = IF fam row TDECL-TAG-BUILD EXIT THEN
    kind TDPLAN-EQ = IF fam row TDECL-EQ-BUILD EXIT THEN
    kind TDPLAN-HASH = IF fam row TDECL-HASH-BUILD EXIT THEN
