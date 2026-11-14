@@ -564,18 +564,19 @@ s" RSB24C RSB24" CHECK-QUIET-CANDIDATE! -1 T=
 defer T-Q23 ( -- [ a b c d e g h i j k l m o p q s t u v w x y z -- ] )
 REJECTION:CAPTURE
 s" 276 type variables certify" T-LABEL
-s" RSQ276 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23" CHECK-QUIET-CANDIDATE! -1 T=
-s" 276 type variables: the refusal names the word" T-LABEL
-REJECTION:BUFFER$ s" rsq276" CONTAINS? TTRUE
-s" 276 type variables: the refusal names the reason" T-LABEL
-REJECTION:BUFFER$ s" more than 256 type variables or binders" CONTAINS? TTRUE
+s" RSQ276 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23" CHECK-CANDIDATE! -1 T=
+s" 276 type variables: the warning names the word" T-LABEL
+REJECTION:BUFFER$ s" warning[W-EFFECT-NOT-RECORDED]: the effect of `rsq276`" CONTAINS? TTRUE
+s" 276 type variables: the warning names the reason" T-LABEL
+REJECTION:BUFFER$ s" = reason: more than 256 type variables or binders" CONTAINS? TTRUE
 \ RSF33's inferred effect nests one binder per call of T-UN, 33 in all.
 defer T-MK ( -- a )
 : T-UN ( forall<p,[ a -- ]> -- a ) drop T-MK ;
 s" 33 nested binders certify" T-LABEL
-s" RSF33 T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN" CHECK-QUIET-CANDIDATE! -1 T=
-s" 33 nested binders: the refusal names the reason" T-LABEL
-REJECTION:BUFFER$ s" more than 32 nested binders" CONTAINS? TTRUE
+s" RSF33 T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN" CHECK-CANDIDATE! -1 T=
+s" 33 nested binders: the warning names the reason" T-LABEL
+REJECTION:BUFFER$ s" warning[W-EFFECT-NOT-RECORDED]: the effect of `rsf33`" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" = reason: more than 32 nested binders" CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
 s" a source signature cannot name a type variable by its ordinal" T-LABEL
 s" RSO23 ( 23 -- 23 )" CHECK-QUIET-CANDIDATE! -1 = TFALSE
@@ -677,7 +678,7 @@ s" CBAD-LOC17-DIAG ( n -- n ) {: abcdefghijklmnopq:n :} abcdefghijklmnopq" CHECK
 s" over-width local names E-LOCAL-NAME-TOO-LONG" T-LABEL
 REJECTION:BUFFER$ s" E-LOCAL-NAME-TOO-LONG" CONTAINS? TTRUE
 s" over-width local states the width and the limit" T-LABEL
-REJECTION:BUFFER$ s" local 'abcdefghijklmnopq:n' has a 17-byte name; the limit is 16 bytes" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" local `abcdefghijklmnopq:n` has a 17-byte name; the limit is 16 bytes" CONTAINS? TTRUE
 s" over-width local is not reported as an undefined word" T-LABEL
 REJECTION:BUFFER$ s" E-UNDEFINED" CONTAINS? TFALSE
 REJECTION:CAPTURE
@@ -688,7 +689,7 @@ s" 65 locals reject" T-LABEL
 s" CBAD-LOC65" 65 LOCG-BUILD  LOCG$ CHECK-CANDIDATE! 0 T=
 s" 65th local names E-TOO-MANY-LOCALS and the cap" T-LABEL
 REJECTION:BUFFER$ s" E-TOO-MANY-LOCALS" CONTAINS? TTRUE
-REJECTION:BUFFER$ s" local 't64' is one over the 64 locals a definition may bind" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" local `t64` is one over the 64 locals a definition may bind" CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" locals inside a quotation reject" T-LABEL
 s" CBAD-LOC-QUOTE ( -- n ) [: 1 {: x:n :} x ;] execute" CHECK-CANDIDATE! 0 T=
@@ -837,51 +838,51 @@ REJECTION:CAPTURE
 s" -- in a locals group rejects" T-LABEL
 s" CBAD-LOC-DASH ( n -- n ) {: a -- b :} a" CHECK-CANDIDATE! 0 T=
 s" -- in a locals group names E-BAD-LOCAL-SHAPE and the reason" T-LABEL
-REJECTION:BUFFER$ s" E-BAD-LOCAL-SHAPE habu: in cbad-loc-dash: at '--': a locals group names only locals; the signature declares the outputs" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" error[E-BAD-LOCAL-SHAPE]: a locals group names only locals; the signature declares the outputs" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" `--`" CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" | in a locals group rejects" T-LABEL
 s" CBAD-LOC-BAR ( n n -- n ) {: a | :} a" CHECK-CANDIDATE! 0 T=
 s" | in a locals group names E-BAD-LOCAL-SHAPE and the reason" T-LABEL
-REJECTION:BUFFER$ s" E-BAD-LOCAL-SHAPE habu: in cbad-loc-bar: at '|': a locals group names only locals; Habu has no uninitialised locals" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" error[E-BAD-LOCAL-SHAPE]: a locals group names only locals; Habu has no uninitialised locals" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" `|`" CONTAINS? TTRUE
 \ A local the load cannot bind refuses the definition at its token, as the
 \ load does while it compiles the body, ahead of any check failure before it.
 REJECTION:CAPTURE
 s" quotation local before a wide local rejects" T-LABEL
 s" CBAD-LOC-SHAPE-THEN-WIDE ( n -- n ) [: {: y:n :} ;] drop {: abcdefghijklmnopq:n :} 1" CHECK-CANDIDATE! 0 T=
 s" quotation local before a wide local keeps the shape code on '{:'" T-LABEL
-REJECTION:BUFFER$ s" E-BAD-LOCAL-SHAPE habu: in cbad-loc-shape-then-wide: at '{:'" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" error[E-BAD-LOCAL-SHAPE]" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" `{:`" CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" wide local before a quotation local rejects" T-LABEL
 s" CBAD-LOC-WIDE-THEN-SHAPE ( n -- n ) {: abcdefghijklmnopq:n :} [: {: y:n :} ;] drop 1" CHECK-CANDIDATE! 0 T=
 s" wide local before a quotation local keeps the width code on its token" T-LABEL
-REJECTION:BUFFER$ s" E-LOCAL-NAME-TOO-LONG habu: in cbad-loc-wide-then-shape: local 'abcdefghijklmnopq:n' has a 17-byte name" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" error[E-LOCAL-NAME-TOO-LONG]: local `abcdefghijklmnopq:n` has a 17-byte name" CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" type fault before a wide local rejects" T-LABEL
 s" CBAD-LOC-AFTER-MISMATCH ( n -- n ) dup c@ {: abcdefghijklmnopq:n :} 1" CHECK-CANDIDATE! 0 T=
 s" type fault before a wide local names the local, as the load does" T-LABEL
-REJECTION:BUFFER$ s" E-LOCAL-NAME-TOO-LONG habu: in cbad-loc-after-mismatch: local 'abcdefghijklmnopq:n' has a 17-byte name" CONTAINS? TTRUE
-REJECTION:BUFFER$ s" at 'c@'" CONTAINS? TFALSE
+REJECTION:BUFFER$ s" error[E-LOCAL-NAME-TOO-LONG]: local `abcdefghijklmnopq:n` has a 17-byte name" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" `c@`" CONTAINS? TFALSE
 REJECTION:CAPTURE  true REJECTION:JSON !
 s" over-width local JSON packet" T-LABEL
 s" CBAD-LOC17-JSON ( n -- n ) {: abcdefghijklmnopq:n :} abcdefghijklmnopq" CHECK-CANDIDATE! 0 T=
 s" over-width local JSON code" T-LABEL
 REJECTION:BUFFER$ s\" \"code\":\"E-LOCAL-NAME-TOO-LONG\"" CONTAINS? TTRUE
-s" over-width local JSON repair class" T-LABEL
-REJECTION:BUFFER$ s\" \"repair_class\":\"shorten_local_name\"" CONTAINS? TTRUE
-s" over-width local JSON suggestion" T-LABEL
-REJECTION:BUFFER$ s" Shorten the local name to at most 16 bytes." CONTAINS? TTRUE
+s" over-width local JSON help" T-LABEL
+REJECTION:BUFFER$ s\" \"help\":\"shorten the name in `abcdefghijklmnopq:n` to at most 16 bytes\"" CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" 65th local JSON packet" T-LABEL
 LOCG$ CHECK-CANDIDATE! 0 T=
-s" 65th local JSON code and class" T-LABEL
+s" 65th local JSON code" T-LABEL
 REJECTION:BUFFER$ s\" \"code\":\"E-TOO-MANY-LOCALS\"" CONTAINS? TTRUE
-REJECTION:BUFFER$ s\" \"repair_class\":\"reduce_local_count\"" CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" -- in a locals group JSON packet" T-LABEL
 s" CBAD-LOC-DASH-JSON ( n -- n ) {: a -- b :} a" CHECK-CANDIDATE! 0 T=
 s" -- in a locals group JSON code and reason" T-LABEL
 REJECTION:BUFFER$ s\" \"code\":\"E-BAD-LOCAL-SHAPE\"" CONTAINS? TTRUE
-REJECTION:BUFFER$ s\" \"reason\":\"a locals group names only locals; the signature declares the outputs\"" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"message\":\"a locals group names only locals; the signature declares the outputs\"" CONTAINS? TTRUE
 REJECTION:BUFFER-OFF  false REJECTION:JSON !
 \ multi-error load mode: rejects do not abort the load; the declared sig is
 \ retained so later definitions keep checking.
@@ -909,9 +910,9 @@ s" DNI-XCAST ( n -- exposure-us ) >frame-idx" T-CHECK-REJECTS
 REJECTION:CAPTURE  true REJECTION:JSON !
 s" DNI-RENDER ( frame-idx -- n )" CHECK! drop
 s" nominal type renders by name in diagnostic" T-LABEL
-REJECTION:BUFFER$ s\" \"actual\":\"frame-idx \"" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"found\":\"frame-idx\"" CONTAINS? TTRUE
 s" nominal declared effect renders bare" T-LABEL
-REJECTION:BUFFER$ s\" \"declared_effect\":\"frame-idx -- n \"" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"declared\":\"frame-idx -- n\"" CONTAINS? TTRUE
 REJECTION:BUFFER-OFF  false REJECTION:JSON !
 : T-SIGLESS-CERTIFIES ( -- )
    s" sigless nominal certifies" T-LABEL
@@ -966,18 +967,20 @@ s" CSP-CALL ( -- n n ) CSPQ:ROW-A CSPQ:ROW-B" CHECK! -1 T=
 CHECKER-CANDIDATE-SCOPE-DONE
 s" and nowhere once the scope has closed" T-LABEL
 s" CSP-AFTER ( -- n ) CSPQ:ROW-A" CHECK-QUIET-CANDIDATE! 0 T=
-s" CBAD-TFAM-ARITY-DIAG ( span<a,b> -- ) drop" s" wrong arity for type family 'span'" T-CHECK-SAYS
-s" CBAD-TFAM-ARITY4-DIAG ( tile<a,b,c,d> -- ) drop" s" wrong arity for type family 'tile'" T-CHECK-SAYS
+s" CBAD-TFAM-ARITY-DIAG ( span<a,b> -- ) drop" s" error[E-WRONG-ARITY]: type family `span` takes 3 type arguments, not 2" T-CHECK-SAYS
+s" CBAD-TFAM-ARITY4-DIAG ( tile<a,b,c,d> -- ) drop" s" error[E-WRONG-ARITY]: type family `tile` takes 3 type arguments, not 4" T-CHECK-SAYS
 s" COK-PTR-IN-FAM ( span<space-global,ptr<space-global,f32>,extent-n> -- ) drop" T-CHECK-PASSES
-s" CBAD-PTR-OVERARITY ( ptr<a,b,c> -- ) drop" s" wrong arity for type family 'ptr'" T-CHECK-SAYS
-s" CBAD-PTR-BARE-ROWEND ( a ptr -- ) drop" s" 'ptr' needs an element type" T-CHECK-SAYS
+s" CBAD-PTR-OVERARITY ( ptr<a,b,c> -- ) drop" s" error[E-WRONG-ARITY]: type family `ptr` takes 2 type arguments, not 3" T-CHECK-SAYS
+s" CBAD-PTR-BARE-ROWEND ( a ptr -- ) drop" s" error[E-BARE-PTR-SIGNATURE]: `ptr` needs an element type" T-CHECK-SAYS
 s" CBAD-PTR-BARE-IN-FAM ( span<space-global,ptr,extent-n> -- ) drop" T-CHECK-REJECTS
 NEWTYPE tfam6r-big<a,b,c,d,e,g>
 : COK-BIG6 ( tfam6r-big<a,b,c,d,e,f> -- tfam6r-big<a,b,c,d,e,f> ) ;
 s" COK-BIG6-CALL ( tfam6r-big<a,b,c,d,e,f> -- tfam6r-big<a,b,c,d,e,f> ) COK-BIG6" T-CHECK-PASSES
 s" COK-BIG6-NEST ( tfam6r-big<a,tfam6r-big<t,u,v,w,x,y>,c,d,e,f> -- tfam6r-big<a,tfam6r-big<t,u,v,w,x,y>,c,d,e,f> )" T-CHECK-PASSES
-s" CBAD-BIG6-A5-DIAG ( tfam6r-big<a,b,c,d,e> -- ) drop" s" wrong arity for type family 'tfam6r-big'" T-CHECK-SAYS
-s" CBAD-BIG6-A7-DIAG ( tfam6r-big<a,b,c,d,e,f,g> -- ) drop" s" wrong arity for type family 'tfam6r-big'" T-CHECK-SAYS
+s" CBAD-BIG6-A5-DIAG ( tfam6r-big<a,b,c,d,e> -- ) drop"
+   s" error[E-WRONG-ARITY]: type family `tfam6r-big` takes 6 type arguments, not 5" T-CHECK-SAYS
+s" CBAD-BIG6-A7-DIAG ( tfam6r-big<a,b,c,d,e,f,g> -- ) drop"
+   s" error[E-WRONG-ARITY]: type family `tfam6r-big` takes 6 type arguments, not 7" T-CHECK-SAYS
 NEWTYPE scq-fam<a,b>
 : COK-SCQ ( scq-fam<[ n -- n ],f32> -- scq-fam<[ n -- n ],f32> ) ;
 s" COK-SCQ-CALL ( scq-fam<[ n -- n ],f32> -- scq-fam<[ n -- n ],f32> ) COK-SCQ" T-CHECK-PASSES
@@ -985,9 +988,9 @@ s" COK-SCQ-RET ( scq-fam<[ n -- n | U -- U ],f32> -- scq-fam<[ n -- n | U -- U ]
 s" COK-SCQ-QNEST ( scq-fam<[ [ n -- n ] -- n ],f32> -- scq-fam<[ [ n -- n ] -- n ],f32> )" T-CHECK-PASSES
 \ Malformed rows assert their first cause: a missing ']' first meets the stray
 \ ',' as an unknown type.
-s" CBAD-SCQ-NODASH ( scq-fam<[ n n ],f32> -- ) drop" s" at ']'" T-CHECK-SAYS
-s" CBAD-SCQ-NOCLOSE ( scq-fam<[ n -- n ,f32> -- ) drop" s" unknown type ',' in signature" T-CHECK-SAYS
-s" CBAD-SCQ-RETCLOSE ( scq-fam<[ n -- n | U -- U -- ],f32> -- ) drop" s" at '--'" T-CHECK-SAYS
+s" CBAD-SCQ-NODASH ( scq-fam<[ n n ],f32> -- ) drop" s" error[E-BAD-SIGNATURE]: bad signature at `]`" T-CHECK-SAYS
+s" CBAD-SCQ-NOCLOSE ( scq-fam<[ n -- n ,f32> -- ) drop" s" error[E-UNKNOWN-SIGNATURE-TYPE]: unknown type `,` in signature" T-CHECK-SAYS
+s" CBAD-SCQ-RETCLOSE ( scq-fam<[ n -- n | U -- U -- ],f32> -- ) drop" s" error[E-BAD-SIGNATURE]: bad signature at `--`" T-CHECK-SAYS
 \ A mismatch diagnostic must render an SC-QUOT arg's din/dout rows, where a
 \ neutral return clause renders as none.
 defer T-BIG6-MK ( -- tfam6r-big<n,f32,u8,u16,i64,bool> )
@@ -1082,7 +1085,7 @@ s" CBAD-OWN-LOCAL-DIAG ( ES-OWN:own -- ES-OWN:own ES-OWN:own ) {: x:ES-OWN:own :
 s" linear-local diagnostic names E-LINEAR-LOCAL" T-LABEL
 REJECTION:BUFFER$ s" E-LINEAR-LOCAL" CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
-s" CBAD-LOCAL-QUAL-UNKNOWN ( n -- ) {: x:ES-OWN:nosuch :}" s" unknown type 'x:ES-OWN:nosuch' in signature" T-CHECK-SAYS
+s" CBAD-LOCAL-QUAL-UNKNOWN ( n -- ) {: x:ES-OWN:nosuch :}" s" error[E-UNKNOWN-SIGNATURE-TYPE]: unknown type `x:ES-OWN:nosuch` in signature" T-CHECK-SAYS
 VALUE-RECORD point x n y n END-VALUE-RECORD
 VALUE-RECORD rect w n h n END-VALUE-RECORD
 VALUE-RECORD box value a END-VALUE-RECORD
@@ -1559,9 +1562,9 @@ s" ESNP-SPEC ( a -- a ) ESNP-ID" CHECK-CANDIDATE! 0 T=
 s" specialize diag: E-NONPARAMETRIC-EFFECT code" T-LABEL
 REJECTION:BUFFER$ s" E-NONPARAMETRIC-EFFECT" CONTAINS? TTRUE
 s" specialize diag: names the offending quantifier" T-LABEL
-REJECTION:BUFFER$ s" variable 'a'" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" type variable `a`" CONTAINS? TTRUE
 s" specialize diag: names the forged family" T-LABEL
-REJECTION:BUFFER$ s" family 'esnp'" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" family `esnp`" CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
 
 REJECTION:CAPTURE
@@ -1569,30 +1572,30 @@ s" ESNP-ALIAS ( a b -- a ) ESNP-MERGE" CHECK-CANDIDATE! 0 T=
 s" aliasing diag: E-NONPARAMETRIC-EFFECT code" T-LABEL
 REJECTION:BUFFER$ s" E-NONPARAMETRIC-EFFECT" CONTAINS? TTRUE
 s" aliasing diag: names both quantifiers" T-LABEL
-REJECTION:BUFFER$ s" 'a' and 'b'" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" `a` and `b`" CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
 
 REJECTION:CAPTURE
 s" ESNP-ROW-PAIR ( R [ R -- S ] -- S ) drop" CHECK-CANDIDATE! 0 T=
 s" row alias diag: names both rows" T-LABEL
-REJECTION:BUFFER$ s" 'R' and row 'S'" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" `R` and row `S`" CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
 REJECTION:CAPTURE
 s" ESNP-ROW-BASE ( R n -- ) drop" CHECK-CANDIDATE! 0 T=
 s" row alias diag: names the unnamed row" T-LABEL
-REJECTION:BUFFER$ s" 'R' and the unnamed row" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" `R` and the unnamed row" CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
 REJECTION:CAPTURE
 s" ESNP-ROW-CELLS ( R -- S ) 1" CHECK-CANDIDATE! 0 T=
 s" row cells diag: names the row" T-LABEL
-REJECTION:BUFFER$ s" 'S' is bound to fixed cells" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" `S` is bound to fixed cells" CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
 REJECTION:CAPTURE
 true REJECTION:JSON !
 s" ESNP-ROW-JSON ( R [ R -- S ] -- S ) drop" CHECK-CANDIDATE! 0 T=
 false REJECTION:JSON !
-s" row alias JSON: quantifier2 names the second row" T-LABEL
-REJECTION:BUFFER$ s\" \"quantifier\":\"R\",\"quantifier2\":\"S\"" CONTAINS? TTRUE
+s" row alias JSON: the message names both rows" T-LABEL
+REJECTION:BUFFER$ s\" \"message\":\"declared row variable `R` and row `S` are unified" CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
 REJECTION:CAPTURE
 s" ESNP-ROW-UNNAMED ( R -- ) 1" CHECK-CANDIDATE! 0 T=
@@ -1603,9 +1606,9 @@ REJECTION:CAPTURE
 true REJECTION:JSON !
 s" ESNP-ROW-UNNAMED-JSON ( R -- ) 1" CHECK-CANDIDATE! 0 T=
 false REJECTION:JSON !
-s" row cells JSON: the unnamed row has no quantifier field" T-LABEL
+s" row cells JSON: the message names the unnamed row, not a quantifier" T-LABEL
 REJECTION:BUFFER$ s\" \"code\":\"E-NONPARAMETRIC-EFFECT\"" CONTAINS? TTRUE
-REJECTION:BUFFER$ s\" \"quantifier\"" CONTAINS? TFALSE
+REJECTION:BUFFER$ s\" \"message\":\"the unnamed row is bound to fixed cells" CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
 
 \ the ptr instance rejects via the mismatch diagnostic, which names the family.

@@ -70,8 +70,9 @@ s" CVPS-FIRST: third replay certifies" T-LABEL
 s" : CVPS-F3 ( n -- n ) ;" CVPS:REPLAY 0 T=
 s" CVPS-FIRST: a rejecting replay is rejected, not a context error" T-LABEL
 s" : CVPS-FBAD ( n -- n ) dup ;" CVPS:REPLAY-QUIET 0 T<>
-s" CVPS-FIRST: the rejection names the word, so it was a real source reject" T-LABEL
-CVPS:DIAG$ s" cvps-fbad" CONTAINS? TTRUE
+s" CVPS-FIRST: the rejection is the word's stack mismatch, so it was a real source reject" T-LABEL
+CVPS:DIAG$ s" error[E-MISMATCH]" CONTAINS? TTRUE
+CVPS:DIAG$ s" : CVPS-FBAD" CONTAINS? TTRUE
 s" CVPS-FIRST: replay after the throwing one certifies" T-LABEL
 s" : CVPS-F4 ( n -- n ) ;" CVPS:REPLAY 0 T=
 
@@ -114,7 +115,8 @@ s" : CVPS-T2 ( n -- n ) ;" CVPS:REPLAY 0 T=
 s" package CVPS-PA package CVPS-PB ;package : CVPS-PP ( -- n ) 1 ; ;package : CVPS-PQ ( -- n ) CVPS-PP ;"
 CVPS:REPLAY-QUIET drop
 s" a part's ;package: the package's private word is undefined after it closes" T-LABEL
-CVPS:DIAG$ s" 'CVPS-PP'" CONTAINS? TTRUE
+CVPS:DIAG$ s" error[E-UNDEFINED]" CONTAINS? TTRUE
+CVPS:DIAG$ s" `CVPS-PP`" CONTAINS? TTRUE
 
 \ A replay reopening a part the engine holds binds the part's words.
 package CVPS-HOST package CVPS-PART public : CVPS-PW ( -- n ) 42 ; ;package ;package

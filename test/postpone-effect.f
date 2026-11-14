@@ -45,15 +45,24 @@ CAST: >NODE ( EFFECT:type -- n )
 
 SLOT-TEXT s" ( ptr postpone-effect:peslot n -- ptr postpone-effect:peslot )" T$=
 
+\ The captured record is an E-SCHEMA-BAD naming SCHEMA-REG word W.
+: SAID-BAD ( ptr u8 n -- ) {: w:ptr wu:n :}
+   REJECTION:BUFFER$ s" E-SCHEMA-BAD" CONTAINS? TTRUE
+   REJECTION:BUFFER$ w wu CONTAINS? TTRUE  REJECTION:BUFFER-OFF ;
+
 : ROOT-PERSIST ( -- )
    SLOT-PTR >NODE {: node:n :}
-   [: node SCHEMA-REG:SCHEMA-ROOT+ drop ;] SCHEMA-REG:E-SCHEMA-BAD TTHROWSQ ;
+   REJECTION:CAPTURE
+   [: node SCHEMA-REG:SCHEMA-ROOT+ drop ;] CHECKER-REJECT-RC TTHROWSQ
+   s" `SCHEMA-REG:SCHEMA-ROOT+`" SAID-BAD ;
 ROOT-PERSIST
 
 \ Nor does a persistent pointer node.
 : PTR-PERSIST ( -- )
    SLOT-PTR >NODE {: node:n :}
-   [: node SCHEMA-REG:SCHEMA-PTR drop ;] SCHEMA-REG:E-SCHEMA-BAD TTHROWSQ ;
+   REJECTION:CAPTURE
+   [: node SCHEMA-REG:SCHEMA-PTR drop ;] CHECKER-REJECT-RC TTHROWSQ
+   s" `SCHEMA-REG:SCHEMA-PTR`" SAID-BAD ;
 PTR-PERSIST
 
 TYPED-VARIABLE EVAL-A ptr u8

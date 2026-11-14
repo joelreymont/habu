@@ -474,7 +474,10 @@ variable USE-N   variable USE-SUM
 : CASE-NESTED-ARM ( -- )
    s" a second arm while one is armed is refused by name" T-LABEL
    5 [: KEEP ;] CURSOR!
-   [: 6 [: KEEP ;] CURSOR! ;] E-CURSOR-NESTED TTHROWSQ
+   REJECTION:CAPTURE
+   [: 6 [: KEEP ;] CURSOR! ;] CHECKER-REJECT-RC TTHROWSQ
+   REJECTION:BUFFER$ s" E-CURSOR-NESTED" CONTAINS? TTRUE
+   REJECTION:BUFFER$ s" `CHECKER-CURSOR!`" CONTAINS? TTRUE  REJECTION:BUFFER-OFF
    -1 [: KEEP ;] CURSOR!
    s" cmp" KEPT-RESET
    s" : CMPG ( -- n ) CMPA ;" PLAIN
@@ -486,9 +489,14 @@ variable NEST-ARM   variable NEST-ENUM
 : NEST-ARM-TRY ( -- ) 5 [: KEEP ;] CURSOR! ;
 : NEST-ENUM-TRY ( -- ) s" CM" CHECKER-OWNER-ABI:VISIBLE-TOP [: KEEP ;] EACH-VISIBLE ;
 
+\ Whether XT stopped with the checker's status after an E-CURSOR-NESTED record.
+: NESTED? ( [ -- ] -- bool )
+   REJECTION:CAPTURE  catch CHECKER-REJECT-RC =
+   REJECTION:BUFFER$ s" E-CURSOR-NESTED" CONTAINS? and  REJECTION:BUFFER-OFF ;
+
 : NESTING ( ptr u8 n n n n -- )
-   [: NEST-ARM-TRY ;] catch NEST-ARM !
-   [: NEST-ENUM-TRY ;] catch NEST-ENUM !
+   [: NEST-ARM-TRY ;] NESTED? NEST-ARM !
+   [: NEST-ENUM-TRY ;] NESTED? NEST-ENUM !
    KEEP ;
 
 : CASE-NESTED ( -- )
@@ -497,9 +505,9 @@ variable NEST-ARM   variable NEST-ENUM
    s" : CMPJ ( -- n ) CMPA ;" 2dup s" CMPA ;" 2 AT  [: NESTING ;] ARMED
    s" the nesting visitor's check runs through" T-LABEL 0 T=
    s" an arm inside the visitor is refused by name" T-LABEL
-   NEST-ARM @ E-CURSOR-NESTED T=
+   NEST-ARM @ TTRUE
    s" an enumeration inside the visitor is refused by name" T-LABEL
-   NEST-ENUM @ E-CURSOR-NESTED T=
+   NEST-ENUM @ TTRUE
    KEPT-ALL
    s" CMPA" VISIT AT-START AT-END PLACED ;
 
