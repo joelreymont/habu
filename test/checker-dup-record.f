@@ -14,8 +14,8 @@ private
 TYPED-VARIABLE SRC-A ptr u8
 variable SRC-U
 
-\ A quotation cannot read the enclosing word's locals, so the source span
-\ travels through these two cells to the caught body.
+\ x86-64 refuses a quotation that reads a local, so the source span travels
+\ through these two cells to the caught body.
 : ACT ( -- )
    SRC-A @ SRC-U @ VERIFY:SOURCE-BUF-IN-SCOPE ;
 

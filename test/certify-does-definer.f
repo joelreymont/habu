@@ -348,8 +348,8 @@ FUNCTION: CDD-FN getpid ( -- i32 ) ;FUNCTION
 TYPED-VARIABLE CDD-SRC-A ptr u8
 variable CDD-SRC-U
 
-\ A quotation cannot read the enclosing word's locals, so the span travels to
-\ the caught read through these two cells.
+\ x86-64 refuses a quotation that reads a local, so the span travels to the
+\ caught read through these two cells.
 : CDD-READ ( -- )
    CDD-SRC-A @ CDD-SRC-U @ VERIFY:SOURCE-BUF-IN-SCOPE ;
 

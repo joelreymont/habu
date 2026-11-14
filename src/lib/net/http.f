@@ -192,7 +192,8 @@ private
    idx NOT-FOUND ;
 
 
-\ The quotation cannot read a local, so the slot travels through the task.
+\ x86-64 refuses a quotation that reads a local, so the slot travels through
+\ the task.
 : RUN-HANDLER ( -- )
    SELF-SLOT DISPATCH ;
 
@@ -262,8 +263,8 @@ private
    0 idx HEAD-U! ;
 
 
-\ The refusal REFUSE stored as the slot's status: a quotation cannot read a
-\ local.
+\ The refusal REFUSE stored as the slot's status: x86-64 refuses a quotation
+\ that reads a local.
 : RENDER-REFUSAL ( -- )
    SELF-SLOT {: idx:n :}
    idx SLOT-STATUS@ {: status:n :}
@@ -691,7 +692,7 @@ MEM-MAX-N NS-PER-MS / constant MAX-DEADLINE-MS
 
 
 \ Everything a running server holds beyond its listener. The count is read from
-\ the cell because a quotation cannot read a local.
+\ the cell because x86-64 refuses a quotation that reads a local.
 : OPEN-RESOURCES ( -- )
    WORKER-COUNT @ ARENA-OPEN
    JOBS QUEUE:INIT

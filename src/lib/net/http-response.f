@@ -270,8 +270,8 @@ MAX-WORKERS TYPED-BUFFER FILE-TRANSFER AIO:xfer
 
 
 \ The body's chain, from the slot's writer to the bytes it wrote, which become
-\ the response body in the slot's own buffer. A quotation cannot read a local,
-\ so the body travels through the slot.
+\ the response body in the slot's own buffer. x86-64 refuses a quotation that
+\ reads a local, so the body travels through the slot.
 : WRITE-JSON ( -- )
    SELF-SLOT {: idx:n :}
    idx JSON-W idx JSON-BODY @ execute

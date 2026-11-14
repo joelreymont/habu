@@ -163,7 +163,7 @@ variable PARKED
 
 
 \ The id the pattern bound travels to the body through these cells, which the
-\ body quotation reads back: a quotation cannot read a local.
+\ body quotation reads back: x86-64 refuses a quotation that reads a local.
 PTR-VARIABLE ITEM-ID-A
 variable ITEM-ID-N
 PTR-VARIABLE ITEM-QUERY-A
@@ -644,7 +644,6 @@ $2710 constant PARK-MS            \ far past every stop bound
    [: EXIT-2 ;] HTTP:ON-WORKER-EXIT ;
 
 
-\ A quotation cannot open another, so the refusal cases install through words.
 : ADD-START-HOOK ( -- )
    [: START-1 ;] HTTP:ON-WORKER-START ;
 

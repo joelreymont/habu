@@ -10,9 +10,9 @@
 \ also when the operation throws, so an operation of the caller's device that
 \ runs afterwards still sees itself as SELF. An operation that may throw runs
 \ under `catch` through a RUN-*-OP word that reads its row from ACTIVE-CELL,
-\ because a quotation cannot reference a local. EMIT and WRITE skip that catch:
-\ their operations throw only a memory fault, and the catch that takes it puts
-\ ACTIVE-CELL back itself.
+\ because x86-64 refuses a quotation that reads a local. EMIT and WRITE skip
+\ that catch: their operations throw only a memory fault, and the catch that
+\ takes it puts ACTIVE-CELL back itself.
 require src/lib/error.f
 require src/lib/prelude.f
 require src/lib/type/deftype.f

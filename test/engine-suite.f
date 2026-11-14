@@ -453,8 +453,8 @@ public
 70 constant UNDEFINED
 78 constant DUPLICATE
 
-\ The source travels through the quotation and back out, because a quotation
-\ cannot read the enclosing word's locals.
+\ The source travels through the quotation and back out, because x86-64
+\ refuses a quotation that reads a local.
 : OUTCOME ( ptr u8 n -- n )
    [: 2dup evaluate-closed ;] catch {: rc:n :}
    2drop rc ;
