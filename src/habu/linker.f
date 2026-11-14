@@ -48,6 +48,7 @@ public
 -9692 s" a store into a cell of hb's header that the target's data holds: its DATA-START is below hb's" ERROR:CODE E-HEAP-STORE
 -9693 s" a file of this build made a wordlist no package of it holds" ERROR:CODE E-WORDLIST
 -9694 s" a file of this build left a task running at its end: its object would hold data the task can still change" ERROR:CODE E-LIVE-TASK
+-9695 s" a cell a file of this build left holds an address no object can name: memory the build mapped, or a value outside hb's data and the build's space" ERROR:CODE E-ADDRESS
 private
 
 TYPED-VARIABLE ENGINE? bool          \ the mode is "engine"
@@ -1524,7 +1525,7 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
 
 
 : REFUSAL ( -- ) s" linker: " SAY  FILE-PATH FILE-PATH-N @ SAY  s" : " SAY ;
-: REFUSED ( -- ) s" , which an object cannot name" SAY SAY-CR  E-COMP-STATE throw ;
+: REFUSED ( -- ) s" , which an object cannot name" SAY SAY-CR  E-ADDRESS throw ;
 
 
 \ Emission e's site holding v, a code address when code is true.
