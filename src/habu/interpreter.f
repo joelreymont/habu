@@ -2137,7 +2137,7 @@ variable LIT-AT
 
 \ The cell-aligned here a created body pushes, kept as the latest body start.
 : DEF-ANCHOR ( -- n )
-   align DEF-HERE dup COMMA-BASE-CELL CELL! ;
+   POINTER-STORAGE:ALIGN-APART DEF-HERE dup COMMA-BASE-CELL CELL! ;
 
 \ The fixed body pushes the anchor, and ends in the slot a `does>` patches.
 : DEF-ADDR-TAIL ( -- )
@@ -2365,7 +2365,7 @@ TRUSTED: DEF-XT! ( n n -- ) xt! ;
 
 : DEFER-CELL ( n -- n )
    {: xt:n :}
-   align
+   POINTER-STORAGE:ALIGN-APART
    DEF-HERE {: cell:n :}
    1 cells allot
    xt cell DEF-XT!

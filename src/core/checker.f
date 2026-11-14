@@ -760,13 +760,15 @@ CHECKER-OWNER-ABI:CHECK-UNJUDGED-OFF constant CHECK-UNJUDGED-OFF
 \ are checked against it: a field without a cell, or a cell without a field,
 \ is a load failure.
 CHECKER-OWNER-EXT:OWNER-BYTES constant OWNER-BYTES
-create OWNER-STORAGE
-   CHECKER-OWNER-ABI:MAGIC , OWNER-BYTES ,
+\ A record whose header cells lie in its own datum, before the address its name
+\ answers.
+: HEADED ( -- ) create does> ( -- ptr a ) CHECKER-OWNER-ABI:HEADER-BYTES + ;
 public
 \ The captured declaration owner is validated by address and descriptor, not by
 \ its dictionary name.
-create DECLARATIONS
+HEADED DECLARATIONS
 private
+   CHECKER-OWNER-ABI:MAGIC , OWNER-BYTES ,
    0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
    0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
    0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
@@ -781,8 +783,6 @@ private
 here DECLARATIONS - constant OWNER-COMMITTED
 OWNER-BYTES constant OWNER-CELLS-BYTES
 : OWNER-SIZE-AGREE ( -- )
-   DECLARATIONS OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES <> if
-      s" checker: declaration-owner header and fields are not adjacent" 76 die then
    OWNER-COMMITTED OWNER-CELLS-BYTES <> if
       s" checker: declaration-owner field list and record size disagree" 76 die then ;
 OWNER-SIZE-AGREE

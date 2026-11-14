@@ -30,14 +30,15 @@ public
 : DATA-CELL ( n -- ptr ptr u8 ) data-base swap + 0 ptr-field ;
 \ The DATA cell holding the newest datum's address, 0 before the first.
 $3820 constant DATUM-CELL
+\ Aligns here past one byte, so the datum laid next never starts where the data
+\ before it ends: an address where data ends lies in that data's extent.
+: ALIGN-APART ( -- ) 1 allot align ;
 ;package
 
-\ Starts a nameless row laid at top level: a build cuts the data from here to
-\ the next definition or datum as an extent of its own. The scratch first cell
-\ holds the previous datum's address and DATUM-CELL the newest, so a build
-\ finds each datum it lays.
+\ Starts a nameless row at top level, an extent of its own up to the next
+\ definition or datum; its scratch first cell links the datums from DATUM-CELL.
 : datum ( -- )
-   align here CELL-VIEW {: at:ptr :}
+   POINTER-STORAGE:ALIGN-APART here CELL-VIEW {: at:ptr :}
    1 cells SCRATCH-ALLOT
    data-base POINTER-STORAGE:DATUM-CELL + 0 ptr-field {: newest:ptr :}
    newest @  at 0 ptr-field !

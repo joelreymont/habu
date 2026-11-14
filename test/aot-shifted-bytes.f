@@ -32,6 +32,8 @@
 \ Two more files set their root and require a helper: under a root through a
 \ symlink the second build finds repointed, and by its absolute path after
 \ setting the longest root ROOT! takes. Each builds twice into one out root.
+\ A program reading data that a library lays between two dead variables has
+\ the bytes of the one built from the library without them.
 require test/gate-common.f
 require src/lib/engine-candidate.f
 
@@ -437,6 +439,52 @@ PATH-CAP 2 - constant LONG-ROOT
    s" case top level" s" the second build reuses main.f's object, running no top-level code" LABEL EXPECT-OUT-LACKS
    S\" 1\n" WARM-RUN ;
 
+\ lib.f lays the data MAIN reads between two variables nothing reads; STK-END
+\ holds STK's end, MAIN's only way to STK. GAP-LEAN$ is lib.f without the two.
+: GAP-LIB$ ( -- ptr u8 n )
+   S\" variable DEAD-A\nvariable LIVE-V\ncreate STK 64 allot\nPERSISTED-PTR-VARIABLE STK-END\nvariable DEAD-B\nSTK 64 + STK-END !\n" ;
+: GAP-LEAN$ ( -- ptr u8 n )
+   S\" variable LIVE-V\ncreate STK 64 allot\nPERSISTED-PTR-VARIABLE STK-END\nSTK 64 + STK-END !\n" ;
+: GAP-MAIN$ ( -- ptr u8 n )
+   S\" require lib.f\n: MAIN ( -- ) 7 LIVE-V !  9 STK-END @ 1 cells - !  LIVE-V @ .  STK-END @ 1 cells - @ . ;\n" ;
+
+create G-LIB PATH-CAP allot
+create G-OUT PATH-CAP allot
+create G-IMAGE PATH-CAP allot
+variable G-LIB-U
+variable G-OUT-U
+variable G-IMAGE-U
+: G-OUT$ ( -- ptr u8 n ) G-OUT G-OUT-U @ ;
+: G-IMAGE$ ( -- ptr u8 n ) G-IMAGE G-IMAGE-U @ ;
+\ bytes: room for either program
+$20000 constant PROGRAM-CAP
+PROGRAM-CAP BUFFER: PROGRAM-A
+PROGRAM-CAP BUFFER: PROGRAM-B
+
+\ lib.f as the text, built into the out root and run.
+: GAP-BUILD ( ptr u8 n ptr u8 n ptr u8 n -- ) {: lib:ptr libu:n out:ptr outu:n image:ptr imageu:n :}
+   G-LIB G-LIB-U @ lib libu FS:WRITE-ALL
+   out outu image imageu CASE-BUILD
+   GE-HB-RESET
+   image imageu GE-ARGV+
+   image imageu PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV
+   s" the program built from main.f" LABEL GE-EXPECT-OK
+   S\" 7\n9\n" s" the program prints LIVE-V and the cell below STK-END's pointer" LABEL GE-EXPECT-OUT ;
+
+: GAP-CASE ( -- )
+   s" gap" CASE-OPEN
+   s" lib.f" G-LIB IN-CASE G-LIB-U !
+   s" lean-out" G-OUT IN-CASE G-OUT-U !
+   s" lean-program" G-IMAGE IN-CASE G-IMAGE-U !
+   C-MAIN$ GAP-MAIN$ FS:WRITE-ALL
+   GAP-LIB$ C-OUT$ C-IMAGE$ GAP-BUILD
+   GAP-LEAN$ G-OUT$ G-IMAGE$ GAP-BUILD
+   C-IMAGE$ PROGRAM-A PROGRAM-CAP FS:READ-ALL {: a:n :}
+   G-IMAGE$ PROGRAM-B PROGRAM-CAP FS:READ-ALL {: b:n :}
+   PROGRAM-A a PROGRAM-B b STR= 0= if
+      s" dead variables around the data MAIN reads leave the program's bytes as they are" LABEL GE-FAIL
+   then ;
+
 : BODY ( -- )
    s" aot-shifted-bytes" GT-START
    s" subject.f" SUBJECT GT-PATH SUBJECT-U !
@@ -465,8 +513,8 @@ PATH-CAP 2 - constant LONG-ROOT
    RESOLVES-LOAD RESOLVES-BUILD
    ENVTOP-BUILDS
    ROOTED-WRITE ROOTED-BUILD ROOTED-REBUILD ROOTED-CHANGED
-   SYMLINK-CASE LONG-CASE
-   s" PASS: a stripped build of shifted and aligned address bytes, a refused record pointer in a declared DATA cell, a program file and a build whose loads read and set the loader's root as hb --load does, a build whose word resolves its own path as hb --load does, builds that reuse a part only while the environment variable its top level read holds, a file whose ROOT! reaches its require, built, rebuilt from its cached object and rebuilt after its required file changed, and warm builds of a root set through a symlink and at the longest root" type cr ;
+   SYMLINK-CASE LONG-CASE GAP-CASE
+   s" PASS: a stripped build of shifted and aligned address bytes, a refused record pointer in a declared DATA cell, a program file and a build whose loads read and set the loader's root as hb --load does, a build whose word resolves its own path as hb --load does, builds that reuse a part only while the environment variable its top level read holds, a file whose ROOT! reaches its require, built, rebuilt from its cached object and rebuilt after its required file changed, warm builds of a root set through a symlink and at the longest root, and a program whose bytes dead variables around its data leave as they are" type cr ;
 
 public
 : RUN ( -- ) [: BODY ;] [: GT-CLEANUP ;] finally ;

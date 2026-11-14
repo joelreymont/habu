@@ -335,8 +335,7 @@ DYNAMIC-BUFFER COPY-CELLS n          \ the image copy WRITE patches (link-copy.f
 DYNAMIC-BUFFER LISTED n              \ the DATA list's offsets, sorted before WRITE lays them (link-data.f)
 variable LISTED-N
 \ Each header cell a piece stored, compiled or linked: the cell's offset from the space and
-\ the piece's BUILT row. A stripped link reads a header address cell only once no file or a
-\ live one stored it (link-copy.f).
+\ the piece's BUILT row.
 DYNAMIC-BUFFER HSTORE-AT n
 DYNAMIC-BUFFER HSTORE-ROW n
 variable HSTORES-N
@@ -2552,9 +2551,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
    loop ;
 
 
-\ Records by index, each late private wordlist before the first record marked above its id, so ids mint in entry order;
-\ sealed packages last, so a link seals once the definitions are in. req: 0 a request ends the part, -1 the file ends.
-\ Scratch resets after EXTENTS!, which walks the datums' scratch cells, and before CODE+ and DATA+ write the piece.
+\ Records by index: each late private wordlist before the first record marked above its id, so ids mint in entry order,
+\ and sealed packages last. req 0 ends a request's part, -1 the file. Scratch resets once EXTENTS! has read the datums.
 : PIECE+ ( n -- )
    {: req:n :}
    false CHANGED-EARLIER !
@@ -5205,7 +5203,7 @@ TYPED-VARIABLE EXITER [ -- ]
    ndict@ FILE-REC !  CHECK:HELD-FACTS FILE-HELD !  0 RETIRED-N !  false HOLDS-HEADER !
    TFAM:TFAM-N@ FILE-TFAM !  CHECK:TYPE-END FILE-TYPES !
    NSHADOW:RECORDS FILE-ROW !  NSHADOW:EMISSIONS FILE-EM !
-   here NULL-PTR - FILE-DP !
+   POINTER-STORAGE:ALIGN-APART here NULL-PTR - FILE-DP !
    WIDN-CELL HOST@ FILE-WID !     \ hb's DATA, where namespace-record and namespace-private mint ids
    EVENT-COUNT FILE-EVENT !  INTERPRETER:RUN-COUNT FILE-RUN !
    SOURCE-ROOT:CURRENT$ BUF:N>BLEN ENTRY-ROOT BUF:REPLACE ;
@@ -5340,7 +5338,7 @@ TYPED-VARIABLE EXITER [ -- ]
    FILE-HELD @ CHECK:AMENDED   \ the facts its `TRUST` rows and amenders changed
    TYPE-ENTRIES
    SCHEMA-REG:TRANSIENT-RESET  \ the nodes its definers built definitions from
-   here NULL-PTR - FILE-END !
+   POINTER-STORAGE:ALIGN-APART here NULL-PTR - FILE-END !
    RETIRED!  CHECK-EARLIER  FIND-STORES
    STORED-N @ 0 ?do i STORED @ dup HSTORE+ STORER+ loop
    WIDN-CELL HOST@ FILE-WID @ -  MINTED {: ids:n held:n :}

@@ -7,7 +7,7 @@
 \ A stripped program keeps the extents of the build's data it reaches: unit b,
 \ b < BUILT-EXTS-N, is BUILT-EXTS row b; unit BUILT-EXTS-N the header data
 \ [BASE, OPEN-DP); unit BUILT-EXTS-N + 1 the data no piece holds, the build
-\ body's. A piece's extents tile its data but for the 1 to 7 bytes LAY aligns
+\ body's. A piece's extents tile its data but for the 1 to 8 bytes LAY aligns
 \ by before its first laid text: no unit holds them and no address points in.
 \ The header is live but for its string bodies, and a header address cell is
 \ read once no piece stored it or a reached one did: a piece is reached once
@@ -16,12 +16,12 @@
 \ entry cell is read whatever stored it: it is the program's root. A read xt
 \ cell roots the code it names and a read pointer cell makes its target's unit
 \ live; each placed emission's data addresses make theirs live. An address
-\ where one extent ends and the next starts may be either one's end or the
-\ other's start, and makes both live, unless the one ending holds strings,
-\ whose ends lie in their bodies; one where a piece ends and no piece starts
-\ is the piece's. An address in an interned body keeps that body alone: a
-\ header body lies in the header, any other in the piece that first interned
-\ it, and every later piece spelling it shares it.
+\ where data ends lies in its extent, since no extent or piece starts where
+\ the data before it ends; one where a piece ends makes the piece's last
+\ extent live and the unit holding it. An address in an interned body or its
+\ length cell keeps that body alone: a header body lies in the header, any
+\ other in the piece that first interned it, and every later piece spelling it
+\ shares it.
 \
 \ THE IMAGE'S DATA. A stripped program's is the header as the build left it,
 \ its bodies the program does not keep zeroed; then the live units in build
@@ -115,21 +115,6 @@ variable EXT-I                       \ BY-EXT's next row to lay
    u BUILT-EXTS-N @ < if u 0 BUILT-EXT @ ROW-REACH then ;
 
 
-\ Each extent of BUILT row row from b down that ends at v, but one of strings,
-\ whose ends lie in their bodies: those starting at v hold no byte, and the
-\ first starting below v ends the walk.
-: REACH-ENDS ( n n n -- )
-   {: v:n row:n b:n :}
-   row 2 * ROW-EXTS @ {: first:n :}
-   b begin dup first >= while
-      {: k:n :}
-      k EXT-SPAN {: start:n len:n :}
-      start len + v =  k 1 BUILT-EXT @ 2 <>  and if k REACH-UNIT then
-      start v < if exit then
-      k 1 -
-   repeat
-   drop ;
-
 \ BUILT row row's last extent.
 : LAST-EXT ( n -- n )
    {: row:n :}
@@ -149,14 +134,14 @@ variable EXT-I                       \ BY-EXT's next row to lay
    n 0 ?do 0 i STR-KEPT ! loop ;
 
 
-\ The body whose bytes [b, b + its length] hold data address v, -1 for none;
-\ LAY gives every body the byte past its text.
+\ The body whose bytes [b - CELL, b + its length], the byte past its text
+\ included, hold data address v; -1 for none.
 : STRING-OF ( n -- n )
    {: v:n :}
    0 STR-N @
    begin 2dup < while
       2dup + 1 rshift {: mid:n :}
-      mid STR-AT @ v <= if nip mid 1 + swap else drop mid then
+      mid STR-AT @ CELL - v <= if nip mid 1 + swap else drop mid then
    repeat
    drop 1 - {: k:n :}
    k 0< if -1 exit then
@@ -185,16 +170,9 @@ variable EXT-I                       \ BY-EXT's next row to lay
    {: v:n :}
    v STRING-OF {: k:n :}
    k 0 >= if 1 k STR-KEPT ! exit then
-   v OPEN-DP @ < if v UNIT-OF REACH-UNIT exit then
-   v DP-ROW {: row:n hit:bool :}
-   hit if
-      v row EXT-HOLDING REACH-UNIT
-      v  row  v row ROW-EXT-OF  REACH-ENDS
-      row PIECE-SPAN drop v <> if exit then
-   then
    v DP-END-ROW {: end:n ended:bool :}
-   ended if v end end LAST-EXT REACH-ENDS exit then
-   hit 0= if v UNIT-OF REACH-UNIT then ;
+   ended if end LAST-EXT REACH-UNIT then
+   v UNIT-OF REACH-UNIT ;
 
 
 \ Each address row's cell's unit; no unit live, no piece reached.
@@ -385,9 +363,8 @@ variable EXT-I                       \ BY-EXT's next row to lay
    LAY-UNITS  LAY-BODIES ;
 
 
-\ The units the program reaches from the header. A round that makes no unit
-\ live and reaches no piece has read every live unit's cells and every
-\ emission placed so far.
+\ The units the program reaches from the header, in rounds of reads until one
+\ makes no unit live and reaches no piece.
 : REACH-DATA ( -- )
    UNITS  STRINGS
    HEADER-UNIT REACH-UNIT

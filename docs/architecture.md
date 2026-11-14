@@ -248,15 +248,14 @@ source tree nor stops because an editor changed a file.
 
 **A stripped image carries only its entry's closure.** Without `--repl`, an
 image has no compiler, dictionary or REPL: the code `MAIN` reaches and the data
-of the files that code reaches. It compiles nothing at run time, so it runs
-under `MemoryDenyWriteExecute`.
+that code reaches. It compiles nothing at run time, so it runs under
+`MemoryDenyWriteExecute`.
 
 **The program is the build's product, not the builder's memory.** hb-build loads
 hb's startup files and then the application into a build space of their own and
 links the program from it (`tools/hb-build-core.f`), so nothing the builder
-loaded for itself reaches the image. The program keeps each file it reaches
-whole. A program that uses a library word without requiring its module fails to
-compile, naming the word.
+loaded for itself reaches the image. A program that uses a library word without
+requiring its module fails to compile, naming the word.
 
 **Nothing is relocated because of its value.** A cell reaches the image as an
 address only because a declaration, a claim or a code row names it; the linker
