@@ -426,6 +426,9 @@ of W, and `postpone W` is rejected where `['] W` is. `EFFECT:KEYWORD`,
 variant, type or call the string spells, the call bound where the definer
 runs; `EFFECT:LOCAL` and `EFFECT:LOCAL@` declare and read a local, and
 `EFFECT:VARIABLE-OF` declares a typed variable.
+An `EFFECT:type` ends with the load that built it, so no storage, field or
+payload holds one (`E-BAD-STORAGE`, a field or payload `E-BAD-DECLARATION`):
+build it where it is used.
 `['] W compile, ( [ R -- S ] -- )` appends a call of W, a word whose tick is
 a quotation (a primitive's tick is an `xt`, which `compile,` rejects), and
 `; ( -- )` ends the word.

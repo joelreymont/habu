@@ -6,11 +6,14 @@
 \ EFFECT:READ-TYPE or EFFECT:NAMED of a type takes the type its text form
 \ declares, and READ-TYPE refuses a family the running package does not know.
 \ A type held on the stack or in a local across a load that builds types keeps
-\ its own effect.
+\ its own effect. No storage, field or payload holds one, at any depth, and a
+\ file that stores one is rejected at its storage, before a requirer reads it.
 \ The file calls the running checker's words, so it is loaded, never built.
 
 require src/lib/test.f
 require src/lib/adt/nullable.f
+require src/lib/adt/option.f
+require test/decl-diag-capture.f
 
 \ First, so no earlier node outlives the load whose end would free the held
 \ type's id: a node a later type takes would answer for it.
@@ -149,5 +152,39 @@ s" true PE-N drop" TEST-EVAL:RC 70 T=
 : READ-HIDDEN ( -- n ) [: s" pdhidden" EFFECT:READ-TYPE drop ;] catch ;
 READ-HIDDEN 70 T=
 ;package
+
+package POSTPONE-STORE
+private
+: REJECTED ( ptr u8 n -- n ) {: a:ptr u:n :}
+   DECL-DIAG:JSON  [: a u evaluate-closed ;] catch ;
+: REASON ( -- )
+   s" a definer's type ends with the load that built it: build it where it is used"
+   DECL-DIAG:HAS? TTRUE ;
+: STORAGE-HELP ( -- )
+   s" Build the type where it is used, from its text or EFFECT's words, and pass it on the stack or in a local."
+   DECL-DIAG:HAS? TTRUE ;
+: STORAGE ( -- )
+   S\" \"code\":\"E-BAD-STORAGE\"" DECL-DIAG:HAS? TTRUE
+   REASON  STORAGE-HELP  DECL-DIAG:OFF ;
+: MEMBER ( -- )
+   S\" \"code\":\"E-BAD-DECLARATION\"" DECL-DIAG:HAS? TTRUE
+   REASON  DECL-DIAG:OFF ;
+
+s" TYPED-VARIABLE PS-VAR EFFECT:type" REJECTED 70 T=  STORAGE
+s" 4 TYPED-BUFFER PS-BUF EFFECT:type" REJECTED 70 T=  STORAGE
+s" TYPED-VARIABLE PS-OPT option<EFFECT:type>" REJECTED 70 T=  STORAGE
+s" STRUCTURE psfield FIELD t EFFECT:type ;STRUCTURE" REJECTED 7109 T=  MEMBER
+s" SUMTYPE pspay VARIANT one EFFECT:type ;VARIANT ;SUMTYPE" REJECTED 7109 T=
+MEMBER
+
+public
+\ Loaded with no package open: the fixtures open their own.
+: REPRODUCE ( -- )
+   DECL-DIAG:JSON
+   [: s" test/fixtures/postpone-stored-use.f" included ;] catch 70 T=
+   S\" \"word\":\"HELD\"" DECL-DIAG:HAS? TTRUE  STORAGE ;
+;package
+
+POSTPONE-STORE:REPRODUCE
 
 T-REPORT

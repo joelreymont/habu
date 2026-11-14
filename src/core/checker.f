@@ -8136,6 +8136,7 @@ variable LBI-BAD
 variable LBI-SCHEME   \ the refused stored type parsed and holds a scheme
 variable LBI-XT       \ the refused stored type parsed and names `xt`
 variable LBI-WIDTH    \ the refused stored type parsed and holds a `width<t>`
+variable LBI-EFFECT   \ the refused stored type parsed and holds an EFFECT:type
 variable LBI-LINEAR   \ the refused stored type parsed and may hold a linear value
 
 \ A stored `xt` would be an engine code address, which no image relocation kind
@@ -8154,24 +8155,31 @@ variable LBI-LINEAR   \ the refused stored type parsed and may hold a linear val
    RES-FALSE ;
 : XT-STORED? ( n -- bool ) TWALK-RESET XT-STORED?* ;
 
-: WIDTH-STORED?* ( n -- bool )
-   {: t:n :}
+: FAM-STORED?* ( n n -- bool )
+   {: t:n fam:n :}
    t T-RES {: x:n :}
-   x TAG T-STALE = IF x STALE>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
-   x TAG T-PTR = IF x PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-STALE = IF
+      x STALE>INNER fam TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-PTR = IF
+      x PTR>INNER fam TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
    x TAG T-PARAM <> IF RES-FALSE EXIT THEN
-   x PARAM>FAM WIDTH-FAM @ = IF RES-TRUE EXIT THEN
+   x PARAM>FAM fam = IF RES-TRUE EXIT THEN
    0 BEGIN dup x PARAM>ARGC < WHILE
-      x over PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
+      x over PARAM>ARG fam TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      IF drop RES-TRUE EXIT THEN
       1 +
    REPEAT drop
    RES-FALSE ;
-: WIDTH-STORED? ( n -- bool ) TWALK-RESET WIDTH-STORED?* ;
+: WIDTH-STORED? ( n -- bool ) TWALK-RESET WIDTH-FAM @ FAM-STORED?* ;
+
+\ An EFFECT:type's id is reused once the load that built it ends.
+: EFFECT-STORED? ( n -- bool ) TWALK-RESET EFFECT-TYPE-FAM @ FAM-STORED?* ;
 
 \ The state a stored type's read starts from, whether its text is parsed or
 \ its node read.
 : STORAGE-RESET ( -- )
-   0 LBI-SCHEME !  0 LBI-XT !  0 LBI-WIDTH !  0 LBI-LINEAR !
+   0 LBI-SCHEME !  0 LBI-XT !  0 LBI-WIDTH !  0 LBI-EFFECT !
+   0 LBI-LINEAR !
    NEW
    SGBAD-CLEAR SIG-UNRES-CLEAR
    PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET ;
@@ -8192,6 +8200,7 @@ variable LBI-LINEAR   \ the refused stored type parsed and may hold a linear val
    SIG-UNRES @ IF RES-FALSE EXIT THEN
    LBI-T @ XT-STORED? IF -1 LBI-XT ! RES-FALSE EXIT THEN
    LBI-T @ WIDTH-STORED? IF -1 LBI-WIDTH ! RES-FALSE EXIT THEN
+   LBI-T @ EFFECT-STORED? IF -1 LBI-EFFECT ! RES-FALSE EXIT THEN
    LBI-T @ STORED-TERM-HIT 4 = IF -1 LBI-LINEAR ! RES-FALSE EXIT THEN
    LBI-T @ HIDDEN-PARAM? 0= ;
 
@@ -12953,6 +12962,7 @@ package CHECKER-REG
 12 constant STG-XT-TYPE         \ the type parses and names `xt`, which no storage holds
 15 constant STG-WIDTH-TYPE      \ the type parses and holds a `width<t>`, which no storage holds
 16 constant STG-LINEAR-TYPE     \ the type parses and may hold a linear value, which no storage holds
+17 constant STG-EFFECT-TYPE     \ the type parses and holds an EFFECT:type, which no storage holds
 PTR-VARIABLE STGR-SRC-A   variable STGR-SRC-U   \ the buffer the verifier scans
 defer STORAGE-DIAG-XT ( ptr u8 n ptr u8 n n -- )   \ declared name, refused token, STG- reason
 : STORAGE-DIAG-DEFAULT ( -- ) [: drop 2drop 2drop ;] is STORAGE-DIAG-XT ;
@@ -13444,7 +13454,9 @@ package CHECKER-REG
       LBI-SCHEME @ IF STG-SCHEME-TYPE ELSE
       LBI-XT @ IF STG-XT-TYPE ELSE
       LBI-WIDTH @ IF STG-WIDTH-TYPE ELSE
-      LBI-LINEAR @ IF STG-LINEAR-TYPE ELSE STG-UNSTORABLE-TYPE THEN THEN THEN THEN
+      LBI-EFFECT @ IF STG-EFFECT-TYPE ELSE
+      LBI-LINEAR @ IF STG-LINEAR-TYPE ELSE STG-UNSTORABLE-TYPE
+      THEN THEN THEN THEN THEN
    THEN
    CHECKER-STORAGE-REFUSE ;
 
@@ -20733,7 +20745,8 @@ variable IS-PEND-U                   \ and its length
    SGBAD-AR-DECL @ SGBAD-AR-GOT @ SGBAD-SIZE @ {: ard:n arg:n sgs:n :}
    SIG-UNRES @ SIG-UNRES-A @ SIG-UNRES-U @ {: un:n una:ptr unu:n :}
    SGBAD-CLEAR SIG-UNRES-CLEAR
-   0 LBI-SCHEME !  0 LBI-XT !  0 LBI-WIDTH !  0 LBI-LINEAR !
+   0 LBI-SCHEME !  0 LBI-XT !  0 LBI-WIDTH !  0 LBI-EFFECT !
+   0 LBI-LINEAR !
    a u TYPE-SPAN-READ swap T-RES {: one:bool t:n :}
    t LBI-T !
    SGBAD @ 0= one and IF ARENA-TERM-INFO ELSE 0 RES-FALSE THEN

@@ -2518,7 +2518,10 @@ sections above.
   `EFFECT:LOCAL@ ( n -- )` reads.
   `EFFECT:VARIABLE-OF ( ptr u8 n EFFECT:type -- )` declares the variable the
   string names as `TYPED-VARIABLE` does; a type that may hold a linear value
-  is rejected. `; ( -- )` ends the
+  is rejected. An `EFFECT:type` ends with the load that built it and its
+  node is then reused, so no storage, field or payload holds one (`a
+  definer's type ends with the load that built it`): build it where it is
+  used. `; ( -- )` ends the
   definition. Any of them with no definition open is `E-NO-DEFINITION`, and a
   throw a `catch` takes abandons a definition opened since that `catch` began.
   `postpone` is syntax, never a definition name. One limit: after `undefine W`,

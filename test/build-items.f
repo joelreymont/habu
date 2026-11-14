@@ -20,7 +20,9 @@
 \ signature does, and rejects a letter, a type variable's or a view's region's,
 \ at the line that ran the definer, with the fix, as EFFECT:NAMED and
 \ EFFECT:READ-TYPE reject an unknown family, which a definer names as source
-\ in its package would, and EFFECT:IN a type that is no effect.
+\ in its package would, and EFFECT:IN a type that is no effect. A build of a
+\ program whose source stores a definer's type is rejected with the record its
+\ load prints.
 
 require src/lib/test.f
 require src/lib/c2-memory.f
@@ -28,6 +30,11 @@ require src/lib/adt/nullable.f
 require src/lib/test/subject.f
 require src/lib/test/ending.f
 require test/decl-diag-capture.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-command.f
+require src/lib/engine-candidate.f
 
 package BITEM-PKG
 public
@@ -481,5 +488,39 @@ s" EFFECT:LOCAL@ needs a definition define-word opened" SUBJECT:REFUSED? TTRUE
 s" BITEM:ENDED-GO" 70
 s" reads built local 0, whose `{:` block has ended" SUBJECT:REFUSED? TTRUE
 BITEM:LNEG-CHILD
+
+\ A fresh hb runs the build, since the build is under test.
+package BITEM-STORED
+private
+PATH-CAP BUFFER: DIR  variable DIR-U
+PATH-CAP BUFFER: APP  variable APP-U
+: DIR$ ( -- ptr u8 n ) DIR DIR-U @ ;
+: APP$ ( -- ptr u8 n ) APP APP-U @ ;
+
+: BUILD ( CMD:command -- CMD:command n )
+   CMD:RESET
+   s" --load" CMD:ARG+  s" tools/hb-build.f" CMD:ARG+  s" --" CMD:ARG+
+   s" test/fixtures/postpone-stored-use.f" CMD:ARG+
+   s" -o" CMD:ARG+  APP$ CMD:ARG+  s" HABU_OUT" DIR$ CMD:ENV+
+   ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME
+   PROCESS:ENDING>RC RC>N ;
+
+: STORED ( CMD:command -- CMD:command )
+   BUILD 74 T=
+   CMD:ERR$ s" habu: in HELD: a definer's type ends with the load that built it: build it where it is used 'EFFECT:type'"
+   CONTAINS? TTRUE ;
+
+: CHECKS ( -- ) [: STORED ;] CMD:WITH-COMMAND ;
+: REMOVE ( -- ) DIR$ FS:REMOVE-TREE ;
+
+public
+: RUN ( -- )
+   s" habu-bitem-stored" FS:MKTEMP-DIR {: a:ptr u:n :}
+   a DIR u BYTE-COPY  u DIR-U !
+   DIR$ s" app" APP FS:JOIN-PATH APP-U !
+   ['] CHECKS ['] REMOVE finally ;
+;package
+
+BITEM-STORED:RUN
 
 T-REPORT

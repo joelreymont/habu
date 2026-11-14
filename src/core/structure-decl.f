@@ -64,6 +64,9 @@ SD-RESET
    id WIDTH-FAM @ = IF
       s" a width is not stored: keep its bytes (width>n)"
       E-PAYLOAD DECL-REJECT:REJECT throw THEN
+   id EFFECT-TYPE-FAM @ = IF
+      s" a definer's type ends with the load that built it: build it where it is used"
+      E-PAYLOAD DECL-REJECT:REJECT throw THEN
    id FAM @ = POINTEE @ 0= and IF
       s" field type cannot recursively name its owner"
       E-PAYLOAD DECL-REJECT:REJECT throw THEN

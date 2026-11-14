@@ -407,6 +407,9 @@ defer TDV-ELEM-XT ( ptr u8 n -- n )   \ forward ref for the ELEM<->ARGS<->QUOT r
    id WIDTH-FAM @ = IF
       a u s" a width is not stored: keep its bytes (width>n)"
       E-TDECL-PAYLOAD TDECL-THROW THEN
+   id EFFECT-TYPE-FAM @ = IF
+      a u s" a definer's type ends with the load that built it: build it where it is used"
+      E-TDECL-PAYLOAD TDECL-THROW THEN
    id TFAM-LAYOUT? id TFAM-CELL? or 0= IF 0 RES-FALSE EXIT THEN
    id RES-TRUE ;
 

@@ -9,11 +9,6 @@
 \ transient: they end with the file that built them.
 
 package EFFECT
-public
-
-NEWTYPE type
-
-private
 
 CAST: >TYPE ( n -- type )
 CAST: TYPE>N ( type -- n )
