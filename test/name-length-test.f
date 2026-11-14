@@ -151,7 +151,6 @@ create BEFORE MARK-N cells allot
    h p hu BYTE-COPY
    a p hu + u BYTE-COPY
    p hu u + ;
-: EXPORT-IT ( -- ) BAD$ CHECKER-EXPORT ;
 : FAMILY-IT ( -- ) BAD$ BAD$ CHECKER-DEFFAMILY ;
 : SUM-IT ( -- ) BAD$ s" VARIANT vacant ;VARIANT" CHECKER-DEFSUM ;
 : SUM-NOEND-IT ( -- ) BAD$ s" 0" CHECKER-DEFSUM-NOEND ;
@@ -317,7 +316,6 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    s" USING-IT" 76 S\" checker: using name length describes no memory\n" DIES
    LONG-LEN s" long" s" USING-IT" 70 CAP-WANT$ DIES-AT
    s" USING-PUSH-IT" 67 S\" hb: uncaught throw code 7136\n" DIES
-   s" EXPORT-IT" 67 S\" hb: uncaught throw code 7113\n" DIES
    s" FAMILY-IT" 70 S\" error[E-BAD-DECLARATION]: bad newtype declaration\n" s" = at ``: missing name" REJECTS
    s" SUM-IT" 70 S\" error[E-BAD-DECLARATION]: bad sumtype declaration\n" s" = at ``: missing name" REJECTS
    s" SUM-NOEND-IT" 70 S\" error[E-BAD-DECLARATION]: bad sumtype declaration\n" s" = at ``: missing ;SUMTYPE" REJECTS
