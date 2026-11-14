@@ -1856,31 +1856,17 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
 : BADSIG-DIAG-INSTALL ( -- ) [: BADSIG-DIAG ;] is BADSIG-XT ;
 BADSIG-DIAG-INSTALL
 
-\ A bad NEWTYPE or SUMTYPE declaration reports a declaration-shaped packet (kind,
-\ family, token, reason) with no definition fields.
-: TDECL-SUGGEST$ ( -- ptr u8 n )
-   s" Repair the family declaration: unique lowercase names, exact arity, closed VARIANT blocks." ;
-: TDECL-DIAG-JSON ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
-   {: ka:ptr ku:n fa:ptr fu:n ta:ptr tu:n wa:ptr wu:n :}
-   s" E-BAD-DECLARATION" s" fix_family_declaration" s" rejected" JHEAD
-   s" decl" JSON-KEY ka ku JSON-STRING 44 EMIT1
-   s" family" JSON-KEY fa fu JSON-STRING 44 EMIT1
-   s" token" JSON-KEY ta tu JSON-STRING 44 EMIT1
-   s" reason" JSON-KEY wa wu JSON-STRING 44 EMIT1
-   ta tu TDECL-SUGGEST$ JTAIL ;
-: TDECL-DIAG-PROSE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
-   {: ka:ptr ku:n fa:ptr fu:n ta:ptr tu:n wa:ptr wu:n :}
-   s" habu: bad " EMIT-STR  ka ku EMIT-STR  s"  declaration '" EMIT-STR
-      fa fu EMIT-STR
-   s" ': " EMIT-STR  wa wu EMIT-STR
-   tu 0 > IF s"  at '" EMIT-STR  ta tu EMIT-STR  s" '" EMIT-STR THEN ;
-: TDECL-DIAG ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
-   {: ka:ptr ku:n fa:ptr fu:n ta:ptr tu:n wa:ptr wu:n :}
-   1 DEST !  0 TEXT-LEN !
-   ka ku fa fu ta tu wa wu
-   JSON @ IF TDECL-DIAG-JSON ELSE TDECL-DIAG-PROSE THEN
-   10 EMIT1
-   FLUSH ;
+: TDECL-TITLE ( ptr u8 n ptr u8 n -- ) {: ka:ptr ku:n fa:ptr fu:n :}
+   s" E-BAD-DECLARATION" REJECTION:OPEN
+   s" bad " EMIT-STR  ka ku EMIT-STR  s"  declaration" EMIT-STR
+   fu 0 > IF s"  `" EMIT-STR  fa fu EMIT-STR  96 EMIT1 THEN ;
+\ A rejected declaration of a kind and family: its token labeled with the
+\ reason, the fix as help. The caller ends the record.
+: TDECL-DIAG ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: ka:ptr ku:n fa:ptr fu:n ta:ptr tu:n wa:ptr wu:n xa:ptr xu:n :}
+   ka ku fa fu TDECL-TITLE
+   ta tu REJECTION:AT  wa wu EMIT-STR
+   REJECTION:HELP  xa xu EMIT-STR ;
 
 \ Why REC-SIG left a certified sig-less word unrecorded; the last arm answers
 \ every other RQM cause, a stale or scoped type among them, as an unmodeled tag.

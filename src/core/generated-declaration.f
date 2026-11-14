@@ -180,20 +180,8 @@ public
 
 private
 
-\ The rejection: the declaration, its token labeled with the reason, the fix as
-\ help.
 : RENDER ( n -- ) {: code:n :}
-   s" E-BAD-DECLARATION" REJECTION:OPEN
-   s" bad " REJECTION:EMIT-STR  KIND$ REJECTION:EMIT-STR
-   s"  declaration" REJECTION:EMIT-STR
-   FAMILY$ {: fa:ptr fu:n :}
-   fu 0 > IF
-      s"  `" REJECTION:EMIT-STR  fa fu REJECTION:EMIT-STR  96 REJECTION:EMIT1
-   THEN
-   TOKEN-SPAN@ REJECTION:AT
-   code PICK-REASON {: ra:ptr ru:n xa:ptr xu:n :}
-   ra ru REJECTION:EMIT-STR
-   REJECTION:HELP  xa xu REJECTION:EMIT-STR ;
+   KIND$ FAMILY$ TOKEN-SPAN@  code PICK-REASON  TDECL-DIAG ;
 
 public
 
