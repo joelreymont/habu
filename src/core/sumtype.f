@@ -566,6 +566,39 @@ private
 : TDV-ELEM-INSTALL ( -- ) [: TDECL-VPAY-ELEM ;] is TDV-ELEM-XT ;
 TDV-ELEM-INSTALL
 
+\ READ-TYPE's parse: one element, then the text's end.
+: TDECL-READ-ONE ( -- n )
+   TDECL-NEXT {: a:ptr u:n :}
+   u 0= IF a u s" missing type" E-TDECL-SYNTAX TDECL-THROW THEN
+   a u TDECL-VPAY-ELEM {: node:n :}
+   CHECKER-SIG-UNRES-TAKE IF s" unknown type" E-TDECL-PAYLOAD TDECL-THROW THEN
+   2drop
+   TDECL-NEXT {: ea:ptr eu:n :}
+   eu 0 <> IF ea eu s" one type expected" E-TDECL-SYNTAX TDECL-THROW THEN
+   node ;
+
+variable TDR-NODE   \ READ-TYPE's answer, kept across its catch
+
+public
+
+\ The one payload element the text spells, read where the declaration stands
+\ with no family being declared: no type parameter, no self-reference. It runs
+\ between declarations and sets the declaration state it reads. A refusal, a
+\ name that may arrive later and text past the element included, runs FAIL
+\ with the token, the reason and the code.
+: READ-TYPE ( ptr u8 n [ ptr u8 n ptr u8 n n -- ] -- n ) {: a:ptr u:n fail :}
+   a TDN-A !  0 TDN-U !  -1 TDECL-CUR-FAM !  0 DECL-PARAM-N !
+   0 TDV-ARG-N !  SIG-UNRES-CLEAR  0 TDW-U !
+   a u TDECL-CURSOR!
+   [: TDECL-READ-ONE TDR-NODE ! ;] catch {: rc:n :}
+   rc 0= IF TDR-NODE @ EXIT THEN
+   TDW-U @ 0= IF rc throw THEN               \ not a TDECL-THROW
+   QUOT-ROLLBACK  SIG-UNRES-CLEAR
+   TDT-A @ TDT-U @ TDW-A @ TDW-U @ rc fail execute
+   0 ;
+
+private
+
 variable TDV-TAG   variable TDV-N    variable TDV-MAX
 variable TDV-SS    variable TDV-PC   variable TDV-PW
 PTR-VARIABLE TDV-NA    variable TDV-NU

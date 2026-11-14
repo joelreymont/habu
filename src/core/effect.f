@@ -30,10 +30,17 @@ public
 
 : N ( -- type ) TYPE-OP-ABI:INT 0 0 OP ;
 
-\ The family the spelling names (`PKG:name`, or a global family's bare name),
-\ applied to parameters no other value holds; E-UNKNOWN-SIGNATURE-TYPE when it names none.
-: FAMILY ( ptr u8 n -- type ) {: a:ptr u:n :}
+\ The built-in type the spelling names (`n`, `bool`, `u8`), else the family it
+\ names (`PKG:name`, or a global family's bare name), applied to parameters no
+\ other value holds; E-UNKNOWN-SIGNATURE-TYPE when it names none.
+: NAMED ( ptr u8 n -- type ) {: a:ptr u:n :}
    TYPE-OP-ABI:NAMED a NULL-PTR - u OP ;
+
+\ The one type the text spells (`ptr u8`, `nullable<u8>`), read as a type in a
+\ declaration where the definer runs: a family it names resolves there. A
+\ letter, a type variable's or a view's region's, is rejected.
+: READ ( ptr u8 n -- type ) {: a:ptr u:n :}
+   TYPE-OP-ABI:READ a NULL-PTR - u OP ;
 
 : PTR ( type -- type ) {: t:type :}
    TYPE-OP-ABI:PTR t TYPE>N 0 OP ;

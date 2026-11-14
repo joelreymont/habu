@@ -562,7 +562,8 @@ public
 ;package
 
 \ TYPE-OP's codes on a and b: INT n, PTR a pointer to a, EFFECT an empty effect,
-\ IN and OUT b pushed on effect a, NAMED the family the a, b bytes spell.
+\ IN and OUT b pushed on effect a, NAMED the built-in type or family the a, b
+\ bytes spell, READ the one type element they spell.
 package TYPE-OP-ABI
 public
 0 constant INT
@@ -571,6 +572,7 @@ public
 4 constant IN
 5 constant OUT
 6 constant NAMED
+7 constant READ
 ;package
 
 \ The checked interpreter's keyword test ( wid -- name len hit ), which every

@@ -28,7 +28,7 @@ private
 public
 \ nullable on a parameter no other value holds.
 : NULLABLE-T ( -- EFFECT:type )
-   s" nullable" EFFECT:FAMILY ;
+   s" nullable" EFFECT:NAMED ;
 
 \ : NAME ( n -- n ) 3 * ;
 : MAKE-TRIPLER ( ptr u8 n -- )
@@ -97,7 +97,7 @@ public
 
 \ : NAME ( -- read-view<a,b,c> ) 1 throw ;, a view no input supplies.
 : MAKE-RV ( ptr u8 n -- )
-   EFFECT:NEW s" read-view" EFFECT:FAMILY EFFECT:OUT define-word
+   EFFECT:NEW s" read-view" EFFECT:NAMED EFFECT:OUT define-word
    1 literal
    postpone throw
    postpone ; ;
@@ -157,7 +157,7 @@ s" WIDE-23" 23 WIDE 0 T=
 s" WIDE-24" 24 WIDE 76 T=
 
 \ A spelling that names no family is E-UNKNOWN-SIGNATURE-TYPE.
-: NO-FAMILY ( -- n ) [: s" no-such-family" EFFECT:FAMILY drop ;] catch ;
+: NO-FAMILY ( -- n ) [: s" no-such-family" EFFECT:NAMED drop ;] catch ;
 NO-FAMILY 70 T=
 
 \ EFFECT:IN given a type that is no effect is E-NOT-EFFECT.

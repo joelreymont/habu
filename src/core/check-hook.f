@@ -291,37 +291,70 @@ using SCHEMA-REG
    k 0 ?do FRESH-PARAM SCHEMA-ROOT+ drop loop
    fam start k SCHEMA-APP ;
 
-\ TYPE-OP's operands are cells: NAMED's spelling arrives as its address.
+\ TYPE-OP's operands are cells: a spelling arrives as its address.
 CAST: >BYTES ( n -- ptr u8 )
 
-\ The family a spelling names; one that names none is refused, E-UNKNOWN-SIGNATURE-TYPE.
-: NAMED-FAMILY ( n n -- n )
+\ A built-in type's con code as a signature reads its spelling, else 0.
+: BUILT-IN ( n n -- n ) {: a:n u:n :}
+   u 1 = if
+      a >BYTES c@ {: c:n :}
+      c 110 = if CC-N exit then
+      c 102 = if CC-BOOL exit then
+      c 114 = if CC-R exit then
+   then
+   a >BYTES u CON-OF ;
+
+\ The type a spelling names: a built-in type's con code and 0, else 0 and the
+\ family; one that names neither is refused, E-UNKNOWN-SIGNATURE-TYPE.
+: NAMED-FAMILY ( n n -- n n )
    {: a:n u:n :}
-   a >BYTES u TFAM:TFAM-FIND-SPELLED if exit then
+   a u BUILT-IN dup 0 <> if 0 exit then drop
+   a >BYTES u TFAM:TFAM-FIND-SPELLED if 0 swap exit then
    drop
    s" E-UNKNOWN-SIGNATURE-TYPE" REJECTION:PATH$ SRCLOC:LINE ERROR-TEXT:PREFIX
    s" unknown type '" ERROR-TEXT:TYPE  a >BYTES u ERROR-TEXT:TYPE
-   S\" ' in EFFECT:FAMILY\n" ERROR-TEXT:TYPE
+   S\" ' in EFFECT:NAMED\n" ERROR-TEXT:TYPE
    CHECK-RC throw ;
+
+\ A refused READ of the text, naming the token, or the text when the reason
+\ names none.
+: TEXT-TYPE-REFUSE ( ptr u8 n ptr u8 n n ptr u8 n -- )
+   {: ta:ptr tu:n wa:ptr wu:n code:n xa:ptr xu:n :}
+   tu 0= if xa xu else ta tu then {: na:ptr nu:n :}
+   code TYPE-DECL:E-TDECL-PAYLOAD = if s" E-UNKNOWN-SIGNATURE-TYPE"
+   else s" E-BAD-SIGNATURE" then
+   REJECTION:PATH$ SRCLOC:LINE ERROR-TEXT:PREFIX
+   wa wu ERROR-TEXT:TYPE  s"  '" ERROR-TEXT:TYPE  na nu ERROR-TEXT:TYPE
+   S\" ' in EFFECT:READ\n" ERROR-TEXT:TYPE
+   CHECK-RC throw ;
+
+: TEXT-TYPE ( n n -- n ) {: a:n u:n :}
+   a >BYTES u [: a >BYTES u TEXT-TYPE-REFUSE ;] TYPE-DECL:READ-TYPE ;
 
 : TYPE-NODE ( n n n -- n ) {: code:n a:n b:n :}
    code TYPE-OP-ABI:INT = if CC-N SCHEMA-CON exit then
-   code TYPE-OP-ABI:NAMED = if a FAMILY-NODE exit then
+   code TYPE-OP-ABI:NAMED = if
+      a 0 <> if a SCHEMA-CON exit then
+      b FAMILY-NODE exit
+   then
    code TYPE-OP-ABI:PTR = if a TYPE-ARG SCHEMA-PTR exit then
    code TYPE-OP-ABI:EFFECT = if EMPTY-EFFECT exit then
    code TYPE-OP-ABI:IN = if a EFFECT-ARG b TYPE-ARG EFFECT-IN exit then
    code TYPE-OP-ABI:OUT = if a EFFECT-ARG b TYPE-ARG EFFECT-OUT exit then
+   code TYPE-OP-ABI:READ = if a b TEXT-TYPE exit then
    E-SCHEMA-BAD throw ;
 
 public
 
 \ The transient schema node a TYPE-OP-ABI code makes of a and b, else E-SCHEMA-BAD.
-\ NAMED's lookup runs first: the transient region would drop an entry it reads.
+\ NAMED's lookup, and the type entries READ's lookups would read, come first:
+\ the transient region would drop an entry a lookup reads.
 : TYPE-OP ( n n n -- n )
    {: code:n a:n b:n :}
-   code TYPE-OP-ABI:NAMED = if a b NAMED-FAMILY else a then {: arg:n :}
+   code TYPE-OP-ABI:NAMED = if a b NAMED-FAMILY else a b then {: x:n y:n :}
+   code TYPE-OP-ABI:READ = if TFAM:READ-PENDING then
    TRANSIENT-ON
-   [: code arg b TYPE-NODE ;] [: TRANSIENT-OFF ;] finally ;
+   [: code x y TYPE-NODE ;] [: TRANSIENT-OFF ;] finally ;
 
 \ Whether node is an effect a definition can take: a live quotation node with
 \ no return clause.

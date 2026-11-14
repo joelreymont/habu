@@ -1825,7 +1825,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
    s\" package PL\nprivate\nSTRUCTURE plsecret FIELD v n ;STRUCTURE\n" SRC+
    s\" public\n: MAKE-EAT ( ptr u8 n -- )\n" SRC+
-   s\"    s\" PL:plsecret\" EFFECT:FAMILY EFFECT:PTR {: p :}\n" SRC+
+   s\"    s\" PL:plsecret\" EFFECT:NAMED EFFECT:PTR {: p :}\n" SRC+
    s\"    EFFECT:NEW p EFFECT:IN define-word\n" SRC+
    s\"    postpone drop\n   postpone ; ;\n;package\n" SRC+  s" lib.f" NEST-WRITE
    false WRITE-EAT ;

@@ -414,7 +414,8 @@ through a `defer` or an executed xt), is `E-GENERATES-ROW`.
 
 A definer that builds a word from words it found writes no text:
 `name$ EFFECT:NEW EFFECT:N EFFECT:IN EFFECT:N EFFECT:OUT define-word` opens
-the word, `postpone W` appends the W found where the definer was compiled,
+the word (`s" bool" EFFECT:NAMED` names a built-in type or a family,
+`s" ptr u8" EFFECT:READ` reads one type where the definer runs), `postpone W` appends the W found where the definer was compiled,
 which no package the definer later runs in can shadow, `body-append` appends
 text that binds where it runs, and `postpone ;` ends the word: `postpone` of
 an immediate W compiles a call of W, and `postpone W` is refused where

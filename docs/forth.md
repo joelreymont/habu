@@ -2492,11 +2492,16 @@ sections above.
   `define-word ( ptr u8 n EFFECT:type -- )` opens, in the open package and
   section, the definition named by the string (one token, `E-MISSING-NAME`)
   with an effect the definer built from EFFECT's words (`NEW`, `IN`, `OUT`,
-  `N`, `FAMILY` (by the family's spelling, `PKG:name` or a global family's
-  bare name), `PTR`); a type that is no effect (given to `define-word`, `IN` or
-  `OUT`), one with more than 23 type parameters or one a written signature
-  could not state is `E-NOT-EFFECT`; a spelling that names no family is
-  `E-UNKNOWN-SIGNATURE-TYPE`; with a definition open it is `E-DEFINITION-OPEN`.
+  `N`, `NAMED` (a built-in type's name, `n` or `bool`, else a family's
+  spelling, `PKG:name` or a global family's bare name), `READ` (one type of
+  the text, `ptr u8` or `nullable<u8>`, read where the definer runs; a
+  letter, a type variable's or a view's region's, is rejected at the line that
+  ran the definer, since a definer's type takes its parameters from `NAMED`),
+  `PTR`); a type that is no effect (given to `define-word`, `IN` or `OUT`), a
+  definition whose effect and locals' types take more than 23 type parameters
+  or a type a written signature could not state is `E-NOT-EFFECT`; a spelling that names no type is
+  `E-UNKNOWN-SIGNATURE-TYPE`, and so is a name `READ` meets that the running
+  package does not know; with a definition open it is `E-DEFINITION-OPEN`.
   In the definer's body `postpone W` appends W bound to the record W names
   there, so no word the running package defines captures it, and is refused
   where `['] W` is; when W is immediate it compiles a call of W, so

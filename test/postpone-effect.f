@@ -2,10 +2,13 @@
 \ built word records, naming a private family by its package, and its nodes
 \ are transient: no persistent schema root takes one. A multi-error load that
 \ refuses a built body keeps its effect, which names the definer's private
-\ structure, for a caller in another package. The file calls the running
-\ checker's words, so it is loaded, never built.
+\ structure, for a caller in another package. A word built over EFFECT:READ
+\ or EFFECT:NAMED of a type takes the type its text form declares, and READ
+\ refuses a family the running package does not know. The file calls the
+\ running checker's words, so it is loaded, never built.
 
 require src/lib/test.f
+require src/lib/adt/nullable.f
 
 package POSTPONE-CELL
 private
@@ -14,7 +17,7 @@ STRUCTURE pdcell FIELD v n ;STRUCTURE
 
 \ ( ptr pdcell -- ptr pdcell ), a type no other package can spell.
 : CELL-EFFECT ( -- EFFECT:type )
-   s" POSTPONE-CELL:pdcell" EFFECT:FAMILY EFFECT:PTR
+   s" POSTPONE-CELL:pdcell" EFFECT:NAMED EFFECT:PTR
    {: p :}  EFFECT:NEW p EFFECT:IN  p EFFECT:OUT ;
 
 public
@@ -33,7 +36,7 @@ STRUCTURE peslot FIELD a n ;STRUCTURE
 CAST: >NODE ( EFFECT:type -- n )
 
 : SLOT-PTR ( -- EFFECT:type )
-   s" POSTPONE-EFFECT:peslot" EFFECT:FAMILY EFFECT:PTR ;
+   s" POSTPONE-EFFECT:peslot" EFFECT:NAMED EFFECT:PTR ;
 
 \ ( ptr peslot n -- ptr peslot ), one pointer node in both rows.
 : SLOT-EFFECT ( -- EFFECT:type )
@@ -67,6 +70,52 @@ variable EVAL-U
 \ The refused built word keeps its effect: its caller certifies, one refusal.
 S\" s\" CELL-BROKEN\" POSTPONE-CELL:MAKE-CELL-BROKEN\n: CELL-USE ( -- ) POSTPONE-CELL:PD-CELL CELL-BROKEN drop ;"
    MULTI 1 T= 0 T=
+
+1 TYPED-BUFFER PE-SLOTS peslot
+TYPED-VARIABLE PE-FLAG bool
+CAST: N>R ( n -- r )
+CAST: R>N ( r -- n )
+
+\ : NAME ( t -- t ) ;
+: MAKE-ID ( ptr u8 n EFFECT:type -- ) {: t :}
+   EFFECT:NEW t EFFECT:IN  t EFFECT:OUT  define-word
+   postpone ; ;
+
+s" PE-U32" s" u32" EFFECT:READ MAKE-ID
+s" PE-BYTES" s" ptr u8" EFFECT:READ MAKE-ID
+s" PE-NUL" s" nullable<u8>" EFFECT:READ MAKE-ID
+s" PE-SLOT" s" ptr peslot" EFFECT:READ MAKE-ID
+s" PE-R" s" r" EFFECT:NAMED MAKE-ID
+s" PE-BOOL" s" bool" EFFECT:NAMED MAKE-ID
+s" PE-U8" s" u8" EFFECT:NAMED MAKE-ID
+s" PE-N" s" n" EFFECT:NAMED MAKE-ID
+
+: PE-NUL-BYTE ( nullable<u8> -- n )
+   MATCH nullable
+      none OF 0 ENDOF
+      some OF c@ ENDOF
+   ;MATCH ;
+
+7 PE-U32 7 T=
+s" : PE-U32-NARROW ( u32 -- u8 ) PE-U32 ;" TEST-EVAL:RC 70 T=
+s" ab" drop PE-BYTES c@ 97 T=
+s" 0 PE-SLOTS PE-BYTES drop" TEST-EVAL:RC 70 T=
+s" Q" drop NULLABLE:SOME PE-NUL PE-NUL-BYTE 81 T=
+s" PE-FLAG NULLABLE:SOME PE-NUL drop" TEST-EVAL:RC 70 T=
+0 PE-SLOTS PE-SLOT NULL-PTR -  0 PE-SLOTS NULL-PTR -  T=
+s" POSTPONE-CELL:PD-CELL PE-SLOT drop" TEST-EVAL:RC 70 T=
+5 N>R PE-R R>N 5 T=
+s" 5 PE-R drop" TEST-EVAL:RC 70 T=
+true PE-BOOL TTRUE
+s" 5 PE-BOOL drop" TEST-EVAL:RC 70 T=
+65 PE-U8 65 T=
+s" : PE-U8-WIDE ( -- n ) 300 PE-U8 ;" TEST-EVAL:RC 70 T=
+5 PE-N 5 T=
+s" true PE-N drop" TEST-EVAL:RC 70 T=
+
+\ POSTPONE-CELL's private family is unknown here.
+: READ-HIDDEN ( -- n ) [: s" pdcell" EFFECT:READ drop ;] catch ;
+READ-HIDDEN 70 T=
 ;package
 
 T-REPORT
