@@ -5,6 +5,8 @@
 \ require-chain and checked-body legs on generated fixtures; the child engine is
 \ HABU_UNDER_TEST when set, else the running engine. A file `?TARGET` stops is
 \ rejected in REJECTION's form: prose, or one JSON line under REJECTION:JSON.
+\ A rejected definition prints its one diagnostic and nothing else.
+\ A bare word a global and a used package both define is rejected in that form.
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
@@ -26,6 +28,7 @@ $1000 constant CAP
 67 constant UNCAUGHT-RC
 76 constant BAD-SIG-RC
 84 constant SEALED-RC
+105 constant SHADOW-RC
 78 constant DUP-RC
 3 constant TEST-OUT-U
 5 constant TEST-ERR-U
@@ -56,6 +59,10 @@ create RCATCH-P PATH-CAP allot
 create CF-P PATH-CAP allot
 create TARGET-P PATH-CAP allot
 create TARGET-JSON-P PATH-CAP allot
+create ONCE-P PATH-CAP allot
+create ONCE-UNDEF-P PATH-CAP allot
+create ONCE-JSON-P PATH-CAP allot
+create SHADOW-P PATH-CAP allot
 
 variable BASE-U
 variable UNDEF-U
@@ -80,6 +87,10 @@ variable RCATCH-U
 variable CF-U
 variable TARGET-U
 variable TARGET-JSON-U
+variable ONCE-U
+variable ONCE-UNDEF-U
+variable ONCE-JSON-U
+variable SHADOW-U
 variable OUT-U
 variable ERR-U
 variable EXITED
@@ -154,6 +165,18 @@ variable RC
 : TARGET-JSON$ ( -- ptr u8 n )
    TARGET-JSON-P TARGET-JSON-U @ ;
 
+: ONCE$ ( -- ptr u8 n )
+   ONCE-P ONCE-U @ ;
+
+: ONCE-UNDEF$ ( -- ptr u8 n )
+   ONCE-UNDEF-P ONCE-UNDEF-U @ ;
+
+: ONCE-JSON$ ( -- ptr u8 n )
+   ONCE-JSON-P ONCE-JSON-U @ ;
+
+: SHADOW$ ( -- ptr u8 n )
+   SHADOW-P SHADOW-U @ ;
+
 : FRAG-FIXTURE! ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: pre:ptr preu:n frag:ptr fragu:n post:ptr postu:n path:ptr pathu:n :}
    SB-RESET
@@ -195,7 +218,11 @@ variable RC
    s" residue-nest.f" RNEST-P RNEST-U PATH!
    s" residue-caught.f" RCATCH-P RCATCH-U PATH!
    s" target.f" TARGET-P TARGET-U PATH!
-   s" target-json.f" TARGET-JSON-P TARGET-JSON-U PATH! ;
+   s" target-json.f" TARGET-JSON-P TARGET-JSON-U PATH!
+   s" once.f" ONCE-P ONCE-U PATH!
+   s" once-undef.f" ONCE-UNDEF-P ONCE-UNDEF-U PATH!
+   s" once-json.f" ONCE-JSON-P ONCE-JSON-U PATH!
+   s" shadow.f" SHADOW-P SHADOW-U PATH! ;
 
 : REJECT-FIXTURES! ( -- )
    UNDEF$ s" : LRD-X ( -- ) LRD-NO-SUCH-WORD-XYZ ;" FS:WRITE-ALL
@@ -207,6 +234,11 @@ variable RC
    BPF$ s" TYPED-VARIABLE LRD-Q ptr u8 : LRD-QBASE ( -- ptr u8 ) LRD-Q @ ; : LRD-BPF ( -- n ) LRD-QBASE @ ;" FS:WRITE-ALL
    TARGET$ s" false ?TARGET" FS:WRITE-ALL
    TARGET-JSON$ S\" -1 REJECTION:JSON !\nfalse ?TARGET" FS:WRITE-ALL
+   ONCE$ s" : F ( n -- n ) drop ;" FS:WRITE-ALL
+   ONCE-UNDEF$ s" : H ( -- ) FOO ;" FS:WRITE-ALL
+   ONCE-JSON$ S\" -1 REJECTION:JSON !\n: F ( n -- n ) drop ;" FS:WRITE-ALL
+   SHADOW$ S\" : LRD-SHADOW ( -- ) ;\npackage LRD-SH\npublic\n: LRD-SHADOW ( -- ) ;\n;package\nusing LRD-SH\nLRD-SHADOW\n"
+   FS:WRITE-ALL
    \ A loaded file is a closed program, so the fragment shows it ran by
    \ printing: it can take no cell from its loader and leave none.
    FRAG$ s" 74 ." FS:WRITE-ALL
@@ -765,11 +797,15 @@ variable RC
    ERR$ S\" /residue.f\n" ENDS-WITH? TTRUE
    ERR$ 10 COUNT-CHAR 1 T= ;
 
-: ASSERT-TARGET ( -- )
+: ASSERT-REJECTED ( n -- )
+   {: rc:n :}
    ERR$ SB$ T$=
    OUT-U @ 0 T=
    EXITED @ TTRUE
-   RC @ 74 T= ;
+   RC @ rc T= ;
+
+: ASSERT-TARGET ( -- )
+   74 ASSERT-REJECTED ;
 
 : TEST-TARGET ( -- )
    s" a ?TARGET stop prints the rejection form" T-LABEL
@@ -795,6 +831,60 @@ variable RC
    S\" ,\"help\":\"build this file only for a target its test admits, or widen the test\"}\n"
    SB-APPEND
    ASSERT-TARGET ;
+
+\ Each case is its own child: a --load stops at its first rejection.
+: TEST-DEF-ONCE ( -- )
+   s" a rejected definition prints its diagnostic once" T-LABEL
+   ONCE$ RUN
+   SB-RESET
+   s" error[E-MISMATCH]: the body ends with nothing on the stack;" SB-APPEND
+   S\"  the signature promises n\n --> " SB-APPEND
+   ONCE$ SB-APPEND  S\" :1:16\n  |\n1 | : F ( n -- n ) drop ;\n" SB-APPEND
+   S\"   |                ^^^^ the stack is empty after this\n" SB-APPEND
+   S\"   = expected: n\n  = found: (nothing)\n" SB-APPEND
+   S\"   = declared: n -- n\n  = inferred: n --\n" SB-APPEND
+   s"   = help: add the missing values after `drop` so the body" SB-APPEND
+   S\"  ends with n, or declare ( n -- )\n\n" SB-APPEND
+   REJECT-RC ASSERT-REJECTED
+   s" an undefined word prints one E-UNDEFINED" T-LABEL
+   ONCE-UNDEF$ RUN
+   SB-RESET
+   S\" error[E-UNDEFINED]: cannot find word `FOO`\n --> " SB-APPEND
+   ONCE-UNDEF$ SB-APPEND
+   S\" :1:12\n  |\n1 | : H ( -- ) FOO ;\n" SB-APPEND
+   S\"   |            ^^^ not found\n" SB-APPEND
+   s"   = help: define `FOO` before this point," SB-APPEND
+   S\"  or check its spelling\n\n" SB-APPEND
+   REJECT-RC ASSERT-REJECTED
+   s" a rejected definition prints one JSON line" T-LABEL
+   ONCE-JSON$ RUN
+   SB-RESET
+   S\" {\"severity\":\"error\",\"code\":\"E-MISMATCH\"" SB-APPEND
+   S\" ,\"message\":\"the body ends with nothing on the stack;" SB-APPEND
+   S\"  the signature promises n\",\"file\":\"" SB-APPEND
+   ONCE-JSON$ SB-APPEND
+   S\" \",\"line\":2,\"column\":16,\"byte_start\":35" SB-APPEND
+   S\" ,\"byte_end\":39,\"token\":\"drop\"" SB-APPEND
+   S\" ,\"source_line\":\": F ( n -- n ) drop ;\"" SB-APPEND
+   S\" ,\"label\":\"the stack is empty after this\"" SB-APPEND
+   S\" ,\"notes\":{\"expected\":\"n\",\"found\":\"(nothing)\"" SB-APPEND
+   S\" ,\"declared\":\"n -- n\",\"inferred\":\"n --\"}" SB-APPEND
+   S\" ,\"help\":\"add the missing values after `drop` so the body" SB-APPEND
+   S\"  ends with n, or declare ( n -- )\"}\n" SB-APPEND
+   REJECT-RC ASSERT-REJECTED ;
+
+: TEST-SHADOW ( -- )
+   s" a bare word a global and a used package share is rejected" T-LABEL
+   SHADOW$ RUN
+   SB-RESET
+   s" error[E-USING-SHADOW-GLOBAL]: `LRD-SHADOW` names both a global word" SB-APPEND
+   S\"  and a word of package `LRD-SH`\n --> " SB-APPEND  SHADOW$ SB-APPEND
+   S\" :7:1\n  |\n7 | LRD-SHADOW\n  | ^^^^^^^^^^ names two words\n" SB-APPEND
+   S\"   = global: LRD-SHADOW\n  = package: LRD-SH:LRD-SHADOW\n" SB-APPEND
+   s"   = help: write `LRD-SH:LRD-SHADOW` to call the package's word," SB-APPEND
+   S\"  or rename one of the two: the global word has no qualified form\n\n"
+   SB-APPEND
+   SHADOW-RC ASSERT-REJECTED ;
 
 : TEST-IMM-INCLUDE ( -- )
    s" checked include rejects before executing its fragment" T-LABEL
@@ -906,6 +996,8 @@ variable RC
    TEST-REQUIRE-CHAIN
    TEST-RESIDUE
    TEST-TARGET
+   TEST-DEF-ONCE
+   TEST-SHADOW
    TEST-IMM-INCLUDE
    TEST-IMM-REQUIRE
    TEST-IMM-CALLER

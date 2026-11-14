@@ -306,59 +306,138 @@ create NL NEWLINE c,
    t s - TKL-CELL CELL!
    true ;
 
-: REFUSE ( ptr u8 n -- )
-   ERROR-TEXT:TYPE TOKEN$ ERROR-TEXT:TYPE NL 1 ERROR-TEXT:TYPE
-   RC-REJECT throw ;
-
 : REFUSAL ( ptr u8 n -- )
    SRCLOC:PATH-CELL ADDR@ SRCLOC:PATHLEN-CELL CELL@ SRCLOC:LINE
    ERROR-TEXT:PREFIX ;
 
+: SAY ( ptr u8 n -- ) REJECTION:EMIT-STR ;
+
+\ Code in a rejection's text sits in backticks.
+: TICKS ( ptr u8 n -- ) {: a:ptr u:n :}
+   96 REJECTION:EMIT1  a u SAY  96 REJECTION:EMIT1 ;
+
 : UNDEFINED-NAME ( ptr u8 n -- ) {: a:ptr u:n :}
-   s" E-UNDEFINED" REFUSAL
-   s" undefined word '" ERROR-TEXT:TYPE  a u ERROR-TEXT:TYPE
-   s" '" ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
-   RC-REJECT throw ;
+   s" E-UNDEFINED" REJECTION:OPEN
+   s" cannot find word " SAY  a u TICKS
+   a u REJECTION:AT  s" not found" SAY
+   REJECTION:HELP  s" define " SAY  a u TICKS
+   s"  before this point, or check its spelling" SAY
+   RC-REJECT REJECTION:STOP ;
 
 : UNDERFLOW ( -- )
-   s" E-UNDERFLOW" REFUSAL
-   s" stack underflow at '" ERROR-TEXT:TYPE  TOKEN$ ERROR-TEXT:TYPE
-   s" '" ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
-   RC-REJECT throw ;
+   s" E-UNDERFLOW" REJECTION:OPEN
+   s" the stack ran out at " SAY  TOKEN$ TICKS
+   TOKEN$ REJECTION:AT  s" stack underflow" SAY
+   REJECTION:HELP  s" push the values the code at " SAY  TOKEN$ TICKS
+   s"  takes before it" SAY
+   RC-REJECT REJECTION:STOP ;
 
 : UNDEFINED ( -- )
    TOKEN$ UNDEFINED-NAME ;
 
+: USED-WID ( n -- n )
+   cells USE-WIDS-OFF + CELL@ ;
+
+\ Whether using slot s exports the token and no earlier slot uses its package.
+: ANSWERS? ( n -- bool ) {: s:n :}
+   TOKEN$ s USED-WID WL-PROBE XREF-FOUND? 0= if false exit then
+   s 0 ?do
+      i USED-WID s USED-WID = if false unloop exit then
+   loop
+   true ;
+
+\ xt runs on each using slot that exports the token, in using order.
+: ANSWERING ( [ n -- ] -- ) {: xt :}
+   CHECKER-USING-N 0 ?do
+      i ANSWERS? if i xt execute then
+   loop ;
+
+\ The checker's mirror holds slot s's name folded; the package row spells it.
+: USED-NAME ( n -- ptr u8 n )
+   CHECKER-USING$ {: a:ptr u:n :}
+   a u BOOT:NAMESPACE-WL WL-PROBE {: row:ptr :}
+   row XREF-FOUND? if row XREF-NAME$ exit then
+   a u ;
+
+: QUALIFIED ( n -- )
+   USED-NAME SAY  58 REJECTION:EMIT1  TOKEN$ SAY ;
+
+: QUALIFIED-TICKS ( n -- )
+   96 REJECTION:EMIT1  QUALIFIED  96 REJECTION:EMIT1 ;
+
+variable ANSWERED
+variable LISTED
+
+: COUNT-ANSWERS ( -- )
+   0 ANSWERED !
+   [: drop  1 ANSWERED +! ;] ANSWERING ;
+
+\ Each answering package's qualified spelling, the last after `or`.
+: QUALIFIED-LIST ( -- )
+   COUNT-ANSWERS  0 LISTED !
+   [: LISTED @ 0<> if
+         LISTED @ 1 + ANSWERED @ = if s"  or " else s" , " then SAY
+      then
+      QUALIFIED-TICKS  1 LISTED +! ;] ANSWERING ;
+
+: PACKAGE-LIST ( -- )
+   0 LISTED !
+   [: LISTED @ 0<> if s" , " SAY then
+      USED-NAME SAY  1 LISTED +! ;] ANSWERING ;
+
 : AMBIGUOUS ( -- )
-   s" E-USING-AMBIGUOUS" REFUSAL
-   s" ambiguous bare word resolves in multiple used packages: " ERROR-TEXT:TYPE
-   TOKEN$ ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
-   ENGINE-ERROR:USING-AMBIGUOUS throw ;
+   s" E-USING-AMBIGUOUS" REJECTION:OPEN
+   TOKEN$ TICKS  s"  is exported by more than one used package" SAY
+   TOKEN$ REJECTION:AT  s" ambiguous" SAY
+   s" packages" REJECTION:NOTE  PACKAGE-LIST
+   REJECTION:HELP
+   s" write the package's name before the word, as " SAY  QUALIFIED-LIST
+   ENGINE-ERROR:USING-AMBIGUOUS REJECTION:STOP ;
+
+\ The first using slot that exports the token.
+: ANSWER ( -- n )
+   -1 ANSWERED !
+   [: ANSWERED @ 0< if ANSWERED ! else drop then ;] ANSWERING
+   ANSWERED @ ;
 
 : SHADOWED ( -- )
-   s" E-USING-SHADOW-GLOBAL" REFUSAL
-   s" bare word a global and a used package both export: " ERROR-TEXT:TYPE
-   TOKEN$ ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
-   ENGINE-ERROR:USING-SHADOW-GLOBAL throw ;
+   ANSWER {: s:n :}
+   s" E-USING-SHADOW-GLOBAL" REJECTION:OPEN
+   TOKEN$ TICKS  s"  names both a global word and a word of package " SAY
+   s USED-NAME TICKS
+   TOKEN$ REJECTION:AT  s" names two words" SAY
+   s" global" REJECTION:NOTE  TOKEN$ SAY
+   s" package" REJECTION:NOTE  s QUALIFIED
+   REJECTION:HELP  s" write " SAY  s QUALIFIED-TICKS
+   s"  to call the package's word, or rename one of the two: " SAY
+   s" the global word has no qualified form" SAY
+   ENGINE-ERROR:USING-SHADOW-GLOBAL REJECTION:STOP ;
 
 : FAIL-CLOSED ( ptr u8 n n -- ) {: a:ptr u:n rc:n :}
    a u ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
    s" " rc die-closed ;
 
 : SEALED-FAIL ( ptr u8 n -- ) {: a:ptr u:n :}
-   s" E-SEALED-PACKAGE" REFUSAL
-   s" '" ERROR-TEXT:TYPE  a u ERROR-TEXT:TYPE  s" ' is sealed" ERROR-TEXT:TYPE
-   s" " ENGINE-ERROR:SEAL-PACKAGE FAIL-CLOSED ;
+   s" E-SEALED-PACKAGE" REJECTION:OPEN
+   a u TICKS  s"  would change a sealed package" SAY
+   a u REJECTION:AT  s" sealed" SAY
+   REJECTION:HELP
+   s" put this in a package of your own: a sealed package takes no new words"
+   SAY
+   REJECTION:KEEP
+   s" " ENGINE-ERROR:SEAL-PACKAGE die-closed ;
 
 \ While a checker overlay is open a definer head, a new package row or private
 \ wid, or an export throws by name: the overlay's close would drop what it
 \ wrote.
 : OVERLAY-GUARD ( -- )
    REPLAY-SCOPE:LATCH CELL@ 0= if exit then
-   s" E-OVERLAY-OPEN" REFUSAL
-   s" definition while a checker replay is open: " ERROR-TEXT:TYPE
-   TOKEN$ ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
-   ENGINE-ERROR:OVERLAY-OPEN throw ;
+   s" E-OVERLAY-OPEN" REJECTION:OPEN
+   s" a word is defined at " SAY  TOKEN$ TICKS
+   s"  while a checker replay is open" SAY
+   TOKEN$ REJECTION:AT  s" replay still open" SAY
+   REJECTION:HELP  s" close the checker replay before this definition" SAY
+   ENGINE-ERROR:OVERLAY-OPEN REJECTION:STOP ;
 
 \ Whether c was found: INP stops past it, else at the end of the input.
 : SKIP-PAST ( n -- bool )
@@ -370,12 +449,14 @@ create NL NEWLINE c,
    INP-CELL ADDR!
    found ;
 
-\ The refusal's line is the `(`'s, so the cursor goes back to the token.
+\ The cursor goes back to the `(`, so the input's line is the comment's.
 : UNCLOSED ( -- )
    TKA-CELL CELL@ INP-CELL CELL!
-   s" E-UNTERMINATED-COMMENT" REFUSAL
-   s" source ended inside a ( comment" ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
-   RC-UNCLOSED throw ;
+   s" E-UNTERMINATED-COMMENT" REJECTION:OPEN
+   s" the comment " SAY  TOKEN$ TICKS  s"  opens is never closed" SAY
+   TOKEN$ REJECTION:AT  s" the comment opens here" SAY
+   REJECTION:HELP  s" close the comment with " SAY  s" )" TICKS
+   RC-UNCLOSED REJECTION:STOP ;
 
 : COMMENT? ( -- bool )
    TKL-CELL CELL@ 1 <> if false exit then
@@ -421,9 +502,12 @@ TYPED-VARIABLE REC ptr n
 \ A sealed source may name a record it defined after the seal or a callable
 \ public record in an admitted wordlist.
 : POLICY-REFUSE ( -- )
-   s" E-POLICY" REFUSAL
-   s" not in vocabulary: " ERROR-TEXT:TYPE
-   TOKEN$ ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE  ENGINE-ERROR:POLICY throw ;
+   s" E-POLICY" REJECTION:OPEN
+   TOKEN$ TICKS  s"  is not in the vocabulary this source may use" SAY
+   TOKEN$ REJECTION:AT  s" not admitted" SAY
+   REJECTION:HELP
+   s" call only public words of the packages admitted before the seal" SAY
+   ENGINE-ERROR:POLICY REJECTION:STOP ;
 
 : POLICY-CHECK-REC ( ptr n -- ) {: rec:ptr :}
    POLICY-NDICT-CELL CELL@ {: seal:n :}
@@ -475,31 +559,56 @@ TYPED-VARIABLE REC ptr n
 : MIN-IN ( n -- n )
    DNAME-MIN-IN-MASK and MIN-IN-SHIFT rshift ;
 
+: LAYOUT-VALUE ( -- )
+   s" E-LAYOUT-VALUE" REJECTION:OPEN
+   TOKEN$ TICKS
+   s"  leaves a layout value, which top-level code cannot hold" SAY
+   TOKEN$ REJECTION:AT  s" returns a layout value" SAY
+   REJECTION:HELP  s" call " SAY  TOKEN$ TICKS
+   s"  inside a definition that takes its value" SAY
+   RC-REJECT REJECTION:STOP ;
+
+: INTERNAL ( -- )
+   s" E-UNSAFE" REJECTION:OPEN
+   TOKEN$ TICKS  s"  is an internal engine word" SAY
+   TOKEN$ REJECTION:AT  s" internal to the engine" SAY
+   REJECTION:HELP
+   s" call a public word instead: an internal word serves the engine alone"
+   SAY
+   RC-REJECT REJECTION:STOP ;
+
 \ The gates before a record's xt leaves the loop, in the engine's order: a
 \ wide effect, then an internal word.
 : XT-GATE ( -- )
    REC @ XREF-FLAGS {: f:n :}
-   f DNAME-WIDE and 0<> if
-      s" E-LAYOUT-VALUE" REFUSAL  s" interpret-mode layout value: " REFUSE
-   then
-   f DNAME-INT and 0<> if
-      s" E-UNSAFE" REFUSAL  s" internal engine word: " REFUSE
-   then ;
+   f DNAME-WIDE and 0<> if LAYOUT-VALUE then
+   f DNAME-INT and 0<> if INTERNAL then ;
 
 \ Name dispatch and tick reject an exact native code entry, including an alias,
 \ when it carries a baked scope kind. Arbitrary untyped xref xt execution is
 \ outside these paths.
 : SCOPE-ENTRY-GUARD ( -- )
-   REC @ XREF-START scope-kind? 0<> if
-      s" E-UNSAFE" REFUSAL  s" internal engine word: " REFUSE
-   then ;
+   REC @ XREF-START scope-kind? 0= if exit then
+   s" E-UNSAFE" REJECTION:OPEN
+   TOKEN$ TICKS
+   s"  is a scoped entry, which only a checked definition may call" SAY
+   TOKEN$ REJECTION:AT  s" scoped entry" SAY
+   REJECTION:HELP  s" call " SAY  TOKEN$ TICKS
+   s"  inside a definition, where the checker proves its scope" SAY
+   RC-REJECT REJECTION:STOP ;
+
+: UNDERDEPTH ( -- )
+   s" E-UNDERFLOW" REJECTION:OPEN
+   TOKEN$ TICKS  s"  takes more values than the stack holds" SAY
+   TOKEN$ REJECTION:AT  s" too few values" SAY
+   REJECTION:HELP  s" push the values " SAY  TOKEN$ TICKS
+   s"  takes before it" SAY
+   RC-REJECT REJECTION:STOP ;
 
 : GATE ( -- )
    XT-GATE
    SCOPE-ENTRY-GUARD
-   depth REC @ XREF-FLAGS MIN-IN < if
-      s" E-UNDERFLOW" REFUSAL  s" interpret stack underdepth: " REFUSE
-   then ;
+   depth REC @ XREF-FLAGS MIN-IN < if UNDERDEPTH then ;
 
 \ The flag word as the hook reads it: bit 0 found, bit 1 immediate, bits 8-15
 \ the certified inputs.
@@ -540,31 +649,44 @@ TYPED-VARIABLE RUNS-ON bool
 \ reads the input after it itself. Each keyword table is a word that runs the
 \ token when it is one of its rows and answers whether it was.
 
-\ With the input at its end the refusal names kw lowercase whatever the token's
-\ case, at the end's line.
+\ The input ended after keyword kw: the token cells still hold the keyword, and
+\ the text names kw lowercase whatever the token's case.
+: NAME-MISSING ( ptr u8 n n -- ) {: kw:ptr u:n rc:n :}
+   s" E-MISSING-NAME" REJECTION:OPEN
+   kw u TICKS  s"  needs a name after it" SAY
+   TOKEN$ REJECTION:AT  s" no name follows" SAY
+   REJECTION:HELP  s" write the name after " SAY  kw u TICKS
+   rc REJECTION:STOP ;
+
 : OPERAND ( ptr u8 n -- ) {: kw:ptr u:n :}
    TOKEN if exit then
-   s" E-MISSING-NAME" REFUSAL
-   s" reader keyword needs a name: " ERROR-TEXT:TYPE
-   kw u ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
-   RC-NO-NAME throw ;
+   kw u RC-NO-NAME NAME-MISSING ;
 
 \ A literal's text starts one byte past the keyword, past the blank that ended
-\ it, and runs to a closing quote that INP then passes. A literal with no
-\ closing quote refuses with INP still after the keyword, so the refusal names
-\ the keyword's line. A literal a program keeps is copied into data space it
-\ allots first, after its own refusals, so allot's refusals come before any of
-\ it is written.
+\ it, and runs to a closing quote that INP then passes. A literal's rejections
+\ name its keyword. A literal a program keeps is copied into data space it
+\ allots first, after its own rejections, so allot's rejections come before any
+\ of it is written.
 
 : BAD-LITERAL ( -- )
-   s" E-UNTERMINATED-STRING" REFUSAL
-   s" bad string literal" ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
-   RC-BAD-LITERAL throw ;
+   s" E-UNTERMINATED-STRING" REJECTION:OPEN
+   s" the string " SAY  TOKEN$ TICKS
+   s"  opens has no closing quote or holds a bad escape" SAY
+   TOKEN$ REJECTION:AT  s" the string opens here" SAY
+   REJECTION:HELP  s" end the string with " SAY  S\" \"" TICKS
+   s" , and follow each backslash with an escape letter, or with " SAY
+   s" x" TICKS  s"  and two hex digits" SAY
+   RC-BAD-LITERAL REJECTION:STOP ;
 
 : TOO-LONG ( -- )
-   s" E-COUNTED-STRING-TOO-LONG" REFUSAL
-   s" counted string too long (max 255)" ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
-   RC-TOO-LONG throw ;
+   s" E-COUNTED-STRING-TOO-LONG" REJECTION:OPEN
+   s" the counted string " SAY  TOKEN$ TICKS
+   s"  opens is longer than its count byte holds" SAY
+   TOKEN$ REJECTION:AT  s" too long" SAY
+   s" limit" REJECTION:NOTE  CSTR-MAX REJECTION:EMIT-U  s"  bytes" SAY
+   REJECTION:HELP  s" shorten the text, or write it with " SAY
+   S\" s\"" TICKS  s" , which has no count byte" SAY
+   RC-TOO-LONG REJECTION:STOP ;
 
 : PAST ( ptr u8 -- )
    1 + INP-CELL ADDR! ;
@@ -588,8 +710,7 @@ TYPED-VARIABLE RUNS-ON bool
 : KEEP ( -- ptr u8 n )
    TEXT COPY-HERE ;
 
-\ c": a count byte, then the text. INP has passed the quote when the length
-\ is checked, so the refusal names the quote's line.
+\ c": a count byte, then the text.
 : COUNTED ( -- ptr u8 )
    TEXT {: a:ptr u:n :}
    u CSTR-MAX > if TOO-LONG then
@@ -613,8 +734,6 @@ TYPED-VARIABLE RUNS-ON bool
    s q d ESCAPE:COPY
    d u ;
 
-\ c\" checks the decoded length before INP moves, so its refusal names the
-\ keyword's line.
 : ESC-COUNTED ( -- ptr u8 )
    ESC-SCAN {: s:ptr q:ptr u:n :}
    u CSTR-MAX > if TOO-LONG then
@@ -700,7 +819,13 @@ CAST: TICK-ACTION ( n -- [ ptr u8 n -- bool ] )
    XT-GATE
    SCOPE-ENTRY-GUARD
    TRUSTED-TICK? if
-      s" E-CAP-TRUSTED" REFUSAL  s" trusted-only tick: " REFUSE
+      s" E-CAP-TRUSTED" REJECTION:OPEN
+      TOKEN$ TICKS  s"  is a trust-boundary word, whose xt source may not take"
+      SAY
+      TOKEN$ REJECTION:AT  s" trusted only" SAY
+      REJECTION:HELP  s" call a checked word that does what " SAY
+      TOKEN$ TICKS  s"  does" SAY
+      RC-REJECT REJECTION:STOP
    then ;
 
 \ The run log sees the tick's target before the xt is pushed: the file may
@@ -770,29 +895,36 @@ $4000 constant PKG-CODE-RESERVE
    TOKEN$ ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE  throw ;
 
 : PKG-CONTEXT-FAIL ( -- )
-   s" E-PKG-CONTEXT" REFUSAL  PKG-RC-CONTEXT PKG-FAIL ;
+   s" E-PKG-CONTEXT" REJECTION:OPEN
+   TOKEN$ TICKS  s"  is not allowed in this context" SAY
+   TOKEN$ REJECTION:AT  s" out of context" SAY
+   REJECTION:HELP  s" write " SAY  s" public" TICKS  s" , " SAY
+   s" private" TICKS  s" , " SAY  s" seal-package" TICKS  s"  and " SAY
+   s" ;package" TICKS  s"  inside an open package, and name a part bare" SAY
+   s"  inside its enclosing package" SAY
+   PKG-RC-CONTEXT REJECTION:STOP ;
 
 : PKG-DUPLICATE ( ptr u8 n -- )
    {: a:ptr u:n :}
-   s" E-DUPLICATE-DEFINITION" REFUSAL
-   s" duplicate definition: " ERROR-TEXT:TYPE
-   a u ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
-   PKG-RC-DUPLICATE throw ;
+   s" E-DUPLICATE-DEFINITION" REJECTION:OPEN
+   a u TICKS  s"  is already defined in this wordlist" SAY
+   a u REJECTION:AT  s" already defined" SAY
+   REJECTION:HELP  s" rename this word, or remove the earlier one" SAY
+   PKG-RC-DUPLICATE REJECTION:STOP ;
 
-\ With the input at its end the token cells still hold the keyword, which the
-\ refusal names.
 : PKG-NAME ( -- )
    TOKEN if exit then
-   s" E-MISSING-NAME" REFUSAL
-   RC-NO-NAME PKG-FAIL ;
+   TOKEN$ RC-NO-NAME NAME-MISSING ;
 
-\ The refusal names what DEF-TKA and DEF-TKL hold, which `package` never
+\ The rejection names what DEF-TKA and DEF-TKL hold, which `package` never
 \ writes: for it, what the last definition or `export` left there.
 : PKG-DICT-FULL ( -- )
-   s" E-DICTIONARY-FULL" REFUSAL
-   s" dictionary full at: " ERROR-TEXT:TYPE
-   DEF-TKA-CELL ADDR@ DEF-TKL-CELL CELL@ ERROR-TEXT:TYPE
-   NL 1 ERROR-TEXT:TYPE  PKG-RC-DICT-FULL throw ;
+   DEF-TKA-CELL ADDR@ DEF-TKL-CELL CELL@ {: a:ptr u:n :}
+   s" E-DICTIONARY-FULL" REJECTION:OPEN
+   s" the dictionary has no record left for " SAY  a u TICKS
+   a u REJECTION:AT  s" no record left" SAY
+   REJECTION:HELP  s" define fewer words in this load" SAY
+   PKG-RC-DICT-FULL REJECTION:STOP ;
 
 : PKG-DICT-ROOM ( -- )
    ndict@ DICT-CAP < if exit then
@@ -819,9 +951,12 @@ $4000 constant PKG-CODE-RESERVE
 
 : PKG-CODE-ROOM-AFTER ( ptr u8 n n -- ) {: a:ptr u:n used:n :}
    u used PKG-FITS-AFTER? if exit then
-   s" E-CODE-SPACE-FULL" REFUSAL
-   s" code space full at: " ERROR-TEXT:TYPE
-   a u ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE  PKG-RC-CODE-FULL throw ;
+   s" E-CODE-SPACE-FULL" REJECTION:OPEN
+   s" code space has no room for the name " SAY  a u TICKS
+   a u REJECTION:AT  s" no code room" SAY
+   REJECTION:HELP
+   s" shorten the name, or define fewer words in this load" SAY
+   PKG-RC-CODE-FULL REJECTION:STOP ;
 
 : PKG-CODE-ROOM ( ptr u8 n -- ) 0 PKG-CODE-ROOM-AFTER ;
 
@@ -871,8 +1006,12 @@ CAST: PKG-AS-NAME-ACTION ( n -- [ ptr u8 n -- ] )
    NCOMP-DISPATCH:DECL-A NCOMP-DISPATCH:DECL-EXPORT-OFF PKG-OPERATION
       {: xt:n :}
    xt 0= if
-      s" E-DISPATCH-UNSET" REFUSAL
-      s" checker-export dispatch unset" ENGINE-ERROR:DISPATCH-UNSET FAIL-CLOSED
+      s" E-DISPATCH-UNSET" REJECTION:OPEN
+      TOKEN$ TICKS  s"  has no checker to declare its export to" SAY
+      TOKEN$ REJECTION:AT  s" checker-export dispatch unset" SAY
+      REJECTION:HELP  s" load the checker before any export" SAY
+      REJECTION:KEEP
+      s" " ENGINE-ERROR:DISPATCH-UNSET die-closed
    then
    TOKEN$ xt PKG-AS-NAME-ACTION execute ;
 
@@ -896,10 +1035,13 @@ CAST: PKG-AS-NAME-ACTION ( n -- [ ptr u8 n -- ] )
    PKG-ROW {: row:ptr :}
    row XREF-FOUND? 0= if exit then
    row PKG-INDEX seal >= if exit then
-   s" E-POLICY" REFUSAL
-   s" policy: package " ERROR-TEXT:TYPE TOKEN$ ERROR-TEXT:TYPE
-   s"  predates the seal" ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
-   ENGINE-ERROR:POLICY throw ;
+   s" E-POLICY" REJECTION:OPEN
+   s" package " SAY  TOKEN$ TICKS
+   s"  predates the seal, so sealed source cannot reopen it" SAY
+   TOKEN$ REJECTION:AT  s" opened before the seal" SAY
+   REJECTION:HELP
+   s" give the sealed source's package a name of its own" SAY
+   ENGINE-ERROR:POLICY REJECTION:STOP ;
 
 : PKG-REOPEN ( ptr n -- n ) {: row:ptr :}
    row PKG-INDEX {: ix:n :}
@@ -1020,26 +1162,38 @@ private
    then
    NCOMP-DISPATCH:DECL-PKG-RESYNC-OFF PKG-NOTIFY ;
 
-: PKG-USING-FAIL ( ptr u8 n n -- ) {: a:ptr u:n rc:n :}
-   a u ERROR-TEXT:TYPE TOKEN$ ERROR-TEXT:TYPE NL 1 ERROR-TEXT:TYPE rc throw ;
+: USING-BAD-NAME ( -- )
+   s" E-USING-BAD-NAME" REJECTION:OPEN
+   s" the package name " SAY  TOKEN$ TICKS  s"  contains a colon" SAY
+   TOKEN$ REJECTION:AT  s" not a package name" SAY
+   REJECTION:HELP  s" use a top-level package, named without " SAY
+   s" :" TICKS
+   ENGINE-ERROR:USING-BAD-NAME REJECTION:STOP ;
+
+: USING-UNKNOWN ( -- )
+   s" E-USING-UNKNOWN" REJECTION:OPEN
+   s" no package is named " SAY  TOKEN$ TICKS
+   TOKEN$ REJECTION:AT  s" unknown package" SAY
+   REJECTION:HELP  s" load the file that defines " SAY  TOKEN$ TICKS
+   s"  before this using, or check its spelling" SAY
+   ENGINE-ERROR:USING-UNKNOWN REJECTION:STOP ;
 
 : PKG-USED-WID ( -- n )
-   TOKEN 0= if
-      s" E-MISSING-NAME" REFUSAL
-      s" using: missing package name" ERROR-TEXT:TYPE
-      NL 1 ERROR-TEXT:TYPE  ENGINE-ERROR:USING-NO-NAME throw
-   then
-   TOKEN$ 0 COLON-AT 0 >= if
-      s" E-USING-BAD-NAME" REFUSAL
-      s" using: package name must not contain ':': "
-      ENGINE-ERROR:USING-BAD-NAME PKG-USING-FAIL
-   then
+   TOKEN 0= if s" using" ENGINE-ERROR:USING-NO-NAME NAME-MISSING then
+   TOKEN$ 0 COLON-AT 0 >= if USING-BAD-NAME then
    TOKEN$ CHECKER-RESOLVE:HEAD-ROW {: row:ptr :}
-   row XREF-FOUND? 0= if
-      s" E-USING-UNKNOWN" REFUSAL
-      s" using: unknown package: " ENGINE-ERROR:USING-UNKNOWN PKG-USING-FAIL
-   then
+   row XREF-FOUND? 0= if USING-UNKNOWN then
    row XREF-PKG-PUBLIC ;
+
+: USING-OVERFLOW ( -- )
+   s" E-USING-OVERFLOW" REJECTION:OPEN
+   s" using " SAY  TOKEN$ TICKS
+   s"  opens more usings than may be open at once" SAY
+   TOKEN$ REJECTION:AT  s" one using too many" SAY
+   s" limit" REJECTION:NOTE  USE-MAX REJECTION:EMIT-U
+   REJECTION:HELP  s" close a using with " SAY  s" ;using" TICKS
+   s"  before opening another" SAY
+   ENGINE-ERROR:USING-OVERFLOW REJECTION:STOP ;
 
 \ The using depth the buffer may close down to: its entry depth, lowered to the
 \ first using it opens after a `;package` closes a package opened before it.
@@ -1048,15 +1202,28 @@ variable USE-FLOOR
 : PKG-USING ( -- )
    PKG-USED-WID {: wid:n :}
    USE-DEPTH-CELL CELL@ {: d:n :}
-   d USE-MAX >= if
-      s" E-USING-OVERFLOW" REFUSAL
-      s" using: too many concurrent usings: "
-      ENGINE-ERROR:USING-OVERFLOW PKG-USING-FAIL
-   then
+   d USE-MAX >= if USING-OVERFLOW then
    d USE-FLOOR @ < if d USE-FLOOR ! then
    wid  d cells USE-WIDS-OFF +  CELL!
    PKG-NOTIFY-USING
    d 1+ USE-DEPTH-CELL CELL! ;
+
+: USING-UNBALANCED ( -- )
+   s" E-USING-UNBALANCED" REJECTION:OPEN
+   TOKEN$ TICKS  s"  has no open using to close" SAY
+   TOKEN$ REJECTION:AT  s" nothing to close" SAY
+   REJECTION:HELP  s" remove this " SAY  TOKEN$ TICKS
+   s" , or open a using before it" SAY
+   ENGINE-ERROR:USING-UNBALANCED REJECTION:STOP ;
+
+\ w names where the using to close was opened from: a package or a file.
+: USING-OUTER ( ptr u8 n -- ) {: w:ptr wu:n :}
+   s" E-USING-OUTER" REJECTION:OPEN
+   TOKEN$ TICKS  s"  would close a using opened outside this " SAY  w wu SAY
+   TOKEN$ REJECTION:AT  s" using opened outside" SAY
+   REJECTION:HELP  s" close each using in the " SAY  w wu SAY
+   s"  that opens it" SAY
+   ENGINE-ERROR:USING-OUTER REJECTION:STOP ;
 
 \ In an open package the most recent using must be the package's own: one
 \ opened before `package` sits at or below the depth `;package` restores, so
@@ -1065,21 +1232,11 @@ variable USE-FLOOR
 \ when the buffer ends.
 : PKG-END-USING ( -- )
    USE-DEPTH-CELL CELL@ {: d:n :}
-   d 0= if
-      s" E-USING-UNBALANCED" REFUSAL
-      s" ;using without an open using" ERROR-TEXT:TYPE
-      NL 1 ERROR-TEXT:TYPE  ENGINE-ERROR:USING-UNBALANCED throw
-   then
+   d 0= if USING-UNBALANCED then
    PKG-PUB-CELL CELL@ 0<>  d USE-PKG-SAVE-CELL CELL@ <=  and if
-      s" E-USING-OUTER" REFUSAL
-      s" ;using would close a using opened outside the package" ERROR-TEXT:TYPE
-      NL 1 ERROR-TEXT:TYPE  ENGINE-ERROR:USING-OUTER throw
+      s" package" USING-OUTER
    then
-   d USE-FLOOR @ <= if
-      s" E-USING-OUTER" REFUSAL
-      s" ;using would close a using opened outside the file" ERROR-TEXT:TYPE
-      NL 1 ERROR-TEXT:TYPE  ENGINE-ERROR:USING-OUTER throw
-   then
+   d USE-FLOOR @ <= if s" file" USING-OUTER then
    d 1- USE-DEPTH-CELL CELL! ;
 
 : PKG-TAIL ( -- ptr u8 n )
@@ -1088,17 +1245,30 @@ variable USE-FLOOR
    q 1 <  q 1+ u >=  or if a u exit then
    a q 1+ ZPTR+  u q - 1- ;
 
+: EXPORT-UNDEFINED ( -- )
+   s" E-EXPORT-UNDEFINED" REJECTION:OPEN
+   s" cannot find word " SAY  TOKEN$ TICKS  s"  to export" SAY
+   TOKEN$ REJECTION:AT  s" not found" SAY
+   REJECTION:HELP  s" define " SAY  TOKEN$ TICKS
+   s"  before exporting it, or check its spelling" SAY
+   RC-REJECT REJECTION:STOP ;
+
+: EXPORT-UNSAFE ( -- )
+   s" E-EXPORT-UNSAFE" REJECTION:OPEN
+   TOKEN$ TICKS
+   s"  is an internal engine word, which no package may export" SAY
+   TOKEN$ REJECTION:AT  s" internal to the engine" SAY
+   REJECTION:HELP  s" export a public word instead" SAY
+   RC-REJECT REJECTION:STOP ;
+
 \ The source must not be internal: an alias would carry its body past the
-\ interpret gate without the DNAME-INT mark, so the gate's refusal is made
-\ here. DEF-TKA and DEF-TKL take the operand, which the refusals after them
+\ interpret gate without the DNAME-INT mark, so the gate's rejection is made
+\ here. DEF-TKA and DEF-TKL take the operand, which the rejections after them
 \ name.
 : PKG-EXPORT-SOURCE ( -- ptr n )
    TOKEN$ FIND-SCOPE {: src:ptr :}
-   src XREF-FOUND? 0= if s" E-EXPORT-UNDEFINED" REFUSAL  RC-REJECT PKG-FAIL then
-   src XREF-FLAGS DNAME-INT and 0<> if
-      s" E-EXPORT-UNSAFE" REFUSAL
-      s" internal engine word: " REFUSE
-   then
+   src XREF-FOUND? 0= if EXPORT-UNDEFINED then
+   src XREF-FLAGS DNAME-INT and 0<> if EXPORT-UNSAFE then
    TKA-CELL CELL@ DEF-TKA-CELL CELL!
    TKL-CELL CELL@ DEF-TKL-CELL CELL!
    src ;
@@ -1184,11 +1354,14 @@ private
    s" host" TOKEN-IS?  s" target" TOKEN-IS? or 0= if false exit then
    SEARCH
    REC @ XREF-FOUND? if
-      s" E-SECTION-WORD" REFUSAL
-      s" '" ERROR-TEXT:TYPE  TOKEN$ ERROR-TEXT:TYPE
-      s" ' is the section word and a word of that name is in scope: rename the word or call it qualified"
-      ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
-      RC-REJECT throw
+      s" E-SECTION-WORD" REJECTION:OPEN
+      s" `" REJECTION:EMIT-STR  TOKEN$ REJECTION:EMIT-STR
+      s" ` is the section word, and a word of that name is in scope" REJECTION:EMIT-STR
+      TOKEN$ REJECTION:AT  s" section word or word in scope" REJECTION:EMIT-STR
+      REJECTION:HELP
+      s" rename the word, or call it by its qualified name if it is public"
+      REJECTION:EMIT-STR
+      RC-REJECT REJECTION:STOP
    then
    s" target" TOKEN-IS? if 1 else 0 then SECTION-CELL CELL!
    true ;
@@ -1303,9 +1476,14 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
 \ A head with no compiler (COMP-CELL 0), or a body token or fixed body whose
 \ latch is 0, refuses. `immediate` passes.
 : DEF-NO-COMPILER ( -- )
-   s" E-NO-COMPILER" REFUSAL
-   s" the definition has no compiler: " ERROR-TEXT:TYPE
-   DEF-RC-NO-COMPILER PKG-FAIL ;
+   s" E-NO-COMPILER" REJECTION:OPEN
+   s" no compiler is latched for the definition at `" REJECTION:EMIT-STR
+   TOKEN$ REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR
+   TOKEN$ REJECTION:AT  s" nothing can compile this" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" load the native compiler, as the boot prefix does, before any definition"
+   REJECTION:EMIT-STR
+   DEF-RC-NO-COMPILER REJECTION:STOP ;
 
 \ The capture's first token, the definition's name, which a head seeds.
 : DEF-CAPTURED-NAME ( -- ptr u8 n )
@@ -1322,12 +1500,21 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
    {: sig:ptr len:n xt:n :}
    DEF-CAPTURED-NAME sig len xt AS-DECLARE execute ;
 
+\ The rejection marks the opener's token in the source, the name a colon
+\ definition captures.
 : DEF-ENDED ( -- )
    PENDTKA-CELL CELL@ INP-CELL CELL!
-   s" E-VS-UNTERMINATED-DEFINITION" REFUSAL
-   s" source ended inside definition: " ERROR-TEXT:TYPE
-   DEF-CAPTURED-NAME ERROR-TEXT:TYPE
-   NL 1 ERROR-TEXT:TYPE  RC-UNCLOSED throw ;
+   INP-CELL ADDR@ {: p:ptr :}
+   p INE-CELL ADDR@ WORD-END p - {: pu:n :}
+   DEF-CAPTURED-NAME {: a:ptr u:n :}
+   s" E-VS-UNTERMINATED-DEFINITION" REJECTION:OPEN
+   s" the source ends inside the definition of `" REJECTION:EMIT-STR
+   a u REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR
+   p pu REJECTION:AT  s" never closed" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" end the definition of `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" ` with `;` before the source ends" REJECTION:EMIT-STR
+   RC-UNCLOSED REJECTION:STOP ;
 
 \ body-capture grows the block when the text would pass its capacity, so an
 \ address into the text is formed after the capture, never kept across it.
@@ -1362,15 +1549,25 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
 \ Both comparisons are signed, as the engine's head makes them.
 : DEF-CODE-ROOM ( -- )
    cp@ dbase@ REGION + PKG-CODE-RESERVE - >= if
-      s" E-CODE-SPACE-FULL" REFUSAL
-      s" code space full at: " ERROR-TEXT:TYPE PKG-RC-CODE-FULL PKG-FAIL
+      s" E-CODE-SPACE-FULL" REJECTION:OPEN
+      s" the code space is full at `" REJECTION:EMIT-STR
+      TOKEN$ REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR
+      TOKEN$ REJECTION:AT  s" no code space left" REJECTION:EMIT-STR
+      REJECTION:HELP
+      s" load fewer or smaller definitions into this image" REJECTION:EMIT-STR
+      PKG-RC-CODE-FULL REJECTION:STOP
    then ;
 
 : DEF-ROOM ( -- )
    DEF-CODE-ROOM
    ndict@ DICT-CAP >= if
-      s" E-DICTIONARY-FULL" REFUSAL
-      s" dictionary full at: " ERROR-TEXT:TYPE PKG-RC-DICT-FULL PKG-FAIL
+      s" E-DICTIONARY-FULL" REJECTION:OPEN
+      s" the dictionary is full at `" REJECTION:EMIT-STR
+      TOKEN$ REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR
+      TOKEN$ REJECTION:AT  s" no dictionary record left" REJECTION:EMIT-STR
+      REJECTION:HELP
+      s" load fewer definitions into this image" REJECTION:EMIT-STR
+      PKG-RC-DICT-FULL REJECTION:STOP
    then ;
 
 \ With the input at its end `:` and `kernel:` refuse with the engine's colon
@@ -1378,9 +1575,14 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
 : DEF-NAME ( bool -- ) {: trusted:bool :}
    trusted if s" trusted:" OPERAND exit then
    TOKEN if exit then
-   s" E-MISSING-NAME" REFUSAL
-   s" missing definition name after " ERROR-TEXT:TYPE
-   TOKEN$ ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE  RC-NO-NAME throw ;
+   s" E-MISSING-NAME" REJECTION:OPEN
+   s" `" REJECTION:EMIT-STR  TOKEN$ REJECTION:EMIT-STR
+   s" ` has no definition name after it" REJECTION:EMIT-STR
+   TOKEN$ REJECTION:AT  s" no name follows" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" write the new word's name right after `" REJECTION:EMIT-STR
+   TOKEN$ REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR
+   RC-NO-NAME REJECTION:STOP ;
 
 \ A head with no row makes a top-level package with a public wordlist
 \ and no private one.
@@ -1405,7 +1607,13 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
    a u 0 COLON-AT {: q:n :}
    q 1 <  q 1+ u >=  or if a u get-current a u DEF-SEAL-GUARD exit then
    a u q 1+ COLON-AT 0 >= if
-      s" E-BAD-QUALIFIED-RECORD" REFUSAL PKG-RC-CONTEXT PKG-FAIL
+      s" E-BAD-QUALIFIED-RECORD" REJECTION:OPEN
+      s" the name `" REJECTION:EMIT-STR  TOKEN$ REJECTION:EMIT-STR
+      s" ` has a second qualifier colon" REJECTION:EMIT-STR
+      TOKEN$ REJECTION:AT  s" more than one qualifier" REJECTION:EMIT-STR
+      REJECTION:HELP
+      s" qualify the name with one package, as `PKG:NAME`" REJECTION:EMIT-STR
+      PKG-RC-CONTEXT REJECTION:STOP
    then
    a q 1+ ZPTR+  u q - 1-  a q DEF-NAMESPACE  if a u SEALED-FAIL then ;
 
@@ -1489,19 +1697,32 @@ public
 private
 
 : DEF-KEYWORD-REFUSE ( ptr u8 n -- ) {: a:ptr u:n :}
-   s" E-RESERVED-DEFINITION" REFUSAL
-   s" compile keyword cannot be a definition name: " ERROR-TEXT:TYPE
-   a u ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE  RC-REJECT throw ;
+   s" E-RESERVED-DEFINITION" REJECTION:OPEN
+   s" `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" ` is a compile keyword and cannot name a definition" REJECTION:EMIT-STR
+   a u REJECTION:AT  s" reserved keyword" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" give the definition a name that is not a compile keyword" REJECTION:EMIT-STR
+   RC-REJECT REJECTION:STOP ;
 
 : DEF-POLICY-REFUSE ( ptr u8 n -- ) {: a:ptr u:n :}
-   s" E-POLICY" REFUSAL
-   s" not in vocabulary: " ERROR-TEXT:TYPE
-   a u ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE  ENGINE-ERROR:POLICY throw ;
+   s" E-POLICY" REJECTION:OPEN
+   s" `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" ` is an engine keyword outside the vocabulary and cannot name a definition"
+   REJECTION:EMIT-STR
+   a u REJECTION:AT  s" engine keyword" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" give the definition a name that is not an engine keyword" REJECTION:EMIT-STR
+   ENGINE-ERROR:POLICY REJECTION:STOP ;
 
 : DEF-NUMBER-REFUSE ( ptr u8 n -- ) {: a:ptr u:n :}
-   s" E-NUMERIC-DEFINITION" REFUSAL
-   s" number cannot be a definition name: " ERROR-TEXT:TYPE
-   a u ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE  RC-REJECT throw ;
+   s" E-NUMERIC-DEFINITION" REJECTION:OPEN
+   s" `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" ` reads as a number and cannot name a definition" REJECTION:EMIT-STR
+   a u REJECTION:AT  s" reads as a number" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" give the definition a name that does not read as a number" REJECTION:EMIT-STR
+   RC-REJECT REJECTION:STOP ;
 
 : DEF-WALL ( ptr u8 n -- ) {: a:ptr u:n :}
    POLICY-NDICT-CELL CELL@ 0<> if
@@ -1550,10 +1771,14 @@ private
    s end DEF-SIG-TAKE ;
 
 : DEF-SIG-BAD ( -- )
-   s" E-MISSING-SIGNATURE" REFUSAL
-   s" '" ERROR-TEXT:TYPE  TOKEN$ ERROR-TEXT:TYPE
-   s" ' has no closed ( -- ) signature" ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
-   DEF-RC-BAD-SIG throw ;
+   s" E-MISSING-SIGNATURE" REJECTION:OPEN
+   s" `" REJECTION:EMIT-STR  TOKEN$ REJECTION:EMIT-STR
+   s" ` has no closed `( -- )` signature" REJECTION:EMIT-STR
+   TOKEN$ REJECTION:AT  s" no closed signature after this" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" write the stack effect after the name, as `( n -- n )`, with its closing `)`"
+   REJECTION:EMIT-STR
+   DEF-RC-BAD-SIG REJECTION:STOP ;
 
 \ A head's signature that the input ends before or inside is the source ending
 \ inside the definition.
@@ -1578,9 +1803,14 @@ private
 \ ends.
 : DEF-DISPATCH ( -- )
    DEF-COMPILER 0<> if exit then
-   s" E-DISPATCH-UNSET" REFUSAL
-   s" native compiler dispatch unset" ERROR-TEXT:TYPE
-   s" " ENGINE-ERROR:DISPATCH-UNSET FAIL-CLOSED ;
+   s" E-DISPATCH-UNSET" REJECTION:OPEN
+   s" the native compiler dispatch is unset at `" REJECTION:EMIT-STR
+   TOKEN$ REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR
+   TOKEN$ REJECTION:AT  s" no compiler latched" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" load the native compiler, as the boot prefix does, before any definition"
+   REJECTION:EMIT-STR
+   REJECTION:KEEP  s" " ENGINE-ERROR:DISPATCH-UNSET die-closed ;
 
 public
 \ The tail passes the wall, room, duplicate, code room and protected-wordlist
@@ -1679,16 +1909,27 @@ private
    TOKEN$ {: a:ptr u:n :}
    LOCN-CELL CELL@ {: idx:n :}
    idx LOC-RECS >= if
-      s" E-TOO-MANY-LOCALS" REFUSAL
-      s" more than 64 locals in one definition: " ERROR-TEXT:TYPE
-      TOKEN$ ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE  RC-REJECT throw
+      s" E-TOO-MANY-LOCALS" REJECTION:OPEN
+      s" the local `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+      s" ` is one more than a definition may declare" REJECTION:EMIT-STR
+      a u REJECTION:AT  s" too many locals" REJECTION:EMIT-STR
+      s" limit" REJECTION:NOTE  LOC-RECS REJECTION:EMIT-U
+      REJECTION:HELP
+      s" split the definition, or keep some values on the stack" REJECTION:EMIT-STR
+      RC-REJECT REJECTION:STOP
    then
    a u 0 COLON-AT {: colon:n :}
    colon 0 < if u else colon then {: len:n :}
    len LOC-NAME-CAP > if
-      s" E-LOCAL-NAME-TOO-LONG" REFUSAL
-      s" local name over 16 bytes: " ERROR-TEXT:TYPE
-      TOKEN$ ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE  RC-REJECT throw
+      s" E-LOCAL-NAME-TOO-LONG" REJECTION:OPEN
+      s" the local name `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+      s" ` is too long" REJECTION:EMIT-STR
+      a u REJECTION:AT  s" name too long" REJECTION:EMIT-STR
+      s" limit" REJECTION:NOTE  LOC-NAME-CAP REJECTION:EMIT-U
+      s"  bytes" REJECTION:EMIT-STR
+      REJECTION:HELP
+      s" shorten the local's name to the limit" REJECTION:EMIT-STR
+      RC-REJECT REJECTION:STOP
    then
    data-base LOCNAMES + idx LOC-REC * + BYTE-VIEW {: row:ptr :}
    len row CELL-VIEW !
@@ -1805,10 +2046,17 @@ private
          size stemu sufu + = if
             name stemu stem stemu STR=CI
             name stemu + sufu suffix sufu STR=CI and if
-               s" E-DUPLICATE-DEFINITION" REFUSAL
-               s" duplicate definition: " ERROR-TEXT:TYPE
-               stem stemu ERROR-TEXT:TYPE suffix sufu ERROR-TEXT:TYPE
-               NL 1 ERROR-TEXT:TYPE  PKG-RC-DUPLICATE throw
+               s" E-DUPLICATE-DEFINITION" REJECTION:OPEN
+               s" `" REJECTION:EMIT-STR  stem stemu REJECTION:EMIT-STR
+               suffix sufu REJECTION:EMIT-STR
+               s" ` is already defined in this wordlist" REJECTION:EMIT-STR
+               TOKEN$ REJECTION:AT  s" its clause's name is taken" REJECTION:EMIT-STR
+               REJECTION:HELP
+               s" rename `" REJECTION:EMIT-STR  stem stemu REJECTION:EMIT-STR
+               s" `, or the word already named `" REJECTION:EMIT-STR
+               stem stemu REJECTION:EMIT-STR  suffix sufu REJECTION:EMIT-STR
+               s" `" REJECTION:EMIT-STR
+               PKG-RC-DUPLICATE REJECTION:STOP
             then
          then
       then
@@ -1816,8 +2064,12 @@ private
 
 : DEF-DOES ( -- )
    DOESB-CELL CELL@ 0<> if
-      s" E-DOES-TWICE" REFUSAL
-      s" does>" ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE  RC-REJECT throw
+      s" E-DOES-TWICE" REJECTION:OPEN
+      s" `does>` appears twice in one definition" REJECTION:EMIT-STR
+      TOKEN$ REJECTION:AT  s" second `does>`" REJECTION:EMIT-STR
+      REJECTION:HELP
+      s" keep one `does>` per definition" REJECTION:EMIT-STR
+      RC-REJECT REJECTION:STOP
    then
    DEF-DOES-NAME
    BODYLEN-CELL CELL@ {: at:n :}
@@ -1848,10 +2100,15 @@ variable ENTRY-PEND
 
 : DEF-SOURCE-CLOSE ( -- )
    PEND-CELL CELL@ ENTRY-PEND @ <> if exit then
-   s" E-VS-UNTERMINATED-DEFINITION" REFUSAL
-   s" source closed a definition it did not open: " ERROR-TEXT:TYPE
-   DEF-CAPTURED-NAME ERROR-TEXT:TYPE
-   NL 1 ERROR-TEXT:TYPE  RC-UNCLOSED throw ;
+   DEF-CAPTURED-NAME {: a:ptr u:n :}
+   s" E-VS-UNTERMINATED-DEFINITION" REJECTION:OPEN
+   s" this source closed `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" `, a definition it did not open" REJECTION:EMIT-STR
+   a u REJECTION:AT  s" opened outside this source" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" close `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" ` in the source that opens it" REJECTION:EMIT-STR
+   RC-UNCLOSED REJECTION:STOP ;
 
 : DEF-SOURCE-END ( -- )
    PEND-CELL CELL@ ENTRY-PEND @ = if exit then
@@ -1902,23 +2159,34 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
 
 \ WHO names the operation refused: `define-word`, or a declaration's child.
 : DEF-NAME-REFUSE ( ptr u8 n ptr u8 n -- ) {: w:ptr wu:n a:ptr u:n :}
-   s" E-MISSING-NAME" REFUSAL
-   w wu ERROR-TEXT:TYPE
-   s"  needs one token as the name: '" ERROR-TEXT:TYPE
-   a u ERROR-TEXT:TYPE  s" '" ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
-   RC-NO-NAME throw ;
+   s" E-MISSING-NAME" REJECTION:OPEN
+   s" the definition name `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" ` is not one token" REJECTION:EMIT-STR
+   a u REJECTION:AT  s" not one token" REJECTION:EMIT-STR
+   s" definer" REJECTION:NOTE  w wu REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" give the name as one token, with no blanks" REJECTION:EMIT-STR
+   RC-NO-NAME REJECTION:STOP ;
 
 : DEF-OPEN-REFUSE ( ptr u8 n ptr u8 n -- ) {: w:ptr wu:n a:ptr u:n :}
-   s" E-DEFINITION-OPEN" REFUSAL
-   w wu ERROR-TEXT:TYPE  s"  while a definition is open: " ERROR-TEXT:TYPE
-   a u ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE  RC-REJECT throw ;
+   s" E-DEFINITION-OPEN" REJECTION:OPEN
+   s" cannot define `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" ` while another definition is open" REJECTION:EMIT-STR
+   a u REJECTION:AT  s" a definition is already open" REJECTION:EMIT-STR
+   s" definer" REJECTION:NOTE  w wu REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" end the open definition with `;` before defining `" REJECTION:EMIT-STR
+   a u REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR
+   RC-REJECT REJECTION:STOP ;
 
-\ An effect value DEFINE-RUN cannot take, such as EFFECT:N; the quotation
-\ types why.
+\ Opens the rejection of an effect value DEFINE-RUN cannot take, such as
+\ EFFECT:N, through its label; the quotation writes why, and the caller adds
+\ the notes, the help and DEF-RC-BAD-SIG REJECTION:STOP.
 : DEF-NOT-EFFECT ( [ -- ] ptr u8 n -- ) {: a:ptr u:n :}
-   s" E-NOT-EFFECT" REFUSAL  s" define-word " ERROR-TEXT:TYPE  execute
-   s" : '" ERROR-TEXT:TYPE  a u ERROR-TEXT:TYPE  s" '" ERROR-TEXT:TYPE
-   NL 1 ERROR-TEXT:TYPE  DEF-RC-BAD-SIG throw ;
+   s" E-NOT-EFFECT" REJECTION:OPEN
+   s" the effect `define-word` got for `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" ` " REJECTION:EMIT-STR  execute
+   a u REJECTION:AT  s" effect rejected for this name" REJECTION:EMIT-STR ;
 
 : DEF-ONE-TOKEN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    u 0= if false exit then
@@ -1930,18 +2198,29 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    PEND-CELL CELL@ 0<> if s" define-word" a u DEF-OPEN-REFUSE then
    a u DEF-ONE-TOKEN? 0= if s" define-word" a u DEF-NAME-REFUSE then
    eff CHECK:EFFECT? 0= if
-      [: s" needs an effect a definition can take" ERROR-TEXT:TYPE ;]
+      [: s" is not an effect a definition can take" REJECTION:EMIT-STR ;]
       a u DEF-NOT-EFFECT
+      REJECTION:HELP
+      s" pass `define-word` an effect, a quotation type with no return clause"
+      REJECTION:EMIT-STR
+      DEF-RC-BAD-SIG REJECTION:STOP
    then
    eff CHECK:EFFECT-DENSE 0= if
-      [: s" has more than " ERROR-TEXT:TYPE
-         TFAM:TFAM-DECL-PARAM-COUNT ERROR-TEXT:DIGITS$ ERROR-TEXT:TYPE
-         s"  type parameters" ERROR-TEXT:TYPE ;]
+      [: s" has too many type parameters" REJECTION:EMIT-STR ;]
       a u DEF-NOT-EFFECT
+      s" limit" REJECTION:NOTE  TFAM:TFAM-DECL-PARAM-COUNT REJECTION:EMIT-U
+      REJECTION:HELP
+      s" give `define-word` an effect with fewer distinct type parameters"
+      REJECTION:EMIT-STR
+      DEF-RC-BAD-SIG REJECTION:STOP
    then {: dense:n :}
    dense CHECK:EFFECT-RULES? 0= if
-      [: s" needs an effect a written signature could state" ERROR-TEXT:TYPE ;]
+      [: s" is not one a written signature could state" REJECTION:EMIT-STR ;]
       a u DEF-NOT-EFFECT
+      REJECTION:HELP
+      s" give `define-word` an effect a written `( -- )` signature could state"
+      REJECTION:EMIT-STR
+      DEF-RC-BAD-SIG REJECTION:STOP
    then
    NCOMP-DISPATCH:COMP-CELL CELL@ 0= if
       DEF-NO-COMPILER
@@ -1990,9 +2269,14 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
 
 : BUILT-PENDING ( ptr u8 n -- ) {: a:ptr u:n :}
    PEND-CELL CELL@ 0<> if exit then
-   s" E-NO-DEFINITION" REFUSAL
-   a u ERROR-TEXT:TYPE  s"  with no definition open" ERROR-TEXT:TYPE
-   NL 1 ERROR-TEXT:TYPE  RC-REJECT throw ;
+   s" E-NO-DEFINITION" REJECTION:OPEN
+   s" `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" ` ran with no definition open" REJECTION:EMIT-STR
+   TOKEN$ REJECTION:AT  s" no definition is open here" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" open a definition with `define-word` before `" REJECTION:EMIT-STR
+   a u REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR
+   RC-REJECT REJECTION:STOP ;
 
 : APPEND-RUN ( ptr u8 n -- ) {: a:ptr u:n :}
    s" body-append" BUILT-PENDING
@@ -2007,9 +2291,13 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
 CAST: QUOT-ENTRY ( [ R -- S ] -- n )
 
 : NAMELESS-REFUSE ( -- )
-   s" E-NAMELESS-WORD" REFUSAL
-   s" compile, of a quotation no named word enters" ERROR-TEXT:TYPE
-   NL 1 ERROR-TEXT:TYPE  RC-REJECT throw ;
+   s" E-NAMELESS-WORD" REJECTION:OPEN
+   s" `compile,` got a quotation no named word enters" REJECTION:EMIT-STR
+   TOKEN$ REJECTION:AT  s" quotation with no named word" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" pass `compile,` the execution token of a named word, as `'` gives one"
+   REJECTION:EMIT-STR
+   RC-REJECT REJECTION:STOP ;
 
 \ Refuses a call of a retired word, and of a package word whose package is
 \ not in the current namespace.
@@ -2107,8 +2395,14 @@ variable LIT-AT
    own 0<> if own exit then
    NCOMP-DISPATCH:DECL-RAW-OFF PKG-TARGET {: target:n :}
    target 0= if
-      s" E-DISPATCH-UNSET" REFUSAL
-      s" trust-raw dispatch unset" ENGINE-ERROR:DISPATCH-UNSET FAIL-CLOSED
+      s" E-DISPATCH-UNSET" REJECTION:OPEN
+      s" the trust-raw dispatch is unset at `" REJECTION:EMIT-STR
+      TOKEN$ REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR
+      TOKEN$ REJECTION:AT  s" no trust-raw declaration latched" REJECTION:EMIT-STR
+      REJECTION:HELP
+      s" load the checker, which sets the trust-raw dispatch, before this definer"
+      REJECTION:EMIT-STR
+      REJECTION:KEEP  s" " ENGINE-ERROR:DISPATCH-UNSET die-closed
    then
    target ;
 
@@ -2187,9 +2481,14 @@ variable DEF-VALUE
 \ end's line.
 : DEF-CAST-NAME ( -- )
    TOKEN if exit then
-   s" E-MISSING-NAME" REFUSAL
-   s" cast: missing name after " ERROR-TEXT:TYPE
-   TOKEN$ ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE  RC-NO-NAME throw ;
+   s" E-MISSING-NAME" REJECTION:OPEN
+   s" `" REJECTION:EMIT-STR  TOKEN$ REJECTION:EMIT-STR
+   s" ` has no name after it" REJECTION:EMIT-STR
+   TOKEN$ REJECTION:AT  s" no name follows" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" write the cast's name and signature after `" REJECTION:EMIT-STR
+   TOKEN$ REJECTION:EMIT-STR  s" `, as `CAST: NAME ( n -- ptr u8 )`" REJECTION:EMIT-STR
+   RC-NO-NAME REJECTION:STOP ;
 
 \ The signature must be there, opened and closed, before the qualifier's
 \ refusals, and INP passes it first, so those name the line it ends on.
@@ -2340,8 +2639,14 @@ variable DEF-VALUE
    s end DEF-SIG-PASS
    LINEAR-QUALIFIED? if
       s 1 + end s - 2 - NCOMP-DISPATCH:DECL-LINEAR-OFF DEF-REGISTER-IDENTITY
-      s" E-BAD-QUALIFIED" REFUSAL
-      TOKEN$ ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE  RC-REJECT throw
+      s" E-BAD-QUALIFIED" REJECTION:OPEN
+      s" the linear type `" REJECTION:EMIT-STR  TOKEN$ REJECTION:EMIT-STR
+      s" ` has a qualified name" REJECTION:EMIT-STR
+      TOKEN$ REJECTION:AT  s" qualified name" REJECTION:EMIT-STR
+      REJECTION:HELP
+      s" declare the `linear:` type with a bare name inside its package"
+      REJECTION:EMIT-STR
+      RC-REJECT REJECTION:STOP
    then
    DEF-QUALIFY DKIND:CAST DEF-RECORD
    s end DEF-SIG-INNER
@@ -2360,9 +2665,14 @@ variable DEF-VALUE
 \ refusal names.
 : DEFER-NAME ( -- )
    TOKEN if exit then
-   s" E-MISSING-NAME" REFUSAL
-   s" defer: missing name after " ERROR-TEXT:TYPE TOKEN$ ERROR-TEXT:TYPE
-   NL 1 ERROR-TEXT:TYPE  RC-NO-NAME throw ;
+   s" E-MISSING-NAME" REJECTION:OPEN
+   s" `" REJECTION:EMIT-STR  TOKEN$ REJECTION:EMIT-STR
+   s" ` has no name after it" REJECTION:EMIT-STR
+   TOKEN$ REJECTION:AT  s" no name follows" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" write the defer's name and signature after `" REJECTION:EMIT-STR
+   TOKEN$ REJECTION:EMIT-STR  s" `, as `defer NAME ( n -- n )`" REJECTION:EMIT-STR
+   RC-NO-NAME REJECTION:STOP ;
 
 : DEFER-UNSET-XT ( -- n )
    s" defer-unset" FIND-SCOPE {: rec:ptr :}
@@ -2391,9 +2701,14 @@ TRUSTED: DEF-XT! ( n n -- ) xt! ;
 \ A full table, or a name or signature past its slot field, ends the process
 \ naming the defer.
 : PD-FULL ( -- )
-   s" E-DEFER-TABLE-FULL" REFUSAL
-   s" pre-trust defer table full: " ERROR-TEXT:TYPE TOKEN$ ERROR-TEXT:TYPE
-   s" " DEF-RC-PD-FULL FAIL-CLOSED ;
+   s" E-DEFER-TABLE-FULL" REJECTION:OPEN
+   s" the pre-trust defer table has no room for `" REJECTION:EMIT-STR
+   TOKEN$ REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR
+   TOKEN$ REJECTION:AT  s" this defer does not fit" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" declare this defer after the checker's trust declarations, or shorten its name and signature"
+   REJECTION:EMIT-STR
+   REJECTION:KEEP  s" " DEF-RC-PD-FULL die-closed ;
 
 : PD-PUT ( ptr u8 n n n n -- ) {: a:ptr u:n cap:n lenoff:n off:n :}
    u cap > if PD-FULL then
@@ -2589,9 +2904,14 @@ private
 \ compiles.
 : TASK-GUARD ( -- )
    TASK-TCB-CELL CELL@ 0= if exit then
-   s" E-TASK-COMPILE" REFUSAL
-   s" source read on a task's thread; only the main thread compiles"
-   RC-TASK-THREAD FAIL-CLOSED ;
+   s" E-TASK-COMPILE" REJECTION:OPEN
+   s" source is read on a task's thread, and only the main thread compiles"
+   REJECTION:EMIT-STR
+   TOKEN$ REJECTION:AT  s" read on a task's thread" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" run `evaluate`, `include` and `require` on the main thread only"
+   REJECTION:EMIT-STR
+   REJECTION:KEEP  s" " RC-TASK-THREAD die-closed ;
 
 : RUN-TOKENS ( -- )
    TASK-GUARD  begin TOKEN-MARK TOKEN while STEP repeat ;

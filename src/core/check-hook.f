@@ -432,9 +432,16 @@ private
    na nu sa su CHECKER-LINEAR  na nu PENDING-FACTS ;
 
 
+\ CHECK prints no deferred verdict; outside a multi-error load it rejects the
+\ definition, so it is printed here while the body's source is armed.
+: REPORT-DEFERRED ( n -- n )
+   dup VERDICT-DEFERRED =  MULTI-ERR? 0= and
+   if dup DVERD !  DIAG-PRINT then ;
+
 public
 
-\ The check of a definition's source. In multi-error mode CHECK already emitted
+\ The check of a definition's source: a rejection is printed once, by the
+\ check, before CHECK-RC is thrown. In multi-error mode CHECK already emitted
 \ the diagnostic, counted the reject and kept the declared signature. A
 \ non-zero answer publishes the definition (zero rejects and unpublishes it),
 \ so the name resolves for later definitions; the driver exits nonzero via
@@ -445,19 +452,11 @@ public
    a u FIRST-TOKEN {: na:ptr nu:n :}
    na nu CHECKER-CERT-DUP? if na nu REFUSE-DUPLICATE then
    UEND @ {: mark:n :}
-   a u [: CHECK! REPORT-UNCHECKABLE ;]  a u BODY-ARM DISARMER  finally
+   a u [: CHECK! REPORT-UNCHECKABLE REPORT-DEFERRED ;]
+   a u BODY-ARM DISARMER  finally
    dup -1 = if na nu mark CHECK-FACTS then
    MULTI-ERR? if drop -1 exit then
-   dup -1 <> if
-      \ No JSON diagnostic reported this refusal (none does in prose mode).
-      CHECKER-JSON-REPORTED? 0= if
-         s" hook: non-certified definition: " ERROR-TEXT:TYPE
-         NMB NMU @ ERROR-TEXT:TYPE
-         s"  at '" ERROR-TEXT:TYPE
-         FAILTK FAILTU @ ERROR-TEXT:TYPE
-         S\" '\n" ERROR-TEXT:TYPE
-      then
-      CHECK-RC throw then ;
+   dup -1 <> if CHECK-RC throw then ;
 
 \ At a piece's end (src/habu/linker.f PIECE-END), each record a `TRUST` row or an
 \ amender (`INTRINSIC`, `generates:`, `names:`, NOMINAL-PROVIDER, a does>
