@@ -10,8 +10,7 @@ require src/lib/test.f
 T-RESET
 
 \ silence expected rejection diagnostics (verdicts are asserted, not printed).
-create VNDIAG-BUF 8192 allot
-VNDIAG-BUF 8192 REJECTION:BUFFER!
+REJECTION:CAPTURE
 
 \ 1. a declared value nominal, checked inside its own package; test/engine-suite.f
 \    checks the converters and the refused crossings in signatures.

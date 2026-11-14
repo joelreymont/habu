@@ -16,10 +16,7 @@ require test/pcap-result.f
 require tools/check-core.f
 
 \ Expected refusals are asserted, not printed.
-package LIN-DIAG
-create BUF 65536 allot
-BUF 65536 REJECTION:BUFFER!
-;package
+REJECTION:CAPTURE
 
 package LIN-OWN
 public

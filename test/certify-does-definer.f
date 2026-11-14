@@ -439,13 +439,12 @@ STRUCTURE cdd-c128 FIELD a cdd-c64 FIELD b cdd-c64 ;STRUCTURE
    [: s\" generates: evaluate ( -- )\n" evaluate-closed ;] E-GEN-ROW TTHROWSQ ;
 
 \ Section 13: a clause's body ends as its colon twin's does (checker.f
-\ CHECK-DOES-RUN); refused clauses' diagnostics go to CDD-DIAG, not stderr.
+\ CHECK-DOES-RUN); refused clauses' diagnostics are captured, not printed.
 defer CDD-VSAME ( mut-view<p,q,a,u8> mut-view<p,q,a,u8> -- )
-create CDD-DIAG 4096 allot
 
 : CDD-NOT-CERTIFIED ( ptr u8 n ptr u8 n -- )
    {: sa:ptr su:n wa:ptr wu:n :}
-   CDD-DIAG 4096 REJECTION:BUFFER!
+   REJECTION:CAPTURE
    sa su TEST-EVAL:RC  70 T=
    REJECTION:BUFFER$ wa wu CONTAINS? TTRUE
    REJECTION:BUFFER-OFF ;
@@ -490,7 +489,7 @@ CDD-FIT-CAP CODEGEN:BUFFER CDD-FIT-WANT
    REJECTION:BUFFER$ CDD-FIT-WANT CODEGEN:CONTENTS CONTAINS? TTRUE ;
 
 : CDD-FIT-DECLARED ( -- )
-   CDD-DIAG 4096 REJECTION:BUFFER!
+   REJECTION:CAPTURE
    CDD-FIT$ TEST-EVAL:RC  70 T=
    REJECTION:BUFFER$ s" input row too wide to record (256 cells, at most 255)" CONTAINS? TTRUE
    s\" \"declared_effect\":\"" s\" -- n \"" CDD-FIT-FIELD
@@ -535,7 +534,7 @@ CDD-FIT-CAP CODEGEN:BUFFER CDD-FIT-WANT
 : CDD-SECTION-QUIET-CLAUSE ( -- )
    s" a clause naming a type a renderer may declare is deferred at that type" T-LABEL
    true VERIFY:REPORT-DEFERRALS
-   CDD-DIAG 4096 REJECTION:BUFFER!
+   REJECTION:CAPTURE
    CHECKER-SCOPE-START-NEUTRAL
    [: CDD-QUIET$ s" cdd-quiet.f" VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;] catch
    CHECKER-SCOPE-DONE

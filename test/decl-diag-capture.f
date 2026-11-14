@@ -2,19 +2,15 @@
 \ channel tools/check-all-errors-core.f reads (CA-DIAG-FULL-START, CA-DIAG-FINISH): a suite
 \ reads the declaration packet from the production capture channel in the prose
 \ or JSON leg the check tool selects. It pins the channel, not a check-tool run.
-\ A capture buffer also silences the diagnostics a reject suite provokes, as
-\ test/type-decl-suite.f's TDIAG-BUF does.
+\ A capture also silences the diagnostics a reject suite provokes.
 
 package DECL-DIAG
 
-8192 constant CAP
-create BUF CAP allot
-
-\ CAPTURE-ON routes declaration diagnostics into BUF, as JSON when its flag is
-\ true; CAPTURE-OFF restores prose mode; CAPTURED$ returns the production buffer.
+\ CAPTURE-ON captures declaration diagnostics, as JSON when its flag is true;
+\ CAPTURE-OFF restores prose mode; CAPTURED$ returns the production capture.
 : CAPTURE-ON ( bool -- )
    REJECTION:JSON !
-   BUF CAP REJECTION:BUFFER! ;
+   REJECTION:CAPTURE ;
 : CAPTURE-OFF ( -- )
    REJECTION:BUFFER-OFF
    false REJECTION:JSON ! ;
@@ -32,7 +28,7 @@ variable SI
 
 public
 
-\ Start (or restart) a capture. Each call empties the buffer, so a suite asserts
+\ Start (or restart) a capture. Each call empties the capture, so a suite asserts
 \ about exactly one declaration at a time.
 : PROSE ( -- ) false CAPTURE-ON ;
 : JSON ( -- ) true CAPTURE-ON ;

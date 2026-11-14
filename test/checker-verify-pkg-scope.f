@@ -23,9 +23,6 @@ variable SRC-U
 : ACT ( -- )
    SRC-A @ SRC-U @ VERIFY:SOURCE-BUF-IN-SCOPE ;
 
-create DIAG-BUF $1000 allot
-variable DIAG-U
-
 public
 
 \ Replay one source span in the caller's live package context; 0 means the
@@ -44,17 +41,16 @@ public
 \ Diagnostics are collected in prose, not printed, so the rejecting case reports
 \ its own text instead of leaving a rejection on the gate's stderr.
 : REPLAY-QUIET ( ptr u8 n -- n ) {: a:ptr u:n :}
-   DIAG-BUF $1000 REJECTION:BUFFER!
+   REJECTION:CAPTURE
    REJECTION:JSON @ {: was:n :}
    false REJECTION:JSON !
    a u REPLAY {: rc:n :}
    was REJECTION:JSON !
-   REJECTION:BUFFER$ nip DIAG-U !
    REJECTION:BUFFER-OFF
    rc ;
 
 : DIAG$ ( -- ptr u8 n )
-   DIAG-BUF DIAG-U @ ;
+   REJECTION:BUFFER$ ;
 
 ;package
 

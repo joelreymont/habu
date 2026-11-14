@@ -41,8 +41,6 @@ private
 70 constant CHECK-RC                 \ the engine refusing what it cannot certify
 9 constant SIB-RC                    \ the sibling evaluation's own throw
 
-create DIAG-BUF 8192 allot
-8192 constant DIAG-CAP
 
 $4000 constant IO-CAP
 10000 constant CHILD-MS
@@ -52,7 +50,7 @@ variable OUT-U
 variable ERR-U
 
 : ARM ( -- )   \ capture the next diagnostic as JSON instead of printing it
-   DIAG-BUF DIAG-CAP REJECTION:BUFFER!  true REJECTION:JSON ! ;
+   REJECTION:CAPTURE  true REJECTION:JSON ! ;
 
 : DISARM ( -- )
    false REJECTION:JSON !  REJECTION:BUFFER-OFF ;
@@ -230,7 +228,7 @@ variable ERR-U
 
 : CASE-SITE ( -- )
    s" a top-level refusal names its file and line" T-LABEL
-   CLEAR  DIAG-BUF DIAG-CAP REJECTION:BUFFER!
+   CLEAR  REJECTION:CAPTURE
    INCLUDE-SITE
    s" /test/fixtures/top-row-site.f:4: at '!' raw storage cell" HAS?
    REJECTION:BUFFER-OFF
@@ -240,7 +238,7 @@ variable ERR-U
 
 : CASE-EVAL-SITE ( -- )
    s" a top-level refusal in an evaluated string names its file alone" T-LABEL
-   CLEAR  DIAG-BUF DIAG-CAP REJECTION:BUFFER!
+   CLEAR  REJECTION:CAPTURE
    INCLUDE-EVAL
    s" /test/fixtures/top-row-eval.f: at '!' raw storage cell" HAS?
    REJECTION:BUFFER-OFF
@@ -307,7 +305,7 @@ variable ERR-U
 \ return-stack reason.
 : CASE-RETURN-BELOW ( -- )
    s" r> below a body's return frame names the return-stack reason" T-LABEL
-   DIAG-BUF DIAG-CAP REJECTION:BUFFER!
+   REJECTION:CAPTURE
    [: s" : TS-B15 ( -- ) r> drop ;" evaluate-closed ;] CHECK-RC TTHROWSQ
    s" habu: in ts-b15: at 'r>' return stack: this reads below the return-stack cells pushed here expected: a actual: " HAS?
    REJECTION:BUFFER-OFF

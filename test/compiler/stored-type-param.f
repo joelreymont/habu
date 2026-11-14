@@ -125,11 +125,9 @@ private
 
 70 constant CHECK-RC                 \ the engine refusing a definition it cannot certify
 
-8192 constant DIAG-CAP
-create DIAG-BUF DIAG-CAP allot
 
 : ARM ( -- )   \ capture the next diagnostic as JSON instead of printing it
-   DIAG-BUF DIAG-CAP REJECTION:BUFFER!  true REJECTION:JSON ! ;
+   REJECTION:CAPTURE  true REJECTION:JSON ! ;
 
 : DISARM ( -- )
    false REJECTION:JSON !  REJECTION:BUFFER-OFF ;

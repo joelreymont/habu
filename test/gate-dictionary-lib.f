@@ -544,7 +544,7 @@ variable CANDIDATE-VERDICT
 : CHECK-BUF-RUN ( ptr u8 n -- ) {: label:ptr labelu:n :}
    label labelu GT-PROGRESS-RUN
    label labelu LABEL!
-   GT-ERR-BUF GT-ERR-CAP GT-OUT-BUF GT-OUT-CAP CHECK-ALL-ERRORS:BUFFERS!
+   GT-ERR-BUF GT-ERR-CAP CHECK-ALL-ERRORS:BUFFERS!
    0 0= 0= CHECK-ALL-ERRORS:JSON!
    [: CHECK-BUF-ACT ;] catch CHECK-BUF-STORE ;
 
@@ -563,17 +563,21 @@ variable CANDIDATE-VERDICT
    CANDIDATE-VERDICT @ 0= if $46 exit then
    0 ;
 
+\ The candidate's captured rejections are its stderr, as a child's would be.
 : CANDIDATE-STORE ( n -- ) {: rc:n :}
    rc CANDIDATE-RC PROCESS-ENDING:exited GT-OUTCOME!
    0 GT-OUT-U !
-   REJECTION:BUFFER$ nip GT-ERR-U !
-   REJECTION:BUFFER-OFF ;
+   REJECTION:BUFFER-OFF
+   REJECTION:BUFFER$ {: a:ptr u:n :}
+   u GT-ERR-CAP > if E-STR-CAPACITY throw then
+   a GT-ERR-BUF u BYTE-COPY
+   u GT-ERR-U ! ;
 
 : CANDIDATE-RUN ( ptr u8 n ptr u8 n -- ) {: body:ptr bodyu:n label:ptr labelu:n :}
    label labelu GT-PROGRESS-RUN
    body bodyu CANDIDATE!
    -1 CANDIDATE-VERDICT !
-   GT-ERR-BUF GT-ERR-CAP REJECTION:BUFFER!
+   REJECTION:CAPTURE
    [: CANDIDATE-ACT ;] catch CANDIDATE-STORE ;
 
 : CANDIDATE-BAD ( ptr u8 n n ptr u8 n ptr u8 n -- )

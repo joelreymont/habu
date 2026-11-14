@@ -6,8 +6,7 @@
 
 require src/lib/test.f
 
-create EP-DIAG 8192 allot
-EP-DIAG 8192 REJECTION:BUFFER!
+REJECTION:CAPTURE
 
 T-RESET
 
