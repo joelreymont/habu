@@ -71,13 +71,16 @@ RUNNER-INIT
    RUNNER @ VECTOR xt! ;
 VECTOR-INIT
 
+\ The slot is stored before the count that admits it, and the count with a
+\ store-release, so a fork in the middle of an ADD leaves the child the whole
+\ action or none of it.
 : APPEND ( [ -- ] -- ) {: q :}
    N @ 0 ?do
       i ACTIONS @ XT>N q XT>N = if unloop exit then
    loop
    N @ CAP = if E-LAYOUT-BOUNDS throw then
    q N @ ACTIONS !
-   1 N +! ;
+   N @ 1+ N atomic! ;
 
 public
 
@@ -88,5 +91,9 @@ public
 : ADD ( [ -- ] -- )
    LOCK [: APPEND ;] [: UNLOCK ;] finally
    ARM ;
+
+\ The lock alone: APPEND publishes its count after the slot, and TAKE counts
+\ down before it reads.
+: CHILD-RESET ( -- ) UNLOCK ;
 
 ;package

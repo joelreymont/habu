@@ -14,6 +14,7 @@ require src/lib/process.f
 require src/lib/fd.f                         \ FD:PIPE, the death pipe
 require src/lib/fd-lock.f                    \ the third lock RAW holds while it forks
 require src/lib/fs-mutate.f                  \ FS:CLEANUP-RESET, registered below
+require src/lib/at-exit.f                    \ AT-EXIT:CHILD-RESET, registered below
 require src/lib/process-tree.f               \ PROC-TREE:CHILD-RESET, registered below
 require src/lib/fork-child.f                 \ the resets RAW runs in the child
 require src/lib/memory.f                     \ MEM:WITH-BYTES holds RAW's two masks
@@ -29,6 +30,7 @@ private
    [: TASK:CHILD-RESET ;] FORK-CHILD:REGISTER
    [: FS:CLEANUP-RESET ;] FORK-CHILD:REGISTER
    [: PROC-TREE:CHILD-RESET ;] FORK-CHILD:REGISTER
+   [: AT-EXIT:CHILD-RESET ;] FORK-CHILD:REGISTER
    [: prof-child-reset ;] FORK-CHILD:REGISTER ;
 REGISTER-RESETS
 
