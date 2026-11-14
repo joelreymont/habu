@@ -1,5 +1,5 @@
 \ workspace.f - CWORK storage: the declaring package's own words capture none
-\ of its accessors.
+\ of its accessors, and no checked source reaches the mapping's cells.
 
 require src/lib/test.f
 require src/compiler/workspace.f
@@ -47,5 +47,12 @@ CWK-B T=
 2 CWKC:B @ 3 T=
 CWK-S T=
 CWKW:HITS @ 0 T=
+
+\ A 1-byte row stored as the mapping or as a buffer's offset would hand out
+\ typed pointers past it.
+create CWK-FOOB 1 allot
+s" : CWK-MEM ( -- ) CWK-FOOB CWORK:MEM#base ! ;" TEST-EVAL:RC CHECKER-REJECT-RC T=
+s" : CWK-CTL ( -- ) 0 CWORK:MEM#ctl ! ;" TEST-EVAL:RC CHECKER-REJECT-RC T=
+s" : CWK-OFF ( -- ) 0 CWKC:V#base ! ;" TEST-EVAL:RC CHECKER-REJECT-RC T=
 
 T-REPORT

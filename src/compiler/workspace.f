@@ -7,14 +7,10 @@ require src/core/layout-buffer.f
 require src/core/dynamic-storage.f
 
 package CWORK
-\ The running hb's DECLARE, which builds this file's product, evaluates text
-\ that names MEM#base, OPEN and PLACE there.
-public
 $100000 constant LIMIT
 PTR-VARIABLE MEM#base
 create MEM#ctl DYNAMIC-STORAGE:CONTROL-CELLS cells SCRATCH-ALLOT
 : MEM-RESERVE ( n -- ) MEM#base MEM#ctl 1 DYNAMIC-STORAGE:RESERVE ;
-private
 variable USED
 $100 constant DEFAULT-CAP
 create DEFAULT-OFF DEFAULT-CAP cells allot
@@ -27,12 +23,6 @@ variable DEFAULT-N
    USED @ CELL 1- + CELL / CELL * {: off:n :}
    off LIMIT > if E-LAYOUT-BUFFER throw then
    bytes LIMIT off - > if E-LAYOUT-BUFFER throw then
-   off ;
-
-public
-: TAKE ( n -- n ) {: bytes:n :}
-   bytes FIT {: off:n :}
-   off bytes + USED !
    off ;
 
 : DEFAULT ( n n -- ) {: off:n value:n :}
@@ -50,12 +40,6 @@ public
       i cells DEFAULT-OFF + @ base +
       i cells DEFAULT-VALUE + @ swap !
    loop ;
-
-: PLACE ( ptr n n n -- ) {: base:ptr bytes:n value:n :}
-   bytes TAKE {: off:n :}
-   off base !
-   value 0<> if off value DEFAULT then ;
-private
 
 \ The routines a child's body calls with its body.
 : WORK ( ptr n -- ptr u8 ) {: body:ptr :}
