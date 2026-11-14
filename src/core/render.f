@@ -252,7 +252,7 @@ create RBUF EFFECT-DEPTH-MAX cells allot   variable RBN
 
 
 \ A push past RBUF's end sets RQM: an effect's text that cannot hold every value
-\ is refused as unsayable, never cut.
+\ is rejected as unsayable, never cut.
 : RBUF+ ( n -- )
    RBN @ EFFECT-DEPTH-MAX >= IF drop 1 RQM ! EXIT THEN
    RBN @ cells RBUF + !  RBN @ 1 + RBN ! ;

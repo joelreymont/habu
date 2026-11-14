@@ -2243,7 +2243,7 @@ false REJECTION:JSON !
 REJECTION:BUFFER-OFF
 s" TDNA3 ( n -- tdnopt<tdnres<n,n>> ) TDNOPT:SOME" CHECK-QUIET-CANDIDATE! 0 T=
 
-\ These load only when their facts text reads back: rows past RBUF-CAP values.
+\ These load only when their facts text reads back rows of 65 and 300 values.
 : TFR-W65 ( n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n -- n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n ) ;
 : TFR-Q300 ( [ n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n -- ] -- ) drop ;
 
