@@ -16,7 +16,6 @@ require src/compiler/target.f
 require src/compiler/binding.f
 require src/compiler/target/native-binding.f
 require src/compiler/native/emission.f
-require src/compiler/session/lease.f
 
 package NSHADOW
 private
@@ -137,6 +136,16 @@ private
       does OF true ENDOF
    ;MATCH ;
 
+
+\ The compiler is the main thread's: a task's thread holds a TCB in its DATA.
+: MAIN-CK ( -- )
+   data-base TASK-TCB-CELL + @ 0= if exit then
+   s" E-TASK-COMPILE" REJECTION:OPEN
+   s" the native compiler ran on a task's thread, and it runs only on the main thread"
+   REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" call it from the main thread, after the task returns" REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 : OPEN-CK ( -- )
    OPEN? 0= if E-NSHADOW-STATE throw then ;
@@ -410,7 +419,7 @@ public
 \ CLOSE gives everything back, and an image capture closes the shadow, so no map
 \ outlives the mappings it is stored in.
 : OPEN ( CBIND:binding -- ) {: b:CBIND:binding :}
-   NLEASE:IDLE-CK
+   MAIN-CK
    OPEN? if E-NSHADOW-STATE throw then
    b CBIND:VALIDATE SH-BIND !
    CLEAR
@@ -435,7 +444,7 @@ public
 
 \ An idle capture can close it whether a shadow is open or not.
 : CLOSE ( -- )
-   NLEASE:IDLE-CK
+   MAIN-CK
    construct state closed SH-STATE !
    CLEAR
    RELEASE-ROWS ;

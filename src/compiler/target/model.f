@@ -81,11 +81,6 @@ ENUM core-result
    VARIANT unsupported ;VARIANT
 ;ENUM
 
-\ RTARGET owns recoverable selection/action errors in an unallocated block.
--9420 constant E-FIRST
--9429 constant E-LAST
--9421 constant E-ACTIVE
-
 private
 
 : PROFILE-ARCH ( profile-id -- CTARGET:arch )
