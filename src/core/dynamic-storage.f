@@ -209,6 +209,14 @@ CONTROL-CELLS 1+ cells constant WIDTH-OFF
 \ Releases the block the cell holds.
 : EMPTY ( ptr ptr ptr a -- ) @ dup HEAD-CTL RELEASE ;
 
+\ A HEAP child's routines, each taking the cell holding its record's width in
+\ bytes last: a zero-filled record on its own mapping, and its unmap.
+: MAP-RECORD ( ptr n -- ptr a )
+   @ map-anon 0< if drop E-MAP throw then ;
+
+: UNMAP-RECORD ( ptr a ptr n -- )
+   @ munmap 0< if E-UNMAP throw then ;
+
 private
 
 CAST: AS-CHILD-RUN ( n -- [ ptr u8 n n n ptr u8 n -- n ] )
@@ -239,8 +247,32 @@ public
    na nu s" -RELEASE" LBUF-SUFFIXED CHILD-ABI:RELEASE
    ['] EMPTY AS-ENTRY s" " CHILD drop  v LDEFER-CELL ;
 
+\ `HEAP NAME t` declares NAME-NEW ( -- ptr t ), a fresh zero-filled record of
+\ `t`, and NAME-RELEASE ( ptr t -- ), which unmaps it; a pointer kept across
+\ RELEASE is stale, and releasing it again can unmap whatever was mapped there
+\ since. Nothing registers a record: release it before an image save. Each
+\ record is its own OS mapping, so the OS rounds it up to a page; each child
+\ holds the declared type's width.
+: DECLARE-HEAP ( -- )
+   STORAGE-LINE-TOKEN {: na:ptr nu:n :}
+   nu 0= if s" HEAP" CHECKER-STORAGE-NAME-REFUSE exit then
+   STORAGE-PARSE-TYPE {: ta:ptr tu:n :}
+   na nu CHECKER-LBUF-NAME-OK? 0= if exit then
+   na nu s" -NEW" LBUF-SUFFIX-OK? 0= if exit then
+   na nu s" -RELEASE" LBUF-SUFFIX-OK? 0= if exit then
+   ta tu CHECKER-DYNAMIC-INFO 0= if
+      drop na nu ta tu CHECKER-STORAGE-TYPE-REFUSE exit
+   then
+   {: bytes:n :}
+   na nu s" -NEW" LBUF-SUFFIXED CHILD-ABI:HEAP-NEW
+   ['] MAP-RECORD AS-ENTRY ta tu CHILD drop  bytes ,
+   na nu s" -RELEASE" LBUF-SUFFIXED CHILD-ABI:HEAP-RELEASE
+   ['] UNMAP-RECORD AS-ENTRY ta tu CHILD drop  bytes , ;
+
 seal-package
 
 ;package
 
 : DYNAMIC-BUFFER ( -- ) DYNAMIC-STORAGE:DECLARE ;
+
+: HEAP ( -- ) DYNAMIC-STORAGE:DECLARE-HEAP ;

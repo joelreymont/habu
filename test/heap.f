@@ -18,6 +18,32 @@ require src/lib/engine-candidate.f
 require src/lib/fs-mutate.f
 require test/e2e-tree.f
 
+package HEAP-CAPTURE
+
+\ A part spelled as the runtime's package, whose words would answer a null
+\ record and skip the unmap.
+package DYNAMIC-STORAGE
+CAST: N>RECORD ( n -- ptr a )
+public
+variable RELEASED
+: RECORD-NEW ( n -- ptr a ) drop 0 N>RECORD ;
+: RECORD-RELEASE ( ptr a n -- ) 2drop 1 RELEASED ! ;
+;package
+
+STRUCTURE cap DERIVE addr FIELD id n ;STRUCTURE
+HEAP CAPS cap
+
+public
+
+: CAPTURE ( -- )
+   s" a part spelled as the runtime's package captures no HEAP word" T-LABEL
+   CAPS-NEW {: a:ptr :}
+   a NULL-PTR = TFALSE
+   a CAPS-RELEASE
+   DYNAMIC-STORAGE:RELEASED @ 0 T= ;
+
+;package
+
 package HEAP-TEST
 
 STRUCTURE note DERIVE addr FIELD id n FIELD text ptr u8 ;STRUCTURE
@@ -180,6 +206,7 @@ variable EVAL-U
 : RUN ( -- )
    T-RESET
    RECORDS READER HOLDER REFUSALS CALLS VERIFY VERIFY-CALLS
+   HEAP-CAPTURE:CAPTURE
    T-REPORT ;
 
 RUN

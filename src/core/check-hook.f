@@ -205,12 +205,13 @@ CAST: REG-XT ( n -- [ ptr u8 n ptr u8 n -- ] )
    sym FACTS-TEXT? if REJECTION:TEXT REJECTION:TEXT-LEN @ CK-CLOSED-IX @ FACTS!
    else NULL-PTR 0 CK-CLOSED-IX @ FIND-FACTS! then ;
 
-\ The shapes whose child answers `ptr t` for its declared type t.
+\ The shapes whose child answers or takes `ptr t` for its declared type t.
 : STORED-SHAPE? ( n -- bool ) {: shape:n :}
    shape CHILD-ABI:STORED =  shape CHILD-ABI:BUFFER = or
    shape CHILD-ABI:DYNAMIC = or  shape CHILD-ABI:SLOT = or
    shape CHILD-ABI:SLOTS = or  shape CHILD-ABI:WORK = or
-   shape CHILD-ABI:WORKS = or ;
+   shape CHILD-ABI:WORKS = or  shape CHILD-ABI:HEAP-NEW = or
+   shape CHILD-ABI:HEAP-RELEASE = or ;
 
 \ A refused type is reported, naming the child, before the throw.
 : STORED-ROWS ( ptr u8 n ptr u8 n n -- n n )

@@ -528,10 +528,11 @@ $38A0 constant TYPE-OP-CELL
 \ it registers. An OFF child adds its parameter, a byte offset, to `ptr a`,
 \ answering `ptr a` for CELL-OFF, `ptr ptr b` for PTR-OFF, `ptr u8` for BYTE-OFF.
 \ A FIELD child's parameter is a committed field id, an INDEX child's a family
-\ id, a VALUE child's the number it answers. STORED to WORKS are storage
-\ children: STORED's parameter is 0, that of BUFFER to WORKS its routine's
-\ entry, and the effects of STORED, BUFFER, DYNAMIC, SLOT, SLOTS, WORK and
-\ WORKS answer `ptr t` for the type the declaration spells.
+\ id, a VALUE child's the number it answers. STORED to HEAP-RELEASE are
+\ storage children: STORED's parameter is 0, that of BUFFER to HEAP-RELEASE
+\ its routine's entry, and the effects of STORED, BUFFER, DYNAMIC, SLOT, SLOTS,
+\ WORK and WORKS answer `ptr t` for the type the declaration spells; HEAP-NEW
+\ answers it and HEAP-RELEASE takes it.
 package CHILD-ABI
 public
 0 constant CELL-OFF
@@ -551,6 +552,8 @@ public
 14 constant SLOTS
 15 constant WORK
 16 constant WORKS
+17 constant HEAP-NEW
+18 constant HEAP-RELEASE
 ;package
 
 \ TYPE-OP's codes on a and b: INT n, PTR a pointer to a, EFFECT an empty effect,

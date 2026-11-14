@@ -2252,6 +2252,12 @@ variable DEF-VALUE
    shape CHILD-ABI:RESERVE = if s" private DYNAMIC-STORAGE ENSURE" exit then
    shape CHILD-ABI:RELEASE = if s" private DYNAMIC-STORAGE EMPTY" exit then
    shape CHILD-ABI:SLOT = if s" private TASK SLOT" exit then
+   shape CHILD-ABI:HEAP-NEW = if
+      s" private DYNAMIC-STORAGE MAP-RECORD" exit
+   then
+   shape CHILD-ABI:HEAP-RELEASE = if
+      s" private DYNAMIC-STORAGE UNMAP-RECORD" exit
+   then
    shape CHILD-ABI:SLOTS = if s" private TASK SLOT-AT" exit then
    shape CHILD-ABI:WORK = if s" private CWORK WORK" exit then
    s" private CWORK WORK-AT" ;
@@ -2271,13 +2277,13 @@ variable DEF-VALUE
    shape CHILD-ABI:INDEX = if COMP-BODY:index 0 exit then
    shape CHILD-ABI:VALUE = if COMP-BODY:value 0 exit then
    shape CHILD-ABI:STORED = if COMP-BODY:address 0 exit then
-   shape CHILD-ABI:BUFFER >= shape CHILD-ABI:WORKS <= and if
+   shape CHILD-ABI:BUFFER >= shape CHILD-ABI:HEAP-RELEASE <= and if
       COMP-BODY:routine shape param ROUTINE exit
    then
    RC-REJECT throw ;
 
 : CHILD-ANCHORED? ( n -- bool ) {: shape:n :}
-   shape CHILD-ABI:STORED >= shape CHILD-ABI:WORKS <= and ;
+   shape CHILD-ABI:STORED >= shape CHILD-ABI:HEAP-RELEASE <= and ;
 
 \ A value child is recorded as a constant, which a call folds to its number, a
 \ STORED child as an address, which a call folds to an inline push.

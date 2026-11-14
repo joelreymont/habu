@@ -4448,13 +4448,17 @@ private
 public
 
 \ A typed storage child's input and output rows over the stored type's term T:
-\ STORED, SLOT and WORK answer `( -- ptr T )`, the indexed shapes
-\ `( n -- ptr T )`.
+\ STORED, SLOT, WORK and HEAP-NEW answer `( -- ptr T )`, the indexed shapes
+\ `( n -- ptr T )`, HEAP-RELEASE `( ptr T -- )`.
 \ It takes no NEW, so T, which the storage parse just made, stays live.
 : TFAM-STORED-ROWS ( n n -- n n ) {: shape:n term:n :}
    FRESH MK-ROW {: base:n :}
+   shape CHILD-ABI:HEAP-RELEASE = IF
+      term MK-PTR base MK-PUSH  base EXIT
+   THEN
    shape CHILD-ABI:STORED =  shape CHILD-ABI:SLOT = or
    shape CHILD-ABI:WORK = or
+   shape CHILD-ABI:HEAP-NEW = or
    IF base ELSE CC-N MK-CON base MK-PUSH THEN
    term MK-PTR base MK-PUSH ;
 
