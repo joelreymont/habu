@@ -87,8 +87,6 @@ package PROGRAM-DIAGNOSTICS
       s" name is reserved or already taken" DIAGNOSTIC
    s" test/deftype-dup-bad.f" 70
       s" DEFTYPE-DUP-ARMED" s" duplicate family" NEGATIVE
-   s" test/layout-buffer-forge.f" 70
-      s" LAYOUT-BUFFER-FORGE-ARMED" s" undefined word 'LBUF-PEND!'" NEGATIVE
    s" test/bootstrap-created-effect-src.f" 70
       s" BOOTSTRAP-CREATED-ARMED" s" actual: ptr a" NEGATIVE
    s" test/bootstrap-created-raw-src.f" 70

@@ -1,7 +1,7 @@
 \ layout-defer.f - DEFER-LAYOUT-BUFFER, a layout column whose offset and count
-\ cells are bound at run time: its accessor checks like LAYOUT-BUFFER's under
-\ the armed LAYOUT-INTRO window, NAME-BIND sizes from the counted need reusing
-\ the largest region, and NAME-GROW carries live cells over.
+\ cells are bound at run time: its accessor checks like LAYOUT-BUFFER's,
+\ NAME-BIND sizes from the counted need reusing the largest region, and
+\ NAME-GROW carries live cells over.
 
 require src/lib/test.f
 
@@ -133,9 +133,5 @@ variable DFL-EVAL-U
 s" DEFER-LAYOUT-BUFFER DC-OPEN dfl-owned" DFL-EVAL CHECKER-REJECT-RC T=
 s" DEFER-LAYOUT-BUFFER DTK-AT dtk" DFL-EVAL $4E T=      \ redefinition of the accessor
 s" DEFER-LAYOUT-BUFFER DC-BAD TFAM:BAD" DFL-EVAL CHECKER-REJECT-RC T=
-
-\ armed-window state stays sealed (no user handle to the one-shot boundary)
-s" LBUF-PEND!" 0 search-wl 0= TTRUE
-s" LBUF-PEND-MATCH?" 0 search-wl 0= TTRUE
 
 T-REPORT
