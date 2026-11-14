@@ -485,6 +485,40 @@ PROGRAM-CAP BUFFER: PROGRAM-B
       s" dead variables around the data MAIN reads leave the program's bytes as they are" LABEL GE-FAIL
    then ;
 
+\ lib.f as lib's text and main.f as main's, built into the out root and refused.
+: ADDRESS-REFUSED ( ptr u8 n ptr u8 n -- ) {: lib:ptr libu:n main:ptr mainu:n :}
+   s" lib.f" G-LIB IN-CASE G-LIB-U !
+   G-LIB G-LIB-U @ lib libu FS:WRITE-ALL
+   C-MAIN$ main mainu FS:WRITE-ALL
+   GE-HB-RESET
+   s" HABU_OUT" >LEN C-OUT$ >LEN PROC-ENV-SET
+   C-MAIN$ C-IMAGE$ BUILD-ARGV BUILD-RUN
+   74 s" the build of main.f" LABEL GE-EXPECT-RC
+   s" LINKER:E-ADDRESS" s" the build's error" LABEL GE-EXPECT-ERR-HAS ;
+
+\ A cell holding the address where a file's data ends, past its last datum, is refused.
+: FILE-END-CASE ( -- )
+   s" file-end" CASE-OPEN
+   S\" PERSISTED-PTR-VARIABLE P  create U 8 allot  42 U !  U 16 + P !\n"
+   S\" require lib.f\n: MAIN ( -- ) P @ NULL-PTR - P NULL-PTR - - .  P @ 16 - @ . ;\n"
+   ADDRESS-REFUSED ;
+
+\ A later file's cell holding the address where a required file's data ends, which lies in the gap the later file's
+\ data starts after, is refused.
+: LATER-END-CASE ( -- )
+   s" later-end" CASE-OPEN
+   S\" create U 8 allot  42 U !\n"
+   S\" require lib.f\nPERSISTED-PTR-VARIABLE P\nU 16 + P !\n: MAIN ( -- ) P @ 16 - @ . ;\n"
+   ADDRESS-REFUSED ;
+
+\ The STRUCTURE's texts are laid after lib.f's data, so the address where U's extent ends lies in the cell LAY sets
+\ apart before them, in no extent: refused.
+: EXTENT-END-CASE ( -- )
+   s" extent-end" CASE-OPEN
+   S\" STRUCTURE pair FIELD a n FIELD b n ;STRUCTURE\ncreate U 8 allot  42 U !\n"
+   S\" require lib.f\nPERSISTED-PTR-VARIABLE P\nU 16 + P !\n: MAIN ( -- ) P @ NULL-PTR - U NULL-PTR - - .  P @ 16 - @ . ;\n"
+   ADDRESS-REFUSED ;
+
 : BODY ( -- )
    s" aot-shifted-bytes" GT-START
    s" subject.f" SUBJECT GT-PATH SUBJECT-U !
@@ -513,8 +547,8 @@ PROGRAM-CAP BUFFER: PROGRAM-B
    RESOLVES-LOAD RESOLVES-BUILD
    ENVTOP-BUILDS
    ROOTED-WRITE ROOTED-BUILD ROOTED-REBUILD ROOTED-CHANGED
-   SYMLINK-CASE LONG-CASE GAP-CASE
-   s" PASS: a stripped build of shifted and aligned address bytes, a refused record pointer in a declared DATA cell, a program file and a build whose loads read and set the loader's root as hb --load does, a build whose word resolves its own path as hb --load does, builds that reuse a part only while the environment variable its top level read holds, a file whose ROOT! reaches its require, built, rebuilt from its cached object and rebuilt after its required file changed, warm builds of a root set through a symlink and at the longest root, and a program whose bytes dead variables around its data leave as they are" type cr ;
+   SYMLINK-CASE LONG-CASE GAP-CASE FILE-END-CASE LATER-END-CASE EXTENT-END-CASE
+   s" PASS: a stripped build of shifted and aligned address bytes, a refused record pointer in a declared DATA cell, a program file and a build whose loads read and set the loader's root as hb --load does, a build whose word resolves its own path as hb --load does, builds that reuse a part only while the environment variable its top level read holds, a file whose ROOT! reaches its require, built, rebuilt from its cached object and rebuilt after its required file changed, warm builds of a root set through a symlink and at the longest root, a program whose bytes dead variables around its data leave as they are, and refused builds storing the address where a file's data or an extent ends, in that file or a later one" type cr ;
 
 public
 : RUN ( -- ) [: BODY ;] [: GT-CLEANUP ;] finally ;

@@ -7,21 +7,20 @@
 \ A stripped program keeps the extents of the build's data it reaches: unit b,
 \ b < BUILT-EXTS-N, is BUILT-EXTS row b; unit BUILT-EXTS-N the header data
 \ [BASE, OPEN-DP); unit BUILT-EXTS-N + 1 the data no piece holds, the build
-\ body's. A piece's extents tile its data but for the 1 to 8 bytes LAY aligns
-\ by before its first laid text: no unit holds them and no address points in.
-\ The header is live but for its string bodies, and a header address cell is
-\ read once no piece stored it or a reached one did: a piece is reached once
-\ one of its extents is live or one of its records' emissions is placed, and an
-\ address a piece stored there is that piece's, as its object carries it. The
-\ entry cell is read whatever stored it: it is the program's root. A read xt
-\ cell roots the code it names and a read pointer cell makes its target's unit
-\ live; each placed emission's data addresses make theirs live. An address
-\ where data ends lies in its extent, since no extent or piece starts where
-\ the data before it ends; one where a piece ends makes the piece's last
-\ extent live and the unit holding it. An address in an interned body or its
-\ length cell keeps that body alone: a header body lies in the header, any
-\ other in the piece that first interned it, and every later piece spelling it
-\ shares it.
+\ body's. A piece's extents tile its data but for the cell LAY sets apart
+\ before its first laid text: no unit holds it, and a build whose cell holds an
+\ address there is refused: LINKER:E-ADDRESS, rc 74. The header is live but for
+\ its string bodies, and a header address cell is read once no piece stored it
+\ or a reached one did: a piece is reached once one of its extents is live or
+\ one of its records' emissions is placed, and an address a piece stored there
+\ is that piece's, as its object carries it. The entry cell is read whatever
+\ stored it: it is the program's root. A read xt cell roots the code it names
+\ and a read pointer cell makes its target's unit live; each placed emission's
+\ data addresses make theirs live. An address where data ends lies in its
+\ extent, since no extent or piece starts where the data before it ends. An
+\ address in an interned body or its length cell keeps that body alone: a
+\ header body lies in the header, any other in the piece that first interned
+\ it, and every later piece spelling it shares it.
 \
 \ THE IMAGE'S DATA. A stripped program's is the header as the build left it,
 \ its bodies the program does not keep zeroed; then the live units in build
@@ -115,12 +114,6 @@ variable EXT-I                       \ BY-EXT's next row to lay
    u BUILT-EXTS-N @ < if u 0 BUILT-EXT @ ROW-REACH then ;
 
 
-\ BUILT row row's last extent.
-: LAST-EXT ( n -- n )
-   {: row:n :}
-   row 2 * ROW-EXTS @  row 2 * 1 + ROW-EXTS @ +  1 - ;
-
-
 : STR+ ( n -- )
    {: b:n :}
    STR-N @ 1 + STR-AT-RESERVE
@@ -170,8 +163,6 @@ variable EXT-I                       \ BY-EXT's next row to lay
    {: v:n :}
    v STRING-OF {: k:n :}
    k 0 >= if 1 k STR-KEPT ! exit then
-   v DP-END-ROW {: end:n ended:bool :}
-   ended if end LAST-EXT REACH-UNIT then
    v UNIT-OF REACH-UNIT ;
 
 

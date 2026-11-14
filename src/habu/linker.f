@@ -691,17 +691,6 @@ PTR-VARIABLE OBJ-BASE
    loop
    0 false ;
 
-\ The last BUILT row whose data ends at v, and true; false when none. A piece with
-\ no data, as the open's records are, holds no byte and ends nothing.
-: DP-END-ROW ( n -- n bool )
-   {: v:n :}
-   BUILT-N 0 ?do
-      BUILT-N 1 - i - {: row:n :}
-      row BUILT-AT BUILT-DP + {: at:ptr :}
-      at 8 + LE:U64@ v =  at LE:U64@ v <>  and if row true unloop exit then
-   loop
-   0 false ;
-
 : TOPPED ( n -- n ) dup TOP-ROW @ max TOP-ROW ! ;
 
 \ The object's FILES row from 0 naming the BUILT row's piece by its file's key and its number, the
@@ -1455,22 +1444,22 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    then
    7 PIECES U64+  0 PIECES U64+  v FILE-DP @ - PIECES U64+ ;
 
-\ An address in BUILT row row's data, end included, and true: the tag of the build-table row holding it (ROW-EXT-OF,
-\ KIND>TAG) or the head's tag 7, then the offset; its FILES row and edge name that row. False, writing nothing, if none holds it.
+\ An address in BUILT row row's data, and true: the tag of the build-table row holding it (ROW-EXT-OF, KIND>TAG) or the
+\ head's tag 7, then the offset; its FILES row and edge name that row. False, writing nothing, if none holds it.
 : ROW-DATA-REF+ ( n n -- bool )
    {: v:n row:n :}
    v row ROW-EXT-OF {: b:n :}
    b 0< if false exit then
    b 1 BUILT-EXT @  b 4 BUILT-EXT @ {: kind:n start:n :}
-   v  start b 5 BUILT-EXT @ +  > if false exit then
+   v  start b 5 BUILT-EXT @ +  >= if false exit then
    b row EXT-FILE {: k:n :}
    b DATA-EDGE+
    kind 3 = if  7 PIECES U64+  k PIECES U64+  v start - PIECES U64+  true exit  then
    kind KIND>TAG PIECES U64+  k PIECES U64+
    b 2 BUILT-EXT @ PIECES U64+  b 3 BUILT-EXT @ PIECES U64+  v start - PIECES U64+  true ;
 
-\ A data address's reference, and true: a file's data a row names (ROW-DATA-REF+) or the open's header data, else
-\ false. A file's end names it only after every span, so a later file's first byte names that later file.
+\ A data address's reference, and true: the running piece's data (OWN-DATA-REF+), an earlier piece's data a BUILT row
+\ names (ROW-DATA-REF+) or the open's header data; else false.
 : DATA-REF+ ( n -- bool )
    {: v:n :}
    v FILE-DP @ >=  v FILE-END @ <  and if  v OWN-DATA-REF+ true exit  then
@@ -1479,9 +1468,6 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    v BASE @ >=  v OPEN-DP @ <  and if
       true HOLDS-HEADER !  HEADER-EDGE+  4 PIECES U64+  v BASE @ - PIECES U64+ true exit
    then
-   v FILE-END @ = if  v OWN-DATA-REF+ true exit  then
-   v DP-END-ROW {: end-row:n end-hit:bool :}
-   end-hit if  v end-row ROW-DATA-REF+ exit  then
    false ;
 
 
@@ -1502,13 +1488,13 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    s" code at " SAY  a SAY-INT  s"  in no record" SAY ;
 
 
-\ Where the data address v lies: hb's DATA, the build's space outside every file's data,
-\ or neither.
+\ Where the data address v lies: hb's DATA, the build's space outside every extent, or
+\ neither.
 : DATA-VALUE. ( n -- )
    {: v:n :}
    v DATA-N >=  v DATA-N DATA-SIZE + <  and if s" hb's data +" SAY  v DATA-N - SAY-INT exit then
    v BASE @ >=  v BASE @ SPACE-SIZE @ + <  and if
-      s" the build's space +" SAY  v BASE @ - SAY-INT  s" , in no file's data" SAY exit
+      s" the build's space +" SAY  v BASE @ - SAY-INT  s" , in no record's extent" SAY exit
    then
    v SAY-INT  s" , outside hb's data and the build's space" SAY ;
 
