@@ -4624,7 +4624,7 @@ defer U-DRAIN-XT ( n -- )
    g w BLOCK-PAIR
    base U-DRAIN-XT
    UOK @ IF HOLD-ESCAPE? IF upos CUR-UPOS !  got want U-FAIL  -1 TAIL-HIT ! THEN THEN
-   TAIL-HIT @ IF mark TRAIL-UNWIND THEN
+   TAIL-HIT @ UOK @ 0= or IF mark TRAIL-UNWIND THEN
    -1 HOLD-N +! ;
 
 
