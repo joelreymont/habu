@@ -2100,7 +2100,10 @@ variable LIT-AT
       a u LOCAL-UNBUILT  BODY-ITEM-KIND:LOCAL-REF v 0 v LOCAL$ ITEM+ exit
    then
    op ITEM-ABI:CALL = if a u  a u LOOKUP-NAME  FOUND-CALL exit then
-   op ITEM-ABI:CALL-EXACT = if a u  a u XREF-FIND  FOUND-CALL exit then
+   op ITEM-ABI:CALL-EXACT = if
+      a u XREF-FIND {: rec:ptr :}
+      a u rec POLICY-CHECK-REC  a u rec FOUND-CALL exit
+   then
    ITEM-OP-REFUSE ;
 
 : COMPILING? ( -- bool )
