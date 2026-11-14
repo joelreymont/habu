@@ -1454,15 +1454,35 @@ public
 
 private
 
+\ Blocks this thread for good: a poll of no descriptors with no timeout,
+\ again after each signal that ends it. Linux's ppoll takes a NULL timespec
+\ for none, Darwin's poll -1.
+: EXIT-WAIT, ( -- )
+   LBL {: again:label :}
+   again LBL,  0 0 MOVZ,  1 0 MOVZ,
+   HB-TARGET-LINUX? IF
+      2 0 MOVZ,  3 0 MOVZ,  4 0 MOVZ,  NR-POLL SYS,  again B,  exit
+   THEN
+   HB-TARGET-MACOS? IF 2 0 MOVN,  NR-POLL SYS,  again B,  exit THEN
+   TARGET-UNKNOWN ;
+
 \ LEXITHOOK: EXIT-HOOK-CELL's trampoline, BL-called with the code in x0; it
-\ keeps x0 and LR only. The vector is the main region's, at DATA-VA from any
-\ thread; the handler chain it empties is this thread's.
+\ keeps x0 and LR only. The vector and the owner cell are the main region's, at
+\ DATA-VA; the handler chain it empties is this thread's. The thread that claims
+\ EXIT-OWNER-CELL runs the vector, again on an action's `die`; any other blocks.
 : EMIT-EXITHOOK ( -- )
    LBL LBL {: nohk:label end:label :}
+   LBL {: owned:label :}
    LEXITHOOK LABEL@ {: start:label :}
    s" (LEXITHOOK)" start LABEL>N end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
    start LBL,
-   11 DATA-VA VA>N LIT64,  9 11 EXIT-HOOK-CELL LDR,  9 nohk CBZ,
+   11 DATA-VA VA>N LIT64,
+   12 EXIT-OWNER-CELL MOVZ,  12 11 12 ADD,
+   9 0 MOVZ,  9 DATA 12 CASAL,
+   9 owned CBZ,  9 DATA CMP,  C-EQ owned BCOND,
+   EXIT-WAIT,
+   owned LBL,
+   9 11 EXIT-HOOK-CELL LDR,  9 nohk CBZ,
    SP SP 16 SUBI,  30 SP 0 STR,  0 SP 8 STR,
    10 0 MOVZ,  10 11 EXIT-HOOK-CELL STR,  10 DATA HND-CELL STR,
    9 BLR,

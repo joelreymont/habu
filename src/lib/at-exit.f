@@ -2,9 +2,10 @@
 \ engine's process-exit vector: the engine clears it and calls it once just
 \ before the exit_group of a normal top-level exit, a `die`, an uncaught throw
 \ or a stripped program's return from MAIN, and the vector runs the actions.
-\ The vector is the process's, the main region's cell, so any thread's exit
-\ runs every action. A build's space loads a second copy, whose RUN goes to
-\ the space's own vector cell, which only the linker calls.
+\ A forked child keeps the actions and starts with no exit owner, so when it
+\ exits it runs the actions not yet taken, even when it forked while another
+\ thread ran them. A build's space loads a second copy, whose RUN goes to the
+\ space's own vector cell, which only the linker calls.
 \ STORAGE CLASS. PROCESS-WIDE action table.
 
 require src/lib/prelude.f
@@ -80,9 +81,10 @@ VECTOR-INIT
 
 public
 
-\ Adds an action the process runs once when it exits, after every action added
-\ later; an action already added is not added again. The vector is the
-\ process's, so any thread's exit runs every action.
+\ Adds an action the process runs once when any thread exits, after every
+\ action added later; an action already added is not added again. An action
+\ must not wait on another thread: one that exits while the actions run blocks
+\ until the process ends.
 : ADD ( [ -- ] -- )
    LOCK [: APPEND ;] [: UNLOCK ;] finally
    ARM ;

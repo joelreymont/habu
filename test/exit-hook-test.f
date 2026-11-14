@@ -312,6 +312,51 @@ variable STAGED-FILES
    erru s" task: dying" ERR-HAS? TTRUE
    TREE$ FS:EXISTS? TFALSE ;
 
+\ The main thread dies and its action runs; a task dies while the action
+\ waits. The task's exit waits for the main thread's, so the action ends, its
+\ line printed and the tree removed, and the process exits 5, main's code.
+: CASE-TASK-WAIT ( -- )
+   s" task-wait.f" s" task-wait-tree" CASE-PATHS
+   S\" require src/lib/task.f\nrequire src/lib/at-exit.f\n$10000 TASK:TASK CHILD-TASK\n" TEXT+
+   S\" here data-base - negate 7 and allot\nvariable STARTED\n" TEXT+
+   S\" : ACT ( -- ) 1 STARTED atomic! 200 >MS TASK:SLEEP\n" TEXT+
+   S\"    s\q action: done\q type cr CHILD-TREE FS:REMOVE-TREE ;\n" TEXT+
+   S\" : WORK ( -- ) begin STARTED atomic@ 0= while 1 >MS TASK:SLEEP repeat\n" TEXT+
+   S\"    s\q task: dying\q 3 die ;\n" TEXT+
+   S\" : CHILD-MAIN ( -- ) CHILD-TREE FS:MAKE-DIR [: ACT ;] AT-EXIT:ADD\n" TEXT+
+   S\"    [: WORK ;] CHILD-TASK TASK:ACTIVATE s\q main: dying\q 5 die ;\n" TEXT+
+   S\" CHILD-MAIN\n" TEXT+
+   RUN-CHILD {: outu:n erru:n rc:n :}
+   s" a task's exit waits for the main thread's exit actions" T-LABEL
+   outu erru rc 5 EXPECT-RC
+   outu s" action: done" OUT-HAS? TTRUE
+   TREE$ FS:EXISTS? TFALSE ;
+
+\ The main thread's exit runs an action that blocks on a pipe until a task has
+\ forked a child that dies 9 and reaped it. The child starts with no exit owner,
+\ so it exits rather than waiting on the action's owner for good.
+: CASE-FORK-OWNER ( -- )
+   s" fork-owner.f" s" fork-owner-tree" CASE-PATHS
+   S\" require src/lib/task.f\nrequire src/lib/at-exit.f\nrequire src/lib/process.f\n" TEXT+
+   S\" require src/lib/process-fork.f\n$10000 TASK:TASK FORKER\n" TEXT+
+   S\" variable GO-R variable GO-W variable REL-R variable REL-W\ncreate BYTE 8 allot\n" TEXT+
+   S\" : PIPE-RC ( n -- ) 0<> if s\q pipe\q 2 die then ;\n" TEXT+
+   S\" : PIPES ( -- ) pipe PIPE-RC GO-W ! GO-R ! pipe PIPE-RC REL-W ! REL-R ! ;\n" TEXT+
+   S\" : ACT ( -- ) GO-W @ BYTE 1 write drop REL-R @ BYTE 1 read drop\n" TEXT+
+   S\"    s\q action: done\q type cr ;\n" TEXT+
+   S\" : WORK ( -- ) GO-R @ BYTE 1 read drop PROC-FORK:CHECKED {: pid:pid :}\n" TEXT+
+   S\"    pid PID>N 0= if s\q \q 9 die then\n" TEXT+
+   S\"    pid PROCESS:WAIT PROCESS:STATUS>RC RC>N s\q reaped \q type . cr\n" TEXT+
+   S\"    REL-W @ BYTE 1 write drop 0 TASK:RETURN ;\n" TEXT+
+   S\" : CHILD-MAIN ( -- ) PIPES [: ACT ;] AT-EXIT:ADD\n" TEXT+
+   S\"    [: WORK ;] FORKER TASK:ACTIVATE s\q main: dying\q 5 die ;\n" TEXT+
+   S\" CHILD-MAIN\n" TEXT+
+   RUN-CHILD {: outu:n erru:n rc:n :}
+   s" a child forked while another thread runs the exit actions exits" T-LABEL
+   outu erru rc 5 EXPECT-RC
+   outu s" reaped 9" OUT-HAS? TTRUE
+   outu s" action: done" OUT-HAS? TTRUE ;
+
 \ hb-build loads its source in its own process, so a source whose top level
 \ ends the process ends hb-build inside the build: the build fails 74 naming
 \ the source, and -o keeps its bytes.
@@ -472,6 +517,8 @@ variable RUN-FILE-U
    CASE-STAGED
    CASE-TASK-ADD
    CASE-TASK-DIE
+   CASE-TASK-WAIT
+   CASE-FORK-OWNER
    CASE-BUILD
    CASE-BUILD-EXIT
    CASE-BUILD-TASK

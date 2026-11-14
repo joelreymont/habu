@@ -790,9 +790,12 @@ $27F8 constant CODE-CELL
 \ file the program reaches keeps its header stores; one that does not starts
 \ with it empty.
 \ $2818 follows SRCLOC's three cells in the $2800..$3000 header band,
-\ below $7FF8 so the engine names it with a `DATA <off> LDR/STR` 12-bit scaled
-\ immediate, and below DATA-START so no compiled source reaches it by allot.
+\ below $7FF8 so the engine names it with a 12-bit scaled LDR/STR immediate off
+\ a region base, and below DATA-START so no compiled source reaches it by allot.
 $2818 constant EXIT-HOOK-CELL
+\ EXIT-OWNER-CELL: the DATA base of the thread that owns the process exit, 0
+\ while none does; below DATA-START so no allot reaches it.
+$2840 constant EXIT-OWNER-CELL
 package BOOT
 private
 CAST: >PTR ( n -- ptr n )

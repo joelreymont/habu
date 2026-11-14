@@ -2556,11 +2556,12 @@ public
 \ parent's as it stood when the parent made the copy, and no byte the parent
 \ writes afterwards reaches it. A failure before the clone answers -1, as a
 \ refused clone does; a child that cannot map its views dies named with exit 78.
+\ The child starts with no exit owner, so its own exit runs the actions.
 : FORK ( -- )                         \ ( -- pid|-1 )
    HB-TARGET-LINUX? IF
       LBL LBL LBL LBL LBL {: unfd:label failed:label parent:label done:label dead:label :}
       LBL LBL LBL LBL LBL {: scan:label next:label full:label scanned:label plain:label :}
-      LBL {: span:label :}
+      LBL LBL {: span:label out:label :}
       SP SP 32 SUBI,                    \ [0] the child's memfd, [8] its filling view, [16] code end
       \ Delta 0 = no alias (a stripped image): the startup maps one anywhere but DBASE.
       9 DATA REGION-ALIAS:DELTA-CELL LDR,  9 plain CBZ,
@@ -2629,11 +2630,13 @@ public
       unfd LBL,  0 SP 0 LDR,  NR-CLOSE SYS,
       failed LBL,  0 0 MOVN,
       done LBL,
+      0 out CBNZ,  9 DATA-VA VA>N LIT64,  0 9 EXIT-OWNER-CELL STR,
+      out LBL,
       SP SP 32 ADDI,  0 G-PUSH
       exit
    THEN
    HB-TARGET-MACOS? IF
-      LBL LBL {: done:label dead:label :}
+      LBL LBL LBL {: done:label dead:label out:label :}
       s" fork" SLOT,  16 BLR,
       0 0 32 LSLI,  0 0 32 ASRI,        \ signed pid_t -> Habu cell
       0 done CBNZ,
@@ -2651,6 +2654,8 @@ public
          S\" hb: fork: cannot map the child's region alias\n" ERR-TEXT,
          0 78 MOVZ,  NR-EXIT-GROUP SYS,
       done LBL,
+      0 out CBNZ,  9 DATA-VA VA>N LIT64,  0 9 EXIT-OWNER-CELL STR,
+      out LBL,
       0 G-PUSH
       exit
    THEN

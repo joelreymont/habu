@@ -123,6 +123,7 @@ create TAB
    SUSP-HOOK-OFF                      SUSP-HOOK-LEN           CLAIM SUSP-HOOK
    REFUSAL-ABI:CODE-CELL              1 cells                 CLAIM REFUSAL-ABI:CODE-CELL
    EXIT-HOOK-CELL                     1 cells                 CLAIM EXIT-HOOK-CELL
+   EXIT-OWNER-CELL                    1 cells                 CLAIM EXIT-OWNER-CELL
    FLOORREC-CELL                      1 cells                 CLAIM FLOORREC-CELL
    FAULT-MARK-CELL                    1 cells                 CLAIM FAULT-MARK-CELL
    DBASE-CELL                         1 cells                 CLAIM DBASE-CELL
