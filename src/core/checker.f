@@ -410,18 +410,14 @@
 \ replay alone: outside the window they refuse rather than move a scope no
 \ compile is in.
 \
-\ Storage declaration refusals: a storage definer refuses a declaration whose
+\ Storage declaration rejections: a storage definer rejects a declaration whose
 \ type it cannot size, that has no name or one it cannot publish, or whose
 \ count is a literal outside its extent or a token the gate cannot certify.
-\ The gate pre-pass and the run-time definers both refuse through
-\ CHECKER-STORAGE-REFUSE, which reports the declared word and the refused
-\ token. Like TRUST-STALE it is a hard stop on the ordinary load path, and is
-\ rendered and counted under a MULTI-ERROR load; either way nothing is
-\ registered or defined. The diagnostic carries a file position only while the
-\ verifier window replays recorded source, for a token inside the buffer that
-\ pass registered (CHECKER-VERIFY-SOURCE!, STGR-IN-SOURCE?). A run-time
-\ definer reads its tokens from the input, whose place in its file the checker
-\ has no record of.
+\ The gate pre-pass and the run-time definers both reject through
+\ CHECKER-STORAGE-REFUSE, which prints E-BAD-STORAGE at the rejected token.
+\ Like TRUST-STALE it is a hard stop on the ordinary load path, and is printed
+\ and counted under a MULTI-ERROR load; either way nothing is registered or
+\ defined.
 \
 \ Name binding: one lookup binds a name, and it is the engine's. `scope-find`
 \ runs what the compiler's call site runs, so the checker certifies the record
@@ -12966,24 +12962,127 @@ package CHECKER-REG
 12 constant STG-XT-TYPE         \ the type parses and names `xt`, which no storage holds
 15 constant STG-WIDTH-TYPE      \ the type parses and holds a `width<t>`, which no storage holds
 16 constant STG-LINEAR-TYPE     \ the type parses and may hold a linear value, which no storage holds
-PTR-VARIABLE STGR-SRC-A   variable STGR-SRC-U   \ the buffer the verifier scans
-defer STORAGE-DIAG-XT ( ptr u8 n ptr u8 n n -- )   \ declared name, refused token, STG- reason
-: STORAGE-DIAG-DEFAULT ( -- ) [: drop 2drop 2drop ;] is STORAGE-DIAG-XT ;
-STORAGE-DIAG-DEFAULT
+: STGR-CODE ( ptr u8 n -- ) {: a:ptr u:n :}
+   96 REJECTION:EMIT1  a u REJECTION:EMIT-STR  96 REJECTION:EMIT1 ;
 
-: CHECKER-VERIFY-SOURCE! ( ptr u8 n -- ) {: a:ptr u:n :}
-   a STGR-SRC-A !  u STGR-SRC-U ! ;
+\ The message names the declared word: the definer for STG-NO-NAME, the name
+\ itself for STG-MALFORMED-NAME.
+: STGR-MESSAGE ( ptr u8 n n -- ) {: na:ptr nu:n why:n :}
+   why STG-NO-NAME = IF
+      na nu STGR-CODE  s"  has no name on its line" REJECTION:EMIT-STR EXIT
+   THEN
+   why STG-NO-TYPE = IF
+      na nu STGR-CODE  s"  has no type on its line" REJECTION:EMIT-STR EXIT
+   THEN
+   why STG-NO-COUNT = IF
+      na nu STGR-CODE  s"  has no count before its definer" REJECTION:EMIT-STR EXIT
+   THEN
+   why STG-MALFORMED-NAME = IF
+      s" the name " REJECTION:EMIT-STR  na nu STGR-CODE
+      s"  has more than one inner `:`" REJECTION:EMIT-STR EXIT
+   THEN
+   why STG-BAD-COUNT = IF
+      s" the count of " REJECTION:EMIT-STR  na nu STGR-CODE
+      s"  is outside the buffer's extent" REJECTION:EMIT-STR EXIT
+   THEN
+   why STG-COUNT-WORD = IF
+      s" the count of " REJECTION:EMIT-STR  na nu STGR-CODE
+      s"  names no `( -- n )` word" REJECTION:EMIT-STR EXIT
+   THEN
+   s" the type of " REJECTION:EMIT-STR  na nu STGR-CODE
+   why STG-UNKNOWN-TYPE = IF s"  names no known type" REJECTION:EMIT-STR EXIT THEN
+   why STG-MALFORMED-TYPE = IF s"  does not parse" REJECTION:EMIT-STR EXIT THEN
+   why STG-SCHEME-TYPE = IF
+      s"  holds a scheme, which no storage holds" REJECTION:EMIT-STR EXIT
+   THEN
+   why STG-XT-TYPE = IF
+      s"  holds an `xt`, which no storage holds" REJECTION:EMIT-STR EXIT
+   THEN
+   why STG-WIDTH-TYPE = IF
+      s"  holds a `width<t>`, which no storage holds" REJECTION:EMIT-STR EXIT
+   THEN
+   why STG-LINEAR-TYPE = IF
+      s"  may hold a linear value, which no storage holds" REJECTION:EMIT-STR EXIT
+   THEN
+   s"  is one its definer cannot store" REJECTION:EMIT-STR ;
 
-: STGR-IN-SOURCE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   CHECKER-VERIFY-PKG-DEPTH @ 0= IF RES-FALSE EXIT THEN
-   a STGR-SRC-A @ - {: off:n :}
-   off 0 < IF RES-FALSE EXIT THEN
-   off u + STGR-SRC-U @ <= ;
+: STGR-REASON$ ( n -- ptr u8 n ) {: why:n :}
+   why STG-UNKNOWN-TYPE = IF s" unknown type" EXIT THEN
+   why STG-MALFORMED-TYPE = IF s" malformed type" EXIT THEN
+   why STG-UNSTORABLE-TYPE = IF s" type this definer cannot store" EXIT THEN
+   why STG-SCHEME-TYPE = IF s" scheme in a stored type" EXIT THEN
+   why STG-XT-TYPE = IF s" xt in a stored type" EXIT THEN
+   why STG-WIDTH-TYPE = IF s" width in a stored type" EXIT THEN
+   why STG-LINEAR-TYPE = IF s" stored type may hold a linear value" EXIT THEN
+   why STG-MALFORMED-NAME = IF s" more than one ':' in name" EXIT THEN
+   why STG-BAD-COUNT = IF s" count outside the buffer's extent" EXIT THEN
+   why STG-COUNT-WORD = IF s" count resolves to no ( -- n ) word" EXIT THEN
+   why STG-NO-TYPE = IF s" no type follows this name on its line" EXIT THEN
+   why STG-NO-NAME = IF s" no name follows this definer on its line" EXIT THEN
+   s" no count precedes this declaration" ;
 
+: STGR-HELP ( ptr u8 n ptr u8 n n -- ) {: na:ptr nu:n ta:ptr tu:n why:n :}
+   why STG-NO-NAME = IF
+      s" write the storage's name after " REJECTION:EMIT-STR  na nu STGR-CODE
+      s"  on the same line" REJECTION:EMIT-STR EXIT
+   THEN
+   why STG-NO-TYPE = IF
+      s" write the type of " REJECTION:EMIT-STR  na nu STGR-CODE
+      s"  after it on the same line" REJECTION:EMIT-STR EXIT
+   THEN
+   why STG-NO-COUNT = IF
+      s" put a positive count before the definer of " REJECTION:EMIT-STR
+      na nu STGR-CODE
+      s" : a literal, a constant or an expression" REJECTION:EMIT-STR EXIT
+   THEN
+   why STG-MALFORMED-NAME = IF
+      s" rename " REJECTION:EMIT-STR  na nu STGR-CODE
+      s"  with at most one inner `:`" REJECTION:EMIT-STR EXIT
+   THEN
+   why STG-BAD-COUNT = IF
+      s" replace " REJECTION:EMIT-STR  ta tu STGR-CODE
+      s"  with a positive count whose elements fit in memory" REJECTION:EMIT-STR EXIT
+   THEN
+   why STG-COUNT-WORD = IF
+      s" replace " REJECTION:EMIT-STR  ta tu STGR-CODE
+      s"  with a literal, a constant or a `( -- n )` word" REJECTION:EMIT-STR EXIT
+   THEN
+   why STG-UNKNOWN-TYPE = IF
+      s" declare the type " REJECTION:EMIT-STR  ta tu STGR-CODE
+      s"  before " REJECTION:EMIT-STR  na nu STGR-CODE
+      s" , or correct its name" REJECTION:EMIT-STR EXIT
+   THEN
+   why STG-MALFORMED-TYPE = IF
+      s" write one whole type after " REJECTION:EMIT-STR  na nu STGR-CODE
+      s" , such as `n`, `ptr t` or `[ n -- n ]`" REJECTION:EMIT-STR EXIT
+   THEN
+   why STG-SCHEME-TYPE = IF
+      s" declare " REJECTION:EMIT-STR  na nu STGR-CODE
+      s"  with a closed type; a scheme is only a callback's input" REJECTION:EMIT-STR EXIT
+   THEN
+   why STG-XT-TYPE = IF
+      s" declare " REJECTION:EMIT-STR  na nu STGR-CODE
+      s"  with a quotation type such as `[ n -- n ]` in place of `xt`" REJECTION:EMIT-STR EXIT
+   THEN
+   why STG-WIDTH-TYPE = IF
+      s" declare " REJECTION:EMIT-STR  na nu STGR-CODE
+      s"  as `n` and store the width's bytes, read with `width>n`" REJECTION:EMIT-STR EXIT
+   THEN
+   why STG-LINEAR-TYPE = IF
+      s" keep a linear value on the stack, not in " REJECTION:EMIT-STR  na nu STGR-CODE
+      s" ; name a callable over one with `defer`" REJECTION:EMIT-STR EXIT
+   THEN
+   s" declare " REJECTION:EMIT-STR  na nu STGR-CODE
+   s"  with a closed, copyable type its definer stores, such as `n`" REJECTION:EMIT-STR ;
+
+\ The declared name, the rejected token and the STG- reason.
 : CHECKER-STORAGE-REFUSE ( ptr u8 n ptr u8 n n -- )
-   STORAGE-DIAG-XT
-   MULTI-ERR? IF 1 REJECTION:TALLY +! EXIT THEN
-   CHECKER-REJECT-RC throw ;
+   {: na:ptr nu:n ta:ptr tu:n why:n :}
+   s" E-BAD-STORAGE" REJECTION:OPEN  na nu why STGR-MESSAGE
+   ta tu REJECTION:AT  why STGR-REASON$ REJECTION:EMIT-STR
+   REJECTION:HELP  na nu ta tu why STGR-HELP
+   MULTI-ERR? IF REJECTION:KEEP EXIT THEN
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ A definer with no name on its line declares no word, so it is refused at its
 \ own token, which stands in for the word.

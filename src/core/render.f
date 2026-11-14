@@ -1536,7 +1536,7 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
 \ A packet opens with JSTART (schema version and code), or JHEAD for a refusal
 \ (adds repair class and verdict); JTAIL closes it with the file, the span's
 \ place when it locates, and the suggestion. A code's own fields go between.
-\ DIAG-JSON, USING-JSON and STGR-JSON close themselves: fields or a differently
+\ DIAG-JSON and USING-JSON close themselves: fields or a differently
 \ sourced place follow the file.
 : JSTART ( ptr u8 n -- )
    {: ca:ptr cu:n :}
@@ -2190,80 +2190,6 @@ SHADOW-DIAG-INSTALL
    na nu pa pu TSTALE-DIAG ;
 : RECORD-DIAG-INSTALL ( -- ) [: RECORD-DIAG ;] is RECORD-DIAG-XT ;
 RECORD-DIAG-INSTALL
-
-\ Storage declaration refusals (checker.f CHECKER-STORAGE-REFUSE): the declared
-\ word, refused token and reason, the definer standing in for both when the line
-\ has no name; no definition fields. A run-time refusal carries no place.
-: STGR-NAME-WHY? ( n -- f ) {: why:n :}
-   why STG-MALFORMED-NAME =
-   why STG-NO-NAME = or ;
-: STGR-COUNT-WHY? ( n -- f ) {: why:n :}
-   why STG-BAD-COUNT =  why STG-NO-COUNT = or
-   why STG-COUNT-WORD = or ;
-: STGR-REASON$ ( n -- ptr u8 n ) {: why:n :}
-   why STG-UNKNOWN-TYPE = IF s" unknown type" EXIT THEN
-   why STG-MALFORMED-TYPE = IF s" malformed type" EXIT THEN
-   why STG-UNSTORABLE-TYPE = IF s" type this definer cannot store" EXIT THEN
-   why STG-SCHEME-TYPE = IF s" scheme in a stored type" EXIT THEN
-   why STG-XT-TYPE = IF s" xt in a stored type" EXIT THEN
-   why STG-WIDTH-TYPE = IF s" a width is not stored: keep its bytes (width>n)" EXIT THEN
-   why STG-LINEAR-TYPE = IF s" stored type may hold a linear value" EXIT THEN
-   why STG-MALFORMED-NAME = IF s" more than one ':' in name" EXIT THEN
-   why STG-BAD-COUNT = IF s" count outside the buffer's extent" EXIT THEN
-   why STG-COUNT-WORD = IF s" count resolves to no ( -- n ) word" EXIT THEN
-   why STG-NO-TYPE = IF s" no type for" EXIT THEN
-   why STG-NO-NAME = IF s" no name for" EXIT THEN
-   s" no count for" ;
-: STGR-CLASS$ ( n -- ptr u8 n ) {: why:n :}
-   why STGR-NAME-WHY? IF s" fix_storage_name" EXIT THEN
-   why STGR-COUNT-WHY? IF s" fix_storage_count" EXIT THEN
-   s" fix_storage_type" ;
-: STGR-SUGGEST$ ( n -- ptr u8 n ) {: why:n :}
-   why STGR-NAME-WHY? IF s" Name the storage with at most one inner ':'." EXIT THEN
-   why STGR-COUNT-WHY? IF s" Put a positive count before the definer whose cells fit in memory: a literal, a constant or an expression." EXIT THEN
-   why STG-LINEAR-TYPE = IF s" Keep a linear value on the stack; name a callable over one, or over an open type, with defer." EXIT THEN
-   s" Declare the type before the storage, or store a closed, copyable type this definer admits." ;
-: STGR-LOCATE ( ptr u8 -- )   \ the token's place, counted from the start of the verifier's buffer
-   {: ta:ptr :}
-   STGR-SRC-A @ ta 1 1 0 ORIGIN-SPAN! ;
-: STGR-JSON ( ptr u8 n ptr u8 n n bool -- )
-   {: na:ptr nu:n ta:ptr tu:n why:n at:bool :}
-   s" E-BAD-STORAGE" why STGR-CLASS$ s" rejected" JHEAD
-   s" word" JSON-KEY na nu JSON-STRING 44 EMIT1
-   s" token" JSON-KEY ta tu JSON-STRING 44 EMIT1
-   s" reason" JSON-KEY why STGR-REASON$ JSON-STRING 44 EMIT1
-   s" file" JSON-KEY FILE$ JSON-STRING 44 EMIT1
-   at IF
-      ORIGIN-LINE @ JLOC-L !  ORIGIN-COLUMN @ JLOC-C !  ORIGIN-BYTE @ JLOC-B !
-      ORIGIN-BYTE @ tu + JLOC-E !
-      JLOC-FIELDS
-   THEN
-   s" suggestion" JSON-KEY why STGR-SUGGEST$ JSON-STRING
-   125 EMIT1 ;
-: STGR-PROSE ( ptr u8 n ptr u8 n n bool -- )
-   {: na:ptr nu:n ta:ptr tu:n why:n at:bool :}
-   at IF
-      FILE$ EMIT-STR  58 EMIT1  ORIGIN-LINE @ EMIT-U  58 EMIT1
-         ORIGIN-COLUMN @ EMIT-U
-      s" : " EMIT-STR
-   THEN
-   s" habu: in " EMIT-STR  na nu EMIT-STR  s" : " EMIT-STR
-      why STGR-REASON$ EMIT-STR
-   s"  '" EMIT-STR  ta tu EMIT-STR  s" '" EMIT-STR ;
-: STGR-DIAG ( ptr u8 n ptr u8 n n -- )
-   {: na:ptr nu:n ta:ptr tu:n why:n :}
-   ta tu STGR-IN-SOURCE? {: at:bool :}
-   at IF ta STGR-LOCATE THEN
-   1 DEST !  0 TEXT-LEN !  0 RQM !
-   JSON @ IF
-      na nu ta tu why at STGR-JSON
-   ELSE
-      na nu ta tu why at STGR-PROSE
-   THEN
-   10 EMIT1
-   FLUSH ;
-: STGR-DIAG-INSTALL ( -- ) [: STGR-DIAG ;] is STORAGE-DIAG-XT ;
-STGR-DIAG-INSTALL
 
 \ A `generates:` row the checker cannot keep, on
 \ TSTALE-JSON's template: the kind says which of four claims failed, each with

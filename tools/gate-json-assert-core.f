@@ -559,10 +559,10 @@ variable GJA-LX
       s" storage repair class does not follow its reason" GJA-FAIL
    THEN ;
 
-\ A storage declaration its definer refuses (src/core/render.f STGR-JSON) names
-\ the declared word, the refused token and the reason, under the class that
-\ reason takes. Only a refusal the pre-pass read carries the token's place, so
-\ it has all four place fields or none.
+\ A storage declaration its definer refuses names the declared word, the
+\ refused token and the reason, under the class that reason takes. Only a
+\ refusal the pre-pass read carries the token's place, so it has all four place
+\ fields or none.
 : GJA-STORAGE-FIELDS ( SPAN:span<u8> -- ) {: root:SPAN:span<u8> :}
    root GJA-NO-DEF-FIELDS
    root s" word" GJA-REQ GJA-NONEMPTY-STR
