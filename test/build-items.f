@@ -6,9 +6,10 @@
 \ matched, two groups, and one of a parametric family the effect numbers
 \ apart from the file. An operand that names no variant, a call of an unknown
 \ name, a local outside a group, a read of an index never declared, a local
-\ of a type its reader does not take, a read of a local whose block ended, a
-\ local whose type is a 24th parameter, refused naming the word, and a local
-\ in a text definition are refused, and the word is abandoned. The name a
+\ of a type its reader does not take, a read of a local whose block ended,
+\ refused naming the local's index, a local whose type is a 24th parameter,
+\ refused naming the word, and a local or a local's read in a text definition
+\ are refused, and the word is abandoned. The name a
 \ field loan awaits takes the steps its text twin's token takes: the same
 \ code and diagnostic.
 
@@ -241,11 +242,13 @@ BI-BAD-ENDED 8 T=
    postpone ; ;
 
 \ : NAME ( -- ) [ EFFECT:N EFFECT:LOCAL drop ] ; as text, which no
-\ define-word effect numbers.
+\ define-word effect numbers; LOCAL-READ-NOW reads local 0 the same way.
 public
 : LOCAL-NOW ( -- ) EFFECT:N EFFECT:LOCAL drop ; immediate
+: LOCAL-READ-NOW ( -- ) 0 EFFECT:LOCAL@ ; immediate
 private
 s" LOCAL-NOW" 0 parse-imm
+s" LOCAL-READ-NOW" 0 parse-imm
 : BAD-TEXT ( -- n )
    [: s" : BI-BAD-TEXT ( -- ) LOCAL-NOW ;" evaluate-closed ;] catch ;
 BAD-TEXT 70 T=
@@ -275,6 +278,9 @@ BUILT-DIAG$ DECL-DIAG:TEXT$ T$=  DECL-DIAG:OFF
 public
 : WIDE-GO ( -- ) s" BI-WIDE" MAKE-WIDE ;
 : TEXT-GO ( -- ) s" : BI-TEXT ( -- ) BITEM:LOCAL-NOW ;" evaluate-closed ;
+: TEXT-REF-GO ( -- )
+   s" : BI-TEXT-REF ( -- ) BITEM:LOCAL-READ-NOW ;" evaluate-closed ;
+: ENDED-GO ( -- ) s" BI-ENDED" MAKE-ENDED ;
 ;package
 
 \ A rejection's text goes to fd 2, which a child's capture reads.
@@ -283,5 +289,9 @@ s" define-word has more than 23 type parameters: 'BI-WIDE'"
 SUBJECT:REFUSED? TTRUE
 s" BITEM:TEXT-GO" 70
 s" EFFECT:LOCAL needs a definition define-word opened" SUBJECT:REFUSED? TTRUE
+s" BITEM:TEXT-REF-GO" 70
+s" EFFECT:LOCAL@ needs a definition define-word opened" SUBJECT:REFUSED? TTRUE
+s" BITEM:ENDED-GO" 70
+s" reads built local 0, whose `{:` block has ended" SUBJECT:REFUSED? TTRUE
 
 T-REPORT

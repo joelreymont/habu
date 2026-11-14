@@ -663,10 +663,18 @@ public
       1 -  dup cells LOCSEQIX + @ seq = IF EXIT THEN
    REPEAT drop -1 ;
 
-\ A read of the local LOCAL answered index IX for: its bind sequence.
+\ A read of built local IX whose block ended; the load cannot compile it
+\ either, so the reason is a compile-time one.
+: LOCAL-ENDED ( n -- ) {: ix:n :}
+   RCOMPILE @  CREFUSE @ 0 <>  or 0= IF ix MDIAG-LOCAL ! THEN
+   MD-LOCAL-ENDED MDIAG-COMPILE!  IS-FAIL ;
+
+\ A read of the local LOCAL answered index IX for: its bind sequence, which
+\ names an ended local when an earlier bind took it.
 : ITEM-LOCAL-REF ( n -- ) {: ix:n :}
    ITEM-OPEN? IF EXIT THEN
    ix SEQ-SLOT {: li:n :}
+   li 0 < ix LOCSEQ @ < and IF ix LOCAL-ENDED EXIT THEN
    li 0 < IF ITEM-UNDEFINED EXIT THEN
    li LOC-REF-AT ;
 

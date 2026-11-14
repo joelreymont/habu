@@ -5098,6 +5098,7 @@ CHECKER-REG:}SCRATCH
 71 constant MD-DIV-ZERO      \ a literal 0 divisor reached the engine's `/`, `mod` or `/mod` (ZERO-OPERAND?)
 72 constant MD-THROW-ZERO    \ a literal 0 reached the engine's `throw` (ZERO-OPERAND?)
 73 constant MD-FINALLY-CLEANUP \ finally's cleanup is no quotation, or one that takes or leaves cells (CLEANUP-QUOT?)
+74 constant MD-LOCAL-ENDED   \ a built definition read a local whose block ended (LOCAL-ENDED); same E-UNDEFINED code, its own prose and suggestion
 \ A data depth change is E-MISMATCH and prints the loop's start row and the
 \ row at its back edge or leave; the others are E-REJECTED.
 48 constant MD-LOOP-DEPTH    \ a loop's back edge or leave holds another data depth than its start (CF-CARRIED=)
@@ -5149,6 +5150,7 @@ variable MDIAG-HAVE   \ underflow: cells the declared inputs left above the base
 variable MDIAG-DEPTH  \ effect depth: the levels TERM-DEPTH counted in the deepest row
 variable MDIAG-LITV   \ literal misfit: the literal's value
 variable MDIAG-LITT   \ literal misfit: the type code it does not fit
+variable MDIAG-LOCAL  \ ended local: the built local's index
 variable MDIAG-WIDE   \ wide value: the logical type depth or .s met
 variable MDIAG-OPEN   \ wide value: -1 when its width is open where it was met
 variable DEFER-WHY    \ the next deferral packet's cause (a DW- code; 0 = none)
@@ -21413,7 +21415,8 @@ CHECKER-REG:}SCRATCH
    0 ZSHAPE !
    0 CHECKER-MATCH-MODE !  0 MPEND !  0 MREJ !  0 MF-DEPTH !  0 MSEEN-N !
    0 MDIAG !  0 MDIAG-FAM !  0 MDIAG-SEEN !  0 MDIAG-VCNT !  0 MDIAG-NEED !  0 MDIAG-HAVE !
-   0 MDIAG-DEPTH !  0 MDIAG-LITV !  0 MDIAG-LITT !  0 UNFIT !
+   0 MDIAG-DEPTH !  0 MDIAG-LITV !  0 MDIAG-LITT !  0 MDIAG-LOCAL !
+   0 UNFIT !
    0 RAW-PTR-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 SCOPE-HIT !  0 XT-DECL !
    0 FAILSET !  0 DEXP !  0 DACT !  0 TRAIL-PIN !  0 RSBAD !  0 DF-ACT !  0 DF-EXP !  -1 DVAR !  -1 CVLIVE !  -1 DPOS !  0 FAILTU !  0 SGSEEN !  0 SGDECL-BAD !  0 SGHASR !
    0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGDBASE !

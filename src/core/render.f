@@ -964,6 +964,7 @@ variable MDV-I   variable MDV-F
       MD-RECURSE-SIG  of s" E-UNCHECKABLE" endof
       MD-RECURSE-DOES of s" E-UNCHECKABLE" endof
       MD-IS-UNKNOWN   of s" E-UNDEFINED" endof
+      MD-LOCAL-ENDED  of s" E-UNDEFINED" endof
       MD-IS-NOT-DEFER of s" E-NOT-DEFERRED" endof
       MD-IS-MISSING   of s" E-MISSING-NAME" endof
       MD-TYPE-FORM    of s" E-BAD-STORAGE" endof
@@ -1025,6 +1026,7 @@ variable MDV-I   variable MDV-F
       MD-RECURSE-SIG  of s" rewrite_uncheckable" endof
       MD-RECURSE-DOES of s" rewrite_uncheckable" endof
       MD-IS-UNKNOWN   of s" fix_is_target" endof
+      MD-LOCAL-ENDED  of s" read_local_in_block" endof
       MD-IS-NOT-DEFER of s" fix_is_target" endof
       MD-IS-MISSING   of s" fix_missing_name" endof
       MD-TYPE-FORM    of s" fix_type_form" endof
@@ -1137,6 +1139,7 @@ variable MDV-I   variable MDV-F
       MD-RECURSE-SIG  of s" Declare the definition's stack effect after its name." endof
       MD-RECURSE-DOES of s" Move the recursion into a named word with a declared effect and call it from the clause." endof
       MD-IS-UNKNOWN   of s" Name a word declared with defer; qualify it as PKG:NAME or import its package with using." endof
+      MD-LOCAL-ENDED  of s" Read the local inside the `{:` block that binds it; a value needed after the block stays on the stack." endof
       MD-IS-NOT-DEFER of s" Name a word declared with defer; `is` rebinds deferred words only." endof
       MD-IS-MISSING   of s" Write the name of a word declared with defer after is." endof
       MD-TYPE-FORM    of s" Name a closed type ARENA stores: one cell or more, or u8, with no type variable, quotation, linear value, atom, xt or width<t> in it, and no cell family with arguments as the type or a pointer's pointee." endof
@@ -1213,6 +1216,7 @@ variable MDV-I   variable MDV-F
       MD-RECURSE-SIG  of s" recursion needs a declared stack effect" endof
       MD-RECURSE-DOES of s" recurse in a does> clause would call the defining word" endof
       MD-IS-UNKNOWN   of s" names no word" endof
+      MD-LOCAL-ENDED  of s" reads built local" endof
       MD-IS-NOT-DEFER of s" is not a deferred word" endof
       MD-IS-MISSING   of s" missing target word after is" endof
       MD-TYPE-FORM    of s" [type] names no type storage holds" endof
@@ -1279,6 +1283,11 @@ variable MDV-I   variable MDV-F
    s" ` does not fit `" EMIT-STR  MDIAG-LITT @ CT-NAME$ EMIT-STR
    s" ` (`0`..`" EMIT-STR  MDIAG-LITT @ LIT-HI EMIT-U  s" `)" EMIT-STR ;
 
+\ The ended local's index, after the reason's `reads built local`.
+: LOCAL-ENDED-COUNTS ( -- )
+   s"  " EMIT-STR  MDIAG-LOCAL @ EMIT-U
+   s" , whose `{:` block has ended" EMIT-STR ;
+
 \ The wide value `depth` or `.s` met and its cells, or that they are not known
 \ where its width is open, after the reason's `cannot count`.
 : DEPTH-WIDE-COUNTS ( -- )
@@ -1297,6 +1306,7 @@ variable MDV-I   variable MDV-F
    MDIAG @ MD-TAIL-ESCAPE = IF s" ; held row " EMIT-STR
       TCAP-HELD$ EMIT-STR EXIT THEN
    MDIAG @ MD-LIT-FIT = IF LIT-FIT-COUNTS EXIT THEN
+   MDIAG @ MD-LOCAL-ENDED = IF LOCAL-ENDED-COUNTS EXIT THEN
    MDIAG @ MD-DEPTH-WIDE = IF DEPTH-WIDE-COUNTS EXIT THEN
    MDIAG @ MD-UNDERFLOW = IF MDIAG-UF-COUNTS EXIT THEN
    MDIAG @ MD-EFFECT-DEPTH = IF MDIAG-DEPTH @ DEPTH-COUNTS EXIT THEN

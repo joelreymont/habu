@@ -2068,8 +2068,10 @@ variable LIT-AT
    s" an item op ITEM-ABI does not name" ERROR-TEXT:TYPE
    NL 1 ERROR-TEXT:TYPE  RC-REJECT throw ;
 
-\ Only define-word's effect numbers the parameters a local's type is read by.
+\ Rejects the item A U unless define-word opened the definition: only its
+\ effect numbers the parameters a local's type is read by.
 : LOCAL-UNBUILT ( ptr u8 n -- ) {: a:ptr u:n :}
+   BODY-ITEMS:EFFECT-CELL CELL@ 0<> if exit then
    s" E-NO-DEFINITION" REFUSAL
    a u ERROR-TEXT:TYPE
    s"  needs a definition define-word opened" ERROR-TEXT:TYPE
@@ -2078,7 +2080,7 @@ variable LIT-AT
 \ Appends a local of type node T, whose index is the LOCAL items before it;
 \ its node numbers T's parameters on from the definition's effect.
 : LOCAL-ITEM ( ptr u8 n n -- ) {: a:ptr u:n t:n :}
-   BODY-ITEMS:EFFECT-CELL CELL@ 0= if a u LOCAL-UNBUILT then
+   a u LOCAL-UNBUILT
    t CHECK:TYPE-DENSE 0= if
       [: DEF-WIDE ;] DEF-CAPTURED-NAME DEF-NOT-EFFECT
    then
@@ -2095,7 +2097,9 @@ variable LIT-AT
    op ITEM-ABI:OPERAND = if BODY-ITEM-KIND:OPERAND 0 0 a u ITEM+ exit then
    op ITEM-ABI:TYPE = if BODY-ITEM-KIND:TYPE v 0 a u ITEM+ exit then
    op ITEM-ABI:LOCAL = if a u v LOCAL-ITEM exit then
-   op ITEM-ABI:LOCAL-REF = if BODY-ITEM-KIND:LOCAL-REF v 0 v LOCAL$ ITEM+ exit then
+   op ITEM-ABI:LOCAL-REF = if
+      a u LOCAL-UNBUILT  BODY-ITEM-KIND:LOCAL-REF v 0 v LOCAL$ ITEM+ exit
+   then
    op ITEM-ABI:CALL = if a u  a u FIND  FOUND-CALL exit then
    op ITEM-ABI:CALL-EXACT = if a u  a u XREF-FIND  FOUND-CALL exit then
    ITEM-OP-REFUSE ;
