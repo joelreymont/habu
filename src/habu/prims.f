@@ -876,11 +876,10 @@ ETRUSTED-ONLY!                       \ C ABI entry address, never a Habu quotati
 EPPRIM: TASK task-entry PE-N PE-OUT ECLOSE-PRIVATE
 EPRIM: dlopen-entry PE-N PE-OUT EPRIM;
 EPRIM: dlsym-entry PE-N PE-OUT EPRIM;
-\ callback-entry -1 answers the shared raw C thunk for a compiler-owned stub.
-\ Nonnegative IDs answer the boot stubs.
-EPRIM: callback-entry PE-N PE-IN PE-N PE-OUT EPRIM;
+\ callback-entry answers the shared raw C thunk a compiler-owned stub branches to.
+EPRIM: callback-entry PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!                       \ C ABI entry address, never a Habu quotation
-EPPRIM: FFI callback-entry PE-N PE-IN PE-N PE-OUT ECLOSE-PRIVATE
+EPPRIM: FFI callback-entry PE-N PE-OUT ECLOSE-PRIVATE
 EPRIM: ffi-call-abi    PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN PE-N PE-IN PE-N PE-IN
                       PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!

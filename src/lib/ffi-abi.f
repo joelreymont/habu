@@ -574,9 +574,9 @@ public
 : DLOPEN ( ptr u8 n -- n ) DLOPEN-RAW ;
 : DLSYM ( n ptr u8 -- n ) DLSYM-RAW ;
 
-\ The C entry of engine callback stub n: an immutable code address, never a
-\ Habu xt.
-: CALLBACK-ENTRY ( n -- n ) callback-entry ;
+\ The shared C thunk every callback stub branches to: an immutable code address,
+\ never a Habu xt.
+: CALLBACK-ENTRY ( -- n ) callback-entry ;
 
 \ ---- the declared-function surface ----------------------------------------
 \ The declarer below is DECLARE-ROW's only intended caller.
