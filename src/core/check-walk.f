@@ -2429,20 +2429,20 @@ public
       TKF TKFU @ TOK-CORE-OP?
    ELSE RES-FALSE THEN LAYOUT-XPORT ! ;
 
-\ The spelling is tested first, so no other token is bound for it; a checked
-\ step needs the test here, and the window tests it before it steps at all.
-: TOP-WIDEN? ( -- bool )
+\ The spelling is tested first, so no other token is bound for it.
+: TOP-EVALUATE? ( -- bool )
    TKF TKFU @ s" evaluate" CORE-STR= 0= IF RES-FALSE EXIT THEN
-   TKF TKFU @ TOK-CORE-OP? dup IF 1 TOP-LEVEL +! THEN ;
+   TKF TKFU @ TOK-CORE-OP? ;
 
 \ `evaluate` has no row: the text it reads steps itself, one level deeper on
 \ this segment, so the step takes its string and leaves the rest of the row as
 \ it was.
 : TOP-WORD-STEP ( -- )
    TOP-BEGIN
-   TOP-WIDEN? IF
+   TOP-EVALUATE? IF
       FRESH MK-VAR FRESH MK-VAR FRESH MK-ROW MK-PUSH MK-PUSH
       STEP-BORROWS? IF STEP-UNDERFLOW! EXIT THEN
+      1 TOP-LEVEL +!
       DCUR @ ROW-DROP-1 ROW-DROP-1 DCUR !  EXIT
    THEN
    TKF TKFU @ SPELLED-STEP? 0= IF

@@ -240,7 +240,6 @@ private
 74 constant RC-UNCLOSED          \ the input ends inside a definition or a ( comment, or closes one it did not open
 76 constant RC-TOO-LONG          \ a counted string past CSTR-MAX bytes
 79 constant RC-TASK-THREAD       \ source read on a task's thread
-52 constant MIN-IN-SHIFT         \ record flag bits 52-59
 32 constant BLANK                \ every byte at or below it separates tokens
 $0A constant NEWLINE
 $5C constant LINE-COMMENT        \ a backslash
@@ -472,9 +471,6 @@ TYPED-VARIABLE REC ptr n
    SEARCH
    REC @ XREF-FOUND? 0= if UNDEFINED then ;
 
-: MIN-IN ( n -- n )
-   DNAME-MIN-IN-MASK and MIN-IN-SHIFT rshift ;
-
 \ The gates before a record's xt leaves the loop, in the engine's order: a
 \ wide effect, then an internal word.
 : XT-GATE ( -- )
@@ -496,17 +492,12 @@ TYPED-VARIABLE REC ptr n
 
 : GATE ( -- )
    XT-GATE
-   SCOPE-ENTRY-GUARD
-   depth REC @ XREF-FLAGS MIN-IN < if
-      s" E-UNDERFLOW" REFUSAL  s" interpret stack underdepth: " REFUSE
-   then ;
+   SCOPE-ENTRY-GUARD ;
 
-\ The flag word as the hook reads it: bit 0 found, bit 1 immediate, bits 8-15
-\ the certified inputs.
+\ The flag word as the hook reads it: bit 0 found, bit 1 immediate.
 : WORD-FLAGS ( -- n )
    REC @ XREF-FLAGS {: f:n :}
-   1 f DNAME-IMM and 0<> if 2 or then
-   f MIN-IN 8 lshift or ;
+   1 f DNAME-IMM and 0<> if 2 or then ;
 
 \ The dictionary record index of each word run since RECORD-RUNS, in order.
 DYNAMIC-BUFFER RUNS n

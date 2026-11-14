@@ -1,11 +1,8 @@
-\ underdepth-gate.f - a word with a checker-known effect (certified `:`,
-\ TRUSTED:, defer) carries its input arity in its record (DNAME-MIN-IN, flags
-\ bits 52-59), poked by the publish tails. Run bare at top level on a shallower
-\ stack it fails closed with `E-UNDERFLOW ... interpret stack underdepth:
-\ <token>` and rc 70 before its body runs. hb's startup words are defined by
-\ the same interpreter, so an engine-prefix word carries its arity too. The
-\ checker measures the input of `execute`, `catch` and `finally` in a body as
-\ any word's.
+\ underdepth-gate.f - a bare top-level call on a shallower stack than its
+\ word's effect states (a certified `:`, TRUSTED:, defer, does> clause,
+\ engine-prefix word or primitive) is rejected by the checker before the word
+\ runs: rc 70, `input underflow` at the word. The checker measures the input
+\ of `execute`, `catch` and `finally` in a body as any word's.
 
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
 \   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f
@@ -41,6 +38,8 @@ create UDG-IN UDG-CAP allot         \ stdin-piped program
 create UDG-OUT UDG-CAP allot
 create UDG-ERR UDG-CAP allot
 create UDG-EMPTY 1 allot            \ zero-length stdin
+create UDG-AT PATH-CAP allot
+TYPED-VARIABLE UDG-AT-U len
 
 : UDG-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: src:ptr u:n dst:ptr lenp:ptr :}
    u PATH-CAP > if E-FS-CAPACITY throw then
@@ -116,11 +115,20 @@ public
    UDG-LINE
    SB$ ;
 
-: UDG-ASSERT-UNDERDEPTH ( ptr u8 n -- ) {: a:ptr u:n :}   \ fail-closed reject naming the word
+: UDG-AT+ ( ptr u8 n -- )
+   UDG-AT PATH-CAP UDG-AT-U BUF-APPEND ;
+
+\ The word as the checker's rejection names it: `at '<word>'`.
+: UDG-AT$ ( ptr u8 n -- ptr u8 n )
+   UDG-AT-U BUF-RESET
+   s" at '" UDG-AT+  UDG-AT+  s" '" UDG-AT+
+   UDG-AT UDG-AT-U @ LEN>N ;
+
+: UDG-ASSERT-UNDERDEPTH ( ptr u8 n -- ) {: a:ptr u:n :}   \ the checker's rejection at the word
    UDG-EXITED @ TTRUE
    UDG-RC @ UDG-REJECT-RC T=
-   UDG-ERR$ s" interpret stack underdepth: " CONTAINS? TTRUE
-   UDG-ERR$ a u CONTAINS? TTRUE ;
+   UDG-ERR$ s" input underflow" CONTAINS? TTRUE
+   UDG-ERR$ a u UDG-AT$ CONTAINS? TTRUE ;
 
 : UDG-ASSERT-OK ( -- )
    UDG-EXITED @ TTRUE
@@ -231,11 +239,9 @@ public
    UDG-ENGINE$ UDG-EXEC:SUBJECT
    s" CORE-STR=" UDG-ASSERT-UNDERDEPTH ;
 
-\ --- primitive negatives: the band covers every specified primitive ---------
-\ A primitive's seed record carries its spec row's input count in DNAME-MIN-IN
-\ (src/habu/prims.f, baked by ENGINE-PRIMS:DNAME), so a bare primitive on a
-\ shallow stack takes the same reject. A row with no atoms (?dup, 2>r) states
-\ its count with an EMIN-IN! marker.
+\ --- primitive negatives: the checker measures a primitive by its row ------
+\ A bare primitive on a shallow stack takes the same rejection, a row with no
+\ input atoms (2>r) included.
 
 : UDG-BARE$ ( ptr u8 n -- ptr u8 n )     \ program = the bare token on one line
    SB-RESET
@@ -255,8 +261,9 @@ public
    s" patch32" UDG-PRIM-ROW
    s" bare evaluate fails closed pre-execution" T-LABEL
    s" evaluate" UDG-PRIM-ROW
-   s" bare ?dup fails closed (was a guard-page read, rc 102)" T-LABEL
-   s" ?dup" UDG-PRIM-ROW
+   s" evaluate on one cell fails closed pre-execution" T-LABEL
+   SB-RESET s" 1 evaluate" UDG-LINE SB$ UDG-EXEC:SUBJECT
+   s" evaluate" UDG-ASSERT-UNDERDEPTH
    s" bare 2>r fails closed (was a guard-page read, rc 102)" T-LABEL
    s" 2>r" UDG-PRIM-ROW
    s" partial-depth ffi-call fails closed" T-LABEL

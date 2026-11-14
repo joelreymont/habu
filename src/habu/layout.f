@@ -129,8 +129,8 @@ $0000100000000000 constant DNAME-TARGET
 \ [16] bits 44-63: flags above the name length, which every length read clears by this count.
 20 constant DNAME-FLAG-BITS
 -1 DNAME-FLAG-BITS rshift constant DNAME-LEN-MASK
-\ DNAME-MIN-IN (bits 52-59): certified minimum input arity in cells, 0 when unmarked: the
-\ interpret loop refuses a call the stack cannot feed; a compiled call carries no guard.
+\ DNAME-MIN-IN (bits 52-59): certified minimum input arity in cells, 0 when unmarked;
+\ a definer's publish tail or a primitive's seed record writes it.
 $0FF0000000000000 constant DNAME-MIN-IN-MASK
 $1000000000000000 constant DNAME-IMM
 $2000000000000000 constant DNAME-EXT
@@ -950,8 +950,8 @@ $4CA0 constant POLICY-REQUIRE-CELL  \ ordinary require xt; zero unless opted in
 \ fills.
 $4CA8 constant CLAUSE-CELL
 \ Top-row event class codes: the protocol between the interpret dispatch and
-\ an installed top-row hook. Word/tick events pass the LFIND flag word
-\ (bit 0 found, bit 1 DNAME-IMM, bits 8-15 DNAME-MIN-IN); literals pass 0.
+\ an installed top-row hook. Word/tick events pass a flag word (bit 0 found,
+\ bit 1 DNAME-IMM); literals pass 0.
 1 constant TOP-EV-NUM       \ number literal pushed ( n )
 2 constant TOP-EV-STR       \ s" / S\" literal pushed ( ptr u8 n )
 3 constant TOP-EV-CSTR      \ c" / C\" counted literal pushed ( ptr )

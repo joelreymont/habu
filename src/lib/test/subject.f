@@ -45,7 +45,10 @@ create STATUS-ERR STATUS-CAP allot
    PROCESS:OUT-W PROCESS:CLOSE-CELL
    PROCESS:ERR-W PROCESS:CLOSE-CELL ;
 
+\ The child's diagnostics are its stderr, whatever buffer its parent printed
+\ rejections into.
 : EVAL ( -- )
+   REJECTION:BUFFER-OFF
    SRC$ evaluate-closed ;
 
 : CHILD ( -- )

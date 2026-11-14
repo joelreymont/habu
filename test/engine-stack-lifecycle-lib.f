@@ -91,9 +91,9 @@ variable STATUS
    CHILD-RC ENGINE-ERROR:STACK-BOUNDS T=
    ERR ERRLEN @ s" E-STACK-BOUNDS habu: stack bounds exceeded (loop) lr " T-PREFIX= ;
 
-\ A data request below the base is the one refusal with a name: a primitive's
-\ seed record states its minimum input depth, so the interpret band refuses a
-\ shallower stack before the body runs, names the token and exits 70.
+\ A data request below the base is the one rejection with a name: the checker
+\ rejects a bare call on a shallower stack before the body runs, names the token
+\ and exits 70.
 : NAMED-UNDERDEPTH ( ptr u8 n ptr u8 n -- ) {: src:ptr size:n diag:ptr diagu:n :}
    src size CHILD-RC 70 T=
    ERR ERRLEN @ diag diagu T$= ;
@@ -116,7 +116,7 @@ variable STATUS
 : PRIMITIVE-BOUNDARIES ( -- )
    HB-TARGET-LINUX-X86-64? 0= if PRIMITIVE-RETURN-ARM then
    s" empty data-stack adjustment" T-LABEL
-   s" drop" S\" E-UNDERFLOW habu: interpret stack underdepth: drop\n" NAMED-UNDERDEPTH
+   s" drop" S\" habu: at 'drop' input underflow: the call takes more cells than the definition's declared inputs leave (needs 1, has 0); suggestion: Push the missing inputs before the call, or declare them in the signature; a definition may not consume below its declared inputs.\n" NAMED-UNDERDEPTH
    s" the last loop frame" T-LABEL
    s" : NEST ( n -- ) dup 0= if drop exit then 1 0 do dup 1 - recurse loop drop ; STACK-ABI:LOOP-FRAMES NEST"
    CHILD-RC 0 T=

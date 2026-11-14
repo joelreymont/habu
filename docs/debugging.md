@@ -231,9 +231,12 @@ so the message names the mechanism that caught the fault
 - `E-UNDERFLOW habu: interpret stack underdepth: <token>` (exit 70; in a file
   the place comes before the prose: `<path>:<line>: `, or `<path>: ` in an
   evaluated string):
-  the interpreter refused a token whose record states more inputs than the
-  stack holds, or compiled code reached through `execute`, `catch`, `finally`
-  or a quotation read below the data stack's base. Catchable; the REPL recovers the line.
+  compiled code reached through `execute`, `catch`, `finally` or a quotation
+  read below the data stack's base. Catchable; the REPL recovers the line.
+- `habu: at '<token>' input underflow: ... (needs <n>, has <m>)` (exit 70; in
+  a file `<path>:<line>: ` comes before `at`): the checker rejected a
+  top-level call whose word's effect takes more cells than the stack holds,
+  before the word ran.
 - `E-UNDERFLOW habu: <path>:<line>: stack underflow at '<token>'` (exit 70): a word ran and left the stack below its
   base because its body consumes more than its record states: a word defined
   with checking off, or a `TRUSTED:` body that drops more than it declares.

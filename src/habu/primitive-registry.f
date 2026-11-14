@@ -89,10 +89,9 @@ public
 : HELPER-REGISTER ( ptr u8 n n n -- )
    >LABEL swap >LABEL swap ADD OWNER-API-PRI-WID swap WID! ;
 
-\ THE SEED RECORD STATES ITS PRIMITIVE'S MINIMUM INPUT DEPTH (DNAME-MIN-IN,
-\ bits 52-59), read from the specification row, so the interpret band refuses
-\ a bare primitive on a shallower stack before its body runs, exactly as it
-\ refuses a certified word. An engine helper has no row and states 0.
+\ The seed record states its primitive's minimum input depth (DNAME-MIN-IN,
+\ bits 52-59), read from the specification row. An engine helper has no row
+\ and states 0.
 private
 
 : MIN-IN-BITS ( ptr u8 n -- n ) {: name:ptr size:n :}

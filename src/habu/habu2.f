@@ -553,9 +553,8 @@ public
 \ has stored it (DECL-CELL), not on the checking switch: a linker-built hb has
 \ no HOOK-CELL, and its does> runtime publishes here. The engine prefix
 \ self-load before checker.f has no owner. The same tail drains the RECMI latch
-\ through rec-min-in@ into DNAME-MIN-IN (flags bits 52-59) through the alias, so
-\ interpret-find fails closed on a bare underdepth call; min-in 0 (unchecked)
-\ pokes nothing.
+\ through rec-min-in@ into DNAME-MIN-IN (flags bits 52-59) through the alias;
+\ min-in 0 (unchecked) pokes nothing.
 : EM-REC-WIDE-PUBLISH ( -- )
    LBL LBL {: nohook:label nomark:label :}
    9 DATA NCOMP-DISPATCH:DECL-CELL LDR,  9 nohook CBZ,

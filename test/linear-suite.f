@@ -209,7 +209,7 @@ LIN-CHILD:ERR$ s" reader keyword needs a name: linear:" CONTAINS? TTRUE
 s" a row's bare call at an empty stack is refused by name" T-LABEL
 s" package LCH public DEFLINEAR LCH:tok ;package package LCH LINEAR: LCM ( n -- LCH:tok ) LCM"
    LIN-CHILD:RUN 70 T=
-LIN-CHILD:ERR$ s" interpret stack underdepth: LCM" CONTAINS? TTRUE
+LIN-CHILD:ERR$ s" at 'LCM' input underflow" CONTAINS? TTRUE
 
 \ ---- tools/check.f, an hb built with --repl and a built program -----------------
 package LIN-FILES

@@ -253,9 +253,7 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
 
 \ The just-written row's minimum input depth, for a primitive whose body reads
 \ the stack although its atoms state no input: the elaborated `execute`,
-\ `catch`, `evaluate`, `?dup` and `2>r`, and `finally`. ENGINE-PRIMS:DNAME
-\ bakes every row's depth into the primitive's seed record, where the interpret
-\ band refuses a shallower stack before the body runs. A row whose atoms state
+\ `catch`, `evaluate`, `?dup` and `2>r`, and `finally`. A row whose atoms state
 \ its inputs is refused, so a depth has one source.
 : EMIN-IN! ( n -- ) {: depth:n :}
    ROW-N @ 0 <= IF s" prims: min-in before any row" SPEC-RC die THEN

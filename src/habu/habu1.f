@@ -3726,9 +3726,8 @@ $748f82ee , $78a5636f , $84c87814 , $8cc70208 , $90befffa , $a4506ceb , $bef9a3f
 
 \ min-in-mark ( rec-idx min -- ): OR the certified minimum input arity into
 \ DNAME-MIN-IN (flags bits 52-59) of record rec-idx. The publisher and the Habu
-\ loop's definers set it on a certified word, and the interpreter refuses a call
-\ with fewer interpret-stack cells. Monotonic. The registry stamps this prim's
-\ own record DNAME-INT, so user source cannot re-drive it.
+\ loop's definers set it on a certified word. Monotonic. The registry stamps
+\ this prim's own record DNAME-INT, so user source cannot re-drive it.
 : BMININMARK ( -- )
    B G-POP                               \ x10 = min-in cells
    A G-POP                               \ x9  = record index
