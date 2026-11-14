@@ -567,10 +567,11 @@ variable OF-U                           \ 0 for the other forms
    rejects 0<> if s" refused" else s" verified" then RESULT ;
 
 
-\ Run the verification in one neutral checker scope, every diagnostic the
-\ checker renders a packet on stdout: the code it threw, 0 for none.
-: SCOPED ( [ -- ] -- n ) {: q :}
-   0 0= REJECTION:JSON !
+\ Run the verification in one neutral checker scope, each record on stdout, a
+\ packet when json, else prose: the code it threw, 0 for none.
+: SCOPED ( bool [ -- ] -- n )
+   {: json:bool q :}
+   json REJECTION:JSON !
    OUT-FD REJECTION:FD!
    CHECKER-SCOPE-START-NEUTRAL
    q catch
@@ -581,7 +582,7 @@ variable OF-U                           \ 0 for the other forms
    0 FAILED !
    0 STOP !
    true VERIFY:REPORT-DEFERRALS
-   [: VERIFY-ALL ;] SCOPED {: rc:n :}
+   true [: VERIFY-ALL ;] SCOPED {: rc:n :}
    rc 0<> if
       ERR-FD s" check-verify: stopped by throw " WRITE ERR-FD rc FD-N ERR-FD NEWLINE
       rc throw
@@ -593,7 +594,7 @@ variable OF-U                           \ 0 for the other forms
 
 
 : PREVERIFY-CUR-ACT ( -- )
-   SUBJECT$ 0 SCRIPT-ARGV$ 1 SCRIPT-ARGV$
+   SUBJECT$ 0 SCRIPT-ARGV$ 2 SCRIPT-ARGV$
    VERIFY:SOURCE-COMPOSE-LABELED-IN-SCOPE ;
 
 : PREVERIFY-CUR ( -- )
@@ -603,13 +604,13 @@ variable OF-U                           \ 0 for the other forms
 
 70 constant REFUSED-RC                  \ a refused definition's stop (verify-source.f BODY-VERDICT)
 
-\ A refusal that rendered its packet (CHECKER-DEF-STOPPED?) stops as a refused
+\ A refusal that rendered its record (CHECKER-DEF-STOPPED?) stops as a refused
 \ verdict does, REFUSED-RC; any other stop keeps its code.
 : STOP-CODE ( n -- n )
    dup CHECKER-DEF-STOPPED? if drop REFUSED-RC then ;
 
 \ This pre-pass leaves deferred source to the run; only VERIFY-CLOSURE warns.
-: PREVERIFY ( -- )
+: PREVERIFY ( bool -- )
    [: PREVERIFY-CUR ;] SCOPED {: rc:n :}
    rc 0<> if rc STOP-CODE STOP-RESULT exit then
    s" verified" RESULT ;
@@ -617,7 +618,7 @@ variable OF-U                           \ 0 for the other forms
 public
 
 : USAGE ( -- )
-   s" usage: check-verify-child.f -- SUBJECT [LABEL | --at N | --of TAIL | --index]" 64 die ;
+   s" usage: check-verify-child.f -- SUBJECT [--label LABEL [--json-errors] | --at N | --of TAIL | --index]" 64 die ;
 
 \ N in the third form's `--at N`; -1 for none.
 : CURSOR-ARG ( -- n )
@@ -679,7 +680,17 @@ public
    then
    SCRIPT-ARGC 2 = if
       1 SCRIPT-ARGV$ s" --index" CORE-STR= if READ-STDIN INDEX-SUBJECT exit then
-      READ-STDIN PREVERIFY exit
+   then
+   SCRIPT-ARGC 3 = if
+      1 SCRIPT-ARGV$ s" --label" CORE-STR= if
+         READ-STDIN false PREVERIFY exit
+      then
+   then
+   SCRIPT-ARGC 4 = if
+      1 SCRIPT-ARGV$ s" --label" CORE-STR=
+      3 SCRIPT-ARGV$ s" --json-errors" CORE-STR= and if
+         READ-STDIN true PREVERIFY exit
+      then
    then
    CURSOR-ARG {: at:n :}
    at 0 >= if at VERIFY:CURSOR! then

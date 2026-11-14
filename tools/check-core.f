@@ -1125,13 +1125,13 @@ private
 : CHK-TRUNCATED-LN ( -- )
    s" check.f: the verifier did not complete: its output exceeded the capture" CHK-EXPLAIN-LN ;
 
-\ The pre-pass's packets on stderr, then its child's prose.
+\ The pre-pass's records on stderr, then its child's stderr.
 : CHK-PREVERIFY-RELAY ( -- )
    VERIFY-OUT$ CHK-ERR
    VERIFY-LOG$ CHK-EXPLAIN ;
 
 \ The pre-pass runs in the verifier child (PREVERIFY-BYTES), resolving only the
-\ run's words; its packets and the child's prose precede what its stop leaves.
+\ run's words; its records and the child's stderr precede what its stop leaves.
 : CHK-PREVERIFY-REPORT ( result<n,PROCESS:ending> -- )
    CHK-PREVERIFY-RELAY
    MATCH result
@@ -1140,11 +1140,12 @@ private
    ;MATCH ;
 
 : CHK-PREVERIFY-ACT ( -- )
-   CHK-SOURCE-BYTES CHK-SRC-PATH CHK-LABEL CHK-DEADLINE@ PREVERIFY-BYTES
+   CHK-SOURCE-BYTES CHK-SRC-PATH CHK-LABEL CHK-DEADLINE@
+   CHK-JSON @ 0<> PREVERIFY-BYTES
    CHK-PREVERIFY-REPORT ;
 
-\ More output than the child's capture holds leaves no answer: the packets and
-\ prose received before it, and a closing line.
+\ More output than the child's capture holds leaves no answer: the records and
+\ stderr received before it, and a closing line.
 : CHK-RUN-PREVERIFY ( -- )
    [: CHK-PREVERIFY-ACT ;] catch {: rc:n :}
    rc 0= if exit then

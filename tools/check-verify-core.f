@@ -518,6 +518,7 @@ TYPED-VARIABLE VFY-PREPASS bool         \ the child runs check.f's pre-pass ...
 TYPED-VARIABLE VFY-INDEX? bool          \ standalone candidate scan
 TYPED-VARIABLE VFY-LABEL-A ptr u8       \ ... naming the subject by this label
 variable VFY-LABEL-U
+TYPED-VARIABLE VFY-PRE-JSON bool        \ ... and rendering its records as packets
 TYPED-VARIABLE VFY-OF-A ptr u8          \ the tail whose uses the child writes in every file,
 variable VFY-OF-U                       \ 0 for none
 variable VFY-STOP-RC                    \ a stopped child: its code, 0 for none,
@@ -557,6 +558,7 @@ variable VFY-TARGET-U
    0 VFY-FAULT-LEN !
    0 VFY-TARGET-U !
    false VFY-PREPASS !
+   false VFY-PRE-JSON !
    false VFY-INDEX? ! ;
 
 
@@ -716,7 +718,10 @@ variable VFY-EXE-U
    s" --" CHK-ARG+
    VFY-PATH$ CHK-ARG+
    VFY-INDEX? @ if s" --index" CHK-ARG+ then
-   VFY-PREPASS @ if VFY-LABEL-A @ VFY-LABEL-U @ CHK-ARG+ then
+   VFY-PREPASS @ if
+      s" --label" CHK-ARG+  VFY-LABEL-A @ VFY-LABEL-U @ CHK-ARG+
+   then
+   VFY-PRE-JSON @ if s" --json-errors" CHK-ARG+ then
    VFY-AT @ 0 >= if s" --at" CHK-ARG+  SB-RESET VFY-AT @ FMT:SB-U SB$ CHK-ARG+ then
    VFY-OF-U @ 0 > if s" --of" CHK-ARG+  VFY-OF-A @ VFY-OF-U @ CHK-ARG+ then
    PROC-ENV-INHERIT-MISSING ;
@@ -855,7 +860,7 @@ variable VFY-EXE-U
 
 
 \ The line that ends at the stopped answer starting at AT, when it is a reason
-\ line: its text kept in VFY-STOP-REASON. Where the packets end.
+\ line: its text kept in VFY-STOP-REASON. Where the records end.
 : VFY-REASON-TAKE ( n -- n ) {: at:n :}
    at 0= if at exit then
    at 1- VFY-LINE-START {: from:n :}
@@ -869,7 +874,7 @@ variable VFY-EXE-U
    from ;
 
 
-\ Keep the packets in the child's OUTU bytes and the answer and stop reason that
+\ Keep the records in the child's OUTU bytes and the answer and stop reason that
 \ end them; a cut line, or a reason line no answer follows, is dropped.
 : VFY-TAKE ( n -- )
    {: outu:n :}
@@ -1171,12 +1176,14 @@ variable VFY-EXE-U
 
 public
 
-\ The packets of the last VERIFY-BYTES or PREVERIFY-BYTES, the checker's
-\ schema-1 packets, one JSON object per line: the subject's name PATH's
-\ canonical absolute path and count positions in the bytes, a dependency's name
-\ its file and count there. A duplicate definition, which the checker writes no
-\ packet for, is the record --all-errors writes; the stop's record
-\ (STOP-RECORD$) is the last line. Every VERIFY-*$ holds until the next call.
+\ The records of the last VERIFY-BYTES or PREVERIFY-BYTES: the checker's
+\ schema-1 packets, one JSON object per line, or prose from a PREVERIFY-BYTES
+\ not asked for JSON. A packet names the subject PATH's canonical absolute path,
+\ LABEL after PREVERIFY-BYTES, and counts positions in the bytes, a dependency
+\ its file and counts there. After VERIFY-BYTES a duplicate definition, which
+\ the checker writes no packet for, is the record --all-errors writes, and the
+\ stop's record (STOP-RECORD$) is the last line. Every VERIFY-*$ holds until the
+\ next call.
 : VERIFY-OUT$ ( -- ptr u8 n )
    VFY-OUT-U @ 0= if NULL$ exit then
    0 VFY-OUT VFY-OUT-U @ ;
@@ -1702,13 +1709,14 @@ public
    VFY-BATCH-OUTCOME @ VFY-CLEAN-EXIT? ;
 : VERIFY-BATCH-COMPLETE? ( -- bool )  VFY-BATCH-COMPLETE @ ;
 
-\ check.f's pre-pass in the verifier child, which resolves words as the run does:
-\ ok 0, ok the code it stopped with, or err how a child with no answer ended.
-: PREVERIFY-BYTES ( ptr u8 n ptr u8 n ptr u8 n ms -- result<n,PROCESS:ending> )
-   {: src:ptr srcu:n path:ptr pathu:n label:ptr labelu:n deadline :}
+\ check.f's pre-pass in the verifier child, records as packets when json, else
+\ prose: ok 0, ok its stop's code, or err how a child with no answer ended.
+: PREVERIFY-BYTES ( ptr u8 n ptr u8 n ptr u8 n ms bool -- result<n,PROCESS:ending> )
+   {: src:ptr srcu:n path:ptr pathu:n label:ptr labelu:n deadline json:bool :}
    VFY-RESET
    path pathu VFY-PATH!
    true VFY-PREPASS !
+   json VFY-PRE-JSON !
    label VFY-LABEL-A !
    labelu VFY-LABEL-U !
    src CHK-BYTES-A !
