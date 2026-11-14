@@ -2199,13 +2199,6 @@ package ENGINE-EMIT
 
 package ENGINE-EMIT
 
-private
-
-: EM-RESET-COMPILE-STATE ( -- )
-   EM-ABORT-COMPILE-STATE
-   9 0 MOVZ,
-   9 DATA RSP-CELL STR,  9 DATA HND-CELL STR,  9 DATA LOOPSP-CELL STR, ;
-
 public
 \ An undefined word in a `:` body is a rejected definition: 70 is both the
 \ catchable throw code and the uncaught exit.
@@ -2224,9 +2217,8 @@ private
 \ the token-start mark. The mark is the innermost buffer's current token, or its
 \ end when it exited cleanly; frames begun in an open definition nest inside the
 \ one that owns the compile, so all pop while the mark holds. Popping stops when
-\ EVALD reaches 0 or the nearest handler (x11, read once because
-\ EM-RESET-COMPILE-STATE zeroes HND-CELL) is inside the current frame; delivery
-\ then matches the non-evaluate path.
+\ EVALD reaches 0 or the nearest handler (x11) is inside the current frame;
+\ delivery then matches the non-evaluate path.
 : EM-EVAL-THROW-RECOVER ( -- )
    LBL LBL LBL LBL {: owned:label scope:label unrefused:label kept:label :}
    LBL {: retired:label :}
@@ -2295,7 +2287,7 @@ private
       15 DATA EVALERR-CELL STR,
       12 DATA EVALD-CELL LDR,  12 12 1 SUBI,  12 DATA EVALD-CELL STR,
       12 13 EVAL-FRAME:PEND LDR,  12 LEVLL LABEL@ CBNZ, \ the outer buffer's definition keeps compiling
-      EM-RESET-COMPILE-STATE                          \ clobbers x9 only; x11,x15 preserved
+      EM-ABORT-COMPILE-STATE                          \ clobbers x9 only; x11,x15 preserved
       LEVLL LABEL@ B,
    LEVLD LABEL@ LBL,
    \ The handler is compiled code and may ask the checker before the loop reads
