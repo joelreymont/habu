@@ -1507,11 +1507,13 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
    {: u:n :}
    b u ;
 
-\ The checker declaration xt given takes the name as the capture spells it,
-\ qualified, and the signature given.
-: DEF-DECLARE ( ptr u8 n n -- )
-   {: sig:ptr len:n xt:n :}
-   DEF-CAPTURED-NAME sig len xt AS-DECLARE execute ;
+\ The checker declaration xt given takes the name a u and the signature given.
+: DEF-DECLARE-NAME ( ptr u8 n ptr u8 n n -- ) {: a:ptr u:n sig:ptr len:n xt:n :}
+   a u sig len xt AS-DECLARE execute ;
+
+\ DEF-DECLARE-NAME with the name as the capture spells it, qualified.
+: DEF-DECLARE ( ptr u8 n n -- ) {: sig:ptr len:n xt:n :}
+   DEF-CAPTURED-NAME sig len xt DEF-DECLARE-NAME ;
 
 \ The rejection marks the opener's token in the source, the name a colon
 \ definition captures.
@@ -2516,17 +2518,17 @@ variable DEF-VALUE
 
 \ A row the checker refuses throws before DEF-FIXED counts the record, so no
 \ callable name is left.
-: DEF-REGISTER-IDENTITY ( ptr u8 n n -- ) {: sig:ptr su:n off:n :}
+: DEF-REGISTER-IDENTITY ( ptr u8 n ptr u8 n n -- ) {: a:ptr u:n sig:ptr su:n off:n :}
    NCOMP-DISPATCH:DECL-A off PKG-OPERATION {: own:n :}
-   own 0<> if sig su own DEF-DECLARE then
+   own 0<> if a u sig su own DEF-DECLARE-NAME then
    off PKG-TARGET {: target:n :}
    target 0= if exit then
    NCOMP-DISPATCH:DECL-A off PKG-OPERATION target = if exit then
-   sig su target DEF-DECLARE ;
+   a u sig su target DEF-DECLARE-NAME ;
 
 : DEF-REGISTER-CAST ( -- )
-   TSIG-A-CELL ADDR@ TSIG-U-CELL CELL@ NCOMP-DISPATCH:DECL-CAST-OFF
-   DEF-REGISTER-IDENTITY ;
+   DEF-CAPTURED-NAME TSIG-A-CELL ADDR@ TSIG-U-CELL CELL@
+   NCOMP-DISPATCH:DECL-CAST-OFF DEF-REGISTER-IDENTITY ;
 
 \ The record takes what the checker's registrar latched: the wide mark, then
 \ the minimum input arity, under which the interpret dispatch refuses a call.
@@ -2644,6 +2646,8 @@ variable DEF-VALUE
    q 0 <= q 1+ u >= or if false exit then
    a u q 1+ COLON-AT 0< ;
 
+\ A qualified name's certifier gets the name token, which its rejection places:
+\ with no pending record the capture maps to no input.
 : DEF-LINEAR ( -- )
    DEF-ROOM
    s" linear:" OPERAND
@@ -2651,7 +2655,8 @@ variable DEF-VALUE
    false DEF-SIG-SPAN {: s:ptr end:ptr :}
    s end DEF-SIG-PASS
    LINEAR-QUALIFIED? if
-      s 1 + end s - 2 - NCOMP-DISPATCH:DECL-LINEAR-OFF DEF-REGISTER-IDENTITY
+      TOKEN$ s 1 + end s - 2 - NCOMP-DISPATCH:DECL-LINEAR-OFF
+      DEF-REGISTER-IDENTITY
       s" E-BAD-QUALIFIED" REJECTION:OPEN
       s" the linear type `" REJECTION:EMIT-STR  TOKEN$ REJECTION:EMIT-STR
       s" ` has a qualified name" REJECTION:EMIT-STR
@@ -2663,8 +2668,8 @@ variable DEF-VALUE
    then
    DEF-QUALIFY DKIND:CAST DEF-RECORD
    s end DEF-SIG-INNER
-   TSIG-A-CELL ADDR@ TSIG-U-CELL CELL@ NCOMP-DISPATCH:DECL-LINEAR-OFF
-   DEF-REGISTER-IDENTITY
+   DEF-CAPTURED-NAME TSIG-A-CELL ADDR@ TSIG-U-CELL CELL@
+   NCOMP-DISPATCH:DECL-LINEAR-OFF DEF-REGISTER-IDENTITY
    0 0 COMP-BODY:cast DEF-FIXED  DEF-CLOSE
    DEF-CAST-FACTS ;
 
