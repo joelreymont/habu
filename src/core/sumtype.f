@@ -115,6 +115,9 @@ PTR-VARIABLE TDW-A   variable TDW-U   \ short reason (diagnostics)
 PTR-VARIABLE TDF-A   variable TDF-U   \ what to write instead (diagnostics)
 variable TDECL-OVERSIZE             \ a collection buffer capped an over-cap body
 variable TDECL-CUR-FAM              \ family id being declared (-1 outside a body)
+create TDECL-BUF TDECL-CAP allot    \ a collected body, its tokens one blank apart
+variable TDECL-U
+PTR-VARIABLE TDECL-FIRST            \ the body's first token, as parse-name gave it
 
 : TDECL-TOK! ( ptr u8 n -- ) TDT-U ! TDT-A ! ;
 : TDECL-WHY! ( ptr u8 n ptr u8 n -- ) TDF-U ! TDF-A ! TDW-U ! TDW-A ! ;
@@ -188,11 +191,34 @@ private
    TDM-SCH @ TDM-ROOT @ SCHEMA-REG:REWIND
    QUOT-ROLLBACK ;
 
+\ A token in a collected body is a copy no source holds. Where the source of
+\ the body's first token is held, it maps back: k blanks precede it in the
+\ copy, so it lies k source tokens past the first, at the same offset.
+: TDECL-COPY? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a TDECL-BUF - {: at:n :}
+   at 0 >=  at TDECL-U @ < and  at u + TDECL-U @ <= and ;
+\ The blanks before byte at of the copy, and at's offset past the last one.
+: TDECL-ORDINAL ( n -- n n ) {: at:n :}
+   0 0  at 0 ?do
+      TDECL-BUF i + c@ 32 = IF drop 1 + i 1 + THEN
+   loop  at swap - ;
+\ Past one source token and the blanks after it.
+: TDECL-SKIP ( ptr u8 -- ptr u8 )
+   BEGIN dup c@ 32 > WHILE 1 + REPEAT
+   BEGIN dup c@ 33 < WHILE 1 + REPEAT ;
+: TDECL-SOURCE-TOK ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   a TDECL-BUF - TDECL-ORDINAL {: k:n off:n :}
+   TDECL-FIRST @  k 0 ?do TDECL-SKIP loop  off +  u ;
+: TDECL-PLACED-TOK ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   a u TDECL-COPY? 0= IF a u EXIT THEN
+   TDECL-FIRST @ REJECTION:HELD? 0= IF a u EXIT THEN
+   a u TDECL-SOURCE-TOK ;
+
 \ A DEFFAMILY packet points at the name whatever the refusal, as the source
 \ token TDS: the folded DEFTYPE header the body checks has no place.
 : TDECL-REPORT-TOK ( -- ptr u8 n )
    TDS-U @ 0 > IF TDS-A @ TDS-U @ EXIT THEN
-   TDT-A @ TDT-U @ ;
+   TDT-A @ TDT-U @ TDECL-PLACED-TOK ;
 
 : TDECL-REPORT ( -- )
    TDK-A @ TDK-U @  TDN-A @ TDN-U @  TDECL-REPORT-TOK
@@ -200,8 +226,9 @@ private
 
 \ A throw rolls the registries back. E-TDECL-UNRESOLVED propagates unreported,
 \ a status in 1..255 was printed where it arose, and a code thrown while no
-\ reason is armed is no declaration's: all three are rethrown. Any other
-\ renders, then counts in a multi-error load or stops the load (DEF-STOPPED).
+\ reason is armed is no declaration's: all three are rethrown. Any other is
+\ rendered before the rollback, which rewinds the stores its token may point
+\ into, then counts in a multi-error load or stops the load (DEF-STOPPED).
 : TDECL-RUN ( [ -- ] -- )
    READ-PENDING                     \ no type entry is read inside the declaration
    TDECL-MARK
@@ -210,11 +237,12 @@ private
    0 TDECL-OVERSIZE !   \ a body refused before TDECL-REQUIRE-FIT left it set
    TDECL-SEEN-CLEAR
    rc 0= IF EXIT THEN
-   TDECL-RESTORE
-   rc E-TDECL-UNRESOLVED = IF rc throw THEN
-   SIG-UNRES-CLEAR
-   rc 1 >=  rc 255 <= and  TDW-U @ 0= or IF rc throw THEN
+   rc E-TDECL-UNRESOLVED = IF TDECL-RESTORE rc throw THEN
+   rc 1 >=  rc 255 <= and  TDW-U @ 0= or IF
+      TDECL-RESTORE  SIG-UNRES-CLEAR  rc throw THEN
    TDECL-REPORT
+   TDECL-RESTORE
+   SIG-UNRES-CLEAR
    MULTI-ERR? IF REJECTION:KEEP EXIT THEN
    rc DEF-STOPPED !
    CHECKER-REJECT-RC REJECTION:STOP ;
@@ -316,6 +344,13 @@ private
          s" rename the family: a variant declared in this scope already has this name"
          E-TDECL-NAME TDECL-THROW
    THEN ;
+
+\ A DERIVE-marked family must not declare a variant spelled like a generated
+\ derived tail: the constructor package would hold two words with one name.
+: TDECL-COLLIDE-THROW ( ptr u8 n -- )
+   s" variant name collides with a derived word"
+      s" rename the variant: under `DERIVE` the names `eq`, `hash` and `tag` are taken"
+      E-TDECL-NAME TDECL-THROW ;
 
 \ A VARIANT name lives in no scope of its own: any collision with a family
 \ the declaring scope resolves (TYPE-NAME:FAMILY-TAKEN?) is a reserved name,
@@ -652,6 +687,9 @@ PTR-VARIABLE TDV-NA    variable TDV-NU
 : TDECL-VARIANT-NAME ( -- )
    TDECL-NEXT {: a:ptr u:n :}
    a u TDECL-REQUIRE-VARIANT-NAME
+   a u TFAM-DERIVED-TAIL? IF
+      TDECL-CUR-FAM @ TFAM-DERIVE-ANY? IF a u TDECL-COLLIDE-THROW THEN
+   THEN
    a TDV-NA !  u TDV-NU ! ;
 
 : TDECL-VARIANT-CLOSE ( n -- ) {: fam:n :}
@@ -882,18 +920,12 @@ private
    fa fu fam TDECL-DERIVE-SET          \ the FIRST token must be a feature (unknown rejects);
    BEGIN fam TDECL-DERIVE-MORE? 0= UNTIL ;   \ later tokens end the order-free list by pushback
 
-\ a DERIVE-marked family must not declare a variant spelled like a generated
-\ derived tail: the ctor package would hold two words with one name.
 public
 
 : TDECL-DERIVE-COLLIDE ( n n n -- ) {: fam:n vstart:n count:n :}
    fam TFAM-DERIVE-ANY? 0= IF EXIT THEN
    vstart count + vstart ?do
-      i SUMV-NAME$ TFAM-DERIVED-TAIL? IF
-         i SUMV-NAME$
-         s" variant name collides with a derived word"
-            s" rename the variant: under `DERIVE` the names `eq`, `hash` and `tag` are taken"
-            E-TDECL-NAME TDECL-THROW THEN
+      i SUMV-NAME$ TFAM-DERIVED-TAIL? IF i SUMV-NAME$ TDECL-COLLIDE-THROW THEN
    loop ;
 
 \ payload-role gate: every payload/field schema node must be
@@ -971,7 +1003,6 @@ private
       s" declare at least one variant, as in `VARIANT none ;VARIANT`"
       E-TDECL-SYNTAX TDECL-THROW THEN
    fam vstart TDECL-NICHE-REQUIRE
-   fam vstart TDV-N @ TDECL-DERIVE-COLLIDE
    fam vstart TDV-N @ TDECL-DERIVE-REQUIRE
    fam vstart TDV-N @ TFAM-VAR-RANGE!
    fam TDV-MAX @ TFAM-SLOTS!
@@ -1642,9 +1673,6 @@ variable TDPV-FAM   -1 TDPV-FAM !        \ family the snapshot describes (-1 = n
 variable TDPV-BASE                       \ its first variant row
 variable TDPV-VARS                       \ variants captured
 variable TDPV-NODES                      \ nodes captured
-
-create TDECL-BUF TDECL-CAP allot
-variable TDECL-U
 
 : TDPV-THROW ( n ptr u8 n -- )   \ family + reason -> the named provider reject
    {: fam:n ra:ptr ru:n :}
@@ -2383,7 +2411,7 @@ public
 
 private
 
-: TDECL-CLEAR ( -- ) 0 TDECL-U !  0 TDECL-OVERSIZE ! ;
+: TDECL-CLEAR ( -- ) 0 TDECL-U !  0 TDECL-OVERSIZE !  NULL-PTR TDECL-FIRST ! ;
 : TDECL-C, ( n -- )                     \ over-cap: cap + flag (never raw-die); the
    TDECL-U @ 1 + TDECL-CAP > IF drop -1 TDECL-OVERSIZE ! EXIT THEN   \ body reaches the checker
    TDECL-BUF TDECL-U @ + c!
@@ -2391,7 +2419,7 @@ private
 : TDECL-APP ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 ?do a i + c@ TDECL-C, loop ;
 : TDECL-TOKEN+ ( ptr u8 n -- )
-   TDECL-U @ 0 > IF 32 TDECL-C, THEN
+   TDECL-U @ 0 > IF 32 TDECL-C, ELSE over TDECL-FIRST ! THEN
    TDECL-APP ;
 
 : SUMTYPE-COLLECT ( -- bool )   \ buffer tokens; false = input ended unterminated
