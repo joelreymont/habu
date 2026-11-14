@@ -237,17 +237,21 @@ so the message names the mechanism that caught the fault
 - `E-UNDERFLOW habu: <path>:<line>: stack underflow at '<token>'` (exit 70): a word ran and left the stack below its
   base because its body consumes more than its record states: a word defined
   with checking off, or a `TRUSTED:` body that drops more than it declares.
-- `E-STACK-BOUNDS habu: stack bounds exceeded (data|return|loop) lr <lr>`
+- `error[E-STACK-BOUNDS]: the data|return|loop stack ran past its bounds`
   (exit 102): an overflow or a below-base access where no throw entry exists
-  (a task's own stack, a stripped AOT image).
-  Match the prefix `E-STACK-BOUNDS` unless the stack matters.
-- `E-STACK-BOUNDS habu: stack bounds exceeded (machine) lr <lr>` (exit 102):
+  (a task's own stack, a stripped AOT image). The note `in` names the word
+  whose code ran; `at` gives the address instead when no dictionary record
+  holds it or the image is stripped.
+  Match the prefix `error[E-STACK-BOUNDS]` unless the stack matters.
+- `error[E-STACK-BOUNDS]: the machine stack ran past its bounds` (exit 102):
   the OS thread's own stack overflowed, typically unbounded recursion; `catch`
-  does not receive it.
-- `E-MEMORY-FAULT habu: memory fault at <address> pc <pc>` (exit 110): Habu
-  code read or wrote unmapped or unwritable memory. It is thrown on the
-  faulting thread, so `catch` receives 110 and a task ends with it; the line is
-  written even when a catch takes the throw.
+  does not receive it. Its note is `at`, the interrupted pc.
+- `error[E-MEMORY-FAULT]: a read or write faulted` (exit 110), notes `address`
+  and `in`: Habu code read or wrote unmapped or unwritable memory. It is thrown
+  on the faulting thread, so `catch` receives 110 and a task ends with it; the
+  record is written even when a catch takes the throw.
+- These records have REJECTION's form, and are JSON when `REJECTION:JSON` is
+  set.
 - `habu-crash regs [...]` and one hex value per line: any other fault: a
   SIGSEGV or SIGBUS in C code or a signal handler, a jump to an address outside
   Habu code or into a guard page, a second fault while one is delivered, and

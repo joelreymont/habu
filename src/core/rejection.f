@@ -35,7 +35,13 @@ create NUM-BUF 20 allot  variable NUM-V  variable NUM-N
 public
 variable DEST   0 DEST !                 \ 0 = stdout, 1 = TEXT (sig recording)
 variable TEXT-LEN
-variable JSON   0 JSON !
+\ The main DATA's REJECTION-JSON-CELL from any thread: a task's region is not
+\ the main one, and main reads data-base because a cross build's host is not
+\ mapped at DATA-VA. No signature: `ptr n` would refuse a stored flag, and the
+\ inferred row keeps data-base's kind, which takes a flag and refuses an address.
+: JSON
+   data-base TASK-TCB-CELL + @ 0= IF data-base REJECTION-JSON-CELL + EXIT THEN
+   data-base  DATA-VA data-base NULL-PTR - -  +  REJECTION-JSON-CELL + ;
 \ QUIET counts nested quiet-check scopes. It is created before the check
 \ hook exists, so no effect is published for it.
 variable QUIET

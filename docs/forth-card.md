@@ -559,9 +559,9 @@ holds an address**.
 - A literal `0 throw` is refused (`E-THROW-ZERO`): 0 means no error. A computed
   0 unwinds unchecked, a caller bug: its `catch` answers 0.
 - A read or write that faults in Habu code throws `ENGINE-ERROR:MEMORY-FAULT`
-  (110) on the faulting thread, after the line `E-MEMORY-FAULT habu: memory
-  fault at <address> pc <pc>` on fd 2: `catch` answers 110, a task ends with
-  110, an uncaught one exits 110. A fault in C code, a jump out of Habu code
+  (110) on the faulting thread, after the record `error[E-MEMORY-FAULT]: a
+  read or write faulted` with notes `address` and `in` on fd 2: `catch`
+  answers 110, a task ends with 110, an uncaught one exits 110. A fault in C code, a jump out of Habu code
   and a fault while one is delivered still dump and die by the signal.
 - Arithmetic is modular; a literal 0 divisor of `/`, `mod` or `/mod` is refused
   (`E-DIV-ZERO`), and a computed one's answer is undefined;

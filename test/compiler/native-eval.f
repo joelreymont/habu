@@ -270,8 +270,8 @@ create ERR IO-CAP allot
    PROCESS:ENDING>RC RC>N ENGINE-ERROR:STACK-BOUNDS T=
    nip LEN>N {: erru:n :}
    s" and names the data stack" T-LABEL
-   ERR erru s" E-STACK-BOUNDS habu: stack bounds exceeded (data) lr " STARTS-WITH?
-   TTRUE ;
+   ERR erru S\" error[E-STACK-BOUNDS]: the data stack ran past its bounds\n"
+   STARTS-WITH? TTRUE ;
 
 \ The same reach outside any closed text: the child's text runs a compiled
 \ word through execute with one cell on the stack it was given.
@@ -286,7 +286,7 @@ create ERR IO-CAP allot
    s" and names the token the interpreter was running" T-LABEL
    ERR erru s" interpret stack underdepth: execute" CONTAINS? TTRUE
    s" and is no stack bounds exit" T-LABEL
-   ERR erru s" stack bounds exceeded" CONTAINS? TFALSE ;
+   ERR erru s" E-STACK-BOUNDS" CONTAINS? TFALSE ;
 
 \ UNFINISHED's text with no catch around it. The child inherits this
 \ process's dictionary, which UNFINISHED left holding NATIVE-EVAL-D.

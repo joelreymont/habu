@@ -65,8 +65,8 @@ variable STATUS
    gu wu < if 0 0= 0= exit then
    g wu w wu T-STR= ;
 
-\ GOT need only start with WANT: the guard-page crash handler (src/habu/crash.f)
-\ names the stack that faulted, then the trapping code's lr.
+\ GOT need only start with WANT: the guard-page record's first line names the
+\ stack that faulted, and the word its note names varies.
 : T-PREFIX= ( ptr u8 n ptr u8 n -- ) {: g:ptr gu:n w:ptr wu:n :}
    T-NEXT
    g gu w wu PREFIX? 0= if
@@ -77,19 +77,22 @@ variable STATUS
    T-LABEL-CLEAR ;
 
 \ A push past the capacity and a return/loop frame past its region both exit
-\ ENGINE-ERROR:STACK-BOUNDS (102); only the parenthetical after the shared
-\ prefix says which, so every call site names the stack it expects.
+\ ENGINE-ERROR:STACK-BOUNDS (102); only the message says which, so every call
+\ site names the stack it expects.
 : REFUSED-DATA ( ptr u8 n -- )
    CHILD-RC ENGINE-ERROR:STACK-BOUNDS T=
-   ERR ERRLEN @ s" E-STACK-BOUNDS habu: stack bounds exceeded (data) lr " T-PREFIX= ;
+   ERR ERRLEN @ S\" error[E-STACK-BOUNDS]: the data stack ran past its bounds\n"
+   T-PREFIX= ;
 
 : REFUSED-RETURN ( ptr u8 n -- )
    CHILD-RC ENGINE-ERROR:STACK-BOUNDS T=
-   ERR ERRLEN @ s" E-STACK-BOUNDS habu: stack bounds exceeded (return) lr " T-PREFIX= ;
+   ERR ERRLEN @ S\" error[E-STACK-BOUNDS]: the return stack ran past its bounds\n"
+   T-PREFIX= ;
 
 : REFUSED-LOOP ( ptr u8 n -- )
    CHILD-RC ENGINE-ERROR:STACK-BOUNDS T=
-   ERR ERRLEN @ s" E-STACK-BOUNDS habu: stack bounds exceeded (loop) lr " T-PREFIX= ;
+   ERR ERRLEN @ S\" error[E-STACK-BOUNDS]: the loop stack ran past its bounds\n"
+   T-PREFIX= ;
 
 \ A data request below the base is the one refusal with a name: a primitive's
 \ seed record states its minimum input depth, so the interpret band refuses a

@@ -223,13 +223,9 @@ public
    want wu 1 code WASM ;
 
 false [if] \ off until dot habu-add-the-checks-a49d054d
-\ Stderr is one line, the native engine's report of a caught memory fault.
-: FAULT-LINE? ( ptr u8 n -- bool )
-   RTRIM {: a:ptr u:n :}
-   a u 10 INDEX-OF MATCH option
-      some OF drop false ENDOF
-      none OF a u s" E-MEMORY-FAULT habu: memory fault at " STARTS-WITH? ENDOF
-   ;MATCH ;
+\ Stderr is the native engine's record of a caught memory fault.
+: FAULT-RECORD? ( ptr u8 n -- bool )
+   S\" error[E-MEMORY-FAULT]: a read or write faulted\n" STARTS-WITH? ;
 
 \ FAULT-ROW's program catches a memory fault and ends with status 0; natively
 \ the engine reports the fault on stderr, the module reports nothing.
@@ -237,7 +233,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    {: name:ptr nu:n src:ptr su:n want:ptr wu:n :}
    name nu src su name nu FILES
    want wu 0 NATIVE-RUN {: e:n :}
-   LABEL  ERR e FAULT-LINE? TTRUE
+   LABEL  ERR e FAULT-RECORD? TTRUE
    want wu 0 0 WASM ;
 [then]
 

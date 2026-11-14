@@ -1,6 +1,6 @@
 \ A load through a bad address in Habu code throws ENGINE-ERROR:MEMORY-FAULT
 \ on the faulting thread: a catch receives it and the program runs on, a task
-\ ends with it, and uncaught it exits 110 after one line on fd 2, with no
+\ ends with it, and uncaught it exits 110 after its record on fd 2, with no
 \ register dump. A fault in foreign code, a jump to an unmapped address or into
 \ a guard page and a fault in a signal handler still dump the registers and die
 \ by the signal. Each case is its own child: its process's end is what it
@@ -14,9 +14,12 @@ private
 \ A read or fetch of a PROT_NONE page is SIGBUS on macOS and SIGSEGV on Linux.
 : FOREIGN-SIG ( -- n ) HB-TARGET-LINUX-KERNEL? if 11 else 10 then ;
 
-\ The uncaught line up to the pc's 16 hex digits and its newline.
-: ADDRESS-0$ ( -- ptr u8 n )
-   s" E-MEMORY-FAULT habu: memory fault at 0000000000000000 pc " ;
+\ The uncaught fault's record: the address and the word that read it.
+: RECORD-0$ ( -- ptr u8 n )
+   SB-RESET
+   S\" error[E-MEMORY-FAULT]: a read or write faulted\n" SB-APPEND
+   S\"   = address: 0x0000000000000000\n  = in: W\n\n" SB-APPEND
+   SB$ ;
 
 : RUN-BUF ( -- )
    GE-HB-RESET
@@ -31,19 +34,14 @@ private
      timeout OF label labelu GE-FAIL ENDOF
    ;MATCH ;
 
-\ fd 2 holds exactly the line: its prefix, the pc and a newline.
-: ONE-LINE ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   GT-ERR$ ADDRESS-0$ STARTS-WITH? 0= if label labelu GE-FAIL then
-   GT-ERR$ nip ADDRESS-0$ nip 17 + <> if label labelu GE-FAIL then ;
-
 : UNCAUGHT ( -- )
    GE-SRC-RESET
    s" TRUSTED: W ( -- ) 0 @ drop ;" GE-SRC-LINE
    s" W" GE-SRC-LINE
    RUN-BUF
    ENGINE-ERROR:MEMORY-FAULT s" an uncaught load from address 0" GE-EXPECT-RC
-   s" an uncaught load from address 0" ONE-LINE
-   s" PASS: an uncaught fault exits 110 after one line" type cr ;
+   RECORD-0$ s" an uncaught load from address 0" GE-EXPECT-ERR
+   s" PASS: an uncaught fault exits 110 after its record" type cr ;
 
 : CAUGHT ( -- )
    GE-SRC-RESET
@@ -90,7 +88,7 @@ private
    RUN-BUF
    FOREIGN-SIG s" a fault in foreign code" KILLED-BY
    s" habu-crash regs [sig" s" a fault in foreign code" GE-EXPECT-ERR-HAS
-   s" E-MEMORY-FAULT" s" a fault in foreign code" GE-EXPECT-ERR-LACKS
+   s" error[E-MEMORY-FAULT]" s" a fault in foreign code" GE-EXPECT-ERR-LACKS
    s" PASS: a fault in foreign code dies by the signal" type cr ;
 
 \ Habu code jumps to address 16, in the unmapped first page: the fetch faults
@@ -102,7 +100,7 @@ private
    RUN-BUF
    11 s" a jump to an unmapped address" KILLED-BY
    s" habu-crash regs [sig" s" a jump to an unmapped address" GE-EXPECT-ERR-HAS
-   s" E-MEMORY-FAULT" s" a jump to an unmapped address" GE-EXPECT-ERR-LACKS
+   s" error[E-MEMORY-FAULT]" s" a jump to an unmapped address" GE-EXPECT-ERR-LACKS
    s" PASS: a jump to an unmapped address dies by the signal" type cr ;
 
 \ The same fetch inside the data stack's low guard page, which crash.f rows 4
@@ -114,7 +112,7 @@ private
    RUN-BUF
    FOREIGN-SIG s" a jump into a guard page" KILLED-BY
    s" habu-crash regs [sig" s" a jump into a guard page" GE-EXPECT-ERR-HAS
-   s" stack bounds" s" a jump into a guard page" GE-EXPECT-ERR-LACKS
+   s" E-STACK-BOUNDS" s" a jump into a guard page" GE-EXPECT-ERR-LACKS
    s" PASS: a jump into a guard page dies by the signal" type cr ;
 
 \ A watchpoint at address 16 makes the trap handler itself load from the
@@ -129,7 +127,7 @@ private
    RUN-BUF
    11 s" a fault in the trap handler" KILLED-BY
    s" habu-crash regs [sig" s" a fault in the trap handler" GE-EXPECT-ERR-HAS
-   s" E-MEMORY-FAULT" s" a fault in the trap handler" GE-EXPECT-ERR-LACKS
+   s" error[E-MEMORY-FAULT]" s" a fault in the trap handler" GE-EXPECT-ERR-LACKS
    s" PASS: a fault in the trap handler dies by the signal" type cr ;
 
 \ The x86-64 engine has no memory-fault throw and no fetch rule, and its crash
