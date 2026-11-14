@@ -15,11 +15,12 @@ require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/engine-candidate.f
+require src/lib/fmt.f
 
 package EXIT-HOOK-TEST
 
 $10000 constant CAP
-1024 constant TEXT-CAP
+4096 constant TEXT-CAP
 create OUT CAP allot
 create ERR CAP allot
 create TEXT-BUF TEXT-CAP allot
@@ -206,6 +207,42 @@ variable TREE-U
    erru s" neg" ERR-HAS? TTRUE
    outu 0 T= ;
 
+: ACTION-DEF ( n -- ) {: k:n :}
+   s" : A" TEXT+ k FMT:INT$ TEXT+ S\"  ( -- ) ;\n" TEXT+ ;
+
+: ACTION-ADD ( n -- ) {: k:n :}
+   s" ' A" TEXT+ k FMT:INT$ TEXT+ S\"  AT-EXIT:ADD\n" TEXT+ ;
+
+\ The action table holds 64: a 65th distinct action is refused with
+\ E-LAYOUT-BOUNDS instead of written past the table.
+: CASE-ACTIONS-FULL ( -- )
+   s" actions-full.f" s" actions-full-tree" CASE-PATHS
+   S\" require src/lib/at-exit.f\n" TEXT+
+   65 1 ?do i ACTION-DEF i ACTION-ADD loop
+   65 ACTION-DEF
+   S\" : CHILD-MAIN ( -- ) [: ['] A65 AT-EXIT:ADD ;] catch\n" TEXT+
+   S\"    E-LAYOUT-BOUNDS = if s\q full\q 9 die then s\q not refused\q 1 die ;\n" TEXT+
+   S\" CHILD-MAIN\n" TEXT+
+   RUN-CHILD {: outu:n erru:n rc:n :}
+   s" a 65th exit action is refused" T-LABEL
+   outu erru rc 9 EXPECT-RC
+   erru s" full" ERR-HAS? TTRUE ;
+
+\ The reset table holds 16: a registration past it is refused with
+\ E-LAYOUT-BOUNDS instead of written past the table.
+: CASE-RESETS-FULL ( -- )
+   s" resets-full.f" s" resets-full-tree" CASE-PATHS
+   S\" require src/lib/fork-child.f\n: CHILD-RESET ( -- ) ;\n" TEXT+
+   S\" : CHILD-TRY ( -- n ) [: ['] CHILD-RESET FORK-CHILD:REGISTER ;] catch ;\n" TEXT+
+   S\" : CHILD-FILL ( -- n ) 17 0 ?do CHILD-TRY dup 0<> if unloop exit then drop loop 0 ;\n" TEXT+
+   S\" : CHILD-MAIN ( -- ) CHILD-FILL\n" TEXT+
+   S\"    E-LAYOUT-BOUNDS = if s\q full\q 9 die then s\q not refused\q 1 die ;\n" TEXT+
+   S\" CHILD-MAIN\n" TEXT+
+   RUN-CHILD {: outu:n erru:n rc:n :}
+   s" a 17th fork-child reset is refused" T-LABEL
+   outu erru rc 9 EXPECT-RC
+   erru s" full" ERR-HAS? TTRUE ;
+
 \ FS:REPLACE-STAGED registers the sibling it reserves, so a `die` inside the
 \ filler - the image writer's on a failed open or write - takes the sibling
 \ with it, and the file it was replacing stays as it was: one file, its old
@@ -359,6 +396,8 @@ variable RUN-FILE-U
    CASE-REPORT
    CASE-CHAIN
    CASE-HOOK-THROW
+   CASE-ACTIONS-FULL
+   CASE-RESETS-FULL
    CASE-STAGED
    CASE-BUILD
    CASE-BUILT

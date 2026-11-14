@@ -64,6 +64,7 @@ RUNNER-INIT
    N @ 0 ?do
       i ACTIONS @ XT>N q XT>N = if unloop exit then
    loop
+   N @ CAP = if E-LAYOUT-BOUNDS throw then
    q N @ ACTIONS !
    1 N +! ;
 
