@@ -21944,21 +21944,6 @@ public
    o 0 <>  b o - 0 >= and  o data-base OWNEDLEN-CELL + @ + e - 0 >= and ;
 ;package
 
-package CHECK
-public
-
-\ The line of byte t, counted as the engine's refusal tail counts it.
-: LINE-AT ( ptr u8 -- n bool ) {: t:ptr :}
-   SRCLOC:FILE-BUFFER? 0= IF 0 RES-FALSE EXIT THEN
-   SRC-OWNED @ {: b:ptr :}
-   t b - {: at:n :}
-   at 0 <  at data-base SRCLOC:OWNEDLEN-CELL + @ >= or IF 0 RES-FALSE EXIT THEN
-   b t 1 1 0 REJECTION:POSITION drop drop RES-TRUE ;
-\ A top step is placed by its line alone: the source map places only a
-\ definition's tokens. A top step's token is the one the engine read last.
-: TOP-SITE ( -- n bool ) SRCLOC:TOKEN$ drop LINE-AT ;
-;package
-
 : NOMINAL-REC-SYM ( ptr n -- n ) {: rec:ptr :}
    rec CHECKER-RESOLVE:CK-REC-NAME$ {: name:ptr nameu:n :}
    rec CK-REC-WID {: wid:n :}

@@ -413,10 +413,6 @@ variable LISTED
    s" the global word has no qualified form" SAY
    ENGINE-ERROR:USING-SHADOW-GLOBAL REJECTION:STOP ;
 
-: FAIL-CLOSED ( ptr u8 n n -- ) {: a:ptr u:n rc:n :}
-   a u ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
-   s" " rc die-closed ;
-
 : SEALED-FAIL ( ptr u8 n -- ) {: a:ptr u:n :}
    s" E-SEALED-PACKAGE" REJECTION:OPEN
    a u TICKS  s"  would change a sealed package" SAY
@@ -890,9 +886,6 @@ private
 $4000 constant PKG-CODE-RESERVE
 
 : PKG-INDEX ( ptr n -- n ) BYTE-VIEW NULL-PTR BYTE-VIEW - dbase@ - DREC / ;
-
-: PKG-FAIL ( n -- )
-   TOKEN$ ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE  throw ;
 
 : PKG-CONTEXT-FAIL ( -- )
    s" E-PKG-CONTEXT" REJECTION:OPEN
