@@ -1896,6 +1896,45 @@ TDBW-P3 TFALSE
 TDBW-PH TTRUE
 TDBW:HITS @ 0 T=
 
+\ A field family's derived words are called by their exact public names: a
+\ part named as the field's constructor package captures neither EQ nor HASH.
+package tdbx
+public
+ENUM tdxe DERIVE eq hash red green ;ENUM
+;package
+package tdby
+private
+package TDBX-TDXE
+public
+: EQ ( tdbx:tdxe tdbx:tdxe -- bool ) drop drop true ;
+: HASH ( tdbx:tdxe -- n ) drop 7 ;
+;package
+public
+PRODUCT tdyp DERIVE eq hash
+  FIELD col tdbx:tdxe
+  FIELD amt n
+;PRODUCT
+SUMTYPE tdys DERIVE eq hash
+  VARIANT ywrap tdbx:tdxe ;VARIANT
+;SUMTYPE
+;package
+: TDBY-P ( tdbx:tdxe -- tdby:tdyp ) 7 TDBY-TDYP:MAKE ;
+: TDBY-PE ( -- bool )
+   TDBX-TDXE:RED TDBY-P TDBX-TDXE:GREEN TDBY-P TDBY-TDYP:EQ ;
+: TDBY-PH ( -- bool )
+   TDBX-TDXE:RED TDBY-P TDBY-TDYP:HASH
+   TDBX-TDXE:GREEN TDBY-P TDBY-TDYP:HASH = ;
+: TDBY-SE ( -- bool )
+   TDBX-TDXE:RED TDBY-TDYS:YWRAP TDBX-TDXE:GREEN TDBY-TDYS:YWRAP
+   TDBY-TDYS:EQ ;
+: TDBY-SH ( -- bool )
+   TDBX-TDXE:RED TDBY-TDYS:YWRAP TDBY-TDYS:HASH
+   TDBX-TDXE:GREEN TDBY-TDYS:YWRAP TDBY-TDYS:HASH = ;
+TDBY-PE TFALSE
+TDBY-PH TFALSE
+TDBY-SE TFALSE
+TDBY-SH TFALSE
+
 \ grammar: order stays deferred inside the list; unknown first token rejects;
 \ a sum variant named hash collides; hash-only ptr/field gates still fire.
 s" ENUM tdhb1 DERIVE eq order aa bb ;ENUM" E-TDECL-DERIVE TDT-NEG

@@ -1176,6 +1176,13 @@ CAST: AS-OPEN ( n -- [ ptr u8 n n -- ] )
 : TDECL-DEFINE-RUN ( ptr u8 n n -- )
    data-base PROVIDED-XT:DEFINE-CELL + @ AS-OPEN execute ;
 
+CAST: AS-ITEM ( n -- [ ptr u8 n n n -- ] )
+
+\ Appends to the open definition the item of ITEM-ABI op OP, spelled A U,
+\ with argument V.
+: TDGEN-ITEM ( ptr u8 n n n -- )
+   data-base PROVIDED-XT:ITEM-CELL + @ AS-ITEM execute ;
+
 \ Makes the child word NAME through CHILD-RUN, of a CHILD-ABI SHAPE and PARAM.
 : TDECL-CHILD ( ptr u8 n n n -- )
    {: na:ptr nu:n shape:n param:n :}
@@ -1527,9 +1534,6 @@ private
    u 0 ?do a i + c@ TDGEN-C, loop ;
 : TDGEN-UPPER ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 ?do a i + c@ TF-UPPER-C TDGEN-C, loop ;
-: TDGEN-DEC ( n -- ) {: v:n :}           \ non-negative decimal (tag literal)
-   v 10 >= IF v 10 / RECURSE THEN
-   v 10 mod 48 + TDGEN-C, ;
 : TDGEN-LETTER ( n -- )                   \ positional param -> shared spelling
    TFAM-DECL-PARAM>CHAR 0= IF
       drop s" sumtype: declaration parameter index out of range" 76 die
@@ -1593,8 +1597,9 @@ defer TDGEN-QUOT-ROW ( n -- )   \ ( rownode -- )
 : TDGEN-QUOT-ROW-INSTALL ( -- ) [: TDGEN-QUOT-ROW-IMPL ;] is TDGEN-QUOT-ROW ;
 TDGEN-QUOT-ROW-INSTALL
 
-\ --- payload provider. Everything below renders constructor and DERIVE text from
-\ a PROVIDER: one opaque context cell and three quotation capabilities.
+\ --- payload provider. Everything below renders constructor text and builds
+\ DERIVE words from a PROVIDER: one opaque context cell and three quotation
+\ capabilities.
 \   qn  [ n n n -- n ]    ( ctx fam vid -- count )       payload element count
 \   qr  [ n n n n -- n ]  ( ctx fam vid index -- root )  declaration-order schema root
 \   qc  [ n n n -- n ]    ( ctx fam vid -- cells )       payload cell width
@@ -1839,14 +1844,14 @@ private
    vid TDPLAN-PROD-CTOR+ ;
 
 \ --- derived typed equality. `DERIVE eq` builds checked words into the family's
-\ constructor package, their engine words found where this file is compiled: no
-\ pending window, no trust rows, no engine lowering, so equality is semantic and
+\ constructor package from items, their engine words found where this file is
+\ compiled: no pending window, no trust rows, no engine lowering, so equality is semantic and
 \ layout-policy agnostic. Derived eq consumes both operands.
 \  - TAG ( fam -- n ): declaration-order tag, which any checked MATCH already
 \    observes. Enums and sums only.
 \  - EQ ( fam fam -- bool ): payload-free families compare tags; payload sums
-\    compare diagonally (outer MATCH binds one value's payloads to q-locals,
-\    inner MATCH the other's to p-locals; the same-variant arm compares with `=`,
+\    compare diagonally (outer MATCH binds one value's payloads to locals,
+\    inner MATCH the other's; the same-variant arm compares with `=`,
 \    integer widening at the bind making every CT-INT payload an n; cross arms
 \    drop and answer false); products UNMAKE both values, bind fields top-down
 \    and compare field-wise. A family-typed slot binds as its family and
@@ -1870,88 +1875,112 @@ private
    TDGEN-BUF n0 + TDGEN-NA !
    TDGEN-U @ n0 - TDGEN-NU !
    32 TDGEN-C, ;
-: TDGEN-FLUSH ( -- )                      \ pending text to the open definition
-   TDGEN-U @ 0 > IF TDGEN-BUF TDGEN-U @ body-append THEN
-   TDGEN-CLEAR ;
+: TDGEN-KW ( ptr u8 n -- ) 0 ITEM-ABI:KEYWORD TDGEN-ITEM ;
+: TDGEN-OF ( ptr u8 n -- )                \ a variant's `of`
+   0 ITEM-ABI:OPERAND TDGEN-ITEM  s" of" TDGEN-KW ;
+\ The index the next local takes: the definition's locals before it.
+: TDGEN-LOCALS ( -- n ) data-base BODY-ITEMS:LOCALS-CELL + @ ;
+: TDGEN-LOCAL ( n -- ) {: node:n :}      \ a local of type node NODE
+   s" DERIVE" node ITEM-ABI:LOCAL TDGEN-ITEM ;
+: TDGEN-LOCAL@ ( n -- ) {: ix:n :}
+   s" DERIVE" ix ITEM-ABI:LOCAL-REF TDGEN-ITEM ;
+: TDGEN-SELF-NODE ( n -- n ) {: fam:n :}  \ TDECL-SELF-NODE, transient
+   TRANSIENT-ON
+   [: fam TDECL-SELF-NODE ;] [: TRANSIENT-OFF ;] finally ;
+: TDGEN-MATCH-OPEN ( n -- ) {: fam:n :}
+   s" match" TDGEN-KW
+   fam TFAM-NAME$  fam TDGEN-SELF-NODE  ITEM-ABI:TYPE TDGEN-ITEM ;
+\ A public family's derived TAIL by its exact name, which no part named as its
+\ constructor package captures; a private or OPAQUE one's where it binds.
+: TDGEN-DRV-CALL ( n ptr u8 n -- ) {: fam:n ta:ptr tu:n :}
+   TDGEN-CLEAR  fam ta tu TDGEN-DRV-REF
+   fam TFAM-GEN-PUBLIC? IF ITEM-ABI:CALL-EXACT ELSE ITEM-ABI:CALL THEN {: op:n :}
+   TDGEN-BUF TDGEN-U @ 0 op TDGEN-ITEM ;
 : TDGEN-DROPS ( n -- ) {: k:n :}          \ drop x k
-   k 0 ?do TDGEN-FLUSH postpone drop loop ;
-: TDGEN-LOCAL1 ( n n n -- ) {: c:n i:n node:n :}   \ "<c><i>:<type> "
-   c TDGEN-C,  i TDGEN-DEC  58 TDGEN-C,
-   node SCHEMA-APP? IF node TDGEN-SCH ELSE 110 TDGEN-C, THEN
-   32 TDGEN-C, ;
-: TDGEN-BINDS ( n n n -- ) {: fam:n vid:n c:n :}   \ "{: c0:T .. :} " over vid's payload slots
+   k 0 ?do postpone drop loop ;
+\ A slot's local type: a family slot's node, else `n`, which an integer
+\ payload widens to at the bind.
+: TDGEN-SLOT-TYPE ( n -- n ) {: node:n :}
+   node SCHEMA-APP? IF node EXIT THEN
+   TRANSIENT-ON
+   [: CC-N SCHEMA-CON ;] [: TRANSIENT-OFF ;] finally ;
+: TDGEN-BINDS ( n n -- n ) {: fam:n vid:n :}   \ "{: .. :}" over vid's payload slots; the first's index
+   TDGEN-LOCALS {: base:n :}
    fam vid TDPV-N@ {: m:n :}
-   m 0= IF EXIT THEN
-   s" {: " TDGEN-APP
-   m 0 ?do c i  fam vid i TDPV-NODE@  TDGEN-LOCAL1 loop
-   s" :} " TDGEN-APP ;
-: TDGEN-CMP1 ( n n n -- ) {: fam:n vid:n i:n :}   \ "p<i> q<i>" then = or FAM:EQ
-   112 TDGEN-C,  i TDGEN-DEC  32 TDGEN-C,
-   113 TDGEN-C,  i TDGEN-DEC  32 TDGEN-C,
+   m 0= IF base EXIT THEN
+   s" {:" TDGEN-KW
+   m 0 ?do fam vid i TDPV-NODE@ TDGEN-SLOT-TYPE TDGEN-LOCAL loop
+   s" :}" TDGEN-KW
+   base ;
+\ Reads slot I's local, BASE the index of the first its binds declared: a sum
+\ binds its slots in order, TDGEN-UNBIND a product's fields top-down.
+: TDGEN-SLOT@ ( n n n n -- ) {: fam:n vid:n base:n i:n :}
+   fam TFAM-PRODUCT? IF base fam vid TDPV-N@ 1 - i - + ELSE base i + THEN
+   TDGEN-LOCAL@ ;
+: TDGEN-CMP1 ( n n n n n -- ) {: fam:n vid:n pb:n qb:n i:n :}   \ p q, then = or FAM:EQ
+   fam vid pb i TDGEN-SLOT@  fam vid qb i TDGEN-SLOT@
    fam vid i TDPV-NODE@ {: node:n :}
-   node SCHEMA-APP? IF
-      node SCHEMA-A@ s" eq" TDGEN-DRV-REF  TDGEN-FLUSH EXIT THEN
-   TDGEN-FLUSH postpone = ;
-: TDGEN-CMP ( n n -- ) {: fam:n vid:n :}  \ p0 q0 = p1 q1 = and .. (m=0 -> true)
+   node SCHEMA-APP? IF node SCHEMA-A@ s" eq" TDGEN-DRV-CALL EXIT THEN
+   postpone = ;
+: TDGEN-CMP ( n n n n -- ) {: fam:n vid:n pb:n qb:n :}  \ p0 q0 = p1 q1 = and .. (m=0 -> true)
    fam vid TDPV-N@ {: m:n :}
-   m 0= IF s" 0" TDGEN-APP  TDGEN-FLUSH postpone 0= EXIT THEN
+   m 0= IF 0 literal postpone 0= EXIT THEN
    m 0 ?do
-      fam vid i TDGEN-CMP1
+      fam vid pb qb i TDGEN-CMP1
       i 0 > IF postpone and THEN
    loop ;
-: TDGEN-MATCH-OPEN ( n -- ) {: fam:n :}   \ "match fam "
-   s" match " TDGEN-APP  fam TFAM-NAME$ TDGEN-APP  32 TDGEN-C, ;
 : TDGEN-TAG-BODY ( n -- ) {: fam:n :}   \ match fam v of <drops> <tag> endof .. ;match
    fam TDGEN-MATCH-OPEN
    fam TFAM-VAR-START@ {: vstart:n :}
    vstart fam TFAM-VAR-COUNT@ + vstart ?do
-      i SUMV-NAME$ TDGEN-APP
-      s"  of " TDGEN-APP
+      i SUMV-NAME$ TDGEN-OF
       fam i TDPV-N@ TDGEN-DROPS
-      i SUMV-TAG@ TDGEN-DEC
-      s"  endof " TDGEN-APP
+      i SUMV-TAG@ literal
+      s" endof" TDGEN-KW
    loop
-   s" ;match" TDGEN-APP ;
-: TDGEN-EQ-ARM ( n n n -- ) {: fam:n vout:n vin:n :}   \ one inner arm: diagonal cmp / off-diag drop+false
-   vin SUMV-NAME$ TDGEN-APP  s"  of " TDGEN-APP
+   s" ;match" TDGEN-KW ;
+\ One inner arm: the diagonal compares with the outer arm's locals from QB,
+\ any other variant drops and answers false.
+: TDGEN-EQ-ARM ( n n n n -- ) {: fam:n vout:n vin:n qb:n :}
+   vin SUMV-NAME$ TDGEN-OF
    vin vout = IF
-      fam vin 112 TDGEN-BINDS
-      fam vin TDGEN-CMP
+      fam vin TDGEN-BINDS {: pb:n :}
+      fam vin pb qb TDGEN-CMP
    ELSE
       fam vin TDPV-N@ TDGEN-DROPS
-      s" 1" TDGEN-APP  TDGEN-FLUSH postpone 0=
+      1 literal postpone 0=
    THEN
-   s" endof " TDGEN-APP ;
-: TDGEN-EQ-ROW ( n n n n -- ) {: fam:n vstart:n k:n vout:n :}   \ vout's inner arms
-   vstart k + vstart ?do fam vout i TDGEN-EQ-ARM loop ;
+   s" endof" TDGEN-KW ;
+: TDGEN-EQ-OUT ( n n n n -- ) {: fam:n vstart:n k:n vout:n :}   \ vout's outer arm
+   vout SUMV-NAME$ TDGEN-OF
+   fam vout TDGEN-BINDS {: qb:n :}
+   fam TDGEN-MATCH-OPEN
+   vstart k + vstart ?do fam vout i qb TDGEN-EQ-ARM loop
+   s" ;match" TDGEN-KW  s" endof" TDGEN-KW ;
 : TDGEN-EQ-DIAG ( n -- ) {: fam:n :}   \ diagonal double-match body for payload sums
    fam TDGEN-MATCH-OPEN
    fam TFAM-VAR-START@ {: vstart:n :}
    fam TFAM-VAR-COUNT@ {: k:n :}
-   vstart k + vstart ?do
-      i SUMV-NAME$ TDGEN-APP  s"  of " TDGEN-APP
-      fam i 113 TDGEN-BINDS
-      fam TDGEN-MATCH-OPEN
-      fam vstart k i TDGEN-EQ-ROW
-      s" ;match endof " TDGEN-APP
-   loop
-   s" ;match" TDGEN-APP ;
-: TDGEN-UNBIND1 ( n n n n -- ) {: fam:n mk:n k:n c:n :}   \ field k's bind
-   s" {: " TDGEN-APP
-   c k  fam mk k TDPV-NODE@  TDGEN-LOCAL1
-   s" :} " TDGEN-APP ;
-: TDGEN-UNBIND ( n n -- ) {: fam:n c:n :}   \ "PKG:UNMAKE " + top-down field binds
-   fam s" unmake" TDGEN-DRV-REF  32 TDGEN-C,
+   vstart k + vstart ?do fam vstart k i TDGEN-EQ-OUT loop
+   s" ;match" TDGEN-KW ;
+: TDGEN-UNBIND1 ( n n n -- ) {: fam:n mk:n k:n :}   \ field k's bind
+   s" {:" TDGEN-KW
+   fam mk k TDPV-NODE@ TDGEN-SLOT-TYPE TDGEN-LOCAL
+   s" :}" TDGEN-KW ;
+: TDGEN-UNBIND ( n -- n ) {: fam:n :}   \ PKG:UNMAKE + top-down field binds; the first's index
+   fam s" unmake" TDGEN-DRV-CALL
+   TDGEN-LOCALS {: base:n :}
    fam TFAM-VAR-START@ {: mk:n :}
    fam mk TDPV-N@ {: m:n :}
-   m 0 ?do fam mk m 1 - i - c TDGEN-UNBIND1 loop ;
+   m 0 ?do fam mk m 1 - i - TDGEN-UNBIND1 loop
+   base ;
 : TDGEN-EQ-PROD ( n -- ) {: fam:n :}   \ UNMAKE both values, field-wise compare
-   fam 113 TDGEN-UNBIND
-   fam 112 TDGEN-UNBIND
-   fam fam TFAM-VAR-START@ TDGEN-CMP ;
+   fam TDGEN-UNBIND {: qb:n :}
+   fam TDGEN-UNBIND {: pb:n :}
+   fam fam TFAM-VAR-START@ pb qb TDGEN-CMP ;
 : TDGEN-EQ-TAGS ( n -- ) {: fam:n :}      \ payload-free family: tag equality (O(V))
-   fam s" tag" TDGEN-DRV-REF  TDGEN-FLUSH postpone swap
-   fam s" tag" TDGEN-DRV-REF  TDGEN-FLUSH postpone = ;
+   fam s" tag" TDGEN-DRV-CALL  postpone swap
+   fam s" tag" TDGEN-DRV-CALL  postpone = ;
 
 \ Derived hash: FNV-1a over whole cells, h = BASIS, then per cell
 \ h = (h xor v) * PRIME. Sums and enums fold the tag, then each bound payload
@@ -1960,41 +1989,33 @@ private
 \ contract only: never persist them across engine versions.
 $cbf29ce484222325 constant DRV-FNV-BASIS   \ FNV-1a 64-bit offset basis
 $100000001b3 constant DRV-FNV-PRIME        \ FNV-1a 64-bit prime
-: TDGEN-HEXD ( n -- ) {: d:n :}
-   d 10 < IF d 48 + ELSE d 87 + THEN TDGEN-C, ;
-: TDGEN-HEX ( n -- ) {: v:n :}            \ "$" + 16 nibbles + " "
-   36 TDGEN-C,
-   0 15 ?do v  i 4 *  rshift  15 and  TDGEN-HEXD  -1 +loop
-   32 TDGEN-C, ;
-: TDGEN-HMIX ( -- )                       \ xor $PRIME *
-   TDGEN-FLUSH postpone xor
-   DRV-FNV-PRIME TDGEN-HEX  TDGEN-FLUSH postpone * ;
-: TDGEN-HASH-FOLD1 ( n n n -- ) {: fam:n vid:n i:n :}   \ "p<i>" [FAM:HASH] mix
-   112 TDGEN-C,  i TDGEN-DEC  32 TDGEN-C,
+: TDGEN-HMIX ( -- )                       \ xor PRIME *
+   postpone xor  DRV-FNV-PRIME literal  postpone * ;
+: TDGEN-HASH-FOLD1 ( n n n n -- ) {: fam:n vid:n base:n i:n :}   \ slot i [FAM:HASH] mix
+   fam vid base i TDGEN-SLOT@
    fam vid i TDPV-NODE@ {: node:n :}
-   node SCHEMA-APP? IF
-      node SCHEMA-A@ s" hash" TDGEN-DRV-REF  32 TDGEN-C, THEN
+   node SCHEMA-APP? IF node SCHEMA-A@ s" hash" TDGEN-DRV-CALL THEN
    TDGEN-HMIX ;
-: TDGEN-HASH-FOLDS ( n n -- ) {: fam:n vid:n :}   \ fold locals p0..pm-1
-   fam vid TDPV-N@ 0 ?do fam vid i TDGEN-HASH-FOLD1 loop ;
+: TDGEN-HASH-FOLDS ( n n n -- ) {: fam:n vid:n base:n :}   \ fold every slot's local
+   fam vid TDPV-N@ 0 ?do fam vid base i TDGEN-HASH-FOLD1 loop ;
 : TDGEN-HASH-ARM ( n n -- ) {: fam:n vid:n :}   \ bind payloads, fold tag then payloads
-   fam vid 112 TDGEN-BINDS
-   DRV-FNV-BASIS TDGEN-HEX
-   vid SUMV-TAG@ TDGEN-DEC  32 TDGEN-C,  TDGEN-HMIX
-   fam vid TDGEN-HASH-FOLDS ;
+   fam vid TDGEN-BINDS {: base:n :}
+   DRV-FNV-BASIS literal
+   vid SUMV-TAG@ literal  TDGEN-HMIX
+   fam vid base TDGEN-HASH-FOLDS ;
 : TDGEN-HASH-BODY ( n -- ) {: fam:n :}   \ sum/enum: MATCH ladder of per-arm folds
    fam TDGEN-MATCH-OPEN
    fam TFAM-VAR-START@ {: vstart:n :}
    vstart fam TFAM-VAR-COUNT@ + vstart ?do
-      i SUMV-NAME$ TDGEN-APP  s"  of " TDGEN-APP
+      i SUMV-NAME$ TDGEN-OF
       fam i TDGEN-HASH-ARM
-      s" endof " TDGEN-APP
+      s" endof" TDGEN-KW
    loop
-   s" ;match" TDGEN-APP ;
+   s" ;match" TDGEN-KW ;
 : TDGEN-HASH-PROD ( n -- ) {: fam:n :}   \ product: UNMAKE, fold fields (no tag)
-   fam 112 TDGEN-UNBIND
-   DRV-FNV-BASIS TDGEN-HEX
-   fam fam TFAM-VAR-START@ TDGEN-HASH-FOLDS ;
+   fam TDGEN-UNBIND {: base:n :}
+   DRV-FNV-BASIS literal
+   fam fam TFAM-VAR-START@ base TDGEN-HASH-FOLDS ;
 : TDECL-TAG-WORD ( n -- ) {: fam:n :}
    TDGEN-CLEAR
    fam s" tag" TDGEN-DRV-NAME
@@ -2016,9 +2037,8 @@ $100000001b3 constant DRV-FNV-PRIME        \ FNV-1a 64-bit prime
 : TDECL-BUILT-OPEN ( n -- ) {: row:n :}
    row TDPLAN-NAME$
    row TDPLAN-FAM@ row TDPLAN-KIND@ TDECL-DRV-EFFECT
-   TDECL-DEFINE-RUN
-   TDGEN-CLEAR ;
-: TDECL-BUILT-END ( -- ) TDGEN-FLUSH postpone ; ;
+   TDECL-DEFINE-RUN ;
+: TDECL-BUILT-END ( -- ) postpone ; ;
 : TDECL-TAG-BUILD ( n n -- ) {: fam:n row:n :}
    row TDECL-BUILT-OPEN
    fam TDGEN-TAG-BODY
