@@ -46,6 +46,8 @@ private
    CHECKER COMMON s" src/core/util.f" ROW
    CHECKER COMMON s" src/core/cell.f" ROW
    CHECKER COMMON s" src/core/pointer-storage.f" ROW
+   CHECKER COMMON s" src/core/arena-pages.f" ROW
+   CHECKER COMMON s" src/core/rejection.f" ROW
    CHECKER COMMON s" src/core/engine-error.f" ROW
    CHECKER COMMON s" src/core/exec-vector.f" ROW
    CHECKER COMMON s" src/core/checker-owner-extension.f" ROW
