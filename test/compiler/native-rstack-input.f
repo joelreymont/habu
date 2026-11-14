@@ -71,7 +71,7 @@ variable ERR-U
    s" = at ` | n -- | n `: return-stack effect"  REFUSED-RC REFUSED
    s" rs1: a TRUSTED: body replaces a declared return-stack cell"
    S\" TRUSTED: RT1 ( | n -- | n ) r> drop 0 >r ;\n: USE ( -- n ) 5 >r RT1 r> ;\nUSE . cr\n"
-   s" error[E-BAD-STORED-SIGNATURE]: the signature of `rt1` cannot be recorded"
+   s" error[E-BAD-STORED-SIGNATURE]: the signature of `RT1` cannot be recorded"
    s" = at `RT1`: its signature moves the return stack"  REFUSED-RC REFUSED
    s" rs2: a body pops a declared return-stack input"
    S\" : RP ( | n -- n | ) r> ;\n: USE ( -- n ) 5 >r RP ;\nUSE . cr\n"
