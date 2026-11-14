@@ -19,9 +19,6 @@ variable SRC-U
 : ACT ( -- )
    SRC-A @ SRC-U @ VERIFY:SOURCE-BUF-IN-SCOPE ;
 
-create DIAG-BUF $1000 allot
-variable DIAG-U
-
 public
 
 \ The duplicate's own code: checker.f CHECKER-DUP-DEFINITION throws it.
@@ -33,9 +30,8 @@ $4E constant DUP-RC
    {: a:ptr u:n :}
    a SRC-A !
    u SRC-U !
-   DIAG-BUF $1000 REJECTION:BUFFER!
+   REJECTION:CAPTURE
    [: ACT ;] catch {: rc:n :}
-   REJECTION:BUFFER$ nip DIAG-U !
    REJECTION:BUFFER-OFF
    rc ;
 
@@ -48,7 +44,7 @@ $4E constant DUP-RC
    MULTI-ERR-END drop ;
 
 : DIAG$ ( -- ptr u8 n )
-   DIAG-BUF DIAG-U @ ;
+   REJECTION:BUFFER$ ;
 
 ;package
 

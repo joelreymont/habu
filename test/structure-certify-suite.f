@@ -10,11 +10,10 @@ require src/lib/test.f
 
 T-RESET
 
-\ Diagnostic capture as in test/type-match-suite.f: a JSON-mode render into a
-\ fixed buffer, asserted by substring.
-create SCG-BUF 8192 allot
+\ Diagnostic capture as in test/type-match-suite.f: a JSON-mode render into
+\ REJECTION's capture, asserted by substring.
 : SCG< ( ptr u8 n -- )   \ run one candidate with JSON diags captured; assert rejected
-   SCG-BUF 8192 REJECTION:BUFFER!  0 0= REJECTION:JSON !
+   REJECTION:CAPTURE  0 0= REJECTION:JSON !
    CHECK-CANDIDATE! 0 T= ;
 : SCG? ( ptr u8 n -- )   \ assert the captured diag contains the needle
    T-NEXT

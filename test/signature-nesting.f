@@ -164,8 +164,7 @@ TYPED-VARIABLE SRC-U len
    ERR erru LEN>N why whyu CONTAINS? TTRUE ;
 
 
-create PKT-BUF 8192 allot
-: PACKET-OPEN ( -- )   PKT-BUF 8192 REJECTION:BUFFER!  0 0= REJECTION:JSON ! ;
+: PACKET-OPEN ( -- )   REJECTION:CAPTURE  0 0= REJECTION:JSON ! ;
 
 \ REFUSES reads prose from a fork that inherits the format, and a run under
 \ `tools/check.f --json-errors` starts in JSON; a packet sets prose back.
@@ -173,10 +172,10 @@ variable JSON-WAS   REJECTION:JSON @ JSON-WAS !   false REJECTION:JSON !
 
 
 \ The packet the text in SRC-BUF writes, checked in this process with JSON
-\ diagnostics captured; it stays in PKT-BUF until the next capture.
+\ diagnostics captured; it stays in REJECTION's capture until the next one.
 : PACKET$ ( -- ptr u8 n )
    PACKET-OPEN  SRC$ CHECK-CANDIDATE! drop
-   REJECTION:BUFFER$ nip  0 0= 0= REJECTION:JSON ! REJECTION:BUFFER-OFF  PKT-BUF swap ;
+   0 0= 0= REJECTION:JSON ! REJECTION:BUFFER-OFF  REJECTION:BUFFER$ ;
 
 
 : PACKET-PASSES ( -- )

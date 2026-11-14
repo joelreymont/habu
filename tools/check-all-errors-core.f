@@ -1,7 +1,9 @@
 \ check-all-errors-core.f - the --all-errors checker core: checks sources as a
 \ load runs them, in one checker scope and one multi-error session, and reports
 \ every refused definition, statement throw and lexer defect as prose or JSON.
-\ The report buffers are the caller's and never grow (BUFFERS!, STREAM!).
+\ The report buffer is the caller's and never grows (BUFFERS!); a streamed
+\ report has no bound (STREAM!). Each pass's raw diagnostics are captured by
+\ package REJECTION, which grows its capture to hold them.
 \
 \ A definition of a name its scope already held: the scan refuses it at its
 \ name and keeps where the name starts and its length, not the name: a required
@@ -53,12 +55,6 @@ public
 \ own run against the same value must read it from here.
 $4E constant DUP-RC
 
-\ The scratch a caller gives BUFFERS! or STREAM!. The checker renders a whole
-\ pass's diagnostics into it and cannot grow a caller's buffer, so a pass
-\ whose diagnostics outgrow it reports those that fit, each whole, then
-\ E-DIAG-CAPACITY.
-$100000 constant SCRATCH-CAP
-
 private
 
 10 constant CA-LF
@@ -95,9 +91,6 @@ variable CA-JSON-FOUND
 TYPED-VARIABLE CA-SRC-A ptr u8
 variable CA-SRC-U
 variable CA-SRC-CAP
-variable CA-ERR-LEN
-TYPED-VARIABLE CA-ERR-A ptr u8
-variable CA-ERR-CAP
 variable CA-OUT-LEN
 TYPED-VARIABLE CA-OUT-A ptr u8
 variable CA-OUT-CAP
@@ -137,12 +130,6 @@ variable CA-COMPOSE-LABEL-U
 
 : CA-FILE-A! ( ptr u8 -- )
    CA-FILE-A ! ;
-
-: CA-ERR-A@ ( -- ptr u8 )
-   CA-ERR-A @ ;
-
-: CA-ERR-A! ( ptr u8 -- )
-   CA-ERR-A ! ;
 
 : CA-OUT-A@ ( -- ptr u8 )
    CA-OUT-A @ ;
@@ -202,7 +189,7 @@ variable CA-COMPOSE-LABEL-U
    drop c@ CA-LBRACE = ;
 
 : CA-ERR-LINE ( n n -- ptr u8 n ) {: start:n end:n :}
-   CA-ERR-A@ start + end start - ;
+   REJECTION:BUFFER$ drop start + end start - ;
 
 : CA-EMIT-ERR-LINE ( n n -- ) {: start:n end:n :}
    start end CA-ERR-LINE LINT-TRIM CA-ERR-LN ;
@@ -342,8 +329,9 @@ variable CA-COMPOSE-LABEL-U
    CA-FALSE CA-JSON-FOUND !
    0 CA-LS !
    0 CA-LE !
-   begin CA-LE @ CA-ERR-LEN @ < while
-      CA-ERR-A@ CA-LE @ + c@ CA-LF = IF
+   REJECTION:BUFFER$ {: raw:ptr rawu:n :}
+   begin CA-LE @ rawu < while
+      raw CA-LE @ + c@ CA-LF = IF
          CA-LS @ CA-LE @ CA-ERR-LINE CA-JSON-LINE? IF
             CA-LS @ CA-LE @ CA-EMIT-ERR-LINE
             CA-TRUE CA-JSON-FOUND !
@@ -352,34 +340,27 @@ variable CA-COMPOSE-LABEL-U
       THEN
       CA-LE @ 1+ CA-LE !
    repeat
-   CA-LS @ CA-ERR-LEN @ < IF
-      CA-LS @ CA-ERR-LEN @ CA-ERR-LINE CA-JSON-LINE? IF
-         CA-LS @ CA-ERR-LEN @ CA-EMIT-ERR-LINE
+   CA-LS @ rawu < IF
+      CA-LS @ rawu CA-ERR-LINE CA-JSON-LINE? IF
+         CA-LS @ rawu CA-EMIT-ERR-LINE
          CA-TRUE CA-JSON-FOUND !
       THEN
    THEN ;
 
 
-: CA-RESET-CAPTURE ( -- )
-   0 CA-ERR-LEN ! ;
-
-
-
 : CA-DIAG-FINISH ( -- )
-   REJECTION:BUFFER$ nip CA-ERR-LEN !
    REJECTION:BUFFER-OFF ;
 
 : CA-DIAG-FULL-START ( -- )
    CA-FILE-A@ CA-FILE-U @ REJECTION:FILE!
    CA-JSON? REJECTION:JSON !
    1 1 0 REJECTION:ORIGIN!
-   CA-ERR-A@ CA-ERR-CAP @ REJECTION:BUFFER! ;
+   REJECTION:CAPTURE ;
 
 : CA-CHECK-FULL-ACT ( -- )
    CA-SRC-A@ CA-SRC-U @ VERIFY:SOURCE-BUF-IN-SCOPE ;
 
 : CA-CHECK-FULL ( -- n )
-   CA-RESET-CAPTURE
    CA-DIAG-FULL-START
    [: CA-CHECK-FULL-ACT ;] catch
    CA-DIAG-FINISH ;
@@ -394,7 +375,6 @@ variable CA-COMPOSE-LABEL-U
    [: CA-CHECK-COMPOSE-VERIFY ;] SOURCE-ROOT:WITH ;
 
 : CA-CHECK-COMPOSE ( -- n )
-   CA-RESET-CAPTURE
    CA-DIAG-FULL-START
    [: CA-CHECK-COMPOSE-ACT ;] catch
    CA-DIAG-FINISH ;
@@ -413,10 +393,10 @@ variable CA-COMPOSE-LABEL-U
    CA-JSON? IF
       CA-FILTER-JSON
       CA-JSON-FOUND @ 0= IF
-         CA-ERR-A@ CA-ERR-LEN @ CA-ERR
+         REJECTION:BUFFER$ CA-ERR
       THEN
    ELSE
-      CA-ERR-A@ CA-ERR-LEN @ CA-ERR
+      REJECTION:BUFFER$ CA-ERR
    THEN ;
 
 : CA-EMIT-CAPTURED ( n -- ) {: rc:n :}
@@ -592,15 +572,11 @@ private
 
 public
 
-\ Both capture buffers belong to the caller. The first pair is the report
-\ buffer this core appends to and OUT$ hands back; the second pair is the
-\ scratch buffer the checker renders its raw diagnostics into. Also clears the
-\ recorded report length.
-: BUFFERS! ( ptr u8 n ptr u8 n -- ) {: outa:ptr outcap:n erra:ptr errcap:n :}
+\ The caller's report buffer, which this core appends to and OUT$ hands back.
+\ Also clears the recorded report length.
+: BUFFERS! ( ptr u8 n -- ) {: outa:ptr outcap:n :}
    outcap CA-OUT-CAP !
    outa CA-OUT-A!
-   errcap CA-ERR-CAP !
-   erra CA-ERR-A!
    0 CA-OUT-LEN !
    -1 CA-OUT-FD ! ;
 
@@ -609,10 +585,10 @@ public
    CA-OUT-A@ CA-OUT-LEN @ ;
 
 \ BUFFERS! for a report written to the given file descriptor as it is made, so
-\ it holds as many records, each as long, as the checked sources make; the
-\ buffer is the scratch. OUT$ is then empty.
-: STREAM! ( fd ptr u8 n -- ) {: fd:fd erra:ptr errcap:n :}
-   s" " erra errcap BUFFERS!
+\ it holds as many records, each as long, as the checked sources make. OUT$ is
+\ then empty.
+: STREAM! ( fd -- ) {: fd:fd :}
+   s" " BUFFERS!
    fd FD>N CA-OUT-FD ! ;
 
 \ True selects one JSON diagnostic record per rejected definition; false

@@ -117,9 +117,8 @@ STRUCTURE xbox<a> FIELD item a ;STRUCTURE
 \ Executing an xt fetched from untyped memory (a raw variable or create cell) is
 \ refused at RSEXEC's T-VAR branch: its stack effect is not statically known.
 \ The typed xt cell above is the sound alternative.
-create XC-DBUF 8192 allot
 : XC-CODE< ( ptr u8 n -- )   \ run a candidate with JSON diags captured; assert reject (verdict 0)
-   XC-DBUF 8192 REJECTION:BUFFER!  0 0= REJECTION:JSON !
+   REJECTION:CAPTURE  0 0= REJECTION:JSON !
    CHECK-CANDIDATE! 0 T= ;
 : XC-CODE? ( ptr u8 n -- )   \ assert the captured diagnostic names this code
    REJECTION:BUFFER$ 2swap CONTAINS? TTRUE ;
@@ -160,7 +159,7 @@ defer XC-DF ( n -- n )
 \ XE declares it. A cast may take it but never yields one, and no storage holds
 \ one, directly or in a field; a quotation row may name it.
 : XC-EVAL< ( ptr u8 n -- )   \ evaluate with JSON diags captured; assert reject
-   XC-DBUF 8192 REJECTION:BUFFER!  0 0= REJECTION:JSON !
+   REJECTION:CAPTURE  0 0= REJECTION:JSON !
    XC-EVAL CHECKER-REJECT-RC T= ;
 : XC-STORE-XT? ( -- )   \ the captured refusal is the stored-xt one
    s\" \"code\":\"E-BAD-STORAGE\"" XC-CODE?

@@ -223,14 +223,12 @@ variable TBUF-U
    0 PBUF-U !
    0 RJ ! begin RJ @ in-arity < while  s" 7 " P+  RJ @ 1+ RJ ! repeat
    name-ch PC  s"  depth CLEAR-MEAS MEAS-OUT !" P+ ;
-16384 constant CHK-DIAG-CAP
-CHK-DIAG-CAP BUFFER: CHK-DIAG
-\ A refusal is rc 70 with the checker's diagnostic in CHK-DIAG; any other
+\ A refusal is rc 70 with the checker's diagnostic captured; any other
 \ nonzero rc, an engine refusal after certification among them, is rethrown.
 : CHK  ( ptr u8 n -- )
    SRC-U !
    SRC-A !
-   CHK-DIAG CHK-DIAG-CAP REJECTION:BUFFER!
+   REJECTION:CAPTURE
    ['] COMPILE catch  REJECTION:BUFFER$ nip {: rc:n diag-u:n :}
    REJECTION:BUFFER-OFF
    rc 0= IF  -1 VERD !  EXIT  THEN

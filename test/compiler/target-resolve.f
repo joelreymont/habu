@@ -7,11 +7,10 @@ require tools/build-target.f
 package TARGET-RESOLVE-TEST
 private
 
-create DIAG-BUF 8192 allot
 
 \ A target change inside an action is rejected with E-BUILD-ACTIVE, status 70.
 : ACTIVE-REJECTED ( [ -- ] -- )
-   DIAG-BUF 8192 REJECTION:BUFFER!  true REJECTION:JSON !
+   REJECTION:CAPTURE  true REJECTION:JSON !
    CHECKER-REJECT-RC TTHROWSQ
    false REJECTION:JSON !
    REJECTION:BUFFER$ S\" \"code\":\"E-BUILD-ACTIVE\"" CONTAINS? TTRUE

@@ -246,7 +246,7 @@ public
 9 SDPRIVROLL:RGO 9 T=                                 \ the re-declaration generated working words
 
 \ Reject diagnostics. STRUCTURE prints its rejection through package REJECTION;
-\ the assertions read the bytes captured through REJECTION:BUFFER! /
+\ the assertions read the bytes captured through REJECTION:CAPTURE /
 \ REJECTION:BUFFER$, the pair tools/check-all-errors-core.f CA-DIAG-FULL-START
 \ and CA-DIAG-FINISH use. This proves the channel, not a check-tool run. Each
 \ case asserts the header line, the token line and the help line.

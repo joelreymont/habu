@@ -1,6 +1,6 @@
 \ rejection.f - every byte a diagnostic writes: the growable text a record is
 \ built in, its JSON escaping and numbers, and the sink that sends a finished
-\ record to a file descriptor or to a caller's buffer. It also holds where a
+\ record to a file descriptor or to a capture it grows. It also holds where a
 \ diagnostic's source sits: the armed source, its map and the loader's file
 \ path. Loads before the checker, where no emit exists, so bytes go out through
 \ a one-byte buffer.
@@ -21,10 +21,11 @@ variable TEXT-CAP   0 TEXT-CAP !        \ bytes mapped at TEXT-P, 0 for none
 variable IN-JSON   0 IN-JSON !          \ inside a JSON string: EMIT1 escapes
 variable BUF-ON
 variable BUF-FD   2 BUF-FD !
-PTR-VARIABLE BUF-A
-variable BUF-CAP
-variable BUF-U
-variable BUF-I
+\ The capture, mapped on first use and grown as TEXT is, holds HELD-U bytes;
+\ CAPTURE empties it.
+PERSISTED-PTR-VARIABLE HELD-P   NULL-PTR HELD-P !
+variable HELD-CAP   0 HELD-CAP !        \ bytes mapped at HELD-P, 0 for none
+variable HELD-U   0 HELD-U !
 create NUM-BUF 20 allot  variable NUM-V  variable NUM-N
 
 public
@@ -35,11 +36,6 @@ variable JSON   0 JSON !
 \ hook exists, so no effect is published for it.
 variable QUIET
 variable TALLY   0 TALLY !               \ rejections counted this load
-
-\ E-DIAG-CAPACITY rejects a record that does not fit the caller's buffer.
-\ src/lib/error.f owns it but compiles after this file, so the same (code, name)
-\ pair is re-registered here, the one form tools/error-code-lint.f admits.
--2901 constant E-DIAG-CAPACITY
 
 private
 
@@ -60,6 +56,16 @@ private
    TEXT-CAP @ {: oc:n :}
    TEXT-P @ oc oc 2 * ARENA-BYTES-GROW TEXT-P !
    oc 2 * TEXT-CAP ! ;
+
+\ Grows the capture, keeping its bytes, until n more fit.
+: HELD-ROOM ( n -- ) {: u:n :}
+   HELD-CAP @ 0= IF
+      TEXT-FIRST ARENA-ALLOC-BYTES HELD-P !  TEXT-FIRST HELD-CAP !
+   THEN
+   HELD-CAP @ BEGIN dup HELD-U @ u + < WHILE 2 * REPEAT {: nc:n :}
+   nc HELD-CAP @ > IF
+      HELD-P @ HELD-CAP @ nc ARENA-BYTES-GROW HELD-P !  nc HELD-CAP !
+   THEN ;
 
 
 public
@@ -97,47 +103,29 @@ public
 : JSON-OPEN ( -- )   34 EMIT-RAW  -1 IN-JSON ! ;
 : JSON-CLOSE ( -- )  0 IN-JSON !  34 EMIT-RAW ;
 
-: BUFFER! ( ptr u8 n -- )
-   {: a:ptr cap:n :}
-   a BUF-A !
-   cap BUF-CAP !
-   0 BUF-U !
+: CAPTURE ( -- )
+   0 HELD-U !
    -1 BUF-ON ! ;
 
+\ Records go to the file descriptor again; BUFFER$ still answers the capture.
 : BUFFER-OFF ( -- )
-   0 BUF-ON !
-   0 BUF-U ! ;
+   0 BUF-ON ! ;
 
 : FD! ( n -- )
    BUF-FD ! ;
 
-\ BUF-A is a pointer cell, so a plain fetch keeps the ptr u8 view the byte
-\ store in BUF-COPY needs.
 : BUFFER$ ( -- ptr u8 n )
-   BUF-A @ BUF-U @ ;
+   HELD-P @ HELD-U @ ;
 private
 
-: BUF-COPY ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   0 BUF-I !
-   BEGIN BUF-I @ u < WHILE
-      a BUF-I @ + c@
-      BUF-A @ BUF-U @ + BUF-I @ + c!
-      BUF-I @ 1 + BUF-I !
-   REPEAT ;
-
-\ The caller's buffer cannot grow: a record that does not fit is rejected whole by
-\ a throw, and the buffer keeps every record before it.
 : BUF-APPEND ( ptr u8 n -- )
    {: a:ptr u:n :}
    BUF-ON @ 0= IF BUF-FD @ a u write drop EXIT THEN
-   BUF-U @ u + BUF-CAP @ > IF E-DIAG-CAPACITY throw THEN
-   a u BUF-COPY
-   BUF-U @ u + BUF-U ! ;
+   u HELD-ROOM
+   a HELD-P @ HELD-U @ + u ARENA-COPY
+   HELD-U @ u + HELD-U ! ;
 
 public
-\ Rendering returns to stdout before the append, so a rejected record leaves the
-\ renderer as a delivered one does.
 : FLUSH ( -- )
    TEXT TEXT-LEN @
    0 DEST !  0 TEXT-LEN !

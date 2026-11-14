@@ -75,7 +75,6 @@ create CHK-ONE 1 allot
 TYPED-VARIABLE CHK-OUT-BUF-A ptr u8
 TYPED-VARIABLE CHK-ERR-BUF-A ptr u8
 TYPED-VARIABLE CHK-MAP-BUF-A ptr u8
-TYPED-VARIABLE CHK-SCRATCH-BUF-A ptr u8
 
 \ A buffer that holds a source, or text built from one, grows to what it
 \ holds: the engine loads a source file of any size (src/core/include.f), so
@@ -156,14 +155,6 @@ variable CHK-ALL-RC
 
 : CHK-RUN-BUF ( -- ptr u8 )
    1 CHK-RUN-ROOM drop ;
-
-\ The scratch where the all-errors core renders a pass's diagnostics has that
-\ core's bound (tools/check-all-errors-core.f SCRATCH-CAP).
-: CHK-SCRATCH-BUF ( -- ptr u8 )
-   CHK-SCRATCH-BUF-A @ 0= if
-      CHECK-ALL-ERRORS:SCRATCH-CAP CHK-ALLOC-BUF CHK-SCRATCH-BUF-A !
-   then
-   CHK-SCRATCH-BUF-A @ ;
 
 : CHK-OUT-BUF ( -- ptr u8 )
    CHK-OUT-BUF-A @ 0= if CHK-OUT-CAP CHK-ALLOC-BUF CHK-OUT-BUF-A ! then
@@ -535,7 +526,7 @@ private
 
 \ The --all-errors core writes its records to standard error in the run's mode.
 : CHK-ALL-STREAM ( -- )
-   FD:STDERR CHK-SCRATCH-BUF CHECK-ALL-ERRORS:SCRATCH-CAP CHECK-ALL-ERRORS:STREAM!
+   FD:STDERR CHECK-ALL-ERRORS:STREAM!
    CHK-JSON @ CHECK-ALL-ERRORS:JSON! ;
 
 \ The pre-pass or discovery stops in one file of the composition: the subject,

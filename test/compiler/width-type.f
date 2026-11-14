@@ -15,11 +15,9 @@ private
 
 70 constant CHECK-RC    \ the engine refusing a definition it cannot certify
 
-create DIAG-BUF 8192 allot
-8192 constant DIAG-CAP
 
 : ARM ( -- )
-   DIAG-BUF DIAG-CAP REJECTION:BUFFER!  true REJECTION:JSON ! ;
+   REJECTION:CAPTURE  true REJECTION:JSON ! ;
 
 : DISARM ( -- )
    false REJECTION:JSON !  REJECTION:BUFFER-OFF ;

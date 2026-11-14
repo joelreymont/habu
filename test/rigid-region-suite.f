@@ -115,11 +115,10 @@ T-RESET
 
 \ Non-quiet candidate check that captures the rendered diagnostic into a buffer
 \ (kept off stderr) so a reject's NAMED reason can be asserted.
-create RR-DIAG 16384 allot
 \ The cases read prose, and a run under `tools/check.f --json-errors` starts in
 \ JSON.
 variable RR-JSON-WAS   REJECTION:JSON @ RR-JSON-WAS !   false REJECTION:JSON !
-: RR-CHECK ( ptr u8 n -- n ) RR-DIAG 16384 REJECTION:BUFFER! CHECK-CANDIDATE! ;
+: RR-CHECK ( ptr u8 n -- n ) REJECTION:CAPTURE CHECK-CANDIDATE! ;
 : RR-DIAG? ( ptr u8 n -- bool ) REJECTION:BUFFER$ 2swap CONTAINS? ;
 
 \ Exhaustion probe: shrink the shared domain bound so the SECOND region mint of
@@ -229,15 +228,15 @@ s" : RR-DFCALL ( -- matrix<space-global,fresh-region-c,f32,f32> ) RR-OWN RR-DFP 
 s" : RR-DFOWN ( n -- ) create , does> ( -- matrix<space-global,fresh-region-b,f32,f32> ) drop RR-OWN ;"  TEST-EVAL:RC  0 T=
 s" 0 RR-DFOWN RR-DFO"  TEST-EVAL:RC  0 T=
 s" : RR-DFUSE ( -- matrix<space-global,fresh-region-b,f32,f32> ) RR-DFO ;"  TEST-EVAL:RC  0 T=
-RR-DIAG 16384 REJECTION:BUFFER!
+REJECTION:CAPTURE
 s" : RR-DFNEW ( n -- ) create , does> ( mut-view<p,q,fresh-region-b,u8> -- mut-view<p,q,fresh-region-c,u8> ) drop RR-VPASS ;"  TEST-EVAL:RC  70 T=
 s" rigid host: region mismatch" RR-DIAG? TTRUE
 \ A clause passes a caller's quantifier to a fresh input as a colon body does
 \ (30): not a generation's, nor a region slot's without a region kind.
-RR-DIAG 16384 REJECTION:BUFFER!
+REJECTION:CAPTURE
 s" : RR-DFGEN ( n -- ) create , does> ( span<space-global,f32,a> -- ) drop RR-GFRESH ;"  TEST-EVAL:RC  70 T=
 s" rigid host: identity domain confusion" RR-DIAG? TTRUE
-RR-DIAG 16384 REJECTION:BUFFER!
+REJECTION:CAPTURE
 s" : RR-DFANY ( n -- ) create , does> ( matrix<space-global,a,f32,f32> -- matrix<space-global,a,f32,f32> ) drop RR-MFRESH ;"  TEST-EVAL:RC  70 T=
 s" rigid host: identity domain confusion" RR-DIAG? TTRUE
 \ (26) a call's fresh input is the allocation its caller passes, and so is the
@@ -323,7 +322,7 @@ s" rigid host: region mismatch" RR-DIAG? TTRUE
 s" C-QFRESHOUT ( -- [ -- matrix<space-global,fresh-region-b,f32,f32> ] ) [: RR-OWN ;]"  RR-CHECK -1 T=
 
 T-REPORT
-\ Diagnostics leave RR-DIAG and take back the format found, so a file loaded
+\ Diagnostics leave the capture and take back the format found, so a file loaded
 \ after this one in the same process reports as usual.
 REJECTION:BUFFER-OFF  RR-JSON-WAS @ REJECTION:JSON !
 ;package

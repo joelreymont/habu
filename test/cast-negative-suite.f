@@ -13,10 +13,7 @@ T-RESET
 
 \ Silences the expected rejection diagnostics: the production declarer emits one
 \ per refusal.
-package CN-DIAG
-create BUF 65536 allot
-BUF 65536 REJECTION:BUFFER!
-;package
+REJECTION:CAPTURE
 
 package CN
 public

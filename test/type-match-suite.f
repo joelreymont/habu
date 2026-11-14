@@ -259,9 +259,8 @@ s" MATCH-SCOPE" type cr
 \ class, reason and suggestion; nonexhaustive lists the missing variant names.
 \ Captured through the render diag buffer in JSON mode; one prose case pins the
 \ `bad match: missing variants` text.
-create MDG-BUF 8192 allot
 : MDG< ( ptr u8 n -- )   \ run one candidate with JSON diags into the buffer
-   MDG-BUF 8192 REJECTION:BUFFER!  0 0= REJECTION:JSON !
+   REJECTION:CAPTURE  0 0= REJECTION:JSON !
    CHECK-CANDIDATE! 0 T= ;
 : MDG? ( ptr u8 n -- )
    T-NEXT
@@ -332,7 +331,7 @@ s\" \"code\":\"E-MATCH-DEPTH\"" MDG?
 s\" \"repair_class\":\"factor_match_nesting\"" MDG?
 MDG-END
 \ prose shape: the `bad match: missing variants` text, prose mode.
-MDG-BUF 8192 REJECTION:BUFFER!
+REJECTION:CAPTURE
 s" G18 ( mtri -- n ) MATCH mtri bb OF ENDOF ;MATCH" CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s" bad match: missing variants: aa cc" CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
