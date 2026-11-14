@@ -380,10 +380,9 @@ $688 constant FD-CELL
 \ terminal, 1..DEVICES a row of the write table. They are per task, and nothing
 \ canonicalises a code address in a task region, so an execution token there
 \ would survive a snapshot pointing into the builder's region.
-\ The write table holds execution tokens in the engine header, where SNAP-RELOC
-\ canonicalises declared cells. TASK-REGION-INIT copies the rows too, sound
-\ because a task region is never snapshotted. DEVICES is small so
-\ the table costs no allocation on a microcontroller.
+\ The write table holds this run's write handlers, stored undeclared, so a
+\ build's image never holds one; TASK-REGION-INIT copies the rows to a task.
+\ DEVICES is small so the table costs no allocation on a microcontroller.
 \ BUSY-CELL stops re-entry: a device write may reach `type`, and while one runs
 \ the funnel takes the terminal path.
 \ ACTIVE-CELL names the device an operation runs for: devices share their eight

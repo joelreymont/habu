@@ -84,6 +84,8 @@ variable SAVED-LASTC
 variable SAVED-CURRENT
 variable SAVED-FLAGS                 \ hb's newest record's flags (NEWEST-FLAGS)
 variable SAVED-EXIT-HOOK             \ hb's process-exit vector (ARM-EXIT)
+\ hb's GENIO-ABI band: a device a build selects has its handler in the space.
+GENIO-ABI:END GENIO-ABI:OUT-CELL - BUFFER: SAVED-ROUTING
 
 $40 constant NORESERVE               \ macOS MAP_NORESERVE
 
@@ -5075,6 +5077,8 @@ variable DUE-MADE
    COMMA-END-CELL HOST@ SAVED-COMMA-END !
    COMMA-BASE-CELL HOST@ SAVED-COMMA-BASE !
    LASTC-CELL HOST@ SAVED-LASTC !
+   data-base BYTE-VIEW GENIO-ABI:OUT-CELL +  SAVED-ROUTING
+   GENIO-ABI:END GENIO-ABI:OUT-CELL - BYTE-COPY
    get-current SAVED-CURRENT ! ;
 
 \ DATA-FLOOR-CELL is an offset from hb's data-base (layout.f). The wordlists
@@ -5696,6 +5700,8 @@ variable DUE-MADE
    SAVED-COMMA-BASE @ COMMA-BASE-CELL HOST!
    SAVED-LASTC @ LASTC-CELL HOST!
    SAVED-EXIT-HOOK @ EXIT-HOOK-CELL HOST!
+   SAVED-ROUTING  data-base BYTE-VIEW GENIO-ABI:OUT-CELL +
+   GENIO-ABI:END GENIO-ABI:OUT-CELL - BYTE-COPY
    SAVED-FLAGS @ NEWEST-FLAGS ! ;
 
 \ Records still below the count would name bodies in the unmapped space; their

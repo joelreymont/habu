@@ -1593,6 +1593,37 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : ARENA-CASE ( CMD:command -- CMD:command )
    WRITE-ARENA  ARENA-KT ARENA-KB ARENA-DA ARENA-HT ;
 
+\ The route sequence's f.f: its top level makes D, a device whose emit and write add their byte
+\ counts to N, the output, types to it and leaves it there, and stores 7 into the user row U.
+\ main.f's MAIN prints U, N, how making D the output ends, and N. genio-core.f needs --repl.
+: WRITE-ROUTE ( -- )
+   L$ s" route" NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
+   s\" require src/lib/genio-core.f\nrequire src/lib/task.f\npackage FILE-OBJECTS-ROUTE\n" SRC+
+   s\" public variable N  TASK:+USER U n  TYPED-VARIABLE D GENIO:device\nprivate\n" SRC+
+   s\" : NOTHING ( -- ) ;\n: ADD-CHAR ( n -- ) drop 1 N +! ;\n: NO-KEY ( -- n ) 0 ;\n" SRC+
+   s\" : NOT-READY ( -- bool ) false ;\n: NO-READ ( ptr u8 n -- n ) {: a:ptr u:n :} 0 ;\n" SRC+
+   s\" : ADD-BYTES ( ptr u8 n -- ) {: a:ptr u:n :} u N +! ;\n: BUILD ( -- GENIO:device )\n" SRC+
+   s\"    [: ADD-CHAR ;] [: NO-KEY ;] [: NOT-READY ;] [: NO-READ ;]\n" SRC+
+   s\"    [: ADD-BYTES ;] [: NO-READ ;] [: NOTHING ;] [: NOTHING ;] 0 GENIO:DEVICE ;\n" SRC+
+   s\" BUILD D !  D @ GENIO:OUTPUT!  s\" xyz\" type  7 U !\n;package\n" SRC+  s" f.f" NEST-WRITE
+   s" f.f" REQUIRE+
+   s\" : TO-D ( -- ) FILE-OBJECTS-ROUTE:D @ GENIO:OUTPUT!  s\" abc\" type ;\n" SRC+
+   s\" : MAIN ( -- )\n   .\" seen\" cr  FILE-OBJECTS-ROUTE:U @ .  FILE-OBJECTS-ROUTE:N @ .\n" SRC+
+   s\"    [: TO-D ;] catch {: code:n :}  GENIO:TERMINAL GENIO:OUTPUT!\n" SRC+
+   s\"    code E-GENIO-STATE = if .\" refused\" cr else code . then\n" SRC+
+   s\"    FILE-OBJECTS-ROUTE:N @ . ;\n" SRC+  s" main.f" NEST-WRITE ;
+
+\ Guards a program's start: it starts on the terminal with fresh user rows whatever a file's top level left.
+: ROUTE-CASE ( CMD:command -- CMD:command )
+   WRITE-ROUTE
+   s" RT" WHICH!  s" main.f" NEST-PATH$ REPL-BUILD 0= if exit then
+   s" prog" s\" seen\n0\n3\nrefused\n3\n" s" D got the build's bytes; the program starts on the terminal, U 0"
+      NEST-RUN
+   s" RM" WHICH!  s" test/fixtures/file-objects/bare-main.f" FIXTURE-BUILD 0= if exit then
+   s" RT2" WHICH!  s" main.f" NEST-PATH$ REPL-BUILD 0= if exit then
+   s" prog" s\" seen\n0\n3\nrefused\n3\n" s" D got the build's bytes; the program starts on the terminal, U 0"
+      NEST-RUN ;
+
 \ The device sequence's f.f: K is the byte count a read of /dev/null answers, a file whose change time
 \ does not track its bytes.
 : WRITE-DEVICE ( -- )
@@ -1846,7 +1877,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
       STORED-CASE RETIRED-CASE ORDER-CASE PART-LINK-CASE PIECE-CASE SEAL-CASE SQUAT-CASE CAUGHT-CASE
       CTOR-CASE EXPORT-CASE
       NEST-CASE KEPT-CASE SAME-CASE RETIRE-CASE CLAUSE-CASE READ-CASE LIST-CASE LINK-CASE TASK-CASE
-      SAMEFILE-CASE ANCHORED-CASE SPAWN-CASE ZIP-CASE JSONL-CASE KIND-CASE ARENA-CASE
+      SAMEFILE-CASE ANCHORED-CASE SPAWN-CASE ZIP-CASE JSONL-CASE KIND-CASE ARENA-CASE ROUTE-CASE
       DEVICE-CASE SPELLED-CASE PACKAGED-CASE EVALUATED-CASE OPENED-CASE CAST-CASE
       CROSS-CASE TARGET-CASE ;]
    CMD:WITH-COMMAND ;

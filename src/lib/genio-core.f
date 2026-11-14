@@ -16,7 +16,6 @@
 require src/lib/error.f
 require src/lib/prelude.f
 require src/lib/type/deftype.f
-require src/core/quotation-storage.f
 require src/lib/task.f
 
 package GENIO
@@ -97,31 +96,19 @@ $8 TASK:+USERS IO-SCRATCH u8
    data-base GENIO-ABI:ACTIVE-CELL + ;
 
 \ Row i-1 of the engine's write table, which only the output funnel reads; the
-\ terminal has none. The cell holds the handler the funnel calls, and a cleared
-\ row is ZERO: two element types for one DATA cell, so two accessors, each
-\ declaring what it touches.
+\ terminal has none. The cell holds the handler the funnel calls, or 0.
 : ENGINE-ROW-OFF ( n -- n ) {: idx:n :}
    GENIO-ABI:WRITE-OFF idx 1- 8 * + ;
 
-\ GENIO-ABI:WRITE-OFF is an image-ABI offset, so this row cannot become a
-\ TYPED-VARIABLE, and no checked word may give a DATA address a quotation
-\ pointee except through a private CAST:.
-CAST: >ENGINE-ROW ( n -- ptr [ ptr u8 n -- ] )
-
-: ENGINE-ROW ( n -- ptr [ ptr u8 n -- ] )
-   ENGINE-ROW-OFF data-base BYTE-VIEW NULL-PTR BYTE-VIEW - + >ENGINE-ROW ;
+CAST: WRITE>N ( [ ptr u8 n -- ] -- n )
 
 : ENGINE-ROW-CLEAR ( n -- )
    0 swap ENGINE-ROW-OFF data-base + ! ;
 
-\ In the main task the row is a cell of the engine's own DATA, so it is a
-\ DECLARED address that a snapshot or an AOT capture has to canonicalise, and
-\ `xt!` is its declaration point. In a worker the row is a cell of that task's
-\ region, which the declared-address table bounds exclude -- `xt!` there refuses
-\ with "snapshot address cell out of range". QUOTATION-STORAGE:STORE asks which
-\ of the two a cell is and stores it the right way.
+\ The row is this run's: stored plainly, never declared, so a build's image
+\ never holds it.
 : PUBLISH-WRITE ( n -- ) {: idx:n :}
-   idx OP-WRITE @ idx ENGINE-ROW QUOTATION-STORAGE:STORE ;
+   idx OP-WRITE @ WRITE>N idx ENGINE-ROW-OFF data-base + ! ;
 
 
 : BOUNDED ( n -- n ) {: idx:n :}
