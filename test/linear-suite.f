@@ -442,21 +442,18 @@ SLOTS TYPED-BUFFER KEPT-NS n
    s" and refuses a row in a public section by its code" T-LABEL
    BAD-FIXTURE s" lin-bad.f" CHECK
    RC @ 70 T=
-   ERR$ S\" \"code\":\"E-LINEAR-SCOPE\"" CONTAINS? TTRUE
-   ERR$ S\" \"message\":\"in `linear: MINT`, the row is outside its owner's private section\"" CONTAINS? TTRUE
-   ERR$ S\" lin-bad.f\",\"line\":4," CONTAINS? TTRUE
+   ERR$ s" error[E-LINEAR-SCOPE]: in `linear: MINT`, the row is outside its owner's private section" CONTAINS? TTRUE
+   ERR$ s" lin-bad.f:4:" CONTAINS? TTRUE
    s" and refuses a qualified public destination" T-LABEL
    QUAL-FIXTURE s" lin-qual.f" CHECK
    RC @ 70 T=
-   ERR$ S\" \"code\":\"E-LINEAR-SCOPE\"" CONTAINS? TTRUE
-   ERR$ S\" \"message\":\"in `linear: LIN-FQ:MINT`, a qualified name publishes past the private section\"" CONTAINS? TTRUE
-   ERR$ S\" lin-qual.f\",\"line\":6," CONTAINS? TTRUE
+   ERR$ s" error[E-LINEAR-SCOPE]: in `linear: LIN-FQ:MINT`, a qualified name publishes past the private section" CONTAINS? TTRUE
+   ERR$ s" lin-qual.f:6:" CONTAINS? TTRUE
    s" and refuses an identity whose stack tails differ" T-LABEL
    TAIL-FIXTURE s" lin-tail.f" CHECK
    RC @ 70 T=
-   ERR$ S\" \"code\":\"E-CAST-ARITY\"" CONTAINS? TTRUE
-   ERR$ S\" \"message\":\"in `linear: MINT`, the input and output rows end in different tails\"" CONTAINS? TTRUE
-   ERR$ S\" lin-tail.f\",\"line\":6," CONTAINS? TTRUE
+   ERR$ s" error[E-CAST-ARITY]: in `linear: MINT`, the input and output rows end in different tails" CONTAINS? TTRUE
+   ERR$ s" lin-tail.f:6:" CONTAINS? TTRUE
    s" an hb built with --repl keeps the owner of a type in its grown table" T-LABEL
    SAVE
    RC @ 0 T=

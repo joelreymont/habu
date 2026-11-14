@@ -516,6 +516,7 @@ s" check-verify-child.f" VFY-CHILD FS:JOIN-PATH VFY-CHILD-U !
 
 TYPED-VARIABLE VFY-PREPASS bool         \ the child runs check.f's pre-pass ...
 TYPED-VARIABLE VFY-INDEX? bool          \ standalone candidate scan
+TYPED-VARIABLE VFY-JSON bool            \ the pre-pass child writes packets, false for prose records
 TYPED-VARIABLE VFY-LABEL-A ptr u8       \ ... naming the subject by this label
 variable VFY-LABEL-U
 TYPED-VARIABLE VFY-OF-A ptr u8          \ the tail whose uses the child writes in every file,
@@ -557,7 +558,8 @@ variable VFY-TARGET-U
    0 VFY-FAULT-LEN !
    0 VFY-TARGET-U !
    false VFY-PREPASS !
-   false VFY-INDEX? ! ;
+   false VFY-INDEX? !
+   true VFY-JSON ! ;
 
 
 \ PATH's canonical absolute spelling, a relative PATH read from the working
@@ -716,7 +718,10 @@ variable VFY-EXE-U
    s" --" CHK-ARG+
    VFY-PATH$ CHK-ARG+
    VFY-INDEX? @ if s" --index" CHK-ARG+ then
-   VFY-PREPASS @ if VFY-LABEL-A @ VFY-LABEL-U @ CHK-ARG+ then
+   VFY-PREPASS @ if
+      VFY-LABEL-A @ VFY-LABEL-U @ CHK-ARG+
+      VFY-JSON @ 0= if s" --prose" CHK-ARG+ then
+   then
    VFY-AT @ 0 >= if s" --at" CHK-ARG+  SB-RESET VFY-AT @ FMT:SB-U SB$ CHK-ARG+ then
    VFY-OF-U @ 0 > if s" --of" CHK-ARG+  VFY-OF-A @ VFY-OF-U @ CHK-ARG+ then
    PROC-ENV-INHERIT-MISSING ;
@@ -1176,7 +1181,8 @@ public
 \ canonical absolute path and count positions in the bytes, a dependency's name
 \ its file and count there. A duplicate definition, which the checker writes no
 \ packet for, is the record --all-errors writes; the stop's record
-\ (STOP-RECORD$) is the last line. Every VERIFY-*$ holds until the next call.
+\ (STOP-RECORD$) is the last line. A PREVERIFY-BYTES with JSON false holds
+\ prose records instead. Every VERIFY-*$ holds until the next call.
 : VERIFY-OUT$ ( -- ptr u8 n )
    VFY-OUT-U @ 0= if NULL$ exit then
    0 VFY-OUT VFY-OUT-U @ ;
@@ -1702,11 +1708,13 @@ public
    VFY-BATCH-OUTCOME @ VFY-CLEAN-EXIT? ;
 : VERIFY-BATCH-COMPLETE? ( -- bool )  VFY-BATCH-COMPLETE @ ;
 
-\ check.f's pre-pass in the verifier child, which resolves words as the run does:
-\ ok 0, ok the code it stopped with, or err how a child with no answer ended.
-: PREVERIFY-BYTES ( ptr u8 n ptr u8 n ptr u8 n ms -- result<n,PROCESS:ending> )
-   {: src:ptr srcu:n path:ptr pathu:n label:ptr labelu:n deadline :}
+\ check.f's pre-pass in the verifier child, which resolves words as the run does,
+\ its rejections packets when JSON is true and prose records when false: ok 0,
+\ ok the code it stopped with, or err how a child with no answer ended.
+: PREVERIFY-BYTES ( ptr u8 n ptr u8 n ptr u8 n ms bool -- result<n,PROCESS:ending> )
+   {: src:ptr srcu:n path:ptr pathu:n label:ptr labelu:n deadline json:bool :}
    VFY-RESET
+   json VFY-JSON !
    path pathu VFY-PATH!
    true VFY-PREPASS !
    label VFY-LABEL-A !
