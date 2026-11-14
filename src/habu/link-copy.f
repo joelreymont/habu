@@ -68,7 +68,6 @@ DYNAMIC-BUFFER LAID-AT n             \ body k's image offset, 0 for a body not l
 DYNAMIC-BUFFER BY-BODY n             \ the laid bodies in laid order
 variable LAID-END                    \ where LAY-DATA lays next; then the laid length
 variable EXT-I                       \ BY-EXT's next row to lay
-variable EXTS-END                    \ where the extents laid so far end
 
 : HEADER-UNIT ( -- n ) BUILT-EXTS-N @ ;
 : REST-UNIT ( -- n ) BUILT-EXTS-N @ 1 + ;
@@ -305,18 +304,10 @@ variable EXTS-END                    \ where the extents laid so far end
    1 SEG-N +!
    img len + LAID-END ! ;
 
-\ BUILT-EXTS row b, laid when live. An extent with no data, as one at another's
-\ start is, holds no byte.
+\ BUILT-EXTS row b, laid when live.
 : LAY-EXT ( n -- )
    {: b:n :}
-   b EXT-SPAN {: start:n len:n :}
-   len 0= if exit then
-   start EXTS-END @ < if
-      s" link: two extents of the build hold the data at offset " SAY start BASE @ - SAY-INT SAY-CR
-      s" link: two extents of the build hold one byte" 74 die
-   then
-   start len + EXTS-END !
-   b REACHED? if start len SEG+ then ;
+   b REACHED? if b EXT-SPAN SEG+ then ;
 
 \ Each extent not yet laid that starts below v, in data order.
 : EXTS-BELOW ( n -- )
@@ -343,7 +334,7 @@ variable EXTS-END                    \ where the extents laid so far end
 \ unit is live each span no piece holds, before, between and after the pieces.
 : LAY-UNITS ( -- )
    SORT-EXTS  SORT-PIECES
-   0 SEG-N !  0 EXT-I !  OPEN-DP @ EXTS-END !
+   0 SEG-N !  0 EXT-I !
    REST-UNIT REACHED? {: rest:bool :}
    OPEN-DP @
    BUILT-N 0 ?do
@@ -355,8 +346,7 @@ variable EXTS-END                    \ where the extents laid so far end
    loop
    {: last:n :}
    last EXTS-BELOW
-   rest  SPACE-END last >  and if last  SPACE-END last -  SEG+ then
-   BASE @ SPACE-SIZE @ + EXTS-BELOW ;
+   rest  SPACE-END last >  and if last  SPACE-END last -  SEG+ then ;
 
 
 \ Whether body k is laid after the units: kept, its length cell past the
