@@ -9,9 +9,12 @@
 \ of a type its reader does not take, a read of a local whose block ended,
 \ refused naming the local's index, a local whose type is a 24th parameter,
 \ refused naming the word, and a local or a local's read in a text definition
-\ are refused, and the word is abandoned. The name a
-\ field loan awaits takes the steps its text twin's token takes: the same
-\ code and diagnostic.
+\ are refused, and the word is abandoned. The name a field loan awaits takes
+\ the steps its text twin's token takes: the same code and diagnostic. Inside
+\ an open match an item's kind decides its role: a call in an abandoned one is
+\ skipped, a call where the family belongs and a type where a variant belongs
+\ get the match's rejection. An item spelled by no token or by two is
+\ rejected.
 
 require src/lib/test.f
 require src/lib/c2-memory.f
@@ -274,6 +277,59 @@ variable BUILT-DIAG-U
 DECL-DIAG:PROSE  LOAN-BUILT 70 T=  KEEP-DIAG
 DECL-DIAG:PROSE  LOAN-TEXT 70 T=
 BUILT-DIAG$ DECL-DIAG:TEXT$ T$=  DECL-DIAG:OFF
+
+\ : NAME ( bfam -- n ) match zz ba of evaluate endof ;match ; whose family
+\ resolves nothing: the call is skipped through `;match` as its text is.
+: MAKE-ABANDONED ( ptr u8 n -- )
+   EFFECT:NEW BFAM EFFECT:IN EFFECT:N EFFECT:OUT define-word
+   s" match" KW  s" zz" EFFECT:N EFFECT:TYPE-ITEM
+   s" ba" OPND  s" of" KW  s" evaluate" EFFECT:CALL  s" endof" KW
+   s" ;match" KW
+   postpone ; ;
+: ABANDONED ( -- n ) [: s" BI-ABANDONED" MAKE-ABANDONED ;] catch ;
+DECL-DIAG:PROSE  ABANDONED 70 T=
+s" bad match: unknown type family" DECL-DIAG:HAS? TTRUE
+s" unsafe" DECL-DIAG:HAS? TFALSE  DECL-DIAG:OFF
+
+\ : NAME ( bfam -- n ) match BFAM ba of 1 endof bb of 2 endof ;match ;
+\ with BFAM a call: a call names no family, though a family spells it.
+: MAKE-CALL-FAMILY ( ptr u8 n -- )
+   EFFECT:NEW BFAM EFFECT:IN EFFECT:N EFFECT:OUT define-word
+   s" match" KW  s" BFAM" EFFECT:CALL
+   s" ba" OPND  s" of" KW  1 literal  s" endof" KW
+   s" bb" OPND  s" of" KW  2 literal  s" endof" KW
+   s" ;match" KW
+   postpone ; ;
+: CALL-FAMILY ( -- n ) [: s" BI-CALL-FAMILY" MAKE-CALL-FAMILY ;] catch ;
+DECL-DIAG:PROSE  CALL-FAMILY 70 T=
+s" bad match: unknown type family" DECL-DIAG:HAS? TTRUE  DECL-DIAG:OFF
+
+\ : NAME ( bfam -- n ) match bfam zz of 1 endof bb of 2 endof ;match ; with
+\ zz a type where the variant belongs: the match's own rejection.
+: MAKE-TYPE-VARIANT ( ptr u8 n -- )
+   EFFECT:NEW BFAM EFFECT:IN EFFECT:N EFFECT:OUT define-word
+   s" match" KW  BFAM-ITEM
+   s" zz" BFAM EFFECT:TYPE-ITEM  s" of" KW  1 literal  s" endof" KW
+   s" bb" OPND  s" of" KW  2 literal  s" endof" KW
+   s" ;match" KW
+   postpone ; ;
+: TYPE-VARIANT ( -- n ) [: s" BI-TYPE-VARIANT" MAKE-TYPE-VARIANT ;] catch ;
+DECL-DIAG:PROSE  TYPE-VARIANT 70 T=
+s" bad match: unknown variant" DECL-DIAG:HAS? TTRUE  DECL-DIAG:OFF
+
+\ : NAME ( -- n ) 5 S ; with S an item spelled by the string: an item's
+\ spelling is one token, else it is rejected as define-word's name is, 74.
+: MAKE-SPELLED ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n :}
+   EFFECT:NEW EFFECT:N EFFECT:OUT define-word
+   5 literal  sa su KW
+   postpone ; ;
+: EMPTY-ITEM ( -- n ) [: s" BI-EMPTY-ITEM" s" " MAKE-SPELLED ;] catch ;
+: BLANK-ITEM ( -- n )
+   [: s" BI-BLANK-ITEM" s" 1 drop" MAKE-SPELLED ;] catch ;
+EMPTY-ITEM 74 T=
+BLANK-ITEM 74 T=
+s" : BI-BLANK-ITEM ( -- n ) 8 ;" evaluate-closed
+BI-BLANK-ITEM 8 T=
 
 public
 : WIDE-GO ( -- ) s" BI-WIDE" MAKE-WIDE ;

@@ -299,13 +299,19 @@
    {: a:ptr u:n :}
    a u TFAM:TFAM-MATCH-FAM MATCH-FAM-FOUND ;
 
-: MATCH-VARIANT-TOK ( ptr u8 n -- )
+: MATCH-END ( -- )
+   CHECKER-TAPE:K-MATCH-END MF-CUR MF.FAM @ 0 EVENT!
+   MATCH-SEMI ;
+
+\ An arm whose variant the matched family does not declare.
+: MATCH-VARIANT-NONE ( -- )
+   CHECKER-TAPE:K-MATCH-ARM -1 0 EVENT!  MD-VAR-UNKNOWN MDIAG-COMPILE!
+   0 OK !  -1 MREJ !  -1 MPEND !  3 CHECKER-MATCH-MODE ! ;
+
+: MATCH-VARIANT ( ptr u8 n -- )
    {: a:ptr u:n :}
-   a u s" ;match" CORE-STR= IF
-      CHECKER-TAPE:K-MATCH-END MF-CUR MF.FAM @ 0 EVENT!
-      MATCH-SEMI EXIT THEN
    a u MF-CUR MF.FAM @ TFAM:TFAM-MATCH-VARIANT 0= IF
-      drop CHECKER-TAPE:K-MATCH-ARM -1 0 EVENT!  MD-VAR-UNKNOWN MDIAG-COMPILE! 0 OK !  -1 MREJ !  -1 MPEND !  3 CHECKER-MATCH-MODE !  EXIT THEN
+      drop MATCH-VARIANT-NONE EXIT THEN
    {: vid:n :}
    CHECKER-TAPE:K-MATCH-ARM  MF-CUR MF.FAM @  vid EV-VARIANT
    vid TFAM:SUMV-TAG@ {: tag:n :}
@@ -314,9 +320,14 @@
    vid MPEND !
    3 CHECKER-MATCH-MODE ! ;
 
-: MATCH-OF-TOK ( ptr u8 n -- )
+: MATCH-VARIANT-TOK ( ptr u8 n -- )
    {: a:ptr u:n :}
-   a u s" of" CORE-STR= IF CHECKER-TAPE:K-MATCH-OF 0 0 EVENT!
+   a u s" ;match" CORE-STR= IF MATCH-END EXIT THEN
+   a u MATCH-VARIANT ;
+
+\ The arm's `of` when true, else the token that stands in its place.
+: MATCH-OF ( bool -- )
+   IF CHECKER-TAPE:K-MATCH-OF 0 0 EVENT!
    ELSE MD-MISSING-OF MDIAG-COMPILE! 0 OK !  -1 MREJ ! THEN
    MF-CUR {: r:ptr :}
    r MF.BASE @ DCUR !
@@ -333,6 +344,8 @@
    10  r MF.BASE @  0  r MF.RBASE @  0  CF-PUSH
    0 DEADP !
    0 CHECKER-MATCH-MODE ! ;
+
+: MATCH-OF-TOK ( ptr u8 n -- ) s" of" CORE-STR= MATCH-OF ;
 
 : MATCH-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
    CHECKER-MATCH-MODE @ 1 = IF a u MATCH-FAM-TOK EXIT THEN
@@ -586,15 +599,54 @@ public
    CUR-PAREN
    RES-FALSE ;
 
-\ The step DO-TOK1 gives a token while a construct or a match is open.
-: ITEM-OPEN? ( -- bool )
-   CONM @ 0 <> IF TKF TKFU @ CONSTRUCT-TOK RES-TRUE EXIT THEN
+\ A construct's variant that names none of its family's, or follows a family
+\ that resolved nothing.
+: CONSTRUCT-VARIANT-NONE ( -- )
+   EV-OPERAND
+   CONFAM @ 0 < 0= IF
+      CONSTRUCT-NONE  MD-CON-VAR MDIAG-COMPILE!  0 OK !
+   THEN
+   0 CONM ! ;
+
+\ The step an item of kind KIND takes at the family or the variant an open
+\ construct awaits; V is a TYPE's schema node.
+: ITEM-CONSTRUCT ( n n -- ) {: v:n kind:n :}
+   CONM @ 2 = IF
+      kind BODY-ITEM-KIND:OPERAND = IF TKF TKFU @ CONSTRUCT-TOK EXIT THEN
+      CONSTRUCT-VARIANT-NONE EXIT
+   THEN
+   EV-OPERAND
+   kind BODY-ITEM-KIND:TYPE = IF v TFAM:TFAM-CONSTRUCT-NODE
+   ELSE MD-CON-FAM MDIAG-COMPILE!  0 RES-FALSE THEN
+   CONSTRUCT-FAM-FOUND ;
+
+\ The step an item of kind KIND takes at the family, the variant or the `of`
+\ an open match awaits, or inside an abandoned one, which only a KEYWORD
+\ `match` or `;match` nests or ends; V is a TYPE's schema node.
+: ITEM-MATCH ( n n -- ) {: v:n kind:n :}
+   CHECKER-MATCH-MODE @ {: m:n :}
+   kind BODY-ITEM-KIND:KEYWORD = {: kw:bool :}
+   m 1 = IF
+      kind BODY-ITEM-KIND:TYPE = IF v TFAM:TFAM-MATCH-NODE
+      ELSE MD-FAM-UNKNOWN MDIAG-COMPILE!  0 RES-FALSE THEN
+      MATCH-FAM-FOUND EXIT
+   THEN
+   m 2 = IF
+      kind BODY-ITEM-KIND:OPERAND = IF TKF TKFU @ MATCH-VARIANT EXIT THEN
+      kw TKF TKFU @ s" ;match" CORE-STR= and IF MATCH-END EXIT THEN
+      MATCH-VARIANT-NONE EXIT
+   THEN
+   m 3 = IF kw TKF TKFU @ s" of" CORE-STR= and MATCH-OF EXIT THEN
+   kw IF TKF TKFU @ MATCH-SKIP-TOK ELSE EV-OPERAND THEN ;
+
+\ The step an item takes while a construct or a match is open, decided by
+\ its kind, never by its spelling's lookup; true when one is open.
+: ITEM-OPEN? ( n n -- bool ) {: v:n kind:n :}
+   CONM @ 0 <> IF v kind ITEM-CONSTRUCT RES-TRUE EXIT THEN
    CHECKER-MATCH-MODE @ 0 = IF RES-FALSE EXIT THEN
-   CHECKER-MATCH-MODE @ 4 = IF LITERAL-PAYLOAD-STEP THEN
-   TKF TKFU @ MATCH-TOK  RES-TRUE ;
+   v kind ITEM-MATCH RES-TRUE ;
 
 : ITEM-CALL ( ptr u8 n n -- ) {: a:ptr u:n ix:n :}
-   ITEM-OPEN? IF EXIT THEN
    ix CHECKER-RESOLVE:REC-AT  TKF TKFU @ BIND-RECORD
    TKF TKFU @ UNSAFE-TOK? IF
       BWIN-UNJUDGED @ IF TKF TKFU @ BIND-SOURCE-CALL THEN
@@ -603,7 +655,6 @@ public
    a u CALL-STEP ;
 
 : ITEM-INT ( n -- ) {: v:n :}
-   ITEM-OPEN? IF EXIT THEN
    BIND-CLEAR
    0 CURSYM !
    v INT-STEP ;
@@ -612,14 +663,12 @@ public
 : ITEM-UNDEFINED ( -- )
    TKF TKFU @ REFUSE-UNDEFINED  IS-FAIL ;
 
-\ An abandoned match reads every token unmodeled through its `;match`.
-: ITEM-SKIP? ( -- bool )
-   CONM @ 0 <> IF RES-FALSE EXIT THEN
-   CHECKER-MATCH-MODE @ 4 <> IF RES-FALSE EXIT THEN
-   ITEM-OPEN? ;
+\ A TYPE, OPERAND or LOCAL item outside the form that takes it.
+: ITEM-STRAY? ( n -- bool ) {: kind:n :}
+   kind BODY-ITEM-KIND:TYPE =  kind BODY-ITEM-KIND:OPERAND = or
+   kind BODY-ITEM-KIND:LOCAL = or ;
 
 : ITEM-KEYWORD ( ptr u8 n -- ) {: a:ptr u:n :}
-   ITEM-OPEN? IF EXIT THEN
    TKF TKFU @ s" construct" CORE-STR= IF CONSTRUCT-BEGIN EXIT THEN
    TKF TKFU @ s" match" CORE-STR= IF MATCH-BEGIN EXIT THEN
    TKF TKFU @ s" {:" CORE-STR= IF LOC-BEGIN EXIT THEN
@@ -627,24 +676,6 @@ public
    cf 0 < IF ITEM-UNDEFINED EXIT THEN
    OK @ IF cf 21 = cf 22 = or cf 12 = or IF a u DEAD-OWNER! THEN THEN   \ exit, leave, again
    cf CF-STEP ;
-
-\ The family operand of the open `construct` or `match`.
-: ITEM-TYPE ( n -- ) {: node:n :}
-   ITEM-SKIP? IF EXIT THEN
-   CONM @ 1 = IF EV-OPERAND node TFAM:TFAM-CONSTRUCT-NODE CONSTRUCT-FAM-FOUND EXIT THEN
-   CONM @ 0 = CHECKER-MATCH-MODE @ 1 = and IF node TFAM:TFAM-MATCH-NODE MATCH-FAM-FOUND EXIT THEN
-   ITEM-UNDEFINED ;
-
-\ A variant of the open construct's or match's family, else a local.
-: ITEM-OPERAND ( ptr u8 n -- ) {: a:ptr u:n :}
-   ITEM-SKIP? IF EXIT THEN
-   CONM @ 2 = IF TKF TKFU @ CONSTRUCT-TOK EXIT THEN
-   CONM @ 0 <> IF ITEM-UNDEFINED EXIT THEN
-   CHECKER-MATCH-MODE @ 2 =  TKF TKFU @ s" ;match" CORE-STR= 0= and IF
-      TKF TKFU @ MATCH-VARIANT-TOK EXIT
-   THEN
-   CHECKER-MATCH-MODE @ 0 = IF a u BODY-LOC-REF? IF EXIT THEN THEN
-   ITEM-UNDEFINED ;
 
 \ An item of kind KIND inside a `{:` group: a LOCAL item opens a local of
 \ type node V's term under its listing name A U, and `:}` binds the group.
@@ -672,7 +703,6 @@ public
 \ A read of the local LOCAL answered index IX for: its bind sequence, which
 \ names an ended local when an earlier bind took it.
 : ITEM-LOCAL-REF ( n -- ) {: ix:n :}
-   ITEM-OPEN? IF EXIT THEN
    ix SEQ-SLOT {: li:n :}
    li 0 < ix LOCSEQ @ < and IF ix LOCAL-ENDED EXIT THEN
    li 0 < IF ITEM-UNDEFINED EXIT THEN
@@ -687,15 +717,14 @@ public
    kind BODY-ITEM-KIND:NAME = IF NAME-TOK ELSE
    LMODE @ IF v kind a u ITEM-IN-GROUP ELSE
    a MODE-TOK? IF ELSE
+   v kind ITEM-OPEN? IF ELSE
    kind BODY-ITEM-KIND:CALL = IF a u v ITEM-CALL ELSE
    kind BODY-ITEM-KIND:INT = IF v ITEM-INT ELSE
    kind BODY-ITEM-KIND:KEYWORD = IF a u ITEM-KEYWORD ELSE
-   kind BODY-ITEM-KIND:TYPE = IF v ITEM-TYPE ELSE
-   kind BODY-ITEM-KIND:OPERAND = IF a u ITEM-OPERAND ELSE
-   kind BODY-ITEM-KIND:LOCAL = IF ITEM-UNDEFINED ELSE
    kind BODY-ITEM-KIND:LOCAL-REF = IF v ITEM-LOCAL-REF ELSE
+   kind ITEM-STRAY? IF ITEM-UNDEFINED ELSE
       s" checker: an item of no kind the walk knows" 76 die
-   THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
+   THEN THEN THEN THEN THEN THEN THEN THEN THEN
    a u unj unsafe ok-in unck-in pin-in DO-TOK-TAIL ;
 
 : ITEM-WALK ( -- )
