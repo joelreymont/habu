@@ -512,6 +512,18 @@ private
    n 0 < if ROOT-DIE then
    n CANON-U ! ;
 
+: OUTSIDE-ROOT ( ptr u8 n -- ) {: a:ptr u:n :}
+   s" E-POLICY" REJECTION:OPEN
+   96 REJECTION:EMIT1  a u REJECTION:EMIT-STR
+   s" ` lies outside the source root" REJECTION:EMIT-STR
+   a u REJECTION:AT  s" outside the root" REJECTION:EMIT-STR
+   s" root" REJECTION:NOTE
+   POLICY-ROOT-BUF POLICY-ROOT-U @ REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" load only files under the source root, which this " REJECTION:EMIT-STR
+   s" program's policy set with `POLICY-ROOT`" REJECTION:EMIT-STR
+   107 REJECTION:STOP ;
+
 public
 
 \ ROOT-N's lookup, `.` being the working directory: the canonical directory and
@@ -528,10 +540,7 @@ public
    data-base POLICY-REQUIRE-CELL + @ 0= if a u exit then
    a u CANONICAL drop {: path:ptr pathu:n :}
    path pathu POLICY-ROOT-BUF POLICY-ROOT-U @ BELOW? if path pathu exit then
-   2 s" E-POLICY habu: policy: source outside root: " write drop
-   2 path pathu write drop
-   2 POLICY-LF 1 write drop
-   107 throw ;
+   a u OUTSIDE-ROOT ;
 
 private
 
@@ -678,9 +687,30 @@ using SOURCE-ROOT
    INCLUDE-CLOSE
    INCLUDE-DIE ;
 
+: INCLUDE-NO-PATH ( -- )
+   s" E-MISSING-NAME" REJECTION:OPEN
+   s" `include` and `require` need a path" REJECTION:EMIT-STR
+   SRCLOC:TOKEN$ REJECTION:AT  s" no path follows" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" write the file's path after the word, as " REJECTION:EMIT-STR
+   s" `require src/lib/fs.f`" REJECTION:EMIT-STR
+   INCLUDE-IO-RC REJECTION:STOP ;
+
+: INCLUDE-LONG-PATH ( ptr u8 n -- ) {: a:ptr u:n :}
+   s" E-PATH-RANGE" REJECTION:OPEN
+   s" the path is " REJECTION:EMIT-STR  u REJECTION:EMIT-U
+   s"  bytes long, more than the " REJECTION:EMIT-STR
+   INCLUDE-PATH-CAP REJECTION:EMIT-U
+   s"  a path may have" REJECTION:EMIT-STR
+   a u REJECTION:AT  s" too long" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" shorten the path, or load the file from a directory " REJECTION:EMIT-STR
+   s" nearer to it" REJECTION:EMIT-STR
+   INCLUDE-IO-RC REJECTION:STOP ;
+
 : INCLUDE-CHECK-PATH ( ptr u8 n -- ptr u8 n )
-   dup 0 <= if s" include: missing path" INCLUDE-DIE then
-   dup INCLUDE-PATH-CAP > if s" include: path too long" INCLUDE-DIE then ;
+   dup 0 <= if INCLUDE-NO-PATH then
+   dup INCLUDE-PATH-CAP > if 2dup INCLUDE-LONG-PATH then ;
 
 package REQUIRE-REG
 private
@@ -695,7 +725,7 @@ MAX-BYTES CHUNK-HEAD - constant CHUNK-LIMIT
 CAST: CHUNK-COUNTS ( ptr ptr u8 -- ptr n )
 
 : SIZE-DIE ( -- )
-   s" require: inventory size overflow" INCLUDE-DIE ;
+   s" require: inventory size overflow" 76 die ;
 
 : FROZEN-REC ( n -- ptr n )
    2 * cells FROZEN @ swap + ;
@@ -833,7 +863,7 @@ CAST: CHUNK-COUNTS ( ptr ptr u8 -- ptr n )
          s" require: cannot release a path chunk" INCLUDE-DIE
       then
    repeat drop
-   s" require: path chunk missing" INCLUDE-DIE ;
+   s" require: path chunk missing" 76 die ;
 
 : ROUND-CELL ( n -- n ) {: bytes:n :}
    bytes CELL mod {: rem:n :}
@@ -874,7 +904,7 @@ public
 
 : APPEND ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 <= u INCLUDE-PATH-CAP > or if
-      s" require: invalid path length" INCLUDE-DIE
+      s" require: invalid path length" 76 die
    then
    REQUIRE-N @ {: idx:n :}
    idx ROW-LIMIT >= if SIZE-DIE then
@@ -899,7 +929,7 @@ public
 : TRUNCATE ( n -- )
    {: keep:n :}
    keep 0 < keep REQUIRE-N @ > or if
-      s" require: truncate outside the registry" INCLUDE-DIE
+      s" require: truncate outside the registry" 76 die
    then
    keep REWIND
    REQUIRE-BOOT-N @ keep > if keep REQUIRE-BOOT-N ! then
@@ -915,7 +945,7 @@ public
 : REMOVE ( n -- )
    {: idx:n :}
    idx PREFIX-N @ < idx REQUIRE-N @ >= or if
-      s" require: remove outside live rows" INCLUDE-DIE
+      s" require: remove outside live rows" 76 die
    then
    idx REQUIRE-N @ 1- = if
       idx REWIND
@@ -1271,15 +1301,22 @@ variable SCRIPT-NAMED-PEND
    SCRIPT-NAMED-PEND ! ;
 
 
-: INCLUDE-OPEN-DIE ( -- )
-   INCLUDE-DIAG-RESET
-   s" include: cannot open " INCLUDE-DIAG+
-   INCLUDE-PATH INCLUDE-PATH-U @ INCLUDE-DIAG+
-   INCLUDE-DIAG$ INCLUDE-DIE ;
+: INCLUDE-OPEN-DIE ( ptr u8 n -- ) {: a:ptr u:n :}
+   s" E-MISSING-SOURCE" REJECTION:OPEN
+   s" cannot open `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   96 REJECTION:EMIT1
+   a u REJECTION:AT  s" no such file" REJECTION:EMIT-STR
+   s" searched" REJECTION:NOTE
+   INCLUDE-PATH INCLUDE-PATH-U @ REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" check the path: a relative path is looked up under the root " REJECTION:EMIT-STR
+   s" the including file was found under, then Habu's source root, " REJECTION:EMIT-STR
+   s" then the directory hb runs in" REJECTION:EMIT-STR
+   INCLUDE-IO-RC REJECTION:STOP ;
 
-: INCLUDE-OPEN ( ptr u8 n -- )
-   INCLUDE-PATH0 open-rd INCLUDE-FD !
-   INCLUDE-FD @ 0 < if INCLUDE-OPEN-DIE then ;
+: INCLUDE-OPEN ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u INCLUDE-PATH0 open-rd INCLUDE-FD !
+   INCLUDE-FD @ 0 < if a u INCLUDE-OPEN-DIE then ;
 
 : INCLUDE-EVALERR? ( -- bool )
    data-base EVALERR-CELL + @ 0 = 0= ;
@@ -1957,9 +1994,9 @@ public
 \ top level the program's directory.
 : RUN-PROGRAM ( ptr u8 n -- )
    2dup BUILD-REFUSE
-   CANONICAL {: path:ptr pathu:n exists:bool :}
+   2dup CANONICAL {: a:ptr u:n path:ptr pathu:n exists:bool :}
    path pathu INCLUDE-PATH0 drop
-   exists 0= if INCLUDE-OPEN-DIE then
+   exists 0= if a u INCLUDE-OPEN-DIE then
    PUSH
    [: LOAD-BYTES TOP@ RANGE-OWNER ! 0 TOP@ FR-SIZE + CELL-VIEW @ RUN-RANGE ;]
    catch {: rc:n :}
@@ -2112,9 +2149,12 @@ package SOURCE-ROOT
 private
 
 : POLICY-SEALED ( -- )
-   2 s" E-POLICY habu: policy: sealed" write drop
-   2 POLICY-LF 1 write drop
-   107 throw ;
+   s" E-POLICY" REJECTION:OPEN
+   s" the source policy is already sealed" REJECTION:EMIT-STR
+   SRCLOC:TOKEN$ REJECTION:AT  s" sealed" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" call `POLICY-ROOT` before the policy seals the dictionary" REJECTION:EMIT-STR
+   107 REJECTION:STOP ;
 
 : POLICY-ROOT-SET ( [ -- ] -- )
    data-base POLICY-REQUIRE-CELL + xt!
