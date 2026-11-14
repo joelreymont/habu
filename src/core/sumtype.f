@@ -1958,18 +1958,17 @@ $100000001b3 constant DRV-FNV-PRIME        \ FNV-1a 64-bit prime
    fam vstart 1 + 0 TDECL-PROD-WORD
    fam TDECL-DRV-WORDS ;
 
-\ A live declaration's `private` / `public` switch reaches the checker through
-\ the engine (DECLARATIONS PRIVATE-OFF). A replay defines no word, and its
-\ pre-pass (verify-source.f) opens the package in the
-\ checker alone, so an engine `private` there dies `private at
-\ tools/check.f:1`. A replay switches the checker's mode only.
+\ A live declaration's switch runs the `private` / `public` keyword's
+\ operation. A replay defines no word, and its pre-pass (verify-source.f)
+\ opens the package in the checker alone: the engine has no package open
+\ there. A replay switches the checker's mode only.
 : TDECL-GEN-PRIVATE ( bool -- ) {: replay:bool :}
    replay IF CHECKER-PRIVATE EXIT THEN
-   s" private" TDECL-EVAL-XT ;
+   CHECKER-RESOLVE:PRIVATE-SECTION ;
 : TDECL-GEN-RESTORE ( n bool -- ) {: fam:n replay:bool :}
    fam TFAM-PUBLIC? 0= IF replay TDECL-GEN-PRIVATE EXIT THEN
    replay IF CHECKER-PUBLIC EXIT THEN
-   s" public" TDECL-EVAL-XT ;
+   CHECKER-RESOLVE:PUBLIC-SECTION ;
 
 \ Q renders, preflights and evaluates (or replays) a family's generated rows. A
 \ private or OPAQUE family's rows (not TFAM-GEN-PUBLIC?) go into the declaring

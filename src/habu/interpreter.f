@@ -980,11 +980,6 @@ private
    PKG-PRI-CELL CELL@ set-current
    0 PKG-OUTSIDE-CELL CELL! ;
 
-: PKG-SECTION ( n n -- ) {: cell:n off:n :}
-   cell CELL@ 0= if PKG-CONTEXT-FAIL then
-   off PKG-NOTIFY
-   cell CELL@ set-current ;
-
 : PKG-END-PACKAGE ( -- )
    PKG-PUB-CELL CELL@ 0= if PKG-CONTEXT-FAIL then
    NCOMP-DISPATCH:DECL-END-PACKAGE-OFF PKG-NOTIFY
@@ -1204,10 +1199,12 @@ private
 : PACKAGE? ( -- bool )
    s" package" TOKEN-IS? if PKG-PACKAGE true exit then
    s" public" TOKEN-IS? if
-      PKG-PUB-CELL NCOMP-DISPATCH:DECL-PUBLIC-OFF PKG-SECTION true exit
+      PKG-PUB-CELL CELL@ 0= if PKG-CONTEXT-FAIL then
+      CHECKER-RESOLVE:PUBLIC-SECTION true exit
    then
    s" private" TOKEN-IS? if
-      PKG-PRI-CELL NCOMP-DISPATCH:DECL-PRIVATE-OFF PKG-SECTION true exit
+      PKG-PRI-CELL CELL@ 0= if PKG-CONTEXT-FAIL then
+      CHECKER-RESOLVE:PRIVATE-SECTION true exit
    then
    s" ;package" TOKEN-IS? if PKG-END-PACKAGE true exit then
    SECTION? if true exit then
@@ -2893,8 +2890,11 @@ public
 
 ;package
 
-\ Only INTERPRETER saves and puts back the marked cells: once its words above
-\ bind these, they are retired.
+\ Only INTERPRETER saves and puts back the marked cells, and only it and the
+\ declaration generators switch a section: once they bind these, they are
+\ retired.
 undefine ROLLBACK-CELLS:BYTES
 undefine ROLLBACK-CELLS:SAVE
 undefine ROLLBACK-CELLS:RESTORE
+undefine CHECKER-RESOLVE:PUBLIC-SECTION
+undefine CHECKER-RESOLVE:PRIVATE-SECTION

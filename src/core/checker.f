@@ -12803,11 +12803,25 @@ ROW-CELLS cells constant SCOPE-BYTES
    BEGIN ta tu wid RETIRE1 0= UNTIL ;
 ;package
 
-\ What `package` opens: PART-GUARD at `package`, PART-PATH at the name.
+\ What `package` opens: PART-GUARD at `package`, PART-PATH at the name; what
+\ `public` and `private` switch to, for the keywords and generated words.
 package CHECKER-RESOLVE
 CHECKER-REG:SCRATCH{
 create PATH-KEY PACKAGE-PATH:CAP allot
 CHECKER-REG:}SCRATCH
+
+\ The owner record stores raw execution tokens.
+CAST: AS-ACTION ( n -- [ -- ] )
+
+\ The target owner's operation at off runs first, skipped when there is no
+\ record or the field is empty: a loading checker, or in a build the image's.
+: ENTER-SECTION ( n n -- ) {: cell:n off:n :}
+   NCOMP-DISPATCH:TARGET-DECL-A @ {: rec:ptr :}
+   rec NULL-PTR <> IF
+      rec off + CELL-VIEW @ {: xt:n :}
+      xt 0 <> IF xt AS-ACTION execute THEN
+   THEN
+   data-base cell + @ set-current ;
 public
 \ A part opens in its package's private section, in its buffer, under no using
 \ it opened, inside no part; else E-PKG-CONTEXT.
@@ -12830,6 +12844,12 @@ public
    $3A PATH-KEY pu + c!
    a PATH-KEY pu 1 + + u ARENA-COPY
    PATH-KEY ku ;
+
+: PUBLIC-SECTION ( -- )
+   PKG-PUB-CELL NCOMP-DISPATCH:DECL-PUBLIC-OFF ENTER-SECTION ;
+
+: PRIVATE-SECTION ( -- )
+   PKG-PRI-CELL NCOMP-DISPATCH:DECL-PRIVATE-OFF ENTER-SECTION ;
 ;package
 
 \ --- the package and using words ---------------------------------------------
