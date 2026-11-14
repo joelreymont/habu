@@ -1,11 +1,11 @@
 \ effect.f - the type and effect values a definer builds a definition from: a
 \ type is a schema node, an effect a type whose node is a quotation, its
 \ inputs and outputs deepest first, and `define-word` opens a definition from a
-\ name and an effect. Each word asks the running engine's checker through its
-\ cell, never by name: in a build a definer is the tree's copy, whose checker
-\ certifies nothing, and a node only the checker that certifies made can reach
-\ it. The nodes are transient: they end with the file that built them, or a
-\ build's piece.
+\ name and an effect; KEYWORD, OPERAND, TYPE-ITEM and CALL append its items.
+\ Each word asks the running engine's checker through its cell, never by name:
+\ in a build a definer is the tree's copy, whose checker certifies nothing, and
+\ a node only the checker that certifies made can reach it. The nodes are
+\ transient: they end with the file that built them, or a build's piece.
 
 package EFFECT
 public
@@ -59,6 +59,28 @@ public
 \ Opens the definition the string names with effect E, in the running engine.
 : OPEN-WORD ( ptr u8 n type -- ) {: e:type :}
    e TYPE>N data-base PROVIDED-XT:DEFINE-CELL + @ AS-OPEN execute ;
+
+private
+
+\ The engine's cell holds INTERPRETER:ITEM-RUN as a raw execution token.
+CAST: AS-ITEM ( n -- [ ptr u8 n n n -- ] )
+
+: ITEM ( ptr u8 n n n -- )
+   data-base PROVIDED-XT:ITEM-CELL + @ AS-ITEM execute ;
+
+public
+
+\ Appends the keyword the string spells (`match`, `of`, `begin`).
+: KEYWORD ( ptr u8 n -- ) 0 ITEM-ABI:KEYWORD ITEM ;
+
+\ Appends an operand: the variant name an `of` arm or a `construct` takes.
+: OPERAND ( ptr u8 n -- ) 0 ITEM-ABI:OPERAND ITEM ;
+
+\ Appends type T, shown in the listing as the string spells it.
+: TYPE-ITEM ( ptr u8 n type -- ) TYPE>N ITEM-ABI:TYPE ITEM ;
+
+\ Appends a call of the word the name binds where the definer runs.
+: CALL ( ptr u8 n -- ) 0 ITEM-ABI:CALL ITEM ;
 
 ;package
 

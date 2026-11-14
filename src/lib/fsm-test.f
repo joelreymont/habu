@@ -444,6 +444,50 @@ variable SRC-LEN
    TEST-EVAL:RC 70 T=
    13 VALID 2 T= ;
 
+\ Words of a package named as the engine words the machine's words run, each
+\ adding a million to the trace, change nothing: DEFINE builds its words from
+\ the engine words it found itself.
+: SHADOW-WORDS ( -- )
+   s"  public : dup ( a -- a a ) {: x :} 1000000 C +! x x ;" SRC+
+   s"  : swap ( a b -- b a ) {: x y :} 1000000 C +! y x ;" SRC+
+   s"  : drop ( a -- ) {: x :} 1000000 C +! ;" SRC+
+   s"  : rot ( a b c -- b c a ) {: x y z :} 1000000 C +! y z x ;" SRC+
+   s"  : over ( a b -- a b a ) {: x y :} 1000000 C +! x y x ;" SRC+
+   s"  : 2drop ( a b -- ) {: x y :} 1000000 C +! ;" SRC+
+   s"  : true ( -- bool ) 1000000 C +! 0 0= ;" SRC+
+   s"  : false ( -- bool ) 1000000 C +! 1 0= ; private" SRC+ ;
+
+
+\ The trace of a machine with `>state` and picker NEXTs, each with and
+\ without an ACTION, and FINAL rows with and without one; K 1 adds the
+\ shadowing words.
+: SHADOW-TRACE ( n -- n )
+   {: k:n :}
+   0 SRC-LEN !
+   s" package FSM-SHADOW-" SRC+ k N+
+   s"  TYPED-VARIABLE C n ENUM ph idle busy done halted ;ENUM" SRC+
+   s"  ENUM sig go stop ;ENUM" SRC+
+   s"  : S ( ptr n -- sig ) @ 20 < if construct sig go else construct sig stop then ;" SRC+
+   s"  : PICK ( ptr n -- ph ) @ 20 < if construct ph busy else construct ph done then ;" SRC+
+   s"  : ADD1 ( ptr n -- ) 1 swap +! ; : ADD10 ( ptr n -- ) 10 swap +! ;" SRC+
+   s"  : ADD100 ( ptr n -- ) 100 swap +! ;" SRC+
+   k 0<> if SHADOW-WORDS then
+   s"  using FSM DEFINE M ( ptr n ) ph sig" SRC+
+   s"  IN idle S go ADD1 >busy stop - >done" SRC+
+   s"  IN busy S go ADD10 PICK stop - PICK" SRC+
+   s"  FINAL done ADD100 FINAL halted - ;DEFINE ;using" SRC+
+   s"  : RUN1 ( n ph -- n ) {: v:n p :} v C ! C p M C @ ;" SRC+
+   s"  public : GO ( -- n ) 0 construct ph idle RUN1 50 construct ph idle RUN1 +" SRC+
+   s"  50 construct ph busy RUN1 + 7 construct ph halted RUN1 + ;" SRC+
+   s"  ;package FSM-SHADOW-" SRC+ k N+ s" :GO" SRC+
+   SRC$ TEST-EVAL:N ;
+
+
+: SHADOWED ( -- )
+   0 SHADOW-TRACE {: plain:n :}
+   plain 428 T=
+   1 SHADOW-TRACE plain T= ;
+
 \ The size table: STATES rows of INPUTS lines, each naming one long action, so
 \ each line word outgrows its line and the generated text the 1 MiB table.
 200 constant STATES
@@ -501,6 +545,7 @@ public
    STEPS
    SYNTAX
    REJECTED
+   SHADOWED
    SIZE
    SRC-RELEASE
    T-REPORT ;

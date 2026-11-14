@@ -854,8 +854,8 @@ multi-cell type rationale is `docs/design.md` "Types".
 
 #### State machines
 
-`FSM:DEFINE` (`src/lib/fsm.f`) reads a state table and writes it as checked
-words under `evaluate-closed`:
+`FSM:DEFINE` (`src/lib/fsm.f`) reads a state table and builds checked words
+from words it found:
 
 ```text
 DEFINE <NAME> ( <ctx> ) <states> <inputs>
@@ -878,7 +878,7 @@ inputs names an ENUM of just those, so it gives no line for an input it never
 gets, which could only throw. Each line names an input, an ACTION
 `( <ctx> -- )` or `-` for none, and a NEXT: `>state`, any token starting with
 `>`, for a fixed next state, else a word `( <ctx> -- <states> )` that picks
-one. `FINAL <state> <ACTION>` ends a run in that state. DEFINE writes a word
+one. `FINAL <state> <ACTION>` ends a run in that state. DEFINE builds a word
 `<NAME>/<state>/<input> ( <ctx> -- )` for each line's ACTION,
 `<NAME>/<final> ( <ctx> -- )` for each `FINAL` row,
 `<NAME>/<state> ( <ctx> -- <states> )` for each `IN` row, then the step word
@@ -893,7 +893,7 @@ started in a `FINAL` state. A caller that feeds one event at a time calls
 `<NAME>-STEP` and keeps the state it answers. A table needs no `FINAL` row; its
 `<NAME>` then runs until a callback throws.
 
-An ACTION of `-` writes no line word. Every ACTION runs in a word declaring
+An ACTION of `-` builds no line word. Every ACTION runs in a word declaring
 `( <ctx> -- )`, so the checker holds it to that effect, and that word ends its
 arm except before a NEXT word, so an ACTION that never returns (a refused pair
 or a failure end) loads on a `>next` line or a `FINAL` row, and so does a state
@@ -905,10 +905,10 @@ every FINAL's ACTION never returns), at the `swap` after `<NAME>-STEP`'s
 `<NAME>/<state>`, `<NAME>/<state>/<input>`, `<NAME>/<final>` and
 `<NAME>-STEP` share `<NAME>`'s visibility. A second row for a state, or a
 second line for one input when both name an ACTION, fails the load as a
-duplicate definition, 78 under `evaluate-closed`. The machine keeps no state
+duplicate definition, 78. The machine keeps no state
 of its own; a throw from a SENSE, ACTION or NEXT leaves `<NAME>-STEP` and
 `<NAME>` as thrown, with nothing answered. Neither `MATCH` has a default arm,
-so the checker fails the load, 70 under `evaluate-closed`, for a row missing
+so the checker fails the load, 70, for a row missing
 an input, an unknown `>state`, a state with neither an `IN` nor a `FINAL` row,
 and a word with the wrong effect; for a row naming its own ENUM, that covers a
 row missing one of its inputs, a line for a tag outside it and a SENSE

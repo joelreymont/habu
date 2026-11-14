@@ -30,14 +30,13 @@ ENUM bfam ba bb ;ENUM
 
 \ The engine's cell holds INTERPRETER:ITEM-RUN as a raw execution token.
 CAST: AS-ITEM ( n -- [ ptr u8 n n n -- ] )
-CAST: TYPE>N ( EFFECT:type -- n )
 
 : ITEM ( ptr u8 n n n -- )
    data-base PROVIDED-XT:ITEM-CELL + @ AS-ITEM execute ;
-: KW ( ptr u8 n -- ) 0 ITEM-ABI:KEYWORD ITEM ;
-: OPND ( ptr u8 n -- ) 0 ITEM-ABI:OPERAND ITEM ;
-: BFAM ( -- EFFECT:type ) s" bitem:bfam" EFFECT:FAMILY ;
-: BFAM-ITEM ( -- ) s" bfam" BFAM TYPE>N ITEM-ABI:TYPE ITEM ;
+: KW ( ptr u8 n -- ) EFFECT:KEYWORD ;
+: OPND ( ptr u8 n -- ) EFFECT:OPERAND ;
+: BFAM ( -- EFFECT:type ) s" bitem:bfam" EFFECT:NAMED ;
+: BFAM-ITEM ( -- ) s" bfam" BFAM EFFECT:TYPE-ITEM ;
 
 \ : NAME ( bfam -- n ) match bfam ba of 1 endof X of 2 endof ;match ;
 : MAKE-MATCH ( ptr u8 n ptr u8 n -- ) {: xa:ptr xu:n :}
@@ -67,7 +66,7 @@ CAST: TYPE>N ( EFFECT:type -- n )
 \ : NAME ( -- n ) X ; with X found by OP.
 : MAKE-CALL ( ptr u8 n ptr u8 n n -- ) {: xa:ptr xu:n op:n :}
    EFFECT:NEW EFFECT:N EFFECT:OUT define-word
-   xa xu 0 op ITEM
+   op ITEM-ABI:CALL = if xa xu EFFECT:CALL else xa xu 0 op ITEM then
    postpone ; ;
 
 : BI-TEXT ( bfam -- n ) match bfam ba of 1 endof bb of 2 endof ;match ;
@@ -118,7 +117,7 @@ variable BUILT-DIAG-U
 \ : NAME ( -- ) C2-MEM:WITH-FIELD inner ; with no view to lend a field of.
 : MAKE-LOAN ( ptr u8 n -- )
    EFFECT:NEW define-word
-   s" C2-MEM:WITH-FIELD" 0 ITEM-ABI:CALL ITEM  s" inner" OPND
+   s" C2-MEM:WITH-FIELD" EFFECT:CALL  s" inner" OPND
    postpone ; ;
 
 : LOAN-BUILT ( -- n ) [: s" BI-LOAN" MAKE-LOAN ;] catch ;
