@@ -783,8 +783,10 @@ $27F8 constant CODE-CELL
 \ catches, and a hook's throw caught there would return from `die`. A stripped
 \ image's exit follows its root's return, when the chain is already empty. The
 \ hook's effect is ( -- ) and it runs on the data stack as it stands, because
-\ `die` may be running on a task thread whose stack is its own. A new process
-\ has no hook, and the library that wants one arms it at runtime.
+\ `die` may be running on a task thread whose stack is its own. A stripped
+\ program that reaches at-exit.f starts with the vector its load armed, as a
+\ file the program reaches keeps its header stores; one that does not starts
+\ with it empty.
 \ $2818 follows SRCLOC's three cells in the $2800..$3000 header band,
 \ below $7FF8 so the engine names it with a `DATA <off> LDR/STR` 12-bit scaled
 \ immediate, and below DATA-START so no compiled source reaches it by allot.

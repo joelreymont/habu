@@ -1,13 +1,22 @@
 ---
-title: Run exit actions a task adds
+title: Run exit actions when a task ends the process
 status: open
 priority: 2
 issue-type: task
 created-at: "2026-11-09T20:30:48.366715+02:00"
 ---
 
-Problem: AT-EXIT:ADD (src/lib/at-exit.f VECTOR) and the engine's exit path both reach EXIT-HOOK-CELL through data-base, which on a task is the task's own DATA region; TASK-REGION-INIT (src/lib/task.f) does not copy the cell. So an exit action added only from a task never runs when the main thread exits: a task's FS:CLEANUP-TREE+ leaves its tree behind. Measured 2026-11-09 on the fail-a-build candidate and on the landing hb (pre-existing in fs-mutate's arming): probe 'require src/lib/fs-mutate.f require src/lib/task.f $10000 TASK:TASK W : TREE$ ( -- ptr u8 n ) s" /tmp/x/tree" ; : WORK ( -- ) TREE$ FS:CLEANUP-TREE+ 0 TASK:RETURN ; : JOIN-CODE ( -- n ) W TASK:JOIN MATCH result ok OF ENDOF err OF ENDOF ;MATCH ; : MAIN ( -- ) TREE$ FS:MAKE-DIR [: WORK ;] W TASK:ACTIVATE JOIN-CODE . cr ; MAIN' exits 0 with the tree present; the same registration from MAIN removes it. Not measured: a task that dies after the main thread added an action (inferred to run none, its region's vector being empty). Acceptance: an action added from any thread runs once at the process's exit, whichever thread exits; the probe's tree is gone; a test/exit-hook-test.f case shows it. Files: src/lib/at-exit.f, src/lib/task.f, the exit path's read of EXIT-HOOK-CELL (src/habu/layout.f names it). The fix changes failure recovery across threads, so its design goes to Joel first. Depends: none. Ownership: those files. Claim: unassigned.
+Problem: the engine's exit path reads EXIT-HOOK-CELL through data-base, which on a task is the task's own DATA region. src/lib/at-exit.f arms the loading thread's vector at load (VECTOR-INIT :69) and a calling thread's in ADD (ARM :52); src/lib/task.f TASK-REGION-INIT (:1121) does not copy the cell. So `die` on a task that never called AT-EXIT:ADD runs none of the process's exit actions, such as a tree the main thread registered with FS:CLEANUP-TREE+ (inferred from the code, not reproduced). In a build the same cause skips hb-build's own actions: the space's ARM, run on the task, arms the task's empty vector with the space's runner, so hb-build exits with the task's code and without its "ended the process during the build" line. This source, built by tools/hb-build.f, exits 3 and prints `bye` and `task dying`:
 
-Acceptance case 2026-11-10 (bob; merged from habu-arm-the-cleanup-643e07e8 "Arm the cleanup exit hook for the process, not the task", one cause with this dot): Problem: src/lib/fs-mutate.f CLEANUP-KIND+ arms the exit vector by AT-EXIT:ADD (:1048), which reaches EXIT-HOOK-CELL through data-base, and data-base is the calling task's DATA region (docs/forth.md ~1273). FS:CLEANUP-TREE+ (and CLEANUP+, CLEANUP-DIR+) called only from a non-main task therefore arms the task's copy of the vector, never the main task's that process exit runs, so the registered paths survive a normal exit with no error. The registry itself is process-wide (comment at :958), so the registration is recorded but never run. Found from Maki: test/operation-run.f runs PROJECT-OPS builds on a task whose CHILD:ARG+ registers its job directory; every passing run of the saved image leaves $TMPDIR/maki-child-*/ with ~22 job-N.json files. Repro (saved Maki image REPL, TMPDIR set): $100000 TASK:TASK W / : WR s" intask" FS:MKTEMP-DIR 2dup FS:CLEANUP-TREE+ type cr 0 TASK:RETURN ; / : P AIO:START ['] WR W TASK:ACTIVATE W TASK:JOIN MATCH result ok OF drop ENDOF err OF drop ENDOF ;MATCH AIO:STOP ; P  -> the printed directory remains after exit; one more FS:MKTEMP-DIR + FS:CLEANUP-TREE+ on the main task removes both. Acceptance: a cleanup registered from any task runs at process exit (normal exit and die), once, with the previous hook chained as now; the arming site addresses the process's (main task's) vector whatever task calls it. Regression: a fs-mutate-test (or process-task-test) case registering a tree only from a non-main task in a child process and asserting it is gone after the child exits; it fails on master. Files: src/lib/fs-mutate.f, its test. Verify: check.f on fs-mutate.f; fs-mutate-test; process-task-test; image-lifecycle. Depends: none (habu-pkg-the-fs-2f9bb0f5 moves this code; whichever lands second carries the fix). Ownership: src/lib/fs-mutate.f exit-hook arming, its test.
+```
+require src/lib/task.f
+require src/lib/at-exit.f
+$10000 TASK:TASK RV-T
+: BYE ( -- ) s" bye" type cr ;
+: WORK ( -- ) [: BYE ;] AT-EXIT:ADD s" task dying" 3 die ;
+: GO ( -- ) [: WORK ;] RV-T TASK:ACTIVATE RV-T TASK:JOIN MATCH result ok OF drop ENDOF err OF drop ENDOF ;MATCH ;
+GO
+: MAIN ( -- ) ;
+```
 
-Consumers: Maki's test/operation-run.f is gone; its remaining cleanup registration (test/child.f:40) runs on the main thread, so no consumer meets this today.
+Acceptance: `die` on any thread runs every registered action once; test/exit-hook-test.f cases, each failing on the base, in which the main thread registers a tree and a task dies, and in which that build exits 74 with hb-build's line. Consumers: none meets it today (Maki's remaining cleanup registration, test/child.f:40, runs on the main thread). Depends: none. Claim: unassigned.

@@ -281,6 +281,21 @@ variable STAGED-FILES
    STAGED-BUF u s" previous" T$=
    STAGED-FILES# 1 T= ;
 
+\ An exit action a task alone adds runs at the main thread's exit: the action
+\ table is process-wide, and hb starts with the main thread's vector armed.
+: CASE-TASK-ADD ( -- )
+   s" task-add.f" s" task-add-tree" CASE-PATHS
+   S\" require src/lib/task.f\n$10000 TASK:TASK CHILD-TASK\n" TEXT+
+   S\" : CHILD-WORK ( -- ) CHILD-TREE FS:CLEANUP-TREE+ 0 TASK:RETURN ;\n" TEXT+
+   S\" : CHILD-MAIN ( -- ) CHILD-TREE FS:MAKE-DIR [: CHILD-WORK ;] CHILD-TASK TASK:ACTIVATE\n" TEXT+
+   S\"    CHILD-TASK TASK:JOIN MATCH result ok OF drop ENDOF err OF . ENDOF ;MATCH ;\n" TEXT+
+   S\" CHILD-MAIN\n" TEXT+
+   RUN-CHILD {: outu:n erru:n rc:n :}
+   s" an exit action a task alone adds runs at the main thread's exit" T-LABEL
+   outu erru rc 0 EXPECT-RC
+   outu 0 T=
+   TREE$ FS:EXISTS? TFALSE ;
+
 \ hb-build loads its source in its own process, so a source whose top level
 \ ends the process ends hb-build inside the build: the build fails 74 naming
 \ the source, and -o keeps its bytes.
@@ -297,15 +312,34 @@ variable STAGED-FILES
    TREE$ STAGED-BUF STAGED-CAP FS:READ-ALL {: u:n :}
    STAGED-BUF u s" previous" T$= ;
 
+\ The source's top level dies; its newer exit action dies too, and the older one still
+\ runs, before hb-build's line.
+: CASE-BUILD-EXIT ( -- )
+   s" build-exit.f" s" build-exit-out" CASE-PATHS
+   0 TEXT-U !
+   S\" require src/lib/at-exit.f\n" TEXT+
+   S\" : OLDER ( -- ) 2 s\q older \q write drop ;\n" TEXT+
+   S\" : BYE ( -- ) s\q bye\q type cr s\q bye: dying\q 5 die ;\n" TEXT+
+   S\" : ARM ( -- ) [: OLDER ;] AT-EXIT:ADD [: BYE ;] AT-EXIT:ADD ;\n" TEXT+
+   S\" ARM\ns\q x\q 3 die\n: MAIN ( -- ) ;\n" TEXT+
+   RUN-BUILD {: outu:n erru:n rc:n :}
+   s" a build's exit action runs before hb-build's when its source exits" T-LABEL
+   outu erru rc 74 EXPECT-RC
+   erru SCRIPT$ ERR-HAS? TTRUE
+   erru s" ended the process during the build" ERR-HAS? TTRUE
+   outu s" bye" OUT-HAS? TTRUE
+   erru s" older hb-build: " ERR-HAS? TTRUE ;
+
 create RUN-FILE-BUF PATH-CAP allot
 variable RUN-FILE-U
 
 : RUN-FILE$ ( -- ptr u8 n ) RUN-FILE-BUF RUN-FILE-U @ ;
 
-\ It builds and runs a product because the build boundary is under test: a
-\ built program starts with none of the exit actions and cleanups its source's
-\ top level registered, and registering at run time works from empty; it inits
-\ a queue its build defined, whose record address the build must carry.
+\ It builds and runs a program because the build boundary is under test: the
+\ exit actions and cleanups its source's top level registers run when the
+\ build's part ends, the built program starts with none of them, and
+\ registering at run time works from empty; it inits a queue its build
+\ defined, whose record address the build must carry.
 : CASE-BUILT ( -- )
    s" built.f" s" built-out" CASE-PATHS
    ROOT$ s" built-run" RUN-FILE-BUF FS:JOIN-PATH RUN-FILE-U !
@@ -325,6 +359,9 @@ variable RUN-FILE-U
    s" a built program starts with none of the build's exit actions and cleanups" T-LABEL
    outu erru rc 0 EXPECT-RC
    rc 0<> if exit then
+   outu s" build-time exit action ran" OUT-HAS? TTRUE
+   0 TEXT-U !  TREE$ TEXT+  s" .built" TEXT+
+   TEXT$ FS:EXISTS? TFALSE
    RUN-PRODUCT {: pu:n pe:n prc:n :}
    pu pe prc 0 EXPECT-RC
    pu s" main done" OUT-HAS? TTRUE
@@ -338,13 +375,14 @@ variable RUN-FILE-U
    s" build-action.f" s" build-action-out" CASE-PATHS
    0 TEXT-U !
    S\" require src/lib/at-exit.f\n" TEXT+
-   S\" : ACT ( -- ) ;  ' ACT AT-EXIT:ADD\n" TEXT+
+   S\" : ACT ( -- ) s\q act ran\q type cr ;  ' ACT AT-EXIT:ADD\n" TEXT+
    S\" NOSUCHWORD\n" TEXT+
    RUN-BUILD {: outu:n erru:n rc:n :}
    s" a failed build whose source added an exit action fails 74" T-LABEL
    outu erru rc 74 EXPECT-RC
    erru SCRIPT$ ERR-HAS? TTRUE
-   erru s" habu-crash" ERR-HAS? TFALSE ;
+   erru s" habu-crash" ERR-HAS? TFALSE
+   outu s" act ran" OUT-HAS? TTRUE ;
 
 \ The task and the two cleanups both build sources start with.
 : CLEANUPS-TEXT ( -- )
@@ -399,7 +437,9 @@ variable RUN-FILE-U
    CASE-ACTIONS-FULL
    CASE-RESETS-FULL
    CASE-STAGED
+   CASE-TASK-ADD
    CASE-BUILD
+   CASE-BUILD-EXIT
    CASE-BUILT
    CASE-BUILD-ACTION
    CASE-BUILD-CLEANUPS

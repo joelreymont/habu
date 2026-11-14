@@ -83,7 +83,6 @@ variable SAVED-COMMA-BASE
 variable SAVED-LASTC
 variable SAVED-CURRENT
 variable SAVED-FLAGS                 \ hb's newest record's flags (NEWEST-FLAGS)
-variable SAVED-EXIT-HOOK             \ hb's process-exit vector (ARM-EXIT)
 \ hb's GENIO-ABI band: a device a build selects has its handler in the space.
 GENIO-ABI:END GENIO-ABI:OUT-CELL - BUFFER: SAVED-ROUTING
 
@@ -5058,12 +5057,11 @@ variable DUE-MADE
 \ definition sets it.
 : NEWEST-FLAGS ( -- ptr n ) FIRST-REC @ 1- REC-FLAGS ;
 
-\ A space's own AT-EXIT leaves a runner the close forgets in the exit vector; a
-\ no-op ADD arms hb's runner, which runs all of hb's actions, for RESTORE.
-: ARM-EXIT ( -- ) [: ;] AT-EXIT:ADD ;
+\ EXITED, set after its definition: SAVE adds it, and it adds itself again.
+TYPED-VARIABLE EXITER [ -- ]
 
 : SAVE ( -- )
-   ARM-EXIT  EXIT-HOOK-CELL HOST@ SAVED-EXIT-HOOK !
+   EXITER @ AT-EXIT:ADD
    NEWEST-FLAGS @ SAVED-FLAGS !
    DP-CELL HOST@ SAVED-DP !
    BOOT:DP-FLOOR-CELL HOST@ SAVED-FLOOR !
@@ -5273,9 +5271,20 @@ variable DUE-MADE
    loop ;
 
 
-\ E-FAILED once DP moved back, then E-LIVE-TASK for a task left running. Both run before READS-KEEP, so a task
-\ cannot read after the part's reads are kept and end before the refusal.
+\ Calls the space's exit runner until a call returns: the first code an action ended with, or 0.
+: SPACE-EXIT ( -- n )
+   EXIT-HOOK-CELL SPACE-AT @ {: hook:n :}
+   hook 0= if 0 exit then
+   0 begin  hook >XT catch dup 0<> while
+      over 0= if swap then drop
+   repeat
+   drop ;
+
+\ The part's exit actions run first, then E-FAILED once DP moved back, then E-LIVE-TASK for a task left running.
+\ All run before READS-KEEP, so a task cannot read after the part's reads are kept and end before the refusal.
 : END-CK ( -- )
+   SPACE-EXIT {: rc:n :}
+   rc 0<> if rc throw then
    DPHW-CELL HOST@ 0<> if
       REFUSAL s" it gave back data space" SAY
       s"  (a caught failure or a negative allot)" SAY
@@ -5699,7 +5708,6 @@ variable DUE-MADE
    SAVED-COMMA-END @ COMMA-END-CELL HOST!
    SAVED-COMMA-BASE @ COMMA-BASE-CELL HOST!
    SAVED-LASTC @ LASTC-CELL HOST!
-   SAVED-EXIT-HOOK @ EXIT-HOOK-CELL HOST!
    SAVED-ROUTING  data-base BYTE-VIEW GENIO-ABI:OUT-CELL +
    GENIO-ABI:END GENIO-ABI:OUT-CELL - BYTE-COPY
    SAVED-FLAGS @ NEWEST-FLAGS ! ;
@@ -5711,8 +5719,10 @@ variable DUE-MADE
    FIRST-REC @ ndict!
    floor CODE-RECLAIM:TRUNCATE ;
 
-\ Undo IMAGE-IN, from open or from a file's loading, returned or failed step.
+\ Undo IMAGE-IN after open or a file's step: run the space's exit actions for a part that
+\ threw before END-CK, whatever they answer, then zero the space's cell for EXITED.
 : IMAGE-OUT ( -- bool )
+   SPACE-EXIT drop  0 EXIT-HOOK-CELL SPACE-AT !
    0 BOOT:IMAGE-BASE-CELL HOST!  INTERN:CLEANUP
    construct step routed PROGRESS ! true ;
 
@@ -5818,5 +5828,20 @@ public
    pu 0 <= if false exit then
    HOLD-OPEN
    [: p pu HOLD-CAUGHT ;] [: HOLD-CLOSE ;] finally ;
+
+private
+
+\ hb's exit action while a build is open: the space's actions run before hb's; adding itself
+\ again first leaves the space's older actions to run after one that ends the process.
+: EXITED ( -- )
+   OPEN? 0= if exit then
+   EXIT-HOOK-CELL SPACE-AT @ {: hook:n :}
+   hook 0= if exit then
+   EXITER @ AT-EXIT:ADD
+   hook >XT execute
+   0 EXIT-HOOK-CELL SPACE-AT ! ;
+
+: EXITER-INIT ( -- ) [: EXITED ;] EXITER ! ;
+EXITER-INIT
 
 ;package

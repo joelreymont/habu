@@ -2,6 +2,9 @@
 \ engine's process-exit vector: the engine clears it and calls it once just
 \ before the exit_group of a normal top-level exit, a `die`, an uncaught throw
 \ or a stripped program's return from MAIN, and the vector runs the actions.
+\ One copy: its load arms the loading thread's vector, and a task's ADD the
+\ task's. A build's space loads a second copy, whose RUN goes to the space's
+\ own vector cell, which only the linker calls.
 \ STORAGE CLASS. PROCESS-WIDE action table.
 
 require src/lib/prelude.f
@@ -11,7 +14,7 @@ package AT-EXIT
 private
 
 \ ACTIONS holds N actions, oldest first; a 65th refuses E-LAYOUT-BOUNDS. A built
-\ program starts with none: N is a scratch cell, written as 0 in the product.
+\ program starts with none: N is a scratch cell, written as 0 in the target.
 64 constant CAP
 CAP TYPED-BUFFER ACTIONS [ -- ]
 
@@ -46,12 +49,15 @@ CAST: XT>N ( [ -- ] -- n )
 \ compiler knows the call's convention, and never empty once this file loads.
 TYPED-VARIABLE RUNNER [ -- ]
 
+: ARM ( -- )
+   VECTOR @ XT>N 0= if RUNNER @ VECTOR ! then ;
+
 \ The engine clears the vector before it calls RUN, and RUN arms it again
 \ before each action: an action that calls `die` or throws re-enters RUN, the
 \ actions left still run, and the process ends with that action's code.
 : RUN ( -- )
    begin TAKE while
-      RUNNER @ VECTOR !
+      ARM
       execute
    repeat
    drop ;
@@ -59,6 +65,10 @@ TYPED-VARIABLE RUNNER [ -- ]
 : RUNNER-INIT ( -- )
    [: RUN ;] RUNNER ! ;
 RUNNER-INIT
+
+: VECTOR-INIT ( -- )
+   RUNNER @ data-base EXIT-HOOK-CELL + xt! ;
+VECTOR-INIT
 
 : APPEND ( [ -- ] -- ) {: q :}
    N @ 0 ?do
@@ -72,10 +82,10 @@ public
 
 \ Adds an action the process runs once when it exits, after every action added
 \ later; an action already added is not added again. Each thread's DATA region
-\ holds its own vector, so a task's ADD arms only the task's: its action runs
-\ at the main thread's exit only once the main thread has added one.
+\ holds its own vector, so a task's ADD arms only the task's; the main
+\ thread's, armed when this file loads, runs a task's actions too.
 : ADD ( [ -- ] -- )
    LOCK [: APPEND ;] [: UNLOCK ;] finally
-   RUNNER @ VECTOR ! ;
+   ARM ;
 
 ;package
