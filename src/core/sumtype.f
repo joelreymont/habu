@@ -10,7 +10,7 @@ using TFAM
 
 package TYPE-DECL
 
-\ --- named reject codes (7101-7106 live in type-family.f, 7103 in type-schema.f).
+\ --- named reject codes (7101, 7102 and 7106 live in type-family.f).
 
 public
 
