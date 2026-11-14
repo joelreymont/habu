@@ -419,43 +419,39 @@ TYPED-VARIABLE REC ptr n
 
 \ A sealed source may name a record it defined after the seal or a callable
 \ public record in an admitted wordlist.
-: POLICY-REFUSE ( -- )
+: POLICY-REFUSE ( ptr u8 n -- ) {: a:ptr u:n :}
    s" E-POLICY" REFUSAL
    s" not in vocabulary: " ERROR-TEXT:TYPE
-   TOKEN$ ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE  ENGINE-ERROR:POLICY throw ;
+   a u ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE  ENGINE-ERROR:POLICY throw ;
 
-: POLICY-CHECK-REC ( ptr n -- ) {: rec:ptr :}
+: POLICY-CHECK-REC ( ptr u8 n ptr n -- ) {: a:ptr u:n rec:ptr :}
    POLICY-NDICT-CELL CELL@ {: seal:n :}
    seal 0= if exit then
-   rec XREF-FOUND? 0= if POLICY-REFUSE then
+   rec XREF-FOUND? 0= if a u POLICY-REFUSE then
    rec XREF-NULL - seal XREF-REC-ADDR < if
       rec XREF-WORDLIST {: wid:n :}
-      wid 0 < wid PROT-WID-MAX >= or if POLICY-REFUSE then
+      wid 0 < wid PROT-WID-MAX >= or if a u POLICY-REFUSE then
       wid 6 rshift 8 * data-base POLICY-BITS-OFF + + @
-      wid 63 and rshift 1 and 0= if POLICY-REFUSE then
+      wid 63 and rshift 1 and 0= if a u POLICY-REFUSE then
    then
-   rec XREF-FLAGS DNAME-INT and 0<> if POLICY-REFUSE then
-   rec XREF-WORDLIST OWNER-API-PRI-WID = if POLICY-REFUSE then
-   rec XREF-START 0= if POLICY-REFUSE then ;
+   rec XREF-FLAGS DNAME-INT and 0<> if a u POLICY-REFUSE then
+   rec XREF-WORDLIST OWNER-API-PRI-WID = if a u POLICY-REFUSE then
+   rec XREF-START 0= if a u POLICY-REFUSE then ;
 
 \ At top level the ordinary `require`'s global record, spelled so, is in the
 \ vocabulary as well. A body never admits it.
-: POLICY-REQUIRE? ( ptr n -- bool ) {: rec:ptr :}
+: POLICY-REQUIRE? ( ptr u8 n ptr n -- bool ) {: a:ptr u:n rec:ptr :}
    POLICY-REQUIRE-CELL CELL@ {: req:n :}
    req 0= if false exit then
    rec XREF-FOUND? 0= if false exit then
    rec XREF-START req <> if false exit then
    rec XREF-WORDLIST WL:GLOBAL? 0= if false exit then
-   s" require" TOKEN-IS? ;
+   a u s" require" FOLDED= ;
 
-: POLICY-CHECK-TOP ( ptr n -- ) {: rec:ptr :}
-   rec POLICY-REQUIRE? if exit then
-   rec POLICY-CHECK-REC ;
-
-\ The record the name binds, refused, naming it, where a bare name meets two
-\ used publics that export it, or a global and a used public that do.
-: LOOKUP-NAME ( ptr u8 n -- ptr n ) {: a:ptr u:n :}
-   a u scope-find {: rec:ptr used:ptr used2:ptr flags:n :}
+\ The record, refused, naming it, where a bare name meets two used publics
+\ that export it, or a global and a used public that do.
+: USING-CHECK ( ptr u8 n ptr n ptr n n -- ptr n )
+   {: a:ptr u:n rec:ptr used:ptr flags:n :}
    flags SCOPE-FIND-AMBIGUOUS and 0<> {: amb:bool :}
    rec XREF-FOUND? 0= if amb if a u AMBIGUOUS then rec exit then
    rec XREF-WORDLIST WL:GLOBAL? 0= if rec exit then
@@ -463,9 +459,19 @@ TYPED-VARIABLE REC ptr n
    used XREF-FOUND? if a u SHADOWED then
    rec ;
 
+\ The record the name binds, refused, naming it, where a sealed source may not
+\ call it, then where USING-CHECK refuses it.
+: LOOKUP-NAME ( ptr u8 n -- ptr n ) {: a:ptr u:n :}
+   a u scope-find {: rec:ptr used:ptr used2:ptr flags:n :}
+   a u rec POLICY-CHECK-REC
+   a u rec used flags USING-CHECK ;
+
+\ LOOKUP-NAME for the top-level token, whose policy also admits the exempt
+\ require.
 : SEARCH ( -- )
-   TOKEN$ LOOKUP-NAME REC !
-   REC @ POLICY-CHECK-TOP ;
+   TOKEN$ scope-find {: rec:ptr used:ptr used2:ptr flags:n :}
+   TOKEN$ rec POLICY-REQUIRE? 0= if TOKEN$ rec POLICY-CHECK-REC then
+   TOKEN$ rec used flags USING-CHECK REC ! ;
 
 : LOOKUP ( -- )
    SEARCH
@@ -1488,11 +1494,6 @@ private
    s" compile keyword cannot be a definition name: " ERROR-TEXT:TYPE
    a u ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE  RC-REJECT throw ;
 
-: DEF-POLICY-REFUSE ( ptr u8 n -- ) {: a:ptr u:n :}
-   s" E-POLICY" REFUSAL
-   s" not in vocabulary: " ERROR-TEXT:TYPE
-   a u ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE  ENGINE-ERROR:POLICY throw ;
-
 : DEF-NUMBER-REFUSE ( ptr u8 n -- ) {: a:ptr u:n :}
    s" E-NUMERIC-DEFINITION" REFUSAL
    s" number cannot be a definition name: " ERROR-TEXT:TYPE
@@ -1501,7 +1502,7 @@ private
 : DEF-WALL ( ptr u8 n -- ) {: a:ptr u:n :}
    POLICY-NDICT-CELL CELL@ 0<> if
       a u DEF-DESIGN-KEYWORD? if a u DEF-KEYWORD-REFUSE then
-      a u DEF-NAME-KEYWORD? if a u DEF-POLICY-REFUSE then
+      a u DEF-NAME-KEYWORD? if a u POLICY-REFUSE then
    else
       a u DEF-KEYWORD? if a u DEF-KEYWORD-REFUSE then
    then
@@ -1722,9 +1723,9 @@ private
    POLICY-NDICT-CELL CELL@ 0= if exit then
    num if exit then
    TOKEN$ FIND-SCOPE {: rec:ptr :}
-   rec XREF-FOUND? if rec POLICY-CHECK-REC exit then
+   rec XREF-FOUND? if TOKEN$ rec POLICY-CHECK-REC exit then
    TOKEN$ FIND {: used:ptr :}
-   used XREF-FOUND? if used POLICY-CHECK-REC exit then
+   used XREF-FOUND? if TOKEN$ used POLICY-CHECK-REC exit then
    s" if" TOKEN-IS? if exit then
    s" else" TOKEN-IS? if exit then
    s" then" TOKEN-IS? if exit then
@@ -1733,7 +1734,7 @@ private
    s" [package]" TOKEN-IS? if exit then
    s" [type]" TOKEN-IS? if exit then
    s" {:" TOKEN-IS? if exit then
-   POLICY-REFUSE ;
+   TOKEN$ POLICY-REFUSE ;
 
 : DEF-PREFLIGHT ( -- )
    BODY-TEXT:BASE-CELL ADDR@ BODYLEN-CELL CELL@ TOKEN$ TRUSTED-CELL CELL@ 0<>
@@ -1745,7 +1746,7 @@ private
    TOKEN$ FIND-SCOPE {: rec:ptr :}
    rec XREF-FOUND? 0= if NULL-PTR false exit then
    rec XREF-FLAGS DNAME-IMM and 0= if NULL-PTR false exit then
-   rec POLICY-CHECK-REC
+   TOKEN$ rec POLICY-CHECK-REC
    rec TOKEN$ NEUTRAL-PARSE-IMM?
    dup 0= s" does>" TOKEN-IS? 0= and if DEF-PREFLIGHT then ;
 
