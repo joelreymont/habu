@@ -620,7 +620,7 @@ private
 \ path is the canonical one the file's closure entry holds, so the child's
 \ working directory does not matter. The child's own JSON diagnostics for a file
 \ it loads by path carry that file's line and column, which the engine counts
-\ itself (src/core/checker.f CHECK:FILE-POS).
+\ itself.
 : CHK-APPEND-ENTRY ( ptr u8 n -- )
    CHK-EXP-QPATH
    CHK-SP CHK-EXP-C

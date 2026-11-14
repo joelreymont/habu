@@ -348,7 +348,7 @@ public
 
 : PART-ROLLBACK ( -- ) DECL-MARK ROLLBACK ;
 
-\ Total: RELEASE is throw-free by contract (src/core/checker.f RELEASE).
+\ Total: RELEASE is throw-free by contract.
 : PART-RELEASE ( -- ) RELEASE ;
 
 seal-package

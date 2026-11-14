@@ -1,7 +1,7 @@
 \ render.f: renders checker types and rows as text: a residual stack (DCUR), a
-\ refusal's diagnostic line and JSON packet. REC-SIG (installed via RECXT)
-\ records a certified sig-less word's inferred effect under its name, so its
-\ callers certify; rendering only decides whether that effect is declarable
+\ refusal's diagnostic line and JSON packet. REC-SIG records a certified
+\ sig-less word's inferred effect under its name, so its callers certify;
+\ rendering only decides whether that effect is declarable
 \ (RQM, NLET). Compiles after checker.f and before any src/lib/ file: no emit or
 \ +!, so bytes go out through the one-byte ECH buffer.
 using TFAM
@@ -1564,8 +1564,8 @@ variable MDV-I   variable MDV-F
    k RF-UNCHECKABLE = IF s" E-UNCHECKABLE" EXIT THEN
    k RF-MISMATCH = IF s" E-MISMATCH" EXIT THEN
    s" E-REJECTED" ;
-\ The verdict the load gave the definition or step (checker.f CHECK-VERDICT),
-\ which each DIAGXT caller stores in DVERD before it renders.
+\ The verdict the load gave the definition or step,
+\ which each DIAG-PRINT caller stores in DVERD before it calls it.
 : DVERDICT ( -- ptr u8 n )
    DVERD @ VERDICT-UNCHECKABLE = IF s" uncheckable" EXIT THEN s" rejected" ;
 \ repair_class is the stable machine name a consumer keys its repair on. This
@@ -1964,8 +1964,6 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    JSON-DIAGS @ IF CHECKER-REPORT-MARK THEN ;
 
 
-: DIAG-PRINT-INSTALL ( -- ) [: DIAG-PRINT ;] is DIAGXT ;
-DIAG-PRINT-INSTALL
 
 \ Bad stored-signature diagnostics (checker.f USIG-ADD-BAD, every mode). SGBAD's
 \ state from the failed parse is still live, so class and suggestion are a
@@ -2077,8 +2075,6 @@ variable WARN-DIAGS   -1 WARN-DIAGS !
    THEN
    BROW @ DCUR @ CHECK-UNRECORDED!
    na nu REC-REFUSE-DIAG ;
-: REC-SIG-INSTALL ( -- ) [: REC-SIG ;] is RECXT ;
-REC-SIG-INSTALL
 
 \ Global-vs-used-public shadow (CK-SHADOW-CAPTURE): the reject names both
 \ candidates with their arity. Effects read through the read-only USIGS accessors
@@ -2172,7 +2168,7 @@ REC-SIG-INSTALL
    JSON-DIAGS @ IF SBARITY-JSON ELSE SBARITY-PROSE THEN
    10 EMIT1
    RSBUF-FLUSH ;
-\ A bare token two used publics export (checker.f CHECKER-RESOLVE:RAISE): the
+\ A bare token two used publics export: the
 \ reject names each package it resolves in.
 : UAMB-PROSE ( -- )
    s" E-USING-AMBIGUOUS habu: bare '" DTXT  USH-TOK-A @ USH-TOK-U @ DTXT
@@ -2191,8 +2187,7 @@ REC-SIG-INSTALL
    10 EMIT1
    RSBUF-FLUSH ;
 \ A top-level token the load refuses, a stretch the pre-pass deferred, or a
-\ deferred definition (checker.f CHECKER-VERIFY-TOP, CHECKER-VERIFY-DEFERRED,
-\ CHECKER-VERIFY-DEFERRED-BODY): records at the token, no definition fields. A
+\ deferred definition: records at the token, no definition fields. A
 \ refusal has its own code (tools/diag-code.f) with the class and suggestion a
 \ body's reference gets; a deferral is no refusal, under W-CHECK-DEFERRED.
 : TOP-SPAN-JSON ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
@@ -2418,7 +2413,7 @@ RECORD-DIAG-INSTALL
 : STGR-DIAG-INSTALL ( -- ) [: STGR-DIAG ;] is STORAGE-DIAG-XT ;
 STGR-DIAG-INSTALL
 
-\ A `generates:` row the checker cannot keep (checker.f CHECKER-GENERATES), on
+\ A `generates:` row the checker cannot keep, on
 \ TSTALE-JSON's template: the kind says which of four claims failed, each with
 \ its own repair (correct the name, delete the row, make D read its name, or
 \ the signature refusal's class and text). Placed at the name where the pre-pass scanner read it.
@@ -2482,10 +2477,8 @@ STGR-DIAG-INSTALL
    JSON-DIAGS @ IF ta tu kind GENR-JSON ELSE ta tu kind GENR-PROSE THEN
    10 EMIT1
    RSBUF-FLUSH ;
-: GENERATES-DIAG-INSTALL ( -- ) [: GENR-DIAG ;] is GENERATES-DIAG-XT ;
-GENERATES-DIAG-INSTALL
 
-\ A refused `cast:` or `linear:` declaration (checker.f CAST-ERROR:RAISE).
+\ A refused `cast:` or `linear:` declaration.
 package CAST-ERROR
 : CODE$ ( -- ptr u8 n )
    CODE @ E-CAST-ARITY = IF s" E-CAST-ARITY" EXIT THEN
@@ -2545,8 +2538,6 @@ package CAST-ERROR
    JSON-DIAGS @ IF PACKET ELSE PROSE THEN
    10 EMIT1
    RSBUF-FLUSH ;
-: INSTALL ( -- ) [: RENDER ;] is DIAG-XT ;
-INSTALL
 ;package
 
 \ A `parses:` or `parses-through:` row the checker refused (checker.f
@@ -2608,10 +2599,8 @@ INSTALL
    THEN
    10 EMIT1
    RSBUF-FLUSH ;
-: PARSES-DIAG-INSTALL ( -- ) [: PRS-DIAG ;] is PARSES-DIAG-XT ;
-PARSES-DIAG-INSTALL
 
-\ A `names:` row the checker refused (checker.f CHECKER-NAMES-ROW): with no
+\ A `names:` row the checker refused: with no
 \ target fix_names_syntax, else fix_names_row.
 : NMS-SYNTAX? ( n -- bool )
    PARSES-NO-TARGET = ;
@@ -2641,8 +2630,6 @@ PARSES-DIAG-INSTALL
    THEN
    10 EMIT1
    RSBUF-FLUSH ;
-: NAMES-DIAG-INSTALL ( -- ) [: NMS-DIAG ;] is NAMES-DIAG-XT ;
-NAMES-DIAG-INSTALL
 
 ;using
 

@@ -800,12 +800,6 @@ variable RC
    packet GJA-REPAIR-DEF
    packet s" line" GJA-HAS? TFALSE ;
 
-: TEST-UNREPORTED-REJECT ( -- )
-   s" a silent diagnostic defer retains the hook fallback" T-LABEL
-   BODY$ s" TRUSTED: LRD-MUTE-DIAG ( -- ) [: ;] is DIAGXT ; LRD-MUTE-DIAG -1 JSON-DIAGS ! : LRD-MUTED ( -- n ) ;" FS:WRITE-ALL
-   BODY$ RUN
-   s" hook: non-certified definition: lrd-muted" ASSERT-NAMED ;
-
 \ T0 refuses a body no scan certified where the checker's scan bound nothing
 \ or `is` names no deferred word.
 : TEST-UNCERTIFIED-MALFORMED ( -- )
@@ -870,7 +864,6 @@ variable RC
    TEST-IMM-CALLER
    TEST-IMM-TRUSTED
    TEST-UNSOURCED-PACKET
-   TEST-UNREPORTED-REJECT
    TEST-BIG-LITERAL
    TEST-SECTION-CLASH
    HB-TARGET-LINUX-X86-64? 0= if

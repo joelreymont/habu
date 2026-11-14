@@ -56,7 +56,7 @@ s" SIG-RAW-MODE" s" -- ptr n" TRUST
 
 \ `parses: W n` and `parses-through: W n ( E1 E2 )`, at top level after W's
 \ definition, read as src/habu/verify-source.f PARSES-ROW reads them and checked
-\ by src/core/checker.f CHECKER-PARSES-ROW; nothing is kept. The keyword is the
+\ by the checker; nothing is kept. The keyword is the
 \ last token the engine read when the word starts (TKA-CELL). UNSAFE-TOK? bars
 \ both from checked bodies. They load after the hook so this checker records them
 \ and INTRINSIC tags each (CTL-PARSES, INTRINSIC-CTL): a word checker.f defines is
@@ -74,8 +74,8 @@ INTRINSIC-PARSES-THROUGH INTRINSIC
 \ `names: W`, at top level after W's definition: W looks its string operand up
 \ as a name, so a string literal before a call of W is a use of the word it
 \ names. Read as the source pre-verifier reads it (src/habu/verify-source.f
-\ NAMES-ROW), checked by the checker, which marks W's symbol
-\ (src/core/checker.f CHECKER-NAMES-ROW), barred from checked bodies and
+\ NAMES-ROW), checked by the checker, which marks W's symbol,
+\ barred from checked bodies and
 \ tagged as the two above are.
 TRUSTED: names: ( -- )
    data-base TKA-CELL + @  data-base TKL-CELL + @

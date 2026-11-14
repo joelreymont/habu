@@ -40,7 +40,7 @@ $4E constant DUP-RC
    rc ;
 
 \ The same span in multi-error mode, where a refused body is recorded with
-\ source authority instead of thrown (src/core/checker.f CHECK).
+\ source authority instead of thrown.
 : MULTI-QUIET ( ptr u8 n -- n )
    {: a:ptr u:n :}
    MULTI-ERR-BEGIN

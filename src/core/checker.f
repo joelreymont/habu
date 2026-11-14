@@ -5045,7 +5045,7 @@ TOKBUF-INIT-CAP TOKBUF-CAP-U !
 variable TOKIX  variable FAILIX
 variable FAILB  variable FAILE
 CHECKER-REG:SCRATCH{
-variable DVERD     \ the verdict CHECK-VERDICT gave what DIAGXT renders next
+variable DVERD     \ the verdict CHECK-VERDICT gave the diagnostic rendered next
 PTR-VARIABLE TBASE  variable TBLEN  variable TI  variable TSTART
 CHECKER-REG:}SCRATCH
 variable JSON-DIAGS   0 JSON-DIAGS !
@@ -19495,24 +19495,16 @@ variable MTCH-W                      \ the bundle width the walk below really co
       24 of CF-RECURSE endof
    endcase ;
 \ The first token of the checked text is the word's name (skipped, kept for the
-\ recorder). RECXT records certified sigs by name and DIAGXT renders a
-\ reject/uncheckable diagnostic. DIAG-QUIET counts nested quiet-check scopes.
-\ It is created before the check hook exists, so no effect is published for it
-\ and only this file names it.
+\ recorder). DIAG-QUIET counts nested quiet-check scopes. It is created before
+\ the check hook exists, so no effect is published for it.
 CHECKER-REG:SCRATCH{
 variable TOK0
 CHECKER-REG:}SCRATCH
-defer RECXT ( ptr u8 n -- )
-defer DIAGXT ( -- )
 variable DIAG-QUIET
 variable JSON-REPORTED
 : CHECKER-REPORT-RESET ( -- ) 0 JSON-REPORTED ! ;
 : CHECKER-REPORT-MARK ( -- ) -1 JSON-REPORTED ! ;
 : CHECKER-JSON-REPORTED? ( -- bool ) JSON-REPORTED @ 0= 0= ;
-: DIAG-HOOK-DEFAULTS ( -- )
-   [: 2drop ;] is RECXT
-   [: ;] is DIAGXT ;
-DIAG-HOOK-DEFAULTS
 variable CTLNEW
 variable CTLDNEW   variable CTLRNEW   \ the intact masks recorded beside them
 \ the engine folds A-Z in keyword and dict matching — fold every token the same
@@ -22238,10 +22230,6 @@ PTR-VARIABLE SIG-A
 PTR-VARIABLE WHY-A    variable WHY-U
 PTR-VARIABLE TOK-A    variable TOK-U
 variable CODE
-defer DIAG-XT ( -- )
-private
-: DIAG-DEFAULT ( -- ) [: ;] is DIAG-XT ;
-DIAG-DEFAULT
 ;package
 
 \ An effect REC-SIG did not record (W-EFFECT-NOT-RECORDED). CHECK clears it,
@@ -22251,36 +22239,6 @@ variable UNREC-DOUT  CELLS-NONE UNREC-DOUT !
 : CHECK-UNRECORDED! ( n n -- ) {: din:n dout:n :}
    din ROW-CELLS UNREC-DIN !
    dout ROW-CELLS UNREC-DOUT ! ;
-
-: REG-EXT-RB-NOOP ( -- )
-;
-
-defer REG-EXT-RB-SAVE-XT ( -- )
-defer REG-EXT-RB-FINALIZE-XT ( -- )
-defer REG-EXT-RB-RESTORE-XT ( -- )
-
-: REG-EXT-RB-DEFAULTS ( -- )
-   [: REG-EXT-RB-NOOP ;] is REG-EXT-RB-SAVE-XT
-   [: REG-EXT-RB-NOOP ;] is REG-EXT-RB-FINALIZE-XT
-   [: REG-EXT-RB-NOOP ;] is REG-EXT-RB-RESTORE-XT ;
-REG-EXT-RB-DEFAULTS
-
-package CHECKER-DECL-FRAME
-
-defer TYPES-READY-XT ( n -- bool )
-defer TYPES-RESTORE-XT ( -- )
-defer TYPES-RELEASE-XT ( -- )
-
-\ Before the type-frame hooks load, no type frame needs to be ready.
-: TYPES-READY-OK ( n -- bool ) drop 0 0= ;
-: NOOP ( -- ) ;
-: TYPES-DEFAULTS ( -- )
-   [: TYPES-READY-OK ;] is TYPES-READY-XT
-   [: NOOP ;] is TYPES-RESTORE-XT
-   [: NOOP ;] is TYPES-RELEASE-XT ;
-TYPES-DEFAULTS
-
-;package
 
 \ ---- generates: rows ----------------------------------------------------------
 \ A definer that writes its word as text has no clause, and the source
@@ -22292,9 +22250,6 @@ TYPES-DEFAULTS
 0 constant GENR-UNRESOLVED                \ D names no word here
 1 constant GENR-CREATES                   \ something already states what D makes
 3 constant GENR-READS-NONE                \ D lacks CTL-PARSES, or is deferred
-defer GENERATES-DIAG-XT ( ptr u8 n n -- )
-: GENERATES-DIAG-DEFAULT ( -- ) [: drop drop drop ;] is GENERATES-DIAG-XT ;
-GENERATES-DIAG-DEFAULT
 
 \ ---- parses: rows -------------------------------------------------------------
 \ A top-level word that reads the source after it (CTL-PARSES) takes tokens no
@@ -22310,9 +22265,6 @@ GENERATES-DIAG-DEFAULT
 4 constant PARSES-READS-NONE              \ it names a word that reads no source
 5 constant PARSES-NO-TARGET               \ nothing follows the declarer
 6 constant PARSES-COUNT                   \ the count is no number, or negative
-defer PARSES-DIAG-XT ( ptr u8 n n -- )
-: PARSES-DIAG-DEFAULT ( -- ) [: drop drop drop ;] is PARSES-DIAG-XT ;
-PARSES-DIAG-DEFAULT
 
 \ ---- names: rows --------------------------------------------------------------
 \ `names: W` states that W finds the word its top string operand ( ptr u8 n )
@@ -22321,9 +22273,6 @@ PARSES-DIAG-DEFAULT
 \ W's body; it marks W's symbol, so a redefinition drops it, an export carries
 \ it, and a caller passing its own operand on declares its own row.
 8 constant NAMES-NO-STRING                \ it names a word whose input row does not end in ptr u8 n
-defer NAMES-DIAG-XT ( ptr u8 n n -- )
-: NAMES-DIAG-DEFAULT ( -- ) [: drop drop drop ;] is NAMES-DIAG-XT ;
-NAMES-DIAG-DEFAULT
 
 package SRCLOC
 public

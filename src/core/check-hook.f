@@ -12,7 +12,7 @@ private
 \ A replay entry (CHECKER-DEFPRODUCT with GENERATED-DECL-CTOR:REPLAY-LEGACY,
 \ STRUCTURE-DECL:SD-REPLAY, ...) publishes a checked effect without defining the
 \ word, so a later definition passes the engine's duplicate wall
-\ and checker.f CHECK-REC-ADMIT refuses it with $4E and no message. The hook asks
+\ and the checker's admission refuses it with $4E and no message. The hook asks
 \ CHECKER-CERT-DUP? (which interns nothing) first and refuses it as the
 \ wall does (REFUSE-DUPLICATE).
 
@@ -25,7 +25,7 @@ INE-CELL RESERVED-PTR-U8-CELL INPUT-END
 \ BODY-SOURCE), and answers whether it did. It arms only for the pending
 \ definition's text from the body text's base, its name in the buffer being
 \ read, that buffer a file's (SRCLOC:FILE-BUFFER?), with no source armed. The
-\ source starts at the name, placed in the file by checker.f FILE-POS.
+\ source starts at the name, placed in the file by the checker.
 : ROWS-ARM ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    DSRC-U @ 0 <> if RES-FALSE exit then
@@ -46,7 +46,7 @@ INE-CELL RESERVED-PTR-U8-CELL INPUT-END
 \ Gives the checker the token that closes the text a u ROWS-ARM armed, which
 \ the text does not hold (checker.f DIAG-CLOSER!), so a structure still open
 \ there is refused at it as the load refuses it. A definer's head (DOES-SPLIT,
-\ as checker.f CHECK tells it) ends at the `does>` just past it in the captured
+\ as the checker tells it) ends at the `does>` just past it in the captured
 \ body, placed by the rows; any other body ends at the `;` the engine read last.
 \ A token outside the armed source is not given.
 : CLOSER-ARM ( ptr u8 n -- )
@@ -345,7 +345,7 @@ public
    dup -1 = if na nu mark CHECK-FACTS then
    MULTI-ERR? if drop -1 exit then
    dup -1 <> if
-      \ A muted or replaced DIAGXT can emit nothing even in JSON mode.
+      \ No JSON diagnostic reported this refusal (none does in prose mode).
       CHECKER-JSON-REPORTED? 0= if
          s" hook: non-certified definition: " ERROR-TEXT:TYPE
          NMB NMU @ ERROR-TEXT:TYPE
@@ -460,7 +460,7 @@ TRUSTED: INSTALL ( -- )
    ['] CHECK:IMMEDIATE set-preflight
    ['] DEFINITION set-check ;
 
-\ Replace checker.f's CHECKER-NATIVE-DOES-FINISH, TRUST-RAW, TRUST-DECL,
+\ Replace the checker's CHECKER-NATIVE-DOES-FINISH, TRUST-RAW, TRUST-DECL,
 \ CHECKER-DEFER, CHECKER-DEFCAST and CHECKER-LINEAR, now the renderer exists.
 ' DOES-PUBLISHED CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:NATIVE-DOES-FINISH-OFF + xt!
 CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:RAW-OFF + CELL-VIEW @ RAW-REG xt!

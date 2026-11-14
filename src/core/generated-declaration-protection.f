@@ -47,8 +47,8 @@ INSTALL
    CHECKER-DECL-FRAME:PART-RELEASE ;
 
 \ A rollback that cannot complete leaves a savepoint live with nothing left
-\ to restore it from: fail closed, as the checker frame already does
-\ (checker.f FRAME-MISMATCH), instead of poisoning.
+\ to restore it from: fail closed, as the checker frame already does,
+\ instead of poisoning.
 : FAIL ( n -- )
    {: rc:n :}
    [: ROLLBACKS ;] catch {: cleanup:n :}

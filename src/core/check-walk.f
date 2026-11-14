@@ -350,7 +350,7 @@ public
 : TOKEN! ( ptr u8 n -- ) TOK-U !  TOK-A ! ;
 : RAISE ( ptr u8 n n -- ) {: wa:ptr wu:n code:n :}
    wa WHY-A !  wu WHY-U !  code CODE !
-   DIAG-XT
+   RENDER
    code CHECKER-REFUSE ;
 \ Refuses signature sa su of name na nu that does not parse.
 : REFUSE-SIGNATURE ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
@@ -687,7 +687,7 @@ public
    \ whose record step below may refuse the definition by a throw (a duplicate,
    \ a name that keys no record) that would otherwise come before it.
    dup VERDICT-REFUSED =  over VERDICT-UNCHECKABLE = JSON-DIAGS @ MULTI-ERR? or and  or
-   DIAG-QUIET @ 0= and IF DIAGXT THEN
+   DIAG-QUIET @ 0= and IF DIAG-PRINT THEN
    \ The declared effect's record outlives the body until the diagnostic above,
    \ which renders it.
    SIG-EFF-DROP
@@ -732,7 +732,7 @@ public
       CHECK-SIG? IF
          NMA @ NMU @  CHECKER-USIG-CERT-PARSED
       ELSE
-         NMA @ NMU @ RECXT
+         NMA @ NMU @ REC-SIG
       THEN
       sym CK-CLOSE!
    THEN
@@ -929,7 +929,7 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    RBF-CUR RBF-SAVE-INTO
    RBF-NAME-CUR RBF-NAME-SAVE
    RBF-DEPTH @ 1 + RBF-DEPTH !
-   REG-EXT-RB-SAVE-XT ;
+   CHECKER-DECL-FRAME:EXT-SAVE ;
 
 : RBF-POP-WITH ( [ -- ] -- )
    0 BWIN-VALID !  0 UWIN-VALID !
@@ -941,10 +941,10 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    RBF-CUR RBF.NDICT @ RBF-FACTS-FORGET ;
 
 : RBF-POP ( -- )
-   [: REG-EXT-RB-RESTORE-XT ;] RBF-POP-WITH ;
+   [: CHECKER-DECL-FRAME:EXT-RESTORE ;] RBF-POP-WITH ;
 
 : RBF-FINALIZE ( -- )     \ keep every published row and release the live savepoint
-   REG-EXT-RB-FINALIZE-XT
+   CHECKER-DECL-FRAME:EXT-FINALIZE
    RBF-DEPTH @ CHECKER-OVERLAY:CLOSE-SCOPE
    RBF-DEPTH @ 1 - RBF-DEPTH ! ;
 
@@ -967,7 +967,7 @@ package CHECKER-DECL-FRAME
    RBF-DEPTH @ 1 - depth DECL-AT? ;
 
 : RESTORE-TOP ( -- )         \ declaration-owned pop: no product-field rejection
-   [: TYPES-RESTORE-XT ;] RBF-POP-WITH ;
+   [: TYPES-RESTORE ;] RBF-POP-WITH ;
 
 \ Is there one more leaked ordinary scope below the ones already counted?
 : ORDINARY-BELOW? ( n -- n bool )
@@ -994,7 +994,7 @@ package CHECKER-DECL-FRAME
 
 : PREPARE ( n -- bool ) {: depth:n :}
    depth TOP-MATCH? 0= IF 0 0= 0= EXIT THEN
-   RBF-DEPTH @ TYPES-READY-XT ;
+   RBF-DEPTH @ TYPES-READY ;
 
 : FRAME-MISMATCH ( -- )
    s" checker: declaration rollback frame mismatch" 76 die ;
@@ -1012,7 +1012,7 @@ package CHECKER-DECL-FRAME
 
 \ The declaration runner releases after its participant commits succeed.
 : RELEASE ( -- )
-   TYPES-RELEASE-XT
+   TYPES-RELEASE
    RBF-DEPTH @ 1 - RBF-DEPTH ! ;
 
 ;package
@@ -1219,7 +1219,7 @@ variable DEF-STOPPED
 \ a multi-error load, or not at all in a quiet probe.
 : REPORT-UNCHECKABLE ( n -- n )
    dup 1 = JSON-DIAGS @ 0= and MULTI-ERR? 0= and DIAG-QUIET @ 0= and
-   if dup DVERD !  DIAGXT then ;
+   if dup DVERD !  DIAG-PRINT then ;
 
 \ A TRUSTED: definition's declared effect is the assertion: the body is scanned
 \ only to fill the source tape the optimizing elaborator reads, and its verdict
@@ -1518,7 +1518,7 @@ PTR-VARIABLE UNJ-DOES-SA   variable UNJ-DOES-SU   variable UNJ-DOES-VERDICT
    v -1 = v 2 = or IF v EXIT THEN
    na nu DOES-NAME!
    v DVERD !
-   DIAG-QUIET @ 0= IF DIAGXT THEN
+   DIAG-QUIET @ 0= IF DIAG-PRINT THEN
    SIG-EFF-DROP
    MULTI-ERR? DIAG-QUIET @ 0= and IF 1 MULTI-ERR-N +! THEN
    v ;
@@ -1662,7 +1662,7 @@ variable TOP-ASK-ANSWER
                                           \ holds it (SGBAD-UNFIT!); SGBAD says why
 
 : GENERATES-REFUSE ( ptr u8 n n -- )
-   GENERATES-DIAG-XT
+   GENR-DIAG
    MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
    E-GENERATES-ROW throw ;
 
@@ -1731,7 +1731,7 @@ TRUSTED: generates: ( -- )
 7 constant PARSES-LIST                    \ no `(`, no terminator, or no `)`
 
 : PARSES-REFUSE ( ptr u8 n n -- )
-   PARSES-DIAG-XT
+   PRS-DIAG
    MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
    E-PARSES-ROW throw ;
 
@@ -1797,7 +1797,7 @@ TRUSTED: generates: ( -- )
    end 2 =  terms 0=  or ;
 
 : NAMES-REFUSE ( ptr u8 n n -- )
-   NAMES-DIAG-XT
+   NMS-DIAG
    MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
    E-NAMES-ROW throw ;
 
@@ -2086,7 +2086,7 @@ public
    TOK-SPELL-A @ TOK-SPELL-U @ REFUSAL-STEP
    CHECK-VERDICT dup DVERD ! {: v:n :}
    v VERDICT-CHECKED =  v VERDICT-DEFERRED =  or  RCOMPILE @ 0=  and IF EXIT THEN
-   DIAG-QUIET @ 0= IF DIAGXT THEN
+   DIAG-QUIET @ 0= IF DIAG-PRINT THEN
    CHECKER-REJECT-RC throw ;
 
 \ A step is a guest in the term pools: an event fires between the tokens of a

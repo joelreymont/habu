@@ -94,7 +94,7 @@
 \ the checker bound: S and N where the use starts and
 \ ends in I, the file it is in as its packets name it, a token, or the bytes
 \ between the quotes of a string literal naming a word before a call of a word
-\ a `names:` row marks (src/core/checker.f CHECKER-NAMES-ROW), F the path the
+\ a `names:` row marks, F the path the
 \ declaration's file was resolved to, TS and TN where the token that declared
 \ it starts and ends there, and D, T, P and V the selected binding's local
 \ visit, canonical tail, package and visibility. For an engine primitive in

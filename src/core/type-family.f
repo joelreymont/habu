@@ -3149,17 +3149,9 @@ package CHECKER-DECL-FRAME
    TF-RBF-TOP PF-DEPTH=
    TF-RELEASE ;
 
-;package
-
-package TFAM
-
 \ One SAVE/RESTORE pair the checker's core RBF-PUSH/POP drives, so TFAM and
 \ SCHEMA frames stay in lockstep with core marks.
-
-;package
-
-package CHECKER-DECL-FRAME
-
+public
 : EXT-SAVE ( -- )
    TF-SAVE
    SCHEMA-ROLLBACK-SAVE ;
@@ -3172,6 +3164,7 @@ package CHECKER-DECL-FRAME
    SCHEMA-ROLLBACK-FINALIZE
    TF-FINALIZE ;
 
+private
 : TYPES-READY ( n -- bool ) {: depth:n :}
    TF-RBF-DEPTH @ depth =
    SCH-RBF-DEPTH @ depth = and ;
@@ -3183,15 +3176,6 @@ package CHECKER-DECL-FRAME
 : TYPES-RELEASE ( -- )
    SCHEMA-ROLLBACK-FINALIZE
    TF-RELEASE ;
-
-: INSTALL-TYPES ( -- )
-   [: EXT-SAVE ;] is REG-EXT-RB-SAVE-XT
-   [: EXT-FINALIZE ;] is REG-EXT-RB-FINALIZE-XT
-   [: EXT-RESTORE ;] is REG-EXT-RB-RESTORE-XT
-   [: TYPES-READY ;] is TYPES-READY-XT
-   [: TYPES-RESTORE ;] is TYPES-RESTORE-XT
-   [: TYPES-RELEASE ;] is TYPES-RELEASE-XT ;
-INSTALL-TYPES
 
 ;package
 
