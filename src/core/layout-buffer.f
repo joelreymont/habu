@@ -138,7 +138,7 @@ PTR-VARIABLE STGT-START
    handle ;
 
 \ Every region here holds cells, so DP is rounded to a cell before a definer
-\ measures it; `create` rounds the same way and leaves it in place.
+\ measures it.
 : LBUF-ALIGN ( -- )
    align ;
 
