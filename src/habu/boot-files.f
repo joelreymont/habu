@@ -112,7 +112,6 @@ private
    TOPROW COMMON s" src/core/top-row.f" ROW
    BASELIB COMMON s" src/lib/prelude.f" ROW
    BASELIB COMMON s" src/lib/error.f" ROW
-   BASELIB COMMON s" src/core/layout-buffer-address.f" ROW
    RESTLIB COMMON s" src/lib/span.f" ROW
    RESTLIB COMMON s" src/lib/adt/option.f" ROW
    RESTLIB COMMON s" src/lib/adt/nullable.f" ROW

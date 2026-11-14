@@ -184,12 +184,6 @@ PTR-VARIABLE STGT-START
    CHECKER-STORAGE-TERM 0= if drop E-LAYOUT-BUFFER throw then
    TFAM:HAS-ADDRESS? ;
 
-defer STORAGE-CLEAR-XT ( n n -- )
-: STORAGE-CLEAR-MISSING ( n n -- ) 2drop E-LAYOUT-BUFFER throw ;
-: STORAGE-CLEAR-DEFAULT ( -- )
-   ['] STORAGE-CLEAR-MISSING is STORAGE-CLEAR-XT ;
-STORAGE-CLEAR-DEFAULT
-
 \ Quotation cells belong to the image even while null; the term walk declares
 \ each code and address cell of these DATA allocations for capture.
 : STORAGE-BIND ( n ptr n n ptr u8 n bool -- )
@@ -251,7 +245,7 @@ CAST: width>n ( width<t> -- n )
 : LDEFER-RETIRE ( n n n ptr n -- ) {: oldoff:n oldcap:n wc:n cb:ptr :}
    oldcap 0= oldoff cb @ = or if exit then
    cb oldoff + {: oldbase:ptr :}
-   oldbase BYTE-VIEW data-base BYTE-VIEW - oldcap wc * cells STORAGE-CLEAR-XT
+   oldbase BYTE-VIEW data-base BYTE-VIEW - oldcap wc * cells ADDRESS-CELLS:REMOVE-SPAN
    oldbase oldcap wc * cells LBUF-ZERO ;
 
 : LDEFER-BIND ( n ptr n n -- )   \ count cbase wc
