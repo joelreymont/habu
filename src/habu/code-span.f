@@ -24,15 +24,39 @@ $FFFFFFFF constant RAW-MAX
    raw FULL? if raw BODY 0 > exit then
    raw BODY INSN-BYTES mod 0 = ;
 
-: CHECK ( n -- )
-   VALID? 0= if s" hb: malformed dictionary code length" 74 die then ;
+private
+\ Rejects V given to the public word W: WHAT says what V is not, OK the values
+\ the word takes, TEST the CODE-SPAN word that answers whether a value is one.
+: BAD ( n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: v:n w:ptr wu:n what:ptr whatu:n ok:ptr oku:n test:ptr testu:n :}
+   s" E-CODE-SPAN" REJECTION:OPEN
+   s" `CODE-SPAN:" REJECTION:EMIT-STR  w wu REJECTION:EMIT-STR
+   s" ` was given " REJECTION:EMIT-STR  v REJECTION:EMIT-N
+   s" , which is not " REJECTION:EMIT-STR  what whatu REJECTION:EMIT-STR
+   s" takes" REJECTION:NOTE  ok oku REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" test the value with `CODE-SPAN:" REJECTION:EMIT-STR  test testu REJECTION:EMIT-STR
+   s" ` first and pass only one it accepts" REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
+: LENGTH-CK ( n ptr u8 n -- ) {: raw:n w:ptr wu:n :}
+   raw VALID? 0= if
+      raw w wu s" a dictionary code length"
+      s" whole 4-byte instructions, or bit 31 set over 1 to 2147483647 bytes"
+      s" VALID?" BAD
+   then ;
+
+public
+: CHECK ( n -- ) s" CHECK" LENGTH-CK ;
 
 : BYTES ( n -- n ) {: raw:n :}
-   raw CHECK
+   raw s" BYTES" LENGTH-CK
    raw FULL? if raw BODY else raw BODY INSN-BYTES + then ;
 
 : EXACT ( n -- n ) {: size:n :}
-   size SIZE? 0= if s" hb: malformed dictionary code size" 74 die then
+   size SIZE? 0= if
+      size s" EXACT" s" a code size" s" 1 to 2147483647 bytes" s" SIZE?" BAD
+   then
    size FULL or ;
 
 \ A record's length: size less the emission's trailing return of ret bytes; with

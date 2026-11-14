@@ -1,7 +1,7 @@
 \ code-bytes.f - the one bounded way a checked body reads the bytes at a code
 \ address. An engine code address is a number (XREF-START, an xt, a span walk);
 \ AT is the only place it becomes a pointer, through the private cast N>U8, and
-\ it refuses a span IN-CODE? does not admit.
+\ it rejects a span IN-CODE? does not admit.
 
 package CODE-BYTES
 
@@ -27,6 +27,21 @@ CAST: N>U8 ( n -- ptr u8 )
    bytes hi at - > if false exit then
    true ;
 
+\ AT's rejection: the span it was given and the two bands IN-CODE? admits.
+: OUTSIDE ( n n -- ) {: at:n bytes:n :}
+   s" E-CODE-SPAN" REJECTION:OPEN
+   s" `CODE-BYTES:AT` was given " REJECTION:EMIT-STR  bytes REJECTION:EMIT-N
+   s"  bytes at " REJECTION:EMIT-STR  at REJECTION:EMIT-N
+   s" , outside the code region" REJECTION:EMIT-STR
+   s" text" REJECTION:NOTE  TEXT-LO REJECTION:EMIT-U
+   s"  up to " REJECTION:EMIT-STR  TEXT-HI REJECTION:EMIT-U
+   s" code" REJECTION:NOTE  BAND-LO REJECTION:EMIT-U
+   s"  up to " REJECTION:EMIT-STR  BAND-HI REJECTION:EMIT-U
+   REJECTION:HELP
+   s" pass an address inside a definition's code and a length that ends before `cp@`"
+   REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
 public
 
 \ REGION bounds the byte count: no code span is larger than the region that
@@ -40,9 +55,7 @@ public
    at bytes BAND-LO BAND-HI WITHIN? ;
 
 : AT ( n n -- ptr u8 n ) {: at:n bytes:n :}
-   at bytes IN-CODE? 0= if
-      s" hb: span outside the code region" 74 die
-   then
+   at bytes IN-CODE? 0= if at bytes OUTSIDE then
    at N>U8 bytes ;
 
 ;package

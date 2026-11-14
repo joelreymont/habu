@@ -106,7 +106,7 @@ CAST: XT>N ( [ R -- S ] -- n )
    \ patch32 runs in engine text while opening the target's pages RW. An
    \ engine-text target can remove X from the patcher itself. Only the live
    \ compiled region is supported; refuse before publishing a slot or patching.
-   \ That region lies inside CODE-BYTES:AT's code band, so AT cannot die.
+   \ That region lies inside CODE-BYTES:AT's code band, so AT never rejects it.
    at dbase@ DICT-SIZE + <  at cp@ 4 - > or  at 3 and 0<> or if
       E-BP-TARGET throw
    then
