@@ -43,7 +43,6 @@ package FFI
 16 constant FFI-MAX-ARGS
 16 constant FFI-MAX-KPARAMS
 2 constant FFI-RTLD-NOW
-$0A constant LF-C
 
 $3A00 constant FFI-BUF-OFF
 $3A80 constant FFI-FBUF-OFF
@@ -384,38 +383,87 @@ private
 \ Library index idx's path, as LIBRARY-PATH and LIB-INDEX number it (from 1).
 : LIB-ROW@ ( n -- ptr u8 n ) 1- {: row:n :} row LIB-PATH row LIB-LEN@ ;
 
-: LINE-BODY ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 NUM:alloc-byte-len -- )
-   {: p:ptr pu:n a:ptr au:n s:ptr su:n b:ptr bu:n line:ptr extent:NUM:alloc-byte-len :}
-   p line pu BYTE-COPY
-   a line pu + au BYTE-COPY
-   s line pu + au + su BYTE-COPY
-   b line pu + au + su + bu BYTE-COPY
-   pu au + su + bu + {: len:n :}
-   LF-C line len + c!
-   line len 1+ ERROR-TEXT:TYPE ;
+\ A load failure reports when a call first resolves its symbol, in any task:
+\ one write of a record built in the caller's own bytes.
+: PUT ( ptr u8 n ptr u8 n -- ptr u8 n )
+   {: line:ptr at:n s:ptr su:n :}
+   s line at + su BYTE-COPY
+   line at su + ;
 
-\ The four parts and a line feed go out in one write, so lines from concurrent
-\ tasks never interleave.
-: REPORT-LINE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
-   {: p:ptr pu:n a:ptr au:n s:ptr su:n b:ptr bu:n :}
-   p pu a au s su b bu
-   pu au + su + bu + 1+ MEM:BYTES-ALLOC-LEN [: LINE-BODY ;] MEM:WITH-BYTES ;
+: HELP-LEAD$ ( -- ptr u8 n ) s\" \n  = help: " ;
 
-\ why, the loader's reason, goes on tried's line only: a later loader call
-\ replaces it.
-: REPORT-NAMES ( n n n -- )
+\ The help line h ends a record; HELP-LEN is its length.
+: HELP-PUT ( ptr u8 n ptr u8 n -- ptr u8 n )
+   {: line:ptr at:n h:ptr hu:n :}
+   line at HELP-LEAD$ PUT h hu PUT s\" \n" PUT ;
+
+: HELP-LEN ( n -- n ) HELP-LEAD$ nip + 1+ ;
+
+: RECORD-BODY ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 NUM:alloc-byte-len -- )
+   {: a:ptr au:n b:ptr bu:n c:ptr cu:n d:ptr du:n e:ptr eu:n h:ptr hu:n line:ptr extent:NUM:alloc-byte-len :}
+   line 0 a au PUT b bu PUT c cu PUT d du PUT e eu PUT
+   h hu HELP-PUT ERROR-TEXT:TYPE ;
+
+\ A record whose header line is the parts a to e, then the help h.
+: REPORT ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: a:ptr au:n b:ptr bu:n c:ptr cu:n d:ptr du:n e:ptr eu:n h:ptr hu:n :}
+   a au b bu c cu d du e eu h hu
+   au bu + cu + du + eu + hu HELP-LEN + MEM:BYTES-ALLOC-LEN
+   [: RECORD-BODY ;] MEM:WITH-BYTES ;
+
+: OPEN-HEAD$ ( -- ptr u8 n )
+   s" error[E-FFI-DLOPEN]: cannot open library '" ;
+
+: NOTE$ ( -- ptr u8 n ) s\" \n  = note: tried '" ;
+
+: OPEN-HELP$ ( -- ptr u8 n )
+   s" install the library, or name a path the loader finds" ;
+
+\ why, the loader's reason, goes on tried's note only: a later loader call
+\ replaces it, and dlerror's NULL means it kept none.
+: REASON$ ( n n n -- ptr u8 n ptr u8 n )
    {: why:n tried:n lib:n :}
-   lib 0= if exit then
-   s" E-FFI-DLOPEN: " lib LIB-ROW@
-   why 0 <> lib tried = and if s" : " why CELL>PTR dup ZLEN else s" " s" " then
-   REPORT-LINE
+   why 0 <> lib tried = and if s" : " why CELL>PTR dup ZLEN exit then
+   s" " s" " ;
+
+: NOTE-LEN ( n n n -- n )
+   {: why:n tried:n lib:n :}
+   why tried lib REASON$ {: s:ptr su:n r:ptr ru:n :}
+   NOTE$ nip lib LIB-ROW@ nip + 1+ su + ru + ;
+
+\ The notes' length from lib along next.
+: NOTES-LEN ( n n n -- n )
+   {: why:n tried:n lib:n :}
+   lib 0= if 0 exit then
+   why tried lib NOTE-LEN
+   why tried lib 1 - LIB-NEXT@ RECURSE + ;
+
+: NOTE-PUT ( ptr u8 n n n n -- ptr u8 n )
+   {: line:ptr at:n why:n tried:n lib:n :}
+   why tried lib REASON$ {: s:ptr su:n r:ptr ru:n :}
+   line at NOTE$ PUT lib LIB-ROW@ PUT s" '" PUT s su PUT r ru PUT ;
+
+\ One note per library from lib along next.
+: NOTES-PUT ( ptr u8 n n n n -- ptr u8 n )
+   {: line:ptr at:n why:n tried:n lib:n :}
+   lib 0= if line at exit then
+   line at why tried lib NOTE-PUT
    why tried lib 1 - LIB-NEXT@ RECURSE ;
 
-\ dlerror's NULL means the loader kept no reason.
+: OPEN-BODY ( n n n ptr u8 NUM:alloc-byte-len -- )
+   {: why:n tried:n lib:n line:ptr extent:NUM:alloc-byte-len :}
+   line 0 OPEN-HEAD$ PUT lib LIB-ROW@ PUT s" '" PUT
+   why tried lib NOTES-PUT OPEN-HELP$ HELP-PUT
+   ERROR-TEXT:TYPE ;
+
+\ lib heads the chain the record names.
 : OPEN-REPORT ( n n n -- )
    {: dlerr:n tried:n lib:n :}
-   FFI-BUF 0 dlerr ffi-call-n
-   tried lib REPORT-NAMES ;
+   FFI-BUF 0 dlerr ffi-call-n {: why:n :}
+   why tried lib
+   OPEN-HEAD$ nip lib LIB-ROW@ nip + 1+
+   why tried lib NOTES-LEN + OPEN-HELP$ nip HELP-LEN + MEM:BYTES-ALLOC-LEN
+   [: OPEN-BODY ;] MEM:WITH-BYTES ;
 
 \ The first handle from lib along next and the library that holds it, or 0 and
 \ tried: the last library this walk failed to open, else tried as given. A
@@ -446,10 +494,23 @@ private
    tried 0 <> if dlerr tried lib OPEN-REPORT then
    E-FFI-DLOPEN throw ;
 
+: SYMBOL-HEAD$ ( -- ptr u8 n )
+   s" error[E-FFI-DLSYM]: no C symbol '" ;
+
+: PROCESS-HELP$ ( -- ptr u8 n )
+   s" name the library that defines it with LIBRARY, or open it with FFI:GLOBAL" ;
+
+: LIBRARY-HELP$ ( -- ptr u8 n )
+   s" check the symbol's spelling against the library's exports" ;
+
+\ lib 0 is the process's own symbols.
 : SYMBOL-REPORT ( n n -- ) {: idx:n lib:n :}
-   s" E-FFI-DLSYM: " idx FN-NAME idx NAME-LEN
-   lib 0 <> if s"  in " lib LIB-ROW@ else s" " s" " then
-   REPORT-LINE ;
+   SYMBOL-HEAD$ idx FN-NAME idx NAME-LEN
+   lib 0= if
+      s" ' among the process's symbols" s" " s" " PROCESS-HELP$
+      REPORT exit
+   then
+   s" ' in '" lib LIB-ROW@ s" '" LIBRARY-HELP$ REPORT ;
 
 variable ERRNO-FN-CELL
 variable DLERROR-FN-CELL
@@ -475,10 +536,13 @@ variable DLERROR-FN-CELL
    s" E-FFI-SYNTAX" REJECTION:OPEN ;
 
 \ The throw keeps the code a catch reads; uncaught, the load exits 70.
-: SYNTAX-HELP ( ptr u8 n -- ) {: h:ptr hu:n :}
+: HELP-THROW ( ptr u8 n n -- ) {: h:ptr hu:n code:n :}
    CHECK:DEFINER-PLACE
    REJECTION:HELP  h hu REJECTION:EMIT-STR
-   REJECTION:KEEP  E-FFI-SYNTAX CHECKER-REFUSE ;
+   REJECTION:KEEP  code CHECKER-REFUSE ;
+
+: SYNTAX-HELP ( ptr u8 n -- )
+   E-FFI-SYNTAX HELP-THROW ;
 
 : SYNTAX-REJECT ( ptr u8 n ptr u8 n -- )
    {: m:ptr mu:n h:ptr hu:n :}
@@ -904,8 +968,6 @@ $10 constant ARG-MAX
 8 constant REG-MAX                        \ AAPCS64 integer / both ABIs' float slots
 6 constant X86-INT-REG-MAX                \ SysV rdi, rsi, rdx, rcx, r8, r9
 
-PATH-CAP 128 + constant DIAG-CAP
-
 public
 
 \ An input's kind, as STRUCT-FITS? reads it: a cell, a `ptr u8`, an `r` or an
@@ -934,7 +996,6 @@ private
 -1 constant NO-EXT
 
 LIBRARY-PATH-CAP 1 - CODEGEN:BUFFER LIB-NAME
-DIAG-CAP CODEGEN:BUFFER DIAG
 
 \ One declaration's working state: a declaration word writes each cell before
 \ it reads it. While no declaration is open (OPEN @ 0=) every cell rests at
@@ -1416,16 +1477,19 @@ private
 
 \ ---- the row this declaration takes ----------------------------------------
 
-: DIAG+ ( ptr u8 n -- )
-   DIAG CODEGEN:APPEND-STRING ;
-
-\ A library name spelled in the other target's convention is refused where it
+\ A library name spelled in the other target's convention is rejected where it
 \ is stated, not at the first call in whatever module declared it. A rendered
 \ name passes by construction.
-: TARGET$ ( -- ptr u8 n )
-   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if s" linux" exit then
-   HB-TARGET-MACOS? if s" macos" exit then
+: TARGET-HELP$ ( -- ptr u8 n )
+   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if
+      s" name it with VERSIONED-LIBRARY, which spells it for linux" exit
+   then
+   HB-TARGET-MACOS? if
+      s" name it with VERSIONED-LIBRARY, which spells it for macos" exit
+   then
    E-FFI-LIBRARY throw ;
+
+: SPELLED$ ( -- ptr u8 n ) s" ' is spelled for the other target" ;
 
 : BASENAME ( ptr u8 n -- ptr u8 n ) {: path:ptr u:n :}
    0 u 0 ?do path i + c@ [char] / = if drop i 1+ then loop
@@ -1443,14 +1507,8 @@ private
    E-FFI-LIBRARY throw ;
 
 : REPORT-LIBRARY-TARGET ( ptr u8 n -- ) {: path:ptr u:n :}
-   DIAG CODEGEN:RESET
-   s" ffi: library " DIAG+
-   path u DIAG+
-   s"  is spelled for the other target; this build loads for " DIAG+
-   TARGET$ DIAG+
-   s" : name it with VERSIONED-LIBRARY" DIAG+
-   LF-C DIAG CODEGEN:APPEND-BYTE
-   DIAG CODEGEN:CONTENTS ERROR-TEXT:TYPE ;
+   s" error[E-FFI-LIBRARY]: library '" path u SPELLED$ s" " s" "
+   TARGET-HELP$ REPORT ;
 
 : CHECK-SPELLING ( ptr u8 n -- ) {: path:ptr u:n :}
    path u FOREIGN-SPELLING? 0= if exit then
@@ -1733,6 +1791,13 @@ private
       s" name the library by its file name, which the loader searches for"
       SYNTAX-HELP
    then ;
+
+\ A path written after LIBRARY in the other target's spelling.
+: SPELLING-REJECT ( ptr u8 n -- ) {: path:ptr u:n :}
+   s" E-FFI-LIBRARY" REJECTION:OPEN
+   s" library '" REJECTION:EMIT-STR  path u REJECTION:EMIT-STR
+   SPELLED$ REJECTION:EMIT-STR
+   TARGET-HELP$ E-FFI-LIBRARY HELP-THROW ;
 public
 
 : SET-VARIADIC ( n -- ) [: VARIADIC-CLAUSE ;] KEEP-REST ;
@@ -1747,9 +1812,11 @@ public
    path u LIBRARY-PATH CUR-LIB !
    RECORD-SCOPE ;
 
-\ LIBRARY's path as written: a bad length is rejected with a record placed at it.
+\ LIBRARY's path as written: a bad length or a foreign spelling is rejected with
+\ a record placed at it.
 : SELECT-WRITTEN-LIBRARY ( ptr u8 n -- ) {: path:ptr u:n :}
    u PATH-WRITTEN
+   path u FOREIGN-SPELLING? if path u SPELLING-REJECT then
    path u SELECT-LIBRARY ;
 
 : SELECT-VERSIONED-LIBRARY ( -- )

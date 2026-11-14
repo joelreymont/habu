@@ -49,7 +49,7 @@ The full native suite has additional host requirements. On Linux its PTY
 tests need working /dev/ptmx and /dev/pts. The database test needs initdb
 and postgres on PATH and libpq 17 or newer for native query cancellation,
 run as an ordinary user because initdb refuses root. With libpq 16 the test
-dies `E-FFI-DLSYM: PQcancelCreate in libpq.so.5`. Debian and Ubuntu keep
+dies `error[E-FFI-DLSYM]: no C symbol 'PQcancelCreate' in 'libpq.so.5'`. Debian and Ubuntu keep
 initdb and postgres in `/usr/lib/postgresql/<version>/bin`, which must be put
 on PATH. The FONT test needs HarfBuzz 14.2 or newer, libharfbuzz and
 libharfbuzz-vector, on the loader path (Ubuntu 24.04 ships 8.3), and on

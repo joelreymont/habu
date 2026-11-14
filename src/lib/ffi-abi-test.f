@@ -153,6 +153,32 @@ variable FFI-T-PADS
    DECL-DIAG:HAS? TTRUE
    DECL-DIAG:OFF ;
 
+\ A library name spelled in the other target's convention.
+: FFI-T-FOREIGN$ ( -- ptr u8 n )
+   HB-TARGET-MACOS? if s" LIBRARY libx.so.5" exit then
+   s" LIBRARY libx.5.dylib" ;
+
+: FFI-T-FOREIGN-HEAD$ ( -- ptr u8 n )
+   HB-TARGET-MACOS? if
+      s" error[E-FFI-LIBRARY]: library 'libx.so.5' is spelled for the other target"
+      exit
+   then
+   s" error[E-FFI-LIBRARY]: library 'libx.5.dylib' is spelled for the other target" ;
+
+: FFI-T-FOREIGN-HELP$ ( -- ptr u8 n )
+   HB-TARGET-MACOS? if
+      s" = help: name it with VERSIONED-LIBRARY, which spells it for macos" exit
+   then
+   s" = help: name it with VERSIONED-LIBRARY, which spells it for linux" ;
+
+: FFI-T-FOREIGN ( -- )
+   s" LIBRARY with a name spelled for the other target prints its record" T-LABEL
+   DECL-DIAG:PROSE
+   FFI-T-FOREIGN$ TEST-EVAL:RC E-FFI-LIBRARY T=
+   FFI-T-FOREIGN-HEAD$ DECL-DIAG:HAS? TTRUE
+   FFI-T-FOREIGN-HELP$ DECL-DIAG:HAS? TTRUE
+   DECL-DIAG:OFF ;
+
 \ 33 bytes, one past the longest base name a row holds.
 : FFI-T-LONG-BASE$ ( -- ptr u8 n )
    s" VERSIONED-LIBRARY aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 1" ;
@@ -180,6 +206,7 @@ variable FFI-T-PADS
    FFI-T-NO-DASHES
    FFI-T-LONG-SYMBOL
    FFI-T-NO-PATH
+   FFI-T-FOREIGN
    FFI-T-LONG-BASE
    T-REPORT ;
 

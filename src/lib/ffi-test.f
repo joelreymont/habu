@@ -224,6 +224,7 @@ variable FFI-T-PAIR-AFTER
 $800 constant FFI-T-SRC-CAP
 $4000 constant FFI-T-CAP
 67 constant FFI-T-UNCAUGHT-RC             \ hb's exit status for an uncaught throw
+70 constant FFI-T-REJECT-RC               \ hb's exit status for a rejected load
 
 FFI-T-SRC-CAP CODEGEN:BUFFER FFI-T-SRC
 
@@ -383,6 +384,28 @@ create FFI-T-LONG-PATH PATH-CAP allot
 : FFI-T-GLOBAL-LIB$ ( -- ptr u8 )
    HB-TARGET-MACOS? if s\" libz.1.dylib\z" drop exit then s\" libz.so.1\z" drop ;
 
+\ The miss prints its record, so it runs in a child whose stderr is asserted.
+: FFI-T-LOCAL-SRC$ ( -- ptr u8 n )
+   FFI-T-SRC CODEGEN:RESET
+   s\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\n" FFI-T-SRC+
+   s\" FUNCTION: ZZ-PROBE crc32 ( n ptr u8 n -- n ) ;FUNCTION\n: ZZ-MISS ( -- )\n" FFI-T-SRC+
+   s\"    s\\\" libz.so.1\\z\" drop FFI:NOW FFI:DLOPEN 0= if s\" open\" 1 die then\n" FFI-T-SRC+
+   s\"    [: 0 s\" a\" ZZ-PROBE drop ;] catch E-FFI-DLSYM <> if s\" miss\" 1 die then ;\n" FFI-T-SRC+
+   s\" ZZ-MISS\n" FFI-T-SRC+
+   FFI-T-SRC CODEGEN:CONTENTS ;
+
+: FFI-T-LOCAL ( -- )
+   s" Linux: an FFI:NOW open is local, so the process does not resolve it" T-LABEL
+   FFI-T-LOCAL-SRC$ 0 FFI-T-RUN-EXITS
+   {: outu:len erru:len :}
+   outu LEN>N 0 T=
+   erru FFI-T-ERR$
+   s" error[E-FFI-DLSYM]: no C symbol 'crc32' among the process's symbols"
+   CONTAINS? TTRUE
+   erru FFI-T-ERR$
+   s" = help: name the library that defines it with LIBRARY, or open it with FFI:GLOBAL"
+   CONTAINS? TTRUE ;
+
 : FFI-T-GLOBAL ( -- )
    s" an FFI:NOW open finds the function through its own handle" T-LABEL
    FFI-T-GLOBAL-LIB$ FFI:NOW FFI:DLOPEN {: h:n :}
@@ -392,8 +415,7 @@ create FFI-T-LONG-PATH PATH-CAP allot
       s" macOS: an FFI:NOW open is global, so the process resolves it" T-LABEL
       0 s" a" FFI-T-GLOBAL-PROBE $E8B7BE43 T=
    else
-      s" Linux: an FFI:NOW open is local, so the process does not resolve it" T-LABEL
-      [: 0 s" a" FFI-T-GLOBAL-PROBE drop ;] E-FFI-DLSYM TTHROWSQ
+      FFI-T-LOCAL
    then
    s" an FFI:NOW FFI:GLOBAL or open puts the function in process-wide resolution" T-LABEL
    FFI-T-GLOBAL-LIB$ FFI:NOW FFI:GLOBAL or FFI:DLOPEN 0 T<>
@@ -552,7 +574,7 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    PATH-CAP 1+ FFI:LIBRARY-PATH drop ;
 
 \ A literal spelled in the OTHER target's convention names no file here, so the
-\ declarer refuses it where it is stated. The refusal ends the load, which is
+\ declarer rejects it where it is stated. The rejection ends the load, which is
 \ why it is measured in a child like the growth case.
 : FFI-T-FOREIGN-NAME$ ( -- ptr u8 n )
    HB-TARGET-MACOS? if s" libx.so.5" exit then s" libx.5.dylib" ;
@@ -569,14 +591,19 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    FFI-T-SRC CODEGEN:CONTENTS ;
 
 : FFI-T-FOREIGN-LIBRARY ( -- )
-   s" a library name spelled for the other target is refused by name" T-LABEL
-   FFI-T-FOREIGN-SRC$ FFI-T-UNCAUGHT-RC FFI-T-RUN-EXITS
+   s" a library name spelled for the other target is rejected by name" T-LABEL
+   FFI-T-FOREIGN-SRC$ FFI-T-REJECT-RC FFI-T-RUN-EXITS
    {: outu:len erru:len :}
    outu LEN>N 0 T=
    erru FFI-T-ERR$ E-FFI-LIBRARY FFI-T-CODE$ CONTAINS? TTRUE
-   s" the refusal names the rejected name and this target" T-LABEL
-   erru FFI-T-ERR$ FFI-T-FOREIGN-NAME$ CONTAINS? TTRUE
-   erru FFI-T-ERR$ FFI-T-TARGET$ CONTAINS? TTRUE ;
+   s" the record names the rejected name and this target" T-LABEL
+   SB-RESET s" error[E-FFI-LIBRARY]: library '" SB-APPEND
+   FFI-T-FOREIGN-NAME$ SB-APPEND
+   s" ' is spelled for the other target" SB-APPEND
+   erru FFI-T-ERR$ SB$ CONTAINS? TTRUE
+   SB-RESET s" = help: name it with VERSIONED-LIBRARY, which spells it for " SB-APPEND
+   FFI-T-TARGET$ SB-APPEND
+   erru FFI-T-ERR$ SB$ CONTAINS? TTRUE ;
 
 : FFI-T-LONG-FOREIGN-SRC$ ( -- ptr u8 n )
    FFI-T-LONG-SRC!
@@ -586,7 +613,7 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    FFI-T-SRC CODEGEN:CONTENTS ;
 
 : FFI-T-LONG-FOREIGN-LIBRARY ( -- )
-   s" a PATH-CAP foreign name keeps the target refusal and its full name" T-LABEL
+   s" a PATH-CAP foreign name keeps the target rejection and its full name" T-LABEL
    FFI-T-LONG-FOREIGN-SRC$ FFI-T-UNCAUGHT-RC FFI-T-RUN-EXITS
    {: outu:len erru:len :}
    outu LEN>N 0 T=
@@ -594,7 +621,11 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    FFI-T-LONG-PATH!
    HB-TARGET-MACOS? if s" .so" else s" .dylib" then {: ext:ptr eu:n :}
    ext FFI-T-LONG-PATH PATH-CAP eu - + eu BYTE-COPY
-   erru FFI-T-ERR$ FFI-T-LONG-PATH PATH-CAP CONTAINS? TTRUE ;
+   erru FFI-T-ERR$ s" error[E-FFI-LIBRARY]: library 'aaaa" CONTAINS? TTRUE
+   erru FFI-T-ERR$ FFI-T-LONG-PATH PATH-CAP CONTAINS? TTRUE
+   SB-RESET s" = help: name it with VERSIONED-LIBRARY, which spells it for " SB-APPEND
+   FFI-T-TARGET$ SB-APPEND
+   erru FFI-T-ERR$ SB$ CONTAINS? TTRUE ;
 
 : FFI-T-NO-LIB$ ( -- ptr u8 n )
    HB-TARGET-MACOS? if s" libhabu-no-such-library.dylib" exit then
@@ -627,14 +658,25 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    {: outu:len erru:len :}
    outu LEN>N 0 T=
    erru FFI-T-ERR$ E-FFI-DLOPEN FFI-T-CODE$ CONTAINS? TTRUE
-   SB-RESET s" E-FFI-DLOPEN: " SB-APPEND FFI-T-NO-LIB$ SB-APPEND s" : " SB-APPEND
+   SB-RESET s" error[E-FFI-DLOPEN]: cannot open library '" SB-APPEND
+   FFI-T-NO-LIB$ SB-APPEND s\" '\n  = note: tried '" SB-APPEND
+   FFI-T-NO-LIB$ SB-APPEND s" ': " SB-APPEND
    erru FFI-T-ERR$ SB$ COUNT-SUB 1 T=
+   erru FFI-T-ERR$
+   s" = help: install the library, or name a path the loader finds"
+   COUNT-SUB 1 T=
    s" a missing process symbol fails with its name" T-LABEL
-   erru FFI-T-ERR$ S\" E-FFI-DLSYM: habu-no-such-symbol\n" CONTAINS? TTRUE
+   erru FFI-T-ERR$
+   S\" error[E-FFI-DLSYM]: no C symbol 'habu-no-such-symbol' among the process's symbols\n"
+   CONTAINS? TTRUE
    s" a missing library symbol fails with its name and the library's path" T-LABEL
-   SB-RESET s" E-FFI-DLSYM: habu-no-such-symbol in " SB-APPEND FFI-T-LIBC$ SB-APPEND
-   S\" \n" SB-APPEND
-   erru FFI-T-ERR$ SB$ CONTAINS? TTRUE ;
+   SB-RESET
+   s" error[E-FFI-DLSYM]: no C symbol 'habu-no-such-symbol' in '" SB-APPEND
+   FFI-T-LIBC$ SB-APPEND S\" '\n" SB-APPEND
+   erru FFI-T-ERR$ SB$ CONTAINS? TTRUE
+   erru FFI-T-ERR$
+   s" = help: check the symbol's spelling against the library's exports"
+   CONTAINS? TTRUE ;
 
 \ No version of the list exists, so the first call reports every name and a
 \ second call nothing; the final uncaught error ends the load, so it runs in a child.
@@ -659,18 +701,21 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    s" habu-no-such" 2 FFI-T-NAME-A FFI:LIBRARY-NAME$ {: a:ptr au:n :}
    s" habu-no-such" 1 FFI-T-NAME-B FFI:LIBRARY-NAME$ {: b:ptr bu:n :}
    \ The first name carries no reason; the last one tried carries the loader's.
-   SB-RESET s" E-FFI-DLOPEN: " SB-APPEND a au SB-APPEND s\" \nE-FFI-DLOPEN: " SB-APPEND
-   b bu SB-APPEND s" : " SB-APPEND
+   SB-RESET s" error[E-FFI-DLOPEN]: cannot open library '" SB-APPEND
+   a au SB-APPEND s\" '\n  = note: tried '" SB-APPEND
+   a au SB-APPEND s\" '\n  = note: tried '" SB-APPEND
+   b bu SB-APPEND s" ': " SB-APPEND
    erru FFI-T-ERR$ SB$ COUNT-SUB 1 T=
-   SB-RESET s" E-FFI-DLOPEN: " SB-APPEND a au SB-APPEND
+   SB-RESET s" tried '" SB-APPEND a au SB-APPEND
    erru FFI-T-ERR$ SB$ COUNT-SUB 1 T=
-   SB-RESET s" E-FFI-DLOPEN: " SB-APPEND b bu SB-APPEND
+   SB-RESET s" tried '" SB-APPEND b bu SB-APPEND
    erru FFI-T-ERR$ SB$ COUNT-SUB 1 T=
    s" a missing symbol names the version that opened, never one that did not" T-LABEL
    s" z" 1 FFI-T-NAME-A FFI:LIBRARY-NAME$ {: z1:ptr z1u:n :}
    s" z" 9999 FFI-T-NAME-B FFI:LIBRARY-NAME$ {: z9:ptr z9u:n :}
-   SB-RESET s" E-FFI-DLSYM: habu-no-such-symbol in " SB-APPEND z1 z1u SB-APPEND
-   S\" \n" SB-APPEND
+   SB-RESET
+   s" error[E-FFI-DLSYM]: no C symbol 'habu-no-such-symbol' in '" SB-APPEND
+   z1 z1u SB-APPEND S\" '\n" SB-APPEND
    erru FFI-T-ERR$ SB$ CONTAINS? TTRUE
    erru FFI-T-ERR$ z9 z9u CONTAINS? TFALSE ;
 
