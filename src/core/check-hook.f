@@ -514,31 +514,24 @@ public
    RQM @ 0= ;
 
 
-\ Rec's own facts text as it stands, else, in an hb whose records carry none,
-\ sym's rows' (ROWS-TEXT?); rec NULL-PTR or sym 0 is none. Empty when neither
-\ says them. A rendered text lies in REJECTION:TEXT, which the next render
-\ reuses.
-: OWN-OR-ROWS ( ptr n n -- ptr u8 n )
-   {: rec:ptr sym:n :}
-   rec NULL-PTR <> if
-      rec CHECKER-RESOLVE:REC>INDEX CHECK:FACTS@ dup 0 <> if exit then 2drop
-   then
+\ Sym's rows as one facts text (ROWS-TEXT?), empty for sym 0 or when no text
+\ can say them. The text lies in REJECTION:TEXT, which the next render reuses.
+: ROWS-FACTS ( n -- ptr u8 n )
+   {: sym:n :}
    sym 0= if NULL-PTR 0 exit then
    sym ROWS-TEXT? if REJECTION:TEXT REJECTION:TEXT-LEN @ else NULL-PTR 0 then ;
 
 \ A linked engine's facts text for primitive na nu: what the open build's rows
-\ say of its global symbol (ROWS-TEXT?), empty when no text can.
+\ say of its global symbol, empty when no text can.
 : PRIMITIVE-FACTS ( ptr u8 n -- ptr u8 n )
-   {: na:ptr nu:n :}
-   NULL-PTR  na nu CHECKER-GLOBAL-SYM?  OWN-OR-ROWS ;
+   CHECKER-GLOBAL-SYM? ROWS-FACTS ;
 
-\ The facts text this checker gives the primitive named na nu that package pa pu
-\ owns (src/habu/prims.f EPPRIM:), for the record a build lays for it in that
-\ package's private wordlist (OWN-OR-ROWS): rec is this hb's own such record,
-\ NULL-PTR for none.
-: OWNED-FACTS ( ptr n ptr u8 n ptr u8 n -- ptr u8 n )
-   {: rec:ptr pa:ptr pu:n na:ptr nu:n :}
-   rec  pa pu SYM-PRIVATE na nu CHECKER-PKG-SYM?  OWN-OR-ROWS ;
+\ The facts text the open build's rows give the primitive named na nu that
+\ package pa pu owns (src/habu/prims.f EPPRIM:), for the record a build lays
+\ for it in that package's private wordlist; empty when no text can.
+: OWNED-FACTS ( ptr u8 n ptr u8 n -- ptr u8 n )
+   {: pa:ptr pu:n na:ptr nu:n :}
+   pa pu SYM-PRIVATE na nu CHECKER-PKG-SYM? ROWS-FACTS ;
 
 \ Dynamic preflight/hook installation asserts the canonical checker identities;
 \ ordinary checked code cannot type execution-token installation. Only the
