@@ -645,7 +645,7 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
 : BODY-APPEND ( ptr u8 n -- )
    {: a:ptr u:n :}
    a SOURCE@ - {: src:n :}
-   src 0 <  src u + SOURCE-U @ >  or IF s" verify-source: body run outside the source" 74 die THEN
+   src 0 <  src u + SOURCE-U @ >  or IF s" verify-source: body run outside the source" 76 die THEN
    BODY-U @ u + 1 + {: end:n :}
    end BODY-BUF-RESERVE
    BODY-ROWS @ 1 + 2 * BODY-ROW-RESERVE
@@ -3604,7 +3604,7 @@ variable FFI-LIT-B                          \ and the newer
 : LIBRARY-XT! ( ptr u8 n ptr n -- )
    {: a:ptr u:n cell:ptr :}
    a u XREF-FIND {: rec:ptr :}
-   rec XREF-FOUND? 0= IF 2 s" verify-source: library word not loaded: " write drop  a u 70 die THEN
+   rec XREF-FOUND? 0= IF 2 s" verify-source: library word not loaded: " write drop  a u 76 die THEN
    rec XREF-START cell xt! ;
 
 variable LAYOUT-BUFFER-XT s" LAYOUT-BUFFER" LAYOUT-BUFFER-XT LIBRARY-XT!

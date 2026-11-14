@@ -174,7 +174,7 @@ private
 : DIE-LINE-SITE, ( ptr u8 n n n -- )
    LBL {: a:ptr u:n status:n flag:n msg:label :}
    u 0= u DIE-LINE-ROOM > or IF
-      s" crash: a DIE-LINE, text is empty or longer than DIE-LINE-ROOM" ICODE-EXIT-RC die
+      s" crash: a DIE-LINE, text is empty or longer than DIE-LINE-ROOM" 76 die
    THEN
    0 status MOVZ,  1 msg ADR,  2 u MOVZ,  4 flag MOVZ,
    LDIE-LINE LABEL@ B,
@@ -190,7 +190,7 @@ public
 : DIE-LINE-VALUE, ( ptr u8 n n n -- )
    {: a:ptr u:n status:n reg:n :}
    u 0= IF 0 ELSE a u + 1- c@ THEN $3A <> IF
-      s" crash: a DIE-LINE-VALUE, text does not end with the ':' before its value" ICODE-EXIT-RC die
+      s" crash: a DIE-LINE-VALUE, text does not end with the ':' before its value" 76 die
    THEN
    reg 3 <> IF 3 reg 0 ADDI, THEN
    a u status 1 DIE-LINE-SITE, ;

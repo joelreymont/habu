@@ -4675,7 +4675,7 @@ private
       15 SP 80 LDR,  16 SP 88 LDR, 17 SP 96 LDR,
       SP SP 160 ADDI,  RET,
    HIDX-EMIT:LFULL LABEL@ LBL,
-      s" E-DICT-INDEX habu: dictionary index exhausted" 74 DIE-LINE, ;
+      s" E-DICT-INDEX habu: dictionary index exhausted" 76 DIE-LINE, ;
 
 \ A dictionary slot's occurrence is owned by one anonymous mapping. The first
 \ cell is the last issued number; the remaining DICT-CAP cells are indexed by

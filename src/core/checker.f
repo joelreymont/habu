@@ -13863,12 +13863,12 @@ package CHECKER-REG
    THEN
    off1 1 - USIGS-RESTORE-END ;
 
-\ A direct post-seal user call would forget an engine word's signature so it
-\ could be redefined: refused fail-closed.
+\ A post-seal call would forget an engine word's signature so it could be
+\ redefined.
 
 : CHECKER-USIGS-TRUNCATE-FROM ( ptr u8 n -- )
    seal-captured? IF
-      2drop s" seal: cannot truncate sealed checker signatures" ENGINE-ERROR:SEAL-VIOLATION die
+      2drop s" seal: cannot truncate sealed checker signatures" 76 die
    THEN
    CHECKER-USIGS-TRUNCATE-FROM-RAW ;
 
@@ -17049,7 +17049,7 @@ defer SCOPE-EXTERIOR-XT ( n -- bool )
 
 : SCOPE-ALLOC-LEN ( -- n )
    s" NUM:alloc-byte-len" SIG-FAM? 0= IF
-      drop s" checker: mutable scope requires alloc-byte-len" 70 die THEN
+      drop s" checker: mutable scope requires alloc-byte-len" 76 die THEN
    >r PARAM-SCR-N @ s" NUM:alloc-byte-len" r> MK-PARAM ;
 
 : SCOPE-MUT-ROOT-SHAPE? ( n -- bool ) {: scheme:n :}
