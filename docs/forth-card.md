@@ -71,7 +71,11 @@ public
   `TARGET` is in scope the bare token is refused, `E-SECTION-WORD`, rc 70:
   rename the word or call it qualified; a body or `'` names the word.
 - A wordlist is a no-duplicate set, case-insensitively: a second `: R` is
-  `E-DUPLICATE-DEFINITION`; `undefine R` first to replace one. A `does>`
+  `E-DUPLICATE-DEFINITION`; `undefine R` first to replace one. A package's
+  public and private sections are two wordlists, so a public `R` may share a
+  private word's tail, a family's private derived word included: a bare `R`
+  in the package calls the private one, `PKG:R` the public one, and a public
+  colon `R` moves the private one's cells (`E-SHADOWED-ARITY`). A `does>`
   definer `R` also claims `R;does` there, and so does `EXPORT R`. The new `R`
   is checked and called as itself even when it spells an engine word: the
   checker's rules for `@`, `!`, `create` and the like belong to the engine's
