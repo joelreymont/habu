@@ -12473,16 +12473,35 @@ package CHECKER-REG
 ;package
 
 
-\ --- the replay's `;using` refusals -------------------------------------------
-\ A replayed `;using` is refused where the engine's is, by these codes
-\ (CHECKER-OVERLAY:CLOSE-USING).
-7142 constant E-USING-UNBALANCED
+\ --- the replay's `;using` rejections ------------------------------------------
+\ A replayed `;using` is rejected where the engine's is, with the engine's
+\ records (CHECKER-OVERLAY:CLOSE-USING). Each names the `;using` token t tu.
+: CLOSE-UNBALANCED ( ptr u8 n -- ) {: t:ptr tu:n :}
+   s" E-USING-UNBALANCED" REJECTION:OPEN
+   s" `" REJECTION:EMIT-STR  t tu REJECTION:EMIT-STR
+   s" ` has no open using to close" REJECTION:EMIT-STR
+   t tu REJECTION:AT  s" nothing to close" REJECTION:EMIT-STR
+   REJECTION:HELP  s" remove this `" REJECTION:EMIT-STR  t tu REJECTION:EMIT-STR
+   s" `, or open a using before it" REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
+7146 constant E-USING-OUTER
+
 \ Inside a package a `;using` closes only an import the package opened: one
 \ opened before `package` is at or below the depth `;package` restores, so
 \ closing it would come undone there.
 \ Nor does the replayed source close an import it inherited, at or below
-\ CHECKER-USE:SOURCE-FLOOR: the engine refuses that in an evaluated buffer.
-7146 constant E-USING-OUTER
+\ CHECKER-USE:SOURCE-FLOOR: the engine rejects that in an evaluated buffer.
+\ w names where the using to close was opened from: a package or a file.
+: CLOSE-OUTER ( ptr u8 n ptr u8 n -- ) {: t:ptr tu:n w:ptr wu:n :}
+   s" E-USING-OUTER" REJECTION:OPEN
+   s" `" REJECTION:EMIT-STR  t tu REJECTION:EMIT-STR
+   s" ` would close a using opened outside this " REJECTION:EMIT-STR
+   w wu REJECTION:EMIT-STR
+   t tu REJECTION:AT  s" using opened outside" REJECTION:EMIT-STR
+   REJECTION:HELP  s" close each using in the " REJECTION:EMIT-STR
+   w wu REJECTION:EMIT-STR  s"  that opens it" REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ --- global-vs-used-public shadow rejection. Resolution puts the open scope and
 \ the global wordlist ahead of the used publics, so a bare tail inside a live
@@ -13122,13 +13141,15 @@ ROW-CELLS cells constant SCOPE-BYTES
    rec @ d cells USE-WIDS-OFF + DATA!
    d 1 + USE-DEPTH-CELL DATA! ;
 
-\ `;using` closes only an import the open package or the replayed source
-\ opened.
-: CLOSE-USING ( -- )
+\ `;using`, the token t tu, closes only an import the open package or the
+\ replayed source opened.
+: CLOSE-USING ( ptr u8 n -- ) {: t:ptr tu:n :}
    USE-DEPTH-CELL DATA@ {: d:n :}
-   d 0 <= IF E-USING-UNBALANCED throw THEN
-   PKG-PUB-CELL DATA@ 0 <>  d USE-PKG-SAVE-CELL DATA@ <=  and IF E-USING-OUTER throw THEN
-   d CHECKER-USE:SOURCE-FLOOR @ <= IF E-USING-OUTER throw THEN
+   d 0 <= IF t tu CLOSE-UNBALANCED THEN
+   PKG-PUB-CELL DATA@ 0 <>  d USE-PKG-SAVE-CELL DATA@ <=  and IF
+      t tu s" package" CLOSE-OUTER
+   THEN
+   d CHECKER-USE:SOURCE-FLOOR @ <= IF t tu s" file" CLOSE-OUTER THEN
    d 1 - USE-DEPTH-CELL DATA! ;
 
 \ `undefine NAME`: every live record of the name in the wordlist it acts in is
@@ -13193,7 +13214,7 @@ public
    CHECKER-VERIFY-PKG-DEPTH @ 0= IF E-PKG-CONTEXT throw THEN
    CHECKER-OVERLAY:OPEN-USING ;
 
-: CHECKER-USING-POP ( -- )
+: CHECKER-USING-POP ( ptr u8 n -- )
    CHECKER-VERIFY-PKG-DEPTH @ 0= IF E-PKG-CONTEXT throw THEN
    CHECKER-OVERLAY:CLOSE-USING ;
 
@@ -16522,10 +16543,6 @@ variable CURSYM
 \ --- EXPORT: alias an existing word's checked effect under its own tail -----
 \ `EXPORT NAME` in an open package section publishes NAME's effect under NAME's
 \ tail in the current package scope: one word, two names.
-7112 constant E-EXPORT-NO-PACKAGE
-7113 constant E-EXPORT-UNDEFINED  \ the source has no checked signature
-7115 constant E-EXPORT-PRIM
-7120 constant E-EXPORT-UNSAFE
 
 \ CAST: legality rejects. A cast retypes between two single-cell machine types;
 \ the gate refuses anything wider.
@@ -16546,16 +16563,54 @@ variable CURSYM
    a u CHECKER-QUALIFIED? IF CHECKER-QTAIL$ EXIT THEN
    a u ;
 
+\ Each names the operand a u as the program wrote it.
+: EXPORT-UNSAFE ( ptr u8 n -- ) {: a:ptr u:n :}
+   s" E-EXPORT-UNSAFE" REJECTION:OPEN
+   s" `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" ` is an internal engine word, which no package may export" REJECTION:EMIT-STR
+   a u REJECTION:AT  s" internal to the engine" REJECTION:EMIT-STR
+   REJECTION:HELP  s" export a public word instead" REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
+: EXPORT-PRIM ( ptr u8 n -- ) {: a:ptr u:n :}
+   s" E-EXPORT-PRIM" REJECTION:OPEN
+   s" `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" ` is a primitive, which a package cannot export" REJECTION:EMIT-STR
+   a u REJECTION:AT  s" primitive" REJECTION:EMIT-STR
+   REJECTION:HELP  s" call `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" ` directly: a primitive is visible in every package" REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
+: EXPORT-UNDEFINED ( ptr u8 n -- ) {: a:ptr u:n :}
+   s" E-EXPORT-UNDEFINED" REJECTION:OPEN
+   s" cannot find word `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" ` to export" REJECTION:EMIT-STR
+   a u REJECTION:AT  s" not found" REJECTION:EMIT-STR
+   REJECTION:HELP  s" define `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" ` before exporting it, or check its spelling" REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
+\ The source's own definition was rejected, so its row holds no checked effect.
+: EXPORT-REJECTED ( ptr u8 n -- ) {: a:ptr u:n :}
+   s" E-EXPORT-UNDEFINED" REJECTION:OPEN
+   s" `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" ` was rejected where it is defined, so it has no checked effect to export"
+   REJECTION:EMIT-STR
+   a u REJECTION:AT  s" rejected definition" REJECTION:EMIT-STR
+   REJECTION:HELP  s" fix the definition of `" REJECTION:EMIT-STR
+   a u REJECTION:EMIT-STR  s" ` before exporting it" REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
 \ PRIM-FIRST-IDX, not PRIM-FIRST-SYM: the latter returns an effect OFFSET,
 \ and the first PES row legitimately lives at USIGS offset 0.
 : EXPORT-RESOLVE ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u EXPORT-TAIL$ UNSAFE-TOK? IF E-EXPORT-UNSAFE throw THEN
+   a u EXPORT-TAIL$ UNSAFE-TOK? IF a u EXPORT-UNSAFE THEN
    a u CHECKER-FIND-ACTIVE-SYM {: sym:n :}
-   sym UNSAFE-SYM? sym PRIM-TRUSTED-SYM? or IF E-EXPORT-UNSAFE throw THEN
+   sym UNSAFE-SYM? sym PRIM-TRUSTED-SYM? or IF a u EXPORT-UNSAFE THEN
    a u CHECKER-FIND-ACTIVE-SIG
    FEP-HIT? IF sym a u NAV-USE-NOW EXIT THEN
-   a u CHECKER-FIND-ACTIVE-SYM PRIM-FIRST-IDX 0 <> IF E-EXPORT-PRIM throw THEN
-   E-EXPORT-UNDEFINED throw ;
+   a u CHECKER-FIND-ACTIVE-SYM PRIM-FIRST-IDX 0 <> IF a u EXPORT-PRIM THEN
+   a u EXPORT-UNDEFINED ;
 
 : EXPORT-EFF-INST ( ptr u8 -- n n n n bool ) {: h:ptr :}
    h E-INST-RESET
@@ -16597,7 +16652,6 @@ variable CURSYM
    DL-NA @ DL-NU @ EXPORT-TAIL$ DL-TAKE-AS ;
 
 : CHECKER-EXPORT-ROW ( ptr u8 n bool -- ) {: a:ptr u:n publish:bool :}
-   CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF E-EXPORT-NO-PACKAGE throw THEN
    a u EXPORT-RESOLVE
    \ The source symbol is read once, before the export's record is published:
    \ inside a replay the operand's spelling can bind the published tail after.
@@ -16606,7 +16660,7 @@ variable CURSYM
    FEP @ RECOVERY-ROW? {: recovery:bool :}
    \ A failed declaration's row is uncertified outside its own run, and no copy
    \ can carry that.
-   FEP @ ER.ACTIVE @ EFF-RECOVERY = recovery 0= and IF E-EXPORT-UNDEFINED throw THEN
+   FEP @ ER.ACTIVE @ EFF-RECOVERY = recovery 0= and IF a u EXPORT-REJECTED THEN
    NEW
    FEP-OFF@ 1 - E-PTR EXPORT-EFF-INST
    a u EXPORT-TAIL$ carries EXPORT-RECORD
