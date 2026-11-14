@@ -1142,12 +1142,30 @@ private
 
 \ The tail must already be canonical lowercase.
 
+\ The built name, TF-CTOR-U bytes past the longest a package name may have,
+\ rejected at the type name na nu.
+: TF-CTOR-LONG-REJECT ( ptr u8 n -- ) {: na:ptr nu:n :}
+   PACKAGE-PATH:CAP 1 - {: m:n :}
+   s" E-PACKAGE-NAME-CAP" REJECTION:OPEN
+   s" the constructor package name `" REJECTION:EMIT-STR
+   TF-CTOR-BUF TF-CTOR-U @ REJECTION:EMIT-STR
+   s" ` is " REJECTION:EMIT-STR  TF-CTOR-U @ REJECTION:EMIT-U
+   s"  bytes long, more than the " REJECTION:EMIT-STR  m REJECTION:EMIT-U
+   s"  a package name may have" REJECTION:EMIT-STR
+   na nu REJECTION:AT  s" its constructor package name is too long" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" shorten the package or the type name so `" REJECTION:EMIT-STR
+   TF-CTOR-BUF TF-CTOR-U @ REJECTION:EMIT-STR
+   s" ` has " REJECTION:EMIT-STR  m REJECTION:EMIT-U
+   s"  bytes or fewer" REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
 public
 
 : TF-CTOR-PKG$ ( ptr u8 n ptr u8 n -- ptr u8 n )
    {: pa:ptr pu:n ta:ptr tu:n :}
    pa pu ta tu TF-CTOR-BUILD-ESCAPED
-   TF-CTOR-U @ PACKAGE-PATH:CAP >= IF E-PACKAGE-NAME-CAP throw THEN
+   TF-CTOR-U @ PACKAGE-PATH:CAP >= IF ta tu TF-CTOR-LONG-REJECT THEN
    TF-CTOR-BUF TF-CTOR-U @ ;
 
 \ Two spellings, on purpose:

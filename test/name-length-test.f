@@ -7,6 +7,7 @@
 require src/lib/error.f
 require src/lib/memory.f
 require src/lib/string.f
+require src/lib/fmt.f
 require src/lib/test.f
 require src/lib/test/ending.f
 require src/lib/test/subject.f
@@ -256,6 +257,36 @@ variable LBL-U
    s" MATCH-FAM" FAM-DIES-AT-MAX
    s" CON-FAM" FAM-DIES-AT-MAX ;
 
+SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
+\ A package name past its row is rejected naming its length; no source holds
+\ the name, so the record shows it after `= at` and names this file.
+: CAP-HEAD$ ( -- ptr u8 n )
+   SB-RESET
+   s" error[E-PACKAGE-NAME-CAP]: the package name is " SB-APPEND
+   LONG-LEN FMT:SB-INT  s"  bytes long, more than the " SB-APPEND
+   PACKAGE-PATH:CAP 1 - FMT:SB-INT
+   S\"  a package name may have\n --> " SB-APPEND
+   LOADING @ data-base SRCLOC:PATHLEN-CELL + @ SB-APPEND
+   S\" \n  = at `" SB-APPEND
+   SB$ ;
+: CAP-TAIL$ ( -- ptr u8 n )
+   SB-RESET
+   S\" `: too long\n  = help: shorten the package name to " SB-APPEND
+   PACKAGE-PATH:CAP 1 - FMT:SB-INT
+   S\"  bytes or fewer\n\n" SB-APPEND
+   SB$ ;
+: CAP-WANT$ ( -- ptr u8 n )
+   CAP-HEAD$ {: h:ptr hu:n :}
+   hu MEM-ALLOC-BYTES drop {: hp:ptr :}
+   h hp hu BYTE-COPY
+   CAP-TAIL$ {: t:ptr tu:n :}
+   hu LONG-LEN + tu + {: wu:n :}
+   wu MEM-ALLOC-BYTES drop {: p:ptr :}
+   hp p hu BYTE-COPY
+   LONG-LEN TAIL drop p hu + LONG-LEN BYTE-COPY
+   t p hu + LONG-LEN + tu BYTE-COPY
+   p wu ;
+
 \ An uncaught code above 255 exits 70 when the checker rendered it, else 67.
 : TEST-DECLARERS ( -- )
    s" DEFER-IT" 76 S\" checker: symbol string capacity overflow\n" DIES
@@ -266,9 +297,9 @@ variable LBL-U
    s" TRUNCATE-RAW-IT" 76 S\" checker: missing signature truncation mark\n" DIES
    s" TRUNCATE-IT" 83 S\" seal: cannot truncate sealed checker signatures\n" DIES
    s" PACKAGE-IT" 76 S\" checker: package name too long\n" DIES
-   LONG-LEN s" long" s" PACKAGE-IT" 67 S\" hb: uncaught throw code 7154\n" DIES-AT
+   LONG-LEN s" long" s" PACKAGE-IT" 70 CAP-WANT$ DIES-AT
    s" USING-IT" 76 S\" checker: using name length describes no memory\n" DIES
-   LONG-LEN s" long" s" USING-IT" 67 S\" hb: uncaught throw code 7154\n" DIES-AT
+   LONG-LEN s" long" s" USING-IT" 70 CAP-WANT$ DIES-AT
    s" USING-PUSH-IT" 67 S\" hb: uncaught throw code 7136\n" DIES
    s" EXPORT-IT" 67 S\" hb: uncaught throw code 7113\n" DIES
    s" FAMILY-IT" 70 S\" habu: bad newtype declaration '': missing name\nhb: uncaught throw code 7107\n" DIES
@@ -347,7 +378,6 @@ variable WANT-U
 \ checked hb's definitions), so the first top-level CHECK-DOES! interns its row:
 \ the child runs one with a signature that parses before it takes the marks.
 : TOO-LARGE$ ( -- ptr u8 n ) S\" checker: token buffer too large\n" ;
-SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
 : CAST-WANT$ ( -- ptr u8 n )
    SB-RESET
    s" E-CAST-ARITY habu: " SB-APPEND

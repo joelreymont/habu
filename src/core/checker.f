@@ -11974,14 +11974,23 @@ DFERS-P DFER-CAP-V 1 DFER-END CHECK:STORE+
 : CHECKER-PACKAGE-COPY-C ( ptr u8 n -- ) {: a:ptr i:n :}
    a i + c@ CHECKER-FOLD-C CHECKER-PACKAGE-NAME i + c! ;
 
-\ A package name has a row of PACKAGE-PATH:CAP bytes. Source that names a longer
-\ one is refused by name, a throw out of its statement. A length that describes
-\ no memory is a caller's fault and stays the dies below.
-7154 constant E-PACKAGE-NAME-CAP
-
+\ A package name has a row of PACKAGE-PATH:CAP bytes, so it holds one byte fewer.
+\ A length that describes no memory is a caller's fault and stays the dies below.
 : CHECKER-PACKAGE-LONG? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    a u BYTE-SPAN? u PACKAGE-PATH:CAP >= and ;
+
+: PACKAGE-LONG-REJECT ( ptr u8 n -- ) {: a:ptr u:n :}
+   PACKAGE-PATH:CAP 1 - {: m:n :}
+   s" E-PACKAGE-NAME-CAP" REJECTION:OPEN
+   s" the package name is " REJECTION:EMIT-STR  u REJECTION:EMIT-U
+   s"  bytes long, more than the " REJECTION:EMIT-STR  m REJECTION:EMIT-U
+   s"  a package name may have" REJECTION:EMIT-STR
+   a u REJECTION:AT  s" too long" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" shorten the package name to " REJECTION:EMIT-STR  m REJECTION:EMIT-U
+   s"  bytes or fewer" REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ A package name must have a length that describes memory: a -1 length would
 \ copy nothing and keep its length.
@@ -12212,7 +12221,7 @@ public
 ;package
 
 : CHECKER-USING ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u CHECKER-PACKAGE-LONG? IF E-PACKAGE-NAME-CAP throw THEN
+   a u CHECKER-PACKAGE-LONG? IF a u PACKAGE-LONG-REJECT THEN
    a u BYTE-SPAN? 0= IF s" checker: using name length describes no memory" 76 die THEN
    CK-USE-DEPTH {: d:n :}
    d USE-MAX >= IF s" checker: using stack overflow" 76 die THEN
@@ -12307,8 +12316,48 @@ defer CTOR-EXTEND?-XT ( ptr u8 n -- bool )    \ new tail in a closed ctor packag
    [: 2drop RES-FALSE ;] is CTOR-EXTEND?-XT ;
 CTOR-PROT-DEFAULTS
 
+: CTOR-WORD-REJECT ( ptr u8 n -- ) {: a:ptr u:n :}
+   s" E-CTOR-PROTECTED" REJECTION:OPEN
+   96 REJECTION:EMIT1  a u REJECTION:EMIT-STR
+   s" ` is a generated constructor, which `undefine` cannot remove"
+   REJECTION:EMIT-STR
+   a u REJECTION:AT  s" generated constructor" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" keep `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" ` and define your own word under another name" REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
+: CTOR-PKG-REJECT ( ptr u8 n -- ) {: a:ptr u:n :}
+   s" E-CTOR-PROTECTED" REJECTION:OPEN
+   96 REJECTION:EMIT1  a u REJECTION:EMIT-STR
+   s" ` holds generated constructors, which no source may reopen"
+   REJECTION:EMIT-STR
+   a u REJECTION:AT  s" constructor package" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" put your words in a package of another name, as `package " REJECTION:EMIT-STR
+   a u REJECTION:EMIT-STR  s" -WORDS`" REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
+\ The name with each `:` spelled `-`: a bare name outside the package.
+: CTOR-BARE ( ptr u8 n -- ) {: a:ptr u:n :}
+   0 BEGIN dup u < WHILE
+      dup a + c@ dup $3A = IF drop $2D THEN REJECTION:EMIT1
+      1 +
+   REPEAT drop ;
+
+: CTOR-EXTEND-REJECT ( ptr u8 n -- ) {: a:ptr u:n :}
+   s" E-CTOR-PROTECTED" REJECTION:OPEN
+   96 REJECTION:EMIT1  a u REJECTION:EMIT-STR
+   s" ` would add a word to a package of generated constructors"
+   REJECTION:EMIT-STR
+   a u REJECTION:AT  s" constructor package" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" define it under a name of your own, as `" REJECTION:EMIT-STR
+   a u CTOR-BARE  96 REJECTION:EMIT1
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
 : CHECKER-UNDEFINE-GUARD ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u CTOR-WORD?-XT IF E-CTOR-PROTECTED throw THEN ;
+   a u CTOR-WORD?-XT IF a u CTOR-WORD-REJECT THEN ;
 
 \ The package whose public wordlist the engine keeps in using slot n: its name
 \ and whether a live namespace row publishes that wid.
@@ -12883,7 +12932,7 @@ public
 : PART-PATH ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    TOP-NAME$ {: pa:ptr pu:n :}
    pu 0 <>  u PACKAGE-PATH:CAP pu 1 + - < 0=  and IF E-PKG-CONTEXT throw THEN
-   a u BYTE-SPAN? 0= IF E-PACKAGE-NAME-CAP throw THEN
+   a u BYTE-SPAN? 0= IF s" checker: package name length describes no memory" 76 die THEN
    a u CHECKER-COLON-SCAN drop 0 <> IF E-PKG-CONTEXT throw THEN
    pu 0= IF a u EXIT THEN
    pu 1 + u + {: ku:n :}
@@ -12909,8 +12958,8 @@ public
    CHECKER-OVERLAY:CLOSE-USING ;
 
 : CHECKER-PACKAGE ( ptr u8 n -- )
-   2dup CHECKER-PACKAGE-LONG? IF E-PACKAGE-NAME-CAP throw THEN
-   2dup CTOR-PKG?-XT IF E-CTOR-PROTECTED throw THEN
+   2dup CHECKER-PACKAGE-LONG? IF 2dup PACKAGE-LONG-REJECT THEN
+   2dup CTOR-PKG?-XT IF 2dup CTOR-PKG-REJECT THEN
    CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF 2dup CHECKER-OVERLAY:OPEN-PACKAGE THEN
    CHECKER-PACKAGE-COPY
    CHECKER-PACKAGE-PRIVATE CHECKER-PACKAGE-MODE ! ;
@@ -13130,7 +13179,7 @@ package CHECKER-REG
    CHECKER-QBAD-TOK @ 0 <> IF
       a u a u STG-MALFORMED-NAME CHECKER-STORAGE-REFUSE RES-FALSE EXIT
    THEN
-   a u CTOR-EXTEND?-XT IF E-CTOR-PROTECTED throw THEN
+   a u CTOR-EXTEND?-XT IF a u CTOR-EXTEND-REJECT THEN
    RES-TRUE ;
 
 \ The storage registrars below record a definer's accessor for the source
@@ -14465,7 +14514,7 @@ variable EV-LO   variable EV-N
 \ before the constructor scan reads it.
 : CHECKER-DEFER ( ptr u8 n -- ) {: a:ptr u:n :}
    a u BYTE-SPAN? 0= IF SYM-STR-OVERFLOW THEN
-   a u CTOR-EXTEND?-XT IF E-CTOR-PROTECTED throw THEN
+   a u CTOR-EXTEND?-XT IF a u CTOR-EXTEND-REJECT THEN
    a u CHECKER-RECORD-NAME DFER-ADD ;
 package CHECKER-REG
 ' CHECKER-DEFER DECLARATIONS DEFER-OFF + xt!
@@ -14573,7 +14622,7 @@ package CHECKER-REG
 : USIG-CERT-ADMIT ( ptr u8 n ptr u8 n -- )
    {: na:ptr nu:n at:ptr atu:n :}
    na nu BYTE-SPAN? 0= IF SYM-STR-OVERFLOW THEN
-   na nu CTOR-EXTEND?-XT IF E-CTOR-PROTECTED throw THEN
+   na nu CTOR-EXTEND?-XT IF at atu CTOR-EXTEND-REJECT THEN
    na nu CHECKER-CERT-DUP? IF CHECKER-DUP-DEFINITION THEN
    na nu at atu CHECKER-REC-NAME-AT!
    0 DL-NEW ! ;
