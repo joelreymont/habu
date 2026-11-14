@@ -1102,7 +1102,8 @@ variable CANDIDATE-VERDICT
    s" : KEEP ( -- n ) 73 ;" GE-SRC-LINE
    s" ;package" GE-SRC-LINE
    s" undefine GD-UQ:MISSING" GE-SRC-LINE
-   70 s" undefine: word not found" s" unknown qualified undefine fails closed" RUN-BAD-SOURCE ;
+   70 s" error[E-UNDEFINED]: `GD-UQ:MISSING` is not defined here"
+   s" unknown qualified undefine is rejected" RUN-BAD-SOURCE ;
 
 \ A package's own `+`, `ptr-field` and `STRUCT-BYTE+` capture none of the
 \ field words it declares: they read POINT's layout.

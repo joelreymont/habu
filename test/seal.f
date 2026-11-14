@@ -1,6 +1,7 @@
-\ seal.f - seal regressions: post-seal cp!, FORGET, HIDE and record writes
-\ refuse engine code and records (exit ENGINE-ERROR:SEAL-VIOLATION), and a sealed
-\ package refuses a definition into it, under --load and in an evaluated source.
+\ seal.f - seal regressions: post-seal FORGET and HIDE of engine words are
+\ rejected (E-SEAL-VIOLATION, status 70), post-seal cp! and record writes stop
+\ with ENGINE-ERROR:SEAL-VIOLATION, and a sealed package rejects a definition
+\ into it, under --load and in an evaluated source.
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
 \   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f test/seal.f
 
@@ -64,7 +65,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 \ truncate ndict (FORGET also rewinds CP) to a name's dict index. An index below
 \ the seal-time watermark SEAL-NDICT-CELL (SEAL-CAPTURE, at the end of the
 \ engine source) would retire engine definitions and rewind CP into engine code,
-\ so post-seal source is refused (ENGINE-ERROR:SEAL-VIOLATION). `WORDS` is an
+\ so post-seal source is rejected (E-SEAL-VIOLATION). `WORDS` is an
 \ engine word (xref.f), well below the watermark.
 : SLV-FORGET-ENGINE-FORGE$ ( -- ptr u8 n )
    SB-RESET
@@ -77,8 +78,8 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    SB$ ;
 
 \ The engine-prefix tail: src/os/script-argv.f loads after xref.f, and
-\ SEAL-CAPTURE sits at the true engine-prefix end, so the tail traps like any
-\ engine definition.
+\ SEAL-CAPTURE sits at the true engine-prefix end, so the tail is rejected like
+\ any engine definition.
 : SLV-FORGET-TAIL-FORGE$ ( -- ptr u8 n )
    SB-RESET
    S\" s\" SCRIPT-ARGV$\" FORGET-DEFS-FROM" SB-APPEND SLV-LF
@@ -108,7 +109,8 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 
 \ Direct checker signature-registry truncation bypasses the FORGET/HIDE index
 \ guard but would forget an engine word's checker signature so it could be
-\ redefined (a spoof). CHECKER-USIGS-TRUNCATE-FROM refuses any post-seal call.
+\ redefined (a spoof). Only the engine calls CHECKER-USIGS-TRUNCATE-FROM, so a
+\ post-seal call is an engine defect (status 76).
 : SLV-USIG-TRUNC-FORGE$ ( -- ptr u8 n )
    SB-RESET
    S\" s\" WORDS\" CHECKER-USIGS-TRUNCATE-FROM" SB-APPEND SLV-LF
@@ -154,9 +156,16 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    src u SLV-OUT SLV-CAP >LEN SLV-ERR SLV-CAP >LEN
    PROCESS:WAIT-FOREVER SUBJECT:RUN src u SLV-STORE! ;
 
-: SLV-ASSERT-SEAL ( -- )
+: SLV-ASSERT-RC ( n -- ) {: rc:n :}
    SLV-EXITED @ TTRUE
-   SLV-RC @ SLV-SEAL-RC T= ;
+   SLV-RC @ rc T= ;
+
+: SLV-ASSERT-SEAL ( -- )
+   SLV-SEAL-RC SLV-ASSERT-RC ;
+
+: SLV-ASSERT-REJECT ( -- )
+   CHECKER-REJECT-RC SLV-ASSERT-RC
+   SLV-ERR$ s" E-SEAL-VIOLATION" CONTAINS? TTRUE ;
 
 : SLV-ASSERT-OK ( -- )
    SLV-EXITED @ TTRUE
@@ -264,16 +273,16 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    SLV-ROOT FS:EXISTS? TFALSE ;
 
 : SLV-NEGATIVES-TRUNCATE ( -- )
-   s" FORGET-DEFS-FROM of an engine def traps" T-LABEL
-   SLV-FORGET-ENGINE-FORGE$ SLV-SUBJECT SLV-ASSERT-SEAL
-   s" HIDE-DEFS-FROM of an engine def traps" T-LABEL
-   SLV-HIDE-ENGINE-FORGE$ SLV-SUBJECT SLV-ASSERT-SEAL
-   s" direct CHECKER-USIGS-TRUNCATE-FROM traps" T-LABEL
-   SLV-USIG-TRUNC-FORGE$ SLV-SUBJECT SLV-ASSERT-SEAL
-   s" FORGET-DEFS-FROM of the script-argv tail traps" T-LABEL
-   SLV-FORGET-TAIL-FORGE$ SLV-SUBJECT SLV-ASSERT-SEAL
-   s" HIDE-DEFS-FROM of the script-argv tail traps" T-LABEL
-   SLV-HIDE-TAIL-FORGE$ SLV-SUBJECT SLV-ASSERT-SEAL
+   s" FORGET-DEFS-FROM of an engine def is rejected" T-LABEL
+   SLV-FORGET-ENGINE-FORGE$ SLV-SUBJECT SLV-ASSERT-REJECT
+   s" HIDE-DEFS-FROM of an engine def is rejected" T-LABEL
+   SLV-HIDE-ENGINE-FORGE$ SLV-SUBJECT SLV-ASSERT-REJECT
+   s" direct CHECKER-USIGS-TRUNCATE-FROM is a defect" T-LABEL
+   SLV-USIG-TRUNC-FORGE$ SLV-SUBJECT 76 SLV-ASSERT-RC
+   s" FORGET-DEFS-FROM of the script-argv tail is rejected" T-LABEL
+   SLV-FORGET-TAIL-FORGE$ SLV-SUBJECT SLV-ASSERT-REJECT
+   s" HIDE-DEFS-FROM of the script-argv tail is rejected" T-LABEL
+   SLV-HIDE-TAIL-FORGE$ SLV-SUBJECT SLV-ASSERT-REJECT
    s" public ndict! continuation cannot cross the engine watermark" T-LABEL
    SLV-NDICT-CONTINUATION-FORGE$ SLV-SUBJECT SLV-ASSERT-SEAL
    s" record-facts! of a sealed record traps" T-LABEL
