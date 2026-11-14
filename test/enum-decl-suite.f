@@ -385,7 +385,7 @@ DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN rollctor2 DERIVE eq VARIANT tag FIELD a n ;VARIANT ;ENUM"
    70 enum-ctor-test:CTOR-REJECT
 s\" error[E-BAD-DECLARATION]: bad enum declaration `rollctor2`\n" DECL-DIAG:HAS? TTRUE
-s\"   = at `rollctor2`: name is reserved or already taken\n" DECL-DIAG:HAS? TTRUE
+s\"   = at `tag`: variant name collides with a derived word\n" DECL-DIAG:HAS? TTRUE
 
 \ A later constructor collides after the first has entered the generation plan.
 : ROLLCOLL:TAKEN ( -- n ) 37 ;

@@ -1677,16 +1677,16 @@ s\"   = at `eq`: derive requires a public family\n" TDT-REJ
 \ list, idempotent); a variant spelled eq must follow another variant.
 s" ENUM tdrb7 DERIVE eq other eq ;ENUM"
 s\" error[E-BAD-DECLARATION]: bad enum declaration `tdrb7`\n"
-s\"   = at `tdrb7`: name is reserved or already taken\n" TDT-REJ
+s\"   = at `eq`: variant name collides with a derived word\n" TDT-REJ
 s" ENUM tdrb8 DERIVE eq tag other ;ENUM"
 s\" error[E-BAD-DECLARATION]: bad enum declaration `tdrb8`\n"
-s\"   = at `tdrb8`: name is reserved or already taken\n" TDT-REJ
+s\"   = at `tag`: variant name collides with a derived word\n" TDT-REJ
 
 \ rollback: a REJECTED derive declaration leaves no residue — the same family
 \ name registers cleanly afterwards and its derived words work.
 s" ENUM tdrb9 DERIVE eq bad eq ;ENUM"
 s\" error[E-BAD-DECLARATION]: bad enum declaration `tdrb9`\n"
-s\"   = at `tdrb9`: name is reserved or already taken\n" TDT-REJ
+s\"   = at `eq`: variant name collides with a derived word\n" TDT-REJ
 ENUM tdrb9 DERIVE eq aa bb ;ENUM
 : TDRB9-EQ ( -- bool ) TDRB9:AA TDRB9:BB TDRB9:EQ ;
 TDRB9-EQ TFALSE

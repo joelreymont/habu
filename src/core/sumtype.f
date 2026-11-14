@@ -345,12 +345,18 @@ private
          E-TDECL-NAME TDECL-THROW
    THEN ;
 
+public
+
 \ A DERIVE-marked family must not declare a variant spelled like a generated
 \ derived tail: the constructor package would hold two words with one name.
-: TDECL-COLLIDE-THROW ( ptr u8 n -- )
+: TDECL-COLLIDE-WHY ( -- ptr u8 n ptr u8 n )
    s" variant name collides with a derived word"
-      s" rename the variant: under `DERIVE` the names `eq`, `hash` and `tag` are taken"
-      E-TDECL-NAME TDECL-THROW ;
+   s" rename the variant: under `DERIVE` the names `eq`, `hash` and `tag` are taken" ;
+
+private
+
+: TDECL-COLLIDE-THROW ( ptr u8 n -- )
+   TDECL-COLLIDE-WHY E-TDECL-NAME TDECL-THROW ;
 
 \ A VARIANT name lives in no scope of its own: any collision with a family
 \ the declaring scope resolves (TYPE-NAME:FAMILY-TAKEN?) is a reserved name,
@@ -920,18 +926,8 @@ private
    fa fu fam TDECL-DERIVE-SET          \ the FIRST token must be a feature (unknown rejects);
    BEGIN fam TDECL-DERIVE-MORE? 0= UNTIL ;   \ later tokens end the order-free list by pushback
 
-public
-
-: TDECL-DERIVE-COLLIDE ( n n n -- ) {: fam:n vstart:n count:n :}
-   fam TFAM-DERIVE-ANY? 0= IF EXIT THEN
-   vstart count + vstart ?do
-      i SUMV-NAME$ TFAM-DERIVED-TAIL? IF i SUMV-NAME$ TDECL-COLLIDE-THROW THEN
-   loop ;
-
 \ payload-role gate: every payload/field schema node must be
 \ derivably comparable, else the DECLARATION rejects naming the exact role.
-
-private
 
 : TDECL-DERIVE-FIELD-OK ( n n -- ) {: fam:n node:n :}
    node SCHEMA-A@ {: ff:n :}

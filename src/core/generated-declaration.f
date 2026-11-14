@@ -254,8 +254,8 @@ s" derive a feature only when every payload type has it, or drop it from `DERIVE
 E-TDECL-DERIVE EXPLAIN
 \ Both front ends arm "reserved name" at their own name gates, so E-TDECL-NAME
 \ reaching the table was raised by a deeper owner: the variant-name gate (a
-\ reserved tail or a family-name collision) or the constructor collide check (a
-\ variant spelled like a word the DERIVE clause generates). The text has to be
+\ reserved tail or a family-name collision) or the constructor planner (a
+\ generated word already defined, or two sharing a name). The text has to be
 \ true of both.
 s" name is reserved or already taken"
 s" rename it so it is no reserved word and no word this declaration generates"
@@ -483,7 +483,6 @@ public
    fam GEN-REQUIRE
    fam TFAM-VAR-START@ {: vstart:n :}
    fam TFAM-VAR-COUNT@ {: count:n :}
-   fam vstart count TDECL-DERIVE-COLLIDE
    fam vstart count TDECL-DERIVE-REQUIRE
    fam vstart count TDECL-CTOR-PUBLISH
    DECL-REPLAY:RP-ACTIVE? IF fam TDECL-CTOR-REPLAY EXIT THEN

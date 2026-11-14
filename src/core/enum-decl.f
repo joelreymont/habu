@@ -227,10 +227,16 @@ ED-RESET
       TF-NAME-LONG$
       s" shorten the variant name to 255 bytes or fewer"
       E-CAP DECL-REJECT:REJECT throw THEN ;
+\ DERIVE precedes every variant, so the family's derive flags are set here.
+: DERIVE-COLLIDE ( ptr u8 n -- )
+   FAM @ TFAM-DERIVE-ANY? 0= IF 2drop EXIT THEN
+   TFAM-DERIVED-TAIL? 0= IF EXIT THEN
+   TDECL-COLLIDE-WHY E-NAME DECL-REJECT:REJECT throw ;
 : OPEN-VARIANT ( -- )
    SEEN-CLEAR
    VARIANT-NAME {: na:ptr nu:n :}
    na nu DECL-REJECT:TOKEN!
+   na nu DERIVE-COLLIDE
    s" duplicate variant"
    s" give each variant of the enum its own name"
    E-DUP DECL-REJECT:EXPECT
@@ -270,6 +276,7 @@ ED-RESET
       E-CAP DECL-REJECT:REJECT throw THEN
    -1 SEEN-VARIANT !
    na nu DECL-REJECT:TOKEN!
+   na nu DERIVE-COLLIDE
    s" duplicate variant"
    s" give each variant of the enum its own name"
    E-DUP DECL-REJECT:EXPECT
