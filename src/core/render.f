@@ -18,13 +18,10 @@ variable RBIND-FULL
 \ RTAILS is set while TAIL-CAPTURE renders: every quotation then shows its row
 \ tails.
 variable RTAILS   0 RTAILS !
-\ RNAMES is 1 while the first pass of REND-EFFECT or DECL-EFFECT records each row's
-\ tail (RPOS) and 2 while its second pass names the rows that share one; 0 otherwise.
+\ RNAMES is 1 while the first pass of REND-EFFECT records each row's tail (RPOS)
+\ and 2 while its second pass names the rows that share one; 0 otherwise.
 variable RNAMES   0 RNAMES !
-\ RDECL is set while DECL-EFFECT renders a declared effect: its rows are named
-\ as RNAMES names them, its atoms and families spelled as a signature writes them.
-variable RDECL   0 RDECL !
-: RFACTS? ( -- bool ) RNAMES @ 0 <>  RDECL @ 0=  and ;
+: RFACTS? ( -- bool ) RNAMES @ 0 <> ;
 
 
 : EMIT-UNSAID ( -- ) 1 RQM !  63 EMIT1 ;
@@ -130,15 +127,13 @@ $7FFFFFFFFFFFFFFF CELL / constant SEEN-MAX-CAP
    ELSE EMIT-UNSAID THEN THEN ;
 
 \ Facts text (RFACTS?) writes a plain atom as `'NAME`, which TOK-TYPE reads back.
-\ A fresh atom's ordinal tells two identities of one name apart; a signature
-\ keys a fresh name by its spelling, so its declared effect (RDECL) writes none.
+\ A fresh atom's ordinal tells two identities of one name apart.
 : ATOM-REND {: t :}
    t ATOM>K 0 = IF
       RFACTS? IF 39 EMIT1 THEN
       t ATOM>A t ATOM>U RSTR EXIT THEN
    s" fresh-" RSTR
    t ATOM>A t ATOM>U RSTR
-   RDECL @ IF EXIT THEN
    45 EMIT1
    t ATOM>K RATOM-ORD RATOM-CHAR EMIT1 ;
 
@@ -288,8 +283,8 @@ create RBUF EFFECT-DEPTH-MAX cells allot   variable RBN
 \ A refusal for an escaped callable tail (MD-TAIL-ESCAPE, TAIL-CAPTURE) names
 \ every quotation's row tails, so the callable that keeps its input stack shows
 \ it: `[ C -- C n ]` against `[ A -- B ]`. Rows letter in their own namespace, A
-\ to Z, then '?'. Facts text and a declared effect (RNAMES) name rows; every other
-\ rendering shows cells only.
+\ to Z, then '?'. Facts text (RNAMES) names rows; every other rendering shows
+\ cells only.
 26 constant RROW-CAP
 create RROW-KEY RROW-CAP cells allot   variable RROW-N   0 RROW-N !
 
@@ -754,18 +749,6 @@ variable FACTS-REC   variable FACTS-MARK   variable FACTS-WAS   variable FACTS-N
    0 TEXT-LEN !  BROW @ DCUR @ 0 0 RES-FALSE REND-EFFECT ;
 
 variable DSUGE  variable DSUGA
-\ A top step names its file, then the line checker.f CHECK:TOP-SITE
-\ gives, if any; a step with no file and no label names no place.
-: DSITE ( -- )
-   TOP-STEP @ 0= IF s" habu: in " EMIT-STR  NMA @ NMU @ EMIT-STR
-      s" : " EMIT-STR EXIT THEN
-   s" habu: " EMIT-STR
-   LOAD-FILE$ {: fa:ptr fu:n :}
-   fu 0= IF EXIT THEN
-   fa fu EMIT-STR
-   CHECK:TOP-SITE IF 58 EMIT1 EMIT-U ELSE drop THEN
-   s" : " EMIT-STR ;
-: JROW {: s :}  JSON-OPEN  s DROW  JSON-CLOSE ;
 
 
 \ Under RNAMES each row is named as REND-EFFECT names it (RROW-NAME).
@@ -775,36 +758,6 @@ variable DSUGE  variable DSUGA
    hasr IF
       s" | " EMIT-STR  rin 1 RROW-NAME  rin DROW  s" -- " EMIT-STR  rout 1 RROW-NAME  rout DROW
    THEN ;
-
-
-\ One DECL-EFFECT pass over the declared rows, written from TEXT-LEN at with the
-\ names it started from.
-: DECL-PASS ( n n n n bool n n n n -- )
-   {: din:n dout:n rin:n rout:n hasr:bool at:n nlet:n rrow:n ratom:n :}
-   at TEXT-LEN !  nlet SEEN-FORGET  nlet NLET !  rrow RROW-N !  ratom RATOM-N !  0 RVISIT !
-   din dout rin rout hasr JEFFECT-TEXT ;
-
-
-\ The record SIG-EFF-CACHE! kept, rendered in two passes as REND-EFFECT is; the
-\ live declared rows then take its names, unprinted, for the later fields.
-: DECL-EFFECT ( -- )
-   RECEFF @ {: off:n :}
-   NLET @ RROW-N @ RATOM-N @ {: nlet:n rrow:n ratom:n :}
-   off E-PTR E-INST-RESET
-   off E-PTR E-HASR@ 0 <> {: hasr:bool :}
-   off E-PTR E-DIN@ E-INST  off E-PTR E-DOUT@ E-INST
-   hasr IF off E-PTR E-RIN@ E-INST  off E-PTR E-ROUT@ E-INST ELSE 0 0 THEN
-   {: din:n dout:n rin:n rout:n :}
-   JSON-OPEN  TEXT-LEN @ {: from:n :}
-   -1 RDECL !  0 RPOS-N !
-   1 RNAMES !  din dout rin rout hasr from nlet rrow ratom DECL-PASS
-   2 RNAMES !  din dout rin rout hasr from nlet rrow ratom DECL-PASS
-   0 RNAMES !  0 RDECL !
-   JSON-CLOSE
-   nlet NLET !  rrow RROW-N !  ratom RATOM-N !
-   TEXT-LEN @ {: at:n :}
-   SGIN @ SGOUT @ SGRIN @ SGROUT @ SGHASR @ JEFFECT-TEXT
-   at TEXT-LEN ! ;
 
 
 : INFERRED-EFFECT ( -- )   \ the body's effect so far: the declared inputs to the current rows
