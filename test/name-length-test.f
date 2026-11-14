@@ -171,26 +171,32 @@ TYPE-FIELD:COUNT 1 - TYPE-FIELD:FAMILY@ constant PAIR
    TYPE-FIELD-OWNER:ADD drop ;
 
 \ ---- the parent's side -------------------------------------------------------
-create LBL 128 allot
+\ A label keeps what fits in LBL.
+128 constant LBL-CAP
+create LBL LBL-CAP allot
 variable LBL-U
 : LBL+ ( ptr u8 n -- )
    {: a:ptr u:n :}
-   u 0 ?do a i + c@ LBL LBL-U @ + i + c! loop
-   LBL-U @ u + LBL-U ! ;
+   u LBL-CAP LBL-U @ - min {: k:n :}
+   k 0 ?do a i + c@ LBL LBL-U @ + i + c! loop
+   LBL-U @ k + LBL-U ! ;
 : RELABEL ( -- ) LBL LBL-U @ T-LABEL ;
+: LABEL-AT ( ptr u8 n ptr u8 n -- )
+   {: at:ptr atu:n src:ptr srcu:n :}
+   0 LBL-U !  src srcu LBL+  s"  at " LBL+  at atu LBL+ ;
 
 \ A declaring word's refusal ends the process, so every case runs `src` in a
 \ forked child, with LEN at `u`.
-: RUN-AT ( n ptr u8 n ptr u8 n -- len len PROCESS:ending )
-   {: u:n at:ptr atu:n src:ptr srcu:n :}
-   0 LBL-U !  src srcu LBL+  s"  at " LBL+  at atu LBL+
+: RUN-AT ( n ptr u8 n -- len len PROCESS:ending )
+   {: u:n src:ptr srcu:n :}
    u LEN !
    src srcu OUT OUT-CAP >LEN ERR ERR-CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN ;
 
 \ The child prints that its word refused, and nothing else, and exits 0.
 : RETURNS-AT ( n ptr u8 n ptr u8 n -- )
    {: u:n at:ptr atu:n src:ptr srcu:n :}
-   u at atu src srcu RUN-AT {: outu:len erru:len oc :}
+   at atu src srcu LABEL-AT
+   u src srcu RUN-AT {: outu:len erru:len oc :}
    RELABEL src srcu OUT outu LEN>N ERR erru LEN>N oc 0 T-ENDING-EXITED=
    RELABEL ERR erru LEN>N s" " T$=
    RELABEL OUT outu LEN>N S\" refused\n" T$= ;
@@ -198,7 +204,8 @@ variable LBL-U
 \ The child ends with the word's own refusal: `rc` and its one-line message.
 : DIES-AT ( n ptr u8 n ptr u8 n n ptr u8 n -- )
    {: u:n at:ptr atu:n src:ptr srcu:n rc:n want:ptr wantu:n :}
-   u at atu src srcu RUN-AT {: outu:len erru:len oc :}
+   at atu src srcu LABEL-AT
+   u src srcu RUN-AT {: outu:len erru:len oc :}
    RELABEL src srcu OUT outu LEN>N ERR erru LEN>N oc rc T-ENDING-EXITED=
    RELABEL outu LEN>N 0 T=
    RELABEL ERR erru LEN>N want wantu T$= ;
@@ -413,7 +420,7 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
 \ the word runs. The name is w, which no word of this file is named.
 : TEST-ENGINE ( -- )
    LONG-LEN 119 RUN-SRC {: da:ptr du:n :}
-   0 s" a long name" da du RUN-AT {: outu:len erru:len oc :}
+   0 da du RUN-AT {: outu:len erru:len oc :}
    s" `:` defines a word with a long name" T-LABEL
    da du OUT outu LEN>N ERR erru LEN>N oc 0 T-ENDING-EXITED=
    s" ... and says nothing" T-LABEL
