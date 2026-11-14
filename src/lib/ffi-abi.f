@@ -1656,9 +1656,18 @@ private
    get-current SCOPE-WID !
    1 SCOPE-SET ! ;
 
+: SCOPE-REJECT ( ptr u8 n -- )
+   {: m:ptr mu:n :}
+   s" E-FFI-LIBRARY" REJECTION:OPEN  m mu REJECTION:EMIT-STR
+   s" select one before it in its own package section, or at top level for a top-level declaration, with LIBRARY, VERSIONED-LIBRARY or PROCESS-SYMBOLS"
+   E-FFI-LIBRARY HELP-THROW ;
+
 : CHECK-SCOPE ( -- )
-   SCOPE-SET @ 0= if E-FFI-LIBRARY throw then
-   get-current SCOPE-WID @ <> if E-FFI-LIBRARY throw then ;
+   SCOPE-SET @ 0= if s" FUNCTION: with no library selected" SCOPE-REJECT then
+   get-current SCOPE-WID @ <> if
+      s" the library selected last belongs to another package section or to top level"
+      SCOPE-REJECT
+   then ;
 
 public
 

@@ -173,13 +173,8 @@ FFI-T-DEPTH-AFTER FFI-T-DEPTH!
    s" FUNCTION: FFI-T-XW habu-pointer-variadic ( ptr u8 r n ptr u8 r -- ptr u8 ) 1 VARIADIC ;FUNCTION"
    evaluate-closed ;
 
-\ A library selection belongs to the scope that states it, and there is no
-\ default: a declaration in a scope that never stated one is refused by name,
-\ so a file cannot inherit the library the previously loaded file selected.
-\ Both cases run in this package's PUBLIC section, a wordlist the file's own
-\ PROCESS-SYMBOLS - stated in the private section - never selected for. A
-\ package of its own would say the same thing, but inside FFI-TEST a `package`
-\ opens a part of FFI-TEST, not a package of its own.
+\ Both cases declare in the public section, which the private PROCESS-SYMBOLS
+\ above never selected for; inside FFI-TEST a `package` would open a part.
 variable FFI-T-SCOPE-BEFORE
 variable FFI-T-SCOPE-AFTER
 
@@ -354,6 +349,11 @@ create FFI-T-LONG-PATH PATH-CAP allot
 : FFI-T-FLOAT-ARITY ( [ -- ] -- )
    E-FFI-ARITY
    s" error[E-FFI-ARITY]: the call passes at most 8 float inputs, each in a register"
+   FFI-T-RECORD ;
+
+: FFI-T-SCOPE-RECORD ( [ -- ] -- )
+   E-FFI-LIBRARY
+   s" error[E-FFI-LIBRARY]: the library selected last belongs to another package section or to top level"
    FFI-T-RECORD ;
 
 : FFI-T-INT-ARITY ( [ -- ] -- )
@@ -621,6 +621,21 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    FFI-T-TARGET$ SB-APPEND
    erru FFI-T-ERR$ SB$ CONTAINS? TTRUE ;
 
+\ A fresh engine has made no selection, which this file's PROCESS-SYMBOLS has,
+\ and the rejection ends the load: the case runs in a child.
+: FFI-T-UNSELECTED-SRC$ ( -- ptr u8 n )
+   FFI-T-SRC CODEGEN:RESET
+   s\" require src/lib/ffi-abi.f\n" FFI-T-SRC+
+   s\" FUNCTION: ZZ-PID getpid ( -- i32 ) ;FUNCTION\n" FFI-T-SRC+
+   FFI-T-SRC CODEGEN:CONTENTS ;
+
+: FFI-T-UNSELECTED ( -- )
+   s" a declaration before any selection is rejected with a record" T-LABEL
+   FFI-T-UNSELECTED-SRC$ FFI-T-REJECT-RC FFI-T-RUN-EXITS
+   {: outu:len erru:len :}
+   outu LEN>N 0 T=
+   erru FFI-T-ERR$ s" error[E-FFI-LIBRARY]: FUNCTION: with no library selected" CONTAINS? TTRUE ;
+
 : FFI-T-LONG-FOREIGN-SRC$ ( -- ptr u8 n )
    FFI-T-LONG-SRC!
    s\" : ZZ-FOREIGN ( -- ) ZZ-LONG {: path:ptr u:n :}\n" FFI-T-SRC+
@@ -838,7 +853,7 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    s" error[E-FFI-SYNTAX]: a library version is not a number" FFI-T-SYNTAX
    s" a library selection is scoped to the scope that states it" T-LABEL
    FFI-T-SCOPE-BEFORE FFI-T-DEPTH!
-   [: FFI-T-NO-LIBRARY ;] E-FFI-LIBRARY TTHROWSQ
+   [: FFI-T-NO-LIBRARY ;] FFI-T-SCOPE-RECORD
    FFI-T-PRIVATE-AGAIN
    [: FFI-T-SCOPED-LIBRARY ;] 0 TTHROWSQ
    FFI-T-RESELECT
@@ -912,6 +927,7 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    FFI-T-LIBRARY-SHARED
    FFI-T-PATH-IDENTITY
    FFI-T-FOREIGN-LIBRARY
+   FFI-T-UNSELECTED
    FFI-T-LONG-FOREIGN-LIBRARY
    FFI-T-NO-LIB
    FFI-T-NO-VERSION
