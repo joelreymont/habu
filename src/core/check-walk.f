@@ -803,7 +803,6 @@ variable CTOR-PEND-POS
 \ True for an error the checker reports itself before throwing it.
 : REPORTED-ERROR? ( n -- bool ) {: rc:n :}
    rc CHECKER-REJECT-RC =
-   rc E-GENERATES-ROW = or  rc E-PARSES-ROW = or  rc E-NAMES-ROW = or
    rc E-CAST-ARITY = or  rc E-CAST-CLASS = or  rc E-CAST-FAM = or
    rc E-CAST-LINEAR = or  rc E-CAST-MINT = or
    rc E-CAST-SCOPE = or  rc E-LINEAR-PAYLOAD = or  rc E-LINEAR-OWNER = or
@@ -2049,12 +2048,26 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    sym PRIM-FIRST-IDX 0 <> IF RES-TRUE EXIT THEN
    sym a u TOK-IDENTITY 0 <> ;
 
-: TOP-REFUSE ( ptr u8 n n -- n )
-   {: a:ptr u:n sel:n :}
-   a USH-TOK-A !  u USH-TOK-U !
-   sel SHADOW-DIAG-XT
-   MULTI-ERR? IF 1 REJECTION:TALLY +! 0 EXIT THEN
-   CHECKER-REJECT-RC throw ;
+\ A top-level token no scope defines, or one with a malformed qualifier when
+\ bad is set.
+: TOP-REFUSE ( ptr u8 n bool -- n )
+   {: a:ptr u:n bad:bool :}
+   bad IF
+      s" E-BAD-QUALIFIED-TOP-LEVEL" REJECTION:OPEN
+      s" the qualified name `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+      s" ` is malformed" REJECTION:EMIT-STR
+      a u REJECTION:AT  s" malformed qualified name" REJECTION:EMIT-STR
+      REJECTION:HELP
+      s" write `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+      s" ` with one `:` between the package and the word, as `PKG:WORD`" REJECTION:EMIT-STR
+   ELSE
+      s" E-UNDEFINED-TOP-LEVEL" REJECTION:OPEN
+      s" cannot find word `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR  96 REJECTION:EMIT1
+      a u REJECTION:AT  s" not found" REJECTION:EMIT-STR
+      REJECTION:HELP  a u UNDEF-HELP
+   THEN
+   MULTI-ERR? IF REJECTION:KEEP 0 EXIT THEN
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ What the load does with a top-level token it runs, or ticks when RUNS is
 \ false. The answer is -1 when it resolves, or 2 when it resolves to a word that
@@ -2080,7 +2093,7 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
       THEN drop
       a u UNSEEN-COVERS? IF 3 EXIT THEN
    THEN
-   a u  CHECKER-QBAD-TOK @ IF 4 ELSE 3 THEN  TOP-REFUSE ;
+   a u  CHECKER-QBAD-TOK @ 0 <>  TOP-REFUSE ;
 
 PTR-VARIABLE TOP-ASK-A   variable TOP-ASK-U   variable TOP-ASK-RUNS
 variable TOP-ASK-ANSWER
@@ -2127,10 +2140,62 @@ variable TOP-ASK-ANSWER
 2 constant GENR-BADSIG                    \ the effect does not parse or no record
                                           \ holds it (SGBAD-UNFIT!); SGBAD says why
 
-: GENERATES-REFUSE ( ptr u8 n n -- )
-   GENR-DIAG
-   MULTI-ERR? IF 1 REJECTION:TALLY +! EXIT THEN
-   E-GENERATES-ROW throw ;
+\ Ends a row's rejection: counted under --all-errors, else thrown.
+: ROW-END ( -- )
+   MULTI-ERR? IF REJECTION:KEEP EXIT THEN
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
+: GENR-MESSAGE ( ptr u8 n n -- ) {: na:ptr nu:n kind:n :}
+   s" the `generates:` row names " REJECTION:EMIT-STR  na nu STGR-CODE
+   kind GENR-UNRESOLVED = IF
+      s" , which is not defined here" REJECTION:EMIT-STR EXIT
+   THEN
+   kind GENR-CREATES = IF
+      s" , which already states what it makes" REJECTION:EMIT-STR EXIT
+   THEN
+   kind GENR-READS-NONE = IF
+      s" , which is deferred or reads no name with `parse-name`" REJECTION:EMIT-STR EXIT
+   THEN
+   s"  with an effect that cannot be recorded" REJECTION:EMIT-STR ;
+
+: GENR-LABEL$ ( n -- ptr u8 n ) {: kind:n :}
+   kind GENR-UNRESOLVED = IF s" not defined here" EXIT THEN
+   kind GENR-CREATES = IF s" already states what it makes" EXIT THEN
+   s" deferred, or reads no name" ;
+
+: GENR-HELP ( ptr u8 n n -- ) {: na:ptr nu:n kind:n :}
+   kind GENR-UNRESOLVED = IF
+      s" define " REJECTION:EMIT-STR  na nu STGR-CODE
+      s"  before this row, or spell it as its definition does" REJECTION:EMIT-STR EXIT
+   THEN
+   kind GENR-CREATES = IF
+      s" delete this row: the `does>` clause of " REJECTION:EMIT-STR  na nu STGR-CODE
+      s" , an earlier `generates:` row or the definer it wraps states what it makes"
+      REJECTION:EMIT-STR EXIT
+   THEN
+   s" make " REJECTION:EMIT-STR  na nu STGR-CODE
+   s"  read its name with `parse-name`, called directly or through words it" REJECTION:EMIT-STR
+   s"  calls by name, not through a `defer` or an executed xt; or delete this row"
+   REJECTION:EMIT-STR ;
+
+\ A bad effect is placed and labelled as a bad stored signature is.
+: GENR-SIG-PARTS ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n sa:ptr su:n :}
+   sa su na nu SGBAD-TOKEN REJECTION:AT  SGBAD-LABEL$ REJECTION:EMIT-STR
+   s" signature" REJECTION:NOTE  sa su SIG-TRIM REJECTION:EMIT-STR
+   SGBAD-SIZE? IF s" reason" REJECTION:NOTE  BADSIG-REASON THEN
+   REJECTION:HELP  SGBAD-HELP$ REJECTION:EMIT-STR ;
+
+\ D's name NA NU and the effect SA SU the row states.
+: GENERATES-REFUSE ( ptr u8 n ptr u8 n n -- )
+   {: na:ptr nu:n sa:ptr su:n kind:n :}
+   s" E-GENERATES-ROW" REJECTION:OPEN  na nu kind GENR-MESSAGE
+   kind GENR-BADSIG = IF
+      na nu sa su GENR-SIG-PARTS
+   ELSE
+      na nu REJECTION:AT  kind GENR-LABEL$ REJECTION:EMIT-STR
+      REJECTION:HELP  na nu kind GENR-HELP
+   THEN
+   ROW-END ;
 
 \ `already` is what the caller knows of D beyond the checker. Answers D's symbol
 \ and the created word's record offset+1, 0 for a refused row.
@@ -2138,14 +2203,14 @@ variable TOP-ASK-ANSWER
    {: na:ptr nu:n sa:ptr su:n already:bool :}
    na nu CHECKER-FIND-ACTIVE-SYM
    {: sym:n :}
-   sym 0= IF na nu GENR-UNRESOLVED GENERATES-REFUSE sym 0 EXIT THEN
+   sym 0= IF na nu sa su GENR-UNRESOLVED GENERATES-REFUSE sym 0 EXIT THEN
    sym na nu NAV-USE-NOW
-   already sym NORET-CREATES@ 0 <> or IF na nu GENR-CREATES GENERATES-REFUSE sym 0 EXIT THEN
+   already sym NORET-CREATES@ 0 <> or IF na nu sa su GENR-CREATES GENERATES-REFUSE sym 0 EXIT THEN
    sym TOP-CONTROL {: flags:n deferred:bool :}
-   flags CTL-PARSES and 0= deferred or IF na nu GENR-READS-NONE GENERATES-REFUSE sym 0 EXIT THEN
+   flags CTL-PARSES and 0= deferred or IF na nu sa su GENR-READS-NONE GENERATES-REFUSE sym 0 EXIT THEN
    sa su CREATED-RECORD-BUILD
    {: rec:n :}
-   rec 0= IF na nu GENR-BADSIG GENERATES-REFUSE THEN
+   rec 0= IF na nu sa su GENR-BADSIG GENERATES-REFUSE THEN
    sym rec ;
 
 \ A signature is read as a definition head reads one. PARSE-SIG-RAW splits the
@@ -2196,10 +2261,88 @@ TRUSTED: generates: ( -- )
    selected sym RECORD-CONTROL-AT! ;
 7 constant PARSES-LIST                    \ no `(`, no terminator, or no `)`
 
-: PARSES-REFUSE ( ptr u8 n n -- )
-   PRS-DIAG
-   MULTI-ERR? IF 1 REJECTION:TALLY +! EXIT THEN
-   E-PARSES-ROW throw ;
+\ What is wrong with a `parses:`, `parses-through:` or `names:` row's target.
+: ROW-WHY$ ( n -- ptr u8 n ) {: kind:n :}
+   kind PARSES-UNDEFINED = IF s" , which is not defined here" EXIT THEN
+   kind PARSES-QUALIFIED = IF s" , a malformed qualified name" EXIT THEN
+   kind PARSES-SHADOW = IF s" , which a used package's public word shadows" EXIT THEN
+   kind PARSES-AMBIGUOUS = IF s" , which more than one used package makes public" EXIT THEN
+   kind PARSES-READS-NONE = IF s" , which reads no source after it" EXIT THEN
+   kind NAMES-NO-STRING = IF s" , which takes no string" EXIT THEN
+   kind PARSES-COUNT = IF s"  with no count of 0 or more" EXIT THEN
+   s"  with a malformed list of terminators" ;
+
+: ROW-LABEL$ ( n -- ptr u8 n ) {: kind:n :}
+   kind PARSES-NO-TARGET = IF s" no word follows" EXIT THEN
+   kind PARSES-UNDEFINED = IF s" not defined here" EXIT THEN
+   kind PARSES-QUALIFIED = IF s" malformed qualified name" EXIT THEN
+   kind PARSES-SHADOW = IF s" shadowed by a used public word" EXIT THEN
+   kind PARSES-AMBIGUOUS = IF s" ambiguous here" EXIT THEN
+   kind PARSES-READS-NONE = IF s" reads no source" EXIT THEN
+   kind NAMES-NO-STRING = IF s" takes no string" EXIT THEN
+   kind PARSES-COUNT = IF s" no count of 0 or more follows" EXIT THEN
+   s" its list of terminators is malformed" ;
+
+\ The message, place and label of a rejected row, keyword KA KU as the source
+\ spells it and target TA TU, empty when none follows; the help follows.
+: ROW-PARTS ( ptr u8 n ptr u8 n n -- ) {: ka:ptr ku:n ta:ptr tu:n kind:n :}
+   s" the " REJECTION:EMIT-STR  ka ku STGR-CODE
+   kind PARSES-NO-TARGET = IF
+      s"  row names no word" REJECTION:EMIT-STR  ka ku REJECTION:AT
+   ELSE
+      s"  row names " REJECTION:EMIT-STR  ta tu STGR-CODE
+      kind ROW-WHY$ REJECTION:EMIT-STR  ta tu REJECTION:AT
+   THEN
+   kind ROW-LABEL$ REJECTION:EMIT-STR
+   REJECTION:HELP ;
+
+\ The help for a target TA TU no word here answers.
+: ROW-HELP ( ptr u8 n n -- ) {: ta:ptr tu:n kind:n :}
+   kind PARSES-QUALIFIED = IF
+      s" write one colon between a package and its public word, as `PKG:WORD`"
+      REJECTION:EMIT-STR EXIT
+   THEN
+   kind PARSES-SHADOW = IF
+      s" rename the used package's public " REJECTION:EMIT-STR  ta tu STGR-CODE
+      s" , which hides the global word of that name" REJECTION:EMIT-STR EXIT
+   THEN
+   kind PARSES-AMBIGUOUS = IF
+      s" write the package's name before the word, as `PKG:" REJECTION:EMIT-STR
+      ta tu REJECTION:EMIT-STR  96 REJECTION:EMIT1 EXIT
+   THEN
+   s" write the row after the definition of " REJECTION:EMIT-STR  ta tu STGR-CODE
+   s" , spelled as the definition spells it" REJECTION:EMIT-STR ;
+
+: PARSES-FORMS ( -- )
+   s" `parses: W n` or `parses-through: W n ( E1 E2 )`" REJECTION:EMIT-STR ;
+
+: PARSES-HELP ( ptr u8 n n -- ) {: ta:ptr tu:n kind:n :}
+   kind PARSES-NO-TARGET = IF
+      s" name the word the row is for and the count of tokens it reads: "
+      REJECTION:EMIT-STR  PARSES-FORMS EXIT
+   THEN
+   kind PARSES-COUNT = IF
+      s" after " REJECTION:EMIT-STR  ta tu STGR-CODE
+      s"  write the count of tokens it reads, 0 or more: " REJECTION:EMIT-STR
+      PARSES-FORMS EXIT
+   THEN
+   kind PARSES-LIST = IF
+      s" after the count list at least one terminator between a standalone `(`"
+      REJECTION:EMIT-STR
+      s"  and `)`: `parses-through: W n ( E1 E2 )`" REJECTION:EMIT-STR EXIT
+   THEN
+   kind PARSES-READS-NONE = IF
+      s" delete this row, or name a word that reads the source after it with"
+      REJECTION:EMIT-STR  s"  `parse-name`" REJECTION:EMIT-STR EXIT
+   THEN
+   ta tu kind ROW-HELP ;
+
+\ The row's keyword KA KU and target TA TU.
+: PARSES-REFUSE ( ptr u8 n ptr u8 n n -- )
+   {: ka:ptr ku:n ta:ptr tu:n kind:n :}
+   s" E-PARSES-ROW" REJECTION:OPEN  ka ku ta tu kind ROW-PARTS
+   ta tu kind PARSES-HELP
+   ROW-END ;
 
 : ROW-UNBOUND ( ptr u8 n -- n )
    {: a:ptr u:n :}
@@ -2211,28 +2354,28 @@ TRUSTED: generates: ( -- )
    a u UNSEEN-COVERS? IF -1 EXIT THEN
    PARSES-UNDEFINED ;
 
-: PARSES-UNBOUND ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: PARSES-UNBOUND ( ptr u8 n ptr u8 n -- )
+   {: ka:ptr ku:n a:ptr u:n :}
    a u ROW-UNBOUND {: kind:n :}
-   kind 0 >= IF a u kind PARSES-REFUSE THEN ;
+   kind 0 >= IF ka ku a u kind PARSES-REFUSE THEN ;
 
 \ A deferred word stays opaque, whatever word is set in it, and so does a word
 \ with no record (a primitive or an axiom), whose replacement no record tells
 \ apart. A cold selected dictionary record can likewise have control but no
 \ checker symbol to key a row: the row stands and bounds nothing until a checked
 \ use materializes that binding.
-: PARSES-TARGET ( ptr u8 n -- n n )
-   {: a:ptr u:n :}
+: PARSES-TARGET ( ptr u8 n ptr u8 n -- n n )
+   {: ka:ptr ku:n a:ptr u:n :}
    a u TOP-BINDING {: sym:n eff1:n ctl:n :}
    sym 0= IF
       ctl CHECKER-OWNER-ABI:BINDING-DEFER and 0 <> IF 0 0 EXIT THEN
       ctl CTL-PARSES and 0 <> IF 0 0 EXIT THEN
-      ctl 0 <> IF a u PARSES-READS-NONE PARSES-REFUSE 0 0 EXIT THEN
-      a u PARSES-UNBOUND 0 0 EXIT
+      ctl 0 <> IF ka ku a u PARSES-READS-NONE PARSES-REFUSE 0 0 EXIT THEN
+      ka ku a u PARSES-UNBOUND 0 0 EXIT
    THEN
    sym a u NAV-USE-NOW
    ctl CHECKER-OWNER-ABI:BINDING-DEFER and 0 <> IF 0 0 EXIT THEN
-   ctl CTL-PARSES and 0= IF a u PARSES-READS-NONE PARSES-REFUSE 0 0 EXIT THEN
+   ctl CTL-PARSES and 0= IF ka ku a u PARSES-READS-NONE PARSES-REFUSE 0 0 EXIT THEN
    eff1 0= IF 0 0 EXIT THEN
    sym eff1 ;
 
@@ -2241,11 +2384,11 @@ TRUSTED: generates: ( -- )
 \ --all-errors leaves none of its tokens to what follows.
 : CHECKER-PARSES-ROW ( ptr u8 n ptr u8 n ptr u8 n bool -- n n n )
    {: ka:ptr ku:n ta:ptr tu:n ca:ptr cu:n bad:bool :}
-   tu 0= IF ka ku PARSES-NO-TARGET PARSES-REFUSE 0 0 0 EXIT THEN
+   tu 0= IF ka ku ta tu PARSES-NO-TARGET PARSES-REFUSE 0 0 0 EXIT THEN
    ca cu num-parse {: v:n flt:bool ok:bool :}
-   ok 0=  flt or  v 0 <  or IF ta tu PARSES-COUNT PARSES-REFUSE 0 0 0 EXIT THEN
-   bad IF ta tu PARSES-LIST PARSES-REFUSE 0 0 0 EXIT THEN
-   ta tu PARSES-TARGET {: sym:n eff1:n :}
+   ok 0=  flt or  v 0 <  or IF ka ku ta tu PARSES-COUNT PARSES-REFUSE 0 0 0 EXIT THEN
+   bad IF ka ku ta tu PARSES-LIST PARSES-REFUSE 0 0 0 EXIT THEN
+   ka ku ta tu PARSES-TARGET {: sym:n eff1:n :}
    sym eff1 v ;
 
 \ What a list token is to its reader: 0 a terminator, 1 the closing `)`, 2 the
@@ -2262,10 +2405,23 @@ TRUSTED: generates: ( -- )
    {: terms:n end:n :}
    end 2 =  terms 0=  or ;
 
-: NAMES-REFUSE ( ptr u8 n n -- )
-   NMS-DIAG
-   MULTI-ERR? IF 1 REJECTION:TALLY +! EXIT THEN
-   E-NAMES-ROW throw ;
+: NAMES-HELP ( ptr u8 n n -- ) {: ta:ptr tu:n kind:n :}
+   kind PARSES-NO-TARGET = IF
+      s" name a word that looks its string operand up as a name: `names: W`,"
+      REJECTION:EMIT-STR  s"  after the definition of `W`" REJECTION:EMIT-STR EXIT
+   THEN
+   kind NAMES-NO-STRING = IF
+      s" delete this row, or name a word whose input row ends in the string"
+      REJECTION:EMIT-STR  s"  `ptr u8 n` it looks up" REJECTION:EMIT-STR EXIT
+   THEN
+   ta tu kind ROW-HELP ;
+
+\ The row's keyword KA KU and target TA TU.
+: NAMES-REFUSE ( ptr u8 n ptr u8 n n -- )
+   {: ka:ptr ku:n ta:ptr tu:n kind:n :}
+   s" E-NAMES-ROW" REJECTION:OPEN  ka ku ta tu kind ROW-PARTS
+   ta tu kind NAMES-HELP
+   ROW-END ;
 
 \ A record quiet TRUST left unresolved holds no row.
 : STRING-IN? ( ptr u8 -- bool )
@@ -2293,16 +2449,16 @@ TRUSTED: generates: ( -- )
 \ symbol to key the mark leaves the row standing and binding nothing.
 : CHECKER-NAMES-ROW ( ptr u8 n ptr u8 n -- )
    {: ka:ptr ku:n ta:ptr tu:n :}
-   tu 0= IF ka ku PARSES-NO-TARGET NAMES-REFUSE EXIT THEN
+   tu 0= IF ka ku ta tu PARSES-NO-TARGET NAMES-REFUSE EXIT THEN
    ta tu TOP-BINDING-REC {: sym:n eff1:n ctl:n selected:ptr :}
    sym 0= IF
       ctl 0 <> IF EXIT THEN
       ta tu ROW-UNBOUND {: kind:n :}
-      kind 0 >= IF ta tu kind NAMES-REFUSE THEN
+      kind 0 >= IF ka ku ta tu kind NAMES-REFUSE THEN
       EXIT
    THEN
    sym ta tu NAV-USE-NOW
-   sym eff1 NAMES-TAKES-STRING? 0= IF ta tu NAMES-NO-STRING NAMES-REFUSE EXIT THEN
+   sym eff1 NAMES-TAKES-STRING? 0= IF ka ku ta tu NAMES-NO-STRING NAMES-REFUSE EXIT THEN
    sym  sym CTL-FLAGS-SYM CTL-NAMES or  sym CTL-MASKS-SYM  NORET-ADD-SYM
    selected sym RECORD-CONTROL-AT! ;
 

@@ -5130,14 +5130,13 @@ CHECKER-REG:}SCRATCH
 66 constant MD-DEPTH-WIDE    \ depth or .s over a row holding a wide value or one of open width (HIDROW-STEP?)
 
 \ Why the check left a stretch or definition to the run, each with its own
-\ suggestion; 0 is no cause recorded.
+\ message and help; 0 is no cause recorded.
 1 constant DW-PARSER         \ a top-level word or primitive that parses with no `parses:` row
 2 constant DW-DEFER          \ a top-level call of a deferred word
 3 constant DW-PARSES         \ a top-level word whose `parses:` row bounds what it reads
 4 constant DW-RENDERER       \ a renderer whose text no `generates:` row or group declares
 5 constant DW-RENDERED       \ a name only a rendering statement may define
 6 constant DW-TYPE           \ a type that may arrive with rendered text
-7 constant DW-TICK           \ a tick of a trusted-only word in unknown tick order
 
 \ The reason a read of the stale term t raises: a cell beneath the interpret row's
 \ known cells is unknown, not left stale by a `catch`.
@@ -5158,11 +5157,11 @@ variable MDIAG-LITV   \ literal misfit: the literal's value
 variable MDIAG-LITT   \ literal misfit: the type code it does not fit
 variable MDIAG-WIDE   \ wide value: the logical type depth or .s met
 variable MDIAG-OPEN   \ wide value: -1 when its width is open where it was met
-variable DEFER-WHY    \ the next deferral packet's cause (a DW- code; 0 = none)
+variable DEFER-WHY    \ the next deferral warning's cause (a DW- code; 0 = none)
 CHECKER-REG:}SCRATCH
 
 \ The source pre-pass records a deferral's cause here before it reports the
-\ deferral; the packet reads and clears it.
+\ deferral; the warning reads and clears it.
 : CHECKER-DEFER-WHY! ( n -- )
    DEFER-WHY ! ;
 
@@ -12262,14 +12261,8 @@ package CHECKER-REG
 \ A `trust` row whose name the engine's scope chain resolves to nothing. Such a
 \ row would mint a bare global checker symbol.
 7143 constant E-TRUST-UNRESOLVED
-\ A `generates:` row the checker cannot keep (CHECKER-GENERATES): one code for
-\ its three refusals, which the diagnostic tells apart by kind.
+\ A `generates:` row the checker cannot keep.
 7153 constant E-GENERATES-ROW
-\ A `parses:` or `parses-through:` row the checker refuses (CHECKER-PARSES-ROW):
-\ one code for its target's refusals and its syntax's, told apart by kind.
-7186 constant E-PARSES-ROW
-\ A `names:` row the checker refuses (CHECKER-NAMES-ROW), told apart likewise.
-7208 constant E-NAMES-ROW
 \ Neither path stores a row, so a later caller rejects as undefined.
 : TRUST-STALE ( ptr u8 n -- ) {: a:ptr u:n :}
    s" E-TRUST-UNRESOLVED" REJECTION:OPEN
@@ -12292,20 +12285,10 @@ variable USING-UNBOUND   \ no global binds the tail the walk refused: the engine
 variable WALK-REC        \ the walk bound the name to the record the engine's own lookup found (LIVE-BIND)
 CHECKER-REG:SCRATCH{
 PTR-VARIABLE USH-TOK-A   variable USH-TOK-U     \ the diagnostic's token as written
-variable USH-GSYM    variable USH-USYM      \ the two colliding syms: global, used public
 PTR-VARIABLE USH-PKG-A   variable USH-PKG-U     \ the used package's folded name (renders PKG:WORD)
 variable USING-HOLD      \ a body token's walk holds its using refusal for the selector (DO-TOK1)
 variable CK-USED-MASK    \ bit i set when used-scan slot i matched, for the using diagnostics
 CHECKER-REG:}SCRATCH
-\ ONE hook for the diagnostics located at a token, selected by its argument: 3
-\ renders a top-level token no scope defines and 4 one with a malformed
-\ qualifier (CHECKER-VERIFY-TOP), 5 a top-level stretch or a definition deferred
-\ to the run (CHECKER-VERIFY-DEFERRED, CHECKER-VERIFY-DEFERRED-BODY). One defer
-\ and not three because every `defer` written here, before `: TRUST`, takes a
-\ slot of the engine's pre-trust pending table.
-defer SHADOW-DIAG-XT ( n -- )
-: SHADOW-DIAG-DEFAULT ( -- ) [: drop ;] is SHADOW-DIAG-XT ;
-SHADOW-DIAG-DEFAULT
 
 \ A refusal of the definition being checked that leaves its body's or does>
 \ clause's walk by a throw. The code is kept as raised, so DEF-REFUSED tells the
@@ -12313,10 +12296,9 @@ SHADOW-DIAG-DEFAULT
 variable DEF-REFUSAL
 : REFUSE-DEF ( n -- n ) dup DEF-REFUSAL ! ;
 
-\ The rejection names the raiser's token as the checked text spells it, not the
-\ walk's fold.
-: CK-SHADOW-CAPTURE ( n n n -- n ) {: gsym:n usym:n ix:n :}
-   gsym USH-GSYM !  usym USH-USYM !
+\ Keeps the name of the used package at scan slot ix, which the rejection's fix
+\ writes as PKG:WORD.
+: CK-SHADOW-CAPTURE ( n -- n ) {: ix:n :}
    ix 0 >= IF
       ix CK-USE-SLOT USH-PKG-A !  ix CK-USE-LEN@ USH-PKG-U !
    ELSE
@@ -13511,7 +13493,7 @@ FACTS-READ-DEFAULT
       used 0= 0= IF
          a u CK-USED-MARK
          used CK-REC-WID CK-USED-INDEX {: ix:n :}
-         0  sym a u ix CK-USED-SYM@ ix CK-SHADOW-CAPTURE  EXIT
+         0  ix CK-SHADOW-CAPTURE  EXIT
       THEN
    THEN
    -1 WALK-REC !
@@ -13613,20 +13595,17 @@ public
 \ it, kept from the later lookups and refusals that move them.
 CHECKER-REG:SCRATCH{
 PTR-VARIABLE UHELD-TOK-A   variable UHELD-TOK-U
-variable UHELD-GSYM   variable UHELD-USYM
 PTR-VARIABLE UHELD-PKG-A   variable UHELD-PKG-U
 variable UHELD-MASK
 CHECKER-REG:}SCRATCH
 
 : USING-SAVE ( -- )
    USH-TOK-A @ UHELD-TOK-A !  USH-TOK-U @ UHELD-TOK-U !
-   USH-GSYM @ UHELD-GSYM !  USH-USYM @ UHELD-USYM !
    USH-PKG-A @ UHELD-PKG-A !  USH-PKG-U @ UHELD-PKG-U !
    CK-USED-MASK @ UHELD-MASK ! ;
 
 : USING-RAISE ( -- )
    REFUSAL @ USING-KIND? 0= IF EXIT THEN
-   UHELD-GSYM @ USH-GSYM !  UHELD-USYM @ USH-USYM !
    UHELD-PKG-A @ USH-PKG-A !  UHELD-PKG-U @ USH-PKG-U !
    UHELD-MASK @ CK-USED-MASK !
    UHELD-TOK-A @ UHELD-TOK-U @
@@ -16007,10 +15986,89 @@ CHECKER-REG:}SCRATCH
    flags CTL-PARSES and 0 <> deferred or IF 2 EXIT THEN
    -1 ;
 
+\ A deferral's token in backticks.
+: DW-CODE ( ptr u8 n -- ) {: t:ptr tu:n :}
+   96 REJECTION:EMIT1  t tu REJECTION:EMIT-STR  96 REJECTION:EMIT1 ;
+\ What the check left to the run at the token t tu, and why.
+: DW-MESSAGE ( ptr u8 n n -- ) {: t:ptr tu:n why:n :}
+   why DW-PARSER = IF
+      s" the check leaves the source after " REJECTION:EMIT-STR  t tu DW-CODE
+      s"  to the run because no `parses:` row says what it reads" REJECTION:EMIT-STR EXIT
+   THEN
+   why DW-DEFER = IF
+      s" the check leaves the source after " REJECTION:EMIT-STR  t tu DW-CODE
+      s"  to the run because a deferred word may read any of it" REJECTION:EMIT-STR EXIT
+   THEN
+   why DW-PARSES = IF
+      s" the check leaves to the run what " REJECTION:EMIT-STR  t tu DW-CODE
+      s"  reads, and goes on after the operands its `parses:` row states" REJECTION:EMIT-STR EXIT
+   THEN
+   why DW-RENDERER = IF
+      s" the check leaves the source " REJECTION:EMIT-STR  t tu DW-CODE
+      s"  renders to the run because no `generates:` row or group declares it" REJECTION:EMIT-STR EXIT
+   THEN
+   why DW-RENDERED = IF
+      s" the check leaves " REJECTION:EMIT-STR  t tu DW-CODE
+      s"  to the run because only rendered source may define it" REJECTION:EMIT-STR EXIT
+   THEN
+   why DW-TYPE = IF
+      s" the check leaves type " REJECTION:EMIT-STR  t tu DW-CODE
+      s"  to the run because only rendered source may declare it" REJECTION:EMIT-STR EXIT
+   THEN
+   s" the check cannot follow the source from " REJECTION:EMIT-STR  t tu DW-CODE
+   s"  on and leaves it to the run" REJECTION:EMIT-STR ;
+: DW-LABEL ( n -- ) {: why:n :}
+   why DW-PARSER = IF s" parses with no `parses:` row" REJECTION:EMIT-STR EXIT THEN
+   why DW-DEFER = IF s" deferred word at top level" REJECTION:EMIT-STR EXIT THEN
+   why DW-PARSES = IF s" reads its operands at run time" REJECTION:EMIT-STR EXIT THEN
+   why DW-RENDERER = IF s" renders undeclared source" REJECTION:EMIT-STR EXIT THEN
+   why DW-RENDERED = IF s" defined only by rendered source" REJECTION:EMIT-STR EXIT THEN
+   why DW-TYPE = IF s" type not declared in the source" REJECTION:EMIT-STR EXIT THEN
+   s" not checked from here" REJECTION:EMIT-STR ;
+\ What lifts the deferral; a `parses:` row's has nothing to write, so no help.
+: DW-HELP ( ptr u8 n n -- ) {: t:ptr tu:n why:n :}
+   why DW-PARSES = IF EXIT THEN
+   REJECTION:HELP
+   why DW-PARSER = IF
+      s" write `parses: " REJECTION:EMIT-STR  t tu REJECTION:EMIT-STR
+      s"  n` or `parses-through: " REJECTION:EMIT-STR  t tu REJECTION:EMIT-STR
+      s"  n ( END )` after the definition of " REJECTION:EMIT-STR  t tu DW-CODE
+      s" , or call it through a word that has such a row" REJECTION:EMIT-STR EXIT
+   THEN
+   why DW-DEFER = IF
+      s" call " REJECTION:EMIT-STR  t tu DW-CODE  s"  from a definition" REJECTION:EMIT-STR EXIT
+   THEN
+   why DW-RENDERER = IF
+      s" if " REJECTION:EMIT-STR  t tu DW-CODE
+      s"  makes a word from the name after it, write `generates: " REJECTION:EMIT-STR
+      t tu REJECTION:EMIT-STR
+      s"  ( effect )` after its definition, or declare a foreign function with a `FUNCTION:` group"
+      REJECTION:EMIT-STR EXIT
+   THEN
+   why DW-RENDERED = IF
+      s" make " REJECTION:EMIT-STR  t tu DW-CODE
+      s"  with a definer `D` called as `D " REJECTION:EMIT-STR  t tu REJECTION:EMIT-STR
+      s" `, declared by `generates: D ( effect )` after its definition or by a `does>` clause"
+      REJECTION:EMIT-STR EXIT
+   THEN
+   why DW-TYPE = IF
+      s" declare " REJECTION:EMIT-STR  t tu DW-CODE
+      s"  with `NEWTYPE`, `STRUCTURE` or `SUMTYPE` before its use" REJECTION:EMIT-STR EXIT
+   THEN
+   s" rewrite the code from " REJECTION:EMIT-STR  t tu DW-CODE
+   s"  on with words whose effects the check knows" REJECTION:EMIT-STR ;
+
+\ A stretch or definition left to the run is a warning at its token a u. Its
+\ cause is cleared once written, so a deferral whose site records none says
+\ only that the check could not follow it.
 : CHECKER-VERIFY-DEFERRED ( ptr u8 n -- )
    {: a:ptr u:n :}
-   a USH-TOK-A !  u USH-TOK-U !
-   5 SHADOW-DIAG-XT ;
+   DEFER-WHY @ {: why:n :}
+   s" W-CHECK-DEFERRED" REJECTION:WARN  a u why DW-MESSAGE
+   a u REJECTION:AT  why DW-LABEL
+   a u why DW-HELP
+   REJECTION:KEEP
+   0 DEFER-WHY ! ;
 
 \ The body is asserted, never walked, but what running it may do is what its
 \ calls may do, and one bound nowhere may name any word, so it brings them all.
@@ -20203,7 +20261,7 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
    BIND-REC @ {: s-br:ptr :}
    BIND-PEND-IX @ BIND-PEND-OFF @ BIND-SEEDED @ {: s-bpi:n s-bpo:n s-bs:n :}
    CK-USED-MASK @ {: s-um:n :}
-   USH-GSYM @ USH-USYM @ USH-PKG-A @ USH-PKG-U @ {: s-hg:n s-hu:n s-ha:ptr s-hn:n :}
+   USH-PKG-A @ USH-PKG-U @ {: s-ha:ptr s-hn:n :}
    CHECKER-QBAD-TOK @ {: s-qb:n :}
    CHECKER-QA @ CHECKER-QU @ CHECKER-TA @ CHECKER-TU @ {: s-qa:ptr s-qu:n s-ta:ptr s-tu:n :}
    USING-UNBOUND @ WALK-REC @ {: s-ub:n s-wr:n :}
@@ -20225,7 +20283,7 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
    ELSE 0 THEN {: ctl:n :}
    s-br BIND-REC !  s-bpi BIND-PEND-IX !  s-bpo BIND-PEND-OFF !  s-bs BIND-SEEDED !
    s-um CK-USED-MASK !
-   s-hg USH-GSYM !  s-hu USH-USYM !  s-ha USH-PKG-A !  s-hn USH-PKG-U !
+   s-ha USH-PKG-A !  s-hn USH-PKG-U !
    s-qb CHECKER-QBAD-TOK !
    s-qa CHECKER-QA !  s-qu CHECKER-QU !  s-ta CHECKER-TA !  s-tu CHECKER-TU !
    s-ub USING-UNBOUND !  s-wr WALK-REC !
