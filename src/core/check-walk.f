@@ -2617,11 +2617,16 @@ NAMED-OPERAND-INSTALL
 4 constant TS.WC     5 constant TS.OFF   6 constant TS.TV   7 constant TS.RV
 8 constant TS.ENTRY  9 constant TS.LEVEL  10 constant TS.END  11 constant TS.CELLS
 12 constant TS.ROFF
-13 constant TS-ROW
+13 constant TS.LEFT-A  14 constant TS.LEFT-U
+15 constant TS-ROW
 PTR-VARIABLE TOP-SEG-P   variable TOP-SEG-CAP   variable TOP-SEG-N
 variable TOP-BASE   variable TOP-ENTRY   variable TOP-LEVEL   variable TOP-LIVE
 NULL-PTR TOP-SEG-P !  0 TOP-SEG-CAP !  0 TOP-SEG-N !  0 TOP-BASE !  0 TOP-LIVE !
 0 TOP-ENTRY !  0 TOP-LEVEL !
+\ The token of the segment's last event on an empty stack, 0 0 for none: a
+\ stack left non-empty holds that event's cells at its bottom.
+PTR-VARIABLE TOP-LEFT-A   variable TOP-LEFT-U
+NULL-PTR TOP-LEFT-A !  0 TOP-LEFT-U !
 
 : TS-AT ( n n -- ptr n ) {: ix:n fld:n :} TOP-SEG-P ix TS-ROW NAV-CELL fld cells + ;
 package CHECKER-REG                       \ REG-PTR-CELLS is CHECKER-REG's private cast
@@ -2633,10 +2638,12 @@ public
    ix TS.RP CHECKER-REG:TS-PTR @ CELL-VIEW ix TS.RC TS-AT @ cells ARENA-UNMAP
    ix TS.WP CHECKER-REG:TS-PTR @ CELL-VIEW ix TS.WC TS-AT @ cells ARENA-UNMAP ;
 
+: TOP-LEFT-CLEAR ( -- )   NULL-PTR TOP-LEFT-A !  0 TOP-LEFT-U ! ;
+
 : TOP-SEG-RELEASE ( -- )
    TOP-READ-P TOP-READ-CAP 1 ARENA-ROWS-RELEASE
    TOP-WRITE-P TOP-WRITE-CAP 1 ARENA-ROWS-RELEASE
-   0 TOP-ROW-OFF !  0 TOP-ROW-CELLS !  0 TOP-RROW-OFF ! ;
+   0 TOP-ROW-OFF !  0 TOP-ROW-CELLS !  0 TOP-RROW-OFF !  TOP-LEFT-CLEAR ;
 
 : TOP-SEG-PARK ( -- )
    TOP-SEG-P TOP-SEG-CAP TOP-SEG-N @ 1 + TS-ROW ARENA-ROWS-ENSURE
@@ -2648,10 +2655,11 @@ public
    TOP-ROW-OFF @ ix TS.OFF TS-AT !  TOP-RROW-OFF @ ix TS.ROFF TS-AT !
    TOP-ROW-TV @ ix TS.TV TS-AT !  TOP-ROW-RV @ ix TS.RV TS-AT !
    TOP-READ-END @ ix TS.END TS-AT !  TOP-ROW-CELLS @ ix TS.CELLS TS-AT !
+   TOP-LEFT-A @ ix TS.LEFT-A CHECKER-REG:TS-PTR !  TOP-LEFT-U @ ix TS.LEFT-U TS-AT !
    ix 1 + TOP-SEG-N !
    NULL-PTR TOP-READ-P !  0 TOP-READ-CAP !
    NULL-PTR TOP-WRITE-P !  0 TOP-WRITE-CAP !  0 TOP-ROW-OFF !  0 TOP-ROW-CELLS !
-   0 TOP-RROW-OFF ! ;
+   0 TOP-RROW-OFF !  TOP-LEFT-CLEAR ;
 
 : TOP-SEG-UNPARK ( n -- ) {: at:n :}
    TOP-SEG-RELEASE
@@ -2663,6 +2671,7 @@ public
    at TS.OFF TS-AT @ TOP-ROW-OFF !  at TS.ROFF TS-AT @ TOP-RROW-OFF !
    at TS.TV TS-AT @ TOP-ROW-TV !  at TS.RV TS-AT @ TOP-ROW-RV !
    at TS.END TS-AT @ TOP-READ-END !  at TS.CELLS TS-AT @ TOP-ROW-CELLS !
+   at TS.LEFT-A CHECKER-REG:TS-PTR @ TOP-LEFT-A !  at TS.LEFT-U TS-AT @ TOP-LEFT-U !
    at TOP-SEG-N ! ;
 
 : TOP-SEG-SPANS? ( n n n -- bool ) {: ix:n base:n lvl:n :}
@@ -2672,6 +2681,9 @@ public
    TOP-SEG-N @ BEGIN dup 0 > WHILE
       1 - dup base lvl TOP-SEG-SPANS? IF EXIT THEN
    REPEAT drop -1 ;
+
+: TOP-LEFT-MARK ( ptr u8 n n -- ) {: a:ptr u:n live:n :}
+   live 0= IF a TOP-LEFT-A !  u TOP-LEFT-U ! THEN ;
 
 \ cnt unknown cells over row: each the row's one unknown term (TOP-UNKNOWN),
 \ lost, so a typed consumer refuses them.
@@ -2939,10 +2951,12 @@ CHECKER-REG:}SCRATCH
 
 : CHECKER-TOP-WORD ( ptr u8 n n -- )
    {: a:ptr u:n live:n :}
+   a u live TOP-LEFT-MARK
    a TOK-SPELL-A !  u TOK-SPELL-U !  ['] TOP-WORD-STEP live TOP-STEP-LOAD ;
 
 : CHECKER-TOP-TICK ( ptr u8 n n -- )
    {: a:ptr u:n live:n :}
+   a u live TOP-LEFT-MARK
    a TOK-SPELL-A !  u TOK-SPELL-U !  ['] TOP-TICK-STEP live TOP-STEP-LOAD ;
 
 \ ---- a literal event: pushed onto the saved row ------------------------------
@@ -3016,9 +3030,39 @@ CHECKER-REG:}SCRATCH
 \ the fit leaves short (it was short, or a wide entry left), the cells below it
 \ are unknown, and only a load, step and save stores them as padding.
 : CHECKER-TOP-PUSH ( ptr u8 n n n -- ) {: a:ptr u:n cls:n live:n :}
+   a u live TOP-LEFT-MARK
    live TOP-READ-FIT
    TOP-ROW-OFF @ 0 <>  TOP-ROW-CELLS @ live =  and IF a u cls TOP-READ-LIT EXIT THEN
    live CHECKER-TOP-LOAD  a u cls TOP-LIT-STEP  CHECKER-TOP-SAVE ;
+
+\ ---- the cells a file leaves: its segment's row, read once it ends -----------
+\ The segment of the file on base: the oldest there, since text a word of the
+\ file evaluated on its base opened newer ones, dead once it returned. It goes
+\ live, dropping the dead ones above it.
+: TOP-SEG-OF ( n -- bool ) {: base:n :}
+   0 BEGIN dup TOP-SEG-N @ < WHILE
+      dup TS.BASE TS-AT @ base = IF TOP-SEG-UNPARK RES-TRUE EXIT THEN
+      1 +
+   REPEAT drop
+   TOP-LIVE @ 0 <>  TOP-BASE @ base =  and ;
+
+: FILE-SEG? ( -- bool )   data-base STACK-ABI:BASE-CELL + @ TOP-SEG-OF ;
+
+\ The token whose cells lie at the bottom of what the running file left, 0 0
+\ when its row saw none.
+: RESIDUE-AT ( -- ptr u8 n )
+   FILE-SEG? 0= IF NULL-PTR 0 EXIT THEN
+   TOP-LEFT-A @ TOP-LEFT-U @ ;
+
+\ Note `left`, the row's types bottom first, when the row holds the n cells
+\ the file left; a row that lost cells cannot name them, so nothing.
+: RESIDUE-NOTE ( n -- ) {: n:n :}
+   FILE-SEG? 0= IF EXIT THEN
+   TOP-ROW-CELLS @ n <> IF EXIT THEN
+   s" left" REJECTION:NOTE
+   n CHECKER-TOP-LOAD
+   0 RQM !  SEEN-RESET  0 NLET !  0 RROW-N !
+   DCUR @ ROW-NOTE  TOP-RELEASE ;
 
 package CHECKER-REG
 ' RECORD-GRID-BEFORE DECLARATIONS CHECKER-OWNER-ABI:GRID-BEFORE-OFF + xt!

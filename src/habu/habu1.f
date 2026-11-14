@@ -3275,8 +3275,8 @@ private
    thrown LBL,  9 G-PUSH  BTHROW
    done LBL, ;
 
-\ source-file-run ( xt -- ): run a file's unit on a pool stack, as B-EVAL-CLOSED
-\ runs text.
+\ source-file-run ( xt -- ): run a file's unit on a pool stack and rethrow
+\ what it throws; the unit checks the cells the file leaves.
 : B-SOURCE-FILE-RUN ( -- )
    LBL LBL LBL LBL LBL
       {: have:label take:label caught:label restore:label done:label :}
@@ -3324,11 +3324,6 @@ private
    caught LBL,
    31 DATA FAULT-MARK-CELL STR,
    9 restore CBNZ,
-   11 SP 24 LDR,
-   XDS 11 CMP,  C-EQ restore BCOND,
-   9 STACK-ABI:E-EVAL-RESIDUE LIT64,
-   C-CS restore BCOND,
-   9 70 MOVZ,
    restore LBL,
    11 SP 24 LDR,
    12 DATA CLOSED-FREE-CELL LDR,  12 11 0 STR,  11 DATA CLOSED-FREE-CELL STR,

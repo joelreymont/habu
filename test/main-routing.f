@@ -57,8 +57,8 @@ create PATH-BUF PATH-CAP allot
    s" " [: STACK-ARG ;] RUN
    s" " s" root file keeps the user stack" PASS
    s" " [: s" --load" GE-ARG+ STACK-ARG ;] RUN
-   67 s" required file closes the user stack" GE-EXPECT-RC
-   s" hb: uncaught throw code -3804" s" required file closes the user stack" GE-EXPECT-ERR-HAS ;
+   70 s" required file closes the user stack" GE-EXPECT-RC
+   s" error[E-EVAL-RESIDUE]" s" required file closes the user stack" GE-EXPECT-ERR-HAS ;
 
 : UNKNOWN ( -- )
    S\" s\" PIPE\" type cr\n" [: s" --unknown" GE-ARG+ FILE-ARG ;] RUN
