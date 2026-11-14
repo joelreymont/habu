@@ -3390,6 +3390,7 @@ TYPED-VARIABLE FFI-OUT-FP bool
 TYPED-VARIABLE FFI-PTR bool                 \ the input read last is `ptr`, its pointee next
 TYPED-VARIABLE FFI-UNREAD bool              \ the load refuses the effect before any clause
 FFI-IN-CAP TYPED-BUFFER FFI-KIND n          \ an input's kind
+FFI-IN-CAP TYPED-BUFFER FFI-SIZE n          \ its C size
 FFI-IN-CAP TYPED-BUFFER FFI-SARG n          \ its STRUCT-ARG bytes, 0 for none
 FFI-IN-CAP TYPED-BUFFER FFI-WRIT bool       \ a write clause names it
 FFI-IN-CAP TYPED-BUFFER FFI-REGS n          \ the plan's places (FFI-STAGING), unread
@@ -3432,6 +3433,7 @@ variable FFI-LIT-B                          \ and the newer
    i FFI-IN-CAP >= IF true FFI-UNREAD ! EXIT THEN
    a u s" ptr" CORE-STR= FFI-PTR !
    a u FFI-IN-KIND i FFI-KIND !
+   a u FFI:TYPE-SIZE i FFI-SIZE !
    0 i FFI-SARG !  false i FFI-WRIT ! ;
 
 
@@ -3588,7 +3590,7 @@ variable FFI-LIT-B                          \ and the newer
    FFI-CLAUSES @ 0= IF EXIT THEN
    FFI-RES @ 0= FFI-ANY-SARG? 0= and IF EXIT THEN
    FFI-IN-N @ FFI-RES @ 0<> IF 1- THEN {: args:n :}
-   0 FFI-KIND 0 FFI-SARG args 0 FFI-REGS 0 FFI-PAYS
+   0 FFI-KIND 0 FFI-SIZE 0 FFI-SARG args 0 FFI-REGS 0 FFI-PAYS
    [: FFI-PLACE ;] FFI:STRUCT-ROOM ;
 
 \ The library's storage definers are words, not keywords: a package's word of

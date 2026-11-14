@@ -55,7 +55,8 @@ variable LIB-U                    \ 0 until BUILD makes the library
 
 \ Seven longs leave x7 alone for a 16-byte record, which then goes wholly to
 \ the stack with the long after it; eight longs push a large record's
-\ pointer onto the stack.
+\ pointer onto the stack; a float past d7 and an integer past x7 go there
+\ beside a record.
 : PLACEMENTS ( -- )
    s" u64 hb_fold8(i64 a, i64 b, i64 c, i64 d, i64 e, i64 f, i64 g, u64 k) {" L+
    s"    return MIX(MIX(MIX(MIX(MIX(MIX(MIX(MIX(1, a), b), c), d), e), f), g), k); }" L+
@@ -66,7 +67,16 @@ variable LIB-U                    \ 0 until BUILD makes the library
    s" i64 hb_bigstack(i64 a, i64 b, i64 c, i64 d, i64 e, i64 f, i64 g, i64 k, s32 y, i64 t) {" L+
    s"    u64 h = MIX(hb_fold8(a, b, c, d, e, f, g, k), hb_sum32(y)); return (i64)MIX(h, t); }" L+
    s" i64 hb_fmix(double d, s16 s, float f) {" L+
-   s"    return (i64)MIX(MIX(hb_sum16(s), (i64)(d * 4)), (i64)(f * 4)); }" L+ ;
+   s"    return (i64)MIX(MIX(hb_sum16(s), (i64)(d * 4)), (i64)(f * 4)); }" L+
+   s" static u64 hb_q(u64 h, double x) { return MIX(h, (i64)(x * 4)); }" L+
+   s" i64 hb_fstack(double a, double b, double c, double d, double e, double f," L+
+   s"       double g, double h, double i, float j, s16 s) {" L+
+   s"    u64 m = hb_q(hb_q(hb_q(hb_q(hb_q(hb_q(hb_q(hb_q(1, a), b), c), d), e), f), g), h);" L+
+   s"    return (i64)MIX(hb_q(hb_q(m, i), j), hb_sum16(s)); }" L+
+   s" i64 hb_nstack(i64 a, i64 b, i64 c, i64 d, i64 e, i64 f, i64 g, i64 h," L+
+   s"       uint8_t i, uint16_t j, uint32_t k, s8 s) {" L+
+   s"    u64 m = MIX(MIX(MIX(hb_fold8(a, b, c, d, e, f, g, h), i), j), k);" L+
+   s"    return (i64)MIX(m, hb_sum8(s)); }" L+ ;
 
 \ A callee owns its by-value parameter: it may write it, or keep its address
 \ across a callback that makes another struct call.

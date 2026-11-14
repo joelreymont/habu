@@ -13,17 +13,18 @@
 \ open passes the call to the next library its row names. Rows may move when a
 \ table grows; indices stay stable.
 \
-\ A declaration with a C struct is planned by AAPCS64 over its C arguments in
-\ order; the STRUCT-RESULT destination, the last input, is not one. Floats take
-\ v0-v7. An integer argument takes the next of x0-x7, else the next stack
-\ cell. A record of up to 16 bytes takes its registers whole, the last one's
-\ unused high bytes zero, or when too few remain its stack cells whole, and the
-\ next register becomes x8. A larger record is passed as a pointer, an integer
-\ argument, to a private copy in the native call frame that lives exactly as
-\ long as the call; the copy follows every stack argument from an even cell,
-\ 16-byte aligned on the 16-byte aligned native stack. A planned register is
-\ kept as its number and a stack cell as -1 less its byte offset; a record of
-\ 16 bytes or fewer has no copy, kept as 0.
+\ Every call is planned over its C arguments in order; the STRUCT-RESULT
+\ destination, the last input, is not one. A float takes the next free float
+\ register and an integer the next free integer register, else a stack slot.
+\ A record of up to 16 bytes takes its registers whole, the last one's unused
+\ high bytes zero, or when too few remain its stack words whole, and then no
+\ later input takes an integer register (AAPCS64 C.13; LLVM does the same on
+\ Darwin). A larger record is passed as a pointer, an integer argument, to a
+\ private copy in the native call frame that lives exactly as long as the
+\ call; the copy follows every stack argument from an even cell, 16-byte
+\ aligned on the 16-byte aligned native stack. A planned register is kept as
+\ its number and a stack slot as -1 less its byte offset; a record of 16 bytes
+\ or fewer has no copy, kept as 0.
 
 HB-TARGET-MACOS? HB-TARGET-LINUX-KERNEL? or ?TARGET
 s" src/lib/error.f" required
@@ -977,12 +978,10 @@ s" dlerror" PROCESS 0 DECLARE DLERROR-FN-CELL !
 \ struct of `bytes`, any positive count, passed by value: one C argument,
 \ read at exactly `bytes` when the call is staged, so the callee never sees
 \ the source. The record is neither an HFA nor an HVA, as for STRUCT-RESULT;
-\ either travels in v registers and must not be declared. A declaration may
-\ have up to eight float arguments beside its records; its integer and pointer
-\ inputs must be cell-wide C types, since Apple arm64 packs two spilled C ints
-\ into one stack cell. The stack cells, the copies and the padding that aligns
-\ each copy share sixteen cells, refused past that at ;FUNCTION
-\ (E-FFI-ARITY). Excluded, because a byte count cannot
+\ either travels in v registers and must not be declared. A struct call places
+\ its other inputs as any call does. The stack cells, the copies and the
+\ padding that aligns each copy share sixteen cells, refused past that at
+\ ;FUNCTION (E-FFI-ARITY). Excluded, because a byte count cannot
 \ reveal them, are records aligned beyond 16 bytes and 16-byte aligned ones
 \ of 16 bytes or fewer: Apple arm64 may start such a record in an odd
 \ register like any other, but on the stack it starts at a 16-byte aligned
@@ -995,9 +994,9 @@ s" dlerror" PROCESS 0 DECLARE DLERROR-FN-CELL !
 \ A float result reads only the low 32 bits of its FP slot and widens to Habu
 \ `r`. Variadic positions use C default promotions, so declare a promoted float
 \ as `r`, never `f32`.
-\ Outside a struct call an input past its kind's registers takes the next
-\ 8-byte stack slot, the value in its low bytes; Apple arm64 packs a fixed one
-\ at its C width and alignment and puts every variadic input in a slot.
+\ A scalar input past its kind's registers takes the next 8-byte stack slot,
+\ the value in its low bytes; Apple arm64 packs a fixed one at its C width and
+\ alignment and puts every variadic input in a slot.
 \
 \ ;FUNCTION builds the declared word with define-word: its
 \ effect from the types read where the declaration stands, its body from
@@ -1019,6 +1018,14 @@ public
 1 constant K-POINTER
 2 constant K-FLOAT
 3 constant K-FLOAT32
+
+\ An input type's C size in bytes.
+: TYPE-SIZE ( ptr u8 n -- n )
+   {: a:ptr u:n :}
+   a u s" u8" STR= a u s" char" STR= or if 1 exit then
+   a u s" u16" STR= if 2 exit then
+   a u s" u32" STR= a u s" f32" STR= or if 4 exit then
+   8 ;
 
 private
 
@@ -1302,25 +1309,20 @@ private
    s" ptr u8, f32, i32, nullable<u8>, r, n, i64, cell, addr, u8, u16, u32 or char"
    TYPE-REJECT ;
 
-: SCALAR-WIDTH ( -- n )
-   s" u8" TOK-IS? s" char" TOK-IS? or if 1 exit then
-   s" u16" TOK-IS? if 2 exit then
-   s" u32" TOK-IS? if 4 exit then
-   8 ;
-
 \ Each type is read where it is written, so a rejected one names its token;
 \ DECLARED-EFFECT reads the recorded text again.
 : IN-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u TYPE-SIZE {: size:n :}
    s" ptr" TOK-IS? if
       a PTR-TAIL EFFECT:READ-TYPE drop
-      K-POINTER 8 ARG+ s" ptr u8" IN-TEXT exit
+      K-POINTER size ARG+ s" ptr u8" IN-TEXT exit
    then
    s" f32" TOK-IS? if
-      s" r" EFFECT:NAMED drop K-FLOAT32 4 ARG+ s" r" IN-TEXT exit
+      s" r" EFFECT:NAMED drop K-FLOAT32 size ARG+ s" r" IN-TEXT exit
    then
    s" r" TOK-IS? SCALAR? or 0= if IN-REJECT then
    a u EFFECT:READ-TYPE drop
-   s" r" TOK-IS? if K-FLOAT 8 ARG+ else K-VALUE SCALAR-WIDTH ARG+ then
+   s" r" TOK-IS? if K-FLOAT else K-VALUE then size ARG+
    a u IN-TEXT ;
 
 : SCALAR-KIND ( -- n )
@@ -1388,16 +1390,6 @@ private
 
 \ ---- which call the declaration rides --------------------------------------
 
-: FLOAT-REGS-FULL ( [ -- ] -- )
-   {: place :}
-   ARITY-OPEN
-   s" the call passes at most " REJECTION:EMIT-STR
-   REG-MAX REJECTION:EMIT-U
-   s"  float inputs, each in a register" REJECTION:EMIT-STR
-   place execute
-   s" call it through a C function that takes the floats in a record"
-   ARITY-END ;
-
 : STAGING-FULL ( [ -- ] -- )
    {: place :}
    ARITY-OPEN
@@ -1408,66 +1400,74 @@ private
    s" pass the large records by address through a C function"
    ARITY-END ;
 
-: FLOAT-ARG? ( n -- bool )
-   ARG-KIND@ {: kind:n :}
+: FLOAT-KIND? ( n -- bool )
+   {: kind:n :}
    kind K-FLOAT = kind K-FLOAT32 = or ;
 
 : ALIGN-UP ( n n -- n )
    {: v:n a:n :}
    v a + 1- a / a * ;
 
-: VARIADIC? ( n -- bool )
-   {: i:n :}
-   VAR-START @ 0 >= i VAR-START @ >= and ;
+\ Whether input i is variadic when the variadic inputs start at start, -1
+\ for none.
+: VARIADIC? ( n n -- bool )
+   {: i:n start:n :}
+   start 0 >= i start >= and ;
 
-\ A macOS variadic input goes on the stack whatever registers are free.
-: VARIADIC-STACK? ( n -- bool ) HB-TARGET-MACOS? swap VARIADIC? and ;
+: INT-REGS ( -- n )
+   HB-TARGET-LINUX-X86-64? if X86-INT-REG-MAX exit then
+   HB-TARGET-LINUX? HB-TARGET-MACOS? or if REG-MAX exit then
+   E-FFI-LIBRARY throw ;
 
-: SLOT-BYTES ( n -- n )
-   {: i:n :}
-   HB-TARGET-MACOS? 0= i VARIADIC? or if 8 exit then
-   i ARG-WIDTH@ ;
+: SLOT-BYTES ( n bool -- n )
+   {: size:n var:bool :}
+   HB-TARGET-MACOS? var 0= and if size exit then
+   8 ;
 
-\ Places input i at the next free stack byte offset, aligned to its slot, and
-\ answers the offset past it.
-: SPILL-ARG ( n n -- n )
-   {: off:n i:n :}
-   i SLOT-BYTES {: bytes:n :}
-   off bytes ALIGN-UP {: at:n :}
-   at 1+ negate ARG-REG i cells + !
-   at bytes + ;
+\ Places an input of bytes at the next stack offset aligned to them, at most
+\ 8, and answers the offset past it and its place.
+: SPILL-ARG ( n n n n -- n n n n )
+   {: int:n flt:n off:n bytes:n :}
+   off bytes 8 min ALIGN-UP {: at:n :}
+   int flt at bytes + at 1+ negate ;
 
-: PLACE-NEXT ( n n n n n -- n n n )
-   {: int:n flt:n off:n max:n i:n :}
-   i VARIADIC-STACK? if int flt off i SPILL-ARG exit then
-   i FLOAT-ARG? if
-      flt REG-MAX < if flt ARG-REG i cells + ! int flt 1+ off exit then
+: PLACE-SCALAR ( n n n n n bool -- n n n n )
+   {: int:n flt:n off:n kind:n size:n var:bool :}
+   size var SLOT-BYTES {: bytes:n :}
+   HB-TARGET-MACOS? var and if int flt off bytes SPILL-ARG exit then
+   kind FLOAT-KIND? if
+      flt REG-MAX < if int flt 1+ off flt exit then
    else
-      int max < if int ARG-REG i cells + ! int 1+ flt off exit then
+      int INT-REGS < if int 1+ flt off int exit then
    then
-   int flt off i SPILL-ARG ;
-
-\ Places the inputs in argument order over max integer registers and
-\ answers the integer registers, float registers and stack cells taken.
-: PLAN-IN-ORDER ( n -- n n n )
-   {: max:n :}
-   0 0 0 ARG-N @ 0 ?do max i PLACE-NEXT loop
-   8 ALIGN-UP 8 / ;
-
-: C-ARGS ( -- n )
-   ARG-N @ STRUCT-BYTES @ 0 > if 1- then ;
+   int flt off bytes SPILL-ARG ;
 
 : RECORD-WORDS ( n -- n ) 1- 8 / 1+ ;
 
-: INT-WORDS ( n -- n ) {: bytes:n :}
-   bytes 0 > bytes 16 <= and if bytes RECORD-WORDS exit then
-   1 ;
+: PLACE-RECORD ( n n n n -- n n n n )
+   {: int:n flt:n off:n bytes:n :}
+   bytes RECORD-WORDS {: words:n :}
+   int words + INT-REGS <= if int words + flt off int exit then
+   INT-REGS flt off words cells SPILL-ARG ;
 
-: PLACE-ARG ( n n n n n -- n n n n ) {: int:n flt:n stack:n kind:n bytes:n :}
-   kind K-FLOAT = kind K-FLOAT32 = or if int flt 1+ stack flt exit then
-   bytes INT-WORDS {: words:n :}
-   int words + REG-MAX <= if int words + flt stack int exit then
-   REG-MAX flt stack words + stack cells 1+ negate ;
+\ The call rule: places one C argument of kind and C size, a record of sbytes
+\ (0 for none), variadic or not, past int integer and flt float registers and
+\ off stack bytes, and answers them past it and its place.
+: PLACE-NEXT ( n n n n n n bool -- n n n n )
+   {: int:n flt:n off:n kind:n size:n sbytes:n var:bool :}
+   sbytes 0 > sbytes 16 <= and if int flt off sbytes PLACE-RECORD exit then
+   int flt off kind size var PLACE-SCALAR ;
+
+\ Places argc inputs in argument order, input i's kind, C size and record
+\ bytes at cell i of kinds, sizes and sbytes, each place into regs. Answers
+\ the integer registers, float registers and stack bytes taken.
+: PLAN-IN-ORDER ( ptr n ptr n ptr n n n ptr n -- n n n )
+   {: kinds:ptr sizes:ptr sbytes:ptr argc:n start:n regs:ptr :}
+   0 0 0 argc 0 ?do
+      kinds i cells + @ sizes i cells + @ sbytes i cells + @
+      i start VARIADIC? PLACE-NEXT
+      regs i cells + !
+   loop ;
 
 : PLACE-COPY ( n n -- n n ) {: pos:n bytes:n :}
    bytes 16 <= if pos 0 exit then
@@ -1477,64 +1477,61 @@ private
    STACK-CELLS pay - 8 * bytes < if STACK-CELLS 1+ pay exit then
    pay bytes RECORD-WORDS + pay ;
 
-\ The plan of n C arguments, each with its kind in kinds and its record width,
-\ 0 for none, in sbytes: each one's place goes to regs and its copy's to pays.
-\ Answers the integer registers, float registers and stack cells it takes.
-: PLAN-RECORDS ( ptr n ptr n n ptr n ptr n -- n n n )
-   {: kinds:ptr sbytes:ptr argc:n regs:ptr pays:ptr :}
-   0 0 0 argc 0 ?do
-      kinds i cells + @ sbytes i cells + @ PLACE-ARG
-      regs i cells + !
-   loop
-   argc 0 ?do
+\ Places each larger record's copy from stack cell pos into pays, and answers
+\ the cells past the last.
+: PLAN-COPIES ( ptr n n n ptr n -- n )
+   {: sbytes:ptr argc:n pos:n pays:ptr :}
+   pos argc 0 ?do
       sbytes i cells + @ PLACE-COPY
       pays i cells + !
    loop ;
 
-: PLAN-FITS? ( n n -- bool ) {: flt:n stk:n :}
-   flt REG-MAX <= stk STACK-CELLS <= and ;
+\ The plan of argc C arguments, variadic from start (-1 for none), into regs
+\ and pays. Answers the integer and float registers and the stack cells taken.
+: PLAN-INPUTS ( ptr n ptr n ptr n n n ptr n ptr n -- n n n )
+   {: kinds:ptr sizes:ptr sbytes:ptr argc:n start:n regs:ptr pays:ptr :}
+   kinds sizes sbytes argc start regs PLAN-IN-ORDER {: int:n flt:n off:n :}
+   int flt  sbytes argc off 8 ALIGN-UP 8 / pays PLAN-COPIES ;
 
-: PLAN-ROOM ( n n [ -- ] -- )
-   {: flt:n stk:n place :}
-   flt stk PLAN-FITS? if exit then
-   flt REG-MAX > if place FLOAT-REGS-FULL then
+: PLAN-ROOM ( n [ -- ] -- )
+   {: stk:n place :}
+   stk STACK-CELLS <= if exit then
    place STAGING-FULL ;
 
 public
 
-\ Plans n C arguments (kinds, record widths) into regs and pays, n cells each,
-\ and rejects a plan past the struct call, PLACE placing the record.
-: STRUCT-ROOM ( ptr n ptr n n ptr n ptr n [ -- ] -- )
-   {: place :}
-   PLAN-RECORDS {: flt:n stk:n :}
-   drop flt stk place PLAN-ROOM ;
+\ Plans n C arguments (kinds, C sizes, record widths) into regs and pays, n
+\ cells each, and rejects a plan past the struct call, PLACE placing the record.
+: STRUCT-ROOM ( ptr n ptr n ptr n n ptr n ptr n [ -- ] -- )
+   {: kinds:ptr sizes:ptr sbytes:ptr argc:n regs:ptr pays:ptr place :}
+   kinds sizes sbytes argc -1 regs pays PLAN-INPUTS nip nip
+   place PLAN-ROOM ;
 
 private
 
-: PLAN-STRUCT ( -- n n )
-   ARG-KIND ARG-SBYTES C-ARGS ARG-REG ARG-PAY PLAN-RECORDS
-   {: int:n flt:n stk:n :}
-   flt stk [: CHECK:DEFINER-PLACE ;] PLAN-ROOM
-   int stk ;
+: C-ARGS ( -- n )
+   ARG-N @ STRUCT-BYTES @ 0 > if 1- then ;
 
 : RECORDS? ( -- bool )
    false ARG-N @ 0 ?do i ARG-SBYTES@ 0 > or loop ;
 
-: PLAN-TARGET ( -- n n n )
-   HB-TARGET-LINUX-X86-64? if X86-INT-REG-MAX PLAN-IN-ORDER exit then
-   HB-TARGET-LINUX? HB-TARGET-MACOS? or if REG-MAX PLAN-IN-ORDER exit then
-   E-FFI-LIBRARY throw ;
+: CALL-KIND ( n n -- n )
+   {: flt:n stk:n :}
+   RES-KIND @ R-FLOAT = RES-KIND @ R-FLOAT32 = or if C-ABI-R exit then
+   stk 0 > flt 0 > or if C-ABI exit then
+   RES-KIND @ R-POINTER = if C-POINTER exit then
+   C-INT ;
 
 \ Answers the integer registers and stack cells the call takes, which its row
 \ keeps, and the call it rides.
 : PLAN-CALL ( -- n n n )
-   STRUCT-BYTES @ 0 > RECORDS? or if PLAN-STRUCT C-STRUCT exit then
-   PLAN-TARGET {: int:n flt:n stk:n :}
-   RES-KIND @ R-FLOAT = RES-KIND @ R-FLOAT32 = or {: fres:bool :}
-   fres if int stk C-ABI-R exit then
-   stk 0 > flt 0 > or if int stk C-ABI exit then
-   RES-KIND @ R-POINTER = if int stk C-POINTER exit then
-   int stk C-INT ;
+   ARG-KIND ARG-WIDTH ARG-SBYTES C-ARGS VAR-START @ ARG-REG ARG-PAY
+   PLAN-INPUTS {: int:n flt:n stk:n :}
+   STRUCT-BYTES @ 0 > RECORDS? or if
+      stk [: CHECK:DEFINER-PLACE ;] PLAN-ROOM
+      int stk C-STRUCT exit
+   then
+   int stk  flt stk CALL-KIND ;
 
 \ ---- the built definition -------------------------------------------------
 
@@ -1572,7 +1569,7 @@ private
 \ whole.
 : STAGE-INT-SPILL ( n -- )
    {: i:n :}
-   i VARIADIC? if postpone STACK-VALUE! exit then
+   i VAR-START @ VARIADIC? if postpone STACK-VALUE! exit then
    i ARG-WIDTH@ {: width:n :}
    width 1 = if postpone STACK-U8! exit then
    width 2 = if postpone STACK-U16! exit then

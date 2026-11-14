@@ -27,6 +27,12 @@ FUNCTION: FFI-T-BIGSTACK hb_bigstack ( n n n n n n n n ptr u8 n -- n )
    8 32 STRUCT-ARG
 ;FUNCTION
 FUNCTION: FFI-T-FMIX hb_fmix ( r ptr u8 f32 -- n ) 1 16 STRUCT-ARG ;FUNCTION
+FUNCTION: FFI-T-FSTACK hb_fstack ( r r r r r r r r r f32 ptr u8 -- n )
+   10 16 STRUCT-ARG
+;FUNCTION
+FUNCTION: FFI-T-NSTACK hb_nstack ( n n n n n n n n u8 u16 u32 ptr u8 -- n )
+   11 8 STRUCT-ARG
+;FUNCTION
 FUNCTION: FFI-T-MUTATE hb_mutate ( ptr u8 -- n ) 0 32 STRUCT-ARG ;FUNCTION
 FUNCTION: FFI-T-HOLD hb_hold ( ptr u8 n -- n ) 0 32 STRUCT-ARG ;FUNCTION
 FUNCTION: FFI-T-KEEP24 hb_keep24 ( ptr u8 -- ) 0 24 STRUCT-ARG ;FUNCTION
@@ -104,7 +110,18 @@ CALLBACK: FFI-T-SA-CB ( -- n ) 0 FALLBACK ;CALLBACK
    s" a 16-byte struct one register short spills whole with the next long" T-LABEL
    11 -12 FFI-T-S16 FFI-T-S16!
    1 2 3 4 5 6 7 FFI-T-S16 13 FFI-T-SPILL16
-   7 FFI-T-FOLD 0 FFI-T-MIX 11 -12 FFI-T-H2 FFI-T-MIX 13 FFI-T-MIX T= ;
+   7 FFI-T-FOLD 0 FFI-T-MIX 11 -12 FFI-T-H2 FFI-T-MIX 13 FFI-T-MIX T=
+
+   s" floats past d7 go on the stack beside a record in two registers" T-LABEL
+   5 6 FFI-T-S16 FFI-T-S16!
+   0.25 0.5 0.75 1.0 1.25 1.5 1.75 2.0 2.25 2.5 FFI-T-S16 FFI-T-FSTACK
+   9 FFI-T-FOLD 10 FFI-T-MIX 5 6 FFI-T-H2 FFI-T-MIX T=
+
+   s" narrow integers and a record past x7 go on the stack" T-LABEL
+   -3 FFI-T-S8 LE:U32!  9 FFI-T-S8 4 + LE:U32!
+   1 2 3 4 5 6 7 8 $9A $8123 $80000005 FFI-T-S8 FFI-T-NSTACK
+   8 FFI-T-FOLD $9A FFI-T-MIX $8123 FFI-T-MIX $80000005 FFI-T-MIX
+   -3 9 FFI-T-H2 FFI-T-MIX T= ;
 
 : FFI-T-COPY-ARGS ( -- )
    s" larger struct arguments pass private copies" T-LABEL
@@ -188,11 +205,6 @@ CALLBACK: FFI-T-SA-CB ( -- n ) 0 FALLBACK ;CALLBACK
    s" = help: pass the large records by address through a C function"
    FFI-T-SA-ARITY ;
 
-: FFI-T-SA-FLOATS ( [ -- ] -- )
-   s" error[E-FFI-ARITY]: the call passes at most 8 float inputs, each in a register"
-   s" = help: call it through a C function that takes the floats in a record"
-   FFI-T-SA-ARITY ;
-
 : FFI-T-SA-REFUSALS ( -- )
    s" malformed struct-argument declarations are refused" T-LABEL
    [: s" 0 8 STRUCT-ARG" evaluate-closed ;]
@@ -249,8 +261,6 @@ CALLBACK: FFI-T-SA-CB ( -- n ) 0 FALLBACK ;CALLBACK
       evaluate-closed ;] FFI-T-SA-STAGING
    s" FUNCTION: FFI-T-SA-CAP2 hb_none ( n n n n n n n n ptr u8 -- n ) 8 112 STRUCT-ARG ;FUNCTION"
    evaluate-closed
-   [: s" FUNCTION: FFI-T-SA-CAP3 hb_none ( r r r r r r r r r ptr u8 -- n ) 9 8 STRUCT-ARG ;FUNCTION"
-      evaluate-closed ;] FFI-T-SA-FLOATS
    [: s" FUNCTION: FFI-T-SA-CAP6 hb_none ( ptr u8 -- n ) 0 $7FFFFFFFFFFFFFFF STRUCT-ARG ;FUNCTION"
       evaluate-closed ;] FFI-T-SA-STAGING
    [: FFI-T-SA-WRAP$ evaluate-closed ;] FFI-T-SA-STAGING

@@ -115,11 +115,6 @@ variable FFI-SV-SRC-U
    S\" \"help\":\"pass the large records by address through a C function\""
    FFI-SV-RECORD ;
 
-: FFI-SV-FLOATS ( -- )
-   S\" \"code\":\"E-FFI-ARITY\",\"message\":\"the call passes at most 8 float inputs, each in a register\""
-   S\" \"help\":\"call it through a C function that takes the floats in a record\""
-   FFI-SV-RECORD ;
-
 
 \ Sixteen record inputs whose payloads sum, modulo 2^64, to almost nothing.
 : FFI-SV-WRAP$ ( -- ptr u8 n )
@@ -145,7 +140,15 @@ variable FFI-SV-SRC-U
    s" ( n n n n n n n n ptr u8 -- n ) 8 112 STRUCT-ARG" FFI-SV-PASS
    \ An operand the check cannot establish leaves the clause to the load.
    s" ( ptr u8 -- ) FFI-SV-W STRUCT-RESULT" FFI-SV-PASS
-   s" ( ptr u8 -- n ) 0 FFI-SV-W STRUCT-ARG" FFI-SV-PASS ;
+   s" ( ptr u8 -- n ) 0 FFI-SV-W STRUCT-ARG" FFI-SV-PASS
+   s" ( r r r r r r r r r f32 ptr u8 -- n ) 10 16 STRUCT-ARG" FFI-SV-PASS
+   \ macOS packs the seven u8s in one stack cell, leaving room for the copy.
+   HB-TARGET-MACOS? if
+      s" ( n n n n n n n n u8 u8 u8 u8 u8 u8 u8 ptr u8 -- n ) 15 72 STRUCT-ARG" FFI-SV-PASS
+   else
+      s" ( n n n n n n n n u8 u8 u8 u8 u8 u8 u8 ptr u8 -- n ) 15 72 STRUCT-ARG"
+      FFI-SV-ARITY FFI-SV-STAGED
+   then ;
 
 
 : FFI-SV-STRUCT-ARG ( -- )
@@ -167,7 +170,6 @@ variable FFI-SV-SRC-U
    s" ( ptr u8 -- ) 16 STRUCT-RESULT 0 16 STRUCT-ARG" FFI-SV-SYNTAX
    s" ( ptr u8 -- n ) 0 129 STRUCT-ARG" FFI-SV-ARITY FFI-SV-STAGED
    s" ( n n n n n n n n ptr u8 -- n ) 8 113 STRUCT-ARG" FFI-SV-ARITY FFI-SV-STAGED
-   s" ( r r r r r r r r r ptr u8 -- n ) 9 16 STRUCT-ARG" FFI-SV-ARITY FFI-SV-FLOATS
    s" sixteen record payloads that wrap 2^64 are refused" T-LABEL
    FFI-SV-WRAP$ S\" \"throw_code\":-3500" FFI-SV-REFUSED FFI-SV-STAGED ;
 
