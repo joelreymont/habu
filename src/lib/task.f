@@ -64,7 +64,6 @@ s" src/lib/memory.f" required
 s" src/lib/ffi-abi.f" required
 require src/lib/le.f
 s" src/lib/adt/result.f" required
-require src/core/quotation-storage.f
 require src/core/rollback-cells.f
 require src/habu/data-floor.f
 require src/habu/task-abi.f

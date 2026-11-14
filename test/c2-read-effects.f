@@ -6,7 +6,6 @@
 require src/lib/test.f
 require src/lib/adt/option.f
 require src/lib/test/subject.f
-require src/core/quotation-storage.f
 
 package C2-READ-EFFECTS
 private
@@ -31,9 +30,7 @@ private
 STRUCTURE box<a> FIELD value a ;STRUCTURE
 : RECORD ( box<read-view<p,q,u8>> -- box<read-view<p,q,u8>> ) ;
 
-TYPED-VARIABLE N-SLOT n
 TYPED-VARIABLE N-CALLBACK [ n -- n ]
-: STORE-N ( n ptr n -- ) QUOTATION-STORAGE:STORE ;
 : INSTALL-N ( [ n -- n ] -- ) N-CALLBACK ! ;
 : APPLY-N ( read-view<p,q,u8> -- read-view<p,q,u8> )
    41 N-CALLBACK @ execute drop ;
@@ -43,7 +40,6 @@ TYPED-VARIABLE N-CALLBACK [ n -- n ]
 public
 
 : CHECK-STORAGE ( -- )
-   41 N-SLOT STORE-N N-SLOT @ 41 T=
    [: 1+ ;] INSTALL-N 41 N-CALLBACK @ execute 42 T= ;
 
 : CHECK-REFUSALS ( -- )

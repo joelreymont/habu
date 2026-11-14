@@ -95,7 +95,6 @@ private
    DYNAMIC COMMON s" src/core/dynamic-storage.f" ROW
    CORE COMMON s" src/core/compile-reads.f" ROW
    CORE COMMON s" src/os/env-base.f" ROW
-   CORE COMMON s" src/core/quotation-storage.f" ROW
    CORE COMMON s" src/core/include.f" ROW
    CORE COMMON s" src/core/enums.f" ROW
    CORE COMMON s" src/core/sha256.f" ROW
