@@ -453,12 +453,6 @@ is `src/os/AGENTS.md`.
 
 ### Source Selection
 
-The target is wired in exactly these source-list owners:
-
-- `src/habu/habu2.f` for the `--load` prefix;
-- `tools/hb-build-core.f` for baked REPL sources;
-- `tools/lint/shadow-lint.f` for lint coverage.
-
 No caller passes a target prelude for normal tests: `bin/hb --load` selects the
 host prefix from the running binary. Selection fails closed: no branch means
 "Linux, otherwise macOS"; every selector handles each supported target
