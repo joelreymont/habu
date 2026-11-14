@@ -35,7 +35,7 @@ public
 : IDLE-CK ( -- ) REFUSE-ACTIVE ;
 
 : ACTION@ ( -- RTARGET:build-action )
-   ACTIVE @ 0= if RTARGET:E-UNSET throw then
+   ACTIVE @ 0= if s" build-target: ACTION@ with no build action open" 76 die then
    ACTION @ ;
 
 : HOST! ( -- )
