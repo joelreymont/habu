@@ -283,28 +283,6 @@ CAST: >BYTES ( n -- ptr u8 )
    S\" ' in EFFECT:FAMILY\n" ERROR-TEXT:TYPE
    CHECK-RC throw ;
 
-: EMPTY-EFFECT ( -- n )
-   0 0 SCHEMA-ROW {: row:n :}
-   row row row row 0 SCHEMA-QUOT ;
-
-\ Row with node after its elements.
-: SIDE+ ( n n -- n ) {: row:n node:n :}
-   row SCHEMA-ROW-COUNT@ {: k:n :}
-   SCHEMA-ROOT-N@ {: start:n :}
-   k 0 ?do row i SCHEMA-ROW-ELEM@ SCHEMA-ROOT+ drop loop
-   node SCHEMA-ROOT+ drop
-   start k 1 + SCHEMA-ROW ;
-
-: EFFECT-IN ( n n -- n ) {: eff:n node:n :}
-   eff SCHEMA-QUOT-DIN@ node SIDE+  eff SCHEMA-QUOT-DOUT@
-   eff SCHEMA-QUOT-RIN@  eff SCHEMA-QUOT-ROUT@
-   eff SCHEMA-QUOT-HASR@ SCHEMA-QUOT ;
-
-: EFFECT-OUT ( n n -- n ) {: eff:n node:n :}
-   eff SCHEMA-QUOT-DIN@  eff SCHEMA-QUOT-DOUT@ node SIDE+
-   eff SCHEMA-QUOT-RIN@  eff SCHEMA-QUOT-ROUT@
-   eff SCHEMA-QUOT-HASR@ SCHEMA-QUOT ;
-
 : TYPE-NODE ( n n n -- n ) {: code:n a:n b:n :}
    code TYPE-OP-ABI:INT = if CC-N SCHEMA-CON exit then
    code TYPE-OP-ABI:NAMED = if a FAMILY-NODE exit then

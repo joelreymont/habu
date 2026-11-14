@@ -317,6 +317,35 @@ public
 : SCHEMA-QUOT-RIN@ ( n -- n ) 2 SCHEMA-QUOT-ROW@ ;
 : SCHEMA-QUOT-ROUT@ ( n -- n ) 3 SCHEMA-QUOT-ROW@ ;
 
+\ The effect with no inputs and no outputs.
+: EMPTY-EFFECT ( -- n )
+   0 0 SCHEMA-ROW {: row:n :}
+   row row row row 0 SCHEMA-QUOT ;
+
+\ Row with node after its elements.
+private
+
+: SIDE+ ( n n -- n ) {: row:n node:n :}
+   row SCHEMA-ROW-COUNT@ {: k:n :}
+   SCHEMA-ROOT-N@ {: start:n :}
+   k 0 ?do row i SCHEMA-ROW-ELEM@ SCHEMA-ROOT+ drop loop
+   node SCHEMA-ROOT+ drop
+   start k 1 + SCHEMA-ROW ;
+
+public
+
+\ Effect EFF with NODE as its new top input.
+: EFFECT-IN ( n n -- n ) {: eff:n node:n :}
+   eff SCHEMA-QUOT-DIN@ node SIDE+  eff SCHEMA-QUOT-DOUT@
+   eff SCHEMA-QUOT-RIN@  eff SCHEMA-QUOT-ROUT@
+   eff SCHEMA-QUOT-HASR@ SCHEMA-QUOT ;
+
+\ Effect EFF with NODE as its new top output.
+: EFFECT-OUT ( n n -- n ) {: eff:n node:n :}
+   eff SCHEMA-QUOT-DIN@  eff SCHEMA-QUOT-DOUT@ node SIDE+
+   eff SCHEMA-QUOT-RIN@  eff SCHEMA-QUOT-ROUT@
+   eff SCHEMA-QUOT-HASR@ SCHEMA-QUOT ;
+
 \ --- SCH-PTR: a `ptr T` variant payload element. A malformed child (nil or out
 \ of range) throws E-SCHEMA-BAD.
 : SCHEMA-PTR ( n -- n )
