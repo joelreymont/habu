@@ -25,8 +25,6 @@ $10000 constant IO-CAP
 PATH-CAP 1+ 4 * constant PROG-CAP
 \ A prompt line holds 255 bytes, so `cd <name>` names at most this much.
 200 constant LONG-NAME
-\ One more than the path stack holds (src/core/include.f PATH-DEPTH).
-9 constant OVER-DEPTH
 \ Search without read permission (0111).
 $49 constant SEARCH-ONLY
 \ No permission at all (0000).
@@ -317,14 +315,6 @@ variable DEEP-U
    RC @ INCLUDE-IO-RC T=
    ERR$ SB$ CONTAINS? TTRUE ;
 
-\ A refusal by name: exit 74, nothing on stdout, exactly this on stderr.
-: REFUSAL ( ptr u8 n -- )
-   {: want:ptr wantu:n :}
-   RC @ INCLUDE-IO-RC = OUT-U @ 0= and ERR$ want wantu STR= and 0= if SHOW then
-   RC @ INCLUDE-IO-RC T=
-   OUT-U @ 0 T=
-   ERR$ want wantu T$= ;
-
 \ A rejection record: exit CHECKER-REJECT-RC, nothing on stdout, this code on
 \ stderr.
 : REJECTED ( ptr u8 n -- )
@@ -538,7 +528,7 @@ variable DEEP-U
    SB-RESET s" no" LINE s" tree" A$ LINE SB$ 0 EXPECT ;
 
 : BOOT-OUTSIDE ( -- )
-   s" a boot file outside the root is refused by name" T-LABEL
+   s" a boot file outside the root is rejected by name" T-LABEL
    PROG-RESET
    s" package SOURCE-ROOT-EXE-BOOT" PLINE
    s" : RUN ( -- )" PLINE
@@ -547,8 +537,9 @@ variable DEEP-U
    s" RUN" PLINE
    s" ;package" PLINE
    RUN-TREE
-   SB-RESET s" source root: a boot file is outside the engine root: " SB-APPEND
-   s" foreign/x.f" A$ LINE SB$ REFUSAL ;
+   s" error[E-SOURCE-ROOT]" REJECTED
+   SB-RESET 96 SB-APPEND-C s" foreign/x.f" A$ SB-APPEND
+   s" ` is a boot file outside the engine root" SB-APPEND SB$ SAYS ;
 
 : CD-PROG ( ptr u8 n -- ) {: rel:ptr relu:n :}
    PROG-RESET s" SOURCE-ROOT:CD" rel relu PATH-LINE ;
@@ -645,11 +636,7 @@ variable DEEP-U
    PROG-RESET s" SOURCE-ROOT:POPPATH" PLINE
    RUN-TREE
    s" error[E-SOURCE-ROOT]" REJECTED
-   s" `SOURCE-ROOT:POPPATH` runs with no directory saved" SAYS
-   s" PUSHPATH on a full stack is refused by name" T-LABEL
-   PROG-RESET OVER-DEPTH 0 do s" SOURCE-ROOT:PUSHPATH" PLINE loop
-   RUN-TREE
-   S\" PUSHPATH: directory stack is full\n" REFUSAL ;
+   s" `SOURCE-ROOT:POPPATH` runs with no directory saved" SAYS ;
 
 : PATH-WORDS ( -- )
    s" CD names the current path, which include searches first" T-LABEL

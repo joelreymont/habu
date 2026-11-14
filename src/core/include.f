@@ -1294,11 +1294,21 @@ public
    OWNER-SAVE OWNER-BUF owner BYTE-COPY
    owner OWNER-U ! ;
 
+: BOOT-REJECT ( ptr u8 n -- ) {: root:ptr rootu:n :}
+   s" E-SOURCE-ROOT" REJECTION:OPEN
+   96 REJECTION:EMIT1  REQUEST$ REJECTION:EMIT-STR
+   s" ` is a boot file outside the engine root" REJECTION:EMIT-STR
+   s" root" REJECTION:NOTE  root rootu REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" require it after `REQUIRE-BOOT-FREEZE`, or move it under `" REJECTION:EMIT-STR
+   root rootu REJECTION:EMIT-STR  96 REJECTION:EMIT1
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
 \ The row a boot file is recorded as: the spelling BOOT-CANDIDATE asks for. That
 \ is its path below the engine root, or, for a file a directory symlink inside
 \ the root carries from outside it, the request spelled under the root when that
 \ resolves to this very file.
-\ Any other file is refused by name: its row could only be its canonical path,
+\ Any other file is rejected by name: its row could only be its canonical path,
 \ and an engine carrying one takes that file for a stranger under every other
 \ root.
 : BOOT-ROW ( ptr u8 n -- ptr u8 n ptr u8 n ) {: a:ptr u:n :}
@@ -1310,7 +1320,7 @@ public
    root rootu REQUEST$ UNDER root rootu BELOW? if
       NORMAL-BUF NORMAL-U @ CANONICAL drop CANDIDATE$ CORE-STR=
    else INCLUDE-FALSE then
-   0= if s" source root: a boot file lies outside the engine root" 76 die then
+   0= if root rootu BOOT-REJECT then
    CANDIDATE$ root rootu REQUEST$ UNDER root rootu RELATIVE ;
 
 ;package
