@@ -3988,16 +3988,26 @@ variable NMOFF                           \ its token's offset in the checked tex
    r TAG T-CON <> IF RES-FALSE EXIT THEN
    r PAY CT-LINEAR? ;
 
+\ The reasons LAYOUT-MEM-WHY answers, numbered with the MD- block below.
+33 constant MD-SCOPE-STORE    \ a scope dependency reached an ordinary pointer/location
+82 constant MD-LINEAR-MEMORY \ a value that may be linear reached `@` or `!`
+83 constant MD-MEMORY-ARG    \ a family argument may be linear or exclusive; E-LINEAR-MEMORY
+84 constant MD-MEMORY-EMPTY  \ a value of width 0 reached `@` or `!`
+
 \ W=1 uses scalar lowering; W>1 lowers from the token's WF fact. W=0 products
-\ have no addressable representation and reject.
-: LAYOUT-MEM-OK? ( n -- bool ) {: t:n :}        \ resolved logical layout T-PARAM
-   t SCOPED-TYPE? IF RES-FALSE EXIT THEN
-   t LAYOUT-MAYBE-LINEAR? IF RES-FALSE EXIT THEN
+\ have no addressable representation and reject. Answers 0 for a value typed
+\ memory holds.
+: LAYOUT-MEM-WHY ( n -- n ) {: t:n :}        \ resolved logical layout T-PARAM
+   t SCOPED-TYPE? IF MD-SCOPE-STORE EXIT THEN
+   t LAYOUT-MAYBE-LINEAR? IF MD-LINEAR-MEMORY EXIT THEN
    0 BEGIN dup t PARAM>ARGC < WHILE
-      t over PARAM>ARG LAYOUT-MEM-ARG-BLOCK? IF drop RES-FALSE EXIT THEN
+      t over PARAM>ARG LAYOUT-MEM-ARG-BLOCK? IF drop MD-MEMORY-ARG EXIT THEN
       1 +
    REPEAT drop
-   t T-WIDTH 0 > ;
+   t T-WIDTH 0 > IF 0 ELSE MD-MEMORY-EMPTY THEN ;
+
+: LAYOUT-MEM-OK? ( n -- bool )
+   LAYOUT-MEM-WHY 0 = ;
 
 : LAYOUT-XPORT-ALLOW? ( n n -- bool ) {: a:n b:n :}
    LAYOUT-XPORT @ 0= IF RES-FALSE EXIT THEN
@@ -4988,14 +4998,6 @@ CHECKER-REG:}SCRATCH
    T-RES dup TAG T-CON <> IF drop RES-FALSE EXIT THEN
    PAY CT-LINEAR? ;
 
-: LIN-TAINT-SCAN ( -- )
-   LIN-ANY? 0= IF exit THEN
-   OK @ 0= IF exit THEN
-   0 BEGIN dup LTNT-N @ < WHILE
-      dup cells LTNT + @ MK-VAR LIN-CON? IF 0 OK ! THEN
-      1 +
-   REPEAT drop ;
-
 \ FIELD-INNER requires a RESOLVED param term: `t` here is usually a bound var
 \ whose payload is a VAR id, so the inner descent must go through `t T-RES`.
 CHECKER-REG:SCRATCH{
@@ -5042,9 +5044,6 @@ CHECKER-REG:}SCRATCH
 : LIN-EXPLICIT? ( n n -- bool )
    LIN-TOTAL 0 <> ;
 
-: LIN-CHECK ( n -- )
-   DCUR @ RCUR @ LIN-TOTAL <> IF 0 OK ! THEN ;
-
 \ A failure site latches a reason code beside the token pin. The first reason
 \ wins, only while the pin is open, so it describes the pinned token.
 1 constant MD-FAM-UNKNOWN     \ match family token resolves nothing in signature scope
@@ -5079,7 +5078,6 @@ CHECKER-REG:}SCRATCH
 30 constant MD-DBASE-PTR      \ the same through data-base, at any pointee depth; same E-RAW-CELL-PTR code, prose names the DATA region
 31 constant MD-RAW-EXEC       \ an execution token met an undeclared cell or a base address (FENCE-EXEC); same E-RAW-CELL-PTR code, its own prose and repair class
 32 constant MD-STALE-READ     \ a token read a cell `catch` left stale (U-TYPE met a T-STALE)
-33 constant MD-SCOPE-STORE    \ a scope dependency reached an ordinary pointer/location
 34 constant MD-SCOPE-KIND     \ a scope identity was used as a value type
 35 constant MD-C2-COPY       \ a C2 exclusive value was copied by a transport
 36 constant MD-C2-DROP       \ a C2 exclusive value was discarded by a transport
@@ -5103,6 +5101,10 @@ CHECKER-REG:}SCRATCH
 75 constant MD-QDUP-LAYOUT   \ `?dup` met a layout value (QDUP-STEP)
 76 constant MD-RECORD-AT-WIDE \ `record-at` met an instantiation wider than its family's declared width (RECORD-AT-STEP)
 77 constant MD-CONSTRUCT-WIDE \ a construct's instantiated variant is wider than the declared widest one
+78 constant MD-LINEAR-DROP   \ a step left fewer linear values than it found (LIN-REJECT)
+79 constant MD-LINEAR-COPY   \ a step left more linear values than it found (LIN-REJECT)
+80 constant MD-LINEAR-TAINT  \ a var copied or dropped while open resolved linear (LIN-TAINT-SCAN); E-LINEAR-COPY
+81 constant MD-LINEAR-EFFECT \ an applied effect's var bound linear occurs unequally in and out (LIN-EFF-PASS)
 \ A data depth change is E-MISMATCH and prints the loop's start row and the
 \ row at its back edge or leave; the others are E-REJECTED.
 48 constant MD-LOOP-DEPTH    \ a loop's back edge or leave holds another data depth than its start (CF-CARRIED=)
@@ -5168,6 +5170,28 @@ CHECKER-REG:}SCRATCH
    MDIAG @ 0 <> IF EXIT THEN
    FAILSET @ 0 <> IF EXIT THEN
    code MDIAG ! ;
+
+: LIN-TAINT-SCAN ( -- )
+   LIN-ANY? 0= IF exit THEN
+   OK @ 0= IF exit THEN
+   0 BEGIN dup LTNT-N @ < WHILE
+      dup cells LTNT + @ MK-VAR LIN-CON? IF
+         MD-LINEAR-TAINT MDIAG!  0 OK !
+      THEN
+      1 +
+   REPEAT drop ;
+
+\ The linear values a step made (above 0) or lost (below 0) since snapshot bef.
+: LIN-DELTA ( n -- n ) {: bef:n :}
+   DCUR @ RCUR @ LIN-TOTAL bef - ;
+
+: LIN-REJECT ( n -- ) {: delta:n :}
+   delta 0 = IF EXIT THEN
+   delta 0 > IF MD-LINEAR-COPY ELSE MD-LINEAR-DROP THEN MDIAG!
+   0 OK ! ;
+
+: LIN-CHECK ( n -- )
+   LIN-DELTA LIN-REJECT ;
 
 \ A C2 refusal names one logical value, even when its machine row contains
 \ hidden fields. Catch's stale wrapper remains visible around that value.
@@ -11181,7 +11205,7 @@ variable SIG-COUNTED
       r UNBOUND <> IF
          r T-RES {: rr:n :}
          rr LIN-CON? IF
-            h k LIN-VAR-MULT <> IF 0 OK ! THEN
+            h k LIN-VAR-MULT <> IF MD-LINEAR-EFFECT MDIAG!  0 OK ! THEN
          ELSE
             rr TAG T-VAR = IF
                h k LIN-VAR-MULT <> IF rr PAY LIN-TAINT THEN
@@ -16616,9 +16640,13 @@ CHECKER-REG:}SCRATCH
    t RES-TRUE ;
 
 
+\ Typed memory refuses t: latch why, then fail.
+: LAYOUT-MEM-REJECT ( n -- )
+   LAYOUT-MEM-WHY MDIAG!  0 OK !  -1 FAILSET ! ;
+
 : LAYOUT-FETCH-STEP ( n -- )   \ ( ptr fam -- fam ) from the pointee term
    {: t:n :}
-   t LAYOUT-MEM-OK? 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
+   t LAYOUT-MEM-OK? 0= IF t LAYOUT-MEM-REJECT EXIT THEN
    t LAYOUT-PARAM? IF t WF-MEM-RECORD THEN
    FRESH MK-ROW {: rest:n :}
    t MK-PTR rest MK-PUSH
@@ -16627,7 +16655,7 @@ CHECKER-REG:}SCRATCH
 
 : LAYOUT-STORE-STEP ( n -- )   \ ( fam ptr fam -- ) from the pointee term
    {: t:n :}
-   t LAYOUT-MEM-OK? 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
+   t LAYOUT-MEM-OK? 0= IF t LAYOUT-MEM-REJECT EXIT THEN
    t LAYOUT-PARAM? IF t WF-MEM-RECORD THEN
    FRESH MK-ROW {: rest:n :}
    t rest PUSH-LOGICAL
@@ -17589,7 +17617,7 @@ variable XG-N   variable XG-TN   variable XG-ROW
    THEN ;
 
 \ The transport already chose its operand groups and replay sequence. Name the
-\ first exclusive C2 group whose multiplicity caused LIN-CHECK to refuse.
+\ first exclusive C2 group whose multiplicity changed the linear count.
 : C2-XPORT-TERM? ( n -- bool )
    dup SCOPED-TYPE? swap LIN-TYPE-COUNT 0 > and ;
 
@@ -17659,8 +17687,9 @@ variable XG-N   variable XG-TN   variable XG-ROW
       a u XP-DATA-SEQ$ XG-TAINT-SEQ
    THEN
    OK @ IF
-      bef LIN-CHECK
-      OK @ 0= IF a u C2-XPORT-REJECT THEN
+      bef LIN-DELTA
+      dup 0 <> IF 0 OK !  a u C2-XPORT-REJECT THEN
+      LIN-REJECT
    THEN ;
 
 \ any hidden cell within the top-k CELLS implies a hidden-group operand within
