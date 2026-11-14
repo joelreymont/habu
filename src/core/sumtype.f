@@ -205,7 +205,8 @@ private
 
 \ A token in a collected body is a copy no source holds. Where the source of
 \ the body's first token is held, it maps back: k blanks precede it in the
-\ copy, so it lies k source tokens past the first, at the same offset.
+\ copy, so it lies k source tokens past the first, at the same offset, where
+\ one held source holds the bytes from the first token to its end.
 : TDECL-COPY? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a TDECL-BUF - {: at:n :}
    at 0 >=  at TDECL-U @ < and  at u + TDECL-U @ <= and ;
@@ -223,8 +224,11 @@ private
    TDECL-FIRST @  k 0 ?do TDECL-SKIP loop  off +  u ;
 : TDECL-PLACED-TOK ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    a u TDECL-COPY? 0= IF a u EXIT THEN
-   TDECL-FIRST @ REJECTION:HELD? 0= IF a u EXIT THEN
-   a u TDECL-SOURCE-TOK ;
+   TDECL-FIRST @ {: f:ptr :}
+   f 1 REJECTION:HELD? 0= IF a u EXIT THEN
+   a u TDECL-SOURCE-TOK {: t:ptr tu:n :}
+   f  t tu + f -  REJECTION:HELD? 0= IF a u EXIT THEN
+   t tu ;
 
 \ A DEFFAMILY packet points at the name whatever the refusal, as the source
 \ token TDS: the folded DEFTYPE header the body checks has no place.

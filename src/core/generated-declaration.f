@@ -79,7 +79,7 @@ create SLOT-SRC-U  SLOTS cells allot  \ and its length
 : TOKEN-SPAN@ ( -- ptr u8 n )
    S-TOKEN SRC@
    {: a:ptr u:n :}
-   a REJECTION:HELD? IF a u EXIT THEN
+   a u REJECTION:HELD? IF a u EXIT THEN
    S-TOKEN SLOT@ ;
 
 \ A reason row is the explaining file's data, laid by EXPLAIN where it runs:

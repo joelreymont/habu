@@ -366,13 +366,20 @@ PTR-VARIABLE LINE-A  variable LINE-U  variable LEAD-U
 : HOLDS? ( ptr u8 n ptr u8 n -- bool ) {: b:ptr bu:n t:ptr tu:n :}
    t b - {: at:n :}
    at 0 >=  at tu + bu <= and ;
+\ Whether the armed source holds the n bytes at p: its map's text, outside a
+\ run with no source, else its own bytes.
+: ARMED? ( ptr u8 n -- bool ) {: p:ptr n:n :}
+   SOURCE-U @ 0 = IF 0 0= 0= EXIT THEN
+   ROW-N @ 0 >  MAP-A @ MAP-U @ p n HOLDS?  and IF p MAP-A @ - MAP-NONE? 0= EXIT THEN
+   SOURCE$ p n HOLDS? ;
 public
-\ Whether a source a rejection places from holds the byte p points at for good:
-\ the armed source, the given closer's bytes or the loader's owned bytes.
-: HELD? ( ptr u8 -- bool ) {: p:ptr :}
-   p >SOURCE nip IF 0 0= EXIT THEN
-   CLOSER$ p 0 HOLDS? IF 0 0= EXIT THEN
-   OWNED$ p 0 HOLDS? ;
+\ Whether one source a rejection places from holds the token p n whole, for
+\ good: the armed source, the given closer's bytes or the loader's owned bytes.
+\ A zero-length token is held at any offset from 0 to the buffer's length.
+: HELD? ( ptr u8 n -- bool ) {: p:ptr n:n :}
+   p n ARMED? IF 0 0= EXIT THEN
+   CLOSER$ p n HOLDS? IF 0 0= EXIT THEN
+   OWNED$ p n HOLDS? ;
 private
 \ The line of b's bu bytes that holds t: from the byte after the last LF before
 \ t up to the next LF, or the buffer's edge.

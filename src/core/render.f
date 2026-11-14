@@ -1365,12 +1365,16 @@ variable MDV-I   variable MDV-F
 
 \ A pinned token where its source holds it: a top step's as the step read it,
 \ a body's in the checked text. A closer past the text's end that no source
-\ holds, as a checked string's, is FAILTK, the copy of its spelling.
+\ holds, as a checked string's, is the empty token at the text's end where that
+\ is held, else FAILTK, the copy of its spelling.
 : DIAG-TOKEN ( -- ptr u8 n )
    TOP-STEP @ IF TOK-SPELL-A @ TOK-SPELL-U @ EXIT THEN
    TBASE@ FAILB @ + {: p:ptr :}
-   FAILE @ TBLEN @ >  p REJECTION:HELD? 0=  and IF FAILTK FAILTU @ EXIT THEN
-   p FAILE @ FAILB @ - ;
+   FAILE @ FAILB @ - {: u:n :}
+   FAILE @ TBLEN @ <=  p u REJECTION:HELD?  or IF p u EXIT THEN
+   TBASE@ TBLEN @ + {: e:ptr :}
+   e 0 REJECTION:HELD? IF e 0 EXIT THEN
+   FAILTK FAILTU @ ;
 
 : PIN-TOK$ ( -- ptr u8 n ) FAILTK FAILTU @ ;
 : CODE-SPAN ( ptr u8 n -- ) 96 EMIT1 EMIT-STR 96 EMIT1 ;
