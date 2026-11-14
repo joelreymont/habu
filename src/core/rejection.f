@@ -494,3 +494,6 @@ public
    END-RECORD
    QUIET @ 0=  WARNING @ 0=  and IF TALLY @ 1 + TALLY ! THEN ;
 ;package
+
+\ The status a rejection stops with.
+70 constant CHECKER-REJECT-RC

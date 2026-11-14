@@ -229,11 +229,10 @@ PERSISTED-PTR-VARIABLE ENTRY-TICK-OWNER
 
 private
 
-\ A statement the source ends inside, one that lacks a part it must have, or one
-\ past a bound the engine sets stops the scan with one of these at its opener.
+\ A statement the source ends inside or one that lacks a part it must have
+\ stops the scan with one of these at its opener.
 7155 constant E-VS-UNTERMINATED-DEFINITION \ a definition, signature or group
 7158 constant E-VS-BARE-TRUST              \ TRUST with no name and signature
-7199 constant E-VS-EFFECT-SIZE             \ a generates: effect past GENR-SIG-CAP
 
 \ A declaration the source ends inside: BEGIN-STRUCTURE's scan stops with it at
 \ its opener, RECORD-VALUE-RECORD refuses with it in the declaration packet.
@@ -3361,17 +3360,16 @@ variable FILE-USE
    AGAIN ;
 
 \ `generates: D ( effect )`, read as the engine word reads it: the name by
-\ parse-name, the effect as a definition head's signature, within the engine's
-\ bound. The registrar resolves D and raises the refusals FIND-SYM defers; a
-\ row this scan's table already holds for D, its clause or an earlier row,
-\ counts as D already stating what it makes.
+\ parse-name, the effect as a definition head's signature. The registrar
+\ resolves D and raises the refusals FIND-SYM defers; a row this scan's table
+\ already holds for D, its clause or an earlier row, counts as D already stating
+\ what it makes.
 : RECORD-GENERATES ( -- )
    NAME-TOKEN
    {: name:ptr nameu:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
    REQUIRE-SIGNATURE
    {: sig:ptr sigu:n :}
-   sigu GENR-SIG-CAP > IF E-VS-EFFECT-SIZE STATEMENT-STOP THEN
    name nameu FIND-SYM
    {: sym:n :}
    name nameu sig sigu sym DEFINER-FIND 0<> GENERATES-SIGNATURE nip 0= IF EXIT THEN

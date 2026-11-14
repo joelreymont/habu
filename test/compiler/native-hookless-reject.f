@@ -12,7 +12,6 @@ private
 
 $4000 constant CAP
 70 constant RC-REJECT                \ the check hook's reject status (src/core/check-hook.f CHECK-RC)
-67 constant UNCAUGHT-RC              \ an uncaught throw's exit status
 
 create OUT CAP allot                   variable OUT-U
 create ERR CAP allot                   variable ERR-U
@@ -85,9 +84,9 @@ create TEXT CAP allot                  variable TEXT-U
    s" compiler: cannot compile F at F in" SAYS ;
 
 \ A TRUSTED: body whose `@` cannot be applied over a two-cell family value
-\ loses that value's width, so nothing can place its cells; a does> clause that
-\ loses one is refused the same way.
-\ Its own process: the uncaught throw ends it, and its exit status is tested.
+\ loses that value's width, so nothing can place its cells; a checked does>
+\ clause that applies `@` to one is refused for the type first.
+\ Its own process: the rejection's status ends it, and is tested.
 : INCOMPLETE-SCAN ( -- )
    s" a scan that loses a wide value's width is refused" T-LABEL
    TEXT-U BUF-RESET
@@ -96,11 +95,11 @@ create TEXT CAP allot                  variable TEXT-U
    s" HR-TRY . " TEXT+
    s" TRUSTED: HR-LOST ( n -- n ) construct hr-v some @ ;" TEXT+
    TEXT$ SESSION
-   RC @ UNCAUGHT-RC T=
-   s" compiler: cannot compile HR-DEF" SAYS
-   S\" -8519\n" PRINTS
-   s" compiler: cannot compile HR-LOST" SAYS
-   s" hb: uncaught throw code -8519" SAYS ;
+   RC @ RC-REJECT T=
+   s" error[E-MISMATCH]: `@` takes ptr a; the stack holds hr-v" SAYS
+   S\" 70\n" PRINTS
+   s" error[E-NELAB-BUNDLE]: the body of `HR-LOST` loses the width of a multi-cell value" SAYS
+   s" = family: hr-v" SAYS ;
 
 \ ---- a refused definition keeps no row ---------------------------------------
 \ `;package` first makes the texts global.
