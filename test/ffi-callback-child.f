@@ -73,7 +73,7 @@ variable DEFINED                        \ 1 once CMP-DEFINE has defined
 : CMP-DEFINE-IMPL ( ptr u8 ptr u8 -- n ) {: a b :}
    DEFINED @ 0= if
       1 DEFINED !
-      s" variable CBC-INSIDE" INCLUDE-EVALUATE
+      s" variable CBC-INSIDE" evaluate-closed
    then
    a b ROW-ORDER ;
 

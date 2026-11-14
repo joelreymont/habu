@@ -522,7 +522,7 @@ variable RC
    s" a generates: row on a word that reads no name" T-LABEL
    SB-RESET
    s" : GEN ( -- ) s" SB-APPEND 34 SB-APPEND-C
-   s"  : MADE ( -- ) ;" SB-APPEND 34 SB-APPEND-C s"  INCLUDE-EVALUATE ;" SB-APPEND LF+
+   s"  : MADE ( -- ) ;" SB-APPEND 34 SB-APPEND-C s"  evaluate-closed ;" SB-APPEND LF+
    s" generates: GEN ( -- )" SB-APPEND LF+
    s" GEN" SB-APPEND LF+
    s" s" SB-APPEND 34 SB-APPEND-C s"  MADE" SB-APPEND 34 SB-APPEND-C
@@ -532,13 +532,13 @@ variable RC
    s" " CHECK
    ERR$ s" E-STATEMENT-THROW" CONTAINS? TFALSE
    0 s" code" s" E-GENERATES-ROW" FIELD=
-   0 s" GEN" 2 12 63 66 AT
+   0 s" GEN" 2 12 62 65 AT
    s" --all-errors" CHECK
    0 s" code" s" E-GENERATES-ROW" FIELD=
-   0 s" GEN" 2 12 63 66 AT
+   0 s" GEN" 2 12 62 65 AT
    s" --verify-only" CHECK
    0 s" code" s" E-GENERATES-ROW" FIELD=
-   0 s" GEN" 2 12 63 66 FX-PATH$ CANON$ FX$ AT-IN ;
+   0 s" GEN" 2 12 62 65 FX-PATH$ CANON$ FX$ AT-IN ;
 
 \ The row's registrar resolves its name as a use does.
 : TEST-GENERATES-SHADOW ( -- )
@@ -1760,7 +1760,7 @@ variable RC
 
 : GEN-LINES ( -- )
    SB-RESET
-   s\" : GEN ( -- ) s\" : MADE ( -- ) ;\" INCLUDE-EVALUATE ;" SB-APPEND LF+
+   s\" : GEN ( -- ) s\" : MADE ( -- ) ;\" evaluate-closed ;" SB-APPEND LF+
    s" GEN" SB-APPEND LF+ ;
 
 : DEFER-SUGGESTS ( n n ptr u8 n ptr u8 n -- )
@@ -1803,7 +1803,7 @@ variable RC
    0 0 s" GEN" s" If this renderer reads the name of the word it makes (`D NAME`), declare that word's effect with `generates: D ( effect )` after its definition; a foreign function is declared by a `FUNCTION:` group; other rendered text is the run's to check." DEFER-SUGGESTS
    s" a deferred word called inside an open stretch" T-LABEL
    SB-RESET
-   s\" : GEN ( -- ) s\" : MADE ( -- ) ;\" INCLUDE-EVALUATE ;" SB-APPEND LF+
+   s\" : GEN ( -- ) s\" : MADE ( -- ) ;\" evaluate-closed ;" SB-APPEND LF+
    s" defer D ( -- )" SB-APPEND LF+
    s" GEN" SB-APPEND LF+
    s" MADE" SB-APPEND LF+

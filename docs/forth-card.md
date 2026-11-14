@@ -318,7 +318,7 @@ row with no target, naming no word or naming a word whose input row does not
 end in the string `( ptr u8 n )`, as `names: dup` does, is `E-NAMES-ROW`.
 
 A word that makes definitions at load time (anything reaching `define-word` or
-`INCLUDE-EVALUATE`: `FUNCTION:`/`;FUNCTION`, `FSM:DEFINE`) makes names
+an evaluate word: `FUNCTION:`/`;FUNCTION`, `FSM:DEFINE`) makes names
 `tools/check.f` leaves to its run, which type-checks their uses there, unless
 the source declares them: uses of a `FUNCTION:` word and of a `generates:`
 row's word (§ 4) are checked before the run, `--verify-only` included. A

@@ -23,7 +23,7 @@ public
 NEWTYPE cnfam
 NEWTYPE cncell<a>
 ;package
-s" STRUCTURE cnpbox<a> FIELD value a ;STRUCTURE" INCLUDE-EVALUATE
+s" STRUCTURE cnpbox<a> FIELD value a ;STRUCTURE" evaluate-closed
 package CAST-NEG
 public
 DEFLINEAR CAST-NEG:lease
@@ -40,7 +40,7 @@ package CN-RUN
 public
 TYPED-VARIABLE SRC-A ptr u8
 variable SRC-U
-: EVAL ( -- ) SRC-A @ SRC-U @ INCLUDE-EVALUATE ;
+: EVAL ( -- ) SRC-A @ SRC-U @ evaluate-closed ;
 : DECL ( ptr u8 n -- n )               \ ( decl-source -- thrown-code | 0 )
    SRC-U !  SRC-A !
    [: EVAL ;] catch ;
@@ -429,7 +429,7 @@ CHECKER-END-PACKAGE
 ;package
 \ A cast carries no body: the declaration ends at its closing paren, so the
 \ trailing 42 is read as its own token and left as residue, which
-\ INCLUDE-EVALUATE, a closed evaluation, refuses by name.
+\ evaluate-closed refuses by name.
 package CN
 s" cast: CNS1 ( n -- CN:cnfam ) 42"              CN-RUN:DECL E-EVAL-RESIDUE T=
 s" CNS1" get-current search-wl 0= TFALSE        \ ... and the cast published anyway

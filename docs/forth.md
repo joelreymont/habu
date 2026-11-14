@@ -2451,7 +2451,7 @@ sections above.
   with the clause effect, and a branch that `exit`s before `does>` leaves
   `-- ptr a`.
 - **Renderers can define words absent from source text.** A word whose body
-  reaches `INCLUDE-EVALUATE`, `evaluate` or `evaluate-closed` marks the
+  reaches `evaluate` or `evaluate-closed` marks the
   wordlist of its top-level call. There, a later unresolved name that may be
   its product is checked by the subsequent `bin/hb --load` run; in
   `--verify-only` it is `W-CHECK-DEFERRED` at the use and the verdict is

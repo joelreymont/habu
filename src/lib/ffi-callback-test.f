@@ -208,42 +208,42 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    [: 0 ARG@ drop ;] catch E-FFI-CALLBACK-STATE =
       s" a frame accessor outside a callback is E-FFI-CALLBACK-STATE" FACT ;
 
-\ Each rides INCLUDE-EVALUATE, so the refusal is a throw this file catches.
+\ Each rides evaluate-closed, so the refusal is a throw this file catches.
 : DECL-BAD-TOKEN ( -- )
-   s" CALLBACK: CBT-X1 ( q -- ) ;CALLBACK" INCLUDE-EVALUATE ;
+   s" CALLBACK: CBT-X1 ( q -- ) ;CALLBACK" evaluate-closed ;
 : DECL-BAD-PTR ( -- )
-   s" CALLBACK: CBT-X2 ( ptr n -- ) ;CALLBACK" INCLUDE-EVALUATE ;
+   s" CALLBACK: CBT-X2 ( ptr n -- ) ;CALLBACK" evaluate-closed ;
 : DECL-TWO-RESULTS ( -- )
-   s" CALLBACK: CBT-X3 ( -- n n ) 0 FALLBACK ;CALLBACK" INCLUDE-EVALUATE ;
+   s" CALLBACK: CBT-X3 ( -- n n ) 0 FALLBACK ;CALLBACK" evaluate-closed ;
 : DECL-PTR-RESULT ( -- )
-   s" CALLBACK: CBT-X4 ( -- ptr u8 ) ;CALLBACK" INCLUDE-EVALUATE ;
+   s" CALLBACK: CBT-X4 ( -- ptr u8 ) ;CALLBACK" evaluate-closed ;
 : DECL-NO-FALLBACK ( -- )
-   s" CALLBACK: CBT-X5 ( n -- n ) ;CALLBACK" INCLUDE-EVALUATE ;
+   s" CALLBACK: CBT-X5 ( n -- n ) ;CALLBACK" evaluate-closed ;
 : DECL-WRONG-FALLBACK ( -- )
-   s" CALLBACK: CBT-X6 ( n -- n ) 0.5 FFALLBACK ;CALLBACK" INCLUDE-EVALUATE ;
+   s" CALLBACK: CBT-X6 ( n -- n ) 0.5 FFALLBACK ;CALLBACK" evaluate-closed ;
 : DECL-VOID-FALLBACK ( -- )
-   s" CALLBACK: CBT-X7 ( n -- ) 0 FALLBACK ;CALLBACK" INCLUDE-EVALUATE ;
+   s" CALLBACK: CBT-X7 ( n -- ) 0 FALLBACK ;CALLBACK" evaluate-closed ;
 : DECL-TOO-MANY-INTS ( -- )
    HB-TARGET-LINUX-X86-64? if
-      s" CALLBACK: CBT-X8 ( n n n n n n n -- ) ;CALLBACK" INCLUDE-EVALUATE
+      s" CALLBACK: CBT-X8 ( n n n n n n n -- ) ;CALLBACK" evaluate-closed
    else
-      s" CALLBACK: CBT-X8 ( n n n n n n n n n -- ) ;CALLBACK" INCLUDE-EVALUATE
+      s" CALLBACK: CBT-X8 ( n n n n n n n n n -- ) ;CALLBACK" evaluate-closed
    then ;
 : DECL-NINE-FLOATS ( -- )
-   s" CALLBACK: CBT-X9 ( r r r r r r r r r -- ) ;CALLBACK" INCLUDE-EVALUATE ;
+   s" CALLBACK: CBT-X9 ( r r r r r r r r r -- ) ;CALLBACK" evaluate-closed ;
 : DECL-STRAY-CLOSE ( -- )
-   s" ;CALLBACK" INCLUDE-EVALUATE ;
+   s" ;CALLBACK" evaluate-closed ;
 : DECL-STRAY-FALLBACK ( -- )
-   s" 0 FALLBACK" INCLUDE-EVALUATE ;
+   s" 0 FALLBACK" evaluate-closed ;
 : DECL-NESTED ( -- )
-   s" CALLBACK: CBT-XA ( -- ) CALLBACK: CBT-XB ( -- ) ;CALLBACK" INCLUDE-EVALUATE ;
+   s" CALLBACK: CBT-XA ( -- ) CALLBACK: CBT-XB ( -- ) ;CALLBACK" evaluate-closed ;
 : DECL-SEVENTEENTH ( -- )
-   s" CALLBACK: CBT-XC ( -- ) ;CALLBACK" INCLUDE-EVALUATE ;
+   s" CALLBACK: CBT-XC ( -- ) ;CALLBACK" evaluate-closed ;
 \ A name of NAME-CAP (64) bytes fits; one byte more does not.
 : DECL-NAME-65 ( -- )
-   s" CALLBACK: CBT-NAME-65-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX ( -- ) ;CALLBACK" INCLUDE-EVALUATE ;
+   s" CALLBACK: CBT-NAME-65-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX ( -- ) ;CALLBACK" evaluate-closed ;
 : DECL-NAME-64 ( -- )
-   s" CALLBACK: CBT-NAME-64-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX ( -- ) ;CALLBACK" INCLUDE-EVALUATE ;
+   s" CALLBACK: CBT-NAME-64-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX ( -- ) ;CALLBACK" evaluate-closed ;
 
 : CASE-DECLARATIONS ( -- )
    s" == declarations refused" SAY
@@ -272,13 +272,13 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
 \ Non-zero cells laid over the cut, where a grown table the rollback did not
 \ keep would lie.
 : JUNK ( -- )
-   s" create CBT-RB-JUNK" INCLUDE-EVALUATE
+   s" create CBT-RB-JUNK" evaluate-closed
    4000 0 ?do 777 , loop ;
 
 : DECLARE-LATE ( -- )
-   s" : CBT-RB-ORDER ( ptr u8 ptr u8 -- n ) {: a b :} a CELL-VIEW @ b CELL-VIEW @ - ;" INCLUDE-EVALUATE
-   s" CALLBACK: CBT-RB-LATE ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK" INCLUDE-EVALUATE
-   s" ' CBT-RB-ORDER CBT-RB-LATE-BODY !" INCLUDE-EVALUATE ;
+   s" : CBT-RB-ORDER ( ptr u8 ptr u8 -- n ) {: a b :} a CELL-VIEW @ b CELL-VIEW @ - ;" evaluate-closed
+   s" CALLBACK: CBT-RB-LATE ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK" evaluate-closed
+   s" ' CBT-RB-ORDER CBT-RB-LATE-BODY !" evaluate-closed ;
 
 : SORTED-BY? ( n -- bool ) {: fn:n :}
    OUTER 0 ROW-FILL
@@ -291,7 +291,7 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
 \ CBT-RB-NEXT takes slot n. A caller bind refuses a row that still names a
 \ region, which a main-region bind of the region the thrown text left would accept.
 : NEXT-BINDS? ( n -- bool ) {: k:n :}
-   s" CALLBACK: CBT-RB-NEXT ( -- ) ;CALLBACK" INCLUDE-EVALUATE
+   s" CALLBACK: CBT-RB-NEXT ( -- ) ;CALLBACK" evaluate-closed
    DECLARED k 1 + =
    s" CBT-RB-NEXT TASK:CALLER-CONTEXT FFI-CB:ENTRY drop" TEST-EVAL:RC 0= and ;
 
@@ -300,7 +300,7 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    s" CALLBACK: CBT-RB-CALLER ( -- ) ;CALLBACK  CBT-RB-CALLER TASK:CALLER-CONTEXT FFI-CB:ENTRY drop  1 throw" ;
 
 : SELF-BINDS? ( n -- bool ) {: k:n :}
-   s" CALLBACK: CBT-RB-SELF ( -- ) ;CALLBACK" INCLUDE-EVALUATE
+   s" CALLBACK: CBT-RB-SELF ( -- ) ;CALLBACK" evaluate-closed
    DECLARED k 1 + =
    s" CBT-RB-SELF TASK:SELF-CONTEXT FFI-CB:ENTRY drop" TEST-EVAL:RC 0= and ;
 
@@ -313,11 +313,11 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
       s" the rollback leaves the slot count as it was" FACT
    BOUND$ TEST-EVAL:RC 1 = before NEXT-BINDS? and
       s" the next declaration takes the slot a thrown text bound, unbound" FACT
-   s" CBT-RB-NEXT FFI-CB:UNBIND" INCLUDE-EVALUATE
+   s" CBT-RB-NEXT FFI-CB:UNBIND" evaluate-closed
    DECLARED {: slot:n :}
    CALLER-BOUND$ TEST-EVAL:RC 1 = slot SELF-BINDS? and
       s" a slot a thrown text bound as the caller binds to this context" FACT
-   s" CBT-RB-SELF FFI-CB:UNBIND" INCLUDE-EVALUATE
+   s" CBT-RB-SELF FFI-CB:UNBIND" evaluate-closed
    PAD-TO-EDGE DECLARED {: edge:n :}
    CMP TASK:SELF-CONTEXT ENTRY {: early:n :}
    THROWING$ TEST-EVAL:RC 1 = DECLARED edge = and
@@ -329,7 +329,7 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    s" CBT-RB-LATE TASK:SELF-CONTEXT FFI-CB:ENTRY" TEST-EVAL:N SORTED-BY?
       s" a callback declared after the rollback sorts" FACT
    early SORTED-BY? s" and the earlier one still does" FACT
-   s" CBT-RB-LATE FFI-CB:UNBIND" INCLUDE-EVALUATE
+   s" CBT-RB-LATE FFI-CB:UNBIND" evaluate-closed
    CMP UNBIND ;
 
 \ A package whose private `@`, `execute` and `CMP-BODY` would run BACKWARD in
@@ -340,13 +340,13 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
 
 : CASE-CAPTURE ( -- )
    s" == a callback declared under a private @, execute and CMP-BODY" SAY
-   [: CAPTURE$ INCLUDE-EVALUATE ;] catch 0= {: loaded:bool :}
+   [: CAPTURE$ evaluate-closed ;] catch 0= {: loaded:bool :}
    loaded s" the declaration loads" FACT
    loaded if
       s" CBT-CAPTURE:CMP TASK:SELF-CONTEXT FFI-CB:ENTRY" TEST-EVAL:N SORTED-BY?
    else false then
       s" C sorts through it by the body stored" FACT
-   loaded if s" CBT-CAPTURE:CMP FFI-CB:UNBIND" INCLUDE-EVALUATE then ;
+   loaded if s" CBT-CAPTURE:CMP FFI-CB:UNBIND" evaluate-closed then ;
 
 \ A qualified name puts the callback's words into its package's public
 \ wordlist, not the current one.
@@ -355,13 +355,13 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
 
 : CASE-QUALIFIED ( -- )
    s" == a callback declared by a qualified name" SAY
-   [: QUALIFIED$ INCLUDE-EVALUATE ;] catch 0= {: loaded:bool :}
+   [: QUALIFIED$ evaluate-closed ;] catch 0= {: loaded:bool :}
    loaded s" the declaration loads" FACT
    loaded if
       s" CBT-QUALIFIED:CMP TASK:SELF-CONTEXT FFI-CB:ENTRY" TEST-EVAL:N SORTED-BY?
    else false then
       s" C sorts through it by the body stored" FACT
-   loaded if s" CBT-QUALIFIED:CMP FFI-CB:UNBIND" INCLUDE-EVALUATE then ;
+   loaded if s" CBT-QUALIFIED:CMP FFI-CB:UNBIND" evaluate-closed then ;
 
 \ A package with a part named FFI-CB declares a callback: the callback's type
 \ FFI-CB:callback is still FFI-CB's.
@@ -370,7 +370,7 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
 
 : CASE-PART ( -- )
    s" == a callback declared beside a part named FFI-CB" SAY
-   [: PART$ INCLUDE-EVALUATE ;] catch 0= s" the declaration loads" FACT ;
+   [: PART$ evaluate-closed ;] catch 0= s" the declaration loads" FACT ;
 
 \ A kernel exit line ends ` lr <16 hex>`; the transcript keeps ` lr` and drops
 \ the digits, which vary with the build.

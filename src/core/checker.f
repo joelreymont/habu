@@ -5438,7 +5438,7 @@ CHECKER-OWNER-ABI:BINDING-CORE-OP constant CTL-CORE-OP
 $20 constant CTL-ZERO-TRUE
 $40 constant CTL-ZERO-FALSE
 \ CTL-RENDERS means a call may define words at run time that no source text
-\ spells, by define-word or by source handed to INCLUDE-EVALUATE.
+\ spells, by define-word or by source handed to an evaluate word.
 $80 constant CTL-RENDERS
 
 \ Control word bits: 0-7 the flags above, 8-12 the INTRINSIC id, 13-18 the flags below with 16
@@ -11857,7 +11857,6 @@ PTABLE-START
    s" included" PE-SYM-OF drop
    s" required" PE-SYM-OF drop
    s" script-required" PE-SYM-OF drop
-   s" INCLUDE-EVALUATE" PE-SYM-OF drop
    s" define-word" PE-SYM-OF drop ;
 
 KEYWORD-ROWS
@@ -15436,7 +15435,6 @@ CAST: AS-RECORD-PUBLISHED ( n -- [ n -- ] )
    s" r@" CTL-CORE-OP NORET-AXIOM
    s" variable" INTRINSIC-VARIABLE INTRINSIC>CTL NORET-AXIOM
    s" constant" INTRINSIC-CONSTANT INTRINSIC>CTL NORET-AXIOM
-   s" INCLUDE-EVALUATE" CTL-RENDERS NORET-AXIOM
    s" included" CTL-RENDERS NORET-AXIOM
    s" required" CTL-RENDERS NORET-AXIOM
    s" script-required" CTL-RENDERS NORET-AXIOM

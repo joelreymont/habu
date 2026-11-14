@@ -59,33 +59,33 @@ create FFI-T-SR-BUF 64 allot
    24 FFI-T-SR-CANARIES ;
 
 : FFI-T-SR-ZERO ( -- )
-   s" FUNCTION: FFI-T-SRX2 div ( n n ptr u8 -- ) 0 STRUCT-RESULT ;FUNCTION" INCLUDE-EVALUATE ;
+   s" FUNCTION: FFI-T-SRX2 div ( n n ptr u8 -- ) 0 STRUCT-RESULT ;FUNCTION" evaluate-closed ;
 : FFI-T-SR-OUTPUT ( -- )
-   s" FUNCTION: FFI-T-SRX3 div ( n n ptr u8 -- n ) 8 STRUCT-RESULT ;FUNCTION" INCLUDE-EVALUATE ;
+   s" FUNCTION: FFI-T-SRX3 div ( n n ptr u8 -- n ) 8 STRUCT-RESULT ;FUNCTION" evaluate-closed ;
 : FFI-T-SR-NOT-LAST ( -- )
-   s" FUNCTION: FFI-T-SRX4 div ( n ptr u8 n -- ) 8 STRUCT-RESULT ;FUNCTION" INCLUDE-EVALUATE ;
+   s" FUNCTION: FFI-T-SRX4 div ( n ptr u8 n -- ) 8 STRUCT-RESULT ;FUNCTION" evaluate-closed ;
 : FFI-T-SR-NO-INPUT ( -- )
-   s" FUNCTION: FFI-T-SRX5 div ( -- ) 8 STRUCT-RESULT ;FUNCTION" INCLUDE-EVALUATE ;
+   s" FUNCTION: FFI-T-SRX5 div ( -- ) 8 STRUCT-RESULT ;FUNCTION" evaluate-closed ;
 : FFI-T-SR-TWICE ( -- )
    s" FUNCTION: FFI-T-SRX6 div ( n n ptr u8 -- ) 8 STRUCT-RESULT 8 STRUCT-RESULT ;FUNCTION"
-   INCLUDE-EVALUATE ;
+   evaluate-closed ;
 : FFI-T-SR-VARIADIC-BEFORE ( -- )
    s" FUNCTION: FFI-T-SRX7 div ( n n ptr u8 -- ) 1 VARIADIC 8 STRUCT-RESULT ;FUNCTION"
-   INCLUDE-EVALUATE ;
+   evaluate-closed ;
 : FFI-T-SR-VARIADIC-AFTER ( -- )
    s" FUNCTION: FFI-T-SRX8 div ( n n ptr u8 -- ) 8 STRUCT-RESULT 1 VARIADIC ;FUNCTION"
-   INCLUDE-EVALUATE ;
+   evaluate-closed ;
 : FFI-T-SR-WRITES-BEFORE ( -- )
    s" FUNCTION: FFI-T-SRX9 div ( n n ptr u8 -- ) 2 8 WRITES-BYTES 8 STRUCT-RESULT ;FUNCTION"
-   INCLUDE-EVALUATE ;
+   evaluate-closed ;
 : FFI-T-SR-WRITES-AFTER ( -- )
    s" FUNCTION: FFI-T-SRXA div ( n n ptr u8 -- ) 8 STRUCT-RESULT 2 8 WRITES-BYTES ;FUNCTION"
-   INCLUDE-EVALUATE ;
+   evaluate-closed ;
 : FFI-T-SR-OUTSIDE ( -- )
-   s" 8 STRUCT-RESULT" INCLUDE-EVALUATE ;
+   s" 8 STRUCT-RESULT" evaluate-closed ;
 : FFI-T-SR-INPUTS ( -- )
    s" FUNCTION: FFI-T-SRXC div ( n n n n n n n n n n n n n n n n ptr u8 -- ) 32 STRUCT-RESULT ;FUNCTION"
-   INCLUDE-EVALUATE ;
+   evaluate-closed ;
 
 : FFI-T-STRUCT-RESULTS ( -- )
    s" a 4-byte struct result takes exactly four bytes of x0" T-LABEL

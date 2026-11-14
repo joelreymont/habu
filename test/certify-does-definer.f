@@ -42,7 +42,7 @@ public
    s"  ( -- ptr n ) data-base " TEXT CODEGEN:APPEND-STRING
    off TEXT CODEGEN:APPEND-DECIMAL
    s"  + ;" TEXT CODEGEN:APPEND-STRING
-   TEXT CODEGEN:CONTENTS INCLUDE-EVALUATE ;
+   TEXT CODEGEN:CONTENTS evaluate-closed ;
 ;package
 
 \ The same definer compiled by the engine with its row, private definer and
@@ -469,7 +469,7 @@ create CDD-DIAG 4096 allot
 \ Section 14: a clause naming a type a reached renderer may declare is deferred
 \ unwalked at that type, as its colon twin is (verify-source.f NOMINAL-MARK).
 : CDD-QUIET$ ( -- ptr u8 n )
-   s\" package CDD-QP\n: CDD-QREG ( -- ) s\" NEWTYPE cdd-qt\" INCLUDE-EVALUATE ;\nCDD-QREG\n: CDD-QB ( n -- ) create , does> ( cdd-qt -- cdd-qt ) drop drop 5 ;\n;package\n" ;
+   s\" package CDD-QP\n: CDD-QREG ( -- ) s\" NEWTYPE cdd-qt\" evaluate-closed ;\nCDD-QREG\n: CDD-QB ( n -- ) create , does> ( cdd-qt -- cdd-qt ) drop drop 5 ;\n;package\n" ;
 
 : CDD-SECTION-QUIET-CLAUSE ( -- )
    s" a clause naming a type a renderer may declare is deferred at that type" T-LABEL

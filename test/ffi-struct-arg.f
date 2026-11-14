@@ -179,58 +179,58 @@ CALLBACK: FFI-T-SA-CB ( -- n ) 0 FALLBACK ;CALLBACK
 
 : FFI-T-SA-REFUSALS ( -- )
    s" malformed struct-argument declarations are refused" T-LABEL
-   [: s" 0 8 STRUCT-ARG" INCLUDE-EVALUATE ;] E-FFI-SYNTAX TTHROWSQ
+   [: s" 0 8 STRUCT-ARG" evaluate-closed ;] E-FFI-SYNTAX TTHROWSQ
    [: s" FUNCTION: FFI-T-SAX hb_sum8 ( ptr u8 -- n ) 1 8 STRUCT-ARG ;FUNCTION"
-      INCLUDE-EVALUATE ;] E-FFI-SYNTAX TTHROWSQ
+      evaluate-closed ;] E-FFI-SYNTAX TTHROWSQ
    [: s" FUNCTION: FFI-T-SAX hb_sum8 ( ptr u8 -- n ) -1 8 STRUCT-ARG ;FUNCTION"
-      INCLUDE-EVALUATE ;] E-FFI-SYNTAX TTHROWSQ
+      evaluate-closed ;] E-FFI-SYNTAX TTHROWSQ
    [: s" FUNCTION: FFI-T-SAX hb_sum8 ( n -- n ) 0 8 STRUCT-ARG ;FUNCTION"
-      INCLUDE-EVALUATE ;] E-FFI-SYNTAX TTHROWSQ
+      evaluate-closed ;] E-FFI-SYNTAX TTHROWSQ
    [: s" FUNCTION: FFI-T-SAX hb_sum8 ( ptr u8 -- n ) 0 0 STRUCT-ARG ;FUNCTION"
-      INCLUDE-EVALUATE ;] E-FFI-SYNTAX TTHROWSQ
+      evaluate-closed ;] E-FFI-SYNTAX TTHROWSQ
    [: s" FUNCTION: FFI-T-SAX hb_sum8 ( ptr u8 -- n ) 0 8 STRUCT-ARG 0 8 STRUCT-ARG ;FUNCTION"
-      INCLUDE-EVALUATE ;] E-FFI-SYNTAX TTHROWSQ
+      evaluate-closed ;] E-FFI-SYNTAX TTHROWSQ
    [: s" FUNCTION: FFI-T-SAX hb_sum8 ( ptr u8 -- n ) 0 8 WRITES-BYTES 0 8 STRUCT-ARG ;FUNCTION"
-      INCLUDE-EVALUATE ;] E-FFI-SYNTAX TTHROWSQ
+      evaluate-closed ;] E-FFI-SYNTAX TTHROWSQ
    [: s" FUNCTION: FFI-T-SAX hb_sum8 ( ptr u8 -- n ) 0 8 STRUCT-ARG 0 8 WRITES-BYTES ;FUNCTION"
-      INCLUDE-EVALUATE ;] E-FFI-SYNTAX TTHROWSQ
+      evaluate-closed ;] E-FFI-SYNTAX TTHROWSQ
    [: s" FUNCTION: FFI-T-SAX hb_sum8 ( ptr u8 n -- n ) 0 8 STRUCT-ARG 0 1 WRITES-ARG ;FUNCTION"
-      INCLUDE-EVALUATE ;] E-FFI-SYNTAX TTHROWSQ
+      evaluate-closed ;] E-FFI-SYNTAX TTHROWSQ
    [: s" FUNCTION: FFI-T-SAX hb_sum8 ( ptr u8 -- ) 16 STRUCT-RESULT 0 8 STRUCT-ARG ;FUNCTION"
-      INCLUDE-EVALUATE ;] E-FFI-SYNTAX TTHROWSQ
+      evaluate-closed ;] E-FFI-SYNTAX TTHROWSQ
    [: s" FUNCTION: FFI-T-SAX hb_sum8 ( ptr u8 -- ) 0 8 STRUCT-ARG 16 STRUCT-RESULT ;FUNCTION"
-      INCLUDE-EVALUATE ;] E-FFI-SYNTAX TTHROWSQ
+      evaluate-closed ;] E-FFI-SYNTAX TTHROWSQ
    [: s" FUNCTION: FFI-T-SAX hb_sum8 ( ptr u8 n -- n ) 1 VARIADIC 0 8 STRUCT-ARG ;FUNCTION"
-      INCLUDE-EVALUATE ;] E-FFI-SYNTAX TTHROWSQ
+      evaluate-closed ;] E-FFI-SYNTAX TTHROWSQ
    [: s" FUNCTION: FFI-T-SAX hb_sum8 ( ptr u8 n -- n ) 0 8 STRUCT-ARG 1 VARIADIC ;FUNCTION"
-      INCLUDE-EVALUATE ;] E-FFI-SYNTAX TTHROWSQ
+      evaluate-closed ;] E-FFI-SYNTAX TTHROWSQ
    [: s" FUNCTION: FFI-T-SAX hb_sum8 ( ptr u8 -- r ) 0 8 STRUCT-ARG ;FUNCTION"
-      INCLUDE-EVALUATE ;] E-FFI-SYNTAX TTHROWSQ
+      evaluate-closed ;] E-FFI-SYNTAX TTHROWSQ
    [: s" FUNCTION: FFI-T-SAX hb_sum8 ( ptr u8 -- f32 ) 0 8 STRUCT-ARG ;FUNCTION"
-      INCLUDE-EVALUATE ;] E-FFI-SYNTAX TTHROWSQ
+      evaluate-closed ;] E-FFI-SYNTAX TTHROWSQ
 
    s" struct staging past sixteen cells is refused before publication" T-LABEL
    [: s" FUNCTION: FFI-T-SA-CAP hb_sum128 ( ptr u8 -- n ) 0 129 STRUCT-ARG ;FUNCTION"
-      INCLUDE-EVALUATE ;] E-FFI-ARITY TTHROWSQ
+      evaluate-closed ;] E-FFI-ARITY TTHROWSQ
    s" FUNCTION: FFI-T-SA-CAP hb_sum128 ( ptr u8 -- n ) 0 128 STRUCT-ARG ;FUNCTION"
-   INCLUDE-EVALUATE
+   evaluate-closed
    [: s" FUNCTION: FFI-T-SA-CAP2 hb_none ( n n n n n n n n ptr u8 -- n ) 8 113 STRUCT-ARG ;FUNCTION"
-      INCLUDE-EVALUATE ;] E-FFI-ARITY TTHROWSQ
+      evaluate-closed ;] E-FFI-ARITY TTHROWSQ
    s" FUNCTION: FFI-T-SA-CAP2 hb_none ( n n n n n n n n ptr u8 -- n ) 8 112 STRUCT-ARG ;FUNCTION"
-   INCLUDE-EVALUATE
+   evaluate-closed
    [: s" FUNCTION: FFI-T-SA-CAP3 hb_none ( r r r r r r r r r ptr u8 -- n ) 9 8 STRUCT-ARG ;FUNCTION"
-      INCLUDE-EVALUATE ;] E-FFI-ARITY TTHROWSQ
+      evaluate-closed ;] E-FFI-ARITY TTHROWSQ
    [: s" FUNCTION: FFI-T-SA-CAP6 hb_none ( ptr u8 -- n ) 0 $7FFFFFFFFFFFFFFF STRUCT-ARG ;FUNCTION"
-      INCLUDE-EVALUATE ;] E-FFI-ARITY TTHROWSQ
-   [: FFI-T-SA-WRAP$ INCLUDE-EVALUATE ;] E-FFI-ARITY TTHROWSQ
+      evaluate-closed ;] E-FFI-ARITY TTHROWSQ
+   [: FFI-T-SA-WRAP$ evaluate-closed ;] E-FFI-ARITY TTHROWSQ
    s" a row's relocation mask names only that row's cells" T-LABEL
    [: s" getpid" FFI:PROCESS 0 0 $4000 FFI:DECLARE-ROW drop ;] E-FFI-ARITY TTHROWSQ
    [: s" getpid" FFI:PROCESS 0 0 1 FFI:DECLARE-ROW drop ;] E-FFI-ARITY TTHROWSQ
    s" sixteen inputs are the limit, a struct destination included" T-LABEL
    s" FUNCTION: FFI-T-SA-CAP4 hb_none ( n n n n n n n n n n n n n n n ptr u8 -- ) 32 STRUCT-RESULT ;FUNCTION"
-   INCLUDE-EVALUATE
+   evaluate-closed
    [: s" FUNCTION: FFI-T-SA-CAP5 hb_none ( n n n n n n n n n n n n n n n n ptr u8 -- ) 32 STRUCT-RESULT ;FUNCTION"
-      INCLUDE-EVALUATE ;] E-FFI-ARITY TTHROWSQ ;
+      evaluate-closed ;] E-FFI-ARITY TTHROWSQ ;
 
 : FFI-T-STRUCT-ARGS ( -- )
    FFI-T-REGISTER-ARGS

@@ -61,7 +61,7 @@ variable LOG-N
 
 TYPED-VARIABLE EVAL-A ptr u8
 variable EVAL-U
-: EVAL-RUN ( -- ) EVAL-A @ EVAL-U @ INCLUDE-EVALUATE ;
+: EVAL-RUN ( -- ) EVAL-A @ EVAL-U @ evaluate-closed ;
 : EVAL ( ptr u8 n -- n ) EVAL-U ! EVAL-A ! [: EVAL-RUN ;] catch ;
 
 \ The refusals counted and the throw code when the text is evaluated under the

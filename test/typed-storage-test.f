@@ -51,7 +51,7 @@ CAST: TSK>N ( tsk -- n )
 \ ---- eval helper (define-time reject verdicts) ------------------------------
 TYPED-VARIABLE TS-EVAL-A ptr u8
 variable TS-EVAL-U
-: TS-EVAL-RUN ( -- ) TS-EVAL-A @ TS-EVAL-U @ INCLUDE-EVALUATE ;
+: TS-EVAL-RUN ( -- ) TS-EVAL-A @ TS-EVAL-U @ evaluate-closed ;
 : TS-EVAL ( ptr u8 n -- n ) TS-EVAL-U ! TS-EVAL-A ! [: TS-EVAL-RUN ;] catch ;
 
 \ 1. TYPED-VARIABLE: single nominal cell — checker seam + live round-trip
@@ -167,7 +167,7 @@ TYPED-VARIABLE TSL tsres<n,n>
 \ 6. Duplicate + transactional rollback
 PTR-VARIABLE TS-DP
 
-: TS-DUP-DECL ( -- ) s" TYPED-VARIABLE TSV tsk" INCLUDE-EVALUATE ;
+: TS-DUP-DECL ( -- ) s" TYPED-VARIABLE TSV tsk" evaluate-closed ;
 : TS-DUP-RC ( -- n ) [: TS-DUP-DECL ;] catch ;
 
 : TS-SECTION-DUP-ROLLBACK ( -- )

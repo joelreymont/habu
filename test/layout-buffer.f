@@ -69,7 +69,7 @@ TYPED-VARIABLE LB-EVAL-A ptr u8
 variable LB-EVAL-U
 
 : LB-EVAL-RUN ( -- )
-   LB-EVAL-A @ LB-EVAL-U @ INCLUDE-EVALUATE ;
+   LB-EVAL-A @ LB-EVAL-U @ evaluate-closed ;
 
 : LB-EVAL ( ptr u8 n -- n )
    LB-EVAL-U ! LB-EVAL-A !
@@ -84,7 +84,7 @@ s" 1 LAYOUT-BUFFER LB-LINEAR lb-owned" LB-EVAL CHECKER-REJECT-RC T=
 PTR-VARIABLE LB-DP
 
 : LB-DUPLICATE ( -- )
-   s" 1 LAYOUT-BUFFER LB-BUF lb-res<n,n>" INCLUDE-EVALUATE ;
+   s" 1 LAYOUT-BUFFER LB-BUF lb-res<n,n>" evaluate-closed ;
 
 : LB-DUP-RC ( -- n )
    [: LB-DUPLICATE ;] catch ;
@@ -151,9 +151,9 @@ s" LBTK-HERE-N ( n -- n ) here ! here @" CHECK-QUIET-CANDIDATE! -1 T=
 \ rejected nominal-scalar declarations roll back allocation and define nothing
 \ (LAYOUT-BUFFER never touches the TFAM registry; dictionary + data space are
 \ the mutable state, pinned here like the layout-family duplicate case above)
-: LBTK-ZERO-DECL ( -- )  s" 0 LAYOUT-BUFFER LBTK-ZERO lbtk" INCLUDE-EVALUATE ;
+: LBTK-ZERO-DECL ( -- )  s" 0 LAYOUT-BUFFER LBTK-ZERO lbtk" evaluate-closed ;
 : LBTK-ZERO-RC ( -- n )  [: LBTK-ZERO-DECL ;] catch ;
-: LBTK-DUP-DECL ( -- )  s" 1 LAYOUT-BUFFER LBTK-AT lbtk" INCLUDE-EVALUATE ;
+: LBTK-DUP-DECL ( -- )  s" 1 LAYOUT-BUFFER LBTK-AT lbtk" evaluate-closed ;
 : LBTK-DUP-RC ( -- n )  [: LBTK-DUP-DECL ;] catch ;
 : LBTK-ZERO-ABSENT? ( -- bool )  s" LBTK-ZERO" 0 search-wl 0= ;
 here LB-DP 0 ptr-field !

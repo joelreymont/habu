@@ -119,45 +119,45 @@ FFI-T-DEPTH-BEFORE FFI-T-DEPTH!
 FUNCTION: FFI-T-DEPTH-PROBE getpid ( -- i32 ) ;FUNCTION
 FFI-T-DEPTH-AFTER FFI-T-DEPTH!
 
-\ Declarations the declarer must refuse. Each rides INCLUDE-EVALUATE so the
+\ Declarations the declarer must refuse. Each rides evaluate-closed so the
 \ refusal is the throw a file-level declaration would raise, and each names one
 \ structural rule: a pointer without its byte pointee, two results, an extent
 \ that is not a positive width, an extent argument that is not a value, an
 \ extent index past the arity, and more registers than the ABI call packs.
 : FFI-T-BAD-PTR ( -- )
-   s" FUNCTION: FFI-T-X1 getpid ( ptr -- n ) ;FUNCTION" INCLUDE-EVALUATE ;
+   s" FUNCTION: FFI-T-X1 getpid ( ptr -- n ) ;FUNCTION" evaluate-closed ;
 : FFI-T-BAD-RESULTS ( -- )
-   s" FUNCTION: FFI-T-X2 getpid ( -- n n ) ;FUNCTION" INCLUDE-EVALUATE ;
+   s" FUNCTION: FFI-T-X2 getpid ( -- n n ) ;FUNCTION" evaluate-closed ;
 : FFI-T-BAD-EXTENT ( -- )
-   s" FUNCTION: FFI-T-X3 getpid ( ptr u8 -- n ) 0 0 WRITES-BYTES ;FUNCTION" INCLUDE-EVALUATE ;
+   s" FUNCTION: FFI-T-X3 getpid ( ptr u8 -- n ) 0 0 WRITES-BYTES ;FUNCTION" evaluate-closed ;
 : FFI-T-BAD-EXTENT-ARG ( -- )
-   s" FUNCTION: FFI-T-X4 getpid ( ptr u8 ptr u8 -- n ) 0 1 WRITES-ARG ;FUNCTION" INCLUDE-EVALUATE ;
+   s" FUNCTION: FFI-T-X4 getpid ( ptr u8 ptr u8 -- n ) 0 1 WRITES-ARG ;FUNCTION" evaluate-closed ;
 : FFI-T-BAD-EXTENT-INDEX ( -- )
-   s" FUNCTION: FFI-T-X5 getpid ( ptr u8 -- n ) 3 $10 WRITES-BYTES ;FUNCTION" INCLUDE-EVALUATE ;
+   s" FUNCTION: FFI-T-X5 getpid ( ptr u8 -- n ) 3 $10 WRITES-BYTES ;FUNCTION" evaluate-closed ;
 : FFI-T-BAD-FLOAT-ARITY ( -- )
-   s" FUNCTION: FFI-T-X6 getpid ( r r r r r r r r r -- r ) ;FUNCTION" INCLUDE-EVALUATE ;
+   s" FUNCTION: FFI-T-X6 getpid ( r r r r r r r r r -- r ) ;FUNCTION" evaluate-closed ;
 : FFI-T-BAD-F32-ARITY ( -- )
-   s" FUNCTION: FFI-T-XF getpid ( f32 f32 f32 f32 f32 f32 f32 f32 f32 -- f32 ) ;FUNCTION" INCLUDE-EVALUATE ;
+   s" FUNCTION: FFI-T-XF getpid ( f32 f32 f32 f32 f32 f32 f32 f32 f32 -- f32 ) ;FUNCTION" evaluate-closed ;
 
 \ A version list with an empty piece or a piece that is not a number.
 : FFI-T-LIST-END ( -- )
-   s" VERSIONED-LIBRARY z 1," INCLUDE-EVALUATE ;
+   s" VERSIONED-LIBRARY z 1," evaluate-closed ;
 : FFI-T-LIST-START ( -- )
-   s" VERSIONED-LIBRARY z ,1" INCLUDE-EVALUATE ;
+   s" VERSIONED-LIBRARY z ,1" evaluate-closed ;
 : FFI-T-LIST-GAP ( -- )
-   s" VERSIONED-LIBRARY z 1,,2" INCLUDE-EVALUATE ;
+   s" VERSIONED-LIBRARY z 1,,2" evaluate-closed ;
 : FFI-T-LIST-WORD ( -- )
-   s" VERSIONED-LIBRARY z 1,x" INCLUDE-EVALUATE ;
+   s" VERSIONED-LIBRARY z 1,x" evaluate-closed ;
 : FFI-T-BAD-F32-VARARG ( -- )
-   s" FUNCTION: FFI-T-XP getpid ( n f32 -- f32 ) 1 VARIADIC ;FUNCTION" INCLUDE-EVALUATE ;
+   s" FUNCTION: FFI-T-XP getpid ( n f32 -- f32 ) 1 VARIADIC ;FUNCTION" evaluate-closed ;
 : FFI-T-BAD-VARARG ( -- )
-   s" FUNCTION: FFI-T-XV getpid ( n -- n ) 2 VARIADIC ;FUNCTION" INCLUDE-EVALUATE ;
+   s" FUNCTION: FFI-T-XV getpid ( n -- n ) 2 VARIADIC ;FUNCTION" evaluate-closed ;
 : FFI-T-NO-FIXED ( -- )
-   s" FUNCTION: FFI-T-XZ getpid ( n -- n ) 0 VARIADIC ;FUNCTION" INCLUDE-EVALUATE ;
+   s" FUNCTION: FFI-T-XZ getpid ( n -- n ) 0 VARIADIC ;FUNCTION" evaluate-closed ;
 
 \ Promotion reaches only the variadic tail: a fixed f32 before it is admitted.
 : FFI-T-F32-FIXED ( -- )
-   s" FUNCTION: FFI-T-XQ getpid ( f32 n r -- f32 ) 2 VARIADIC ;FUNCTION" INCLUDE-EVALUATE ;
+   s" FUNCTION: FFI-T-XQ getpid ( f32 n r -- f32 ) 2 VARIADIC ;FUNCTION" evaluate-closed ;
 
 \ Declaration-only shapes: Cairo's exact signature must load without requiring
 \ Cairo, and Darwin's variadic stack routing must admit a pointer result. These
@@ -165,10 +165,10 @@ FFI-T-DEPTH-AFTER FFI-T-DEPTH!
 \ and FFI-T-VARARGS the variadic stack staging.
 : FFI-T-PTR-MIXED ( -- )
    s" FUNCTION: FFI-T-XM cairo_pdf_surface_create ( ptr u8 r r -- ptr u8 ) ;FUNCTION"
-   INCLUDE-EVALUATE ;
+   evaluate-closed ;
 : FFI-T-PTR-VARARG ( -- )
    s" FUNCTION: FFI-T-XW habu-pointer-variadic ( ptr u8 r n ptr u8 r -- ptr u8 ) 1 VARIADIC ;FUNCTION"
-   INCLUDE-EVALUATE ;
+   evaluate-closed ;
 
 \ A library selection belongs to the scope that states it, and there is no
 \ default: a declaration in a scope that never stated one is refused by name,
@@ -182,16 +182,16 @@ variable FFI-T-SCOPE-AFTER
 
 : FFI-T-NO-LIBRARY ( -- )
    s" public FUNCTION: FFI-T-XC getpid ( -- n ) ;FUNCTION"
-   INCLUDE-EVALUATE ;
+   evaluate-closed ;
 : FFI-T-PRIVATE-AGAIN ( -- )
-   s" private" INCLUDE-EVALUATE ;
+   s" private" evaluate-closed ;
 \ The scoped selection above is the public section's, so this file's own scope
 \ states its selection again before the fixtures that follow declare in it.
 : FFI-T-RESELECT ( -- )
-   s" private PROCESS-SYMBOLS" INCLUDE-EVALUATE ;
+   s" private PROCESS-SYMBOLS" evaluate-closed ;
 : FFI-T-SCOPED-LIBRARY ( -- )
    s" public PROCESS-SYMBOLS FUNCTION: FFI-T-XD getpid ( -- n ) ;FUNCTION private"
-   INCLUDE-EVALUATE ;
+   evaluate-closed ;
 
 \ A refused declaration is ABANDONED, not left half open. The refusal below
 \ names an argument the effect does not have; the good declaration after it must
@@ -203,20 +203,20 @@ variable FFI-T-PAIR-AFTER
 
 : FFI-T-REFUSED-CLAUSE ( -- )
    s" FUNCTION: FFI-T-XA getpid ( ptr u8 -- n ) 9 $10 WRITES-BYTES ;FUNCTION"
-   INCLUDE-EVALUATE ;
+   evaluate-closed ;
 : FFI-T-GOOD-AFTER ( -- )
-   s" FUNCTION: FFI-T-XB getpid ( -- n ) ;FUNCTION" INCLUDE-EVALUATE ;
+   s" FUNCTION: FFI-T-XB getpid ( -- n ) ;FUNCTION" evaluate-closed ;
 
 \ A declaration that never closes defines nothing, and the next FUNCTION:
 \ refuses because one is still open. Closing it by hand restores the declarer,
 \ and a closer with nothing open is refused in turn.
 : FFI-T-BAD-UNCLOSED ( -- )
    s" FUNCTION: FFI-T-X7 getpid ( -- n ) FUNCTION: FFI-T-X8 getpid ( -- n )"
-   INCLUDE-EVALUATE ;
+   evaluate-closed ;
 : FFI-T-CLOSE-DANGLING ( -- )
-   s" ;FUNCTION" INCLUDE-EVALUATE ;
+   s" ;FUNCTION" evaluate-closed ;
 : FFI-T-REDECLARE ( -- )
-   s" FUNCTION: FFI-T-X9 getpid ( -- n ) ;FUNCTION" INCLUDE-EVALUATE ;
+   s" FUNCTION: FFI-T-X9 getpid ( -- n ) ;FUNCTION" evaluate-closed ;
 
 \ A child declares 270 distinct symbols and 270 library paths, past any fixed
 \ table: an exact alias takes no row, paths keep their ids and later rows call.
@@ -242,8 +242,8 @@ create FFI-T-LONG-PATH PATH-CAP allot
    s\"    s\" FUNCTION: ZZ-OVER habu-ffi-fill-\" ZZ-DECL CODEGEN:APPEND-STRING\n" FFI-T-SRC+
    s\"    i ZZ-DECL CODEGEN:APPEND-DECIMAL\n" FFI-T-SRC+
    s\"    s\"  ( -- n ) ;FUNCTION\" ZZ-DECL CODEGEN:APPEND-STRING\n" FFI-T-SRC+
-   s\"    ZZ-DECL CODEGEN:CONTENTS INCLUDE-EVALUATE\n" FFI-T-SRC+
-   s\"    s\" undefine ZZ-OVER\" INCLUDE-EVALUATE\n" FFI-T-SRC+
+   s\"    ZZ-DECL CODEGEN:CONTENTS evaluate-closed\n" FFI-T-SRC+
+   s\"    s\" undefine ZZ-OVER\" evaluate-closed\n" FFI-T-SRC+
    s\" loop ;\nZZ-FILL\ns\" habu-ffi-probe-before\" ZZ-PROBE constant ZZ-BEFORE\n" FFI-T-SRC+ ;
 
 : FFI-T-LIBS-SRC+ ( -- )
@@ -306,8 +306,8 @@ create FFI-T-LONG-PATH PATH-CAP allot
    s\"    ZZ-NAME CODEGEN:RESET s\" /tmp/habu-ffi-missing-\" ZZ-NAME CODEGEN:APPEND-STRING\n" FFI-T-SRC+
    s\"    i ZZ-NAME CODEGEN:APPEND-DECIMAL\n" FFI-T-SRC+
    s\"    ZZ-NAME CODEGEN:CONTENTS FFI:SELECT-LIBRARY\n" FFI-T-SRC+
-   s\"    s\" FUNCTION: ZZ-MISSING habu-missing ( -- n ) ;FUNCTION\" INCLUDE-EVALUATE\n" FFI-T-SRC+
-   s\"    s\" undefine ZZ-MISSING\" INCLUDE-EVALUATE\n" FFI-T-SRC+
+   s\"    s\" FUNCTION: ZZ-MISSING habu-missing ( -- n ) ;FUNCTION\" evaluate-closed\n" FFI-T-SRC+
+   s\"    s\" undefine ZZ-MISSING\" evaluate-closed\n" FFI-T-SRC+
    s\" loop ;\nSELECT-DISTINCT\n" FFI-T-SRC+
    s" LIBRARY " FFI-T-SRC+
    HB-TARGET-MACOS? if
@@ -322,7 +322,7 @@ create FFI-T-LONG-PATH PATH-CAP allot
    else
       s" libc.so.6" FFI-T-SRC+
    then
-   s\" \" INCLUDE-EVALUATE loop ;\nSELECT-REPEATED\n" FFI-T-SRC+
+   s\" \" evaluate-closed loop ;\nSELECT-REPEATED\n" FFI-T-SRC+
    s\" FUNCTION: PID-B getpid ( -- i32 ) ;FUNCTION\n" FFI-T-SRC+
    s\" : RUN ( -- ) ZZ-LIB-A:PID-A 0 > PID-B 0 > and if s\" shared-library:ok\" type cr else s\" getpid refused\" 1 die then ;\nRUN\n;package\n" FFI-T-SRC+
    FFI-T-SRC CODEGEN:CONTENTS ;
@@ -477,7 +477,7 @@ FUNCTION: FFI-T-MPROTECT mprotect ( ptr u8 n n -- i32 ) ;FUNCTION
 : FFI-T-X86-FLOAT-SPILL ( -- )
    HB-TARGET-LINUX-X86-64? 0= if exit then
    s" FUNCTION: FFI-T-PRINTF-F9 snprintf ( ptr u8 n ptr u8 r r r r r r r r r -- i32 ) 3 VARIADIC 0 1 WRITES-ARG ;FUNCTION"
-      INCLUDE-EVALUATE
+      evaluate-closed
    FFI-T-SRC CODEGEN:RESET
    s" : FFI-T-F9-CHECK ( -- ) FFI-T-PRINT-BUF 64 FFI-T-F9-FORMAT"
       FFI-T-SRC+
@@ -485,7 +485,7 @@ FUNCTION: FFI-T-MPROTECT mprotect ( ptr u8 n n -- i32 ) ;FUNCTION
       FFI-T-SRC+
    s"  FFI-T-PRINT-BUF swap FFI-T-F9-WANT T$= ; FFI-T-F9-CHECK"
       FFI-T-SRC+
-   FFI-T-SRC CODEGEN:CONTENTS INCLUDE-EVALUATE ;
+   FFI-T-SRC CODEGEN:CONTENTS evaluate-closed ;
 
 : FFI-T-VARARG-KEY ( -- )
    s" a short variadic binding resolves before a longer one" T-LABEL
@@ -551,7 +551,7 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    s\" require src/lib/ffi-abi.f\n" FFI-T-SRC+
    s\" : ZZ-FOREIGN ( -- ) s\" LIBRARY " FFI-T-SRC+
    FFI-T-FOREIGN-NAME$ FFI-T-SRC+
-   s\" \" INCLUDE-EVALUATE ;\nZZ-FOREIGN\n" FFI-T-SRC+
+   s\" \" evaluate-closed ;\nZZ-FOREIGN\n" FFI-T-SRC+
    FFI-T-SRC CODEGEN:CONTENTS ;
 
 : FFI-T-FOREIGN-LIBRARY ( -- )

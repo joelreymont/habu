@@ -9,12 +9,12 @@ using TYPE-DECL
 
 T-RESET
 
-\ Evaluate a declaration string through INCLUDE-EVALUATE, returning its throw
+\ Evaluate a declaration string through evaluate-closed, returning its throw
 \ code (0 = accepted). The catch is compiled: a top-level catch around evaluate
 \ loses the code.
 TYPED-VARIABLE TDTE-A ptr u8   variable TDTE-U
 : TDT-EVAL-GO ( -- )
-   TDTE-A @ TDTE-U @ INCLUDE-EVALUATE ;
+   TDTE-A @ TDTE-U @ evaluate-closed ;
 : TDT-EVAL-CATCH ( ptr u8 n -- n )
    TDTE-U ! TDTE-A !
    [: TDT-EVAL-GO ;] catch ;

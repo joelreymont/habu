@@ -201,15 +201,15 @@ public
 : EVAL-DOWN ( -- )
    EVAL-N @ 0= if 7 EVAL-N ! exit then
    -1 EVAL-N +!
-   s" SOURCE-ROOT-TEST:EVAL-DOWN" INCLUDE-EVALUATE
+   s" SOURCE-ROOT-TEST:EVAL-DOWN" evaluate-closed
    1 EVAL-N +! ;
 
 : EVAL-FAIL ( -- )
    EVAL-N @ 0= if
-      s" ;package package EVAL-ESCAPED using FMT 9133 throw" INCLUDE-EVALUATE
+      s" ;package package EVAL-ESCAPED using FMT 9133 throw" evaluate-closed
    then
    -1 EVAL-N +!
-   s" SOURCE-ROOT-TEST:EVAL-FAIL" INCLUDE-EVALUATE ;
+   s" SOURCE-ROOT-TEST:EVAL-FAIL" evaluate-closed ;
 
 private
 
@@ -250,8 +250,8 @@ private
    40 EVAL-N ! EVAL-DOWN EVAL-N @ 47 T=
    [: 40 EVAL-N ! EVAL-FAIL ;] 9133 TTHROWSQ
    RESTORED
-   s" public : AFTER-DEEP-EVAL ( -- n ) 17 ;" INCLUDE-EVALUATE
-   s" SOURCE-ROOT-TEST:AFTER-DEEP-EVAL 17 T=" INCLUDE-EVALUATE
+   s" public : AFTER-DEEP-EVAL ( -- n ) 17 ;" evaluate-closed
+   s" SOURCE-ROOT-TEST:AFTER-DEEP-EVAL 17 T=" evaluate-closed
    40 EVAL-N ! EVAL-DOWN EVAL-N @ 47 T= ;
 
 : DEEP-LOADS ( -- )

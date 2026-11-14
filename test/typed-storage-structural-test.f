@@ -74,7 +74,7 @@ TYPED-VARIABLE TSSP ptr u8
 \    fail-closed edge. An open var cannot be pinned at all, so it still rejects.
 TYPED-VARIABLE TSS-EVAL-A ptr u8
 variable TSS-EVAL-U
-: TSS-EVAL-RUN ( -- ) TSS-EVAL-A @ TSS-EVAL-U @ INCLUDE-EVALUATE ;
+: TSS-EVAL-RUN ( -- ) TSS-EVAL-A @ TSS-EVAL-U @ evaluate-closed ;
 : TSS-EVAL ( ptr u8 n -- n ) TSS-EVAL-U ! TSS-EVAL-A ! [: TSS-EVAL-RUN ;] catch ;
 
 : SECTION-ADMISSIBILITY ( -- )

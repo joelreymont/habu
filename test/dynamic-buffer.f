@@ -32,7 +32,7 @@ variable RAW
 \ code.
 TYPED-VARIABLE DB-EVAL-A ptr u8
 variable DB-EVAL-U
-: DB-EVAL-RUN ( -- ) DB-EVAL-A @ DB-EVAL-U @ INCLUDE-EVALUATE ;
+: DB-EVAL-RUN ( -- ) DB-EVAL-A @ DB-EVAL-U @ evaluate-closed ;
 : DB-EVAL ( ptr u8 n -- n ) DB-EVAL-U ! DB-EVAL-A ! [: DB-EVAL-RUN ;] catch ;
 
 : OPTION-N ( option<n> -- n )

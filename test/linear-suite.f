@@ -39,7 +39,7 @@ package LIN-RUN
 public
 TYPED-VARIABLE SRC-A ptr u8
 variable SRC-U
-: EVAL ( -- ) SRC-A @ SRC-U @ INCLUDE-EVALUATE ;
+: EVAL ( -- ) SRC-A @ SRC-U @ evaluate-closed ;
 : DECL ( ptr u8 n -- n )
    SRC-U !  SRC-A !
    [: EVAL ;] catch ;

@@ -63,7 +63,7 @@ PTR-PERSIST
 
 TYPED-VARIABLE EVAL-A ptr u8
 variable EVAL-U
-: EVAL-RUN ( -- ) EVAL-A @ EVAL-U @ INCLUDE-EVALUATE ;
+: EVAL-RUN ( -- ) EVAL-A @ EVAL-U @ evaluate-closed ;
 \ The refusals counted and the throw code when the text is evaluated under the
 \ multi-error load state.
 : MULTI ( ptr u8 n -- n n )

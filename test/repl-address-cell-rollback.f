@@ -1,4 +1,4 @@
-\ Exercise the tty line boundary, not INCLUDE-EVALUATE's separate recovery.
+\ Exercise the tty line boundary, not evaluate-closed's separate recovery.
 require src/lib/test.f
 require src/lib/pty-harness.f
 require src/lib/engine-candidate.f

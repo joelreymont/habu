@@ -32,7 +32,7 @@ T-RESET
 
 TYPED-VARIABLE TCE-A ptr u8   variable TCE-U
 : TCE-GO ( -- )
-   TCE-A @ TCE-U @ INCLUDE-EVALUATE ;
+   TCE-A @ TCE-U @ evaluate-closed ;
 : TCE-CATCH ( ptr u8 n -- n )
    TCE-U ! TCE-A !
    [: TCE-GO ;] catch ;

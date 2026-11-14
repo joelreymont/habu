@@ -321,7 +321,7 @@ variable PADS
    s" CALLBACK: CBT-PAD-" PAD-TEXT CODEGEN:APPEND-STRING
    PADS @ PAD-TEXT CODEGEN:APPEND-DECIMAL
    s"  ( -- ) ;CALLBACK" PAD-TEXT CODEGEN:APPEND-STRING
-   PAD-TEXT CODEGEN:CONTENTS INCLUDE-EVALUATE
+   PAD-TEXT CODEGEN:CONTENTS evaluate-closed
    1 PADS +! ;
 
 \ A count that is a power of two fills both tables: the next declaration grows

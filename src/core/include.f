@@ -1271,14 +1271,6 @@ variable SCRIPT-NAMED-PEND
 : INCLUDE-EVALERR? ( -- bool )
    data-base EVALERR-CELL + @ 0 = 0= ;
 
-\ Generated source runs as a closed program, refused E-EVAL-RESIDUE for what it
-\ leaves.
-: INCLUDE-EVALUATE ( ptr u8 n -- )
-   REQUIRE-REG:MARK {: mark:n :}
-   [: 2dup evaluate-closed ;] catch {: rc:n :}
-   2drop
-   rc 0 <> if mark REQUIRE-REG:TRUNCATE rc throw then ;
-
 \ Every source load runs through the bound runner. The ordinary one keeps the
 \ frame and scope behavior; a build binds its own once the loader has loaded.
 package SOURCE-UNIT

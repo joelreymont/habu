@@ -1218,14 +1218,16 @@ private
    [: 0 0= 0= ;] is TDECL-EVENT-ARMED ;
 TDECL-PREFLIGHT-DEFAULTS
 
-$4000 constant TDGEN-CAP
+\ Two TF-NAME-MAX tails joined by ':' or '-', the second maybe ending in @ or !.
+TF-NAME-MAX 2 * 2 + constant TDGEN-CAP
 create TDGEN-BUF TDGEN-CAP allot
 variable TDGEN-U
 
-\ The per-word renderer is bounded by TDGEN-CAP; this plan arena grows before
-\ publication, so a large family cannot fail halfway through. Each row keeps
-\ relocation-safe offsets for its name. The symbol table rejects collisions within the plan; post-xref name and capacity hooks
-\ validate live visibility and every plan-determined fixed registry.
+\ TDGEN-BUF holds the name being made. This plan arena grows before publication,
+\ so a large family cannot fail halfway through. Each row keeps relocation-safe
+\ offsets for its name. The symbol table rejects collisions within the plan;
+\ post-xref name and capacity hooks validate live visibility and every
+\ plan-determined fixed registry.
 $1000 constant TDPLAN-CAP-INIT
 4 constant TDPLAN-ROW-CAP-INIT
 6 cells constant TDPLAN-REC
@@ -1501,7 +1503,6 @@ private
 
 : TDGEN-CLEAR ( -- ) 0 TDGEN-U ! ;
 : TDGEN-C, ( n -- )
-   TDGEN-U @ TDGEN-CAP >= IF s" sumtype: generated constructor too long" 76 die THEN
    TDGEN-BUF TDGEN-U @ + c!
    TDGEN-U @ 1 + TDGEN-U ! ;
 : TDGEN-APP ( ptr u8 n -- ) {: a:ptr u:n :}
