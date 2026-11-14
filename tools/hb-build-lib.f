@@ -223,18 +223,17 @@ variable HBB-ELAPSED-NS
 : HBB-CLEANUP ( -- )
    FS:CLEANUP-RUN ;
 
-\ Each file hb-build writes, the map and then -o, is written to its sibling
-\ and renamed over it only once it is whole (FS:REPLACE-STAGED), so a failed
-\ install leaves that file as it was and no sibling. A sibling the host will
-\ not make, a write or rename it refuses, or a failed read of the build's own
-\ output the fill copies, is an output hb-build cannot replace, and the CLI
-\ names it (HBB-CLI-CODE).
-: HBB-REPLACE ( ptr u8 n [ ptr u8 n -- ] -- )
-   {: a:ptr u:n fill :}
-   [: a u fill FS:REPLACE-STAGED ;] catch {: rc:n :}
+\ A replace's E-FS-OPEN or E-FS-IO, before the rename, is E-BUILD-INSTALL, the
+\ file kept.
+: HBB-REPLACE-ERROR ( n -- )
+   {: rc:n :}
    rc 0= if exit then
    rc E-FS-OPEN = rc E-FS-IO = or if E-BUILD-INSTALL throw then
    rc throw ;
+
+: HBB-REPLACE ( ptr u8 n [ ptr u8 n -- ] -- )
+   {: a:ptr u:n fill :}
+   [: a u fill FS:REPLACE-STAGED ;] catch HBB-REPLACE-ERROR ;
 
 \ The program a build wrote under TMPDIR may be on another filesystem, so it is
 \ copied; the copy keeps the team signature the product already carries.
@@ -310,7 +309,9 @@ TYPED-VARIABLE HBB-SAME-OUT bool
    HBB-SAME-OUT? if exit then
    HBB-MAP-SRC$ FS:FILE? 0= if E-BUILD-PATH throw then
    HBB-GOT$ CODESIGN:ENSURE
-   HBB-MAP-DST$ [: HBB-MAP-FILL ;] HBB-REPLACE
+   \ The map is in -o's directory, whose sync after -o's rename covers it.
+   [: HBB-MAP-DST$ [: HBB-MAP-FILL ;] FS:REPLACE-CACHED ;] catch
+   HBB-REPLACE-ERROR
    HBB-OUT$ [: HBB-INSTALL-FILL ;] HBB-REPLACE ;
 
 : HBB-SUCCESS ( -- )
@@ -427,6 +428,10 @@ TYPED-VARIABLE HBB-SAME-OUT bool
    rc E-BUILD-INSTALL = if
       HBB-CLEANUP
       s" hb-build: cannot replace output" HBB-BUILD-RC die
+   then
+   rc E-FS-SYNC = if
+      HBB-CLEANUP
+      s" hb-build: output replaced, its directory not synced" HBB-BUILD-RC die
    then
    rc CODESIGN:E-IDENTITY = if
       HBB-CLEANUP

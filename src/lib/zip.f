@@ -381,11 +381,8 @@ public
    archive ARCHIVE-NODE {: node:ptr :}
    node node entry ENTRY-INDEX len ctx fill REPLACE-FILL ;
 
-\ Writes a compact archive to a temporary in the destination directory and
-\ renames it over, keeping permissions and untouched local records byte for
-\ byte; replacements are STORE with fresh CRC and sizes, ZIP64 fields rebuilt
-\ as needed. Success retires the archive and its entries; after ZIP:E-COMMIT the
-\ archive stays live for a retry or CLOSE.
+\ Replaces path with a compact archive: mode and untouched local records kept,
+\ replacements STORE. Success retires it; ZIP:E-COMMIT and E-FS-SYNC do not.
 : COMMIT ( archive -- )
    ARCHIVE-NODE dup COMMIT-RAW DISCARD-NODE ;
 

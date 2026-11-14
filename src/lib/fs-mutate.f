@@ -505,6 +505,23 @@ public
 : ATOMIC-CLEAN-TEMP ( ptr u8 n -- ) {: temp:ptr tempu :}
    temp tempu PATH-COLLISION? if temp tempu REMOVE-FILE then ;
 
+private
+\ The realpath of the directory holding path's last component, borrowed from
+\ this task's PATHZ2 buffer.
+: PARENT-REAL ( ptr u8 n -- ptr u8 n )
+   {: path:ptr pathu:n :}
+   path pathu ATOMIC-BASE-OFF {: off:n :}
+   off 0= if s" ." >PATHZ else
+      off 1 = if s" /" >PATHZ else
+         path off 1 - >PATHZ
+      then
+   then {: parent:ptr :}
+   parent PATHZ2-BUF SPAN:$ drop PATHZ-CAP realpath {: u:n :}
+   u -2 = if CAUSE-CLEAR E-FS-CAPACITY throw then
+   u 0 < if E-FS-STAT ERRNO-FAIL then
+   PATHZ2-BUF SPAN:$ drop u ;
+
+public
 \ Resolve the complete spelling when it exists, including its final symlink.
 \ For a new basename, resolve its parent and append the basename unchanged.
 \ The answer is absolute and borrowed from this task's PATHZ2 buffer until the
@@ -520,15 +537,7 @@ public
    input pathu ATOMIC-BASE-OFF {: off:n :}
    pathu off - 0= if CAUSE-CLEAR E-FS-STAT throw then
    input off + pathu off - ATOMIC-PATH SPAN:COPY
-   off 0= if s" ." >PATHZ else
-      off 1 = if s" /" >PATHZ else
-         input off 1 - >PATHZ
-      then
-   then {: parent:ptr :}
-   parent PATHZ2-BUF SPAN:$ drop PATHZ-CAP realpath {: parentu:n :}
-   parentu -2 = if CAUSE-CLEAR E-FS-CAPACITY throw then
-   parentu 0 < if E-FS-STAT ERRNO-FAIL then
-   PATHZ2-BUF SPAN:$ drop parentu
+   input pathu PARENT-REAL
    ATOMIC-PATH SPAN:$ drop pathu off -
    PATHZ2-BUF PATH-CAP SPAN:TAKE JOIN-PATH-INTO {: targetu:n :}
    PATHZ2-BUF SPAN:$ drop targetu ;
@@ -556,6 +565,9 @@ FUNCTION: FCNTL-CALL fcntl ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
 \ Darwin's fcntl that flushes the drive's own cache, which its fsync leaves to
 \ a power loss: xnu bsd/sys/fcntl.h.
 51 constant F-FULLFSYNC
+
+\ Darwin's fcntl that orders writes without a drive flush: xnu bsd/sys/fcntl.h.
+85 constant F-BARRIERFSYNC
 
 \ Host errnos: macOS sys/errno.h, Linux asm-generic/errno.h.
 9 constant EBADF
@@ -595,15 +607,18 @@ FUNCTION: FCNTL-CALL fcntl ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
    s"  failed" SAY
    e SAY-END ;
 
-\ The destination's directory, opened for search only for every call that names
-\ the sibling or the destination, so a directory the caller may write and
-\ search but not list takes the write. The target is absolute, so its
-\ directory is what precedes its last slash, or the root.
-: ATOMIC-OPEN-DIR ( ptr u8 n -- n ) {: dst:ptr dstu :}
-   dst dstu ATOMIC-BASE-OFF 1- 1 max {: diru :}
-   AT-CWD dst diru >PATHZ SEARCH-DIR-FLAGS OPEN-AT-CALL {: dir :}
+\ Opened for search only: a directory the caller may write and search but not
+\ list still opens.
+: OPEN-DIR-SEARCH ( ptr u8 n -- n ) {: a:ptr u :}
+   AT-CWD a u >PATHZ SEARCH-DIR-FLAGS OPEN-AT-CALL {: dir :}
    dir 0 < if E-FS-OPEN ERRNO-FAIL then
    dir ;
+
+\ The absolute target's directory, for every call naming the sibling or the
+\ target: what precedes its last slash, or the root.
+: ATOMIC-OPEN-DIR ( ptr u8 n -- n ) {: dst:ptr dstu :}
+   dst dstu ATOMIC-BASE-OFF 1- 1 max {: diru :}
+   dst diru OPEN-DIR-SEARCH ;
 
 \ Create the sibling in dir exclusively, its name staged for SIBLING-Z:
 \ the name's length and the descriptor.
@@ -620,14 +635,20 @@ FUNCTION: FCNTL-CALL fcntl ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
    repeat drop
    E-FS-IO ERRNO-FAIL ;
 
-: ATOMIC-SYNC ( n -- n ) {: fd :}
+\ Darwin's fcntl cmd, or fsync on a file system that refuses it and elsewhere.
+: FCNTL-SYNC ( n n -- n ) {: fd cmd :}
    HB-TARGET-MACOS? if
-      fd F-FULLFSYNC 0 FCNTL-CALL 0= if fd exit then
+      fd cmd 0 FCNTL-CALL 0= if fd exit then
       FFI:ERRNO dup EINVAL = over ENOTTY = or swap ENOTSUP = or
       0= if E-FS-IO ERRNO-FAIL then
    then
    fd FSYNC-CALL 0<> if E-FS-IO ERRNO-FAIL then
    fd ;
+
+: ATOMIC-SYNC ( n -- n ) F-FULLFSYNC FCNTL-SYNC ;
+
+\ Orders the data before the rename; Darwin's barrier spares the drive flush.
+: ORDER-SYNC ( n -- n ) F-BARRIERFSYNC FCNTL-SYNC ;
 
 \ Stack-preserving under `catch`.
 : ATOMIC-FILL ( n ptr u8 n n -- n ptr u8 n n ) {: fd src:ptr srcu mode :}
@@ -655,6 +676,50 @@ FUNCTION: FCNTL-CALL fcntl ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
    rd CLOSE-FD drop
    code 0<> if E-FS-SYNC throw then
    dir ;
+
+PROCESS-SYMBOLS
+FUNCTION: SYNCFS-CALL syncfs ( n -- i32 ) ;FUNCTION
+
+: SYNC-PATH ( ptr u8 n [ n -- n ] -- ) {: sync :}
+   >PATHZ open-rd {: fd :}
+   fd 0 < if E-FS-OPEN throw then
+   fd sync catch {: code:n :}
+   drop
+   fd CLOSE-FD drop
+   code 0<> if code throw then ;
+
+: SYNC-ENTRY ( ptr u8 n -- )
+   [: dup FSYNC-CALL 0<> if E-FS-IO ERRNO-FAIL then ;] SYNC-PATH ;
+
+: SYNC-WALKED? ( ptr u8 n -- bool ) {: a:ptr u :}
+   a u DIR? if a u SYNC-ENTRY then
+   true ;
+
+\ The F_FULLFSYNC last flushes the drive's cache once for every fsync before.
+: SYNC-EACH ( ptr u8 n -- ) {: a:ptr u :}
+   a u [: SYNC-WALKED? ;] [: SYNC-ENTRY ;] WALK-FILES-IF
+   a u PARENT-REAL SYNC-ENTRY
+   a u [: ATOMIC-SYNC ;] SYNC-PATH ;
+
+: SYNC-FS ( ptr u8 n -- )
+   [: dup SYNCFS-CALL 0<> if E-FS-IO ERRNO-FAIL then ;] SYNC-PATH ;
+
+public
+\ On return directory path, every directory and regular file under it and its
+\ name in its parent are on disk. A throw sets FS:ERRNO.
+: SYNC-TREE ( ptr u8 n -- )
+   HB-TARGET-MACOS? if SYNC-EACH else SYNC-FS then ;
+
+\ Renames from over to and syncs to's directory, opened first: a throw before
+\ the rename leaves both names; E-FS-SYNC is the sync's, after the rename.
+: RENAME-SYNCED ( ptr u8 n ptr u8 n -- ) {: from:ptr fromu to:ptr tou :}
+   to tou PARENT-REAL OPEN-DIR-SEARCH {: dir :}
+   [: from fromu to tou RENAME-FILE dir ATOMIC-SYNC-DIR drop ;]
+   catch {: code:n :}
+   dir CLOSE-FD drop
+   code 0<> if code throw then ;
+
+private
 
 \ Closed exactly once, before publish: a failed close may already have freed
 \ the descriptor, so retrying it could close an unrelated recycled fd.
@@ -724,21 +789,24 @@ FUNCTION: FCNTL-CALL fcntl ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
    2drop 2drop 2drop drop
    published ;
 
-public
-\ Opens a new `.tmp-*` sibling of path, the caller's to remove; this task's next
-\ sibling, ATOMIC-WRITE-* or ATOMIC-TARGET ends its path. A throw sets FS:ERRNO.
-: RESERVE-SIBLING ( ptr u8 n -- ptr u8 n n ) {: path:ptr pathu :}
+: RESERVE-MODE ( ptr u8 n n -- ptr u8 n n ) {: path:ptr pathu mode :}
    pathu 0 < if CAUSE-CLEAR E-FS-PATH throw then
    path path pathu ATOMIC-BASE-OFF {: pre:ptr preu :}
    ATOMIC-SEED {: seed :}
    0 begin dup ATOMIC-RETRIES < while
       dup {: attempt:n :}
       pre preu seed attempt BUILD-SIBLING
-      2dup EXCL-WRITE-FLAGS MODE-0644 OPEN-CANDIDATE {: fd:n :}
+      2dup EXCL-WRITE-FLAGS mode OPEN-CANDIDATE {: fd:n :}
       fd 0 >= if rot drop fd exit then
       2drop 1+
    repeat drop
    E-FS-IO ERRNO-FAIL ;
+
+public
+\ Opens a new `.tmp-*` sibling of path, the caller's to remove; this task's next
+\ sibling, ATOMIC-WRITE-* or ATOMIC-TARGET ends its path. A throw sets FS:ERRNO.
+: RESERVE-SIBLING ( ptr u8 n -- ptr u8 n n )
+   MODE-0644 RESERVE-MODE ;
 
 \ Replace path's file with src's bytes; a reader or crash sees old or whole new,
 \ durable as ATOMIC-SYNC-DIR says. A throw sets FS:ERRNO; one from the
@@ -1030,14 +1098,32 @@ public
    a u [: CLEANUP-DROP ;] [: CLEANUP-RELEASE ;] finally ;
 
 private
-\ Stack-preserving under `catch`: the caller still holds the sibling to remove
-\ when a step throws.
-: STAGED-RUN ( R ptr u8 n ptr u8 n [ R ptr u8 n -- R ] -- R ptr u8 n ptr u8 n [ R ptr u8 n -- R ] )
-   {: path:ptr pathu tmp:ptr tmpu fill :}
+\ The sibling is umasked 0644, or 0600 over a regular file; once open for the
+\ sync it takes that file's mode plus fill's execute bits, which may deny reads.
+: STAGED-SYNC ( ptr u8 n n bool -- )
+   {: tmp:ptr tmpu mode:n durable:bool :}
+   mode 0 >= if
+      tmp tmpu TRY-STAT 0= if E-FS-IO throw then
+      STAT-MODE@ MODE-EXEC and mode or
+   else -1 then {: kept:n :}
+   tmp tmpu [:
+      kept 0 >= if
+         dup kept FCHMOD-CALL 0<> if E-FS-IO ERRNO-FAIL then
+      then
+      durable if ATOMIC-SYNC else ORDER-SYNC then ;] SYNC-PATH ;
+
+\ Stack-preserving under `catch`, the sibling left to remove.
+: STAGED-RUN ( R ptr u8 n ptr u8 n n bool [ R ptr u8 n -- R ] -- R ptr u8 n ptr u8 n n bool [ R ptr u8 n -- R ] )
+   {: path:ptr pathu tmp:ptr tmpu mode:n durable:bool fill :}
    tmp tmpu CLEANUP+
    tmp tmpu fill execute
-   tmp tmpu path pathu RENAME-FILE
-   path pathu tmp tmpu fill ;
+   tmp tmpu mode durable STAGED-SYNC
+   durable if
+      tmp tmpu path pathu RENAME-SYNCED
+   else
+      tmp tmpu path pathu RENAME-FILE
+   then
+   path pathu tmp tmpu mode durable fill ;
 
 : STAGED-CLEAN ( ptr u8 n -- ptr u8 n )
    2dup ATOMIC-CLEAN-TEMP ;
@@ -1045,12 +1131,11 @@ private
 : STAGED-FORGET ( ptr u8 n -- ptr u8 n )
    2dup CLEANUP-FORGET ;
 
-public
-\ Renames the sibling fill writes over path, or removes it on a throw or `die`;
-\ fill must not end RESERVE-SIBLING's path. Throws set FS:ERRNO or keep fill's.
-: REPLACE-STAGED ( R ptr u8 n [ R ptr u8 n -- R ] -- R )
-   {: path:ptr pathu fill :}
-   path pathu RESERVE-SIBLING {: tmp:ptr tmpu fd :}
+: STAGED-REPLACE ( R ptr u8 n [ R ptr u8 n -- R ] bool -- R )
+   {: path:ptr pathu fill durable:bool :}
+   path pathu ATOMIC-OLD-MODE {: mode:n :}
+   mode 0 >= if MODE-PRIVATE-FILE else MODE-0644 then {: create-mode :}
+   path pathu create-mode RESERVE-MODE {: tmp:ptr tmpu fd :}
    fd CLOSE-FD 0<> if
       FFI:ERRNO {: close-cause:n :}
       CAUSE-CLEAR
@@ -1062,8 +1147,9 @@ public
       then
       E-FS-IO close-cause CAUSE-FAIL
    then
-   path pathu tmp tmpu fill [: STAGED-RUN ;] catch {: code:n :}
-   drop 2drop 2drop
+   path pathu tmp tmpu mode durable fill [: STAGED-RUN ;] catch
+   {: code:n :}
+   2drop 2drop 2drop drop
    code 0<> if
       ERRNO {: cause:n :}
       CAUSE-CLEAR
@@ -1084,5 +1170,16 @@ public
       code cause CAUSE-FAIL
    then
    tmp tmpu CLEANUP-FORGET ;
+
+public
+\ Renames fill's synced sibling over path, else removes it; fill must not end
+\ RESERVE-SIBLING's path. Throws set FS:ERRNO or keep fill's, E-FS-SYNC after.
+: REPLACE-STAGED ( R ptr u8 n [ R ptr u8 n -- R ] -- R )
+   true STAGED-REPLACE ;
+
+\ REPLACE-STAGED without the directory sync: a crash leaves path's old file,
+\ the whole new one, or none where there was none.
+: REPLACE-CACHED ( R ptr u8 n [ R ptr u8 n -- R ] -- R )
+   false STAGED-REPLACE ;
 
 ;package

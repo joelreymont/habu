@@ -1,20 +1,22 @@
 \ install.f - installs the tree in the working directory as the current Habu.
 \ Run from the root of a tree with its own bin/hb and bin/hb.map:
 \ bin/hb --load tools/install.f
-\ It copies the tree's bin/hb, bin/hb.map, src/, tools/ and test/, without their
-\ symlinks, into a new $HOME/.local/lib/habu-trees/tree-<seed>-<attempt>, then
-\ renames a fresh link, habu.next, over $HOME/.local/lib/habu to name it. An hb
-\ whose working directory is no Habu tree reads the tree its executable's real
-\ path is in, so one started before the rename reads its old tree whole and one
-\ started after reads the new one. macOS resolves that path when the root is
-\ first needed, not at exec, so there an hb started as the link moves can pair
-\ the old engine with the new tree. Before it builds, an install removes every
-\ entry of habu-trees that is neither the link's target nor run by a process,
-\ and a habu.next a dead install left. An hb whose tree is removed under it
-\ (one that holds it only as working directory, one the scan cannot see, or one
-\ still inside exec while two installs pass) fails `include: cannot open`.
-\ Installs hold a lock on habu-trees; a failed one is finished by running it
-\ again. The tool signs nothing (the build signs).
+\ It copies the tree's bin/hb, bin/hb.map, src/, tools/ and test/, without
+\ their symlinks, into a new $HOME/.local/lib/habu-trees/tree-<seed>-<attempt>,
+\ then renames a fresh link, habu.next, over $HOME/.local/lib/habu to name it.
+\ The new tree is synced to disk before the link moves and the link's directory
+\ after, so a crash leaves the link naming the old tree or the new one, whole.
+\ An hb whose working directory is no Habu tree reads the tree its executable's
+\ real path is in, so one started before the rename reads its old tree whole
+\ and one started after reads the new one. macOS resolves that path when the
+\ root is first needed, not at exec, so there an hb started as the link moves
+\ can pair the old engine with the new tree. Before it builds, an install
+\ removes every entry of habu-trees that is neither the link's target nor run
+\ by a process, and a habu.next a dead install left. An hb whose tree is
+\ removed under it (one that holds it only as working directory, one the scan
+\ cannot see, or one still inside exec while two installs pass) fails
+\ `include: cannot open`. Installs hold a lock on habu-trees; a failed one is
+\ finished by running it again. The tool signs nothing (the build signs).
 
 require src/lib/fs.f
 require src/lib/fs-mutate.f
@@ -28,6 +30,7 @@ package INSTALL
 
 66 constant NOINPUT-RC
 78 constant CONFIG-RC
+74 constant IOERR-RC
 
 create LIB PATH-CAP allot           variable LIB-U
 create LIB-TREES PATH-CAP allot     variable LIB-TREES-U
@@ -149,7 +152,12 @@ create MSG 64 allot
 
 : PUBLISH ( -- )
    TREE$ LIB-U @ BELOW NEXT$ FS:MAKE-SYMLINK
-   NEXT$ LINK$ FS:RENAME-FILE ;
+   TREE$ FS:SYNC-TREE
+   [: NEXT$ LINK$ FS:RENAME-SYNCED ;] catch {: rc:n :}
+   rc 0= if exit then
+   rc E-FS-SYNC <> if rc throw then
+   s" install: installed into " type TREE$ type cr
+   s" install: its link's directory not synced" IOERR-RC die ;
 
 
 : MAIN ( -- )

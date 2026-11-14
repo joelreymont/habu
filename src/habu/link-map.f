@@ -350,7 +350,7 @@ variable REGION-N
    S\" habu-names 1\ncolumns rec named start len wid name kind origin source\n" MAP+
    0 MAP-REC !  end CODE-ROWS  end REGION-ROWS  PACKAGE-ROWS
    path pathu MAP-PATH SPAN+  s" .map" MAP-PATH SPAN+
-   MAP-PATH BYTES$ [: MAP-TEXT BYTES$ FS:WRITE-ALL ;] FS:REPLACE-STAGED ;
+   MAP-PATH BYTES$ [: MAP-TEXT BYTES$ FS:WRITE-ALL ;] FS:REPLACE-CACHED ;
 
 : MAP-RELEASE ( -- )
    MAP-TEXT BUF:DISPOSE  MAP-PATH BUF:DISPOSE

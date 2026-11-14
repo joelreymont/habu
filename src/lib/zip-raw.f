@@ -38,12 +38,9 @@ $14 constant LOCATOR-BYTES
 : DIRECTORY-TAIL ( ptr n -- ptr n ) 17 cells + ;
 : OUT-LEN ( ptr n -- ptr n ) 18 cells + ;
 : OUT-DIRECTORY ( ptr n -- ptr n ) 19 cells + ;
-: TEMP-PTR ( ptr n -- ptr ptr u8 ) 20 ptr-field ;
-: TEMP-LEN ( ptr n -- ptr n ) 21 cells + ;
-: TEMP-FD ( ptr n -- ptr n ) 22 cells + ;
-: TEMP-LIVE ( ptr n -- ptr n ) 23 cells + ;
-: END64-OFF ( ptr n -- ptr n ) 24 cells + ;
-: DIRTY ( ptr n -- ptr n ) 25 cells + ;
+: TEMP-FD ( ptr n -- ptr n ) 20 cells + ;
+: END64-OFF ( ptr n -- ptr n ) 21 cells + ;
+: DIRTY ( ptr n -- ptr n ) 22 cells + ;
 
 : CENTRAL-OFF ( ptr n -- ptr n ) 0 cells + ;
 : CENTRAL-LEN ( ptr n -- ptr n ) 1 cells + ;
@@ -585,50 +582,33 @@ $14 constant LOCATOR-BYTES
 : BUILD-OUTPUT ( ptr n -- )
    dup WRITE-MEMBERS WRITE-END ;
 
-: DIRECTORY$ ( ptr u8 n -- ptr u8 n ) {: path:ptr len:n :}
-   0 len 0 ?do path i + c@ $2F = if drop i 1+ then loop
-   dup 0= if drop s" ." else 1- path swap then ;
-
-: TEMP-TEMPLATE ( ptr n -- )
-   {: node:ptr :}
-   node PATH-PTR @ node PATH-LEN @ DIRECTORY$ {: dir:ptr len:n :}
-   s" /.habu-zip-XXXXXX" {: suffix:ptr size:n :}
-   len size + {: total:n :}
-   total CSTR-ROOM {: room:n :}
-   node room BUFFER-ALLOC room SPAN:MAKE {: temp :}
-   dir len temp SPAN:COPY suffix size temp len SPAN:SKIP SPAN:COPY
-   total temp CSTR! node TEMP-PTR ! total node TEMP-LEN ! ;
-
-: TEMP-OPEN ( ptr n -- ) {: node:ptr :}
-   node TEMP-TEMPLATE
-   node TEMP-PTR @ node TEMP-LEN @ 1+ C-MKSTEMP
-   dup $7FFFFFFF > over 0 < or if E-COMMIT throw then
-   node TEMP-FD ! 1 node TEMP-LIVE ! ;
-
 : TEMP-WRITE ( ptr n -- )
    {: node:ptr :}
    node TEMP-FD @ -1 node TEMP-FD ! C-CLOSE-FD 0 <> if E-COMMIT throw then ;
-: TEMP-INSTALL ( ptr n -- ) {: node:ptr :}
-   node TEMP-PTR @ node TEMP-LEN @ node PATH-PTR @ node PATH-LEN @ FS:STAT-MODE FS:CHMOD-MODE
-   node TEMP-PTR @ node TEMP-LEN @ node PATH-PTR @ node PATH-LEN @ FS:RENAME-FILE
-   0 node TEMP-LIVE ! ;
+: FILL-SIBLING ( ptr n ptr u8 n -- ptr n )
+   {: node:ptr tmp:ptr tmpu :}
+   tmp tmpu FS:>PATHZ FS:O-RDWR 0 open
+   dup 0 < if E-COMMIT throw then node TEMP-FD !
+   0 node OUT-LEN ! node BUILD-OUTPUT node TEMP-WRITE
+   node ;
 : COMMIT-WORK ( ptr n -- ptr n )
    {: node:ptr :}
-   node TEMP-OPEN 0 node OUT-LEN !
-   node BUILD-OUTPUT node TEMP-WRITE node TEMP-INSTALL node ;
+   node node PATH-PTR @ node PATH-LEN @ [: FILL-SIBLING ;]
+   FS:REPLACE-STAGED ;
 
-: TEMP-CLEANUP ( ptr n -- ) {: node:ptr :}
-   node TEMP-LIVE @ 0= if exit then
-   node TEMP-FD @ 0 >= if node TEMP-FD @ close then
-   node TEMP-PTR @ node TEMP-LEN @ FS:>PATHZ unlink drop 0 node TEMP-LIVE ! ;
 \ `catch` restores the DEPTH of both stacks and never their contents, so the
 \ node the caught body was handed comes back stale and the cleanup below must
 \ use the handle this word already holds.
 : COMMIT-RAW ( ptr n -- ) {: node:ptr :}
    node DIRTY @ 0= if exit then
+   -1 node TEMP-FD !
    node [: COMMIT-WORK ;] catch {: code:n :}
    drop
-   code 0 <> if node TEMP-CLEANUP E-COMMIT throw then ;
+   code 0 <> if
+      node TEMP-FD @ 0 >= if node TEMP-FD @ close then
+      code E-FS-SYNC = if code throw then
+      E-COMMIT throw
+   then ;
 
 ;using
 ;package

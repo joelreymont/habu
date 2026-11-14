@@ -15,7 +15,7 @@ using FFI
 using MEM
 
 $7FFFFFFFFFFFFFFF constant MAX-SIZE
-34 constant NODE-CELLS
+31 constant NODE-CELLS
 NODE-CELLS 1+ constant ARCHIVE-CELLS
 3 constant ENTRY-CELLS
 $4000 constant CHUNK-BYTES
@@ -64,15 +64,15 @@ variable SERIAL
 : MODE ( ptr n -- ptr n ) 5 cells + ;
 : RAW-PTR ( ptr n -- ptr ptr u8 ) 8 ptr-field ;
 : RAW-LEN ( ptr n -- ptr n ) 9 cells + ;
-: SOURCE-PTR ( ptr n -- ptr ptr u8 ) 26 ptr-field ;
-: SOURCE-LEN ( ptr n -- ptr n ) 27 cells + ;
-: SOURCE-FD ( ptr n -- ptr n ) 28 cells + ;
-: SNAP-FD ( ptr n -- ptr n ) 29 cells + ;
-: SOURCE-LIVE ( ptr n -- ptr n ) 30 cells + ;
-: COPY-BUF ( ptr n -- ptr ptr u8 ) 31 ptr-field ;
-: DIRECTORY-PTR ( ptr n -- ptr ptr u8 ) 32 ptr-field ;
-: RAW-SCRATCH ( ptr n -- ptr ptr u8 ) 33 ptr-field ;
-: CHUNKS ( ptr n -- ptr ptr n ) 34 ptr-field ;
+: SOURCE-PTR ( ptr n -- ptr ptr u8 ) 23 ptr-field ;
+: SOURCE-LEN ( ptr n -- ptr n ) 24 cells + ;
+: SOURCE-FD ( ptr n -- ptr n ) 25 cells + ;
+: SNAP-FD ( ptr n -- ptr n ) 26 cells + ;
+: SOURCE-LIVE ( ptr n -- ptr n ) 27 cells + ;
+: COPY-BUF ( ptr n -- ptr ptr u8 ) 28 ptr-field ;
+: DIRECTORY-PTR ( ptr n -- ptr ptr u8 ) 29 ptr-field ;
+: RAW-SCRATCH ( ptr n -- ptr ptr u8 ) 30 ptr-field ;
+: CHUNKS ( ptr n -- ptr ptr n ) 31 ptr-field ;
 : INDEX ( ptr n -- ptr n ) 2 cells + ;
 : DATA-PTR ( ptr n -- ptr ptr u8 ) 1 ptr-field ;
 : CAPACITY ( ptr n -- ptr n ) 2 cells + ;

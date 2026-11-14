@@ -543,7 +543,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    then
    ENGINE? @ if LINK-ENGINE else LINK-STRIPPED then
    path pathu [: 2dup ENGINE? @ if SIGN-ID:ENGINE$ else SIGN-ID:PROG$ then 2swap EMIT-IMAGE
-      FS:CHMOD-X ;] FS:REPLACE-STAGED
+      FS:CHMOD-X ;] FS:REPLACE-CACHED
    REGIONS  path pathu CODE-END @ WRITE-MAP ;
 
 public

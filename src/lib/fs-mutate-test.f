@@ -51,6 +51,7 @@ variable FMT-PARENT-LINK-U
 variable FMT-PARENT-BOUND-U
 variable FMT-STAGED-TMP-U
 variable FMT-STAGED-FORGOT-U
+variable FMT-SIBLING-MODE
 
 create FMT-ROOT-BUF PATH-CAP allot
 create FMT-REMOVE-BUF PATH-CAP allot
@@ -108,6 +109,9 @@ create FMT-ERR-BUF FMT-ERR-CAP allot
 9217 constant FMT-STREAM-LEN
 384 constant FMT-MODE-0600
 416 constant FMT-MODE-0640
+400 constant FMT-MODE-0620
+292 constant FMT-MODE-0444
+128 constant FMT-MODE-0200
 $16D constant FMT-MODE-0555
 13 constant FMT-EACCES                  \ a denied mkdir's errno on both targets
 20 constant FMT-ENOTDIR                 \ ENOTDIR on both targets
@@ -666,6 +670,39 @@ public
    s" a staged callback cannot consume its caller's context" T-LABEL
    s" FMT-BAD-STAGED ( n ptr u8 n -- ) [: 2drop drop ;] FS:REPLACE-STAGED"
       CHECK-QUIET-CANDIDATE! 0 T= ;
+
+: FMT-STAGED-MODE-FILL ( ptr u8 n -- ) {: path:ptr pathu :}
+   path pathu FS:STAT-MODE FMT-MODE-PERM and FMT-SIBLING-MODE !
+   path pathu s" private" FS:WRITE-ALL ;
+
+: FMT-TEST-STAGED-MODE ( -- )
+   FMT-ATOMIC-PATH FS:STAT-MODE FMT-MODE-PERM and {: before:n :}
+   FMT-ATOMIC-PATH FMT-MODE-0620 FS:CHMOD-MODE
+   s" a staged sibling is owner-only until filled, then takes path's mode" T-LABEL
+   FMT-ATOMIC-PATH [: FMT-STAGED-MODE-FILL ;] FS:REPLACE-STAGED
+   FMT-SIBLING-MODE @ FMT-MODE-0600 T=
+   FMT-ATOMIC-PATH FS:STAT-MODE FMT-MODE-PERM and FMT-MODE-0620 T=
+   s" a read-only target is replaced and stays read-only" T-LABEL
+   FMT-ATOMIC-PATH s" old" FS:WRITE-ALL
+   FMT-ATOMIC-PATH FMT-MODE-0444 FS:CHMOD-MODE
+   FMT-ATOMIC-PATH [: FMT-STAGED-MODE-FILL ;] FS:REPLACE-STAGED
+   FMT-ATOMIC-PATH FMT-READ-BUF 64 FS:READ-ALL 7 T=
+   FMT-READ-BUF 7 s" private" T$=
+   FMT-ATOMIC-PATH FS:STAT-MODE FMT-MODE-PERM and FMT-MODE-0444 T=
+   s" a write-only target is replaced and stays write-only" T-LABEL
+   FMT-ATOMIC-PATH FMT-MODE-0200 FS:CHMOD-MODE
+   FMT-ATOMIC-PATH s" old" FS:WRITE-ALL
+   FMT-ATOMIC-PATH [: FMT-STAGED-MODE-FILL ;] FS:REPLACE-STAGED
+   FMT-ATOMIC-PATH FS:STAT-MODE FMT-MODE-PERM and FMT-MODE-0200 T=
+   FMT-ATOMIC-PATH FMT-MODE-0600 FS:CHMOD-MODE
+   FMT-ATOMIC-PATH FMT-READ-BUF 64 FS:READ-ALL 7 T=
+   FMT-READ-BUF 7 s" private" T$=
+   s" execute bits the fill sets on the sibling are kept" T-LABEL
+   FMT-ATOMIC-PATH FS:MODE-0644 FS:CHMOD-MODE
+   FMT-ATOMIC-PATH [: 2dup FS:CHMOD-X FMT-STAGED-MODE-FILL ;]
+      FS:REPLACE-STAGED
+   FMT-ATOMIC-PATH FS:STAT-MODE FMT-MODE-PERM and FMT-MODE-0755 T=
+   FMT-ATOMIC-PATH before FS:CHMOD-MODE ;
 
 : FMT-TEST-ATOMIC-RELATIVE ( -- )
    s" ./src/lib/../lib/fs-mutate.f" FS:ATOMIC-TARGET
@@ -1879,6 +1916,7 @@ public
    FMT-TEST-ATOMIC-RELATIVE
    FMT-TEST-ATOMIC-PARENT-LINK
    FMT-TEST-STAGED-CONTEXT
+   FMT-TEST-STAGED-MODE
    FMT-TEST-ATOMIC-FAILURE
    FS-TEST:ATOMIC-SEARCH-DIR
    FS-TEST:ATOMIC-PRIVATE

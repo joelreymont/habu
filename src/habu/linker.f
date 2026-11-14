@@ -2615,10 +2615,10 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
    pieces-at STORES-AT +!  pieces-at FACTS-AT +!  pieces-at ACTS-AT +!
    reqs-at REQS-AT !  requ 0<> if 1 else 0 then REQS-N !
    STAMPED? 0= if exit then
-   \ Unsynced: an object a crash cut short fails HEADER-CK's or PIECE-CK's bounds checks and compiles.
+   \ Cached: a crash may lose the new object; the next build then finds the old one or none, as this build did.
    OBJECT$ {: obj:ptr obju:n :}
    obj obju OBJECT-DIR
-   obj obju [: OBJECT BYTES$ FS:WRITE-ALL ;] FS:REPLACE-STAGED ;
+   obj obju [: OBJECT BYTES$ FS:WRITE-ALL ;] FS:REPLACE-CACHED ;
 
 \ The running part's extents (EXTS) into the build table as BUILT row BUILT-N's, each also into
 \ PLACES under -3; lengths and times come from EXTS, since FILE-END by now may lie past laid texts.

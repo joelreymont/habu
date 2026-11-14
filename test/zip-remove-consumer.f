@@ -44,7 +44,7 @@ variable FILL-CALLS
 : TRY-REMOVE ( ZIP:archive ZIP:entry -- ZIP:archive ZIP:entry )
    2dup ZIP:REMOVE ;
 : TRY-COMMIT ( ZIP:archive -- ZIP:archive ) dup ZIP:COMMIT ;
-: NO-TEMP ( ptr u8 n -- ) FS:BASENAME s" .habu-zip-" CONTAINS? TFALSE ;
+: NO-TEMP ( ptr u8 n -- ) FS:BASENAME s" .tmp-" STARTS-WITH? TFALSE ;
 
 : CHECK-ARTIFACT ( ptr u8 n -- ) {: local:ptr local-len:n :}
    ARCHIVE$ RAW RAW-CAP FS:READ-ALL {: size:n :}

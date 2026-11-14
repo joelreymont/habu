@@ -27,10 +27,6 @@ FUNCTION: C-PREAD pread ( n ptr u8 n n -- n )
 ;FUNCTION
 FUNCTION: C-PWRITE pwrite ( n ptr u8 n n -- n ) ;FUNCTION
 
-\ mkstemp rewrites its template in place, so the template's length is the
-\ writable extent; no argument of the C call carries it, which FUNCTION: needs.
-s" mkstemp" FFI:PROCESS 1 FFI:DECLARE constant MKSTEMP-ROW
-
 : DETACH-OWNED ( ptr n -- ptr n ) {: owner:ptr :}
    STATE-GET
    INPUTS begin dup @ NULL? 0= while
@@ -86,10 +82,5 @@ s" mkstemp" FFI:PROCESS 1 FFI:DECLARE constant MKSTEMP-ROW
    archive idx 0 stat BYTE-VIEW STAT-CALL ;
 
 : C-FOPEN ( ptr u8 n -- ptr u8 ) 0 FOPEN-CALL ;
-
-: C-MKSTEMP ( ptr u8 n -- n )
-   drop 0 FFI:POINTER!
-   MKSTEMP-ROW FFI:CALL $FFFFFFFF and
-   dup $80000000 and 0 <> if $FFFFFFFF00000000 or then ;
 
 ;package
