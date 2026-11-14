@@ -2110,87 +2110,6 @@ variable WARN-DIAGS   -1 WARN-DIAGS !
 : SHADOW-DIAG-INSTALL ( -- ) [: SHADOW-DIAG ;] is SHADOW-DIAG-XT ;
 SHADOW-DIAG-INSTALL
 
-\ A `trust` row naming a word the engine resolves to nothing. It sits beside the
-\ shadow diagnostic because it stops a stale row from becoming one. Placed at the
-\ row's name (checker.f TRUST) when that lies in checked text.
-: TSTALE-PROSE ( ptr u8 n -- )
-   {: na:ptr nu:n :}
-   s" E-TRUST-UNRESOLVED habu: trust row for '" EMIT-STR  na nu EMIT-STR
-   s" ' names no word where its record lands: nothing in the open" EMIT-STR
-   s"  section's wordlist, the global wordlist outside a package, or PKG's" EMIT-STR
-   s"  public wordlist for PKG:TAIL is" EMIT-STR
-   s"  spelled that way, so the effect would be recorded against a symbol" EMIT-STR
-   s"  the engine never defined. Delete the row, correct the name to the" EMIT-STR
-   s"  word it was meant to describe, or write it in the section that" EMIT-STR
-   s"  defines that word" EMIT-STR ;
-: TSTALE-JSON ( ptr u8 n ptr u8 n -- )
-   {: na:ptr nu:n pa:ptr pu:n :}
-   s" E-TRUST-UNRESOLVED" s" fix_stale_trust_row" s" rejected" JHEAD
-   s" token" JSON-KEY na nu JSON-STRING 44 EMIT1
-   pa pu s" This trust row names no word in the wordlist its record lands in: the open section's, the global wordlist outside a package, or PKG's public wordlist for PKG:TAIL. Delete the row if the word is gone, correct the spelling, or write the row in the section that defines the word." JTAIL ;
-: TSTALE-DIAG ( ptr u8 n ptr u8 n -- )
-   {: na:ptr nu:n pa:ptr pu:n :}
-   1 DEST !  0 TEXT-LEN !  0 RQM !
-   JSON @ IF na nu pa pu TSTALE-JSON ELSE na nu TSTALE-PROSE THEN
-   10 EMIT1
-   FLUSH ;
-
-\ A storage registrar called outside the verifier window (checker.f
-\ CHECKER-REPLAY-NAME-OK?): names the word and the definer that makes it soundly.
-\ The name is the run's, so the packet carries no place.
-: REPLAY-ONLY-PROSE ( ptr u8 n -- )
-   {: na:ptr nu:n :}
-   s" E-PKG-CONTEXT habu: storage record for '" EMIT-STR  na nu EMIT-STR
-   s" ' refused outside the engine's verifier window: a checker storage" EMIT-STR
-   s"  registrar records a definer's accessor only while the source pre-pass" EMIT-STR
-   s"  replays the definer that defines the word, so from source the record" EMIT-STR
-   s"  would certify callers against an effect the engine never binds to that" EMIT-STR
-   s"  name. Define the storage with its definer: TYPED-VARIABLE, TYPED-BUFFER," EMIT-STR
-   s"  LAYOUT-BUFFER or DYNAMIC-BUFFER" EMIT-STR ;
-: REPLAY-ONLY-JSON ( ptr u8 n ptr u8 n -- )
-   {: na:ptr nu:n pa:ptr pu:n :}
-   s" E-PKG-CONTEXT" s" use_storage_definer" s" rejected" JHEAD
-   s" token" JSON-KEY na nu JSON-STRING 44 EMIT1
-   pa pu s" A checker storage registrar records a definer's accessor only inside the engine's verifier window. Define the storage with its definer (TYPED-VARIABLE, TYPED-BUFFER, LAYOUT-BUFFER, DYNAMIC-BUFFER) instead of calling the registrar." JTAIL ;
-: REPLAY-ONLY-DIAG ( ptr u8 n ptr u8 n -- )
-   {: na:ptr nu:n pa:ptr pu:n :}
-   1 DEST !  0 TEXT-LEN !  0 RQM !
-   JSON @ IF na nu pa pu REPLAY-ONLY-JSON ELSE na nu REPLAY-ONLY-PROSE THEN
-   10 EMIT1
-   FLUSH ;
-
-\ A malformed qualified name's record (checker.f CHECKER-RECORD-NAME) has the
-\ class and suggestion of E-BAD-QUALIFIED, and a code of its own in a refused
-\ record's shape (tools/diag-code.f); the refusal still throws E-BAD-QUALIFIED.
-\ Placed at the declaring name (checker.f CHECKER-RECORD-NAME-AT) when in
-\ checked text.
-: BADQUAL-PROSE ( ptr u8 n -- )
-   {: na:ptr nu:n :}
-   s" E-BAD-QUALIFIED-RECORD habu: record for '" EMIT-STR  na nu EMIT-STR
-   s" ' refused: malformed qualified name, where one non-edge ':' selects a" EMIT-STR
-   s"  package and a second ':' names no word. Use one ':' qualifier, e.g." EMIT-STR
-   s"  PKG:WORD" EMIT-STR ;
-: BADQUAL-JSON ( ptr u8 n ptr u8 n -- )
-   {: na:ptr nu:n pa:ptr pu:n :}
-   s" E-BAD-QUALIFIED-RECORD" s" fix_qualified_name" s" rejected" JHEAD
-   s" token" JSON-KEY na nu JSON-STRING 44 EMIT1
-   pa pu s" Use one ':' qualifier, e.g. PKG:WORD." JTAIL ;
-: BADQUAL-DIAG ( ptr u8 n ptr u8 n -- )
-   {: na:ptr nu:n pa:ptr pu:n :}
-   1 DEST !  0 TEXT-LEN !  0 RQM !
-   JSON @ IF na nu pa pu BADQUAL-JSON ELSE na nu BADQUAL-PROSE THEN
-   10 EMIT1
-   FLUSH ;
-\ checker.f RECORD-DIAG-XT selects: 0 the stale trust row, 1 the storage
-\ record, 2 the malformed name.
-: RECORD-DIAG ( ptr u8 n ptr u8 n n -- )
-   {: na:ptr nu:n pa:ptr pu:n which:n :}
-   which 1 = IF na nu pa pu REPLAY-ONLY-DIAG EXIT THEN
-   which 2 = IF na nu pa pu BADQUAL-DIAG EXIT THEN
-   na nu pa pu TSTALE-DIAG ;
-: RECORD-DIAG-INSTALL ( -- ) [: RECORD-DIAG ;] is RECORD-DIAG-XT ;
-RECORD-DIAG-INSTALL
-
 \ Storage declaration refusals (checker.f CHECKER-STORAGE-REFUSE): the declared
 \ word, refused token and reason, the definer standing in for both when the line
 \ has no name; no definition fields. A run-time refusal carries no place.
@@ -2265,10 +2184,9 @@ RECORD-DIAG-INSTALL
 : STGR-DIAG-INSTALL ( -- ) [: STGR-DIAG ;] is STORAGE-DIAG-XT ;
 STGR-DIAG-INSTALL
 
-\ A `generates:` row the checker cannot keep, on
-\ TSTALE-JSON's template: the kind says which of four claims failed, each with
-\ its own repair (correct the name, delete the row, make D read its name, or
-\ the signature refusal's class and text). Placed at the name where the pre-pass scanner read it.
+\ A `generates:` row the checker cannot keep: the kind says which of four
+\ claims failed, each with its own repair (correct the name, delete the row,
+\ make D read its name, or the signature refusal's class and text). Placed at the name where the pre-pass scanner read it.
 : GENR-BADSIG-PROSE ( -- )
    SGBAD-UNKNOWN? IF
       s" unknown type '" EMIT-STR  SGBAD-A @ SGBAD-U @ EMIT-STR  s" ' in its effect" EMIT-STR EXIT

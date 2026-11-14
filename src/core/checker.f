@@ -10735,7 +10735,7 @@ variable MULTI-ERR
 variable SIG-COUNTED
 0 SIG-COUNTED !
 : SIG-COUNTED? ( -- bool ) SIG-COUNTED @ 0 <> ;
-: SIG-COUNT ( -- ) -1 SIG-COUNTED !  1 REJECTION:TALLY +! ;
+: SIG-COUNT ( -- ) -1 SIG-COUNTED ! ;
 7156 constant E-BAD-STORED-SIGNATURE
 \ Bad stored-signature diagnostic hook, given the signature, stored name and
 \ declaring name. BADSIG-PLAIN writes on fd 2 so a row the boot refuses names
@@ -12195,8 +12195,6 @@ package CHECKER-REG
 \ A `trust` row whose name the engine's scope chain resolves to nothing. Such a
 \ row would mint a bare global checker symbol.
 7143 constant E-TRUST-UNRESOLVED
-\ A record for a malformed qualified name, which keys no word (CHECKER-RECORD-NAME).
-7152 constant E-BAD-QUALIFIED
 \ A `generates:` row the checker cannot keep (CHECKER-GENERATES): one code for
 \ its three refusals, which the diagnostic tells apart by kind.
 7153 constant E-GENERATES-ROW
@@ -12205,21 +12203,24 @@ package CHECKER-REG
 7186 constant E-PARSES-ROW
 \ A `names:` row the checker refuses (CHECKER-NAMES-ROW), told apart likewise.
 7208 constant E-NAMES-ROW
-\ ONE hook for the three refused-record diagnostics, selected by its last
-\ argument, for the pre-trust slot reason SHADOW-DIAG-XT below gives: 0 renders
-\ the stale `trust` row here, 1 the storage record refused outside the verifier
-\ window (CHECKER-REPLAY-NAME-OK?), 2 the record for a malformed qualified name
-\ (CHECKER-RECORD-NAME). Each renders the record's name as written, located at
-\ the place before the selector (NULL-PTR 0 for none).
-defer RECORD-DIAG-XT ( ptr u8 n ptr u8 n n -- )
-: RECORD-DIAG-DEFAULT ( -- ) [: drop 2drop 2drop ;] is RECORD-DIAG-XT ;
-RECORD-DIAG-DEFAULT
-
 \ Neither path stores a row, so a later caller rejects as undefined.
 : TRUST-STALE ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u a u 0 RECORD-DIAG-XT
-   MULTI-ERR? IF SIG-COUNT EXIT THEN
-   E-TRUST-UNRESOLVED CHECKER-REFUSE ;
+   s" E-TRUST-UNRESOLVED" REJECTION:OPEN
+   s" the `trust` row for `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" ` names no word where its record lands" REJECTION:EMIT-STR
+   a u REJECTION:AT  s" no word here has this name" REJECTION:EMIT-STR
+   s" searched" REJECTION:NOTE
+   s" the open section's wordlist, the global wordlist outside a package, or PKG's public wordlist for PKG:TAIL"
+   REJECTION:EMIT-STR
+   s" reason" REJECTION:NOTE
+   s" the effect would be recorded against a symbol the engine never defined"
+   REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" correct `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" ` to the word the row describes, write the row in the section that defines that word, or delete the row"
+   REJECTION:EMIT-STR
+   MULTI-ERR? IF REJECTION:KEEP SIG-COUNT EXIT THEN
+   CHECKER-REJECT-RC REJECTION:STOP ;
 variable USING-UNBOUND   \ no global binds the tail the walk refused: the engine's own lookup refuses it
 variable WALK-REC        \ the walk bound the name to the record the engine's own lookup found (LIVE-BIND)
 CHECKER-REG:SCRATCH{
@@ -13008,8 +13009,18 @@ STORAGE-DIAG-DEFAULT
    {: a:ptr u:n :}
    a u BYTE-SPAN? 0= IF RES-FALSE EXIT THEN
    CHECKER-VERIFY-PKG-DEPTH @ 0= IF
-      a u NULL-PTR 0 1 RECORD-DIAG-XT
-      E-PKG-CONTEXT CHECKER-REFUSE
+      s" E-PKG-CONTEXT" REJECTION:OPEN
+      s" the storage record for `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+      s" ` is made outside the engine's verifier window" REJECTION:EMIT-STR
+      a u REJECTION:AT  s" recorded outside the verifier window" REJECTION:EMIT-STR
+      s" reason" REJECTION:NOTE
+      s" a checker storage registrar records a definer's accessor only while the source pre-pass replays the definer that defines the word"
+      REJECTION:EMIT-STR
+      REJECTION:HELP
+      s" define `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+      s" ` with its definer, `TYPED-VARIABLE`, `TYPED-BUFFER`, `LAYOUT-BUFFER` or `DYNAMIC-BUFFER`, instead of calling the registrar"
+      REJECTION:EMIT-STR
+      CHECKER-REJECT-RC REJECTION:STOP
    THEN
    a u CHECKER-LBUF-NAME-OK? ;
 
@@ -14243,8 +14254,18 @@ variable EV-LO   variable EV-N
    {: a:ptr u:n at:ptr atu:n :}
    a u CHECKER-RECORD-SYM {: sym:n :}
    sym 0= IF
-      a u at atu 2 RECORD-DIAG-XT
-      E-BAD-QUALIFIED CHECKER-REFUSE
+      s" E-BAD-QUALIFIED-RECORD" REJECTION:OPEN
+      s" the record name `" REJECTION:EMIT-STR  at atu REJECTION:EMIT-STR
+      s" ` has more than one `:`" REJECTION:EMIT-STR
+      at atu REJECTION:AT  s" malformed qualified name" REJECTION:EMIT-STR
+      s" rule" REJECTION:NOTE
+      s" one `:` not at an edge selects a package, and a second `:` names no word"
+      REJECTION:EMIT-STR
+      REJECTION:HELP
+      s" write `" REJECTION:EMIT-STR  at atu REJECTION:EMIT-STR
+      s" ` with one `:` between the package and the word, as `PKG:WORD`"
+      REJECTION:EMIT-STR
+      CHECKER-REJECT-RC REJECTION:STOP
    THEN
    sym CHECKER-REC-SYM !
    a u ;

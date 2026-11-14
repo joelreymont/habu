@@ -802,8 +802,9 @@ variable CTOR-PEND-POS
    RES-FALSE ;
 \ True for an error the checker reports itself before throwing it.
 : REPORTED-ERROR? ( n -- bool ) {: rc:n :}
-   rc E-USING-SHADOW-GLOBAL =
-   rc E-USING-AMBIGUOUS = or  rc E-TRUST-UNRESOLVED = or
+   rc CHECKER-REJECT-RC =
+   rc E-USING-SHADOW-GLOBAL = or
+   rc E-USING-AMBIGUOUS = or
    rc E-SHADOWED-ARITY = or  rc E-GENERATES-ROW = or  rc E-PARSES-ROW = or
    rc E-NAMES-ROW = or  rc E-BAD-STORED-SIGNATURE = or
    rc E-CAST-ARITY = or  rc E-CAST-CLASS = or  rc E-CAST-FAM = or
