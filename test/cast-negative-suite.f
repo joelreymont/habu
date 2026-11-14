@@ -49,46 +49,46 @@ variable SRC-U
    REJECTION:BUFFER$ w wu CONTAINS? TTRUE ;
 ;package
 \ arity: more than one input, or more than one output term.
-s" cast: CNA1 ( n n -- CN:cnfam )"              CN-RUN:DECL E-CAST-ARITY T=
-s" cast: CNA2 ( n -- CN:cnfam CN:cnfam )"       CN-RUN:DECL E-CAST-ARITY T=
+s" cast: CNA1 ( n n -- CN:cnfam )"              CN-RUN:DECL s" error[E-CAST-ARITY]" s" `cast: CNA1`" CN-RUN:REJECTS
+s" cast: CNA2 ( n -- CN:cnfam CN:cnfam )"       CN-RUN:DECL s" error[E-CAST-ARITY]" s" `cast: CNA2`" CN-RUN:REJECTS
 \ class: an atom is a phantom index, not a cell, and a pointer to one names no
 \ storage. A layout value wider than a cell stands for one term per cell, so it
 \ is refused as arity before its class is asked.
-s" cast: CNC1 ( n -- extent-a )"     CN-RUN:DECL E-CAST-CLASS T=
-s" cast: CNC2 ( n -- ptr extent-a )" CN-RUN:DECL E-CAST-CLASS T=
-s" cast: CNC3 ( n -- CAST-NEG:wide )" CN-RUN:DECL E-CAST-ARITY T=
+s" cast: CNC1 ( n -- extent-a )"     CN-RUN:DECL s" error[E-CAST-CLASS]" s" `cast: CNC1`" CN-RUN:REJECTS
+s" cast: CNC2 ( n -- ptr extent-a )" CN-RUN:DECL s" error[E-CAST-CLASS]" s" `cast: CNC2`" CN-RUN:REJECTS
+s" cast: CNC3 ( n -- CAST-NEG:wide )" CN-RUN:DECL s" error[E-CAST-ARITY]" s" `cast: CNC3`" CN-RUN:REJECTS
 \ Nor does the destination introduce an atom where a call, a read or a field
 \ projection yields a value: a produced row, a pointee and a layout argument
 \ refuse one as the bare term does, even in a private section, where the mint
 \ itself certifies. A quotation that only consumes an atom introduces none
 \ unless it is a pointee.
 package CN-ATOM
-s" cast: CNC4 ( n -- [ -- extent-a ] )"     CN-RUN:DECL E-CAST-CLASS T=
-s" cast: CNC5 ( n -- ptr [ -- extent-a ] )" CN-RUN:DECL E-CAST-CLASS T=
-s" cast: CNC6 ( n -- cnpbox<extent-a> )"    CN-RUN:DECL E-CAST-CLASS T=
+s" cast: CNC4 ( n -- [ -- extent-a ] )"     CN-RUN:DECL s" error[E-CAST-CLASS]" s" `cast: CNC4`" CN-RUN:REJECTS
+s" cast: CNC5 ( n -- ptr [ -- extent-a ] )" CN-RUN:DECL s" error[E-CAST-CLASS]" s" `cast: CNC5`" CN-RUN:REJECTS
+s" cast: CNC6 ( n -- cnpbox<extent-a> )"    CN-RUN:DECL s" error[E-CAST-CLASS]" s" `cast: CNC6`" CN-RUN:REJECTS
 s" cast: CNC7 ( n -- [ extent-a -- ] )"     CN-RUN:DECL 0 T=
 ;package
 \ No cast yields a width<t>, bare or behind a pointer, even in a private
 \ section. A cast out of one reads its bytes.
-s" cast: CNWD1 ( n -- width<n> )"     CN-RUN:DECL E-CAST-CLASS T=
+s" cast: CNWD1 ( n -- width<n> )"     CN-RUN:DECL s" error[E-CAST-CLASS]" s" `cast: CNWD1`" CN-RUN:REJECTS
 package CN-WIDTH
-s" cast: CNWD2 ( n -- width<n> )"     CN-RUN:DECL E-CAST-CLASS T=
-s" cast: CNWD3 ( n -- ptr width<n> )" CN-RUN:DECL E-CAST-CLASS T=
+s" cast: CNWD2 ( n -- width<n> )"     CN-RUN:DECL s" error[E-CAST-CLASS]" s" `cast: CNWD2`" CN-RUN:REJECTS
+s" cast: CNWD3 ( n -- ptr width<n> )" CN-RUN:DECL s" error[E-CAST-CLASS]" s" `cast: CNWD3`" CN-RUN:REJECTS
 ;package
 s" cast: CNWD4 ( width<n> -- n )"     CN-RUN:DECL 0 T=
 \ A quotation's consumed rows are fed by the cast's result: none is handed an
 \ atom or a width. A width the source produces is read, not introduced.
 package CN-WIDTH
 private
-s" cast: CNWD5 ( [ width<n> -- n ] -- [ n -- n ] )" CN-RUN:DECL E-CAST-CLASS T=
-s" cast: CNWD6 ( [ xt -- ] -- [ n -- ] )"           CN-RUN:DECL E-CAST-CLASS T=
-s" cast: CNWD7 ( [ extent-a -- ] -- [ n -- ] )"     CN-RUN:DECL E-CAST-CLASS T=
+s" cast: CNWD5 ( [ width<n> -- n ] -- [ n -- n ] )" CN-RUN:DECL s" error[E-CAST-CLASS]" s" `cast: CNWD5`" CN-RUN:REJECTS
+s" cast: CNWD6 ( [ xt -- ] -- [ n -- ] )"           CN-RUN:DECL s" error[E-CAST-CLASS]" s" `cast: CNWD6`" CN-RUN:REJECTS
+s" cast: CNWD7 ( [ extent-a -- ] -- [ n -- ] )"     CN-RUN:DECL s" error[E-CAST-CLASS]" s" `cast: CNWD7`" CN-RUN:REJECTS
 s" cast: CNWD8 ( [ n -- width<n> ] -- [ n -- n ] )" CN-RUN:DECL 0 T=
 \ A pointee is written as well as read: every position in it is checked.
-s" cast: CNWD9 ( ptr [ -- width<n> ] -- ptr [ -- n ] )"   CN-RUN:DECL E-CAST-CLASS T=
-s" cast: CNWD10 ( ptr [ n -- ] -- ptr [ width<n> -- ] )"  CN-RUN:DECL E-CAST-CLASS T=
-s" cast: CNWD12 ( ptr [ n -- ] -- ptr [ xt -- ] )"        CN-RUN:DECL E-CAST-CLASS T=
-s" cast: CNWD13 ( ptr [ -- xt ] -- ptr [ -- n ] )"        CN-RUN:DECL E-CAST-CLASS T=
+s" cast: CNWD9 ( ptr [ -- width<n> ] -- ptr [ -- n ] )"   CN-RUN:DECL s" error[E-CAST-CLASS]" s" `cast: CNWD9`" CN-RUN:REJECTS
+s" cast: CNWD10 ( ptr [ n -- ] -- ptr [ width<n> -- ] )"  CN-RUN:DECL s" error[E-CAST-CLASS]" s" `cast: CNWD10`" CN-RUN:REJECTS
+s" cast: CNWD12 ( ptr [ n -- ] -- ptr [ xt -- ] )"        CN-RUN:DECL s" error[E-CAST-CLASS]" s" `cast: CNWD12`" CN-RUN:REJECTS
+s" cast: CNWD13 ( ptr [ -- xt ] -- ptr [ -- n ] )"        CN-RUN:DECL s" error[E-CAST-CLASS]" s" `cast: CNWD13`" CN-RUN:REJECTS
 ;package
 \ undeclared family in the signature.
 s" cast: CNF1 ( n -- neverdecl )"    CN-RUN:DECL s" error[E-CAST-FAM]" s" `neverdecl`" CN-RUN:REJECTS
@@ -104,32 +104,32 @@ s" cast: CNB1 ( ptr -- cnpbox )"     CN-RUN:DECL s" error[E-BAD-STORED-SIGNATURE
 s" cast: CNB2 ( n -- ptr )"          CN-RUN:DECL s" error[E-BAD-STORED-SIGNATURE]" s" `CNB2`" CN-RUN:REJECTS
 \ Neither direction, linear-to-linear, nor transitive containment may cross
 \ CAST:, even when both sides occupy one machine cell.
-s" cast: CNL1 ( n -- CAST-NEG:lease )" CN-RUN:DECL E-CAST-LINEAR T=
-s" cast: CNL2 ( CAST-NEG:lease -- n )" CN-RUN:DECL E-CAST-LINEAR T=
-s" cast: CNL3 ( CAST-NEG:lease -- CAST-NEG:lease )" CN-RUN:DECL E-CAST-LINEAR T=
-s" cast: CNL4 ( n -- CAST-NEG:nested )" CN-RUN:DECL E-CAST-LINEAR T=
-s" cast: CNL5 ( CAST-NEG:nested -- n )" CN-RUN:DECL E-CAST-LINEAR T=
+s" cast: CNL1 ( n -- CAST-NEG:lease )" CN-RUN:DECL s" error[E-CAST-LINEAR]" s" `cast: CNL1`" CN-RUN:REJECTS
+s" cast: CNL2 ( CAST-NEG:lease -- n )" CN-RUN:DECL s" error[E-CAST-LINEAR]" s" `cast: CNL2`" CN-RUN:REJECTS
+s" cast: CNL3 ( CAST-NEG:lease -- CAST-NEG:lease )" CN-RUN:DECL s" error[E-CAST-LINEAR]" s" `cast: CNL3`" CN-RUN:REJECTS
+s" cast: CNL4 ( n -- CAST-NEG:nested )" CN-RUN:DECL s" error[E-CAST-LINEAR]" s" `cast: CNL4`" CN-RUN:REJECTS
+s" cast: CNL5 ( CAST-NEG:nested -- n )" CN-RUN:DECL s" error[E-CAST-LINEAR]" s" `cast: CNL5`" CN-RUN:REJECTS
 \ A variable only behind a pointer binds no linear value, so the cast admits it;
 \ one a quotation produces may bind one. `( n -- ptr a )` mints a pointer.
-s" cast: CNL6 ( n -- ptr a )"        CN-RUN:DECL E-CAST-MINT T=
+s" cast: CNL6 ( n -- ptr a )"        CN-RUN:DECL s" error[E-CAST-MINT]" s" `cast: CNL6`" CN-RUN:REJECTS
 s" cast: CNL7 ( ptr a -- n )"        CN-RUN:DECL 0 T=
-s" cast: CNL8 ( n -- [ -- a ] )"     CN-RUN:DECL E-CAST-LINEAR T=
+s" cast: CNL8 ( n -- [ -- a ] )"     CN-RUN:DECL s" error[E-CAST-LINEAR]" s" `cast: CNL8`" CN-RUN:REJECTS
 \ A quotation whose rows end in different tails hands out values it never took;
 \ a cast's input only reads it.
-s" cast: CNL19 ( n -- [ R -- S ] )"  CN-RUN:DECL E-CAST-LINEAR T=
+s" cast: CNL19 ( n -- [ R -- S ] )"  CN-RUN:DECL s" error[E-CAST-LINEAR]" s" `cast: CNL19`" CN-RUN:REJECTS
 s" cast: CNL20 ( [ R -- S ] -- n )"  CN-RUN:DECL 0 T=
 \ A private section admits the mint under a bare name only.
 package CN-STORED
 s" cast: CNL18 ( n -- ptr a )"       CN-RUN:DECL 0 T=
-s" cast: CNQ:FORGE ( n -- ptr u8 )"  CN-RUN:DECL E-CAST-MINT T=
-s" cast: CNL21 ( ptr u8 -- ptr [ R -- S ] )" CN-RUN:DECL E-CAST-LINEAR T=
+s" cast: CNQ:FORGE ( n -- ptr u8 )"  CN-RUN:DECL s" error[E-CAST-MINT]" s" `cast: CNQ:FORGE`" CN-RUN:REJECTS
+s" cast: CNL21 ( ptr u8 -- ptr [ R -- S ] )" CN-RUN:DECL s" error[E-CAST-LINEAR]" s" `cast: CNL21`" CN-RUN:REJECTS
 s" cast: CNL22 ( ptr u8 -- ptr [ R -- R n ] )" CN-RUN:DECL 0 T=
 ;package
 \ A linear type behind a pointer, or in either of a quotation's rows, is
 \ carried ownership too, on either side of the cast.
-s" cast: CNL9 ( n -- ptr ptr CAST-NEG:lease )"      CN-RUN:DECL E-CAST-LINEAR T=
-s" cast: CNL10 ( n -- [ CAST-NEG:lease -- ] )"      CN-RUN:DECL E-CAST-LINEAR T=
-s" cast: CNL12 ( [ -- CAST-NEG:nested ] -- n )"     CN-RUN:DECL E-CAST-LINEAR T=
+s" cast: CNL9 ( n -- ptr ptr CAST-NEG:lease )"      CN-RUN:DECL s" error[E-CAST-LINEAR]" s" `cast: CNL9`" CN-RUN:REJECTS
+s" cast: CNL10 ( n -- [ CAST-NEG:lease -- ] )"      CN-RUN:DECL s" error[E-CAST-LINEAR]" s" `cast: CNL10`" CN-RUN:REJECTS
+s" cast: CNL12 ( [ -- CAST-NEG:nested ] -- n )"     CN-RUN:DECL s" error[E-CAST-LINEAR]" s" `cast: CNL12`" CN-RUN:REJECTS
 \ A layout's fields are what its projection yields, so a field holding a linear
 \ value behind a pointer or in a quotation row carries it through the cast as
 \ well, on either side, and a private section does not change that. STRUCTURE
@@ -137,11 +137,11 @@ s" cast: CNL12 ( [ -- CAST-NEG:nested ] -- n )"     CN-RUN:DECL E-CAST-LINEAR T=
 PRODUCT lpfbox FIELD p ptr CAST-NEG:lease ;PRODUCT
 STRUCTURE lqfbox FIELD q [ -- CAST-NEG:lease ] ;STRUCTURE
 package CN-LIN
-s" cast: CNL13 ( n -- lpfbox )"      CN-RUN:DECL E-CAST-LINEAR T=
-s" cast: CNL14 ( n -- lqfbox )"      CN-RUN:DECL E-CAST-LINEAR T=
-s" cast: CNL15 ( n -- ptr lqfbox )"  CN-RUN:DECL E-CAST-LINEAR T=
-s" cast: CNL16 ( lpfbox -- n )"      CN-RUN:DECL E-CAST-LINEAR T=
-s" cast: CNL17 ( lqfbox -- n )"      CN-RUN:DECL E-CAST-LINEAR T=
+s" cast: CNL13 ( n -- lpfbox )"      CN-RUN:DECL s" error[E-CAST-LINEAR]" s" `cast: CNL13`" CN-RUN:REJECTS
+s" cast: CNL14 ( n -- lqfbox )"      CN-RUN:DECL s" error[E-CAST-LINEAR]" s" `cast: CNL14`" CN-RUN:REJECTS
+s" cast: CNL15 ( n -- ptr lqfbox )"  CN-RUN:DECL s" error[E-CAST-LINEAR]" s" `cast: CNL15`" CN-RUN:REJECTS
+s" cast: CNL16 ( lpfbox -- n )"      CN-RUN:DECL s" error[E-CAST-LINEAR]" s" `cast: CNL16`" CN-RUN:REJECTS
+s" cast: CNL17 ( lqfbox -- n )"      CN-RUN:DECL s" error[E-CAST-LINEAR]" s" `cast: CNL17`" CN-RUN:REJECTS
 ;package
 \ The production declarer path rejects the same foreign-package forgeries and
 \ rolls every failed word back out of the dictionary.
@@ -160,40 +160,40 @@ get-current CN-WID !
 \ The captured private WID sees the probe and must see no failed cast.
 s" CN-PRIVATE-PROBE" 0 search-wl 0= TTRUE
 s" CN-PRIVATE-PROBE" CN-ABSENT? TFALSE
-s" CAST: CNP1 ( n -- CAST-NEG:lease )" CN-EVAL-CATCH E-CAST-LINEAR T=
+s" CAST: CNP1 ( n -- CAST-NEG:lease )" CN-EVAL-CATCH s" error[E-CAST-LINEAR]" s" `cast: CNP1`" CN-RUN:REJECTS
 s" CNP1" CN-ABSENT? TTRUE  s" CNP1" 0 search-wl 0= TTRUE
-s" CAST: CNP2 ( CAST-NEG:lease -- n )" CN-EVAL-CATCH E-CAST-LINEAR T=
+s" CAST: CNP2 ( CAST-NEG:lease -- n )" CN-EVAL-CATCH s" error[E-CAST-LINEAR]" s" `cast: CNP2`" CN-RUN:REJECTS
 s" CNP2" CN-ABSENT? TTRUE  s" CNP2" 0 search-wl 0= TTRUE
-s" CAST: CNP3 ( CAST-NEG:lease -- CAST-NEG:lease )" CN-EVAL-CATCH E-CAST-LINEAR T=
+s" CAST: CNP3 ( CAST-NEG:lease -- CAST-NEG:lease )" CN-EVAL-CATCH s" error[E-CAST-LINEAR]" s" `cast: CNP3`" CN-RUN:REJECTS
 s" CNP3" CN-ABSENT? TTRUE  s" CNP3" 0 search-wl 0= TTRUE
-s" CAST: CNP4 ( n -- CAST-NEG:nested )" CN-EVAL-CATCH E-CAST-LINEAR T=
+s" CAST: CNP4 ( n -- CAST-NEG:nested )" CN-EVAL-CATCH s" error[E-CAST-LINEAR]" s" `cast: CNP4`" CN-RUN:REJECTS
 s" CNP4" CN-ABSENT? TTRUE  s" CNP4" 0 search-wl 0= TTRUE
-s" CAST: CNP5 ( CAST-NEG:nested -- n )" CN-EVAL-CATCH E-CAST-LINEAR T=
+s" CAST: CNP5 ( CAST-NEG:nested -- n )" CN-EVAL-CATCH s" error[E-CAST-LINEAR]" s" `cast: CNP5`" CN-RUN:REJECTS
 s" CNP5" CN-ABSENT? TTRUE  s" CNP5" 0 search-wl 0= TTRUE
-s" CAST: CNP6 ( n -- cnpbox<CAST-NEG:lease> )" CN-EVAL-CATCH E-CAST-LINEAR T=
+s" CAST: CNP6 ( n -- cnpbox<CAST-NEG:lease> )" CN-EVAL-CATCH s" error[E-CAST-LINEAR]" s" `cast: CNP6`" CN-RUN:REJECTS
 s" CNP6" CN-ABSENT? TTRUE  s" CNP6" 0 search-wl 0= TTRUE
-s" CAST: CNP7 ( cnpbox<cnpbox<CAST-NEG:lease>> -- n )" CN-EVAL-CATCH E-CAST-LINEAR T=
+s" CAST: CNP7 ( cnpbox<cnpbox<CAST-NEG:lease>> -- n )" CN-EVAL-CATCH s" error[E-CAST-LINEAR]" s" `cast: CNP7`" CN-RUN:REJECTS
 s" CNP7" CN-ABSENT? TTRUE  s" CNP7" 0 search-wl 0= TTRUE
-s" CAST: CNP8 ( n -- a )" CN-EVAL-CATCH E-CAST-LINEAR T=
+s" CAST: CNP8 ( n -- a )" CN-EVAL-CATCH s" error[E-CAST-LINEAR]" s" `cast: CNP8`" CN-RUN:REJECTS
 s" CNP8" CN-ABSENT? TTRUE  s" CNP8" 0 search-wl 0= TTRUE
-s" CAST: CNP9 ( n -- cnpbox<cnpbox<a>> )" CN-EVAL-CATCH E-CAST-LINEAR T=
+s" CAST: CNP9 ( n -- cnpbox<cnpbox<a>> )" CN-EVAL-CATCH s" error[E-CAST-LINEAR]" s" `cast: CNP9`" CN-RUN:REJECTS
 s" CNP9" CN-ABSENT? TTRUE  s" CNP9" 0 search-wl 0= TTRUE
 \ A view's element is a cast term: the unpack hands out whatever t binds.
-s" CAST: CNP10 ( read-view<p,q,t> -- ptr u8 n )" CN-EVAL-CATCH E-CAST-LINEAR T=
+s" CAST: CNP10 ( read-view<p,q,t> -- ptr u8 n )" CN-EVAL-CATCH s" error[E-CAST-LINEAR]" s" `cast: CNP10`" CN-RUN:REJECTS
 s" CNP10" CN-ABSENT? TTRUE  s" CNP10" 0 search-wl 0= TTRUE
-s" CAST: CNP11 ( read-view<p,q,CAST-NEG:nested> -- ptr u8 n )" CN-EVAL-CATCH E-CAST-LINEAR T=
+s" CAST: CNP11 ( read-view<p,q,CAST-NEG:nested> -- ptr u8 n )" CN-EVAL-CATCH s" error[E-CAST-LINEAR]" s" `cast: CNP11`" CN-RUN:REJECTS
 s" CNP11" CN-ABSENT? TTRUE  s" CNP11" 0 search-wl 0= TTRUE
-s" CAST: CNP12 ( read-view<p,q,[ R -- S ]> -- ptr u8 n )" CN-EVAL-CATCH E-CAST-LINEAR T=
+s" CAST: CNP12 ( read-view<p,q,[ R -- S ]> -- ptr u8 n )" CN-EVAL-CATCH s" error[E-CAST-LINEAR]" s" `cast: CNP12`" CN-RUN:REJECTS
 s" CNP12" CN-ABSENT? TTRUE  s" CNP12" 0 search-wl 0= TTRUE
 \ Where the output mints, an input's row variable keeps its place; an
 \ output's own is the linear rule's.
-s" CAST: CNP13 ( [ -- n ] -- [ -- S ] )" CN-EVAL-CATCH E-CAST-LINEAR T=
+s" CAST: CNP13 ( [ -- n ] -- [ -- S ] )" CN-EVAL-CATCH s" error[E-CAST-LINEAR]" s" `cast: CNP13`" CN-RUN:REJECTS
 s" CNP13" CN-ABSENT? TTRUE
-s" CAST: CNP14 ( [ R -- S ] -- [ S -- R ] )" CN-EVAL-CATCH E-CAST-CLASS T=
+s" CAST: CNP14 ( [ R -- S ] -- [ S -- R ] )" CN-EVAL-CATCH s" error[E-CAST-CLASS]" s" `cast: CNP14`" CN-RUN:REJECTS
 s" CNP14" CN-ABSENT? TTRUE
-s" CAST: CNP15 ( [ R -- S ] -- [ n -- ] )" CN-EVAL-CATCH E-CAST-CLASS T=
+s" CAST: CNP15 ( [ R -- S ] -- [ n -- ] )" CN-EVAL-CATCH s" error[E-CAST-CLASS]" s" `cast: CNP15`" CN-RUN:REJECTS
 s" CNP15" CN-ABSENT? TTRUE
-s" CAST: CNP17 ( [ R -- R ] -- [ R n -- R ] )" CN-EVAL-CATCH E-CAST-CLASS T=
+s" CAST: CNP17 ( [ R -- R ] -- [ R n -- R ] )" CN-EVAL-CATCH s" error[E-CAST-CLASS]" s" `cast: CNP17`" CN-RUN:REJECTS
 s" CNP17" CN-ABSENT? TTRUE
 s" CAST: CNP18 ( [ R n -- R ] -- [ R ptr n -- R ] )" CN-EVAL-CATCH 0 T=
 s" CN-PRIVATE-PROBE" 0 search-wl 0= TTRUE
@@ -230,7 +230,7 @@ STRUCTURE oqbox OPAQUE FIELD v n ;STRUCTURE
 package CN-OH
 public
 STRUCTURE ohold FIELD b CN-OQ:oqbox ;STRUCTURE
-s" cast: CNQ10 ( ptr u8 -- ptr CN-OQ:oqbox )"    CN-RUN:DECL E-CAST-MINT T=
+s" cast: CNQ10 ( ptr u8 -- ptr CN-OQ:oqbox )"    CN-RUN:DECL s" error[E-CAST-MINT]" s" `cast: CNQ10`" CN-RUN:REJECTS
 s" cast: CNQ13 ( n -- CN:cnfam )"                CN-RUN:DECL 0 T=
 private
 s" cast: CNQ11 ( ptr u8 -- ptr CN-OQ:oqbox )"    CN-RUN:DECL 0 T=
@@ -250,30 +250,30 @@ s" cast: CNE5 ( attn-stage-q -- n )"             CN-RUN:DECL 0 T=
 \ integer is an address or code, which nothing checks - so it is declared only
 \ in a package's private section, where the package's own words are its only
 \ callers. Top level and a public section refuse it and leave no name behind.
-s" cast: CNM1 ( n -- ptr u8 )"                    CN-RUN:DECL E-CAST-MINT T=
+s" cast: CNM1 ( n -- ptr u8 )"                    CN-RUN:DECL s" error[E-CAST-MINT]" s" `cast: CNM1`" CN-RUN:REJECTS
 s" CNM1" 0 search-wl 0= TTRUE
-s" cast: CNM2 ( n -- [ n -- n ] )"                CN-RUN:DECL E-CAST-MINT T=
-s" cast: CNM3 ( ptr u8 -- ptr n )"                CN-RUN:DECL E-CAST-MINT T=
+s" cast: CNM2 ( n -- [ n -- n ] )"                CN-RUN:DECL s" error[E-CAST-MINT]" s" `cast: CNM2`" CN-RUN:REJECTS
+s" cast: CNM3 ( ptr u8 -- ptr n )"                CN-RUN:DECL s" error[E-CAST-MINT]" s" `cast: CNM3`" CN-RUN:REJECTS
 \ A layout argument is what a field projection yields, so an instance whose
 \ argument is a pointer or a quotation, at any depth, is the same mint.
-s" cast: CNM11 ( n -- cnpbox<ptr u8> )"           CN-RUN:DECL E-CAST-MINT T=
-s" cast: CNM12 ( n -- cnpbox<[ n -- n ]> )"       CN-RUN:DECL E-CAST-MINT T=
-s" cast: CNM13 ( n -- cnpbox<cnpbox<ptr u8>> )"   CN-RUN:DECL E-CAST-MINT T=
+s" cast: CNM11 ( n -- cnpbox<ptr u8> )"           CN-RUN:DECL s" error[E-CAST-MINT]" s" `cast: CNM11`" CN-RUN:REJECTS
+s" cast: CNM12 ( n -- cnpbox<[ n -- n ]> )"       CN-RUN:DECL s" error[E-CAST-MINT]" s" `cast: CNM12`" CN-RUN:REJECTS
+s" cast: CNM13 ( n -- cnpbox<cnpbox<ptr u8>> )"   CN-RUN:DECL s" error[E-CAST-MINT]" s" `cast: CNM13`" CN-RUN:REJECTS
 \ A layout's own field is projected the same way, so a field of pointer or
 \ quotation type, at any depth of nesting, is the same mint.
 STRUCTURE pfbox FIELD p ptr u8 ;STRUCTURE
 STRUCTURE qfbox FIELD q [ n -- n ] ;STRUCTURE
 STRUCTURE pfnest FIELD inner pfbox ;STRUCTURE
-s" cast: CNM17 ( n -- pfbox )"                   CN-RUN:DECL E-CAST-MINT T=
-s" cast: CNM18 ( n -- qfbox )"                   CN-RUN:DECL E-CAST-MINT T=
-s" cast: CNM19 ( n -- pfnest )"                  CN-RUN:DECL E-CAST-MINT T=
+s" cast: CNM17 ( n -- pfbox )"                   CN-RUN:DECL s" error[E-CAST-MINT]" s" `cast: CNM17`" CN-RUN:REJECTS
+s" cast: CNM18 ( n -- qfbox )"                   CN-RUN:DECL s" error[E-CAST-MINT]" s" `cast: CNM18`" CN-RUN:REJECTS
+s" cast: CNM19 ( n -- pfnest )"                  CN-RUN:DECL s" error[E-CAST-MINT]" s" `cast: CNM19`" CN-RUN:REJECTS
 package CN-MINT
 public
-s" cast: CNM4 ( n -- ptr u8 )"                    CN-RUN:DECL E-CAST-MINT T=
-s" cast: CNM5 ( n -- [ -- ] )"                    CN-RUN:DECL E-CAST-MINT T=
-s" cast: CNM14 ( n -- cnpbox<ptr u8> )"           CN-RUN:DECL E-CAST-MINT T=
-s" cast: CNM15 ( n -- cnpbox<[ n -- n ]> )"       CN-RUN:DECL E-CAST-MINT T=
-s" cast: CNM20 ( n -- pfbox )"                   CN-RUN:DECL E-CAST-MINT T=
+s" cast: CNM4 ( n -- ptr u8 )"                    CN-RUN:DECL s" error[E-CAST-MINT]" s" `cast: CNM4`" CN-RUN:REJECTS
+s" cast: CNM5 ( n -- [ -- ] )"                    CN-RUN:DECL s" error[E-CAST-MINT]" s" `cast: CNM5`" CN-RUN:REJECTS
+s" cast: CNM14 ( n -- cnpbox<ptr u8> )"           CN-RUN:DECL s" error[E-CAST-MINT]" s" `cast: CNM14`" CN-RUN:REJECTS
+s" cast: CNM15 ( n -- cnpbox<[ n -- n ]> )"       CN-RUN:DECL s" error[E-CAST-MINT]" s" `cast: CNM15`" CN-RUN:REJECTS
+s" cast: CNM20 ( n -- pfbox )"                   CN-RUN:DECL s" error[E-CAST-MINT]" s" `cast: CNM20`" CN-RUN:REJECTS
 private
 s" cast: CNM6 ( n -- ptr u8 )"                    CN-RUN:DECL 0 T=
 s" cast: CNM7 ( n -- [ -- ] )"                    CN-RUN:DECL 0 T=
@@ -304,39 +304,39 @@ get-current CV-WID !
    CV-WID @ search-wl 0= ;
 : CV-PRIVATE-PROBE ( -- ) ;
 s" CV-PRIVATE-PROBE" CV-ABSENT? TFALSE
-s" cast: CNV1 ( ptr u8 n -- read-view<p,q,u8> )"        CV-DECL E-CAST-SCOPE T=
+s" cast: CNV1 ( ptr u8 n -- read-view<p,q,u8> )"        CV-DECL s" error[E-CAST-SCOPE]" s" `cast: CNV1`" CN-RUN:REJECTS
 s" CNV1" CV-ABSENT? TTRUE
-s" cast: CNV2 ( ptr u8 n -- mut-view<p,q,a,u8> )"       CV-DECL E-CAST-SCOPE T=
+s" cast: CNV2 ( ptr u8 n -- mut-view<p,q,a,u8> )"       CV-DECL s" error[E-CAST-SCOPE]" s" `cast: CNV2`" CN-RUN:REJECTS
 s" CNV2" CV-ABSENT? TTRUE
-s" cast: CNV3 ( mut-view<p,l,a,u8> -- ptr u8 n )"       CV-DECL E-CAST-SCOPE T=
+s" cast: CNV3 ( mut-view<p,l,a,u8> -- ptr u8 n )"       CV-DECL s" error[E-CAST-SCOPE]" s" `cast: CNV3`" CN-RUN:REJECTS
 s" CNV3" CV-ABSENT? TTRUE
-s" cast: CNV4 ( mut-view<p,l,a,u8> -- read-view<p,l,u8> )" CV-DECL E-CAST-SCOPE T=
+s" cast: CNV4 ( mut-view<p,l,a,u8> -- read-view<p,l,u8> )" CV-DECL s" error[E-CAST-SCOPE]" s" `cast: CNV4`" CN-RUN:REJECTS
 s" CNV4" CV-ABSENT? TTRUE
-s" cast: CNV5 ( read-view<p,q,u8> -- n )"               CV-DECL E-CAST-SCOPE T=
+s" cast: CNV5 ( read-view<p,q,u8> -- n )"               CV-DECL s" error[E-CAST-SCOPE]" s" `cast: CNV5`" CN-RUN:REJECTS
 s" CNV5" CV-ABSENT? TTRUE
-s" cast: CNV6 ( [ mut-view<p,p,fresh-region-b,u8> -- ] -- [ ptr u8 n -- ] )" CV-DECL E-CAST-SCOPE T=
+s" cast: CNV6 ( [ mut-view<p,p,fresh-region-b,u8> -- ] -- [ ptr u8 n -- ] )" CV-DECL s" error[E-CAST-SCOPE]" s" `cast: CNV6`" CN-RUN:REJECTS
 s" CNV6" CV-ABSENT? TTRUE
-s" cast: CNV10 ( [ read-view<p,q,u8> -- ] -- [ ptr u8 n -- ] )" CV-DECL E-CAST-SCOPE T=
+s" cast: CNV10 ( [ read-view<p,q,u8> -- ] -- [ ptr u8 n -- ] )" CV-DECL s" error[E-CAST-SCOPE]" s" `cast: CNV10`" CN-RUN:REJECTS
 s" CNV10" CV-ABSENT? TTRUE
-s" cast: CNV7 ( n -- init<i,n> )"                       CV-DECL E-CAST-SCOPE T=
+s" cast: CNV7 ( n -- init<i,n> )"                       CV-DECL s" error[E-CAST-SCOPE]" s" `cast: CNV7`" CN-RUN:REJECTS
 s" CNV7" CV-ABSENT? TTRUE
 \ A qualified name selects that package's public wordlist, so the read-view
 \ unpack this section admits is refused under one, and once the package closes
 \ that wordlist holds no such name.
-s" cast: CN-VIEW:CNV9 ( read-view<p,q,u8> -- ptr u8 n )" CV-DECL E-CAST-SCOPE T=
+s" cast: CN-VIEW:CNV9 ( read-view<p,q,u8> -- ptr u8 n )" CV-DECL s" error[E-CAST-SCOPE]" s" `cast: CN-VIEW:CNV9`" CN-RUN:REJECTS
 public
 get-current constant CV-PUBLIC-WID
-s" cast: CNV8 ( read-view<p,q,u8> -- ptr u8 n )"        CN-RUN:DECL E-CAST-SCOPE T=
+s" cast: CNV8 ( read-view<p,q,u8> -- ptr u8 n )"        CN-RUN:DECL s" error[E-CAST-SCOPE]" s" `cast: CNV8`" CN-RUN:REJECTS
 ;package
 s" CNV9" CN-VIEW:CV-PUBLIC-WID search-wl 0= TTRUE
 \ The stored-signature intake still refuses an output variable no input
 \ supplies; a view whose variables its input supplies is a well-formed row.
-s" defer CNVD1 ( ptr u8 n -- read-view<p,q,u8> )"       CN-RUN:DECL E-BAD-STORED-SIGNATURE T=
+s" defer CNVD1 ( ptr u8 n -- read-view<p,q,u8> )"       CN-RUN:DECL s" error[E-BAD-STORED-SIGNATURE]" s" `CNVD1`" CN-RUN:REJECTS
 s" defer CNVD2 ( read-view<p,q,u8> -- read-view<p,q,u8> )" CN-RUN:DECL 0 T=
 \ The scope is the engine's live one: a parser mirror claiming a package's
 \ private section while the engine compiles at top level still refuses.
 s" CN" CHECKER-PACKAGE
-s" cast: CNSP3 ( n -- ptr u8 )"                   CN-RUN:DECL E-CAST-MINT T=
+s" cast: CNSP3 ( n -- ptr u8 )"                   CN-RUN:DECL s" error[E-CAST-MINT]" s" `cast: CNSP3`" CN-RUN:REJECTS
 CHECKER-END-PACKAGE
 
 \ A forged parser package cannot own a declaration. The family, visibility and
