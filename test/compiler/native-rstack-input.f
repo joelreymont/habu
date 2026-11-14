@@ -1,8 +1,7 @@
 \ native-rstack-input.f - no signature written in source declares a return-stack
 \ cell: a written `|` clause carries one row variable, the same on both sides
 \ (docs/forth.md "The return-stack clause"), and the checker refuses any other
-\ clause at the declaration. Each case is one stdin-piped engine run; a refused
-\ `generates:` row is a throw, exit 67.
+\ clause at the declaration. Each case is one stdin-piped engine run.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -17,7 +16,6 @@ private
 
 $4000 constant CAP
 70 constant REFUSED-RC
-67 constant UNCAUGHT-RC
 
 create OUT CAP allot
 create ERR CAP allot
@@ -48,15 +46,16 @@ variable ERR-U
    src u before SHOW ;
 
 \ One refused run: the child exits RC, prints nothing, and its stderr begins
-\ with DIAG.
-: REFUSED ( ptr u8 n ptr u8 n ptr u8 n n -- )
-   {: label:ptr lu:n src:ptr u:n diag:ptr du:n rc:n :}
+\ with DIAG, the record's headline, and holds NOTE.
+: REFUSED ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- )
+   {: label:ptr lu:n src:ptr u:n diag:ptr du:n note:ptr nu:n rc:n :}
    T-FAILURES {: before:n :}
    src u EXEC {: outu:len erru:len oc :}
    outu LEN>N OUT-U !  erru LEN>N ERR-U !
    label lu T-LABEL  src u OUT$ ERR$ oc rc T-ENDING-EXITED=
    label lu T-LABEL  OUT$ s" " T$=
    label lu T-LABEL  ERR ERR-U @ du min diag du T$=
+   label lu T-LABEL  ERR$ note nu CONTAINS? TTRUE
    src u before SHOW ;
 
 \ ---- refused at the declaration ----------------------------------------------
@@ -68,44 +67,44 @@ variable ERR-U
 : REFUSALS ( -- )
    s" rs1: a body replaces a declared return-stack cell"
    S\" : RC1 ( | n -- | n ) r> drop 0 >r ;\nTRUSTED: RT1 ( | n -- | n ) r> drop 0 >r ;\n: USE ( -- n ) 5 >r RC1 r> ;\nUSE . cr\n"
-   S\" habu: in rc1: return-stack effect in signature ' | n -- | n '; suggestion: Declare no return-stack effect: after '|' write one row variable, the same on both sides, or no '|'; park a value with >r and take it back with r> in one definition.\nhook: non-certified definition: rc1 at ' | n -- | n '\n"
-   REFUSED-RC REFUSED
+   s" error[E-BAD-SIGNATURE]: return-stack effect in signature ` | n -- | n `"
+   s" = at ` | n -- | n `: return-stack effect"  REFUSED-RC REFUSED
    s" rs1: a TRUSTED: body replaces a declared return-stack cell"
    S\" TRUSTED: RT1 ( | n -- | n ) r> drop 0 >r ;\n: USE ( -- n ) 5 >r RT1 r> ;\nUSE . cr\n"
-   S\" habu: in rt1: bad stored signature '| n -- | n'; return-stack effect: after '|' write one row variable, the same on both sides, or no '|'\n"
-   REFUSED-RC REFUSED
+   s" error[E-BAD-STORED-SIGNATURE]: the signature of `rt1` cannot be recorded"
+   s" = at `RT1`: its signature moves the return stack"  REFUSED-RC REFUSED
    s" rs2: a body pops a declared return-stack input"
    S\" : RP ( | n -- n | ) r> ;\n: USE ( -- n ) 5 >r RP ;\nUSE . cr\n"
-   S\" habu: in rp: return-stack effect in signature ' | n -- n | '; suggestion: Declare no return-stack effect: after '|' write one row variable, the same on both sides, or no '|'; park a value with >r and take it back with r> in one definition.\nhook: non-certified definition: rp at ' | n -- n | '\n"
-   REFUSED-RC REFUSED
+   s" error[E-BAD-SIGNATURE]: return-stack effect in signature ` | n -- n | `"
+   s" = at ` | n -- n | `: return-stack effect"  REFUSED-RC REFUSED
    s" a quotation type moves a cell to the return stack"
    S\" : RUNQ ( n [ n -- | U -- U n ] | U -- n | U ) execute r> ;\n: USE ( -- n ) 5 [: >r ;] RUNQ ;\nUSE . cr\n"
-   S\" habu: in runq: return-stack effect in signature ' n [ n -- | U -- U n ] | U -- n | U '; suggestion: Declare no return-stack effect: after '|' write one row variable, the same on both sides, or no '|'; park a value with >r and take it back with r> in one definition.\nhook: non-certified definition: runq at ' n [ n -- | U -- U n ] | U -- n | U '\n"
-   REFUSED-RC REFUSED
+   s" error[E-BAD-SIGNATURE]: return-stack effect in signature ` n [ n -- | U -- U n ] | U -- n | U `"
+   s" = at ` n [ n -- | U -- U n ] | U -- n | U `: return-stack effect"  REFUSED-RC REFUSED
    s" a generates: row declares a return-stack cell"
    S\" package GP\n: G ( n -- ) drop parse-name 2drop ;\ngenerates: G ( | -- | n )\npublic\n;package\n"
-   S\" E-GENERATES-ROW habu: generates: row for 'G': return-stack effect: after '|' write one row variable, the same on both sides, or no '|'\nhb: uncaught throw code 7153\n"
-   UNCAUGHT-RC REFUSED
+   s" error[E-GENERATES-ROW]: the `generates:` row names `G`"
+   s" its signature moves the return stack"  REFUSED-RC REFUSED
    s" a bar on one side only"
    S\" : ONE ( R n | S -- R ) drop ;\n"
-   S\" habu: in one: return-stack effect in signature ' R n | S -- R '; suggestion: Declare no return-stack effect: after '|' write one row variable, the same on both sides, or no '|'; park a value with >r and take it back with r> in one definition.\nhook: non-certified definition: one at ' R n | S -- R '\n"
-   REFUSED-RC REFUSED
+   s" error[E-BAD-SIGNATURE]: return-stack effect in signature ` R n | S -- R `"
+   s" = at ` R n | S -- R `: return-stack effect"  REFUSED-RC REFUSED
    s" a quotation literal pushes a cell its caller pops"
    S\" : QPUSH ( n -- n ) [: >r ;] execute r> ;\n: USE ( -- n ) 5 QPUSH ;\nUSE . cr\n"
-   S\" habu: in qpush: at ';]' return stack: the quotation leaves its return row unbalanced expected: actual: n ; suggestion: Balance return-stack transfers before the quotation returns.\nhook: non-certified definition: qpush at ';]'\n"
-   REFUSED-RC REFUSED
+   s" error[E-REJECTED]: return stack: the quotation leaves its return row unbalanced"
+   s" = at `;]`"  REFUSED-RC REFUSED
    s" a quotation literal pops a cell its caller pushed"
    S\" : QPOP ( n -- n ) >r [: r> ;] execute ;\n: USE ( -- n ) 5 QPOP ;\nUSE . cr\n"
-   S\" habu: in qpop: at 'r>' return stack: the quotation reads below the return-stack cells it pushed expected: n actual: ; suggestion: Read or pop only return-row cells this quotation pushed with >r; below them lies the caller's frame.\nhook: non-certified definition: qpop at 'r>'\n"
-   REFUSED-RC REFUSED
+   s" error[E-REJECTED]: return stack: the quotation reads below the return-stack cells it pushed"
+   s" = at `r>`"  REFUSED-RC REFUSED
    s" an unsigned definition reads a cell it did not push"
    S\" : UREAD r@ ;\n"
-   S\" habu: in uread: at 'r@' return stack: this reads below the return-stack cells pushed here expected: a actual: a ; suggestion: Read or pop only return-row cells this definition pushed with >r; below them lies the caller's frame.\nhook: non-certified definition: uread at 'r@'\n"
-   REFUSED-RC REFUSED
+   s" error[E-REJECTED]: return stack: this reads below the return-stack cells pushed here"
+   s" = at `r@`"  REFUSED-RC REFUSED
    s" an unsigned definition pops a cell it did not push"
    S\" : UPOP r> ;\n"
-   S\" habu: in upop: at 'r>' return stack: this reads below the return-stack cells pushed here expected: a actual: ; suggestion: Read or pop only return-row cells this definition pushed with >r; below them lies the caller's frame.\nhook: non-certified definition: upop at 'r>'\n"
-   REFUSED-RC REFUSED ;
+   s" error[E-REJECTED]: return stack: this reads below the return-stack cells pushed here"
+   s" = at `r>`"  REFUSED-RC REFUSED ;
 
 \ ---- still admitted -----------------------------------------------------------
 \ A bar on one side only pairs the written row with a fresh one and is admitted,

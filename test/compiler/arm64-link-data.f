@@ -150,42 +150,42 @@ DYNAMIC-BUFFER SECOND-LINK u8
    ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N ;
 
 \ name's child on the object at obj arms, its link is refused for the reason
-\ err, and it exits 74; label names the case.
-: BAD-LINK ( CMD:command ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- CMD:command )
-   {: name:ptr name-n:n obj:ptr obj-n:n label:ptr label-n:n err:ptr err-n:n :}
+\ err, and it exits with status want; label names the case.
+: BAD-LINK ( CMD:command ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- CMD:command )
+   {: name:ptr name-n:n obj:ptr obj-n:n label:ptr label-n:n err:ptr err-n:n want:n :}
    name name-n obj obj-n CHILD-RC {: rc:n :}
    label label-n s" the child arms before the link" CHILD-LABEL
    CMD:OUT$ s\" ARM64-LINK-DATA-BAD-ARMED\n" T$=
    label label-n s" the link's reason" CHILD-LABEL
    CMD:ERR$ err err-n CONTAINS? TTRUE
-   label label-n s" the link exits 74" CHILD-LABEL  rc 74 T= ;
+   label label-n s" the link's status" CHILD-LABEL  rc want T= ;
 
-: BAD-CHILD ( CMD:command ptr u8 n ptr u8 n -- CMD:command )
-   {: name:ptr name-n:n err:ptr err-n:n :}
-   name name-n HB-BUILD-CORE:KERNEL$ name name-n err err-n BAD-LINK ;
+: BAD-CHILD ( CMD:command ptr u8 n ptr u8 n n -- CMD:command )
+   {: name:ptr name-n:n err:ptr err-n:n want:n :}
+   name name-n HB-BUILD-CORE:KERNEL$ name name-n err err-n want BAD-LINK ;
 
 : NAMES-LABEL ( ptr u8 n -- ) s" the link names what it refuses" CHILD-LABEL ;
 
 : BAD-DATA ( CMD:command -- CMD:command )
-   s" data"  s" link: a DATA pointer outside the build's space" BAD-CHILD
+   s" data"  s" link: a DATA pointer outside the build's space" 74 BAD-CHILD
    s" data" NAMES-LABEL
    CMD:ERR$ s\" link: a DATA pointer outside the build's space: 1\n" CONTAINS? TTRUE ;
 
 : BAD-HEADER ( CMD:command -- CMD:command )
-   s" header"  s" link: a build stored into a header cell the link writes" BAD-CHILD
+   s" header"  s" link: a build stored into a header cell the link writes" 76 BAD-CHILD
    s" header" NAMES-LABEL
    SB-RESET  s" link: the build stored into the header cell at offset " SB-APPEND
    UNCGH-CELL FMT:SB-INT  10 SB-APPEND-C
    CMD:ERR$ SB$ CONTAINS? TTRUE ;
 
 : BAD-EVAL ( CMD:command -- CMD:command )
-   s" eval"  s" link: a stripped program reaches a word it cannot run" BAD-CHILD
+   s" eval"  s" link: a stripped program reaches a word it cannot run" 74 BAD-CHILD
    s" eval" NAMES-LABEL
    CMD:ERR$ s" link: LD-EV calls evaluate-closed, which a stripped program cannot run"
    CONTAINS? TTRUE ;
 
 : BAD-DICT ( CMD:command -- CMD:command )
-   s" dict"  s" link: a stripped program reaches a word it cannot run" BAD-CHILD
+   s" dict"  s" link: a stripped program reaches a word it cannot run" 74 BAD-CHILD
    s" dict" NAMES-LABEL
    CMD:ERR$ s" link: LD-DW calls search-wl, which a stripped program cannot run"
    CONTAINS? TTRUE ;
@@ -275,7 +275,7 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
 
 : BAD-DP-AT-START ( CMD:command -- CMD:command )
    s" header"  s" dp-at-start" PROG$  s" dp-at-start"
-   s" link: the kernel object is cut short or malformed" BAD-LINK ;
+   s" link: the kernel object is cut short or malformed" 74 BAD-LINK ;
 
 
 public

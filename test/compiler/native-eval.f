@@ -299,9 +299,9 @@ create ERR IO-CAP allot
    PROCESS:ENDING>RC RC>N UNCLOSED T=
    nip LEN>N {: erru:n :}
    s" and names the definition and where the text ran" T-LABEL
-   ERR erru s" E-VS-UNTERMINATED-DEFINITION habu: " CONTAINS? TTRUE
-   ERR erru s" source ended inside definition: NATIVE-EVAL-F" CONTAINS? TTRUE
-   ERR erru s" E-VS-UNTERMINATED-DEFINITION habu: source" CONTAINS? 0= TTRUE ;
+   ERR erru s" error[E-VS-UNTERMINATED-DEFINITION]: " CONTAINS? TTRUE
+   ERR erru s" the definition of `NATIVE-EVAL-F`" CONTAINS? TTRUE
+   ERR erru s" --> <input>:1:3" CONTAINS? TTRUE ;
 
 $4F constant TASK-THREAD                \ habu1.f B-TASK-GUARD's exit
 
@@ -359,7 +359,8 @@ variable ERR-U
    s" : T-FORGET ( -- n n ) X-FORGET ; ;package Q-FORGET:T-FORGET . . cr" TEXT+
    TEXT-RC 70 T=
    OUT$ S\" 77\n\n" T$=
-   s" habu: in t-forget: at 'X-FORGET' expected: n n actual: n" SAYS ;
+   s" error[E-MISMATCH]: the body ends with n on the stack; the signature promises n n" SAYS
+   s" = at `X-FORGET`" SAYS ;
 
 : CHECKED ( -- )
    s" a checked body naming evaluate is refused" T-LABEL
