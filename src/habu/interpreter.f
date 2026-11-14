@@ -2010,13 +2010,17 @@ CAST: QUOT-ENTRY ( [ R -- S ] -- n )
    wid XREF:NS-ROW nip if exit then
    E-COMP-STATE throw ;
 
-\ Appends a call of the word at entry E, which the checker binds.
-: COMPILE-CALL ( n -- ) {: e:n :}
-   e XREF:ENTRY-REC {: r:n :}
-   r -1 = if NAMELESS-REFUSE then
+\ Appends a call of the word at record index R, which the checker binds.
+: CALL-ITEM ( n -- ) {: r:n :}
    r XREF-REC {: rec:ptr :}
    rec CALLEE-CHECK
    BODY-ITEM-KIND:CALL r 0 rec XREF-NAME$ ITEM+ ;
+
+\ Appends a call of the word at entry E.
+: COMPILE-CALL ( n -- ) {: e:n :}
+   e XREF:ENTRY-REC {: r:n :}
+   r -1 = if NAMELESS-REFUSE then
+   r CALL-ITEM ;
 
 \ What `compile,` runs: it appends a call of the word whose entry the quotation is.
 : COMPILE-RUN ( [ R -- S ] -- )
@@ -2046,6 +2050,27 @@ variable LIT-AT
 : LITERAL-RUN ( n -- ) {: v:n :}
    s" literal" BUILT-PENDING
    BODY-ITEM-KIND:INT v 0 v LIT$ ITEM+ ;
+
+\ Appends a call of the word a lookup of the name found.
+: FOUND-CALL ( ptr u8 n ptr n -- ) {: a:ptr u:n rec:ptr :}
+   rec XREF-FOUND? 0= if a u UNDEFINED-NAME then
+   rec XREF-NULL - XREF-ADDR>INDEX CALL-ITEM ;
+
+: ITEM-OP-REFUSE ( -- )
+   s" E-ITEM-OP" REFUSAL
+   s" an item op ITEM-ABI does not name" ERROR-TEXT:TYPE
+   NL 1 ERROR-TEXT:TYPE  RC-REJECT throw ;
+
+\ What a definer's item runs: the ITEM-ABI op OP with spelling A U and
+\ argument V, a TYPE's schema node.
+: ITEM-RUN ( ptr u8 n n n -- ) {: a:ptr u:n v:n op:n :}
+   a u BUILT-PENDING
+   op ITEM-ABI:KEYWORD = if BODY-ITEM-KIND:KEYWORD 0 0 a u ITEM+ exit then
+   op ITEM-ABI:OPERAND = if BODY-ITEM-KIND:OPERAND 0 0 a u ITEM+ exit then
+   op ITEM-ABI:TYPE = if BODY-ITEM-KIND:TYPE v 0 a u ITEM+ exit then
+   op ITEM-ABI:CALL = if a u  a u FIND  FOUND-CALL exit then
+   op ITEM-ABI:CALL-EXACT = if a u  a u XREF-FIND  FOUND-CALL exit then
+   ITEM-OP-REFUSE ;
 
 : COMPILING? ( -- bool )
    PEND-CELL CELL@ 0= if false exit then
@@ -2866,6 +2891,7 @@ public
    ['] APPEND-RUN data-base PROVIDED-XT:APPEND-CELL + xt!
    ['] COMPILE-RUN data-base PROVIDED-XT:COMPILE-CELL + xt!
    ['] END-RUN data-base PROVIDED-XT:END-CELL + xt!
+   ['] ITEM-RUN data-base PROVIDED-XT:ITEM-CELL + xt!
    ['] CHILD-RUN data-base PROVIDED-XT:CHILD-CELL + xt!
    ['] CHECK:STORAGE-LINE data-base PROVIDED-XT:STORAGE-LINE-CELL + xt!
    ['] CHECK:CELL-LINE data-base PROVIDED-XT:CELL-LINE-CELL + xt!

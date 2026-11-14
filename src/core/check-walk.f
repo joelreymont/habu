@@ -291,10 +291,13 @@
    MTCH-W @ MWIN-CELLS!                      \ the bundle a cell-accurate consumer has to pop
    fam lost MATCH-OPEN ;
 
+: MATCH-FAM-FOUND ( n bool -- )
+   0= IF drop CHECKER-TAPE:K-MATCH -1 0 EVENT!  MATCH-ABANDON EXIT THEN
+   MATCH-FAM-STEP ;
+
 : MATCH-FAM-TOK ( ptr u8 n -- )
    {: a:ptr u:n :}
-   a u TFAM:TFAM-MATCH-FAM 0= IF drop CHECKER-TAPE:K-MATCH -1 0 EVENT!  MATCH-ABANDON EXIT THEN
-   MATCH-FAM-STEP ;
+   a u TFAM:TFAM-MATCH-FAM MATCH-FAM-FOUND ;
 
 : MATCH-VARIANT-TOK ( ptr u8 n -- )
    {: a:ptr u:n :}
@@ -340,13 +343,14 @@
 \ A failed family resolve still consumes the variant token (CONFAM -1): the
 \ three-token form always captures whole, so the trailing operand never falls
 \ through to locals or word lookup.
+: CONSTRUCT-FAM-FOUND ( n bool -- )
+   IF CONFAM ! ELSE drop 0 OK !  -1 CONFAM !  CONSTRUCT-NONE THEN
+   2 CONM ! ;
+
 : CONSTRUCT-TOK ( ptr u8 n -- )
    {: a:ptr u:n :}
    EV-OPERAND                          \ the family compiles nothing, nor does a variant of no family
-   CONM @ 1 = IF
-      a u TFAM:TFAM-CONSTRUCT-FAM IF CONFAM ! ELSE drop 0 OK !  -1 CONFAM !  CONSTRUCT-NONE THEN
-      2 CONM !
-      EXIT THEN
+   CONM @ 1 = IF a u TFAM:TFAM-CONSTRUCT-FAM CONSTRUCT-FAM-FOUND EXIT THEN
    CONFAM @ 0 < 0= IF
       a u CONFAM @ TFAM:TFAM-MATCH-VARIANT IF                           \ latch variant SUMV id for the mismatch capture
          dup CVLIVE !  CHECKER-TAPE:K-CONSTRUCT CONFAM @ rot EV-VARIANT
@@ -596,6 +600,53 @@ public
    0 CURSYM !
    v INT-STEP ;
 
+\ A spelling no step of its item's kind takes names nothing.
+: ITEM-UNDEFINED ( -- )
+   TKF TKFU @ REFUSE-UNDEFINED  IS-FAIL ;
+
+\ The step DO-TOK1 gives a token while a construct or a match is open.
+: ITEM-OPEN? ( -- bool )
+   CONM @ 0 <> IF TKF TKFU @ CONSTRUCT-TOK RES-TRUE EXIT THEN
+   CHECKER-MATCH-MODE @ 0 = IF RES-FALSE EXIT THEN
+   CHECKER-MATCH-MODE @ 4 = IF LITERAL-PAYLOAD-STEP THEN
+   TKF TKFU @ MATCH-TOK  RES-TRUE ;
+
+\ An abandoned match reads every token unmodeled through its `;match`.
+: ITEM-SKIP? ( -- bool )
+   CONM @ 0 <> IF RES-FALSE EXIT THEN
+   CHECKER-MATCH-MODE @ 4 <> IF RES-FALSE EXIT THEN
+   ITEM-OPEN? ;
+
+: ITEM-KEYWORD ( ptr u8 n -- ) {: a:ptr u:n :}
+   ITEM-LIVE? 0= IF EXIT THEN
+   ITEM-OPEN? IF EXIT THEN
+   TKF TKFU @ s" construct" CORE-STR= IF CONSTRUCT-BEGIN EXIT THEN
+   TKF TKFU @ s" match" CORE-STR= IF MATCH-BEGIN EXIT THEN
+   TKF TKFU @ CF-CODE {: cf:n :}
+   cf 0 < IF ITEM-UNDEFINED EXIT THEN
+   OK @ IF cf 21 = cf 22 = or cf 12 = or IF a u DEAD-OWNER! THEN THEN   \ exit, leave, again
+   cf CF-STEP ;
+
+\ The family operand of the open `construct` or `match`.
+: ITEM-TYPE ( n -- ) {: node:n :}
+   ITEM-LIVE? 0= IF EXIT THEN
+   ITEM-SKIP? IF EXIT THEN
+   CONM @ 1 = IF EV-OPERAND node TFAM:TFAM-CONSTRUCT-NODE CONSTRUCT-FAM-FOUND EXIT THEN
+   CONM @ 0 = CHECKER-MATCH-MODE @ 1 = and IF node TFAM:TFAM-MATCH-NODE MATCH-FAM-FOUND EXIT THEN
+   ITEM-UNDEFINED ;
+
+\ A variant of the open construct's or match's family, else a local.
+: ITEM-OPERAND ( ptr u8 n -- ) {: a:ptr u:n :}
+   ITEM-LIVE? 0= IF EXIT THEN
+   ITEM-SKIP? IF EXIT THEN
+   CONM @ 2 = IF TKF TKFU @ CONSTRUCT-TOK EXIT THEN
+   CONM @ 0 <> IF ITEM-UNDEFINED EXIT THEN
+   CHECKER-MATCH-MODE @ 2 =  TKF TKFU @ s" ;match" CORE-STR= 0= and IF
+      TKF TKFU @ MATCH-VARIANT-TOK EXIT
+   THEN
+   CHECKER-MATCH-MODE @ 0 = IF a u BODY-LOC-REF? IF EXIT THEN THEN
+   ITEM-UNDEFINED ;
+
 : ITEM-STEP ( n -- ) {: i:n :}
    TSTART @ TADDR  TI @ TSTART @ -  {: a:ptr u:n :}
    a u DO-TOK-HEAD
@@ -604,8 +655,11 @@ public
    kind BODY-ITEM-KIND:NAME = IF NAME-TOK ELSE
    kind BODY-ITEM-KIND:CALL = IF a u  i BODY-ITEMS:A CHECKER-ITEMS:ITEM-CELL@  ITEM-CALL ELSE
    kind BODY-ITEM-KIND:INT = IF i BODY-ITEMS:A CHECKER-ITEMS:ITEM-CELL@ ITEM-INT ELSE
+   kind BODY-ITEM-KIND:KEYWORD = IF a u ITEM-KEYWORD ELSE
+   kind BODY-ITEM-KIND:TYPE = IF i BODY-ITEMS:A CHECKER-ITEMS:ITEM-CELL@ ITEM-TYPE ELSE
+   kind BODY-ITEM-KIND:OPERAND = IF a u ITEM-OPERAND ELSE
       s" checker: an item of no kind the walk knows" 76 die
-   THEN THEN THEN
+   THEN THEN THEN THEN THEN THEN
    a u unj unsafe ok-in unck-in pin-in DO-TOK-TAIL ;
 
 : ITEM-WALK ( -- )

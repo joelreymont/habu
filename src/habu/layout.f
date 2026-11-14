@@ -503,6 +503,9 @@ $3880 constant APPEND-CELL
 $3890 constant COMPILE-CELL
 $38B8 constant END-CELL
 $3898 constant LITERAL-CELL
+\ A definer appends an item of an ITEM-ABI op through ITEM-CELL's ITEM-RUN; it
+\ reads the cell for CHILD-CELL's reason.
+$3888 constant ITEM-CELL
 \ A declaration makes each child word through CHILD-CELL's CHILD-RUN, with a
 \ CHILD-ABI shape code; a definer reads the cell, since inside a build a name
 \ would bind the tree's copy.
@@ -724,13 +727,30 @@ $4360 constant EFFECT-CELL   \ the effect's schema node, read for the signature
 
 \ The kinds of an item row. NAME spans the definition's name and SIG its
 \ signature with its parentheses; CALL's a is a record index; INT's a is the
-\ value.
+\ value; TYPE's a is the schema node of the family `match` or `construct`
+\ takes. A KEYWORD or OPERAND item is its spelling alone.
 package BODY-ITEM-KIND
 public
 1 constant NAME
 2 constant SIG
 3 constant CALL
 4 constant INT
+5 constant KEYWORD
+6 constant TYPE
+7 constant OPERAND
+;package
+
+\ The ops of an item PROVIDED-XT:ITEM-CELL appends. KEYWORD, OPERAND and TYPE
+\ append the item of their kind. CALL appends a call of the word the name binds
+\ where the definer runs; CALL-EXACT one of the word the name spells exactly, a
+\ `PKG:TAIL` the top-level package's public one, which no part can shadow.
+package ITEM-ABI
+public
+0 constant KEYWORD
+1 constant OPERAND
+2 constant TYPE
+3 constant CALL
+4 constant CALL-EXACT
 ;package
 \ The latest `,` run of a created body.
 CREATED-BODY-ABI:COMMA-RUN-CELL constant COMMA-RUN-CELL

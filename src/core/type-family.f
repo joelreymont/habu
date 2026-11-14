@@ -4610,11 +4610,27 @@ public
 
 public
 
-: TFAM-CONSTRUCT-FAM ( ptr u8 n -- n bool ) {: na:ptr nu:n :}   \ folded family token -> id
-   TFAM-ACTIVE-PKG$ na nu TFAM-FIND 0= IF drop MD-CON-FAM MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
-   {: id:n :}
+\ The family a schema node applies, else 0 false.
+: TFAM-NODE-FAM ( n -- n bool ) {: node:n :}
+   node SCHEMA-NODE-OK? 0= IF 0 RES-FALSE EXIT THEN
+   node SCHEMA-APP? 0= IF 0 RES-FALSE EXIT THEN
+   node SCHEMA-A@ RES-TRUE ;
+
+: TFAM-CONSTRUCT-KIND ( n -- n bool ) {: id:n :}
    id TFAM-SUM? id TFAM-ENUM? or 0= IF MD-CON-KIND MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
    id RES-TRUE ;
+
+: TFAM-CONSTRUCT-FAM ( ptr u8 n -- n bool ) {: na:ptr nu:n :}   \ folded family token -> id
+   TFAM-ACTIVE-PKG$ na nu TFAM-FIND 0= IF drop MD-CON-FAM MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
+   TFAM-CONSTRUCT-KIND ;
+
+\ A node's family under the owner rule a spelled one meets: the active
+\ package's own.
+: TFAM-CONSTRUCT-NODE ( n -- n bool ) {: node:n :}
+   node TFAM-NODE-FAM 0= IF drop MD-CON-FAM MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
+   {: id:n :}
+   TFAM-ACTIVE-PKG$ id TFAM-PKG-MATCH? 0= IF MD-CON-FAM MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
+   id TFAM-CONSTRUCT-KIND ;
 
 private
 
@@ -4772,11 +4788,19 @@ public
 \ payload row instantiates the variant schema over the scrutinee's argument terms
 \ in the TFC scratch vars, consumed at OF, so construct and nested matches may
 \ interleave.
-: TFAM-MATCH-FAM ( ptr u8 n -- n bool ) {: na:ptr nu:n :}   \ folded family token
-   TFAM-ACTIVE-PKG$ na nu TFAM-SIG-RESOLVE 0= IF drop MD-FAM-UNKNOWN MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
-   {: id:n :}
+: TFAM-MATCH-KIND ( n -- n bool ) {: id:n :}
    id TFAM-SUM? id TFAM-ENUM? or 0= IF MD-FAM-KIND MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
    id RES-TRUE ;
+
+: TFAM-MATCH-FAM ( ptr u8 n -- n bool ) {: na:ptr nu:n :}   \ folded family token
+   TFAM-ACTIVE-PKG$ na nu TFAM-SIG-RESOLVE 0= IF drop MD-FAM-UNKNOWN MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
+   TFAM-MATCH-KIND ;
+
+\ The family a node applies, matched with no scope resolve: the definer named
+\ it exactly.
+: TFAM-MATCH-NODE ( n -- n bool )
+   TFAM-NODE-FAM 0= IF drop MD-FAM-UNKNOWN MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
+   TFAM-MATCH-KIND ;
 
 : TFAM-MATCH-VARIANT ( ptr u8 n n -- n bool ) {: na:ptr nu:n fam:n :}
    fam na nu SUMV-FIND ;
