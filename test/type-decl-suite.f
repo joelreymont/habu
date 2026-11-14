@@ -640,7 +640,7 @@ s" TDW34-BAD ( tdw34 -- n )" CHECK-QUIET-CANDIDATE! 0 T=
 REJECTION:CAPTURE
 s" TDW34-BAD-USE ( tdw34 -- n ) TDW34-BAD" CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s\" error[E-UNDEFINED]: cannot find word `TDW34-BAD`\n" CONTAINS? TTRUE
-REJECTION:BUFFER$ s\"   = at `TDW34-BAD`: not found\n" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\"  --> <input>:1:30\n" CONTAINS? TTRUE
 s" TDW34-REPLAY2 ( tdw34 -- tdw34 ) TDW34-STORED" TD-MIN-IN 34 T=
 \ A product containing W34 has the same physical width and minimum, not W34^2.
 PRODUCT tdw34nest

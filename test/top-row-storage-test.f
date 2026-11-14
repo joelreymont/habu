@@ -305,7 +305,7 @@ variable ERR-U
    REJECTION:CAPTURE
    [: s" : TS-B15 ( -- ) r> drop ;" evaluate-closed ;] CHECK-RC TTHROWSQ
    s" error[E-REJECTED]: return stack: this reads below the return-stack cells pushed here" HAS?
-   s" at `r>`" HAS?
+   s" --> <input>:1:17" HAS?
    REJECTION:BUFFER-OFF
    s" 2r> below the saved return cells is refused with the same reason" T-LABEL
    s" 1 2 2>r 2r> 2r> 2drop" CHECK-RC EXITS
