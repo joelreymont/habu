@@ -20143,7 +20143,7 @@ SRCLOC:OWNED-CELL RESERVED-PTR-U8-CELL SRC-OWNED
    na nu TOKFOLD drop
    \ A span no memory has is refused as unparsed; SGBAD-CLEAR first drops the
    \ class an earlier refused signature left.
-   sa su BYTE-SPAN? 0= IF SGBAD-CLEAR sa 0 TKF TKFU @ na nu USIG-ADD-BAD RES-FALSE EXIT THEN
+   sa su BYTE-SPAN? 0= IF SGBAD-CLEAR sa 0 na nu na nu USIG-ADD-BAD RES-FALSE EXIT THEN
    \ A nonzero SYM keys the row and the name is only refused when malformed:
    \ a does> after a refused definition passes it empty; interning that dies 76.
    sym 0= IF TKF TKFU @ na nu CHECKER-RECORD-NAME-AT 2drop ELSE
@@ -20151,7 +20151,7 @@ SRCLOC:OWNED-CELL RESERVED-PTR-U8-CELL SRC-OWNED
       CHECKER-QBAD-TOK @ IF TKF TKFU @ na nu CHECKER-RECORD-NAME-AT 2drop THEN
       sym CHECKER-REC-SYM !
    THEN
-   sa su  TKF TKFU @ na nu RES-TRUE USIG-ADD-AS ;
+   sa su  na nu na nu RES-TRUE USIG-ADD-AS ;
 
 : TRUST-USIG! ( ptr u8 n ptr u8 n -- bool )
    0 TRUST-USIG-SYM! ;

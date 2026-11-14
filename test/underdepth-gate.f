@@ -155,6 +155,7 @@ package UDG-MINIMUM
    UDG-EXITED @ TTRUE
    UDG-RC @ WIDE-RC T=
    UDG-ERR$ s" error[E-BAD-STORED-SIGNATURE]" CONTAINS? TTRUE
+   UDG-ERR$ s" the signature of `MINIMUM-PROBE`" CONTAINS? TTRUE
    UDG-ERR$ s" input row too wide to record (256 cells, at most 255)" CONTAINS? TTRUE ;
 
 public
