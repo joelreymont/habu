@@ -11144,14 +11144,6 @@ variable SIG-COUNTED
    SIG-UNRES @ IF RES-FALSE EXIT THEN
    sa su din dout rin rout SGBAD-UNFIT!
    SGBAD @ if sa su at atu USIG-ADD-BAD RES-FALSE exit then
-   \ No check verified these rows: a trusted declaration asserts them, the
-   \ checker builds them for a storage, suffix or `linear:` declaration, or they
-   \ are the declared signature of a `:` definition whose body is refused or
-   \ not yet judged. None of them may bring a callback binder.
-   din SCHEME-TYPE? dout SCHEME-TYPE? or
-   rin SCHEME-TYPE? or rout SCHEME-TYPE? or IF
-      sa su at atu USIG-SCHEME-REJECT
-   THEN
    din KEEP-QUOTS
    din dout rin rout SGHASR @ external E-ADD-EFFECT
    RES-TRUE ;
@@ -11163,6 +11155,14 @@ variable SIG-COUNTED
    NEW
    SGBAD-CLEAR
    sa su PARSE-SIG-RAW {: din:n dout:n rin:n rout:n :}
+   \ No check verifies these rows: a trusted declaration asserts them, and the
+   \ checker builds them for a storage, suffix or `linear:` declaration. None of
+   \ them may bring a callback binder. A signature that did not parse gets
+   \ USIG-ADD-ROWS's record instead.
+   din SCHEME-TYPE? dout SCHEME-TYPE? or
+   rin SCHEME-TYPE? or rout SCHEME-TYPE? or  SGBAD @ 0= and IF
+      sa su at atu USIG-SCHEME-REJECT
+   THEN
    sa su at atu din dout rin rout external USIG-ADD-ROWS ;
 
 : USIG-SYM@ ( ptr u8 -- n )

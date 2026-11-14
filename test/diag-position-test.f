@@ -962,6 +962,30 @@ variable RC
    s" replaced-same-tail.f" FIXTURE!
    s" `x`" s" zz" 3 17 46 48 STORED-AT ;
 
+\ A `:` definition's binder is stored with its signature when CHECK leaves the
+\ body unjudged: deferred to the run, the file checks clean; rejected, the next
+\ rejection under --all-errors keeps its own record.
+: TEST-DEFINITION-BINDER ( -- )
+   s" a binder in a definition deferred to the run" T-LABEL
+   SB-RESET
+   s\" s\" : HELPER-B ( -- ) ;\" evaluate-closed" SB-APPEND LF+
+   s" : SCHEME-B ( forall<p,[ n -- n ]> -- ) drop HELPER-B ;" SB-APPEND LF+
+   s" : CALL-B ( -- ) [: 1 + ;] SCHEME-B ;" SB-APPEND LF+
+   s" binder-deferred.f" FIXTURE!
+   s" " 0 CHECK-EXIT
+   GJA-LINE# @ 0 T=
+   s" a binder in a rejected definition, then another rejection" T-LABEL
+   SB-RESET
+   s" : SCHEME-C ( forall<p,[ n -- n ]> -- ) drop drop ;" SB-APPEND LF+
+   s" : OTHER-C ( -- ) drop ;" SB-APPEND LF+
+   s" binder-rejected.f" FIXTURE!
+   s" --all-errors" CHECK
+   GJA-LINE# @ 2 T=
+   0 s" code" s" E-INPUT-UNDERFLOW" FIELD=
+   0 s" drop" 1 45 44 48 AT
+   1 s" code" s" E-INPUT-UNDERFLOW" FIELD=
+   1 s" drop" 2 18 68 72 AT ;
+
 : RECORD-AT ( ptr u8 n ptr u8 n ptr u8 n n n n n n n -- )
    {: code:ptr codeu:n tok:ptr toku:n sp:ptr spu:n line:n col:n bs:n be:n count:n lead:n :}
    s" " CHECK
@@ -2272,6 +2296,7 @@ variable RC
    TEST-LOCAL-GROUP
    TEST-STORED-SIGNATURE
    TEST-REPLACED-SIGNATURE
+   TEST-DEFINITION-BINDER
    TEST-MALFORMED-RECORD
    TEST-ESCAPED-ROW
    TEST-ESCAPED-PATH
