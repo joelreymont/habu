@@ -1536,7 +1536,7 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
 \ A packet opens with JSTART (schema version and code), or JHEAD for a refusal
 \ (adds repair class and verdict); JTAIL closes it with the file, the span's
 \ place when it locates, and the suggestion. A code's own fields go between.
-\ DIAG-JSON, USING-JSON and STGR-JSON close themselves: fields or a differently
+\ DIAG-JSON and STGR-JSON close themselves: fields or a differently
 \ sourced place follow the file.
 : JSTART ( ptr u8 n -- )
    {: ca:ptr cu:n :}
@@ -1940,118 +1940,6 @@ variable WARN-DIAGS   -1 WARN-DIAGS !
    BROW @ DCUR @ CHECK-UNRECORDED!
    na nu REC-REFUSE-DIAG ;
 
-\ Global-vs-used-public shadow (CK-SHADOW-CAPTURE): the reject names both
-\ candidates with their arity. Effects read through the read-only USIGS accessors
-\ (CHECKER-FIND-USIG-SYM, E-DIN@, E-DOUT@, EFF-ROW-N), never the bare-name
-\ resolver, so rendering cannot re-trigger the shadow throw.
-: USH-EFF ( n -- )                        \ append " (Din -- Dout)" for a sym's effect, " (?)" if none
-   {: sym:n :}
-   sym CHECKER-FIND-USIG-SYM 0= IF s"  (?)" EMIT-STR EXIT THEN
-   s"  (" EMIT-STR
-   FEP @ E-DIN@ EFF-ROW-N RNUM
-   s"  -- " EMIT-STR
-   FEP @ E-DOUT@ EFF-ROW-N RNUM
-   41 EMIT1 ;
-: USHADOW-PROSE ( -- )
-   s" E-USING-SHADOW-GLOBAL habu: bare '" EMIT-STR
-      USH-TOK-A @ USH-TOK-U @ EMIT-STR
-   s" ' is ambiguous under using: the global '" EMIT-STR  USH-TOK-A @ USH-TOK-U @ EMIT-STR  39 EMIT1
-   USH-GSYM @ USH-EFF
-   s"  and used public '" EMIT-STR  USH-PKG-A @ USH-PKG-U @ EMIT-STR  58 EMIT1  USH-TOK-A @ USH-TOK-U @ EMIT-STR  39 EMIT1
-   USH-USYM @ USH-EFF
-   s"  export the same name; qualify " EMIT-STR  USH-PKG-A @ USH-PKG-U @ EMIT-STR  58 EMIT1  USH-TOK-A @ USH-TOK-U @ EMIT-STR
-   s"  for the package word, or rename the collision to reach the global" EMIT-STR ;
-\ The used packages a bare token resolves in: the slots checker.f CK-USED-MARK
-\ set in CK-USED-MASK, in using-scan order, each package once.
-: UPKG-MATCHED? ( n -- bool )             \ used-scan slot n exports the token
-   1 swap lshift CK-USED-MASK @ and 0 <> ;
-: UPKG-NAME$ ( n -- ptr u8 n )            \ slot n's folded package name
-   dup CK-USE-SLOT swap CK-USE-LEN@ ;
-: UPKG-FIRST? ( n -- bool )               \ slot n matched and no earlier slot names its package
-   {: slot:n :}
-   slot UPKG-MATCHED?
-   slot 0 ?DO
-      i UPKG-MATCHED? IF  i UPKG-NAME$ slot UPKG-NAME$ CORE-STR= IF drop RES-FALSE THEN  THEN
-   LOOP ;
-: UPKG-EACH ( [ n bool -- ] -- )          \ XT on each package's slot, true the first time
-   {: xt :}
-   RES-TRUE
-   USE-MAX 0 ?DO
-      i UPKG-FIRST? IF  i over xt execute  drop RES-FALSE  THEN
-   LOOP drop ;
-\ `used_packages` lists each used package the token resolves in, between the
-\ token's place and the suggestion, so this packet closes itself. For the shadow
-\ that is one package: every matched slot holds its one used public.
-: USING-JSON ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: code:ptr codeu:n class:ptr classu:n sug:ptr sugu:n :}
-   code codeu class classu s" rejected" JHEAD
-   s" token" JSON-KEY USH-TOK-A @ USH-TOK-U @ JSON-STRING 44 EMIT1
-   s" file" JSON-KEY FILE$ JSON-STRING 44 EMIT1
-   USH-TOK-A @ USH-TOK-U @ JTOKEN-FIELDS
-   s" used_packages" JSON-KEY 91 EMIT1
-   [: 0= IF 44 EMIT1 THEN  UPKG-NAME$ JSON-STRING ;] UPKG-EACH
-   93 EMIT1 44 EMIT1
-   s" suggestion" JSON-KEY sug sugu JSON-STRING
-   125 EMIT1 ;
-: USHADOW-JSON ( -- )
-   s" E-USING-SHADOW-GLOBAL" s" disambiguate_using_shadow"
-   s" A global word and a used package public share this name. Qualify the package word as PKG:WORD, or rename the collision; the global has no bare qualifier."
-   USING-JSON ;
-: USHADOW-DIAG ( -- )
-   1 DEST !  0 TEXT-LEN !  0 RQM !
-   JSON @ IF USHADOW-JSON ELSE USHADOW-PROSE THEN
-   10 EMIT1
-   FLUSH ;
-
-\ A package public its own private tail shadows (checker.f SHADOW-ARITY-CK). The
-\ widths come from the check, not the store: the rule runs before the append, so
-\ the public has no row to read. Both sides are in cells, what the compiler reads
-\ a contract in. Package and tail come from the private twin's symbol, already
-\ folded.
-: SBA-CELLS-TXT ( n n -- )                \ append " (in -- out)"
-   {: in:n out:n :}
-   s"  (" EMIT-STR  in RNUM  s"  -- " EMIT-STR  out RNUM  41 EMIT1 ;
-: SBARITY-PROSE ( -- )
-   s" E-SHADOWED-ARITY habu: public '" EMIT-STR
-   SBA-TWIN @ SYM-PKG$ EMIT-STR  58 EMIT1  SBA-TWIN @ SYM-NAME$ EMIT-STR
-      39 EMIT1
-   SBA-NIN @ SBA-NOUT @ SBA-CELLS-TXT
-   s"  does not bind its own name: the same package's private '" EMIT-STR
-   SBA-TWIN @ SYM-NAME$ EMIT-STR  39 EMIT1
-   SBA-PIN @ SBA-POUT @ SBA-CELLS-TXT
-   s"  owns that bare tail, a definition's contract is read from the binding its" EMIT-STR
-   s"  own name has, and the two do not move the same cells - so the public word" EMIT-STR
-   s"  would be compiled against the private word's arity. Declare the same" EMIT-STR
-   s"  effect on both (a public forwarder repeats its private word's signature)" EMIT-STR
-   s"  or rename one of the two" EMIT-STR ;
-: SBARITY-JSON ( -- )
-   s" E-SHADOWED-ARITY" s" match_shadowed_private_effect" s" rejected" JHEAD
-   s" token" JSON-KEY SBA-TWIN @ SYM-NAME$ JSON-STRING 44 EMIT1
-   s" package" JSON-KEY SBA-TWIN @ SYM-PKG$ JSON-STRING 44 EMIT1
-   NM-SPAN s" A private word of this package owns the same tail, and a bare tail binds the private word first, so the native compiler reads this definition's arity from it. Give the public definition the private word's effect, or rename one of the two." JTAIL ;
-: SBARITY-DIAG ( -- )
-   1 DEST !  0 TEXT-LEN !  0 RQM !
-   JSON @ IF SBARITY-JSON ELSE SBARITY-PROSE THEN
-   10 EMIT1
-   FLUSH ;
-\ A bare token two used publics export: the
-\ reject names each package it resolves in.
-: UAMB-PROSE ( -- )
-   s" E-USING-AMBIGUOUS habu: bare '" EMIT-STR  USH-TOK-A @ USH-TOK-U @ EMIT-STR
-   s" ' is ambiguous under using: used publics " EMIT-STR
-   [: 0= IF s" , " EMIT-STR THEN
-      39 EMIT1  UPKG-NAME$ EMIT-STR  58 EMIT1  USH-TOK-A @ USH-TOK-U @ EMIT-STR  39 EMIT1 ;] UPKG-EACH
-   s"  export the same name; qualify the one meant as PKG:" EMIT-STR  USH-TOK-A @ USH-TOK-U @ EMIT-STR
-   s" , or rename the collision" EMIT-STR ;
-: UAMB-JSON ( -- )
-   s" E-USING-AMBIGUOUS" s" disambiguate_using_ambiguous"
-   s" Used publics of more than one package share this name. Qualify the one meant as PKG:WORD, or rename the collision."
-   USING-JSON ;
-: UAMB-DIAG ( -- )
-   1 DEST !  0 TEXT-LEN !  0 RQM !
-   JSON @ IF UAMB-JSON ELSE UAMB-PROSE THEN
-   10 EMIT1
-   FLUSH ;
 \ A top-level token the load refuses, a stretch the pre-pass deferred, or a
 \ deferred definition: records at the token, no definition fields. A
 \ refusal has its own code (tools/diag-code.f) with the class and suggestion a
@@ -2094,19 +1982,15 @@ variable WARN-DIAGS   -1 WARN-DIAGS !
    10 EMIT1
    FLUSH
    0 DEFER-WHY ! ;
-\ checker.f SHADOW-DIAG-XT selects: 0 the using-shadow reference site, 1 the
-\ arity-shadow definition site, 2 a using ambiguity, 3 and 4 a top-level token
-\ undefined or malformed, 5 a deferred top-level stretch or definition. One hook
-\ because every defer before `: TRUST` takes a slot of the engine's pre-trust
-\ pending table (src/habu/layout.f PD-CAP).
+\ checker.f SHADOW-DIAG-XT selects: 3 and 4 a top-level token undefined or
+\ malformed, 5 a deferred top-level stretch or definition. One hook because
+\ every defer before `: TRUST` takes a slot of the engine's pre-trust pending
+\ table (src/habu/layout.f PD-CAP).
 : SHADOW-DIAG ( n -- )
    {: sel:n :}
-   sel 1 = IF SBARITY-DIAG EXIT THEN
-   sel 2 = IF UAMB-DIAG EXIT THEN
    sel 3 = IF TOP-UNDEF-DIAG EXIT THEN
    sel 4 = IF TOP-BADQUAL-DIAG EXIT THEN
-   sel 5 = IF TOP-DEFERRED-DIAG EXIT THEN
-   USHADOW-DIAG ;
+   TOP-DEFERRED-DIAG ;
 : SHADOW-DIAG-INSTALL ( -- ) [: SHADOW-DIAG ;] is SHADOW-DIAG-XT ;
 SHADOW-DIAG-INSTALL
 

@@ -12229,15 +12229,12 @@ PTR-VARIABLE USH-PKG-A   variable USH-PKG-U     \ the used package's folded name
 variable USING-HOLD      \ a body token's walk holds its using refusal for the selector (DO-TOK1)
 variable CK-USED-MASK    \ bit i set when used-scan slot i matched, for the using diagnostics
 CHECKER-REG:}SCRATCH
-\ ONE hook for the diagnostics located at a token, selected by its argument: 0
-\ renders the using-shadow reference site below, 1 the arity-shadow definition
-\ site (SHADOW-ARITY-CK), 2 a bare token two used publics export
-\ (CHECKER-RESOLVE:RAISE, the packages CK-USED-MASK marks), 3 a top-level token
-\ no scope defines and 4 one with a malformed qualifier (CHECKER-VERIFY-TOP), 5
-\ a top-level stretch or a definition deferred to the run
-\ (CHECKER-VERIFY-DEFERRED, CHECKER-VERIFY-DEFERRED-BODY). One defer
-\ and not six because every `defer` written here, before `: TRUST`, takes a slot
-\ of the engine's pre-trust pending table.
+\ ONE hook for the diagnostics located at a token, selected by its argument: 3
+\ renders a top-level token no scope defines and 4 one with a malformed
+\ qualifier (CHECKER-VERIFY-TOP), 5 a top-level stretch or a definition deferred
+\ to the run (CHECKER-VERIFY-DEFERRED, CHECKER-VERIFY-DEFERRED-BODY). One defer
+\ and not three because every `defer` written here, before `: TRUST`, takes a
+\ slot of the engine's pre-trust pending table.
 defer SHADOW-DIAG-XT ( n -- )
 : SHADOW-DIAG-DEFAULT ( -- ) [: drop ;] is SHADOW-DIAG-XT ;
 SHADOW-DIAG-DEFAULT
@@ -12248,7 +12245,7 @@ SHADOW-DIAG-DEFAULT
 variable DEF-REFUSAL
 : REFUSE-DEF ( n -- n ) dup DEF-REFUSAL ! ;
 
-\ The packet names the raiser's token as the checked text spells it, not the
+\ The rejection names the raiser's token as the checked text spells it, not the
 \ walk's fold.
 : CK-SHADOW-CAPTURE ( n n n -- n ) {: gsym:n usym:n ix:n :}
    gsym USH-GSYM !  usym USH-USYM !
@@ -13339,6 +13336,69 @@ FACTS-READ-DEFAULT
    -1 WALK-REC !
    sym 0 ;
 
+\ The used packages a bare token resolves in: the slots CK-USED-MARK set in
+\ CK-USED-MASK, in using-scan order, each package once.
+: UPKG-MATCHED? ( n -- bool )             \ used-scan slot n exports the token
+   1 swap lshift CK-USED-MASK @ and 0 <> ;
+: UPKG-NAME$ ( n -- ptr u8 n )            \ slot n's folded package name
+   dup CK-USE-SLOT swap CK-USE-LEN@ ;
+: UPKG-FIRST? ( n -- bool )               \ slot n matched and no earlier slot names its package
+   {: slot:n :}
+   slot UPKG-MATCHED?
+   slot 0 ?DO
+      i UPKG-MATCHED? IF  i UPKG-NAME$ slot UPKG-NAME$ CORE-STR= IF drop RES-FALSE THEN  THEN
+   LOOP ;
+: UPKG-EACH ( [ n bool -- ] -- )          \ XT on each package's slot, true the first time
+   {: xt :}
+   RES-TRUE
+   USE-MAX 0 ?DO
+      i UPKG-FIRST? IF  i over xt execute  drop RES-FALSE  THEN
+   LOOP drop ;
+: UPKG-COUNT ( -- n )
+   0  USE-MAX 0 ?DO  i UPKG-FIRST? IF 1 + THEN  LOOP ;
+
+\ The bare token s su names a global word and a public of the used package
+\ USH-PKG; the global has no qualified form, so only the package's word can be
+\ written apart.
+: USING-SHADOW-REJECT ( ptr u8 n -- ) {: s:ptr su:n :}
+   s" E-USING-SHADOW-GLOBAL" REJECTION:OPEN
+   96 REJECTION:EMIT1  s su REJECTION:EMIT-STR
+   s" ` is both a global word and a public of used package `" REJECTION:EMIT-STR
+   USH-PKG-A @ USH-PKG-U @ REJECTION:EMIT-STR  96 REJECTION:EMIT1
+   s su REJECTION:AT  s" ambiguous here" REJECTION:EMIT-STR
+   s" global" REJECTION:NOTE  s su REJECTION:EMIT-STR
+   s" package" REJECTION:NOTE
+   USH-PKG-A @ USH-PKG-U @ REJECTION:EMIT-STR  58 REJECTION:EMIT1  s su REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" write `" REJECTION:EMIT-STR
+   USH-PKG-A @ USH-PKG-U @ REJECTION:EMIT-STR  58 REJECTION:EMIT1  s su REJECTION:EMIT-STR
+   s" ` to call the package's word, or rename one of the two: the global word has no qualified form"
+   REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REFUSE-DEF REJECTION:STOP ;
+
+\ The bare token s su is public in each package CK-USED-MASK marks.
+: USING-AMBIGUOUS-REJECT ( ptr u8 n -- ) {: s:ptr su:n :}
+   s" E-USING-AMBIGUOUS" REJECTION:OPEN
+   96 REJECTION:EMIT1  s su REJECTION:EMIT-STR
+   s" ` is public in more than one used package" REJECTION:EMIT-STR
+   s su REJECTION:AT  s" ambiguous here" REJECTION:EMIT-STR
+   s" packages" REJECTION:NOTE
+   [: 0= IF s" , " REJECTION:EMIT-STR THEN  UPKG-NAME$ REJECTION:EMIT-STR ;] UPKG-EACH
+   REJECTION:HELP
+   s" write the package's name before the word, as " REJECTION:EMIT-STR
+   UPKG-COUNT {: k:n :}
+   0  USE-MAX 0 ?DO
+      i UPKG-FIRST? IF
+         dup 0 > IF
+            dup 1 + k = IF s"  or " ELSE s" , " THEN REJECTION:EMIT-STR
+         THEN
+         96 REJECTION:EMIT1  i UPKG-NAME$ REJECTION:EMIT-STR
+         58 REJECTION:EMIT1  s su REJECTION:EMIT-STR  96 REJECTION:EMIT1
+         1 +
+      THEN
+   LOOP drop
+   CHECKER-REJECT-RC REFUSE-DEF REJECTION:STOP ;
+
 package CHECKER-RESOLVE
 public
 : WALK ( ptr u8 n -- n n )
@@ -13358,11 +13418,8 @@ public
       0 OK !  -1 FAILSET !
       EXIT
    THEN
-   why E-USING-SHADOW-GLOBAL =  why E-USING-AMBIGUOUS =  or IF
-      s USH-TOK-A !  su USH-TOK-U !
-      why E-USING-SHADOW-GLOBAL = IF 0 ELSE 2 THEN SHADOW-DIAG-XT
-      why REFUSE-DEF CHECKER-REFUSE
-   THEN
+   why E-USING-SHADOW-GLOBAL = IF s su USING-SHADOW-REJECT THEN
+   why E-USING-AMBIGUOUS = IF s su USING-AMBIGUOUS-REJECT THEN
    why REFUSE-DEF throw ;
 
 \ The scope question for a caller that defines nothing: would resolving NAME be
@@ -14303,11 +14360,6 @@ package CHECKER-REG
 
 \ --- a package public whose own bare tail a private word of the package claims --
 7145 constant E-SHADOWED-ARITY
-CHECKER-REG:SCRATCH{
-variable SBA-TWIN                          \ the private twin's sym: the refused public's package and tail
-variable SBA-NIN   variable SBA-NOUT       \ the refused declaration's width in cells
-variable SBA-PIN   variable SBA-POUT       \ the private word's width in cells
-CHECKER-REG:}SCRATCH
 
 \ A sym's active declared width in cells.
 : SBA-CELLS ( n -- n n ) {: sym:n :}
@@ -14329,6 +14381,17 @@ CHECKER-REG:}SCRATCH
    vis CHECKER-PACKAGE-PUBLIC <> IF 0 EXIT THEN
    pkg pkgu SYM-PRIVATE a u CHECKER-PKG-SYM? SYM-VISIBLE ;
 
+\ The widths come from the check, not the store: the rule runs before the
+\ append, so the public has no row to read. Both sides are in cells, what the
+\ compiler reads a contract in.
+: SBA-CELLS-TXT ( n n -- )                \ append "(in -- out)"
+   {: in:n out:n :}
+   40 REJECTION:EMIT1  in REJECTION:EMIT-U  s"  -- " REJECTION:EMIT-STR
+   out REJECTION:EMIT-U  41 REJECTION:EMIT1 ;
+\ The private twin's sym names the public's package and tail, already folded.
+: SBA-QUALIFIED ( n -- ) {: sym:n :}
+   sym SYM-PKG$ REJECTION:EMIT-STR  58 REJECTION:EMIT1  sym SYM-NAME$ REJECTION:EMIT-STR ;
+
 \ The DECLARED rows and the name of the colon definition about to be published.
 : SHADOW-ARITY-CK ( n n ptr u8 n -- )
    {: din:n dout:n a:ptr u:n :}
@@ -14338,11 +14401,20 @@ CHECKER-REG:}SCRATCH
    pin CELLS-NONE = pout CELLS-NONE = or IF EXIT THEN
    din ROW-CELLS dout ROW-CELLS {: nin:n nout:n :}
    nin pin =  nout pout =  and IF EXIT THEN
-   priv SBA-TWIN !
-   nin SBA-NIN !  nout SBA-NOUT !  pin SBA-PIN !  pout SBA-POUT !
-   1 SHADOW-DIAG-XT
    NMOFF @ TADDR NMU @ RF-REJECTED PIN-REFUSED!   \ the definition's name, not the walk's token
-   E-SHADOWED-ARITY REFUSE-DEF CHECKER-REFUSE ;
+   s" E-SHADOWED-ARITY" REJECTION:OPEN
+   s" public `" REJECTION:EMIT-STR  priv SBA-QUALIFIED
+   s" ` has a different stack effect from its package's private `" REJECTION:EMIT-STR
+   priv SYM-NAME$ REJECTION:EMIT-STR  96 REJECTION:EMIT1
+   NMOFF @ TADDR NMU @ REJECTION:AT
+   s" its name binds the private word" REJECTION:EMIT-STR
+   s" public" REJECTION:NOTE  priv SBA-QUALIFIED  32 REJECTION:EMIT1  nin nout SBA-CELLS-TXT
+   s" private" REJECTION:NOTE  priv SBA-QUALIFIED  32 REJECTION:EMIT1  pin pout SBA-CELLS-TXT
+   REJECTION:HELP
+   s" declare the same stack effect on both, as the private word's `" REJECTION:EMIT-STR
+   pin pout SBA-CELLS-TXT
+   s" `, or rename one of the two" REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REFUSE-DEF REJECTION:STOP ;
 
 \ A length that describes no memory is refused with the symbol pool's refusal
 \ before the constructor scan reads it.
