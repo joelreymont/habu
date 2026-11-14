@@ -410,18 +410,14 @@
 \ replay alone: outside the window they refuse rather than move a scope no
 \ compile is in.
 \
-\ Storage declaration refusals: a storage definer refuses a declaration whose
+\ Storage declaration rejections: a storage definer rejects a declaration whose
 \ type it cannot size, that has no name or one it cannot publish, or whose
 \ count is a literal outside its extent or a token the gate cannot certify.
-\ The gate pre-pass and the run-time definers both refuse through
-\ CHECKER-STORAGE-REFUSE, which reports the declared word and the refused
-\ token. Like TRUST-STALE it is a hard stop on the ordinary load path, and is
-\ rendered and counted under a MULTI-ERROR load; either way nothing is
-\ registered or defined. The diagnostic carries a file position only while the
-\ verifier window replays recorded source, for a token inside the buffer that
-\ pass registered (CHECKER-VERIFY-SOURCE!, STGR-IN-SOURCE?). A run-time
-\ definer reads its tokens from the input, whose place in its file the checker
-\ has no record of.
+\ The gate pre-pass and the run-time definers both reject through
+\ CHECKER-STORAGE-REFUSE, which prints E-BAD-STORAGE at the rejected token.
+\ Like TRUST-STALE it is a hard stop on the ordinary load path, and is printed
+\ and counted under a MULTI-ERROR load; either way nothing is registered or
+\ defined.
 \
 \ Name binding: one lookup binds a name, and it is the engine's. `scope-find`
 \ runs what the compiler's call site runs, so the checker certifies the record
@@ -4915,6 +4911,9 @@ CHECKER-REG:}SCRATCH
 variable VSIG
 CHECKER-REG:SCRATCH{
 variable DEXP   variable DACT   variable FAILSET
+\ DEND: the captured DEXP DACT pair is the declared outputs and the body's final
+\ stack.
+variable DEND
 variable DF-ACT   variable DF-EXP
 \ CVLIVE holds the SUMV id of the variant a `construct family variant` step is
 \ applying; UF>DIAG latches it into DVAR. -1 is no variant in scope.
@@ -10735,21 +10734,8 @@ variable MULTI-ERR
 variable SIG-COUNTED
 0 SIG-COUNTED !
 : SIG-COUNTED? ( -- bool ) SIG-COUNTED @ 0 <> ;
-: SIG-COUNT ( -- ) -1 SIG-COUNTED !  1 REJECTION:TALLY +! ;
+: SIG-COUNT ( -- ) -1 SIG-COUNTED ! ;
 7156 constant E-BAD-STORED-SIGNATURE
-\ Bad stored-signature diagnostic hook, given the signature, stored name and
-\ declaring name. BADSIG-PLAIN writes on fd 2 so a row the boot refuses names
-\ itself; its write results are dropped, since the refusal follows at once.
-defer BADSIG-XT ( ptr u8 n ptr u8 n ptr u8 n -- )
-: BADSIG-PLAIN ( ptr u8 n ptr u8 n ptr u8 n -- )
-   2drop
-   {: sa:ptr su:n na:ptr nu:n :}
-   2 na nu write drop
-   2 s" : " write drop
-   2 sa su write drop
-   2 S\" : bad stored signature\n" write drop ;
-: BADSIG-DEFAULT ( -- ) [: BADSIG-PLAIN ;] is BADSIG-XT ;
-BADSIG-DEFAULT
 
 : MULTI-ERR? ( -- bool ) MULTI-ERR @ 0 <> ;
 
@@ -10792,13 +10778,94 @@ BADSIG-DEFAULT
    SGA @ SGU @ sa su CORE-STR= 0= IF SGBAD-A @ EXIT THEN
    SGA @ off + ;
 
-\ A refused stored signature SA SU pins the token SGBAD names, or the declaring
-\ name AT ATU when SGBAD names none or the whole row; never a token the walk pinned.
-: SGBAD-PIN ( ptr u8 n ptr u8 n -- )
+\ The token a rejected stored signature SA SU names: the one SGBAD names, or
+\ the declaring name AT ATU when SGBAD names none or the whole row.
+: SGBAD-TOKEN ( ptr u8 n ptr u8 n -- ptr u8 n )
    {: sa:ptr su:n at:ptr atu:n :}
    SGBAD @ 0=  SGBAD-U @ 0=  or  SGBAD-A @ sa =  SGBAD-U @ su =  and  or
-   IF at atu RF-SIG PIN-REFUSED! EXIT THEN
-   sa su SGBAD-AT SGBAD-U @ RF-SIG PIN-REFUSED! ;
+   IF at atu EXIT THEN
+   sa su SGBAD-AT SGBAD-U @ ;
+
+\ Pins SGBAD-TOKEN; never a token the walk pinned.
+: SGBAD-PIN ( ptr u8 n ptr u8 n -- )
+   SGBAD-TOKEN RF-SIG PIN-REFUSED! ;
+
+\ The return, width and unsupplied kinds name the whole row, so their label
+\ sits on the declaring name.
+: SGBAD-LABEL$ ( -- ptr u8 n )
+   SGBAD-RETURN? IF s" its signature moves the return stack" EXIT THEN
+   SGBAD-UNKNOWN? IF s" no type has this name" EXIT THEN
+   SGBAD-BAREPTR? IF s" `ptr` with no element type" EXIT THEN
+   SGBAD-ARITY? IF s" wrong number of type arguments" EXIT THEN
+   SGBAD-BINDERS? IF s" too many binders nest here" EXIT THEN
+   SGBAD-DEPTH? IF s" nested too deep to record" EXIT THEN
+   SGBAD-WIDTH? IF s" its input row is too wide to record" EXIT THEN
+   SGBAD-UNSUPPLIED? IF s" its outputs name a variable no input supplies" EXIT THEN
+   s" the signature does not parse here" ;
+
+: SGBAD-HELP$ ( -- ptr u8 n )
+   SGBAD-RETURN? IF s" after `|` write one row variable, the same on both sides, or write no `|`" EXIT THEN
+   SGBAD-UNKNOWN? IF s" write a declared type, such as `n` or `ptr u8`, or a single-letter type variable such as `a`" EXIT THEN
+   SGBAD-BAREPTR? IF s" give `ptr` its element type, as `ptr u8` or `ptr a`" EXIT THEN
+   SGBAD-ARITY? IF s" give the type family exactly as many arguments as it declares" EXIT THEN
+   SGBAD-BINDERS? IF s" name an inner callback's effect in a word of its own, so fewer binders nest" EXIT THEN
+   SGBAD-DEPTH? IF s" name an inner callback's effect in a word of its own, and keep bulk values in a buffer instead of on the stack" EXIT THEN
+   SGBAD-WIDTH? IF s" take fewer input cells by keeping bulk values in a buffer instead of on the stack" EXIT THEN
+   SGBAD-UNSUPPLIED? IF s" name each output scope or region variable in an input too, or drop it from the outputs" EXIT THEN
+   s" write the signature as `( inputs -- outputs )`, with one `--` between the rows" ;
+
+: SIG-WS? {: c :}  c 32 <= ;
+: SIG-LTRIM ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   0 BEGIN dup u < WHILE
+      dup a + c@ SIG-WS? 0= IF dup a + u rot - EXIT THEN
+      1 +
+   REPEAT drop a 0 ;
+: SIG-RTRIM ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   u BEGIN dup 0 > WHILE
+      a over 1 - + c@ SIG-WS? IF 1 - ELSE a swap EXIT THEN
+   REPEAT drop a 0 ;
+: SIG-TRIM ( ptr u8 n -- ptr u8 n )  SIG-LTRIM SIG-RTRIM ;
+
+: DEPTH-REASON$ ( -- ptr u8 n )
+   s" effect too deep to record" ;
+
+: WIDTH-REASON$ ( -- ptr u8 n )
+   s" input row too wide to record" ;
+
+: BINDERS-REASON ( -- )
+   s" more than " REJECTION:EMIT-STR  BINDER-DEPTH-MAX REJECTION:EMIT-U
+      s"  nested binders" REJECTION:EMIT-STR ;
+
+: CAP-DEPTH-COUNTS ( n n -- )
+   {: depth:n cap:n :}
+   s"  (depth " REJECTION:EMIT-STR  depth REJECTION:EMIT-U
+   s" , at most " REJECTION:EMIT-STR  cap REJECTION:EMIT-U  s" )" REJECTION:EMIT-STR ;
+
+: DEPTH-COUNTS ( n -- )
+   EFFECT-DEPTH-MAX CAP-DEPTH-COUNTS ;
+
+: WIDTH-COUNTS ( n -- )
+   {: width:n :}
+   s"  (" REJECTION:EMIT-STR  width REJECTION:EMIT-U
+   s"  cells, at most " REJECTION:EMIT-STR  EFFECT-MIN-IN-MAX REJECTION:EMIT-U  s" )" REJECTION:EMIT-STR ;
+
+\ The reason a signature too large to record names its bound, count and limit.
+: BADSIG-REASON ( -- )
+   SGBAD-BINDERS? IF BINDERS-REASON EXIT THEN
+   SGBAD-DEPTH? IF DEPTH-REASON$ REJECTION:EMIT-STR  SGBAD-SIZE @ DEPTH-COUNTS EXIT THEN
+   WIDTH-REASON$ REJECTION:EMIT-STR  SGBAD-SIZE @ WIDTH-COUNTS ;
+
+\ Prints the rejection of stored signature SA SU of name NA NU, placed at
+\ SGBAD-TOKEN, up to its help; the caller ends it.
+: SGBAD-REJECTION ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: sa:ptr su:n na:ptr nu:n at:ptr atu:n :}
+   s" E-BAD-STORED-SIGNATURE" REJECTION:OPEN
+   s" the signature of `" REJECTION:EMIT-STR  na nu REJECTION:EMIT-STR
+   s" ` cannot be recorded" REJECTION:EMIT-STR
+   sa su at atu SGBAD-TOKEN REJECTION:AT  SGBAD-LABEL$ REJECTION:EMIT-STR
+   s" signature" REJECTION:NOTE  sa su SIG-TRIM REJECTION:EMIT-STR
+   SGBAD-SIZE? IF s" reason" REJECTION:NOTE  BADSIG-REASON THEN
+   REJECTION:HELP  SGBAD-HELP$ REJECTION:EMIT-STR ;
 
 \ AT is the declaring name as the caller read it, used to place the record.
 : USIG-ADD-BAD ( ptr u8 n ptr u8 n ptr u8 n -- )
@@ -10806,10 +10873,10 @@ BADSIG-DEFAULT
    WRITE-WINDOW-CK                       \ a refusal moves the latches too
    0 RECW !                              \ no record stored: nothing to publish wide
    0 RECMI !                             \ ... and no min-in to poke
-   sa su na nu at atu BADSIG-XT
-   MULTI-ERR? IF SIG-COUNT EXIT THEN
+   sa su na nu at atu SGBAD-REJECTION
+   MULTI-ERR? IF REJECTION:KEEP SIG-COUNT EXIT THEN
    sa su at atu SGBAD-PIN
-   E-BAD-STORED-SIGNATURE CHECKER-REFUSE ;
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ An effect with these rows deeper than a record holds is a stored signature
 \ no record can hold, whatever path records it: refused as a bad one by the
@@ -12195,8 +12262,6 @@ package CHECKER-REG
 \ A `trust` row whose name the engine's scope chain resolves to nothing. Such a
 \ row would mint a bare global checker symbol.
 7143 constant E-TRUST-UNRESOLVED
-\ A record for a malformed qualified name, which keys no word (CHECKER-RECORD-NAME).
-7152 constant E-BAD-QUALIFIED
 \ A `generates:` row the checker cannot keep (CHECKER-GENERATES): one code for
 \ its three refusals, which the diagnostic tells apart by kind.
 7153 constant E-GENERATES-ROW
@@ -12205,21 +12270,24 @@ package CHECKER-REG
 7186 constant E-PARSES-ROW
 \ A `names:` row the checker refuses (CHECKER-NAMES-ROW), told apart likewise.
 7208 constant E-NAMES-ROW
-\ ONE hook for the three refused-record diagnostics, selected by its last
-\ argument, for the pre-trust slot reason SHADOW-DIAG-XT below gives: 0 renders
-\ the stale `trust` row here, 1 the storage record refused outside the verifier
-\ window (CHECKER-REPLAY-NAME-OK?), 2 the record for a malformed qualified name
-\ (CHECKER-RECORD-NAME). Each renders the record's name as written, located at
-\ the place before the selector (NULL-PTR 0 for none).
-defer RECORD-DIAG-XT ( ptr u8 n ptr u8 n n -- )
-: RECORD-DIAG-DEFAULT ( -- ) [: drop 2drop 2drop ;] is RECORD-DIAG-XT ;
-RECORD-DIAG-DEFAULT
-
 \ Neither path stores a row, so a later caller rejects as undefined.
 : TRUST-STALE ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u a u 0 RECORD-DIAG-XT
-   MULTI-ERR? IF SIG-COUNT EXIT THEN
-   E-TRUST-UNRESOLVED CHECKER-REFUSE ;
+   s" E-TRUST-UNRESOLVED" REJECTION:OPEN
+   s" the `trust` row for `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" ` names no word where its record lands" REJECTION:EMIT-STR
+   a u REJECTION:AT  s" no word here has this name" REJECTION:EMIT-STR
+   s" searched" REJECTION:NOTE
+   s" the open section's wordlist, the global wordlist outside a package, or PKG's public wordlist for PKG:TAIL"
+   REJECTION:EMIT-STR
+   s" reason" REJECTION:NOTE
+   s" the effect would be recorded against a symbol the engine never defined"
+   REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" correct `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" ` to the word the row describes, write the row in the section that defines that word, or delete the row"
+   REJECTION:EMIT-STR
+   MULTI-ERR? IF REJECTION:KEEP SIG-COUNT EXIT THEN
+   CHECKER-REJECT-RC REJECTION:STOP ;
 variable USING-UNBOUND   \ no global binds the tail the walk refused: the engine's own lookup refuses it
 variable WALK-REC        \ the walk bound the name to the record the engine's own lookup found (LIVE-BIND)
 CHECKER-REG:SCRATCH{
@@ -12229,15 +12297,12 @@ PTR-VARIABLE USH-PKG-A   variable USH-PKG-U     \ the used package's folded name
 variable USING-HOLD      \ a body token's walk holds its using refusal for the selector (DO-TOK1)
 variable CK-USED-MASK    \ bit i set when used-scan slot i matched, for the using diagnostics
 CHECKER-REG:}SCRATCH
-\ ONE hook for the diagnostics located at a token, selected by its argument: 0
-\ renders the using-shadow reference site below, 1 the arity-shadow definition
-\ site (SHADOW-ARITY-CK), 2 a bare token two used publics export
-\ (CHECKER-RESOLVE:RAISE, the packages CK-USED-MASK marks), 3 a top-level token
-\ no scope defines and 4 one with a malformed qualifier (CHECKER-VERIFY-TOP), 5
-\ a top-level stretch or a definition deferred to the run
-\ (CHECKER-VERIFY-DEFERRED, CHECKER-VERIFY-DEFERRED-BODY). One defer
-\ and not six because every `defer` written here, before `: TRUST`, takes a slot
-\ of the engine's pre-trust pending table.
+\ ONE hook for the diagnostics located at a token, selected by its argument: 3
+\ renders a top-level token no scope defines and 4 one with a malformed
+\ qualifier (CHECKER-VERIFY-TOP), 5 a top-level stretch or a definition deferred
+\ to the run (CHECKER-VERIFY-DEFERRED, CHECKER-VERIFY-DEFERRED-BODY). One defer
+\ and not three because every `defer` written here, before `: TRUST`, takes a
+\ slot of the engine's pre-trust pending table.
 defer SHADOW-DIAG-XT ( n -- )
 : SHADOW-DIAG-DEFAULT ( -- ) [: drop ;] is SHADOW-DIAG-XT ;
 SHADOW-DIAG-DEFAULT
@@ -12248,7 +12313,7 @@ SHADOW-DIAG-DEFAULT
 variable DEF-REFUSAL
 : REFUSE-DEF ( n -- n ) dup DEF-REFUSAL ! ;
 
-\ The packet names the raiser's token as the checked text spells it, not the
+\ The rejection names the raiser's token as the checked text spells it, not the
 \ walk's fold.
 : CK-SHADOW-CAPTURE ( n n n -- n ) {: gsym:n usym:n ix:n :}
    gsym USH-GSYM !  usym USH-USYM !
@@ -12966,24 +13031,127 @@ package CHECKER-REG
 12 constant STG-XT-TYPE         \ the type parses and names `xt`, which no storage holds
 15 constant STG-WIDTH-TYPE      \ the type parses and holds a `width<t>`, which no storage holds
 16 constant STG-LINEAR-TYPE     \ the type parses and may hold a linear value, which no storage holds
-PTR-VARIABLE STGR-SRC-A   variable STGR-SRC-U   \ the buffer the verifier scans
-defer STORAGE-DIAG-XT ( ptr u8 n ptr u8 n n -- )   \ declared name, refused token, STG- reason
-: STORAGE-DIAG-DEFAULT ( -- ) [: drop 2drop 2drop ;] is STORAGE-DIAG-XT ;
-STORAGE-DIAG-DEFAULT
+: STGR-CODE ( ptr u8 n -- ) {: a:ptr u:n :}
+   96 REJECTION:EMIT1  a u REJECTION:EMIT-STR  96 REJECTION:EMIT1 ;
 
-: CHECKER-VERIFY-SOURCE! ( ptr u8 n -- ) {: a:ptr u:n :}
-   a STGR-SRC-A !  u STGR-SRC-U ! ;
+\ The message names the declared word: the definer for STG-NO-NAME, the name
+\ itself for STG-MALFORMED-NAME.
+: STGR-MESSAGE ( ptr u8 n n -- ) {: na:ptr nu:n why:n :}
+   why STG-NO-NAME = IF
+      na nu STGR-CODE  s"  has no name on its line" REJECTION:EMIT-STR EXIT
+   THEN
+   why STG-NO-TYPE = IF
+      na nu STGR-CODE  s"  has no type on its line" REJECTION:EMIT-STR EXIT
+   THEN
+   why STG-NO-COUNT = IF
+      na nu STGR-CODE  s"  has no count before its definer" REJECTION:EMIT-STR EXIT
+   THEN
+   why STG-MALFORMED-NAME = IF
+      s" the name " REJECTION:EMIT-STR  na nu STGR-CODE
+      s"  has more than one inner `:`" REJECTION:EMIT-STR EXIT
+   THEN
+   why STG-BAD-COUNT = IF
+      s" the count of " REJECTION:EMIT-STR  na nu STGR-CODE
+      s"  is outside the buffer's extent" REJECTION:EMIT-STR EXIT
+   THEN
+   why STG-COUNT-WORD = IF
+      s" the count of " REJECTION:EMIT-STR  na nu STGR-CODE
+      s"  names no `( -- n )` word" REJECTION:EMIT-STR EXIT
+   THEN
+   s" the type of " REJECTION:EMIT-STR  na nu STGR-CODE
+   why STG-UNKNOWN-TYPE = IF s"  names no known type" REJECTION:EMIT-STR EXIT THEN
+   why STG-MALFORMED-TYPE = IF s"  does not parse" REJECTION:EMIT-STR EXIT THEN
+   why STG-SCHEME-TYPE = IF
+      s"  holds a scheme, which no storage holds" REJECTION:EMIT-STR EXIT
+   THEN
+   why STG-XT-TYPE = IF
+      s"  holds an `xt`, which no storage holds" REJECTION:EMIT-STR EXIT
+   THEN
+   why STG-WIDTH-TYPE = IF
+      s"  holds a `width<t>`, which no storage holds" REJECTION:EMIT-STR EXIT
+   THEN
+   why STG-LINEAR-TYPE = IF
+      s"  may hold a linear value, which no storage holds" REJECTION:EMIT-STR EXIT
+   THEN
+   s"  is one its definer cannot store" REJECTION:EMIT-STR ;
 
-: STGR-IN-SOURCE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   CHECKER-VERIFY-PKG-DEPTH @ 0= IF RES-FALSE EXIT THEN
-   a STGR-SRC-A @ - {: off:n :}
-   off 0 < IF RES-FALSE EXIT THEN
-   off u + STGR-SRC-U @ <= ;
+: STGR-REASON$ ( n -- ptr u8 n ) {: why:n :}
+   why STG-UNKNOWN-TYPE = IF s" unknown type" EXIT THEN
+   why STG-MALFORMED-TYPE = IF s" malformed type" EXIT THEN
+   why STG-UNSTORABLE-TYPE = IF s" type this definer cannot store" EXIT THEN
+   why STG-SCHEME-TYPE = IF s" scheme in a stored type" EXIT THEN
+   why STG-XT-TYPE = IF s" xt in a stored type" EXIT THEN
+   why STG-WIDTH-TYPE = IF s" width in a stored type" EXIT THEN
+   why STG-LINEAR-TYPE = IF s" stored type may hold a linear value" EXIT THEN
+   why STG-MALFORMED-NAME = IF s" more than one ':' in name" EXIT THEN
+   why STG-BAD-COUNT = IF s" count outside the buffer's extent" EXIT THEN
+   why STG-COUNT-WORD = IF s" count resolves to no ( -- n ) word" EXIT THEN
+   why STG-NO-TYPE = IF s" no type follows this name on its line" EXIT THEN
+   why STG-NO-NAME = IF s" no name follows this definer on its line" EXIT THEN
+   s" no count precedes this declaration" ;
 
+: STGR-HELP ( ptr u8 n ptr u8 n n -- ) {: na:ptr nu:n ta:ptr tu:n why:n :}
+   why STG-NO-NAME = IF
+      s" write the storage's name after " REJECTION:EMIT-STR  na nu STGR-CODE
+      s"  on the same line" REJECTION:EMIT-STR EXIT
+   THEN
+   why STG-NO-TYPE = IF
+      s" write the type of " REJECTION:EMIT-STR  na nu STGR-CODE
+      s"  after it on the same line" REJECTION:EMIT-STR EXIT
+   THEN
+   why STG-NO-COUNT = IF
+      s" put a positive count before the definer of " REJECTION:EMIT-STR
+      na nu STGR-CODE
+      s" : a literal, a constant or an expression" REJECTION:EMIT-STR EXIT
+   THEN
+   why STG-MALFORMED-NAME = IF
+      s" rename " REJECTION:EMIT-STR  na nu STGR-CODE
+      s"  with at most one inner `:`" REJECTION:EMIT-STR EXIT
+   THEN
+   why STG-BAD-COUNT = IF
+      s" replace " REJECTION:EMIT-STR  ta tu STGR-CODE
+      s"  with a positive count whose elements fit in memory" REJECTION:EMIT-STR EXIT
+   THEN
+   why STG-COUNT-WORD = IF
+      s" replace " REJECTION:EMIT-STR  ta tu STGR-CODE
+      s"  with a literal, a constant or a `( -- n )` word" REJECTION:EMIT-STR EXIT
+   THEN
+   why STG-UNKNOWN-TYPE = IF
+      s" declare the type " REJECTION:EMIT-STR  ta tu STGR-CODE
+      s"  before " REJECTION:EMIT-STR  na nu STGR-CODE
+      s" , or correct its name" REJECTION:EMIT-STR EXIT
+   THEN
+   why STG-MALFORMED-TYPE = IF
+      s" write one whole type after " REJECTION:EMIT-STR  na nu STGR-CODE
+      s" , such as `n`, `ptr t` or `[ n -- n ]`" REJECTION:EMIT-STR EXIT
+   THEN
+   why STG-SCHEME-TYPE = IF
+      s" declare " REJECTION:EMIT-STR  na nu STGR-CODE
+      s"  with a closed type; a scheme is only a callback's input" REJECTION:EMIT-STR EXIT
+   THEN
+   why STG-XT-TYPE = IF
+      s" declare " REJECTION:EMIT-STR  na nu STGR-CODE
+      s"  with a quotation type such as `[ n -- n ]` in place of `xt`" REJECTION:EMIT-STR EXIT
+   THEN
+   why STG-WIDTH-TYPE = IF
+      s" declare " REJECTION:EMIT-STR  na nu STGR-CODE
+      s"  as `n` and store the width's bytes, read with `width>n`" REJECTION:EMIT-STR EXIT
+   THEN
+   why STG-LINEAR-TYPE = IF
+      s" keep a linear value on the stack, not in " REJECTION:EMIT-STR  na nu STGR-CODE
+      s" ; name a callable over one with `defer`" REJECTION:EMIT-STR EXIT
+   THEN
+   s" declare " REJECTION:EMIT-STR  na nu STGR-CODE
+   s"  with a closed, copyable type its definer stores, such as `n`" REJECTION:EMIT-STR ;
+
+\ The declared name, the rejected token and the STG- reason.
 : CHECKER-STORAGE-REFUSE ( ptr u8 n ptr u8 n n -- )
-   STORAGE-DIAG-XT
-   MULTI-ERR? IF 1 REJECTION:TALLY +! EXIT THEN
-   CHECKER-REJECT-RC throw ;
+   {: na:ptr nu:n ta:ptr tu:n why:n :}
+   s" E-BAD-STORAGE" REJECTION:OPEN  na nu why STGR-MESSAGE
+   ta tu REJECTION:AT  why STGR-REASON$ REJECTION:EMIT-STR
+   REJECTION:HELP  na nu ta tu why STGR-HELP
+   MULTI-ERR? IF REJECTION:KEEP EXIT THEN
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ A definer with no name on its line declares no word, so it is refused at its
 \ own token, which stands in for the word.
@@ -13008,8 +13176,18 @@ STORAGE-DIAG-DEFAULT
    {: a:ptr u:n :}
    a u BYTE-SPAN? 0= IF RES-FALSE EXIT THEN
    CHECKER-VERIFY-PKG-DEPTH @ 0= IF
-      a u NULL-PTR 0 1 RECORD-DIAG-XT
-      E-PKG-CONTEXT CHECKER-REFUSE
+      s" E-PKG-CONTEXT" REJECTION:OPEN
+      s" the storage record for `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+      s" ` is made outside the engine's verifier window" REJECTION:EMIT-STR
+      a u REJECTION:AT  s" recorded outside the verifier window" REJECTION:EMIT-STR
+      s" reason" REJECTION:NOTE
+      s" a checker storage registrar records a definer's accessor only while the source pre-pass replays the definer that defines the word"
+      REJECTION:EMIT-STR
+      REJECTION:HELP
+      s" define `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+      s" ` with its definer, `TYPED-VARIABLE`, `TYPED-BUFFER`, `LAYOUT-BUFFER` or `DYNAMIC-BUFFER`, instead of calling the registrar"
+      REJECTION:EMIT-STR
+      CHECKER-REJECT-RC REJECTION:STOP
    THEN
    a u CHECKER-LBUF-NAME-OK? ;
 
@@ -13339,6 +13517,69 @@ FACTS-READ-DEFAULT
    -1 WALK-REC !
    sym 0 ;
 
+\ The used packages a bare token resolves in: the slots CK-USED-MARK set in
+\ CK-USED-MASK, in using-scan order, each package once.
+: UPKG-MATCHED? ( n -- bool )             \ used-scan slot n exports the token
+   1 swap lshift CK-USED-MASK @ and 0 <> ;
+: UPKG-NAME$ ( n -- ptr u8 n )            \ slot n's folded package name
+   dup CK-USE-SLOT swap CK-USE-LEN@ ;
+: UPKG-FIRST? ( n -- bool )               \ slot n matched and no earlier slot names its package
+   {: slot:n :}
+   slot UPKG-MATCHED?
+   slot 0 ?DO
+      i UPKG-MATCHED? IF  i UPKG-NAME$ slot UPKG-NAME$ CORE-STR= IF drop RES-FALSE THEN  THEN
+   LOOP ;
+: UPKG-EACH ( [ n bool -- ] -- )          \ XT on each package's slot, true the first time
+   {: xt :}
+   RES-TRUE
+   USE-MAX 0 ?DO
+      i UPKG-FIRST? IF  i over xt execute  drop RES-FALSE  THEN
+   LOOP drop ;
+: UPKG-COUNT ( -- n )
+   0  USE-MAX 0 ?DO  i UPKG-FIRST? IF 1 + THEN  LOOP ;
+
+\ The bare token s su names a global word and a public of the used package
+\ USH-PKG; the global has no qualified form, so only the package's word can be
+\ written apart.
+: USING-SHADOW-REJECT ( ptr u8 n -- ) {: s:ptr su:n :}
+   s" E-USING-SHADOW-GLOBAL" REJECTION:OPEN
+   96 REJECTION:EMIT1  s su REJECTION:EMIT-STR
+   s" ` is both a global word and a public of used package `" REJECTION:EMIT-STR
+   USH-PKG-A @ USH-PKG-U @ REJECTION:EMIT-STR  96 REJECTION:EMIT1
+   s su REJECTION:AT  s" ambiguous here" REJECTION:EMIT-STR
+   s" global" REJECTION:NOTE  s su REJECTION:EMIT-STR
+   s" package" REJECTION:NOTE
+   USH-PKG-A @ USH-PKG-U @ REJECTION:EMIT-STR  58 REJECTION:EMIT1  s su REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" write `" REJECTION:EMIT-STR
+   USH-PKG-A @ USH-PKG-U @ REJECTION:EMIT-STR  58 REJECTION:EMIT1  s su REJECTION:EMIT-STR
+   s" ` to call the package's word, or rename one of the two: the global word has no qualified form"
+   REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REFUSE-DEF REJECTION:STOP ;
+
+\ The bare token s su is public in each package CK-USED-MASK marks.
+: USING-AMBIGUOUS-REJECT ( ptr u8 n -- ) {: s:ptr su:n :}
+   s" E-USING-AMBIGUOUS" REJECTION:OPEN
+   96 REJECTION:EMIT1  s su REJECTION:EMIT-STR
+   s" ` is public in more than one used package" REJECTION:EMIT-STR
+   s su REJECTION:AT  s" ambiguous here" REJECTION:EMIT-STR
+   s" packages" REJECTION:NOTE
+   [: 0= IF s" , " REJECTION:EMIT-STR THEN  UPKG-NAME$ REJECTION:EMIT-STR ;] UPKG-EACH
+   REJECTION:HELP
+   s" write the package's name before the word, as " REJECTION:EMIT-STR
+   UPKG-COUNT {: k:n :}
+   0  USE-MAX 0 ?DO
+      i UPKG-FIRST? IF
+         dup 0 > IF
+            dup 1 + k = IF s"  or " ELSE s" , " THEN REJECTION:EMIT-STR
+         THEN
+         96 REJECTION:EMIT1  i UPKG-NAME$ REJECTION:EMIT-STR
+         58 REJECTION:EMIT1  s su REJECTION:EMIT-STR  96 REJECTION:EMIT1
+         1 +
+      THEN
+   LOOP drop
+   CHECKER-REJECT-RC REFUSE-DEF REJECTION:STOP ;
+
 package CHECKER-RESOLVE
 public
 : WALK ( ptr u8 n -- n n )
@@ -13358,11 +13599,8 @@ public
       0 OK !  -1 FAILSET !
       EXIT
    THEN
-   why E-USING-SHADOW-GLOBAL =  why E-USING-AMBIGUOUS =  or IF
-      s USH-TOK-A !  su USH-TOK-U !
-      why E-USING-SHADOW-GLOBAL = IF 0 ELSE 2 THEN SHADOW-DIAG-XT
-      why REFUSE-DEF CHECKER-REFUSE
-   THEN
+   why E-USING-SHADOW-GLOBAL = IF s su USING-SHADOW-REJECT THEN
+   why E-USING-AMBIGUOUS = IF s su USING-AMBIGUOUS-REJECT THEN
    why REFUSE-DEF throw ;
 
 \ The scope question for a caller that defines nothing: would resolving NAME be
@@ -14243,8 +14481,18 @@ variable EV-LO   variable EV-N
    {: a:ptr u:n at:ptr atu:n :}
    a u CHECKER-RECORD-SYM {: sym:n :}
    sym 0= IF
-      a u at atu 2 RECORD-DIAG-XT
-      E-BAD-QUALIFIED CHECKER-REFUSE
+      s" E-BAD-QUALIFIED-RECORD" REJECTION:OPEN
+      s" the record name `" REJECTION:EMIT-STR  at atu REJECTION:EMIT-STR
+      s" ` has more than one `:`" REJECTION:EMIT-STR
+      at atu REJECTION:AT  s" malformed qualified name" REJECTION:EMIT-STR
+      s" rule" REJECTION:NOTE
+      s" one `:` not at an edge selects a package, and a second `:` names no word"
+      REJECTION:EMIT-STR
+      REJECTION:HELP
+      s" write `" REJECTION:EMIT-STR  at atu REJECTION:EMIT-STR
+      s" ` with one `:` between the package and the word, as `PKG:WORD`"
+      REJECTION:EMIT-STR
+      CHECKER-REJECT-RC REJECTION:STOP
    THEN
    sym CHECKER-REC-SYM !
    a u ;
@@ -14303,11 +14551,6 @@ package CHECKER-REG
 
 \ --- a package public whose own bare tail a private word of the package claims --
 7145 constant E-SHADOWED-ARITY
-CHECKER-REG:SCRATCH{
-variable SBA-TWIN                          \ the private twin's sym: the refused public's package and tail
-variable SBA-NIN   variable SBA-NOUT       \ the refused declaration's width in cells
-variable SBA-PIN   variable SBA-POUT       \ the private word's width in cells
-CHECKER-REG:}SCRATCH
 
 \ A sym's active declared width in cells.
 : SBA-CELLS ( n -- n n ) {: sym:n :}
@@ -14329,6 +14572,17 @@ CHECKER-REG:}SCRATCH
    vis CHECKER-PACKAGE-PUBLIC <> IF 0 EXIT THEN
    pkg pkgu SYM-PRIVATE a u CHECKER-PKG-SYM? SYM-VISIBLE ;
 
+\ The widths come from the check, not the store: the rule runs before the
+\ append, so the public has no row to read. Both sides are in cells, what the
+\ compiler reads a contract in.
+: SBA-CELLS-TXT ( n n -- )                \ append "(in -- out)"
+   {: in:n out:n :}
+   40 REJECTION:EMIT1  in REJECTION:EMIT-U  s"  -- " REJECTION:EMIT-STR
+   out REJECTION:EMIT-U  41 REJECTION:EMIT1 ;
+\ The private twin's sym names the public's package and tail, already folded.
+: SBA-QUALIFIED ( n -- ) {: sym:n :}
+   sym SYM-PKG$ REJECTION:EMIT-STR  58 REJECTION:EMIT1  sym SYM-NAME$ REJECTION:EMIT-STR ;
+
 \ The DECLARED rows and the name of the colon definition about to be published.
 : SHADOW-ARITY-CK ( n n ptr u8 n -- )
    {: din:n dout:n a:ptr u:n :}
@@ -14338,11 +14592,20 @@ CHECKER-REG:}SCRATCH
    pin CELLS-NONE = pout CELLS-NONE = or IF EXIT THEN
    din ROW-CELLS dout ROW-CELLS {: nin:n nout:n :}
    nin pin =  nout pout =  and IF EXIT THEN
-   priv SBA-TWIN !
-   nin SBA-NIN !  nout SBA-NOUT !  pin SBA-PIN !  pout SBA-POUT !
-   1 SHADOW-DIAG-XT
    NMOFF @ TADDR NMU @ RF-REJECTED PIN-REFUSED!   \ the definition's name, not the walk's token
-   E-SHADOWED-ARITY REFUSE-DEF CHECKER-REFUSE ;
+   s" E-SHADOWED-ARITY" REJECTION:OPEN
+   s" public `" REJECTION:EMIT-STR  priv SBA-QUALIFIED
+   s" ` has a different stack effect from its package's private `" REJECTION:EMIT-STR
+   priv SYM-NAME$ REJECTION:EMIT-STR  96 REJECTION:EMIT1
+   NMOFF @ TADDR NMU @ REJECTION:AT
+   s" its name binds the private word" REJECTION:EMIT-STR
+   s" public" REJECTION:NOTE  priv SBA-QUALIFIED  32 REJECTION:EMIT1  nin nout SBA-CELLS-TXT
+   s" private" REJECTION:NOTE  priv SYM-NAME$ REJECTION:EMIT-STR  32 REJECTION:EMIT1  pin pout SBA-CELLS-TXT
+   REJECTION:HELP
+   s" declare the same stack effect on both, as the private word's `" REJECTION:EMIT-STR
+   pin pout SBA-CELLS-TXT
+   s" `, or rename one of the two" REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REFUSE-DEF REJECTION:STOP ;
 
 \ A length that describes no memory is refused with the symbol pool's refusal
 \ before the constructor scan reads it.
@@ -16043,7 +16306,7 @@ CHECKER-REG:SCRATCH{
 variable SV-FV    variable SV-SPN   variable SV-PFN   variable SV-FACTS
 variable SV-QEN   variable SV-PTRN  variable SV-STLN
 variable SV-OK    variable SV-DCUR  variable SV-RCUR  variable SV-UNCK  variable SV-UNSEEN
-variable SV-FSET  variable SV-DEXP  variable SV-DACT  variable SV-RSBAD  variable SV-DF-ACT  variable SV-DF-EXP
+variable SV-FSET  variable SV-DEXP  variable SV-DEND  variable SV-DACT  variable SV-RSBAD  variable SV-DF-ACT  variable SV-DF-EXP
 variable SV-DVAR  variable SV-DPOS  variable SV-MDIAG
 variable SV-SGBAD
 PTR-VARIABLE SV-SGBAD-A  variable SV-SGBAD-U  variable SV-SGBAD-KIND
@@ -16060,7 +16323,7 @@ CHECKER-REG:}SCRATCH
    SPN @ SV-SPN !  CATCH-PF-N @ SV-PFN !  FACTS @ SV-FACTS !
    QEN @ SV-QEN !  PTRN @ SV-PTRN !  STLN @ SV-STLN !
    OK @ SV-OK !  DCUR @ SV-DCUR !  RCUR @ SV-RCUR !  UNCK @ SV-UNCK !  UNSEEN @ SV-UNSEEN !
-   FAILSET @ SV-FSET !  DEXP @ SV-DEXP !  DACT @ SV-DACT !  RSBAD @ SV-RSBAD !
+   FAILSET @ SV-FSET !  DEXP @ SV-DEXP !  DEND @ SV-DEND !  DACT @ SV-DACT !  RSBAD @ SV-RSBAD !
    DF-ACT @ SV-DF-ACT !  DF-EXP @ SV-DF-EXP !  DVAR @ SV-DVAR !  DPOS @ SV-DPOS !
    MDIAG @ SV-MDIAG !                     \ the reason is part of the cursor a trial may abandon
    SGBAD @ SV-SGBAD !  SGBAD-A @ SV-SGBAD-A !
@@ -16085,7 +16348,7 @@ CHECKER-REG:}SCRATCH
    SV-SPN @ SPN !  SV-PFN @ CATCH-PF-N !  SV-FACTS @ FACTS !
    SV-QEN @ QEN !  SV-PTRN @ PTRN !  SV-STLN @ STLN !
    SV-OK @ OK !  SV-DCUR @ DCUR !  SV-RCUR @ RCUR !  SV-UNCK @ UNCK !  SV-UNSEEN @ UNSEEN !
-   SV-FSET @ FAILSET !  SV-DEXP @ DEXP !  SV-DACT @ DACT !  SV-RSBAD @ RSBAD !
+   SV-FSET @ FAILSET !  SV-DEXP @ DEXP !  SV-DEND @ DEND !  SV-DACT @ DACT !  SV-RSBAD @ RSBAD !
    SV-DF-ACT @ DF-ACT !  SV-DF-EXP @ DF-EXP !  SV-DVAR @ DVAR !  SV-DPOS @ DPOS !
    SV-MDIAG @ MDIAG !
    SV-THDMASK @ THDMASK !  SV-THRMASK @ THRMASK !  SV-THSET @ THSET !
@@ -18163,7 +18426,7 @@ SCOPE-INTRO-FENCE-INSTALL
 
 : SUNI-COERCE {: s:n :}
    DCUR @ s UNIFY-COERCE
-   dup 0=  FAILSET @ 0=  and  OK @ and  IF s DCUR @ UF-CAPTURE THEN
+   dup 0=  FAILSET @ 0=  and  OK @ and  IF -1 DEND !  s DCUR @ UF-CAPTURE THEN
    OK @ and OK ! ;
 
 : ROW-OPEN? ( n -- bool )
@@ -21373,7 +21636,7 @@ CHECKER-REG:}SCRATCH
    0 MDIAG !  0 MDIAG-FAM !  0 MDIAG-SEEN !  0 MDIAG-VCNT !  0 MDIAG-NEED !  0 MDIAG-HAVE !
    0 MDIAG-DEPTH !  0 MDIAG-WIDTH !  0 MDIAG-LITV !  0 MDIAG-LITT !  0 UNFIT !
    0 RAW-PTR-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 SCOPE-HIT !  0 XT-DECL !
-   0 FAILSET !  0 DEXP !  0 DACT !  0 TRAIL-PIN !  0 RSBAD !  0 DF-ACT !  0 DF-EXP !  -1 DVAR !  -1 CVLIVE !  -1 DPOS !  0 FAILTU !  0 SGSEEN !  0 SGDECL-BAD !  0 SGHASR !
+   0 FAILSET !  0 DEXP !  0 DEND !  0 DACT !  0 TRAIL-PIN !  0 RSBAD !  0 DF-ACT !  0 DF-EXP !  -1 DVAR !  -1 CVLIVE !  -1 DPOS !  0 FAILTU !  0 SGSEEN !  0 SGDECL-BAD !  0 SGHASR !
    0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGDBASE !
    RBROW @ SGRBASE !   \ a definition with no signature reads only what it pushed too
    NULL-PTR SGA !  0 SGU !

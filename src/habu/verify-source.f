@@ -4019,7 +4019,6 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
 : VERIFY-SOURCE ( -- )
    SCAN-RESET
    0 DUPLICATE-U !
-   SOURCE@ SOURCE-U @ CHECKER-VERIFY-SOURCE!
    NULL-PTR TOP-PREV-A !  0 TOP-PREV-U !  NULL-PTR TOP-REFUSED !
    NULL-PTR TOP-PREV-STR-A !  0 TOP-PREV-STR-U !  0 TOP-PREV-STR-KIND !
    0 FILE-PKG !  0 FILE-USE !  PEND-N @ PEND-BASE !
@@ -4111,8 +4110,6 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    ELSE
       REJECTION:SOURCE-OFF
    THEN
-   \ The loader's own file goes on, so a storage refusal in it is located there.
-   oldu 0 > IF olda oldu CHECKER-VERIFY-SOURCE! THEN
    rc 0<> IF rc throw THEN ;
 
 : COMPOSE-INIT ( -- )

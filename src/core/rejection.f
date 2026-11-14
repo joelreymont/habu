@@ -237,11 +237,6 @@ public
    bl POS-LINE @ + 1 -
    POS-LINE @ 1 = IF bc POS-COLUMN @ + 1 - ELSE POS-COLUMN @ THEN
    bb POS-OFF @ + ;
-\ Set ORIGIN! to the FILE position of a definition's name token, given the
-\ eval-buffer base ptr, the name-token ptr into that buffer, and the buffer
-\ start's own file line/col/byte.
-: ORIGIN-SPAN! ( ptr u8 ptr u8 n n n -- )
-   POSITION ORIGIN! ;
 
 private
 PTR-VARIABLE SOURCE-A  variable SOURCE-U
