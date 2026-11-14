@@ -3166,10 +3166,10 @@ CHECKER-REG:}SCRATCH
 \ there, as a top step is (TOP-GUEST): it parses above the term pools' marks,
 \ and the parser's and recorder's cells, which the caller may hold, are saved
 \ and given back however the read ends. One read is open at a time.
-\ GUEST-POOLS saves 16 cells, GUEST-PARSER 37 and its three tables,
-\ GUEST-LATCHES 4; GUEST-POINTERS saves 8 pointers.
-16 37 + 4 +  BINDER-DEPTH-MAX +  TYPE-VAR-MAX 3 + +  26 +  constant GUEST-CAP
-8 constant GUEST-PTRS-CAP
+\ GUEST-POOLS saves 16 cells, GUEST-PARSER 38 and its three tables,
+\ GUEST-LATCHES 4; GUEST-POINTERS saves 9 pointers.
+16 38 + 4 +  BINDER-DEPTH-MAX +  TYPE-VAR-MAX 3 + +  26 +  constant GUEST-CAP
+9 constant GUEST-PTRS-CAP
 CHECKER-REG:SCRATCH{
 create GUEST-SAVED GUEST-CAP cells allot
 GUEST-PTRS-CAP PTR-U8-TABLE GUEST-SAVED-PTRS
@@ -3217,6 +3217,7 @@ CHECKER-REG:}SCRATCH
    NRES save GUEST-CELL  NDI save GUEST-CELL  NDH save GUEST-CELL
    SGBAD save GUEST-CELL  SGBAD-U save GUEST-CELL  SGBAD-KIND save GUEST-CELL
    SGBAD-AR-DECL save GUEST-CELL  SGBAD-AR-GOT save GUEST-CELL  SGBAD-SIZE save GUEST-CELL
+   SGBAD-EXP-U save GUEST-CELL
    SIG-UNRES save GUEST-CELL  SIG-UNRES-U save GUEST-CELL
    SIG-RAW-MODE save GUEST-CELL  SIG-FACTS-MODE save GUEST-CELL  SIG-CTL save GUEST-CELL
    SIG-TAGS-ONLY save GUEST-CELL
@@ -3230,7 +3231,7 @@ CHECKER-REG:}SCRATCH
 
 : GUEST-POINTERS ( bool -- ) {: save:bool :}
    0  SB 1 save GUEST-PTRS  SS 1 save GUEST-PTRS  PKA 1 save GUEST-PTRS
-   SGBAD-A 1 save GUEST-PTRS  SIG-UNRES-A 1 save GUEST-PTRS
+   SGBAD-A 1 save GUEST-PTRS  SGBAD-EXP-A 1 save GUEST-PTRS  SIG-UNRES-A 1 save GUEST-PTRS
    SIG-CREATES-A 1 save GUEST-PTRS  SIG-OVERLOAD-A 1 save GUEST-PTRS
    SIGSCOPE-P 1 save GUEST-PTRS  drop ;
 

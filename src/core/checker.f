@@ -6855,6 +6855,8 @@ variable SGBAD-KIND
 variable SGBAD-AR-DECL   \ arity kind: the family's declared arity
 variable SGBAD-AR-GOT    \ arity kind: the argument count actually written
 variable SGBAD-SIZE      \ depth and width kinds: the levels or cells measured
+PTR-VARIABLE SGBAD-EXP-A \ syntax kind: the word the parser expected there, if one
+variable SGBAD-EXP-U
 CHECKER-REG:SCRATCH{
 variable UNSAFE
 variable RETIRED             \ a permanently retired token was named in a checked body
@@ -7114,6 +7116,8 @@ PTR-VARIABLE SIG-OVERLOAD-A   variable SIG-OVERLOAD-U
    0 SGBAD !
    NULL-PTR SGBAD-A !
    0 SGBAD-U !
+   NULL-PTR SGBAD-EXP-A !
+   0 SGBAD-EXP-U !
    SGBAD-SYNTAX-KIND SGBAD-KIND ! ;
 
 : SGBAD-SET ( ptr u8 n n -- ) {: a u kind :}
@@ -7125,6 +7129,12 @@ PTR-VARIABLE SIG-OVERLOAD-A   variable SIG-OVERLOAD-U
 
 : SGBAD-SYNTAX! ( ptr u8 n -- )
    SGBAD-SYNTAX-KIND SGBAD-SET ;
+\ Refuses token A U unless it is EA EU, the word the parser expects there.
+: SIG-EXPECTED ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n ea:ptr eu:n :}
+   a u ea eu CORE-STR= IF EXIT THEN
+   SGBAD @ IF EXIT THEN
+   ea SGBAD-EXP-A !  eu SGBAD-EXP-U !
+   a u SGBAD-SYNTAX! ;
 : SGBAD-UNSUPPLIED! ( ptr u8 n -- )
    SGBAD-UNSUPPLIED-KIND SGBAD-SET ;
 : SGBAD-UNSUPPLIED? ( -- bool )
@@ -7324,15 +7334,20 @@ variable PKHAVE
 : SIG-INK? ( -- bool )
    SI @ SL @ >= IF RES-FALSE EXIT THEN
    SB@ SI @ + c@ dup 32 > swap SIG-DELIM-CHAR? 0= and ;
-\ ( a 0 ) at the text's end; a token PK! pushed back comes first.
+\ ( a 0 ) at the text's end, A just past its last byte; a token PK! pushed back
+\ comes first.
 : NEXT-SIG-TOK ( -- ptr u8 n )
    PKHAVE @ IF 0 PKHAVE ! PKA@ PKU @ EXIT THEN
    BEGIN SIG-SPACE? WHILE SI @ 1 + SI ! REPEAT
-   SI @ SL @ < 0= IF SB@ 0 EXIT THEN
+   SI @ SL @ < 0= IF SB@ SL @ + 0 EXIT THEN
    SB@ SI @ + SS!
    SB@ SI @ + c@ SIG-DELIM-CHAR? IF SI @ 1 + SI ! SS@ 1 EXIT THEN
    BEGIN SIG-INK? WHILE SI @ 1 + SI ! REPEAT
    SS@ SB@ SI @ + SS@ - ;
+
+\ A malformed contract must refuse, never parse as some other effect.
+: EXPECT-SIG ( ptr u8 n -- ) {: ea:ptr eu:n :}
+   NEXT-SIG-TOK ea eu SIG-EXPECTED ;
 
 : UPPER? ( n -- bool ) {: c:n :} c 64 > c 91 < and ;
 : ROW-LEAD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
@@ -7467,9 +7482,9 @@ defer SIG-TYPE-XT ( ptr u8 n -- n )
 : SIG-INSIDE-ROOTS ( n -- n n ) {: bound:n :}
    NEXT-SIG-TOK 2dup s" [" CORE-STR= IF
       2drop NEXT-SIG-TOK bound SIG-PARENT-ROOT {: parent:n :}
-      NEXT-SIG-TOK 2dup s" ," CORE-STR= IF 2drop ELSE SGBAD-SYNTAX! THEN
+      s" ," EXPECT-SIG
       NEXT-SIG-TOK SIG-TYPE-XT {: second:n :}
-      NEXT-SIG-TOK 2dup s" ]" CORE-STR= IF 2drop ELSE SGBAD-SYNTAX! THEN
+      s" ]" EXPECT-SIG
       parent second EXIT
    THEN
    bound SIG-PARENT-ROOT 0 ;
@@ -7482,7 +7497,7 @@ defer SIG-TYPE-XT ( ptr u8 n -- n )
 \ The binder's name shadows only its NMAP slot. Row names inside the
 \ quotation still share their surrounding R/S/U map.
 : SIG-FORALL-DOMAIN ( n -- n ) {: domain:n :}
-   NEXT-SIG-TOK 2dup s" <" CORE-STR= 0= IF SGBAD-SYNTAX! 1 MK-CON EXIT THEN 2drop
+   NEXT-SIG-TOK 2dup s" <" CORE-STR= 0= IF s" <" SIG-EXPECTED 1 MK-CON EXIT THEN 2drop
    NEXT-SIG-TOK {: name:ptr width:n :}
    name width SIG-VAR-SLOT {: bound:n :}
    bound 0 < IF name width SGBAD-SYNTAX! 1 MK-CON EXIT THEN
@@ -7498,10 +7513,10 @@ defer SIG-TYPE-XT ( ptr u8 n -- n )
    BIND-DEPTH @ negate 2 - slot !
    domain BIND-DEPTH @ cells BIND-DOMAINS + !
    BIND-DEPTH @ 1 + BIND-DEPTH !
-   NEXT-SIG-TOK 2dup s" ," CORE-STR= IF 2drop ELSE SGBAD-SYNTAX! THEN
+   s" ," EXPECT-SIG
    SIG-BINDER-BODY-XT {: body:n :}
    body TAG T-QUOT <> body TAG T-FORALL <> and IF name width SGBAD-SYNTAX! THEN
-   NEXT-SIG-TOK 2dup s" >" CORE-STR= IF 2drop ELSE SGBAD-SYNTAX! THEN
+   s" >" EXPECT-SIG
    BIND-DEPTH @ 1 - BIND-DEPTH !
    saved slot !
    parent 0= IF 0 0 domain body MK-FORALL-IN ELSE
@@ -7702,10 +7717,6 @@ create SQUOT SQUOT-CAP cells allot   variable SQUOT-N   0 SQUOT-N !
    THEN
    id TVK@ ;
 
-\ A malformed contract must refuse, never parse as some other effect.
-: EXPECT-SIG {: ea eu :}
-   NEXT-SIG-TOK 2dup ea eu CORE-STR= IF 2drop ELSE SGBAD-SYNTAX! THEN ;
-
 \ Only a layout whose width is not yet known stays one cell; one the width
 \ cannot read (a parameter only under a pointer) expands.
 : PUSH-LOGICAL ( n n -- n ) {: t:n row:n :}
@@ -7764,7 +7775,7 @@ create SQUOT SQUOT-CAP cells allot   variable SQUOT-N   0 SQUOT-N !
       qrin qrout RCLAUSE-CHECK
       qin qout qrin qrout MK-QUOT
    ELSE
-      2dup s" ]" CORE-STR= IF 2drop ELSE SGBAD-SYNTAX! THEN
+      s" ]" SIG-EXPECTED
       qin qout qrbase qrbase MK-QUOT
    THEN
    dup num SQUOT!
@@ -16694,6 +16705,7 @@ variable SV-DVAR  variable SV-DPOS  variable SV-MDIAG
 variable SV-SGBAD
 PTR-VARIABLE SV-SGBAD-A  variable SV-SGBAD-U  variable SV-SGBAD-KIND
 variable SV-SGBAD-AR-DECL  variable SV-SGBAD-AR-GOT
+PTR-VARIABLE SV-SGBAD-EXP-A  variable SV-SGBAD-EXP-U
 variable SV-SGSEEN  variable SV-SGHASR  variable SV-SGIN  variable SV-SGOUT
 variable SV-SGRIN   variable SV-SGROUT
 variable SV-THDMASK  variable SV-THRMASK  variable SV-THSET
@@ -16712,6 +16724,7 @@ CHECKER-REG:}SCRATCH
    SGBAD @ SV-SGBAD !  SGBAD-A @ SV-SGBAD-A !
    SGBAD-U @ SV-SGBAD-U !  SGBAD-KIND @ SV-SGBAD-KIND !
    SGBAD-AR-DECL @ SV-SGBAD-AR-DECL !  SGBAD-AR-GOT @ SV-SGBAD-AR-GOT !
+   SGBAD-EXP-A @ SV-SGBAD-EXP-A !  SGBAD-EXP-U @ SV-SGBAD-EXP-U !
    SGSEEN @ SV-SGSEEN !  SGHASR @ SV-SGHASR !
    SGIN @ SV-SGIN !  SGOUT @ SV-SGOUT !  SGRIN @ SV-SGRIN !  SGROUT @ SV-SGROUT !
    THDMASK @ SV-THDMASK !  THRMASK @ SV-THRMASK !  THSET @ SV-THSET ! ;
@@ -16720,6 +16733,7 @@ CHECKER-REG:}SCRATCH
    SV-SGBAD @ SGBAD !  SV-SGBAD-A @ SGBAD-A !
    SV-SGBAD-U @ SGBAD-U !  SV-SGBAD-KIND @ SGBAD-KIND !
    SV-SGBAD-AR-DECL @ SGBAD-AR-DECL !  SV-SGBAD-AR-GOT @ SGBAD-AR-GOT !
+   SV-SGBAD-EXP-A @ SGBAD-EXP-A !  SV-SGBAD-EXP-U @ SGBAD-EXP-U !
    SV-SGSEEN @ SGSEEN !  SV-SGHASR @ SGHASR !
    SV-SGIN @ SGIN !  SV-SGOUT @ SGOUT !  SV-SGRIN @ SGRIN !  SV-SGROUT @ SGROUT ! ;
 
@@ -20073,9 +20087,9 @@ SRCLOC:OWNED-CELL RESERVED-PTR-U8-CELL SRC-OWNED
    THEN {: end:n :}
    REJECTION:SOURCE$ drop start +  end start - ;
 
-\ Whether the signature token SGBAD names lies in the text at A U.
+\ Whether the signature token SGBAD names lies in the text at A U; an empty one
+\ at the text's end, where a signature ended early, does.
 : SGBAD-IN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   SGBAD-U @ 0= IF RES-FALSE EXIT THEN
    SGBAD-A @ a < IF RES-FALSE EXIT THEN
    SGBAD-A @ SGBAD-U @ + a u + > IF RES-FALSE EXIT THEN
    RES-TRUE ;
@@ -21372,6 +21386,7 @@ variable IS-PEND-U                   \ and its length
 : TYPE-LIT-INFO ( ptr u8 n -- n bool ) {: a:ptr u:n :}
    SGBAD @ SGBAD-A @ SGBAD-U @ SGBAD-KIND @ {: sg:n sga:ptr sgu:n sgk:n :}
    SGBAD-AR-DECL @ SGBAD-AR-GOT @ SGBAD-SIZE @ {: ard:n arg:n sgs:n :}
+   SGBAD-EXP-A @ SGBAD-EXP-U @ {: sgea:ptr sgeu:n :}
    SIG-UNRES @ SIG-UNRES-A @ SIG-UNRES-U @ {: un:n una:ptr unu:n :}
    SGBAD-CLEAR SIG-UNRES-CLEAR
    0 LBI-SCHEME !  0 LBI-XT !  0 LBI-WIDTH !  0 LBI-LINEAR !
@@ -21380,6 +21395,7 @@ variable IS-PEND-U                   \ and its length
    SGBAD @ 0= one and IF ARENA-TERM-INFO ELSE 0 RES-FALSE THEN
    sg SGBAD !  sga SGBAD-A !  sgu SGBAD-U !  sgk SGBAD-KIND !
    ard SGBAD-AR-DECL !  arg SGBAD-AR-GOT !  sgs SGBAD-SIZE !
+   sgea SGBAD-EXP-A !  sgeu SGBAD-EXP-U !
    un SIG-UNRES !  una SIG-UNRES-A !  unu SIG-UNRES-U !
    dup IF drop t TYPE-CLOSED? THEN ;
 
