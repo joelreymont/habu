@@ -332,15 +332,12 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    s" CBT-RB-LATE FFI-CB:UNBIND" INCLUDE-EVALUATE
    CMP UNBIND ;
 
-\ A kernel exit line ends ` lr <16 hex>`; the transcript keeps ` lr` and drops
-\ the digits, which vary with the build.
-: LR-LINE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   u 20 < if false exit then
-   a u 16 - s"  lr " ENDS-WITH? 0= if false exit then
-   true u u 16 - ?do a i + c@ STR-HEX-DIGIT? and loop ;
-
+\ A callback's record notes C's lr as `caller`, which varies with the build,
+\ and ends with help the case does not pin: the transcript keeps both keys and
+\ drops their values.
 : ERR-LINE+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u LR-LINE? if a u 17 - SAY exit then
+   a u s"   = caller: " STARTS-WITH? if s"   = caller:" SAY exit then
+   a u s"   = help: " STARTS-WITH? if s"   = help:" SAY exit then
    a u SAY ;
 
 \ A captured stderr as STREAM+ writes it, each line through ERR-LINE+.
@@ -517,31 +514,41 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    s" ok   a callback declared after the rollback sorts" W
    s" ok   and the earlier one still does" W ;
 
+\ The end of a callback record as ERR-LINE+ transcribes it, its blank line last.
+: WANT-RECORD-END ( -- )
+   s"   = caller:" W  s"   = help:" W  s" " W ;
+
 : WANT-CHILDREN ( -- )
    s" == child outside: exit 106" W
    s" outside: a thread is parked on its own context" W
    s" --" W
-   s" E-CALLBACK habu: context is not inside a foreign call lr" W
+   s" error[E-CALLBACK]: C called the callback outside the foreign call that passed it" W
+   s"   = slot: 0" W  WANT-RECORD-END
    s" == child sleeping: exit 106" W
    s" sleeping: a thread is parked on its own context" W
    s" --" W
-   s" E-CALLBACK habu: context busy on another thread lr" W
+   s" error[E-CALLBACK]: C called the callback on one thread while another thread runs in its context" W
+   s"   = slot: 0" W  WANT-RECORD-END
    s" == child unbound: exit 106" W
    s" unbound: sorted while bound" W
    s" --" W
-   s" E-CALLBACK habu: slot is not bound lr" W
+   s" error[E-CALLBACK]: C called a callback whose slot is not bound" W
+   s"   = slot: 0" W  WANT-RECORD-END
    s" == child worker-stale: exit 106" W
    s" worker-stale: the worker sorted and ended bound" W
    s" --" W
-   s" E-CALLBACK habu: slot is not bound lr" W
+   s" error[E-CALLBACK]: C called a callback whose slot is not bound" W
+   s"   = slot: 0" W  WANT-RECORD-END
    s" == child body-defines: exit 106" W
    s" --" W
-   s" E-CALLBACK habu: the body defined lr" W
+   s" error[E-CALLBACK]: the callback's body defined a word" W
+   s"   = slot: 11" W  WANT-RECORD-END
    HB-TARGET-LINUX-X86-64? 0= if
       s" == child caller-thread: exit 106" W
       s" caller-thread: the slot is bound to the caller's context" W
       s" --" W
-      s" E-CALLBACK habu: thread has no region of its own lr" W
+      s" error[E-CALLBACK]: C called a callback bound to the caller's context on a thread with no region of its own" W
+      s"   = slot: 5" W  WANT-RECORD-END
    then
    s" == child released: exit 0" W
    s" halted: the worker is parked inside its comparator" W
