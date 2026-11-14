@@ -13,11 +13,11 @@ package REJECTION
 private
 
 create BYTE-BUF 1 allot
-\ TEXT, mapped on first use, holds the text being recorded, TEXT-LEN bytes of it;
-\ FLUSH zeroes TEXT-LEN.
+\ TEXT holds the record being built, TEXT-LEN bytes of it. It is mapped on
+\ first use, in the running process: an image starts with none.
 16384 constant TEXT-FIRST                \ bytes of the first mapping
-PERSISTED-PTR-VARIABLE TEXT-P   NULL-PTR TEXT-P !
-variable TEXT-CAP   0 TEXT-CAP !        \ bytes mapped at TEXT-P, 0 for none
+PTR-VARIABLE TEXT-P
+SCRATCH-VARIABLE TEXT-CAP               \ bytes mapped at TEXT-P, 0 for none
 variable IN-JSON   0 IN-JSON !          \ inside a JSON string: EMIT1 escapes
 variable BUF-ON
 variable BUF-FD   2 BUF-FD !

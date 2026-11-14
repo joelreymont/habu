@@ -824,6 +824,21 @@ variable CLASS-N                        \ the class CLASS+ read
    s" the object it rewrites is app-end.f's" LABEL  FOUND$ s" /app-end.f.hfo" ENDS-WITH? TTRUE
    LOG-RUN ;
 
+\ R's program, run in its own process: its stderr is MAIN's record alone.
+: RECORD-RUN ( CMD:command -- CMD:command )
+   CMD:RESET
+   L$ s" prog" IN$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
+   CMD:ERR$ s\" error[E-MAIN]: ran\n\n" STR= {: ran:bool :}
+   ran  rc 0 =  and 0= if rc SHOW then
+   s" the program prints MAIN's record" LABEL  ran TTRUE
+   s" the program exits 0" LABEL  rc 0 T= ;
+
+\ Guards the text a record is built in: record-first.f's top level prints a record, and the
+\ build saves no address of the build process's mapping.
+: RECORD-CASE ( CMD:command -- CMD:command )
+   s" R" WHICH!  s" test/fixtures/file-objects/record-main.f" FIXTURE-BUILD 0= if exit then
+   RECORD-RUN ;
+
 \ Guards a linked file's top-level cache: P2 links path-main.f after M2, and its program reports its own path.
 : PATH-CASE ( CMD:command -- CMD:command )
    s" P" WHICH!  s" test/fixtures/file-objects/path-main.f" FIXTURE-BUILD 0= if exit then
@@ -1913,7 +1928,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : CHECKS ( -- )
    [: COLD ;] CMD:WITH-COMMAND
    CHECK-COLD
-   [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE PATH-CASE STALE-CASE HIDDEN-CASE SEALED-CASE
+   [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE RECORD-CASE PATH-CASE STALE-CASE HIDDEN-CASE SEALED-CASE
       STORED-CASE RETIRED-CASE ORDER-CASE PART-LINK-CASE PIECE-CASE SEAL-CASE SQUAT-CASE CAUGHT-CASE
       CTOR-CASE EXPORT-CASE
       NEST-CASE KEPT-CASE SAME-CASE RETIRE-CASE CLAUSE-CASE READ-CASE LIST-CASE LINK-CASE TASK-CASE
