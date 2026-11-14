@@ -42,9 +42,9 @@
 \ allocation), EXTENT (bounds) and GENERATION (mutation epoch). Each domain
 \ owns a private per-check counter (RGN-N, EXT-N, GEN-N); the atom's domain
 \ qualifies the id in ATOM-OK?, so equal ids from different domains never
-\ unify. RIGID-MAX bounds every domain below the sign wrap, so a counter
-\ throws E-RIGID-EXHAUST before it could wrap and re-grant a live id. Counters
-\ reset per check (RIGID-RESET); the bound is settable.
+\ unify. RIGID-MAX bounds every domain below the sign wrap, so a counter never
+\ wraps to re-grant a live id. Counters reset per check (RIGID-RESET), and no
+\ check mints enough ids to reach the bound.
 \
 \ The compile window: a callback that runs while a definition compiles changes
 \ nothing. After the native compiler's scan returns, it opens WRITE-WINDOW with
@@ -1448,7 +1448,6 @@ variable ATOMN
 PTR-VARIABLE TERM-NAME-P   variable TERM-NAME-N   variable TERM-NAME-CAP
 CHECKER-REG:}SCRATCH
 variable RIGID-N
-7140 constant E-RIGID-EXHAUST
 variable RGN-N   variable EXT-N   variable GEN-N
 variable RGN-MARK   \ the first region id a definition body mints (SIG-INPUT-FRESH)
 variable FB-N       \ fresh-name keys below FB-N may be body-supplied (SIG-BODY-FRESH)
@@ -1474,7 +1473,7 @@ SCOPE-SECOND-BOOT SCOPE-SECOND-P !
    cap SCOPE-PARENT-CAP ! ;
 : SCOPE-PARENT@ ( n -- n ) PAY cells SCOPE-PARENTS + @ ;
 : SCOPE-SECOND@ ( n -- n ) PAY cells SCOPE-SECONDS + @ ;
-variable RIGID-MAX   $4000000000000000 RIGID-MAX !
+$4000000000000000 constant RIGID-MAX
 PERSISTED-PTR-VARIABLE ATOMA-P
 PERSISTED-PTR-VARIABLE ATOMU-P   PERSISTED-PTR-VARIABLE ATOMK-P   variable ATOM-CAP
 ATOMA-BOOT ATOMA-P !   ATOMU-BOOT ATOMU-P !   ATOMK-BOOT ATOMK-P !   MAXATOM-INIT ATOM-CAP !
@@ -1506,11 +1505,15 @@ ATOMA-BOOT ATOMA-P !   ATOMU-BOOT ATOMU-P !   ATOMK-BOOT ATOMK-P !   MAXATOM-INI
 \ Shared catch-all domain: fresh-mask-* and every non-domain fresh atom mint
 \ here.
 : RIGID-FRESH ( -- n )
-   RIGID-N @ RIGID-MAX @ >= IF E-RIGID-EXHAUST throw THEN
+   RIGID-N @ RIGID-MAX >= IF
+      s" checker: RIGID-N reached the rigid identity bound" 76 die
+   THEN
    RIGID-N @ dup 1+ RIGID-N ! ;
 \ Never rewind this counter for speculative unification or a failed definition.
 : SCOPE-FRESH ( -- n )
-   SCOPE-N @ RIGID-MAX @ >= IF E-RIGID-EXHAUST throw THEN
+   SCOPE-N @ RIGID-MAX >= IF
+      s" checker: SCOPE-N reached the rigid identity bound" 76 die
+   THEN
    SCOPE-N @ 1+ SCOPE-PARENT-ENSURE
    0 SCOPE-N @ cells SCOPE-PARENTS + !
    0 SCOPE-N @ cells SCOPE-SECONDS + !
@@ -1520,13 +1523,19 @@ ATOMA-BOOT ATOMA-P !   ATOMU-BOOT ATOMU-P !   ATOMK-BOOT ATOMK-P !   MAXATOM-INI
 : SCOPE-DOUBLE-FRESH ( n n -- n ) {: parent:n second:n :}
    parent SCOPE-CHILD-FRESH dup PAY cells SCOPE-SECONDS + second swap ! ;
 : RGN-FRESH ( -- n )
-   RGN-N @ RIGID-MAX @ >= IF E-RIGID-EXHAUST throw THEN
+   RGN-N @ RIGID-MAX >= IF
+      s" checker: RGN-N reached the rigid identity bound" 76 die
+   THEN
    RGN-N @ dup 1+ RGN-N ! ;
 : EXT-FRESH ( -- n )
-   EXT-N @ RIGID-MAX @ >= IF E-RIGID-EXHAUST throw THEN
+   EXT-N @ RIGID-MAX >= IF
+      s" checker: EXT-N reached the rigid identity bound" 76 die
+   THEN
    EXT-N @ dup 1+ EXT-N ! ;
 : GEN-FRESH ( -- n )
-   GEN-N @ RIGID-MAX @ >= IF E-RIGID-EXHAUST throw THEN
+   GEN-N @ RIGID-MAX >= IF
+      s" checker: GEN-N reached the rigid identity bound" 76 die
+   THEN
    GEN-N @ dup 1+ GEN-N ! ;
 \ A fresh name's domain past its stripped `fresh-` prefix: 1 region, 2 extent,
 \ 3 generation, 0 for mask- and any other name (the RIGID-FRESH space).
