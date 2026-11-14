@@ -8,6 +8,7 @@ require src/lib/test.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/fs-identity.f
+require src/lib/fs-list.f
 require src/lib/fd.f
 require src/lib/codesign.f
 require src/lib/json.f
@@ -67,6 +68,7 @@ PATH-CAP BUFFER: OUT-C   variable OUT-C-U
 PATH-CAP BUFFER: OUT-D   variable OUT-D-U
 PATH-CAP BUFFER: OUT-E   variable OUT-E-U
 PATH-CAP BUFFER: OUT-L   variable OUT-L-U
+variable TMP-N                           \ TOOL-RUN's runs; run n's TMPDIR is tmp-<n> in L's directory
 PATH-CAP BUFFER: OUT-F   variable OUT-F-U    \ the fixture builds' out root, in L's directory
 PATH-CAP BUFFER: NEST-DIR  variable NEST-DIR-U  \ U's or I's sources: L's directory's nested or same-name
 PATH-CAP BUFFER: NEST-PATH                      \ one of them
@@ -97,6 +99,7 @@ variable TAIL-N                          \ and the paths that end with it
 variable MARK-S                          \ the newest object change time MARK saw, seconds
 variable MARK-NS                         \ and nanoseconds
 variable NEWER-N                         \ the objects REWRITTEN saw changed after it
+variable LEFT-N                          \ the builder's scratch directories TOOL-RUN found in its TMPDIR
 TAILS TYPED-BUFFER KEPT-SIZE n          \ by tail, the object's size and its change time's
 TAILS TYPED-BUFFER KEPT-S n             \ seconds and nanoseconds, as KEEP read them; size -1
 TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none or never ran
@@ -526,15 +529,24 @@ variable CLASS-N                        \ the class CLASS+ read
 : TOOL-ARGS ( CMD:command -- CMD:command )
    CMD:RESET  s" --load" CMD:ARG+  s" tools/hb-build.f" CMD:ARG+  s" --" CMD:ARG+ ;
 
+\ The TMPDIR of run TMP-N, in JOINED.
+: TMP$ ( -- ptr u8 n )
+   SB-RESET  s" tmp-" SB-APPEND  TMP-N @ FMT:SB-U
+   L$ SB$ IN$ ;
+
 \ After TOOL-ARGS and its options, builds the fixture to L's prog in the shared fixture out root.
-\ Its TMPDIR is L's directory: a build SEALED-FAIL refuses runs no exit hook (interpreter.f
-\ FAIL-CLOSED), so its scratch goes with L.
+\ Its TMPDIR is a fresh directory per run, where the build leaves none of its own scratch;
+\ files the program's build-time code makes there are the program's.
 : TOOL-RUN ( CMD:command ptr u8 n -- CMD:command n )
    CMD:ARG+
    s" -o" CMD:ARG+  L$ s" prog" IN$ CMD:ARG+
-   s" HABU_OUT" F$ CMD:ENV+  s" TMPDIR" L$ CMD:ENV+
+   1 TMP-N +!  TMP$ FS:MAKE-DIR
+   s" HABU_OUT" F$ CMD:ENV+  s" TMPDIR" TMP$ CMD:ENV+
    ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME
-   PROCESS:ENDING>RC RC>N ;
+   PROCESS:ENDING>RC RC>N
+   0 LEFT-N !
+   TMP$ [: s" hb-build-native-" STARTS-WITH? if 1 LEFT-N +! then ;] FS-LIST:EACH
+   s" the build leaves no scratch directory in TMPDIR" LABEL  LEFT-N @ 0 T= ;
 
 \ Builds a fixture by tools/hb-build.f (TOOL-RUN), since log.f requires and creates through does>
 \ (build.f's files may not); --repl and --report-json when the flag is true.

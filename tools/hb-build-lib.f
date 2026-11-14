@@ -204,13 +204,17 @@ variable HBB-ELAPSED-NS
 \ writes a fixed name there (HBB-GOT-NAME$), so builds sharing one TMPDIR, as
 \ gate pool builds do, would read each other's artifacts. HBB-CLEANUP removes
 \ the directory whole. FS:MKTEMP-DIR refuses a base that is missing or not a
-\ directory.
+\ directory. The directory is made when the link writes, so a build that ends
+\ before then leaves nothing in TMPDIR.
 : HBB-PREPARE-TMP ( -- )
-   FS:CLEANUP-RESET
    s" hb-build-native" FS:MKTEMP-DIR 2dup FS:CLEANUP-TREE+ {: dir:ptr diru:n :}
    HBB-GOT-NAME$ {: name:ptr nameu:n :}
    diru 1 + nameu + PATH-CAP > if E-BUILD-PATH throw then
    dir diru name nameu HBB-GOT-PATH FS:JOIN-PATH HBB-GOT-U ! ;
+
+\ A TMPDIR that cannot hold the build's directory fails before any file loads.
+: HBB-TMP-PROBE ( -- )
+   s" hb-build-native" FS:MKTEMP-DIR FS:REMOVE-DIR ;
 
 \ The out root is made before a build starts, so a root that cannot be made
 \ fails the build up front as a path error rather than midway as a file error.
@@ -370,9 +374,9 @@ TYPED-VARIABLE HBB-SAME-OUT bool
 : HBB-LINK ( -- )
    HBB-JSON @ 0<> DIAG-JSON!
    HBB-ENGINE @ if
-      HBB-GOT$ HBB-TARGET @ HB-BUILD-CORE:ENGINE
+      [: HBB-PREPARE-TMP HBB-GOT$ ;] HBB-TARGET @ HB-BUILD-CORE:ENGINE
    else
-      HBB-SRC$ HBB-GOT$ HBB-TARGET @
+      HBB-SRC$ [: HBB-PREPARE-TMP HBB-GOT$ ;] HBB-TARGET @
       HBB-REPL @ if HB-BUILD-CORE:REPL else HB-BUILD-CORE:APP then
    then
    LINKER:LINKED LINKER:COMPILED HB-BUILD:CAPTURE-FILES ;
@@ -447,7 +451,7 @@ TYPED-VARIABLE HBB-SAME-OUT bool
 : HBB-MAIN ( -- )
    HBB-PARSE
    [: HBB-EXITED ;] AT-EXIT:ADD
-   HBB-PREPARE-TMP
+   FS:CLEANUP-RESET HBB-TMP-PROBE
    HBB-BUILD-CLI
    HBB-CLEANUP ;
 

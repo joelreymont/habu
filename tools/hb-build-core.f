@@ -40,8 +40,7 @@ PTR-VARIABLE ROW-PATH
 variable ROW-LEN
 PTR-VARIABLE SRC-PATH
 variable SRC-LEN
-PTR-VARIABLE OUT-PATH
-variable OUT-LEN
+TYPED-VARIABLE OUT-Q [ -- ptr u8 n ]
 create DIR PATH-CAP allot  variable DIR-U
 create END-PATH PATH-CAP allot  variable END-U
 create END-DIR PATH-CAP allot           \ a --repl end file's directory (REPL-END!)
@@ -61,7 +60,7 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
 
 : END$ ( -- ptr u8 n ) END-PATH END-U @ ;
 : SRC$ ( -- ptr u8 n ) SRC-PATH @ SRC-LEN @ ;
-: OUT$ ( -- ptr u8 n ) OUT-PATH @ OUT-LEN @ ;
+: OUT$ ( -- ptr u8 n ) OUT-Q @ execute ;
 
 
 \ True when the file at the path holds exactly the bytes; false when it is missing.
@@ -459,30 +458,31 @@ public
 \ until the build opened last loads its first file.
 : ROW$ ( -- ptr u8 n ) ROW-PATH @ ROW-LEN @ ;
 
-\ Build this tree's hb for the target and write it to the path.
-: ENGINE ( ptr u8 n RTARGET:resolved-target -- )
-   {: out:ptr outu:n target:RTARGET:resolved-target :}
+\ Build this tree's hb for the target and write it to the path the quotation
+\ answers when the build writes.
+: ENGINE ( [ -- ptr u8 n ] RTARGET:resolved-target -- )
+   {: out target:RTARGET:resolved-target :}
    target REFUSE-WASM
-   out OUT-PATH !  outu OUT-LEN !
+   out OUT-Q !
    true target KERNEL-BUILD  ENGINE-END!
    NULL-PTR ROW-PATH !  0 ROW-LEN !
    s" engine" target ['] ENGINE-BODY LINKER:WITH ;
 
 \ Build hb with the source's files, the source's MAIN its entry, for the target
-\ and write it to the second path.
-: REPL ( ptr u8 n ptr u8 n RTARGET:resolved-target -- )
-   {: src:ptr srcu:n out:ptr outu:n target:RTARGET:resolved-target :}
+\ and write it to the path the quotation answers when the build writes.
+: REPL ( ptr u8 n [ -- ptr u8 n ] RTARGET:resolved-target -- )
+   {: src:ptr srcu:n out target:RTARGET:resolved-target :}
    target REFUSE-WASM
-   src SRC-PATH !  srcu SRC-LEN !  out OUT-PATH !  outu OUT-LEN !
+   src SRC-PATH !  srcu SRC-LEN !  out OUT-Q !
    true target KERNEL-BUILD  REPL-END!
    NULL-PTR ROW-PATH !  0 ROW-LEN !
    s" engine" target ['] REPL-BODY LINKER:WITH ;
 
 \ Build the source as a stripped program for the target and write it to
-\ the second path.
-: APP ( ptr u8 n ptr u8 n RTARGET:resolved-target -- )
-   {: src:ptr srcu:n out:ptr outu:n target:RTARGET:resolved-target :}
-   src SRC-PATH !  srcu SRC-LEN !  out OUT-PATH !  outu OUT-LEN !
+\ the path the quotation answers when the build writes.
+: APP ( ptr u8 n [ -- ptr u8 n ] RTARGET:resolved-target -- )
+   {: src:ptr srcu:n out target:RTARGET:resolved-target :}
+   src SRC-PATH !  srcu SRC-LEN !  out OUT-Q !
    target TARGET !
    WASM? 0= if false target KERNEL-BUILD then
    NULL-PTR ROW-PATH !  0 ROW-LEN !

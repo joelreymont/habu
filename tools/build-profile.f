@@ -83,9 +83,9 @@ variable REPORT-FD
 
 : BUILD ( -- )
    ENGINE? if
-      OUT$ TARGET HB-BUILD-CORE:ENGINE
+      [: OUT$ ;] TARGET HB-BUILD-CORE:ENGINE
    else
-      SOURCE$ OUT$ TARGET HB-BUILD-CORE:APP
+      SOURCE$ [: OUT$ ;] TARGET HB-BUILD-CORE:APP
    then ;
 
 public
