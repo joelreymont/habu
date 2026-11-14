@@ -500,7 +500,7 @@ public
    NEW
    SGBAD-CLEAR
    PENDING-SIG {: din:n dout:n rin:n rout:n :}
-   SGA @ SGU @  CHECKER-REC-A@ CHECKER-REC-U@  at atu
+   SGA @ SGU @  at atu
    din dout rin rout external USIG-ADD-ROWS drop
    DL-TAKE ;
 
@@ -547,13 +547,17 @@ public
          PAREN-SIG? IF EXIT THEN
          TI @ TBLEN @ < IF TI @ 1 + TI ! THEN
          CUR-PAREN
+       ELSE TI @ TBYTE@ 92 =  TI @ 1 + TBLANK?  and IF   \ '\' then a blank -> comment to the line's end
+         CUR-PAREN-AT
+         BEGIN TI @ TBLEN @ <  TI @ 10 TBYTE=? 0=  and WHILE TI @ 1 + TI ! REPEAT
+         CUR-PAREN
        ELSE
          TI @ TSTART !
          BEGIN TI @ TBLANK? 0= WHILE TI @ 1 + TI ! REPEAT
          SCAN-TOK-HEAD {: was-name:n :}
          TSTART @ TADDR  TI @ TSTART @ -  DO-TOK1
          was-name SCAN-TOK-TAIL IF EXIT THEN
-       THEN
+       THEN THEN
      THEN
    REPEAT
    CUR-END ;
@@ -850,7 +854,7 @@ public
    CHECKER-REJECT-RC REJECTION:STOP ;
 \ Refuses signature sa su of name na nu that does not parse.
 : REFUSE-SIGNATURE ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
-   sa su na nu na nu SGBAD-REJECTION
+   sa su na nu SGBAD-REJECTION
    sa su na nu SGBAD-PIN
    CHECKER-REJECT-RC REJECTION:STOP ;
 : SKIP ( n -- ) {: rc:n :}
@@ -3281,7 +3285,7 @@ CHECKER-REG:}SCRATCH
 : READ-REFUSE ( ptr u8 n ptr u8 n -- )
    {: a:ptr u:n na:ptr nu:n :}
    SGBAD @ 0= IF a u SGBAD-SYNTAX! THEN
-   a u na nu na nu USIG-ADD-BAD ;
+   a u na nu USIG-ADD-BAD ;
 
 \ The created words' effect, offset+1, under symbol 0; 0 for none.
 : READ-MADE ( ptr u8 n -- n bool )

@@ -24,9 +24,9 @@ NG-CAP E-VNOM-CAP E-VNOM-CAP CODEGEN:BUFFER-E NG-BUFFER
 : NG$ ( -- ptr u8 n )  NG-BUFFER CODEGEN:CONTENTS ;
 
 \ Evaluate declaration text with the checker active, as a closed program: a text
-\ that left cells would be refused E-EVAL-RESIDUE. The generated converters use
-\ CAST:, which checks representation, ownership and linearity; evaluation does not
-\ exempt them.
+\ that left or took cells would be rejected with a record and 70. The generated
+\ converters use CAST:, which checks representation, ownership and linearity;
+\ evaluation does not exempt them.
 : NG-EVAL ( -- )  NG$ evaluate-closed ;
 
 \ Kept apart from NG-BUFFER because MINT reads the mangled tail here while

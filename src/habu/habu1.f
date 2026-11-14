@@ -3243,7 +3243,9 @@ private
 \ from the CLOSED-FREE-CELL pool; this frame holds the caller's base, capacity
 \ and cursor at [0] [8] [16] and the text's stack at [24], which CLOSED-LEAVE
 \ reads. PROVIDED-XT:EVALUATE-CELL runs the text under this frame's catch,
-\ which gives the stack back before throwing on.
+\ which gives the stack back before throwing on. A text that ends off its
+\ floor gets a record with the cells it left (negative: took) and throws
+\ CHECKER-REJECT-RC.
 : B-EVAL-CLOSED ( -- )
    LBL LBL LBL LBL {: have:label take:label done:label thrown:label :}
    s" E-TASK-COMPILE" s" evaluate-closed" B-TASK-GUARD
@@ -3271,7 +3273,13 @@ private
    CATCH-PUSH LABEL@ LBL,
    CLOSED-LEAVE
    13 11 CMP,  C-EQ done BCOND,
-   9 STACK-ABI:E-EVAL-RESIDUE LIT64,
+   3 13 11 SUB,  3 3 3 ASRI,                         \ x3 = cells left, which the record keeps
+   s" E-EVAL-RESIDUE" s" an evaluated closed text did not leave the stack as it found it"
+      FAULT-OPEN,
+   s" cells" 3 FAULT-NUMBER,
+   s" a closed text must leave the stack as it found it: drop or consume what it pushes"
+      FAULT-KEEP,
+   9 CHECKER-REJECT-RC MOVZ,
    thrown LBL,  9 G-PUSH  BTHROW
    done LBL, ;
 

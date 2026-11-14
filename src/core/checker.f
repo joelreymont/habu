@@ -649,14 +649,14 @@
 \ ascending from text offset 0. REJECTION:LOCATE maps a pointer into that
 \ text, or into the source, to a file position. The engine arms the map for a
 \ definition it captured from a file buffer, from the rows the capture records,
-\ and gives a body its closer. With no map, REJECTION places a token of the
-\ body text the engine captured in the buffer it was read from, through the
-\ same rows, while the definition's name lies in that buffer; the definitions
-\ the checker generates for a declaration have no place.
-\ REJECTION:CLOSER! takes the source token that closes the mapped definition
-\ (its `;` or a definer's `does>`), which the text does not hold: a control
-\ structure still open there is refused at that token, as the load's compiler
-\ refuses it.
+\ and gives each body it checks its closer, mapped or not. With no map,
+\ REJECTION places a token of the body text the engine captured in the buffer
+\ it was read from, through the same rows, while the definition's name lies in
+\ that buffer; the definitions the checker generates for a declaration have no
+\ place. REJECTION:CLOSER! takes the token that closes a definition's text (its
+\ `;` or a definer's `does>`) and the text's base, as the text does not hold
+\ it: a control structure still open there is refused at that token, as the
+\ load's compiler refuses it.
 \
 \ Completion: CHECKER-RESOLVE:EACH-VISIBLE visits, once each, every folded
 \ spelling that starts with a prefix and that a position's own selection binds:
@@ -11066,25 +11066,26 @@ variable SIG-COUNTED
    SGBAD-DEPTH? IF DEPTH-REASON$ REJECTION:EMIT-STR  SGBAD-SIZE @ DEPTH-COUNTS EXIT THEN
    WIDTH-REASON$ REJECTION:EMIT-STR  SGBAD-SIZE @ WIDTH-COUNTS ;
 
-\ Prints the rejection of stored signature SA SU of name NA NU, placed at
-\ SGBAD-TOKEN, up to its help; the caller ends it.
-: SGBAD-REJECTION ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: sa:ptr su:n na:ptr nu:n at:ptr atu:n :}
+\ Prints the rejection of stored signature SA SU declared at the name AT ATU as
+\ read, placed at SGBAD-TOKEN, up to its help; the caller ends it.
+: SGBAD-REJECTION ( ptr u8 n ptr u8 n -- )
+   {: sa:ptr su:n at:ptr atu:n :}
    s" E-BAD-STORED-SIGNATURE" REJECTION:OPEN
-   s" the signature of `" REJECTION:EMIT-STR  na nu REJECTION:EMIT-STR
+   s" the signature of `" REJECTION:EMIT-STR  at atu REJECTION:EMIT-STR
    s" ` cannot be recorded" REJECTION:EMIT-STR
    sa su at atu SGBAD-TOKEN REJECTION:AT  SGBAD-LABEL$ REJECTION:EMIT-STR
    s" signature" REJECTION:NOTE  sa su SIG-TRIM REJECTION:EMIT-STR
    SGBAD-SIZE? IF s" reason" REJECTION:NOTE  BADSIG-REASON THEN
    REJECTION:HELP  SGBAD-HELP$ REJECTION:EMIT-STR ;
 
-\ AT is the declaring name as the caller read it, used to place the record.
-: USIG-ADD-BAD ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: sa:ptr su:n na:ptr nu:n at:ptr atu:n :}
+\ AT is the declaring name as the caller read it, which the record names and
+\ places.
+: USIG-ADD-BAD ( ptr u8 n ptr u8 n -- )
+   {: sa:ptr su:n at:ptr atu:n :}
    WRITE-WINDOW-CK                       \ a refusal moves the latches too
    0 RECW !                              \ no record stored: nothing to publish wide
    0 RECMI !                             \ ... and no min-in to poke
-   sa su na nu at atu SGBAD-REJECTION
+   sa su at atu SGBAD-REJECTION
    MULTI-ERR? IF REJECTION:KEEP SIG-COUNT EXIT THEN
    sa su at atu SGBAD-PIN
    CHECKER-REJECT-RC REJECTION:STOP ;
@@ -11093,12 +11094,12 @@ variable SIG-COUNTED
 \ no record can hold, whatever path records it: refused as a bad one by the
 \ bound it passes. The result is false after that refusal returns, true when
 \ the rows fit.
-: USIG-DEPTH-FITS? ( ptr u8 n ptr u8 n ptr u8 n n n n n -- bool )
-   {: sa:ptr su:n na:ptr nu:n at:ptr atu:n din:n dout:n rin:n rout:n :}
+: USIG-DEPTH-FITS? ( ptr u8 n ptr u8 n n n n n -- bool )
+   {: sa:ptr su:n at:ptr atu:n din:n dout:n rin:n rout:n :}
    din dout rin rout ROWS-DEPTH {: depth:n :}
    depth EFFECT-DEPTH-MAX <= if RES-TRUE exit then
    sa su SGBAD-DEPTH-KIND depth SGBAD-SIZE!
-   sa su na nu at atu USIG-ADD-BAD RES-FALSE ;
+   sa su at atu USIG-ADD-BAD RES-FALSE ;
 
 : SGBAD-UNFIT! ( ptr u8 n n n n n -- )
    {: sa:ptr su:n din:n dout:n rin:n rout:n :}
@@ -11137,15 +11138,16 @@ variable SIG-COUNTED
    CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ USIG-ADD-AS past its parse, given the rows of signature text SA.
-: USIG-ADD-ROWS ( ptr u8 n ptr u8 n ptr u8 n n n n n bool -- bool )
-   {: sa:ptr su:n na:ptr nu:n at:ptr atu:n din dout rin rout external:bool :}
-   SGBAD @ if sa su na nu at atu USIG-ADD-BAD RES-FALSE exit then
+: USIG-ADD-ROWS ( ptr u8 n ptr u8 n n n n n bool -- bool )
+   {: sa:ptr su:n at:ptr atu:n din dout rin rout external:bool :}
+   SGBAD @ if sa su at atu USIG-ADD-BAD RES-FALSE exit then
    SIG-UNRES @ IF RES-FALSE EXIT THEN
    sa su din dout rin rout SGBAD-UNFIT!
-   SGBAD @ if sa su na nu at atu USIG-ADD-BAD RES-FALSE exit then
-   \ This path records an asserted signature. Checked definitions publish their
-   \ already verified rows, so no assertion may introduce a lexical callback
-   \ binder.
+   SGBAD @ if sa su at atu USIG-ADD-BAD RES-FALSE exit then
+   \ No check verified these rows: a trusted declaration asserts them, the
+   \ checker builds them for a storage, suffix or `linear:` declaration, or they
+   \ are the declared signature of a `:` definition whose body is refused or
+   \ not yet judged. None of them may bring a callback binder.
    din SCHEME-TYPE? dout SCHEME-TYPE? or
    rin SCHEME-TYPE? or rout SCHEME-TYPE? or IF
       sa su at atu USIG-SCHEME-REJECT
@@ -11154,15 +11156,14 @@ variable SIG-COUNTED
    din dout rin rout SGHASR @ external E-ADD-EFFECT
    RES-TRUE ;
 
-\ AT is the declaring name as read, beside the name NA stored for. The result
-\ is false after a refusal that returns, true once the effect and its text are
-\ stored.
-: USIG-ADD-AS ( ptr u8 n ptr u8 n ptr u8 n bool -- bool )
-   {: sa:ptr su:n na:ptr nu:n at:ptr atu:n external:bool :}
+\ AT is the declaring name as read. The result is false after a refusal that
+\ returns, true once the effect and its text are stored.
+: USIG-ADD-AS ( ptr u8 n ptr u8 n bool -- bool )
+   {: sa:ptr su:n at:ptr atu:n external:bool :}
    NEW
    SGBAD-CLEAR
    sa su PARSE-SIG-RAW {: din:n dout:n rin:n rout:n :}
-   sa su na nu at atu din dout rin rout external USIG-ADD-ROWS ;
+   sa su at atu din dout rin rout external USIG-ADD-ROWS ;
 
 : USIG-SYM@ ( ptr u8 -- n )
    ER.SYM @ ;
@@ -14911,7 +14912,7 @@ package CHECKER-REG
 : CHECKER-USIG-CERT-ADD ( ptr u8 n ptr u8 n -- )
    {: sa:ptr su:n na:ptr nu:n :}
    na nu na nu USIG-CERT-ADMIT
-   sa su CHECKER-REC-A@ CHECKER-REC-U@ na nu RES-TRUE USIG-ADD-AS drop
+   sa su na nu RES-TRUE USIG-ADD-AS drop
    DL-TAKE ;
 
 \ The successful CHECK still owns width facts referring to its type terms.
@@ -14939,7 +14940,7 @@ package CHECKER-REG
 : CHECKER-ROWS-PUBLISH ( ptr u8 n ptr u8 n n n n n bool -- )
    {: sa:ptr su:n na:ptr nu:n din:n dout:n rin:n rout:n hasr:bool :}
    na nu na nu USIG-CERT-ADMIT
-   sa su na nu na nu  din dout rin rout  USIG-DEPTH-FITS? 0= IF DL-TAKE EXIT THEN
+   sa su na nu  din dout rin rout  USIG-DEPTH-FITS? 0= IF DL-TAKE EXIT THEN
    din KEEP-QUOTS
    din dout rin rout hasr RES-TRUE E-ADD-EFFECT DL-TAKE ;
 
@@ -20082,8 +20083,6 @@ package CHECK
 SRCLOC:OWNED-CELL RESERVED-PTR-U8-CELL SRC-OWNED
 ;package
 
-: DIAG-MAPPED? ( -- bool ) TBASE @ REJECTION:MAPPED? ;
-
 \ The pre-verifier needs the pinned token in the source it read, not in its
 \ reused body buffer: it may check a does> parent after its clause, then report
 \ the clause only if the parent was not deferred.
@@ -20153,7 +20152,7 @@ SRCLOC:OWNED-CELL RESERVED-PTR-U8-CELL SRC-OWNED
    na nu TOKFOLD drop
    \ A span no memory has is refused as unparsed; SGBAD-CLEAR first drops the
    \ class an earlier refused signature left.
-   sa su BYTE-SPAN? 0= IF SGBAD-CLEAR sa 0 na nu na nu USIG-ADD-BAD RES-FALSE EXIT THEN
+   sa su BYTE-SPAN? 0= IF SGBAD-CLEAR sa 0 na nu USIG-ADD-BAD RES-FALSE EXIT THEN
    \ A nonzero SYM keys the row and the name is only refused when malformed:
    \ a does> after a refused definition passes it empty; interning that dies 76.
    sym 0= IF TKF TKFU @ na nu CHECKER-RECORD-NAME-AT 2drop ELSE
@@ -20161,7 +20160,7 @@ SRCLOC:OWNED-CELL RESERVED-PTR-U8-CELL SRC-OWNED
       CHECKER-QBAD-TOK @ IF TKF TKFU @ na nu CHECKER-RECORD-NAME-AT 2drop THEN
       sym CHECKER-REC-SYM !
    THEN
-   sa su  na nu na nu RES-TRUE USIG-ADD-AS ;
+   sa su  na nu RES-TRUE USIG-ADD-AS ;
 
 : TRUST-USIG! ( ptr u8 n ptr u8 n -- bool )
    0 TRUST-USIG-SYM! ;
@@ -21306,10 +21305,10 @@ variable IS-PEND-U                   \ and its length
 : CF-OPEN? ( -- bool )
    LMODE @ 0 <>  #CFC @ 0 <>  or  CONM @ 0 <>  or  CHECKER-MATCH-MODE @ 0 <>  or ;
 
-\ Pins the closer CA CU one past the body's end, or the mapped closer at its own byte.
+\ Pins the closer CA CU one past the body's end, or the given closer at its own byte.
 : CLOSER-PIN! ( ptr u8 n -- )
    {: ca:ptr cu:n :}
-   TBASE @ REJECTION:MAP-BASE? IF
+   TBASE @ REJECTION:CLOSES? IF
       REJECTION:CLOSER$ FAIL-PIN!
       REJECTION:CLOSER$ drop TBASE @ - FAILB !
    ELSE
@@ -21318,13 +21317,12 @@ variable IS-PEND-U                   \ and its length
    THEN
    FAILB @ FAILTU @ + FAILE ! ;
 
-\ Refuses a structure open at closer CA CU, or at the mapped closer, as the load's
+\ Refuses a structure open at closer CA CU, or at the given closer, as the load's
 \ compiler does, unless a compile refusal or CF-OVER holds the pin.
 : CLOSER-REFUSE ( ptr u8 n -- )
    {: ca:ptr cu:n :}
    CF-OPEN? 0=  RCOMPILE @ 0 <>  or  CF-OVER @ 0 <>  or IF EXIT THEN
-   DIAG-MAPPED? {: mapped:bool :}
-   mapped IF REJECTION:CLOSER$ nip ELSE cu THEN 0= IF EXIT THEN
+   TBASE @ REJECTION:CLOSES? IF REJECTION:CLOSER$ nip ELSE cu THEN 0= IF EXIT THEN
    CONM @ 0 <> IF MD-CON-TRUNC ELSE
       CHECKER-MATCH-MODE @ 0 <>  MF-DEPTH @ 0 <>  or IF MD-TRUNC ELSE MD-CF-OPEN THEN
    THEN {: why:n :}
@@ -21677,7 +21675,7 @@ variable SD-MOVES   \ a checked `:` signature's rows: its body proves MOVED
    NULL-PTR 0 din dout 0 0 RES-FALSE SIG-ROWS-CHECK
    SGBAD @ IF
       na nu na nu USIG-CERT-ADMIT
-      NULL-PTR 0 na nu na nu USIG-ADD-BAD DL-TAKE
+      NULL-PTR 0 na nu USIG-ADD-BAD DL-TAKE
    ELSE NULL-PTR 0 na nu din dout 0 0 RES-FALSE CHECKER-ROWS-PUBLISH THEN
    CHECKER-REC-SYM @ CK-CLOSE!
    CHECKER-REC-SYM @ USIG-NEWEST-VISIBLE ;

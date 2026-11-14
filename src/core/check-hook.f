@@ -43,34 +43,37 @@ INE-CELL RESERVED-PTR-U8-CELL INPUT-END
    nm b - REJECTION:MAP-BIAS!
    RES-TRUE ;
 
-\ Gives the checker the token that closes the text a u ROWS-ARM armed, which
-\ the text does not hold (REJECTION:CLOSER!), so a structure still open
-\ there is refused at it as the load refuses it. A definer's head (DOES-SPLIT,
-\ as the checker tells it) ends at the `does>` just past it in the captured
-\ body, placed by the rows; any other body ends at the `;` the engine read last.
-\ A token outside the armed source is not given.
-: CLOSER-ARM ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   DOES-SPLIT @ 0 <> if
-      a u + REJECTION:>SOURCE 0= if drop exit then
-      REJECTION:SOURCE$ drop + 5                     \ `does>`
-   else
-      SRCLOC:TOKEN$
-   then {: c:ptr cu:n :}
-   c REJECTION:SOURCE$ drop - {: off:n :}
-   off 0 <  off cu + REJECTION:SOURCE$ nip > or if exit then
-   c cu REJECTION:CLOSER! ;
-
 public
 
-\ ROWS-ARM, then CLOSER-ARM when it armed.
+\ Gives the checker the token that closes the text a u, which the text does
+\ not hold (REJECTION:CLOSER!), so a structure still open there is rejected at
+\ it as the load rejects it. Only text of the pending definition's body text is
+\ closed: text that ends where the body text ends closes at the `;` the engine
+\ read last; text that ends sooner is a definer's head, closed by the `does>`
+\ just past it, placed in the armed source by the rows, else in the body text.
+: CLOSER-ARM ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   REJECTION:CLOSER-OFF
+   data-base PEND-CELL + @ 0= if exit then
+   BODY-BASE @ {: base:ptr :}
+   base NULL-PTR = if exit then
+   a base - {: x:n :}
+   data-base BODYLEN-CELL + @ {: len:n :}
+   x 0 <  x u + len > or if exit then
+   x u + len = if SRCLOC:TOKEN$ a REJECTION:CLOSER! exit then
+   REJECTION:SOURCE$ nip 0= if a u + 5 a REJECTION:CLOSER! exit then
+   a u + REJECTION:>SOURCE 0= if drop exit then {: off:n :}
+   off 0 <  off 5 + REJECTION:SOURCE$ nip > or if exit then
+   REJECTION:SOURCE$ drop off + 5 a REJECTION:CLOSER! ;
+
+\ ROWS-ARM, then CLOSER-ARM whatever ROWS-ARM answered.
 : BODY-ARM ( ptr u8 n -- bool )
    {: a:ptr u:n :}
-   a u ROWS-ARM dup if a u CLOSER-ARM then ;
+   a u ROWS-ARM  a u CLOSER-ARM ;
 
-\ The cleanup that takes back what BODY-ARM or ROWS-ARM armed, or nothing.
+\ The cleanup that takes back what BODY-ARM or ROWS-ARM armed, and the closer.
 : DISARMER ( bool -- [ -- ] )
-   if [: REJECTION:SOURCE-OFF ;] else [: ;] then ;
+   if [: REJECTION:SOURCE-OFF ;] else [: REJECTION:CLOSER-OFF ;] then ;
 
 \ An immediate word met inside a definition, before it runs: one the checker
 \ has no model for is refused unless it parses nothing.

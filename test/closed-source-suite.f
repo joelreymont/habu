@@ -23,9 +23,9 @@ $100 CODEGEN:BUFFER GEN
 \ (src/core/include.f), which TYPE-DECL:TDECL-EVAL-XT is bound to for every
 \ generated core declaration: evaluate-closed, the floor at the definer's depth,
 \ leaving nothing. The three definers below differ only in what they append: a
-\ sound one's product certifies, one leaving a cell is refused E-EVAL-RESIDUE,
-\ and one taking a cell it never pushed throws 70 with the caller's cells
-\ intact. test/deftype-suite.f and src/lib/ffi-test.f certify the products of
+\ sound one's product certifies, one leaving a cell is rejected with a record
+\ and 70, and one taking a cell it never pushed throws 70 with the caller's
+\ cells intact. test/deftype-suite.f and src/lib/ffi-test.f certify the products of
 \ src/lib/type/deftype.f (evaluate-closed) and src/lib/ffi-abi.f (INCLUDE-EVALUATE).
 : SOUND ( n ptr u8 n -- ) RENDER CROSS ;
 
@@ -44,8 +44,8 @@ $100 CODEGEN:BUFFER GEN
    s" CSRC-SEVEN-LOSE ( -- ) CSRC-SEVEN" CHECK! 0 T= ;
 
 : RESIDUE ( -- )
-   s" a definer whose text leaves a cell is refused by name" T-LABEL
-   [: 7 s" CSRC-LEAK" LEAKY ;] E-EVAL-RESIDUE TTHROWSQ ;
+   s" a definer whose text leaves a cell throws 70" T-LABEL
+   [: 7 s" CSRC-LEAK" LEAKY ;] 70 TTHROWSQ ;
 
 : UNDER ( -- n )
    7 [: 8 s" CSRC-TAKE" GREEDY ;] catch 70 T= ;
