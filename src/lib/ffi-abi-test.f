@@ -39,11 +39,21 @@ FUNCTION: FFI-T-STRTOL strtol ( ptr u8 ptr u8 n -- n ) 1 8 WRITES-BYTES ;FUNCTIO
 FUNCTION: FFI-T-MEMCPY memcpy ( ptr u8 ptr u8 n -- n ) 0 2 WRITES-ARG ;FUNCTION
 FUNCTION: FFI-T-LABS labs ( n -- n ) ;FUNCTION
 
+\ A declaration held open across a require: the file ends before ;FUNCTION.
+FUNCTION: FFI-T-REQ-STRTOL strtol ( ptr u8 ptr u8 n -- n )
+   require test/fixtures/ffi-abi-require.f
+   1 8 WRITES-BYTES ;FUNCTION
+
 : FFI-T-OUT-PARAM ( -- )
    s\" 42x\z" drop {: num:ptr :}
    0 FFI-T-OUT FFI:OUT!
    num FFI-T-OUT BYTE-VIEW 10 FFI-T-STRTOL 42 T=
    FFI-T-OUT FFI:OUT@ num FFI:>CELL 2 + T= ;
+
+: FFI-T-REQUIRED ( -- )
+   s" a declaration open across a require calls C" T-LABEL
+   0 FFI-T-OUT FFI:OUT!
+   FFI-T-REQUIRED$ drop FFI-T-OUT BYTE-VIEW 10 FFI-T-REQ-STRTOL 57 T= ;
 
 : FFI-T-KPARAM-CAP ( -- )
    FFI:KPARAM-RESET
@@ -200,6 +210,7 @@ variable FFI-T-PADS
    T-RESET
    FFI-T-EVALREC-DISJOINT
    FFI-T-OUT-PARAM
+   FFI-T-REQUIRED
    FFI-T-KPARAMS
    FFI-T-ROLLBACK
    FFI-T-SHADOW

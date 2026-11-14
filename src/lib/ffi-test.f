@@ -595,7 +595,6 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    FFI-T-FOREIGN-SRC$ FFI-T-REJECT-RC FFI-T-RUN-EXITS
    {: outu:len erru:len :}
    outu LEN>N 0 T=
-   erru FFI-T-ERR$ E-FFI-LIBRARY FFI-T-CODE$ CONTAINS? TTRUE
    s" the record names the rejected name and this target" T-LABEL
    SB-RESET s" error[E-FFI-LIBRARY]: library '" SB-APPEND
    FFI-T-FOREIGN-NAME$ SB-APPEND
@@ -668,6 +667,9 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    s" a missing process symbol fails with its name" T-LABEL
    erru FFI-T-ERR$
    S\" error[E-FFI-DLSYM]: no C symbol 'habu-no-such-symbol' among the process's symbols\n"
+   CONTAINS? TTRUE
+   erru FFI-T-ERR$
+   s" = help: name the library that defines it with LIBRARY, or open it with FFI:GLOBAL"
    CONTAINS? TTRUE
    s" a missing library symbol fails with its name and the library's path" T-LABEL
    SB-RESET
