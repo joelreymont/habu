@@ -37,7 +37,8 @@ DYNAMIC-BUFFER SAVED n
 : THREE-SHAPES ( -- )
    s" failed quotation cell can become a persisted pointer" T-LABEL
    START [: FAIL-QUOTATION ;] catch RESTORED
-   FAILED-OFF @ BASE-DP @ - allot      \ the failed cell lay past its type's text
+   \ Stop a cell short of the failed cell: the next declaration's gap ends there.
+   FAILED-OFF @ BASE-DP @ - 1 cells - allot
    s" PERSISTED-PTR-VARIABLE AFTER-QUOTATION" INCLUDE-EVALUATE REUSED
    s" failed defer cell can become a persisted pointer" T-LABEL
    START [: FAIL-DEFER ;] catch RESTORED

@@ -36,16 +36,18 @@ variable OUTER-U
 PTR-VARIABLE EV-SEEN
 PTR-VARIABLE OU-SEEN
 
-create NEG-A 3 cells allot
--1 NEG-A !  -1 NEG-A cell+ !  -1 NEG-A 2 cells + !
--3 cells allot
+\ Each released block is written whole and is a cell larger than the block
+\ allotted over it, which lies inside it wherever the declaration's gap ends.
+create NEG-A 4 cells allot
+-1 NEG-A !  -1 NEG-A cell+ !  -1 NEG-A 2 cells + !  -1 NEG-A 3 cells + !
+-4 cells allot
 create NEG-B 3 cells allot
 
 \ The ARM64 engine's `variable` takes its cell without `allot`, so it is a
 \ case of its own.
-create NEGV-A 1 cells allot
--1 NEGV-A !
--1 cells allot
+create NEGV-A 2 cells allot
+-1 NEGV-A !  -1 NEGV-A cell+ !
+-2 cells allot
 variable NEGV-B
 
 s" create EV-A 3 cells allot  -1 EV-A !  -1 EV-A cell+ !  -1 EV-A 2 cells + !  EV-A EV-SEEN !  7 throw"
@@ -89,10 +91,10 @@ OUTER-RC  create OU-B 3 cells allot  constant OU-RC
 : RUN ( -- )
    T-RESET
    s" a negative allot releases zeroed space" T-LABEL
-   NEG-B NEG-A = TTRUE
+   NEG-B NEG-A - dup 0 >= swap 1 cells <= and TTRUE
    NEG-B ZERO3? TTRUE
    s" a variable after a negative allot reads zero" T-LABEL
-   NEGV-B NEGV-A = TTRUE
+   NEGV-B NEGV-A - dup 0 >= swap 1 cells <= and TTRUE
    NEGV-B @ 0 T=
    s" a caught evaluate releases zeroed space" T-LABEL
    EV-RC 7 T=

@@ -98,11 +98,10 @@ variable ERR-U
    ARM
    [: s" : TS-B1 ( -- ) ['] DUP , ;" evaluate-closed ;] CHECK-RC TTHROWSQ
    MISMATCH AT-COMMA GOT-XT
-   HERE-N [: s" create TS-T0" evaluate-closed ;] 0 TTHROWSQ HERE-N swap - {: hdr:n :}
    ARM
    HERE-N [: s" create TS-T3 ' DUP ," evaluate-closed ;] CHECK-RC TTHROWSQ
    MISMATCH AT-COMMA GOT-XT
-   HERE-N swap - hdr T=
+   HERE-N swap - 0 T=
    DISARM ;
 
 : CASE-CREATE-HERE ( -- )
@@ -110,11 +109,10 @@ variable ERR-U
    ARM
    [: s" : TS-B2 ( -- ) here , ;" evaluate-closed ;] CHECK-RC TTHROWSQ
    MISMATCH AT-COMMA GOT-PTR
-   HERE-N [: s" create TS-T5" evaluate-closed ;] 0 TTHROWSQ HERE-N swap - {: hdr:n :}
    ARM
    HERE-N [: s" create TS-T4 here ," evaluate-closed ;] CHECK-RC TTHROWSQ
    MISMATCH AT-COMMA GOT-PTR
-   HERE-N swap - hdr T=
+   HERE-N swap - 0 T=
    DISARM ;
 
 : CASE-VARIABLE-HERE ( -- )
