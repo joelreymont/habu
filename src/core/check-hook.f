@@ -278,12 +278,24 @@ using SCHEMA-REG
    node SCHEMA-NODE-OK? if node SCHEMA-ROW? 0= if node exit then then
    E-SCHEMA-BAD throw ;
 
-\ An effect; any other type is refused, E-NOT-EFFECT.
+\ Places the rejection at the token read last, which ran the definer.
+: DEFINER-PLACE ( -- )
+   SRCLOC:TOKEN$ REJECTION:AT  s" the definer ran here" REJECTION:EMIT-STR ;
+
+: UNKNOWN-HELP$ ( -- ptr u8 n )
+   s" name n, bool, r or a family declared before the definer runs" ;
+
+\ An effect; any other type is rejected.
 : EFFECT-ARG ( n -- n ) {: node:n :}
    node TYPE-ARG SCHEMA-QUOT? if node exit then
-   s" E-NOT-EFFECT" REJECTION:PATH$ SRCLOC:LINE ERROR-TEXT:PREFIX
-   S\" EFFECT:IN or EFFECT:OUT given a type that is no effect\n" ERROR-TEXT:TYPE
-   CHECK-RC throw ;
+   s" E-NOT-EFFECT" REJECTION:OPEN
+   s" EFFECT:IN or EFFECT:OUT was given a type that is no effect"
+   REJECTION:EMIT-STR
+   DEFINER-PLACE
+   REJECTION:HELP
+   s" pass the effect EFFECT:NEW made, or one EFFECT:IN or EFFECT:OUT answered"
+   REJECTION:EMIT-STR
+   CHECK-RC REJECTION:STOP ;
 
 : FAMILY-NODE ( n -- n ) {: fam:n :}
    fam TFAM:TFAM-ARITY@ {: k:n :}
@@ -305,31 +317,56 @@ CAST: >BYTES ( n -- ptr u8 )
    a >BYTES u CON-OF ;
 
 \ The type a spelling names: a built-in type's con code and 0, else 0 and the
-\ family; one that names neither is refused, E-UNKNOWN-SIGNATURE-TYPE.
+\ family; one that names neither is rejected.
 : NAMED-FAMILY ( n n -- n n )
    {: a:n u:n :}
    a u BUILT-IN dup 0 <> if 0 exit then drop
    a >BYTES u TFAM:TFAM-FIND-SPELLED if 0 swap exit then
    drop
-   s" E-UNKNOWN-SIGNATURE-TYPE" REJECTION:PATH$ SRCLOC:LINE ERROR-TEXT:PREFIX
-   s" unknown type '" ERROR-TEXT:TYPE  a >BYTES u ERROR-TEXT:TYPE
-   S\" ' in EFFECT:NAMED\n" ERROR-TEXT:TYPE
-   CHECK-RC throw ;
+   s" E-UNKNOWN-SIGNATURE-TYPE" REJECTION:OPEN
+   s" EFFECT:NAMED found no type named '" REJECTION:EMIT-STR
+   a >BYTES u REJECTION:EMIT-STR  s" '" REJECTION:EMIT-STR
+   DEFINER-PLACE
+   REJECTION:HELP  UNKNOWN-HELP$ REJECTION:EMIT-STR
+   CHECK-RC REJECTION:STOP ;
 
-\ A refused READ of the text, naming the token, or the text when the reason
-\ names none.
+\ A rejected READ of the type xa xu, naming the token, or the type when the
+\ reason names none.
 : TEXT-TYPE-REFUSE ( ptr u8 n ptr u8 n n ptr u8 n -- )
    {: ta:ptr tu:n wa:ptr wu:n code:n xa:ptr xu:n :}
    tu 0= if xa xu else ta tu then {: na:ptr nu:n :}
-   code TYPE-DECL:E-TDECL-PAYLOAD = if s" E-UNKNOWN-SIGNATURE-TYPE"
-   else s" E-BAD-SIGNATURE" then
-   REJECTION:PATH$ SRCLOC:LINE ERROR-TEXT:PREFIX
-   wa wu ERROR-TEXT:TYPE  s"  '" ERROR-TEXT:TYPE  na nu ERROR-TEXT:TYPE
-   S\" ' in EFFECT:READ\n" ERROR-TEXT:TYPE
-   CHECK-RC throw ;
+   code TYPE-DECL:E-TDECL-PAYLOAD = {: unknown:bool :}
+   unknown if s" E-UNKNOWN-SIGNATURE-TYPE" else s" E-BAD-SIGNATURE" then
+   REJECTION:OPEN
+   wa wu REJECTION:EMIT-STR  s"  '" REJECTION:EMIT-STR
+   na nu REJECTION:EMIT-STR  s" ' in EFFECT:READ" REJECTION:EMIT-STR
+   tu xu <> if
+      s" 's type '" REJECTION:EMIT-STR  xa xu REJECTION:EMIT-STR
+      s" '" REJECTION:EMIT-STR
+   then
+   DEFINER-PLACE
+   REJECTION:HELP
+   unknown if UNKNOWN-HELP$
+   else s" write the type as a signature writes it" then
+   REJECTION:EMIT-STR
+   CHECK-RC REJECTION:STOP ;
+
+\ The record for a letter in the type a READ was given, placed at the token
+\ the engine read last, which ran the definer.
+: TEXT-LETTER-REFUSE ( ptr u8 n ptr u8 n -- ) {: la:ptr lu:n xa:ptr xu:n :}
+   s" E-NOT-EFFECT" REJECTION:OPEN
+   s" EFFECT:READ found the letter '" REJECTION:EMIT-STR
+   la lu REJECTION:EMIT-STR  s" ' in the type '" REJECTION:EMIT-STR
+   xa xu REJECTION:EMIT-STR  s" '" REJECTION:EMIT-STR
+   DEFINER-PLACE
+   REJECTION:HELP
+   s" a definer's type has no letters: take its parameters from EFFECT:NAMED"
+   REJECTION:EMIT-STR
+   CHECK-RC REJECTION:STOP ;
 
 : TEXT-TYPE ( n n -- n ) {: a:n u:n :}
-   a >BYTES u [: a >BYTES u TEXT-TYPE-REFUSE ;] TYPE-DECL:READ-TYPE ;
+   a >BYTES u [: a >BYTES u TEXT-TYPE-REFUSE ;]
+   [: a >BYTES u TEXT-LETTER-REFUSE ;] TYPE-DECL:READ-TYPE ;
 
 : TYPE-NODE ( n n n -- n ) {: code:n a:n b:n :}
    code TYPE-OP-ABI:INT = if CC-N SCHEMA-CON exit then

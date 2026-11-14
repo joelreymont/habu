@@ -566,36 +566,123 @@ private
 : TDV-ELEM-INSTALL ( -- ) [: TDECL-VPAY-ELEM ;] is TDV-ELEM-XT ;
 TDV-ELEM-INSTALL
 
-\ READ-TYPE's parse: one element, then the text's end.
-: TDECL-READ-ONE ( -- n )
-   TDECL-NEXT {: a:ptr u:n :}
-   u 0= IF a u s" missing type" E-TDECL-SYNTAX TDECL-THROW THEN
-   a u TDECL-VPAY-ELEM {: node:n :}
-   CHECKER-SIG-UNRES-TAKE IF s" unknown type" E-TDECL-PAYLOAD TDECL-THROW THEN
-   2drop
-   TDECL-NEXT {: ea:ptr eu:n :}
-   eu 0 <> IF ea eu s" one type expected" E-TDECL-SYNTAX TDECL-THROW THEN
-   node ;
+\ --- READ-TYPE reads one type by the signature grammar (SIG-TYPE) and stores
+\ the checker's term as a schema node. A definer's type has no letters: its
+\ parameters come from EFFECT:NAMED. A type variable, a row variable and a
+\ fresh name are letters, and a view's region slots take only those.
 
-variable TDR-NODE   \ READ-TYPE's answer, kept across its catch
+: READ-LETTER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u FRESH-ATOM-TOK? IF RES-TRUE EXIT THEN
+   a u ROW-LEAD? IF RES-TRUE EXIT THEN
+   a u SIG-VAR-SLOT 0 < IF RES-FALSE EXIT THEN
+   a u SIG-FAM? nip 0= ;
+
+\ The first letter in the signature text, a 0 for none.
+: READ-LETTER ( -- ptr u8 n )
+   0 SI !  PKRESET
+   BEGIN NEXT-SIG-TOK dup 0 <> WHILE
+      2dup READ-LETTER? IF EXIT THEN 2drop
+   REPEAT ;
+
+\ Stages node on the argument scratch; false when it is full.
+: READ-STAGE ( n -- bool ) {: node:n :}
+   TDV-ARG-N @ TDV-ARG-CAP >= IF RES-FALSE EXIT THEN
+   node TDV-ARG-N @ cells TDV-ARG-SCR + !
+   TDV-ARG-N @ 1 + TDV-ARG-N !  RES-TRUE ;
+
+\ Roots the nodes staged from base on as one contiguous run, the last staged
+\ first when flip, unstages them and answers the run's start.
+: READ-ROOTS ( n bool -- n ) {: base:n flip:bool :}
+   SCHEMA-ROOT-N@ {: start:n :}
+   TDV-ARG-N @ base - 0 ?do
+      flip IF TDV-ARG-N @ 1 - i - ELSE base i + THEN
+      cells TDV-ARG-SCR + @ SCHEMA-ROOT+ drop
+   loop
+   base TDV-ARG-N !  start ;
+
+defer TERM-SCHEMA-XT ( n -- n )
+
+\ Stages term t's node; false when it has none or the scratch is full.
+: READ-STAGE-TERM ( n -- bool )
+   TERM-SCHEMA-XT dup 0= IF drop RES-FALSE EXIT THEN READ-STAGE ;
+
+: READ-APP ( n -- n ) {: t:n :}
+   TDV-ARG-N @ {: base:n :}
+   t PARAM>ARGC 0 ?do
+      t i PARAM>ARG READ-STAGE-TERM 0= IF base TDV-ARG-N ! 0 unloop EXIT THEN
+   loop
+   t PARAM>FAM  base RES-FALSE READ-ROOTS  t PARAM>ARGC SCHEMA-APP ;
+
+\ A quotation side, whose top cell the term holds first, as a SCH-ROW node of
+\ its cells deepest first.
+: READ-SIDE ( n -- n ) {: row:n :}
+   TDV-ARG-N @ {: base:n :}
+   row R-RES BEGIN dup TAG S-PUSH = WHILE
+      dup P>TYPE READ-STAGE-TERM 0= IF drop base TDV-ARG-N ! 0 EXIT THEN
+      P>REST R-RES
+   REPEAT drop
+   TDV-ARG-N @ base - {: k:n :}
+   base RES-TRUE READ-ROOTS k SCHEMA-ROW ;
+
+\ A quotation whose data sides share their tail and whose return sides are
+\ one empty row: `| -- ` is neutral, so it stores as no clause.
+: READ-QUOT ( n -- n ) {: q:n :}
+   q Q>RIN R-RES {: rin:n :}
+   rin TAG S-PUSH =  rin q Q>ROUT R-RES <> or IF 0 EXIT THEN
+   q Q>DIN ROW-TAIL q Q>DOUT ROW-TAIL <> IF 0 EXIT THEN
+   q Q>DIN READ-SIDE dup 0= IF EXIT THEN {: din:n :}
+   q Q>DOUT READ-SIDE dup 0= IF EXIT THEN {: dout:n :}
+   din dout TDV-QUOT-EMPTY-ROW TDV-QUOT-EMPTY-ROW 0 SCHEMA-QUOT ;
+
+\ The schema node of a closed type's term, 0 for one no node holds: an atom,
+\ a binder or a variable.
+: TERM-SCHEMA ( n -- n )
+   T-RES {: t:n :}
+   t TAG T-CON = IF t PAY SCHEMA-CON EXIT THEN
+   t TAG T-PTR = IF
+      t PTR>INNER TERM-SCHEMA-XT dup 0= IF EXIT THEN SCHEMA-PTR EXIT
+   THEN
+   t TAG T-PARAM = IF t READ-APP EXIT THEN
+   t TAG T-QUOT = IF t READ-QUOT EXIT THEN
+   0 ;
+: TERM-SCHEMA-INSTALL ( -- ) [: TERM-SCHEMA ;] is TERM-SCHEMA-XT ;
+TERM-SCHEMA-INSTALL
+
+\ The parse's reject: the token SGBAD latched and why.
+: READ-BAD ( [ ptr u8 n ptr u8 n n -- ] -- ) {: fail :}
+   SGBAD-A @ SGBAD-U @
+   SGBAD-UNKNOWN? IF s" unknown type" E-TDECL-PAYLOAD fail execute EXIT THEN
+   SGBAD-ARITY? IF
+      s" type family applied to wrong number of arguments"
+      E-TDECL-SYNTAX fail execute EXIT
+   THEN
+   s" bad type" E-TDECL-SYNTAX fail execute ;
 
 public
 
-\ The one payload element the text spells, read where the declaration stands
-\ with no family being declared: no type parameter, no self-reference. It runs
-\ between declarations and sets the declaration state it reads. A refusal, a
-\ name that may arrive later and text past the element included, runs FAIL
+\ The one type the text spells, read by the signature grammar where the
+\ definer runs. A letter in it runs LETTER with the letter; any other reject,
+\ a name that may arrive later and text past the type included, runs FAIL
 \ with the token, the reason and the code.
-: READ-TYPE ( ptr u8 n [ ptr u8 n ptr u8 n n -- ] -- n ) {: a:ptr u:n fail :}
-   a TDN-A !  0 TDN-U !  -1 TDECL-CUR-FAM !  0 DECL-PARAM-N !
-   0 TDV-ARG-N !  SIG-UNRES-CLEAR  0 TDW-U !
-   a u TDECL-CURSOR!
-   [: TDECL-READ-ONE TDR-NODE ! ;] catch {: rc:n :}
-   rc 0= IF TDR-NODE @ EXIT THEN
-   TDW-U @ 0= IF rc throw THEN               \ not a TDECL-THROW
-   QUOT-ROLLBACK  SIG-UNRES-CLEAR
-   TDT-A @ TDT-U @ TDW-A @ TDW-U @ rc fail execute
-   0 ;
+: READ-TYPE ( ptr u8 n [ ptr u8 n ptr u8 n n -- ] [ ptr u8 n -- ] -- n )
+   {: a:ptr u:n fail letter :}
+   a SB!  a u BYTE-SPAN? IF u ELSE 0 THEN SL !
+   READ-LETTER {: la:ptr lu:n :}
+   lu 0 <> IF la lu letter execute 0 EXIT THEN
+   SIG-UNRES-CLEAR  SGBAD-CLEAR  0 TDV-ARG-N !
+   PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET  0 SQUOT-N !  0 BIND-DEPTH !
+   0 SIG-LEVEL !  0 SGHASR !  0 RR-SHARED !  0 SI !
+   NEXT-SIG-TOK {: ta:ptr tu:n :}
+   tu 0= IF ta 0 s" missing type" E-TDECL-SYNTAX fail execute 0 EXIT THEN
+   ta tu SIG-TYPE {: term:n :}
+   NEXT-SIG-TOK {: ea:ptr eu:n :}
+   SGBAD @ IF fail READ-BAD 0 EXIT THEN
+   CHECKER-SIG-UNRES-TAKE IF
+      s" unknown type" E-TDECL-PAYLOAD fail execute 0 EXIT
+   THEN 2drop
+   eu 0 <> IF ea eu s" one type expected" E-TDECL-SYNTAX fail execute 0 EXIT THEN
+   term TERM-SCHEMA dup 0 <> IF EXIT THEN drop
+   a 0 s" no stored type holds it" E-TDECL-SYNTAX fail execute 0 ;
 
 private
 

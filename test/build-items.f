@@ -14,7 +14,10 @@
 \ an open match an item's kind decides its role: a call in an abandoned one is
 \ skipped, a call where the family belongs and a type where a variant belongs
 \ get the match's rejection. An item spelled by no token or by two is
-\ rejected.
+\ rejected. EFFECT:READ reads a linear and a width type as a signature does,
+\ and rejects a letter, a type variable's or a view's region's, at the line
+\ that ran the definer, with the fix, as EFFECT:NAMED and EFFECT:READ reject
+\ an unknown family and EFFECT:IN a type that is no effect.
 
 require src/lib/test.f
 require src/lib/c2-memory.f
@@ -330,6 +333,69 @@ EMPTY-ITEM 74 T=
 BLANK-ITEM 74 T=
 s" : BI-BLANK-ITEM ( -- n ) 8 ;" evaluate-closed
 BI-BLANK-ITEM 8 T=
+
+public
+DEFLINEAR BITEM:ltok
+private
+LINEAR: LTOK ( n -- BITEM:ltok )
+LINEAR: LTOK>N ( BITEM:ltok -- n )
+: BI-U8-WIDTH ( -- width<u8> ) [type] u8 ;
+
+\ : NAME ( t -- t ) ;
+: MAKE-ID ( ptr u8 n EFFECT:type -- ) {: t :}
+   EFFECT:NEW t EFFECT:IN  t EFFECT:OUT  define-word  postpone ; ;
+
+SUMTYPE blin VARIANT owned BITEM:ltok ;VARIANT ;SUMTYPE
+: BI-LIN-MAKE ( n -- blin ) LTOK construct blin owned ;
+: BI-LIN-N ( blin -- n ) match blin owned of LTOK>N endof ;match ;
+
+s" BI-LIN" s" blin" EFFECT:READ MAKE-ID
+: BI-LIN-RUN ( -- n ) 5 BI-LIN-MAKE BI-LIN BI-LIN-N ;
+BI-LIN-RUN 5 T=
+s" BI-WIDTH" s" width<u8>" EFFECT:READ MAKE-ID
+BI-U8-WIDTH BI-WIDTH width>n 1 T=
+
+: PTR-A ( -- n ) [: s" BI-PTR-A" s" ptr a" EFFECT:READ MAKE-ID ;] catch ;
+: VIEW ( -- n )
+   [: s" BI-VIEW" s" read-view<p,q,u8>" EFFECT:READ MAKE-ID ;] catch ;
+: LETTER-FIX ( -- )
+   s" = help: a definer's type has no letters: take its parameters from EFFECT:NAMED"
+   DECL-DIAG:HAS? TTRUE ;
+: NAMED-BAD ( -- n ) [: s" no-such-family" EFFECT:NAMED drop ;] catch ;
+: IN-BAD ( -- n ) [: EFFECT:N EFFECT:N EFFECT:IN drop ;] catch ;
+: READ-BAD ( -- n )
+   [: s" BI-UNK" s" no-such-family" EFFECT:READ MAKE-ID ;] catch ;
+: RAN-HERE ( -- ) s" the definer ran here" DECL-DIAG:HAS? TTRUE ;
+: FAMILY-FIX ( -- )
+   s" = help: name n, bool, r or a family declared before the definer runs"
+   DECL-DIAG:HAS? TTRUE ;
+
+DECL-DIAG:PROSE  PTR-A 70 T=
+s" error[E-NOT-EFFECT]: EFFECT:READ found the letter 'a' in the type 'ptr a'"
+DECL-DIAG:HAS? TTRUE
+s" --> " DECL-DIAG:HAS? TTRUE  s" build-items.f:" DECL-DIAG:HAS? TTRUE
+s" | DECL-DIAG:PROSE  PTR-A 70 T=" DECL-DIAG:HAS? TTRUE
+s" |                  ^^^^^ the definer ran here" DECL-DIAG:HAS? TTRUE
+LETTER-FIX
+DECL-DIAG:PROSE  VIEW 70 T=
+s" error[E-NOT-EFFECT]: EFFECT:READ found the letter 'p' in the type 'read-view<p,q,u8>'"
+DECL-DIAG:HAS? TTRUE
+s" --> " DECL-DIAG:HAS? TTRUE  s" build-items.f:" DECL-DIAG:HAS? TTRUE
+s" | DECL-DIAG:PROSE  VIEW 70 T=" DECL-DIAG:HAS? TTRUE
+s" |                  ^^^^ the definer ran here" DECL-DIAG:HAS? TTRUE
+LETTER-FIX
+DECL-DIAG:PROSE  NAMED-BAD 70 T=
+s" error[E-UNKNOWN-SIGNATURE-TYPE]: EFFECT:NAMED found no type named 'no-such-family'"
+DECL-DIAG:HAS? TTRUE  RAN-HERE  FAMILY-FIX
+DECL-DIAG:PROSE  IN-BAD 70 T=
+s" error[E-NOT-EFFECT]: EFFECT:IN or EFFECT:OUT was given a type that is no effect"
+DECL-DIAG:HAS? TTRUE  RAN-HERE
+s" = help: pass the effect EFFECT:NEW made, or one EFFECT:IN or EFFECT:OUT answered"
+DECL-DIAG:HAS? TTRUE
+DECL-DIAG:PROSE  READ-BAD 70 T=
+s" error[E-UNKNOWN-SIGNATURE-TYPE]: " DECL-DIAG:HAS? TTRUE
+S\" 'no-such-family' in EFFECT:READ\n" DECL-DIAG:HAS? TTRUE
+RAN-HERE  FAMILY-FIX  DECL-DIAG:OFF
 
 public
 : WIDE-GO ( -- ) s" BI-WIDE" MAKE-WIDE ;
