@@ -310,10 +310,9 @@ create CHUNK LARGE-CHUNK allot
    A$ [: s" large/outer.f" included ;] WITH
    LOADED @ 122 T= RESTORED ;
 
-\ JOIN takes its root length from the caller and INCLUDE-DIAG+ is callable from
-\ any source: both measure the length against the room left, so a length near
-\ the maximum cell cannot wrap the sum under the capacity; a negative one is
-\ refused (JOIN) or dropped like any piece that does not fit (INCLUDE-DIAG+).
+\ JOIN takes its root length from the caller and measures it against the room
+\ left, so a length near the maximum cell cannot wrap the sum under the
+\ capacity; a negative one is refused.
 PATH-CAP 1+ 2 * constant JOIN-WORK          \ include.f WORK-BYTES
 -1 1 rshift constant MAX-CELL
 create JOIN-SRC JOIN-WORK allot
@@ -330,19 +329,6 @@ create JOIN-SRC JOIN-WORK allot
    [: -1 JOIN-ROOT$ s" x" JOIN 2drop ;] E-PATH-RANGE TTHROWSQ
    [: MAX-CELL JOIN-ROOT$ s" x" JOIN 2drop ;] E-PATH-RANGE TTHROWSQ ;
 
-: DIAG-ROOM ( -- )
-   s" a diagnostic piece that fills the buffer is kept" T-LABEL
-   INCLUDE-DIAG-RESET s" ab" INCLUDE-DIAG+
-   JOIN-SRC INCLUDE-DIAG-CAP 2 - INCLUDE-DIAG+
-   INCLUDE-DIAG$ nip INCLUDE-DIAG-CAP T=
-   s" a piece one past the buffer, -1 and the maximum cell are dropped" T-LABEL
-   INCLUDE-DIAG-RESET s" ab" INCLUDE-DIAG+
-   JOIN-SRC INCLUDE-DIAG-CAP 1- INCLUDE-DIAG+
-   JOIN-SRC -1 INCLUDE-DIAG+
-   JOIN-SRC MAX-CELL INCLUDE-DIAG+
-   INCLUDE-DIAG$ nip 2 T=
-   INCLUDE-DIAG-RESET ;
-
 : DIRNAMES ( -- )
    s" a bare relative name's directory is the current directory" T-LABEL
    s" stamp" DIRNAME s" ." T$=
@@ -354,7 +340,7 @@ create JOIN-SRC JOIN-WORK allot
 : RUN ( -- )
    T-RESET PREP
    LOAD-ENTRIES ALIASES PROVIDED-MISSING THROW-RESTORES NUL-REFUSED DISCOVERY CLOSURE DEEP-LOADS LARGE-LOADS DEEP-EVALS
-   ENGINE-ALIASES JOIN-ROOM DIAG-ROOM DIRNAMES
+   ENGINE-ALIASES JOIN-ROOM DIRNAMES
    FS:CLEANUP-RUN T-REPORT ;
 
 RUN

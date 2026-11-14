@@ -526,17 +526,26 @@ private
    n 0 < if w wu ROOT-DIE then
    n CANON-U ! ;
 
-: OUTSIDE-ROOT ( ptr u8 n -- ) {: a:ptr u:n :}
+: OUTSIDE-ROOT ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n p:ptr pu:n :}
    s" E-POLICY" REJECTION:OPEN
    96 REJECTION:EMIT1  a u REJECTION:EMIT-STR
    s" ` lies outside the source root" REJECTION:EMIT-STR
-   a u REJECTION:AT  s" outside the root" REJECTION:EMIT-STR
+   p pu REJECTION:AT  s" outside the root" REJECTION:EMIT-STR
    s" root" REJECTION:NOTE
    POLICY-ROOT-BUF POLICY-ROOT-U @ REJECTION:EMIT-STR
    REJECTION:HELP
    s" load only files under the source root, which this " REJECTION:EMIT-STR
    s" program's policy set with `POLICY-ROOT`" REJECTION:EMIT-STR
    107 REJECTION:STOP ;
+
+\ CONFINE of a path a program asked for as req, which a rejection names and
+\ places at p.
+: CONFINE-AS ( ptr u8 n ptr u8 n ptr u8 n -- ptr u8 n )
+   {: a:ptr u:n req:ptr requ:n p:ptr pu:n :}
+   data-base POLICY-REQUIRE-CELL + @ 0= if a u exit then
+   a u CANONICAL drop {: path:ptr pathu:n :}
+   path pathu POLICY-ROOT-BUF POLICY-ROOT-U @ BELOW? if path pathu exit then
+   req requ p pu OUTSIDE-ROOT ;
 
 public
 
@@ -549,12 +558,8 @@ public
    n 0 < if CANON-BUF 0 INCLUDE-FALSE exit then
    CANON-BUF n INCLUDE-TRUE ;
 
-: CONFINE ( ptr u8 n -- ptr u8 n )
-   {: a:ptr u:n :}
-   data-base POLICY-REQUIRE-CELL + @ 0= if a u exit then
-   a u CANONICAL drop {: path:ptr pathu:n :}
-   path pathu POLICY-ROOT-BUF POLICY-ROOT-U @ BELOW? if path pathu exit then
-   a u OUTSIDE-ROOT ;
+: CONFINE ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   a u a u a u CONFINE-AS ;
 
 private
 
@@ -1219,25 +1224,24 @@ private
 
 \ A relative request's roots in order, each once: its owner, the engine root,
 \ then the working directory. The first root whose candidate stops the search
-\ answers; when none does, the owner's answer names the missing file. So a
-\ library the owner lacks is the engine's whatever the working directory holds,
-\ and the working directory answers only what neither holds: an application's
-\ entry below its tree, run from the tree, requires the tree's files by their
-\ tree-relative names.
-: SEARCH-ROOTS ( n -- ptr u8 n bool )
+\ answers, found; when none does, the owner's answer, not found, names the
+\ missing file. So a library the owner lacks is the engine's whatever the
+\ working directory holds, and the working directory answers only what neither
+\ holds: an application's entry below its tree, run from the tree, requires the
+\ tree's files by their tree-relative names.
+: SEARCH-ROOTS ( n -- ptr u8 n bool bool )
    {: first:n :}
-   CURRENT$ first CANDIDATE if exit then drop 2drop
+   CURRENT$ first CANDIDATE dup if exit then 2drop 2drop
    ENGINE$ CURRENT$ CORE-STR= 0= if
-      ENGINE$ first CANDIDATE if exit then drop 2drop
+      ENGINE$ first CANDIDATE dup if exit then 2drop 2drop
    then
    CWD$ CURRENT$ CORE-STR= CWD$ ENGINE$ CORE-STR= or 0= if
-      CWD$ first CANDIDATE if exit then drop 2drop
+      CWD$ first CANDIDATE dup if exit then 2drop 2drop
    then
-   CURRENT$ first CANDIDATE drop ;
+   CURRENT$ first CANDIDATE ;
 
 \ A missing file's directory need not be a root at all (missing, a file,
-\ unsearchable), so its load keeps the current root and INCLUDE-OPEN names the
-\ file.
+\ unsearchable), so its answer keeps the current root.
 : ABS-OWNER ( ptr u8 n bool -- )
    {: a:ptr u:n exists:bool :}
    a u CURRENT$ BELOW? if CURRENT$ OWNER! exit then
@@ -1247,8 +1251,8 @@ private
    a u DIRNAME OWNER! ;
 
 \ The file a require of REQUEST$ selects, with frozen rows counted from row
-\ `first`.
-: SELECT ( n -- ptr u8 n bool )
+\ `first`, whether it is known and whether it was found.
+: SELECT ( n -- ptr u8 n bool bool )
    {: first:n :}
    REQUEST-BUF c@ $2F = if
       REQUEST$ CANONICAL {: exists:bool :}
@@ -1257,30 +1261,66 @@ private
       known 0= if
          ENGINE$ REQUEST$ first BOOT-CANDIDATE
       else known then
-      exit
+      dup exists or exit
    then
    first SEARCH-ROOTS ;
 
+\ Names every path the request a u was looked for at, in SEARCH-ROOTS's order;
+\ an entry's and an absolute request's is one. Placed at p.
+: MISSING-SOURCE ( ptr u8 n ptr u8 n bool -- )
+   {: a:ptr u:n p:ptr pu:n entry:bool :}
+   s" E-MISSING-SOURCE" REJECTION:OPEN
+   s" cannot open `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   96 REJECTION:EMIT1
+   p pu REJECTION:AT  s" not found" REJECTION:EMIT-STR
+   s" searched" REJECTION:NOTE
+   entry  a c@ 47 =  or if
+      CWD$ a u UNDER REJECTION:EMIT-STR
+   else
+      CURRENT$ a u UNDER REJECTION:EMIT-STR
+      ENGINE$ CURRENT$ CORE-STR= 0= if
+         s" , " REJECTION:EMIT-STR  ENGINE$ a u UNDER REJECTION:EMIT-STR
+      then
+      CWD$ CURRENT$ CORE-STR= CWD$ ENGINE$ CORE-STR= or 0= if
+         s" , " REJECTION:EMIT-STR  CWD$ a u UNDER REJECTION:EMIT-STR
+      then
+   then
+   REJECTION:HELP
+   entry if
+      s" a path given on the command line is looked up from the " REJECTION:EMIT-STR
+      s" directory hb runs in" REJECTION:EMIT-STR
+   else
+      s" check the path: a relative path is looked up under the root " REJECTION:EMIT-STR
+      s" the including file was found under, then Habu's source root, " REJECTION:EMIT-STR
+      s" then the directory hb runs in" REJECTION:EMIT-STR
+   then
+   INCLUDE-IO-RC REJECTION:STOP ;
+
 public
 
-: RESOLVE ( ptr u8 n -- ptr u8 n bool )
-   REQUEST! REQUIRE-BASE @ SELECT
-   >r CONFINE r> ;
+\ SELECT and CANONICAL may reuse the buffer a u lies in, so a rejection names
+\ REQUEST$, the request's copy, and is placed at a u only where a u is source.
+: RESOLVE ( ptr u8 n -- ptr u8 n bool ) {: a:ptr u:n :}
+   a u REQUEST! REQUIRE-BASE @ SELECT drop
+   a REJECTION:PLACES? if a u else REQUEST$ then {: p:ptr pu:n :}
+   >r REQUEST$ p pu CONFINE-AS r> ;
+
+\ Public so `required` and `included`, which this file defines outside
+\ SOURCE-ROOT, reject a missing request where it is resolved.
+: LOAD-RESOLVE ( ptr u8 n -- ptr u8 n bool ) {: a:ptr u:n :}
+   a u REQUEST! REQUIRE-BASE @ SELECT {: found:bool :}
+   a REJECTION:PLACES? if a u else REQUEST$ then {: p:ptr pu:n :}
+   found 0= if REQUEST$ p pu INCLUDE-FALSE MISSING-SOURCE then
+   >r REQUEST$ p pu CONFINE-AS r> ;
 
 \ Command-line entries are relative to the invocation directory only;
 \ dependencies beneath them inherit the entry directory as their primary root.
-: ENTRY-RESOLVE ( ptr u8 n -- ptr u8 n bool )
-   REQUEST!
+: ENTRY-RESOLVE ( ptr u8 n -- ptr u8 n bool ) {: a:ptr u:n :}
+   a u REQUEST!
    CWD$ REQUIRE-BASE @ CANDIDATE
-   {: path:ptr pathu:n known:bool exists:bool :}
-   exists if
-      path pathu DIRNAME OWNER!
-   else
-      \ A missing command-line path may sit below a dangling directory
-      \ symlink. Its canonical parent is not a usable WITH root; keep the
-      \ invocation root so INCLUDE-OPEN can report the path it could not open.
-      CWD$ OWNER!
-   then
+   {: path:ptr pathu:n known:bool found:bool :}
+   found 0= if a u a u INCLUDE-TRUE MISSING-SOURCE then
+   path pathu DIRNAME OWNER!
    path pathu CONFINE known ;
 
 \ The selection counts every frozen row whatever REQUIRE-BASE is, so a frozen
@@ -1289,7 +1329,7 @@ public
 : ENGINE-KNOWN? ( ptr u8 n -- bool )
    OWNER-BUF OWNER-SAVE OWNER-U @ BYTE-COPY
    OWNER-U @ {: owner:n :}
-   REQUEST! 0 SELECT drop
+   REQUEST! 0 SELECT 2drop
    ENGINE$ REQUEST$ 0 BOOT-CANDIDATE nip nip
    OWNER-SAVE OWNER-BUF owner BYTE-COPY
    owner OWNER-U ! ;
@@ -1339,28 +1379,6 @@ public
    REQUIRE-BOOT-OPEN? if BOOT-ROW else 2dup then
    REQUIRE-REG:APPEND ;
 
-\ Sized so the longest accepted path plus the longest prefix below always fits,
-\ and the append refuses rather than truncates, so a message is whole or absent.
-$20 constant INCLUDE-DIAG-PREFIX-CAP
-INCLUDE-PATH-CAP INCLUDE-DIAG-PREFIX-CAP + constant INCLUDE-DIAG-CAP
-create INCLUDE-DIAG INCLUDE-DIAG-CAP allot
-variable INCLUDE-DIAG-U
-
-: INCLUDE-DIAG-RESET ( -- )
-   0 INCLUDE-DIAG-U ! ;
-
-\ A piece that does not fit is dropped. It is compared with the room left, so a
-\ length near the maximum cell cannot wrap the sum back under the capacity, and
-\ a negative one is dropped too.
-: INCLUDE-DIAG+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   u 0 < if exit then
-   u INCLUDE-DIAG-CAP INCLUDE-DIAG-U @ - > if exit then
-   a INCLUDE-DIAG INCLUDE-DIAG-U @ + u BYTE-COPY
-   INCLUDE-DIAG-U @ u + INCLUDE-DIAG-U ! ;
-
-: INCLUDE-DIAG$ ( -- ptr u8 n )
-   INCLUDE-DIAG INCLUDE-DIAG-U @ ;
-
 : INCLUDE-PATH0 ( ptr u8 n -- ptr u8 )
    {: a:ptr u:n :}
    a u INCLUDE-CHECK-PATH 2drop
@@ -1374,17 +1392,21 @@ variable SCRIPT-NAMED-PEND
    SCRIPT-NAMED-PEND ! ;
 
 
+\ A file the resolver found that open-rd could not open, labelled by the
+\ open's errno.
 : INCLUDE-OPEN-DIE ( ptr u8 n -- ) {: a:ptr u:n :}
+   data-base FS-ABI:ERRNO-OFF + @ {: e:n :}
    s" E-MISSING-SOURCE" REJECTION:OPEN
    s" cannot open `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
    96 REJECTION:EMIT1
-   a u REJECTION:AT  s" no such file" REJECTION:EMIT-STR
-   s" searched" REJECTION:NOTE
-   INCLUDE-PATH INCLUDE-PATH-U @ REJECTION:EMIT-STR
+   a u REJECTION:AT
+   e 2 = if s" no such file" else
+   e 13 = if s" permission denied" else
+   e 20 = if s" a directory in the path is a file" else
+   e 21 = if s" is a directory" else
+   s" cannot open" then then then then REJECTION:EMIT-STR
    REJECTION:HELP
-   s" check the path: a relative path is looked up under the root " REJECTION:EMIT-STR
-   s" the including file was found under, then Habu's source root, " REJECTION:EMIT-STR
-   s" then the directory hb runs in" REJECTION:EMIT-STR
+   s" check that the file exists and is readable" REJECTION:EMIT-STR
    INCLUDE-IO-RC REJECTION:STOP ;
 
 : INCLUDE-OPEN ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -2087,7 +2109,7 @@ public
    s" SOURCE-ROOT:RUN-PROGRAM" a u BUILD-REFUSE
    a u CANONICAL {: path:ptr pathu:n exists:bool :}
    path pathu INCLUDE-PATH0 drop
-   exists 0= if a u INCLUDE-OPEN-DIE then
+   exists 0= if a u a u INCLUDE-TRUE MISSING-SOURCE then
    PUSH
    [: LOAD-BYTES TOP@ RANGE-OWNER ! 0 TOP@ FR-SIZE + CELL-VIEW @ RUN-RANGE ;]
    catch {: rc:n :}
@@ -2153,7 +2175,7 @@ public
 
 : included ( ptr u8 n -- )
    {: a:ptr u:n :}
-   a u RESOLVE drop {: path:ptr pathu:n :}
+   a u LOAD-RESOLVE drop {: path:ptr pathu:n :}
    a u path pathu EV-INCLUDED EV-STATE-FRESH EVENT-RECORD
    DISCOVERY? if exit then
    s" included" path pathu LOAD-RESULT {: committed:bool rc:n :}
@@ -2181,7 +2203,7 @@ create SOURCE-ORIGINAL-INCLUDED-ENTRY 0 ,
 : required ( ptr u8 n -- )
    {: a:ptr u:n :}
    INCLUDE-FALSE SCRIPT-NAMED-PEND!
-   s" required" a u  a u RESOLVE  REQUIRE-BODY ;
+   s" required" a u  a u LOAD-RESOLVE  REQUIRE-BODY ;
 
 create SOURCE-ORIGINAL-REQUIRED-ENTRY 0 ,
 ' required SOURCE-ORIGINAL-REQUIRED-ENTRY xt!

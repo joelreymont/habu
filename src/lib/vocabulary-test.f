@@ -277,11 +277,11 @@ variable CODE                          \ the last child's exit code, -1 when it 
 : CONFINED ( -- )
    s" allow-root" HARNESS!
    s" confined/scene" 0 s" " S\" 42\n" RUNS
-   s" confined/parent" ROOT$ s" /test/policy/outside.f` lies outside the source root" REFUSES
-   s" confined/known" ROOT$ s" /test/policy/dep.f` lies outside the source root" REFUSES
-   s" confined/library" ROOT$ s" /src/lib/string.f` lies outside the source root" REFUSES
-   s" confined/absolute" ROOT$ s" /etc/passwd` lies outside the source root" REFUSES
-   s" confined/symlink" ROOT$ s" /test/policy/outside.f` lies outside the source root" REFUSES
+   s" confined/parent" ROOT$ s" `../outside.f` lies outside the source root" REFUSES
+   s" confined/known" ROOT$ s" `../dep.f` lies outside the source root" REFUSES
+   s" confined/library" ROOT$ s" `src/lib/string.f` lies outside the source root" REFUSES
+   s" confined/absolute" ROOT$ s" `/etc/passwd` lies outside the source root" REFUSES
+   s" confined/symlink" ROOT$ s" `link.f` lies outside the source root" REFUSES
    s" confined/forbidden" s" error[E-POLICY]: `included` is not in the vocabulary this source may use" s" test/policy/confined/forbidden.f:1:" REFUSES
    s" confined/body" s" error[E-POLICY]: `require` is not in the vocabulary this source may use" s" test/policy/confined/body.f:1:" REFUSES
    s" confined/string-required" s" error[E-POLICY]: `required` is not in the vocabulary this source may use" s" test/policy/confined/string-required.f:1:" REFUSES
@@ -289,11 +289,11 @@ variable CODE                          \ the last child's exit code, -1 when it 
    s" allow-root-direct" HARNESS!
    s" " 107 ROOT$ s" /test/policy/confined/link.f` lies outside the source root" s" " SAYS
    s" allow-root-preflight" HARNESS!
-   s" " 0 ROOT$ s" /test/policy/outside.f` lies outside the source root" S\" 0\n107\n0\n\n" SAYS
+   s" " 0 ROOT$ s" `../outside.f` lies outside the source root" S\" 0\n107\n0\n\n" SAYS
    s" allow-root-scope-throw" HARNESS!
    s" " 0 s" " S\" -30001\n0\n\n" RUNS
    s" allow-root-scope-nested" HARNESS!
-   s" " 0 ROOT$ s" /test/policy/confined/value.f` lies outside the source root" S\" 107\n0\n0\n\n" SAYS
+   s" " 0 ROOT$ s" `test/policy/confined/value.f` lies outside the source root" S\" 107\n0\n0\n\n" SAYS
    s" allow-root-scope-seal" HARNESS!
    s" " 0 s" error[E-POLICY]: the source policy is already sealed" s" test/policy/allow-root-scope-seal.f:14:" S\" 107\n107\n107\n107\n\n" SAYS ;
 
