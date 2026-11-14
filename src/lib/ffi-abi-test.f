@@ -3,6 +3,7 @@
 
 require src/lib/test.f
 require src/lib/ffi-abi.f
+require test/decl-diag-capture.f
 
 package FFI-ABI-TEST
 private
@@ -114,6 +115,58 @@ variable FFI-T-PADS
    FFI-T-SELECT-TEXT$ TEST-EVAL:RC 1 T=
    FFI-T-ABS-TEXT$ TEST-EVAL:N 9 T= ;
 
+\ A declaration's syntax error prints a record naming the token it read last.
+: FFI-T-NO-DASHES$ ( -- ptr u8 n )
+   s" FUNCTION: FFI-T-NO-DASHES labs ( n n ) ;FUNCTION" ;
+
+\ 48 bytes, one past the longest symbol a row holds.
+: FFI-T-LONG-SYMBOL$ ( -- ptr u8 n )
+   s" FUNCTION: FFI-T-LONG-SYMBOL a23456789012345678901234567890123456789012345678 ( -- ) ;FUNCTION" ;
+
+: FFI-T-NO-DASHES ( -- )
+   s" an effect without '--' prints its record" T-LABEL
+   DECL-DIAG:PROSE
+   FFI-T-NO-DASHES$ TEST-EVAL:RC E-FFI-SYNTAX T=
+   s" error[E-FFI-SYNTAX]: expected '--' before ')'"
+   DECL-DIAG:HAS? TTRUE
+   s" = help: write the effect as ( inputs -- output )"
+   DECL-DIAG:HAS? TTRUE
+   DECL-DIAG:OFF ;
+
+: FFI-T-LONG-SYMBOL ( -- )
+   s" a symbol over the row's bound prints its record" T-LABEL
+   DECL-DIAG:PROSE
+   FFI-T-LONG-SYMBOL$ TEST-EVAL:RC E-FFI-SYNTAX T=
+   s" error[E-FFI-SYNTAX]: a C symbol name is at most 47 bytes"
+   DECL-DIAG:HAS? TTRUE
+   s" = help: call a longer symbol through a C function"
+   DECL-DIAG:HAS? TTRUE
+   DECL-DIAG:OFF ;
+
+: FFI-T-NO-PATH ( -- )
+   s" LIBRARY with no path prints its record" T-LABEL
+   DECL-DIAG:PROSE
+   s" LIBRARY" TEST-EVAL:RC E-FFI-SYNTAX T=
+   s" error[E-FFI-SYNTAX]: the library path is empty"
+   DECL-DIAG:HAS? TTRUE
+   s" = help: write the library's path or file name after LIBRARY"
+   DECL-DIAG:HAS? TTRUE
+   DECL-DIAG:OFF ;
+
+\ 33 bytes, one past the longest base name a row holds.
+: FFI-T-LONG-BASE$ ( -- ptr u8 n )
+   s" VERSIONED-LIBRARY aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 1" ;
+
+: FFI-T-LONG-BASE ( -- )
+   s" a base name over its bound prints its record" T-LABEL
+   DECL-DIAG:PROSE
+   FFI-T-LONG-BASE$ TEST-EVAL:RC E-FFI-SYNTAX T=
+   s" error[E-FFI-SYNTAX]: a library base name is at most 32 bytes"
+   DECL-DIAG:HAS? TTRUE
+   s" = help: write the name without its lib prefix and suffix"
+   DECL-DIAG:HAS? TTRUE
+   DECL-DIAG:OFF ;
+
 \ src/lib/ffi-test.f calls C functions that write the sret x8 and stack-slot
 \ outputs, and names the shapes no C function witnesses.
 
@@ -124,6 +177,10 @@ variable FFI-T-PADS
    FFI-T-KPARAMS
    FFI-T-ROLLBACK
    FFI-T-SHADOW
+   FFI-T-NO-DASHES
+   FFI-T-LONG-SYMBOL
+   FFI-T-NO-PATH
+   FFI-T-LONG-BASE
    T-REPORT ;
 
 FFI-ABI-RUN

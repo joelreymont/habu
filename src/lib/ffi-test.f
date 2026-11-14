@@ -18,6 +18,7 @@ require src/lib/task.f
 require test/ffi-struct-fixture.f      \ the struct-argument callee
 require test/e2e-tree.f                \ the struct clauses' load children
 require tools/check-verify-core.f       \ LSP-CHECK:VERIFY-BYTES - the struct clauses' check
+require test/decl-diag-capture.f
 
 package FFI-TEST
 
@@ -333,6 +334,19 @@ create FFI-T-LONG-PATH PATH-CAP allot
    {: outu:len erru:len :}
    FFI-T-OUT outu LEN>N s\" shared-library:ok\n" T$=
    erru LEN>N 0 T= ;
+
+\ Runs a rejected case with its record captured, so stderr carries none,
+\ and asserts the record's header line.
+: FFI-T-RECORD ( [ -- ] n ptr u8 n -- )
+   {: code:n h:ptr hu:n :}
+   DECL-DIAG:PROSE
+   code TTHROWSQ
+   h hu DECL-DIAG:HAS? TTRUE
+   DECL-DIAG:OFF ;
+
+: FFI-T-SYNTAX ( [ -- ] ptr u8 n -- )
+   {: h:ptr hu:n :}
+   E-FFI-SYNTAX h hu FFI-T-RECORD ;
 
 \ The overflowing path carries no extension: it stands for a literal LIBRARY row
 \ on either target, which the spelling rule below leaves alone.
@@ -716,11 +730,16 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    FFI-T-CSTR-DST SPAN:$ drop FFI-T-HELLO 0 FFI-T-MEMCPY drop
    FFI-T-CSTR-DST SPAN:$ drop FFI-T-STRLEN$ 5 T=
 
-   [: FFI-T-BAD-PTR ;] E-FFI-SYNTAX TTHROWSQ
-   [: FFI-T-BAD-RESULTS ;] E-FFI-SYNTAX TTHROWSQ
-   [: FFI-T-BAD-EXTENT ;] E-FFI-SYNTAX TTHROWSQ
-   [: FFI-T-BAD-EXTENT-ARG ;] E-FFI-SYNTAX TTHROWSQ
-   [: FFI-T-BAD-EXTENT-INDEX ;] E-FFI-SYNTAX TTHROWSQ
+   [: FFI-T-BAD-PTR ;]
+   s" error[E-FFI-SYNTAX]: expected 'u8' after 'ptr'" FFI-T-SYNTAX
+   [: FFI-T-BAD-RESULTS ;]
+   s" error[E-FFI-SYNTAX]: a FUNCTION: declaration has at most one output" FFI-T-SYNTAX
+   [: FFI-T-BAD-EXTENT ;]
+   s" error[E-FFI-SYNTAX]: WRITES-BYTES's byte count is not positive" FFI-T-SYNTAX
+   [: FFI-T-BAD-EXTENT-ARG ;]
+   s" error[E-FFI-SYNTAX]: WRITES-ARG's length input is not an integer" FFI-T-SYNTAX
+   [: FFI-T-BAD-EXTENT-INDEX ;]
+   s" error[E-FFI-SYNTAX]: the clause names no input of the declaration" FFI-T-SYNTAX
    \ A ninth C float has no stack staging on either ABI.
    HB-TARGET-LINUX-X86-64? if
       [: FFI-T-BAD-FLOAT-ARITY ;] 0 TTHROWSQ
@@ -728,16 +747,23 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
       [: FFI-T-BAD-FLOAT-ARITY ;] E-FFI-ARITY TTHROWSQ
    then
    [: FFI-T-BAD-F32-ARITY ;] E-FFI-ARITY TTHROWSQ
-   [: FFI-T-BAD-F32-VARARG ;] E-FFI-SYNTAX TTHROWSQ
+   [: FFI-T-BAD-F32-VARARG ;]
+   s" error[E-FFI-SYNTAX]: an f32 variadic argument" FFI-T-SYNTAX
    [: FFI-T-F32-FIXED ;] 0 TTHROWSQ
    [: FFI-T-PTR-MIXED ;] 0 TTHROWSQ
    [: FFI-T-PTR-VARARG ;] 0 TTHROWSQ
-   [: FFI-T-BAD-VARARG ;] E-FFI-SYNTAX TTHROWSQ
-   [: FFI-T-NO-FIXED ;] E-FFI-SYNTAX TTHROWSQ
-   [: FFI-T-LIST-END ;] E-FFI-SYNTAX TTHROWSQ
-   [: FFI-T-LIST-START ;] E-FFI-SYNTAX TTHROWSQ
-   [: FFI-T-LIST-GAP ;] E-FFI-SYNTAX TTHROWSQ
-   [: FFI-T-LIST-WORD ;] E-FFI-SYNTAX TTHROWSQ
+   [: FFI-T-BAD-VARARG ;]
+   s" error[E-FFI-SYNTAX]: VARIADIC's fixed count is not from 1 to the inputs declared" FFI-T-SYNTAX
+   [: FFI-T-NO-FIXED ;]
+   s" error[E-FFI-SYNTAX]: VARIADIC's fixed count is not from 1 to the inputs declared" FFI-T-SYNTAX
+   [: FFI-T-LIST-END ;]
+   s" error[E-FFI-SYNTAX]: a library version is not a number" FFI-T-SYNTAX
+   [: FFI-T-LIST-START ;]
+   s" error[E-FFI-SYNTAX]: a library version is not a number" FFI-T-SYNTAX
+   [: FFI-T-LIST-GAP ;]
+   s" error[E-FFI-SYNTAX]: a library version is not a number" FFI-T-SYNTAX
+   [: FFI-T-LIST-WORD ;]
+   s" error[E-FFI-SYNTAX]: a library version is not a number" FFI-T-SYNTAX
    s" a library selection is scoped to the scope that states it" T-LABEL
    FFI-T-SCOPE-BEFORE FFI-T-DEPTH!
    [: FFI-T-NO-LIBRARY ;] E-FFI-LIBRARY TTHROWSQ
@@ -749,15 +775,18 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
 
    s" a refused declaration is abandoned, not left open" T-LABEL
    FFI-T-PAIR-BEFORE FFI-T-DEPTH!
-   [: FFI-T-REFUSED-CLAUSE ;] E-FFI-SYNTAX TTHROWSQ
+   [: FFI-T-REFUSED-CLAUSE ;]
+   s" error[E-FFI-SYNTAX]: the clause names no input of the declaration" FFI-T-SYNTAX
    [: FFI-T-GOOD-AFTER ;] 0 TTHROWSQ
    FFI-T-PAIR-AFTER FFI-T-DEPTH!
    FFI-T-PAIR-AFTER @ FFI-T-PAIR-BEFORE @ T=
 
-   [: FFI-T-BAD-UNCLOSED ;] E-FFI-SYNTAX TTHROWSQ
+   [: FFI-T-BAD-UNCLOSED ;]
+   s" error[E-FFI-SYNTAX]: FUNCTION: inside an open declaration" FFI-T-SYNTAX
    FFI-T-CLOSE-DANGLING
    [: FFI-T-REDECLARE ;] 0 TTHROWSQ
-   [: FFI-T-CLOSE-DANGLING ;] E-FFI-SYNTAX TTHROWSQ
+   [: FFI-T-CLOSE-DANGLING ;]
+   s" error[E-FFI-SYNTAX]: ;FUNCTION with no declaration open" FFI-T-SYNTAX
 
    s" FFI-T-RAW ( ptr a n n -- n ) ffi-call-n" FFI-T-CHECK-REJECTS
    s" FFI-T-RAW-ABI ( ptr a ptr a ptr a n n -- n ) ffi-call-abi" FFI-T-CHECK-REJECTS

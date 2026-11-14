@@ -221,7 +221,7 @@ public
 
 private
 
-NAME-CAP E-FFI-SYNTAX E-CG-VALUE CODEGEN:BUFFER-E NAME
+NAME-CAP CODEGEN:BUFFER NAME
 NAME-CAP 16 + CODEGEN:BUFFER WORD-NAME   \ NAME and a suffix, `-DISPATCH` the longest
 
 0 constant BY-N
@@ -242,16 +242,75 @@ TYPED-VARIABLE FFB-VALUE r
 TYPED-VARIABLE BODY-TYPE EFFECT:type    \ the body's effect, as its tokens are read
 variable OPEN
 
+\ A rejection of the declaration is SYNTAX-OPEN, its message, then SYNTAX-HELP
+\ with the fix; it places the record at the token parse-name read last.
+: SYNTAX-OPEN ( -- )
+   s" E-FFI-SYNTAX" REJECTION:OPEN ;
+
+\ The throw keeps the code a catch reads; uncaught, the load exits 70.
+: HELP-THROW ( ptr u8 n n -- ) {: h:ptr hu:n code:n :}
+   CHECK:DEFINER-PLACE
+   REJECTION:HELP  h hu REJECTION:EMIT-STR
+   REJECTION:KEEP  code CHECKER-REFUSE ;
+
+: SYNTAX-HELP ( ptr u8 n -- )
+   E-FFI-SYNTAX HELP-THROW ;
+
+: SYNTAX-REJECT ( ptr u8 n ptr u8 n -- )
+   {: m:ptr mu:n h:ptr hu:n :}
+   SYNTAX-OPEN  m mu REJECTION:EMIT-STR  h hu SYNTAX-HELP ;
+
+\ A message that ends quoting the token the user wrote.
+: TOKEN-REJECT ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: m:ptr mu:n t:ptr tu:n h:ptr hu:n :}
+   SYNTAX-OPEN  m mu REJECTION:EMIT-STR
+   s" '" REJECTION:EMIT-STR  t tu REJECTION:EMIT-STR
+   s" '" REJECTION:EMIT-STR  h hu SYNTAX-HELP ;
+
 \ The next token. parse-name's bytes stay valid until the next parse, and each
 \ token is matched or copied before then, so it lives on the stack.
 : TOK@ ( -- ptr u8 n )
    parse-name {: a:ptr u:n :}
-   u 0= if E-FFI-SYNTAX throw then
+   u 0= if
+      s" the text ends inside the callback declaration"
+      s" complete it: CALLBACK: NAME ( in -- out ) clauses ;CALLBACK"
+      SYNTAX-REJECT
+   then
    a u ;
 
-: NAME! ( ptr u8 n -- )
+: TOO-MANY ( n ptr u8 n -- ) {: cap:n k:ptr ku:n :}
+   s" E-FFI-ARITY" REJECTION:OPEN
+   s" a callback takes at most " REJECTION:EMIT-STR
+   cap REJECTION:EMIT-U  k ku REJECTION:EMIT-STR
+   s" pass the rest in memory through a ptr u8 argument"
+   E-FFI-ARITY HELP-THROW ;
+
+: LONG-NAME ( -- )
+   SYNTAX-OPEN  s" a callback name is at most " REJECTION:EMIT-STR
+   NAME-CAP REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR
+   s" shorten the name" SYNTAX-HELP ;
+
+\ A ':' at either end of the name, with nothing on one side.
+: EDGE-COLON? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a c@ [char] : =  a u + 1 - c@ [char] : = or ;
+
+: COLON-HELP$ ( -- ptr u8 n )
+   s" name it NAME, or PACKAGE:NAME for a word in package PACKAGE" ;
+
+\ The name's words are NAME, NAME-BODY and the like: one ':' between a
+\ package and a word makes them the package's; any other ':' names nothing.
+: NAME! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u NAME-CAP > if LONG-NAME then
+   a u [char] : COUNT-CHAR 1 > if
+      s" more than one ':' in callback name " a u COLON-HELP$
+      TOKEN-REJECT
+   then
+   a u EDGE-COLON? if
+      s" an empty package or word beside ':' in callback name " a u
+      COLON-HELP$ TOKEN-REJECT
+   then
    NAME CODEGEN:RESET
-   NAME CODEGEN:APPEND-STRING ;
+   a u NAME CODEGEN:APPEND-STRING ;
 
 : NAME$ ( -- ptr u8 n )
    NAME CODEGEN:CONTENTS ;
@@ -277,7 +336,7 @@ variable OPEN
 \ the stack: the integer, then the float arguments read so far.
 : INT+ ( n n n -- n n )
    {: i:n f:n by:n :}
-   i INT-REGS >= if E-FFI-ARITY throw then
+   i INT-REGS >= if INT-REGS s"  integer arguments" TOO-MANY then
    i by ARG+
    i 1 + f ;
 
@@ -287,37 +346,53 @@ variable OPEN
    a u s" i32" STR= if EFFECT:N IN+ i f BY-I32 INT+ exit then
    a u s" u32" STR= if EFFECT:N IN+ i f BY-U32 INT+ exit then
    a u s" ptr" STR= if
-      TOK@ s" u8" STR= 0= if E-FFI-SYNTAX throw then
+      TOK@ {: pa:ptr pu:n :}
+      pa pu s" u8" STR= 0= if
+         s" expected u8 after ptr, found " pa pu
+         s" a pointer argument is ptr u8" TOKEN-REJECT
+      then
       s" ptr u8" EFFECT:READ-TYPE IN+ i f BY-PTR INT+ exit
    then
    a u s" r" STR= if
-      f FLOAT-REGS >= if E-FFI-ARITY throw then
+      f FLOAT-REGS >= if FLOAT-REGS s"  float arguments" TOO-MANY then
       s" r" EFFECT:NAMED IN+ f BY-R ARG+
       i f 1 + exit
    then
-   E-FFI-SYNTAX throw ;
+   s" unknown argument type " a u
+   s" an argument is n, i32, u32, r or ptr u8" TOKEN-REJECT ;
 
 : OUT-TOKEN ( ptr u8 n -- )
    {: a:ptr u:n :}
-   RES-KIND @ R-NONE <> if E-FFI-SYNTAX throw then
+   RES-KIND @ R-NONE <> if
+      s" a callback has at most one result"
+      s" keep one result after --: n, i32, u32 or r" SYNTAX-REJECT
+   then
    a u s" r" STR= if s" r" EFFECT:NAMED OUT+ R-FLOAT RES-KIND ! exit then
    a u s" n" STR= a u s" i32" STR= or a u s" u32" STR= or if
       EFFECT:N OUT+ R-VALUE RES-KIND ! exit
    then
-   E-FFI-SYNTAX throw ;
+   s" unknown result type " a u
+   s" a result is n, i32, u32 or r; no result is nothing after --"
+   TOKEN-REJECT ;
 
 \ One input token: true at the -- that ends the inputs.
 : INPUT? ( n n -- n n bool )
    TOK@ {: i:n f:n a:ptr u:n :}
    a u s" --" STR= if i f true exit then
-   a u s" )" STR= if E-FFI-SYNTAX throw then
+   a u s" )" STR= if
+      s" expected '--' before ')'"
+      s" write the effect as ( in -- out )" SYNTAX-REJECT
+   then
    i f a u IN-TOKEN false ;
 
 \ One output token: true at the ) that ends the effect.
 : OUTPUT? ( -- bool )
    TOK@ {: a:ptr u:n :}
    a u s" )" STR= if true exit then
-   a u s" --" STR= if E-FFI-SYNTAX throw then
+   a u s" --" STR= if
+      s" a second '--' in the effect"
+      s" write one -- between the arguments and the result" SYNTAX-REJECT
+   then
    a u OUT-TOKEN false ;
 
 : INPUTS ( -- ) 0 0 begin INPUT? until 2drop ;
@@ -374,38 +449,61 @@ variable OPEN
    NAME$ EFFECT:EMPTY s" FFI-CB:callback" EFFECT:NAMED EFFECT:OUT define-word
    k literal  postpone DESCRIPTOR  postpone ; ;
 
-\ A refusal between the two keywords abandons the declaration, so nothing is
-\ left open for the next one.
-: REFUSE ( -- )
-   0 OPEN !
-   E-FFI-SYNTAX throw ;
+\ A rejection between the two keywords abandons the declaration, so nothing
+\ is left open for the next one.
+: REJECT ( ptr u8 n ptr u8 n -- )
+   0 OPEN !  SYNTAX-REJECT ;
+
+: FALLBACK-REJECT ( -- )
+   s" a fallback outside a callback declaration"
+   s" write it between CALLBACK: NAME ( in -- out ) and ;CALLBACK" REJECT ;
 
 public
 
 : OPEN-CALLBACK ( -- )
-   OPEN @ 0 <> if REFUSE then
+   OPEN @ 0 <> if
+      s" CALLBACK: inside an open callback declaration"
+      s" end the open declaration with ;CALLBACK first" REJECT
+   then
    R-NONE RES-KIND ! 0 FB-SET !
    EFFECT:EMPTY BODY-TYPE ! 0 READS !
    TOK@ NAME!
-   TOK@ s" (" STR= 0= if E-FFI-SYNTAX throw then
+   TOK@ {: a:ptr u:n :}
+   a u s" (" STR= 0= if
+      s" expected '(' after the callback name, found " a u
+      s" write CALLBACK: NAME ( in -- out )" TOKEN-REJECT
+   then
    INPUTS
    OUTPUTS
    1 OPEN ! ;
 
 : SET-FALLBACK ( n -- ) {: v:n :}
-   OPEN @ 0= if REFUSE then
-   RES-KIND @ R-VALUE <> if REFUSE then
+   OPEN @ 0= if FALLBACK-REJECT then
+   RES-KIND @ R-VALUE <> if
+      s" FALLBACK needs an n, i32 or u32 result"
+      s" an r result takes FFALLBACK; no result takes no fallback" REJECT
+   then
    v FB-VALUE ! 1 FB-SET ! ;
 
 : SET-FFALLBACK ( r -- ) {: v:r :}
-   OPEN @ 0= if REFUSE then
-   RES-KIND @ R-FLOAT <> if REFUSE then
+   OPEN @ 0= if FALLBACK-REJECT then
+   RES-KIND @ R-FLOAT <> if
+      s" FFALLBACK needs an r result"
+      s" an integer result takes FALLBACK; no result takes no fallback" REJECT
+   then
    v FFB-VALUE ! 1 FB-SET ! ;
 
 : CLOSE-CALLBACK ( -- )
-   OPEN @ 0= if E-FFI-SYNTAX throw then
+   OPEN @ 0= if
+      s" ;CALLBACK with no callback declaration open"
+      s" open one with CALLBACK: NAME ( in -- out )" SYNTAX-REJECT
+   then
    0 OPEN !
-   RES-KIND @ R-NONE <> FB-SET @ 0= and if E-FFI-SYNTAX throw then
+   RES-KIND @ R-NONE <> FB-SET @ 0= and if
+      s" a callback with a result needs a fallback"
+      s" write n FALLBACK (r: r FFALLBACK) before ;CALLBACK"
+      SYNTAX-REJECT
+   then
    NEXT-SLOT {: k:n :}
    FB-VALUE @ k FALLBACKS !
    FFB-VALUE @ k FFALLBACKS !

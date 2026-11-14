@@ -140,17 +140,28 @@ create FFI-T-SR-BUF 64 allot
    FFI-T-SR-UNTOUCHED
 
    s" malformed struct-result declarations are refused" T-LABEL
-   [: FFI-T-SR-ZERO ;] E-FFI-SYNTAX TTHROWSQ
-   [: FFI-T-SR-OUTPUT ;] E-FFI-SYNTAX TTHROWSQ
-   [: FFI-T-SR-NOT-LAST ;] E-FFI-SYNTAX TTHROWSQ
-   [: FFI-T-SR-NO-INPUT ;] E-FFI-SYNTAX TTHROWSQ
-   [: FFI-T-SR-TWICE ;] E-FFI-SYNTAX TTHROWSQ
-   [: FFI-T-SR-VARIADIC-BEFORE ;] E-FFI-SYNTAX TTHROWSQ
-   [: FFI-T-SR-VARIADIC-AFTER ;] E-FFI-SYNTAX TTHROWSQ
-   [: FFI-T-SR-WRITES-BEFORE ;] E-FFI-SYNTAX TTHROWSQ
-   [: FFI-T-SR-WRITES-AFTER ;] E-FFI-SYNTAX TTHROWSQ
-   [: FFI-T-SR-OUTSIDE ;] E-FFI-SYNTAX TTHROWSQ
+   [: FFI-T-SR-ZERO ;]
+   s" error[E-FFI-SYNTAX]: STRUCT-RESULT's byte count is not positive" FFI-T-SYNTAX
+   [: FFI-T-SR-OUTPUT ;]
+   s" error[E-FFI-SYNTAX]: STRUCT-RESULT with a declared output" FFI-T-SYNTAX
+   [: FFI-T-SR-NOT-LAST ;]
+   s" error[E-FFI-SYNTAX]: the clause names an input that is not ptr u8" FFI-T-SYNTAX
+   [: FFI-T-SR-NO-INPUT ;]
+   s" error[E-FFI-SYNTAX]: STRUCT-RESULT with no input to write to" FFI-T-SYNTAX
+   [: FFI-T-SR-TWICE ;]
+   s" error[E-FFI-SYNTAX]: a second STRUCT-RESULT" FFI-T-SYNTAX
+   [: FFI-T-SR-VARIADIC-BEFORE ;]
+   s" error[E-FFI-SYNTAX]: a struct call with VARIADIC" FFI-T-SYNTAX
+   [: FFI-T-SR-VARIADIC-AFTER ;]
+   s" error[E-FFI-SYNTAX]: a struct call with VARIADIC" FFI-T-SYNTAX
+   [: FFI-T-SR-WRITES-BEFORE ;]
+   s" error[E-FFI-SYNTAX]: a second clause names the same input" FFI-T-SYNTAX
+   [: FFI-T-SR-WRITES-AFTER ;]
+   s" error[E-FFI-SYNTAX]: the clause names STRUCT-RESULT's destination, the last input" FFI-T-SYNTAX
+   [: FFI-T-SR-OUTSIDE ;]
+   s" error[E-FFI-SYNTAX]: a clause outside a FUNCTION: declaration" FFI-T-SYNTAX
    s" sixteen C arguments beside the destination exceed the inputs" T-LABEL
-   [: FFI-T-SR-INPUTS ;] E-FFI-ARITY TTHROWSQ ;
+   [: FFI-T-SR-INPUTS ;] E-FFI-ARITY
+   s" error[E-FFI-ARITY]: a FUNCTION: declaration has at most 16 inputs" FFI-T-RECORD ;
 
 FFI-T-STRUCT-RESULTS

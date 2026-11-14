@@ -199,7 +199,7 @@ package CERTIFY-DOES-DEFINER
 \ were compiled by the engine here; what they create is known only from the
 \ store the checker wrote when it certified their clause. Without that store,
 \ tools/check.f rejects as E-UNDEFINED a word a resident definer creates, as
-\ the resident CODEGEN:BUFFER-E creates src/lib/ffi-callback.f's NAME. The
+\ the resident CODEGEN:BUFFER creates src/lib/ffi-callback.f's NAME. The
 \ last rows are the latch's lifetime: the store is written between two checker
 \ entry points. The engine checks a clause and then the definer's body; the
 \ scanner checks the body and then the clause. Either order must leave a plain

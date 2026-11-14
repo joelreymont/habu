@@ -179,35 +179,50 @@ CALLBACK: FFI-T-SA-CB ( -- n ) 0 FALLBACK ;CALLBACK
 
 : FFI-T-SA-REFUSALS ( -- )
    s" malformed struct-argument declarations are refused" T-LABEL
-   [: s" 0 8 STRUCT-ARG" evaluate-closed ;] E-FFI-SYNTAX TTHROWSQ
+   [: s" 0 8 STRUCT-ARG" evaluate-closed ;]
+      s" error[E-FFI-SYNTAX]: a clause outside a FUNCTION: declaration" FFI-T-SYNTAX
    [: s" FUNCTION: FFI-T-SAX hb_sum8 ( ptr u8 -- n ) 1 8 STRUCT-ARG ;FUNCTION"
-      evaluate-closed ;] E-FFI-SYNTAX TTHROWSQ
+      evaluate-closed ;]
+      s" error[E-FFI-SYNTAX]: the clause names no input of the declaration" FFI-T-SYNTAX
    [: s" FUNCTION: FFI-T-SAX hb_sum8 ( ptr u8 -- n ) -1 8 STRUCT-ARG ;FUNCTION"
-      evaluate-closed ;] E-FFI-SYNTAX TTHROWSQ
+      evaluate-closed ;]
+      s" error[E-FFI-SYNTAX]: the clause names no input of the declaration" FFI-T-SYNTAX
    [: s" FUNCTION: FFI-T-SAX hb_sum8 ( n -- n ) 0 8 STRUCT-ARG ;FUNCTION"
-      evaluate-closed ;] E-FFI-SYNTAX TTHROWSQ
+      evaluate-closed ;]
+      s" error[E-FFI-SYNTAX]: the clause names an input that is not ptr u8" FFI-T-SYNTAX
    [: s" FUNCTION: FFI-T-SAX hb_sum8 ( ptr u8 -- n ) 0 0 STRUCT-ARG ;FUNCTION"
-      evaluate-closed ;] E-FFI-SYNTAX TTHROWSQ
+      evaluate-closed ;]
+      s" error[E-FFI-SYNTAX]: STRUCT-ARG's byte count is not positive" FFI-T-SYNTAX
    [: s" FUNCTION: FFI-T-SAX hb_sum8 ( ptr u8 -- n ) 0 8 STRUCT-ARG 0 8 STRUCT-ARG ;FUNCTION"
-      evaluate-closed ;] E-FFI-SYNTAX TTHROWSQ
+      evaluate-closed ;]
+      s" error[E-FFI-SYNTAX]: a second clause names the same input" FFI-T-SYNTAX
    [: s" FUNCTION: FFI-T-SAX hb_sum8 ( ptr u8 -- n ) 0 8 WRITES-BYTES 0 8 STRUCT-ARG ;FUNCTION"
-      evaluate-closed ;] E-FFI-SYNTAX TTHROWSQ
+      evaluate-closed ;]
+      s" error[E-FFI-SYNTAX]: a second clause names the same input" FFI-T-SYNTAX
    [: s" FUNCTION: FFI-T-SAX hb_sum8 ( ptr u8 -- n ) 0 8 STRUCT-ARG 0 8 WRITES-BYTES ;FUNCTION"
-      evaluate-closed ;] E-FFI-SYNTAX TTHROWSQ
+      evaluate-closed ;]
+      s" error[E-FFI-SYNTAX]: a second clause names the same input" FFI-T-SYNTAX
    [: s" FUNCTION: FFI-T-SAX hb_sum8 ( ptr u8 n -- n ) 0 8 STRUCT-ARG 0 1 WRITES-ARG ;FUNCTION"
-      evaluate-closed ;] E-FFI-SYNTAX TTHROWSQ
+      evaluate-closed ;]
+      s" error[E-FFI-SYNTAX]: a second clause names the same input" FFI-T-SYNTAX
    [: s" FUNCTION: FFI-T-SAX hb_sum8 ( ptr u8 -- ) 16 STRUCT-RESULT 0 8 STRUCT-ARG ;FUNCTION"
-      evaluate-closed ;] E-FFI-SYNTAX TTHROWSQ
+      evaluate-closed ;]
+      s" error[E-FFI-SYNTAX]: the clause names STRUCT-RESULT's destination, the last input" FFI-T-SYNTAX
    [: s" FUNCTION: FFI-T-SAX hb_sum8 ( ptr u8 -- ) 0 8 STRUCT-ARG 16 STRUCT-RESULT ;FUNCTION"
-      evaluate-closed ;] E-FFI-SYNTAX TTHROWSQ
+      evaluate-closed ;]
+      s" error[E-FFI-SYNTAX]: a second clause names the same input" FFI-T-SYNTAX
    [: s" FUNCTION: FFI-T-SAX hb_sum8 ( ptr u8 n -- n ) 1 VARIADIC 0 8 STRUCT-ARG ;FUNCTION"
-      evaluate-closed ;] E-FFI-SYNTAX TTHROWSQ
+      evaluate-closed ;]
+      s" error[E-FFI-SYNTAX]: a struct call with VARIADIC" FFI-T-SYNTAX
    [: s" FUNCTION: FFI-T-SAX hb_sum8 ( ptr u8 n -- n ) 0 8 STRUCT-ARG 1 VARIADIC ;FUNCTION"
-      evaluate-closed ;] E-FFI-SYNTAX TTHROWSQ
+      evaluate-closed ;]
+      s" error[E-FFI-SYNTAX]: a struct call with VARIADIC" FFI-T-SYNTAX
    [: s" FUNCTION: FFI-T-SAX hb_sum8 ( ptr u8 -- r ) 0 8 STRUCT-ARG ;FUNCTION"
-      evaluate-closed ;] E-FFI-SYNTAX TTHROWSQ
+      evaluate-closed ;]
+      s" error[E-FFI-SYNTAX]: STRUCT-ARG with a float result" FFI-T-SYNTAX
    [: s" FUNCTION: FFI-T-SAX hb_sum8 ( ptr u8 -- f32 ) 0 8 STRUCT-ARG ;FUNCTION"
-      evaluate-closed ;] E-FFI-SYNTAX TTHROWSQ
+      evaluate-closed ;]
+      s" error[E-FFI-SYNTAX]: STRUCT-ARG with a float result" FFI-T-SYNTAX
 
    s" struct staging past sixteen cells is refused before publication" T-LABEL
    [: s" FUNCTION: FFI-T-SA-CAP hb_sum128 ( ptr u8 -- n ) 0 129 STRUCT-ARG ;FUNCTION"
@@ -230,7 +245,8 @@ CALLBACK: FFI-T-SA-CB ( -- n ) 0 FALLBACK ;CALLBACK
    s" FUNCTION: FFI-T-SA-CAP4 hb_none ( n n n n n n n n n n n n n n n ptr u8 -- ) 32 STRUCT-RESULT ;FUNCTION"
    evaluate-closed
    [: s" FUNCTION: FFI-T-SA-CAP5 hb_none ( n n n n n n n n n n n n n n n n ptr u8 -- ) 32 STRUCT-RESULT ;FUNCTION"
-      evaluate-closed ;] E-FFI-ARITY TTHROWSQ ;
+      evaluate-closed ;] E-FFI-ARITY
+   s" error[E-FFI-ARITY]: a FUNCTION: declaration has at most 16 inputs" FFI-T-RECORD ;
 
 : FFI-T-STRUCT-ARGS ( -- )
    FFI-T-REGISTER-ARGS

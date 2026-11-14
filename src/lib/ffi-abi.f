@@ -469,6 +469,21 @@ variable DLERROR-FN-CELL
    dup 0= if idx held SYMBOL-REPORT E-FFI-DLSYM throw then
    dup idx FN-ADDR! ;
 
+\ A rejection of the declaration is SYNTAX-OPEN, its message, then SYNTAX-HELP
+\ with the fix; it places the record at the token read last.
+: SYNTAX-OPEN ( -- )
+   s" E-FFI-SYNTAX" REJECTION:OPEN ;
+
+\ The throw keeps the code a catch reads; uncaught, the load exits 70.
+: SYNTAX-HELP ( ptr u8 n -- ) {: h:ptr hu:n :}
+   CHECK:DEFINER-PLACE
+   REJECTION:HELP  h hu REJECTION:EMIT-STR
+   REJECTION:KEEP  E-FFI-SYNTAX CHECKER-REFUSE ;
+
+: SYNTAX-REJECT ( ptr u8 n ptr u8 n -- )
+   {: m:ptr mu:n h:ptr hu:n :}
+   SYNTAX-OPEN  m mu REJECTION:EMIT-STR  h hu SYNTAX-HELP ;
+
 : NAME-ROOM ( n -- )
    {: u:n :}
    u 0 <= if E-FFI-SYNTAX throw then
@@ -983,8 +998,16 @@ CAST: >EFFECT ( n -- EFFECT:type )
 \ is on its line, so its types are read from their spans.
 
 : TOK! ( ptr u8 n -- ) {: a:ptr u:n :}
-   u 0= if E-FFI-SYNTAX throw then
-   u TOK-CAP > if E-FFI-SYNTAX throw then
+   u 0= if
+      s" the line ended before the declaration did"
+      s" write FUNCTION: NAME symbol ( inputs -- output ) on one line"
+      SYNTAX-REJECT
+   then
+   u TOK-CAP > if
+      SYNTAX-OPEN  s" a declaration token is at most " REJECTION:EMIT-STR
+      TOK-CAP REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR
+      s" use a shorter name" SYNTAX-HELP
+   then
    a TOK-BUF u BYTE-COPY
    u TOK-U ! ;
 
@@ -1005,22 +1028,55 @@ CAST: >EFFECT ( n -- EFFECT:type )
    a NAME-BUF u BYTE-COPY
    u NAME-U ! ;
 
+: SYMBOL-WRITTEN ( n -- )
+   {: u:n :}
+   u FN-NAME-CAP 1 - > if
+      SYNTAX-OPEN  s" a C symbol name is at most " REJECTION:EMIT-STR
+      FN-NAME-CAP 1 - REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR
+      s" call a longer symbol through a C function with a shorter name"
+      SYNTAX-HELP
+   then ;
+
 : SYM! ( -- )
    TOK$ {: a:ptr u:n :}
+   u SYMBOL-WRITTEN
    a SYM-BUF u BYTE-COPY
    u SYM-U ! ;
+
+: BASE-WRITTEN ( n -- )
+   {: u:n :}
+   u LIB-BASE-CAP > if
+      SYNTAX-OPEN  s" a library base name is at most " REJECTION:EMIT-STR
+      LIB-BASE-CAP REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR
+      s" write the name without its lib prefix and suffix: z for libz.so.1"
+      SYNTAX-HELP
+   then ;
 
 \ The base name is copied out of the token buffer because reading the version
 \ token overwrites it.
 : BASE! ( -- )
    TOK$ {: a:ptr u:n :}
+   u BASE-WRITTEN
    a BASE-BUF u BYTE-COPY
    u BASE-U ! ;
 
+: VERSION-WRITTEN ( n -- )
+   {: version:n :}
+   version LIB-VERSION-MAX > if
+      SYNTAX-OPEN  s" a library version is at most " REJECTION:EMIT-STR
+      LIB-VERSION-MAX REJECTION:EMIT-U
+      s" write the library's major version: 1 for libz.so.1"
+      SYNTAX-HELP
+   then ;
+
 : >VERSION ( ptr u8 n -- n )
    STR-PARSE-POS MATCH option
-      none OF E-FFI-SYNTAX throw ENDOF
-      some OF dup VERSION-CHECK ENDOF
+      none OF
+         s" a library version is not a number"
+         s" write versions as numbers split by commas: VERSIONED-LIBRARY z 1,2"
+         SYNTAX-REJECT
+      ENDOF
+      some OF dup VERSION-WRITTEN ENDOF
    ;MATCH ;
 
 \ A version list's rows, made from the last version to the first, each next
@@ -1053,9 +1109,20 @@ CAST: >EFFECT ( n -- EFFECT:type )
 : IN+ ( EFFECT:type -- ) EFF-TYPE @ swap EFFECT:IN EFF-TYPE ! ;
 : OUT+ ( EFFECT:type -- ) EFF-TYPE @ swap EFFECT:OUT EFF-TYPE ! ;
 
+\ A catch reads E-FFI-ARITY; uncaught, the load exits 70.
+: ARITY-REJECT ( -- )
+   s" E-FFI-ARITY" REJECTION:OPEN
+   s" a FUNCTION: declaration has at most " REJECTION:EMIT-STR
+   ARG-MAX REJECTION:EMIT-U  s"  inputs" REJECTION:EMIT-STR
+   CHECK:DEFINER-PLACE
+   REJECTION:HELP
+   s" call it through a C function that takes the inputs in a record"
+   REJECTION:EMIT-STR
+   REJECTION:KEEP  E-FFI-ARITY CHECKER-REFUSE ;
+
 : ARG+ ( n -- )
    {: kind:n :}
-   ARG-N @ ARG-MAX >= if E-FFI-ARITY throw then
+   ARG-N @ ARG-MAX >= if ARITY-REJECT then
    kind ARG-KIND ARG-N @ cells + !
    NO-EXT ARG-N @ ARG-EXT!
    NO-EXT ARG-N @ ARG-EXT-ARG!
@@ -1066,7 +1133,11 @@ CAST: >EFFECT ( n -- EFFECT:type )
 \ Answers the span from `ptr`, at A, through `u8`.
 : PTR-TAIL ( ptr u8 -- ptr u8 n ) {: a:ptr :}
    TOK-SPAN {: b:ptr u:n :}
-   s" u8" TOK-IS? 0= if E-FFI-SYNTAX throw then
+   s" u8" TOK-IS? 0= if
+      s" expected 'u8' after 'ptr'"
+      s" declare a pointer as ptr u8, a byte span, whatever C points at"
+      SYNTAX-REJECT
+   then
    a  b u + a - ;
 
 : IN-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -1079,7 +1150,11 @@ CAST: >EFFECT ( n -- EFFECT:type )
    K-VALUE ARG+ ;
 
 : OUT-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
-   RES-KIND @ R-NONE <> if E-FFI-SYNTAX throw then
+   RES-KIND @ R-NONE <> if
+      s" a FUNCTION: declaration has at most one output"
+      s" C returns one value: pass others as ptr u8 inputs with WRITES-BYTES"
+      SYNTAX-REJECT
+   then
    s" ptr" TOK-IS? if
       a PTR-TAIL EFFECT:READ-TYPE OUT+ R-POINTER RES-KIND ! exit
    then
@@ -1095,7 +1170,11 @@ CAST: >EFFECT ( n -- EFFECT:type )
    begin
       TOK-SPAN
       s" --" TOK-IS? if 2drop exit then
-      s" )" TOK-IS? if E-FFI-SYNTAX throw then
+      s" )" TOK-IS? if
+         s" expected '--' before ')'"
+         s" write the effect as ( inputs -- output ), '--' even with no output"
+         SYNTAX-REJECT
+      then
       IN-TOKEN
    again ;
 
@@ -1103,13 +1182,21 @@ CAST: >EFFECT ( n -- EFFECT:type )
    begin
       TOK-SPAN
       s" )" TOK-IS? if 2drop exit then
-      s" --" TOK-IS? if E-FFI-SYNTAX throw then
+      s" --" TOK-IS? if
+         s" a second '--' in the effect"
+         s" write one '--', between the inputs and the output"
+         SYNTAX-REJECT
+      then
       OUT-TOKEN
    again ;
 
 : EFFECT ( -- )
    TOK@
-   s" (" TOK-IS? 0= if E-FFI-SYNTAX throw then
+   s" (" TOK-IS? 0= if
+      s" expected '(' after the C symbol"
+      s" write FUNCTION: NAME symbol ( inputs -- output ) ;FUNCTION"
+      SYNTAX-REJECT
+   then
    EFFECT:EMPTY EFF-TYPE !
    INPUTS
    OUTPUTS ;
@@ -1440,7 +1527,11 @@ public
 \ is built, so a refused declaration leaves no half-built word.
 : OPEN-FUNCTION ( -- )
    [: CHECK-SCOPE
-      OPEN @ 0 <> if E-FFI-SYNTAX throw then
+      OPEN @ 0 <> if
+         s" FUNCTION: inside an open declaration"
+         s" end the declaration before it with ;FUNCTION"
+         SYNTAX-REJECT
+      then
       0 ARG-N ! -1 VAR-START ! 0 STRUCT-BYTES !
       R-NONE RES-KIND ! 0 RES-NULLABLE !
       TOK@ NAME!
@@ -1449,7 +1540,11 @@ public
       1 OPEN ! ;] KEEP-REST ;
 
 : CLOSE-FUNCTION ( -- )
-   [: OPEN @ 0= if E-FFI-SYNTAX throw then
+   [: OPEN @ 0= if
+         s" ;FUNCTION with no declaration open"
+         s" open one with FUNCTION: NAME symbol ( inputs -- output )"
+         SYNTAX-REJECT
+      then
       0 OPEN !
       PLAN-CALL
       EMIT ;] KEEP-REST ;
@@ -1459,27 +1554,70 @@ private
 \ A refused clause ABANDONS the declaration rather than leaving it half open:
 \ the next FUNCTION: in the file would otherwise refuse too, and the first
 \ diagnostic would name the wrong declaration.
-: REFUSE ( -- )
+: REJECT ( ptr u8 n ptr u8 n -- )
    0 OPEN !
-   E-FFI-SYNTAX throw ;
+   SYNTAX-REJECT ;
+
+: NOT-OPEN ( -- )
+   s" a clause outside a FUNCTION: declaration"
+   s" write the clause between FUNCTION: and ;FUNCTION" REJECT ;
+
+: NO-STRUCT-CALL ( -- )
+   s" this target has no struct call"
+   s" pass the record by its address through a C function" REJECT ;
+
+: STRUCT-VARIADIC ( -- )
+   s" a struct call with VARIADIC"
+   s" a struct call has no variadic arguments: declare a fixed effect"
+   REJECT ;
+
+: NO-INPUT ( -- )
+   s" the clause names no input of the declaration"
+   s" name an input by its place in the effect, the first 0" REJECT ;
+
+: NOT-SPAN ( -- )
+   s" the clause names an input that is not ptr u8"
+   s" name a ptr u8 input" REJECT ;
+
+: TAKEN ( -- )
+   s" a second clause names the same input"
+   s" give each ptr u8 input one WRITES-BYTES, WRITES-ARG or STRUCT-ARG"
+   REJECT ;
+
+: DEST-TAKEN ( -- )
+   s" the clause names STRUCT-RESULT's destination, the last input"
+   s" name another input: C writes the result record to the last one"
+   REJECT ;
 
 : CLAUSE-TARGET ( n -- ) {: idx:n :}
-   OPEN @ 0= if REFUSE then
-   idx 0 < if REFUSE then
-   idx ARG-N @ >= if REFUSE then
-   idx ARG-KIND@ K-POINTER <> if REFUSE then
-   idx ARG-EXT@ NO-EXT <> if REFUSE then
-   idx ARG-EXT-ARG@ NO-EXT <> if REFUSE then
-   idx ARG-SBYTES@ 0 <> if REFUSE then
-   STRUCT-BYTES @ 0 <> idx ARG-N @ 1- = and if REFUSE then ;
+   OPEN @ 0= if NOT-OPEN then
+   idx 0 < idx ARG-N @ >= or if NO-INPUT then
+   idx ARG-KIND@ K-POINTER <> if NOT-SPAN then
+   idx ARG-EXT@ NO-EXT <> if TAKEN then
+   idx ARG-EXT-ARG@ NO-EXT <> if TAKEN then
+   idx ARG-SBYTES@ 0 <> if TAKEN then
+   STRUCT-BYTES @ 0 <> idx ARG-N @ 1- = and if DEST-TAKEN then ;
+
+: VARIADIC-TWICE ( -- )
+   s" a second VARIADIC"
+   s" declare VARIADIC once, with the count of fixed inputs" REJECT ;
+
+: FIXED-RANGE ( -- )
+   s" VARIADIC's fixed count is not from 1 to the inputs declared"
+   s" write n VARIADIC with n the inputs before the first variadic one"
+   REJECT ;
+
+: VARIADIC-F32 ( -- )
+   s" an f32 variadic argument"
+   s" C promotes a variadic float to double: declare it r" REJECT ;
 
 : VARIADIC-CLAUSE ( n -- ) {: fixed:n :}
-   OPEN @ 0= if REFUSE then
-   VAR-START @ -1 <> if REFUSE then
-   STRUCT-BYTES @ 0 <> RECORDS? or if REFUSE then
-   fixed 1 < fixed ARG-N @ > or if REFUSE then
+   OPEN @ 0= if NOT-OPEN then
+   VAR-START @ -1 <> if VARIADIC-TWICE then
+   STRUCT-BYTES @ 0 <> RECORDS? or if STRUCT-VARIADIC then
+   fixed 1 < fixed ARG-N @ > or if FIXED-RANGE then
    ARG-N @ fixed ?do
-      i ARG-KIND@ K-FLOAT32 = if REFUSE then
+      i ARG-KIND@ K-FLOAT32 = if VARIADIC-F32 then
    loop
    fixed VAR-START !
    1 OPEN +! ;
@@ -1488,40 +1626,84 @@ private
 \ or the argument that carries the length.
 : EXTENT-CLAUSE ( n n -- ) {: idx:n len:n :}
    idx CLAUSE-TARGET
-   len 0 <= if REFUSE then
+   len 0 <= if
+      s" WRITES-BYTES's byte count is not positive"
+      s" write idx n WRITES-BYTES with n the bytes C writes, at least 1"
+      REJECT
+   then
    len idx ARG-EXT!
    1 OPEN +! ;
 
 : LENGTH-CLAUSE ( n n -- ) {: idx:n src:n :}
    idx CLAUSE-TARGET
-   src 0 < if REFUSE then
-   src ARG-N @ >= if REFUSE then
-   src ARG-KIND@ K-VALUE <> if REFUSE then
+   src 0 < src ARG-N @ >= or if
+      s" WRITES-ARG's length names no input of the declaration"
+      s" write idx len WRITES-ARG with len the input holding the byte count"
+      REJECT
+   then
+   src ARG-KIND@ K-VALUE <> if
+      s" WRITES-ARG's length input is not an integer"
+      s" name an n input that holds the byte count" REJECT
+   then
    src idx ARG-EXT-ARG!
    1 OPEN +! ;
 
+: RESULT-CHECK ( n -- ) {: bytes:n :}
+   STRUCT-BYTES @ 0 <> if
+      s" a second STRUCT-RESULT" s" declare STRUCT-RESULT once" REJECT
+   then
+   bytes 0 <= if
+      s" STRUCT-RESULT's byte count is not positive"
+      s" write n STRUCT-RESULT with n the record's size in bytes" REJECT
+   then
+   RES-KIND @ R-NONE <> if
+      s" STRUCT-RESULT with a declared output"
+      s" declare no output: C writes the record to the last input" REJECT
+   then ;
+
 : STRUCT-RESULT-CLAUSE ( n -- ) {: bytes:n :}
-   OPEN @ 0= if REFUSE then
-   HB-TARGET-LINUX-X86-64? if REFUSE then
-   STRUCT-BYTES @ 0 <> if REFUSE then
-   bytes 0 <= if REFUSE then
-   RES-KIND @ R-NONE <> if REFUSE then
-   VAR-START @ -1 <> if REFUSE then
-   ARG-N @ 0= if REFUSE then
+   OPEN @ 0= if NOT-OPEN then
+   HB-TARGET-LINUX-X86-64? if NO-STRUCT-CALL then
+   bytes RESULT-CHECK
+   VAR-START @ -1 <> if STRUCT-VARIADIC then
+   ARG-N @ 0= if
+      s" STRUCT-RESULT with no input to write to"
+      s" declare the record's address as the last input, a ptr u8" REJECT
+   then
    ARG-N @ 1- CLAUSE-TARGET
    bytes STRUCT-BYTES !
    1 OPEN +! ;
 
 \ The struct call returns x0 and x1 only, so a float result has no shape here.
 : STRUCT-ARG-CLAUSE ( n n -- ) {: idx:n bytes:n :}
-   OPEN @ 0= if REFUSE then
-   HB-TARGET-LINUX-X86-64? if REFUSE then
+   OPEN @ 0= if NOT-OPEN then
+   HB-TARGET-LINUX-X86-64? if NO-STRUCT-CALL then
    idx CLAUSE-TARGET
-   bytes 0 <= if REFUSE then
-   VAR-START @ -1 <> if REFUSE then
-   RES-KIND @ R-FLOAT = RES-KIND @ R-FLOAT32 = or if REFUSE then
+   bytes 0 <= if
+      s" STRUCT-ARG's byte count is not positive"
+      s" write idx n STRUCT-ARG with n the record's size in bytes" REJECT
+   then
+   VAR-START @ -1 <> if STRUCT-VARIADIC then
+   RES-KIND @ R-FLOAT = RES-KIND @ R-FLOAT32 = or if
+      s" STRUCT-ARG with a float result"
+      s" the struct call returns x0 and x1: declare an integer result" REJECT
+   then
    bytes idx ARG-SBYTES!
    1 OPEN +! ;
+
+: PATH-WRITTEN ( n -- )
+   {: u:n :}
+   u 0 <= if
+      s" the library path is empty"
+      s" write the library's path or file name after LIBRARY, on its line"
+      SYNTAX-REJECT
+   then
+   u LIB-PATH-CAP 1 - > if
+      SYNTAX-OPEN  s" a library path is at most " REJECTION:EMIT-STR
+      LIB-PATH-CAP 1 - REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR
+      s" name the library by its file name, which the loader searches for"
+      SYNTAX-HELP
+   then ;
 public
 
 : SET-VARIADIC ( n -- ) [: VARIADIC-CLAUSE ;] KEEP-REST ;
@@ -1531,10 +1713,15 @@ public
 : SET-STRUCT-ARG ( n n -- ) [: STRUCT-ARG-CLAUSE ;] KEEP-REST ;
 
 : SELECT-LIBRARY ( ptr u8 n -- ) {: path:ptr u:n :}
-   u 0 <= u LIBRARY-PATH-CAP >= or if E-FFI-SYNTAX throw then
+   u PATH-ROOM
    path u CHECK-SPELLING
    path u LIBRARY-PATH CUR-LIB !
    RECORD-SCOPE ;
+
+\ LIBRARY's path as written: a bad length is rejected with a record placed at it.
+: SELECT-WRITTEN-LIBRARY ( ptr u8 n -- ) {: path:ptr u:n :}
+   u PATH-WRITTEN
+   path u SELECT-LIBRARY ;
 
 : SELECT-VERSIONED-LIBRARY ( -- )
    [: TOK@ BASE!
@@ -1558,7 +1745,7 @@ seal-package
 \ anyway. All three parse the live input stream, which their ( -- ) rows do
 \ not model, so they are top-level-interpret-only.
 : LIBRARY ( -- )
-   parse-name FFI:SELECT-LIBRARY ;
+   parse-name FFI:SELECT-WRITTEN-LIBRARY ;
 parses: LIBRARY 1
 
 : VERSIONED-LIBRARY ( -- )

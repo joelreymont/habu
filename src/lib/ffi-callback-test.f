@@ -16,6 +16,7 @@ require src/lib/engine-candidate.f
 require src/lib/test/runner.f
 require src/lib/task.f
 require test/ffi-callback-fixture.f
+require test/decl-diag-capture.f
 
 package FFI-CB-TEST
 using FFI-CB
@@ -208,9 +209,9 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    [: 0 ARG@ drop ;] catch E-FFI-CALLBACK-STATE =
       s" a frame accessor outside a callback is E-FFI-CALLBACK-STATE" FACT ;
 
-\ Each rides evaluate-closed, so the refusal is a throw this file catches.
+\ Each rides evaluate-closed, so the rejection is a throw this file catches.
 : DECL-BAD-TOKEN ( -- )
-   s" CALLBACK: CBT-X1 ( q -- ) ;CALLBACK" evaluate-closed ;
+   s" CALLBACK: CB ( nosuch -- n ) 0 FALLBACK ;CALLBACK" evaluate-closed ;
 : DECL-BAD-PTR ( -- )
    s" CALLBACK: CBT-X2 ( ptr n -- ) ;CALLBACK" evaluate-closed ;
 : DECL-TWO-RESULTS ( -- )
@@ -239,29 +240,81 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    s" CALLBACK: CBT-XA ( -- ) CALLBACK: CBT-XB ( -- ) ;CALLBACK" evaluate-closed ;
 : DECL-SEVENTEENTH ( -- )
    s" CALLBACK: CBT-XC ( -- ) ;CALLBACK" evaluate-closed ;
+: DECL-COLONS ( -- )
+   s" CALLBACK: A:B:C ( -- ) ;CALLBACK" evaluate-closed ;
+: DECL-EMPTY-WORD ( -- )
+   s" CALLBACK: A: ( -- ) ;CALLBACK" evaluate-closed ;
+: DECL-EMPTY-PACKAGE ( -- )
+   s" CALLBACK: :B ( -- ) ;CALLBACK" evaluate-closed ;
 \ A name of NAME-CAP (64) bytes fits; one byte more does not.
 : DECL-NAME-65 ( -- )
    s" CALLBACK: CBT-NAME-65-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX ( -- ) ;CALLBACK" evaluate-closed ;
 : DECL-NAME-64 ( -- )
    s" CALLBACK: CBT-NAME-64-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX ( -- ) ;CALLBACK" evaluate-closed ;
 
+: CAUGHT ( [ -- ] -- n ) {: q :}
+   DECL-DIAG:PROSE  q catch  DECL-DIAG:OFF ;
+
+\ Whether Q is rejected with CODE by a record holding HEAD and HELP.
+: CODE-RECORD? ( [ -- ] n ptr u8 n ptr u8 n -- bool )
+   {: q code:n h:ptr hu:n p:ptr pu:n :}
+   DECL-DIAG:PROSE  q catch code =
+   h hu DECL-DIAG:HAS? and  p pu DECL-DIAG:HAS? and
+   DECL-DIAG:OFF ;
+
+: RECORD? ( [ -- ] ptr u8 n ptr u8 n -- bool )
+   {: q h:ptr hu:n p:ptr pu:n :}
+   q E-FFI-SYNTAX h hu p pu CODE-RECORD? ;
+
+: INT-ARITY$ ( -- ptr u8 n )
+   HB-TARGET-LINUX-X86-64? if
+      s" error[E-FFI-ARITY]: a callback takes at most 6 integer arguments"
+   else
+      s" error[E-FFI-ARITY]: a callback takes at most 8 integer arguments"
+   then ;
+
+: ARITY-HELP$ ( -- ptr u8 n )
+   s" = help: pass the rest in memory through a ptr u8 argument" ;
+
 : CASE-DECLARATIONS ( -- )
-   s" == declarations refused" SAY
-   [: DECL-BAD-TOKEN ;] catch E-FFI-SYNTAX = s" an argument type outside n i32 u32 r ptr u8: E-FFI-SYNTAX" FACT
-   [: DECL-BAD-PTR ;] catch E-FFI-SYNTAX = s" a pointer that is not ptr u8: E-FFI-SYNTAX" FACT
-   [: DECL-TWO-RESULTS ;] catch E-FFI-SYNTAX = s" two results: E-FFI-SYNTAX" FACT
-   [: DECL-PTR-RESULT ;] catch E-FFI-SYNTAX = s" a pointer result: E-FFI-SYNTAX" FACT
-   [: DECL-NO-FALLBACK ;] catch E-FFI-SYNTAX = s" a value result with no fallback: E-FFI-SYNTAX" FACT
-   [: DECL-WRONG-FALLBACK ;] catch E-FFI-SYNTAX = s" FFALLBACK for an integer result: E-FFI-SYNTAX" FACT
-   [: DECL-VOID-FALLBACK ;] catch E-FFI-SYNTAX = s" FALLBACK with no result: E-FFI-SYNTAX" FACT
-   [: DECL-TOO-MANY-INTS ;] catch E-FFI-ARITY = s" an integer argument past the registers: E-FFI-ARITY" FACT
-   [: DECL-NINE-FLOATS ;] catch E-FFI-ARITY = s" a ninth float argument: E-FFI-ARITY" FACT
-   [: DECL-STRAY-CLOSE ;] catch E-FFI-SYNTAX = s" ;CALLBACK with nothing open: E-FFI-SYNTAX" FACT
-   [: DECL-STRAY-FALLBACK ;] catch E-FFI-SYNTAX = s" FALLBACK with nothing open: E-FFI-SYNTAX" FACT
-   [: DECL-NESTED ;] catch E-FFI-SYNTAX = s" CALLBACK: inside an open declaration: E-FFI-SYNTAX" FACT
+   s" == declarations rejected" SAY
+   [: DECL-BAD-TOKEN ;]
+      s" error[E-FFI-SYNTAX]: unknown argument type 'nosuch'"
+      s" = help: an argument is n, i32, u32, r or ptr u8" RECORD?
+      s" an argument type outside n i32 u32 r ptr u8: E-FFI-SYNTAX" FACT
+   [: DECL-BAD-PTR ;] CAUGHT E-FFI-SYNTAX = s" a pointer that is not ptr u8: E-FFI-SYNTAX" FACT
+   [: DECL-TWO-RESULTS ;] CAUGHT E-FFI-SYNTAX = s" two results: E-FFI-SYNTAX" FACT
+   [: DECL-PTR-RESULT ;] CAUGHT E-FFI-SYNTAX = s" a pointer result: E-FFI-SYNTAX" FACT
+   [: DECL-NO-FALLBACK ;] CAUGHT E-FFI-SYNTAX = s" a value result with no fallback: E-FFI-SYNTAX" FACT
+   [: DECL-WRONG-FALLBACK ;] CAUGHT E-FFI-SYNTAX = s" FFALLBACK for an integer result: E-FFI-SYNTAX" FACT
+   [: DECL-VOID-FALLBACK ;] CAUGHT E-FFI-SYNTAX = s" FALLBACK with no result: E-FFI-SYNTAX" FACT
+   [: DECL-TOO-MANY-INTS ;] E-FFI-ARITY INT-ARITY$ ARITY-HELP$ CODE-RECORD?
+      s" an integer argument past the registers: E-FFI-ARITY" FACT
+   [: DECL-NINE-FLOATS ;] E-FFI-ARITY
+      s" error[E-FFI-ARITY]: a callback takes at most 8 float arguments"
+      ARITY-HELP$ CODE-RECORD?
+      s" a ninth float argument: E-FFI-ARITY" FACT
+   [: DECL-STRAY-CLOSE ;] CAUGHT E-FFI-SYNTAX = s" ;CALLBACK with nothing open: E-FFI-SYNTAX" FACT
+   [: DECL-STRAY-FALLBACK ;] CAUGHT E-FFI-SYNTAX = s" FALLBACK with nothing open: E-FFI-SYNTAX" FACT
+   [: DECL-NESTED ;] CAUGHT E-FFI-SYNTAX = s" CALLBACK: inside an open declaration: E-FFI-SYNTAX" FACT
    [: DECL-SEVENTEENTH ;] catch 0=
       s" the seventeenth declaration succeeds" FACT
-   [: DECL-NAME-65 ;] catch E-FFI-SYNTAX = s" a 65-byte name: E-FFI-SYNTAX" FACT
+   [: DECL-NAME-65 ;]
+      s" error[E-FFI-SYNTAX]: a callback name is at most 64 bytes"
+      s" = help: shorten the name" RECORD?
+      s" a 65-byte name: E-FFI-SYNTAX" FACT
+   [: DECL-COLONS ;]
+      s" error[E-FFI-SYNTAX]: more than one ':' in callback name 'A:B:C'"
+      s" = help: name it NAME, or PACKAGE:NAME" RECORD?
+      s" a name with two ':': E-FFI-SYNTAX" FACT
+   [: DECL-EMPTY-WORD ;]
+      s" error[E-FFI-SYNTAX]: an empty package or word beside ':' in callback name 'A:'"
+      s" = help: name it NAME, or PACKAGE:NAME" RECORD?
+      s" a name ending in ':': E-FFI-SYNTAX" FACT
+   [: DECL-EMPTY-PACKAGE ;]
+      s" error[E-FFI-SYNTAX]: an empty package or word beside ':' in callback name ':B'"
+      s" = help: name it NAME, or PACKAGE:NAME" RECORD?
+      s" a name starting with ':': E-FFI-SYNTAX" FACT
    [: DECL-NAME-64 ;] catch 0= s" a 64-byte name is accepted" FACT ;
 
 : PAD-PAST-EDGE ( -- ) begin DECLARED POW2? while PAD repeat ;
@@ -530,7 +583,7 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    s" ok   a frame accessor outside a callback is E-FFI-CALLBACK-STATE" W ;
 
 : WANT-DECLARATIONS ( -- )
-   s" == declarations refused" W
+   s" == declarations rejected" W
    s" ok   an argument type outside n i32 u32 r ptr u8: E-FFI-SYNTAX" W
    s" ok   a pointer that is not ptr u8: E-FFI-SYNTAX" W
    s" ok   two results: E-FFI-SYNTAX" W
@@ -545,6 +598,9 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    s" ok   CALLBACK: inside an open declaration: E-FFI-SYNTAX" W
    s" ok   the seventeenth declaration succeeds" W
    s" ok   a 65-byte name: E-FFI-SYNTAX" W
+   s" ok   a name with two ':': E-FFI-SYNTAX" W
+   s" ok   a name ending in ':': E-FFI-SYNTAX" W
+   s" ok   a name starting with ':': E-FFI-SYNTAX" W
    s" ok   a 64-byte name is accepted" W ;
 
 : WANT-ROLLBACK ( -- )

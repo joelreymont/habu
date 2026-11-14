@@ -275,15 +275,15 @@ public
 \ The line of a definer whose element is whole cells.
 : CELL-LINE ( ptr u8 n -- ptr u8 n ptr u8 n n ) RES-TRUE DECL-LINE ;
 
-private
-
-using SCHEMA-REG
-
 \ Places the rejection at the token read last, the definer's own or
 \ one it parsed.
 : DEFINER-PLACE ( -- )
    SRCLOC:TOKEN$ REJECTION:AT  s" the definer was reading here"
    REJECTION:EMIT-STR ;
+
+private
+
+using SCHEMA-REG
 
 \ A type: a live node, never an effect side's row.
 : TYPE-ARG ( n -- n ) {: node:n :}

@@ -45,9 +45,8 @@ CAST: CB-HEAD-CELL ( ptr n -- ptr ptr u8 )
 
 public
 
-\ Defines NAME as a buffer descriptor with explicit cap-err and val-err codes, so
-\ a package keeps the throw code its callers see (src/lib/ffi-callback.f's NAME
-\ throws E-FFI-SYNTAX) without a catch-and-remap wrapper.
+\ Defines NAME as a buffer descriptor that throws cap-err and val-err, so a
+\ package keeps the throw code its callers see without a catch-and-remap wrapper.
 : BUFFER-E ( n n n -- )   \ cap cap-err val-err --
    create CB-HEADER,  does> ( -- ptr n ) ;
 
