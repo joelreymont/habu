@@ -31,9 +31,9 @@ private
 
 47 constant SLASH
 1 constant ERROR-SEVERITY                \ LSP DiagnosticSeverity.Error
-3 constant INFORMATION-SEVERITY          \ LSP DiagnosticSeverity.Information
+2 constant WARNING-SEVERITY              \ LSP DiagnosticSeverity.Warning
 
-TYPED-VARIABLE JSON-ST JSON:cursor       \ JSON reader storage for screening a packet line
+TYPED-VARIABLE JSON-ST JSON:cursor       \ JSON reader storage for reading a packet line
 create PUB-B BUF:HDR-BYTES allot         \ a notification's bytes, grown as written
 create NEW-B BUF:HDR-BYTES allot         \ the files this check published lists for
 TYPED-VARIABLE W JSON:writer
@@ -91,10 +91,10 @@ variable ITEMS                           \ and the diagnostics in it so far
 \ One diagnostic per packet, fields verbatim. range: byte_start and byte_end in
 \ LSP counting (lines by LF, characters in UTF-16 units); a missing start is 0, a
 \ missing end the start, both held to the text and the end to no less than the
-\ start; the packet's numbers stay in data. severity: 1 for rejected or
-\ uncheckable, 3 for deferred, else the client's. code, and source "habu".
-\ message: the packet's, else its code, its non-empty suggestion, then
-\ `expected: ` and `actual: ` lines when present. data: the whole packet.
+\ start; the packet's numbers stay in data. severity: 1 for an error, 2 for a
+\ warning, else the client's. code, and source "habu". message: the packet's,
+\ then its non-empty help and its notes' `expected: ` and `found: ` lines when
+\ present. data: the whole packet.
 
 : QUOTE ( ptr JSON:writer -- ptr JSON:writer )  s\" \"" WRITE-RAW ;
 
@@ -103,12 +103,10 @@ variable ITEMS                           \ and the diagnostics in it so far
    QUOTE a u WRITE-RAW QUOTE ;
 
 : SEVERITY ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
-   s" verdict" STRING-MEMBER 0= if 2drop exit then
+   s" severity" STRING-MEMBER 0= if 2drop exit then
    {: v:ptr vu:n :}
-   v vu s" rejected" STR=  v vu s" uncheckable" STR= or if
-      WRITE-COMMA s" severity" ERROR-SEVERITY WRITE-FIELD-U exit
-   then
-   v vu s" deferred" STR= if WRITE-COMMA s" severity" INFORMATION-SEVERITY WRITE-FIELD-U then ;
+   v vu s" error" STR= if WRITE-COMMA s" severity" ERROR-SEVERITY WRITE-FIELD-U exit then
+   v vu s" warning" STR= if WRITE-COMMA s" severity" WARNING-SEVERITY WRITE-FIELD-U then ;
 
 : CODE-FIELD ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
    s" code" STRING-MEMBER 0= if 2drop exit then
@@ -116,25 +114,33 @@ variable ITEMS                           \ and the diagnostics in it so far
    WRITE-COMMA s" code" WRITE-KEY c cu QUOTED ;
 
 : SUGGESTION ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
-   s" suggestion" STRING-MEMBER over 0 > and 0= if 2drop exit then
+   s" help" STRING-MEMBER over 0 > and 0= if 2drop exit then
    {: s:ptr su:n :}
    s" \n" WRITE-RAW s su WRITE-RAW ;
 
+\ The raw text of the packet's note under this key, as MEMBER answers a member.
+: NOTE ( ptr u8 n ptr u8 n -- ptr u8 n bool )
+   {: a:ptr u:n k:ptr ku:n :}
+   JSON-ST a u READ-INIT
+   READ-NEXT drop
+   s" notes" READ-FIND-KEY 0= if READ-CLOSE NULL$ false exit then
+   READ-TOKEN T-OBJ <> if READ-CLOSE NULL$ false exit then
+   k ku READ-FIND-KEY 0= if READ-CLOSE NULL$ false exit then
+   READ-TOKEN >r READ-SPAN$ rot READ-CLOSE r> T-STR = ;
+
 : PIECE ( ptr JSON:writer ptr u8 n ptr u8 n -- ptr JSON:writer )
    {: a:ptr u:n k:ptr ku:n :}
-   a u k ku STRING-MEMBER 0= if 2drop exit then
+   a u k ku NOTE 0= if 2drop exit then
    {: v:ptr vu:n :}
    s" \n" WRITE-RAW k ku WRITE-RAW s" : " WRITE-RAW v vu WRITE-RAW ;
 
 : MESSAGE ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
    {: a:ptr u:n :}
-   a u s" message" STRING-MEMBER if QUOTED exit then
-   2drop
    QUOTE
-   a u s" code" STRING-MEMBER if WRITE-RAW else 2drop then
+   a u s" message" STRING-MEMBER if WRITE-RAW else 2drop then
    a u SUGGESTION
    a u s" expected" PIECE
-   a u s" actual" PIECE
+   a u s" found" PIECE
    QUOTE ;
 
 : DIAGNOSTIC ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )

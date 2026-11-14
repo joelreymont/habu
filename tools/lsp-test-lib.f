@@ -115,8 +115,8 @@
 \ - a packet placed at the name of the definition it refuses, a public word
 \   whose private twin moves other cells, not published at that name
 \   ......................................................... shadowed-arity
-\ - a warning, which carries no verdict, published with a severity or not at
-\   the name of the definition whose effect it did not record .. not-recorded
+\ - a warning published with a severity other than 2 or not at the name of
+\   the definition whose effect it did not record ............ not-recorded
 \ - a bare use that names words of two used packages, or a global and a used
 \   package's public word, in a body or a does> clause, not published at its
 \   token as E-USING-AMBIGUOUS or E-USING-SHADOW-GLOBAL, or refusing more
@@ -1634,15 +1634,23 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    k ku JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE NULL$ false exit then
    JSON:READ-TOKEN >r JSON:READ-SPAN$ rot JSON:READ-CLOSE r> JSON:T-STR = ;
 
+\ The raw text of the packet's note under this key, as MEMBER$ answers a member.
+: NOTE$ ( ptr u8 n ptr u8 n -- ptr u8 n bool )
+   {: a:ptr u:n k:ptr ku:n :}
+   JSON-ST a u JSON:READ-INIT
+   JSON:READ-NEXT drop
+   s" notes" JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE NULL$ false exit then
+   JSON:READ-TOKEN JSON:T-OBJ <> if JSON:READ-CLOSE NULL$ false exit then
+   k ku JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE NULL$ false exit then
+   JSON:READ-TOKEN >r JSON:READ-SPAN$ rot JSON:READ-CLOSE r> JSON:T-STR = ;
+
 : MESSAGE+ ( ptr u8 n -- )
    {: a:ptr u:n :}
    s\" \"" EXP+
-   a u s" message" MEMBER$ if EXP+ s\" \"" EXP+ exit then
-   2drop
-   a u s" code" MEMBER$ drop EXP+
-   a u s" suggestion" MEMBER$ over 0 > and if s" \n" EXP+ EXP+ else 2drop then
-   a u s" expected" MEMBER$ if s" \nexpected: " EXP+ EXP+ else 2drop then
-   a u s" actual" MEMBER$ if s" \nactual: " EXP+ EXP+ else 2drop then
+   a u s" message" MEMBER$ if EXP+ else 2drop then
+   a u s" help" MEMBER$ over 0 > and if s" \n" EXP+ EXP+ else 2drop then
+   a u s" expected" NOTE$ if s" \nexpected: " EXP+ EXP+ else 2drop then
+   a u s" found" NOTE$ if s" \nfound: " EXP+ EXP+ else 2drop then
    s\" \"" EXP+ ;
 
 \ The publish the next frame must be, for the document or the file at PATH,
@@ -1685,14 +1693,6 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    u 0= if exit then
    l1 c1 l2 c2 RANGE+
    s\" ,\"severity\":" EXP+ sev INT$ EXP+
-   c cu a u CODED+ ;
-
-\ DIAG+ for a packet with no verdict, whose diagnostic has no severity.
-: UNRATED+ ( n n n n ptr u8 n -- )
-   {: l1:n c1:n l2:n c2:n c:ptr cu:n :}
-   c cu PACKET-FOR {: a:ptr u:n :}
-   u 0= if exit then
-   l1 c1 l2 c2 RANGE+
    c cu a u CODED+ ;
 
 : PUBLISHES ( -- )
@@ -2368,7 +2368,7 @@ USE-MAX 1 + constant OVER-USINGS
    SESSION-CAPABILITIES
    WIDENS A-PATH CHECKS
    A-PATH s" verified" COMPLETED
-   A-PATH 1 EXPECT 1 2 1 11 s" W-EFFECT-NOT-RECORDED" UNRATED+ PUBLISHES ;
+   A-PATH 1 EXPECT 1 2 1 11 2 s" W-EFFECT-NOT-RECORDED" DIAG+ PUBLISHES ;
 
 : TWO-USED ( -- ptr u8 n )
    s\" package LSPT-UA\npublic\n: LSPT-W ( n -- ) drop ;\n;package\npackage LSPT-UB\npublic\n: LSPT-W ( n -- ) drop ;\n;package\nusing LSPT-UA\nusing LSPT-UB\n: LSPT-U ( -- ) 1 LSPT-W ;\n: LSPT-M ( -- ) 1 ;\n;using\n;using\n" ;
@@ -2450,7 +2450,7 @@ USE-MAX 1 + constant OVER-USINGS
    SAY
    DEFERRED-AT-TOP A-PATH CHECKS
    A-PATH s" deferred" COMPLETED
-   A-PATH 2 EXPECT 1 0 1 4 3 s" W-CHECK-DEFERRED" DIAG+ PUBLISHES ;
+   A-PATH 2 EXPECT 1 0 1 4 2 s" W-CHECK-DEFERRED" DIAG+ PUBLISHES ;
 
 : DEFERRED-IN-BODY ( -- ptr u8 n )  s\" s\" : G ( -- n ) 2 ;\" evaluate\n: F ( -- n ) NOSUCH ;\n" ;
 
@@ -2462,8 +2462,8 @@ USE-MAX 1 + constant OVER-USINGS
    DEFERRED-IN-BODY A-PATH CHECKS
    A-PATH s" deferred" COMPLETED
    A-PATH 1 EXPECT
-   0 21 0 29 3 s" W-CHECK-DEFERRED" DIAG+
-   1 13 1 19 3 s" W-CHECK-DEFERRED" DIAG+ PUBLISHES ;
+   0 21 0 29 2 s" W-CHECK-DEFERRED" DIAG+
+   1 13 1 19 2 s" W-CHECK-DEFERRED" DIAG+ PUBLISHES ;
 
 : DEFERRED-UNENDED-TEXT ( -- )
    TXT-B CLEAR
@@ -2479,8 +2479,8 @@ USE-MAX 1 + constant OVER-USINGS
    TXT$ A-PATH CHECKS
    A-PATH s" refused" COMPLETED
    A-PATH 1 EXPECT
-   0 21 0 29 3 s" W-CHECK-DEFERRED" DIAG+
-   1 13 1 19 3 s" W-CHECK-DEFERRED" DIAG+
+   0 21 0 29 2 s" W-CHECK-DEFERRED" DIAG+
+   1 13 1 19 2 s" W-CHECK-DEFERRED" DIAG+
    2 0 2 1 1 s" E-STATEMENT-THROW" DIAG+ PUBLISHES ;
 
 \ ---- workspace symbols ------------------------------------------------------------
@@ -3200,7 +3200,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
    PREFIX-STRUCT PREFIX-STRUCT-PATH CHECKS
    PREFIX-STRUCT-PATH s" deferred" COMPLETED
    PREFIX-STRUCT-PATH 1 EXPECT
-   9 0 9 11 3 s" W-CHECK-DEFERRED" DIAG+ PUBLISHES
+   9 0 9 11 2 s" W-CHECK-DEFERRED" DIAG+ PUBLISHES
    s" 8" PREFIX-STRUCT-PATH 1 2 DEFINITION-ASK
    s" 9" PREFIX-STRUCT-PATH 2 2 DEFINITION-ASK
    s" 10" PREFIX-STRUCT-PATH 2 18 DEFINITION-ASK
@@ -3726,7 +3726,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
    SAY
    TEXT-HD HD-PATH CHECKS
    HD-PATH s" deferred" COMPLETED
-   HD-PATH 1 EXPECT 3 0 3 2 3 s" W-CHECK-DEFERRED" DIAG+ PUBLISHES
+   HD-PATH 1 EXPECT 3 0 3 2 2 s" W-CHECK-DEFERRED" DIAG+ PUBLISHES
    s" 3" HU-PATH 1 16 HIGHLIGHT-ASK
    s" 4" HU-PATH 1 16 DEFINITION-ASK
    s" 5" HD-PATH 1 18 HIGHLIGHT-ASK
@@ -3950,7 +3950,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
    SAY
    TEXT-HD HD-PATH CHECKS
    HD-PATH s" deferred" COMPLETED
-   HD-PATH 1 EXPECT 3 0 3 2 3 s" W-CHECK-DEFERRED" DIAG+ PUBLISHES
+   HD-PATH 1 EXPECT 3 0 3 2 2 s" W-CHECK-DEFERRED" DIAG+ PUBLISHES
    s" 3" HU-PATH TOKENS-ASK
    s" 4" HD-PATH TOKENS-ASK
    SAY
@@ -4956,7 +4956,7 @@ variable WS-ROOT-U
    SAY
    TEXT-RS-PN s" refs-unv/w/s.f" FIXTURE CHECKS
    s" refs-unv/w/s.f" FIXTURE s" deferred" COMPLETED
-   s" refs-unv/w/s.f" FIXTURE 1 EXPECT 3 0 3 2 3 s" W-CHECK-DEFERRED" DIAG+ PUBLISHES
+   s" refs-unv/w/s.f" FIXTURE 1 EXPECT 3 0 3 2 2 s" W-CHECK-DEFERRED" DIAG+ PUBLISHES
    1 NAMED s" refs-unv/w/s.f" CANON s" deferred" NAMED+ NAMED-END
    s" 5" true 14 UNV-ANSWER
    s" 6" SYMBOLS-START SYMBOLS-END ;
@@ -6241,7 +6241,7 @@ variable PROBE-DECLS
    SESSION-CAPABILITIES
    TEXT-RS-PN s" rn-unv/w/s.f" FIXTURE CHECKS
    s" rn-unv/w/s.f" FIXTURE s" deferred" COMPLETED
-   s" rn-unv/w/s.f" FIXTURE 1 EXPECT 3 0 3 2 3 s" W-CHECK-DEFERRED" DIAG+ PUBLISHES
+   s" rn-unv/w/s.f" FIXTURE 1 EXPECT 3 0 3 2 2 s" W-CHECK-DEFERRED" DIAG+ PUBLISHES
    s" 3" s" rn-unv/w/s.f" FIXTURE 1 14 PREPARE-ASK
    s" 4" s" rn-unv/w/s.f" FIXTURE 1 14 CROW RENAME-ASK
    SAY
