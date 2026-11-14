@@ -212,17 +212,17 @@ cr
 : STORAGE-CASES ( -- )
    s" a foreign cell that would forge a token is refused" T-LABEL
    s" package TLINQ DEFLINEAR TLINQ:tok private LINEAR: MINT ( n -- TLINQ:tok ) LINEAR: ERASE ( TLINQ:tok -- n ) public : OPEN ( -- TLINQ:tok ) 7 MINT ; : CLOSE ( TLINQ:tok -- n ) ERASE ; ;package package TLINF private CAST: >CELLS ( n -- ptr n ) CAST: Q>N ( [ -- n ] -- n ) public TYPED-VARIABLE HK [ -- TLINQ:tok ] : FORGE ( -- TLINQ:tok ) [: 42 ;] Q>N HK NULL-PTR - >CELLS ! HK @ execute ; : SHOW ( -- ) FORGE TLINQ:CLOSE . ; ;package TLINF:SHOW" 70
-   s" in HK: stored type may hold a linear value '[ -- TLINQ:tok ]'" SUBJECT:REFUSED? TTRUE
+   s" error[E-BAD-STORAGE]: the type of `HK`" SUBJECT:REFUSED? TTRUE
    s" a foreign cell that would drop a token is refused" T-LABEL
    s" package TLINQ DEFLINEAR TLINQ:tok private LINEAR: MINT ( n -- TLINQ:tok ) LINEAR: ERASE ( TLINQ:tok -- n ) public : OPEN ( -- TLINQ:tok ) 7 MINT ; : CLOSE ( TLINQ:tok -- n ) ERASE ; ;package package TLINL private CAST: >CELLS ( n -- ptr n ) CAST: Q>N ( [ n -- ] -- n ) public TYPED-VARIABLE HK [ TLINQ:tok -- ] : LOSE ( TLINQ:tok -- ) [: drop ;] Q>N HK NULL-PTR - >CELLS ! HK @ execute ; : SHOW ( -- ) TLINQ:OPEN LOSE ; ;package TLINL:SHOW" 70
-   s" in HK: stored type may hold a linear value '[ TLINQ:tok -- ]'" SUBJECT:REFUSED? TTRUE
+   s" error[E-BAD-STORAGE]: the type of `HK`" SUBJECT:REFUSED? TTRUE
    s" a cell over an open type variable, unequal row tails or a member is refused" T-LABEL
    s" TYPED-VARIABLE TLIN-QA [ -- a ]" 70
-   s" in TLIN-QA: stored type may hold a linear value '[ -- a ]'" SUBJECT:REFUSED? TTRUE
+   s" error[E-BAD-STORAGE]: the type of `TLIN-QA`" SUBJECT:REFUSED? TTRUE
    s" TYPED-VARIABLE TLIN-QR [ R -- S ]" 70
-   s" in TLIN-QR: stored type may hold a linear value '[ R -- S ]'" SUBJECT:REFUSED? TTRUE
+   s" error[E-BAD-STORAGE]: the type of `TLIN-QR`" SUBJECT:REFUSED? TTRUE
    s" package TLINQ DEFLINEAR TLINQ:tok private LINEAR: MINT ( n -- TLINQ:tok ) LINEAR: ERASE ( TLINQ:tok -- n ) public : OPEN ( -- TLINQ:tok ) 7 MINT ; : CLOSE ( TLINQ:tok -- n ) ERASE ; STRUCTURE hold FIELD fn [ -- TLINQ:tok ] ;STRUCTURE ;package TYPED-VARIABLE TLIN-QS TLINQ:hold" 70
-   s" in TLIN-QS: stored type may hold a linear value 'TLINQ:hold'" SUBJECT:REFUSED? TTRUE
+   s" error[E-BAD-STORAGE]: the type of `TLIN-QS`" SUBJECT:REFUSED? TTRUE
    s" the owner, a defer over the token and a closed callable cell still load" T-LABEL
    s" package TLINQ DEFLINEAR TLINQ:tok private LINEAR: MINT ( n -- TLINQ:tok ) LINEAR: ERASE ( TLINQ:tok -- n ) public : OPEN ( -- TLINQ:tok ) 7 MINT ; : CLOSE ( TLINQ:tok -- n ) ERASE ; ;package : TLIN-USE ( -- n ) TLINQ:OPEN TLINQ:CLOSE ; TLIN-USE drop" 0 SUBJECT:EXITED? TTRUE
    s" package TLINQ DEFLINEAR TLINQ:tok private LINEAR: MINT ( n -- TLINQ:tok ) LINEAR: ERASE ( TLINQ:tok -- n ) public : OPEN ( -- TLINQ:tok ) 7 MINT ; : CLOSE ( TLINQ:tok -- n ) ERASE ; defer D ( -- TLINQ:tok ) : INSTALL ( -- ) [: OPEN ;] is D ; ;package TLINQ:INSTALL : TLIN-USE ( -- n ) TLINQ:D TLINQ:CLOSE ; TLIN-USE drop" 0 SUBJECT:EXITED? TTRUE
