@@ -29,8 +29,8 @@ using PTY-HARNESS
    s" require test/repl-address-cell-probe.f" STEP
    s" REPL-ROWS:SAVE" STEP
    BUF-CLEAR bad badu SEND-LINE
-   s" E-UNDEFINED habu: undefined word 'NOSUCH-WORD'" WAIT-FOR TTRUE
-   s" E-UNDEFINED habu: undefined word 'NOSUCH-WORD'" PROMPT-AFTER
+   s" error[E-UNDEFINED]" s" `NOSUCH-WORD`" WAIT-AFTER TTRUE
+   s" `NOSUCH-WORD`" PROMPT-AFTER
    s" REPL-ROWS:RESTORED" STEP
    s" rows-restored-pass" IN-BUF? {: restored:bool :}
    restored TTRUE
@@ -52,8 +52,8 @@ using PTY-HARNESS
    s" TRUSTED: SINK ( -- ) drop ; immediate" STEP
    S\" s\" SINK\" 0 parse-imm" STEP
    BUF-CLEAR s" : DROPPED ( -- n n ) 1 2 ; : UNDER ( -- ) SINK ;" SEND-LINE
-   s" E-UNDERFLOW habu: stack underflow at 'SINK'" WAIT-FOR TTRUE
-   s" E-UNDERFLOW habu: stack underflow at 'SINK'" PROMPT-AFTER
+   s" error[E-UNDERFLOW]" s" `SINK`" WAIT-AFTER TTRUE
+   s" `SINK`" PROMPT-AFTER
    s" : DROPPED ( -- n ) 7 ;" STEP
    s" DROPPED ." STEP
    s" 7" IN-BUF? TTRUE
@@ -61,8 +61,8 @@ using PTY-HARNESS
    s" TASK:MIN-STACK TASK:TASK W" STEP
    s" TASK:+USER PA n" STEP
    BUF-CLEAR s" TASK:+USER PB n NOSUCH-WORD" SEND-LINE
-   s" E-UNDEFINED habu: undefined word 'NOSUCH-WORD'" WAIT-FOR TTRUE
-   s" E-UNDEFINED habu: undefined word 'NOSUCH-WORD'" PROMPT-AFTER
+   s" error[E-UNDEFINED]" s" `NOSUCH-WORD`" WAIT-AFTER TTRUE
+   s" `NOSUCH-WORD`" PROMPT-AFTER
    s" create JUNK 111 , 222 , 333 , 444 , 555 ," STEP
    s" TASK:+USER PC n" STEP
    S\" : SLOT-NEXT? ( -- ) W PC TASK:HIS W PA TASK:HIS - CELL - 0= if .\" slot-next-pass\" then ;"
