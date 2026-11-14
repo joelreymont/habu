@@ -128,7 +128,6 @@ private
 
 : CHECK-PARENT ( ptr u8 n -- n )
    {: a:ptr u:n :}
-   CHECKER-OWNER:RESET-REPORT
    TRUSTED? if -1 CHECKER-OWNER:BIND-REGIME!
       a u CHECKER-OWNER:CHECK-UNJUDGED exit then
    0 CHECKER-OWNER:BIND-REGIME!

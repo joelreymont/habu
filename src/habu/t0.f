@@ -2300,7 +2300,6 @@ variable SCAN-LO                     \ the ordinal of its first row
    IDLE-CK
    NULL-PTR 0 STAGE-UNIT
    val FIXED-VAL !  entry FIXED-ENTRY !  kind BODY-KIND !
-   CHECKER-OWNER:RESET-REPORT
    1 M-OPEN !
    [: FIXED-RUN ;] catch {: rc:n :}
    0 M-OPEN !
@@ -2311,7 +2310,6 @@ variable SCAN-LO                     \ the ordinal of its first row
 : COMPILE ( ptr u8 n -- )
    IDLE-CK
    STAGE-UNIT
-   CHECKER-OWNER:RESET-REPORT
    COMP-BODY:compiled BODY-KIND !
    1 M-OPEN !
    [: RUN ;] catch {: rc:n :}
