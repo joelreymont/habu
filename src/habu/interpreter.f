@@ -1275,7 +1275,9 @@ variable USE-FLOOR
 \ after -2 or -1.
 : PKG-OCC-ROOM ( -- )
    data-base DEF-OCC:PTR-CELL + 0 ptr-field @ CELL-VIEW @ {: last:n :}
-   last -2 =  last -1 =  or if DEF-OCC:E-EXHAUSTED throw then ;
+   last -2 =  last -1 =  or if
+      s" interpreter: definition occurrence numbers exhausted" 76 die
+   then ;
 
 \ The clause takes the slot above the export's own, and its name must not be
 \ live in the current wordlist.

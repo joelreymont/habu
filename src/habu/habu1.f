@@ -4681,7 +4681,7 @@ private
 \ cell is the last issued number; the remaining DICT-CAP cells are indexed by
 \ slot. None of these cells are in the rewindable DATA heap or captured image.
 : DEF-OCC-EXHAUSTED, ( -- )
-   9 DEF-OCC:E-EXHAUSTED LIT64,  9 G-PUSH  BTHROW ;
+   s" E-EXHAUSTED habu: definition occurrence numbers exhausted" 76 DIE-LINE, ;
 
 \ x9 = number about to be issued.
 : EMIT-DEF-OCC ( -- )

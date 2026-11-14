@@ -650,12 +650,23 @@ DOES-COMPANION-INSTALL
 \ The resolver's primitive rows belong to DEF-OCC; the checker also selects
 \ occurrences when it binds an exported contract (src/habu/prims.f).
 package DEF-OCC
+private
+: NONCALLABLE ( ptr n -- ) {: rec:ptr :}
+   s" E-NONCALLABLE" REJECTION:OPEN
+   s" `DEF-OCC:CALLABLE` was given the package `" REJECTION:EMIT-STR
+   rec XREF-NAME$ REJECTION:EMIT-STR
+   s" `, which has no code" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" pass the slot and occurrence `DEF-OCC:SELECT` answered for a word"
+   REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
 public
 : SELECT ( ptr n -- n n ) def-occ-select ;
 : RESOLVE ( n n -- ptr n ) def-occ-resolve ;
 
 : CALLABLE ( n n -- n )
-   RESOLVE dup XREF-WORDLIST BOOT:NAMESPACE-WL = if E-NONCALLABLE throw then
+   RESOLVE dup XREF-WORDLIST BOOT:NAMESPACE-WL = if NONCALLABLE then
    XREF-START ;
 
 ;package

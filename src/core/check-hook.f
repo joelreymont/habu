@@ -295,10 +295,19 @@ private
 
 using SCHEMA-REG
 
-\ A type: a live node, never an effect side's row.
+\ A type: a live node, never an effect side's row. A node ends with the file
+\ that made it.
 : TYPE-ARG ( n -- n ) {: node:n :}
    node SCHEMA-NODE-OK? if node SCHEMA-ROW? 0= if node exit then then
-   E-SCHEMA-BAD throw ;
+   s" E-SCHEMA-BAD" REJECTION:OPEN
+   s" `EFFECT:PTR`, `EFFECT:IN`, `EFFECT:OUT` or `CHECK:TYPE-OP` was given a value that is no live type"
+   REJECTION:EMIT-STR
+   SRCLOC:TOKEN$ REJECTION:AT  s" not given a type" REJECTION:EMIT-STR
+   s" value" REJECTION:NOTE  node REJECTION:EMIT-N
+   REJECTION:HELP
+   s" pass a type an `EFFECT` word made in the file that uses it"
+   REJECTION:EMIT-STR
+   CHECK-RC REJECTION:STOP ;
 
 \ An effect; any other type is refused, E-NOT-EFFECT.
 : EFFECT-ARG ( n -- n ) {: node:n :}
@@ -342,11 +351,19 @@ CAST: >BYTES ( n -- ptr u8 )
    code TYPE-OP-ABI:EFFECT = if EMPTY-EFFECT exit then
    code TYPE-OP-ABI:IN = if a EFFECT-ARG b TYPE-ARG EFFECT-IN exit then
    code TYPE-OP-ABI:OUT = if a EFFECT-ARG b TYPE-ARG EFFECT-OUT exit then
-   E-SCHEMA-BAD throw ;
+   s" E-SCHEMA-BAD" REJECTION:OPEN
+   s" `CHECK:TYPE-OP` was given a code that names no type operation"
+   REJECTION:EMIT-STR
+   SRCLOC:TOKEN$ REJECTION:AT  s" unknown type operation" REJECTION:EMIT-STR
+   s" code" REJECTION:NOTE  code REJECTION:EMIT-N
+   REJECTION:HELP
+   s" build types with the `EFFECT` words, or pass a `TYPE-OP-ABI` code"
+   REJECTION:EMIT-STR
+   CHECK-RC REJECTION:STOP ;
 
 public
 
-\ The transient schema node a TYPE-OP-ABI code makes of a and b, else E-SCHEMA-BAD.
+\ The transient schema node a TYPE-OP-ABI code makes of a and b.
 \ NAMED's lookup runs first: the transient region would drop an entry it reads.
 : TYPE-OP ( n n n -- n )
    {: code:n a:n b:n :}
