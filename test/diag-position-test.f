@@ -1156,6 +1156,7 @@ variable RC
    s" PRODUCT rvbox<a> FIELD v a ;PRODUCT PRODUCT pr2 FIELD x n FIELD y n ;PRODUCT : ID ( rvbox<a> -- rvbox<a> ) ; : X ( pr2 rvbox<a> bool -- pr2 ) [: ( rvbox<a> bool -- rvbox<a> bool ) >r ID r> dup if 1 throw then ;] catch drop drop drop ;"
       s" open-layout-stale-pr2.f" LINE-FIXTURE
    s" E-STALE-READ" s" drop" 1 229 228 232 REFUSED-AT
+   0 s" family" s" rvbox" NOTE=
    s" a stale open layout in a locals capture" T-LABEL
    s" PRODUCT rvbox<a> FIELD v a ;PRODUCT PRODUCT pr2 FIELD x n FIELD y n ;PRODUCT : ID ( rvbox<a> -- rvbox<a> ) ; : X ( pr2 rvbox<a> bool -- pr2 ) [: ( rvbox<a> bool -- rvbox<a> bool ) >r ID r> dup if 1 throw then ;] catch drop drop {: x :} ;"
       s" open-layout-stale-local.f" LINE-FIXTURE
