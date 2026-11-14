@@ -460,7 +460,7 @@ variable RC
 : NOT-RECORDED ( ptr u8 n -- )
    {: path:ptr pathu:n :}
    0 s" code" s" W-EFFECT-NOT-RECORDED" FIELD=
-   0 s" message" s" `wide`" FIELD-HAS
+   0 s" message" s" `WIDE`" FIELD-HAS
    0 s" WIDE" 3 5 68 72 path pathu FX$ AT-IN
    1 begin dup GJA-LINE# @ < while
       dup GJA-LINE$ s" W-EFFECT-NOT-RECORDED" CONTAINS? TFALSE
@@ -914,26 +914,26 @@ variable RC
 
 \ A stored signature that does not parse is rejected at the type it cannot
 \ read, or at the name its declaration reads when the signature holds no type,
-\ and the record names the word by the fold the row is stored under.
+\ and the record names the word as written.
 : TEST-STORED-SIGNATURE ( -- )
    s" a FUNCTION: whose group is empty" T-LABEL
    SB-RESET
    s" require src/lib/ffi-abi.f" SB-APPEND LF+
    s" FUNCTION: F getpid ( )" SB-APPEND LF+
    s" stored-ffi.f" FIXTURE!
-   s" `f`" s" F" 2 11 36 37 STORED-AT
+   s" `F`" s" F" 2 11 36 37 STORED-AT
    s" a TRUSTED: definition" T-LABEL
    s" TRUSTED: X ( n -- zz ) 1 ;" s" stored-trusted.f" LINE-FIXTURE
-   s" `x`" s" zz" 1 19 18 20 STORED-AT
+   s" `X`" s" zz" 1 19 18 20 STORED-AT
    s" a defer" T-LABEL
    s" defer W ( n -- zz )" s" stored-defer.f" LINE-FIXTURE
-   s" `w`" s" zz" 1 16 15 17 STORED-AT
+   s" `W`" s" zz" 1 16 15 17 STORED-AT
    s" a trust row" T-LABEL
    SB-RESET
    s" : Y ( n -- n ) ;" SB-APPEND LF+
    s\" s\" Y\" s\" n -- zz\" trust" SB-APPEND LF+
    s" stored-trust.f" FIXTURE!
-   s" `y`" s" zz" 2 15 31 33 STORED-AT
+   s" `Y`" s" zz" 2 15 31 33 STORED-AT
    s" a cast" T-LABEL
    s" cast: >X ( ptr -- n )" s" stored-cast.f" LINE-FIXTURE
    s" `>X`" s" ptr" 1 12 11 14 STORED-AT ;
@@ -945,14 +945,14 @@ variable RC
    s" undefine X" SB-APPEND LF+
    s" TRUSTED: X ( -- zz ) ;" SB-APPEND LF+
    s" replaced-trusted.f" FIXTURE!
-   s" `x`" s" zz" 3 17 40 42 STORED-AT
+   s" `X`" s" zz" 3 17 40 42 STORED-AT
    s" a defer replacing an undefined word" T-LABEL
    SB-RESET
    s" : X ( -- ) ;" SB-APPEND LF+
    s" undefine X" SB-APPEND LF+
    s" defer X ( -- zz )" SB-APPEND LF+
    s" replaced-defer.f" FIXTURE!
-   s" `x`" s" zz" 3 14 37 39 STORED-AT
+   s" `X`" s" zz" 3 14 37 39 STORED-AT
    s" a TRUSTED: definition in a package, under a global's tail" T-LABEL
    SB-RESET
    s" : X ( -- ) ;" SB-APPEND LF+
@@ -960,7 +960,7 @@ variable RC
    s" TRUSTED: X ( -- zz ) ;" SB-APPEND LF+
    s" ;package" SB-APPEND LF+
    s" replaced-same-tail.f" FIXTURE!
-   s" `x`" s" zz" 3 17 46 48 STORED-AT ;
+   s" `X`" s" zz" 3 17 46 48 STORED-AT ;
 
 : RECORD-AT ( ptr u8 n ptr u8 n ptr u8 n n n n n n n -- )
    {: code:ptr codeu:n tok:ptr toku:n sp:ptr spu:n line:n col:n bs:n be:n count:n lead:n :}
