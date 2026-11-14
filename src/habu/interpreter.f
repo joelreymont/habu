@@ -341,12 +341,9 @@ create NL NEWLINE c,
    TOKEN$ ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
    ENGINE-ERROR:USING-SHADOW-GLOBAL throw ;
 
-\ No program code runs after the text: the exit hook is cleared before `die`,
-\ which would otherwise call it.
 : FAIL-CLOSED ( ptr u8 n n -- ) {: a:ptr u:n rc:n :}
    a u ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
-   0 BOOT:EXIT-VECTOR !
-   s" " rc die ;
+   s" " rc die-closed ;
 
 : SEALED-FAIL ( ptr u8 n -- ) {: a:ptr u:n :}
    s" E-SEALED-PACKAGE" REFUSAL

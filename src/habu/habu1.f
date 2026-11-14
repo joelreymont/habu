@@ -4136,7 +4136,7 @@ package ENGINE-EMIT
    s" epoch-seconds" ['] BEPOCHSECONDS FPRIM-L
    s" mono-ns" ['] BMONONS FPRIM-L
    s" die"  ['] BDIE   FPRIM-L
-   s" die-closed" ['] BDIECLOSED FPRIM-L ;
+   s" die-closed" ['] BDIECLOSED ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID ;
 
 ;package
 

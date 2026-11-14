@@ -15366,8 +15366,7 @@ CAST: AS-RECORD-PUBLISHED ( n -- [ n -- ] )
 : NORET-ADD {: a:ptr u:n flag:n :}
    a u CHECKER-RECORD-SYM flag 0 0 NORET-ADD-SYM ;
 
-: NORET-AXIOM {: a:ptr u:n flag:n :}
-   a u PE-SYM-OF {: sym:n :}
+: NORET-SYM-AXIOM {: sym:n a:ptr u:n flag:n :}
    sym BUILD-SYM-END @ < 0= IF
       s" checker: the kernel object has no row for " ERROR-TEXT:TYPE
       a u ERROR-TEXT:TYPE
@@ -15375,6 +15374,13 @@ CAST: AS-RECORD-PUBLISHED ( n -- [ n -- ] )
       s" " 76 die
    THEN
    sym flag 0 0 NORET-ADD-SYM ;
+
+: NORET-AXIOM {: a:ptr u:n flag:n :}
+   a u PE-SYM-OF a u flag NORET-SYM-AXIOM ;
+
+\ The axiom of a primitive whose one row is private to package PKG.
+: NORET-PRIVATE-AXIOM {: pkg:ptr pkgu:n a:ptr u:n flag:n :}
+   pkg pkgu SYM-PRIVATE a u SYM-INTERN  a u flag NORET-SYM-AXIOM ;
 
 \ The axioms of the grammar KEYWORD-ROWS interns, a product's whole prefix.
 : KEYWORD-AXIOMS ( -- )
@@ -15393,6 +15399,7 @@ CAST: AS-RECORD-PUBLISHED ( n -- [ n -- ] )
 : NORET-AXIOMS ( -- )
    s" throw" CTL-DEAD CTL-THROW or CTL-CORE-OP or NORET-AXIOM
    s" die" CTL-DEAD NORET-AXIOM
+   s" INTERPRETER" s" die-closed" CTL-DEAD NORET-PRIVATE-AXIOM
    s" evaluate" CTL-RENDERS CTL-CORE-OP or NORET-AXIOM
    s" evaluate-closed" CTL-RENDERS NORET-AXIOM
    s" evaluate-range" CTL-RENDERS NORET-AXIOM

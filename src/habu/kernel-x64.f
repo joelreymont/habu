@@ -2390,7 +2390,7 @@ public
    s" c2-init-stow" [: C2-INIT-STOW, ;] PRIM
    s" c2-records-stow" [: C2-RECORDS-STOW, ;] PRIM
    s" die" [: DIE, ;] PRIM
-   s" die-closed" [: DIE-CLOSED, ;] PRIM
+   s" die-closed" [: DIE-CLOSED, ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" source-file-run" [: SOURCE-FILE-RUN, ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" evaluate" [: REFUSE-BODY ;] PRIM
    s" evaluate-closed" [: EVAL-CLOSED, ;] PRIM
