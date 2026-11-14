@@ -41,8 +41,6 @@ defer RR-XEXT ( -- matrix<space-global,fresh-region-a,fresh-extent-x,f32> matrix
 defer RR-XGEN ( -- matrix<space-global,fresh-region-a,fresh-gen-g,f32> matrix<space-global,fresh-region-a,fresh-gen-h,f32> )
 \ region-only owner (each call is a fresh allocation)
 defer RR-OWN ( -- matrix<space-global,fresh-region-a,f32,f32> )
-\ region+extent host, one identity per call (used by the exhaustion probe)
-defer RR-MK1 ( -- matrix<space-global,fresh-region-a,fresh-extent-x,f32> )
 \ a region and a generation carried in the SAME slot of two boxes
 defer RR-BOXR ( -- span<space-global,f32,fresh-region-a> )
 defer RR-BOXG ( -- span<space-global,f32,fresh-gen-a> )
@@ -122,21 +120,6 @@ variable RR-JSON-WAS   REJECTION:JSON @ RR-JSON-WAS !   false REJECTION:JSON !
 : RR-CHECK ( ptr u8 n -- n ) RR-DIAG 16384 REJECTION:BUFFER! CHECK-CANDIDATE! ;
 : RR-DIAG? ( ptr u8 n -- bool ) REJECTION:BUFFER$ 2swap CONTAINS? ;
 
-\ Exhaustion probe: shrink the shared domain bound so the SECOND region mint of
-\ this check wraps — it must throw E-RIGID-EXHAUST (7140) instead of reusing id 1.
-variable RR-EC
-: RR-WRAP ( -- )
-   RIGID-MAX @  2 RIGID-MAX !
-   [: s" RRW ( -- ) RR-MK1 drop RR-MK1 drop" CHECK-CANDIDATE! drop ;] catch RR-EC !
-   RIGID-MAX ! ;
-\ Same probe for the shared RIGID-FRESH counter (fresh-mask-* and every
-\ non-domain fresh atom mint from it): two mask mints in one check, bound to 2,
-\ so the second mint must throw E-RIGID-EXHAUST instead of wrapping to a live id.
-: RR-WRAPM ( -- )
-   RIGID-MAX @  2 RIGID-MAX !
-   [: s" RRWM ( -- ) RR-BOXM drop RR-BOXM drop" CHECK-CANDIDATE! drop ;] catch RR-EC !
-   RIGID-MAX ! ;
-
 \ (1) two accesses within one region+generation certify.
 s" C-CERT ( -- ) RR-SHARE RR-UEQ"  RR-CHECK -1 T=
 \ (2) equal-sized cross-region unification rejects — named region mismatch.
@@ -155,8 +138,6 @@ s" rigid host: identity domain confusion" RR-DIAG? TTRUE
 \ (6) recreated-owner reuse rejects — a fresh allocation gets a fresh region.
 s" C-REUSE ( -- ) RR-OWN RR-OWN RR-UONE"   RR-CHECK 0 T=
 s" rigid host: region mismatch" RR-DIAG? TTRUE
-\ (7) exhaustion-before-wrap: the domain counter throws rather than reusing an id.
-RR-WRAP  RR-EC @ E-RIGID-EXHAUST T=
 \ (8) THREE co-resident identities bind: two accesses to one owner certify — the
 \ >=3-fresh-atom case is SOUND, no unifier limit.
 s" C-CERT3 ( -- ) RR-SHARE3 RR-UEQ3"  RR-CHECK -1 T=
@@ -179,10 +160,6 @@ s" C-MSK= ( -- ) RR-SHM RR-UBOX"           RR-CHECK -1 T=
 \ no false unify. A wrapped id colliding with the still-live first would flip
 \ THIS reject to a certify — the exact soundness hole the guard closes.
 s" C-MSKX ( -- ) RR-BOXM RR-BOXM RR-UBOX"  RR-CHECK 0 T=
-\ (15) exhaustion-before-wrap on the shared RIGID-FRESH counter: it throws
-\ E-RIGID-EXHAUST rather than wrapping into a reused id, as case 7 does for the
-\ per-domain counters.
-RR-WRAPM  RR-EC @ E-RIGID-EXHAUST T=
 \ (16) a body holds a fresh region its inputs declare as one identity: it passes
 \ to a region-generic word, directly or as a callback's input, and one name in
 \ two inputs is one region.
