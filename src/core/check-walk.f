@@ -31,10 +31,10 @@
    supplied TAG T-FORALL = IF
       supplied F>DOMAIN BIND-CHILD <>
       supplied F>PARENT 0= or supplied F>SECOND 0= or IF
-         0 OK ! -1 FAILSET ! EXIT THEN
+         supplied MD-C2-BINDER C2-REJECT EXIT THEN
       supplied F>PARENT ceiling UNIFY-EXACT 0=
       supplied F>SECOND value UNIFY-EXACT 0= or IF
-         0 OK ! -1 FAILSET ! EXIT THEN
+         supplied MD-C2-BINDER C2-REJECT EXIT THEN
    THEN
    ceiling value SCOPE-DOUBLE-FRESH {: scope:n :}
    supplied TAG T-FORALL = IF
@@ -84,10 +84,10 @@
    supplied TAG T-FORALL = IF
       supplied F>DOMAIN BIND-CHILD <>
       supplied F>PARENT 0= or supplied F>SECOND 0= or IF
-         0 OK ! -1 FAILSET ! EXIT THEN
+         supplied MD-C2-RECORDS-BINDER C2-REJECT EXIT THEN
       supplied F>PARENT ceiling UNIFY-EXACT 0=
       supplied F>SECOND value UNIFY-EXACT 0= or IF
-         0 OK ! -1 FAILSET ! EXIT THEN
+         supplied MD-C2-RECORDS-BINDER C2-REJECT EXIT THEN
    THEN
    ceiling value SCOPE-DOUBLE-FRESH {: scope:n :}
    supplied TAG T-FORALL = IF
@@ -128,9 +128,9 @@
    parent 1 PARAM>ARG T-RES {: ceiling:n :}
    supplied TAG T-FORALL = IF
       supplied F>DOMAIN BIND-CHILD <> supplied F>PARENT 0= or IF
-         0 OK ! -1 FAILSET ! EXIT THEN
+         supplied MD-C2-CHILD-BINDER C2-REJECT EXIT THEN
       supplied F>PARENT ceiling UNIFY-EXACT 0= IF
-         0 OK ! -1 FAILSET ! EXIT THEN
+         supplied MD-C2-CHILD-BINDER C2-REJECT EXIT THEN
    THEN
    ceiling SCOPE-CHILD-FRESH {: scope:n :}
    supplied TAG T-FORALL = IF
@@ -176,7 +176,8 @@
    descriptor FIELD-PARAM? 0= IF SCOPE-FIELD-REJECT EXIT THEN
    descriptor FIELD-INNER {: field:n :}
    parent 1 PARAM>ARG T-RES {: ceiling:n :}
-   supplied ceiling SCOPE-FIELD-SCHEME? 0= IF SCOPE-FIELD-REJECT EXIT THEN
+   supplied ceiling SCOPE-FIELD-SCHEME? 0= IF
+      supplied MD-C2-FIELD-BINDER C2-REJECT EXIT THEN
    ceiling SCOPE-CHILD-FRESH {: child:n :}
    parent descriptor SCOPE-FIELD-REGION {: projected:n :}
    supplied ceiling child projected SCOPE-FIELD-OPEN
@@ -185,7 +186,7 @@
    parent child projected init-scope field SCOPE-FIELD-CALLBACK
    OK @ 0= IF EXIT THEN
    child SCOPE-EXTERIOR-XT projected SCOPE-EXTERIOR-XT or IF
-      SCOPE-FIELD-REJECT EXIT THEN
+      SCOPE-WITNESS @ MD-C2-ESCAPE C2-REJECT EXIT THEN
    THROW-CUR? may-throw or IF CALL-THROW-EDGE THEN
    off bytes SCOPE-FIELD-FACTS ;
 
@@ -1157,7 +1158,7 @@ public
    0 LAYOUT-XPORT !                  \ boundary unification is never in transport mode
    CHECK-FOLD-EXITS
    CONM @ 0 <> IF MD-CON-TRUNC MDIAG! THEN     \ latch truncation BEFORE the boundary
-   FIELD-LOAN-PENDING @ IF SCOPE-FIELD-REJECT THEN
+   FIELD-LOAN-PENDING @ IF MD-FIELD-NAME MDIAG! SCOPE-FIELD-REJECT THEN
    CHECKER-MATCH-MODE @ 0 <>  MF-DEPTH @ 0 <>  or IF MD-TRUNC MDIAG! THEN   \ unify pins its own mismatch
    CHECK-NO-BORROW
    CHECK-SIG? CHECK-RETURNS? and IF
@@ -1980,7 +1981,7 @@ package CHECKER-REG
    0 LAYOUT-XPORT !                  \ boundary unification is never in transport mode
    CHECK-FOLD-EXITS
    CONM @ 0 <> IF MD-CON-TRUNC MDIAG! THEN     \ latch truncation BEFORE the boundary
-   FIELD-LOAN-PENDING @ IF SCOPE-FIELD-REJECT THEN
+   FIELD-LOAN-PENDING @ IF MD-FIELD-NAME MDIAG! SCOPE-FIELD-REJECT THEN
    CHECKER-MATCH-MODE @ 0 <>  MF-DEPTH @ 0 <>  or IF MD-TRUNC MDIAG! THEN
    CHECK-NO-BORROW
    CHECK-RETURNS? IF
