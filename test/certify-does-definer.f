@@ -474,7 +474,7 @@ CDD-FIT-CAP CODEGEN:BUFFER CDD-FIT-WANT
    255 0 do s" n " d CODEGEN:APPEND-STRING loop ;
 : CDD-FIT$ ( -- ptr u8 n )
    CDD-FIT CODEGEN:RESET
-   s" -1 JSON-DIAGS ! : CDD-F1 ( n -- ) create , does> ( " CDD-FIT CODEGEN:APPEND-STRING
+   s" -1 REJECTION:JSON ! : CDD-F1 ( n -- ) create , does> ( " CDD-FIT CODEGEN:APPEND-STRING
    CDD-FIT CDD-FIT-ROW  s" -- n ) " CDD-FIT CODEGEN:APPEND-STRING
    255 0 do s" drop " CDD-FIT CODEGEN:APPEND-STRING loop
    s" ;" CDD-FIT CODEGEN:APPEND-STRING
@@ -496,7 +496,7 @@ CDD-FIT-CAP CODEGEN:BUFFER CDD-FIT-WANT
    s\" \"declared_effect\":\"" s\" -- n \"" CDD-FIT-FIELD
    s\" \"declared_effect_source\":\"" s\" -- n\"" CDD-FIT-FIELD
    REJECTION:BUFFER-OFF
-   s" 0 JSON-DIAGS !" TEST-EVAL:RC 0 T= ;
+   s" 0 REJECTION:JSON !" TEST-EVAL:RC 0 T= ;
 
 : CDD-SECTION-CLAUSE-TAIL ( -- )
    s" a clause that specializes a declared quantifier is refused" T-LABEL
@@ -520,10 +520,10 @@ CDD-FIT-CAP CODEGEN:BUFFER CDD-FIT-WANT
    s" : CDD-UX ( n -- ) create , does> ( cdd-zz -- cdd-zz ) drop drop 5 ;"
       s" unknown type 'cdd-zz'" CDD-NOT-CERTIFIED
    s" compiled natively, the clause's unknown type is placed at that type in its text" T-LABEL
-   s" -1 JSON-DIAGS ! : CDD-UXJ ( n -- ) create , does> ( cdd-zz -- cdd-zz ) drop drop 5 ;"
+   s" -1 REJECTION:JSON ! : CDD-UXJ ( n -- ) create , does> ( cdd-zz -- cdd-zz ) drop drop 5 ;"
       S\" \"token\":\"cdd-zz\",\"token_index\":0,\"file\":\"<input>\",\"line\":1,\"column\":4,\"byte_start\":3,\"byte_end\":9,"
       CDD-NOT-CERTIFIED
-   s" 0 JSON-DIAGS !" TEST-EVAL:RC 0 T=
+   s" 0 REJECTION:JSON !" TEST-EVAL:RC 0 T=
    s" a clause that never returns owes no output" T-LABEL
    s" : CDD-NORET ( n -- ) create , does> ( n -- ptr u8 ) drop 5 throw ;" TEST-EVAL:RC 0 T= ;
 

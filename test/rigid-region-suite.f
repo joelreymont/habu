@@ -118,7 +118,7 @@ T-RESET
 create RR-DIAG 16384 allot
 \ The cases read prose, and a run under `tools/check.f --json-errors` starts in
 \ JSON.
-variable RR-JSON-WAS   JSON-DIAGS @ RR-JSON-WAS !   false DIAG-JSON!
+variable RR-JSON-WAS   REJECTION:JSON @ RR-JSON-WAS !   false REJECTION:JSON !
 : RR-CHECK ( ptr u8 n -- n ) RR-DIAG 16384 REJECTION:BUFFER! CHECK-CANDIDATE! ;
 : RR-DIAG? ( ptr u8 n -- bool ) REJECTION:BUFFER$ 2swap CONTAINS? ;
 
@@ -325,5 +325,5 @@ s" C-QFRESHOUT ( -- [ -- matrix<space-global,fresh-region-b,f32,f32> ] ) [: RR-O
 T-REPORT
 \ Diagnostics leave RR-DIAG and take back the format found, so a file loaded
 \ after this one in the same process reports as usual.
-REJECTION:BUFFER-OFF  RR-JSON-WAS @ JSON-DIAGS !
+REJECTION:BUFFER-OFF  RR-JSON-WAS @ REJECTION:JSON !
 ;package

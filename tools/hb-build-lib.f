@@ -372,7 +372,7 @@ TYPED-VARIABLE HBB-SAME-OUT bool
 \ in this process (tools/hb-build-core.f) into HBB-GOT$; under --json-errors
 \ the checker prints its refusals as JSON.
 : HBB-LINK ( -- )
-   HBB-JSON @ 0<> DIAG-JSON!
+   HBB-JSON @ 0<> REJECTION:JSON !
    HBB-ENGINE @ if
       [: HBB-PREPARE-TMP HBB-GOT$ ;] HBB-TARGET @ HB-BUILD-CORE:ENGINE
    else

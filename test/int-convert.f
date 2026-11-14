@@ -12,9 +12,9 @@ create DIAG 8192 allot
 \ SAYS reads; answers its throw code, 0 when the definition loaded.
 : DEF-RC ( ptr u8 n -- n )
    DIAG 8192 REJECTION:BUFFER!
-   JSON-DIAGS @ {: was:n :}
-   false DIAG-JSON!  TEST-EVAL:RC
-   was JSON-DIAGS ! ;
+   REJECTION:JSON @ {: was:n :}
+   false REJECTION:JSON !  TEST-EVAL:RC
+   was REJECTION:JSON ! ;
 
 : SAYS ( ptr u8 n -- )
    REJECTION:BUFFER$ 2swap CONTAINS? TTRUE  REJECTION:BUFFER-OFF ;

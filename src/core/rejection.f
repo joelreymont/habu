@@ -23,6 +23,11 @@ create NUM-BUF 20 allot  variable NUM-V  variable NUM-N
 public
 variable DEST   0 DEST !                 \ 0 = stdout, 1 = TEXT (sig recording)
 variable TEXT-LEN
+variable JSON   0 JSON !
+\ QUIET counts nested quiet-check scopes. It is created before the check
+\ hook exists, so no effect is published for it.
+variable QUIET
+variable TALLY   0 TALLY !               \ rejections counted this load
 
 \ E-DIAG-CAPACITY rejects a record that does not fit the caller's buffer.
 \ src/lib/error.f owns it but compiles after this file, so the same (code, name)

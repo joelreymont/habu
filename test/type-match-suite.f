@@ -261,14 +261,14 @@ s" MATCH-SCOPE" type cr
 \ `bad match: missing variants` text.
 create MDG-BUF 8192 allot
 : MDG< ( ptr u8 n -- )   \ run one candidate with JSON diags into the buffer
-   MDG-BUF 8192 REJECTION:BUFFER!  0 0= DIAG-JSON!
+   MDG-BUF 8192 REJECTION:BUFFER!  0 0= REJECTION:JSON !
    CHECK-CANDIDATE! 0 T= ;
 : MDG? ( ptr u8 n -- )
    T-NEXT
    REJECTION:BUFFER$ 2swap CONTAINS? 0= if
       s" diag needle missing" T-ASSERT-DETAIL
    then ;
-: MDG-END ( -- ) 0 0= 0= DIAG-JSON! REJECTION:BUFFER-OFF ;
+: MDG-END ( -- ) 0 0= 0= REJECTION:JSON ! REJECTION:BUFFER-OFF ;
 
 SUMTYPE mtri
   VARIANT aa n ;VARIANT

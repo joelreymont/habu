@@ -552,7 +552,7 @@ variable OF-U                           \ 0 for the other forms
 
 : INDEX-SUBJECT ( -- )
    0 IDX-N !
-   true DIAG-JSON!
+   true REJECTION:JSON !
    OUT-FD REJECTION:FD!
    ['] IDX-DEFINITION is VERIFY:ON-DEFINITION
    ['] IDX-DUPLICATE is VERIFY:ON-DUPLICATE
@@ -570,7 +570,7 @@ variable OF-U                           \ 0 for the other forms
 \ Run the verification in one neutral checker scope, every diagnostic the
 \ checker renders a packet on stdout: the code it threw, 0 for none.
 : SCOPED ( [ -- ] -- n ) {: q :}
-   0 0= DIAG-JSON!
+   0 0= REJECTION:JSON !
    OUT-FD REJECTION:FD!
    CHECKER-SCOPE-START-NEUTRAL
    q catch

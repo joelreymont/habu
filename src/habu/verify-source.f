@@ -1514,8 +1514,8 @@ CAST: DEFERRED-BODY-ACTION ( n -- [ -- ptr u8 n ] )
 \ A body's verdict as this scan acts on it: -1 certified, 2 deferred to the run,
 \ 0 refused. In MULTI-ERR mode a refusal, rejected (0) or uncheckable (1),
 \ RETURNS 0 instead of throwing: the checker has rendered it, counted it in
-\ MULTI-ERR-N, which keeps the run failing, and recorded the declared signature
-\ (no-cascade), so the scan continues at the next definition.
+\ REJECTION:TALLY, which keeps the run failing, and recorded the declared
+\ signature (no-cascade), so the scan continues at the next definition.
 \ The verdict is answered rather than swallowed because a created effect is a
 \ fact about a definition the checker did not refuse: a refused body records
 \ nothing.
@@ -1851,8 +1851,8 @@ public
 \ is in, named as its packets name it, and whether that is the supplied bytes.
 \ This throws E-DUP-DEFINITION, which stops the scan as the duplicate stops the
 \ load, and DUPLICATE answers the name. A word installed in its place that
-\ returns has reported the duplicate: the scan counts it in MULTI-ERR-N, as a
-\ refused definition, skips the definition and goes on.
+\ returns has reported the duplicate: the scan counts it in REJECTION:TALLY, as
+\ a refused definition, skips the definition and goes on.
 defer ON-DUPLICATE ( n n ptr u8 n bool -- )
 
 \ What a reported definition is, as the path that declared it knows it: a word
@@ -2078,7 +2078,7 @@ DUPLICATE-INIT
    COMPOSE-CUR-PATH-A @ COMPOSE-CUR-PATH-U @
    {: path:ptr pathu:n :}
    TOKEN-BYTE @ u path pathu COMPOSE-DIAG$ path pathu COMPOSE-SUBJ? ON-DUPLICATE
-   1 MULTI-ERR-N +! ;
+   1 REJECTION:TALLY +! ;
 
 \ A name that lands in a sealed package stops first.
 : REFUSE-DUPLICATE ( ptr u8 n n -- bool )
@@ -2356,9 +2356,9 @@ DYNAMIC-BUFFER NOM-TAIL u8
    nameu 0= IF E-MISSING-NAME throw THEN
    TOKEN-BYTE @ {: at:n :}
    name nameu MANGLE {: tail:ptr tailu:n :}
-   MULTI-ERR-N @ {: refused:n :}
+   REJECTION:TALLY @ {: refused:n :}
    tail tailu name nameu CHECKER-DEFFAMILY
-   MULTI-ERR-N @ refused <> IF EXIT THEN   \ a refused family declares no converters
+   REJECTION:TALLY @ refused <> IF EXIT THEN   \ a refused family declares no converters
    name nameu tail tailu DTC-BUILD-IN
    DTC-NAME$ at nameu ARM              \ the converter's own name, the TYPE's span
    CAST-TRUST
@@ -3940,7 +3940,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
 \ throw): then the stretch opens, unreported.
 : TOP-DEFINER? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
-   MULTI-ERR-N @ {: before:n :}
+   REJECTION:TALLY @ {: before:n :}
    a u TICK-NATIVE-DEFINER? {: native:bool :}
    \ A library definer is a replaceable dictionary call, not structural syntax.
    INDEX-ON @ native 0= and IF false EXIT THEN
@@ -3955,7 +3955,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    native 0= IF TICK-CONTEXT-UNKNOWN THEN
    native 0= IF a u at sym ENGINE-ORIGIN-USE THEN
    TOP-CLOSE
-   MULTI-ERR-N @ before <> IF -1 TOP-DEFER ! THEN
+   REJECTION:TALLY @ before <> IF -1 TOP-DEFER ! THEN
    0 0= ;
 
 \ `kernel:` is the engine's synonym for `:`.

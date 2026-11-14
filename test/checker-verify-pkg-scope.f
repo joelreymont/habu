@@ -45,10 +45,10 @@ public
 \ its own text instead of leaving a rejection on the gate's stderr.
 : REPLAY-QUIET ( ptr u8 n -- n ) {: a:ptr u:n :}
    DIAG-BUF $1000 REJECTION:BUFFER!
-   JSON-DIAGS @ {: was:n :}
-   false DIAG-JSON!
+   REJECTION:JSON @ {: was:n :}
+   false REJECTION:JSON !
    a u REPLAY {: rc:n :}
-   was JSON-DIAGS !
+   was REJECTION:JSON !
    REJECTION:BUFFER$ nip DIAG-U !
    REJECTION:BUFFER-OFF
    rc ;

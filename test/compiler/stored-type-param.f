@@ -129,10 +129,10 @@ private
 create DIAG-BUF DIAG-CAP allot
 
 : ARM ( -- )   \ capture the next diagnostic as JSON instead of printing it
-   DIAG-BUF DIAG-CAP REJECTION:BUFFER!  true DIAG-JSON! ;
+   DIAG-BUF DIAG-CAP REJECTION:BUFFER!  true REJECTION:JSON ! ;
 
 : DISARM ( -- )
-   false DIAG-JSON!  REJECTION:BUFFER-OFF ;
+   false REJECTION:JSON !  REJECTION:BUFFER-OFF ;
 
 : HAS? ( ptr u8 n -- )
    REJECTION:BUFFER$ 2swap CONTAINS? TTRUE ;

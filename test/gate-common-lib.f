@@ -22,7 +22,7 @@ $40000 constant GE-SRC-CAP
 32 constant GE-SP
 34 constant GE-DQ
 
-s" JSON-DIAGS" s" -- ptr a" TRUST
+s" REJECTION:JSON" s" -- ptr a" TRUST
 
 create GE-SRC-BUF GE-SRC-CAP allot
 create GE-ARGV-BUF GE-SRC-CAP allot
@@ -348,14 +348,14 @@ variable GE-EVAL-SRC-U
    cp@ GE-EVAL-CP !
    ndict@ GE-EVAL-NDICT !
    get-current GE-EVAL-CURRENT !
-   JSON-DIAGS @ GE-EVAL-JSON-DIAGS ! ;
+   REJECTION:JSON @ GE-EVAL-JSON-DIAGS ! ;
 
 : GE-EVAL-FORGET ( -- )
    CHECKER-SCOPE-DONE
    GE-EVAL-NDICT @ ndict!
    GE-EVAL-CP @ cp!
    GE-EVAL-CURRENT @ set-current
-   GE-EVAL-JSON-DIAGS @ JSON-DIAGS ! ;
+   GE-EVAL-JSON-DIAGS @ REJECTION:JSON ! ;
 
 : GE-EVAL-DUP2! ( n n -- ) {: src:n dst:n :}
    src dst dup2 dup 0 < if drop E-PROC-OUTPUT throw then drop ;

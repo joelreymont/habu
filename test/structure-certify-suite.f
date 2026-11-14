@@ -14,14 +14,14 @@ T-RESET
 \ fixed buffer, asserted by substring.
 create SCG-BUF 8192 allot
 : SCG< ( ptr u8 n -- )   \ run one candidate with JSON diags captured; assert rejected
-   SCG-BUF 8192 REJECTION:BUFFER!  0 0= DIAG-JSON!
+   SCG-BUF 8192 REJECTION:BUFFER!  0 0= REJECTION:JSON !
    CHECK-CANDIDATE! 0 T= ;
 : SCG? ( ptr u8 n -- )   \ assert the captured diag contains the needle
    T-NEXT
    REJECTION:BUFFER$ 2swap CONTAINS? 0= if
       s" diag needle missing" T-ASSERT-DETAIL
    then ;
-: SCG-END ( -- ) 0 0= 0= DIAG-JSON! REJECTION:BUFFER-OFF ;
+: SCG-END ( -- ) 0 0= 0= REJECTION:JSON ! REJECTION:BUFFER-OFF ;
 
 \ Each section pairs a positive that certifies with a negative that rejects.
 \ A STRUCTURE is a single-shape PRODUCT, so its FAMILY:MAKE/UNMAKE type through

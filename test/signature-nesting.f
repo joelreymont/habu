@@ -165,18 +165,18 @@ TYPED-VARIABLE SRC-U len
 
 
 create PKT-BUF 8192 allot
-: PACKET-OPEN ( -- )   PKT-BUF 8192 REJECTION:BUFFER!  0 0= DIAG-JSON! ;
+: PACKET-OPEN ( -- )   PKT-BUF 8192 REJECTION:BUFFER!  0 0= REJECTION:JSON ! ;
 
 \ REFUSES reads prose from a fork that inherits the format, and a run under
 \ `tools/check.f --json-errors` starts in JSON; a packet sets prose back.
-variable JSON-WAS   JSON-DIAGS @ JSON-WAS !   false DIAG-JSON!
+variable JSON-WAS   REJECTION:JSON @ JSON-WAS !   false REJECTION:JSON !
 
 
 \ The packet the text in SRC-BUF writes, checked in this process with JSON
 \ diagnostics captured; it stays in PKT-BUF until the next capture.
 : PACKET$ ( -- ptr u8 n )
    PACKET-OPEN  SRC$ CHECK-CANDIDATE! drop
-   REJECTION:BUFFER$ nip  0 0= 0= DIAG-JSON! REJECTION:BUFFER-OFF  PKT-BUF swap ;
+   REJECTION:BUFFER$ nip  0 0= 0= REJECTION:JSON ! REJECTION:BUFFER-OFF  PKT-BUF swap ;
 
 
 : PACKET-PASSES ( -- )
@@ -190,7 +190,7 @@ variable JSON-WAS   JSON-DIAGS @ JSON-WAS !   false DIAG-JSON!
    REJECTION:BUFFER$ code codeu CONTAINS? TTRUE
    REJECTION:BUFFER$ verdict verdictu CONTAINS? TTRUE
    REJECTION:BUFFER$ why whyu CONTAINS? TTRUE
-   0 0= 0= DIAG-JSON! REJECTION:BUFFER-OFF ;
+   0 0= 0= REJECTION:JSON ! REJECTION:BUFFER-OFF ;
 
 
 \ CHECK-CANDIDATE! also answers ANSWER: VERDICT-REFUSED or VERDICT-UNCHECKABLE.
@@ -409,7 +409,7 @@ public
    S\" \"token\":\"SN-NO-SUCH-WORD\"" VERDICT-REFUSED PACKET-HAS ;
 
 : REPORT ( -- )
-   JSON-WAS @ JSON-DIAGS !
+   JSON-WAS @ REJECTION:JSON !
    T-REPORT
    s" signature-nesting: ok" type cr ;
 ;package

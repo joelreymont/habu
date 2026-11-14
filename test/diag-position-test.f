@@ -1758,12 +1758,12 @@ variable RC
 : TEST-HEAD-CLOSER ( -- )
    s" an if open at the does> ending a definer's head, after a comment" T-LABEL
    SB-RESET
-   s" true DIAG-JSON!" SB-APPEND LF+
+   s" true REJECTION:JSON !" SB-APPEND LF+
    s" 3 3 38 DIAG-ORIGIN!" SB-APPEND LF+
    s" : CONST ( n -- ) ( a note ) create dup ," SB-APPEND LF+
    s"    0= if does> ( -- n ) @ ;" SB-APPEND LF+
    s" head-open-cmt.f" FIXTURE!
-   s\" \"line\":4,\"column\":10,\"byte_start\":86,\"byte_end\":91" REJECT-RC LOADED
+   s\" \"line\":4,\"column\":10,\"byte_start\":92,\"byte_end\":97" REJECT-RC LOADED
    ERR$ s\" \"token\":\"does>\"" CONTAINS? TTRUE ;
 
 \ A word nothing defines after a name another package's public mark covers, in

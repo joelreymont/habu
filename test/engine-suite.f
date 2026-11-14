@@ -315,9 +315,9 @@ variable TC-SYMU
    SYM-N @ TC-SYMN !
    SYM-STR-U @ TC-SYMU ! ;
 : TC-DIAG-OFF ( -- )
-   1 DIAG-QUIET +! ;
+   1 REJECTION:QUIET +! ;
 : TC-DIAG-ON ( -- )
-   -1 DIAG-QUIET +! ;
+   -1 REJECTION:QUIET +! ;
 : TC-UEND=? ( -- bool )
    UEND @ TC-UEND @ = ;
 : TC-NEND=? ( -- bool )
@@ -461,7 +461,7 @@ public
 
 ;package
 
-1 DIAG-QUIET +!
+1 REJECTION:QUIET +!
 s" engine resolution: an accepted source is the control" T-LABEL
 s" : ES-RES-CONTROL ( -- n ) T-LABEL-CAP ;" ES-RES-REFUSE:OUTCOME 0 T=
 s" engine resolution: the control resolved the global row" T-LABEL
@@ -478,7 +478,7 @@ s" engine resolution: a duplicate tail is refused case-folded" T-LABEL
 s" 9 constant t-label-cap" ES-RES-REFUSE:OUTCOME ES-RES-REFUSE:DUPLICATE T=
 s" engine resolution: the global row survived the refusals" T-LABEL
 T-LABEL-CAP 256 T=
--1 DIAG-QUIET +!
+-1 REJECTION:QUIET +!
 
 \ mid-body ( ... ) comments are comments, never a second signature.
 s" CBAD-SIG-TRAIL ( n -- n ) dup dup ( n -- n )" T-CHECK-REJECTS
@@ -614,7 +614,7 @@ s" edge-colon names stay ordinary" T-LABEL
 s" COK-QUAL-EDGE ( -- n n ) x: ::x" CHECK-QUIET-CANDIDATE! -1 T=
 s" single-colon qualified resolves" T-LABEL
 s" COK-QUAL-ONE ( -- n ) TQ:TAIL" CHECK-QUIET-CANDIDATE! -1 T=
-: ES-JSON-DIAGS! ( bool -- ) JSON-DIAGS ! ;
+: ES-JSON-DIAGS! ( bool -- ) REJECTION:JSON ! ;
 RSD-BUF RSD-CAP REJECTION:BUFFER!
 0 0= ES-JSON-DIAGS!
 s" qualified diag verdict" T-LABEL
@@ -865,7 +865,7 @@ REJECTION:BUFFER$ s" E-LOCAL-NAME-TOO-LONG habu: in cbad-loc-after-mismatch: loc
 REJECTION:BUFFER$ s" at 'c@'" CONTAINS? TFALSE
 8192 constant LOCJ-CAP
 create LOCJ-BUF LOCJ-CAP allot
-LOCJ-BUF LOCJ-CAP REJECTION:BUFFER!  true DIAG-JSON!
+LOCJ-BUF LOCJ-CAP REJECTION:BUFFER!  true REJECTION:JSON !
 s" over-width local JSON packet" T-LABEL
 s" CBAD-LOC17-JSON ( n -- n ) {: abcdefghijklmnopq:n :} abcdefghijklmnopq" CHECK-CANDIDATE! 0 T=
 s" over-width local JSON code" T-LABEL
@@ -886,7 +886,7 @@ s" CBAD-LOC-DASH-JSON ( n -- n ) {: a -- b :} a" CHECK-CANDIDATE! 0 T=
 s" -- in a locals group JSON code and reason" T-LABEL
 REJECTION:BUFFER$ s\" \"code\":\"E-BAD-LOCAL-SHAPE\"" CONTAINS? TTRUE
 REJECTION:BUFFER$ s\" \"reason\":\"a locals group names only locals; the signature declares the outputs\"" CONTAINS? TTRUE
-REJECTION:BUFFER-OFF  false DIAG-JSON!
+REJECTION:BUFFER-OFF  false REJECTION:JSON !
 \ multi-error load mode: rejects do not abort the load; the declared sig is
 \ retained so later definitions keep checking.
 : TR-ME-BEGIN ( -- ) MULTI-ERR-BEGIN ;
@@ -910,13 +910,13 @@ s" DNI-XCAST ( n -- exposure-us ) >frame-idx" T-CHECK-REJECTS
 \ The needles are the whole rendered fields: the packet also echoes the source
 \ text, so a bare 'frame-idx' would be found there even if the type renderer
 \ printed '?'.
-LOCJ-BUF LOCJ-CAP REJECTION:BUFFER!  true DIAG-JSON!
+LOCJ-BUF LOCJ-CAP REJECTION:BUFFER!  true REJECTION:JSON !
 s" DNI-RENDER ( frame-idx -- n )" CHECK! drop
 s" nominal type renders by name in diagnostic" T-LABEL
 REJECTION:BUFFER$ s\" \"actual\":\"frame-idx \"" CONTAINS? TTRUE
 s" nominal declared effect renders bare" T-LABEL
 REJECTION:BUFFER$ s\" \"declared_effect\":\"frame-idx -- n \"" CONTAINS? TTRUE
-REJECTION:BUFFER-OFF  false DIAG-JSON!
+REJECTION:BUFFER-OFF  false REJECTION:JSON !
 : T-SIGLESS-CERTIFIES ( -- )
    s" sigless nominal certifies" T-LABEL
    s" DNI-SIGLESS >frame-idx" CHECK-QUIET-CANDIDATE! -1 T=
@@ -1510,7 +1510,7 @@ TRUSTED: ES-CPX-BAD-EXT-EVAL ( -- ) ES-CPX-BAD-EXT$ evaluate ;
    ['] ES-CPX-BAD-EVAL catch 70 T= ;
 : ES-CPX-BAD-EXT-RUN ( -- )
    ['] ES-CPX-BAD-EXT-EVAL catch 70 T= ;
-1 DIAG-QUIET +!
+1 REJECTION:QUIET +!
 cp@ ES-CPX-CP !  ndict@ ES-CPX-ND !
 ES-CPX-BAD-RUN
 s" cpx-reject-1" T-LABEL cp@ ES-CPX-CP @ T=
@@ -1525,7 +1525,7 @@ ES-CPX-BAD-EXT-RUN
 ES-CPX-BAD-EXT-RUN
 s" cpx-reject-ext-3" T-LABEL cp@ ES-CPX-CP @ T=
 s" cpx-reject-ext-ndict" T-LABEL ndict@ ES-CPX-ND @ T=
--1 DIAG-QUIET +!
+-1 REJECTION:QUIET +!
 : CPX-GOOD ( n -- n ) 1 + ;
 6 CPX-GOOD 7 T=
 : ES-CPX-GOOD-EXTENDED-NAME ( n -- n ) 2 + ;
@@ -1592,9 +1592,9 @@ s" row cells diag: names the row" T-LABEL
 REJECTION:BUFFER$ s" 'S' is bound to fixed cells" CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
 LOCJ-BUF LOCJ-CAP REJECTION:BUFFER!
-true DIAG-JSON!
+true REJECTION:JSON !
 s" ESNP-ROW-JSON ( R [ R -- S ] -- S ) drop" CHECK-CANDIDATE! 0 T=
-false DIAG-JSON!
+false REJECTION:JSON !
 s" row alias JSON: quantifier2 names the second row" T-LABEL
 REJECTION:BUFFER$ s\" \"quantifier\":\"R\",\"quantifier2\":\"S\"" CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
@@ -1604,9 +1604,9 @@ s" row cells diag: names the unnamed row" T-LABEL
 REJECTION:BUFFER$ s" the unnamed row is bound to fixed cells" CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
 LOCJ-BUF LOCJ-CAP REJECTION:BUFFER!
-true DIAG-JSON!
+true REJECTION:JSON !
 s" ESNP-ROW-UNNAMED-JSON ( R -- ) 1" CHECK-CANDIDATE! 0 T=
-false DIAG-JSON!
+false REJECTION:JSON !
 s" row cells JSON: the unnamed row has no quantifier field" T-LABEL
 REJECTION:BUFFER$ s\" \"code\":\"E-NONPARAMETRIC-EFFECT\"" CONTAINS? TTRUE
 REJECTION:BUFFER$ s\" \"quantifier\"" CONTAINS? TFALSE

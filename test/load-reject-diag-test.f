@@ -202,12 +202,12 @@ variable RC
    OUTER$ SB$ FS:WRITE-ALL ;
 
 : IMM-FIXTURES! ( -- )
-   s" -1 JSON-DIAGS ! : LRD-IMM-I ( -- ) 73 include "
+   s" -1 REJECTION:JSON ! : LRD-IMM-I ( -- ) 73 include "
    SIDE$ s"  . ;" INC$ FRAG-FIXTURE!
-   s" -1 JSON-DIAGS ! : LRD-IMM-R ( -- ) 73 require "
+   s" -1 REJECTION:JSON ! : LRD-IMM-R ( -- ) 73 require "
    SIDE$ s"  . ;" REQ$ FRAG-FIXTURE!
    CALLER$ S" TRUSTED: RAW-IMM ( -- ) ; immediate
--1 JSON-DIAGS !
+-1 REJECTION:JSON !
 : LRD-IMM-S ( mystery:foo -- n ) RAW-IMM 73 ;
 " FS:WRITE-ALL ;
 
@@ -235,7 +235,7 @@ variable RC
    s" require " FRAG$ s" " TOP-REQ$ FRAG-FIXTURE!
    RUNTIME-FIXTURE!
    MODELED$ S\" : PI ( -- ) ; immediate s\" PI\" 0 parse-imm : PIM ( -- n ) PI 73 ; PIM ." FS:WRITE-ALL
-   TRUSTED$ S\" -1 JSON-DIAGS ! : LRD-TRUST-IMM ( -- ) ; immediate TRUSTED: LRD-TRUST-BODY ( -- n ) LRD-TRUST-IMM 73 ;" FS:WRITE-ALL ;
+   TRUSTED$ S\" -1 REJECTION:JSON ! : LRD-TRUST-IMM ( -- ) ; immediate TRUSTED: LRD-TRUST-BODY ( -- n ) LRD-TRUST-IMM 73 ;" FS:WRITE-ALL ;
 
 : FIXTURES! ( -- )
    REJECT-FIXTURES!
@@ -772,8 +772,8 @@ variable RC
    ERR$ GJA-PARSE dup GJA-OBJ {: root:SPAN:span<u8> :}
    root s" token_index" 1 GJA-ASSERT-INT-FIELD
    \ Bytes count from the file's start, not the definition's: RAW-IMM is on line 3.
-   root s" byte_start" 85 GJA-ASSERT-INT-FIELD
-   root s" byte_end" 92 GJA-ASSERT-INT-FIELD ;
+   root s" byte_start" 89 GJA-ASSERT-INT-FIELD
+   root s" byte_end" 96 GJA-ASSERT-INT-FIELD ;
 
 : TEST-IMM-TRUSTED ( -- )
    s" trusted body cannot bypass unmodeled immediate refusal" T-LABEL
@@ -785,7 +785,7 @@ variable RC
 \ holds, gets a record and a repair packet that meet the contract with no place.
 : TEST-UNSOURCED-PACKET ( -- )
    s" a refusal at an evaluated token gets a repair packet with no place" T-LABEL
-   BODY$ S\" true DIAG-JSON!\nTRUSTED: EV ( -- ) s\" drop\" evaluate ; immediate\ns\" EV\" 0 parse-imm\n: P ( -- ) ( a comment here ) 1 drop EV ;\n" FS:WRITE-ALL
+   BODY$ S\" true REJECTION:JSON !\nTRUSTED: EV ( -- ) s\" drop\" evaluate ; immediate\ns\" EV\" 0 parse-imm\n: P ( -- ) ( a comment here ) 1 drop EV ;\n" FS:WRITE-ALL
    BODY$ RUN
    s" E-INPUT-UNDERFLOW" ASSERT-NAMED
    ERR$ GJA-PARSE dup GJA-OBJ {: root:SPAN:span<u8> :}

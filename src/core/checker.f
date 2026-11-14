@@ -4952,7 +4952,6 @@ CHECKER-REG:SCRATCH{
 variable DVERD     \ the verdict CHECK-VERDICT gave the diagnostic rendered next
 PTR-VARIABLE TBASE  variable TBLEN  variable TI  variable TSTART
 CHECKER-REG:}SCRATCH
-variable JSON-DIAGS   0 JSON-DIAGS !
 
 \ TBASE's cell holds the checked source base pointer, so it is declared storage
 \ and a plain fetch keeps the ptr u8 role.
@@ -4964,9 +4963,6 @@ variable JSON-DIAGS   0 JSON-DIAGS !
 
 : TBYTE@ ( n -- n )
    TADDR c@ ;
-
-: DIAG-JSON! ( bool -- )
-   JSON-DIAGS ! ;
 
 : LIN-CON? ( n -- bool )
    T-RES dup TAG T-CON <> IF drop RES-FALSE EXIT THEN
@@ -10724,14 +10720,13 @@ CHECKER-REG:}SCRATCH
 
 \ A MULTI-ERROR load counts each refused definition and goes on.
 variable MULTI-ERR
-variable MULTI-ERR-N    \ refused definitions counted this load
-0 MULTI-ERR !   0 MULTI-ERR-N !
+0 MULTI-ERR !
 \ Set where a multi-error load reports and counts a refused declared row;
 \ CHECK-RESET clears it at each scan.
 variable SIG-COUNTED
 0 SIG-COUNTED !
 : SIG-COUNTED? ( -- bool ) SIG-COUNTED @ 0 <> ;
-: SIG-COUNT ( -- ) -1 SIG-COUNTED !  1 MULTI-ERR-N +! ;
+: SIG-COUNT ( -- ) -1 SIG-COUNTED !  1 REJECTION:TALLY +! ;
 7156 constant E-BAD-STORED-SIGNATURE
 \ Bad stored-signature diagnostic hook, given the signature, stored name and
 \ declaring name. BADSIG-PLAIN writes on fd 2 so a row the boot refuses names
@@ -10751,10 +10746,10 @@ BADSIG-DEFAULT
 
 : MULTI-ERR-BEGIN ( -- )
    UEND @ CHECKER-EFFECT-AUTHORITY:RECOVERY-START
-   -1 MULTI-ERR !  0 MULTI-ERR-N ! ;
+   -1 MULTI-ERR !  0 REJECTION:TALLY ! ;
 
 : MULTI-ERR-END ( -- n )
-   MULTI-ERR-N @  0 MULTI-ERR !  0 MULTI-ERR-N ! ;
+   REJECTION:TALLY @  0 MULTI-ERR !  0 REJECTION:TALLY ! ;
 
 \ A new declaration writes EFF-ACTIVE; the ordinary store/index rollback
 \ restores the old record and retires any replaced tag.
@@ -12960,7 +12955,7 @@ STORAGE-DIAG-DEFAULT
 
 : CHECKER-STORAGE-REFUSE ( ptr u8 n ptr u8 n n -- )
    STORAGE-DIAG-XT
-   MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
+   MULTI-ERR? IF 1 REJECTION:TALLY +! EXIT THEN
    CHECKER-REJECT-RC throw ;
 
 \ A definer with no name on its line declares no word, so it is refused at its
@@ -19062,12 +19057,10 @@ variable MTCH-W                      \ the bundle width the walk below really co
       24 of CF-RECURSE endof
    endcase ;
 \ The first token of the checked text is the word's name (skipped, kept for the
-\ recorder). DIAG-QUIET counts nested quiet-check scopes. It is created before
-\ the check hook exists, so no effect is published for it.
+\ recorder).
 CHECKER-REG:SCRATCH{
 variable TOK0
 CHECKER-REG:}SCRATCH
-variable DIAG-QUIET
 variable JSON-REPORTED
 : CHECKER-REPORT-RESET ( -- ) 0 JSON-REPORTED ! ;
 : CHECKER-REPORT-MARK ( -- ) -1 JSON-REPORTED ! ;

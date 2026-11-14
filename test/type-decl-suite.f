@@ -57,7 +57,7 @@ create TDIAG-BUF 8192 allot
 TDIAG-BUF 8192 REJECTION:BUFFER!
 \ The probes read prose, and a run under `tools/check.f --json-errors` starts in
 \ JSON; each JSON stretch ends in prose, and the format found returns before T-REPORT.
-variable TD-JSON-WAS   JSON-DIAGS @ TD-JSON-WAS !   false DIAG-JSON!
+variable TD-JSON-WAS   REJECTION:JSON @ TD-JSON-WAS !   false REJECTION:JSON !
 
 \ NEWTYPE: registers a TK-CELL family in the global scope, usable in sigs.
 NEWTYPE tdfoo<a,b>
@@ -785,7 +785,7 @@ TDIAG-BUF 8192 REJECTION:BUFFER!
 s" TPC-RENDER ( TDPM:span<n,n,n,n,n,n> -- n )" CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s" actual: tdpm:span<n,n,n,n,n,n> " CONTAINS? TTRUE
 REJECTION:BUFFER$ s" actual: TDPM:span<n,n,n,n,n,n> " CONTAINS? TFALSE
-TDIAG-BUF 8192 REJECTION:BUFFER!  true DIAG-JSON!
+TDIAG-BUF 8192 REJECTION:BUFFER!  true REJECTION:JSON !
 s" TPC-JSON-RENDER ( TDPM:span<n,n,n,n,n,n> -- n )" CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s\" \"actual\":\"tdpm:span<n,n,n,n,n,n> \"" CONTAINS? TTRUE
 TDIAG-BUF 8192 REJECTION:BUFFER!
@@ -793,7 +793,7 @@ s" TPC-JSON-ARITY ( TDPM:span<n,n,n> -- ) drop" CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s\" \"token\":\"TDPM:span\"" CONTAINS? TTRUE
 REJECTION:BUFFER$ s\" \"arity_expected\":6" CONTAINS? TTRUE
 REJECTION:BUFFER$ s\" \"arity_actual\":3" CONTAINS? TTRUE
-false DIAG-JSON!
+false REJECTION:JSON !
 TDIAG-BUF 8192 REJECTION:BUFFER!
 
 \ negative declarations: named throw code each time.
@@ -1166,7 +1166,7 @@ s" SUMTYPE qselfp VARIANT wv tdqs:qselfp ;VARIANT ;SUMTYPE" E-TDECL-RECURSIVE TD
 \ declaration diagnostic packet: declaration-shaped, through the standard
 \ machinery — no fake declared stack effect, definition fields, or word row.
 REJECTION:BUFFER-OFF
-TDIAG-BUF 8192 REJECTION:BUFFER!  true DIAG-JSON!
+TDIAG-BUF 8192 REJECTION:BUFFER!  true REJECTION:JSON !
 s" NEWTYPE tdfoo<a,b>" E-TFAM-DUP TDT-NEG
 REJECTION:BUFFER$ s\" \"code\":\"E-BAD-DECLARATION\"" CONTAINS? TTRUE
 REJECTION:BUFFER$ s\" \"repair_class\":\"fix_family_declaration\"" CONTAINS? TTRUE
@@ -1177,7 +1177,7 @@ REJECTION:BUFFER$ s\" \"reason\":\"duplicate family\"" CONTAINS? TTRUE
 REJECTION:BUFFER$ s\" \"declared_effect\"" CONTAINS? TFALSE
 REJECTION:BUFFER$ s\" \"definition_source\"" CONTAINS? TFALSE
 REJECTION:BUFFER$ s\" \"return_stack\"" CONTAINS? TFALSE
-REJECTION:BUFFER-OFF  false DIAG-JSON!
+REJECTION:BUFFER-OFF  false REJECTION:JSON !
 \ prose form names the declaration kind and reason.
 TDIAG-BUF 8192 REJECTION:BUFFER!
 s" SUMTYPE tdvd2<a> VARIANT ok a ;VARIANT VARIANT ok a ;VARIANT ;SUMTYPE" E-TFAM-DUP TDT-NEG
@@ -1752,11 +1752,11 @@ REJECTION:BUFFER$ s" expected: n actual: tdlrpku:tdlrfamu " CONTAINS? TTRUE
 REJECTION:BUFFER$ s" actual: TDLRPKU:tdlrfamu " CONTAINS? TFALSE
 \ the folded qualifier still names the family back: a signature may spell it either way.
 s" TDLR6R ( tdlrpku:tdlrfamu -- TDLRPKU:tdlrfamu )" CHECK-QUIET-CANDIDATE! -1 T=
-TDIAG-BUF 8192 REJECTION:BUFFER!  true DIAG-JSON!
+TDIAG-BUF 8192 REJECTION:BUFFER!  true REJECTION:JSON !
 s" TDLR7 ( n -- TDLRPKU:tdlrfamu )" CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s\" \"expected\":\"tdlrpku:tdlrfamu \"" CONTAINS? TTRUE
 REJECTION:BUFFER$ s\" \"expected\":\"TDLRPKU:tdlrfamu \"" CONTAINS? TFALSE
-false DIAG-JSON!
+false REJECTION:JSON !
 \ a package reopened under different capitalisation is the SAME package: the
 \ engine reports the first-registered spelling, so the family renders bare
 \ inside it rather than picking up a self-qualifier.
@@ -1778,14 +1778,14 @@ package tdlrjp
 public
 SUMTYPE tdlrjs VARIANT keep n ;VARIANT ;SUMTYPE
 ;package
-TDIAG-BUF 8192 REJECTION:BUFFER!  true DIAG-JSON!
+TDIAG-BUF 8192 REJECTION:BUFFER!  true REJECTION:JSON !
 s" TDLRJ1 ( n -- tdlrjg )" CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s\" \"family\":\"tdlrjg\"" CONTAINS? TTRUE
 TDIAG-BUF 8192 REJECTION:BUFFER!
 s" TDLRJ2 ( n -- tdlrjp:tdlrjs )" CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s\" \"family\":\"tdlrjp:tdlrjs\"" CONTAINS? TTRUE
 REJECTION:BUFFER$ s\" \"family\":\"tdlrjs\"" CONTAINS? TFALSE
-false DIAG-JSON!
+false REJECTION:JSON !
 REJECTION:BUFFER-OFF
 
 \ a single multi-cell family parameter (option<off len>, option<ptr u8 n>,
@@ -1816,11 +1816,11 @@ s" TDPN6 ( tdpbw2 -- tdpbres<tdpbw2,n> ) TDPBRES:OK" CHECK-QUIET-CANDIDATE! -1 T
 s" TDPN7 ( n -- tdpbres<tdpbw2,n> ) TDPBRES:ERR" CHECK-QUIET-CANDIDATE! -1 T=
 \ TDPA1: the output run is read at the width it is laid at, so it prints as one
 \ tdpbopt<tdpbw2>; test/type-ctor-suite.f CLFC-RT-SOME proves that width.
-TDIAG-BUF 8192 REJECTION:BUFFER!  true DIAG-JSON!
+TDIAG-BUF 8192 REJECTION:BUFFER!  true REJECTION:JSON !
 s" TDPA1 ( n -- tdpbopt<tdpbw2> ) TDPBOPT:SOME" CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s\" \"code\":\"E-MISMATCH\"" CONTAINS? TTRUE
 REJECTION:BUFFER$ s\" \"inferred_effect\":\"n -- tdpbopt<tdpbw2> \"" CONTAINS? TTRUE
-false DIAG-JSON!
+false REJECTION:JSON !
 REJECTION:BUFFER-OFF
 s" TDPA2 ( tdpbw2 -- tdpbopt<n> ) TDPBOPT:SOME" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDPA3 ( -- tdpbopt<tdpbw2> ) TDPBRES:OK" CHECK-QUIET-CANDIDATE! 0 T=
@@ -1844,13 +1844,13 @@ s" TDNEST3 ( -- tdnopt<tdnres<n,n>> ) TDNOPT:NONE" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDNEST4 ( tdnres<tdnw2,n> -- tdnopt<tdnres<tdnw2,n>> ) TDNOPT:SOME" CHECK-QUIET-CANDIDATE! -1 T=
 \ An open inner var leaves the layout's width unknown, so the candidate refuses;
 \ test/type-ctor-suite.f CN-OPEN pins the real load.
-TDIAG-BUF 8192 REJECTION:BUFFER!  true DIAG-JSON!
+TDIAG-BUF 8192 REJECTION:BUFFER!  true REJECTION:JSON !
 s" TDNOPEN ( tdnres<n,a> -- tdnopt<tdnres<n,a>> ) TDNOPT:SOME" CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s\" \"code\":\"E-MISMATCH\"" CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
 \ TDNA1's expected renders tdnres<tdnw2,n> whole: its width-3 instance has its
 \ tag at slot 2, so the full run compacts to the sum type.
-TDIAG-BUF 8192 REJECTION:BUFFER!  true DIAG-JSON!
+TDIAG-BUF 8192 REJECTION:BUFFER!  true REJECTION:JSON !
 s" TDNA1 ( tdnres<n,n> -- tdnopt<tdnres<tdnw2,n>> ) TDNOPT:SOME" CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s\" \"code\":\"E-MISMATCH\"" CONTAINS? TTRUE
 REJECTION:BUFFER$ s\" \"expected\":\"tdnres<tdnw2,n> \"" CONTAINS? TTRUE
@@ -1858,7 +1858,7 @@ TDIAG-BUF 8192 REJECTION:BUFFER!
 s" TDNA2 ( tdnopt<n> -- tdnopt<tdnres<n,n>> ) TDNOPT:SOME" CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s\" \"code\":\"E-MISMATCH\"" CONTAINS? TTRUE
 REJECTION:BUFFER$ s\" \"family\":\"tdnres\"" CONTAINS? TTRUE
-false DIAG-JSON!
+false REJECTION:JSON !
 REJECTION:BUFFER-OFF
 s" TDNA3 ( n -- tdnopt<tdnres<n,n>> ) TDNOPT:SOME" CHECK-QUIET-CANDIDATE! 0 T=
 
@@ -1866,7 +1866,7 @@ s" TDNA3 ( n -- tdnopt<tdnres<n,n>> ) TDNOPT:SOME" CHECK-QUIET-CANDIDATE! 0 T=
 : TFR-W65 ( n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n -- n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n ) ;
 : TFR-Q300 ( [ n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n -- ] -- ) drop ;
 
-TD-JSON-WAS @ JSON-DIAGS !
+TD-JSON-WAS @ REJECTION:JSON !
 
 \ A failure prints F<index> + detail; T-REPORT exits 1.
 T-REPORT

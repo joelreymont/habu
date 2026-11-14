@@ -74,11 +74,11 @@ variable CS-TICK
 
 create CS-DBUF 8192 allot
 : CS-CODE< ( ptr u8 n -- )
-   CS-DBUF 8192 REJECTION:BUFFER!  0 0= DIAG-JSON!
+   CS-DBUF 8192 REJECTION:BUFFER!  0 0= REJECTION:JSON !
    CHECK-CANDIDATE! 0 T= ;
 : CS-CODE? ( ptr u8 n -- )
    REJECTION:BUFFER$ 2swap CONTAINS? TTRUE ;
-: CS-CODE-END ( -- ) 0 0= 0= DIAG-JSON! REJECTION:BUFFER-OFF ;
+: CS-CODE-END ( -- ) 0 0= 0= REJECTION:JSON ! REJECTION:BUFFER-OFF ;
 \ A body's stale read is the catch's, never the interpret row's unknown cell,
 \ so its repair keeps the value before the catch.
 : CS-STALE? ( -- )

@@ -836,7 +836,7 @@ public
    sa su na nu SGBAD-PIN
    E-BAD-STORED-SIGNATURE CHECKER-REFUSE ;
 : SKIP ( n -- ) {: rc:n :}
-   rc REPORTED-ERROR? IF 1 MULTI-ERR-N +! EXIT THEN
+   rc REPORTED-ERROR? IF 1 REJECTION:TALLY +! EXIT THEN
    rc throw ;
 ;package
 
@@ -1081,7 +1081,7 @@ public
 \ caller checks against it, unless that signature is bad or too big to record.
 : MULTI-REFUSED ( -- )
    BWIN-UNJUDGED @ 0= 0= SGDECL-BAD @ 0= 0= and IF EXIT THEN  \ declared row reports this signature
-   1 MULTI-ERR-N +!
+   1 REJECTION:TALLY +!
    CHECK-SIG? SGBAD @ 0= and UNFIT @ 0= and IF
       NMA @ NMU @ CHECK-REC-ADMIT
       NMA @ NMU @ 0 NORET-ADD
@@ -1164,8 +1164,8 @@ public
    \ An uncheckable verdict is rendered here as JSON and in a multi-error load,
    \ whose record step below may refuse the definition by a throw (a duplicate,
    \ a name that keys no record) that would otherwise come before it.
-   dup VERDICT-REFUSED =  over VERDICT-UNCHECKABLE = JSON-DIAGS @ MULTI-ERR? or and  or
-   DIAG-QUIET @ 0= and IF DIAG-PRINT THEN
+   dup VERDICT-REFUSED =  over VERDICT-UNCHECKABLE = REJECTION:JSON @ MULTI-ERR? or and  or
+   REJECTION:QUIET @ 0= and IF DIAG-PRINT THEN
    \ The declared effect's record outlives the body until the diagnostic above,
    \ which renders it.
    SIG-EFF-DROP
@@ -1227,7 +1227,7 @@ public
    \ The count is the number of refusals rendered, so a quiet scan's is not
    \ counted.
    dup 0 =  over 1 = or  MULTI-ERR? and  NMU @ 0 > and
-   DIAG-QUIET @ 0= and IF
+   REJECTION:QUIET @ 0= and IF
       MULTI-REFUSED
    THEN ;
 
@@ -1636,9 +1636,9 @@ CHECKER-REG:}SCRATCH
 : CHECK-QUIET-CANDIDATE! ( ptr u8 n -- n ) {: a:ptr u:n :}
    WRITE-WINDOW-CK
    a QCAND-A !  u QCAND-U !
-   1 DIAG-QUIET +!
+   1 REJECTION:QUIET +!
    [: QCAND-BODY ;] catch {: rc:n :}
-   -1 DIAG-QUIET +!
+   -1 REJECTION:QUIET +!
    rc 0 <> IF rc throw THEN
    QCAND-VERDICT @ ;
 
@@ -1696,7 +1696,7 @@ variable DEF-STOPPED
 \ An uncheckable verdict is rendered here unless CHECK rendered it: as JSON, in
 \ a multi-error load, or not at all in a quiet probe.
 : REPORT-UNCHECKABLE ( n -- n )
-   dup 1 = JSON-DIAGS @ 0= and MULTI-ERR? 0= and DIAG-QUIET @ 0= and
+   dup 1 = REJECTION:JSON @ 0= and MULTI-ERR? 0= and REJECTION:QUIET @ 0= and
    if dup DVERD !  DIAG-PRINT then ;
 
 \ A TRUSTED: definition's declared effect is the assertion: the body is scanned
@@ -1718,9 +1718,9 @@ CHECKER-REG:}SCRATCH
    a UNJ-A !  u UNJ-U !
    DOESEFF @ DOESPEND @ {: eff:n pend:n :}
    -1 BWIN-UNJUDGED !
-   1 DIAG-QUIET +!
+   1 REJECTION:QUIET +!
    [: CHECK-UNJUDGED-BODY ;] CHECKER-EFFECT-AUTHORITY:SCAN {: rc:n :}
-   -1 DIAG-QUIET +!
+   -1 REJECTION:QUIET +!
    0 BWIN-UNJUDGED !
    rc 0 <> IF DOES-EFF-CLEAR rc throw THEN
    eff DOESEFF !  pend DOESPEND !
@@ -1996,9 +1996,9 @@ PTR-VARIABLE UNJ-DOES-SA   variable UNJ-DOES-SU   variable UNJ-DOES-VERDICT
    v -1 = v 2 = or IF v EXIT THEN
    na nu DOES-NAME!
    v DVERD !
-   DIAG-QUIET @ 0= IF DIAG-PRINT THEN
+   REJECTION:QUIET @ 0= IF DIAG-PRINT THEN
    SIG-EFF-DROP
-   MULTI-ERR? DIAG-QUIET @ 0= and IF 1 MULTI-ERR-N +! THEN
+   MULTI-ERR? REJECTION:QUIET @ 0= and IF 1 REJECTION:TALLY +! THEN
    v ;
 
 \ Both compilers report a clause their check refused the same way, but they name
@@ -2026,7 +2026,7 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    SIG-EFF-DROP
    DEF-REFUSED
    WRAP-CLEAR
-   1 MULTI-ERR-N +!
+   1 REJECTION:TALLY +!
    0 ;
 
 \ The clause's name is written after the scan, so the token buffers are sized
@@ -2064,7 +2064,7 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    {: a:ptr u:n sel:n :}
    a USH-TOK-A !  u USH-TOK-U !
    sel SHADOW-DIAG-XT
-   MULTI-ERR? IF 1 MULTI-ERR-N +! 0 EXIT THEN
+   MULTI-ERR? IF 1 REJECTION:TALLY +! 0 EXIT THEN
    CHECKER-REJECT-RC throw ;
 
 \ What the load does with a top-level token it runs, or ticks when RUNS is
@@ -2106,7 +2106,7 @@ variable TOP-ASK-ANSWER
    a TOP-ASK-A !  u TOP-ASK-U !  runs TOP-ASK-RUNS !
    0 DEF-REFUSAL !
    [: TOP-ASK-BODY ;] catch {: rc:n :}
-   rc 0 <> IF rc DEF-REFUSED  1 MULTI-ERR-N +!  0 EXIT THEN
+   rc 0 <> IF rc DEF-REFUSED  1 REJECTION:TALLY +!  0 EXIT THEN
    TOP-ASK-ANSWER @ ;
 
 \ One rollback frame spans the head's scan, the clause's and publication; while
@@ -2141,7 +2141,7 @@ variable TOP-ASK-ANSWER
 
 : GENERATES-REFUSE ( ptr u8 n n -- )
    GENR-DIAG
-   MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
+   MULTI-ERR? IF 1 REJECTION:TALLY +! EXIT THEN
    E-GENERATES-ROW throw ;
 
 \ `already` is what the caller knows of D beyond the checker. Answers D's symbol
@@ -2210,7 +2210,7 @@ TRUSTED: generates: ( -- )
 
 : PARSES-REFUSE ( ptr u8 n n -- )
    PRS-DIAG
-   MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
+   MULTI-ERR? IF 1 REJECTION:TALLY +! EXIT THEN
    E-PARSES-ROW throw ;
 
 : ROW-UNBOUND ( ptr u8 n -- n )
@@ -2276,7 +2276,7 @@ TRUSTED: generates: ( -- )
 
 : NAMES-REFUSE ( ptr u8 n n -- )
    NMS-DIAG
-   MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
+   MULTI-ERR? IF 1 REJECTION:TALLY +! EXIT THEN
    E-NAMES-ROW throw ;
 
 \ A record quiet TRUST left unresolved holds no row.
@@ -2564,7 +2564,7 @@ public
    TOK-SPELL-A @ TOK-SPELL-U @ REFUSAL-STEP
    CHECK-VERDICT dup DVERD ! {: v:n :}
    v VERDICT-CHECKED =  v VERDICT-DEFERRED =  or  RCOMPILE @ 0=  and IF EXIT THEN
-   DIAG-QUIET @ 0= IF DIAG-PRINT THEN
+   REJECTION:QUIET @ 0= IF DIAG-PRINT THEN
    CHECKER-REJECT-RC throw ;
 
 \ A step is a guest in the term pools: an event fires between the tokens of a

@@ -757,7 +757,7 @@ variable FACTS-REC   variable FACTS-MARK   variable FACTS-WAS   variable FACTS-N
 : REND-SIG ( -- ptr u8 n )
    0 TEXT-LEN !  BROW @ DCUR @ 0 0 RES-FALSE REND-EFFECT ;
 
-\ `JSON-DIAGS ON` emits one JSON object per reject or uncheckable verdict.
+\ `JSON ON` emits one JSON object per reject or uncheckable verdict.
 variable DSUGE  variable DSUGA
 \ A tool's label (checker.f DIAG-FILE!) names a top step's file in place of its
 \ path while the load reads that file or none.
@@ -1826,12 +1826,12 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
 
 : DIAG-PRINT
    1 DEST !  0 TEXT-LEN !  0 RQM !  SEEN-RESET 0 NLET !  0 RROW-N !
-   JSON-DIAGS @ IF DIAG-JSON ELSE
+   JSON @ IF DIAG-JSON ELSE
      DIAG-PROSE  s" ; suggestion: " EMIT-STR  SUGGEST-TEXT EMIT-STR
    THEN
    10 EMIT1
    FLUSH
-   JSON-DIAGS @ IF CHECKER-REPORT-MARK THEN ;
+   JSON @ IF CHECKER-REPORT-MARK THEN ;
 
 
 
@@ -1859,7 +1859,7 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
 : BADSIG-DIAG ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: sa:ptr su:n na:ptr nu:n at:ptr atu:n :}
    1 DEST !  0 TEXT-LEN !
-   JSON-DIAGS @ IF sa su na nu at atu BADSIG-JSON ELSE sa su na nu BADSIG-PROSE THEN
+   JSON @ IF sa su na nu at atu BADSIG-JSON ELSE sa su na nu BADSIG-PROSE THEN
    10 EMIT1
    FLUSH ;
 : BADSIG-DIAG-INSTALL ( -- ) [: BADSIG-DIAG ;] is BADSIG-XT ;
@@ -1887,7 +1887,7 @@ BADSIG-DIAG-INSTALL
    {: ka:ptr ku:n fa:ptr fu:n ta:ptr tu:n wa:ptr wu:n :}
    1 DEST !  0 TEXT-LEN !
    ka ku fa fu ta tu wa wu
-   JSON-DIAGS @ IF TDECL-DIAG-JSON ELSE TDECL-DIAG-PROSE THEN
+   JSON @ IF TDECL-DIAG-JSON ELSE TDECL-DIAG-PROSE THEN
    10 EMIT1
    FLUSH ;
 
@@ -1925,7 +1925,7 @@ BADSIG-DIAG-INSTALL
 : REC-REFUSE-EMIT ( ptr u8 n -- )
    {: na:ptr nu:n :}
    1 DEST !  0 TEXT-LEN !
-   na nu JSON-DIAGS @ IF REC-REFUSE-JSON ELSE REC-REFUSE-PROSE THEN
+   na nu JSON @ IF REC-REFUSE-JSON ELSE REC-REFUSE-PROSE THEN
    10 EMIT1
    FLUSH ;
 
@@ -2008,7 +2008,7 @@ variable WARN-DIAGS   -1 WARN-DIAGS !
    USING-JSON ;
 : USHADOW-DIAG ( -- )
    1 DEST !  0 TEXT-LEN !  0 RQM !
-   JSON-DIAGS @ IF USHADOW-JSON ELSE USHADOW-PROSE THEN
+   JSON @ IF USHADOW-JSON ELSE USHADOW-PROSE THEN
    10 EMIT1
    FLUSH ;
 
@@ -2040,7 +2040,7 @@ variable WARN-DIAGS   -1 WARN-DIAGS !
    NM-SPAN s" A private word of this package owns the same tail, and a bare tail binds the private word first, so the native compiler reads this definition's arity from it. Give the public definition the private word's effect, or rename one of the two." JTAIL ;
 : SBARITY-DIAG ( -- )
    1 DEST !  0 TEXT-LEN !  0 RQM !
-   JSON-DIAGS @ IF SBARITY-JSON ELSE SBARITY-PROSE THEN
+   JSON @ IF SBARITY-JSON ELSE SBARITY-PROSE THEN
    10 EMIT1
    FLUSH ;
 \ A bare token two used publics export: the
@@ -2058,7 +2058,7 @@ variable WARN-DIAGS   -1 WARN-DIAGS !
    USING-JSON ;
 : UAMB-DIAG ( -- )
    1 DEST !  0 TEXT-LEN !  0 RQM !
-   JSON-DIAGS @ IF UAMB-JSON ELSE UAMB-PROSE THEN
+   JSON @ IF UAMB-JSON ELSE UAMB-PROSE THEN
    10 EMIT1
    FLUSH ;
 \ A top-level token the load refuses, a stretch the pre-pass deferred, or a
@@ -2080,7 +2080,7 @@ variable WARN-DIAGS   -1 WARN-DIAGS !
    t tu EMIT-STR  s"  '" EMIT-STR  USH-TOK-A @ USH-TOK-U @ EMIT-STR  39 EMIT1 ;
 : TOP-UNDEF-DIAG ( -- )
    1 DEST !  0 TEXT-LEN !  0 RQM !
-   JSON-DIAGS @ IF
+   JSON @ IF
       s" E-UNDEFINED-TOP-LEVEL" s" unknown_rejection" s" rejected"
       s" Inspect the token, signature, and raw stack evidence." TOP-SPAN-JSON
    ELSE s" E-UNDEFINED-TOP-LEVEL" s" undefined word" TOP-SPAN-PROSE THEN
@@ -2088,7 +2088,7 @@ variable WARN-DIAGS   -1 WARN-DIAGS !
    FLUSH ;
 : TOP-BADQUAL-DIAG ( -- )
    1 DEST !  0 TEXT-LEN !  0 RQM !
-   JSON-DIAGS @ IF
+   JSON @ IF
       s" E-BAD-QUALIFIED-TOP-LEVEL" s" fix_qualified_name" s" rejected"
       s" Use one ':' qualifier, e.g. PKG:WORD." TOP-SPAN-JSON
    ELSE s" E-BAD-QUALIFIED-TOP-LEVEL" s" malformed qualified name" TOP-SPAN-PROSE THEN
@@ -2096,7 +2096,7 @@ variable WARN-DIAGS   -1 WARN-DIAGS !
    FLUSH ;
 : TOP-ARENA-DIAG ( -- )
    1 DEST !  0 TEXT-LEN !  0 RQM !
-   JSON-DIAGS @ IF
+   JSON @ IF
       s" E-ARENA-CALL-TOP-LEVEL"  MD-ARENA-CALL MD-CLASS$  s" rejected"
       MD-ARENA-CALL MD-SUGGEST$ TOP-SPAN-JSON
    ELSE s" E-ARENA-CALL-TOP-LEVEL"  MD-ARENA-CALL MD-REASON$ TOP-SPAN-PROSE THEN
@@ -2150,7 +2150,7 @@ SHADOW-DIAG-INSTALL
 : TSTALE-DIAG ( ptr u8 n ptr u8 n -- )
    {: na:ptr nu:n pa:ptr pu:n :}
    1 DEST !  0 TEXT-LEN !  0 RQM !
-   JSON-DIAGS @ IF na nu pa pu TSTALE-JSON ELSE na nu TSTALE-PROSE THEN
+   JSON @ IF na nu pa pu TSTALE-JSON ELSE na nu TSTALE-PROSE THEN
    10 EMIT1
    FLUSH ;
 
@@ -2174,7 +2174,7 @@ SHADOW-DIAG-INSTALL
 : REPLAY-ONLY-DIAG ( ptr u8 n ptr u8 n -- )
    {: na:ptr nu:n pa:ptr pu:n :}
    1 DEST !  0 TEXT-LEN !  0 RQM !
-   JSON-DIAGS @ IF na nu pa pu REPLAY-ONLY-JSON ELSE na nu REPLAY-ONLY-PROSE THEN
+   JSON @ IF na nu pa pu REPLAY-ONLY-JSON ELSE na nu REPLAY-ONLY-PROSE THEN
    10 EMIT1
    FLUSH ;
 
@@ -2197,7 +2197,7 @@ SHADOW-DIAG-INSTALL
 : BADQUAL-DIAG ( ptr u8 n ptr u8 n -- )
    {: na:ptr nu:n pa:ptr pu:n :}
    1 DEST !  0 TEXT-LEN !  0 RQM !
-   JSON-DIAGS @ IF na nu pa pu BADQUAL-JSON ELSE na nu BADQUAL-PROSE THEN
+   JSON @ IF na nu pa pu BADQUAL-JSON ELSE na nu BADQUAL-PROSE THEN
    10 EMIT1
    FLUSH ;
 \ checker.f RECORD-DIAG-XT selects: 0 the stale trust row, 1 the storage
@@ -2280,7 +2280,7 @@ RECORD-DIAG-INSTALL
    ta tu STGR-IN-SOURCE? {: at:bool :}
    at IF ta STGR-LOCATE THEN
    1 DEST !  0 TEXT-LEN !  0 RQM !
-   JSON-DIAGS @ IF
+   JSON @ IF
       na nu ta tu why at STGR-JSON
    ELSE
       na nu ta tu why at STGR-PROSE
@@ -2352,7 +2352,7 @@ STGR-DIAG-INSTALL
 : GENR-DIAG ( ptr u8 n n -- )
    {: ta:ptr tu:n kind:n :}
    1 DEST !  0 TEXT-LEN !  0 RQM !
-   JSON-DIAGS @ IF ta tu kind GENR-JSON ELSE ta tu kind GENR-PROSE THEN
+   JSON @ IF ta tu kind GENR-JSON ELSE ta tu kind GENR-PROSE THEN
    10 EMIT1
    FLUSH ;
 
@@ -2416,7 +2416,7 @@ package CAST-ERROR
    s" suggestion" JSON-KEY SUGGEST$ JSON-STRING  125 EMIT1 ;
 : RENDER ( -- )
    1 DEST !  0 TEXT-LEN !  0 RQM !
-   JSON-DIAGS @ IF PACKET ELSE PROSE THEN
+   JSON @ IF PACKET ELSE PROSE THEN
    10 EMIT1
    FLUSH ;
 ;package
@@ -2473,7 +2473,7 @@ package CAST-ERROR
 : PRS-DIAG ( ptr u8 n n -- )
    {: ta:ptr tu:n kind:n :}
    1 DEST !  0 TEXT-LEN !  0 RQM !
-   JSON-DIAGS @ IF
+   JSON @ IF
       ta tu s" E-PARSES-ROW" kind PRS-CLASS$ kind PRS-SUGGEST$ ROW-JSON
    ELSE
       ta tu kind PRS-PROSE
@@ -2504,7 +2504,7 @@ package CAST-ERROR
 : NMS-DIAG ( ptr u8 n n -- )
    {: ta:ptr tu:n kind:n :}
    1 DEST !  0 TEXT-LEN !  0 RQM !
-   JSON-DIAGS @ IF
+   JSON @ IF
       ta tu s" E-NAMES-ROW" kind NMS-CLASS$ kind NMS-SUGGEST$ ROW-JSON
    ELSE
       ta tu kind NMS-PROSE

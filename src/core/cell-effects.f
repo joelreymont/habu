@@ -39,11 +39,10 @@ s" PERSISTED-PTR-U8-TABLE-VARIABLE" s" --" TRUST
 s" PTR-U8-TABLE-VARIABLE" s" --" TRUST
 s" RESERVED-PTR-U8-CELL" s" n --" TRUST
 
-\ The refusal count and the words that open and close a collection, from
-\ src/core/checker.f, which loads before the checker starts. Checked bodies
-\ count a recovered refusal (src/core/arena.f, src/habu/verify-source.f); tests
-\ open and close a collection (test/native-multi-error-recovery.f).
-PRIM: MULTI-ERR-N PE-PTR-N PE-OUT PRIM;
+\ The rejection count (src/core/rejection.f) and the words that open and close
+\ a collection (src/core/checker.f) load before the checker starts, so a checked
+\ call of them needs these rows.
+PPRIM: REJECTION TALLY PE-PTR-N PE-OUT PPRIM;
 PRIM: MULTI-ERR-BEGIN PRIM;
 PRIM: MULTI-ERR-END PE-N PE-OUT PRIM;
 

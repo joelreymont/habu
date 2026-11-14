@@ -862,7 +862,7 @@ private
 : CHK-BUILD-PREFIX ( -- )
    CHK-LABEL CHK-RUN-QPATH+
    s"  DIAG-FILE!" CHK-RUN-SP
-   CHK-JSON @ if s" -1 JSON-DIAGS !" CHK-RUN-SP then
+   CHK-JSON @ if s" -1 REJECTION:JSON !" CHK-RUN-SP then
    s" 0 WARN-DIAGS !" CHK-RUN-SP ;
 
 \ The origin pass appends the marked copy of the source file at the given path

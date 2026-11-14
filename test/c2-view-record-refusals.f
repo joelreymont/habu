@@ -23,7 +23,7 @@ public
    s" a raw pointer cannot hide a borrowed field" T-LABEL
    s" STRUCTURE c2ptrview<a,b> FIELD source ptr read-view<a,b,u8> ;STRUCTURE" 70 SUBJECT:EXITED? TTRUE
    s" nested record cannot escape an owner callback" T-LABEL
-   s" -1 JSON-DIAGS ! : C2V-S ( read-view<p,l,u8> -- c2vinner<p,l> read-view<p,l,u8> ) dup 1 C2VINNER:MAKE swap ; : C2V-B ( mut-view<p,p,a,u8> -- mut-view<p,p,a,u8> ) [: C2V-S ;] C2-MEM:WITH-READ swap drop ;"
+   s" -1 REJECTION:JSON ! : C2V-S ( read-view<p,l,u8> -- c2vinner<p,l> read-view<p,l,u8> ) dup 1 C2VINNER:MAKE swap ; : C2V-B ( mut-view<p,p,a,u8> -- mut-view<p,p,a,u8> ) [: C2V-S ;] C2-MEM:WITH-READ swap drop ;"
    70 S\" \"code\":\"E-C2-SCOPE-ESCAPE\"" SUBJECT:REFUSED? TTRUE
    s" raw global storage cannot retain a borrowed record" T-LABEL
    s" variable C2V-SLOT : C2V-STORE ( c2vinner<p,q> -- ) C2V-SLOT ! ;" 70 SUBJECT:EXITED? TTRUE
