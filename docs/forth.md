@@ -347,12 +347,14 @@ public
   control flags and immediate bits carried, no forwarding body, zero runtime
   cost. `EXPORT EVAL:RUN` in `package MAKI public` publishes `MAKI:RUN`; a bare
   `EXPORT HELPER` in the public section promotes the private `HELPER`.
-  Refused: an undefined source, a private word behind a CLOSED package, a
-  primitive and a duplicate tail in the target section (`E-EXPORT-UNDEFINED`).
-  An exported `does>` definer `MK` brings its clause along as `MK;does`.
-  Re-exporting a generated constructor under a second name is allowed; adding
-  tails INTO a generated constructor package is not. At TOP LEVEL `EXPORT
-  name…` consumes the name as a no-op.
+  Rejected: an undefined source and a private word behind a CLOSED package
+  (`E-EXPORT-UNDEFINED`), a primitive (`E-EXPORT-PRIM`), an internal engine
+  word (`E-EXPORT-UNSAFE`) and a duplicate tail in the target section
+  (`E-DUPLICATE-DEFINITION`). An exported `does>` definer `MK` brings its
+  clause along as `MK;does`. Re-exporting a generated constructor under a
+  second name is allowed; adding tails INTO a generated constructor package is
+  not. `EXPORT` outside a package or in its private section is rejected
+  (`E-EXPORT-NO-PACKAGE`).
 - **A process can be sealed to the packages a harness admits**:
   `src/lib/vocabulary.f` states the vocabulary and the refusals.
 

@@ -1,6 +1,6 @@
 \ export-package.f - interpret-level `EXPORT` in fresh child engines. Inside an
-\ open package it publishes an existing word under its own tail; at top level it
-\ consumes the name as a no-op.
+\ open package's public section it publishes an existing word under its own
+\ tail; outside a package it is rejected.
 
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
 \   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f
@@ -19,9 +19,9 @@ require src/lib/engine-candidate.f
 
 2048 constant XPK-CAP
 70 constant XPK-UNDEF-RC              \ undefined-word child exit status
+70 constant XPK-REJECT-RC             \ a rejection's exit status (CHECKER-REJECT-RC)
 74 constant XPK-NONAME-RC             \ missing EXPORT name ($4A)
 78 constant XPK-DUP-RC                \ duplicate definition ($4E)
-67 constant XPK-THROW-RC              \ engine uncaught-throw boundary exit
 
 variable XPK-ROOT-U
 variable XPK-CHILD-U
@@ -52,9 +52,9 @@ create XPK-EMPTY 1 allot
 : XPK-LINE ( ptr u8 n -- )   SB-APPEND XPK-LF ;
 
 \ --- forge programs -----------------------------------------------------------
-\ Child exits: primitive source 67 (uncaught E-EXPORT-PRIM 7115), trusted
-\ primitive 67 (uncaught E-EXPORT-UNSAFE 7120), private word behind a closed
-\ package 70 (qualified lookup is public-only).
+\ Child exits: a primitive source, a trusted primitive and a top-level EXPORT
+\ 70 with their records; a private word behind a closed package 70 (qualified
+\ lookup is public-only).
 
 : XPK-SRC-PKG ( -- )                          \ shared source package XA with XA:W
    s" package XA" XPK-LINE
@@ -77,12 +77,10 @@ create XPK-EMPTY 1 allot
    s" 5 U2 . cr" XPK-LINE
    SB$ ;
 
-: XPK-DIRECTIVE-FORGE$ ( -- ptr u8 n )        \ top-level EXPORT is a no-op
+: XPK-TOP-FORGE$ ( -- ptr u8 n )              \ top-level EXPORT rejects
    SB-RESET
    s" : SQ ( n -- n ) dup * ;" XPK-LINE
    s" EXPORT SQ" XPK-LINE
-   s" EXPORT NEVER-DEFINED-ANYWHERE" XPK-LINE
-   s" 6 SQ . cr" XPK-LINE
    SB$ ;
 
 : XPK-UNDEF-FORGE$ ( -- ptr u8 n )            \ undefined source rejects
@@ -255,8 +253,6 @@ create XPK-EMPTY 1 allot
 : XPK-POSITIVES ( -- )
    s" dual-name execution + checked callers" T-LABEL
    XPK-OK-FORGE$ XPK-RUN-STDIN 0 XPK-ASSERT-RC s" 14" XPK-OUT? s" 10" XPK-OUT?
-   s" top-level EXPORT is a no-op" T-LABEL
-   XPK-DIRECTIVE-FORGE$ XPK-RUN-STDIN 0 XPK-ASSERT-RC s" 36" XPK-OUT?
    s" generated ctor re-export allowed; checked alias caller compiles" T-LABEL
    XPK-CTOR-FORGE$ XPK-RUN-STDIN 0 XPK-ASSERT-RC s" ctor-alias-ok" XPK-OUT?
    s" data record exports (--load)" T-LABEL
@@ -276,13 +272,16 @@ create XPK-EMPTY 1 allot
    s" self-export rejects as duplicate" T-LABEL
    XPK-SELF-FORGE$ XPK-RUN-STDIN XPK-DUP-RC XPK-ASSERT-RC
    s" primitive source rejects (E-EXPORT-PRIM)" T-LABEL
-   XPK-PRIM-FORGE$ XPK-RUN-STDIN XPK-THROW-RC XPK-ASSERT-RC
-   s" 7115" XPK-ERR?
+   XPK-PRIM-FORGE$ XPK-RUN-STDIN XPK-REJECT-RC XPK-ASSERT-RC
+   s" error[E-EXPORT-PRIM]" XPK-ERR?  s" `dup`" XPK-ERR?
    s" exporting a trusted primitive rejects (E-EXPORT-UNSAFE)" T-LABEL
-   XPK-UNSAFE-FORGE$ XPK-RUN-STDIN XPK-THROW-RC XPK-ASSERT-RC
-   s" 7120" XPK-ERR?
+   XPK-UNSAFE-FORGE$ XPK-RUN-STDIN XPK-REJECT-RC XPK-ASSERT-RC
+   s" error[E-EXPORT-UNSAFE]" XPK-ERR?  s" `patch32`" XPK-ERR?
    s" private word behind a closed package rejects" T-LABEL
-   XPK-PRIV-FORGE$ XPK-RUN-STDIN XPK-UNDEF-RC XPK-ASSERT-RC ;
+   XPK-PRIV-FORGE$ XPK-RUN-STDIN XPK-UNDEF-RC XPK-ASSERT-RC
+   s" top-level EXPORT rejects (E-EXPORT-NO-PACKAGE)" T-LABEL
+   XPK-TOP-FORGE$ XPK-RUN-STDIN XPK-REJECT-RC XPK-ASSERT-RC
+   s" error[E-EXPORT-NO-PACKAGE]" XPK-ERR? ;
 
 \ The source ctor and its alias must fail the interpret-level wide gate alike
 \ (same kind and rc), proving the alias copied DNAME-WIDE; equality is the
