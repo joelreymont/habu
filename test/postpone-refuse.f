@@ -2,7 +2,9 @@
 \ appended text, for compile, of a quotation literal and for a postponed word
 \ since undefined, and the next definition compiles; a definer is refused for
 \ postponing a word its tick is refused for; a catch abandons a definition
-\ opened inside it and keeps one opened before it, and the lines after it run.
+\ opened inside it and keeps one opened before it, and the lines after it run;
+\ a catch of a throw from an evaluate the definer runs keeps the definition,
+\ and a word postponed after it binds.
 
 require src/lib/string.f
 require src/lib/test/ending.f
@@ -67,6 +69,22 @@ NESTED 70 T=
 s" KEPT-IMM" 0 parse-imm
 : KEPT ( -- n ) KEPT-IMM 5 ;
 KEPT 5 T=
+
+\ The part keeps CUT-ONE out of sight where CUT-DEF ends: only its item binds it.
+package CUT
+: CUT-ONE ( n -- n ) 1 + ;
+: CUT-TWO ( n -- n ) 2 + ;
+public
+: CUT-IMM ( -- ) postpone CUT-TWO postpone CUT-TWO 99 throw ; immediate
+s" CUT-IMM" 0 parse-imm
+: MAKE-CUT ( ptr u8 n -- )
+   EFFECT:NEW EFFECT:N EFFECT:IN EFFECT:N EFFECT:OUT define-word
+   [: s" CUT:CUT-IMM" evaluate-closed ;] catch 99 T=
+   postpone CUT-ONE
+   postpone ; ;
+;package
+s" CUT-DEF" CUT:MAKE-CUT
+5 CUT-DEF 6 T=
 
 : AFTER-RETIRED ( -- n ) 8 ;
 AFTER-RETIRED 8 T=
