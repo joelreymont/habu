@@ -29,7 +29,7 @@ STRUCTURE other DERIVE init FIELD left n FIELD right n ;STRUCTURE
    s" a caught throwing field callback cannot reuse its parent" T-LABEL
    s" : FL-CB-THROW ( mut-view<b,j,c,init<i,C2-FIELD-LOAN-WRAPPER:pair>> -- mut-view<b,j,c,init<i,C2-FIELD-LOAN-WRAPPER:pair>> ) 1 throw ; : FL-TAKE ( mut-view<b,i,a,init<i,C2-FIELD-LOAN-WRAPPER:outer>> -- mut-view<b,i,a,init<i,C2-FIELD-LOAN-WRAPPER:outer>> ) [: FL-CB-THROW ;] C2-MEM:WITH-FIELD inner ; : FL-CATCH ( mut-view<b,i,a,init<i,C2-FIELD-LOAN-WRAPPER:outer>> -- mut-view<b,i,a,init<i,C2-FIELD-LOAN-WRAPPER:outer>> ) [: FL-TAKE ;] catch drop C2--FIELD--LOAN--WRAPPER-OUTER:GUARD@ drop ;" 70 SUBJECT:EXITED? TTRUE
    s" a does> clause cannot leave a field loan pending" T-LABEL
-   s" : FL-CLAUSE ( -- ) create 0 , does> ( mut-view<b,i,a,init<i,C2-FIELD-LOAN-WRAPPER:outer>> -- mut-view<b,i,a,init<i,C2-FIELD-LOAN-WRAPPER:outer>> [ n -- n ] ) drop [: ;] C2-MEM:WITH-FIELD ;" 70 s" habu: in fl-clause;does: at 'C2-MEM:WITH-FIELD'" SUBJECT:REFUSED? TTRUE
+   s" : FL-CLAUSE ( -- ) create 0 , does> ( mut-view<b,i,a,init<i,C2-FIELD-LOAN-WRAPPER:outer>> -- mut-view<b,i,a,init<i,C2-FIELD-LOAN-WRAPPER:outer>> [ n -- n ] ) drop [: ;] C2-MEM:WITH-FIELD ;" 70 s" error[E-MISSING-NAME]: `C2-MEM:WITH-FIELD` names the field it lends, and the definition ends first" SUBJECT:REFUSED? TTRUE
    s" the field keeps the parent's initialization lifetime" T-LABEL
    s" : FL-INIT ( mut-view<b,j,c,init<i,C2-FIELD-LOAN-WRAPPER:pair>> -- mut-view<b,j,c,init<j,C2-FIELD-LOAN-WRAPPER:pair>> ) ;" 70 SUBJECT:EXITED? TTRUE
    s" scope entry tick cannot turn the field operation into a value" T-LABEL

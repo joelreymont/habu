@@ -42,27 +42,27 @@ create ERR CAP allot
    s" TYPED-VARIABLE C2-QUOTE-SLOT [ n -- n ]" 0 SUBJECT:EXITED? TTRUE
    s" a scheme cannot be stored in a typed global" T-LABEL
    s" TYPED-VARIABLE C2-SCOPE-SLOT forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]>"
-   70 s" in C2-SCOPE-SLOT: scheme in a stored type 'forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]>'" s" " REPORTED? TTRUE
+   70 s" error[E-BAD-STORAGE]: the type of `C2-SCOPE-SLOT` holds a scheme" s" " REPORTED? TTRUE
    s" a scheme cannot be stored behind a pointer" T-LABEL
    s" 2 TYPED-BUFFER C2-SCOPE-SLOTS ptr forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]>"
-   70 s" in C2-SCOPE-SLOTS: scheme in a stored type 'ptr forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]>'" s" " REPORTED? TTRUE
+   70 s" error[E-BAD-STORAGE]: the type of `C2-SCOPE-SLOTS` holds a scheme" s" " REPORTED? TTRUE
    s" a stored type ends at the end of its line" T-LABEL
    s\" NEWTYPE c2-line-pair<a,b>\n' TYPED-VARIABLE catch C2-LINE-SLOT c2-line-pair<n,n\n: C2-LINE-NEXT ( -- n ) 4242 >r r> ;\nC2-LINE-NEXT . throw"
-   70 s" in C2-LINE-SLOT: malformed type 'c2-line-pair<n,n'" s" 4242" REPORTED? TTRUE
+   70 s" error[E-BAD-STORAGE]: the type of `C2-LINE-SLOT` does not parse" s" 4242" REPORTED? TTRUE
    s" a stored quotation ends at the end of its line" T-LABEL
    s\" ' TYPED-VARIABLE catch C2-LINE-XT [ n -- n\n: C2-LINE-XT-NEXT ( -- n ) 4343 ;\nC2-LINE-XT-NEXT . throw"
-   70 s" in C2-LINE-XT: malformed type '[ n -- n'" s" 4343" REPORTED? TTRUE ;
+   70 s" error[E-BAD-STORAGE]: the type of `C2-LINE-XT` does not parse" s" 4343" REPORTED? TTRUE ;
 
 : LAYOUT-STORED ( -- )
    s" a scheme cannot fill a layout buffer" T-LABEL
    s" 4 LAYOUT-BUFFER C2-SCOPE-ROWS forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]>"
-   70 s" in C2-SCOPE-ROWS: scheme in a stored type 'forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]>'" s" " REPORTED? TTRUE
+   70 s" error[E-BAD-STORAGE]: the type of `C2-SCOPE-ROWS` holds a scheme" s" " REPORTED? TTRUE
    s" a scheme cannot fill a deferred layout column" T-LABEL
    s" DEFER-LAYOUT-BUFFER C2-SCOPE-COLUMN forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]>"
-   70 s" in C2-SCOPE-COLUMN: scheme in a stored type 'forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]>'" s" " REPORTED? TTRUE
+   70 s" error[E-BAD-STORAGE]: the type of `C2-SCOPE-COLUMN` holds a scheme" s" " REPORTED? TTRUE
    s" a refused layout type leaves the rest of its line to the next statement" T-LABEL
    s" 4 ' LAYOUT-BUFFER ' C2-MEMORY-SCOPE-REFUSALS:KEEP-COUNT catch C2-REST-ROWS forall<p,[ n -- n ]> nip nip 4444 . throw"
-   70 s" in C2-REST-ROWS: scheme in a stored type 'forall<p,[ n -- n ]>'" s" 4444" REPORTED? TTRUE
+   70 s" error[E-BAD-STORAGE]: the type of `C2-REST-ROWS` holds a scheme" s" 4444" REPORTED? TTRUE
    s" layout storage holds a family closed over a quotation" T-LABEL
    s\" STRUCTURE c2hook<a> DERIVE addr FIELD fn a ;STRUCTURE\n2 LAYOUT-BUFFER C2-HOOKS c2hook<[ n -- n ]>\n: C2-H ( -- n ) [: 1 + ;] C2HOOK:MAKE 1 C2-HOOKS ! 41 1 C2-HOOKS C2HOOK:FN @ execute ;\nC2-H ."
    0 s" " s" 42" REPORTED? TTRUE
@@ -70,20 +70,20 @@ create ERR CAP allot
    0 s" " s" 43" REPORTED? TTRUE
    s" a layout pointer type is refused whole" T-LABEL
    s" 4 LAYOUT-BUFFER C2-PTR-ROWS ptr n"
-   70 s" in C2-PTR-ROWS: type this definer cannot store 'ptr n'" s" " REPORTED? TTRUE
+   70 s" error[E-BAD-STORAGE]: the type of `C2-PTR-ROWS` is one its definer cannot store" s" " REPORTED? TTRUE
    s" DEFER-LAYOUT-BUFFER C2-PTR-COLUMN ptr n"
-   70 s" in C2-PTR-COLUMN: type this definer cannot store 'ptr n'" s" " REPORTED? TTRUE
+   70 s" error[E-BAD-STORAGE]: the type of `C2-PTR-COLUMN` is one its definer cannot store" s" " REPORTED? TTRUE
    s" a missing stored type is a named refusal" T-LABEL
    s" 4 LAYOUT-BUFFER C2-NO-ROWS-TYPE"
-   70 s" in C2-NO-ROWS-TYPE: no type for 'C2-NO-ROWS-TYPE'" s" " REPORTED? TTRUE
+   70 s" error[E-BAD-STORAGE]: `C2-NO-ROWS-TYPE` has no type on its line" s" " REPORTED? TTRUE
    s" DEFER-LAYOUT-BUFFER C2-NO-COLUMN-TYPE"
-   70 s" in C2-NO-COLUMN-TYPE: no type for 'C2-NO-COLUMN-TYPE'" s" " REPORTED? TTRUE
+   70 s" error[E-BAD-STORAGE]: `C2-NO-COLUMN-TYPE` has no type on its line" s" " REPORTED? TTRUE
    s" TYPED-VARIABLE C2-NO-SLOT-TYPE"
-   70 s" in C2-NO-SLOT-TYPE: no type for 'C2-NO-SLOT-TYPE'" s" " REPORTED? TTRUE
+   70 s" error[E-BAD-STORAGE]: `C2-NO-SLOT-TYPE` has no type on its line" s" " REPORTED? TTRUE
    s" 4 TYPED-BUFFER C2-NO-SLOTS-TYPE"
-   70 s" in C2-NO-SLOTS-TYPE: no type for 'C2-NO-SLOTS-TYPE'" s" " REPORTED? TTRUE
+   70 s" error[E-BAD-STORAGE]: `C2-NO-SLOTS-TYPE` has no type on its line" s" " REPORTED? TTRUE
    s" DYNAMIC-BUFFER C2-NO-DYN-TYPE"
-   70 s" in C2-NO-DYN-TYPE: no type for 'C2-NO-DYN-TYPE'" s" " REPORTED? TTRUE ;
+   70 s" error[E-BAD-STORAGE]: `C2-NO-DYN-TYPE` has no type on its line" s" " REPORTED? TTRUE ;
 
 \ Every storage definer reads its name on its own line and the first token of
 \ its type on the name's. A name or type on the next line is missing there,
@@ -92,30 +92,30 @@ create ERR CAP allot
 : LINE-STORED ( -- )
    s" a stored type on the next line is no type" T-LABEL
    s\" TYPED-VARIABLE C2-NL-N\nn"
-   70 s" in C2-NL-N: no type for 'C2-NL-N'" s" " REPORTED? TTRUE
+   70 s" error[E-BAD-STORAGE]: `C2-NL-N` has no type on its line" s" " REPORTED? TTRUE
    s\" ' TYPED-VARIABLE catch C2-NL-SLOT\n4501 . throw"
-   70 s" in C2-NL-SLOT: no type for 'C2-NL-SLOT'" s" 4501" REPORTED? TTRUE
+   70 s" error[E-BAD-STORAGE]: `C2-NL-SLOT` has no type on its line" s" 4501" REPORTED? TTRUE
    s\" 4 ' TYPED-BUFFER ' C2-MEMORY-SCOPE-REFUSALS:KEEP-COUNT catch C2-NL-SLOTS\nnip nip 4502 . throw"
-   70 s" in C2-NL-SLOTS: no type for 'C2-NL-SLOTS'" s" 4502" REPORTED? TTRUE
+   70 s" error[E-BAD-STORAGE]: `C2-NL-SLOTS` has no type on its line" s" 4502" REPORTED? TTRUE
    s\" ' DYNAMIC-BUFFER catch C2-NL-DYN\n4503 . throw"
-   70 s" in C2-NL-DYN: no type for 'C2-NL-DYN'" s" 4503" REPORTED? TTRUE
+   70 s" error[E-BAD-STORAGE]: `C2-NL-DYN` has no type on its line" s" 4503" REPORTED? TTRUE
    s\" 4 ' LAYOUT-BUFFER ' C2-MEMORY-SCOPE-REFUSALS:KEEP-COUNT catch C2-NL-ROWS\nnip nip 4504 . throw"
-   70 s" in C2-NL-ROWS: no type for 'C2-NL-ROWS'" s" 4504" REPORTED? TTRUE
+   70 s" error[E-BAD-STORAGE]: `C2-NL-ROWS` has no type on its line" s" 4504" REPORTED? TTRUE
    s\" ' DEFER-LAYOUT-BUFFER catch C2-NL-COLUMN\n4505 . throw"
-   70 s" in C2-NL-COLUMN: no type for 'C2-NL-COLUMN'" s" 4505" REPORTED? TTRUE
+   70 s" error[E-BAD-STORAGE]: `C2-NL-COLUMN` has no type on its line" s" 4505" REPORTED? TTRUE
    s" a storage name on the next line is no name" T-LABEL
    s\" TYPED-VARIABLE\nC2-NL-NAMED n"
-   70 s" in TYPED-VARIABLE: no name for 'TYPED-VARIABLE'" s" " REPORTED? TTRUE
+   70 s" error[E-BAD-STORAGE]: `TYPED-VARIABLE` has no name on its line" s" " REPORTED? TTRUE
    s\" ' TYPED-VARIABLE catch\n4511 . throw"
-   70 s" in TYPED-VARIABLE: no name for 'TYPED-VARIABLE'" s" 4511" REPORTED? TTRUE
+   70 s" error[E-BAD-STORAGE]: `TYPED-VARIABLE` has no name on its line" s" 4511" REPORTED? TTRUE
    s\" 4 ' TYPED-BUFFER ' C2-MEMORY-SCOPE-REFUSALS:KEEP-COUNT catch\nnip nip 4512 . throw"
-   70 s" in TYPED-BUFFER: no name for 'TYPED-BUFFER'" s" 4512" REPORTED? TTRUE
+   70 s" error[E-BAD-STORAGE]: `TYPED-BUFFER` has no name on its line" s" 4512" REPORTED? TTRUE
    s\" ' DYNAMIC-BUFFER catch\n4513 . throw"
-   70 s" in DYNAMIC-BUFFER: no name for 'DYNAMIC-BUFFER'" s" 4513" REPORTED? TTRUE
+   70 s" error[E-BAD-STORAGE]: `DYNAMIC-BUFFER` has no name on its line" s" 4513" REPORTED? TTRUE
    s\" 4 ' LAYOUT-BUFFER ' C2-MEMORY-SCOPE-REFUSALS:KEEP-COUNT catch\nnip nip 4514 . throw"
-   70 s" in LAYOUT-BUFFER: no name for 'LAYOUT-BUFFER'" s" 4514" REPORTED? TTRUE
+   70 s" error[E-BAD-STORAGE]: `LAYOUT-BUFFER` has no name on its line" s" 4514" REPORTED? TTRUE
    s\" ' DEFER-LAYOUT-BUFFER catch\n4515 . throw"
-   70 s" in DEFER-LAYOUT-BUFFER: no name for 'DEFER-LAYOUT-BUFFER'" s" 4515" REPORTED? TTRUE ;
+   70 s" error[E-BAD-STORAGE]: `DEFER-LAYOUT-BUFFER` has no name on its line" s" 4515" REPORTED? TTRUE ;
 
 public
 
@@ -150,10 +150,11 @@ public
    s" an ordinary same-spelled word receives no owner scope" T-LABEL
    s" package C2-SCOPE-SHADOW TRUSTED: WITH-MUT ( R NUM:alloc-byte-len [ R ptr u8 n -- S ptr u8 n | U -- U ] | U -- S | U ) C2-MEM:WITH-MUT ; : CALL ( -- n ) 1 MEM:BYTES-ALLOC-LEN [: 0 C2-MEM:MUT-BYTE@ ;] WITH-MUT ; ;package" 70 SUBJECT:EXITED? TTRUE
    s" a trusted declaration cannot publish a scheme" T-LABEL
-   s" TRUSTED: C2-SCOPE-FORGE ( forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]> -- ) drop ;" 76 SUBJECT:EXITED? TTRUE
+   s" TRUSTED: C2-SCOPE-FORGE ( forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]> -- ) drop ;"
+      70 s" error[E-BAD-SIGNATURE]: the declared signature of `C2-SCOPE-FORGE` binds a callback scope" SUBJECT:REFUSED? TTRUE
    s" a cast declaration cannot publish a scheme" T-LABEL
    s" CAST: C2-SCOPE-CAST ( forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]> -- n )"
-      70 s" cast: 'C2-SCOPE-CAST': a scoped cast is not two cells on each side" SUBJECT:REFUSED? TTRUE
+      70 s" error[E-CAST-SCOPE]: in `cast: C2-SCOPE-CAST`, a scoped cast is not two cells on each side" SUBJECT:REFUSED? TTRUE
    s" an ordinary quotation may pass through a data output" T-LABEL
    s" : C2-QUOTE-OUTPUT ( [ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ] -- [ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ] ) ;" 0 SUBJECT:EXITED? TTRUE
    s" a scheme cannot be declared as an effect output" T-LABEL
