@@ -1645,9 +1645,12 @@ s" TDRW-XEQ ( tdrw tdrw -- bool ) TDRV:EQ" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDRW-NOEQ ( tdrw tdrw -- bool ) TDRW:EQ" CHECK-QUIET-CANDIDATE! 0 T=
 \ the derived words are undefine-protected like constructors; these pins mirror
 \ the type-ctor-suite seal pins (undefine + reopen).
-s" undefine TDRV:EQ" E-CTOR-PROTECTED TDT-NEG
-s" undefine TDRV:TAG" E-CTOR-PROTECTED TDT-NEG
-s" package tdrv" E-CTOR-PROTECTED TDT-NEG
+s" undefine TDRV:EQ"
+   s" error[E-CTOR-PROTECTED]: `TDRV:EQ`" s" generated constructor" TDT-REJ
+s" undefine TDRV:TAG"
+   s" error[E-CTOR-PROTECTED]: `TDRV:TAG`" s" generated constructor" TDT-REJ
+s" package tdrv"
+   s" error[E-CTOR-PROTECTED]: `tdrv`" s" constructor package" TDT-REJ
 
 \ grammar negatives: deferred/unknown features, kind gates, name collision,
 \ missing feature token (DERIVE eats exactly one feature token).
@@ -1735,7 +1738,8 @@ TDPV-NEQ-N TFALSE
 \ products derive EQ only: no TAG surface (undefined -> refused), and the
 \ derived EQ is undefine-protected like a constructor.
 s" TDPV-TAG ( tdpv -- n ) TDPV:TAG" CHECK-QUIET-CANDIDATE! 0 T=
-s" undefine TDPV:EQ" E-CTOR-PROTECTED TDT-NEG
+s" undefine TDPV:EQ"
+   s" error[E-CTOR-PROTECTED]: `TDPV:EQ`" s" generated constructor" TDT-REJ
 
 \ payload-role gates: pointer, parametric, linear, non-derived enum field,
 \ and the sum-variant name collision.
@@ -1832,7 +1836,8 @@ ENUM tdho DERIVE hash oa ob ;ENUM
 TDHO-H TTRUE
 TDHO-T 1 T=
 s" TDHO-E ( tdho tdho -- bool ) TDHO:EQ" CHECK-QUIET-CANDIDATE! 0 T=
-s" undefine TDHO:HASH" E-CTOR-PROTECTED TDT-NEG
+s" undefine TDHO:HASH"
+   s" error[E-CTOR-PROTECTED]: `TDHO:HASH`" s" generated constructor" TDT-REJ
 \ eq-only families grow no hash surface.
 s" TDSV-NOH ( tdsv -- n ) TDSV:HASH" CHECK-QUIET-CANDIDATE! 0 T=
 

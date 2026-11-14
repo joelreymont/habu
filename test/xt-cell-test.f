@@ -148,7 +148,7 @@ defer XC-DF ( n -- n )
    \ the raw-variable catch launder rejects, named E-EXEC-OPAQUE-XT (catch sibling of L1)
    s" LC ( -- n ) XCRAW @ catch" XC-CODE<
    s\" \"code\":\"E-EXEC-OPAQUE-XT\"" XC-CODE?
-   s" Catch an xt" XC-CODE?               \ the catch-specific reason fired, not the execute one
+   s\" \"token\":\"catch\"" XC-CODE?          \ the catch-specific reason fired, not the execute one
    XC-CODE-END
    s" GC1 ( n -- n n ) ['] SP catch" CHECK-QUIET-CANDIDATE! -1 T=
    s" GC2 ( n [ n -- n ] -- n n ) catch" CHECK-QUIET-CANDIDATE! -1 T=
@@ -173,11 +173,13 @@ defer XC-DF ( n -- n )
    s" XS ( -- ) XE XCRAW !" XC-CODE<
    s\" \"code\":\"E-RAW-CELL-PTR\"" XC-CODE?
    XC-CODE-END
-   s" CAST: >XT ( n -- xt )" XC-EVAL E-CAST-CLASS T=
+   s" CAST: >XT ( n -- xt )" XC-EVAL<
+   s\" \"code\":\"E-CAST-CLASS\"" XC-CODE? XC-CODE-END
    s" public" XC-EVAL 0 T=
    s" CAST: XT>N ( xt -- n )" XC-EVAL 0 T=
    s" : XN ( -- n ) ['] type XT>N ;" XC-EVAL 0 T=
-   s" CAST: XT>Q ( xt -- [ n -- n ] )" XC-EVAL E-CAST-MINT T=
+   s" CAST: XT>Q ( xt -- [ n -- n ] )" XC-EVAL<
+   s\" \"code\":\"E-CAST-MINT\"" XC-CODE? XC-CODE-END
    s" private" XC-EVAL 0 T=
    s" TYPED-VARIABLE XV xt" XC-EVAL< XC-STORE-XT? XC-CODE-END
    s" TYPED-VARIABLE XW xbox<xt>" XC-EVAL< XC-STORE-XT? XC-CODE-END
@@ -186,8 +188,10 @@ defer XC-DF ( n -- n )
    \ value-record refusal exits the process, so it runs as a subject, before the
    \ family whose admission would refuse it as a duplicate.
    s" VALUE-RECORD xt value n END-VALUE-RECORD"
-   70 s" bad or duplicate value-record type" SUBJECT:REFUSED? TTRUE
-   s" STRUCTURE xt FIELD item n ;STRUCTURE" XC-EVAL TYPE-DECL:E-TDECL-NAME T= ;
+   CHECKER-REJECT-RC s" error[E-BAD-DECLARATION]: value record `xt`" SUBJECT:REFUSED? TTRUE
+   s" STRUCTURE xt FIELD item n ;STRUCTURE" XC-EVAL<
+   s\" \"code\":\"E-BAD-DECLARATION\"" XC-CODE?
+   s\" \"token\":\"xt\",\"label\":\"reserved name\"" XC-CODE? XC-CODE-END ;
 
 : RUN ( -- )
    T-RESET

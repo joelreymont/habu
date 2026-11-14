@@ -2,7 +2,7 @@
 \ the engine wordlist its record lands in holds NAME (src/core/checker.f
 \ TRUST-RESOLVES?: the open section's, the global one outside a package, or
 \ PKG's public one for PKG:TAIL, through `search-wl`). Each case evaluates one
-\ source string, so the code returned is that string's and the ordered cases
+\ source string, so the record captured is that string's and the ordered cases
 \ show a following statement never ran.
 
 require src/lib/test.f
@@ -14,20 +14,27 @@ private
 
 T-RESET
 
-\ TCE-CATCH answers the string's throw code, 0 when accepted. The row under test
-\ is last in the string, so a nonzero code is the row's.
 TYPED-VARIABLE TCE-A ptr u8   variable TCE-U
 : TCE-GO ( -- )  TCE-A @ TCE-U @ INCLUDE-EVALUATE ;
 
 public
 
-: TCE-CATCH ( ptr u8 n -- n )  TCE-U ! TCE-A !  [: TCE-GO ;] catch ;
+\ TCE-CATCH answers the string's throw code, 0 when accepted, and holds the
+\ records it printed in REJECTION:BUFFER$.
+: TCE-CATCH ( ptr u8 n -- n )
+   TCE-U ! TCE-A !  REJECTION:CAPTURE  [: TCE-GO ;] catch  REJECTION:BUFFER-OFF ;
 
-\ The codes live in the package because a global `E-*` constant is
-\ src/lib/error.f's surface alone.
-70 constant E-REJECT            \ E-UNDEFINED / checker rejection
-E-TRUST-UNRESOLVED constant E-STALE   \ the row names no word here
-E-BAD-STORED-SIGNATURE constant E-BAD-SIG   \ the row's signature does not parse
+: TCE-SAID ( ptr u8 n -- )  REJECTION:BUFFER$ 2swap CONTAINS? TTRUE ;
+
+\ TCE-REJECTS asserts the string stops with the checker's status after a record
+\ that holds the text given, its code.
+: TCE-REJECTS ( ptr u8 n ptr u8 n -- ) {: wa:ptr wu:n :}
+   TCE-CATCH CHECKER-REJECT-RC T=  wa wu TCE-SAID ;
+
+\ TCE-STALE asserts the string's row is rejected as naming no word, by an
+\ E-TRUST-UNRESOLVED record that quotes the name given.
+: TCE-STALE ( ptr u8 n ptr u8 n -- ) {: wa:ptr wu:n :}
+   s" error[E-TRUST-UNRESOLVED]" TCE-REJECTS  wa wu TCE-SAID ;
 
 ;package
 
@@ -35,7 +42,7 @@ E-BAD-STORED-SIGNATURE constant E-BAD-SIG   \ the row's signature does not parse
 \ is refused with its own code, not as a later symptom.
 s" : TRW-LIVE ( -- n ) 5 ;" TRUST-ROW:TCE-CATCH 0 T=
 s\" s\q TRW-LIVE\q s\q -- n\q trust" TRUST-ROW:TCE-CATCH 0 T=
-s\" s\q TRW-NO-SUCH-WORD\q s\q -- n\q trust" TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE T=
+s\" s\q TRW-NO-SUCH-WORD\q s\q -- n\q trust" s" `TRW-NO-SUCH-WORD`" TRUST-ROW:TCE-STALE
 
 \ A word defined one statement earlier resolves: the engine publishes a record
 \ at a point the definition's own publish tail cannot see, which is why the
@@ -47,40 +54,41 @@ s\" : TRW-JUST ( -- n ) 6 ; s\q TRW-JUST\q s\q -- n\q trust" TRUST-ROW:TCE-CATCH
 \ range, names no word even where its bytes begin a live one. It is refused
 \ before the name is read: the maximum cell would run the colon scan off the end
 \ of the string.
-s\" s\q TRW-LIVE\q drop -1 s\q -- n\q trust" TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE T=
-s\" s\q TRW-LIVE\q drop -1 1 rshift s\q -- n\q trust" TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE T=
+s\" s\q TRW-LIVE\q drop -1 s\q -- n\q trust" s" ``" TRUST-ROW:TCE-STALE
+s\" s\q TRW-LIVE\q drop -1 1 rshift s\q -- n\q trust" s" ``" TRUST-ROW:TCE-STALE
 
 \ A signature length that describes no memory gets the refusal of a signature
 \ that does not parse, before a byte of it is read or printed: the maximum cell
 \ would read on past the text.
-s\" s\q TRW-LIVE\q s\q -- n\q drop -1 1 rshift trust" TRUST-ROW:TCE-CATCH TRUST-ROW:E-BAD-SIG T=
+s\" s\q TRW-LIVE\q s\q -- n\q drop -1 1 rshift trust"
+   s" error[E-BAD-STORED-SIGNATURE]" TRUST-ROW:TCE-REJECTS
 
 \ Fixtures put the name where a text match would find it and the dictionary
 \ would not; the mirror cases must be accepted.
 \ The name in a comment: nothing defines it, so the row is refused; a check that
 \ scanned source text for the spelling would accept it.
-s\" \\ TRW-COMMENT-ONLY is named here and nowhere else\n s\q TRW-COMMENT-ONLY\q s\q -- n\q trust" TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE T=
+s\" \\ TRW-COMMENT-ONLY is named here and nowhere else\n s\q TRW-COMMENT-ONLY\q s\q -- n\q trust" s" `TRW-COMMENT-ONLY`" TRUST-ROW:TCE-STALE
 
 \ The name inside a string literal that is not the row's name string: refused
 \ the same way.
-s\" : TRW-HOLDER ( -- ptr u8 n ) s\q TRW-IN-A-STRING\q ;\n s\q TRW-IN-A-STRING\q s\q -- n\q trust" TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE T=
+s\" : TRW-HOLDER ( -- ptr u8 n ) s\q TRW-IN-A-STRING\q ;\n s\q TRW-IN-A-STRING\q s\q -- n\q trust" s" `TRW-IN-A-STRING`" TRUST-ROW:TCE-STALE
 
 \ The name as the row's signature string: the signature is text the parser
 \ reads, never a word, so the row is judged on the name it carries, which does
 \ not exist either.
-s\" s\q TRW-WRONG-ROLE\q s\q TRW-LIVE -- n\q trust" TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE T=
+s\" s\q TRW-WRONG-ROLE\q s\q TRW-LIVE -- n\q trust" s" `TRW-WRONG-ROLE`" TRUST-ROW:TCE-STALE
 
 \ Defined and then retired: the word existed when the row was written and does
 \ not now.
 s" : TRW-GONE ( -- n ) 7 ;" TRUST-ROW:TCE-CATCH 0 T=
 s\" s\q TRW-GONE\q s\q -- n\q trust" TRUST-ROW:TCE-CATCH 0 T=
 s" undefine TRW-GONE" TRUST-ROW:TCE-CATCH 0 T=
-s\" s\q TRW-GONE\q s\q -- n\q trust" TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE T=
+s\" s\q TRW-GONE\q s\q -- n\q trust" s" `TRW-GONE`" TRUST-ROW:TCE-STALE
 
 \ The same row twice. The second is judged exactly like the first,
 \ so a row is never accepted because an earlier one was.
-s\" s\q TRW-DUP-NONE\q s\q -- n\q trust" TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE T=
-s\" s\q TRW-DUP-NONE\q s\q -- n\q trust" TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE T=
+s\" s\q TRW-DUP-NONE\q s\q -- n\q trust" s" `TRW-DUP-NONE`" TRUST-ROW:TCE-STALE
+s\" s\q TRW-DUP-NONE\q s\q -- n\q trust" s" `TRW-DUP-NONE`" TRUST-ROW:TCE-STALE
 
 \ A package's own private and public words, each named from its own section
 \ while the package is open, are accepted, or a row inside a package body would
@@ -94,7 +102,7 @@ s\" package TRWB public : TRWB-PUB ( -- n ) 9 ; s\q TRWB-PUB\q s\q -- n\q trust 
 \ engine does not reach a closed package's publics by a bare tail, so the row is
 \ refused. Believed, it would record a bare global symbol that a later `using`
 \ reports as E-USING-SHADOW-GLOBAL.
-s\" s\q TRWB-PUB\q s\q -- n\q trust" TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE T=
+s\" s\q TRWB-PUB\q s\q -- n\q trust" s" `TRWB-PUB`" TRUST-ROW:TCE-STALE
 
 \ PKG:TAIL records its effect on PKG's public symbol, so PKG's public wordlist
 \ must hold TAIL, asked through the package's namespace row as the engine's FIND
@@ -102,24 +110,26 @@ s\" s\q TRWB-PUB\q s\q -- n\q trust" TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE T=
 s\" s\q TRWB:TRWB-PUB\q s\q -- n\q trust" TRUST-ROW:TCE-CATCH 0 T=
 \ A package that does not exist, before a tail only the global wordlist holds:
 \ no package is no wordlist, never the global one.
-s\" s\q TRW-NO-SUCH-PKG:TRW-LIVE\q s\q -- n\q trust" TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE T=
+s\" s\q TRW-NO-SUCH-PKG:TRW-LIVE\q s\q -- n\q trust" s" `TRW-NO-SUCH-PKG:TRW-LIVE`" TRUST-ROW:TCE-STALE
 \ A real package that defines no such tail.
-s\" s\q TRWB:TRWB-NONE\q s\q -- n\q trust" TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE T=
+s\" s\q TRWB:TRWB-NONE\q s\q -- n\q trust" s" `TRWB:TRWB-NONE`" TRUST-ROW:TCE-STALE
 \ A real package's private word: a qualified name never reaches a private
 \ wordlist, so the row names no word, as a missing tail does.
-s\" s\q TRWA:TRWA-PRIV\q s\q -- n\q trust" TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE T=
+s\" s\q TRWA:TRWA-PRIV\q s\q -- n\q trust" s" `TRWA:TRWA-PRIV`" TRUST-ROW:TCE-STALE
 \ A real package qualifying a global's name: the global wordlist holds TRW-LIVE,
 \ TRWB's public one does not, and only the latter is asked.
-s\" s\q TRWB:TRW-LIVE\q s\q -- n\q trust" TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE T=
+s\" s\q TRWB:TRW-LIVE\q s\q -- n\q trust" s" `TRWB:TRW-LIVE`" TRUST-ROW:TCE-STALE
 
 \ The bad row is followed in the same source by a definition refused for another
 \ reason (E-UNDEFINED on a word nothing defines). A row believed and failing
-\ later would answer that code; E-STALE shows the row stopped it.
-s\" s\q TRW-ORDER-CHECK\q s\q -- n\q trust\n : TRW-AFTER ( -- n ) TRW-NEVER-DEFINED ;" TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE T=
+\ later would print that record; only the row's record shows the row stopped it.
+s\" s\q TRW-ORDER-CHECK\q s\q -- n\q trust\n : TRW-AFTER ( -- n ) TRW-NEVER-DEFINED ;" s" `TRW-ORDER-CHECK`" TRUST-ROW:TCE-STALE
+REJECTION:BUFFER$ s" E-UNDEFINED" CONTAINS? TFALSE
 
-\ The control: without the row the same definition answers the other code, so
+\ The control: without the row the same definition prints the other record, so
 \ the case above tells apart two outcomes that both exist.
-s" : TRW-AFTER2 ( -- n ) TRW-NEVER-DEFINED ;" TRUST-ROW:TCE-CATCH TRUST-ROW:E-REJECT T=
+s" : TRW-AFTER2 ( -- n ) TRW-NEVER-DEFINED ;" s" error[E-UNDEFINED]" TRUST-ROW:TCE-REJECTS
+REJECTION:BUFFER$ s" `TRW-NEVER-DEFINED`" CONTAINS? TTRUE
 
 \ A bare row records its effect in the open section's wordlist, or the global
 \ one outside a package, so that wordlist must hold the name. TRW-G7 is a
@@ -129,7 +139,7 @@ s" : TRW-AFTER2 ( -- n ) TRW-NEVER-DEFINED ;" TRUST-ROW:TCE-CATCH TRUST-ROW:E-RE
 \ `trust` asks the wordlist and names the stale row.
 s" : TRW-G7 ( -- n ) 7 ;" TRUST-ROW:TCE-CATCH 0 T=
 s\" package TRWC\ns\q TRW-G7\q s\q n n -- n\q trust\n;package"
-   TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE T=
+   s" `TRW-G7`" TRUST-ROW:TCE-STALE
 \ The refused row left nothing behind: the bare name in TRWC is still the global.
 s\" package TRWC\npublic\n: TRWC-USE ( -- n ) TRW-G7 ;\n;package" TRUST-ROW:TCE-CATCH 0 T=
 s\" : TRWC-CK ( -- ) TRWC:TRWC-USE 7 <> if s\q a refused row bound the name\q 1 die then ;\nTRWC-CK"
@@ -141,6 +151,6 @@ s\" : TRWC-CK ( -- ) TRWC:TRWC-USE 7 <> if s\q a refused row bound the name\q 1 
 \ rendering statement's mark (src/core/checker.f CHECKER-VERIFY-TRUST).
 s\" : TRW-REN ( -- ) s\q : TRW-MADE ( -- n ) 1 ;\q evaluate-closed ; TRW-REN" TRUST-ROW:TCE-CATCH 0 T=
 s\" s\q TRW-MADE\q s\q -- n\q trust" TRUST-ROW:TCE-CATCH 0 T=
-s\" s\q TRW-MAED\q s\q -- n\q trust" TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE T=
+s\" s\q TRW-MAED\q s\q -- n\q trust" s" `TRW-MAED`" TRUST-ROW:TCE-STALE
 
 T-REPORT

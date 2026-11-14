@@ -269,11 +269,19 @@ TS-ADDRESS-ROWS TS-BEFORE-NUMBER - constant TS-NUMBER-ROWS
 \ no window: closed with CHECKER-SCOPE-FINALIZE it would keep the row.
 70 constant E-TS-REJECT        \ the checker's compile reject (habu2.f RC-REJECT)
 
+\ TS-PKG-CONTEXT asserts the text stops with the checker's status after an
+\ E-PKG-CONTEXT record that quotes the name given.
+: TS-PKG-CONTEXT ( ptr u8 n ptr u8 n -- ) {: wa:ptr wu:n :}
+   REJECTION:CAPTURE  TS-EVAL CHECKER-REJECT-RC T=
+   REJECTION:BUFFER$ s" error[E-PKG-CONTEXT]" CONTAINS? TTRUE
+   REJECTION:BUFFER$ wa wu CONTAINS? TTRUE
+   REJECTION:BUFFER-OFF ;
+
 : TS-SECTION-REPLAY-ONLY ( -- )
    s" checker storage registrars refuse outside a verifier window" T-LABEL
    s" : TSG ( -- n ) 7 ;" TS-EVAL 0 T=
    s\" package TSGP\ns\q n\q s\q TSG\q CHECKER-DEFTYPED-VARIABLE\n;package"
-      TS-EVAL E-PKG-CONTEXT T=
+      s" `TSG`" TS-PKG-CONTEXT
    s\" package TSGP\npublic\n: TSGP-USE ( -- n ) TSG ;\n;package" TS-EVAL 0 T=
    s\" package TSGP\npublic\n: TSGP-PTR ( -- ptr n ) TSG ;\n;package"
       TS-EVAL E-TS-REJECT T=
@@ -283,7 +291,7 @@ TS-ADDRESS-ROWS TS-BEFORE-NUMBER - constant TS-NUMBER-ROWS
    \ TSNP exists before the scope opens: a neutral scope reopens a package and
    \ refuses a new one (ENGINE-ERROR:OVERLAY-OPEN).
    s\" package TSNP ;package\nCHECKER-SCOPE-START-NEUTRAL\npackage TSNP ' TSN-REG catch ;package\nCHECKER-SCOPE-FINALIZE throw"
-      TS-EVAL E-PKG-CONTEXT T=
+      s" `TSN`" TS-PKG-CONTEXT
    s\" package TSNP\npublic\n: TSNP-USE ( -- n ) TSN ;\n;package" TS-EVAL 0 T=
    s\" : TSNP-CK ( -- ) TSNP:TSNP-USE 7 <> if s\q a neutral scope kept the row\q 1 die then ;\nTSNP-CK"
       TS-EVAL 0 T= ;

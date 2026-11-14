@@ -192,11 +192,15 @@ s" SDPG ( n n -- n n ) HIDDEN-MAKE HIDDEN-UNMAKE" CHECK-QUIET-CANDIDATE! 0 T=
 s" SDPGT ( n n n -- n n n ) TRI:MAKE TRI:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ While its package is open, a private product's MAKE and UNMAKE refuse undefine
-\ by name, E-CTOR-PROTECTED 7111; a word only sharing their prefix does not.
+\ by name, E-CTOR-PROTECTED; a word only sharing their prefix does not.
 package SDPRIVTEST
 private
-s" undefine HIDDEN-MAKE" TEST-EVAL:RC 7111 T=
-s" undefine HIDDEN-UNMAKE" TEST-EVAL:RC 7111 T=
+DECL-DIAG:PROSE
+s" undefine HIDDEN-MAKE" TEST-EVAL:RC 70 T=
+s" error[E-CTOR-PROTECTED]: `HIDDEN-MAKE`" DECL-DIAG:HAS? TTRUE
+DECL-DIAG:PROSE
+s" undefine HIDDEN-UNMAKE" TEST-EVAL:RC 70 T=
+s" error[E-CTOR-PROTECTED]: `HIDDEN-UNMAKE`" DECL-DIAG:HAS? TTRUE
 : HIDDEN-SIZE ( -- n ) 3 ;                            \ the family tail, a member nobody generates
 HIDDEN-SIZE 3 T=
 s" undefine HIDDEN-SIZE" TEST-EVAL:RC 0 T=            \ so it is the package's own word
@@ -938,8 +942,12 @@ s\"   = help: add a `FIELD` to the structure, or drop `addr` and `init` from `DE
 
 \ the generated words are the family's own: a stray tail in its reserved
 \ constructor package is still refused, and an accessor cannot be undefined.
-s" undefine SDADDR:A" TEST-EVAL:RC 7111 T=
-s" undefine SDADDR:AT" TEST-EVAL:RC 7111 T=
+DECL-DIAG:PROSE
+s" undefine SDADDR:A" TEST-EVAL:RC 70 T=
+s" error[E-CTOR-PROTECTED]: `SDADDR:A`" DECL-DIAG:HAS? TTRUE
+DECL-DIAG:PROSE
+s" undefine SDADDR:AT" TEST-EVAL:RC 70 T=
+s" error[E-CTOR-PROTECTED]: `SDADDR:AT`" DECL-DIAG:HAS? TTRUE
 
 \ a PRIVATE family takes the private spelling, in the declaring package only.
 package SDAPRIV
@@ -1130,8 +1138,12 @@ s" SDOI ( n n -- n n ) OBOX-MAKE OBOX-UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
 s" SDOX ( ptr oaddr -- ptr n ) OADDR-X" CHECK-QUIET-CANDIDATE! -1 T=
 s" SDON ( mut-view<a,b,c,init<d,oinit>> -- mut-view<a,b,c,init<d,oinit>> n ) OINIT-A@" CHECK-QUIET-CANDIDATE! -1 T=
 private                                               \ the pair lives in the private wordlist
-s" undefine OBOX-MAKE" TEST-EVAL:RC 7111 T=           \ protected by name there
-s" undefine OBOX-UNMAKE" TEST-EVAL:RC 7111 T=
+DECL-DIAG:PROSE
+s" undefine OBOX-MAKE" TEST-EVAL:RC 70 T=           \ protected by name there
+s" error[E-CTOR-PROTECTED]: `OBOX-MAKE`" DECL-DIAG:HAS? TTRUE
+DECL-DIAG:PROSE
+s" undefine OBOX-UNMAKE" TEST-EVAL:RC 70 T=
+s" error[E-CTOR-PROTECTED]: `OBOX-UNMAKE`" DECL-DIAG:HAS? TTRUE
 public
 ;package
 11 22 SDOPQ:ORT 22 T= 11 T=
