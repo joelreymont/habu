@@ -49,9 +49,14 @@ s" VN-UNDECL ( never-declared -- never-declared )" CHECK-QUIET-CANDIDATE! 0 T=
 \    a package's own `ptr` would leave its converter `( n -- ptr )` without a
 \    pointee.
 : MINT-PTR ( -- ) s" PTR" VNOM:MINT ;
-' MINT-PTR catch TYPE-DECL:E-TDECL-NAME T=
+: PTR-REJECTED ( -- )
+   REJECTION:CAPTURE
+   ['] MINT-PTR CHECKER-REJECT-RC TTHROWSQ
+   REJECTION:BUFFER$ s" error[E-BAD-DECLARATION]" CONTAINS? TTRUE
+   REJECTION:BUFFER$ s" `PTR`: reserved name" CONTAINS? TTRUE ;
+PTR-REJECTED
 package CTORPKG
-' MINT-PTR catch TYPE-DECL:E-TDECL-NAME T=
+PTR-REJECTED
 ;package
 
 \ 5. the name length rule is the family name cap (TFAM:TF-NAME-MAX, 255 bytes):
