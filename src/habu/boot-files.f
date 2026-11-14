@@ -71,6 +71,7 @@ private
    CHECKER COMMON s" src/habu/layout.f" ROW
    CHECKER COMMON s" src/habu/intern-table.f" ROW
    CHECKER COMMON s" src/core/rejection.f" ROW
+   CHECKER COMMON s" src/core/conditional.f" ROW
    CHECKER COMMON s" src/core/checker.f" ROW
    CHECKER COMMON s" src/core/type-schema.f" ROW
    CHECKER COMMON s" src/core/type-family.f" ROW
