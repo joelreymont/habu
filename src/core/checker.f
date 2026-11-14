@@ -2530,7 +2530,6 @@ variable CT-CAP-V   CT-CAP-INIT CT-CAP-V !
 variable CT-STR-CAP-V   CT-STR-INIT CT-STR-CAP-V !
 : CT-STR-CAP ( -- n ) CT-STR-CAP-V @ ;
 
-0 constant CT-NONE
 1 constant CT-INT
 2 constant CT-ROLE
 3 constant CT-BOOL
