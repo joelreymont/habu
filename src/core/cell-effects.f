@@ -17,12 +17,11 @@ PPRIM: INTERN TEXT PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-OUT PPRIM;
 PPRIM: INTERN FIND PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-OUT PPRIM;
 PPRIM: INTERN KEEP-BELOW PE-N PE-IN PPRIM;
 
-\ The checker's control-effect flags and verdict word src/habu/verify-source.f
-\ calls: without a row each is E-UNDEFINED on a from-source prefix boot.
+\ The checker's control-effect flags src/habu/verify-source.f calls: without a
+\ row each is E-UNDEFINED on a from-source prefix boot.
 PRIM: CTL-RENDERS PE-N PE-OUT PRIM;
 PRIM: CTL-CREATES PE-N PE-OUT PRIM;
 PRIM: CTL-NOMINAL PE-N PE-OUT PRIM;
-PRIM: REPORT-UNCHECKABLE PE-N PE-IN PE-N PE-OUT PRIM;
 
 \ The checker's error code the constructor tests read at top level.
 PRIM: E-CTOR-PROTECTED PE-N PE-OUT PRIM;

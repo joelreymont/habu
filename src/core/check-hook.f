@@ -499,7 +499,7 @@ public
    a u FIRST-TOKEN {: na:ptr nu:n :}
    na nu CHECKER-CERT-DUP? if na nu REFUSE-DUPLICATE then
    UEND @ {: mark:n :}
-   a u [: CHECK! REPORT-UNCHECKABLE REPORT-DEFERRED ;]
+   a u [: CHECK! REPORT-DEFERRED ;]
    a u BODY-ARM DISARMER  finally
    dup -1 = if na nu mark CHECK-FACTS then
    MULTI-ERR? if drop -1 exit then

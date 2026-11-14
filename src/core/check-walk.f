@@ -1211,10 +1211,7 @@ public
    CHECK-VERDICT
    dup DVERD !
    dup 0= IF RIGID-DIAG-CLASSIFY THEN
-   \ An uncheckable verdict is rendered here as JSON and in a multi-error load,
-   \ whose record step below may refuse the definition by a throw (a duplicate,
-   \ a name that keys no record) that would otherwise come before it.
-   dup VERDICT-REFUSED =  over VERDICT-UNCHECKABLE = REJECTION:JSON @ MULTI-ERR? or and  or
+   dup VERDICT-REFUSED =  over VERDICT-UNCHECKABLE =  or
    REJECTION:QUIET @ 0= and IF DIAG-PRINT THEN
    \ The declared effect's record outlives the body until the diagnostic above,
    \ which renders it.
@@ -1741,12 +1738,6 @@ variable DEF-STOPPED
    unknown 0= recording and IF a u verdict CHECKER-TAPE:DONE THEN
    verdict -1 = recording and BWIN-UNJUDGED @ 0= and BWIN-VALID !
    verdict ;
-
-\ An uncheckable verdict is rendered here unless CHECK rendered it: as JSON, in
-\ a multi-error load, or not at all in a quiet probe.
-: REPORT-UNCHECKABLE ( n -- n )
-   dup 1 = REJECTION:JSON @ 0= and MULTI-ERR? 0= and REJECTION:QUIET @ 0= and
-   if dup DVERD !  DIAG-PRINT then ;
 
 \ A TRUSTED: definition's declared effect is the assertion: the body is scanned
 \ only to fill the source tape the optimizing elaborator reads, and its verdict
