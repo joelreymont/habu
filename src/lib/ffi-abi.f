@@ -878,9 +878,9 @@ s" dlerror" PROCESS 0 DECLARE DLERROR-FN-CELL !
 \ float register has no stack staging and is refused (E-FFI-ARITY).
 \
 \ THE GENERATED TEXT DEFINES WORDS AND LEAVES NOTHING ON THE STACK: it runs
-\ through the loader's evaluate-closed INCLUDE-EVALUATE, where residue is
-\ E-EVAL-RESIDUE, so each declaration is one complete colon definition with no
-\ interpreted residue.
+\ through the loader's evaluate-closed INCLUDE-EVALUATE, which rejects a text
+\ that leaves or takes cells with a record and 70, so each declaration is one
+\ complete colon definition with no interpreted residue.
 
 private
 

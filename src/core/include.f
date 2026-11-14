@@ -1394,8 +1394,8 @@ variable SCRIPT-NAMED-PEND
 : INCLUDE-EVALERR? ( -- bool )
    data-base EVALERR-CELL + @ 0 = 0= ;
 
-\ Generated source runs as a closed program, refused E-EVAL-RESIDUE for what it
-\ leaves.
+\ Generated source runs as a closed program: one that leaves or takes cells is
+\ rejected with a record and 70.
 : INCLUDE-EVALUATE ( ptr u8 n -- )
    REQUIRE-REG:MARK {: mark:n :}
    [: 2dup evaluate-closed ;] catch {: rc:n :}
@@ -1872,7 +1872,7 @@ defer INCLUDE-INTERPRET ( ptr u8 n n n -- )
 
 \ A loaded program starts on an empty data stack. RUN-RANGE keeps the range in
 \ its source frame across catch; copied arguments beneath evaluate-range would
-\ let an underflow consume loader cells and turn it into E-EVAL-RESIDUE instead.
+\ let an underflow consume loader cells and turn it into a residue rejection.
 : INTERPRET-SAVED-RANGE ( -- )
    TOP@ {: frame:ptr :}
    frame FRAME-EVAL-PTR @

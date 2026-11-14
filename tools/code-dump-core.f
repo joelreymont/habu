@@ -55,7 +55,8 @@ public
    XREF-START ;
 
 \ Evaluates caller source through the real compiler before lookup. The program
-\ defines words and leaves nothing: a cell it leaves is E-EVAL-RESIDUE.
+\ defines words and leaves nothing: a text that leaves or takes cells is
+\ rejected with a record and 70.
 : LOAD-PROGRAM ( ptr u8 n -- )
    evaluate-closed ;
 

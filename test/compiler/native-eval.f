@@ -1,6 +1,6 @@
 \ The closed evaluation boundary: `evaluate-closed` runs source on a data
-\ stack of its own and refuses residue by name, which is what lets a checked
-\ word evaluate source.
+\ stack of its own and rejects residue with a record, which is what lets a
+\ checked word evaluate source.
 require src/core/engine-error.f
 require src/habu/stack-abi.f
 require src/lib/error.f
@@ -56,8 +56,8 @@ private
    s" NATIVE-EVAL-ANSWER 42 T=" evaluate-closed ;
 
 : RESIDUE ( -- )
-   s" a text that leaves cells is refused by name" T-LABEL
-   [: s" 1 2" evaluate-closed ;] E-EVAL-RESIDUE TTHROWSQ ;
+   s" a text that leaves cells throws 70" T-LABEL
+   [: s" 1 2" evaluate-closed ;] 70 TTHROWSQ ;
 
 : UNDER ( -- n )
    7 [: s" drop" evaluate-closed ;] catch 70 T= ;
@@ -83,9 +83,9 @@ private
    9 s" 5 NATIVE-EVAL-TEST:INNER-DEPTH$ evaluate-closed depth 1 T= 5 T="
    evaluate-closed
    9 T=
-   s" an inner text's residue is refused through the outer text" T-LABEL
+   s" an inner text's residue throws 70 through the outer text" T-LABEL
    [: s" NATIVE-EVAL-TEST:INNER-RESIDUE$ evaluate-closed" evaluate-closed ;]
-   E-EVAL-RESIDUE TTHROWSQ ;
+   70 TTHROWSQ ;
 
 : OUTER-BASE$ ( -- ptr u8 n )
    s" data-base STACK-ABI:BASE-CELL + @ NATIVE-EVAL-TEST:OUTER-BASE ! NATIVE-EVAL-TEST:INNER-BASE$ evaluate-closed" ;
@@ -265,10 +265,6 @@ s" TRY-BAD-IS" 0 parse-imm
    CAUGHT @ 70 T=
    s" NATIVE-EVAL-TEST:HOST-IS 5 T=" evaluate-closed ;
 
-: AGREEMENT ( -- )
-   s" E-EVAL-RESIDUE matches the engine's own spelling" T-LABEL
-   E-EVAL-RESIDUE STACK-ABI:E-EVAL-RESIDUE T= ;
-
 $1000 constant IO-CAP
 create OUT IO-CAP allot
 create ERR IO-CAP allot
@@ -287,6 +283,16 @@ create ERR IO-CAP allot
    s" and names the data stack" T-LABEL
    ERR erru S\" error[E-STACK-BOUNDS]: the data stack ran past its bounds\n"
    STARTS-WITH? TTRUE ;
+
+\ RESIDUE's text with no catch around it.
+: RESIDUE-RECORD ( -- )
+   s" an uncaught text that leaves cells exits 70" T-LABEL
+   S\" s\" 1 2\" evaluate-closed" OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
+   PROCESS:ENDING>RC RC>N 70 T=
+   nip LEN>N {: erru:n :}
+   s" and its record counts the cells it left" T-LABEL
+   ERR erru s" error[E-EVAL-RESIDUE]" CONTAINS? TTRUE
+   ERR erru s" = cells: 2" CONTAINS? TTRUE ;
 
 \ The same reach outside any closed text: the child's text runs a compiled
 \ word through execute with one cell on the stack it was given.
@@ -388,8 +394,8 @@ variable ERR-U
    DEFINES RESIDUE FLOOR REFUSED DEPTH0 NESTED FLOOR-POOL FLOOR-POOL-THROW
    LOOP-THROW XT-UNDER
    UNFINISHED
-   UNFINISHED-NESTED CALLER-OPEN CALLER-OPEN-REFUSED CALLER-OPEN-IS-REFUSED AGREEMENT OVERFLOW
-   TOP-LEVEL
+   UNFINISHED-NESTED CALLER-OPEN CALLER-OPEN-REFUSED CALLER-OPEN-IS-REFUSED OVERFLOW
+   RESIDUE-RECORD TOP-LEVEL
    UNFINISHED-LINE IN-TASK
    NAME-THROWN ROW-THROWN
    CHECKED

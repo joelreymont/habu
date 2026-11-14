@@ -431,11 +431,15 @@ public
    0 status MOVZ,  NR-EXIT-GROUP SYS,
    FAULT-SHUT FAULT-PART ! ;
 
-\ Ends the record with no help and returns, sp as FAULT-OPEN, found it.
-: FAULT-KEEP, ( -- )
-   NOTE-PART?
+\ Ends the record with its help, none for an empty text, and returns, sp as
+\ FAULT-OPEN, found it.
+: FAULT-KEEP, ( ptr u8 n -- ) {: h:ptr hu:n :}
+   NOTE-PART?  h hu CHECK-TEXT
+   hu 0 <> IF S\" \n  = help: " PROSE+  h hu PROSE+ THEN
    S\" \n\n" PROSE+
-   FAULT-PART @ FAULT-NOTE = IF S\" \"}}\n" ELSE S\" \"}\n" THEN JSON+
+   FAULT-PART @ FAULT-NOTE = IF S\" \"}" ELSE S\" \"" THEN JSON+
+   hu 0 <> IF S\" ,\"help\":\"" JSON+  h hu JSON+  S\" \"" JSON+ THEN
+   S\" }\n" JSON+
    PIECE,  FLUSH,
    SP SP FAULT-FRAME ADDI,
    FAULT-SHUT FAULT-PART ! ;
@@ -688,7 +692,7 @@ variable CRS-THROW
    s" E-MEMORY-FAULT" s" a read or write faulted" FAULT-OPEN,
    s" address" 25 FAULT-ADDRESS,
    C-CRASH-OWNER>R3  FAULT-IN,
-   FAULT-KEEP,
+   s" " FAULT-KEEP,
    10 ENGINE-ERROR:MEMORY-FAULT MOVZ,
    HB-TARGET-LINUX? IF
       10 21 LINUX-MCTX-X0-OFF 9 8 * + STR,

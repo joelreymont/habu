@@ -434,9 +434,10 @@ CHECKER-END-PACKAGE
 ;package
 \ A cast carries no body: the declaration ends at its closing paren, so the
 \ trailing 42 is read as its own token and left as residue, which
-\ INCLUDE-EVALUATE, a closed evaluation, refuses by name.
+\ INCLUDE-EVALUATE, a closed evaluation, rejects: the kernel writes that record
+\ to fd 2, past the capture.
 package CN
-s" cast: CNS1 ( n -- CN:cnfam ) 42"              CN-RUN:DECL E-EVAL-RESIDUE T=
+s" cast: CNS1 ( n -- CN:cnfam ) 42"              CN-RUN:DECL CHECKER-REJECT-RC T=
 s" CNS1" get-current search-wl 0= TFALSE        \ ... and the cast published anyway
 ;package
 

@@ -32,7 +32,7 @@ public
 \ The constant text is closed and the caller's text runs inside it under plain
 \ `evaluate`, at the top level where `evaluate` is admitted: the closed floor
 \ sits under the caller's text and N! takes the one cell it must leave. No cell
-\ is N!'s underdepth, 70; two or more is the closed residue, E-EVAL-RESIDUE.
+\ is N!'s underdepth; two or more is the closed residue, a record: both are 70.
 \ SRC$ reads the text before it runs and N! stores after it, so N nests inside
 \ its own text.
 : N ( ptr u8 n -- n )

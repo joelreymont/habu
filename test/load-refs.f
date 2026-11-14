@@ -43,8 +43,8 @@ TYPED-VARIABLE VISIT [ ptr u8 n n n -- ]
 \ ---- escaped literals --------------------------------------------------------
 \ LITERAL runs an escaped literal's text, opener through closing quote, under
 \ evaluate-closed, so it holds what the engine's reader decodes. A bad escape
-\ throws; zero or one cell left is PATH!'s underdepth, 70; more is
-\ E-EVAL-RESIDUE. The decoded bytes stay in data space, and a task may not
+\ throws; zero or one cell left is PATH!'s underdepth, 70; more is a residue
+\ record and 70. The decoded bytes stay in data space, and a task may not
 \ evaluate (src/habu/interpreter.f), so EACH and OPAQUE-EACH run on the main
 \ thread.
 
