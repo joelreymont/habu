@@ -1786,12 +1786,6 @@ CHECKER-PKG-LIVE-DEFAULT
    2 S\" hb: no authenticated package context for this definition\n" write drop
    CHECKER-REJECT-RC throw ;
 
-\ Uncaught, a code outside 1..255 exits UNCAUGHT-RC (67); the code published
-\ here makes it exit CHECKER-REJECT-RC instead.
-: CHECKER-REFUSE ( n -- ) {: code:n :}
-   code data-base REFUSAL-ABI:CODE-CELL + !
-   code throw ;
-
 \ AUTHORITY's bool says whether the engine's package record names a package
 \ context; a current that is none of the open scope's wordlists is no context.
 package CHECKER-RESOLVE
@@ -21880,14 +21874,13 @@ variable CUR-OPEN   variable CUR-PSIG
    SGBAD @ UNFIT @ or SGDECL-BAD !
    RES-FALSE ;
 
-\ The `cast:` or `linear:` declaration being certified and what refuses it.
+\ The `cast:` or `linear:` declaration being certified and the token its
+\ rejection names.
 package CAST-ERROR
 PTR-VARIABLE WORD-A   variable WORD-U
 PTR-VARIABLE KEY-A    variable KEY-U
-PTR-VARIABLE SIG-A
-PTR-VARIABLE WHY-A    variable WHY-U
+PTR-VARIABLE SIG-A    variable SIG-U
 PTR-VARIABLE TOK-A    variable TOK-U
-variable CODE
 ;package
 
 \ An effect REC-SIG did not record (W-EFFECT-NOT-RECORDED). CHECK clears it,

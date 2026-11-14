@@ -802,29 +802,33 @@ variable CTOR-PEND-POS
    RES-FALSE ;
 \ True for an error the checker reports itself before throwing it.
 : REPORTED-ERROR? ( n -- bool ) {: rc:n :}
-   rc CHECKER-REJECT-RC =
-   rc E-CAST-ARITY = or  rc E-CAST-CLASS = or  rc E-CAST-FAM = or
-   rc E-CAST-LINEAR = or  rc E-CAST-MINT = or
-   rc E-CAST-SCOPE = or  rc E-LINEAR-PAYLOAD = or  rc E-LINEAR-OWNER = or
-   rc E-LINEAR-SCOPE = or ;
+   rc CHECKER-REJECT-RC = ;
 package CAST-ERROR
 \ Zeros outside a declaration, so a saved image holds none of the build
 \ process's addresses.
 : CLEAR ( -- )
-   NULL-PTR WORD-A !  0 WORD-U !  NULL-PTR KEY-A !  0 KEY-U !  NULL-PTR SIG-A !
-   NULL-PTR WHY-A !  0 WHY-U !  NULL-PTR TOK-A !  0 TOK-U !  0 CODE ! ;
+   NULL-PTR WORD-A !  0 WORD-U !  NULL-PTR KEY-A !  0 KEY-U !
+   NULL-PTR SIG-A !  0 SIG-U !  NULL-PTR TOK-A !  0 TOK-U ! ;
+\ A signature whose length describes no memory gets no note.
+: SIG-NOTE ( -- )
+   SIG$ BYTE-SPAN? 0= IF EXIT THEN
+   s" signature" REJECTION:NOTE  SIG$ SIG-TRIM REJECTION:EMIT-STR ;
 public
 \ Runs xt on the declaration of name na nu with signature sa su under keyword
 \ ka ku, the record live until xt returns or throws.
 : DECLARE ( ptr u8 n ptr u8 n ptr u8 n [ ptr u8 n ptr u8 n -- ] -- )
    >r {: na:ptr nu:n sa:ptr su:n ka:ptr ku:n :}
-   na WORD-A !  nu WORD-U !  ka KEY-A !  ku KEY-U !  sa SIG-A !
+   na WORD-A !  nu WORD-U !  ka KEY-A !  ku KEY-U !  sa SIG-A !  su SIG-U !
    na nu sa su r> [: CLEAR ;] finally ;
 : TOKEN! ( ptr u8 n -- ) TOK-U !  TOK-A ! ;
-: RAISE ( ptr u8 n n -- ) {: wa:ptr wu:n code:n :}
-   wa WHY-A !  wu WHY-U !  code CODE !
-   RENDER
-   code CHECKER-REFUSE ;
+\ Rejects the declaration under code: why wa wu says what is wrong, help ha hu
+\ what to write instead.
+: RAISE ( ptr u8 n ptr u8 n n -- ) {: wa:ptr wu:n ha:ptr hu:n code:n :}
+   code CODE$ REJECTION:OPEN  wa wu TITLE
+   SPOT$ REJECTION:AT  code LABEL$ REJECTION:EMIT-STR
+   SIG-NOTE
+   REJECTION:HELP  ha hu REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
 \ Refuses signature sa su of name na nu that does not parse.
 : REFUSE-SIGNATURE ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
    sa su na nu na nu SGBAD-REJECTION
@@ -839,27 +843,39 @@ public
 \ representation cast.
 : CAST-CERTIFY ( -- bool )
    SGIN @ CAST-ROW-TERM dup CAST-TERM? swap OPAQUE-XT? or 0= IF
-      s" the input is not one machine cell a cast may retype" E-CAST-CLASS CAST-ERROR:RAISE
+      s" the input is not one machine cell a cast may retype"
+      s" take one cell as the input: a con such as `n`, a width-1 family, a pointer chain ending at storage, or a quotation"
+      E-CAST-CLASS CAST-ERROR:RAISE
    THEN
    SGOUT @ CAST-ROW-TERM CAST-TERM? 0= IF
-      s" the output is not one machine cell a cast may retype" E-CAST-CLASS CAST-ERROR:RAISE
+      s" the output is not one machine cell a cast may retype"
+      s" give one cell as the output: a con such as `n`, a width-1 family, a pointer chain ending at storage, or a quotation"
+      E-CAST-CLASS CAST-ERROR:RAISE
    THEN
    SGOUT @ CAST-ROW-TERM INTRO-ATOM CAST-INTRODUCES? IF
-      s" the output hands out an atom, a phantom index" E-CAST-CLASS CAST-ERROR:RAISE
+      s" the output hands out an atom, a phantom index"
+      s" write a cell type such as `n` where the output, its pointees or its quotations' outputs name an atom"
+      E-CAST-CLASS CAST-ERROR:RAISE
    THEN
    SGOUT @ CAST-ROW-TERM INTRO-WIDTH CAST-INTRODUCES? IF
-      s" the output is a width, which no cast yields" E-CAST-CLASS CAST-ERROR:RAISE
+      s" the output is a width, which no cast yields"
+      s" write `n` where the output names a `width<t>`, and read a width with `width>n`"
+      E-CAST-CLASS CAST-ERROR:RAISE
    THEN
    \ The source's consumed rows and pointees introduce values too: what the
    \ result is fed or has written through it reaches the source's code as the
    \ source's type.
    CAST-WALK-RESET
    SGIN @ CAST-ROW-TERM CAST-NEG INTRO-ATOM CAST-INTRO? IF
-      s" the input is handed an atom, a phantom index" E-CAST-CLASS CAST-ERROR:RAISE
+      s" the input is handed an atom, a phantom index"
+      s" write a cell type such as `n` where the input's pointees or its quotations' inputs name an atom"
+      E-CAST-CLASS CAST-ERROR:RAISE
    THEN
    CAST-WALK-RESET
    SGIN @ CAST-ROW-TERM CAST-NEG INTRO-WIDTH CAST-INTRO? IF
-      s" the input is handed a width, which no cast yields" E-CAST-CLASS CAST-ERROR:RAISE
+      s" the input is handed a width, which no cast yields"
+      s" write `n` where the input's pointees or its quotations' inputs name a `width<t>`"
+      E-CAST-CLASS CAST-ERROR:RAISE
    THEN
    \ A row variable stands for cells the signature does not show, which each use
    \ of the cast picks; an output holding no pointer or quotation passes.
@@ -867,22 +883,28 @@ public
    CAST-WALK-RESET
    mint IF SGIN @ CAST-ROW-TERM SGOUT @ CAST-ROW-TERM CAST-ROWS-KEPT? 0= IF
       s" a row variable changes place between the input and the output"
+      s" end each output quotation row in the input's row variable at the same place, with as many cells, as `( [ R n -- R ] -- [ R ptr n -- R ] )`"
       E-CAST-CLASS CAST-ERROR:RAISE
    THEN THEN
    CAST-WALK-RESET
    \ The input is only read, so a quotation whose tails differ is any quotation.
    SGIN @ CAST-ROW-TERM RES-FALSE CAST-MAY-LINEAR? IF
-      s" the input may hold a linear value" E-CAST-LINEAR CAST-ERROR:RAISE
+      s" the input may hold a linear value"
+      s" write a closed non-linear type in place of the input's linear type or type variable; a token is erased only by its owner's `linear:` row"
+      E-CAST-LINEAR CAST-ERROR:RAISE
    THEN
    CAST-WALK-RESET
    SGOUT @ CAST-ROW-TERM RES-TRUE CAST-MAY-LINEAR? IF
-      s" the output may hold a linear value" E-CAST-LINEAR CAST-ERROR:RAISE
+      s" the output may hold a linear value"
+      s" write a closed non-linear type in place of the output's linear type, type variable or `[ R -- S ]` quotation; a token is minted only by its owner's `linear:` row"
+      E-CAST-LINEAR CAST-ERROR:RAISE
    THEN
    \ The mint rule comes last: a mint that also carries ownership is named by
    \ that stronger reject.
    mint IF
       CHECKER-AUTH-PACKAGE-MODE@ CHECKER-PACKAGE-PRIVATE <> IF
          s" the output mints a pointer or a quotation outside a private section"
+         s" declare the cast after `private` in its package"
          E-CAST-MINT CAST-ERROR:RAISE
       THEN
    THEN
@@ -932,35 +954,48 @@ public
 : VIEW-CAST-SIDE ( -- bool n )
    CALLBACK-PACK? IF RES-FALSE SGIN @ CAST-ROW-TERM T-RES Q>DIN EXIT THEN
    SGIN @ ROW-2? SGOUT @ ROW-2? and 0= IF
-      s" a scoped cast is not two cells on each side" E-CAST-SCOPE CAST-ERROR:RAISE
+      s" a scoped cast is not two cells on each side"
+      s" retype one view as its two cells, as `( read-view<p,q,u8> -- ptr u8 n )`, or take the scope out of the cast"
+      E-CAST-SCOPE CAST-ERROR:RAISE
    THEN
    SGIN @ ROW-UNDER ROW-UNDER  SGOUT @ ROW-UNDER ROW-UNDER <> IF
-      s" the input and output rows end in different tails" E-CAST-SCOPE CAST-ERROR:RAISE
+      s" the input and output rows end in different tails"
+      s" end both sides of the view cast in the same tail, as `( R read-view<p,q,u8> -- R ptr u8 n )`"
+      E-CAST-SCOPE CAST-ERROR:RAISE
    THEN
    SGIN @ VIEW-PAIR? SGOUT @ VIEW-REP? and IF RES-TRUE SGIN @ EXIT THEN
    SGIN @ VIEW-REP? SGOUT @ VIEW-PAIR? and 0= IF
-      s" a scoped cast is neither a view pack nor a view unpack" E-CAST-SCOPE CAST-ERROR:RAISE
+      s" a scoped cast is neither a view pack nor a view unpack"
+      s" write a view unpack, as `( read-view<p,q,u8> -- ptr u8 n )`; only package C2-MEM declares the other view casts"
+      E-CAST-SCOPE CAST-ERROR:RAISE
    THEN
    RES-FALSE SGOUT @ ;
 \ The gate for a cast with a scope dependency.
 : VIEW-CAST-CERTIFY ( -- )
    SGHASR @ IF
-      s" a scoped cast declares a return-stack effect" E-CAST-SCOPE CAST-ERROR:RAISE
+      s" a scoped cast declares a return-stack effect"
+      s" write the signature with no `|` clause"
+      E-CAST-SCOPE CAST-ERROR:RAISE
    THEN
    VIEW-CAST-SIDE {: unpack:bool side:n :}
    CHECKER-AUTH-PACKAGE-MODE@ CHECKER-PACKAGE-PRIVATE <> IF
-      s" a view cast is declared outside a private section" E-CAST-SCOPE CAST-ERROR:RAISE
+      s" a view cast is declared outside a private section"
+      s" declare the view cast after `private` in its package"
+      E-CAST-SCOPE CAST-ERROR:RAISE
    THEN
    side CAST-ROW-TERM T-RES {: view:n :}
    CAST-WALK-RESET
    view view PARAM>ARGC 1 - PARAM>ARG RES-TRUE CAST-MAY-LINEAR? IF
-      s" the view's element may hold a linear value" E-CAST-LINEAR CAST-ERROR:RAISE
+      s" the view's element may hold a linear value"
+      s" write a closed non-linear element type, such as `u8`, in place of the view element's type variable or linear type"
+      E-CAST-LINEAR CAST-ERROR:RAISE
    THEN
    unpack IF view READ-VIEW? IF EXIT THEN THEN
    \ The literal is only the owner's name, which no registry holds: the view
    \ families are declared with package "".
    CHECKER-AUTH-PACKAGE$ s" C2-MEM" CORE-STR=CI 0= IF
       s" only package C2-MEM packs a view or unpacks a mutable view"
+      s" unpack a read view, as `( read-view<p,q,u8> -- ptr u8 n )`, or make the view with C2-MEM's words"
       E-CAST-SCOPE CAST-ERROR:RAISE
    THEN ;
 
@@ -977,19 +1012,25 @@ public
    in LIN-CON? IF in out ELSE out in THEN {: tok:n pay:n :}
    tok LIN-CON? 0= pay LINEAR-PAYLOAD? 0= or IF
       s" the row is not one linear type and one non-linear payload"
+      s" put the linear type on one side and its payload, a con or a pointer chain ending at one, on the other, as `( ptr n -- PKG:tok )`"
       E-LINEAR-PAYLOAD CAST-ERROR:RAISE
    THEN
    tok T-RES PAY CT-PKG$ {: pa:ptr pu:n :}
    pu 0= IF
       s" the linear type is declared at top level, so no package mints it"
+      s" declare the linear type with `DEFLINEAR` inside a package, and this row in that package's private section"
       E-LINEAR-OWNER CAST-ERROR:RAISE
    THEN
    pa pu CHECKER-AUTH-PACKAGE$ CORE-STR=CI 0= IF
       pa pu CAST-ERROR:TOKEN!
-      s" the linear type belongs to package" E-LINEAR-OWNER CAST-ERROR:RAISE
+      s" the linear type belongs to package"
+      s" declare this row in the private section of the package that declared the linear type"
+      E-LINEAR-OWNER CAST-ERROR:RAISE
    THEN
    CHECKER-AUTH-PACKAGE-MODE@ CHECKER-PACKAGE-PRIVATE <> IF
-      s" the row is outside its owner's private section" E-LINEAR-SCOPE CAST-ERROR:RAISE
+      s" the row is outside its owner's private section"
+      s" declare the row after `private` in its owner package"
+      E-LINEAR-SCOPE CAST-ERROR:RAISE
    THEN ;
 
 \ A body-supplied name left unbound takes a new identity, and only a region name may
@@ -1774,17 +1815,24 @@ package CHECKER-IDENTITY
 \ the engine's open namespace.
 : PARSE ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n sa:ptr su:n :}
    sa su BYTE-SPAN? 0= IF
-      s" the signature's length describes no memory" E-CAST-ARITY CAST-ERROR:RAISE
+      s" the signature's length describes no memory"
+      s" pass the signature text's address and its length in bytes"
+      E-CAST-ARITY CAST-ERROR:RAISE
    THEN
    NEW
    SGBAD-CLEAR
    sa su PARSE-SIG-RAW RAW-SIG!
    SGBAD-UNKNOWN? IF
-      SGBAD-A @ SGBAD-U @ CAST-ERROR:TOKEN!  s" unknown type" E-CAST-FAM CAST-ERROR:RAISE
+      SGBAD-A @ SGBAD-U @ CAST-ERROR:TOKEN!
+      s" the signature names an unknown type"
+      s" declare the type before this declaration, or write the name of a type visible here"
+      E-CAST-FAM CAST-ERROR:RAISE
    THEN
    SGBAD-ARITY? IF
       SGBAD-A @ SGBAD-U @ CAST-ERROR:TOKEN!
-      s" wrong arity for type family" E-CAST-FAM CAST-ERROR:RAISE
+      s" the signature gives the wrong number of arguments to the type family"
+      s" give the type family as many arguments as its declaration names"
+      E-CAST-FAM CAST-ERROR:RAISE
    THEN
    SGBAD @ SGBAD-UNSUPPLIED? 0= and IF
       sa su na nu CAST-ERROR:REFUSE-SIGNATURE
@@ -1795,17 +1843,25 @@ package CHECKER-IDENTITY
 : ROWS ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n sa:ptr su:n :}
    SGBAD-UNSUPPLIED? IF sa su na nu CAST-ERROR:REFUSE-SIGNATURE THEN
    SGHASR @ 0 <> IF
-      s" the signature declares a return-stack effect" E-CAST-ARITY CAST-ERROR:RAISE
+      s" the signature declares a return-stack effect"
+      s" write the signature with no `|` clause"
+      E-CAST-ARITY CAST-ERROR:RAISE
    THEN
    SGIN @ CAST-ROW-1? 0= IF
-      s" the input is not one term over the stack below" E-CAST-ARITY CAST-ERROR:RAISE
+      s" the input is not one term over the stack below"
+      s" take exactly one term as the input, as `( n -- u8 )`, with one declaration per term"
+      E-CAST-ARITY CAST-ERROR:RAISE
    THEN
    SGOUT @ CAST-ROW-1? 0= IF
-      s" the output is not one term over the stack below" E-CAST-ARITY CAST-ERROR:RAISE
+      s" the output is not one term over the stack below"
+      s" give exactly one term as the output, as `( n -- u8 )`, with one declaration per term"
+      E-CAST-ARITY CAST-ERROR:RAISE
    THEN
    SGIN @ R-RES P>REST R-RES
    SGOUT @ R-RES P>REST R-RES <> IF
-      s" the input and output rows end in different tails" E-CAST-ARITY CAST-ERROR:RAISE
+      s" the input and output rows end in different tails"
+      s" end both sides in the same tail, as `( R n -- R u8 )`, or name no tail"
+      E-CAST-ARITY CAST-ERROR:RAISE
    THEN
    SIG-UNRES @ IF E-CHECKER-IDENTITY-UNRESOLVED throw THEN ;
 
@@ -1832,6 +1888,7 @@ public
       VIEW-CAST-CERTIFY
       na nu CHECKER-QUALIFIED? IF
          s" a qualified name publishes past the private section"
+         s" write the cast's name with no `PKG:` qualifier"
          E-CAST-SCOPE CAST-ERROR:RAISE
       THEN
       SIG-UNRES @ IF E-CHECKER-IDENTITY-UNRESOLVED throw THEN
@@ -1842,6 +1899,7 @@ public
       CAST-CERTIFY {: mint:bool :}
       mint na nu CHECKER-QUALIFIED? and IF
          s" a qualified name publishes past the private section"
+         s" write the cast's name with no `PKG:` qualifier"
          E-CAST-MINT CAST-ERROR:RAISE
       THEN
       sa su na nu CHECKER-USIG-CERT-ROWS
@@ -1857,6 +1915,7 @@ public
    LINEAR-CERTIFY
    na nu CHECKER-QUALIFIED? IF
       s" a qualified name publishes past the private section"
+      s" write the row's name with no `PKG:` qualifier"
       E-LINEAR-SCOPE CAST-ERROR:RAISE
    THEN
    sa su na nu CHECKER-USIG-CERT-ADD
