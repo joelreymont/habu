@@ -537,7 +537,7 @@ public
    TAPE-FEED? IF TBASE@ TBLEN @ CHECKER-TAPE:SCAN THEN
    BEGIN TI @ TBLEN @ < WHILE
      TI @ CUR-GAP !
-     BEGIN TI @ 32 TBYTE=? WHILE TI @ 1 + TI ! REPEAT
+     BEGIN TI @ TBLEN @ <  TI @ TBLANK?  and WHILE TI @ 1 + TI ! REPEAT
      TI @ TBLEN @ < IF
        TI @ TBYTE@ 40 =  TI @ 1 + TBLANK?  and IF   \ '(' then a blank (not '(CMP)') -> sig or comment
          CUR-PAREN-AT
@@ -549,7 +549,7 @@ public
          CUR-PAREN
        ELSE
          TI @ TSTART !
-         BEGIN TI @ TBREAK? 0= WHILE TI @ 1 + TI ! REPEAT
+         BEGIN TI @ TBLANK? 0= WHILE TI @ 1 + TI ! REPEAT
          SCAN-TOK-HEAD {: was-name:n :}
          TSTART @ TADDR  TI @ TSTART @ -  DO-TOK1
          was-name SCAN-TOK-TAIL IF EXIT THEN
