@@ -94,7 +94,7 @@ create DIAG-BUF 8192 allot
    RTARGET:HOST WINDOWS RTARGET:FOR-OUTPUT [: THROWING ;] BUILD-TARGET:WITH ;
 : NOOP-ACTION ( RTARGET:build-action -- ) drop ;
 : T15 ( -- )
-   s" T15 action mutation refusal and restoration" T-LABEL
+   s" T15 action mutation rejection and restoration" T-LABEL
    BUILD-TARGET:HOST!
    RTARGET:HOST WINDOWS RTARGET:FOR-OUTPUT [: CHECK-ACTION ;] BUILD-TARGET:WITH
    [: ACTIVE-MUTATE ;] ACTIVE-REJECTED

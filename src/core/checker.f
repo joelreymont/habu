@@ -5115,6 +5115,7 @@ CHECKER-REG:}SCRATCH
 91 constant MD-CALLBACK-NOT-GENERIC \ a scope the call opens occurs in its rows or outside it (SCOPE-INTRO-FENCE)
 92 constant MD-SCOPED-TICK   \ a body ticks a scoped entry, which only a direct call reaches (TICK-REFUSED?); E-UNSAFE
 93 constant MD-C2-INIT-RECORD \ a C2 entry's record operand is no fixed-cell record it can initialize (INIT-VALUE-OK?, INIT-RECORD?)
+94 constant MD-C2-FIELD-UNKNOWN \ WITH-FIELD names no field of the record (SCOPE-FIELD-STEP); E-UNKNOWN-FIELD
 \ A data depth change is E-MISMATCH and prints the loop's start row and the
 \ row at its back edge or leave; the others are E-REJECTED.
 48 constant MD-LOOP-DEPTH    \ a loop's back edge or leave holds another data depth than its start (CF-CARRIED=)
@@ -6173,6 +6174,7 @@ variable QUOT-LOSS
    q Q>RIN R-RES q Q>ROUT R-RES = and ;
 
 : RSFINALLY ( -- )
+   STEP-AT-BASE? IF 2 UF-NEED !  UF-NEED @ UF-HAVE @ > IF STEP-UNDERFLOW! EXIT THEN THEN   \ the body and the cleanup
    FRESH MK-VAR FRESH MK-ROW {: tv rest :}
    DCUR @ tv rest MK-PUSH UNIFY OK @ and OK !
    rest DCUR !
@@ -6196,6 +6198,7 @@ variable QUOT-LOSS
    q Q>RIN R-RES q Q>ROUT R-RES = and ;
 
 : RS-C2-INVOKE ( -- )
+   STEP-AT-BASE? IF 3 UF-NEED !  UF-NEED @ UF-HAVE @ > IF STEP-UNDERFLOW! EXIT THEN THEN   \ the body, the cleanup and the finish
    FRESH MK-VAR FRESH MK-ROW {: finish-term rest :}
    DCUR @ finish-term rest MK-PUSH UNIFY OK @ and OK !
    rest DCUR !

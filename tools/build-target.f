@@ -8,7 +8,7 @@ TYPED-VARIABLE PENDING RTARGET:resolved-target
 TYPED-VARIABLE ACTION RTARGET:build-action
 variable ACTIVE
 
-: REFUSE-ACTIVE ( -- )
+: REJECT-ACTIVE ( -- )
    ACTIVE @ 0= if exit then
    s" E-BUILD-ACTIVE" REJECTION:OPEN
    s" the build target cannot change while `BUILD-TARGET:WITH` runs its action"
@@ -40,18 +40,18 @@ public
    RTARGET-PROFILE--ID:EQ ;
 
 : HOST! ( -- )
-   REFUSE-ACTIVE
+   REJECT-ACTIVE
    RTARGET:HOST-TARGET PENDING ! ;
 
 : SELECT? ( ptr u8 n -- bool )
    {: name:ptr size:n :}
-   REFUSE-ACTIVE
+   REJECT-ACTIVE
    name size RTARGET:KNOWN? 0= if false exit then
    name size RTARGET:RESOLVE PENDING ! true ;
 
 : WITH ( RTARGET:build-action [ RTARGET:build-action -- ] -- )
    {: action:RTARGET:build-action body :}
-   REFUSE-ACTIVE
+   REJECT-ACTIVE
    action ACTION !
    1 ACTIVE !
    action body [: END-ACTION ;] finally ;
