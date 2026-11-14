@@ -26,9 +26,6 @@ public
 
 private
 
-7133 constant E-TDECL-PROVIDER  \ payload provider result contradicts the family's own schema/slot metadata
-                                \ (7120-7132 already belong to the checker, layout-buffer, field, and cast blocks)
-
 create DECL-PARAM-NAMES TFAM-DECL-PARAM-COUNT allot
 variable DECL-PARAM-N
 : DECL-PARAM-CLEAR ( -- )
@@ -1511,166 +1508,10 @@ private
    u 0 ?do a i + c@ TDGEN-C, loop ;
 : TDGEN-UPPER ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 ?do a i + c@ TF-UPPER-C TDGEN-C, loop ;
-\ --- payload provider. Everything below builds DERIVE words from a PROVIDER:
-\ one opaque context cell and three quotation capabilities.
-\   qn  [ n n n -- n ]    ( ctx fam vid -- count )       payload element count
-\   qr  [ n n n n -- n ]  ( ctx fam vid index -- root )  declaration-order schema root
-\   qc  [ n n n -- n ]    ( ctx fam vid -- cells )       payload cell width
-\ The SUMTYPE / ENUM / PRODUCT definers pass TDECL-SUMV-PROVIDER, which reads the
-\ committed SUMV rows; a front end whose declaration is not yet published passes
-\ capabilities over its own live declaration token.
-\ The provider is asked once, before any word is built; its answers are
-\ validated together and copied into the snapshot the DERIVE walkers read, so
-\ the validated view is the built one and no untrusted quotation runs during a
-\ build. Validation proves the answers are consistent
-\ and fit the family (count within payload slots, roots exist and are at least
-\ one cell wide, cell width equals the roots' widths and fits the slots). It
-\ does not prove the provider described the right payload: the provider is the
-\ authority for which payload a variant carries, and its caller owns the
-\ obligation that the view it supplies is the view that will be committed.
-$40 constant TDPV-INIT                   \ initial snapshot slots (variants, roots)
-create TDPV-CNT-BOOT   TDPV-INIT cells allot
-create TDPV-CELLS-BOOT TDPV-INIT cells allot
-create TDPV-OFF-BOOT   TDPV-INIT cells allot
-create TDPV-NODE-BOOT  TDPV-INIT cells allot
-PERSISTED-PTR-VARIABLE TDPV-CNT-P    TDPV-CNT-BOOT TDPV-CNT-P !
-PERSISTED-PTR-VARIABLE TDPV-CELLS-P  TDPV-CELLS-BOOT TDPV-CELLS-P !
-PERSISTED-PTR-VARIABLE TDPV-OFF-P    TDPV-OFF-BOOT TDPV-OFF-P !
-PERSISTED-PTR-VARIABLE TDPV-NODE-P   TDPV-NODE-BOOT TDPV-NODE-P !
-variable TDPV-VAR-CAP   TDPV-INIT TDPV-VAR-CAP !
-variable TDPV-NODE-CAP  TDPV-INIT TDPV-NODE-CAP !
-variable TDPV-FAM   -1 TDPV-FAM !        \ family the snapshot describes (-1 = none)
-variable TDPV-BASE                       \ its first variant row
-variable TDPV-VARS                       \ variants captured
-variable TDPV-NODES                      \ nodes captured
-
 PTR-VARIABLE TDECL-BUF-P
 SCRATCH-VARIABLE TDECL-BUF-CAP   \ in cells
 variable TDECL-U
 : TDECL-BUF ( -- ptr u8 ) TDECL-BUF-P @ ;
-
-: TDPV-THROW ( n ptr u8 n -- )   \ family + reason -> the named provider reject
-   {: fam:n ra:ptr ru:n :}
-   fam TFAM-NAME$ ra ru E-TDECL-PROVIDER TDECL-THROW ;
-
-: TDPV-GROW-CAP ( n n -- n ) {: need:n cap:n :}
-   cap 2 * need max ;
-: TDPV-VAR-ENSURE ( n -- ) {: need:n :}
-   need TDPV-VAR-CAP @ <= IF EXIT THEN
-   need TDPV-VAR-CAP @ TDPV-GROW-CAP {: cap:n :}
-   TDPV-CNT-P   TDPV-VAR-CAP @ cells cap cells REG-GROW1
-   TDPV-CELLS-P TDPV-VAR-CAP @ cells cap cells REG-GROW1
-   TDPV-OFF-P   TDPV-VAR-CAP @ cells cap cells REG-GROW1
-   cap TDPV-VAR-CAP ! ;
-: TDPV-NODE-ENSURE ( n -- ) {: need:n :}
-   need TDPV-NODE-CAP @ <= IF EXIT THEN
-   need TDPV-NODE-CAP @ TDPV-GROW-CAP {: cap:n :}
-   TDPV-NODE-P TDPV-NODE-CAP @ cells cap cells REG-GROW1
-   cap TDPV-NODE-CAP ! ;
-
-\ Each capability is called once per answer and every answer is checked before
-\ the next is asked for. The count is bounded against the family's payload
-\ slots directly, so the arena write and the loop do not rest on any property
-\ of the element widths.
-: TDPV-COUNT ( n [ n n n -- n ] n n -- n )   \ ctx qn fam slots -- validated count
-   {: ctx:n qn fam:n slots:n :}
-   ctx fam TDPV-BASE @ TDPV-VARS @ + qn execute {: k:n :}
-   k 0 < IF fam s" payload provider returned a negative count" TDPV-THROW THEN
-   k slots > IF
-      fam s" payload provider count exceeds the family payload slots" TDPV-THROW THEN
-   k ;
-
-: TDPV-NODE+ ( n [ n n n n -- n ] n n -- n )   \ ctx qr fam j -- width : append the next validated schema node
-   {: ctx:n qr fam:n j:n :}
-   ctx fam TDPV-BASE @ TDPV-VARS @ + j qr execute {: root:n :}
-   root 0 < root SCHEMA-ROOT-N@ >= or IF
-      fam s" payload provider returned an unknown schema root" TDPV-THROW THEN
-   root SCHEMA-ROOT@ {: node:n :}
-   TDPV-NODES @ 1 + TDPV-NODE-ENSURE
-   node TDPV-NODE-P @ TDPV-NODES @ cells + !
-   TDPV-NODES @ 1 + TDPV-NODES !
-   fam node TFAM-SCH-WIDTH ;
-
-: TDPV-NODES+ ( n [ n n n n -- n ] n n -- n )   \ ctx qr fam k -- width : the variant's whole root run
-   {: ctx:n qr fam:n k:n :}
-   0
-   k 0 ?do ctx qr fam i TDPV-NODE+ + loop ;
-
-\ `cw` is never spelled `cells` here: that is the core cell-size operator, and a
-\ local of that name would silently shadow it in the array indexing below.
-: TDPV-CELLS ( n [ n n n -- n ] n n n -- n )   \ ctx qc fam slots width -- validated cell width
-   {: ctx:n qc fam:n slots:n w:n :}
-   ctx fam TDPV-BASE @ TDPV-VARS @ + qc execute {: cw:n :}
-   cw w <> IF
-      fam s" payload provider cell width contradicts its own schema" TDPV-THROW THEN
-   cw slots > IF
-      fam s" payload provider cell width exceeds the family payload slots" TDPV-THROW THEN
-   cw ;
-
-: TDPV-VARIANT+ ( n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n n -- )   \ one variant's whole view
-   {: ctx:n qn qr qc fam:n slots:n :}
-   TDPV-VARS @ 1 + TDPV-VAR-ENSURE
-   TDPV-NODES @ TDPV-OFF-P @ TDPV-VARS @ cells + !
-   ctx qn fam slots TDPV-COUNT {: k:n :}
-   ctx qr fam k TDPV-NODES+ {: w:n :}
-   ctx qc fam slots w TDPV-CELLS {: cw:n :}
-   k  TDPV-CNT-P @   TDPV-VARS @ cells + !
-   cw TDPV-CELLS-P @ TDPV-VARS @ cells + !
-   TDPV-VARS @ 1 + TDPV-VARS ! ;
-
-public
-
-: TDPV-CAPTURE ( n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n -- )
-   {: ctx:n qn qr qc fam:n :}
-   -1 TDPV-FAM !
-   fam TFAM-VAR-START@ TDPV-BASE !
-   0 TDPV-VARS !   0 TDPV-NODES !
-   fam TFAM-SLOTS@ {: slots:n :}
-   fam TFAM-VAR-COUNT@ {: vars:n :}
-   vars 0 ?do ctx qn qr qc fam slots TDPV-VARIANT+ loop
-   fam TDPV-FAM ! ;
-
-\ Every snapshot reader names the family it expects and the captured variant
-\ range, and fails closed with the named code outside either. The family check
-\ is needed because a rolled-back declaration releases its variant rows, so a
-\ later family can reuse the same row numbers.
-
-private
-
-: TDPV-SLOT ( n n -- n ) {: fam:n vid:n :}   \ variant row -> snapshot index
-   fam TDPV-FAM @ <> IF
-      fam s" payload snapshot is not this family's" TDPV-THROW THEN
-   vid TDPV-BASE @ - {: i:n :}
-   i 0 < i TDPV-VARS @ >= or IF
-      fam s" payload snapshot has no such variant" TDPV-THROW THEN
-   i ;
-: TDPV-N@ ( n n -- n ) {: fam:n vid:n :}     \ payload element count
-   TDPV-CNT-P @ fam vid TDPV-SLOT cells + @ ;
-: TDPV-NODE@ ( n n n -- n ) {: fam:n vid:n j:n :}   \ declaration-order schema node
-   fam vid TDPV-SLOT {: i:n :}
-   j 0 < j TDPV-CNT-P @ i cells + @ >= or IF
-      fam s" payload snapshot has no such payload element" TDPV-THROW THEN
-   TDPV-NODE-P @ TDPV-OFF-P @ i cells + @ j + cells + @ ;
-
-\ Each capability takes the full ( ctx fam vid .. ) list every provider gets and
-\ answers from the variant row alone; ctx and fam are unused here.
-: TDECL-SUMV-N ( n n n -- n ) {: ctx:n fam:n vid:n :}
-   vid SUMV-PAY-N ;
-: TDECL-SUMV-ROOT ( n n n n -- n ) {: ctx:n fam:n vid:n j:n :}
-   vid j SUMV-PAY-ROOT ;
-: TDECL-SUMV-CELLS ( n n n -- n ) {: ctx:n fam:n vid:n :}
-   vid SUMV-PAYCELLS@ ;
-
-public
-
-: TDECL-SUMV-PROVIDER ( -- n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] )   \ ctx + the three committed capabilities
-   0
-   [: TDECL-SUMV-N ;]
-   [: TDECL-SUMV-ROOT ;]
-   [: TDECL-SUMV-CELLS ;] ;
-
-
-private
 
 \ --- derived typed equality. `DERIVE eq` builds checked words into the family's
 \ constructor package from items, their engine words found where this file is
@@ -1728,26 +1569,26 @@ private
    node SCHEMA-APP? IF node EXIT THEN
    TRANSIENT-ON
    [: CC-N SCHEMA-CON ;] [: TRANSIENT-OFF ;] finally ;
-: TDGEN-BINDS ( n n -- n ) {: fam:n vid:n :}   \ "{: .. :}" over vid's payload slots; the first's index
+: TDGEN-BINDS ( n -- n ) {: vid:n :}   \ "{: .. :}" over vid's payload slots; the first's index
    TDGEN-LOCALS {: base:n :}
-   fam vid TDPV-N@ {: m:n :}
+   vid SUMV-PAY-N {: m:n :}
    m 0= IF base EXIT THEN
    s" {:" TDGEN-KW
-   m 0 ?do fam vid i TDPV-NODE@ TDGEN-SLOT-TYPE TDGEN-LOCAL loop
+   m 0 ?do vid i SUMV-PAY-ROOT SCHEMA-ROOT@ TDGEN-SLOT-TYPE TDGEN-LOCAL loop
    s" :}" TDGEN-KW
    base ;
 \ Reads slot I's local, BASE the index of the first its binds declared: a sum
 \ binds its slots in order, TDGEN-UNBIND a product's fields top-down.
 : TDGEN-SLOT@ ( n n n n -- ) {: fam:n vid:n base:n i:n :}
-   fam TFAM-PRODUCT? IF base fam vid TDPV-N@ 1 - i - + ELSE base i + THEN
+   fam TFAM-PRODUCT? IF base vid SUMV-PAY-N 1 - i - + ELSE base i + THEN
    TDGEN-LOCAL@ ;
 : TDGEN-CMP1 ( n n n n n -- ) {: fam:n vid:n pb:n qb:n i:n :}   \ p q, then = or FAM:EQ
    fam vid pb i TDGEN-SLOT@  fam vid qb i TDGEN-SLOT@
-   fam vid i TDPV-NODE@ {: node:n :}
+   vid i SUMV-PAY-ROOT SCHEMA-ROOT@ {: node:n :}
    node SCHEMA-APP? IF node SCHEMA-A@ s" eq" TDGEN-DRV-CALL EXIT THEN
    postpone = ;
 : TDGEN-CMP ( n n n n -- ) {: fam:n vid:n pb:n qb:n :}  \ p0 q0 = p1 q1 = and .. (m=0 -> true)
-   fam vid TDPV-N@ {: m:n :}
+   vid SUMV-PAY-N {: m:n :}
    m 0= IF 0 literal postpone 0= EXIT THEN
    m 0 ?do
       fam vid pb qb i TDGEN-CMP1
@@ -1758,7 +1599,7 @@ private
    fam TFAM-VAR-START@ {: vstart:n :}
    vstart fam TFAM-VAR-COUNT@ + vstart ?do
       i SUMV-NAME$ TDGEN-OF
-      fam i TDPV-N@ TDGEN-DROPS
+      i SUMV-PAY-N TDGEN-DROPS
       i SUMV-TAG@ literal
       s" endof" TDGEN-KW
    loop
@@ -1768,16 +1609,16 @@ private
 : TDGEN-EQ-ARM ( n n n n -- ) {: fam:n vout:n vin:n qb:n :}
    vin SUMV-NAME$ TDGEN-OF
    vin vout = IF
-      fam vin TDGEN-BINDS {: pb:n :}
+      vin TDGEN-BINDS {: pb:n :}
       fam vin pb qb TDGEN-CMP
    ELSE
-      fam vin TDPV-N@ TDGEN-DROPS
+      vin SUMV-PAY-N TDGEN-DROPS
       1 literal postpone 0=
    THEN
    s" endof" TDGEN-KW ;
 : TDGEN-EQ-OUT ( n n n n -- ) {: fam:n vstart:n k:n vout:n :}   \ vout's outer arm
    vout SUMV-NAME$ TDGEN-OF
-   fam vout TDGEN-BINDS {: qb:n :}
+   vout TDGEN-BINDS {: qb:n :}
    fam TDGEN-MATCH-OPEN
    vstart k + vstart ?do fam vout i qb TDGEN-EQ-ARM loop
    s" ;match" TDGEN-KW  s" endof" TDGEN-KW ;
@@ -1789,13 +1630,13 @@ private
    s" ;match" TDGEN-KW ;
 : TDGEN-UNBIND1 ( n n n -- ) {: fam:n mk:n k:n :}   \ field k's bind
    s" {:" TDGEN-KW
-   fam mk k TDPV-NODE@ TDGEN-SLOT-TYPE TDGEN-LOCAL
+   mk k SUMV-PAY-ROOT SCHEMA-ROOT@ TDGEN-SLOT-TYPE TDGEN-LOCAL
    s" :}" TDGEN-KW ;
 : TDGEN-UNBIND ( n -- n ) {: fam:n :}   \ PKG:UNMAKE + top-down field binds; the first's index
    fam s" unmake" TDGEN-DRV-CALL
    TDGEN-LOCALS {: base:n :}
    fam TFAM-VAR-START@ {: mk:n :}
-   fam mk TDPV-N@ {: m:n :}
+   mk SUMV-PAY-N {: m:n :}
    m 0 ?do fam mk m 1 - i - TDGEN-UNBIND1 loop
    base ;
 : TDGEN-EQ-PROD ( n -- ) {: fam:n :}   \ UNMAKE both values, field-wise compare
@@ -1817,13 +1658,13 @@ $100000001b3 constant DRV-FNV-PRIME        \ FNV-1a 64-bit prime
    postpone xor  DRV-FNV-PRIME literal  postpone * ;
 : TDGEN-HASH-FOLD1 ( n n n n -- ) {: fam:n vid:n base:n i:n :}   \ slot i [FAM:HASH] mix
    fam vid base i TDGEN-SLOT@
-   fam vid i TDPV-NODE@ {: node:n :}
+   vid i SUMV-PAY-ROOT SCHEMA-ROOT@ {: node:n :}
    node SCHEMA-APP? IF node SCHEMA-A@ s" hash" TDGEN-DRV-CALL THEN
    TDGEN-HMIX ;
 : TDGEN-HASH-FOLDS ( n n n -- ) {: fam:n vid:n base:n :}   \ fold every slot's local
-   fam vid TDPV-N@ 0 ?do fam vid base i TDGEN-HASH-FOLD1 loop ;
+   vid SUMV-PAY-N 0 ?do fam vid base i TDGEN-HASH-FOLD1 loop ;
 : TDGEN-HASH-ARM ( n n -- ) {: fam:n vid:n :}   \ bind payloads, fold tag then payloads
-   fam vid TDGEN-BINDS {: base:n :}
+   vid TDGEN-BINDS {: base:n :}
    DRV-FNV-BASIS literal
    vid SUMV-TAG@ literal  TDGEN-HMIX
    fam vid base TDGEN-HASH-FOLDS ;
@@ -1948,7 +1789,6 @@ $100000001b3 constant DRV-FNV-PRIME        \ FNV-1a 64-bit prime
 public
 
 : TDECL-PROD-WORDS ( n -- ) {: fam:n :}
-   TDECL-SUMV-PROVIDER fam TDPV-CAPTURE
    fam TDECL-PROD-WORDS-BODY ;
 
 \ --- generated ADDRESS accessors (`DERIVE addr`).
@@ -2125,12 +1965,11 @@ private
    fam TFAM-PUBLIC? IF RES-TRUE EXIT THEN
    fam TFAM-PRODUCT? ;
 
-: TDECL-GEN-PLAN ( n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n -- n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n )
-   {: ctx:n qn qr qc fam:n :}
-   fam TDECL-GENERATES? 0= IF ctx qn qr qc fam EXIT THEN
-   ctx qn qr qc fam TDPV-CAPTURE          \ the whole payload view, once, validated
+: TDECL-GEN-PLAN ( n -- n )
+   {: fam:n :}
+   fam TDECL-GENERATES? 0= IF fam EXIT THEN
    fam TFAM-PRODUCT? IF
-      fam TDECL-PROD-PLAN  ctx qn qr qc fam EXIT THEN
+      fam TDECL-PROD-PLAN  fam EXIT THEN
    \ Parametric families publish too: a constructor's parametric result expands
    \ to hidden fields wherever its width is known, linear included (checker.f
    \ PUSH-LOGICAL), and stays one logical cell only while its width reads an
@@ -2140,49 +1979,36 @@ private
       fam  fam TFAM-VAR-START@ i +  TDECL-CTOR-ROW
    loop
    fam TDECL-DRV-WORDS
-   ctx qn qr qc fam ;
-
-: TDECL-GEN-BODY ( n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n -- n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n )
-   dup TDECL-GENERATES? 0= IF EXIT THEN
-   TDECL-GEN-PLAN
-   dup TDECL-GEN-EVAL ;
+   fam ;
 
 \ Replay publishes checked effects from the same constructor bodies as a live
 \ declaration. It emits no code and creates no runtime dictionary entries.
-: TDECL-REPLAY-PLAN ( n -- n ) {: family:n :}
-   TDECL-SUMV-PROVIDER family TDECL-GEN-PLAN
-   TDPLAN-PREFLIGHT-DEFINITIONS
-   {: ctx:n qn qr qc fam:n :}
-   fam ;
-: TDECL-REPLAY-BODY ( n -- n ) {: family:n :}
-   family RES-TRUE [: TDECL-REPLAY-PLAN ;] TDECL-GEN-PLACED
-   family ;
+: TDECL-REPLAY-PLAN ( n -- n )
+   TDECL-GEN-PLAN TDPLAN-PREFLIGHT-DEFINITIONS ;
 
 
 public
 
 : TDECL-CTOR-REPLAY ( n -- )
    dup TDECL-GENERATES? 0= IF drop EXIT THEN
-   TDECL-REPLAY-BODY drop ;
+   RES-TRUE [: TDECL-REPLAY-PLAN ;] TDECL-GEN-PLACED ;
 
-: TDECL-CTOR-WORDS-BODY ( n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n -- n )
-   dup {: fam:n :}
-   TDECL-GEN-BODY 2drop 2drop drop
-   fam ;
+: TDECL-CTOR-WORDS-BODY ( n -- ) {: fam:n :}
+   fam TDECL-GENERATES? 0= IF EXIT THEN
+   fam TDECL-GEN-PLAN TDECL-GEN-EVAL ;
 
 \ Every declaration announces its family through TDECL-FAM-REG; that ambient
-\ read lives only in the adapters below, which also choose the committed payload
-\ view (TDECL-SUMV-PROVIDER), and in TDECL-DEFTYPE and TDECL-NOMINAL-REPLAY. A
-\ SUMTYPE refused under a multi-error load leaves -1 (TDECL-RUN's continue path)
-\ and generates nothing; PRODUCT generates inside the body TDECL-RUN guards, so
-\ a refused one never reaches generation.
+\ read lives only in the adapters below and in TDECL-DEFTYPE and
+\ TDECL-NOMINAL-REPLAY. A SUMTYPE refused under a multi-error load leaves -1
+\ (TDECL-RUN's continue path) and generates nothing; PRODUCT generates inside
+\ the body TDECL-RUN guards, so a refused one never reaches generation.
 
 private
 
 : TDECL-CTOR-WORDS ( -- )
    TDECL-FAM-REG @ {: fam:n :}
    fam 0 < IF EXIT THEN
-   TDECL-SUMV-PROVIDER fam TDECL-CTOR-WORDS-BODY drop ;
+   fam TDECL-CTOR-WORDS-BODY ;
 
 : TDECL-PRODUCT-INIT-ARM ( -- )
    TDECL-FAM-REG @ {: fam:n :}
