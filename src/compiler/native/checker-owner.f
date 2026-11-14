@@ -29,8 +29,6 @@ defer SOURCE-FIELD-SPAN ( n -- n n )
 defer SOURCE-ROWS-END ( -- n )
 defer SOURCE-RETRACT-ROWS ( n -- )
 defer SOURCE-WRITE-WINDOW ( n -- )
-defer SOURCE-REPORT-RESET ( -- )
-defer SOURCE-JSON-REPORTED ( -- bool )
 defer SOURCE-DOES-UNJUDGED ( ptr u8 n ptr u8 n -- n )
 defer SOURCE-DOES-CHECK ( ptr u8 n ptr u8 n -- n )
 defer SOURCE-DOES-REPORT ( n ptr u8 n -- n )
@@ -44,13 +42,10 @@ defer SOURCE-DOES-REPORT ( n ptr u8 n -- n )
 \ The owner record stores raw execution tokens; each view states a field's
 \ signature so native execute has a callable layout.
 CAST: AS-CHECK ( n -- [ ptr u8 n -- n ] )
-CAST: AS-ACTION ( n -- [ -- ] )
 CAST: AS-DOES-CHECK ( n -- [ ptr u8 n ptr u8 n -- n ] )
 CAST: AS-DOES-REPORT ( n -- [ n ptr u8 n -- n ] )
 CAST: AS-N ( n -- [ -- n ] )
 CAST: AS-BOOL ( n -- [ -- bool ] )
-CAST: AS-SPAN ( n -- [ -- n n bool ] )
-CAST: AS-TEXT ( n -- [ -- ptr u8 n ] )
 CAST: AS-MARK-ACTION ( n -- [ n -- ] )
 CAST: AS-CELLS ( n -- [ n -- n n ] )
 CAST: AS-BINDING ( n -- [ n -- ptr u8 n ] )
@@ -88,8 +83,6 @@ CAST: AS-INIT-LAYOUT ( n -- [ n -- n n n ] )
    NCOMP-DISPATCH:DECL-ROWS-END-OFF s" source rows end" PAIRED-FIELD AS-N is SOURCE-ROWS-END
    NCOMP-DISPATCH:DECL-RETRACT-ROWS-OFF s" source rows retract" PAIRED-FIELD AS-MARK-ACTION is SOURCE-RETRACT-ROWS
    NCOMP-DISPATCH:DECL-WRITE-WINDOW-OFF s" source write window" PAIRED-FIELD AS-MARK-ACTION is SOURCE-WRITE-WINDOW
-   NCOMP-DISPATCH:DECL-RESET-REPORT-OFF s" source report reset" PAIRED-FIELD AS-ACTION is SOURCE-REPORT-RESET
-   NCOMP-DISPATCH:DECL-JSON-REPORTED-OFF s" source JSON report" PAIRED-FIELD AS-BOOL is SOURCE-JSON-REPORTED
    NCOMP-DISPATCH:DECL-DOES-UNJUDGED-OFF s" source unjudged does> split" PAIRED-FIELD AS-DOES-CHECK is SOURCE-DOES-UNJUDGED
    NCOMP-DISPATCH:DECL-DOES-CHECK-OFF s" source does> split" PAIRED-FIELD AS-DOES-CHECK is SOURCE-DOES-CHECK
    NCOMP-DISPATCH:DECL-NATIVE-DOES-REPORT-OFF s" source does> report" PAIRED-FIELD AS-DOES-REPORT is SOURCE-DOES-REPORT ;
@@ -102,12 +95,6 @@ public
 
 : CHECK-UNJUDGED ( ptr u8 n -- n )
    SOURCE-UNJUDGED ;
-
-: RESET-REPORT ( -- )
-   SOURCE-REPORT-RESET ;
-
-: JSON-REPORTED? ( -- bool )
-   SOURCE-JSON-REPORTED ;
 
 private
 
@@ -135,18 +122,6 @@ public
 : SIG-REFUSED? ( -- bool )
    NCOMP-DISPATCH:DECL-SIG-COUNTED-OFF s" counted signature refusal" SOURCE-FIELD
    AS-BOOL execute ;
-
-\ The token the last scan refused: its offsets in the scanned text, equal when
-\ none was pinned, and whether it is undefined (checker.f PIN-SPAN).
-: REFUSED-SPAN ( -- n n bool )
-   NCOMP-DISPATCH:DECL-PIN-SPAN-OFF s" refused token span" SOURCE-FIELD
-   AS-SPAN execute ;
-
-\ The text of the token the last scan refused, empty when none was pinned
-\ (checker.f PIN-TOKEN). Read per call, as SIG-REFUSED? is.
-: ERROR-TOKEN ( -- ptr u8 n )
-   NCOMP-DISPATCH:DECL-PIN-TOKEN-OFF s" refused token text" SOURCE-FIELD
-   AS-TEXT execute ;
 
 \ The store's end when a definition begins, and a refused one's cut back to it:
 \ exactly the rows it recorded go, and every row recorded before it stays

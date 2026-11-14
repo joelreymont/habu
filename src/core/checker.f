@@ -776,7 +776,7 @@ private
    0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
    0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
    0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
-   0 , 0 , 0 , 0 , 0 ,
+   0 , 0 , 0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here DECLARATIONS - constant OWNER-COMMITTED
 OWNER-BYTES constant OWNER-CELLS-BYTES
@@ -6911,18 +6911,6 @@ CHECKER-REG:}SCRATCH
 : UNSEEN-RAISE ( -- )
    PIN-OPEN? IF -1 UNSEEN ! THEN
    UNCK-RAISE ;
-
-\ The pinned token's span in the scanned text, offsets from TBASE, and whether
-\ the refusal is an undefined word; an empty span when no failure pinned one.
-: PIN-SPAN ( -- n n bool )
-   FAILSET @ 0= IF 0 0 RES-FALSE EXIT THEN
-   FAILB @ FAILE @ REFUSAL@ RF-UNDEF = ;
-
-\ The pinned token's text, empty when none was pinned: a clause signature token
-\ no source holds has an empty span (SGBAD-SPAN!).
-: PIN-TOKEN ( -- ptr u8 n )
-   FAILSET @ 0= IF NULL-PTR 0 EXIT THEN
-   FAILTK FAILTU @ ;
 
 : CCOPY ( ptr u8 ptr u8 n -- ) {: a:ptr d:ptr u:n :}
    0 BEGIN dup u < WHILE
@@ -19405,10 +19393,6 @@ variable MTCH-W                      \ the bundle width the walk below really co
 CHECKER-REG:SCRATCH{
 variable TOK0
 CHECKER-REG:}SCRATCH
-variable JSON-REPORTED
-: CHECKER-REPORT-RESET ( -- ) 0 JSON-REPORTED ! ;
-: CHECKER-REPORT-MARK ( -- ) -1 JSON-REPORTED ! ;
-: CHECKER-JSON-REPORTED? ( -- bool ) JSON-REPORTED @ 0= 0= ;
 variable CTLNEW
 variable CTLDNEW   variable CTLRNEW   \ the intact masks recorded beside them
 \ the engine folds A-Z in keyword and dict matching — fold every token the same

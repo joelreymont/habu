@@ -158,17 +158,11 @@ CHECKER-OWNER-EXT:GRID-REVOKE-OFF constant GRID-REVOKE-OFF               \ ( n -
 CHECKER-OWNER-EXT:GRID-RETIRE-OFF constant GRID-RETIRE-OFF               \ ( ptr n -- )
 CHECKER-OWNER-EXT:PUBLICATION-USE-OFF constant PUBLICATION-USE-OFF \ ( [ n -- ] -- )
 CHECKER-OWNER-EXT:VERIFY-CTOR-DECL-OFF constant VERIFY-CTOR-DECL-OFF \ ( sym name len visit start end -- )
-\ Native diagnostics: the live checker owns diagnostic emission even while a
-\ baked compiler asks it.
-CHECKER-OWNER-EXT:RESET-REPORT-OFF constant RESET-REPORT-OFF \ ( -- )
-CHECKER-OWNER-EXT:JSON-REPORTED-OFF constant JSON-REPORTED-OFF \ ( -- bool )
 CHECKER-OWNER-EXT:DOES-UNJUDGED-OFF constant DOES-UNJUDGED-OFF \ ( ptr u8 n ptr u8 n -- n )
 CHECKER-OWNER-EXT:NATIVE-DOES-REPORT-OFF constant NATIVE-DOES-REPORT-OFF \ ( n ptr u8 n -- n )
 CHECKER-OWNER-EXT:BODY-CLOSE-OFF constant BODY-CLOSE-OFF \ ( -- )
 CHECKER-OWNER-EXT:SIG-COUNTED-OFF constant SIG-COUNTED-OFF \ ( -- bool )
 CHECKER-OWNER-EXT:UNJUDGED-CLOSED-OFF constant UNJUDGED-CLOSED-OFF \ ( -- bool )
-CHECKER-OWNER-EXT:PIN-SPAN-OFF constant PIN-SPAN-OFF \ ( -- n n bool )
-CHECKER-OWNER-EXT:PIN-TOKEN-OFF constant PIN-TOKEN-OFF \ ( -- ptr u8 n )
 CHECKER-OWNER-EXT:OWNER-BYTES constant BYTES
 
 \ These cells precede the record; callable offsets count from the record

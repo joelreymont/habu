@@ -479,7 +479,6 @@ public
 \ MULTI-ERR-END.
 : DEFINITION ( ptr u8 n -- n )
    {: a:ptr u:n :}
-   CHECKER-REPORT-RESET
    a u FIRST-TOKEN {: na:ptr nu:n :}
    na nu CHECKER-CERT-DUP? if na nu REFUSE-DUPLICATE then
    UEND @ {: mark:n :}
