@@ -103,8 +103,9 @@ public
 \ The process-exit trampoline, declared here because BDIE below calls it.
 variable LEXITHOOK
 private
-\ A seed stub branches to this disjoint shared C entry. Reserve its label
-\ before callback-entry is emitted, then register its own span afterward.
+\ A compiler-owned callback stub branches to this disjoint shared C entry.
+\ Reserve its label before callback-entry is emitted, then register its own
+\ span afterward.
 variable LCALLBACKTHUNK
 variable LCALLBACKADDR
 ;package
@@ -1980,8 +1981,13 @@ private
    NDICT DATA CB-NDICT STR,
    CP DATA CB-CP STR,
    go B,
-   busy LBL,  0 CALLER-LR,
-   s" E-CALLBACK habu: context busy on another thread" ENGINE-ERROR:CALLBACK DIE-LINE,
+   busy LBL,
+   3 SP 0 LDR,                             \ the lr, saved by the primitive's frame
+   s" E-CALLBACK" s" a foreign call ran in a context another thread is running in"
+      FAULT-OPEN,
+   4 DBASE 0 ADDI,  6 NDICT 0 ADDI,  FAULT-IN,
+   s" call C from one thread at a time in a context, and bind callbacks other threads call to `TASK:CALLER-CONTEXT`"
+      ENGINE-ERROR:CALLBACK FAULT-STOP,
    go LBL, ;
 
 \ After the BLR, with sp back at the $30 frame and x20 = DATA: the four cells
@@ -2358,23 +2364,10 @@ $58 constant CBT-LR                     \ C's x30
    s" the callback's body defined a word"
       s" define words on the main thread, outside callbacks" defined CBT-DIE, ;
 
-\ -1 answers the shared C thunk for the native compiler's marked address
-\ carrier; other indices answer the seed stubs boot uses. This primitive ends
-\ before the separately owned thunk begins.
+\ Answers the shared C thunk every compiler-owned callback stub branches to.
+\ This primitive ends before the separately owned thunk begins.
 : BCALLBACK-ENTRY ( -- )
-   LBL LBL LBL LBL {: stubs:label done:label bad:label direct:label :}
-   A G-POP
-   9 -1 LIT64,  A 9 CMP,  C-EQ direct BCOND,
-   A CB-POOL CMPI,  C-CS bad BCOND,
-   B stubs ADR,
-   A A 3 LSLI,  A B A ADD,  A G-PUSH
-   done B,
-   direct LBL,
-   LCALLBACKADDR LABEL@ BL,  A G-PUSH  done B,
-   bad LBL,  s" E-CALLBACK habu: slot out of range" ENGINE-ERROR:CALLBACK DIE-LINE,
-   stubs LBL,
-   CB-POOL 0 do  9 i MOVZ,  LCALLBACKTHUNK LABEL@ B,  loop
-   done LBL, ;
+   LCALLBACKADDR LABEL@ BL,  A G-PUSH ;
 
 \ A native callback stub carries this address across FILE and image builds.
 \ The thunk follows callback-entry's completed primitive record, so its sealed

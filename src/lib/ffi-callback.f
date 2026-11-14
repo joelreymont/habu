@@ -196,7 +196,7 @@ public
 \ answering the stub's address. A call on an unbound slot, on a context busy on
 \ another thread or on one with no outbound call in flight fails closed: the
 \ thunk exits 106 (ENGINE-ERROR:CALLBACK). A context admits one thread at a
-\ time; a second is refused, never made to wait. TASK:SELF-CONTEXT is the
+\ time; a second is rejected, never made to wait. TASK:SELF-CONTEXT is the
 \ calling task's region (C calls back inside a foreign call it made),
 \ TASK:MAIN-BASE FFI:>CELL the main region (main thread only).
 \ TASK:CALLER-CONTEXT is each calling thread's own region, inside a foreign
@@ -342,7 +342,7 @@ variable OPEN
    GEN CODEGEN:RESET
    s" ' " GEN+ NAME$ GEN+ s" -DISPATCH " GEN+ k GEN-N s"  FFI-CB:INSTALL" GEN+
    GEN-RUN
-   k -1 FFI:CALLBACK-ENTRY ARM-STUB
+   k FFI:CALLBACK-ENTRY ARM-STUB
    GEN CODEGEN:RESET
    s" : " GEN+ NAME$ GEN+ s" -ENTRY ( -- n ) " GEN+
    k GEN-N s"  FFI-CB:ENTRY-ADDRESS ;" GEN+

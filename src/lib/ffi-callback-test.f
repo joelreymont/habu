@@ -407,7 +407,7 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    \ FILE-BOUND, the first row, is bound while the build loads; the capture
    \ drops the binding.
    SUBJECT$ S\" FILE-BOUND TASK:SELF-CONTEXT FFI-CB:ENTRY drop\n" FS:APPEND-FILE
-   SUBJECT$ S\" require test/stripped-callback-subject.f\n: MAIN ( -- ) 0 FFI:CALLBACK-ENTRY drop STRIPPED-CALLBACK-SUBJECT:RUN ;\n" FS:APPEND-FILE ;
+   SUBJECT$ S\" require test/stripped-callback-subject.f\n: MAIN ( -- ) FFI:CALLBACK-ENTRY drop STRIPPED-CALLBACK-SUBJECT:RUN ;\n" FS:APPEND-FILE ;
 
 : BUILD-IMAGE ( -- len len PROCESS:ending )
    PROC-ARGV-ENV-RESET
