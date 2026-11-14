@@ -148,8 +148,13 @@ public
    0 TDA-U !  NULL-PTR TDA-A ! ;
 : TDECL-ARMED ( -- n ) TDECL-CODE @ ;
 : TDECL-WHY@ ( -- ptr u8 n ptr u8 n ) TDW-A @ TDW-U @  TDF-A @ TDF-U @ ;
-\ Empty unless the current arming came from TDECL-THROW.
-: TDECL-ARMED-TOK@ ( -- ptr u8 n ) TDA-A @ TDA-U @ ;
+\ The token TDECL-THROW armed code with, as a `word` note; empty when another
+\ code is armed or the record is placed at that token. A generated word that
+\ collides is placed at the token that generated it.
+: TDECL-WORD-NOTE ( ptr u8 n n -- ptr u8 n ) {: pa:ptr pu:n code:n :}
+   TDECL-CODE @ code <>  TDA-U @ 0= or IF s" " EXIT THEN
+   TDA-A @ TDA-U @ pa pu CORE-STR= IF s" " EXIT THEN
+   TDA-A @ TDA-U @ ;
 
 : TDECL-THROW ( ptr u8 n ptr u8 n ptr u8 n n -- )
    {: ta:ptr tu:n wa:ptr wu:n fa:ptr fu:n code:n :}
@@ -236,16 +241,9 @@ private
    TDS-U @ 0 > IF TDS-A @ TDS-U @ EXIT THEN
    TDT-A @ TDT-U @ TDECL-PLACED-TOK ;
 
-\ The armed token as a `word` note when the record is placed elsewhere, as a
-\ generated word that collides is placed at the token that generated it.
-: TDECL-WORD-NOTE ( ptr u8 n -- ptr u8 n ) {: pa:ptr pu:n :}
-   TDECL-ARMED-TOK@ {: wa:ptr wu:n :}
-   wu 0=  wa wu pa pu CORE-STR= or IF s" " EXIT THEN
-   wa wu ;
-
 \ TDECL-RUN reports only a code TDECL-CODE was armed with.
 : TDECL-REPORT ( -- )
-   TDK-A @ TDK-U @  TDN-A @ TDN-U @  TDECL-REPORT-TOK  2dup TDECL-WORD-NOTE
+   TDK-A @ TDK-U @  TDN-A @ TDN-U @  TDECL-REPORT-TOK  2dup TDECL-ARMED TDECL-WORD-NOTE
    {: pa:ptr pu:n na:ptr nu:n :}
    pa pu  TDW-A @ TDW-U @  TDF-A @ TDF-U @  na nu  TDECL-DIAG ;
 

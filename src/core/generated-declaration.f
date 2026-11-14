@@ -172,18 +172,9 @@ public
 
 private
 
-\ The token TDECL-THROW armed the code with, as a `word` note when the record
-\ is placed elsewhere, as a generated word that collides is placed at the
-\ token that generated it.
-: WORD-NOTE ( ptr u8 n n -- ptr u8 n ) {: pa:ptr pu:n code:n :}
-   TDECL-ARMED code <> IF NOTHING$ EXIT THEN
-   TDECL-ARMED-TOK@ {: wa:ptr wu:n :}
-   wu 0=  wa wu pa pu CORE-STR= or IF NOTHING$ EXIT THEN
-   wa wu ;
-
 : RENDER ( n -- ) {: code:n :}
    TOKEN-SPAN@ {: ta:ptr tu:n :}
-   KIND$ FAMILY$ ta tu  code PICK-REASON  ta tu code WORD-NOTE  TDECL-DIAG ;
+   KIND$ FAMILY$ ta tu  code PICK-REASON  ta tu code TDECL-WORD-NOTE  TDECL-DIAG ;
 
 public
 
