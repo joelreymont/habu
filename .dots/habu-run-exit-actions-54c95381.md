@@ -1,6 +1,6 @@
 ---
 title: Run exit actions when a task ends the process
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-11-09T20:30:48.366715+02:00"
@@ -19,4 +19,4 @@ GO
 : MAIN ( -- ) ;
 ```
 
-Acceptance: `die` on any thread runs every registered action once; test/exit-hook-test.f cases, each failing on the base, in which the main thread registers a tree and a task dies, and in which that build exits 74 with hb-build's line. Consumers: none meets it today (Maki's remaining cleanup registration, test/child.f:40, runs on the main thread). Depends: none. Claim: unassigned.
+Acceptance: `die` on any thread runs every registered action once; test/exit-hook-test.f cases, each failing on the base, in which the main thread registers a tree and a task dies, and in which that build exits 74 with hb-build's line. Consumers: none meets it today (Maki's remaining cleanup registration, test/child.f:40, runs on the main thread). Depends: none. Claim: agent=carl workspace=.jj-ws.noindex/carl-exit.
