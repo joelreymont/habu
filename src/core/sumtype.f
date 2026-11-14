@@ -520,10 +520,6 @@ defer TDV-ELEM-XT ( ptr u8 n -- n )   \ forward ref for the ELEM<->ARGS<->QUOT r
    TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE 0= IF drop 0 RES-FALSE EXIT THEN
    {: id:n :}
    id C2-READ-FAM @ = IF 0 RES-FALSE EXIT THEN
-   id WIDTH-FAM @ = IF
-      a u s" a width is not stored: keep its bytes (width>n)"
-      s" declare the payload `n` and store the width's byte count in it with `width>n`"
-      E-TDECL-PAYLOAD TDECL-THROW THEN
    id TFAM-LAYOUT? id TFAM-CELL? or 0= IF 0 RES-FALSE EXIT THEN
    id RES-TRUE ;
 
@@ -545,8 +541,8 @@ defer TDV-ELEM-XT ( ptr u8 n -- n )   \ forward ref for the ELEM<->ARGS<->QUOT r
    fam argbase cnt SCHEMA-APP ;
 
 \ A qualified or applied self-reference resolves to the just-registered row, so
-\ recursion is rejected by id.
-: TDECL-VPAY-ARGS ( n -- n ) {: fam:n :}
+\ recursion is rejected by id. The end is the address just past the closing `>`.
+: TDECL-VPAY-ARGS ( n -- n ptr u8 ) {: fam:n :}
    fam TDECL-CUR-FAM @ = IF
       TDN-A @ TDN-U @ s" invalid layout policy for recursive sum"
          TDECL-SELF-FIX$ E-TDECL-RECURSIVE TDECL-THROW
@@ -554,13 +550,13 @@ defer TDV-ELEM-XT ( ptr u8 n -- n )   \ forward ref for the ELEM<->ARGS<->QUOT r
    TDV-ARG-N @ {: base:n :}
    BEGIN
       TDECL-NEXT
-      2dup s" >" CORE-STR= IF 2drop fam base TDV-ARGS-BUILD EXIT THEN
+      2dup s" >" CORE-STR= IF + fam base TDV-ARGS-BUILD swap EXIT THEN
       2dup DELIM? IF s" bad type application"
          TDECL-APP-FIX$ E-TDECL-SYNTAX TDECL-THROW THEN
       TDV-ELEM-XT TDV-ARG+
       TDECL-NEXT
       2dup s" ," CORE-STR= IF 2drop ELSE
-      2dup s" >" CORE-STR= IF 2drop fam base TDV-ARGS-BUILD EXIT ELSE
+      2dup s" >" CORE-STR= IF + fam base TDV-ARGS-BUILD swap EXIT ELSE
          s" bad type application" TDECL-APP-FIX$ E-TDECL-SYNTAX TDECL-THROW
       THEN THEN
    AGAIN ;
@@ -641,13 +637,23 @@ private
    [: TDECL-NEXT ;] [: TDV-ELEM-XT ;] [: TDECL-QUOT-FAIL ;] PARSE-QUOT
    SIG-UNRES @ IF drop 0 THEN ;
 
+\ A width application is rejected over its whole text, head to `>`, as
+\ STRUCTURE marks `width<n>`.
+: TDECL-VPAY-WIDTH ( n ptr u8 ptr u8 -- ) {: fam:n a:ptr end:ptr :}
+   fam WIDTH-FAM @ <> IF EXIT THEN
+   a end NULL-PTR - a NULL-PTR - -
+   s" a width is not stored: keep its bytes (width>n)"
+   s" declare the payload `n` and store the width's byte count in it with `width>n`"
+   E-TDECL-PAYLOAD TDECL-THROW ;
+
 \ a resolved family head followed by `<` is a parametric application; any other
 \ next token is pushed back and reported as not-an-application so the head falls
 \ through to the bare arity-0 grammar (or its reject).
 : TDECL-VPAY-APP? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
    a u TDECL-VPAY-FAM? 0= IF drop 0 RES-FALSE EXIT THEN
    {: fam:n :}
-   TDECL-NEXT 2dup s" <" CORE-STR= IF 2drop fam TDECL-VPAY-ARGS RES-TRUE EXIT THEN
+   TDECL-NEXT 2dup s" <" CORE-STR= IF
+      2drop fam TDECL-VPAY-ARGS fam a rot TDECL-VPAY-WIDTH RES-TRUE EXIT THEN
    PK! 0 RES-FALSE ;
 
 \ An absent head has no arity or layout to build. Consume its complete
