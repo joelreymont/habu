@@ -1009,7 +1009,7 @@ variable LREPLAYTRAP
 \ A name holds at most one colon, never at an edge: a part's path `A:B`.
 : NAMESPACE-RECORD ( -- )
    LBL LBL LBL LBL LBL LBL {: bad scan next clean nopri done :}
-   s" E-TASK-COMPILE habu: namespace-record from a task" B-TASK-GUARD
+   s" E-TASK-COMPILE" s" namespace-record" B-TASK-GUARD
    13 G-POP  1 G-POP  0 G-POP                         \ x13 = the flag, x1 = the length, x0 = the name
    bad NOT-PENDING,
    bad DICT-ROOM,
@@ -1046,7 +1046,7 @@ variable LREPLAYTRAP
 \ namespace-private ( n -- )
 : NAMESPACE-PRIVATE ( -- )
    LBL LBL {: bad done :}
-   s" E-TASK-COMPILE habu: namespace-private from a task" B-TASK-GUARD
+   s" E-TASK-COMPILE" s" namespace-private" B-TASK-GUARD
    OVERLAY-EMIT:GUARD,
    0 G-POP
    0 NDICT CMP,  C-CS bad BCOND,
@@ -1066,7 +1066,7 @@ variable LREPLAYTRAP
 \ alias-record ( ptr u8 n n n -- ) name, source index, wid
 : ALIAS-RECORD ( -- )
    LBL LBL LBL LBL {: bad prot notval done :}
-   s" E-TASK-COMPILE habu: alias-record from a task" B-TASK-GUARD
+   s" E-TASK-COMPILE" s" alias-record" B-TASK-GUARD
    OVERLAY-EMIT:GUARD,
    2 G-POP  4 G-POP  1 G-POP  0 G-POP                 \ x2 = the wid, x4 = the source, x1/x0 = the name
    bad REAL-WID,
@@ -1155,7 +1155,7 @@ variable LREPLAYTRAP
 \ replay-open ( -- )
 : REPLAY-OPEN ( -- )
    LBL LBL {: bad done :}
-   s" E-TASK-COMPILE habu: replay-open from a task" B-TASK-GUARD
+   s" E-TASK-COMPILE" s" replay-open" B-TASK-GUARD
    8 BAND,
    14 8 REPLAY-SCOPE:LATCH BAND-OFF LDR,  14 bad CBNZ,   \ an overlay is open
    bad NOT-PENDING,
@@ -1174,7 +1174,7 @@ variable LREPLAYTRAP
 \ removes it.
 : REPLAY-RECORD ( -- )
    LBL LBL {: bad done :}
-   s" E-TASK-COMPILE habu: replay-record from a task" B-TASK-GUARD
+   s" E-TASK-COMPILE" s" replay-record" B-TASK-GUARD
    2 G-POP  1 G-POP  0 G-POP                          \ x2 = the wid, x1/x0 = the name
    bad REAL-WID,
    8 BAND,
@@ -1209,7 +1209,7 @@ variable LREPLAYTRAP
 \ ROLLBACK's with the ndict! that drops the replay record.
 : RECORD-WID ( -- )
    LBL LBL LBL LBL {: bad wid store done :}
-   s" E-TASK-COMPILE habu: record-wid! from a task" B-TASK-GUARD
+   s" E-TASK-COMPILE" s" record-wid!" B-TASK-GUARD
    3 G-POP  13 G-POP                                  \ x3 = the index, x13 = the wid
    8 BAND,
    14 8 REPLAY-SCOPE:LATCH BAND-OFF LDR,  14 bad CBZ,   \ no overlay
@@ -1237,7 +1237,7 @@ variable LREPLAYTRAP
 \ takes it back before the close.
 : REPLAY-PRIVATE ( -- )
    LBL LBL LBL {: bad give done :}
-   s" E-TASK-COMPILE habu: replay-private from a task" B-TASK-GUARD
+   s" E-TASK-COMPILE" s" replay-private" B-TASK-GUARD
    13 G-POP  3 G-POP                                  \ x13 = the flag, x3 = the index
    8 BAND,
    14 8 REPLAY-SCOPE:LATCH BAND-OFF LDR,  14 bad CBZ,   \ no overlay
@@ -1271,7 +1271,7 @@ variable LREPLAYTRAP
 \ a raw store to WIDN-CELL, which nothing else refuses.
 : REPLAY-CLOSE ( -- )
    LBL LBL LBL {: bad kept done :}
-   s" E-TASK-COMPILE habu: replay-close from a task" B-TASK-GUARD
+   s" E-TASK-COMPILE" s" replay-close" B-TASK-GUARD
    8 BAND,
    14 8 REPLAY-SCOPE:LATCH BAND-OFF LDR,  14 bad CBZ,   \ no overlay
    bad NOT-PENDING,
@@ -1309,7 +1309,7 @@ variable LREPLAYTRAP
 \ the saved WIDN, so replay-close's WIDN check keeps holding.
 : REPLAY-WIDN ( -- )
    LBL LBL {: bad done :}
-   s" E-TASK-COMPILE habu: replay-widn! from a task" B-TASK-GUARD
+   s" E-TASK-COMPILE" s" replay-widn!" B-TASK-GUARD
    13 G-POP                                           \ x13 = the mark
    8 BAND,
    14 8 REPLAY-SCOPE:LATCH BAND-OFF LDR,  14 bad CBZ,   \ no overlay
@@ -1324,7 +1324,7 @@ variable LREPLAYTRAP
 \ def-open ( ptr u8 n n n -- ) name, wid, kind
 : DEF-OPEN ( -- )
    LBL LBL LBL {: bad prot done :}
-   s" E-TASK-COMPILE habu: def-open from a task" B-TASK-GUARD
+   s" E-TASK-COMPILE" s" def-open" B-TASK-GUARD
    OVERLAY-EMIT:GUARD,
    4 G-POP  2 G-POP  1 G-POP  0 G-POP                 \ x4 = the kind, x2 = the wid, x1/x0 = the name
    14 DKIND:MASK DNAME-CELL or DNAME-ALLOC or DNAME-TARGET or invert LIT64,  14 4 14 AND,  14 bad CBNZ,
