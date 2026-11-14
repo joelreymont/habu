@@ -4915,6 +4915,9 @@ CHECKER-REG:}SCRATCH
 variable VSIG
 CHECKER-REG:SCRATCH{
 variable DEXP   variable DACT   variable FAILSET
+\ DEND: the captured DEXP DACT pair is the declared outputs and the body's final
+\ stack.
+variable DEND
 variable DF-ACT   variable DF-EXP
 \ CVLIVE holds the SUMV id of the variant a `construct family variant` step is
 \ applying; UF>DIAG latches it into DVAR. -1 is no variant in scope.
@@ -16043,7 +16046,7 @@ CHECKER-REG:SCRATCH{
 variable SV-FV    variable SV-SPN   variable SV-PFN   variable SV-FACTS
 variable SV-QEN   variable SV-PTRN  variable SV-STLN
 variable SV-OK    variable SV-DCUR  variable SV-RCUR  variable SV-UNCK  variable SV-UNSEEN
-variable SV-FSET  variable SV-DEXP  variable SV-DACT  variable SV-RSBAD  variable SV-DF-ACT  variable SV-DF-EXP
+variable SV-FSET  variable SV-DEXP  variable SV-DEND  variable SV-DACT  variable SV-RSBAD  variable SV-DF-ACT  variable SV-DF-EXP
 variable SV-DVAR  variable SV-DPOS  variable SV-MDIAG
 variable SV-SGBAD
 PTR-VARIABLE SV-SGBAD-A  variable SV-SGBAD-U  variable SV-SGBAD-KIND
@@ -16060,7 +16063,7 @@ CHECKER-REG:}SCRATCH
    SPN @ SV-SPN !  CATCH-PF-N @ SV-PFN !  FACTS @ SV-FACTS !
    QEN @ SV-QEN !  PTRN @ SV-PTRN !  STLN @ SV-STLN !
    OK @ SV-OK !  DCUR @ SV-DCUR !  RCUR @ SV-RCUR !  UNCK @ SV-UNCK !  UNSEEN @ SV-UNSEEN !
-   FAILSET @ SV-FSET !  DEXP @ SV-DEXP !  DACT @ SV-DACT !  RSBAD @ SV-RSBAD !
+   FAILSET @ SV-FSET !  DEXP @ SV-DEXP !  DEND @ SV-DEND !  DACT @ SV-DACT !  RSBAD @ SV-RSBAD !
    DF-ACT @ SV-DF-ACT !  DF-EXP @ SV-DF-EXP !  DVAR @ SV-DVAR !  DPOS @ SV-DPOS !
    MDIAG @ SV-MDIAG !                     \ the reason is part of the cursor a trial may abandon
    SGBAD @ SV-SGBAD !  SGBAD-A @ SV-SGBAD-A !
@@ -16085,7 +16088,7 @@ CHECKER-REG:}SCRATCH
    SV-SPN @ SPN !  SV-PFN @ CATCH-PF-N !  SV-FACTS @ FACTS !
    SV-QEN @ QEN !  SV-PTRN @ PTRN !  SV-STLN @ STLN !
    SV-OK @ OK !  SV-DCUR @ DCUR !  SV-RCUR @ RCUR !  SV-UNCK @ UNCK !  SV-UNSEEN @ UNSEEN !
-   SV-FSET @ FAILSET !  SV-DEXP @ DEXP !  SV-DACT @ DACT !  SV-RSBAD @ RSBAD !
+   SV-FSET @ FAILSET !  SV-DEXP @ DEXP !  SV-DEND @ DEND !  SV-DACT @ DACT !  SV-RSBAD @ RSBAD !
    SV-DF-ACT @ DF-ACT !  SV-DF-EXP @ DF-EXP !  SV-DVAR @ DVAR !  SV-DPOS @ DPOS !
    SV-MDIAG @ MDIAG !
    SV-THDMASK @ THDMASK !  SV-THRMASK @ THRMASK !  SV-THSET @ THSET !
@@ -18163,7 +18166,7 @@ SCOPE-INTRO-FENCE-INSTALL
 
 : SUNI-COERCE {: s:n :}
    DCUR @ s UNIFY-COERCE
-   dup 0=  FAILSET @ 0=  and  OK @ and  IF s DCUR @ UF-CAPTURE THEN
+   dup 0=  FAILSET @ 0=  and  OK @ and  IF -1 DEND !  s DCUR @ UF-CAPTURE THEN
    OK @ and OK ! ;
 
 : ROW-OPEN? ( n -- bool )
@@ -21373,7 +21376,7 @@ CHECKER-REG:}SCRATCH
    0 MDIAG !  0 MDIAG-FAM !  0 MDIAG-SEEN !  0 MDIAG-VCNT !  0 MDIAG-NEED !  0 MDIAG-HAVE !
    0 MDIAG-DEPTH !  0 MDIAG-WIDTH !  0 MDIAG-LITV !  0 MDIAG-LITT !  0 UNFIT !
    0 RAW-PTR-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 SCOPE-HIT !  0 XT-DECL !
-   0 FAILSET !  0 DEXP !  0 DACT !  0 TRAIL-PIN !  0 RSBAD !  0 DF-ACT !  0 DF-EXP !  -1 DVAR !  -1 CVLIVE !  -1 DPOS !  0 FAILTU !  0 SGSEEN !  0 SGDECL-BAD !  0 SGHASR !
+   0 FAILSET !  0 DEXP !  0 DEND !  0 DACT !  0 TRAIL-PIN !  0 RSBAD !  0 DF-ACT !  0 DF-EXP !  -1 DVAR !  -1 CVLIVE !  -1 DPOS !  0 FAILTU !  0 SGSEEN !  0 SGDECL-BAD !  0 SGHASR !
    0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGDBASE !
    RBROW @ SGRBASE !   \ a definition with no signature reads only what it pushed too
    NULL-PTR SGA !  0 SGU !

@@ -1,5 +1,5 @@
 \ render.f: renders checker types and rows as text: a residual stack (DCUR), a
-\ refusal's diagnostic line and JSON packet. REC-SIG records a certified
+\ rejection's diagnostic. REC-SIG records a certified
 \ sig-less word's inferred effect under its name, so its callers certify;
 \ rendering only decides whether that effect is declarable
 \ (RQM, NLET). Compiles after checker.f and before any src/lib/ file: no emit or
@@ -492,10 +492,6 @@ variable RSHOW-DST
 : LOCSHOW-INSTALL ( -- ) [: SHOW-LOCAL-TYPE ;] is LOCSHOWXT ;
 LOCSHOW-INSTALL
 
-\ DIAG-PRINT writes one reject line to stderr, its packet's suggestion last:
-\   habu: in NAME: at 'TOK' expected: <row> actual: <row> ; suggestion: <text>
-\ A top-level step's line names its place instead (DSITE): habu: PATH:LINE: ...
-\ expected and actual appear only when the failing unify was captured.
 : DROW {: s :}  s REND-COLLECT
    RBN @ BEGIN dup 0 > WHILE 1 - dup cells RBUF + @ REND-TYPE 32 EMIT1 REPEAT drop ;
 
@@ -757,7 +753,6 @@ variable FACTS-REC   variable FACTS-MARK   variable FACTS-WAS   variable FACTS-N
 : REND-SIG ( -- ptr u8 n )
    0 TEXT-LEN !  BROW @ DCUR @ 0 0 RES-FALSE REND-EFFECT ;
 
-\ `JSON ON` emits one JSON object per reject or uncheckable verdict.
 variable DSUGE  variable DSUGA
 \ A top step names its file, then the line checker.f CHECK:TOP-SITE
 \ gives, if any; a step with no file and no label names no place.
@@ -831,10 +826,9 @@ variable DSUGE  variable DSUGA
    SGHASR @ JEFFECT-TEXT ;
 
 
-\ The escape refusal (MD-TAIL-ESCAPE) as checker.f CELL-DIAG! named it: the
-\ inferred effect, then the declared callable and the argument compared with it,
-\ rendered in DIAG-PRINT's letter order into TCAP before later tokens bind their
-\ rows. Naming the callable pair, not the stacks around it, it reads the same
+\ The escape rejection (MD-TAIL-ESCAPE): the inferred effect, then the declared
+\ callable and the argument compared with it, rendered with fresh letters into
+\ TCAP before later tokens bind their rows. Naming the callable pair, not the stacks around it, it reads the same
 \ whatever the definition holds beneath. The held row names the tail that
 \ escaped (checker.f TAIL-SKOLEM) and the row that would have come to equal or
 \ hold it (TAIL-ROW), so a join whose two callables read alike still says which
@@ -890,7 +884,7 @@ variable TCAP-INF   variable TCAP-EXP   variable TCAP-ACT   variable TCAP-HELD
 TAIL-CAPTURE-INSTALL
 
 \ Match/construct reasons (docs/forth.md "Structures And Enums"): MDIAG's latched
-\ code maps to a JSON code, repair class, suggestion and prose. MD-NONEXH names
+\ code maps to a code, suggestion and prose. MD-NONEXH names
 \ the missing variants from the latched (family, seen-bitset, count):
 \ declaration-order tags index the family's contiguous SUMV rows.
 variable MDV-I   variable MDV-F
@@ -904,11 +898,6 @@ variable MDV-I   variable MDV-F
    DACT @ measure execute DSUGA !
    ;AT-PIN ;
 
-: ROWS-CLASS$ ( [ n -- n ] -- ptr u8 n )
-   ROWS-DEPTHS
-   DSUGA @ DSUGE @ > IF s" remove_producer" EXIT THEN
-   DSUGA @ DSUGE @ < IF s" add_producer" EXIT THEN
-   s" fix_type" ;
 
 : ROWS-SUGGEST$ ( [ n -- n ] -- ptr u8 n )
    ROWS-DEPTHS
@@ -982,76 +971,6 @@ variable MDV-I   variable MDV-F
    endcase ;
 
 
-: MD-CLASS$ ( n -- ptr u8 n )
-   case
-      MD-NONEXH       of s" add_missing_branches" endof
-      MD-VAR-DUP      of s" remove_duplicate_branch" endof
-      MD-VAR-UNKNOWN  of s" fix_variant_reference" endof
-      MD-CON-VAR      of s" fix_variant_reference" endof
-      MD-FAM-UNKNOWN  of s" fix_family_reference" endof
-      MD-FAM-KIND     of s" fix_family_reference" endof
-      MD-CON-FAM      of s" fix_family_reference" endof
-      MD-CON-KIND     of s" fix_family_reference" endof
-      MD-SCRUT        of s" fix_match_scrutinee" endof
-      MD-FAM-MISMATCH of s" fix_match_scrutinee" endof
-      MD-QUOT         of s" fix_match_scrutinee" endof
-      MD-OPEN-ARGS    of s" fix_match_scrutinee" endof
-      MD-JOIN         of s" fix_branch_outputs" endof
-      MD-DEPTH        of s" factor_match_nesting" endof
-      MD-DIVBAR       of s" move_collective_to_block_uniform_control" endof
-      MD-EXEC-OPAQUE  of s" fix_opaque_execute" endof
-      MD-CATCH-OPAQUE of s" fix_opaque_execute" endof
-      MD-RAW-PTR      of s" declare_pointer_cell" endof
-      MD-NULL-PTR     of s" declare_pointer_cell" endof
-      MD-DBASE-PTR    of s" declare_pointer_cell" endof
-      MD-RAW-FIELD    of s" declare_pointer_cell" endof
-      MD-RAW-EXEC     of s" declare_xt_cell" endof
-      MD-STALE-READ   of s" keep_value_before_catch" endof
-      MD-TOP-UNKNOWN  of s" drop_unknown_cell" endof
-      MD-TAIL-ESCAPE  of s" fix_type" endof
-      MD-LIT-FIT      of s" fix_type" endof
-      MD-SCOPE-STORE  of s" keep_scoped_value_on_stack" endof
-      MD-SCOPE-KIND   of s" fix_scope_parameter" endof
-      MD-C2-COPY      of s" move_exclusive_value" endof
-      MD-C2-DROP      of s" consume_exclusive_value" endof
-      MD-C2-ESCAPE    of s" keep_borrow_within_scope" endof
-      MD-UNDERFLOW    of s" supply_missing_input" endof
-      MD-RIGID-REGION of s" fix_host_region" endof
-      MD-RIGID-EXTENT of s" fix_host_extent" endof
-      MD-RIGID-GEN    of s" fix_stale_generation" endof
-      MD-RIGID-XDOM   of s" fix_rigid_domain" endof
-      MD-EFFECT-DEPTH of s" rewrite_uncheckable" endof
-      MD-INPUT-WIDTH  of s" rewrite_uncheckable" endof
-      MD-CF-DEPTH     of s" rewrite_uncheckable" endof
-      MD-RECURSE-SIG  of s" rewrite_uncheckable" endof
-      MD-RECURSE-DOES of s" rewrite_uncheckable" endof
-      MD-IS-UNKNOWN   of s" fix_is_target" endof
-      MD-IS-NOT-DEFER of s" fix_is_target" endof
-      MD-IS-MISSING   of s" fix_missing_name" endof
-      MD-TYPE-FORM    of s" fix_type_form" endof
-      MD-STORED-LINEAR of s" fix_type_form" endof
-      MD-STORED-CLASS of s" fix_type_form" endof
-      MD-IS-STORED    of s" fix_type_form" endof
-      MD-DIV-ZERO     of s" fix_divisor" endof
-      MD-THROW-ZERO   of s" fix_throw_code" endof
-      MD-LOOP-DEPTH   of ['] ROW-CELLS ROWS-CLASS$ endof
-      MD-IF-DEPTH     of ['] ROW-CELLS ROWS-CLASS$ endof
-      MD-ARMS-DEPTH   of ['] ROW-CELLS ROWS-CLASS$ endof
-      MD-LOCAL-ESCAPE of s" run_quotation_while_locals_live" endof
-      MD-BINDER-PLACE of s" call_scope_operation_directly" endof
-      MD-DEPTH-WIDE   of s" count_values" endof
-      MD-LOOP-RDEPTH  of s" fix_return_stack" endof
-      MD-LOOP-CARRIED of s" fix_control_flow" endof
-      MD-NO-LOOP      of s" fix_control_flow" endof
-      MD-NO-OUTER-LOOP of s" fix_control_flow" endof
-      MD-CLOSES-NOTHING of s" fix_control_flow" endof
-      MD-NO-CASE      of s" fix_control_flow" endof
-      MD-ELSE-TWICE   of s" fix_control_flow" endof
-      MD-EXIT-LOOP    of s" fix_control_flow" endof
-      MD-UNLOOP-JOIN  of s" fix_control_flow" endof
-      MD-CF-OPEN      of s" fix_control_flow" endof
-      s" fix_match_syntax" rot
-   endcase ;
 
 
 \ Shared by a definition's refusal and a stored signature's (BADSIG-REASON).
@@ -1256,8 +1175,6 @@ variable MDV-I   variable MDV-F
       MDV-I @ 1 + MDV-I !
    REPEAT ;
 
-: MDIAG-MISSING-JSTR ( -- )
-   JSON-OPEN  0 0= MDIAG-MISSING-WALK  JSON-CLOSE ;
 
 : MDIAG-MISSING-PROSE ( -- )
    0 0= 0= MDIAG-MISSING-WALK ;
@@ -1314,8 +1231,6 @@ variable MDV-I   variable MDV-F
 : IMM-CODE$ ( -- ptr u8 n )
    s" E-UNMODELED-IMMEDIATE" ;
 
-: IMM-CLASS$ ( -- ptr u8 n )
-   s" model_compile_immediate" ;
 
 : IMM-SUGGEST$ ( -- ptr u8 n )
    s" Declare a stack-neutral parsing immediate with parse-imm, or remove it from the compiled body." ;
@@ -1326,10 +1241,6 @@ variable MDV-I   variable MDV-F
    LOCALBAD-KIND @ 1 = IF s" E-TOO-MANY-LOCALS" EXIT THEN
    s" E-BAD-LOCAL-SHAPE" ;
 
-: LOCALBAD-CLASS$ ( -- ptr u8 n )
-   LOCALBAD-KIND @ 2 = IF s" shorten_local_name" EXIT THEN
-   LOCALBAD-KIND @ 1 = IF s" reduce_local_count" EXIT THEN
-   s" factor_local_shape" ;
 
 : LOCALBAD-SUGGEST$ ( -- ptr u8 n )
    LOCALBAD-KIND @ 2 = IF s" Shorten the local name to at most 16 bytes." EXIT THEN
@@ -1337,33 +1248,14 @@ variable MDV-I   variable MDV-F
    LOCALBAD-KIND @ 3 >= IF s" Remove the token: a locals group lists only the names to bind." EXIT THEN
    s" Move locals to a live top-level path or factor a helper." ;
 
-\ Kinds 3 and 4, a locals group token that names no local, state why; the
-\ prose prints it after the token and the packet as its reason.
+\ Kinds 3 and 4, a locals group token that names no local, state why in the
+\ message.
 : LOCALBAD-GROUP? ( -- bool )
    LOCALBAD-KIND @ 3 >= ;
 
 : LOCALBAD-REASON$ ( -- ptr u8 n )
    LOCALBAD-KIND @ 3 = IF s" a locals group names only locals; the signature declares the outputs" EXIT THEN
    s" a locals group names only locals; Habu has no uninitialised locals" ;
-
-\ FAILTK is the declaration token pinned by the first failure, so a later body
-\ reference to the rejected name cannot relabel the reject as an undefined word.
-: LOCALBAD-PROSE ( -- )
-   LOCALBAD-CODE$ EMIT-STR  s"  " EMIT-STR  DSITE
-   LOCALBAD-GROUP? IF
-     s" at '" EMIT-STR  FAILTK FAILTU @ EMIT-STR  s" ': " EMIT-STR  LOCALBAD-REASON$ EMIT-STR EXIT
-   THEN
-   LOCALBAD-KIND @ 2 = IF
-     s" local '" EMIT-STR  FAILTK FAILTU @ EMIT-STR  s" ' has a " EMIT-STR  LOCALBAD-LEN @ EMIT-U
-     s" -byte name; the limit is " EMIT-STR  LOC-NAME-CAP EMIT-U
-        s"  bytes" EMIT-STR EXIT
-   THEN
-   LOCALBAD-KIND @ 1 = IF
-     s" local '" EMIT-STR  FAILTK FAILTU @ EMIT-STR  s" ' is one over the " EMIT-STR  LOC-RECS EMIT-U
-     s"  locals a definition may bind" EMIT-STR EXIT
-   THEN
-   s" at '" EMIT-STR  FAILTK FAILTU @ EMIT-STR
-   s" ': a local cannot be bound inside a quotation, or bound on a dead path" EMIT-STR ;
 
 \ A definition's signature, a local's type or a stored signature that does not
 \ parse; SGBAD's state from the failed parse names the kind.
@@ -1381,29 +1273,9 @@ variable MDV-I   variable MDV-F
    s" fix_signature_syntax" ;
 : RCLAUSE-FIX$ ( -- ptr u8 n )
    s" after '|' write one row variable, the same on both sides, or no '|'" ;
-\ A syntax fault has no line of its own: it reads as a refusal at its token.
-: SGBAD-PROSE ( -- )
-   DSITE
-   SGBAD-UNKNOWN? IF
-     s" unknown type '" EMIT-STR  FAILTK FAILTU @ EMIT-STR
-        s" ' in signature" EMIT-STR EXIT
-   THEN
-   SGBAD-BAREPTR? IF
-     s" 'ptr' needs an element type" EMIT-STR EXIT
-   THEN
-   SGBAD-ARITY? IF
-     s" wrong arity for type family '" EMIT-STR  FAILTK FAILTU @ EMIT-STR  s" '" EMIT-STR EXIT
-   THEN
-   SGBAD-RETURN? IF
-     s" return-stack effect in signature '" EMIT-STR  FAILTK FAILTU @ EMIT-STR
-     s" '" EMIT-STR EXIT
-   THEN
-   SGBAD-BINDERS? IF BINDERS-REASON s"  at '" EMIT-STR  FAILTK FAILTU @ EMIT-STR  s" '" EMIT-STR EXIT THEN
-   SGBAD-DEPTH? IF DEPTH-REASON$ EMIT-STR  SGBAD-SIZE @ DEPTH-COUNTS  s"  at '" EMIT-STR  FAILTK FAILTU @ EMIT-STR  s" '" EMIT-STR EXIT THEN
-   s" at '" EMIT-STR  FAILTK FAILTU @ EMIT-STR  s" '" EMIT-STR ;
 
-\ The code, repair class, suggestion, prose and per-code JSON fields all name
-\ the one refusal checker.f REFUSAL@ chose.
+\ The code, message, label, notes and help all name the one rejection REFUSAL@
+\ chose.
 : DCODE ( -- ptr u8 n )
    REFUSAL@ {: k:n :}
    k RF-IMM = IF IMM-CODE$ EXIT THEN
@@ -1420,33 +1292,6 @@ variable MDV-I   variable MDV-F
    k RF-UNCHECKABLE = IF s" E-UNCHECKABLE" EXIT THEN
    k RF-MISMATCH = IF s" E-MISMATCH" EXIT THEN
    s" E-REJECTED" ;
-\ The verdict the load gave the definition or step,
-\ which each DIAG-PRINT caller stores in DVERD before it calls it.
-: DVERDICT ( -- ptr u8 n )
-   DVERD @ VERDICT-UNCHECKABLE = IF s" uncheckable" EXIT THEN s" rejected" ;
-\ repair_class is the stable machine name a consumer keys its repair on. This
-\ word picks it for checker refusals; tools/check-verify-core.f and tools/diag-code.f
-\ pick it for the refusals the check tool finds itself. A class means what its
-\ suggestion says (SUGGEST-TEXT, the *-SUGGEST$ words): short prose for choosing
-\ the action; the raw evidence stays in the expected, actual and return_stack
-\ fields.
-: REPAIR-CLASS ( -- ptr u8 n )
-   REFUSAL@ {: k:n :}
-   k RF-IMM = IF IMM-CLASS$ EXIT THEN
-   k RF-UNDEF = IF s" unknown_rejection" EXIT THEN
-   k RF-QUAL = IF s" fix_qualified_name" EXIT THEN
-   k RF-LOCAL = IF LOCALBAD-CLASS$ EXIT THEN
-   k RF-SIG = IF SGBAD-CLASS$ EXIT THEN
-   k RF-DEAD = IF s" remove_dead_code" EXIT THEN
-   k RF-NP = IF s" fix_parametric_effect" EXIT THEN
-   k RF-CAP = IF s" trusted_boundary_required" EXIT THEN
-   k RF-UNSAFE = IF s" remove_unsafe_word" EXIT THEN
-   k RF-LINLOCAL = IF s" factor_linear_local" EXIT THEN
-   k RF-REASON = IF MDIAG @ MD-CLASS$ EXIT THEN
-   k RF-UNCHECKABLE = IF s" rewrite_uncheckable" EXIT THEN
-   k RF-RETURN = IF s" fix_return_stack" EXIT THEN
-   k RF-MISMATCH <> IF s" unknown_rejection" EXIT THEN
-   ['] ROW-VALUES ROWS-CLASS$ ;
 \ Shared by SUGGEST-TEXT, a bad stored signature's diagnostic and a refused
 \ `generates:` row's.
 : SGBAD-SUGGEST$ ( -- ptr u8 n )
@@ -1516,11 +1361,6 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    JLOC-B !  JLOC-C !  JLOC-L !
    0 0= ;
 \ With no map: the definition's origin plus the token's offset in the checked text.
-: JLOC-ORIGIN ( -- )
-   TBASE@  TBASE@ FAILB @ +
-   ORIGIN-LINE @ ORIGIN-COLUMN @ ORIGIN-BYTE @  POSITION
-   JLOC-B !  JLOC-C !  JLOC-L !
-   ORIGIN-BYTE @ FAILE @ + JLOC-E ! ;
 : JLOC-FIELDS ( -- )
    s" line" JSON-KEY  JLOC-L @ EMIT-U  44 EMIT1
    s" column" JSON-KEY  JLOC-C @ EMIT-U  44 EMIT1
@@ -1536,7 +1376,7 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
 \ A packet opens with JSTART (schema version and code), or JHEAD for a refusal
 \ (adds repair class and verdict); JTAIL closes it with the file, the span's
 \ place when it locates, and the suggestion. A code's own fields go between.
-\ DIAG-JSON, USING-JSON and STGR-JSON close themselves: fields or a differently
+\ USING-JSON and STGR-JSON close themselves: fields or a differently
 \ sourced place follow the file.
 : JSTART ( ptr u8 n -- )
    {: ca:ptr cu:n :}
@@ -1554,48 +1394,6 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    aa au JTOKEN-FIELDS
    s" suggestion" JSON-KEY sa su JSON-STRING
    125 EMIT1 ;                                            \ }
-: NP-FAM-REND ( -- )
-   NPBAD-TERM @ NP-FAM {: fam:n :}
-   fam 0 >= IF s" family '" EMIT-STR  fam FAM-QNAME-REND  s" '" EMIT-STR
-   ELSE s" a concrete type" EMIT-STR THEN ;
-: NP-PROSE ( -- )
-   s" E-NONPARAMETRIC-EFFECT " EMIT-STR  DSITE
-   NPBAD-KIND @ 4 = IF
-     s" declared type variable '" EMIT-STR  NPBAD-Q1 @ EMIT1
-     s" ' is restricted to a base address -- the DATA region, or a pointer computed off NULL-PTR; its declared kind must stay unchanged" EMIT-STR EXIT
-   THEN
-   NPBAD-KIND @ 5 = IF
-     s" declared type variable '" EMIT-STR  NPBAD-Q1 @ EMIT1
-     s" ' is restricted to the null address; its declared kind must stay unchanged" EMIT-STR EXIT
-   THEN
-   NPBAD-KIND @ 3 = IF
-     s" declared type variable '" EMIT-STR  NPBAD-Q1 @ EMIT1
-     s" ' is restricted by raw storage; its declared kind must stay unchanged" EMIT-STR EXIT
-   THEN
-   NPBAD-KIND @ 0= IF
-     s" declared type variable '" EMIT-STR  NPBAD-Q1 @ EMIT1
-     s" ' is specialized to " EMIT-STR  NP-FAM-REND
-     s" ; a declared effect must stay parametric over its quantifier" EMIT-STR EXIT
-   THEN
-   NPBAD-KIND @ 1 = IF
-     s" declared type variables '" EMIT-STR  NPBAD-Q1 @ EMIT1
-     s" ' and '" EMIT-STR  NPBAD-Q2 @ EMIT1
-     s" ' are unified; each declared quantifier must stay a distinct variable" EMIT-STR EXIT
-   THEN
-   NPBAD-KIND @ 6 = IF
-     s" declared row variable '" EMIT-STR  NPBAD-Q1 @ EMIT1
-     NPBAD-Q2 @ IF s" ' and row '" EMIT-STR  NPBAD-Q2 @ EMIT1  s" '" EMIT-STR
-     ELSE s" ' and the unnamed row" EMIT-STR THEN
-     s"  are unified; each declared row must stay a distinct row variable" EMIT-STR EXIT
-   THEN
-   NPBAD-KIND @ 7 = IF
-     NPBAD-Q1 @ IF s" declared row variable '" EMIT-STR  NPBAD-Q1 @ EMIT1  s" '" EMIT-STR
-     ELSE s" the unnamed row" EMIT-STR THEN
-     s"  is bound to fixed cells; a declared effect must stay polymorphic over its row" EMIT-STR EXIT
-   THEN
-   s" declared type variable '" EMIT-STR  NPBAD-Q1 @ EMIT1
-   s" ' is minted into " EMIT-STR  NP-FAM-REND
-   s"  but is unbound in the inputs; a checked definition cannot mint a phantom of input-unrelated type" EMIT-STR ;
 \ The return rows `return_stack` names, expected then actual: a quotation
 \ literal's own when its seal refused it (RSBAD 3, 4), else the definition's.
 : RS-ROWS ( -- n n )
@@ -1613,216 +1411,340 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    k RF-MISMATCH =  k RF-REASON = or ;
 
 
-: DIAG-PROSE
-   REFUSAL@ {: k:n :}
-   k RF-IMM = IF
-     IMM-CODE$ EMIT-STR  s"  " EMIT-STR  DSITE
-     s" compile-time immediate '" EMIT-STR  FAILTK FAILTU @ EMIT-STR
-     s" ' is not a stack-neutral parsing immediate" EMIT-STR EXIT
-   THEN
-   k RF-SIG = IF SGBAD-PROSE EXIT THEN
-   k RF-NP = IF NP-PROSE EXIT THEN
-   k RF-CAP = IF
-     DCODE EMIT-STR  s"  " EMIT-STR  DSITE
-     s" '" EMIT-STR  FAILTK FAILTU @ EMIT-STR
-     s" ' is a trust-boundary primitive" EMIT-STR EXIT
-   THEN
-   k RF-UNSAFE = IF
-     DCODE EMIT-STR  s"  " EMIT-STR  DSITE
-     s" '" EMIT-STR  FAILTK FAILTU @ EMIT-STR
-     s" ' reads source or changes the compiler's or checker's state, which no stack" EMIT-STR
-     s"  effect describes, so a checked body cannot use it" EMIT-STR EXIT
-   THEN
-   k RF-LOCAL = IF LOCALBAD-PROSE EXIT THEN
-   k RF-QUAL = IF
-     s" E-BAD-QUALIFIED " EMIT-STR  DSITE
-     s" malformed qualified name '" EMIT-STR  FAILTK FAILTU @ EMIT-STR
-     s" ' (more than one ':')" EMIT-STR EXIT
-   THEN
-   k RF-UNDEF = IF
-     s" E-UNDEFINED " EMIT-STR  DSITE
-     s" undefined word '" EMIT-STR  FAILTK FAILTU @ EMIT-STR
-        s" '" EMIT-STR EXIT
-   THEN
-   k RF-LINLOCAL = IF
-     s" E-LINEAR-LOCAL " EMIT-STR  DSITE
-     s" linear value cannot be bound to a local" EMIT-STR EXIT
-   THEN
-   DSITE  s" at '" EMIT-STR  FAILTK FAILTU @ EMIT-STR
-   s" '" EMIT-STR
-   k RF-REASON = IF
-     s"  " EMIT-STR  MDIAG @ MD-REASON$ EMIT-STR
-     MDIAG @ MD-NONEXH = IF MDIAG-MISSING-PROSE THEN
-     MDIAG-COUNTS
-   THEN
-   k RF-DEAD = IF s"  after '" EMIT-STR DEADTA @ DEADTU @ EMIT-STR
-      s" '" EMIT-STR THEN
-   k RF-RETURN = IF
-     s"  " EMIT-STR  RS-REASON$ EMIT-STR
-     RS-ROWS {: exp:n act:n :}
-     s"  expected: " EMIT-STR  exp DROW
-     s" actual: " EMIT-STR  act DROW EXIT
-   THEN
-   k ROWS-REFUSAL? 0= IF EXIT THEN
-   MDIAG @ MD-TAIL-ESCAPE = IF
-     s"  expected: " EMIT-STR  TCAP-EXP$ EMIT-STR
-     s" actual: " EMIT-STR  TCAP-ACT$ EMIT-STR EXIT THEN
-   AT-PIN
-   DEXP @ 0 <> IF
-     s"  expected: " EMIT-STR  DEXP @ DROW
-     s" actual: " EMIT-STR  DACT @ DROW THEN
-   DF-ACT @ 0 <>  DEXP @ 0= and IF
-     s"  actual: " EMIT-STR  DF-ACT @ REND-TYPE THEN
-   ;AT-PIN ;
-
-
-\ Expected takes precedence over actual, so unrelated matched row cells cannot
-\ leak into the diagnostic; a scalar pair emits no family. The hint spells the
-\ family as FAM-QNAME-REND does, matching the rows and resolving from the
-\ failing definition's scope.
-: TERM-FAM ( n -- n )                    \ layout-family id for one type term, else -1
-   T-RES dup LAYOUT-PARAM? IF PARAM>FAM EXIT THEN
-   drop -1 ;
-\ DVAR is the SUMV id a `construct family variant` payload mismatch latched, -1
-\ for none: a scalar or non-construct mismatch emits no variant or tag.
-: DIAG-FAM-ID ( n n -- n )
-   {: efam:n afam:n :}
-   efam 0 >= IF efam EXIT THEN
-   afam 0 >= IF afam EXIT THEN
-   DVAR @ dup 0 >= IF SUMV-FAM@ THEN ;
-\ DPOS is the slot-from-top of the failed expected-row element; the packet
-\ reports the 0-based declaration-order payload index, absent when the position
-\ is unknown or outside the variant's payload cells.
-: DIAG-PAYLOAD-POS ( -- )                \ "payload_pos":<decl-order slot> when captured
-   DPOS @ 0 < IF EXIT THEN
-   DVAR @ SUMV-PAY-N {: cnt:n :}
-   DPOS @ cnt < 0= IF EXIT THEN
-   cnt 1 - DPOS @ - {: pos:n :}
-   44 EMIT1 s" payload_pos" JSON-KEY  pos EMIT-U
-   DVAR @ pos SUMV-PAY-FIELD IF
-      44 EMIT1 s" field" JSON-KEY  PF-NAME$ JSON-STRING
-   ELSE drop THEN ;
-: DIAG-VARIANT ( -- )                    \ "variant":"<name>","tag":<n> for the captured arm
-   DVAR @ 0 < IF EXIT THEN
-   44 EMIT1 s" variant" JSON-KEY  DVAR @ SUMV-NAME$ JSON-STRING
-   44 EMIT1 s" tag" JSON-KEY  DVAR @ SUMV-TAG@ EMIT-U
-   DIAG-PAYLOAD-POS ;
-: DIAG-FAMILY ( -- )
-   DF-EXP @ TERM-FAM  DF-ACT @ TERM-FAM  DIAG-FAM-ID {: fam:n :}
-   fam 0 >= IF
-      44 EMIT1 s" family" JSON-KEY  JSON-OPEN fam FAM-QNAME-REND JSON-CLOSE
-   THEN
-   DIAG-VARIANT ;
-\ A top step's file as its prose names it (DSITE), its line the one checker.f
-\ CHECK:TOP-SITE gives (DLOC-FIELDS); else the checked token in its
-\ mapped or origin source.
-: DFILE$ ( -- ptr u8 n )
-   TOP-STEP @ 0= IF FILE$ EXIT THEN
-   LOAD-FILE$ dup 0 > IF EXIT THEN drop drop
-   NO-FILE$ ;
-: DLOC-FIELDS ( -- )
-   TOP-STEP @ IF
-      CHECK:TOP-SITE IF s" line" JSON-KEY  EMIT-U  44 EMIT1 ELSE drop THEN
-      EXIT
-   THEN
-   TBASE@ FAILB @ +  TBASE@ FAILE @ +  JLOCATE IF JLOC-FIELDS EXIT THEN
-   DIAG-MAPPED? IF EXIT THEN   \ mapped text no source holds
-   JLOC-ORIGIN JLOC-FIELDS ;
-
 \ The reason a signature too large to record names its bound, count and limit
-\ by: a definition's packet (DIAG-JSON) and a stored row's (BADSIG-JSON).
+\ by.
 : BADSIG-REASON ( -- )
    SGBAD-BINDERS? IF BINDERS-REASON EXIT THEN
    SGBAD-DEPTH? IF DEPTH-REASON$ EMIT-STR  SGBAD-SIZE @ DEPTH-COUNTS EXIT THEN
    WIDTH-REASON$ EMIT-STR  SGBAD-SIZE @ WIDTH-COUNTS ;
 
 
-\ A field that belongs to one refusal goes only on that refusal's packet: the
-\ flags of a failure the refusal outranks leave their fields behind. A top-level
-\ step has no definition, and its packet says so with a null word and null
-\ definition fields.
-: DIAG-JSON
-   REFUSAL@ {: k:n :}
-   DCODE REPAIR-CLASS DVERDICT JHEAD
-   s" word" JSON-KEY
-   TOP-STEP @ IF s" null" EMIT-STR ELSE NMA @ NMU @ JSON-STRING THEN  44 EMIT1
-   s" token" JSON-KEY  FAILTK FAILTU @ JSON-STRING  44 EMIT1
-   k RF-DEAD = IF s" dead_owner" JSON-KEY DEADTA @ DEADTU @ JSON-STRING
-      44 EMIT1 THEN
-   k RF-REASON = IF
-     s" reason" JSON-KEY
-     \ A reason's counts go inside its string, after its text.
-     JSON-OPEN  MDIAG @ MD-REASON$ EMIT-STR  MDIAG-COUNTS  JSON-CLOSE
-     44 EMIT1
-     MDIAG @ MD-NONEXH = IF s" missing_variants" JSON-KEY MDIAG-MISSING-JSTR 44 EMIT1 THEN
-   THEN
-   k RF-SIG = SGBAD-SIZE? and IF s" reason" JSON-KEY JSON-OPEN BADSIG-REASON JSON-CLOSE 44 EMIT1 THEN
-   k RF-LOCAL = LOCALBAD-GROUP? and IF s" reason" JSON-KEY LOCALBAD-REASON$ JSON-STRING 44 EMIT1 THEN
-   k RF-RETURN = IF s" reason" JSON-KEY RS-REASON$ JSON-STRING 44 EMIT1 THEN   \ the sentence the load's prose prints
-   s" token_index" JSON-KEY
-   TOP-STEP @ IF s" null" EMIT-STR ELSE FAILIX @ EMIT-U THEN  44 EMIT1
-   s" file" JSON-KEY  DFILE$ JSON-STRING  44 EMIT1
-   DLOC-FIELDS
-   s" definition_source" JSON-KEY
-   TOP-STEP @ IF s" null" EMIT-STR ELSE TBASE @ TBLEN @ JSON-STRING THEN
-      44 EMIT1
-   s" declared_effect" JSON-KEY
-   RECEFF-ON? TOP-STEP @ 0= and IF AT-PIN DECL-EFFECT ;AT-PIN ELSE s" null" EMIT-STR THEN
-   44 EMIT1
-   s" declared_effect_source" JSON-KEY
-   RECEFF-ON? TOP-STEP @ 0= and IF SGA @ SGU @ SIG-TRIM JSON-STRING ELSE s" null" EMIT-STR THEN
-   44 EMIT1
-   s" inferred_effect" JSON-KEY
-   TOP-STEP @ IF s" null" EMIT-STR ELSE
-      MDIAG @ MD-TAIL-ESCAPE = IF TCAP-INF$ JSON-STRING ELSE JSON-OPEN INFERRED-EFFECT JSON-CLOSE THEN
-   THEN
-   44 EMIT1
-   s" return_stack" JSON-KEY
-   123 EMIT1
-   RS-ROWS swap
-   s" expected" JSON-KEY  JROW  44 EMIT1
-   s" actual" JSON-KEY    JROW
-   125 EMIT1
-   k ROWS-REFUSAL? IF
-     MDIAG @ MD-TAIL-ESCAPE = IF
-       44 EMIT1 s" expected" JSON-KEY TCAP-EXP$ JSON-STRING
-       44 EMIT1 s" actual"   JSON-KEY TCAP-ACT$ JSON-STRING
-     ELSE
-       AT-PIN
-       DEXP @ 0 <> IF
-         44 EMIT1 s" expected" JSON-KEY DEXP @ JROW
-         44 EMIT1 s" actual"   JSON-KEY DACT @ JROW
-         DIAG-FAMILY THEN
-       DF-ACT @ 0 <>  DEXP @ 0= and IF
-          44 EMIT1 s" actual_type" JSON-KEY 34 EMIT1 DF-ACT @ REND-TYPE 34 EMIT1 THEN
-       ;AT-PIN
-     THEN
-   THEN
-   k RF-NP = IF                                           \ non-parametric declared effect
-     NPBAD-Q1 @ IF 44 EMIT1 s" quantifier" JSON-KEY JSON-OPEN NPBAD-Q1 @ EMIT1 JSON-CLOSE THEN
-     NPBAD-Q2 @ IF
-       44 EMIT1 s" quantifier2" JSON-KEY JSON-OPEN NPBAD-Q2 @ EMIT1 JSON-CLOSE
-     ELSE
-       NPBAD-TERM @ NP-FAM dup 0 >= IF
-         44 EMIT1 s" family" JSON-KEY JSON-OPEN FAM-QNAME-REND JSON-CLOSE
-       ELSE drop THEN
-     THEN
-   THEN
-   k RF-SIG =  SGBAD-ARITY? and IF                        \ E-WRONG-ARITY counts
-     44 EMIT1 s" arity_expected" JSON-KEY SGBAD-AR-DECL @ EMIT-U
-     44 EMIT1 s" arity_actual" JSON-KEY SGBAD-AR-GOT @ EMIT-U THEN
-   44 EMIT1 s" suggestion" JSON-KEY SUGGEST-TEXT JSON-STRING
-   125 EMIT1 ;                                            \ }
+\ DIAG-PRINT prints the rejection REFUSAL@ names through REJECTION's parts, the
+\ same calls giving prose and JSON. Rows in its text are rendered as they stood
+\ at the pin (AT-PIN), without DROW's trailing space.
 
+\ The kind the message, label, notes and help follow: a mismatch with no
+\ captured pair has no rows to name.
+: DKIND ( -- n )
+   REFUSAL@ {: k:n :}
+   k RF-MISMATCH =  DEXP @ 0=  and IF RF-REJECTED EXIT THEN
+   k ;
+
+\ A pinned token where its source holds it: a top step's as the step read it,
+\ a body's in the checked text. FAILTK is a copy no source holds.
+: DIAG-TOKEN ( -- ptr u8 n )
+   TOP-STEP @ IF TOK-SPELL-A @ TOK-SPELL-U @ EXIT THEN
+   TBASE@ FAILB @ +  FAILE @ FAILB @ - ;
+
+: PIN-TOK$ ( -- ptr u8 n ) FAILTK FAILTU @ ;
+: CODE-SPAN ( ptr u8 n -- ) 96 EMIT1 EMIT-STR 96 EMIT1 ;
+: TOK-SPAN ( -- ) PIN-TOK$ CODE-SPAN ;
+\ The pin is the closer of a body that walked no token.
+: CLOSER-PINNED? ( -- bool )
+   PIN-TOK$ s" ;" CORE-STR=  PIN-TOK$ s" does>" CORE-STR=  or ;
+
+: TRIM-SPACE ( -- )
+   TEXT-LEN @ 0= IF EXIT THEN
+   TEXT TEXT-LEN @ 1 - + c@ 32 = IF TEXT-LEN @ 1 - TEXT-LEN ! THEN ;
+
+\ Row s as DROW writes it, or the word e for an empty row.
+: ROW-OR ( n ptr u8 n -- ) {: s:n ea:ptr eu:n :}
+   TEXT-LEN @ {: at:n :}
+   s DROW
+   TEXT-LEN @ at = IF ea eu EMIT-STR EXIT THEN
+   TRIM-SPACE ;
+: ROW-WORD ( n -- ) s" nothing" ROW-OR ;
+: ROW-NOTE ( n -- ) s" (nothing)" ROW-OR ;
+
+\ A signature as written, without its parentheses.
+: SIG-BARE ( ptr u8 n -- ptr u8 n )
+   SIG-TRIM {: a:ptr u:n :}
+   u 2 < IF a u EXIT THEN
+   a c@ 40 <>  a u + 1 - c@ 41 <>  or IF a u EXIT THEN
+   a 1 + u 2 - SIG-TRIM ;
+
+: INFERRED ( -- ) INFERRED-EFFECT TRIM-SPACE ;
+
+: END-MESSAGE ( -- )
+   s" the body ends with " EMIT-STR  DACT @ ROW-WORD
+   s"  on the stack; the signature promises " EMIT-STR  DEXP @ ROW-WORD ;
+: MISMATCH-MESSAGE ( -- )
+   DEND @ 0 <> IF END-MESSAGE EXIT THEN
+   TOK-SPAN  s"  takes " EMIT-STR  DEXP @ ROW-WORD
+   s" ; the stack holds " EMIT-STR  DACT @ ROW-WORD ;
+
+: LOCAL-MESSAGE ( -- )
+   LOCALBAD-GROUP? IF LOCALBAD-REASON$ EMIT-STR EXIT THEN
+   LOCALBAD-KIND @ 2 = IF
+      s" local " EMIT-STR  TOK-SPAN  s"  has a " EMIT-STR  LOCALBAD-LEN @ EMIT-U
+      s" -byte name; the limit is " EMIT-STR  LOC-NAME-CAP EMIT-U
+      s"  bytes" EMIT-STR EXIT
+   THEN
+   LOCALBAD-KIND @ 1 = IF
+      s" local " EMIT-STR  TOK-SPAN  s"  is one over the " EMIT-STR  LOC-RECS EMIT-U
+      s"  locals a definition may bind" EMIT-STR EXIT
+   THEN
+   s" a local cannot be bound inside a quotation, or bound on a dead path" EMIT-STR ;
+
+: ARITY-MESSAGE ( -- )
+   s" type family " EMIT-STR  TOK-SPAN
+   s"  takes " EMIT-STR  SGBAD-AR-DECL @ EMIT-U
+   s"  type arguments, not " EMIT-STR  SGBAD-AR-GOT @ EMIT-U ;
+: SIG-MESSAGE ( -- )
+   SGBAD-UNKNOWN? IF
+      s" unknown type " EMIT-STR  TOK-SPAN  s"  in signature" EMIT-STR EXIT
+   THEN
+   SGBAD-BAREPTR? IF s" `ptr` needs an element type" EMIT-STR EXIT THEN
+   SGBAD-ARITY? IF ARITY-MESSAGE EXIT THEN
+   SGBAD-RETURN? IF s" return-stack effect in signature " EMIT-STR  TOK-SPAN EXIT THEN
+   SGBAD-SIZE? IF BADSIG-REASON  s"  at " EMIT-STR  TOK-SPAN EXIT THEN
+   s" bad signature at " EMIT-STR  TOK-SPAN ;
+
+: NP-FAM-REND ( -- )
+   NPBAD-TERM @ NP-FAM {: fam:n :}
+   fam 0 >= IF s" family `" EMIT-STR  fam FAM-QNAME-REND  96 EMIT1
+   ELSE s" a concrete type" EMIT-STR THEN ;
+: NP-VAR ( n -- ) {: q:n :}
+   s" declared type variable `" EMIT-STR  q EMIT1  96 EMIT1 ;
+: NP-KEEP ( -- ) s" ; its declared kind must stay unchanged" EMIT-STR ;
+: NP-ROWS ( -- )
+   s" declared row variable `" EMIT-STR  NPBAD-Q1 @ EMIT1
+   NPBAD-Q2 @ IF s" ` and row `" EMIT-STR  NPBAD-Q2 @ EMIT1  96 EMIT1
+   ELSE s" ` and the unnamed row" EMIT-STR THEN
+   s"  are unified; each declared row must stay a distinct row variable" EMIT-STR ;
+: NP-ROW-FIXED ( -- )
+   NPBAD-Q1 @ IF s" declared row variable `" EMIT-STR  NPBAD-Q1 @ EMIT1  96 EMIT1
+   ELSE s" the unnamed row" EMIT-STR THEN
+   s"  is bound to fixed cells; a declared effect must stay polymorphic over its row" EMIT-STR ;
+: NP-MESSAGE ( -- )
+   NPBAD-KIND @ case
+      4 of NPBAD-Q1 @ NP-VAR
+         s"  is restricted to a base address -- the DATA region, or a pointer computed off NULL-PTR" EMIT-STR
+         NP-KEEP endof
+      5 of NPBAD-Q1 @ NP-VAR  s"  is restricted to the null address" EMIT-STR  NP-KEEP endof
+      3 of NPBAD-Q1 @ NP-VAR  s"  is restricted by raw storage" EMIT-STR  NP-KEEP endof
+      0 of NPBAD-Q1 @ NP-VAR  s"  is specialized to " EMIT-STR  NP-FAM-REND
+         s" ; a declared effect must stay parametric over its quantifier" EMIT-STR endof
+      1 of s" declared type variables `" EMIT-STR  NPBAD-Q1 @ EMIT1
+         s" ` and `" EMIT-STR  NPBAD-Q2 @ EMIT1
+         s" ` are unified; each declared quantifier must stay a distinct variable" EMIT-STR endof
+      6 of NP-ROWS endof
+      7 of NP-ROW-FIXED endof
+      NPBAD-Q1 @ NP-VAR  s"  is minted into " EMIT-STR  NP-FAM-REND
+      s"  but is unbound in the inputs; a checked definition cannot mint a phantom of input-unrelated type" EMIT-STR
+   endcase ;
+
+: REASON-MESSAGE ( -- )
+   MDIAG @ MD-REASON$ EMIT-STR
+   MDIAG @ MD-NONEXH = IF MDIAG-MISSING-PROSE THEN
+   MDIAG-COUNTS ;
+
+: DEAD-MESSAGE ( -- )
+   TOK-SPAN  s"  never runs: " EMIT-STR  DEADTA @ DEADTU @ CODE-SPAN
+   s"  before it never returns" EMIT-STR ;
+
+: TOK-MESSAGE ( ptr u8 n -- ) {: a:ptr u:n :}
+   TOK-SPAN  a u EMIT-STR ;
+
+: DIAG-MESSAGE ( -- )
+   DKIND case
+      RF-MISMATCH of AT-PIN MISMATCH-MESSAGE ;AT-PIN endof
+      RF-UNDEF of s" cannot find word " EMIT-STR  TOK-SPAN endof
+      RF-QUAL of s" malformed qualified name " EMIT-STR  TOK-SPAN endof
+      RF-IMM of s"  is a compile-time immediate that is not a stack-neutral parsing immediate" TOK-MESSAGE endof
+      RF-CAP of s"  is a trust-boundary primitive" TOK-MESSAGE endof
+      RF-UNSAFE of s"  reads source or changes the compiler's or checker's state, which no stack effect describes" TOK-MESSAGE endof
+      RF-LINLOCAL of s" a linear value cannot be bound to a local" EMIT-STR endof
+      RF-LOCAL of LOCAL-MESSAGE endof
+      RF-SIG of SIG-MESSAGE endof
+      RF-NP of NP-MESSAGE endof
+      RF-DEAD of DEAD-MESSAGE endof
+      RF-RETURN of RS-REASON$ EMIT-STR endof
+      RF-REASON of REASON-MESSAGE endof
+      RF-UNCHECKABLE of s"  cannot be checked here" TOK-MESSAGE endof
+      s" rejected at " EMIT-STR  TOK-SPAN
+   endcase ;
+
+: END-LABEL ( -- )
+   CLOSER-PINNED? IF s" the body ends here" EMIT-STR EXIT THEN
+   DACT @ ROW-VALUES 0= IF s" the stack is empty after this" EMIT-STR EXIT THEN
+   s" the stack holds " EMIT-STR  DACT @ ROW-WORD  s"  after this" EMIT-STR ;
+: MISMATCH-LABEL ( -- )
+   DEND @ 0 <> IF END-LABEL EXIT THEN
+   s" takes " EMIT-STR  DEXP @ ROW-WORD ;
+
+: LOCAL-LABEL ( -- )
+   LOCALBAD-KIND @ 2 = IF s" name too long" EMIT-STR EXIT THEN
+   LOCALBAD-KIND @ 1 = IF s" one local too many" EMIT-STR EXIT THEN
+   LOCALBAD-GROUP? IF s" not a local name" EMIT-STR EXIT THEN
+   s" bound here" EMIT-STR ;
+
+: SIG-LABEL ( -- )
+   SGBAD-UNKNOWN? IF s" unknown type" EMIT-STR EXIT THEN
+   SGBAD-BAREPTR? IF s" no element type" EMIT-STR EXIT THEN
+   SGBAD-ARITY? IF s" wrong number of type arguments" EMIT-STR EXIT THEN
+   SGBAD-RETURN? IF s" return-stack effect" EMIT-STR EXIT THEN
+   s" here" EMIT-STR ;
+
+: DIAG-LABEL ( -- )
+   DKIND case
+      RF-MISMATCH of AT-PIN MISMATCH-LABEL ;AT-PIN endof
+      RF-UNDEF of s" not found" EMIT-STR endof
+      RF-QUAL of s" more than one `:`" EMIT-STR endof
+      RF-IMM of s" unmodeled immediate" EMIT-STR endof
+      RF-CAP of s" not callable from a checked body" EMIT-STR endof
+      RF-UNSAFE of s" not allowed in a checked body" EMIT-STR endof
+      RF-LINLOCAL of s" bound here" EMIT-STR endof
+      RF-LOCAL of LOCAL-LABEL endof
+      RF-SIG of SIG-LABEL endof
+      RF-DEAD of s" never runs" EMIT-STR endof
+      RF-UNCHECKABLE of s" checking stops here" EMIT-STR endof
+      s" here" EMIT-STR
+   endcase ;
+
+: TEXT-NOTE ( ptr u8 n ptr u8 n -- ) {: ka:ptr ku:n va:ptr vu:n :}
+   ka ku REJECTION:NOTE  va vu SIG-RTRIM EMIT-STR ;
+: PAIR-NOTES ( n n -- ) {: e:n a:n :}
+   s" expected" REJECTION:NOTE  e ROW-NOTE
+   s" found" REJECTION:NOTE  a ROW-NOTE ;
+
+\ Expected takes precedence over actual, so unrelated matched row cells cannot
+\ leak into the family; a scalar pair names none.
+: TERM-FAM ( n -- n )                    \ layout-family id for one type term, else -1
+   T-RES dup LAYOUT-PARAM? IF PARAM>FAM EXIT THEN
+   drop -1 ;
+\ DVAR is the SUMV id a `construct family variant` payload mismatch latched, -1
+\ for none.
+: DIAG-FAM-ID ( n n -- n )
+   {: efam:n afam:n :}
+   efam 0 >= IF efam EXIT THEN
+   afam 0 >= IF afam EXIT THEN
+   DVAR @ dup 0 >= IF SUMV-FAM@ THEN ;
+\ DPOS is the slot from the top of the failed expected element; the field is
+\ the variant's payload field in declaration order, none outside its cells.
+: FIELD-NOTE ( -- )
+   DPOS @ 0 < IF EXIT THEN
+   DVAR @ SUMV-PAY-N {: cnt:n :}
+   DPOS @ cnt < 0= IF EXIT THEN
+   DVAR @  cnt 1 - DPOS @ -  SUMV-PAY-FIELD IF
+      s" field" REJECTION:NOTE  PF-NAME$ EMIT-STR
+   ELSE drop THEN ;
+: FAMILY-NOTES ( -- )
+   DF-EXP @ TERM-FAM  DF-ACT @ TERM-FAM  DIAG-FAM-ID {: fam:n :}
+   fam 0 >= IF s" family" REJECTION:NOTE  fam FAM-QNAME-REND THEN
+   DVAR @ 0 < IF EXIT THEN
+   s" variant" REJECTION:NOTE  DVAR @ SUMV-NAME$ EMIT-STR
+   FIELD-NOTE ;
+
+: ESCAPE-NOTES ( -- )
+   s" expected" TCAP-EXP$ TEXT-NOTE
+   s" found" TCAP-ACT$ TEXT-NOTE
+   s" held" TCAP-HELD$ TEXT-NOTE ;
+: ROWS-NOTES ( -- )
+   MDIAG @ MD-TAIL-ESCAPE = IF ESCAPE-NOTES EXIT THEN
+   AT-PIN
+   DEXP @ 0 <> IF DEXP @ DACT @ PAIR-NOTES  FAMILY-NOTES THEN
+   DF-ACT @ 0 <>  DEXP @ 0= and IF
+      s" found" REJECTION:NOTE  DF-ACT @ REND-TYPE
+   THEN
+   ;AT-PIN ;
+
+: EFFECT-NOTES? ( n -- bool ) {: k:n :}
+   RECEFF-ON? TOP-STEP @ 0= and 0= IF RES-FALSE EXIT THEN
+   k RF-MISMATCH =  k RF-RETURN = or  k RF-NP = or
+   k RF-REASON =  DEXP @ 0 <> and  or ;
+: EFFECT-NOTES ( -- )
+   s" declared" REJECTION:NOTE  SGA @ SGU @ SIG-BARE EMIT-STR
+   s" inferred" REJECTION:NOTE
+   MDIAG @ MD-TAIL-ESCAPE = IF TCAP-INF$ SIG-RTRIM EMIT-STR EXIT THEN
+   INFERRED ;
+
+: DIAG-NOTES ( -- )
+   DKIND {: k:n :}
+   k ROWS-REFUSAL? IF ROWS-NOTES THEN
+   k RF-RETURN = IF RS-ROWS PAIR-NOTES THEN
+   k RF-REASON =  MDIAG @ MD-NONEXH = and IF
+      s" missing" REJECTION:NOTE  0 0= MDIAG-MISSING-WALK
+   THEN
+   k EFFECT-NOTES? IF EFFECT-NOTES THEN ;
+
+\ The help for a body whose end does not fit its signature, by its depths.
+: END-WHERE ( -- )
+   CLOSER-PINNED? IF s"  in the body" EMIT-STR EXIT THEN
+   s"  after " EMIT-STR  TOK-SPAN ;
+: END-HELP ( -- )
+   ['] ROW-VALUES ROWS-DEPTHS
+   DSUGA @ DSUGE @ = IF s" make the body end with " EMIT-STR ELSE
+      DSUGA @ DSUGE @ < IF s" add the missing values" ELSE s" drop the extra values" THEN
+      EMIT-STR  END-WHERE  s"  so the body ends with " EMIT-STR
+   THEN
+   AT-PIN DEXP @ ROW-WORD ;AT-PIN
+   s" , or declare ( " EMIT-STR  INFERRED  s"  )" EMIT-STR ;
+: TAKES-HELP ( -- )
+   ['] ROW-VALUES ROWS-DEPTHS
+   DSUGA @ DSUGE @ < IF
+      s" put what " EMIT-STR  TOK-SPAN
+      s"  takes on the stack before it, or declare it as an input" EMIT-STR EXIT
+   THEN
+   s" give " EMIT-STR  TOK-SPAN  32 EMIT1  AT-PIN DEXP @ ROW-WORD ;AT-PIN
+   s" : convert or replace the value before it" EMIT-STR ;
+
+\ The package record at dictionary index i whose public wordlist holds the
+\ pinned token, else NULL-PTR. A part, named A:B, is left out: no qualifier
+\ outside A reaches it.
+: PUBLIC-IN ( n -- ptr n ) {: i:n :}
+   i CHECKER-RESOLVE:REC-AT {: rec:ptr :}
+   rec CK-REC-WID BOOT:NAMESPACE-WL <> IF NULL-PTR EXIT THEN
+   rec @ {: wid:n :}
+   rec CHECKER-RESOLVE:CK-REC-NAME$ CHECKER-COLON-SCAN drop {: colons:n :}
+   wid 0=  colons 0 <>  or IF NULL-PTR EXIT THEN
+   PIN-TOK$ wid CHECKER-RESOLVE:WL-PROBE NULL-PTR = IF NULL-PTR EXIT THEN
+   rec ;
+variable HOLDER-N
+PTR-VARIABLE HOLDER-FIRST
+: HOLDER-NAME ( ptr n -- ) CHECKER-RESOLVE:CK-REC-NAME$ CODE-SPAN ;
+\ Counts the packages, writes their names when list is set.
+: HOLDER-SCAN ( bool -- ) {: list:bool :}
+   0 HOLDER-N !
+   ndict@ 0 ?do
+      i PUBLIC-IN {: rec:ptr :}
+      rec NULL-PTR <> IF
+         HOLDER-N @ 0= IF rec HOLDER-FIRST ! THEN
+         list IF HOLDER-N @ 0 > IF s" , " EMIT-STR THEN  rec HOLDER-NAME THEN
+         HOLDER-N @ 1 + HOLDER-N !
+      THEN
+   loop ;
+: QUALIFIED ( -- )
+   96 EMIT1  HOLDER-FIRST @ CHECKER-RESOLVE:CK-REC-NAME$ EMIT-STR
+   58 EMIT1  PIN-TOK$ EMIT-STR  96 EMIT1 ;
+: UNDEF-HELP ( -- )
+   RES-FALSE HOLDER-SCAN
+   HOLDER-N @ 0= IF
+      s" define " EMIT-STR  TOK-SPAN
+      s"  before this point, or check its spelling" EMIT-STR EXIT
+   THEN
+   TOK-SPAN  s"  is public in " EMIT-STR
+   HOLDER-N @ 1 = IF
+      HOLDER-FIRST @ HOLDER-NAME  s" : write " EMIT-STR  QUALIFIED
+      s" , or call it inside `using " EMIT-STR
+      HOLDER-FIRST @ CHECKER-RESOLVE:CK-REC-NAME$ EMIT-STR  s" ` … `;using`" EMIT-STR EXIT
+   THEN
+   RES-TRUE HOLDER-SCAN  s" : write it qualified, as " EMIT-STR  QUALIFIED ;
+
+: DIAG-HELP ( -- )
+   DKIND {: k:n :}
+   k RF-MISMATCH = IF DEND @ 0 <> IF END-HELP ELSE TAKES-HELP THEN EXIT THEN
+   k RF-UNDEF = IF UNDEF-HELP EXIT THEN
+   SUGGEST-TEXT EMIT-STR ;
 
 : DIAG-PRINT
-   1 DEST !  0 TEXT-LEN !  0 RQM !  SEEN-RESET 0 NLET !  0 RROW-N !
-   JSON @ IF DIAG-JSON ELSE
-     DIAG-PROSE  s" ; suggestion: " EMIT-STR  SUGGEST-TEXT EMIT-STR
-   THEN
-   10 EMIT1
-   FLUSH
-   JSON @ IF CHECKER-REPORT-MARK THEN ;
+   0 RQM !  SEEN-RESET 0 NLET !  0 RROW-N !
+   DCODE REJECTION:OPEN  DIAG-MESSAGE
+   DIAG-TOKEN REJECTION:AT  DIAG-LABEL
+   DIAG-NOTES
+   REJECTION:HELP  DIAG-HELP
+   REJECTION:KEEP
+   REJECTION:JSON @ IF CHECKER-REPORT-MARK THEN ;
 
 
 

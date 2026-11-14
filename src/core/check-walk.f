@@ -1065,12 +1065,14 @@ public
    a u CHECK-REC-ADMIT
    CHECK-SIG? IF SGIN @ SGOUT @ a u SHADOW-ARITY-CK THEN ;
 
-\ A definition refused in a multi-error load: counted, so the run exits
-\ nonzero, and its declared signature kept as source authority, so a later
-\ caller checks against it, unless that signature is bad or too big to record.
+\ The declared row reported this definition's bad signature.
+: DECLARED-ROW-REPORTS? ( -- bool )
+   BWIN-UNJUDGED @ 0= 0= SGDECL-BAD @ 0= 0= and ;
+\ A definition refused in a multi-error load keeps its declared signature as
+\ source authority, so a later caller checks against it, unless that signature
+\ is bad or too big to record.
 : MULTI-REFUSED ( -- )
-   BWIN-UNJUDGED @ 0= 0= SGDECL-BAD @ 0= 0= and IF EXIT THEN  \ declared row reports this signature
-   1 REJECTION:TALLY +!
+   DECLARED-ROW-REPORTS? IF EXIT THEN
    CHECK-SIG? SGBAD @ 0= and UNFIT @ 0= and IF
       NMA @ NMU @ CHECK-REC-ADMIT
       NMA @ NMU @ 0 NORET-ADD
@@ -1080,6 +1082,9 @@ public
    THEN ;
 : CHECK-UNRECORDED-DIN ( -- n ) UNREC-DIN @ ;
 : CHECK-UNRECORDED-DOUT ( -- n ) UNREC-DOUT @ ;
+
+: NAME-PINNED? ( -- bool )
+   NMU @ 0 >  FAILB @ NMOFF @ =  and ;
 
 : CHECK   \ ( a u -- -1=certified | 0=rejected | 1=uncheckable | 2=deferred )
    {: a u :}
@@ -1106,6 +1111,10 @@ public
    TORDER-SCAN-UNKNOWN @ IF
       0 LAYOUT-XPORT !  0 BIND-HORIZON !  CK-CLOSE-CLEAR
       2 EXIT
+   THEN
+   \ A body that walked no token past its name is pinned at its closer.
+   FAILSET @ 0=  FAILTU @ 0=  NAME-PINNED? or  and IF
+      DOES-SPLIT @ 0 <> IF s" does>" ELSE s" ;" THEN CLOSER-PIN!
    THEN
    0 LAYOUT-XPORT !                  \ boundary unification is never in transport mode
    CHECK-FOLD-EXITS
@@ -1207,8 +1216,6 @@ public
       NMA @ NMU @ INHSET @ NORET-ADD
       NMA @ NMU @  NMOFF @ TADDR NMU @  RES-TRUE CHECKER-USIG-CERT-ADD-PENDING
    THEN
-   \ The count is the number of refusals rendered, so a quiet scan's is not
-   \ counted.
    dup 0 =  over 1 = or  MULTI-ERR? and  NMU @ 0 > and
    REJECTION:QUIET @ 0= and IF
       MULTI-REFUSED
@@ -1645,6 +1652,8 @@ variable DEF-STOPPED
 : CHECK-DEF-THREW ( n -- )
    0 PARSE-COMPLETE !
    DEF-REFUSED
+   \ Counted here: no REJECTION:KEEP printed a thrown rejection.
+   DECLARED-ROW-REPORTS? 0= IF 1 REJECTION:TALLY +! THEN
    MULTI-REFUSED
    0 CK-DEF-VERDICT ! ;
 
@@ -1981,7 +1990,6 @@ PTR-VARIABLE UNJ-DOES-SA   variable UNJ-DOES-SU   variable UNJ-DOES-VERDICT
    v DVERD !
    REJECTION:QUIET @ 0= IF DIAG-PRINT THEN
    SIG-EFF-DROP
-   MULTI-ERR? REJECTION:QUIET @ 0= and IF 1 REJECTION:TALLY +! THEN
    v ;
 
 \ Both compilers report a clause their check refused the same way, but they name
