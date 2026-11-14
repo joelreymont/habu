@@ -108,23 +108,23 @@ false [if] \ off until dot habu-add-the-checks-a49d054d, then called by RUN
 [then]
 
 : TESTS ( -- )
-   s" -1" s" 0<" s" ." SAME
-   s" 0" s" 0<" s" ." SAME
-   s" $8000000000000000" s" 0<" s" ." SAME
-   s" 0" s" 0<>" s" ." SAME
-   s" -1" s" 0<>" s" ." SAME
-   s" " s" true" s" ." SAME
-   s" " s" false" s" ." SAME ;
+   s" -1" s" 0<" s" bool>n ." SAME
+   s" 0" s" 0<" s" bool>n ." SAME
+   s" $8000000000000000" s" 0<" s" bool>n ." SAME
+   s" 0" s" 0<>" s" bool>n ." SAME
+   s" -1" s" 0<>" s" bool>n ." SAME
+   s" " s" true" s" bool>n ." SAME
+   s" " s" false" s" bool>n ." SAME ;
 
 : ORDER ( ptr u8 n -- )
    {: nm:ptr nu:n :}
-   s" 1 s>f 1 s>f" nm nu s" ." SAME
-   s" 1 s>f 2 s>f" nm nu s" ." SAME
-   s" 2 s>f 1 s>f" nm nu s" ." SAME
-   s" $7FF8000000000000 IEEE754:BITS>F64 1 s>f" nm nu s" ." SAME   \ a NaN left
-   s" 1 s>f $7FF8000000000000 IEEE754:BITS>F64" nm nu s" ." SAME   \ a NaN right
-   s" $8000000000000000 IEEE754:BITS>F64 0 s>f" nm nu s" ." SAME   \ -0.0, +0.0
-   s" 0 s>f $8000000000000000 IEEE754:BITS>F64" nm nu s" ." SAME ; \ +0.0, -0.0
+   s" 1 s>f 1 s>f" nm nu s" bool>n ." SAME
+   s" 1 s>f 2 s>f" nm nu s" bool>n ." SAME
+   s" 2 s>f 1 s>f" nm nu s" bool>n ." SAME
+   s" $7FF8000000000000 IEEE754:BITS>F64 1 s>f" nm nu s" bool>n ." SAME   \ a NaN left
+   s" 1 s>f $7FF8000000000000 IEEE754:BITS>F64" nm nu s" bool>n ." SAME   \ a NaN right
+   s" $8000000000000000 IEEE754:BITS>F64 0 s>f" nm nu s" bool>n ." SAME   \ -0.0, +0.0
+   s" 0 s>f $8000000000000000 IEEE754:BITS>F64" nm nu s" bool>n ." SAME ; \ +0.0, -0.0
 
 : COMPARISONS ( -- )
    s" f<=" ORDER
