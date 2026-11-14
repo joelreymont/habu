@@ -101,6 +101,25 @@ variable FFI-SV-SRC-U
 : FFI-SV-ARITY ( ptr u8 n -- )
    S\" \"throw_code\":-3500" FFI-SV-REFUSE ;
 
+\ A struct plan the check rejects with E-FFI-ARITY prints the load's record,
+\ its header and its help, placed at ;FUNCTION with the definer's label.
+: FFI-SV-RECORD ( ptr u8 n ptr u8 n -- )
+   {: head:ptr headu:n help:ptr helpu:n :}
+   LSP-CHECK:VERIFY-OUT$ head headu CONTAINS? TTRUE
+   LSP-CHECK:VERIFY-OUT$ S\" \"token\":\";FUNCTION\",\"source_line\":" CONTAINS? TTRUE
+   LSP-CHECK:VERIFY-OUT$ S\" \"label\":\"the definer was reading here\"" CONTAINS? TTRUE
+   LSP-CHECK:VERIFY-OUT$ help helpu CONTAINS? TTRUE ;
+
+: FFI-SV-STAGED ( -- )
+   S\" \"code\":\"E-FFI-ARITY\",\"message\":\"a struct call stages at most 16 cells of stack inputs and record copies\""
+   S\" \"help\":\"pass the large records by address through a C function\""
+   FFI-SV-RECORD ;
+
+: FFI-SV-FLOATS ( -- )
+   S\" \"code\":\"E-FFI-ARITY\",\"message\":\"the call passes at most 8 float inputs, each in a register\""
+   S\" \"help\":\"call it through a C function that takes the floats in a record\""
+   FFI-SV-RECORD ;
+
 
 \ Sixteen record inputs whose payloads sum, modulo 2^64, to almost nothing.
 : FFI-SV-WRAP$ ( -- ptr u8 n )
@@ -146,11 +165,11 @@ variable FFI-SV-SRC-U
    s" ( ptr u8 -- f32 ) 0 16 STRUCT-ARG" FFI-SV-SYNTAX
    s" ( ptr u8 -- ) 0 16 STRUCT-ARG 16 STRUCT-RESULT" FFI-SV-SYNTAX
    s" ( ptr u8 -- ) 16 STRUCT-RESULT 0 16 STRUCT-ARG" FFI-SV-SYNTAX
-   s" ( ptr u8 -- n ) 0 129 STRUCT-ARG" FFI-SV-ARITY
-   s" ( n n n n n n n n ptr u8 -- n ) 8 113 STRUCT-ARG" FFI-SV-ARITY
-   s" ( r r r r r r r r r ptr u8 -- n ) 9 16 STRUCT-ARG" FFI-SV-ARITY
+   s" ( ptr u8 -- n ) 0 129 STRUCT-ARG" FFI-SV-ARITY FFI-SV-STAGED
+   s" ( n n n n n n n n ptr u8 -- n ) 8 113 STRUCT-ARG" FFI-SV-ARITY FFI-SV-STAGED
+   s" ( r r r r r r r r r ptr u8 -- n ) 9 16 STRUCT-ARG" FFI-SV-ARITY FFI-SV-FLOATS
    s" sixteen record payloads that wrap 2^64 are refused" T-LABEL
-   FFI-SV-WRAP$ S\" \"throw_code\":-3500" FFI-SV-REFUSED ;
+   FFI-SV-WRAP$ S\" \"throw_code\":-3500" FFI-SV-REFUSED FFI-SV-STAGED ;
 
 
 : FFI-SV-STRUCT-RESULT ( -- )
@@ -167,7 +186,7 @@ variable FFI-SV-SRC-U
    s" ( n ptr u8 -- ) 8 STRUCT-RESULT 1 0 WRITES-ARG" FFI-SV-SYNTAX
    s" ( n ptr u8 -- ) 1 VARIADIC 8 STRUCT-RESULT" FFI-SV-SYNTAX
    s" ( n ptr u8 -- ) 8 STRUCT-RESULT 1 VARIADIC" FFI-SV-SYNTAX
-   s" ( ptr u8 ptr u8 -- ) 0 129 STRUCT-ARG 16 STRUCT-RESULT" FFI-SV-ARITY ;
+   s" ( ptr u8 ptr u8 -- ) 0 129 STRUCT-ARG 16 STRUCT-RESULT" FFI-SV-ARITY FFI-SV-STAGED ;
 
 
 \ A clause is the declarer's word only where the token resolves to it: a

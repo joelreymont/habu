@@ -530,6 +530,12 @@ variable DLERROR-FN-CELL
    dup 0= if idx held SYMBOL-REPORT E-FFI-DLSYM throw then
    dup idx FN-ADDR! ;
 
+\ The throw keeps the code a catch reads; uncaught, the load exits 70.
+: HELP-END ( ptr u8 n n -- )
+   {: h:ptr hu:n code:n :}
+   REJECTION:HELP  h hu REJECTION:EMIT-STR
+   REJECTION:KEEP  code CHECKER-REFUSE ;
+
 public
 
 \ A rejection of the declaration is SYNTAX-OPEN, its message, then SYNTAX-HELP
@@ -537,11 +543,8 @@ public
 : SYNTAX-OPEN ( -- )
    s" E-FFI-SYNTAX" REJECTION:OPEN ;
 
-\ The throw keeps the code a catch reads; uncaught, the load exits 70.
-: HELP-THROW ( ptr u8 n n -- ) {: h:ptr hu:n code:n :}
-   CHECK:DEFINER-PLACE
-   REJECTION:HELP  h hu REJECTION:EMIT-STR
-   REJECTION:KEEP  code CHECKER-REFUSE ;
+: HELP-THROW ( ptr u8 n n -- )
+   CHECK:DEFINER-PLACE HELP-END ;
 
 : SYNTAX-HELP ( ptr u8 n -- )
    E-FFI-SYNTAX HELP-THROW ;
@@ -974,7 +977,7 @@ $10 constant ARG-MAX
 
 public
 
-\ An input's kind, as STRUCT-FITS? reads it: a cell, a `ptr u8`, an `r` or an
+\ An input's kind, as STRUCT-ROOM reads it: a cell, a `ptr u8`, an `r` or an
 \ `f32`.
 0 constant K-VALUE
 1 constant K-POINTER
@@ -1190,6 +1193,9 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
 : ARITY-OPEN ( -- )
    s" E-FFI-ARITY" REJECTION:OPEN ;
 
+: ARITY-END ( ptr u8 n -- )
+   E-FFI-ARITY HELP-END ;
+
 : ARITY-HELP ( ptr u8 n -- )
    E-FFI-ARITY HELP-THROW ;
 
@@ -1299,13 +1305,15 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
    s" call it through a C function that takes the inputs in a record"
    ARITY-HELP ;
 
-: FLOAT-REGS-FULL ( -- )
+: FLOAT-REGS-FULL ( [ -- ] -- )
+   {: place :}
    ARITY-OPEN
    s" the call passes at most " REJECTION:EMIT-STR
    REG-MAX REJECTION:EMIT-U
    s"  float inputs, each in a register" REJECTION:EMIT-STR
+   place execute
    s" call it through a C function that takes the floats in a record"
-   ARITY-HELP ;
+   ARITY-END ;
 
 : F32-UNSTAGED ( -- )
    ARITY-OPEN
@@ -1315,18 +1323,20 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
    s" declare it r and call a C function that takes a double"
    ARITY-HELP ;
 
-: STAGING-FULL ( -- )
+: STAGING-FULL ( [ -- ] -- )
+   {: place :}
    ARITY-OPEN
    s" a struct call stages at most " REJECTION:EMIT-STR
    STACK-CELLS REJECTION:EMIT-U
    s"  cells of stack inputs and record copies" REJECTION:EMIT-STR
+   place execute
    s" pass the large records by address through a C function"
-   ARITY-HELP ;
+   ARITY-END ;
 
 : REG-ROOM ( n n -- )
    {: int:n flt:n :}
    int REG-MAX > if INT-REGS-FULL then
-   flt REG-MAX > if FLOAT-REGS-FULL then ;
+   flt REG-MAX > if [: CHECK:DEFINER-PLACE ;] FLOAT-REGS-FULL then ;
 
 : FLOAT-ARG? ( n -- bool )
    ARG-KIND@ {: kind:n :}
@@ -1409,25 +1419,27 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
 : PLAN-FITS? ( n n -- bool ) {: flt:n stk:n :}
    flt REG-MAX <= stk STACK-CELLS <= and ;
 
+: PLAN-ROOM ( n n [ -- ] -- )
+   {: flt:n stk:n place :}
+   flt stk PLAN-FITS? if exit then
+   flt REG-MAX > if place FLOAT-REGS-FULL then
+   place STAGING-FULL ;
+
 public
 
-\ Whether n C arguments, kinds and record widths as PLAN-RECORDS reads them,
-\ fit the struct call; past it the declaration is refused (E-FFI-ARITY).
-\ regs and pays take the plan, n cells each. The source checker holds a
-\ declaration's clauses to the rule this way.
-: STRUCT-FITS? ( ptr n ptr n n ptr n ptr n -- bool )
+\ Plans n C arguments (kinds, record widths) into regs and pays, n cells each,
+\ and rejects a plan past the struct call, PLACE placing the record.
+: STRUCT-ROOM ( ptr n ptr n n ptr n ptr n [ -- ] -- )
+   {: place :}
    PLAN-RECORDS {: flt:n stk:n :}
-   drop flt stk PLAN-FITS? ;
+   drop flt stk place PLAN-ROOM ;
 
 private
 
 : PLAN-STRUCT ( -- n n )
    ARG-KIND ARG-SBYTES C-ARGS ARG-REG ARG-PAY PLAN-RECORDS
    {: int:n flt:n stk:n :}
-   flt stk PLAN-FITS? 0= if
-      flt REG-MAX > if FLOAT-REGS-FULL then
-      STAGING-FULL
-   then
+   flt stk [: CHECK:DEFINER-PLACE ;] PLAN-ROOM
    int stk ;
 
 : RECORDS? ( -- bool )

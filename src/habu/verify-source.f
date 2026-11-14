@@ -3573,15 +3573,23 @@ variable FFI-LIT-B                          \ and the newer
    t tu s" VARIADIC" STR=CI IF FFI-VARIADIC EXIT THEN
    FFI-WRITES ;
 
+\ The record and the stop of a declaration the plan rejects sit at the
+\ statement's last token, ;FUNCTION, where the load rejects it.
+: FFI-PLACE ( -- )
+   TOP-CUR-A @ TOP-CUR-U @ {: a:ptr u:n :}
+   a SOURCE@ - TOKEN-BYTE !
+   a u CHECK:DEFINER-AT ;
+
 \ A declaration with a struct clause is planned by the declarer's rule over its
 \ C arguments, every input but a STRUCT-RESULT destination; past it the load
-\ refuses the declaration (E-FFI-ARITY) before publishing it.
+\ rejects the declaration (E-FFI-ARITY) before publishing it, as the check does
+\ with the load's record.
 : FFI-STAGING ( -- )
    FFI-CLAUSES @ 0= IF EXIT THEN
    FFI-RES @ 0= FFI-ANY-SARG? 0= and IF EXIT THEN
    FFI-IN-N @ FFI-RES @ 0<> IF 1- THEN {: args:n :}
-   0 FFI-KIND 0 FFI-SARG args 0 FFI-REGS 0 FFI-PAYS FFI:STRUCT-FITS?
-   0= IF E-FFI-ARITY STATEMENT-STOP THEN ;
+   0 FFI-KIND 0 FFI-SARG args 0 FFI-REGS 0 FFI-PAYS
+   [: FFI-PLACE ;] FFI:STRUCT-ROOM ;
 
 \ The library's storage definers are words, not keywords: a package's word of
 \ the spelling, or a global one an `undefine` made room for, is the word the
