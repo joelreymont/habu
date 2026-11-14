@@ -130,9 +130,8 @@ package CERTIFY-DOES-DEFINER
    s" C1U ( -- ptr n ) CDD-ONE-U" CDD-VERDICT ACCEPTED T= ;
 
 \ Section 2: a package definer, its straight-line wrapper and both spellings.
-\ `: BUFFER ( n -- ) E-CG-CAP E-CG-VALUE BUFFER-E ;` (src/lib/codegen.f) is the
-\ production shape of the wrapper: a body whose tokens hold exactly one definer
-\ call and no control flow creates whatever that definer creates.
+\ A wrapper body whose tokens hold exactly one definer call and no control flow
+\ creates whatever that definer creates.
 : CDD-SECTION-WRAPPER ( -- )
    CHECKER-SCOPE-START-NEUTRAL
    s\" package CDDP\npublic\n: CDD-PD ( n n n -- ) create , , , does> ( -- ptr n ) ;\n: CDD-PW ( n -- ) 3 4 CDD-PD ;\n;package\n"

@@ -1,12 +1,11 @@
-\ codegen-test.f - the shared codegen byte buffer (src/lib/codegen.f): a plain
-\ buffer throws E-CG-CAP / E-CG-VALUE, a BUFFER-E: buffer the caller's codes.
+\ codegen-test.f - the shared codegen byte buffer (src/lib/codegen.f): a
+\ buffer throws E-CG-CAP / E-CG-VALUE.
 \ Run: bin/hb --load src/lib/test.f src/lib/codegen.f src/lib/codegen-test.f
 
 require src/lib/test.f
 require src/lib/codegen.f
 
 16 CODEGEN:BUFFER CGT-D
-8 -7001 -7002 CODEGEN:BUFFER-E CGT-E     \ explicit per-buffer codes (arbitrary caller sentinels)
 
 : CGT-FILL ( -- )
    CGT-D CODEGEN:RESET
@@ -15,13 +14,9 @@ require src/lib/codegen.f
 
 : CGT-THROWS ( -- )
    [: CGT-D CODEGEN:RESET  s" 0123456789abcdefg" CGT-D CODEGEN:APPEND-STRING ;]
-      E-CG-CAP TTHROWSQ                    \ 17 > 16: default buffer overflow -> module code
+      E-CG-CAP TTHROWSQ                    \ 17 > 16
    [: CGT-D CODEGEN:RESET  -5 CGT-D CODEGEN:APPEND-DECIMAL ;]
-      E-CG-VALUE TTHROWSQ                  \ default buffer negative decimal -> module code
-   [: CGT-E CODEGEN:RESET  s" 123456789" CGT-E CODEGEN:APPEND-STRING ;]
-      -7001 TTHROWSQ                       \ 9 > 8: explicit buffer overflow -> caller code
-   [: CGT-E CODEGEN:RESET  -1 CGT-E CODEGEN:APPEND-DECIMAL ;]
-      -7002 TTHROWSQ ;                     \ explicit buffer negative decimal -> caller code
+      E-CG-VALUE TTHROWSQ ;                \ negative
 
 : CGT-RUN ( -- )
    T-RESET
