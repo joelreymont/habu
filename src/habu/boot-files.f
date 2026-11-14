@@ -70,10 +70,11 @@ private
    CHECKER COMMON s" src/habu/layout.f" ROW
    CHECKER COMMON s" src/habu/intern-table.f" ROW
    CHECKER COMMON s" src/core/checker.f" ROW
-   CHECKER COMMON s" src/core/engine-error-effects.f" ROW
    CHECKER COMMON s" src/core/type-schema.f" ROW
    CHECKER COMMON s" src/core/type-family.f" ROW
    CHECKER COMMON s" src/core/render.f" ROW
+   CHECKER COMMON s" src/core/check-walk.f" ROW
+   CHECKER COMMON s" src/core/engine-error-effects.f" ROW
    CHECKER COMMON s" src/core/sumtype.f" ROW
    CHECKER COMMON s" src/core/effect.f" ROW
    CHECKER COMMON s" src/core/layout-buffer.f" ROW

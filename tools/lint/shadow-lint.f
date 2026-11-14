@@ -176,11 +176,13 @@ variable IN-DEFINITION
    s" src/core/path.f"      LINT-FILE
    s" src/core/pointer-storage.f" LINT-FILE
    s" src/core/engine-error.f" LINT-FILE
-   s" src/core/engine-error-effects.f" LINT-FILE
    s" src/habu/prims.f"     LINT-FILE
    s" src/core/checker.f"   LINT-FILE
    s" src/core/type-schema.f" LINT-FILE s" src/core/type-family.f" LINT-FILE
-   s" src/core/render.f"    LINT-FILE   s" src/core/roles.f"     LINT-FILE
+   s" src/core/render.f"    LINT-FILE
+   s" src/core/check-walk.f" LINT-FILE
+   s" src/core/engine-error-effects.f" LINT-FILE
+   s" src/core/roles.f"     LINT-FILE
    s" src/core/bytes.f"     LINT-FILE
    s" src/core/exec-vector.f" LINT-FILE s" src/core/sha256.f"    LINT-FILE
    s" src/core/int-convert-retire.f" LINT-FILE

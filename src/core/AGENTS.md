@@ -12,4 +12,5 @@ Load order is the engine's prefix list, `src/habu/boot-files.f` (FILL).
 - `structures.f`, `enums.f`, `layout-buffer*.f`, `pointer-storage.f`,
   `dynamic-storage.f`, `exec-vector.f` — storage and vector definers.
 - `include.f` — `include` and `require`; `top-row.f` — the typed top-level row;
-  `render.f` — diagnostics; `engine-error.f` — the engine failure ABI.
+  `render.f` — diagnostics; `check-walk.f` — the checker's walk, after the
+  registry and `render.f`; `engine-error.f` — the engine failure ABI.
