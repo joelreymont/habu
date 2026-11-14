@@ -113,6 +113,7 @@ PTR-VARIABLE TDB-A   variable TDB-U   \ body (SUMTYPE token buffer / arity token
 PTR-VARIABLE TDT-A   variable TDT-U   \ offending token (diagnostics)
 PTR-VARIABLE TDW-A   variable TDW-U   \ short reason (diagnostics)
 PTR-VARIABLE TDF-A   variable TDF-U   \ what to write instead (diagnostics)
+PTR-VARIABLE TDA-A   variable TDA-U   \ token TDECL-THROW armed with (diagnostics)
 variable TDECL-CODE                 \ the code TDW and TDF explain (0 = none armed)
 variable TDECL-OVERSIZE             \ a collection buffer capped an over-cap body
 variable TDECL-CUR-FAM              \ family id being declared (-1 outside a body)
@@ -143,14 +144,18 @@ public
 \ The armed reason is the one store every declaration catcher reads, whichever
 \ front end runs the declaration; it explains only the code it was armed with.
 : TDECL-ARM ( ptr u8 n ptr u8 n n -- )   \ reason, fix, code
-   TDECL-CODE ! TDF-U ! TDF-A ! TDW-U ! TDW-A ! ;
+   TDECL-CODE ! TDF-U ! TDF-A ! TDW-U ! TDW-A !
+   0 TDA-U !  NULL-PTR TDA-A ! ;
 : TDECL-ARMED ( -- n ) TDECL-CODE @ ;
 : TDECL-WHY@ ( -- ptr u8 n ptr u8 n ) TDW-A @ TDW-U @  TDF-A @ TDF-U @ ;
+\ Empty unless the current arming came from TDECL-THROW.
+: TDECL-ARMED-TOK@ ( -- ptr u8 n ) TDA-A @ TDA-U @ ;
 
 : TDECL-THROW ( ptr u8 n ptr u8 n ptr u8 n n -- )
    {: ta:ptr tu:n wa:ptr wu:n fa:ptr fu:n code:n :}
-   ta tu TDECL-TOK!
    wa wu fa fu code TDECL-ARM
+   ta tu TDECL-TOK!
+   ta TDA-A !  tu TDA-U !
    code throw ;
 
 \ --- transactional mark/restore over every store a declaration can grow.
@@ -227,9 +232,18 @@ private
    TDS-U @ 0 > IF TDS-A @ TDS-U @ EXIT THEN
    TDT-A @ TDT-U @ TDECL-PLACED-TOK ;
 
+\ The armed token as a `word` note when the record is placed elsewhere, as a
+\ generated word that collides is placed at the token that generated it.
+: TDECL-WORD-NOTE ( ptr u8 n -- ptr u8 n ) {: pa:ptr pu:n :}
+   TDECL-ARMED-TOK@ {: wa:ptr wu:n :}
+   wu 0=  wa wu pa pu CORE-STR= or IF s" " EXIT THEN
+   wa wu ;
+
+\ TDECL-RUN reports only a code TDECL-CODE was armed with.
 : TDECL-REPORT ( -- )
-   TDK-A @ TDK-U @  TDN-A @ TDN-U @  TDECL-REPORT-TOK
-   TDW-A @ TDW-U @  TDF-A @ TDF-U @  TDECL-DIAG ;
+   TDK-A @ TDK-U @  TDN-A @ TDN-U @  TDECL-REPORT-TOK  2dup TDECL-WORD-NOTE
+   {: pa:ptr pu:n na:ptr nu:n :}
+   pa pu  TDW-A @ TDW-U @  TDF-A @ TDF-U @  na nu  TDECL-DIAG ;
 
 \ A throw rolls the registries back. E-TDECL-UNRESOLVED propagates unreported,
 \ a status in 1..255 was printed where it arose, and a code no reason is armed
