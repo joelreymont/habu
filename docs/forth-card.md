@@ -204,7 +204,6 @@ before the word runs, and `--load` exits 70 (`evaluate-closed` throws 70).
 | `defer D`, `: MK ( n -- ) create , does> @ ;`: a definer that declares an effect with no signature after its name, or one never closed | `E-MISSING-SIGNATURE` at the definer, at `does>` for a clause; `--load` exits 76, `E-MISSING-SIGNATURE habu: <file>:<line>: 'D' has no closed ( -- ) signature` |
 | a `\` or `( … )` comment in a `STRUCTURE`/`ENUM` body | rc 70 at load; `E-BAD-DECLARATION` from `tools/check.f` |
 | `ENUM state DERIVE eq closed open ;ENUM` in a package's private section | `habu: bad enum declaration 'state': derive requires a public family at 'eq'`, rc 70; test a private family's values with an exhaustive `MATCH` |
-| `16 DYNAMIC-STORAGE:RECORD-NEW`, or any call or tick of `DYNAMIC-STORAGE:RECORD-NEW` or `RECORD-RELEASE`, directly or through a re-export, at top level too, outside a `HEAP`'s generated NAME-NEW and NAME-RELEASE | `E-ARENA-CALL-TOP-LEVEL` for a top-level token in the source, else `E-ARENA-CALL` |
 | `4 TYPED-BUFFER B no-such-type`: a type, name or literal count `TYPED-*`, `*LAYOUT-BUFFER`, `DYNAMIC-BUFFER`, `ARENA` or `HEAP` refuses, or a name or type not on the definer's line | `E-BAD-STORAGE` |
 | `( -- ptr a )` for a `variable` | `E-NONPARAMETRIC-EFFECT` |
 | a structure pointer passed where a callback's context is `ptr a` (a pointer to cells): `: RUN ( ptr a [ ptr a -- ] -- ) execute ;`, `: GO ( ptr box -- ) [: CB ;] RUN ;` | `E-MISMATCH` at `RUN`; declare a pass-through context `a` |

@@ -960,7 +960,6 @@ variable MDV-I   variable MDV-F
       MD-C2-COPY      of s" E-C2-COPY" endof
       MD-C2-DROP      of s" E-C2-DROP" endof
       MD-C2-ESCAPE    of s" E-C2-SCOPE-ESCAPE" endof
-      MD-ARENA-CALL   of s" E-ARENA-CALL" endof
       MD-UNDERFLOW    of s" E-INPUT-UNDERFLOW" endof
       MD-RIGID-REGION of s" E-RIGID-REGION-MISMATCH" endof
       MD-RIGID-EXTENT of s" E-RIGID-EXTENT-MISMATCH" endof
@@ -1022,7 +1021,6 @@ variable MDV-I   variable MDV-F
       MD-C2-COPY      of s" move_exclusive_value" endof
       MD-C2-DROP      of s" consume_exclusive_value" endof
       MD-C2-ESCAPE    of s" keep_borrow_within_scope" endof
-      MD-ARENA-CALL   of s" use_arena_words" endof
       MD-UNDERFLOW    of s" supply_missing_input" endof
       MD-RIGID-REGION of s" fix_host_region" endof
       MD-RIGID-EXTENT of s" fix_host_extent" endof
@@ -1142,7 +1140,6 @@ variable MDV-I   variable MDV-F
       MD-C2-COPY      of s" Move the exclusive value once instead of copying it." endof
       MD-C2-DROP      of s" Return or consume the exclusive value instead of discarding it." endof
       MD-C2-ESCAPE    of s" Return only values independent of the owner or loan opened by this operation." endof
-      MD-ARENA-CALL   of s" Declare the storage with HEAP NAME TYPE and call its generated NAME-NEW and NAME-RELEASE: only those words call RECORD-NEW and RECORD-RELEASE, because only they tie the record size to the declared type." endof
       MD-EFFECT-DEPTH of DEPTH-SUGGEST$ endof
       MD-INPUT-WIDTH  of s" Take fewer cells: pass bulk values in a buffer, not on the stack." endof
       MD-CF-DEPTH     of s" Move the inner control structures into a named word and call it there; each definition counts its own control frames." endof
@@ -1214,7 +1211,6 @@ variable MDV-I   variable MDV-F
       MD-C2-COPY      of s" exclusive value copied" endof
       MD-C2-DROP      of s" exclusive value discarded" endof
       MD-C2-ESCAPE    of s" scoped value escapes its owner or loan" endof
-      MD-ARENA-CALL   of s" arena call: only HEAP's generated NAME-NEW and NAME-RELEASE call the storage runtime" endof
       MD-RIGID-REGION of s" rigid host: region mismatch (different allocation)" endof
       MD-RIGID-EXTENT of s" rigid host: extent mismatch (different bounds identity)" endof
       MD-RIGID-GEN    of s" rigid host: stale mutation generation" endof
@@ -2095,14 +2091,6 @@ variable WARN-DIAGS   -1 WARN-DIAGS !
    ELSE s" E-BAD-QUALIFIED-TOP-LEVEL" s" malformed qualified name" TOP-SPAN-PROSE THEN
    10 EMIT1
    FLUSH ;
-: TOP-ARENA-DIAG ( -- )
-   1 DEST !  0 TEXT-LEN !  0 RQM !
-   JSON @ IF
-      s" E-ARENA-CALL-TOP-LEVEL"  MD-ARENA-CALL MD-CLASS$  s" rejected"
-      MD-ARENA-CALL MD-SUGGEST$ TOP-SPAN-JSON
-   ELSE s" E-ARENA-CALL-TOP-LEVEL"  MD-ARENA-CALL MD-REASON$ TOP-SPAN-PROSE THEN
-   10 EMIT1
-   FLUSH ;
 \ Only the verifier's child reports a deferral, and it writes packets. Its
 \ cause is cleared once written, so a report that records none prints none.
 : TOP-DEFERRED-DIAG ( -- )
@@ -2114,8 +2102,7 @@ variable WARN-DIAGS   -1 WARN-DIAGS !
    0 DEFER-WHY ! ;
 \ checker.f SHADOW-DIAG-XT selects: 0 the using-shadow reference site, 1 the
 \ arity-shadow definition site, 2 a using ambiguity, 3 and 4 a top-level token
-\ undefined or malformed, 5 a deferred top-level stretch or definition, 6 a
-\ top-level token naming the storage runtime. One hook
+\ undefined or malformed, 5 a deferred top-level stretch or definition. One hook
 \ because every defer before `: TRUST` takes a slot of the engine's pre-trust
 \ pending table (src/habu/layout.f PD-CAP).
 : SHADOW-DIAG ( n -- )
@@ -2125,7 +2112,6 @@ variable WARN-DIAGS   -1 WARN-DIAGS !
    sel 3 = IF TOP-UNDEF-DIAG EXIT THEN
    sel 4 = IF TOP-BADQUAL-DIAG EXIT THEN
    sel 5 = IF TOP-DEFERRED-DIAG EXIT THEN
-   sel 6 = IF TOP-ARENA-DIAG EXIT THEN
    USHADOW-DIAG ;
 : SHADOW-DIAG-INSTALL ( -- ) [: SHADOW-DIAG ;] is SHADOW-DIAG-XT ;
 SHADOW-DIAG-INSTALL

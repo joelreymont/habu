@@ -2257,10 +2257,8 @@ runtime or analysis layer.
   registers a record, so capture has no live-record check: release it before
   saving an image (a stripped image refuses a typed cell holding one). The
   declaration passes the storage definers' name gate and refuses a sub-cell
-  element other than `u8` and an unknown type, defining nothing. Checked code
-  calls or ticks `DYNAMIC-STORAGE:RECORD-NEW` and
-  `DYNAMIC-STORAGE:RECORD-RELEASE` only inside the generated words, at top
-  level too (**Only HEAP's generated words reach the storage runtime**), so a
+  element other than `u8` and an unknown type, defining nothing. The words
+  that map and unmap a record are `DYNAMIC-STORAGE`'s private words, so a
   record's size always comes from the declared type; a record of a STRUCTURE
   type enters no other generic-pointer word.
 - **Runtime-sized buffers use OS mappings.** `create … allot` consumes
@@ -2590,14 +2588,6 @@ sections above.
   `S\"` does and needs its delimiter space (see **Habu Native Tooling
   Gotchas**). Native `.` prints a newline: `11 . 22 . cr` emits
   `11\n22\n\n`; use digit emitters for inline numbers.
-- **Only HEAP's generated words reach the storage runtime.** A call or tick of
-  `DYNAMIC-STORAGE:RECORD-NEW` or `RECORD-RELEASE`, directly or through a
-  re-export, outside a `HEAP`'s NAME-NEW and NAME-RELEASE is refused (`arena
-  call: only HEAP's generated NAME-NEW and NAME-RELEASE call the storage
-  runtime`): `E-ARENA-CALL-TOP-LEVEL` for a top-level token in the source, else
-  `E-ARENA-CALL`, in a body, a quotation or text `evaluate` runs at top level
-  (there with `word` null). Exporting the two words is admitted; only the call
-  or tick is refused.
 - **Package `private` is visibility, not sealing.** Another file may reopen
   an application package and call its private words until its `seal-package`;
   an engine package is sealed by its build, and a sealed reopen is refused.

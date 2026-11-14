@@ -392,9 +392,7 @@
    TKF TKFU @ SPELLED-STEP? IF EXIT THEN
    TKF TKFU @ CHECKER-PREFLIGHT:BODY-TOK? IF REJECT-IMMEDIATE THEN
    DCUR @ XE-PD !  RCUR @ XE-PR !          \ the pre-op rows ROW-COMMON needs below
-   TKF TKFU @ RELEASE-CALL? LAYOUT-RELEASE !
    TKF TKFU @ DO-TOK
-   0 LAYOUT-RELEASE !
    OK @ IF THROW-CUR? IF CALL-THROW-EDGE THEN THEN
    OK @ IF DEAD-CUR? IF a u DEAD-OWNER! -1 DEADP ! THEN THEN
    OK @ #CFC @ 0 > and IF BARRIER-CUR? IF ALL-CF-UNIFORM? 0= IF REJECT-DIVBAR THEN THEN THEN
@@ -1004,7 +1002,7 @@ public
    0 LBUF-EVAL-OFF !
    a LBUF-PEND-A !  u LBUF-PEND-U ! ;
 : LBUF-PEND-CLEAR ( -- )
-   NULL-PTR LBUF-PEND-A !  0 LBUF-PEND-U !  0 LAYOUT-INTRO !  0 LAYOUT-RELEASE ! ;
+   NULL-PTR LBUF-PEND-A !  0 LBUF-PEND-U !  0 LAYOUT-INTRO ! ;
 
 \ A body-supplied name left unbound takes a new identity, and only a region name may
 \ be bound: to one this body minted that no other name claims and FITS? admits.
@@ -2079,7 +2077,6 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    why 0 <> IF a u why CHECKER-RESOLVE:RAISE THEN
    CHECKER-QBAD-TOK @ 0= IF
       a u sym TOP-BOUND-SYM IF
-         dup ARENA-CALL-DENIED? IF drop a u 6 TOP-REFUSE EXIT THEN
          dup TOP-CONTROL {: flags:n deferred:bool :}
          dup SYM-EFFECT-UNRESOLVED? IF
             drop flags deferred runs TOP-RUNS
@@ -2469,7 +2466,6 @@ public
 : TOP-TICK-STEP ( -- )
    TOP-BEGIN
    TKF TKFU @ CHECKER-TOP-SYM {: sym:n hit:bool :}
-   hit IF sym ARENA-CALL-REFUSE? IF EXIT THEN THEN
    FEP-CLEAR
    hit IF sym CHECKER-FIND-USIG-SYM drop THEN
    FEP-HIT? IF FEP @ TICK-QUOT FEP @ USIG-SYM@ BTICK-EDGE ELSE OPAQUE-XT THEN

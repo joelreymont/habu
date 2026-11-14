@@ -161,18 +161,6 @@ public
    UNLOCK ;
 
 
-\ A zero-filled record of `bytes` on its own mapping, its pointee free: only HEAP's
-\ generated NAME-NEW calls it, passing its type's width (checker.f ARENA-CALL-REFUSE?).
-: RECORD-NEW ( n -- ptr a )
-   map-anon 0< if drop E-MAP throw then ;  INTRINSIC-RECORD-NEW INTRINSIC
-
-
-\ Unmaps a record RECORD-NEW mapped with the same `bytes`; a refused unmap is
-\ E-UNMAP.
-: RECORD-RELEASE ( ptr a n -- )
-   munmap 0< if E-UNMAP throw then ;  INTRINSIC-RECORD-RELEASE INTRINSIC
-
-
 \ Runs a fork with the registry held; PROC-FORK:RAW is its caller. Growth,
 \ release and membership changes each take several stores under this lock, and a
 \ child forked mid-change could neither wait for that task nor carry on where it

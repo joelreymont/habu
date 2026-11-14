@@ -37,7 +37,7 @@ undefine ONE
 TEXT-END 70 T=
 
 : TRUSTED-POSTPONE ( -- n )
-   [: s\" : MAKE-TRUSTED ( ptr u8 n -- ) EFFECT:NEW EFFECT:N EFFECT:OUT define-word postpone DYNAMIC-STORAGE:RECORD-NEW postpone ; ;"
+   [: s\" : MAKE-TRUSTED ( ptr u8 n -- ) EFFECT:NEW EFFECT:N EFFECT:OUT define-word postpone reloc-maps-clear postpone ; ;"
       evaluate-closed ;] catch ;
 TRUSTED-POSTPONE 70 T=
 

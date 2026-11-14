@@ -3861,9 +3861,6 @@ variable CAST-PATH-N
 CHECKER-REG:SCRATCH{
 variable LAYOUT-XPORT
 variable LAYOUT-INTRO
-\ Set only across the RECORD-RELEASE call in HEAP's generated NAME-RELEASE: the
-\ one generic-pointer call a layout pointer may enter.
-variable LAYOUT-RELEASE
 CHECKER-REG:}SCRATCH
 PTR-VARIABLE LBUF-PEND-A
 variable LBUF-PEND-U   0 LBUF-PEND-U !
@@ -4047,7 +4044,7 @@ variable NMOFF                           \ its token's offset in the checked tex
       b ISVAR IF b PAY TVK@ TVK-NULL = IF RES-FALSE EXIT THEN THEN
    THEN
    a b LAYOUT-XPORT-ALLOW? IF RES-FALSE EXIT THEN
-   LAYOUT-INTRO @ LAYOUT-RELEASE @ or 0 <> CUR-STRICT @ 0 <> and IF
+   LAYOUT-INTRO @ 0 <> CUR-STRICT @ 0 <> and IF
       a HIDDEN-PARAM? b HIDDEN-PARAM? or 0= IF
          a LAYOUT-PARAM? b ISVAR and IF a T-RES LAYOUT-MEM-OK? 0= EXIT THEN
          b LAYOUT-PARAM? a ISVAR and IF b T-RES LAYOUT-MEM-OK? 0= EXIT THEN
@@ -4876,7 +4873,7 @@ CHECKER-REG:}SCRATCH
 : NEW-WALK ( -- )
    0 CALL-ARMED !  0 CALL-HIT !
    -1 OK ! 0 UNCK ! 0 CATCH-PF-N ! 0 CATCH-N ! 0 FACTS ! 0 XFACT ! 0 USP !
-   0 LAYOUT-XPORT !  0 LAYOUT-INTRO !  0 LAYOUT-RELEASE !
+   0 LAYOUT-XPORT !  0 LAYOUT-INTRO !
    TRAIL-RESET   0 TRIAL-DEPTH !   LIN-TAINT-RESET
    FRESH MK-ROW dup BROW ! DCUR !
    FRESH MK-ROW dup RBROW ! RCUR ! ;
@@ -5070,7 +5067,6 @@ CHECKER-REG:}SCRATCH
 40 constant MD-TOP-UNKNOWN   \ a top-level token read a cell beneath the cells the interpret row knows (TOP-UNKNOWN); same E-STALE-READ code, its own prose and repair class
 41 constant MD-TAIL-ESCAPE   \ a declared callable's implicit tail escaped into a row that outlives the comparison (QUOT-PAIR TAIL-HIT); same E-MISMATCH code, its own prose and suggestion
 42 constant MD-LIT-FIT       \ a literal reached a fixed-width type it does not fit (LIT-FITS? LIT-HIT); same E-MISMATCH code, its own prose and suggestion
-44 constant MD-ARENA-CALL    \ the storage runtime named outside HEAP's generated words (ARENA-CALL-REFUSE?)
 45 constant MD-IS-UNKNOWN    \ an `is` target names no word (IS-TOK); same E-UNDEFINED code, its own prose and suggestion
 46 constant MD-IS-NOT-DEFER  \ an `is` target names a word that is not deferred (IS-TOK)
 47 constant MD-IS-MISSING    \ `is` ends the checked text with no target (IS-TOK); same E-MISSING-NAME code
@@ -5442,8 +5438,6 @@ CHECKER-OWNER-ABI:BINDING-NAMES-ID constant INTRINSIC-NAMES      \ names:
 16 constant INTRINSIC-XT-STORE                 \ xt!
 17 constant INTRINSIC-ATOMIC-STORE             \ atomic!
 18 constant INTRINSIC-ATOMIC-CAS               \ atomic-cas
-19 constant INTRINSIC-RECORD-NEW               \ RECORD-NEW
-20 constant INTRINSIC-RECORD-RELEASE           \ RECORD-RELEASE
 : INTRINSIC>CTL ( n -- n ) CTL-INTRINSIC-SHIFT lshift ;
 : CTL>INTRINSIC ( n -- n ) CTL-INTRINSIC-MASK and CTL-INTRINSIC-SHIFT rshift ;
 
@@ -5483,8 +5477,6 @@ CHECKER-OWNER-ABI:BINDING-NAMES constant CTL-NAMES
    id INTRINSIC-XT-STORE = IF s" xt-store" EXIT THEN
    id INTRINSIC-ATOMIC-STORE = IF s" atomic-store" EXIT THEN
    id INTRINSIC-ATOMIC-CAS = IF s" atomic-cas" EXIT THEN
-   id INTRINSIC-RECORD-NEW = IF s" record-new" EXIT THEN
-   id INTRINSIC-RECORD-RELEASE = IF s" record-release" EXIT THEN
    s" " ;
 
 
@@ -12225,9 +12217,8 @@ CHECKER-REG:}SCRATCH
 \ (CHECKER-RESOLVE:RAISE, the packages CK-USED-MASK marks), 3 a top-level token
 \ no scope defines and 4 one with a malformed qualifier (CHECKER-VERIFY-TOP), 5
 \ a top-level stretch or a definition deferred to the run
-\ (CHECKER-VERIFY-DEFERRED, CHECKER-VERIFY-DEFERRED-BODY), 6 a top-level token
-\ naming the storage runtime (TOP-ANSWER). One defer
-\ and not seven because every `defer` written here, before `: TRUST`, takes a slot
+\ (CHECKER-VERIFY-DEFERRED, CHECKER-VERIFY-DEFERRED-BODY). One defer
+\ and not six because every `defer` written here, before `: TRUST`, takes a slot
 \ of the engine's pre-trust pending table.
 defer SHADOW-DIAG-XT ( n -- )
 : SHADOW-DIAG-DEFAULT ( -- ) [: drop ;] is SHADOW-DIAG-XT ;
@@ -20353,34 +20344,10 @@ variable IS-PEND-U                   \ and its length
    RES-TRUE ;
 
 
-\ The intrinsic id of the word SYM names, through any export.
-: SYM-INTRINSIC ( n -- n ) CHECKER-SYM-SOURCE CTL-FLAGS-SYM CTL>INTRINSIC ;
-
-\ HEAP's runtime words trust the width passed in: a call or tick of one, through
-\ any export, is admitted only while LBUF-EVAL checks a generated word.
-: ARENA-CALL-DENIED? ( n -- bool )
-   {: sym:n :}
-   sym SYM-INTRINSIC {: id:n :}
-   id INTRINSIC-RECORD-NEW <>  id INTRINSIC-RECORD-RELEASE <>  and IF RES-FALSE EXIT THEN
-   LBUF-PEND-MATCH? 0= ;
-
-: ARENA-CALL-REFUSE? ( n -- bool )
-   ARENA-CALL-DENIED? 0= IF RES-FALSE EXIT THEN
-   MD-ARENA-CALL MDIAG!
-   0 OK !
-   RES-TRUE ;
-
-\ Whether the token is HEAP's NAME-RELEASE calling RECORD-RELEASE, the call
-\ that binds the runtime's generic pointee to the record's layout.
-: RELEASE-CALL? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   LBUF-PEND-MATCH? 0= IF RES-FALSE EXIT THEN
-   a u BIND-TOK  TOK-SYM @ SYM-INTRINSIC INTRINSIC-RECORD-RELEASE = ;
-
 \ Files the refusal a tick of SYM meets, true when it files one; when it
 \ files none, FEP holds SYM's user signature, if it has one.
 : TICK-REFUSED? ( n -- bool ) {: sym:n :}
    sym SCOPE-AUTH-SYM? IF 0 OK ! -1 FAILSET ! RES-TRUE EXIT THEN
-   sym ARENA-CALL-REFUSE? IF TICK-PIN RES-TRUE EXIT THEN
    sym PRIM-TRUSTED-SYM? IF
       TORDER-ACTIVE @ TORDER-GATE = TORDER-ACTIVE @ TORDER-PARENT-GATE = or
       IF RF-CAP CREFUSE! THEN
@@ -20524,9 +20491,8 @@ variable IS-PEND-U                   \ and its length
 \ any other binding of the spelling goes on to DO-TOK and is judged by its own
 \ recorded effect.
 : SPELLED-STEP? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u TOK-INTRINSIC  TOK-SYM @  {: id:n sym:n :}
+   a u TOK-INTRINSIC {: id:n :}
    a u BIND-SOURCE-CALL
-   sym ARENA-CALL-REFUSE? IF RES-TRUE EXIT THEN
    a u ZERO-OPERAND? IF RES-TRUE EXIT THEN
    id INTRINSIC-QDUP = IF QDUP-STEP RES-TRUE EXIT THEN
    LAYOUT-XPORT @ IF a u WF-XPORT-RECORD THEN   \ width facts from the pre-op row

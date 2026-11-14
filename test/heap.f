@@ -3,12 +3,10 @@
 \ its contents across another record's NEW and RELEASE; a record holding a
 \ JSON:cursor runs a reader with no cast; a record holds an arena by pointer;
 \ a refused declaration (a sub-cell element, an unknown type) defines
-\ nothing; checked code can neither call nor tick RECORD-NEW or
-\ RECORD-RELEASE outside HEAP's generated words; a record pointer enters no
-\ generic-pointer word that reads a cell; and tools/check.f --verify-only
-\ certifies a word using a HEAP's words instead of deferring the rest of the
-\ source to the run, and refuses a call or tick of the record runtime words, at
-\ top level under its own code.
+\ nothing; checked code can neither call nor tick MAP-RECORD or UNMAP-RECORD
+\ outside DYNAMIC-STORAGE; a record pointer enters no generic-pointer word that
+\ reads a cell; and tools/check.f --verify-only certifies a word using a HEAP's
+\ words instead of deferring the rest of the source to the run.
 require src/lib/test.f
 require src/lib/json.f
 require src/lib/arena.f
@@ -26,8 +24,8 @@ package DYNAMIC-STORAGE
 CAST: N>RECORD ( n -- ptr a )
 public
 variable RELEASED
-: RECORD-NEW ( n -- ptr a ) drop 0 N>RECORD ;
-: RECORD-RELEASE ( ptr a n -- ) 2drop 1 RELEASED ! ;
+: MAP-RECORD ( ptr n -- ptr a ) drop 0 N>RECORD ;
+: UNMAP-RECORD ( ptr a ptr n -- ) 2drop 1 RELEASED ! ;
 ;package
 
 STRUCTURE cap DERIVE addr FIELD id n ;STRUCTURE
@@ -56,12 +54,7 @@ STRUCTURE holder DERIVE addr FIELD arena ptr ARENA:arena ;STRUCTURE
 HEAP HOLDERS holder
 
 
-package RECORD-PX
-public
-EXPORT DYNAMIC-STORAGE:RECORD-RELEASE
-;package
-
-\ An ordinary word with RECORD-RELEASE's generic pointee.
+\ An ordinary word that reads its generic pointee as a cell.
 : TAKE ( ptr a n -- ) drop @ drop ;
 
 TYPED-VARIABLE EVAL-A ptr u8
@@ -130,23 +123,13 @@ variable EVAL-U
    s" WORSE-NEW" UNDEFINED? TTRUE ;
 
 
-\ Were Z1 admitted, a 1-byte record would stand for a cell. The pointee is a
-\ plain cell, which the layout fence would let through, so the call gate alone
-\ refuses these, in a body, a quotation, at top level and through a re-export.
+\ MAP-RECORD trusts the width its cell holds, so the record runtime words are
+\ DYNAMIC-STORAGE's private words: outside it a tick or a call is undefined.
 : CALLS ( -- )
    s" checked code neither calls nor ticks the record runtime words" T-LABEL
-   s" : Z1 ( -- ptr n ) 1 DYNAMIC-STORAGE:RECORD-NEW ;" EVAL CHECKER-REJECT-RC T=
-   s" Z1" UNDEFINED? TTRUE
-   s" : Z2 ( ptr n -- ) 16 DYNAMIC-STORAGE:RECORD-RELEASE ;" EVAL CHECKER-REJECT-RC T=
-   s" Z2" UNDEFINED? TTRUE
-   s" : Z3 ( -- ptr n ) 1 ['] DYNAMIC-STORAGE:RECORD-NEW execute ;" EVAL CHECKER-REJECT-RC T=
-   s" Z3" UNDEFINED? TTRUE
-   s" ' DYNAMIC-STORAGE:RECORD-RELEASE drop" EVAL CHECKER-REJECT-RC T=
-   s" : Z5 ( -- ptr n ) 1 [: DYNAMIC-STORAGE:RECORD-NEW ;] execute ;" EVAL CHECKER-REJECT-RC T=
-   s" Z5" UNDEFINED? TTRUE
-   s" NULL-PTR 16 DYNAMIC-STORAGE:RECORD-RELEASE" EVAL CHECKER-REJECT-RC T=
-   s" : Z6 ( -- ) NULL-PTR 16 RECORD-PX:RECORD-RELEASE ;" EVAL CHECKER-REJECT-RC T=
-   s" Z6" UNDEFINED? TTRUE
+   s" ' DYNAMIC-STORAGE:MAP-RECORD drop" EVAL CHECKER-REJECT-RC T=
+   s" : Z7 ( -- ) NULL-PTR 16 DYNAMIC-STORAGE:UNMAP-RECORD ;" EVAL CHECKER-REJECT-RC T=
+   s" Z7" UNDEFINED? TTRUE
    s" a record pointer enters no generic-pointer word that reads a cell" T-LABEL
    s" : Z4 ( ptr note -- ) 16 TAKE ;" EVAL CHECKER-REJECT-RC T=
    s" Z4" UNDEFINED? TTRUE ;
@@ -172,40 +155,9 @@ variable EVAL-U
    E2E-TREE:RC@ 0 T= ;
 
 
-\ A child as VERIFY's, over HEAP's runtime words called in a body, a quotation
-\ and ticked at top level, each refusal reported as its own record. The
-\ pre-pass judges no top-level token after one it refuses, so the tick comes
-\ last.
-: CALLS-SRC$ ( -- ptr u8 n )
-   S\" : R1 ( -- ptr n ) 16 DYNAMIC-STORAGE:RECORD-NEW ;\n: R2 ( ptr n -- ) 16 DYNAMIC-STORAGE:RECORD-RELEASE ;\n: R3 ( -- ptr n ) 16 [: DYNAMIC-STORAGE:RECORD-NEW ;] execute ;\n' DYNAMIC-STORAGE:RECORD-RELEASE drop\n" ;
-
-: VERIFY-CALLS ( -- )
-   s" tools/check.f --verify-only refuses the record runtime calls, at top level under its own code, in the diagnostic contract" T-LABEL
-   s" heap-calls" E2E-TREE:TREE
-   E2E-TREE:ROOT$ FS:CLEANUP-TREE+
-   s" test/heap-calls.f" E2E-TREE:AT-A CALLS-SRC$ FS:WRITE-ALL
-   s" tools/check.f" E2E-TREE:ARGS
-   s" --" >LEN PROC-ARGV+
-   s" --verify-only" >LEN PROC-ARGV+
-   s" test/heap-calls.f" >LEN PROC-ARGV+
-   ENGINE-CANDIDATE:PATH$ E2E-TREE:ROOT$ E2E-TREE:RUN-ON
-   E2E-TREE:ERR$ S\" \"code\":\"E-ARENA-CALL\"" COUNT-SUB 3 T=
-   E2E-TREE:ERR$ S\" \"code\":\"E-ARENA-CALL-TOP-LEVEL\"" COUNT-SUB 1 T=
-   \ The top-level tick's token is at line 4, column 3.
-   E2E-TREE:ERR$ S\" \"line\":4,\"column\":3,\"" COUNT-SUB 1 T=
-   E2E-TREE:RC@ 0 <> TTRUE
-   s" test/heap-calls.jsonl" E2E-TREE:AT-A E2E-TREE:ERR$ FS:WRITE-ALL
-   s" tools/gate-json-assert.f" E2E-TREE:ARGS
-   s" --" >LEN PROC-ARGV+
-   s" diag-contract" >LEN PROC-ARGV+
-   s" test/heap-calls.jsonl" >LEN PROC-ARGV+
-   ENGINE-CANDIDATE:PATH$ E2E-TREE:ROOT$ E2E-TREE:RUN-ON
-   E2E-TREE:NEED-OK ;
-
-
 : RUN ( -- )
    T-RESET
-   RECORDS READER HOLDER REFUSALS CALLS VERIFY VERIFY-CALLS
+   RECORDS READER HOLDER REFUSALS CALLS VERIFY
    HEAP-CAPTURE:CAPTURE
    T-REPORT ;
 
