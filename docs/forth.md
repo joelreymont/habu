@@ -380,11 +380,11 @@ serves a one-off call or escapes a collision.
   are open at once; a further one is rejected.
 - Inside a package `;using` closes only a `using` the package opened; close one
   opened before `package` after `;package`. A `;using` inside the package that
-  would close an outer one is refused by name (`ENGINE-ERROR:USING-OUTER`;
-  `E-USING-OUTER` from `tools/check.f`).
+  would close an outer one is rejected as `E-USING-OUTER`, status
+  `ENGINE-ERROR:USING-OUTER`.
 - A load file is a using scope the same way: an included file or an
   `evaluate`d buffer closes only the usings it opens. A `;using` in it that
-  would close one its includer opened is refused by name the same way.
+  would close one its includer opened is rejected the same way.
 - A bare tail reaches the used public wordlists last, in the lookup order
   under "Packages": the open-package scope silently wins over a used public.
   A tail in MORE THAN ONE used public wordlist is `E-USING-AMBIGUOUS`; the

@@ -544,16 +544,16 @@ holds an address**.
   build makers and CLI boundaries.
 - Exit 79 (`$4F`) is compilation from a task: a definition, `create`, `allot`,
   `,`, `evaluate`, a load or a package keyword run on a task's or a
-  callback's thread. The kernel's guard writes
-  `E-TASK-COMPILE habu: <primitive> from a task lr <lr>` on fd 2;
-  `evaluate`, `evaluate-closed`, a load, `create`, `,`, `c,`, `align` and
-  `allot` reach it first, so a definition or keyword in a text is refused
-  before the text is read. Calling `INTERPRETER:EVAL-FRAMED`,
-  `INTERPRETER:EVAL-FRAMED-RANGE` or `INTERPRETER:REPL` on a task's thread
-  writes `E-TASK-COMPILE habu: source read on a task's thread; only the main
-  thread compiles`. The main thread compiles while tasks run; `cp!` and
-  `ndict!` exit 79 on it too while any task is live, writing
-  `E-TASK-COMPILE habu: <primitive> while a task is live lr <lr>`.
+  callback's thread. The kernel's guard prints the record
+  ``error[E-TASK-COMPILE]: `<primitive>` ran on a task's thread, and only the
+  main thread defines and allots`` with the note `in`; `evaluate`,
+  `evaluate-closed`, a load, `create`, `,`, `c,`, `align` and `allot` reach it
+  first, so a definition or keyword in a text is rejected before the text is
+  read. Calling `INTERPRETER:EVAL-FRAMED`, `INTERPRETER:EVAL-FRAMED-RANGE` or
+  `INTERPRETER:REPL` on a task's thread is rejected as `E-TASK-COMPILE` too.
+  The main thread compiles while tasks run; `cp!` and `ndict!` exit 79 on it
+  too while any task is live (``error[E-TASK-COMPILE]: `cp!` ran while a task
+  is live``).
   `NSHADOW:OPEN` and `NSHADOW:CLOSE`, which `LINKER:WITH` reaches, reject a
   call on a task's thread as `E-TASK-COMPILE`, status 70.
 - A literal `0 throw` is refused (`E-THROW-ZERO`): 0 means no error. A computed

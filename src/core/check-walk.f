@@ -1712,8 +1712,8 @@ variable DEF-STOPPED
    MULTI-REFUSED
    0 CK-DEF-VERDICT ! ;
 
-\ Like CHECK, but verifies the body against a leading ( in -- out ) declared
-\ sig and rejects on mismatch.
+\ Like CHECK, for the text `NAME ( in -- out ) body` with no `:` or `;`: verifies
+\ the body against the declared effect and rejects a mismatch.
 : CHECK! ( ptr u8 n -- n ) {: a:ptr u:n :}
    WRITE-WINDOW-CK
    0 BWIN-VALID !  0 UWIN-VALID !

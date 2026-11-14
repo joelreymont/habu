@@ -2916,7 +2916,6 @@ private
    s" E-TASK-COMPILE" REJECTION:OPEN
    s" source is read on a task's thread, and only the main thread compiles"
    REJECTION:EMIT-STR
-   TOKEN$ REJECTION:AT  s" read on a task's thread" REJECTION:EMIT-STR
    REJECTION:HELP
    s" run `evaluate`, `include` and `require` on the main thread only"
    REJECTION:EMIT-STR

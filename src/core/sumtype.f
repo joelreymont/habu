@@ -460,7 +460,7 @@ variable TDECL-FAM-ARITY
    a u TFAM-MAY-ARRIVE? ;
 : TDECL-WIDTH-THROW ( ptr u8 n -- )
    s" a width is not stored: keep its bytes (width>n)"
-   s" declare the payload `n` and store the width's byte count in it with `width>n`"
+   s" declare it `n` and store the width's byte count in it with `width>n`"
    E-TDECL-PAYLOAD TDECL-THROW ;
 : TDECL-PAY-ELEM ( ptr u8 n -- n ) {: a:ptr u:n :}
    u 0= IF a u s" missing ;VARIANT"
