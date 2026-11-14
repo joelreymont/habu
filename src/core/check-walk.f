@@ -28,7 +28,9 @@
    parent TAG T-STALE = IF parent parent STALE-WHY C2-REJECT EXIT THEN
    parent MUT-VIEW? 0= IF
       PE-U8 C2-WANT-MUT parent C2-PARENT-MISMATCH EXIT THEN
-   parent 3 PARAM>ARG PE-U8 UNIFY-EXACT 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
+   \ The whole view pairs, so its element slot pairs strictly: `n` is not `u8`.
+   PE-U8 C2-WANT-MUT {: want:n :}
+   parent want UNIFY-EXACT 0= IF want parent C2-PARENT-MISMATCH EXIT THEN
    parent 1 PARAM>ARG T-RES {: ceiling:n :}
    supplied TAG T-FORALL = IF
       supplied F>DOMAIN BIND-CHILD <>
@@ -83,7 +85,9 @@
    parent TAG T-STALE = IF parent parent STALE-WHY C2-REJECT EXIT THEN
    parent MUT-VIEW? 0= IF
       PE-U8 C2-WANT-MUT parent C2-PARENT-MISMATCH EXIT THEN
-   parent 3 PARAM>ARG PE-U8 UNIFY-EXACT 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
+   \ The whole view pairs, so its element slot pairs strictly: `n` is not `u8`.
+   PE-U8 C2-WANT-MUT {: want:n :}
+   parent want UNIFY-EXACT 0= IF want parent C2-PARENT-MISMATCH EXIT THEN
    parent 1 PARAM>ARG T-RES {: ceiling:n :}
    supplied TAG T-FORALL = IF
       supplied F>DOMAIN BIND-CHILD <>
