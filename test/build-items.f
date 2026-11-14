@@ -26,6 +26,7 @@ require src/lib/test.f
 require src/lib/c2-memory.f
 require src/lib/adt/nullable.f
 require src/lib/test/subject.f
+require src/lib/test/ending.f
 require test/decl-diag-capture.f
 
 package BITEM-PKG
@@ -247,6 +248,12 @@ BAD-ENDED 70 T=
 s" : BI-BAD-ENDED ( -- n ) 8 ;" evaluate-closed
 BI-BAD-ENDED 8 T=
 
+\ : NAME ( n -- n ) {: a:n :} l-1 ; inside a's block.
+: MAKE-LNEG ( ptr u8 n -- )
+   EFFECT:NEW EFFECT:N EFFECT:IN EFFECT:N EFFECT:OUT define-word
+   GROUP drop  -1 EFFECT:LOCAL@
+   postpone ; ;
+
 \ : NAME ( nullable<a> ... -- ) {: x:nullable<z> :} drop ... ; with 23
 \ inputs, so the local's z is a 24th parameter.
 : MAKE-WIDE ( ptr u8 n -- )
@@ -438,12 +445,28 @@ s" error[E-UNKNOWN-SIGNATURE-TYPE]: " DECL-DIAG:HAS? TTRUE
 S\" 'no-such-family' in EFFECT:READ\n" DECL-DIAG:HAS? TTRUE
 READING-HERE  FAMILY-FIX  DECL-DIAG:OFF
 
+$400 constant LNEG-CAP
+LNEG-CAP BUFFER: LNEG-OUT
+LNEG-CAP BUFFER: LNEG-ERR
+: LNEG-HAS? ( len ptr u8 n -- bool )
+   {: eu:len a:ptr u:n :}
+   LNEG-ERR eu LEN>N a u CONTAINS? ;
+
 public
 : WIDE-GO ( -- ) s" BI-WIDE" MAKE-WIDE ;
 : TEXT-GO ( -- ) s" : BI-TEXT ( -- ) BITEM:LOCAL-NOW ;" evaluate-closed ;
 : TEXT-REF-GO ( -- )
    s" : BI-TEXT-REF ( -- ) BITEM:LOCAL-READ-NOW ;" evaluate-closed ;
 : ENDED-GO ( -- ) s" BI-ENDED" MAKE-ENDED ;
+: LNEG-GO ( -- ) s" BI-LNEG" MAKE-LNEG ;
+\ A read of local -1 names no bind: undefined, never an ended block.
+: LNEG-CHILD ( -- )
+   s" BITEM:LNEG-GO" {: src:ptr srcu:n :}
+   src srcu LNEG-OUT LNEG-CAP >LEN LNEG-ERR LNEG-CAP >LEN
+   10000 >MS SUBJECT:RUN {: ou:len eu:len oc :}
+   src srcu LNEG-OUT ou LEN>N LNEG-ERR eu LEN>N oc 70 T-ENDING-EXITED=
+   eu s" E-UNDEFINED habu: in bi-lneg: undefined word 'l-1'" LNEG-HAS? TTRUE
+   eu s" block has ended" LNEG-HAS? TFALSE ;
 ;package
 
 \ A rejection's text goes to fd 2, which a child's capture reads.
@@ -456,5 +479,6 @@ s" BITEM:TEXT-REF-GO" 70
 s" EFFECT:LOCAL@ needs a definition define-word opened" SUBJECT:REFUSED? TTRUE
 s" BITEM:ENDED-GO" 70
 s" reads built local 0, whose `{:` block has ended" SUBJECT:REFUSED? TTRUE
+BITEM:LNEG-CHILD
 
 T-REPORT

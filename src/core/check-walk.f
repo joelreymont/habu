@@ -711,7 +711,7 @@ public
 \ names an ended local when an earlier bind took it.
 : ITEM-LOCAL-REF ( n -- ) {: ix:n :}
    ix SEQ-SLOT {: li:n :}
-   li 0 < ix LOCSEQ @ < and IF ix LOCAL-ENDED EXIT THEN
+   li 0 <  ix 0 >= and  ix LOCSEQ @ < and IF ix LOCAL-ENDED EXIT THEN
    li 0 < IF ITEM-UNDEFINED EXIT THEN
    li LOC-REF-AT ;
 
