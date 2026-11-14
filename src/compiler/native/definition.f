@@ -58,7 +58,6 @@ private
 
 0 CWORK-VARIABLE M-SRC ptr u8
 0 CWORK-VARIABLE M-SRC-U n
-0 CWORK-VARIABLE M-SCAN ptr u8                 \ the text scanned last
 0 CWORK-VARIABLE M-ROWS n                      \ where the checker store ended at STAGE-UNIT
 0 CWORK-VARIABLE M-HEAD-RECOVERY bool          \ a split definition's head bound a recovery row
 -1 CWORK-VARIABLE M-CB-SLOT n                   \ -1 outside a callback accessor definition
@@ -129,7 +128,6 @@ private
 
 : CHECK-PARENT ( ptr u8 n -- n )
    {: a:ptr u:n :}
-   a M-SCAN !
    CHECKER-OWNER:RESET-REPORT
    TRUSTED? if -1 CHECKER-OWNER:BIND-REGIME!
       a u CHECKER-OWNER:CHECK-UNJUDGED exit then
@@ -179,7 +177,6 @@ public
    {: na:ptr nu:n :}
    CHECKER-TAPE:ADVANCE
    M-DOES @ {: cut:n :}
-   M-SRC @ cut + M-SCAN !
    M-SRC @ cut +  M-SRC-U @ cut -  M-DOES-SIG @ M-DOES-SIG-U @
    CHECKER-OWNER:DOES-CHECK na nu CLAUSE-CK
    CHECK-DOES-DIN-CELLS 0 <  CHECK-DOES-DOUT-CELLS 0 <  or if E-COMP-ARITY throw then
@@ -315,97 +312,7 @@ private
    then
    M-ROWS @ CHECKER-OWNER:RETRACT-ROWS ;
 
-SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL FILE-PATH
-SRCLOC:INB-CELL RESERVED-PTR-U8-CELL INPUT-START
-SRCLOC:OWNED-CELL RESERVED-PTR-U8-CELL FILE-START
-INE-CELL RESERVED-PTR-U8-CELL INPUT-END
-PENDTKA-CELL RESERVED-PTR-U8-CELL OPEN-NAME
 TKA-CELL RESERVED-PTR-U8-CELL READ-AT
-
-\ The body text's base, through `ptr-field`, the declared door to a DATA cell
-\ that holds an address.
-: TEXT-BASE ( -- ptr u8 ) data-base BODY-TEXT:BASE-CELL + 0 ptr-field @ ;
-
-\ Cell k of layout.f BODY-SOURCE row i: 0 its text offset, 1 its source offset.
-\ The rows follow the text in the block, at base + cap.
-: SOURCE-ROW@ ( n n -- n )
-   {: i:n k:n :}
-   TEXT-BASE data-base BODY-TEXT:CAP-CELL + @ +
-   i BODY-SOURCE:ROW * + k cells + CELL-VIEW @ ;
-
-\ The last row at or before text offset off, -1 when none is.
-: ROW-BEFORE ( n -- n )
-   {: off:n :}
-   data-base BODY-TEXT:ROWS-CELL + @
-   begin dup 0 > while
-      1 - dup 0 SOURCE-ROW@ off <= if exit then
-   repeat drop -1 ;
-
-\ The file line of text offset off in buffer [b, e) by row i, 0 when the row
-\ has no source or the byte lies past e.
-: ROW-LINE ( ptr u8 ptr u8 n n -- n )
-   {: b:ptr e:ptr i:n off:n :}
-   i 1 SOURCE-ROW@ BODY-SOURCE:NONE = if 0 exit then
-   i 1 SOURCE-ROW@ off + i 0 SOURCE-ROW@ - {: src:n :}
-   e b - src <= if 0 exit then
-   FILE-START @ b src + ERROR-TEXT:LINE ;
-
-\ 0 unless the name's buffer is current and p's run has a row. Rows at or past
-\ BODYLEN are stale. A donor engine whose heap does not start at DATA-START has
-\ another layout, its BODY-TEXT cells holding other bytes, so it has none.
-: BODY-LINE ( ptr u8 -- n )
-   {: p:ptr :}
-   data-base BOOT:HEAP-START-CELL + @ DATA-START <> if 0 exit then
-   p TEXT-BASE - {: off:n :}
-   off 0 <  off data-base BODYLEN-CELL + @ >= or if 0 exit then
-   INPUT-START @ OPEN-NAME @ INPUT-END @ {: b:ptr nm:ptr e:ptr :}
-   nm b - 0 <  e nm - 0 <= or if 0 exit then
-   off ROW-BEFORE {: i:n :}
-   i 0 < if 0 exit then
-   b e i off ROW-LINE ;
-
-\ The file line of byte p, in the buffer being read (a refusal at the closing
-\ `;`) or in the body text, 0 when it has none. Lines count from the file's
-\ first owned byte, so the buffer must lie in the file (SRCLOC:FILE-BUFFER?).
-: LINE-OF ( ptr u8 -- n )
-   {: p:ptr :}
-   INPUT-START @ INPUT-END @ {: b:ptr e:ptr :}
-   p b - 0 >=  e p - 0 > and if FILE-START @ p ERROR-TEXT:LINE exit then
-   p BODY-LINE ;
-
-\ `<lead><path>` while a file is open, then `:<line>` of byte p (LINE-OF) when
-\ it has one under SRCLOC:FILE-BUFFER?.
-: SAY-WHERE ( ptr u8 n ptr u8 -- )
-   {: a:ptr u:n p:ptr :}
-   data-base SRCLOC:PATHLEN-CELL + @ {: len:n :}
-   len 0= if exit then
-   a u ERROR-TEXT:TYPE
-   FILE-PATH @ len ERROR-TEXT:TYPE
-   SRCLOC:FILE-BUFFER? 0= if exit then
-   p LINE-OF {: line:n :}
-   line 0= if exit then
-   s" :" ERROR-TEXT:TYPE
-   line ERROR-TEXT:DIGITS$ ERROR-TEXT:TYPE ;
-
-\ The refusal names the definition and the token it stopped at, placed from p
-\ by SAY-WHERE.
-: REPORT-FAILURE ( ptr u8 n ptr u8 -- )
-   {: a:ptr u:n p:ptr :}
-   s" compiler: cannot compile " ERROR-TEXT:TYPE
-   NAME$ ERROR-TEXT:TYPE
-   u 0 > if
-      s"  at " ERROR-TEXT:TYPE a u ERROR-TEXT:TYPE
-      s"  in " p SAY-WHERE
-   then
-   S\" \n" ERROR-TEXT:TYPE ;
-
-\ An undefined word, placed on p's line while a file buffer is open.
-: REPORT-UNDEFINED ( ptr u8 n ptr u8 -- )
-   {: a:ptr u:n p:ptr :}
-   SRCLOC:FILE-BUFFER? if p LINE-OF else 0 then {: ln:n :}
-   s" E-UNDEFINED" REJECTION:PATH$ ln ERROR-TEXT:PREFIX
-   s" undefined word '" ERROR-TEXT:TYPE  a u ERROR-TEXT:TYPE
-   S\" '\n" ERROR-TEXT:TYPE ;
 
 public
 
@@ -431,37 +338,6 @@ public
 
 private
 
-\ The checker's refused token in the text scanned last, empty if none, and its
-\ byte: the closing `;` (CLOSE$) for one past the body's end.
-: CHECKER-REFUSED$ ( -- ptr u8 n ptr u8 )
-   M-SCAN @ NULL-PTR = if NULL-PTR 0 NULL-PTR exit then
-   CHECKER-OWNER:ERROR-TOKEN
-   CHECKER-OWNER:REFUSED-SPAN drop drop {: b:n :}
-   M-SCAN @ b + {: p:ptr :}
-   SRC$ + p - 0= if CLOSE$ drop else p then ;
-
-\ A refusal the checker pins its own token for: a reject, a using refusal, a bad
-\ stored signature (checker.f SGBAD-PIN) or a shadowed arity (SHADOW-ARITY-CK).
-: PINNED? ( n -- bool )
-   {: rc:n :}
-   rc RC-REJECT =  rc E-USING-SHADOW-GLOBAL = or  rc E-USING-AMBIGUOUS = or
-   rc E-BAD-STORED-SIGNATURE = or  rc E-SHADOWED-ARITY = or ;
-
-\ A pinned refusal with no compiler token is the checker's refusal of the
-\ definition: name the token it refused instead.
-: REPORT-REFUSAL ( ptr u8 n ptr u8 n -- )
-   {: a:ptr u:n p:ptr rc:n :}
-   rc PINNED? 0=  u 0<> or
-   if a u p REPORT-FAILURE exit then
-   CHECKER-REFUSED$ REPORT-FAILURE ;
-
-\ A refusal of a TRUSTED: body, which no scan certified, that names its token:
-\ the load ends as a reject.
-: MALFORMED? ( n -- bool ) {: rc:n :}
-   rc E-T0-CONTROL =  rc E-UNMODELED-IMMEDIATE = or
-   rc E-T0-MATCH = or  rc E-T0-DEFER = or
-   TRUSTED? and ;
-
 \ A recovery-bound head's scan marks its record (checker.f RECOVERY-RECORD)
 \ unless deferred; a TRUSTED: head's newer TRUST-DECL row has none.
 : HEAD-MARKED? ( -- bool )
@@ -469,10 +345,9 @@ private
 
 public
 
-\ A word compiled code cannot reach and a MALFORMED? body take the reject
-\ status; p is the refused token's byte or NULL-PTR.
-: SETTLE-UNIT ( n n bool ptr u8 n ptr u8 -- )
-   {: entry-rc:n rc:n undefined:bool a:ptr u:n p:ptr :}
+\ A rejection is printed at its site, before the throw that ends here.
+: SETTLE-UNIT ( n n -- )
+   {: entry-rc:n rc:n :}
    entry-rc 0<> if
       M-DOES-FRAME @ 0<> if NULL-PTR 0 false CHECK:DOES-PUBLISHED then
       entry-rc throw
@@ -487,26 +362,12 @@ public
       then
       rc throw
    then
-   undefined if
-      a u p REPORT-FAILURE
-      a u p REPORT-UNDEFINED
-      RETRACT RC-REJECT throw
-   then
-   rc MALFORMED? if
-      a u p REPORT-FAILURE
-      RETRACT RC-REJECT throw
-   then
-   rc 0 <> if
-      \ A reject was printed where it arose.
-      rc RC-REJECT <> if a u p rc REPORT-REFUSAL then
-      RETRACT rc throw
-   then ;
+   rc 0 <> if RETRACT rc throw then ;
 
 : STAGE-UNIT ( ptr u8 n -- )
    {: sa su:n :}
    0 CHECKER-OWNER:BIND-REGIME!
    sa M-SRC ! su M-SRC-U !
-   NULL-PTR M-SCAN !
    0 M-VERDICT !
    CHECKER-OWNER:ROWS-END M-ROWS !
    0 M-DOES-FRAME !

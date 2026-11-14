@@ -362,9 +362,6 @@ require src/lib/prelude.f
 -8210 constant E-NEFF-CONV    \ a contract whose declared convention and whose places are two different statements: a data-stack convention naming a register, or a register convention naming a slot of the caller's data stack
 
 
-\ What T0 cannot compile: -8280..-8299.
--8294 constant E-UNMODELED-IMMEDIATE  \ a body uses an immediate that is not parse-neutral and the compiler does not model: refused at its token, it never runs
-
 \ The does> cut of a definition's source: -8400..-8409
 -8407 constant E-NFEED-CUT      \ the does> cut the engine recorded is not just past a `does> ` in the definition source: it lies outside the source, or after other bytes - the source and the pending definition disagree
 
@@ -692,15 +689,10 @@ require src/lib/prelude.f
 \ JSON Pointers: -9870..-9879, minted in src/lib/json/pointer.f, a file of
 \ package JSON (src/lib/json.f).
 
-\ T0 (src/habu/t0.f): -9600..-9609, minted here, not in package COMP, because
-\ src/compiler/native/definition.f MALFORMED? reads them.
+\ T0 (src/habu/t0.f): -9600..-9609.
 -9600 constant E-T0-FIRST
 -9609 constant E-T0-LAST
--9600 constant E-T0-UNSUPPORTED  \ a token T0 does not compile
--9601 constant E-T0-CONTROL      \ a control word without its opener, a body ending inside one, or a token no path reaches
 -9604 constant E-T0-BINDS        \ the body binds other than its scan's count of locals
--9606 constant E-T0-MATCH        \ a MATCH or construct the checker's facts do not bear out
--9607 constant E-T0-DEFER        \ `is` names no deferred word
 -9608 constant E-T0-BUNDLE       \ an operation over a width it cannot move
 
 \ HEAD and each row's first cell are declared address cells holding the newest
