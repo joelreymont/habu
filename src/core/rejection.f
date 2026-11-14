@@ -265,13 +265,16 @@ private
 : ROW@ ( n -- n )
    ROW-A @ {: i:n rows:ptr :}
    i cells rows + @ ;
-\ The first cell of the last row at or before text offset x.
-: MAP-ROW ( n -- n )
-   {: x:n :}
+\ The first cell of the last of count two-cell rows at or before text offset x.
+: ROW-AT ( ptr n n n -- n )
+   {: rows:ptr count:n x:n :}
    0 BEGIN
-      dup 1 + ROW-N @ < IF dup 1 + 2 * ROW@ x <= ELSE 0 0= 0= THEN
+      dup 1 + count < IF dup 1 + 2 * cells rows + @ x <= ELSE 0 0= 0= THEN
    WHILE 1 + REPEAT
    2 * ;
+: MAP-ROW ( n -- n )
+   {: x:n :}
+   ROW-A @ ROW-N @ x ROW-AT ;
 \ Whether text offset x lies in a run with no source.
 : MAP-NONE? ( n -- bool )
    MAP-ROW 1 + ROW@ BODY-SOURCE:NONE = ;
@@ -325,6 +328,8 @@ variable GUTTER   1 GUTTER !            \ digits of AT's line, 1 unplaced
 SRCLOC:OWNED-CELL RESERVED-PTR-U8-CELL OWNED
 SRCLOC:INB-CELL RESERVED-PTR-U8-CELL INPUT-START
 INE-CELL RESERVED-PTR-U8-CELL INPUT-END
+BODY-TEXT:BASE-CELL RESERVED-PTR-U8-CELL BODY-BASE
+PENDTKA-CELL RESERVED-PTR-U8-CELL PEND-NAME
 \ AT's place: whether a buffer holds the token, its file, line, column and
 \ byte, the byte after it, and the source line with the bytes before the token.
 variable PLACED
@@ -386,13 +391,37 @@ private
    b t 1 1 0 POSITION POSITION!
    AT-BYTE @ tu + AT-END !
    t CUT ;
+\ The bytes of the buffer read that the pending definition's body text
+\ copied the token t tu from, by the rows the copy records (layout.f
+\ BODY-SOURCE); else t. Rows count from the buffer's first byte, and they
+\ name this buffer only while the definition's name lies in it: a REPL line
+\ refills the buffer that held the line before, and OPENER-KEEP moves the
+\ name out of it.
+: BODY>INPUT ( ptr u8 n -- ptr u8 ) {: t:ptr tu:n :}
+   BODY-BASE @ {: base:ptr :}
+   data-base PEND-CELL + @ 0= IF t EXIT THEN
+   base NULL-PTR = IF t EXIT THEN
+   t base - {: x:n :}
+   x 0 <  x data-base BODYLEN-CELL + @ >= or IF t EXIT THEN
+   data-base BODY-TEXT:ROWS-CELL + @ {: count:n :}
+   count 0 <= IF t EXIT THEN
+   INPUT$ PEND-NAME @ 1 HOLDS? 0= IF t EXIT THEN
+   base data-base BODY-TEXT:CAP-CELL + @ + cell-view {: rows:ptr :}
+   rows count x ROW-AT {: r:n :}
+   r 1 + cells rows + @ {: src:n :}
+   src BODY-SOURCE:NONE = IF t EXIT THEN
+   INPUT-START @ src + x + r cells rows + @ - {: p:ptr :}
+   INPUT$ p tu HOLDS? IF p EXIT THEN
+   t ;
 \ The armed source holding the token's first byte, else the loader's owned
-\ bytes, else the buffer read, holding the whole token; else no place.
+\ bytes, else the buffer read, holding the whole token, as itself or as the
+\ bytes a body's text copied it from; else no place.
 : PLACE ( ptr u8 n -- ) {: t:ptr tu:n :}
    0 PLACED !
    t >SOURCE IF t tu SOURCE-PLACE EXIT THEN drop
-   OWNED$ t tu HOLDS? IF OWNED$ t tu BUFFER-PLACE LOAD-FILE$ PLACE-FILE! EXIT THEN
-   INPUT$ t tu HOLDS? IF INPUT$ t tu BUFFER-PLACE NO-FILE$ PLACE-FILE! EXIT THEN
+   t tu BODY>INPUT {: s:ptr :}
+   OWNED$ s tu HOLDS? IF OWNED$ s tu BUFFER-PLACE LOAD-FILE$ PLACE-FILE! EXIT THEN
+   INPUT$ s tu HOLDS? IF INPUT$ s tu BUFFER-PLACE NO-FILE$ PLACE-FILE! EXIT THEN
    LOAD-FILE$ {: fa:ptr fu:n :}
    fu 0 > IF fa fu ELSE NO-FILE$ THEN PLACE-FILE! ;
 

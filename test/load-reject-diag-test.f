@@ -712,13 +712,13 @@ variable RC
 
 \ A name only the checker holds, a PRODUCT replay with no word behind it, is
 \ refused by check-hook.f DEFINITION through src/core/checker.f
-\ REFUSE-DUPLICATE, which names an evaluated string's file alone too.
+\ REFUSE-DUPLICATE, which places the name in the evaluated string, <input>.
 : TEST-REPLAY-DUP-PLACE ( -- )
-   s" an evaluated checker-only duplicate names its file and no line" T-LABEL
+   s" an evaluated checker-only duplicate is placed at its name in <input>" T-LABEL
    BODY$ S\" : LRD-PREPLAY ( -- ) s\" lrdrep\" s\" FIELD x n\" CHECKER-DEFPRODUCT GENERATED-DECL-CTOR:REPLAY-LEGACY ;\nLRD-PREPLAY\ns\" : LRDREP:MAKE ( n -- n ) 1 + ;\" evaluate\n" FS:WRITE-ALL
    BODY$ RUN
    ERR$ s" error[E-DUPLICATE-DEFINITION]: `LRDREP:MAKE` is already defined" CONTAINS? TTRUE
-   BODY$ s" " ASSERT-AT
+   s" <input>" s" :1:3" ASSERT-AT
    OUT-U @ 0 T=
    EXITED @ TTRUE
    RC @ DUP-RC T= ;

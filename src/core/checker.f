@@ -649,11 +649,10 @@
 \ ascending from text offset 0. REJECTION:LOCATE maps a pointer into that
 \ text, or into the source, to a file position. The engine arms the map for a
 \ definition it captured from a file buffer, from the rows the capture records,
-\ and gives a body its closer. Text with no map keeps the REJECTION:ORIGIN!
-\ rule: `evaluate` text other than a slice of the file being loaded, stdin and
-\ a program file read without `--load`, a definition whose name lies outside
-\ the buffer being read, and the definitions the checker generates for a
-\ declaration.
+\ and gives a body its closer. With no map, REJECTION places a token of the
+\ body text the engine captured in the buffer it was read from, through the
+\ same rows, while the definition's name lies in that buffer; the definitions
+\ the checker generates for a declaration have no place.
 \ REJECTION:CLOSER! takes the source token that closes the mapped definition
 \ (its `;` or a definer's `does>`), which the text does not hold: a control
 \ structure still open there is refused at that token, as the load's compiler

@@ -1599,9 +1599,13 @@ variable CAND-VERDICT
 : CHECK-CANDIDATE-BODY ( -- )
    CAND-A @ CAND-U @ CHECK-WINDOWED CAND-VERDICT ! ;
 
+\ A rejection is placed in the candidate's text, `<input>:L:C`, unless a
+\ source its caller armed places it.
 : CHECK-CANDIDATE! ( ptr u8 n -- n ) {: a:ptr u:n :}
    WRITE-WINDOW-CK
    a CAND-A !  u CAND-U !
+   REJECTION:SOURCE$ nip 0= {: arm:bool :}
+   arm IF a u 1 1 0 REJECTION:SOURCE! THEN
    CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? {: recovery0:bool :}
    BIND-HORIZON @ {: horizon0:n :}
    CHK-PROBE @ {: probe0:n :}
@@ -1612,6 +1616,7 @@ variable CAND-VERDICT
    -1 CHK-PROBE !
    -1 CUR-DONE !                       \ a candidate's text is not the cursor's
    [: CHECK-CANDIDATE-BODY ;] catch {: rc:n :}
+   arm IF REJECTION:SOURCE-OFF THEN
    done0 CUR-DONE !
    gap0 CUR-GAP !
    probe0 CHK-PROBE !
