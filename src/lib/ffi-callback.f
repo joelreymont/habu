@@ -35,8 +35,6 @@ CAST: ENTRY-XT ( n -- [ -- n ] )
    dup 0= if E-COMP-STATE throw then ENTRY-XT execute ;
 
 8 constant FLOAT-REGS
-$400 constant GEN-CAP
-$200 constant PART-CAP            \ sixteen `7 FFI-CB:I32-ARG@ ` reads need $108
 $40 constant NAME-CAP
 
 0 constant R-NONE
@@ -223,15 +221,25 @@ public
 
 private
 
-GEN-CAP CODEGEN:BUFFER GEN
-PART-CAP CODEGEN:BUFFER QTYPE             \ the body's quotation type
-PART-CAP CODEGEN:BUFFER READS             \ the argument reads, in order
 NAME-CAP E-FFI-SYNTAX E-CG-VALUE CODEGEN:BUFFER-E NAME
+NAME-CAP 16 + CODEGEN:BUFFER WORD-NAME   \ NAME and a suffix, `-DISPATCH` the longest
+
+0 constant BY-N
+1 constant BY-I32
+2 constant BY-U32
+3 constant BY-PTR
+4 constant BY-R
+
+\ The argument reads, in order: each one's register index and reader (BY-*).
+INT-REGS FLOAT-REGS + TYPED-BUFFER READ-AT n
+INT-REGS FLOAT-REGS + TYPED-BUFFER READ-BY n
+variable READS
 
 variable RES-KIND
 variable FB-SET
 variable FB-VALUE
 TYPED-VARIABLE FFB-VALUE r
+TYPED-VARIABLE BODY-TYPE EFFECT:type    \ the body's effect, as its tokens are read
 variable OPEN
 
 \ The next token. parse-name's bytes stay valid until the next parse, and each
@@ -248,35 +256,43 @@ variable OPEN
 : NAME$ ( -- ptr u8 n )
    NAME CODEGEN:CONTENTS ;
 
-: QTYPE+ ( ptr u8 n -- )
-   QTYPE CODEGEN:APPEND-STRING s"  " QTYPE CODEGEN:APPEND-STRING ;
+: NAME+ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   WORD-NAME CODEGEN:RESET
+   NAME$ WORD-NAME CODEGEN:APPEND-STRING
+   a u WORD-NAME CODEGEN:APPEND-STRING
+   WORD-NAME CODEGEN:CONTENTS ;
 
-: READ+ ( n ptr u8 n -- ) {: i:n a:ptr u:n :}
-   i READS CODEGEN:APPEND-DECIMAL
-   s"  FFI-CB:" READS CODEGEN:APPEND-STRING
-   a u READS CODEGEN:APPEND-STRING
-   s"  " READS CODEGEN:APPEND-STRING ;
+: IN+ ( EFFECT:type -- ) {: t:EFFECT:type :}
+   BODY-TYPE @ t EFFECT:IN BODY-TYPE ! ;
 
-\ One integer argument read by the named reader. The input words carry two
-\ counts on the stack: the integer, then the float arguments read so far.
-: INT+ ( n n ptr u8 n -- n n )
-   {: i:n f:n a:ptr u:n :}
+: OUT+ ( EFFECT:type -- ) {: t:EFFECT:type :}
+   BODY-TYPE @ t EFFECT:OUT BODY-TYPE ! ;
+
+: ARG+ ( n n -- ) {: i:n by:n :}
+   i READS @ READ-AT !
+   by READS @ READ-BY !
+   1 READS +! ;
+
+\ One integer argument read by reader BY. The input words carry two counts on
+\ the stack: the integer, then the float arguments read so far.
+: INT+ ( n n n -- n n )
+   {: i:n f:n by:n :}
    i INT-REGS >= if E-FFI-ARITY throw then
-   i a u READ+
+   i by ARG+
    i 1 + f ;
 
 : IN-TOKEN ( n n ptr u8 n -- n n )
    {: i:n f:n a:ptr u:n :}
-   a u s" n" STR= if s" n" QTYPE+ i f s" ARG@" INT+ exit then
-   a u s" i32" STR= if s" n" QTYPE+ i f s" I32-ARG@" INT+ exit then
-   a u s" u32" STR= if s" n" QTYPE+ i f s" U32-ARG@" INT+ exit then
+   a u s" n" STR= if EFFECT:N IN+ i f BY-N INT+ exit then
+   a u s" i32" STR= if EFFECT:N IN+ i f BY-I32 INT+ exit then
+   a u s" u32" STR= if EFFECT:N IN+ i f BY-U32 INT+ exit then
    a u s" ptr" STR= if
       TOK@ s" u8" STR= 0= if E-FFI-SYNTAX throw then
-      s" ptr u8" QTYPE+ i f s" PTR-ARG@" INT+ exit
+      s" ptr u8" EFFECT:READ IN+ i f BY-PTR INT+ exit
    then
    a u s" r" STR= if
       f FLOAT-REGS >= if E-FFI-ARITY throw then
-      s" r" QTYPE+ f s" FARG@" READ+
+      s" r" EFFECT:NAMED IN+ f BY-R ARG+
       i f 1 + exit
    then
    E-FFI-SYNTAX throw ;
@@ -284,16 +300,16 @@ variable OPEN
 : OUT-TOKEN ( ptr u8 n -- )
    {: a:ptr u:n :}
    RES-KIND @ R-NONE <> if E-FFI-SYNTAX throw then
-   a u s" r" STR= if s" r" QTYPE+ R-FLOAT RES-KIND ! exit then
+   a u s" r" STR= if s" r" EFFECT:NAMED OUT+ R-FLOAT RES-KIND ! exit then
    a u s" n" STR= a u s" i32" STR= or a u s" u32" STR= or if
-      s" n" QTYPE+ R-VALUE RES-KIND ! exit
+      EFFECT:N OUT+ R-VALUE RES-KIND ! exit
    then
    E-FFI-SYNTAX throw ;
 
 \ One input token: true at the -- that ends the inputs.
 : INPUT? ( n n -- n n bool )
    TOK@ {: i:n f:n a:ptr u:n :}
-   a u s" --" STR= if s" --" QTYPE+ i f true exit then
+   a u s" --" STR= if i f true exit then
    a u s" )" STR= if E-FFI-SYNTAX throw then
    i f a u IN-TOKEN false ;
 
@@ -307,15 +323,6 @@ variable OPEN
 : INPUTS ( -- ) 0 0 begin INPUT? until 2drop ;
 : OUTPUTS ( -- ) begin OUTPUT? until ;
 
-: GEN+ ( ptr u8 n -- ) GEN CODEGEN:APPEND-STRING ;
-: GEN-N ( n -- ) GEN CODEGEN:APPEND-DECIMAL ;
-: GEN-RUN ( -- ) GEN CODEGEN:CONTENTS INCLUDE-EVALUATE ;
-
-: STORE$ ( -- ptr u8 n )
-   RES-KIND @ R-VALUE = if s" FFI-CB:RESULT! " exit then
-   RES-KIND @ R-FLOAT = if s" FFI-CB:FRESULT! " exit then
-   s" " ;
-
 : NEXT-SLOT ( -- n )
    SLOTS @ {: k:n :}
    k TASK:DECLARE-CALLBACK
@@ -323,35 +330,49 @@ variable OPEN
    1 SLOTS +!
    k ;
 
+: READ-ITEMS ( n -- ) {: j:n :}
+   j READ-AT @ literal
+   j READ-BY @ {: by:n :}
+   by BY-N = if postpone ARG@ exit then
+   by BY-I32 = if postpone I32-ARG@ exit then
+   by BY-U32 = if postpone U32-ARG@ exit then
+   by BY-PTR = if postpone PTR-ARG@ exit then
+   postpone FARG@ ;
+
+: STORE-ITEM ( -- )
+   RES-KIND @ R-VALUE = if postpone RESULT! exit then
+   RES-KIND @ R-FLOAT = if postpone FRESULT! then ;
+
+\ The word just made: each definer makes one record, none inside a definition.
+: LATEST-XT ( -- [ -- ] )
+   LATEST XREF-START >ENTRY-XT ;
+
+\ NAME-DISPATCH ( -- ): [: NAME-BODY BODY-CHECK <reads> NAME-BODY @ execute
+\ <store> ;] k kind RUN
+: DISPATCH-WORD ( [ -- ] n -- ) {: body k:n :}
+   s" -DISPATCH" NAME+ EFFECT:NEW define-word
+   s" [:" EFFECT:KEYWORD
+   body compile,  postpone BODY-CHECK
+   READS @ 0 ?do i READ-ITEMS loop
+   body compile,  postpone @  postpone execute
+   STORE-ITEM
+   s" ;]" EFFECT:KEYWORD
+   k literal  RES-KIND @ literal  postpone RUN  postpone ; ;
+
 \ The accessor's ordinary native emission carries an anonymous C entry after
 \ its Habu return. The native compiler publishes both as one owned record; only
 \ the entry is handed to C, while the accessor can read its relocated
 \ descriptor address.
 : EMIT ( n -- ) {: k:n :}
-   GEN CODEGEN:RESET
-   s" TYPED-VARIABLE " GEN+ NAME$ GEN+ s" -BODY [ " GEN+
-   QTYPE CODEGEN:CONTENTS GEN+ s" ]" GEN+
-   GEN-RUN
-   GEN CODEGEN:RESET
-   s" : " GEN+ NAME$ GEN+ s" -DISPATCH ( -- ) [: " GEN+
-   NAME$ GEN+ s" -BODY FFI-CB:BODY-CHECK " GEN+
-   READS CODEGEN:CONTENTS GEN+ NAME$ GEN+ s" -BODY @ execute " GEN+
-   STORE$ GEN+ s" ;] " GEN+ k GEN-N s"  " GEN+ RES-KIND @ GEN-N
-   s"  FFI-CB:RUN ;" GEN+
-   GEN-RUN
-   GEN CODEGEN:RESET
-   s" ' " GEN+ NAME$ GEN+ s" -DISPATCH " GEN+ k GEN-N s"  FFI-CB:INSTALL" GEN+
-   GEN-RUN
+   s" -BODY" NAME+ BODY-TYPE @ EFFECT:VARIABLE
+   LATEST-XT k DISPATCH-WORD
+   LATEST-XT k INSTALL
    k -1 FFI:CALLBACK-ENTRY ARM-STUB
-   GEN CODEGEN:RESET
-   s" : " GEN+ NAME$ GEN+ s" -ENTRY ( -- n ) " GEN+
-   k GEN-N s"  FFI-CB:ENTRY-ADDRESS ;" GEN+
-   GEN-RUN
+   s" -ENTRY" NAME+ EFFECT:NEW EFFECT:N EFFECT:OUT define-word
+   k literal  postpone ENTRY-ADDRESS  postpone ;
    STUB-ENTRY k INSTALL-ENTRY
-   GEN CODEGEN:RESET
-   s" : " GEN+ NAME$ GEN+ s"  ( -- FFI-CB:callback ) " GEN+ k GEN-N
-   s"  FFI-CB:DESCRIPTOR ;" GEN+
-   GEN-RUN ;
+   NAME$ EFFECT:NEW s" FFI-CB:callback" EFFECT:NAMED EFFECT:OUT define-word
+   k literal  postpone DESCRIPTOR  postpone ; ;
 
 \ A refusal between the two keywords abandons the declaration, so nothing is
 \ left open for the next one.
@@ -364,7 +385,7 @@ public
 : OPEN-CALLBACK ( -- )
    OPEN @ 0 <> if REFUSE then
    R-NONE RES-KIND ! 0 FB-SET !
-   QTYPE CODEGEN:RESET READS CODEGEN:RESET
+   EFFECT:NEW BODY-TYPE ! 0 READS !
    TOK@ NAME!
    TOK@ s" (" STR= 0= if E-FFI-SYNTAX throw then
    INPUTS

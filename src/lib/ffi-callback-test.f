@@ -332,6 +332,37 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    s" CBT-RB-LATE FFI-CB:UNBIND" INCLUDE-EVALUATE
    CMP UNBIND ;
 
+\ A package whose private `@`, `execute` and `CMP-BODY` would run BACKWARD in
+\ place of the body declares a callback after them: its dispatch still runs the
+\ body stored.
+: CAPTURE$ ( -- ptr u8 n )
+   S\" package CBT-CAPTURE\n: FORWARD ( ptr u8 ptr u8 -- n ) {: a b :} a CELL-VIEW @ b CELL-VIEW @ - ;\n: BACKWARD ( ptr u8 ptr u8 -- n ) {: a b :} b CELL-VIEW @ a CELL-VIEW @ - ;\n: @ ( ptr [ ptr u8 ptr u8 -- n ] -- [ ptr u8 ptr u8 -- n ] ) drop ['] BACKWARD ;\n: execute ( ptr u8 ptr u8 [ ptr u8 ptr u8 -- n ] -- n ) drop BACKWARD ;\nTYPED-VARIABLE CMP-BODY [ ptr u8 ptr u8 -- n ]\n' BACKWARD CMP-BODY !\npublic\nCALLBACK: CMP ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK\n' FORWARD CBT-CAPTURE:CMP-BODY !\n;package\n" ;
+
+: CASE-CAPTURE ( -- )
+   s" == a callback declared under a private @, execute and CMP-BODY" SAY
+   [: CAPTURE$ INCLUDE-EVALUATE ;] catch 0= {: loaded:bool :}
+   loaded s" the declaration loads" FACT
+   loaded if
+      s" CBT-CAPTURE:CMP TASK:SELF-CONTEXT FFI-CB:ENTRY" TEST-EVAL:N SORTED-BY?
+   else false then
+      s" C sorts through it by the body stored" FACT
+   loaded if s" CBT-CAPTURE:CMP FFI-CB:UNBIND" INCLUDE-EVALUATE then ;
+
+\ A qualified name puts the callback's words into its package's public
+\ wordlist, not the current one.
+: QUALIFIED$ ( -- ptr u8 n )
+   S\" package CBT-QUALIFIED\npublic\n: ORDER ( ptr u8 ptr u8 -- n ) {: a b :} a CELL-VIEW @ b CELL-VIEW @ - ;\n;package\nCALLBACK: CBT-QUALIFIED:CMP ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK\n' CBT-QUALIFIED:ORDER CBT-QUALIFIED:CMP-BODY !\n" ;
+
+: CASE-QUALIFIED ( -- )
+   s" == a callback declared by a qualified name" SAY
+   [: QUALIFIED$ INCLUDE-EVALUATE ;] catch 0= {: loaded:bool :}
+   loaded s" the declaration loads" FACT
+   loaded if
+      s" CBT-QUALIFIED:CMP TASK:SELF-CONTEXT FFI-CB:ENTRY" TEST-EVAL:N SORTED-BY?
+   else false then
+      s" C sorts through it by the body stored" FACT
+   loaded if s" CBT-QUALIFIED:CMP FFI-CB:UNBIND" INCLUDE-EVALUATE then ;
+
 \ A kernel exit line ends ` lr <16 hex>`; the transcript keeps ` lr` and drops
 \ the digits, which vary with the build.
 : LR-LINE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
@@ -517,6 +548,16 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    s" ok   a callback declared after the rollback sorts" W
    s" ok   and the earlier one still does" W ;
 
+: WANT-CAPTURE ( -- )
+   s" == a callback declared under a private @, execute and CMP-BODY" W
+   s" ok   the declaration loads" W
+   s" ok   C sorts through it by the body stored" W ;
+
+: WANT-QUALIFIED ( -- )
+   s" == a callback declared by a qualified name" W
+   s" ok   the declaration loads" W
+   s" ok   C sorts through it by the body stored" W ;
+
 : WANT-CHILDREN ( -- )
    s" == child outside: exit 106" W
    s" outside: a thread is parked on its own context" W
@@ -561,7 +602,8 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
 
 : WANT-TRANSCRIPT ( -- )
    0 WANT-U !
-   WANT-TASKS WANT-ACCESSOR WANT-DECLARATIONS WANT-ROLLBACK WANT-CHILDREN ;
+   WANT-TASKS WANT-ACCESSOR WANT-DECLARATIONS WANT-ROLLBACK WANT-CAPTURE
+   WANT-QUALIFIED WANT-CHILDREN ;
 
 \ The artifact as another reader will find it: read back from its file and
 \ compared whole.
@@ -586,6 +628,8 @@ public
    CASE-ACCESSOR
    CASE-DECLARATIONS
    CASE-ROLLBACK
+   CASE-CAPTURE
+   CASE-QUALIFIED
    CASE-CHILDREN
    CASE-STRIPPED
    TRANSCRIPT-CASE
