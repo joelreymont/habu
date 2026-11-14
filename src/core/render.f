@@ -978,74 +978,74 @@ variable MDV-I   variable MDV-F
 
 : MD-SUGGEST$ ( n -- ptr u8 n )
    case
-      MD-NONEXH       of s" Add an OF branch for every listed variant; v1 has no default branch." endof
-      MD-VAR-DUP      of s" Remove the repeated variant branch; each variant may appear once." endof
-      MD-VAR-UNKNOWN  of s" Use a variant declared by this family, lowercase as declared." endof
-      MD-CON-VAR      of s" Use a variant declared by this family, lowercase as declared." endof
-      MD-FAM-UNKNOWN  of s" Name a visible sum family: own package, a global, a `using` import, or PKG:tail." endof
-      MD-CON-FAM      of s" construct resolves only families declared in the active package." endof
-      MD-FAM-KIND     of s" MATCH eliminates sum or enum families only." endof
-      MD-CON-KIND     of s" construct builds sum or enum families only." endof
-      MD-SCRUT        of s" Put the family value on top of the stack before MATCH." endof
-      MD-FAM-MISMATCH of s" The value on top belongs to a different family; match that family." endof
-      MD-QUOT         of s" Move the match out of the quotation; quotation rows cannot carry a scrutinee." endof
-      MD-OPEN-ARGS    of s" Instantiate the family arguments to concrete types before matching." endof
-      MD-JOIN         of s" Make every branch leave the same stack shape; ;MATCH has one continuation." endof
-      MD-DEPTH        of s" Factor the inner match into a named word; control frames are capped." endof
-      MD-MISSING-OF   of s" Write `variant OF ... ENDOF` for each branch." endof
-      MD-DIVBAR       of s" Call the block collective on the straight-line (block-uniform) path; do not place it inside if/loop/case or a quotation." endof
-      MD-EXEC-OPAQUE  of s" Execute an xt whose effect is statically known: a quotation parameter, a defer bound with is, or a typed xt cell. Do not execute an xt fetched from untyped memory or ticked from a primitive or a word with no stack effect." endof
-      MD-CATCH-OPAQUE of s" Catch an xt whose effect is statically known: a quotation parameter, a defer bound with is, or a typed xt cell. Do not catch an xt fetched from untyped memory or ticked from a primitive or a word with no stack effect." endof
-      MD-RAW-PTR      of s" Declare the cell that holds an address: PTR-VARIABLE, PERSISTED-PTR-VARIABLE, TYPED-VARIABLE NAME ptr t, or TYPED-BUFFER. A plain variable, create or constant cell holds scalars, roles and atoms only." endof
-      MD-NULL-PTR     of s" NULL-PTR is the address of nothing: it compares, subtracts, tests and stores like any pointer, but no value is ever read through it. Take the value from the cell that really holds it." endof
-      MD-DBASE-PTR    of s" Reach the cell through a declared accessor instead: give the word that adds the offset a concrete pointee (ptr n, ptr u8), or take the field of a declared pointer cell with ptr-field. data-base addresses no declared element, so a cell of the DATA region holds a plain value at every depth -- it is not the address of an address either." endof
-      MD-RAW-EXEC     of s" Declare the cell that holds the execution token: TYPED-VARIABLE NAME [ in -- out ], a TYPED-BUFFER or DYNAMIC-BUFFER of [ in -- out ], or bind a defer with is. An undeclared variable, create, constant or data-base cell holds scalars, roles and atoms only, so what comes back from it is an integer, not code." endof
-      MD-RAW-FIELD    of s" Take the pointer field of a declared cell: PTR-VARIABLE, PERSISTED-PTR-VARIABLE, TYPED-VARIABLE NAME ptr t, or TYPED-BUFFER. 0 ptr-field on a plain variable or create cell laundered a raw cell into a typed pointer." endof
-      MD-RIGID-REGION of s" These are different host allocations; a value carrying one region's identity cannot stand in for another. Thread the same allocation through, or re-borrow from the target." endof
-      MD-RIGID-EXTENT of s" These host allocations have different extents; a bound proved for one does not carry to another. Use the value whose extent identity the position requires." endof
-      MD-RIGID-GEN    of s" This index or borrow is from an earlier mutation generation; the container was mutated since. Re-derive the index after the mutation." endof
-      MD-RIGID-XDOM   of s" A host region, an extent, and a mutation generation are distinct identities that never interchange. Supply the identity the position requires." endof
-      MD-UNDERFLOW    of s" Push the missing inputs before the call, or declare them in the signature; a definition may not consume below its declared inputs." endof
-      MD-STALE-READ   of s" `catch` puts the stacks back to the DEPTH it was entered at and never to their contents, so a cell the caught body may have written on a throw path holds an unknown machine word afterwards. Bind the value to a local BEFORE the catch and use the local, or drop the cell. A stale cell may still be moved, dropped, or bound to an untyped local." endof
-      MD-TOP-UNKNOWN  of s" The interpret row knows only the cells pushed while it checks; a cell beneath them was left before checking began or by a `0 set-check` window, so its type is unknown. Push the value with checking on, or drop the cell. An unknown cell may still be moved, dropped, or bound to an untyped local." endof
+      MD-NONEXH       of s" add a `variant OF ... ENDOF` arm for each missing variant" endof
+      MD-VAR-DUP      of s" keep one `OF ... ENDOF` arm for this variant and delete the other" endof
+      MD-VAR-UNKNOWN  of s" write a variant the family declares, spelled as its declaration spells it" endof
+      MD-CON-VAR      of s" write a variant the family declares, spelled as its declaration spells it" endof
+      MD-FAM-UNKNOWN  of s" name a family visible here: one of this package, a global one, one a `using` imports, or `PKG:family`" endof
+      MD-CON-FAM      of s" name a family of this package after `construct`, or call another package's generated constructor, as `PKG-FAMILY:variant`" endof
+      MD-FAM-KIND     of s" name a `SUMTYPE` or `ENUM` family after `MATCH`" endof
+      MD-CON-KIND     of s" name a `SUMTYPE` or `ENUM` family after `construct`" endof
+      MD-SCRUT        of s" push the family's value so it is on top of the stack at `MATCH`" endof
+      MD-FAM-MISMATCH of s" name the family of the value on top of the stack after `MATCH`" endof
+      MD-QUOT         of s" move the `MATCH` into a named word with a declared effect and call that word in the quotation" endof
+      MD-OPEN-ARGS    of s" give the value concrete family arguments in the signature, as `option<n>` instead of `option<a>`" endof
+      MD-JOIN         of s" make every `OF` arm that continues leave the same stack types at its `ENDOF`" endof
+      MD-DEPTH        of s" move the inner `MATCH` into a named word and call that word here" endof
+      MD-MISSING-OF   of s" write `OF` after the variant, as `variant OF ... ENDOF`" endof
+      MD-DIVBAR       of s" call the block collective where no control structure or quotation is open, so every thread of the block reaches it" endof
+      MD-EXEC-OPAQUE  of s" `execute` a quotation parameter, a `defer` bound with `is`, or an xt fetched from a `TYPED-VARIABLE NAME [ in -- out ]` cell" endof
+      MD-CATCH-OPAQUE of s" `catch` a quotation parameter, a `defer` bound with `is`, or an xt fetched from a `TYPED-VARIABLE NAME [ in -- out ]` cell" endof
+      MD-RAW-PTR      of s" declare the cell that holds the address with `PTR-VARIABLE`, `PERSISTED-PTR-VARIABLE`, `TYPED-VARIABLE NAME ptr t` or `TYPED-BUFFER NAME ptr t`" endof
+      MD-NULL-PTR     of s" read the value from the cell that holds it, not through `NULL-PTR`" endof
+      MD-DBASE-PTR    of s" reach the cell through an accessor that names its pointee, as `( -- ptr n )`, or take a pointer it holds with `ptr-field`" endof
+      MD-RAW-EXEC     of s" declare the cell that holds the code as `TYPED-VARIABLE NAME [ in -- out ]`, a `TYPED-BUFFER` or `DYNAMIC-BUFFER` of `[ in -- out ]`, or a `defer` bound with `is`" endof
+      MD-RAW-FIELD    of s" take `ptr-field` of a cell declared with `PTR-VARIABLE`, `PERSISTED-PTR-VARIABLE`, `TYPED-VARIABLE NAME ptr t` or `TYPED-BUFFER NAME ptr t`" endof
+      MD-RIGID-REGION of s" pass a value of the allocation this position takes, or borrow again from that allocation" endof
+      MD-RIGID-EXTENT of s" pass the value whose extent this position takes" endof
+      MD-RIGID-GEN    of s" derive the index again after the mutation that outdated it" endof
+      MD-RIGID-XDOM   of s" pass a region where a region is taken, an extent where an extent is, and a mutation generation where a generation is" endof
+      MD-UNDERFLOW    of s" push the missing inputs before the call, or declare them in the signature" endof
+      MD-STALE-READ   of s" bind the value to a local before the `catch` and read the local after it, or drop the cell" endof
+      MD-TOP-UNKNOWN  of s" push the value while checking is on, or drop the cell" endof
       MD-TAIL-ESCAPE  of TAIL-SUGGEST$ endof
-      MD-LIT-FIT      of s" Write a value in range, or widen the declared type." endof
-      MD-SCOPE-STORE  of s" Keep the scoped value on the stack or in a local; ordinary memory has no scope dependency declaration." endof
-      MD-SCOPE-KIND   of s" Use a scope parameter only in a declared scope slot; it is neither a value type nor an allocation identity." endof
-      MD-C2-COPY      of s" Move the exclusive value once instead of copying it." endof
-      MD-C2-DROP      of s" Return or consume the exclusive value instead of discarding it." endof
-      MD-C2-ESCAPE    of s" Return only values independent of the owner or loan opened by this operation." endof
+      MD-LIT-FIT      of s" write a literal in the type's range, or declare a wider type" endof
+      MD-SCOPE-STORE  of s" keep the scoped value on the stack or in a local instead of storing it in memory" endof
+      MD-SCOPE-KIND   of s" write the scope parameter only in a view type's scope slot, never as a value type" endof
+      MD-C2-COPY      of s" move the exclusive value once, or lend it with `WITH-MUT-LOAN`, instead of copying it" endof
+      MD-C2-DROP      of s" return the exclusive value or pass it to a word that consumes it instead of dropping it" endof
+      MD-C2-ESCAPE    of s" return only values that do not depend on the owner or loan this operation opened" endof
       MD-EFFECT-DEPTH of DEPTH-SUGGEST$ endof
-      MD-INPUT-WIDTH  of s" Take fewer cells: pass bulk values in a buffer, not on the stack." endof
-      MD-CF-DEPTH     of s" Move the inner control structures into a named word and call it there; each definition counts its own control frames." endof
-      MD-RECURSE-SIG  of s" Declare the definition's stack effect after its name." endof
-      MD-RECURSE-DOES of s" Move the recursion into a named word with a declared effect and call it from the clause." endof
-      MD-IS-UNKNOWN   of s" Name a word declared with defer; qualify it as PKG:NAME or import its package with using." endof
-      MD-IS-NOT-DEFER of s" Name a word declared with defer; `is` rebinds deferred words only." endof
-      MD-IS-MISSING   of s" Write the name of a word declared with defer after is." endof
-      MD-TYPE-FORM    of s" Name a closed type ARENA stores: one cell or more, or u8, with no type variable, quotation, linear value, atom, xt or width<t> in it, and no cell family with arguments as the type or a pointer's pointee." endof
-      MD-STORED-LINEAR of s" Pass a type with no linear value in it: a cast's stored type is copied as plain cells." endof
-      MD-STORED-CLASS of s" Pass a type a cast may name as a pointee: no atom and no width<t> in it." endof
-      MD-IS-STORED    of s" Declare the cell over the concrete type the callable stores, or install a callable whose type variable takes any type: a cast's stored type holds no linear value, atom or width." endof
-      MD-DIV-ZERO     of s" Divide by a value that cannot be zero; a zero divisor's answer is undefined." endof
-      MD-THROW-ZERO   of s" Throw a nonzero code: 0 means no error, and a catch that answers 0 cannot tell the unwind from a normal return." endof
+      MD-INPUT-WIDTH  of s" take fewer input cells by passing bulk values in a buffer" endof
+      MD-CF-DEPTH     of s" move the inner control structures into a named word and call that word here" endof
+      MD-RECURSE-SIG  of s" declare the definition's stack effect after its name, as `: NAME ( n -- n )`" endof
+      MD-RECURSE-DOES of s" move the recursion into a named word with a declared effect and call that word from the `does>` clause" endof
+      MD-IS-UNKNOWN   of s" name a word declared with `defer` after `is`, as `PKG:NAME` or with its package imported by `using`" endof
+      MD-IS-NOT-DEFER of s" declare the target with `defer NAME ( in -- out )`, or name a deferred word after `is`" endof
+      MD-IS-MISSING   of s" write the name of a deferred word after `is`" endof
+      MD-TYPE-FORM    of s" write after `[type]` a closed type storage holds, as `n`, `u8` or a declared record, with no type variable, quotation, linear value, atom, xt or width in it" endof
+      MD-STORED-LINEAR of s" pass a type that holds no linear value where a cast stores this type variable" endof
+      MD-STORED-CLASS of s" pass a type that holds no atom and no width where a cast stores this type variable" endof
+      MD-IS-STORED    of s" declare the cell over the concrete type the callable stores, or install a callable whose type variable takes any type" endof
+      MD-DIV-ZERO     of s" divide by a value that cannot be zero" endof
+      MD-THROW-ZERO   of s" throw a nonzero code, as an error constant the package declares" endof
       MD-LOOP-DEPTH   of ['] ROW-CELLS ROWS-SUGGEST$ endof
       MD-IF-DEPTH     of ['] ROW-CELLS ROWS-SUGGEST$ endof
       MD-ARMS-DEPTH   of ['] ROW-CELLS ROWS-SUGGEST$ endof
-      MD-LOCAL-ESCAPE of s" Run the quotation inside the block of the locals it reads; a quotation that is stored, kept or returned takes its values from the stack." endof
-      MD-BINDER-PLACE of s" Call the scope operation directly in the word that supplies its callback; only a scope operation's callback input may hold a callback binder." endof
-      MD-DEPTH-WIDE   of s" Count the values another way, or take the wide value apart first: MATCH a sum or an enum whose arguments are concrete, UNMAKE a product; a stale value can only be moved or dropped. `depth` and `.s` count raw cells, and a wide value is one value held in several." endof
-      MD-LOOP-RDEPTH  of s" Take back with r> in the loop body every cell it pushes with >r, so each pass leaves the return stack as it found it." endof
-      MD-LOOP-CARRIED of s" Make each pass leave the cells it carries as it found them, of the same types and with the same facts known of them; keep a value that changes per pass in a variable." endof
-      MD-NO-LOOP      of s" Use i, leave, unloop, loop and +loop only inside a do or ?do this definition opened and has not closed." endof
-      MD-NO-OUTER-LOOP of s" Use j only inside a do loop nested in another; the index of a single loop is i." endof
-      MD-CLOSES-NOTHING of s" Close each structure with its own word, innermost first: if ... else ... then, begin ... until, begin ... while ... repeat, case ... of ... endof ... endcase, [: ... ;]." endof
-      MD-NO-CASE      of s" Write of only inside case ... endcase, after the previous branch's endof." endof
-      MD-ELSE-TWICE   of s" Give an if one else at most; choose among more paths with an if ... else ... then nested in the else branch." endof
-      MD-EXIT-LOOP    of s" Write unloop before exit once for each loop the exit leaves, or leave the loop and return after it." endof
-      MD-UNLOOP-JOIN  of s" Unloop the same loops on every path that meets here, or exit from each path right after its unloop." endof
-      MD-CF-OPEN      of s" Close every if, do, begin, case and [: before the definition ends." endof
-      s" Complete the form: MATCH family, variant OF ... ENDOF per variant, ;MATCH." rot
+      MD-LOCAL-ESCAPE of s" run the quotation within the block of the locals it reads, or have it take their values from the stack" endof
+      MD-BINDER-PLACE of s" call the scope operation directly in the word that gives it its callback" endof
+      MD-DEPTH-WIDE   of s" take the wide value apart first, with `MATCH` on concrete arguments or `UNMAKE`, or count the values another way" endof
+      MD-LOOP-RDEPTH  of s" pop with `r>` in the loop body every cell it pushes with `>r`" endof
+      MD-LOOP-CARRIED of s" make each pass leave the cells it carries with the types and facts it entered with, and keep a value that changes per pass in a variable" endof
+      MD-NO-LOOP      of s" write this word only inside a `do` or `?do` loop this definition opened and has not closed" endof
+      MD-NO-OUTER-LOOP of s" write `i` for a single loop's index, and `j` only inside a `do` loop nested in another" endof
+      MD-CLOSES-NOTHING of s" close each structure with its own word, innermost first: `then` for `if`, `until` or `repeat` for `begin`, `loop` for `do`, `endcase` for `case`, `;]` for `[:`" endof
+      MD-NO-CASE      of s" write `of` only inside `case ... endcase`, after the previous arm's `endof`" endof
+      MD-ELSE-TWICE   of s" nest another `if ... else ... then` inside the `else` arm for each further path" endof
+      MD-EXIT-LOOP    of s" write `unloop` before `exit` once for each loop the `exit` leaves, or `leave` the loop and return after it" endof
+      MD-UNLOOP-JOIN  of s" write `unloop` for the same loops on every path that meets here, or `exit` from each path right after its `unloop`" endof
+      MD-CF-OPEN      of s" close every `if`, `do`, `begin`, `case` and `[:` before the `;`" endof
+      s" close each `MATCH family` with `;MATCH` after its `variant OF ... ENDOF` arms, and write `construct family variant` with both operands" rot
    endcase ;
 
 
