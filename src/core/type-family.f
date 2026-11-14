@@ -447,20 +447,6 @@ private
 
 variable TFM-EPOCH   1 TFM-EPOCH !
 
-\ A rejection's message quotes a value in backticks.
-: TICK-N ( n -- ) {: v:n :}
-   96 REJECTION:EMIT1  v REJECTION:EMIT-N  96 REJECTION:EMIT1 ;
-
-\ WORD was given V, which names no WHAT; WHAT runs from 0 to MAX.
-: KIND-REJECT ( ptr u8 n ptr u8 n n n -- )
-   {: wa:ptr wu:n ka:ptr ku:n v:n max:n :}
-   s" E-TFAM-KIND" REJECTION:OPEN
-   wa wu REJECTION:EMIT-STR  s"  was given " REJECTION:EMIT-STR  v TICK-N
-   s" , which names no " REJECTION:EMIT-STR  ka ku REJECTION:EMIT-STR
-   REJECTION:HELP  s" pass a " REJECTION:EMIT-STR  ka ku REJECTION:EMIT-STR
-   s"  from `0` to " REJECTION:EMIT-STR  max TICK-N
-   CHECKER-REJECT-RC REJECTION:STOP ;
-
 public
 
 : TFM-EPOCH+ ( -- ) TFM-EPOCH @ 1 + TFM-EPOCH ! ;
@@ -653,22 +639,14 @@ private
       1 +
    REPEAT drop ;
 
-: ARITY-REJECT ( n -- ) {: arity:n :}
-   s" E-TFAM-ARITY" REJECTION:OPEN
-   s" `TFAM-DECL` was given the negative arity " REJECTION:EMIT-STR
-   arity TICK-N
-   REJECTION:HELP  s" pass an arity of `0` or more" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
-
 public
 
 : TFAM-DECL ( ptr u8 n n ptr u8 n n n -- n )
    {: pa:ptr pu:n vis:n na:ptr nu:n arity:n kind:n :}
    WRITE-WINDOW-CK                        \ src/core/checker.f WRITE-WINDOW
    na nu TF-REQUIRE-CANON
-   arity 0 < IF arity ARITY-REJECT THEN
-   kind TFAM-KIND-VALID? 0= IF
-      s" `TFAM-DECL`" s" family kind" kind TK-MAX KIND-REJECT THEN
+   arity 0 < IF s" tfam: negative family arity" 76 die THEN
+   kind TFAM-KIND-VALID? 0= IF s" tfam: family kind out of range" 76 die THEN
    pa pu na nu TFAM-FIND-IN IF drop E-TFAM-DUP throw THEN drop   \ FIND returns (id-or-0 flag); drop the id
    TF-ENSURE
    TFX-ENSURE                             \ before the slot is committed; see TFX-ADD
@@ -1382,26 +1360,14 @@ public
 
 private
 
-\ ID was given where a field id below N belongs.
-: ID-REJECT ( n n -- ) {: id:n n:n :}
-   s" E-PF-ID" REJECTION:OPEN
-   s" field id " REJECTION:EMIT-STR  id TICK-N
-   s"  names no field" REJECTION:EMIT-STR
-   s" fields" REJECTION:NOTE  n REJECTION:EMIT-N
-   REJECTION:HELP
-   s" pass a field id from `0` up to one less than the field count"
-   REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
-
 : ID-REQUIRE ( n n -- ) {: id:n n:n :}
-   id 0 <  id n >=  or IF id n ID-REJECT THEN ;
+   id 0 <  id n >=  or IF s" pf: field id names no field" 76 die THEN ;
 
 public
 
-\ A field id is public reflection input (an `n` any caller can guess), so a
-\ reader rejects one out of range. PF-ROW admits provisional rows (bound PF-N)
-\ for in-transaction machinery; PF-REC@ is the committed reflection reader
-\ (bound PF-COMMIT-N), so a guessed provisional id is rejected before it is read.
+\ Only the engine holds a field id, so one out of range is a defect. PF-ROW
+\ admits provisional rows (bound PF-N) for in-transaction machinery; PF-REC@ is
+\ the committed reader (bound PF-COMMIT-N).
 : PF-ROW ( n -- ptr n ) {: id:n :}
    id PF-N @ ID-REQUIRE
    id PF-REC * PF-BASE + ;
@@ -1613,19 +1579,11 @@ public
 
 private
 
-\ FAM's variant range (TFAM-VAR-RANGE!) or field range (TFAM-FLD-RANGE!) holds
-\ rows that are not its variants' payload; both setters store it unchecked.
-: RANGE-REJECT ( n -- ) {: fam:n :}
-   s" E-TFAM-PAYLOAD" REJECTION:OPEN
-   s" the variant or field range of family `" REJECTION:EMIT-STR
-   fam TFAM-NAME$ REJECTION:EMIT-STR
-   s" ` holds rows that are not its payload" REJECTION:EMIT-STR
-   s" family" REJECTION:NOTE  fam REJECTION:EMIT-N
-   REJECTION:HELP
-   s" give `TFAM-VAR-RANGE!` the family's own variants and `TFAM-FLD-RANGE!` "
-   REJECTION:EMIT-STR
-   s" committed fields those variants own" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+\ A family's variant range (TFAM-VAR-RANGE!) or field range (TFAM-FLD-RANGE!)
+\ holds rows that are not its variants' payload; both setters store it unchecked.
+: RANGE-BAD ( -- )
+   s" tfam: a family's variant or field range holds rows that are not its payload"
+   76 die ;
 
 \ A variant's named payload is the rows of its owner chain (FVX) that sit inside
 \ its family's field slice. The chain can also hold the owner's rows outside the
@@ -1668,12 +1626,12 @@ private
 : SUMV-FAMILY-LEGACY-PAYLOAD? ( n -- bool ) {: fam:n :}
    fam TFAM-VAR-START@ {: base:n :}
    fam TFAM-VAR-COUNT@ {: count:n :}
-   base 0 < count 0 < or IF fam RANGE-REJECT THEN
-   base SUMV-N @ > IF fam RANGE-REJECT THEN
-   count SUMV-N @ base - > IF fam RANGE-REJECT THEN
+   base 0 < count 0 < or IF RANGE-BAD THEN
+   base SUMV-N @ > IF RANGE-BAD THEN
+   count SUMV-N @ base - > IF RANGE-BAD THEN
    0 BEGIN dup count < WHILE
       base over + {: vid:n :}
-      vid SUMV-FAM@ fam <> IF fam RANGE-REJECT THEN
+      vid SUMV-FAM@ fam <> IF RANGE-BAD THEN
       vid SUMV-SCH-COUNT@ 0 <> IF drop RES-TRUE EXIT THEN
       1 +
    REPEAT drop RES-FALSE ;
@@ -1682,22 +1640,22 @@ private
    fam TFAM-SUM? fam TFAM-ENUM? or 0= IF RES-FALSE EXIT THEN
    fam TFAM-FLD-START@ {: base:n :}
    fam TFAM-FLD-COUNT@ {: count:n :}
-   count 0 < IF fam RANGE-REJECT THEN
+   count 0 < IF RANGE-BAD THEN
    count 0= IF RES-FALSE EXIT THEN
-   base 0 < IF fam RANGE-REJECT THEN
-   base PF-COMMIT-N @ > IF fam RANGE-REJECT THEN
-   count PF-COMMIT-N @ base - > IF fam RANGE-REJECT THEN
-   fam SUMV-FAMILY-LEGACY-PAYLOAD? IF fam RANGE-REJECT THEN
+   base 0 < IF RANGE-BAD THEN
+   base PF-COMMIT-N @ > IF RANGE-BAD THEN
+   count PF-COMMIT-N @ base - > IF RANGE-BAD THEN
+   fam SUMV-FAMILY-LEGACY-PAYLOAD? IF RANGE-BAD THEN
    fam TFAM-VAR-START@ {: variants:n :}
    fam TFAM-VAR-COUNT@ {: variant-count:n :}
    0 BEGIN dup count < WHILE
       base over + {: fid:n :}
-      fid PF-FAM@ fam <> IF fam RANGE-REJECT THEN
+      fid PF-FAM@ fam <> IF RANGE-BAD THEN
       fid PF-VAR@ {: owner:n :}
-      owner PF-NO-VARIANT = IF fam RANGE-REJECT THEN
-      owner 0 < owner SUMV-N @ >= or IF fam RANGE-REJECT THEN
-      owner SUMV-FAM@ fam <> IF fam RANGE-REJECT THEN
-      owner variants < owner variants - variant-count >= or IF fam RANGE-REJECT THEN
+      owner PF-NO-VARIANT = IF RANGE-BAD THEN
+      owner 0 < owner SUMV-N @ >= or IF RANGE-BAD THEN
+      owner SUMV-FAM@ fam <> IF RANGE-BAD THEN
+      owner variants < owner variants - variant-count >= or IF RANGE-BAD THEN
       1 +
    REPEAT drop
    RES-TRUE ;
@@ -1708,16 +1666,8 @@ private
 
 : SUMV-NAMED-PAYLOAD? ( n -- bool ) SUMV-FAM@ SUM-NAMED-PAYLOAD? ;
 
-\ VID has no payload INDEX.
-: PAY-INDEX-REJECT ( n n -- ) {: vid:n index:n :}
-   s" E-TFAM-PAYLOAD" REJECTION:OPEN
-   s" `SUMV-PAY-ROOT` was given payload index " REJECTION:EMIT-STR
-   index TICK-N  s" , which variant " REJECTION:EMIT-STR  vid TICK-N
-   s"  does not have" REJECTION:EMIT-STR
-   REJECTION:HELP
-   s" pass an index from `0` up to one less than the variant's `SUMV-PAY-N`"
-   REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+\ A payload index the variant does not have.
+: PAY-INDEX-BAD ( -- ) s" tfam: payload index out of range" 76 die ;
 
 public
 
@@ -1730,12 +1680,12 @@ public
    vid SUMV-FAM@ vid SUMV-SLICE-N ;
 
 : SUMV-PAY-ROOT ( n n -- n ) {: vid:n index:n :}
-   index 0 < IF vid index PAY-INDEX-REJECT THEN
+   index 0 < IF PAY-INDEX-BAD THEN
    vid SUMV-NAMED-PAYLOAD? IF
-      vid index SUMV-NAMED-FIELD 0= IF drop vid index PAY-INDEX-REJECT THEN
+      vid index SUMV-NAMED-FIELD 0= IF drop PAY-INDEX-BAD THEN
       PF-SCH@ EXIT
    THEN
-   index vid SUMV-SCH-COUNT@ >= IF vid index PAY-INDEX-REJECT THEN
+   index vid SUMV-SCH-COUNT@ >= IF PAY-INDEX-BAD THEN
    vid SUMV-SCH-START@ index + ;
 
 : SUMV-PAYCELLS@ ( n -- n ) {: vid:n :}
@@ -2099,79 +2049,44 @@ package TYPE-FIELD-OWNER
 : TX-BASE ( -- ptr n ) PF-TX-P @ ;
 : TX-AT ( n -- ptr n ) PF-TX-REC * TX-BASE + ;
 
-\ A field transaction step out of order: its message, then TX-REJECT-END.
-: TX-REJECT-END ( -- )
-   s" open" REJECTION:NOTE  PF-TX-DEPTH @ REJECTION:EMIT-N
-   REJECTION:HELP
-   s" open a field transaction with `OPEN`, then pass its token to `COMMIT` "
-   REJECTION:EMIT-STR
-   s" and `FINALIZE`, or to `ROLLBACK`, innermost first" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
-: TX-REJECT ( ptr u8 n -- ) {: ma:ptr mu:n :}
-   s" E-PF-TX" REJECTION:OPEN  ma mu REJECTION:EMIT-STR  TX-REJECT-END ;
-: TOKEN-REJECT ( n -- ) {: tx:n :}
-   s" E-PF-TX" REJECTION:OPEN
-   s" field transaction token `" REJECTION:EMIT-STR  tx REJECTION:EMIT-N
-   s" ` is not the innermost open one" REJECTION:EMIT-STR
-   TX-REJECT-END ;
-
 : TX-TOP ( -- ptr n )
-   PF-TX-DEPTH @ 0= IF s" no field transaction is open" TX-REJECT THEN
+   PF-TX-DEPTH @ 0= IF s" pf: no field transaction is open" 76 die THEN
    PF-TX-DEPTH @ 1 - TX-AT ;
 : TX-REQUIRE ( n -- ) {: tx:n :}
-   TX-TOP PFTX.TOK @ tx <> IF tx TOKEN-REJECT THEN ;
+   TX-TOP PFTX.TOK @ tx <> IF
+      s" pf: a field transaction token is not the innermost open one" 76 die THEN ;
 : TX-STATE-REQUIRE ( n n -- ) {: tx:n state:n :}
    tx TX-REQUIRE
    TX-TOP PFTX.STATE @ state = IF EXIT THEN
    state STATE-OPEN = IF
-      s" the innermost field transaction is already committed" TX-REJECT THEN
-   s" the innermost field transaction is not committed yet" TX-REJECT ;
+      s" pf: the innermost field transaction is already committed" 76 die THEN
+   s" pf: the innermost field transaction is not committed yet" 76 die ;
 : TX-MARKS-REQUIRE ( -- )
    TX-TOP PFTX.PFN @ PF-N @ > IF
-      s" field rows were rewound below the innermost field transaction's start"
-      TX-REJECT THEN ;
+      s" pf: field rows were rewound below the innermost field transaction's start"
+      76 die THEN ;
 : TX-OPEN-MARKS-REQUIRE ( -- )
    TX-MARKS-REQUIRE
    TX-TOP PFTX.COMMITN @ PF-COMMIT-N @ <> IF
-      s" the committed field count moved while the field transaction is open"
-      TX-REJECT THEN ;
+      s" pf: the committed field count moved while the field transaction is open"
+      76 die THEN ;
 : TX-PARENT-REQUIRE ( -- )
    PF-TX-DEPTH @ 0= IF EXIT THEN
    TX-TOP PFTX.STATE @ STATE-OPEN <> IF
-      s" a field transaction cannot open inside a committed one" TX-REJECT THEN
+      s" pf: a field transaction cannot open inside a committed one" 76 die THEN
    TX-OPEN-MARKS-REQUIRE ;
 : TX-COMMITTED-MARKS-REQUIRE ( -- )
    TX-MARKS-REQUIRE
    PF-TX-DEPTH @ 1 = IF
       PF-COMMIT-N @ PF-N @ = IF EXIT THEN
-      s" field rows changed after the outermost field transaction committed"
-      TX-REJECT
+      s" pf: field rows changed after the outermost field transaction committed"
+      76 die
    THEN
    TX-TOP PFTX.COMMITN @ PF-COMMIT-N @ <> IF
-      s" the committed field count moved under a committed inner field transaction"
-      TX-REJECT THEN ;
+      s" pf: the committed field count moved under a committed inner field transaction"
+      76 die THEN ;
 : RELEASE ( -- )
    PF-TX-DEPTH @ 1 - PF-TX-DEPTH ! ;
-
-\ FAM does not own the field, which KEY V names.
-: OWNER-REJECT ( n ptr u8 n n ptr u8 n -- )
-   {: fam:n ka:ptr ku:n v:n ha:ptr hu:n :}
-   s" E-PF-OWNER" REJECTION:OPEN
-   s" family `" REJECTION:EMIT-STR  fam REJECTION:EMIT-N
-   s" ` does not own the field" REJECTION:EMIT-STR
-   ka ku REJECTION:NOTE  v REJECTION:EMIT-N
-   REJECTION:HELP  ha hu REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
-
-\ ID is no row the innermost open field transaction added.
-: ROW-REJECT ( n -- ) {: id:n :}
-   s" E-PF-ID" REJECTION:OPEN
-   s" field id `" REJECTION:EMIT-STR  id REJECTION:EMIT-N
-   s" ` is not a row the innermost field transaction added" REJECTION:EMIT-STR
-   REJECTION:HELP
-   s" pass the id of a field the innermost open field transaction added"
-   REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
 
 public
 
@@ -2227,11 +2142,11 @@ public
 : TX-SCHEMA-FOR ( n n n -- n ) {: tx:n fam:n id:n :}
    tx STATE-OPEN TX-STATE-REQUIRE
    TX-OPEN-MARKS-REQUIRE
-   id TX-TOP PFTX.PFN @ <  id PF-N @ >=  or IF id ROW-REJECT THEN
+   id TX-TOP PFTX.PFN @ <  id PF-N @ >=  or IF
+      s" pf: a field id is not a row the innermost field transaction added"
+      76 die THEN
    id PF-ROW {: r:ptr :}
-   r PF.FAM @ fam <> IF
-      fam s" field" id s" pass the family the field was added to" OWNER-REJECT
-   THEN
+   r PF.FAM @ fam <> IF s" pf: the family does not own the field" 76 die THEN
    r PF.SCH @ ;
 : TX-CELLS-FOR ( n n n -- n ) {: tx:n fam:n id:n :}
    tx fam id TX-SCHEMA-FOR drop
@@ -2251,7 +2166,7 @@ private
       1 -
       dup TX-AT PFTX.TOK @ tx = IF EXIT THEN
    REPEAT
-   drop tx TOKEN-REJECT ;
+   drop s" pf: a field transaction token names no open transaction" 76 die ;
 
 : ROLLBACK-THROUGH ( n -- ) {: tx:n :}
    tx TX-INDEX {: keep:n :}
@@ -2619,23 +2534,6 @@ private
 : TFAM-SCH-ROW-ARITY-INSTALL ( -- ) [: TFAM-SCH-ROW-ARITY-IMPL ;] is TFAM-SCH-ROW-ARITY ;
 TFAM-SCH-ROW-ARITY-INSTALL
 
-\ A field's layout, as TYPE-FIELD-OWNER:ADD was given it, breaks the rule
-\ the message states; KEY V is the value that breaks it.
-: LAYOUT-REJECT ( ptr u8 n ptr u8 n n ptr u8 n -- )
-   {: ma:ptr mu:n ka:ptr ku:n v:n ha:ptr hu:n :}
-   s" E-PF-LAYOUT" REJECTION:OPEN  ma mu REJECTION:EMIT-STR
-   ka ku REJECTION:NOTE  v REJECTION:EMIT-N
-   REJECTION:HELP  ha hu REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
-
-: FLAGS-REJECT ( n -- ) {: flags:n :}
-   s" E-PF-FLAGS" REJECTION:OPEN
-   s" field flags " REJECTION:EMIT-STR  flags TICK-N
-   s"  set undefined bits" REJECTION:EMIT-STR
-   REJECTION:HELP
-   s" pass `PF-FLAGS-NONE`: no field flag is defined" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
-
 : PF-RANGE-OK? ( n n -- bool ) {: off:n len:n :}
    off 0 >= len 0 > and IF off PF-MAX-N len - <= ELSE RES-FALSE THEN ;
 : PF-POW2? ( n -- bool ) {: n:n :}
@@ -2644,22 +2542,15 @@ TFAM-SCH-ROW-ARITY-INSTALL
    a b bu + < b a au + < and ;
 : PF-CELL-BYTES ( n -- n ) {: n:n :}
    n 0 < n PF-MAX-N CELL / > or IF
-      s" the field's `slot` or `cells` is too large to count in bytes"
-      s" count" n
-      s" pass a `slot` and `cells` whose bytes fit in a cell" LAYOUT-REJECT
-   THEN
+      s" pf: a field's slot or cells is too large to count in bytes" 76 die THEN
    n cells ;
 : PF-CELL-SLOTS-REQUIRE ( n n n n n -- )   \ a field laid out in whole cells
    {: slot:n cellsn:n boff:n bytesn:n al:n :}
    slot PF-CELL-BYTES boff <> IF
-      s" the field's `byte-off` is not its `slot` in bytes" s" byte-off" boff
-      s" pass `slot` times the cell size as `byte-off`" LAYOUT-REJECT THEN
+      s" pf: a field's byte-off is not its slot in bytes" 76 die THEN
    cellsn PF-CELL-BYTES bytesn <> IF
-      s" the field's `bytes` is not its `cells` in bytes" s" bytes" bytesn
-      s" pass `cells` times the cell size as `bytes`" LAYOUT-REJECT THEN
-   al CELL <> IF
-      s" the field's `align` is not the cell size" s" align" al
-      s" pass the cell size as `align`" LAYOUT-REJECT THEN ;
+      s" pf: a field's bytes is not its cells in bytes" 76 die THEN
+   al CELL <> IF s" pf: a field's align is not the cell size" 76 die THEN ;
 
 public
 
@@ -2677,31 +2568,19 @@ public
    drop RES-FALSE ;
 : PF-LAYOUT-REQUIRE ( n n n n n n n n -- )
    {: fam:n sch:n slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
-   flags PF-FLAGS-NONE <> IF flags FLAGS-REJECT THEN
+   flags PF-FLAGS-NONE <> IF s" pf: field flags set undefined bits" 76 die THEN
    slot cellsn PF-RANGE-OK? 0= IF
-      s" the field's `slot` or `cells` is out of range" s" slot" slot
-      s" pass a `slot` of `0` or more and `cells` of `1` or more" LAYOUT-REJECT
-   THEN
+      s" pf: a field's slot or cells is out of range" 76 die THEN
    boff bytesn PF-RANGE-OK? 0= IF
-      s" the field's `byte-off` or `bytes` is out of range" s" byte-off" boff
-      s" pass a `byte-off` of `0` or more and `bytes` of `1` or more"
-      LAYOUT-REJECT THEN
-   al PF-POW2? 0= IF
-      s" the field's `align` is not a power of two" s" align" al
-      s" pass a power of two as `align`" LAYOUT-REJECT THEN
+      s" pf: a field's byte-off or bytes is out of range" 76 die THEN
+   al PF-POW2? 0= IF s" pf: a field's align is not a power of two" 76 die THEN
    boff al mod 0 <> IF
-      s" the field's `byte-off` is not a multiple of its `align`" s" byte-off"
-      boff s" pass a `byte-off` that `align` divides" LAYOUT-REJECT THEN
+      s" pf: a field's byte-off is not a multiple of its align" 76 die THEN
    fam sch SCHEMA-ROOT@ TFAM-SCH-WIDTH cellsn <> IF
-      s" the field's `cells` is not its schema's width" s" cells" cellsn
-      s" pass the width of the field's schema, in cells, as `cells`"
-      LAYOUT-REJECT THEN
+      s" pf: a field's cells is not its schema's width" 76 die THEN
    fam TFAM-LAYOUT-POLICY@ {: policy:n :}
    policy TL-STACK-CELL-TAG =  policy TL-PACKED-TAG = or  policy TL-NICHE = or
-   0= IF
-      s" the family's layout policy lays out no fields" s" policy" policy
-      s" add fields only to a family whose policy is `TL-STACK-CELL-TAG`, `TL-PACKED-TAG` or `TL-NICHE`"
-      LAYOUT-REJECT THEN
+   0= IF s" pf: a field was added to a family whose layout policy lays out no fields" 76 die THEN
    slot cellsn boff bytesn al PF-CELL-SLOTS-REQUIRE ;
 : PF-DUP? ( n n ptr u8 n -- bool ) {: fam:n var:n na:ptr nu:n :}
    fam var FVX-FIRST
@@ -2718,19 +2597,6 @@ public
 
 package TYPE-FIELD-OWNER
 
-: OWNER-HELP$ ( -- ptr u8 n )
-   s" pass a product family with `PF-NO-VARIANT`, or a sum or enum family with one of its own variants" ;
-
-\ The field at SLOT overlaps another field of its owner.
-: OVERLAP-REJECT ( n -- ) {: slot:n :}
-   s" E-PF-LAYOUT" REJECTION:OPEN
-   s" the field overlaps another field of its owner" REJECTION:EMIT-STR
-   s" slot" REJECTION:NOTE  slot REJECTION:EMIT-N
-   REJECTION:HELP
-   s" place the field in slots and bytes no other field of its owner takes"
-   REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
-
 public
 
 : ADD ( n n n ptr u8 n n n n n n n n -- n )
@@ -2738,12 +2604,14 @@ public
    WRITE-WINDOW-CK
    tx STATE-OPEN TX-STATE-REQUIRE
    TX-OPEN-MARKS-REQUIRE
-   fam var PF-OWNER-OK? 0= IF fam s" variant" var OWNER-HELP$ OWNER-REJECT THEN
+   fam var PF-OWNER-OK? 0= IF
+      s" pf: a field's owner is not a product, or a sum or enum variant of the family" 76 die THEN
    na nu PF-NAME-REQUIRE
    fam var na nu PF-DUP? IF E-TFAM-DUP throw THEN
    fam sch PF-SCHEMA-OK? 0= IF E-PF-SCHEMA throw THEN
    fam sch slot cellsn boff bytesn al flags PF-LAYOUT-REQUIRE
-   fam var slot cellsn boff bytesn PF-OVERLAP? IF slot OVERLAP-REJECT THEN
+   fam var slot cellsn boff bytesn PF-OVERLAP? IF
+      s" pf: a field overlaps another field of its owner" 76 die THEN
    PF-ENSURE
    na nu TF-INTERN {: noff:n :}
    PF-N @ {: id:n :}
@@ -3072,8 +2940,7 @@ public
    0 RES-FALSE ;
 : LAY-ADD ( n n n n n -- n ) {: fam:n p:n sz:n al:n tw:n :}
    WRITE-WINDOW-CK
-   p 0 < p TL-MAX > or IF
-      s" `LAY-ADD`" s" layout policy" p TL-MAX KIND-REJECT THEN
+   p 0 < p TL-MAX > or IF s" tfam: layout policy out of range" 76 die THEN
    fam LAY-FIND IF drop E-TFAM-DUP throw THEN drop   \ drop the id from FIND's (id-or-0 flag)
    LAY-ENSURE
    LAY-N @ {: id:n :}
@@ -3146,14 +3013,6 @@ private
       dup LAY-SIZE@ swap LAY-ALIGN@ RES-TRUE
    ELSE drop 0 0 RES-FALSE THEN ;
 
-\ A step on a field transaction's or a type rollback frame's stack out of order.
-: FRAME-REJECT ( ptr u8 n ptr u8 n n ptr u8 n -- )
-   {: ma:ptr mu:n ka:ptr ku:n v:n ha:ptr hu:n :}
-   s" E-PF-TX" REJECTION:OPEN  ma mu REJECTION:EMIT-STR
-   ka ku REJECTION:NOTE  v REJECTION:EMIT-N
-   REJECTION:HELP  ha hu REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
-
 \ A retired family read from its type entry can be read again.
 : ENTRIES-RETIRED ( n n -- ) {: lo:n hi:n :}
    hi lo ?do
@@ -3162,16 +3021,13 @@ private
 
 public
 
-\ base-state reset. Rejected while a field transaction is live, so a frame is
+\ base-state reset. A defect while a field transaction is live, so a frame is
 \ never discarded under its token holder, and does not rewind PF-TX-SERIAL: the
 \ token counter stays monotonic for the process, so a token minted before a
 \ reset never aliases a transaction begun after it.
 : TFAM-RESET ( -- )
    PF-TX-DEPTH @ IF
-      s" `TFAM-RESET` ran while a field transaction is open"
-      s" open" PF-TX-DEPTH @
-      s" finish or roll back every field transaction before `TFAM-RESET`"
-      FRAME-REJECT THEN
+      s" tfam: TFAM-RESET ran while a field transaction is open" 76 die THEN
    0 SVX-GEN !                           \ every variant row the index points at is going
    0 TFX-READY !                         \ ... and every family row the tail index chains
    0 VNX-READY !                         \ ... and every row the variant tail index chains
@@ -3277,10 +3133,7 @@ public
    TF-RBF-GROW ;
 : TF-RBF-CUR ( -- ptr n ) TF-RBF-DEPTH @ TF-RBF-REC * TF-RBF-BASE + ;
 : TF-RBF-TOP ( -- ptr n )
-   TF-RBF-DEPTH @ 0= IF
-      s" no type rollback frame is open" s" frames" 0
-      s" call `EXT-RESTORE` or `EXT-FINALIZE` only after its `EXT-SAVE`"
-      FRAME-REJECT THEN
+   TF-RBF-DEPTH @ 0= IF s" tfam: no type rollback frame is open" 76 die THEN
    TF-RBF-DEPTH @ 1 - TF-RBF-REC * TF-RBF-BASE + ;
 
 ;package
@@ -3291,15 +3144,7 @@ package CHECKER-DECL-FRAME
 : PF-DEPTH= ( ptr n -- )
    TFRB.PFTXDEPTH @ {: saved:n :}
    saved PF-TX-DEPTH @ = IF EXIT THEN
-   s" E-PF-TX" REJECTION:OPEN
-   s" the field transactions open differ from those open at `EXT-SAVE`"
-   REJECTION:EMIT-STR
-   s" saved" REJECTION:NOTE  saved REJECTION:EMIT-N
-   s" open" REJECTION:NOTE  PF-TX-DEPTH @ REJECTION:EMIT-N
-   REJECTION:HELP
-   s" finish or roll back the field transactions opened after `EXT-SAVE` first"
-   REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   s" pf: the field transactions open differ from those open at EXT-SAVE" 76 die ;
 
 : TF-RELEASE ( -- )
    TF-RBF-DEPTH @ 1 - TF-RBF-DEPTH ! ;
@@ -3593,14 +3438,9 @@ REGISTER-STOW
 
 public
 
-\ The word every type entry's record runs: a type is never a word.
-: TYPE-WORD ( -- )
-   s" E-TFAM-TYPE-WORD" REJECTION:OPEN
-   s" a type name ran as a word" REJECTION:EMIT-STR
-   REJECTION:HELP
-   s" name a type only in stack effects and declarations, never as a word to run"
-   REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+\ The word every type entry's record runs. A type entry lives in the types
+\ wordlist, which no search order holds, so only the engine could run one.
+: TYPE-WORD ( -- ) s" tfam: a type entry ran as a word" 76 die ;
 
 : ENTRY? ( n -- bool ) TF-REC@ TF.ENTRY @ 0 <> ;
 \ Family id's type entry is record ix.
@@ -4592,9 +4432,7 @@ private
    fid TYPE-FIELD:FLAGS@ PF-FLAGS-NONE <> IF
       s" type-family: undefined field flag bits" 76 die THEN
    off fid TYPE-FIELD:BYTES@ +  fam TFAM-SLOTS@ CELL *  > IF
-      s" the field ends past its family's width" s" field" fid
-      s" give `TFAM-SLOTS!` a slot count that holds every field of the family"
-      LAYOUT-REJECT THEN
+      s" tfam: a field ends past its family's width" 76 die THEN
    fam TFAM-FRESH-TERM {: term:n :}
    term TFC-ARGS!
    fid TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ RES-FALSE TFC-SCH-TERM {: ft:n :}
