@@ -5105,6 +5105,7 @@ CHECKER-REG:}SCRATCH
 70 constant MD-IS-STORED     \ a callable's cast-stored type variable meets a cell's unrestricted one (QCON-OK?); E-CAST-LINEAR
 71 constant MD-DIV-ZERO      \ a literal 0 divisor reached the engine's `/`, `mod` or `/mod` (ZERO-OPERAND?)
 72 constant MD-THROW-ZERO    \ a literal 0 reached the engine's `throw` (ZERO-OPERAND?)
+73 constant MD-FINALLY-CLEANUP \ finally's cleanup is no quotation, or one that takes or leaves cells (CLEANUP-QUOT?)
 \ A data depth change is E-MISMATCH and prints the loop's start row and the
 \ row at its back edge or leave; the others are E-REJECTED.
 48 constant MD-LOOP-DEPTH    \ a loop's back edge or leave holds another data depth than its start (CF-CARRIED=)
@@ -6011,8 +6012,11 @@ variable QUOT-LOSS
 
 : RSEXEC
    FRESH MK-VAR FRESH MK-ROW {: tv rest :}
-   DCUR @  tv rest MK-PUSH  UNIFY OK @ and OK !
+   tv rest MK-PUSH {: din:n :}
+   din STEP-BORROWS? {: borrows:bool :}
+   DCUR @ din UNIFY OK @ and OK !
    rest DCUR !
+   OK @ borrows and IF STEP-UNDERFLOW! THEN
    LIN-SNAPSHOT {: bef:n :}              \ linears on the post-pop stack (pre-apply)
    tv T-RES QTT !
    QTT @ TAG T-QUOT = IF
@@ -6081,8 +6085,11 @@ variable QUOT-LOSS
    \ Catchable `throw` is not process no-return. `die` remains separate
    \ no-return metadata because it cannot be recovered by a quotation catch.
    FRESH MK-VAR FRESH MK-ROW {: tv rest :}
-   DCUR @  tv rest MK-PUSH  UNIFY OK @ and OK !
+   tv rest MK-PUSH {: din:n :}
+   din STEP-BORROWS? {: borrows:bool :}
+   DCUR @ din UNIFY OK @ and OK !
    rest DCUR !
+   OK @ borrows and IF STEP-UNDERFLOW! THEN
    tv T-RES QTT !
    QTT @ TAG T-QUOT = IF
      QTT @ QUOT-APPLY-INST QTT !
@@ -6143,10 +6150,12 @@ variable QUOT-LOSS
 
 : RSFINALLY ( -- )
    FRESH MK-VAR FRESH MK-ROW {: tv rest :}
+   FRESH MK-VAR tv rest MK-PUSH MK-PUSH STEP-BORROWS? {: borrows:bool :}
    DCUR @ tv rest MK-PUSH UNIFY OK @ and OK !
    rest DCUR !
+   OK @ borrows and IF STEP-UNDERFLOW! THEN
    tv T-RES {: cleanup:n :}
-   cleanup CLEANUP-QUOT? 0= IF 0 OK ! EXIT THEN
+   cleanup CLEANUP-QUOT? 0= IF MD-FINALLY-CLEANUP MDIAG!  0 OK ! EXIT THEN
    RSEXEC
    OK @ 0= IF EXIT THEN
    QTT @ Q>XDEAD QTT @ Q>XHAS 0= and IF EXIT THEN

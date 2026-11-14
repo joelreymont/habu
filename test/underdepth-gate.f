@@ -3,7 +3,9 @@
 \ bits 52-59), poked by the publish tails. Run bare at top level on a shallower
 \ stack it fails closed with `E-UNDERFLOW ... interpret stack underdepth:
 \ <token>` and rc 70 before its body runs. hb's startup words are defined by
-\ the same interpreter, so an engine-prefix word carries its arity too.
+\ the same interpreter, so an engine-prefix word carries its arity too. The
+\ checker measures the input of `execute`, `catch` and `finally` in a body as
+\ any word's.
 
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
 \   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f
@@ -261,6 +263,30 @@ public
    SB-RESET s" 0 ffi-call" UDG-LINE SB$ UDG-EXEC:SUBJECT
    s" ffi-call" UDG-ASSERT-UNDERDEPTH ;
 
+\ --- body negatives: a primitive's input is measured as any word's ----------
+
+: UDG-ASSERT-AT ( ptr u8 n ptr u8 n -- ) {: why:ptr whyu:n at:ptr atu:n :}
+   UDG-EXITED @ TTRUE
+   UDG-RC @ UDG-REJECT-RC T=
+   UDG-ERR$ why whyu CONTAINS? TTRUE
+   UDG-ERR$ at atu CONTAINS? TTRUE ;
+
+: UDG-BODY-UNDER ( ptr u8 n ptr u8 n -- ) {: src:ptr u:n at:ptr atu:n :}
+   src u UDG-BARE$ UDG-EXEC:SUBJECT
+   s" input underflow" at atu UDG-ASSERT-AT ;
+
+: UDG-NEG-BODY ( -- )
+   s" execute on no cells in a body is an input underflow" T-LABEL
+   s" : f ( -- ) execute ;" s" at 'execute'" UDG-BODY-UNDER
+   s" catch on no cells in a body is an input underflow" T-LABEL
+   s" : f ( -- ) catch ;" s" at 'catch'" UDG-BODY-UNDER
+   s" finally on no cells in a body is an input underflow" T-LABEL
+   s" : f ( -- ) finally ;" s" at 'finally'" UDG-BODY-UNDER
+   s" finally over no quotation in a body names its cleanup" T-LABEL
+   s" : f ( -- ) 1 2 finally ;" UDG-BARE$ UDG-EXEC:SUBJECT
+   s" finally takes a quotation as its cleanup" s" at 'finally'"
+   UDG-ASSERT-AT ;
+
 \ --- positives: the public top-level surface is untouched -------------------
 
 : UDG-EXACT$ ( -- ptr u8 n )
@@ -378,6 +404,7 @@ public
    UDG-NEG-BARE
    UDG-NEG-SHAPES
    UDG-NEG-PRIMS
+   UDG-NEG-BODY
    UDG-POSITIVES
    UDG-MINIMUM:BOUNDARY
    UDG-CLEANUP
