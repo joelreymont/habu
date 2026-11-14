@@ -93,8 +93,8 @@ variable ITEMS                           \ and the diagnostics in it so far
 \ missing end the start, both held to the text and the end to no less than the
 \ start; the packet's numbers stay in data. severity: 1 for an error, 2 for a
 \ warning, else the client's. code, and source "habu". message: the packet's,
-\ then its non-empty help and its notes' `expected: ` and `found: ` lines when
-\ present. data: the whole packet.
+\ then a `key: value` line for each string note in the packet's order, then
+\ `help: ` and its help when non-empty. data: the whole packet.
 
 : QUOTE ( ptr JSON:writer -- ptr JSON:writer )  s\" \"" WRITE-RAW ;
 
@@ -113,34 +113,35 @@ variable ITEMS                           \ and the diagnostics in it so far
    {: c:ptr cu:n :}
    WRITE-COMMA s" code" WRITE-KEY c cu QUOTED ;
 
-: SUGGESTION ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
+: HELP-LINE ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
    s" help" STRING-MEMBER over 0 > and 0= if 2drop exit then
    {: s:ptr su:n :}
-   s" \n" WRITE-RAW s su WRITE-RAW ;
+   s" \nhelp: " WRITE-RAW s su WRITE-RAW ;
 
-\ The raw text of the packet's note under this key, as MEMBER answers a member.
-: NOTE ( ptr u8 n ptr u8 n -- ptr u8 n bool )
-   {: a:ptr u:n k:ptr ku:n :}
+\ A note with a string value as its line; any other value is passed over.
+: NOTE-LINE ( JSON:reader ptr JSON:writer -- JSON:reader )
+   {: w :}
+   READ-SPAN$ {: k:ptr ku:n :}
+   READ-NEXT T-STR <> if READ-SKIP-VALUE exit then
+   READ-SPAN$ {: v:ptr vu:n :}
+   w s" \n" WRITE-RAW k ku WRITE-RAW s" : " WRITE-RAW
+   v vu WRITE-RAW drop ;
+
+: NOTES ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
+   {: w a:ptr u:n :}
    JSON-ST a u READ-INIT
    READ-NEXT drop
-   s" notes" READ-FIND-KEY 0= if READ-CLOSE NULL$ false exit then
-   READ-TOKEN T-OBJ <> if READ-CLOSE NULL$ false exit then
-   k ku READ-FIND-KEY 0= if READ-CLOSE NULL$ false exit then
-   READ-TOKEN >r READ-SPAN$ rot READ-CLOSE r> T-STR = ;
-
-: PIECE ( ptr JSON:writer ptr u8 n ptr u8 n -- ptr JSON:writer )
-   {: a:ptr u:n k:ptr ku:n :}
-   a u k ku NOTE 0= if 2drop exit then
-   {: v:ptr vu:n :}
-   s" \n" WRITE-RAW k ku WRITE-RAW s" : " WRITE-RAW v vu WRITE-RAW ;
+   s" notes" READ-FIND-KEY 0= if READ-CLOSE w exit then
+   READ-TOKEN T-OBJ <> if READ-CLOSE w exit then
+   begin READ-NEXT T-KEY = while w NOTE-LINE repeat
+   READ-CLOSE w ;
 
 : MESSAGE ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
    {: a:ptr u:n :}
    QUOTE
    a u s" message" STRING-MEMBER if WRITE-RAW else 2drop then
-   a u SUGGESTION
-   a u s" expected" PIECE
-   a u s" found" PIECE
+   a u NOTES
+   a u HELP-LINE
    QUOTE ;
 
 : DIAGNOSTIC ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
