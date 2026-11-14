@@ -89,7 +89,7 @@ public
    LATE FFI-CB:UNBIND
    WORKER-ROW
    THROW-FALLBACK
-   s" ffi-callback-growth: ok" type cr ;
+   T-REPORT ;
 
 ;package
 
