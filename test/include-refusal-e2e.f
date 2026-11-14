@@ -1,7 +1,6 @@
-\ include-refusal-e2e.f - a loader refusal that ends the process names itself:
-\ an uncaught throw below 256 is the exit status and prints nothing, so each
-\ case pins exit 74 (INCLUDE-IO-RC), an empty stdout and a one-line stderr
-\ naming the refusal. Children run the engine under test
+\ include-refusal-e2e.f - a loader rejection that ends the process names itself:
+\ each case pins the record's exit status, an empty stdout and a stderr record
+\ carrying the rejection's code, the word or path it names and why. Children run the engine under test
 \ (src/lib/engine-candidate.f) from this working directory; each case's program
 \ and streams go in a temporary cases/ tree, which no missing path lies below
 \ and the process removes at exit.
@@ -54,11 +53,6 @@ variable RC
 
 : PLINE ( ptr u8 n -- ) PROG+ S\" \n" PROG+ ;
 
-\ The string builder holds <prefix><root>/<rel> and a newline.
-: SB-AT ( ptr u8 n ptr u8 n -- )
-   {: pre:ptr preu:n rel:ptr relu:n :}
-   SB-RESET pre preu SB-APPEND rel relu AT SB-APPEND 10 SB-APPEND-C ;
-
 \ <root>/cases/<name><suffix>.
 : NAMED ( ptr u8 n ptr u8 n -- ptr u8 n )
    {: name:ptr nameu:n suffix:ptr suffixu:n :}
@@ -86,11 +80,19 @@ variable RC
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE RESULT!
    name nameu KEEP ;
 
-: EXITS-74 ( -- )
-   RC @ 74 T=
+: EXITS ( n -- ) {: rc:n :}
+   RC @ rc T=
    OUT-U @ 0 T= ;
 
-\ A program that scopes the root <root>/<rel>, and the refusal naming that path.
+: ERR-HAS ( ptr u8 n -- ) {: a:ptr u:n :}
+   ERR$ a u CONTAINS? TTRUE ;
+
+\ The string builder holds <pre><root>/<rel>`.
+: SB-NAMES ( ptr u8 n ptr u8 n -- )
+   {: pre:ptr preu:n rel:ptr relu:n :}
+   SB-RESET pre preu SB-APPEND rel relu AT SB-APPEND 96 SB-APPEND-C ;
+
+\ A program that scopes the root <root>/<rel>, and the rejection naming that path.
 : WITH-AT ( ptr u8 n ptr u8 n -- )
    {: name:ptr nameu:n rel:ptr relu:n :}
    0 PROG-U !
@@ -101,28 +103,28 @@ variable RC
    s" ;package" PLINE
    s" INCLUDE-REFUSAL-WITH:RUN" PLINE
    name nameu LOAD-CASE
-   EXITS-74
-   s" source root: does not resolve to a searchable directory within PATH-CAP bytes: "
-   rel relu SB-AT
-   ERR$ SB$ T$= ;
+   CHECKER-REJECT-RC EXITS
+   s" error[E-SOURCE-ROOT]" ERR-HAS
+   s" `SOURCE-ROOT:WITH` got `" rel relu SB-NAMES SB$ ERR-HAS
+   s" does not resolve to a searchable directory" ERR-HAS ;
 
 \ A file's path resolves, so only the directory check refuses it as a root.
 : WITH-REFUSED ( -- )
-   s" SOURCE-ROOT:WITH on a missing directory exits 74 by name" T-LABEL
+   s" SOURCE-ROOT:WITH on a missing directory is rejected by name" T-LABEL
    s" with-absent" s" absent" WITH-AT
    s" so does SOURCE-ROOT:WITH on a file" T-LABEL
    s" with-file" s" plain.f" WITH-AT ;
 
 \ A program whose one line requires the absolute path <root>/<rel>, and the
-\ loader's open failure naming that path.
+\ loader's open failure naming that path with INCLUDE-IO-RC.
 : REQUIRE-AT ( ptr u8 n ptr u8 n -- )
    {: name:ptr nameu:n rel:ptr relu:n :}
    0 PROG-U !
    s" require " PROG+ rel relu AT PLINE
    name nameu LOAD-CASE
-   EXITS-74
-   s" include: cannot open " rel relu SB-AT
-   ERR$ SB$ T$= ;
+   INCLUDE-IO-RC EXITS
+   s" error[E-MISSING-SOURCE]" ERR-HAS
+   s" cannot open `" rel relu SB-NAMES SB$ ERR-HAS ;
 
 \ A missing directory cannot be a root, so the load keeps the current one.
 : REQUIRE-ABSENT ( -- )
@@ -142,9 +144,11 @@ variable RC
    s" ;package" PLINE
    s" INCLUDE-REFUSAL-CANON:RUN" PLINE
    s" canon-none" LOAD-CASE
-   s" a path with no directory above it resolving exits 74 by name" T-LABEL
-   EXITS-74
-   ERR$ S\" source root: no directory above the path resolves: /absent/x\n" T$= ;
+   s" a path with no directory above it resolving is rejected by name" T-LABEL
+   CHECKER-REJECT-RC EXITS
+   s" error[E-SOURCE-ROOT]" ERR-HAS
+   s" got `/absent/x`" ERR-HAS
+   s" has no directory above it" ERR-HAS ;
 
 \ A word that reads another file through the loader's reader while its own file
 \ is loading: that file's frame holds its bytes already, so the read is refused
@@ -158,11 +162,11 @@ variable RC
    s" ;package" PLINE
    s" INCLUDE-REFUSAL-READ:RUN" PLINE
    s" read-os-word" LOAD-CASE
-   s" a word's SOURCE-ROOT:READ-OS of another file exits 74 by name" T-LABEL
-   EXITS-74
-   s" include: READ-OS reads only the file a load is opening; a word read: "
-   s" plain.f" SB-AT
-   ERR$ SB$ T$= ;
+   s" a word's SOURCE-ROOT:READ-OS of another file is rejected by name" T-LABEL
+   CHECKER-REJECT-RC EXITS
+   s" error[E-SOURCE-ROOT]" ERR-HAS
+   s" `SOURCE-ROOT:READ-OS` got `" s" plain.f" SB-NAMES SB$ ERR-HAS
+   s" not the file a load is opening" ERR-HAS ;
 
 public
 

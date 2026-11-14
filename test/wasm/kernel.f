@@ -34,6 +34,14 @@ CAP BUFFER: ERR-K
    PROCESS:ENDING>RC RC>N {: ou:len eu:len rc:n :}
    ou LEN>N  eu LEN>N  rc ;
 
+\ A rejection's first line, its code and message: the place below it quotes the
+\ case's own spelling.
+: HEAD ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   a u 10 INDEX-OF MATCH option
+      some OF IDX>N a swap ENDOF
+      none OF a u ENDOF
+   ;MATCH ;
+
 \ The engine name on args, its results consumed by tail, against the word the
 \ map names for it.
 : SAME ( ptr u8 n ptr u8 n ptr u8 n -- )
@@ -42,7 +50,7 @@ CAP BUFFER: ERR-K
    a au nm nu t tu OUT-E ERR-E CHILD {: oe:n ee:n re:n :}
    a au  nm nu WORD$  t tu OUT-K ERR-K CHILD {: ok:n ek:n rk:n :}
    OUT-K ok OUT-E oe T$=
-   ERR-K ek ERR-E ee T$=
+   ERR-K ek HEAD ERR-E ee HEAD T$=
    rk re T= ;
 
 : INTEGERS ( -- )
