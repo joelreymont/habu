@@ -333,7 +333,7 @@ $4F constant TASK-THREAD                \ habu1.f B-TASK-GUARD's exit
    LEN>N {: erru:n :}
    s" and names evaluate-closed, printing nothing else" T-LABEL
    LEN>N 0 T=
-   ERR erru s" E-TASK-COMPILE habu: evaluate-closed from a task lr " STARTS-WITH? TTRUE ;
+   ERR erru s" error[E-TASK-COMPILE]: `evaluate-closed` ran on a task's thread" STARTS-WITH? TTRUE ;
 
 \ ---- a definition a thrown text takes back keeps no row ----------------------
 \ A text that throws takes back what it defined, and its frame cuts the
@@ -381,7 +381,7 @@ variable ERR-U
    TEXT-RC 70 T=
    OUT$ S\" 77\n\n" T$=
    s" error[E-MISMATCH]: the body ends with n on the stack; the signature promises n n" SAYS
-   s" = at `X-FORGET`" SAYS ;
+   s" --> <input>:1:180" SAYS ;
 
 : CHECKED ( -- )
    s" a checked body naming evaluate is refused" T-LABEL

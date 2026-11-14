@@ -706,7 +706,7 @@ variable RC
    s" a refused stored signature on a later line is refused on that line" T-LABEL
    BODY$ S\" TRUSTED: LRD-BS\n  ( -- nosuch:fam )\n  1 ;\n" FS:WRITE-ALL
    BODY$ RUN
-   s" error[E-BAD-STORED-SIGNATURE]: the signature of `lrd-bs` cannot be recorded"
+   s" error[E-BAD-STORED-SIGNATURE]: the signature of `LRD-BS` cannot be recorded"
       s" :2:8" BODY-REJECT-AT ;
 
 \ A name only the checker holds, a PRODUCT replay with no word behind it, is
