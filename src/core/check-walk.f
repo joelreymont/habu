@@ -626,9 +626,8 @@ public
    ELSE MD-CON-FAM MDIAG-COMPILE!  0 RES-FALSE THEN
    CONSTRUCT-FAM-FOUND ;
 
-\ The step an item of kind KIND takes at the family, the variant or the `of`
-\ an open match awaits, or inside an abandoned one, which only a KEYWORD
-\ `match` or `;match` nests or ends; V is a TYPE's schema node.
+\ An item's step where an open match awaits its family, variant or `of`, or
+\ inside an abandoned one, which only `match` or `;match` nests or ends.
 : ITEM-MATCH ( n n -- ) {: v:n kind:n :}
    CHECKER-MATCH-MODE @ {: m:n :}
    kind BODY-ITEM-KIND:KEYWORD = {: kw:bool :}

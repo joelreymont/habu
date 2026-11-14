@@ -877,7 +877,7 @@ s" dlerror" PROCESS 0 DECLARE DLERROR-FN-CELL !
 \ own stack positions; a C float past the eighth
 \ float register has no stack staging and is refused (E-FFI-ARITY).
 \
-\ ;FUNCTION builds the declared word with define-word, never from text: its
+\ ;FUNCTION builds the declared word with define-word: its
 \ effect from the types read where the declaration stands, its body from
 \ literals and the words found here, which no word of the declaring package
 \ can capture.

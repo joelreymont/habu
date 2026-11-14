@@ -31,15 +31,13 @@ public
 
 : N ( -- type ) TYPE-OP-ABI:INT 0 0 OP ;
 
-\ The built-in type the spelling names (`n`, `bool`, `u8`), else the family it
-\ names (`PKG:name`, or a global family's bare name), applied to parameters no
-\ other value holds; E-UNKNOWN-SIGNATURE-TYPE when it names none.
+\ The built-in type the spelling names (`n`, `u8`), else the family it names as
+\ source where the definer runs would, over fresh parameters; else rejected.
 : NAMED ( ptr u8 n -- type ) {: a:ptr u:n :}
    TYPE-OP-ABI:NAMED a NULL-PTR - u OP ;
 
-\ The one type the text spells (`ptr u8`, `nullable<u8>`), read as a type in a
-\ declaration where the definer runs: a family it names resolves there. A
-\ letter, a type variable's or a view's region's, is rejected.
+\ The one type the text spells (`ptr u8`, `nullable<u8>`), read as a declaration
+\ where the definer runs reads it; a letter is rejected.
 : READ ( ptr u8 n -- type ) {: a:ptr u:n :}
    TYPE-OP-ABI:READ a NULL-PTR - u OP ;
 
@@ -63,10 +61,10 @@ public
 
 private
 
-\ The engine's cell holds INTERPRETER:ITEM-RUN as a raw execution token.
+\ The engine's cell holds the item runner as a raw execution token.
 CAST: AS-ITEM ( n -- [ ptr u8 n n n -- ] )
 
-\ The engine's cell holds TYPED-VARIABLE-NODE as a raw execution token.
+\ The engine's cell holds the typed-variable maker as a raw execution token.
 CAST: AS-VARIABLE ( n -- [ ptr u8 n n -- ] )
 
 : ITEM ( ptr u8 n n n -- )

@@ -97,8 +97,8 @@
 \ creates takes the clause's declared effect, a `TRUSTED:` definer's included,
 \ whose body is asserted but whose clause is still a declaration. The rows are
 \ learned from the source, not listed, so library definers put no names in the
-\ engine; a definer whose product text is rendered and evaluated at load marks
-\ the statement's wordlist instead, leaving what that text defines to the run,
+\ engine; a definer that makes definitions at load, built or from evaluated text,
+\ marks the statement's wordlist instead, leaving what it defines to the run,
 \ while a `generates:` row and FUNCTION:'s declaration group are still read. A
 \ row is keyed by the checker's symbol id for the definer's name, so every
 \ spelling resolves through the checker's scope chain. A rewound scope
@@ -3379,7 +3379,7 @@ variable FILE-USE
 \ and an `i32` result is a cell. The group is read raw: NEXT-SCAN skips it as a
 \ comment. The effect is rebuilt in FFI-SIG, not BODY-BUF, which holds only
 \ runs read from the source. Whether the scan accounts for the declared word
-\ waits for the `;FUNCTION` that renders it (FFI-CLOSER?): it does when it kept
+\ waits for the `;FUNCTION` that defines it (FFI-CLOSER?): it does when it kept
 \ the declaration or refused it as a duplicate, where the load stops; a refused
 \ effect leaves the word to the run.
 variable FFI-OUT
@@ -3787,7 +3787,7 @@ variable PARSE-IMM-XT s" parse-imm" PARSE-IMM-XT LIBRARY-XT!
    a u s" immediate" STR=CI IF TICK-CONTEXT-UNKNOWN 0 0= EXIT THEN
    a u PARSE-IMM-XT @ s" parse-imm" LIBRARY-DEFINER? IF PARSE-IMM-ROW IF 0 0= EXIT THEN THEN
    a u s" export" STR=CI IF RECORD-EXPORT 0 0= EXIT THEN
-   \ A word that renders source when it runs (`;FUNCTION`) defines text this
+   \ A word that makes definitions when it runs (`;FUNCTION`) defines words this
    \ scan never reads: the checker marks the statement's wordlist and leaves a
    \ later name nothing resolves to the run. It marks even when an arm below
    \ records what a `generates:` row declares (RECORD-GENERATES); the mark

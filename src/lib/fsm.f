@@ -8,7 +8,7 @@
 \ DEFINE returns or throws, so it keeps no state after.
 \
 \ DEFINE reads the whole table, failing on its grammar before it defines a
-\ word, then builds each word with define-word, never from text: engine words
+\ word, then builds each word with define-word: engine words
 \ found here, keywords, the ENUMs as types and variants, and calls of the
 \ table's words and its own, which bind where DEFINE is called. It defines a
 \ word <NAME>/<state>/<input> for each line's ACTION and <NAME>/<state> for

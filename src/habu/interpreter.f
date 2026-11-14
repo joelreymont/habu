@@ -2086,9 +2086,8 @@ variable LIT-AT
    BODY-ITEM-KIND:LOCAL dense i i LOCAL$ ITEM+
    i 1 + BODY-ITEMS:LOCALS-CELL CELL! ;
 
-\ What a definer's item runs: the ITEM-ABI op OP with spelling A U, one
-\ token, and argument V, a TYPE's or a LOCAL's schema node or a LOCAL-REF's
-\ index.
+\ Runs a definer's item: ITEM-ABI op OP, one-token spelling A U, and V, a
+\ TYPE's or LOCAL's schema node or a LOCAL-REF's index.
 : ITEM-RUN ( ptr u8 n n n -- ) {: a:ptr u:n v:n op:n :}
    a u BUILT-PENDING
    a u DEF-ONE-TOKEN? 0= if s" item" a u DEF-NAME-REFUSE then

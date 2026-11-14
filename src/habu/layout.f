@@ -502,8 +502,7 @@ $3878 constant DEFINE-CELL
 $3890 constant COMPILE-CELL
 $38B8 constant END-CELL
 $3898 constant LITERAL-CELL
-\ A definer appends an item of an ITEM-ABI op through ITEM-CELL's ITEM-RUN; it
-\ reads the cell for CHILD-CELL's reason.
+\ A definer appends an item of an ITEM-ABI op through the word this cell holds.
 $3888 constant ITEM-CELL
 \ A declaration makes each child word through CHILD-CELL's CHILD-RUN, with a
 \ CHILD-ABI shape code; a definer reads the cell, since inside a build a name
@@ -519,7 +518,7 @@ $38C0 constant CELL-LINE-CELL
 \ CHECK:TYPE-OP, which this cell holds, makes from a TYPE-OP-ABI code.
 $38A0 constant TYPE-OP-CELL
 \ A definer declares a variable of a type node through the running engine's
-\ TYPED-VARIABLE-NODE, which this cell holds.
+\ word this cell holds.
 $38C8 constant VARIABLE-CELL
 ;package
 
@@ -749,19 +748,20 @@ public
 9 constant LOCAL-REF
 ;package
 
-\ The ops of an item PROVIDED-XT:ITEM-CELL appends. KEYWORD, OPERAND and TYPE
-\ append the item of their kind. CALL appends a call of the word the name binds
-\ where the definer runs; CALL-EXACT one of the word the name spells exactly, a
-\ `PKG:TAIL` the top-level package's public one, which no part can shadow.
-\ LOCAL appends a local of a type node, LOCAL-REF a read of a local's index.
+\ The ops of an item PROVIDED-XT:ITEM-CELL appends.
 package ITEM-ABI
 public
 0 constant KEYWORD
 1 constant OPERAND
 2 constant TYPE
+\ A call of the word the name binds where the definer runs.
 3 constant CALL
+\ A call of the word `PKG:TAIL` spells exactly, the top-level package's public
+\ one, which no part can shadow.
 4 constant CALL-EXACT
+\ A local of a type node.
 5 constant LOCAL
+\ A read of a local's index.
 6 constant LOCAL-REF
 ;package
 \ The latest `,` run of a created body.

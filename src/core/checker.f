@@ -5437,8 +5437,8 @@ $8 constant EFFECT-EXTERNAL
 CHECKER-OWNER-ABI:BINDING-CORE-OP constant CTL-CORE-OP
 $20 constant CTL-ZERO-TRUE
 $40 constant CTL-ZERO-FALSE
-\ CTL-RENDERS means a call may hand rendered source to INCLUDE-EVALUATE and so
-\ define words at run time that no source text spells.
+\ CTL-RENDERS means a call may define words at run time that no source text
+\ spells, by define-word or by source handed to INCLUDE-EVALUATE.
 $80 constant CTL-RENDERS
 
 \ Control word bits: 0-7 the flags above, 8-12 the INTRINSIC id, 13-18 the flags below with 16
@@ -8168,7 +8168,7 @@ variable LBI-LINEAR   \ the refused stored type parsed and may hold a linear val
 : WIDTH-STORED? ( n -- bool ) TWALK-RESET WIDTH-STORED?* ;
 
 \ The state a stored type's read starts from, whether its text is parsed or
-\ its node read (layout-buffer.f NODE-READ).
+\ its node read.
 : STORAGE-RESET ( -- )
    0 LBI-SCHEME !  0 LBI-XT !  0 LBI-WIDTH !  0 LBI-LINEAR !
    NEW

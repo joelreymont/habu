@@ -317,18 +317,18 @@ escape in it bind nothing. The row is trusted, never compared with the body;
 row with no target, naming no word or naming a word whose input row does not
 end in the string `( ptr u8 n )`, as `names: dup` does, is `E-NAMES-ROW`.
 
-A word that renders definitions at load time (`FUNCTION:`/`;FUNCTION`,
-anything reaching `INCLUDE-EVALUATE`) makes names
+A word that makes definitions at load time (anything reaching `define-word` or
+`INCLUDE-EVALUATE`: `FUNCTION:`/`;FUNCTION`, `FSM:DEFINE`) makes names
 `tools/check.f` leaves to its run, which type-checks their uses there, unless
 the source declares them: uses of a `FUNCTION:` word and of a `generates:`
 row's word (§ 4) are checked before the run, `--verify-only` included. A
 failure the check pins before a use it leaves to the run decides that
-definition. At top level any other such name opens that stretch. The renderer
-reads none of the tokens after it, so they are checked. A reached renderer no
+definition. At top level any other such name opens that stretch. The definer
+reads none of the tokens after it, so they are checked. A reached definer no
 row or group declares is `W-CHECK-DEFERRED` at its own token, so a `deferred`
 verdict always locates its gap.
 
-After a reached call that may render or register nominal types, verification
+After a reached call that may define words or register nominal types, verification
 defers a later use of a missing type to the run; a check no run follows reports
 it as `W-CHECK-DEFERRED` at that type. It consumes the declaration without
 publishing a type, layout, signature or generated words. Known syntax,
@@ -405,7 +405,7 @@ data up to the next definition or `datum` is kept only through an address a
 declared cell holds, so a stripped program keeps the row only when it reaches
 that cell.
 
-A definer that writes its word as text (`ERROR:CODE`) states what it makes with
+A definer that makes a word at load time (`ERROR:CODE`) states what it makes with
 `generates: D ( effect )` after D's definition, so `tools/check.f` checks that
 word's uses before the run; what no row states is left to the run (§ 3). A
 deferred D, or one no `parse-name` reaches through the words it calls (not
