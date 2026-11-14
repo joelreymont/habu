@@ -184,11 +184,12 @@ $3000 constant LOCNAMES
 \ name wider than the field is refused before it is stored.
 LOC-REC 8 - constant LOC-NAME-CAP
 64 constant LOC-RECS          \ LOCNAMES holds this many LOC-RECs ($600 bytes)
-\ The body capture scopes the locals it records by block:
-\ CAPDEPTH-CELL is the block depth and TOKDEPTH-CELL the depth as the current
-\ token began, restored with TOKLOCN-CELL's mark.
+\ The capture's block depth, which scopes the locals it records, and raw state:
+\ 0 none, -1 a parsing keyword's operand, d+1 inside a `[type]` span at depth d.
 $2DB8 constant CAPDEPTH-CELL
 $2DC0 constant TOKDEPTH-CELL
+$2DC8 constant RAWNEXT-CELL
+$2DD0 constant TOKRAW-CELL
 \ SEAL-NDICT-CELL holds the seal-time ndict watermark.
 \ HIDE-DEFS-FROM/FORGET-DEFS-FROM refuse a post-seal FORGET below it.
 $A8 constant SEAL-NDICT-CELL
@@ -792,20 +793,19 @@ $27F8 constant CODE-CELL
 \ below $7FF8 so the engine names it with a `DATA <off> LDR/STR` 12-bit scaled
 \ immediate, and below DATA-START so no compiled source reaches it by allot.
 $2818 constant EXIT-HOOK-CELL
-\ TOKBODY-CELL .. TOKVSP-CELL and TOKDEPTH-CELL: the token-start mark, five
-\ cells. Before every token the interpret loop stores BODYLEN-CELL, LOCN-CELL
-\ and its block depth CAPDEPTH-CELL, CP (as an offset
-\ from the region base, like every code position a DATA cell keeps, so no
-\ image carries a live address) and the virtual stack's VSP-CELL here.
-\ Two other writers: arm64
-\ C-CLEAR-LOCALS zeroes TOKLOCN-CELL and TOKDEPTH-CELL with the locals at a
-\ definition's end or abort, and a refused `is` target lowers TOKBODY-CELL to
-\ its opener.
-\ A throw that unwinds an evaluate frame begun inside an open definition leaves
-\ that definition compiling and puts all five
-\ back: the text the checker certifies holds no token whose compile the throw
-\ abandoned, a `{:` group refused part way declares none of its names, and the
-\ code and the spill a refused token emitted before its check are gone. A spill
+\ TOKBODY-CELL .. TOKVSP-CELL, TOKDEPTH-CELL and TOKRAW-CELL: the token-start
+\ mark, six cells. Before every token the interpret loop stores BODYLEN-CELL,
+\ LOCN-CELL, CAPDEPTH-CELL, RAWNEXT-CELL, CP (as an offset from the region
+\ base, like every code position a DATA cell keeps, so no image carries a live
+\ address) and the virtual stack's VSP-CELL here. Two other writers: arm64's
+\ end or abort of a definition zeroes TOKLOCN-CELL, TOKDEPTH-CELL and
+\ TOKRAW-CELL with the locals, and a refused prefix operand, such as an `is`
+\ target, lowers TOKBODY-CELL to its opener, zeroing TOKRAW-CELL when the
+\ opener goes too. A throw that unwinds an evaluate frame begun inside an open
+\ definition leaves that definition compiling and puts all six back: the text
+\ the checker certifies holds no token whose compile the throw abandoned, a
+\ `{:` group refused part way declares none of its names, and the code and the
+\ spill a refused token emitted before its check are gone. A spill
 \ only moves virtual stack entries to the data stack and leaves the entries
 \ themselves in place, so the depth restores the virtual stack. Every other
 \ compile cell is the refusing word's to leave alone: it checks first.

@@ -2,8 +2,11 @@
 \ appended text, for compile, of a quotation literal and for a postponed word
 \ since undefined, and the next definition compiles; a definer is refused for
 \ postponing a word its tick is refused for; a catch abandons a definition
-\ opened inside it and keeps one opened before it.
+\ opened inside it and keeps one opened before it, and the lines after it run.
 
+require src/lib/string.f
+require src/lib/test/ending.f
+require src/lib/test/subject.f
 require src/lib/test.f
 
 package POSTPONE-REFUSE
@@ -67,6 +70,23 @@ KEPT 5 T=
 
 : AFTER-RETIRED ( -- n ) 8 ;
 AFTER-RETIRED 8 T=
+
+$400 constant RAW-CAP
+create RAW-OUT RAW-CAP allot
+create RAW-ERR RAW-CAP allot
+
+public
+\ Abandoning a definition that awaits `[char]`'s operand skips no later line.
+: RAW-CHILD ( -- )
+   s\" : MAKE-RAW ( ptr u8 n -- ) EFFECT:NEW EFFECT:N EFFECT:OUT define-word  s\" [char]\" evaluate-closed  99 throw ;\n: RUN-RAW ( -- n ) [: s\" PR-RAW\" MAKE-RAW ;] catch ;\nRUN-RAW .  s\" raw: end\" type"
+   {: src:ptr srcu:n :}
+   src srcu RAW-OUT RAW-CAP >LEN RAW-ERR RAW-CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
+   {: outu:len erru:len oc :}
+   RAW-OUT outu LEN>N s\" 99\nraw: end" T$=
+   src srcu RAW-OUT outu LEN>N RAW-ERR erru LEN>N oc 0 T-ENDING-EXITED= ;
 ;package
+
+\ A skipped line fails nothing in its own process, so the case runs in a child.
+POSTPONE-REFUSE:RAW-CHILD
 
 T-REPORT

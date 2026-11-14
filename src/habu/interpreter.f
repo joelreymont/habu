@@ -1257,15 +1257,6 @@ private
 \ The capture reads locals before syntax. These cells describe lexical
 \ lifetime only.
 LOC-RECS TYPED-BUFFER BODY-LOCAL-DEPTH n
-variable BODY-DEPTH
-\ The raw capture: 0 none, -1 one raw token (the operand of `[char]` or
-\ `[']`), and depth+1 inside a `[type]` span at that type-nesting depth.
-variable BODY-RAW-NEXT
-variable TOK-BODY-DEPTH
-variable TOK-BODY-RAW
-
-: BODY-LEX-RESET ( -- )
-   0 BODY-DEPTH !  0 BODY-RAW-NEXT ! ;
 
 76 constant DEF-RC-NO-COMPILER   \ the code of the engine head's first refusal
 \ `trusted:` or `does>` with no signature, or define-word given no effect.
@@ -1276,7 +1267,7 @@ variable TOK-BODY-RAW
 \ and `defer` heads' alone.
 TRUSTED: DEF-TRUST-SIG ( ptr u8 n -- ) trust-sig! ;
 
-\ The block BODY-ITEMS describes. CAP-CELL is 0 outside a definition, so each
+\ The block BODY-ITEMS describes. Each opener zeroes CAP-CELL, so a
 \ definition's first item reserves the block again, as it must after a capture
 \ released it.
 DYNAMIC-BUFFER ITEM-CELLS n
@@ -1302,11 +1293,10 @@ DYNAMIC-BUFFER ITEM-CELLS n
    BODY-ITEMS:COUNT-CELL CELL! ;
 
 public
-\ Ending or abandoning a definition also ends the capture's lexical state.
-\ x86-64's def-close leaves the locals count, so `;` clears it here.
+\ INTERPRETER's bare DEF-CLOSE is its private def-close row: only a qualified
+\ call reaches this. x86-64's def-close leaves the locals count, cleared here.
 : DEF-CLOSE ( -- )
-   def-close  0 LOCN-CELL CELL!  BODY-LEX-RESET  ITEMS-RESET ;
-: DEF-ABORT ( -- ) def-abort BODY-LEX-RESET  ITEMS-RESET ;
+   def-close  0 LOCN-CELL CELL!  ITEMS-RESET ;
 private
 
 \ The engine's cells hold the compiler entries, the body hook and the checker's
@@ -1648,7 +1638,6 @@ private
    trusted DEF-NAME
    0 DEF-START
    0 LOCN-CELL CELL!
-   BODY-LEX-RESET
    trusted if
       1 TRUSTED-CELL CELL!
       DEF-REQUIRED-SIG
@@ -1710,7 +1699,7 @@ private
    data-base LOCNAMES + idx LOC-REC * + BYTE-VIEW {: row:ptr :}
    len row CELL-VIEW !
    a row 8 + len BYTE-COPY
-   BODY-DEPTH @ idx BODY-LOCAL-DEPTH !
+   CAPDEPTH-CELL CELL@ idx BODY-LOCAL-DEPTH !
    idx 1+ LOCN-CELL CELL! ;
 
 : BODY-LOCAL-GROUP ( -- )
@@ -1724,7 +1713,7 @@ private
 : BODY-BLOCK-DROP ( -- )
    begin
       LOCN-CELL CELL@ 0 > if
-         LOCN-CELL CELL@ 1- BODY-LOCAL-DEPTH @ BODY-DEPTH @ >=
+         LOCN-CELL CELL@ 1- BODY-LOCAL-DEPTH @ CAPDEPTH-CELL CELL@ >=
       else false then
    while
       LOCN-CELL CELL@ 1- LOCN-CELL CELL!
@@ -1733,11 +1722,11 @@ private
 : BODY-BLOCK-STEP ( -- )
    LOCN-CELL CELL@ 0= if exit then
    TOKEN$ SOURCE-SYNTAX:BLOCK-OPENER? if
-      BODY-DEPTH @ 1+ BODY-DEPTH ! exit
+      CAPDEPTH-CELL CELL@ 1+ CAPDEPTH-CELL CELL! exit
    then
    s" else" TOKEN-IS? if BODY-BLOCK-DROP exit then
    TOKEN$ SOURCE-SYNTAX:BLOCK-CLOSER? if
-      BODY-BLOCK-DROP  BODY-DEPTH @ 1- BODY-DEPTH !
+      BODY-BLOCK-DROP  CAPDEPTH-CELL CELL@ 1- CAPDEPTH-CELL CELL!
    then ;
 
 \ The body vocabulary the capture admits.
@@ -1843,7 +1832,7 @@ private
    1 CLAUSE-CELL CELL!
    \ The head's locals end here: the clause cannot name one, and a local it
    \ declares is captured from an empty scope.
-   0 LOCN-CELL CELL!  0 BODY-DEPTH ! ;
+   0 LOCN-CELL CELL!  0 CAPDEPTH-CELL CELL! ;
 
 \ The engine reads `does>` as its keyword, with the token's A-Z folded, unless
 \ the scope holds a word of that spelling that is not immediate, which the body
@@ -1886,7 +1875,7 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    ok 0= if
       \ A parser operand can roll back its opener as well as the operand.
       \ The token mark must then restore the state before that opener.
-      rollback TOKBODY-CELL CELL@ < if 0 TOK-BODY-RAW ! then
+      rollback TOKBODY-CELL CELL@ < if 0 TOKRAW-CELL CELL! then
       rollback TOKBODY-CELL CELL! UNDEFINED
    then ;
 
@@ -1972,11 +1961,10 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    \ A refused record opens no definition, whose end would drop the item.
    [: ta tu wid 0 DEF-RECORD ;] catch {: rc:n :}
    rc 0<> if ITEMS-RESET rc throw then
-   [: 0 LOCN-CELL CELL!  BODY-LEX-RESET
-      dense BODY-ITEMS:EFFECT-CELL CELL!
-      BODY-ITEM-KIND:SIG 0 0 dense CHECK:EFFECT-TEXT ITEM+
-      DEF-DISPATCH ;] catch {: open-rc:n :}
-   open-rc 0<> if DEF-ABORT open-rc throw then ;
+   0 LOCN-CELL CELL!
+   dense BODY-ITEMS:EFFECT-CELL CELL!
+   BODY-ITEM-KIND:SIG 0 0 dense CHECK:EFFECT-TEXT ITEM+
+   DEF-DISPATCH ;
 
 : HANDLE-SPLIT ( ptr u8 n -- ptr u8 n ptr u8 n ) {: a:ptr u:n :}
    a u + {: e:ptr :}
@@ -2078,16 +2066,16 @@ variable LIT-AT
 : COMPILING? ( -- bool )
    PEND-CELL CELL@ 0= if false exit then
    NCOMP-DISPATCH:COMP-LATCH-CELL CELL@ 0= if DEF-NO-COMPILER then
-   BODY-RAW-NEXT @ 0 > if
-      TOKEN$ TYPE-SPAN-END? if 0 BODY-RAW-NEXT ! then
+   RAWNEXT-CELL CELL@ 0 > if
+      TOKEN$ TYPE-SPAN-END? if 0 RAWNEXT-CELL CELL! then
    then
-   BODY-RAW-NEXT @ 0 > if
-      BODY-RAW-NEXT @ 1- TOKEN$ CHECKER-TYPE-SPAN-STEP
-      if drop 0 else 1+ then BODY-RAW-NEXT !
+   RAWNEXT-CELL CELL@ 0 > if
+      RAWNEXT-CELL CELL@ 1- TOKEN$ CHECKER-TYPE-SPAN-STEP
+      if drop 0 else 1+ then RAWNEXT-CELL CELL!
       TOKEN$ DEF-CAPTURE  DEF-PREFIX-BIND  true exit
    then
-   BODY-RAW-NEXT @ if
-      0 BODY-RAW-NEXT !
+   RAWNEXT-CELL CELL@ 0<> if
+      0 RAWNEXT-CELL CELL!
       TOKEN$ DEF-CAPTURE  DEF-PREFIX-BIND  true exit
    then
    DEF-SEMI? if true exit then
@@ -2101,8 +2089,8 @@ variable LIT-AT
    DEF-IMMEDIATE? if true exit then
    DEF-DOES? if true exit then
    DEF-STRING-TEXT
-   TOKEN$ SOURCE-SYNTAX:BODY-PARSING-KEYWORD? if -1 BODY-RAW-NEXT ! then
-   s" [type]" TOKEN-IS? if 1 BODY-RAW-NEXT ! then
+   TOKEN$ SOURCE-SYNTAX:BODY-PARSING-KEYWORD? if -1 RAWNEXT-CELL CELL! then
+   s" [type]" TOKEN-IS? if 1 RAWNEXT-CELL CELL! then
    DEF-PREFIX-BIND
    true ;
 
@@ -2573,7 +2561,7 @@ private
 
 : STEP ( -- )
    \ A parser word owns its next token, even when it spells a comment opener.
-   BODY-RAW-NEXT @ if COMPILING? drop exit then
+   RAWNEXT-CELL CELL@ 0<> if COMPILING? drop exit then
    COMMENT? if exit then
    POLICY-PRE {: found:bool :}
    COMPILING? if exit then
@@ -2589,8 +2577,8 @@ private
 : TOKEN-MARK ( -- )
    BODYLEN-CELL CELL@ TOKBODY-CELL CELL!
    LOCN-CELL CELL@ TOKLOCN-CELL CELL!
-   BODY-DEPTH @ TOK-BODY-DEPTH !
-   BODY-RAW-NEXT @ TOK-BODY-RAW !
+   CAPDEPTH-CELL CELL@ TOKDEPTH-CELL CELL!
+   RAWNEXT-CELL CELL@ TOKRAW-CELL CELL!
    cp@ dbase@ - TOKCP-CELL CELL!
    VSP-CELL CELL@ TOKVSP-CELL CELL! ;
 
@@ -2747,8 +2735,8 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    TOKBODY-CELL CELL@ BODYLEN-CELL CELL!
    TOKBODY-CELL CELL@ ITEMS-CUT
    TOKLOCN-CELL CELL@ LOCN-CELL CELL!
-   TOK-BODY-DEPTH @ BODY-DEPTH !
-   TOK-BODY-RAW @ BODY-RAW-NEXT !
+   TOKDEPTH-CELL CELL@ CAPDEPTH-CELL CELL!
+   TOKRAW-CELL CELL@ RAWNEXT-CELL CELL!
    dbase@ TOKCP-CELL CELL@ + CODE-RECLAIM:TRUNCATE
    TOKVSP-CELL CELL@ VSP-CELL CELL! ;
 
@@ -2868,12 +2856,6 @@ public
    else
       f NULL-PTR - EVAL-TOP-CELL CELL@ = if f code FRAME-RECOVER then
       f FRAME-CELLS-RESTORE
-      \ The kernel's engine-cell rollback cannot restore the Habu lexical
-      \ capture cells.
-      entry 0= if BODY-LEX-RESET else
-         TOK-BODY-DEPTH @ BODY-DEPTH !
-         TOK-BODY-RAW @ BODY-RAW-NEXT !
-      then
    then
    prior ENTRY-PEND !
    code 0<> if

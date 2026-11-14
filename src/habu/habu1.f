@@ -2943,13 +2943,12 @@ package ENGINE-EMIT
    B G-PUSH ;
 
 public
-\ No local outlives its definition. Wherever one ends, published or abandoned,
-\ its locals' count, frame and block depth clear with their token-start marks,
-\ so the next definition starts with none and no image holds them.
+\ Wherever a definition ends, published or abandoned, its locals, block depth
+\ and raw state clear with their token marks: no later one or image holds them.
 : C-CLEAR-LOCALS ( -- )
    9 0 MOVZ,
-   9 DATA LOCN-CELL STR,  9 DATA CAPDEPTH-CELL STR,
-   9 DATA TOKLOCN-CELL STR,  9 DATA TOKDEPTH-CELL STR, ;
+   9 DATA LOCN-CELL STR,  9 DATA CAPDEPTH-CELL STR,  9 DATA RAWNEXT-CELL STR,
+   9 DATA TOKLOCN-CELL STR,  9 DATA TOKDEPTH-CELL STR,  9 DATA TOKRAW-CELL STR, ;
 
 \ Definition state only: a Habu catch that survived the engine's BTHROW still owns
 \ the handler, return and loop stacks that receive the error.

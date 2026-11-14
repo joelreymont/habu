@@ -139,6 +139,8 @@ create TAB
    LOCNAMES                           LOC-RECS LOC-REC *      CLAIM LOCNAMES
    CAPDEPTH-CELL                      1 cells                 CLAIM CAPDEPTH-CELL
    TOKDEPTH-CELL                      1 cells                 CLAIM TOKDEPTH-CELL
+   RAWNEXT-CELL                       1 cells                 CLAIM RAWNEXT-CELL
+   TOKRAW-CELL                        1 cells                 CLAIM TOKRAW-CELL
    ARGC-CELL                          1 cells                 CLAIM ARGC-CELL
    ARGV-CELL                          1 cells                 CLAIM ARGV-CELL
    ENVP-CELL                          1 cells                 CLAIM ENVP-CELL
