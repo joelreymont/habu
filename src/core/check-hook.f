@@ -268,6 +268,19 @@ using SCHEMA-REG
    k 0 ?do FRESH-PARAM SCHEMA-ROOT+ drop loop
    fam start k SCHEMA-APP ;
 
+\ TYPE-OP's operands are cells: NAMED's spelling arrives as its address.
+CAST: >BYTES ( n -- ptr u8 )
+
+\ The family a spelling names; one that names none is refused, E-SCHEMA-BAD.
+: NAMED-FAMILY ( n n -- n )
+   {: a:n u:n :}
+   a >BYTES u TFAM:TFAM-FIND-SPELLED if exit then
+   drop
+   s" E-UNKNOWN-SIGNATURE-TYPE" TOP-SITE-PATH$ SRCLOC:LINE ERROR-TEXT:PREFIX
+   s" unknown type '" ERROR-TEXT:TYPE  a >BYTES u ERROR-TEXT:TYPE
+   S\" ' in EFFECT:FAMILY\n" ERROR-TEXT:TYPE
+   E-SCHEMA-BAD throw ;
+
 : EMPTY-EFFECT ( -- n )
    0 0 SCHEMA-ROW {: row:n :}
    row row row row 0 SCHEMA-QUOT ;
@@ -293,6 +306,7 @@ using SCHEMA-REG
 : TYPE-NODE ( n n n -- n ) {: code:n a:n b:n :}
    code TYPE-OP-ABI:INT = if CC-N SCHEMA-CON exit then
    code TYPE-OP-ABI:FAMILY = if a FAMILY-NODE exit then
+   code TYPE-OP-ABI:NAMED = if a FAMILY-NODE exit then
    code TYPE-OP-ABI:PTR = if a TYPE-ARG SCHEMA-PTR exit then
    code TYPE-OP-ABI:EFFECT = if EMPTY-EFFECT exit then
    code TYPE-OP-ABI:IN = if a EFFECT-ARG b TYPE-ARG EFFECT-IN exit then
@@ -301,14 +315,104 @@ using SCHEMA-REG
 
 public
 
-\ The transient schema node the TYPE-OP-ABI operation code makes of operands a
-\ and b; E-SCHEMA-BAD for an unknown code or an operand of the wrong kind.
+\ The transient schema node a TYPE-OP-ABI code makes of a and b, else E-SCHEMA-BAD.
+\ NAMED's lookup runs first: the transient region would drop an entry it reads.
 : TYPE-OP ( n n n -- n )
    {: code:n a:n b:n :}
+   code TYPE-OP-ABI:NAMED = if a b NAMED-FAMILY else a then {: arg:n :}
    TRANSIENT-ON
-   [: code a b TYPE-NODE ;] [: TRANSIENT-OFF ;] finally ;
+   [: code arg b TYPE-NODE ;] [: TRANSIENT-OFF ;] finally ;
+
+\ Whether node is an effect a definition can take: a live quotation node with
+\ no return clause.
+: EFFECT? ( n -- bool ) {: node:n :}
+   node SCHEMA-NODE-OK? 0= if RES-FALSE exit then
+   node SCHEMA-ROW? if RES-FALSE exit then
+   node SCHEMA-QUOT? 0= if RES-FALSE exit then
+   node SCHEMA-QUOT-HASR@ 0= ;
+
+private
+
+\ EFFECT-DENSE's map: the raw index of each parameter it numbered, at that
+\ parameter's dense index, and how many it met.
+create DENSE-RAW TFAM:TFAM-DECL-PARAM-COUNT cells allot
+variable DENSE-N
+
+\ The dense index of raw parameter index RAW, the next one when RAW is new.
+\ Past the map's entries a new parameter is counted, not kept.
+: DENSE-INDEX ( n -- n ) {: raw:n :}
+   DENSE-N @ TFAM:TFAM-DECL-PARAM-COUNT min 0 ?do
+      i cells DENSE-RAW + @ raw = if i unloop exit then
+   loop
+   DENSE-N @ TFAM:TFAM-DECL-PARAM-COUNT < if
+      raw DENSE-N @ cells DENSE-RAW + !
+   then
+   DENSE-N @  1 DENSE-N +! ;
+
+\ The run of schema roots an application's arguments or a row's elements are.
+: CHILD-START ( n -- n )
+   dup SCHEMA-APP? if SCHEMA-B@ exit then SCHEMA-ROW-START@ ;
+: CHILD-COUNT ( n -- n )
+   dup SCHEMA-APP? if SCHEMA-C@ exit then SCHEMA-ROW-COUNT@ ;
+
+\ Roots the copies staged on PARAM-SCR from MARK on, contiguously, unstages
+\ them and answers the first root.
+: DENSE-ROOTS ( n -- n ) {: mark:n :}
+   SCHEMA-ROOT-N@ {: start:n :}
+   PARAM-SCR-N @ mark ?do i cells PARAM-SCR + @ SCHEMA-ROOT+ drop loop
+   mark PARAM-SCR-N !
+   start ;
+
+\ NODE with each parameter renumbered by DENSE-INDEX. A node's copied children
+\ are staged before its own roots are pushed, so each run of roots is contiguous.
+: DENSE-COPY ( n -- n ) {: node:n :}
+   node SCHEMA-PARAM? if node SCHEMA-A@ DENSE-INDEX SCHEMA-PARAM exit then
+   node SCHEMA-PTR? if node SCHEMA-A@ RECURSE SCHEMA-PTR exit then
+   node SCHEMA-QUOT? if
+      node SCHEMA-QUOT-DIN@ RECURSE  node SCHEMA-QUOT-DOUT@ RECURSE
+      node SCHEMA-QUOT-RIN@ RECURSE  node SCHEMA-QUOT-ROUT@ RECURSE
+      node SCHEMA-QUOT-HASR@ SCHEMA-QUOT exit
+   then
+   node SCHEMA-APP? node SCHEMA-ROW? or 0= if node exit then
+   PARAM-SCR-N @
+   0 begin dup node CHILD-COUNT < while
+      dup node CHILD-START + SCHEMA-ROOT@ RECURSE PARAM-SCR+  1 +
+   repeat drop
+   DENSE-ROOTS {: first:n :}
+   node SCHEMA-APP? if node SCHEMA-A@ first node CHILD-COUNT SCHEMA-APP exit then
+   first node CHILD-COUNT SCHEMA-ROW ;
+
+public
+
+\ A transient copy of effect node, its parameters numbered 0, 1 ... by first
+\ occurrence, inputs then outputs, element 0 first; false past TFAM-DECL-PARAM-COUNT.
+: EFFECT-DENSE ( n -- n bool ) {: node:n :}
+   0 DENSE-N !
+   TRANSIENT-ON
+   [: node DENSE-COPY ;] [: TRANSIENT-OFF ;] finally
+   DENSE-N @ TFAM:TFAM-DECL-PARAM-COUNT > if drop 0 RES-FALSE exit then
+   RES-TRUE ;
 
 ;using
+
+private
+
+\ The span through its first `)`.
+: THROUGH-CLOSE ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   0 begin dup u < if a over + c@ 41 <> else RES-FALSE then while 1 + repeat
+   {: k:n :}
+   a  k 1 + u min ;
+
+public
+
+\ An effect EFFECT? admits as a signature, `( n -- n )`, in the renderer's
+\ buffer past its recorded text, where the next rendering replaces it.
+: EFFECT-TEXT ( n -- ptr u8 n ) {: node:n :}
+   node EFFECT-SIG 2drop {: din:n dout:n :}
+   RSN @ {: at:n :}
+   din dout 0 0 RES-FALSE REND-FACTS {: buf:ptr len:n :}
+   at RSN !
+   buf at +  len at -  THROUGH-CLOSE ;
 
 private
 

@@ -551,7 +551,9 @@ public
 
 \ A type operation on operands a and b: INT `n`, FAMILY family a on fresh
 \ parameters, PTR a pointer to type a, EFFECT an empty effect, IN and OUT
-\ effect a with type b as its new top input or output.
+\ effect a with type b as its new top input or output, NAMED the family the
+\ spelling at address a, b bytes long, names (`PKG:name`, or a global family's
+\ bare name), on fresh parameters.
 package TYPE-OP-ABI
 public
 0 constant INT
@@ -560,6 +562,7 @@ public
 3 constant EFFECT
 4 constant IN
 5 constant OUT
+6 constant NAMED
 ;package
 
 \ The checked interpreter's keyword test ( wid -- name len hit ), which every
@@ -697,19 +700,15 @@ $818 constant ROWS-CELL     \ the BODY-SOURCE row count
 8192 constant FIRST-CAP     \ the capacity mapped at the first capture, doubled as it grows
 ;package
 
-\ The items of a definition `define-word` opened: rows of ROW cells
-\ {kind, a, b, off, len} in a block the interpreter grows, off and len the
-\ item's spelling in the body text. The checker walks them in place of the
-\ text while RAW-CELL is 0; RAW-CELL is nonzero once text no item spans joined
-\ the capture. All four cells are 0 outside such a definition, so no image
-\ holds the block's address. They take $4340..$4360 of the run below
-\ DECLARED-LOG:ADDR-CELL.
+\ A `define-word` definition's items {kind a b off len}, walked in place of the
+\ text while RAW-CELL is 0; all 0 outside one, so no image holds a transient node.
 package BODY-ITEMS
 public
 $4340 constant BASE-CELL     \ the block's address
 $4348 constant CAP-CELL      \ the capacity in rows
 $4350 constant COUNT-CELL    \ the rows held
-$4358 constant RAW-CELL
+$4358 constant RAW-CELL      \ nonzero once text no item spans joined the capture
+$4360 constant EFFECT-CELL   \ the effect's schema node, read for the signature
 5 constant ROW               \ cells per row
 0 constant KIND
 1 constant A

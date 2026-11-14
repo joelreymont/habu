@@ -1268,7 +1268,8 @@ variable TOK-BODY-RAW
    0 BODY-DEPTH !  0 BODY-RAW-NEXT ! ;
 
 76 constant DEF-RC-NO-COMPILER   \ the code of the engine head's first refusal
-76 constant DEF-RC-BAD-SIG       \ `trusted:` or `does>` with no signature
+\ `trusted:` or `does>` with no signature, or define-word given no effect.
+76 constant DEF-RC-BAD-SIG
 72 constant DEF-RC-PD-FULL       \ no pending slot holds the defer
 
 \ trust-sig! has no INTERPRETER row: it is the `trusted:`, `cast:`, `linear:`
@@ -1287,7 +1288,8 @@ DYNAMIC-BUFFER ITEM-CELLS n
 
 : ITEMS-RESET ( -- )
    0 BODY-ITEMS:BASE-CELL CELL!  0 BODY-ITEMS:CAP-CELL CELL!
-   0 BODY-ITEMS:COUNT-CELL CELL!  0 BODY-ITEMS:RAW-CELL CELL! ;
+   0 BODY-ITEMS:COUNT-CELL CELL!  0 BODY-ITEMS:RAW-CELL CELL!
+   0 BODY-ITEMS:EFFECT-CELL CELL! ;
 
 : ITEM@ ( n n -- n ) {: i:n f:n :}
    i BODY-ITEMS:ROW * f + ITEM-CELLS @ ;
@@ -1917,11 +1919,8 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    DEF-END true ;
 
 \ ---- definitions built by a running word -------------------------------------
-\ `define-word` opens a definition from strings, `body-append` adds the
-\ caller's tokens to its capture, `literal` a number and `postpone W` W bound
-\ to the record the handle names; `postpone ;` ends it as its source `;`
-\ would. All but body-append add items (BODY-ITEMS). The source cursor stays
-\ at the running word's call, where a refusal locates.
+\ The source cursor stays at the running definer's call, where a refusal of
+\ define-word, literal, postpone or body-append locates.
 
 \ WHO names the operation refused: `define-word`, or a declaration's child.
 : DEF-NAME-REFUSE ( ptr u8 n ptr u8 n -- ) {: w:ptr wu:n a:ptr u:n :}
@@ -1936,34 +1935,36 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    w wu ERROR-TEXT:TYPE  s"  while a definition is open: " ERROR-TEXT:TYPE
    a u ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE  RC-REJECT throw ;
 
-: DEF-GIVEN-SIG-BAD ( ptr u8 n -- ) {: a:ptr u:n :}
-   s" E-MISSING-SIGNATURE" REFUSAL
-   s" '" ERROR-TEXT:TYPE  a u ERROR-TEXT:TYPE
-   s" ' has no closed ( -- ) signature" ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
-   DEF-RC-BAD-SIG throw ;
+\ An effect value DEFINE-RUN cannot take, such as EFFECT:N; the quotation
+\ types why.
+: DEF-NOT-EFFECT ( [ -- ] ptr u8 n -- ) {: a:ptr u:n :}
+   s" E-NOT-EFFECT" REFUSAL  s" define-word " ERROR-TEXT:TYPE  execute
+   s" : '" ERROR-TEXT:TYPE  a u ERROR-TEXT:TYPE  s" '" ERROR-TEXT:TYPE
+   NL 1 ERROR-TEXT:TYPE  DEF-RC-BAD-SIG throw ;
 
 : DEF-ONE-TOKEN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    u 0= if false exit then
    a a u + WORD-END a u + = ;
 
-\ The signature as source writes it, `( n -- n )`, with blanks at most around
-\ it: the span from its `(` through its `)`.
-: DEF-GIVEN-SIG ( ptr u8 n ptr u8 n -- ptr u8 n ) {: a:ptr u:n s:ptr su:n :}
-   s su + {: e:ptr :}
-   s e BLANKS-END {: p:ptr :}
-   p e < if p c@ OPEN-COMMENT = else false then 0= if a u DEF-GIVEN-SIG-BAD then
-   p begin dup e < if dup c@ CLOSE-COMMENT <> else false then while 1 + repeat
-   {: c:ptr :}
-   c e < 0= if a u DEF-GIVEN-SIG-BAD then
-   c 1 + e BLANKS-END e <> if a u DEF-GIVEN-SIG-BAD then
-   p c 1 + p - ;
-
-\ TSIG is read for a trusted head alone, so the signature lives only in the
-\ capture.
-: DEFINE-RUN ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n s:ptr su:n :}
+\ The checker reads the signature from the effect cell; the SIG item spells
+\ the effect for the listing alone, and TSIG is read for a trusted head alone.
+: DEFINE-RUN ( ptr u8 n n -- ) {: a:ptr u:n eff:n :}
    PEND-CELL CELL@ 0<> if s" define-word" a u DEF-OPEN-REFUSE then
    a u DEF-ONE-TOKEN? 0= if s" define-word" a u DEF-NAME-REFUSE then
-   a u s su DEF-GIVEN-SIG {: p:ptr pu:n :}
+   eff CHECK:EFFECT? 0= if
+      [: s" needs an effect a definition can take" ERROR-TEXT:TYPE ;]
+      a u DEF-NOT-EFFECT
+   then
+   eff CHECK:EFFECT-DENSE 0= if
+      [: s" has more than " ERROR-TEXT:TYPE
+         TFAM:TFAM-DECL-PARAM-COUNT ERROR-TEXT:DIGITS$ ERROR-TEXT:TYPE
+         s"  type parameters" ERROR-TEXT:TYPE ;]
+      a u DEF-NOT-EFFECT
+   then {: dense:n :}
+   dense CHECK:EFFECT-RULES? 0= if
+      [: s" needs an effect a written signature could state" ERROR-TEXT:TYPE ;]
+      a u DEF-NOT-EFFECT
+   then
    NCOMP-DISPATCH:COMP-CELL CELL@ 0= if
       DEF-NO-COMPILER
    then
@@ -1976,9 +1977,11 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    \ A refused record opens no definition, whose end would drop the item.
    [: ta tu wid 0 DEF-RECORD ;] catch {: rc:n :}
    rc 0<> if ITEMS-RESET rc throw then
-   0 LOCN-CELL CELL!  BODY-LEX-RESET
-   BODY-ITEM-KIND:SIG 0 0 p pu ITEM+
-   DEF-DISPATCH ;
+   [: 0 LOCN-CELL CELL!  BODY-LEX-RESET
+      dense BODY-ITEMS:EFFECT-CELL CELL!
+      BODY-ITEM-KIND:SIG 0 0 dense CHECK:EFFECT-TEXT ITEM+
+      DEF-DISPATCH ;] catch {: open-rc:n :}
+   open-rc 0<> if DEF-ABORT open-rc throw then ;
 
 : HANDLE-SPLIT ( ptr u8 n -- ptr u8 n ptr u8 n ) {: a:ptr u:n :}
    a u + {: e:ptr :}

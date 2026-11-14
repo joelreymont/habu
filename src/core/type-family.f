@@ -3832,6 +3832,12 @@ public
    sp ER-P !  su ER-U !  sn ER-NAME !  snu ER-NAME-U !
    id RES-TRUE ;
 
+\ The family a spelling names exactly, with no scope or fallback: a bare tail is
+\ package "", else path:tail split at the last colon.
+: TFAM-FIND-SPELLED ( ptr u8 n -- n bool )
+   SPLIT-NAME 0= IF 2drop 2drop 0 RES-FALSE EXIT THEN
+   TFAM-FIND ;
+
 
 \ Reads every type entry the family registry or the type table lacks, so no
 \ lookup inside a declaration that follows reads one.
@@ -3960,22 +3966,12 @@ variable TFSR-AMBIG
    TFSR-PA @ TFSR-PU @ TFSR-NA @ TFSR-NU @ TFAM-RESOLVE
    TFSR-FLAG !  TFSR-ID ! ;
 
-private
-
-\ Facts text (render.f FAM-QNAME-REND) names a family exactly: a bare tail is
-\ package "", else path:tail split at the last colon; no scope or fallback.
-: FACTS-RESOLVE ( ptr u8 n -- n bool )
-   SPLIT-NAME 0= IF 2drop 2drop 0 RES-FALSE EXIT THEN
-   TFAM-FIND ;
-
-public
-
 \ The checker's TFAM-RESOLVE-XT target. In source an ambiguous public tail
 \ (E-TFAM-AMBIG) leaves the token unresolved, so the signature is refused.
 : TFAM-SIG-RESOLVE ( ptr u8 n ptr u8 n -- n bool )
    {: pa:ptr pu:n na:ptr nu:n :}
    0 TFSR-AMBIG !  0 TFSR-HIDDEN !
-   SIG-FACTS-MODE @ IF na nu FACTS-RESOLVE EXIT THEN   \ facts may start "@:"
+   SIG-FACTS-MODE @ IF na nu TFAM-FIND-SPELLED EXIT THEN   \ facts may start "@:"
    na nu TF-HIDDEN? IF 0 RES-FALSE EXIT THEN
    na nu TFQ-SPLIT? IF pa pu TFAM-QUAL-RESOLVE EXIT THEN
    pa TFSR-PA !  pu TFSR-PU !  na TFSR-NA !  nu TFSR-NU !
@@ -4262,6 +4258,80 @@ TFAM-INST-LIN-INSTALL
    base PARAM-SCR-N !
    old-i TFC-I !
    term ;
+
+private
+
+\ The type variable an effect's parameter I is, in the NMAP slot of the I-th
+\ variable letter.
+: EFFECT-VAR ( n -- n ) {: i:n :}
+   i TFAM-DECL-PARAM>CHAR drop 97 - SLOT>VAR ;
+
+\ The arguments EFFECT-ROWS reads parameters 0 to SPAN - 1 from.
+: EFFECT-OWNER ( n -- n ) {: span:n :}
+   PARAM-SCR-N @ {: base:n :}
+   0 BEGIN dup span < WHILE dup EFFECT-VAR PARAM-SCR+ 1 + REPEAT drop
+   base s" effect" -1 MK-PARAM ;
+
+\ One more than the largest parameter index a schema node holds, 0 for none.
+: PARAM-SPAN ( n -- n ) {: node:n :}
+   node SCHEMA-PARAM? IF node SCHEMA-A@ 1 + EXIT THEN
+   node SCHEMA-PTR? IF node SCHEMA-A@ RECURSE EXIT THEN
+   node SCHEMA-APP? IF
+      0 0 BEGIN dup node SCHEMA-C@ < WHILE
+         node SCHEMA-B@ over + SCHEMA-ROOT@ RECURSE  rot max swap  1 +
+      REPEAT drop EXIT
+   THEN
+   node SCHEMA-ROW? IF
+      0 0 BEGIN dup node SCHEMA-ROW-COUNT@ < WHILE
+         node over SCHEMA-ROW-ELEM@ RECURSE  rot max swap  1 +
+      REPEAT drop EXIT
+   THEN
+   node SCHEMA-QUOT? IF
+      node SCHEMA-QUOT-DIN@ RECURSE  node SCHEMA-QUOT-DOUT@ RECURSE max
+      node SCHEMA-QUOT-RIN@ RECURSE max  node SCHEMA-QUOT-ROUT@ RECURSE max
+      EXIT
+   THEN
+   0 ;
+
+\ Kinds each parameter node passes to a family's scope or region slot.
+: EFFECT-KINDS ( n -- ) {: node:n :}
+   node SCHEMA-PTR? IF node SCHEMA-A@ RECURSE EXIT THEN
+   node SCHEMA-APP? IF
+      node SCHEMA-C@ 0 ?do
+         node SCHEMA-B@ i + SCHEMA-ROOT@
+         dup SCHEMA-PARAM? IF
+            dup SCHEMA-A@ TFAM-DECL-PARAM>CHAR drop 97 - cells NMAP + @
+            node SCHEMA-A@ i TFAM-PK@
+            dup PK-SCOPE = IF over TVK-SCOPE! THEN
+            PK-REGION = IF TVK-REGION! ELSE drop THEN
+         THEN
+         RECURSE
+      loop EXIT
+   THEN
+   node SCHEMA-ROW? IF
+      node SCHEMA-ROW-COUNT@ 0 ?do node i SCHEMA-ROW-ELEM@ RECURSE loop EXIT
+   THEN
+   node SCHEMA-QUOT? IF
+      node SCHEMA-QUOT-DIN@ RECURSE  node SCHEMA-QUOT-DOUT@ RECURSE
+      node SCHEMA-QUOT-RIN@ RECURSE  node SCHEMA-QUOT-ROUT@ RECURSE
+   THEN ;
+
+\ A side of an effect on row BASE, element 0 deepest, each type instantiated
+\ over OWNER's arguments and pushed as a parsed signature's type is.
+: EFFECT-SIDE ( n n n -- n ) {: owner:n side:n base:n :}
+   base
+   side SCHEMA-ROW-COUNT@ 0 ?do
+      owner side i SCHEMA-ROW-ELEM@ SCHEMA-TERM-FOR swap PUSH-LOGICAL
+   loop ;
+
+public
+
+\ The input and output rows of effect node NODE on row BASE.
+: EFFECT-ROWS ( n n -- n n ) {: node:n base:n :}
+   node PARAM-SPAN EFFECT-OWNER {: owner:n :}
+   node EFFECT-KINDS
+   owner node SCHEMA-QUOT-DIN@ base EFFECT-SIDE
+   owner node SCHEMA-QUOT-DOUT@ base EFFECT-SIDE ;
 
 private
 

@@ -96,7 +96,7 @@ create TAB
    COMMA-END-CELL                     1 cells                 CLAIM COMMA-END-CELL
    COMMA-BASE-CELL                    1 cells                 CLAIM COMMA-BASE-CELL
    BODY-TEXT:BASE-CELL                4 cells                 CLAIM BODY-TEXT
-   BODY-ITEMS:BASE-CELL               4 cells                 CLAIM BODY-ITEMS
+   BODY-ITEMS:BASE-CELL               5 cells                 CLAIM BODY-ITEMS
    CMM-CELL                           1 cells                 CLAIM CMM-CELL
    DOESB-CELL                         1 cells                 CLAIM DOESB-CELL
    TRUSTED-CELL                       1 cells                 CLAIM TRUSTED-CELL

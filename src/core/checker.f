@@ -10900,14 +10900,9 @@ BADSIG-DEFAULT
    din ROW-CELLS {: width:n :}
    width EFFECT-MIN-IN-MAX > IF sa su SGBAD-WIDTH-KIND width SGBAD-SIZE! THEN ;
 
-\ AT is the declaring name as read, beside the name NA stored for. The result
-\ is false after a refusal that returns, true once the effect and its text are
-\ stored.
-: USIG-ADD-AS ( ptr u8 n ptr u8 n ptr u8 n bool -- bool )
-   {: sa:ptr su:n na:ptr nu:n at:ptr atu:n external:bool :}
-   NEW
-   SGBAD-CLEAR
-   sa su PARSE-SIG-RAW {: din:n dout:n rin:n rout:n :}
+\ USIG-ADD-AS past its parse, given the rows of signature text SA.
+: USIG-ADD-ROWS ( ptr u8 n ptr u8 n ptr u8 n n n n n bool -- bool )
+   {: sa:ptr su:n na:ptr nu:n at:ptr atu:n din dout rin rout external:bool :}
    SGBAD @ if sa su na nu at atu USIG-ADD-BAD RES-FALSE exit then
    SIG-UNRES @ IF RES-FALSE EXIT THEN
    sa su din dout rin rout SGBAD-UNFIT!
@@ -10921,6 +10916,16 @@ BADSIG-DEFAULT
    din KEEP-QUOTS
    din dout rin rout SGHASR @ external E-ADD-EFFECT
    RES-TRUE ;
+
+\ AT is the declaring name as read, beside the name NA stored for. The result
+\ is false after a refusal that returns, true once the effect and its text are
+\ stored.
+: USIG-ADD-AS ( ptr u8 n ptr u8 n ptr u8 n bool -- bool )
+   {: sa:ptr su:n na:ptr nu:n at:ptr atu:n external:bool :}
+   NEW
+   SGBAD-CLEAR
+   sa su PARSE-SIG-RAW {: din:n dout:n rin:n rout:n :}
+   sa su na nu at atu din dout rin rout external USIG-ADD-ROWS ;
 
 : USIG-SYM@ ( ptr u8 -- n )
    ER.SYM @ ;
@@ -11925,7 +11930,8 @@ PTABLE-START
    s" included" PE-SYM-OF drop
    s" required" PE-SYM-OF drop
    s" script-required" PE-SYM-OF drop
-   s" INCLUDE-EVALUATE" PE-SYM-OF drop ;
+   s" INCLUDE-EVALUATE" PE-SYM-OF drop
+   s" define-word" PE-SYM-OF drop ;
 
 KEYWORD-ROWS
 
@@ -14386,14 +14392,11 @@ CHECKER-REG:}SCRATCH
    na nu at atu CHECKER-REC-NAME-AT!
    0 DL-NEW ! ;
 
-: CHECKER-USIG-CERT-ADD-AS ( ptr u8 n ptr u8 n ptr u8 n bool -- )
-   {: sa:ptr su:n na:ptr nu:n at:ptr atu:n external:bool :}
-   na nu at atu USIG-CERT-ADMIT
-   sa su CHECKER-REC-A@ CHECKER-REC-U@ at atu external USIG-ADD-AS drop
-   DL-TAKE ;
-
 : CHECKER-USIG-CERT-ADD ( ptr u8 n ptr u8 n -- )
-   2dup RES-TRUE CHECKER-USIG-CERT-ADD-AS ;
+   {: sa:ptr su:n na:ptr nu:n :}
+   na nu na nu USIG-CERT-ADMIT
+   sa su CHECKER-REC-A@ CHECKER-REC-U@ na nu RES-TRUE USIG-ADD-AS drop
+   DL-TAKE ;
 
 \ The successful CHECK still owns width facts referring to its type terms.
 \ Publish its verified rows without resetting and reparsing that live arena.
@@ -15479,7 +15482,8 @@ CAST: AS-RECORD-PUBLISHED ( n -- [ n -- ] )
    s" INCLUDE-EVALUATE" CTL-RENDERS NORET-AXIOM
    s" included" CTL-RENDERS NORET-AXIOM
    s" required" CTL-RENDERS NORET-AXIOM
-   s" script-required" CTL-RENDERS NORET-AXIOM ;
+   s" script-required" CTL-RENDERS NORET-AXIOM
+   s" define-word" CTL-RENDERS NORET-AXIOM ;
 
 \ A symbol's newest row wins, so create's one row carries all its facts.
 : NORET-AXIOMS ( -- )

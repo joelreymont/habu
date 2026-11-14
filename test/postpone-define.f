@@ -17,6 +17,7 @@ private
 public
 : DOUBLE ( n -- n ) 2 * ;
 
+false [if] \ waits for a define-word over EFFECT:type
 \ : NAME ( n -- n ) 3 * ;
 : MAKE-TRIPLER ( ptr u8 n -- )
    s" ( n -- n )" define-word
@@ -37,12 +38,14 @@ public
    -6 literal  7 literal
    postpone *
    postpone ; ;
+[then]
 
 \ These names start with the first byte of `c"` or `."`: a postponed name
 \ binds the word whatever its spelling.
 : CUBE ( n -- n ) dup dup * * ;
 : .HALF ( n -- n ) 2 / ;
 
+false [if] \ waits for a define-word over EFFECT:type
 \ : NAME ( n -- n ) CUBE ;
 : MAKE-CUBER ( ptr u8 n -- )
    s" ( n -- n )" define-word
@@ -60,6 +63,7 @@ public
    s" ( -- n )" define-word
    postpone drop
    postpone ; ;
+[then]
 ;package
 
 package POSTPONE-USER
@@ -68,33 +72,45 @@ private
 : BUMP ( n -- n ) 100 + ;
 : DOUBLE ( n -- n ) drop 0 ;
 
+false [if] \ waits for a define-word over EFFECT:type
 s" TRIPLE" POSTPONE-DEFINER:MAKE-TRIPLER
 s" STEP" POSTPONE-DEFINER:MAKE-STEPPER
 s" NEG-ANSWER" POSTPONE-DEFINER:MAKE-NEG-ANSWER
+[then]
 s" : TRIPLE-TEXT ( n -- n ) 3 * ;" evaluate-closed
 
+false [if] \ waits for a define-word over EFFECT:type
 7 TRIPLE 21 T=
 7 STEP 16 T=
+[then]
 7 TRIPLE-TEXT 10 T=
+false [if] \ waits for a define-word over EFFECT:type
 NEG-ANSWER -42 T=
+[then]
 
+false [if] \ waits for a define-word over EFFECT:type
 s" CUBED" POSTPONE-DEFINER:MAKE-CUBER
 s" HALVED" POSTPONE-DEFINER:MAKE-HALVER
 3 CUBED 27 T=
 8 HALVED 4 T=
+[then]
 
 : APPEND-NONE ( -- n ) [: s" 1" body-append ;] catch ;
 APPEND-NONE 0 T<>
 : LITERAL-NONE ( -- n ) [: 1 literal ;] catch ;
 LITERAL-NONE 70 T=
 
+false [if] \ waits for a define-word over EFFECT:type
 : BROKEN ( -- n ) [: s" UNDERFLOW" POSTPONE-DEFINER:MAKE-BROKEN ;] catch ;
 BROKEN 70 T=
+[then]
 s" : AFTER ( -- n ) 7 ;" evaluate-closed
 AFTER 7 T=
 
 public
+false [if] \ waits for a define-word over EFFECT:type
 : ANSWERS ( -- ) 7 TRIPLE . 7 STEP . 7 TRIPLE-TEXT . NEG-ANSWER . cr ;
+[then]
 ;package
 
 package POSTPONE-AT
@@ -150,4 +166,6 @@ ROOT-PERSIST
 PTR-PERSIST
 ;package
 
+false [if] \ waits for a define-word over EFFECT:type
 : MAIN ( -- ) POSTPONE-USER:ANSWERS ;
+[then]

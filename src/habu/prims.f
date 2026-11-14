@@ -721,10 +721,6 @@ EPRIM: body-append PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
 \ literal ( n -- ): append n to the definition `define-word` opened, which the
 \ checker reads as that number; it refuses when no definition is open.
 EPRIM: literal PE-N PE-IN EPRIM;
-\ define-word ( name$ sig$ -- ): open a definition in the open package and
-\ section as `: NAME ( … )` does, NAME one token and SIG the signature as source
-\ writes it.
-EPRIM: define-word PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
 \ postponed ( ptr u8 n -- ): what `postpone W` compiles a call of; only the
 \ checker binds it.
 EPRIM: postponed PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;

@@ -283,7 +283,7 @@ $7FFFFFFFFFFFFFFF CELL / constant SEEN-MAX-CAP
 
 
 \ Exact: both sides read a package's one interned spelling. Facts text (RFACTS?)
-\ names every package but "" ("@" included), for FACTS-RESOLVE to read exactly.
+\ names every package but "" ("@" included), so it reads back with no scope.
 : FAM-FOREIGN? ( n -- f )
    {: fam:n :}
    fam TFAM-PKG$ {: pa:ptr pu:n :}

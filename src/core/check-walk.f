@@ -434,15 +434,60 @@
    THEN THEN
    a u unj unsafe ok-in unck-in pin-in DO-TOK-TAIL ;
 
-\ The '( ... )' inside TSTART..TI is the signature when it follows the name;
-\ true when its install ends the walk. Only the first is: once it is seen, or
-\ body tokens ran, every later one is a comment and must not touch any
-\ signature state.
+\ The rows ( din dout rin rout ) of a schema effect, checked by the rules a
+\ written signature's rows pass; a refusal sets SGBAD.
+: EFFECT-SIG ( n -- n n n n ) {: node:n :}
+   SIG-UNRES-CLEAR
+   PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET  0 SQUOT-N !  0 BIND-DEPTH !
+   0 SIG-LEVEL !  0 SGHASR !  0 RR-SHARED !
+   FRESH MK-ROW dup PD-BASE ! {: dr :}
+   ATOMN @ PD-ATOM0 !
+   node dr TFAM:EFFECT-ROWS
+   PD-OUT !  PD-IN !  0 PR-IN !  0 PR-OUT !
+   SGBAD-CLEAR
+   NULL-PTR 0 PD-IN @ PD-OUT @ 0 0 RES-FALSE SIG-ROWS-CHECK
+   PD-IN @ PD-OUT @ 0 0 ;
+
+package CHECK
+public
+
+\ Whether effect node NODE's rows pass a written signature's rules.
+: EFFECT-RULES? ( n -- bool ) {: node:n :}
+   node EFFECT-SIG 2drop 2drop SGBAD @ 0= ;
+;package
+
+\ The effect `define-word` gave the pending definition when the text walked is
+\ that definition's, else 0.
+: BUILT-EFFECT ( -- n )
+   data-base PEND-CELL + @ 0= IF 0 EXIT THEN
+   TBASE@ NULL-PTR -  data-base BODY-TEXT:BASE-CELL + @ <> IF 0 EXIT THEN
+   data-base BODY-ITEMS:EFFECT-CELL + @ ;
+
+\ The declared rows of the definition CHECK is on: from its effect when
+\ `define-word` built it, else from the signature text at SGA.
+: PENDING-SIG ( -- n n n n )
+   BUILT-EFFECT {: eff:n :}
+   eff 0 <> IF eff EFFECT-SIG EXIT THEN
+   SGA @ SGU @ PARSE-SIG-RAW ;
+
+\ Records the pending definition's declared effect under name NA, AT the name
+\ as read: its rows from PENDING-SIG, its text the signature at SGA.
+: CHECKER-USIG-CERT-ADD-PENDING ( ptr u8 n ptr u8 n bool -- )
+   {: na:ptr nu:n at:ptr atu:n external:bool :}
+   na nu at atu USIG-CERT-ADMIT
+   NEW
+   SGBAD-CLEAR
+   PENDING-SIG {: din:n dout:n rin:n rout:n :}
+   SGA @ SGU @  CHECKER-REC-A@ CHECKER-REC-U@  at atu
+   din dout rin rout external USIG-ADD-ROWS drop
+   DL-TAKE ;
+
+\ Installs the '( ... )' in TSTART..TI when it is the first after the name, the
+\ signature (a built definition's from its effect); true when that ends the walk.
 : PAREN-SIG? ( -- bool )
    VSIG @  SGSEEN @ 0= and  TOKIX @ 2 < and  IF
       TSTART @ TADDR SGA !  TI @ TSTART @ - SGU !
-      TSTART @ TADDR  TI @ TSTART @ -  PARSE-SIG-RAW
-      SIG-INSTALL EXIT
+      PENDING-SIG SIG-INSTALL EXIT
    THEN
    RES-FALSE ;
 
@@ -1040,7 +1085,7 @@ public
    CHECK-SIG? SGBAD @ 0= and UNFIT @ 0= and IF
       NMA @ NMU @ CHECK-REC-ADMIT
       NMA @ NMU @ 0 NORET-ADD
-      SGA @ SGU @  NMA @ NMU @  NMOFF @ TADDR NMU @  RES-FALSE CHECKER-USIG-CERT-ADD-AS
+      NMA @ NMU @  NMOFF @ TADDR NMU @  RES-FALSE CHECKER-USIG-CERT-ADD-PENDING
       RECOVERY-RECORD
       NMA @ NMU @ CHECKER-RECORD-SYM CK-CLOSE!
    THEN ;
@@ -1177,7 +1222,7 @@ public
    TORDER-ACTIVE @ TORDER-PARENT-GATE < and IF
       NMA @ NMU @ CHECK-REC-ADMIT
       NMA @ NMU @ INHSET @ NORET-ADD
-      SGA @ SGU @  NMA @ NMU @  NMOFF @ TADDR NMU @  RES-TRUE CHECKER-USIG-CERT-ADD-AS
+      NMA @ NMU @  NMOFF @ TADDR NMU @  RES-TRUE CHECKER-USIG-CERT-ADD-PENDING
    THEN
    \ The count is the number of refusals rendered, so a quiet scan's is not
    \ counted.
