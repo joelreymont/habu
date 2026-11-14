@@ -48,14 +48,30 @@ package DECL-EVENT
 7173 constant E-DEV-FAMILY-SCOPE \ token does not own the requested declaration family
 7206 constant E-DEV-DUP-OPAQUE  \ a second OPAQUE clause in one declaration
 7207 constant E-DEV-OPAQUE-PACKAGE \ OPAQUE on a family declared outside any package
-s" stale or out-of-order declaration event" E-DEV-TX DECL-REJECT:EXPLAIN
-s" field publication broke field-id contiguity" E-DEV-STATE DECL-REJECT:EXPLAIN
-s" a second POLICY clause in one declaration" E-DEV-DUP-POLICY DECL-REJECT:EXPLAIN
-s" the same DERIVE feature twice in one declaration" E-DEV-DUP-DERIVE DECL-REJECT:EXPLAIN
-s" field is outside this declaration" E-DEV-FIELD-SCOPE DECL-REJECT:EXPLAIN
-s" declaration does not own this family" E-DEV-FAMILY-SCOPE DECL-REJECT:EXPLAIN
-s" a second OPAQUE clause in one declaration" E-DEV-DUP-OPAQUE DECL-REJECT:EXPLAIN
-s" OPAQUE requires a family declared in a package" E-DEV-OPAQUE-PACKAGE DECL-REJECT:EXPLAIN
+s" stale or out-of-order declaration event"
+s" report this declaration as a Habu defect: no declaration text should reach this state"
+E-DEV-TX DECL-REJECT:EXPLAIN
+s" field publication broke field-id contiguity"
+s" report this declaration as a Habu defect: no declaration text should reach this state"
+E-DEV-STATE DECL-REJECT:EXPLAIN
+s" a second POLICY clause in one declaration"
+s" keep one `POLICY` clause in the declaration header"
+E-DEV-DUP-POLICY DECL-REJECT:EXPLAIN
+s" the same DERIVE feature twice in one declaration"
+s" name each `DERIVE` feature once"
+E-DEV-DUP-DERIVE DECL-REJECT:EXPLAIN
+s" field is outside this declaration"
+s" report this declaration as a Habu defect: no declaration text should reach this state"
+E-DEV-FIELD-SCOPE DECL-REJECT:EXPLAIN
+s" declaration does not own this family"
+s" report this declaration as a Habu defect: no declaration text should reach this state"
+E-DEV-FAMILY-SCOPE DECL-REJECT:EXPLAIN
+s" a second OPAQUE clause in one declaration"
+s" keep one `OPAQUE` clause in the declaration header"
+E-DEV-DUP-OPAQUE DECL-REJECT:EXPLAIN
+s" OPAQUE requires a family declared in a package"
+s" declare the `OPAQUE` structure inside a `package`, or drop `OPAQUE`"
+E-DEV-OPAQUE-PACKAGE DECL-REJECT:EXPLAIN
 
 \ E-DEV-ARITY reads sumtype.f's malformed-arity code at top level: a post-hook
 \ checked body cannot name that pre-hook constant on a from-source build.
@@ -583,7 +599,10 @@ public
 \ its family copy and drop a linear value: E-PAYLOAD with the caller's text.
 : REQUIRE-POINTEE ( n ptr u8 n -- n )
    {: node:n why:ptr whyu:n :}
-   node TFCL-NODE? IF why whyu DECL-FRONT:E-PAYLOAD DECL-REJECT:REJECT throw THEN
+   node TFCL-NODE? IF
+      why whyu s" hold the linear value in the field itself, never beneath `ptr`"
+      DECL-FRONT:E-PAYLOAD DECL-REJECT:REJECT throw
+   THEN
    node ;
 
 \ REQUIRE-POINTEE on each pointee in a field type, as SCH-STORE-MASK walks it;

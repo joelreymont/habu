@@ -9,7 +9,9 @@ package GENERATED-DECL-DICTIONARY
 
 7175 constant E-DICTIONARY-CAP
 \ What a declaration reject reports for the code (generated-declaration.f).
-s" generated-name table is full" E-DICTIONARY-CAP DECL-REJECT:EXPLAIN
+s" generated-name table is full"
+s" generate fewer words in this image, for example by dropping `DERIVE` features nothing calls"
+E-DICTIONARY-CAP DECL-REJECT:EXPLAIN
 
 variable NDICT-MARK
 variable CP-MARK

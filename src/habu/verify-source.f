@@ -2778,7 +2778,9 @@ variable STG-TYPE-U
          s" value-record" DECL-REJECT:OPEN
          name nameu DECL-REJECT:FAMILY!
          DECL-REJECT:AT-FAMILY
-         s" missing END-VALUE-RECORD" E-VS-DECL-SYNTAX DECL-REJECT:REJECT
+         s" missing END-VALUE-RECORD"
+         s" close the `VALUE-RECORD` with `END-VALUE-RECORD`"
+         E-VS-DECL-SYNTAX DECL-REJECT:REJECT
          DECL-REJECT:GUARD-CODE
          EXIT
       THEN

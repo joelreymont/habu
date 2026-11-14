@@ -375,6 +375,13 @@ PTR-VARIABLE LINE-A  variable LINE-U  variable LEAD-U
 : HOLDS? ( ptr u8 n ptr u8 n -- bool ) {: b:ptr bu:n t:ptr tu:n :}
    t b - {: at:n :}
    at 0 >=  at tu + bu <= and ;
+public
+\ Whether a source a rejection places from holds the byte p points at for good:
+\ the armed source or the loader's owned bytes.
+: HELD? ( ptr u8 -- bool ) {: p:ptr :}
+   p >SOURCE nip IF 0 0= EXIT THEN
+   OWNED$ p 0 HOLDS? ;
+private
 \ The line of b's bu bytes that holds t: from the byte after the last LF before
 \ t up to the next LF, or the buffer's edge.
 : LINE! ( ptr u8 n ptr u8 -- ) {: b:ptr bu:n t:ptr :}

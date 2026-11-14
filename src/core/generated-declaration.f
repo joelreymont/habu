@@ -5,11 +5,11 @@
 \ DECLARATION-TRANSACTION:RUN, is in generated-declaration-protection.f.
 
 \ DECL-REJECT is the one reject packet both front ends raise through. RENDER
-\ forwards to render.f TDECL-DIAG.
-\ A front end arms its own reason (REJECT, EXPECT); a code raised deeper arrives
-\ bare and PICK-REASON reads the rows each code's owner lays with EXPLAIN. An
-\ armed reason counts only for the code it was armed for. Declarations never
-\ nest, so the packet is one frame.
+\ prints it as a rejection through package REJECTION.
+\ A front end arms its own reason and fix (REJECT, EXPECT); a code raised deeper
+\ arrives bare and PICK-REASON reads the rows each code's owner lays with
+\ EXPLAIN. An armed reason counts only for the code it was armed for.
+\ Declarations never nest, so the packet is one frame.
 using TFAM
 using TYPE-DECL
 
@@ -20,7 +20,7 @@ package DECL-REJECT
 \ read on the first line but rendered after a reject on a later one. Each slot
 \ also keeps the span it was copied from, which a located token renders instead
 \ (TOKEN-SPAN@), until GUARD-CODE ends the declaration.
-4 constant SLOTS
+5 constant SLOTS
 96 constant SPAN-CAP        \ bytes a copy keeps; a longer copy is capped, never overruns
 3 constant MARK-LEN         \ bytes the truncation marker occupies inside SPAN-CAP
 46 constant MARK-BYTE       \ ASCII '.', repeated MARK-LEN times
@@ -29,6 +29,7 @@ package DECL-REJECT
 1 constant S-FAMILY         \ declared family name ("" before the name is parsed)
 2 constant S-TOKEN          \ offending token ("" when the fault has no token)
 3 constant S-REASON         \ short reason text
+4 constant S-FIX            \ what to write instead
 
 create SPAN-BUF  SLOTS SPAN-CAP * allot
 create SPAN-LEN  SLOTS cells allot
@@ -71,20 +72,20 @@ create SLOT-SRC-U  SLOTS cells allot  \ and its length
 : SLOT@ ( n -- ptr u8 n ) {: s:n :}
    s SPAN-CAP * SPAN-BUF +  s cells SPAN-LEN + @ ;
 
-\ The offending token: the span it was copied from when that lies in text a
-\ driver armed for locating packets (REJECTION:>SOURCE), so the packet carries
-\ its file position; else the copy. An armed text stays put while its
-\ declaration runs; a span in an input buffer the engine refills lies in no
-\ armed text, so stale bytes are never read. SPAN-CAP bounds only the copy, so a
-\ located token renders whole.
+\ The offending token: the span it was copied from when REJECTION holds that
+\ source for good (REJECTION:HELD?), so the rejection places it; else the copy.
+\ A span in an input buffer the engine refills is held by neither, so stale
+\ bytes are never read. SPAN-CAP bounds only the copy, so a placed token
+\ renders whole.
 : TOKEN-SPAN@ ( -- ptr u8 n )
    S-TOKEN SRC@
    {: a:ptr u:n :}
-   a REJECTION:>SOURCE nip IF a u EXIT THEN
+   a REJECTION:HELD? IF a u EXIT THEN
    S-TOKEN SLOT@ ;
 
 \ A reason row is the explaining file's data, laid by EXPLAIN where it runs:
-\ the previous row, the code, the text's capped length, then the text. Each
+\ the previous row, the code, the reason's and the fix's capped lengths, then
+\ the reason padded to a cell, then the fix. Each
 \ owner explains its codes reading its own constants, so a renumbered code
 \ keeps its text: owners loaded before this file are explained at the end of
 \ this package, later ones beside their constants. NEWEST and each row's first
@@ -98,12 +99,16 @@ NEWEST ROLLBACK-CELLS:MARK
 variable ARMED              \ the code the armed reason explains (NO-CODE = none)
 
 : NOTHING$ ( -- ptr u8 n ) s" " ;
-: FALLBACK$ ( -- ptr u8 n ) s" declaration failed" ;
+
+\ The bytes a text of n bytes takes in a row.
+: PADDED ( n -- n ) 1 cells 1- + 1 cells / cells ;
 
 : ROW-PREV ( ptr n -- ptr n ) 0 ptr-field @ ;
 : ROW-CODE ( ptr n -- n ) cell+ @ ;
-: ROW-TEXT$ ( ptr n -- ptr u8 n ) {: r:ptr :}
-   r 3 cells + BYTE-VIEW  r 2 cells + @ ;
+: ROW-REASON$ ( ptr n -- ptr u8 n ) {: r:ptr :}
+   r 4 cells + BYTE-VIEW  r 2 cells + @ ;
+: ROW-FIX$ ( ptr n -- ptr u8 n ) {: r:ptr :}
+   r 4 cells +  r 2 cells + @ PADDED +  BYTE-VIEW  r 3 cells + @ ;
 
 \ The newest row that explains a code, NULL-PTR when none does.
 : REASON-ROW ( n -- ptr n ) {: code:n :}
@@ -113,16 +118,19 @@ variable ARMED              \ the code the armed reason explains (NO-CODE = none
       ROW-PREV
    REPEAT ;
 
-: CODE-REASON ( n -- ptr u8 n )
-   REASON-ROW dup NULL-PTR = IF drop FALLBACK$ EXIT THEN
-   ROW-TEXT$ ;
+\ Whether a reason explains the code: one armed for it, or its row.
+: REASON? ( n -- bool ) {: code:n :}
+   ARMED @ code =  code REASON-ROW NULL-PTR <>  or ;
 
-: PICK-REASON ( n -- ptr u8 n ) {: code:n :}
-   ARMED @ code = IF S-REASON SLOT@ EXIT THEN
-   code CODE-REASON ;
+\ The reason and fix for the code: the armed ones, else its row's, else empty.
+: PICK-REASON ( n -- ptr u8 n ptr u8 n ) {: code:n :}
+   ARMED @ code = IF S-REASON SLOT@  S-FIX SLOT@ EXIT THEN
+   code REASON-ROW {: r:ptr :}
+   r NULL-PTR = IF NOTHING$ NOTHING$ EXIT THEN
+   r ROW-REASON$  r ROW-FIX$ ;
 
-: RENDER ( n -- ) {: code:n :}
-   S-KIND SLOT@  S-FAMILY SLOT@  TOKEN-SPAN@  code PICK-REASON  TDECL-DIAG ;
+\ The status a stopped declaration ends the load with.
+CHECKER-REJECT-RC constant STOP-RC
 
 public
 
@@ -132,7 +140,8 @@ public
    S-KIND SLOT!
    NOTHING$ S-FAMILY SLOT!
    NOTHING$ S-TOKEN SLOT!
-   FALLBACK$ S-REASON SLOT!
+   NOTHING$ S-REASON SLOT!
+   NOTHING$ S-FIX SLOT!
    NO-CODE ARMED ! ;
 
 : FAMILY! ( ptr u8 n -- ) S-FAMILY SLOT! ;
@@ -150,52 +159,79 @@ public
    S-FAMILY SLOT@ TOKEN!
    S-FAMILY SRC@ S-TOKEN SRC! ;
 
-\ EXPECT ( reason code -- ) : arm the reason for a fault a deeper owner may
-\ raise, immediately before the call that can raise it.
-: EXPECT ( ptr u8 n n -- ) {: wa:ptr wu:n code:n :}
+\ EXPECT ( reason fix code -- ) : arm the reason and fix for a fault a deeper
+\ owner may raise, immediately before the call that can raise it.
+: EXPECT ( ptr u8 n ptr u8 n n -- ) {: wa:ptr wu:n fa:ptr fu:n code:n :}
    wa wu S-REASON SLOT!
+   fa fu S-FIX SLOT!
    code ARMED ! ;
 
-\ REJECT ( reason code -- code ) answers the code instead of throwing it, so
+\ REJECT ( reason fix code -- code ) answers the code instead of throwing it, so
 \ each reject site spells its own `throw` and the thrown value is visible there.
-: REJECT ( ptr u8 n n -- n ) {: wa:ptr wu:n code:n :}
-   wa wu code EXPECT
+: REJECT ( ptr u8 n ptr u8 n n -- n ) {: wa:ptr wu:n fa:ptr fu:n code:n :}
+   wa wu fa fu code EXPECT
    code ;
-
-\ End one declaration: 0 forgets the borrowed spans; a reject renders, then counts in
-\ a multi-error load (DRIVE skipped to its terminator) or refuses (DEF-STOPPED).
-: GUARD-CODE ( n -- )
-   {: rc:n :}
-   \ Both exits forget the spans: one left behind is read stale or baked into an
-   \ image with its build-time address, so engine generations differ.
-   rc 0= IF FORGET-SRC EXIT THEN
-   rc RENDER
-   FORGET-SRC
-   MULTI-ERR? IF 1 REJECTION:TALLY +! EXIT THEN
-   rc DEF-STOPPED !
-   rc CHECKER-REFUSE ;
 
 \ Reflection for the suites: what the packet would report right now.
 : KIND$ ( -- ptr u8 n ) S-KIND SLOT@ ;
 : FAMILY$ ( -- ptr u8 n ) S-FAMILY SLOT@ ;
 : TOKEN$ ( -- ptr u8 n ) S-TOKEN SLOT@ ;
-: REASON$ ( n -- ptr u8 n ) PICK-REASON ;
+: REASON$ ( n -- ptr u8 n ) PICK-REASON 2drop ;
+
+private
+
+\ The rejection: the declaration, its token labeled with the reason, the fix as
+\ help.
+: RENDER ( n -- ) {: code:n :}
+   s" E-BAD-DECLARATION" REJECTION:OPEN
+   s" bad " REJECTION:EMIT-STR  KIND$ REJECTION:EMIT-STR
+   s"  declaration" REJECTION:EMIT-STR
+   FAMILY$ {: fa:ptr fu:n :}
+   fu 0 > IF
+      s"  `" REJECTION:EMIT-STR  fa fu REJECTION:EMIT-STR  96 REJECTION:EMIT1
+   THEN
+   TOKEN-SPAN@ REJECTION:AT
+   code PICK-REASON {: ra:ptr ru:n xa:ptr xu:n :}
+   ra ru REJECTION:EMIT-STR
+   REJECTION:HELP  xa xu REJECTION:EMIT-STR ;
+
+public
+
+\ End one declaration. Every exit forgets the borrowed spans: one left behind is
+\ read stale or baked into an image with its build-time address, so engine
+\ generations differ. A status in 1..255 was printed where it arose, and a code
+\ no reason explains is no declaration's: both are rethrown. Any other renders,
+\ then counts in a multi-error load (DRIVE skipped to its terminator) or stops
+\ the load (DEF-STOPPED).
+: GUARD-CODE ( n -- )
+   {: rc:n :}
+   rc 0= IF FORGET-SRC EXIT THEN
+   rc 1 >=  rc 255 <= and  rc REASON? 0= or IF FORGET-SRC rc throw THEN
+   rc RENDER
+   FORGET-SRC
+   MULTI-ERR? IF REJECTION:KEEP EXIT THEN
+   rc DEF-STOPPED !
+   STOP-RC REJECTION:STOP ;
 
 7182 constant E-REASON-DUP  \ the code already has a reason
 
-\ EXPLAIN ( reason code -- ): the code's owner calls it once, at load, reading
-\ its own constant. The copy follows the allot: allot zeroes reused space it
-\ hands out, padding included.
-: EXPLAIN ( ptr u8 n n -- ) {: a:ptr u:n code:n :}
+\ EXPLAIN ( reason fix code -- ): the code's owner calls it once, at load,
+\ reading its own constant. Each copy follows its allot: allot zeroes reused
+\ space it hands out, padding included.
+: EXPLAIN ( ptr u8 n ptr u8 n n -- ) {: a:ptr u:n fa:ptr fu:n code:n :}
    code REASON-ROW NULL-PTR <> IF E-REASON-DUP throw THEN
    u CAPPED {: len:n :}
+   fu CAPPED {: flen:n :}
    datum here CELL-VIEW {: row:ptr :}
    here ptr-cell-mark 0 ,
    NEWEST @ row 0 ptr-field !
-   code ,  len ,
+   code ,  len ,  flen ,
    here BYTE-VIEW {: d:ptr :}
-   len 1 cells 1- + 1 cells / cells allot
+   len PADDED allot
    a u d CAP-COPY
+   here BYTE-VIEW {: fd:ptr :}
+   flen PADDED allot
+   fa fu fd CAP-COPY
    row NEWEST ! ;
 
 private
@@ -204,34 +240,74 @@ private
 \ type-family.f's name and field-record codes, and the declaration
 \ transaction's.  A post-hook checked body cannot name the pre-hook constants
 \ on a from-source build, but a top-level read can.
-s" malformed declaration" E-TDECL-SYNTAX EXPLAIN
-s" invalid type parameter header" E-TDECL-ARITY EXPLAIN
-s" unknown payload type" E-TDECL-PAYLOAD EXPLAIN
-s" unknown layout policy" E-TDECL-POLICY EXPLAIN
-s" invalid layout policy for recursive sum" E-TDECL-RECURSIVE EXPLAIN
-s" declaration too long" E-TDECL-CAP EXPLAIN
+s" malformed declaration"
+s" write `STRUCTURE name` or `ENUM name`, then its clauses, then `;STRUCTURE` or `;ENUM`"
+E-TDECL-SYNTAX EXPLAIN
+s" invalid type parameter header"
+s" name each type parameter once in the header, as in `box<a>` or `result<a,b>`"
+E-TDECL-ARITY EXPLAIN
+s" unknown payload type"
+s" give each field a type declared before it: `n`, `ptr u8`, a `STRUCTURE` or an `ENUM`"
+E-TDECL-PAYLOAD EXPLAIN
+s" unknown layout policy"
+s" name `stack-cell-tag`, `packed-tag` or `niche-null` after `POLICY`"
+E-TDECL-POLICY EXPLAIN
+s" invalid layout policy for recursive sum"
+s" drop the payload that names the family being declared: no family can hold itself"
+E-TDECL-RECURSIVE EXPLAIN
+s" declaration too long"
+s" shorten the declaration and its names, or split it into smaller families"
+E-TDECL-CAP EXPLAIN
 \ E-TDECL-DERIVE reaching the table (rather than an armed front-end reason)
 \ means the derive requirement failed later, in the constructor participant's
 \ payload role and equality checks, not that the feature token was unknown.
-s" a payload type or role has no derived equality" E-TDECL-DERIVE EXPLAIN
+s" a payload type or role has no derived equality"
+s" derive a feature only when every payload type has it, or drop it from `DERIVE`"
+E-TDECL-DERIVE EXPLAIN
 \ Both front ends arm "reserved name" at their own name gates, so E-TDECL-NAME
 \ reaching the table was raised by a deeper owner: the variant-name gate (a
 \ reserved tail or a family-name collision) or the constructor collide check (a
 \ variant spelled like a word the DERIVE clause generates). The text has to be
 \ true of both.
-s" name is reserved or already taken" E-TDECL-NAME EXPLAIN
-s" name must be a lowercase tail" E-TFAM-CASE EXPLAIN
-s" duplicate name in this package" E-TFAM-DUP EXPLAIN
-s" constructor package name exceeds 255 bytes" E-PACKAGE-NAME-CAP EXPLAIN
-s" invalid or uncommitted field id" E-PF-ID EXPLAIN
-s" stale or out-of-order field transaction" E-PF-TX EXPLAIN
-s" invalid field owner family or variant" E-PF-OWNER EXPLAIN
-s" reserved field name" E-PF-NAME EXPLAIN
-s" malformed or owner-incompatible field schema" E-PF-SCHEMA EXPLAIN
-s" invalid field layout metadata" E-PF-LAYOUT EXPLAIN
-s" undefined field flag bits" E-PF-FLAGS EXPLAIN
-s" a declaration is already open" DECLARATION-TRANSACTION:E-ACTIVE EXPLAIN
-s" declaration checker frame mismatch" DECLARATION-TRANSACTION:E-FRAME EXPLAIN
+s" name is reserved or already taken"
+s" rename it so it is no reserved word and no word this declaration generates"
+E-TDECL-NAME EXPLAIN
+s" name must be a lowercase tail"
+s" write the name as a lowercase tail with no package qualifier, as in `point`"
+E-TFAM-CASE EXPLAIN
+s" duplicate name in this package"
+s" give each family, variant and field a name no other declaration in this package uses"
+E-TFAM-DUP EXPLAIN
+s" constructor package name exceeds 255 bytes"
+s" shorten the package or family name so the constructor package name fits in 255 bytes"
+E-PACKAGE-NAME-CAP EXPLAIN
+s" invalid or uncommitted field id"
+s" report this declaration as a Habu defect: no declaration text should reach this state"
+E-PF-ID EXPLAIN
+s" stale or out-of-order field transaction"
+s" report this declaration as a Habu defect: no declaration text should reach this state"
+E-PF-TX EXPLAIN
+s" invalid field owner family or variant"
+s" report this declaration as a Habu defect: no declaration text should reach this state"
+E-PF-OWNER EXPLAIN
+s" reserved field name"
+s" rename the field: a keyword or a generated word such as `make`, `tag` or `eq` is taken"
+E-PF-NAME EXPLAIN
+s" malformed or owner-incompatible field schema"
+s" give the field a type whose parameters match the kinds its family declares"
+E-PF-SCHEMA EXPLAIN
+s" invalid field layout metadata"
+s" report this declaration as a Habu defect: no declaration text should reach this state"
+E-PF-LAYOUT EXPLAIN
+s" undefined field flag bits"
+s" report this declaration as a Habu defect: no declaration text should reach this state"
+E-PF-FLAGS EXPLAIN
+s" a declaration is already open"
+s" close the open declaration with `;STRUCTURE` or `;ENUM` before starting another"
+DECLARATION-TRANSACTION:E-ACTIVE EXPLAIN
+s" declaration checker frame mismatch"
+s" report this declaration as a Habu defect: no declaration text should reach this state"
+DECLARATION-TRANSACTION:E-FRAME EXPLAIN
 
 ;package
 
@@ -254,7 +330,9 @@ package DECL-REPLAY
 \ Re-entry is refused with a code the transaction can roll back; production
 \ callers never nest, since a replayed body is never evaluated.
 7177 constant E-REPLAY-BUSY   \ a replayed declaration is already open
-s" a replayed declaration is already open" E-REPLAY-BUSY DECL-REJECT:EXPLAIN
+s" a replayed declaration is already open"
+s" report this declaration as a Habu defect: no declaration text should reach this state"
+E-REPLAY-BUSY DECL-REJECT:EXPLAIN
 
 32 constant RP-SPACE
 9 constant RP-TAB
@@ -359,7 +437,9 @@ seal-package
 package GENERATED-DECL-CTOR
 
 7176 constant E-CTOR-ARM   \ armed family is not a public ENUM family with variants
-s" family cannot own generated constructors" E-CTOR-ARM DECL-REJECT:EXPLAIN
+s" family cannot own generated constructors"
+s" report this declaration as a Habu defect: no declaration text should reach this state"
+E-CTOR-ARM DECL-REJECT:EXPLAIN
 
 -1 constant NO-FAMILY
 
@@ -592,11 +672,15 @@ public
 : NAME-LONG? ( ptr u8 n -- bool ) nip NAME-MAX > ;
 
 : POLICY-CODE ( ptr u8 n -- n )         \ policy name -> layout code (or reject)
-   dup 0= IF 2drop s" missing layout policy name" E-POLICY DECL-REJECT:REJECT throw THEN
+   dup 0= IF 2drop s" missing layout policy name"
+      s" name a policy after `POLICY`: `stack-cell-tag`, `packed-tag` or `niche-null`"
+      E-POLICY DECL-REJECT:REJECT throw THEN
    2dup s" stack-cell-tag" CORE-STR=CI IF 2drop TL-STACK-CELL-TAG EXIT THEN
    2dup s" packed-tag" CORE-STR=CI IF 2drop TL-PACKED-TAG EXIT THEN
    2dup s" niche-null" CORE-STR=CI IF 2drop TL-NICHE EXIT THEN
-   2drop s" unknown layout policy" E-POLICY DECL-REJECT:REJECT throw ;
+   2drop s" unknown layout policy"
+   s" name `stack-cell-tag`, `packed-tag` or `niche-null` after `POLICY`"
+   E-POLICY DECL-REJECT:REJECT throw ;
 
 : VIS ( -- n )                          \ declaration visibility (public at top level)
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF CHECKER-VIS-PUBLIC EXIT THEN CHECKER-AUTH-PACKAGE-MODE@ ;
@@ -622,10 +706,15 @@ public
 : NAME-CHECK ( ptr u8 n ptr u8 n -- )
    {: a:ptr u:n wa:ptr wu:n :}
    a u DECL-REJECT:TOKEN!
-   s" duplicate field name" E-DUP DECL-REJECT:EXPECT
+   s" duplicate field name" s" give each field of this declaration its own name"
+   E-DUP DECL-REJECT:EXPECT
    a u PF-NAME-REQUIRE
    a u SEEN? IF E-DUP throw THEN
-   SEEN-U @ u + 1+ SEEN-CAP > IF wa wu E-CAP DECL-REJECT:REJECT throw THEN
+   SEEN-U @ u + 1+ SEEN-CAP > IF
+      wa wu
+      s" declare fewer or shorter fields, so their names fit in the 8192 bytes a replay checks"
+      E-CAP DECL-REJECT:REJECT throw
+   THEN
    u SEEN SEEN-U @ + c!
    0 SEEN-I !
    BEGIN SEEN-I @ u < WHILE

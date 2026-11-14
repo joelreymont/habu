@@ -14,8 +14,12 @@ using TYPE-DECL
 E-TFAM-DUP constant E-SM-DUP  \ MAKE/UNMAKE already generated
 7190 constant E-SM-FAM        \ family id is not a live, public, product-kind family
 7191 constant E-SM-EMPTY      \ product family declares no fields
-s" family cannot own generated make/unmake" E-SM-FAM DECL-REJECT:EXPLAIN
-s" a constructed family needs at least one field" E-SM-EMPTY DECL-REJECT:EXPLAIN
+s" family cannot own generated make/unmake"
+s" report this declaration as a Habu defect: no declaration text should reach this state"
+E-SM-FAM DECL-REJECT:EXPLAIN
+s" a constructed family needs at least one field"
+s" give the `STRUCTURE` at least one `FIELD name type`"
+E-SM-EMPTY DECL-REJECT:EXPLAIN
 
 package STRUCTURE-MAKE
 
