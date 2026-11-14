@@ -547,13 +547,17 @@ public
          PAREN-SIG? IF EXIT THEN
          TI @ TBLEN @ < IF TI @ 1 + TI ! THEN
          CUR-PAREN
+       ELSE TI @ TBYTE@ 92 =  TI @ 1 + TBLANK?  and IF   \ '\' then a blank -> comment to the line's end
+         CUR-PAREN-AT
+         BEGIN TI @ TBLEN @ <  TI @ 10 TBYTE=? 0=  and WHILE TI @ 1 + TI ! REPEAT
+         CUR-PAREN
        ELSE
          TI @ TSTART !
          BEGIN TI @ TBLANK? 0= WHILE TI @ 1 + TI ! REPEAT
          SCAN-TOK-HEAD {: was-name:n :}
          TSTART @ TADDR  TI @ TSTART @ -  DO-TOK1
          was-name SCAN-TOK-TAIL IF EXIT THEN
-       THEN
+       THEN THEN
      THEN
    REPEAT
    CUR-END ;
