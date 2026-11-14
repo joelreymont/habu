@@ -1885,14 +1885,10 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
    CLOSED-ARM,
    done X64CODE:LBL, ;
 
-\ die ( ptr u8 n n -- ): the message and LF on fd 2 when its length is
-\ positive, then the exit hook, then the exit. The rc waits on the machine
-\ stack, and the LF is a cell pushed there for its write. The hook's cell is
-\ cleared before the call (layout.f EXIT-HOOK-CELL, habu2.f EMIT-EXITHOOK), so
-\ a hook that dies or throws finds it empty, and the handler chain with it, so
-\ a hook's throw is uncaught rather than resuming a catch around `die`.
-: DIE, ( -- )
-   X64CODE:LBL X64CODE:LBL {: quiet:label bare:label :}
+\ The message and LF on fd 2 when its length is positive. The rc waits on the
+\ machine stack, and the LF is a cell pushed there for its write.
+: DIE-TEXT, ( -- )
+   X64CODE:LBL {: quiet:label :}
    RAX POP,  RDX POP,  RSI POP,
    RAX ASM-SINK ENC-PUSH
    RDX RDX ASM-SINK ENC-TEST-RR  C-LE quiet JCC,
@@ -1900,7 +1896,16 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
    RCX STR-LF IMM32,  RCX ASM-SINK ENC-PUSH
    RDI STDERR IMM32,  RSI RSP ASM-SINK ENC-MOV-RR  RDX 1 IMM32,  NR-WRITE SYS,
    RCX ASM-SINK ENC-POP
-   quiet X64CODE:LBL,
+   quiet X64CODE:LBL, ;
+
+\ die ( ptr u8 n n -- ): the text, then the exit hook, then the exit. The
+\ hook's cell is cleared before the call (layout.f EXIT-HOOK-CELL, habu2.f
+\ EMIT-EXITHOOK), so a hook that dies or throws finds it empty, and the
+\ handler chain with it, so a hook's throw is uncaught rather than resuming a
+\ catch around `die`.
+: DIE, ( -- )
+   X64CODE:LBL {: bare:label :}
+   DIE-TEXT,
    RAX DATA-REG EXIT-HOOK-CELL MOV-LOAD,
    RAX RAX ASM-SINK ENC-TEST-RR  C-E bare JCC,
    RCX ZERO-REG,  RCX DATA-REG EXIT-HOOK-CELL MOV-STORE,
@@ -1909,6 +1914,10 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
    bare X64CODE:LBL,
    RDI ASM-SINK ENC-POP
    0 RC-EXIT, ;
+
+\ die-closed ( ptr u8 n n -- ): the text, then the exit; no exit hook runs.
+: DIE-CLOSED, ( -- )
+   DIE-TEXT,  RDI ASM-SINK ENC-POP  0 RC-EXIT, ;
 
 \ A defining word's CREATE calls the captured source-owned writer. The outer
 \ keyword has its own hook/registrar tail; this primitive shares its row work.
@@ -2381,6 +2390,7 @@ public
    s" c2-init-stow" [: C2-INIT-STOW, ;] PRIM
    s" c2-records-stow" [: C2-RECORDS-STOW, ;] PRIM
    s" die" [: DIE, ;] PRIM
+   s" die-closed" [: DIE-CLOSED, ;] PRIM
    s" source-file-run" [: SOURCE-FILE-RUN, ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" evaluate" [: REFUSE-BODY ;] PRIM
    s" evaluate-closed" [: EVAL-CLOSED, ;] PRIM

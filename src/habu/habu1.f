@@ -1787,10 +1787,8 @@ private
 10 constant DIE-NL
 
 \ An empty span writes nothing, so a site whose report already ends in a
-\ newline passes `s" "`. An rc outside [0,255] maps to UNCAUGHT-RC: the kernel
-\ masks rc & 0xFF, and a negative throw code reused as rc could exit 0.
-: BDIE ( -- )
-   LBL {: lfixed:label :}
+\ newline passes `s" "`. Leaves the rc in x0 and x7.
+: DIE-TEXT, ( -- )
    LBL {: quiet:label :}
    7 G-POP  2 G-POP  1 G-POP
    2 quiet CBZ,
@@ -1799,14 +1797,29 @@ private
       0 2 MOVZ,  1 SP 0 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
       SP SP $10 ADDI,
    quiet LBL,
-   0 7 0 ADDI,
-   \ The trampoline preserves x0; x7 is re-derived because the hook is compiled
-   \ code owning every caller-saved register. BDIE never returns, so LR is free.
-   LEXITHOOK LABEL@ BL,  7 0 0 ADDI,
+   0 7 0 ADDI, ;
+
+\ exit_group with the rc in x0 and x7. An rc outside [0,255] maps to
+\ UNCAUGHT-RC: the kernel masks rc & 0xFF, and a negative throw code reused as
+\ rc could exit 0.
+: DIE-EXIT, ( -- )
+   LBL {: lfixed:label :}
    7 0 CMPI,    C-LT lfixed BCOND,
    7 255 CMPI,  C-GT lfixed BCOND,
    NR-EXIT-GROUP SYS,
    lfixed LBL,  0 UNCAUGHT-RC MOVZ,  NR-EXIT-GROUP SYS, ;
+
+: BDIE ( -- )
+   DIE-TEXT,
+   \ The trampoline preserves x0; x7 is re-derived because the hook is compiled
+   \ code owning every caller-saved register. BDIE never returns, so LR is free.
+   LEXITHOOK LABEL@ BL,  7 0 0 ADDI,
+   DIE-EXIT, ;
+
+\ die-closed ends the process at once: no exit action runs, and no other
+\ thread's exit holds it.
+: BDIECLOSED ( -- )
+   DIE-TEXT,  DIE-EXIT, ;
 
 : SYS-PUSH ( -- )
    LBL SYS-OK !
@@ -4122,7 +4135,8 @@ package ENGINE-EMIT
    s" policy-seal" ['] BPOLICYSEAL FPRIM
    s" epoch-seconds" ['] BEPOCHSECONDS FPRIM-L
    s" mono-ns" ['] BMONONS FPRIM-L
-   s" die"  ['] BDIE   FPRIM-L ;
+   s" die"  ['] BDIE   FPRIM-L
+   s" die-closed" ['] BDIECLOSED FPRIM-L ;
 
 ;package
 
