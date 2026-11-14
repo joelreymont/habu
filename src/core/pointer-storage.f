@@ -20,11 +20,8 @@
 
 \ The DATA cell at an offset the engine layout reserves, declared as a cell that
 \ holds a byte pointer. `ptr-field` (src/habu/prims.f) is the declared door
-\ from an address to a pointer cell, so no cast stands behind this word. It is
-\ a public colon word with no checker row, so the sealed checker refuses a
-\ checked call of it, and checked source reaches it only through the
-\ RESERVED-PTR-U8-CELL definer below. The null, NULL-PTR, is an
-\ engine primitive (src/habu/prims.f) and needs no cell.
+\ from an address to a pointer cell, so no cast stands behind this word. The
+\ null, NULL-PTR, is an engine primitive (src/habu/prims.f) and needs no cell.
 package POINTER-STORAGE
 public
 : DATA-CELL ( n -- ptr ptr u8 ) data-base swap + 0 ptr-field ;
