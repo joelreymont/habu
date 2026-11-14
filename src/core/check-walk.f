@@ -1600,13 +1600,21 @@ variable CAND-VERDICT
 : CHECK-CANDIDATE-BODY ( -- )
    CAND-A @ CAND-U @ CHECK-WINDOWED CAND-VERDICT ! ;
 
-\ A rejection is placed in the candidate's text, `<input>:L:C`, unless a
-\ source its caller armed places it.
+\ Arms the text as the rejection source, so a rejection is placed in it,
+\ `<input>:L:C`, only when no source is armed and PLACE finds no source for
+\ the text's first byte; answers whether it armed.
+: ARM-TEXT ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   REJECTION:SOURCE$ nip 0=  a REJECTION:PLACES? 0= and {: arm:bool :}
+   arm IF a u 1 1 0 REJECTION:SOURCE! THEN
+   arm ;
+
+: DISARM-TEXT ( bool -- )
+   IF REJECTION:SOURCE-OFF THEN ;
+
 : CHECK-CANDIDATE! ( ptr u8 n -- n ) {: a:ptr u:n :}
    WRITE-WINDOW-CK
    a CAND-A !  u CAND-U !
-   REJECTION:SOURCE$ nip 0= {: arm:bool :}
-   arm IF a u 1 1 0 REJECTION:SOURCE! THEN
+   a u ARM-TEXT {: arm:bool :}
    CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? {: recovery0:bool :}
    BIND-HORIZON @ {: horizon0:n :}
    CHK-PROBE @ {: probe0:n :}
@@ -1617,7 +1625,7 @@ variable CAND-VERDICT
    -1 CHK-PROBE !
    -1 CUR-DONE !                       \ a candidate's text is not the cursor's
    [: CHECK-CANDIDATE-BODY ;] catch {: rc:n :}
-   arm IF REJECTION:SOURCE-OFF THEN
+   arm DISARM-TEXT
    done0 CUR-DONE !
    gap0 CUR-GAP !
    probe0 CHK-PROBE !
@@ -1733,7 +1741,9 @@ variable DEF-STOPPED
    TORDER-CHECKING TORDER-ACTIVE !  0 TORDER-SCAN-UNKNOWN !
    PU-N @ {: pu0:n :}
    CUR-TAKE {: took:bool :}
+   a u ARM-TEXT {: arm:bool :}
    [: CHECK-DEF-BODY ;] catch {: rc:n :}
+   arm DISARM-TEXT
    NULL-PTR CK-DEF-A !  0 CK-DEF-U !
    -1 TORDER-DEPTH +!
    TORDER-SCAN-UNKNOWN @ {: unknown:n :}

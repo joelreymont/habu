@@ -164,7 +164,9 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    BADSIG-ONCE
    BADSIG-WIDE-ONCE
    QUIET-COUNT-ONCE
-   s" test/program-diagnostic-me.f" s" habu: in mea1:" DIAGNOSTIC
+   s" test/program-diagnostic-me.f" s" <input>:1:19" DIAGNOSTIC
+   s" error[E-MISMATCH]" s" test/program-diagnostic-me.f" GE-EXPECT-ERR-HAS
+   s" 1 | : MEA1 ( n -- n ) drop ;" s" test/program-diagnostic-me.f" GE-EXPECT-ERR-HAS
    s" test/native-multi-error-recovery.f" s" native-multi-error-recovery.f:25:18" HABU-DIAGNOSTIC
    s" error[E-MISMATCH]: `c@` takes ptr u8; the stack holds n" s" test/native-multi-error-recovery.f" GE-EXPECT-ERR-HAS
    s" test/native-multi-error-recovery.f" s" native-multi-error-recovery.f:25:18" DIAGNOSTIC
@@ -172,8 +174,12 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" test/program-diagnostic-ctor.f" s" duplicate family" DIAGNOSTIC
    s" test/program-diagnostic-using.f" s" error[E-USING-UNKNOWN]" DIAGNOSTIC
    s" no package is named `NOPE-PKG`" s" test/program-diagnostic-using.f" GE-EXPECT-ERR-HAS
-   s" test/program-diagnostic-export.f" s" habu: in xpu3:" DIAGNOSTIC
-   s" test/program-diagnostic-lower.f" s" habu: in lc-named-bad:" DIAGNOSTIC ;
+   s" test/program-diagnostic-export.f" s" <input>:1:15" DIAGNOSTIC
+   s" error[E-INPUT-UNDERFLOW]" s" test/program-diagnostic-export.f" GE-EXPECT-ERR-HAS
+   s" 1 | XPU3 ( -- n ) XPD:XP-INC" s" test/program-diagnostic-export.f" GE-EXPECT-ERR-HAS
+   s" test/program-diagnostic-lower.f" s" <input>:1:39" DIAGNOSTIC
+   s" error[E-MISMATCH]" s" test/program-diagnostic-lower.f" GE-EXPECT-ERR-HAS
+   s" 1 | LC-NAMED-BAD ( ptr lcnamed -- color ) @" s" test/program-diagnostic-lower.f" GE-EXPECT-ERR-HAS ;
 
 public
 
