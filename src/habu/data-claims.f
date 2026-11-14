@@ -175,6 +175,7 @@ create TAB
    PROVIDED-XT:CELL-LINE-CELL         1 cells                 CLAIM PROVIDED-XT-CELL-LINE-CELL
    PROVIDED-XT:LITERAL-CELL           1 cells                 CLAIM PROVIDED-XT-LITERAL-CELL
    PROVIDED-XT:TYPE-OP-CELL           1 cells                 CLAIM PROVIDED-XT-TYPE-OP-CELL
+   PROVIDED-XT:VARIABLE-CELL          1 cells                 CLAIM PROVIDED-XT-VARIABLE-CELL
    POLICY-ABI:KEYWORD-CELL            1 cells                 CLAIM POLICY-KEYWORD-CELL
    ENGINE-MAIN:ARENA-CELL             1 cells                 CLAIM ENGINE-MAIN-ARENA-CELL
    HALT-UNWIND-CELL                   1 cells                 CLAIM HALT-UNWIND-CELL

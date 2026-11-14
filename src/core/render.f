@@ -472,6 +472,12 @@ create RQUOT-BLOCK SQUOT-CAP cells allot
 
 
 : REND-TYPE {: t:n :}  t 0 0 QREND ;
+
+\ Type T as a diagnostic spells it, in TEXT until TEXT is next written.
+: TYPE-TEXT ( n -- ptr u8 n ) {: t:n :}
+   1 DEST !  0 TEXT-LEN !  SEEN-RESET RATOM-RESET 0 NLET !
+   t REND-TYPE
+   0 DEST !  TEXT TEXT-LEN @ ;
 variable RSHOW-DST
 
 : REND-COLLECT ( n -- )  0 RBN !  RBUF-ROW ;

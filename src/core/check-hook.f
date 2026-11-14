@@ -214,11 +214,15 @@ CAST: REG-XT ( n -- [ ptr u8 n ptr u8 n -- ] )
    shape CHILD-ABI:HEAP-RELEASE = or  shape CHILD-ABI:ARENA-NEW = or
    shape CHILD-ABI:ARENA-DISPOSE = or ;
 
-\ A refused type is reported, naming the child, before the throw.
-: STORED-ROWS ( ptr u8 n ptr u8 n n -- n n )
-   {: na:ptr nu:n ta:ptr tu:n shape:n :}
-   ta tu CHECKER-STORAGE-TERM 0= if
-      drop na nu ta tu CHECKER-STORAGE-TYPE-REFUSE CHECK-RC throw
+\ A refused type is reported, naming the child, before the throw. A NODE other
+\ than 0 is the type, which TYPE does not spell.
+: STORED-ROWS ( ptr u8 n ptr u8 n n n -- n n )
+   {: na:ptr nu:n ta:ptr tu:n shape:n node:n :}
+   node 0 <> if node NODE-STORAGE-TERM else ta tu CHECKER-STORAGE-TERM then
+   0= if
+      drop
+      node 0 <> if na nu NODE-TYPE-REFUSE else na nu ta tu CHECKER-STORAGE-TYPE-REFUSE then
+      CHECK-RC throw
    then
    shape swap TFAM:TFAM-STORED-ROWS ;
 
@@ -253,11 +257,13 @@ public
 
 \ Registers the effect of the pending child word NAME of SHAPE, PARAM and
 \ stored TYPE, lays its facts, and answers its body value and effect handle.
-\ TYPE is read only for the shapes that answer `ptr t`.
+\ TYPE is read only for the shapes that answer `ptr t`, and not for a STORED
+\ child whose PARAM is its type's node.
 : CHILD ( ptr u8 n n n ptr u8 n -- n n )
    {: na:ptr nu:n shape:n param:n ta:ptr tu:n :}
    shape STORED-SHAPE? if
-      na nu ta tu shape STORED-ROWS 0
+      na nu ta tu shape
+      shape CHILD-ABI:STORED = if param else 0 then STORED-ROWS 0
    else shape param TFAM:TFAM-CHILD-ROWS then {: din:n dout:n val:n :}
    na nu din dout CHECKER-CHILD-ROWS {: h:n :}
    na nu PENDING-FACTS

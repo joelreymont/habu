@@ -1189,6 +1189,10 @@ public
    {: na:ptr nu:n ta:ptr tu:n :}
    na nu CHILD-ABI:STORED 0 ta tu TDECL-CHILD-RUN ;
 
+\ Makes the stored child NAME over type node NODE, as TDECL-STORED-CHILD does.
+: TDECL-NODE-CHILD ( ptr u8 n n -- n ) {: na:ptr nu:n node:n :}
+   na nu CHILD-ABI:STORED node NULL-PTR 0 TDECL-CHILD-RUN ;
+
 \ The structures.f field words, OFF bytes into a record.
 : TDECL-CELL-CHILD ( ptr u8 n n -- ) {: na:ptr nu:n off:n :}
    na nu CHILD-ABI:CELL-OFF off TDECL-CHILD ;

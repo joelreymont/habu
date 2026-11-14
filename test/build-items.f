@@ -1,23 +1,25 @@
 \ build-items.f - a definer builds words of keyword, type, operand and call
-\ items: a match over a family of its own answers as the same text does, an
-\ if and a begin loop, a construct, a call of a word found where the definer
-\ runs, an exact call of PKG:TAIL that a part named PKG of the building
-\ package does not capture, and typed locals: two of `n`, one of the family
-\ matched, two groups, and one of a parametric family the effect numbers
-\ apart from the file. An operand that names no variant, a call of an unknown
-\ name, a local outside a group, a read of an index never declared, a local
-\ of a type its reader does not take, a read of a local whose block ended,
-\ refused naming the local's index, a local whose type is a 24th parameter,
-\ refused naming the word, and a local or a local's read in a text definition
-\ are refused, and the word is abandoned. The name a field loan awaits takes
-\ the steps its text twin's token takes: the same code and diagnostic. Inside
-\ an open match an item's kind decides its role: a call in an abandoned one is
-\ skipped, a call where the family belongs and a type where a variant belongs
-\ get the match's rejection. An item spelled by no token or by two is
-\ rejected. EFFECT:READ reads a linear and a width type as a signature does,
-\ and rejects a letter, a type variable's or a view's region's, at the line
-\ that ran the definer, with the fix, as EFFECT:NAMED and EFFECT:READ reject
-\ an unknown family and EFFECT:IN a type that is no effect.
+\ items: a match over a family of its own answers as the same text does, an if
+\ and a begin loop, a construct, a call of a word found where the definer runs,
+\ an exact call of PKG:TAIL that a part named PKG of the building package does
+\ not capture, and typed locals: two of `n`, one of the family matched, two
+\ groups, and one of a parametric family the effect numbers apart from the
+\ file. A variable a definer declares of a quotation type holds a quotation of
+\ that type, and a store of another is rejected; one of a type that may hold a
+\ linear value is rejected, the type named. An operand that names no variant, a
+\ call of an unknown name, a local outside a group, a read of an index never
+\ declared, a local of a type its reader does not take, a read of a local whose
+\ block ended, rejected naming the local's index, a local whose type is a 24th
+\ parameter, rejected naming the word, and a local or a local's read in a text
+\ definition are rejected, and the word is abandoned. The name a field loan
+\ awaits takes the steps its text twin's token takes: the same code and
+\ diagnostic. Inside an open match an item's kind decides its role: a call in
+\ an abandoned one is skipped, a call where the family belongs and a type where
+\ a variant belongs get the match's rejection. An item spelled by no token or
+\ by two is rejected. EFFECT:READ reads a linear and a width type as a
+\ signature does, and rejects a letter, a type variable's or a view's region's,
+\ at the line that ran the definer, with the fix, as EFFECT:NAMED and
+\ EFFECT:READ reject an unknown family and EFFECT:IN a type that is no effect.
 
 require src/lib/test.f
 require src/lib/c2-memory.f
@@ -260,6 +262,27 @@ s" LOCAL-READ-NOW" 0 parse-imm
 BAD-TEXT 70 T=
 s" : BI-BAD-TEXT ( -- n ) 9 ;" evaluate-closed
 BI-BAD-TEXT 9 T=
+
+\ TYPED-VARIABLE NAME [ n -- n ]
+: MAKE-QVAR ( ptr u8 n -- )
+   EFFECT:NEW EFFECT:N EFFECT:IN EFFECT:N EFFECT:OUT EFFECT:VARIABLE ;
+
+s" BI-QVAR" MAKE-QVAR
+: BI-QSTORE ( -- ) [: 1 + ;] BI-QVAR ! ;
+BI-QSTORE
+5 BI-QVAR @ execute 6 T=
+: BAD-QSTORE ( -- n )
+   [: s" : BI-BAD-QSTORE ( -- ) [: dup ;] BI-QVAR ! ;" evaluate-closed ;] catch ;
+BAD-QSTORE 70 T=
+5 BI-QVAR @ execute 6 T=
+
+\ TYPED-VARIABLE NAME [ n -- option<a> ]
+: MAKE-OVAR ( ptr u8 n -- )
+   EFFECT:NEW EFFECT:N EFFECT:IN s" option" EFFECT:NAMED EFFECT:OUT
+   EFFECT:VARIABLE ;
+: BAD-OVAR ( -- n ) [: s" BI-BAD-OVAR" MAKE-OVAR ;] catch ;
+DECL-DIAG:PROSE  BAD-OVAR 70 T=
+s" '[ n -- option<a> ]'" DECL-DIAG:HAS? TTRUE  DECL-DIAG:OFF
 
 8192 BUFFER: BUILT-DIAG
 variable BUILT-DIAG-U

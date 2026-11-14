@@ -519,6 +519,9 @@ $38C0 constant CELL-LINE-CELL
 \ A definer's type and effect values are schema nodes the running engine's
 \ CHECK:TYPE-OP, which this cell holds, makes from a TYPE-OP-ABI code.
 $38A0 constant TYPE-OP-CELL
+\ A definer declares a variable of a type node through the running engine's
+\ TYPED-VARIABLE-NODE, which this cell holds.
+$38C8 constant VARIABLE-CELL
 ;package
 
 \ A child word's shape: from it the engine makes the child's body and the effect
@@ -526,10 +529,11 @@ $38A0 constant TYPE-OP-CELL
 \ answering `ptr a` for CELL-OFF, `ptr ptr b` for PTR-OFF, `ptr u8` for BYTE-OFF.
 \ A FIELD child's parameter is a committed field id, an INDEX child's a family
 \ id, a VALUE child's the number it answers. STORED to ARENA-DISPOSE are
-\ storage children: STORED's parameter is 0, that of BUFFER to ARENA-DISPOSE
-\ its routine's entry, and the effects of STORED, BUFFER, DYNAMIC, SLOT, SLOTS,
-\ WORK, WORKS, ARENA-NEW and ARENA-DISPOSE answer `ptr t` for the type the
-\ declaration spells; HEAP-NEW answers it and HEAP-RELEASE takes it. An
+\ storage children: STORED's parameter is 0, or its type's node when the
+\ declaration spells none, that of BUFFER to ARENA-DISPOSE its routine's
+\ entry, and the effects of STORED, BUFFER, DYNAMIC, SLOT, SLOTS, WORK, WORKS,
+\ ARENA-NEW and ARENA-DISPOSE answer `ptr t` for the type t the declaration
+\ spells or STORED's node is; HEAP-NEW answers it and HEAP-RELEASE takes it. An
 \ INIT-GET or INIT-SET child's parameter is the committed field id it reads or
 \ writes through its receiver.
 

@@ -8167,11 +8167,16 @@ variable LBI-LINEAR   \ the refused stored type parsed and may hold a linear val
    RES-FALSE ;
 : WIDTH-STORED? ( n -- bool ) TWALK-RESET WIDTH-STORED?* ;
 
-: STORAGE-PARSE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+\ The state a stored type's read starts from, whether its text is parsed or
+\ its node read (layout-buffer.f NODE-READ).
+: STORAGE-RESET ( -- )
    0 LBI-SCHEME !  0 LBI-XT !  0 LBI-WIDTH !  0 LBI-LINEAR !
    NEW
    SGBAD-CLEAR SIG-UNRES-CLEAR
-   PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET
+   PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET ;
+
+: STORAGE-PARSE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   STORAGE-RESET
    a u CK-TEXT-SPAN? 0= IF RES-FALSE EXIT THEN
    a SB!  u SL !  0 SI !
    NEXT-SIG-TOK dup 0= IF 2drop RES-FALSE EXIT THEN
@@ -8227,9 +8232,14 @@ variable LBI-LINEAR   \ the refused stored type parsed and may hold a linear val
    LBI-T @ LAYOUT-MEM-OK? 0= IF 0 RES-FALSE EXIT THEN
    LBI-T @ T-WIDTH RES-TRUE ;
 
-: CHECKER-STORAGE-INFO ( ptr u8 n -- n bool )
-   STORAGE-RESOLVE? 0= IF 0 RES-FALSE EXIT THEN
+\ The cells the type read into LBI-T takes, if it may be stored.
+: LBI-CELLS ( -- n bool )
+   STORAGE-TERM-OK? 0= IF 0 RES-FALSE EXIT THEN
    STORAGE-CELL-W ;
+
+: CHECKER-STORAGE-INFO ( ptr u8 n -- n bool )
+   STORAGE-PARSE? 0= IF 0 RES-FALSE EXIT THEN
+   LBI-CELLS ;
 
 \ Admissibility for the DYNAMIC definer, in bytes, because its accessor scales
 \ the index by the element width: the CHECKER-STORAGE-INFO surface plus `u8`,
@@ -8247,11 +8257,17 @@ variable LBI-LINEAR   \ the refused stored type parsed and may hold a linear val
    STORAGE-RESOLVE? 0= IF 0 RES-FALSE EXIT THEN
    DYNAMIC-BYTES ;
 
-\ The term is live until the next checker parse; its family name alone loses
-\ the arguments of an applied product such as entry<n>. A `u8` element has one.
-: CHECKER-STORAGE-TERM ( ptr u8 n -- n bool )
-   CHECKER-DYNAMIC-INFO 0= IF drop 0 RES-FALSE EXIT THEN
+\ LBI-T, if the type read into it may be stored as DYNAMIC stores it. The term
+\ is live until the next checker parse; its family name alone loses the
+\ arguments of an applied product such as entry<n>. A `u8` element has one.
+: LBI-TERM ( -- n bool )
+   STORAGE-TERM-OK? 0= IF 0 RES-FALSE EXIT THEN
+   DYNAMIC-BYTES 0= IF drop 0 RES-FALSE EXIT THEN
    drop LBI-T @ RES-TRUE ;
+
+: CHECKER-STORAGE-TERM ( ptr u8 n -- n bool )
+   STORAGE-PARSE? 0= IF 0 RES-FALSE EXIT THEN
+   LBI-TERM ;
 
 \ CHECKER-DYNAMIC-INFO's answer, false for an atom or a width the type hands
 \ out as a pointee.
