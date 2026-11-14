@@ -543,7 +543,7 @@ s" CBAD-USIGS-BYTE-STORE ( -- ) 0 ESB-BYTE-HEAD !" T-CHECK-REJECTS
 \ quot nested past a diagnostic's budget still records.
 REJECTION:CAPTURE
 s" quot nested past the diagnostic budget certifies" T-LABEL
-s" RSQ7 [: [: [: [: [: [: [: ;] ;] ;] ;] ;] ;] ;]" CHECK-QUIET-CANDIDATE! -1 T=
+s" RSQ7 [: [: [: [: [: [: [: ;] ;] ;] ;] ;] ;] ;]" CHECK-CANDIDATE! -1 T=
 s" quot nested past the diagnostic budget records" T-LABEL
 REJECTION:BUFFER$ s" effect not recorded" CONTAINS? TFALSE
 \ Past its 23 letters an effect's text names a type variable or binder by its
