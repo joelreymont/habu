@@ -428,14 +428,14 @@ public
 
 private
 
-\ The checker's refused token in the text scanned last, empty if none; its byte, the
-\ closing `;` (CLOSE$) for one past the body's end; and whether it is undefined.
-: CHECKER-REFUSED$ ( -- ptr u8 n ptr u8 bool )
-   M-SCAN @ NULL-PTR = if NULL-PTR 0 NULL-PTR false exit then
+\ The checker's refused token in the text scanned last, empty if none, and its
+\ byte: the closing `;` (CLOSE$) for one past the body's end.
+: CHECKER-REFUSED$ ( -- ptr u8 n ptr u8 )
+   M-SCAN @ NULL-PTR = if NULL-PTR 0 NULL-PTR exit then
    CHECKER-OWNER:ERROR-TOKEN
-   CHECKER-OWNER:REFUSED-SPAN nip {: b:n undefined:bool :}
+   CHECKER-OWNER:REFUSED-SPAN drop drop {: b:n :}
    M-SCAN @ b + {: p:ptr :}
-   SRC$ + p - 0= if CLOSE$ drop else p then  undefined ;
+   SRC$ + p - 0= if CLOSE$ drop else p then ;
 
 \ A refusal the checker pins its own token for: a reject, a using refusal, a bad
 \ stored signature (checker.f SGBAD-PIN) or a shadowed arity (SHADOW-ARITY-CK).
@@ -450,9 +450,7 @@ private
    {: a:ptr u:n p:ptr rc:n :}
    rc PINNED? 0=  u 0<> or
    if a u p REPORT-FAILURE exit then
-   CHECKER-REFUSED$ {: ca:ptr cu:n cp:ptr undefined:bool :}
-   ca cu cp REPORT-FAILURE
-   undefined if ca cu cp REPORT-UNDEFINED then ;
+   CHECKER-REFUSED$ REPORT-FAILURE ;
 
 \ A refusal of a TRUSTED: body, which no scan certified, that names its token:
 \ the load ends as a reject.
@@ -496,8 +494,8 @@ public
       RETRACT RC-REJECT throw
    then
    rc 0 <> if
-      rc RC-REJECT <> CHECKER-OWNER:JSON-REPORTED? 0= or
-      if a u p rc REPORT-REFUSAL then
+      \ A reject was printed where it arose.
+      rc RC-REJECT <> if a u p rc REPORT-REFUSAL then
       RETRACT rc throw
    then ;
 
