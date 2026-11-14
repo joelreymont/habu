@@ -2,7 +2,7 @@
 \ dispatch only. DECL-FRONT (generated-declaration.f) owns the token source and
 \ the guarded run; DECL-EVENT (decl-event.f) owns the events, field and variant
 \ rows and the current-variant selector. The constructor participant
-\ (generated-declaration.f) renders constructors at commit, so a reject publishes
+\ (generated-declaration.f) builds constructors at commit, so a reject publishes
 \ none. Loads after decl-event.f and structure-decl.f.
 
 using SCHEMA-REG
@@ -271,7 +271,7 @@ ED-RESET
    NICHE-SHAPE? IF EXIT THEN
    TDECL-NICHE-MESSAGE$ E-POLICY DECL-REJECT:REJECT throw ;
 
-\ ED-CLOSE renders nothing: it arms the constructor participant, which generates
+\ ED-CLOSE builds nothing: it arms the constructor participant, which generates
 \ at commit after DECL-EVENT has promoted this declaration's TYPE-FIELD rows to
 \ the committed watermark the generator reads. GENERATED-DECL-CTOR:OWNS? is the
 \ one gate for arming here and for the participant's re-proof; both modes pass it,

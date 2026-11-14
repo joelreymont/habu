@@ -505,7 +505,7 @@ variable SRC-LEN
    14 VALID 2 T= ;
 
 \ The size table: STATES rows of INPUTS lines, each naming one long action, so
-\ each line word outgrows its line and the generated text the 1 MiB table.
+\ each line word outgrows its line and the table's source passes 1 MiB.
 200 constant STATES
 44 constant INPUTS
 $100000 constant MIB

@@ -1,9 +1,9 @@
 \ structure-make.f: a STRUCTURE's sealed MAKE / UNMAKE (package STRUCTURE-MAKE),
-\ generated through sumtype.f's constructor machinery (TDECL-CTOR-PUBLISH,
-\ TDECL-PROD-WORDS), and its `DERIVE addr` accessor surface. Loads just before
-\ structure-decl.f, whose ;STRUCTURE calls GENERATE for a family with fields.
-\ A product bundle is its field cells in slot order, so both bodies are physical
-\ no-ops the checker certifies; the generated text has no TRUST, TRUSTED: or set-check.
+\ built by sumtype.f's constructor machinery, and its `DERIVE addr` accessor
+\ surface. Loads just before structure-decl.f, whose ;STRUCTURE calls GENERATE
+\ for a family with fields. A product bundle is its field cells in slot order,
+\ so MAKE and UNMAKE are casts the checker certifies, with no TRUST, TRUSTED:
+\ or set-check.
 
 using SCHEMA-REG
 using TFAM
@@ -98,7 +98,7 @@ public
 : PART-SNAPSHOT ( -- ) SM-DISARM ;
 
 \ Re-proves the gate ARM checked, so a family made ineligible since fails before
-\ any word renders.
+\ any word is made.
 : PART-PREPARE ( -- )
    SM-ARMED-FAM {: fam:n :}
    fam SM-NO-FAMILY <> IF fam SM-ADDR-REQUIRE THEN ;

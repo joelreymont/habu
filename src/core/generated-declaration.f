@@ -395,14 +395,14 @@ public
    DISARM ;
 
 \ A non-mutating re-proof of the gate ARM checked: a family made ineligible
-\ since then fails before any word is rendered.
+\ since then fails before any word is made.
 : PART-PREPARE ( -- )
    ARMED-FAM {: fam:n :}
    fam NO-FAMILY <> IF fam GEN-REQUIRE THEN ;
 
 \ Mirrors sumtype.f CHECKER-DEFSUM-BODY's close. Both role gates read committed
-\ rows, so they cannot run in the body phase. Replay renders and checks the same
-\ bodies to publish their effects and emits no runtime code: a call needs the
+\ rows, so they cannot run in the body phase. Replay builds and checks the same
+\ words to publish their effects and emits no runtime code: a call needs the
 \ checked effect, not only the package stamp.
 : PART-COMMIT ( -- )
    ARMED-FAM {: fam:n :}
