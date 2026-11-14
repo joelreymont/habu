@@ -79,12 +79,12 @@ variable CS-TICK
    REJECTION:BUFFER$ 2swap CONTAINS? TTRUE ;
 : CS-CODE-END ( -- ) 0 0= 0= REJECTION:JSON ! REJECTION:BUFFER-OFF ;
 \ A body's stale read is the catch's, never the interpret row's unknown cell,
-\ so its repair keeps the value before the catch.
+\ so its help keeps the value in a local before the catch.
 : CS-STALE? ( -- )
    s\" \"code\":\"E-STALE-READ\"" CS-CODE?
-   s\" \"repair_class\":\"keep_value_before_catch\"" CS-CODE? ;
+   s\" \"help\":\"bind the value to a local before the `catch`" CS-CODE? ;
 : CS-CARRIED? ( -- )
-   s\" \"reason\":\"the loop body leaves a carried cell different from the one it entered with\"" CS-CODE? ;
+   s\" \"message\":\"the loop body leaves a carried cell different from the one it entered with\"" CS-CODE? ;
 
 \ R1: the throw path swapped the two cells and `catch` put back only the depth.
 : CS-SECTION-REPRODUCERS ( -- )
@@ -264,16 +264,16 @@ variable CS-CHILD-ERR-U
    CS-CHILD-OUT CS-CHILD-CAP >LEN CS-CHILD-ERR CS-CHILD-CAP >LEN
    PROCESS:WAIT-FOREVER RUN-ARGV-ENV-STDIN-CAPTURE CS-IMAGE-RC 70 T=
    CS-CHILD-OUT CS-CHILD-OUT-U @ s" catch-image-load: began" CONTAINS? TTRUE
-   CS-CHILD-ERR CS-CHILD-ERR-U @ s" stale cell" CONTAINS? TTRUE
+   CS-CHILD-ERR CS-CHILD-ERR-U @ s" error[E-STALE-READ]: stale cell" CONTAINS? TTRUE
    CS-CHILD-ERR CS-CHILD-ERR-U @ want wantu CONTAINS? TTRUE ;
 
 : CS-IMAGE-BODY ( -- )
    CS-IMAGE-BUILD
    CS-IMAGE-RUN
    S\" s\" catch-image-load: began\" type cr\ns\" test/catch-success-wrong-status.f\" included\n"
-      s" wrong-status" CS-SAVED-REFUSAL
+      s" catch-success-wrong-status.f:10:18" CS-SAVED-REFUSAL
    S\" s\" catch-image-load: began\" type cr\ns\" test/catch-success-override.f\" included\n"
-      s" unsafe" CS-SAVED-REFUSAL ;
+      s" catch-success-override.f:11:24" CS-SAVED-REFUSAL ;
 
 : CS-SECTION-IMAGE ( -- )
    s" a built hb executes a guarded catch and still refuses forged proof" T-LABEL

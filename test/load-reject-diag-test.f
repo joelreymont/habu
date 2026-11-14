@@ -337,14 +337,27 @@ variable RC
    ASSERT-OK
    OUT$ a u CONTAINS? TTRUE ;
 
-: ASSERT-IMM-DIAG ( ptr u8 n ptr u8 n -- )
-   {: word:ptr wordu:n token:ptr tokenu:n :}
+\ stderr places the record at PATH's PLACE, `:line:column`.
+: ASSERT-AT ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu:n place:ptr placeu:n :}
+   SB-RESET  s"  --> " SB-APPEND  path pathu SB-APPEND  place placeu SB-APPEND
+   10 SB-APPEND-C
+   ERR$ SB$ CONTAINS? TTRUE ;
+
+\ body.f is rejected with the record HEAD at PLACE.
+: BODY-REJECT-AT ( ptr u8 n ptr u8 n -- ) {: head:ptr headu:n place:ptr placeu:n :}
+   head headu ASSERT-NAMED
+   BODY$ place placeu ASSERT-AT ;
+
+\ The immediate's record names TOKEN at LINE and COLUMN, and its help models it
+\ with `parse-imm`.
+: ASSERT-IMM-DIAG ( n n ptr u8 n -- )
+   {: line:n col:n token:ptr tokenu:n :}
    ERR$ GJA-PARSE dup GJA-OBJ {: root:SPAN:span<u8> :}
-   root GJA-DIAG-CONTRACT-ROW
    root s" code" GJA-REQ s" E-UNMODELED-IMMEDIATE" GJA-ASSERT-STR
-   root s" repair_class" GJA-REQ s" model_compile_immediate" GJA-ASSERT-STR
-   root s" word" GJA-REQ word wordu GJA-ASSERT-STR
+   root s" line" line GJA-ASSERT-INT-FIELD
+   root s" column" col GJA-ASSERT-INT-FIELD
    root s" token" GJA-REQ token tokenu GJA-ASSERT-STR
+   ERR$ s" declare it with `parse-imm`" CONTAINS? TTRUE
    ERR$ 2dup RP-COUNT dup 1 T= >r RP-FIRST r> RP-PACKET
    {: pa:ptr pu:n :}
    pa OUT pu BYTE-COPY
@@ -360,101 +373,96 @@ variable RC
    OUT-U @ TEST-OUT-U T=
    ERR-U @ TEST-ERR-U T= ;
 
-\ The checker's refusal carries no file:line; the definition's name,
-\ lower-cased as the checker renders it, says where it was refused.
+\ The record names the undefined word and places it in undef.f, where it is
+\ written.
 : ASSERT-UNDEF ( -- )
-   s" E-UNDEFINED" ASSERT-NAMED
-   ERR$ s" undefined word 'LRD-NO-SUCH-WORD-XYZ'" CONTAINS? TTRUE
-   ERR$ s" in lrd-x" CONTAINS? TTRUE ;
+   s" error[E-UNDEFINED]: cannot find word `LRD-NO-SUCH-WORD-XYZ`" ASSERT-NAMED
+   UNDEF$ s" :1:16" ASSERT-AT ;
 
 : TEST-UNDEF ( -- )
    s" direct --load reject names the undefined word and its line" T-LABEL
    UNDEF$ RUN
-   ASSERT-UNDEF
-   SB-RESET  s" E-UNDEFINED habu: " SB-APPEND  UNDEF$ SB-APPEND
-   s" :1: undefined word 'LRD-NO-SUCH-WORD-XYZ'" SB-APPEND  10 SB-APPEND-C
-   ERR$ SB$ CONTAINS? TTRUE ;
+   ASSERT-UNDEF ;
 
 : TEST-BODY ( -- )
    s" checked-body reject names word and token" T-LABEL
    BODY$ RUN
-   s" in lrd-y" ASSERT-NAMED
-   ERR$ s" at 'drop'" CONTAINS? TTRUE ;
+   s" error[E-MISMATCH]" s" :1:20" BODY-REJECT-AT
+   ERR$ s" the stack is empty after this" CONTAINS? TTRUE ;
 
 \ Store/fetch target mismatch: `!`/`@` need
 \ a cell-width `ptr a`; a `ptr u8` must name the pair, not just the token.
 : TEST-BYTE-PTR-STORE ( -- )
    s" cell store into a byte pointer names expected/actual" T-LABEL
    BPS$ RUN
-   s" in lrd-bps" ASSERT-NAMED
-   ERR$ s" at '!'" CONTAINS? TTRUE
-   ERR$ s" expected: ptr a" CONTAINS? TTRUE
-   ERR$ s" actual: ptr u8" CONTAINS? TTRUE ;
+   s" error[E-MISMATCH]: `!` takes ptr a" ASSERT-NAMED
+   BPS$ s" :1:92" ASSERT-AT
+   ERR$ S\" = expected: ptr a\n" CONTAINS? TTRUE
+   ERR$ S\" = found: ptr u8\n" CONTAINS? TTRUE ;
 
 \ Each control-flow case is a load of its own: a load stops at its first refusal.
-: CF-RUN ( ptr u8 n -- ) {: src:ptr srcu:n :}
+\ Its record HEAD names the reason, placed at the token at PLACE.
+: CF-RUN ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n head:ptr headu:n place:ptr placeu:n :}
    CF$ src srcu FS:WRITE-ALL
-   CF$ RUN ;
+   CF$ RUN
+   head headu ASSERT-NAMED
+   CF$ place placeu ASSERT-AT ;
 
-\ A control-flow refusal names its reason after the token; a depth change names
-\ the start row, or the else arm's, as expected and the changed row as actual.
+\ A depth change names the start row, or the else arm's, as expected and the
+\ changed row as found.
+: CF-ROWS? ( -- )
+   ERR$ S\" = expected: n\n  = found: n n\n" CONTAINS? TTRUE ;
+
 : TEST-CONTROL-FLOW ( -- )
    s" a loop body that changes depth names both rows" T-LABEL
-   s" : LRD-LD ( n -- n ) 3 0 do dup loop ;" CF-RUN
-   s" in lrd-ld" ASSERT-NAMED
-   ERR$ s" at 'loop' the loop body changes the stack's depth expected: n actual: n n" CONTAINS? TTRUE
+   s" : LRD-LD ( n -- n ) 3 0 do dup loop ;"
+      s" error[E-MISMATCH]: the loop body changes the stack's depth" s" :1:32" CF-RUN
+   CF-ROWS?
    s" an i outside every loop says no loop is open" T-LABEL
-   s" : LRD-IO ( -- ) i drop ;" CF-RUN
-   s" in lrd-io" ASSERT-NAMED
-   ERR$ s" at 'i' no loop is open here" CONTAINS? TTRUE
+   s" : LRD-IO ( -- ) i drop ;"
+      s" error[E-REJECTED]: no loop is open here" s" :1:17" CF-RUN
    s" a j in a single loop says no outer loop is open" T-LABEL
-   s" : LRD-JO ( -- ) 3 0 do j drop loop ;" CF-RUN
-   s" in lrd-jo" ASSERT-NAMED
-   ERR$ s" at 'j' no outer loop is open here" CONTAINS? TTRUE
+   s" : LRD-JO ( -- ) 3 0 do j drop loop ;"
+      s" error[E-REJECTED]: no outer loop is open here" s" :1:24" CF-RUN
    s" a then with no if says it closes nothing" T-LABEL
-   s" : LRD-TS ( -- ) then ;" CF-RUN
-   s" in lrd-ts" ASSERT-NAMED
-   ERR$ s" at 'then' this word closes nothing open here" CONTAINS? TTRUE
+   s" : LRD-TS ( -- ) then ;"
+      s" error[E-REJECTED]: this word closes nothing open here" s" :1:17" CF-RUN
    s" an if arm that changes depth names both rows" T-LABEL
-   s" : LRD-IA ( n bool -- n ) if 1 then ;" CF-RUN
-   s" in lrd-ia" ASSERT-NAMED
-   ERR$ s" at 'then' the if arm changes the stack's depth expected: n actual: n n" CONTAINS? TTRUE
+   s" : LRD-IA ( n bool -- n ) if 1 then ;"
+      s" error[E-MISMATCH]: the if arm changes the stack's depth" s" :1:31" CF-RUN
+   CF-ROWS?
    s" if and else arms of different depths name both rows" T-LABEL
-   s" : LRD-AD ( n bool -- n ) if 1 else then ;" CF-RUN
-   s" in lrd-ad" ASSERT-NAMED
-   ERR$ s" at 'then' the if and else arms leave different stack depths expected: n actual: n n" CONTAINS? TTRUE
+   s" : LRD-AD ( n bool -- n ) if 1 else then ;"
+      s" error[E-MISMATCH]: the if and else arms leave different stack depths" s" :1:36" CF-RUN
+   CF-ROWS?
    s" an exit inside a loop says it needs unloop" T-LABEL
-   s" : LRD-EL ( -- ) 3 0 do exit loop ;" CF-RUN
-   s" in lrd-el" ASSERT-NAMED
-   ERR$ s" at 'exit' exit inside a loop needs unloop first" CONTAINS? TTRUE
+   s" : LRD-EL ( -- ) 3 0 do exit loop ;"
+      s" error[E-REJECTED]: exit inside a loop needs unloop first" s" :1:24" CF-RUN
    s" a leave that changes depth names both rows" T-LABEL
-   s" : LRD-LV ( n -- n ) 3 0 do 1 leave loop ;" CF-RUN
-   s" in lrd-lv" ASSERT-NAMED
-   ERR$ s" at 'leave' the loop body changes the stack's depth expected: n actual: n n" CONTAINS? TTRUE
+   s" : LRD-LV ( n -- n ) 3 0 do 1 leave loop ;"
+      s" error[E-MISMATCH]: the loop body changes the stack's depth" s" :1:30" CF-RUN
+   CF-ROWS?
    s" a loop body that changes the return stack's depth says so" T-LABEL
-   s" : LRD-RD ( -- ) 3 0 do 1 >r loop ;" CF-RUN
-   s" in lrd-rd" ASSERT-NAMED
-   ERR$ s" at 'loop' the loop body changes the return stack's depth" CONTAINS? TTRUE
+   s" : LRD-RD ( -- ) 3 0 do 1 >r loop ;"
+      s" error[E-REJECTED]: the loop body changes the return stack's depth" s" :1:29" CF-RUN
    s" a second else says the if already has one" T-LABEL
-   s" : LRD-E2 ( bool -- ) if else else then ;" CF-RUN
-   s" in lrd-e2" ASSERT-NAMED
-   ERR$ s" at 'else' this if already has an else" CONTAINS? TTRUE
+   s" : LRD-E2 ( bool -- ) if else else then ;"
+      s" error[E-REJECTED]: this if already has an else" s" :1:30" CF-RUN
    s" an if open at ; says a structure is still open" T-LABEL
-   s" : LRD-OP ( bool -- ) if ;" CF-RUN
-   s" in lrd-op" ASSERT-NAMED
-   ERR$ s" a control structure is still open at the end of the definition" CONTAINS? TTRUE
+   s" : LRD-OP ( bool -- ) if ;"
+      s" error[E-REJECTED]: a control structure is still open at the end of the definition" s" :1:25" CF-RUN
    s" a +loop that meets an if inside its do says it closes nothing" T-LABEL
-   s" : LRD-PI ( -- ) 3 0 do 0 0= if 1 +loop then ;" CF-RUN
-   s" in lrd-pi" ASSERT-NAMED
-   ERR$ s" at '+loop' this word closes nothing open here" CONTAINS? TTRUE ;
+   s" : LRD-PI ( -- ) 3 0 do 0 0= if 1 +loop then ;"
+      s" error[E-REJECTED]: this word closes nothing open here" s" :1:34" CF-RUN ;
 
 : TEST-BYTE-PTR-FETCH ( -- )
    s" cell fetch from a byte pointer names expected/actual" T-LABEL
    BPF$ RUN
-   s" in lrd-bpf" ASSERT-NAMED
-   ERR$ s" at '@'" CONTAINS? TTRUE
-   ERR$ s" expected: ptr a" CONTAINS? TTRUE
-   ERR$ s" actual: ptr u8" CONTAINS? TTRUE ;
+   s" error[E-MISMATCH]: `@` takes ptr a" ASSERT-NAMED
+   BPF$ s" :1:94" ASSERT-AT
+   ERR$ S\" = expected: ptr a\n" CONTAINS? TTRUE
+   ERR$ S\" = found: ptr u8\n" CONTAINS? TTRUE ;
 
 : PARAMETRIC-REJECT ( ptr u8 n -- )
    BODY$ 2swap FS:WRITE-ALL
@@ -487,18 +495,16 @@ variable RC
    s" an integer literal the engine cannot read is undefined" T-LABEL
    BODY$ s" TRUSTED: LRD-BIG ( -- n ) 99999999999999999999999 ;" FS:WRITE-ALL
    BODY$ RUN
-   SB-RESET  s" E-UNDEFINED habu: " SB-APPEND  BODY$ SB-APPEND
-   s" :1: undefined word '99999999999999999999999'" SB-APPEND
-   SB$ ASSERT-NAMED ;
+   s" error[E-UNDEFINED]: cannot find word `99999999999999999999999`" s" :1:27"
+      BODY-REJECT-AT ;
 
 \ A top-level `target` beside the program's own TARGET could mean either, and is refused by name.
 : TEST-SECTION-CLASH ( -- )
    s" a section word beside a word of its name is refused" T-LABEL
    BODY$ S\" package LRD-CLASH\n: TARGET ( -- ) ;\ntarget\n;package\n" FS:WRITE-ALL
    BODY$ RUN
-   SB-RESET  s" E-SECTION-WORD habu: " SB-APPEND  BODY$ SB-APPEND
-   s" :3: 'target' is the section word and a word of that name is in scope" SB-APPEND
-   SB$ ASSERT-NAMED ;
+   s" error[E-SECTION-WORD]: `target` is the section word, and a word of that name is in scope"
+      s" :3:1" BODY-REJECT-AT ;
 
 \ T0, arm64's tier 0, refuses a body no scan certified at its first token the
 \ scan could not bind or no path reaches.
@@ -506,47 +512,53 @@ variable RC
    s" T0 refuses a MATCH variant with no OF" T-LABEL
    BODY$ s" SUMTYPE lrd-choice VARIANT empty ;VARIANT VARIANT scalar n ;VARIANT ;SUMTYPE TRUSTED: LRD-NOOF ( n -- n ) construct lrd-choice scalar MATCH lrd-choice scalar 10 + ENDOF ;MATCH ;" FS:WRITE-ALL
    BODY$ RUN
-   s" compiler: cannot compile LRD-NOOF at 10 in" ASSERT-NAMED
+   s" error[E-T0-MATCH]: a `MATCH` arm's variant is not followed by `of` at `10`"
+      s" :1:159" BODY-REJECT-AT
    s" T0 refuses a MATCH with no value proved under it" T-LABEL
    BODY$ s" SUMTYPE lrd-choice VARIANT empty ;VARIANT VARIANT scalar n ;VARIANT ;SUMTYPE TRUSTED: LRD-UNDER ( -- n ) MATCH lrd-choice empty OF 0 ENDOF scalar OF ENDOF ;MATCH ;" FS:WRITE-ALL
    BODY$ RUN
-   s" compiler: cannot compile LRD-UNDER at lrd-choice in" ASSERT-NAMED
+   s" error[E-T0-MATCH]: the compiler has no family facts for `lrd-choice`"
+      s" :1:112" BODY-REJECT-AT
    s" T0 refuses a MATCH over an unknown family" T-LABEL
    BODY$ s" TRUSTED: LRD-NOFAM ( n -- n ) 5 swap MATCH lrd-nofam empty OF 1 ENDOF ;MATCH ;" FS:WRITE-ALL
    BODY$ RUN
-   s" compiler: cannot compile LRD-NOFAM at lrd-nofam in" ASSERT-NAMED
+   s" error[E-T0-MATCH]: the compiler has no family facts for `lrd-nofam`"
+      s" :1:44" BODY-REJECT-AT
    s" T0 refuses a MATCH over an unknown variant at the variant" T-LABEL
    BODY$ s" SUMTYPE lrd-choice VARIANT empty ;VARIANT VARIANT scalar n ;VARIANT ;SUMTYPE TRUSTED: LRD-NOVAR ( lrd-choice -- n ) MATCH lrd-choice bogus OF 1 ENDOF scalar OF ENDOF ;MATCH ;" FS:WRITE-ALL
    BODY$ RUN
-   s" compiler: cannot compile LRD-NOVAR at bogus in" ASSERT-NAMED
+   s" error[E-T0-MATCH]: the compiler has no family facts for `bogus`"
+      s" :1:134" BODY-REJECT-AT
    s" T0 refuses dead code after exit" T-LABEL
    BODY$ s" TRUSTED: LRD-DEAD ( -- n ) 1 exit DUP ; LRD-DEAD . cr" FS:WRITE-ALL
    BODY$ RUN
-   s" compiler: cannot compile LRD-DEAD at DUP in" ASSERT-NAMED
+   s" error[E-T0-CONTROL]: no path reaches `DUP`" s" :1:35" BODY-REJECT-AT
    ERR$ s" E-UNDEFINED" CONTAINS? TFALSE
    s" T0 refuses a dead string literal at its opener" T-LABEL
    BODY$ S\" TRUSTED: LRD-DEADS ( -- n ) 1 exit s\" ab\" drop ;" FS:WRITE-ALL
    BODY$ RUN
-   S\" compiler: cannot compile LRD-DEADS at s\" in" ASSERT-NAMED
+   S\" error[E-T0-CONTROL]: no path reaches `s\"`" s" :1:36" BODY-REJECT-AT
    ERR$ s" E-UNDEFINED" CONTAINS? TFALSE
    s" T0 refuses a dead quotation inside a quotation at its opener" T-LABEL
    BODY$ s" TRUSTED: LRD-DEADQ ( -- [ -- n ] ) [: 1 exit [: 2 ;] ;] ;" FS:WRITE-ALL
    BODY$ RUN
-   s" compiler: cannot compile LRD-DEADQ at [: in" ASSERT-NAMED
+   s" error[E-T0-CONTROL]: no path reaches `[:`" s" :1:46" BODY-REJECT-AT
    ERR$ s" E-UNDEFINED" CONTAINS? TFALSE
    s" T0 refuses a dead string holding ;] inside a quotation at its opener" T-LABEL
    BODY$ S\" TRUSTED: LRD-DEADQS ( -- [ -- n ] ) [: 1 exit s\" a ;] b\" drop ;] ;" FS:WRITE-ALL
    BODY$ RUN
-   S\" compiler: cannot compile LRD-DEADQS at s\" in" ASSERT-NAMED
+   S\" error[E-T0-CONTROL]: no path reaches `s\"`" s" :1:47" BODY-REJECT-AT
    ERR$ s" E-UNDEFINED" CONTAINS? TFALSE
    s" T0 refuses a construct of an unknown variant" T-LABEL
    BODY$ s" SUMTYPE lrd-choice VARIANT empty ;VARIANT VARIANT scalar n ;VARIANT ;SUMTYPE TRUSTED: LRD-BADVAR ( -- n ) construct lrd-choice bogus 1 ;" FS:WRITE-ALL
    BODY$ RUN
-   s" compiler: cannot compile LRD-BADVAR at bogus in" ASSERT-NAMED
+   s" error[E-T0-MATCH]: the compiler has no family facts for `bogus`"
+      s" :1:128" BODY-REJECT-AT
    s" T0 refuses a construct of an unknown family" T-LABEL
    BODY$ s" TRUSTED: LRD-BADFAM ( -- n ) construct lrd-nofam scalar 1 ;" FS:WRITE-ALL
    BODY$ RUN
-   s" compiler: cannot compile LRD-BADFAM at lrd-nofam in" ASSERT-NAMED ;
+   s" error[E-T0-MATCH]: the compiler has no family facts for `lrd-nofam`"
+      s" :1:40" BODY-REJECT-AT ;
 
 \ A refused step in a TRUSTED: body lowers as the raw effect the scan splices,
 \ so `2dup` over a two-cell view copies two cells.
@@ -563,87 +575,86 @@ variable RC
    BODY$ RUN S\" 7\n0\n" ASSERT-OK-OUT ;
 
 \ A storage declaration whose definer cannot size its type is the checker's
-\ refusal, named for the declared word and the type.
-: STORAGE-REJECT ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n name:ptr nameu:n :}
+\ refusal, named for the declared word in HEAD and placed at the unknown type.
+: STORAGE-REJECT ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n head:ptr headu:n :}
    BODY$ src srcu FS:WRITE-ALL
    BODY$ RUN
-   name nameu ASSERT-NAMED
-   ERR$ s" : unknown type 'lrd-stg-none'" CONTAINS? TTRUE ;
+   head headu ASSERT-NAMED
+   ERR$ s" ^ unknown type" CONTAINS? TTRUE ;
 
 : TEST-STORAGE ( -- )
    s" undefined storage types are named refusals" T-LABEL
-   s" 4 TYPED-BUFFER LRD-STG-TB lrd-stg-none" s" in LRD-STG-TB" STORAGE-REJECT
-   s" TYPED-VARIABLE LRD-STG-TV lrd-stg-none" s" in LRD-STG-TV" STORAGE-REJECT
-   s" 4 LAYOUT-BUFFER LRD-STG-LB lrd-stg-none" s" in LRD-STG-LB" STORAGE-REJECT
-   s" DYNAMIC-BUFFER LRD-STG-DB lrd-stg-none" s" in LRD-STG-DB" STORAGE-REJECT
-   s" DEFER-LAYOUT-BUFFER LRD-STG-DL lrd-stg-none" s" in LRD-STG-DL" STORAGE-REJECT ;
+   s" 4 TYPED-BUFFER LRD-STG-TB lrd-stg-none" 
+      s" error[E-BAD-STORAGE]: the type of `LRD-STG-TB`" STORAGE-REJECT
+   s" TYPED-VARIABLE LRD-STG-TV lrd-stg-none" 
+      s" error[E-BAD-STORAGE]: the type of `LRD-STG-TV`" STORAGE-REJECT
+   s" 4 LAYOUT-BUFFER LRD-STG-LB lrd-stg-none" 
+      s" error[E-BAD-STORAGE]: the type of `LRD-STG-LB`" STORAGE-REJECT
+   s" DYNAMIC-BUFFER LRD-STG-DB lrd-stg-none" 
+      s" error[E-BAD-STORAGE]: the type of `LRD-STG-DB`" STORAGE-REJECT
+   s" DEFER-LAYOUT-BUFFER LRD-STG-DL lrd-stg-none" 
+      s" error[E-BAD-STORAGE]: the type of `LRD-STG-DL`" STORAGE-REJECT ;
 
-\ SRC as the body exits RC, its stderr holding the line
-\ `<class> habu: <body>:<line>: <prose>`.
-: CODE-REJECT-AT ( ptr u8 n ptr u8 n ptr u8 n n n -- )
-   {: src:ptr srcu:n cls:ptr clsu:n prose:ptr proseu:n ln:n rc:n :}
+\ SRC as the body exits RC, its stderr holding the record HEAD placed at PLACE.
+: CODE-REJECT-AT ( ptr u8 n ptr u8 n ptr u8 n n -- )
+   {: src:ptr srcu:n head:ptr headu:n place:ptr placeu:n rc:n :}
    BODY$ src srcu FS:WRITE-ALL
    BODY$ RUN
-   SB-RESET  cls clsu SB-APPEND  s"  habu: " SB-APPEND  BODY$ SB-APPEND
-   s" :" SB-APPEND  ln ERROR-TEXT:DIGITS$ SB-APPEND  s" : " SB-APPEND
-   prose proseu SB-APPEND  10 SB-APPEND-C
-   ERR$ SB$ CONTAINS? TTRUE
+   ERR$ head headu CONTAINS? TTRUE
+   BODY$ place placeu ASSERT-AT
    OUT-U @ 0 T=
    EXITED @ TTRUE
    RC @ rc T= ;
-
-\ CODE-REJECT-AT located on the body's first line.
-: CODE-REJECT ( ptr u8 n ptr u8 n ptr u8 n n -- )
-   {: src:ptr srcu:n cls:ptr clsu:n prose:ptr proseu:n rc:n :}
-   src srcu cls clsu prose proseu 1 rc CODE-REJECT-AT ;
 
 \ A definer with no signature stops at the word being defined, or at `does>`
 \ for a clause.
 : TEST-MISSING-SIGNATURE ( -- )
    s" a definer's missing signature names its class, token and line" T-LABEL
    s" : LRD-MK ( n -- ) create , does> @ ;"
-   s" E-MISSING-SIGNATURE" s" 'does>' has no closed ( -- ) signature" BAD-SIG-RC CODE-REJECT
+   s" error[E-MISSING-SIGNATURE]: `does>` has no closed `( -- )` signature"
+      s" :1:28" BAD-SIG-RC CODE-REJECT-AT
    s" defer LRD-D"
-   s" E-MISSING-SIGNATURE" s" 'LRD-D' has no closed ( -- ) signature" BAD-SIG-RC CODE-REJECT ;
+   s" error[E-MISSING-SIGNATURE]: `LRD-D` has no closed `( -- )` signature"
+      s" :1:7" BAD-SIG-RC CODE-REJECT-AT ;
 
 \ Reopening a package the engine sealed stops at the package's name.
 : TEST-SEALED-PACKAGE ( -- )
    s" a sealed package's reopening names its class, package and line" T-LABEL
    S\" package NDICT\n;package"
-   s" E-SEALED-PACKAGE" s" 'NDICT' is sealed" SEALED-RC CODE-REJECT ;
+   s" error[E-SEALED-PACKAGE]: `NDICT` would change a sealed package"
+      s" :1:9" SEALED-RC CODE-REJECT-AT ;
 
 \ A definition into a package the engine sealed stops at its whole name.
 : TEST-SEALED-DEFINE ( -- )
    s" a definition into a sealed package names its class, whole name and line" T-LABEL
    s" : NDICT:FOO ( -- ) ;"
-   s" E-SEALED-PACKAGE" s" 'NDICT:FOO' is sealed" SEALED-RC CODE-REJECT ;
+   s" error[E-SEALED-PACKAGE]: `NDICT:FOO` would change a sealed package"
+      s" :1:3" SEALED-RC CODE-REJECT-AT ;
 
 \ A name a sealed package already holds is refused as sealed, as the check
 \ refuses it: the seal is asked before the duplicate.
 : TEST-SEALED-DUPLICATE ( -- )
    s" a duplicate definition into a sealed package names the seal" T-LABEL
    S\" package SP\npublic\n: A ( -- ) ;\nseal-package\n;package\n: SP:A ( -- ) ;\n"
-   s" E-SEALED-PACKAGE" s" 'SP:A' is sealed" 6 SEALED-RC CODE-REJECT-AT
+   s" error[E-SEALED-PACKAGE]: `SP:A` would change a sealed package"
+      s" :6:3" SEALED-RC CODE-REJECT-AT
    s" a duplicate export into a sealed package names the seal" T-LABEL
    SB-RESET
    S\" package SP2\npublic\n: A ( -- ) ;\n" SB-APPEND
    S\" : MK ( n -- ) create , does> ( -- n ) @ ;\n;package\n" SB-APPEND
    S\" package SP\npublic\n: A ( -- ) ;\nseal-package\nEXPORT SP2:A\n" SB-APPEND
    S\" s\" ACCEPTED\" type cr\n;package\n" SB-APPEND
-   SB$ s" E-SEALED-PACKAGE" s" 'SP2:A' is sealed" 10 SEALED-RC CODE-REJECT-AT ;
+   SB$ s" error[E-SEALED-PACKAGE]: `SP2:A` would change a sealed package"
+      s" :10:8" SEALED-RC CODE-REJECT-AT ;
 
 \ A string `s"` copies out of the file, which its line 3 `evaluate`s, is not
-\ the file's bytes, so its refusal names the file alone, with no line.
+\ the file's bytes, so its rejection is placed in the evaluated text, <input>.
 : TEST-EVALUATED-PLACE ( -- )
-   s" an evaluated string's refusal names its file and no line" T-LABEL
+   s" an evaluated string's refusal is placed in <input>" T-LABEL
    BODY$ S\" \n\ns\" lrd-zz-undefined\" evaluate\n" FS:WRITE-ALL
    BODY$ RUN
-   SB-RESET  s" E-UNDEFINED habu: " SB-APPEND  BODY$ SB-APPEND
-   s" : undefined word 'lrd-zz-undefined'" SB-APPEND  10 SB-APPEND-C
-   ERR$ SB$ T$=
-   OUT-U @ 0 T=
-   EXITED @ TTRUE
-   RC @ REJECT-RC T= ;
+   s" error[E-UNDEFINED]: cannot find word `lrd-zz-undefined`" ASSERT-NAMED
+   s" <input>" s" :1:1" ASSERT-AT ;
 
 \ A slice of the file's own bytes that the file `evaluate`s is file text, so a
 \ refusal in it names the file's line of the refused token, whichever writer
@@ -652,76 +663,52 @@ variable RC
    s" an evaluated slice of the file is refused at its line" T-LABEL
    BODY$ S\" \n\nparse-name lrd-zz-undefined evaluate\n" FS:WRITE-ALL
    BODY$ RUN
-   SB-RESET  s" E-UNDEFINED habu: " SB-APPEND  BODY$ SB-APPEND
-   s" :3: undefined word 'lrd-zz-undefined'" SB-APPEND  10 SB-APPEND-C
-   ERR$ SB$ T$=
-   EXITED @ TTRUE
-   RC @ REJECT-RC T=
+   s" error[E-UNDEFINED]: cannot find word `lrd-zz-undefined`" s" :3:12"
+      BODY-REJECT-AT
    s" the checker places a refusal in an evaluated slice on the same line" T-LABEL
    BODY$ S\" \n\n5 parse-name c@ evaluate drop\n" FS:WRITE-ALL
    BODY$ RUN
-   SB-RESET  s" habu: " SB-APPEND  BODY$ SB-APPEND  s" :3: at 'c@'" SB-APPEND
-   ERR$ SB$ CONTAINS? TTRUE
-   EXITED @ TTRUE
-   RC @ REJECT-RC T=
+   s" error[E-MISMATCH]: `c@` takes ptr u8" s" :3:14" BODY-REJECT-AT
    s" the native compiler places a refusal in a slice past the evaluating line" T-LABEL
    BODY$ S\" \n\nparse-name x drop 24 + 27 evaluate\n: LRD-QQ ( -- )\n5 c@ drop ;\n" FS:WRITE-ALL
    BODY$ RUN
-   SB-RESET  10 SB-APPEND-C  s" compiler: cannot compile LRD-QQ at c@ in " SB-APPEND  BODY$ SB-APPEND
-   s" :5" SB-APPEND  10 SB-APPEND-C
-   ERR$ SB$ CONTAINS? TTRUE
-   EXITED @ TTRUE
-   RC @ REJECT-RC T=
+   s" error[E-MISMATCH]: `c@` takes ptr u8" s" :5:3" BODY-REJECT-AT
    s" the native compiler places a refusal at the closing ; of a slice" T-LABEL
    BODY$ S\" \n\nparse-name x drop 24 + 29 evaluate\nTRUSTED: LRD-SF ( -- ) 0 if\n;\n" FS:WRITE-ALL
    BODY$ RUN
-   SB-RESET  s" compiler: cannot compile LRD-SF at ; in " SB-APPEND  BODY$ SB-APPEND
-   s" :5" SB-APPEND  10 SB-APPEND-C
-   ERR$ SB$ T$=
-   EXITED @ TTRUE
-   RC @ REJECT-RC T=
+   s" error[E-T0-CONTROL]: a control structure is still open at `;`" s" :5:1"
+      BODY-REJECT-AT
    s" the checker hook places a checker-only duplicate in a slice at its line" T-LABEL
    BODY$ S\" : LRD-PREPLAY ( -- ) s\" lrdrep\" s\" FIELD x n\" CHECKER-DEFPRODUCT GENERATED-DECL-CTOR:REPLAY-LEGACY ;\nLRD-PREPLAY\nparse-name x drop 24 + 30 evaluate\n: LRDREP:MAKE ( n -- n ) 1 + ;\n" FS:WRITE-ALL
    BODY$ RUN
-   SB-RESET  s" E-DUPLICATE-DEFINITION habu: " SB-APPEND  BODY$ SB-APPEND
-   s" :4: duplicate definition: LRDREP:MAKE" SB-APPEND  10 SB-APPEND-C
-   ERR$ SB$ CONTAINS? TTRUE
+   ERR$ s" error[E-DUPLICATE-DEFINITION]: `LRDREP:MAKE` is already defined" CONTAINS? TTRUE
+   BODY$ s" :4:3" ASSERT-AT
    EXITED @ TTRUE
    RC @ DUP-RC T= ;
 
-\ body.f is refused by the native compiler, naming definition NAME, the token
-\ TOK it refused and that token's LINE.
-: ASSERT-NCOMP-LINE ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: name:ptr nameu:n tok:ptr toku:n line:ptr lineu:n :}
+\ A structure the checker finds open at a body's closing `;`, a plain body's or
+\ a does> clause's, is placed at that `;` (column 1 of PLACE's line).
+: ASSERT-CLOSE-LINE ( ptr u8 n -- ) {: place:ptr placeu:n :}
    BODY$ RUN
-   SB-RESET  10 SB-APPEND-C  s" compiler: cannot compile " SB-APPEND  name nameu SB-APPEND
-   s"  at " SB-APPEND  tok toku SB-APPEND  s"  in " SB-APPEND  BODY$ SB-APPEND
-   line lineu SB-APPEND  10 SB-APPEND-C
-   ERR$ SB$ CONTAINS? TTRUE
-   OUT-U @ 0 T=
-   EXITED @ TTRUE
-   RC @ REJECT-RC T= ;
-
-\ The native compiler places a structure the checker finds open at a body's
-\ closing `;`, a plain body's or a does> clause's, on the line of that `;`.
-: ASSERT-CLOSE-LINE ( ptr u8 n ptr u8 n -- )
-   {: name:ptr nameu:n line:ptr lineu:n :}
-   name nameu s" ;" line lineu ASSERT-NCOMP-LINE ;
+   s" error[E-REJECTED]: a control structure is still open at the end of the definition"
+      place placeu BODY-REJECT-AT ;
 
 : TEST-OPEN-AT-CLOSE ( -- )
    s" an if open at a later line's ; is refused on the line of the ;" T-LABEL
    BODY$ S\" : LRD-OI ( bool -- ) if\n\n;\n" FS:WRITE-ALL
-   s" LRD-OI" s" :3" ASSERT-CLOSE-LINE
+   s" :3:1" ASSERT-CLOSE-LINE
    s" a does> clause leaving an if open is refused on the line of its ;" T-LABEL
    BODY$ S\" : LRD-MKO ( n -- ) create ,\ndoes> ( -- )\n@ 0= if\n;\n" FS:WRITE-ALL
-   s" LRD-MKO" s" :4" ASSERT-CLOSE-LINE ;
+   s" :4:1" ASSERT-CLOSE-LINE ;
 
 \ A stored signature the declaration refuses is placed on its refused token's
 \ line, not the name's.
 : TEST-BAD-SIGNATURE-LINE ( -- )
    s" a refused stored signature on a later line is refused on that line" T-LABEL
    BODY$ S\" TRUSTED: LRD-BS\n  ( -- nosuch:fam )\n  1 ;\n" FS:WRITE-ALL
-   s" LRD-BS" s" nosuch:fam" s" :2" ASSERT-NCOMP-LINE ;
+   BODY$ RUN
+   s" error[E-BAD-STORED-SIGNATURE]: the signature of `lrd-bs` cannot be recorded"
+      s" :2:8" BODY-REJECT-AT ;
 
 \ A name only the checker holds, a PRODUCT replay with no word behind it, is
 \ refused by check-hook.f DEFINITION through src/core/checker.f
@@ -730,9 +717,8 @@ variable RC
    s" an evaluated checker-only duplicate names its file and no line" T-LABEL
    BODY$ S\" : LRD-PREPLAY ( -- ) s\" lrdrep\" s\" FIELD x n\" CHECKER-DEFPRODUCT GENERATED-DECL-CTOR:REPLAY-LEGACY ;\nLRD-PREPLAY\ns\" : LRDREP:MAKE ( n -- n ) 1 + ;\" evaluate\n" FS:WRITE-ALL
    BODY$ RUN
-   SB-RESET  s" E-DUPLICATE-DEFINITION habu: " SB-APPEND  BODY$ SB-APPEND
-   s" : duplicate definition: LRDREP:MAKE" SB-APPEND  10 SB-APPEND-C
-   ERR$ SB$ CONTAINS? TTRUE
+   ERR$ s" error[E-DUPLICATE-DEFINITION]: `LRDREP:MAKE` is already defined" CONTAINS? TTRUE
+   BODY$ s" " ASSERT-AT
    OUT-U @ 0 T=
    EXITED @ TTRUE
    RC @ DUP-RC T= ;
@@ -742,23 +728,19 @@ variable RC
    s" a cast of one cell into three names its arity" T-LABEL
    BODY$ s" cast: LRD-WIDE ( n -- ptr u8 n )" FS:WRITE-ALL
    BODY$ RUN
-   s" E-CAST-ARITY habu: " ASSERT-NAMED
-   ERR$ s" :1: cast: 'LRD-WIDE': the output is not one term over the stack below" CONTAINS? TTRUE ;
+   s" error[E-CAST-ARITY]: in `cast: LRD-WIDE`, the output is not one term over the stack below"
+      s" :1:7" BODY-REJECT-AT ;
 
 \ A checked body that calls a word acting on source or checker state is refused
-\ E-UNSAFE, naming the word and why; the compiler's line names the file and line.
-: UNSAFE-REJECT ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: src:ptr srcu:n head:ptr headu:n line:ptr lineu:n :}
-   BODY$ src srcu FS:WRITE-ALL
-   BODY$ RUN
-   head headu ASSERT-NAMED
-   ERR$ s" ' reads source or changes the compiler's or checker's state, which no stack effect describes, so a checked body cannot use it; suggestion: Remove it from the checked body; to evaluate text there, use evaluate-closed." CONTAINS? TTRUE
-   ERR$ line lineu CONTAINS? TTRUE ;
-
+\ E-UNSAFE, naming the word and why, placed at the call, with evaluate-closed as
+\ the help.
 : TEST-UNSAFE ( -- )
    s" a checked body calling evaluate names E-UNSAFE and why" T-LABEL
-   s" : LRD-EV ( ptr u8 n -- ) evaluate ;"
-   s" E-UNSAFE habu: in lrd-ev: 'evaluate' reads source" s" body.f:1" UNSAFE-REJECT ;
+   BODY$ s" : LRD-EV ( ptr u8 n -- ) evaluate ;" FS:WRITE-ALL
+   BODY$ RUN
+   s" error[E-UNSAFE]: `evaluate` reads source or changes the compiler's or checker's state, which no stack effect describes"
+      s" :1:26" BODY-REJECT-AT
+   ERR$ s" `evaluate-closed`" CONTAINS? TTRUE ;
 
 : TEST-REQUIRE-CHAIN ( -- )
    s" require-chain reject names the undefined word" T-LABEL
@@ -890,23 +872,22 @@ variable RC
    s" checked include rejects before executing its fragment" T-LABEL
    INC$ RUN
    s" E-UNMODELED-IMMEDIATE" ASSERT-NAMED
-   s" lrd-imm-i" s" include" ASSERT-IMM-DIAG
+   1 43 s" include" ASSERT-IMM-DIAG
    OUT$ s" LRD-FRAGMENT-EXECUTED" CONTAINS? TFALSE ;
 
 : TEST-IMM-REQUIRE ( -- )
    s" checked require rejects before executing its fragment" T-LABEL
    REQ$ RUN
    s" E-UNMODELED-IMMEDIATE" ASSERT-NAMED
-   s" lrd-imm-r" s" require" ASSERT-IMM-DIAG
+   1 43 s" require" ASSERT-IMM-DIAG
    OUT$ s" LRD-FRAGMENT-EXECUTED" CONTAINS? TFALSE ;
 
 : TEST-IMM-CALLER ( -- )
    s" an unmodeled immediate gets one canonical preflight diagnostic" T-LABEL
    CALLER$ RUN
    s" E-UNMODELED-IMMEDIATE" ASSERT-NAMED
-   s" lrd-imm-s" s" RAW-IMM" ASSERT-IMM-DIAG
+   3 34 s" RAW-IMM" ASSERT-IMM-DIAG
    ERR$ GJA-PARSE dup GJA-OBJ {: root:SPAN:span<u8> :}
-   root s" token_index" 1 GJA-ASSERT-INT-FIELD
    \ Bytes count from the file's start, not the definition's: RAW-IMM is on line 3.
    root s" byte_start" 89 GJA-ASSERT-INT-FIELD
    root s" byte_end" 96 GJA-ASSERT-INT-FIELD ;
@@ -915,7 +896,7 @@ variable RC
    s" trusted body cannot bypass unmodeled immediate refusal" T-LABEL
    TRUSTED$ RUN
    s" E-UNMODELED-IMMEDIATE" ASSERT-NAMED
-   s" lrd-trust-body" s" LRD-TRUST-IMM" ASSERT-IMM-DIAG ;
+   1 89 s" LRD-TRUST-IMM" ASSERT-IMM-DIAG ;
 
 \ A refusal at a token an immediate evaluated into the body, which no source
 \ holds, gets a record and a repair packet that meet the contract with no place.
@@ -925,7 +906,6 @@ variable RC
    BODY$ RUN
    s" E-INPUT-UNDERFLOW" ASSERT-NAMED
    ERR$ GJA-PARSE dup GJA-OBJ {: root:SPAN:span<u8> :}
-   root GJA-DIAG-CONTRACT-ROW
    root s" token" GJA-REQ s" drop" GJA-ASSERT-STR
    root s" line" GJA-HAS? TFALSE
    ERR$ 2dup RP-COUNT dup 1 T= >r RP-FIRST r> RP-PACKET
@@ -942,24 +922,26 @@ variable RC
    s" a trusted quotation reading its definition's local is refused" T-LABEL
    BODY$ s" TRUSTED: LRD-QLOCAL ( n -- n ) {: a:n :} [: a ;] execute ;" FS:WRITE-ALL
    BODY$ RUN
-   s" compiler: cannot compile LRD-QLOCAL at a in" ASSERT-NAMED
+   s" error[E-UNDEFINED]: cannot find word `a`" s" :1:45" BODY-REJECT-AT
    s" a trusted quotation reading its definition's numeric local is refused" T-LABEL
    BODY$ s" TRUSTED: LRD-QNUM ( n -- n ) {: 1:n :} [: 1 ;] execute ;" FS:WRITE-ALL
    BODY$ RUN
-   s" compiler: cannot compile LRD-QNUM at 1 in" ASSERT-NAMED
+   s" error[E-UNDEFINED]: cannot find word `1`" s" :1:43" BODY-REJECT-AT
    s" a trusted is with no target is refused" T-LABEL
    BODY$ s" TRUSTED: LRD-NO-TARGET ( -- ) [: ;] is ;" FS:WRITE-ALL
    BODY$ RUN
-   s" compiler: cannot compile LRD-NO-TARGET at is in" ASSERT-NAMED
+   s" error[E-T0-DEFER]: `is` names no deferred word" s" :1:37" BODY-REJECT-AT
    ERR$ s" E-UNDEFINED" CONTAINS? TFALSE
    s" a trusted is naming no word is refused" T-LABEL
    BODY$ s" TRUSTED: LRD-NO-DEFER ( -- ) [: ;] is LRD-NO-SUCH-DEFER ;" FS:WRITE-ALL
    BODY$ RUN
-   s" compiler: cannot compile LRD-NO-DEFER at LRD-NO-SUCH-DEFER in" ASSERT-NAMED
+   s" error[E-T0-DEFER]: cannot find deferred word `LRD-NO-SUCH-DEFER`"
+      s" :1:39" BODY-REJECT-AT
    s" a trusted is naming a colon word is refused" T-LABEL
    BODY$ s" : LRD-PLAIN ( -- ) ; TRUSTED: LRD-IS-PLAIN ( -- ) [: ;] is LRD-PLAIN ;" FS:WRITE-ALL
    BODY$ RUN
-   s" compiler: cannot compile LRD-IS-PLAIN at LRD-PLAIN in" ASSERT-NAMED ;
+   s" error[E-T0-DEFER]: `LRD-PLAIN` is not a deferred word" s" :1:60"
+      BODY-REJECT-AT ;
 
 : TEST-PREFLIGHT-POSITIVES ( -- )
    s" top-level include remains live" T-LABEL
