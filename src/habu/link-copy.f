@@ -9,18 +9,19 @@
 \ [BASE, OPEN-DP); unit BUILT-EXTS-N + 1 the data no piece holds, the build
 \ body's. A piece's extents tile its data but for the 1 to 7 bytes LAY aligns
 \ by before its first laid text: no unit holds them and no address points in.
-\ The header is live, and a header address cell is read once no piece stored
-\ it or a reached one did: a piece is reached once one of its extents is live
-\ or one of its records' emissions is placed, and an address a piece stored
-\ there is that piece's, as its object carries it. The entry cell is read
-\ whatever stored it: it is the program's root. A read xt cell roots the code
-\ it names and a read pointer cell makes its target's unit live; each placed
-\ emission's data addresses make theirs live. An address where one extent ends
-\ and the next starts may be either one's end or the other's start, and makes
-\ both live; one where a piece ends and no piece starts is the piece's.
-\ An address in a string literal's body keeps that body alone: the body lies in
-\ the piece that first interned it, and every later piece spelling it shares it.
-\ The copy holds the dead units, all but their kept bodies, and every address
+\ The header is live but for its string bodies, and a header address cell is
+\ read once no piece stored it or a reached one did: a piece is reached once
+\ one of its extents is live or one of its records' emissions is placed, and an
+\ address a piece stored there is that piece's, as its object carries it. The
+\ entry cell is read whatever stored it: it is the program's root. A read xt
+\ cell roots the code it names and a read pointer cell makes its target's unit
+\ live; each placed emission's data addresses make theirs live. An address
+\ where one extent ends and the next starts may be either one's end or the
+\ other's start, and makes both live; one where a piece ends and no piece
+\ starts is the piece's. An address in an interned body keeps that body alone:
+\ a header body lies in the header, any other in the piece that first interned
+\ it, and every later piece spelling it shares it. The copy holds the dead
+\ units and the header's bodies, all but the kept bodies, and every address
 \ cell not read as zeros, and lists none of them. An engine keeps every unit
 \ and cell.
 
@@ -352,11 +353,23 @@ variable STR-N
    loop
    drop ;
 
+\ Each body whose length cell lies in the header zeroed, over the span
+\ KEEP-STRINGS copies back.
+: CUT-HEADER-STRINGS ( -- )
+   STR-N @ 0 ?do
+      i STR-AT @ {: b:n :}
+      b CELL - {: at:n :}
+      at BASE @ -  {: from:n :}
+      from 0 >=  at OPEN-DP @ <  and if
+         from  from CELL + b BODY-U +  ZERO-COPY
+      then
+   loop ;
+
 \ A stripped program's copy without its dead units. A piece's alignment bytes,
 \ which no unit holds, keep theirs.
 : CUT-DEAD ( -- )
    REST-UNIT REACHED? 0= if CUT-REST then
-   CUT-EXTS ;
+   CUT-EXTS  CUT-HEADER-STRINGS ;
 
 
 \ Each kept body's bytes and length cell back in the copy, after CUT-DEAD.
