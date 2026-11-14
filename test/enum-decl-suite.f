@@ -544,20 +544,20 @@ s" dgnest" DECL-DIAG:HAS? TFALSE
 \ 22e. Hostile declarations. Text supplied BY the declaration cannot forge or
 \      displace the packet: a variant spelled like a fragment of the message is
 \      reported as the token it is, the reason still comes from the reject, and
-\      exactly one record is emitted (length = that record's bytes).
+\      exactly one record is emitted (no second `error[` line).
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dgforge duplicate duplicate ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `dgforge`\n" DECL-DIAG:HAS? TTRUE
 s\"   = at `duplicate`: duplicate variant\n" DECL-DIAG:HAS? TTRUE
 s\"   = help: give each variant of the enum its own name\n" DECL-DIAG:HAS? TTRUE
-DECL-DIAG:LEN 225 T=
+s\" \nerror[" DECL-DIAG:HAS? TFALSE
 
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dgat at at ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `dgat`\n" DECL-DIAG:HAS? TTRUE
 s\"   = at `at`: duplicate variant\n" DECL-DIAG:HAS? TTRUE
 s\"   = help: give each variant of the enum its own name\n" DECL-DIAG:HAS? TTRUE
-DECL-DIAG:LEN 215 T=
+s\" \nerror[" DECL-DIAG:HAS? TFALSE
 
 \      A family name spelled like one of the JSON packet's own keys keeps key and
 \      value distinguishable, and a token carrying a double quote is escaped

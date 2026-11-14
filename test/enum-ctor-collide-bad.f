@@ -11,7 +11,7 @@ public
 \ Run outside the package so the declaration publishes public constructors.
 : MAIN ( -- )
    T-RESET
-   [: DECLARE ;] TYPE-DECL:E-TDECL-NAME TTHROWSQ
+   [: DECLARE ;] CHECKER-REJECT-RC TTHROWSQ
    DECLARATION-TRANSACTION:ACTIVE? TFALSE
    ECOL:RED 37 T=
    T-REPORT ;

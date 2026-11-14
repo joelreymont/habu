@@ -559,13 +559,13 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    s" PASS: unsupported breakpoint refuses before changing slots or code" type cr ;
 
 \ patch32's private row belongs to the baked package DEBUG: a body in any other
-\ package is refused, and the check hook names the definition.
+\ package is rejected with a record that names patch32.
 : GDB-PATCH32-OUTSIDE ( -- )
    GE-HB-RESET GE-SRC-RESET
    s" package GDBX : P ( n ptr u8 -- ) patch32 ; ;package" GE-SRC-LINE
    GDB-PROF-RUN
    70 s" patch32 outside DEBUG exits 70" GE-EXPECT-RC
-   s" non-certified definition: p at 'patch32'" s" the check hook refuses patch32 outside DEBUG" GE-EXPECT-ERR-HAS
+   s" error[E-CAP-TRUSTED]: `patch32`" s" the check hook rejects patch32 outside DEBUG" GE-EXPECT-ERR-HAS
    s" PASS: patch32 outside package DEBUG is refused" type cr ;
 
 \ The debugger's names live in package DEBUG, so a program defines its own FIND
