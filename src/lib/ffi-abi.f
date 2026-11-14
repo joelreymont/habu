@@ -530,6 +530,8 @@ variable DLERROR-FN-CELL
    dup 0= if idx held SYMBOL-REPORT E-FFI-DLSYM throw then
    dup idx FN-ADDR! ;
 
+public
+
 \ A rejection of the declaration is SYNTAX-OPEN, its message, then SYNTAX-HELP
 \ with the fix; it places the record at the token read last.
 : SYNTAX-OPEN ( -- )
@@ -547,6 +549,8 @@ variable DLERROR-FN-CELL
 : SYNTAX-REJECT ( ptr u8 n ptr u8 n -- )
    {: m:ptr mu:n h:ptr hu:n :}
    SYNTAX-OPEN  m mu REJECTION:EMIT-STR  h hu SYNTAX-HELP ;
+
+private
 
 : NAME-ROOM ( n -- )
    {: u:n :}

@@ -349,6 +349,11 @@ create FFI-T-LONG-PATH PATH-CAP allot
    {: h:ptr hu:n :}
    E-FFI-SYNTAX h hu FFI-T-RECORD ;
 
+: FFI-T-FLOAT-ARITY ( [ -- ] -- )
+   E-FFI-ARITY
+   s" error[E-FFI-ARITY]: the call passes at most 8 float inputs, each in a register"
+   FFI-T-RECORD ;
+
 \ The overflowing path carries no extension: it stands for a literal LIBRARY row
 \ on either target, which the spelling rule below leaves alone.
 : FFI-T-LONG-PATH! ( -- )
@@ -791,13 +796,9 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    HB-TARGET-LINUX-X86-64? if
       [: FFI-T-BAD-FLOAT-ARITY ;] 0 TTHROWSQ
    else
-      [: FFI-T-BAD-FLOAT-ARITY ;] E-FFI-ARITY
-      s" error[E-FFI-ARITY]: the call passes at most 8 float inputs, each in a register"
-      FFI-T-RECORD
+      [: FFI-T-BAD-FLOAT-ARITY ;] FFI-T-FLOAT-ARITY
    then
-   [: FFI-T-BAD-F32-ARITY ;] E-FFI-ARITY
-   s" error[E-FFI-ARITY]: the call passes at most 8 float inputs, each in a register"
-   FFI-T-RECORD
+   [: FFI-T-BAD-F32-ARITY ;] FFI-T-FLOAT-ARITY
    [: FFI-T-BAD-F32-VARARG ;]
    s" error[E-FFI-SYNTAX]: an f32 variadic argument" FFI-T-SYNTAX
    [: FFI-T-F32-FIXED ;] 0 TTHROWSQ

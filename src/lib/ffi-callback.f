@@ -241,30 +241,12 @@ variable FB-VALUE
 TYPED-VARIABLE FFB-VALUE r
 variable OPEN
 
-\ A rejection of the declaration is SYNTAX-OPEN, its message, then SYNTAX-HELP
-\ with the fix; it places the record at the token parse-name read last.
-: SYNTAX-OPEN ( -- )
-   s" E-FFI-SYNTAX" REJECTION:OPEN ;
-
-\ The throw keeps the code a catch reads; uncaught, the load exits 70.
-: HELP-THROW ( ptr u8 n n -- ) {: h:ptr hu:n code:n :}
-   CHECK:DEFINER-PLACE
-   REJECTION:HELP  h hu REJECTION:EMIT-STR
-   REJECTION:KEEP  code CHECKER-REFUSE ;
-
-: SYNTAX-HELP ( ptr u8 n -- )
-   E-FFI-SYNTAX HELP-THROW ;
-
-: SYNTAX-REJECT ( ptr u8 n ptr u8 n -- )
-   {: m:ptr mu:n h:ptr hu:n :}
-   SYNTAX-OPEN  m mu REJECTION:EMIT-STR  h hu SYNTAX-HELP ;
-
 \ A message that ends quoting the token the user wrote.
 : TOKEN-REJECT ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: m:ptr mu:n t:ptr tu:n h:ptr hu:n :}
-   SYNTAX-OPEN  m mu REJECTION:EMIT-STR
+   FFI:SYNTAX-OPEN  m mu REJECTION:EMIT-STR
    s" '" REJECTION:EMIT-STR  t tu REJECTION:EMIT-STR
-   s" '" REJECTION:EMIT-STR  h hu SYNTAX-HELP ;
+   s" '" REJECTION:EMIT-STR  h hu FFI:SYNTAX-HELP ;
 
 \ The next token. parse-name's bytes stay valid until the next parse, and each
 \ token is matched or copied before then, so it lives on the stack.
@@ -273,7 +255,7 @@ variable OPEN
    u 0= if
       s" the text ends inside the callback declaration"
       s" complete it: CALLBACK: NAME ( in -- out ) clauses ;CALLBACK"
-      SYNTAX-REJECT
+      FFI:SYNTAX-REJECT
    then
    a u ;
 
@@ -282,12 +264,13 @@ variable OPEN
    s" a callback takes at most " REJECTION:EMIT-STR
    cap REJECTION:EMIT-U  k ku REJECTION:EMIT-STR
    s" pass the rest in memory through a ptr u8 argument"
-   E-FFI-ARITY HELP-THROW ;
+   E-FFI-ARITY FFI:HELP-THROW ;
 
 : LONG-NAME ( -- )
-   SYNTAX-OPEN  s" a callback name is at most " REJECTION:EMIT-STR
+   FFI:SYNTAX-OPEN
+   s" a callback name is at most " REJECTION:EMIT-STR
    NAME-CAP REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR
-   s" shorten the name" SYNTAX-HELP ;
+   s" shorten the name" FFI:SYNTAX-HELP ;
 
 \ A ':' at either end of the name, with nothing on one side.
 : EDGE-COLON? ( ptr u8 n -- bool ) {: a:ptr u:n :}
@@ -358,7 +341,8 @@ variable OPEN
    {: a:ptr u:n :}
    RES-KIND @ R-NONE <> if
       s" a callback has at most one result"
-      s" keep one result after --: n, i32, u32 or r" SYNTAX-REJECT
+      s" keep one result after --: n, i32, u32 or r"
+      FFI:SYNTAX-REJECT
    then
    a u s" r" STR= if R-FLOAT RES-KIND ! exit then
    a u s" n" STR= a u s" i32" STR= or a u s" u32" STR= or if
@@ -374,7 +358,8 @@ variable OPEN
    a u s" --" STR= if i f true exit then
    a u s" )" STR= if
       s" expected '--' before ')'"
-      s" write the effect as ( in -- out )" SYNTAX-REJECT
+      s" write the effect as ( in -- out )"
+      FFI:SYNTAX-REJECT
    then
    i f a u IN-TOKEN false ;
 
@@ -384,7 +369,8 @@ variable OPEN
    a u s" )" STR= if true exit then
    a u s" --" STR= if
       s" a second '--' in the effect"
-      s" write one -- between the arguments and the result" SYNTAX-REJECT
+      s" write one -- between the arguments and the result"
+      FFI:SYNTAX-REJECT
    then
    a u OUT-TOKEN false ;
 
@@ -457,7 +443,7 @@ variable OPEN
 \ A rejection between the two keywords abandons the declaration, so nothing
 \ is left open for the next one.
 : REJECT ( ptr u8 n ptr u8 n -- )
-   0 OPEN !  SYNTAX-REJECT ;
+   0 OPEN !  FFI:SYNTAX-REJECT ;
 
 : FALLBACK-REJECT ( -- )
    s" a fallback outside a callback declaration"
@@ -501,13 +487,14 @@ public
 : CLOSE-CALLBACK ( -- )
    OPEN @ 0= if
       s" ;CALLBACK with no callback declaration open"
-      s" open one with CALLBACK: NAME ( in -- out )" SYNTAX-REJECT
+      s" open one with CALLBACK: NAME ( in -- out )"
+      FFI:SYNTAX-REJECT
    then
    0 OPEN !
    RES-KIND @ R-NONE <> FB-SET @ 0= and if
       s" a callback with a result needs a fallback"
       s" write n FALLBACK (r: r FFALLBACK) before ;CALLBACK"
-      SYNTAX-REJECT
+      FFI:SYNTAX-REJECT
    then
    NEXT-SLOT {: k:n :}
    FB-VALUE @ k FALLBACKS !
