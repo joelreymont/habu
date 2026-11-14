@@ -30,15 +30,15 @@ CAST: MAPPED>RAW ( n -- ptr u8 )
 $4000 constant FILE-CHUNK
 PATH-CAP CSTR-ROOM constant SNAPSHOT-ROOM   \ a temp path and its terminator
 
-\ The source snapshot is a fresh FS:MKTEMP file: the node keeps its descriptor
-\ for the copy and the mapping, and copies its path, which the task's next temp
-\ reuses, into room allocated before the file exists, so no failure falls
-\ between making the file and the node owning it.
+\ The path, which the task's next temp reuses, goes into room allocated first,
+\ so the node owns the file once it is made; the exit removes it unless the
+\ node discards it.
 : SNAPSHOT-WORK ( ptr n ptr u8 -- ptr n ptr u8 )
    {: node:ptr copy:ptr :}
    s" habu-zip-source" FS:MKTEMP FD>N node SNAP-FD ! {: path:ptr len:n :}
    path len copy SNAPSHOT-ROOM SPAN:MAKE CSTR
    node SOURCE-PTR ! len node SOURCE-LEN ! 1 node SOURCE-LIVE !
+   path len FS:CLEANUP+
    node copy ;
 
 : SNAPSHOT-OPEN ( ptr n -- )

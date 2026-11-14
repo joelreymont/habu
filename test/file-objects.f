@@ -99,7 +99,7 @@ variable TAIL-N                          \ and the paths that end with it
 variable MARK-S                          \ the newest object change time MARK saw, seconds
 variable MARK-NS                         \ and nanoseconds
 variable NEWER-N                         \ the objects REWRITTEN saw changed after it
-variable LEFT-N                          \ the builder's scratch directories TOOL-RUN found in its TMPDIR
+variable LEFT-N                          \ the entries TOOL-RUN found in its TMPDIR
 TAILS TYPED-BUFFER KEPT-SIZE n          \ by tail, the object's size and its change time's
 TAILS TYPED-BUFFER KEPT-S n             \ seconds and nanoseconds, as KEEP read them; size -1
 TAILS TYPED-BUFFER KEPT-NS n            \ if KEEP found none or never ran
@@ -535,8 +535,7 @@ variable CLASS-N                        \ the class CLASS+ read
    L$ SB$ IN$ ;
 
 \ After TOOL-ARGS and its options, builds the fixture to L's prog in the shared fixture out root.
-\ Its TMPDIR is a fresh directory per run, where the build leaves none of its own scratch;
-\ files the program's build-time code makes there are the program's.
+\ Its TMPDIR is a fresh directory per run, where the build leaves nothing.
 : TOOL-RUN ( CMD:command ptr u8 n -- CMD:command n )
    CMD:ARG+
    s" -o" CMD:ARG+  L$ s" prog" IN$ CMD:ARG+
@@ -545,8 +544,8 @@ variable CLASS-N                        \ the class CLASS+ read
    ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME
    PROCESS:ENDING>RC RC>N
    0 LEFT-N !
-   TMP$ [: s" hb-build-native-" STARTS-WITH? if 1 LEFT-N +! then ;] FS-LIST:EACH
-   s" the build leaves no scratch directory in TMPDIR" LABEL  LEFT-N @ 0 T= ;
+   TMP$ [: 2drop 1 LEFT-N +! ;] FS-LIST:EACH
+   s" the build leaves nothing in TMPDIR" LABEL  LEFT-N @ 0 T= ;
 
 \ Builds a fixture by tools/hb-build.f (TOOL-RUN), since log.f requires and creates through does>
 \ (build.f's files may not); --repl and --report-json when the flag is true.

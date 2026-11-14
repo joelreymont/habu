@@ -2,6 +2,7 @@
 \ STORAGE CLASS. None of its own: the registries it walks are zip-state.f's.
 require src/lib/ffi-abi.f
 require src/lib/zip-state.f
+require src/lib/fs-mutate.f
 
 package ZIP
 
@@ -67,7 +68,10 @@ FUNCTION: C-PWRITE pwrite ( n ptr u8 n n -- n ) ;FUNCTION
    node SOURCE-FD @ dup 0 >= if C-CLOSE-FD 0<> or else drop then
    node SNAP-FD @ dup 0 >= if C-CLOSE-FD 0<> or else drop then
    node RAW-PTR @ dup NULL? if drop else node RAW-LEN @ munmap 0<> or then
-   node SOURCE-LIVE @ 0<> if node SOURCE-PTR @ unlink 0<> or then
+   node SOURCE-LIVE @ 0<> if
+      node SOURCE-PTR @ node SOURCE-LEN @ FS:CLEANUP-FORGET
+      node SOURCE-PTR @ unlink 0<> or
+   then
    node FORGET-ARCHIVE
    if E-FS-IO throw then
    inputs 0<> if inputs throw then ;
