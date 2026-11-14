@@ -259,12 +259,13 @@ variable OPEN
    then
    a u ;
 
-: TOO-MANY ( n ptr u8 n -- ) {: cap:n k:ptr ku:n :}
-   s" E-FFI-ARITY" REJECTION:OPEN
+: TOO-MANY ( n ptr u8 n -- )
+   {: cap:n k:ptr ku:n :}
+   FFI:ARITY-OPEN
    s" a callback takes at most " REJECTION:EMIT-STR
    cap REJECTION:EMIT-U  k ku REJECTION:EMIT-STR
    s" pass the rest in memory through a ptr u8 argument"
-   E-FFI-ARITY FFI:HELP-THROW ;
+   FFI:ARITY-HELP ;
 
 : LONG-NAME ( -- )
    FFI:SYNTAX-OPEN

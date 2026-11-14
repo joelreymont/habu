@@ -536,15 +536,15 @@ variable DLERROR-FN-CELL
    REJECTION:HELP  h hu REJECTION:EMIT-STR
    REJECTION:KEEP  code CHECKER-REFUSE ;
 
+: HELP-THROW ( ptr u8 n n -- )
+   CHECK:DEFINER-PLACE HELP-END ;
+
 public
 
 \ A rejection of the declaration is SYNTAX-OPEN, its message, then SYNTAX-HELP
 \ with the fix; it places the record at the token read last.
 : SYNTAX-OPEN ( -- )
    s" E-FFI-SYNTAX" REJECTION:OPEN ;
-
-: HELP-THROW ( ptr u8 n n -- )
-   CHECK:DEFINER-PLACE HELP-END ;
 
 : SYNTAX-HELP ( ptr u8 n -- )
    E-FFI-SYNTAX HELP-THROW ;
@@ -1190,14 +1190,18 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
    a RES-TEXT u BYTE-COPY
    u RES-TEXT-U ! ;
 
-: ARITY-OPEN ( -- )
-   s" E-FFI-ARITY" REJECTION:OPEN ;
-
 : ARITY-END ( ptr u8 n -- )
    E-FFI-ARITY HELP-END ;
 
+public
+
+: ARITY-OPEN ( -- )
+   s" E-FFI-ARITY" REJECTION:OPEN ;
+
 : ARITY-HELP ( ptr u8 n -- )
    E-FFI-ARITY HELP-THROW ;
+
+private
 
 : INPUTS-FULL ( -- )
    ARITY-OPEN
