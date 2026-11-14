@@ -1486,7 +1486,7 @@ variable MDV-I   variable MDV-F
 \ Expected takes precedence over actual, so unrelated matched row cells cannot
 \ leak into the family; a scalar pair names none.
 : TERM-FAM ( n -- n )                    \ layout-family id for one type term, else -1
-   T-RES dup LAYOUT-PARAM? IF PARAM>FAM EXIT THEN
+   T-UNSTALE dup LAYOUT-PARAM? IF PARAM>FAM EXIT THEN
    drop -1 ;
 \ DVAR is the SUMV id a `construct family variant` payload mismatch latched, -1
 \ for none.
