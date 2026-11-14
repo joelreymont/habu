@@ -649,14 +649,14 @@
 \ ascending from text offset 0. REJECTION:LOCATE maps a pointer into that
 \ text, or into the source, to a file position. The engine arms the map for a
 \ definition it captured from a file buffer, from the rows the capture records,
-\ and gives a body its closer. With no map, REJECTION places a token of the
-\ body text the engine captured in the buffer it was read from, through the
-\ same rows, while the definition's name lies in that buffer; the definitions
-\ the checker generates for a declaration have no place.
-\ REJECTION:CLOSER! takes the source token that closes the mapped definition
-\ (its `;` or a definer's `does>`), which the text does not hold: a control
-\ structure still open there is refused at that token, as the load's compiler
-\ refuses it.
+\ and gives each body it checks its closer, mapped or not. With no map,
+\ REJECTION places a token of the body text the engine captured in the buffer
+\ it was read from, through the same rows, while the definition's name lies in
+\ that buffer; the definitions the checker generates for a declaration have no
+\ place. REJECTION:CLOSER! takes the token that closes a definition's text (its
+\ `;` or a definer's `does>`) and the text's base, as the text does not hold
+\ it: a control structure still open there is refused at that token, as the
+\ load's compiler refuses it.
 \
 \ Completion: CHECKER-RESOLVE:EACH-VISIBLE visits, once each, every folded
 \ spelling that starts with a prefix and that a position's own selection binds:
@@ -20081,8 +20081,6 @@ package CHECK
 SRCLOC:OWNED-CELL RESERVED-PTR-U8-CELL SRC-OWNED
 ;package
 
-: DIAG-MAPPED? ( -- bool ) TBASE @ REJECTION:MAPPED? ;
-
 \ The pre-verifier needs the pinned token in the source it read, not in its
 \ reused body buffer: it may check a does> parent after its clause, then report
 \ the clause only if the parent was not deferred.
@@ -21305,10 +21303,10 @@ variable IS-PEND-U                   \ and its length
 : CF-OPEN? ( -- bool )
    LMODE @ 0 <>  #CFC @ 0 <>  or  CONM @ 0 <>  or  CHECKER-MATCH-MODE @ 0 <>  or ;
 
-\ Pins the closer CA CU one past the body's end, or the mapped closer at its own byte.
+\ Pins the closer CA CU one past the body's end, or the given closer at its own byte.
 : CLOSER-PIN! ( ptr u8 n -- )
    {: ca:ptr cu:n :}
-   TBASE @ REJECTION:MAP-BASE? IF
+   TBASE @ REJECTION:CLOSES? IF
       REJECTION:CLOSER$ FAIL-PIN!
       REJECTION:CLOSER$ drop TBASE @ - FAILB !
    ELSE
@@ -21317,13 +21315,12 @@ variable IS-PEND-U                   \ and its length
    THEN
    FAILB @ FAILTU @ + FAILE ! ;
 
-\ Refuses a structure open at closer CA CU, or at the mapped closer, as the load's
+\ Refuses a structure open at closer CA CU, or at the given closer, as the load's
 \ compiler does, unless a compile refusal or CF-OVER holds the pin.
 : CLOSER-REFUSE ( ptr u8 n -- )
    {: ca:ptr cu:n :}
    CF-OPEN? 0=  RCOMPILE @ 0 <>  or  CF-OVER @ 0 <>  or IF EXIT THEN
-   DIAG-MAPPED? {: mapped:bool :}
-   mapped IF REJECTION:CLOSER$ nip ELSE cu THEN 0= IF EXIT THEN
+   TBASE @ REJECTION:CLOSES? IF REJECTION:CLOSER$ nip ELSE cu THEN 0= IF EXIT THEN
    CONM @ 0 <> IF MD-CON-TRUNC ELSE
       CHECKER-MATCH-MODE @ 0 <>  MF-DEPTH @ 0 <>  or IF MD-TRUNC ELSE MD-CF-OPEN THEN
    THEN {: why:n :}

@@ -238,9 +238,11 @@ PTR-VARIABLE ROW-A  variable ROW-N
 \ The rows' source offset of the armed source's first byte, subtracted from
 \ each row's: the engine's rows count from the input buffer's start.
 variable ROW-BIAS
-PTR-VARIABLE CLOSER-A  variable CLOSER-U
+PTR-VARIABLE CLOSER-A  variable CLOSER-U  PTR-VARIABLE CLOSER-BASE
+public
 : CLOSER-OFF ( -- )
-   NULL-PTR CLOSER-A !  0 CLOSER-U ! ;
+   NULL-PTR CLOSER-A !  0 CLOSER-U !  NULL-PTR CLOSER-BASE ! ;
+private
 : MAP-OFF ( -- )
    NULL-PTR MAP-A !  0 MAP-U !  NULL-PTR ROW-A !  0 ROW-N !  0 ROW-BIAS !
    CLOSER-OFF ;
@@ -260,12 +262,13 @@ public
 \ Set after MAP!, which clears it.
 : MAP-BIAS! ( n -- )
    ROW-BIAS ! ;
-: CLOSER! ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   a CLOSER-A !  u CLOSER-U ! ;
+\ The token a u that closes the text whose first byte is base.
+: CLOSER! ( ptr u8 n ptr u8 -- )
+   {: a:ptr u:n base:ptr :}
+   a CLOSER-A !  u CLOSER-U !  base CLOSER-BASE ! ;
 : SOURCE$ ( -- ptr u8 n ) SOURCE-A @ SOURCE-U @ ;
-: MAPPED? ( ptr u8 -- bool ) MAP-A @ - 0= ROW-N @ 0 > and ;
-: MAP-BASE? ( ptr u8 -- bool ) MAP-A @ - 0= ;
+\ Whether a closer was given for the text whose first byte is base.
+: CLOSES? ( ptr u8 -- bool ) CLOSER-BASE @ - 0= CLOSER-U @ 0 > and ;
 : CLOSER$ ( -- ptr u8 n ) CLOSER-A @ CLOSER-U @ ;
 private
 : ROW@ ( n -- n )
@@ -365,9 +368,10 @@ PTR-VARIABLE LINE-A  variable LINE-U  variable LEAD-U
    at 0 >=  at tu + bu <= and ;
 public
 \ Whether a source a rejection places from holds the byte p points at for good:
-\ the armed source or the loader's owned bytes.
+\ the armed source, the given closer's bytes or the loader's owned bytes.
 : HELD? ( ptr u8 -- bool ) {: p:ptr :}
    p >SOURCE nip IF 0 0= EXIT THEN
+   CLOSER$ p 0 HOLDS? IF 0 0= EXIT THEN
    OWNED$ p 0 HOLDS? ;
 private
 \ The line of b's bu bytes that holds t: from the byte after the last LF before

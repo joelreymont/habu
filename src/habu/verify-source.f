@@ -665,7 +665,8 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
 \ The body holds no closer, so the checker is told where it stands and refuses
 \ a structure still open there.
 : DEF-BODY$ ( -- ptr u8 n )
-   BODY$  TOKEN-A @ TOKEN-U @ REJECTION:CLOSER! ;
+   BODY$ {: a:ptr u:n :}
+   TOKEN-A @ TOKEN-U @ a REJECTION:CLOSER!  a u ;
 
 \ The signature ahead of the scan, read as the engine reads a definition head's:
 \ from its `(` through its `)`, and whether one opens there. The scan passes it.

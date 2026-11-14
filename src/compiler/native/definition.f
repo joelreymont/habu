@@ -176,7 +176,9 @@ public
    {: na:ptr nu:n :}
    CHECKER-TAPE:ADVANCE
    M-DOES @ {: cut:n :}
-   M-SRC @ cut +  M-SRC-U @ cut -  M-DOES-SIG @ M-DOES-SIG-U @
+   M-SRC @ cut +  M-SRC-U @ cut -  {: ca:ptr cu:n :}
+   ca cu CHECK:CLOSER-ARM
+   ca cu  M-DOES-SIG @ M-DOES-SIG-U @
    CHECKER-OWNER:DOES-CHECK na nu CLAUSE-CK
    CHECK-DOES-DIN-CELLS 0 <  CHECK-DOES-DOUT-CELLS 0 <  or if E-COMP-ARITY throw then
    -1 ;
