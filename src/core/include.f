@@ -2201,10 +2201,13 @@ public
 \ before its requires; on another target its load stops there.
 : ?TARGET ( bool -- )
    if exit then
-   s" E-TARGET" REJECTION:PATH$ SRCLOC:LINE ERROR-TEXT:PREFIX
-   s" the file does not build for " ERROR-TEXT:TYPE
-   HB-TARGET$ ERROR-TEXT:TYPE  S\" \n" ERROR-TEXT:TYPE
-   INCLUDE-IO-RC throw ;
+   s" E-TARGET" REJECTION:OPEN
+   s" this file does not build for " REJECTION:EMIT-STR  HB-TARGET$ REJECTION:EMIT-STR
+   SRCLOC:TOKEN$ REJECTION:AT  s" the target test fails here" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" build this file only for a target its test admits, or widen the test"
+   REJECTION:EMIT-STR
+   INCLUDE-IO-RC REJECTION:STOP ;
 
 
 ;using

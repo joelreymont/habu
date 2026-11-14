@@ -4,6 +4,11 @@
 \ diagnostic's source sits: the armed source, its map and the loader's file
 \ path. Loads before the checker, where no emit exists, so bytes go out through
 \ a one-byte buffer.
+\ A rejection is printed in parts, called in this order: OPEN, at most one AT,
+\ any NOTEs, HELP, then STOP or KEEP. The caller writes each part's text with
+\ EMIT-STR, EMIT-U or EMIT1 before the next part word, which ends it. The
+\ record is built in TEXT, so a renderer that resets TEXT-LEN cannot run inside
+\ one.
 package REJECTION
 private
 
@@ -323,4 +328,172 @@ public
    SOURCE-POSITION 0 0= ;
 NO-FILE$ FILE-COPY
 1 1 0 ORIGIN!
+
+\ The file a top-level step names; empty when no file or label names it.
+: LOAD-FILE$ ( -- ptr u8 n )
+   PATH$ {: pa:ptr pu:n :}
+   pa pu LABELS? IF FILE$ EXIT THEN
+   pa pu ;
+
+private
+\ Which text of the record is open.
+0 constant NO-PART
+1 constant MESSAGE-PART
+2 constant LABEL-PART
+3 constant VALUE-PART
+4 constant HELP-PART
+variable PART   NO-PART PART !
+variable NOTES   0 NOTES !              \ the JSON notes object is open
+variable GUTTER   1 GUTTER !            \ digits of AT's line, 1 unplaced
+SRCLOC:OWNED-CELL RESERVED-PTR-U8-CELL OWNED
+SRCLOC:INB-CELL RESERVED-PTR-U8-CELL INPUT-START
+INE-CELL RESERVED-PTR-U8-CELL INPUT-END
+\ AT's place: whether a buffer holds the token, its file, line, column and
+\ byte, the byte after it, and the source line with the bytes before the token.
+variable PLACED
+PTR-VARIABLE PLACE-FILE-A  variable PLACE-FILE-U
+variable AT-LINE  variable AT-COLUMN  variable AT-BYTE  variable AT-END
+PTR-VARIABLE LINE-A  variable LINE-U  variable LEAD-U
+
+: END-TEXT ( -- )
+   PART @ NO-PART = IF EXIT THEN
+   JSON @ IF JSON-CLOSE ELSE 10 EMIT1 THEN ;
+: BLANKS ( n -- ) {: k:n :}
+   0 BEGIN dup k < WHILE 32 EMIT1 1 + REPEAT drop ;
+: DIGITS ( n -- n ) {: v:n :}
+   1 v BEGIN dup 9 > WHILE 10 / swap 1 + swap REPEAT drop ;
+: FIELD ( ptr u8 n -- )   44 EMIT1 JSON-KEY ;
+: MARGIN ( -- )   GUTTER @ 1 + BLANKS ;
+
+: PLACE-FILE! ( ptr u8 n -- ) {: a:ptr u:n :}
+   a PLACE-FILE-A !  u PLACE-FILE-U ! ;
+: PLACE-FILE$ ( -- ptr u8 n )   PLACE-FILE-A @ PLACE-FILE-U @ ;
+: OWNED$ ( -- ptr u8 n )   OWNED @ data-base SRCLOC:OWNEDLEN-CELL + @ ;
+: INPUT$ ( -- ptr u8 n )
+   INPUT-START @ {: b:ptr :}
+   b  INPUT-END @ b - ;
+: HOLDS? ( ptr u8 n ptr u8 n -- bool ) {: b:ptr bu:n t:ptr tu:n :}
+   t b - {: at:n :}
+   at 0 >=  at tu + bu <= and ;
+\ The line of b's bu bytes that holds t: from the byte after the last LF before
+\ t up to the next LF, or the buffer's edge.
+: LINE! ( ptr u8 n ptr u8 -- ) {: b:ptr bu:n t:ptr :}
+   t b - {: at:n :}
+   at BEGIN dup 0 > IF dup 1 - b + c@ 10 <> ELSE 0 0= 0= THEN WHILE 1 - REPEAT
+   {: s:n :}
+   at BEGIN dup bu < IF dup b + c@ 10 <> ELSE 0 0= 0= THEN WHILE 1 + REPEAT
+   {: e:n :}
+   b s + LINE-A !  e s - LINE-U !  at s - LEAD-U ! ;
+\ A body's source is armed from its name on, so a file or the buffer read,
+\ which hold the bytes before the name, cut the line first.
+: CUT ( ptr u8 -- ) {: t:ptr :}
+   OWNED$ t 0 HOLDS? IF OWNED$ t LINE! EXIT THEN
+   INPUT$ t 0 HOLDS? IF INPUT$ t LINE! EXIT THEN
+   SOURCE$ t LINE! ;
+: POSITION! ( n n n -- )
+   AT-BYTE !  AT-COLUMN !  AT-LINE !  -1 PLACED ! ;
+: SOURCE-PLACE ( n ptr u8 n -- ) {: off:n t:ptr tu:n :}
+   off SOURCE-POSITION POSITION!
+   t tu + >SOURCE IF SOURCE-BYTE @ + ELSE drop AT-BYTE @ tu + THEN AT-END !
+   SOURCE-A @ off + {: s:ptr :}
+   s CUT
+   OWNED$ s 0 HOLDS? IF LOAD-FILE$ ELSE FILE$ THEN PLACE-FILE! ;
+: BUFFER-PLACE ( ptr u8 n ptr u8 n -- ) {: b:ptr bu:n t:ptr tu:n :}
+   b t 1 1 0 POSITION POSITION!
+   AT-BYTE @ tu + AT-END !
+   t CUT ;
+\ The armed source holding the token's first byte, else the loader's owned
+\ bytes, else the buffer read, holding the whole token; else no place.
+: PLACE ( ptr u8 n -- ) {: t:ptr tu:n :}
+   0 PLACED !
+   t >SOURCE IF t tu SOURCE-PLACE EXIT THEN drop
+   OWNED$ t tu HOLDS? IF OWNED$ t tu BUFFER-PLACE LOAD-FILE$ PLACE-FILE! EXIT THEN
+   INPUT$ t tu HOLDS? IF INPUT$ t tu BUFFER-PLACE NO-FILE$ PLACE-FILE! EXIT THEN
+   LOAD-FILE$ {: fa:ptr fu:n :}
+   fu 0 > IF fa fu ELSE NO-FILE$ THEN PLACE-FILE! ;
+
+: PLACE-JSON ( ptr u8 n -- ) {: t:ptr tu:n :}
+   s" file" FIELD  PLACE-FILE$ JSON-STRING
+   PLACED @ IF
+      s" line" FIELD  AT-LINE @ EMIT-U
+      s" column" FIELD  AT-COLUMN @ EMIT-U
+      s" byte_start" FIELD  AT-BYTE @ EMIT-U
+      s" byte_end" FIELD  AT-END @ EMIT-U
+   THEN
+   s" token" FIELD  t tu JSON-STRING
+   PLACED @ IF s" source_line" FIELD  LINE-A @ LINE-U @ JSON-STRING THEN
+   s" label" FIELD  JSON-OPEN ;
+\ The caret line copies the source's tabs before the token so the carets line up.
+: LEAD ( -- )
+   0 BEGIN dup LEAD-U @ < WHILE
+      dup LINE-A @ + c@ 9 = IF 9 ELSE 32 THEN EMIT1
+      1 +
+   REPEAT drop ;
+: CARETS ( n -- ) {: tu:n :}
+   tu 0= IF 1 ELSE tu THEN {: k:n :}
+   0 BEGIN dup k < WHILE 94 EMIT1 1 + REPEAT drop ;
+: PLACE-PROSE ( ptr u8 n -- ) {: t:ptr tu:n :}
+   GUTTER @ BLANKS  s" --> " EMIT-STR  PLACE-FILE$ EMIT-STR
+   PLACED @ 0= IF
+      10 EMIT1  MARGIN  s" = at `" EMIT-STR  t tu EMIT-STR  s" `: " EMIT-STR
+      EXIT
+   THEN
+   58 EMIT1  AT-LINE @ EMIT-U  58 EMIT1  AT-COLUMN @ EMIT-U  10 EMIT1
+   MARGIN 124 EMIT1 10 EMIT1
+   AT-LINE @ EMIT-U  s"  | " EMIT-STR  LINE-A @ LINE-U @ EMIT-STR  10 EMIT1
+   MARGIN s" | " EMIT-STR  LEAD  tu CARETS  32 EMIT1 ;
+
+\ Sends the record, or drops it under QUIET.
+: END-RECORD ( -- )
+   END-TEXT
+   JSON @ IF 125 EMIT1 THEN  10 EMIT1
+   NO-PART PART !
+   QUIET @ 0= IF FLUSH ELSE 0 TEXT-LEN !  0 DEST ! THEN ;
+
+public
+\ Opens a record with its code; the message follows.
+: OPEN ( ptr u8 n -- ) {: code:ptr cu:n :}
+   1 DEST !  0 TEXT-LEN !  0 NOTES !  1 GUTTER !
+   JSON @ IF
+      123 EMIT1  s" severity" JSON-KEY  s" error" JSON-STRING
+      s" code" FIELD  code cu JSON-STRING
+      s" message" FIELD  JSON-OPEN
+   ELSE
+      s" error[" EMIT-STR  code cu EMIT-STR  s" ]: " EMIT-STR
+   THEN
+   MESSAGE-PART PART ! ;
+\ Places the token t tu; its label follows.
+: AT ( ptr u8 n -- ) {: t:ptr tu:n :}
+   END-TEXT
+   t tu PLACE
+   PLACED @ IF AT-LINE @ DIGITS ELSE 1 THEN GUTTER !
+   JSON @ IF t tu PLACE-JSON ELSE t tu PLACE-PROSE THEN
+   LABEL-PART PART ! ;
+\ A note's key; its value follows.
+: NOTE ( ptr u8 n -- ) {: k:ptr ku:n :}
+   END-TEXT
+   JSON @ IF
+      NOTES @ IF 44 EMIT1 ELSE s" notes" FIELD  123 EMIT1  -1 NOTES ! THEN
+      k ku JSON-KEY  JSON-OPEN
+   ELSE
+      MARGIN  s" = " EMIT-STR  k ku EMIT-STR  s" : " EMIT-STR
+   THEN
+   VALUE-PART PART ! ;
+\ The help text follows.
+: HELP ( -- )
+   END-TEXT
+   JSON @ IF
+      NOTES @ IF 125 EMIT1  0 NOTES ! THEN
+      s" help" FIELD  JSON-OPEN
+   ELSE
+      MARGIN  s" = help: " EMIT-STR
+   THEN
+   HELP-PART PART ! ;
+\ Ends the record and throws status n.
+: STOP ( n -- )
+   END-RECORD throw ;
+\ Ends the record and returns; a sent record counts in TALLY.
+: KEEP ( -- )
+   END-RECORD
+   QUIET @ 0= IF TALLY @ 1 + TALLY ! THEN ;
 ;package

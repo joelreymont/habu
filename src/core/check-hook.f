@@ -55,7 +55,7 @@ INE-CELL RESERVED-PTR-U8-CELL INPUT-END
       a u + REJECTION:>SOURCE 0= if drop exit then
       REJECTION:SOURCE$ drop + 5                     \ `does>`
    else
-      LAST-TOKEN @  data-base TKL-CELL + @
+      SRCLOC:TOKEN$
    then {: c:ptr cu:n :}
    c REJECTION:SOURCE$ drop - {: off:n :}
    off 0 <  off cu + REJECTION:SOURCE$ nip > or if exit then

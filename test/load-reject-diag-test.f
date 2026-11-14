@@ -3,7 +3,8 @@
 \ unmodeled immediate in a TRUSTED: body is refused by the checker's preflight
 \ as it is read, before any compiler sees it. Covers the direct --load,
 \ require-chain and checked-body legs on generated fixtures; the child engine is
-\ HABU_UNDER_TEST when set, else the running engine.
+\ HABU_UNDER_TEST when set, else the running engine. A file `?TARGET` stops is
+\ rejected in REJECTION's form: prose, or one JSON line under REJECTION:JSON.
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
@@ -53,6 +54,8 @@ create RTYPE-P PATH-CAP allot
 create RNEST-P PATH-CAP allot
 create RCATCH-P PATH-CAP allot
 create CF-P PATH-CAP allot
+create TARGET-P PATH-CAP allot
+create TARGET-JSON-P PATH-CAP allot
 
 variable BASE-U
 variable UNDEF-U
@@ -75,6 +78,8 @@ variable RTYPE-U
 variable RNEST-U
 variable RCATCH-U
 variable CF-U
+variable TARGET-U
+variable TARGET-JSON-U
 variable OUT-U
 variable ERR-U
 variable EXITED
@@ -143,6 +148,12 @@ variable RC
 : CF$ ( -- ptr u8 n )
    CF-P CF-U @ ;
 
+: TARGET$ ( -- ptr u8 n )
+   TARGET-P TARGET-U @ ;
+
+: TARGET-JSON$ ( -- ptr u8 n )
+   TARGET-JSON-P TARGET-JSON-U @ ;
+
 : FRAG-FIXTURE! ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: pre:ptr preu:n frag:ptr fragu:n post:ptr postu:n path:ptr pathu:n :}
    SB-RESET
@@ -182,7 +193,9 @@ variable RC
    s" residue.f" RES-P RES-U PATH!
    s" residue-type.f" RTYPE-P RTYPE-U PATH!
    s" residue-nest.f" RNEST-P RNEST-U PATH!
-   s" residue-caught.f" RCATCH-P RCATCH-U PATH! ;
+   s" residue-caught.f" RCATCH-P RCATCH-U PATH!
+   s" target.f" TARGET-P TARGET-U PATH!
+   s" target-json.f" TARGET-JSON-P TARGET-JSON-U PATH! ;
 
 : REJECT-FIXTURES! ( -- )
    UNDEF$ s" : LRD-X ( -- ) LRD-NO-SUCH-WORD-XYZ ;" FS:WRITE-ALL
@@ -192,6 +205,8 @@ variable RC
    \ before the token these cases pin.
    BPS$ s" TYPED-VARIABLE LRD-P ptr u8 : LRD-BASE ( -- ptr u8 ) LRD-P @ ; : LRD-BPS ( -- ) 0 LRD-BASE ! ;" FS:WRITE-ALL
    BPF$ s" TYPED-VARIABLE LRD-Q ptr u8 : LRD-QBASE ( -- ptr u8 ) LRD-Q @ ; : LRD-BPF ( -- n ) LRD-QBASE @ ;" FS:WRITE-ALL
+   TARGET$ s" false ?TARGET" FS:WRITE-ALL
+   TARGET-JSON$ S\" -1 REJECTION:JSON !\nfalse ?TARGET" FS:WRITE-ALL
    \ A loaded file is a closed program, so the fragment shows it ran by
    \ printing: it can take no cell from its loader and leave none.
    FRAG$ s" 74 ." FS:WRITE-ALL
@@ -750,6 +765,37 @@ variable RC
    ERR$ S\" /residue.f\n" ENDS-WITH? TTRUE
    ERR$ 10 COUNT-CHAR 1 T= ;
 
+: ASSERT-TARGET ( -- )
+   ERR$ SB$ T$=
+   OUT-U @ 0 T=
+   EXITED @ TTRUE
+   RC @ 74 T= ;
+
+: TEST-TARGET ( -- )
+   s" a ?TARGET stop prints the rejection form" T-LABEL
+   TARGET$ RUN
+   SB-RESET
+   s" error[E-TARGET]: this file does not build for " SB-APPEND
+   HB-TARGET$ SB-APPEND  10 SB-APPEND-C
+   s"  --> " SB-APPEND  TARGET$ SB-APPEND  S\" :1:7\n  |\n" SB-APPEND
+   S\" 1 | false ?TARGET\n" SB-APPEND
+   S\"   |       ^^^^^^^ the target test fails here\n" SB-APPEND
+   S\"   = help: build this file only for a target its test admits, or widen the test\n\n"
+   SB-APPEND
+   ASSERT-TARGET
+   s" a ?TARGET stop prints one JSON line under REJECTION:JSON" T-LABEL
+   TARGET-JSON$ RUN
+   SB-RESET
+   S\" {\"severity\":\"error\",\"code\":\"E-TARGET\",\"message\":\"this file does not build for "
+   SB-APPEND  HB-TARGET$ SB-APPEND
+   S\" \",\"file\":\"" SB-APPEND  TARGET-JSON$ SB-APPEND
+   S\" \",\"line\":2,\"column\":7,\"byte_start\":26,\"byte_end\":33" SB-APPEND
+   S\" ,\"token\":\"?TARGET\",\"source_line\":\"false ?TARGET\"" SB-APPEND
+   S\" ,\"label\":\"the target test fails here\"" SB-APPEND
+   S\" ,\"help\":\"build this file only for a target its test admits, or widen the test\"}\n"
+   SB-APPEND
+   ASSERT-TARGET ;
+
 : TEST-IMM-INCLUDE ( -- )
    s" checked include rejects before executing its fragment" T-LABEL
    INC$ RUN
@@ -859,6 +905,7 @@ variable RC
    TEST-BAD-SIGNATURE-LINE
    TEST-REQUIRE-CHAIN
    TEST-RESIDUE
+   TEST-TARGET
    TEST-IMM-INCLUDE
    TEST-IMM-REQUIRE
    TEST-IMM-CALLER

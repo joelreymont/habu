@@ -759,19 +759,13 @@ variable FACTS-REC   variable FACTS-MARK   variable FACTS-WAS   variable FACTS-N
 
 \ `JSON ON` emits one JSON object per reject or uncheckable verdict.
 variable DSUGE  variable DSUGA
-\ A tool's label (FILE!) names a top step's file in place of its
-\ path while the load reads that file or none.
-: TOP-FILE$ ( -- ptr u8 n )
-   PATH$ {: pa:ptr pu:n :}
-   pa pu LABELS? IF FILE$ EXIT THEN
-   pa pu ;
 \ A top step names its file, then the line checker.f CHECK:TOP-SITE
 \ gives, if any; a step with no file and no label names no place.
 : DSITE ( -- )
    TOP-STEP @ 0= IF s" habu: in " EMIT-STR  NMA @ NMU @ EMIT-STR
       s" : " EMIT-STR EXIT THEN
    s" habu: " EMIT-STR
-   TOP-FILE$ {: fa:ptr fu:n :}
+   LOAD-FILE$ {: fa:ptr fu:n :}
    fu 0= IF EXIT THEN
    fa fu EMIT-STR
    CHECK:TOP-SITE IF 58 EMIT1 EMIT-U ELSE drop THEN
@@ -1724,7 +1718,7 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
 \ mapped or origin source.
 : DFILE$ ( -- ptr u8 n )
    TOP-STEP @ 0= IF FILE$ EXIT THEN
-   TOP-FILE$ dup 0 > IF EXIT THEN drop drop
+   LOAD-FILE$ dup 0 > IF EXIT THEN drop drop
    NO-FILE$ ;
 : DLOC-FIELDS ( -- )
    TOP-STEP @ IF
@@ -2372,7 +2366,7 @@ package CAST-ERROR
    WORD-A @  WORD-A @ WORD-U @ +  JLOCATE IF
       FILE$ JLOC-L @ RES-TRUE RES-TRUE EXIT
    THEN
-   TOP-FILE$  SIG-A @ CHECK:LINE-AT  RES-FALSE ;
+   LOAD-FILE$  SIG-A @ CHECK:LINE-AT  RES-FALSE ;
 : PLACE ( -- )
    SITE {: fa:ptr fu:n line:n known:bool mapped:bool :}
    fu 0= IF EXIT THEN

@@ -21612,7 +21612,12 @@ variable UNREC-DOUT  CELLS-NONE UNREC-DOUT !
 8 constant NAMES-NO-STRING                \ it names a word whose input row does not end in ptr u8 n
 
 package SRCLOC
+private
+TKA-CELL RESERVED-PTR-U8-CELL LAST-TOKEN
 public
+
+\ The token the engine read last.
+: TOKEN$ ( -- ptr u8 n ) LAST-TOKEN @ data-base TKL-CELL + @ ;
 
 \ True while the buffer read, [INB, INE), lies inside the bytes the loader owns
 \ for the open file: an `evaluate` of a slice of the file reads file text, any
@@ -21635,13 +21640,9 @@ public
    t b - {: at:n :}
    at 0 <  at data-base SRCLOC:OWNEDLEN-CELL + @ >= or IF 0 RES-FALSE EXIT THEN
    b t 1 1 0 REJECTION:POSITION drop drop RES-TRUE ;
-private
-\ The token the engine read last (TKA-CELL, TKL-CELL).
-TKA-CELL RESERVED-PTR-U8-CELL LAST-TOKEN
-public
 \ A top step is placed by its line alone: the source map places only a
 \ definition's tokens. A top step's token is the one the engine read last.
-: TOP-SITE ( -- n bool ) LAST-TOKEN @ LINE-AT ;
+: TOP-SITE ( -- n bool ) SRCLOC:TOKEN$ drop LINE-AT ;
 ;package
 
 : NOMINAL-REC-SYM ( ptr n -- n ) {: rec:ptr :}
