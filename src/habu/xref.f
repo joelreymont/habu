@@ -42,7 +42,7 @@ WL:RETIRED constant XREF-RETIRED-WL
    DREC * dbase@ + ;
 
 \ Every reader in this file reads a record's cells through this word, and so
-\ through src/core/util.f DICT-CELL@, which refuses XREF-NULL (E-XREF-NULL).
+\ through src/core/checker.f DICT-CELL@, which rejects XREF-NULL.
 : XREF-CELL@ ( ptr n n -- n )
    DICT-CELL@ ;
 
