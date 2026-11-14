@@ -174,7 +174,7 @@
    dup P>TYPE T-RES {: parent-cell:n :}
    P>REST {: rest:n :}
    parent-cell HIDDEN-PARAM? IF parent-cell MK-LOGICAL ELSE parent-cell THEN {: parent:n :}
-   parent TAG T-STALE = IF parent FIELD-PARENT-MISMATCH EXIT THEN
+   parent TAG T-STALE = IF parent parent STALE-WHY C2-REJECT EXIT THEN
    parent MUT-VIEW? 0= IF parent FIELD-PARENT-MISMATCH EXIT THEN
    parent 3 PARAM>ARG T-RES {: initialized:n :}
    initialized TAG T-PARAM <> IF parent FIELD-PARENT-MISMATCH EXIT THEN
@@ -185,9 +185,10 @@
    record INIT-VALUE-OK? 0= IF record MD-C2-INIT-RECORD C2-REJECT EXIT THEN
    record TFAM:INIT-RECORD? nip nip nip 0= IF
       record MD-C2-INIT-RECORD C2-REJECT EXIT THEN
-   record name size TFAM:INIT-FIELD-NAME? 0= IF 2drop drop SCOPE-FIELD-REJECT EXIT THEN
+   record name size TFAM:INIT-FIELD-NAME? 0= IF
+      2drop drop record MD-C2-FIELD-UNKNOWN C2-REJECT EXIT THEN
    {: descriptor:n off:n bytes:n :}
-   descriptor FIELD-PARAM? 0= IF SCOPE-FIELD-REJECT EXIT THEN
+   descriptor FIELD-PARAM? 0= IF record MD-C2-FIELD-TERM C2-REJECT EXIT THEN
    descriptor FIELD-INNER {: field:n :}
    parent 1 PARAM>ARG T-RES {: ceiling:n :}
    supplied ceiling SCOPE-FIELD-SCHEME? 0= IF
