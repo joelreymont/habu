@@ -20,7 +20,7 @@ public
 7110 constant E-TDECL-NAME      \ reserved or colliding family/variant name
 7116 constant E-TDECL-POLICY    \ unknown or not-yet-supported layout policy (7111-7115 = checker.f E-CTOR/E-EXPORT)
 7117 constant E-TDECL-RECURSIVE \ direct self-family payload under a non-boxed policy
-7118 constant E-TDECL-CAP       \ declaration body past TDECL-CAP, or a declared name past TF-NAME-MAX
+7118 constant E-TDECL-CAP       \ a declared name past TF-NAME-MAX
 7119 constant E-TDECL-DERIVE    \ unknown, deferred, or kind-gated DERIVE clause
 7204 constant E-TDECL-UNRESOLVED \ quiet replay: a nominal payload declaration may arrive
 
@@ -28,8 +28,6 @@ private
 
 7133 constant E-TDECL-PROVIDER  \ payload provider result contradicts the family's own schema/slot metadata
                                 \ (7120-7132 already belong to the checker, layout-buffer, field, and cast blocks)
-
-$1000 constant TDECL-CAP        \ buffered declaration body bytes
 
 create DECL-PARAM-NAMES TFAM-DECL-PARAM-COUNT allot
 variable DECL-PARAM-N
@@ -75,34 +73,30 @@ public
 
 private
 
-\ The body cap bounds its field/variant names. Keep names already parsed so a
-\ later duplicate still rejects when an earlier missing type prevented a row.
-TDECL-CAP 4 / constant TDECL-SEEN-CAP
-TDECL-SEEN-CAP PTR-U8-TABLE TDECL-SEEN-A
-create TDECL-SEEN-U TDECL-SEEN-CAP cells allot
+\ Keep names already parsed so a later duplicate still rejects when an earlier
+\ missing type prevented a row.
+PTR-U8-TABLE-VARIABLE TDECL-SEEN-A
+PTR-VARIABLE TDECL-SEEN-U
+SCRATCH-VARIABLE TDECL-SEEN-A-CAP
+SCRATCH-VARIABLE TDECL-SEEN-U-CAP
 variable TDECL-SEEN-N
-: TDECL-SEEN-A-FIELD ( n -- ptr ptr u8 ) cells TDECL-SEEN-A + 0 ptr-field ;
-: TDECL-SEEN-CLEAR ( -- )
-   TDECL-SEEN-N @ 0 ?do
-      NULL-PTR i TDECL-SEEN-A-FIELD !
-      0 i cells TDECL-SEEN-U + !
-   loop
-   0 TDECL-SEEN-N ! ;
-
-\ The backing `allot` storage can contain pointers from the host's prior heap.
-\ A build captures DATA even when no declaration reads those scratch entries.
-TDECL-SEEN-CAP TDECL-SEEN-N !
-TDECL-SEEN-CLEAR
+: TDECL-SEEN-CLEAR ( -- ) 0 TDECL-SEEN-N ! ;
+: TDECL-SEEN-NAME ( n -- ptr ptr u8 ) TDECL-SEEN-A @ swap ptr-field ;
+: TDECL-SEEN-LEN ( n -- ptr n ) cells TDECL-SEEN-U @ + ;
+: TDECL-SEEN-ENSURE ( n -- ) {: need:n :}
+   TDECL-SEEN-A TDECL-SEEN-A-CAP need 1 ARENA-ROWS-ENSURE
+   TDECL-SEEN-U TDECL-SEEN-U-CAP need 1 ARENA-ROWS-ENSURE ;
 
 : TDECL-SEEN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    0 BEGIN dup TDECL-SEEN-N @ < WHILE
-      dup TDECL-SEEN-A-FIELD @
-      over cells TDECL-SEEN-U + @ a u CORE-STR= IF drop RES-TRUE EXIT THEN
+      dup TDECL-SEEN-NAME @  over TDECL-SEEN-LEN @
+      a u CORE-STR= IF drop RES-TRUE EXIT THEN
       1+
    REPEAT drop RES-FALSE ;
 : TDECL-SEEN+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   a TDECL-SEEN-N @ TDECL-SEEN-A-FIELD !
-   u TDECL-SEEN-N @ cells TDECL-SEEN-U + !
+   TDECL-SEEN-N @ 1 + TDECL-SEEN-ENSURE
+   a TDECL-SEEN-N @ TDECL-SEEN-NAME !
+   u TDECL-SEEN-N @ TDECL-SEEN-LEN !
    TDECL-SEEN-N @ 1 + TDECL-SEEN-N ! ;
 
 \ --- declaration context, set before TDECL-RUN, read by bodies and diagnostics.
@@ -112,7 +106,6 @@ PTR-VARIABLE TDS-A   variable TDS-U   \ source token naming the family (DEFFAMIL
 PTR-VARIABLE TDB-A   variable TDB-U   \ body (SUMTYPE token buffer / arity token)
 PTR-VARIABLE TDT-A   variable TDT-U   \ offending token (diagnostics)
 PTR-VARIABLE TDW-A   variable TDW-U   \ short reason (diagnostics)
-variable TDECL-OVERSIZE             \ a collection buffer capped an over-cap body
 variable TDECL-CUR-FAM              \ family id being declared (-1 outside a body)
 
 : TDECL-TOK! ( ptr u8 n -- ) TDT-U ! TDT-A ! ;
@@ -187,7 +180,6 @@ private
    TDECL-MARK
    -1 TDECL-FAM-REG !               \ set by a successful sum registration only
    catch {: rc:n :}
-   0 TDECL-OVERSIZE !   \ a body refused before TDECL-REQUIRE-FIT left it set
    TDECL-SEEN-CLEAR
    rc 0= IF EXIT THEN
    TDECL-RESTORE
@@ -212,17 +204,6 @@ private
    TDECL-SEEN-CLEAR
    -1 TDECL-CUR-FAM !
    s" declaration failed" TDECL-WHY! ;
-
-\ Reject an over-cap declaration body through the declaration packet:
-\ either a collection buffer capped an over-long body (TDECL-OVERSIZE, native
-\ TDECL-C,) or the collected body already exceeds TDECL-CAP (verify-source /
-\ check-core, whose larger buffers hand the full body across). Runs at the head
-\ of each body under TDECL-RUN, name already in the TDN context; TDECL-RUN
-\ clears the flag.
-: TDECL-REQUIRE-FIT ( -- )
-   TDECL-OVERSIZE @ 0 <>  TDB-U @ TDECL-CAP >  or IF
-      TDN-A @ TDN-U @ s" declaration too long" E-TDECL-CAP TDECL-THROW
-   THEN ;
 
 \ Shared unterminated-sum reject: report the declaration-shaped E-BAD-DECLARATION
 \ packet (name + partial body) through TDECL-RUN so every path -- native SUMTYPE,
@@ -854,7 +835,6 @@ public
 private
 
 : CHECKER-DEFSUM-BODY ( -- )
-   TDECL-REQUIRE-FIT
    TDECL-HEADER! {: ar:n :}
    TDN-A @ TDN-U @ TDECL-REQUIRE-FAMILY-NAME
    TDB-A @ TDB-U @ TDECL-CURSOR!
@@ -1016,7 +996,6 @@ private
    TDECL-TXN-XT ;
 
 : CHECKER-DEFPRODUCT-BODY ( -- )
-   TDECL-REQUIRE-FIT
    TDECL-HEADER! {: ar:n :}
    TDN-A @ TDN-U @ TDECL-REQUIRE-FAMILY-NAME
    TDB-A @ TDB-U @ TDECL-CURSOR!
@@ -1523,8 +1502,10 @@ variable TDPV-BASE                       \ its first variant row
 variable TDPV-VARS                       \ variants captured
 variable TDPV-NODES                      \ nodes captured
 
-create TDECL-BUF TDECL-CAP allot
+PTR-VARIABLE TDECL-BUF-P
+SCRATCH-VARIABLE TDECL-BUF-CAP   \ in cells
 variable TDECL-U
+: TDECL-BUF ( -- ptr u8 ) TDECL-BUF-P @ ;
 
 : TDPV-THROW ( n ptr u8 n -- )   \ family + reason -> the named provider reject
    {: fam:n ra:ptr ru:n :}
@@ -2255,11 +2236,15 @@ public
 
 private
 
-: TDECL-CLEAR ( -- ) 0 TDECL-U !  0 TDECL-OVERSIZE ! ;
-: TDECL-C, ( n -- )                     \ over-cap: cap + flag (never raw-die); the
-   TDECL-U @ 1 + TDECL-CAP > IF drop -1 TDECL-OVERSIZE ! EXIT THEN   \ body reaches the checker
+: TDECL-CLEAR ( -- ) 0 TDECL-U ! ;
+: TDECL-BUF-ENSURE ( n -- ) {: need:n :}
+   TDECL-BUF-P TDECL-BUF-CAP  need CELL + 1 - CELL /  1
+   ARENA-ROWS-ENSURE ;
+: TDECL-C, ( n -- )
+   TDECL-U @ 1 + {: need:n :}
+   need TDECL-BUF-ENSURE
    TDECL-BUF TDECL-U @ + c!
-   TDECL-U @ 1 + TDECL-U ! ;
+   need TDECL-U ! ;
 : TDECL-APP ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 ?do a i + c@ TDECL-C, loop ;
 : TDECL-TOKEN+ ( ptr u8 n -- )

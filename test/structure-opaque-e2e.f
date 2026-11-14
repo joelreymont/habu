@@ -1,7 +1,8 @@
 \ End-to-end OPAQUE structure clause on the engine under test: tools/check.f
 \ replays the fixture and certifies OP's own calls, and refuses a consumer that
-\ reaches the pair through OP's public wordlist. A temporary tree holds every
-\ source the children ran and every child log until the process exits.
+\ reaches the pair through OP's public wordlist. The same check replays
+\ test/fixtures/big-decl.f. A temporary tree holds every source the children
+\ ran and every child log until the process exits.
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/fs.f
@@ -13,6 +14,9 @@ require test/e2e-tree.f
 using E2E-TREE
 package STRUCTURE-OPAQUE-E2E
 private
+: VERIFY$ ( -- ptr u8 n )
+   S\" require test/structure-opaque-fixture.f\nrequire test/fixtures/big-decl.f\n" ;
+
 \ OP's public wordlist would answer OP:BOX-MAKE if the replay recorded the pair
 \ in the section the declaration was read in rather than in OP's private one.
 : FORGE$ ( -- ptr u8 n )
@@ -22,6 +26,9 @@ private
    s" structure-opaque-e2e" TREE
    ROOT$ FS:CLEANUP-TREE+
    s" test/structure-opaque-fixture.f" COPY-TEST
+   s" test/fixtures" AT-A FS:MAKE-DIRS
+   s" test/fixtures/big-decl.f" COPY-TEST
+   s" test/structure-opaque-verify.f" AT-A VERIFY$ FS:WRITE-ALL
    s" test/structure-opaque-forge.f" AT-A FORGE$ FS:WRITE-ALL ;
 
 : VERIFY-ARGS ( ptr u8 n -- ) {: source:ptr size:n :}
@@ -36,9 +43,9 @@ private
    ERR$ a u CONTAINS? TTRUE ;
 
 : VERIFY ( -- )
-   s" test/structure-opaque-fixture.f" VERIFY-ARGS RUN-HERE
+   s" test/structure-opaque-verify.f" VERIFY-ARGS RUN-HERE
    s" verify.out" s" verify.err" SAVE-LOG
-   s" tools/check.f replays the declaration and certifies OP's own calls" T-LABEL
+   s" tools/check.f replays the declarations and certifies OP's own calls" T-LABEL
    NEED-OK ;
 
 \ The check stops at the first refusal, so ROUND, OP's restored public section,

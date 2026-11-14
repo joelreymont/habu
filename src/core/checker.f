@@ -822,7 +822,7 @@ public
    dst pv ! ;
 ;package
 
-: ARENA-ROWS-ENSURE ( ptr ptr n ptr n n n -- )
+: ARENA-ROWS-ENSURE ( ptr ptr a ptr n n n -- )
    {: pv:ptr capv:ptr need:n row:n :}
    need capv @ <= IF EXIT THEN
    need capv @ 2 * max 64 max {: nc:n :}

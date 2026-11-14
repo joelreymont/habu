@@ -209,7 +209,7 @@ s" invalid type parameter header" E-TDECL-ARITY EXPLAIN
 s" unknown payload type" E-TDECL-PAYLOAD EXPLAIN
 s" unknown layout policy" E-TDECL-POLICY EXPLAIN
 s" invalid layout policy for recursive sum" E-TDECL-RECURSIVE EXPLAIN
-s" declaration too long" E-TDECL-CAP EXPLAIN
+s" declared name too long" E-TDECL-CAP EXPLAIN
 \ E-TDECL-DERIVE reaching the table (rather than an armed front-end reason)
 \ means the derive requirement failed later, in the constructor participant's
 \ payload role and equality checks, not that the feature token was unknown.
@@ -529,8 +529,9 @@ PTR-VARIABLE HEAD-A   variable HEAD-U   variable HEAD-I   \ a span read ahead, r
 
 PTR-VARIABLE TYPE-A   variable TYPE-U     \ the field type token under resolution
 PTR-VARIABLE MISS-A   variable MISS-U     \ the first unresolved type span, kept for REPLAY-END
-$2000 constant SEEN-CAP                   \ the field-name window a replay checks
-create SEEN SEEN-CAP allot
+PTR-VARIABLE SEEN-P                       \ a replay's field names, each count-prefixed
+SCRATCH-VARIABLE SEEN-CAP                 \ SEEN-P's room, in cells
+: SEEN ( -- ptr u8 ) SEEN-P @ ;
 variable SEEN-U
 variable SEEN-I
 
@@ -609,23 +610,22 @@ private
    BEGIN SEEN-I @ SEEN-U @ < WHILE
       SEEN SEEN-I @ + c@ {: len:n :}
       len u = IF
-         SEEN BYTE-VIEW SEEN-I @ + 1+ len a u CORE-STR= IF YES EXIT THEN
+         SEEN SEEN-I @ + 1+ len a u CORE-STR= IF YES EXIT THEN
       THEN
       SEEN-I @ len 1+ + SEEN-I !
    REPEAT NO ;
 
 public
 
-\ NAME-CHECK ( name reason -- ) : a replay's field-name gate. The name is
-\ validated, refused as a duplicate of one already in this window, and recorded;
-\ `reason` is the front end's text for a window overflow.
-: NAME-CHECK ( ptr u8 n ptr u8 n -- )
-   {: a:ptr u:n wa:ptr wu:n :}
+\ NAME-CHECK ( name -- ) : a replay's field-name gate. The name is validated,
+\ rejected as a duplicate of one recorded since SEEN-CLEAR, and recorded.
+: NAME-CHECK ( ptr u8 n -- )
+   {: a:ptr u:n :}
    a u DECL-REJECT:TOKEN!
    s" duplicate field name" E-DUP DECL-REJECT:EXPECT
    a u PF-NAME-REQUIRE
    a u SEEN? IF E-DUP throw THEN
-   SEEN-U @ u + 1+ SEEN-CAP > IF wa wu E-CAP DECL-REJECT:REJECT throw THEN
+   SEEN-P SEEN-CAP  SEEN-U @ u + 1+ CELL + 1 - CELL /  1 ARENA-ROWS-ENSURE
    u SEEN SEEN-U @ + c!
    0 SEEN-I !
    BEGIN SEEN-I @ u < WHILE

@@ -1508,18 +1508,12 @@ s" SUMTYPE tdpoldg<a> POLICY boxed VARIANT some a ;VARIANT ;SUMTYPE" E-TDECL-POL
 REJECTION:BUFFER$ s" bad sumtype declaration" CONTAINS? TTRUE
 REJECTION:BUFFER$ s" layout policy not yet supported" CONTAINS? TTRUE
 
-\ C2: a declaration body over TDECL-CAP ($1000) reports the packet, not a raw
-\ die (the length check fires ahead of variant parsing, so repeats never matter).
-create TDT-BIG 8192 allot   variable TDT-BIG-U
-: TDT-BIG-C, ( n -- ) TDT-BIG TDT-BIG-U @ + c!  TDT-BIG-U @ 1+ TDT-BIG-U ! ;
-: TDT-BIG-APP ( ptr u8 n -- ) {: a:ptr u:n :}  u 0 ?do a i + c@ TDT-BIG-C, loop ;
-: TDT-BIG-SUM$ ( -- ptr u8 n )
-   0 TDT-BIG-U !
-   s" SUMTYPE tdbig<a> " TDT-BIG-APP
-   200 0 ?do s" VARIANT vvvvvvvvvvvvvvvvvvvv n ;VARIANT " TDT-BIG-APP loop
-   s" ;SUMTYPE" TDT-BIG-APP
-   TDT-BIG TDT-BIG-U @ ;
-TDT-BIG-SUM$ E-TDECL-CAP TDT-NEG
+\ No byte count caps a declaration's body: the fixture's 4.7 KB SUMTYPE loads,
+\ and its constructor and derived HASH run.
+require test/fixtures/big-decl.f
+: BIGSUM-HASH ( -- bool )
+   5 BIG-BIGSUM:V7 BIG-BIGSUM:HASH 5 BIG-BIGSUM:V7 BIG-BIGSUM:HASH = ;
+BIGSUM-HASH TTRUE
 
 \ multi-error load mode: a bad top-level declaration is reported + counted +
 \ rolled back, without a fake declared signature, and the load continues.

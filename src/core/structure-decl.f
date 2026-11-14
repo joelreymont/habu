@@ -396,7 +396,7 @@ SD-QUOT-INSTALL
    na nu NAME-LONG? IF TF-NAME-LONG$ E-CAP DECL-REJECT:REJECT throw THEN
    na nu REQUIRE-FIELD-NAME
    OUTCOME-NAMES @ 0 <> IF
-      na nu s" structure field names exceed declaration window" NAME-CHECK THEN
+      na nu NAME-CHECK THEN
    0 FIELD-MISS !  0 POINTEE !
    NEXT RESOLVE-TYPE {: node:n :}
    FIELD-MISS @ 0= IF na nu node EMIT-FIELD THEN

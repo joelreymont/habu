@@ -173,7 +173,7 @@ ED-RESET
    {: na:ptr nu:n :}
    na nu NAME-LONG? IF TF-NAME-LONG$ E-CAP DECL-REJECT:REJECT throw THEN
    OUTCOME-NAMES @ 0 <> IF
-      na nu s" enum field names exceed declaration window" NAME-CHECK THEN
+      na nu NAME-CHECK THEN
    0 FIELD-MISS !
    NEXT RESOLVE-TYPE {: node:n :}
    FIELD-MISS @ 0= IF na nu node EMIT-FIELD THEN ;
