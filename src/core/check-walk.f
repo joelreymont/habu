@@ -356,30 +356,35 @@
    THEN
    0 CONM ! ;
 
-\ The handle, pushed as a string literal is, then the call, judged as a call
-\ the body spelled.
+\ The call, judged as a call the body spelled.
 : POSTPONE-CALL ( ptr n n -- ) {: run:ptr sym:n :}
-   -1 PPAY-ON !  -1 POST-ON !
-   s" [package]" PE-SYM-OF PRIM-FIRST-SYM E-PTR EFF-APPLY
+   -1 POST-ON !
    run sym CALL-PRESET
    DCUR @ XE-PD !  RCUR @ XE-PR !
    run CHECKER-RESOLVE:CK-REC-NAME$ DO-TOK
    OK @ IF THROW-CUR? IF CALL-THROW-EDGE THEN THEN ;
 
+: POSTPONE-IMM ( ptr n -- ) {: rec:ptr :}
+   rec FACTS-READ-XT
+   rec REC-HOME-SYM {: sym:n :}
+   sym 0= IF POSTPONE-UNDEFINED EXIT THEN
+   CHECKER-TAPE:K-OPERAND POST-KIND !  0 POST-A0 !
+   rec sym POSTPONE-CALL ;
+
+\ compile,'s input is a quotation of any effect: W's effect is judged where
+\ the made word is checked.
 : POSTPONE-TOK ( -- )
    IS-TARGET-TOK? 0= IF IS-FAIL EXIT THEN
    -1 CRTGT !                              \ a refusal names the operand, as a tick's does
-   POSTPONE-RUN-REC {: run:ptr sym:n :}
-   IS-TA@ IS-TU @ s" ;" CORE-STR= IF
-      0 POST-ENSURE  0 POST-U !  s" end" POST+
-      run sym POSTPONE-CALL EXIT
-   THEN
-   POSTPONE-TARGET {: rec:ptr :}
+   POSTPONE-TARGET {: rec:ptr sym:n :}
    rec NULL-PTR = IF POSTPONE-UNDEFINED EXIT THEN
-   rec REC-HOME {: pa:ptr pu:n vis:n homed:bool :}
-   homed 0= IF POSTPONE-UNDEFINED EXIT THEN
-   pa pu vis rec CHECKER-RESOLVE:CK-REC-NAME$ POST-HANDLE!
-   run sym POSTPONE-CALL ;
+   rec POSTPONE-IMM? IF rec POSTPONE-IMM EXIT THEN
+   TKF TKFU @ UNSAFE-TOK? IF TICK-PIN REJECT-UNSAFE EXIT THEN
+   sym TICK-REFUSED? IF EXIT THEN
+   CHECKER-TAPE:K-TICK POST-KIND !
+   rec CHECKER-RESOLVE:REC>INDEX POST-A0 !
+   FREE-QUOT BTICK-PUSH
+   COMPILE-CALL-REC POSTPONE-CALL ;
 
 \ The steps of a token no keyword, mode or literal form took, a call's or a
 \ number's; a call's binding is made on the first ask.
@@ -541,12 +546,6 @@ public
 \ bytes: each row's span in the listing is its token, and its kind picks the
 \ step that parsed source reaches by spelling. A CALL binds the record the
 \ definer found, so nothing the building package defines captures it.
-BODY-ITEMS:BASE-CELL RESERVED-PTR-U8-CELL ITEM-BLOCK
-
-: ITEM-CELL@ ( n n -- n ) {: i:n f:n :}
-   ITEM-BLOCK @  i BODY-ITEMS:ROW * f + cells +  cell-view @ ;
-
-: ITEM-COUNT ( -- n ) data-base BODY-ITEMS:COUNT-CELL + @ ;
 
 \ The items stand for the text walked: it is the pending definition's body
 \ text, no text an item does not span joined it, and the last item ends it.
@@ -554,24 +553,25 @@ BODY-ITEMS:BASE-CELL RESERVED-PTR-U8-CELL ITEM-BLOCK
    data-base PEND-CELL + @ 0= IF RES-FALSE EXIT THEN
    TBASE@ NULL-PTR -  data-base BODY-TEXT:BASE-CELL + @ <> IF RES-FALSE EXIT THEN
    data-base BODY-ITEMS:RAW-CELL + @ 0 <> IF RES-FALSE EXIT THEN
-   ITEM-COUNT {: n:n :}
+   CHECKER-ITEMS:ITEM-COUNT {: n:n :}
    n 0= IF RES-FALSE EXIT THEN
-   n 1 - BODY-ITEMS:OFF ITEM-CELL@  n 1 - BODY-ITEMS:LEN ITEM-CELL@ +  1 +
+   n 1 - BODY-ITEMS:OFF CHECKER-ITEMS:ITEM-CELL@
+   n 1 - BODY-ITEMS:LEN CHECKER-ITEMS:ITEM-CELL@ +  1 +
    TBLEN @ = ;
 
 : ITEM-SPAN ( n -- ) {: i:n :}
    TI @ CUR-GAP !
-   i BODY-ITEMS:OFF ITEM-CELL@ TSTART !
-   TSTART @  i BODY-ITEMS:LEN ITEM-CELL@ +  TI ! ;
+   i BODY-ITEMS:OFF CHECKER-ITEMS:ITEM-CELL@ TSTART !
+   TSTART @  i BODY-ITEMS:LEN CHECKER-ITEMS:ITEM-CELL@ +  TI ! ;
 
 \ A signature's span holds its parentheses, and the byte walk's paren branch
 \ reads inside them.
 : ITEM-SIG ( n -- bool ) {: i:n :}
    TI @ CUR-GAP !
-   i BODY-ITEMS:OFF ITEM-CELL@ TI !
+   i BODY-ITEMS:OFF CHECKER-ITEMS:ITEM-CELL@ TI !
    CUR-PAREN-AT
    TI @ 1 + TSTART !
-   TI @  i BODY-ITEMS:LEN ITEM-CELL@ +  1 - TI !
+   TI @  i BODY-ITEMS:LEN CHECKER-ITEMS:ITEM-CELL@ +  1 - TI !
    PAREN-SIG? IF RES-TRUE EXIT THEN
    TI @ 1 + TI !
    CUR-PAREN
@@ -602,10 +602,10 @@ BODY-ITEMS:BASE-CELL RESERVED-PTR-U8-CELL ITEM-BLOCK
    TSTART @ TADDR  TI @ TSTART @ -  {: a:ptr u:n :}
    a u DO-TOK-HEAD
    {: unj unsafe ok-in unck-in pin-in :}
-   i BODY-ITEMS:KIND ITEM-CELL@ {: kind:n :}
+   i BODY-ITEMS:KIND CHECKER-ITEMS:ITEM-CELL@ {: kind:n :}
    kind BODY-ITEM-KIND:NAME = IF NAME-TOK ELSE
-   kind BODY-ITEM-KIND:CALL = IF a u  i BODY-ITEMS:A ITEM-CELL@  ITEM-CALL ELSE
-   kind BODY-ITEM-KIND:INT = IF i BODY-ITEMS:A ITEM-CELL@ ITEM-INT ELSE
+   kind BODY-ITEM-KIND:CALL = IF a u  i BODY-ITEMS:A CHECKER-ITEMS:ITEM-CELL@  ITEM-CALL ELSE
+   kind BODY-ITEM-KIND:INT = IF i BODY-ITEMS:A CHECKER-ITEMS:ITEM-CELL@ ITEM-INT ELSE
       s" checker: an item of no kind the walk knows" 76 die
    THEN THEN THEN
    a u unj unsafe ok-in unck-in pin-in DO-TOK-TAIL ;
@@ -614,8 +614,8 @@ BODY-ITEMS:BASE-CELL RESERVED-PTR-U8-CELL ITEM-BLOCK
    0 SPAY-S !
    EV-START
    TAPE-FEED? IF TBASE@ TBLEN @ CHECKER-TAPE:SCAN THEN
-   ITEM-COUNT 0 ?DO
-      i BODY-ITEMS:KIND ITEM-CELL@ BODY-ITEM-KIND:SIG = IF
+   CHECKER-ITEMS:ITEM-COUNT 0 ?DO
+      i BODY-ITEMS:KIND CHECKER-ITEMS:ITEM-CELL@ BODY-ITEM-KIND:SIG = IF
          i ITEM-SIG IF UNLOOP EXIT THEN
       ELSE
          i ITEM-SPAN

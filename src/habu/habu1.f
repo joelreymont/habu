@@ -1493,6 +1493,14 @@ private
    s" E-TASK-COMPILE habu: postponed from a task" B-TASK-GUARD
    9 DATA PROVIDED-XT:POSTPONE-CELL LDR,  9 BR, ;
 
+: B-COMPILE ( -- )
+   s" E-TASK-COMPILE habu: compile, from a task" B-TASK-GUARD
+   9 DATA PROVIDED-XT:COMPILE-CELL LDR,  9 BR, ;
+
+: B-END ( -- )
+   s" E-TASK-COMPILE habu: ; from a task" B-TASK-GUARD
+   9 DATA PROVIDED-XT:END-CELL LDR,  9 BR, ;
+
 : BCREATE ( -- )
    s" E-TASK-COMPILE habu: create from a task" B-TASK-GUARD
    15 0 MOVZ,  16 20 CREATEP-CELL LDR,  16 BLR, ;   \ ( "name" -- ) runtime CREATE via the
@@ -4035,6 +4043,8 @@ package ENGINE-EMIT
    s" body-append" ['] B-BODY-APPEND FPRIM-L
    s" literal" ['] B-LITERAL FPRIM-L
    s" postponed" ['] B-POSTPONED FPRIM-L
+   s" compile," ['] B-COMPILE FPRIM-L
+   s" ;" ['] B-END FPRIM-L
    s" evaluate-closed" ['] B-EVAL-CLOSED FPRIM
    s" source-file-run" ['] B-SOURCE-FILE-RUN ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID ;
 

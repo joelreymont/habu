@@ -116,10 +116,17 @@ private
    loop
    0 0= 0= ;
 
+\ DNAME-IMM for an immediate row.
+: IMM-BIT ( ptr u8 n -- n )
+   PRIM-SPEC:FIND {: row:n :}
+   row 0 < if 0 exit then
+   row PRIM-SPEC:IMMEDIATE? if DNAME-IMM else 0 then ;
+
 public
 
 : DNAME ( n -- n ) {: idx:n :}
    idx NAME-LEN  idx NAME$ MIN-IN-BITS or
+   idx NAME$ IMM-BIT or
    idx WID {: wid:n :}
    wid OWNER-API-PRI-WID =  wid GLOBAL-INT-WID = or if DNAME-INT or then
    wid GLOBAL-INT-WID = if

@@ -1111,7 +1111,7 @@ DYNAMIC-BUFFER RS-V vreg     \ reserved to EMIT-VREGS by RESET-STATE: one
 \ An operand bound to no record, or one NDICT:TICK-REFUSED? refuses, is undefined
 \ (MISSING), even in an unchecked body (THE EVENTS).
 : DO-TICK ( n -- ) {: r:n :}
-   NEXT$ {: a:ptr u:n :}
+   ORD @ ROW$ {: a:ptr u:n :}
    r 0< if -1 MISSING !  a u UNSUPPORTED then
    r XREF-REC {: rec:ptr :}
    rec NDICT:TICK-REFUSED? if -1 MISSING !  a u UNSUPPORTED then
@@ -1223,7 +1223,7 @@ CAST: XT>N ( xt -- n )
 
 : DO-IS ( n n -- ) {: r:n loc:n :}
    ORD @ ROWS @ >= if ORD @ 1- ROW$ E-T0-DEFER REFUSE then
-   NEXT$ {: a:ptr u:n :}             \ the operand
+   ORD @ ROW$ {: a:ptr u:n :}        \ the operand
    r 0< if a u E-T0-DEFER REFUSE then
    r XREF-REC NDICT:REC-DEFER-CELL {: cell:n :}
    cell 0= if a u E-T0-DEFER REFUSE then
@@ -1675,7 +1675,7 @@ variable OP-REC                      \ the last of them
    at NDICT:CALL-EXTRAS 0 ?do  at i NDICT:CALL-EXTRA PUSH-CONST  loop
    to loc DO-CALL ;
 
-: NAME-TOKEN ( ptr u8 n n n -- )
+: CALL-TOKEN ( ptr u8 n n n -- )
    {: a:ptr u:n r:n loc:n :}
    r 0< if -1 MISSING !  a u UNSUPPORTED then
    r XREF-REC {: rec:ptr :}
@@ -1683,12 +1683,18 @@ variable OP-REC                      \ the last of them
    r OP-CODE {: code:n :}
    code 0<> if a code to INLINE if exit then then
    rec XREF-FLAGS {: flags:n :}
-   flags DNAME-IMM and 0<> if a u IMM-TOKEN exit then
    flags DNAME-INT and 0<> if
       flags NDICT:INT-CALL? 0= if -1 MISSING !  a u UNSUPPORTED then
    then
    to 0= if a u UNSUPPORTED then
    to flags DKIND:MASK and r loc WORD-CALL ;
+
+: NAME-TOKEN ( ptr u8 n n n -- )
+   {: a:ptr u:n r:n loc:n :}
+   r 0 >= if
+      r XREF-REC XREF-FLAGS DNAME-IMM and 0<> if a u IMM-TOKEN exit then
+   then
+   a u r loc CALL-TOKEN ;
 
 \ The row at the cursor, which the walk then passes, by the event the checker
 \ filed for it (THE EVENTS). A string or character literal's span is its
@@ -1702,6 +1708,7 @@ variable OP-REC                      \ the last of them
    event STRING-KIND? if k DO-STRING exit then
    event case
       CHECKER-TAPE:K-NAME of a u a0 loc NAME-TOKEN endof
+      CHECKER-TAPE:K-CALL of a u a0 loc CALL-TOKEN endof
       CHECKER-TAPE:K-INT of a0 PUSH-CONST endof
       CHECKER-TAPE:K-REAL of a0 PUSH-CONST endof
       CHECKER-TAPE:K-CHAR of k DO-CHAR endof

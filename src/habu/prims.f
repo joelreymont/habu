@@ -90,6 +90,7 @@ $1000 constant CODE-CAP
 
 1 constant FL-TRUSTED-ONLY
 2 constant FL-FIXED-ABI
+4 constant FL-IMMEDIATE
 
 create ROWS  ROW-CAP ROW-CELLS * cells allot
 create NAMES NAME-CAP allot
@@ -240,6 +241,11 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
    ROW-N @ 0 <= IF s" prims: trusted-only before any row" SPEC-RC die THEN
    ROW-N @ 1 - F-FLAGS ROW-FIELD dup @ FL-TRUSTED-ONLY or swap ! ;
 
+\ The just-written row's primitive is immediate.
+: EIMMEDIATE! ( -- )
+   ROW-N @ 0 <= IF s" prims: immediate before any row" SPEC-RC die THEN
+   ROW-N @ 1 - F-FLAGS ROW-FIELD dup @ FL-IMMEDIATE or swap ! ;
+
 \ The machine body uses the row's widths and glue without instantiating them.
 : EFIXED-ABI! ( -- )
    ROW-N @ 0 <= IF s" prims: fixed ABI before any row" SPEC-RC die THEN
@@ -302,6 +308,9 @@ public
 
 : FIXED-ABI? ( n -- bool )
    F-FLAGS ROW-FIELD @ FL-FIXED-ABI and 0 <> ;
+
+: IMMEDIATE? ( n -- bool )
+   F-FLAGS ROW-FIELD @ FL-IMMEDIATE and 0 <> ;
 
 : MIN-IN ( n -- n )
    F-MIN-IN ROW-FIELD @ ;
@@ -731,6 +740,14 @@ EPRIM: literal PE-N PE-IN EPRIM;
 EPRIM: postponed PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
 EPPRIM: INTERPRETER postponed PE-PTR-U8 PE-IN PE-N PE-IN ECLOSE-PRIVATE
+\ compile, ( [ R -- S ] -- ): append a call of the word whose entry the
+\ quotation is to the definition define-word opened; it refuses when none is
+\ open.
+EPRIM: compile, PE-QANY EPRIM;
+\ ; ( -- ): end the definition define-word opened, as `;` ends a colon
+\ definition; it refuses when none is open.
+EPRIM: ; EPRIM;
+EIMMEDIATE!
 \ trust-sig! ( ptr u8 n -- ): the pending definition's signature span into
 \ TSIG-A and TSIG-U. It refuses when no definition is pending.
 EPRIM: trust-sig! PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;

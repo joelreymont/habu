@@ -1276,11 +1276,6 @@ variable TOK-BODY-RAW
 \ and `defer` heads' alone.
 TRUSTED: DEF-TRUST-SIG ( ptr u8 n -- ) trust-sig! ;
 
-\ The checker's postponed rows (`postpone`) have no checked row.
-TRUSTED: DEF-POSTPONED-CLEAR ( -- ) CHECKER-POSTPONE:CLEAR ;
-TRUSTED: DEF-POSTPONED-CUT ( n -- ) CHECKER-POSTPONE:CUT ;
-TRUSTED: DEF-POSTPONED-ADD ( n n -- ) CHECKER-POSTPONE:ADD ;
-
 \ The block BODY-ITEMS describes. CAP-CELL is 0 outside a definition, so each
 \ definition's first item reserves the block again, as it must after a capture
 \ released it.
@@ -1310,8 +1305,8 @@ public
 \ Ending or abandoning a definition also ends the capture's lexical state.
 \ x86-64's def-close leaves the locals count, so `;` clears it here.
 : DEF-CLOSE ( -- )
-   def-close  0 LOCN-CELL CELL!  BODY-LEX-RESET  DEF-POSTPONED-CLEAR  ITEMS-RESET ;
-: DEF-ABORT ( -- ) def-abort BODY-LEX-RESET  DEF-POSTPONED-CLEAR  ITEMS-RESET ;
+   def-close  0 LOCN-CELL CELL!  BODY-LEX-RESET  ITEMS-RESET ;
+: DEF-ABORT ( -- ) def-abort BODY-LEX-RESET  ITEMS-RESET ;
 private
 
 \ The engine's cells hold the compiler entries, the body hook and the checker's
@@ -1920,7 +1915,7 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
 
 \ ---- definitions built by a running word -------------------------------------
 \ The source cursor stays at the running definer's call, where a refusal of
-\ define-word, literal, postpone or body-append locates.
+\ define-word, literal, body-append, compile, or ; locates.
 
 \ WHO names the operation refused: `define-word`, or a declaration's child.
 : DEF-NAME-REFUSE ( ptr u8 n ptr u8 n -- ) {: w:ptr wu:n a:ptr u:n :}
@@ -1994,16 +1989,22 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    rec XREF-FOUND? 0= if a u UNDEFINED-NAME then
    rec ;
 
+\ The current namespace's record of the name in the package path's public
+\ section, or its private one.
+: HOME-REC ( ptr u8 n bool ptr u8 n -- ptr n )
+   {: pa:ptr pu:n pub:bool t:ptr tu:n :}
+   pa pu BOOT:NAMESPACE-WL WL-PROBE {: row:ptr :}
+   row XREF-FOUND? 0= if pa pu UNDEFINED-NAME then
+   pub if t tu row XREF-PKG-PUBLIC HANDLE-PROBE exit then
+   t tu row XREF-PKG-PRIVATE HANDLE-PROBE ;
+
 \ The record a handle names in this dictionary: `global TAIL`, or `public` or
 \ `private` then the package's path and TAIL.
 : HANDLE-REC ( ptr u8 n -- ptr n ) {: h:ptr hu:n :}
    h hu HANDLE-SPLIT {: k:ptr ku:n r:ptr ru:n :}
    k ku s" global" STR= if r ru BOOT:GLOBAL-WL HANDLE-PROBE exit then
    r ru HANDLE-SPLIT {: pa:ptr pu:n t:ptr tu:n :}
-   pa pu BOOT:NAMESPACE-WL WL-PROBE {: row:ptr :}
-   row XREF-FOUND? 0= if pa pu UNDEFINED-NAME then
-   k ku s" public" STR= if t tu row XREF-PKG-PUBLIC HANDLE-PROBE exit then
-   t tu row XREF-PKG-PRIVATE HANDLE-PROBE ;
+   pa pu  k ku s" public" STR=  t tu HOME-REC ;
 
 : BUILT-PENDING ( ptr u8 n -- ) {: a:ptr u:n :}
    PEND-CELL CELL@ 0<> if exit then
@@ -2016,20 +2017,54 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    -1 BODY-ITEMS:RAW-CELL CELL!
    a u DEF-CAPTURE ;
 
-\ What `postponed` runs: `end` ends the definition, abandoning it if the end
-\ throws; any other handle appends its record's name, which the checker binds.
+\ What `;` runs: it ends the definition, abandoning it if the end throws.
+: END-RUN ( -- )
+   s" ;" BUILT-PENDING
+   [: DEF-END ;] catch {: rc:n :}
+   rc 0<> if DEF-ABORT rc throw then ;
+
+\ A quotation is its code's entry, which a word's tick shares with its record.
+CAST: QUOT-ENTRY ( [ R -- S ] -- n )
+
+: NAMELESS-REFUSE ( -- )
+   s" E-NAMELESS-WORD" REFUSAL
+   s" compile, of a quotation no named word enters" ERROR-TEXT:TYPE
+   NL 1 ERROR-TEXT:TYPE  RC-REJECT throw ;
+
+\ Refuses a call of a retired word, and of a package word whose package is
+\ not in the current namespace.
+: CALLEE-CHECK ( ptr n -- ) {: r:ptr :}
+   r XREF-WORDLIST {: wid:n :}
+   wid XREF-RETIRED-WL = if r XREF-NAME$ UNDEFINED-NAME then
+   wid WL:GLOBAL? if exit then
+   wid XREF:NS-ROW nip if exit then
+   E-COMP-STATE throw ;
+
+\ Appends a call of the word at entry E, which the checker binds.
+: COMPILE-CALL ( n -- ) {: e:n :}
+   e XREF:ENTRY-REC {: r:n :}
+   r -1 = if NAMELESS-REFUSE then
+   r XREF-REC {: rec:ptr :}
+   rec CALLEE-CHECK
+   BODY-ITEM-KIND:CALL r 0 rec XREF-NAME$ ITEM+ ;
+
+\ What `compile,` runs: it calls the word whose entry the quotation is,
+\ abandoning the definition if the call is refused.
+: COMPILE-RUN ( [ R -- S ] -- )
+   s" compile," BUILT-PENDING
+   QUOT-ENTRY {: e:n :}
+   [: e COMPILE-CALL ;] catch {: rc:n :}
+   rc 0<> if DEF-ABORT rc throw then ;
+
+\ What `postponed` runs, for a definer an engine older than `compile,` compiled:
+\ `end` ends the definition as `;` does; any other handle appends a call of its
+\ record, which the checker binds.
 : POSTPONE-RUN ( ptr u8 n -- ) {: h:ptr hu:n :}
    s" postpone" BUILT-PENDING
-   h hu s" end" STR= if
-      [: DEF-END ;] catch {: rc:n :}
-      rc 0<> if DEF-ABORT rc throw then
-      exit
-   then
+   h hu s" end" STR= if END-RUN exit then
    h hu HANDLE-REC {: rec:ptr :}
-   BODYLEN-CELL CELL@ {: at:n :}
    rec XREF-NULL - XREF-ADDR>INDEX {: ix:n :}
-   BODY-ITEM-KIND:CALL ix 0 rec XREF-NAME$ ITEM+
-   at ix DEF-POSTPONED-ADD ;
+   BODY-ITEM-KIND:CALL ix 0 rec XREF-NAME$ ITEM+ ;
 
 \ A cell's decimal spelling, written from the end of LIT-DIGITS: 20 bytes
 \ hold any i64 and its sign. `/` truncates, so a negative value's remainders
@@ -2729,7 +2764,6 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
 
 : FRAME-ROLLBACK-TOKEN ( -- )
    TOKBODY-CELL CELL@ BODYLEN-CELL CELL!
-   TOKBODY-CELL CELL@ DEF-POSTPONED-CUT
    TOKBODY-CELL CELL@ ITEMS-CUT
    TOKLOCN-CELL CELL@ LOCN-CELL CELL!
    TOK-BODY-DEPTH @ BODY-DEPTH !
@@ -2878,6 +2912,8 @@ public
    ['] DEFINE-RUN data-base PROVIDED-XT:DEFINE-CELL + xt!
    ['] APPEND-RUN data-base PROVIDED-XT:APPEND-CELL + xt!
    ['] POSTPONE-RUN data-base PROVIDED-XT:POSTPONE-CELL + xt!
+   ['] COMPILE-RUN data-base PROVIDED-XT:COMPILE-CELL + xt!
+   ['] END-RUN data-base PROVIDED-XT:END-CELL + xt!
    ['] CHILD-RUN data-base PROVIDED-XT:CHILD-CELL + xt!
    ['] CHECK:STORAGE-LINE data-base PROVIDED-XT:STORAGE-LINE-CELL + xt!
    ['] LITERAL-RUN data-base PROVIDED-XT:LITERAL-CELL + xt!

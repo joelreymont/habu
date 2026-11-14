@@ -2510,13 +2510,20 @@ sections above.
   could not state is `E-NOT-EFFECT`; a spelling that names no family is
   `E-UNKNOWN-SIGNATURE-TYPE`; with a definition open it is `E-DEFINITION-OPEN`.
   In the definer's body `postpone W` appends W bound to the record W names
-  there, by its home (the global wordlist, or a package's public or private
-  one), so no word the running package defines captures it; `postpone ;` ends
-  the definition as its `;` would. `body-append ( ptr u8 n -- )` appends text,
-  whose names bind where the definition is built. Either with no definition
-  open is `E-NO-DEFINITION`. `postpone` is syntax, never a definition name. One
-  limit: the binding is kept as home and spelling, so after `undefine W` and a
-  new W, a definer compiled before appends the new W.
+  there, so no word the running package defines captures it, and is refused
+  where `['] W` is; when W is immediate it compiles a call of W, so
+  `postpone ;` ends the definition as its `;` would. `body-append
+  ( ptr u8 n -- )` appends text, whose names bind where the definition is
+  built; an immediate word in it, `;` included, is `E-UNMODELED-IMMEDIATE`
+  unless `parse-imm` declares it stack-neutral, while keywords such as `if`
+  compile. `compile, ( [ R -- S ] -- )` appends a call of the word whose entry
+  the quotation is: a primitive's tick is an `xt`, which it refuses, and a
+  quotation no named word enters is `E-NAMELESS-WORD`. `; ( -- )` ends the
+  definition. Any of them with no definition open is `E-NO-DEFINITION`, and a
+  refusal at `compile,` or at the end abandons the definition. `postpone` is
+  syntax, never a definition name. One limit: after `undefine W`, a definer
+  compiled before refuses W, whose record is retired, instead of appending the
+  new W.
 - **Top-level source checking follows source order without executing it.** A
   token outside a known declaration is resolved as the loader would resolve
   it. Numbers use the engine's parser; `-3`, `$FF` and `1.5` are literals,

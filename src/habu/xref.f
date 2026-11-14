@@ -488,21 +488,35 @@ private
    rec XREF-WORDLIST BOOT:NAMESPACE-WL =
    rec XREF-PKG-PUBLIC wid =  rec XREF-PKG-PRIVATE wid =  or  and ;
 
+\ Whether rec is named and enters at xt.
+: NAMED-AT? ( ptr n n -- bool ) {: rec:ptr xt:n :}
+   rec XREF-START xt =  rec XREF-NAME-LEN 0 >  and ;
+
 public
-\ Whether wid is the public or private wordlist of a live package whose record
-\ is SEALED?. namespace-record and namespace-private mint a package's wids from
-\ WIDN-CELL, which counts up from FIRST-DYNAMIC-WID, so a lower wid is no
-\ package's and answers without walking the dictionary. A build's global and
-\ types wordlists are dynamic too (linker.f MOVE-IN), and interpreter.f
-\ PKG-WID-SEALED? answers those before it asks here.
-: WID-SEALED? ( n -- bool ) {: wid:n :}
-   wid FIRST-DYNAMIC-WID < if XREF-FALSE exit then
+\ The oldest named record entering at xt, -1 for none: an alias shares its
+\ source's entry, and a stripped private original has no name.
+: ENTRY-REC ( n -- n )
+   {: xt:n :}
+   ndict@ 0 ?do
+      i XREF-REC xt NAMED-AT? if i unloop exit then
+   loop
+   -1 ;
+
+\ The live namespace row whose public or private wordlist is wid. Package
+\ wids count up from FIRST-DYNAMIC-WID, so a lower wid answers at once.
+: NS-ROW ( n -- ptr n bool ) {: wid:n :}
+   wid FIRST-DYNAMIC-WID < if XREF-NULL XREF-FALSE exit then
    ndict@ 1-
    begin dup 0 >= while
-      dup XREF-REC wid NS-WID? if XREF-REC SEALED? exit then
+      dup XREF-REC wid NS-WID? if XREF-REC XREF-TRUE exit then
       1-
    repeat drop
-   XREF-FALSE ;
+   XREF-NULL XREF-FALSE ;
+
+\ Whether wid is the public or private wordlist of a live package whose record
+\ is SEALED?.
+: WID-SEALED? ( n -- bool )
+   NS-ROW if SEALED? else drop XREF-FALSE then ;
 
 ;package
 

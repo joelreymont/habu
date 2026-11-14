@@ -2390,6 +2390,8 @@ public
    s" literal" [: REFUSE-BODY ;] PRIM
    s" postponed" [: REFUSE-BODY ;]
       ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" compile," [: REFUSE-BODY ;] PRIM
+   s" ;" [: REFUSE-BODY ;] PRIM
    s" create" [: CREATE-BODY ;] PRIM
    s" parse-name" [: PARSE-NAME-BODY ;] PRIM
    s" num-parse" [: NUM-PARSE, ;] PRIM

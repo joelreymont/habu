@@ -407,20 +407,13 @@ TKA-CELL RESERVED-PTR-U8-CELL READ-AT
    s" undefined word '" ERROR-TEXT:TYPE  a u ERROR-TEXT:TYPE
    S\" '\n" ERROR-TEXT:TYPE ;
 
-\ The first record entering at xt: an alias shares its source's entry.
-: ENTRY-REC ( n -- n )
-   {: xt:n :}
-   ndict@ 0 ?do
-      i XREF-REC XREF-START xt = if i unloop exit then
-   loop
-   E-COMP-STATE throw ;
-
 public
 
 \ The record entering at xt has no host code: a cross-build's host routine for
 \ it ends here, placed on the cursor's line.
 : TARGET-ERROR ( n -- )
-   ENTRY-REC {: r:n :}
+   XREF:ENTRY-REC {: r:n :}
+   r -1 = if E-COMP-STATE throw then
    SRCLOC:FILE-BUFFER? if
       FILE-START @ SRCLOC:CURSOR @ ERROR-TEXT:LINE
    else 0 then {: ln:n :}

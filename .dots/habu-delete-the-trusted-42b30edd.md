@@ -22,8 +22,8 @@ Engine, src/habu/habu2.f. TRUSTED-CELL is accessed in:
 - EM-ABORT-COMPILE-STATE (2352; store at 2366)
 
 src/habu/interpreter.f:
-- TRUSTED-CELL in DEF-HEAD (1660; store at 1670) and DEF-PREFLIGHT (1782).
-- The TRUSTED: writer boundaries: DEF-TRUST-SIG (1289), DEF-POSTPONED-CLEAR, DEF-POSTPONED-CUT and DEF-POSTPONED-ADD (1292-1294), DEF-PREFIX-BIND (1898) and DEF-XT! (2379).
+- TRUSTED-CELL in DEF-HEAD (1633; store at 1642) and DEF-PREFLIGHT (1754; store at 1755).
+- The TRUSTED: writer boundaries: DEF-TRUST-SIG (1268), DEF-PREFIX-BIND (1870) and DEF-XT! (2368).
 
 Checker, src/core/checker.f:
 - PE-TRUSTED-ONLY (7198), PE-TRUSTED-ONLY? (11516) and PRIM-TRUSTED-ONLY! (11575).

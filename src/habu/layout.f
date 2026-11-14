@@ -504,11 +504,13 @@ package PROVIDED-XT
 public
 $3848 constant EVALUATE-CELL
 $3860 constant EVALUATE-RANGE-CELL
-\ `define-word`, `body-append`, `postponed` and `literal` run the running
-\ engine's interpreter words these cells hold.
+\ `define-word`, `body-append`, `postponed`, `compile,`, `;` and `literal` run
+\ the running engine's interpreter words these cells hold.
 $3878 constant DEFINE-CELL
 $3880 constant APPEND-CELL
 $3888 constant POSTPONE-CELL
+$3890 constant COMPILE-CELL
+$38B8 constant END-CELL
 $3898 constant LITERAL-CELL
 \ A declaration makes each child word through CHILD-CELL's CHILD-RUN, with a
 \ CHILD-ABI shape code; a definer reads the cell, since inside a build a name

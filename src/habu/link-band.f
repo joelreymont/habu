@@ -155,7 +155,7 @@ variable UNSAFE-COUNT
 
 \ The kernel words a stripped program cannot run: it has no dictionary to read
 \ or write, no writable code and no interpreter for the evaluate words,
-\ body-append, literal and postponed.
+\ body-append, literal, postponed, compile, and ;.
 : UNSAFE-NAME? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    a u s" create" XREF-STR=CI
@@ -184,7 +184,9 @@ variable UNSAFE-COUNT
    a u s" evaluate-closed" XREF-STR=CI or
    a u s" body-append" XREF-STR=CI or
    a u s" literal" XREF-STR=CI or
-   a u s" postponed" XREF-STR=CI or ;
+   a u s" postponed" XREF-STR=CI or
+   a u s" compile," XREF-STR=CI or
+   a u s" ;" XREF-STR=CI or ;
 
 
 : UNSAFE-TABLE ( -- )

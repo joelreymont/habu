@@ -1,16 +1,16 @@
 \ postpone-define.f - a definer builds a definition with define-word,
-\ body-append, literal and postpone, and each postponed word binds the word
-\ the definer found when it was compiled, whatever the building package
-\ defines: a global, the definer package's private word and its public one.
-\ The same body evaluated as text binds the building package's words, and
-\ body-append or literal with no definition open is refused. define-word takes
-\ the effect a definer built, a parametric one included, and refuses a type
-\ that is not an effect. A definition the checker refuses at the definer's
-\ postpone ; is abandoned, and the next definition compiles. An effect holds
-\ at most 23 type parameters, numbered per effect however many the file made
-\ before. A STRUCTURE's AT answers its element in a package with its own `*`
-\ and `record-at`. The file is also a build source: MAIN prints the four
-\ answers.
+\ body-append, literal, compile, and postpone, and each postponed or compiled
+\ word binds the word the definer found when it was compiled, whatever the
+\ building package defines: a global, the definer package's private word and
+\ its public one. The same body evaluated as text binds the building
+\ package's words, and body-append, literal or compile, with no definition
+\ open is refused. define-word takes the effect a definer built, a parametric
+\ one included, and refuses a type that is not an effect. A definition the
+\ checker refuses at the definer's postpone ; is abandoned, and the next
+\ definition compiles. An effect holds at most 23 type parameters, numbered
+\ per effect however many the file made before. A STRUCTURE's AT answers its
+\ element in a package with its own `*` and `record-at`. The file is also a
+\ build source: MAIN prints the four answers.
 
 require src/lib/test.f
 require src/lib/adt/nullable.f
@@ -42,6 +42,13 @@ public
    N>N define-word
    postpone BUMP
    postpone DOUBLE
+   postpone ; ;
+
+\ MAKE-STEPPER through compile,.
+: MAKE-STEPPER2 ( ptr u8 n -- )
+   N>N define-word
+   ['] BUMP compile,
+   ['] DOUBLE compile,
    postpone ; ;
 
 \ : NAME ( -- n ) -6 7 * ;
@@ -104,11 +111,13 @@ private
 
 s" TRIPLE" POSTPONE-DEFINER:MAKE-TRIPLER
 s" STEP" POSTPONE-DEFINER:MAKE-STEPPER
+s" STEP2" POSTPONE-DEFINER:MAKE-STEPPER2
 s" NEG-ANSWER" POSTPONE-DEFINER:MAKE-NEG-ANSWER
 s" : TRIPLE-TEXT ( n -- n ) 3 * ;" evaluate-closed
 
 7 TRIPLE 21 T=
 7 STEP 16 T=
+7 STEP2 16 T=
 7 TRIPLE-TEXT 10 T=
 NEG-ANSWER -42 T=
 
@@ -159,6 +168,8 @@ IN-NOT-EFFECT 70 T=
 APPEND-NONE 0 T<>
 : LITERAL-NONE ( -- n ) [: 1 literal ;] catch ;
 LITERAL-NONE 70 T=
+: COMPILE-NONE ( -- n ) [: ['] DOUBLE compile, ;] catch ;
+COMPILE-NONE 70 T=
 
 : BROKEN ( -- n ) [: s" UNDERFLOW" POSTPONE-DEFINER:MAKE-BROKEN ;] catch ;
 BROKEN 70 T=

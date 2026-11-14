@@ -11799,10 +11799,13 @@ variable PE-QDOUT
    PE-Q ;PE-Q PE-IN
    PE-Q PE-N PE-QIN ;PE-Q PE-IN ;
 
-\ [ R -- S ]: two fresh data rows, as SIG-PARSE-QUOT builds them from that text.
+\ A quotation of any data effect: its data input and output are two unrelated
+\ fresh rows, its return input and output one fresh row.
+: FREE-QUOT ( -- n )
+   FRESH MK-ROW PE-QDIN !  FRESH MK-ROW PE-QDOUT !  ;PE-Q ;
+
 : PE-QANY ( -- )
-   FRESH MK-ROW PE-QDIN !  FRESH MK-ROW PE-QDOUT !
-   ;PE-Q PE-IN ;
+   FREE-QUOT PE-IN ;
 
 : PTABLE-START ( -- )
    NAV-CLEAR
@@ -14151,8 +14154,9 @@ public
 15 constant K-MATCH-END         \ a0: family id
 16 constant K-TICK              \ a0: the target's record index from 0, -1 for none
 17 constant K-IS                \ a0: the target's record index from 0, -1 for none
-18 constant K-OPERAND           \ consumed by its keyword, compiling nothing itself
+18 constant K-OPERAND           \ a keyword's operand, compiling nothing itself
 19 constant K-UNREACHED         \ a token no path reaches
+20 constant K-CALL              \ a0: a call's record index; compiled as a call whatever its flags
 
 ;package
 
@@ -16916,33 +16920,30 @@ defer NAMED-OPERAND-XT ( -- )
    sym CTL-FLAGS-SYM CTL-IDENTITY and ;
 
 
-\ ---- postponed tokens --------------------------------------------------------
-\ Each token `postpone` appended to the pending definition binds the record
-\ it was given, keyed by the token's offset in the body text. The rows belong
-\ to the record pending at the first ADD and apply to no other.
-PTR-VARIABLE PP-P   variable PP-CAP   variable PP-N   variable PP-OWNER
-2 constant PP-ROW
-
-package CHECKER-POSTPONE
+\ ---- the items of a built definition -----------------------------------------
+\ The items a definition define-word opened records as it is built.
+package CHECKER-ITEMS
+BODY-ITEMS:BASE-CELL RESERVED-PTR-U8-CELL ITEM-BLOCK
 public
-: CLEAR ( -- )
-   PP-CAP @ 0 > IF PP-P PP-CAP PP-ROW ARENA-ROWS-RELEASE THEN
-   0 PP-N !  0 PP-OWNER ! ;
+: ITEM-CELL@ ( n n -- n ) {: i:n f:n :}
+   ITEM-BLOCK @  i BODY-ITEMS:ROW * f + cells +  cell-view @ ;
 
-\ Drops the rows at or past body offset off, which a rolled-back token freed.
-: CUT ( n -- ) {: off:n :}
-   BEGIN
-      PP-N @ 0 > IF PP-P PP-N @ 1 - PP-ROW NAV-CELL @ off >= ELSE RES-FALSE THEN
-   WHILE PP-N @ 1 - PP-N ! REPEAT ;
+: ITEM-COUNT ( -- n ) data-base BODY-ITEMS:COUNT-CELL + @ ;
 
-\ Record index ix binds the token at body offset off.
-: ADD ( n n -- ) {: off:n ix:n :}
-   data-base PEND-CELL + @ {: pend:n :}
-   pend PP-OWNER @ <> IF 0 PP-N !  pend PP-OWNER ! THEN
-   PP-P PP-CAP PP-N @ 1 + PP-ROW ARENA-ROWS-ENSURE
-   PP-P PP-N @ PP-ROW NAV-CELL {: p:ptr :}
-   off p !  ix p CELL + !
-   PP-N @ 1 + PP-N ! ;
+\ The record of the CALL item spanning the u-byte token at offset off,
+\ NULL-PTR for none: items apply only to a walk of the pending definition's
+\ body text.
+: POSTPONED-REC ( n n -- ptr n ) {: off:n u:n :}
+   ITEM-COUNT 0= IF NULL-PTR EXIT THEN
+   TBASE@ NULL-PTR -  data-base BODY-TEXT:BASE-CELL + @ <> IF NULL-PTR EXIT THEN
+   ITEM-COUNT 0 ?DO
+      i BODY-ITEMS:KIND ITEM-CELL@ BODY-ITEM-KIND:CALL =
+      i BODY-ITEMS:OFF ITEM-CELL@ off =  and
+      i BODY-ITEMS:LEN ITEM-CELL@ u =  and IF
+         i BODY-ITEMS:A ITEM-CELL@ CHECKER-RESOLVE:REC-AT UNLOOP EXIT
+      THEN
+   LOOP
+   NULL-PTR ;
 ;package
 
 \ The package path and section of the wordlist record rec is in, found by the
@@ -16968,21 +16969,6 @@ public
    rec CHECKER-RESOLVE:CK-REC-NAME$ {: a:ptr u:n :}
    vis SYM-GLOBAL = IF a u CHECKER-GLOBAL-SYM? EXIT THEN
    pa pu vis a u CHECKER-PKG-SYM? ;
-
-\ The record the u-byte token at offset off was postponed to, NULL-PTR for
-\ none: rows apply only to a walk of their own pending definition's body text.
-: POSTPONED-REC ( n n -- ptr n ) {: off:n u:n :}
-   PP-N @ 0= IF NULL-PTR EXIT THEN
-   data-base PEND-CELL + @ PP-OWNER @ <> IF NULL-PTR EXIT THEN
-   TBASE@ NULL-PTR -  data-base BODY-TEXT:BASE-CELL + @ <> IF NULL-PTR EXIT THEN
-   PP-N @ 0 ?DO
-      PP-P i PP-ROW NAV-CELL {: p:ptr :}
-      p @ off = IF
-         p CELL + @ CHECKER-RESOLVE:REC-AT {: rec:ptr :}
-         rec CHECKER-RESOLVE:CK-REC-NAME$ nip u = IF rec UNLOOP EXIT THEN
-      THEN
-   LOOP
-   NULL-PTR ;
 
 \ The token is bound to nothing, as a number is.
 : BIND-CLEAR ( -- )
@@ -17025,7 +17011,7 @@ public
    BIND-CLEAR
    a u ALLDIG?  a u FLODIG?  or IF EXIT THEN
    BIND-START
-   TSTART @ u POSTPONED-REC {: prec:ptr :}
+   TSTART @ u CHECKER-ITEMS:POSTPONED-REC {: prec:ptr :}
    prec NULL-PTR <> IF prec BIND-PREC 0
    ELSE a u TOK-SPELL-A @ TOK-SPELL-U @ CHECKER-BIND-WHY THEN
    a u BIND-FILL ;
@@ -19978,8 +19964,12 @@ public
 
 : BODY-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u FORCED? IF RES-TRUE EXIT THEN
-   a u CHECKER-FIND-ACTIVE-SYM {: sym:n :}
-   sym CHECKER-FIND-USIG-SYM 0= IF RES-FALSE EXIT THEN
+   a u CHECKER-FIND-ACTIVE-SYM  BIND-REC @  {: sym:n rec:ptr :}
+   sym CHECKER-FIND-USIG-SYM 0= IF
+      rec NULL-PTR = IF RES-FALSE EXIT THEN
+      rec CK-REC-WID WL:PRIMITIVES <> IF RES-FALSE EXIT THEN
+      rec CK-REC-FLAGS-SLOT DICT-CELL@ DNAME-IMM and 0 <> EXIT
+   THEN
    a u NEUTRAL-PARSE-IMM? IF RES-FALSE EXIT THEN
    a u tok-imm? 0 <> ;
 
@@ -20519,7 +20509,7 @@ variable IS-PEND-U                   \ and its length
 \ The symbol the swallowed target names: its fold resolves, and the token as
 \ written names a refusal, so a raised shadow locates in the file.
 : IS-TARGET-SYM ( -- n )
-   IS-TOFF @ IS-TU @ POSTPONED-REC {: prec:ptr :}
+   IS-TOFF @ IS-TU @ CHECKER-ITEMS:POSTPONED-REC {: prec:ptr :}
    prec NULL-PTR <> IF
       prec FACTS-READ-XT  prec BIND-REC !  0 BIND-PEND-IX !  -1 WALK-REC !
       prec REC-HOME-SYM EXIT
@@ -20610,14 +20600,11 @@ variable IS-PEND-U                   \ and its length
    LBUF-PEND-MATCH? 0= IF RES-FALSE EXIT THEN
    a u BIND-TOK  TOK-SYM @ SYM-INTRINSIC INTRINSIC-RECORD-RELEASE = ;
 
-: BTICK-TOK ( -- )
-   IS-TARGET-TOK? 0= IF IS-FAIL EXIT THEN
-   -1 CRTGT !                              \ the load's tick refuses its target while compiling
-   TKF TKFU @ UNSAFE-TOK? IF TICK-PIN REJECT-UNSAFE EXIT THEN
-   IS-TARGET-SYM  WALK-REC @  {: sym:n rec:n :}
-   CHECKER-TAPE:K-TICK  BIND-REC @ CHECKER-RESOLVE:REC>INDEX  0 EVENT!
-   sym SCOPE-AUTH-SYM? IF 0 OK ! -1 FAILSET ! EXIT THEN
-   sym ARENA-CALL-REFUSE? IF TICK-PIN EXIT THEN
+\ Files the refusal a tick of SYM meets, true when it files one; when it
+\ files none, FEP holds SYM's user signature, if it has one.
+: TICK-REFUSED? ( n -- bool ) {: sym:n :}
+   sym SCOPE-AUTH-SYM? IF 0 OK ! -1 FAILSET ! RES-TRUE EXIT THEN
+   sym ARENA-CALL-REFUSE? IF TICK-PIN RES-TRUE EXIT THEN
    sym PRIM-TRUSTED-SYM? IF
       TORDER-ACTIVE @ TORDER-GATE = TORDER-ACTIVE @ TORDER-PARENT-GATE = or
       IF RF-CAP CREFUSE! THEN
@@ -20627,14 +20614,22 @@ variable IS-PEND-U                   \ and its length
          TARGET-PIN!  -1 TORDER-UNCERTAIN !  -1 TORDER-SCAN-UNKNOWN !
       THEN
       FAILSET @ 0= IF TICK-PIN  -1 CAPREQ ! THEN
-      0 OK !  -1 FAILSET !  EXIT
+      0 OK !  -1 FAILSET !  RES-TRUE EXIT
    THEN
    CUSING @ 0= sym SYM-EFFECT-UNRESOLVED? and IF
-      TICK-PIN  UNSEEN-RAISE  EXIT
+      TICK-PIN  UNSEEN-RAISE  RES-TRUE EXIT
    THEN
    FEP-CLEAR
    sym CHECKER-FIND-USIG-SYM drop
-   sym OWNED-TICK-REFUSED? IF EXIT THEN
+   sym OWNED-TICK-REFUSED? ;
+
+: BTICK-TOK ( -- )
+   IS-TARGET-TOK? 0= IF IS-FAIL EXIT THEN
+   -1 CRTGT !                              \ the load's tick refuses its target while compiling
+   TKF TKFU @ UNSAFE-TOK? IF TICK-PIN REJECT-UNSAFE EXIT THEN
+   IS-TARGET-SYM  WALK-REC @  {: sym:n rec:n :}
+   CHECKER-TAPE:K-TICK  BIND-REC @ CHECKER-RESOLVE:REC>INDEX  0 EVENT!
+   sym TICK-REFUSED? IF EXIT THEN
    FEP-HIT? IF
       FEP @ ER.ACTIVE @ EFF-RECOVERY = IF
          FEP @ RECOVERY-ROW? 0= IF -1 CAPREQ ! 0 OK ! -1 FAILSET ! EXIT THEN
@@ -20935,50 +20930,11 @@ variable IS-PEND-U                   \ and its length
    bytes TYPE-LIT-DIGITS!  -1 TPAY-ON ! ;
 
 \ ---- postpone W ----------------------------------------------------------------
-\ `postpone W` compiles W's handle as a string literal and a call of
-\ `postponed`; the handle names W's record by its home, never a search order.
-create POST-BOOT 256 allot
-PERSISTED-PTR-VARIABLE POST-P   variable POST-CAP   variable POST-U
-POST-BOOT POST-P !   256 POST-CAP !
-variable POST-ON      \ did the token just judged compile a handle?
-: POST-FIELD POST-P 0 ptr-field ;
-: POST POST-FIELD @ ;
-
-: POST-ENSURE ( n -- ) {: need:n :}
-   need POST-CAP @ <= IF EXIT THEN
-   need TOKBUF-ROUND-CAP {: cap:n :}
-   cap TOKBUF-ALLOC POST-FIELD !  cap POST-CAP ! ;
-
-: POST+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   a POST POST-U @ + u CCOPY  POST-U @ u + POST-U ! ;
-
-: POST-VIS$ ( n -- ptr u8 n ) {: vis:n :}
-   vis SYM-GLOBAL = IF s" global" EXIT THEN
-   vis SYM-PUBLIC = IF s" public" EXIT THEN
-   s" private" ;
-
-: POST-HANDLE! ( ptr u8 n n ptr u8 n -- )
-   {: pa:ptr pu:n vis:n a:ptr u:n :}
-   pu u + 16 + POST-ENSURE  0 POST-U !
-   vis POST-VIS$ POST+  s"  " POST+
-   pu 0 > IF pa pu POST+  s"  " POST+ THEN
-   a u POST+ ;
-
-: PPAY$ ( -- ptr u8 n )
-   POST-ON @ IF POST POST-U @ EXIT THEN
-   PKG-LIT-NAME$ ;
-
-\ The record INTERPRETER's private row of `postponed` lays in its private
-\ wordlist, which a stripped build's link lays too, and that record's symbol.
-: POSTPONE-RUN-REC ( -- ptr n n )
-   s" INTERPRETER" BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: pkg:ptr :}
-   pkg NULL-PTR = IF s" checker: no INTERPRETER package for postpone" 76 die THEN
-   s" postponed" pkg 1 DICT-CELL@ CHECKER-RESOLVE:WL-PROBE {: run:ptr :}
-   run NULL-PTR = IF s" checker: no INTERPRETER row of postponed" 76 die THEN
-   run FACTS-READ-XT
-   run REC-HOME-SYM {: sym:n :}
-   sym 0= IF s" checker: no symbol for INTERPRETER's postponed" 76 die THEN
-   run sym ;
+\ `postpone W` compiles `['] W compile,`, or a call of W when W is immediate:
+\ the keyword files the tick, or nothing, and W's token files the call as K-CALL.
+variable POST-ON      \ did the token just judged compile a postpone?
+variable POST-KIND    \ the keyword's event kind and a0, while POST-ON
+variable POST-A0
 
 \ Binds the token to the record and its symbol, so BIND-TOK looks nothing up.
 : CALL-PRESET ( ptr n n -- ) {: run:ptr sym:n :}
@@ -20989,18 +20945,32 @@ variable POST-ON      \ did the token just judged compile a handle?
 : POSTPONE-UNDEFINED ( -- )
    TICK-PIN  TKF TKFU @ REFUSE-UNDEFINED  IS-FAIL ;
 
-\ W's record, the pending one when W is the definition being compiled.
-: POSTPONE-TARGET ( -- ptr n )
-   IS-TARGET-SYM drop
+\ W's record, the pending one when W is the definition being compiled, and W's
+\ symbol.
+: POSTPONE-TARGET ( -- ptr n n )
+   IS-TARGET-SYM {: sym:n :}
    BIND-REC @ {: rec:ptr :}
-   rec NULL-PTR <> IF rec EXIT THEN
-   BIND-PEND-IX @ 0 = IF NULL-PTR EXIT THEN
-   BIND-PEND-IX @ CHECKER-RESOLVE:REC-AT ;
+   rec NULL-PTR <> IF rec sym EXIT THEN
+   BIND-PEND-IX @ 0 = IF NULL-PTR sym EXIT THEN
+   BIND-PEND-IX @ CHECKER-RESOLVE:REC-AT sym ;
+
+: POSTPONE-IMM? ( ptr n -- bool ) {: rec:ptr :}
+   rec CK-REC-FLAGS-SLOT DICT-CELL@ DNAME-IMM and 0 <> ;
+
+\ The kernel's `compile,` and its symbol: the probe reads WL:PRIMITIVES alone,
+\ so a package's own `compile,` does not capture it.
+: COMPILE-CALL-REC ( -- ptr n n )
+   s" compile," WL:PRIMITIVES CHECKER-RESOLVE:WL-PROBE {: run:ptr :}
+   run NULL-PTR = IF s" checker: no row of compile," 76 die THEN
+   run FACTS-READ-XT
+   run REC-HOME-SYM {: sym:n :}
+   sym 0= IF s" checker: no symbol for compile," 76 die THEN
+   run sym ;
 
 \ A postponed token names its record even where a local of its spelling is
 \ in scope.
 : BODY-LOC-REF? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   TSTART @ u POSTPONED-REC NULL-PTR <> IF RES-FALSE EXIT THEN
+   TSTART @ u CHECKER-ITEMS:POSTPONED-REC NULL-PTR <> IF RES-FALSE EXIT THEN
    a u LOC-REF? ;
 
 \ Answers whether the token is unjudged and unsafe, and the OK, UNCK and
@@ -21655,11 +21625,13 @@ variable SCAN-TOK0
    IS-PEND-OFF @ TADDR  IS-PEND-U @  IS-PEND-OFF @  0  CHECKER-TAPE:TOKEN ;
 
 \ The event of a token no step judged: a name with no record; a payload, the
-\ literal its opener compiles; a `postpone` or `[package]` handle, a string.
+\ literal its opener compiles; a `[package]` handle, a string; a `postpone`,
+\ what it compiles before W's call.
 : EV-UNJUDGED ( -- n n n )
    CPAY-ON @ IF CHECKER-TAPE:K-CHAR  CPAY-B @ TADDR c@  0 EXIT THEN
    SPAY-ON @ IF CHECKER-TAPE:STRING-KIND 0 0 EXIT THEN
    PPAY-ON @ IF CHECKER-TAPE:K-STRING 0 0 EXIT THEN
+   POST-ON @ IF POST-KIND @ POST-A0 @ 0 EXIT THEN
    CHECKER-TAPE:K-NAME -1 0 ;
 
 \ This turn's events, filed under the ordinals the reports take, on every pass:
@@ -21667,10 +21639,14 @@ variable SCAN-TOK0
 \ names what it resolved to. A string or character token reports its class
 \ though its opener bound a call: a literal's payload is what it compiles.
 : EV-COMMIT ( -- )
-   EV-HIT @  CPAY-ON @ SPAY-ON @ or PPAY-ON @ or 0=  and IF EV-KIND @ EV-A0 @ EV-A1 @ ELSE EV-UNJUDGED THEN
+   EV-HIT @  CPAY-ON @ SPAY-ON @ or PPAY-ON @ or POST-ON @ or 0=  and
+   IF EV-KIND @ EV-A0 @ EV-A1 @ ELSE EV-UNJUDGED THEN
    REC-IX @ EV-FILE
    IS-PEND @ IF
-      POST-ON @ IF EV-KIND @ EV-A0 @ EV-A1 @ ELSE CHECKER-TAPE:K-OPERAND 0 0 THEN
+      POST-ON @ IF
+         EV-KIND @ dup CHECKER-TAPE:K-NAME = IF drop CHECKER-TAPE:K-CALL THEN
+         EV-A0 @ EV-A1 @
+      ELSE CHECKER-TAPE:K-OPERAND 0 0 THEN
       REC-IX @ 1 + EV-FILE
    THEN ;
 
@@ -21691,7 +21667,7 @@ variable SCAN-TOK0
       SCAN-PEND-REPORT EXIT
    THEN
    PPAY-ON @ IF
-      PPAY$  TSTART @  SCAN-U @
+      PKG-LIT-NAME$  TSTART @  SCAN-U @
       CHECKER-TAPE:K-STRING  CHECKER-TAPE:STRING
       SCAN-PEND-REPORT EXIT
    THEN
