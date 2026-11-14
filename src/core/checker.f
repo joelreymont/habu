@@ -14225,8 +14225,12 @@ variable EV-LO   variable EV-N
 : CHECKER-RECORD-NAME ( ptr u8 n -- ptr u8 n )
    2dup CHECKER-RECORD-NAME-AT ;
 
-: CHECKER-DEFER ( ptr u8 n -- )
-   CHECKER-RECORD-NAME DFER-ADD ;
+\ A length that describes no memory is rejected with the symbol pool's error
+\ before the constructor scan reads it.
+: CHECKER-DEFER ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u BYTE-SPAN? 0= IF SYM-STR-OVERFLOW THEN
+   a u CTOR-EXTEND?-XT IF E-CTOR-PROTECTED throw THEN
+   a u CHECKER-RECORD-NAME DFER-ADD ;
 package CHECKER-REG
 ' CHECKER-DEFER DECLARATIONS DEFER-OFF + xt!
 ;package

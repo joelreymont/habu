@@ -104,14 +104,15 @@ s\" \"token\":\"SCDG:MAKE\"" SCG?
 s\" \"expected\":\"n ptr n \"" SCG?                               \ the exact field-derived shape (x:n, y:ptr n)
 SCG-END
 
-\ 7. The derived package is closed but callable: reopening it (any case) or
-\    undefining a generated word throws E-CTOR-PROTECTED, as for sum and product
-\    constructors.
+\ 7. The derived package is closed but callable: reopening it (any case),
+\    undefining a generated word or deferring a new word into it throws
+\    E-CTOR-PROTECTED, as for sum and product constructors.
 s" STRUCTURE scprot FIELD x n FIELD y n ;STRUCTURE" evaluate-closed
 s" package scprot" TEST-EVAL:RC E-CTOR-PROTECTED T=
 s" package SCPROT" TEST-EVAL:RC E-CTOR-PROTECTED T=               \ case-insensitive
 s" undefine SCPROT:MAKE" TEST-EVAL:RC E-CTOR-PROTECTED T=
 s" undefine scprot:unmake" TEST-EVAL:RC E-CTOR-PROTECTED T=
+s" defer SCPROT:EXTRA ( -- n )" TEST-EVAL:RC E-CTOR-PROTECTED T=
 s" package scok ;package" TEST-EVAL:RC 0 T=                       \ an ordinary package still opens
 : SCPRT ( -- n n ) 3 4 SCPROT:MAKE SCPROT:UNMAKE ;               \ still callable after the rejects
 SCPRT 4 T= 3 T=
