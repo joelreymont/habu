@@ -12262,14 +12262,8 @@ package CHECKER-REG
 \ A `trust` row whose name the engine's scope chain resolves to nothing. Such a
 \ row would mint a bare global checker symbol.
 7143 constant E-TRUST-UNRESOLVED
-\ A `generates:` row the checker cannot keep (CHECKER-GENERATES): one code for
-\ its three refusals, which the diagnostic tells apart by kind.
+\ A `generates:` row the checker cannot keep.
 7153 constant E-GENERATES-ROW
-\ A `parses:` or `parses-through:` row the checker refuses (CHECKER-PARSES-ROW):
-\ one code for its target's refusals and its syntax's, told apart by kind.
-7186 constant E-PARSES-ROW
-\ A `names:` row the checker refuses (CHECKER-NAMES-ROW), told apart likewise.
-7208 constant E-NAMES-ROW
 \ Neither path stores a row, so a later caller rejects as undefined.
 : TRUST-STALE ( ptr u8 n -- ) {: a:ptr u:n :}
    s" E-TRUST-UNRESOLVED" REJECTION:OPEN

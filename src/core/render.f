@@ -1227,15 +1227,6 @@ variable MDV-I   variable MDV-F
    SGBAD-BAREPTR? IF s" E-BARE-PTR-SIGNATURE" EXIT THEN
    SGBAD-ARITY? IF s" E-WRONG-ARITY" EXIT THEN
    s" E-BAD-SIGNATURE" ;
-: SGBAD-CLASS$ ( -- ptr u8 n )
-   SGBAD-RETURN? IF s" fix_return_stack" EXIT THEN
-   SGBAD-UNKNOWN? IF s" fix_signature_type" EXIT THEN
-   SGBAD-BAREPTR? IF s" fix_bare_ptr_element" EXIT THEN
-   SGBAD-ARITY? IF s" fix_signature_arity" EXIT THEN
-   SGBAD-SIZE? IF s" fix_signature_size" EXIT THEN
-   s" fix_signature_syntax" ;
-: RCLAUSE-FIX$ ( -- ptr u8 n )
-   s" after '|' write one row variable, the same on both sides, or no '|'" ;
 
 \ The code, message, label, notes and help all name the one rejection REFUSAL@
 \ chose.
@@ -1255,7 +1246,6 @@ variable MDV-I   variable MDV-F
    k RF-UNCHECKABLE = IF s" E-UNCHECKABLE" EXIT THEN
    k RF-MISMATCH = IF s" E-MISMATCH" EXIT THEN
    s" E-REJECTED" ;
-\ Shared by SUGGEST-TEXT and a refused `generates:` row's.
 : SGBAD-SUGGEST$ ( -- ptr u8 n )
    SGBAD-RETURN? IF s" Declare no return-stack effect: after '|' write one row variable, the same on both sides, or no '|'; park a value with >r and take it back with r> in one definition." EXIT THEN
    SGBAD-UNKNOWN? IF s" Use a known stack-signature type or a single-letter type variable." EXIT THEN
@@ -1823,71 +1813,6 @@ variable WARN-DIAGS   -1 WARN-DIAGS !
 : SHADOW-DIAG-INSTALL ( -- ) [: SHADOW-DIAG ;] is SHADOW-DIAG-XT ;
 SHADOW-DIAG-INSTALL
 
-\ A `generates:` row the checker cannot keep: the kind says which of four
-\ claims failed, each with its own repair (correct the name, delete the row,
-\ make D read its name, or the signature refusal's class and text). Placed at the name where the pre-pass scanner read it.
-: GENR-BADSIG-PROSE ( -- )
-   SGBAD-UNKNOWN? IF
-      s" unknown type '" EMIT-STR  SGBAD-A @ SGBAD-U @ EMIT-STR  s" ' in its effect" EMIT-STR EXIT
-   THEN
-   SGBAD-BAREPTR? IF s" 'ptr' needs an element type, e.g. 'ptr u8' or 'ptr a'" EMIT-STR EXIT THEN
-   SGBAD-ARITY? IF
-      s" wrong arity for type family '" EMIT-STR  SGBAD-A @ SGBAD-U @ EMIT-STR  s" '" EMIT-STR EXIT
-   THEN
-   SGBAD-RETURN? IF s" return-stack effect: " EMIT-STR
-      RCLAUSE-FIX$ EMIT-STR EXIT THEN
-   SGBAD-SIZE? IF BADSIG-REASON EXIT THEN
-   s" its effect is not a stack-effect comment" EMIT-STR ;
-: GENR-PROSE ( ptr u8 n n -- )
-   {: ta:ptr tu:n kind:n :}
-   s" E-GENERATES-ROW habu: generates: row for '" EMIT-STR  ta tu EMIT-STR
-   kind GENR-UNRESOLVED = IF
-      s" ' names no word here: the row follows its definer's definition and" EMIT-STR
-      s"  names it as the code there spells it. Define the definer first or" EMIT-STR
-      s"  correct the name" EMIT-STR EXIT
-   THEN
-   kind GENR-CREATES = IF
-      s" ' already creates: its does> clause, an earlier generates: row or the" EMIT-STR
-      s"  definer it wraps already states what it makes. Delete the row" EMIT-STR EXIT
-   THEN
-   kind GENR-READS-NONE = IF
-      s" ' is deferred, or no parse-name reaches it through the words it calls" EMIT-STR
-      s"  (a call through a defer or an executed xt shows none), so the check" EMIT-STR
-      s"  cannot take the next token as the word a call makes. Delete the row," EMIT-STR
-      s"  or make the definer read its name with parse-name, called directly or" EMIT-STR
-      s"  through words it calls by name" EMIT-STR EXIT
-   THEN
-   s" ': " EMIT-STR  GENR-BADSIG-PROSE ;
-: GENR-SUGGEST$ ( n -- ptr u8 n )
-   {: kind:n :}
-   kind GENR-UNRESOLVED = IF
-      s" This generates: row names no word here. Write it after the definer's definition, spelled as the definition spells it." EXIT
-   THEN
-   kind GENR-CREATES = IF
-      s" This definer already states what it makes: its does> clause, an earlier generates: row or the definer it wraps. Delete the row." EXIT
-   THEN
-   kind GENR-READS-NONE = IF
-      s" This word is deferred, or no parse-name reaches it through the words it calls (a call through a defer or an executed xt shows none), so the check cannot take the next token as the word a call makes. Delete the row, or make the definer read its name with parse-name, called directly or through words it calls by name, and make the word from that name." EXIT
-   THEN
-   SGBAD-SUGGEST$ ;
-: GENR-CLASS$ ( n -- ptr u8 n )
-   {: kind:n :}
-   kind GENR-UNRESOLVED = IF s" fix_generates_row" EXIT THEN
-   kind GENR-CREATES = IF s" delete_generates_row" EXIT THEN
-   kind GENR-READS-NONE = IF s" fix_generates_row" EXIT THEN
-   SGBAD-CLASS$ ;
-: GENR-JSON ( ptr u8 n n -- )
-   {: ta:ptr tu:n kind:n :}
-   s" E-GENERATES-ROW" kind GENR-CLASS$ s" rejected" JHEAD
-   s" token" JSON-KEY ta tu JSON-STRING 44 EMIT1
-   ta tu kind GENR-SUGGEST$ JTAIL ;
-: GENR-DIAG ( ptr u8 n n -- )
-   {: ta:ptr tu:n kind:n :}
-   1 DEST !  0 TEXT-LEN !  0 RQM !
-   JSON @ IF ta tu kind GENR-JSON ELSE ta tu kind GENR-PROSE THEN
-   10 EMIT1
-   FLUSH ;
-
 \ A refused `cast:` or `linear:` declaration.
 package CAST-ERROR
 : CODE$ ( -- ptr u8 n )
@@ -1952,97 +1877,6 @@ package CAST-ERROR
    10 EMIT1
    FLUSH ;
 ;package
-
-\ A `parses:` or `parses-through:` row the checker refused (checker.f
-\ CHECKER-PARSES-ROW), named at its target or else its keyword: a target fault
-\ takes fix_parses_row, a syntax fault fix_parses_syntax.
-: PRS-SYNTAX? ( n -- bool )
-   PARSES-NO-TARGET >= ;
-: PRS-REASON ( n -- )
-   {: kind:n :}
-   kind PARSES-UNDEFINED = IF
-      s" ' names no word here: the row follows the word's definition and names" EMIT-STR
-      s"  it as the code there spells it" EMIT-STR EXIT
-   THEN
-   kind PARSES-QUALIFIED = IF
-      s" ' is a malformed qualified name: one colon between a package and a" EMIT-STR
-      s"  public tail" EMIT-STR EXIT
-   THEN
-   kind PARSES-SHADOW = IF
-      s" ' is refused here: a used package's public shadows the global word of" EMIT-STR
-      s"  that name" EMIT-STR EXIT
-   THEN
-   kind PARSES-AMBIGUOUS = IF
-      s" ' is refused here: two used packages export that name" EMIT-STR EXIT
-   THEN
-   kind PARSES-READS-NONE = IF
-      s" ' names a word that reads no source after it: only a word that parses" EMIT-STR
-      s"  takes a row" EMIT-STR EXIT
-   THEN
-   kind PARSES-NO-TARGET = IF s" ' has no target after it" EMIT-STR EXIT THEN
-   kind PARSES-COUNT = IF
-      s" ': its count is not a number of tokens, 0 or more" EMIT-STR EXIT
-   THEN
-   s" ': its terminators are not a standalone ( , at least one terminator and a" EMIT-STR
-   s"  standalone )" EMIT-STR ;
-: PRS-PROSE ( ptr u8 n n -- )
-   {: ta:ptr tu:n kind:n :}
-   s" E-PARSES-ROW habu: parses: row '" EMIT-STR  ta tu EMIT-STR
-   kind PRS-REASON ;
-: PRS-SUGGEST$ ( n -- ptr u8 n )
-   PRS-SYNTAX? IF
-      s" Write the row as parses: W n or parses-through: W n ( E1 E2 ): a count of 0 or more, then at least one terminator between a standalone ( and )." EXIT
-   THEN
-   s" This row's target is no word here that reads the source after it. Write the row after the definition of a word that parses, spelled as the definition spells it." ;
-: PRS-CLASS$ ( n -- ptr u8 n )
-   PRS-SYNTAX? IF s" fix_parses_syntax" EXIT THEN
-   s" fix_parses_row" ;
-: ROW-JSON ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
-   {: ta:ptr tu:n ca:ptr cu:n la:ptr lu:n sa:ptr su:n :}
-   ca cu la lu s" rejected" JHEAD
-   s" token" JSON-KEY ta tu JSON-STRING 44 EMIT1
-   ta tu sa su JTAIL ;
-: PRS-DIAG ( ptr u8 n n -- )
-   {: ta:ptr tu:n kind:n :}
-   1 DEST !  0 TEXT-LEN !  0 RQM !
-   JSON @ IF
-      ta tu s" E-PARSES-ROW" kind PRS-CLASS$ kind PRS-SUGGEST$ ROW-JSON
-   ELSE
-      ta tu kind PRS-PROSE
-   THEN
-   10 EMIT1
-   FLUSH ;
-
-\ A `names:` row the checker refused: with no
-\ target fix_names_syntax, else fix_names_row.
-: NMS-SYNTAX? ( n -- bool )
-   PARSES-NO-TARGET = ;
-: NMS-PROSE ( ptr u8 n n -- )
-   {: ta:ptr tu:n kind:n :}
-   s" E-NAMES-ROW habu: names: row '" EMIT-STR  ta tu EMIT-STR
-   kind NAMES-NO-STRING = IF
-      s" ' names a word that takes no string: only a word whose input row ends in" EMIT-STR
-      s"  ptr u8 n takes a row" EMIT-STR EXIT
-   THEN
-   kind PRS-REASON ;
-: NMS-SUGGEST$ ( n -- ptr u8 n )
-   NMS-SYNTAX? IF
-      s" Write the row as names: W, after the definition of a word W that looks its string operand up as a name." EXIT
-   THEN
-   s" This row's target is no word here that takes a string ( ptr u8 n ). Write the row after the definition of a word that looks its string operand up as a name, spelled as the definition spells it." ;
-: NMS-CLASS$ ( n -- ptr u8 n )
-   NMS-SYNTAX? IF s" fix_names_syntax" EXIT THEN
-   s" fix_names_row" ;
-: NMS-DIAG ( ptr u8 n n -- )
-   {: ta:ptr tu:n kind:n :}
-   1 DEST !  0 TEXT-LEN !  0 RQM !
-   JSON @ IF
-      ta tu s" E-NAMES-ROW" kind NMS-CLASS$ kind NMS-SUGGEST$ ROW-JSON
-   ELSE
-      ta tu kind NMS-PROSE
-   THEN
-   10 EMIT1
-   FLUSH ;
 
 ;using
 
