@@ -19,6 +19,9 @@ TYPED-VARIABLE UCE-A ptr u8   variable UCE-U
 : VS-GO ( -- )   UCE-A @ UCE-U @ VERIFY:SOURCE-BUF ;
 : VS-CATCH ( ptr u8 n -- n )  UCE-U ! UCE-A !  [: VS-GO ;] catch ;
 
+\ The captured rejection record contains the text.
+: UCE-SAID ( ptr u8 n -- )  {: a:ptr u:n :}  REJECTION:BUFFER$ a u CONTAINS? TTRUE ;
+
 \ Engine reject codes (src/core/engine-error.f USING-*), delivered as catchable
 \ throws inside INCLUDE-EVALUATE.
 89 constant E-NO-NAME
@@ -29,7 +32,6 @@ TYPED-VARIABLE UCE-A ptr u8   variable UCE-U
 94 constant E-AMBIGUOUS
 104 constant E-OUTER            \ USING-OUTER: `;using` in a package closing a using opened before it
 70 constant E-REJECT            \ E-UNDEFINED / checker rejection
-E-USING-SHADOW-GLOBAL constant E-SHADOW   \ a global shadows a used public of the same name
 
 package UA public : AW ( -- n ) 11 ; ;package
 package UB public : BW ( -- n ) 22 ; ;package
@@ -84,7 +86,9 @@ s" AW drop" UCE-CATCH E-REJECT T=
 \ ambiguous: AW resolves in two used packages (interpret)
 s" using UA using UC AW drop ;using ;using" UCE-CATCH E-AMBIGUOUS T=
 \ ambiguous in a compiled body: the checker refuses it (checker.f LIVE-BIND)
-s" using UA using UC : UT-AMB ( -- n ) AW ; ;using ;using" UCE-CATCH E-USING-AMBIGUOUS T=
+REJECTION:CAPTURE
+s" using UA using UC : UT-AMB ( -- n ) AW ; ;using ;using" UCE-CATCH E-REJECT T=
+s" error[E-USING-AMBIGUOUS]" UCE-SAID  s" `AW`" UCE-SAID  s" <input>:1:37" UCE-SAID  REJECTION:BUFFER-OFF
 REJECTION:CAPTURE
 s" using UA using UC : UT-AMB2 ( -- n ) AW ; ;using ;using" VS-CATCH E-REJECT T=
 REJECTION:BUFFER$ s" error[E-USING-AMBIGUOUS]" CONTAINS? TTRUE
@@ -186,11 +190,17 @@ s" 1 drop" VS-CATCH 0 T=
 \ A bare tail inside a using scope that resolves to a global and a used public
 \ of the same name is ambiguous and fails closed at the reference site. global
 \ defined by an earlier load, then using-import of the same name -> reject
-s" using USG : USG-R1 ( -- n ) GW ; ;using" UCE-CATCH E-SHADOW T=
+REJECTION:CAPTURE
+s" using USG : USG-R1 ( -- n ) GW ; ;using" UCE-CATCH E-REJECT T=
+s" error[E-USING-SHADOW-GLOBAL]" UCE-SAID  s" `GW`" UCE-SAID  s" <input>:1:29" UCE-SAID  REJECTION:BUFFER-OFF
 \ order-swapped: using first, global defined later in the same scope, then bareword
-s" using USG : SW ( -- n ) 9 ; : USG-R2 ( -- n ) SW ; ;using" UCE-CATCH E-SHADOW T=
+REJECTION:CAPTURE
+s" using USG : SW ( -- n ) 9 ; : USG-R2 ( -- n ) SW ; ;using" UCE-CATCH E-REJECT T=
+s" error[E-USING-SHADOW-GLOBAL]" UCE-SAID  s" `SW`" UCE-SAID  s" <input>:1:47" UCE-SAID  REJECTION:BUFFER-OFF
 \ effects coincide: a silent bind to the global would certify; must reject
-s" using USG : USG-R3 ( -- n ) MW ; ;using" UCE-CATCH E-SHADOW T=
+REJECTION:CAPTURE
+s" using USG : USG-R3 ( -- n ) MW ; ;using" UCE-CATCH E-REJECT T=
+s" error[E-USING-SHADOW-GLOBAL]" UCE-SAID  s" `MW`" UCE-SAID  s" <input>:1:29" UCE-SAID  REJECTION:BUFFER-OFF
 \ qualified access is the escape: PKG:WORD reaches the used public and certifies
 s" using USG : USG-R4 ( -- n ) USG:GW ; ;using" UCE-CATCH 0 T=
 \ a used import with no global collision keeps resolving (purely-additive
@@ -222,7 +232,9 @@ package USH public
 ;package
 s" using USH : USH-R3 ( -- n ) SOLO ; ;using" UCE-CATCH 0 T=
 USH-R3 7 T=
-s" using USH : LATER ( -- n ) 3 ; : USH-R4 ( -- n ) LATER ; ;using" UCE-CATCH E-SHADOW T=
+REJECTION:CAPTURE
+s" using USH : LATER ( -- n ) 3 ; : USH-R4 ( -- n ) LATER ; ;using" UCE-CATCH E-REJECT T=
+s" error[E-USING-SHADOW-GLOBAL]" UCE-SAID  s" `LATER`" UCE-SAID  s" <input>:1:50" UCE-SAID  REJECTION:BUFFER-OFF
 s" using USH : USH-R5 ( -- n ) SOONER ; ;using" UCE-CATCH 0 T=
 USH-R5 13 T=
 s" : SOONER ( -- n ) 99 ;" UCE-CATCH 0 T=
@@ -388,7 +400,9 @@ s" using UPB" UCE-CATCH E-UNKNOWN T=
 package USING-TEST public variable UAD-V ;package
 s" using UA using UC : AW ( -- n ) 1 ; ;using ;using AW USING-TEST:UAD-V !" UCE-CATCH 0 T=
 USING-TEST:UAD-V @ 1 T=
-s" using UA using UC : UAD-R1 ( -- n ) AW ; ;using ;using" UCE-CATCH E-USING-AMBIGUOUS T=
+REJECTION:CAPTURE
+s" using UA using UC : UAD-R1 ( -- n ) AW ; ;using ;using" UCE-CATCH E-REJECT T=
+s" error[E-USING-AMBIGUOUS]" UCE-SAID  s" `AW`" UCE-SAID  s" <input>:1:37" UCE-SAID  REJECTION:BUFFER-OFF
 s" using UA using UC AW drop ;using ;using" UCE-CATCH E-AMBIGUOUS T=
 s" undefine AW" UCE-CATCH 0 T=
 
