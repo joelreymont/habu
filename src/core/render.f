@@ -1267,9 +1267,11 @@ variable MDV-I   variable MDV-F
    s" E-REJECTED" ;
 : NM-SPAN ( -- ptr u8 n )
    NMOFF @ TADDR NMU @ ;
-\ The return rows `return_stack` names, expected then actual: a quotation
-\ literal's own when its seal refused it (RSBAD 3, 4), else the definition's.
+\ The return rows `return_stack` names, expected then actual: a rejected read's
+\ and the row it met (RSR-EXP), a quotation literal's own when its seal refused
+\ it (RSBAD 3, 4), else the definition's.
 : RS-ROWS ( -- n n )
+   RSR-EXP @ 0 <> IF RSR-EXP @ RSR-ACT @ EXIT THEN
    RSBAD @ 3 >= IF QRS-EXP @ QRS-ACT @ EXIT THEN
    SGHASR @ IF SGROUT @ ELSE RBROW @ THEN  RCUR @ ;
 
@@ -1534,10 +1536,15 @@ variable MDV-I   variable MDV-F
    MDIAG @ MD-TAIL-ESCAPE = IF TCAP-INF$ SIG-RTRIM EMIT-STR EXIT THEN
    INFERRED ;
 
+\ A rejected read's rows stand at its pin, before the read bound them.
+: RS-NOTES ( -- )
+   RSR-EXP @ 0= IF RS-ROWS PAIR-NOTES EXIT THEN
+   AT-PIN RS-ROWS PAIR-NOTES ;AT-PIN ;
+
 : DIAG-NOTES ( -- )
    DKIND {: k:n :}
    k ROWS-REFUSAL? IF ROWS-NOTES THEN
-   k RF-RETURN = IF RS-ROWS PAIR-NOTES THEN
+   k RF-RETURN = IF RS-NOTES THEN
    k RF-REASON =  MDIAG @ MD-NONEXH = and IF
       s" missing" REJECTION:NOTE  0 0= MDIAG-MISSING-WALK
    THEN
