@@ -242,7 +242,6 @@ variable HRC  variable HRI  variable HRF  variable HRS
    HRF @ 0 <> IF HRC @ P>REST RES-TRUE ELSE node P>REST RES-FALSE THEN ;
 
 6 constant QDEPTH-MAX                        \ a diagnostic's nesting budget
-64 constant RBUF-CAP                         \ values a diagnostic shows of one row
 create RBIND BINDER-DEPTH-MAX cells allot    \ the name index of each binder in scope
 \ A row renders from RBUF without recursion: a nested quotation's row pushes
 \ above the rows that hold it, so QREND recurses once per level, never per value.
@@ -259,13 +258,11 @@ create RBUF EFFECT-DEPTH-MAX cells allot   variable RBN
    RBN @ cells RBUF + !  RBN @ 1 + RBN ! ;
 
 
-\ Push row s's values on RBUF from RBN, its bottom value last. A diagnostic
-\ (RNAMES 0) pushes a row's top RBUF-CAP values; an effect's text pushes all.
+\ Push all of row s's values on RBUF from RBN, its bottom value last.
 : RBUF-ROW ( n -- )
    {: s:n :}
-   RBN @ RBUF-CAP + {: stop:n :}
    s
-   BEGIN R-RES dup TAG S-PUSH =  RNAMES @ 0 <>  RBN @ stop <  or  and WHILE
+   BEGIN R-RES dup TAG S-PUSH = WHILE
      dup P>TYPE T-RES HIDDEN-PARAM? IF
         dup HID-RUN-REST IF
            swap P>TYPE T-RES MK-LOGICAL  HRS @ IF MK-STALE THEN  RBUF+
