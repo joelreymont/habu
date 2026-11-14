@@ -411,17 +411,19 @@ variable LISTED
 
 public
 \ Writes the record through its help and leaves it open: the caller ends it.
-: SEALED-REJECT ( ptr u8 n -- ) {: a:ptr u:n :}
+\ It names a u and is placed at the source token t tu, which differs from the
+\ name when the name is generated.
+: SEALED-REJECT ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n t:ptr tu:n :}
    s" E-SEALED-PACKAGE" REJECTION:OPEN
    a u TICKS  s"  would change a sealed package" SAY
-   a u REJECTION:AT  s" sealed" SAY
+   t tu REJECTION:AT  s" sealed" SAY
    REJECTION:HELP
    s" put this in a package of your own: a sealed package takes no new words"
    SAY ;
 private
 
 : SEALED-FAIL ( ptr u8 n -- )
-   SEALED-REJECT  REJECTION:KEEP  s" " ENGINE-ERROR:SEAL-PACKAGE die-closed ;
+   TOKEN$ SEALED-REJECT  REJECTION:KEEP  s" " ENGINE-ERROR:SEAL-PACKAGE die-closed ;
 
 \ While a checker overlay is open a definer head, a new package row or private
 \ wid, or an export throws by name: the overlay's close would drop what it
@@ -3239,8 +3241,24 @@ public
    a u COMPILE-READS:TEXT+
    a u 0 u EVAL-FRAMED-RANGE ;
 
+private
+\ `evaluate-closed`'s text runs on a stack of its own (habu1.f B-EVAL-CLOSED),
+\ so `depth` after it counts the cells the text left.
+: EVAL-CLOSED ( ptr u8 n -- )
+   EVAL-FRAMED  depth {: left:n :}
+   left 0= if exit then
+   s" E-EVAL-RESIDUE" REJECTION:OPEN
+   s" an evaluated closed text did not leave the stack as it found it" SAY
+   s" cells" REJECTION:NOTE  left REJECTION:EMIT-N
+   REJECTION:HELP
+   s" a closed text must leave the stack as it found it: drop or consume what it pushes"
+   SAY
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
+public
 : INSTALL-EVALUATE ( -- )
    ['] EVAL-FRAMED data-base PROVIDED-XT:EVALUATE-CELL + xt!
+   ['] EVAL-CLOSED data-base PROVIDED-XT:EVALUATE-CLOSED-CELL + xt!
    ['] EVAL-FRAMED-RANGE data-base PROVIDED-XT:EVALUATE-RANGE-CELL + xt!
    ['] DEFINE-RUN data-base PROVIDED-XT:DEFINE-CELL + xt!
    ['] APPEND-RUN data-base PROVIDED-XT:APPEND-CELL + xt!

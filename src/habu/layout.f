@@ -504,6 +504,8 @@ $3868 constant ARENA-CELL
 package PROVIDED-XT
 public
 $3848 constant EVALUATE-CELL
+\ `evaluate-closed` runs its text through the word this cell holds.
+$3858 constant EVALUATE-CLOSED-CELL
 $3860 constant EVALUATE-RANGE-CELL
 \ `define-word`, `body-append`, `compile,`, `;` and `literal` run the running
 \ engine's interpreter words these cells hold.

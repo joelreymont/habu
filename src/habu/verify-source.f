@@ -899,26 +899,27 @@ variable SEALS-N
 : SEALED-LOAD? ( -- bool )
    COMPOSE-ON @ 0<>  SEAL-NDICT@ 0<>  and ;
 
-\ The record is placed at the name a u, the token written at byte AT.
-: SEAL-STOP ( ptr u8 n n -- ) {: a:ptr u:n at:n :}
+\ The record names a u and is placed at the TU-byte source token written at
+\ byte AT, which is not a u when the name is generated.
+: SEAL-STOP ( ptr u8 n n n -- ) {: a:ptr u:n at:n tu:n :}
    at TOKEN-BYTE !
-   a u INTERPRETER:SEALED-REJECT
+   a u  SOURCE@ at + tu  INTERPRETER:SEALED-REJECT
    ENGINE-ERROR:SEAL-PACKAGE REJECTION:STOP ;
 
-: SEALED-OPEN ( ptr u8 n n -- ) {: a:ptr u:n at:n :}
+: SEALED-OPEN ( ptr u8 n n n -- ) {: a:ptr u:n at:n tu:n :}
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF EXIT THEN
-   CHECKER-AUTH-PACKAGE$ SEAL-LISTED? IF a u at SEAL-STOP THEN ;
+   CHECKER-AUTH-PACKAGE$ SEAL-LISTED? IF a u at tu SEAL-STOP THEN ;
 
 \ A head resolves as the definition's does: a part is asked by its path.
-: SEALED-NAME ( ptr u8 n n -- ) {: a:ptr u:n at:n :}
+: SEALED-NAME ( ptr u8 n n n -- ) {: a:ptr u:n at:n tu:n :}
    a u XREF-QUAL-INDEX {: q:n :}
-   q 0 < IF a u at SEALED-OPEN EXIT THEN
+   q 0 < IF a u at tu SEALED-OPEN EXIT THEN
    a q CHECKER-RESOLVE:HEAD-ROW {: row:ptr :}
-   row NULL-PTR = IF a q ELSE row XREF-NAME$ THEN SEAL-LISTED? IF a u at SEAL-STOP THEN
-   row NULL-PTR <> IF row XREF:SEALED? IF a u at SEAL-STOP THEN THEN
+   row NULL-PTR = IF a q ELSE row XREF-NAME$ THEN SEAL-LISTED? IF a u at tu SEAL-STOP THEN
+   row NULL-PTR <> IF row XREF:SEALED? IF a u at tu SEAL-STOP THEN THEN
    SEALED-LOAD? 0= IF EXIT THEN
    row NULL-PTR = IF EXIT THEN
-   row XREF-PKG-PUBLIC XREF-WID-PROTECTED? IF a u at SEAL-STOP THEN ;
+   row XREF-PKG-PUBLIC XREF-WID-PROTECTED? IF a u at tu SEAL-STOP THEN ;
 
 \ The text of a literal from the rest STRING-REST read after its opener, a
 \ string opener: past the one delimiting space, short of the closing quote, as
@@ -1250,7 +1251,7 @@ DYNAMIC-BUFFER VISIT-ROWS n             \ per visit, its path's offset and lengt
 
 : ARM ( ptr u8 n n n -- )
    {: name:ptr nameu:n at:n u:n :}
-   name nameu at SEALED-NAME
+   name nameu at u SEALED-NAME
    name nameu at u ARM-UNSEALED ;
 
 : DISARM ( -- )
@@ -2086,7 +2087,7 @@ DUPLICATE-INIT
 \ A name that lands in a sealed package stops first.
 : REFUSE-DUPLICATE ( ptr u8 n n -- bool )
    {: a:ptr u:n at:n :}
-   a u at SEALED-NAME
+   a u at u SEALED-NAME
    a u CHECKER-CERT-DUP? dup IF u DUPLICATE! THEN ;
 
 \ Whether the scan refused the definition NAME, written from byte AT, now that
@@ -2116,10 +2117,10 @@ DUPLICATE-INIT
 \ The package path a u, named NAME as written at byte AT.
 : SEALED-PACKAGE ( ptr u8 n ptr u8 n n -- )
    {: a:ptr u:n name:ptr nameu:n at:n :}
-   a u SEAL-LISTED? IF name nameu at SEAL-STOP THEN
-   a u ROW-SEALED? IF name nameu at SEAL-STOP THEN
+   a u SEAL-LISTED? IF name nameu at nameu SEAL-STOP THEN
+   a u ROW-SEALED? IF name nameu at nameu SEAL-STOP THEN
    SEALED-LOAD? 0= IF EXIT THEN
-   a u PUBLIC-WID XREF-WID-PROTECTED? IF name nameu at SEAL-STOP THEN ;
+   a u PUBLIC-WID XREF-WID-PROTECTED? IF name nameu at nameu SEAL-STOP THEN ;
 
 \ Where a guard refused a live record before the registrar ran, one there now
 \ is the record that registrar retained. A declaration DECL-SIGNATURE registers
@@ -2482,7 +2483,7 @@ variable SUM-VAR-NEXT
 : RECORD-STRUCTURE-DECL ( -- )
    DECL-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
-   name nameu at SEALED-NAME
+   name nameu at nameu SEALED-NAME
    BODY-RESET
    BEGIN
       DECL-TOKEN
@@ -2498,7 +2499,7 @@ variable SUM-VAR-NEXT
 : RECORD-PRODUCT ( -- )
    NAME-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
-   name nameu at SEALED-NAME
+   name nameu at nameu SEALED-NAME
    BODY-RESET
    BEGIN
       DECL-TOKEN
@@ -3051,7 +3052,7 @@ CAST: TOP-ACTION ( n -- [ ptr u8 n bool -- n ] )
    NAME-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF EXIT THEN
-   name nameu at SEALED-OPEN
+   name nameu at nameu SEALED-OPEN
    name nameu TOP-BINDING drop PRS-FIND {: from:n :}
    name DEF-NAME-A !  nameu DEF-NAME-U !
    name nameu at nameu ARM-UNSEALED   \ the checker spells the record by the tail it keeps

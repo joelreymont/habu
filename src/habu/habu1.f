@@ -3230,24 +3230,23 @@ private
    done LBL,  RET, ;
 
 \ Pop B-EVAL-CLOSED's frame: the text's stack (x11) back to the pool, the
-\ caller's extent and cursor back in force, the text's cursor in x13.
+\ caller's extent and cursor back in force.
 : CLOSED-LEAVE ( -- )
    11 SP 24 LDR,
    12 DATA CLOSED-FREE-CELL LDR,  12 11 0 STR,  11 DATA CLOSED-FREE-CELL STR,
    12 SP 0 LDR,  12 DATA STACK-ABI:BASE-CELL STR,
    12 SP 8 LDR,  12 DATA STACK-ABI:CAP-CELL STR,
-   13 XDS 0 ADDI,  XDS SP 16 LDR,
+   XDS SP 16 LDR,
    SP SP 32 ADDI, ;
 
 \ evaluate-closed ( ptr u8 n -- ): the text runs on a guarded stack of its own
 \ from the CLOSED-FREE-CELL pool; this frame holds the caller's base, capacity
 \ and cursor at [0] [8] [16] and the text's stack at [24], which CLOSED-LEAVE
-\ reads. PROVIDED-XT:EVALUATE-CELL runs the text under this frame's catch,
-\ which gives the stack back before throwing on. A text that ends off its
-\ floor gets a record with the cells it left (negative: took) and throws
-\ CHECKER-REJECT-RC.
+\ reads. PROVIDED-XT:EVALUATE-CLOSED-CELL's word runs the text under this
+\ frame's catch and rejects a text that leaves cells; the frame gives the
+\ stack back, then throws on what the word threw.
 : B-EVAL-CLOSED ( -- )
-   LBL LBL LBL LBL {: have:label take:label done:label thrown:label :}
+   LBL LBL LBL {: have:label take:label done:label :}
    s" E-TASK-COMPILE" s" evaluate-closed" B-TASK-GUARD
    B G-POP  A G-POP                                  \ x10 = u, x9 = a
    SP SP 32 SUBI,
@@ -3266,21 +3265,12 @@ private
    13 DATA STACK-ABI:BASE-CELL STR,
    12 STACK-ABI:PAGE-BYTES LIT64,  12 DATA STACK-ABI:CAP-CELL STR,
    XDS 13 0 ADDI,
-   12 DATA PROVIDED-XT:EVALUATE-CELL LDR,
+   12 DATA PROVIDED-XT:EVALUATE-CLOSED-CELL LDR,
    9 G-PUSH  10 G-PUSH  12 G-PUSH                    \ a u for the cell's word, under its xt
    BCATCH-RUN
-   CLOSED-LEAVE  thrown B,                           \ x9 = the code
-   CATCH-PUSH LABEL@ LBL,
-   CLOSED-LEAVE
-   13 11 CMP,  C-EQ done BCOND,
-   3 13 11 SUB,  3 3 3 ASRI,                         \ x3 = cells left, which the record keeps
-   s" E-EVAL-RESIDUE" s" an evaluated closed text did not leave the stack as it found it"
-      FAULT-OPEN,
-   s" cells" 3 FAULT-NUMBER,
-   s" a closed text must leave the stack as it found it: drop or consume what it pushes"
-      FAULT-KEEP,
-   9 CHECKER-REJECT-RC MOVZ,
-   thrown LBL,  9 G-PUSH  BTHROW
+   CATCH-PUSH LABEL@ LBL,                            \ x9 = the code, 0 on return
+   CLOSED-LEAVE  9 done CBZ,
+   9 G-PUSH  BTHROW
    done LBL, ;
 
 \ source-file-run ( xt -- ): run a file's unit on a pool stack and rethrow
