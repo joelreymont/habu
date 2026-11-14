@@ -71,8 +71,9 @@ create TEXT CAP allot                  variable TEXT-U
    s" a refused stored signature is refused naming its token" T-LABEL
    s" ;package TRUSTED: TB8 ( -- nosuch:fam ) 1 NOSUCHWORD ;" SESSION
    RC @ RC-REJECT T=
-   s" error[E-BAD-STORED-SIGNATURE]: the signature of `tb8` cannot be recorded" SAYS
-   s" = at `nosuch:fam`: no type has this name" SAYS ;
+   s" error[E-BAD-STORED-SIGNATURE]: the signature of `TB8` cannot be recorded" SAYS
+   s" --> <input>:1:28" SAYS
+   s" ^^^^^^^^^^ no type has this name" SAYS ;
 
 \ A public whose private twin moves other cells is refused at its own name.
 \ Its own process: the uncaught throw ends it, and its exit status is tested.
@@ -81,7 +82,8 @@ create TEXT CAP allot                  variable TEXT-U
    s" ;package package SAT-A : F ( n n -- n ) + ; public : F ( n -- n ) 1 + ; ;package" SESSION
    RC @ RC-REJECT T=
    s" error[E-SHADOWED-ARITY]: public `sat-a:f` has a different stack effect" SAYS
-   s" = at `F`: its name binds the private word" SAYS ;
+   s" --> <input>:1:54" SAYS
+   s" ^ its name binds the private word" SAYS ;
 
 \ A TRUSTED: body whose `@` cannot be applied over a two-cell family value
 \ loses that value's width, so nothing can place its cells; a checked does>
@@ -124,7 +126,7 @@ create TEXT CAP allot                  variable TEXT-U
    RC @ RC-REJECT T=
    S\" 70\n" PRINTS
    s" error[E-MISMATCH]: the body ends with n on the stack; the signature promises n n" SAYS
-   s" = at `W-FORGET`: the stack holds n after this" SAYS ;
+   s" --> <input>:1:226" SAYS ;
 
 : RUN ( -- )
    T-RESET

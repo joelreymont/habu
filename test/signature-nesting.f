@@ -233,7 +233,7 @@ public
    s" 33 nested IFs are uncheckable by the control-frame limit" T-LABEL
    s" SN-IFS-33" 33 NESTED-IFS
    s" error[E-UNCHECKABLE]: control flow nested too deep to check (depth 33, at most 32)" REFUSES
-   s" at `IF`" SAID
+   s" --> <input>:1:253" SAID
    s" 32 nested IFs check" T-LABEL
    s" SN-IFS-32" 32 NESTED-IFS
    SRC$ TEST-EVAL:RC 0 T=
@@ -344,7 +344,7 @@ public
    s" a RECURSE with no declared effect is uncheckable for want of one, and says to declare one" T-LABEL
    RECURSE-NOSIG
    s" error[E-UNCHECKABLE]: recursion needs a declared stack effect" REFUSES
-   s" at `RECURSE`" SAID  s" help: declare the definition's stack effect after its name" SAID
+   s" --> <input>:1:26" SAID  s" help: declare the definition's stack effect after its name" SAID
    s" a RECURSE with no declared effect writes an uncheckable packet that says why" T-LABEL
    SRC-RESET RECURSE-TEXT
    S\" \"code\":\"E-UNCHECKABLE\"" S\" \"token\":\"RECURSE\""
