@@ -3,14 +3,19 @@
 \ if and a begin loop, a construct, a call of a word found where the definer
 \ runs, an exact call of PKG:TAIL that a part named PKG of the building
 \ package does not capture, and typed locals: two of `n`, one of the family
-\ matched, two groups. An operand that names no variant, a call of an unknown
-\ name, a local outside a group and a read of an index never declared are
-\ refused, and the word is abandoned. The name a field loan
-\ awaits takes the steps its text twin's token takes: the same code and
-\ diagnostic.
+\ matched, two groups, and one of a parametric family the effect numbers
+\ apart from the file. An operand that names no variant, a call of an unknown
+\ name, a local outside a group, a read of an index never declared, a local
+\ of a type its reader does not take, a read of a local whose block ended, a
+\ local whose type is a 24th parameter, refused naming the word, and a local
+\ in a text definition are refused, and the word is abandoned. The name a
+\ field loan awaits takes the steps its text twin's token takes: the same
+\ code and diagnostic.
 
 require src/lib/test.f
 require src/lib/c2-memory.f
+require src/lib/adt/nullable.f
+require src/lib/test/subject.f
 require test/decl-diag-capture.f
 
 package BITEM-PKG
@@ -174,6 +179,79 @@ BAD-UNREAD 70 T=
 s" : BI-BAD-UNREAD ( -- n ) 6 ;" evaluate-closed
 BI-BAD-UNREAD 6 T=
 
+\ ( nullable<a> nullable<b> nullable<c> nullable<d> -- nullable<a> )
+\    drop drop drop {: x:nullable<a> :} x ;
+\ The local's type is the file's fourth parameter, which the effect numbers
+\ first: the local is the first input's type value.
+: NUL ( -- EFFECT:type ) s" nullable" EFFECT:NAMED ;
+: MAKE-KEEP ( ptr u8 n -- )
+   NUL NUL NUL NUL {: b c d t :}
+   EFFECT:NEW t EFFECT:IN b EFFECT:IN c EFFECT:IN d EFFECT:IN t EFFECT:OUT
+   define-word
+   postpone drop  postpone drop  postpone drop
+   s" {:" KW  t EFFECT:LOCAL  s" :}" KW  EFFECT:LOCAL@
+   postpone ; ;
+
+: NUL-BYTE ( nullable<u8> -- n )
+   MATCH nullable
+      none OF 0 ENDOF
+      some OF c@ ENDOF
+   ;MATCH ;
+: NONES ( -- nullable<a> nullable<b> nullable<c> )
+   NULLABLE:NONE NULLABLE:NONE NULLABLE:NONE ;
+: BI-KEEP-TEXT
+   ( nullable<a> nullable<b> nullable<c> nullable<d> -- nullable<a> )
+   drop drop drop {: x:nullable<a> :} x ;
+
+: KEEP-BUILT ( -- n ) [: s" BI-KEEP" MAKE-KEEP ;] catch ;
+KEEP-BUILT 0 T=
+s" Q" drop NULLABLE:SOME NONES BI-KEEP NUL-BYTE 81 T=
+s" Q" drop NULLABLE:SOME NONES BI-KEEP-TEXT NUL-BYTE 81 T=
+
+\ : NAME ( bfam -- n ) {: x:bfam :} x 1 + ;
+: MAKE-WRONG ( ptr u8 n -- )
+   EFFECT:NEW BFAM EFFECT:IN EFFECT:N EFFECT:OUT define-word
+   s" {:" KW  BFAM EFFECT:LOCAL  s" :}" KW  EFFECT:LOCAL@
+   1 literal  postpone +
+   postpone ; ;
+: BAD-WRONG ( -- n ) [: s" BI-BAD-WRONG" MAKE-WRONG ;] catch ;
+BAD-WRONG 70 T=
+s" : BI-BAD-WRONG ( -- n ) 7 ;" evaluate-closed
+BI-BAD-WRONG 7 T=
+
+\ : NAME ( n bool -- n ) if {: a:n :} a then {: b:n :} a ; with b in the
+\ slot a's block left.
+: MAKE-ENDED ( ptr u8 n -- )
+   EFFECT:NEW EFFECT:N EFFECT:IN s" bool" EFFECT:NAMED EFFECT:IN
+   EFFECT:N EFFECT:OUT define-word
+   s" if" KW  GROUP {: a:n :}  a EFFECT:LOCAL@  s" then" KW
+   GROUP drop  a EFFECT:LOCAL@
+   postpone ; ;
+: BAD-ENDED ( -- n ) [: s" BI-BAD-ENDED" MAKE-ENDED ;] catch ;
+BAD-ENDED 70 T=
+s" : BI-BAD-ENDED ( -- n ) 8 ;" evaluate-closed
+BI-BAD-ENDED 8 T=
+
+\ : NAME ( nullable<a> ... -- ) {: x:nullable<z> :} drop ... ; with 23
+\ inputs, so the local's z is a 24th parameter.
+: MAKE-WIDE ( ptr u8 n -- )
+   EFFECT:NEW  23 0 ?do NUL EFFECT:IN loop  define-word
+   s" {:" KW  NUL EFFECT:LOCAL drop  s" :}" KW
+   22 0 ?do postpone drop loop
+   postpone ; ;
+
+\ : NAME ( -- ) [ EFFECT:N EFFECT:LOCAL drop ] ; as text, which no
+\ define-word effect numbers.
+public
+: LOCAL-NOW ( -- ) EFFECT:N EFFECT:LOCAL drop ; immediate
+private
+s" LOCAL-NOW" 0 parse-imm
+: BAD-TEXT ( -- n )
+   [: s" : BI-BAD-TEXT ( -- ) LOCAL-NOW ;" evaluate-closed ;] catch ;
+BAD-TEXT 70 T=
+s" : BI-BAD-TEXT ( -- n ) 9 ;" evaluate-closed
+BI-BAD-TEXT 9 T=
+
 8192 BUFFER: BUILT-DIAG
 variable BUILT-DIAG-U
 : KEEP-DIAG ( -- )
@@ -193,6 +271,17 @@ variable BUILT-DIAG-U
 DECL-DIAG:PROSE  LOAN-BUILT 70 T=  KEEP-DIAG
 DECL-DIAG:PROSE  LOAN-TEXT 70 T=
 BUILT-DIAG$ DECL-DIAG:TEXT$ T$=  DECL-DIAG:OFF
+
+public
+: WIDE-GO ( -- ) s" BI-WIDE" MAKE-WIDE ;
+: TEXT-GO ( -- ) s" : BI-TEXT ( -- ) BITEM:LOCAL-NOW ;" evaluate-closed ;
 ;package
+
+\ A rejection's text goes to fd 2, which a child's capture reads.
+s" BITEM:WIDE-GO" 76
+s" define-word has more than 23 type parameters: 'BI-WIDE'"
+SUBJECT:REFUSED? TTRUE
+s" BITEM:TEXT-GO" 70
+s" EFFECT:LOCAL needs a definition define-word opened" SUBJECT:REFUSED? TTRUE
 
 T-REPORT

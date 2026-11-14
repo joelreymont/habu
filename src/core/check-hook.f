@@ -417,14 +417,17 @@ variable DENSE-N
 
 public
 
-\ A transient copy of effect node, its parameters numbered 0, 1 ... by first
-\ occurrence, inputs then outputs, element 0 first; false past TFAM-DECL-PARAM-COUNT.
-: EFFECT-DENSE ( n -- n bool ) {: node:n :}
-   0 DENSE-N !
+\ A transient copy of type node, its parameters numbered on by the map the
+\ open definition's EFFECT-DENSE began; false past TFAM-DECL-PARAM-COUNT.
+: TYPE-DENSE ( n -- n bool ) {: node:n :}
    TRANSIENT-ON
    [: node DENSE-COPY ;] [: TRANSIENT-OFF ;] finally
    DENSE-N @ TFAM:TFAM-DECL-PARAM-COUNT > if drop 0 RES-FALSE exit then
    RES-TRUE ;
+
+\ A transient copy of effect node, its parameters numbered 0, 1 ... by first
+\ occurrence, inputs then outputs, element 0 first; false past TFAM-DECL-PARAM-COUNT.
+: EFFECT-DENSE ( n -- n bool ) 0 DENSE-N !  TYPE-DENSE ;
 
 ;using
 

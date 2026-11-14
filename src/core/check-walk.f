@@ -650,7 +650,9 @@ public
 \ type node V's term under its listing name A U, and `:}` binds the group.
 : ITEM-IN-GROUP ( n n ptr u8 n -- ) {: v:n kind:n a:ptr u:n :}
    kind BODY-ITEM-KIND:LOCAL = IF
-      a u  v TFAM:EFFECT-TYPE LOC-ADD-TERM EXIT
+      a u LOC-OPEN
+      a u  v TFAM:EFFECT-TYPE LOC-TYPED
+      #LOC @ 1 + #LOC ! EXIT
    THEN
    kind BODY-ITEM-KIND:KEYWORD =  TKF TKFU @ s" :}" CORE-STR= and IF LOC-CLOSE EXIT THEN
    ITEM-UNDEFINED ;

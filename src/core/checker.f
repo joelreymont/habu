@@ -7579,8 +7579,7 @@ SIG-BINDER-BODY-INSTALL
                               \ that already failed keeps its own diagnostic
    u 0 = IF 0 RES-FALSE ELSE a u TYPE-SPAN-READ THEN
    0= IF drop a u BAD-LOC-ANN THEN
-   SGBAD @ sg0 0= and IF a u BAD-LOC-ANN nip THEN
-   dup SCHEME-TYPE? IF drop a u BAD-LOC-ANN THEN ;
+   SGBAD @ sg0 0= and IF a u BAD-LOC-ANN nip THEN ;
 
 create ROWMAP 26 cells allot
 : ROWMAP-RESET 0 BEGIN dup cells ROWMAP + UNBOUND swap ! 1 + dup 25 > UNTIL drop ;
@@ -17593,23 +17592,22 @@ CHECKER-REG:}SCRATCH
    CHECKER-TAPE:K-LOCAL-DECL LOCSEQ @ 0 EVENT!
    LOCSEQ @ 1 + LOCSEQ ! ;
 
-\ Opens the local the raw name spells, of type term T.
-: LOC-ADD-TERM ( ptr u8 n n -- ) {: a:ptr u:n t:n :}
-   a u LOC-OPEN
-   t LOC-ANN-TERM #LOC @ LOC-TYPE-SET
-   #LOC @ 1 + #LOC ! ;
+\ Types the slot LOC-OPEN made with term T; a type scheme is refused at the
+\ type's spelling A U.
+: LOC-TYPED ( ptr u8 n n -- ) {: a:ptr u:n t:n :}
+   t SCHEME-TYPE? IF a u BAD-LOC-ANN ELSE t LOC-ANN-TERM THEN
+   #LOC @ LOC-TYPE-SET ;
 
-\ An annotated local's type is read before its slot opens.
+\ The annotation A U after a local's colon, read once its slot is open.
+: LOC-ANN ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u LOC-SHOW-SUFFIX? IF #LOC @ LOC-SHOW-ON! EXIT THEN
+   a u  a u LOCAL-TYPE  LOC-TYPED ;
+
 : LOC-ADD ( ptr u8 ptr u8 n -- )   \ raw declaration, folded declaration, their shared length
    {: ra:ptr a:ptr u:n :}
    a u LCOLON {: col:n :}
-   col u < IF
-      ra u col LOC-SUFFIX$ LOC-SHOW-SUFFIX? 0= IF
-         ra col  ra u col LOC-SUFFIX$ LOCAL-TYPE  LOC-ADD-TERM EXIT
-      THEN
-   THEN
    ra col LOC-OPEN
-   col u < IF #LOC @ LOC-SHOW-ON! THEN
+   col u < IF ra u col LOC-SUFFIX$ LOC-ANN THEN
    #LOC @ 1 + #LOC ! ;
 
 \ Linear values may not launder through locals: a local reference re-pushes its

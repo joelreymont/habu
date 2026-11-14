@@ -1903,12 +1903,18 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    w wu ERROR-TEXT:TYPE  s"  while a definition is open: " ERROR-TEXT:TYPE
    a u ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE  RC-REJECT throw ;
 
-\ An effect value DEFINE-RUN cannot take, such as EFFECT:N; the quotation
-\ types why.
+\ An effect value DEFINE-RUN cannot take, such as EFFECT:N, or one a local's
+\ type widens past the parameter cap; the quotation types why.
 : DEF-NOT-EFFECT ( [ -- ] ptr u8 n -- ) {: a:ptr u:n :}
    s" E-NOT-EFFECT" REFUSAL  s" define-word " ERROR-TEXT:TYPE  execute
    s" : '" ERROR-TEXT:TYPE  a u ERROR-TEXT:TYPE  s" '" ERROR-TEXT:TYPE
    NL 1 ERROR-TEXT:TYPE  DEF-RC-BAD-SIG throw ;
+
+\ Why DEF-NOT-EFFECT refuses a definition past the parameter cap.
+: DEF-WIDE ( -- )
+   s" has more than " ERROR-TEXT:TYPE
+   TFAM:TFAM-DECL-PARAM-COUNT ERROR-TEXT:DIGITS$ ERROR-TEXT:TYPE
+   s"  type parameters" ERROR-TEXT:TYPE ;
 
 : DEF-ONE-TOKEN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    u 0= if false exit then
@@ -1923,12 +1929,8 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
       [: s" needs an effect a definition can take" ERROR-TEXT:TYPE ;]
       a u DEF-NOT-EFFECT
    then
-   eff CHECK:EFFECT-DENSE 0= if
-      [: s" has more than " ERROR-TEXT:TYPE
-         TFAM:TFAM-DECL-PARAM-COUNT ERROR-TEXT:DIGITS$ ERROR-TEXT:TYPE
-         s"  type parameters" ERROR-TEXT:TYPE ;]
-      a u DEF-NOT-EFFECT
-   then {: dense:n :}
+   eff CHECK:EFFECT-DENSE 0= if [: DEF-WIDE ;] a u DEF-NOT-EFFECT then
+   {: dense:n :}
    dense CHECK:EFFECT-RULES? 0= if
       [: s" needs an effect a written signature could state" ERROR-TEXT:TYPE ;]
       a u DEF-NOT-EFFECT
@@ -2066,10 +2068,23 @@ variable LIT-AT
    s" an item op ITEM-ABI does not name" ERROR-TEXT:TYPE
    NL 1 ERROR-TEXT:TYPE  RC-REJECT throw ;
 
-\ Appends a local of type node T, whose index is the LOCAL items before it.
-: LOCAL-ITEM ( n -- ) {: t:n :}
+\ Only define-word's effect numbers the parameters a local's type is read by.
+: LOCAL-UNBUILT ( ptr u8 n -- ) {: a:ptr u:n :}
+   s" E-NO-DEFINITION" REFUSAL
+   a u ERROR-TEXT:TYPE
+   s"  needs a definition define-word opened" ERROR-TEXT:TYPE
+   NL 1 ERROR-TEXT:TYPE  RC-REJECT throw ;
+
+\ Appends a local of type node T, whose index is the LOCAL items before it;
+\ its node numbers T's parameters on from the definition's effect.
+: LOCAL-ITEM ( ptr u8 n n -- ) {: a:ptr u:n t:n :}
+   BODY-ITEMS:EFFECT-CELL CELL@ 0= if a u LOCAL-UNBUILT then
+   t CHECK:TYPE-DENSE 0= if
+      [: DEF-WIDE ;] DEF-CAPTURED-NAME DEF-NOT-EFFECT
+   then
+   {: dense:n :}
    BODY-ITEMS:LOCALS-CELL CELL@ {: i:n :}
-   BODY-ITEM-KIND:LOCAL t i i LOCAL$ ITEM+
+   BODY-ITEM-KIND:LOCAL dense i i LOCAL$ ITEM+
    i 1 + BODY-ITEMS:LOCALS-CELL CELL! ;
 
 \ What a definer's item runs: the ITEM-ABI op OP with spelling A U and
@@ -2079,7 +2094,7 @@ variable LIT-AT
    op ITEM-ABI:KEYWORD = if BODY-ITEM-KIND:KEYWORD 0 0 a u ITEM+ exit then
    op ITEM-ABI:OPERAND = if BODY-ITEM-KIND:OPERAND 0 0 a u ITEM+ exit then
    op ITEM-ABI:TYPE = if BODY-ITEM-KIND:TYPE v 0 a u ITEM+ exit then
-   op ITEM-ABI:LOCAL = if v LOCAL-ITEM exit then
+   op ITEM-ABI:LOCAL = if a u v LOCAL-ITEM exit then
    op ITEM-ABI:LOCAL-REF = if BODY-ITEM-KIND:LOCAL-REF v 0 v LOCAL$ ITEM+ exit then
    op ITEM-ABI:CALL = if a u  a u FIND  FOUND-CALL exit then
    op ITEM-ABI:CALL-EXACT = if a u  a u XREF-FIND  FOUND-CALL exit then
