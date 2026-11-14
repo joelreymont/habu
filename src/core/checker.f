@@ -13822,56 +13822,83 @@ FACTS-READ-DEFAULT
    slot 0 ?DO
       i UPKG-MATCHED? IF  i UPKG-NAME$ slot UPKG-NAME$ CORE-STR= IF drop RES-FALSE THEN  THEN
    LOOP ;
-: UPKG-EACH ( [ n bool -- ] -- )          \ XT on each package's slot, true the first time
+: UPKG-EACH ( [ n -- ] -- )               \ XT on each package's slot
    {: xt :}
-   RES-TRUE
    USE-MAX 0 ?DO
-      i UPKG-FIRST? IF  i over xt execute  drop RES-FALSE  THEN
-   LOOP drop ;
-: UPKG-COUNT ( -- n )
-   0  USE-MAX 0 ?DO  i UPKG-FIRST? IF 1 + THEN  LOOP ;
+      i UPKG-FIRST? IF  i xt execute  THEN
+   LOOP ;
+
+\ The using mirror and a sym hold a package's name folded; its row spells it
+\ as the program wrote it. A name no row holds is answered as given.
+: PACKAGE-NAME$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   u 0= IF a u EXIT THEN
+   a u BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: row:ptr :}
+   row NULL-PTR = IF a u EXIT THEN
+   row CHECKER-RESOLVE:CK-REC-NAME$ ;
+
+: EMIT-QUALIFIED ( ptr u8 n ptr u8 n -- ) {: p:ptr pu:n w:ptr wu:n :}
+   p pu REJECTION:EMIT-STR  58 REJECTION:EMIT1  w wu REJECTION:EMIT-STR ;
 
 \ The bare token s su names a global word and a public of the used package
-\ USH-PKG; the global has no qualified form, so only the package's word can be
-\ written apart.
-: USING-SHADOW-REJECT ( ptr u8 n -- ) {: s:ptr su:n :}
+\ p pu; the global has no qualified form, so only the package's word can be
+\ written apart. Writes the record through its help and leaves it open: the
+\ caller ends it.
+: USING-SHADOW-REJECT ( ptr u8 n ptr u8 n -- )
+   {: s:ptr su:n p:ptr pu:n :}
+   p pu PACKAGE-NAME$ {: pa:ptr pn:n :}
    s" E-USING-SHADOW-GLOBAL" REJECTION:OPEN
    96 REJECTION:EMIT1  s su REJECTION:EMIT-STR
-   s" ` is both a global word and a public of used package `" REJECTION:EMIT-STR
-   USH-PKG-A @ USH-PKG-U @ REJECTION:EMIT-STR  96 REJECTION:EMIT1
+   s" ` is both a global word and a public of used package `"
+   REJECTION:EMIT-STR
+   pa pn REJECTION:EMIT-STR  96 REJECTION:EMIT1
    s su REJECTION:AT  s" ambiguous here" REJECTION:EMIT-STR
    s" global" REJECTION:NOTE  s su REJECTION:EMIT-STR
-   s" package" REJECTION:NOTE
-   USH-PKG-A @ USH-PKG-U @ REJECTION:EMIT-STR  58 REJECTION:EMIT1  s su REJECTION:EMIT-STR
+   s" package" REJECTION:NOTE  pa pn s su EMIT-QUALIFIED
    REJECTION:HELP
-   s" write `" REJECTION:EMIT-STR
-   USH-PKG-A @ USH-PKG-U @ REJECTION:EMIT-STR  58 REJECTION:EMIT1  s su REJECTION:EMIT-STR
-   s" ` to call the package's word, or rename one of the two: the global word has no qualified form"
+   s" write `" REJECTION:EMIT-STR  pa pn s su EMIT-QUALIFIED
+   s" ` to call the package's word, or rename one of the two: "
    REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REFUSE-DEF REJECTION:STOP ;
+   s" the global word has no qualified form" REJECTION:EMIT-STR ;
 
-\ The bare token s su is public in each package CK-USED-MASK marks.
-: USING-AMBIGUOUS-REJECT ( ptr u8 n -- ) {: s:ptr su:n :}
+\ The ambiguous token, how many packages export it and how many are listed.
+CHECKER-REG:SCRATCH{
+PTR-VARIABLE UA-TOK-A   variable UA-TOK-U
+variable UA-COUNT   variable UA-SEEN
+CHECKER-REG:}SCRATCH
+
+: UA-NAME$ ( n -- ptr u8 n )              \ slot n's package, spelled
+   UPKG-NAME$ PACKAGE-NAME$ ;
+
+: UA-NOTE ( n -- )
+   UA-SEEN @ 0 <> IF s" , " REJECTION:EMIT-STR THEN
+   UA-NAME$ REJECTION:EMIT-STR  1 UA-SEEN +! ;
+
+\ Each package's qualified spelling, the last after `or`.
+: UA-HELP ( n -- )
+   UA-SEEN @ 0 <> IF
+      UA-SEEN @ 1 + UA-COUNT @ = IF s"  or " ELSE s" , " THEN
+      REJECTION:EMIT-STR
+   THEN
+   96 REJECTION:EMIT1
+   UA-NAME$ UA-TOK-A @ UA-TOK-U @ EMIT-QUALIFIED
+   96 REJECTION:EMIT1  1 UA-SEEN +! ;
+
+\ The bare token s su is public in each package whose using slot EACH runs
+\ its xt on. Writes the record through its help and leaves it open: the
+\ caller ends it.
+: USING-AMBIGUOUS-REJECT ( ptr u8 n [ [ n -- ] -- ] -- )
+   {: s:ptr su:n each :}
+   s UA-TOK-A !  su UA-TOK-U !
+   0 UA-COUNT !  [: drop  1 UA-COUNT +! ;] each execute
    s" E-USING-AMBIGUOUS" REJECTION:OPEN
    96 REJECTION:EMIT1  s su REJECTION:EMIT-STR
    s" ` is public in more than one used package" REJECTION:EMIT-STR
    s su REJECTION:AT  s" ambiguous here" REJECTION:EMIT-STR
    s" packages" REJECTION:NOTE
-   [: 0= IF s" , " REJECTION:EMIT-STR THEN  UPKG-NAME$ REJECTION:EMIT-STR ;] UPKG-EACH
+   0 UA-SEEN !  [: UA-NOTE ;] each execute
    REJECTION:HELP
    s" write the package's name before the word, as " REJECTION:EMIT-STR
-   UPKG-COUNT {: k:n :}
-   0  USE-MAX 0 ?DO
-      i UPKG-FIRST? IF
-         dup 0 > IF
-            dup 1 + k = IF s"  or " ELSE s" , " THEN REJECTION:EMIT-STR
-         THEN
-         96 REJECTION:EMIT1  i UPKG-NAME$ REJECTION:EMIT-STR
-         58 REJECTION:EMIT1  s su REJECTION:EMIT-STR  96 REJECTION:EMIT1
-         1 +
-      THEN
-   LOOP drop
-   CHECKER-REJECT-RC REFUSE-DEF REJECTION:STOP ;
+   0 UA-SEEN !  [: UA-HELP ;] each execute ;
 
 package CHECKER-RESOLVE
 public
@@ -13892,8 +13919,14 @@ public
       0 OK !  -1 FAILSET !
       EXIT
    THEN
-   why E-USING-SHADOW-GLOBAL = IF s su USING-SHADOW-REJECT THEN
-   why E-USING-AMBIGUOUS = IF s su USING-AMBIGUOUS-REJECT THEN
+   why E-USING-SHADOW-GLOBAL = IF
+      s su USH-PKG-A @ USH-PKG-U @ USING-SHADOW-REJECT
+      CHECKER-REJECT-RC REFUSE-DEF REJECTION:STOP
+   THEN
+   why E-USING-AMBIGUOUS = IF
+      s su [: UPKG-EACH ;] USING-AMBIGUOUS-REJECT
+      CHECKER-REJECT-RC REFUSE-DEF REJECTION:STOP
+   THEN
    why REFUSE-DEF throw ;
 
 \ The scope question for a caller that defines nothing: would resolving NAME be
@@ -14871,9 +14904,28 @@ package CHECKER-REG
    {: in:n out:n :}
    40 REJECTION:EMIT1  in REJECTION:EMIT-U  s"  -- " REJECTION:EMIT-STR
    out REJECTION:EMIT-U  41 REJECTION:EMIT1 ;
-\ The private twin's sym names the public's package and tail, already folded.
-: SBA-QUALIFIED ( n -- ) {: sym:n :}
-   sym SYM-PKG$ REJECTION:EMIT-STR  58 REJECTION:EMIT1  sym SYM-NAME$ REJECTION:EMIT-STR ;
+\ A name's tail as written: past its one inner colon, if it has one.
+: SBA-TAIL$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   a u CHECKER-COLON-SCAN {: cn:n ci:n :}
+   cn 1 <>  ci 0 =  or  ci u 1 - =  or IF a u EXIT THEN
+   a ci + 1 +  u ci - 1 - ;
+
+\ The public: the private twin's package, spelled by its row, and the
+\ definition's name as written. The twin's sym holds both folded.
+: SBA-PUBLIC ( n -- ) {: sym:n :}
+   sym SYM-PKG$ PACKAGE-NAME$
+   NMOFF @ TADDR NMU @ SBA-TAIL$ EMIT-QUALIFIED ;
+
+\ The private twin's name as its dictionary row spells it.
+: SBA-PRIVATE$ ( n -- ptr u8 n ) {: sym:n :}
+   sym SYM-NAME$ {: a:ptr u:n :}
+   sym SYM-PKG$ BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: pkg:ptr :}
+   pkg NULL-PTR = IF a u EXIT THEN
+   pkg CELL + @ {: wid:n :}
+   wid 0= IF a u EXIT THEN
+   a u wid CHECKER-RESOLVE:WL-PROBE {: row:ptr :}
+   row NULL-PTR = IF a u EXIT THEN
+   row CHECKER-RESOLVE:CK-REC-NAME$ ;
 
 \ The DECLARED rows and the name of the colon definition about to be published.
 : SHADOW-ARITY-CK ( n n ptr u8 n -- )
@@ -14886,13 +14938,13 @@ package CHECKER-REG
    nin pin =  nout pout =  and IF EXIT THEN
    NMOFF @ TADDR NMU @ RF-REJECTED PIN-REFUSED!   \ the definition's name, not the walk's token
    s" E-SHADOWED-ARITY" REJECTION:OPEN
-   s" public `" REJECTION:EMIT-STR  priv SBA-QUALIFIED
+   s" public `" REJECTION:EMIT-STR  priv SBA-PUBLIC
    s" ` has a different stack effect from its package's private `" REJECTION:EMIT-STR
-   priv SYM-NAME$ REJECTION:EMIT-STR  96 REJECTION:EMIT1
+   priv SBA-PRIVATE$ REJECTION:EMIT-STR  96 REJECTION:EMIT1
    NMOFF @ TADDR NMU @ REJECTION:AT
    s" its name binds the private word" REJECTION:EMIT-STR
-   s" public" REJECTION:NOTE  priv SBA-QUALIFIED  32 REJECTION:EMIT1  nin nout SBA-CELLS-TXT
-   s" private" REJECTION:NOTE  priv SYM-NAME$ REJECTION:EMIT-STR  32 REJECTION:EMIT1  pin pout SBA-CELLS-TXT
+   s" public" REJECTION:NOTE  priv SBA-PUBLIC  32 REJECTION:EMIT1  nin nout SBA-CELLS-TXT
+   s" private" REJECTION:NOTE  priv SBA-PRIVATE$ REJECTION:EMIT-STR  32 REJECTION:EMIT1  pin pout SBA-CELLS-TXT
    REJECTION:HELP
    s" declare the same stack effect on both, as the private word's `" REJECTION:EMIT-STR
    pin pout SBA-CELLS-TXT

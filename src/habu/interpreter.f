@@ -348,47 +348,11 @@ create NL NEWLINE c,
       i ANSWERS? if i xt execute then
    loop ;
 
-\ The checker's mirror holds slot s's name folded; the package row spells it.
-: USED-NAME ( n -- ptr u8 n )
-   CHECKER-USING$ {: a:ptr u:n :}
-   a u BOOT:NAMESPACE-WL WL-PROBE {: row:ptr :}
-   row XREF-FOUND? if row XREF-NAME$ exit then
-   a u ;
-
-: QUALIFIED ( n -- )
-   USED-NAME SAY  58 REJECTION:EMIT1  TOKEN$ SAY ;
-
-: QUALIFIED-TICKS ( n -- )
-   96 REJECTION:EMIT1  QUALIFIED  96 REJECTION:EMIT1 ;
+: AMBIGUOUS ( -- )
+   TOKEN$ [: ANSWERING ;] USING-AMBIGUOUS-REJECT
+   ENGINE-ERROR:USING-AMBIGUOUS REJECTION:STOP ;
 
 variable ANSWERED
-variable LISTED
-
-: COUNT-ANSWERS ( -- )
-   0 ANSWERED !
-   [: drop  1 ANSWERED +! ;] ANSWERING ;
-
-\ Each answering package's qualified spelling, the last after `or`.
-: QUALIFIED-LIST ( -- )
-   COUNT-ANSWERS  0 LISTED !
-   [: LISTED @ 0<> if
-         LISTED @ 1 + ANSWERED @ = if s"  or " else s" , " then SAY
-      then
-      QUALIFIED-TICKS  1 LISTED +! ;] ANSWERING ;
-
-: PACKAGE-LIST ( -- )
-   0 LISTED !
-   [: LISTED @ 0<> if s" , " SAY then
-      USED-NAME SAY  1 LISTED +! ;] ANSWERING ;
-
-: AMBIGUOUS ( -- )
-   s" E-USING-AMBIGUOUS" REJECTION:OPEN
-   TOKEN$ TICKS  s"  is exported by more than one used package" SAY
-   TOKEN$ REJECTION:AT  s" ambiguous" SAY
-   s" packages" REJECTION:NOTE  PACKAGE-LIST
-   REJECTION:HELP
-   s" write the package's name before the word, as " SAY  QUALIFIED-LIST
-   ENGINE-ERROR:USING-AMBIGUOUS REJECTION:STOP ;
 
 \ The first using slot that exports the token.
 : ANSWER ( -- n )
@@ -397,16 +361,7 @@ variable LISTED
    ANSWERED @ ;
 
 : SHADOWED ( -- )
-   ANSWER {: s:n :}
-   s" E-USING-SHADOW-GLOBAL" REJECTION:OPEN
-   TOKEN$ TICKS  s"  names both a global word and a word of package " SAY
-   s USED-NAME TICKS
-   TOKEN$ REJECTION:AT  s" names two words" SAY
-   s" global" REJECTION:NOTE  TOKEN$ SAY
-   s" package" REJECTION:NOTE  s QUALIFIED
-   REJECTION:HELP  s" write " SAY  s QUALIFIED-TICKS
-   s"  to call the package's word, or rename one of the two: " SAY
-   s" the global word has no qualified form" SAY
+   TOKEN$ ANSWER CHECKER-USING$ USING-SHADOW-REJECT
    ENGINE-ERROR:USING-SHADOW-GLOBAL REJECTION:STOP ;
 
 public
