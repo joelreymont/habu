@@ -802,7 +802,7 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    [: FFI-T-BAD-EXTENT-INDEX ;]
    s" error[E-FFI-SYNTAX]: the clause names no input of the declaration" FFI-T-SYNTAX
    [: FFI-T-BAD-IN-TYPE ;]
-   s" error[E-FFI-SYNTAX]: 'fd' is not an input type: an input is ptr u8, f32, r, n, i64, cell, addr, u8, u16, u32 or char"
+   s" error[E-FFI-SYNTAX]: 'fd' is not an input type: an input is ptr u8, f32, r, i32, n, i64, cell, addr, u8, u16, u32 or char"
    FFI-T-SYNTAX
    [: FFI-T-BAD-OUT-TYPE ;]
    s" error[E-FFI-SYNTAX]: 'bool' is not an output type: an output is ptr u8, f32, i32, nullable<u8>, r, n, i64, cell, addr, u8, u16, u32 or char"

@@ -48,6 +48,10 @@ variable FFI-T-CC-LIB-U
    s"    unsigned char i, unsigned short j, unsigned int k) {" FFI-T-CC-L+
    s"    return a + 2*b + 3*c + 4*d + 5*e + 6*f + 7*g + 8*h" FFI-T-CC-L+
    s"       + 9*(L)i + 10*(L)j + 11*(L)k; }" FFI-T-CC-L+
+   s" L hb_cc_l8i(L a, L b, L c, L d, L e, L f, L g, L h, int i, int j) {"
+   FFI-T-CC-L+
+   s"    return a + 2*b + 3*c + 4*d + 5*e + 6*f + 7*g + 8*h" FFI-T-CC-L+
+   s"       + 9*(L)i + 10*(L)j; }" FFI-T-CC-L+
    s" #include <stdarg.h>" FFI-T-CC-L+
    s" L hb_cc_l9v(L a, L b, L c, L d, L e, L f, L g, L h, L i, ...) {"
    FFI-T-CC-L+
@@ -93,6 +97,7 @@ FUNCTION: FFI-T-CC-F9 hb_cc_f9
    ( f32 f32 f32 f32 f32 f32 f32 f32 f32 -- f32 )
 ;FUNCTION
 FUNCTION: FFI-T-CC-L8N hb_cc_l8n ( n n n n n n n n u8 u16 u32 -- n ) ;FUNCTION
+FUNCTION: FFI-T-CC-L8I hb_cc_l8i ( n n n n n n n n i32 i32 -- n ) ;FUNCTION
 FUNCTION: FFI-T-CC-L9V hb_cc_l9v ( n n n n n n n n n n -- n )
    9 VARIADIC
 ;FUNCTION
@@ -165,6 +170,14 @@ $D9E8F7A6 constant FFI-T-CC-U32-IN
    1 8 FFI-T-CC-NS  FFI-T-CC-U8-IN 9 * +
    FFI-T-CC-U16-IN 10 * +  FFI-T-CC-U32-IN 11 * + T= ;
 
+\ Apple packs the two ints in one stack cell and Linux gives each its own.
+: FFI-T-CC-INT-STACK ( -- )
+   s" eight longs, then two negative ints on the stack" T-LABEL
+   1 FFI-T-CC-N 2 FFI-T-CC-N 3 FFI-T-CC-N 4 FFI-T-CC-N 5 FFI-T-CC-N
+   6 FFI-T-CC-N 7 FFI-T-CC-N 8 FFI-T-CC-N
+   -15450 -29154 FFI-T-CC-L8I
+   1 8 FFI-T-CC-NS  -15450 9 * +  -29154 10 * + T= ;
+
 \ L9V with -1 leaves $FF bytes in the variadic slot, so a u8 stored in fewer
 \ than an int's 4 bytes reads them as a negative int.
 : FFI-T-CC-VARIADIC ( -- )
@@ -180,6 +193,7 @@ FFI-T-CC-LONGS
 FFI-T-CC-DOUBLES
 FFI-T-CC-FLOATS
 FFI-T-CC-NARROW-STACK
+FFI-T-CC-INT-STACK
 FFI-T-CC-VARIADIC
 FFI-T-CC-MIXED
 FFI-T-CC-NARROW

@@ -134,6 +134,7 @@ variable FFI-SV-SRC-U
    s" ( n ptr u8 -- ) 16 STRUCT-RESULT" FFI-SV-PASS
    s" ( ptr u8 n -- n ) 0 24 STRUCT-ARG" FFI-SV-PASS
    s" ( r ptr u8 f32 -- n ) 1 12 STRUCT-ARG" FFI-SV-PASS
+   s" ( i32 ptr u8 -- n ) 1 16 STRUCT-ARG" FFI-SV-PASS
    s" ( ptr u8 ptr u8 -- ) 0 16 STRUCT-ARG 16 STRUCT-RESULT" FFI-SV-PASS
    s" ( ptr u8 n ptr u8 -- n ) 0 8 STRUCT-ARG 2 1 WRITES-ARG" FFI-SV-PASS
    s" ( ptr u8 -- n ) 0 128 STRUCT-ARG" FFI-SV-PASS

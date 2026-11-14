@@ -2475,7 +2475,7 @@ sections above.
 - **A text-generating definer can declare its product with `generates:`.** At
   top level, after the definer, `generates: D ( effect )` assigns every word
   D makes that effect, as `does>` does. `FUNCTION:` instead supplies its
-  declaration group, treating an `i32` result as `n`. A `generates:` claim
+  declaration group. A `generates:` claim
   does not define the made word; the load judges its actual effect and any
   other products. An undefined D, a deferred D, a D no `parse-name` reaches
   through the words it calls (a call through a `defer` or an executed xt

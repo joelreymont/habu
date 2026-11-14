@@ -919,7 +919,7 @@ s" dlerror" PROCESS 0 DECLARE DLERROR-FN-CELL !
 \     FUNCTION: CRC-CALL crc32 ( n ptr u8 n -- n ) ;FUNCTION
 \     LIBRARY /usr/lib/libSystem.B.dylib      \ a literal, or PROCESS-SYMBOLS (RTLD_DEFAULT)
 \     FUNCTION: SQRT-CALL sqrt ( r -- r ) ;FUNCTION
-\     FUNCTION: LOCAL-CALL getsockname ( n ptr u8 ptr u8 -- i32 )
+\     FUNCTION: LOCAL-CALL getsockname ( i32 ptr u8 ptr u8 -- i32 )
 \        1 $10 WRITES-BYTES                   \ sockaddr_in
 \        2 $04 WRITES-BYTES                   \ socklen_t
 \     ;FUNCTION
@@ -928,7 +928,7 @@ s" dlerror" PROCESS 0 DECLARE DLERROR-FN-CELL !
 \ a legal Habu name (__errno_location).
 \
 \ The declared effect becomes the generated word's effect, with `f32` mapped
-\ to Habu `r` on either side and an `i32` result mapped to `n`. A clause names a
+\ to Habu `r` and `i32` to `n` on either side. A clause names a
 \ `ptr u8` the callee writes: `idx len WRITES-BYTES` for a fixed width, or
 \ `idx arg WRITES-ARG` when another argument carries the length. The clauses
 \ are ordinary words the
@@ -1024,7 +1024,7 @@ public
    {: a:ptr u:n :}
    a u s" u8" STR= a u s" char" STR= or if 1 exit then
    a u s" u16" STR= if 2 exit then
-   a u s" u32" STR= a u s" f32" STR= or if 4 exit then
+   a u s" u32" STR= a u s" i32" STR= or a u s" f32" STR= or if 4 exit then
    8 ;
 
 private
@@ -1281,8 +1281,7 @@ private
    then
    a  b u + a - ;
 
-\ The integer types and addr an input or an output may be: C passes each
-\ whole, in one register or one stack slot.
+\ The integer types and addr an input or an output keeps as spelled.
 : SCALAR? ( -- bool )
    s" n" TOK-IS? s" i64" TOK-IS? or s" cell" TOK-IS? or
    s" addr" TOK-IS? or s" u8" TOK-IS? or s" u16" TOK-IS? or
@@ -1301,7 +1300,7 @@ private
 
 : IN-REJECT ( -- )
    s" an input"
-   s" ptr u8, f32, r, n, i64, cell, addr, u8, u16, u32 or char"
+   s" ptr u8, f32, r, i32, n, i64, cell, addr, u8, u16, u32 or char"
    TYPE-REJECT ;
 
 : OUT-REJECT ( -- )
@@ -1318,7 +1317,10 @@ private
       K-POINTER size ARG+ s" ptr u8" IN-TEXT exit
    then
    s" f32" TOK-IS? if
-      s" r" EFFECT:NAMED drop K-FLOAT32 size ARG+ s" r" IN-TEXT exit
+      K-FLOAT32 size ARG+ s" r" IN-TEXT exit
+   then
+   s" i32" TOK-IS? if
+      K-VALUE size ARG+ s" n" IN-TEXT exit
    then
    s" r" TOK-IS? SCALAR? or 0= if IN-REJECT then
    a u EFFECT:READ-TYPE drop
@@ -1341,10 +1343,7 @@ private
       a PTR-TAIL EFFECT:READ-TYPE drop
       s" ptr u8" RES-TEXT! R-POINTER RES-KIND ! exit
    then
-   s" f32" TOK-IS? if
-      s" r" EFFECT:NAMED drop
-      s" r" RES-TEXT! R-FLOAT32 RES-KIND ! exit
-   then
+   s" f32" TOK-IS? if s" r" RES-TEXT! R-FLOAT32 RES-KIND ! exit then
    s" i32" TOK-IS? if s" n" RES-TEXT! R-I32 RES-KIND ! exit then
    s" nullable<u8>" TOK-IS? s" r" TOK-IS? or SCALAR? or 0= if
       OUT-REJECT

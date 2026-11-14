@@ -3371,13 +3371,13 @@ variable FILE-USE
    sig sigu true sym DEFINER-ADD ;
 
 \ `FUNCTION: NAME symbol ( effect ) ... ;FUNCTION` makes NAME from its
-\ declaration group with the declarer's rewrites: `f32` is `r` on either side
-\ and an `i32` result is a cell. The group is read raw: NEXT-SCAN skips it as a
-\ comment. The effect is rebuilt in FFI-SIG, not BODY-BUF, which holds only
-\ runs read from the source. Whether the scan accounts for the declared word
-\ waits for the `;FUNCTION` that defines it (FFI-CLOSER?): it does when it kept
-\ the declaration or refused it as a duplicate, where the load stops; a refused
-\ effect leaves the word to the run.
+\ declaration group, its types rewritten as the declarer reads them. The group
+\ is read raw: NEXT-SCAN skips it as a comment. The effect is rebuilt in
+\ FFI-SIG, not BODY-BUF, which holds only runs read from the source. Whether
+\ the scan accounts for the declared word waits for the `;FUNCTION` that
+\ defines it (FFI-CLOSER?): it does when it kept the declaration or refused it
+\ as a duplicate, where the load stops; a refused effect leaves the word to
+\ the run.
 variable FFI-OUT
 DYNAMIC-BUFFER FFI-SIG u8
 variable FFI-SIG-U
@@ -3452,7 +3452,7 @@ variable FFI-LIT-B                          \ and the newer
       FFI-OUT @ 0<> IF a u FFI-OUTPUT ELSE a u FFI-INPUT THEN
    THEN
    a u s" f32" CORE-STR= IF s" r" FFI-APPEND EXIT THEN
-   FFI-OUT @ 0<> a u s" i32" CORE-STR= and IF s" n" FFI-APPEND EXIT THEN
+   a u s" i32" CORE-STR= IF s" n" FFI-APPEND EXIT THEN
    a u FFI-APPEND ;
 
 : FFI-SIGNATURE ( -- ptr u8 n )
