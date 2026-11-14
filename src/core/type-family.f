@@ -67,7 +67,7 @@ CELL constant TAGW-CELL     \ default tag width: one stack cell
 \ --- named reject codes (thrown, caught by parser/CHECK path or unit `catch`).
 7101 constant E-TFAM-CASE     \ uppercase/mixed-case or non-canonical tail token
 7102 constant E-TFAM-DUP      \ duplicate tail within the same package
-7106 constant E-TFAM-AMBIG    \ two other-package public families tie on a tail (7103 = E-SCHEMA-BAD)
+7106 constant E-TFAM-AMBIG    \ two other-package public families tie on a tail
 
 \ 7122 is layout-buffer.f's E-LAYOUT-BOUNDS.
 7125 constant E-PF-NAME       \ reserved field tail
@@ -467,8 +467,7 @@ public
 
 \ --- friend-only field mutators (populated by later declaration passes / tests).
 : TFAM-LAYOUT! ( n n -- ) {: id:n p:n :}
-   p 0 < p TL-MAX > or IF
-      s" `TFAM-LAYOUT!`" s" layout policy" p TL-MAX KIND-REJECT THEN
+   p 0 < p TL-MAX > or IF s" tfam: layout policy out of range" 76 die THEN
    p id TF-REC@ TF.LAYOUT !
    TFM-EPOCH+ ;
 : TFAM-SLOTS! ( n n -- ) swap TF-REC@ TF.SLOTS !  TFM-EPOCH+ ;
@@ -486,8 +485,7 @@ public
 : TFAM-TAGW! ( n n -- ) swap TF-REC@ TF.TAGW ! ;
 : TFAM-PK! ( n n n -- ) {: id:n i:n k:n :}
    i 0 < i id TFAM-ARITY@ >= or IF s" tfam: bad param index" 76 die THEN
-   k 0 < k PK-MAX > or IF
-      s" `TFAM-PK!`" s" parameter kind" k PK-MAX KIND-REJECT THEN
+   k 0 < k PK-MAX > or IF s" tfam: parameter kind out of range" 76 die THEN
    k id TF-REC@ TF.PK-START @ i + cells TF-PK-BASE + ! ;
 
 \ --- matching and lookup.

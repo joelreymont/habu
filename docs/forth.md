@@ -1670,8 +1670,7 @@ listed identity takes one, even one it executes once: a quantifier there
 -- M_b )`) is a new identity per call, not the literal's; both are
 `E-RIGID-REGION-MISMATCH`.
 
-Each domain has a private per-check counter that never reuses an id and throws
-`E-RIGID-EXHAUST` at its limit rather than wrapping. Ids are qualified by
+Each domain has a private per-check counter that never reuses an id. Ids are qualified by
 domain, so equal numbers in two domains do not unify. Mismatches
 are distinct: `E-RIGID-REGION-MISMATCH` (`fix_host_region`),
 `E-RIGID-EXTENT-MISMATCH` (`fix_host_extent`), `E-RIGID-STALE-GENERATION`
