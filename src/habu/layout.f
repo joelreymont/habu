@@ -866,6 +866,9 @@ $2D48 constant FAULT-MARK-CELL
 \ DBASE. An engine's boot stores it; a stripped program, which has no live
 \ region, leaves it at its mapping's zero.
 $2D90 constant DBASE-CELL
+\ REJECTION-JSON-CELL: nonzero when rejections print as JSON. Every thread
+\ reads the main DATA's cell; a task region's stays zero.
+$2D98 constant REJECTION-JSON-CELL
 \ MAIN-STACK-TOP-CELL: the main thread's SP once an engine's boot has stored
 \ the DATA image; every frame a Habu word makes on that thread lies below it.
 \ A stripped program leaves it at its mapping's zero.

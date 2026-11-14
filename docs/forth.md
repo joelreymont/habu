@@ -2024,8 +2024,9 @@ answers alike.
   rollback, reread); `die` is no-return, for build makers and CLI boundaries
   where exiting is the contract.
 - **A memory fault in Habu code is a throw.** A read or write that faults
-  (unmapped or unwritable memory) in a word's code writes `E-MEMORY-FAULT
-  habu: memory fault at <address> pc <pc>` to fd 2 and throws
+  (unmapped or unwritable memory) in a word's code writes the record
+  `error[E-MEMORY-FAULT]: a read or write faulted`, with notes `address` and
+  `in`, to fd 2 and throws
   `ENGINE-ERROR:MEMORY-FAULT`, 110, on the faulting thread: a `catch` answers
   110, a task ends with 110 recorded while the others run, and an uncaught one
   exits 110. A fault in C code, a jump to an address outside Habu code and a

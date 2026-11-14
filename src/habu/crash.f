@@ -6,7 +6,8 @@
 \ The crash handler gives a SIGSEGV or SIGBUS the first of these rows that
 \ holds:
 \ 0. a fault in the crash handler itself: death by the signal, no dump;
-\ 1. the fault within MACHINE-REACH of sp: the named machine exit 102;
+\ 1. the fault within MACHINE-REACH of sp: the machine stack's record, `at`
+\    the pc, and exit 102;
 \ 2. not Habu code -- a saved x20 of 0, code interrupted on this thread's
 \    signal stack, a fetch (pc = fault address), a pc in the engine's signal
 \    handlers (the crash, signal-stub, trap and profiler handlers), or a pc
@@ -14,8 +15,9 @@
 \    x20;
 \ 3. FAULT-MARK-CELL set, a fault while one is delivered: the dump;
 \ 4. the data stack's low guard page and FLOORREC-CELL set: the underdepth throw;
-\ 5. a data, return or loop stack guard page: the named exit 102;
-\ 6. anything else: the line on fd 2 and the throw of MEMORY-FAULT.
+\ 5. a data, return or loop stack guard page: that stack's record, `in` the
+\    word at the pc, and exit 102;
+\ 6. anything else: the memory fault's record and the throw of MEMORY-FAULT.
 \ The dump, which every other signal takes too, writes sig, x0..x28 and
 \ fp/lr/sp/pc as hex lines to stderr, and the process dies by the signal
 \ itself (C-CRASH-RERAISE).
@@ -26,6 +28,7 @@ package CRASH
 public
 variable LCRASHH   variable LHEX   variable LDIE-LINE   variable LHDR   variable LSIGH
 variable LFAULTREC  variable LHANDLERS-END
+variable LFAULT-PUT  variable LFAULT-OWNER  variable LFAULT-DEC
 private
 create CRH 80 allot  variable CRHL
 variable CR-L1  variable CR-L2
@@ -195,6 +198,242 @@ public
    reg 3 <> IF 3 reg 0 ADDI, THEN
    a u status 1 DIE-LINE-SITE, ;
 
+\ ---- fault records ----
+\ A fault record is the bytes package REJECTION writes for an unplaced
+\ rejection of the same parts, in prose or, when the main DATA's
+\ REJECTION-JSON-CELL is set, as one JSON object. A site emits FAULT-OPEN,,
+\ any notes, then FAULT-STOP, or FAULT-KEEP,. Each part's static text is laid
+\ twice after a branch past it, prose and JSON, and the run writes the one x17,
+\ the flag FAULT-OPEN, reads, picks. The record grows in a FAULT-FRAME on sp at
+\ x14, written to fd 2 when it fills and at the record's end. It uses no region
+\ and no VM stack, and writes x0..x2, x6..x17 and x30, no other register.
+private
+256 constant FAULT-FRAME
+256 constant FAULT-TEXT-CAP
+create FAULT-PROSE FAULT-TEXT-CAP allot  variable FAULT-PROSE-U
+create FAULT-JSON FAULT-TEXT-CAP allot  variable FAULT-JSON-U
+\ The part the record being emitted has open: none, its message, or a note.
+0 constant FAULT-SHUT
+1 constant FAULT-MESSAGE
+2 constant FAULT-NOTE
+variable FAULT-PART  FAULT-SHUT FAULT-PART !
+
+: TEXT+ ( ptr u8 n ptr u8 ptr n -- )
+   {: a:ptr u:n buf:ptr len:ptr :}
+   len @ u + FAULT-TEXT-CAP > IF
+      s" crash: a fault record's text is longer than FAULT-TEXT-CAP" 76 die
+   THEN
+   u 0 ?do  a i + c@  buf len @ + i + c!  loop
+   len @ u + len ! ;
+: PROSE+ ( ptr u8 n -- )  FAULT-PROSE FAULT-PROSE-U TEXT+ ;
+: JSON+ ( ptr u8 n -- )  FAULT-JSON FAULT-JSON-U TEXT+ ;
+: BOTH+ ( ptr u8 n -- ) {: a:ptr u:n :}  a u PROSE+  a u JSON+ ;
+
+\ A site's text is laid as is in a JSON string, so it holds no byte JSON escapes.
+: PLAIN? ( n -- bool ) {: c:n :}
+   c 32 >=  c 34 <> and  c 92 <> and ;
+: CHECK-TEXT ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0 ?do
+      a i + c@ PLAIN? 0= IF
+         s" crash: a fault record's text holds a byte JSON escapes" 76 die
+      THEN
+   loop ;
+
+: PART? ( n -- ) {: want:n :}
+   FAULT-PART @ want <> IF
+      s" crash: a fault record's parts are out of REJECTION's order" 76 die
+   THEN ;
+: NOTE-PART? ( -- )
+   FAULT-PART @ FAULT-SHUT = IF
+      s" crash: a fault note outside a record" 76 die
+   THEN ;
+
+\ [x14] = the register's low byte, x14 one past it.
+: PUT-BYTE, ( n -- ) {: r:n :}
+   r 14 0 STRB,  14 14 1 ADDI, ;
+\ [x14] = the byte n, through x12.
+: PUT-CHAR, ( n -- )  12 swap MOVZ,  12 PUT-BYTE, ;
+
+\ Writes [sp, x14) to fd 2 and empties the frame. Clobbers x0..x2.
+: FLUSH, ( -- )
+   0 2 MOVZ,  1 SP 0 ADDI,  2 14 1 SUB,  NR-WRITE SYS,
+   14 SP 0 ADDI, ;
+
+\ FLUSH, when fewer than n bytes of the frame are free. Clobbers x12, x13.
+: FLUSH-BELOW, ( n -- ) {: room:n :}
+   LBL {: fits:label :}
+   13 SP 0 ADDI,  12 14 13 SUB,
+   12 FAULT-FRAME room - CMPI,  C-LS fits BCOND,
+   FLUSH,
+   fits LBL, ;
+
+\ Writes the prose or the JSON text as x17 says, then empties both.
+: PIECE, ( -- )
+   LBL LBL LBL LBL {: prose:label json:label code:label put:label :}
+   code B,
+   prose LBL,  FAULT-PROSE FAULT-PROSE-U @ BYTES,
+   json LBL,  FAULT-JSON FAULT-JSON-U @ BYTES,
+   code LBL,
+   10 prose ADR,  11 FAULT-PROSE-U @ MOVZ,  17 put CBZ,
+   10 json ADR,  11 FAULT-JSON-U @ MOVZ,
+   put LBL,  9 0 MOVZ,  LFAULT-PUT LABEL@ BL,
+   0 FAULT-PROSE-U !  0 FAULT-JSON-U ! ;
+
+\ A note's key, after the text before it.
+: NOTE+ ( ptr u8 n -- ) {: k:ptr ku:n :}
+   NOTE-PART?  k ku CHECK-TEXT
+   S\" \n  = " PROSE+  k ku PROSE+  s" : " PROSE+
+   S\" \"," JSON+
+   FAULT-PART @ FAULT-MESSAGE = IF S\" \"notes\":{" JSON+ THEN
+   S\" \"" JSON+  k ku JSON+  S\" \":\"" JSON+
+   FAULT-NOTE FAULT-PART ! ;
+
+\ The register's 16 hex digits at the cursor; a FLUSH-BELOW, keeps it, so it
+\ is none of x0..x2, x8, x12, x13 and x16.
+: HEX, ( n -- ) {: r:n :}
+   16 FLUSH-BELOW,  9 r 0 ADDI,  C-HEX-DIGITS  14 14 16 ADDI, ;
+
+\ LFAULT-PUT ( x10 = text, x11 = its length, x9 = nonzero to escape it as a
+\ JSON string's content ): the text at the cursor. Leaf; clobbers x0..x2,
+\ x10..x13 and x15.
+: EMIT-FAULT-PUT ( -- )
+   LBL LBL LBL LBL LBL {: next:label plain:label pair:label low:label done:label :}
+   LFAULT-PUT LABEL@ LBL,
+   next LBL,
+      11 done CBZ,
+      6 FLUSH-BELOW,
+      13 10 0 LDRB,  10 10 1 ADDI,  11 11 1 SUBI,
+      9 plain CBZ,
+      15 13 0 ADDI,                             \ x15 = the byte after the backslash
+      13 $22 CMPI,  C-EQ pair BCOND,
+      13 $5C CMPI,  C-EQ pair BCOND,
+      15 $6E MOVZ,  13 $0A CMPI,  C-EQ pair BCOND,
+      15 $72 MOVZ,  13 $0D CMPI,  C-EQ pair BCOND,
+      15 $74 MOVZ,  13 $09 CMPI,  C-EQ pair BCOND,
+      13 $20 CMPI,  C-CS plain BCOND,
+      $5C PUT-CHAR,  $75 PUT-CHAR,  $30 PUT-CHAR,  $30 PUT-CHAR,
+      12 13 4 LSRI,  12 12 $30 ADDI,  12 PUT-BYTE,
+      12 13 $F ANDI,  15 12 $30 ADDI,
+      12 $A CMPI,  C-CC low BCOND,  15 12 $37 ADDI,
+      low LBL,  15 PUT-BYTE,  next B,
+   pair LBL,  $5C PUT-CHAR,  15 PUT-BYTE,  next B,
+   plain LBL,  13 PUT-BYTE,  next B,
+   done LBL,  RET, ;
+
+\ LFAULT-OWNER ( x3 = an address, x4 = the dictionary's base or 0, x6 = its
+\ record count -- x7 = the name of the word whose code holds the address, 0
+\ for none, x6 = its length ): a scan of the records, as many as DICT-CAP.
+\ Package rows hold wordlist ids where a word's span is. Leaf; clobbers x10..x13.
+: EMIT-FAULT-OWNER ( -- )
+   LBL LBL LBL LBL LBL {: scan:label code:label next:label hit:label done:label :}
+   LFAULT-OWNER LABEL@ LBL,
+   7 0 MOVZ,
+   4 done CBZ,
+   10 DICT-CAP LIT64,  6 10 CMP,  6 6 10 C-CC CSEL,
+   10 4 0 ADDI,
+   scan LBL,
+      6 done CBZ,
+      11 10 DICT-WORDLIST-SLOT 8 * LDR,
+      11 0 CMPI,  C-GE code BCOND,
+      12 WL:RETIRED LIT64,  11 12 CMP,  C-NE next BCOND,
+   code LBL,
+      11 10 0 LDR,  3 11 CMP,  C-CC next BCOND,
+      12 10 8 LDR,                              \ the raw span (code-span.f)
+      13 12 31 LSRI,  12 12 CODE-SPAN:MASK ANDI,
+      12 12 CODE-SPAN:INSN-BYTES ADDI,  13 13 2 LSLI,  12 12 13 SUB,
+      11 11 12 ADD,  3 11 CMP,  C-CC hit BCOND,
+   next LBL,
+      10 10 DREC ADDI,  6 6 1 SUBI,  scan B,
+   hit LBL,
+      12 10 16 LDR,  6 12 DNAME-LEN-MASK ANDI,
+      7 10 24 ADDI,
+      12 12 DNAME-EXT ANDI,  12 done CBZ,
+      7 10 24 LDR,
+   done LBL,  RET, ;
+
+\ LFAULT-DEC ( x7 = a signed number ): its decimal digits at the cursor, a
+\ minus first when it is negative. Leaf; clobbers x0..x2, x7, x10..x13 and x15.
+: EMIT-FAULT-DEC ( -- )
+   LBL LBL LBL {: pos:label count:label digit:label :}
+   LFAULT-DEC LABEL@ LBL,
+   21 FLUSH-BELOW,
+   7 0 CMPI,  C-GE pos BCOND,
+   $2D PUT-CHAR,  7 31 7 SUB,                     \ -x7 through xzr, unsigned from here
+   pos LBL,
+   13 10 MOVZ,  10 7 0 ADDI,  11 0 MOVZ,
+   count LBL,  11 11 1 ADDI,  10 10 13 UDIV,  10 count CBNZ,
+   14 14 11 ADD,  12 14 0 ADDI,
+   digit LBL,
+      10 7 13 UDIV,  15 10 13 MUL,  15 7 15 SUB,  15 15 $30 ADDI,
+      12 12 1 SUBI,  15 12 0 STRB,
+      7 10 0 ADDI,  7 digit CBNZ,
+   RET, ;
+
+public
+\ Opens a record with its code and message: sp drops FAULT-FRAME, x14 = its
+\ start, x17 = the JSON flag.
+: FAULT-OPEN, ( ptr u8 n ptr u8 n -- )
+   {: code:ptr cu:n msg:ptr mu:n :}
+   FAULT-SHUT PART?  code cu CHECK-TEXT  msg mu CHECK-TEXT
+   SP SP FAULT-FRAME SUBI,  14 SP 0 ADDI,
+   17 DATA-VA VA>N REJECTION-JSON-CELL + LIT64,  17 17 0 LDR,
+   s" error[" PROSE+  code cu PROSE+  s" ]: " PROSE+  msg mu PROSE+
+   S\" {\"severity\":\"error\",\"code\":\"" JSON+  code cu JSON+
+   S\" \",\"message\":\"" JSON+  msg mu JSON+
+   PIECE,
+   FAULT-MESSAGE FAULT-PART ! ;
+
+\ Note `in`: the word whose code holds the address in x3, read from the x6
+\ records at x4; x4 = 0 when the site cannot trust the dictionary. With no
+\ such word, note `at` and the address.
+: FAULT-IN, ( -- )
+   LBL LBL {: at:label done:label :}
+   NOTE-PART?  FAULT-PART @ {: was:n :}
+   LFAULT-OWNER LABEL@ BL,
+   7 at CBZ,
+   s" in" NOTE+  PIECE,
+   10 7 0 ADDI,  11 6 0 ADDI,  9 17 0 ADDI,  LFAULT-PUT LABEL@ BL,
+   done B,
+   at LBL,
+   was FAULT-PART !
+   s" at" NOTE+  s" 0x" BOTH+  PIECE,  3 HEX,
+   done LBL, ;
+
+\ A note with the register's value in decimal; the register is copied first.
+: FAULT-NUMBER, ( ptr u8 n n -- ) {: k:ptr ku:n r:n :}
+   7 r 0 ADDI,
+   k ku NOTE+  PIECE,
+   LFAULT-DEC LABEL@ BL, ;
+
+\ A note with the address in the register, `0x` and 16 hex digits; the
+\ register is copied first.
+: FAULT-ADDRESS, ( ptr u8 n n -- ) {: k:ptr ku:n r:n :}
+   7 r 0 ADDI,
+   k ku NOTE+  s" 0x" BOTH+  PIECE,  7 HEX, ;
+
+\ Ends the record with its help and exits with the status.
+: FAULT-STOP, ( ptr u8 n n -- ) {: h:ptr hu:n status:n :}
+   NOTE-PART?  h hu CHECK-TEXT
+   S\" \n  = help: " PROSE+  h hu PROSE+  S\" \n\n" PROSE+
+   FAULT-PART @ FAULT-NOTE = IF S\" \"}" ELSE S\" \"" THEN JSON+
+   S\" ,\"help\":\"" JSON+  h hu JSON+  S\" \"}\n" JSON+
+   PIECE,  FLUSH,
+   0 status MOVZ,  NR-EXIT-GROUP SYS,
+   FAULT-SHUT FAULT-PART ! ;
+
+\ Ends the record with no help and returns, sp as FAULT-OPEN, found it.
+: FAULT-KEEP, ( -- )
+   NOTE-PART?
+   S\" \n\n" PROSE+
+   FAULT-PART @ FAULT-NOTE = IF S\" \"}}\n" ELSE S\" \"}\n" THEN JSON+
+   PIECE,  FLUSH,
+   SP SP FAULT-FRAME ADDI,
+   FAULT-SHUT FAULT-PART ! ;
+
+\ The fault records' routines, beside LDIE-LINE.
+: EMIT-FAULT-RECORD ( -- )
+   EMIT-FAULT-PUT  EMIT-FAULT-OWNER  EMIT-FAULT-DEC ;
+
 \ x30 = the caller's lr, saved at [sp + off], for a site whose own BL or BLR
 \ replaced x30; LDIE-LINE prints it.
 : CALLER-LR, ( n -- ) {: off:n :}
@@ -307,24 +546,15 @@ variable CRS-NEXT   variable CRS-SKIP  variable CRS-FAULT
 variable CRS-DATA-H variable CRS-RET-H variable CRS-LOOP-H
 variable CRS-DATA-LOW-H
 variable CRS-MACHINE-H
-variable CRS-THROW  variable CRS-MEMORY-M
+variable CRS-THROW
 
-\ The four stack-bounds texts LDIE-LINE prints.
-: CRS-DATA$ ( -- ptr u8 n ) s" E-STACK-BOUNDS habu: stack bounds exceeded (data)" ;
-: CRS-RET$ ( -- ptr u8 n ) s" E-STACK-BOUNDS habu: stack bounds exceeded (return)" ;
-: CRS-LOOP$ ( -- ptr u8 n ) s" E-STACK-BOUNDS habu: stack bounds exceeded (loop)" ;
-: CRS-MACHINE$ ( -- ptr u8 n ) s" E-STACK-BOUNDS habu: stack bounds exceeded (machine)" ;
-
-\ The memory fault's line, in two runs: the first is whole words, so BYTES,
-\ lays the second right after it. The handler writes the fault address and the
-\ pc over the zeros at byte offsets CRS-MEMORY-AT and CRS-MEMORY-PC.
-: CRS-MEMORY$ ( -- ptr u8 n )
-   S\" E-MEMORY-FAULT habu: memory fault at 0000000000000000 pc" ;
-: CRS-MEMORY-TAIL$ ( -- ptr u8 n )  S\"  0000000000000000\n" ;
-CRS-MEMORY$ nip CRS-MEMORY-TAIL$ nip + constant CRS-MEMORY-LEN
-37 constant CRS-MEMORY-AT
-57 constant CRS-MEMORY-PC
-80 constant CRS-MEMORY-FRAME            \ the line's copy, rounded to sp's alignment
+\ The four stack-bounds messages and their help.
+: CRS-DATA$ ( -- ptr u8 n ) s" the data stack ran past its bounds" ;
+: CRS-RET$ ( -- ptr u8 n ) s" the return stack ran past its bounds" ;
+: CRS-LOOP$ ( -- ptr u8 n ) s" the loop stack ran past its bounds" ;
+: CRS-MACHINE$ ( -- ptr u8 n ) s" the machine stack ran past its bounds" ;
+: CRS-HELP$ ( -- ptr u8 n )
+   s" give a recursion an exit, or keep fewer values on the stack" ;
 
 11 constant CRASH-SIGSEGV
 : CRASH-SIGBUS ( -- n )  HB-TARGET-LINUX? IF 7 ELSE 10 THEN ;
@@ -346,12 +576,30 @@ CRS-MEMORY$ nip CRS-MEMORY-TAIL$ nip + constant CRS-MEMORY-LEN
    10 11 CMP,  C-CC CRS-HIT-LOW LABEL@ BCOND,
    CRS-NEXT LABEL@ LBL, ;
 
-\ The line for the guard page hit at the label; x30 is the interrupted code's
-\ lr. Never returns.
+\ x3 = the interrupted pc, x4 = the live region's base, whose records the
+\ saved x27 counts in x6: FAULT-IN,'s registers, once Habu code faulted.
+: C-CRASH-OWNER>R3 ( -- )
+   C-CRASH-PC>R9  3 9 0 ADDI,
+   C-CRASH-REGION>R10  4 10 0 ADDI,
+   HB-TARGET-LINUX? IF 6 21 LINUX-MCTX-X0-OFF NDICT 8 * + LDR, exit THEN
+   6 21 SS-OFF NDICT 8 * + LDR, ;
+
+\ The record of a stack's overflow, x3, x4 and x6 as FAULT-IN, reads them.
+\ Never returns.
+: C-CRASH-GUARD-RECORD ( ptr u8 n -- ) {: a:ptr u:n :}
+   s" E-STACK-BOUNDS" a u FAULT-OPEN,  FAULT-IN,
+   CRS-HELP$ ENGINE-ERROR:STACK-BOUNDS FAULT-STOP, ;
+
+\ The record for the guard page hit at the label, which Habu code hit.
 : C-CRASH-GUARD-REPORT ( ptr u8 n label -- )
    {: a:ptr u:n hit:label :}
-   hit LBL,  21 C-CRASH-LR>R30
-   a u ENGINE-ERROR:STACK-BOUNDS DIE-LINE, ;
+   hit LBL,  C-CRASH-OWNER>R3  a u C-CRASH-GUARD-RECORD ;
+
+\ Row 1's record, whose pc may be C's: it names no word.
+: C-CRASH-MACHINE-REPORT ( -- )
+   CRS-MACHINE-H LABEL@ LBL,
+   C-CRASH-PC>R9  3 9 0 ADDI,  4 0 MOVZ,
+   CRS-MACHINE$ C-CRASH-GUARD-RECORD ;
 
 \ x14 = the pc the interrupted thread resumes at; sigreturn resumes it there
 \ with every other register as the saved context holds it. On macOS x1 and x5
@@ -420,23 +668,17 @@ CRS-MEMORY$ nip CRS-MEMORY-TAIL$ nip + constant CRS-MEMORY-LEN
    14 24 FLOORREC-CELL LDR,  14 CRS-DATA-H LABEL@ CBZ,
    C-CRASH-RESUME ;
 
-\ Row 6, x24 = DATA and x25 = the fault address: set the mark, write the line
-\ from a copy on the stack, store the code in the saved x9 and resume at the
-\ fault entry. x26 keeps macOS's infostyle across the write.
+\ Row 6, x24 = DATA and x25 = the fault address: set the mark, write the
+\ record, store the code in the saved x9 and resume at the fault entry. x26
+\ keeps macOS's infostyle across the write, and the record keeps x5, its token.
 : C-CRASH-THROW ( -- )
-   LBL {: copy:label :}
    CRS-THROW LABEL@ LBL,
    HB-TARGET-LINUX? 0= IF 26 1 0 ADDI, THEN
    14 1 MOVZ,  14 24 FAULT-MARK-CELL STR,
-   SP SP CRS-MEMORY-FRAME SUBI,
-   10 CRS-MEMORY-M LABEL@ ADR,  11 SP 0 ADDI,  12 CRS-MEMORY-LEN MOVZ,
-   copy LBL,
-      13 10 0 LDRB,  13 11 0 STRB,
-      10 10 1 ADDI,  11 11 1 ADDI,  12 12 1 SUBI,  12 copy CBNZ,
-   9 25 0 ADDI,  14 SP CRS-MEMORY-AT ADDI,  C-HEX-DIGITS
-   C-CRASH-PC>R9  14 SP CRS-MEMORY-PC ADDI,  C-HEX-DIGITS
-   0 2 MOVZ,  1 SP 0 ADDI,  2 CRS-MEMORY-LEN MOVZ,  NR-WRITE SYS,
-   SP SP CRS-MEMORY-FRAME ADDI,
+   s" E-MEMORY-FAULT" s" a read or write faulted" FAULT-OPEN,
+   s" address" 25 FAULT-ADDRESS,
+   C-CRASH-OWNER>R3  FAULT-IN,
+   FAULT-KEEP,
    10 ENGINE-ERROR:MEMORY-FAULT MOVZ,
    HB-TARGET-LINUX? IF
       10 21 LINUX-MCTX-X0-OFF 9 8 * + STR,
@@ -449,7 +691,7 @@ CRS-MEMORY$ nip CRS-MEMORY-TAIL$ nip + constant CRS-MEMORY-LEN
 
 \ Rows 1 to 6 of the file header's list.
 : C-CRASH-STACK-GUARDS ( -- )
-   LBL CRS-SKIP !  LBL CRS-FAULT !  LBL CRS-THROW !  LBL CRS-MEMORY-M !
+   LBL CRS-SKIP !  LBL CRS-FAULT !  LBL CRS-THROW !
    LBL CRS-DATA-H !  LBL CRS-RET-H !  LBL CRS-LOOP-H !  LBL CRS-DATA-LOW-H !
    LBL CRS-MACHINE-H !
    \ si_addr only describes a memory fault; a trap or an FPE carries no address.
@@ -485,8 +727,7 @@ CRS-MEMORY$ nip CRS-MEMORY-TAIL$ nip + constant CRS-MEMORY-LEN
    CRS-DATA$ CRS-DATA-H LABEL@ C-CRASH-GUARD-REPORT
    CRS-RET$ CRS-RET-H LABEL@ C-CRASH-GUARD-REPORT
    CRS-LOOP$ CRS-LOOP-H LABEL@ C-CRASH-GUARD-REPORT
-   CRS-MACHINE$ CRS-MACHINE-H LABEL@ C-CRASH-GUARD-REPORT
-   CRS-MEMORY-M LABEL@ LBL,  CRS-MEMORY$ BYTES,  CRS-MEMORY-TAIL$ BYTES,
+   C-CRASH-MACHINE-REPORT
    C-CRASH-THROW                                 \ a sigreturn that comes back dumps
    CRS-SKIP LABEL@ LBL, ;
 

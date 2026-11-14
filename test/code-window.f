@@ -17,9 +17,9 @@ require src/lib/string.f
 package CODE-WINDOW-TEST
 
 $800 constant CAP
-\ The uncaught fault's line up to its address; the address, " pc ", the pc
-\ and a newline make 37 more bytes.
-: FAULT-LINE$ ( -- ptr u8 n ) s" E-MEMORY-FAULT habu: memory fault at " ;
+\ The uncaught fault's record up to its address.
+: FAULT-RECORD$ ( -- ptr u8 n )
+   S\" error[E-MEMORY-FAULT]: a read or write faulted\n  = address: 0x" ;
 
 create OUT CAP allot
 create ERR CAP allot
@@ -31,14 +31,13 @@ create ERR CAP allot
    src u CAPTURE {: outu:len erru:len oc :}
    src u OUT outu LEN>N ERR erru LEN>N oc want T-ENDING-EXITED= ;
 
-\ arm64 throws the memory fault, uncaught: exit 110 after one line.
+\ arm64 throws the memory fault, uncaught: exit 110 after its record.
 HB-TARGET-LINUX-X86-64? 0= [if]
 : TRAPS ( ptr u8 n -- ) {: src:ptr u:n :}
    src u CAPTURE {: outu:len erru:len oc :}
    src u OUT outu LEN>N ERR erru LEN>N oc ENGINE-ERROR:MEMORY-FAULT
    T-ENDING-EXITED=
-   ERR erru LEN>N FAULT-LINE$ STARTS-WITH? TTRUE
-   erru LEN>N FAULT-LINE$ nip 37 + T= ;
+   ERR erru LEN>N FAULT-RECORD$ STARTS-WITH? TTRUE ;
 [then]
 \ x86-64 has no memory-fault throw: the crash handler dumps the registers and
 \ the process dies by the SIGSEGV.

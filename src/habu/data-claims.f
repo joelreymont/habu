@@ -127,6 +127,7 @@ create TAB
    FLOORREC-CELL                      1 cells                 CLAIM FLOORREC-CELL
    FAULT-MARK-CELL                    1 cells                 CLAIM FAULT-MARK-CELL
    DBASE-CELL                         1 cells                 CLAIM DBASE-CELL
+   REJECTION-JSON-CELL                1 cells                 CLAIM REJECTION-JSON-CELL
    MAIN-STACK-TOP-CELL                1 cells                 CLAIM MAIN-STACK-TOP-CELL
    MAIN-THREAD-CELL                   1 cells                 CLAIM MAIN-THREAD-CELL
    CLOSED-FREE-CELL                   1 cells                 CLAIM CLOSED-FREE-CELL

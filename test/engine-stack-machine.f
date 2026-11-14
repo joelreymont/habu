@@ -1,13 +1,15 @@
-\ A machine-stack overflow ends named, as a VM stack's does: `E-STACK-BOUNDS
-\ habu: stack bounds exceeded (machine) lr <hex>` on fd 2 and the
-\ ENGINE-ERROR:STACK-BOUNDS exit, from the crash handler on the thread's
-\ alternate signal stack. Control: a data-stack overflow still reports (data).
+\ A machine-stack overflow ends named, as a VM stack's does: the record `the
+\ machine stack ran past its bounds` on fd 2 and the ENGINE-ERROR:STACK-BOUNDS
+\ exit, from the crash handler on the thread's alternate signal stack. Control:
+\ a data-stack overflow's record is the one package REJECTION writes for the
+\ same parts, byte for byte, in prose and in JSON.
 \ Every subject recurses through a self call with work after it, so it cannot
 \ become a jump.
 require src/lib/process.f
 require test/gate-common.f
 require src/lib/engine-candidate.f
 require src/core/engine-error.f
+require src/core/rejection.f
 
 package MACHINE-STACK-TEST
 private
@@ -23,8 +25,8 @@ variable IMAGE-U
 : SUBJECT$ ( -- ptr u8 n ) SUBJECT SUBJECT-U @ ;
 : IMAGE$ ( -- ptr u8 n ) IMAGE IMAGE-U @ ;
 
-: MACHINE$ ( -- ptr u8 n ) s" E-STACK-BOUNDS habu: stack bounds exceeded (machine) lr " ;
-: DATA$ ( -- ptr u8 n ) s" E-STACK-BOUNDS habu: stack bounds exceeded (data) lr " ;
+: MACHINE$ ( -- ptr u8 n )
+   S\" error[E-STACK-BOUNDS]: the machine stack ran past its bounds\n" ;
 
 : SELF$ ( -- ptr u8 n ) S\" TRUSTED: R ( -- ) recurse recurse ;\nR\n" ;
 : CELLS$ ( -- ptr u8 n ) S\" : R ( n -- n ) 1 + recurse 1 + ;\n0 R\n" ;
@@ -36,7 +38,7 @@ variable IMAGE-U
 : TASK$ ( -- ptr u8 n )
    S\" require src/lib/task.f\nTRUSTED: R ( -- ) recurse recurse ;\n: R0 ( -- ) R ;\nTASK:MIN-STACK TASK:TASK WORKER\n: GO ( -- ) ['] R0 WORKER TASK:ACTIVATE begin WORKER TASK:DONE? 0= while TASK:PAUSE repeat ;\nGO\n" ;
 
-\ stderr starts with the line's text; its lr varies with the build.
+\ stderr starts with the record's first line.
 : EXPECT-LINE ( ptr u8 n ptr u8 n -- ) {: want:ptr wantu:n label:ptr labelu:n :}
    GT-ERR$ want wantu STARTS-WITH? 0= if label labelu GE-FAIL then ;
 
@@ -68,9 +70,9 @@ variable IMAGE-U
 : STRIPPED-SRC$ ( -- ptr u8 n )
    S\" TRUSTED: R ( -- ) recurse recurse ;\n: W ( -- ) NULL-PTR BYTE-VIEW c@ drop ;\n: MAIN ( -- ) ARGC 1 > if W then ['] W catch . R ;\n" ;
 
-\ The fault's line up to its address, written on fd 2 at the fault, caught or
-\ not.
-: FAULT-LINE$ ( -- ptr u8 n ) s" E-MEMORY-FAULT habu: memory fault at " ;
+\ The fault record's first line, written on fd 2 at the fault, caught or not.
+: FAULT-LINE$ ( -- ptr u8 n )
+   S\" error[E-MEMORY-FAULT]: a read or write faulted\n" ;
 
 : FAULT-LINE ( ptr u8 n -- ) {: label:ptr labelu:n :}
    GT-ERR$ FAULT-LINE$ STARTS-WITH? 0= if label labelu GE-FAIL then ;
@@ -102,11 +104,32 @@ variable IMAGE-U
    s" a stripped application's uncaught fault" FAULT-LINE
    s" PASS: a stripped application, its fault caught and uncaught" type cr ;
 
+: OVERFLOW$ ( -- ptr u8 n ) S\" : X ( n -- ) begin dup recurse again ;\n0 X\n" ;
+
+\ The record REJECTION writes for a data-stack overflow in X, as JSON when json
+\ is set.
+: RECORD$ ( bool -- ptr u8 n ) {: json:bool :}
+   REJECTION:JSON @ {: was:n :}
+   json REJECTION:JSON !  REJECTION:CAPTURE
+   s" E-STACK-BOUNDS" REJECTION:OPEN
+   s" the data stack ran past its bounds" REJECTION:EMIT-STR
+   s" in" REJECTION:NOTE  s" X" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" give a recursion an exit, or keep fewer values on the stack" REJECTION:EMIT-STR
+   REJECTION:KEEP  REJECTION:BUFFER-OFF  was REJECTION:JSON !
+   REJECTION:BUFFER$ ;
+
+: CONTROL ( ptr u8 n bool ptr u8 n -- )
+   {: src:ptr srcu:n json:bool label:ptr labelu:n :}
+   src srcu RUN-SRC
+   ENGINE-ERROR:STACK-BOUNDS label labelu GE-EXPECT-RC
+   json RECORD$ label labelu GE-EXPECT-ERR ;
+
 : CONTROLS ( -- )
-   S\" : X ( n -- ) begin dup recurse again ;\n0 X\n" RUN-SRC
-   ENGINE-ERROR:STACK-BOUNDS s" a data-stack overflow" GE-EXPECT-RC
-   DATA$ s" a data-stack overflow" EXPECT-LINE
-   s" PASS: the data-stack control" type cr ;
+   OVERFLOW$ false s" a data-stack overflow" CONTROL
+   SB-RESET  S\" -1 REJECTION:JSON !\n" SB-APPEND  OVERFLOW$ SB-APPEND
+   SB$ true s" a data-stack overflow under REJECTION:JSON" CONTROL
+   s" PASS: the data-stack control, in prose and in JSON" type cr ;
 
 : BODY ( -- )
    s" engine-stack-machine" GT-START
