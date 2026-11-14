@@ -834,7 +834,8 @@ REJECTION:BUFFER$ s" found: TDPM:span<n,n,n,n,n,n>" CONTAINS? TFALSE
 REJECTION:CAPTURE  true REJECTION:JSON !
 s" TPC-JSON-RENDER ( TDPM:span<n,n,n,n,n,n> -- n )" CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s\" \"found\":\"tdpm:span<n,n,n,n,n,n>\"" CONTAINS? TTRUE
-REJECTION:BUFFER$ s\" \"token\":\";\"" CONTAINS? TTRUE
+\ The body has no `;`: the record places an empty token at the text's end.
+REJECTION:BUFFER$ s\" \"column\":48,\"byte_start\":47,\"byte_end\":47,\"token\":\"\"" CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" TPC-JSON-ARITY ( TDPM:span<n,n,n> -- ) drop" CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s\" \"token\":\"TDPM:span\"" CONTAINS? TTRUE
