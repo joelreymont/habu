@@ -6,10 +6,11 @@
 
 \ DECL-REJECT is the one reject packet both front ends raise through. RENDER
 \ prints it as a rejection through package REJECTION.
-\ A front end arms its own reason and fix (REJECT, EXPECT); a code raised deeper
-\ arrives bare and PICK-REASON reads the rows each code's owner lays with
-\ EXPLAIN. An armed reason counts only for the code it was armed for.
-\ Declarations never nest, so the packet is one frame.
+\ The reason and fix are TYPE-DECL's armed reason (TDECL-ARM), the one store
+\ every declaration catcher reads; a front end arms it with REJECT or EXPECT. A
+\ code raised with no reason armed for it arrives bare, and PICK-REASON reads the
+\ rows each code's owner lays with EXPLAIN. Declarations never nest, so the
+\ packet is one frame.
 using TFAM
 using TYPE-DECL
 
@@ -20,7 +21,7 @@ package DECL-REJECT
 \ read on the first line but rendered after a reject on a later one. Each slot
 \ also keeps the span it was copied from, which a located token renders instead
 \ (TOKEN-SPAN@), until GUARD-CODE ends the declaration.
-5 constant SLOTS
+3 constant SLOTS
 96 constant SPAN-CAP        \ bytes a copy keeps; a longer copy is capped, never overruns
 3 constant MARK-LEN         \ bytes the truncation marker occupies inside SPAN-CAP
 46 constant MARK-BYTE       \ ASCII '.', repeated MARK-LEN times
@@ -28,8 +29,6 @@ package DECL-REJECT
 0 constant S-KIND           \ declaration kind word: "structure" / "enum"
 1 constant S-FAMILY         \ declared family name ("" before the name is parsed)
 2 constant S-TOKEN          \ offending token ("" when the fault has no token)
-3 constant S-REASON         \ short reason text
-4 constant S-FIX            \ what to write instead
 
 create SPAN-BUF  SLOTS SPAN-CAP * allot
 create SPAN-LEN  SLOTS cells allot
@@ -96,8 +95,6 @@ NEWEST ROLLBACK-CELLS:MARK
 
 0 constant NO-CODE          \ no reason is armed
 
-variable ARMED              \ the code the armed reason explains (NO-CODE = none)
-
 : NOTHING$ ( -- ptr u8 n ) s" " ;
 
 \ The bytes a text of n bytes takes in a row.
@@ -120,11 +117,11 @@ variable ARMED              \ the code the armed reason explains (NO-CODE = none
 
 \ Whether a reason explains the code: one armed for it, or its row.
 : REASON? ( n -- bool ) {: code:n :}
-   ARMED @ code =  code REASON-ROW NULL-PTR <>  or ;
+   TDECL-ARMED code =  code REASON-ROW NULL-PTR <>  or ;
 
 \ The reason and fix for the code: the armed ones, else its row's, else empty.
 : PICK-REASON ( n -- ptr u8 n ptr u8 n ) {: code:n :}
-   ARMED @ code = IF S-REASON SLOT@  S-FIX SLOT@ EXIT THEN
+   TDECL-ARMED code = IF TDECL-WHY@ EXIT THEN
    code REASON-ROW {: r:ptr :}
    r NULL-PTR = IF NOTHING$ NOTHING$ EXIT THEN
    r ROW-REASON$  r ROW-FIX$ ;
@@ -140,9 +137,7 @@ public
    S-KIND SLOT!
    NOTHING$ S-FAMILY SLOT!
    NOTHING$ S-TOKEN SLOT!
-   NOTHING$ S-REASON SLOT!
-   NOTHING$ S-FIX SLOT!
-   NO-CODE ARMED ! ;
+   NOTHING$ NOTHING$ NO-CODE TDECL-ARM ;
 
 : FAMILY! ( ptr u8 n -- ) S-FAMILY SLOT! ;
 
@@ -151,7 +146,7 @@ public
 \ armed reason: an arming describes a fault expected at one token.
 : TOKEN! ( ptr u8 n -- )
    S-TOKEN SLOT!
-   NO-CODE ARMED ! ;
+   NOTHING$ NOTHING$ NO-CODE TDECL-ARM ;
 
 \ A close-stage fault belongs to the whole declaration, so it is anchored on the
 \ family, as sumtype.f's definers anchor it.
@@ -161,10 +156,7 @@ public
 
 \ EXPECT ( reason fix code -- ) : arm the reason and fix for a fault a deeper
 \ owner may raise, immediately before the call that can raise it.
-: EXPECT ( ptr u8 n ptr u8 n n -- ) {: wa:ptr wu:n fa:ptr fu:n code:n :}
-   wa wu S-REASON SLOT!
-   fa fu S-FIX SLOT!
-   code ARMED ! ;
+: EXPECT ( ptr u8 n ptr u8 n n -- ) TDECL-ARM ;
 
 \ REJECT ( reason fix code -- code ) answers the code instead of throwing it, so
 \ each reject site spells its own `throw` and the thrown value is visible there.

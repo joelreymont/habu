@@ -113,6 +113,7 @@ PTR-VARIABLE TDB-A   variable TDB-U   \ body (SUMTYPE token buffer / arity token
 PTR-VARIABLE TDT-A   variable TDT-U   \ offending token (diagnostics)
 PTR-VARIABLE TDW-A   variable TDW-U   \ short reason (diagnostics)
 PTR-VARIABLE TDF-A   variable TDF-U   \ what to write instead (diagnostics)
+variable TDECL-CODE                 \ the code TDW and TDF explain (0 = none armed)
 variable TDECL-OVERSIZE             \ a collection buffer capped an over-cap body
 variable TDECL-CUR-FAM              \ family id being declared (-1 outside a body)
 create TDECL-BUF TDECL-CAP allot    \ a collected body, its tokens one blank apart
@@ -120,7 +121,6 @@ variable TDECL-U
 PTR-VARIABLE TDECL-FIRST            \ the body's first token, as parse-name gave it
 
 : TDECL-TOK! ( ptr u8 n -- ) TDT-U ! TDT-A ! ;
-: TDECL-WHY! ( ptr u8 n ptr u8 n -- ) TDF-U ! TDF-A ! TDW-U ! TDW-A ! ;
 \ The fixes several rejections share.
 : TDECL-LONG-FIX$ ( -- ptr u8 n ) s" shorten the name to 255 bytes or fewer" ;
 : TDECL-PARAM-FIX$ ( -- ptr u8 n )
@@ -140,10 +140,17 @@ PTR-VARIABLE TDECL-FIRST            \ the body's first token, as parse-name gave
 
 public
 
+\ The armed reason is the one store every declaration catcher reads, whichever
+\ front end runs the declaration; it explains only the code it was armed with.
+: TDECL-ARM ( ptr u8 n ptr u8 n n -- )   \ reason, fix, code
+   TDECL-CODE ! TDF-U ! TDF-A ! TDW-U ! TDW-A ! ;
+: TDECL-ARMED ( -- n ) TDECL-CODE @ ;
+: TDECL-WHY@ ( -- ptr u8 n ptr u8 n ) TDW-A @ TDW-U @  TDF-A @ TDF-U @ ;
+
 : TDECL-THROW ( ptr u8 n ptr u8 n ptr u8 n n -- )
    {: ta:ptr tu:n wa:ptr wu:n fa:ptr fu:n code:n :}
    ta tu TDECL-TOK!
-   wa wu fa fu TDECL-WHY!
+   wa wu fa fu code TDECL-ARM
    code throw ;
 
 \ --- transactional mark/restore over every store a declaration can grow.
@@ -225,8 +232,8 @@ private
    TDW-A @ TDW-U @  TDF-A @ TDF-U @  TDECL-DIAG ;
 
 \ A throw rolls the registries back. E-TDECL-UNRESOLVED propagates unreported,
-\ a status in 1..255 was printed where it arose, and a code thrown while no
-\ reason is armed is no declaration's: all three are rethrown. Any other is
+\ a status in 1..255 was printed where it arose, and a code no reason is armed
+\ with is no declaration's: all three are rethrown. Any other is
 \ rendered before the rollback, which rewinds the stores its token may point
 \ into, then counts in a multi-error load or stops the load (DEF-STOPPED).
 : TDECL-RUN ( [ -- ] -- )
@@ -238,7 +245,7 @@ private
    TDECL-SEEN-CLEAR
    rc 0= IF EXIT THEN
    rc E-TDECL-UNRESOLVED = IF TDECL-RESTORE rc throw THEN
-   rc 1 >=  rc 255 <= and  TDW-U @ 0= or IF
+   rc 1 >=  rc 255 <= and  TDECL-CODE @ rc <> or IF
       TDECL-RESTORE  SIG-UNRES-CLEAR  rc throw THEN
    TDECL-REPORT
    TDECL-RESTORE
@@ -260,7 +267,7 @@ private
    SIG-UNRES-CLEAR
    TDECL-SEEN-CLEAR
    -1 TDECL-CUR-FAM !
-   s" " s" " TDECL-WHY! ;
+   s" " s" " 0 TDECL-ARM ;
 
 \ Reject an over-cap declaration body through the declaration packet:
 \ either a collection buffer capped an over-long body (TDECL-OVERSIZE, native
@@ -382,7 +389,7 @@ private
    WRITE-WINDOW-CK                     \ src/core/checker.f WRITE-WINDOW
    s" duplicate family"
       s" rename the family: this package already declares a family with this name"
-      TDECL-WHY!
+      E-TFAM-DUP TDECL-ARM
    TFAM-ACTIVE-PKG$ TDECL-VIS TDN-A @ TDN-U @ ar kind TFAM-DECL ;
 
 \ --- body cursor over the buffered declaration tokens (checker sig lexer).
@@ -710,7 +717,7 @@ PTR-VARIABLE TDV-NA    variable TDV-NU
 
 : TDECL-VARIANT-CLOSE ( n -- ) {: fam:n :}
    TDV-NA @ TDV-NU @ TDECL-TOK!
-   s" duplicate variant" TDECL-VARIANT-FIX$ TDECL-WHY!
+   s" duplicate variant" TDECL-VARIANT-FIX$ E-TFAM-DUP TDECL-ARM
    fam TDV-NA @ TDV-NU @ TDV-TAG @ TDV-SS @ TDV-PC @ TDV-PW @ SUMV-ADD drop
    TDV-PW @ TDV-MAX @ max TDV-MAX !
    TDV-TAG @ 1 + TDV-TAG !
@@ -1064,7 +1071,7 @@ private
    a u TDECL-TOK!
    s" reserved field name"
       s" rename the field: a keyword or a generated word such as `make`, `tag` or `eq` is taken"
-      TDECL-WHY!
+      E-PF-NAME TDECL-ARM
    a u PF-NAME-REQUIRE ;
 
 \ A PRODUCT field may be typed as an arity-0 sum or enum family of registry
@@ -1104,7 +1111,7 @@ private
    node SCHEMA-ROOT+ drop    \ one field type (family/letter/con/ptr T)
    fam ss SCHEMA-ROOT@ TFAM-SCH-WIDTH {: fw:n :}
    fna fnu TDECL-TOK!
-   s" duplicate field" TDECL-FIELD-FIX$ TDECL-WHY!
+   s" duplicate field" TDECL-FIELD-FIX$ E-TFAM-DUP TDECL-ARM
    TDP-EVT @ fam fna fnu ss
    TDP-W @ fw TDP-W @ cells fw cells CELL PF-FLAGS-NONE
    TDECL-EVENT-FIELD-XT TDP-EVT !
@@ -2232,7 +2239,7 @@ private
 
 : TDINIT-REFUSE ( n -- )
    TFAM-NAME$ s" derive init requires a canonical fixed-cell record"
-   s" drop `init` from `DERIVE`, or declare the product in a package with fields of a fixed cell width"
+   s" drop `init` from `DERIVE`, or declare it in a package with fields of a fixed cell width"
    E-TDECL-DERIVE TDECL-THROW ;
 
 \ INIT-RECORD? proves the whole fixed canonical layout; INIT-FIELD? then proves
@@ -2389,7 +2396,7 @@ private
 \ Generation arms its own reasons: the last field's is cleared, so a code
 \ thrown while none is armed is rethrown, not reported against that field.
 : TDECL-PRODUCT-GENERATE ( -- )
-   TDN-A @ TDN-U @ TDECL-TOK!  s" " s" " TDECL-WHY!
+   TDN-A @ TDN-U @ TDECL-TOK!  s" " s" " 0 TDECL-ARM
    TDECL-CTOR-WORDS TDECL-PRODUCT-INIT-ARM ;
 
 public
