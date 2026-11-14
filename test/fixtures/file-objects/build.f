@@ -64,7 +64,7 @@ PATH-CAP BUFFER: PROG-BUF
 
 : STOP-FILE ( -- )
    s" test/fixtures/file-objects/count.f" included
-   ['] RESIDUE catch E-EVAL-RESIDUE s" build: STOP-FILE: residue.f not refused" EXPECT
+   ['] RESIDUE catch REFUSED s" build: STOP-FILE: residue.f not refused" EXPECT
    ['] RESIDUE catch LINKER:E-FAILED s" build: STOP-FILE: a load after a refused file ran" EXPECT
    [: PROG$ LINKER:WRITE ;] catch LINKER:E-FAILED
    s" build: STOP-FILE: a write after a refused file ran" EXPECT ;

@@ -1939,27 +1939,41 @@ private
    rc 0 <> if mark REQUIRE-REG:TRUNCATE rc throw then
    -1 frame FR-EVAL-OK + CELL-VIEW ! ;
 
-create RESIDUE-DIGIT 1 allot
+: RESIDUE-COUNT ( n -- ) {: n:n :}
+   n REJECTION:EMIT-U
+   n 1 = if s"  cell" else s"  cells" then REJECTION:EMIT-STR ;
 
-: RESIDUE-DEC ( n -- )
-   dup 10 >= if dup 10 / recurse then
-   10 mod 48 + RESIDUE-DIGIT c!  2 RESIDUE-DIGIT 1 write drop ;
-
-\ A nested file's refusal throws out of its loader's run before the loader
+\ A nested file's rejection throws out of its loader's run before the loader
 \ reaches its own check, so only the innermost file is named.
-: RESIDUE-REFUSE ( n -- )
-   2 s" E-EVAL-RESIDUE: stack depth " write drop
-   RESIDUE-DEC
-   2 s"  at " write drop
-   TOP@ {: frame:ptr :}
-   2 frame FR-PATH + frame FR-PATHLEN + CELL-VIEW @ write drop
-   2 POLICY-LF 1 write drop
-   STACK-ABI:E-EVAL-RESIDUE throw ;
+: RESIDUE-LEFT ( n -- ) {: n:n :}
+   s" E-EVAL-RESIDUE" REJECTION:OPEN
+   s" this file leaves " REJECTION:EMIT-STR  n RESIDUE-COUNT
+   s"  on the stack" REJECTION:EMIT-STR
+   RESIDUE-AT {: a:ptr u:n :}
+   u 0 > if
+      a u REJECTION:AT  s" the cells left start here" REJECTION:EMIT-STR
+   then
+   n RESIDUE-NOTE
+   REJECTION:HELP
+   s" drop or consume them before the file ends: " REJECTION:EMIT-STR
+   s" a value crosses a load only through a word or a variable"
+   REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
+: RESIDUE-TAKEN ( n -- ) {: n:n :}
+   s" E-EVAL-RESIDUE" REJECTION:OPEN
+   s" this file takes " REJECTION:EMIT-STR  n RESIDUE-COUNT
+   s"  it did not push" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" a file starts on an empty stack: " REJECTION:EMIT-STR
+   s" pass values through a word or a variable" REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ Run at the end of the unit, where depth is what the file left.
 : RESIDUE-CHECK ( -- )
    depth {: n:n :}
-   n 0 > if n RESIDUE-REFUSE then ;
+   n 0 > if n RESIDUE-LEFT then
+   n 0 < if n negate RESIDUE-TAKEN then ;
 
 CAST: CLOSE-ACTION ( n -- [ -- ] )
 

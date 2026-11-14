@@ -25,7 +25,6 @@ package LOAD-REJECT-TEST
 
 $1000 constant CAP
 70 constant REJECT-RC
-67 constant UNCAUGHT-RC
 76 constant BAD-SIG-RC
 84 constant SEALED-RC
 105 constant SHADOW-RC
@@ -747,37 +746,40 @@ variable RC
    OUTER$ RUN
    ASSERT-UNDEF ;
 
-\ A file that leaves cells is refused once, by one line naming the count and
-\ the innermost file, then the engine's uncaught throw. Paths are matched by
-\ their file names: the temporary root may resolve through a symbolic link.
-: ASSERT-RESIDUE ( ptr u8 n ptr u8 n -- ) {: line:ptr lineu:n file:ptr fileu:n :}
+\ A file that leaves cells is rejected once, by one record naming the count,
+\ placed at the token that pushed the bottom cell, in the innermost file. Paths
+\ are matched by their file names: the temporary root may resolve through a
+\ symbolic link.
+: ASSERT-RESIDUE ( ptr u8 n ptr u8 n -- ) {: msg:ptr msgu:n at:ptr atu:n :}
    EXITED @ TTRUE
-   RC @ UNCAUGHT-RC T=
+   RC @ REJECT-RC T=
    OUT-U @ 0 T=
-   ERR$ line lineu STARTS-WITH? TTRUE
+   ERR$ s" error[E-EVAL-RESIDUE]: " STARTS-WITH? TTRUE
+   ERR$ msg msgu CONTAINS? TTRUE
    ERR$ s" E-EVAL-RESIDUE" COUNT-SUB 1 T=
-   ERR$ file fileu CONTAINS? TTRUE
-   ERR$ s" hb: uncaught throw code -3804" CONTAINS? TTRUE ;
+   ERR$ at atu CONTAINS? TTRUE
+   ERR$ s" uncaught throw" CONTAINS? TFALSE ;
 
 : TEST-RESIDUE ( -- )
    s" residue names the cell count and the file" T-LABEL
    RES$ RUN
-   s" E-EVAL-RESIDUE: stack depth 2 at /" S\" /residue.f\n" ASSERT-RESIDUE
+   s" this file leaves 2 cells" s" /residue.f:1:1" ASSERT-RESIDUE
+   ERR$ s" = left: n n" CONTAINS? TTRUE
    s" a declaration's leftover cell is residue too" T-LABEL
    RTYPE$ RUN
-   s" E-EVAL-RESIDUE: stack depth 1 at /" S\" /residue-type.f\n" ASSERT-RESIDUE
+   s" this file leaves 1 cell " s" /residue-type.f:1:20" ASSERT-RESIDUE
    s" nested residue is named once, at the innermost file" T-LABEL
    RNEST$ RUN
-   s" E-EVAL-RESIDUE: stack depth 2 at /" S\" /residue.f\n" ASSERT-RESIDUE
+   s" this file leaves 2 cells" s" /residue.f:1:1" ASSERT-RESIDUE
    ERR$ s" residue-nest.f" CONTAINS? TFALSE
-   s" caught residue prints its line and keeps its code" T-LABEL
+   s" caught residue prints its record and keeps its code" T-LABEL
    RCATCH$ RUN
    EXITED @ TTRUE
    RC @ 0 T=
-   OUT$ S\" -3804\n" STR= TTRUE
-   ERR$ s" E-EVAL-RESIDUE: stack depth 2 at /" STARTS-WITH? TTRUE
-   ERR$ S\" /residue.f\n" ENDS-WITH? TTRUE
-   ERR$ 10 COUNT-CHAR 1 T= ;
+   OUT$ S\" 70\n" STR= TTRUE
+   ERR$ s" error[E-EVAL-RESIDUE]: this file leaves 2 cells" STARTS-WITH? TTRUE
+   ERR$ s" /residue.f:1:1" CONTAINS? TTRUE
+   ERR$ s" E-EVAL-RESIDUE" COUNT-SUB 1 T= ;
 
 : ASSERT-REJECTED ( n -- )
    {: rc:n :}
