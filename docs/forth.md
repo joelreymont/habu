@@ -2501,19 +2501,22 @@ sections above.
   effect. `--verify-only` reports an undeclared renderer product at its use as
   deferred. A declared product is checked against its row.
 - **A definer can build a definition from words it found.**
-  `define-word ( ptr u8 n ptr u8 n -- )` opens, in the open package and
-  section, the definition named by the first string (one token,
-  `E-MISSING-NAME`) with the signature the second writes, parentheses
-  included (`E-MISSING-SIGNATURE`); with a definition open it is
-  `E-DEFINITION-OPEN`. In the definer's body `postpone W` appends W bound to
-  the record W names there, by its home (the global wordlist, or a package's
-  public or private one), so no word the running package defines captures it;
-  `postpone ;` ends the definition as its `;` would. `body-append
-  ( ptr u8 n -- )` appends text, whose names bind where the definition is
-  built. Either with no definition open is `E-NO-DEFINITION`. `postpone` is
-  syntax, never a definition name. One limit: the binding is kept as home and
-  spelling, so after `undefine W` and a new W, a definer compiled before
-  appends the new W.
+  `define-word ( ptr u8 n EFFECT:type -- )` opens, in the open package and
+  section, the definition named by the string (one token, `E-MISSING-NAME`)
+  with an effect the definer built from EFFECT's words (`NEW`, `IN`, `OUT`,
+  `N`, `FAMILY` (by the family's spelling, `PKG:name` or a global family's
+  bare name), `PTR`); a type that is no effect (given to `define-word`, `IN` or
+  `OUT`), one with more than 23 type parameters or one a written signature
+  could not state is `E-NOT-EFFECT`; a spelling that names no family is
+  `E-UNKNOWN-SIGNATURE-TYPE`; with a definition open it is `E-DEFINITION-OPEN`.
+  In the definer's body `postpone W` appends W bound to the record W names
+  there, by its home (the global wordlist, or a package's public or private
+  one), so no word the running package defines captures it; `postpone ;` ends
+  the definition as its `;` would. `body-append ( ptr u8 n -- )` appends text,
+  whose names bind where the definition is built. Either with no definition
+  open is `E-NO-DEFINITION`. `postpone` is syntax, never a definition name. One
+  limit: the binding is kept as home and spelling, so after `undefine W` and a
+  new W, a definer compiled before appends the new W.
 - **Top-level source checking follows source order without executing it.** A
   token outside a known declaration is resolved as the loader would resolve
   it. Numbers use the engine's parser; `-3`, `$FF` and `1.5` are literals,

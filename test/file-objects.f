@@ -1796,6 +1796,35 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" the build compiles main.f's last part" OPENED-LAST COMPILED
    s\" 2\n" s" the program prints a cold build's number" PRINTS-RUN ;
 
+\ The built sequence's main.f: it runs lib.f's MAKE-EAT and prints 42 when the
+\ flag is true, else 41.
+: WRITE-EAT ( bool -- )
+   {: warm:bool :}
+   s" lib.f" REQUIRE+  s\" s\" BOX-EAT\" PL:MAKE-EAT\n" SRC+
+   s" : MAIN ( -- ) " SRC+  warm if s" 42" SRC+ else s" 41" SRC+ then
+   s\"  . cr ;\n" SRC+  s" main.f" NEST-WRITE ;
+
+\ lib.f's definer MAKE-EAT names PL's private plsecret by its spelling. It is
+\ written once: a rewritten file is compiled again, which reads its entry.
+: WRITE-BUILT ( -- )
+   L$ s" built" NEST-DIR FS:JOIN-PATH NEST-DIR-U !
+   NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
+   s\" package PL\nprivate\nSTRUCTURE plsecret FIELD v n ;STRUCTURE\n" SRC+
+   s\" public\n: MAKE-EAT ( ptr u8 n -- )\n" SRC+
+   s\"    s\" PL:plsecret\" EFFECT:FAMILY EFFECT:PTR {: p :}\n" SRC+
+   s\"    EFFECT:NEW p EFFECT:IN define-word\n" SRC+
+   s\"    postpone drop\n   postpone ; ;\n;package\n" SRC+  s" lib.f" NEST-WRITE
+   false WRITE-EAT ;
+
+\ Guards a family a definer finds by spelling in a linked object's entry, which
+\ only a warm build leaves unread: BI2 builds main.f's edit and prints 42.
+: BUILT-CASE ( CMD:command -- CMD:command )
+   WRITE-BUILT
+   s" BI" WHICH!  s" main.f" NEST-PATH$ FIXTURE-BUILD 0= if exit then
+   true WRITE-EAT
+   s" BI2" WHICH!  s" main.f" NEST-PATH$ FIXTURE-BUILD 0= if exit then
+   s\" 42\n\n" s" the program prints the edited number" PRINTS-RUN ;
+
 \ A directory of L's of that name, holding the cast sequence's a.f: package
 \ FILE-OBJECTS-CAST's private generic cast >ELEM and its public generic AT.
 : WRITE-CAST ( ptr u8 n -- )
@@ -1890,7 +1919,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
       CTOR-CASE EXPORT-CASE
       NEST-CASE KEPT-CASE SAME-CASE RETIRE-CASE CLAUSE-CASE READ-CASE LIST-CASE LINK-CASE TASK-CASE
       SAMEFILE-CASE ANCHORED-CASE SPAWN-CASE ZIP-CASE JSONL-CASE KIND-CASE ARENA-CASE ROUTE-CASE
-      DEVICE-CASE SPELLED-CASE PACKAGED-CASE EVALUATED-CASE OPENED-CASE CAST-CASE
+      DEVICE-CASE SPELLED-CASE PACKAGED-CASE EVALUATED-CASE OPENED-CASE BUILT-CASE CAST-CASE
       CROSS-CASE TARGET-CASE ;]
    CMD:WITH-COMMAND ;
 

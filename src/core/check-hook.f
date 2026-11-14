@@ -257,12 +257,14 @@ using SCHEMA-REG
    node SCHEMA-NODE-OK? if node SCHEMA-ROW? 0= if node exit then then
    E-SCHEMA-BAD throw ;
 
+\ An effect; any other type is refused, E-NOT-EFFECT.
 : EFFECT-ARG ( n -- n ) {: node:n :}
    node TYPE-ARG SCHEMA-QUOT? if node exit then
-   E-SCHEMA-BAD throw ;
+   s" E-NOT-EFFECT" TOP-SITE-PATH$ SRCLOC:LINE ERROR-TEXT:PREFIX
+   S\" EFFECT:IN or EFFECT:OUT given a type that is no effect\n" ERROR-TEXT:TYPE
+   CHECK-RC throw ;
 
 : FAMILY-NODE ( n -- n ) {: fam:n :}
-   fam 0 <  fam TFAM:TFAM-N@ >=  or if E-SCHEMA-BAD throw then
    fam TFAM:TFAM-ARITY@ {: k:n :}
    SCHEMA-ROOT-N@ {: start:n :}
    k 0 ?do FRESH-PARAM SCHEMA-ROOT+ drop loop
@@ -271,7 +273,7 @@ using SCHEMA-REG
 \ TYPE-OP's operands are cells: NAMED's spelling arrives as its address.
 CAST: >BYTES ( n -- ptr u8 )
 
-\ The family a spelling names; one that names none is refused, E-SCHEMA-BAD.
+\ The family a spelling names; one that names none is refused, E-UNKNOWN-SIGNATURE-TYPE.
 : NAMED-FAMILY ( n n -- n )
    {: a:n u:n :}
    a >BYTES u TFAM:TFAM-FIND-SPELLED if exit then
@@ -279,7 +281,7 @@ CAST: >BYTES ( n -- ptr u8 )
    s" E-UNKNOWN-SIGNATURE-TYPE" TOP-SITE-PATH$ SRCLOC:LINE ERROR-TEXT:PREFIX
    s" unknown type '" ERROR-TEXT:TYPE  a >BYTES u ERROR-TEXT:TYPE
    S\" ' in EFFECT:FAMILY\n" ERROR-TEXT:TYPE
-   E-SCHEMA-BAD throw ;
+   CHECK-RC throw ;
 
 : EMPTY-EFFECT ( -- n )
    0 0 SCHEMA-ROW {: row:n :}
@@ -305,7 +307,6 @@ CAST: >BYTES ( n -- ptr u8 )
 
 : TYPE-NODE ( n n n -- n ) {: code:n a:n b:n :}
    code TYPE-OP-ABI:INT = if CC-N SCHEMA-CON exit then
-   code TYPE-OP-ABI:FAMILY = if a FAMILY-NODE exit then
    code TYPE-OP-ABI:NAMED = if a FAMILY-NODE exit then
    code TYPE-OP-ABI:PTR = if a TYPE-ARG SCHEMA-PTR exit then
    code TYPE-OP-ABI:EFFECT = if EMPTY-EFFECT exit then

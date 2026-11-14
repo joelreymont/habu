@@ -401,10 +401,10 @@ through a `defer` or an executed xt), is `E-GENERATES-ROW`.
 `FUNCTION:` needs no row.
 
 A definer that builds a word from words it found writes no text:
-`name$ s" ( n -- n )" define-word` opens the word, `postpone W` appends the W
-found where the definer was compiled, which no package the definer later runs
-in can shadow, `body-append` appends text that binds where it runs, and
-`postpone ;` ends the word.
+`name$ EFFECT:NEW EFFECT:N EFFECT:IN EFFECT:N EFFECT:OUT define-word` opens
+the word, `postpone W` appends the W found where the definer was compiled,
+which no package the definer later runs in can shadow, `body-append` appends
+text that binds where it runs, and `postpone ;` ends the word.
 
 `PTR-U8-TABLE-VARIABLE` is a cell holding a `PTR-U8-TABLE`'s base
 (`( -- ptr ptr ptr u8 )`). An image save writes `PTR-VARIABLE`, `PTR-U8-TABLE` and

@@ -549,15 +549,11 @@ public
 14 constant SLOTS
 ;package
 
-\ A type operation on operands a and b: INT `n`, FAMILY family a on fresh
-\ parameters, PTR a pointer to type a, EFFECT an empty effect, IN and OUT
-\ effect a with type b as its new top input or output, NAMED the family the
-\ spelling at address a, b bytes long, names (`PKG:name`, or a global family's
-\ bare name), on fresh parameters.
+\ TYPE-OP's codes on a and b: INT n, PTR a pointer to a, EFFECT an empty effect,
+\ IN and OUT b pushed on effect a, NAMED the family the a, b bytes spell.
 package TYPE-OP-ABI
 public
 0 constant INT
-1 constant FAMILY
 2 constant PTR
 3 constant EFFECT
 4 constant IN

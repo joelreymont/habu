@@ -980,6 +980,10 @@ SUITE postpone-define
    test/postpone-define.f
 ;SUITE
 
+SUITE postpone-effect
+   test/postpone-effect.f
+;SUITE
+
 \ The design seal: each test/policy case loaded sealed at tier 0, one child per
 \ case; writes build/vocabulary-run.txt.
 SUITE vocabulary
