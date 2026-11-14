@@ -1157,12 +1157,8 @@ public
    TDS-U ! TDS-A !
    [: CHECKER-DEFFAMILY-BODY ;] TDECL-RUN ;
 
-\ include.f binds TDECL-EVAL-XT, the evaluator of core declarations' generated source.
-\ A defer cannot be probed: TDECL-EVAL-ARMED says it is bound.
-defer TDECL-EVAL-XT ( ptr u8 n -- )
 defer TDECL-NAME-PREFLIGHT-XT ( ptr u8 n -- )
 defer TDECL-CAPACITY-PREFLIGHT-XT ( ptr u8 n n -- )
-variable TDECL-EVAL-ARMED
 
 private
 
@@ -1228,27 +1224,23 @@ TDECL-PREFLIGHT-DEFAULTS
 $4000 constant TDGEN-CAP
 create TDGEN-BUF TDGEN-CAP allot
 variable TDGEN-U
-PTR-VARIABLE TDGEN-NA   variable TDGEN-NU  \ word-name span inside TDGEN-BUF
 
 \ The per-word renderer is bounded by TDGEN-CAP; this plan arena grows before
 \ publication, so a large family cannot fail halfway through. Each row keeps
-\ relocation-safe offsets for its name and checker definition span. The symbol
-\ table rejects collisions within the plan; post-xref name and capacity hooks
+\ relocation-safe offsets for its name. The symbol table rejects collisions within the plan; post-xref name and capacity hooks
 \ validate live visibility and every plan-determined fixed registry.
 $1000 constant TDPLAN-CAP-INIT
 4 constant TDPLAN-ROW-CAP-INIT
-8 cells constant TDPLAN-REC
+6 cells constant TDPLAN-REC
 $7FFFFFFFFFFFFFFF constant TDPLAN-BYTE-MAX
 TDPLAN-BYTE-MAX TDPLAN-REC / constant TDPLAN-ROW-MAX
 0 cells constant TDPLAN.SYM-OFF
-1 cells constant TDPLAN.DEF-OFF-OFF
-2 cells constant TDPLAN.DEF-U-OFF
-3 cells constant TDPLAN.NAME-OFF-OFF
-4 cells constant TDPLAN.NAME-U-OFF
-5 cells constant TDPLAN.BUILT-OFF
-6 cells constant TDPLAN.FAM-OFF
-7 cells constant TDPLAN.VID-OFF
-\ The builder kinds TDPLAN.BUILT holds; a text row holds 0.
+1 cells constant TDPLAN.NAME-OFF-OFF
+2 cells constant TDPLAN.NAME-U-OFF
+3 cells constant TDPLAN.BUILT-OFF
+4 cells constant TDPLAN.FAM-OFF
+5 cells constant TDPLAN.VID-OFF
+\ The builder kinds TDPLAN.BUILT holds.
 1 constant TDPLAN-TAG
 2 constant TDPLAN-EQ
 3 constant TDPLAN-HASH
@@ -1331,17 +1323,10 @@ public
 : TDPLAN-BEGIN ( -- )
    0 TDPLAN-U !
    0 TDPLAN-N !
-   0 TDPLAN-SYM-HI !
-   CTOR-PEND-CLEAR ;
+   0 TDPLAN-SYM-HI ! ;
 
 
 private
-
-: TDPLAN-C, ( n -- )
-   1 TDPLAN-BYTE-NEED {: need:n :}
-   need TDPLAN-ENSURE
-   TDPLAN-P @ TDPLAN-U @ + c!
-   need TDPLAN-U ! ;
 
 : TDPLAN-APP ( ptr u8 n -- ) {: a:ptr u:n :}
    u TDPLAN-BYTE-NEED {: need:n :}
@@ -1357,8 +1342,6 @@ private
    TDPLAN-REC * TDPLAN-ROW-P @ + ;
 
 : TDPLAN.SYM ( ptr a -- ptr a ) TDPLAN.SYM-OFF + ;
-: TDPLAN.DEF-OFF ( ptr a -- ptr a ) TDPLAN.DEF-OFF-OFF + ;
-: TDPLAN.DEF-U ( ptr a -- ptr a ) TDPLAN.DEF-U-OFF + ;
 : TDPLAN.NAME-OFF ( ptr a -- ptr a ) TDPLAN.NAME-OFF-OFF + ;
 : TDPLAN.NAME-U ( ptr a -- ptr a ) TDPLAN.NAME-U-OFF + ;
 : TDPLAN.BUILT ( ptr a -- ptr a ) TDPLAN.BUILT-OFF + ;
@@ -1376,7 +1359,7 @@ private
       0
       BEGIN dup TDPLAN-N @ < WHILE
          dup TDPLAN-SYM@ sym = IF
-            TDGEN-NA @ TDGEN-NU @ s" generated declaration name already defined" E-TDECL-NAME TDECL-THROW
+            TDGEN-BUF TDGEN-U @ s" generated declaration name already defined" E-TDECL-NAME TDECL-THROW
          THEN
          1 +
       REPEAT
@@ -1387,49 +1370,30 @@ private
    sym TDPLAN-N @ TDPLAN-ROW TDPLAN.SYM !
    TDPLAN-N @ 1 + TDPLAN-N ! ;
 
-: TDPLAN-WORD+ ( -- )
-   TDPLAN-N @ 1 - TDPLAN-ROW {: r:ptr :}
-   TDGEN-U @ 3 < IF s" sumtype: malformed generated declaration" 76 die THEN
-   TDGEN-NA @ TDGEN-BUF - {: noff:n :}
-   noff 0 < noff TDGEN-U @ > or
-   TDGEN-NU @ 0 < or
-   TDGEN-NU @ TDGEN-U @ noff - > or IF
-      s" sumtype: malformed generated declaration name span" 76 die
-   THEN
-   2 TDPLAN-BYTE-NEED r TDPLAN.DEF-OFF !
-   TDGEN-U @ 3 - r TDPLAN.DEF-U !
-   noff TDPLAN-BYTE-NEED r TDPLAN.NAME-OFF !
-   TDGEN-NU @ r TDPLAN.NAME-U !
-   0 r TDPLAN.BUILT !
-   0 r TDPLAN.FAM !
-   0 r TDPLAN.VID !
-   TDGEN-BUF TDGEN-U @ TDPLAN-APP
-   10 TDPLAN-C, ;
-
 : TDPLAN-NAME+ ( -- n )
-   TDGEN-NA @ TDGEN-NU @ CHECKER-DEFINED-HERE? IF
-      TDGEN-NA @ TDGEN-NU @ s" generated declaration already defined" E-TDECL-NAME TDECL-THROW
+   TDGEN-BUF TDGEN-U @ {: na:ptr nu:n :}
+   na nu CHECKER-DEFINED-HERE? IF
+      na nu s" generated declaration already defined" E-TDECL-NAME TDECL-THROW
    THEN
-   TDGEN-NA @ TDGEN-NU @ CHECKER-RECORD-SYM dup TDPLAN-SYM+ ;
+   na nu CHECKER-RECORD-SYM dup TDPLAN-SYM+
+   TDPLAN-N @ 1 - TDPLAN-ROW {: r:ptr :}
+   TDPLAN-U @ r TDPLAN.NAME-OFF !
+   nu r TDPLAN.NAME-U !
+   na nu TDPLAN-APP ;
 
 : TDPLAN-CTOR-NAME+ ( n -- n ) {: vid:n :}
    TDPLAN-NAME+ dup vid swap SUMV-CTOR-SYM! ;
 
-: TDPLAN-DERIVED+ ( -- )
-   TDPLAN-NAME+ drop
-   TDPLAN-WORD+ ;
-
 \ A built row records its name, family and kind; its kind's builder makes the
 \ word at evaluation.
 : TDPLAN-BUILT+ ( n n -- ) {: fam:n kind:n :}
-   TDPLAN-DERIVED+
+   TDPLAN-NAME+ drop
    TDPLAN-N @ 1 - TDPLAN-ROW {: r:ptr :}
-   kind r TDPLAN.BUILT !  fam r TDPLAN.FAM ! ;
+   kind r TDPLAN.BUILT !  fam r TDPLAN.FAM !  0 r TDPLAN.VID ! ;
 
 \ A built row whose name is variant VID's constructor symbol.
 : TDPLAN-CTOR-BUILT+ ( n n n -- ) {: vid:n fam:n kind:n :}
    vid TDPLAN-CTOR-NAME+ drop
-   TDPLAN-WORD+
    TDPLAN-N @ 1 - TDPLAN-ROW {: r:ptr :}
    kind r TDPLAN.BUILT !  fam r TDPLAN.FAM !  vid r TDPLAN.VID ! ;
 
@@ -1445,11 +1409,6 @@ private
 
 public
 
-\ Row N's definition span without ': ' and ';', as CHECK! takes a candidate.
-: TDPLAN-DEF$ ( n -- ptr u8 n )
-   TDPLAN-ROW {: r:ptr :}
-   r TDPLAN.DEF-OFF @ r TDPLAN.DEF-U @ TDPLAN-SPAN$ ;
-
 : TDPLAN-NAME$ ( n -- ptr u8 n )
    TDPLAN-ROW {: r:ptr :}
    r TDPLAN.NAME-OFF @ r TDPLAN.NAME-U @ TDPLAN-SPAN$ ;
@@ -1457,7 +1416,6 @@ public
 
 private
 
-: TDPLAN-TEXT? ( n -- bool ) TDPLAN-ROW TDPLAN.BUILT @ 0= ;
 : TDPLAN-KIND@ ( n -- n ) TDPLAN-ROW TDPLAN.BUILT @ ;
 : TDPLAN-FAM@ ( n -- n ) TDPLAN-ROW TDPLAN.FAM @ ;
 : TDPLAN-VID@ ( n -- n ) TDPLAN-ROW TDPLAN.VID @ ;
@@ -1474,22 +1432,6 @@ private
    row TDPLAN-KIND@ TDPLAN-SHAPE  row TDPLAN-FAM@
    TFAM-CHILD-ROWS {: din:n dout:n val:n :}
    row TDPLAN-NAME$ din dout CHECKER-CHILD-ROWS drop ;
-
-: TDPLAN-TEXT-N ( -- n )
-   0 BEGIN
-      dup TDPLAN-N @ < IF dup TDPLAN-TEXT? ELSE RES-FALSE THEN
-   WHILE 1 + REPEAT ;
-
-\ The text rows' bytes, newlines included. They lead the plan: a text row after
-\ a built one would be left out, so it is refused.
-: TDPLAN-TEXT$ ( -- ptr u8 n )
-   TDPLAN-TEXT-N {: k:n :}
-   TDPLAN-N @ k ?do
-      i TDPLAN-TEXT? IF s" sumtype: text row after a built row" 76 die THEN
-   loop
-   k 0= IF 0 0 TDPLAN-SPAN$ EXIT THEN
-   k 1 - TDPLAN-ROW {: r:ptr :}
-   0  r TDPLAN.DEF-OFF @ r TDPLAN.DEF-U @ + 2 +  TDPLAN-SPAN$ ;
 
 : TDPLAN-PREFLIGHT-NAMES ( -- )
    TDPLAN-N @ 0 ?do i TDPLAN-NAME$ TDECL-NAME-PREFLIGHT-XT loop ;
@@ -1529,22 +1471,18 @@ private
       ELSE fam kind TDECL-KIND-EFFECT THEN ;]
    [: TRANSIENT-OFF ;] finally ;
 
-\ A text row's definition is checked; a built row registers the effect its
-\ kind gives.
+\ Each row registers the effect its kind gives.
 : TDPLAN-PREFLIGHT-ROWS ( -- )
    TDPLAN-N @ 0 ?do
-      i TDPLAN-TEXT? IF
-         i TDPLAN-DEF$ CHECK! -1 <> IF 70 throw THEN
-      ELSE i TDPLAN-KIND@ TDPLAN-PROD? IF
+      i TDPLAN-KIND@ TDPLAN-PROD? IF
          i TDPLAN-PROD-REG
       ELSE
          i TDPLAN-NAME$  i TDECL-DRV-EFFECT EFFECT-SIG 2drop
          CHECKER-CHILD-ROWS drop
-      THEN THEN
-   loop
-   CTOR-PEND-REQUIRE-DONE ;
+      THEN
+   loop ;
 
-\ A generated definition takes no declaration location: its rows are checked
+\ A generated definition takes no declaration location: its rows are registered
 \ with the declaring registrar's latch paused (NAV-PAUSE).
 : TDPLAN-PREFLIGHT-DEFINITIONS ( -- )
    NAV-PAUSE {: on:n new:n :}
@@ -1553,11 +1491,9 @@ private
    rc 0 <> IF rc throw THEN ;
 
 : TDPLAN-PREFLIGHT-CHECKER ( -- )
-   CTOR-PEND-REWIND
    CHECKER-CANDIDATE-SCOPE-START
    [: TDPLAN-PREFLIGHT-DEFINITIONS ;] catch {: rc:n :}
    CHECKER-CANDIDATE-SCOPE-DONE
-   CTOR-PEND-REWIND
    rc 0 <> IF rc throw THEN ;
 
 : TDPLAN-PREFLIGHT ( -- )
@@ -1761,11 +1697,8 @@ private
    fam TFAM-VAR-START@ SUMV-CTOR-PKG$ TDGEN-APP
    58 TDGEN-C,
    ta tu TDGEN-UPPER ;
-: TDGEN-DRV-NAME ( n ptr u8 n -- ) {: fam:n ta:ptr tu:n :}   \ the name alone, span-recorded
-   TDGEN-U @ {: n0:n :}
-   fam ta tu TDGEN-DRV-REF
-   TDGEN-BUF n0 + TDGEN-NA !
-   TDGEN-U @ n0 - TDGEN-NU ! ;
+: TDGEN-DRV-NAME ( n ptr u8 n -- ) {: fam:n ta:ptr tu:n :}   \ the name alone
+   TDGEN-CLEAR  fam ta tu TDGEN-DRV-REF ;
 : TDGEN-KW ( ptr u8 n -- ) 0 ITEM-ABI:KEYWORD TDGEN-ITEM ;
 : TDGEN-OF ( ptr u8 n -- )                \ a variant's `of`
    0 ITEM-ABI:OPERAND TDGEN-ITEM  s" of" TDGEN-KW ;
@@ -1908,15 +1841,12 @@ $100000001b3 constant DRV-FNV-PRIME        \ FNV-1a 64-bit prime
    DRV-FNV-BASIS literal
    fam fam TFAM-VAR-START@ base TDGEN-HASH-FOLDS ;
 : TDECL-TAG-WORD ( n -- ) {: fam:n :}
-   TDGEN-CLEAR
    fam s" tag" TDGEN-DRV-NAME
    fam TDPLAN-TAG TDPLAN-BUILT+ ;
 : TDECL-EQ-WORD ( n -- ) {: fam:n :}
-   TDGEN-CLEAR
    fam s" eq" TDGEN-DRV-NAME
    fam TDPLAN-EQ TDPLAN-BUILT+ ;
 : TDECL-HASH-WORD ( n -- ) {: fam:n :}
-   TDGEN-CLEAR
    fam s" hash" TDGEN-DRV-NAME
    fam TDPLAN-HASH TDPLAN-BUILT+ ;
 : TDECL-DRV-WORDS ( n -- ) {: fam:n :}
@@ -1959,27 +1889,13 @@ $100000001b3 constant DRV-FNV-PRIME        \ FNV-1a 64-bit prime
    THEN
    s" sumtype: no builder for this plan row" 76 die ;
 
-: TDECL-GEN-EVAL-BODY ( n -- ) {: fam:n :}
-   TDECL-EVAL-ARMED @ 0= IF s" sumtype: constructor eval hook not installed" 76 die THEN
+: TDECL-GEN-EVAL ( n -- ) {: fam:n :}
    TDPLAN-PREFLIGHT
-   TDPLAN-TEXT$ TDECL-EVAL-XT
-   CTOR-PEND-REQUIRE-DONE
-   TDPLAN-N @ 0 ?do
-      i TDPLAN-TEXT? 0= IF fam i TDECL-DRV-BUILD THEN
-   loop ;
-
-\ The constructor queue is an authority: this boundary clears it on every exit
-\ and the body proves it consumed.
-: TDECL-GEN-EVAL ( n -- )
-   [: dup TDECL-GEN-EVAL-BODY ;] catch {: rc:n :}
-   CTOR-PEND-CLEAR
-   rc 0 <> IF rc throw THEN
-   drop ;
+   TDPLAN-N @ 0 ?do fam i TDECL-DRV-BUILD loop ;
 
 \ A product's MAKE or UNMAKE row of KIND for variant VID. Its word is a cast: a
 \ product value is its field cells in slot order, with no pads and no tag.
 : TDECL-PROD-ROW ( n n n -- ) {: fam:n vid:n kind:n :}
-   TDGEN-CLEAR
    fam vid SUMV-NAME$ TDGEN-DRV-NAME
    vid fam kind TDPLAN-CTOR-BUILT+ ;
 
@@ -2006,15 +1922,13 @@ $100000001b3 constant DRV-FNV-PRIME        \ FNV-1a 64-bit prime
    replay IF CHECKER-PUBLIC EXIT THEN
    CHECKER-RESOLVE:PUBLIC-SECTION ;
 
-\ Q renders, preflights and evaluates (or replays) a family's generated rows. A
+\ Q plans, preflights and builds (or replays) a family's generated rows. A
 \ private or OPAQUE family's rows (not TFAM-GEN-PUBLIC?) go into the declaring
 \ package's private wordlist, so Q runs between a switch to private and a
 \ restore of the declaration's section, on either exit. Everything that interns
 \ a name runs inside the switch: the name preflight asks the wordlist the name
-\ will land in (xref.f TARGET-RECORD), and CHECKER-RECORD-SYM interns a plan's
-\ constructor authorities per section, so a plan rendered in another section
-\ queues authorities CTOR-PEND-MATCH? never finds. Q takes and returns the
-\ family, which each caller's generator takes; catch takes only a
+\ will land in (xref.f TARGET-RECORD). Q takes and returns the family, which
+\ each caller's generator takes; catch takes only a
 \ stack-preserving quotation.
 : TDECL-GEN-PLACED ( n bool [ n -- n ] -- ) {: fam:n replay:bool q :}
    fam TFAM-GEN-PUBLIC? IF fam q execute drop EXIT THEN
@@ -2249,17 +2163,11 @@ public
 
 : TDECL-CTOR-REPLAY ( n -- )
    dup TDECL-GENERATES? 0= IF drop EXIT THEN
-   [: TDECL-REPLAY-BODY ;] catch {: rc:n :}
-   CTOR-PEND-CLEAR
-   rc 0 <> IF rc throw THEN
-   drop ;
+   TDECL-REPLAY-BODY drop ;
 
-\ Clears the constructor queue that rendering fills, on any exit.
 : TDECL-CTOR-WORDS-BODY ( n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n -- n )
-   {: ctx:n qn qr qc fam:n :}
-   [: ctx qn qr qc fam TDECL-GEN-BODY 2drop 2drop drop ;] catch {: rc:n :}
-   CTOR-PEND-CLEAR
-   rc 0 <> IF rc throw THEN
+   dup {: fam:n :}
+   TDECL-GEN-BODY 2drop 2drop drop
    fam ;
 
 \ Every declaration announces its family through TDECL-FAM-REG; that ambient

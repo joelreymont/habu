@@ -121,7 +121,6 @@ public
 
 variable CT-DICT   variable CT-CP
 
-: PENDING ( -- n ) CTOR-PEND-COUNT @ ;
 : DICT-RECS ( -- n ) ndict@ ;
 : DICT-CODE ( -- n ) cp@ ;
 
@@ -185,7 +184,6 @@ s" ENUM-DECL:ED-RUN rollctor2 DERIVE eq VARIANT tag FIELD a n ;VARIANT ;ENUM"
 : ROLLCOLL:TAKEN ( -- n ) 37 ;
 s" ENUM-DECL:ED-RUN rollcoll fresh taken ;ENUM"
    TYPE-DECL:E-TDECL-NAME enum-ctor-test:CTOR-REJECT
-enum-ctor-test:PENDING 0 T=
 DECLARATION-TRANSACTION:ACTIVE? 0= TTRUE
 s" RC-FRESH ( -- n ) ROLLCOLL:FRESH" CHECK-QUIET-CANDIDATE! 0 T=
 ROLLCOLL:TAKEN 37 T=
@@ -195,12 +193,10 @@ undefine ROLLCOLL:TAKEN
 s" ENUM-DECL:ED-RUN rollcoll fresh taken ;ENUM" evaluate-closed
 s" RC-VALID ( -- rollcoll ) ROLLCOLL:FRESH" CHECK-QUIET-CANDIDATE! -1 T=
 
-\ PRODUCT make/unmake uses the pending constructor authority queue. A collision
-\ on UNMAKE occurs after MAKE was queued, and must clear that authority too.
+\ A PRODUCT collision on UNMAKE also rolls back the MAKE planned before it.
 : ROLLP:UNMAKE ( -- n ) 41 ;
 s" STRUCTURE rollp FIELD value n ;STRUCTURE"
    TYPE-DECL:E-TDECL-NAME enum-ctor-test:CTOR-REJECT
-enum-ctor-test:PENDING 0 T=
 DECLARATION-TRANSACTION:ACTIVE? 0= TTRUE
 s" RP-MAKE ( n -- n ) ROLLP:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
 ROLLP:UNMAKE 41 T=

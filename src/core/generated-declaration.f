@@ -391,13 +391,8 @@ variable ARMED   NO-FAMILY ARMED !   \ the family this declaration armed
 
 public
 
-\ The pending-constructor authority queue is plan scratch shared with the
-\ generator. Its only legal value at the start of a declaration is empty, so
-\ SNAPSHOT establishes that value rather than copying one, and ROLLBACK restores
-\ it after a failure that left entries queued.
 : PART-SNAPSHOT ( -- )
-   DISARM
-   CTOR-PEND-CLEAR ;
+   DISARM ;
 
 \ A non-mutating re-proof of the gate ARM checked: a family made ineligible
 \ since then fails before any word is rendered.
@@ -422,7 +417,6 @@ public
    TDECL-SUMV-PROVIDER fam TDECL-CTOR-WORDS-BODY drop ;
 
 : PART-ROLLBACK ( -- )
-   CTOR-PEND-CLEAR
    DISARM ;
 
 \ Total: publication has already happened, and the only thing left is this

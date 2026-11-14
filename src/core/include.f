@@ -71,19 +71,6 @@ variable REQUIRE-SAVE-BASE
    REQUIRE-BOOT-OPEN? if REQUIRE-N @ exit then
    REQUIRE-BOOT-N @ ;
 
-\ The loader's first callback cells are typed storage, whose generated
-\ accessors need TYPE-DECL's evaluator before REQUIRE-REG:MARK exists. Their
-\ source is closed here; INCLUDE-EVALUATE replaces this binding with the
-\ require rollback boundary once the registry is ready.
-using TYPE-DECL
-package INCLUDE-EVAL-BIND
-private
-: BOOT ( -- ) [: evaluate-closed ;] is TYPE-DECL:TDECL-EVAL-XT ;
-BOOT
-;package
--1 TDECL-EVAL-ARMED !
-;using
-
 \ An invocation that owns source bytes supplies both filesystem answers through
 \ this loader-local pair. A newly source-loaded target gets its own pair, so its
 \ require registry and source frames remain independent of the retained host.
@@ -1291,19 +1278,6 @@ variable SCRIPT-NAMED-PEND
    [: 2dup evaluate-closed ;] catch {: rc:n :}
    2drop
    rc 0 <> if mark REQUIRE-REG:TRUNCATE rc throw then ;
-
-\ Once REQUIRE-REG is ready, generated declarations also roll back its rows
-\ on failure. Stage builders without include.f leave the evaluator unarmed.
-\ The `is` target is qualified because parsing words do not resolve through
-\ using-imports.
-using TYPE-DECL
-
-package INCLUDE-EVAL-BIND
-private
-: INSTALL ( -- ) [: INCLUDE-EVALUATE ;] is TYPE-DECL:TDECL-EVAL-XT ;
-INSTALL
-;package
-;using
 
 \ Every source load runs through the bound runner. The ordinary one keeps the
 \ frame and scope behavior; a build binds its own once the loader has loaded.

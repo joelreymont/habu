@@ -19,9 +19,8 @@ $100 CODEGEN:BUFFER GEN
 
 : CROSS ( -- ) GEN CODEGEN:CONTENTS INCLUDE-EVALUATE ;
 
-\ A source-generating definer hands its rendered text to INCLUDE-EVALUATE
-\ (src/core/include.f), which TYPE-DECL:TDECL-EVAL-XT is bound to for every
-\ generated core declaration: evaluate-closed, the floor at the definer's depth,
+\ A source-generating definer hands its rendered text to INCLUDE-EVALUATE,
+\ which runs it under evaluate-closed: the floor at the definer's depth,
 \ leaving nothing. The three definers below differ only in what they append: a
 \ sound one's product certifies, one leaving a cell is refused E-EVAL-RESIDUE,
 \ and one taking a cell it never pushed throws 70 with the caller's cells

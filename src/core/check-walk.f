@@ -824,85 +824,6 @@ public
    UNSAFE @ RETIRED @ or  IMMERR @ or  LOCALBAD @ or  LINLOCBAD @ or  QDUPBAD @ or  QUALBAD @ or  CAPREQ @ or  MREJ @ or  NPBAD @ or  RCOMPILE @ or 0 <>  REFUSAL@ RF-UNDEF =  or IF VERDICT-REFUSED ELSE
    UNCK @ 0 <> IF VERDICT-UNCHECKABLE ELSE OK @ THEN THEN ;
 
-\ A product bundle is its field cells in slot order, so generated MAKE and UNMAKE
-\ have empty bodies; their sealed plan, never user source, earns the product effect.
-4 constant CTOR-PEND-CAP-INIT
-1 cells constant CTOR-PEND-REC
-$7FFFFFFFFFFFFFFF constant CTOR-PEND-BYTE-MAX
-CTOR-PEND-BYTE-MAX CTOR-PEND-REC / constant CTOR-PEND-ROW-MAX
-create CTOR-PEND-BOOT CTOR-PEND-CAP-INIT CTOR-PEND-REC * allot
-PERSISTED-PTR-VARIABLE CTOR-PEND-P   CTOR-PEND-BOOT CTOR-PEND-P !
-variable CTOR-PEND-CAP     CTOR-PEND-CAP-INIT CTOR-PEND-CAP !
-variable CTOR-PEND-COUNT
-variable CTOR-PEND-POS
-
-: CTOR-PEND-SYM ( n -- ptr n )
-   dup 0 < over CTOR-PEND-CAP @ >= or IF
-      s" checker: generated constructor plan capacity overflow" 76 die
-   THEN
-   CTOR-PEND-REC * CTOR-PEND-P @ + ;
-
-: CTOR-PEND-ROWS>BYTES ( n -- n )
-   dup 0 < over CTOR-PEND-ROW-MAX > or IF
-      s" checker: generated constructor plan capacity overflow" 76 die
-   THEN
-   CTOR-PEND-REC * ;
-
-: CTOR-PEND-NEXT-CAP ( -- n )
-   CTOR-PEND-COUNT @ CTOR-PEND-ROW-MAX >= IF
-      s" checker: generated constructor plan capacity overflow" 76 die
-   THEN
-   CTOR-PEND-COUNT @ 1 + {: need:n :}
-   CTOR-PEND-CAP @ 0 <= CTOR-PEND-CAP @ CTOR-PEND-ROW-MAX > or IF
-      s" checker: generated constructor plan capacity overflow" 76 die
-   THEN
-   CTOR-PEND-CAP @ CTOR-PEND-ROW-MAX 2 / <= IF
-      CTOR-PEND-CAP @ 2 * need max EXIT
-   THEN
-   need ;
-
-: CTOR-PEND-ENSURE ( -- )
-   CTOR-PEND-COUNT @ CTOR-PEND-CAP @ < IF EXIT THEN
-   CTOR-PEND-NEXT-CAP {: cap:n :}
-   CTOR-PEND-P CTOR-PEND-CAP @ CTOR-PEND-ROWS>BYTES
-      cap CTOR-PEND-ROWS>BYTES REG-GROW1
-   cap CTOR-PEND-CAP ! ;
-
-: CTOR-PEND-CLEAR ( -- )
-   0 CTOR-PEND-COUNT !
-   0 CTOR-PEND-POS ! ;
-
-: CTOR-PEND-REWIND ( -- )
-   0 CTOR-PEND-POS ! ;
-
-: CTOR-PEND-SYM+ ( n -- ) {: sym:n :}
-   CTOR-PEND-ENSURE
-   0
-   BEGIN dup CTOR-PEND-COUNT @ < WHILE
-      dup CTOR-PEND-SYM @ sym = IF
-         drop s" checker: duplicate generated constructor plan" 76 die
-      THEN
-      1 +
-   REPEAT
-   drop
-   sym CTOR-PEND-COUNT @ CTOR-PEND-SYM !
-   CTOR-PEND-COUNT @ 1 + CTOR-PEND-COUNT ! ;
-
-: CTOR-PEND-TAKE? ( n -- bool ) {: sym:n :}
-   CTOR-PEND-POS @ CTOR-PEND-COUNT @ < 0= IF RES-FALSE EXIT THEN
-   CTOR-PEND-POS @ CTOR-PEND-SYM @ sym <> IF RES-FALSE EXIT THEN
-   CTOR-PEND-POS @ 1 + CTOR-PEND-POS !
-   RES-TRUE ;
-
-: CTOR-PEND-MATCH? ( -- bool )
-   CTOR-PEND-POS @ CTOR-PEND-COUNT @ <  NMU @ 0 > and 0= IF RES-FALSE EXIT THEN
-   NMA @ NMU @ CHECKER-RECORD-SYM CTOR-PEND-TAKE? ;
-
-: CTOR-PEND-REQUIRE-DONE ( -- )
-   CTOR-PEND-POS @ CTOR-PEND-COUNT @ <> IF
-      s" checker: incomplete generated constructor plan" 76 die
-   THEN ;
-
 \ `cast: NAME ( in -- out )` is a declaration: the engine's reader keyword
 \ publishes an identity word and asks CHECKER-DEFCAST to prove the declared
 \ retype legal. The refusals are properties of the two declared terms only.
@@ -1239,14 +1160,7 @@ public
    CHECKER-MATCH-MODE @ 0 <>  MF-DEPTH @ 0 <>  or IF MD-TRUNC MDIAG! THEN   \ unify pins its own mismatch
    CHECK-NO-BORROW
    CHECK-SIG? CHECK-RETURNS? and IF
-      CTOR-PEND-MATCH? IF
-         \ One row of the sealed constructor plan: the body leaves SGIN, the
-         \ field cells, whose quotations are stored.
-         SGIN @ SUNI-COERCE
-         SGIN @ KEEP-QUOTS
-      ELSE
-         CHECK-FRESH-OUTPUT
-      THEN
+      CHECK-FRESH-OUTPUT
       OK @ IF SGIN @ BROW !  SGOUT @ DCUR ! THEN
    THEN
    CHECK-SIG? CHECK-RETURNS? 0= and IF FRESH-CLAIM THEN   \ a body that never returns resolves its fresh names too
