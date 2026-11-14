@@ -5809,7 +5809,12 @@ CHECKER-REG:}SCRATCH
    THEN
    0 OK ! ;
 
-: RS-READ-UNDER! ( -- )   \ r> r@ 2r> 2r@ : the read's refusal, its rows kept
+\ The read's row and the return row it met, latched with the trail height
+\ before their unify as the pin: the rows as they stood before the read bound
+\ the base.
+variable RSR-EXP   variable RSR-ACT
+: RS-READ-UNDER! ( n n n -- ) {: mark:n rin:n pre:n :}   \ r> r@ 2r> 2r@ : the read's rejection
+   FAILSET @ 0= IF  rin RSR-EXP !  pre RSR-ACT !  mark 1 + TRAIL-PIN !  THEN
    RS-UNDERFLOW!
    UNJ-ARMED? IF -1 UNJ-SPLICED ! THEN ;
 : RS->R
@@ -5836,9 +5841,10 @@ CHECKER-REG:}SCRATCH
    FRESH MK-VAR FRESH MK-ROW {: tv rest :}
    tv rest MK-PUSH {: rin:n :}
    rin RS-BORROWS? {: borrows:bool :}
-   RCUR @  rin  UNIFY OK @ and OK !
+   TRAIL-N @  RCUR @ {: mark:n pre:n :}
+   pre rin UNIFY OK @ and OK !
    rest RCUR !  tv DCUR @ MK-PUSH DCUR !
-   OK @ borrows and IF RS-READ-UNDER! THEN
+   OK @ borrows and IF mark rin pre RS-READ-UNDER! THEN
    OK @ IF bef LIN-CHECK THEN ;
 
 : RSR@
@@ -5846,9 +5852,10 @@ CHECKER-REG:}SCRATCH
    FRESH MK-VAR FRESH MK-ROW {: tv rest :}
    tv rest MK-PUSH {: rin:n :}
    rin RS-BORROWS? {: borrows:bool :}
-   RCUR @  rin  UNIFY OK @ and OK !
+   TRAIL-N @  RCUR @ {: mark:n pre:n :}
+   pre rin UNIFY OK @ and OK !
    tv DCUR @ MK-PUSH DCUR !
-   OK @ borrows and IF RS-READ-UNDER! THEN
+   OK @ borrows and IF mark rin pre RS-READ-UNDER! THEN
    OK @ IF bef LIN-CHECK THEN ;
 
 : RS2->R
@@ -5873,10 +5880,11 @@ CHECKER-REG:}SCRATCH
    FRESH MK-VAR FRESH MK-VAR FRESH MK-ROW {: t1 t2 rest :}
    t2 t1 rest MK-PUSH MK-PUSH {: rin:n :}
    rin RS-BORROWS? {: borrows:bool :}
-   RCUR @  rin  UNIFY OK @ and OK !
+   TRAIL-N @  RCUR @ {: mark:n pre:n :}
+   pre rin UNIFY OK @ and OK !
    rest RCUR !
    t1 DCUR @ MK-PUSH  t2 swap MK-PUSH  DCUR !
-   OK @ borrows and IF RS-READ-UNDER! THEN
+   OK @ borrows and IF mark rin pre RS-READ-UNDER! THEN
    OK @ IF bef LIN-CHECK THEN ;
 
 : RS2R@
@@ -5884,9 +5892,10 @@ CHECKER-REG:}SCRATCH
    FRESH MK-VAR FRESH MK-VAR FRESH MK-ROW {: t1 t2 rest :}
    t2 t1 rest MK-PUSH MK-PUSH {: rin:n :}
    rin RS-BORROWS? {: borrows:bool :}
-   RCUR @  rin  UNIFY OK @ and OK !
+   TRAIL-N @  RCUR @ {: mark:n pre:n :}
+   pre rin UNIFY OK @ and OK !
    t1 DCUR @ MK-PUSH  t2 swap MK-PUSH  DCUR !
-   OK @ borrows and IF RS-READ-UNDER! THEN
+   OK @ borrows and IF mark rin pre RS-READ-UNDER! THEN
    OK @ IF bef LIN-CHECK THEN ;
 
 \ Memory tokens construct these rows directly instead of instantiating a named
@@ -22088,7 +22097,7 @@ CHECKER-REG:}SCRATCH
    0 MDIAG !  0 MDIAG-FAM !  0 MDIAG-SEEN !  0 MDIAG-VCNT !  0 MDIAG-NEED !  0 MDIAG-HAVE !
    0 MDIAG-DEPTH !  0 MDIAG-WIDTH !  0 MDIAG-LITV !  0 MDIAG-LITT !  0 UNFIT !
    0 RAW-PTR-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 SCOPE-HIT !  0 XT-DECL !
-   0 FAILSET !  0 DEXP !  0 DEND !  0 DACT !  0 TRAIL-PIN !  0 RSBAD !  0 DF-ACT !  0 DF-EXP !  -1 DVAR !  -1 CVLIVE !  -1 DPOS !  0 FAILTU !  0 SGSEEN !  0 SGDECL-BAD !  0 SGHASR !
+   0 FAILSET !  0 DEXP !  0 DEND !  0 DACT !  0 TRAIL-PIN !  0 RSBAD !  0 RSR-EXP !  0 DF-ACT !  0 DF-EXP !  -1 DVAR !  -1 CVLIVE !  -1 DPOS !  0 FAILTU !  0 SGSEEN !  0 SGDECL-BAD !  0 SGHASR !
    0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGDBASE !
    RBROW @ SGRBASE !   \ a definition with no signature reads only what it pushed too
    NULL-PTR SGA !  0 SGU !
