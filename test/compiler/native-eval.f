@@ -122,6 +122,21 @@ private
    OUTER-BASE$ evaluate-closed
    OUTER-BASE @ outer T=  INNER-BASE @ inner T= ;
 
+\ A throw out of a text caught in a loop's body leaves the caller's loops
+\ alone, though the delivery's package resync runs a loop of its own.
+: CATCH-71 ( -- n ) [: s" 71 throw" evaluate-closed ;] catch ;
+
+: LOOP-CATCH ( -- n ) 0 4 0 ?do CATCH-71 71 T= 1 + loop ;
+
+: LOOP-CATCH-NESTED ( -- n )
+   0 8 5 ?do 7 3 ?do CATCH-71 71 T= j 10 * i + + loop loop ;
+
+: LOOP-THROW ( -- )
+   s" a loop whose body catches a text's throw runs every pass" T-LABEL
+   LOOP-CATCH 4 T=
+   s" and an inner loop keeps the outer index" T-LABEL
+   LOOP-CATCH-NESTED 774 T= ;
+
 \ Each consumer of an xt reaches under the floor the same way, and each answer
 \ is the same throw 70 with the caller's 5 intact and W unfinished.
 : XT-EXECUTE ( -- n )
@@ -370,7 +385,8 @@ variable ERR-U
 
 : RUN ( -- )
    T-RESET
-   DEFINES RESIDUE FLOOR REFUSED DEPTH0 NESTED FLOOR-POOL FLOOR-POOL-THROW XT-UNDER
+   DEFINES RESIDUE FLOOR REFUSED DEPTH0 NESTED FLOOR-POOL FLOOR-POOL-THROW
+   LOOP-THROW XT-UNDER
    UNFINISHED
    UNFINISHED-NESTED CALLER-OPEN CALLER-OPEN-REFUSED CALLER-OPEN-IS-REFUSED AGREEMENT OVERFLOW
    TOP-LEVEL
