@@ -5,10 +5,40 @@
 \ structure, for a caller in another package. A word built over
 \ EFFECT:READ-TYPE or EFFECT:NAMED of a type takes the type its text form
 \ declares, and READ-TYPE refuses a family the running package does not know.
+\ A type held on the stack or in a local across a load that builds types keeps
+\ its own effect.
 \ The file calls the running checker's words, so it is loaded, never built.
 
 require src/lib/test.f
 require src/lib/adt/nullable.f
+
+\ First, so no earlier node outlives the load whose end would free the held
+\ type's id: a node a later type takes would answer for it.
+package POSTPONE-KEEP
+private
+: PK-ONE ( -- n ) 1 ;
+
+\ : NAME ( -- n ) PK-ONE ; over effect E.
+: MAKE-ONE ( EFFECT:type ptr u8 n -- )
+   rot define-word  postpone PK-ONE  postpone ; ;
+
+EFFECT:EMPTY EFFECT:N EFFECT:OUT
+require test/fixtures/postpone-types.f
+EFFECT:EMPTY EFFECT:N EFFECT:IN drop
+s" PK-STACK" MAKE-ONE
+
+: KEEP-LOCAL ( -- )
+   EFFECT:EMPTY EFFECT:N EFFECT:OUT {: t :}
+   s" test/fixtures/postpone-types.f" included
+   EFFECT:EMPTY EFFECT:N EFFECT:IN drop
+   t s" PK-LOCAL" MAKE-ONE ;
+KEEP-LOCAL
+
+s" PK-STACK drop" TEST-EVAL:RC 0 T=
+s" : PK-STACK-IN ( n -- ) PK-STACK ;" TEST-EVAL:RC 70 T=
+s" PK-LOCAL drop" TEST-EVAL:RC 0 T=
+s" : PK-LOCAL-IN ( n -- ) PK-LOCAL ;" TEST-EVAL:RC 70 T=
+;package
 
 package POSTPONE-CELL
 public

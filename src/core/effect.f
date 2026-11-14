@@ -6,7 +6,7 @@
 \ Each word asks the running engine's checker through its cell, never by name:
 \ in a build a definer is the tree's copy, whose checker certifies nothing, and
 \ a node only the checker that certifies made can reach it. The nodes are
-\ transient: they end with the file that built them, or a build's piece.
+\ transient: they end with the file that built them.
 
 package EFFECT
 public

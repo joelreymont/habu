@@ -1508,7 +1508,11 @@ CELL constant FR-NAMED
 14 cells constant FR-CTIME-SEC
 15 cells constant FR-CTIME-NS
 16 cells constant FR-STAMP-SIZE
-17 cells constant FR-PATH
+\ The transient schema mark the file's load took (SCHEMA-REG:TRANSIENT-MARK).
+17 cells constant FR-T-NODES
+18 cells constant FR-T-ROOTS
+19 cells constant FR-T-PARAMS
+20 cells constant FR-PATH
 FR-PATH INCLUDE-PATH-CAP + 1 cells + constant FR-ROOT
 FR-ROOT INCLUDE-PATH-CAP + 1 cells + constant HEADER-BYTES
 $1000 constant ROOM-MIN
@@ -1583,6 +1587,10 @@ variable LAST-LOAD-EVAL-OK
    0 frame FR-CTIME-SEC + CELL-VIEW !
    0 frame FR-CTIME-NS + CELL-VIEW !
    -1 frame FR-STAMP-SIZE + CELL-VIEW !
+   SCHEMA-REG:TRANSIENT-MARK {: nodes:n roots:n params:n :}
+   nodes frame FR-T-NODES + CELL-VIEW !
+   roots frame FR-T-ROOTS + CELL-VIEW !
+   params frame FR-T-PARAMS + CELL-VIEW !
    INCLUDE-PATH frame FR-PATH + INCLUDE-PATH-U @ BYTE-COPY
    CURRENT$ {: root:ptr rootu:n :}
    rootu frame FR-ROOTLEN + CELL-VIEW !
@@ -1672,6 +1680,16 @@ public
    frame FR-CTIME-SEC + CELL-VIEW @
    frame FR-CTIME-NS + CELL-VIEW @
    frame FR-STAMP-SIZE + CELL-VIEW @ ;
+
+\ Ends the transient schema nodes the active file's load made, keeping its
+\ loader's.
+: END-TYPES ( -- )
+   CHECK-ACTIVE
+   TOP@ {: frame:ptr :}
+   frame FR-T-NODES + CELL-VIEW @
+   frame FR-T-ROOTS + CELL-VIEW @
+   frame FR-T-PARAMS + CELL-VIEW @
+   SCHEMA-REG:TRANSIENT-RELEASE ;
 
 \ The loader's reader, public so a reader installed with SOURCE-INPUT:USE may
 \ call it from READ-SOURCE; it fills the top frame only while that awaits its bytes.
@@ -1828,11 +1846,11 @@ CAST: CLOSE-ACTION ( n -- [ -- ] )
    close CLOSE-ACTION execute ;
 
 \ A file that ends with no definition open ends the transient schema nodes its
-\ definers built definitions from; a build ends them at each piece's end.
+\ definers built definitions from; a build ends them at the file's last piece.
 : TRANSIENT-END ( -- )
    data-base BOOT:IMAGE-BASE-CELL + @ 0 <> if exit then
    data-base PEND-CELL + @ 0 <> if exit then
-   SCHEMA-REG:TRANSIENT-RESET ;
+   END-TYPES ;
 
 \ The created body closes and the residue check runs inside the unit, so a runner's call
 \ returns only for an accepted file; each compiled part starts in host.

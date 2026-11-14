@@ -5304,7 +5304,7 @@ TYPED-VARIABLE EXITER [ -- ]
    {: req:n :}
    FILE-HELD @ CHECK:AMENDED   \ the facts its `TRUST` rows and amenders changed
    TYPE-ENTRIES
-   SCHEMA-REG:TRANSIENT-RESET  \ the nodes its definers built definitions from
+   req 0< if SOURCE-ROOT:END-TYPES then   \ a request's part keeps its nodes through the request
    POINTER-STORAGE:ALIGN-APART here NULL-PTR - FILE-END !
    RETIRED!  CHECK-EARLIER  FIND-STORES
    STORED-N @ 0 ?do i STORED @ dup HSTORE+ STORER+ loop
