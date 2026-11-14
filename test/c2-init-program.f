@@ -5,48 +5,25 @@ require src/lib/c2-memory.f
 require src/lib/task.f
 require src/lib/test/wait.f
 
-\ A package's own `+`, `@` or `!`, defined before a DERIVE init, captures none
+\ A package's own `+`, `@` and `!`, defined before a DERIVE init, capture none
 \ of the accessors it makes: each reads and writes its own field.
-package C2IPCAPA
+package C2IPCAP
 : + ( n n -- n ) - ;
-public
-STRUCTURE cp DERIVE init FIELD first n FIELD second n ;STRUCTURE
-private
-undefine +
-: CHANGE ( mut-view<p,i,a,init<i,cp>> -- mut-view<p,i,a,init<i,cp>> )
-   C2IPCAPA-CP:SECOND@ 91 T=  41 C2IPCAPA-CP:SECOND!
-   C2IPCAPA-CP:SECOND@ 41 T=  C2IPCAPA-CP:FIRST@ 23 T= ;
-: BODY ( mut-view<p,l,a,u8> -- mut-view<p,l,a,u8> )
-   23 91 C2IPCAPA-CP:MAKE [: CHANGE ;] C2-MEM:WITH-INIT ;
-public
-: GO ( -- ) 16 MEM:BYTES-ALLOC-LEN [: BODY ;] C2-MEM:WITH-MUT ;
-;package
-
-package C2IPCAPF
 : @ ( ptr n -- n ) drop 7 ;
-public
-STRUCTURE cp DERIVE init FIELD first n FIELD second n ;STRUCTURE
-private
-undefine @
-: CHANGE ( mut-view<p,i,a,init<i,cp>> -- mut-view<p,i,a,init<i,cp>> )
-   C2IPCAPF-CP:SECOND@ 91 T=  C2IPCAPF-CP:FIRST@ 23 T= ;
-: BODY ( mut-view<p,l,a,u8> -- mut-view<p,l,a,u8> )
-   23 91 C2IPCAPF-CP:MAKE [: CHANGE ;] C2-MEM:WITH-INIT ;
-public
-: GO ( -- ) 16 MEM:BYTES-ALLOC-LEN [: BODY ;] C2-MEM:WITH-MUT ;
-;package
-
-package C2IPCAPS
 : ! ( n ptr n -- ) drop drop ;
 public
 STRUCTURE cp DERIVE init FIELD first n FIELD second n ;STRUCTURE
 private
+undefine +
+undefine @
 undefine !
 : CHANGE ( mut-view<p,i,a,init<i,cp>> -- mut-view<p,i,a,init<i,cp>> )
-   41 C2IPCAPS-CP:FIRST!  C2IPCAPS-CP:FIRST@ 41 T=
-   C2IPCAPS-CP:SECOND@ 91 T= ;
+   C2IPCAP-CP:SECOND@ 91 T=  C2IPCAP-CP:FIRST@ 23 T=
+   41 C2IPCAP-CP:SECOND!  C2IPCAP-CP:SECOND@ 41 T=
+   C2IPCAP-CP:FIRST@ 23 T=  57 C2IPCAP-CP:FIRST!
+   C2IPCAP-CP:FIRST@ 57 T=  C2IPCAP-CP:SECOND@ 41 T= ;
 : BODY ( mut-view<p,l,a,u8> -- mut-view<p,l,a,u8> )
-   23 91 C2IPCAPS-CP:MAKE [: CHANGE ;] C2-MEM:WITH-INIT ;
+   23 91 C2IPCAP-CP:MAKE [: CHANGE ;] C2-MEM:WITH-INIT ;
 public
 : GO ( -- ) 16 MEM:BYTES-ALLOC-LEN [: BODY ;] C2-MEM:WITH-MUT ;
 ;package
@@ -55,6 +32,8 @@ package C2-INIT-PROGRAM
 public
 STRUCTURE c2ipair DERIVE init FIELD first n FIELD second n ;STRUCTURE
 STRUCTURE c2inest DERIVE init FIELD marker n FIELD pair c2ipair ;STRUCTURE
+STRUCTURE c2itrio FIELD first n FIELD second n FIELD third n ;STRUCTURE
+STRUCTURE c2iwide DERIVE init FIELD marker n FIELD trio c2itrio ;STRUCTURE
 
 private
 
@@ -90,6 +69,18 @@ variable READY
 
 : NESTED-RESULT ( -- n )
    24 MEM:BYTES-ALLOC-LEN [: NESTED ;] C2-MEM:WITH-MUT 1 ;
+
+: SET-TRIO ( mut-view<p,i,a,init<i,c2iwide>> -- mut-view<p,i,a,init<i,c2iwide>> )
+   4 5 6 C2--INIT--PROGRAM-C2ITRIO:MAKE C2--INIT--PROGRAM-C2IWIDE:TRIO!
+   C2--INIT--PROGRAM-C2IWIDE:TRIO@ C2--INIT--PROGRAM-C2ITRIO:UNMAKE
+   6 T= 5 T= 4 T=  C2--INIT--PROGRAM-C2IWIDE:MARKER@ 7 T= ;
+
+: WIDE ( mut-view<p,l,a,u8> -- mut-view<p,l,a,u8> )
+   7 1 2 3 C2--INIT--PROGRAM-C2ITRIO:MAKE C2--INIT--PROGRAM-C2IWIDE:MAKE
+   [: SET-TRIO ;] C2-MEM:WITH-INIT ;
+
+: WIDE-OWNER ( -- )
+   32 MEM:BYTES-ALLOC-LEN [: WIDE ;] C2-MEM:WITH-MUT ;
 
 : SHORT ( mut-view<p,l,a,u8> -- mut-view<p,l,a,u8> )
    1 2 C2--INIT--PROGRAM-C2IPAIR:MAKE [: ;] C2-MEM:WITH-INIT ;
@@ -147,12 +138,10 @@ public
    THROW-RESULT TTRUE
    s" task halt drains initialized and allocation frames" T-LABEL
    HALT-RESULT TTRUE
-   s" a package's own + captures no accessor" T-LABEL
-   C2IPCAPA:GO
-   s" a package's own @ captures no getter" T-LABEL
-   C2IPCAPF:GO
-   s" a package's own ! captures no setter" T-LABEL
-   C2IPCAPS:GO
+   s" a three-cell field at an offset sets and gets every cell" T-LABEL
+   WIDE-OWNER
+   s" a package's own +, @ and ! capture no accessor" T-LABEL
+   C2IPCAP:GO
    T-REPORT
    s" c2-init-program: ok" type cr ;
 
