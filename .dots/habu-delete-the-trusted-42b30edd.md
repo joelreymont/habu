@@ -49,9 +49,8 @@ A census of TRUSTED-named words and `trusted:` keyword handling over src finds m
 - The keyword:
   - interpreter.f DEF-NAME (1411) and DEFINE? (2451; `trusted:` at 2454);
   - verify-source.f TRUSTED-REACH (1381), TRUSTED-CLAUSE (1386), TICK-NATIVE-DEFINER? (1949), TRUSTED-DOES (2191), TRUSTED-CALL (2195), SCAN-TRUSTED-BODY (2211), TRUSTED-DEFINITION (2238; `trusted:` at 3770) and RECORD-DEFINER? (3696).
-- A generator: src/core/sumtype.f TDINIT-NAME-START (2022) emits `TRUSTED: ` definitions at run time.
 - The trusted tick:
-  - checker.f PRIM-TRUSTED-SYM? (11625) and CHECKER-TRUSTED-TICK? (13449);
+  - checker.f PRIM-TRUSTED-SYM? and CHECKER-TRUSTED-TICK?;
   - checker-owner-abi.f TRUSTED-TICK-OFF ($258, 86);
   - layout.f DECL-TRUSTED-TICK-OFF (682), read by habu1.f C-TICK-QUERY (3647) and interpreter.f TRUSTED-TICK? (695).
 - Diagnostics: render.f E-CAP-TRUSTED texts in DCODE (1543) and DIAG-PROSE (1751).
@@ -67,8 +66,8 @@ When TRUSTED-CELL goes, B12 must seal, as one mechanism, every product-reachable
 The installed hb resolves each of these from a file (`' NAME drop` run as `hb --load probe.f`: rc 0):
 - The public CHECKER-OWNER writers in src/compiler/native/checker-owner.f: TAPE-INSTALL (190), TAPE-ARM (195), TAPE-DISARM (200), TAPE-ADVANCE (205), DOES-FINISH (237), DOES-BEGIN (242), DOES-COMMIT (247), ROWS-END (317), DECLARED-EFFECT (432) and WIDE-PUBLISH (564).
 - RETRACT-ROWS (322), the successor of RETRACT-OWN-ROW. It takes a raw store offset, so a top-level caller cuts at any offset.
-- CHECKER-USIGS-TRUNCATE-FROM-RAW (src/core/checker.f:13573), a prefix word that truncates any row from top level.
-- More checker.f writers: CHECKER-USIGS-TRUNCATE-FROM (13583), CHECKER-SCOPE-START (24659), CHECKER-SCOPE-START-NEUTRAL (24666), CHECKER-SCOPE-FINALIZE (24673), CHECKER-SCOPE-DONE (24676), REC-WIDE-PUBLISH (10724) and REC-MIN-IN@ (10735).
+- CHECKER-USIGS-TRUNCATE-FROM-RAW (src/core/checker.f), a prefix word that truncates any row from top level.
+- More checker.f writers: CHECKER-USIGS-TRUNCATE-FROM, CHECKER-SCOPE-START, CHECKER-SCOPE-START-NEUTRAL, CHECKER-SCOPE-FINALIZE, CHECKER-SCOPE-DONE, REC-WIDE-PUBLISH and REC-MIN-IN@.
 - CHECKER-OWNER:WRITE-WINDOW (checker-owner.f:163) and CHECKER-OWNER:BIND-REGIME! (353): a checked callback can shut the write window or change the binding regime.
 - The declaration-transaction publics: every public word of DECL-EVENT (src/core/decl-event.f:553-591, OPEN through REQUIRE-POINTEES), TYPE-FIELD-OWNER:OPEN, COMMIT, ADD, FINALIZE and ROLLBACK (src/core/type-family.f), and GENERATED-DECL-CTOR:ARM (src/core/generated-declaration.f:434). They write no checker store directly; their store writes reach the guarded appenders. Seal them with the rest or show each write path is guarded.
 
