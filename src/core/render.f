@@ -904,6 +904,11 @@ variable MDV-I   variable MDV-F
       MD-IS-STORED    of s" E-CAST-LINEAR" endof
       MD-DIV-ZERO     of s" E-DIV-ZERO" endof
       MD-THROW-ZERO   of s" E-THROW-ZERO" endof
+      MD-LINEAR-DROP  of s" E-LINEAR-DROP" endof
+      MD-LINEAR-COPY  of s" E-LINEAR-COPY" endof
+      MD-LINEAR-TAINT of s" E-LINEAR-COPY" endof
+      MD-LINEAR-EFFECT of s" E-LINEAR-EFFECT" endof
+      MD-LINEAR-MEMORY of s" E-LINEAR-MEMORY" endof
       MD-LOOP-DEPTH   of s" E-MISMATCH" endof
       MD-IF-DEPTH     of s" E-MISMATCH" endof
       MD-ARMS-DEPTH   of s" E-MISMATCH" endof
@@ -977,6 +982,13 @@ variable MDV-I   variable MDV-F
       MD-IS-STORED    of s" declare the cell over the concrete type the callable stores, or install a callable whose type variable takes any type" endof
       MD-DIV-ZERO     of s" divide by a value that cannot be zero" endof
       MD-THROW-ZERO   of s" throw a nonzero code, as an error constant the package declares" endof
+      MD-LINEAR-DROP  of s" pass the value to the word its package gives for consuming it instead of dropping it" endof
+      MD-LINEAR-COPY  of s" use the value once and take another from its producer instead of copying it" endof
+      MD-LINEAR-TAINT of s" use the value once and take another from its producer instead of copying it" endof
+      MD-LINEAR-EFFECT of s" call a word whose effect takes and returns that value equally, or pass a value that is not linear" endof
+      MD-LINEAR-MEMORY of s" keep the value on the stack and pass it on instead of `@` or `!` through a pointer" endof
+      MD-MEMORY-ARG   of s" give the family arguments that hold no linear value and no `mut-view`, as `n`, or keep the value on the stack" endof
+      MD-MEMORY-EMPTY of s" keep the zero-width value on the stack instead of `@` or `!` through a pointer" endof
       MD-LOOP-DEPTH   of ['] ROW-CELLS ROWS-SUGGEST$ endof
       MD-IF-DEPTH     of ['] ROW-CELLS ROWS-SUGGEST$ endof
       MD-ARMS-DEPTH   of ['] ROW-CELLS ROWS-SUGGEST$ endof
@@ -1053,6 +1065,13 @@ variable MDV-I   variable MDV-F
       MD-IS-STORED    of s" the callable takes only a cast's stored types where the cell takes any type" endof
       MD-DIV-ZERO     of s" zero divisor: a literal 0 divisor has no quotient" endof
       MD-THROW-ZERO   of s" zero throw code: `0 throw` unwinds with the code that means no error" endof
+      MD-LINEAR-DROP  of s" a linear value is discarded here" endof
+      MD-LINEAR-COPY  of s" a linear value is copied here" endof
+      MD-LINEAR-TAINT of s" a value copied while its type was open turned out linear" endof
+      MD-LINEAR-EFFECT of s" the called word copies or drops a value of a type that is linear here" endof
+      MD-LINEAR-MEMORY of s" a value that may be linear cannot go through memory" endof
+      MD-MEMORY-ARG   of s" a type argument of this value may be linear or exclusive, and memory holds neither" endof
+      MD-MEMORY-EMPTY of s" a value of width 0 has nothing memory could hold" endof
       MD-LOOP-DEPTH   of s" the loop body changes the stack's depth" endof
       MD-IF-DEPTH     of s" the if arm changes the stack's depth" endof
       MD-ARMS-DEPTH   of s" the if and else arms leave different stack depths" endof
@@ -1075,6 +1094,13 @@ variable MDV-I   variable MDV-F
 \ A reason's label: a few words under its token.
 : MD-LABEL$ ( n -- ptr u8 n )
    case
+      MD-LINEAR-DROP  of s" linear value dropped" endof
+      MD-LINEAR-COPY  of s" linear value copied" endof
+      MD-LINEAR-TAINT of s" copied before its type was known" endof
+      MD-LINEAR-EFFECT of s" binds a linear type" endof
+      MD-LINEAR-MEMORY of s" linear value in memory" endof
+      MD-MEMORY-ARG   of s" type argument may be linear" endof
+      MD-MEMORY-EMPTY of s" zero-width value" endof
       s" here" rot
    endcase ;
 
