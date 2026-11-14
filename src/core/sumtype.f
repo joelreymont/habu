@@ -118,6 +118,22 @@ variable TDECL-CUR-FAM              \ family id being declared (-1 outside a bod
 
 : TDECL-TOK! ( ptr u8 n -- ) TDT-U ! TDT-A ! ;
 : TDECL-WHY! ( ptr u8 n ptr u8 n -- ) TDF-U ! TDF-A ! TDW-U ! TDW-A ! ;
+\ The fixes several rejections share.
+: TDECL-LONG-FIX$ ( -- ptr u8 n ) s" shorten the name to 255 bytes or fewer" ;
+: TDECL-PARAM-FIX$ ( -- ptr u8 n )
+   s" list the parameter in the family header, as in `box<a>`, before a payload names it" ;
+: TDECL-SELF-FIX$ ( -- ptr u8 n )
+   s" drop the payload that names the family being declared, or declare it as a `STRUCTURE` or an `ENUM`, which may name it beneath `ptr`" ;
+: TDECL-TYPE-FIX$ ( -- ptr u8 n )
+   s" write a payload type here: `n`, `ptr u8`, a header parameter or a family declared before" ;
+: TDECL-APP-FIX$ ( -- ptr u8 n )
+   s" write a type application as `family<type,type>` with a blank after each `ptr`, as in `SPAN:span<ptr u8>`" ;
+: TDECL-VARIANT-FIX$ ( -- ptr u8 n ) s" give each variant of this declaration its own name" ;
+: TDECL-FIELD-FIX$ ( -- ptr u8 n ) s" give each field of this declaration its own name" ;
+: TDECL-GEN-FIX$ ( -- ptr u8 n )
+   s" rename the family or variant so no word it generates repeats a word already defined here" ;
+: TDECL-DEFECT-FIX$ ( -- ptr u8 n )
+   s" report this declaration as a Habu defect: no declaration text should reach this state" ;
 
 public
 
@@ -226,7 +242,9 @@ private
 \ clears the flag.
 : TDECL-REQUIRE-FIT ( -- )
    TDECL-OVERSIZE @ 0 <>  TDB-U @ TDECL-CAP >  or IF
-      TDN-A @ TDN-U @ s" declaration too long" s" " E-TDECL-CAP TDECL-THROW
+      TDN-A @ TDN-U @ s" declaration too long"
+         s" shorten the declaration body to 4096 bytes or fewer, or split it into smaller families"
+         E-TDECL-CAP TDECL-THROW
    THEN ;
 
 \ Shared unterminated-sum reject: report the declaration-shaped E-BAD-DECLARATION
@@ -235,7 +253,9 @@ private
 \ Defined here (before TDECL-DEFSUM) so every context that sees TDECL-DEFSUM
 \ also sees TDECL-DEFSUM-NOEND.
 : TDECL-NOEND-BODY ( -- )
-   TDN-A @ TDN-U @ s" missing ;SUMTYPE" s" " E-TDECL-SYNTAX TDECL-THROW ;
+   TDN-A @ TDN-U @ s" missing ;SUMTYPE"
+      s" end the declaration with `;SUMTYPE` after its last variant"
+      E-TDECL-SYNTAX TDECL-THROW ;
 
 public
 
@@ -270,12 +290,19 @@ private
 \ A family, variant or field name longer than TF-NAME-MAX has no room in the
 \ spellings derived from it (type-family.f TF-CTOR-BUF).
 : TDECL-REQUIRE-NAME ( ptr u8 n -- ) {: a:ptr u:n :}
-   u 0= IF a u s" missing name" s" " E-TDECL-SYNTAX TDECL-THROW THEN
-   u TF-NAME-MAX > IF a u TF-NAME-LONG$ s" " E-TDECL-CAP TDECL-THROW THEN
+   u 0= IF a u s" missing name"
+      s" write a name after `NEWTYPE`, `SUMTYPE`, `PRODUCT` or `VARIANT`, as in `SUMTYPE shape`"
+      E-TDECL-SYNTAX TDECL-THROW THEN
+   u TF-NAME-MAX > IF a u TF-NAME-LONG$
+      TDECL-LONG-FIX$ E-TDECL-CAP TDECL-THROW THEN
    a u TF-CANON? 0= IF
-      a u s" name must be a lowercase family tail" s" " E-TFAM-CASE TDECL-THROW
+      a u s" name must be a lowercase family tail"
+         s" write the name as a lowercase tail with no package qualifier, as in `point`"
+         E-TFAM-CASE TDECL-THROW
    THEN
-   a u TYPE-NAME:FAMILY-RESERVED? IF a u s" reserved name" s" " E-TDECL-NAME TDECL-THROW THEN ;
+   a u TYPE-NAME:FAMILY-RESERVED? IF a u s" reserved name"
+      s" pick another name: a built-in type such as `n` or a keyword such as `if` cannot name a family or variant"
+      E-TDECL-NAME TDECL-THROW THEN ;
 
 \ A FAMILY name must remain valid grammar and must not collide with an in-scope
 \ sum variant. Exact same-package collisions fall through to TFAM-DECL's
@@ -285,7 +312,9 @@ private
 : TDECL-REQUIRE-FAMILY-NAME ( ptr u8 n -- ) {: a:ptr u:n :}
    a u TDECL-REQUIRE-NAME
    a u TDECL-VAR-TAKEN? IF
-      a u s" collides with a sum variant" s" " E-TDECL-NAME TDECL-THROW
+      a u s" collides with a sum variant"
+         s" rename the family: a variant declared in this scope already has this name"
+         E-TDECL-NAME TDECL-THROW
    THEN ;
 
 \ A VARIANT name lives in no scope of its own: any collision with a family
@@ -294,7 +323,9 @@ private
 : TDECL-REQUIRE-VARIANT-NAME ( ptr u8 n -- ) {: a:ptr u:n :}
    a u TDECL-REQUIRE-NAME
    a u TYPE-NAME:FAMILY-TAKEN? 0= IF EXIT THEN
-   a u s" collides with a type family" s" " E-TDECL-NAME TDECL-THROW ;
+   a u s" collides with a type family"
+      s" rename the variant: a type family in this scope already has this name"
+      E-TDECL-NAME TDECL-THROW ;
 
 \ --- package scope: a declaration registers in the active checker package with
 \ the active visibility (TFAM-ACTIVE-PKG$, type-family.f); top level is the
@@ -308,7 +339,9 @@ private
 : TDECL-FAMILY ( n n -- n ) {: ar:n kind:n :}
    TDN-A @ TDN-U @ TDECL-TOK!
    WRITE-WINDOW-CK                     \ src/core/checker.f WRITE-WINDOW
-   s" duplicate family" s" " TDECL-WHY!
+   s" duplicate family"
+      s" rename the family: this package already declares a family with this name"
+      TDECL-WHY!
    TFAM-ACTIVE-PKG$ TDECL-VIS TDN-A @ TDN-U @ ar kind TFAM-DECL ;
 
 \ --- body cursor over the buffered declaration tokens (checker sig lexer).
@@ -326,12 +359,16 @@ variable TDECL-FAM-ARITY
    TDN-U @ 0= IF TDN-A @ 0 TDECL-REQUIRE-NAME THEN
    TDN-A @ TDN-U @ DECL-HEADER 0= IF
       drop 2drop
-      TDN-A @ TDN-U @ s" invalid type parameter header" s" " E-TDECL-ARITY TDECL-THROW
+      TDN-A @ TDN-U @ s" invalid type parameter header"
+         s" name each type parameter once, by a letter other than `f`, `n` or `r`, as in `box<a>` or `result<a,b>`"
+         E-TDECL-ARITY TDECL-THROW
    THEN
    {: ar:n :}
    \ The bare name is empty only after the split, and an empty token has no place.
    dup 0= IF
-      2drop TDN-A @ TDN-U @ s" missing name" s" " E-TDECL-SYNTAX TDECL-THROW
+      2drop TDN-A @ TDN-U @ s" missing name"
+         s" write the family name before its parameters, as in `box<a>`"
+         E-TDECL-SYNTAX TDECL-THROW
    THEN
    TDN-U ! TDN-A !
    TDS-U @ 0 > IF TDN-U @ TDS-U ! THEN
@@ -344,7 +381,8 @@ variable TDECL-FAM-ARITY
    c 102 = IF CC-BOOL SCHEMA-CON EXIT THEN
    c 114 = IF CC-R SCHEMA-CON EXIT THEN
    c DECL-PARAM 0= IF
-      drop a u s" unknown payload type" s" " E-TDECL-PAYLOAD TDECL-THROW
+      drop a u s" unknown payload type"
+         TDECL-PARAM-FIX$ E-TDECL-PAYLOAD TDECL-THROW
    THEN
    SCHEMA-PARAM ;
 
@@ -368,7 +406,8 @@ variable TDECL-FAM-ARITY
    TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE 0= IF drop 0 RES-FALSE EXIT THEN
    {: id:n :}
    id TDECL-CUR-FAM @ = IF
-      a u s" invalid layout policy for recursive sum" s" " E-TDECL-RECURSIVE TDECL-THROW
+      a u s" invalid layout policy for recursive sum"
+         TDECL-SELF-FIX$ E-TDECL-RECURSIVE TDECL-THROW
    THEN
    id TFAM-LAYOUT? id TFAM-CELL? or 0= IF 0 RES-FALSE EXIT THEN
    id TFAM-ARITY@ 0 <> IF 0 RES-FALSE EXIT THEN
@@ -379,21 +418,28 @@ variable TDECL-FAM-ARITY
    TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE IF drop RES-FALSE EXIT THEN drop
    a u TFAM-MAY-ARRIVE? ;
 : TDECL-PAY-ELEM ( ptr u8 n -- n ) {: a:ptr u:n :}
-   u 0= IF a u s" missing ;VARIANT" s" " E-TDECL-SYNTAX TDECL-THROW THEN
-   a u DELIM? IF a u s" bad payload token" s" " E-TDECL-SYNTAX TDECL-THROW THEN
-   a u TDECL-KEYWORD? IF a u s" bad payload token" s" " E-TDECL-SYNTAX TDECL-THROW THEN
+   u 0= IF a u s" missing ;VARIANT"
+      s" close each `VARIANT` with `;VARIANT`, and write a type after each `FIELD` name and each `ptr`"
+      E-TDECL-SYNTAX TDECL-THROW THEN
+   a u DELIM? IF a u s" bad payload token"
+      TDECL-TYPE-FIX$ E-TDECL-SYNTAX TDECL-THROW THEN
+   a u TDECL-KEYWORD? IF a u s" bad payload token"
+      TDECL-TYPE-FIX$ E-TDECL-SYNTAX TDECL-THROW THEN
    a u s" ptr" CORE-STR= IF
       TDECL-NEXT RECURSE
       SIG-UNRES @ IF drop 0 EXIT THEN
       SCHEMA-PTR EXIT THEN
    a u TDECL-SELF-REF? IF
-      a u s" invalid layout policy for recursive sum" s" " E-TDECL-RECURSIVE TDECL-THROW
+      a u s" invalid layout policy for recursive sum"
+         TDECL-SELF-FIX$ E-TDECL-RECURSIVE TDECL-THROW
    THEN
    u 1 = IF a u TDECL-LETTER EXIT THEN
    a u CON-OF dup 0 <> IF SCHEMA-CON EXIT THEN drop
    a u TDECL-PAY-FAM? IF 0 0 SCHEMA-APP EXIT THEN drop
    a u TDECL-ABSENT-MAY? IF a u SIG-UNRES! 0 EXIT THEN
-   a u s" unknown payload type" s" " E-TDECL-PAYLOAD TDECL-THROW ;
+   a u s" unknown payload type"
+      s" name a type declared before this declaration: `n`, `ptr u8`, a header parameter or a family; only a `SUMTYPE` variant may apply a family to arguments, as in `box<n>`"
+      E-TDECL-PAYLOAD TDECL-THROW ;
 
 \ --- a variant payload may also be a closed parametric application
 \ `fam<arg,...>` (each argument a payload element) or a quotation type
@@ -417,7 +463,9 @@ variable TDV-ARG-N
 
 : TDV-ARG+ ( n -- ) {: node:n :}
    TDV-ARG-N @ TDV-ARG-CAP >= IF
-      TDN-A @ TDN-U @ s" type application nesting too deep" s" " E-TDECL-PAYLOAD TDECL-THROW
+      TDN-A @ TDN-U @ s" type application nesting too deep"
+         s" nest fewer than 256 type arguments in one payload type"
+         E-TDECL-PAYLOAD TDECL-THROW
    THEN
    node TDV-ARG-N @ cells TDV-ARG-SCR + !
    TDV-ARG-N @ 1 + TDV-ARG-N ! ;
@@ -433,7 +481,8 @@ defer TDV-ELEM-XT ( ptr u8 n -- n )   \ forward ref for the ELEM<->ARGS<->QUOT r
    id C2-READ-FAM @ = IF 0 RES-FALSE EXIT THEN
    id WIDTH-FAM @ = IF
       a u s" a width is not stored: keep its bytes (width>n)"
-      s" " E-TDECL-PAYLOAD TDECL-THROW THEN
+      s" declare the payload `n` and store the width's byte count in it with `width>n`"
+      E-TDECL-PAYLOAD TDECL-THROW THEN
    id TFAM-LAYOUT? id TFAM-CELL? or 0= IF 0 RES-FALSE EXIT THEN
    id RES-TRUE ;
 
@@ -442,7 +491,8 @@ defer TDV-ELEM-XT ( ptr u8 n -- n )   \ forward ref for the ELEM<->ARGS<->QUOT r
    cnt fam TFAM-ARITY@ <> IF
       base TDV-ARG-N !
       TDN-A @ TDN-U @ s" type family applied to wrong number of arguments"
-      s" " E-TDECL-PAYLOAD TDECL-THROW
+      s" give the family as many type arguments as its header declares"
+      E-TDECL-PAYLOAD TDECL-THROW
    THEN
    SIG-UNRES @ IF base TDV-ARG-N ! 0 EXIT THEN
    SCHEMA-ROOT-N@ {: argbase:n :}
@@ -457,18 +507,20 @@ defer TDV-ELEM-XT ( ptr u8 n -- n )   \ forward ref for the ELEM<->ARGS<->QUOT r
 \ recursion is rejected by id.
 : TDECL-VPAY-ARGS ( n -- n ) {: fam:n :}
    fam TDECL-CUR-FAM @ = IF
-      TDN-A @ TDN-U @ s" invalid layout policy for recursive sum" s" " E-TDECL-RECURSIVE TDECL-THROW
+      TDN-A @ TDN-U @ s" invalid layout policy for recursive sum"
+         TDECL-SELF-FIX$ E-TDECL-RECURSIVE TDECL-THROW
    THEN
    TDV-ARG-N @ {: base:n :}
    BEGIN
       TDECL-NEXT
       2dup s" >" CORE-STR= IF 2drop fam base TDV-ARGS-BUILD EXIT THEN
-      2dup DELIM? IF s" bad type application" s" " E-TDECL-SYNTAX TDECL-THROW THEN
+      2dup DELIM? IF s" bad type application"
+         TDECL-APP-FIX$ E-TDECL-SYNTAX TDECL-THROW THEN
       TDV-ELEM-XT TDV-ARG+
       TDECL-NEXT
       2dup s" ," CORE-STR= IF 2drop ELSE
       2dup s" >" CORE-STR= IF 2drop fam base TDV-ARGS-BUILD EXIT ELSE
-         s" bad type application" s" " E-TDECL-SYNTAX TDECL-THROW
+         s" bad type application" TDECL-APP-FIX$ E-TDECL-SYNTAX TDECL-THROW
       THEN THEN
    AGAIN ;
 
@@ -541,7 +593,9 @@ public
 private
 
 : TDECL-QUOT-FAIL ( ptr u8 n n -- ) {: a:ptr u:n code:n :}
-   TDN-A @ TDN-U @ a u s" " code TDECL-THROW ;
+   TDN-A @ TDN-U @ a u
+      s" write the quotation type as `[ in -- out ]`, with at most 256 types on each side"
+      code TDECL-THROW ;
 : TDECL-VPAY-QUOT ( -- n )
    [: TDECL-NEXT ;] [: TDV-ELEM-XT ;] [: TDECL-QUOT-FAIL ;] PARSE-QUOT
    SIG-UNRES @ IF drop 0 THEN ;
@@ -562,12 +616,13 @@ private
    BEGIN
       TDECL-NEXT
       2dup s" >" CORE-STR= IF 2drop EXIT THEN
-      2dup DELIM? IF s" bad type application" s" " E-TDECL-SYNTAX TDECL-THROW THEN
+      2dup DELIM? IF s" bad type application"
+         TDECL-APP-FIX$ E-TDECL-SYNTAX TDECL-THROW THEN
       TDV-ELEM-XT drop
       TDECL-NEXT
       2dup s" ," CORE-STR= IF 2drop ELSE
       2dup s" >" CORE-STR= IF 2drop EXIT ELSE
-         s" bad type application" s" " E-TDECL-SYNTAX TDECL-THROW
+         s" bad type application" TDECL-APP-FIX$ E-TDECL-SYNTAX TDECL-THROW
       THEN THEN
    AGAIN ;
 
@@ -601,7 +656,7 @@ PTR-VARIABLE TDV-NA    variable TDV-NU
 
 : TDECL-VARIANT-CLOSE ( n -- ) {: fam:n :}
    TDV-NA @ TDV-NU @ TDECL-TOK!
-   s" duplicate variant" s" " TDECL-WHY!
+   s" duplicate variant" TDECL-VARIANT-FIX$ TDECL-WHY!
    fam TDV-NA @ TDV-NU @ TDV-TAG @ TDV-SS @ TDV-PC @ TDV-PW @ SUMV-ADD drop
    TDV-PW @ TDV-MAX @ max TDV-MAX !
    TDV-TAG @ 1 + TDV-TAG !
@@ -616,7 +671,9 @@ create TDV-PAY-SCR TDV-PAY-CAP cells allot
 variable TDV-PAY-N
 : TDV-PAY+ ( n -- ) {: node:n :}
    TDV-PAY-N @ TDV-PAY-CAP >= IF
-      TDN-A @ TDN-U @ s" too many variant payload elements" s" " E-TDECL-PAYLOAD TDECL-THROW THEN
+      TDN-A @ TDN-U @ s" too many variant payload elements"
+         s" give the variant at most 256 payload types"
+         E-TDECL-PAYLOAD TDECL-THROW THEN
    node TDV-PAY-N @ cells TDV-PAY-SCR + !
    TDV-PAY-N @ 1 + TDV-PAY-N ! ;
 \ Every SCH-PARAM in a landed variant's payload subtree (plain element,
@@ -632,18 +689,19 @@ create TDV-BADLETTER 1 allot
       dup 0 >= IF
          TFAM-DECL-PARAM>CHAR 0= IF
             drop TDN-A @ TDN-U @ s" payload parameter has no declaration spelling"
-            s" " E-TDECL-PAYLOAD TDECL-THROW
+            TDECL-DEFECT-FIX$ E-TDECL-PAYLOAD TDECL-THROW
          THEN
          TDV-BADLETTER c!
          TDV-BADLETTER 1 s" payload parameter out of family arity"
-         s" " E-TDECL-PAYLOAD TDECL-THROW
+         TDECL-PARAM-FIX$ E-TDECL-PAYLOAD TDECL-THROW
       THEN
       drop 1 +
    REPEAT drop ;
 : TDECL-VARIANT-FINISH ( n -- ) {: fam:n :}
    SIG-UNRES @ IF
       TDV-NA @ TDV-NU @ TDECL-SEEN? IF
-         TDV-NA @ TDV-NU @ s" duplicate variant" s" " E-TFAM-DUP TDECL-THROW THEN
+         TDV-NA @ TDV-NU @ s" duplicate variant"
+            TDECL-VARIANT-FIX$ E-TFAM-DUP TDECL-THROW THEN
    THEN
    TDV-NA @ TDV-NU @ TDECL-SEEN+
    SIG-UNRES @ IF EXIT THEN
@@ -673,7 +731,9 @@ create TDV-BADLETTER 1 allot
       TDECL-NEXT
       dup 0= IF 2drop EXIT THEN
       2dup s" variant" CORE-STR=CI 0= IF
-         s" unexpected token in sum declaration" s" " E-TDECL-SYNTAX TDECL-THROW
+         s" unexpected token in sum declaration"
+            s" write each variant as `VARIANT name type ... ;VARIANT`, after any `POLICY` and `DERIVE` clause"
+            E-TDECL-SYNTAX TDECL-THROW
       THEN
       2drop fam TDECL-VARIANT
    AGAIN ;
@@ -693,7 +753,9 @@ public
 : TDECL-CTOR-PUBLISH ( n n n -- ) {: fam:n vstart:n count:n :}
    fam TFAM-GEN-PUBLIC? 0= IF EXIT THEN
    TDN-A @ TDN-U @ TDECL-TOK!
-   s" constructor package name exceeds 255 bytes" s" " TDECL-WHY!
+   s" constructor package name exceeds 255 bytes"
+      s" shorten the package or family name so the constructor package name fits in 255 bytes"
+      TDECL-WHY!
    fam TFAM-PKG$ fam TFAM-NAME$ TF-CTOR-PKG$ {: ca:ptr cu:n :}
    s" " s" " TDECL-WHY!
    ca cu TF-INTERN {: coff:n :}
@@ -716,9 +778,13 @@ private
    a u s" packed-tag" CORE-STR=CI IF fam TL-PACKED-TAG TFAM-LAYOUT! EXIT THEN
    a u s" niche-null" CORE-STR=CI IF fam TL-NICHE TFAM-LAYOUT! EXIT THEN
    a u TDECL-POLICY-DEFERRED? IF
-      a u s" layout policy not yet supported" s" " E-TDECL-POLICY TDECL-THROW
+      a u s" layout policy not yet supported"
+         s" replace `boxed` with `stack-cell-tag`, `packed-tag` or `niche-null`, or drop the `POLICY` clause"
+         E-TDECL-POLICY TDECL-THROW
    THEN
-   a u s" unknown layout policy" s" " E-TDECL-POLICY TDECL-THROW ;
+   a u s" unknown layout policy"
+      s" name `stack-cell-tag`, `packed-tag` or `niche-null` after `POLICY`"
+      E-TDECL-POLICY TDECL-THROW ;
 \ Bake the packed memory descriptor at declaration close, when the variant /
 \ field counts that PACKED-DESC reads are final. stack-cell-tag families bake
 \ no LAY row (nothing consumes one). Runs inside TDECL-RUN's transaction, so a
@@ -733,7 +799,9 @@ public
    TDECL-NEXT {: a:ptr u:n :}
    a u s" policy" CORE-STR=CI 0= IF a u PK! EXIT THEN     \ no clause: push the token back for the body loop
    TDECL-NEXT {: pa:ptr pu:n :}
-   pu 0= IF TDN-A @ TDN-U @ s" missing layout policy name" s" " E-TDECL-POLICY TDECL-THROW THEN
+   pu 0= IF TDN-A @ TDN-U @ s" missing layout policy name"
+      s" name a policy after `POLICY`: `stack-cell-tag`, `packed-tag` or `niche-null`"
+      E-TDECL-POLICY TDECL-THROW THEN
    pa pu fam TDECL-POLICY-SET ;
 
 \ A niche-null value is one cell whose zero is the empty first variant, so the
@@ -744,7 +812,9 @@ public
 private
 
 : TDECL-NICHE-THROW ( -- )
-   TDN-A @ TDN-U @ TDECL-NICHE-MESSAGE$ s" " E-TDECL-POLICY TDECL-THROW ;
+   TDN-A @ TDN-U @ TDECL-NICHE-MESSAGE$
+      s" drop `POLICY niche-null`, or declare an empty variant, then one holding a single `ptr` payload"
+      E-TDECL-POLICY TDECL-THROW ;
 : TDECL-NICHE-SHAPE? ( n -- bool ) {: vstart:n :}
    TDV-N @ 2 <> IF RES-FALSE EXIT THEN
    vstart SUMV-SCH-COUNT@ 0 <> IF RES-FALSE EXIT THEN
@@ -767,9 +837,13 @@ private
 
 : TDECL-DERIVE-GUARD ( ptr u8 n n -- ) {: a:ptr u:n fam:n :}
    fam TFAM-PUBLIC? 0= IF
-      a u s" derive requires a public family" s" " E-TDECL-DERIVE TDECL-THROW THEN
+      a u s" derive requires a public family"
+         s" declare the family in a public section, or drop `eq` and `hash` from `DERIVE`"
+         E-TDECL-DERIVE TDECL-THROW THEN
    fam TFAM-ARITY@ 0 <> IF
-      a u s" derive requires a concrete (arity 0) family" s" " E-TDECL-DERIVE TDECL-THROW THEN ;
+      a u s" derive requires a concrete (arity 0) family"
+         s" drop `eq` and `hash` from `DERIVE`, or declare the family with no type parameters"
+         E-TDECL-DERIVE TDECL-THROW THEN ;
 : TDECL-DERIVE-SET ( ptr u8 n n -- ) {: a:ptr u:n fam:n :}
    a u s" eq" CORE-STR=CI IF
       a u fam TDECL-DERIVE-GUARD  fam TFAM-DERIVE-EQ! EXIT THEN
@@ -777,11 +851,17 @@ private
       a u fam TDECL-DERIVE-GUARD  fam TFAM-DERIVE-HASH! EXIT THEN
    a u s" init" CORE-STR=CI IF
       fam TFAM-PRODUCT? 0= IF
-         a u s" derive init requires a product" s" " E-TDECL-DERIVE TDECL-THROW THEN
+         a u s" derive init requires a product"
+            s" drop `init` from `DERIVE`: only a `PRODUCT` or a `STRUCTURE` derives it"
+            E-TDECL-DERIVE TDECL-THROW THEN
       fam TFAM-DERIVE-INIT! EXIT THEN
    a u s" order" CORE-STR=CI IF
-      a u s" derive feature not yet supported" s" " E-TDECL-DERIVE TDECL-THROW THEN
-   a u s" unknown derive feature" s" " E-TDECL-DERIVE TDECL-THROW ;
+      a u s" derive feature not yet supported"
+         s" drop `order` from `DERIVE` and write the comparison as a word of your own"
+         E-TDECL-DERIVE TDECL-THROW THEN
+   a u s" unknown derive feature"
+      s" name `eq`, `hash` or `init` after `DERIVE`"
+      E-TDECL-DERIVE TDECL-THROW ;
 : TDECL-DERIVE-MORE? ( n -- bool ) {: fam:n :}
    TDECL-NEXT {: a:ptr u:n :}
    u 0= IF RES-FALSE EXIT THEN
@@ -796,7 +876,9 @@ private
    TDECL-NEXT {: a:ptr u:n :}
    a u s" derive" CORE-STR=CI 0= IF a u PK! EXIT THEN
    TDECL-NEXT {: fa:ptr fu:n :}
-   fu 0= IF TDN-A @ TDN-U @ s" missing derive feature" s" " E-TDECL-DERIVE TDECL-THROW THEN
+   fu 0= IF TDN-A @ TDN-U @ s" missing derive feature"
+      s" name a feature after `DERIVE`: `eq`, `hash` or `init`"
+      E-TDECL-DERIVE TDECL-THROW THEN
    fa fu fam TDECL-DERIVE-SET          \ the FIRST token must be a feature (unknown rejects);
    BEGIN fam TDECL-DERIVE-MORE? 0= UNTIL ;   \ later tokens end the order-free list by pushback
 
@@ -809,7 +891,9 @@ public
    vstart count + vstart ?do
       i SUMV-NAME$ TFAM-DERIVED-TAIL? IF
          i SUMV-NAME$
-         s" variant name collides with a derived word" s" " E-TDECL-NAME TDECL-THROW THEN
+         s" variant name collides with a derived word"
+            s" rename the variant: under `DERIVE` the names `eq`, `hash` and `tag` are taken"
+            E-TDECL-NAME TDECL-THROW THEN
    loop ;
 
 \ payload-role gate: every payload/field schema node must be
@@ -823,26 +907,37 @@ private
       ff TFAM-PKG$ fam TFAM-PKG$ CORE-STR=CI 0= IF
          ff TFAM-NAME$
          s" field family's derived words are private to its package"
-         s" " E-TDECL-DERIVE TDECL-THROW THEN THEN
+         s" declare the field's family in a public section of its package, or drop `eq` and `hash` from `DERIVE`"
+         E-TDECL-DERIVE TDECL-THROW THEN THEN
    fam TFAM-DERIVE-EQ? ff TFAM-DERIVE-EQ? 0= and IF
       ff TFAM-NAME$
-      s" field family must also derive eq" s" " E-TDECL-DERIVE TDECL-THROW THEN
+      s" field family must also derive eq"
+         s" add `DERIVE eq` to the field's family, or drop `eq` from this `DERIVE`"
+         E-TDECL-DERIVE TDECL-THROW THEN
    fam TFAM-DERIVE-HASH? ff TFAM-DERIVE-HASH? 0= and IF
       ff TFAM-NAME$
-      s" field family must also derive hash" s" " E-TDECL-DERIVE TDECL-THROW THEN ;
+      s" field family must also derive hash"
+         s" add `DERIVE hash` to the field's family, or drop `hash` from this `DERIVE`"
+         E-TDECL-DERIVE TDECL-THROW THEN ;
 
 : TDECL-DERIVE-NODE-OK ( n n -- ) {: fam:n node:n :}
    node SCHEMA-CON? IF
       node SCHEMA-A@ CT-INT? 0= IF
          node SCHEMA-A@ CT-NAME$
-         s" payload type has no derived equality" s" " E-TDECL-DERIVE TDECL-THROW THEN
+         s" payload type has no derived equality"
+            s" give the payload an integer type, or drop `eq` and `hash` from `DERIVE`"
+            E-TDECL-DERIVE TDECL-THROW THEN
       EXIT THEN
    node SCHEMA-PTR? IF
       TDN-A @ TDN-U @
-      s" pointer payloads have no derived equality" s" " E-TDECL-DERIVE TDECL-THROW THEN
+      s" pointer payloads have no derived equality"
+         s" drop `eq` and `hash` from `DERIVE`, or give the payload a type that is not a pointer"
+         E-TDECL-DERIVE TDECL-THROW THEN
    node SCHEMA-APP? IF fam node TDECL-DERIVE-FIELD-OK EXIT THEN
    TDN-A @ TDN-U @
-   s" payload role has no derived equality" s" " E-TDECL-DERIVE TDECL-THROW ;
+   s" payload role has no derived equality"
+      s" give each payload an integer type or a family that derives the same features, or drop `eq` and `hash` from `DERIVE`"
+      E-TDECL-DERIVE TDECL-THROW ;
 
 : TDECL-DERIVE-VARIANT ( n n -- ) {: fam:n vid:n :}
    vid SUMV-PAY-N 0 ?do
@@ -872,7 +967,9 @@ private
    0 TDV-TAG !  0 TDV-N !  0 TDV-MAX !
    fam TDECL-SUM-VARIANTS
    SIG-UNRES @ IF E-TDECL-UNRESOLVED throw THEN
-   TDV-N @ 0= IF TDN-A @ TDN-U @ s" empty sum" s" " E-TDECL-SYNTAX TDECL-THROW THEN
+   TDV-N @ 0= IF TDN-A @ TDN-U @ s" empty sum"
+      s" declare at least one variant, as in `VARIANT none ;VARIANT`"
+      E-TDECL-SYNTAX TDECL-THROW THEN
    fam vstart TDECL-NICHE-REQUIRE
    fam vstart TDV-N @ TDECL-DERIVE-COLLIDE
    fam vstart TDV-N @ TDECL-DERIVE-REQUIRE
@@ -919,14 +1016,23 @@ defer TDECL-EVENT-ARMED ( -- bool )
 private
 
 : TDECL-REQUIRE-FIELD-NAME ( ptr u8 n -- ) {: a:ptr u:n :}
-   u 0= IF a u s" missing field name" s" " E-TDECL-SYNTAX TDECL-THROW THEN
-   u TF-NAME-MAX > IF a u TF-NAME-LONG$ s" " E-TDECL-CAP TDECL-THROW THEN
-   a u DELIM? IF a u s" bad field name" s" " E-TDECL-SYNTAX TDECL-THROW THEN
+   u 0= IF a u s" missing field name"
+      s" write a name and a type after `FIELD`, as in `FIELD x n`"
+      E-TDECL-SYNTAX TDECL-THROW THEN
+   u TF-NAME-MAX > IF a u TF-NAME-LONG$
+      TDECL-LONG-FIX$ E-TDECL-CAP TDECL-THROW THEN
+   a u DELIM? IF a u s" bad field name"
+      s" write a lowercase name after `FIELD`, as in `FIELD x n`"
+      E-TDECL-SYNTAX TDECL-THROW THEN
    a u TF-CANON? 0= IF
-      a u s" field name must be a lowercase tail" s" " E-TFAM-CASE TDECL-THROW
+      a u s" field name must be a lowercase tail"
+         s" write the field name as a lowercase tail with no package qualifier, as in `FIELD x n`"
+         E-TFAM-CASE TDECL-THROW
    THEN
    a u TDECL-TOK!
-   s" reserved field name" s" " TDECL-WHY!
+   s" reserved field name"
+      s" rename the field: a keyword or a generated word such as `make`, `tag` or `eq` is taken"
+      TDECL-WHY!
    a u PF-NAME-REQUIRE ;
 
 \ A PRODUCT field may be typed as an arity-0 sum or enum family of registry
@@ -958,14 +1064,15 @@ private
    TDECL-NEXT TDECL-FIELD-ELEM {: node:n :}
    SIG-UNRES @ IF
       fna fnu TDECL-SEEN? IF
-         fna fnu s" duplicate field" s" " E-TFAM-DUP TDECL-THROW THEN
+         fna fnu s" duplicate field"
+            TDECL-FIELD-FIX$ E-TFAM-DUP TDECL-THROW THEN
    THEN
    fna fnu TDECL-SEEN+
    SIG-UNRES @ IF EXIT THEN
    node SCHEMA-ROOT+ drop    \ one field type (family/letter/con/ptr T)
    fam ss SCHEMA-ROOT@ TFAM-SCH-WIDTH {: fw:n :}
    fna fnu TDECL-TOK!
-   s" duplicate field" s" " TDECL-WHY!
+   s" duplicate field" TDECL-FIELD-FIX$ TDECL-WHY!
    TDP-EVT @ fam fna fnu ss
    TDP-W @ fw TDP-W @ cells fw cells CELL PF-FLAGS-NONE
    TDECL-EVENT-FIELD-XT TDP-EVT !
@@ -977,7 +1084,9 @@ private
       TDECL-NEXT
       dup 0= IF 2drop EXIT THEN
       2dup s" field" CORE-STR=CI 0= IF
-         s" unexpected token in product declaration" s" " E-TDECL-SYNTAX TDECL-THROW
+         s" unexpected token in product declaration"
+            s" start each clause with `FIELD`, `POLICY` or `DERIVE`, and end with `;PRODUCT`"
+            E-TDECL-SYNTAX TDECL-THROW
       THEN
       2drop fam TDECL-PRODUCT-FIELD
    AGAIN ;
@@ -1001,7 +1110,9 @@ private
    0 TDP-N !   0 TDP-W !
    fam TDECL-PRODUCT-FIELDS
    SIG-UNRES @ IF E-TDECL-UNRESOLVED throw THEN
-   TDP-N @ 0= IF TDN-A @ TDN-U @ s" empty product" s" " E-TDECL-SYNTAX TDECL-THROW THEN
+   TDP-N @ 0= IF TDN-A @ TDN-U @ s" empty product"
+      s" declare at least one field, as in `FIELD x n`"
+      E-TDECL-SYNTAX TDECL-THROW THEN
    fam fstart TDP-N @ TFAM-FLD-RANGE!
    fam TDP-W @ TFAM-SLOTS!
    fam TDECL-LAYOUT-DESC
@@ -1267,7 +1378,9 @@ private
       0
       BEGIN dup TDPLAN-N @ < WHILE
          dup TDPLAN-SYM@ sym = IF
-            TDGEN-NA @ TDGEN-NU @ s" generated declaration name already defined" s" " E-TDECL-NAME TDECL-THROW
+            TDGEN-NA @ TDGEN-NU @ s" generated declaration name already defined"
+               s" rename the family or a variant so no two words this declaration generates share a name"
+               E-TDECL-NAME TDECL-THROW
          THEN
          1 +
       REPEAT
@@ -1298,7 +1411,8 @@ private
 
 : TDPLAN-NAME+ ( -- n )
    TDGEN-NA @ TDGEN-NU @ CHECKER-DEFINED-HERE? IF
-      TDGEN-NA @ TDGEN-NU @ s" generated declaration already defined" s" " E-TDECL-NAME TDECL-THROW
+      TDGEN-NA @ TDGEN-NU @ s" generated declaration already defined"
+         TDECL-GEN-FIX$ E-TDECL-NAME TDECL-THROW
    THEN
    TDGEN-NA @ TDGEN-NU @ CHECKER-RECORD-SYM dup TDPLAN-SYM+ ;
 
@@ -1534,7 +1648,7 @@ variable TDECL-U
 
 : TDPV-THROW ( n ptr u8 n -- )   \ family + reason -> the named provider reject
    {: fam:n ra:ptr ru:n :}
-   fam TFAM-NAME$ ra ru s" " E-TDECL-PROVIDER TDECL-THROW ;
+   fam TFAM-NAME$ ra ru TDECL-DEFECT-FIX$ E-TDECL-PROVIDER TDECL-THROW ;
 
 : TDPV-GROW-CAP ( n n -- n ) {: need:n cap:n :}
    cap 2 * need max ;
@@ -2038,7 +2152,8 @@ private
 \ asked of every child before any is made.
 : TDECL-ADDR-FREE ( ptr u8 n n n -- ) {: na:ptr nu:n shape:n param:n :}
    na nu CHECKER-DEFINED-HERE? IF
-      na nu s" generated declaration already defined" s" " E-TDECL-NAME TDECL-THROW
+      na nu s" generated declaration already defined"
+         TDECL-GEN-FIX$ E-TDECL-NAME TDECL-THROW
    THEN ;
 
 : TDECL-ADDR-LIVE-FREE ( ptr u8 n n n -- ) {: na:ptr nu:n shape:n param:n :}
@@ -2088,7 +2203,8 @@ private
 
 : TDINIT-REFUSE ( n -- )
    TFAM-NAME$ s" derive init requires a canonical fixed-cell record"
-   s" " E-TDECL-DERIVE TDECL-THROW ;
+   s" drop `init` from `DERIVE`, or declare the product in a package with fields of a fixed cell width"
+   E-TDECL-DERIVE TDECL-THROW ;
 
 \ INIT-RECORD? proves the whole fixed canonical layout; INIT-FIELD? then proves
 \ every id and field extent against that same instantiation. These queries read
@@ -2312,7 +2428,9 @@ private
    AGAIN ;
 
 : TDECL-PRODUCT-NOEND-BODY ( -- )
-   TDN-A @ TDN-U @ s" missing ;PRODUCT" s" " E-TDECL-SYNTAX TDECL-THROW ;
+   TDN-A @ TDN-U @ s" missing ;PRODUCT"
+      s" end the declaration with `;PRODUCT` after its last field"
+      E-TDECL-SYNTAX TDECL-THROW ;
 
 : TDECL-PRODUCT-GEN-TXN ( -- )
    [: CHECKER-DEFPRODUCT-BODY TDECL-PRODUCT-GENERATE ;] TDECL-PRODUCT-TXN ;
