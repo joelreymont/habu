@@ -9,6 +9,10 @@
 \ writes each part's text with EMIT-STR, EMIT-U or EMIT1 before the next part
 \ word, which ends it. The record is built in TEXT, so a renderer that resets
 \ TEXT-LEN cannot run inside one.
+
+\ The status a rejection stops with.
+70 constant CHECKER-REJECT-RC
+
 package REJECTION
 private
 
@@ -189,16 +193,7 @@ create LABEL-BUF PATH-CAP allot   variable LABEL-U
       over d + c!
       1 +
    REPEAT drop ;
-: PATH-COPY ( ptr u8 n ptr u8 -- n ) {: a:ptr u:n d:ptr :}
-   u PATH-CAP > IF s" diag: file path too long" 76 die THEN
-   a d u COPY  u ;
-: FILE-COPY ( ptr u8 n -- )
-   FILE-BUF PATH-COPY FILE-U ! ;
 public
-: FILE! ( ptr u8 n -- )
-   FILE-COPY
-   PATH$ LABEL-BUF PATH-COPY LABEL-U !
-   -1 LABELED ! ;
 : LABELS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    LABELED @ 0= IF 0 0= 0= EXIT THEN
    a u LABEL-BUF LABEL-U @ CORE-STR= ;
@@ -309,7 +304,6 @@ public
 : LOCATE ( ptr u8 -- n n n bool )
    >SOURCE 0= IF drop 0 0 0 0 0= 0= EXIT THEN
    SOURCE-POSITION 0 0= ;
-NO-FILE$ FILE-COPY
 1 1 0 ORIGIN!
 
 \ The file a top-level step names; empty when no file or label names it.
@@ -493,7 +487,27 @@ public
 : KEEP ( -- )
    END-RECORD
    QUIET @ 0=  WARNING @ 0=  and IF TALLY @ 1 + TALLY ! THEN ;
-;package
 
-\ The status a rejection stops with.
-70 constant CHECKER-REJECT-RC
+private
+\ FILE! takes any path a tool names, so a long one is rejected here, after the
+\ words that print a rejection.
+: PATH-COPY ( ptr u8 n ptr u8 -- n ) {: a:ptr u:n d:ptr :}
+   u PATH-CAP > IF
+      s" E-PATH-RANGE" OPEN
+      s" `REJECTION:FILE!` got a path " EMIT-STR  u EMIT-U
+      s"  bytes long, more than the " EMIT-STR  PATH-CAP EMIT-U
+      s"  bytes a path may have" EMIT-STR
+      HELP  s" name the file by a path of at most " EMIT-STR
+      PATH-CAP EMIT-U  s"  bytes" EMIT-STR
+      CHECKER-REJECT-RC STOP
+   THEN
+   a d u COPY  u ;
+: FILE-COPY ( ptr u8 n -- )
+   FILE-BUF PATH-COPY FILE-U ! ;
+NO-FILE$ FILE-COPY
+public
+: FILE! ( ptr u8 n -- )
+   FILE-COPY
+   PATH$ LABEL-BUF PATH-COPY LABEL-U !
+   -1 LABELED ! ;
+;package
