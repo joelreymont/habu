@@ -154,9 +154,8 @@ PROCESS:NO-FD FIFO-RD !
    PROC-ENV-INHERIT-MISSING
    ENGINE-CANDIDATE:PATH$ s" pg row" GT-POOL-START ;
 
-\ The row runs two pools deep (the gate's and this file's), and every pool level
-\ nests TMPDIR deeper: postgres refuses a socket path over 103 bytes on macOS,
-\ so its server starting and reporting is the check.
+\ The row runs two pools deep (the gate's and this file's); its server starting
+\ and reporting is the check.
 : EXPECT-LIVE ( -- )
    s" the case reported the server's socket directory and segment" T-LABEL
    REPORT-READ? TTRUE
