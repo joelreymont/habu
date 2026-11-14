@@ -3,9 +3,13 @@
 \ if and a begin loop, a construct, a call of a word found where the definer
 \ runs, and an exact call of PKG:TAIL that a part named PKG of the building
 \ package does not capture. An operand that names no variant and a call of an
-\ unknown name are refused, and the word is abandoned.
+\ unknown name are refused, and the word is abandoned. The name a field loan
+\ awaits takes the steps its text twin's token takes: the same code and
+\ diagnostic.
 
 require src/lib/test.f
+require src/lib/c2-memory.f
+require test/decl-diag-capture.f
 
 package BITEM-PKG
 public
@@ -103,6 +107,26 @@ BI-BAD-OPERAND 3 T=
 BAD-CALL 70 T=
 s" : BI-BAD-CALL ( -- n ) 4 ;" evaluate-closed
 BI-BAD-CALL 4 T=
+
+8192 BUFFER: BUILT-DIAG
+variable BUILT-DIAG-U
+: KEEP-DIAG ( -- )
+   DECL-DIAG:TEXT$ {: a:ptr u:n :}
+   a BUILT-DIAG u BYTE-COPY  u BUILT-DIAG-U ! ;
+: BUILT-DIAG$ ( -- ptr u8 n ) BUILT-DIAG BUILT-DIAG-U @ ;
+
+\ : NAME ( -- ) C2-MEM:WITH-FIELD inner ; with no view to lend a field of.
+: MAKE-LOAN ( ptr u8 n -- )
+   EFFECT:NEW define-word
+   s" C2-MEM:WITH-FIELD" 0 ITEM-ABI:CALL ITEM  s" inner" OPND
+   postpone ; ;
+
+: LOAN-BUILT ( -- n ) [: s" BI-LOAN" MAKE-LOAN ;] catch ;
+: LOAN-TEXT ( -- n )
+   [: s" : BI-LOAN ( -- ) C2-MEM:WITH-FIELD inner ;" evaluate-closed ;] catch ;
+DECL-DIAG:PROSE  LOAN-BUILT 70 T=  KEEP-DIAG
+DECL-DIAG:PROSE  LOAN-TEXT 70 T=
+BUILT-DIAG$ DECL-DIAG:TEXT$ T$=  DECL-DIAG:OFF
 ;package
 
 T-REPORT

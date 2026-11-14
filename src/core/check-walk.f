@@ -405,13 +405,21 @@
       CURSYM @ PIMM-IX dup 0 < 0= IF PIMM-CNT@ PIMM-SKIP ELSE drop THEN
    THEN ;
 
+\ The step a dead token, a locals group's token or a field loan's name takes
+\ before any other; true when it took one. A is its unfolded spelling.
+: MODE-TOK? ( ptr u8 -- bool ) {: a:ptr :}
+   TKF TKFU @ LIVE-TOKEN? 0= IF
+      -1 DEADERR !  0 OK !  TKF TKFU @ DEAD-TOK  RES-TRUE EXIT
+   THEN
+   LMODE @ IF a TKF TKFU @ LOC-TOK  RES-TRUE EXIT THEN
+   FIELD-LOAN-PENDING @ IF TKF TKFU @ SCOPE-FIELD-TOK  RES-TRUE EXIT THEN
+   RES-FALSE ;
+
 : DO-TOK1 {: a u :}
    a u DO-TOK-HEAD
    {: unj unsafe ok-in unck-in pin-in :}
    TOK0 @ IF NAME-TOK ELSE
-   TKF TKFU @ LIVE-TOKEN? 0= IF -1 DEADERR ! 0 OK !  TKF TKFU @ DEAD-TOK ELSE
-   LMODE @ IF a TKF TKFU @ LOC-TOK ELSE
-   FIELD-LOAN-PENDING @ IF TKF TKFU @ SCOPE-FIELD-TOK ELSE
+   a MODE-TOK? IF ELSE
    CONM @ 0 <> IF TKF TKFU @ CONSTRUCT-TOK ELSE
    CHECKER-MATCH-MODE @ 0 <> IF
       CHECKER-MATCH-MODE @ 4 = IF LITERAL-PAYLOAD-STEP THEN
@@ -438,7 +446,6 @@
    cf 0 >= IF cf CF-STEP THEN
    cf 0 < IF a u CALL-STEP THEN
    THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
-   THEN THEN
    a u unj unsafe ok-in unck-in pin-in DO-TOK-TAIL ;
 
 \ The rows ( din dout rin rout ) of a schema effect, checked by the rules a
@@ -579,15 +586,16 @@ public
    CUR-PAREN
    RES-FALSE ;
 
-\ A token after a call that cannot return is dead, as in the byte walk.
-: ITEM-LIVE? ( -- bool )
-   TKF TKFU @ LIVE-TOKEN? IF RES-TRUE EXIT THEN
-   -1 DEADERR !  0 OK !  TKF TKFU @ DEAD-TOK
-   RES-FALSE ;
+\ The step DO-TOK1 gives a token while a construct or a match is open.
+: ITEM-OPEN? ( -- bool )
+   CONM @ 0 <> IF TKF TKFU @ CONSTRUCT-TOK RES-TRUE EXIT THEN
+   CHECKER-MATCH-MODE @ 0 = IF RES-FALSE EXIT THEN
+   CHECKER-MATCH-MODE @ 4 = IF LITERAL-PAYLOAD-STEP THEN
+   TKF TKFU @ MATCH-TOK  RES-TRUE ;
 
 : ITEM-CALL ( ptr u8 n n -- ) {: a:ptr u:n ix:n :}
+   ITEM-OPEN? IF EXIT THEN
    ix CHECKER-RESOLVE:REC-AT  TKF TKFU @ BIND-RECORD
-   ITEM-LIVE? 0= IF EXIT THEN
    TKF TKFU @ UNSAFE-TOK? IF
       BWIN-UNJUDGED @ IF TKF TKFU @ BIND-SOURCE-CALL THEN
       REJECT-UNSAFE EXIT
@@ -595,21 +603,14 @@ public
    a u CALL-STEP ;
 
 : ITEM-INT ( n -- ) {: v:n :}
+   ITEM-OPEN? IF EXIT THEN
    BIND-CLEAR
-   ITEM-LIVE? 0= IF EXIT THEN
    0 CURSYM !
    v INT-STEP ;
 
 \ A spelling no step of its item's kind takes names nothing.
 : ITEM-UNDEFINED ( -- )
    TKF TKFU @ REFUSE-UNDEFINED  IS-FAIL ;
-
-\ The step DO-TOK1 gives a token while a construct or a match is open.
-: ITEM-OPEN? ( -- bool )
-   CONM @ 0 <> IF TKF TKFU @ CONSTRUCT-TOK RES-TRUE EXIT THEN
-   CHECKER-MATCH-MODE @ 0 = IF RES-FALSE EXIT THEN
-   CHECKER-MATCH-MODE @ 4 = IF LITERAL-PAYLOAD-STEP THEN
-   TKF TKFU @ MATCH-TOK  RES-TRUE ;
 
 \ An abandoned match reads every token unmodeled through its `;match`.
 : ITEM-SKIP? ( -- bool )
@@ -618,7 +619,6 @@ public
    ITEM-OPEN? ;
 
 : ITEM-KEYWORD ( ptr u8 n -- ) {: a:ptr u:n :}
-   ITEM-LIVE? 0= IF EXIT THEN
    ITEM-OPEN? IF EXIT THEN
    TKF TKFU @ s" construct" CORE-STR= IF CONSTRUCT-BEGIN EXIT THEN
    TKF TKFU @ s" match" CORE-STR= IF MATCH-BEGIN EXIT THEN
@@ -629,7 +629,6 @@ public
 
 \ The family operand of the open `construct` or `match`.
 : ITEM-TYPE ( n -- ) {: node:n :}
-   ITEM-LIVE? 0= IF EXIT THEN
    ITEM-SKIP? IF EXIT THEN
    CONM @ 1 = IF EV-OPERAND node TFAM:TFAM-CONSTRUCT-NODE CONSTRUCT-FAM-FOUND EXIT THEN
    CONM @ 0 = CHECKER-MATCH-MODE @ 1 = and IF node TFAM:TFAM-MATCH-NODE MATCH-FAM-FOUND EXIT THEN
@@ -637,7 +636,6 @@ public
 
 \ A variant of the open construct's or match's family, else a local.
 : ITEM-OPERAND ( ptr u8 n -- ) {: a:ptr u:n :}
-   ITEM-LIVE? 0= IF EXIT THEN
    ITEM-SKIP? IF EXIT THEN
    CONM @ 2 = IF TKF TKFU @ CONSTRUCT-TOK EXIT THEN
    CONM @ 0 <> IF ITEM-UNDEFINED EXIT THEN
@@ -653,13 +651,14 @@ public
    {: unj unsafe ok-in unck-in pin-in :}
    i BODY-ITEMS:KIND CHECKER-ITEMS:ITEM-CELL@ {: kind:n :}
    kind BODY-ITEM-KIND:NAME = IF NAME-TOK ELSE
+   a MODE-TOK? IF ELSE
    kind BODY-ITEM-KIND:CALL = IF a u  i BODY-ITEMS:A CHECKER-ITEMS:ITEM-CELL@  ITEM-CALL ELSE
    kind BODY-ITEM-KIND:INT = IF i BODY-ITEMS:A CHECKER-ITEMS:ITEM-CELL@ ITEM-INT ELSE
    kind BODY-ITEM-KIND:KEYWORD = IF a u ITEM-KEYWORD ELSE
    kind BODY-ITEM-KIND:TYPE = IF i BODY-ITEMS:A CHECKER-ITEMS:ITEM-CELL@ ITEM-TYPE ELSE
    kind BODY-ITEM-KIND:OPERAND = IF a u ITEM-OPERAND ELSE
       s" checker: an item of no kind the walk knows" 76 die
-   THEN THEN THEN THEN THEN THEN
+   THEN THEN THEN THEN THEN THEN THEN
    a u unj unsafe ok-in unck-in pin-in DO-TOK-TAIL ;
 
 : ITEM-WALK ( -- )
