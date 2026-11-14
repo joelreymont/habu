@@ -1072,9 +1072,10 @@ private
 : CHK-STOPPED-SOURCE ( -- ptr u8 n )
    VERIFY-STOPPED$ VERIFY-STOP-SUBJECT? CHK-STOP-BYTES ;
 
-\ The pre-pass stopped with the given code. A statement that threw is reported
-\ by its record where it stopped (CHK-STOP-WRITE), which fails the check as a
-\ refusal when the record is one; any other stop returns.
+\ The pre-pass stopped with the given code. A statement that threw a code
+\ outside 1..255 threw it with nothing reported, so it is reported by its record
+\ where it stopped (CHK-STOP-WRITE), which fails the check as a rejection when
+\ the record is one; any other stop returns.
 : CHK-STOP-RECORD ( n -- ) {: rc:n :}
    rc CHECK-ALL-ERRORS:THREW? 0= if exit then
    rc VERIFY-STOP-AT VERIFY-STOPPED$ CHK-STOPPED-SOURCE VERIFY-STOP-REASON$ CHK-STOP-WRITE ;
@@ -1090,16 +1091,15 @@ private
    CHECK-ALL-ERRORS:DUP-RECORD$ CHK-ERR-LN ;
 
 \ The pre-pass stopped with the given code: the record of its defect, or of a
-\ duplicate, then the failure. A statement that threw and a refusal the checker
-\ reported itself both fail with a refusal's status, so --json-errors writes
-\ the refusal's packet and nothing else.
+\ duplicate, then the failure. A status in 1..255 other than a duplicate's
+\ follows the record its rejection printed, so the check fails with it and
+\ prints nothing more. A statement that threw any other code fails with a
+\ rejection's status, so --json-errors writes its record and nothing else.
 : CHK-PREVERIFY-STOPPED ( n -- ) {: rc:n :}
    rc CHK-STOP-RECORD
-   rc CHECK-ALL-ERRORS:THREW?  rc REPORTED-ERROR? or if
-      CHK-E-CHECK CHK-PREVERIFY-FAIL
-   then
-   rc CHECK-ALL-ERRORS:DUP-RC = if CHK-PREVERIFY-DUP then
-   rc CHK-PREVERIFY-FAIL ;
+   rc CHECK-ALL-ERRORS:DUP-RC = if CHK-PREVERIFY-DUP rc CHK-PREVERIFY-FAIL then
+   rc 1 >= rc 255 <= and if rc CHK-THROW then
+   CHK-E-CHECK CHK-PREVERIFY-FAIL ;
 
 \ How a verifier child that gave no answer ended, as the closing line of its
 \ report, where CHK-EXPLAIN-LN puts prose.
