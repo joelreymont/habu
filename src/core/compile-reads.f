@@ -112,11 +112,21 @@ public
 
 private
 
-: APPEND ( n ptr u8 n ptr u8 n -- )
-   {: kind:n a:ptr u:n b:ptr v:n :}
+\ Word w, which the program called, gave a span of length n.
+: NEGATIVE ( ptr u8 n n -- ) {: w:ptr wu:n n:n :}
+   s" E-PATH-RANGE" REJECTION:OPEN
+   96 REJECTION:EMIT1  w wu REJECTION:EMIT-STR
+   s" ` got a length of " REJECTION:EMIT-STR  n REJECTION:EMIT-N
+   REJECTION:HELP  s" pass the span's own length, 0 or more" REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
+\ w is the word the program called.
+: APPEND ( ptr u8 n n ptr u8 n ptr u8 n -- )
+   {: w:ptr wu:n kind:n a:ptr u:n b:ptr v:n :}
    OFF-MAIN? if MISS exit then
    STATUS @ ST-OFF = if exit then
-   u 0 < v 0 < or if s" compile reads: negative length" INCLUDE-IO-RC die then
+   u 0 < if w wu u NEGATIVE then
+   v 0 < if w wu v NEGATIVE then
    kind a u b v SEEN? if exit then
    USED @ {: off:n :}
    u v + PAD 3 cells + {: size:n :}
@@ -154,17 +164,17 @@ public
 
 \ A root's absolute spelling and its canonical directory.
 : ROOT+ ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n b:ptr v:n :}
-   ROOT-READ a u b v APPEND ;
+   s" COMPILE-READS:ROOT+" ROOT-READ a u b v APPEND ;
 
 \ An environment variable's name and value; a NULL-PTR value is an absent one.
 : ENV+ ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n b:ptr v:n :}
-   b NULL-PTR - 0= if ENV-ABSENT a u b 0 APPEND exit then
-   ENV-READ a u b v APPEND ;
+   b NULL-PTR - 0= if s" COMPILE-READS:ENV+" ENV-ABSENT a u b 0 APPEND exit then
+   s" COMPILE-READS:ENV+" ENV-READ a u b v APPEND ;
 
 \ A text the compile evaluates. One of length 0 or less records nothing: `evaluate` reads no byte of it.
 : TEXT+ ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 <= if exit then
-   TEXT-READ a u a 0 APPEND ;
+   s" COMPILE-READS:TEXT+" TEXT-READ a u a 0 APPEND ;
 
 private
 
@@ -195,11 +205,12 @@ public
 
 private
 
-: STAMP+ ( n ptr u8 n n n n -- ) {: kind:n a:ptr u:n sec:n ns:n size:n :}
+: STAMP+ ( ptr u8 n n ptr u8 n n n n -- )
+   {: w:ptr wu:n kind:n a:ptr u:n sec:n ns:n size:n :}
    sec STAMP-BUF CELL-VIEW !
    ns STAMP-BUF CELL + CELL-VIEW !
    size STAMP-BUF 2 cells + CELL-VIEW !
-   kind a u STAMP-BUF 3 cells APPEND ;
+   w wu kind a u STAMP-BUF 3 cells APPEND ;
 
 public
 
@@ -208,13 +219,13 @@ public
 : FILE+ ( ptr u8 n ptr u8 -- ) {: a:ptr u:n z:ptr :}
    OFF-MAIN? if MISS exit then
    STATUS @ ST-OFF = if exit then
-   FILE-READ a u z STAT-BUF stat64 STAT-STAMP STAMP+ ;
+   s" COMPILE-READS:FILE+" FILE-READ a u z STAT-BUF stat64 STAT-STAMP STAMP+ ;
 
 \ FILE+ of a path a word reads without following a symlink at its end, which
 \ LSTAMP stats.
 : LFILE+ ( ptr u8 n ptr u8 -- ) {: a:ptr u:n z:ptr :}
    OFF-MAIN? if MISS exit then
    STATUS @ ST-OFF = if exit then
-   FILE-LREAD a u z STAT-BUF lstat64 STAT-STAMP STAMP+ ;
+   s" COMPILE-READS:LFILE+" FILE-LREAD a u z STAT-BUF lstat64 STAT-STAMP STAMP+ ;
 
 ;package
