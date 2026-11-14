@@ -789,9 +789,13 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    HB-TARGET-LINUX-X86-64? if
       [: FFI-T-BAD-FLOAT-ARITY ;] 0 TTHROWSQ
    else
-      [: FFI-T-BAD-FLOAT-ARITY ;] E-FFI-ARITY TTHROWSQ
+      [: FFI-T-BAD-FLOAT-ARITY ;] E-FFI-ARITY
+      s" error[E-FFI-ARITY]: the call passes at most 8 float inputs, each in a register"
+      FFI-T-RECORD
    then
-   [: FFI-T-BAD-F32-ARITY ;] E-FFI-ARITY TTHROWSQ
+   [: FFI-T-BAD-F32-ARITY ;] E-FFI-ARITY
+   s" error[E-FFI-ARITY]: the call passes at most 8 float inputs, each in a register"
+   FFI-T-RECORD
    [: FFI-T-BAD-F32-VARARG ;]
    s" error[E-FFI-SYNTAX]: an f32 variadic argument" FFI-T-SYNTAX
    [: FFI-T-F32-FIXED ;] 0 TTHROWSQ

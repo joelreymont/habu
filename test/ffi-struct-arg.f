@@ -177,6 +177,26 @@ CALLBACK: FFI-T-SA-CB ( -- n ) 0 FALLBACK ;CALLBACK
    s"  15 $7FFFFFFFFFFFFF7F STRUCT-ARG ;FUNCTION" FFI-T-SRC+
    FFI-T-SRC CODEGEN:CONTENTS ;
 
+\ Runs a declaration past a limit of the struct call with its record
+\ captured, and asserts the record's header and help.
+: FFI-T-SA-ARITY ( [ -- ] ptr u8 n ptr u8 n -- )
+   {: h:ptr hu:n p:ptr pu:n :}
+   DECL-DIAG:PROSE
+   E-FFI-ARITY TTHROWSQ
+   h hu DECL-DIAG:HAS? TTRUE
+   p pu DECL-DIAG:HAS? TTRUE
+   DECL-DIAG:OFF ;
+
+: FFI-T-SA-STAGING ( [ -- ] -- )
+   s" error[E-FFI-ARITY]: a struct call stages at most 16 cells of stack inputs and record copies"
+   s" = help: pass the large records by address through a C function"
+   FFI-T-SA-ARITY ;
+
+: FFI-T-SA-FLOATS ( [ -- ] -- )
+   s" error[E-FFI-ARITY]: the call passes at most 8 float inputs, each in a register"
+   s" = help: call it through a C function that takes the floats in a record"
+   FFI-T-SA-ARITY ;
+
 : FFI-T-SA-REFUSALS ( -- )
    s" malformed struct-argument declarations are refused" T-LABEL
    [: s" 0 8 STRUCT-ARG" evaluate-closed ;]
@@ -226,18 +246,18 @@ CALLBACK: FFI-T-SA-CB ( -- n ) 0 FALLBACK ;CALLBACK
 
    s" struct staging past sixteen cells is refused before publication" T-LABEL
    [: s" FUNCTION: FFI-T-SA-CAP hb_sum128 ( ptr u8 -- n ) 0 129 STRUCT-ARG ;FUNCTION"
-      evaluate-closed ;] E-FFI-ARITY TTHROWSQ
+      evaluate-closed ;] FFI-T-SA-STAGING
    s" FUNCTION: FFI-T-SA-CAP hb_sum128 ( ptr u8 -- n ) 0 128 STRUCT-ARG ;FUNCTION"
    evaluate-closed
    [: s" FUNCTION: FFI-T-SA-CAP2 hb_none ( n n n n n n n n ptr u8 -- n ) 8 113 STRUCT-ARG ;FUNCTION"
-      evaluate-closed ;] E-FFI-ARITY TTHROWSQ
+      evaluate-closed ;] FFI-T-SA-STAGING
    s" FUNCTION: FFI-T-SA-CAP2 hb_none ( n n n n n n n n ptr u8 -- n ) 8 112 STRUCT-ARG ;FUNCTION"
    evaluate-closed
    [: s" FUNCTION: FFI-T-SA-CAP3 hb_none ( r r r r r r r r r ptr u8 -- n ) 9 8 STRUCT-ARG ;FUNCTION"
-      evaluate-closed ;] E-FFI-ARITY TTHROWSQ
+      evaluate-closed ;] FFI-T-SA-FLOATS
    [: s" FUNCTION: FFI-T-SA-CAP6 hb_none ( ptr u8 -- n ) 0 $7FFFFFFFFFFFFFFF STRUCT-ARG ;FUNCTION"
-      evaluate-closed ;] E-FFI-ARITY TTHROWSQ
-   [: FFI-T-SA-WRAP$ evaluate-closed ;] E-FFI-ARITY TTHROWSQ
+      evaluate-closed ;] FFI-T-SA-STAGING
+   [: FFI-T-SA-WRAP$ evaluate-closed ;] FFI-T-SA-STAGING
    s" a row's relocation mask names only that row's cells" T-LABEL
    [: s" getpid" FFI:PROCESS 0 0 $4000 FFI:DECLARE-ROW drop ;] E-FFI-ARITY TTHROWSQ
    [: s" getpid" FFI:PROCESS 0 0 1 FFI:DECLARE-ROW drop ;] E-FFI-ARITY TTHROWSQ

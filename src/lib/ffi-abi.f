@@ -1183,20 +1183,24 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
    a RES-TEXT u BYTE-COPY
    u RES-TEXT-U ! ;
 
-\ A catch reads E-FFI-ARITY; uncaught, the load exits 70.
-: ARITY-REJECT ( -- )
-   s" E-FFI-ARITY" REJECTION:OPEN
+\ A declaration past a limit of its call is ARITY-OPEN, the limit, then
+\ ARITY-HELP with the fix.
+: ARITY-OPEN ( -- )
+   s" E-FFI-ARITY" REJECTION:OPEN ;
+
+: ARITY-HELP ( ptr u8 n -- )
+   E-FFI-ARITY HELP-THROW ;
+
+: INPUTS-FULL ( -- )
+   ARITY-OPEN
    s" a FUNCTION: declaration has at most " REJECTION:EMIT-STR
    ARG-MAX REJECTION:EMIT-U  s"  inputs" REJECTION:EMIT-STR
-   CHECK:DEFINER-PLACE
-   REJECTION:HELP
    s" call it through a C function that takes the inputs in a record"
-   REJECTION:EMIT-STR
-   REJECTION:KEEP  E-FFI-ARITY CHECKER-REFUSE ;
+   ARITY-HELP ;
 
 : ARG+ ( n -- )
    {: kind:n :}
-   ARG-N @ ARG-MAX >= if ARITY-REJECT then
+   ARG-N @ ARG-MAX >= if INPUTS-FULL then
    kind ARG-KIND ARG-N @ cells + !
    NO-EXT ARG-N @ ARG-EXT!
    NO-EXT ARG-N @ ARG-EXT-ARG!
@@ -1285,11 +1289,46 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
 
 \ ---- which call the declaration rides --------------------------------------
 
+: INT-REGS ( -- n )
+   HB-TARGET-LINUX-X86-64? if X86-INT-REG-MAX exit then
+   REG-MAX ;
+
+: INT-REGS-FULL ( -- )
+   ARITY-OPEN
+   s" the call passes at most " REJECTION:EMIT-STR
+   INT-REGS REJECTION:EMIT-U
+   s"  integer inputs, each in a register" REJECTION:EMIT-STR
+   s" call it through a C function that takes the inputs in a record"
+   ARITY-HELP ;
+
+: FLOAT-REGS-FULL ( -- )
+   ARITY-OPEN
+   s" the call passes at most " REJECTION:EMIT-STR
+   REG-MAX REJECTION:EMIT-U
+   s"  float inputs, each in a register" REJECTION:EMIT-STR
+   s" call it through a C function that takes the floats in a record"
+   ARITY-HELP ;
+
+: F32-UNSTAGED ( -- )
+   ARITY-OPEN
+   s" an f32 input past float register " REJECTION:EMIT-STR
+   REG-MAX REJECTION:EMIT-U
+   s"  has no stack slot on x86-64" REJECTION:EMIT-STR
+   s" declare it r and call a C function that takes a double"
+   ARITY-HELP ;
+
+: STAGING-FULL ( -- )
+   ARITY-OPEN
+   s" a struct call stages at most " REJECTION:EMIT-STR
+   STACK-CELLS REJECTION:EMIT-U
+   s"  cells of stack inputs and record copies" REJECTION:EMIT-STR
+   s" pass the large records by address through a C function"
+   ARITY-HELP ;
+
 : REG-ROOM ( n n -- )
    {: int:n flt:n :}
-   int HB-TARGET-LINUX-X86-64? if X86-INT-REG-MAX else REG-MAX then
-      > if E-FFI-ARITY throw then
-   flt REG-MAX > if E-FFI-ARITY throw then ;
+   int INT-REGS > if INT-REGS-FULL then
+   flt REG-MAX > if FLOAT-REGS-FULL then ;
 
 : FLOAT-ARG? ( n -- bool )
    ARG-KIND@ {: kind:n :}
@@ -1313,7 +1352,7 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
    {: int:n flt:n stk:n i:n :}
    i FLOAT-ARG? if
       flt REG-MAX < if flt ARG-REG i cells + ! int flt 1+ stk exit then
-      i ARG-KIND@ K-FLOAT32 = if E-FFI-ARITY throw then
+      i ARG-KIND@ K-FLOAT32 = if F32-UNSTAGED then
       int flt stk i X86-SPILL exit
    then
    int X86-INT-REG-MAX < if int ARG-REG i cells + ! int 1+ flt stk exit then
@@ -1387,7 +1426,10 @@ private
 : PLAN-STRUCT ( -- n n )
    ARG-KIND ARG-SBYTES C-ARGS ARG-REG ARG-PAY PLAN-RECORDS
    {: int:n flt:n stk:n :}
-   flt stk PLAN-FITS? 0= if E-FFI-ARITY throw then
+   flt stk PLAN-FITS? 0= if
+      flt REG-MAX > if FLOAT-REGS-FULL then
+      STAGING-FULL
+   then
    int stk ;
 
 : RECORDS? ( -- bool )
