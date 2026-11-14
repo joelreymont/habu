@@ -1980,8 +1980,13 @@ private
    NDICT DATA CB-NDICT STR,
    CP DATA CB-CP STR,
    go B,
-   busy LBL,  0 CALLER-LR,
-   s" E-CALLBACK habu: context busy on another thread" ENGINE-ERROR:CALLBACK DIE-LINE,
+   busy LBL,
+   3 SP 0 LDR,                             \ the lr, saved by the primitive's frame
+   s" E-CALLBACK" s" a foreign call ran in a context another thread is running in"
+      FAULT-OPEN,
+   4 DBASE 0 ADDI,  6 NDICT 0 ADDI,  FAULT-IN,
+   s" call C from one thread at a time in a context, and bind callbacks other threads call to `TASK:CALLER-CONTEXT`"
+      ENGINE-ERROR:CALLBACK FAULT-STOP,
    go LBL, ;
 
 \ After the BLR, with sp back at the $30 frame and x20 = DATA: the four cells
@@ -2371,7 +2376,14 @@ $58 constant CBT-LR                     \ C's x30
    done B,
    direct LBL,
    LCALLBACKADDR LABEL@ BL,  A G-PUSH  done B,
-   bad LBL,  s" E-CALLBACK habu: slot out of range" ENGINE-ERROR:CALLBACK DIE-LINE,
+   bad LBL,
+   3 SP 0 LDR,  5 A 0 ADDI,                \ the lr and the slot, before FAULT-OPEN, writes x9
+   s" E-CALLBACK" s" `callback-entry` was given a slot outside the callback pool"
+      FAULT-OPEN,
+   s" slot" 5 FAULT-NUMBER,
+   4 DBASE 0 ADDI,  6 NDICT 0 ADDI,  FAULT-IN,
+   s" take a callback's C address from `FFI-CB:ENTRY`, never a raw slot"
+      ENGINE-ERROR:CALLBACK FAULT-STOP,
    stubs LBL,
    CB-POOL 0 do  9 i MOVZ,  LCALLBACKTHUNK LABEL@ B,  loop
    done LBL, ;
