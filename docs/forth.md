@@ -2511,7 +2511,16 @@ sections above.
   unless `parse-imm` declares it stack-neutral, while keywords such as `if`
   compile. `compile, ( [ R -- S ] -- )` appends a call of the word whose entry
   the quotation is: a primitive's tick is an `xt`, which it refuses, and a
-  quotation no named word enters is `E-NAMELESS-WORD`. `; ( -- )` ends the
+  quotation no named word enters is `E-NAMELESS-WORD`. `EFFECT:KEYWORD`,
+  `EFFECT:OPERAND` (the variant an `of` arm or a `construct` takes),
+  `EFFECT:TYPE-ITEM ( ptr u8 n EFFECT:type -- )` and `EFFECT:CALL` append the
+  item the string spells, as its text would; `EFFECT:CALL` binds the name where
+  the definer runs, under that file's policy. Inside a `{:` group
+  it appended with `EFFECT:KEYWORD`, `EFFECT:LOCAL ( EFFECT:type -- n )`
+  declares a local of the type and answers its index, which
+  `EFFECT:LOCAL@ ( n -- )` reads. `EFFECT:VARIABLE ( ptr u8 n EFFECT:type --
+  )` declares the variable the string names as `TYPED-VARIABLE` does; a type
+  that may hold a linear value is rejected. `; ( -- )` ends the
   definition. Any of them with no definition open is `E-NO-DEFINITION`, and a
   throw a `catch` takes abandons a definition opened since that `catch` began.
   `postpone` is syntax, never a definition name. One limit: after `undefine W`,

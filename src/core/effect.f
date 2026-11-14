@@ -1,7 +1,8 @@
 \ effect.f - the type and effect values a definer builds a definition from: a
 \ type is a schema node, an effect a type whose node is a quotation, its
 \ inputs and outputs deepest first, and `define-word` opens a definition from a
-\ name and an effect; KEYWORD, OPERAND, TYPE-ITEM and CALL append its items.
+\ name and an effect; KEYWORD, OPERAND, TYPE-ITEM, CALL, LOCAL and LOCAL@
+\ append its items.
 \ Each word asks the running engine's checker through its cell, never by name:
 \ in a build a definer is the tree's copy, whose checker certifies nothing, and
 \ a node only the checker that certifies made can reach it. The nodes are
@@ -81,6 +82,17 @@ public
 
 \ Appends a call of the word the name binds where the definer runs.
 : CALL ( ptr u8 n -- ) 0 ITEM-ABI:CALL ITEM ;
+
+\ Appends a local of type T to the open `{:` group and answers its index,
+\ which counts the locals the definition declared before it.
+: LOCAL ( type -- n ) {: t:type :}
+   data-base BODY-ITEMS:LOCALS-CELL + @ {: i:n :}
+   s" EFFECT:LOCAL" t TYPE>N ITEM-ABI:LOCAL ITEM
+   i ;
+
+\ Appends a read of the local whose index LOCAL answered.
+: LOCAL@ ( n -- ) {: i:n :}
+   s" EFFECT:LOCAL@" i ITEM-ABI:LOCAL-REF ITEM ;
 
 ;package
 

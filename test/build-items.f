@@ -1,9 +1,11 @@
 \ build-items.f - a definer builds words of keyword, type, operand and call
 \ items: a match over a family of its own answers as the same text does, an
 \ if and a begin loop, a construct, a call of a word found where the definer
-\ runs, and an exact call of PKG:TAIL that a part named PKG of the building
-\ package does not capture. An operand that names no variant and a call of an
-\ unknown name are refused, and the word is abandoned. The name a field loan
+\ runs, an exact call of PKG:TAIL that a part named PKG of the building
+\ package does not capture, and typed locals: two of `n`, one of the family
+\ matched, two groups. An operand that names no variant, a call of an unknown
+\ name, a local outside a group and a read of an index never declared are
+\ refused, and the word is abandoned. The name a field loan
 \ awaits takes the steps its text twin's token takes: the same code and
 \ diagnostic.
 
@@ -106,6 +108,71 @@ BI-BAD-OPERAND 3 T=
 BAD-CALL 70 T=
 s" : BI-BAD-CALL ( -- n ) 4 ;" evaluate-closed
 BI-BAD-CALL 4 T=
+
+\ : NAME ( n n -- n ) {: a:n b:n :} b a - ;
+: MAKE-SUB ( ptr u8 n -- )
+   EFFECT:NEW EFFECT:N EFFECT:IN EFFECT:N EFFECT:IN EFFECT:N EFFECT:OUT
+   define-word
+   s" {:" KW  EFFECT:N EFFECT:LOCAL  EFFECT:N EFFECT:LOCAL  s" :}" KW
+   {: a:n b:n :}
+   b EFFECT:LOCAL@  a EFFECT:LOCAL@  postpone -
+   postpone ; ;
+
+\ : NAME ( bfam -- n ) {: x:bfam :}
+\    x match bfam ba of 1 endof bb of 2 endof ;match ;
+: MAKE-LOCAL-MATCH ( ptr u8 n -- )
+   EFFECT:NEW BFAM EFFECT:IN EFFECT:N EFFECT:OUT define-word
+   s" {:" KW  BFAM EFFECT:LOCAL  s" :}" KW  EFFECT:LOCAL@
+   s" match" KW  BFAM-ITEM
+   s" ba" OPND  s" of" KW  1 literal  s" endof" KW
+   s" bb" OPND  s" of" KW  2 literal  s" endof" KW
+   s" ;match" KW
+   postpone ; ;
+
+: GROUP ( -- n ) s" {:" KW  EFFECT:N EFFECT:LOCAL  s" :}" KW ;
+
+\ : NAME ( n n -- n ) {: a:n :} {: b:n :} a b - ;
+: MAKE-GROUPS ( ptr u8 n -- )
+   EFFECT:NEW EFFECT:N EFFECT:IN EFFECT:N EFFECT:IN EFFECT:N EFFECT:OUT
+   define-word
+   GROUP GROUP {: a:n b:n :}
+   a EFFECT:LOCAL@  b EFFECT:LOCAL@  postpone -
+   postpone ; ;
+
+: BI-SUB-TEXT ( n n -- n ) {: a:n b:n :} b a - ;
+: BI-LOCAL-TEXT ( bfam -- n )
+   {: x:bfam :}
+   x match bfam ba of 1 endof bb of 2 endof ;match ;
+: BI-GROUPS-TEXT ( n n -- n ) {: a:n :} {: b:n :} a b - ;
+
+s" BI-SUB" MAKE-SUB
+10 3 BI-SUB -7 T=
+10 3 BI-SUB 10 3 BI-SUB-TEXT T=
+
+s" BI-LOCAL-MATCH" MAKE-LOCAL-MATCH
+BI-A BI-LOCAL-MATCH 1 T=
+BI-B BI-LOCAL-MATCH 2 T=
+BI-B BI-LOCAL-MATCH BI-B BI-LOCAL-TEXT T=
+
+s" BI-GROUPS" MAKE-GROUPS
+10 3 BI-GROUPS -7 T=
+10 3 BI-GROUPS 10 3 BI-GROUPS-TEXT T=
+
+\ : NAME ( -- ) l0 ; with the local outside a group.
+: MAKE-STRAY ( ptr u8 n -- )
+   EFFECT:NEW define-word  EFFECT:N EFFECT:LOCAL drop  postpone ; ;
+: BAD-STRAY ( -- n ) [: s" BI-BAD-STRAY" MAKE-STRAY ;] catch ;
+BAD-STRAY 70 T=
+s" : BI-BAD-STRAY ( -- n ) 5 ;" evaluate-closed
+BI-BAD-STRAY 5 T=
+
+\ : NAME ( -- n ) l9 ; with no local declared.
+: MAKE-UNREAD ( ptr u8 n -- )
+   EFFECT:NEW EFFECT:N EFFECT:OUT define-word  9 EFFECT:LOCAL@  postpone ; ;
+: BAD-UNREAD ( -- n ) [: s" BI-BAD-UNREAD" MAKE-UNREAD ;] catch ;
+BAD-UNREAD 70 T=
+s" : BI-BAD-UNREAD ( -- n ) 6 ;" evaluate-closed
+BI-BAD-UNREAD 6 T=
 
 8192 BUFFER: BUILT-DIAG
 variable BUILT-DIAG-U

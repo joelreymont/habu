@@ -622,6 +622,7 @@ public
    ITEM-OPEN? IF EXIT THEN
    TKF TKFU @ s" construct" CORE-STR= IF CONSTRUCT-BEGIN EXIT THEN
    TKF TKFU @ s" match" CORE-STR= IF MATCH-BEGIN EXIT THEN
+   TKF TKFU @ s" {:" CORE-STR= IF LOC-BEGIN EXIT THEN
    TKF TKFU @ CF-CODE {: cf:n :}
    cf 0 < IF ITEM-UNDEFINED EXIT THEN
    OK @ IF cf 21 = cf 22 = or cf 12 = or IF a u DEAD-OWNER! THEN THEN   \ exit, leave, again
@@ -645,20 +646,46 @@ public
    CHECKER-MATCH-MODE @ 0 = IF a u BODY-LOC-REF? IF EXIT THEN THEN
    ITEM-UNDEFINED ;
 
+\ An item of kind KIND inside a `{:` group: a LOCAL item opens a local of
+\ type node V's term under its listing name A U, and `:}` binds the group.
+: ITEM-IN-GROUP ( n n ptr u8 n -- ) {: v:n kind:n a:ptr u:n :}
+   kind BODY-ITEM-KIND:LOCAL = IF
+      a u  v TFAM:EFFECT-TYPE LOC-ADD-TERM EXIT
+   THEN
+   kind BODY-ITEM-KIND:KEYWORD =  TKF TKFU @ s" :}" CORE-STR= and IF LOC-CLOSE EXIT THEN
+   ITEM-UNDEFINED ;
+
+\ The slot of the local in scope whose bind sequence is SEQ, else -1.
+: SEQ-SLOT ( n -- n ) {: seq:n :}
+   #LOC @ BEGIN dup 0 > WHILE
+      1 -  dup cells LOCSEQIX + @ seq = IF EXIT THEN
+   REPEAT drop -1 ;
+
+\ A read of the local LOCAL answered index IX for: its bind sequence.
+: ITEM-LOCAL-REF ( n -- ) {: ix:n :}
+   ITEM-OPEN? IF EXIT THEN
+   ix SEQ-SLOT {: li:n :}
+   li 0 < IF ITEM-UNDEFINED EXIT THEN
+   li LOC-REF-AT ;
+
 : ITEM-STEP ( n -- ) {: i:n :}
    TSTART @ TADDR  TI @ TSTART @ -  {: a:ptr u:n :}
    a u DO-TOK-HEAD
    {: unj unsafe ok-in unck-in pin-in :}
    i BODY-ITEMS:KIND CHECKER-ITEMS:ITEM-CELL@ {: kind:n :}
+   i BODY-ITEMS:A CHECKER-ITEMS:ITEM-CELL@ {: v:n :}
    kind BODY-ITEM-KIND:NAME = IF NAME-TOK ELSE
+   LMODE @ IF v kind a u ITEM-IN-GROUP ELSE
    a MODE-TOK? IF ELSE
-   kind BODY-ITEM-KIND:CALL = IF a u  i BODY-ITEMS:A CHECKER-ITEMS:ITEM-CELL@  ITEM-CALL ELSE
-   kind BODY-ITEM-KIND:INT = IF i BODY-ITEMS:A CHECKER-ITEMS:ITEM-CELL@ ITEM-INT ELSE
+   kind BODY-ITEM-KIND:CALL = IF a u v ITEM-CALL ELSE
+   kind BODY-ITEM-KIND:INT = IF v ITEM-INT ELSE
    kind BODY-ITEM-KIND:KEYWORD = IF a u ITEM-KEYWORD ELSE
-   kind BODY-ITEM-KIND:TYPE = IF i BODY-ITEMS:A CHECKER-ITEMS:ITEM-CELL@ ITEM-TYPE ELSE
+   kind BODY-ITEM-KIND:TYPE = IF v ITEM-TYPE ELSE
    kind BODY-ITEM-KIND:OPERAND = IF a u ITEM-OPERAND ELSE
+   kind BODY-ITEM-KIND:LOCAL = IF ITEM-UNDEFINED ELSE
+   kind BODY-ITEM-KIND:LOCAL-REF = IF v ITEM-LOCAL-REF ELSE
       s" checker: an item of no kind the walk knows" 76 die
-   THEN THEN THEN THEN THEN THEN THEN
+   THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
    a u unj unsafe ok-in unck-in pin-in DO-TOK-TAIL ;
 
 : ITEM-WALK ( -- )

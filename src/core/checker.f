@@ -7580,8 +7580,7 @@ SIG-BINDER-BODY-INSTALL
    u 0 = IF 0 RES-FALSE ELSE a u TYPE-SPAN-READ THEN
    0= IF drop a u BAD-LOC-ANN THEN
    SGBAD @ sg0 0= and IF a u BAD-LOC-ANN nip THEN
-   dup SCHEME-TYPE? IF drop a u BAD-LOC-ANN EXIT THEN
-   LOC-ANN-TERM ;
+   dup SCHEME-TYPE? IF drop a u BAD-LOC-ANN THEN ;
 
 create ROWMAP 26 cells allot
 : ROWMAP-RESET 0 BEGIN dup cells ROWMAP + UNBOUND swap ! 1 + dup 25 > UNTIL drop ;
@@ -17540,13 +17539,6 @@ CHECKER-REG:}SCRATCH
    t T-RES LAYOUT-PARAM? IF  t idx cells LOCTV + !  EXIT THEN
    t idx cells LOCTV + @ UNIFY OK @ and OK ! ;
 
-: LOC-ANN ( ptr u8 n n n -- ) {: a:ptr u:n col:n idx:n :}
-   a u col LOC-SUFFIX$ LOC-SHOW-SUFFIX? if
-      idx LOC-SHOW-ON!
-      exit
-   then
-   a u col LOC-SUFFIX$ LOCAL-TYPE idx LOC-TYPE-SET ;
-
 : LOC-DECL-TERM ( n -- n ) {: t:n :}
    t HIDDEN-PARAM? IF t MK-LOGICAL ELSE t THEN ;
 
@@ -17601,13 +17593,23 @@ CHECKER-REG:}SCRATCH
    CHECKER-TAPE:K-LOCAL-DECL LOCSEQ @ 0 EVENT!
    LOCSEQ @ 1 + LOCSEQ ! ;
 
+\ Opens the local the raw name spells, of type term T.
+: LOC-ADD-TERM ( ptr u8 n n -- ) {: a:ptr u:n t:n :}
+   a u LOC-OPEN
+   t LOC-ANN-TERM #LOC @ LOC-TYPE-SET
+   #LOC @ 1 + #LOC ! ;
+
+\ An annotated local's type is read before its slot opens.
 : LOC-ADD ( ptr u8 ptr u8 n -- )   \ raw declaration, folded declaration, their shared length
    {: ra:ptr a:ptr u:n :}
    a u LCOLON {: col:n :}
-   ra col LOC-OPEN
    col u < IF
-      ra u col #LOC @ LOC-ANN
+      ra u col LOC-SUFFIX$ LOC-SHOW-SUFFIX? 0= IF
+         ra col  ra u col LOC-SUFFIX$ LOCAL-TYPE  LOC-ADD-TERM EXIT
+      THEN
    THEN
+   ra col LOC-OPEN
+   col u < IF #LOC @ LOC-SHOW-ON! THEN
    #LOC @ 1 + #LOC ! ;
 
 \ Linear values may not launder through locals: a local reference re-pushes its
@@ -17845,13 +17847,16 @@ CHECKER-REG:}SCRATCH
    LOC-SHOW-GROUP
    LIN-LOCAL-BIND-CHECK ;
 
+: LOC-CLOSE ( -- )
+   CHECKER-TAPE:K-LOCAL-CLOSE 0 0 EVENT!  0 LMODE !  LOC-BIND ;
+
 \ `--` and `|` bind as in the load, so a body reference finds them and they
 \ take a local's slot. In a checked body the token has failed, so LOC-BIND
 \ exits on OK 0 and binds no cell to them; an unjudged scan sets OK afresh for
 \ each token, so its LOC-BIND binds them as the runtime does.
 : LOC-TOK
    {: ra a u :}
-   a u s" :}" CORE-STR= IF CHECKER-TAPE:K-LOCAL-CLOSE 0 0 EVENT!  0 LMODE ! LOC-BIND ELSE
+   a u s" :}" CORE-STR= IF LOC-CLOSE ELSE
    ra a u LOC-ADD
    a u s" --" CORE-STR= IF LOCALBAD-DASH LOC-GROUP-REJECT THEN
    a u s" |" CORE-STR= IF LOCALBAD-BAR LOC-GROUP-REJECT THEN THEN ;
@@ -18038,20 +18043,21 @@ SCOPE-INTRO-FENCE-INSTALL
 : QRD-MARK ( n -- ) {: owner:n :}
    #CFC @ owner 1 + ?do owner 2 + i QRD-RAISE loop ;
 
+\ A read of the local in slot LI.
+: LOC-REF-AT ( n -- ) {: li:n :}
+   QDEPTH @ 0 >  BWIN-UNJUDGED @ 0 <>  and IF LOC-REJECT EXIT THEN
+   QDEPTH @ 0 > IF li LOC-OWNER QRD-MARK THEN
+   CHECKER-TAPE:K-LOCAL-REF  li cells LOCSEQIX + @  0 EVENT!
+   li LOC-PUSH-REF ;
+
 : LOC-REF?
    {: a u :}
    0 LRF !  #LOC @ LI !
    BEGIN LI @ 0 >  LRF @ 0=  and WHILE
      LI @ 1 - LI !
      a u  LI @ LOC-NAME$  CORE-STR= IF
-       QDEPTH @ 0 >  BWIN-UNJUDGED @ 0 <>  and IF
-          LOC-REJECT
-       ELSE
-          QDEPTH @ 0 > IF LI @ LOC-OWNER QRD-MARK THEN
-          CHECKER-TAPE:K-LOCAL-REF  LI @ cells LOCSEQIX + @  0 EVENT!
-          LI @ LOC-PUSH-REF
-       THEN
-       -1 LRF ! THEN
+       LI @ LOC-REF-AT  -1 LRF !
+     THEN
    REPEAT  LRF @ ;
 
 : CF@DED ( -- n )

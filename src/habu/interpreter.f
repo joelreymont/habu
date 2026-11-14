@@ -1264,7 +1264,7 @@ DYNAMIC-BUFFER ITEM-CELLS n
 : ITEMS-RESET ( -- )
    0 BODY-ITEMS:BASE-CELL CELL!  0 BODY-ITEMS:CAP-CELL CELL!
    0 BODY-ITEMS:COUNT-CELL CELL!  0 BODY-ITEMS:RAW-CELL CELL!
-   0 BODY-ITEMS:EFFECT-CELL CELL! ;
+   0 BODY-ITEMS:EFFECT-CELL CELL!  0 BODY-ITEMS:LOCALS-CELL CELL! ;
 
 : ITEM@ ( n n -- n ) {: i:n f:n :}
    i BODY-ITEMS:ROW * f + ITEM-CELLS @ ;
@@ -2027,9 +2027,9 @@ CAST: QUOT-ENTRY ( [ R -- S ] -- n )
    s" compile," BUILT-PENDING QUOT-ENTRY COMPILE-CALL ;
 
 \ A cell's decimal spelling, written from the end of LIT-DIGITS: 20 bytes
-\ hold any i64 and its sign. `/` truncates, so a negative value's remainders
-\ are at most 0.
-20 BUFFER: LIT-DIGITS
+\ hold any i64 and its sign, and one more a local's `l`. `/` truncates, so a
+\ negative value's remainders are at most 0.
+21 BUFFER: LIT-DIGITS
 variable LIT-AT
 
 : LIT-DIGIT ( n -- ) {: c:n :}
@@ -2040,11 +2040,16 @@ variable LIT-AT
    v v 10 / 10 * - {: r:n :}
    r 0 < if 0 r - else r then ;
 
+: LIT-SPAN ( -- ptr u8 n ) LIT-DIGITS LIT-AT @ +  21 LIT-AT @ - ;
+
 : LIT$ ( n -- ptr u8 n ) {: v:n :}
-   20 LIT-AT !
+   21 LIT-AT !
    v begin dup LIT-REM 48 + LIT-DIGIT  10 / dup 0= until drop
    v 0 < if 45 LIT-DIGIT then
-   LIT-DIGITS LIT-AT @ +  20 LIT-AT @ - ;
+   LIT-SPAN ;
+
+\ A local's spelling in the listing: `l` and its index.
+: LOCAL$ ( n -- ptr u8 n ) LIT$ 2drop  108 LIT-DIGIT  LIT-SPAN ;
 
 \ What `literal` runs: an INT item, spelled in decimal.
 : LITERAL-RUN ( n -- ) {: v:n :}
@@ -2061,13 +2066,21 @@ variable LIT-AT
    s" an item op ITEM-ABI does not name" ERROR-TEXT:TYPE
    NL 1 ERROR-TEXT:TYPE  RC-REJECT throw ;
 
+\ Appends a local of type node T, whose index is the LOCAL items before it.
+: LOCAL-ITEM ( n -- ) {: t:n :}
+   BODY-ITEMS:LOCALS-CELL CELL@ {: i:n :}
+   BODY-ITEM-KIND:LOCAL t i i LOCAL$ ITEM+
+   i 1 + BODY-ITEMS:LOCALS-CELL CELL! ;
+
 \ What a definer's item runs: the ITEM-ABI op OP with spelling A U and
-\ argument V, a TYPE's schema node.
+\ argument V, a TYPE's or a LOCAL's schema node or a LOCAL-REF's index.
 : ITEM-RUN ( ptr u8 n n n -- ) {: a:ptr u:n v:n op:n :}
    a u BUILT-PENDING
    op ITEM-ABI:KEYWORD = if BODY-ITEM-KIND:KEYWORD 0 0 a u ITEM+ exit then
    op ITEM-ABI:OPERAND = if BODY-ITEM-KIND:OPERAND 0 0 a u ITEM+ exit then
    op ITEM-ABI:TYPE = if BODY-ITEM-KIND:TYPE v 0 a u ITEM+ exit then
+   op ITEM-ABI:LOCAL = if v LOCAL-ITEM exit then
+   op ITEM-ABI:LOCAL-REF = if BODY-ITEM-KIND:LOCAL-REF v 0 v LOCAL$ ITEM+ exit then
    op ITEM-ABI:CALL = if a u  a u FIND  FOUND-CALL exit then
    op ITEM-ABI:CALL-EXACT = if a u  a u XREF-FIND  FOUND-CALL exit then
    ITEM-OP-REFUSE ;

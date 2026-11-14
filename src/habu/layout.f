@@ -718,6 +718,7 @@ $4348 constant CAP-CELL      \ the capacity in rows
 $4350 constant COUNT-CELL    \ the rows held
 $4358 constant RAW-CELL      \ nonzero once text no item spans joined the capture
 $4360 constant EFFECT-CELL   \ the effect's schema node, read for the signature
+$4368 constant LOCALS-CELL   \ the LOCAL items so far: the next one's index
 5 constant ROW               \ cells per row
 0 constant KIND
 1 constant A
@@ -731,6 +732,7 @@ $4360 constant EFFECT-CELL   \ the effect's schema node, read for the signature
 \ signature with its parentheses; CALL's a is a record index; INT's a is the
 \ value; TYPE's a is the schema node of the family `match` or `construct`
 \ takes. A KEYWORD or OPERAND item is its spelling alone.
+\ LOCAL's a is the local's type node and b its index; LOCAL-REF's a is that index.
 package BODY-ITEM-KIND
 public
 1 constant NAME
@@ -740,12 +742,15 @@ public
 5 constant KEYWORD
 6 constant TYPE
 7 constant OPERAND
+8 constant LOCAL
+9 constant LOCAL-REF
 ;package
 
 \ The ops of an item PROVIDED-XT:ITEM-CELL appends. KEYWORD, OPERAND and TYPE
 \ append the item of their kind. CALL appends a call of the word the name binds
 \ where the definer runs; CALL-EXACT one of the word the name spells exactly, a
 \ `PKG:TAIL` the top-level package's public one, which no part can shadow.
+\ LOCAL appends a local of a type node, LOCAL-REF a read of a local's index.
 package ITEM-ABI
 public
 0 constant KEYWORD
@@ -753,6 +758,8 @@ public
 2 constant TYPE
 3 constant CALL
 4 constant CALL-EXACT
+5 constant LOCAL
+6 constant LOCAL-REF
 ;package
 \ The latest `,` run of a created body.
 CREATED-BODY-ABI:COMMA-RUN-CELL constant COMMA-RUN-CELL

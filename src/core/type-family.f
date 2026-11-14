@@ -4320,6 +4320,13 @@ public
    owner node SCHEMA-QUOT-DIN@ base EFFECT-SIDE
    owner node SCHEMA-QUOT-DOUT@ base EFFECT-SIDE ;
 
+\ The term type node NODE gives, its parameters the effect's variables, as
+\ EFFECT-ROWS gives a side's type.
+: EFFECT-TYPE ( n -- n ) {: node:n :}
+   node PARAM-SPAN EFFECT-OWNER {: owner:n :}
+   node EFFECT-KINDS
+   owner node SCHEMA-TERM-FOR ;
+
 private
 
 \ A layout value's members for checker.f's CAST: walks (CAST-INTRO? and
