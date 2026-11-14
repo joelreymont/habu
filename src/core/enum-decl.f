@@ -41,10 +41,8 @@ ED-RESET
    TYPE-NAME:FAMILY-RESERVED? IF s" reserved name" E-NAME DECL-REJECT:REJECT throw THEN ;
 
 \ Payload types: n/f/r and con names, letter params within arity, ptr T, and
-\ closed arity-0 layout or cell families; anything else is unresolved. Mirrors
-\ structure-decl.f's resolver without type applications. A family owning a linear
-\ value is accepted, owned by containment as in structure-decl.f; TK-EVIDENCE
-\ falls through to "unknown payload type" because no source can declare it.
+\ closed arity-0 layout or cell families but one UNSTORED-REASON names, a linear
+\ owner included; anything else, TK-EVIDENCE among them, is unresolved.
 : FIELD-FAM? ( ptr u8 n -- n bool )
    TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE 0= IF drop 0 NO EXIT THEN
    {: id:n :}
