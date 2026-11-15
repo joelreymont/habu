@@ -11,6 +11,7 @@ require src/habu/layout.f
 require src/habu/xref.f
 require src/compiler/workspace.f
 require src/core/checker.f
+require src/core/check-walk.f
 require src/core/check-hook.f
 require src/compiler/native/checker-owner.f
 require src/compiler/native/dict.f
@@ -132,7 +133,7 @@ private
    a M-SCAN !
    CHECKER-OWNER:RESET-REPORT
    TRUSTED? if -1 CHECKER-OWNER:BIND-REGIME!
-      a u CHECKER-OWNER:CHECK-UNJUDGED exit then
+      a u CHECK-UNJUDGED! exit then
    0 CHECKER-OWNER:BIND-REGIME!
    a u CHECK:DEFINITION ;
 
@@ -203,11 +204,8 @@ private
 
 public
 
-\ Under a recovering reader a definition the checker refused, or any
-\ definition, trusted or not, whose body or does> clause bound a refused
-\ declaration's recovery row, is counted and abandoned unpublished:
-\ E-COMP-RECOVERY ends it without a second report. So is a TRUSTED: definition
-\ whose declared row the checker refused, reported and counted (SIG-REFUSED?).
+\ A recovering reader takes E-COMP-RECOVERY for a refused or uncheckable body
+\ without does>, a recovery-row binding, or a TRUSTED: row refused and counted.
 : VERDICT-CK ( -- )
    TRUSTED? 0= if M-VERDICT @ -1 <> if
       M-DOES @ 0= M-VERDICT @ 0 = M-VERDICT @ 1 = or and if
@@ -218,7 +216,7 @@ public
    RECOVERING? if
       CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? M-HEAD-RECOVERY @ or
       if E-COMP-RECOVERY throw then
-      TRUSTED? if CHECKER-OWNER:SIG-REFUSED? if E-COMP-RECOVERY throw then then
+      TRUSTED? if SIG-COUNTED? if E-COMP-RECOVERY throw then then
    then ;
 
 private
@@ -304,7 +302,7 @@ public
 private
 
 \ Drops a refused definition's rows from M-ROWS on, or its does> frame, so a
-\ redefinition is no duplicate (exact cut: checker.f CHECKER-RETRACT-ROWS).
+\ redefinition is no duplicate.
 : RETRACT ( -- )
    M-DOES @ 0<> if
       M-DOES-FRAME @ 0<> if
@@ -313,7 +311,7 @@ private
       then
       exit
    then
-   M-ROWS @ CHECKER-OWNER:RETRACT-ROWS ;
+   M-ROWS @ CHECKER-RETRACT-ROWS ;
 
 SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL FILE-PATH
 SRCLOC:INB-CELL RESERVED-PTR-U8-CELL INPUT-START
@@ -430,8 +428,8 @@ private
 \ closing `;` (CLOSE$) for one past the body's end; and whether it is undefined.
 : CHECKER-REFUSED$ ( -- ptr u8 n ptr u8 bool )
    M-SCAN @ NULL-PTR = if NULL-PTR 0 NULL-PTR false exit then
-   CHECKER-OWNER:ERROR-TOKEN
-   CHECKER-OWNER:REFUSED-SPAN nip {: b:n undefined:bool :}
+   PIN-TOKEN
+   PIN-SPAN nip {: b:n undefined:bool :}
    M-SCAN @ b + {: p:ptr :}
    SRC$ + p - 0= if CLOSE$ drop else p then  undefined ;
 
@@ -494,7 +492,7 @@ public
       RETRACT RC-REJECT throw
    then
    rc 0 <> if
-      rc RC-REJECT <> CHECKER-OWNER:JSON-REPORTED? 0= or
+      rc RC-REJECT <> CHECKER-JSON-REPORTED? 0= or
       if a u p rc REPORT-REFUSAL then
       RETRACT rc throw
    then ;
@@ -505,7 +503,7 @@ public
    sa M-SRC ! su M-SRC-U !
    NULL-PTR M-SCAN !
    0 M-VERDICT !
-   CHECKER-OWNER:ROWS-END M-ROWS !
+   CHECKER-ROWS-END M-ROWS !
    0 M-DOES-FRAME !
    DOES-BYTE@ M-DOES !
    DOES-SIG-FIELD @ M-DOES-SIG !

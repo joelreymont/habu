@@ -767,17 +767,9 @@ CHECKER-OWNER-ABI:PUBLIC-OFF constant PUBLIC-OFF
 CHECKER-OWNER-ABI:PRIVATE-OFF constant PRIVATE-OFF
 CHECKER-OWNER-ABI:END-PACKAGE-OFF constant END-PACKAGE-OFF
 CHECKER-OWNER-ABI:EXPORT-OFF constant EXPORT-OFF
-CHECKER-OWNER-ABI:DOES-CHECK-OFF constant DOES-CHECK-OFF
-CHECKER-OWNER-ABI:CALL-CELLS-OFF constant CALL-CELLS-OFF
-CHECKER-OWNER-ABI:CALL-MATCH-OFF constant CALL-MATCH-OFF
-CHECKER-OWNER-ABI:FIELD-SPAN-OFF constant FIELD-SPAN-OFF
 CHECKER-OWNER-ABI:REC-WIDE-PUBLISH-OFF constant REC-WIDE-PUBLISH-OFF
-\ CHECK-UNJUDGED: the scan whose verdict nobody enforces, with its render
-\ suppressed.
-CHECKER-OWNER-ABI:CHECK-UNJUDGED-OFF constant CHECK-UNJUDGED-OFF
-\ The record's size is derived from the field list above and the cells below
-\ are checked against it: a field without a cell, or a cell without a field,
-\ is a load failure.
+\ One cell per offset through the last field, freed fields included; the load
+\ fails when the cells end anywhere else.
 CHECKER-OWNER-EXT:OWNER-BYTES constant OWNER-BYTES
 \ A record whose header cells lie in its own datum, before the address its name
 \ answers.
@@ -797,12 +789,11 @@ private
    0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
    0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
    0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
-   0 , 0 , 0 , 0 , 0 ,
+   0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here DECLARATIONS - constant OWNER-COMMITTED
-OWNER-BYTES constant OWNER-CELLS-BYTES
 : OWNER-SIZE-AGREE ( -- )
-   OWNER-COMMITTED OWNER-CELLS-BYTES <> if
+   OWNER-COMMITTED OWNER-BYTES <> if
       s" checker: declaration-owner field list and record size disagree" 76 die then ;
 OWNER-SIZE-AGREE
 DECLARATIONS data-base NCOMP-DISPATCH:TARGET-DECL-CELL + 0 ptr-field ptr-cell!
@@ -9483,7 +9474,6 @@ variable EC-RVN
 create EC-AK EI-AK-CAP cells allot
 variable EC-AKN
 PTR-VARIABLE FEP
-PTR-VARIABLE TOK-EFF
 variable FEP-OFF
 variable CHECKER-REC-SYM
 CHECKER-REG:}SCRATCH
@@ -11431,7 +11421,6 @@ CHECKER-REG:}SCRATCH
    REPEAT drop ;
 
 : EFF-APPLY ( ptr u8 -- ) {: h:ptr :}
-   h TOK-EFF !
    0 CALL-HIT !
    DCUR @ {: pd:n :}  RCUR @ {: pr:n :}
    SCOPE-N @ {: scope-start:n :}
@@ -13558,11 +13547,10 @@ package CHECKER-REG
    THEN
    CHECKER-USIGS-TRUNCATE-FROM-RAW ;
 
-\ A cut that takes the record the live window names (CK-CLOSED-OFF, offset+1)
-\ ends the window, since a hand CHECK! at the same offset would otherwise
-\ reopen it.
 : CHECKER-ROWS-END ( -- n ) UEND @ ;
 
+\ Cuts the store back to MARK. A cut that takes the record the live window names
+\ (CK-CLOSED-OFF, offset+1) ends it; a CHECK! at that offset would reopen it.
 : CHECKER-RETRACT-ROWS ( n -- )
    {: mark:n :}
    mark UEND @ < IF
@@ -13685,8 +13673,7 @@ variable PARSE-COMPLETE
 16 constant BWIN-INIT
 $7FFFFFFFFFFFFFFF CHECKER-OWNER-ABI:BOUND-CELLS cells / constant BWIN-MAX
 PTR-VARIABLE BWIN-P
-variable BWIN-N   variable BWIN-CAP   variable BWIN-VALID   variable UWIN-VALID
-variable BWIN-EPOCH
+variable BWIN-N   variable BWIN-CAP   variable UWIN-VALID
 
 : BIND-ROW-GLUE ( n -- n )
    {: row:n :}
@@ -13719,7 +13706,7 @@ variable BWIN-EPOCH
    BWIN-P @ BYTE-VIEW i CHECKER-OWNER-ABI:BOUND-CELLS * f + cells + CELL-VIEW ;
 
 : BWIN-RESET ( -- )
-   0 BWIN-N !  0 BWIN-VALID !  0 UWIN-VALID !  0 BWIN-HIT ! ;
+   0 BWIN-N !  0 UWIN-VALID !  0 BWIN-HIT ! ;
 
 : BWIN-RELEASE ( -- )
    BWIN-CAP @ 0= 0= IF
@@ -13746,13 +13733,12 @@ variable BWIN-EPOCH
    cap CHECKER-OWNER-ABI:BOUND-CELLS * cells REG-GROW1
    cap BWIN-CAP ! ;
 
+\ Only an unjudged scan's rows are ever read, so a judged scan records none.
 : BWIN-COMMIT ( -- )
    REC-ON @ 0= BWIN-HIT @ 0= or IF EXIT THEN
-   BWIN-UNJUDGED @ 0= TOK-EFF @ NULL-PTR = and TOK-SYM @ 0= 0= and IF
-      TOK-SYM @ FIND-SIG-SYM IF FEP @ TOK-EFF ! THEN
-   THEN
    0 BWIN-HIT !
-   BWIN-UNJUDGED @ IF TOK-ABI-EFF ELSE TOK-EFF THEN @ {: eff:ptr :}
+   BWIN-UNJUDGED @ 0= IF EXIT THEN
+   TOK-ABI-EFF @ {: eff:ptr :}
    BWIN-ENSURE
    BWIN-N @ {: i:n :}
    REC-IX @ i CHECKER-OWNER-ABI:BOUND-ORD BWIN-AT !
@@ -13823,19 +13809,9 @@ variable BWIN-EPOCH
    THEN
    NULL-PTR 0 ;
 
-: REC-CALL-BINDING ( n -- ptr u8 n )
-   BWIN-VALID @ 0= IF CHECKER-OWNER-ABI:BINDING-RC throw THEN
-   REC-BINDING-ROW ;
-
 : REC-UNJUDGED-BINDING ( n -- ptr u8 n )
    UWIN-VALID @ 0= IF CHECKER-OWNER-ABI:BINDING-RC throw THEN
    REC-BINDING-ROW ;
-
-\ Whether REC-UNJUDGED-BINDING answers: the last unjudged scan closed every
-\ construct it opened.
-: UNJUDGED-CLOSED? ( -- bool ) UWIN-VALID @ 0 <> ;
-
-: REC-BINDING-WINDOW ( -- n ) BWIN-EPOCH @ ;
 
 : REC-STEP ( -- )
    REC-ON @ 0= IF EXIT THEN
@@ -20938,7 +20914,7 @@ variable POST-A0
 : DO-TOK-HEAD ( ptr u8 n -- bool bool n n n )
    {: a:ptr u:n :}
    0 CALL-HIT !  0 TOK-DONE !  0 BWIN-HIT !
-   NULL-PTR TOK-EFF !  NULL-PTR TOK-ABI-EFF !  0 TOK-ABI-DONE !
+   NULL-PTR TOK-ABI-EFF !  0 TOK-ABI-DONE !
    a TOK-SPELL-A !  u TOK-SPELL-U !  0 CREFUSE !  0 CRTGT !
    0 CUSING !  -1 USING-HOLD !
    a u TOKFOLD drop
@@ -21570,9 +21546,6 @@ CHECKER-REG:}SCRATCH
 : CHECK-RESET {: a u :}
    WRITE-WINDOW-CK
    a u TORDER-SCAN!
-   BWIN-EPOCH @ 1+ dup 0= IF
-      s" checker: binding window serial overflow" 76 die THEN
-   BWIN-EPOCH !
    a u BYTE-SPAN? 0= IF s" checker: token buffer too large" 76 die THEN
    RES-FALSE CHECKER-EFFECT-AUTHORITY:RECOVERY-USED!
    0 SIG-COUNTED !

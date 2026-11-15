@@ -29,8 +29,8 @@ TRUSTED: names: ( -- )
    parse-name CHECKER-NAMES-ROW ;
 INTRINSIC-NAMES INTRINSIC
 
-\ The checked call-window store. checker.f reads its call facts through its own
-\ readers (the owner record's CALL-*-OFF rows); this package only installs it.
+\ The checked call-window store, which checker.f reads through CWIN-STATE;
+\ this package only installs it.
 package CHECKER-CALLS
 
 PTR-VARIABLE STATE  variable STATE-N  variable STATE-CAP
