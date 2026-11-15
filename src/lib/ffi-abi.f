@@ -1047,8 +1047,6 @@ private
 3 constant C-ABI-R
 4 constant C-STRUCT
 
--1 constant NO-EXT
-
 LIBRARY-PATH-CAP 1 - CODEGEN:BUFFER LIB-NAME
 
 \ One declaration's working state: a declaration word writes each cell before
@@ -1068,8 +1066,7 @@ variable BASE-U
 create ARG-KIND ARG-MAX cells allot
 create ARG-WIDTH ARG-MAX cells allot          \ each input's C width in bytes
 create ARG-REG ARG-MAX cells allot
-create ARG-EXT ARG-MAX cells allot
-create ARG-EXT-ARG ARG-MAX cells allot
+ARG-MAX TYPED-BUFFER ARG-WRITTEN bool         \ true once WRITES-BYTES or WRITES-ARG names it
 create ARG-SBYTES ARG-MAX cells allot         \ STRUCT-ARG's record width; 0 when none
 create ARG-PAY ARG-MAX cells allot            \ planned: a large record's first copy cell
 create ARG-TEXT ARG-MAX TOK-CAP * allot       \ each input's type as DECLARED-EFFECT reads it
@@ -1083,7 +1080,7 @@ create RES-TEXT TOK-CAP allot              \ the result's type as DECLARED-EFFEC
 variable RES-TEXT-U
 variable CUR-LIB
 CUR-LIB ROLLBACK-CELLS:MARK
-variable OPEN                              \ 0 closed, else 1 + the open declaration's clauses
+TYPED-VARIABLE OPEN bool                   \ true while a declaration is open
 variable SCOPE-WID                         \ the wordlist LIBRARY/PROCESS-SYMBOLS was stated in
 variable SCOPE-SET
 SCOPE-WID scratch-cell-mark  SCOPE-SET scratch-cell-mark
@@ -1103,8 +1100,8 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
    ARG-MAX TOK-CAP * 0 ?do 0 ARG-TEXT i + c! loop
    ARG-MAX 0 ?do
       0 ARG-KIND i cells + ! 0 ARG-WIDTH i cells + !
-      0 ARG-REG i cells + ! 0 ARG-EXT i cells + !
-      0 ARG-EXT-ARG i cells + ! 0 ARG-SBYTES i cells + ! 0 ARG-PAY i cells + !
+      0 ARG-REG i cells + ! false i ARG-WRITTEN !
+      0 ARG-SBYTES i cells + ! 0 ARG-PAY i cells + !
       0 ARG-TEXT-U i cells + !
    loop
    0 ARG-N ! 0 RES-KIND ! 0 RES-NULLABLE !
@@ -1220,10 +1217,6 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
    {: i:n :}
    ARG-WIDTH i cells + @ ;
 : ARG-REG@ ( n -- n ) {: i:n :} ARG-REG i cells + @ ;
-: ARG-EXT@ ( n -- n ) {: i:n :} ARG-EXT i cells + @ ;
-: ARG-EXT-ARG@ ( n -- n ) {: i:n :} ARG-EXT-ARG i cells + @ ;
-: ARG-EXT! ( n n -- ) {: v:n i:n :} v ARG-EXT i cells + ! ;
-: ARG-EXT-ARG! ( n n -- ) {: v:n i:n :} v ARG-EXT-ARG i cells + ! ;
 : ARG-SBYTES@ ( n -- n ) {: i:n :} ARG-SBYTES i cells + @ ;
 : ARG-SBYTES! ( n n -- ) {: v:n i:n :} v ARG-SBYTES i cells + ! ;
 : ARG-PAY@ ( n -- n ) {: i:n :} ARG-PAY i cells + @ ;
@@ -1267,8 +1260,7 @@ private
    ARG-N @ ARG-MAX >= if INPUTS-FULL then
    kind ARG-KIND ARG-N @ cells + !
    width ARG-WIDTH ARG-N @ cells + !
-   NO-EXT ARG-N @ ARG-EXT!
-   NO-EXT ARG-N @ ARG-EXT-ARG!
+   false ARG-N @ ARG-WRITTEN !
    0 ARG-N @ ARG-SBYTES!
    ARG-N @ 1 + ARG-N ! ;
 
@@ -1760,7 +1752,7 @@ public
 \ is built, so a refused declaration leaves no half-built word.
 : OPEN-FUNCTION ( -- )
    [: CHECK-SCOPE
-      OPEN @ 0 <> if
+      OPEN @ if
          s" FUNCTION: inside an open declaration"
          s" end the declaration before it with ;FUNCTION"
          SYNTAX-REJECT
@@ -1770,7 +1762,7 @@ public
       TOK@ NAME!
       TOK@ SYM!
       EFFECT
-      1 OPEN ! ;] KEEP-REST ;
+      true OPEN ! ;] KEEP-REST ;
 
 : CLOSE-FUNCTION ( -- )
    [: OPEN @ 0= if
@@ -1778,7 +1770,7 @@ public
          s" open one with FUNCTION: NAME symbol ( inputs -- output )"
          SYNTAX-REJECT
       then
-      0 OPEN !
+      false OPEN !
       PLAN-CALL
       EMIT ;] KEEP-REST ;
 
@@ -1788,7 +1780,7 @@ private
 \ the next FUNCTION: in the file would otherwise refuse too, and the first
 \ diagnostic would name the wrong declaration.
 : REJECT ( ptr u8 n ptr u8 n -- )
-   0 OPEN !
+   false OPEN !
    SYNTAX-REJECT ;
 
 : NOT-OPEN ( -- )
@@ -1826,8 +1818,7 @@ private
    OPEN @ 0= if NOT-OPEN then
    idx 0 < idx ARG-N @ >= or if NO-INPUT then
    idx ARG-KIND@ K-POINTER <> if NOT-SPAN then
-   idx ARG-EXT@ NO-EXT <> if TAKEN then
-   idx ARG-EXT-ARG@ NO-EXT <> if TAKEN then
+   idx ARG-WRITTEN @ if TAKEN then
    idx ARG-SBYTES@ 0 <> if TAKEN then
    STRUCT-BYTES @ 0 <> idx ARG-N @ 1- = and if DEST-TAKEN then ;
 
@@ -1852,11 +1843,8 @@ private
    ARG-N @ fixed ?do
       i ARG-KIND@ K-FLOAT32 = if VARIADIC-F32 then
    loop
-   fixed VAR-START !
-   1 OPEN +! ;
+   fixed VAR-START ! ;
 
-\ Argument idx is written by the callee over the span named here, a fixed width
-\ or the argument that carries the length.
 : EXTENT-CLAUSE ( n n -- ) {: idx:n len:n :}
    idx CLAUSE-TARGET
    len 0 <= if
@@ -1864,8 +1852,7 @@ private
       s" write idx n WRITES-BYTES with n the bytes C writes, at least 1"
       REJECT
    then
-   len idx ARG-EXT!
-   1 OPEN +! ;
+   true idx ARG-WRITTEN ! ;
 
 : LENGTH-CLAUSE ( n n -- ) {: idx:n src:n :}
    idx CLAUSE-TARGET
@@ -1878,8 +1865,7 @@ private
       s" WRITES-ARG's length input is not an integer"
       s" name an n input that holds the byte count" REJECT
    then
-   src idx ARG-EXT-ARG!
-   1 OPEN +! ;
+   true idx ARG-WRITTEN ! ;
 
 : RESULT-CHECK ( n -- ) {: bytes:n :}
    STRUCT-BYTES @ 0 <> if
@@ -1904,8 +1890,7 @@ private
       s" declare the record's address as the last input, a ptr u8" REJECT
    then
    ARG-N @ 1- CLAUSE-TARGET
-   bytes STRUCT-BYTES !
-   1 OPEN +! ;
+   bytes STRUCT-BYTES ! ;
 
 \ The struct call returns x0 and x1 only, so a float result has no shape here.
 : STRUCT-ARG-CLAUSE ( n n -- ) {: idx:n bytes:n :}
@@ -1921,8 +1906,7 @@ private
       s" STRUCT-ARG with a float result"
       s" the struct call returns x0 and x1: declare an integer result" REJECT
    then
-   bytes idx ARG-SBYTES!
-   1 OPEN +! ;
+   bytes idx ARG-SBYTES! ;
 
 : PATH-WRITTEN ( n -- )
    {: u:n :}

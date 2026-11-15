@@ -233,6 +233,9 @@ CALLBACK: FFI-T-SA-CB ( -- n ) 0 FALLBACK ;CALLBACK
    [: s" FUNCTION: FFI-T-SAX hb_sum8 ( ptr u8 n -- n ) 0 8 STRUCT-ARG 0 1 WRITES-ARG ;FUNCTION"
       evaluate-closed ;]
       s" error[E-FFI-SYNTAX]: a second clause names the same input" FFI-T-SYNTAX
+   [: s" FUNCTION: FFI-T-SAX hb_sum8 ( ptr u8 n -- n ) 0 1 WRITES-ARG 0 8 STRUCT-ARG ;FUNCTION"
+      evaluate-closed ;]
+      s" error[E-FFI-SYNTAX]: a second clause names the same input" FFI-T-SYNTAX
    [: s" FUNCTION: FFI-T-SAX hb_sum8 ( ptr u8 -- ) 16 STRUCT-RESULT 0 8 STRUCT-ARG ;FUNCTION"
       evaluate-closed ;]
       s" error[E-FFI-SYNTAX]: the clause names STRUCT-RESULT's destination, the last input" FFI-T-SYNTAX
