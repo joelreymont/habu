@@ -13,12 +13,11 @@ using XMODEM
 using BUF
 create INPUT HDR-BYTES allot
 create OUTPUT HDR-BYTES allot
-CAST: BLEN>N ( NUM:byte-len -- n )
 
 : INPUT-READ ( ptr u8 n n -- ) {: path size:n capacity:n :}
    INPUT capacity 1 max BYTES INIT
    INPUT SPAN$ drop {: data :}
-   path size data capacity READ-ALL data swap BYTES INPUT REPLACE ;
+   path size data capacity FS:READ-ALL data swap BYTES INPUT REPLACE ;
 '''
 
 
@@ -59,7 +58,7 @@ OUTPUT 8 BYTES INIT
 s" preserved" BYTES OUTPUT REPLACE
 : EXERCISE ( -- )
    [: INPUT SPAN$ {sequence} >SEQUENCE {size} >PAYLOAD-SIZE {kind} >CHECK-KIND OUTPUT ENCODE ;] catch .
-   s" {output}" OUTPUT SPAN$ BLEN>N WRITE-ALL INPUT DISPOSE OUTPUT DISPOSE ;
+   s" {output}" OUTPUT SPAN$ BLEN>N FS:WRITE-ALL INPUT DISPOSE OUTPUT DISPOSE ;
 EXERCISE
 '''
         assert self.run(source) == [str(error)]
@@ -71,7 +70,7 @@ EXERCISE
         source = self.input(data) + f'''
 : SAVE ( ptr u8 NUM:byte-len sequence -- )
    SEQUENCE>N . {{: payload size:NUM:byte-len :}}
-   s" {output}" payload size BLEN>N WRITE-ALL ;
+   s" {output}" payload size BLEN>N FS:WRITE-ALL ;
 
 
 : EXERCISE ( -- )

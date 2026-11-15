@@ -21,12 +21,11 @@ using BUF
 create INPUT HDR-BYTES allot
 create OUTPUT HDR-BYTES allot
 create SESSION SERIAL-XMODEM:SESSION-BYTES allot
-CAST: BLEN>N ( NUM:byte-len -- n )
 
 : INPUT-READ ( ptr u8 n n -- ) {: path size:n capacity:n :}
    INPUT capacity 1 max BYTES INIT
    INPUT SPAN$ drop {: data :}
-   path size data capacity READ-ALL data swap BYTES INPUT REPLACE ;
+   path size data capacity FS:READ-ALL data swap BYTES INPUT REPLACE ;
 
 
 : OPEN-HANDLE ( ptr u8 n -- SERIAL:handle )
@@ -125,7 +124,7 @@ OUTPUT 16 BYTES INIT
    {'handle CLOSE-HANDLE' if close_before else ''}
    s" READY" type cr
    {call} REPORT
-   s" {output}" OUTPUT SPAN$ BLEN>N WRITE-ALL
+   s" {output}" OUTPUT SPAN$ BLEN>N FS:WRITE-ALL
    SESSION SERIAL-XMODEM:DISPOSE {'handle CLOSE-HANDLE' if not close_before else ''}
    INPUT DISPOSE OUTPUT DISPOSE
    AIO:STOP ;
@@ -417,14 +416,15 @@ INPUT SPAN$ 128 BLOCK 5000 >MS SESSION SERIAL-XMODEM:SEND REPORT
 INPUT SPAN$ 128 BLOCK 5000 >MS SESSION SERIAL-XMODEM:SEND
 ''', expected='cancelled completed 7')
 
-    def native(self, body, *, refused=False):
+    def native(self, body, *, rejected=None):
         path = self.out / 'validation.f'
         path.write_text(SETUP + body + '\n;package\n')
         result = subprocess.run([str(ROOT / 'bin/hb'), '--load', 'src/lib/serial-xmodem.f', str(path)],
                                 cwd=ROOT, input='', text=True, capture_output=True, timeout=15)
-        assert result.returncode == (70 if refused else 0), (result.stdout, result.stderr)
-        if refused:
-            assert 'non-certified' in result.stderr, result.stderr
+        assert result.returncode == (70 if rejected else 0), (result.stdout, result.stderr)
+        if rejected:
+            lines = [line.strip() for line in result.stderr.splitlines()]
+            assert lines[0] == rejected[0] and '= help: ' + rejected[1] in lines, result.stderr
         self.count += 1
         return result.stdout.split()
 
@@ -440,10 +440,19 @@ INPUT SPAN$ 128 BLOCK 5000 >MS SESSION SERIAL-XMODEM:SEND
 RUN
 '''
             assert self.native(code) == ['-9122']
-        for effect in ['SERIAL:baud -- XMODEM:payload-size',
-                       'XMODEM:sequence -- XMODEM:payload-size',
-                       'SERIAL-XMODEM:transfer-result -- SERIAL:io-result']:
-            self.native(f': BAD ( {effect} ) ;\n', refused=True)
+        for effect, first, help in [
+            ('SERIAL:baud -- XMODEM:payload-size',
+             'error[E-MISMATCH]: BAD ends with serial:baud on the stack; its signature promises xmodem:payload-size',
+             'leave xmodem:payload-size in the body, or declare ( serial:baud -- serial:baud )'),
+            ('XMODEM:sequence -- XMODEM:payload-size',
+             'error[E-MISMATCH]: BAD ends with xmodem:sequence on the stack; its signature promises xmodem:payload-size',
+             'leave xmodem:payload-size in the body, or declare ( xmodem:sequence -- xmodem:sequence )'),
+            ('SERIAL-XMODEM:transfer-result -- SERIAL:io-result',
+             'error[E-MISMATCH]: BAD ends with serial-xmodem:transfer-result on the stack; '
+             'its signature promises serial:io-result',
+             'leave serial:io-result in the body, or declare '
+             '( serial-xmodem:transfer-result -- serial-xmodem:transfer-result )')]:
+            self.native(f': BAD ( {effect} ) ;\n', rejected=(first, help))
 
     def concurrent(self):
         terminals = [os.openpty(), os.openpty()]
