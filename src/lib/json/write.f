@@ -10,6 +10,7 @@ require src/lib/error.f
 require src/lib/string.f
 require src/lib/byte-buffer.f
 require src/lib/utf8-scalar.f
+require src/lib/utf16.f
 
 package JSON
 
@@ -66,11 +67,6 @@ private
 117 constant JW-U-C              \ the u of \uXXXX
 $7F constant JW-DEL
 $FFFF constant JW-BMP-LAST       \ the last scalar one UTF-16 unit holds
-$10000 constant JW-PAIR-BASE
-$D800 constant JW-HIGH-FIRST
-$DC00 constant JW-LOW-FIRST
-10 constant JW-LOW-BITS
-$3FF constant JW-LOW-MASK
 
 create JW-KEY-SEP JW-COLON-C c, JW-SP c,   \ each separator is a prefix of it
 
@@ -425,9 +421,9 @@ private
    0 0 begin dup u < while a u JW-ASCII-N-STEP repeat drop ;
 
 : JW-PAIR ( SPAN:span<u8> n n -- n ) {: s at:n c:n :}
-   c JW-PAIR-BASE - {: v:n :}
-   s at v JW-LOW-BITS rshift JW-HIGH-FIRST + JW-U4 {: mid:n :}
-   s mid v JW-LOW-MASK and JW-LOW-FIRST + JW-U4 ;
+   c UTF16:SCALAR>PAIR {: high:n low:n :}
+   s at high JW-U4 {: mid:n :}
+   s mid low JW-U4 ;
 
 \ Write scalar c at at in ASCII mode; answer the offset after it.
 : JW-ASCII-ESC ( SPAN:span<u8> n n -- n ) {: s at:n c:n :}

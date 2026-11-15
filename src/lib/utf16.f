@@ -73,6 +73,16 @@ public
    0 0 begin over unit < over u < and while a u STEP repeat
    nip ;
 
+\ The scalar a high and a low surrogate encode; the caller checks their ranges.
+: PAIR>SCALAR ( n n -- n )
+   {: high:n low:n :}
+   high HIGH-FIRST - PAIR-SHIFT lshift  low LOW-FIRST - or  PAIR-FIRST + ;
+
+\ The high and low surrogates of a scalar the caller knows is above U+FFFF.
+: SCALAR>PAIR ( n -- n n )
+   PAIR-FIRST - {: bits:n :}
+   bits PAIR-SHIFT rshift HIGH-FIRST +  bits PAIR-MASK and LOW-FIRST + ;
+
 private
 
 : HIGH? ( n -- bool )
@@ -82,10 +92,6 @@ private
 : LOW? ( n -- bool )
    {: unit:n :}
    unit LOW-FIRST >= unit LOW-END < and ;
-
-: PAIR>SCALAR ( n n -- n )
-   {: high:n low:n :}
-   high HIGH-FIRST - PAIR-SHIFT lshift  low LOW-FIRST - or  PAIR-FIRST + ;
 
 
 \ A lead byte holding the scalar's high bits, then TAIL continuation bytes of
@@ -133,9 +139,8 @@ private
 : APPEND-SCALAR-LE ( n ptr a -- )
    {: scalar:n buf:ptr :}
    scalar PAIR-FIRST < if scalar buf APPEND-UNIT exit then
-   scalar PAIR-FIRST - {: bits:n :}
-   bits PAIR-SHIFT rshift HIGH-FIRST + buf APPEND-UNIT
-   bits PAIR-MASK and LOW-FIRST + buf APPEND-UNIT ;
+   scalar SCALAR>PAIR {: high:n low:n :}
+   high buf APPEND-UNIT  low buf APPEND-UNIT ;
 
 
 : ENCODE-STEP ( n ptr u8 n ptr a -- n )
