@@ -273,23 +273,15 @@ PTR-VARIABLE COMPOSE-PEND-PATH-A
 variable COMPOSE-PEND-PATH-U
 variable COMPOSE-REQ0
 
-\ A quiet composition and the load fault it stopped at: the loader token's
-\ length, 0 when no loader stopped it, and the file it could not read, empty
-\ for none.
+\ A quiet composition and the file its load fault could not read, empty for
+\ none.
 TYPED-VARIABLE QUIET bool
-variable FAULT-LEN
 create FAULT-TARGET PATH-CAP allot
 variable FAULT-U
 
 : FAULT-TARGET! ( ^u8 n -- ) {: a:^ u:n :}
    a FAULT-TARGET u BYTE-COPY
    u FAULT-U ! ;
-
-\ Whether a stop with code n is the rejection of a missing source
-\ (COMPOSE-MISSING) or of one that will not open or read (COMPOSE-UNREADABLE,
-\ COMPOSE-CHANGED, REFUSE-SOURCE-READ), whose file FAULT-TARGET$ names.
-: LOADER-REJECTED? ( n -- bool ) {: rc:n :}
-   rc CHECKER-REJECT-RC =  rc INCLUDE-IO-RC =  or  FAULT-U @ 0 >  and ;
 
 \ Where the path the quiet composition's load loads is written in the file
 \ being scanned, as the program wrote it.
@@ -418,16 +410,6 @@ variable FLAG-N
    prev TOKEN-START @ SCAN-I @ CSR-HIT
    SOURCE@ TOKEN-START @ +  SCAN-I @ TOKEN-START @ - ;
 
-: STOP-AT ( ^u8 n -- )
-   {: at:^ code:n :}
-   at SOURCE@ - TOKEN-BYTE !
-   code throw ;
-
-\ The scan stops at the statement it is in, at its opener: the top-level token
-\ it read last.
-: STATEMENT-STOP ( n -- )
-   TOP-CUR-A @ swap STOP-AT ;
-
 \ source's end.
 : TOKEN-FROM ( n -- ^u8 n ) {: at:n :}
    SOURCE@ {: s:^ :}
@@ -466,9 +448,7 @@ variable FLAG-N
 \ The source ends inside the statement's definition, named by the token after
 \ its opener.
 : UNCLOSED-STOP ( -- )
-   TOP-CUR-A @ SOURCE@ - {: at:n :}
-   at TOKEN-BYTE !
-   at TOP-CUR-U @ + TOKEN-FROM {: t:^ tu:n :}
+   TOP-CUR-A @ SOURCE@ - TOP-CUR-U @ + TOKEN-FROM {: t:^ tu:n :}
    t tu t tu INTERPRETER:UNCLOSED-REJECT
    CHECKER-REJECT-RC REJECTION:STOP ;
 
@@ -476,14 +456,12 @@ variable FLAG-N
 \ o ou opens another or, with ou 0, when the source ends: the load's record.
 : UNCLOSED-DECL-STOP ( ^u8 n ^u8 n ^u8 n -- )
    {: t:^ tu:n c:^ cu:n o:^ ou:n :}
-   t SOURCE@ - TOKEN-BYTE !
    t tu c cu o ou SOURCE-ROOT:UNCLOSED
    CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ `trust` takes the word's name and signature from the two string literals
 \ before it in its statement.
 : BARE-TRUST-STOP ( -- )
-   TOP-CUR-A @ SOURCE@ - TOKEN-BYTE !
    TOP-CUR-A @ TOP-CUR-U @ {: t:^ tu:n :}
    s" E-VS-BARE-TRUST" REJECTION:OPEN
    96 REJECTION:EMIT1  t tu REJECTION:EMIT-STR
@@ -3292,18 +3270,12 @@ variable LOAD-U
    IF [: 2dup LOAD$ COMPOSE-INCLUDED ;] EXIT THEN
    [: 2dup LOAD$ COMPOSE-REQUIRED ;] ;
 
-\ Run Q, the load a loader word wu bytes long at byte w makes, given the word,
-\ under the word's claim: a fault no loader below claimed stands at the word
-\ when the file is missing, will not open or is not read to its end
-\ (LOADER-REJECTED?). Any other fault, the loader's rejection of its path among
-\ them, keeps the place where it was made.
+\ Run Q, the load a loader word wu bytes long at byte w makes, given the word;
+\ the load's operand span ends with it, on a throw too.
 : CLAIMED-LOAD ( [ ^u8 n -- ^u8 n ] n n -- )
    {: q w:n wu:n :}
    SOURCE@ w + wu q catch  0 LOAD-END !
    {: code:n :}  2drop
-   code LOADER-REJECTED?  FAULT-LEN @ 0=  and IF
-      w TOKEN-BYTE !  wu FAULT-LEN !
-   THEN
    code 0<> IF code throw THEN ;
 
 \ `include PATH` (inc true) or `require PATH` at top level, its word u bytes
@@ -4403,7 +4375,7 @@ public
 : SOURCE-COMPOSE-QUIET-IN-SCOPE ( ^u8 n ^u8 n -- )
    {: src:^ srcu:n path:^ pathu:n :}
    COMPOSE-ON @ 0<> IF s" VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE" COMPOSE-NESTED THEN
-   0 FAULT-LEN !  0 FAULT-U !  0 DISCOVERY-STOPPED !
+   0 FAULT-U !  0 DISCOVERY-STOPPED !
    [: SOURCE-ROOT:CANON-OS ;] [: QUIET-READ ;] SOURCE-INPUT:USE
    true QUIET !
    [: src srcu path pathu SOURCE-COMPOSE-IN-SCOPE ;]
