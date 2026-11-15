@@ -200,10 +200,7 @@ public
 
 private
 
-\ The codes of the owners loaded before this file: sumtype.f's grammar codes,
-\ type-family.f's name and field-record codes, and the declaration
-\ transaction's.  A post-hook checked body cannot name the pre-hook constants
-\ on a from-source build, but a top-level read can.
+\ Reasons for codes whose owners load before EXPLAIN exists.
 s" malformed declaration" E-TDECL-SYNTAX EXPLAIN
 s" invalid type parameter header" E-TDECL-ARITY EXPLAIN
 s" unknown payload type" E-TDECL-PAYLOAD EXPLAIN
@@ -462,23 +459,6 @@ package DECL-FRONT
 
 public
 
-\ Local names for the shared declaration codes, read at top level from their
-\ owners (sumtype.f E-TDECL-*, type-family.f E-TFAM-*): a post-hook checked body
-\ cannot name a pre-hook constant on a from-source build. Each code keeps one
-\ numeric owner (tools/error-code-lint.f). E-PF-NAME, E-TFAM-DUP, E-TFAM-CASE and
-\ E-PF-SCHEMA, raised by TFAM-DECL, SUMV-ADD and the field-event path, pass
-\ through unchanged.
-E-TDECL-SYNTAX constant E-SYNTAX    \ malformed: missing name/terminator, token out of place
-E-TDECL-ARITY constant E-ARITY      \ malformed type parameter header
-E-TDECL-PAYLOAD constant E-PAYLOAD  \ unresolved / unknown field type
-E-TDECL-NAME constant E-NAME        \ reserved or colliding family name
-E-TDECL-POLICY constant E-POLICY    \ unknown or not-yet-supported layout policy
-E-TDECL-DERIVE constant E-DERIVE    \ a DERIVE requirement not met
-E-TDECL-CAP constant E-CAP          \ a family, variant or field name longer than NAME-MAX
-E-TFAM-CASE constant E-CASE         \ family name is not a lowercase canonical tail
-E-TFAM-DUP constant E-DUP           \ duplicate family, variant or field tail, raised by
-                                    \ TFAM-DECL / SUMV-ADD / the field-event path; named
-                                    \ here only so a reason can be armed before those calls
 7192 constant E-UNRESOLVED          \ private replay outcome after rollback
 
 : REQUIRE-DERIVABLE ( ptr u8 n n n -- )
@@ -487,26 +467,15 @@ E-TFAM-DUP constant E-DUP           \ duplicate family, variant or field tail, r
    fam node TDECL-DERIVE-WHY {: wa:ptr wu:n :}
    wu 0= IF EXIT THEN
    ta tu DECL-REJECT:TOKEN!
-   wa wu E-DERIVE DECL-REJECT:REJECT throw ;
+   wa wu E-TDECL-DERIVE DECL-REJECT:REJECT throw ;
 
 110 constant ASCII-N
 102 constant ASCII-F
 114 constant ASCII-R
 
-\ The longest family, variant or field name, which every spelling derived from
-\ it has room for (src/core/type-family.f TF-NAME-MAX, read here at top level).
-TF-NAME-MAX constant NAME-MAX
-
 \ typed boolean producers (core has no `true`/`false`).
 : YES ( -- bool ) 0 0= ;
 : NO ( -- bool ) 0 0= 0= ;
-
-\ The single-letter con codes are src/core/checker.f constants created before it
-\ claims the source, so a from-source boot gives them no row: they are read
-\ here at top level, as the reject codes are.
-CC-N constant CON-N          \ single-letter n : signed cell
-CC-BOOL constant CON-BOOL    \ single-letter f : boolean/flag
-CC-R constant CON-R          \ single-letter r : real/float
 
 variable FIELD-MISS          \ the field under resolution named a type that may still arrive
 variable SEEN-END            \ this declaration's terminator has been consumed
@@ -586,17 +555,17 @@ public
    RAW 2dup DECL-REJECT:TOKEN! ;
 : UNGET ( ptr u8 n -- ) PEND! ;
 
-: NAME-LONG? ( ptr u8 n -- bool ) nip NAME-MAX > ;
+: NAME-LONG? ( ptr u8 n -- bool ) nip TF-NAME-MAX > ;
 
 : POLICY-CODE ( ptr u8 n -- n )         \ policy name -> layout code (or reject)
-   dup 0= IF 2drop s" missing layout policy name" E-POLICY DECL-REJECT:REJECT throw THEN
+   dup 0= IF 2drop s" missing layout policy name" E-TDECL-POLICY DECL-REJECT:REJECT throw THEN
    2dup s" stack-cell-tag" CORE-STR=CI IF 2drop TL-STACK-CELL-TAG EXIT THEN
    2dup s" packed-tag" CORE-STR=CI IF 2drop TL-PACKED-TAG EXIT THEN
    2dup s" niche-null" CORE-STR=CI IF 2drop TL-NICHE EXIT THEN
-   2drop s" unknown layout policy" E-POLICY DECL-REJECT:REJECT throw ;
+   2drop s" unknown layout policy" E-TDECL-POLICY DECL-REJECT:REJECT throw ;
 
 : VIS ( -- n )                          \ declaration visibility (public at top level)
-   CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF CHECKER-VIS-PUBLIC EXIT THEN CHECKER-AUTH-PACKAGE-MODE@ ;
+   CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF CHECKER-PACKAGE-PUBLIC EXIT THEN CHECKER-AUTH-PACKAGE-MODE@ ;
 
 private
 
@@ -618,9 +587,9 @@ public
 : NAME-CHECK ( ptr u8 n -- )
    {: a:ptr u:n :}
    a u DECL-REJECT:TOKEN!
-   s" duplicate field name" E-DUP DECL-REJECT:EXPECT
+   s" duplicate field name" E-TFAM-DUP DECL-REJECT:EXPECT
    a u PF-NAME-REQUIRE
-   a u SEEN? IF E-DUP throw THEN
+   a u SEEN? IF E-TFAM-DUP throw THEN
    SEEN-P SEEN-CAP  SEEN-U @ u + 1+ CELL + 1 - CELL /  1 ARENA-ROWS-ENSURE
    u SEEN SEEN-U @ + c!
    0 SEEN-I !

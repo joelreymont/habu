@@ -9,9 +9,6 @@ using SCHEMA-REG
 using TFAM
 using TYPE-DECL
 
-\ E-SM-DUP reads E-TFAM-DUP at top level: a post-hook checked body cannot see
-\ that pre-hook constant (decl-event.f does the same for E-DEV-ARITY).
-E-TFAM-DUP constant E-SM-DUP  \ MAKE/UNMAKE already generated
 7190 constant E-SM-FAM        \ family id is not a live, public, product-kind family
 7191 constant E-SM-EMPTY      \ product family declares no fields
 s" family cannot own generated make/unmake" E-SM-FAM DECL-REJECT:EXPLAIN
@@ -50,8 +47,8 @@ package STRUCTURE-MAKE
    REPEAT drop ;
 
 : SM-REQUIRE-UNGENERATED ( n -- ) {: fam:n :}
-   fam s" make"   SUMV-FIND IF drop E-SM-DUP throw THEN drop
-   fam s" unmake" SUMV-FIND IF drop E-SM-DUP throw THEN drop ;
+   fam s" make"   SUMV-FIND IF drop E-TFAM-DUP throw THEN drop
+   fam s" unmake" SUMV-FIND IF drop E-TFAM-DUP throw THEN drop ;
 
 public
 

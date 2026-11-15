@@ -57,10 +57,6 @@ s" declaration does not own this family" E-DEV-FAMILY-SCOPE DECL-REJECT:EXPLAIN
 s" a second OPAQUE clause in one declaration" E-DEV-DUP-OPAQUE DECL-REJECT:EXPLAIN
 s" OPAQUE requires a family declared in a package" E-DEV-OPAQUE-PACKAGE DECL-REJECT:EXPLAIN
 
-\ E-DEV-ARITY reads sumtype.f's malformed-arity code at top level: a post-hook
-\ checked body cannot name that pre-hook constant on a from-source build.
-TYPE-DECL:E-TDECL-ARITY constant E-DEV-ARITY  \ arity outside [0, cap] — the shared malformed-arity code
-
 72 constant DEV-BUG-RC          \ internal invariant violation (bad id / oob): fail-closed die
 
 \ Event scratch: interleaved integer cells, so a grow is a plain cell copy. OWNER
@@ -344,7 +340,7 @@ variable DEV-TX-SERIAL
 
 : DEV-ARITY ( n n n -- n ) {: tok:n fam:n arity:n :}
    tok fam DEV-FAMILY-USE DEV-FAMILY-REQUIRE
-   arity 0 < arity TFAM-DECL-PARAM-COUNT > or IF E-DEV-ARITY throw THEN
+   arity 0 < arity TFAM-DECL-PARAM-COUNT > or IF TYPE-DECL:E-TDECL-ARITY throw THEN
    DEV-K-ARITY fam arity DEV-NO-FIELD DEV-EMIT
    tok ;
 
@@ -579,10 +575,10 @@ public
 : DEPTH ( -- n ) DEV-TX-DEPTH @ ;
 
 \ A pointer does not own (TFCL-NODE? stops at it), so `ptr <linear>` would let
-\ its family copy and drop a linear value: E-PAYLOAD with the caller's text.
+\ its family copy and drop a linear value.
 : REQUIRE-POINTEE ( n ptr u8 n -- n )
    {: node:n why:ptr whyu:n :}
-   node TFCL-NODE? IF why whyu DECL-FRONT:E-PAYLOAD DECL-REJECT:REJECT throw THEN
+   node TFCL-NODE? IF why whyu TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
    node ;
 
 \ REQUIRE-POINTEE on each pointee in a field type, as SCH-STORE-MASK walks it;

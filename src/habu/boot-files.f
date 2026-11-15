@@ -76,7 +76,6 @@ private
    CHECKER COMMON s" src/core/type-family.f" ROW
    CHECKER COMMON s" src/core/render.f" ROW
    CHECKER COMMON s" src/core/check-walk.f" ROW
-   CHECKER COMMON s" src/core/engine-error-effects.f" ROW
    CHECKER COMMON s" src/core/sumtype.f" ROW
    CHECKER COMMON s" src/core/effect.f" ROW
    CHECKER COMMON s" src/habu/address-cells.f" ROW

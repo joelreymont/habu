@@ -2669,18 +2669,6 @@ sections above.
   every definition, immediate and top-level token is checked, and a cell
   pushed meanwhile keeps its type. Use a `PRIM: … PRIM;` axiom for a genuine
   missing primitive model.
-- **A pre-hook word needs an external row.** A word defined
-  before the check hook has no authority without a `PRIM:` axiom or a
-  `TRUSTED:` declaration after the checker claiming it. A
-  checked or top-level use is refused before it runs with `E-CAP-TRUSTED`
-  (call it only from a `TRUSTED:` definition). A
-  `TRUSTED:` or data word before the hook gains no such declaration. A
-  top-level step that reads one is refused the same way, so its row goes in
-  `src/core/cell-effects.f`.
-- **A colon definition compiled before the check hook records no row**,
-  whatever its signature says: a use is refused as the bullet above says.
-  `TRUSTED:` asserts an authoritative row, and a `defer` made before the hook
-  gets its declared effect as one when the checker loads.
 - **A native build refuses a definition whose checker scan is refused**, before
   publication. A failed native compile retracts only the pending definition's
   rows, preserving prior rows. If no row supplies arity it refuses with the

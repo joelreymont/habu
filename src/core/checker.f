@@ -1728,15 +1728,6 @@ variable CHECKER-PACKAGE-MODE
 : CHECKER-PACKAGE-ACTIVE? ( -- bool )
    CHECKER-PACKAGE-MODE @ CHECKER-PACKAGE-NONE <> ;
 
-\ The declared-visibility token a family declaration carries, public and with a
-\ declared effect. The constant is not that name: it is created before
-\ src/core/check-hook.f installs the check hook, and a created word publishes
-\ its effect only once that hook exists (habu2.f LASTC-TRUST:FIND-ACTIVE), so an
-\ engine booting its prefix from source would refuse a checked reference
-\ E-UNDEFINED. This word carries an axiom (the PRIM: block) and means the same
-\ in every engine class.
-: CHECKER-VIS-PUBLIC ( -- n ) CHECKER-PACKAGE-PUBLIC ;
-
 \ The using depth the replayed source may close down to, as the engine's
 \ evaluate frame keeps it for a buffer:
 \ the verifier window seeds it with the depth the source starts at, and the

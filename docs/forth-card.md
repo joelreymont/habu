@@ -225,7 +225,6 @@ before the word runs, and `--load` exits 70 (`evaluate-closed` throws 70).
 | `: USE-INF RG-ONE ;  : T3 USE-INF USE-INF SAME-ID ;` with `RG-ONE ( -- fresh-region-a )`, `SAME-ID ( x x -- )`: two calls of an inferred producer are two regions | `E-RIGID-REGION-MISMATCH` |
 | `: K ( mut-view<p,q,fresh-region-b,u8> -- mut-view<p,q,fresh-region-c,u8> ) ;`: a fresh name the body supplies holds an input's region, or one region under two such names (forth.md **Rigid host-allocation identity domains**) | `E-RIGID-REGION-MISMATCH` |
 | `[: RG-ONE ;] dup execute swap execute SAME-ID`, or `[: RG-ONE ;] RUN` with `RUN ( [ -- x ] -- x )`: a fresh region a quotation's inputs do not carry is minted by each execution of the outermost quotation holding it at the top of its outputs or in a callback input's rows, and shared by the quotations that execution returns or hands on, at a direct call, a tick and an inferred effect alike; no callee or callback whose effect types one, generic or fresh, takes it | `E-RIGID-REGION-MISMATCH` |
-| a word defined before the check hook with no external row (a `PRIM:` axiom, or a `TRUSTED:` declaration after the checker) in a checked body | `E-CAP-TRUSTED`; a top-level step that reads one is refused the same way, so its row goes in `src/core/cell-effects.f` |
 | a checker scan, `generates:`, a type registration or another checker store write in a native compile callback | `E-COMP-STATE`, catchable, before anything changes |
 
 Checked C2 views carry owner and loan lifetimes: shared `read-view<p,q,T>` and
