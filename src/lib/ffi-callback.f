@@ -37,7 +37,6 @@ CAST: ENTRY-XT ( n -- [ -- n ] )
 8 constant FLOAT-REGS
 $400 constant GEN-CAP
 $200 constant PART-CAP            \ sixteen `7 FFI-CB:I32-ARG@ ` reads need $108
-$40 constant NAME-CAP
 
 0 constant R-NONE
 1 constant R-VALUE
@@ -226,7 +225,6 @@ private
 GEN-CAP CODEGEN:BUFFER GEN
 PART-CAP CODEGEN:BUFFER QTYPE             \ the body's quotation type
 PART-CAP CODEGEN:BUFFER READS             \ the argument reads, in order
-NAME-CAP CODEGEN:BUFFER NAME
 
 variable RES-KIND
 variable FB-SET
@@ -235,28 +233,36 @@ TYPED-VARIABLE FFB-VALUE r
 variable OPEN
 
 \ The last token read and the name: each parse-name span, kept beside its
-\ copy. A token past NAME-CAP is rejected at its own span before any record
-\ reads the copy, so the copy keeps at most NAME-CAP bytes.
-create TOK-BUF NAME-CAP allot
+\ copy. A copy grows to the token it holds and is released at rest.
+DYNAMIC-BUFFER TOK-BUF u8
 variable TOK-U
 1 PTR-U8-TABLE TOK-SRC-A
 variable TOK-SRC-U
+DYNAMIC-BUFFER NAME u8
+variable NAME-U
 1 PTR-U8-TABLE NAME-SRC-A
 variable NAME-SRC-U
 
 : NAME$ ( -- ptr u8 n )
-   NAME CODEGEN:CONTENTS ;
+   0 NAME NAME-U @ ;
+
+\ A declaration's span and copy cells, at rest before it reads a token and
+\ after it closes or is abandoned.
+: REST ( -- )
+   TOK-BUF-RELEASE NAME-RELEASE
+   0 TOK-U !  NULL-PTR TOK-SRC-A 0 ptr-field !  0 TOK-SRC-U !
+   0 NAME-U !  NULL-PTR NAME-SRC-A 0 ptr-field !  0 NAME-SRC-U ! ;
 
 \ ---- a bad declaration's rejection ----------------------------------------
 \ The caller writes a record's help and ends it with ABANDON. The stop abandons
 \ the declaration, so the next CALLBACK: in the file is not rejected for it.
 : ABANDON ( -- )
-   0 OPEN !  CHECKER-REJECT-RC REJECTION:STOP ;
+   0 OPEN !  REST  CHECKER-REJECT-RC REJECTION:STOP ;
 
 : SAY ( ptr u8 n -- ) REJECTION:EMIT-STR ;
 
 : TOK-AT ( -- ptr u8 n )
-   TOK-SRC-A 0 ptr-field @ TOK-SRC-U @ TOK-BUF TOK-U @ REJECTION:KEPT ;
+   TOK-SRC-A 0 ptr-field @ TOK-SRC-U @ 0 TOK-BUF TOK-U @ REJECTION:KEPT ;
 
 : NAME-AT ( -- ptr u8 n )
    NAME-SRC-A 0 ptr-field @ NAME-SRC-U @ NAME$ REJECTION:KEPT ;
@@ -272,8 +278,8 @@ variable NAME-SRC-U
    ABANDON ;
 
 : TOK-KEEP ( ptr u8 n -- ) {: a:ptr u:n :}
-   u NAME-CAP min {: k:n :}
-   a TOK-BUF k BYTE-COPY  k TOK-U !
+   u TOK-BUF-RESERVE
+   a 0 TOK-BUF u BYTE-COPY  u TOK-U !
    a TOK-SRC-A 0 ptr-field !  u TOK-SRC-U ! ;
 
 \ The next token. parse-name's bytes stay valid until the next parse, and each
@@ -284,16 +290,9 @@ variable NAME-SRC-U
    a u TOK-KEEP
    a u ;
 
-: NAME-LONG ( ptr u8 n -- ) {: a:ptr u:n :}
-   s" E-FFI-SYNTAX" s" a callback name is longer than a declaration keeps"
-   a u s" too long" REJECTION:OPEN-AT
-   NAME-CAP s" bytes" REJECTION:LIMIT REJECTION:HELP
-   s" shorten the name to the limit" SAY
-   ABANDON ;
-
 : NAME! ( ptr u8 n -- ) {: a:ptr u:n :}
-   u NAME-CAP > if a u NAME-LONG then
-   NAME CODEGEN:RESET  a u NAME CODEGEN:APPEND-STRING
+   u NAME-RESERVE
+   a 0 NAME u BYTE-COPY  u NAME-U !
    a NAME-SRC-A 0 ptr-field !  u NAME-SRC-U ! ;
 
 : QTYPE+ ( ptr u8 n -- )
@@ -514,11 +513,6 @@ variable NAME-SRC-U
    s"  before `;CALLBACK`: the value C gets when the body throws" SAY
    ABANDON ;
 
-\ A declaration's span and copy cells, at rest before it reads a token.
-: REST ( -- )
-   0 TOK-U !  NULL-PTR TOK-SRC-A 0 ptr-field !  0 TOK-SRC-U !
-   NULL-PTR NAME-SRC-A 0 ptr-field !  0 NAME-SRC-U ! ;
-
 public
 
 : OPEN-CALLBACK ( -- )
@@ -549,7 +543,7 @@ public
    FB-VALUE @ k FALLBACKS !
    FFB-VALUE @ k FFALLBACKS !
    0 k FAULTS !
-   k EMIT ;
+   k EMIT  REST ;
 
 ;package
 
