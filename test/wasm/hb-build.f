@@ -427,10 +427,16 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" link: a stripped program reaches a word it cannot run" ERR-HAS
    NO-MODULE
    s" : MAIN ( n -- ) drop ;" s" cells.f" SOURCE!
-   s" a MAIN that takes a cell is rejected with 70 and no module" T-LABEL
+   s" a MAIN that takes a cell is rejected at its effect with 70 and no module" T-LABEL
    s" cells.wasm" BUILD 70 T=
-   s" APP-ENTRY:XT!" ERR-HAS
-   s\" = expected: [ -- ]\n  = found: [ n -- ]" ERR-HAS
+   s" error[E-MISMATCH]: the entry `MAIN` must be ( -- ); it declares ( n -- )" ERR-HAS
+   s" cells.f:1:8" ERR-HAS
+   NO-MODULE
+   s" : HELPER ( -- ) ;" s" no-main.f" SOURCE!
+   s" a program with no MAIN is rejected by name with 70 and no module" T-LABEL
+   s" no-main.wasm" BUILD 70 T=
+   s" error[E-NO-ENTRY]: the program defines no `MAIN`" ERR-HAS
+   s" no-main.f" ERR-HAS
    NO-MODULE
    s" require src/lib/fs.f" s" native-only.f" SOURCE!
    s" a file that does not build for Wasm stops its load with 74 and no module" T-LABEL

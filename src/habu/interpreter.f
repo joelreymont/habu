@@ -605,10 +605,7 @@ TYPED-VARIABLE RUNS-ON bool
 \ The input ended after keyword kw: the token cells still hold the keyword, and
 \ the text names kw lowercase whatever the token's case.
 : NAME-MISSING ( ptr u8 n n -- ) {: kw:ptr u:n rc:n :}
-   s" E-MISSING-NAME" REJECTION:OPEN
-   kw u TICKS  s"  needs a name after it" SAY
-   TOKEN$ REJECTION:AT  s" no name follows" SAY
-   REJECTION:HELP  s" write the name after " SAY  kw u TICKS
+   kw u TOKEN$ s" no name follows" REJECTION:MISSING-NAME
    rc REJECTION:STOP ;
 
 : OPERAND ( ptr u8 n -- ) {: kw:ptr u:n :}
@@ -621,15 +618,22 @@ TYPED-VARIABLE RUNS-ON bool
 \ allots first, after its own rejections, so allot's rejections come before any
 \ of it is written.
 
-: BAD-LITERAL ( -- )
+public
+\ Writes the record of the string literal its opener t tu opens, which has no
+\ closing quote or holds a bad escape, through its help and leaves it open: the
+\ caller ends it.
+: LITERAL-REJECT ( ptr u8 n -- ) {: t:ptr tu:n :}
    s" E-UNTERMINATED-STRING" REJECTION:OPEN
-   s" the string " SAY  TOKEN$ TICKS
+   s" the string " SAY  t tu TICKS
    s"  opens has no closing quote or holds a bad escape" SAY
-   TOKEN$ REJECTION:AT  s" the string opens here" SAY
+   t tu REJECTION:AT  s" the string opens here" SAY
    REJECTION:HELP  s" end the string with " SAY  S\" \"" TICKS
    s" , and follow each backslash with an escape letter, or with " SAY
-   s" x" TICKS  s"  and two hex digits" SAY
-   RC-BAD-LITERAL REJECTION:STOP ;
+   s" x" TICKS  s"  and two hex digits" SAY ;
+private
+
+: BAD-LITERAL ( -- )
+   TOKEN$ LITERAL-REJECT  RC-BAD-LITERAL REJECTION:STOP ;
 
 : TOO-LONG ( -- )
    s" E-COUNTED-STRING-TOO-LONG" REJECTION:OPEN
@@ -1478,20 +1482,26 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
 : DEF-DECLARE ( ptr u8 n n -- ) {: sig:ptr len:n xt:n :}
    DEF-CAPTURED-NAME sig len xt DEF-DECLARE-NAME ;
 
+public
+\ The source ends inside the definition of a u, whose name stands at the source
+\ token t tu. It is written through its help, and the caller stops it.
+: UNCLOSED-REJECT ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n t:ptr tu:n :}
+   s" E-VS-UNTERMINATED-DEFINITION" REJECTION:OPEN
+   s" the source ends inside the definition of `" REJECTION:EMIT-STR
+   a u REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR
+   t tu REJECTION:AT  s" never closed" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" end the definition of `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
+   s" ` with `;` before the source ends" REJECTION:EMIT-STR ;
+private
+
 \ The rejection marks the opener's token in the source, the name a colon
 \ definition captures.
 : DEF-ENDED ( -- )
    PENDTKA-CELL CELL@ INP-CELL CELL!
    INP-CELL ADDR@ {: p:ptr :}
    p INE-CELL ADDR@ WORD-END p - {: pu:n :}
-   DEF-CAPTURED-NAME {: a:ptr u:n :}
-   s" E-VS-UNTERMINATED-DEFINITION" REJECTION:OPEN
-   s" the source ends inside the definition of `" REJECTION:EMIT-STR
-   a u REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR
-   p pu REJECTION:AT  s" never closed" REJECTION:EMIT-STR
-   REJECTION:HELP
-   s" end the definition of `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
-   s" ` with `;` before the source ends" REJECTION:EMIT-STR
+   DEF-CAPTURED-NAME p pu UNCLOSED-REJECT
    RC-UNCLOSED REJECTION:STOP ;
 
 \ body-capture grows the block when the text would pass its capacity, so an
@@ -1548,19 +1558,12 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
       PKG-RC-DICT-FULL REJECTION:STOP
    then ;
 
-\ With the input at its end `:` and `kernel:` refuse with the engine's colon
-\ text, `trusted:` as the reader keyword it is.
+\ With the input at its end the rejection names `:` and `kernel:` as spelled,
+\ `trusted:` as the reader keyword it is.
 : DEF-NAME ( bool -- ) {: trusted:bool :}
    trusted if s" trusted:" OPERAND exit then
    TOKEN if exit then
-   s" E-MISSING-NAME" REJECTION:OPEN
-   s" `" REJECTION:EMIT-STR  TOKEN$ REJECTION:EMIT-STR
-   s" ` has no definition name after it" REJECTION:EMIT-STR
-   TOKEN$ REJECTION:AT  s" no name follows" REJECTION:EMIT-STR
-   REJECTION:HELP
-   s" write the new word's name right after `" REJECTION:EMIT-STR
-   TOKEN$ REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR
-   RC-NO-NAME REJECTION:STOP ;
+   TOKEN$ RC-NO-NAME NAME-MISSING ;
 
 \ A head with no row makes a top-level package with a public wordlist
 \ and no private one.
@@ -2135,15 +2138,9 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
 \ The source cursor stays at the running definer's call, where a refusal of
 \ define-word, literal, body-append, compile, or ; locates.
 
-\ WHO names the operation refused: `define-word`, or a declaration's child.
+\ w names the rejected operation: `define-word`, or a declaration's child.
 : DEF-NAME-REFUSE ( ptr u8 n ptr u8 n -- ) {: w:ptr wu:n a:ptr u:n :}
-   s" E-MISSING-NAME" REJECTION:OPEN
-   s" the definition name `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
-   s" ` is not one token" REJECTION:EMIT-STR
-   a u REJECTION:AT  s" not one token" REJECTION:EMIT-STR
-   s" definer" REJECTION:NOTE  w wu REJECTION:EMIT-STR
-   REJECTION:HELP
-   s" give the name as one token, with no blanks" REJECTION:EMIT-STR
+   w wu a u s" not one token" REJECTION:MISSING-NAME
    RC-NO-NAME REJECTION:STOP ;
 
 : DEF-OPEN-REFUSE ( ptr u8 n ptr u8 n -- ) {: w:ptr wu:n a:ptr u:n :}
@@ -2459,14 +2456,7 @@ variable DEF-VALUE
 \ end's line.
 : DEF-CAST-NAME ( -- )
    TOKEN if exit then
-   s" E-MISSING-NAME" REJECTION:OPEN
-   s" `" REJECTION:EMIT-STR  TOKEN$ REJECTION:EMIT-STR
-   s" ` has no name after it" REJECTION:EMIT-STR
-   TOKEN$ REJECTION:AT  s" no name follows" REJECTION:EMIT-STR
-   REJECTION:HELP
-   s" write the cast's name and signature after `" REJECTION:EMIT-STR
-   TOKEN$ REJECTION:EMIT-STR  s" `, as `CAST: NAME ( n -- ptr u8 )`" REJECTION:EMIT-STR
-   RC-NO-NAME REJECTION:STOP ;
+   TOKEN$ RC-NO-NAME NAME-MISSING ;
 
 \ The signature must be there, opened and closed, before the qualifier's
 \ refusals, and INP passes it first, so those name the line it ends on.
