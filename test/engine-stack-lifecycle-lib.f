@@ -119,7 +119,7 @@ variable STATUS
 : PRIMITIVE-BOUNDARIES ( -- )
    HB-TARGET-LINUX-X86-64? 0= if PRIMITIVE-RETURN-ARM then
    s" empty data-stack adjustment" T-LABEL
-   s" drop" s" error[E-INPUT-UNDERFLOW]: input underflow: the call takes more cells than the definition's declared inputs leave (needs 1, has 0)" NAMED-UNDERDEPTH
+   s" drop" s" error[E-INPUT-UNDERFLOW]: input underflow: the statement takes more cells than the stack holds (needs 1, has 0)" NAMED-UNDERDEPTH
    s" the last loop frame" T-LABEL
    s" : NEST ( n -- ) dup 0= if drop exit then 1 0 do dup 1 - recurse loop drop ; STACK-ABI:LOOP-FRAMES NEST"
    CHILD-RC 0 T=

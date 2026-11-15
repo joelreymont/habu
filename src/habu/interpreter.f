@@ -2207,20 +2207,31 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    r ru HANDLE-SPLIT {: pa:ptr pu:n t:ptr tu:n :}
    pa pu  k ku s" public" STR=  t tu HOME-REC ;
 
-: BUILT-PENDING ( ptr u8 n -- ) {: a:ptr u:n :}
-   PEND-CELL CELL@ 0<> if exit then
+\ The record of the word A U run with no definition open, up to its help.
+: NO-DEFINITION ( ptr u8 n -- ) {: a:ptr u:n :}
    s" E-NO-DEFINITION" REJECTION:OPEN
    s" `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
    s" ` ran with no definition open" REJECTION:EMIT-STR
    TOKEN$ REJECTION:AT  s" no definition is open here" REJECTION:EMIT-STR
-   REJECTION:HELP
+   REJECTION:HELP ;
+
+: BUILT-PENDING ( ptr u8 n -- ) {: a:ptr u:n :}
+   PEND-CELL CELL@ 0<> if exit then
+   a u NO-DEFINITION
    s" open a definition with `define-word` before `" REJECTION:EMIT-STR
    a u REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR
    CHECKER-REJECT-RC REJECTION:STOP ;
 
+: STRAY-END ( -- )
+   PEND-CELL CELL@ 0<> if exit then
+   s" ;" NO-DEFINITION
+   s" a definition begins with `: NAME` and this `;` closes none: delete it, or write `: NAME` where the definition begins"
+   REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
 \ What `;` runs: it ends the definition.
 : END-RUN ( -- )
-   s" ;" BUILT-PENDING DEF-END ;
+   STRAY-END DEF-END ;
 
 \ A quotation is its code's entry, which a word's tick shares with its record.
 CAST: QUOT-ENTRY ( [ R -- S ] -- n )

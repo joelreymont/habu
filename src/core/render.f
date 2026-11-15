@@ -994,7 +994,7 @@ variable MDV-I   variable MDV-F
       MD-RIGID-EXTENT of s" pass the value whose extent this position takes" endof
       MD-RIGID-GEN    of s" derive the index again after the mutation that outdated it" endof
       MD-RIGID-XDOM   of s" pass a region where a region is taken, an extent where an extent is, and a mutation generation where a generation is" endof
-      MD-UNDERFLOW    of s" push the missing inputs before the call, or declare them in the signature" endof
+      MD-UNDERFLOW    of TOP-STEP @ IF s" push the cells the statement takes before it" ELSE s" push the missing inputs before the call, or declare them in the signature" THEN endof
       MD-STALE-READ   of s" bind the value to a local before the `catch` and read the local after it, or drop the cell" endof
       MD-TOP-UNKNOWN  of s" push the value while checking is on, or drop the cell" endof
       MD-TAIL-ESCAPE  of TAIL-SUGGEST$ endof
@@ -1104,7 +1104,7 @@ variable MDV-I   variable MDV-F
       MD-RIGID-EXTENT of s" rigid host: extent mismatch (different bounds identity)" endof
       MD-RIGID-GEN    of s" rigid host: stale mutation generation" endof
       MD-RIGID-XDOM   of s" rigid host: identity domain confusion" endof
-      MD-UNDERFLOW    of s" input underflow: the call takes more cells than the definition's declared inputs leave" endof
+      MD-UNDERFLOW    of TOP-STEP @ IF s" input underflow: the statement takes more cells than the stack holds" ELSE s" input underflow: the call takes more cells than the definition's declared inputs leave" THEN endof
       MD-EFFECT-DEPTH of DEPTH-REASON$ endof
       MD-CF-DEPTH     of s" control flow nested too deep to check" endof
       MD-RECURSE-SIG  of s" recursion needs a declared stack effect" endof
@@ -1196,7 +1196,7 @@ variable MDV-I   variable MDV-F
       MD-RIGID-XDOM   of s" identity of another domain" endof
       MD-RAW-PTR      of s" pointer through an untyped cell" endof
       MD-RAW-FIELD    of s" field of an undeclared cell" endof
-      MD-UNDERFLOW    of s" reaches below the inputs" endof
+      MD-UNDERFLOW    of TOP-STEP @ IF s" reaches below the stack" ELSE s" reaches below the inputs" THEN endof
       MD-NULL-PTR     of s" reaches through `NULL-PTR`" endof
       MD-DBASE-PTR    of s" reaches through a base address" endof
       MD-RAW-EXEC     of s" code through an untyped cell" endof
@@ -1704,7 +1704,13 @@ PTR-VARIABLE HOLDER-FIRST
 : QUALIFIED ( ptr u8 n -- ) {: t:ptr tu:n :}
    96 EMIT1  HOLDER-FIRST @ CHECKER-RESOLVE:CK-REC-NAME$ EMIT-STR
    58 EMIT1  t tu EMIT-STR  96 EMIT1 ;
+\ A body's own name is found only after its `;`.
 : UNDEF-HELP ( ptr u8 n -- ) {: t:ptr tu:n :}
+   TOP-STEP @ 0=  t tu NMA @ NMU @ CORE-STR=CI  and IF
+      t tu CODE-SPAN
+      s"  is the word this definition defines: call it from its own body with `recurse`"
+      EMIT-STR EXIT
+   THEN
    t tu RES-FALSE HOLDER-SCAN
    HOLDER-N @ 0= IF
       s" define " EMIT-STR  t tu CODE-SPAN
