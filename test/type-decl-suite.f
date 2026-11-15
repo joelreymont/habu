@@ -1529,6 +1529,12 @@ TDIAG-BUF 8192 REJECTION:BUFFER!
 s" SUMTYPE tdvd2<a> VARIANT ok a ;VARIANT VARIANT ok a ;VARIANT ;SUMTYPE" E-TFAM-DUP TDT-NEG
 REJECTION:BUFFER$ s" bad sumtype declaration" CONTAINS? TTRUE
 REJECTION:BUFFER$ s" duplicate variant" CONTAINS? TTRUE
+\ a rejection names the source token, not storage the declaration's rollback
+\ scrubs.
+s" ENUM tdcol2 DERIVE eq red tag blue ;ENUM" E-TDECL-NAME TDT-NEG
+REJECTION:BUFFER$ s" derived word at 'tag'" CONTAINS? TTRUE
+s" PRODUCT tdini<a> DERIVE init FIELD value a ;PRODUCT" E-TDECL-DERIVE TDT-NEG
+REJECTION:BUFFER$ s" record at 'tdini'" CONTAINS? TTRUE
 \ the enum kind token flows into the same declaration-shaped prose packet.
 s" ENUM tdediag red red ;ENUM" E-TFAM-DUP TDT-NEG
 REJECTION:BUFFER$ s" bad enum declaration" CONTAINS? TTRUE

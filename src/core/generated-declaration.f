@@ -216,8 +216,8 @@ s" declared name too long" E-TDECL-CAP EXPLAIN
 s" a payload type or role has no derived equality" E-TDECL-DERIVE EXPLAIN
 \ Both front ends arm "reserved name" at their own name gates, so E-TDECL-NAME
 \ reaching the table was raised by a deeper owner: the variant-name gate (a
-\ reserved tail or a family-name collision) or the constructor collide check (a
-\ variant spelled like a word the DERIVE clause generates). The text has to be
+\ reserved tail, a family-name collision or a word the DERIVE clause generates)
+\ or the plan's check of a generated name already defined. The text has to be
 \ true of both.
 s" name is reserved or already taken" E-TDECL-NAME EXPLAIN
 s" name must be a lowercase tail" E-TFAM-CASE EXPLAIN
@@ -408,7 +408,6 @@ public
    fam GEN-REQUIRE
    fam TFAM-VAR-START@ {: vstart:n :}
    fam TFAM-VAR-COUNT@ {: count:n :}
-   fam vstart count TDECL-DERIVE-COLLIDE
    fam vstart count TDECL-DERIVE-REQUIRE
    fam vstart count TDECL-CTOR-PUBLISH
    DECL-REPLAY:RP-ACTIVE? IF fam TDECL-CTOR-REPLAY EXIT THEN

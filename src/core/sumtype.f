@@ -756,6 +756,9 @@ create TDV-BADLETTER 1 allot
    fam TDECL-VARIANT-CLOSE ;
 : TDECL-VARIANT ( n -- ) {: fam:n :}
    TDECL-VARIANT-NAME
+   fam TFAM-DERIVE-ANY? TDV-NA @ TDV-NU @ TFAM-DERIVED-TAIL? and IF
+      TDV-NA @ TDV-NU @ s" variant name collides with a derived word"
+      E-TDECL-NAME TDECL-THROW THEN
    0 TDV-PW !  0 TDV-ARG-N !  0 TDV-PAY-N !
    BEGIN
       TDECL-NEXT
@@ -899,23 +902,8 @@ private
    fa fu fam TDECL-DERIVE-SET          \ the FIRST token must be a feature (unknown rejects);
    BEGIN fam TDECL-DERIVE-MORE? 0= UNTIL ;   \ later tokens end the order-free list by pushback
 
-\ a DERIVE-marked family must not declare a variant spelled like a generated
-\ derived tail: the family would generate two words with one name.
-public
-
-: TDECL-DERIVE-COLLIDE ( n n n -- ) {: fam:n vstart:n count:n :}
-   fam TFAM-DERIVE-ANY? 0= IF EXIT THEN
-   vstart count + vstart ?do
-      i SUMV-NAME$ TFAM-DERIVED-TAIL? IF
-         i SUMV-NAME$
-         s" variant name collides with a derived word" E-TDECL-NAME TDECL-THROW THEN
-   loop ;
-
 \ payload-role gate: every payload/field schema node must be
 \ derivably comparable, else the DECLARATION rejects naming the exact role.
-
-private
-
 : TDECL-DERIVE-FIELD-OK ( n n -- ) {: fam:n node:n :}
    node SCHEMA-A@ {: ff:n :}
    ff TFAM-GEN-PUBLIC? 0= IF
@@ -972,7 +960,6 @@ private
    SIG-UNRES @ IF E-TDECL-UNRESOLVED throw THEN
    TDV-N @ 0= IF TDN-A @ TDN-U @ s" empty sum" E-TDECL-SYNTAX TDECL-THROW THEN
    fam vstart TDECL-NICHE-REQUIRE
-   fam vstart TDV-N @ TDECL-DERIVE-COLLIDE
    fam vstart TDV-N @ TDECL-DERIVE-REQUIRE
    fam vstart TDV-N @ TFAM-VAR-RANGE!
    fam TDV-MAX @ TFAM-SLOTS!
@@ -1923,23 +1910,23 @@ private
 
 : TDINIT-TERM ( n -- n ) TFAM-FRESH-TERM ;
 
-: TDINIT-REFUSE ( n -- )
-   TFAM-NAME$ s" derive init requires a canonical fixed-cell record"
+: TDINIT-REFUSE ( -- )
+   TDN-A @ TDN-U @ s" derive init requires a canonical fixed-cell record"
    E-TDECL-DERIVE TDECL-THROW ;
 
 \ INIT-RECORD? proves the whole fixed canonical layout; INIT-FIELD? then proves
 \ every id and field extent against that same instantiation. These queries read
 \ committed rows, so this runs only after the field transaction's commit.
 : TDINIT-REQUIRE ( n -- ) {: fam:n :}
-   fam TFAM-DERIVE-INIT? 0= fam TFAM-PRODUCT? 0= or IF fam TDINIT-REFUSE THEN
-   fam TFAM-PKG$ nip 0= IF fam TDINIT-REFUSE THEN
-   fam TFAM-ARITY@ TFAM-DECL-PARAM-COUNT 4 - > IF fam TDINIT-REFUSE THEN
+   fam TFAM-DERIVE-INIT? 0= fam TFAM-PRODUCT? 0= or IF TDINIT-REFUSE THEN
+   fam TFAM-PKG$ nip 0= IF TDINIT-REFUSE THEN
+   fam TFAM-ARITY@ TFAM-DECL-PARAM-COUNT 4 - > IF TDINIT-REFUSE THEN
    fam TDINIT-TERM {: term:n :}
-   term INIT-RECORD? 0= IF 2drop drop fam TDINIT-REFUSE THEN
+   term INIT-RECORD? 0= IF 2drop drop TDINIT-REFUSE THEN
    2drop drop
    fam TFAM-FLD-COUNT@ 0 ?do
       fam TFAM-FLD-START@ i + term INIT-FIELD? 0= IF
-         2drop 2drop unloop fam TDINIT-REFUSE THEN
+         2drop 2drop unloop TDINIT-REFUSE THEN
       2drop 2drop
    loop ;
 

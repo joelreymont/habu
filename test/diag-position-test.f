@@ -1752,6 +1752,13 @@ variable RC
    s\" \"line\":4,\"column\":10,\"byte_start\":97,\"byte_end\":102" REJECT-RC LOADED
    ERR$ s\" \"token\":\"does>\"" CONTAINS? TTRUE ;
 
+: TEST-VARIANT-COLLIDE ( -- )
+   s" a variant spelled like a derived word" T-LABEL
+   SB-RESET
+   s" SUMTYPE tdpos DERIVE eq VARIANT tag ;VARIANT ;SUMTYPE" SB-APPEND LF+
+   s" variant-collide.f" FIXTURE!
+   s" E-BAD-DECLARATION" s" tag" 1 33 32 35 RUN-REFUSED-AT ;
+
 : GEN-LINES ( -- )
    SB-RESET
    s\" : GEN ( -- ) s\" : MADE ( -- ) ;\" evaluate-closed ;" SB-APPEND LF+
@@ -2294,6 +2301,7 @@ variable RC
    TEST-RUN-CAPTURED
    TEST-RUN-UNSOURCED
    TEST-HEAD-CLOSER
+   TEST-VARIANT-COLLIDE
    TEST-DEFER-SUGGEST
    TEST-CONTROL-ORPHAN
    TEST-CONTROL-REASON

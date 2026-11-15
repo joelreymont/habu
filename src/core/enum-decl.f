@@ -181,13 +181,20 @@ ED-RESET
    NEXT dup 0= IF
       2drop s" missing variant name" E-SYNTAX DECL-REJECT:REJECT throw THEN
    2dup NAME-LONG? IF 2drop TF-NAME-LONG$ E-CAP DECL-REJECT:REJECT throw THEN ;
-: OPEN-VARIANT ( -- )
-   SEEN-CLEAR
-   VARIANT-NAME {: na:ptr nu:n :}
+\ Records variant NAME, rejected at its token when a word DERIVE generates
+\ takes its name or a variant already has it.
+: VARIANT-START ( ptr u8 n -- ) {: na:ptr nu:n :}
    na nu DECL-REJECT:TOKEN!
+   FAM @ TFAM-DERIVE-ANY? na nu TFAM-DERIVED-TAIL? and IF
+      s" variant name collides with a derived word" E-NAME
+      DECL-REJECT:REJECT throw THEN
    s" duplicate variant" E-DUP DECL-REJECT:EXPECT
    TOK @ FAM @ na nu
    DECL-EVENT:VARIANT TOK !
+;
+: OPEN-VARIANT ( -- )
+   SEEN-CLEAR
+   VARIANT-NAME VARIANT-START
    0 VCELLS ! ;
 : CLOSE-VARIANT ( -- )
    VCELLS @ MAXSLOTS @ max MAXSLOTS !
@@ -214,10 +221,7 @@ ED-RESET
    {: na:ptr nu:n :}
    na nu NAME-LONG? IF TF-NAME-LONG$ E-CAP DECL-REJECT:REJECT throw THEN
    -1 SEEN-VARIANT !
-   na nu DECL-REJECT:TOKEN!
-   s" duplicate variant" E-DUP DECL-REJECT:EXPECT
-   TOK @ FAM @ na nu
-   DECL-EVENT:VARIANT TOK !
+   na nu VARIANT-START
    TOK @ FAM @ DECL-EVENT:END-VARIANT TOK !
    NVAR @ 1 + NVAR ! ;
 : COMPACT-CLAUSE ( ptr u8 n -- bool )    \ dispatch one compact token; YES = ;ENUM
@@ -303,9 +307,6 @@ ED-RESET
    loop
    FAM @ MAXSLOTS @ TFAM-SLOTS!
    FAM @ TDECL-LAYOUT-DESC
-   \ No reason is armed for the constructor participant's collide check: it runs at
-   \ commit, where no token of this front end applies, so the packet answers a
-   \ reserved-name reject from its code table.
    FAM @ GENERATED-DECL-CTOR:OWNS? IF FAM @ GENERATED-DECL-CTOR:ARM THEN ;
 
 : FULL-CLAUSE ( -- bool )               \ read + dispatch one full-body token; YES = ;ENUM
