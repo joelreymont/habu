@@ -26,7 +26,6 @@ $1000 constant CAP
 70 constant REJECT-RC
 84 constant SEALED-RC
 105 constant SHADOW-RC
-78 constant DUP-RC
 3 constant TEST-OUT-U
 5 constant TEST-ERR-U
 
@@ -676,7 +675,7 @@ variable RC
    ERR$ s" error[E-DUPLICATE-DEFINITION]: `LRDREP:MAKE` is already defined" CONTAINS? TTRUE
    BODY$ s" :4:3" ASSERT-AT
    EXITED @ TTRUE
-   RC @ DUP-RC T= ;
+   RC @ REJECT-RC T= ;
 
 \ A structure the checker finds open at a body's closing `;`, a plain body's or
 \ a does> clause's, is placed at that `;` (column 1 of PLACE's line).
@@ -703,7 +702,7 @@ variable RC
       s" :2:8" BODY-REJECT-AT ;
 
 \ A name only the checker holds, a PRODUCT replay with no word behind it, is
-\ refused by check-hook.f DEFINITION through src/core/checker.f
+\ refused by check-hook.f DEFINITION through src/core/check-walk.f
 \ REFUSE-DUPLICATE, which places the name in the evaluated string, <input>.
 : TEST-REPLAY-DUP-PLACE ( -- )
    s" an evaluated checker-only duplicate is placed at its name in <input>" T-LABEL
@@ -713,7 +712,7 @@ variable RC
    s" <input>" s" :1:3" ASSERT-AT
    OUT-U @ 0 T=
    EXITED @ TTRUE
-   RC @ DUP-RC T= ;
+   RC @ REJECT-RC T= ;
 
 \ A refused `cast:` names its code, place, word and reason.
 : TEST-CAST ( -- )

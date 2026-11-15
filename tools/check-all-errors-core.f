@@ -237,7 +237,7 @@ variable CA-COMPOSE-LABEL-U
    drop 2drop {: at:n u:n :}
    REJECTION:SOURCE$ {: b:ptr bu:n :}
    u 0= IF b bu at CA-NAME-END at - ELSE u THEN {: n:n :}
-   b at + n INTERPRETER:DUPLICATE-REJECT
+   b at + n 2dup REJECTION:DUPLICATE
    REJECTION:KEEP ;
 
 public

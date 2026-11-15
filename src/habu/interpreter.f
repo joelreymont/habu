@@ -849,19 +849,8 @@ private
 : PKG-CONTEXT-FAIL ( -- )
    TOKEN$ PKG-CONTEXT-REJECT  CHECKER-REJECT-RC REJECTION:STOP ;
 
-public
-\ Writes the record of the name a u, placed at it, through its help and leaves
-\ it open: the caller ends it.
-: DUPLICATE-REJECT ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   s" E-DUPLICATE-DEFINITION" REJECTION:OPEN
-   a u TICKS  s"  is already defined in this wordlist" SAY
-   a u REJECTION:AT  s" already defined" SAY
-   REJECTION:HELP  s" rename this word, or remove the earlier one" SAY ;
-private
-
 : PKG-DUPLICATE ( ptr u8 n -- )
-   DUPLICATE-REJECT CHECKER-REJECT-RC REJECTION:STOP ;
+   2dup REJECTION:DUPLICATE CHECKER-REJECT-RC REJECTION:STOP ;
 
 : PKG-NAME ( -- )
    TOKEN if exit then

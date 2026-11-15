@@ -12744,7 +12744,7 @@ variable FLOOR0                            \ CHECKER-USE:SOURCE-FLOOR when it op
 \ The engine's PKG-OUTSIDE-CELL when it opened: the replay's scopes move that
 \ cell as the engine's buffers do, and CLOSE puts it back.
 variable OUTSIDE0
-$4E constant DUPLICATE                     \ E-DUPLICATE-DEFINITION, as CHECKER-DUP-DEFINITION throws it
+$4E constant DUPLICATE                     \ E-DUPLICATE-DEFINITION, as CLAUSE and EXPORT-ROOM throw it
 
 \ The undo log, at most one pair per record: a replayed `undefine`'s index and
 \ wid, or a GRANT row's with BOOT:NAMESPACE-WL, a wid record-wid! refuses.
@@ -14872,8 +14872,9 @@ package CHECKER-REG
 : CHECKER-DEFINED-HERE? ( ptr u8 n -- bool )
    CHECKER-FIND-USIG ;
 
-: CHECKER-DUP-DEFINITION ( -- )
-   $4E throw ;
+\ The name t tu, the token that defines it again, is rejected.
+: CHECKER-DUP-DEFINITION ( ptr u8 n -- )
+   2dup REJECTION:DUPLICATE CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ --- a package public whose own bare tail a private word of the package claims --
 7145 constant E-SHADOWED-ARITY
@@ -14958,7 +14959,7 @@ package CHECKER-REG
    {: na:ptr nu:n at:ptr atu:n :}
    na nu BYTE-SPAN? 0= IF SYM-STR-OVERFLOW THEN
    na nu CTOR-EXTEND?-XT IF at atu CTOR-EXTEND-REJECT THEN
-   na nu CHECKER-CERT-DUP? IF CHECKER-DUP-DEFINITION THEN
+   na nu CHECKER-CERT-DUP? IF at atu CHECKER-DUP-DEFINITION THEN
    na nu at atu CHECKER-REC-NAME-AT!
    0 DL-NEW ! ;
 
@@ -16697,8 +16698,8 @@ variable CURSYM
 
 : EXPORT-RECORD ( ptr u8 n bool -- )
    {: ta:ptr tu:n carries:bool :}
-   ta tu CHECKER-CERT-DUP? IF CHECKER-DUP-DEFINITION THEN
-   ta tu carries CHECKER-CERT-SHAPE-DUP? IF CHECKER-DUP-DEFINITION THEN
+   ta tu CHECKER-CERT-DUP? IF ta tu CHECKER-DUP-DEFINITION THEN
+   ta tu carries CHECKER-CERT-SHAPE-DUP? IF ta tu CHECKER-DUP-DEFINITION THEN
    ta tu CHECKER-REC-NAME! ;
 
 \ Its entry names the word it is, the source's own word when the source is an

@@ -22,7 +22,6 @@ private
 s" test/fixtures/error/again.f" included
 -9683 s" the fault test code" ERROR:FAULT E-FAULT
 -9679 constant UNDECLARED
-$4E constant DUPLICATE  \ E-DUPLICATE-DEFINITION, as constant throws it
 
 package PB
 -9677 s" the part's test code" ERROR:CODE E-PART
@@ -67,8 +66,11 @@ package PB
 
 
 : AGAIN-CASE ( -- )
-   s" the same name declared again in its package throws E-DUPLICATE-DEFINITION" T-LABEL
-   [: s" test/fixtures/error/again.f" included ;] DUPLICATE TTHROWSQ ;
+   s" the same name declared again in its package is rejected as E-DUPLICATE-DEFINITION" T-LABEL
+   REJECTION:CAPTURE
+   [: s" test/fixtures/error/again.f" included ;] CHECKER-REJECT-RC TTHROWSQ
+   REJECTION:BUFFER$ s" error[E-DUPLICATE-DEFINITION]: `E-AGAIN`" CONTAINS? TTRUE
+   REJECTION:BUFFER-OFF ;
 
 
 : FAULT-CASE ( -- )

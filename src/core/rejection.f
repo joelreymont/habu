@@ -696,6 +696,14 @@ public
    cap EMIT-U  s"  bytes a path may have" EMIT-STR
    HELP ;
 
+\ The name a u is already defined where it is defined again: the record stands
+\ at t tu. It is written through its help, and the caller stops it.
+: DUPLICATE ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n t:ptr tu:n :}
+   s" E-DUPLICATE-DEFINITION" OPEN
+   96 EMIT1  a u EMIT-STR  s" ` is already defined in this wordlist" EMIT-STR
+   t tu AT  s" already defined" EMIT-STR
+   HELP  s" rename this word, or remove the earlier definition" EMIT-STR ;
+
 private
 \ FILE! takes any path a tool names, so a long one is rejected here, after the
 \ words that print a rejection.
