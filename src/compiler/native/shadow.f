@@ -1,9 +1,8 @@
 \ shadow.f - a second machine's routine for every definition the native driver
 \ publishes, mapped from its dictionary record. A cross-build runs the target's
 \ prefix on the host and a body's names bind as it compiles, so while a shadow
-\ is open src/compiler/native/compiler.f compiles each definition a second time
-\ for the shadow's binding, in a nested context, from the HIR module
-\ NBACK:FREEZE froze for the engine's own selector. Such a shadow keeps both
+\ is open each definition is compiled a second time, for the shadow's binding.
+\ Such a shadow keeps both
 \ copies: a definition files its target emission e and then its host emission
 \ e+1, which later files run while they compile. A native shadow's one emission
 \ serves both roles. A record's emission is always the target's.
@@ -21,8 +20,6 @@ require src/compiler/session/lease.f
 
 package NSHADOW
 private
-
-CAST: ENTRY-BYTES ( n -- ptr u8 )
 
 \ The shadow is closed; open; or native, open for the engine's own binding
 \ with its source already emitted.
@@ -148,16 +145,9 @@ private
    i 0 <  i count >= or if E-NSHADOW-ROW throw then
    i ;
 
-: EM-CK ( n -- n )
-   OPEN-CK N-EMS @ ROW-CK ;
-
-: REC-CK ( n -- n )
-   OPEN-CK N-RECS @ ROW-CK ;
-
 \ ---- taking a sealed emission -------------------------------------------------
-\ A shadow routine is a sealed NEMIT emission stated by its backend's unplaced
-\ row (NBACK:EMIT-UNPLACED): every call, branch and address leaving it is a row
-\ whose field the linker writes. NEMIT holds one emission and the engine's own
+\ A shadow routine is a sealed NEMIT emission: every call, branch and address
+\ leaving it is a row whose field the linker writes. NEMIT holds one emission and the engine's own
 \ opens it next, so TAKE copies the bytes and rows before the nested context
 \ leaves, and TAKE-HOST the host's after the engine's own walk seals them.
 \
@@ -364,16 +354,13 @@ $E9 constant TAIL-OP
    REC-IDX-RELEASE  REC-EM-RELEASE  REC-ENTRY-RELEASE  PATCHED-RELEASE ;
 
 : FUN-ROW ( n n -- n ) {: e:n k:n :}
-   e EM-CK drop
-   k  e EM-FUN0 @  e EM-FUNS @  SUB-ROW ;
+   e EM-FUN0 @ k + ;
 
 : CALL-ROW ( n n -- n ) {: e:n k:n :}
-   e EM-CK drop
-   k  e EM-CALL0 @  e EM-CALLS @  SUB-ROW ;
+   e EM-CALL0 @ k + ;
 
 : ADDR-ROW ( n n -- n ) {: e:n k:n :}
-   e EM-CK drop
-   k  e EM-ADDR0 @  e EM-ADDRS @  SUB-ROW ;
+   e EM-ADDR0 @ k + ;
 
 \ Whether a clause has been patched into emission e's jump slot: the tail
 \ call CALL-SITES reports past its rows. An emission with no slot carries none.
@@ -431,7 +418,7 @@ public
 
 \ A placed emission's address sites carry the host address it was placed with.
 \ A backend that hands a native shadow a placed emission installs how its sites
-\ carry an address and return to the unplaced form (src/arch/x86-64/passes.f),
+\ carry an address and return to the unplaced form,
 \ given the first byte of its copy while the emission stands sealed in NEMIT;
 \ COPY refuses such an emission until one has.
 : NATIVE-ADDRS! ( [ ptr u8 -- ] -- )
@@ -490,30 +477,6 @@ public
    e fun CLAUSE-AT drop
    e HOST-MARK ;
 
-\ The x86 def-cast writer publishes a raw one-byte RET identity body. It seals
-\ no NEMIT emission because the kernel writes it directly, so that writer
-\ reports the exact published entry and span through its fixed-shadow callback.
-: TAKE-CAST ( n n -- ) {: at:n size:n :}
-   OPEN-CK
-   NATIVE? 0= if E-NSHADOW-STATE throw then
-   size 1 <> if E-NSHADOW-ROW throw then
-   at ENTRY-BYTES c@ $C3 <> if E-NSHADOW-ROW throw then
-   construct pending none PENDING !
-   N-EMS @ {: e:n :}
-   e 1+ EM-RESERVE
-   CODE-N @ e EM-AT !
-   size e EM-SIZE !  size e EM-RET !
-   N-FUNS @ e EM-FUN0 !  1 e EM-FUNS !
-   N-CALLS @ e EM-CALL0 !  0 e EM-CALLS !
-   N-ADDRS @ e EM-ADDR0 !  0 e EM-ADDRS !
-   -1 e EM-PATCH !  0 e EM-PATCH-TGT !  e e EM-HOST !
-   CODE-N @ size + CODE-BUF-RESERVE
-   at ENTRY-BYTES CODE-N @ CODE-BUF size BYTE-COPY
-   N-FUNS @ 1+ FUN-OFF-RESERVE  N-FUNS @ 1+ FUN-SOURCE-RESERVE
-   0 N-FUNS @ FUN-OFF !  at N-FUNS @ FUN-SOURCE !
-   REC-RESERVE
-   construct pending plain PENDING ! ;
-
 \ Pairs the pending target copy's functions with the host emission's, placed
 \ at `at`, before publication commits: both walks emit the same functions, a
 \ stub last.
@@ -557,9 +520,8 @@ public
 \ relocation target of the record's emission and of its host emission. The x86
 \ body holds a five-byte slot and the capture resolves the tail call through
 \ the clause companion's row like any other tail site. An emission with no slot
-\ cannot carry the clause, and since a later replacement can still clear
-\ the target, nothing is dropped here: ROUTINE? answers the capture when the
-\ map is read. Each patched emission joins PATCHES.
+\ cannot carry the clause; its target is kept all the same. Each patched
+\ emission joins PATCHES.
 : PATCH-DOES ( n n -- ) {: idx:n target:n :}
    OPEN? 0= if exit then
    N-RECS @ 0 ?do
@@ -570,8 +532,7 @@ public
    loop
    E-NSHADOW-ROW throw ;
 
-\ Drop the taken copies no publication claimed. Nonthrowing: compiler.f
-\ RETIRE-BODY runs it as every tier-1 definition ends, refused or accepted.
+\ Drop the taken copies no publication claimed. Nonthrowing.
 : ABANDON ( -- )
    construct pending none PENDING !  false HOST-PENDING ! ;
 
@@ -581,22 +542,22 @@ public
    OPEN-CK N-RECS @ ;
 
 : RECORD@ ( n -- n )
-   REC-CK REC-IDX @ ;
+   REC-IDX @ ;
 
 : EMISSION@ ( n -- n )
-   REC-CK REC-EM @ ;
+   REC-EM @ ;
 
 \ The does> patches since the shadow opened, and the emission the k-th changed.
 : PATCHES ( -- n )
    OPEN-CK N-PATCHES @ ;
 
 : PATCHED@ ( n -- n )
-   OPEN-CK N-PATCHES @ ROW-CK PATCHED @ ;
+   PATCHED @ ;
 
 \ Where in that emission it enters: zero for a definition, the clause function's
 \ start for a `does>` companion.
 : ENTRY@ ( n -- n )
-   REC-CK REC-ENTRY @ ;
+   REC-ENTRY @ ;
 
 \ ---- each emission, as NEMIT stated it ---------------------------------------
 : EMISSIONS ( -- n )
@@ -605,26 +566,26 @@ public
 \ Emission e's host emission: itself in a native shadow and for a host
 \ emission, the next for a target emission with a host copy, else -1.
 : HOST@ ( n -- n )
-   EM-CK EM-HOST @ ;
+   EM-HOST @ ;
 
 \ The machine emission e's bytes are for.
 : ARCH@ ( n -- CTARGET:arch )
-   EM-CK {: e:n :}
+   {: e:n :}
    e EM-HOST @ e = if HOST-BINDING else SH-BIND @ then
    CBIND:TARGET@ CTARGET:ARCH@ ;
 
 : SIZE ( n -- n )
-   EM-CK EM-SIZE @ ;
+   EM-SIZE @ ;
 
 \ Its first byte, until the next take moves the storage.
 : BYTES ( n -- ptr u8 )
-   EM-CK EM-AT @ CODE-BUF ;
+   EM-AT @ CODE-BUF ;
 
 : RET-BYTES ( n -- n )
-   EM-CK EM-RET @ ;
+   EM-RET @ ;
 
 : FUNCTIONS ( n -- n )
-   EM-CK EM-FUNS @ ;
+   EM-FUNS @ ;
 
 : FUNCTION-OFFSET@ ( n n -- n )
    FUN-ROW FUN-OFF @ ;
@@ -634,8 +595,8 @@ public
    FUN-ROW FUN-SOURCE @ ;
 
 \ A quotation has no dictionary record. An exact published host function entry
-\ still identifies its HIR sibling in the shadow emission; no interior address
-\ or nearest routine span is accepted as an identity.
+\ still identifies its sibling function in the shadow emission; no interior
+\ address or nearest routine span is accepted as an identity.
 : SOURCE-FUNCTION ( n -- n n ) {: xt:n :}
    OPEN-CK
    SOURCE-INDEX
@@ -644,45 +605,34 @@ public
    s SOURCE-EM @  s SOURCE-FUN @ ;
 
 : CALL-SITES ( n -- n )
-   EM-CK {: e:n :}
+   {: e:n :}
    e EM-CALLS @
    e SLOT-CALL? if 1+ then ;
-
-\ Whether emission e still does what its records do: false once a clause has
-\ patched a created body that carries no slot for it, so the capture ships that
-\ record with no routine and the linker
-\ refuses it by name when reached.
-: ROUTINE? ( n -- bool )
-   EM-CK {: e:n :}
-   e EM-PATCH @ 0 >=  e EM-PATCH-TGT @ 0= or ;
 
 : PATCH-CALL? ( n n -- bool ) {: e:n k:n :}
    e SLOT-CALL?  k e EM-CALLS @ = and ;
 
 : CALL-SITE@ ( n n -- n )
    {: e:n k:n :}
-   e EM-CK drop
    e k PATCH-CALL? if e EM-PATCH @ exit then
    e k CALL-ROW CALL-OFF @ ;
 
 : CALL-KIND@ ( n n -- n )
    {: e:n k:n :}
-   e EM-CK drop
    e k PATCH-CALL? if NEMIT:TAIL exit then
    e k CALL-ROW CALL-KIND @ ;
 
 : CALL-TARGET@ ( n n -- n )
    {: e:n k:n :}
-   e EM-CK drop
    e k PATCH-CALL? if e EM-PATCH-TGT @ exit then
    e k CALL-ROW CALL-TGT @ ;
 
 \ Emission e's does> jump slot, or -1, whether or not a clause has patched it.
 : PATCH-SITE@ ( n -- n )
-   EM-CK EM-PATCH @ ;
+   EM-PATCH @ ;
 
 : ADDR-SITES ( n -- n )
-   EM-CK EM-ADDRS @ ;
+   EM-ADDRS @ ;
 
 : ADDR-SITE@ ( n n -- n )
    ADDR-ROW ADDR-OFF @ ;

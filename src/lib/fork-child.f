@@ -9,14 +9,12 @@
 \ STORAGE CLASS. PROCESS-WIDE: one registry, appended under an atomic lock.
 
 require src/lib/error.f
-\ HOOKS below is a checked quotation store; the optimizing tier lowers such a
-\ store through QUOTATION-STORAGE:STORE, so this file owns that dependency.
-require src/core/quotation-storage.f
 
 package FORK-CHILD
 private
 
-16 TYPED-BUFFER HOOKS [ -- ]
+16 constant CAP
+CAP TYPED-BUFFER HOOKS [ -- ]
 \ Atomic cells require native cell alignment.
 here data-base - negate 7 and allot
 variable N
@@ -31,6 +29,7 @@ variable MUTEX
 \ store-release, so a fork in the middle of a registration leaves the child the
 \ whole hook or none of it.
 : APPEND ( [ -- ] -- )
+   N @ CAP = if E-LAYOUT-BOUNDS throw then
    N @ HOOKS !
    N @ 1+ N atomic! ;
 

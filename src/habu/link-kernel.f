@@ -6,6 +6,7 @@
 require src/lib/le.f
 require src/lib/string.f
 require src/lib/fs.f
+require src/lib/sort.f
 require src/core/bytes.f
 require src/core/sha256.f
 require src/arch/arm64/asm.f
@@ -62,6 +63,10 @@ variable KTEXT-VA                    \ the values of the object's TEXT-VA and DA
 variable KDATA-VA
 variable PRESETS-AT
 variable PRESETS-N
+variable MACHO-AT                    \ the Mach-O import names' bytes in KOBJ
+variable MACHO-U
+variable ELF-AT                      \ the ELF import names' bytes in KOBJ
+variable ELF-U
 variable CHECK-ROWS-AT               \ the checker rows' bytes in KOBJ
 variable CHECK-ROWS-U
 DYNAMIC-BUFFER OWNED-AT n            \ each package-private row's package, then name: offset in KOBJ, length
@@ -77,14 +82,6 @@ variable PATH-U
 : BAD ( -- )
    SAY-OBJECT
    s" link: the kernel object is cut short or malformed" 74 die ;
-
-: SAME ( n n ptr u8 n -- )
-   {: mine:n theirs:n a:ptr u:n :}
-   mine theirs = if exit then
-   SAY-OBJECT
-   s" link: its " SAY a u SAY s"  is " SAY theirs SAY-INT
-   s" , hb's is " SAY mine SAY-INT SAY-CR
-   s" link: the kernel object's code or data layout is not hb's" 74 die ;
 
 : KOBJ@ ( n -- n ) 0 KOBJ swap + LE:U64@ ;
 
@@ -120,6 +117,15 @@ variable PATH-U
    AT @ SYMS-AT !  count SYMS-N !
    count 0 ?do  NEXT SKIP  8 SKIP  loop ;
 
+\ An import table's offset in KOBJ and its length: names each ending in a NUL,
+\ so the last byte is one.
+: IMPORTS ( -- n n )
+   NEXT {: u:n :}
+   AT @ {: off:n :}
+   u SKIP
+   u 0 > if off u + 1 - 0 KOBJ swap + c@ 0<> if BAD then then
+   off u ;
+
 : SECTIONS ( -- )
    40 AT !
    NEXT {: codeu:n :}
@@ -137,6 +143,8 @@ variable PATH-U
       SAY-OBJECT
       s" link: the kernel object has no checker rows: its tree is older than this hb" 74 die
    then
+   IMPORTS MACHO-U ! MACHO-AT !
+   IMPORTS ELF-U ! ELF-AT !
    NEXT {: rowsu:n :}
    AT @ CHECK-ROWS-AT !  rowsu CHECK-ROWS-U !  rowsu SKIP
    AT @ KOBJ-U @ <> if BAD then ;
@@ -163,7 +171,7 @@ variable PATH-U
 \ One row, stated by kind: a package's private row on its package's private
 \ symbol, kept for the record linker.f OWNED+ lays of it.
 : STATE-ROW ( -- )
-   NEXT NEXT NEXT NEXT {: kind:n trusted:n fixed:n stow:n :}
+   NEXT NEXT NEXT {: kind:n trusted:n fixed:n :}
    AT @ 8 + {: name-at:n :}
    NAME-NEXT {: name:ptr nameu:n :}
    AT @ 8 + {: pkg-at:n :}
@@ -181,7 +189,7 @@ variable PATH-U
    kind PRIM-SPEC:K-PRIM =  owned or if
       name nameu CHECK:PRIM-OPEN
       atoms 0 ?do NEXT CHECK:PRIM-ATOM loop
-      pkg  pkgu  trusted 0<>  fixed 0<>  stow CHECK:PRIM-CLOSE
+      pkg  pkgu  trusted 0<>  fixed 0<>  CHECK:PRIM-CLOSE
       exit
    then
    atoms 8 * SKIP
@@ -243,6 +251,10 @@ public
    j 0<  j SCOPES-N @ >= or if s" link: the kernel object has no scope site of that kind" 74 die then
    j 8 * SCOPES-AT @ + KOBJ@ LABEL-REF ;
 
+\ The Mach-O and the ELF import sections' bytes.
+: MACHO-IMPORTS$ ( -- ptr u8 n ) 0 KOBJ MACHO-AT @ +  MACHO-U @ ;
+: ELF-IMPORTS$ ( -- ptr u8 n ) 0 KOBJ ELF-AT @ +  ELF-U @ ;
+
 \ The header cells the object gives a value: preset k's value and offset.
 : PRESET-N ( -- n ) PRESETS-N @ ;
 
@@ -250,8 +262,40 @@ public
    16 * PRESETS-AT @ + {: at:n :}
    at 8 + KOBJ@  at KOBJ@ ;
 
+private
+
+\ A cell-aligned offset whose cell lies whole in [0, start); start is cell-aligned.
+: IN-HEADER? ( n n -- bool )
+   {: off:n start:n :}
+   off 7 and 0=  off 0 >= and  off start < and ;
+
+public
+
+\ The offset of a header cell the link reads or writes; one whose cell does not
+\ lie whole below the object's DATA-START makes the object malformed.
+: HEADER-CELL ( n -- n )
+   dup s" DATA-START" SYM IN-HEADER? 0= if BAD then ;
+
+private
+
+: CEILING-IN ( n -- )
+   {: start:n :}
+   s" DP-CEILING-OFF" SYM {: ceil:n :}
+   s" DATA-SIZE" SYM {: size:n :}
+   ceil size or 7 and 0<>  ceil start < or  ceil size > or
+   if BAD then ;
+
+\ DATA-START is cell-aligned, and the dictionary's ceiling lies between it and
+\ DATA's end.
+: HEADER-BOUNDS ( -- )
+   s" DATA-START" SYM {: start:n :}
+   start 7 and 0<> if BAD then
+   start CEILING-IN ;
+
+public
+
 \ The kernel object at the path, which the links that follow adopt; one whose
-\ DATA-START is not hb's dies.
+\ DATA-START is above hb's dies: hb routes only its own header's stores.
 : READ ( ptr u8 n -- )
    {: path:ptr pathu:n :}
    0 KOBJ-U !
@@ -265,8 +309,14 @@ public
    size 1 max KOBJ-RESERVE
    file 0 KOBJ size FS:READ-SIZED
    size KOBJ-U !
-   CHECK SECTIONS
-   DATA-START  s" DATA-START" SYM  s" DATA-START" SAME
+   CHECK SECTIONS HEADER-BOUNDS
+   s" DATA-START" SYM {: theirs:n :}
+   theirs DATA-START > if
+      SAY-OBJECT
+      s" link: its DATA-START is " SAY theirs SAY-INT
+      s" , hb's is " SAY DATA-START SAY-INT SAY-CR
+      s" link: a target may not raise DATA-START above the running hb's" 74 die
+   then
    s" TEXT-VA" SYM KTEXT-VA !  s" DATA-VA" SYM KDATA-VA ! ;
 
 \ States READ's object's primitive rows to the open build's checker in table
@@ -358,12 +408,9 @@ private
 : FIND ( n -- n )
    {: a:n :}
    0 N-HOSTS @
-   begin 2dup < while
-      2dup + 2 /
-      dup HOSTS @ a = if nip nip exit then
-      dup HOSTS @ a < if rot drop 1 + swap else nip then
-   repeat
-   2drop -1 ;
+   [: HOSTS @ a < ;] SORT:PARTITION-POINT {: i:n :}
+   i N-HOSTS @ <  if i HOSTS @ a = if i exit then then
+   -1 ;
 
 
 \ The kernel's first word position. Nothing emits code between ADOPT and CUT,
@@ -454,22 +501,14 @@ variable N-KEPT
 : FIRST-REF ( n -- n )
    {: a:n :}
    0 A64ICODE:REFS
-   begin 2dup < while
-      2dup + 2 /
-      dup A64ICODE:REF-SITE a < if rot drop 1 + swap else nip then
-   repeat
-   drop ;
+   [: A64ICODE:REF-SITE a < ;] SORT:PARTITION-POINT ;
 
 
 \ The first data span ending after word position a.
 : FIRST-SPAN ( n -- n )
    {: a:n :}
    0 A64ICODE:DATA-SPANS
-   begin 2dup < while
-      2dup + 2 /
-      dup A64ICODE:DATA-SPAN-END a <= if rot drop 1 + swap else nip then
-   repeat
-   drop ;
+   [: A64ICODE:DATA-SPAN-END a <= ;] SORT:PARTITION-POINT ;
 
 \ True when word position a lies in a data span.
 : DATA? ( n -- bool )

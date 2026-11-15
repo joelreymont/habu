@@ -1,9 +1,11 @@
 \ event.f - BROWSER-EVENT: a browser module's side of the turn protocol's events
 \ (src/lib/browser/turn.js). A module built by tools/hb-build.f answers hello
-\ with EVENT's address; the host writes each event's seven cells there before
-\ the run that reads it, and copies delivered bytes into pages it reserved
-\ through the module's reserve export. HANDLE frees each delivery its turn does
-\ not TAKE. STORAGE CLASS. MODULE-OWNED: EVENT, written by the host between runs.
+\ with EVENT's address and the turn protocol revision its events and records
+\ were written to, which must equal turn.js's PROTOCOL; the host writes each
+\ event's seven cells there before the run that reads it, and copies delivered
+\ bytes into pages it reserved through the module's reserve export. HANDLE frees
+\ each delivery its turn does not TAKE. STORAGE CLASS.
+\ MODULE-OWNED: EVENT, written by the host between runs.
 
 require src/lib/error.f
 

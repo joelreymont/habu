@@ -1,5 +1,5 @@
-\ Generated initialized-field words keep their receiver, value, and private
-\ representation boundaries through ordinary source evaluation.
+\ Generated initialized-field words keep their receiver and value boundaries
+\ through ordinary source evaluation.
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/test/subject.f
@@ -29,8 +29,8 @@ public
 
 : RUN ( -- )
    T-RESET
-   \ Both refusals are thrown inside the declaration transaction and rendered by
-   \ the runner that wraps it before the code is rethrown, so each exits 70.
+   \ A declaration's refusal is thrown inside its transaction and rendered by
+   \ the runner that wraps it before the code is rethrown, so it exits 70.
    s" an open-width field cannot derive initialized accessors" T-LABEL
    s" package C2IA STRUCTURE badwidth<a> DERIVE init FIELD value a FIELD tail n ;STRUCTURE ;package"
       70 REFUSED? TTRUE
@@ -41,6 +41,9 @@ public
       70 REFUSED? TTRUE
    s" the product refusal reports the fixed-cell requirement" T-LABEL
    ERR ERR-U @ s" canonical fixed-cell record" CONTAINS? TTRUE
+   s" an accessor name a private word holds is refused" T-LABEL
+   s" package C2IA private : PO-A@ ( -- n ) 1 ; STRUCTURE po OPAQUE DERIVE init FIELD a n FIELD b n ;STRUCTURE ;package"
+      70 REFUSED? TTRUE
    s" a getter requires its own initialized record" T-LABEL
    s" package C2IA : BAD ( mut-view<a,b,c,init<d,pair>> -- mut-view<a,b,c,init<d,pair>> n ) C2IA-SHELF:COUNT@ ; ;package"
       70 REFUSED? TTRUE
@@ -49,18 +52,6 @@ public
       70 REFUSED? TTRUE
    s" a getter cannot return a raw pointer" T-LABEL
    s" package C2IA : BAD ( mut-view<a,b,c,init<d,shelf<a,b>>> -- mut-view<a,b,c,init<d,shelf<a,b>>> ptr ) C2IA-SHELF:SOURCE@ ; ;package"
-      70 REFUSED? TTRUE
-   s" the private unpack helper is not callable at tier zero" T-LABEL
-   s" package C2IA : BAD ( read-view<a,b,u8> -- n n ) SHELF-SOURCE-INIT-UNPACK ; ;package"
-      70 REFUSED? TTRUE
-   s" the private receiver helper is not callable at tier zero" T-LABEL
-   s" package C2IA : BAD ( mut-view<a,b,c,init<d,shelf<a,b>>> -- ptr u8 n ) SHELF-INIT-VIEW-UNPACK ; ;package"
-      70 REFUSED? TTRUE
-   s" an internal helper cannot be exported at tier zero" T-LABEL
-   s" package C2IA public EXPORT SHELF-SOURCE-INIT-UNPACK ;package"
-      70 REFUSED? TTRUE
-   s" an internal receiver cannot be exported at tier zero" T-LABEL
-   s" package C2IA public EXPORT SHELF-INIT-VIEW-UNPACK ;package"
       70 REFUSED? TTRUE
    T-REPORT
    s" c2-init-accessor-refusals: ok" type cr ;

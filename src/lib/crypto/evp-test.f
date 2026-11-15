@@ -365,9 +365,7 @@ create RUSAGE-BUF RUSAGE-BYTES allot
 
 PROCESS-SYMBOLS
 
-FUNCTION: RESOURCE-USAGE getrusage ( n ptr u8 -- i32 )
-   1 RUSAGE-BYTES WRITES-BYTES
-;FUNCTION
+FUNCTION: RESOURCE-USAGE getrusage ( n ptr u8 -- i32 ) ;FUNCTION
 
 : LE64@ ( ptr u8 -- n ) {: source :}
    0 CELL-BYTES 0 do source 7 i - + c@ swap 8 lshift or loop ;

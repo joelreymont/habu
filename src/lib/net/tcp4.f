@@ -2,7 +2,7 @@
 \ bindings; no protocol, framing, name resolution or connection policy. Another
 \ OS is E-PLATFORM before a socket opens. Every connection is non-blocking. Not
 \ run on Linux: the non-blocking path, TRY-READ, TRY-SEND, UNREAD and UNSENT.
-\ STORAGE CLASS. TASK-LOCAL: the endpoint storage is one TASK:+USER row; the
+\ STORAGE CLASS. TASK-LOCAL: the endpoint storage is one TASK:+USERS row; the
 \ payload spans the transfers take are caller-owned.
 require src/lib/error.f
 require src/lib/ffi-abi.f
@@ -178,14 +178,13 @@ $1024 constant SO-NWRITE           \ Darwin's count of SIOCOUTQ, a socket option
 
 \ Endpoint storage is per task: a $10 sockaddr_in, a $04 socklen_t, the $04
 \ int a socket option is set from, and the $08 pollfd a transfer waits through
-\ (int fd, short events, short revents), which end on the cell so the row after
-\ this one still starts aligned. Calls must not nest within one task; readers
-\ sharing a connection coordinate themselves.
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $20 TASK:+USER IO-STORAGE drop
-: SOCKADDR ( -- ptr u8 ) IO-STORAGE BYTE-VIEW ;
-: ADDRLEN ( -- ptr u8 ) IO-STORAGE BYTE-VIEW $10 + ;
-: OPTION ( -- ptr u8 ) IO-STORAGE BYTE-VIEW $14 + ;
-: POLLFD ( -- ptr u8 ) IO-STORAGE BYTE-VIEW $18 + ;
+\ (int fd, short events, short revents). Calls must not nest within one task;
+\ readers sharing a connection coordinate themselves.
+$20 TASK:+USERS IO-STORAGE u8
+: SOCKADDR ( -- ptr u8 ) 0 IO-STORAGE ;
+: ADDRLEN ( -- ptr u8 ) $10 IO-STORAGE ;
+: OPTION ( -- ptr u8 ) $14 IO-STORAGE ;
+: POLLFD ( -- ptr u8 ) $18 IO-STORAGE ;
 
 CAST: BLEN>N ( NUM:byte-len -- n )
 
@@ -286,36 +285,17 @@ FUNCTION: SEND-CALL send ( n ptr u8 n n -- n ) ;FUNCTION
 FUNCTION: OPTION-CALL setsockopt ( n n n ptr u8 n -- i32 ) ;FUNCTION
 FUNCTION: SHUTDOWN-CALL shutdown ( n n -- i32 ) ;FUNCTION
 FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
-
-FUNCTION: DARWIN-ACCEPT accept ( n ptr u8 ptr u8 -- i32 )
-   1 $10 WRITES-BYTES
-   2 $04 WRITES-BYTES
-;FUNCTION
-
-FUNCTION: ACCEPT-CALL accept4 ( n ptr u8 ptr u8 n -- i32 )
-   1 $10 WRITES-BYTES
-   2 $04 WRITES-BYTES
-;FUNCTION
-
-FUNCTION: LOCAL-CALL getsockname ( n ptr u8 ptr u8 -- i32 )
-   1 $10 WRITES-BYTES
-   2 $04 WRITES-BYTES
-;FUNCTION
-
-FUNCTION: RECEIVE-CALL recv ( n ptr u8 n n -- n )
-   1 2 WRITES-ARG
-;FUNCTION
+FUNCTION: DARWIN-ACCEPT accept ( n ptr u8 ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: ACCEPT-CALL accept4 ( n ptr u8 ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: LOCAL-CALL getsockname ( n ptr u8 ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: RECEIVE-CALL recv ( n ptr u8 n n -- n ) ;FUNCTION
 
 \ ioctl's third argument is variadic: Darwin passes it on the stack.
 FUNCTION: QUEUE-CALL ioctl ( n n ptr u8 -- i32 )
    2 VARIADIC
-   2 $04 WRITES-BYTES
 ;FUNCTION
 
-FUNCTION: OPTION-GET-CALL getsockopt ( n n n ptr u8 ptr u8 -- i32 )
-   3 $04 WRITES-BYTES
-   4 $04 WRITES-BYTES
-;FUNCTION
+FUNCTION: OPTION-GET-CALL getsockopt ( n n n ptr u8 ptr u8 -- i32 ) ;FUNCTION
 
 
 : LAST-ERROR ( -- errno )
@@ -424,7 +404,7 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ptr u8 ptr u8 -- i32 )
 \ a submitting task runs only after the task ends), so it is a broken foreign
 \ result.
 : WAIT-READY ( n ms -- ready-result ) {: fd:n timeout:ms :}
-   timeout MS>N 0 MAX-TIMEOUT WITHIN-RANGE
+   timeout MS>N MAX-TIMEOUT > if E-OPERAND throw then
    fd >FD AIO:READABLE timeout AIO:POLL AIO:AWAIT
    MATCH AIO:outcome
       ready OF REVENTS>READY ENDOF
@@ -786,7 +766,7 @@ public
 
 
 \ Parks the task on the AIO loop until the stream would answer a READ or the
-\ deadline passes, which is `idle`.
+\ deadline passes, which is `idle`; ms -1 parks it with no deadline.
 : READABLE-WITHIN? ( connection ms -- ready-result )
    {: conn:connection timeout:ms :}
    conn CONNECTION-FD timeout WAIT-READY ;
@@ -797,7 +777,8 @@ public
 
 
 \ The same wait for an arriving connection: `ready` means ACCEPT answers at
-\ once, `idle` that the deadline passed with the queue still empty.
+\ once, `idle` that the deadline passed with the queue still empty; ms -1 parks
+\ it with no deadline.
 : PENDING-WITHIN? ( listener ms -- ready-result )
    {: lis:listener timeout:ms :}
    lis LISTENER-FD timeout WAIT-READY ;

@@ -1,8 +1,7 @@
 \ take-test.f - test/browser/take.f's module under bun: a delivery a turn takes
 \ with BROWSER-EVENT:TAKE (src/lib/browser/event.f) outlives the turn, and the
 \ module frees it in a later one. The module is built by tools/hb-build.f and
-\ validated by wasm-tools; bun and wasm-tools must be on PATH, so
-\ test/wasm/device.f runs it, not the ordinary gate.
+\ validated by wasm-tools; test/wasm/device.f runs it.
 
 require src/lib/string.f
 require src/lib/fs.f

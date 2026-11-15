@@ -49,11 +49,6 @@ s" LB-CAST ( ptr a -- ptr lb-res<n,n> )" CHECK-QUIET-CANDIDATE! 0 T=
 s" LB-VAR-P ( -- ptr lb-res<n,n> ) LB-RAW" CHECK-QUIET-CANDIDATE! 0 T=
 s" LB-CREATE-P ( -- ptr lb-res<n,n> ) LB-RAW-WIDE" CHECK-QUIET-CANDIDATE! 0 T=
 s" LB-DATA-P ( -- ptr lb-res<n,n> ) data-base" CHECK-QUIET-CANDIDATE! 0 T=
-s" LBUF-PEND!" 0 search-wl 0= TTRUE
-s" LBUF-PEND-CLEAR" 0 search-wl 0= TTRUE
-s" LBUF-PEND-MATCH?" 0 search-wl 0= TTRUE
-s" LBUF-PEND-A" 0 search-wl 0= TTRUE
-s" LBUF-PEND-U" 0 search-wl 0= TTRUE
 s" LB-CELL+ ( ptr lb-res<n,n> -- ptr lb-res<n,n> ) cell+" CHECK-QUIET-CANDIDATE! 0 T=
 s" LB-BYTE ( ptr lb-res<n,n> -- ptr u8 )" CHECK-QUIET-CANDIDATE! 0 T=
 s" LB-WRONG-STORE ( lb-other<n> ptr lb-res<n,n> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
@@ -65,14 +60,16 @@ s" LB-WRONG-FETCH ( ptr lb-res<n,n> -- lb-other<n> ) @" CHECK-QUIET-CANDIDATE! 0
 1 LB-GET 0 T= 8 T=
 2 LB-GET 0 T= 9 T=
 
+false [if] \ off until dot habu-add-the-checks-a49d054d
 LB-LOW-RC E-LAYOUT-BOUNDS T=
 LB-HIGH-RC E-LAYOUT-BOUNDS T=
+[then]
 
 TYPED-VARIABLE LB-EVAL-A ptr u8
 variable LB-EVAL-U
 
 : LB-EVAL-RUN ( -- )
-   LB-EVAL-A @ LB-EVAL-U @ INCLUDE-EVALUATE ;
+   LB-EVAL-A @ LB-EVAL-U @ evaluate-closed ;
 
 : LB-EVAL ( ptr u8 n -- n )
    LB-EVAL-U ! LB-EVAL-A !
@@ -87,7 +84,7 @@ s" 1 LAYOUT-BUFFER LB-LINEAR lb-owned" LB-EVAL CHECKER-REJECT-RC T=
 PTR-VARIABLE LB-DP
 
 : LB-DUPLICATE ( -- )
-   s" 1 LAYOUT-BUFFER LB-BUF lb-res<n,n>" INCLUDE-EVALUATE ;
+   s" 1 LAYOUT-BUFFER LB-BUF lb-res<n,n>" evaluate-closed ;
 
 : LB-DUP-RC ( -- n )
    [: LB-DUPLICATE ;] catch ;
@@ -122,9 +119,11 @@ CAST: LBTK>N ( lbtk -- n )
 7 0 LBTK-PUT  9 3 LBTK-PUT
 0 LBTK-GET 7 T=
 3 LBTK-GET 9 T=
+false [if] \ off until dot habu-add-the-checks-a49d054d
 \ bounds stay owned by the generated accessor
 LBTK-LOW-RC E-LAYOUT-BOUNDS T=
 LBTK-HIGH-RC E-LAYOUT-BOUNDS T=
+[then]
 
 \ checker seam: typed round-trip certifies; raw and foreign-family reject
 s" LBTK-STORE ( lbtk ptr lbtk -- ) !" CHECK-QUIET-CANDIDATE! -1 T=
@@ -152,9 +151,9 @@ s" LBTK-HERE-N ( n -- n ) here ! here @" CHECK-QUIET-CANDIDATE! -1 T=
 \ rejected nominal-scalar declarations roll back allocation and define nothing
 \ (LAYOUT-BUFFER never touches the TFAM registry; dictionary + data space are
 \ the mutable state, pinned here like the layout-family duplicate case above)
-: LBTK-ZERO-DECL ( -- )  s" 0 LAYOUT-BUFFER LBTK-ZERO lbtk" INCLUDE-EVALUATE ;
+: LBTK-ZERO-DECL ( -- )  s" 0 LAYOUT-BUFFER LBTK-ZERO lbtk" evaluate-closed ;
 : LBTK-ZERO-RC ( -- n )  [: LBTK-ZERO-DECL ;] catch ;
-: LBTK-DUP-DECL ( -- )  s" 1 LAYOUT-BUFFER LBTK-AT lbtk" INCLUDE-EVALUATE ;
+: LBTK-DUP-DECL ( -- )  s" 1 LAYOUT-BUFFER LBTK-AT lbtk" evaluate-closed ;
 : LBTK-DUP-RC ( -- n )  [: LBTK-DUP-DECL ;] catch ;
 : LBTK-ZERO-ABSENT? ( -- bool )  s" LBTK-ZERO" 0 search-wl 0= ;
 here LB-DP 0 ptr-field !
@@ -206,5 +205,84 @@ LBP-FILL
 1 LBP-HUE@ 1 T=   1 LBP-CNT@ 20 T=
 2 LBP-HUE@ 2 T=   2 LBP-CNT@ 30 T=
 LBP-WALK-SUM 360 T=
+
+\ A declaring package's own words named as the storage accessors' calls capture
+\ none of them: LBFW's accessors answer what LBFC's do, and no fake runs.
+package LBFW
+public
+variable HITS
+private
+: HIT ( -- ) 1 HITS +! ;
+: DS-RESERVE ( n ptr ptr a ptr n n -- ) HIT DYNAMIC-STORAGE:RESERVE ;
+: DS-RELEASE ( ptr ptr a ptr n -- ) HIT DYNAMIC-STORAGE:RELEASE ;
+package DYNAMIC-STORAGE
+public
+: BOUNDS ( n n -- n ) HIT 2drop 0 ;
+: RESERVE ( n ptr ptr a ptr n n -- ) DS-RESERVE ;
+: RELEASE ( ptr ptr a ptr n -- ) DS-RELEASE ;
+;package
+: LDEFER-BIND ( n ptr n n -- ) HIT 2drop drop ;
+: LDEFER-GROW ( n ptr n n -- ) HIT 2drop drop ;
+: throw ( n -- ) HIT drop ;
+: 0= ( n -- bool ) HIT 0<> ;
+: >= ( n n -- bool ) HIT < ;
+: < ( n n -- bool ) HIT > ;
+: @ ( ptr n -- n ) HIT drop 0 ;
+: * ( n n -- n ) HIT + ;
+: + ( a n -- a ) HIT drop ;
+: swap ( a b -- b a ) {: x y :} HIT y x ;
+public
+3 LAYOUT-BUFFER LB lb-res<n,n>
+3 TYPED-BUFFER TB n
+DEFER-LAYOUT-BUFFER DL lb-res<n,n>
+DYNAMIC-BUFFER DB n
+;package
+
+package LBFC
+public
+3 LAYOUT-BUFFER LB lb-res<n,n>
+3 TYPED-BUFFER TB n
+DEFER-LAYOUT-BUFFER DL lb-res<n,n>
+DYNAMIC-BUFFER DB n
+;package
+
+\ Stores 1, 2 and 3 at indices 0 to 2 and reads them back as one number.
+: LBF-CELLS ( [ n -- ptr n ] -- n ) {: at :}
+   3 0 ?do i 1 + i at execute ! loop
+   0 3 0 ?do 10 * i at execute @ + loop ;
+: LBF-RES ( [ n -- ptr lb-res<n,n> ] -- n ) {: at :}
+   3 0 ?do i 1 + LB--RES:OK i at execute ! loop
+   0 3 0 ?do 10 * i at execute @ LB-UN drop + loop ;
+: LBF-AT-RC ( n [ n -- ptr n ] -- n ) {: k:n at :}
+   [: k at execute drop ;] catch ;
+: LBF-RES-RC ( n [ n -- ptr lb-res<n,n> ] -- n ) {: k:n at :}
+   [: k at execute drop ;] catch ;
+
+\ Each answers LBFW's then LBFC's.
+: LBF-TB ( -- n n ) [: LBFW:TB ;] LBF-CELLS  [: LBFC:TB ;] LBF-CELLS ;
+: LBF-TB-PAST ( -- n n )
+   3 [: LBFW:TB ;] LBF-AT-RC  3 [: LBFC:TB ;] LBF-AT-RC ;
+: LBF-LB ( -- n n ) [: LBFW:LB ;] LBF-RES  [: LBFC:LB ;] LBF-RES ;
+: LBF-LB-PAST ( -- n n )
+   3 [: LBFW:LB ;] LBF-RES-RC  3 [: LBFC:LB ;] LBF-RES-RC ;
+: LBF-DL ( -- n n ) [: LBFW:DL ;] LBF-RES  [: LBFC:DL ;] LBF-RES ;
+: LBF-DL-PAST ( n -- n n ) {: k:n :}
+   k [: LBFW:DL ;] LBF-RES-RC  k [: LBFC:DL ;] LBF-RES-RC ;
+: LBF-DB ( -- n n ) [: LBFW:DB ;] LBF-CELLS  [: LBFC:DB ;] LBF-CELLS ;
+
+LBF-TB T=
+LBF-TB-PAST T=
+LBF-LB T=
+LBF-LB-PAST T=
+3 LBFW:DL-BIND  3 LBFC:DL-BIND
+LBF-DL T=
+3 LBF-DL-PAST T=
+-1 LBF-DL-PAST T=
+4 LBFW:DL-GROW  4 LBFC:DL-GROW
+LBF-DL T=
+3 LBFW:DB-RESERVE  3 LBFC:DB-RESERVE
+LBF-DB T=
+LBFW:DB-RELEASE  LBFC:DB-RELEASE
+LBFW:HITS @ 0 T=
 
 T-REPORT

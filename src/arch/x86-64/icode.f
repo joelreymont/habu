@@ -16,12 +16,8 @@ package X64CODE
 using X64ASM
 public
 
-\ The text window holds the hand-written kernel alone (`_start`, the helpers,
-\ every row) past the header page; elf.f MPAGE refuses a longer stream and
-\ src/os/image-bytes.f sizes the image buffer from it. The boot maps the
-\ captured engine's code region at VMBASE plus REGION-OFF (src/habu/boot-x64.f),
-\ so the window and its read-write tail end below that. rel32 reaches the whole
-\ image, so the bound is ARM64's engine code allowance (arm64/asm.f ADR-HI).
+\ The linked text and ELF's writable tail end below the runtime code region.
+\ Reserve one protection page for the tail and its alignment.
 REGION-OFF PROT-PAGE-MAX - X64LAYOUT:CODE-OFF - constant CODE-CAP-BYTES
 
 private
@@ -186,8 +182,7 @@ public
    at k SITE-ABS64 SITE+ ;
 
 \ Read before ASM-LINK forgets it: the number the link adds the load address
-\ to, as src/habu/link-x64.f reads each kernel body's entry into the record that
-\ names it. An unbound label is refused as the link refuses it.
+\ to. An unbound label is refused as the link refuses it.
 : LABEL-AT ( label -- n )
    ?KNOWN LBL-AT @ {: at:n :}
    at UNBOUND = if s" x64code: unresolved label" REFUSE then

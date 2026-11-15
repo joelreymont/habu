@@ -3,6 +3,7 @@
 \ STORAGE CLASS. PROCESS-WIDE read-only tables (src/lib/unicode/class-data.f,
 \ generated); any task may query.
 
+require src/lib/sort.f
 require src/lib/unicode/class-data.f
 
 package UNICODE-CLASS
@@ -17,21 +18,10 @@ $DFFF constant SURROGATE-LAST
    {: table:ptr idx:n :}
    table idx 2 * cells + ;
 
-\ How many entries of a table of cell pairs sorted by first cell have a
-\ first cell at most cp.
-: UPPER-BOUND ( n ptr n n -- n )
-   {: cp:n table:ptr count:n :}
-   0 count
-   begin 2dup < while
-      {: lo:n hi:n :}
-      lo hi + 2 / {: mid:n :}
-      cp table mid ENTRY @ < if lo mid else mid 1+ hi then
-   repeat
-   drop ;
-
 : RANGE-SEARCH ( n ptr n n -- bool )
    {: cp:n ranges:ptr count:n :}
-   cp ranges count UPPER-BOUND {: at:n :}
+   0 count [: ranges swap ENTRY @ cp <= ;] SORT:PARTITION-POINT
+   {: at:n :}
    at 0= if false exit then
    cp ranges at 1- ENTRY cell+ @ <= ;
 
@@ -39,7 +29,8 @@ $DFFF constant SURROGATE-LAST
 \ there is one.
 : PAIR-SEARCH ( n ptr n n -- n bool )
    {: cp:n pairs:ptr count:n :}
-   cp pairs count UPPER-BOUND {: at:n :}
+   0 count [: pairs swap ENTRY @ cp <= ;] SORT:PARTITION-POINT
+   {: at:n :}
    at 0= if 0 false exit then
    pairs at 1- ENTRY {: pair:ptr :}
    pair @ cp <> if 0 false exit then

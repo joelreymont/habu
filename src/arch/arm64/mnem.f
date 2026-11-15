@@ -10,7 +10,7 @@ using A64ICODE
 package A64ICODE
 public
 9 constant T0   10 constant T1   11 constant T2
-19 constant XDS  31 constant SP
+ENGINE-GPR:A64-DSTACK constant XDS  31 constant SP
 
 : MOVZ, ( n n -- )  0 MOVZHW EMITW ;
 
@@ -119,10 +119,6 @@ public
 
 : FMOVDX, ( n n -- )  ENC-FMOVDX EMITW ;
 
-: FMOVDI, ( n n -- )  ENC-FMOVDI EMITW ;
-
-: FMOVDD, ( n n -- )  ENC-FMOVDD EMITW ;
-
 : FADD, ( n n n -- )  ENC-FADD EMITW ;
 
 : FSUB, ( n n n -- )  ENC-FSUB EMITW ;
@@ -140,8 +136,6 @@ public
 : FCMP, ( n n -- )  ENC-FCMP EMITW ;
 
 : FCMP0, ( n -- )  ENC-FCMP0 EMITW ;
-
-: FCSEL, ( n n n n -- )  ENC-FCSEL EMITW ;
 
 : SCVTF, ( n n -- )  ENC-SCVTF EMITW ;
 

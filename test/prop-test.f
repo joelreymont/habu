@@ -32,10 +32,6 @@ require src/lib/process-fork.f
 require src/lib/fmt.f
 require src/lib/test/eval.f
 
-\ The harness and its candidates compile at tier 0 whatever the caller chose:
-\ tier 1 refuses CLEAR-MEAS's untyped row drain (E-NELAB-UNDER).
-0 set-tier
-
 package PROP-TEST
 private
 
@@ -234,9 +230,9 @@ CHK-DIAG-CAP BUFFER: CHK-DIAG
 : CHK  ( ptr u8 n -- )
    SRC-U !
    SRC-A !
-   CHK-DIAG CHK-DIAG-CAP DIAG-BUFFER!
-   ['] COMPILE catch  DIAG-BUFFER$ nip {: rc:n diag-u:n :}
-   DIAG-BUFFER-OFF
+   CHK-DIAG CHK-DIAG-CAP REJECTION:BUFFER!
+   ['] COMPILE catch  REJECTION:BUFFER$ nip {: rc:n diag-u:n :}
+   REJECTION:BUFFER-OFF
    rc 0= IF  -1 VERD !  EXIT  THEN
    rc CHECKER-REJECT-RC <>  diag-u 0=  or IF  rc throw  THEN
    0 VERD ! ;
@@ -630,11 +626,7 @@ variable CASE-EXP
    s" : PROP-PC ( -- n ) prot-wid-room ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) get-current ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) checker-scope-depth ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- n ) type-field:tx-depth ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) wf-n@ ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- bool ) wf-wide? ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- bool ) wf-needs-p2? ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( n n -- n ) wf-w-at ; " s" 7 7 " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) locw-hw-n@ ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) schema-reg:schema-root-n@ ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( n -- r ) s>f ; " s" 7 " 1 CHECK-CASE

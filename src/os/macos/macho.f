@@ -7,10 +7,9 @@
 \ The header is MH_EXECUTE for ARM64 with NOUNDEFS, DYLDLINK, TWOLEVEL and,
 \ while PIE? is set, PIE. The load commands, in order: __PAGEZERO, 4 GiB with
 \ no file bytes; __TEXT at VMBASE, sized to its content in 16 KB pages, __text
-\ at CODE-OFF; __DATA_CONST, whose __got holds the two cells dyld binds to
-\ libSystem's _dlopen and _dlsym (src/os/macos/layout.f DLOPEN-SLOT,
-\ DLSYM-SLOT), then the stripped DATA payload; __LINKEDIT, the chained-fixups
-\ blob, which the signer grows; LC_DYLD_CHAINED_FIXUPS, whose starts name the
+\ at CODE-OFF; __DATA_CONST, whose __got holds one cell per import BUILD-IMAGE
+\ is given, which dyld binds to libSystem; __LINKEDIT, the chained-fixups blob,
+\ which the signer grows; LC_DYLD_CHAINED_FIXUPS, whose starts name the
 \ __DATA_CONST segment offset so dyld rewrites the GOT before LC_MAIN runs;
 \ /usr/lib/dyld; LC_MAIN at CODE-OFF; libSystem; and two Homebrew runpaths.
 \ sign2.f adds LC_CODE_SIGNATURE in the header slack.
@@ -25,6 +24,7 @@
 \ inspecting host.
 require src/arch/arm64/icode.f
 require src/os/image-bytes.f
+require src/os/import-names.f
 require src/lib/le.f
 require src/lib/string.f
 using A64ICODE
@@ -47,26 +47,68 @@ $80000034 constant LC-DYLD-CHAINED-FIXUPS
 $1D       constant LC-CODE-SIG
 \ Where the file's first byte maps; BUILD-IMAGE stores it.
 variable VMBASE
-\ The maximum generated executable window: everything the assembler can emit,
-\ behind the header page it sits at.
-CODE-CAP-BYTES CODE-OFF + constant MPAGE
 $4000     constant MACHO-PAGE
 $4000     constant DATA-CONST-SIZE
-16        constant MACHO-GOT-BYTES
-104       constant MACHO-FIXUPS-SIZE
-\ One chained start belongs to each __DATA_CONST page. The first starts the two
-\ GOT binds; remaining pages contain only the immutable stripped DATA payload.
-\ The payload can fill the assembler window, with the GOT prefix taking another
-\ page at that boundary.
-CODE-CAP-BYTES MACHO-GOT-BYTES + MACHO-PAGE 1- + MACHO-PAGE / 1- 2 * 3 + -4 and
-   MACHO-FIXUPS-SIZE + constant MACHO-FIXUPS-MAX
-\ Code and payload share the assembler window. Their two separately rounded
-\ segments can therefore exceed MPAGE + one DATA_CONST page by one more page.
-MPAGE DATA-CONST-SIZE + MACHO-PAGE + constant MACHO-IMAGE-MAX
-\ CODESIG2's largest signature, spelt from sign2.f's CS-PAGE, CS-HASH, CD-HDR and
-\ $14 SuperBlob header, which load later, and a $40 id; more throws M-BOUNDS-RC.
-MACHO-IMAGE-MAX MACHO-FIXUPS-MAX +
-   $FFF + $1000 / $20 *   $14 + $58 + $40 +   constant MACHO-SIG-MAX
+
+public
+\ The libSystem functions and variables dyld binds into the GOT of the tree's
+\ kernel, in slot order, by C name; the kernel object carries them to the link.
+: IMPORT$ ( n -- ptr u8 n )
+   case
+      0 of s" dlopen" endof
+      1 of s" dlsym" endof
+      2 of s" free" endof
+      3 of s" realpath" endof
+      4 of s" fork" endof
+      5 of s" mach_vm_remap" endof
+      6 of s" mach_task_self_" endof
+      s" macho: no such import" 73 die
+   endcase ;
+7 constant IMPORTS
+
+\ The row whose C name this is; the build dies on a name the table lacks.
+: IMPORT-ROW ( ptr u8 n -- n )
+   {: a:ptr u:n :}
+   IMPORTS 0 ?do i IMPORT$ a u STR= if i unloop exit then loop
+   SB-RESET  s" macho: no such import " SB-APPEND  a u SB-APPEND
+   SB$ 73 die ;
+
+\ Import row n's cell, as a byte offset from the GOT's start.
+: SLOT-OFF ( n -- n ) 8 * ;
+private
+
+\ Darwin's plain realpath is its legacy entry, which reads every parent
+\ directory of a relative path; C programs link realpath$DARWIN_EXTSN.
+: SUFFIX$ ( ptr u8 n -- ptr u8 n )
+   s" realpath" STR= if s" $DARWIN_EXTSN" else s" " then ;
+
+\ A name's symbol is an underscore, the name, then the suffix.
+: SYMBOL-LEN ( ptr u8 n -- n )
+   {: a:ptr u:n :}
+   a u SUFFIX$ nip u + 1 + ;
+
+: SYMBOL, ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   s" _" M-BYTES  a u M-BYTES  a u SUFFIX$ M-BYTES ;
+
+\ From a symbol's offset in the symbol strings and its name's in the imports to
+\ the next one's.
+: STEP ( n n -- n n )
+   dup IMPORT-NAMES:NAME-AT SYMBOL-LEN 1 + rot + swap IMPORT-NAMES:NEXT-AT ;
+
+\ The symbol strings open with a NUL, and each symbol ends in one.
+: SYMBOLS-BYTES ( -- n )
+   1 0 begin dup IMPORT-NAMES:END? 0= while STEP repeat drop ;
+
+: MACHO-GOT-BYTES ( -- n ) IMPORT-NAMES:COUNT SLOT-OFF ;
+
+\ The fixups header and image starts ($38), one page's segment starts (24), the
+\ imports and the symbol strings; the blob pads them to a cell.
+: MACHO-FIXUPS-USED ( -- n )
+   $38 24 + IMPORT-NAMES:COUNT 4 * + SYMBOLS-BYTES + ;
+
+: MACHO-FIXUPS-SIZE ( -- n ) MACHO-FIXUPS-USED 7 + -8 and ;
+
 $10       constant SG-READ-ONLY
 $6        constant S-NON-LAZY-SYMBOL-POINTERS
 6         constant DYLD-CHAINED-PTR-64-OFFSET
@@ -75,7 +117,7 @@ variable CODELEN
 private
 
 : DATA-CONST-BYTES ( -- n )
-   MACHO-GOT-BYTES IMG-PAYLOAD-N @ + MACHO-PAGE 1- + MACHO-PAGE 1- invert and
+   MACHO-GOT-BYTES MACHO-PAGE 1- + MACHO-PAGE 1- invert and
    DATA-CONST-SIZE max ;
 
 : DATA-CONST-PAGES ( -- n ) DATA-CONST-BYTES MACHO-PAGE / ;
@@ -86,16 +128,8 @@ private
 : MACHO-STARTS-BYTES ( -- n )
    24 DATA-CONST-PAGES 1- 2 * + 3 + -4 and ;
 
-\ The image buffer fits the largest emittable image, so the loud MPAGE
-\ code-window guard stays the binding constraint, never a silent M-BOUNDS-RC
-\ throw from the byte cursor.
-MACHO-IMAGE-MAX MACHO-FIXUPS-MAX + MACHO-SIG-MAX + MSIZE!
-
 : ASM-CODELEN! ( -- )
-   IMG-PAYLOAD-N @ 0 > if
-      IMG-CODE-N @ ASM-LEN > if s" image: invalid code/payload boundary" 73 die then
-      IMG-CODE-N @
-   else ASM-LEN then CODELEN ! ;
+   ASM-LEN CODELEN ! ;
 
 public
 : ASM-CODE ( -- asm )
@@ -104,6 +138,38 @@ public
 
 : TEXTSZ ( -- n )  CODE-OFF CODELEN @ +  $3FFF +  $3FFF invert and ;
 private
+PTR-VARIABLE SIGA  variable SIGU
+: SIGA@ ( -- ptr u8 )
+   SIGA @ ;
+
+: SIGA! ( ptr u8 -- )
+   SIGA ! ;
+
+public
+: SET-SIGID ( ptr u8 n -- ) {: a:ptr u:n :}
+   a SIGA!
+   u SIGU ! ;
+
+private
+: SIG-IDLEN ( -- n )  SIGU @ 1 + ;
+88        constant CD-HDR
+$1000     constant CS-PAGE
+32        constant CS-HASH
+
+: NCSLOTS ( n -- n )   CS-PAGE 1 - +  CS-PAGE / ;
+
+: HASH-OFF ( -- n )  CD-HDR SIG-IDLEN + ;
+
+: CD-SIZE ( n -- n )   NCSLOTS CS-HASH *  HASH-OFF + ;
+
+: SB-SIZE ( n -- n )   CD-SIZE 20 + ;
+
+: MACHO-FILE-BYTES ( -- n ) TEXTSZ DATA-CONST-BYTES + MACHO-FIXUPS-BYTES + ;
+
+\ The buffer fits the file BUILD-MACHO writes and its signature.
+: MACHO-MSIZE! ( -- )
+   MACHO-FILE-BYTES dup SB-SIZE + MSIZE! ;
+
 variable LE-OFF                      \ file offset of the __LINKEDIT LC (sign post-pass)
 variable LE-BASE-SIZE
 32 constant MH-HDR-SZ
@@ -171,16 +237,43 @@ variable NCMDS
    M-HERE LE-OFF !
    s" __LINKEDIT" linkoff VA+ MACHO-PAGE linkoff MACHO-FIXUPS-BYTES 1 0 0 SEG, ;
 
+\ Whether row n's chain goes on to the next row, which it does only within
+\ a page: a chain never crosses one.
+: NEXT-IN-PAGE? ( n -- bool )
+   1 + {: next:n :}
+   next IMPORT-NAMES:COUNT <  next SLOT-OFF MACHO-PAGE mod 0<>  and ;
+
+\ A bind per row: the import's ordinal, the bind bit and, while the next row is
+\ in its page, a next of two 4-byte strides.
 : MACHO-GOT, ( -- )
-   0 IMG-M32  $80100000 IMG-M32
-   1 IMG-M32  $80000000 IMG-M32 ;
+   IMPORT-NAMES:COUNT 0 ?do
+      i IMG-M32
+      $80000000 i NEXT-IN-PAGE? if $00100000 or then IMG-M32
+   loop ;
+
+\ Page n's chain start. The GOT opens the segment and its cells tile a page, so
+\ a page holding a row starts at offset 0; one without has none ($FFFF).
+: PAGE-START ( n -- n ) MACHO-PAGE * MACHO-GOT-BYTES < if 0 else $FFFF then ;
+
+\ Each import names libSystem (ordinal 1) and its name's offset.
+: MACHO-IMPORTS, ( -- )
+   1 0 begin dup IMPORT-NAMES:END? 0= while
+      over 9 lshift 1 or IMG-M32  STEP
+   repeat 2drop ;
+
+: MACHO-SYMBOLS, ( -- )
+   0 IMG-M8
+   0 begin dup IMPORT-NAMES:END? 0= while
+      dup IMPORT-NAMES:NAME-AT SYMBOL, 0 IMG-M8  IMPORT-NAMES:NEXT-AT
+   repeat drop
+   MACHO-FIXUPS-SIZE MACHO-FIXUPS-USED - M-ZEROS ;
 
 : MACHO-FIXUPS, ( n -- ) {: segoff:n :}
    0 IMG-M32                 \ fixups_version
    $20 IMG-M32               \ starts_offset
    $38 MACHO-STARTS-BYTES + IMG-M32  \ imports_offset
-   $40 MACHO-STARTS-BYTES + IMG-M32  \ symbols_offset
-   2 IMG-M32                 \ imports_count
+   $38 MACHO-STARTS-BYTES + IMPORT-NAMES:COUNT 4 * + IMG-M32  \ symbols_offset
+   IMPORT-NAMES:COUNT IMG-M32  \ imports_count
    1 IMG-M32                 \ DYLD_CHAINED_IMPORT
    0 IMG-M32                 \ uncompressed symbol strings
    4 M-ZEROS
@@ -192,22 +285,15 @@ variable NCMDS
    segoff IMG-M64
    0 IMG-M32
    DATA-CONST-PAGES IMG-M16
-   0 IMG-M16
-   DATA-CONST-PAGES 1- 0 ?do $FFFF IMG-M16 loop
+   DATA-CONST-PAGES 0 ?do i PAGE-START IMG-M16 loop
    DATA-CONST-PAGES 1 and 0= if 0 IMG-M16 then
-   $201 IMG-M32
-   $1201 IMG-M32
-   0 IMG-M8
-   s" _dlopen" M-BYTES 0 IMG-M8
-   s" _dlsym" M-BYTES 0 IMG-M8 ;
+   MACHO-IMPORTS,
+   MACHO-SYMBOLS, ;
 
-: MACHO-EXTRA, ( n n -- ) {: off:n segoff:n :}
-   off M-OFF M-PAD-OFF
+: MACHO-EXTRA, ( -- )
    MACHO-GOT,
-   IMG-PAYLOAD-N @ 0 > if IMG-PAYLOAD-A @ IMG-PAYLOAD-N @ M-BYTES then
-   DATA-CONST-BYTES MACHO-GOT-BYTES - IMG-PAYLOAD-N @ - M-ZEROS
-   off DATA-CONST-BYTES + M-OFF M-PAD-OFF
-   segoff MACHO-FIXUPS,
+   TEXTSZ DATA-CONST-BYTES + M-OFF M-PAD-OFF
+   TEXTSZ MACHO-FIXUPS,
    MACHO-FIXUPS-BYTES LE-BASE-SIZE ! ;
 
 : MACHO-CMDS, ( n n -- ) {: textsz:n textlen:n :}
@@ -232,21 +318,21 @@ variable NCMDS
    M-HERE MH-HDR-SZ - 20 M-OFF M-LE32! ;
 
 : BUILD-MACHO ( -- )                        \ assumes icode's CODE holds the program
-   ASM-CODELEN!  M-RESET  0 NCMDS !
+   ASM-CODELEN!  MACHO-MSIZE!  M-RESET  0 NCMDS !
    MH-HDR,
    TEXTSZ CODELEN @ MACHO-CMDS,
    PATCH-HDR
-   CODELEN @  MPAGE CODE-OFF -  > IF s" macho: code exceeds __TEXT page" 73 die THEN
    CODE-OFF M-OFF M-PAD-OFF
    CODE CODELEN @ M-LEN M-BYTES-LEN
    TEXTSZ M-OFF M-PAD-OFF
-   TEXTSZ TEXTSZ MACHO-EXTRA,
-   M-HERE MLEN!
-   IMG-PAYLOAD-CLEAR ;
+   MACHO-EXTRA,
+   M-HERE MLEN! ;
 
 public
-\ The program in icode's CODE as a Mach-O file whose code maps at the address.
-: BUILD-IMAGE ( asm n -- img )
+\ The program in icode's CODE as a Mach-O file whose code maps at the address,
+\ its GOT binding the import names given.
+: BUILD-IMAGE ( asm n ptr u8 n -- img )
+   IMPORT-NAMES:SPAN!
    CODE-OFF - VMBASE !
    ASM-DROP
    BUILD-MACHO
@@ -336,7 +422,7 @@ private
    DATA-CMD @ 72 + s" __got" NAME? CHECK
    DATA-CMD @ 88 + s" __DATA_CONST" NAME? CHECK
    DATA-CMD @ 120 + U32@ DATA-OFF = CHECK
-   GOT-BYTES MACHO-GOT-BYTES = CHECK
+   GOT-BYTES 7 and 0= CHECK
    DATA-OFF TEXT-LIMIT = CHECK
    DATA-BYTES GOT-BYTES >= CHECK
    DATA-OFF DATA-BYTES AT drop ;

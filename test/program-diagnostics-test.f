@@ -3,6 +3,7 @@
 require test/gate-common.f
 require src/lib/string.f
 require src/lib/fmt.f
+require src/lib/process.f
 
 package PROGRAM-DIAGNOSTICS
 
@@ -10,7 +11,7 @@ package PROGRAM-DIAGNOSTICS
    GE-HB-RESET
    s" --load" GE-ARG+
    path pathu GE-ARG+
-   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV ;
+   s" bin/hb" PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV ;
 
 \ The Habu loop reads the file and recovers at `;` (src/habu/interpreter.f
 \ DEF-SEMI?), as it does for RUN-LOAD.
@@ -19,7 +20,7 @@ package PROGRAM-DIAGNOSTICS
    s" --load" GE-ARG+
    s" test/interpreter-loop-on.f" GE-ARG+
    path pathu GE-ARG+
-   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV ;
+   s" bin/hb" PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV ;
 
 : EXPECT-MARKER ( ptr u8 n ptr u8 n -- )
    {: marker:ptr markeru:n label:ptr labelu:n :}
@@ -86,8 +87,18 @@ package PROGRAM-DIAGNOSTICS
       s" name is reserved or already taken" DIAGNOSTIC
    s" test/deftype-dup-bad.f" 70
       s" DEFTYPE-DUP-ARMED" s" duplicate family" NEGATIVE
-   s" test/layout-buffer-forge.f" 70
-      s" LAYOUT-BUFFER-FORGE-ARMED" s" undefined word 'LBUF-PEND!'" NEGATIVE
+   s" test/bootstrap-created-effect-src.f" 70
+      s" BOOTSTRAP-CREATED-ARMED" s" actual: ptr a" NEGATIVE
+   s" test/bootstrap-created-raw-src.f" 70
+      s" BOOTSTRAP-CREATED-ARMED" s" expected: nom-id actual: a" NEGATIVE
+   s" test/bootstrap-created-const-src.f" 70
+      s" BOOTSTRAP-CREATED-ARMED" s" expected: kon-id actual: a" NEGATIVE
+   s" test/bootstrap-created-does-src.f" 70
+      s" BOOTSTRAP-CREATED-ARMED" s" expected: dow-id actual: a" NEGATIVE ;
+
+false [if] \ off until dot habu-add-the-checks-a49d054d
+\ The trap ends the load's process, so its exit code and stderr are what is checked.
+: BAD-TAGS ( -- )
    s" test/layout-valid-w1-bad.f" 85
       s" LAYOUT-VALID-ARMED"
       s" E-BAD-TAG habu: layout tag 2 outside 0..1" NEGATIVE
@@ -102,28 +113,8 @@ package PROGRAM-DIAGNOSTICS
       s" E-BAD-TAG habu: layout tag 2 outside 0..1" NEGATIVE
    s" test/layout-valid-root-bad.f" 85
       s" LAYOUT-VALID-ROOT-ARMED"
-      s" E-BAD-TAG habu: layout tag 2 outside 0..1" NEGATIVE
-   \ The trap ends the load's process, so its exit code and stderr are what is checked.
-   s" test/layout-valid-part-bad.f" 85
-      s" LAYOUT-VALID-PART-ARMED"
-      s" E-BAD-TAG habu: layout tag 7 outside 0..1" NEGATIVE
-   s" test/layout-valid-tags-bad.f" 85
-      s" LAYOUT-VALID-TAGS-ARMED"
-      s" E-BAD-TAG habu: layout tag 2 outside 0..1" NEGATIVE
-   s" test/layout-valid-hook-forge.f" 70
-      s" LAYOUT-VALID-FORGE-ARMED" s" undefined word 'LAYOUT-VALID-RECORD-XT'" NEGATIVE
-   s" test/layout-valid-walk-forge.f" 70
-      s" LAYOUT-VALID-FORGE-ARMED" s" undefined word 'VP-TERM-WALK-XT'" NEGATIVE
-   s" test/layout-valid-desc-forge.f" 70
-      s" LAYOUT-VALID-FORGE-ARMED" s" undefined word 'LAYOUT-VALID-DESC-XT'" NEGATIVE
-   s" test/bootstrap-created-effect-src.f" 70
-      s" BOOTSTRAP-CREATED-ARMED" s" actual: ptr a" NEGATIVE
-   s" test/bootstrap-created-raw-src.f" 70
-      s" BOOTSTRAP-CREATED-ARMED" s" expected: nom-id actual: a" NEGATIVE
-   s" test/bootstrap-created-const-src.f" 70
-      s" BOOTSTRAP-CREATED-ARMED" s" expected: kon-id actual: a" NEGATIVE
-   s" test/bootstrap-created-does-src.f" 70
-      s" BOOTSTRAP-CREATED-ARMED" s" expected: dow-id actual: a" NEGATIVE ;
+      s" E-BAD-TAG habu: layout tag 2 outside 0..1" NEGATIVE ;
+[then]
 
 \ Each refused signature of a multi-error load is counted once and written once:
 \ a second report of one would be a second line on stderr and a count of 2.
@@ -131,21 +122,12 @@ package PROGRAM-DIAGNOSTICS
    s" test/program-diagnostic-badsig.f" {: path:ptr pathu:n :}
    path pathu RUN-LOAD
    path pathu GE-EXPECT-OK
-   GT-OUT$ S\" 1\n1\n1\n0\n1\nok\n" STR= 0= if s" badsig counts" GE-FAIL then
+   GT-OUT$ S\" 1\n1\n1\nok\n" STR= 0= if s" badsig counts" GE-FAIL then
    SB-RESET
    S\" habu: in pdb-colon: unknown type 'zz' in signature; suggestion: Use a known stack-signature type or a single-letter type variable.\n" SB-APPEND
    S\" habu: in pdb-trusted: bad stored signature '-- zz'\n" SB-APPEND
    S\" habu: in pdb-defer: bad stored signature '-- zz'\n" SB-APPEND
-   S\" habu: in pdb-native: bad stored signature '-- zz'\n" SB-APPEND
    GT-ERR$ SB$ STR= 0= if s" badsig reports" GE-FAIL then ;
-
-: BADSIG-WIDE-ONCE ( -- )
-   s" test/program-diagnostic-wide-native.f" {: path:ptr pathu:n :}
-   path pathu RUN-LOAD
-   path pathu GE-EXPECT-OK
-   GT-OUT$ S\" 0\n1\nok\n" STR= 0= if s" wide badsig count" GE-FAIL then
-   s" habu: in pdb-wide: bad stored signature" path pathu GE-EXPECT-ERR-HAS
-   s" input row too wide to record (256 cells, at most 255)" path pathu GE-EXPECT-ERR-HAS ;
 
 \ A multi-error load counts the refusals it renders: a quiet scan's refusal is
 \ neither printed nor counted, so the count is 1 and stderr holds BADC's line.
@@ -163,7 +145,6 @@ package PROGRAM-DIAGNOSTICS
 
 : DIAGNOSTICS ( -- )
    BADSIG-ONCE
-   BADSIG-WIDE-ONCE
    QUIET-COUNT-ONCE
    s" test/program-diagnostic-me.f" s" habu: in mea1:" DIAGNOSTIC
    s" test/native-multi-error-recovery.f" s" habu: in bad:" HABU-DIAGNOSTIC

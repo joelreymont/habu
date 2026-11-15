@@ -26,9 +26,7 @@ private
 
 PROCESS-SYMBOLS
 FUNCTION: SYSCONF-CALL sysconf ( n -- n ) ;FUNCTION
-FUNCTION: GETLOADAVG-CALL getloadavg ( ptr u8 n -- i32 )
-   0 SAMPLE-BYTES WRITES-BYTES          \ the one sample nelem 1 asks for
-;FUNCTION
+FUNCTION: GETLOADAVG-CALL getloadavg ( ptr u8 n -- i32 ) ;FUNCTION
 
 : ONLN ( -- n )
    HB-TARGET-MACOS? if ONLN-MACOS else ONLN-LINUX then ;

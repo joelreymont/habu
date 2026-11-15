@@ -6,7 +6,7 @@ require src/core/bytes.f
 require src/lib/span.f
 
 package IMAGE-BYTES
-\ The buffer's bytes: the largest image a loaded target writer names.
+\ The buffer's bytes: the largest image a target writer has named.
 variable MSIZE-N
 public
 : MSIZE ( -- n ) MSIZE-N @ ;
@@ -20,17 +20,6 @@ private
 PTR-VARIABLE M-A
 variable M-N
 variable M-O
-public
-\ The code/payload boundary macho.f reads to put payload bytes in __DATA_CONST;
-\ only IMG-PAYLOAD-CLEAR stores it, as zero, so no image carries a payload.
-PTR-VARIABLE IMG-PAYLOAD-A
-variable IMG-PAYLOAD-N
-variable IMG-CODE-N
-
-: IMG-PAYLOAD-CLEAR ( -- )
-   0 IMG-PAYLOAD-N !  0 IMG-CODE-N ! ;
-
-private
 : M-ALLOC-BUF ( -- ptr u8 )
    MSIZE map-anon 0 <> if drop s" image-bytes: mmap failed" 74 die then ;
 
@@ -43,13 +32,20 @@ private
 : M-ENSURE-BUF ( -- )
    MBUF-A@ 0= if M-ALLOC-BUF MBUF-A! then ;
 
+: M-UNMAP ( -- )
+   MBUF-A@ MSIZE munmap 0 <> if s" image-bytes: munmap failed" 74 die then
+   NULL-PTR MBUF-A! ;
+
 public
-\ A target writer names its largest image at load; the largest named wins,
-\ whatever the load order. The buffer maps on first use, so a size named after
-\ that is refused.
+\ A target writer names the bytes its next image takes, at load or before that
+\ image's M-RESET; the largest wins, and one above a mapped buffer's unmaps it for
+\ the next use.
 : MSIZE! ( n -- )
-   MBUF-A@ 0= 0= if s" image-bytes: a size named after the buffer mapped" 73 die then
-   $FFFF + $10000 / $10000 *  MSIZE-N @ max  MSIZE-N ! ;
+   $FFFF + $10000 / $10000 * {: n:n :}
+   n MSIZE > if
+      MBUF-A@ 0= 0= if M-UNMAP then
+      n MSIZE-N !
+   then ;
 
 : MBUF ( -- ptr u8 )
    M-ENSURE-BUF

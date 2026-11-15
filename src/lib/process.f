@@ -1,14 +1,14 @@
 \ process.f - spawn, capture, poll and reap child processes.
-\ The path buffer, pollfd array and capture slots are one STORAGE-BYTES
-\ TASK:+USER row per task, so any number of tasks run children at once; the
-\ REAP-ARM and STOP vectors are process-wide policies. Spawn requests
+\ The path buffer, pollfd array and capture slots are one TASK:+USERS row of
+\ STORAGE-BYTES bytes per task, so any number of tasks run children at once; the
+\ STOP vector is a process-wide policy. Spawn requests
 \ are src/lib/spawn.f's, tree kills src/lib/process-tree.f's; process-argv.f,
 \ process-env.f and process-cwd.f add spawn shapes.
 
 s" src/lib/error.f" required
 s" src/lib/memory.f" required                \ MEM-MAX-N bounds DEADLINE-AT
 s" src/lib/adt/result.f" required            \ result<n,n> for RUN-IO-RC
-s" src/lib/task.f" required                  \ TASK:+USER carries the per-call row
+s" src/lib/task.f" required                  \ TASK:+USERS carries the per-call row
 s" src/lib/fd-lock.f" required               \ FD-LOCK:WITH orders descriptor creation against spawns
 s" src/lib/fd.f" required                    \ FD:PIPE, the capture pipes
 s" src/lib/span.f" required
@@ -61,7 +61,7 @@ public
 4096 constant STDIN-CHUNK-CAP
 
 -1 constant NO-FD                        \ a closed / never-opened descriptor cell
--1 constant NO-PID                       \ no child, and no armed reaper
+-1 constant NO-PID                       \ no child
 
 private
 \ The per-task row, laid out like src/lib/net/tcp4.f's: a poll array shared by
@@ -77,9 +77,7 @@ private
 PATHZ-OFF PATHZ-CAP + 7 + $FFFFFFFFFFFFFFF8 and constant PFD-OFF
 PFD-OFF PFD-SLOTS PFD-SLOT-BYTES * + constant PROBE-OFF
 PROBE-OFF 1 + 7 + $FFFFFFFFFFFFFFF8 and constant PID-OFF
-public
 PID-OFF     1 cells + constant RC-OFF
-private
 RC-OFF      1 cells + constant OUT-R-OFF
 OUT-R-OFF   1 cells + constant OUT-W-OFF
 OUT-W-OFF   1 cells + constant ERR-R-OFF
@@ -93,46 +91,42 @@ IN-OFF-OFF  1 cells + constant DEADLINE-OFF
 DEADLINE-OFF 1 cells + constant RD-OFF
 RD-OFF      1 cells + constant STATUS-OFF
 STATUS-OFF  1 cells + constant TIMED-OUT-OFF
-TIMED-OUT-OFF 1 cells + constant REAP-PID-OFF
-REAP-PID-OFF 1 cells + constant CANCEL-FD-OFF
+TIMED-OUT-OFF 1 cells + constant CANCEL-FD-OFF
 public
 CANCEL-FD-OFF 1 cells + constant RAW-PID-OFF
 private
 RAW-PID-OFF 1 cells + constant STORAGE-BYTES
 
 public
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and STORAGE-BYTES TASK:+USER STORAGE drop
-
-: ROW ( -- ptr u8 ) STORAGE BYTE-VIEW ;
+STORAGE-BYTES TASK:+USERS STORAGE u8
 
 private
-: PATHZ-BUF ( -- ptr u8 ) ROW PATHZ-OFF + ;
-: PFD ( -- ptr u8 ) ROW PFD-OFF + ;
-: PROBE ( -- ptr u8 ) ROW PROBE-OFF + ;
+: PATHZ-BUF ( -- ptr u8 ) PATHZ-OFF STORAGE ;
+: PFD ( -- ptr u8 ) PFD-OFF STORAGE ;
+: PROBE ( -- ptr u8 ) PROBE-OFF STORAGE ;
 
 public
-\ TASK:+USER rows are `ptr n`: the fd, pid, rc, len and off roles are converted
+\ The row's cells are `ptr n`: the fd, pid, rc, len and off roles are converted
 \ where a value enters a word that names the role.
-: PID ( -- ptr n ) ROW PID-OFF + CELL-VIEW ;
-: RC ( -- ptr n ) ROW RC-OFF + CELL-VIEW ;
-: OUT-R ( -- ptr n ) ROW OUT-R-OFF + CELL-VIEW ;
-: OUT-W ( -- ptr n ) ROW OUT-W-OFF + CELL-VIEW ;
-: ERR-R ( -- ptr n ) ROW ERR-R-OFF + CELL-VIEW ;
-: ERR-W ( -- ptr n ) ROW ERR-W-OFF + CELL-VIEW ;
-: IN-R ( -- ptr n ) ROW IN-R-OFF + CELL-VIEW ;
-: IN-W ( -- ptr n ) ROW IN-W-OFF + CELL-VIEW ;
-: OUT-LEN ( -- ptr n ) ROW OUT-LEN-OFF + CELL-VIEW ;
-: ERR-LEN ( -- ptr n ) ROW ERR-LEN-OFF + CELL-VIEW ;
-: IN-OFF ( -- ptr n ) ROW IN-OFF-OFF + CELL-VIEW ;
+: PID ( -- ptr n ) PID-OFF STORAGE CELL-VIEW ;
+: RC ( -- ptr n ) RC-OFF STORAGE CELL-VIEW ;
+: OUT-R ( -- ptr n ) OUT-R-OFF STORAGE CELL-VIEW ;
+: OUT-W ( -- ptr n ) OUT-W-OFF STORAGE CELL-VIEW ;
+: ERR-R ( -- ptr n ) ERR-R-OFF STORAGE CELL-VIEW ;
+: ERR-W ( -- ptr n ) ERR-W-OFF STORAGE CELL-VIEW ;
+: IN-R ( -- ptr n ) IN-R-OFF STORAGE CELL-VIEW ;
+: IN-W ( -- ptr n ) IN-W-OFF STORAGE CELL-VIEW ;
+: OUT-LEN ( -- ptr n ) OUT-LEN-OFF STORAGE CELL-VIEW ;
+: ERR-LEN ( -- ptr n ) ERR-LEN-OFF STORAGE CELL-VIEW ;
+: IN-OFF ( -- ptr n ) IN-OFF-OFF STORAGE CELL-VIEW ;
 private
-: DEADLINE ( -- ptr n ) ROW DEADLINE-OFF + CELL-VIEW ;
-: RD ( -- ptr n ) ROW RD-OFF + CELL-VIEW ;
-: STATUS ( -- ptr n ) ROW STATUS-OFF + CELL-VIEW ;
-: TIMED-OUT ( -- ptr n ) ROW TIMED-OUT-OFF + CELL-VIEW ;
+: DEADLINE ( -- ptr n ) DEADLINE-OFF STORAGE CELL-VIEW ;
+: RD ( -- ptr n ) RD-OFF STORAGE CELL-VIEW ;
+: STATUS ( -- ptr n ) STATUS-OFF STORAGE CELL-VIEW ;
+: TIMED-OUT ( -- ptr n ) TIMED-OUT-OFF STORAGE CELL-VIEW ;
 public
-: REAP-PID ( -- ptr n ) ROW REAP-PID-OFF + CELL-VIEW ;
 \ Borrowed, never read, duplicated or closed. CMD installs it after BEGIN.
-: CANCEL-FD ( -- ptr n ) ROW CANCEL-FD-OFF + CELL-VIEW ;
+: CANCEL-FD ( -- ptr n ) CANCEL-FD-OFF STORAGE CELL-VIEW ;
 ;package
 
 \ The bodies the RAW spawn words run under catch. Each builds a HERMETIC PROCESS
@@ -157,7 +151,7 @@ CAST: >ROWS ( n -- ptr ptr u8 )
 
 : ROWS ( ptr a -- ptr ptr u8 ) NULL-PTR - >ROWS ;
 
-: PID ( -- ptr n ) PROCESS:ROW PROCESS:RAW-PID-OFF + CELL-VIEW ;
+: PID ( -- ptr n ) PROCESS:RAW-PID-OFF PROCESS:STORAGE CELL-VIEW ;
 
 : FD ( PROCESS:request n fd -- PROCESS:request ) {: child parent :}
    parent FD>N 0 >= if child >FD parent PROCESS:FD then ;
@@ -190,7 +184,6 @@ package PROCESS
 private
 PROCESS-SYMBOLS
 FUNCTION: WAITPID-CALL waitpid ( n ptr u8 n -- i32 )
-   1 4 WRITES-BYTES                    \ wait status is a C int, not a cell
 ;FUNCTION
 
 public
@@ -371,7 +364,7 @@ private
 1 constant WNOHANG
 $7FFFFFFF constant PID-MAX    \ the largest signed 32-bit pid_t
 
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 1 cells TASK:+USER BOUNDED-STATUS drop
+TASK:+USER BOUNDED-STATUS n
 
 public
 \ A zero return leaves the cleared cell unread; a stop (status low bits $7F,
@@ -403,36 +396,7 @@ public
    repeat
    BOUNDED-STATUS @ >STATUS STATUS>ENDING ;
 
-\ A context that owns a death-watch fd (a pool worker's worker-alive read end;
-\ src/lib/process-fork.f installs the live vector) arms a reaper for the
-\ just-spawned capture child, so the child's group dies with the arming process.
-\ The default arms nothing and returns NO-PID. A vector that cannot arm
-\ throws, and CAPTURE-PID! refuses the capture. The reaper is a direct
-\ child of this process and every capture-termination path kills and waits it
-\ by pid, so no wait(-1) caller sees a stray child. Process-wide: one policy
-\ the image installs at load.
-defer REAP-ARM ( pid -- pid )
-private
-: REAP-ARM-OFF ( pid -- pid )
-   drop NO-PID >PID ;
-public
-: REAP-ARM-DEFAULT ( -- )
-   [: REAP-ARM-OFF ;] is REAP-ARM ;
-REAP-ARM-DEFAULT
-
-private
-: REAP-DISARM ( -- )
-   REAP-PID @ dup 0 > if
-      >PID dup SIGKILL KILL-RAW drop
-      WAIT drop
-      NO-PID REAP-PID !
-   else
-      drop
-   then ;
-
-public
 : CAPTURE-RESET ( -- )
-   REAP-DISARM
    NO-PID PID !
    -1 RC !
    NO-FD OUT-R !
@@ -477,8 +441,7 @@ public
       NO-PID PID !
    else
       drop
-   then
-   REAP-DISARM ;
+   then ;
 
 \ A throw while a child is ended must neither replace its caller's reason nor
 \ vanish: CODE-REPORT names it on stderr from constant text, sharing no storage.
@@ -575,13 +538,8 @@ public
    END-CAPTURE
    code throw ;
 
-\ A refused reaper arm refuses the capture: the child's tree is killed, the
-\ child reaped and the descriptors closed before the code goes on.
-: CAPTURE-PID! ( pid -- ) {: pid:pid :}
-   pid PID>N PID !
-   pid [: REAP-ARM ;] catch {: rpid code:n :}
-   code 0= if rpid PID>N REAP-PID ! exit then
-   code THROW-CAPTURE ;
+: CAPTURE-PID! ( pid -- )
+   PID>N PID ! ;
 
 private
 : CLOEXEC-CELL ( ptr n -- ) {: p:ptr :}
@@ -920,8 +878,7 @@ private
          \ the child runs.
          1 >MS TASK:SLEEP
       then
-   repeat
-   REAP-DISARM ;
+   repeat ;
 
 public
 \ One ready read per stream survives an expired deadline. The check after the

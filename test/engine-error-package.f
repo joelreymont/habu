@@ -6,6 +6,7 @@
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
+require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/engine-candidate.f
 require test/pcap-result.f
@@ -14,7 +15,6 @@ package ENGINE-ERROR-TEST
 private
 
 $800 constant CAP
-10000 constant TIMEOUT-MS
 
 create OUT CAP allot
 create ERR CAP allot
@@ -44,7 +44,8 @@ variable ERR-U         \ bytes the last child wrote to fd 2
 
 : RUN-SOURCE ( ptr u8 n ptr u8 n -- n ) {: exe:ptr exeu:n src:ptr srcu:n :}
    PROC-ARGV-RESET
-   exe exeu >LEN src srcu >LEN OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
+   exe exeu >LEN src srcu >LEN OUT CAP >LEN ERR CAP >LEN
+   PROCESS:WAIT-FOREVER
    RUN-ARGV-STDIN-CAPTURE
    PCAP-RESULT:>N {: outu:n erru:n rc:n :} outu OUT-U ! erru ERR-U ! rc ;
 
@@ -69,7 +70,7 @@ variable ERR-U         \ bytes the last child wrote to fd 2
    NO-CONTEXT-SOURCE$ {: src:ptr u:n :}
    HB$ src u RUN-SOURCE ;
 
-\ Inside a nested INCLUDE-EVALUATE: with TRY's catch the reject arrives as 70;
+\ Inside a nested evaluate-closed: with TRY's catch the reject arrives as 70;
 \ without it the throw leaves the evaluate and the process exits 70. BARE
 \ restores the package's wordlist itself.
 : BARE-PREFIX ( ptr u8 n -- ) {: pkg:ptr pkgu:n :}
@@ -81,7 +82,7 @@ variable ERR-U         \ bytes the last child wrote to fd 2
 
 : CAUGHT-SOURCE$ ( -- ptr u8 n )
    s" BRIDGE-CATCH" BARE-PREFIX
-   S\" : TRY ( -- n ) [: SRC INCLUDE-EVALUATE ;] catch ;\n" SB-APPEND
+   S\" : TRY ( -- n ) [: SRC evaluate-closed ;] catch ;\n" SB-APPEND
    S\" : BARE ( -- n ) 0 set-current TRY CUR @ set-current ;\n" SB-APPEND
    S\" s\q caught=\q type BARE .\n" SB-APPEND
    S\" s\q AFTER\q type\n;package\n" SB-APPEND
@@ -89,7 +90,7 @@ variable ERR-U         \ bytes the last child wrote to fd 2
 
 : UNCAUGHT-SOURCE$ ( -- ptr u8 n )
    s" BRIDGE-RAW" BARE-PREFIX
-   S\" : BARE ( -- ) 0 set-current SRC INCLUDE-EVALUATE CUR @ set-current ;\n" SB-APPEND
+   S\" : BARE ( -- ) 0 set-current SRC evaluate-closed CUR @ set-current ;\n" SB-APPEND
    S\" BARE\n" SB-APPEND
    S\" s\q AFTER\q type\n;package\n" SB-APPEND
    SB$ ;
@@ -100,10 +101,6 @@ variable ERR-U         \ bytes the last child wrote to fd 2
    ERR$ s" habu: missing definition name after :" CONTAINS? TTRUE ;
 
 : EXACT-EXITS ( -- )
-   s" callable ABI exits 86" T-LABEL
-   s" ENGINE-ERROR:CALLABLE-ABI" CHILD-RC 86 T=
-   s" CATCH stack exits 87" T-LABEL
-   s" ENGINE-ERROR:CATCH-STACK" CHILD-RC 87 T=
    s" code certificate exits 88" T-LABEL
    s" ENGINE-ERROR:CODE-CERT" CHILD-RC 88 T= ;
 

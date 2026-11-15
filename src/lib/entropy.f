@@ -22,7 +22,6 @@ private
 
 PROCESS-SYMBOLS
 FUNCTION: GETENTROPY-CALL getentropy ( ptr u8 n -- i32 )
-   0 1 WRITES-ARG
 ;FUNCTION
 
 public

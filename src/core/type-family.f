@@ -1,9 +1,8 @@
 \ type-family.f: package TFAM, the family (TFAM), variant (SUMV), product-field
 \ and logical-layout registries for the checker; loaded unchecked in the checker
 \ prefix after type-schema.f. Records key on (package, canonical lowercase tail);
-\ names are byte offsets into one string pool, so records hold only integers and
-\ snapshot persist bakes stores verbatim. Registries roll back through RBF-PUSH /
-\ RBF-POP and persist through TFAM-SNAPSHOT-PERSIST. Five words stay global (TFAM-NAME$).
+\ names are byte offsets into one string pool, so records hold only integers.
+\ Registries roll back through RBF-PUSH / RBF-POP.
 
 using SCHEMA-REG
 
@@ -16,37 +15,6 @@ using SCHEMA-REG
 package TFAM
 
 \ --- kind of a family (what its values are).
-
-public
-
-\ FAMILY-HOOK-DEFAULTS binds these. Family identity is its exact canonical
-\ package and tail; constructor identity is an occurrence in the FILE tree.
-defer FAMILY-KEY-XT ( n -- ptr u8 n bool )
-defer FAMILY-BY-KEY-XT ( ptr u8 n -- n bool )
-defer FAMILY-KEY-MATCH-XT ( ptr u8 n ptr u8 n ptr u8 n -- bool )
-defer CON-DECLARED-XT ( n -- )
-defer CON-KEY-XT ( n -- ptr u8 n bool )
-defer CON-BY-KEY-XT ( ptr u8 n -- n bool )
-defer CON-BIND-XT ( n ptr u8 n -- )
-defer UNIT-FAM-RESET-XT ( -- )
-76 constant E-REG-AOT-REFUSED \ a type-registry capture or plan is refused (REG-AOT-REFUSE)
-
-private
-: FAMILY-KEY-ABSENT ( n -- ptr u8 n bool ) drop NULL-PTR 0 RES-FALSE ;
-: FAMILY-BY-KEY-ABSENT ( ptr u8 n -- n bool ) 2drop 0 RES-FALSE ;
-: FAMILY-KEY-MATCH-ABSENT ( ptr u8 n ptr u8 n ptr u8 n -- bool )
-   2drop 2drop 2drop RES-FALSE ;
-: FAMILY-BIND-ABSENT ( n ptr u8 n -- ) 2drop drop E-REG-AOT-REFUSED throw ;
-: FAMILY-HOOK-DEFAULTS ( -- )
-   [: FAMILY-KEY-ABSENT ;] is FAMILY-KEY-XT
-   [: FAMILY-BY-KEY-ABSENT ;] is FAMILY-BY-KEY-XT
-   [: FAMILY-KEY-MATCH-ABSENT ;] is FAMILY-KEY-MATCH-XT
-   [: drop ;] is CON-DECLARED-XT
-   [: FAMILY-KEY-ABSENT ;] is CON-KEY-XT
-   [: FAMILY-BY-KEY-ABSENT ;] is CON-BY-KEY-XT
-   [: FAMILY-BIND-ABSENT ;] is CON-BIND-XT
-   [: ;] is UNIT-FAM-RESET-XT ;
-FAMILY-HOOK-DEFAULTS
 
 public
 
@@ -100,7 +68,6 @@ CELL constant TAGW-CELL     \ default tag width: one stack cell
 7101 constant E-TFAM-CASE     \ uppercase/mixed-case or non-canonical tail token
 7102 constant E-TFAM-DUP      \ duplicate tail within the same package
 7106 constant E-TFAM-AMBIG    \ two other-package public families tie on a tail (7103 = E-SCHEMA-BAD)
-7209 constant E-UNIT-FAMILY-CHANGED \ a FILE family dependency is absent or its contract differs
 
 private
 
@@ -109,7 +76,7 @@ private
 
 public
 
-\ 7122-7124 are layout-buffer.f's E-LAYOUT-BOUNDS / -UNBOUND / -CEIL.
+\ 7122 is layout-buffer.f's E-LAYOUT-BOUNDS.
 7148 constant E-PF-ID         \ invalid or provisional (uncommitted) product-field id
 7149 constant E-PF-TX         \ stale or non-LIFO field transaction, or reset while a field transaction is open
 7150 constant E-PF-OWNER      \ invalid family / optional-variant ownership
@@ -166,9 +133,6 @@ variable TF-STR-CAP-V   TF-STR-INIT TF-STR-CAP-V !
 create TF-STR-BOOT   TF-STR-INIT allot
 PERSISTED-PTR-VARIABLE TF-STR-P   TF-STR-BOOT TF-STR-P !
 : TF-STR ( -- ptr u8 ) TF-STR-P @ ;
-\ The string pool's home, the DATA block it was last baked in (REG-POOL-PERSIST).
-PERSISTED-PTR-VARIABLE TF-STR-HOME   TF-STR-BOOT TF-STR-HOME !
-variable TF-STR-HOME-CAP   TF-STR-INIT TF-STR-HOME-CAP !
 
 public
 
@@ -208,7 +172,6 @@ private
 
 : TF-LOWER? ( n -- bool ) {: c:n :} c 97 >= c 122 <= and ;   \ a-z
 : TF-DIGIT? ( n -- bool ) {: c:n :} c 48 >= c 57 <= and ;    \ 0-9
-: TF-UPPER? ( n -- bool ) {: c:n :} c 65 >= c 90 <= and ;    \ A-Z
 : TF-TAILBYTE? ( n -- bool ) {: c:n :}   \ lowercase, digit, or internal hyphen
    c TF-LOWER? IF RES-TRUE EXIT THEN
    c TF-DIGIT? IF RES-TRUE EXIT THEN
@@ -300,22 +263,20 @@ private
 13 cells constant TF.FLD-COUNT-OFF
 14 cells constant TF.TAGW-OFF
 15 cells constant TF.SCHEMA-ROOT-OFF
-16 cells constant TF.SPAN-OFF-AT
-17 cells constant TF.SPAN-U-OFF
-18 cells constant TF.DERIVE-OFF
+16 cells constant TF.DERIVE-OFF
 \ TF.TAILNEXT: next family id (+1) in this row's tail bucket, 0 at the end of the
 \ chain. It is the registry's own lookup index (TFX-* below), which is why it
 \ lives in the record rather than in a side table that could drift from it.
-19 cells constant TF.TAILNEXT-OFF
+17 cells constant TF.TAILNEXT-OFF
 \ TF.OPAQUE: nonzero when the family's generated words take the private-family
 \ placement (the OPAQUE header clause, structure-decl.f OPAQUE-CLAUSE).
-20 cells constant TF.OPAQUE-OFF
+18 cells constant TF.OPAQUE-OFF
 \ TF.ENTRY: the family's type entry, its record index + 1; 0 when it has none.
-21 cells constant TF.ENTRY-OFF
+19 cells constant TF.ENTRY-OFF
 
 public
 
-22 cells constant TF-REC
+20 cells constant TF-REC
 private
 
 : TF.PKG-OFF ( ptr a -- ptr a ) TF.PKG-OFF-AT + ;
@@ -340,8 +301,6 @@ private
 : TF.FLD-COUNT ( ptr a -- ptr a ) TF.FLD-COUNT-OFF + ;
 : TF.TAGW ( ptr a -- ptr a ) TF.TAGW-OFF + ;
 : TF.SCHEMA-ROOT ( ptr a -- ptr a ) TF.SCHEMA-ROOT-OFF + ;
-: TF.SPAN-OFF ( ptr a -- ptr a ) TF.SPAN-OFF-AT + ;
-: TF.SPAN-U ( ptr a -- ptr a ) TF.SPAN-U-OFF + ;
 : TF.DERIVE ( ptr a -- ptr a ) TF.DERIVE-OFF + ;
 : TF.TAILNEXT ( ptr a -- ptr a ) TF.TAILNEXT-OFF + ;
 : TF.OPAQUE ( ptr a -- ptr a ) TF.OPAQUE-OFF + ;
@@ -381,8 +340,6 @@ public
    id TF-REC * TF-BASE + ;
 
 : TFAM-N@ ( -- n ) TFAM-N @ ;            \ family high-water (rollback/tests)
-: TF-STR-U@ ( -- n ) TF-STR-U @ ;        \ interned string-pool high-water
-: TF-PK-N@ ( -- n ) TF-PK-N @ ;          \ param-kind pool high-water
 
 \ --- read-only queries.
 : TFAM-PKG$ ( n -- ptr u8 n ) {: id:n :}
@@ -392,11 +349,8 @@ public
 
 using TFAM
 
-\ Five names stay global because the engine needs them there. TFAM-NAME$,
-\ TFL-CON-FAM?, TFL-CVAR? and TFL-MATCH-FAM? are the `construct`/`match`/`;match`
-\ bridge. TFAM-CTOR-WORD? is named by an AOT-captured call site, and the boot seed re-resolves a baked
-\ callee only through a global scope. Each sits between `;package` and
-\ `package TFAM` and reads the registry through `using TFAM`.
+\ Global: the engine names TFAM-NAME$, TFL-CON-FAM?, TFL-MATCH-FAM? and
+\ TFAM-CTOR-WORD? bare, from packages that do not use TFAM.
 : TFAM-NAME$ ( n -- ptr u8 n ) {: id:n :}
    id TF-REC@ {: r:ptr :}  r TF.NAME-OFF @ r TF.NAME-U @ TF-OFF$ ;
 
@@ -415,9 +369,6 @@ public
 : TFAM-FLD-START@ ( n -- n ) TF-REC@ TF.FLD-START @ ;
 : TFAM-FLD-COUNT@ ( n -- n ) TF-REC@ TF.FLD-COUNT @ ;
 : TFAM-TAGW@ ( n -- n ) TF-REC@ TF.TAGW @ ;
-: TFAM-SCHEMA-ROOT@ ( n -- n ) TF-REC@ TF.SCHEMA-ROOT @ ;
-: TFAM-SPAN@ ( n -- n n ) {: id:n :}
-   id TF-REC@ {: r:ptr :}  r TF.SPAN-OFF @ r TF.SPAN-U @ ;
 : TFAM-PK@ ( n n -- n ) {: id:n i:n :}
    i 0 < i id TFAM-ARITY@ >= or IF s" tfam: bad param index" 76 die THEN
    id TF-REC@ TF.PK-START @ i + cells TF-PK-BASE + @ ;
@@ -435,9 +386,9 @@ public
 \ their fixed tails like generated constructors.
 1 constant DRV-EQ
 2 constant DRV-HASH
-4 constant DRV-ADDR              \ address surface: one accessor per field (sumtype.f TDECL-ADDR-FIELD-WORD)
+4 constant DRV-ADDR              \ address surface: one accessor per field
 8 constant DRV-INIT              \ initialized-record field accessors
-DRV-EQ DRV-HASH or DRV-ADDR or DRV-INIT or constant DRV-ALL
+16 constant DRV-TAG              \ checked conversion from a tag, TAG>
 
 private
 
@@ -453,6 +404,8 @@ public
 : TFAM-DERIVE-ADDR? ( n -- bool ) TFAM-DERIVE@ DRV-ADDR and 0 <> ;
 : TFAM-DERIVE-INIT! ( n -- ) TF-REC@ TF.DERIVE dup @ DRV-INIT or swap ! ;
 : TFAM-DERIVE-INIT? ( n -- bool ) TFAM-DERIVE@ DRV-INIT and 0 <> ;
+: TFAM-DERIVE-TAG! ( n -- ) TF-REC@ TF.DERIVE dup @ DRV-TAG or swap ! ;
+: TFAM-DERIVE-TAG? ( n -- bool ) TFAM-DERIVE@ DRV-TAG and 0 <> ;
 : TFAM-DERIVE-ANY? ( n -- bool ) TFAM-DERIVE@ 0 <> ;
 
 \ The OPAQUE header clause: the family stays as visible as it was declared, and
@@ -532,9 +485,6 @@ public
    c id TF-REC@ TF.FLD-COUNT !
    TFM-EPOCH+ ;
 : TFAM-TAGW! ( n n -- ) swap TF-REC@ TF.TAGW ! ;
-: TFAM-SCHEMA-ROOT! ( n n -- ) swap TF-REC@ TF.SCHEMA-ROOT ! ;
-: TFAM-SPAN! ( n n n -- ) {: id:n off:n u:n :}
-   off id TF-REC@ TF.SPAN-OFF !  u id TF-REC@ TF.SPAN-U ! ;
 : TFAM-PK! ( n n n -- ) {: id:n i:n k:n :}
    i 0 < i id TFAM-ARITY@ >= or IF s" tfam: bad param index" 76 die THEN
    k 0 < k PK-MAX > or IF E-TFAM-KIND throw THEN
@@ -732,7 +682,6 @@ public
    0 r TF.FLD-START !          0 r TF.FLD-COUNT !
    TAGW-CELL r TF.TAGW !
    0 r TF.SCHEMA-ROOT !
-   0 r TF.SPAN-OFF !   0 r TF.SPAN-U !
    0 r TF.DERIVE !
    0 r TF.TAILNEXT !
    0 r TF.OPAQUE !
@@ -836,9 +785,9 @@ public
 \ reproduces it. Variant rows leave only by SUMV-N rewinding, lowest id first,
 \ so a head at a retired row means the symbol has no row left and SVX-TRUNCATE
 \ needs no back-link. SVX-HI is the SUMV-N the index covers; every seam that
-\ moves SUMV-N moves it (SUMV-ADD, SVX-TRUNCATE, the unit imports, TFAM-RESET),
-\ so a difference catches a rewind outside those seams. SVX-GEN catches the
-\ shared mapping being dropped or re-laid out.
+\ moves SUMV-N moves it (SUMV-ADD, SVX-TRUNCATE, TFAM-RESET), so a difference
+\ catches a rewind outside those seams. SVX-GEN catches the shared mapping being
+\ dropped or re-laid out.
 
 private
 
@@ -1002,24 +951,16 @@ variable VNX-CUR              \ private bucket-walk cursor
 
 \ Pops rows [newn, SUMV-N) before SUMV-N rewinds to newn, newest first, so each
 \ popped row is at its bucket head. It dies, as TFX-RETIRE does, on chains that
-\ do not cover exactly the live rows: SUMV-ADD, UNIT-FAM-TAKE and TFAM-REWIND
-\ move VNX-HI with SUMV-N, and TFAM-RESET and REG-AOT-INSTALL drop the chains, so
-\ unequal marks mean a caller moved the counter around those seams, and popping
-\ would unlink rows the chains never held or erase the signal VNX-ENSURE rebuilds
-\ on.
+\ do not cover exactly the live rows: SUMV-ADD and TFAM-REWIND move VNX-HI with
+\ SUMV-N, and TFAM-RESET drops the chains, so unequal marks
+\ mean a caller moved the counter around those seams, and popping would unlink
+\ rows the chains never held or erase the signal VNX-ENSURE rebuilds on.
 : VNX-RETIRE ( n -- ) {: newn:n :}
    VNX-READY @ 0= IF EXIT THEN
    VNX-HI @ SUMV-N @ <> IF s" tfam: variant tail index retired out of step with its rows" 76 die THEN
    SUMV-N @ 1 -
    BEGIN dup newn >= WHILE dup VNX-POP 1 - REPEAT drop
    newn VNX-HI ! ;
-
-\ Capture: the grown buffers are process-local, so the image keeps the boot
-\ stores and the restored process rebuilds. Mirrors TFX-SNAP-RESET.
-: VNX-SNAP-RESET ( -- )
-   VNX-B-BOOT VNX-B-P !   VNX-SLOTS-INIT VNX-SLOTS-V !
-   VNX-L-BOOT VNX-L-P !   SUMV-CAP-INIT VNX-LCAP !   0 VNX-CAP !
-   0 VNX-READY !   0 VNX-HI !   0 VNX-CUR ! ;
 
 public
 
@@ -1060,6 +1001,7 @@ public
 : TFAM-DERIVED-TAIL? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ a fixed generator-owned derived tail?
    a u s" eq" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" hash" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" tag>" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" tag" CORE-STR=CI ;
 
 private
@@ -1067,6 +1009,7 @@ private
 : TFAM-DERIVED-KIND-TAIL? ( ptr u8 n n -- bool ) {: a:ptr u:n fam:n :}   \ derived tail the FAMILY generates
    a u s" eq" CORE-STR=CI IF fam TFAM-DERIVE-EQ? EXIT THEN
    a u s" hash" CORE-STR=CI IF fam TFAM-DERIVE-HASH? EXIT THEN
+   a u s" tag>" CORE-STR=CI IF fam TFAM-DERIVE-TAG? EXIT THEN   \ enums only
    fam TFAM-PRODUCT? IF RES-FALSE EXIT THEN   \ products get no discriminant
    a u s" tag" CORE-STR=CI ;                  \ tag rides ANY derive on sum/enum
 
@@ -1082,7 +1025,7 @@ public
 \ read the spelling from the derivation that generates it, never restate it.
 \ A constructor word's tail is its variant's tail, so only the rows in that
 \ tail's VNX bucket can be one. A derived word is recognized from its family,
-\ not a row, so only the three derived tails still walk the store.
+\ not a row, so only the derived tails still walk the store.
 : TF-CTOR-QUAL-WORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ PKG:VARIANT / derived word?
    a u TF-CW-TAIL$ {: ta:ptr tu:n :}
    VNX-ENSURE
@@ -1165,11 +1108,11 @@ public
 
 \ The longest family, variant or field name is the longest package name
 \ (PACKAGE-PATH:CAP - 1), so every derived spelling fits TF-CTOR-BUF: at most
-\ 2*255 + 1 + 2*255 = 1021 bytes escaped, 255 + 1 + 255 + 12 for a private
-\ member. sumtype.f, structure-decl.f and enum-decl.f refuse a longer name with
-\ E-TDECL-CAP and TF-NAME-LONG$'s reason, and ARENA (arena.f) runs STRUCTURE's
-\ gate on its name first; the dies in `TF-CTOR-C,` and TFAM-INIT-MEMBER$ guard
-\ only that arithmetic.
+\ 2*255 + 1 + 2*255 = 1021 bytes escaped, 255 + 1 + 255 + 1 for a private
+\ initialized member. sumtype.f, structure-decl.f and enum-decl.f refuse a
+\ longer name with E-TDECL-CAP and TF-NAME-LONG$'s reason, and ARENA (arena.f)
+\ runs STRUCTURE's gate on its name first; the dies in `TF-CTOR-C,` and
+\ TFAM-INIT-MEMBER$ guard only that arithmetic.
 PACKAGE-PATH:CAP 1 - constant TF-NAME-MAX
 
 \ The reason refusing a name longer than TF-NAME-MAX. It is static text: no
@@ -1545,13 +1488,6 @@ variable FVX-CAP     0 FVX-CAP !     \ PF-CAP the buckets were sized for
    BEGIN dup newn >= WHILE dup FVX-POP 1 - REPEAT drop
    newn FVX-HI ! ;
 
-\ Capture: the grown buffers are process-local, so the image keeps the boot
-\ stores and the restored process rebuilds. Mirrors VNX-SNAP-RESET.
-: FVX-SNAP-RESET ( -- )
-   FVX-B-BOOT FVX-B-P !   FVX-SLOTS-INIT FVX-SLOTS-V !
-   FVX-L-BOOT FVX-L-P !   PF-CAP-INIT FVX-LCAP !   0 FVX-CAP !
-   0 FVX-READY !   0 FVX-HI ! ;
-
 \ One owner's rows, newest first: FVX-FIRST answers the cursor of its bucket's
 \ newest row and FVX-NEXT the cursor after a cursor's row, each a row id + 1
 \ with 0 for the end. The cursor lives on the stack, so a reader may recurse
@@ -1626,13 +1562,6 @@ variable TFM-CAP   TF-CAP-INIT TFM-CAP !   \ families TFM-P holds
 : TFM-FLAG@ ( n n -- bool bool ) TFM@ {: ok:bool :} 0 <> ok ;
 : TFM-FLAG! ( bool n n -- ) {: b:bool fam:n k:n :}
    b IF 1 ELSE 0 THEN fam k TFM! ;
-
-\ Capture: back to the zeroed boot store. Its zero stamps are invalid at epoch 1.
-: TFM-SNAP-RESET ( -- )
-   TFM-BOOT 0 TF-CAP-INIT TFM-REC * CELL / ARENA-CELLS-ZERO
-   TFM-BOOT TFM-P !
-   TF-CAP-INIT TFM-CAP !
-   1 TFM-EPOCH ! ;
 
 public
 
@@ -1787,12 +1716,6 @@ variable TFW-CAP   TFW-INIT TFW-CAP !   \ cells TFW-P holds
 : TFW! ( n n -- ) {: w:n idx:n :}
    idx 1 + TFW-ENSURE
    w idx cells TFW-P @ + ! ;
-
-\ Capture: back to the boot row. The frames are process-local scratch, like TFM.
-: TFW-SNAP-RESET ( -- )
-   TFW-BOOT 0 TFW-INIT ARENA-CELLS-ZERO
-   TFW-BOOT TFW-P !
-   TFW-INIT TFW-CAP ! ;
 
 defer TFW-FAM ( n n n -- n )   \ ( fam base top -- width ) forward ref for a nested application
 
@@ -2035,15 +1958,6 @@ public
       i 1 +
    REPEAT drop
    0 RES-FALSE ;
-: PF-EACH ( n n n -- n bool ) {: fam:n var:n start:n :}
-   start 0 < IF 0 RES-FALSE EXIT THEN
-   start BEGIN dup PF-COMMIT-N @ < WHILE
-      {: i:n :}
-      i PF-REC@ {: r:ptr :}
-      fam var r PF-ROW-OWNER? IF i RES-TRUE EXIT THEN
-      i 1 +
-   REPEAT drop
-   0 RES-FALSE ;
 
 \ Strict-LIFO transaction frames. COMMIT retains its rollback frame through
 \ global finalization. Nested commit keeps rows provisional; only outer commit
@@ -2051,8 +1965,7 @@ public
 \ the family frame's (TF-RBF, through TFAM-REWIND): family, variant and
 \ constructor-package names interleave with field names in it, so no field
 \ frame mark bounds only its own bytes. A field rollback no enclosing family
-\ frame rewinds leaves its field names in [0, TF-STR-U), so UNIT-FAM-TILED
-\ refuses the file that made them for FILE capture.
+\ frame rewinds leaves its field names in [0, TF-STR-U).
 
 private
 
@@ -2154,8 +2067,7 @@ public
 \ The wrap guard has no test: reaching it needs 2^63 OPENs in one process, and no
 \ raw setter or TRUSTED seam for PF-TX-SERIAL is published to fake it. Without
 \ it a wrapped serial would mint token 0 or a negative token, and every phase
-\ compares tokens by equality, so a stale token could alias a live frame. A FILE
-\ import only advances the serial by a delta UNIT-FAM-PLAN-OPEN bounds, so this
+\ compares tokens by equality, so a stale token could alias a live frame. This
 \ is the one minting site.
 : OPEN ( -- n )
    WRITE-WINDOW-CK
@@ -2695,25 +2607,18 @@ package TYPE-FIELD
 public
 
 : COUNT ( -- n ) PF-N@ ;
-: TX-DEPTH ( -- n ) PF-TX-DEPTH @ ;
 : NO-VARIANT ( -- n ) PF-NO-VARIANT ;
-: FIND ( n n ptr u8 n -- n bool ) PF-FIND ;
-: EACH ( n n n -- n bool ) PF-EACH ;
 : FAMILY@ ( n -- n ) PF-FAM@ ;
-: VARIANT@ ( n -- n ) PF-VAR@ ;
-: NAME$ ( n -- ptr u8 n ) PF-NAME$ ;
 : SCHEMA@ ( n -- n ) PF-SCH@ ;
-: SLOT@ ( n -- n ) PF-SLOT@ ;
-: CELLS@ ( n -- n ) PF-CELLS@ ;
 : BYTE-OFF@ ( n -- n ) PF-BYTE-OFF@ ;
 : BYTES@ ( n -- n ) PF-BYTES@ ;
-: ALIGN@ ( n -- n ) PF-ALIGN@ ;
+: CELLS@ ( n -- n ) PF-CELLS@ ;
 : FLAGS@ ( n -- n ) PF-FLAGS@ ;
 
 seal-package
 ;package
 
-\ generated ADDRESS accessors (`DERIVE addr`, sumtype.f TDECL-ADDR-FIELD-WORD):
+\ generated ADDRESS accessors (`DERIVE addr`):
 \ one word per field plus AT / BYTES / CELLS, in the spellings and wordlists the
 \ family's constructors use. A public family's accessors are new tails in its
 \ reserved constructor package, which TFAM-CTOR-EXTEND? would otherwise refuse,
@@ -2816,18 +2721,6 @@ public
    store IF 33 ELSE 64 THEN TF-INIT-TAIL u + c!
    TF-INIT-TAIL u 1 + ;
 
-\ The helper lives in the declaring package's private wordlist even when the
-\ record and its accessor are public. This spelling is shared with the
-\ generated-name protection predicate below.
-: TFAM-INIT-HELPER$ ( n n -- ptr u8 n ) {: fam:n fid:n :}
-   fam TFAM-NAME$ fid PF-NAME$ TF-CTOR-PRIV$ 2drop
-   s" -INIT-UNPACK" TF-CTOR-TAIL
-   TF-CTOR-BUF TF-CTOR-U @ ;
-
-: TFAM-INIT-RECEIVER$ ( n -- ptr u8 n ) {: fam:n :}
-   fam TFAM-NAME$ s" init-view-unpack" TF-CTOR-PRIV$ 2drop
-   TF-CTOR-BUF TF-CTOR-U @ ;
-
 private
 
 : TFAM-INIT-TAIL? ( ptr u8 n n -- bool ) {: a:ptr u:n fam:n :}
@@ -2852,12 +2745,10 @@ private
    fam TFAM-DERIVE-INIT? 0= IF RES-FALSE EXIT THEN
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF RES-FALSE EXIT THEN
    CHECKER-AUTH-PACKAGE$ fam TFAM-PKG-MATCH? 0= IF RES-FALSE EXIT THEN
-   a u fam TFAM-INIT-RECEIVER$ CORE-STR=CI IF RES-TRUE EXIT THEN
    fam TFAM-FLD-START@ {: fs:n :}
    fam TFAM-FLD-COUNT@ 0 ?do
       fs i + {: fid:n :}
       fid PF-N@ < IF
-         a u fam fid TFAM-INIT-HELPER$ CORE-STR=CI IF RES-TRUE unloop EXIT THEN
          fam TFAM-GEN-PUBLIC? 0= IF
             a u fam TFAM-NAME$ fid RES-FALSE TFAM-INIT-MEMBER$
                TF-CTOR-PRIV$ CORE-STR=CI IF RES-TRUE unloop EXIT THEN
@@ -3007,7 +2898,6 @@ public
 : LAY-SIZE@ ( n -- n ) LAY-REC@ LAY.SIZE @ ;
 : LAY-ALIGN@ ( n -- n ) LAY-REC@ LAY.ALIGN @ ;
 : LAY-TAGW@ ( n -- n ) LAY-REC@ LAY.TAGW @ ;
-: LAY-N@ ( -- n ) LAY-N @ ;
 
 : LAY-FIND ( n -- n bool ) {: fam:n :}
    0 BEGIN dup LAY-N @ < WHILE
@@ -3072,8 +2962,7 @@ public
 
 \ The committed init field carries T's schema and stack width. Its field row is
 \ canonical cell storage, while the value being initialized may have a narrower
-\ packed memory descriptor. Keep the element-layout decision in one place for
-\ the wrapper and the initialized-record query below.
+\ packed memory descriptor.
 private
 : INIT-ELEM-LAYOUT? ( n -- n n bool ) {: term:n :}   \ T -> bytes, alignment, known?
    term T-RES {: elem:n :}
@@ -3092,14 +2981,6 @@ private
       dup LAY-SIZE@ swap LAY-ALIGN@ RES-TRUE
    ELSE drop 0 0 RES-FALSE THEN ;
 
-public
-: INIT-LAYOUT? ( n -- n n bool ) {: term:n :}   \ init<I,T> -> T's bytes, alignment, known?
-   term T-RES dup TAG T-PARAM <> IF drop 0 0 RES-FALSE EXIT THEN
-   dup PARAM>FAM C2-INIT-FAM @ <> IF drop 0 0 RES-FALSE EXIT THEN
-   1 PARAM>ARG INIT-ELEM-LAYOUT? ;
-
-private
-
 \ A retired family read from its type entry can be read again.
 : ENTRIES-RETIRED ( n n -- ) {: lo:n hi:n :}
    hi lo ?do
@@ -3114,7 +2995,6 @@ public
 \ reset never aliases a transaction begun after it.
 : TFAM-RESET ( -- )
    PF-TX-DEPTH @ IF E-PF-TX throw THEN   \ live field transaction: reset would discard its frame
-   UNIT-FAM-RESET-XT
    0 SVX-GEN !                           \ every variant row the index points at is going
    0 TFX-READY !                         \ ... and every family row the tail index chains
    0 VNX-READY !                         \ ... and every row the variant tail index chains
@@ -3125,7 +3005,7 @@ public
    0 SUMV-N @ SUMV-SCRUB   0 PF-N @ PF-SCRUB   0 LAY-N @ LAY-SCRUB   \ scrub the rows it retires
    0 TFAM-N !   0 TF-STR-U !   0 TF-PK-N !
    0 SUMV-N !   0 SVX-HI !   0 PF-N !   0 PF-COMMIT-N !   0 LAY-N !
-   -1 FIELD-FAM !  -1 LOAN-FIELD-FAM !  -1 C2-STOW-FAM !
+   -1 FIELD-FAM !  -1 LOAN-FIELD-FAM !
    EXT-FREE-CLEAR ;   \ drop free-extent marks with the families they name
 TFAM-RESET
 
@@ -3144,8 +3024,6 @@ TFAM-RESET
 \ Product-field rows and schema nodes have their own frames; a caller that owns
 \ them rewinds them after this (field rows through PF-REWIND).
 : TFAM-REWIND ( n n n n n -- ) {: tfamn:n stru:n pkn:n sumvn:n layn:n :}
-   tfamn TFAM-N @ < stru TF-STR-U @ < or IF UNIT-FAM-RESET-XT THEN
-   C2-STOW-FAM @ tfamn >= IF -1 C2-STOW-FAM ! THEN
    tfamn TFAM-N @ ENTRIES-RETIRED
    tfamn TFX-RETIRE                      \ unchain the rows before their ids go out of range
    sumvn SVX-TRUNCATE                    \ and the constructor heads those rows own
@@ -3263,35 +3141,9 @@ package CHECKER-DECL-FRAME
    TF-RBF-TOP PF-DEPTH=
    TF-RELEASE ;
 
-;package
-
-package TFAM
-
-\ Frames are transient (depth 0 at snapshot): drop any grown arena back to the
-\ baked boot store.
-: TFAM-RBF-SNAP-RESET ( -- )
-   TF-RBF-DEPTH @ IF s" checker: snapshot inside rollback scope" 76 die THEN
-   TF-RBF-BOOT TF-RBF-P !
-   TF-RBF-CAP-INIT TF-RBF-CAP-V !
-   TF-RBF-BOOT 0 TF-RBF-CAP-INIT TF-RBF-REC * CELL / ARENA-CELLS-ZERO
-   0 TF-RBF-DEPTH ! ;
-
-: PF-TX-SNAP-RESET ( -- )
-   PF-TX-DEPTH @ IF s" checker: snapshot inside field transaction" 76 die THEN
-   PF-TX-P PF-TX-BOOT PF-TX-CAP-V @ PF-TX-REC * ARENA-BOOT-RESTORE
-   PF-TX-CAP-INIT PF-TX-CAP-V ! ;
-
-;package
-
-package TFAM
-
 \ One SAVE/RESTORE pair the checker's core RBF-PUSH/POP drives, so TFAM and
 \ SCHEMA frames stay in lockstep with core marks.
-
-;package
-
-package CHECKER-DECL-FRAME
-
+public
 : EXT-SAVE ( -- )
    TF-SAVE
    SCHEMA-ROLLBACK-SAVE ;
@@ -3304,6 +3156,7 @@ package CHECKER-DECL-FRAME
    SCHEMA-ROLLBACK-FINALIZE
    TF-FINALIZE ;
 
+private
 : TYPES-READY ( n -- bool ) {: depth:n :}
    TF-RBF-DEPTH @ depth =
    SCH-RBF-DEPTH @ depth = and ;
@@ -3316,1152 +3169,13 @@ package CHECKER-DECL-FRAME
    SCHEMA-ROLLBACK-FINALIZE
    TF-RELEASE ;
 
-: INSTALL-TYPES ( -- )
-   [: EXT-SAVE ;] is REG-EXT-RB-SAVE-XT
-   [: EXT-FINALIZE ;] is REG-EXT-RB-FINALIZE-XT
-   [: EXT-RESTORE ;] is REG-EXT-RB-RESTORE-XT
-   [: TYPES-READY ;] is TYPES-READY-XT
-   [: TYPES-RESTORE ;] is TYPES-RESTORE-XT
-   [: TYPES-RELEASE ;] is TYPES-RELEASE-XT ;
-INSTALL-TYPES
-
 ;package
 
 package TFAM
 
-\ Persist runs at depth 0 (PF-TX-SNAP-RESET / TFAM-RBF-SNAP-RESET assert it), so
-\ PF-N = PF-COMMIT-N and [PF-COMMIT-N, PF-CAP) is dead capacity: zeroed so that
-\ identical logical registries bake byte-identically.
-: PF-PERSIST-CANONICAL ( -- )
-   PF-COMMIT-N @ PF-CAP-V @ PF-SCRUB ;
-
-\ snapshot persist: bake grown TFAM/SUMV/field/layout/param-kind/string stores
-\ into image DATA. All record fields are integers or interned offsets, so nothing
-\ rebases. Wired into CHECKER-CAPTURE-PREPARE through the REG-EXT-PERSIST-XT hook.
-
-public
-
-: TFAM-SNAPSHOT-PERSIST ( -- )
-   TF-A-P    TF-CAP-V @ TF-REC *      REG-PERSIST-BUF drop
-   TF-PK-P   TF-PK-CAP-V @ cells      REG-PERSIST-BUF drop
-   SUMV-A-P  SUMV-CAP-V @ SUMV-REC *  REG-PERSIST-BUF drop
-   PF-PERSIST-CANONICAL
-   PF-A-P    PF-CAP-V @ PF-REC *      REG-PERSIST-BUF drop
-   LAY-A-P   LAY-CAP-V @ LAY-REC *    REG-PERSIST-BUF drop
-   TF-STR-P TF-STR-HOME TF-STR-HOME-CAP TF-STR-U TF-STR-CAP-V REG-POOL-PERSIST ;
-
-\ The bucket array is grown and process-local: dropped back to the boot store
-\ and marked not-ready. TFX-BUILD rewrites every row's TF.TAILNEXT, so each is
-\ zeroed too; left in place, a row's link would depend on whether anything built
-\ the index before capture, and two loads of one program would capture different
-\ bytes.
-
 private
-
-: TFX-SNAP-RESET ( -- )
-   TFX-A-BOOT TFX-A-P !
-   TFX-SLOTS-INIT TFX-SLOTS-V !
-   0 TFX-CAP !
-   0 TFX-READY !
-   0 TFX-HI !
-   0 TFX-H ! 0 TFX-I ! 0 TFX-CUR !
-   TFAM-N @ 0 ?do 0 i TF-REC@ TF.TAILNEXT ! loop ;
-
-\ AOT capture: the registry delta a captured window declared, and installing it
-\ in the engine seeded with that window. A seeded word's signature is text the
-\ intake parses (`( IR-ARENA:view -- )` resolves `view` in IR-ARENA), so a
-\ window that declared families carries them.
-\ References are integer row ids and interned offsets. Partial payloads append
-\ rows only after all eight captured prefixes compare equal to the live stores;
-\ installed deltas must also compare equal, since a count cannot prove
-\ identity. Only the rebuilt family tail link and the scrubbed constructor-symbol
-\ cell are excluded. Every store, reference and schema is validated and all
-\ capacity exists before the first count or row is published: a failure may
-\ leave private capacity, never a partial registry.
-8 constant REG-AOT-N                      \ stores, in the order below
-24 constant REG-AOT-ROW                   \ base, delta count, complete-store bytes
-REG-AOT-N REG-AOT-ROW * 8 + constant REG-AOT-HDR
-
-variable REG-AOT-STATE  variable REG-AOT-J  variable REG-AOT-CUR
-variable REG-AOT-CLOSED
-create REG-AOT-MARK-A REG-AOT-N cells allot
-create REG-AOT-END-A REG-AOT-N cells allot
-
-: REG-AOT-WIDTH ( n -- n ) {: k:n :}
-   k 0 = IF TF-REC EXIT THEN
-   k 1 = IF CELL EXIT THEN
-   k 2 = IF SUMV-REC EXIT THEN
-   k 3 = IF PF-REC EXIT THEN
-   k 4 = IF LAY-REC EXIT THEN
-   k 5 = IF 1 EXIT THEN
-   k 6 = IF SCH-REC EXIT THEN
-   CELL ;
-
-: REG-AOT-COUNT ( n -- n ) {: k:n :}
-   k 0 = IF TFAM-N @ EXIT THEN
-   k 1 = IF TF-PK-N @ EXIT THEN
-   k 2 = IF SUMV-N @ EXIT THEN
-   k 3 = IF PF-COMMIT-N @ EXIT THEN
-   k 4 = IF LAY-N @ EXIT THEN
-   k 5 = IF TF-STR-U @ EXIT THEN
-   k 6 = IF SCH-N @ EXIT THEN
-   SCH-ROOT-N @ ;
-
-\ The rows a family contract covers: every live row. Inside a declaration
-\ that includes its provisional field rows [PF-COMMIT-N, PF-N); a word the
-\ declaration generates is captured there, and commit moves no row, so its
-\ contract equals the one a later word computes over the committed rows.
-: REG-LIVE-COUNT ( n -- n ) {: k:n :}
-   k 3 = IF PF-N @ EXIT THEN
-   k REG-AOT-COUNT ;
-
-: REG-AOT-BASE-PTR ( n -- ptr u8 ) {: k:n :}
-   k 0 = IF TF-BASE BYTE-VIEW EXIT THEN
-   k 1 = IF TF-PK-BASE BYTE-VIEW EXIT THEN
-   k 2 = IF SUMV-BASE BYTE-VIEW EXIT THEN
-   k 3 = IF PF-BASE BYTE-VIEW EXIT THEN
-   k 4 = IF LAY-BASE BYTE-VIEW EXIT THEN
-   k 5 = IF TF-STR EXIT THEN
-   k 6 = IF SCH-BASE BYTE-VIEW EXIT THEN
-   SCH-ROOT-BASE BYTE-VIEW ;
-
-: REG-AOT-NAME ( n -- ptr u8 n ) {: k:n :}
-   k 0 = IF s" families" EXIT THEN
-   k 1 = IF s" parameter kinds" EXIT THEN
-   k 2 = IF s" sum variants" EXIT THEN
-   k 3 = IF s" product fields" EXIT THEN
-   k 4 = IF s" layouts" EXIT THEN
-   k 5 = IF s" type names" EXIT THEN
-   k 6 = IF s" schema nodes" EXIT THEN
-   s" schema roots" ;
-
-\ Room for `n` elements in store k, through the store's own geometric grow: each
-\ step is the grow the compiled path's ENSURE takes when the store is full
-\ (`cap 1+`), so a seeded delta lands in an arena of the capacity a compiled one
-\ reaches rather than the grow's floor `n`. The type-name store's compiled ENSURE
-\ asks for max(used + name bytes, 2*cap), which is 2*cap here: names are at most
-\ TF-NAME-MAX bytes and every baked name store is larger, and persist places a
-\ moved name store by its used size and home (REG-POOL-PERSIST).
-: REG-AOT-ROOM ( n n -- ) {: k:n n:n :}
-   k 0 = IF begin n TF-CAP-V @ > while TF-CAP-V @ 1+ TF-GROW repeat EXIT THEN
-   k 1 = IF begin n TF-PK-CAP-V @ > while TF-PK-CAP-V @ 1+ TF-PK-GROW repeat EXIT THEN
-   k 2 = IF begin n SUMV-CAP-V @ > while SUMV-CAP-V @ 1+ SUMV-GROW repeat EXIT THEN
-   k 3 = IF begin n PF-CAP-V @ > while PF-CAP-V @ 1+ PF-GROW repeat EXIT THEN
-   k 4 = IF begin n LAY-CAP-V @ > while LAY-CAP-V @ 1+ LAY-GROW repeat EXIT THEN
-   k 5 = IF begin n TF-STR-CAP-V @ > while TF-STR-CAP-V @ 1+ TF-STR-GROW repeat EXIT THEN
-   k 6 = IF begin n SCH-CAP-V @ > while SCH-CAP-V @ 1+ SCH-GROW repeat EXIT THEN
-   begin n SCH-ROOT-CAP-V @ > while SCH-ROOT-CAP-V @ 1+ SCH-ROOT-GROW repeat ;
-
-: REG-AOT-COUNT! ( n n -- ) {: k:n n:n :}
-   k 0 = IF n TFAM-N ! EXIT THEN
-   k 1 = IF n TF-PK-N ! EXIT THEN
-   k 2 = IF n SUMV-N ! EXIT THEN
-   k 3 = IF n PF-N !  n PF-COMMIT-N ! EXIT THEN
-   k 4 = IF n LAY-N ! EXIT THEN
-   k 5 = IF n TF-STR-U ! EXIT THEN
-   k 6 = IF n SCH-N ! EXIT THEN
-   n SCH-ROOT-N ! ;
-
-: REG-AOT-U64! ( n ptr u8 -- ) {: v:n p:ptr :}
-   8 0 ?do  v i 8 * rshift $FF and  p i + c!  loop ;
-
-: REG-AOT-U64@ ( ptr u8 -- n ) {: p:ptr :}
-   0 8 0 ?do  8 lshift  p 7 i - + c@ or  loop ;
-
-: REG-AOT-MARK@ ( n -- n ) {: k:n :} REG-AOT-MARK-A k cells + @ ;
-: REG-AOT-END@ ( n -- n ) {: k:n :} REG-AOT-END-A k cells + @ ;
-
-\ The high-waters the window opens on, latched by src/habu/aot-arm.f OPEN from
-\ the same call that arms the signature collection - one window, one base.
-: REG-AOT-MARK ( -- )
-   0 REG-AOT-CLOSED !
-   REG-AOT-N 0 ?do  i REG-AOT-COUNT  REG-AOT-MARK-A i cells +  !  loop ;
-
-\ The high-waters the window closes on, latched at aot-arm.f SIG-CLOSE. A capture
-\ tool loads its own sources after the window shuts and those declare types; read
-\ at capture time the delta carried them, and the seeded engine measured its
-\ registry against a base counting types no target has (measured: the window
-\ declares 70 families and the capture read more). A build that captures the
-\ same window twice ends its types twice.
-: REG-AOT-CLOSE ( -- )
-   REG-AOT-N 0 ?do  i REG-AOT-COUNT  REG-AOT-END-A i cells +  !  loop
-   -1 REG-AOT-CLOSED ! ;
-
-\ ---- writing the prefix and delta -------------------------------------------
-
-: REG-AOT-OVERFLOW ( -- )
-   s" tfam: the captured type registry does not fit the artifact's buffer" 74 die ;
-
-\ A store's payload is its whole contents through the closed end, prefix
-\ included; a table row is (base, delta-count, bytes). The prefix is carried
-\ even when the window added no row: equal counts can hold different types.
-
-\ Schema constructor codes past the fixed primitive table are process-local:
-\ a capture holding one is refused.
-: REG-AOT-SCHEMA-CON-PORTABLE ( -- )
-   6 REG-AOT-END@ 1 ?do
-      i SCHEMA-CON? IF
-         i SCHEMA-A@ dup CC-N < swap CC-MAX >= or IF
-            s" tfam: captured schema constructor has process-local identity" 76 die
-         THEN
-      THEN
-   loop ;
-
-: REG-AOT-SAVE ( ptr u8 n -- n ) {: dst:ptr cap:n :}
-   REG-AOT-CLOSED @ 0= IF
-      s" tfam: a type registry was captured from a window that never closed" 74 die
-   THEN
-   REG-AOT-SCHEMA-CON-PORTABLE
-   cap REG-AOT-HDR < IF REG-AOT-OVERFLOW THEN
-   REG-AOT-N dst REG-AOT-U64!
-   REG-AOT-HDR REG-AOT-CUR !
-   REG-AOT-N 0 ?do
-      i REG-AOT-MARK@ {: base:n :}
-      i REG-AOT-END@ base - {: cnt:n :}
-      cnt 0 < IF
-         s" tfam: a type registry shrank across the capture window" 74 die
-      THEN
-      i REG-AOT-END@ cap REG-AOT-CUR @ - i REG-AOT-WIDTH / > IF
-         REG-AOT-OVERFLOW THEN
-      i REG-AOT-END@ i REG-AOT-WIDTH * {: bytes:n :}
-      base   dst i REG-AOT-ROW * 8 + +       REG-AOT-U64!
-      cnt    dst i REG-AOT-ROW * 8 + 8 + +   REG-AOT-U64!
-      bytes  dst i REG-AOT-ROW * 8 + 16 + +  REG-AOT-U64!
-      bytes 0 > IF
-         i REG-AOT-BASE-PTR
-         dst REG-AOT-CUR @ +
-         bytes ARENA-COPY
-      THEN
-      REG-AOT-CUR @ bytes + REG-AOT-CUR !
-   loop
-   REG-AOT-CUR @ ;
-
-\ ---- putting it back ---------------------------------------------------------
-
-PTR-VARIABLE REG-AOT-ERROR-A
-variable REG-AOT-ERROR-U
-
-: REG-AOT-REFUSE ( ptr u8 n -- )
-   REG-AOT-ERROR-U ! REG-AOT-ERROR-A ! E-REG-AOT-REFUSED throw ;
-
-: UNIT-FAM-CHANGED ( ptr u8 n -- )
-   REG-AOT-ERROR-U ! REG-AOT-ERROR-A ! E-UNIT-FAMILY-CHANGED throw ;
-
-: REG-AOT-BASE-BAD ( n n n -- )
-   drop 2drop
-   s" tfam: a seeded type registry does not start where its capture did" REG-AOT-REFUSE ;
-
-\ SV.CTOR-SYM names a row of the checker's symbol store, which has no base
-\ alignment between the capture engine and this one. Measured: seeded rows
-\ carried ctor-sym 7750 against a boot SYM-N of 3147, and a later intern of
-\ 7750 bound the stale variant and wedged the install fixpoint. The load zeroes
-\ the cell; SVX-LINK and SUMV-FROM-CTOR-SYM refuse to key on 0. A seeded
-\ constructor is an ordinary word whose calls certify through its signature row.
-: REG-AOT-SCRUB ( n n n -- ) {: k:n base:n cnt:n :}
-   k 2 <> IF EXIT THEN
-   base REG-AOT-J !
-   BEGIN REG-AOT-J @ base cnt + < WHILE
-      0 REG-AOT-J @ SUMV-REC@ SV.CTOR-SYM !
-      REG-AOT-J @ 1 + REG-AOT-J !
-   REPEAT ;
-
-: REG-AOT-ROW@ ( ptr u8 n -- n n n ) {: src:ptr k:n :}
-   src k REG-AOT-ROW * 8 + + {: row:ptr :}
-   row REG-AOT-U64@  row 8 + REG-AOT-U64@  row 16 + REG-AOT-U64@ ;
-
-\ These two cells are derived runtime associations, not registry identity:
-\ TAILNEXT is rebuilt by TFX; CTOR-SYM is deliberately scrubbed on import.
-: REG-AOT-CANON-C@ ( ptr u8 n n -- n ) {: src:ptr off:n k:n :}
-   k 0 = IF
-      off TF-REC mod {: field:n :}
-      field TF.TAILNEXT-OFF >= field TF.TAILNEXT-OFF CELL + < and IF 0 EXIT THEN
-   THEN
-   k 2 = IF
-      off SUMV-REC mod {: field:n :}
-      field SV.CTOR-SYM-OFF >= field SV.CTOR-SYM-OFF CELL + < and IF 0 EXIT THEN
-   THEN
-   src off + c@ ;
-
-\ Validates a captured table without the active checker: merge may compare two
-\ frozen windows after the live registry has changed owners.
-: REG-AOT-SHAPE ( ptr u8 n -- bool ) {: src:ptr u:n :}
-   u REG-AOT-HDR < IF
-      s" tfam: captured registry is shorter than its table" REG-AOT-REFUSE THEN
-   src REG-AOT-U64@ REG-AOT-N <> IF
-      s" tfam: captured registry has an invalid store count" REG-AOT-REFUSE THEN
-   0 REG-AOT-HDR
-   REG-AOT-N 0 ?do
-      {: delta:n used:n :}
-      src i REG-AOT-ROW@ {: base:n cnt:n bytes:n :}
-      base 0 < cnt 0 < or bytes 0 < or IF
-         s" tfam: captured registry has a negative extent" REG-AOT-REFUSE THEN
-      u used - i REG-AOT-WIDTH / {: room:n :}
-      base room > IF
-         s" tfam: captured registry prefix exceeds its bytes" REG-AOT-REFUSE THEN
-      cnt room base - > IF
-         s" tfam: captured registry delta exceeds its bytes" REG-AOT-REFUSE THEN
-      base cnt + i REG-AOT-WIDTH * bytes <> IF
-         s" tfam: captured registry has an invalid record extent" REG-AOT-REFUSE THEN
-      delta cnt or used bytes +
-   loop
-   u <> IF s" tfam: captured registry does not fill its bytes" REG-AOT-REFUSE THEN
-   0 <> ;
-
-: REG-AOT-MERGE-REFUSE ( -- )
-   s" tfam: captured registries have incompatible prefixes" REG-AOT-REFUSE ;
-
-\ True iff the incoming payload is the one to retain. A prefix-only capture can
-\ accompany a delta at its opening or closed boundary. Compares canonical
-\ records, not byte lengths or the installed registry.
-: REG-AOT-MERGE-INCOMING-BODY ( ptr u8 n ptr u8 n -- bool )
-   {: host:ptr hu:n incoming:ptr iu:n :}
-   hu 0= IF iu 0 <> IF incoming iu REG-AOT-SHAPE drop THEN RES-TRUE EXIT THEN
-   host hu REG-AOT-SHAPE {: hd:bool :}
-   iu 0= IF RES-FALSE EXIT THEN
-   incoming iu REG-AOT-SHAPE {: id:bool :}
-   hd id and IF
-      s" tfam: two type-registry deltas cannot share one base" REG-AOT-REFUSE THEN
-   REG-AOT-HDR REG-AOT-HDR
-   REG-AOT-N 0 ?do
-      {: ho:n io:n :}
-      host i REG-AOT-ROW@ {: hb:n hc:n hbytes:n :}
-      incoming i REG-AOT-ROW@ {: ib:n ic:n ibytes:n :}
-      hd IF
-         ib hb < ib hb hc + > or IF REG-AOT-MERGE-REFUSE THEN
-      ELSE id IF
-         hb ib < hb ib ic + > or IF REG-AOT-MERGE-REFUSE THEN
-      ELSE
-         hb ib <> IF REG-AOT-MERGE-REFUSE THEN
-      THEN THEN
-      hbytes ibytes min 0 ?do
-         host ho + i j REG-AOT-CANON-C@
-         incoming io + i j REG-AOT-CANON-C@ <> IF REG-AOT-MERGE-REFUSE THEN
-      loop
-      ho hbytes + io ibytes +
-   loop 2drop
-   hd 0= ;
-
-variable REG-AOT-KEEP-INCOMING
-
-: REG-AOT-MERGE-CHECK ( ptr u8 n ptr u8 n -- ptr u8 n ptr u8 n )
-   2over 2over REG-AOT-MERGE-INCOMING-BODY REG-AOT-KEEP-INCOMING ! ;
-
-public
-
-: REG-AOT-MERGE-INCOMING? ( ptr u8 n ptr u8 n -- bool )
-   0 REG-AOT-ERROR-U !
-   ['] REG-AOT-MERGE-CHECK catch dup 0 <> IF
-      REG-AOT-ERROR-U @ 0= IF throw THEN
-      drop 2drop 2drop REG-AOT-ERROR-A @ REG-AOT-ERROR-U @ 76 die
-   THEN drop 2drop 2drop REG-AOT-KEEP-INCOMING @ 0 <> ;
-
-private
-
-: REG-AOT-SAME? ( ptr u8 n n n -- bool ) {: src:ptr k:n base:n bytes:n :}
-   k REG-AOT-BASE-PTR base k REG-AOT-WIDTH * + {: live:ptr :}
-   bytes 0 ?do
-      src i k REG-AOT-CANON-C@ live i k REG-AOT-CANON-C@ <> IF
-         RES-FALSE unloop EXIT THEN
-   loop RES-TRUE ;
-
-PTR-VARIABLE REG-AOT-PROJECTED
-variable REG-AOT-PROJECTED-U
-
-variable UNIT-FAM-PROJECT-ON
-defer UNIT-FAM-PROJECT-VIEW-XT ( n n n -- ptr u8 )
-: UNIT-FAM-NO-VIEW ( n n n -- ptr u8 ) drop 2drop NULL-PTR ;
-: UNIT-FAM-NO-VIEW-INSTALL ( -- )
-   [: UNIT-FAM-NO-VIEW ;] is UNIT-FAM-PROJECT-VIEW-XT ;
-UNIT-FAM-NO-VIEW-INSTALL
-
-: REG-AOT-BLOB-STORE ( ptr u8 n -- ptr u8 ) {: src:ptr k:n :}
-   REG-AOT-HDR
-   k 0 ?do src i REG-AOT-ROW@ nip nip + loop
-   src + ;
-
-: REG-AOT-PREFIX= ( ptr u8 n n n -- bool )
-   {: src:ptr k:n base:n bytes:n :}
-   REG-AOT-PROJECTED-U @ 0= IF src k base bytes REG-AOT-SAME? EXIT THEN
-   REG-AOT-PROJECTED @ k REG-AOT-BLOB-STORE
-   base k REG-AOT-WIDTH * + {: prior:ptr :}
-   bytes 0 ?do
-      src i k REG-AOT-CANON-C@ prior i k REG-AOT-CANON-C@ <> IF
-         RES-FALSE unloop EXIT THEN
-   loop RES-TRUE ;
-
-: REG-AOT-PROJECTED-COUNT ( n -- n ) {: k:n :}
-   REG-AOT-PROJECTED-U @ 0= IF k REG-AOT-COUNT EXIT THEN
-   REG-AOT-PROJECTED @ k REG-AOT-ROW@ drop + ;
-
-\ Validate every base and byte span before reserving or publishing any store.
-\ Subtraction bounds the product and endpoint before either is computed.
-: REG-AOT-TABLE-CHECK ( ptr u8 n -- ) {: src:ptr u:n :}
-   u 0= IF EXIT THEN
-   u REG-AOT-HDR < IF
-      s" tfam: a seeded type registry is shorter than its own table" REG-AOT-REFUSE THEN
-   src REG-AOT-U64@ REG-AOT-N <> IF
-      s" tfam: a seeded type registry names a store count this engine cannot read" REG-AOT-REFUSE THEN
-   REG-AOT-HDR REG-AOT-CUR !
-   0 REG-AOT-STATE !              \ nonempty stores: 1 fresh, 2 already present
-   REG-AOT-N 0 ?do
-      src i REG-AOT-ROW@ {: base:n cnt:n bytes:n :}
-      base 0 < cnt 0 < or bytes 0 < or IF
-         s" tfam: a seeded type registry has a negative base, count or length" REG-AOT-REFUSE THEN
-      u REG-AOT-CUR @ - i REG-AOT-WIDTH / {: room:n :}
-      base room > IF
-         s" tfam: a seeded type registry prefix runs past its own bytes" REG-AOT-REFUSE THEN
-      cnt room base - > IF
-         s" tfam: a seeded type registry section runs past its own bytes" REG-AOT-REFUSE THEN
-      base cnt + i REG-AOT-WIDTH * bytes <> IF
-         s" tfam: a seeded type registry section is not a whole number of records" REG-AOT-REFUSE THEN
-      base $7FFFFFFFFFFFFFFF i REG-AOT-WIDTH / cnt - > IF
-         s" tfam: a seeded type registry endpoint overflows" REG-AOT-REFUSE THEN
-      i REG-AOT-PROJECTED-COUNT {: live:n :}
-      live base <> live base cnt + <> and IF
-         i base live REG-AOT-BASE-BAD THEN
-      src REG-AOT-CUR @ + i 0 base i REG-AOT-WIDTH * REG-AOT-PREFIX= 0= IF
-         s" tfam: a seeded type registry differs from its captured prefix" REG-AOT-REFUSE THEN
-      cnt 0 > IF
-         live base = IF 1 ELSE 2 THEN {: next:n :}
-         REG-AOT-STATE @ 0 <> REG-AOT-STATE @ next <> and IF
-            s" tfam: seeded registry stores disagree about installation" REG-AOT-REFUSE THEN
-         next REG-AOT-STATE !
-         next 2 = IF
-            src REG-AOT-CUR @ + base i REG-AOT-WIDTH * +
-            i base cnt i REG-AOT-WIDTH * REG-AOT-PREFIX= 0= IF
-               s" tfam: a seeded type registry differs from the installed records" REG-AOT-REFUSE THEN
-         THEN
-      THEN
-      REG-AOT-CUR @ bytes + REG-AOT-CUR !
-   loop
-   REG-AOT-CUR @ u <> IF
-      s" tfam: a seeded type registry does not fill its own bytes" REG-AOT-REFUSE THEN ;
-
-\ Reads a wholly prefix-owned or wholly incoming span without installing it;
-\ table validation precedes it and no live count changes.
-: REG-AOT-VIEW ( ptr u8 n n n n -- ptr u8 )
-   {: src:ptr u:n k:n first:n count:n :}
-   first 0 < count 0 < or IF
-      s" tfam: a seeded registry reference is negative" REG-AOT-REFUSE THEN
-   UNIT-FAM-PROJECT-ON @ IF
-      k first count UNIT-FAM-PROJECT-VIEW-XT EXIT THEN
-   u 0= IF
-      first k REG-AOT-COUNT > IF
-         s" tfam: a seeded registry reference exceeds the prefix" REG-AOT-REFUSE THEN
-      count k REG-AOT-COUNT first - > IF
-         s" tfam: a seeded registry span exceeds the prefix" REG-AOT-REFUSE THEN
-      k REG-AOT-BASE-PTR first k REG-AOT-WIDTH * + EXIT
-   THEN
-   src k REG-AOT-ROW@ drop {: base:n cnt:n :}
-   first base cnt + > IF
-      s" tfam: a seeded registry reference exceeds its section" REG-AOT-REFUSE THEN
-   count base cnt + first - > IF
-      s" tfam: a seeded registry span exceeds its section" REG-AOT-REFUSE THEN
-   src k REG-AOT-BLOB-STORE first k REG-AOT-WIDTH * + ;
-
-: REG-AOT-NAME= ( ptr u8 n n n ptr u8 n -- bool )
-   {: src:ptr u:n off:n bytes:n name:ptr nameu:n :}
-   src u 5 off bytes REG-AOT-VIEW bytes name nameu CORE-STR= ;
-
-\ A graph's family ID is meaningful only with its canonical package/tail,
-\ arity and physical/logical form. Consult incoming records even if a previous
-\ idempotent install has already put those IDs into the live registry.
-: REG-AOT-PARAM-CHECK ( ptr u8 ptr u8 ptr u8 n -- )
-   {: node:ptr graph:ptr src:ptr u:n :}
-   src u 0 node EN.H @ 1 REG-AOT-VIEW CELL-VIEW {: rec:ptr :}
-   rec TF.ARITY @ node EN.C @ <> IF
-      s" tfam: a seeded effect has the wrong family arity" REG-AOT-REFUSE THEN
-   src u rec TF.NAME-OFF @ rec TF.NAME-U @
-   graph node EN.A @ + node EN.B @ REG-AOT-NAME= 0= IF
-      s" tfam: a seeded effect names a different family" REG-AOT-REFUSE THEN
-   src u rec TF.PKG-OFF @ rec TF.PKG-U @
-   graph node EN.F @ + node EN.G @ REG-AOT-NAME= 0= IF
-      s" tfam: a seeded effect names a different family package" REG-AOT-REFUSE THEN
-   rec TF.KIND @ dup 0 < swap TK-MAX > or IF
-      s" tfam: a seeded effect has an invalid family kind" REG-AOT-REFUSE THEN
-   rec TF.LAYOUT @ dup 0 < swap TL-MAX > or IF
-      s" tfam: a seeded effect has an invalid family layout" REG-AOT-REFUSE THEN
-   node EN.E @ 0 < IF
-      s" tfam: a seeded effect has a negative hidden field" REG-AOT-REFUSE THEN
-   node EN.E @ 0 > IF
-      rec TF.KIND @ TK-CELL = rec TF.KIND @ TK-EVIDENCE = or IF
-         s" tfam: a seeded cell family cannot have a hidden field" REG-AOT-REFUSE THEN
-   THEN
-   src u 1 rec TF.PK-START @ rec TF.ARITY @ REG-AOT-VIEW drop ;
-
-\ A graph-callback refusal dies 76 like the loader's. 2over 2over keeps the
-\ quotation balanced on both paths.
-: REG-AOT-PARAM? ( ptr u8 ptr u8 ptr u8 n -- )
-   0 REG-AOT-ERROR-U !
-   [: 2over 2over REG-AOT-PARAM-CHECK ;] catch
-   dup 0 <> IF
-      REG-AOT-ERROR-U @ 0= IF throw THEN
-      drop 2drop 2drop REG-AOT-ERROR-A @ REG-AOT-ERROR-U @ 76 die
-   THEN drop 2drop 2drop ;
-
-\ Semantic references are checked through the uninstalled future view. No
-\ count, constructor association or lookup index changes during this pass.
-: REG-AOT-ITEM ( ptr u8 n n n -- ptr n )
-   1 REG-AOT-VIEW CELL-VIEW ;
-
-\ The graph validator asks the already validated future registry whether an
-\ argument is a scope slot. A live family id is not authority during intake.
-: REG-AOT-SCOPE? ( ptr u8 ptr u8 n n -- bool )
-   {: node:ptr src:ptr u:n idx:n :}
-   src u 0 node EN.H @ 1 REG-AOT-VIEW CELL-VIEW {: rec:ptr :}
-   idx 0 < idx rec TF.ARITY @ >= or IF
-      s" tfam: a seeded scope slot exceeds the family arity" REG-AOT-REFUSE THEN
-   src u 1 rec TF.PK-START @ idx + REG-AOT-ITEM @ PK-SCOPE = ;
-
-: REG-AOT-REGION? ( ptr u8 ptr u8 n n -- bool )
-   {: node:ptr src:ptr u:n idx:n :}
-   src u 0 node EN.H @ 1 REG-AOT-VIEW CELL-VIEW {: rec:ptr :}
-   idx 0 < idx rec TF.ARITY @ >= or IF
-      s" tfam: a seeded region slot exceeds the family arity" REG-AOT-REFUSE THEN
-   src u 1 rec TF.PK-START @ idx + REG-AOT-ITEM @ PK-REGION = ;
-
-: REG-AOT-RANGE ( ptr u8 n n n n -- ) REG-AOT-VIEW drop ;
-
-: REG-AOT-NONNEG ( n -- )
-   0 < IF s" tfam: a seeded registry scalar is negative" REG-AOT-REFUSE THEN ;
-
-: REG-AOT-CON-VALID? ( n -- bool ) {: id:n :}
-   id CC-N < IF RES-FALSE EXIT THEN
-   id CC-MAX < IF RES-TRUE EXIT THEN
-   UNIT-FAM-PROJECT-ON @ IF id CHECKER-REG:UNIT-CON-VALID-XT EXIT THEN
-   RES-FALSE ;
-
-: REG-AOT-LIMIT ( n n -- ) {: value:n ceiling:n :}
-   value 0 < value ceiling > or IF
-      s" tfam: a seeded registry scalar is outside its domain" REG-AOT-REFUSE THEN ;
-
-: REG-AOT-STRING ( ptr u8 n n n -- ) {: src:ptr u:n off:n len:n :}
-   src u 5 off len REG-AOT-RANGE ;
-
-: REG-AOT-TAIL ( ptr u8 n n n -- ) {: src:ptr u:n off:n len:n :}
-   src u 5 off len REG-AOT-VIEW len TF-CANON? 0= IF
-      s" tfam: a seeded registry name is not canonical" REG-AOT-REFUSE THEN ;
-
-: REG-AOT-FAMILY ( ptr u8 n n -- ) {: src:ptr u:n id:n :}
-   src u 0 id REG-AOT-ITEM {: row:ptr :}
-   src u row TF.PKG-OFF @ row TF.PKG-U @ REG-AOT-STRING
-   src u row TF.NAME-OFF @ row TF.NAME-U @ REG-AOT-TAIL
-   row TF.VIS @ dup CHECKER-PACKAGE-PRIVATE <
-   swap CHECKER-PACKAGE-PUBLIC > or IF
-      s" tfam: a seeded family has invalid visibility" REG-AOT-REFUSE THEN
-   row TF.KIND @ TK-MAX REG-AOT-LIMIT
-   row TF.LAYOUT @ TL-NICHE REG-AOT-LIMIT
-   row TF.SLOTS @ $7FFFFFFFFFFFFFFF CELL / 1- REG-AOT-LIMIT
-   row TF.TAGW @ CELL REG-AOT-LIMIT
-   row TF.DERIVE @ DRV-ALL invert and 0 <> IF
-      s" tfam: a seeded family has invalid derive flags" REG-AOT-REFUSE THEN
-   src u 1 row TF.PK-START @ row TF.ARITY @ REG-AOT-RANGE
-   src u 2 row TF.VAR-START @ row TF.VAR-COUNT @ REG-AOT-RANGE
-   src u 3 row TF.FLD-START @ row TF.FLD-COUNT @ REG-AOT-RANGE
-   row TF.SCHEMA-ROOT @ 0 <> IF src u 7 row TF.SCHEMA-ROOT @ REG-AOT-ITEM drop THEN
-   row TF.SPAN-OFF @ REG-AOT-NONNEG row TF.SPAN-U @ REG-AOT-NONNEG
-   row TF.KIND @ TK-CELL = row TF.KIND @ TK-EVIDENCE = or IF
-      row TF.SLOTS @ row TF.VAR-COUNT @ or row TF.FLD-COUNT @ or 0 <> IF
-         s" tfam: a seeded cell family has layout members" REG-AOT-REFUSE THEN
-   THEN
-   row TF.KIND @ TK-ENUM = IF
-      row TF.SLOTS @ row TF.ARITY @ or row TF.FLD-COUNT @ or 0 <> IF
-         s" tfam: a seeded compact enum has payload members" REG-AOT-REFUSE THEN
-   THEN ;
-
-: REG-AOT-VARIANT ( ptr u8 n n -- ) {: src:ptr u:n id:n :}
-   src u 2 id REG-AOT-ITEM {: row:ptr :}
-   src u 0 row SV.FAM @ REG-AOT-ITEM {: family:ptr :}
-   family TF.VAR-START @ {: first:n :}
-   id first < IF s" tfam: a seeded variant precedes its family" REG-AOT-REFUSE THEN
-   id first - family TF.VAR-COUNT @ >= IF
-      s" tfam: a seeded variant is outside its family" REG-AOT-REFUSE THEN
-   row SV.TAG @ id first - <> IF
-      s" tfam: a seeded variant has the wrong tag" REG-AOT-REFUSE THEN
-   src u row SV.NAME-OFF @ row SV.NAME-U @ REG-AOT-TAIL
-   src u row SV.CTOR-PKG-OFF @ row SV.CTOR-PKG-U @ REG-AOT-STRING
-   src u 7 row SV.SCH-START @ row SV.SCH-COUNT @ REG-AOT-RANGE
-   row SV.PAYCELLS @ family TF.SLOTS @ REG-AOT-LIMIT ;
-
-: REG-AOT-SCHEMA-CHILD ( ptr u8 n n n -- ) {: src:ptr u:n parent:n child:n :}
-   child 0 <= child parent >= or IF
-      s" tfam: a seeded schema has a forward or cyclic edge" REG-AOT-REFUSE THEN
-   src u 6 child REG-AOT-ITEM drop ;
-
-: REG-AOT-SCHEMA-ROOTS ( ptr u8 n n n n bool -- )
-   {: src:ptr u:n parent:n first:n count:n rows:bool :}
-   src u 7 first count REG-AOT-RANGE
-   count 0 ?do
-      src u 7 first i + REG-AOT-ITEM @ {: child:n :}
-      src u parent child REG-AOT-SCHEMA-CHILD
-      src u 6 child REG-AOT-ITEM @ SCH-ROW = rows xor IF
-         s" tfam: a seeded schema edge has the wrong node kind" REG-AOT-REFUSE THEN
-   loop ;
-
-: REG-AOT-SCHEMA ( ptr u8 n n -- ) {: src:ptr u:n id:n :}
-   src u 6 id REG-AOT-ITEM {: row:ptr :}
-   row @ {: tag:n :} row CELL + @ {: a:n :}
-   row 2 cells + @ {: b:n :} row 3 cells + @ {: c:n :}
-   tag SCH-PARAM = IF
-      a REG-AOT-NONNEG b c or 0 <> IF
-         s" tfam: a seeded parameter schema has reserved fields" REG-AOT-REFUSE THEN EXIT
-   THEN
-   tag SCH-CON = IF
-      a REG-AOT-CON-VALID? 0= IF
-         s" tfam: captured schema constructor has process-local identity" REG-AOT-REFUSE THEN
-      b c or 0 <> IF
-         s" tfam: a seeded constructor schema has reserved fields" REG-AOT-REFUSE THEN EXIT
-   THEN
-   tag SCH-PTR = IF
-      b c or 0 <> IF
-         s" tfam: a seeded pointer schema has reserved fields" REG-AOT-REFUSE THEN
-      src u id a REG-AOT-SCHEMA-CHILD
-      src u 6 a REG-AOT-ITEM @ SCH-ROW = IF
-         s" tfam: a seeded pointer schema names a row" REG-AOT-REFUSE THEN EXIT
-   THEN
-   tag SCH-APP = IF
-      c 0= b 0 <> and IF
-         s" tfam: a seeded nullary schema has a nonzero argument base" REG-AOT-REFUSE THEN
-      src u 0 a REG-AOT-ITEM TF.ARITY @ c <> IF
-         s" tfam: a seeded schema has the wrong family arity" REG-AOT-REFUSE THEN
-      src u id b c RES-FALSE REG-AOT-SCHEMA-ROOTS EXIT
-   THEN
-   tag SCH-QUOT = IF
-      a 0 <> a -1 <> and c SCH-QUOT-ROWS <> or IF
-         s" tfam: a seeded quotation schema has invalid sides" REG-AOT-REFUSE THEN
-      src u id b c RES-TRUE REG-AOT-SCHEMA-ROOTS EXIT
-   THEN
-   tag SCH-ROW = IF
-      c 0 <> IF s" tfam: a seeded row schema has a reserved field" REG-AOT-REFUSE THEN
-      src u id a b RES-FALSE REG-AOT-SCHEMA-ROOTS EXIT
-   THEN
-   s" tfam: a seeded schema has an invalid tag" REG-AOT-REFUSE ;
-
-: REG-AOT-FIELD ( ptr u8 n n -- ) {: src:ptr u:n id:n :}
-   src u 3 id REG-AOT-ITEM {: row:ptr :}
-   src u 0 row PF.FAM @ REG-AOT-ITEM {: family:ptr :}
-   src u row PF.NAME-OFF @ row PF.NAME-U @ REG-AOT-TAIL
-   src u 7 row PF.SCH @ REG-AOT-ITEM @ {: node:n :}
-   src u 6 node REG-AOT-ITEM @ SCH-ROW = IF
-      s" tfam: a seeded field names a row schema" REG-AOT-REFUSE THEN
-   id family TF.FLD-START @ < IF
-      s" tfam: a seeded field precedes its family" REG-AOT-REFUSE THEN
-   id family TF.FLD-START @ - family TF.FLD-COUNT @ >= IF
-      s" tfam: a seeded field is outside its family" REG-AOT-REFUSE THEN
-   row PF.VAR @ -1 = IF
-      family TF.KIND @ TK-PRODUCT <> IF
-         s" tfam: a seeded untagged field is not product-owned" REG-AOT-REFUSE THEN
-   ELSE
-      family TF.KIND @ TK-SUM <> IF
-         s" tfam: a seeded variant field is not sum-owned" REG-AOT-REFUSE THEN
-      src u 2 row PF.VAR @ REG-AOT-ITEM SV.FAM @ row PF.FAM @ <> IF
-         s" tfam: a seeded field names another family's variant" REG-AOT-REFUSE THEN
-   THEN
-   row PF.SLOT @ row PF.CELLS @ PF-RANGE-OK? 0= IF
-      s" tfam: a seeded field has an invalid cell range" REG-AOT-REFUSE THEN
-   row PF.BYTE-OFF @ row PF.BYTES @ PF-RANGE-OK? 0= IF
-      s" tfam: a seeded field has an invalid byte range" REG-AOT-REFUSE THEN
-   row PF.SLOT @ family TF.SLOTS @ > IF
-      s" tfam: a seeded field starts outside its family" REG-AOT-REFUSE THEN
-   row PF.CELLS @ family TF.SLOTS @ row PF.SLOT @ - > IF
-      s" tfam: a seeded field extends outside its family" REG-AOT-REFUSE THEN
-   row PF.ALIGN @ PF-POW2? 0= IF
-      s" tfam: a seeded field alignment is invalid" REG-AOT-REFUSE THEN
-   row PF.BYTE-OFF @ row PF.ALIGN @ mod 0 <> row PF.FLAGS @ 0 <> or IF
-      s" tfam: a seeded field layout is invalid" REG-AOT-REFUSE THEN ;
-
-: REG-AOT-LAYOUT ( ptr u8 n n -- ) {: src:ptr u:n id:n :}
-   src u 4 id REG-AOT-ITEM {: row:ptr :}
-   src u 0 row LAY.FAM @ REG-AOT-ITEM {: family:ptr :}
-   row LAY.POLICY @ TL-PACKED-TAG <>
-   row LAY.POLICY @ family TF.LAYOUT @ <> or IF
-      s" tfam: a seeded layout has an unsupported or mismatched policy" REG-AOT-REFUSE THEN
-   family TF.KIND @ TK-SUM = family TF.KIND @ TK-ENUM = or IF
-      family TF.VAR-COUNT @ PACKED-NARROW ELSE 0 THEN {: tagw:n :}
-   family TF.SLOTS @ cells {: payload:n :}
-   payload 0 > IF CELL ELSE tagw 0 > IF tagw ELSE 1 THEN THEN {: alignment:n :}
-   payload tagw + alignment PACKED-ALIGN-UP row LAY.SIZE @ <>
-   alignment row LAY.ALIGN @ <> or tagw row LAY.TAGW @ <> or IF
-      s" tfam: a seeded layout disagrees with its family descriptor" REG-AOT-REFUSE THEN ;
-
-: REG-AOT-SHAPE-CHECK ( ptr u8 n -- ) {: src:ptr u:n :}
-   UNIT-FAM-PROJECT-ON @ 0= IF src u REG-AOT-TABLE-CHECK THEN
-   u 0= IF EXIT THEN
-   src 6 REG-AOT-ROW@ drop + 1 ?do
-      src u 6 i REG-AOT-ITEM {: node:ptr :}
-      node @ SCH-CON = IF
-         node CELL + @ REG-AOT-CON-VALID? 0= IF
-            s" tfam: captured schema constructor has process-local identity" REG-AOT-REFUSE THEN
-      THEN
-   loop
-   REG-AOT-N 0 ?do
-      src i REG-AOT-ROW@ drop {: first:n count:n :}
-      count 0 ?do
-         first i + {: id:n :}
-         j 0 = IF src u id REG-AOT-FAMILY
-         ELSE j 1 = IF src u 1 id REG-AOT-ITEM @ PK-MAX REG-AOT-LIMIT
-         ELSE j 2 = IF src u id REG-AOT-VARIANT
-         ELSE j 3 = IF src u id REG-AOT-FIELD
-         ELSE j 4 = IF src u id REG-AOT-LAYOUT
-         ELSE j 6 = IF src u id REG-AOT-SCHEMA
-         ELSE j 7 = IF
-            src u 7 id REG-AOT-ITEM @ {: node:n :}
-            node 0 <= IF
-               s" tfam: a seeded schema root names nil" REG-AOT-REFUSE THEN
-            src u 6 node REG-AOT-ITEM drop
-         THEN THEN THEN THEN THEN THEN THEN
-      loop
-   loop ;
-
-\ Owner-relative checks run after all node kinds and decreasing schema edges
-\ have validated. A memo per (owner, strictness, node) prevents shared subgraphs
-\ from expanding exponentially; its two-cell rows are private scratch only.
-PTR-VARIABLE REG-AOT-MEMO
-variable REG-AOT-MEMO-U
-
-\ Cell fam of REG-AOT-FAMW holds 1 + the walked width of arity-0 family fam, 0
-\ until that walk completes: computed widths only, never a persisted slot
-\ count. A parametric family is walked per frame. A check maps it with the
-\ memo; REG-AOT-GRAPH-WIDTH maps its own unless a check holds one.
-PTR-VARIABLE REG-AOT-FAMW
-variable REG-AOT-FAMW-U
-
-\ One cell per family id the payload can name: up to row 0's base plus count,
-\ or the live count for an empty payload, which REG-AOT-ITEM reads as the live
-\ registry. A registry without a family maps none.
-: REG-AOT-FAMW-START ( ptr u8 n -- ) {: src:ptr u:n :}
-   u 0= IF 0 REG-AOT-COUNT ELSE src 0 REG-AOT-ROW@ drop + THEN
-   cells {: bytes:n :}
-   bytes 0 > IF bytes ARENA-ALLOC REG-AOT-FAMW ! THEN
-   bytes REG-AOT-FAMW-U ! ;
-
-: REG-AOT-FAMW-DONE ( -- )
-   REG-AOT-FAMW @ REG-AOT-FAMW-U @ ASIG-RELEASE
-   NULL-PTR REG-AOT-FAMW ! 0 REG-AOT-FAMW-U ! ;
-
-: REG-AOT-MEMO-DONE ( -- )
-   REG-AOT-MEMO @ REG-AOT-MEMO-U @ ASIG-RELEASE
-   NULL-PTR REG-AOT-MEMO ! 0 REG-AOT-MEMO-U !
-   REG-AOT-FAMW-DONE ;
-
-\ One row per schema node id up to row 6's base plus count. The size is never
-\ zero, which ARENA-ALLOC dies on: REG-AOT-CHECK's table check refuses a row 6
-\ whose base and end both differ from the live SCH-N, and SCH-N is at least 1
-\ (node 0 is the nil sentinel).
-: REG-AOT-MEMO-START ( ptr u8 n -- ) {: src:ptr u:n :}
-   src 6 REG-AOT-ROW@ drop + 2 cells * {: bytes:n :}
-   bytes ARENA-ALLOC REG-AOT-MEMO ! bytes REG-AOT-MEMO-U !
-   src u REG-AOT-FAMW-START ;
-
-: REG-AOT-MEMO-SLOT ( n -- ptr n )
-   2 cells * REG-AOT-MEMO @ + CELL-VIEW ;
-
-: REG-AOT-FAM-KIND ( ptr n -- n ) {: row:ptr :}
-   row TF.KIND @ {: kind:n :}
-   kind TK-EVIDENCE = IF PK-EVIDENCE EXIT THEN
-   kind TK-PRODUCT = kind TK-SUM = or kind TK-ENUM = or IF PK-LAYOUT EXIT THEN
-   PK-CELL ;
-
-: REG-AOT-FAM-WIDTH ( ptr n -- n ) {: row:ptr :}
-   row TF.LAYOUT @ {: policy:n :}
-   policy TL-BOXED = policy TL-NICHE = or IF 1 EXIT THEN
-   row TF.KIND @ {: kind:n :}
-   kind TK-PRODUCT = IF row TF.SLOTS @ EXIT THEN
-   kind TK-SUM = kind TK-ENUM = or IF row TF.SLOTS @ 1+ EXIT THEN
-   1 ;
-
-\ Leave room for the persisted width+1 encoding. Bounds precede addition.
-: REG-AOT-GRAPH-WIDTH+ ( n n -- n ) {: left:n right:n :}
-   left 0 < right 0 < or IF ASIG-GRAPH-DIE THEN
-   right $7FFFFFFFFFFFFFFE left - > IF ASIG-GRAPH-DIE THEN
-   left right + ;
-
-\ Portable counterpart of TFW-NODE / TFW-FAM over the seeded rows. Members are
-\ validated before field schemas (REG-AOT-OWNER-CHECK), so this walk reaches
-\ unvalidated roots: it refuses a parameter beyond its owner's arity and an
-\ application of a family not strictly older than its owner, which bounds the
-\ recursion. REG-AOT-SHAPE-CHECK pins an application's argument count to its
-\ family's arity, so a nested frame holds exactly the applied family's arity.
-defer REG-AOT-FAM-W ( ptr u8 n n n n -- n )   \ ( src u fam base top -- width ) forward ref for a nested application
-
-: REG-AOT-NODE-W ( ptr u8 n n n n n -- n )
-   {: src:ptr u:n owner:n node:n base:n top:n :}
-   src u 6 node REG-AOT-ITEM {: row:ptr :}
-   row @ {: tag:n :}
-   row CELL + @ {: a:n :}
-   tag SCH-PARAM = IF
-      a  src u 0 owner REG-AOT-ITEM TF.ARITY @  >= IF
-         s" tfam: a seeded schema parameter exceeds its owner arity" REG-AOT-REFUSE THEN
-      base a + TFW@ EXIT
-   THEN
-   tag SCH-APP = IF
-      a owner >= IF
-         s" tfam: a seeded schema has a recursive or forward family" REG-AOT-REFUSE THEN
-      row 2 cells + @ {: b:n :}
-      row 3 cells + @ {: c:n :}
-      c 0 ?do                                    \ an argument's own frames live above top+c
-         src u owner  src u 7 b i + REG-AOT-ITEM @  base top c + RECURSE  top i + TFW!
-      loop
-      src u a top top c + REG-AOT-FAM-W EXIT
-   THEN
-   1 ;
-
-: REG-AOT-FIELDS-W ( ptr u8 n n ptr n n n n -- n )
-   {: src:ptr u:n owner:n family:ptr variant:n base:n top:n :}
-   0 family TF.FLD-COUNT @ 0 ?do
-      src u 3 family TF.FLD-START @ i + REG-AOT-ITEM {: field:ptr :}
-      field PF.VAR @ variant = IF
-         src u owner  src u 7 field PF.SCH @ REG-AOT-ITEM @  base top REG-AOT-NODE-W
-         REG-AOT-GRAPH-WIDTH+
-      THEN
-   loop ;
-
-: REG-AOT-FAM-WALK ( ptr u8 n n ptr n n n -- n )
-   {: src:ptr u:n fam:n family:ptr base:n top:n :}
-   family TF.LAYOUT @ {: policy:n :}
-   policy TL-BOXED = policy TL-NICHE = or IF 1 EXIT THEN
-   family TF.KIND @ {: kind:n :}
-   kind TK-PRODUCT = IF
-      src u fam family PF-NO-VARIANT base top REG-AOT-FIELDS-W EXIT
-   THEN
-   kind TK-SUM = kind TK-ENUM = or IF
-      0 family TF.VAR-COUNT @ 0 ?do
-         family TF.VAR-START @ i + {: vid:n :}
-         src u 2 vid REG-AOT-ITEM {: variant:ptr :}
-         family TF.FLD-COUNT @ 0 > IF
-            src u fam family vid base top REG-AOT-FIELDS-W
-         ELSE
-            0 variant SV.SCH-COUNT @ 0 ?do
-               src u fam  src u 7 variant SV.SCH-START @ i + REG-AOT-ITEM @  base top REG-AOT-NODE-W
-               REG-AOT-GRAPH-WIDTH+
-            loop
-         THEN
-         max
-      loop
-      1 REG-AOT-GRAPH-WIDTH+ EXIT
-   THEN
-   1 ;
-
-: REG-AOT-FAM-W-IMPL ( ptr u8 n n n n -- n ) {: src:ptr u:n fam:n base:n top:n :}
-   src u 0 fam REG-AOT-ITEM {: family:ptr :}
-   family TF.ARITY @ 0 >  fam cells REG-AOT-FAMW-U @ >= or IF
-      src u fam family base top REG-AOT-FAM-WALK EXIT THEN
-   fam cells REG-AOT-FAMW @ + CELL-VIEW {: memo:ptr :}
-   memo @ 0 > IF memo @ 1 - EXIT THEN
-   src u fam family base top REG-AOT-FAM-WALK
-   dup 1 + memo ! ;
-: REG-AOT-FAM-W-INSTALL ( -- ) [: REG-AOT-FAM-W-IMPL ;] is REG-AOT-FAM-W ;
-REG-AOT-FAM-W-INSTALL
-
-: REG-AOT-NODE-WIDTH ( ptr u8 n n n -- n ) {: src:ptr u:n owner:n node:n :}   \ declared width: each parameter one cell
-   src u 0 owner REG-AOT-ITEM TF.ARITY @ {: ar:n :}
-   ar 0 ?do 1 i TFW! loop
-   src u owner node 0 ar REG-AOT-NODE-W ;
-
-: REG-AOT-GRAPH-WIDTH ( ptr u8 ptr u8 ptr u8 ptr u8 n -- n )
-   {: term:ptr graph:ptr widths:ptr src:ptr u:n :}
-   src u 0 term EN.H @ REG-AOT-ITEM {: family:ptr :}
-   \ The seeded slots are validated against the declared walk
-   \ (REG-AOT-FIELD-SCHEMA, REG-AOT-OWNER-WIDTH, REG-AOT-FAMILY-MEMBERS), which is
-   \ this walk at an all-ones frame, so with every argument one cell
-   \ REG-AOT-FAM-WIDTH is the answer, without rescanning every field for each
-   \ hidden slot of a wide value.
-   RES-TRUE term EN.C @ 0 ?do
-      graph term EN.D @ + i cells + CELL-VIEW @ widths + CELL-VIEW @ 1 = and
-   loop IF family REG-AOT-FAM-WIDTH EXIT THEN
-   term EN.C @ 0 ?do                             \ the graph's memoized argument widths
-      graph term EN.D @ + i cells + CELL-VIEW @ widths + CELL-VIEW @  i TFW!
-   loop
-   src u term EN.H @ 0 term EN.C @
-   REG-AOT-FAMW-U @ 0 > IF REG-AOT-FAM-W EXIT THEN
-   src u REG-AOT-FAMW-START
-   [: REG-AOT-FAM-W ;] [: REG-AOT-FAMW-DONE ;] finally ;
-
-: REG-AOT-SAME-PKG? ( ptr u8 n ptr n ptr n -- bool )
-   {: src:ptr u:n left:ptr right:ptr :}
-   src u 5 left TF.PKG-OFF @ left TF.PKG-U @ REG-AOT-VIEW left TF.PKG-U @
-   src u 5 right TF.PKG-OFF @ right TF.PKG-U @ REG-AOT-VIEW right TF.PKG-U @ CORE-STR= ;
-
-: REG-AOT-MEMO-RESULT ( n ptr n n -- n ) {: key:n memo:ptr kind:n :}
-   key memo ! kind memo CELL + ! kind ;
-
-: REG-AOT-FAM-NONVALUE? ( ptr u8 n n -- bool ) {: src:ptr u:n fam:n :}
-   src u 0 fam REG-AOT-ITEM {: row:ptr :}
-   row TF.ARITY @ 0 ?do
-      src u 1 row TF.PK-START @ i + REG-AOT-ITEM @ PF-NONVALUE? IF
-         UNLOOP RES-TRUE EXIT THEN
-   loop RES-FALSE ;
-
-: REG-AOT-OWNED-NODE ( ptr u8 n n n bool -- n )
-   {: src:ptr u:n owner:n node:n strict:bool :}
-   owner 1+ 2 * strict IF 1+ THEN {: key:n :}
-   node REG-AOT-MEMO-SLOT {: memo:ptr :}
-   memo @ key = IF memo CELL + @ EXIT THEN
-   src u 0 owner REG-AOT-ITEM {: owning:ptr :}
-   src u 6 node REG-AOT-ITEM {: row:ptr :}
-   row @ {: tag:n :} row CELL + @ {: a:n :}
-   row 2 cells + @ {: b:n :} row 3 cells + @ {: c:n :}
-   tag SCH-PARAM = IF
-      a owning TF.ARITY @ >= IF
-         s" tfam: a seeded schema parameter exceeds its owner arity" REG-AOT-REFUSE THEN
-      src u 1 owning TF.PK-START @ a + REG-AOT-ITEM @ {: kind:n :}
-      key memo kind REG-AOT-MEMO-RESULT EXIT
-   THEN
-   tag SCH-CON = IF
-      a REG-AOT-CON-VALID? 0= IF
-         s" tfam: captured schema constructor has process-local identity" REG-AOT-REFUSE THEN
-   THEN
-   tag SCH-PTR = IF
-      src u owner a strict TWALK-DEEPER RECURSE TWALK-SHALLOWER PF-NONVALUE? IF
-         s" tfam: a seeded pointer names a non-value parameter" REG-AOT-REFUSE THEN
-      src u 6 a REG-AOT-ITEM {: child:ptr :}
-      child @ SCH-APP = IF
-         src u child CELL + @ REG-AOT-FAM-NONVALUE? IF
-            s" tfam: a seeded pointer names a borrowed family" REG-AOT-REFUSE THEN
-      THEN
-   THEN
-   tag SCH-ROW = IF
-      b 0 ?do
-         src u 7 a i + REG-AOT-ITEM @ {: child:n :}
-         src u owner child strict TWALK-DEEPER RECURSE TWALK-SHALLOWER PF-NONVALUE? IF
-            s" tfam: a seeded effect uses a non-value parameter" REG-AOT-REFUSE THEN
-      loop
-   THEN
-   tag SCH-QUOT = IF
-      c 0 ?do
-         src u 7 b i + REG-AOT-ITEM @ {: child:n :}
-         src u owner child strict TWALK-DEEPER RECURSE TWALK-SHALLOWER drop
-      loop
-   THEN
-   tag SCH-APP = IF
-      \ Ordinary declarations resolve only already-declared families, including
-      \ pointer-wrapped references: the dependency graph stays acyclic.
-      a owner >= IF
-         s" tfam: a seeded schema has a recursive or forward family" REG-AOT-REFUSE THEN
-      src u 0 a REG-AOT-ITEM {: applied:ptr :}
-      applied TF.VIS @ CHECKER-PACKAGE-PUBLIC <>
-      src u owning applied REG-AOT-SAME-PKG? 0= and IF
-         s" tfam: a seeded schema names an inaccessible family" REG-AOT-REFUSE THEN
-      c 0 ?do
-         src u 7 b i + REG-AOT-ITEM @ {: child:n :}
-         src u owner child strict TWALK-DEEPER RECURSE TWALK-SHALLOWER {: got:n :}
-         strict IF
-            src u 1 applied TF.PK-START @ i + REG-AOT-ITEM @ {: want:n :}
-            got want PF-KIND-OK? 0= IF
-               s" tfam: a seeded schema argument has the wrong kind" REG-AOT-REFUSE THEN
-         THEN
-      loop
-      key memo applied REG-AOT-FAM-KIND REG-AOT-MEMO-RESULT EXIT
-   THEN
-   key memo PK-CELL REG-AOT-MEMO-RESULT ;
-
-: REG-AOT-OWNED-ROOT ( ptr u8 n n n bool -- n )
-   {: src:ptr u:n owner:n root:n strict:bool :}
-   src u 7 root REG-AOT-ITEM @ {: node:n :}
-   src u 6 node REG-AOT-ITEM @ {: tag:n :}
-   tag SCH-ROW = IF
-      s" tfam: a seeded payload root names an effect row" REG-AOT-REFUSE THEN
-   src u owner node strict REG-AOT-OWNED-NODE {: kind:n :}
-   strict tag SCH-PARAM = and kind PK-CELL <> and kind PK-TYPE <> and IF
-      s" tfam: a seeded field parameter is not cell-kinded" REG-AOT-REFUSE THEN
-   strict kind PF-NONVALUE? and IF
-      s" tfam: a seeded field uses a non-value parameter as a value" REG-AOT-REFUSE THEN
-   strict tag SCH-PARAM = and kind PK-TYPE = and IF
-      src u 6 node REG-AOT-ITEM CELL + @ 1 = owner C2-INIT-FAM @ = and 0= IF
-         s" tfam: a seeded field directly owns a type parameter" REG-AOT-REFUSE THEN
-   THEN
-   src u owner node REG-AOT-NODE-WIDTH ;
-
-: REG-AOT-FIELD-SCHEMA ( ptr u8 n n -- ) {: src:ptr u:n id:n :}
-   src u 3 id REG-AOT-ITEM {: row:ptr :}
-   src u 0 row PF.FAM @ REG-AOT-ITEM {: family:ptr :}
-   src u row PF.FAM @ row PF.SCH @ RES-TRUE REG-AOT-OWNED-ROOT
-   row PF.CELLS @ <> IF
-      s" tfam: a seeded field width disagrees with its schema" REG-AOT-REFUSE THEN
-   family TF.LAYOUT @ TL-NICHE > IF
-      s" tfam: a seeded field uses an unsupported layout" REG-AOT-REFUSE THEN
-   row PF.SLOT @ $7FFFFFFFFFFFFFFF CELL / >
-   row PF.CELLS @ $7FFFFFFFFFFFFFFF CELL / > or IF
-      s" tfam: a seeded field byte width overflows" REG-AOT-REFUSE THEN
-   row PF.SLOT @ cells row PF.BYTE-OFF @ <>
-   row PF.CELLS @ cells row PF.BYTES @ <> or
-   row PF.ALIGN @ CELL <> or IF
-      s" tfam: a seeded field bytes disagree with its cell layout" REG-AOT-REFUSE THEN ;
-
-\ Field insertion already forbids overlaps and duplicate names within one
-\ owner. Check the same bounded family slice before admitting imported rows.
-: REG-AOT-FIELD-PEERS ( ptr u8 n n -- ) {: src:ptr u:n id:n :}
-   src u 3 id REG-AOT-ITEM {: row:ptr :}
-   src u 0 row PF.FAM @ REG-AOT-ITEM TF.FLD-START @ {: first:n :}
-   id first ?do
-      src u 3 i REG-AOT-ITEM {: other:ptr :}
-      other PF.VAR @ row PF.VAR @ = IF
-         src u 5 row PF.NAME-OFF @ row PF.NAME-U @ REG-AOT-VIEW row PF.NAME-U @
-         src u 5 other PF.NAME-OFF @ other PF.NAME-U @ REG-AOT-VIEW other PF.NAME-U @ CORE-STR= IF
-            s" tfam: a seeded field repeats an owner-local name" REG-AOT-REFUSE THEN
-         row PF.SLOT @ row PF.CELLS @ other PF.SLOT @ other PF.CELLS @ PF-RANGE-OVERLAP?
-         row PF.BYTE-OFF @ row PF.BYTES @ other PF.BYTE-OFF @ other PF.BYTES @ PF-RANGE-OVERLAP? or IF
-            s" tfam: a seeded field overlaps another field" REG-AOT-REFUSE THEN
-      THEN
-   loop ;
-
-: REG-AOT-OWNER-WIDTH ( ptr u8 n ptr n n n -- n )
-   {: src:ptr u:n family:ptr variant:n limit:n :}
-   0 0 family TF.FLD-COUNT @ 0 ?do
-      src u 3 family TF.FLD-START @ i + REG-AOT-ITEM {: field:ptr :}
-      field PF.VAR @ variant = IF
-         {: total:n highest:n :}
-         field PF.CELLS @ limit total - > IF
-            s" tfam: seeded fields exceed their owner's payload width" REG-AOT-REFUSE THEN
-         field PF.SLOT @ limit > IF
-            s" tfam: a seeded field starts outside its variant" REG-AOT-REFUSE THEN
-         field PF.CELLS @ limit field PF.SLOT @ - > IF
-            s" tfam: a seeded field extends outside its variant" REG-AOT-REFUSE THEN
-         total field PF.CELLS @ +
-         highest field PF.SLOT @ field PF.CELLS @ + max
-      THEN
-   loop
-   2dup <> IF
-      s" tfam: seeded fields leave a gap in their owner layout" REG-AOT-REFUSE THEN drop ;
-
-: REG-AOT-FAMILY-MEMBERS ( ptr u8 n n -- ) {: src:ptr u:n fam:n :}
-   src u 0 fam REG-AOT-ITEM {: row:ptr :}
-   row TF.FLD-COUNT @ 0 ?do
-      src u 3 row TF.FLD-START @ i + REG-AOT-ITEM PF.FAM @ fam <> IF
-         s" tfam: a seeded family includes another family's field" REG-AOT-REFUSE THEN
-   loop
-   row TF.KIND @ TK-PRODUCT = IF
-      src u row PF-NO-VARIANT row TF.SLOTS @ REG-AOT-OWNER-WIDTH
-      row TF.SLOTS @ <> IF
-         s" tfam: a seeded product width differs from its fields" REG-AOT-REFUSE THEN
-   THEN
-   0 row TF.VAR-COUNT @ 0 ?do
-      row TF.VAR-START @ i + {: vid:n :}
-      src u 2 vid REG-AOT-ITEM {: variant:ptr :}
-      variant SV.FAM @ fam <> IF
-         s" tfam: a seeded family includes another family's variant" REG-AOT-REFUSE THEN
-      row TF.KIND @ TK-SUM = row TF.FLD-COUNT @ 0 > and
-      variant SV.SCH-COUNT @ 0 > and IF
-         s" tfam: a seeded sum mixes positional and named payloads" REG-AOT-REFUSE THEN
-      0
-      variant SV.SCH-COUNT @ 0 ?do
-         src u fam variant SV.SCH-START @ i + RES-FALSE REG-AOT-OWNED-ROOT {: cellsn:n :}
-         dup row TF.SLOTS @ swap - cellsn < IF
-            s" tfam: a seeded variant schema exceeds its payload width" REG-AOT-REFUSE THEN
-         cellsn +
-      loop
-      row TF.KIND @ TK-SUM = row TF.FLD-COUNT @ 0 > and IF
-         drop
-         src u row vid row TF.SLOTS @ REG-AOT-OWNER-WIDTH
-      ELSE
-         dup variant SV.PAYCELLS @ <> IF
-            s" tfam: a seeded variant width disagrees with its schema" REG-AOT-REFUSE THEN
-      THEN
-      max
-   loop
-   row TF.KIND @ TK-SUM = row TF.KIND @ TK-ENUM = or IF
-      row TF.SLOTS @ <> IF
-         s" tfam: a seeded family's width differs from its maximum payload" REG-AOT-REFUSE THEN
-   ELSE drop THEN ;
-
-: REG-AOT-OWNER-CHECK ( ptr u8 n -- ) {: src:ptr u:n :}
-   TWALK-RESET
-   src 0 REG-AOT-ROW@ drop {: first:n count:n :}
-   count 0 ?do src u first i + REG-AOT-FAMILY-MEMBERS loop
-   src 3 REG-AOT-ROW@ drop {: field-first:n field-count:n :}
-   field-count 0 ?do
-      src u field-first i + REG-AOT-FIELD-SCHEMA
-      src u field-first i + REG-AOT-FIELD-PEERS
-   loop ;
-
-: REG-AOT-CHECK ( ptr u8 n -- )
-   dup 0= IF 2drop EXIT THEN
-   2dup REG-AOT-SHAPE-CHECK
-   2dup REG-AOT-MEMO-START
-   [: 2dup REG-AOT-OWNER-CHECK ;] catch
-   REG-AOT-MEMO-DONE
-   dup 0 <> IF throw THEN drop 2drop ;
-
-\ The refusal stays fatal (76) while the private REG-AOT-CHECK can be caught to
-\ prove that a late refusal leaves every published store untouched.
-: REG-AOT-VALIDATE ( ptr u8 n -- )
-   0 REG-AOT-ERROR-U !
-   [: 2dup REG-AOT-CHECK ;] catch
-   dup 0 <> IF
-      REG-AOT-ERROR-U @ 0= IF throw THEN
-      drop 2drop REG-AOT-ERROR-A @ REG-AOT-ERROR-U @ 76 die
-   THEN drop 2drop ;
-
-: REG-AOT-PREPARE ( ptr u8 n ptr u8 n -- n )
-   {: src:ptr u:n prior:ptr prioru:n :}
-   prior REG-AOT-PROJECTED ! prioru REG-AOT-PROJECTED-U !
-   src u [: 2dup REG-AOT-CHECK ;] catch {: rc:n :}
-   2drop
-   NULL-PTR REG-AOT-PROJECTED ! 0 REG-AOT-PROJECTED-U !
-   rc 0 <> IF rc throw THEN
-   REG-AOT-STATE @ ;
-
-: REG-AOT-APPEND ( ptr u8 n -- ) {: src:ptr u:n :}
-   u 0= IF EXIT THEN
-   0
-   REG-AOT-N 0 ?do
-      src i REG-AOT-ROW@ drop nip or
-   loop
-   0= IF EXIT THEN
-   \ A failed allocation may leave capacity, but no visible registry member.
-   REG-AOT-N 0 ?do
-      src i REG-AOT-ROW@ drop {: base:n cnt:n :}
-      i REG-AOT-COUNT base = cnt 0 > and IF
-         i base cnt + REG-AOT-ROOM THEN
-   loop
-   REG-AOT-HDR REG-AOT-CUR !
-   REG-AOT-N 0 ?do
-      src i REG-AOT-ROW@ {: base:n cnt:n bytes:n :}
-      i REG-AOT-COUNT base = IF
-         cnt 0 > IF
-            src REG-AOT-CUR @ + base i REG-AOT-WIDTH * +
-            i REG-AOT-BASE-PTR base i REG-AOT-WIDTH * +
-            cnt i REG-AOT-WIDTH * ARENA-COPY
-         THEN
-         i base cnt + REG-AOT-COUNT!
-         i base cnt REG-AOT-SCRUB
-      THEN
-      REG-AOT-CUR @ bytes + REG-AOT-CUR !
-   loop
-   TFX-SNAP-RESET
-   VNX-SNAP-RESET
-   FVX-SNAP-RESET
-   TFM-EPOCH+
-   0 SVX-GEN !   SVX-STAMP ;
-
-: REG-AOT-TAKE ( ptr u8 n n -- ) {: src:ptr u:n state:n :}
-   state 1 = IF src u REG-AOT-APPEND THEN ;
-
-: REG-AOT-INSTALL ( ptr u8 n -- ) {: src:ptr u:n :}
-   u 0= IF EXIT THEN
-   src u REG-AOT-CHECK
-   src u REG-AOT-STATE @ REG-AOT-TAKE ;
-
-\ REG-AOT-INSTALL throws before publication on invalid input; the artifact-load
-\ boundary keeps the named process refusal (76).
-: REG-AOT-LOAD ( ptr u8 n -- )
-   0 REG-AOT-ERROR-U !
-   [: 2dup REG-AOT-INSTALL ;] catch
-   dup 0 <> IF
-      REG-AOT-ERROR-U @ 0= IF throw THEN
-      drop 2drop REG-AOT-ERROR-A @ REG-AOT-ERROR-U @ 76 die
-   THEN drop 2drop ;
 
 : REG-EXT-AOT-INSTALL ( -- )
-   [: REG-AOT-MARK ;] is REG-EXT-AOT-MARK-XT
-   [: REG-AOT-CLOSE ;] is REG-EXT-AOT-CLOSE-XT
-   [: REG-AOT-SAVE ;] is REG-EXT-AOT-SAVE-XT
-   [: REG-AOT-LOAD ;] is REG-EXT-AOT-LOAD-XT
-   [: REG-AOT-VALIDATE ;] is REG-EXT-AOT-VALIDATE-XT
-   [: REG-AOT-PARAM? ;] is REG-EXT-AOT-PARAM-XT
-   [: REG-AOT-SCOPE? ;] is REG-EXT-AOT-SCOPE-XT
-   [: REG-AOT-REGION? ;] is REG-EXT-AOT-REGION-XT
-   [: REG-AOT-GRAPH-WIDTH ;] is REG-EXT-AOT-WIDTH-XT
    [: TFAM-NAME$ ;] is REG-EXT-AOT-FAMILY-NAME-XT ;
 REG-EXT-AOT-INSTALL
 
@@ -4632,6 +3346,12 @@ variable VIEW-FIELD-BASE
    s" " CHECKER-PACKAGE-PUBLIC s" width" 1 TK-CELL TFAM-DECL WIDTH-FAM !
    WIDTH-FAM @ 0 PK-TYPE TFAM-PK! ;
 
+\ `EFFECT:type`: a definer's type value, a handle to a transient schema node
+\ the checker made, which no storage holds.
+: REGISTER-EFFECT-TYPE ( -- )
+   s" EFFECT" CHECKER-PACKAGE-PUBLIC s" type" 0 TK-CELL TFAM-DECL
+   EFFECT-TYPE-FAM ! ;
+
 
 : REGISTER-RECORDS ( -- )
    s" " CHECKER-PACKAGE-PUBLIC s" records" 4 TK-PRODUCT TFAM-DECL RECORDS-FAM !
@@ -4642,11 +3362,9 @@ variable VIEW-FIELD-BASE
    RECORDS-FAM @ 3 PK-TYPE TFAM-PK!
    RECORDS-FAM @ REGISTER-VIEW-FIELDS ;
 
-\ The runtime's three machine descriptors form one private value. The family
-\ identity, rather than its spelling or shape, authorizes a native transfer.
+\ The runtime's three machine descriptors form one private value.
 : REGISTER-STOW ( -- )
    s" C2-MEM" CHECKER-PACKAGE-PRIVATE s" stow-layout" 0 TK-PRODUCT TFAM-DECL STOW-FAM !
-   STOW-FAM @ C2-STOW-FAM !
    TYPE-FIELD:COUNT VIEW-FIELD-BASE !
    TYPE-FIELD-OWNER:OPEN VIEW-TX !
    VIEW-TX @ STOW-FAM @ TYPE-FIELD:NO-VARIANT s" width"
@@ -4667,6 +3385,7 @@ REGISTER-READ-VIEW
 REGISTER-MUT-VIEW
 REGISTER-INIT
 REGISTER-WIDTH
+REGISTER-EFFECT-TYPE
 REGISTER-RECORDS
 REGISTER-STOW
 
@@ -5112,6 +3831,12 @@ public
    sp ER-P !  su ER-U !  sn ER-NAME !  snu ER-NAME-U !
    id RES-TRUE ;
 
+\ The family a spelling names exactly, with no scope or fallback: a bare tail is
+\ package "", else path:tail split at the last colon.
+: TFAM-FIND-SPELLED ( ptr u8 n -- n bool )
+   SPLIT-NAME 0= IF 2drop 2drop 0 RES-FALSE EXIT THEN
+   TFAM-FIND ;
+
 
 \ Reads every type entry the family registry or the type table lacks, so no
 \ lookup inside a declaration that follows reads one.
@@ -5220,15 +3945,31 @@ variable TFQ-COLON
    RES-TRUE ;
 
 variable TFSR-HIDDEN
-: TFAM-QUAL-RESOLVE ( ptr u8 n -- n bool ) {: pa:ptr pu:n :}
+
+private
+
+\ The split tail's family in package qa, seen from package pa.
+: TFAM-QUAL-IN ( ptr u8 n ptr u8 n -- n bool )
+   {: qa:ptr qu:n pa:ptr pu:n :}
    TFQ-TA @ TFQ-TU @ TF-CANON? 0= IF 0 RES-FALSE EXIT THEN
-   TFQ-BUF TFQ-U @ TFQ-HEAD$ {: qa:ptr qu:n :}
    qa qu TFQ-TA @ TFQ-TU @ TFAM-FIND 0= IF drop 0 RES-FALSE EXIT THEN
    {: id:n :}
    id TFAM-PUBLIC? IF id RES-TRUE EXIT THEN
    qa qu pa pu CORE-STR=CI IF id RES-TRUE EXIT THEN   \ own private rows
    -1 TFSR-HIDDEN !
    0 RES-FALSE ;
+
+public
+
+: TFAM-QUAL-RESOLVE ( ptr u8 n -- n bool ) {: pa:ptr pu:n :}
+   TFQ-BUF TFQ-U @ TFQ-HEAD$ pa pu TFAM-QUAL-IN ;
+
+\ A qualified spelling's family in the package its qualifier names as
+\ written, which no part of package pa shadows; a bare one answers false.
+: TFAM-EXACT-RESOLVE ( ptr u8 n ptr u8 n -- n bool )
+   {: pa:ptr pu:n na:ptr nu:n :}
+   na nu TFQ-SPLIT? 0= IF 0 RES-FALSE EXIT THEN
+   TFQ-BUF TFQ-U @ pa pu TFAM-QUAL-IN ;
 
 \ TFAM-RESOLVE may throw E-TFAM-AMBIG; a checked `catch` needs a stack-neutral
 \ quotation that cannot read locals, so buffer the (pkg,name) args and the
@@ -5240,22 +3981,12 @@ variable TFSR-AMBIG
    TFSR-PA @ TFSR-PU @ TFSR-NA @ TFSR-NU @ TFAM-RESOLVE
    TFSR-FLAG !  TFSR-ID ! ;
 
-private
-
-\ Facts text (render.f FAM-QNAME-REND) names a family exactly: a bare tail is
-\ package "", else path:tail split at the last colon; no scope or fallback.
-: FACTS-RESOLVE ( ptr u8 n -- n bool )
-   SPLIT-NAME 0= IF 2drop 2drop 0 RES-FALSE EXIT THEN
-   TFAM-FIND ;
-
-public
-
 \ The checker's TFAM-RESOLVE-XT target. In source an ambiguous public tail
 \ (E-TFAM-AMBIG) leaves the token unresolved, so the signature is refused.
 : TFAM-SIG-RESOLVE ( ptr u8 n ptr u8 n -- n bool )
    {: pa:ptr pu:n na:ptr nu:n :}
    0 TFSR-AMBIG !  0 TFSR-HIDDEN !
-   SIG-FACTS-MODE @ IF na nu FACTS-RESOLVE EXIT THEN   \ facts may start "@:"
+   SIG-FACTS-MODE @ IF na nu TFAM-FIND-SPELLED EXIT THEN   \ facts may start "@:"
    na nu TF-HIDDEN? IF 0 RES-FALSE EXIT THEN
    na nu TFQ-SPLIT? IF pa pu TFAM-QUAL-RESOLVE EXIT THEN
    pa TFSR-PA !  pu TFSR-PU !  na TFSR-NA !  nu TFSR-NU !
@@ -5307,151 +4038,9 @@ private
    REPEAT
    RES-FALSE ;
 
-create UNIT-FAM-MARKS REG-AOT-N cells allot
-create UNIT-FAM-STABLE REG-AOT-N cells allot
-PTR-VARIABLE UNIT-FAM-AT
-\ PF-TX-SERIAL where the slice starts. Tokens outlive their declaration (see
-\ TFAM-RESET), so a slice records the serials it opened and an import advances
-\ PF-TX-SERIAL by that delta, as the cold compile's OPENs do.
-variable UNIT-FAM-SERIAL-MARK
-TFAM-N @ constant UNIT-FAM-STABLE-N
-$54464D44454C5433 constant UNIT-FAM-MAGIC
-\ Magic, store count, the transaction serial delta, then base, count and
-\ stable count per store.
-24 REG-AOT-N 24 * + constant UNIT-FAM-HDR
-PTR-VARIABLE UNIT-FAM-REFS
-variable UNIT-FAM-REFS-CAP
-PTR-VARIABLE UNIT-CON-REFS
-variable UNIT-CON-REFS-CAP
-PTR-VARIABLE UNIT-FAM-SEEN
-variable UNIT-FAM-SEEN-CAP
-variable UNIT-FAM-SEEN-EPOCH 0 UNIT-FAM-SEEN-EPOCH !
-variable UNIT-FAM-REF-N
-variable UNIT-CON-REF-N
-
-: UNIT-FAM-REFS-RESERVE ( n -- ) {: need:n :}
-   UNIT-FAM-REFS UNIT-FAM-REFS-CAP need 1 ARENA-ROWS-ENSURE ;
-: UNIT-CON-REFS-RESERVE ( n -- ) {: need:n :}
-   UNIT-CON-REFS UNIT-CON-REFS-CAP need 1 ARENA-ROWS-ENSURE ;
-: UNIT-FAM-SEEN-RESERVE ( n -- ) {: need:n :}
-   UNIT-FAM-SEEN-CAP @ {: old:n :}
-   UNIT-FAM-SEEN UNIT-FAM-SEEN-CAP need 1 ARENA-ROWS-ENSURE
-   UNIT-FAM-SEEN-CAP @ old > IF
-      UNIT-FAM-SEEN @ old cells + CELL-VIEW
-      0 UNIT-FAM-SEEN-CAP @ old - ARENA-CELLS-ZERO
-   THEN ;
-: UNIT-FAM-REFS-RELEASE ( -- )
-   UNIT-FAM-REFS UNIT-FAM-REFS-CAP 1 ARENA-ROWS-RELEASE ;
-: UNIT-CON-REFS-RELEASE ( -- )
-   UNIT-CON-REFS UNIT-CON-REFS-CAP 1 ARENA-ROWS-RELEASE ;
-: UNIT-FAM-SEEN-RELEASE ( -- )
-   UNIT-FAM-SEEN UNIT-FAM-SEEN-CAP 1 ARENA-ROWS-RELEASE ;
-
-\ Coverage of one FILE's string-pool delta, one cell per pool byte: capture and
-\ import each claim the bytes the delta's row strings name and prove that they
-\ tile the delta. Staging, released with the rest of the FILE scratch.
-PTR-VARIABLE UNIT-FAM-COVER
-variable UNIT-FAM-COVER-CAP
-: UNIT-FAM-COVER-OPEN ( n -- ) {: n:n :}
-   UNIT-FAM-COVER UNIT-FAM-COVER-CAP n 1 ARENA-ROWS-ENSURE
-   UNIT-FAM-COVER @ CELL-VIEW 0 n ARENA-CELLS-ZERO ;
-: UNIT-FAM-COVERED? ( n -- bool ) cells UNIT-FAM-COVER @ + @ 0 <> ;
-: UNIT-FAM-COVER! ( n -- ) -1 swap cells UNIT-FAM-COVER @ + ! ;
-: UNIT-FAM-COVER-FULL? ( n -- bool ) {: n:n :}
-   n 0 ?do i UNIT-FAM-COVERED? 0= IF RES-FALSE unloop EXIT THEN loop
-   RES-TRUE ;
-: UNIT-FAM-COVER-RELEASE ( -- )
-   UNIT-FAM-COVER UNIT-FAM-COVER-CAP 1 ARENA-ROWS-RELEASE ;
-defer UNIT-FAM-SCRATCH-RESET ( -- )
-: UNIT-FAM-EXPORT-RESET ( -- )
-   UNIT-FAM-MARKS 0 REG-AOT-N ARENA-CELLS-ZERO
-   NULL-PTR UNIT-FAM-AT ! 0 UNIT-FAM-REF-N ! 0 UNIT-CON-REF-N !
-   0 UNIT-FAM-SERIAL-MARK !
-   UNIT-FAM-REFS-RELEASE UNIT-CON-REFS-RELEASE
-   UNIT-FAM-SEEN-RELEASE 0 UNIT-FAM-SEEN-EPOCH !
-   UNIT-FAM-SCRATCH-RESET ;
-: UNIT-FAM-REF@ ( n -- n ) cells UNIT-FAM-REFS @ + @ ;
-: UNIT-CON-REF@ ( n -- n ) cells UNIT-CON-REFS @ + @ ;
-: UNIT-FAM-REF! ( n n -- ) cells UNIT-FAM-REFS @ + ! ;
-: UNIT-CON-REF! ( n n -- ) cells UNIT-CON-REFS @ + ! ;
-
-: UNIT-FAM-STABLE-INIT ( -- )
-   REG-AOT-N 0 ?do i REG-AOT-COUNT UNIT-FAM-STABLE i cells + ! loop ;
-UNIT-FAM-STABLE-INIT
-
-: UNIT-FAM-REF+ ( n -- )
-   {: id:n :}
-   id 0 < id TFAM-N @ >= or IF E-TFAM-ARITY throw THEN
-   id UNIT-FAM-STABLE-N < IF EXIT THEN
-   id UNIT-FAM-MARKS @ >= IF EXIT THEN
-   UNIT-FAM-REF-N @ 0 ?do
-      i UNIT-FAM-REF@ id = IF UNLOOP EXIT THEN
-   loop
-   UNIT-FAM-REF-N @ 1+ UNIT-FAM-REFS-RESERVE
-   id UNIT-FAM-REF-N @ UNIT-FAM-REF!
-   1 UNIT-FAM-REF-N +! ;
-
-: UNIT-CON-REF+ ( n -- )
-   {: id:n :}
-   id CC-MAX < IF EXIT THEN
-   UNIT-CON-REF-N @ 0 ?do
-      i UNIT-CON-REF@ id = IF UNLOOP EXIT THEN
-   loop
-   UNIT-CON-REF-N @ 1+ UNIT-CON-REFS-RESERVE
-   id UNIT-CON-REF-N @ UNIT-CON-REF!
-   1 UNIT-CON-REF-N +! ;
-
-public
-: UNIT-TFAM-REF ( n -- ) UNIT-FAM-REF+ ;
-private
-
 26 constant TFC-VAR-CAP          \ internal construct scratch; not the declaration spelling cap
 create TFC-VARS TFC-VAR-CAP cells allot
 variable TFC-I   variable TFC-J   variable TFC-ROW
-
-\ Installed after this file's last signature-resolution scratch is declared, so
-\ the same owner clears the raw token spans before DATA is baked. Every index,
-\ memo, frame and transaction reset here is process-local.
-: REG-EXT-PERSIST ( -- )
-   \ An ordinary prepared checker unit still owns its family plans here.
-   \ Its explicit prepare end releases them after installation or discard.
-   UNIT-FAM-PROJECT-ON @ 0= IF UNIT-FAM-RESET-XT THEN
-   TFAM-SNAPSHOT-PERSIST
-   SCHEMA-SNAPSHOT-PERSIST
-   TFX-SNAP-RESET
-   VNX-SNAP-RESET
-   FVX-SNAP-RESET
-   TFM-SNAP-RESET
-   TFW-SNAP-RESET
-   PF-TX-SNAP-RESET
-   RBF-SNAP-RESET
-   TFAM-RBF-SNAP-RESET
-   SCHEMA-RBF-SNAP-RESET
-   UNIT-FAM-EXPORT-RESET ;
-
-: REG-EXT-PERSIST-INSTALL ( -- ) [: REG-EXT-PERSIST ;] is REG-EXT-PERSIST-XT ;
-REG-EXT-PERSIST-INSTALL
-
-\ This file's scratch: each cell is written and read within one call, so a
-\ file boundary or image capture resets it with no later read depending on it.
-: TFAM-SCRATCH-RETIRE ( -- )
-   \ A caught FILE dependency refusal leaves only an invocation diagnostic.
-   NULL-PTR REG-AOT-ERROR-A ! 0 REG-AOT-ERROR-U !
-   PACKAGE-PATH:CAP 0 ?do 0 TFQ-BUF i + c! loop
-   0 TFQ-U !  NULL-PTR TFQ-TA !  0 TFQ-TU !  0 TFQ-COLON !
-   NULL-PTR TFSR-PA !  0 TFSR-PU !
-   NULL-PTR TFSR-NA !  0 TFSR-NU !
-   0 TFSR-ID !  0 TFSR-FLAG !
-   TFC-VARS 0 TFC-VAR-CAP ARENA-CELLS-ZERO
-   0 TFC-I !  0 TFC-J !  0 TFC-ROW !
-   TF-CTOR-CAP 0 ?do 0 TF-CTOR-BUF i + c!  0 TF-INIT-TAIL i + c! loop
-   0 TF-CTOR-U !
-   \ Rows above the open frames were released; the open frames keep theirs.
-   PF-TX-P @ PF-TX-DEPTH @ PF-TX-REC * CELL /
-   PF-TX-CAP-V @ PF-TX-REC * CELL / ARENA-CELLS-ZERO ;
-
-: TFAM-SCRATCH-INSTALL ( -- ) [: TFAM-SCRATCH-RETIRE ;] is REG-EXT-SCRATCH-XT ;
-TFAM-SCRATCH-INSTALL
 
 public
 
@@ -5687,6 +4276,87 @@ TFAM-INST-LIN-INSTALL
 
 private
 
+\ The type variable an effect's parameter I is, in the NMAP slot of the I-th
+\ variable letter.
+: EFFECT-VAR ( n -- n ) {: i:n :}
+   i TFAM-DECL-PARAM>CHAR drop 97 - SLOT>VAR ;
+
+\ The arguments EFFECT-ROWS reads parameters 0 to SPAN - 1 from.
+: EFFECT-OWNER ( n -- n ) {: span:n :}
+   PARAM-SCR-N @ {: base:n :}
+   0 BEGIN dup span < WHILE dup EFFECT-VAR PARAM-SCR+ 1 + REPEAT drop
+   base s" effect" -1 MK-PARAM ;
+
+\ One more than the largest parameter index a schema node holds, 0 for none.
+: PARAM-SPAN ( n -- n ) {: node:n :}
+   node SCHEMA-PARAM? IF node SCHEMA-A@ 1 + EXIT THEN
+   node SCHEMA-PTR? IF node SCHEMA-A@ RECURSE EXIT THEN
+   node SCHEMA-APP? IF
+      0 0 BEGIN dup node SCHEMA-C@ < WHILE
+         node SCHEMA-B@ over + SCHEMA-ROOT@ RECURSE  rot max swap  1 +
+      REPEAT drop EXIT
+   THEN
+   node SCHEMA-ROW? IF
+      0 0 BEGIN dup node SCHEMA-ROW-COUNT@ < WHILE
+         node over SCHEMA-ROW-ELEM@ RECURSE  rot max swap  1 +
+      REPEAT drop EXIT
+   THEN
+   node SCHEMA-QUOT? IF
+      node SCHEMA-QUOT-DIN@ RECURSE  node SCHEMA-QUOT-DOUT@ RECURSE max
+      node SCHEMA-QUOT-RIN@ RECURSE max  node SCHEMA-QUOT-ROUT@ RECURSE max
+      EXIT
+   THEN
+   0 ;
+
+\ Kinds each parameter node passes to a family's scope or region slot.
+: EFFECT-KINDS ( n -- ) {: node:n :}
+   node SCHEMA-PTR? IF node SCHEMA-A@ RECURSE EXIT THEN
+   node SCHEMA-APP? IF
+      node SCHEMA-C@ 0 ?do
+         node SCHEMA-B@ i + SCHEMA-ROOT@
+         dup SCHEMA-PARAM? IF
+            dup SCHEMA-A@ TFAM-DECL-PARAM>CHAR drop 97 - cells NMAP + @
+            node SCHEMA-A@ i TFAM-PK@
+            dup PK-SCOPE = IF over TVK-SCOPE! THEN
+            PK-REGION = IF TVK-REGION! ELSE drop THEN
+         THEN
+         RECURSE
+      loop EXIT
+   THEN
+   node SCHEMA-ROW? IF
+      node SCHEMA-ROW-COUNT@ 0 ?do node i SCHEMA-ROW-ELEM@ RECURSE loop EXIT
+   THEN
+   node SCHEMA-QUOT? IF
+      node SCHEMA-QUOT-DIN@ RECURSE  node SCHEMA-QUOT-DOUT@ RECURSE
+      node SCHEMA-QUOT-RIN@ RECURSE  node SCHEMA-QUOT-ROUT@ RECURSE
+   THEN ;
+
+\ A side of an effect on row BASE, element 0 deepest, each type instantiated
+\ over OWNER's arguments and pushed as a parsed signature's type is.
+: EFFECT-SIDE ( n n n -- n ) {: owner:n side:n base:n :}
+   base
+   side SCHEMA-ROW-COUNT@ 0 ?do
+      owner side i SCHEMA-ROW-ELEM@ SCHEMA-TERM-FOR swap PUSH-LOGICAL
+   loop ;
+
+public
+
+\ The input and output rows of effect node NODE on row BASE.
+: EFFECT-ROWS ( n n -- n n ) {: node:n base:n :}
+   node PARAM-SPAN EFFECT-OWNER {: owner:n :}
+   node EFFECT-KINDS
+   owner node SCHEMA-QUOT-DIN@ base EFFECT-SIDE
+   owner node SCHEMA-QUOT-DOUT@ base EFFECT-SIDE ;
+
+\ The term type node NODE gives, its parameters the effect's variables, as
+\ EFFECT-ROWS gives a side's type.
+: EFFECT-TYPE ( n -- n ) {: node:n :}
+   node PARAM-SPAN EFFECT-OWNER {: owner:n :}
+   node EFFECT-KINDS
+   owner node SCHEMA-TERM-FOR ;
+
+private
+
 \ A layout value's members for checker.f's CAST: walks (CAST-INTRO? and
 \ CAST-MAY-LINEAR?): every product field and every variant payload, in either
 \ payload form, instantiated over the value's own arguments and pushed on one
@@ -5714,6 +4384,153 @@ private
 : TFAM-MEMBERS-INSTALL ( -- ) [: TFAM-MEMBERS ;] is TFAM-MEMBERS-XT ;
 TFAM-MEMBERS-INSTALL
 
+\ What an offset child's output points at, from the record's pointee A.
+: CHILD-POINTEE ( n n -- n ) {: shape:n a:n :}
+   shape CHILD-ABI:CELL-OFF = IF a EXIT THEN
+   shape CHILD-ABI:PTR-OFF = IF FRESH MK-VAR MK-PTR EXIT THEN
+   shape CHILD-ABI:BYTE-OFF = IF CC-U8 MK-CON EXIT THEN
+   s" tfam: unknown child shape" 76 die ;
+
+\ Letters the type variable ID in NMAP as a signature spells parameter INDEX.
+: FRESH-LETTER ( n n -- ) {: id:n index:n :}
+   index TFAM-DECL-PARAM>CHAR 0= IF drop EXIT THEN
+   97 - cells NMAP + id swap ! ;
+
+\ A fresh variable for parameter INDEX of FAM, kinded as a signature kinds the
+\ parameter it spells there and lettered as signature parameter LETTER.
+: FRESH-LETTERED ( n n n -- n ) {: fam:n index:n letter:n :}
+   FRESH {: id:n :}
+   id letter FRESH-LETTER
+   fam index TFAM-PK@ {: pk:n :}
+   pk PK-SCOPE = IF id TVK-SCOPE! THEN
+   pk PK-REGION = IF id TVK-REGION! THEN
+   id MK-VAR ;
+
+: FRESH-PARAM ( n n -- n ) dup FRESH-LETTERED ;
+
+public
+
+\ The family FAM over fresh type variables, one per parameter and lettered as
+\ it: a built row's stored kinds are decided for lettered variables only.
+: TFAM-FRESH-TERM ( n -- n ) {: fam:n :}
+   PARAM-SCR-N @ {: base:n :}
+   fam TFAM-ARITY@ 0 ?do fam i FRESH-PARAM PARAM-SCR+ loop
+   base fam TFAM-NAME$ fam MK-PARAM ;
+
+private
+
+\ A field accessor's rows and byte offset, from the committed field id FID: it
+\ takes `ptr F<..>` and answers `ptr T`, T the field's type over the same
+\ arguments. A field role other than plain storage, or an extent past the
+\ family's width, has no address to answer.
+: TFAM-FIELD-ROWS ( n -- n n n ) {: fid:n :}
+   fid TYPE-FIELD:FAMILY@ {: fam:n :}
+   fid TYPE-FIELD:BYTE-OFF@ {: off:n :}
+   fid TYPE-FIELD:FLAGS@ PF-FLAGS-NONE <> IF E-PF-FLAGS throw THEN
+   off fid TYPE-FIELD:BYTES@ +  fam TFAM-SLOTS@ CELL *  > IF
+      E-PF-LAYOUT throw THEN
+   fam TFAM-FRESH-TERM {: term:n :}
+   term TFC-ARGS!
+   fid TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ RES-FALSE TFC-SCH-TERM {: ft:n :}
+   FRESH MK-ROW {: base:n :}
+   term MK-PTR base MK-PUSH
+   ft MK-PTR base MK-PUSH
+   off ;
+
+\ AT's rows and stride in bytes, from the family id FAM: it takes `ptr F<..> n`
+\ and answers `ptr F<..>`, the count an integer as `record-at` takes it.
+: TFAM-AT-ROWS ( n -- n n n ) {: fam:n :}
+   fam TFAM-FRESH-TERM {: term:n :}
+   FRESH MK-ROW {: base:n :}
+   term MK-PTR base MK-PUSH  CC-N MK-CON swap MK-PUSH
+   term MK-PTR base MK-PUSH
+   fam TFAM-SLOTS@ CELL * ;
+
+\ An initialized record's receiver over the family term TERM of arity AR,
+\ `mut-view<p,q,a,init<i,TERM>>`, its variables lettered after TERM's.
+: INIT-RECEIVER ( n n -- n ) {: term:n ar:n :}
+   C2-INIT-FAM @ 0 ar 3 + FRESH-LETTERED {: scope:n :}
+   PARAM-SCR-N @ {: base:n :}
+   scope PARAM-SCR+ term PARAM-SCR+
+   base s" init" C2-INIT-FAM @ MK-PARAM {: elem:n :}
+   PARAM-SCR-N @ {: vbase:n :}
+   3 0 ?do C2-MUT-FAM @ i ar i + FRESH-LETTERED PARAM-SCR+ loop
+   elem PARAM-SCR+
+   vbase s" mut-view" C2-MUT-FAM @ MK-PARAM ;
+
+\ An initialized field accessor's rows and field id, from its shape and the
+\ committed field id FID: INIT-GET takes the receiver and answers it and the
+\ field's T over the family's arguments; INIT-SET takes both and answers the
+\ receiver.
+: TFAM-INIT-ROWS ( n n -- n n n ) {: shape:n fid:n :}
+   fid TYPE-FIELD:FAMILY@ {: fam:n :}
+   fam TFAM-FRESH-TERM {: term:n :}
+   term TFC-ARGS!
+   fid TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ RES-FALSE TFC-SCH-TERM {: ft:n :}
+   term fam TFAM-ARITY@ INIT-RECEIVER {: view:n :}
+   view FRESH MK-ROW PUSH-LOGICAL {: bare:n :}
+   ft bare PUSH-LOGICAL {: full:n :}
+   shape CHILD-ABI:INIT-GET = IF bare full ELSE full bare THEN
+   fid ;
+
+\ A value child's rows: it answers its number, `( -- n )`.
+: VALUE-ROWS ( n -- n n n ) {: v:n :}
+   FRESH MK-ROW {: base:n :}
+   base  CC-N MK-CON base MK-PUSH  v ;
+
+\ An offset child's rows and offset, from its shape and byte offset.
+: OFFSET-ROWS ( n n -- n n n ) {: shape:n off:n :}
+   FRESH MK-ROW  FRESH MK-VAR {: base:n a:n :}
+   a MK-PTR base MK-PUSH
+   shape a CHILD-POINTEE MK-PTR base MK-PUSH
+   off ;
+
+\ A storage companion's rows: RELEASE takes nothing, `( -- )`, and BIND, GROW
+\ and RESERVE take a count, `( n -- )`. Its body value is unread.
+: COMPANION-ROWS ( n -- n n n ) {: shape:n :}
+   FRESH MK-ROW {: base:n :}
+   shape CHILD-ABI:RELEASE = IF base base 0 EXIT THEN
+   CC-N MK-CON base MK-PUSH  base  0 ;
+
+: COMPANION? ( n -- bool ) {: shape:n :}
+   shape CHILD-ABI:BIND =  shape CHILD-ABI:GROW = or
+   shape CHILD-ABI:RESERVE = or  shape CHILD-ABI:RELEASE = or ;
+
+\ ROW with `ptr ARENA:arena` pushed.
+: ARENA-ARG ( n -- n ) {: row:n :}
+   s" ARENA" s" arena" TFAM-FIND 0= IF s" tfam: no ARENA:arena family" 76 die THEN
+   TFAM-FRESH-TERM MK-PTR row MK-PUSH ;
+
+\ ROW with the action `[ ptr T -- ]` pushed.
+: ACTION-ARG ( n n -- n ) {: term:n row:n :}
+   FRESH MK-QROW {: q:n :}
+   term MK-PTR q MK-PUSH  q  FRESH MK-QROW dup MK-QUOT  row MK-PUSH ;
+
+: STORED-IN ( n n n -- n ) {: shape:n term:n base:n :}
+   shape CHILD-ABI:STORED =  shape CHILD-ABI:SLOT = or
+   shape CHILD-ABI:WORK = or  shape CHILD-ABI:HEAP-NEW = or IF base EXIT THEN
+   shape CHILD-ABI:ARENA-NEW = IF base ARENA-ARG EXIT THEN
+   shape CHILD-ABI:ARENA-DISPOSE = IF term  base ARENA-ARG  ACTION-ARG EXIT THEN
+   CC-N MK-CON base MK-PUSH ;
+
+public
+
+\ A typed storage child's input and output rows over the stored type's term T:
+\ STORED, SLOT, WORK and HEAP-NEW answer `( -- ptr T )`, the indexed shapes
+\ `( n -- ptr T )`, HEAP-RELEASE `( ptr T -- )`, ARENA-NEW
+\ `( ptr ARENA:arena -- ptr T )` and ARENA-DISPOSE
+\ `( ptr ARENA:arena [ ptr T -- ] -- ptr T )`. It takes no NEW, so T, which the
+\ storage parse just made, stays live.
+: TFAM-STORED-ROWS ( n n -- n n ) {: shape:n term:n :}
+   FRESH MK-ROW {: base:n :}
+   shape CHILD-ABI:HEAP-RELEASE = IF
+      term MK-PTR base MK-PUSH  base EXIT
+   THEN
+   shape term base STORED-IN
+   term MK-PTR base MK-PUSH ;
+
+private
+
 \ Payload transport uses the canonical logical-value seam. PUSH-LOGICAL expands
 \ every closed layout to its hidden physical fields, including a width-one enum,
 \ while scalar, pointer, and open terms retain their ordinary one-cell form.
@@ -5738,11 +4555,54 @@ TFAM-MEMBERS-INSTALL
    REPEAT
    base fam TFAM-NAME$ fam MK-PARAM ;
 
+\ A product's MAKE or UNMAKE rows over FAM's lettered variables, from its make
+\ or unmake variant: MAKE takes the fields and answers the value, UNMAKE the
+\ reverse. Its body is a cast, so its value is unread.
+: PROD-ROWS ( n n -- n n n ) {: shape:n fam:n :}
+   fam TFAM-FRESH-TERM {: term:n :}
+   term TFC-ARGS!
+   fam TFAM-VAR-START@
+   shape CHILD-ABI:UNMAKE = IF 1 + THEN {: vid:n :}
+   FRESH MK-ROW {: base:n :}
+   vid base RES-FALSE TFC-PAY-ROW {: pay:n :}
+   term base PUSH-LOGICAL {: value:n :}
+   shape CHILD-ABI:MAKE = IF pay value ELSE value pay THEN
+   0 ;
+
+\ A DEFTYPE converter's rows over FAM: NOMINAL-IN takes n and answers the
+\ nominal, NOMINAL-OUT the reverse. Its body is a cast, so its value is unread.
+: NOMINAL-ROWS ( n n -- n n n ) {: shape:n fam:n :}
+   FRESH MK-ROW {: base:n :}
+   CC-N MK-CON base MK-PUSH {: num:n :}
+   fam TFAM-FRESH-TERM base PUSH-LOGICAL {: nom:n :}
+   shape CHILD-ABI:NOMINAL-IN = IF num nom ELSE nom num THEN
+   0 ;
+
+public
+
+\ A child word's input row, output row and body value, from its CHILD-ABI SHAPE
+\ and PARAM, in fresh checker terms. NEW restarts the variable ids, so NMAP is
+\ cleared with it: a stale letter would name a fresh variable.
+: TFAM-CHILD-ROWS ( n n -- n n n ) {: shape:n param:n :}
+   NEW NMAP-RESET
+   shape CHILD-ABI:FIELD = IF param TFAM-FIELD-ROWS EXIT THEN
+   shape CHILD-ABI:INDEX = IF param TFAM-AT-ROWS EXIT THEN
+   shape CHILD-ABI:VALUE = IF param VALUE-ROWS EXIT THEN
+   shape CHILD-ABI:INIT-GET = IF shape param TFAM-INIT-ROWS EXIT THEN
+   shape CHILD-ABI:INIT-SET = IF shape param TFAM-INIT-ROWS EXIT THEN
+   shape CHILD-ABI:MAKE = IF shape param PROD-ROWS EXIT THEN
+   shape CHILD-ABI:UNMAKE = IF shape param PROD-ROWS EXIT THEN
+   shape CHILD-ABI:NOMINAL-IN = IF shape param NOMINAL-ROWS EXIT THEN
+   shape CHILD-ABI:NOMINAL-OUT = IF shape param NOMINAL-ROWS EXIT THEN
+   shape COMPANION? IF shape COMPANION-ROWS EXIT THEN
+   shape param OFFSET-ROWS ;
+
+private
+
 \ Width-aware construct/MATCH lowering. For a wide closed instantiation (a
 \ multi-cell layout argument, flat or nested) the checker records an extra-pad
 \ fact at the construct, constructor-call or `of` token: w = instantiated pads -
-\ declared pads, flagged WF-XPAD-FLAG so pass 2 fires even when w is 1. Pass 2
-\ adds those zero cells. A nested instantiation
+\ declared pads, the zero cells the lowering adds. A nested instantiation
 \ (option<result<n,pkg:prod>>) needs nothing more: every width site
 \ (TFAM-INST-WIDTH@, TFC-VAR-PAYCELLS, T-WIDTH) recurses through the argument
 \ tree, so the inner bundle gets its own pads at its own site. Every width must
@@ -5761,11 +4621,11 @@ TFAM-MEMBERS-INSTALL
 \ has a tag cell; a PRODUCT's whole width is payload (scg<scinr>, a parametric
 \ STRUCTURE at a width-2 leaf, is width 3, all payload: subtracting a tag would
 \ report extra -1), so TFC-TAG-CELLS keys the subtraction off the family kind.
-\ A negative extra (the widest declared variant is not the widest instantiated
-\ one, or a non-widest variant grows more) is a contradiction: pass 1 emits the
-\ declared pads and add-only pass 2 cannot remove cells, so no sound lowering
-\ exists and it is refused unconditionally, a candidate probe included. Signed
-\ pass-2 corrections would make it lowerable.
+\ A negative extra on a construct (the widest declared variant is not the
+\ widest instantiated one, or a non-widest variant grows more) is a
+\ contradiction: its lowering pushes the declared pads and can only add cells,
+\ so no sound lowering exists and it is refused unconditionally, a candidate
+\ probe included. A MATCH arm reads only the instantiated pads.
 : TFC-XPAD-NARROW-REJECT ( -- )   \ certified instantiated width contradicts add-only lowering: never certify
    0 OK ! -1 FAILSET ! ;
 
@@ -5779,61 +4639,66 @@ TFAM-MEMBERS-INSTALL
    term T-WIDTH
    fam TFAM-NICHE? IF 1 + THEN ;
 
-\ One subtraction answers both lowerings, so the number is latched here. Both
-\ push what the family declares and can only add: pass 1 emits the declared
-\ pads and pass 2 adds the WF row's cells at the same site; the native chain
-\ calls the generated constructor (declared pads and tag, whatever the
-\ instantiation) or reads the declared pads from the registry for a
-\ `construct`. MWIN-CELLS! files the difference under the judged token for
-\ src/compiler/native/elaborate.f; the WF row carries it to pass 2. A
-\ construction that adds nothing files nothing (src/core/checker.f states the
-\ absent case above the table). A niche family counts its bundle, so a construct
-\ of either variant adds nothing.
+\ The lowering pushes what the family declares and can only add: it calls the
+\ generated constructor (declared pads and tag, whatever the instantiation) or
+\ reads the declared pads from the registry for a `construct`, and pushes the
+\ difference as zeros. MWIN-CELLS! files the difference under the judged token;
+\ a construction that adds nothing files nothing. A niche family counts its
+\ bundle, so a construct of either variant adds nothing.
 : TFC-CON-XPAD-RECORD ( n n n -- ) {: fam:n vid:n famterm:n :}
    fam famterm TFC-BUNDLE-CELLS fam TFC-TAG-CELLS -
    vid TFC-VAR-PAYCELLS -
    fam TFAM-SLOTS@ vid SUMV-PAYCELLS@ - -
    {: extra:n :}
-   extra 0 > IF extra MWIN-CELLS!  0 fam 0 extra WF-XPAD-FLAG WF-ADD-FULL EXIT THEN
+   extra 0 > IF extra MWIN-CELLS! EXIT THEN
    extra 0 < IF TFC-XPAD-NARROW-REJECT THEN ;   \ add-only lowering cannot remove the surplus
 
 \ MATCH sees only a SUM or ENUM family: TFAM-MATCH-FAM and TFL-MATCH-FAM? reject
 \ any other kind (MD-FAM-KIND) before an arm is recorded, and a product's UNMAKE
 \ records no pad fact. So `rt T-WIDTH 1 -` needs no kind guard.
 \
-\ Pass 2 needs the difference from the declared pads (its lowering emitted them
-\ and can only add); a compiler that models the stack cell by cell needs the
-\ pad count itself. Both come off one subtraction: MWIN-CELLS! files the count
-\ under this `of` token for src/compiler/native/elaborate.f, and the WF row
-\ carries the difference to pass 2. An arm whose term is not closed latches
-\ nothing: the cell-accurate consumer then refuses the definition by name. A
-\ niche family counts its bundle, so its empty arm files one pad and the other
-\ none.
-: TFAM-MATCH-XPAD-RECORD ( n n -- ) {: vid:n term:n :}
+\ The compiler models the stack cell by cell and needs the pad count itself:
+\ MWIN-CELLS! files it under this `of` token. An arm whose term is not closed
+\ latches nothing: the cell-accurate consumer then refuses the definition by
+\ name. A niche family counts its bundle, so its empty arm files one pad and the
+\ other none.
+: TFAM-MATCH-PADS-RECORD ( n n -- ) {: vid:n term:n :}
    term T-RES {: rt:n :}
    rt TYPE-REP-CLOSED? 0= IF EXIT THEN           \ open value/row: leave declared width; scope identities do not affect padding
    vid SUMV-FAM@ rt TFC-BUNDLE-CELLS 1 -
    vid TFC-VAR-PAYCELLS -
-   {: ipads:n :}
-   ipads MWIN-CELLS!
-   ipads
-   vid SUMV-FAM@ TFAM-SLOTS@ vid SUMV-PAYCELLS@ - -
-   {: extra:n :}
-   extra 0 > IF 0 vid SUMV-FAM@ 0 extra WF-XPAD-FLAG WF-ADD-FULL EXIT THEN
-   extra 0 < IF TFC-XPAD-NARROW-REJECT THEN ;   \ declared-width unpack would skip a pad the bundle lacks
+   MWIN-CELLS! ;
 
 public
 
 : TFAM-ACTIVE-PKG$ ( -- ptr u8 n )        \ authenticated package ("" at top level)
    CHECKER-AUTH-PACKAGE$ ;
 
-private
+public
+
+\ The family a schema node applies, else 0 false.
+: TFAM-NODE-FAM ( n -- n bool ) {: node:n :}
+   node SCHEMA-NODE-OK? 0= IF 0 RES-FALSE EXIT THEN
+   node SCHEMA-APP? 0= IF 0 RES-FALSE EXIT THEN
+   node SCHEMA-A@ RES-TRUE ;
+
+: TFAM-CONSTRUCT-KIND ( n -- n bool ) {: id:n :}
+   id TFAM-SUM? id TFAM-ENUM? or 0= IF MD-CON-KIND MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
+   id RES-TRUE ;
 
 : TFAM-CONSTRUCT-FAM ( ptr u8 n -- n bool ) {: na:ptr nu:n :}   \ folded family token -> id
    TFAM-ACTIVE-PKG$ na nu TFAM-FIND 0= IF drop MD-CON-FAM MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
+   TFAM-CONSTRUCT-KIND ;
+
+\ A node's family under the owner rule a spelled one meets: the active
+\ package's own.
+: TFAM-CONSTRUCT-NODE ( n -- n bool ) {: node:n :}
+   node TFAM-NODE-FAM 0= IF drop MD-CON-FAM MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
    {: id:n :}
-   id TFAM-SUM? id TFAM-ENUM? or 0= IF MD-CON-KIND MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
-   id RES-TRUE ;
+   TFAM-ACTIVE-PKG$ id TFAM-PKG-MATCH? 0= IF MD-CON-FAM MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
+   id TFAM-CONSTRUCT-KIND ;
+
+private
 
 \ Whether ROW's top cell is the unstale hidden slot SLOT of family FAM.
 : TFC-GROUP-CELL? ( n n n -- bool )
@@ -5929,6 +4794,8 @@ private
       dt TYPE-REP-CLOSED? 0= IF CONSTRUCT-WIDE-STAGED-REJECT THEN   \ open value/row: stay staged fail-closed
    THEN ;
 
+public
+
 : TFAM-CONSTRUCT-STEP ( ptr u8 n n -- bool ) {: na:ptr nu:n fam:n :}
    fam na nu SUMV-FIND 0= IF drop MD-CON-VAR MDIAG-COMPILE! RES-FALSE EXIT THEN
    {: vid:n :}
@@ -5937,8 +4804,6 @@ private
 
 \ TFAM-CTOR-STEP? ( sym -- bool ): a generated-constructor call TFC-SEED seeds takes the construct
 \ step, a product's UNMAKE the reversed one (TFAM-UNMAKE-STEP?); any other runs DO-TOK's word call.
-
-public
 
 : SUMV-FROM-CTOR-SYM ( n -- n bool ) {: sym:n :}   \ constructor word symbol -> variant id
    sym 0 <= IF 0 RES-FALSE EXIT THEN
@@ -5970,6 +4835,8 @@ private
    dt TYPE-REP-CLOSED? 0= IF CONSTRUCT-WIDE-STAGED-REJECT THEN
    RES-TRUE ;
 
+public
+
 : TFAM-CTOR-STEP? ( n -- bool ) {: sym:n :}
    sym SUMV-FROM-CTOR-SYM 0= IF drop RES-FALSE EXIT THEN
    {: vid:n :}
@@ -5987,61 +4854,31 @@ private
 \ payload row instantiates the variant schema over the scrutinee's argument terms
 \ in the TFC scratch vars, consumed at OF, so construct and nested matches may
 \ interleave.
-: TFAM-MATCH-FAM ( ptr u8 n -- n bool ) {: na:ptr nu:n :}   \ folded family token
-   TFAM-ACTIVE-PKG$ na nu TFAM-SIG-RESOLVE 0= IF drop MD-FAM-UNKNOWN MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
-   {: id:n :}
+: TFAM-MATCH-KIND ( n -- n bool ) {: id:n :}
    id TFAM-SUM? id TFAM-ENUM? or 0= IF MD-FAM-KIND MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
    id RES-TRUE ;
+
+: TFAM-MATCH-FAM ( ptr u8 n -- n bool ) {: na:ptr nu:n :}   \ folded family token
+   TFAM-ACTIVE-PKG$ na nu TFAM-SIG-RESOLVE 0= IF drop MD-FAM-UNKNOWN MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
+   TFAM-MATCH-KIND ;
+
+\ The family a node applies. EFFECT:NAMED resolved it as source does, so a
+\ built match needs no scope resolve.
+: TFAM-MATCH-NODE ( n -- n bool )
+   TFAM-NODE-FAM 0= IF drop MD-FAM-UNKNOWN MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
+   TFAM-MATCH-KIND ;
 
 : TFAM-MATCH-VARIANT ( ptr u8 n n -- n bool ) {: na:ptr nu:n fam:n :}
    fam na nu SUMV-FIND ;
 
 : TFAM-MATCH-PAY ( n n n -- n ) {: vid:n term:n row:n :}   \ variant payload onto row
    term T-RES TFC-ARGS!
-   vid term TFAM-MATCH-XPAD-RECORD
+   vid term TFAM-MATCH-PADS-RECORD
    vid row RES-FALSE TFC-PAY-ROW ;
 
-\ Field projection, the registry half of the checker's FIELD-PROJ-XT hook. The
-\ committed field id is the sole authority: offset, family, extent, role and
-\ schema derive from it through TYPE-FIELD reflection, so a forged offset, an
-\ offset past the family width, a foreign family, a wrong generic arity or a
-\ non-addressable role each answer 0 and false. It lives here because the field
-\ and schema registries and TFC-SCH-TERM belong to this file; the checker
-\ reaches it only through the sealed friend hook.
-: TFAM-FIELD-PROJ-DO ( n n n n -- n bool )   \ fid off famterm ffam -- fieldterm ok
-   {: fid:n off:n fam:n ffam:n :}
-   ffam fam PARAM>FAM <> IF 0 RES-FALSE EXIT THEN                \ field not owned by the input family
-   off fid TYPE-FIELD:BYTE-OFF@ <> IF 0 RES-FALSE EXIT THEN      \ baked offset disagrees with the committed offset (forged access)
-   fid TYPE-FIELD:FLAGS@ PF-FLAGS-NONE <> IF 0 RES-FALSE EXIT THEN   \ non-addressable field role (niche/boxed/custom): no projection
-   fam PARAM>ARGC ffam TFAM-ARITY@ <> IF 0 RES-FALSE EXIT THEN   \ generic arity mismatch
-   fam TFAM-INST-WIDTH@ ffam TFAM-SLOTS@ <> IF 0 RES-FALSE EXIT THEN   \ a wide instantiation moves every field past the first: the committed offsets no longer describe it (see the note below)
-   off fid TYPE-FIELD:BYTES@ +  ffam TFAM-SLOTS@ CELL *  > IF 0 RES-FALSE EXIT THEN   \ field extent past the family width
-   fam TFC-ARGS!
-   fid TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ RES-FALSE TFC-SCH-TERM RES-TRUE ;   \ root index -> node -> instantiate the field schema over the input args
-\ Only the committed field-family lookup is caught: an E-PF-ID there means the
-\ expected absent field, and every other error propagates.
-: TFAM-FIELD-PROJ ( n n n -- n bool )   \ fid off famterm -- fieldterm ok
-   {: fid:n off:n fam:n :}
-   fid [: TYPE-FIELD:FAMILY@ ;] catch
-   dup 0= IF drop {: ffam:n :} fid off fam ffam TFAM-FIELD-PROJ-DO EXIT THEN
-   nip dup E-PF-ID <> IF throw THEN
-   drop 0 RES-FALSE ;
-
-\ The width condition above, like the forged-offset and role conditions, guards
-\ the arming boundary: only a generator that armed a window with an id its text
-\ does not describe reaches it. A family type argument does not bind an
-\ accessor's parameter (measured: `expected: ptr sdagen<a> actual: ptr
-\ sdagen<sdaw1>`), and every other argument is one cell. Its judgeable twin is
-\ RECORD-AT-EXACT? in src/core/checker.f, which a written-out `record-at` call
-\ reaches with a concrete wide pointee (test/structure-decl-suite.f case 15,
-\ SDAW3); the two must keep the same condition, or the two halves of one address
-\ surface describe different instantiations.
-
-\ Fixed storage walks the same instantiated schema that field projection uses,
-\ but computes its own offsets: a wide argument moves every following field.
+\ Fixed storage walks a field's instantiated schema but computes its own
+\ offsets: a wide argument moves every following field.
 \ The stored type has already passed CHECKER-STORAGE-INFO's closed-layout gate.
-public
-
 : TFAM-STORAGE-QUOT? ( n -- bool ) T-RES TAG T-QUOT = ;
 : TFAM-STORAGE-PRODUCT? ( n -- n bool )
    T-RES dup TAG T-PARAM <> IF drop 0 RES-FALSE EXIT THEN
@@ -6094,12 +4931,8 @@ public
 
 private
 
-\ Compiler-facing lowering surface: resolution and metadata for the native
-\ construct/MATCH emitters, read through the owner's DECLARATIONS cells
-\ (src/compiler/native/checker-owner.f FAMILY-CON). Same registry and scope
-\ rules as the checker's friend XTs, but no diagnostic latch and no checker-row effect:
-\ the checker still judges the definition at `;`. Raw engine token spans fold
-\ here (TOKFOLD), so `construct ZRES OK` and its lowercase spelling agree.
+\ What tier 0's construct and MATCH resolve: the checker's registry and scope
+\ rules, but no diagnostic latch or checker row; the checker judges at `;`.
 
 public
 
@@ -6127,1240 +4960,14 @@ package TFAM
 
 public
 
-: TFL-VAR? ( ptr u8 n n -- n bool ) {: na:ptr nu:n fam:n :}   \ variant in fam -> vid
-   fam na nu TFL-FOLD$ SUMV-FIND ;
-
 : TFL-VPADS ( n n -- n ) {: fam:n vid:n :}   \ zero pads M-p for a variant's construct
    fam TFAM-SLOTS@ vid SUMV-PAYCELLS@ - ;
 
-;package
-
-: TFL-CVAR? ( ptr u8 n n -- n n bool )   \ variant in a resolved fam -> ( tag pads ok )
-   {: va:ptr vu:n fam:n :}
-   va vu fam TFL-VAR? 0= IF drop 0 0 RES-FALSE EXIT THEN
-   {: vid:n :}
-   vid SUMV-TAG@  fam vid TFL-VPADS  RES-TRUE ;
-
-package TFAM
-
-: UNIT-FAM-MARK ( -- )
-   REG-AOT-N 0 ?do i REG-AOT-COUNT UNIT-FAM-MARKS i cells + ! loop
-   PF-TX-SERIAL @ UNIT-FAM-SERIAL-MARK !
-   0 UNIT-FAM-REF-N ! 0 UNIT-CON-REF-N ! ;
-
-\ The transaction serials the slice opened since its mark.
-: UNIT-FAM-SERIAL-DELTA ( -- n )
-   PF-TX-SERIAL @ UNIT-FAM-SERIAL-MARK @ - dup 0 < IF
-      drop s" tfam: FILE transaction serial moved backward" REG-AOT-REFUSE THEN ;
-
-: UNIT-FAM-BASE@ ( n -- n ) cells UNIT-FAM-MARKS + @ ;
-
-: UNIT-FAM-SCAN-NODE ( n -- ) {: node:n :}
-   UNIT-FAM-SEEN @ node cells + @ UNIT-FAM-SEEN-EPOCH @ = IF EXIT THEN
-   UNIT-FAM-SEEN-EPOCH @ UNIT-FAM-SEEN @ node cells + !
-   node SCHEMA-APP? IF
-      node SCHEMA-A@ UNIT-FAM-REF+
-      node SCHEMA-C@ 0 ?do
-         node SCHEMA-B@ i + SCHEMA-ROOT@ recurse
-      loop EXIT
-   THEN
-   node SCHEMA-CON? IF node SCHEMA-A@ UNIT-CON-REF+ EXIT THEN
-   node SCHEMA-PTR? IF node SCHEMA-A@ recurse EXIT THEN
-   node SCHEMA-QUOT? IF
-      node SCHEMA-C@ 0 ?do
-         node SCHEMA-B@ i + SCHEMA-ROOT@ recurse
-      loop
-      EXIT
-   THEN
-   node SCHEMA-ROW? IF
-      node SCHEMA-B@ 0 ?do
-         node SCHEMA-A@ i + SCHEMA-ROOT@ recurse
-      loop
-   THEN ;
-
-: UNIT-FAM-SCAN-FAMILY ( n -- ) {: fam:n :}
-   fam TFAM-SCHEMA-ROOT@ dup 0 <> IF SCHEMA-ROOT@ UNIT-FAM-SCAN-NODE
-      ELSE drop THEN
-   fam TFAM-VAR-COUNT@ 0 ?do
-      fam TFAM-VAR-START@ i + {: vid:n :}
-      vid SUMV-SCH-COUNT@ 0 ?do
-         vid SUMV-REC@ SV.SCH-START @ i + SCHEMA-ROOT@
-         UNIT-FAM-SCAN-NODE
-      loop
-   loop
-   fam TFAM-FLD-COUNT@ 0 ?do
-      fam TFAM-FLD-START@ i + PF-PENDING-SCH@
-      SCHEMA-ROOT@ UNIT-FAM-SCAN-NODE
-   loop ;
-
-: UNIT-FAM-SCAN ( -- )
-   6 REG-AOT-COUNT dup UNIT-FAM-SEEN-RESERVE
-   drop
-   UNIT-FAM-SEEN-EPOCH @ 1+ dup 0= IF
-      drop UNIT-FAM-SEEN @ CELL-VIEW 0 UNIT-FAM-SEEN-CAP @ ARENA-CELLS-ZERO
-      1
-   THEN UNIT-FAM-SEEN-EPOCH !
-   6 REG-AOT-COUNT 6 UNIT-FAM-BASE@ ?do
-      i SCHEMA-APP? IF i SCHEMA-A@ UNIT-FAM-REF+ THEN
-      i SCHEMA-CON? IF i SCHEMA-A@ UNIT-CON-REF+ THEN
-   loop
-   0
-   BEGIN dup UNIT-FAM-REF-N @ < WHILE
-      dup UNIT-FAM-REF@ UNIT-FAM-SCAN-FAMILY
-      1+
-   REPEAT drop ;
-
-: UNIT-FAM-KEY ( n -- ptr u8 n ) FAMILY-KEY-XT
-   \ tfam: FILE family lacks declaration identity
-   0= IF 2drop CHECKER-REG:UNIT-BAD THEN ;
-
-: UNIT-CON-KEY ( n -- ptr u8 n ) CON-KEY-XT
-   \ tfam: FILE constructor lacks declaration identity
-   0= IF 2drop CHECKER-REG:UNIT-BAD THEN ;
-
-defer UNIT-FAM-CONTRACT-SIZE-XT ( n -- n )
-defer UNIT-FAM-CONTRACT-WRITE-XT ( n ptr u8 -- ptr u8 )
-defer UNIT-FAM-CONTRACT-CHECK-XT ( n ptr u8 n -- )
-defer UNIT-CON-CONTRACT-SIZE-XT ( n -- n )
-defer UNIT-CON-CONTRACT-WRITE-XT ( n ptr u8 -- ptr u8 )
-defer UNIT-CON-CONTRACT-CHECK-XT ( n ptr u8 n ptr u8 n -- )
-
-: UNIT-FAM-STR-SIZE ( -- n )
-   0
-   0 REG-AOT-COUNT 0 UNIT-FAM-BASE@ ?do
-      i TF-REC@ {: row:ptr :}
-      16 row TF.PKG-U @ + +  row TF.NAME-U @ +
-   loop
-   2 REG-AOT-COUNT 2 UNIT-FAM-BASE@ ?do
-      i SUMV-REC@ {: row:ptr :}
-      16 row SV.NAME-U @ + + row SV.CTOR-PKG-U @ +
-   loop
-   3 REG-AOT-COUNT 3 UNIT-FAM-BASE@ ?do
-      i PF-REC@ PF.NAME-U @ 8 + +
-   loop ;
-
-: UNIT-FAM-SIZE ( -- n )
-   UNIT-FAM-SCAN
-   UNIT-FAM-REF-N @ UNIT-CON-REF-N @ or UNIT-FAM-SERIAL-DELTA or
-   REG-AOT-N 0 ?do
-      i 5 <> IF i REG-AOT-COUNT i UNIT-FAM-BASE@ - or THEN
-   loop
-   0= IF
-      \ tfam: FILE family pool delta holds bytes no row names
-      5 REG-AOT-COUNT 5 UNIT-FAM-BASE@ <> IF CHECKER-REG:UNIT-BAD THEN
-      0 EXIT
-   THEN
-   UNIT-FAM-HDR
-   REG-AOT-N 0 ?do
-      i 5 <> IF
-         i REG-AOT-COUNT i UNIT-FAM-BASE@ -
-         i REG-AOT-WIDTH * +
-      THEN
-   loop
-   UNIT-FAM-STR-SIZE +
-   0 REG-AOT-COUNT 0 UNIT-FAM-BASE@ ?do
-      i UNIT-FAM-KEY nip 8 + +
-   loop
-   8 +
-   UNIT-FAM-REF-N @ 0 ?do
-      i UNIT-FAM-REF@ {: id:n :}
-      id UNIT-FAM-KEY nip 24 + +
-      id UNIT-FAM-CONTRACT-SIZE-XT +
-   loop
-   8 +
-   UNIT-CON-REF-N @ 0 ?do
-      i UNIT-CON-REF@ {: id:n :}
-      id UNIT-CON-KEY nip 24 + +
-      id UNIT-CON-CONTRACT-SIZE-XT +
-   loop ;
-
-: UNIT-FAM-U64+ ( n ptr u8 -- ptr u8 )
-   {: value:n dst:ptr :}
-   value dst REG-AOT-U64! dst 8 + ;
-
-: UNIT-FAM-STR+ ( n n ptr u8 -- ptr u8 )
-   {: off:n u:n dst:ptr :}
-   u dst UNIT-FAM-U64+ {: bytes:ptr :}
-   u 0 > IF off u TF-OFF$ drop bytes u ARENA-COPY THEN
-   bytes u + ;
-
-: UNIT-FAM-KEY+ ( ptr u8 n ptr u8 -- ptr u8 )
-   {: key:ptr u:n dst:ptr :}
-   u dst UNIT-FAM-U64+ {: bytes:ptr :}
-   u 0 > IF key bytes u ARENA-COPY THEN
-   bytes u + ;
-
-: UNIT-FAM-OWN-KEY+ ( n ptr u8 -- ptr u8 )
-   {: id:n dst:ptr :}
-   id UNIT-FAM-KEY dst UNIT-FAM-KEY+ ;
-
-: UNIT-CON-OWN-KEY+ ( n ptr u8 -- ptr u8 )
-   {: id:n dst:ptr :}
-   id UNIT-CON-KEY dst UNIT-FAM-KEY+ ;
-
-\ An import rebuilds the pool delta by placing each carried string at its
-\ rebased source offset (UNIT-FAM-PUT-STRING), so the capture refuses a delta
-\ its row strings do not tile exactly. An empty string claims no byte; an empty
-\ constructor package is absent at offset 0, any other sits inside the delta.
-: UNIT-FAM-CLAIM ( n n -- ) {: off:n u:n :}
-   5 UNIT-FAM-BASE@ {: base:n :}
-   \ tfam: FILE family string lies outside its pool delta
-   off base < off 5 REG-AOT-COUNT u - > or IF CHECKER-REG:UNIT-BAD THEN
-   u 0 ?do off base - i + UNIT-FAM-COVER! loop ;
-
-: UNIT-FAM-CTOR-CLAIM ( n n -- ) {: off:n u:n :}
-   u 0 <> IF off u UNIT-FAM-CLAIM EXIT THEN
-   \ tfam: FILE variant places an absent constructor package
-   off 0 <> IF CHECKER-REG:UNIT-BAD THEN ;
-
-: UNIT-FAM-TILED ( -- )
-   5 REG-AOT-COUNT 5 UNIT-FAM-BASE@ - {: n:n :}
-   n UNIT-FAM-COVER-OPEN
-   0 REG-AOT-COUNT 0 UNIT-FAM-BASE@ ?do
-      i TF-REC@ {: row:ptr :}
-      row TF.PKG-OFF @ row TF.PKG-U @ UNIT-FAM-CLAIM
-      row TF.NAME-OFF @ row TF.NAME-U @ UNIT-FAM-CLAIM
-   loop
-   2 REG-AOT-COUNT 2 UNIT-FAM-BASE@ ?do
-      i SUMV-REC@ {: row:ptr :}
-      row SV.NAME-OFF @ row SV.NAME-U @ UNIT-FAM-CLAIM
-      row SV.CTOR-PKG-OFF @ row SV.CTOR-PKG-U @ UNIT-FAM-CTOR-CLAIM
-   loop
-   3 REG-AOT-COUNT 3 UNIT-FAM-BASE@ ?do
-      i PF-REC@ {: row:ptr :}
-      row PF.NAME-OFF @ row PF.NAME-U @ UNIT-FAM-CLAIM
-   loop
-   \ tfam: FILE family pool delta holds bytes no row names
-   n UNIT-FAM-COVER-FULL? 0= IF CHECKER-REG:UNIT-BAD THEN ;
-
-\ A variant's constructor symbol travels as its unit symbol ordinal + 1, the
-\ wire rule for symbols (checker.f UNIT-SYM-ORD); 0 stays absent. The checker
-\ maps the ordinal back to the live symbol at install (UNIT-FAM-CTORS), so a
-\ reused file leaves the variant naming its constructor word as compiling it
-\ does. A constructor word the file did not define has no ordinal it owns.
-: UNIT-FAM-CTOR-ORDS ( ptr u8 n -- ) {: rows:ptr bytes:n :}
-   bytes SUMV-REC / 0 ?do
-      rows i SUMV-REC * + CELL-VIEW SV.CTOR-SYM {: cell:ptr :}
-      cell @ {: sym:n :}
-      sym 0 <> IF
-         \ tfam: FILE variant constructor is not the file's own word
-         sym CHECKER-REG:UNIT-OWN-SYM-ORD 0= IF CHECKER-REG:UNIT-BAD THEN
-         1 + cell !
-      THEN
-   loop ;
-
-: UNIT-FAM-SAVE ( ptr u8 n -- n ) {: dst:ptr cap:n :}
-   UNIT-FAM-SIZE {: size:n :}
-   size cap > IF REG-AOT-OVERFLOW THEN
-   size 0= IF 0 EXIT THEN
-   UNIT-FAM-TILED
-   UNIT-FAM-MAGIC dst UNIT-FAM-U64+
-   REG-AOT-N swap UNIT-FAM-U64+
-   UNIT-FAM-SERIAL-DELTA swap UNIT-FAM-U64+ UNIT-FAM-AT !
-   REG-AOT-N 0 ?do
-      i UNIT-FAM-BASE@ {: base:n :}
-      i REG-AOT-COUNT {: end:n :}
-      base UNIT-FAM-AT @ UNIT-FAM-U64+
-      i 5 = IF 0 ELSE end base - THEN swap UNIT-FAM-U64+
-      UNIT-FAM-STABLE i cells + @ swap UNIT-FAM-U64+ UNIT-FAM-AT !
-   loop
-   REG-AOT-N 0 ?do
-      i 5 <> IF
-         i REG-AOT-COUNT i UNIT-FAM-BASE@ - i REG-AOT-WIDTH * {: bytes:n :}
-         bytes 0 > IF
-            i REG-AOT-BASE-PTR i UNIT-FAM-BASE@ i REG-AOT-WIDTH * +
-            UNIT-FAM-AT @ bytes ARENA-COPY
-            i 2 = IF UNIT-FAM-AT @ bytes UNIT-FAM-CTOR-ORDS THEN
-         THEN
-         UNIT-FAM-AT @ bytes + UNIT-FAM-AT !
-      THEN
-   loop
-   0 REG-AOT-COUNT 0 UNIT-FAM-BASE@ ?do
-      i TF-REC@ {: row:ptr :}
-      row TF.PKG-OFF @ row TF.PKG-U @ UNIT-FAM-AT @ UNIT-FAM-STR+
-      row TF.NAME-OFF @ row TF.NAME-U @ rot UNIT-FAM-STR+
-      UNIT-FAM-AT !
-   loop
-   2 REG-AOT-COUNT 2 UNIT-FAM-BASE@ ?do
-      i SUMV-REC@ {: row:ptr :}
-      row SV.NAME-OFF @ row SV.NAME-U @ UNIT-FAM-AT @ UNIT-FAM-STR+
-      row SV.CTOR-PKG-OFF @ row SV.CTOR-PKG-U @ rot UNIT-FAM-STR+
-      UNIT-FAM-AT !
-   loop
-   3 REG-AOT-COUNT 3 UNIT-FAM-BASE@ ?do
-      i PF-REC@ {: row:ptr :}
-      row PF.NAME-OFF @ row PF.NAME-U @ UNIT-FAM-AT @ UNIT-FAM-STR+
-      UNIT-FAM-AT !
-   loop
-   0 REG-AOT-COUNT 0 UNIT-FAM-BASE@ ?do
-      i UNIT-FAM-AT @ UNIT-FAM-OWN-KEY+ UNIT-FAM-AT !
-   loop
-   UNIT-FAM-REF-N @ UNIT-FAM-AT @ UNIT-FAM-U64+ UNIT-FAM-AT !
-   UNIT-FAM-REF-N @ 0 ?do
-      i UNIT-FAM-REF@ {: id:n :}
-      id UNIT-FAM-AT @ UNIT-FAM-U64+
-      id swap UNIT-FAM-OWN-KEY+ UNIT-FAM-AT !
-      id UNIT-FAM-CONTRACT-SIZE-XT UNIT-FAM-AT @ UNIT-FAM-U64+
-      id swap UNIT-FAM-CONTRACT-WRITE-XT UNIT-FAM-AT !
-   loop
-   UNIT-CON-REF-N @ UNIT-FAM-AT @ UNIT-FAM-U64+ UNIT-FAM-AT !
-   UNIT-CON-REF-N @ 0 ?do
-      i UNIT-CON-REF@ {: id:n :}
-      id UNIT-FAM-AT @ UNIT-FAM-U64+
-      id swap UNIT-CON-OWN-KEY+ UNIT-FAM-AT !
-      id UNIT-CON-CONTRACT-SIZE-XT UNIT-FAM-AT @ UNIT-FAM-U64+
-      id swap UNIT-CON-CONTRACT-WRITE-XT UNIT-FAM-AT !
-   loop
-   UNIT-FAM-AT @ dst - size <> IF
-      s" tfam: FILE family size drift" REG-AOT-REFUSE THEN
-   size ;
-
-\ A FILE family's source indices are local to the capture engine. Keep only
-\ the new records while preparation builds a read view over live rows and the
-\ deltas already prepared for this FILE tree. Neither preparation nor graph
-\ checking publishes a registry member.
-0 constant UFP.NEXT
-1 constant UFP.BLOB
-2 constant UFP.CAP
-3 constant UFP.SRC
-4 constant UFP.U
-5 constant UFP.KEYS
-6 constant UFP.FMAP
-7 constant UFP.FN
-8 constant UFP.CMAP
-9 constant UFP.CN
-10 constant UFP.SBASE
-18 constant UFP.COUNT
-26 constant UFP.TBASE
-34 constant UFP.SERIAL
-35 cells constant UFP.REC
-REG-AOT-N PTR-U8-TABLE UNIT-FAM-RAW
-PTR-VARIABLE UNIT-FAM-FIRST
-PTR-VARIABLE UNIT-FAM-LAST
-PTR-VARIABLE UNIT-FAM-CUR
-PTR-VARIABLE UNIT-FAM-OPEN
-PTR-VARIABLE UNIT-FAM-IN
-PTR-VARIABLE UNIT-FAM-LIMIT
-variable UNIT-FAM-ACC
-PTR-VARIABLE UNIT-FAM-MAP-CUR
-PTR-VARIABLE UNIT-FAM-KEY-AT
-
-: UFP@ ( ptr u8 n -- n ) cells + CELL-VIEW @ ;
-: UFP! ( n ptr u8 n -- ) cells + CELL-VIEW ! ;
-\ A FILE family plan is a cell row in mapped storage whose UFP.NEXT, UFP.BLOB,
-\ UFP.SRC, UFP.KEYS, UFP.FMAP and UFP.CMAP cells hold byte addresses.
-CAST: UFP-CELLS ( ptr u8 -- ptr ptr u8 )
-: UFP-PTR@ ( ptr u8 n -- ptr u8 ) cells + UFP-CELLS @ ;
-: UFP-PTR! ( ptr u8 ptr u8 n -- ) cells + UFP-CELLS ! ;
-: UNIT-FAM-RAW@ ( n -- ptr u8 ) cells UNIT-FAM-RAW + 0 ptr-field @ ;
-: UNIT-FAM-RAW! ( ptr u8 n -- ) cells UNIT-FAM-RAW + 0 ptr-field ! ;
-: UFP-SBASE@ ( ptr u8 n -- n ) UFP.SBASE + UFP@ ;
-: UFP-COUNT@ ( ptr u8 n -- n ) UFP.COUNT + UFP@ ;
-: UFP-TBASE@ ( ptr u8 n -- n ) UFP.TBASE + UFP@ ;
-
-: UNIT-FAM-READ ( n -- ptr u8 ) {: n:n :}
-   n 0 < n UNIT-FAM-LIMIT @ UNIT-FAM-IN @ - > or IF
-      s" tfam: truncated FILE family delta" REG-AOT-REFUSE THEN
-   UNIT-FAM-IN @ dup n + UNIT-FAM-IN ! ;
-
-: UNIT-FAM-CELL ( -- n ) 8 UNIT-FAM-READ REG-AOT-U64@ ;
-
-: UNIT-FAM-STR-LEN+ ( n n -- n ) {: sum:n len:n :}
-   len 0 < len UNIT-FAM-LIMIT @ UNIT-FAM-IN @ - sum - > or IF
-      s" tfam: invalid FILE family string length" REG-AOT-REFUSE THEN
-   sum len + ;
-
-: UNIT-FAM-RAW-ROW ( n n -- ptr n ) {: k:n i:n :}
-   k UNIT-FAM-RAW@ i k REG-AOT-WIDTH * + CELL-VIEW ;
-
-: UNIT-FAM-STRING-BYTES ( ptr u8 -- n ) {: plan:ptr :}
-   0
-   plan 0 UFP-COUNT@ 0 ?do
-      0 i UNIT-FAM-RAW-ROW {: row:ptr :}
-      row TF.PKG-U @ UNIT-FAM-STR-LEN+
-      row TF.NAME-U @ UNIT-FAM-STR-LEN+
-   loop
-   plan 2 UFP-COUNT@ 0 ?do
-      2 i UNIT-FAM-RAW-ROW {: row:ptr :}
-      row SV.NAME-U @ UNIT-FAM-STR-LEN+
-      row SV.CTOR-PKG-U @ UNIT-FAM-STR-LEN+
-   loop
-   plan 3 UFP-COUNT@ 0 ?do
-      3 i UNIT-FAM-RAW-ROW PF.NAME-U @ UNIT-FAM-STR-LEN+
-   loop ;
-
-: UNIT-FAM-EXTENT+ ( n n n n n -- n ) {: ext:n off:n len:n base:n bound:n :}
-   len 0= IF ext EXIT THEN
-   off base < off base - bound len - > or IF
-      s" tfam: FILE family string lies outside its pool delta" REG-AOT-REFUSE THEN
-   off base - len + ext max ;
-
-\ The string section is the pool delta the carried strings tile, measured from
-\ the source offsets their rows carry; the carried byte total bounds it. An
-\ empty string claims no byte.
-: UNIT-FAM-STRING-EXTENT ( ptr u8 -- n ) {: plan:ptr :}
-   plan UNIT-FAM-STRING-BYTES {: bound:n :}
-   plan 5 UFP-SBASE@ {: base:n :}
-   0
-   plan 0 UFP-COUNT@ 0 ?do
-      0 i UNIT-FAM-RAW-ROW {: row:ptr :}
-      row TF.PKG-OFF @ row TF.PKG-U @ base bound UNIT-FAM-EXTENT+
-      row TF.NAME-OFF @ row TF.NAME-U @ base bound UNIT-FAM-EXTENT+
-   loop
-   plan 2 UFP-COUNT@ 0 ?do
-      2 i UNIT-FAM-RAW-ROW {: row:ptr :}
-      row SV.NAME-OFF @ row SV.NAME-U @ base bound UNIT-FAM-EXTENT+
-      row SV.CTOR-PKG-OFF @ row SV.CTOR-PKG-U @ base bound UNIT-FAM-EXTENT+
-   loop
-   plan 3 UFP-COUNT@ 0 ?do
-      3 i UNIT-FAM-RAW-ROW {: row:ptr :}
-      row PF.NAME-OFF @ row PF.NAME-U @ base bound UNIT-FAM-EXTENT+
-   loop ;
-
-: UNIT-FAM-TARGET-BASE ( n -- n ) {: k:n :}
-   k REG-AOT-COUNT UNIT-FAM-ACC !
-   UNIT-FAM-FIRST @
-   BEGIN dup NULL-PTR <> WHILE
-      dup k UFP-COUNT@ UNIT-FAM-ACC +!
-      UFP.NEXT UFP-PTR@
-   REPEAT drop UNIT-FAM-ACC @ ;
-
-\ PF-TX-SERIAL once the plans prepared so far install.
-: UNIT-FAM-TARGET-SERIAL ( -- n )
-   PF-TX-SERIAL @ UNIT-FAM-FIRST @
-   BEGIN dup NULL-PTR <> WHILE
-      dup UFP.SERIAL UFP@ rot + swap
-      UFP.NEXT UFP-PTR@
-   REPEAT drop ;
-
-: UNIT-FAM-ROW ( ptr u8 n n -- ptr n ) {: plan:ptr k:n i:n :}
-   plan UFP.BLOB UFP-PTR@ k REG-AOT-BLOB-STORE
-   i k REG-AOT-WIDTH * + CELL-VIEW ;
-
-: UNIT-FAM-PROJECT-VIEW ( n n n -- ptr u8 )
-   {: k:n first:n count:n :}
-   first k REG-AOT-COUNT <= IF
-      count k REG-AOT-COUNT first - <= IF
-         k REG-AOT-BASE-PTR first k REG-AOT-WIDTH * + EXIT
-      THEN
-   THEN
-   UNIT-FAM-FIRST @
-   BEGIN dup NULL-PTR <> WHILE
-      dup k UFP-TBASE@ {: base:n :}
-      dup k UFP-COUNT@ {: n:n :}
-      first base >= first base n + <= and
-      count base n + first - <= and IF
-         k first base - UNIT-FAM-ROW BYTE-VIEW EXIT
-      THEN
-      UFP.NEXT UFP-PTR@
-   REPEAT drop
-   s" tfam: FILE family reference has no projected row" REG-AOT-REFUSE ;
-
-: UNIT-FAM-PLAN-HEADER ( ptr u8 -- ) {: plan:ptr :}
-   plan UFP.BLOB UFP-PTR@ {: blob:ptr :}
-   REG-AOT-N blob REG-AOT-U64!
-   REG-AOT-N 0 ?do
-      plan i UFP-TBASE@ blob i REG-AOT-ROW * 8 + + REG-AOT-U64!
-      plan i UFP-COUNT@ blob i REG-AOT-ROW * 8 + 8 + + REG-AOT-U64!
-      plan i UFP-COUNT@ i REG-AOT-WIDTH *
-      blob i REG-AOT-ROW * 8 + 16 + + REG-AOT-U64!
-   loop ;
-
-: UNIT-FAM-PLAN-ROWS ( ptr u8 -- ) {: plan:ptr :}
-   REG-AOT-N 0 ?do
-      i 5 <> IF
-         plan i UFP-COUNT@ i REG-AOT-WIDTH * {: bytes:n :}
-         bytes 0 > IF
-            i UNIT-FAM-RAW@
-            plan UFP.BLOB UFP-PTR@ i REG-AOT-BLOB-STORE
-            bytes ARENA-COPY
-         THEN
-      THEN
-   loop ;
-
-\ A FILE's strings were interned in declaration order into one pool delta, and
-\ a family's constructor package once for all its variants. Each carried string
-\ goes back to its source offset rebased into the target pool, so the section
-\ and every offset are the cold build's; strings sharing bytes must agree.
-: UNIT-FAM-PUT-STRING ( ptr n ptr u8 -- ) {: field:ptr plan:ptr :}
-   UNIT-FAM-CELL {: len:n :}
-   len field CELL + @ <> IF
-      s" tfam: FILE family string disagrees with its row" REG-AOT-REFUSE THEN
-   len UNIT-FAM-READ {: src:ptr :}
-   field @ plan 5 UFP-SBASE@ - {: at:n :}
-   at 0 < at plan 5 UFP-COUNT@ len - > or IF
-      s" tfam: FILE family string lies outside its pool delta" REG-AOT-REFUSE THEN
-   plan UFP.BLOB UFP-PTR@ 5 REG-AOT-BLOB-STORE at + {: dst:ptr :}
-   len 0 ?do
-      at i + UNIT-FAM-COVERED? IF
-         src i + c@ dst i + c@ <> IF
-            s" tfam: FILE family strings disagree where they share pool bytes"
-            REG-AOT-REFUSE THEN
-      ELSE
-         src i + c@ dst i + c!   at i + UNIT-FAM-COVER!
-      THEN
-   loop
-   at plan 5 UFP-TBASE@ + field ! ;
-
-\ An empty constructor package is absent: SUMV-ADD leaves offset 0 and only a
-\ public family's TDECL-CTOR-PUBLISH interns one.
-: UNIT-FAM-PUT-CTOR-PKG ( ptr n ptr u8 -- ) {: field:ptr plan:ptr :}
-   field CELL + @ 0 <> IF field plan UNIT-FAM-PUT-STRING EXIT THEN
-   UNIT-FAM-CELL 0 <> IF
-      s" tfam: FILE family string disagrees with its row" REG-AOT-REFUSE THEN
-   field @ 0 <> IF
-      s" tfam: FILE variant places an absent constructor package" REG-AOT-REFUSE THEN ;
-
-: UNIT-FAM-PLAN-STRINGS ( ptr u8 -- ) {: plan:ptr :}
-   plan 5 UFP-COUNT@ UNIT-FAM-COVER-OPEN
-   plan 0 UFP-COUNT@ 0 ?do
-      plan 0 i UNIT-FAM-ROW {: row:ptr :}
-      row TF.PKG-OFF plan UNIT-FAM-PUT-STRING
-      row TF.NAME-OFF plan UNIT-FAM-PUT-STRING
-   loop
-   plan 2 UFP-COUNT@ 0 ?do
-      plan 2 i UNIT-FAM-ROW {: row:ptr :}
-      row SV.NAME-OFF plan UNIT-FAM-PUT-STRING
-      row SV.CTOR-PKG-OFF plan UNIT-FAM-PUT-CTOR-PKG
-   loop
-   plan 3 UFP-COUNT@ 0 ?do
-      plan 3 i UNIT-FAM-ROW PF.NAME-OFF plan UNIT-FAM-PUT-STRING
-   loop
-   plan 5 UFP-COUNT@ UNIT-FAM-COVER-FULL? 0= IF
-      s" tfam: FILE family strings do not fill their section" REG-AOT-REFUSE THEN ;
-
-: UNIT-FAM-KEY-READ ( -- ptr u8 n )
-   UNIT-FAM-CELL {: n:n :}
-   n 0 <= IF s" tfam: empty FILE declaration key" REG-AOT-REFUSE THEN
-   n UNIT-FAM-READ n ;
-
-: UNIT-FAM-PREPARED-KEY ( ptr u8 n -- n bool ) {: key:ptr len:n :}
-   UNIT-FAM-FIRST @
-   BEGIN dup NULL-PTR <> WHILE
-      dup UFP.KEYS UFP-PTR@ UNIT-FAM-KEY-AT !
-      dup 0 UFP-COUNT@ 0 ?do
-         UNIT-FAM-KEY-AT @ REG-AOT-U64@ {: n:n :}
-         UNIT-FAM-KEY-AT @ 8 + n key len CORE-STR= IF
-            dup 0 UFP-TBASE@ i + nip RES-TRUE unloop EXIT
-         THEN
-         UNIT-FAM-KEY-AT @ 8 + n + UNIT-FAM-KEY-AT !
-      loop
-      UFP.NEXT UFP-PTR@
-   REPEAT drop 0 RES-FALSE ;
-
-: UNIT-FAM-LOOKUP-KEY ( ptr u8 n -- n bool ) {: key:ptr len:n :}
-   key len FAMILY-BY-KEY-XT IF RES-TRUE EXIT THEN drop
-   key len UNIT-FAM-PREPARED-KEY ;
-
-: UNIT-FAM-ROW-NAME ( ptr u8 n n -- ptr u8 n )
-   {: plan:ptr off:n len:n :}
-   plan UFP.BLOB UFP-PTR@ 5 REG-AOT-BLOB-STORE
-   off plan 5 UFP-TBASE@ - + len ;
-
-: UNIT-FAM-PRIOR-KEY? ( ptr u8 n ptr u8 n -- bool )
-   {: key:ptr len:n keys:ptr count:n :}
-   keys
-   count 0 ?do
-      dup REG-AOT-U64@ {: u:n :}
-      dup 8 + u key len CORE-STR= IF
-         drop RES-TRUE unloop EXIT THEN
-      8 + u +
-   loop drop RES-FALSE ;
-
-: UNIT-FAM-READ-KEYS ( ptr u8 -- ) {: plan:ptr :}
-   UNIT-FAM-IN @ plan UFP.KEYS UFP-PTR!
-   plan 0 UFP-COUNT@ 0 ?do
-      UNIT-FAM-KEY-READ {: key:ptr len:n :}
-      key len plan UFP.KEYS UFP-PTR@ i UNIT-FAM-PRIOR-KEY? IF
-         s" tfam: duplicate FILE family declaration key" REG-AOT-REFUSE
-      THEN
-      plan 0 i UNIT-FAM-ROW {: row:ptr :}
-      key len
-      plan row TF.PKG-OFF @ row TF.PKG-U @ UNIT-FAM-ROW-NAME
-      plan row TF.NAME-OFF @ row TF.NAME-U @ UNIT-FAM-ROW-NAME
-      FAMILY-KEY-MATCH-XT 0= IF
-         s" tfam: FILE family key disagrees with its declaration" REG-AOT-REFUSE
-      THEN
-      key len UNIT-FAM-LOOKUP-KEY IF drop
-         s" tfam: duplicate FILE family declaration key" REG-AOT-REFUSE
-      THEN drop
-   loop ;
-
-: UNIT-FAM-MAP-PAIR ( n n ptr u8 n ptr u8 -- )
-   {: source:n target:n key:ptr len:n plan:ptr :}
-   source UNIT-FAM-MAP-CUR @ CELL-VIEW !
-   target UNIT-FAM-MAP-CUR @ CELL + CELL-VIEW !
-   key plan UFP.SRC UFP-PTR@ -
-      UNIT-FAM-MAP-CUR @ 2 cells + CELL-VIEW !
-   len UNIT-FAM-MAP-CUR @ 3 cells + CELL-VIEW !
-   UNIT-FAM-MAP-CUR @ 4 cells + UNIT-FAM-MAP-CUR ! ;
-
-: UNIT-FAM-MAP-ROOM ( ptr u8 -- ) {: plan:ptr :}
-   UNIT-FAM-MAP-CUR @ 4 cells +
-   plan UFP.BLOB UFP-PTR@ plan UFP.CAP UFP@ + > IF
-      s" tfam: FILE family map exceeds its delta" REG-AOT-REFUSE THEN ;
-
-: UNIT-FAM-READ-FMAP ( ptr u8 -- ) {: plan:ptr :}
-   UNIT-FAM-MAP-CUR @ plan UFP.FMAP UFP-PTR!
-   UNIT-FAM-CELL {: n:n :}
-   n 0 < n UNIT-FAM-LIMIT @ UNIT-FAM-IN @ - 16 / > or IF
-      s" tfam: FILE family reference count exceeds its bytes" REG-AOT-REFUSE THEN
-   n plan UFP.FN UFP!
-   n 0 ?do
-      UNIT-FAM-CELL {: source:n :}
-      source UNIT-FAM-STABLE-N <
-      source plan 0 UFP-SBASE@ >= or IF
-         s" tfam: FILE family dependency has a local or fixed source ID" REG-AOT-REFUSE
-      THEN
-      UNIT-FAM-KEY-READ {: key:ptr len:n :}
-      key len UNIT-FAM-LOOKUP-KEY 0= IF drop
-         s" tfam: FILE family dependency is absent" UNIT-FAM-CHANGED THEN
-      {: target:n :}
-      UNIT-FAM-CELL {: bytes:n :}
-      bytes 0 < IF
-         s" tfam: FILE family contract length is negative" REG-AOT-REFUSE THEN
-      bytes UNIT-FAM-READ {: contract:ptr :}
-      target contract bytes UNIT-FAM-CONTRACT-CHECK-XT
-      plan UNIT-FAM-MAP-ROOM
-      source target key len plan UNIT-FAM-MAP-PAIR
-   loop ;
-
-: UNIT-FAM-READ-CMAP ( ptr u8 -- ) {: plan:ptr :}
-   UNIT-FAM-MAP-CUR @ plan UFP.CMAP UFP-PTR!
-   UNIT-FAM-CELL {: n:n :}
-   n 0 < n UNIT-FAM-LIMIT @ UNIT-FAM-IN @ - 16 / > or IF
-      s" tfam: FILE constructor reference count exceeds its bytes" REG-AOT-REFUSE THEN
-   n plan UFP.CN UFP!
-   n 0 ?do
-      UNIT-FAM-CELL {: source:n :}
-      UNIT-FAM-KEY-READ {: key:ptr len:n :}
-      key len CON-BY-KEY-XT 0= IF drop
-         key len CHECKER-REG:UNIT-CON-PROJECT-XT 0= IF drop
-            s" tfam: FILE constructor dependency is absent" UNIT-FAM-CHANGED
-         THEN
-      THEN
-      {: target:n :}
-      UNIT-FAM-CELL {: bytes:n :}
-      bytes 0 < IF
-         s" tfam: FILE constructor contract length is negative" REG-AOT-REFUSE THEN
-      bytes UNIT-FAM-READ {: contract:ptr :}
-      target key len contract bytes UNIT-CON-CONTRACT-CHECK-XT
-      plan UNIT-FAM-MAP-ROOM
-      source target key len plan UNIT-FAM-MAP-PAIR
-   loop ;
-
-: UNIT-FAM-FIND-MAP ( n ptr u8 n -- n bool )
-   {: source:n pairs:ptr count:n :}
-   count 0 ?do
-      pairs i 4 cells * + dup CELL-VIEW @ source = IF
-         CELL + CELL-VIEW @ RES-TRUE unloop EXIT THEN drop
-   loop 0 RES-FALSE ;
-
-: UNIT-FAM-MAP-ID ( n -- n ) {: source:n :}
-   source UNIT-FAM-STABLE-N < IF source EXIT THEN
-   UNIT-FAM-CUR @ {: plan:ptr :}
-   plan NULL-PTR = IF
-      s" tfam: FILE family map has no active unit" REG-AOT-REFUSE THEN
-   source plan 0 UFP-SBASE@ >=
-   source plan 0 UFP-SBASE@ plan 0 UFP-COUNT@ + < and IF
-      source plan 0 UFP-SBASE@ - plan 0 UFP-TBASE@ + EXIT THEN
-   source plan UFP.FMAP UFP-PTR@ plan UFP.FN UFP@ UNIT-FAM-FIND-MAP
-   IF EXIT THEN drop
-   s" tfam: FILE family ID lacks an identity" REG-AOT-REFUSE ;
-
-: UNIT-CON-MAP-ID ( n -- n ) {: source:n :}
-   source CC-MAX < IF source EXIT THEN
-   UNIT-FAM-CUR @ {: plan:ptr :}
-   source plan UFP.CMAP UFP-PTR@ plan UFP.CN UFP@ UNIT-FAM-FIND-MAP
-   IF EXIT THEN drop
-   s" tfam: FILE constructor ID lacks an identity" REG-AOT-REFUSE ;
-
-: UNIT-FAM-SUBID ( ptr u8 n n -- n ) {: plan:ptr k:n source:n :}
-   source UNIT-FAM-STABLE k cells + @ < IF source EXIT THEN
-   source plan k UFP-SBASE@ >=
-   source plan k UFP-SBASE@ plan k UFP-COUNT@ + <= and IF
-      source plan k UFP-SBASE@ - plan k UFP-TBASE@ + EXIT THEN
-   s" tfam: FILE family row has an external store reference" REG-AOT-REFUSE ;
-
-: UNIT-FAM-ROW-ID! ( ptr u8 n ptr n -- ) {: plan:ptr k:n field:ptr :}
-   plan k field @ UNIT-FAM-SUBID field ! ;
-
-\ An empty range (count 0) names no row; its writers store start 0, which
-\ needs no translation.
-: UNIT-FAM-REBASE ( ptr u8 -- ) {: plan:ptr :}
-   plan 0 UFP-COUNT@ 0 ?do
-      plan 0 i UNIT-FAM-ROW {: row:ptr :}
-      plan 1 row TF.PK-START UNIT-FAM-ROW-ID!
-      row TF.VAR-COUNT @ 0 > IF
-         plan 2 row TF.VAR-START UNIT-FAM-ROW-ID! THEN
-      row TF.FLD-COUNT @ 0 > IF
-         plan 3 row TF.FLD-START UNIT-FAM-ROW-ID! THEN
-      row TF.SCHEMA-ROOT @ 0 <> IF
-         plan 7 row TF.SCHEMA-ROOT UNIT-FAM-ROW-ID! THEN
-      0 row TF.TAILNEXT !
-   loop
-   plan 2 UFP-COUNT@ 0 ?do
-      plan 2 i UNIT-FAM-ROW {: row:ptr :}
-      row SV.FAM @ UNIT-FAM-MAP-ID row SV.FAM !
-      row SV.SCH-COUNT @ 0 > IF
-         plan 7 row SV.SCH-START UNIT-FAM-ROW-ID! THEN
-   loop
-   plan 3 UFP-COUNT@ 0 ?do
-      plan 3 i UNIT-FAM-ROW {: row:ptr :}
-      row PF.FAM @ UNIT-FAM-MAP-ID row PF.FAM !
-      row PF.VAR @ -1 <> IF plan 2 row PF.VAR UNIT-FAM-ROW-ID! THEN
-      plan 7 row PF.SCH UNIT-FAM-ROW-ID!
-   loop
-   plan 4 UFP-COUNT@ 0 ?do
-      plan 4 i UNIT-FAM-ROW {: row:ptr :}
-      row LAY.FAM @ UNIT-FAM-MAP-ID row LAY.FAM !
-   loop
-   plan 6 UFP-COUNT@ 0 ?do
-      plan 6 i UNIT-FAM-ROW {: row:ptr :}
-      row @ {: tag:n :}
-      tag SCH-PTR = IF plan 6 row CELL + UNIT-FAM-ROW-ID! THEN
-      tag SCH-APP = IF
-         row CELL + @ UNIT-FAM-MAP-ID row CELL + !
-         row 2 cells + @ 0 <> IF
-            plan 7 row 2 cells + UNIT-FAM-ROW-ID! THEN
-      THEN
-      tag SCH-CON = IF
-         row CELL + @ UNIT-CON-MAP-ID row CELL + ! THEN
-      tag SCH-QUOT = IF
-         row 3 cells + @ 0 <> IF
-            plan 7 row 2 cells + UNIT-FAM-ROW-ID! THEN
-      THEN
-      tag SCH-ROW = IF
-         row 2 cells + @ 0 <> IF
-            plan 7 row CELL + UNIT-FAM-ROW-ID! THEN
-      THEN
-   loop
-   plan 7 UFP-COUNT@ 0 ?do
-      plan 7 i UNIT-FAM-ROW {: row:ptr :}
-      plan 6 row UNIT-FAM-ROW-ID!
-   loop ;
-
-: UNIT-FAM-PLAN-OPEN ( ptr u8 n -- ptr u8 ) {: src:ptr u:n :}
-   u 0= IF NULL-PTR EXIT THEN
-   u 0 <
-   u $7FFFFFFFFFFFFFFF REG-AOT-HDR - UFP.REC - 2 / > or IF
-      s" tfam: FILE family delta is too large" REG-AOT-REFUSE THEN
-   REG-AOT-HDR u 2 * + {: cap:n :}
-   UFP.REC cap + ARENA-ALLOC-BYTES {: plan:ptr :}
-   plan UNIT-FAM-OPEN !
-   NULL-PTR plan UFP.NEXT UFP-PTR!  src plan UFP.SRC UFP-PTR!
-   u plan UFP.U UFP!
-   plan UFP.REC + plan UFP.BLOB UFP-PTR!
-   cap plan UFP.CAP UFP!
-   src UNIT-FAM-IN ! src u + UNIT-FAM-LIMIT !
-   UNIT-FAM-CELL UNIT-FAM-MAGIC <> IF
-      s" tfam: FILE family delta has an invalid format" REG-AOT-REFUSE THEN
-   UNIT-FAM-CELL REG-AOT-N <> IF
-      s" tfam: FILE family delta has an invalid store count" REG-AOT-REFUSE THEN
-   UNIT-FAM-CELL {: serial:n :}
-   serial 0 < IF
-      s" tfam: FILE family delta has a negative transaction serial" REG-AOT-REFUSE THEN
-   serial $7FFFFFFFFFFFFFFF UNIT-FAM-TARGET-SERIAL - > IF
-      s" tfam: FILE family transaction serial overflows" REG-AOT-REFUSE THEN
-   serial plan UFP.SERIAL UFP!
-   REG-AOT-N 0 ?do
-      UNIT-FAM-CELL {: base:n :}
-      UNIT-FAM-CELL {: count:n :}
-      UNIT-FAM-CELL UNIT-FAM-STABLE i cells + @ <> IF
-         s" tfam: FILE family stable registry changed" REG-AOT-REFUSE THEN
-      base 0 < count 0 < or IF
-         s" tfam: FILE family delta has a negative extent" REG-AOT-REFUSE THEN
-      base UNIT-FAM-STABLE i cells + @ < IF
-         s" tfam: FILE family source predates the stable registry" REG-AOT-REFUSE THEN
-      base $7FFFFFFFFFFFFFFF count - > IF
-         s" tfam: FILE family source extent overflows" REG-AOT-REFUSE THEN
-      base plan UFP.SBASE i + UFP!
-      count plan UFP.COUNT i + UFP!
-      i UNIT-FAM-TARGET-BASE {: target:n :}
-      target $7FFFFFFFFFFFFFFF count - > IF
-         s" tfam: FILE family target extent overflows" REG-AOT-REFUSE THEN
-      target plan UFP.TBASE i + UFP!
-   loop
-   plan 5 UFP-COUNT@ 0 <> IF
-      s" tfam: FILE family delta carries raw string offsets" REG-AOT-REFUSE THEN
-   REG-AOT-N 0 ?do
-      i 5 <> IF
-         plan i UFP-COUNT@ {: count:n :}
-         count UNIT-FAM-LIMIT @ UNIT-FAM-IN @ - i REG-AOT-WIDTH / > IF
-            s" tfam: FILE family rows exceed their bytes" REG-AOT-REFUSE THEN
-         count i REG-AOT-WIDTH * UNIT-FAM-READ
-         i UNIT-FAM-RAW!
-      THEN
-   loop
-   plan UNIT-FAM-STRING-EXTENT plan UFP.COUNT 5 + UFP!
-   plan UNIT-FAM-PLAN-HEADER
-   plan UNIT-FAM-PLAN-ROWS
-   plan UNIT-FAM-PLAN-STRINGS
-   plan UNIT-FAM-READ-KEYS
-   plan UFP.BLOB UFP-PTR@ REG-AOT-HDR +
-   REG-AOT-N 0 ?do
-      plan i UFP-COUNT@ i REG-AOT-WIDTH * +
-   loop UNIT-FAM-MAP-CUR !
-   plan UNIT-FAM-READ-FMAP
-   plan UNIT-FAM-READ-CMAP
-   UNIT-FAM-IN @ UNIT-FAM-LIMIT @ <> IF
-      s" tfam: FILE family delta has trailing bytes" REG-AOT-REFUSE THEN
-   NULL-PTR UNIT-FAM-OPEN !
-   plan ;
-
-: UNIT-FAM-PLAN-DROP ( ptr u8 -- ) {: plan:ptr :}
-   plan plan UFP.CAP UFP@ UFP.REC + ASIG-RELEASE ;
-
-: UNIT-FAM-PLAN-ADD ( ptr u8 -- ) {: plan:ptr :}
-   UNIT-FAM-LAST @ NULL-PTR = IF plan UNIT-FAM-FIRST !
-   ELSE plan UNIT-FAM-LAST @ UFP.NEXT UFP-PTR! THEN
-   plan UNIT-FAM-LAST !
-   plan UNIT-FAM-CUR ! ;
-
-: UNIT-FAM-BEGIN ( -- )
-   NULL-PTR UNIT-FAM-FIRST ! NULL-PTR UNIT-FAM-LAST !
-   NULL-PTR UNIT-FAM-CUR ! NULL-PTR UNIT-FAM-OPEN !
-   0 UNIT-FAM-PROJECT-ON ! ;
-
-: UNIT-FAM-PREPARE ( ptr u8 n -- ptr u8 )
-   [: 2dup UNIT-FAM-PLAN-OPEN UNIT-FAM-OPEN ! ;] catch {: rc:n :}
-   2drop
-   rc 0 <> IF
-      UNIT-FAM-OPEN @ dup NULL-PTR <> IF UNIT-FAM-PLAN-DROP
-         ELSE drop THEN
-      NULL-PTR UNIT-FAM-OPEN !
-      rc throw
-   THEN
-   UNIT-FAM-OPEN @ {: plan:ptr :}
-   NULL-PTR UNIT-FAM-OPEN !
-   plan NULL-PTR = IF NULL-PTR EXIT THEN
-   plan UNIT-FAM-PLAN-ADD
-   -1 UNIT-FAM-PROJECT-ON !
-   plan UNIT-FAM-REBASE
-   plan UFP.BLOB UFP-PTR@ plan UFP.CAP UFP@ REG-AOT-CHECK
-   plan ;
-
-: UNIT-FAM-VIEW ( ptr u8 -- ptr u8 n ) {: state:ptr :}
-   state NULL-PTR = IF NULL-PTR 0 EXIT THEN
-   state UFP.BLOB UFP-PTR@ state UFP.CAP UFP@ ;
-
-\ Each imported variant's carried constructor cell (UNIT-FAM-CTOR-ORDS) becomes
-\ what EACH answers for it with CTX: the checker checks the ordinal when it
-\ prepares the unit and names the live symbol once the unit's symbols are
-\ installed, before UNIT-FAM-TAKE copies the rows. 0 stays absent.
-: UNIT-FAM-CTORS ( ptr u8 ptr u8 [ ptr u8 n -- n ] -- ) {: plan:ptr ctx:ptr each :}
-   plan NULL-PTR = IF EXIT THEN
-   plan 2 UFP-COUNT@ 0 ?do
-      plan 2 i UNIT-FAM-ROW {: row:ptr :}
-      row SV.CTOR-SYM @ {: v:n :}
-      v 0 <> IF ctx v each execute row SV.CTOR-SYM ! THEN
-   loop ;
-
-\ The lookup indexes over the family, variant and field stores take the
-\ plan's rows as a declaration does: each store the plan grows gets its index
-\ built and sized for the grown capacity before its count moves, and each new
-\ row pushed in id order after every store holds its rows.
-: UNIT-FAM-INDEX-ENSURE ( ptr u8 -- ) {: plan:ptr :}
-   plan 0 UFP-COUNT@ 0 > IF TFX-ENSURE THEN
-   plan 2 UFP-COUNT@ 0 > IF VNX-ENSURE THEN
-   plan 3 UFP-COUNT@ 0 > IF FVX-ENSURE THEN ;
-
-: UNIT-FAM-INDEX-PUSH ( ptr u8 -- ) {: plan:ptr :}
-   plan 0 UFP-COUNT@ 0 > IF
-      TFAM-N @ plan 0 UFP-TBASE@ ?do i TFX-PUSH loop
-      TFAM-N @ TFX-HI !
-   THEN
-   plan 2 UFP-COUNT@ 0 > IF
-      SUMV-N @ plan 2 UFP-TBASE@ ?do i VNX-PUSH loop
-      SUMV-N @ VNX-HI !
-   THEN
-   plan 3 UFP-COUNT@ 0 > IF
-      PF-N @ plan 3 UFP-TBASE@ ?do i FVX-PUSH loop
-      PF-N @ FVX-HI !
-   THEN ;
-
-: UNIT-FAM-TAKE ( ptr u8 -- ) {: plan:ptr :}
-   plan NULL-PTR = IF EXIT THEN
-   REG-AOT-N 0 ?do
-      plan i UFP-TBASE@ i REG-AOT-COUNT <> IF
-         s" tfam: FILE family installation order changed" REG-AOT-REFUSE THEN
-      i plan i UFP-TBASE@ plan i UFP-COUNT@ + REG-AOT-ROOM
-   loop
-   plan UNIT-FAM-INDEX-ENSURE
-   plan UFP.SERIAL UFP@ PF-TX-SERIAL +!
-   REG-AOT-N 0 ?do
-      plan i UFP-COUNT@ i REG-AOT-WIDTH * {: bytes:n :}
-      bytes 0 > IF
-         plan UFP.BLOB UFP-PTR@ i REG-AOT-BLOB-STORE
-         i REG-AOT-BASE-PTR plan i UFP-TBASE@ i REG-AOT-WIDTH * +
-         bytes ARENA-COPY
-         \ Only a store the plan grows moves its count: the field store's
-         \ setter also moves PF-N, which inside a declaration would retire
-         \ that declaration's provisional rows.
-         i plan i UFP-TBASE@ plan i UFP-COUNT@ + REG-AOT-COUNT!
-      THEN
-   loop
-   plan UNIT-FAM-INDEX-PUSH
-   TFM-EPOCH+ 0 SVX-GEN ! SVX-STAMP ;
-
-: UNIT-FAM-END ( -- )
-   0 UNIT-FAM-PROJECT-ON ! NULL-PTR UNIT-FAM-CUR !
-   UNIT-FAM-FIRST @
-   BEGIN dup NULL-PTR <> WHILE
-      dup UFP.NEXT UFP-PTR@ swap
-      UNIT-FAM-PLAN-DROP
-   REPEAT drop
-   NULL-PTR UNIT-FAM-FIRST ! NULL-PTR UNIT-FAM-LAST !
-   UNIT-FAM-SCRATCH-RESET ;
-
-\ Exact semantic contracts for family dependencies. Source indices, interned
-\ offsets, diagnostic spans and derived lookup links are intentionally absent;
-\ names, parameter kinds, layout, fields and recursively expanded schemas are
-\ compared byte for byte. A schema application carries the defining FILE key
-\ of its family, so a different declaration cannot impersonate that edge.
-PTR-VARIABLE UNIT-FAM-CON-P
-variable UNIT-FAM-CON-N
-variable UNIT-FAM-CON-LIMIT
-variable UNIT-FAM-CON-MODE
-create UNIT-FAM-CON-CELL 8 allot
-
-: UNIT-FAM-CON-OUT ( ptr u8 n -- ) {: src:ptr len:n :}
-   len 0 < IF s" tfam: negative FILE family contract extent" REG-AOT-REFUSE THEN
-   UNIT-FAM-CON-MODE @ 0 <> IF
-      UNIT-FAM-CON-MODE @ 2 = IF
-         len UNIT-FAM-CON-LIMIT @ UNIT-FAM-CON-N @ - > IF
-            s" tfam: FILE family contract is truncated" REG-AOT-REFUSE THEN
-         src len UNIT-FAM-CON-P @ UNIT-FAM-CON-N @ + len CORE-STR= 0= IF
-            s" tfam: FILE family dependency changed semantics" UNIT-FAM-CHANGED
-         THEN
-      ELSE
-         src UNIT-FAM-CON-P @ UNIT-FAM-CON-N @ + len ARENA-COPY
-      THEN
-   THEN
-   len UNIT-FAM-CON-N +! ;
-
-: UNIT-FAM-CON-CELL+ ( n -- )
-   UNIT-FAM-CON-CELL REG-AOT-U64!
-   UNIT-FAM-CON-CELL 8 UNIT-FAM-CON-OUT ;
-
-: UNIT-FAM-CON-STR ( ptr u8 n -- ) {: a:ptr u:n :}
-   u UNIT-FAM-CON-CELL+
-   a u UNIT-FAM-CON-OUT ;
-
-: UNIT-FAM-CON-COUNT ( n -- n ) {: k:n :}
-   k REG-AOT-COUNT UNIT-FAM-ACC !
-   UNIT-FAM-PROJECT-ON @ IF
-      UNIT-FAM-FIRST @
-      BEGIN dup NULL-PTR <> WHILE
-         dup k UFP-COUNT@ UNIT-FAM-ACC +!
-         UFP.NEXT UFP-PTR@
-      REPEAT drop
-   THEN UNIT-FAM-ACC @ ;
-
-: UNIT-FAM-CON-ROW ( n n -- ptr n ) {: k:n id:n :}
-   UNIT-FAM-PROJECT-ON @ IF
-      k id 1 UNIT-FAM-PROJECT-VIEW CELL-VIEW EXIT THEN
-   id 0 < id k REG-LIVE-COUNT >= or IF
-      s" tfam: FILE contract row is outside the registry" REG-AOT-REFUSE THEN
-   k REG-AOT-BASE-PTR id k REG-AOT-WIDTH * + CELL-VIEW ;
-
-: UNIT-FAM-CON-NAME ( n n -- ) {: off:n len:n :}
-   UNIT-FAM-PROJECT-ON @ IF
-      5 off len UNIT-FAM-PROJECT-VIEW len UNIT-FAM-CON-STR EXIT THEN
-   off len TF-OFF$ UNIT-FAM-CON-STR ;
-
-: UNIT-FAM-CON-PLAN-KEY ( n -- ptr u8 n bool ) {: id:n :}
-   UNIT-FAM-FIRST @
-   BEGIN dup NULL-PTR <> WHILE
-      dup 0 UFP-TBASE@ {: base:n :}
-      dup 0 UFP-COUNT@ {: count:n :}
-      id base >= id base count + < and IF
-         dup UFP.KEYS UFP-PTR@ UNIT-FAM-KEY-AT !
-         id base - 0 ?do
-            UNIT-FAM-KEY-AT @ dup REG-AOT-U64@ 8 + + UNIT-FAM-KEY-AT !
-         loop
-         drop UNIT-FAM-KEY-AT @ dup REG-AOT-U64@ {: n:n :}
-         8 + n RES-TRUE EXIT
-      THEN
-      UFP.NEXT UFP-PTR@
-   REPEAT drop NULL-PTR 0 RES-FALSE ;
-
-\ While checking (mode 2), an absent identity is a changed dependency.
-: UNIT-FAM-CON-ABSENT ( ptr u8 n -- )
-   UNIT-FAM-CON-MODE @ 2 = IF UNIT-FAM-CHANGED THEN
-   2drop CHECKER-REG:UNIT-BAD ;
-
-
-: UNIT-FAM-CON-FKEY ( n -- ptr u8 n ) {: id:n :}
-   id TFAM-N @ < IF
-      id FAMILY-KEY-XT IF EXIT THEN 2drop
-   THEN
-   id UNIT-FAM-CON-PLAN-KEY IF EXIT THEN 2drop
-   s" tfam: FILE contract family identity is absent" UNIT-FAM-CON-ABSENT ;
-
-: UNIT-FAM-CON-CKEY ( n -- ptr u8 n ) {: id:n :}
-   id CTN @ < IF
-      id CON-KEY-XT IF EXIT THEN 2drop
-   THEN
-   UNIT-FAM-FIRST @
-   BEGIN dup NULL-PTR <> WHILE
-      dup UFP.CMAP UFP-PTR@ {: map:ptr :}
-      dup UFP.CN UFP@ 0 ?do
-         map i 4 cells * + {: pair:ptr :}
-         pair CELL + CELL-VIEW @ id = IF
-            dup UFP.SRC UFP-PTR@
-            pair 2 cells + CELL-VIEW @ +
-            pair 3 cells + CELL-VIEW @ rot drop unloop EXIT
-         THEN
-      loop
-      UFP.NEXT UFP-PTR@
-   REPEAT drop
-   s" tfam: FILE contract constructor identity is absent" UNIT-FAM-CON-ABSENT ;
-
-: UNIT-FAM-CON-FAMREF ( n -- ) {: id:n :}
-   id UNIT-FAM-STABLE-N < IF
-      0 UNIT-FAM-CON-CELL+ id UNIT-FAM-CON-CELL+ EXIT THEN
-   1 UNIT-FAM-CON-CELL+
-   id UNIT-FAM-CON-FKEY UNIT-FAM-CON-STR ;
-
-: UNIT-FAM-CON-CONREF ( n -- ) {: id:n :}
-   id CC-MAX < IF
-      0 UNIT-FAM-CON-CELL+ id UNIT-FAM-CON-CELL+ EXIT THEN
-   1 UNIT-FAM-CON-CELL+
-   id UNIT-FAM-CON-CKEY UNIT-FAM-CON-STR ;
-
-: UNIT-FAM-CON-SCHEMA ( n -- ) {: id:n :}
-   6 id UNIT-FAM-CON-ROW {: row:ptr :}
-   row @ {: tag:n :}
-   tag UNIT-FAM-CON-CELL+
-   tag SCH-PARAM = IF row CELL + @ UNIT-FAM-CON-CELL+ EXIT THEN
-   tag SCH-CON = IF row CELL + @ UNIT-FAM-CON-CONREF EXIT THEN
-   tag SCH-PTR = IF row CELL + @ recurse EXIT THEN
-   tag SCH-APP = IF
-      row CELL + @ UNIT-FAM-CON-FAMREF
-      row 3 cells + @ {: count:n :}
-      count UNIT-FAM-CON-CELL+
-      count 0 ?do
-         7 row 2 cells + @ i + UNIT-FAM-CON-ROW @ recurse
-      loop EXIT
-   THEN
-   tag SCH-QUOT = IF
-      row CELL + @ UNIT-FAM-CON-CELL+
-      row 3 cells + @ {: count:n :}
-      count UNIT-FAM-CON-CELL+
-      count 0 ?do
-         7 row 2 cells + @ i + UNIT-FAM-CON-ROW @ recurse
-      loop EXIT
-   THEN
-   tag SCH-ROW = IF
-      row 2 cells + @ {: count:n :}
-      count UNIT-FAM-CON-CELL+
-      count 0 ?do
-         7 row CELL + @ i + UNIT-FAM-CON-ROW @ recurse
-      loop EXIT
-   THEN
-   s" tfam: FILE contract has invalid schema" REG-AOT-REFUSE ;
-
-: UNIT-FAM-CON-FAMILY ( n -- ) {: id:n :}
-   0 id UNIT-FAM-CON-ROW {: row:ptr :}
-   row TF.PKG-OFF @ row TF.PKG-U @ UNIT-FAM-CON-NAME
-   row TF.NAME-OFF @ row TF.NAME-U @ UNIT-FAM-CON-NAME
-   row TF.VIS @ UNIT-FAM-CON-CELL+
-   row TF.ARITY @ UNIT-FAM-CON-CELL+
-   row TF.KIND @ UNIT-FAM-CON-CELL+
-   row TF.LAYOUT @ UNIT-FAM-CON-CELL+
-   row TF.SLOTS @ UNIT-FAM-CON-CELL+
-   row TF.TAGW @ UNIT-FAM-CON-CELL+
-   row TF.DERIVE @ UNIT-FAM-CON-CELL+
-   row TF.OPAQUE @ UNIT-FAM-CON-CELL+
-   row TF.SCHEMA-ROOT @ 0 <> IF
-      1 UNIT-FAM-CON-CELL+
-      7 row TF.SCHEMA-ROOT @ UNIT-FAM-CON-ROW @ UNIT-FAM-CON-SCHEMA
-   ELSE 0 UNIT-FAM-CON-CELL+ THEN
-   row TF.ARITY @ 0 ?do
-      1 row TF.PK-START @ i + UNIT-FAM-CON-ROW @ UNIT-FAM-CON-CELL+
-   loop
-   row TF.VAR-COUNT @ UNIT-FAM-CON-CELL+
-   row TF.VAR-COUNT @ 0 ?do
-      2 row TF.VAR-START @ i + UNIT-FAM-CON-ROW {: variant:ptr :}
-      variant SV.NAME-OFF @ variant SV.NAME-U @ UNIT-FAM-CON-NAME
-      variant SV.CTOR-PKG-OFF @ variant SV.CTOR-PKG-U @ UNIT-FAM-CON-NAME
-      variant SV.TAG @ UNIT-FAM-CON-CELL+
-      variant SV.PAYCELLS @ UNIT-FAM-CON-CELL+
-      variant SV.SCH-COUNT @ UNIT-FAM-CON-CELL+
-      variant SV.SCH-COUNT @ 0 ?do
-         7 variant SV.SCH-START @ i + UNIT-FAM-CON-ROW @
-         UNIT-FAM-CON-SCHEMA
-      loop
-   loop
-   row TF.FLD-COUNT @ UNIT-FAM-CON-CELL+
-   row TF.FLD-COUNT @ 0 ?do
-      3 row TF.FLD-START @ i + UNIT-FAM-CON-ROW {: field:ptr :}
-      field PF.NAME-OFF @ field PF.NAME-U @ UNIT-FAM-CON-NAME
-      field PF.VAR @ -1 = IF -1 ELSE
-         field PF.VAR @ row TF.VAR-START @ - THEN UNIT-FAM-CON-CELL+
-      field PF.SLOT @ UNIT-FAM-CON-CELL+
-      field PF.CELLS @ UNIT-FAM-CON-CELL+
-      field PF.BYTE-OFF @ UNIT-FAM-CON-CELL+
-      field PF.BYTES @ UNIT-FAM-CON-CELL+
-      field PF.ALIGN @ UNIT-FAM-CON-CELL+
-      field PF.FLAGS @ UNIT-FAM-CON-CELL+
-      7 field PF.SCH @ UNIT-FAM-CON-ROW @ UNIT-FAM-CON-SCHEMA
-   loop
-   0
-   4 UNIT-FAM-CON-COUNT 0 ?do
-      4 i UNIT-FAM-CON-ROW LAY.FAM @ id = IF 1+ THEN
-   loop
-   dup UNIT-FAM-CON-CELL+
-   drop
-   4 UNIT-FAM-CON-COUNT 0 ?do
-      4 i UNIT-FAM-CON-ROW {: lay:ptr :}
-      lay LAY.FAM @ id = IF
-         lay LAY.POLICY @ UNIT-FAM-CON-CELL+
-         lay LAY.SIZE @ UNIT-FAM-CON-CELL+
-         lay LAY.ALIGN @ UNIT-FAM-CON-CELL+
-         lay LAY.TAGW @ UNIT-FAM-CON-CELL+
-      THEN
-   loop ;
-
-: UNIT-FAM-CONTRACT-SIZE ( n -- n )
-   0 UNIT-FAM-CON-MODE ! 0 UNIT-FAM-CON-N !
-   UNIT-FAM-CON-FAMILY UNIT-FAM-CON-N @ ;
-
-: UNIT-FAM-CONTRACT-WRITE ( n ptr u8 -- ptr u8 )
-   {: id:n dst:ptr :}
-   1 UNIT-FAM-CON-MODE ! 0 UNIT-FAM-CON-N ! dst UNIT-FAM-CON-P !
-   id UNIT-FAM-CON-FAMILY
-   dst UNIT-FAM-CON-N @ + ;
-
-: UNIT-FAM-CONTRACT-CHECK ( n ptr u8 n -- )
-   {: id:n src:ptr len:n :}
-   2 UNIT-FAM-CON-MODE ! 0 UNIT-FAM-CON-N !
-   src UNIT-FAM-CON-P ! len UNIT-FAM-CON-LIMIT !
-   id UNIT-FAM-CON-FAMILY
-   UNIT-FAM-CON-N @ len <> IF
-      s" tfam: FILE family contract has trailing bytes" REG-AOT-REFUSE THEN ;
-
-: UNIT-CON-CONTRACT-CONTENT ( n -- ) {: id:n :}
-   id CT-NAME$ UNIT-FAM-CON-STR
-   id CT-PKG$ UNIT-FAM-CON-STR
-   id CT-CLASS@ UNIT-FAM-CON-CELL+
-   id CT-WIDTH@ UNIT-FAM-CON-CELL+
-   id CT-SIGN@ UNIT-FAM-CON-CELL+ ;
-
-: UNIT-CON-CONTRACT-SIZE ( n -- n )
-   0 UNIT-FAM-CON-MODE ! 0 UNIT-FAM-CON-N !
-   UNIT-CON-CONTRACT-CONTENT UNIT-FAM-CON-N @ ;
-
-: UNIT-CON-CONTRACT-WRITE ( n ptr u8 -- ptr u8 )
-   {: id:n dst:ptr :}
-   1 UNIT-FAM-CON-MODE ! 0 UNIT-FAM-CON-N ! dst UNIT-FAM-CON-P !
-   id UNIT-CON-CONTRACT-CONTENT
-   dst UNIT-FAM-CON-N @ + ;
-
-PTR-VARIABLE UNIT-CON-CON-IN
-PTR-VARIABLE UNIT-CON-CON-END
-
-: UNIT-CON-CON-READ ( n -- ptr u8 ) {: n:n :}
-   n 0 < n UNIT-CON-CON-END @ UNIT-CON-CON-IN @ - > or IF
-      s" tfam: malformed FILE constructor contract" REG-AOT-REFUSE THEN
-   UNIT-CON-CON-IN @ dup n + UNIT-CON-CON-IN ! ;
-
-: UNIT-CON-CON-CELL ( -- n ) 8 UNIT-CON-CON-READ REG-AOT-U64@ ;
-
-: UNIT-CON-CON-STR ( -- ptr u8 n )
-   UNIT-CON-CON-CELL {: len:n :}
-   len UNIT-CON-CON-READ len ;
-
-: UNIT-CON-CONTRACT-CHECK ( n ptr u8 n ptr u8 n -- )
-   {: id:n key:ptr keyu:n src:ptr len:n :}
-   id CTN @ < IF
-      2 UNIT-FAM-CON-MODE ! 0 UNIT-FAM-CON-N !
-      src UNIT-FAM-CON-P ! len UNIT-FAM-CON-LIMIT !
-      id UNIT-CON-CONTRACT-CONTENT
-      UNIT-FAM-CON-N @ len <> IF
-         s" tfam: FILE constructor contract has trailing bytes" REG-AOT-REFUSE
-      THEN EXIT
-   THEN
-   src UNIT-CON-CON-IN ! src len + UNIT-CON-CON-END !
-   UNIT-CON-CON-STR {: name:ptr nameu:n :}
-   UNIT-CON-CON-STR {: pkg:ptr pkgu:n :}
-   UNIT-CON-CON-CELL CT-LINEAR <> IF
-      s" tfam: FILE constructor class changed" REG-AOT-REFUSE THEN
-   UNIT-CON-CON-CELL 64 <> IF
-      s" tfam: FILE constructor width changed" REG-AOT-REFUSE THEN
-   UNIT-CON-CON-CELL CS-NONE <> IF
-      s" tfam: FILE constructor signedness changed" REG-AOT-REFUSE THEN
-   UNIT-CON-CON-IN @ UNIT-CON-CON-END @ <> IF
-      s" tfam: FILE constructor contract has trailing bytes" REG-AOT-REFUSE THEN
-   key keyu name nameu pkg pkgu
-      CHECKER-REG:UNIT-CON-PROJECT-CONTRACT-XT 0= IF
-      s" tfam: FILE constructor name or package changed" REG-AOT-REFUSE THEN ;
-
-\ The copied plans outlive parser and contract staging, including a capture
-\ while projection is active. Clear only the staging at its owner boundaries.
-: UNIT-FAM-SCRATCH-CLEAR ( -- )
-   REG-AOT-N 0 ?do NULL-PTR i UNIT-FAM-RAW! loop
-   NULL-PTR UNIT-FAM-IN ! NULL-PTR UNIT-FAM-LIMIT !
-   0 UNIT-FAM-ACC !
-   NULL-PTR UNIT-FAM-MAP-CUR ! NULL-PTR UNIT-FAM-KEY-AT !
-   NULL-PTR UNIT-FAM-CON-P ! 0 UNIT-FAM-CON-N !
-   0 UNIT-FAM-CON-LIMIT ! 0 UNIT-FAM-CON-MODE !
-   0 UNIT-FAM-CON-CELL REG-AOT-U64!
-   NULL-PTR UNIT-CON-CON-IN ! NULL-PTR UNIT-CON-CON-END !
-   UNIT-FAM-COVER-RELEASE ;
-
-: UNIT-FAM-SCRATCH-INSTALL ( -- )
-   [: UNIT-FAM-SCRATCH-CLEAR ;] is UNIT-FAM-SCRATCH-RESET ;
-UNIT-FAM-SCRATCH-INSTALL
-
-: UNIT-FAM-CONTRACT-INSTALL ( -- )
-   [: UNIT-FAM-CONTRACT-SIZE ;] is UNIT-FAM-CONTRACT-SIZE-XT
-   [: UNIT-FAM-CONTRACT-WRITE ;] is UNIT-FAM-CONTRACT-WRITE-XT
-   [: UNIT-FAM-CONTRACT-CHECK ;] is UNIT-FAM-CONTRACT-CHECK-XT
-   [: UNIT-CON-CONTRACT-SIZE ;] is UNIT-CON-CONTRACT-SIZE-XT
-   [: UNIT-CON-CONTRACT-WRITE ;] is UNIT-CON-CONTRACT-WRITE-XT
-   [: UNIT-CON-CONTRACT-CHECK ;] is UNIT-CON-CONTRACT-CHECK-XT
-   [: UNIT-FAM-PROJECT-VIEW ;] is UNIT-FAM-PROJECT-VIEW-XT ;
-UNIT-FAM-CONTRACT-INSTALL
-
-: UNIT-FAM-RESET-INSTALL ( -- ) [: UNIT-FAM-END ;] is UNIT-FAM-RESET-XT ;
-UNIT-FAM-RESET-INSTALL
-
-: UNIT-FAMILY-NAME-IN ( ptr u8 n ptr u8 n -- bool )
-   {: name:ptr nameu:n src:ptr u:n :}
-   u 0= IF RES-FALSE EXIT THEN
-   src 0 REG-AOT-ROW@ drop + 0 ?do
-      src u 0 i REG-AOT-ITEM {: row:ptr :}
-      src u 5 row TF.NAME-OFF @ row TF.NAME-U @ REG-AOT-VIEW
-      row TF.NAME-U @ name nameu CORE-STR= IF RES-TRUE unloop EXIT THEN
-   loop RES-FALSE ;
-
-: UNIT-FAMILY-NAME? ( ptr u8 n ptr u8 n -- bool )
-   {: name:ptr nameu:n src:ptr u:n :}
-   UNIT-FAM-PROJECT-ON @ IF
-      UNIT-FAM-CUR @ {: plan:ptr :}
-      name nameu plan UFP.BLOB UFP-PTR@ plan UFP.CAP UFP@
-      UNIT-FAMILY-NAME-IN EXIT
-   THEN
-   name nameu src u UNIT-FAMILY-NAME-IN ;
+private
 
 \ The checker's friend hooks: checker.f loads before this file and reaches
 \ family resolution and arities through these defers during signature parsing.
 : TFAM-HOOK-INSTALL ( -- )
-   [: TFAM-N@ ;] is CHECKER-REG:UNIT-TFAM-N@
-   [: UNIT-FAM-MARK ;] is CHECKER-REG:UNIT-TFAM-MARK
-   [: UNIT-FAM-SIZE ;] is CHECKER-REG:UNIT-TFAM-SIZE
-   [: UNIT-FAM-SAVE ;] is CHECKER-REG:UNIT-TFAM-SAVE
-   [: UNIT-FAM-REF+ ;] is CHECKER-REG:UNIT-TFAM-REF
-   [: UNIT-FAM-MAP-ID ;] is CHECKER-REG:UNIT-TFAM-MAP
-   [: UNIT-FAM-BEGIN ;] is CHECKER-REG:UNIT-TFAM-BEGIN
-   [: UNIT-FAM-PREPARE ;] is CHECKER-REG:UNIT-TFAM-PREPARE
-   [: UNIT-FAM-VIEW ;] is CHECKER-REG:UNIT-TFAM-VIEW
-   [: UNIT-FAM-TAKE ;] is CHECKER-REG:UNIT-TFAM-TAKE
-   [: UNIT-FAM-CTORS ;] is CHECKER-REG:UNIT-TFAM-CTORS
-   [: UNIT-FAM-END ;] is CHECKER-REG:UNIT-TFAM-END
-   [: UNIT-FAMILY-NAME? ;] is CK-UNIT-FAMILY?
    [: TFAM-SIG-RESOLVE ;] is TFAM-RESOLVE-XT
    [: TFAM-CLAIMED? ;] is TFAM-CLAIMED?-XT
    \ The constructor checks answer from the rows read: a linked family is read first.
@@ -7373,47 +4980,18 @@ UNIT-FAM-RESET-INSTALL
    [: TFAM-PKG$ ;]    is TFAM-PKG-XT       \ a signature graph's family package
    [: TFAM-WIDTH@ ;]  is TFAM-WIDTH-XT     \ checker reads DECLARED logical widths (params-as-cells) for the boot fallback
    [: TFAM-INST-WIDTH@ ;] is TFAM-INST-WIDTH-XT   \ arg-aware instantiated width for T-WIDTH and the WF fact surface
-   [: INIT-RECORD? ;] is TFAM-INIT-RECORD-XT
-   [: INIT-FIELD-NAME? ;] is TFAM-INIT-FIELD-XT
    [: TFAM-WIDTH-SLOT? ;] is TFAM-WIDTH-SLOT-XT   \ which argument slots that width reads: an open slot it does not read is still placeable
    [: TFAM-PK@ PK-SCOPE = ;] is TFAM-SCOPE-SLOT-XT
    [: TFAM-PK@ PK-REGION = ;] is TFAM-REGION-SLOT-XT
    [: 2dup TFAM-PK@ PK-TYPE = >r TFAM-WIDTH-SLOT? 0= r> and ;] is TFAM-TYPE-SLOT-XT
    [: TFAM-STORE-SLOT? ;] is TFAM-STORE-SLOT-XT   \ which argument slots reach storage: a pair of one demands both sides
-   [: TFAM-CONSTRUCT-FAM ;]  is CONSTRUCT-FAM-XT   \ construct family resolution (active package only)
-   [: TFAM-CONSTRUCT-STEP ;] is CONSTRUCT-STEP-XT  \ construct variant resolve + inline constructor effect
-   [: TFAM-CTOR-STEP? ;]     is CTOR-STEP-XT        \ a generated-constructor call on a multi-cell layout arg takes the arg-aware step
-   [: SUMV-FROM-CTOR-SYM nip ;] is CTOR-ROW?-XT   \ a generated constructor row moves exactly its payload (checker.f LIN-EFF-PASS)
-   [: TFAM-MATCH-FAM ;]     is MATCH-FAM-XT     \ MATCH family resolution (signature scope)
-   [: TFAM-MATCH-VARIANT ;] is MATCH-VAR-XT     \ MATCH branch variant resolve
-   [: SUMV-TAG@ ;]          is MATCH-VTAG-XT    \ variant id -> declaration-order tag (bitset index)
-   [: TFL-VPADS ;]          is VARIANT-PADS-XT  \ family id + variant id -> declared pads (the tape's construct and arm events)
-   [: TFAM-VAR-COUNT@ ;]    is MATCH-VCOUNT-XT  \ exhaustiveness domain size
-   [: TFAM-MATCH-PAY ;]     is MATCH-PAY-XT     \ branch payload row from the scrutinee's args
-   [: TFAM-FIELD-PROJ ;]    is FIELD-PROJ-XT ;  \ instantiated field type for the FAMILY:FIELD projection window
+   [: SUMV-FROM-CTOR-SYM nip ;] is CTOR-ROW?-XT ;   \ a generated constructor row moves exactly its payload (checker.f LIN-EFF-PASS)
 TFAM-HOOK-INSTALL
 
 ;package
 
 ;using
 ;using
-
-\ The native lowerer and the checker must resolve names and interpret the
-\ resulting family/variant ids in this same registry, including after handover.
-package CHECKER-REG
-' TFL-MATCH-FAM?       DECLARATIONS FAMILY-MATCH-OFF + xt!
-' TFL-CON-FAM?         DECLARATIONS FAMILY-CON-OFF + xt!
-' TFAM:TFL-VAR?        DECLARATIONS FAMILY-VARIANT-OFF + xt!
-' TFAM:TFAM-SLOTS@     DECLARATIONS FAMILY-SLOTS-OFF + xt!
-' TFAM:TFAM-VAR-COUNT@ DECLARATIONS FAMILY-VARIANTS-OFF + xt!
-' TFAM:TFAM-NICHE?    DECLARATIONS CHECKER-OWNER-ABI:FAMILY-NICHE-OFF + xt!
-' TFAM-NAME$           DECLARATIONS FAMILY-NAME-OFF + xt!
-' TFAM:SUMV-TAG@       DECLARATIONS VARIANT-TAG-OFF + xt!
-' TFAM:TFL-VPADS       DECLARATIONS VARIANT-PADS-OFF + xt!
-' TFAM:SUMV-PAYCELLS@  DECLARATIONS VARIANT-PAY-CELLS-OFF + xt!
-' TFAM:SUMV-PAY-N      DECLARATIONS VARIANT-PAY-TERMS-OFF + xt!
-' TFL-CVAR?           DECLARATIONS CHECKER-OWNER-ABI:FAMILY-CVAR-OFF + xt!
-;package
 
 \ A build's registries start with the families above, which every program
 \ starts with; a product declares the rest for itself (CHECK:OPEN), so its

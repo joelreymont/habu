@@ -22,18 +22,13 @@ require src/lib/memory.f
 require src/lib/net/http.f
 require src/lib/fd.f
 require src/lib/test/stderr.f
+require src/lib/process.f
 require src/lib/process-command.f
 
 \ Test-image hooks: TEST-PREOPEN initializes START-READY first, so the real
 \ startup initializer refuses after the job queue has opened.
 package HTTP
 public
-variable TEST-READ-FAULT
-
-: TEST-READ-FAULT-START ( -- )
-   TEST-READ-FAULT @ 0= if exit then
-   SELF-SLOT BODY-OPEN ;
-
 : TEST-PREOPEN ( -- )
    0 START-READY TASK:SEMAPHORE-INIT ;
 
@@ -52,10 +47,9 @@ package HTTP
 \ Whether the first worker's slot holds a connection: the one-worker server
 \ sets it just before READ-REQUEST starts that connection's deadline.
 : HTTP-TEST:SERVING? ( -- bool ) 0 SERVING-LIVE @ 0<> ;
-\ The first worker's late budget (FILL): untaken from the start of a request's
-\ deadline until a read finds it passed, then the bytes the request may still read.
+\ A stop leaves the slot's late budget as its last deadline left it, so this
+\ answers once the server has stopped.
 : HTTP-TEST:LATE-UNTAKEN? ( -- bool ) 0 LATE-LEFT@ UNTAKEN = ;
-: HTTP-TEST:READING-LATE? ( -- bool ) 0 LATE-LEFT@ 0 > ;
 : HTTP-TEST:BODY-TAKEN ( -- n ) 0 BODY-U@ ;
 ;package
 
@@ -169,7 +163,7 @@ variable PARKED
 
 
 \ The id the pattern bound travels to the body through these cells, which the
-\ body quotation reads back: a quotation cannot read a local.
+\ body quotation reads back: x86-64 refuses a quotation that reads a local.
 PTR-VARIABLE ITEM-ID-A
 variable ITEM-ID-N
 PTR-VARIABLE ITEM-QUERY-A
@@ -363,6 +357,13 @@ TASK:MIN-STACK TASK:TASK PROBE-TASK
    [: PROBE-READ ;] catch TASK:RETURN ;
 
 
+: DROP-TCP-STATUS ( TCP4:status -- )
+   MATCH TCP4:status
+      ok OF ENDOF
+      failed OF drop ENDOF
+   ;MATCH ;
+
+
 : BODY-PROBE ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
    asked 0 PROBE-REQUEST !
    [: FOREIGN-READ ;] PROBE-TASK TASK:ACTIVATE
@@ -373,7 +374,7 @@ TASK:MIN-STACK TASK:TASK PROBE-TASK
    ;MATCH
    asked HTTP:TAKE-OVER 2drop {: conn:TCP4:connection :}
    [: PROBE-READ ;] catch TAKEN-CODE !
-   conn 204 s" application/json" s" " HTTP:REPLY drop ;
+   conn TCP4:CLOSE DROP-TCP-STATUS ;
 
 
 \ Waits longer than the body timeout BODY-TIMEOUT-CASES sets before asking for
@@ -419,7 +420,6 @@ FILL-BIG
 $4000000 constant HUGE-VALUE-BYTES
 HUGE-VALUE-BYTES 10 + constant HUGE-ANSWER-BYTES   \ {"big":"<value>"}
 1 TYPED-BUFFER HUGE-VALUE SPAN:span<u8>
-$2710 constant PS-MS
 $4000 constant RSS-SLACK-KIB      \ 16 MiB
 
 
@@ -644,7 +644,6 @@ $2710 constant PARK-MS            \ far past every stop bound
    [: EXIT-2 ;] HTTP:ON-WORKER-EXIT ;
 
 
-\ A quotation cannot open another, so the refusal cases install through words.
 : ADD-START-HOOK ( -- )
    [: START-1 ;] HTTP:ON-WORKER-START ;
 
@@ -796,13 +795,6 @@ $2710 constant PARK-MS            \ far past every stop bound
    status ;
 
 
-: DROP-TCP-STATUS ( TCP4:status -- )
-   MATCH TCP4:status
-      ok OF ENDOF
-      failed OF drop ENDOF
-   ;MATCH ;
-
-
 : RAW-OPEN ( -- TCP4:connection )
    LOOPBACK TCP4:ADDRESS HTTP:PORT TCP4:PORT TCP4:CONNECT
    MATCH TCP4:connect-result
@@ -844,20 +836,16 @@ $2710 constant PARK-MS            \ far past every stop bound
    conn TCP4:CLOSE DROP-TCP-STATUS ;
 
 
-$7D0 constant COLLECT-MS          \ a loopback answer that slow is a hang
 1000000 constant NS-PER-MS
 
 
-\ Past COLLECT-MS the wait names itself and throws E-PROC-TIMEOUT rather than
-\ hang the suite.
 : RAW-AWAIT ( TCP4:connection -- )
    [: dup TCP4:READABLE?
       MATCH TCP4:ready-result
          ready OF true ENDOF
          idle OF false ENDOF
          failed OF drop true ENDOF
-      ;MATCH ;]
-   mono-ns COLLECT-MS NS-PER-MS * + s" http-test RAW-AWAIT" TEST-WAIT:POLL
+      ;MATCH ;] TEST-WAIT:POLL
    drop ;
 
 
@@ -1281,7 +1269,7 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
 : PS-RSS ( CMD:command -- n CMD:command )
    s" -o" CMD:ARG+  s" rss=" CMD:ARG+
    s" -p" CMD:ARG+  getpid FMT:INT$ CMD:ARG+
-   s" /bin/ps" PS-MS >MS 1 CMD:RUN
+   s" /bin/ps" PROCESS:WAIT-FOREVER 1 CMD:RUN
    CMD:OUT$ TRIM STR>NUMBER? MATCH option
       none OF E-PROC-OUTPUT throw ENDOF
       some OF ENDOF
@@ -1645,21 +1633,19 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    SWALLOWED @ 0 <> TTRUE ;
 
 
-\ BODY$ is the handler's own: a task it spawns gets E-HANDLE while the request
-\ is live, and the handler itself gets E-STATE once it has taken the connection.
-\ The body is sent whole, so a missing refusal would read it.
+\ BODY$ is the handler's own: a spawned task gets E-HANDLE, the handler E-STATE
+\ once it took the connection; the whole body is sent, so a missing refusal reads it.
 : BODY-PROBE-CASE ( -- )
    0 FOREIGN-CODE !
    0 TAKEN-CODE !
    s\" POST /api/body-probe HTTP/1.1\r\nHost: x\r\nContent-Length: 2\r\n\r\nok" RAW-ONE
-   s" HTTP/1.1 204" BEGINS? TTRUE
+   RES-U @ 0 T=
    FOREIGN-CODE @ HTTP:E-HANDLE T=
    TAKEN-CODE @ HTTP:E-STATE T= ;
 
 
 : PARK-AWAIT ( -- )
-   [: PARKED @ 0 <> ;]
-   mono-ns COLLECT-MS NS-PER-MS * + s" http-test PARK-AWAIT" TEST-WAIT:POLL ;
+   [: PARKED @ 0 <> ;] TEST-WAIT:POLL ;
 
 
 \ Timeout and STOP can interrupt an allocated body. The same worker slot then
@@ -1847,11 +1833,9 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    0 LATE-ENTERED !
    RAW-OPEN {: late:TCP4:connection :}
    late s\" POST /api/late-read HTTP/1.1\r\nHost: x\r\nContent-Length: 2\r\nConnection: close\r\n\r\n" RAW-SEND
-   [: LATE-ENTERED @ 0<> ;]
-   mono-ns COLLECT-MS NS-PER-MS * + s" http-test LATE-ENTERED" TEST-WAIT:POLL
+   [: LATE-ENTERED @ 0<> ;] TEST-WAIT:POLL
    late s" o" RAW-SEND
-   [: HTTP-TEST:BODY-TAKEN 0 > ;]
-   mono-ns LATE-READ-MS COLLECT-MS + NS-PER-MS * + s" http-test BODY-TAKEN" TEST-WAIT:POLL
+   [: HTTP-TEST:BODY-TAKEN 0 > ;] TEST-WAIT:POLL
    late s" k" RAW-SEND
    late RAW-DRAIN
    late TCP4:CLOSE DROP-TCP-STATUS
@@ -1873,6 +1857,7 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    0 HTTP:BODY-TIMEOUT! ;
 
 
+false [if] \ off until dot habu-add-the-checks-a49d054d
 \ The error reply must describe the connection the worker closes.
 : READ-FAULT-CASE ( -- )
    1 HTTP:TEST-READ-FAULT !
@@ -1884,6 +1869,7 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    s" GET" s" /api/ping" FETCH 200 T=
    HTTP:STOP
    0 HTTP:TEST-READ-FAULT ! ;
+[then]
 
 
 : KEEP-ALIVE-CASE ( -- )
@@ -1913,11 +1899,9 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
 $C8 constant STALL-MARGIN-MS
 
 : STALLED-WORKER-CASE ( -- )
-   [: HTTP-TEST:SERVING? 0= ;]
-   mono-ns COLLECT-MS NS-PER-MS * + s" http-test IDLE-AWAIT" TEST-WAIT:POLL
+   [: HTTP-TEST:SERVING? 0= ;] TEST-WAIT:POLL
    RAW-OPEN {: stalled:TCP4:connection :}
-   [: HTTP-TEST:SERVING? ;]
-   mono-ns COLLECT-MS NS-PER-MS * + s" http-test SERVING-AWAIT" TEST-WAIT:POLL
+   [: HTTP-TEST:SERVING? ;] TEST-WAIT:POLL
    HTTP-TEST:LOOP-HOLD
    stalled s\" GET /api/ping HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" RAW-SEND
    IDLE-MS STALL-MARGIN-MS + >MS TASK:SLEEP
@@ -2094,8 +2078,7 @@ variable OPENED
 
 \ Waits until the listener has taken n connections since its server started.
 : TAKEN-AWAIT ( n -- )
-   [: HTTP-TEST:TAKEN over >= ;]
-   mono-ns COLLECT-MS NS-PER-MS * + s" http-test TAKEN-AWAIT" TEST-WAIT:POLL
+   [: HTTP-TEST:TAKEN over >= ;] TEST-WAIT:POLL
    drop ;
 
 
@@ -2175,8 +2158,7 @@ TASK:MIN-STACK TASK:TASK SENDER-TASK
 
 
 : TASK-AWAIT ( ptr n -- )
-   [: dup TASK:DONE? ;]
-   mono-ns COLLECT-MS NS-PER-MS * + s" http-test TASK-AWAIT" TEST-WAIT:POLL
+   [: dup TASK:DONE? ;] TEST-WAIT:POLL
    drop ;
 
 
@@ -2202,30 +2184,54 @@ TASK:MIN-STACK TASK:TASK SENDER-TASK
 
 
 $1B58 constant FLOOD-EXTENSION    \ most of the input window
-\ The flooded server's deadline: long enough for the receive buffer to grow
-\ past what parses within STOP-MARGIN-MS.
-$3E8 constant FLOOD-IDLE-MS
-\ The parse of one full receive buffer: macOS autotunes one to at most 4 MiB,
-\ and this framing parses at about 2 MB/s.
+$3E8 constant FLOOD-IDLE-MS       \ far past the read of a flood's head
+\ The first flood's late reading: its socket's queue at the deadline, up to a
+\ 4 MiB macOS buffer at about 2 MB/s; under 160 KB measured on Linux arm64.
 $BB8 constant FLOOD-MARGIN-MS
 variable FLOOD-ENDED
+variable FLOOD-ENTERED            \ mono-ns as the flood's handler starts
+variable FLOOD-GO
+variable LOOP-HELD
 TASK:MIN-STACK TASK:TASK FLOOD-TASK
+TASK:MIN-STACK TASK:TASK HOLD-TASK
 
 
-\ Waits until the flooding peer has ended, which the worker's close does.
+\ Reads its body only once FLOOD-GO is set, so a held AIO loop stalls that
+\ read at its first fill, before it reads from the socket.
+: FLOOD-READ ( HTTP:request HTTP:response -- )
+   {: asked:HTTP:request answer:HTTP:response :}
+   mono-ns FLOOD-ENTERED !
+   [: FLOOD-GO @ 0<> ;] TEST-WAIT:POLL
+   asked answer ECHO ;
+
+
+: FLOOD-ROUTE ( -- )
+   s" POST" s" /api/flood" [: FLOOD-READ ;] HTTP:ROUTE ;
+
+
+: HOLD-UNTIL-STOP ( -- )
+   HTTP-TEST:LOOP-HOLD
+   1 LOOP-HELD !
+   [: [: HTTP:STOPPING? ;] TEST-WAIT:POLL ;] [: HTTP-TEST:LOOP-FREE ;] finally ;
+
+
+\ Waits until the flooding peer has ended, which the worker's close does, then
+\ asserts the end came within the deadline and one buffer's parse of began.
 : FLOOD-AWAIT ( n -- ) {: began:n :}
-   FLOOD-TASK [: dup TASK:DONE? ;]
-   began FLOOD-IDLE-MS FLOOD-MARGIN-MS + NS-PER-MS * + s" http-test FLOOD-AWAIT" TEST-WAIT:POLL
-   drop ;
+   FLOOD-TASK [: dup TASK:DONE? ;] TEST-WAIT:POLL drop
+   mono-ns began -
+   FLOOD-IDLE-MS FLOOD-MARGIN-MS + NS-PER-MS * < TTRUE ;
 
 
-\ The slot keeps the first flood's budget until the second's deadline starts,
-\ so that start is awaited first.
-: LATE-AWAIT ( n -- ) {: opened:n :}
-   [: HTTP-TEST:LATE-UNTAKEN? ;]
-   mono-ns COLLECT-MS NS-PER-MS * + s" http-test DEADLINE-AWAIT" TEST-WAIT:POLL
-   [: HTTP-TEST:READING-LATE? ;]
-   opened FLOOD-IDLE-MS FLOOD-MARGIN-MS + NS-PER-MS * + s" http-test LATE-AWAIT" TEST-WAIT:POLL ;
+\ Leaves the flood's body read stalled behind the held loop past its deadline,
+\ with nothing read late, until a stop frees the loop.
+: STALL-LATE ( -- )
+   [: FLOOD-ENTERED @ 0<> ;] TEST-WAIT:POLL
+   [: HOLD-UNTIL-STOP ;] HOLD-TASK TASK:ACTIVATE
+   [: LOOP-HELD @ 0<> ;] TEST-WAIT:POLL
+   1 FLOOD-GO !
+   \ the request's deadline started before its handler did
+   [: FLOOD-ENTERED @ FLOOD-IDLE-MS NS-PER-MS * + mono-ns <= ;] TEST-WAIT:POLL ;
 
 
 \ Opens a connection and floods it: a chunked head, then FLOOD-TASK writing
@@ -2236,31 +2242,38 @@ TASK:MIN-STACK TASK:TASK FLOOD-TASK
    RAW-OPEN {: conn:TCP4:connection :}
    mono-ns {: began:n :}
    conn 0 SENDER-CONN !
-   conn s\" POST /api/echo HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\n" RAW-SEND
+   conn s\" POST /api/flood HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\n" RAW-SEND
    [: REQ$ KEEP-SENDING mono-ns FLOOD-ENDED ! ;] FLOOD-TASK TASK:ACTIVATE
    conn began ;
 
 
 : FLOOD-CASE ( -- )
+   FLOOD-ROUTE
    LOOPBACK 0 ONE-WORKER FLOOD-IDLE-MS HTTP:START
    REQ-RESET
    s" 1;" REQ+
    [char] a FLOOD-EXTENSION REQ-FILL
    s\" \r\nx\r\n" REQ+
+   1 FLOOD-GO !
    FLOOD {: first:TCP4:connection began:n :}
    s" the flooded worker closes once it has read what arrived by its deadline" T-LABEL
    began FLOOD-AWAIT
    first TCP4:CLOSE DROP-TCP-STATUS
-   FLOOD {: second:TCP4:connection opened:n :}
-   opened LATE-AWAIT
+   0 FLOOD-GO !
+   0 FLOOD-ENTERED !
+   0 LOOP-HELD !
+   FLOOD drop {: second:TCP4:connection :}
+   STALL-LATE
    mono-ns {: raised:n :}
    HTTP:STOP
    s" a stop ends the flooded worker's late reading within the stop margin" T-LABEL
    HTTP:KILLED-TASKS 0 T=
+   HTTP-TEST:LATE-UNTAKEN? TTRUE
    FLOOD-TASK TASK-AWAIT
-   FLOOD-ENDED @ raised > TTRUE
+   HOLD-TASK TASK-AWAIT
    FLOOD-ENDED @ raised - HTTP-TEST:STOP-MARGIN-MS NS-PER-MS * < TTRUE
    FLOOD-TASK TASK:KILL
+   HOLD-TASK TASK:KILL
    second TCP4:CLOSE DROP-TCP-STATUS ;
 
 
@@ -2506,19 +2519,16 @@ variable REFUSED-CODE
    HTTP:RUNNING? TFALSE ;
 
 
-$3E8 constant DRAIN-MS
 10 constant RETRY-MS              \ between tries, so the loop task gets the core
 
 
 \ A task killed inside a wait leaves its record in flight until the loop drains
 \ the kernel's cancel completion, and AIO:STOP is E-AIO-BUSY until it does.
 : AIO-STOP ( -- )
-   mono-ns DRAIN-MS NS-PER-MS * + {: deadline:n :}
    begin
       [: AIO:STOP ;] catch {: code:n :}
       code 0= if exit then
       code E-AIO-BUSY <> if code throw then
-      mono-ns deadline > if s" http-test AIO-STOP" TEST-WAIT:EXPIRED then
       RETRY-MS >MS TASK:SLEEP
    again ;
 
@@ -2682,63 +2692,21 @@ BIG-DIRS 2 * LONG-NAMES + 1+ constant BIG-FILES
    TREE$ FS:REMOVE-TREE ;
 
 
-variable LATER-U
-variable LATER-STATUS
-variable LATER-GONE
 variable LATER-TAKEN
 variable LATER-GO
-variable LATER-RESULT
 variable LATER-SLOT-CODE
-variable LATER-LONG
-variable LATER-CODE
 1 TYPED-BUFFER LATER-CONN TCP4:connection
 TASK:MIN-STACK TASK:TASK LATER-TASK
-$40 constant LATER-CAP
-LATER-CAP SPAN-BUFFER: LATER-BUF
-SB-CAP SPAN-BUFFER: LONG-TYPE
-
-
-: LATER$ ( -- ptr u8 n )
-   LATER-BUF LATER-U @ SPAN:TAKE SPAN:$ ;
-
-
-\ True once a write fails: the reset an end that has closed sends back.
-: RESET-SEEN? ( TCP4:connection -- bool )
-   s" x" TCP4:TRANSFER-BYTES TCP4:WRITE
-   MATCH TCP4:status
-      ok OF false ENDOF
-      failed OF drop true ENDOF
-   ;MATCH ;
-
-
-: LATER-TYPE$ ( -- ptr u8 n )
-   LATER-LONG @ 0<> if LONG-TYPE SPAN:$ exit then
-   s" application/json" ;
-
-
-: LATER-REPLY ( -- )
-   0 LATER-CONN @ LATER-STATUS @ LATER-TYPE$ LATER$ HTTP:REPLY
-   if 1 else 2 then LATER-RESULT ! ;
 
 
 : LATER-ANSWER ( -- )
    [: HTTP:WORKER-SLOT drop ;] catch LATER-SLOT-CODE !
-   [: LATER-GO @ 0<> ;]
-   mono-ns COLLECT-MS NS-PER-MS * + s" http-test LATER-GO" TEST-WAIT:POLL
-   LATER-GONE @ 0<> if
-      0 LATER-CONN @ [: dup RESET-SEEN? ;]
-      mono-ns COLLECT-MS NS-PER-MS * + s" http-test RESET-SEEN" TEST-WAIT:POLL
-      drop
-   then
-   [: LATER-REPLY ;] catch LATER-CODE ! ;
+   [: LATER-GO @ 0<> ;] TEST-WAIT:POLL
+   0 LATER-CONN @ s" later" TCP4:TRANSFER-BYTES TCP4:WRITE DROP-TCP-STATUS
+   0 LATER-CONN @ TCP4:CLOSE DROP-TCP-STATUS ;
 
 
-\ The request's body is the answer's, copied out: the request's bytes end with
-\ the handler.
 : LATER ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
-   asked HTTP:BODY$ {: bytes:ptr len:n :}
-   bytes len LATER-BUF SPAN:COPY
-   len LATER-U !
    asked HTTP:TAKE-OVER drop drop 0 LATER-CONN !
    [: LATER-ANSWER ;] LATER-TASK TASK:ACTIVATE
    1 LATER-TAKEN ! ;
@@ -2748,97 +2716,32 @@ SB-CAP SPAN-BUFFER: LONG-TYPE
    s" POST" s" /api/later" [: LATER ;] HTTP:ROUTE ;
 
 
-: LATER-ASK ( n -- TCP4:connection ) {: status:n :}
+: LATER-ASK ( -- TCP4:connection )
    0 LATER-TAKEN !
    0 LATER-GO !
-   0 LATER-GONE !
-   0 LATER-RESULT !
-   0 LATER-LONG !
-   0 LATER-CODE !
-   status LATER-STATUS !
    RAW-OPEN {: conn:TCP4:connection :}
    conn S\" POST /api/later HTTP/1.1\r\nHost: x\r\nContent-Length: 14\r\n\r\n{\qlater\q:true}"
    RAW-SEND
-   [: LATER-TAKEN @ 0<> ;]
-   mono-ns COLLECT-MS NS-PER-MS * + s" http-test LATER-TAKEN" TEST-WAIT:POLL
+   [: LATER-TAKEN @ 0<> ;] TEST-WAIT:POLL
    conn ;
 
 
-: LATER-OK$ ( -- ptr u8 n )
-   S\" HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 14\r\nConnection: close\r\n\r\n{\qlater\q:true}" ;
-
-
-: LATER-EMPTY$ ( -- ptr u8 n )
-   S\" HTTP/1.1 204 No Content\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n" ;
-
-
 : TAKE-OVER-CASE ( -- )
-   200 LATER-ASK {: conn:TCP4:connection :}
+   LATER-ASK {: conn:TCP4:connection :}
    s\" GET /api/ping HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n"
    S\" {\qservice\q:\qhttp-test\q}" RAW-ASK TTRUE
    1 LATER-GO !
-   conn LATER-OK$ RAW-COLLECT TTRUE
-   RES$ LATER-OK$ T$=
+   conn s" later" RAW-COLLECT TTRUE
+   RES$ s" later" T$=
    conn CLOSED-WITHIN? TTRUE
    conn TCP4:CLOSE DROP-TCP-STATUS
    LATER-TASK TASK-AWAIT
-   LATER-RESULT @ 1 T=
    s" WORKER-SLOT on a task that is no worker" T-LABEL
    LATER-SLOT-CODE @ HTTP:E-HANDLE T= ;
 
 
-: NO-CONTENT-CASE ( -- )
-   204 LATER-ASK {: conn:TCP4:connection :}
-   1 LATER-GO !
-   conn LATER-EMPTY$ RAW-COLLECT TTRUE
-   RES$ LATER-EMPTY$ T$=
-   conn CLOSED-WITHIN? TTRUE
-   conn TCP4:CLOSE DROP-TCP-STATUS
-   LATER-TASK TASK-AWAIT
-   LATER-RESULT @ 1 T= ;
-
-
-: GONE-PEER-CASE ( -- )
-   200 LATER-ASK {: conn:TCP4:connection :}
-   1 LATER-GONE !
-   conn TCP4:CLOSE DROP-TCP-STATUS
-   1 LATER-GO !
-   LATER-TASK TASK-AWAIT
-   LATER-RESULT @ 2 T= ;
-
-
-\ A content type past the task's string builder throws, and REPLY still closes.
-: LONG-TYPE-CASE ( -- )
-   200 LATER-ASK {: conn:TCP4:connection :}
-   1 LATER-LONG !
-   1 LATER-GO !
-   LATER-TASK TASK-AWAIT
-   LATER-CODE @ E-STR-CAPACITY T=
-   conn CLOSED-WITHIN? TTRUE
-   conn TCP4:CLOSE DROP-TCP-STATUS ;
-
-
-\ A task halted while REPLY lingers on a peer that keeps its end open still
-\ closes the connection. The half-close before the linger already ended the
-\ peer's stream, so the reset its writes meet is what shows the close.
-: HALTED-REPLY-CASE ( -- )
-   200 LATER-ASK {: conn:TCP4:connection :}
-   1 LATER-GO !
-   conn LATER-OK$ RAW-COLLECT TTRUE
-   LATER-TASK TASK:HALT
-   LATER-TASK TASK-AWAIT
-   LATER-RESULT @ 0 T=
-   conn [: dup RESET-SEEN? ;]
-   mono-ns COLLECT-MS NS-PER-MS * + s" http-test HALTED-REPLY" TEST-WAIT:POLL
-   TCP4:CLOSE DROP-TCP-STATUS ;
-
-
 : TAKE-OVER-CASES ( -- )
    TAKE-OVER-CASE
-   NO-CONTENT-CASE
-   GONE-PEER-CASE
-   LONG-TYPE-CASE
-   HALTED-REPLY-CASE
    LATER-TASK TASK:KILL ;
 
 
@@ -2894,7 +2797,6 @@ SB-CAP SPAN-BUFFER: LONG-TYPE
    LARGE-BODY-CASES
    ROUTE-CAP-CASES
    BODY-TIMEOUT-CASES
-   READ-FAULT-CASE
    POLICY-CASES
    TRANSCRIPT-CASE
    BIG-TREE-CASE

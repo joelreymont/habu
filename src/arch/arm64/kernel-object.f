@@ -15,9 +15,12 @@
 \   scope sites n, then the label of scope-kind?'s chain for each kind from 2
 \   symbols     n, then each one's name and value
 \   presets     n, then each header cell's offset and the value the link writes
+\   Mach-O imports their length in bytes, then the C names the GOT binds in row
+\               order, each ending in a NUL, padded as a name's
+\   ELF imports    the same for an ELF image's GOT
 \   checker rows their length in bytes, then n, then each row's kind,
-\               trusted-only, fixed-ABI, stow kind, name, package name, atom
-\               count and atoms
+\               trusted-only, fixed-ABI, name, package name, atom count and
+\               atoms
 
 require src/habu/kernel-format.f
 require src/lib/le.f
@@ -31,6 +34,8 @@ require src/habu/prims.f
 require src/habu/primitive-registry.f
 require src/arch/arm64/icode.f
 require src/arch/arm64/boot.f
+require src/os/macos/macho.f
+require src/os/linux/elf.f
 using CRASH
 using ENGINE-EMIT
 
@@ -208,7 +213,9 @@ variable K0
    0 OUT-U !
    s" HBKERNEL" SPAN+  4 0 ?do 0 U64+ loop
    CODE+ LABELS+ REFS+ DATA-SPANS+ FIXUPS+ PRIMS+
-   engine SCOPES+  engine SYMBOLS+  engine PRESETS+  CHECK-ROWS+
+   engine SCOPES+  engine SYMBOLS+  engine PRESETS+
+   MACHO:IMPORTS ['] MACHO:IMPORT$ IMPORTS+  ELF:IMPORTS ['] ELF:IMPORT$ IMPORTS+
+   CHECK-ROWS+
    SUM
    0 OUT OUT-U @ sink execute ;
 

@@ -143,9 +143,7 @@ definition still open at the end of a line continues on the next.
 ## Platforms and code generation
 
 **T0 compiles on ARM64 and x86-64.** A definition compiles through the current
-platform's tier 0 (T0) codegen. Tier 1 stays for experiments, chosen with
-`set-tier`, and for the paths it still owns: the stripped-image driver and
-saved app images. Hand-written code per platform is only the
+platform's tier 0 (T0) codegen. Hand-written code per platform is only the
 kernel's primitives.
 
 ### Cross-compilation
@@ -234,8 +232,10 @@ signature, and writes a file it generates only when the text differs.
 every build: one that starts or ends inside an open package or `using`, one
 whose request is not a plain one at its top level (made inside a definition,
 with cells on the stack or from evaluated text), the part after such a
-request, one that catches a load it asks for before the load runs, and every
-part of a file with no stamp (src/habu/linker.f UNLINKABLE). Its object only
+request, one that catches a load it asks for before the load runs, every part
+of a file with no stamp (src/habu/linker.f UNLINKABLE), and one whose compile
+read what it could not record: on a task's or a callback's thread, through
+src/lib/fs-anchored.f or in a process it started. Its object only
 keeps its words' times, so the parts that depend on it link while those words
 compile to the same bytes.
 
@@ -248,15 +248,14 @@ source tree nor stops because an editor changed a file.
 
 **A stripped image carries only its entry's closure.** Without `--repl`, an
 image has no compiler, dictionary or REPL: the code `MAIN` reaches and the data
-of the files that code reaches. It compiles nothing at run time, so it runs
-under `MemoryDenyWriteExecute`.
+that code reaches. It compiles nothing at run time, so it runs under
+`MemoryDenyWriteExecute`.
 
 **The program is the build's product, not the builder's memory.** hb-build loads
 hb's startup files and then the application into a build space of their own and
 links the program from it (`tools/hb-build-core.f`), so nothing the builder
-loaded for itself reaches the image. The program keeps each file it reaches
-whole. A program that uses a library word without requiring its module fails to
-compile, naming the word.
+loaded for itself reaches the image. A program that uses a library word without
+requiring its module fails to compile, naming the word.
 
 **Nothing is relocated because of its value.** A cell reaches the image as an
 address only because a declaration, a claim or a code row names it; the linker

@@ -9,7 +9,7 @@ variable LENGTH
 
 
 : EVALUATE-SOURCE ( -- )
-   SOURCE @ LENGTH @ INCLUDE-EVALUATE ;
+   SOURCE @ LENGTH @ evaluate-closed ;
 
 public
 

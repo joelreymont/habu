@@ -10,6 +10,7 @@ require src/lib/error.f
 require src/lib/string.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
+require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/process-cwd.f
@@ -21,8 +22,6 @@ package INCLUDE-REFUSAL-E2E
 private
 
 $4000 constant IO-CAP
-\ Guards against a hung child, not budgets: the host runs loaded.
-120000 constant TIMEOUT-MS
 create ROOT PATH-CAP allot variable ROOT-U
 create PATH PATH-CAP allot
 create PROG IO-CAP allot variable PROG-U
@@ -83,7 +82,7 @@ variable RC
    name nameu s" .f" NAMED >LEN PROC-ARGV+
    PROC-ENV-INHERIT-MISSING
    ENGINE-CANDIDATE:PATH$ >LEN CWD$ >LEN
-   OUT IO-CAP >LEN ERR IO-CAP >LEN TIMEOUT-MS >MS
+   OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE RESULT!
    name nameu KEEP ;
 
@@ -165,20 +164,11 @@ variable RC
    s" plain.f" SB-AT
    ERR$ SB$ T$= ;
 
-\ The statement a bundle (tools/bundle-lib.f) makes for each file it assumes.
-: BUNDLE-ABSENT ( -- )
-   0 PROG-U !
-   S\" s\q src/lib/absent.f\q ?ENGINE-PROVIDES" PLINE
-   s" bundle-absent" LOAD-CASE
-   s" a bundle assuming a file the engine lacks exits 74 by name" T-LABEL
-   EXITS-74
-   ERR$ S\" bundle: this engine does not provide src/lib/absent.f\n" T$= ;
-
 public
 
 : RUN ( -- )
    T-RESET SETUP
-   WITH-REFUSED REQUIRE-ABSENT CANON-NONE READ-OS-WORD BUNDLE-ABSENT
+   WITH-REFUSED REQUIRE-ABSENT CANON-NONE READ-OS-WORD
    T-REPORT ;
 
 ;package

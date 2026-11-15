@@ -20,8 +20,7 @@ require tools/check-core.f
 
 package DIAG-POSITION-TEST
 
-$1000 constant CAP
-120000 constant TIMEOUT-MS
+PATH-CAP 1+ 4 * constant CAP
 70 constant REJECT-RC
 67 constant THROW-RC
 78 constant DUP-RC                    \ a duplicate definition's code, $4E, outside --verify-only
@@ -523,7 +522,7 @@ variable RC
    s" a generates: row on a word that reads no name" T-LABEL
    SB-RESET
    s" : GEN ( -- ) s" SB-APPEND 34 SB-APPEND-C
-   s"  : MADE ( -- ) ;" SB-APPEND 34 SB-APPEND-C s"  INCLUDE-EVALUATE ;" SB-APPEND LF+
+   s"  : MADE ( -- ) ;" SB-APPEND 34 SB-APPEND-C s"  evaluate-closed ;" SB-APPEND LF+
    s" generates: GEN ( -- )" SB-APPEND LF+
    s" GEN" SB-APPEND LF+
    s" s" SB-APPEND 34 SB-APPEND-C s"  MADE" SB-APPEND 34 SB-APPEND-C
@@ -533,13 +532,13 @@ variable RC
    s" " CHECK
    ERR$ s" E-STATEMENT-THROW" CONTAINS? TFALSE
    0 s" code" s" E-GENERATES-ROW" FIELD=
-   0 s" GEN" 2 12 63 66 AT
+   0 s" GEN" 2 12 62 65 AT
    s" --all-errors" CHECK
    0 s" code" s" E-GENERATES-ROW" FIELD=
-   0 s" GEN" 2 12 63 66 AT
+   0 s" GEN" 2 12 62 65 AT
    s" --verify-only" CHECK
    0 s" code" s" E-GENERATES-ROW" FIELD=
-   0 s" GEN" 2 12 63 66 FX-PATH$ CANON$ FX$ AT-IN ;
+   0 s" GEN" 2 12 62 65 FX-PATH$ CANON$ FX$ AT-IN ;
 
 \ The row's registrar resolves its name as a use does.
 : TEST-GENERATES-SHADOW ( -- )
@@ -691,33 +690,22 @@ variable RC
 \ A word ARENA derives that is taken in the other section is the duplicate,
 \ refused at the declared name.
 : TEST-ARENA ( -- )
-   s" an ARENA outside any package" T-LABEL
-   s" ARENA X n" s" arena-top.f" LINE-FIXTURE
-   s" E-BAD-STORAGE" s" X" 1 7 6 7 REFUSED-MODES
-   0 s" reason" s" declared outside any package" FIELD=
-   s" an ARENA whose cast is taken in the private section" T-LABEL
+   s" an ARENA whose word is taken in the private section" T-LABEL
    SB-RESET
    s" package P" SB-APPEND LF+
-   s" : X-NEW-PTR ( -- ) ;" SB-APPEND LF+
+   s" : X-NEW-DISPOSE ( -- ) ;" SB-APPEND LF+
    s" public" SB-APPEND LF+
    s" ARENA X n" SB-APPEND LF+
    s" ;package" SB-APPEND LF+
    s" arena-taken.f" FIXTURE!
    s" " DUP-RC CHECK-EXIT
-   s" E-DUPLICATE-DEFINITION" REJECTED-AS  0 s" X" 4 7 44 45 AT
+   s" E-DUPLICATE-DEFINITION" REJECTED-AS  0 s" X" 4 7 48 49 AT
    s" --all-errors" DUP-RC CHECK-EXIT
-   s" E-DUPLICATE-DEFINITION" REJECTED-AS  0 s" X" 4 7 44 45 AT
+   s" E-DUPLICATE-DEFINITION" REJECTED-AS  0 s" X" 4 7 48 49 AT
    s" --verify-only" CHECK
    s" E-DUPLICATE-DEFINITION" REJECTED-AS
-   0 s" X" 4 7 44 45 FX-PATH$ CANON$ FX$ AT-IN
-   s" an ARENA with a qualified name" T-LABEL
-   SB-RESET
-   s" package P" SB-APPEND LF+
-   s" ARENA P:X n" SB-APPEND LF+
-   s" ;package" SB-APPEND LF+
-   s" arena-qualified.f" FIXTURE!
-   s" E-BAD-STORAGE" s" P:X" 2 7 16 19 REFUSED-MODES
-   s" an ARENA whose element type its casts would refuse" T-LABEL
+   0 s" X" 4 7 48 49 FX-PATH$ CANON$ FX$ AT-IN
+   s" an ARENA whose element type may hold a linear value" T-LABEL
    SB-RESET
    s" package P" SB-APPEND LF+
    s" DEFLINEAR lin" SB-APPEND LF+
@@ -881,12 +869,12 @@ variable RC
    s" that undefined word alone" T-LABEL
    s" : X ( n -- n ) NOPE ;" s" undefined.f" LINE-FIXTURE
    s" E-UNDEFINED" s" NOPE" 1 16 15 19 REFUSED-AT
-   s" that signature and a local name over 16 bytes" T-LABEL
-   s" : X ( n -- zz ) {: abcdefghijklmnopq :} 1 ;" s" badsig-local.f" LINE-FIXTURE
-   s" E-LOCAL-NAME-TOO-LONG" s" abcdefghijklmnopq" 1 20 19 36 REFUSED-MODES
    s" that signature and an unsafe word" T-LABEL
    s" : X ( n -- zz ) evaluate ;" s" badsig-unsafe.f" LINE-FIXTURE
-   s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 1 12 11 13 REFUSED-AT ;
+   s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 1 12 11 13 REFUSED-AT
+   s" that signature and a quotation local" T-LABEL
+   s" : X ( n -- zz ) [: {: y:n :} ;] drop 1 ;" s" badsig-local.f" LINE-FIXTURE
+   s" E-BAD-LOCAL-SHAPE" s" {:" 1 20 19 21 REFUSED-MODES ;
 
 \ The load binds `--` and `|` in a locals group as locals; the checker refuses
 \ the definition at that token with the reason, and a body reference to it
@@ -937,12 +925,6 @@ variable RC
 \ A stored signature that does not parse is refused at the name its declaration
 \ reads, though the row is stored under that name's fold.
 : TEST-STORED-SIGNATURE ( -- )
-   s" a FUNCTION: whose group is empty" T-LABEL
-   SB-RESET
-   s" require src/lib/ffi-abi.f" SB-APPEND LF+
-   s" FUNCTION: F getpid ( )" SB-APPEND LF+
-   s" stored-ffi.f" FIXTURE!
-   s" f" s" F" 2 11 36 37 STORED-AT
    s" a TRUSTED: definition" T-LABEL
    s" TRUSTED: X ( n -- zz ) 1 ;" s" stored-trusted.f" LINE-FIXTURE
    s" x" s" X" 1 10 9 10 STORED-AT
@@ -1078,6 +1060,9 @@ variable RC
    s" a mismatch before a refused locals group token" T-LABEL
    s" : X ( n -- n ) dup c@ {: a -- b :} a ;" s" mismatch-local.f" LINE-FIXTURE
    s" E-MISMATCH" s" c@" 1 20 19 21 REFUSED-AT
+   s" a mismatch before a quotation local" T-LABEL
+   s" : X ( n -- n ) dup c@ [: {: y:n :} ;] drop 1 ;" s" mismatch-qlocal.f" LINE-FIXTURE
+   s" E-BAD-LOCAL-SHAPE" s" {:" 1 26 25 27 REFUSED-AT
    s" a signature that does not parse and a TRUSTED-only primitive" T-LABEL
    s" : X ( n -- zz ) 1 c2-invoke ;" s" badsig-cap.f" LINE-FIXTURE
    s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 1 12 11 13 REFUSED-AT ;
@@ -1390,7 +1375,8 @@ variable RC
    FX-PATH$ >LEN PROC-ARGV+
    FX-PATH$
    ENGINE-CANDIDATE:PATH$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN
-   ERR CAP >LEN  TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   ERR CAP >LEN  PROCESS:WAIT-FOREVER
+   RUN-ARGV-STDIN-CAPTURE-OUTCOME
    STORE!
    RC @ want T=
    textu 0= IF ERR-U @ 0 T= EXIT THEN
@@ -1493,9 +1479,8 @@ variable RC
    a FX FX-U @ + u BYTE-COPY
    FX-U @ u + FX-U ! ;
 
-\ 250 steps exceed PATH-CAP (1023 bytes) as written only, 600 decoded too. The
-\ resolver measures the path decoded and refuses it only at 2048 bytes joined to
-\ a searched root or over PATH-CAP normalized, so the engine loads both.
+\ A step is 5 bytes written and 2 decoded: PATH-CAP 4 / steps pass PATH-CAP
+\ written only, PATH-CAP 3 * 5 / decoded too, and the resolver takes both.
 : STEPS-FIXTURE ( n ptr u8 n -- ) {: steps:n name:ptr nameu:n :}
    BASE$ name nameu FX-P FS:JOIN-PATH FX-PU !
    0 FX-U !
@@ -1602,10 +1587,10 @@ variable RC
    s" escaped-body-path-package.f" FIXTURE!
    s" DPT-ESC:L" 7 137 s" BODY-A-WORD" 8 1 147 158 VERIFY-DEFERRED-AT
    s" an escaped path over the capacity as written, within it decoded" T-LABEL
-   250 s" escaped-steps-fit.f" STEPS-FIXTURE
+   PATH-CAP 4 / s" escaped-steps-fit.f" STEPS-FIXTURE
    CERTIFIED
    s" an escaped path over the capacity decoded, within it normalized" T-LABEL
-   600 s" escaped-steps-over.f" STEPS-FIXTURE
+   PATH-CAP 3 * 5 / s" escaped-steps-over.f" STEPS-FIXTURE
    CERTIFIED
    s" a bad escape in a loader's path" T-LABEL
    SB-RESET
@@ -1759,38 +1744,17 @@ variable RC
 : TEST-HEAD-CLOSER ( -- )
    s" an if open at the does> ending a definer's head, after a comment" T-LABEL
    SB-RESET
-   s" true DIAG-JSON!" SB-APPEND LF+
-   s" 3 3 38 DIAG-ORIGIN!" SB-APPEND LF+
+   s" true REJECTION:JSON !" SB-APPEND LF+
+   s" 3 3 38 REJECTION:ORIGIN!" SB-APPEND LF+
    s" : CONST ( n -- ) ( a note ) create dup ," SB-APPEND LF+
    s"    0= if does> ( -- n ) @ ;" SB-APPEND LF+
    s" head-open-cmt.f" FIXTURE!
-   s\" \"line\":4,\"column\":10,\"byte_start\":86,\"byte_end\":91" REJECT-RC LOADED
+   s\" \"line\":4,\"column\":10,\"byte_start\":97,\"byte_end\":102" REJECT-RC LOADED
    ERR$ s\" \"token\":\"does>\"" CONTAINS? TTRUE ;
-
-\ A word nothing defines after a name another package's public mark covers, in
-\ a definition too wide to record, is refused there as the load refuses it.
-: TEST-UNSEEN-UNDEFINED ( -- )
-   s" a covered qualified name, then a word nothing defines, in an unfit definition" T-LABEL
-   BASE$ s" unseen-undefined.f" FX-P FS:JOIN-PATH FX-PU !
-   0 FX-U !
-   s\" package PM\npublic\ns\" : MADE ( -- ) ;\" evaluate\n;package\n" FX+
-   s\" package QX\n: X ( " FX+
-   256 0 ?do s" n " FX+ loop
-   s" -- ) PM:MADE NOPE" FX+
-   256 0 ?do s"  drop" FX+ loop
-   s\"  ;\n;package\n" FX+
-   FX-PATH$ FX$ FS:WRITE-ALL
-   s" E-UNDEFINED" s" NOPE" 6 532 598 602 RUN-REFUSED-AT
-   s" --verify-only" CHECK
-   GJA-LINE# @ 2 T=
-   0 s" code" s" W-CHECK-DEFERRED" FIELD=
-   0 s" evaluate" 3 21 38 46 FX-PATH$ CANON$ FX$ AT-IN
-   1 s" E-UNDEFINED" s" NOPE" 6 532 598 602 VERIFY-REJECTED-AT
-   s" E-UNDEFINED habu: in x: undefined word 'NOPE'" REJECT-RC LOADED ;
 
 : GEN-LINES ( -- )
    SB-RESET
-   s\" : GEN ( -- ) s\" : MADE ( -- ) ;\" INCLUDE-EVALUATE ;" SB-APPEND LF+
+   s\" : GEN ( -- ) s\" : MADE ( -- ) ;\" evaluate-closed ;" SB-APPEND LF+
    s" GEN" SB-APPEND LF+ ;
 
 : DEFER-SUGGESTS ( n n ptr u8 n ptr u8 n -- )
@@ -1833,7 +1797,7 @@ variable RC
    0 0 s" GEN" s" If this renderer reads the name of the word it makes (`D NAME`), declare that word's effect with `generates: D ( effect )` after its definition; a foreign function is declared by a `FUNCTION:` group; other rendered text is the run's to check." DEFER-SUGGESTS
    s" a deferred word called inside an open stretch" T-LABEL
    SB-RESET
-   s\" : GEN ( -- ) s\" : MADE ( -- ) ;\" INCLUDE-EVALUATE ;" SB-APPEND LF+
+   s\" : GEN ( -- ) s\" : MADE ( -- ) ;\" evaluate-closed ;" SB-APPEND LF+
    s" defer D ( -- )" SB-APPEND LF+
    s" GEN" SB-APPEND LF+
    s" MADE" SB-APPEND LF+
@@ -2073,7 +2037,7 @@ variable RC
    s"   ;" SB-APPEND LF+
    s" empty-clause-lines.f" FIXTURE!
    s" E-MISMATCH" s" ;" 3 3 37 38 REFUSED-AT
-   SB-RESET  s" ncomp: cannot compile MYK at ; in " SB-APPEND
+   SB-RESET  s" compiler: cannot compile MYK at ; in " SB-APPEND
    FX-PATH$ CANON$ SB-APPEND  s" :3" SB-APPEND  10 SB-APPEND-C
    SB$ REJECT-RC LOADED
    s" an empty does> clause of a definer with a parses: row" T-LABEL
@@ -2330,7 +2294,6 @@ variable RC
    TEST-RUN-CAPTURED
    TEST-RUN-UNSOURCED
    TEST-HEAD-CLOSER
-   TEST-UNSEEN-UNDEFINED
    TEST-DEFER-SUGGEST
    TEST-CONTROL-ORPHAN
    TEST-CONTROL-REASON

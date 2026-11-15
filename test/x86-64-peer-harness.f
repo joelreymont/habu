@@ -3,12 +3,14 @@
 \    OPEN,  cases  CLOSE,  [ callee  ALIGN, ]  [ n SKIP, ]  ENTRY,  routine  WRITE-ELF
 \ An image with its own entry (test/x86-64-skel-image.f) skips the checking
 \ entry: it stages after ASM-RESET and ends with WRITE.
+false [if] \ off until dot 3ed6f45d
 require src/lib/test.f
 require src/lib/byte-buffer.f
 require src/habu/fdio.f
 require src/habu/sign-id.f
 require src/arch/x86-64/icode.f
 require src/compiler/native/x64ir.f
+require src/os/linux-flags.f
 
 \ The production image writer loads at top level, as every production path
 \ loads it: elf.f requires src/os/linux-x86-64/target-layout.f, which opens
@@ -50,8 +52,9 @@ variable WRONG-AT                    \ the check a negative image fails, or 0
 \ The signer, the image driver and the OS seam over package X64CODE's byte
 \ stream. They load into this package because the x86-64 sys.f spells the host
 \ seam's syscall-number words, which must not become globals here. The driver's
-\ packaged dependencies, fdio.f and sign-id.f, load at top level above, because
-\ a file required inside a package cannot open one.
+\ packaged dependencies, fdio.f and sign-id.f, and the seam's,
+\ src/os/linux-flags.f, load at top level above, because a file required
+\ inside a package cannot open one.
 s" src/os/linux-x86-64/sign.f" required
 s" src/habu/driver-io.f" required
 using DRIVER
@@ -318,3 +321,4 @@ public
 : DISPOSE ( -- ) ASM-SINK BUF:DISPOSE ;
 ;using   \ X64LAYOUT
 ;package
+[then]

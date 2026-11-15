@@ -1,9 +1,7 @@
-\ codegen.f - a shared bounded byte buffer for building generated Forth source.
-\ A definer that builds source for an audited `evaluate` (DEFTYPE in
-\ src/lib/type/deftype.f, generator tools) builds the text
-\ here and keeps only its own `evaluate` wrapper: the trust boundary stays per
-\ package. STORAGE CLASS. CALLER-OWNED: each buffer's header is its definer's
-\ dictionary storage and its text a dynamic mapping; the module keeps no state.
+\ codegen.f - a shared bounded byte buffer for building text: a generated word's
+\ name, or a generator tool's output. STORAGE CLASS. CALLER-OWNED: each buffer's
+\ header is its definer's dictionary storage and its text a dynamic mapping; the
+\ module keeps no state.
 
 require src/lib/prelude.f
 require src/core/dynamic-storage.f
@@ -17,16 +15,12 @@ package CODEGEN
 
 private
 
-\ Header: [cap][cap-err][val-err], then a dynamic control record
-\ (src/core/dynamic-storage.f: the head cell and its CONTROL-CELLS count cells),
-\ scratch as DYNAMIC-BUFFER's: a save or a file's object holds it released.
-\ cap-err is thrown when an append would overflow, val-err when APPEND-DECIMAL
-\ gets a negative value.
-3 cells constant CB-RECORD
+\ Header: [cap], then a dynamic control record (src/core/dynamic-storage.f: the
+\ head cell and its CONTROL-CELLS count cells), scratch as DYNAMIC-BUFFER's: a
+\ save or a file's object holds it released.
+1 cells constant CB-RECORD
 CB-RECORD CELL / 1+ DYNAMIC-STORAGE:CONTROL-CELLS + constant CB-CELLS
 : CB-CAP@  ( ptr n -- n )  @ ;
-: CB-CERR@ ( ptr n -- n )  cell+ @ ;
-: CB-VERR@ ( ptr n -- n )  2 cells + @ ;
 CAST: CB-HEAD-CELL ( ptr n -- ptr ptr u8 )
 : CB-HEAD  ( ptr n -- ptr ptr u8 )  CB-RECORD + CB-HEAD-CELL ;
 : CB-CTL   ( ptr n -- ptr n )  CB-RECORD CELL + + ;
@@ -41,40 +35,31 @@ CAST: CB-HEAD-CELL ( ptr n -- ptr ptr u8 )
 : CB-LEN!  ( n ptr n -- )  CB-MAP CELL-VIEW ! ;
 : CB-DATA  ( ptr n -- ptr u8 )  CB-MAP CELL + ;   \ content bytes past the length
 
-: CB-HEADER, ( n n n -- )   \ cap cap-err val-err --
-   >r >r , r> , r> ,
-   CB-CELLS CB-RECORD CELL / - 0 ?do here scratch-cell-mark 0 , loop ;
+: CB-HEADER, ( n -- )   \ cap --
+   ,  CB-CELLS CB-RECORD CELL / - 0 ?do here scratch-cell-mark 0 , loop ;
 
 public
 
-\ Defines NAME as a buffer descriptor with explicit cap-err and val-err codes, so
-\ a package keeps the throw code its callers see (deftype.f keeps E-VNOM-CAP)
-\ without a catch-and-remap wrapper.
-: BUFFER-E ( n n n -- )   \ cap cap-err val-err --
-   create CB-HEADER,  does> ( -- ptr n ) ;
-
-\ Defines NAME as a buffer descriptor that throws E-CG-CAP and E-CG-VALUE; new
-\ buffers use it. `256 CODEGEN:BUFFER NAME` reads like `create`. The definer has
-\ no trailing colon: a package word ending in `:` cannot be resolved through a
-\ `CODEGEN:` qualifier.
+\ `256 CODEGEN:BUFFER NAME` reads like `create`. The definer has no trailing
+\ colon: a package word ending in `:` cannot be resolved through a `CODEGEN:`
+\ qualifier.
 : BUFFER ( n -- )   \ cap --
-   E-CG-CAP E-CG-VALUE BUFFER-E ;
+   create CB-HEADER,  does> ( -- ptr n ) ;
 
 : RESET ( ptr n -- )  0 swap CB-LEN! ;
 
-\ Append one byte; overflow throws the buffer's capacity error code.
+\ Append one byte; overflow throws E-CG-CAP.
 : APPEND-BYTE ( n ptr n -- ) {: c:n d:ptr :}
-   d CB-LEN@ 1 + d CB-CAP@ > if d CB-CERR@ throw then
+   d CB-LEN@ 1 + d CB-CAP@ > if E-CG-CAP throw then
    c  d CB-DATA d CB-LEN@ +  c!
    d CB-LEN@ 1 + d CB-LEN! ;
 
 : APPEND-STRING ( ptr u8 n ptr n -- ) {: a:ptr u:n d:ptr :}
    0 begin dup u < while  dup a + c@ d APPEND-BYTE  1 +  repeat drop ;
 
-\ A negative value throws the buffer's val-err instead of emitting garbage
-\ digits.
+\ A negative value throws E-CG-VALUE instead of emitting garbage digits.
 : APPEND-DECIMAL ( n ptr n -- ) {: v:n d:ptr :}
-   v 0 < if d CB-VERR@ throw then
+   v 0 < if E-CG-VALUE throw then
    v 10 >= if v 10 / d recurse then  v 10 mod [char] 0 + d APPEND-BYTE ;
 
 : CONTENTS ( ptr n -- ptr u8 n ) {: d:ptr :}  d CB-DATA d CB-LEN@ ;

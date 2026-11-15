@@ -1,8 +1,8 @@
 \ check-signal-subject.f - the program test/check-signal-test.f has check.f
 \ check (in its run stage's child) and test/capture-tree-test.f captures. It
-\ writes LINE$, starts a SLEEPER (/bin/sh becoming `sleep 20`, in its own
-\ process group as every spawn is), reports its pid on the FIFO
-\ CHECK_SIGNAL_FIFO names and waits for the sleeper.
+\ starts a SLEEPER (/bin/sh becoming `sleep 20`, in its own process group as
+\ every spawn is), reports its pid on the FIFO CHECK_SIGNAL_FIFO names, writes
+\ LINE$ and waits for the sleeper.
 
 \ With CHECK_SIGNAL_CLOSED set, the subject closes stdout and stderr first and
 \ the sleeper starts without them, so the capture reads end of file on both
@@ -46,9 +46,10 @@ public
 
 : MAIN ( -- )
    s" CHECK_SIGNAL_FIFO" TEST-FIFO:WRITER {: w:fd :}
-   CLOSED? if 1 close 2 close else LINE$ type then
+   CLOSED? if 1 close 2 close then
    w SLEEPER {: sleeper:pid :}
    w REPORT-PID
+   CLOSED? 0= if LINE$ type then
    sleeper PROCESS:WAIT drop ;
 
 ;package

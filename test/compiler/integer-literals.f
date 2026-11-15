@@ -52,7 +52,6 @@ package INTEGER-LITERALS-TEST
    s" $10000000000000000G" REFUSED ;
 
 
-\ The text is built in SB, since a quotation cannot reach the caller's locals.
 : BAD-INTERPRETED ( ptr u8 n -- ) {: lit:ptr len:n :}
    SB-RESET
    lit len SB-APPEND

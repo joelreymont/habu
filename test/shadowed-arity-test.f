@@ -1,8 +1,7 @@
 \ shadowed-arity-test.f - a package public whose own bare tail a private word of
 \ the same package claims. A bare tail binds the open package's private wordlist
-\ first and the native compiler reads the contract from that binding
-\ (definition.f KEEP-ARITY asks NDICT:SPELL-ARITY), so effects moving different
-\ cell counts are refused at the second definition.
+\ first and the native compiler reads the contract from that binding, so effects
+\ moving different cell counts are refused at the second definition.
 
 require src/lib/prelude.f
 require src/lib/test.f
@@ -16,7 +15,7 @@ private
 T-RESET
 
 TYPED-VARIABLE SAE-A ptr u8   variable SAE-U
-: SAE-GO ( -- )  SAE-A @ SAE-U @ INCLUDE-EVALUATE ;
+: SAE-GO ( -- )  SAE-A @ SAE-U @ evaluate-closed ;
 
 public
 
@@ -33,12 +32,11 @@ E-SHADOWED-ARITY constant E-SHADOW-ARITY   \ src/core/checker.f SHADOW-ARITY-CK
 ;package
 
 \ === refused: the private twin's effect moves a different number of cells =====
-\ Fewer inputs than the private word: the reported shape (ncomp's -8303
-\ E-NELAB-ARITY at the return).
+\ Fewer inputs than the private word.
 s\" package SAT-A\n: F ( n n -- n ) + ;\npublic\n: F ( n -- n ) 1 + ;\n;package"
    SHADOWED-ARITY:SAE-CATCH SHADOWED-ARITY:E-SHADOW-ARITY T=
 
-\ More inputs than the private word (ncomp's -8304 E-NELAB-UNDER).
+\ More inputs than the private word.
 s\" package SAT-B\n: G ( n -- n ) 1 + ;\npublic\n: G ( n n -- n ) + ;\n;package"
    SHADOWED-ARITY:SAE-CATCH SHADOWED-ARITY:E-SHADOW-ARITY T=
 
@@ -52,24 +50,23 @@ s\" package SAT-D\n: K ( ptr u8 n -- n ) drop c@ ;\npublic\n: K ( n -- n ) 1 + ;
    SHADOWED-ARITY:SAE-CATCH SHADOWED-ARITY:E-SHADOW-ARITY T=
 
 \ The private twin may be a definer-made word: what the rule judges is the PUBLIC
-\ colon definition, whose body ncomp elaborates against whatever the bare tail
-\ binds - here a constant that leaves one cell where the body declares two.
+\ colon definition, whose contract the compiler reads from whatever the bare
+\ tail binds - here a constant that leaves one cell where the body declares two.
 s\" package SAT-M\n10 constant W\npublic\n: W ( n -- n ) 1 + ;\n;package"
    SHADOWED-ARITY:SAE-CATCH SHADOWED-ARITY:E-SHADOW-ARITY T=
 
 \ === accepted: every neighbouring shape that must stay legal =================
-\ A definer-made public is not judged by this rule: `constant` compiles no body
-\ for ncomp to elaborate (test/ndict-binding.f's NDB-LEFT shape). The checker
-\ sees the definer call's effect, `20 constant CV` presents ( n -- ), which is
-\ why the rule is asked at the colon-definition intake alone.
+\ A definer-made public is not judged by this rule: `constant` compiles no body.
+\ The checker sees the definer call's effect, `20 constant CV` presents
+\ ( n -- ), which is why the rule is asked at the colon-definition intake alone.
 s\" package SAT-K\n10 constant CV\npublic\n20 constant CV\n;package"
    SHADOWED-ARITY:SAE-CATCH 0 T=
 s\" : SAT-K-CK ( -- ) SAT-K:CV 20 <> if s\q public constant lost its own value\q 1 die then ;\nSAT-K-CK"
    SHADOWED-ARITY:SAE-CATCH 0 T=
 
 \ The same narrowing from the other side: a definer-made public over a private
-\ COLON word of another width. The private word binds its own name, the public
-\ constant has no body, and nothing here can reach E-NELAB-ARITY.
+\ COLON word of another width. The private word binds its own name and the
+\ public constant has no body.
 s\" package SAT-L\n: CW ( n -- ) drop ;\npublic\n30 constant CW\n;package"
    SHADOWED-ARITY:SAE-CATCH 0 T=
 

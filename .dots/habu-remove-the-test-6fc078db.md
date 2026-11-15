@@ -10,5 +10,5 @@ Problem: tests and the gate end work on timers instead of on the events they wai
 Acceptance: the four lane dots are closed; a full gate at eight slots under a second load ends no row on a timer, and no timer, budget or deadline is left in src/lib/test, test/gate-*.f, tools/*test-lib.f or the builds except the staged LSP bound.
 Files: none beyond the lanes'.
 Verify: rg for the lanes' timer names prints only the staged LSP bound; a full gate at eight slots under a second load shows no row ended by a timer.
-Depends: habu-end-a-capture-ce0c5a71 (lane 1), habu-drop-the-ms-09b50524 (lane 3), habu-end-test-waits-12de56df (lane 4), habu-refuse-a-facility-7a3fc2ad (lane 5).
+Depends: habu-end-a-capture-ce0c5a71 (lane 1), habu-drop-the-ms-09b50524 (lane 3), habu-tests-end-waits-fcba08b4 (lane 4), habu-refuse-a-facility-7a3fc2ad (lane 5).
 Ownership: unassigned. Claim: unassigned.

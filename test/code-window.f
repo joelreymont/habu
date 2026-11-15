@@ -17,7 +17,6 @@ require src/lib/string.f
 package CODE-WINDOW-TEST
 
 $800 constant CAP
-20000 constant TIMEOUT-MS
 \ The uncaught fault's line up to its address; the address, " pc ", the pc
 \ and a newline make 37 more bytes.
 : FAULT-LINE$ ( -- ptr u8 n ) s" E-MEMORY-FAULT habu: memory fault at " ;
@@ -26,7 +25,7 @@ create OUT CAP allot
 create ERR CAP allot
 
 : CAPTURE ( ptr u8 n -- len len PROCESS:ending ) {: src:ptr u:n :}
-   src u OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN ;
+   src u OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN ;
 
 : EXPECT ( ptr u8 n n -- ) {: src:ptr u:n want:n :}
    src u CAPTURE {: outu:len erru:len oc :}

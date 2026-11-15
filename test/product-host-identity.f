@@ -11,6 +11,7 @@ require src/lib/test.f
 require src/lib/memory.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
+require src/lib/process.f
 require src/lib/process-cwd.f
 require src/lib/engine-candidate.f
 require tools/chain-run.f
@@ -19,8 +20,6 @@ require src/lib/tree-copy.f
 package PRODUCT-HOST-TEST
 
 $4000 constant CAP
-\ An engine build takes 5 minutes at most.
-300000 constant BUILD-TIMEOUT-MS
 
 create ROOT PATH-CAP allot          variable ROOT-U
 create TREE PATH-CAP allot          variable TREE-U
@@ -123,7 +122,7 @@ variable RC
    path pathu ARGV+
    ENV!
    engine engineu >LEN tree treeu >LEN
-   OUT CAP >LEN ERR CAP >LEN BUILD-TIMEOUT-MS >MS
+   OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE CAPTURE-RESULT
    SUCCESS ;
 

@@ -134,7 +134,7 @@ CAST: >WIDE ( n -- wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
    s" : CS-K19 ( x -- x n n ) [: 1 ;] CHECKER-SOUNDNESS:TAIL-ONCE ;" 70
    s" expected: [ A -- B ] actual: [ C -- C n ]" SUBJECT:REFUSED? TTRUE
    s" its inferred effect is the body's up to the refusal, not the declared one" T-LABEL
-   s" -1 JSON-DIAGS ! : CS-K22 ( x -- x n n ) [: 1 ;] CHECKER-SOUNDNESS:TAIL-ONCE ;" 70
+   s" -1 REJECTION:JSON ! : CS-K22 ( x -- x n n ) [: 1 ;] CHECKER-SOUNDNESS:TAIL-ONCE ;" 70
    s" a -- a [ -- n ] " SUBJECT:REFUSED? TTRUE
    s" a capture past the render buffers' first sizes grows them and leaves later renders without row tails" T-LABEL
    CAPTURE-PAST$ CHECK-QUIET-CANDIDATE! 0 T=
@@ -156,9 +156,9 @@ CAST: >WIDE ( n -- wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
    s" held row A would escape into C expected: [ A -- B ] actual: [ C -- D ]" SUBJECT:REFUSED? TTRUE
    s" : CS-K27 ( R [ A -- A ] -- R ) CHECKER-SOUNDNESS:TAIL-KEEP ;" 70
    s" held row A would escape into B expected: [ A -- A ] actual: [ B -- B ]" SUBJECT:REFUSED? TTRUE
-   s" -1 JSON-DIAGS ! : CS-K28 ( R [ R -- B ] -- B ) CHECKER-SOUNDNESS:TAIL-ONCE ;" 70
+   s" -1 REJECTION:JSON ! : CS-K28 ( R [ R -- B ] -- B ) CHECKER-SOUNDNESS:TAIL-ONCE ;" 70
    s" Declare the callable [ R -- S ] from the word's input row" SUBJECT:REFUSED? TTRUE
-   s" -1 JSON-DIAGS ! : CS-K72 ( R [ R -- B ] -- B ) CHECKER-SOUNDNESS:TAIL-ONCE ;" 70
+   s" -1 REJECTION:JSON ! : CS-K72 ( R [ R -- B ] -- B ) CHECKER-SOUNDNESS:TAIL-ONCE ;" 70
    s\" ; held row A would escape into C\"" SUBJECT:REFUSED? TTRUE
    s" and the declarations it names certify" T-LABEL
    s" CS-K29 ( R [ -- ] -- R ) CHECKER-SOUNDNESS:TAIL-KEEP" CHECK-QUIET-CANDIDATE! -1 T=
@@ -244,9 +244,9 @@ CAST: >WIDE ( n -- wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
    s" an install with is names the escape" T-LABEL
    s" : CS-K40 ( -- ) [: CHECKER-SOUNDNESS:TAIL-G ;] is CHECKER-SOUNDNESS:TAIL-DF ;" 70
    s" at 'is' callable row escape: a callable declared with an implicit input row cannot keep or name the stack it runs on; held row A would escape into C expected: [ A -- B ] actual: [ C -- D ]" SUBJECT:REFUSED? TTRUE
-   s" -1 JSON-DIAGS ! : CS-K73 ( -- ) [: CHECKER-SOUNDNESS:TAIL-G ;] is CHECKER-SOUNDNESS:TAIL-DF ;" 70
+   s" -1 REJECTION:JSON ! : CS-K73 ( -- ) [: CHECKER-SOUNDNESS:TAIL-G ;] is CHECKER-SOUNDNESS:TAIL-DF ;" 70
    s\" \"code\":\"E-MISMATCH\",\"repair_class\":\"fix_type\",\"verdict\":\"rejected\",\"word\":\"cs-k73\",\"token\":\"is\",\"reason\":\"callable row escape: a callable declared with an implicit input row cannot keep or name the stack it runs on; held row A would escape into C\"" SUBJECT:REFUSED? TTRUE
-   s" -1 JSON-DIAGS ! : CS-K73 ( -- ) [: CHECKER-SOUNDNESS:TAIL-G ;] is CHECKER-SOUNDNESS:TAIL-DF ;" 70
+   s" -1 REJECTION:JSON ! : CS-K73 ( -- ) [: CHECKER-SOUNDNESS:TAIL-G ;] is CHECKER-SOUNDNESS:TAIL-DF ;" 70
    s\" \"inferred_effect\":\"-- [ [ -- ] -- ] \",\"return_stack\"" SUBJECT:REFUSED? TTRUE
    s" CS-K42 ( ptr [ -- S ] -- ) [: ;] swap !" CHECK-QUIET-CANDIDATE! 0 T=
    s" CS-K43 ( R [ R -- S ] ptr [ -- S ] -- R ) !" CHECK-QUIET-CANDIDATE! 0 T=
@@ -369,7 +369,7 @@ CAST: >WIDE ( n -- wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
    s" at 'depth' cannot count `option<n>`: it is one value held in 2 cells" SUBJECT:REFUSED? TTRUE
    s\" ENUM csdone solo pair ;ENUM : CS-D6 ( -- csdone n ) CHECKER--SOUNDNESS-CSDONE:SOLO depth ; : CS-D7 ( -- ) CS-D6 nip 1 <> IF s\" depth counted a one-cell enum as other than 1\" 1 die THEN ; CS-D7" 0
       SUBJECT:EXITED? TTRUE
-   s" -1 JSON-DIAGS ! : CS-D4 ( -- option<n> ) 3 OPTION:SOME .s ;" 70
+   s" -1 REJECTION:JSON ! : CS-D4 ( -- option<n> ) 3 OPTION:SOME .s ;" 70
    s\" \"code\":\"E-REJECTED\",\"repair_class\":\"count_values\",\"verdict\":\"rejected\",\"word\":\"cs-d4\",\"token\":\".s\",\"reason\":\"cannot count `option<n>`: it is one value held in 2 cells\"" SUBJECT:REFUSED? TTRUE
    s" : CS-D8 ( option<a> -- option<a> n ) depth ;" 70
    s" at 'depth' cannot count `option<a>`: it is one value, and how many cells it holds is not known here" SUBJECT:REFUSED? TTRUE ;

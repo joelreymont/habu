@@ -2,11 +2,12 @@
 \ test/gate-debug.f.
 
 require src/lib/string.f
-require tools/jitdump-core.f
+require tools/code-dump-core.f
+require src/lib/process.f
 require test/gate-common.f
 require src/habu/prof-abi.f
 
-using JITDUMP      \ JD / JIT-FIND / JIT-EVALUATE, called bare in GDB-JITDUMP
+using CODE-DUMP    \ DECODE / FIND-XT / LOAD-PROGRAM, called bare in GDB-CODE-DUMP
 
 : GDB-PROFILER-SOURCE ( -- )
    GE-SRC-RESET
@@ -100,7 +101,8 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    s"  prof-on GDB-BUSY" GE-SRC-LINE ;
 
 : GDB-PROF-RUN ( -- )   \ run the accumulated GE-SRC through the candidate over stdin
-   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN ;
+   GE-HB$ GE-SRC-BUF GE-SRC-U @
+   PROCESS:WAIT-FOREVER MS>N GE-RUN-STDIN ;
 
 \ A package whose inner word is only ever reached through the outer one, so the
 \ caller rows under the inner word's row have exactly one right answer.
@@ -211,11 +213,8 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 \ LEAF has returned the interrupted x30 points back inside BUSY on ARM -
 \ which leaves a deferred sample with no caller. Intel's machine return stack
 \ instead identifies OUTER as BUSY's caller for this same execution.
-\ Tier 1 on purpose: at tier 0 these words are interpreted and the samples land
-\ in the primitives the interpreter runs, not in the words the case is about.
 : GDB-PROF-LATE-SRC ( -- )
    GE-SRC-RESET
-   s" 1 set-tier" GE-SRC-LINE
    s" 0 prof-on" GE-SRC-LINE
    s" package GDBLATE" GE-SRC-LINE
    s" public" GE-SRC-LINE
@@ -345,11 +344,8 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 : GDB-UNCAUGHT$ ( n -- ptr u8 n ) {: code:n :}
    SB-RESET  s" hb: uncaught throw code " SB-APPEND  code FMT:SB-INT  GE-SB-LF  SB$ ;
 
-\ A negative interval is the caller's error: prof-rate throws E-PROF-RATE
-\ before it stores anything. Uncaught, the engine reports the code and exits
-\ UNCAUGHT-RC before the next line runs. Caught, the code is src/lib/error.f's
-\ E-PROF-RATE, printed negated since GDB-FIELD reads a digit run, and the next
-\ prof-on arms the 250 us set before it, which the report states.
+\ prof-rate refuses a negative interval and one past the OS timer's longest,
+\ keeping the rate; GDB-FIELD reads digits, so the code is printed negated.
 : GDB-PROFILER-RATE-REFUSED ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -359,16 +355,22 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    UNCAUGHT-RC s" an uncaught prof-rate -1 exits UNCAUGHT-RC" GE-EXPECT-RC
    E-PROF-RATE GDB-UNCAUGHT$ s" an uncaught prof-rate -1 reports E-PROF-RATE" GE-EXPECT-ERR
    GT-OUT$ nip 0<> if s" the line after an uncaught prof-rate -1 ran" GE-FAIL then
-   S\" : GDB-REFUSE ( -- n ) [: -1 prof-rate ;] catch ; 250 prof-rate GDB-REFUSE negate s\" refused \" type . cr 0 prof-on GDB-BUSY prof-off prof-report"
+   S\" : GDB-REFUSE ( -- n ) [: -1 prof-rate ;] catch ; : GDB-PAST ( -- n ) [: 9223372036000000 prof-rate ;] catch ; : GDB-MAX ( -- n ) [: 100000000999999 prof-rate ;] catch ; GDB-MAX s\" within \" type . cr 250 prof-rate GDB-REFUSE negate s\" refused \" type . cr GDB-PAST negate s\" past \" type . cr 0 prof-on GDB-BUSY prof-off prof-report"
    GDB-PROF-RATE-RUN
    s" a caught prof-rate -1" GE-EXPECT-OK
    GT-OUT$ s" refused" GDB-FIELD E-PROF-RATE negate <> if
       s" prof-rate -1 threw another code than E-PROF-RATE" GE-FAIL
    then
-   GT-OUT$ s" usec" GDB-FIELD 250 <> if
-      s" a caught prof-rate -1 changed the rate the next prof-on arms" GE-FAIL
+   GT-OUT$ s" past" GDB-FIELD E-PROF-RATE negate <> if
+      s" prof-rate past the OS timer's longest threw another code than E-PROF-RATE" GE-FAIL
    then
-   s" PASS: prof-rate throws E-PROF-RATE for a negative interval and keeps the rate" type cr ;
+   GT-OUT$ s" within" GDB-FIELD 0 <> if
+      s" prof-rate refused 100000000999999, within both OS timers" GE-FAIL
+   then
+   GT-OUT$ s" usec" GDB-FIELD 250 <> if
+      s" a caught prof-rate -1 or past the longest changed the rate the next prof-on arms" GE-FAIL
+   then
+   s" PASS: prof-rate throws E-PROF-RATE for a negative interval and one past the OS timer's longest, and keeps the rate" type cr ;
 
 \ An interval only a write past prof-rate can leave, -1 in ARN-USEC: prof-on's
 \ setitimer refuses it, and the refusal is named and exits PROF-MAP-RC.
@@ -519,14 +521,14 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    S\" ,\"edges\":[" s" profiler json has no edge array" GE-EXPECT-OUT-HAS
    s" PASS: profiler json reports the same walk as the text report" type cr ;
 
-: GDB-JITDUMP ( -- )
+: GDB-CODE-DUMP ( -- )
    GE-HB-RESET
-   [: s" : JITDUMP-SMOKE ( -- i64 ) 7 ;" JIT-EVALUATE
-      s" JITDUMP-SMOKE" JIT-FIND JD ;] GE-CAPTURE-ACTION
-   s" jitdump direct core" GE-EXPECT-OK
-   s" mov" s" jitdump decodes a real move" GE-EXPECT-OUT-HAS
-   s" ret" s" jitdump direct core output" GE-EXPECT-OUT-HAS
-   s" PASS: jitdump direct core" type cr ;
+   [: s" : CODE-DUMP-SMOKE ( -- i64 ) 7 ;" LOAD-PROGRAM
+      s" CODE-DUMP-SMOKE" FIND-XT DECODE ;] GE-CAPTURE-ACTION
+   s" code-dump direct core" GE-EXPECT-OK
+   s" mov" s" code-dump decodes a real move" GE-EXPECT-OUT-HAS
+   s" ret" s" code-dump direct core output" GE-EXPECT-OUT-HAS
+   s" PASS: code-dump direct core" type cr ;
 
 \ An engine-text target can share a page with patch32 itself: opening that
 \ page RW removes execute permission from the patcher's next instruction.
@@ -586,7 +588,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 
 : GDB-BREAKPOINT-NATIVE ( -- )
    GE-HB-RESET GE-SRC-RESET
-   s" 1 set-tier require src/habu/debug.f" GE-SRC-LINE
+   s" require src/habu/debug.f" GE-SRC-LINE
    s" package GDBNBP" GE-SRC-LINE
    s" : SUBJECT ( n -- n ) 3 + ; ' SUBJECT DEBUG:BP+ 4 SUBJECT . 5 SUBJECT . ;package" GE-SRC-LINE
    s" native breakpoint resumes" GE-HB-RUN-STDIN
@@ -615,7 +617,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    GDB-PROFILER-ROW
    GDB-PROFILER-JSON-ALL
    GDB-PROFILER-RETIRED
-   GDB-JITDUMP
+   GDB-CODE-DUMP
    GDB-BREAKPOINT-REFUSAL
    GDB-PATCH32-OUTSIDE
    GDB-DEBUG-NAMES

@@ -7,6 +7,7 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/fs-list.f
 require src/lib/task.f
+require src/lib/test/wait.f
 
 package FS-CAUSE-TEST
 
@@ -60,18 +61,11 @@ TASK:MIN-STACK TASK:TASK WORKER-B
 
 \ Both tasks hold a different failed open across the same barrier. Neither
 \ side may change the other's task-local cause while the calls overlap.
-: WAIT-BOTH ( -- )
-   mono-ns 5000000000 + {: until:n :}
-   begin BARRIER atomic@ 2 < while
-      mono-ns until >= if E-PROC-TIMEOUT throw then
-      TASK:PAUSE
-   repeat ;
-
 : A-BODY ( -- )
    [: MISSING ;] catch E-FS-OPEN <> if 1 BAD-CODE atomic-add drop then
    FS:ERRNO CAUSE-A !
    1 BARRIER atomic-add drop
-   WAIT-BOTH
+   BARRIER 2 WORKER-B TEST-WAIT:FOR-CELL
    FS:ERRNO CAUSE-A-LATE !
    0 TASK:RETURN ;
 
@@ -80,7 +74,7 @@ TASK:MIN-STACK TASK:TASK WORKER-B
    E-FS-OPEN <> if 1 BAD-CODE atomic-add drop then
    FS:ERRNO CAUSE-B !
    1 BARRIER atomic-add drop
-   WAIT-BOTH
+   BARRIER 2 WORKER-A TEST-WAIT:FOR-CELL
    FS:ERRNO CAUSE-B-LATE !
    0 TASK:RETURN ;
 

@@ -4,6 +4,7 @@
 require src/lib/string.f
 require src/lib/fs.f
 require tools/check-all-errors-core.f
+require src/lib/process.f
 require test/gate-common.f
 
 package GATE-DICTIONARY
@@ -387,13 +388,6 @@ variable CANDIDATE-VERDICT
    s" 7" GE-OUT-LINE
    SB$ s" hb quotation reads a local output" GE-EXPECT-OUT ;
 
-: LOCAL-QUOT-TIER1 ( -- )
-   GE-HB-RESET
-   GE-SRC-RESET
-   s" 1 set-tier" GE-SRC-LINE
-   s" : QLOCAL1 ( n -- ) {: x:n :} [: x . ;] execute ;" GE-SRC-LINE
-   67 s" ncomp: cannot compile QLOCAL1 at x" s" tier 1 refuses a local read in a quotation" GE-EVAL-FORK-BAD ;
-
 : LOCAL-FIRST ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -511,15 +505,15 @@ variable CANDIDATE-VERDICT
    s" 42" GE-OUT-LINE
    SB$ s" hb semicolon package alias output" GE-EXPECT-OUT ;
 
-: PACKAGE-JIT-STACK ( -- )
+: PACKAGE-VALUE-STACK ( -- )
    GE-HB-RESET
    GE-SRC-RESET
    s" : FIVE-LITS ( -- n n n n n ) 10 10 10 10 10 ;" GE-SRC-LINE
    s" FIVE-LITS + + + + ." GE-SRC-LINE
-   s" hb package cells do not overlap jit stack" GE-EVAL-RUN-STDIN
+   s" hb package cells do not overlap the value stack" GE-EVAL-RUN-STDIN
    SB-RESET
    s" 50" GE-OUT-LINE
-   SB$ s" hb package cells do not overlap jit stack output" GE-EXPECT-OUT ;
+   SB$ s" hb package cells do not overlap the value stack output" GE-EXPECT-OUT ;
 
 : PACKAGE-CHECK-SOURCE ( -- )
    GE-SRC-RESET
@@ -572,14 +566,14 @@ variable CANDIDATE-VERDICT
 : CANDIDATE-STORE ( n -- ) {: rc:n :}
    rc CANDIDATE-RC PROCESS-ENDING:exited GT-OUTCOME!
    0 GT-OUT-U !
-   DIAG-BUFFER$ nip GT-ERR-U !
-   DIAG-BUFFER-OFF ;
+   REJECTION:BUFFER$ nip GT-ERR-U !
+   REJECTION:BUFFER-OFF ;
 
 : CANDIDATE-RUN ( ptr u8 n ptr u8 n -- ) {: body:ptr bodyu:n label:ptr labelu:n :}
    label labelu GT-PROGRESS-RUN
    body bodyu CANDIDATE!
    -1 CANDIDATE-VERDICT !
-   GT-ERR-BUF GT-ERR-CAP DIAG-BUFFER!
+   GT-ERR-BUF GT-ERR-CAP REJECTION:BUFFER!
    [: CANDIDATE-ACT ;] catch CANDIDATE-STORE ;
 
 : CANDIDATE-BAD ( ptr u8 n n ptr u8 n ptr u8 n -- )
@@ -652,7 +646,8 @@ variable CANDIDATE-VERDICT
 
 : RUN-BAD-CHILD ( n ptr u8 n ptr u8 n -- )
    {: rc:n needle:ptr needleu:n label:ptr labelu:n :}
-   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @
+   PROCESS:WAIT-FOREVER MS>N GE-RUN-STDIN
    rc label labelu GE-EXPECT-RC
    needle needleu label labelu GE-EXPECT-ERR-HAS ;
 
@@ -924,7 +919,7 @@ variable CANDIDATE-VERDICT
    s" ;package" GE-SRC-LINE
    s" GD-QUNDEF:TARGET ." GE-SRC-LINE
    s" TYPED-VARIABLE GD-UQ-A ptr u8   variable GD-UQ-U" GE-SRC-LINE
-   s" : GD-UQ-GO ( -- ) GD-UQ-A @ GD-UQ-U @ INCLUDE-EVALUATE ;" GE-SRC-LINE
+   s" : GD-UQ-GO ( -- ) GD-UQ-A @ GD-UQ-U @ evaluate-closed ;" GE-SRC-LINE
    s" : GD-UQ-CATCH ( ptr u8 n -- n ) GD-UQ-U ! GD-UQ-A ! [: GD-UQ-GO ;] catch ;" GE-SRC-LINE
    s" s" GE-SRC+ GE-DQ GE-SRC-C s"  undefine PCAP-CAPTURED:MAKE" GE-SRC+ GE-DQ GE-SRC-C
    s"  GD-UQ-CATCH ." GE-SRC-LINE
@@ -1001,7 +996,7 @@ variable CANDIDATE-VERDICT
    path pathu GE-ARG+
    s" --" GE-ARG+
    label labelu GT-PROGRESS-RUN
-   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
+   s" bin/hb" PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV
    label labelu GE-EXPECT-OK
    label labelu GT-PROGRESS-PASS ;
 
@@ -1013,7 +1008,7 @@ variable CANDIDATE-VERDICT
    INC-MAIN$ GE-ARG+
    s" --" GE-ARG+
    label labelu GT-PROGRESS-RUN
-   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
+   s" bin/hb" PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV
    label labelu GE-EXPECT-OK
    label labelu GT-PROGRESS-PASS ;
 
@@ -1023,7 +1018,7 @@ variable CANDIDATE-VERDICT
    s" --load" GE-ARG+
    INC-MAIN$ GE-ARG+
    s" --" GE-ARG+
-   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
+   s" bin/hb" PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV
    rc label labelu GE-EXPECT-RC
    needle needleu label labelu GE-EXPECT-ERR-HAS ;
 
@@ -1105,6 +1100,26 @@ variable CANDIDATE-VERDICT
    s" undefine GD-UQ:MISSING" GE-SRC-LINE
    70 s" undefine: word not found" s" unknown qualified undefine fails closed" RUN-BAD-SOURCE ;
 
+\ A package's own `+`, `ptr-field` and `STRUCT-BYTE+` capture none of the
+\ field words it declares: they read POINT's layout.
+: FIELD-WORDS-SOURCE ( -- )
+   s" package GD-FW" GE-SRC-LINE
+   s" : ptr-field ( ptr a n -- ptr ptr b ) 1 + ptr-field ;" GE-SRC-LINE
+   s" : STRUCT-BYTE+ ( ptr a n -- ptr u8 ) 1 + STRUCT-BYTE+ ;" GE-SRC-LINE
+   s" : + ( ptr a n -- ptr a ) CELL + + ;" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" BEGIN-STRUCTURE FW" GE-SRC-LINE
+   s" CELL +FIELD FW.X" GE-SRC-LINE
+   s" CELL +FIELD FW.Y" GE-SRC-LINE
+   s" PTR-FIELD: FW.NAME" GE-SRC-LINE
+   s" CFIELD: FW.FLAGS" GE-SRC-LINE
+   s" END-STRUCTURE" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
+   s" GD-POINT GD-FW:FW.X @ ." GE-SRC-LINE
+   s" GD-POINT GD-FW:FW.Y @ ." GE-SRC-LINE
+   s" GD-POINT GD-FW:FW.FLAGS c@ ." GE-SRC-LINE
+   s" GD-POINT GD-FW:FW.NAME @ 2 type cr" GE-SRC-LINE ;
+
 : STRUCTURE-SOURCE ( -- )
    GE-SRC-RESET
    s" BEGIN-STRUCTURE POINT" GE-SRC-LINE
@@ -1130,7 +1145,8 @@ variable CANDIDATE-VERDICT
    s" : GD-USE-X ( ptr a -- ptr a ) POINT.X ;" GE-SRC-LINE
    s" : GD-USE-NAME ( ptr a -- ptr ptr u8 ) POINT.NAME ;" GE-SRC-LINE
    s" : GD-USE-PTR ( -- ptr ptr u8 ) GD-PTR ;" GE-SRC-LINE
-   s" : GD-USE-FLAGS ( ptr a -- ptr u8 ) POINT.FLAGS ;" GE-SRC-LINE ;
+   s" : GD-USE-FLAGS ( ptr a -- ptr u8 ) POINT.FLAGS ;" GE-SRC-LINE
+   FIELD-WORDS-SOURCE ;
 
 : STRUCTURES ( -- )
    GE-HB-RESET
@@ -1142,6 +1158,10 @@ variable CANDIDATE-VERDICT
    s" 22" GE-OUT-LINE
    s" 123" GE-OUT-LINE
    s" gd" GE-OUT-LINE
+   s" gd" GE-OUT-LINE
+   s" 11" GE-OUT-LINE
+   s" 22" GE-OUT-LINE
+   s" 123" GE-OUT-LINE
    s" gd" GE-OUT-LINE
    SB$ s" hb structures output" GE-EXPECT-OUT ;
 
@@ -1159,8 +1179,8 @@ variable CANDIDATE-VERDICT
    GE-HB-RESET
    GE-SRC-RESET
    \ Depth satisfies +FIELD's declared inputs ( ptr a n n ) so the body's own
-   \ state check is reached; an underdepth bare call fails earlier with
-   \ `E-UNDERFLOW ... interpret stack underdepth:` (test/underdepth-gate.f).
+   \ state check is reached; an underdepth bare call fails earlier with the
+   \ checker's `input underflow` at the word.
    s" NULL-PTR 0 CELL +FIELD GD-NO-STRUCT.FIELD" GE-SRC-LINE
    $4C s" structure: no active structure" s" structures reject field outside begin" RUN-BAD-SOURCE
    GE-SRC-RESET
@@ -1407,7 +1427,6 @@ variable CANDIDATE-VERDICT
    SB-RESET s" interpreted ndict! refuses " SB-APPEND lit litu SB-APPEND
    74 s" E-DICT-COUNT habu: dictionary count above DICT-CAP: " SB$ GE-EVAL-FORK-BAD
    GE-SRC-RESET
-   s" 1 set-tier" GE-SRC-LINE
    s" : GD-NDICT-BAD ( -- ) " GE-SRC+
    lit litu GE-SRC+ s"  ndict! ;" GE-SRC-LINE
    s" GD-NDICT-BAD" GE-SRC-LINE
@@ -1417,7 +1436,6 @@ variable CANDIDATE-VERDICT
 : NDICT-LIVE-RESTORE ( -- )
    GE-HB-RESET
    GE-SRC-RESET
-   s" 1 set-tier" GE-SRC-LINE
    s" package GD-NDICT-LIVE" GE-SRC-LINE
    s" variable LO variable HI" GE-SRC-LINE
    s" : MARK-LOW ( -- ) ndict@ LO ! ;" GE-SRC-LINE
@@ -1469,7 +1487,6 @@ public
    COMBINATOR-CHECKS
    LOCAL-QUOT-CHECKS
    LOCAL-QUOT-RUN
-   LOCAL-QUOT-TIER1
    LOCAL-FIRST
    LITERAL-FLOAT-FIRST
    LITERAL-FLOAT-EVAL
@@ -1477,7 +1494,7 @@ public
    NAMESPACE-QUALIFIED
    PACKAGE-RUNTIME
    PACKAGE-SEMICOLON
-   PACKAGE-JIT-STACK
+   PACKAGE-VALUE-STACK
    PACKAGE-CHECK
    PACKAGE-NORET
    DUPLICATE-DEFINITION-REJECTS

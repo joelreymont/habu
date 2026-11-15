@@ -48,10 +48,6 @@ SD-RESET
 : NAME-GATE ( ptr u8 n -- )         \ the packet names the family, then REQUIRE-NAME judges it
    2dup DECL-REJECT:FAMILY! REQUIRE-NAME ;
 
-\ The name NAME-OK? judges, held across its catch: a quotation carries no
-\ locals. NAME-OK? empties it again, so no borrowed span outlives the call.
-PTR-VARIABLE GATE-A   variable GATE-U
-
 : SD-KIND$ ( -- ptr u8 n ) s" structure" ;
 
 \ A family that owns a linear value is an accepted field type: the structure owns
@@ -64,10 +60,8 @@ PTR-VARIABLE GATE-A   variable GATE-U
 : FIELD-FAM? ( ptr u8 n -- n bool )
    TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE 0= IF drop 0 NO EXIT THEN
    {: id:n :}
+   id UNSTORED-REASON IF E-PAYLOAD DECL-REJECT:REJECT throw THEN 2drop
    id TFAM-LAYOUT? id TFAM-CELL? or 0= IF 0 NO EXIT THEN
-   id WIDTH-FAM @ = IF
-      s" a width is not stored: keep its bytes (width>n)"
-      E-PAYLOAD DECL-REJECT:REJECT throw THEN
    id FAM @ = POINTEE @ 0= and IF
       s" field type cannot recursively name its owner"
       E-PAYLOAD DECL-REJECT:REJECT throw THEN
@@ -344,6 +338,7 @@ SD-QUOT-INSTALL
    2dup s" hash" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup s" addr" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup s" init" CORE-STR=CI IF 2drop YES EXIT THEN
+   2dup s" tag" CORE-STR=CI IF 2drop YES EXIT THEN
    s" order" CORE-STR=CI ;
 \ Visibility is not a condition for a derived surface: it picks the spelling and
 \ the wordlist (type-family.f TF-CTOR-PRIV$, rendered by sumtype.f TDGEN-DRV-REF).
@@ -360,6 +355,8 @@ SD-QUOT-INSTALL
    2dup s" hash" CORE-STR=CI IF 2drop DERIVE-CONCRETE FAM @ TFAM-DERIVE-HASH! FAM @ DRV-HASH EMIT-DERIVE EXIT THEN
    2dup s" addr" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-ADDR! FAM @ DRV-ADDR EMIT-DERIVE EXIT THEN
    2dup s" init" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-INIT! FAM @ DRV-INIT EMIT-DERIVE EXIT THEN
+   2dup s" tag" CORE-STR=CI IF
+      2drop s" derive tag requires an enum" E-DERIVE DECL-REJECT:REJECT throw THEN
    2dup s" order" CORE-STR=CI IF
       2drop s" derive feature not yet supported" E-DERIVE DECL-REJECT:REJECT throw THEN
    2drop s" unknown derive feature" E-DERIVE DECL-REJECT:REJECT throw ;
@@ -400,7 +397,7 @@ SD-QUOT-INSTALL
    na nu NAME-LONG? IF TF-NAME-LONG$ E-CAP DECL-REJECT:REJECT throw THEN
    na nu REQUIRE-FIELD-NAME
    OUTCOME-NAMES @ 0 <> IF
-      na nu s" structure field names exceed declaration window" NAME-CHECK THEN
+      na nu NAME-CHECK THEN
    0 FIELD-MISS !  0 POINTEE !
    NEXT RESOLVE-TYPE {: node:n :}
    FIELD-MISS @ 0= IF na nu node EMIT-FIELD THEN
@@ -483,30 +480,7 @@ SD-QUOT-INSTALL
 
 public
 
-\ The last declaration's parse state back to zero at a file boundary or image
-\ capture (generated-declaration-protection.f SNAPSHOT-RESET), so a cached load
-\ and a fresh one capture the same bytes.
-: SNAPSHOT-RESET ( -- )
-   SD-RESET
-   0 FAM !  0 FLDBASE !  0 NFLD !  0 SD-CELLS !
-   SD-ARG-CAP 0 ?do 0 i cells SD-ARGS + ! loop  0 SD-ARG-N !
-   0 POINTEE ! ;
-
 : SD-RUN ( -- ) SD-FRONT DECL-FRONT:RUN ;
-
-\ NAME-OK? ( name -- bool ) : judge a family name as a bare `STRUCTURE name`
-\ does, for a definer that declares a STRUCTURE in text it generates from that
-\ name (src/core/arena.f), before it spells anything from the name: the same
-\ gate in the same packet, rendered and rethrown with the same code. False only
-\ when a multi-error load counted the refusal.
-: NAME-OK? ( ptr u8 n -- bool )
-   GATE-U ! GATE-A !
-   SD-KIND$ DECL-REJECT:OPEN
-   GATE-A @ GATE-U @ DECL-REJECT:TOKEN!
-   [: GATE-A @ GATE-U @ NAME-GATE ;] catch {: rc:n :}
-   NULL-PTR GATE-A ! 0 GATE-U !
-   rc DECL-REJECT:GUARD-CODE
-   rc 0= ;
 
 \ Registers a STRUCTURE from a body a tool lexed, by SD-RUN's grammar, defining
 \ no word; a body without ;STRUCTURE is refused "missing ;STRUCTURE".

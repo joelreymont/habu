@@ -7,10 +7,8 @@
 
 package GENERATED-DECL-DICTIONARY
 
-7174 constant E-DICTIONARY-TX
 7175 constant E-DICTIONARY-CAP
-\ What a declaration reject reports for each code (generated-declaration.f).
-s" generated-name transaction is out of order" E-DICTIONARY-TX DECL-REJECT:EXPLAIN
+\ What a declaration reject reports for the code (generated-declaration.f).
 s" generated-name table is full" E-DICTIONARY-CAP DECL-REJECT:EXPLAIN
 
 variable NDICT-MARK
@@ -46,14 +44,6 @@ public
 : PREFLIGHT ( n -- )
    dup 0 < IF E-DICTIONARY-CAP throw THEN
    DICT-CAP ndict@ - > IF E-DICTIONARY-CAP throw THEN ;
-
-\ The code mark is a JIT address, which differs from run to run; clearing the
-\ savepoint keeps it out of a captured image so successive generations match.
-: SNAPSHOT-RESET ( -- )
-   DECLARATION-TRANSACTION:ACTIVE? IF E-DICTIONARY-TX throw THEN
-   0 NDICT-MARK !
-   0 CP-MARK !
-   NULL-PTR DP-MARK ! ;
 
 private
 

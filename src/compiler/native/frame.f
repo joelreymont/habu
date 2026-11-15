@@ -3,7 +3,7 @@
 require src/lib/prelude.f
 require src/lib/error.f
 require src/compiler/native-effect.f
-require src/compiler/native/a64ir.f
+require src/arch/arm64/machine.f
 
 package A64FRAME
 
@@ -26,7 +26,7 @@ private
 public
 
 : LINK-SLOT ( -- n )
-   LINK-IX A64IR:SLOT-WIDTH * ;
+   LINK-IX A64M:SLOT-WIDTH * ;
 
 private
 
@@ -46,7 +46,7 @@ public
 
 \ Frame accesses below this offset are the prologue's; this and above are spills.
 : SPILL-BASE ( NEFF:traits NEFF:link -- n )
-   PROLOGUE-SLOTS A64IR:SLOT-WIDTH * ;
+   PROLOGUE-SLOTS A64M:SLOT-WIDTH * ;
 
 seal-package
 

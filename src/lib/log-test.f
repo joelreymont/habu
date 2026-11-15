@@ -22,7 +22,7 @@ require src/lib/test/stderr.f
 
 \ LOG's line row, read to show a task's release disposed it.
 package LOG
-: LOG-TEST:ROW ( -- ptr n ) ROW ;
+: LOG-TEST:ROW ( -- ptr u8 ) 0 ROW ;
 ;package
 
 package LOG-TEST
@@ -55,7 +55,7 @@ create CHUNK CHUNK-U allot
 variable PIPE-R
 variable PIPE-W
 variable SAVED-ERR
-variable ROW-CODE                   \ what LEN@ of a task's row threw as it ended
+variable ROW-LIVE                   \ LIVE? of a task's row as it ended
 variable T0                         \ epoch seconds before a case's first line
 variable T1                         \ and after its last
 variable CODE-A
@@ -149,22 +149,24 @@ TASK:MIN-STACK TASK:TASK RELEASER
    at DATE:TIME-LEN + ru + u DATE:TIME-LEN - ru - ;
 
 
-: TWO-LINES ( -- )
+: LEVEL-LINES ( -- )
    LOG:ERROR s" model" LOG:LINE s" refused " LOG:TEXT+ -42 LOG:INT+ LOG:;LINE
-   LOG:WARN s" crew" LOG:LINE s" min " LOG:TEXT+ STR-MIN-I64 LOG:INT+ LOG:;LINE ;
+   LOG:WARN s" crew" LOG:LINE s" min " LOG:TEXT+ STR-MIN-I64 LOG:INT+ LOG:;LINE
+   LOG:INFO s" mcp" LOG:LINE s" ping" LOG:TEXT+ LOG:;LINE ;
 
 
 : MODEL-REST$ ( -- ptr u8 n )  S\"  error model: refused -42\n" ;
 : MIN-REST$ ( -- ptr u8 n )  S\"  warn crew: min -9223372036854775808\n" ;
+: PING-REST$ ( -- ptr u8 n )  S\"  info mcp: ping\n" ;
 
 
 : LEVELS-CASE ( -- )
-   s" error and warn lines, text and numbers" T-LABEL
-   [: TWO-LINES ;] CAPTURED
+   s" error, warn and info lines, text and numbers" T-LABEL
+   [: LEVEL-LINES ;] CAPTURED
    FILE$ {: at:ptr u:n :}
-   u DATE:TIME-LEN 2 * MODEL-REST$ nip + MIN-REST$ nip + T=
+   u DATE:TIME-LEN 3 * MODEL-REST$ nip + MIN-REST$ nip + PING-REST$ nip + T=
    at u MODEL-REST$ LINE-OK
-   MIN-REST$ LINE-OK nip 0 T= ;
+   MIN-REST$ LINE-OK PING-REST$ LINE-OK nip 0 T= ;
 
 
 : BIG-MAKE ( -- )
@@ -323,10 +325,10 @@ TASK:MIN-STACK TASK:TASK RELEASER
 
 
 \ Runs after LOG's release, which the task registers later: the exit chain runs
-\ newest first. LEN@ of a disposed row is E-BUF-STATE, and the rest of the line
+\ newest first. The released row is no longer LIVE?, and the rest of the line
 \ the release closed writes nothing.
 : ROW-PROBE ( -- )
-   [: LOG-TEST:ROW BUF:LEN@ drop ;] catch ROW-CODE !
+   LOG-TEST:ROW BUF:LIVE? bool>n ROW-LIVE !
    [: s" late" LOG:TEXT+ LOG:;LINE ;] catch CODE-A ! ;
 
 
@@ -342,9 +344,9 @@ TASK:MIN-STACK TASK:TASK RELEASER
 
 : RELEASE-CASE ( -- )
    s" a task that abandons a line releases its row and closes the line" T-LABEL
-   0 ROW-CODE !  -1 CODE-A !
+   1 ROW-LIVE !  -1 CODE-A !
    [: RELEASE-TASK ;] CAPTURED
-   ROW-CODE @ E-BUF-STATE T=
+   ROW-LIVE @ 0 T=
    CODE-A @ 0 T=
    PATH$ FS:FILE-SIZE 0 T= ;
 

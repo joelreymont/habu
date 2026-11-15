@@ -11,6 +11,7 @@ require src/lib/error.f
 require src/lib/string.f
 require src/lib/fs.f
 require src/lib/source-syntax.f
+require src/core/compile-reads.f
 
 package SOURCE
 private
@@ -96,7 +97,9 @@ public
 \ FS:FILE-SIZE.
 : READ-WHOLE-SAMPLED ( ptr u8 n n [ n -- ptr u8 ] -- n )
    {: path:ptr pathu:n first:n room :}
-   path pathu FS:>PATHZ open-rd {: fd:n :}
+   path pathu FS:>PATHZ {: z:ptr :}
+   path pathu z COMPILE-READS:FILE+
+   z open-rd {: fd:n :}
    fd 0 < if E-FS-OPEN throw then
    fd first room 0 [: SOURCE-READ-RUN ;] catch
    {: rc:n :}

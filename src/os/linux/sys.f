@@ -4,6 +4,7 @@
 \ carry set means error, carry clear means success.
 
 require src/arch/arm64/icode.f
+require src/os/linux-flags.f
 using A64ICODE
 package SYSCALL
 public
@@ -50,6 +51,10 @@ public
 24  constant NR-DUP2
 25  constant NR-FCNTL
 103 constant NR-SETITIMER
+private
+113 constant NR-CLOCK-GETTIME
+1   constant CLOCK-MONOTONIC
+public
 163 constant NR-GETRLIMIT
 3   constant RLIMIT-STACK
 -1  constant RLIM-INFINITY
@@ -92,6 +97,27 @@ $100 constant AT-SYMLINK-NOFOLLOW
    {: reg :}
    NR-GETTID SYS,  reg 0 0 ADDI, ;
 
+\ x(n) = OS-TIMER-NOW's ticks per second. Clobbers only x(n).
+: OS-TIMER-HZ ( n -- ) 1000000000 LIT64, ;
+
+\ The longest interval in us setitimer arms as given: a tv_sec of 9223372036
+\ or more saturates.
+9223372035999999 constant OS-TIMER-MAX-USEC
+
+\ x(n) = CLOCK_MONOTONIC in ns, the clock ITIMER_REAL expires on, by a frame on
+\ sp it gives back; dies for n of 0, 1, 8 or 16. Clobbers only x(n) and flags.
+: OS-TIMER-NOW ( n -- )
+   {: reg :}
+   reg 0 = reg 1 = or reg 8 = or reg 16 = or
+   if s" hb: sys: OS-TIMER-NOW into a register it restores" 76 die then
+   SP SP 48 SUBI,
+   0 SP 16 STR,  1 SP 24 STR,  8 SP 32 STR,  16 SP 40 STR,
+   0 CLOCK-MONOTONIC MOVZ,  1 SP 0 ADDI,  NR-CLOCK-GETTIME SYS,
+   reg SP 0 LDR,  0 OS-TIMER-HZ  reg reg 0 MUL,
+   1 SP 8 LDR,  reg reg 1 ADD,
+   0 SP 16 LDR,  1 SP 24 LDR,  8 SP 32 LDR,  16 SP 40 LDR,
+   SP SP 48 ADDI, ;
+
 \ tgkill(getpid(), the tid in x(t), the signal in x(s)); s is not x8.
 \ Clobbers x0-x2, x8 and x16.
 : OS-SIGNAL-THREAD ( n n -- )
@@ -116,37 +142,28 @@ $100 constant AT-SYMLINK-NOFOLLOW
    0 0 MOVZ,  1 SP 0 ADDI,  2 0 MOVZ,  3 8 MOVZ,  NR-RT-SIGPROCMASK SYS,
    SP SP $10 ADDI, ;
 
+private
+\ x6 takes the Linux bit when register src holds the BSD bit. Clobbers x7.
+: FLAG-BIT, ( n n n -- )
+   {: bsd:n lin:n src:n :}
+   LBL {: skip :}
+   7 bsd LIT64,  7 src 7 AND,  7 skip CBZ,
+      7 lin LIT64,  6 6 7 ORR,
+   skip LBL, ;
+public
+
+\ x1's BSD-shaped open flags into x2: the access mode as it is, each flag to
+\ its Linux bit. Clobbers x6 and x7.
 : OS-OPEN-FLAGS ( -- )
-   LBL LBL LBL LBL LBL {: nononblock noappend nocreat notrunc noctty :}
-   7 3 MOVZ,  6 1 7 AND,
-   7 4 MOVZ,  7 1 7 AND,  7 nononblock CBZ,
-      7 $800 MOVZ,  6 6 7 ORR,
-   nononblock LBL,
-   7 8 MOVZ,  7 1 7 AND,  7 noappend CBZ,
-      7 $400 MOVZ,  6 6 7 ORR,
-   noappend LBL,
-   7 $200 MOVZ,  7 1 7 AND,  7 nocreat CBZ,
-      7 $40 MOVZ,  6 6 7 ORR,
-   nocreat LBL,
-   7 $400 MOVZ,  7 1 7 AND,  7 notrunc CBZ,
-      7 $200 MOVZ,  6 6 7 ORR,
-   notrunc LBL,
-   7 $20000 LIT64,  7 1 7 AND,  7 noctty CBZ,
-      7 $100 MOVZ,  6 6 7 ORR,
-   noctty LBL,
+   7 LINUX-FLAGS:OPEN-KEPT MOVZ,  6 1 7 AND,
+   [: 1 FLAG-BIT, ;] LINUX-FLAGS:OPEN-PAIRS
    2 6 0 ADDI, ;
 
-\ x3 carries mmap's flags both ways: SHARED, PRIVATE and FIXED keep their bits,
-\ MAP_ANON moves from BSD's $1000 to $20 and MAP_NORESERVE from $40 to $4000.
+\ x3 carries mmap's flags both ways: the kept bits as they are, each flag to
+\ its Linux bit. Clobbers x6 and x7.
 : OS-MMAP-FLAGS ( -- )
-   LBL LBL {: noanon nonores :}
-   7 $13 MOVZ,  6 3 7 AND,
-   7 $1000 MOVZ,  7 3 7 AND,  7 noanon CBZ,
-      7 $20 MOVZ,  6 6 7 ORR,
-   noanon LBL,
-   7 $40 MOVZ,  7 3 7 AND,  7 nonores CBZ,
-      7 $4000 MOVZ,  6 6 7 ORR,
-   nonores LBL,
+   7 LINUX-FLAGS:MMAP-KEPT MOVZ,  6 3 7 AND,
+   [: 3 FLAG-BIT, ;] LINUX-FLAGS:MMAP-PAIRS
    3 6 0 ADDI, ;
 ;package
 ;using

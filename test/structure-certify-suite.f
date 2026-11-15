@@ -14,14 +14,14 @@ T-RESET
 \ fixed buffer, asserted by substring.
 create SCG-BUF 8192 allot
 : SCG< ( ptr u8 n -- )   \ run one candidate with JSON diags captured; assert rejected
-   SCG-BUF 8192 DIAG-BUFFER!  0 0= DIAG-JSON!
+   SCG-BUF 8192 REJECTION:BUFFER!  0 0= REJECTION:JSON !
    CHECK-CANDIDATE! 0 T= ;
 : SCG? ( ptr u8 n -- )   \ assert the captured diag contains the needle
    T-NEXT
-   DIAG-BUFFER$ 2swap CONTAINS? 0= if
+   REJECTION:BUFFER$ 2swap CONTAINS? 0= if
       s" diag needle missing" T-ASSERT-DETAIL
    then ;
-: SCG-END ( -- ) 0 0= 0= DIAG-JSON! DIAG-BUFFER-OFF ;
+: SCG-END ( -- ) 0 0= 0= REJECTION:JSON ! REJECTION:BUFFER-OFF ;
 
 \ Each section pairs a positive that certifies with a negative that rejects.
 \ A STRUCTURE is a single-shape PRODUCT, so its FAMILY:MAKE/UNMAKE type through
@@ -104,14 +104,15 @@ s\" \"token\":\"SCDG:MAKE\"" SCG?
 s\" \"expected\":\"n ptr n \"" SCG?                               \ the exact field-derived shape (x:n, y:ptr n)
 SCG-END
 
-\ 7. The derived package is closed but callable: reopening it (any case) or
-\    undefining a generated word throws E-CTOR-PROTECTED, as for sum and product
-\    constructors.
+\ 7. The derived package is closed but callable: reopening it (any case),
+\    undefining a generated word or deferring a new word into it throws
+\    E-CTOR-PROTECTED, as for sum and product constructors.
 s" STRUCTURE scprot FIELD x n FIELD y n ;STRUCTURE" evaluate-closed
 s" package scprot" TEST-EVAL:RC E-CTOR-PROTECTED T=
 s" package SCPROT" TEST-EVAL:RC E-CTOR-PROTECTED T=               \ case-insensitive
 s" undefine SCPROT:MAKE" TEST-EVAL:RC E-CTOR-PROTECTED T=
 s" undefine scprot:unmake" TEST-EVAL:RC E-CTOR-PROTECTED T=
+s" defer SCPROT:EXTRA ( -- n )" TEST-EVAL:RC E-CTOR-PROTECTED T=
 s" package scok ;package" TEST-EVAL:RC 0 T=                       \ an ordinary package still opens
 : SCPRT ( -- n n ) 3 4 SCPROT:MAKE SCPROT:UNMAKE ;               \ still callable after the rejects
 SCPRT 4 T= 3 T=

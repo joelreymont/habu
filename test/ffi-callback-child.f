@@ -1,5 +1,6 @@
-\ ffi-callback-child.f - one refused scenario per run, since its refusal ends
-\ the process; the released case runs the four that exit 0.
+\ ffi-callback-child.f - one scenario per run, since a refusal ends the process;
+\ the released case runs two that exit 0, and grown-bind exits 0 unless its
+\ binding was lost.
 \ Run: bin/hb --load test/ffi-callback-child.f -- <case>
 require test/ffi-callback-fixture.f
 require src/lib/string.f
@@ -10,54 +11,37 @@ using FFI-CB
 
 70 constant SURVIVED-RC
 
-\ Sorts through CMP-FN, which the scenario binds to the main region; a non-zero
-\ argument first waits until the main thread is inside a foreign call
+\ A worker sorts through CMP-FN, which the scenario binds to the main region; a
+\ non-zero argument first waits until the main thread is inside a foreign call
 \ (CB-OWNER).
-CALLBACK: RAID ( n -- n ) 0 FALLBACK ;CALLBACK
-
-: RAID-IMPL ( n -- n ) {: wait:n :}
+: RAID ( n -- ) {: wait:n :}
    PARK
    wait 0 <> if
       begin TASK:MAIN-BASE CB-OWNER + atomic@ 0= while TASK:PAUSE repeat
    then
    THREAD-ROW 200 ROW-FILL
-   THREAD-ROW BYTE-VIEW ROW-N CELL CMP-FN @ QSORT
-   wait ;
-
-' RAID-IMPL RAID-BODY !
+   THREAD-ROW BYTE-VIEW ROW-N CELL CMP-FN @ QSORT ;
 
 : STARTED ( n -- )
    0 <> if s" ffi-callback-child: pthread_create failed" SURVIVED-RC die then ;
 
-: RAID-START ( n -- ) {: wait:n :}
-   CTX-TASK TASK:EXPOSE
-   RAID CTX-TASK TASK:CONTEXT ENTRY {: fn:n :}
+: RAID-START ( [ -- ] -- ) {: body :}
    CMP TASK:SELF-CONTEXT ENTRY CMP-FN !
-   fn wait THREAD-START STARTED
+   body WORKER-A TASK:ACTIVATE
    WAIT-INSIDE ;
 
 : OUTSIDE ( -- )
-   0 RAID-START
+   [: 0 RAID ;] RAID-START
    s" outside: a thread is parked on its own context" type cr
    1 GATE atomic!
    begin GATE atomic@ drop again ;
 
 : SLEEPING ( -- )
-   1 RAID-START
+   [: 1 RAID ;] RAID-START
    s" sleeping: a thread is parked on its own context" type cr
    1 GATE atomic!
    10000 >MS TASK:SLEEP
    s" ffi-callback-child: sleeping was not refused" SURVIVED-RC die ;
-
-: BUSY ( -- )
-   THREAD-BIND
-   START-B CTX-TASK TASK:CONTEXT ENTRY {: second:n :}
-   START-FN @ 1 THREAD-START STARTED
-   WAIT-INSIDE
-   s" busy: the first thread is parked inside the context" type cr
-   second 2 THREAD-START STARTED
-   10000 >MS TASK:SLEEP
-   s" ffi-callback-child: busy was not refused" SURVIVED-RC die ;
 
 : SORT-STALE ( -- )
    OUTER 10 ROW-FILL
@@ -78,22 +62,6 @@ CALLBACK: RAID ( n -- n ) 0 FALLBACK ;CALLBACK
    SORT-STALE
    s" ffi-callback-child: worker-stale was not refused" SURVIVED-RC die ;
 
-: UNEXPOSED ( -- )
-   THREAD-BIND
-   CTX-TASK TASK:UNEXPOSE
-   s" unexposed: the context is gone" type cr
-   SORT-STALE
-   s" ffi-callback-child: unexposed was not refused" SURVIVED-RC die ;
-
-\ The ended worker's exposed CTX-TASK still counts on the main region, so the
-\ main task may not lower the code pointer.
-: DEFINES ( -- )
-   ['] WORK-EXPOSES WORKER-A TASK:ACTIVATE
-   WORKER-A TASK:JOIN JOINED 0= if s" defines: the exposing worker was joined" type cr then
-   WAIT-INSIDE
-   s" cp@ cp!" INCLUDE-EVALUATE
-   s" ffi-callback-child: defines was not refused" SURVIVED-RC die ;
-
 \ Defines once with no task live, so the definition is admitted. The thunk
 \ restores C's callee-saved registers, the caller's record count and code
 \ pointer among them, so it ends the process rather than lose what the
@@ -105,7 +73,7 @@ variable DEFINED                        \ 1 once CMP-DEFINE has defined
 : CMP-DEFINE-IMPL ( ptr u8 ptr u8 -- n ) {: a b :}
    DEFINED @ 0= if
       1 DEFINED !
-      s" variable CBC-INSIDE" INCLUDE-EVALUATE
+      s" variable CBC-INSIDE" evaluate-closed
    then
    a b ROW-ORDER ;
 
@@ -177,62 +145,6 @@ variable PAST-PAUSE                  \ 1 if the worker ran past that TASK:PAUSE
       s" killed: the worker ended at its first TASK:PAUSE after the sort" type cr
    then ;
 
-\ On an exposed context TASK:SELF is the exposed task, so TASK:WAIT parks on its
-\ record and TASK:WAKE of the exposed task releases it.
-CALLBACK: STOPS ( n -- n ) 0 FALLBACK ;CALLBACK
-
-align
-variable PAST-STOP                    \ 1 once STOPS's body has left its WAIT
-
-: STOPS-IMPL ( n -- n ) {: arg:n :}
-   1 INSIDE atomic!
-   TASK:WAIT
-   1 PAST-STOP atomic!
-   arg 1 + ;
-
-' STOPS-IMPL STOPS-BODY !
-
-: WOKEN ( -- )
-   CTX-TASK TASK:EXPOSE
-   STOPS CTX-TASK TASK:CONTEXT ENTRY 3 THREAD-START STARTED
-   WAIT-INSIDE
-   s" woken: a thread is stopped inside its callback" type cr
-   CTX-TASK TASK:WAKE
-   THREAD-JOIN 0= THREAD-RET @ 4 = and if
-      s" woken: WAKE of the exposed task released it to its result" type cr
-   then
-   CTX-TASK TASK:KILL ;
-
-\ An exposure opens its park at zero, whatever earlier exposures of the task
-\ posted; a stale hint would let the second exposure leave its WAIT unwoken.
-50 constant FRESH-MS                  \ the thread's time to take a stale hint
-
-: PAUSES ( -- )
-   begin TASK:PAUSE again ;
-
-\ True when the thread stopped in this exposure waits for this exposure's WAKE
-\ and that WAKE releases it to its result.
-: STOPS-FRESH? ( -- bool )
-   0 PAST-STOP atomic!
-   STOPS CTX-TASK TASK:CONTEXT ENTRY 3 THREAD-START STARTED
-   WAIT-INSIDE
-   FRESH-MS >MS TASK:SLEEP
-   PAST-STOP atomic@ 0=
-   CTX-TASK TASK:WAKE
-   THREAD-JOIN 0= and THREAD-RET @ 4 = and ;
-
-: FRESH ( -- )
-   ['] PAUSES CTX-TASK TASK:ACTIVATE
-   CTX-TASK TASK:WAKE
-   CTX-TASK TASK:KILL
-   CTX-TASK TASK:EXPOSE
-   STOPS-FRESH? if s" fresh: a hint to a run that ended does not reach an exposure" type cr then
-   CTX-TASK TASK:WAKE
-   CTX-TASK TASK:UNEXPOSE
-   CTX-TASK TASK:EXPOSE
-   STOPS-FRESH? if s" fresh: nor does a hint to an earlier exposure" type cr then
-   CTX-TASK TASK:KILL ;
-
 \ A thread C started is no task's, so a slot on the caller's context finds no
 \ region for it.
 : CALLER-THREAD ( -- )
@@ -242,6 +154,23 @@ variable PAST-STOP                    \ 1 once STOPS's body has left its WAIT
    10000 >MS TASK:SLEEP
    s" ffi-callback-child: caller-thread was not refused" SURVIVED-RC die ;
 
+\ Left unbound until a text that grows the tables binds it and throws.
+CALLBACK: CMP-GROWN ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
+' ROW-ORDER CMP-GROWN-BODY !
+variable GROWN-FN                     \ the C entry the thrown text answered
+
+: GROWN$ ( -- ptr u8 n )
+   s" CALLBACK: CBC-GROW ( -- ) ;CALLBACK  CMP-GROWN TASK:SELF-CONTEXT FFI-CB:ENTRY GROWN-FN !  1 throw" ;
+
+: GROWN-BIND ( -- )
+   PAD-TO-EDGE
+   [: GROWN$ evaluate-closed ;] catch 1 <> if
+      s" ffi-callback-child: grown-bind's text did not throw 1" SURVIVED-RC die
+   then
+   OUTER 10 ROW-FILL
+   OUTER BYTE-VIEW ROW-N CELL GROWN-FN @ QSORT
+   OUTER 10 ROW-SORTED? if s" grown-bind: sorted" type cr then ;
+
 : CASE? ( ptr u8 n -- bool )
    0 SCRIPT-ARGV$ STR= ;
 
@@ -249,14 +178,12 @@ variable PAST-STOP                    \ 1 once STOPS's body has left its WAIT
    SCRIPT-ARGC 1 <> if s" ffi-callback-child: one case name" SURVIVED-RC die then
    s" outside" CASE? if OUTSIDE then
    s" sleeping" CASE? if SLEEPING then
-   s" busy" CASE? if BUSY then
    s" unbound" CASE? if UNBOUND then
    s" worker-stale" CASE? if WORKER-STALE then
-   s" unexposed" CASE? if UNEXPOSED then
-   s" defines" CASE? if DEFINES then
    s" body-defines" CASE? if BODY-DEFINES then
    s" caller-thread" CASE? if CALLER-THREAD then
-   s" released" CASE? if HALTED KILLED WOKEN FRESH exit then
+   s" released" CASE? if HALTED KILLED exit then
+   s" grown-bind" CASE? if GROWN-BIND exit then
    s" ffi-callback-child: unknown case" SURVIVED-RC die ;
 
 DISPATCH

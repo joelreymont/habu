@@ -46,21 +46,6 @@ public
    b size at kind ADDRESS? 0= if false exit then
    v b at + 2 + LE:U64! true ;
 
-: CALL? ( ptr u8 n n n -- bool )
-   {: b:ptr size:n at:n kind:n :}
-   size at 5 SPAN? 0= if false exit then
-   b at + {: p:ptr :}
-   kind NEMIT:CALL = if $E8 else
-      kind NEMIT:TAIL = if $E9 else false exit then
-   then p c@ = p 1+ LE:U32@ 0= and ;
-
-: SLOT? ( ptr u8 n n -- bool )
-   {: b:ptr size:n at:n :}
-   size at 6 SPAN? 0= if false exit then
-   b size at NEMIT:TAIL CALL? b at + 5 + c@ $C3 = and ;
-
-: SIZE? ( n -- bool ) 0 > ;
-
 : PATCH ( n ptr u8 n [ n -- n ] [ n -- n ] -- )
    {: e:n dst:ptr at:n data resolve :}
    e NSHADOW:CALL-SITES 0 ?do
@@ -77,11 +62,6 @@ public
       kind NEMIT:ADDR-DATA = if data else resolve then execute
       dst s + 2 + LE:U64!
    loop ;
-
-: PLACE ( n ptr u8 n [ n -- n ] [ n -- n ] -- )
-   {: e:n dst:ptr at:n data resolve :}
-   e NSHADOW:BYTES dst e NSHADOW:SIZE BYTE-COPY
-   e dst at data resolve PATCH ;
 
 ;package
 ;package

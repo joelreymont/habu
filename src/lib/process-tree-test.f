@@ -14,13 +14,15 @@ require src/lib/process-argv.f
 require src/lib/process-pty-io.f
 require src/lib/process-env.f
 require src/lib/engine-candidate.f
+require src/lib/engine-id.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
 require src/lib/process-tree.f
 
 package PROC-TREE-TEST
 
 15 constant SIGTERM
 19 constant SIGCONT-MACOS
-30000 constant WALKER-MS             \ one engine boot and one walk, on a loaded host
 1 constant CAPTURE-MS                \ passes long before the sleeper's 30 s
 2 constant CAPTURES                  \ the capture walker's, each walking once
 1 constant SUPERVISED                \ the pty walker's target
@@ -75,8 +77,7 @@ variable TARGET
 \ must not replace the capture's code: a capture past its deadline throws
 \ E-PROC-TIMEOUT, one read as data answers the timeout outcome, each sleeper
 \ dies of SIGKILL and is reaped, and stderr is one line per capture naming the
-\ refused walk's E-PROC-OUTPUT. A captured sleeper is the capture's to reap; a
-\ walker stuck reaping one the walk left alive is ended with it at WALKER-MS.
+\ refused walk's E-PROC-OUTPUT. A captured sleeper is the capture's to reap.
 \ The walker's own capture buffers are free here: it captures nothing else.
 
 : SLEEPER-ARGS ( -- )
@@ -131,8 +132,8 @@ variable TARGET
 
 \ A walk with a fixed table of 1,024 members, or 1,024 listed children of one,
 \ would throw at a bigger tree and leave the rest running, reparented to init.
-\ CROWD runs on any host: KILL-TREE returns, and none of the root's DESCENDANTS
-\ children answers a signal once GONE-MS has passed.
+\ CROWD runs on any host: KILL-TREE returns, and then every one of the root's
+\ DESCENDANTS children stops answering a signal.
 \ A root, /bin/sh, starts DESCENDANTS sleepers in its own group, writes each pid
 \ on a pipe, closes it and waits. The sleepers hold no end of the pipe, so end
 \ of file says every one has started. The root stays unreaped until CROWD-END,
@@ -140,8 +141,6 @@ variable TARGET
 \ cleanup signals the group. Every sleeper ends on its own within 30 s.
 
 1100 constant DESCENDANTS
-5000 constant GONE-MS                \ the killed take a moment to finish dying
-1000000 constant NS-PER-MS
 4096 constant READ-CHUNK
 
 DYNAMIC-BUFFER LISTING u8            \ the root's report: a child's pid a line
@@ -204,12 +203,10 @@ PROCESS:NO-FD CROWD-WR !
       then
    loop ;
 
-\ The children still alive once GONE-MS has passed, or none sooner.
 : ALIVE-AFTER ( -- n )
-   mono-ns GONE-MS NS-PER-MS * + {: deadline:n :}
    begin
       TALLY
-      ALIVE @ 0<> mono-ns deadline < and
+      ALIVE @ 0<>
    while
       10 >MS TASK:SLEEP
    repeat
@@ -243,6 +240,29 @@ PROCESS:NO-FD CROWD-WR !
 : CROWD ( -- )
    [: CROWD-BODY ;] [: CROWD-END ;] finally ;
 
+create RUNS-DIR PATH-CAP allot
+variable RUNS-DIR-U
+create IDLE-COPY PATH-CAP allot
+variable IDLE-COPY-U
+
+: RUNS-DIR$ ( -- ptr u8 n ) RUNS-DIR RUNS-DIR-U @ ;
+: IDLE-COPY$ ( -- ptr u8 n ) IDLE-COPY IDLE-COPY-U @ ;
+
+: RUNS-BODY ( -- )
+   RUNS-DIR$ s" hb" IDLE-COPY FS:JOIN-PATH IDLE-COPY-U !
+   ENGINE-ID:PATH$ IDLE-COPY$ FS:COPY-FILE-STREAM
+   s" runs: the running engine runs its own path" T-LABEL
+   ENGINE-ID:PATH$ PROC-TREE:RUNS? TTRUE
+   s" runs: nothing runs a byte copy of the engine" T-LABEL
+   IDLE-COPY$ PROC-TREE:RUNS? TFALSE ;
+
+\ MKTEMP-DIR's answer lasts until this task's next temp, so RUNS-DIR keeps it.
+: RUNS ( -- )
+   s" proc-tree-runs" FS:MKTEMP-DIR {: dir:ptr diru:n :}
+   dir RUNS-DIR diru BYTE-COPY
+   diru RUNS-DIR-U !
+   [: RUNS-BODY ;] [: RUNS-DIR$ FS:REMOVE-TREE ;] finally ;
+
 : SANDBOX$ ( -- ptr u8 n )
    s" sandbox-exec" >LEN SANDBOX FIND-EXECUTABLE MATCH option
       none OF s" process-tree-test: required executable missing on PATH: sandbox-exec" 1 die ENDOF
@@ -268,7 +288,7 @@ PROCESS:NO-FD CROWD-WR !
    s" src/lib/process-tree-test.f" >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
    mode modeu >LEN PROC-ARGV+
-   SANDBOX$ >LEN OUT CAP >LEN ERR CAP >LEN WALKER-MS >MS RUN-ARGV-CAPTURE
+   SANDBOX$ >LEN OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER RUN-ARGV-CAPTURE
    CAPTURE>RC ;
 
 \ A walker's own report is its verdict; on a failure it is printed here.
@@ -314,6 +334,7 @@ PROCESS:NO-FD CROWD-WR !
 : CASES ( -- )
    T-RESET
    CROWD
+   RUNS
    HB-TARGET-MACOS? 0= if
       s" process-tree-test: the refusal cases need macOS sandbox-exec" type cr
       exit

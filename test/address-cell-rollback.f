@@ -29,26 +29,28 @@ DYNAMIC-BUFFER SAVED n
 
 : FAIL-QUOTATION ( -- )
    s" TYPED-VARIABLE FAILED [ n -- n ] FAILED @ FAILED xt! DECLARED 12345 throw"
-   INCLUDE-EVALUATE ;
+   evaluate-closed ;
 : FAIL-DEFER ( -- )
-   s" defer FAILED ( -- n ) DECLARED 12345 throw" INCLUDE-EVALUATE ;
+   s" defer FAILED ( -- n ) DECLARED 12345 throw" evaluate-closed ;
 : FAIL-POINTER ( -- )
-   s" PERSISTED-PTR-VARIABLE FAILED DECLARED 12345 throw" INCLUDE-EVALUATE ;
+   s" PERSISTED-PTR-VARIABLE FAILED DECLARED 12345 throw" evaluate-closed ;
 : THREE-SHAPES ( -- )
    s" failed quotation cell can become a persisted pointer" T-LABEL
    START [: FAIL-QUOTATION ;] catch RESTORED
-   s" PERSISTED-PTR-VARIABLE AFTER-QUOTATION" INCLUDE-EVALUATE REUSED
+   \ Stop a cell short of the failed cell: the next declaration's gap ends there.
+   FAILED-OFF @ BASE-DP @ - 1 cells - allot
+   s" PERSISTED-PTR-VARIABLE AFTER-QUOTATION" evaluate-closed REUSED
    s" failed defer cell can become a persisted pointer" T-LABEL
    START [: FAIL-DEFER ;] catch RESTORED
-   s" PERSISTED-PTR-VARIABLE AFTER-DEFER" INCLUDE-EVALUATE REUSED
+   s" PERSISTED-PTR-VARIABLE AFTER-DEFER" evaluate-closed REUSED
    s" failed persisted pointer can become an executable defer" T-LABEL
    START [: FAIL-POINTER ;] catch RESTORED
    s" defer AFTER-POINTER ( -- n ) : INSTALL-ANSWER ( -- ) [: 42 ;] is AFTER-POINTER ; INSTALL-ANSWER AFTER-POINTER 42 T="
-   INCLUDE-EVALUATE REUSED ;
+   evaluate-closed REUSED ;
 
 : FAIL-UNORDERED ( -- )
    s" PERSISTED-PTR-VARIABLE FAILED DECLARED 0 OLDER xt! 12345 throw"
-   INCLUDE-EVALUATE ;
+   evaluate-closed ;
 : UNORDERED ( -- )
    s" late declaration of an older cell survives rollback" T-LABEL
    START [: FAIL-UNORDERED ;] catch 12345 T=
@@ -58,23 +60,23 @@ DYNAMIC-BUFFER SAVED n
    0 OLDER xt! ROWS BASE-N @ 1+ T=
    \ Rebuild the derived index, then reuse the retired address with a new kind.
    s" defer AFTER-UNORDERED ( -- n ) : INSTALL-OLDER ( -- ) [: 42 ;] is AFTER-UNORDERED ; INSTALL-OLDER AFTER-UNORDERED 42 T="
-   INCLUDE-EVALUATE
+   evaluate-closed
    ROWS BASE-N @ 2 + T=
    ROWS 1- OFFSET FAILED-OFF @ T= ;
 
 : INNER-FAILURE ( -- )
    s" PERSISTED-PTR-VARIABLE INNER-FAILED ROWS BASE-N @ 2 + T= 12345 throw"
-   INCLUDE-EVALUATE ;
+   evaluate-closed ;
 : NESTED-FAILURE ( -- )
-   s" defer OUTER-FAILED ( -- n ) INNER-FAILURE" INCLUDE-EVALUATE ;
+   s" defer OUTER-FAILED ( -- n ) INNER-FAILURE" evaluate-closed ;
 : NESTED ( -- )
    s" every escaped evaluation boundary retires its suffix" T-LABEL
    START [: NESTED-FAILURE ;] catch RESTORED
-   s" PERSISTED-PTR-VARIABLE AFTER-NESTED" INCLUDE-EVALUATE
+   s" PERSISTED-PTR-VARIABLE AFTER-NESTED" evaluate-closed
    ROWS BASE-N @ 1+ T= ;
 
 : FAIL-PERSIST ( -- )
-   s" ADDRESS-CELLS:PERSIST 12345 throw" INCLUDE-EVALUATE ;
+   s" ADDRESS-CELLS:PERSIST 12345 throw" evaluate-closed ;
 : BACKING ( -- )
    s" row backing in abandoned DATA survives before DP rewinds" T-LABEL
    ADDRESS-CELLS:BOOT-CAP ROWS - 1+ 0 ?do
@@ -93,7 +95,7 @@ DYNAMIC-BUFFER SAVED n
    SAVED-RELEASE ;
 
 : LAY-TEXT ( -- ) s" address-cell-rollback-text" INTERN:TEXT drop ;
-: FAIL-TEXT ( -- ) s" LAY-TEXT 12345 throw" INCLUDE-EVALUATE ;
+: FAIL-TEXT ( -- ) s" LAY-TEXT 12345 throw" evaluate-closed ;
 : TEXT-GONE ( -- )
    s" a failed load's text leaves the string table" T-LABEL
    START [: FAIL-TEXT ;] catch RESTORED
@@ -103,14 +105,14 @@ DYNAMIC-BUFFER SAVED n
 : FACTS$ ( -- ptr u8 n ) s" ( u16 i64 u8 -- u32 u16 ) " ;
 : ACR-SOURCE$ ( -- ptr u8 n ) s" : ACR-FACTS ( u16 i64 u8 -- u32 u16 ) nip swap ;" ;
 : FAIL-FACTS ( -- )
-   s" : ACR-FACTS ( u16 i64 u8 -- u32 u16 ) nip swap ; 12345 throw" INCLUDE-EVALUATE ;
+   s" : ACR-FACTS ( u16 i64 u8 -- u32 u16 ) nip swap ; 12345 throw" evaluate-closed ;
 : FACTS-GONE ( -- )
    s" a failed line's facts text leaves the string table" T-LABEL
    FACTS$ INTERN:FIND 0 T=
    START [: FAIL-FACTS ;] catch RESTORED
    FACTS$ INTERN:FIND 0 T=
    s" a published definition's record holds its facts text's offset" T-LABEL
-   ACR-SOURCE$ INCLUDE-EVALUATE
+   ACR-SOURCE$ evaluate-closed
    LATEST CK-REC-FACTS-SLOT XREF-CELL@  FACTS$ INTERN:FIND data-base NULL-PTR - -  T= ;
 
 \ here lands 3 bytes into the text's length cell.

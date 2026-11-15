@@ -9,71 +9,13 @@ using A64ICODE
 using SYSCALL
 using CRASH
 
-package RT
-
-72 constant EXIT-RC
-
-\ The data-stack register is stated twice: mnem.f XDS, build-side vocabulary the
-\ booted engine never re-reads, and layout.f ENGINE-GPR:DSTACK, re-read at every
-\ load, from which the reserved-register mask derives. src/arch/arm64/boot.f
-\ loads mnem.f, layout.f, then this file, the first consumer of XDS, so a
-\ mismatch dies here instead of shipping an engine whose allocator can be
-\ handed the stack register.
-: DSTACK-AGREE ( -- )
-   XDS ENGINE-GPR:DSTACK <>
-   if s" rt: mnem.f XDS and layout.f ENGINE-GPR:DSTACK disagree" EXIT-RC die then ;
-DSTACK-AGREE
-
-;package
-
 package STACK-GUARD
 
-variable DESCRIPTOR-FAIL
-variable DESCRIPTOR-BASE
-variable DESCRIPTOR-CAP
-variable CURSOR-ABOVE
 variable MAP-CAP  variable MAP-DST
 variable MAP-OK   variable MAP-ROK
 variable MAP-BAD  variable MAP-DONE
 
-: EMIT-FAIL ( -- )
-   s" E-STACK-BOUNDS habu: stack bounds exceeded (stack cursor)"
-   ENGINE-ERROR:STACK-BOUNDS DIE-LINE, ;
-
-\ The descriptor itself must not wrap, even
-\ when it came from a saved frame or a task rather than run-in-stack.
-: ALIGNED ( n label -- )
-   DESCRIPTOR-FAIL !
-   31 swap 7 >LIMM ENC-ANDI $60000000 or EMITW    \ tst register,#7
-   C-NE DESCRIPTOR-FAIL LABEL@ BCOND, ;
-
-: DESCRIPTOR ( n n label -- )
-   DESCRIPTOR-FAIL !  DESCRIPTOR-CAP !  DESCRIPTOR-BASE !
-   DESCRIPTOR-BASE @ DESCRIPTOR-FAIL LABEL@ CBZ,
-   DESCRIPTOR-BASE @ DESCRIPTOR-FAIL LABEL@ ALIGNED
-   DESCRIPTOR-BASE @ dup ENC-MVN EMITW
-   DESCRIPTOR-CAP @ DESCRIPTOR-BASE @ CMP,  C-HI DESCRIPTOR-FAIL LABEL@ BCOND,
-   DESCRIPTOR-BASE @ dup ENC-MVN EMITW ;
-
 public
-
-\ Lifecycle admission at a stack switch (run-in-stack, catch, evaluate, task
-\ and REPL recovery): x14=base, x10=capacity, x12=cursor. Leaves base intact;
-\ x10 becomes remaining bytes and x12 becomes used bytes. No memory is changed.
-\ This is the only bounds check the engine performs on a data stack: inside
-\ compiled code the checker proves the stack effect, and a push past the
-\ capacity faults on the guard page beyond the allocation.
-: CHECK-CURSOR ( n label -- )
-   DESCRIPTOR-FAIL !  CURSOR-ABOVE !
-   14 10 DESCRIPTOR-FAIL LABEL@ DESCRIPTOR
-   12 DESCRIPTOR-FAIL LABEL@ ALIGNED
-   12 14 CMP,  C-CC DESCRIPTOR-FAIL LABEL@ BCOND,
-   12 12 14 SUB,
-   12 10 CMP,  C-HI DESCRIPTOR-FAIL LABEL@ BCOND,
-   10 10 12 SUB,
-   10 CURSOR-ABOVE @ CMPI,  C-CC DESCRIPTOR-FAIL LABEL@ BCOND, ;
-
-: EXIT-BOUNDS ( -- ) EMIT-FAIL ;
 
 \ EMIT-MAP ( cap dst -- ) maps one guarded VM stack of cap bytes and leaves its
 \ base in register dst. It writes x0-x6, x9 and the syscall registers, never x10
@@ -88,8 +30,8 @@ public
 \ TWO mmap CALLS, NO mprotect: the first maps cap + 3*PAGE PROT_NONE, which IS
 \ the guard; the second reopens the middle read/write with MAP_FIXED. The third
 \ page is alignment slack: the kernel returns its own granule (16 KiB on this
-\ host) but the base must be PAGE-BYTES aligned, the granule run-in-stack
-\ proves an extent against. Everything below the low guard stays PROT_NONE, so
+\ host) but the base must be PAGE-BYTES aligned, as src/habu/crash.f's guard
+\ cases assume. Everything below the low guard stays PROT_NONE, so
 \ the slack only widens the guard. A stack mapped this way is never released.
 \
 \ It runs before any crash handler exists and, for the boot data stack, before

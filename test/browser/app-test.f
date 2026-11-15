@@ -1,11 +1,11 @@
 \ app-test.f - the turn protocol's rpc, after and read records and its notified,
 \ tick, file and chunk events under bun: src/lib/browser/host-cli.mjs runs
-\ test/browser/app.f's module through src/lib/browser/turn.js. bun and
-\ wasm-tools must be on PATH, so this is no row of the ordinary gate:
+\ test/browser/app.f's module through src/lib/browser/turn.js.
 \ test/wasm/device.f runs it, as does `bin/hb --load test/browser/app-test.f`
 \ from the tree's root. Chrome runs only when the test is loaded with
-\ `-- --chrome`: then the --chrome check writes MCP-APP:PAGE+ of the module
-\ and runs it in Chrome (macOS's application or google-chrome on PATH) under
+\ `-- --chrome`: then the --chrome check writes MCP-APP:PAGE+ as page.html
+\ and MCP-APP:CODE+ of the module as code.json beside it, and runs the page in
+\ Chrome (macOS's application or google-chrome on PATH) under
 \ test/browser/app-peer.mjs, which plays ChatGPT's MCP Apps host.
 
 require src/lib/error.f
@@ -44,6 +44,7 @@ PATH-CAP BUFFER: CHROME
 variable CHROME-U
 BUF:HDR-BYTES BUFFER: WASM
 BUF:HDR-BYTES BUFFER: PAGE
+BUF:HDR-BYTES BUFFER: CODE
 \ A refused case's expected output, kept apart from SB, which labels build in.
 CAP BUFFER: BEFORE
 variable BEFORE-U
@@ -309,9 +310,13 @@ variable BEFORE-U
    WASM wu BUF:N>BLEN BUF:GROW SPAN:$ {: w:ptr cap:n :}
    MOD MOD-U @ w cap FS:READ-ALL cap <> if E-FS-IO throw then
    PAGE wu BUF:N>BLEN BUF:INIT
-   w cap TITLE$ PAGE MCP-APP:PAGE+
+   TITLE$ PAGE MCP-APP:PAGE+
    PAGE BUF:SPAN$ BUF:BLEN>N s" page.html" FILE!
-   PAGE BUF:DISPOSE  WASM BUF:DISPOSE ;
+   PAGE BUF:DISPOSE
+   CODE wu BUF:N>BLEN BUF:INIT
+   w cap CODE MCP-APP:CODE+
+   CODE BUF:SPAN$ BUF:BLEN>N s" code.json" FILE!
+   CODE BUF:DISPOSE  WASM BUF:DISPOSE ;
 
 
 : CHROME-CASE ( -- )

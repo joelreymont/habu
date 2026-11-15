@@ -3,7 +3,7 @@
 \ header block and BODY the body into the caller's span, so the module allocates
 \ nothing. Any refusal spends the reader: the stream has no boundary left.
 \ STORAGE CLASS. CALLER-OWNED reader record and buffer; SEND's header row is a
-\ TASK:+USER row, TASK-LOCAL.
+\ TASK:+USERS row, TASK-LOCAL.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -238,7 +238,7 @@ private
 \ SEND's header is `Content-Length: ` (16 bytes), at most the STR-I64-DIGITS
 \ digits of a cell, and CR LF CR LF.
 16 STR-I64-DIGITS + 4 + constant HEADER-CAP
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and HEADER-CAP TASK:+USER HEADER-ROW drop
+HEADER-CAP TASK:+USERS HEADER-ROW u8
 
 \ u's decimal digits into h from index i on, most significant first; the index
 \ after them.
@@ -251,7 +251,7 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and HEADER-CAP TASK:+USER HEADER-ROW drop
 \ The header for a body of u bytes, built in this task's header row.
 : HEADER$ ( n -- ptr u8 n )
    {: u:n :}
-   HEADER-ROW BYTE-VIEW {: h:ptr :}
+   0 HEADER-ROW {: h:ptr :}
    s" Content-Length: " {: p:ptr pu:n :}
    p h pu BYTE-COPY
    u h pu DIGITS! {: i:n :}

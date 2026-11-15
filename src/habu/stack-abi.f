@@ -11,11 +11,10 @@ public
 \ The rc a refused stack mapping or signal-stack registration exits with.
 78 constant MAP-FAIL-RC
 
-\ The live data-stack allocation changes at run-in-stack or task entry and at unwind.
+\ The live data-stack allocation changes when a closed text, a loaded file or a task
+\ starts, and at unwind.
 $1D0 constant BASE-CELL
 $47E8 constant CAP-CELL
-$47F0 constant REPL-BASE-CELL
-$47F8 constant REPL-CAP-CELL
 
 \ The guard granule. It is the MAXIMUM arm64 page a supported target can boot
 \ with (64 KiB), not this host's 16 KiB: a guard smaller than the running page
@@ -27,7 +26,7 @@ $10000 constant PAGE-BYTES
 PAGE-BYTES constant BOOT-BYTES
 
 \ User return stack and DO/LOOP frame stack: each its own mapping with its base in
-\ a header cell, since a $8000 header has no room for a guard page. Cells and
+\ a header cell, since the header has no room for a guard page. Cells and
 \ mappings are per task, as DATA is (habu1.f task entry loads x20 from the TCB;
 \ src/lib/task.f PREPARE maps a task's own pair).
 $4800 constant RETURN-BASE-CELL
@@ -42,32 +41,23 @@ RETURN-BYTES 8 / constant RETURN-CELLS
 PAGE-BYTES constant LOOP-BYTES
 LOOP-BYTES LOOP-FRAME-BYTES / constant LOOP-FRAMES
 
-\ run-in-stack's refusal code. src/lib/error.f owns it as E-STACK-UNGUARDED;
-\ this boot file loads before error.f (src/habu/boot-files.f FILL, CHECKER before
-\ BASELIB), so the same (code, name) pair is re-registered here -- the one
-\ form tools/error-code-lint.f admits -- and test/stack-guard.f keeps the two
-\ spellings equal.
--3802 constant E-STACK-UNGUARDED
-
-\ evaluate-closed's refusal of a text that left cells above its floor
-\ (src/habu/habu1.f B-EVAL-CLOSED), re-registered for the same reason:
-\ src/lib/error.f owns it as E-EVAL-RESIDUE and test/compiler/native-eval.f keeps
-\ the two spellings equal.
+\ This boot file loads before src/lib/error.f, which owns E-EVAL-RESIDUE, so the
+\ same (code, name) pair is re-registered here.
 -3804 constant E-EVAL-RESIDUE
 
-\ The active allocation descriptor follows the frame's existing fields, then
-\ the output device state, GENIO-ABI:BUSY-CELL and ACTIVE-CELL.
+\ The cells a catch frame saves past its first seven, as the catch began:
+\ PEND-CELL, the allocation descriptor and GENIO-ABI:BUSY-CELL and ACTIVE-CELL.
+$38 constant CATCH-PEND
 $40 constant CATCH-BASE
 $48 constant CATCH-CAP
 $50 constant CATCH-BUSY
 $58 constant CATCH-ACTIVE
 $60 constant CATCH-BYTES
-$CA7CF4A3E00E constant CATCH-MAGIC
 $80 constant EVAL-BASE
 $88 constant EVAL-CAP
-\ $90..$180 are layout.f's: its frame map says which offset holds what.
+\ $90..$170 are layout.f's: its frame map says which offset holds what.
 \ A multiple of 16, for the machine stack.
-$180 constant EVAL-BYTES
+$170 constant EVAL-BYTES
 
 \ THE MACHINE STACK IS THE OS THREAD'S OWN, so its guard is the kernel's and its
 \ overflow faults with sp at or in that guard, where the kernel cannot build a

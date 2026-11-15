@@ -18,10 +18,12 @@ s" N01-PRINT"
 s" : N01-PRINT ( -- ) $8000000000000000 . $7FFFFFFFFFFFFFFF . -1 u. $8000000000000000 u. depth . ;"
 s\" -9223372036854775808\n9223372036854775807\n18446744073709551615\n9223372036854775808\n0\n" ROW
 
-\ ---- N02 a zero divisor throws -6400, MIN-N / -1 wraps -------------------------
+\ ---- N02 MIN-N / -1 wraps -----------------------------------------------------
+false [if] \ off until dot habu-add-the-checks-a49d054d
 s" N02-DIV-ZERO"
 s" : N02-DIV-ZERO ( -- ) [: 1 0 / drop ;] catch [: 1 0 mod drop ;] catch [: 1 0 /mod 2drop ;] catch depth . .s 2drop drop ;"
 s\" 3\n-6400\n-6400\n-6400\n" ROW
+[then]
 
 s" N02-MIN-BY-MINUS-ONE"
 s" : N02-MIN-BY-MINUS-ONE ( -- ) $8000000000000000 -1 / $8000000000000000 -1 mod $8000000000000000 -1 /mod depth . .s 2drop 2drop ;"

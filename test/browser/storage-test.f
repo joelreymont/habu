@@ -1,8 +1,7 @@
 \ storage-test.f - test/browser/storage.f's module under bun: its dynamic buffer
 \ and the deliveries src/lib/browser/host-cli.mjs reserves through the module
 \ share one allocator (src/lib/browser/event.f). The module is built by
-\ tools/hb-build.f and validated by wasm-tools; bun and wasm-tools must be on
-\ PATH, so test/wasm/device.f runs it, not the ordinary gate.
+\ tools/hb-build.f and validated by wasm-tools; test/wasm/device.f runs it.
 
 \ The fetch is answered with a file of several pages, so the fetched bytes take
 \ pages between the buffer's first two and the ones it grows into. A second run

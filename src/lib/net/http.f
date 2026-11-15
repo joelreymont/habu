@@ -7,15 +7,13 @@
 \ http-static.f.
 \ STORAGE CLASS. PROCESS-WIDE: one server per image; its tables are written
 \ before START, and per-request state is each worker's slot row (http-arena.f).
-\ TASK-LOCAL: REPLY's connection and drain room, TASK:+USER rows.
+\ TASK-LOCAL: per-task slots.
 require src/lib/net/http-static.f
 require src/lib/task.f
 require src/lib/queue.f
 require src/lib/net/tcp4.f
 require src/lib/span.f
 require src/lib/aio.f
-require src/lib/string.f
-require src/lib/fmt.f
 require src/lib/log.f
 
 package HTTP
@@ -28,9 +26,8 @@ $40 constant JOB-SLOTS            \ over MAX-WORKERS stop jobs and one connectio
 $8 constant MAX-HOOKS             \ packages that give a worker a resource of its own
 -1 constant STOP-JOB
 $C8 constant LINGER-MS            \ how long a refused peer may still be sending
-$100 constant LINGER-CAP          \ bytes one drain read takes from a lingering peer
 $C8 constant ACCEPT-WAIT-MS       \ how long the listener parks before reading the stop flag
-$C8 constant STOP-MARGIN-MS       \ scheduling slack over the longest park a stop waits out
+$C8 constant STOP-MARGIN-MS       \ over the longest park: scheduling slack and one window's parse
 $7FFFFFFF constant MAX-BODY-TIMEOUT-MS  \ TCP4's largest READABLE-WITHIN? poll
 
 ENUM served keep-open answered silent taken ;ENUM
@@ -77,11 +74,6 @@ variable KILLED-COUNT             \ tasks a stop had to kill past its bound
 variable START-ERROR              \ first failed start hook's actual throw code
 variable STARTED                  \ workers successfully activated this start
 variable ACCEPTED-COUNT           \ connections the listener has taken since START
-
-\ REPLY's drain room: its task has no worker slot, whose input buffer a worker
-\ drains into. REPLYING is the connection REPLY's close takes on every way out.
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and CELL TASK:+USER REPLYING
-LINGER-CAP TASK:+USER LINGER-SCRATCH drop
 
 
 public
@@ -200,7 +192,8 @@ private
    idx NOT-FOUND ;
 
 
-\ The quotation cannot read a local, so the slot travels through the task.
+\ x86-64 refuses a quotation that reads a local, so the slot travels through
+\ the task.
 : RUN-HANDLER ( -- )
    SELF-SLOT DISPATCH ;
 
@@ -270,8 +263,8 @@ private
    0 idx HEAD-U! ;
 
 
-\ The refusal REFUSE stored as the slot's status: a quotation cannot read a
-\ local.
+\ The refusal REFUSE stored as the slot's status: x86-64 refuses a quotation
+\ that reads a local.
 : RENDER-REFUSAL ( -- )
    SELF-SLOT {: idx:n :}
    idx SLOT-STATUS@ {: status:n :}
@@ -638,25 +631,15 @@ variable EXIT-HOOK-N
    WORKER-COUNT @ 1+ ;
 
 
-\ How long a stop waits for the tasks to end themselves: the longest park any
-\ of them can be in when the flag rises, plus the scheduling slack. The
-\ listener re-reads STOPPING every ACCEPT-WAIT-MS. A worker reading a request
-\ parks at most until that request's own deadlines: IDLE-MS for the head, and
-\ for a body its handler reads, that deadline or BODY-TIMEOUT-MS from the read's
-\ start (SERVE-ONE and BODY$ into src/lib/net/http-request.f WAIT-READABLE).
-\ The bound counts no other handler work. After the request it parks for
-\ LINGER-MS in LINGER. Past its deadline it never parks, and its first read
-\ after the flag ends the request (src/lib/net/http-request.f FILL), so what
-\ remains is the parse of one input window, which STOP-MARGIN-MS covers
-\ (http-test.f FLOOD-CASE). A connection a handler took over is no longer the
-\ server's to wait for.
-\ Bound sums stay representable as milliseconds in DEADLINE-AT.
+\ The longest bound whose nanoseconds a cell holds.
 MEM-MAX-N NS-PER-MS / constant MAX-DEADLINE-MS
 
 : BOUND+ ( n n -- n ) {: left:n right:n :}
    right MAX-DEADLINE-MS left - > if MAX-DEADLINE-MS exit then
    left right + ;
 
+\ The longest a task can stay parked once the flag rises - a worker's head, body
+\ and linger parks in turn - plus STOP-MARGIN-MS. It counts no handler work.
 : STOP-BOUND-MS ( -- n )
    IDLE-MS @ BODY-TIMEOUT-MS @ BOUND+ LINGER-MS BOUND+
    ACCEPT-WAIT-MS max
@@ -688,10 +671,10 @@ MEM-MAX-N NS-PER-MS / constant MAX-DEADLINE-MS
 \ here polls a clock, and the stopper re-reads the count after every hint, as the
 \ hint protocol requires (src/lib/task.f).
 : AWAIT-TASKS ( -- )
-   STOP-BOUND-MS >MS AIO:TIMEOUT {: timer:AIO:ticket :}
    STOP-BOUND-MS DEADLINE-AT {: deadline:n :}
+   STOP-BOUND-MS >MS AIO:TIMEOUT {: timer:AIO:ticket :}
    begin
-      TASKS-LEFT? mono-ns deadline > or if timer DROP-TIMER exit then
+      TASKS-LEFT? mono-ns deadline >= or if timer DROP-TIMER exit then
       TASK:WAIT
    again ;
 
@@ -709,7 +692,7 @@ MEM-MAX-N NS-PER-MS / constant MAX-DEADLINE-MS
 
 
 \ Everything a running server holds beyond its listener. The count is read from
-\ the cell because a quotation cannot read a local.
+\ the cell because x86-64 refuses a quotation that reads a local.
 : OPEN-RESOURCES ( -- )
    WORKER-COUNT @ ARENA-OPEN
    JOBS QUEUE:INIT
@@ -755,43 +738,6 @@ MEM-MAX-N NS-PER-MS / constant MAX-DEADLINE-MS
 : DRAIN-JOBS ( -- )
    begin JOBS QUEUE:TRY-POP while DROP-JOB repeat
    drop ;
-
-
-: LINGER-ROOM ( -- SPAN:span<u8> )
-   LINGER-SCRATCH BYTE-VIEW LINGER-CAP SPAN:MAKE ;
-
-
-: REPLY-HEAD ( n ptr u8 n n -- ) {: status:n type:ptr type-n:n body-n:n :}
-   SB-RESET
-   s" HTTP/1.1 " SB-APPEND
-   status FMT:SB-U
-   SP SB-APPEND-C
-   status REASON$ SB-APPEND
-   s\" \r\nContent-Type: " SB-APPEND
-   type type-n SB-APPEND
-   s\" \r\n" SB-APPEND
-   status BODYLESS? 0= if
-      s" Content-Length: " SB-APPEND
-      body-n FMT:SB-U
-      s\" \r\n" SB-APPEND
-   then
-   s\" Connection: close\r\n\r\n" SB-APPEND ;
-
-
-: CLOSE-REPLYING ( -- )
-   REPLYING @ TCP4:>CONNECTION CLOSE-CONNECTION ;
-
-
-: SEND-REPLY ( n ptr u8 n ptr u8 n -- bool )
-   {: status:n type:ptr type-n:n body:ptr body-n:n :}
-   status type type-n body-n REPLY-HEAD
-   REPLYING @ TCP4:>CONNECTION {: conn:TCP4:connection :}
-   conn SB$ WRITE-SPAN 0= if false exit then
-   status BODYLESS? 0= if
-      conn body body-n WRITE-SPAN 0= if false exit then
-   then
-   conn LINGER-ROOM LINGER
-   true ;
 
 
 public
@@ -871,14 +817,8 @@ public
    q 0 FALLBACK-HOOK ! ;
 
 
-\ The connection of the request a handler is answering, and the bytes the peer
-\ has already sent past what the worker consumed: past the body when the handler
-\ read it, else from the body's first buffered byte. They are the taker's first
-\ input and stay valid until the handler ends. The connection leaves the server
-\ for good: the worker sends no answer for this request and never touches the
-\ connection again, a stop does not wait for it, and the taker closes it, or
-\ REPLY does. Outside a running handler, and a second time inside one, it is
-\ E-STATE.
+\ The connection and the peer's bytes past what the worker read (valid until the
+\ handler ends), now the taker's to close; E-STATE outside a handler or a second time.
 : TAKE-OVER ( request -- TCP4:connection ptr u8 n ) {: subject:request :}
    subject SLOT-OF-REQUEST {: idx:n :}
    idx SELF-SLOT <> if E-HANDLE throw then
@@ -887,20 +827,6 @@ public
    0 idx SERVING-LIVE !
    idx SERVING @
    idx idx IN-AT@ idx AVAIL SPAN$ ;
-
-
-\ One whole answer on a connection a handler took, from any task: the status,
-\ the content type and the body, with Connection: close; a BODYLESS? status
-\ sends no length and no body. Then the lingering close an answered worker
-\ connection gets. True when the OS took every byte, false when a write failed
-\ (the peer has reset the connection). The head is built in the calling task's
-\ string builder, so a content type past its room is E-STR-CAPACITY. REPLY
-\ closes the connection on every way out, a throw or a TASK:HALT included
-\ (http-test.f HALTED-REPLY-CASE).
-: REPLY ( TCP4:connection n ptr u8 n ptr u8 n -- bool )
-   {: conn:TCP4:connection status:n type:ptr type-n:n body:ptr body-n:n :}
-   conn TCP4:CONNECTION>N REPLYING !
-   status type type-n body body-n [: SEND-REPLY ;] [: CLOSE-REPLYING ;] finally ;
 
 
 \ The address and port to listen on, how many request workers to run, and how

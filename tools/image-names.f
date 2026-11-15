@@ -126,17 +126,30 @@ variable ATTR-GENERATED variable ATTR-UNKNOWN variable ATTR-OK
 
 public
 
+\ Writes <path>.map into dst, a PATH-CAP buffer; false when it would pass PATH-CAP.
+: MAP-PATH! ( ptr u8 n ptr u8 -- n bool )
+   {: path:ptr pathu:n dst:ptr :}
+   pathu 4 + PATH-CAP > if 0 false exit then
+   path dst pathu BYTE-COPY
+   s" .map" drop dst pathu + 4 BYTE-COPY
+   pathu 4 + true ;
+
+\ <path>.map in PATH until the next call, false when it would pass PATH-CAP.
+: MAP$ ( ptr u8 n -- ptr u8 n bool )
+   {: path:ptr pathu:n :}
+   path pathu PATH MAP-PATH! {: mapu:n ok:bool :}
+   ok if PATH mapu true else path pathu false then ;
+
 \ A missing map or an unknown header leaves no rows: LOADED? is false.
 : LOAD ( ptr u8 n -- )
    {: path:ptr pathu:n :}
    0 USED ! 0 ATTR-OK ! 0 NS-N !
-   pathu 4 + PATH-CAP > if E-FS-CAPACITY throw then
-   path PATH pathu BYTE-COPY
-   s" .map" drop PATH pathu + 4 BYTE-COPY
-   PATH pathu 4 + FS:FILE? 0= if exit then
-   PATH pathu 4 + FS:FILE-SIZE {: size:n :}
+   path pathu MAP$ 0= if E-FS-CAPACITY throw then
+   {: map:ptr mapu:n :}
+   map mapu FS:FILE? 0= if exit then
+   map mapu FS:FILE-SIZE {: size:n :}
    size CELL + CELL / TEXT-RESERVE
-   PATH pathu 4 + 0 TEXT BYTE-VIEW size FS:READ-ALL size <> if
+   map mapu 0 TEXT BYTE-VIEW size FS:READ-ALL size <> if
       s" image-names: short read" 74 die then
    size USED ! 0 POS !
    LINE$ s" habu-names 1" STR= 0= if 0 USED ! exit then

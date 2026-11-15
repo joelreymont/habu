@@ -1,7 +1,7 @@
 // host.js - the browser host page: index.html's canvas runs /module.wasm
 // through viewport.js, which draws with WebGPU and sends canvas input, and
 // page.js shows what the module sends and gives it the field's text and each
-// file picked or dropped, and mcp.js sends its tool calls to the page origin's
+// file dropped, and mcp.js sends its tool calls to the page origin's
 // MCP endpoint. A failure to start or run is shown in text. Only a browser
 // checks this file: host-cli.mjs runs the same turns with no DOM or GPU.
 import { Module } from "./turn.js";

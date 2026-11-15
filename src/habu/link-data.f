@@ -75,13 +75,6 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 : LABEL-OFFSET ( ptr n -- n ) NATIVE:LABEL@ NATIVE:OFFSET ;
 
 
-\ The image is the space's runs: its length is the space's, not the distance
-\ between its labels.
-: DATA-IMAGE-AT ( -- n ) LIMAGE LABEL-OFFSET ;
-: DATA-LIST-AT ( -- n ) LLIST LABEL-OFFSET ;
-: DATA-LIST-N ( -- n ) LLIST-END LABEL-OFFSET DATA-LIST-AT - 8 / ;
-
-
 \ A host address in the open space at its DATA-VA address: the resolver code's
 \ data address sites get.
 : DATA-ADDRESS ( n -- n ) DATA-OFFSET  NATIVE:DATA-VA + ;
@@ -102,7 +95,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 
 : COPY-ROW ( n -- )
    {: row:n :}
-   row ROW-OFF {: off:n :}
+   row IMAGE-OFF {: off:n :}
    off CELL-FITS
    row CELL-VALUE {: v:n :}
    row SCRATCH-ROW? if 0 off COPY-AT LE:U64! exit then
@@ -119,7 +112,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    row XT-ROW? 0= if exit then
    row CELL-VALUE 0= if exit then
    LISTED-N @ 1 + LISTED-RESERVE
-   row ROW-OFF LISTED-N @ LISTED !  1 LISTED-N +! ;
+   row IMAGE-OFF LISTED-N @ LISTED !  1 LISTED-N +! ;
 
 : LIST, ( -- )
    LISTED-N @ {: n:n :}
@@ -129,7 +122,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 
 \ A cell the build stored into would be written and slid twice.
 : HEADER! ( n n -- )
-   {: v:n off:n :}
+   NATIVE:HEADER-CELL {: v:n off:n :}
    off SPACE-AT @ 0<> if
       s" link: the build stored into the header cell at offset " SAY off SAY-INT SAY-CR
       s" link: a build stored into a header cell the link writes" 74 die
@@ -147,7 +140,8 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    va s" DP-CEILING-OFF" NATIVE:SYM +  s" DP-CEILING-CELL" NATIVE:SYM HEADER!
    start s" HEAP-START-CELL" NATIVE:SYM HEADER!
    NATIVE:PRESET-N 0 ?do i NATIVE:PRESET@ HEADER! loop
-   va s" FD-CELL" NATIVE:SYM +  s" FD-PTR-CELL" NATIVE:SYM HEADER!
+   va s" FD-CELL" NATIVE:SYM NATIVE:HEADER-CELL +
+      s" FD-PTR-CELL" NATIVE:SYM HEADER!
    NATIVE:TEXT-VA s" RBASE-CELL" NATIVE:SYM HEADER!
    NATIVE:TEXT-VA LUNCAUGHT LABEL-OFFSET +  s" UNCGH-CELL" NATIVE:SYM HEADER!
    NATIVE:TEXT-VA LSIGH LABEL-OFFSET +  s" STUB-CELL" NATIVE:SYM HEADER!
@@ -456,7 +450,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    LSIGH NATIVE:LABEL@ NATIVE:ROOT-LABEL
    NATIVE:CUT
    NATIVE:SIZE KERNEL-END !
-   ['] DATA-ADDRESS PLACE-ROUTINES
+   false ['] DATA-ADDRESS PLACE-ROUTINES
    DATA-IMAGE ;
 
 
@@ -504,7 +498,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    NATIVE:SIZE KERNEL-END !
    PRIM-TEXTS
    ROUTINES REACH-ALL
-   ['] DATA-ADDRESS PLACE-ROUTINES
+   true ['] DATA-ADDRESS PLACE-ROUTINES
    SCOPE-ENTRIES
    DATA-IMAGE
    RECORD-IMAGE ;
@@ -526,15 +520,21 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    {: sig:ptr sigu:n path:ptr pathu:n :}
    TARGET @ RTARGET:IMAGE@ MATCH RTARGET:image
       macho OF
-         MACHO:ASM-CODE NATIVE:TEXT-VA MACHO:BUILD-IMAGE
-         sig sigu MACHO:SET-SIGID MACHO:CODESIG2
+         sig sigu MACHO:SET-SIGID
+         MACHO:ASM-CODE NATIVE:TEXT-VA NATIVE:MACHO-IMPORTS$ MACHO:BUILD-IMAGE
+         MACHO:CODESIG2
       ENDOF
       elf OF
+         sig sigu ELF:SET-SIGID
          NATIVE:X64? if
             NATIVE:TEXT-VA X64CODE:FIXUPS!
-            NATIVE:CODE NATIVE:SIZE NATIVE:TEXT-VA ELF:BUILD-X64
-         else ELF:ASM-CODE NATIVE:TEXT-VA ELF:BUILD-IMAGE then
-         sig sigu ELF:SET-SIGID ELF:CODESIG2
+            NATIVE:CODE NATIVE:SIZE NATIVE:TEXT-VA
+            NATIVE:ELF-IMPORTS$ ELF:BUILD-X64
+         else
+            ELF:ASM-CODE NATIVE:TEXT-VA
+            NATIVE:ELF-IMPORTS$ ELF:BUILD-IMAGE
+         then
+         ELF:CODESIG2
       ENDOF
       pe OF s" link: no file writer for a PE target" 74 die ENDOF
       wasm OF s" link: a Wasm target's module is written by WASM:WRITE-MODULE" 74 die ENDOF
@@ -551,13 +551,13 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    {: path:ptr pathu:n :}
    OBJECT-KIND
    ENGINE? @ if 0 CHECK:PLACE-FACTS then
-   s" ENTRY-CELL" NATIVE:SYM {: entry:n :}
+   s" ENTRY-CELL" NATIVE:SYM NATIVE:HEADER-CELL {: entry:n :}
    entry SPACE-AT @ 0= if
       s" link: the build stored no entry for the program" 74 die
    then
    ENGINE? @ if LINK-ENGINE else LINK-STRIPPED then
    path pathu [: 2dup ENGINE? @ if SIGN-ID:ENGINE$ else SIGN-ID:PROG$ then 2swap EMIT-IMAGE
-      FS:CHMOD-X ;] FS:REPLACE-STAGED
+      FS:CHMOD-X ;] FS:REPLACE-CACHED
    REGIONS  path pathu CODE-END @ WRITE-MAP ;
 
 public

@@ -1,7 +1,7 @@
 \ A checked owner releases a foreign acquisition through its supplied disposer.
 require src/lib/string.f
 require src/lib/test.f
-require src/lib/c2-owner.f
+require src/lib/c2-memory.f
 require src/lib/memory.f
 require src/lib/task.f
 require src/lib/test/wait.f
@@ -132,7 +132,7 @@ TASK:MIN-STACK TASK:TASK WORKER-C
    16 MEM:BYTES-ALLOC-LEN [: THROW-BODY ;] C2-MEM:WITH-MUT ;
 
 : FAIL-INIT ( mut-view<p,i,a,init<i,C2-MEM:owner-state>> -- mut-view<p,i,a,init<i,C2-MEM:owner-state>> )
-   C2-MEM:BIND 0 MEM:BYTES-ALLOC-LEN [: DISPOSE ;] C2-MEM:ALLOC-DISPOSE
+   C2-MEM:BIND MEM-MAX-N MEM:BYTES-ALLOC-LEN [: DISPOSE ;] C2-MEM:ALLOC-DISPOSE
    C2-MEM:PUBLISH drop C2-MEM:UNBIND ;
 
 : FAIL-BODY ( mut-view<p,p,a,u8> -- mut-view<p,p,a,u8> )

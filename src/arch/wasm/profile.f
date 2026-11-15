@@ -10,8 +10,7 @@ public
 \ The features past scalar core V1's code uses, as wasm-tools' --features list
 \ spells them: multi-value for the (status, outputs) signature, and
 \ saturating-float-to-int for `f>s`, whose i64.trunc_sat_f64_s truncates,
-\ saturates and answers 0 for a NaN exactly as src/compiler/native/hir-word.f
-\ defines realint, and bulk-memory for clearing reused page runs.
+\ saturates and answers 0 for a NaN, and bulk-memory for clearing reused page runs.
 : FEATURES ( -- ptr u8 n )
    s" multi-value,saturating-float-to-int,bulk-memory" ;
 
@@ -26,11 +25,11 @@ $10000 constant PAGES-MAX
 \ Page 0 is null. Dynamic mappings lie past the memory's last page, in pages
 \ map-anon grows.
 $10000 constant CTX-BASE
-$11000 constant OUT-BASE
+$11000 constant OUT-BASE                  \ where OUT starts
 $21000 constant STACK-BASE
 $10000 constant STACK-BYTES
 STACK-BASE STACK-BYTES + constant STACK-END
-STACK-BASE OUT-BASE - constant OUT-CAP        \ the OUT region's bytes, all a run writes
+STACK-BASE OUT-BASE - constant OUT-CAP        \ the bytes OUT starts with
 
 \ The return stack and the DO frames follow the data stack, each its STACK-ABI
 \ size; a push checks its region's end, since Wasm memory has no guard page.
@@ -47,13 +46,13 @@ PAGES-MAX PAGE-BYTES * DATA-BASE - constant DATA-MAX
 8 constant CTX-STACK-TOP
 16 constant CTX-OUT-LEN
 24 constant CTX-THROW-CODE
+\ The fault kind: 0, or a named fault's kind, stored with CTX-FAULT-ADDR just
+\ before a trap.
 32 constant CTX-FAULT-KIND
 40 constant CTX-FAULT-ADDR
 48 constant CTX-FREE-HEAD                 \ the first free page run, 0 for none; runs keep it
 56 constant CTX-ENV                       \ the record DISPATCH, leaves for a reading quotation's entry
-
-\ The kind a checked-address fault records in ctx's CTX-FAULT-KIND field before
-\ it throws E-MEMORY-FAULT.
-134 constant CRASH-RC
+64 constant CTX-OUT-BASE                  \ the current OUT's address
+72 constant CTX-OUT-CAP                   \ the current OUT's bytes, 0 before the instance's first run
 
 ;package

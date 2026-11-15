@@ -32,14 +32,14 @@
 \ Two more files set their root and require a helper: under a root through a
 \ symlink the second build finds repointed, and by its absolute path after
 \ setting the longest root ROOT! takes. Each builds twice into one out root.
+\ A program reading data that a library lays between two dead variables has
+\ the bytes of the one built from the library without them.
 require test/gate-common.f
 require src/lib/engine-candidate.f
 
 package AOT-SHIFTED-BYTES-TEST
 private
 
-\ ms for each stripped application's hb-build, held to an engine build's limit
-300000 constant BUILD-MS
 
 create SUBJECT PATH-CAP allot
 create IMAGE PATH-CAP allot
@@ -159,7 +159,8 @@ variable WANT-U
    s" --" GE-ARG+ src srcu GE-ARG+
    s" -o" GE-ARG+ out outu GE-ARG+ ;
 
-: BUILD-RUN ( -- ) ENGINE-CANDIDATE:PATH$ BUILD-MS GE-RUN-ENV ;
+: BUILD-RUN ( -- )
+   ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV ;
 
 : HB-BUILD ( ptr u8 n ptr u8 n -- )
    GE-HB-RESET BUILD-ARGV BUILD-RUN ;
@@ -172,7 +173,7 @@ variable WANT-U
 : RUN-IMAGE ( -- )
    GE-HB-RESET
    IMAGE$ GE-ARGV+
-   IMAGE$ GE-TIMEOUT-MS GE-RUN-ENV
+   IMAGE$ PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV
    s" the stripped application" GE-EXPECT-OK
    S\" ok\n" s" the stripped application's output" GE-EXPECT-OUT ;
 
@@ -199,7 +200,7 @@ variable WANT-U
    GE-HB-RESET
    ENGINE-CANDIDATE:PATH$ GE-ARGV+
    s" --load" GE-ARG+ PROBE$ GE-ARG+
-   ENGINE-CANDIDATE:PATH$ GE-TIMEOUT-MS GE-RUN-ENV
+   ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV
    s" hb --load of a file whose loads read the loader" GE-EXPECT-OK
    GT-OUT$ {: a:ptr u:n :}
    u LOADED-CAP > if s" the probe's --load output fits its buffer" GE-FAIL then
@@ -213,7 +214,7 @@ variable WANT-U
    GE-HB-RESET
    ENGINE-CANDIDATE:PATH$ GE-ARGV+
    PROBE$ GE-ARG+
-   ENGINE-CANDIDATE:PATH$ GE-TIMEOUT-MS GE-RUN-ENV
+   ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV
    s" hb probe.f, a program file whose loads read the loader" GE-EXPECT-OK
    LOADED$ s" the loader's lines under hb probe.f, as under hb --load" GE-EXPECT-OUT-HAS ;
 
@@ -231,7 +232,7 @@ variable WANT-U
    GE-HB-RESET
    ENGINE-CANDIDATE:PATH$ GE-ARGV+
    s" --load" GE-ARG+ RESOLVES$ GE-ARG+
-   ENGINE-CANDIDATE:PATH$ GE-TIMEOUT-MS GE-RUN-ENV
+   ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV
    s" hb --load of a file whose word resolves its own path" GE-EXPECT-OK
    s" resolves dir " s" " WANT!
    WANT$ s" the directory the word resolves under hb --load" GE-EXPECT-OUT-HAS ;
@@ -260,7 +261,7 @@ variable WANT-U
    then
    GE-HB-RESET
    ENVTOP-IMAGE$ GE-ARGV+
-   ENVTOP-IMAGE$ GE-TIMEOUT-MS GE-RUN-ENV
+   ENVTOP-IMAGE$ PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV
    s" the program built from envtop.f" GE-EXPECT-OK
    want wantu s" the length of HABU_TEST_SIDE the program's compile read" GE-EXPECT-OUT ;
 
@@ -283,7 +284,7 @@ variable WANT-U
 : ROOTED-RUN ( ptr u8 n -- ) {: want:ptr wantu:n :}
    GE-HB-RESET
    ROOTED-IMAGE$ GE-ARGV+
-   ROOTED-IMAGE$ GE-TIMEOUT-MS GE-RUN-ENV
+   ROOTED-IMAGE$ PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV
    s" the program built from a file whose ROOT! reaches its require" GE-EXPECT-OK
    want wantu s" MAIN's line, from the words the ROOT!-reached files define" GE-EXPECT-OUT ;
 
@@ -341,7 +342,8 @@ variable C-REL-U
 : C-LINK$ ( -- ptr u8 n ) C-LINK C-LINK-U @ ;
 : C-REL$ ( -- ptr u8 n ) C-REL C-REL-U @ ;
 
-4096 constant TXT-CAP
+\ main.f's text: a root and a helper's path, each up to PATH-CAP, and the code around them
+PATH-CAP 2 * 256 + constant TXT-CAP
 create TXT TXT-CAP allot
 variable TXT-U
 : TXT$ ( -- ptr u8 n ) TXT TXT-U @ ;
@@ -393,7 +395,7 @@ variable LBL-U
 : CASE-RUN ( ptr u8 n ptr u8 n -- ) {: image:ptr imageu:n want:ptr wantu:n :}
    GE-HB-RESET
    image imageu GE-ARGV+
-   image imageu GE-TIMEOUT-MS GE-RUN-ENV
+   image imageu PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV
    s" the program built from main.f" LABEL GE-EXPECT-OK
    want wantu s" the program prints the value of the helper its root reaches" LABEL GE-EXPECT-OUT ;
 
@@ -437,6 +439,86 @@ PATH-CAP 2 - constant LONG-ROOT
    s" case top level" s" the second build reuses main.f's object, running no top-level code" LABEL EXPECT-OUT-LACKS
    S\" 1\n" WARM-RUN ;
 
+\ lib.f lays the data MAIN reads between two variables nothing reads; STK-END
+\ holds STK's end, MAIN's only way to STK. GAP-LEAN$ is lib.f without the two.
+: GAP-LIB$ ( -- ptr u8 n )
+   S\" variable DEAD-A\nvariable LIVE-V\ncreate STK 64 allot\nPERSISTED-PTR-VARIABLE STK-END\nvariable DEAD-B\nSTK 64 + STK-END !\n" ;
+: GAP-LEAN$ ( -- ptr u8 n )
+   S\" variable LIVE-V\ncreate STK 64 allot\nPERSISTED-PTR-VARIABLE STK-END\nSTK 64 + STK-END !\n" ;
+: GAP-MAIN$ ( -- ptr u8 n )
+   S\" require lib.f\n: MAIN ( -- ) 7 LIVE-V !  9 STK-END @ 1 cells - !  LIVE-V @ .  STK-END @ 1 cells - @ . ;\n" ;
+
+create G-LIB PATH-CAP allot
+create G-OUT PATH-CAP allot
+create G-IMAGE PATH-CAP allot
+variable G-LIB-U
+variable G-OUT-U
+variable G-IMAGE-U
+: G-OUT$ ( -- ptr u8 n ) G-OUT G-OUT-U @ ;
+: G-IMAGE$ ( -- ptr u8 n ) G-IMAGE G-IMAGE-U @ ;
+\ bytes: room for either program
+$20000 constant PROGRAM-CAP
+PROGRAM-CAP BUFFER: PROGRAM-A
+PROGRAM-CAP BUFFER: PROGRAM-B
+
+\ lib.f as the text, built into the out root and run.
+: GAP-BUILD ( ptr u8 n ptr u8 n ptr u8 n -- ) {: lib:ptr libu:n out:ptr outu:n image:ptr imageu:n :}
+   G-LIB G-LIB-U @ lib libu FS:WRITE-ALL
+   out outu image imageu CASE-BUILD
+   GE-HB-RESET
+   image imageu GE-ARGV+
+   image imageu PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV
+   s" the program built from main.f" LABEL GE-EXPECT-OK
+   S\" 7\n9\n" s" the program prints LIVE-V and the cell below STK-END's pointer" LABEL GE-EXPECT-OUT ;
+
+: GAP-CASE ( -- )
+   s" gap" CASE-OPEN
+   s" lib.f" G-LIB IN-CASE G-LIB-U !
+   s" lean-out" G-OUT IN-CASE G-OUT-U !
+   s" lean-program" G-IMAGE IN-CASE G-IMAGE-U !
+   C-MAIN$ GAP-MAIN$ FS:WRITE-ALL
+   GAP-LIB$ C-OUT$ C-IMAGE$ GAP-BUILD
+   GAP-LEAN$ G-OUT$ G-IMAGE$ GAP-BUILD
+   C-IMAGE$ PROGRAM-A PROGRAM-CAP FS:READ-ALL {: a:n :}
+   G-IMAGE$ PROGRAM-B PROGRAM-CAP FS:READ-ALL {: b:n :}
+   PROGRAM-A a PROGRAM-B b STR= 0= if
+      s" dead variables around the data MAIN reads leave the program's bytes as they are" LABEL GE-FAIL
+   then ;
+
+\ lib.f as lib's text and main.f as main's, built into the out root and refused.
+: ADDRESS-REFUSED ( ptr u8 n ptr u8 n -- ) {: lib:ptr libu:n main:ptr mainu:n :}
+   s" lib.f" G-LIB IN-CASE G-LIB-U !
+   G-LIB G-LIB-U @ lib libu FS:WRITE-ALL
+   C-MAIN$ main mainu FS:WRITE-ALL
+   GE-HB-RESET
+   s" HABU_OUT" >LEN C-OUT$ >LEN PROC-ENV-SET
+   C-MAIN$ C-IMAGE$ BUILD-ARGV BUILD-RUN
+   74 s" the build of main.f" LABEL GE-EXPECT-RC
+   s" LINKER:E-ADDRESS" s" the build's error" LABEL GE-EXPECT-ERR-HAS ;
+
+\ A cell holding the address where a file's data ends, past its last datum, is refused.
+: FILE-END-CASE ( -- )
+   s" file-end" CASE-OPEN
+   S\" PERSISTED-PTR-VARIABLE P  create U 8 allot  42 U !  U 16 + P !\n"
+   S\" require lib.f\n: MAIN ( -- ) P @ NULL-PTR - P NULL-PTR - - .  P @ 16 - @ . ;\n"
+   ADDRESS-REFUSED ;
+
+\ A later file's cell holding the address where a required file's data ends, which lies in the gap the later file's
+\ data starts after, is refused.
+: LATER-END-CASE ( -- )
+   s" later-end" CASE-OPEN
+   S\" create U 8 allot  42 U !\n"
+   S\" require lib.f\nPERSISTED-PTR-VARIABLE P\nU 16 + P !\n: MAIN ( -- ) P @ 16 - @ . ;\n"
+   ADDRESS-REFUSED ;
+
+\ The STRUCTURE's texts are laid after lib.f's data, so the address where U's extent ends lies in the cell LAY sets
+\ apart before them, in no extent: refused.
+: EXTENT-END-CASE ( -- )
+   s" extent-end" CASE-OPEN
+   S\" STRUCTURE pair FIELD a n FIELD b n ;STRUCTURE\ncreate U 8 allot  42 U !\n"
+   S\" require lib.f\nPERSISTED-PTR-VARIABLE P\nU 16 + P !\n: MAIN ( -- ) P @ NULL-PTR - U NULL-PTR - - .  P @ 16 - @ . ;\n"
+   ADDRESS-REFUSED ;
+
 : BODY ( -- )
    s" aot-shifted-bytes" GT-START
    s" subject.f" SUBJECT GT-PATH SUBJECT-U !
@@ -465,8 +547,8 @@ PATH-CAP 2 - constant LONG-ROOT
    RESOLVES-LOAD RESOLVES-BUILD
    ENVTOP-BUILDS
    ROOTED-WRITE ROOTED-BUILD ROOTED-REBUILD ROOTED-CHANGED
-   SYMLINK-CASE LONG-CASE
-   s" PASS: a stripped build of shifted and aligned address bytes, a refused record pointer in a declared DATA cell, a program file and a build whose loads read and set the loader's root as hb --load does, a build whose word resolves its own path as hb --load does, builds that reuse a part only while the environment variable its top level read holds, a file whose ROOT! reaches its require, built, rebuilt from its cached object and rebuilt after its required file changed, and warm builds of a root set through a symlink and at the longest root" type cr ;
+   SYMLINK-CASE LONG-CASE GAP-CASE FILE-END-CASE LATER-END-CASE EXTENT-END-CASE
+   s" PASS: a stripped build of shifted and aligned address bytes, a refused record pointer in a declared DATA cell, a program file and a build whose loads read and set the loader's root as hb --load does, a build whose word resolves its own path as hb --load does, builds that reuse a part only while the environment variable its top level read holds, a file whose ROOT! reaches its require, built, rebuilt from its cached object and rebuilt after its required file changed, warm builds of a root set through a symlink and at the longest root, a program whose bytes dead variables around its data leave as they are, and refused builds storing the address where a file's data or an extent ends, in that file or a later one" type cr ;
 
 public
 : RUN ( -- ) [: BODY ;] [: GT-CLEANUP ;] finally ;

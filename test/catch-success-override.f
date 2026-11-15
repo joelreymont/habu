@@ -1,5 +1,4 @@
 \ Replace a certified zero-test summary the built hb carries.
-1 set-tier
 package CATCH-IMAGE
 public
 undefine ZERO?

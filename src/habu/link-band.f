@@ -1,8 +1,7 @@
 \ link-band.f - the shadow emissions a program's roots reach, or every one for
-\ an engine, on arm64 or Wasm. An arm64 link lays them back to back after the
-\ kernel in A64ICODE's code buffer and places them at TEXT-VA plus their offset
-\ there; a defer's emission is followed by its trailer, as publish.f
-\ COMMIT-DEFER lays it. Words visible only inside LINKER.
+\ an engine, on arm64 or Wasm. An arm64 link lays them after the kernel in
+\ A64ICODE's code buffer (LAYOUT) and places them at TEXT-VA plus their offset
+\ there. Words visible only inside LINKER.
 
 require src/lib/hashmap.f
 require src/habu/layout.f
@@ -156,7 +155,7 @@ variable UNSAFE-COUNT
 
 \ The kernel words a stripped program cannot run: it has no dictionary to read
 \ or write, no writable code and no interpreter for the evaluate words,
-\ define-word, body-append and postponed.
+\ literal, compile, and ;.
 : UNSAFE-NAME? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    a u s" create" XREF-STR=CI
@@ -167,7 +166,6 @@ variable UNSAFE-COUNT
    a u s" xref-retarget" XREF-STR=CI or
    a u s" search-wl" XREF-STR=CI or
    a u s" xref-search-wl" XREF-STR=CI or
-   a u s" xref-wl-newest" XREF-STR=CI or
    a u s" scope-find" XREF-STR=CI or
    a u s" tok-imm?" XREF-STR=CI or
    a u s" policy-admit" XREF-STR=CI or
@@ -178,15 +176,14 @@ variable UNSAFE-COUNT
    a u s" ndict!" XREF-STR=CI or
    a u s" int-mark" XREF-STR=CI or
    a u s" rep-mark" XREF-STR=CI or
-   a u s" min-in-mark" XREF-STR=CI or
    a u s" wide-mark" XREF-STR=CI or
    a u s" record-facts!" XREF-STR=CI or
    a u s" evaluate" XREF-STR=CI or
    a u s" evaluate-range" XREF-STR=CI or
    a u s" evaluate-closed" XREF-STR=CI or
-   a u s" define-word" XREF-STR=CI or
-   a u s" body-append" XREF-STR=CI or
-   a u s" postponed" XREF-STR=CI or ;
+   a u s" literal" XREF-STR=CI or
+   a u s" compile," XREF-STR=CI or
+   a u s" ;" XREF-STR=CI or ;
 
 
 : UNSAFE-TABLE ( -- )
@@ -250,35 +247,6 @@ variable UNSAFE-COUNT
    a CTARGET-ARCH:AARCH64 CTARGET-ARCH:EQ if v b s site kind ARM64:ADDRESS! exit then
    a CTARGET-ARCH:X86-64 CTARGET-ARCH:EQ if v b s site kind X64:ADDRESS! exit then
    a CTARGET-ARCH:WASM CTARGET-ARCH:EQ if v b s site kind WASM:ADDRESS! exit then
-   NO-PART ;
-
-
-\ Whether machine a's emission bytes b, s of them, hold at site the compile's unplaced call
-\ of kind, by a's part of LINKER.
-: CALL? ( CTARGET:arch ptr u8 n n n -- bool )
-   {: a:CTARGET:arch b:ptr s:n site:n kind:n :}
-   a CTARGET-ARCH:AARCH64 CTARGET-ARCH:EQ if b s site kind ARM64:CALL? exit then
-   a CTARGET-ARCH:X86-64 CTARGET-ARCH:EQ if b s site kind X64:CALL? exit then
-   a CTARGET-ARCH:WASM CTARGET-ARCH:EQ if b s site kind WASM:CALL? exit then
-   NO-PART ;
-
-
-\ Whether machine a's emission bytes b, s of them, hold at site the compile's does> slot,
-\ by a's part of LINKER.
-: SLOT? ( CTARGET:arch ptr u8 n n -- bool )
-   {: a:CTARGET:arch b:ptr s:n site:n :}
-   a CTARGET-ARCH:AARCH64 CTARGET-ARCH:EQ if b s site ARM64:SLOT? exit then
-   a CTARGET-ARCH:X86-64 CTARGET-ARCH:EQ if b s site X64:SLOT? exit then
-   a CTARGET-ARCH:WASM CTARGET-ARCH:EQ if b s site WASM:SLOT? exit then
-   NO-PART ;
-
-
-\ Whether s bytes can be an emission of machine a, by a's part of LINKER.
-: SIZE? ( CTARGET:arch n -- bool )
-   {: a:CTARGET:arch s:n :}
-   a CTARGET-ARCH:AARCH64 CTARGET-ARCH:EQ if s ARM64:SIZE? exit then
-   a CTARGET-ARCH:X86-64 CTARGET-ARCH:EQ if s X64:SIZE? exit then
-   a CTARGET-ARCH:WASM CTARGET-ARCH:EQ if s WASM:SIZE? exit then
    NO-PART ;
 
 
@@ -452,8 +420,7 @@ variable UNSAFE-COUNT
    NSHADOW:RECORDS 0 ?do 1 i NSHADOW:EMISSION@ PLACED ! loop ;
 
 
-\ The dispatch cell of the defer whose record emission e holds, or 0; dict.f
-\ TRAILER-CELL reads the arm64 trailer. A Wasm defer dies here.
+\ The dispatch cell of the defer whose record emission e holds, or 0.
 : EM-TRAILER ( n -- n )
    {: e:n :}
    e EM-FIRST @
@@ -461,11 +428,6 @@ variable UNSAFE-COUNT
       dup NSHADOW:RECORD@ XREF-REC {: rec:ptr :}
       rec NDICT:TRAILER-CELL {: cell:n :}
       cell 0<> if
-         WASM? if
-            s" link: the defer " SAY rec XREF-NAME$ SAY
-            s"  needs a trailer, which a Wasm module cannot hold" SAY SAY-CR
-            s" link: a Wasm module cannot hold a defer" 74 die
-         then
          RANGE-END  e NSHADOW:SIZE <> if
             s" link: the defer " SAY rec XREF-NAME$ SAY s"  does not end its routine" SAY SAY-CR
             s" link: a defer does not end its routine" 74 die
@@ -477,8 +439,9 @@ variable UNSAFE-COUNT
    drop 0 ;
 
 \ Each placed emission from NATIVE:SIZE on, in emission order, a defer's
-\ with room for its trailer.
-: LAYOUT ( -- )
+\ with room for its trailer when the output keeps a dictionary.
+: LAYOUT ( bool -- )
+   {: dict:bool :}
    NSHADOW:EMISSIONS OFFSETS-RESERVE  NSHADOW:EMISSIONS TRAILERS-RESERVE
    NATIVE:SIZE  dup BAND-AT !
    NSHADOW:EMISSIONS 0 ?do
@@ -491,7 +454,7 @@ variable UNSAFE-COUNT
             s" link: a routine is not whole 4-byte words" 74 die
          then
          dup i OFFSETS !  i NSHADOW:SIZE +
-         i EM-TRAILER {: cell:n :}
+         dict if i EM-TRAILER else 0 then {: cell:n :}
          cell i TRAILERS !
          cell 0<> if TRAILER-BYTES + then
       then
@@ -542,10 +505,10 @@ variable UNSAFE-COUNT
 
 
 \ Each placed emission, after the kernel NATIVE:ADOPT laid, its data addresses
-\ through data.
-: PLACE-ROUTINES ( [ n -- n ] -- )
-   {: data :}
-   LAYOUT
+\ through data; dict as LAYOUT takes it.
+: PLACE-ROUTINES ( bool [ n -- n ] -- )
+   {: dict:bool data :}
+   dict LAYOUT
    NSHADOW:EMISSIONS 0 ?do i PLACED @ 0<> if i data PLACE-ONE then loop ;
 
 ;package

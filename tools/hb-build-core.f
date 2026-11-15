@@ -40,8 +40,7 @@ PTR-VARIABLE ROW-PATH
 variable ROW-LEN
 PTR-VARIABLE SRC-PATH
 variable SRC-LEN
-PTR-VARIABLE OUT-PATH
-variable OUT-LEN
+TYPED-VARIABLE OUT-Q [ -- ptr u8 n ]
 create DIR PATH-CAP allot  variable DIR-U
 create END-PATH PATH-CAP allot  variable END-U
 create END-DIR PATH-CAP allot           \ a --repl end file's directory (REPL-END!)
@@ -61,7 +60,7 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
 
 : END$ ( -- ptr u8 n ) END-PATH END-U @ ;
 : SRC$ ( -- ptr u8 n ) SRC-PATH @ SRC-LEN @ ;
-: OUT$ ( -- ptr u8 n ) OUT-PATH @ OUT-LEN @ ;
+: OUT$ ( -- ptr u8 n ) OUT-Q @ execute ;
 
 
 \ True when the file at the path holds exactly the bytes; false when it is missing.
@@ -141,14 +140,13 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
 : STARTUP ( -- )
    BOOT-FILES:CHECKER ['] PROVIDE BOOT-FILES:EACH
    BOOT-FILES:DECL ['] PROVIDE BOOT-FILES:EACH
-   BOOT-FILES:CORE BOOT-FILES:DYNAMIC or BOOT-FILES:SEAL or BOOT-FILES:ARGV or
+   BOOT-FILES:CORE BOOT-FILES:DYNAMIC or BOOT-FILES:ARGV or
       BOOT-FILES:INTERNAL or BOOT-FILES:TOPROW or ['] PROVIDE BOOT-FILES:EACH
    BOOT-FILES:CHECKER ['] ROW BOOT-FILES:EACH
    BOOT-FILES:DECL ['] ROW BOOT-FILES:EACH
    BOOT-FILES:CORE BOOT-FILES:DYNAMIC or ['] ROW BOOT-FILES:EACH
    BOOT-FILES:OWNER ['] ROW BOOT-FILES:EACH
    BOOT-FILES:OWNER ['] PROVIDE BOOT-FILES:EACH
-   BOOT-FILES:SEAL ['] ROW BOOT-FILES:EACH
    BOOT-FILES:BASELIB BOOT-FILES:RESTLIB or ['] PROVIDE BOOT-FILES:EACH
    BOOT-FILES:BASELIB BOOT-FILES:RESTLIB or ['] ROW BOOT-FILES:EACH
    BOOT-FILES:ARGV ['] ROW BOOT-FILES:EACH
@@ -164,7 +162,6 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
 
 : RUNTIME-FILES ( -- )
    s" src/habu/engine-origin.f" REQUIRE-FILE
-   s" src/compiler/native/compiler.f" REQUIRE-FILE
    s" src/habu/runtime-arm64.f" REQUIRE-FILE
    REPL-TERM$ REQUIRE-FILE
    s" src/habu/repl.f" REQUIRE-FILE
@@ -174,8 +171,7 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
       s" src/habu/stepper.f" REQUIRE-FILE
       s" src/habu/debug.f" REQUIRE-FILE
    then
-   s" src/lib/c2-owner.f" REQUIRE-FILE
-   s" src/lib/executable-build.f" REQUIRE-FILE
+   s" src/lib/c2-memory.f" REQUIRE-FILE
    s" src/habu/link-data.f" REQUIRE-FILE
    s" src/habu/verify-source.f" REQUIRE-FILE
    s" src/lib/fs-anchored.f" REQUIRE-FILE
@@ -439,52 +435,59 @@ public
 \ writing the file, unless the last one written there still holds; then reads
 \ the object adopted or written, by the path its checksum names, for the
 \ builds that follow. A build's registry starts empty, so the writer's files
-\ load from this tree; a kernel build shares a program build's objects.
+\ load from this tree; a kernel build shares a program build's objects. The
+\ build and its adoption run from the tree's root, whatever the caller's, so
+\ the inputs file records that root and holds for every caller.
 : KERNEL-BUILD ( bool RTARGET:resolved-target -- )
    {: engine:bool target:RTARGET:resolved-target :}
    engine KERNEL-ENGINE? !  target TARGET !
    PATHS  KERNEL-PATHS
-   ADOPT? 0= if
-      NULL-PTR ROW-PATH !  0 ROW-LEN !
-      s" kernel" target ['] KERNEL-BODY LINKER:WITH
-   then
+   SOURCE-ROOT:CWD$ [:
+      ADOPT? 0= if
+         NULL-PTR ROW-PATH !  0 ROW-LEN !
+         s" kernel" target ['] KERNEL-BODY LINKER:WITH
+      then
+   ;] SOURCE-ROOT:WITH
    KERNEL-PATH KERNEL-U @ LINKER:KERNEL ;
 
 \ The path of the kernel object the last KERNEL-BUILD wrote or adopted, which
 \ names its checksum, so a later read of it reads the bytes the build linked.
 : KERNEL$ ( -- ptr u8 n ) KERNEL-PATH KERNEL-U @ ;
 
-\ The inputs file beside the object KERNEL$ names, which the last KERNEL-BUILD wrote or adopted.
+\ The tree's inputs file for the last KERNEL-BUILD's profile and kind; any
+\ kernel build of this tree may replace it with a log that holds as well, read
+\ from the tree's root.
 : KERNEL-INPUTS$ ( -- ptr u8 n ) INPUTS-PATH INPUTS-U @ ;
 
 \ The file the build is loading, for the message of a build that failed; empty
 \ until the build opened last loads its first file.
 : ROW$ ( -- ptr u8 n ) ROW-PATH @ ROW-LEN @ ;
 
-\ Build this tree's hb for the target and write it to the path.
-: ENGINE ( ptr u8 n RTARGET:resolved-target -- )
-   {: out:ptr outu:n target:RTARGET:resolved-target :}
+\ Build this tree's hb for the target and write it to the path the quotation
+\ answers when the build writes.
+: ENGINE ( [ -- ptr u8 n ] RTARGET:resolved-target -- )
+   {: out target:RTARGET:resolved-target :}
    target REFUSE-WASM
-   out OUT-PATH !  outu OUT-LEN !
+   out OUT-Q !
    true target KERNEL-BUILD  ENGINE-END!
    NULL-PTR ROW-PATH !  0 ROW-LEN !
    s" engine" target ['] ENGINE-BODY LINKER:WITH ;
 
 \ Build hb with the source's files, the source's MAIN its entry, for the target
-\ and write it to the second path.
-: REPL ( ptr u8 n ptr u8 n RTARGET:resolved-target -- )
-   {: src:ptr srcu:n out:ptr outu:n target:RTARGET:resolved-target :}
+\ and write it to the path the quotation answers when the build writes.
+: REPL ( ptr u8 n [ -- ptr u8 n ] RTARGET:resolved-target -- )
+   {: src:ptr srcu:n out target:RTARGET:resolved-target :}
    target REFUSE-WASM
-   src SRC-PATH !  srcu SRC-LEN !  out OUT-PATH !  outu OUT-LEN !
+   src SRC-PATH !  srcu SRC-LEN !  out OUT-Q !
    true target KERNEL-BUILD  REPL-END!
    NULL-PTR ROW-PATH !  0 ROW-LEN !
    s" engine" target ['] REPL-BODY LINKER:WITH ;
 
 \ Build the source as a stripped program for the target and write it to
-\ the second path.
-: APP ( ptr u8 n ptr u8 n RTARGET:resolved-target -- )
-   {: src:ptr srcu:n out:ptr outu:n target:RTARGET:resolved-target :}
-   src SRC-PATH !  srcu SRC-LEN !  out OUT-PATH !  outu OUT-LEN !
+\ the path the quotation answers when the build writes.
+: APP ( ptr u8 n [ -- ptr u8 n ] RTARGET:resolved-target -- )
+   {: src:ptr srcu:n out target:RTARGET:resolved-target :}
+   src SRC-PATH !  srcu SRC-LEN !  out OUT-Q !
    target TARGET !
    WASM? 0= if false target KERNEL-BUILD then
    NULL-PTR ROW-PATH !  0 ROW-LEN !

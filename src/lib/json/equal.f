@@ -12,6 +12,7 @@
 \ string of b it compares.
 
 require src/lib/memory.f
+require src/lib/sort.f
 require src/lib/span.f
 require src/lib/string.f
 require src/lib/json/read.f
@@ -366,22 +367,15 @@ CAST: >WALK ( ptr n -- ptr walk )
    -1  w WALK-MEMBER-N @ 0 ?do w i MARK-FIRST loop drop ;
 
 
-\ Halves lo..hi toward the lowest place whose key is not below key.
-: NARROW ( n n ptr walk ptr u8 n -- n n )
-   {: lo:n hi:n w:ptr key:ptr len:n :}
-   lo hi + 2 / {: mid:n :}
-   w  w mid MEMBER@  MEMBER-KEY$  key len STR< if mid 1+ hi exit then
-   lo mid ;
-
-
 \ Object row obj's member whose key decodes to key, or -1. The first of equal keys is found each
 \ time, so a key a repeats meets a member already matched and a key b repeats leaves one unmatched.
 : FIND-MEMBER ( ptr walk n ptr u8 n -- n )
    {: w:ptr obj:n key:ptr len:n :}
    w obj ROW {: o:ptr :}
    o ROW-FIRST @  dup o ROW-COUNT @ + {: lo:n hi:n :}
-   lo hi begin 2dup < while w key len NARROW repeat
-   drop {: at:n :}
+   lo hi
+   [: w swap MEMBER@ w swap MEMBER-KEY$ key len STR< ;]
+   SORT:PARTITION-POINT {: at:n :}
    at hi = if -1 exit then
    w at MEMBER@ {: q:n :}
    w q MEMBER-KEY$ key len STR= if q else -1 then ;

@@ -121,12 +121,12 @@ holds an address ([forth.md](forth.md) "Raw storage never holds an address").
 ## Numeric admission
 
 A backend implements the language's semantics, not its machine's convenient
-answer (`src/habu/arith-abi.f`, `src/compiler/numeric-policy.f`):
+answer (`src/compiler/numeric-policy.f`):
 
 - `+ - *` wrap modulo 2^64, including on register-pair targets;
-- a zero divisor throws `E-DIV-ZERO` and `MIN-N -1 /` wraps to `MIN-N`, both
-  guarded before a machine divide that would trap (x86-64 `idiv`, Wasm
-  `i64.div_s`);
+- a zero divisor's answer is undefined, untested before the machine divide;
+  `MIN-N -1 /` wraps to `MIN-N`, guarded before a divide that would trap
+  (x86-64 `idiv`, Wasm `i64.div_s`);
 - `/`, `mod` and `/mod` truncate toward zero;
 - `lshift`/`rshift` take the count modulo 64 and `rshift` is logical;
 - a comparison observed as a cell is the all-ones flag, never 0/1;
@@ -160,10 +160,9 @@ never turned into a catchable error.
 
 ## The NaN an operation makes
 
-One rule holds on every target (`src/compiler/native/hir-word.f`
-`DEF-FLOAT`): an operation that makes a NaN from numbers answers
-`$7FF8000000000000`, the positive quiet NaN, and a quiet NaN operand passes
-through unchanged, the left of two. `f.` prints `-` exactly when bit 63 is set,
+One rule holds on every target: an operation that makes a NaN from numbers
+answers `$7FF8000000000000`, the positive quiet NaN, and a quiet NaN operand
+passes through unchanged, the left of two. `f.` prints `-` exactly when bit 63 is set,
 so `-1 fsqrt f.` and `0 0 f/ f.` print `0.000000` everywhere.
 
 ARM64 answers the rule as it stands; SSE makes the negative NaN, so the x86-64
@@ -179,19 +178,14 @@ is not covered: ARM64 answers the signalling one quieted, SSE the left one.
 
 The x86-64 backend shares the target-free compiler with ARM64 and forks
 nothing else by accident. Linux x86-64 is the target; the ARM64 engine
-cross-builds it. x86-64 builds are off until x86-64 moves onto the linker: the
-builder this section names, `tools/native-build.f`, is gone.
+cross-builds it. x86-64 builds are off until x86-64 moves onto the linker.
 
 A second architecture touches five layers: the assembler
 (`src/arch/x86-64/`), the engine primitive bodies (`src/habu/kernel-x64.f`,
-under the rows of `src/habu/prims.f`), the compiler's dialect, selector and
-emitter (`src/compiler/native/*-x64.f`, `x64ir.f`; the allocator and spill pass
-are shared, parameterised by a register file), the OS seam
-(`src/os/linux-x86-64/`, the same file set and word names as `src/os/linux/`)
-and the runtime ABI (SysV FFI, task entry, the same guard-page model). The HIR,
-the elaborator and the loop pass are target-free. A backend is one row in
-`src/compiler/native/backend.f`, registered when its `passes.f` loads: the
-driver names no backend, and `bin/hb` for one host does not carry the other.
+under the rows of `src/habu/prims.f`), the tier 0 emitter
+(`src/habu/t0-x64.f`), the OS seam (`src/os/linux-x86-64/`) and the runtime ABI (SysV FFI, task entry,
+the same guard-page model). Tier 0's front end (`src/habu/t0.f`) is
+target-free: it emits through the emitter the target selects.
 
 ### Machine model
 
@@ -205,34 +199,21 @@ driver names no backend, and `bin/hb` for one host does not carry the other.
   patch (`src/habu/address-carrier.f`).
 - **Traps** use the same mmap protections; the handler reads `RIP` and `RSP`.
 
-### The capture's reach
+### The shadow
 
 A host word's names are bound as it compiles, so its target routine cannot be
-lowered later from the tape: `src/compiler/native/shadow.f` compiles it for the
-target from the same frozen HIR module in a nested context, and a shadow
-refusal refuses the definition.
-
-The capture carries the shadow's map (`src/habu/aot-shadow.f`). Code bytes
-carry no host address: call fields stay zero, a code literal holds 0, a DATA
-literal holds its window coordinate. Two reaches decide what ships, because
-x86-64 and ARM64 optimise differently and ARM64 reach cannot answer which x86
-routines are needed: the capture's reach decides which stripped or retired
-records are live, and the shadow's reach follows the x86 shadow's own call and
-code-address sites. Every record index is a shipped row, never a window index,
-because stripping and `undefine` renumber records. A merge refuses a shadow on
-either side, because the merged engine is the ARM64 seed.
+lowered later from the tape: while the shadow (`src/compiler/native/shadow.f`)
+is open, `src/habu/t0.f` walks the same tape for the target before the host,
+and a shadow refusal refuses the definition.
 
 ### The OS seam
 
 `src/os/linux-x86-64/` is a seam of the same shape as `src/os/linux/`
-(Porting). Both Linux targets share `src/os/linux/layout-constants.f`, so
-captured DATA pointers need no translation between the two Linux hosts. Seam
+(Porting). Both Linux targets share `src/os/linux/layout.f`, so
+DATA pointers need no translation between the two Linux hosts. Seam
 register arguments are x86-64 register numbers moving through an
 upward-growing data stack, and the seam's instruction stencils are byte strings
-of whole instructions appended as they stand. `tools/native-emit.f` sends an
-x86-64 target to `tools/native-emit-x64.f`, which loads the x86 code stream
-before the window installs its compiler, so the ARM64 assembler cannot bind
-it.
+of whole instructions appended as they stand.
 
 ### Fixed segments
 
@@ -254,22 +235,21 @@ ARM64 the record is two bitmaps, one bit per four-byte word; an x86-64 site
 starts at any byte, so the same bytes hold a band of ascending rows. A site's
 offset is its instruction's first byte on both targets. Both views are declared
 on every target, because `src/` has no load-time target selection; the running
-engine picks one, and one reader (`src/habu/sites.f`) serves both. Snapshot
-relocation does not apply: the region and DATA are fixed, so the rows serve
-publication and the AOT capture only.
+engine picks one.
 
 ### Build and bootstrap
 
 Cross-build first, self-host second.
 
-1. **The engine is tier-1 only.** A small hand-written kernel is bound to the
-   `src/habu/prims.f` names; the outer interpreter, definers, packages, source
-   loading and `MAIN` are checked Habu captured into both products. There is no
-   x86 copy of `habu2.f`.
-2. **The ARM64 engine cross-builds by dual emission.** Loading the prefix
-   executes on the host, so the host cannot switch its contract; each
-   definition's one HIR is emitted twice and the capture carries the shadow.
-3. **A host-side Habu linker writes the image** (`src/habu/link-x64.f`). It
+1. **The engine compiles through tier 0.** A small hand-written kernel is
+   bound to the `src/habu/prims.f` names; the outer interpreter, definers,
+   packages, source loading and `MAIN` are checked Habu captured into both
+   products. There is no x86 copy of `habu2.f`.
+2. **The ARM64 engine cross-builds through tier 0.** Loading the prefix
+   executes on the host, so the host cannot switch its contract; while a
+   shadow is open tier 0 walks each definition for the target and then for
+   the host.
+3. **A host-side Habu linker writes the image.** It
    resolves every record, call, literal and DATA cell at write time; no
    relocation runs at boot or snapshot restore.
 4. **The cross-built engine self-hosts** on an x86-64 host, two
@@ -283,8 +263,7 @@ Cross-build first, self-host second.
 - The primitive parity gate (`test/prim-parity.f`), green on both backends.
 - `test/run.f` green on an x86-64 host on a cross-built engine, then on its
   own fixpoint engine.
-- The FFI suite under SysV, the task suite, the guard-page suite, and an
-  AOT-stripped application running.
+- The FFI suite under SysV, the task suite and the guard-page suite.
 - A native x86-64 build records the emission it published and reaches the same
   image, engine and names sidecar, across three generations before a
   product is promoted.
@@ -341,8 +320,7 @@ write.
 
 ### Arithmetic
 
-A module keeps the language rules ("Numeric admission"): a zero divisor
-throws before any divide, and `-1` answers `0 - n`, so `MIN-N -1 /` is `MIN-N`
+A module keeps the language rules ("Numeric admission"): a zero divisor traps, and `-1` answers `0 - n`, so `MIN-N -1 /` is `MIN-N`
 where `i64.div_s` would trap. An observable flag is `0 - extend_u(p)`, because
 Wasm comparisons answer 0/1. A raw 64-bit condition is tested against zero
 before it becomes an `i32`; truncating it can turn nonzero into false.
@@ -373,11 +351,9 @@ pointers have no Wasm form. A target data builder lays out static bytes; no
 native dictionary or snapshot is copied in. Changing an index can change an
 LEB's length, so every call and address immediate is a padded LEB and the
 padded size is accepted (`src/arch/wasm/link.f`, `leb.f`). Memory regions are
-fixed by the profile; address zero is in bounds in Wasm, so null is enforced by
-the checked access, not by a guard page. Section order follows the
-specification, not a sort by section ID. A custom section would be evidence,
-not authority: a loader compares the actual imports, memory and table
-declarations.
+fixed by the profile. Section order follows the specification, not a sort by
+section ID. A custom section would be evidence, not authority: a loader
+compares the actual imports, memory and table declarations.
 
 ### Validation and proof
 
@@ -476,12 +452,6 @@ gate; it adds no host-language build logic. The directory structure of a seam
 is `src/os/AGENTS.md`.
 
 ### Source Selection
-
-The target is wired in exactly these source-list owners:
-
-- `src/habu/habu2.f` for the `--load` prefix;
-- `tools/hb-build-core.f` for baked REPL sources;
-- `tools/lint/shadow-lint.f` for lint coverage.
 
 No caller passes a target prelude for normal tests: `bin/hb --load` selects the
 host prefix from the running binary. Selection fails closed: no branch means

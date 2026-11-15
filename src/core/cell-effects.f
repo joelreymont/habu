@@ -1,12 +1,9 @@
 \ cell-effects.f - effects for words needed before the checker starts.
 
 s" CELL" s" -- n" TRUST
-s" CELL-WIDTH-CHECK" s" --" TRUST
-s" CHECKER-CAPTURE-PREPARE" s" --" TRUST
-s" CHECKER-STORAGE-PREPARE" s" --" TRUST
 
-\ src/core/util.f's public constants, which load before the checker: without
-\ these rows a body naming one is E-UNDEFINED on a from-source prefix boot.
+\ Public constants of files that load before the checker: without these rows a
+\ body naming one is E-UNDEFINED on a from-source prefix boot.
 PRIM: PATH-CAP PE-N PE-OUT PRIM;
 PRIM: E-PATH-RANGE PE-N PE-OUT PRIM;
 PRIM: E-PATH-NUL PE-N PE-OUT PRIM;
@@ -14,7 +11,7 @@ PRIM: SCOPE-FIND-AMBIGUOUS PE-N PE-OUT PRIM;
 PRIM: E-XREF-NULL PE-N PE-OUT PRIM;
 
 \ intern-table.f's words load before the checker; a row records no throw, so the
-\ checker misses TEXT's and FIND's E-INTERN-REWIND (util.f PATHZ).
+\ checker misses TEXT's and FIND's E-INTERN-REWIND.
 PPRIM: INTERN CLEANUP PPRIM;
 PPRIM: INTERN EACH-STRING PE-Q PE-N PE-QIN ;PE-Q PE-IN PPRIM;
 PPRIM: INTERN TEXT PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-OUT PPRIM;
@@ -32,6 +29,7 @@ PRIM: REPORT-UNCHECKABLE PE-N PE-IN PE-N PE-OUT PRIM;
 PRIM: E-CTOR-PROTECTED PE-N PE-OUT PRIM;
 
 s" SCRATCH-ALLOT" s" n --" TRUST
+s" datum" s" --" TRUST
 s" SCRATCH-VARIABLE" s" --" TRUST
 s" PTR-VARIABLE" s" --" TRUST
 s" PERSISTED-PTR-VARIABLE" s" --" TRUST
@@ -40,13 +38,11 @@ s" PERSISTED-PTR-U8-TABLE" s" n --" TRUST
 s" PERSISTED-PTR-U8-TABLE-VARIABLE" s" --" TRUST
 s" PTR-U8-TABLE-VARIABLE" s" --" TRUST
 s" RESERVED-PTR-U8-CELL" s" n --" TRUST
-s" LBUF-CAPTURE-PREPARE" s" --" TRUST
 
-\ The refusal count and the words that open and close a collection, from
-\ src/core/checker.f, which loads before the checker starts. Checked bodies
-\ count a recovered refusal (src/core/arena.f, src/habu/verify-source.f); tests
-\ open and close a collection (test/native-multi-error-recovery.f).
-PRIM: MULTI-ERR-N PE-PTR-N PE-OUT PRIM;
+\ The rejection count (src/core/rejection.f) and the words that open and close
+\ a collection (src/core/checker.f) load before the checker starts, so a checked
+\ call of them needs these rows.
+PPRIM: REJECTION TALLY PE-PTR-N PE-OUT PPRIM;
 PRIM: MULTI-ERR-BEGIN PRIM;
 PRIM: MULTI-ERR-END PE-N PE-OUT PRIM;
 
@@ -60,7 +56,7 @@ s" SIG-RAW-MODE" s" -- ptr n" TRUST
 
 \ `parses: W n` and `parses-through: W n ( E1 E2 )`, at top level after W's
 \ definition, read as src/habu/verify-source.f PARSES-ROW reads them and checked
-\ by src/core/checker.f CHECKER-PARSES-ROW; nothing is kept. The keyword is the
+\ by the checker; nothing is kept. The keyword is the
 \ last token the engine read when the word starts (TKA-CELL). UNSAFE-TOK? bars
 \ both from checked bodies. They load after the hook so this checker records them
 \ and INTRINSIC tags each (CTL-PARSES, INTRINSIC-CTL): a word checker.f defines is
@@ -78,8 +74,8 @@ INTRINSIC-PARSES-THROUGH INTRINSIC
 \ `names: W`, at top level after W's definition: W looks its string operand up
 \ as a name, so a string literal before a call of W is a use of the word it
 \ names. Read as the source pre-verifier reads it (src/habu/verify-source.f
-\ NAMES-ROW), checked by the checker, which marks W's symbol
-\ (src/core/checker.f CHECKER-NAMES-ROW), barred from checked bodies and
+\ NAMES-ROW), checked by the checker, which marks W's symbol,
+\ barred from checked bodies and
 \ tagged as the two above are.
 TRUSTED: names: ( -- )
    data-base TKA-CELL + @  data-base TKL-CELL + @

@@ -1,6 +1,7 @@
-\ log.f - lines on fd 2 that say why a program failed, package LOG. A failure
-\ caused outside the program (a provider, the network, the OS) is logged once,
-\ with its text, by the library that saw it, just before it throws.
+\ log.f - lines on fd 2 that say why a program failed, and, at info, what a
+\ service did, package LOG. A failure caused outside the program (a provider,
+\ the network, the OS) is logged once, with its text, by the library that saw
+\ it, just before it throws.
 \ LINE opens a line, TEXT+, INT+ and CODE+ append to it, ;LINE writes it as
 \ `<YYYY-MM-DDTHH:MM:SSZ> <level> <tag>: <text>` and LF, the stamp UTC. The tag
 \ is the caller's package name in lower case; LOG does not check it.
@@ -11,7 +12,7 @@
 \ and a refused mapping loses the line, which ;LINE replaces with NOTICE. A LINE
 \ while a line is open abandons that line, as a throw does: once the new line is
 \ closed, the abandoned line's remaining TEXT+ and ;LINE write nothing.
-\ STORAGE CLASS. TASK-LOCAL: the line, a TASK:+USER BUF row kept across lines
+\ STORAGE CLASS. TASK-LOCAL: the line, a per-task BUF header kept across lines
 \ and released once a line grows it past START-CAP; ARMED, set once this run
 \ has run REGISTER; PHASE, whether a line is closed, open or lost. A line
 \ logged from a TASK:AT-EXIT cleanup releases its row too: the release LINE
@@ -39,6 +40,7 @@ DEFTYPE LEVEL
 
 0 constant ERROR-N
 1 constant WARN-N
+2 constant INFO-N
 $A constant LF
 \ A mapping is at least a page, so lines up to 4 KiB reuse the row.
 $1000 constant START-CAP
@@ -46,9 +48,9 @@ $20 constant SPACE-B
 $7F constant DEL-B
 $5C constant BACKSLASH
 
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and BUF:HDR-BYTES TASK:+USER ROW drop
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $8 TASK:+USER ARMED drop
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $8 TASK:+USER PHASE drop
+BUF:HDR-BYTES TASK:+USERS ROW u8
+TASK:+USER ARMED n
+TASK:+USER PHASE n
 TASK:FACILITY LOCK
 LOCK TASK:FACILITY-INIT
 
@@ -85,7 +87,7 @@ NOTICE-TEXT$ NOTICE DATE:TIME-LEN + swap BYTE-COPY
 : ROW-RELEASE ( -- )
    0 ARMED !
    CLOSED PHASE !
-   ROW BUF:DISPOSE ;
+   0 ROW BUF:DISPOSE ;
 
 
 \ A task's row is released at its exit; the main task has no exit chain, and its
@@ -110,12 +112,12 @@ NOTICE-TEXT$ NOTICE DATE:TIME-LEN + swap BYTE-COPY
 
 
 : ROW-READY ( -- )
-   ROW BUF:LIVE? if ROW BUF:CLEAR exit then
-   ROW START-CAP BUF:N>BLEN BUF:INIT ;
+   0 ROW BUF:LIVE? if 0 ROW BUF:CLEAR exit then
+   0 ROW START-CAP BUF:N>BLEN BUF:INIT ;
 
 
 : STAMP ( -- )
-   ROW DATE:TIME-LEN BUF:N>BLEN BUF:GROW SPAN:$ {: at:ptr u:n :}
+   0 ROW DATE:TIME-LEN BUF:N>BLEN BUF:GROW SPAN:$ {: at:ptr u:n :}
    epoch-seconds at u DATE:FORMAT-EPOCH-UTC 2drop ;
 
 
@@ -126,8 +128,10 @@ NOTICE-TEXT$ NOTICE DATE:TIME-LEN + swap BYTE-COPY
 
 
 : LEVEL$ ( level -- ptr u8 n )
-   LEVEL>N ERROR-N = if s" error" exit then
-   s" warn" ;
+   LEVEL>N {: n:n :}
+   n ERROR-N = if s" error" exit then
+   n WARN-N = if s" warn" exit then
+   s" info" ;
 
 
 : ESCAPE? ( n -- bool )
@@ -135,13 +139,13 @@ NOTICE-TEXT$ NOTICE DATE:TIME-LEN + swap BYTE-COPY
    b SPACE-B < b DEL-B = or b BACKSLASH = or ;
 
 
-: HEX+ ( n -- )  s" 0123456789abcdef" drop + c@ ROW BUF:APPEND-BYTE ;
+: HEX+ ( n -- )  s" 0123456789abcdef" drop + c@ 0 ROW BUF:APPEND-BYTE ;
 
 
 : ESCAPE+ ( n -- )
    {: b:n :}
-   BACKSLASH ROW BUF:APPEND-BYTE
-   [char] x ROW BUF:APPEND-BYTE
+   BACKSLASH 0 ROW BUF:APPEND-BYTE
+   [char] x 0 ROW BUF:APPEND-BYTE
    b 4 rshift HEX+
    b $F and HEX+ ;
 
@@ -149,14 +153,14 @@ NOTICE-TEXT$ NOTICE DATE:TIME-LEN + swap BYTE-COPY
 \ Appends at[from, to).
 : RUN+ ( ptr u8 n n -- )
    {: at:ptr from:n to:n :}
-   at from + to from - BUF:N>BLEN ROW BUF:APPEND-SPAN ;
+   at from + to from - BUF:N>BLEN 0 ROW BUF:APPEND-SPAN ;
 
 
 \ TEXT+'s contract: the row's first growth, to hold the text unescaped, comes
 \ before any byte of the text is read.
 : ESCAPED+ ( ptr u8 n -- )
    {: at:ptr u:n :}
-   ROW  ROW BUF:LEN@ BUF:BLEN>N u BUF:N>BLEN BUF:BLEN>N + BUF:N>BLEN  BUF:ENSURE
+   0 ROW  0 ROW BUF:LEN@ BUF:BLEN>N u BUF:N>BLEN BUF:BLEN>N + BUF:N>BLEN  BUF:ENSURE
    0 u 0 ?do
       at i + c@ ESCAPE? if
          at over i RUN+
@@ -196,7 +200,7 @@ NOTICE-TEXT$ NOTICE DATE:TIME-LEN + swap BYTE-COPY
 
 : ROW-OUT ( -- )
    FD:STDERR
-   [: MENDED? if FD:STDERR ROW BUF:SPAN$ BUF:BLEN>N FD:TRY-WRITE-FULL WROTE then ;]
+   [: MENDED? if FD:STDERR 0 ROW BUF:SPAN$ BUF:BLEN>N FD:TRY-WRITE-FULL WROTE then ;]
    FD:WITH-NOSIGPIPE ;
 
 
@@ -223,20 +227,21 @@ NOTICE-TEXT$ NOTICE DATE:TIME-LEN + swap BYTE-COPY
 
 : FINISH ( -- )
    PHASE @ CLOSED = if exit then
-   PHASE @ OPENED = if [: LF ROW BUF:APPEND-BYTE ;] catch MAP-REFUSED then
+   PHASE @ OPENED = if [: LF 0 ROW BUF:APPEND-BYTE ;] catch MAP-REFUSED then
    PHASE @ LOST = if [: NOTICE-OUT ;] WRITE exit then
    [: ROW-OUT ;] WRITE ;
 
 
 : SHED ( -- )
-   ROW BUF:LIVE? 0= if exit then
-   ROW BUF:CAP@ BUF:BLEN>N START-CAP <= if exit then
-   ROW BUF:DISPOSE ;
+   0 ROW BUF:LIVE? 0= if exit then
+   0 ROW BUF:CAP@ BUF:BLEN>N START-CAP <= if exit then
+   0 ROW BUF:DISPOSE ;
 
 public
 
 : ERROR ( -- level )  ERROR-N >LEVEL ;
 : WARN ( -- level )  WARN-N >LEVEL ;
+: INFO ( -- level )  INFO-N >LEVEL ;
 
 
 : TEXT+ ( ptr u8 n -- )

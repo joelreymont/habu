@@ -20,7 +20,6 @@
 \ A Wasm module is refused by name.
 
 require src/lib/le.f
-require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/fs.f
 require tools/image-names.f
@@ -68,20 +67,13 @@ variable OTHER-SIZE
    ELF? if IMG@ ILEN @ ELF:OPEN exit then
    IMG@ ILEN @ MACHO:OPEN ;
 
-\ The room MAP-CHECK's line needs, the longest built around the path.
-: MAP-ROOM ( ptr u8 n -- ptr u8 n )
-   dup s" image-size: no map .map" nip + SB-CAP > if
-      s" image-size: the program path is too long for its map path" RC die
-   then ;
-
-: MAP$ ( ptr u8 n -- ptr u8 n )
-   MAP-ROOM SB-RESET SB-APPEND s" .map" SB-APPEND SB$ ;
-
 : MAP-CHECK ( ptr u8 n -- )
-   {: path:ptr pathu:n :}
-   path pathu MAP$ FS:FILE? if exit then
-   SB-RESET s" image-size: no map " SB-APPEND
-   path pathu SB-APPEND s" .map" SB-APPEND SB$ RC die ;
+   IMAGE-NAMES:MAP$ 0= if
+      2drop s" image-size: the program path is too long for its map path" RC die
+   then {: map:ptr mapu:n :}
+   map mapu FS:FILE? if exit then
+   2 s" image-size: no map " write drop
+   map mapu RC die ;
 
 \ The bytes the map's rows tile from the code's first byte.
 : MAP-BYTES ( -- n )

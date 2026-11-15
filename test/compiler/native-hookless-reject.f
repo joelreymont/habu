@@ -11,15 +11,20 @@ package HOOKLESS-REJECT-TEST
 private
 
 $4000 constant CAP
-20000 constant SUBJECT-TIMEOUT-MS
 70 constant RC-REJECT                \ the check hook's reject status (src/core/check-hook.f CHECK-RC)
+67 constant UNCAUGHT-RC              \ an uncaught throw's exit status
 
 create OUT CAP allot                   variable OUT-U
 create ERR CAP allot                   variable ERR-U
 variable RC
+\ Texts that outrun a source line.
+create TEXT CAP allot                  variable TEXT-U
 
 : OUT$ ( -- ptr u8 n ) OUT OUT-U @ ;
 : ERR$ ( -- ptr u8 n ) ERR ERR-U @ ;
+
+: TEXT$ ( -- ptr u8 n ) TEXT TEXT-U BUF-LEN@ ;
+: TEXT+ ( ptr u8 n -- ) TEXT CAP TEXT-U BUF-APPEND ;
 
 : SHOW ( bool -- bool )
    dup 0= if OUT$ type ERR$ type then ;
@@ -39,7 +44,7 @@ variable RC
    ;MATCH ;
 
 : SESSION ( ptr u8 n -- ) {: src:ptr u:n :}
-   src u OUT CAP >LEN ERR CAP >LEN SUBJECT-TIMEOUT-MS >MS SUBJECT:RUN
+   src u OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    src u SUBJECT-STORE! ;
 
 \ The checker's ambiguity refusal makes the native compiler exit with the
@@ -50,7 +55,7 @@ variable RC
    s" ;package package UA public : AW ( -- n ) 11 ; ;package package UC public : AW ( -- n ) 33 ; ;package using UA using UC : UT-AMB ( -- n ) AW ; ;using ;using" SESSION
    RC @ RC-REJECT T=
    s" E-USING-AMBIGUOUS habu: bare 'AW' is ambiguous under using" SAYS
-   s" ncomp: cannot compile UT-AMB at AW in" SAYS ;
+   s" compiler: cannot compile UT-AMB at AW in" SAYS ;
 
 \ A used public that shadows a global is refused the same way.
 \ Its own process: the uncaught throw ends it, and its exit status is tested.
@@ -59,7 +64,7 @@ variable RC
    s" ;package : SW ( -- n ) 11 ; package US public : SW ( -- n ) 33 ; ;package using US : UT-SHADOW ( -- n ) SW ; ;using" SESSION
    RC @ RC-REJECT T=
    s" E-USING-SHADOW-GLOBAL habu: bare 'SW' is ambiguous under using" SAYS
-   s" ncomp: cannot compile UT-SHADOW at SW in" SAYS ;
+   s" compiler: cannot compile UT-SHADOW at SW in" SAYS ;
 
 \ A TRUSTED: row whose stored signature does not parse is refused at that token.
 \ Its own process: the uncaught throw ends it, and its exit status is tested.
@@ -68,7 +73,7 @@ variable RC
    s" ;package TRUSTED: TB8 ( -- nosuch:fam ) 1 NOSUCHWORD ;" SESSION
    RC @ RC-REJECT T=
    s" habu: in tb8: bad stored signature '-- nosuch:fam'" SAYS
-   s" ncomp: cannot compile TB8 at nosuch:fam in" SAYS ;
+   s" compiler: cannot compile TB8 at nosuch:fam in" SAYS ;
 
 \ A public whose private twin moves other cells is refused at its own name.
 \ Its own process: the uncaught throw ends it, and its exit status is tested.
@@ -77,16 +82,28 @@ variable RC
    s" ;package package SAT-A : F ( n n -- n ) + ; public : F ( n -- n ) 1 + ; ;package" SESSION
    RC @ RC-REJECT T=
    s" E-SHADOWED-ARITY habu: public 'sat-a:f'" SAYS
-   s" ncomp: cannot compile F at F in" SAYS ;
+   s" compiler: cannot compile F at F in" SAYS ;
+
+\ A TRUSTED: body whose `@` cannot be applied over a two-cell family value
+\ loses that value's width, so nothing can place its cells; a does> clause that
+\ loses one is refused the same way.
+\ Its own process: the uncaught throw ends it, and its exit status is tested.
+: INCOMPLETE-SCAN ( -- )
+   s" a scan that loses a wide value's width is refused" T-LABEL
+   TEXT-U BUF-RESET
+   s" ENUM hr-v VARIANT none ;VARIANT VARIANT some FIELD x n ;VARIANT ;ENUM " TEXT+
+   S\" : HR-TRY ( -- n ) [: s\" TRUSTED: HR-DEF ( n -- ) create , does> ( -- n ) @ construct hr-v some @ ;\" evaluate-closed ;] catch ; " TEXT+
+   s" HR-TRY . " TEXT+
+   s" TRUSTED: HR-LOST ( n -- n ) construct hr-v some @ ;" TEXT+
+   TEXT$ SESSION
+   RC @ UNCAUGHT-RC T=
+   s" compiler: cannot compile HR-DEF" SAYS
+   S\" -8519\n" PRINTS
+   s" compiler: cannot compile HR-LOST" SAYS
+   s" hb: uncaught throw code -8519" SAYS ;
 
 \ ---- a refused definition keeps no row ---------------------------------------
-\ The texts outrun a source line, so TEXT holds them; `;package` first makes
-\ them global.
-create TEXT CAP allot                  variable TEXT-U
-
-: TEXT$ ( -- ptr u8 n ) TEXT TEXT-U BUF-LEN@ ;
-: TEXT+ ( ptr u8 n -- ) TEXT CAP TEXT-U BUF-APPEND ;
-
+\ `;package` first makes the texts global.
 : REFUSED-TEXT ( -- )
    TEXT-U BUF-RESET  s" ;package " TEXT+ ;
 
@@ -115,6 +132,7 @@ create TEXT CAP allot                  variable TEXT-U
    SHADOWING-CALLEE
    BAD-SIGNATURE
    SHADOWED-ARITY
+   INCOMPLETE-SCAN
    REFUSED-CAUGHT
    T-REPORT ;
 

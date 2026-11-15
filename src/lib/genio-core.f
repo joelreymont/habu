@@ -10,13 +10,12 @@
 \ also when the operation throws, so an operation of the caller's device that
 \ runs afterwards still sees itself as SELF. An operation that may throw runs
 \ under `catch` through a RUN-*-OP word that reads its row from ACTIVE-CELL,
-\ because a quotation cannot reference a local. EMIT, WRITE, FORWARD and
-\ FORWARD-EMIT skip that catch: their operations throw only a memory fault, and
-\ the catch that takes it puts ACTIVE-CELL back itself.
+\ because x86-64 refuses a quotation that reads a local. EMIT and WRITE skip
+\ that catch: their operations throw only a memory fault, and the catch that
+\ takes it puts ACTIVE-CELL back itself.
 require src/lib/error.f
 require src/lib/prelude.f
 require src/lib/type/deftype.f
-require src/core/quotation-storage.f
 require src/lib/task.f
 
 package GENIO
@@ -75,13 +74,13 @@ SCRATCH-VARIABLE TERMINAL-READY
 
 \ Task-local: two tasks may hold two devices and neither may see the other's
 \ byte.
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $8 TASK:+USER IO-SCRATCH drop
+$8 TASK:+USERS IO-SCRATCH u8
 
 : SCRATCH-CELL ( -- ptr n )
-   IO-SCRATCH ;
+   0 IO-SCRATCH CELL-VIEW ;
 
 : SCRATCH ( -- ptr u8 )
-   IO-SCRATCH BYTE-VIEW ;
+   0 IO-SCRATCH ;
 
 \ The current task's input and output devices are two cells of the engine's DATA
 \ header: the engine swaps DATA for each task, and the engine's output funnel
@@ -97,31 +96,19 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $8 TASK:+USER IO-SCRATCH drop
    data-base GENIO-ABI:ACTIVE-CELL + ;
 
 \ Row i-1 of the engine's write table, which only the output funnel reads; the
-\ terminal has none. The cell holds the handler the funnel calls, and a cleared
-\ row is ZERO: two element types for one DATA cell, so two accessors, each
-\ declaring what it touches.
+\ terminal has none. The cell holds the handler the funnel calls, or 0.
 : ENGINE-ROW-OFF ( n -- n ) {: idx:n :}
    GENIO-ABI:WRITE-OFF idx 1- 8 * + ;
 
-\ GENIO-ABI:WRITE-OFF is an image-ABI offset, so this row cannot become a
-\ TYPED-VARIABLE, and no checked word may give a DATA address a quotation
-\ pointee except through a private CAST:.
-CAST: >ENGINE-ROW ( n -- ptr [ ptr u8 n -- ] )
-
-: ENGINE-ROW ( n -- ptr [ ptr u8 n -- ] )
-   ENGINE-ROW-OFF data-base BYTE-VIEW NULL-PTR BYTE-VIEW - + >ENGINE-ROW ;
+CAST: WRITE>N ( [ ptr u8 n -- ] -- n )
 
 : ENGINE-ROW-CLEAR ( n -- )
    0 swap ENGINE-ROW-OFF data-base + ! ;
 
-\ In the main task the row is a cell of the engine's own DATA, so it is a
-\ DECLARED address that a snapshot or an AOT capture has to canonicalise, and
-\ `xt!` is its declaration point. In a worker the row is a cell of that task's
-\ region, which the declared-address table bounds exclude -- `xt!` there refuses
-\ with "snapshot address cell out of range". QUOTATION-STORAGE:STORE asks which
-\ of the two a cell is and stores it the right way.
+\ The row is this run's: stored plainly, never declared, so a build's image
+\ never holds it.
 : PUBLISH-WRITE ( n -- ) {: idx:n :}
-   idx OP-WRITE @ idx ENGINE-ROW QUOTATION-STORAGE:STORE ;
+   idx OP-WRITE @ WRITE>N idx ENGINE-ROW-OFF data-base + ! ;
 
 
 : BOUNDED ( n -- n ) {: idx:n :}
@@ -194,10 +181,8 @@ public
 : SELF-STATE ( -- n )
    ACTIVE-ROW SLOT-STATE @ ;
 
-\ Latch a failed write on the running device: a write or emit operation must not
-\ throw. EMIT and FORWARD-EMIT raise the funnel's re-entrancy guard around an
-\ emit with no catch, and on x86-64 a throw leaves it set. The device's next EMIT, WRITE, FLUSH, KEY, KEY?, READ or ACCEPT raises
-\ E-GENIO-IO. A zero is ignored, and a failure already latched is kept.
+\ Latch a failed write on the running device: a write or emit operation runs
+\ under the funnel's guard with no catch, and on x86-64 a throw leaves it set.
 : FAULT! ( n -- )
    ACTIVE-ROW LATCH-ROW ;
 
@@ -315,25 +300,6 @@ public
 : INPUT! ( device -- )
    ROW IN-PTR ! ;
 
-\ The write failure the device latched, 0 when healthy.
-: FAULT@ ( device -- n )
-   ROW SLOT-FAULT @ ;
-
-\ Latch a failure on the device from outside its operations, as FAULT! does
-\ inside one: a device standing in front of another starts with, or catches
-\ up to, that device's fault.
-: LATCH ( n device -- )
-   ROW LATCH-ROW ;
-
-\ The device, or the terminal once its row was closed: the device the output
-\ funnel writes to for it.
-: LIVE-DEVICE ( device -- device ) {: dev:device :}
-   dev DEVICE>N {: h:n :}
-   h ROW-MASK and {: idx:n :}
-   idx STATUS@ LIVE <> if TERMINAL-ROW ROW-HANDLE exit then
-   h GEN-SHIFT rshift idx SLOT-GEN @ <> if TERMINAL-ROW ROW-HANDLE exit then
-   dev ;
-
 private
 
 \ Restoring cannot fail over the body's own result: if the body closed the
@@ -429,30 +395,6 @@ public
    idx ACTIVE-PTR !  1 BUSY-PTR !
    bytes len idx OP-WRITE @ execute
    busy BUSY-PTR !  prev ACTIVE-PTR ! ;
-
-\ From inside a device's write operation, hand the bytes to another device's
-\ write operation as the output funnel would, with no fault check, then latch
-\ that device's fault on the running device (SELF). A closed device answers the
-\ terminal. Like any write operation, it does not throw.
-: FORWARD ( ptr u8 n device -- ) {: bytes:ptr len:n dev:device :}
-   ACTIVE-ROW {: self:n :}
-   dev LIVE-DEVICE ROW {: idx:n :}
-   BUSY-PTR @ {: busy:n :}
-   idx ACTIVE-PTR !  1 BUSY-PTR !
-   bytes len idx OP-WRITE @ execute
-   busy BUSY-PTR !  self ACTIVE-PTR !
-   idx SLOT-FAULT @ self LATCH-ROW ;
-
-\ FORWARD's twin for one emit: the other device's emit operation runs, and
-\ SELF latches that device's fault.
-: FORWARD-EMIT ( n device -- ) {: c:n dev:device :}
-   ACTIVE-ROW {: self:n :}
-   dev LIVE-DEVICE ROW {: idx:n :}
-   BUSY-PTR @ {: busy:n :}
-   idx ACTIVE-PTR !  1 BUSY-PTR !
-   c idx OP-EMIT @ execute
-   busy BUSY-PTR !  self ACTIVE-PTR !
-   idx SLOT-FAULT @ self LATCH-ROW ;
 
 : FLUSH ( -- )
    OUT-ROW {: idx:n :}

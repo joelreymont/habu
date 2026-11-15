@@ -2,12 +2,10 @@
 
 package ENGINE-ERROR
 public
-82 constant AOT-SEED
+82 constant DISPATCH-UNSET
 83 constant SEAL-VIOLATION
 84 constant SEAL-PACKAGE
 85 constant BAD-TAG
-86 constant CALLABLE-ABI
-87 constant CATCH-STACK
 88 constant CODE-CERT
 \ `using NAME` / `;using` consumer-import failures.
 \ Each is recoverable inside `evaluate` (a catchable throw of the same code) and a
@@ -22,7 +20,7 @@ public
 102 constant STACK-BOUNDS       \ a physical VM stack access exceeds its active allocation
 \ 103 belongs to SNAP-RELOC:SITE-RC, the x86-64 site-row band (layout.f).
 104 constant USING-OUTER       \ `;using` in a package would close a using opened before it
-105 constant USING-SHADOW-GLOBAL \ an interpreted or ticked bare global a used public also exports
+105 constant USING-SHADOW-GLOBAL \ an interpreted, ticked or built-call bare global a used public also exports
 \ 106: a callback thunk runs on C's stack with no catch frame above it, so it
 \ cannot throw. Every refusal (the CB-DIE rows in habu1.f and kernel-x64.f) and an
 \ outbound FFI call on a context another thread owns write one line to fd 2 and
@@ -32,8 +30,8 @@ public
 106 constant CALLBACK           \ a C callback or FFI call found its region or slot unusable
 107 constant POLICY             \ a sealed design named a word outside its admitted vocabulary (src/lib/vocabulary.f)
 108 constant OVERLAY-OPEN       \ a definition, package row, wordlist or undefine while a checker overlay is open (src/core/checker.f CHECKER-OVERLAY)
-109 constant THROW-ZERO         \ `0 throw`: a zero code would unwind its body and read as success at the catch
 110 constant MEMORY-FAULT       \ a load or store by Habu code faulted (src/habu/crash.f)
+111 constant OUT-GROW           \ a Wasm run's output could not grow: the memory refused the pages
 ;package
 
 \ Dictionary occurrence failures belong to DEF-OCC.

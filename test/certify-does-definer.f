@@ -42,7 +42,7 @@ public
    s"  ( -- ptr n ) data-base " TEXT CODEGEN:APPEND-STRING
    off TEXT CODEGEN:APPEND-DECIMAL
    s"  + ;" TEXT CODEGEN:APPEND-STRING
-   TEXT CODEGEN:CONTENTS INCLUDE-EVALUATE ;
+   TEXT CODEGEN:CONTENTS evaluate-closed ;
 ;package
 
 \ The same definer compiled by the engine with its row, private definer and
@@ -130,9 +130,8 @@ package CERTIFY-DOES-DEFINER
    s" C1U ( -- ptr n ) CDD-ONE-U" CDD-VERDICT ACCEPTED T= ;
 
 \ Section 2: a package definer, its straight-line wrapper and both spellings.
-\ `: BUFFER ( n -- ) E-CG-CAP E-CG-VALUE BUFFER-E ;` (src/lib/codegen.f) is the
-\ production shape of the wrapper: a body whose tokens hold exactly one definer
-\ call and no control flow creates whatever that definer creates.
+\ A wrapper body whose tokens hold exactly one definer call and no control flow
+\ creates whatever that definer creates.
 : CDD-SECTION-WRAPPER ( -- )
    CHECKER-SCOPE-START-NEUTRAL
    s\" package CDDP\npublic\n: CDD-PD ( n n n -- ) create , , , does> ( -- ptr n ) ;\n: CDD-PW ( n -- ) 3 4 CDD-PD ;\n;package\n"
@@ -198,8 +197,8 @@ package CERTIFY-DOES-DEFINER
 \ Section 5: a definer the scanner never read. CDD-RES-D and CDD-RESP:CDD-RP-D
 \ were compiled by the engine here; what they create is known only from the
 \ store the checker wrote when it certified their clause. Without that store,
-\ `bin/hb tools/check.f src/lib/queue.f` refused NG-BUFFER, created in
-\ src/lib/type/deftype.f by the resident CODEGEN:BUFFER-E, as E-UNDEFINED. The
+\ tools/check.f rejects as E-UNDEFINED a word a resident definer creates, as
+\ the resident CODEGEN:BUFFER creates src/lib/ffi-callback.f's NAME. The
 \ last rows are the latch's lifetime: the store is written between two checker
 \ entry points. The engine checks a clause and then the definer's body; the
 \ scanner checks the body and then the clause. Either order must leave a plain
@@ -251,10 +250,8 @@ package CERTIFY-DOES-DEFINER
 \ definitions, so they run between two scopes.
 : CDD-SECTION-LATCH-LIVE ( -- )
    s" a clause its body contradicts is refused" T-LABEL
-   \ Tier 0 refuses the clause with the checker's rc 70; the native compiler,
-   \ the only one an x86-64 engine has, refuses it as an uncertified verdict.
    [: s\" : CDD-RES-BAD ( n -- ) create , does> ( -- n ) ;\n" evaluate-closed ;]
-      tier@ 0= if 70 else E-COMP-VERDICT then TTHROWSQ
+      70 TTHROWSQ
    s\" : CDD-RES-AFTER ( n -- n ) 2 * ;\n" evaluate-closed ;
 
 : CDD-SECTION-LATCH-AFTER ( -- )
@@ -350,8 +347,8 @@ FUNCTION: CDD-FN getpid ( -- i32 ) ;FUNCTION
 TYPED-VARIABLE CDD-SRC-A ptr u8
 variable CDD-SRC-U
 
-\ A quotation cannot read the enclosing word's locals, so the span travels to
-\ the caught read through these two cells.
+\ x86-64 refuses a quotation that reads a local, so the span travels to the
+\ caught read through these two cells.
 : CDD-READ ( -- )
    CDD-SRC-A @ CDD-SRC-U @ VERIFY:SOURCE-BUF-IN-SCOPE ;
 
@@ -411,15 +408,6 @@ variable CDD-SRC-U
 \ at load time under a local name.
 E-GENERATES-ROW constant E-GEN-ROW
 
-\ Values of 2 to 128 cells, for a row of 256 input cells short enough to state.
-STRUCTURE cdd-c2 FIELD a n FIELD b n ;STRUCTURE
-STRUCTURE cdd-c4 FIELD a cdd-c2 FIELD b cdd-c2 ;STRUCTURE
-STRUCTURE cdd-c8 FIELD a cdd-c4 FIELD b cdd-c4 ;STRUCTURE
-STRUCTURE cdd-c16 FIELD a cdd-c8 FIELD b cdd-c8 ;STRUCTURE
-STRUCTURE cdd-c32 FIELD a cdd-c16 FIELD b cdd-c16 ;STRUCTURE
-STRUCTURE cdd-c64 FIELD a cdd-c32 FIELD b cdd-c32 ;STRUCTURE
-STRUCTURE cdd-c128 FIELD a cdd-c64 FIELD b cdd-c64 ;STRUCTURE
-
 : CDD-SECTION-GENERATES-REFUSED ( -- )
    s" a row read before its definer is defined is refused" T-LABEL
    [: s\" generates: CDD-GL ( -- ptr n )\n: CDD-GL ( n -- ) CDD-GEN:MAKE ;\n" evaluate-closed ;] E-GEN-ROW TTHROWSQ
@@ -430,9 +418,6 @@ STRUCTURE cdd-c128 FIELD a cdd-c64 FIELD b cdd-c64 ;STRUCTURE
    [: s\" generates: CDD-G2 ( -- ptr n )\n" evaluate-closed ;] E-GEN-ROW TTHROWSQ
    s" an effect the checker cannot parse is refused" T-LABEL
    [: s\" : CDD-GI ( n -- ) CDD-GEN:MAKE ;\ngenerates: CDD-GI ( -- i32 )\n" evaluate-closed ;] E-GEN-ROW TTHROWSQ
-   s" an effect too wide to record is refused" T-LABEL
-   [: s\" : CDD-GW ( n -- ) CDD-GEN:MAKE ;\ngenerates: CDD-GW ( cdd-c128 cdd-c64 cdd-c32 cdd-c16 cdd-c8 cdd-c4 cdd-c2 n n -- )\n" evaluate-closed ;]
-      E-GEN-ROW TTHROWSQ
    s" a row on a word that reads no name after it is refused" T-LABEL
    [: s\" : CDD-GN ( n -- ) drop ;\ngenerates: CDD-GN ( -- ptr n )\n" evaluate-closed ;] E-GEN-ROW TTHROWSQ
    s" a row on a deferred word is refused" T-LABEL
@@ -447,58 +432,13 @@ create CDD-DIAG 4096 allot
 
 : CDD-NOT-CERTIFIED ( ptr u8 n ptr u8 n -- )
    {: sa:ptr su:n wa:ptr wu:n :}
-   CDD-DIAG 4096 DIAG-BUFFER!
-   sa su TEST-EVAL:RC  tier@ 0= if 70 else E-COMP-VERDICT then T=
-   DIAG-BUFFER$ wa wu CONTAINS? TTRUE
-   DIAG-BUFFER-OFF ;
+   CDD-DIAG 4096 REJECTION:BUFFER!
+   sa su TEST-EVAL:RC  70 T=
+   REJECTION:BUFFER$ wa wu CONTAINS? TTRUE
+   REJECTION:BUFFER-OFF ;
 
 : CDD-NP-REFUSED ( ptr u8 n -- )
    s" E-NONPARAMETRIC-EFFECT" CDD-NOT-CERTIFIED ;
-
-\ A clause declaring 256 input cells, whose body takes 257 with the data field.
-$600 constant CDD-WIDE-CAP
-CDD-WIDE-CAP CODEGEN:BUFFER CDD-WIDE
-: CDD-WIDE-ROW ( -- ) 256 0 do s" n " CDD-WIDE CODEGEN:APPEND-STRING loop ;
-: CDD-WIDE$ ( -- ptr u8 n )
-   CDD-WIDE CODEGEN:RESET
-   s" : CDD-W1 ( n -- ) create , does> ( " CDD-WIDE CODEGEN:APPEND-STRING
-   CDD-WIDE-ROW  s" -- " CDD-WIDE CODEGEN:APPEND-STRING
-   CDD-WIDE-ROW  s" ) drop ;" CDD-WIDE CODEGEN:APPEND-STRING
-   CDD-WIDE CODEGEN:CONTENTS ;
-
-\ A clause declaring 255 input cells, whose body takes 256 with the data field;
-\ its packet declares the signature as written.
-$800 constant CDD-FIT-CAP
-CDD-FIT-CAP CODEGEN:BUFFER CDD-FIT
-CDD-FIT-CAP CODEGEN:BUFFER CDD-FIT-WANT
-: CDD-FIT-ROW ( ptr n -- )
-   {: d:ptr :}
-   255 0 do s" n " d CODEGEN:APPEND-STRING loop ;
-: CDD-FIT$ ( -- ptr u8 n )
-   CDD-FIT CODEGEN:RESET
-   s" -1 JSON-DIAGS ! : CDD-F1 ( n -- ) create , does> ( " CDD-FIT CODEGEN:APPEND-STRING
-   CDD-FIT CDD-FIT-ROW  s" -- n ) " CDD-FIT CODEGEN:APPEND-STRING
-   255 0 do s" drop " CDD-FIT CODEGEN:APPEND-STRING loop
-   s" ;" CDD-FIT CODEGEN:APPEND-STRING
-   CDD-FIT CODEGEN:CONTENTS ;
-
-\ The packet field named by its key text, holding the 255-input row then the tail.
-: CDD-FIT-FIELD ( ptr u8 n ptr u8 n -- )
-   {: ka:ptr ku:n ta:ptr tu:n :}
-   CDD-FIT-WANT CODEGEN:RESET
-   ka ku CDD-FIT-WANT CODEGEN:APPEND-STRING
-   CDD-FIT-WANT CDD-FIT-ROW
-   ta tu CDD-FIT-WANT CODEGEN:APPEND-STRING
-   DIAG-BUFFER$ CDD-FIT-WANT CODEGEN:CONTENTS CONTAINS? TTRUE ;
-
-: CDD-FIT-DECLARED ( -- )
-   CDD-DIAG 4096 DIAG-BUFFER!
-   CDD-FIT$ TEST-EVAL:RC  tier@ 0= if 70 else E-COMP-VERDICT then T=
-   DIAG-BUFFER$ s" input row too wide to record (256 cells, at most 255)" CONTAINS? TTRUE
-   s\" \"declared_effect\":\"" s\" -- n \"" CDD-FIT-FIELD
-   s\" \"declared_effect_source\":\"" s\" -- n\"" CDD-FIT-FIELD
-   DIAG-BUFFER-OFF
-   s" 0 JSON-DIAGS !" TEST-EVAL:RC 0 T= ;
 
 : CDD-SECTION-CLAUSE-TAIL ( -- )
    s" a clause that specializes a declared quantifier is refused" T-LABEL
@@ -514,36 +454,32 @@ CDD-FIT-CAP CODEGEN:BUFFER CDD-FIT-WANT
    s" a clause that reads below its declared return row is refused at the read" T-LABEL
    s" : CDD-RB1 ( n -- ) create , does> ( | R -- | R ) drop r> drop 5 throw ;"
       s" at 'r>' return stack: this reads below the return-stack cells pushed here" CDD-NOT-CERTIFIED
-   s" a clause too wide to record is uncheckable, and the load goes on" T-LABEL
-   CDD-WIDE$ s" input row too wide to record (257 cells, at most 255)" CDD-NOT-CERTIFIED
-   s" a clause whose signature fits a record declares it, though its body is too wide" T-LABEL
-   CDD-FIT-DECLARED
    s" a clause's unknown signature type is reported at that type, as its colon twin's is" T-LABEL
    s" : CDD-UX ( n -- ) create , does> ( cdd-zz -- cdd-zz ) drop drop 5 ;"
       s" unknown type 'cdd-zz'" CDD-NOT-CERTIFIED
    s" compiled natively, the clause's unknown type is placed at that type in its text" T-LABEL
-   s" -1 JSON-DIAGS ! : CDD-UXJ ( n -- ) create , does> ( cdd-zz -- cdd-zz ) drop drop 5 ;"
+   s" -1 REJECTION:JSON ! : CDD-UXJ ( n -- ) create , does> ( cdd-zz -- cdd-zz ) drop drop 5 ;"
       S\" \"token\":\"cdd-zz\",\"token_index\":0,\"file\":\"<input>\",\"line\":1,\"column\":4,\"byte_start\":3,\"byte_end\":9,"
       CDD-NOT-CERTIFIED
-   s" 0 JSON-DIAGS !" TEST-EVAL:RC 0 T=
+   s" 0 REJECTION:JSON !" TEST-EVAL:RC 0 T=
    s" a clause that never returns owes no output" T-LABEL
    s" : CDD-NORET ( n -- ) create , does> ( n -- ptr u8 ) drop 5 throw ;" TEST-EVAL:RC 0 T= ;
 
 \ Section 14: a clause naming a type a reached renderer may declare is deferred
 \ unwalked at that type, as its colon twin is (verify-source.f NOMINAL-MARK).
 : CDD-QUIET$ ( -- ptr u8 n )
-   s\" package CDD-QP\n: CDD-QREG ( -- ) s\" NEWTYPE cdd-qt\" INCLUDE-EVALUATE ;\nCDD-QREG\n: CDD-QB ( n -- ) create , does> ( cdd-qt -- cdd-qt ) drop drop 5 ;\n;package\n" ;
+   s\" package CDD-QP\n: CDD-QREG ( -- ) s\" NEWTYPE cdd-qt\" evaluate-closed ;\nCDD-QREG\n: CDD-QB ( n -- ) create , does> ( cdd-qt -- cdd-qt ) drop drop 5 ;\n;package\n" ;
 
 : CDD-SECTION-QUIET-CLAUSE ( -- )
    s" a clause naming a type a renderer may declare is deferred at that type" T-LABEL
    true VERIFY:REPORT-DEFERRALS
-   CDD-DIAG 4096 DIAG-BUFFER!
+   CDD-DIAG 4096 REJECTION:BUFFER!
    CHECKER-SCOPE-START-NEUTRAL
    [: CDD-QUIET$ s" cdd-quiet.f" VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;] catch
    CHECKER-SCOPE-DONE
    0 T=
-   DIAG-BUFFER$ s\" \"verdict\":\"deferred\",\"token\":\"cdd-qt\"" CONTAINS? TTRUE
-   DIAG-BUFFER-OFF
+   REJECTION:BUFFER$ s\" \"verdict\":\"deferred\",\"token\":\"cdd-qt\"" CONTAINS? TTRUE
+   REJECTION:BUFFER-OFF
    VERIFY:CENSUS 1 T= drop ;
 
 \ Section 15: a does> word patches the latest created word, which takes the
@@ -561,7 +497,7 @@ variable CDD-GOT
    s" the patching word keeps its own effect" T-LABEL
    s" variable CDD-PV3 : CDD-PB3 ( -- ) does> ( -- n ) drop 9 ; CDD-PB3 CDD-PV3 drop"
       TEST-EVAL:RC 0 T=
-   s" : CDD-PT3 ( -- n ) CDD-PB3 ;" TEST-EVAL:RC  tier@ 0= if 70 else E-COMP-VERDICT then T=
+   s" : CDD-PT3 ( -- n ) CDD-PB3 ;" TEST-EVAL:RC  70 T=
    s" a does> word defined before the created word patches it the same way" T-LABEL
    s" : CDD-PB4 ( -- ) does> ( -- n ) drop 9 ; variable CDD-PV4 CDD-PB4 CDD-PV4 CDD-GOT !"
       CDD-GOT-RC 9 T= 0 T=
@@ -569,7 +505,7 @@ variable CDD-GOT
    s" CDD-PKC:CDD-PKV CDD-GOT !" CDD-GOT-RC 9 T= 0 T=
    s" a word created over a forgotten definition's ordinal starts unlinked" T-LABEL
    s" : CDD-FD ( -- n ) 5 ; ndict@ 1- ndict! create CDD-FX" TEST-EVAL:RC 0 T=
-   s" : CDD-FG ( -- ) CDD-FX ;" TEST-EVAL:RC  tier@ 0= if 70 else E-COMP-VERDICT then T=
+   s" : CDD-FG ( -- ) CDD-FX ;" TEST-EVAL:RC  70 T=
    \ Last: a word still typed as its cell runs `@` on the clause's 9 and dies.
    s" the patched word's cell is gone, so `@` on it is refused" T-LABEL
    s" variable CDD-PV2 : CDD-PB2 ( -- ) does> ( -- n ) drop 9 ; CDD-PB2 CDD-PV2 @ drop"

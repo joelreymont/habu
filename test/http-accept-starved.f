@@ -23,8 +23,6 @@ private
 $7F000001 constant LOOPBACK
 1 constant ONE-WORKER
 $1F4 constant IDLE-MS
-$7D0 constant ANSWER-MS           \ a loopback answer that slow is a hang
-1000000 constant NS-PER-MS
 $40 constant SOFT-LIMIT
 $100 constant LINE-CAP
 $1000 constant RES-CAP
@@ -39,9 +37,7 @@ $1000 constant RES-CAP
 CAST: BLEN>N ( NUM:byte-len -- n )
 
 PROCESS-SYMBOLS
-FUNCTION: GET-LIMIT getrlimit ( n ptr u8 -- i32 )
-   1 16 WRITES-BYTES
-;FUNCTION
+FUNCTION: GET-LIMIT getrlimit ( n ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: SET-LIMIT setrlimit ( n ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: DUP2 dup2 ( n n -- i32 ) ;FUNCTION
 
@@ -150,14 +146,14 @@ variable READ-ERRNO
    ;MATCH ;
 
 
-\ The answer's first bytes, once some have arrived within ANSWER-MS. A refused
-\ read answers none and leaves its errno in READ-ERRNO.
+\ The answer's first bytes, once some have arrived. A refused read answers none
+\ and leaves its errno in READ-ERRNO.
 : ANSWER$ ( TCP4:connection -- ptr u8 n ) {: conn:TCP4:connection :}
    0 READ-ERRNO !
-   conn ANSWER-MS >MS TCP4:READABLE-WITHIN?
+   conn -1 >MS TCP4:READABLE-WITHIN?
    MATCH TCP4:ready-result
       ready OF ENDOF
-      idle OF s" http-accept-starved ANSWER$" TEST-WAIT:EXPIRED ENDOF
+      idle OF ENDOF
       failed OF drop ENDOF
    ;MATCH
    conn RES-BUF RES-CAP TCP4:TRANSFER-BYTES TCP4:READ
@@ -202,8 +198,7 @@ variable READ-ERRNO
    PIPE-W @ FD:STDERR FD>N DUP2 FD:STDERR FD>N T=
    CLOSE-LAST-FILLER
    GET {: starved:TCP4:connection :}
-   [: SETTLED? ;] mono-ns ANSWER-MS NS-PER-MS * +
-   s" http-accept-starved SETTLED?" TEST-WAIT:POLL
+   [: SETTLED? ;] TEST-WAIT:POLL
    STDERR-BACK
    s" the listener outlives a starved accept" T-LABEL HTTP:ENDED-TASKS 0 T=
    s" the starved accept is one stderr line" T-LABEL

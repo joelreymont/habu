@@ -42,12 +42,14 @@ package ZIP
    node member 0 MEMBER-CENTRAL drop
    node RAW-PTR @ node RAW-LEN @ munmap 0<> if E-READ throw then
    0 MAPPED>RAW node RAW-PTR !
-   $100000003 member NEW-LOCAL ! node TEMP-OPEN
+   $100000003 member NEW-LOCAL !
+   s" habu-zip-offset" FS:MKTEMP FD>N node TEMP-FD ! {: out:ptr outu :}
    node member WRITE-CENTRAL
    node node OUT-LEN @ BUFFER-ALLOC {: output:ptr :}
-   node TEMP-PTR @ node TEMP-LEN @ output node OUT-LEN @ FS:READ-ALL
+   out outu output node OUT-LEN @ FS:READ-ALL
    output swap after after-len T$=
-   node TEMP-CLEANUP node DISCARD-NODE ;
+   node TEMP-FD @ C-CLOSE-FD 0 T=
+   out outu FS:REMOVE-FILE node DISCARD-NODE ;
 
 : OFFSET-PROMOTION-TEST ( -- )
    OFFSET-WIDE-BEFORE$ OFFSET-WIDE-AFTER$ OFFSET-PROMOTION-CASE

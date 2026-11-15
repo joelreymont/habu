@@ -59,7 +59,8 @@
 // post <path> <length> <body in hex>, request <method> <path> <id> <length>
 // <hex>, rpc <method> <id> <params JSON>, after <ms> <token>, read <file>
 // <offset> <length>, pick <x> <y> <id>, occlude <boxes> <id>, tree <selected>
-// <JSON>, mesh <handle> <V> <T>, unmesh <handle>, highlight <words> <words in
+// <JSON>, mesh <handle> <V> <T> <origin x> <origin y> <origin z>, unmesh
+// <handle>, highlight <words> <words in
 // hex, little-endian>, draw <count> then each row's
 // <handle>/<id>/<flags>/<offset or ->/<rrggbb>/<metallic>/<roughness>, the
 // last two the u16s in decimal, ground <nx> <ny> <nz> <d> or ground none, svg
@@ -439,8 +440,9 @@ try {
       return new Promise((resolve) => occludes.push({ id, count, resolve }));
     },
     error: report,
-    mesh: (handle, vertexCount, triangleCount) =>
-      print(`mesh ${handle} ${vertexCount} ${triangleCount}`),
+    mesh: (handle, vertexCount, triangleCount, origin) =>
+      print(`mesh ${handle} ${vertexCount} ${triangleCount} ${origin.join(" ")}`),
+
     unmesh: (handle) => print(`unmesh ${handle}`),
     draw: (rows, count) => {
       const v = new DataView(rows.buffer, rows.byteOffset, rows.byteLength);

@@ -6,22 +6,8 @@ package DECLARATION-TRANSACTION
    GENERATED-DECL-NAME-PREFLIGHT:DICTIONARY-RECORDS
    GENERATED-DECL-DICTIONARY:PREFLIGHT ;
 
-\ This file anchors the participants' snapshot-reset chain: it loads last, so it
-\ owns TDECL-OWNER-SNAPSHOT-XT, which CHECKER-CAPTURE-PREPARE reaches; an earlier
-\ participant cannot name a later one, so each tail is a call. Each link drops
-\ its grown buffers back to its boot store: a persisted host address is a wild
-\ pointer in the process that restores the image.
-: SNAPSHOT-RESET ( -- )
-   ACTIVE? IF E-ACTIVE throw THEN
-   GENERATED-DECL-DICTIONARY:SNAPSHOT-RESET
-   DECL-EVENT:SNAPSHOT-RESET
-   STRUCTURE-DECL:SNAPSHOT-RESET
-   ENUM-DECL:SNAPSHOT-RESET
-   DECL-REJECT:SNAPSHOT-RESET ;
-
 : INSTALL ( -- )
-   [: PLAN-PREFLIGHT ;] is TYPE-DECL:TDECL-CAPACITY-PREFLIGHT-XT
-   [: SNAPSHOT-RESET ;] is TYPE-DECL:TDECL-OWNER-SNAPSHOT-XT ;
+   [: PLAN-PREFLIGHT ;] is TYPE-DECL:TDECL-CAPACITY-PREFLIGHT-XT ;
 INSTALL
 
 \ DECL-EVENT's savepoint can throw E-PF-TX (TX-PARENT-REQUIRE); only the checker
@@ -61,8 +47,8 @@ INSTALL
    CHECKER-DECL-FRAME:PART-RELEASE ;
 
 \ A rollback that cannot complete leaves a savepoint live with nothing left
-\ to restore it from: fail closed, as the checker frame already does
-\ (checker.f FRAME-MISMATCH), instead of poisoning.
+\ to restore it from: fail closed, as the checker frame already does,
+\ instead of poisoning.
 : FAIL ( n -- )
    {: rc:n :}
    [: ROLLBACKS ;] catch {: cleanup:n :}
@@ -121,10 +107,6 @@ undefine STRUCTURE-MAKE:PART-RELEASE
 undefine GENERATED-DECL-DICTIONARY:SNAPSHOT
 undefine GENERATED-DECL-DICTIONARY:ROLLBACK
 undefine GENERATED-DECL-DICTIONARY:PREFLIGHT
-undefine GENERATED-DECL-DICTIONARY:SNAPSHOT-RESET
-undefine STRUCTURE-DECL:SNAPSHOT-RESET
-undefine ENUM-DECL:SNAPSHOT-RESET
-undefine DECL-REJECT:SNAPSHOT-RESET
 
 \ The field owner's cleanup and release vectors are bound into the compiled
 \ declaration-event participant, their only caller, so they are retired too, by

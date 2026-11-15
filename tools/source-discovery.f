@@ -19,6 +19,7 @@ require src/lib/memory.f
 require src/lib/span.f
 require src/lib/fs.f
 require src/lib/source.f
+require src/lib/sort.f
 
 package DISCOVER
 using SOURCE
@@ -466,15 +467,9 @@ variable SD-SCOPES
       repeat 2drop
    loop ;
 
-: SD-C-LOWER ( n n n -- n ) {: first:n limit:n off:n :}
-   first limit
-   begin 2dup < while
-      2dup + 2 / dup SD-C-ORDER @ SD-R-OFF @ off < if
-         1+ rot drop swap
-      else
-         swap drop
-      then
-   repeat drop ;
+: SD-C-LOWER ( n n n -- n )
+   {: off:n :}
+   [: SD-C-ORDER @ SD-R-OFF @ off < ;] SORT:PARTITION-POINT ;
 
 : SD-R-CONTEXT-BEGIN ( -- )
    -1 SD-C-PKG !

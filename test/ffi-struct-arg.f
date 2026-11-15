@@ -5,12 +5,14 @@
 \ Every checksum weighs each member by position, so a member read from the
 \ wrong offset, register or stack slot fails its case on either ABI.
 
+STRUCT-FIXTURE:SELECT
+
 FUNCTION: FFI-T-SUM8 hb_sum8 ( ptr u8 -- n ) 0 8 STRUCT-ARG ;FUNCTION
 FUNCTION: FFI-T-SUM12 hb_sum12 ( ptr u8 -- i32 ) 0 12 STRUCT-ARG ;FUNCTION
 FUNCTION: FFI-T-SUM16 hb_sum16 ( ptr u8 -- n ) 0 16 STRUCT-ARG ;FUNCTION
 FUNCTION: FFI-T-SUM24 hb_sum24 ( ptr u8 -- n ) 0 24 STRUCT-ARG ;FUNCTION
 FUNCTION: FFI-T-SUM32 hb_sum32 ( ptr u8 -- n ) 0 32 STRUCT-ARG ;FUNCTION
-\ The whole 16-cell staging buffer: the copy alone fills it.
+\ The record alone fills the 16-cell staging buffer.
 FUNCTION: FFI-T-SUM128 hb_sum128 ( ptr u8 -- n ) 0 128 STRUCT-ARG ;FUNCTION
 FUNCTION: FFI-T-SPILL16 hb_spill16 ( n n n n n n n ptr u8 n -- n )
    7 16 STRUCT-ARG
@@ -22,6 +24,12 @@ FUNCTION: FFI-T-BIGSTACK hb_bigstack ( n n n n n n n n ptr u8 n -- n )
    8 32 STRUCT-ARG
 ;FUNCTION
 FUNCTION: FFI-T-FMIX hb_fmix ( r ptr u8 f32 -- n ) 1 16 STRUCT-ARG ;FUNCTION
+FUNCTION: FFI-T-FSTACK hb_fstack ( r r r r r r r r r f32 ptr u8 -- n )
+   10 16 STRUCT-ARG
+;FUNCTION
+FUNCTION: FFI-T-NSTACK hb_nstack ( n n n n n n n n u8 u16 u32 ptr u8 -- n )
+   11 8 STRUCT-ARG
+;FUNCTION
 FUNCTION: FFI-T-MUTATE hb_mutate ( ptr u8 -- n ) 0 32 STRUCT-ARG ;FUNCTION
 FUNCTION: FFI-T-HOLD hb_hold ( ptr u8 n -- n ) 0 32 STRUCT-ARG ;FUNCTION
 FUNCTION: FFI-T-KEEP24 hb_keep24 ( ptr u8 -- ) 0 24 STRUCT-ARG ;FUNCTION
@@ -102,7 +110,18 @@ CALLBACK: FFI-T-SA-CB ( -- n ) 0 FALLBACK ;CALLBACK
    s" a 16-byte struct after seven scalars spills whole" T-LABEL
    11 -12 FFI-T-S16 FFI-T-S16!
    1 2 3 4 5 6 7 FFI-T-S16 13 FFI-T-SPILL16
-   7 FFI-T-FOLD 0 FFI-T-MIX 11 -12 FFI-T-H2 FFI-T-MIX 13 FFI-T-MIX T= ;
+   7 FFI-T-FOLD 0 FFI-T-MIX 11 -12 FFI-T-H2 FFI-T-MIX 13 FFI-T-MIX T=
+
+   s" floats past eight registers go on the stack beside a record" T-LABEL
+   5 6 FFI-T-S16 FFI-T-S16!
+   0.25 0.5 0.75 1.0 1.25 1.5 1.75 2.0 2.25 2.5 FFI-T-S16 FFI-T-FSTACK
+   9 FFI-T-FOLD 10 FFI-T-MIX 5 6 FFI-T-H2 FFI-T-MIX T=
+
+   s" narrow integers and a record past eight longs go on the stack" T-LABEL
+   -3 FFI-T-S8 LE:U32!  9 FFI-T-S8 4 + LE:U32!
+   1 2 3 4 5 6 7 8 $9A $8123 $80000005 FFI-T-S8 FFI-T-NSTACK
+   8 FFI-T-FOLD $9A FFI-T-MIX $8123 FFI-T-MIX $80000005 FFI-T-MIX
+   -3 9 FFI-T-H2 FFI-T-MIX T= ;
 
 : FFI-T-COPY-ARGS ( -- )
    s" larger struct arguments pass private copies" T-LABEL
@@ -179,67 +198,83 @@ CALLBACK: FFI-T-SA-CB ( -- n ) 0 FALLBACK ;CALLBACK
    s"  15 $7FFFFFFFFFFFFF7F STRUCT-ARG ;FUNCTION" FFI-T-SRC+
    FFI-T-SRC CODEGEN:CONTENTS ;
 
+\ The record is captured, so stderr carries none.
+: FFI-T-SA-ARITY ( [ -- ] ptr u8 n ptr u8 n -- )
+   {: h:ptr hu:n p:ptr pu:n :}
+   DECL-DIAG:PROSE
+   E-FFI-ARITY TTHROWSQ
+   h hu DECL-DIAG:HAS? TTRUE
+   p pu DECL-DIAG:HAS? TTRUE
+   DECL-DIAG:OFF ;
+
+: FFI-T-SA-STAGING ( [ -- ] -- )
+   s" error[E-FFI-ARITY]: a struct call stages at most 16 cells of stack inputs and record copies"
+   s" = help: pass the large records by address through a C function"
+   FFI-T-SA-ARITY ;
+
 : FFI-T-SA-REFUSALS ( -- )
    s" malformed struct-argument declarations are refused" T-LABEL
-   [: s" 0 8 STRUCT-ARG" INCLUDE-EVALUATE ;] E-FFI-SYNTAX TTHROWSQ
+   [: s" 0 8 STRUCT-ARG" evaluate-closed ;]
+      s" error[E-FFI-SYNTAX]: a clause outside a FUNCTION: declaration" FFI-T-SYNTAX
    [: s" FUNCTION: FFI-T-SAX hb_sum8 ( ptr u8 -- n ) 1 8 STRUCT-ARG ;FUNCTION"
-      INCLUDE-EVALUATE ;] E-FFI-SYNTAX TTHROWSQ
+      evaluate-closed ;]
+      s" error[E-FFI-SYNTAX]: the clause names no input of the declaration" FFI-T-SYNTAX
    [: s" FUNCTION: FFI-T-SAX hb_sum8 ( ptr u8 -- n ) -1 8 STRUCT-ARG ;FUNCTION"
-      INCLUDE-EVALUATE ;] E-FFI-SYNTAX TTHROWSQ
+      evaluate-closed ;]
+      s" error[E-FFI-SYNTAX]: the clause names no input of the declaration" FFI-T-SYNTAX
    [: s" FUNCTION: FFI-T-SAX hb_sum8 ( n -- n ) 0 8 STRUCT-ARG ;FUNCTION"
-      INCLUDE-EVALUATE ;] E-FFI-SYNTAX TTHROWSQ
+      evaluate-closed ;]
+      s" error[E-FFI-SYNTAX]: the clause names an input that is not ptr u8" FFI-T-SYNTAX
    [: s" FUNCTION: FFI-T-SAX hb_sum8 ( ptr u8 -- n ) 0 0 STRUCT-ARG ;FUNCTION"
-      INCLUDE-EVALUATE ;] E-FFI-SYNTAX TTHROWSQ
+      evaluate-closed ;]
+      s" error[E-FFI-SYNTAX]: STRUCT-ARG's byte count is not positive" FFI-T-SYNTAX
    [: s" FUNCTION: FFI-T-SAX hb_sum8 ( ptr u8 -- n ) 0 8 STRUCT-ARG 0 8 STRUCT-ARG ;FUNCTION"
-      INCLUDE-EVALUATE ;] E-FFI-SYNTAX TTHROWSQ
-   [: s" FUNCTION: FFI-T-SAX hb_sum8 ( ptr u8 -- n ) 0 8 WRITES-BYTES 0 8 STRUCT-ARG ;FUNCTION"
-      INCLUDE-EVALUATE ;] E-FFI-SYNTAX TTHROWSQ
-   [: s" FUNCTION: FFI-T-SAX hb_sum8 ( ptr u8 -- n ) 0 8 STRUCT-ARG 0 8 WRITES-BYTES ;FUNCTION"
-      INCLUDE-EVALUATE ;] E-FFI-SYNTAX TTHROWSQ
-   [: s" FUNCTION: FFI-T-SAX hb_sum8 ( ptr u8 n -- n ) 0 8 STRUCT-ARG 0 1 WRITES-ARG ;FUNCTION"
-      INCLUDE-EVALUATE ;] E-FFI-SYNTAX TTHROWSQ
+      evaluate-closed ;]
+      s" error[E-FFI-SYNTAX]: a second clause names the same input" FFI-T-SYNTAX
    [: s" FUNCTION: FFI-T-SAX hb_sum8 ( ptr u8 -- ) 16 STRUCT-RESULT 0 8 STRUCT-ARG ;FUNCTION"
-      INCLUDE-EVALUATE ;] E-FFI-SYNTAX TTHROWSQ
+      evaluate-closed ;]
+      s" error[E-FFI-SYNTAX]: the clause names STRUCT-RESULT's destination, the last input" FFI-T-SYNTAX
    [: s" FUNCTION: FFI-T-SAX hb_sum8 ( ptr u8 -- ) 0 8 STRUCT-ARG 16 STRUCT-RESULT ;FUNCTION"
-      INCLUDE-EVALUATE ;] E-FFI-SYNTAX TTHROWSQ
+      evaluate-closed ;]
+      s" error[E-FFI-SYNTAX]: a second clause names the same input" FFI-T-SYNTAX
    [: s" FUNCTION: FFI-T-SAX hb_sum8 ( ptr u8 n -- n ) 1 VARIADIC 0 8 STRUCT-ARG ;FUNCTION"
-      INCLUDE-EVALUATE ;] E-FFI-SYNTAX TTHROWSQ
+      evaluate-closed ;]
+      s" error[E-FFI-SYNTAX]: a struct call with VARIADIC" FFI-T-SYNTAX
    [: s" FUNCTION: FFI-T-SAX hb_sum8 ( ptr u8 n -- n ) 0 8 STRUCT-ARG 1 VARIADIC ;FUNCTION"
-      INCLUDE-EVALUATE ;] E-FFI-SYNTAX TTHROWSQ
+      evaluate-closed ;]
+      s" error[E-FFI-SYNTAX]: a struct call with VARIADIC" FFI-T-SYNTAX
    [: s" FUNCTION: FFI-T-SAX hb_sum8 ( ptr u8 -- r ) 0 8 STRUCT-ARG ;FUNCTION"
-      INCLUDE-EVALUATE ;] E-FFI-SYNTAX TTHROWSQ
+      evaluate-closed ;]
+      s" error[E-FFI-SYNTAX]: STRUCT-ARG with a float result" FFI-T-SYNTAX
    [: s" FUNCTION: FFI-T-SAX hb_sum8 ( ptr u8 -- f32 ) 0 8 STRUCT-ARG ;FUNCTION"
-      INCLUDE-EVALUATE ;] E-FFI-SYNTAX TTHROWSQ
+      evaluate-closed ;]
+      s" error[E-FFI-SYNTAX]: STRUCT-ARG with a float result" FFI-T-SYNTAX
 
    s" struct staging past sixteen cells is refused before publication" T-LABEL
    [: s" FUNCTION: FFI-T-SA-CAP hb_sum128 ( ptr u8 -- n ) 0 129 STRUCT-ARG ;FUNCTION"
-      INCLUDE-EVALUATE ;] E-FFI-ARITY TTHROWSQ
+      evaluate-closed ;] FFI-T-SA-STAGING
    s" FUNCTION: FFI-T-SA-CAP hb_sum128 ( ptr u8 -- n ) 0 128 STRUCT-ARG ;FUNCTION"
-   INCLUDE-EVALUATE
+   evaluate-closed
    [: s" FUNCTION: FFI-T-SA-CAP2 hb_none ( n n n n n n n n ptr u8 -- n ) 8 113 STRUCT-ARG ;FUNCTION"
-      INCLUDE-EVALUATE ;] E-FFI-ARITY TTHROWSQ
+      evaluate-closed ;] FFI-T-SA-STAGING
    s" FUNCTION: FFI-T-SA-CAP2 hb_none ( n n n n n n n n ptr u8 -- n ) 8 112 STRUCT-ARG ;FUNCTION"
-   INCLUDE-EVALUATE
-   [: s" FUNCTION: FFI-T-SA-CAP3 hb_none ( r r r r r r r r r ptr u8 -- n ) 9 8 STRUCT-ARG ;FUNCTION"
-      INCLUDE-EVALUATE ;] E-FFI-ARITY TTHROWSQ
+   evaluate-closed
    [: s" FUNCTION: FFI-T-SA-CAP6 hb_none ( ptr u8 -- n ) 0 $7FFFFFFFFFFFFFFF STRUCT-ARG ;FUNCTION"
-      INCLUDE-EVALUATE ;] E-FFI-ARITY TTHROWSQ
-   [: FFI-T-SA-WRAP$ INCLUDE-EVALUATE ;] E-FFI-ARITY TTHROWSQ
+      evaluate-closed ;] FFI-T-SA-STAGING
+   [: FFI-T-SA-WRAP$ evaluate-closed ;] FFI-T-SA-STAGING
    HB-TARGET-LINUX-X86-64? if
       s" a SysV hidden result consumes one integer register" T-LABEL
       s" FUNCTION: FFI-T-SA-HIDDEN hb_none ( n n n n n ptr u8 ptr u8 -- ) 5 128 STRUCT-ARG 32 STRUCT-RESULT ;FUNCTION"
-      INCLUDE-EVALUATE
+      evaluate-closed
       [: s" FUNCTION: FFI-T-SA-HIDDEN2 hb_none ( n n n n n n ptr u8 ptr u8 -- ) 6 128 STRUCT-ARG 32 STRUCT-RESULT ;FUNCTION"
-         INCLUDE-EVALUATE ;] E-FFI-ARITY TTHROWSQ
+         evaluate-closed ;] FFI-T-SA-STAGING
    then
-   s" a row's relocation mask names only that row's cells" T-LABEL
-   [: s" getpid" FFI:PROCESS 0 0 $4000 FFI:DECLARE-ROW drop ;] E-FFI-ARITY TTHROWSQ
-   [: s" getpid" FFI:PROCESS 0 0 1 FFI:DECLARE-ROW drop ;] E-FFI-ARITY TTHROWSQ
    s" sixteen inputs are the limit, a struct destination included" T-LABEL
    s" FUNCTION: FFI-T-SA-CAP4 hb_none ( n n n n n n n n n n n n n n n ptr u8 -- ) 32 STRUCT-RESULT ;FUNCTION"
-   INCLUDE-EVALUATE
+   evaluate-closed
    [: s" FUNCTION: FFI-T-SA-CAP5 hb_none ( n n n n n n n n n n n n n n n n ptr u8 -- ) 32 STRUCT-RESULT ;FUNCTION"
-      INCLUDE-EVALUATE ;] E-FFI-ARITY TTHROWSQ ;
+      evaluate-closed ;] E-FFI-ARITY
+   s" error[E-FFI-ARITY]: a FUNCTION: declaration has at most 16 inputs" FFI-T-RECORD ;
 
 : FFI-T-STRUCT-ARGS ( -- )
    FFI-T-REGISTER-ARGS

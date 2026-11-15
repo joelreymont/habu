@@ -8,4 +8,4 @@ closed-at: "2026-10-28T17:13:32.848352+02:00"
 close-reason: landed e1bd6d5e
 ---
 
-Design /Users/joel/.cache/tmp/carl-file/design-owner.md P1. Worker in .jj-ws.noindex/carl-task on stack tip zoqvzolv.
+Design /home/joel/.cache/tmp/carl-file/design-owner.md P1. Worker in .jj-ws.noindex/carl-task on stack tip zoqvzolv.

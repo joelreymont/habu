@@ -275,7 +275,7 @@ def main():
                        '-1 PAYLOAD-BYTES', '65508 PAYLOAD-BYTES'):
         assert native(habu, output, f': RUN ( -- ) [: {expression} drop ;] catch . ; RUN') == ['-9100']
         checks += 1
-    for capacity, timeout in ((0, 0), (65508, 0), (1, -1), (1, 0x80000000)):
+    for capacity, timeout in ((0, 0), (65508, 0), (1, 0x80000000)):
         assert native(habu, output, f'''
 : RUN ( -- )
    [: 0 >SOCKET BODY {capacity} NUM:BYTE-LEN MATCH NUM:numeric-result

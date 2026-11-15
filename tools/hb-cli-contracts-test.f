@@ -60,7 +60,6 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
 
 : HCT-BUILD$ ( -- ptr u8 n )
    SB-RESET
-   s" SEAL-FRIEND" SB-APPEND HCT-LF
    s" SCRIPT-ARGC ." SB-APPEND HCT-LF
    s" 0 SCRIPT-ARGV$ type cr" SB-APPEND HCT-LF
    s" 1 SCRIPT-ARGV$ type cr" SB-APPEND HCT-LF

@@ -3,28 +3,19 @@ require src/habu/boot-cells.f
 require src/habu/layout.f
 require src/habu/address-cells.f
 require src/habu/prof-abi.f
-require src/habu/native-observer-cells.f
-require src/habu/native-observer-extension.f
-require src/habu/native-body-abi.f
-require src/habu/native-host-cells.f
 
 \ Every claim on DATA states its extent. CLAIMS-ASSERT refuses an overlapping
-\ pair at engine build time, naming both; BANDS-ASSERT requires every protected
-\ band to be a declared claim, start and length both. Both run when an engine
-\ builder (src/habu/habu1.f, src/habu/kernel-x64.f) loads this file. Without the
-\ map a TASK:+USER row overran the AOT window: one $40 row crashed at teardown.
+\ pair at engine build time, naming both, when an engine builder
+\ (src/habu/habu1.f, src/habu/kernel-x64.f) loads this file.
 \
-\ The map holds every claim with a declared extent: everything from $3A00 up,
-\ all DATA-BANDS rows, src/habu/address-cells.f LOCK-CELL and INDEX-CELL, and
-\ the profiler band, the top PROF-CNT-BYTES of DATA as src/habu/prof-abi.f
-\ PROF-BAND-AT places it for the global DATA-SIZE. An x86-64 build's
+\ The map holds every claim with a declared extent, the profiler band among
+\ them: the top PROF-CNT-BYTES of DATA, as src/habu/prof-abi.f PROF-BAND-AT
+\ places it for the global DATA-SIZE. An x86-64 build's
 \ X64LAYOUT:DATA-SIZE differs on a macOS host, so kernel-x64.f places the band
-\ again through BAND-ASSERT. One claim is out: the $1A0 seal fixture poke cell,
-\ which no constant names.
+\ again through BAND-ASSERT.
 \
-\ Deliberate aliases are one row: the friend arena, not its eighteen cells;
-\ VVAL-STACK of VSMAX cells, inside which DEF-TKA-CELL and DEF-TKL-CELL live at
-\ $250/$258 because they are live only while the virtual stack is empty (the
+\ Deliberate aliases are one row: VVAL-STACK of VSMAX cells, inside which
+\ DEF-TKA-CELL and DEF-TKL-CELL live at $250/$258 because they are live only while the virtual stack is empty (the
 \ note at CMM-CELL). Separate rows would assert a conflict the engine takes on
 \ purpose.
 package DATA-CLAIMS
@@ -80,9 +71,6 @@ create TAB
    DP-CELL                            1 cells                 CLAIM DP-CELL
    HND-CELL                           1 cells                 CLAIM HND-CELL
    LOCN-CELL                          1 cells                 CLAIM LOCN-CELL
-   FRIEND-ARENA                       FRIEND-ARENA-LEN        CLAIM FRIEND-ARENA
-   CMBK-CELL                          1 cells                 CLAIM CMBK-CELL
-   CMFRD-CELL                         1 cells                 CLAIM CMFRD-CELL
    ADDRESS-CELLS:LOCK-CELL            1 cells                 CLAIM ADDRESS-CELLS-LOCK
    BODYLEN-CELL                       1 cells                 CLAIM BODYLEN-CELL
    RBASE-CELL                         1 cells                 CLAIM RBASE-CELL
@@ -92,30 +80,23 @@ create TAB
    GTOD-SCRATCH                       2 cells                 CLAIM GTOD-SCRATCH
    VSP-CELL                           1 cells                 CLAIM VSP-CELL
    CREATEP-CELL                       1 cells                 CLAIM CREATEP-CELL
-   QPATCH-CELL                        1 cells                 CLAIM QPATCH-CELL
    VVAL-OFF                           VSMAX cells             CLAIM VVAL-STACK
-   NCOMP-DISPATCH:XT-CELL             1 cells                 CLAIM NCOMP-XT-CELL
    NCOMP-DISPATCH:COMP-CELL           1 cells                 CLAIM NCOMP-COMP-CELL
    NCOMP-DISPATCH:FIXED-COMP-CELL     1 cells                 CLAIM NCOMP-FIXED-COMP-CELL
    NCOMP-DISPATCH:DECL-CELL           1 cells                 CLAIM NCOMP-DECL-CELL
    NCOMP-DISPATCH:TARGET-DECL-CELL    1 cells                 CLAIM NCOMP-TARGET-DECL-CELL
-   NCOMP-DISPATCH:TIER-CELL           1 cells                 CLAIM NCOMP-TIER-CELL
-   JIT-SNAP:SP-CELL                   1 cells                 CLAIM JIT-SNAP-SP-CELL
-   NCOMP-DISPATCH:DEF-TIER-CELL       3 cells                 CLAIM NCOMP-DEF-TIER
+   NCOMP-DISPATCH:COMP-LATCH-CELL     1 cells                 CLAIM NCOMP-COMP-LATCH-CELL
    NCOMP-DISPATCH:RECOVER-CELL        1 cells                 CLAIM NCOMP-RECOVER-CELL
    LASTC-CELL                         1 cells                 CLAIM LASTC-CELL
    RSP-CELL                           1 cells                 CLAIM RSP-CELL
    EXITH-CELL                         1 cells                 CLAIM EXITH-CELL
-   LVD-CELL                           1 cells                 CLAIM LVD-CELL
    GENIO-ABI:OUT-CELL                 GENIO-ABI:END GENIO-ABI:OUT-CELL -  CLAIM GENIO-ABI
-   AOT-CELLS:SPAN-TABLE-CELL          3 cells                 CLAIM AOT-SPAN
    SIGNAL-ABI:STUB-CELL               3 cells                 CLAIM SIGNAL-ABI
    COMMA-RUN-CELL                     1 cells                 CLAIM COMMA-RUN-CELL
    COMMA-END-CELL                     1 cells                 CLAIM COMMA-END-CELL
    COMMA-BASE-CELL                    1 cells                 CLAIM COMMA-BASE-CELL
-   FRAME-CELL                         1 cells                 CLAIM FRAME-CELL
-   QFRAME-CELL                        1 cells                 CLAIM QFRAME-CELL
    BODY-TEXT:BASE-CELL                4 cells                 CLAIM BODY-TEXT
+   BODY-ITEMS:BASE-CELL               6 cells                 CLAIM BODY-ITEMS
    CMM-CELL                           1 cells                 CLAIM CMM-CELL
    DOESB-CELL                         1 cells                 CLAIM DOESB-CELL
    TRUSTED-CELL                       1 cells                 CLAIM TRUSTED-CELL
@@ -131,7 +112,6 @@ create TAB
    TOKCP-CELL                         1 cells                 CLAIM TOKCP-CELL
    TOKVSP-CELL                        1 cells                 CLAIM TOKVSP-CELL
    PENDTKA-CELL                       1 cells                 CLAIM PENDTKA-CELL
-   NCOMP-DISPATCH:FIXED-SHADOW-CELL   1 cells                 CLAIM NCOMP-FIXED-SHADOW-CELL
    NCOMP-DISPATCH:DOES-SHADOW-CELL    1 cells                 CLAIM NCOMP-DOES-SHADOW-CELL
    TASK-CHAIN-CELL                    1 cells                 CLAIM TASK-CHAIN-CELL
    PKGRESYNC-CELL                     1 cells                 CLAIM PKGRESYNC-CELL
@@ -143,8 +123,7 @@ create TAB
    SUSP-HOOK-OFF                      SUSP-HOOK-LEN           CLAIM SUSP-HOOK
    REFUSAL-ABI:CODE-CELL              1 cells                 CLAIM REFUSAL-ABI:CODE-CELL
    EXIT-HOOK-CELL                     1 cells                 CLAIM EXIT-HOOK-CELL
-   JIT-QUOT:SP-CELL                   1 cells                 CLAIM JIT-QUOT-SP-CELL
-   JIT-QUOT:STK-OFF                   JIT-QUOT:END JIT-QUOT:STK-OFF -  CLAIM JIT-QUOT-FRAMES
+   EXIT-OWNER-CELL                    1 cells                 CLAIM EXIT-OWNER-CELL
    FLOORREC-CELL                      1 cells                 CLAIM FLOORREC-CELL
    FAULT-MARK-CELL                    1 cells                 CLAIM FAULT-MARK-CELL
    DBASE-CELL                         1 cells                 CLAIM DBASE-CELL
@@ -157,18 +136,11 @@ create TAB
    DPHW-CELL                          1 cells                 CLAIM DPHW-CELL
    NDICT-HW-CELL                      1 cells                 CLAIM NDICT-HW-CELL
    DATA-FLOOR-CELL                    1 cells                 CLAIM DATA-FLOOR-CELL
-   NATIVE-OBS-CELLS:PUBLISHED         1 cells                 CLAIM NATIVE-OBS-CELLS:PUBLISHED
-   NATIVE-OBS-CELLS:INVALIDATE        1 cells                 CLAIM NATIVE-OBS-CELLS:INVALIDATE
-   NATIVE-OBS-CELLS:HOST-INVALIDATE   1 cells                 CLAIM NATIVE-OBS-CELLS:HOST-INVALIDATE
-   NATIVE-OBS-EXT:CAPTURE-INVALIDATE  1 cells                 CLAIM NATIVE-OBS-EXT:CAPTURE-INVALIDATE
-   NATIVE-HOST-CELLS:SELECT           1 cells                 CLAIM NATIVE-HOST-CELLS:SELECT
-   NATIVE-HOST-CELLS:SCALAR-PRIM      1 cells                 CLAIM NATIVE-HOST-CELLS:SCALAR-PRIM
-   NATIVE-HOST-CELLS:DIVISION-PRIM    1 cells                 CLAIM NATIVE-HOST-CELLS:DIVISION-PRIM
    DEF-OCC:PTR-CELL                   1 cells                 CLAIM DEF-OCC:PTR-CELL
-   LOCNAMES                           LOC-RECS LOC-REC *      CLAIM LOCNAMES
    CAPDEPTH-CELL                      1 cells                 CLAIM CAPDEPTH-CELL
    TOKDEPTH-CELL                      1 cells                 CLAIM TOKDEPTH-CELL
-   REPLH-CELL                         1 cells                 CLAIM REPLH-CELL
+   RAWNEXT-CELL                       1 cells                 CLAIM RAWNEXT-CELL
+   TOKRAW-CELL                        1 cells                 CLAIM TOKRAW-CELL
    ARGC-CELL                          1 cells                 CLAIM ARGC-CELL
    ARGV-CELL                          1 cells                 CLAIM ARGV-CELL
    ENVP-CELL                          1 cells                 CLAIM ENVP-CELL
@@ -189,39 +161,37 @@ create TAB
    ENGINE-MAIN:XT-CELL                1 cells                 CLAIM ENGINE-MAIN-XT-CELL
    NCOMP-DISPATCH:CALLBACK-STUB-CELL  1 cells                 CLAIM NCOMP-DISPATCH:CALLBACK-STUB-CELL
    NCOMP-DISPATCH:CALLBACK-ENTRY-CELL  1 cells                 CLAIM NCOMP-DISPATCH:CALLBACK-ENTRY-CELL
-   NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:ORIGIN-HOOK cells +  1 cells                 CLAIM NATIVE-BODY-ABI:ORIGIN-HOOK
-   NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:ORIGIN-TAKE cells +  1 cells                 CLAIM NATIVE-BODY-ABI:ORIGIN-TAKE
-   NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:PENDING-TAKE cells +  1 cells                 CLAIM NATIVE-BODY-ABI:PENDING-TAKE
+   POINTER-STORAGE:DATUM-CELL         1 cells                 CLAIM DATUM-CELL
    NCOMP-DISPATCH:BODY-HOOK-CELL      1 cells                 CLAIM NCOMP-DISPATCH:BODY-HOOK-CELL
-   ENGINE-MAIN:REPORT-CELL            1 cells                 CLAIM ENGINE-MAIN-REPORT-CELL
    PROVIDED-XT:EVALUATE-CELL          1 cells                 CLAIM PROVIDED-XT-EVALUATE-CELL
    PROVIDED-XT:EVALUATE-RANGE-CELL    1 cells                 CLAIM PROVIDED-XT-EVALUATE-RANGE-CELL
    PROVIDED-XT:DEFINE-CELL            1 cells                 CLAIM PROVIDED-XT-DEFINE-CELL
-   PROVIDED-XT:APPEND-CELL            1 cells                 CLAIM PROVIDED-XT-APPEND-CELL
-   PROVIDED-XT:POSTPONE-CELL          1 cells                 CLAIM PROVIDED-XT-POSTPONE-CELL
+   PROVIDED-XT:COMPILE-CELL           1 cells                 CLAIM PROVIDED-XT-COMPILE-CELL
+   PROVIDED-XT:END-CELL               1 cells                 CLAIM PROVIDED-XT-END-CELL
+   PROVIDED-XT:ITEM-CELL              1 cells                 CLAIM PROVIDED-XT-ITEM-CELL
+   PROVIDED-XT:CHILD-CELL             1 cells                 CLAIM PROVIDED-XT-CHILD-CELL
+   PROVIDED-XT:STORAGE-LINE-CELL      1 cells                 CLAIM PROVIDED-XT-STORAGE-LINE-CELL
+   PROVIDED-XT:CELL-LINE-CELL         1 cells                 CLAIM PROVIDED-XT-CELL-LINE-CELL
+   PROVIDED-XT:LITERAL-CELL           1 cells                 CLAIM PROVIDED-XT-LITERAL-CELL
+   PROVIDED-XT:TYPE-OP-CELL           1 cells                 CLAIM PROVIDED-XT-TYPE-OP-CELL
+   PROVIDED-XT:VARIABLE-CELL          1 cells                 CLAIM PROVIDED-XT-VARIABLE-CELL
    POLICY-ABI:KEYWORD-CELL            1 cells                 CLAIM POLICY-KEYWORD-CELL
    ENGINE-MAIN:ARENA-CELL             1 cells                 CLAIM ENGINE-MAIN-ARENA-CELL
    HALT-UNWIND-CELL                   1 cells                 CLAIM HALT-UNWIND-CELL
-   $3A00                              $288                    CLAIM FFI-BUFFERS
+   FFI-ABI:START                      FFI-ABI:BYTES           CLAIM FFI-ABI
    TASK-TCB-CELL                      1 cells                 CLAIM TASK-TCB-CELL
    TASKS-LIVE-CELL                    1 cells                 CLAIM TASKS-LIVE-CELL
    HIDXP-CELL                         1 cells                 CLAIM HIDXP-CELL
    EVALREC-CELL                       1 cells                 CLAIM EVALREC-CELL
    BOOT:USER-END                      1 cells                 CLAIM BOOT-USER-END
    PROT-REG-OFF                       PROT-REG-LEN            CLAIM PROT-REG
-   $40C8                              $100                    CLAIM FFI-LEN-BUFFERS
    CB-XDS                             CB-BAND-BYTES           CLAIM CALLBACK-BAND
    CB-TLS-GET                         2 cells                 CLAIM CALLBACK-TLS
-   DECLARED-LOG:ADDR-CELL             1 cells                 CLAIM DECLARED-LOG-ADDR
    APP-ENTRY:XT-CELL                  1 cells                 CLAIM APP-ENTRY-XT-CELL
-   AOT-CELLS:T0-CELL                  1 cells                 CLAIM AOT-WINDOW-T0
    REGION-ALIAS:DELTA-CELL            1 cells                 CLAIM REGION-ALIAS-DELTA
-   AOT-CELLS:B0-CELL                  1 cells                 CLAIM AOT-WINDOW-B0
    EVAL-TOP-CELL                      PROT:RHI EVAL-TOP-CELL -  CLAIM EVAL-POINTER-BAND
    PROT:RHI                           1 cells                 CLAIM PROT-RHI
    PROT:CF                            1 cells                 CLAIM PROT-CF
-   AOT-CELLS:SIG-POOL-CELL            1 cells                 CLAIM AOT-SIG-POOL
-   AOT-CELLS:SIG-LEN-CELL             1 cells                 CLAIM AOT-SIG-LEN
    BOOT:HEAP-START-CELL               1 cells                 CLAIM BOOT-HEAP-START
    BOOT:DP-FLOOR-CELL                 1 cells                 CLAIM BOOT-DP-FLOOR
    BOOT:DP-CEILING-CELL               1 cells                 CLAIM BOOT-DP-CEILING
@@ -230,11 +200,8 @@ create TAB
    BOOT:TYPES-WL-CELL                 1 cells                 CLAIM BOOT-TYPES-WL
    BOOT:IMAGE-BASE-CELL               1 cells                 CLAIM BOOT-IMAGE-BASE
    STACK-ABI:CAP-CELL                 1 cells                 CLAIM STACK-ABI-CAP
-   STACK-ABI:REPL-BASE-CELL           1 cells                 CLAIM STACK-ABI-REPL-BASE
-   STACK-ABI:REPL-CAP-CELL            1 cells                 CLAIM STACK-ABI-REPL-CAP
    STACK-ABI:RETURN-BASE-CELL         1 cells                 CLAIM STACK-ABI-RETURN-BASE
    STACK-ABI:LOOP-BASE-CELL           1 cells                 CLAIM STACK-ABI-LOOP-BASE
-   TXN-STATE-OFF                      TXN-STATE-LEN           CLAIM TXN-STATE
    USER-BAND:START                    USER-BAND:END USER-BAND:START -  CLAIM USER-BAND
    MEM-ABI:START                      MEM-ABI:BYTES           CLAIM MEM-ABI
    FS-MUT-ABI:START                   FS-MUT-ABI:BYTES        CLAIM FS-MUT-ABI
@@ -242,13 +209,10 @@ create TAB
    FMT-ABI:START                      FMT-ABI:BYTES           CLAIM FMT-ABI
    STRING-ABI:START                   STRING-ABI:BYTES        CLAIM STRING-ABI
    PD-TABLE-OFF                       PD-TABLE-END PD-TABLE-OFF -  CLAIM PD-TABLE
-   DECLARED-LOG:OFF                   DECLARED-LOG:END DECLARED-LOG:OFF -  CLAIM DECLARED-LOG
    USE-BAND-OFF                       USE-BAND-END USE-BAND-OFF -  CLAIM USE-BAND
    SNAP-RELOC:CALLMAP-OFF             SNAP-RELOC:CALLMAP-BYTES  CLAIM SNAP-CALLMAP
    SNAP-RELOC:ADDRMAP-OFF             SNAP-RELOC:ADDRMAP-BYTES  CLAIM SNAP-ADDRMAP
    SNAP-RELOC:XTCELL-N-CELL           SNAP-RELOC:XTCELL-END SNAP-RELOC:XTCELL-N-CELL -  CLAIM SNAP-XTCELL
-   JIT-SNAP:STK-OFF                   JIT-SNAP:END JIT-SNAP:STK-OFF -  CLAIM JIT-SNAP-FRAMES
-   SOURCE-EXEC-CTX-CELL               1 cells                 CLAIM SOURCE-EXEC-CTX-CELL
    REPLAY-SCOPE:LATCH                 REPLAY-SCOPE:END REPLAY-SCOPE:LATCH -  CLAIM REPLAY-SCOPE
    ENCLOSING:PUB                      ENCLOSING:END ENCLOSING:PUB -  CLAIM ENCLOSING
    REPLAY-SCOPE:ENCLOSING             ENCLOSING:END ENCLOSING:PUB -  CLAIM REPLAY-SCOPE:ENCLOSING
@@ -321,39 +285,4 @@ PROF-ROW-ASSERT
    CLAIMS-ASSERT ;
 
 CLAIMS-ASSERT
-
-\ Every guarded band must be a declared claim, start and length both. The bands
-\ are src/habu/layout.f's DATA-BANDS table, which every engine's prefix carries;
-\ a guard over a $3000 TXN-STATE-LEN once refused stores across 11520 bytes no
-\ claim owned. It dies when an engine builder loads this file, so a band that
-\ outgrows or outlives its claim cannot ship.
-
-private
-
-\ The claim at band ix's offset, else -1.
-: CLAIM-AT ( n -- n )
-   {: ix:n :}
-   COUNT-ROWS 0 ?do
-      i ROW-OFF ix DATA-BANDS:OFF = if i unloop exit then
-   loop -1 ;
-
-: DECLARED-AT ( n -- )
-   {: ix:n :}
-   ix CLAIM-AT {: hit:n :}
-   hit 0 < if
-      s" data-bands: PROT-GUARD band has no DATA-CLAIMS claim at its offset" 76 die
-   then
-   hit ROW-LEN ix DATA-BANDS:LEN <> if
-      MSG-RESET
-      s" data-bands: PROT-GUARD band length differs from its claim: " MSG+
-      hit NAME-AT MSG+
-      MSG$ 76 die
-   then ;
-
-public
-
-: BANDS-ASSERT ( -- )
-   0 BEGIN dup DATA-BANDS:LEN 0 <> WHILE  dup DECLARED-AT  1+  REPEAT drop ;
-
-BANDS-ASSERT
 ;package

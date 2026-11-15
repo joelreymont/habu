@@ -144,12 +144,11 @@ variable L-CP
 \ a LASTC left naming a retired record makes a later does> patch the slot's new
 \ owner. Each program runs in a child, where a refusal ends the process.
 $1000 constant LC-CAP
-20000 constant LC-TIMEOUT-MS
 LC-CAP BUFFER: LC-OUT
 LC-CAP BUFFER: LC-ERR
 
 : LC-EXITS ( ptr u8 n n -- len len ) {: src:ptr srcu:n want:n :}
-   src srcu LC-OUT LC-CAP >LEN LC-ERR LC-CAP >LEN LC-TIMEOUT-MS >MS SUBJECT:RUN
+   src srcu LC-OUT LC-CAP >LEN LC-ERR LC-CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    {: outu:len erru:len oc :}
    src srcu LC-OUT outu LEN>N LC-ERR erru LEN>N oc want T-ENDING-EXITED=
    outu erru ;

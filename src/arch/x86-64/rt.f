@@ -1,6 +1,6 @@
 \ rt.f - X64RT, x86-64 runtime emitters appending to X64CODE's ASM-SINK: twins
-\ of src/habu/rt.f G-PUSH, G-POP, G-OUT, G-PRINT9, G-PRINTU9, G-EMITC and
-\ STACK-GUARD's CHECK-CURSOR and EXIT-BOUNDS, and habu1.f SYS-PUSH. Moves
+\ of src/habu/rt.f G-PUSH, G-POP, G-OUT, G-PRINT9, G-PRINTU9 and G-EMITC, and
+\ habu1.f SYS-PUSH. Moves
 \ take x86-64 register numbers, as the seam files
 \ proc-watch.f and proc-control.f name them. The seam loads globally here, so a
 \ file loading it into a private wordlist (test/x86-64-peer-harness.f) follows.
@@ -19,9 +19,7 @@ using X64ASM
 using X64CODE
 
 \ ENGINE-GPR:X64-DSTACK by name, not the target-selected ENGINE-GPR:DSTACK: an
-\ ARM64 engine cross-builds x86-64 with this file. X64M:DSTACK-GPR, which
-\ src/compiler/native/emit-x64.f reads, is the same declaration, so emitted and
-\ compiled code share one stack.
+\ ARM64 engine cross-builds x86-64 with this file.
 : DSP ( -- r64 )  ENGINE-GPR:X64-DSTACK >R64 ;
 : DATA-REG ( -- r64 )  ENGINE-GPR:X64-RBASE >R64 ;
 
@@ -40,10 +38,9 @@ using X64CODE
 public
 
 \ The stack pointer stands just past the top cell and the stack grows upward,
-\ as XDS does on ARM64 and as the compiler's own crossings assume
-\ (emit-x64.f PUT-DMOVE, PUT-DSTORE): a push stores at the pointer and then
-\ advances it, a pop retreats it and then loads. x86-64 has no write-back
-\ addressing, so each is two instructions where ARM64's is one.
+\ as XDS does on ARM64: a push stores at the pointer and then advances it, a
+\ pop retreats it and then loads. x86-64 has no write-back addressing, so each
+\ is two instructions where ARM64's is one.
 : G-PUSH ( n -- ) {: r:n :}
    r >R64  DSP MEM-AT  ASM-SINK ENC-MOV-MR
    DSP  CELL >IMM8  ASM-SINK ENC-ADD-RI8 ;
@@ -155,54 +152,9 @@ public
 
 \ An x86-64 stencil is a byte string of whole instructions
 \ (src/os/linux-x86-64/sys.f), so it is appended as it stands where ARM64's
-\ consumer reassembles four-byte words. BUF:N>BLEN refuses a negative length.
+\ consumer reassembles four-byte words.
 : EMIT-STENCIL ( ptr u8 n -- ) {: a:ptr u:n :}
    a u BUF:N>BLEN ASM-SINK BUF:APPEND-SPAN ;
-
-private
-
-CELL 1- constant CELL-MASK
-2 constant STDERR
-: BOUNDS$ ( -- ptr u8 n ) S\" hb: stack bounds exceeded\n" ;
-
-public
-
-\ Admit a data stack's descriptor and cursor at a stack switch (a throw's
-\ resume, run-in-stack's return): the three registers hold the base, the
-\ capacity in bytes and the cursor. The base is nonzero and cell aligned and
-\ the capacity does not wrap past it; the cursor is cell aligned, at or above
-\ the base and at most the capacity past it, and at least n bytes remain above
-\ it. Any failure branches to the label. The base survives; the capacity
-\ register becomes the bytes remaining and the cursor register the bytes used.
-\ No memory is written. It is the only bounds check the engine makes on a data
-\ stack: inside compiled code the checker proves the effect, and a push past
-\ the capacity faults on the guard page.
-: CHECK-CURSOR ( r64 r64 r64 n label -- )
-   {: base:r64 cap:r64 cur:r64 above:n bad:label :}
-   base base ASM-SINK ENC-TEST-RR  C-E bad JCC,
-   base CELL-MASK >IMM32 ASM-SINK ENC-TEST-RI32  C-NE bad JCC,
-   base ASM-SINK ENC-NOT                               \ cap <= ~base: no wrap
-   cap base ASM-SINK ENC-CMP-RR  C-A bad JCC,
-   base ASM-SINK ENC-NOT
-   cur CELL-MASK >IMM32 ASM-SINK ENC-TEST-RI32  C-NE bad JCC,
-   cur base ASM-SINK ENC-CMP-RR  C-B bad JCC,
-   cur base ASM-SINK ENC-SUB-RR                        \ the bytes used
-   cur cap ASM-SINK ENC-CMP-RR  C-A bad JCC,
-   cap cur ASM-SINK ENC-SUB-RR                         \ the bytes remaining
-   cap above >IMM32 ASM-SINK ENC-CMP-RI32  C-B bad JCC, ;
-
-\ Name the failure on fd 2 and exit ENGINE-ERROR:STACK-BOUNDS. The message
-\ follows the exit, inside the loaded text.
-: EXIT-BOUNDS ( -- )
-   LBL {: msg:label :}
-   RDI STDERR >IMM32 ASM-SINK ENC-MOV-RI32
-   RSI msg MOVABS,
-   RDX BOUNDS$ nip >IMM32 ASM-SINK ENC-MOV-RI32
-   NR-WRITE SYS,
-   RDI ENGINE-ERROR:STACK-BOUNDS >IMM32 ASM-SINK ENC-MOV-RI32
-   NR-EXIT-GROUP SYS,
-   msg LBL,
-   BOUNDS$ BUF:N>BLEN ASM-SINK BUF:APPEND-SPAN ;
 
 ;using
 ;using

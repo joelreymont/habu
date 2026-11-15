@@ -20,15 +20,26 @@
 
 \ The DATA cell at an offset the engine layout reserves, declared as a cell that
 \ holds a byte pointer. `ptr-field` (src/habu/prims.f) is the declared door
-\ from an address to a pointer cell, so no cast stands behind this word. It is
-\ a public colon word with no checker row, so the sealed checker refuses a
-\ checked call of it, and checked source reaches it only through the
-\ RESERVED-PTR-U8-CELL definer below. The null, NULL-PTR, is an
-\ engine primitive (src/habu/prims.f) and needs no cell.
+\ from an address to a pointer cell, so no cast stands behind this word. The
+\ null, NULL-PTR, is an engine primitive (src/habu/prims.f) and needs no cell.
 package POINTER-STORAGE
 public
 : DATA-CELL ( n -- ptr ptr u8 ) data-base swap + 0 ptr-field ;
+\ The DATA cell holding the newest datum's address, 0 before the first.
+$3820 constant DATUM-CELL
+\ Aligns here past one byte, so the datum laid next never starts where the data
+\ before it ends: an address where data ends lies in that data's extent.
+: ALIGN-APART ( -- ) 1 allot align ;
 ;package
+
+\ Starts a nameless row at top level, an extent of its own up to the next
+\ definition or datum; its scratch first cell links the datums from DATUM-CELL.
+: datum ( -- )
+   POINTER-STORAGE:ALIGN-APART here CELL-VIEW {: at:ptr :}
+   1 cells SCRATCH-ALLOT
+   data-base POINTER-STORAGE:DATUM-CELL + 0 ptr-field {: newest:ptr :}
+   newest @  at 0 ptr-field !
+   at newest ! ;
 
 \ Scratch slots (PTR-VARIABLE, PTR-U8-TABLE, PTR-U8-TABLE-VARIABLE) are saved as null; a slot
 \ whose value must survive an image or capture uses this definer.
@@ -43,8 +54,8 @@ public
 \ so the cell's type is exactly what the clause says.
 \
 \ These live here, not beside TYPED-VARIABLE (src/core/layout-buffer.f), because
-\ that form computes its signature and throws E-LAYOUT-BUFFER until include.f
-\ arms TDECL-EVAL-ARMED; a clause is compiled, so it works in the boot prefix,
+\ that form lays its words through the engine's child cell, filled only after the
+\ boot prefix; a clause is compiled, so it works in the boot prefix,
 \ where the checker's own pointer tables are declared. A new definer needs two
 \ rows, because a definer written before the checker exists is invisible to it:
 \ src/core/cell-effects.f states its own effect (without it the sealed checker

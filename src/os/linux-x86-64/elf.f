@@ -327,8 +327,7 @@ s" SNAP-EXTRA-SIZE" s" -- n" TRUST
 
 \ ---------------------------------------------------------------------------
 \ Size-attribution tail: the bytes past the page-aligned text that the driver
-\ (src/habu/driver-io.f DRV-SIZE-MARKS) has to attribute so the emitted size map
-\ reconciles to the exact file length. Mirrors the Mach-O IMG-TAIL surface in
+\ has to attribute so the emitted size map reconciles to the exact file length. Mirrors the Mach-O IMG-TAIL surface in
 \ src/os/macos/sign2.f; a Linux image has no code signature, so its whole tail is
 \ the read-write segment (DYNAMIC + GOT) BUILD-ELF appends after the text pad.
 73 constant ELF-TAIL-RC

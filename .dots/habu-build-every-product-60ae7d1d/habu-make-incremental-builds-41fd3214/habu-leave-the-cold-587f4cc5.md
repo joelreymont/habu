@@ -8,4 +8,4 @@ closed-at: "2026-10-28T17:13:32.691998+02:00"
 close-reason: landed 2ff13408
 ---
 
-Workspace carl-grow (base rmxtwnql). A reused file of ~77+ private ENUMs gives a warm product with a shifted DATA layout vs fresh (398K-2.87M bytes); stores growing past capacity (SUMV, TF-CAP) during cold load suspected. Found by famw review. Brief ~/.cache/tmp/carl-file/brief-grow.md.
+Workspace carl-grow (base rmxtwnql). A reused file of ~77+ private ENUMs gives a warm product with a shifted DATA layout vs fresh (398K-2.87M bytes); stores growing past capacity (SUMV, TF-CAP) during cold load suspected. Found by famw review.

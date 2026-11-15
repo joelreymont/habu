@@ -41,8 +41,6 @@ STRUCTURE arena OPAQUE DERIVE addr
 private
 
 $4000 constant FIRST-BYTES         \ the first chunk, header included
-\ A larger request throws E-MEM-SIZE, so a request and its headers never overflow.
-MEM-MAX-N FIRST-BYTES - constant MAX-REQUEST
 
 \ A chunk after the first: the chunk before it, newest first, and its bytes.
 STRUCTURE chunk DERIVE addr FIELD prev ptr u8 FIELD size n ;STRUCTURE
@@ -57,9 +55,7 @@ CAST: >ACTION ( ptr u8 -- ptr action )
 
 
 : EXTENT ( n -- n )
-   {: len:n :}
-   len 0 <= len MAX-REQUEST > or if E-MEM-SIZE throw then
-   len CELL 1- + CELL negate and ;
+   CELL 1- + CELL negate and ;
 
 
 \ The newest chunk's base and bytes.

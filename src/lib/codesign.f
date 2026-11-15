@@ -1,4 +1,4 @@
-\ codesign.f - checked executable promotion, target signing and signed-image
+\ codesign.f - checked target signing and signed-image
 \ comparison (package CODESIGN) for build drivers. On macOS the words run
 \ /usr/bin/codesign with the identity of team TEAM$, never ad hoc: no tool is
 \ E-BUILD-COMMAND, a nonzero status E-BUILD-STATUS, a host without the
@@ -378,18 +378,6 @@ public
       exit
    then
    CODESIGN-TARGET-UNKNOWN ;
-
-: PROMOTE-EXECUTABLE ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu dst:ptr dstu :}
-   src srcu CODESIGN-EXPECT-FILE
-   dstu 0 <= if E-BUILD-PATH throw then
-   src srcu FS:CHMOD-X
-   src srcu dst dstu FS:RENAME-FILE
-   dst dstu CODESIGN-EXPECT-FILE ;
-
-: PROMOTE-SIGNED-EXECUTABLE ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu dst:ptr dstu :}
-   src srcu FORCE
-   src srcu dst dstu PROMOTE-EXECUTABLE
-   dst dstu VERIFY ;
 
 private
 

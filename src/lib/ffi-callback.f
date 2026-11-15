@@ -2,14 +2,17 @@
 \ clauses ;CALLBACK declares a C entry; FFI-CB:ENTRY binds it to a context
 \ (src/lib/task.f CONTEXT-BIND) and answers the C function pointer.
 \ STORAGE CLASS. PROCESS-WIDE: the slots, descriptor and dispatch tables and
-\ fault cells are one set for the image. The tables grow contiguously and a
-\ slot is never given back, so a C pointer stays valid; binding rows are task.f's.
+\ fault cells are one set for the image. The tables grow contiguously and only
+\ the rollback of the text that declared a slot gives it back, so a C pointer
+\ stays valid; binding rows are task.f's.
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/codegen.f
 require src/lib/ffi-abi.f
 require src/lib/task.f
 require src/habu/address-cells.f
+require src/core/rollback-cells.f
+require src/habu/data-floor.f
 
 package FFI-CB
 public
@@ -32,8 +35,6 @@ CAST: ENTRY-XT ( n -- [ -- n ] )
    dup 0= if E-COMP-STATE throw then ENTRY-XT execute ;
 
 8 constant FLOAT-REGS
-$400 constant GEN-CAP
-$200 constant PART-CAP            \ sixteen `7 FFI-CB:I32-ARG@ ` reads need $108
 $40 constant NAME-CAP
 
 0 constant R-NONE
@@ -62,6 +63,7 @@ CAST: N>BYTES ( n -- ptr u8 )
 PERSISTED-PTR-VARIABLE TABLE
 variable CAP
 variable SLOTS
+SLOTS ROLLBACK-CELLS:MARK
 
 CAST: >DISPATCH-CELL ( ptr n -- ptr [ -- ] )
 CAST: >FLOAT-CELL ( ptr n -- ptr r )
@@ -98,6 +100,8 @@ CAST: >ENTRY-XT ( n -- [ -- ] )
    CAP @ {: oldcap:n :}
    oldcap dup 0= if drop 1 else 2 * then {: next:n :}
    next ROW-BYTES * ALIGNED-ROWS {: rows:ptr :}
+   \ No rollback cuts a grown table.
+   DATA-FLOOR:RAISE
    SLOTS @ 0 > if
       old rows SLOTS @ ROW-BYTES * BYTE-COPY
       SLOTS @ 0 ?do
@@ -192,13 +196,12 @@ public
 \ thunk exits 106 (ENGINE-ERROR:CALLBACK). A context admits one thread at a
 \ time; a second is refused, never made to wait. TASK:SELF-CONTEXT is the
 \ calling task's region (C calls back inside a foreign call it made),
-\ TASK:CONTEXT an exposed task's (a foreign thread enters), TASK:MAIN-BASE
-\ FFI:>CELL the main region (main thread only). TASK:CALLER-CONTEXT is each
-\ calling thread's own region, inside a foreign call it made, for any number of
-\ threads at once; a thread with no region of its own, one inside an exposed
-\ task's region among them, exits 106.
-\ A binding lasts until UNBIND, UNEXPOSE, the end of the task whose region it
-\ names, or a capture; the caller drains C's calls first. A capture drops idle
+\ TASK:MAIN-BASE FFI:>CELL the main region (main thread only).
+\ TASK:CALLER-CONTEXT is each calling thread's own region, inside a foreign
+\ call it made, for any number of threads at once; a thread with no region of
+\ its own exits 106.
+\ A binding lasts until UNBIND, the end of the task whose region it names, or a
+\ capture; the caller drains C's calls first. A capture drops idle
 \ bindings and ends on a slot with a thread inside, so a stripped application
 \ binds in its entry word.
 : ENTRY ( callback n -- n ) {: cb ctx:n :}
@@ -218,10 +221,19 @@ public
 
 private
 
-GEN-CAP CODEGEN:BUFFER GEN
-PART-CAP CODEGEN:BUFFER QTYPE             \ the body's quotation type
-PART-CAP CODEGEN:BUFFER READS             \ the argument reads, in order
-NAME-CAP E-FFI-SYNTAX E-CG-VALUE CODEGEN:BUFFER-E NAME
+NAME-CAP CODEGEN:BUFFER NAME
+NAME-CAP 16 + CODEGEN:BUFFER WORD-NAME   \ NAME and a suffix, `-DISPATCH` the longest
+
+0 constant BY-N
+1 constant BY-I32
+2 constant BY-U32
+3 constant BY-PTR
+4 constant BY-R
+
+\ The argument reads, in order: each one's register index and reader (BY-*).
+INT-REGS FLOAT-REGS + TYPED-BUFFER READ-AT n
+INT-REGS FLOAT-REGS + TYPED-BUFFER READ-BY n
+variable READS
 
 variable RES-KIND
 variable FB-SET
@@ -229,87 +241,142 @@ variable FB-VALUE
 TYPED-VARIABLE FFB-VALUE r
 variable OPEN
 
+\ A message that ends quoting the token the user wrote.
+: TOKEN-REJECT ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: m:ptr mu:n t:ptr tu:n h:ptr hu:n :}
+   FFI:SYNTAX-OPEN  m mu REJECTION:EMIT-STR
+   s" '" REJECTION:EMIT-STR  t tu REJECTION:EMIT-STR
+   s" '" REJECTION:EMIT-STR  h hu FFI:SYNTAX-HELP ;
+
 \ The next token. parse-name's bytes stay valid until the next parse, and each
 \ token is matched or copied before then, so it lives on the stack.
 : TOK@ ( -- ptr u8 n )
    parse-name {: a:ptr u:n :}
-   u 0= if E-FFI-SYNTAX throw then
+   u 0= if
+      s" the text ends inside the callback declaration"
+      s" complete it: CALLBACK: NAME ( in -- out ) clauses ;CALLBACK"
+      FFI:SYNTAX-REJECT
+   then
    a u ;
 
-: NAME! ( ptr u8 n -- )
+: TOO-MANY ( n ptr u8 n -- )
+   {: cap:n k:ptr ku:n :}
+   FFI:ARITY-OPEN
+   s" a callback takes at most " REJECTION:EMIT-STR
+   cap REJECTION:EMIT-U  k ku REJECTION:EMIT-STR
+   s" pass the rest in memory through a ptr u8 argument"
+   FFI:ARITY-HELP ;
+
+: LONG-NAME ( -- )
+   FFI:SYNTAX-OPEN
+   s" a callback name is at most " REJECTION:EMIT-STR
+   NAME-CAP REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR
+   s" shorten the name" FFI:SYNTAX-HELP ;
+
+\ A ':' at either end of the name, with nothing on one side.
+: EDGE-COLON? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a c@ [char] : =  a u + 1 - c@ [char] : = or ;
+
+: COLON-HELP$ ( -- ptr u8 n )
+   s" name it NAME, or PACKAGE:NAME for a word in package PACKAGE" ;
+
+\ The name's words are NAME, NAME-BODY and the like: one ':' between a
+\ package and a word makes them the package's; any other ':' names nothing.
+: NAME! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u NAME-CAP > if LONG-NAME then
+   a u [char] : COUNT-CHAR 1 > if
+      s" more than one ':' in callback name " a u COLON-HELP$
+      TOKEN-REJECT
+   then
+   a u EDGE-COLON? if
+      s" an empty package or word beside ':' in callback name " a u
+      COLON-HELP$ TOKEN-REJECT
+   then
    NAME CODEGEN:RESET
-   NAME CODEGEN:APPEND-STRING ;
+   a u NAME CODEGEN:APPEND-STRING ;
 
 : NAME$ ( -- ptr u8 n )
    NAME CODEGEN:CONTENTS ;
 
-: QTYPE+ ( ptr u8 n -- )
-   QTYPE CODEGEN:APPEND-STRING s"  " QTYPE CODEGEN:APPEND-STRING ;
+: NAME+ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   WORD-NAME CODEGEN:RESET
+   NAME$ WORD-NAME CODEGEN:APPEND-STRING
+   a u WORD-NAME CODEGEN:APPEND-STRING
+   WORD-NAME CODEGEN:CONTENTS ;
 
-: READ+ ( n ptr u8 n -- ) {: i:n a:ptr u:n :}
-   i READS CODEGEN:APPEND-DECIMAL
-   s"  FFI-CB:" READS CODEGEN:APPEND-STRING
-   a u READS CODEGEN:APPEND-STRING
-   s"  " READS CODEGEN:APPEND-STRING ;
+: ARG+ ( n n -- ) {: i:n by:n :}
+   i READS @ READ-AT !
+   by READS @ READ-BY !
+   1 READS +! ;
 
-\ One integer argument read by the named reader. The input words carry two
-\ counts on the stack: the integer, then the float arguments read so far.
-: INT+ ( n n ptr u8 n -- n n )
-   {: i:n f:n a:ptr u:n :}
-   i INT-REGS >= if E-FFI-ARITY throw then
-   i a u READ+
+\ One integer argument read by reader BY. The input words carry two counts on
+\ the stack: the integer, then the float arguments read so far.
+: INT+ ( n n n -- n n )
+   {: i:n f:n by:n :}
+   i INT-REGS >= if INT-REGS s"  integer arguments" TOO-MANY then
+   i by ARG+
    i 1 + f ;
 
 : IN-TOKEN ( n n ptr u8 n -- n n )
    {: i:n f:n a:ptr u:n :}
-   a u s" n" STR= if s" n" QTYPE+ i f s" ARG@" INT+ exit then
-   a u s" i32" STR= if s" n" QTYPE+ i f s" I32-ARG@" INT+ exit then
-   a u s" u32" STR= if s" n" QTYPE+ i f s" U32-ARG@" INT+ exit then
+   a u s" n" STR= if i f BY-N INT+ exit then
+   a u s" i32" STR= if i f BY-I32 INT+ exit then
+   a u s" u32" STR= if i f BY-U32 INT+ exit then
    a u s" ptr" STR= if
-      TOK@ s" u8" STR= 0= if E-FFI-SYNTAX throw then
-      s" ptr u8" QTYPE+ i f s" PTR-ARG@" INT+ exit
+      TOK@ {: pa:ptr pu:n :}
+      pa pu s" u8" STR= 0= if
+         s" expected u8 after ptr, found " pa pu
+         s" a pointer argument is ptr u8" TOKEN-REJECT
+      then
+      i f BY-PTR INT+ exit
    then
    a u s" r" STR= if
-      f FLOAT-REGS >= if E-FFI-ARITY throw then
-      s" r" QTYPE+ f s" FARG@" READ+
+      f FLOAT-REGS >= if FLOAT-REGS s"  float arguments" TOO-MANY then
+      f BY-R ARG+
       i f 1 + exit
    then
-   E-FFI-SYNTAX throw ;
+   s" unknown argument type " a u
+   s" an argument is n, i32, u32, r or ptr u8" TOKEN-REJECT ;
 
 : OUT-TOKEN ( ptr u8 n -- )
    {: a:ptr u:n :}
-   RES-KIND @ R-NONE <> if E-FFI-SYNTAX throw then
-   a u s" r" STR= if s" r" QTYPE+ R-FLOAT RES-KIND ! exit then
-   a u s" n" STR= a u s" i32" STR= or a u s" u32" STR= or if
-      s" n" QTYPE+ R-VALUE RES-KIND ! exit
+   RES-KIND @ R-NONE <> if
+      s" a callback has at most one result"
+      s" keep one result after --: n, i32, u32 or r"
+      FFI:SYNTAX-REJECT
    then
-   E-FFI-SYNTAX throw ;
+   a u s" r" STR= if R-FLOAT RES-KIND ! exit then
+   a u s" n" STR= a u s" i32" STR= or a u s" u32" STR= or if
+      R-VALUE RES-KIND ! exit
+   then
+   s" unknown result type " a u
+   s" a result is n, i32, u32 or r; no result is nothing after --"
+   TOKEN-REJECT ;
 
 \ One input token: true at the -- that ends the inputs.
 : INPUT? ( n n -- n n bool )
    TOK@ {: i:n f:n a:ptr u:n :}
-   a u s" --" STR= if s" --" QTYPE+ i f true exit then
-   a u s" )" STR= if E-FFI-SYNTAX throw then
+   a u s" --" STR= if i f true exit then
+   a u s" )" STR= if
+      s" expected '--' before ')'"
+      s" write the effect as ( in -- out )"
+      FFI:SYNTAX-REJECT
+   then
    i f a u IN-TOKEN false ;
 
 \ One output token: true at the ) that ends the effect.
 : OUTPUT? ( -- bool )
    TOK@ {: a:ptr u:n :}
    a u s" )" STR= if true exit then
-   a u s" --" STR= if E-FFI-SYNTAX throw then
+   a u s" --" STR= if
+      s" a second '--' in the effect"
+      s" write one -- between the arguments and the result"
+      FFI:SYNTAX-REJECT
+   then
    a u OUT-TOKEN false ;
 
 : INPUTS ( -- ) 0 0 begin INPUT? until 2drop ;
 : OUTPUTS ( -- ) begin OUTPUT? until ;
-
-: GEN+ ( ptr u8 n -- ) GEN CODEGEN:APPEND-STRING ;
-: GEN-N ( n -- ) GEN CODEGEN:APPEND-DECIMAL ;
-: GEN-RUN ( -- ) GEN CODEGEN:CONTENTS INCLUDE-EVALUATE ;
-
-: STORE$ ( -- ptr u8 n )
-   RES-KIND @ R-VALUE = if s" FFI-CB:RESULT! " exit then
-   RES-KIND @ R-FLOAT = if s" FFI-CB:FRESULT! " exit then
-   s" " ;
 
 : NEXT-SLOT ( -- n )
    SLOTS @ {: k:n :}
@@ -318,68 +385,118 @@ variable OPEN
    1 SLOTS +!
    k ;
 
+: READ-ITEMS ( n -- ) {: j:n :}
+   j READ-AT @ literal
+   j READ-BY @ {: by:n :}
+   by BY-N = if postpone ARG@ exit then
+   by BY-I32 = if postpone I32-ARG@ exit then
+   by BY-U32 = if postpone U32-ARG@ exit then
+   by BY-PTR = if postpone PTR-ARG@ exit then
+   postpone FARG@ ;
+
+: STORE-ITEM ( -- )
+   RES-KIND @ R-VALUE = if postpone RESULT! exit then
+   RES-KIND @ R-FLOAT = if postpone FRESULT! then ;
+
+\ The word just made: each definer makes one record, none inside a definition.
+: LATEST-XT ( -- [ -- ] )
+   LATEST XREF-START >ENTRY-XT ;
+
+\ NAME-DISPATCH ( -- ): [: NAME-BODY BODY-CHECK <reads> NAME-BODY @ execute
+\ <store> ;] k kind RUN
+: DISPATCH-WORD ( [ -- ] n -- ) {: body k:n :}
+   s" -DISPATCH" NAME+ EFFECT:EMPTY define-word
+   s" [:" EFFECT:KEYWORD
+   body compile,  postpone BODY-CHECK
+   READS @ 0 ?do i READ-ITEMS loop
+   body compile,  postpone @  postpone execute
+   STORE-ITEM
+   s" ;]" EFFECT:KEYWORD
+   k literal  RES-KIND @ literal  postpone RUN  postpone ; ;
+
+\ The type the body leaves for reader BY (BY-*) to take.
+: ARG-TYPE ( n -- EFFECT:type ) {: by:n :}
+   by BY-PTR = if s" ptr u8" EFFECT:READ-TYPE exit then
+   by BY-R = if s" r" EFFECT:NAMED exit then
+   EFFECT:N ;
+
+: BODY-EFFECT ( -- EFFECT:type )
+   EFFECT:EMPTY
+   READS @ 0 ?do i READ-BY @ ARG-TYPE EFFECT:IN loop
+   RES-KIND @ R-FLOAT = if s" r" EFFECT:NAMED EFFECT:OUT exit then
+   RES-KIND @ R-VALUE = if EFFECT:N EFFECT:OUT then ;
+
 \ The accessor's ordinary native emission carries an anonymous C entry after
 \ its Habu return. The native compiler publishes both as one owned record; only
 \ the entry is handed to C, while the accessor can read its relocated
 \ descriptor address.
 : EMIT ( n -- ) {: k:n :}
-   GEN CODEGEN:RESET
-   s" TYPED-VARIABLE " GEN+ NAME$ GEN+ s" -BODY [ " GEN+
-   QTYPE CODEGEN:CONTENTS GEN+ s" ]" GEN+
-   GEN-RUN
-   GEN CODEGEN:RESET
-   s" : " GEN+ NAME$ GEN+ s" -DISPATCH ( -- ) [: " GEN+
-   NAME$ GEN+ s" -BODY FFI-CB:BODY-CHECK " GEN+
-   READS CODEGEN:CONTENTS GEN+ NAME$ GEN+ s" -BODY @ execute " GEN+
-   STORE$ GEN+ s" ;] " GEN+ k GEN-N s"  " GEN+ RES-KIND @ GEN-N
-   s"  FFI-CB:RUN ;" GEN+
-   GEN-RUN
-   GEN CODEGEN:RESET
-   s" ' " GEN+ NAME$ GEN+ s" -DISPATCH " GEN+ k GEN-N s"  FFI-CB:INSTALL" GEN+
-   GEN-RUN
+   s" -BODY" NAME+ BODY-EFFECT EFFECT:VARIABLE-OF
+   LATEST-XT k DISPATCH-WORD
+   LATEST-XT k INSTALL
    k -1 FFI:CALLBACK-ENTRY ARM-STUB
-   GEN CODEGEN:RESET
-   s" : " GEN+ NAME$ GEN+ s" -ENTRY ( -- n ) " GEN+
-   k GEN-N s"  FFI-CB:ENTRY-ADDRESS ;" GEN+
-   GEN-RUN
+   s" -ENTRY" NAME+ EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word
+   k literal  postpone ENTRY-ADDRESS  postpone ;
    STUB-ENTRY k INSTALL-ENTRY
-   GEN CODEGEN:RESET
-   s" : " GEN+ NAME$ GEN+ s"  ( -- FFI-CB:callback ) " GEN+ k GEN-N
-   s"  FFI-CB:DESCRIPTOR ;" GEN+
-   GEN-RUN ;
+   NAME$ EFFECT:EMPTY s" FFI-CB:callback" EFFECT:NAMED EFFECT:OUT define-word
+   k literal  postpone DESCRIPTOR  postpone ; ;
 
-\ A refusal between the two keywords abandons the declaration, so nothing is
-\ left open for the next one.
-: REFUSE ( -- )
-   0 OPEN !
-   E-FFI-SYNTAX throw ;
+\ A rejection between the two keywords abandons the declaration, so nothing
+\ is left open for the next one.
+: REJECT ( ptr u8 n ptr u8 n -- )
+   0 OPEN !  FFI:SYNTAX-REJECT ;
+
+: FALLBACK-REJECT ( -- )
+   s" a fallback outside a callback declaration"
+   s" write it between CALLBACK: NAME ( in -- out ) and ;CALLBACK" REJECT ;
 
 public
 
 : OPEN-CALLBACK ( -- )
-   OPEN @ 0 <> if REFUSE then
+   OPEN @ 0 <> if
+      s" CALLBACK: inside an open callback declaration"
+      s" end the open declaration with ;CALLBACK first" REJECT
+   then
    R-NONE RES-KIND ! 0 FB-SET !
-   QTYPE CODEGEN:RESET READS CODEGEN:RESET
+   0 READS !
    TOK@ NAME!
-   TOK@ s" (" STR= 0= if E-FFI-SYNTAX throw then
+   TOK@ {: a:ptr u:n :}
+   a u s" (" STR= 0= if
+      s" expected '(' after the callback name, found " a u
+      s" write CALLBACK: NAME ( in -- out )" TOKEN-REJECT
+   then
    INPUTS
    OUTPUTS
    1 OPEN ! ;
 
 : SET-FALLBACK ( n -- ) {: v:n :}
-   OPEN @ 0= if REFUSE then
-   RES-KIND @ R-VALUE <> if REFUSE then
+   OPEN @ 0= if FALLBACK-REJECT then
+   RES-KIND @ R-VALUE <> if
+      s" FALLBACK needs an n, i32 or u32 result"
+      s" an r result takes FFALLBACK; no result takes no fallback" REJECT
+   then
    v FB-VALUE ! 1 FB-SET ! ;
 
 : SET-FFALLBACK ( r -- ) {: v:r :}
-   OPEN @ 0= if REFUSE then
-   RES-KIND @ R-FLOAT <> if REFUSE then
+   OPEN @ 0= if FALLBACK-REJECT then
+   RES-KIND @ R-FLOAT <> if
+      s" FFALLBACK needs an r result"
+      s" an integer result takes FALLBACK; no result takes no fallback" REJECT
+   then
    v FFB-VALUE ! 1 FB-SET ! ;
 
 : CLOSE-CALLBACK ( -- )
-   OPEN @ 0= if E-FFI-SYNTAX throw then
+   OPEN @ 0= if
+      s" ;CALLBACK with no callback declaration open"
+      s" open one with CALLBACK: NAME ( in -- out )"
+      FFI:SYNTAX-REJECT
+   then
    0 OPEN !
-   RES-KIND @ R-NONE <> FB-SET @ 0= and if E-FFI-SYNTAX throw then
+   RES-KIND @ R-NONE <> FB-SET @ 0= and if
+      s" a callback with a result needs a fallback"
+      s" write n FALLBACK (r: r FFALLBACK) before ;CALLBACK"
+      FFI:SYNTAX-REJECT
+   then
    NEXT-SLOT {: k:n :}
    FB-VALUE @ k FALLBACKS !
    FFB-VALUE @ k FFALLBACKS !

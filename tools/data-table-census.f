@@ -1,6 +1,5 @@
 \ data-table-census.f - attributes every byte of the boot DATA heap [0, DP0) to
-\ the `create`d or `variable` word that owns it: an AOT image carries every
-\ non-zero byte in full, whether or not anything reads it.
+\ the `create`d or `variable` word that owns it.
 \   printf 'require tools/data-table-census.f\nDATA-CENSUS:RUN\n' | bin/hb
 \ RUN is not called on load, so tools/check.f can carry this file. Rows are
 \ tab-separated: offset, extent, fill, nonzero, cells, cost, wid, owner.
@@ -15,7 +14,8 @@ require src/lib/sort.f
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
 require src/habu/layout.f
-require src/habu/aot-decl.f
+require src/habu/address-carrier.f
+require src/habu/cell-grid.f
 
 package DATA-CENSUS
 
@@ -74,13 +74,12 @@ $FFFFFFFF constant IDX-MASK
    loop
    0 T-ROW T-N @ [: < ;] SORT:SORT! ;
 
-\ Bytes past the extent read as zero, as the capture leaves them.
 variable CV
 
 : CELL@ ( n n n -- n ) {: base:n c:n len:n :}
    0 CV !
-   AOT-WINDOW:CELL-BYTES 0 ?do
-      c AOT-WINDOW:CELL-BYTES * i + {: off:n :}
+   CELL-GRID:CELL-BYTES 0 ?do
+      c CELL-GRID:CELL-BYTES * i + {: off:n :}
       off len < if
          base off + HEAP@ c@  i 8 * lshift  CV @ or  CV !
       then
@@ -96,26 +95,24 @@ variable GRP-LAST
    len 0 ?do
       base i + HEAP@ c@ 0<> if  NZ @ 1+ NZ !  i 1+ FILL !  then
    loop
-   len AOT-WINDOW:CELL-BYTES 1- + AOT-WINDOW:CELL-BYTES / {: cells:n :}
+   len CELL-GRID:CELL-BYTES 1- + CELL-GRID:CELL-BYTES / {: cells:n :}
    cells 0 ?do
       base i len CELL@ {: v:n :}
       v 0<> if
          RUNS @ 1+ RUNS !
-         PAY @ v AOT-WINDOW:CELL-VLEN + PAY !
-         i AOT-WINDOW:CELL-BYTES * AOT-WINDOW:GROUP-SPAN / {: g:n :}
+         PAY @ v CELL-GRID:CELL-VLEN + PAY !
+         i CELL-GRID:CELL-BYTES * CELL-GRID:GROUP-SPAN / {: g:n :}
          g GRP-LAST @ <> if
-            ROWB @ AOT-WINDOW:GROUP-BYTES + ROWB !
+            ROWB @ CELL-GRID:GROUP-BYTES + ROWB !
             g GRP-LAST !
          then
       then
    loop ;
 
-\ extent runs to the next owner; fill is one past the last non-zero byte. cells
-\ and cost follow the capture's scanner (aot-capture.f ACAP-SCAN-SEG): a
+\ extent runs to the next owner; fill is one past the last non-zero byte. A
 \ non-zero cell costs the LEB128 of its value, and each GROUP-SPAN holding one
-\ costs GROUP-BYTES of bitmap (aot-decl.f BM-COMPACT). Sort on cost, not
-\ nonzero. Cells and groups count from the extent's own base, so neighbours
-\ sharing one are both charged.
+\ costs GROUP-BYTES of bitmap. Sort on cost, not nonzero. Cells and groups
+\ count from the extent's own base, so neighbours sharing one are both charged.
 : ROW ( n n ptr u8 n n -- ) {: off:n len:n name:ptr nameu:n wid:n :}
    off len SCAN
    off FMT:.U TAB  len FMT:.U TAB  FILL @ FMT:.U TAB  NZ @ FMT:.U TAB

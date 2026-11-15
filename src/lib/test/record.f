@@ -44,10 +44,6 @@ variable TREC-U
 : TREC$ ( -- ptr u8 n )
    TREC-BUF TREC-U @ ;
 
-: TREC-N. ( n -- )
-   TREC-RESET TREC-N+
-   TREC$ type ;
-
 \ The returned span is TREC-BUF scratch: the next record build clobbers it.
 : TREC-FAIL$ ( ptr u8 n n ptr u8 n -- ptr u8 n )
    {: la:ptr lu:n id:n ba:ptr bu:n :}

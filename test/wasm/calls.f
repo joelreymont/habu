@@ -6,7 +6,6 @@
 
 package WCALLS
 private
-CAST: >CELL ( n -- ptr n )
 CAST: >VOID ( n -- [ -- ] )
 CAST: >BITS ( [ -- ] -- n )
 : MARK ( -- ) 37 throw ;
@@ -147,11 +146,14 @@ public
    [: READ-RSTACK ;] 42 32 WANT  [: READ-LOOP ;] 10 33 WANT
    [: READ-BESIDE ;] 32 34 WANT  [: READ-RELEASE ;] 77 35 WANT ;
 
-: FAULTED ( -- ) [: 0 >CELL @ drop ;] catch throw ;
 : ZERO ( -- ) 0 >VOID execute ;
 : ZERO-CAUGHT ( -- ) 0 >VOID catch throw ;
 : ZERO-CLEANUP ( -- ) [: 1 . ;] 0 >VOID finally ;
 : HIGH ( -- ) ['] MARK >BITS $100000000 or >VOID execute ;
 : HIGH-TAGGED ( -- ) ['] MARK >BITS $8000000100000000 or >VOID execute ;
+
+false [if] \ off until dot habu-add-the-checks-a49d054d
+: FAULTED ( -- ) [: 0 >CELL @ drop ;] catch throw ;
+[then]
 
 ;package

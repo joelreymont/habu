@@ -32,7 +32,7 @@ T-RESET
 
 TYPED-VARIABLE TCE-A ptr u8   variable TCE-U
 : TCE-GO ( -- )
-   TCE-A @ TCE-U @ INCLUDE-EVALUATE ;
+   TCE-A @ TCE-U @ evaluate-closed ;
 : TCE-CATCH ( ptr u8 n -- n )
    TCE-U ! TCE-A !
    [: TCE-GO ;] catch ;
@@ -427,9 +427,8 @@ s" LOWER-WIDTH-AWARE-ROUNDTRIP" type cr
 
 \ Asymmetric growth: when the widest-declared variant is not the widest
 \ instantiated one, that variant needs fewer pad cells than the declared width
-\ reserves (extra < 0). The positive-extra variant of the same family constructs
-\ and a non-asymmetric instantiation matches, so the reject isolates to the
-\ negative extra.
+\ reserves (extra < 0). The positive-extra variant of the same family constructs,
+\ so the construct reject isolates to the negative extra.
 package XPAD-ASYM
 public
 PRODUCT clx2 FIELD x n FIELD y n ;PRODUCT
@@ -441,20 +440,18 @@ private
 \ clxg<clx2> (a = width 2): W = 1 + max(wtwo=4, wthree=3) = 5. wtwo extra = -1, wthree = +1.
 s" CLXP ( clx2 clx2 -- clxg<clx2> ) construct clxg wtwo" CHECK-QUIET-CANDIDATE! 0 T=
 s" : CLXG-BADTWO ( clx2 clx2 -- clxg<clx2> ) construct clxg wtwo ;" TCE-CATCH 70 T=
-\ The positive-extra variant certifies and lowers, but its value is
-\ produce-only: any total MATCH includes the wtwo arm, whose negative-extra
-\ unpack fails closed.
 s" : CLXG-THREE ( n n n -- clxg<clx2> ) construct clxg wthree ;" TCE-CATCH 0 T=
-\ The wtwo arm uses only always-defined words (2drop 0), so its reject can only
-\ be the negative-extra arm reject at 'OF': inside XPAD-ASYM the derived ctor
-\ package is XPAD-ASYM-CLX2, so a bare CLX2:UNMAKE would itself throw rc 70.
-s" : CLXG-GET ( clxg<clx2> -- n ) MATCH clxg wtwo OF 2drop 0 ENDOF wthree OF + + ENDOF ;MATCH ;" TCE-CATCH 70 T=
+\ The wtwo arm reads only its instantiated pads, so an exhaustive MATCH
+\ certifies; its 2drop 0 avoids CLX2:UNMAKE, which inside XPAD-ASYM is
+\ XPAD-ASYM-CLX2 and would itself throw rc 70.
+s" : CLXG-GET ( clxg<clx2> -- n ) MATCH clxg wtwo OF 2drop 0 ENDOF wthree OF + + ENDOF ;MATCH ;" TCE-CATCH 0 T=
 s" : CLXN-GET ( clxg<n> -- n ) MATCH clxg wtwo OF + ENDOF wthree OF + + ENDOF ;MATCH ;" TCE-CATCH 0 T=
-\ No checked exhaustive MATCH consumes clxg<clx2>, so XPAD-WTHREE-W measures the
-\ depth delta of the certified CLXG-THREE bundle: the certified width 5, the 4
-\ cells pass 1 emits from the declared width and the pad pass 2 adds. The bundle
-\ must be built through the checked CLXG-THREE: an unchecked in-word `construct`
-\ skips pass 2 and reads 4.
+: CLXG-RT ( -- n ) 1 2 3 CLXG-THREE CLXG-GET ;
+CLXG-RT 6 T=
+\ XPAD-WTHREE-W measures the depth delta of the certified CLXG-THREE bundle:
+\ the certified width 5, the constructor's 4 declared cells and the pad the
+\ lowering adds from the checker's facts. The bundle must be built through the
+\ checked CLXG-THREE: an unchecked in-word `construct` has no facts and reads 4.
 variable XPAD-D0
 : XPAD-MARK ( -- ) depth XPAD-D0 ! ;
 : XPAD-DELTA ( -- n ) depth XPAD-D0 @ - ;
@@ -552,8 +549,8 @@ s" WNSTBAD ( wopt<n> -- wnst ) WNST:NESTED" CHECK-QUIET-CANDIDATE! 0 T=
 s" WSXDROP ( wsx<a> -- ) drop" CHECK-QUIET-CANDIDATE! -1 T=
 s" WAPDROP ( wapplied<a> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 \ record-at refuses a widened application: wapplied<wleaf> is 4 cells over 3
-\ committed slots. An accessor refuses a family argument at any width, so
-\ record-at is the reachable twin of the field projection's width condition.
+\ committed slots. An accessor refuses a family argument at any width, so only
+\ record-at reaches the width condition.
 s" WAPAT ( ptr wapplied<wleaf> n -- ptr wapplied<wleaf> ) record-at" CHECK-QUIET-CANDIDATE! 0 T=
 s" WAPAT1 ( ptr wapplied<n> n -- ptr wapplied<n> ) record-at" CHECK-QUIET-CANDIDATE! -1 T=
 \ UNMAKE's empty body must give back exactly the bundle's cells: wapplied<wleaf>
@@ -717,10 +714,10 @@ TYPED-VARIABLE RFB-OV option<rfbtag>
 TYPED-VARIABLE RFB-ON option<n>
 s" RFB-SOME-DROP ( rfbtag -- ) OPTION:SOME drop" CHECK-QUIET-CANDIDATE! -1 T=
 create RFB-DIAG 512 allot
-RFB-DIAG 512 DIAG-BUFFER!
+RFB-DIAG 512 REJECTION:BUFFER!
 s" RFB-SOME-WRONG ( rfbtag -- ) OPTION:SOME RFB-ON !" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s" actual: option<rfbtag>" CONTAINS? TTRUE
-DIAG-BUFFER-OFF
+REJECTION:BUFFER$ s" actual: option<rfbtag>" CONTAINS? TTRUE
+REJECTION:BUFFER-OFF
 s" RFB-OK-FREE ( rfbtag -- ) RESULT:OK drop" CHECK-QUIET-CANDIDATE! 0 T=
 : RFB-REST# ( option<rfbtag> -- n ) MATCH option some OF RFB-TAG# ENDOF none OF 0 ENDOF ;MATCH ;
 : RFB-SOME-RUN ( -- )

@@ -18,7 +18,6 @@ package BOOT-RELOCATION-E2E
 private
 
 $4000 constant IO-CAP
-30000 constant TIMEOUT-MS
 create ROOT PATH-CAP allot variable ROOT-U
 create TREE PATH-CAP allot variable TREE-U
 create PATH PATH-CAP allot variable PATH-U
@@ -62,14 +61,13 @@ variable RC
    a ROOT u BYTE-COPY u ROOT-U !
    ROOT$ s" tree" TREE FS:JOIN-PATH TREE-U !
    s" bin" PATH! PATH PATH-U @ FS:MAKE-DIRS
-   s" src/lib/c2-memory" PATH! PATH PATH-U @ FS:MAKE-DIRS
+   s" src/lib" PATH! PATH PATH-U @ FS:MAKE-DIRS
    s" src/core" PATH! PATH PATH-U @ FS:MAKE-DIRS
    TREE$ s" bin/hb" ENGINE FS:JOIN-PATH ENGINE-U !
    ENGINE-CANDIDATE:PATH$ ENGINE$ FS:COPY-FILE-STREAM
    ENGINE$ FS:CHMOD-X
    s" src/lib/error.f" COPY-SOURCE
    s" src/lib/c2-memory.f" COPY-SOURCE
-   s" src/lib/c2-memory/owner-runtime.f" COPY-SOURCE
    s" src/core/util.f" COPY-SOURCE
    s" src/lib/engine-id.f" COPY-SOURCE
    WRITE-ENTRY ;
@@ -85,7 +83,7 @@ variable RC
 : RUN-CHILD ( ptr u8 n -- ) {: exe:ptr exeu:n :}
    PROC-ENV-INHERIT-MISSING
    exe exeu >LEN ROOT$ >LEN
-   OUT IO-CAP >LEN ERR IO-CAP >LEN TIMEOUT-MS >MS
+   OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
    PCAP-RESULT:>N RC ! ERR-U ! OUT-U ! ;
 

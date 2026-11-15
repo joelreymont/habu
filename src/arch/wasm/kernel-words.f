@@ -4,15 +4,12 @@
 \ Wasm build loads this file ahead of the program (tools/hb-build-core.f).
 
 require src/arch/wasm/profile.f
-\ Tier 1 stages a call to NFETCH-CHECK:TAGS before a module fetches a tagged
-\ value (src/compiler/native/elaborate.f VALIDATE-FETCH).
-require src/compiler/native/fetch-check.f
 
 package WKWORDS
 private
 
-\ A real's bits: a rename HIR models (hir-word.f DECLARE-BOUND-CAST), where
-\ IEEE754:F64>BITS would be a call the map does not answer.
+\ A real's bits: a cast, where IEEE754:F64>BITS would be a call the map does
+\ not answer.
 CAST: F>BITS ( r -- n )
 CAST: ZERO>PTR ( n -- ptr n )
 CAST: >DATA ( n -- ptr n )
@@ -43,8 +40,6 @@ public
 
 : NIL ( -- ptr n ) 0 ZERO>PTR ;
 
-: PROJECT-FIELD ( ptr a n -- ptr a ) + ;
-
 \ src/core/bytes.f is below the rewind mark. Keep its forward-copy behavior,
 \ including a narrow overlap where written bytes become later source bytes.
 : COPY-LEN ( ptr u8 ptr u8 len -- ) {: src:ptr dst:ptr u:len :}
@@ -62,8 +57,10 @@ public
    repeat drop ;
 
 : COPY-BYTES ( ptr u8 ptr u8 n -- )
-   dup 0 < if s" byte: negative length" E-BYTE-RANGE die then
    >LEN COPY-LEN ;
+
+\ Wasm has no SHA-256 instructions, so no block is compressed here.
+: SHA-BLOCKS ( ptr n ptr u8 n -- n ) 2drop drop 0 ;
 
 \ The printers match the engine's (src/habu/rt.f G-PRINT9, G-PRINTU9; habu1.f
 \ BFDOT): the digits, then a newline. F-DOT prints the integer part of the
@@ -121,7 +118,6 @@ public
    {: a:n b:n :}
    a b > if a else b then ;
 
-\ A zero divisor throws E-DIV-ZERO from `mod`, as `/mod` throws it.
 : DIVREM ( n n -- n n )
    {: a:n b:n :}
    a b mod  a b / ;

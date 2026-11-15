@@ -1,4 +1,5 @@
 require src/lib/test.f
+require src/lib/test/subject.f
 require src/lib/fsm.f
 require src/lib/fmt.f
 require src/core/bytes.f
@@ -401,6 +402,25 @@ variable SRC-LEN
    5 VALID 2 T= ;
 
 
+\ A table word's undefined ACTION is placed at the ACTION's own line.
+: PLACED-ACTION ( -- )
+   s" include test/fixtures/fsm/undefined-action.f" 70
+   s" undefined-action.f:14" SUBJECT:REFUSED? TTRUE ;
+
+\ A wrong action is named as the table spells it, not as it was defined, at
+\ the action's own line.
+: PLACED-EFFECT ( -- )
+   s" include test/fixtures/fsm/wrong-effect.f" 70 SUBJECT:REJECTED
+   {: e:ptr eu:n exited:bool :}
+   exited TTRUE
+   e eu s" 'bump'" CONTAINS? TTRUE
+   e eu s" wrong-effect.f:15" CONTAINS? TTRUE ;
+
+\ An unknown states type is placed at the header's states token.
+: PLACED-STATES ( -- )
+   s" include test/fixtures/fsm/unknown-states.f" 70
+   s" unknown-states.f:11" SUBJECT:REFUSED? TTRUE ;
+
 \ The corrected twin loads; the checker rejects each faulty table at load, 70.
 : REJECTED ( -- )
    s" package FSM-GOOD-INPUT ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; using FSM DEFINE M ( n ) ph sig IN idle S go - >busy halt - >idle FINAL busy - ;DEFINE ;using ;package"
@@ -444,8 +464,68 @@ variable SRC-LEN
    TEST-EVAL:RC 70 T=
    13 VALID 2 T= ;
 
+\ Words of a package named as the engine words the machine's words run, each
+\ adding a million to the trace, change nothing: DEFINE builds its words from
+\ the engine words it found itself.
+: SHADOW-WORDS ( -- )
+   s"  public : dup ( a -- a a ) {: x :} 1000000 C +! x x ;" SRC+
+   s"  : swap ( a b -- b a ) {: x y :} 1000000 C +! y x ;" SRC+
+   s"  : drop ( a -- ) {: x :} 1000000 C +! ;" SRC+
+   s"  : rot ( a b c -- b c a ) {: x y z :} 1000000 C +! y z x ;" SRC+
+   s"  : over ( a b -- a b a ) {: x y :} 1000000 C +! x y x ;" SRC+
+   s"  : 2drop ( a b -- ) {: x y :} 1000000 C +! ;" SRC+
+   s"  : true ( -- bool ) 1000000 C +! 0 0= ;" SRC+
+   s"  : false ( -- bool ) 1000000 C +! 1 0= ; private" SRC+ ;
+
+\ An immediate of the package named as an engine word the machine's words
+\ call is not the word they call, so it rejects none of them.
+: IMMEDIATE-WORDS ( -- )
+   s"  : dup ( -- ) ; immediate" SRC+ ;
+
+
+\ The trace of a machine with `>state` and picker NEXTs, each with and
+\ without an ACTION, and FINAL rows with and without one; K 1 adds the
+\ shadowing words, K 2 the immediate ones.
+: SHADOW-TRACE ( n -- n )
+   {: k:n :}
+   0 SRC-LEN !
+   s" package FSM-SHADOW-" SRC+ k N+
+   s"  TYPED-VARIABLE C n ENUM ph idle busy done halted ;ENUM" SRC+
+   s"  ENUM sig go stop ;ENUM" SRC+
+   s"  : S ( ptr n -- sig ) @ 20 < if construct sig go else construct sig stop then ;" SRC+
+   s"  : PICK ( ptr n -- ph ) @ 20 < if construct ph busy else construct ph done then ;" SRC+
+   s"  : ADD1 ( ptr n -- ) 1 swap +! ; : ADD10 ( ptr n -- ) 10 swap +! ;" SRC+
+   s"  : ADD100 ( ptr n -- ) 100 swap +! ;" SRC+
+   k 1 = if SHADOW-WORDS then
+   k 2 = if IMMEDIATE-WORDS then
+   s"  using FSM DEFINE M ( ptr n ) ph sig" SRC+
+   s"  IN idle S go ADD1 >busy stop - >done" SRC+
+   s"  IN busy S go ADD10 PICK stop - PICK" SRC+
+   s"  FINAL done ADD100 FINAL halted - ;DEFINE ;using" SRC+
+   s"  : RUN1 ( n ph -- n ) {: v:n p :} v C ! C p M C @ ;" SRC+
+   s"  public : GO ( -- n ) 0 construct ph idle RUN1 50 construct ph idle RUN1 +" SRC+
+   s"  50 construct ph busy RUN1 + 7 construct ph halted RUN1 + ;" SRC+
+   s"  ;package FSM-SHADOW-" SRC+ k N+ s" :GO" SRC+
+   SRC$ TEST-EVAL:N ;
+
+
+: SHADOWED ( -- )
+   0 SHADOW-TRACE {: plain:n :}
+   plain 428 T=
+   1 SHADOW-TRACE plain T=
+   2 SHADOW-TRACE plain T= ;
+
+\ An ACTION a global and a used public both name is the load's
+\ E-USING-SHADOW-GLOBAL, and the next DEFINE runs.
+: USING-SHADOW ( -- )
+   s" : FSM-USING-ACT ( n -- ) drop ; package FSM-USING-PUB public : FSM-USING-ACT ( n -- ) drop ; ;package"
+   TEST-EVAL:RC 0 T=
+   s" package FSM-USING ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; using FSM-USING-PUB using FSM DEFINE M ( n ) ph sig IN idle S go FSM-USING-ACT >busy halt - >idle FINAL busy - ;DEFINE ;using ;using ;package"
+   TEST-EVAL:RC ENGINE-ERROR:USING-SHADOW-GLOBAL T=
+   14 VALID 2 T= ;
+
 \ The size table: STATES rows of INPUTS lines, each naming one long action, so
-\ each line word outgrows its line and the generated text the 1 MiB table.
+\ each line word outgrows its line and the table's source passes 1 MiB.
 200 constant STATES
 44 constant INPUTS
 $100000 constant MIB
@@ -501,6 +581,11 @@ public
    STEPS
    SYNTAX
    REJECTED
+   PLACED-ACTION
+   PLACED-EFFECT
+   PLACED-STATES
+   SHADOWED
+   USING-SHADOW
    SIZE
    SRC-RELEASE
    T-REPORT ;

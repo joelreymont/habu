@@ -13,7 +13,7 @@ blocks:
   - habu-read-each-def-f7ce769a
 ---
 
-Why: Joel, 2026-11-04 ("how Habu builds Habu", "one compiler"): an arm64 build is a cross-build whose product is data the build writes, and every machine runs one typed interpreter; the front end is shared and only code generation differs per architecture. What remains of the build and compiler work sits under this dot.
+Why: Joel, 2026-11-04 (docs/design.md "Machinery being replaced"): an arm64 build is a cross-build whose product is data the build writes, and every machine runs one typed interpreter; the front end is shared and only code generation differs per architecture. What remains of the build and compiler work sits under this dot.
 
 Order (each step lands as small green commits; a later step starts when the one before it lands; Joel, 2026-11-09: arm64 to arm64, then Wasm, then x86-64):
 1. The cross-build and the one linker (habu-make-a-file-dfc7e030), under habu-make-incremental-builds-41fd3214. Prerequisite: checker working state outside DATA (habu-take-checker-working-6703bc4f).
@@ -28,8 +28,9 @@ Other replacements, not ordered against this one: TRUSTED: and privacy (habu-del
 Acceptance cases (defects the replaced machinery shows):
 - A stripped or cross-built program names a baked error code and its own (ERROR:NAME$, ERROR:TEXT$). A stripped hb-build of a program that declares a code with ERROR:CODE and logs it and -9690 with LOG:CODE+ exits 0 and names its own code but prints -9690 (LINKER:E-FAILED, a row in hb's data) as the number alone; the same source under hb --load names both.
 - One 5-minute deadline bounds each engine build whole, and the build's own timeout names the step that ran out. Today tools/hb-build.f has no deadline of its own: tools/seed.f:17 and tools/chain-run.f:27 kill it from outside at 300000 ms, and the E-PROC-TIMEOUT that follows names no step.
-- Once no build stores into the running hb's global, namespace and types wordlist cells (src/habu/linker.f MOVE-IN :4714, RESTORE :5264), DATA-BANDS gains a row for each of BOOT:GLOBAL-WL-CELL, BOOT:NAMESPACE-WL-CELL and BOOT:TYPES-WL-CELL, a store from checked source into each exits 83, and test/seal.f holds a negative case per cell and the reproducer of /Users/joel/Work/reviews/habu-10x-2026-11-10/cases8/wlcell.
-- A read or write through a null the checker cannot see (': R ( ptr n -- n ) @ ;' then 'NULL-PTR R') stops with a catchable code, not a segmentation fault (/Users/joel/Work/reviews/habu-10x-2026-11-10/briefs8/reports/nullread-hunt.md item 4).
+- Once no build stores into the running hb's global, namespace and types wordlist cells (src/habu/linker.f MOVE-IN :5083, RESTORE :5685), DATA-BANDS gains a row for each of BOOT:GLOBAL-WL-CELL, BOOT:NAMESPACE-WL-CELL and BOOT:TYPES-WL-CELL, a store from checked source into each exits 83, and test/seal.f holds a negative case per cell and a store from checked source into CUR-CELL and WIDN-CELL (`data-base WIDN-CELL + @ data-base WIDN-CELL + !`; under the installed hb's --load this and the same store into BOOT:GLOBAL-WL-CELL run and the load exits 0).
+- A read or write through a null the checker cannot see (': R ( ptr n -- n ) @ ;' then 'NULL-PTR R') stops with a catchable code, not a segmentation fault.
+- A build never publishes a table it grows into the building hb's cells. Today src/lib/ffi-callback.f GROW (:98) and src/lib/task.f ROW-GROW (:862) store the new table at `data-base CB-XTS` and `data-base CB-ROWS`, the running hb's cells. src/habu/linker.f SAVE (:5065) and RESTORE (:5688) keep neither cell, so a build whose program grows either table while it loads (a CALLBACK: such as src/lib/pg.f:944) can leave hb's cells pointing into the build's dictionary.
 
 Rule (docs/design.md "Machinery being replaced"): no change extends or patches replaced machinery; a defect it shows becomes an acceptance case of the replacement here.
 Campaign only; do not dispatch.

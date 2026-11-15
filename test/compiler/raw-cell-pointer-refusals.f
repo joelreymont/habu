@@ -13,7 +13,7 @@ variable RCP-V
 create RCP-C 8 allot
 $1234 constant RCP-K
 create RCP-BYTES 256 allot
-TASK:#USER CELL TASK:+USER RCP-SLOT drop
+TASK:+USER RCP-SLOT n
 
 \ DECLARED code cells for the executable-value controls: TYPED-VARIABLE /
 \ TYPED-BUFFER over `[ in -- out ]` mints the quotation type at the storage
@@ -34,10 +34,10 @@ create DIAG-BUF 8192 allot
 8192 constant DIAG-CAP
 
 : ARM ( -- )   \ capture the next diagnostic as JSON instead of printing it
-   DIAG-BUF DIAG-CAP DIAG-BUFFER!  true DIAG-JSON! ;
+   DIAG-BUF DIAG-CAP REJECTION:BUFFER!  true REJECTION:JSON ! ;
 
 : DISARM ( -- )
-   false DIAG-JSON!  DIAG-BUFFER-OFF ;
+   false REJECTION:JSON !  REJECTION:BUFFER-OFF ;
 
 : CODE$ ( -- ptr u8 n )
    S\" \"code\":\"E-RAW-CELL-PTR\"" ;
@@ -63,10 +63,10 @@ create DIAG-BUF 8192 allot
    S\" \"repair_class\":\"fix_return_stack\"" ;
 
 : HAS? ( ptr u8 n -- )
-   DIAG-BUFFER$ 2swap CONTAINS? TTRUE ;
+   REJECTION:BUFFER$ 2swap CONTAINS? TTRUE ;
 
 : LACKS? ( ptr u8 n -- )
-   DIAG-BUFFER$ 2swap CONTAINS? TFALSE ;
+   REJECTION:BUFFER$ 2swap CONTAINS? TFALSE ;
 
 \ Each shape is refused with its own named diagnostic (the code and the prose
 \ naming what was laundered), not a bare mismatch.
@@ -231,8 +231,7 @@ create DIAG-BUF 8192 allot
 
 \ A `create`d byte buffer is the honest use of raw storage: the pointee binds to
 \ the scalar `u8` con.
-\ Controls: a `create`d byte buffer handed to `type` certifies; a TASK:+USER
-\ slot keeps its ordinary refusal.
+\ Control: a `create`d byte buffer handed to `type` certifies.
 : CASE-BYTE-BUFFER ( -- )
    s" a create'd byte buffer still certifies through type" T-LABEL
    [: s" : RCP-SHOW ( -- ) RCP-BYTES 4 type ;" evaluate-closed ;] 0 TTHROWSQ ;
@@ -287,10 +286,10 @@ create DIAG-BUF 8192 allot
    NAMED-EXEC
    DISARM ;
 
-\ A TASK:+USER slot publishes a concrete `-- ptr n`: its refusal is the ordinary
-\ one, without the raw-cell code.
+\ A TASK:+USER slot of n publishes `-- ptr n`: a fetch through the value it
+\ holds is refused, without the raw-cell code.
 : CASE-TASK-SLOT ( -- )
-   s" a TASK:+USER slot is refused as before, and not by the new rule" T-LABEL
+   s" a TASK:+USER slot's refusal is not the raw-cell one" T-LABEL
    ARM
    [: s" : RCP-SPEEK ( -- n ) RCP-SLOT @ @ ;" evaluate-closed ;] CHECK-RC TTHROWSQ
    CODE$ LACKS?  VALUE-REASON$ LACKS?

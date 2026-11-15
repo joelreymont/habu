@@ -156,9 +156,6 @@ private
 : OOB-READ-LOAN ( -- )
    1 MEM:BYTES-ALLOC-LEN [: OOB-READ-LOAN-BODY ;] C2-MEM:WITH-MUT ;
 
-: EMPTY-READ ( -- )
-   0 MEM:BYTES-ALLOC-LEN [: 0 C2-MEM:MUT-BYTE@ ;] C2-MEM:WITH-MUT drop ;
-
 : THROW-MUT-CHILD ( mut-view<p,l,a,u8> -- mut-view<p,l,a,u8> )
    -9367 throw ;
 
@@ -176,6 +173,19 @@ private
 
 : THROW-READ ( -- )
    1 MEM:BYTES-ALLOC-LEN [: THROW-READ-ROOT ;] C2-MEM:WITH-MUT ;
+
+false [if] \ off until dot habu-add-the-checks-a49d054d
+: EMPTY-READ ( -- )
+   0 MEM:BYTES-ALLOC-LEN [: 0 C2-MEM:MUT-BYTE@ ;] C2-MEM:WITH-MUT drop ;
+
+: EMPTY-RUN ( -- )
+   T-RESET
+   s" a zero-size owner is rejected before it can expose a view" T-LABEL
+   [: EMPTY-READ ;] E-MEM-SIZE TTHROWSQ
+   T-REPORT ;
+
+EMPTY-RUN
+[then]
 
 public
 
@@ -211,8 +221,6 @@ public
    [: OOB-MUT-LOAN ;] E-SPAN-RANGE TTHROWSQ
    s" a shared child read refuses a negative index" T-LABEL
    [: OOB-READ-LOAN ;] E-SPAN-RANGE TTHROWSQ
-   s" a zero-size owner is rejected before it can expose a view" T-LABEL
-   [: EMPTY-READ ;] E-MEM-SIZE TTHROWSQ
    s" an exclusive callback failure propagates through loan cleanup" T-LABEL
    [: THROW-MUT ;] -9367 TTHROWSQ
    s" a shared callback failure propagates through loan cleanup" T-LABEL

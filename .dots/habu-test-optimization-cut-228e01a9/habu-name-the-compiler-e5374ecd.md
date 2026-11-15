@@ -5,7 +5,7 @@ priority: 4
 issue-type: task
 created-at: "2026-10-03T16:39:51.771214+03:00"
 closed-at: "2026-11-04T11:48:50.345967+02:00"
-close-reason: "Census 2026-11-04: goes with habu-delete-tier-1-f5c44fb4, T0 compiling every target, tier 1 and the JIT kept only for experiments (DECISIONS \"editing tier 1\", \"the T0 release\"). src/compiler/native REPORT-FAILURE is tier 1; errors.f region-map half (-8520..-8599) stays as a small KEEP [i]"
+close-reason: "Census 2026-11-04: goes with habu-delete-tier-1-f5c44fb4, T0 compiling every target, tier 1 and the JIT kept only for experiments. src/compiler/native REPORT-FAILURE is tier 1; errors.f region-map half (-8520..-8599) stays as a small KEEP [i]"
 ---
 
 Found by lane 455 (e81287d4, c5fd9f2c): src/compiler/native REPORT-FAILURE prints 'ncomp: cannot compile ' with an empty name for a refusal raised before the tape name is kept (E-NFEED-CUT, and any feed refusal before the name), and src/lib/errors.f:519's compiler-region map lists -8520..-8599 as unassigned although -855x (A64RAV/HIR/A64IR/A64EMIT) and the native publication block -8560..-8579 are minted. Acceptance: the report names the definition (or says it has none yet) for every refusal path, seen failing first; the region map matches the minted codes; error-code-lint 0.

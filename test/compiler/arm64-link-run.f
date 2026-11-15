@@ -19,6 +19,7 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/le.f
 require src/lib/process-command.f
+require src/core/include.f
 require src/habu/layout.f
 require src/habu/xref.f
 require src/compiler/target/model.f
@@ -216,13 +217,16 @@ variable DEPTH-LR                    \ the scan's open loads
    u LOG-LR-RESERVE  u PATH-CAP + 8 + EDIT-LR-RESERVE
    p pu HEAD-LR  0 LOG-LR u  FS:READ-AT ;
 
+\ The inputs log records the tree's root, so it replays from there.
 : CHECK-LR ( -- )
-   s" the fresh inputs log holds" T-LABEL
-   0 LOG-LR LOG-LR-U @ HOLD-LR  RC-LR @ 0 T=  HELD-LR @ TTRUE
-   s" a top spelling one byte past PATH-CAP joined to its root does not hold, with no throw" T-LABEL
-   PAD-SPELLING-LR EDITED-LR
-   s" a resumed part with the path and stamp of the part before it does not hold" T-LABEL
-   SWAP-RESUMED-LR EDITED-LR ;
+   SOURCE-ROOT:CWD$ [:
+      s" the fresh inputs log holds" T-LABEL
+      0 LOG-LR LOG-LR-U @ HOLD-LR  RC-LR @ 0 T=  HELD-LR @ TTRUE
+      s" a top spelling one byte past PATH-CAP joined to its root does not hold, with no throw" T-LABEL
+      PAD-SPELLING-LR EDITED-LR
+      s" a resumed part with the path and stamp of the part before it does not hold" T-LABEL
+      SWAP-RESUMED-LR EDITED-LR
+   ;] SOURCE-ROOT:WITH ;
 
 : REPLAY ( -- )
    READ-LR

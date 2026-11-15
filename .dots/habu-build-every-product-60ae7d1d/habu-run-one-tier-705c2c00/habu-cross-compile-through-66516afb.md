@@ -10,7 +10,7 @@ blocks:
   - habu-move-t0-into-16d2feab
 ---
 
-Problem: the shadow/capture path needs the target machine's walk from the host's T0, and T0 compiles no shadow routine today. Joel 2026-11-02 (DECISIONS.md, Compiler and builds) approved the design: every pass seals unplaced, only the host pass places, before sealing; T0 keeps its own private SHADOW-TAKE; T0's five files become package COMP, the emitter seam's words named EMIT-*. Approved public changes: COMP:INSTALL replaces T0:INSTALL and every other public word of T0, T0-EMIT, T0-LABEL, T0-A64 and T0-X64 goes private; EMIT-PLACE and EMIT-SEAL are private COMP words. Any other public word needs Joel's approval through the interview.
+Problem: the shadow/capture path needs the target machine's walk from the host's T0, and T0 compiles no shadow routine today. Joel 2026-11-02 approved the design: every pass seals unplaced, only the host pass places, before sealing; T0 keeps its own private SHADOW-TAKE; T0's five files become package COMP, the emitter seam's words named EMIT-*. Approved public changes: COMP:INSTALL replaces T0:INSTALL and every other public word of T0, T0-EMIT, T0-LABEL, T0-A64 and T0-X64 goes private; EMIT-PLACE and EMIT-SEAL are private COMP words. Any other public word needs Joel's approval through the interview.
 
 Plan, one commit each (design at /tmp/jerry-big/t0dual-design.md):
 - C0 Move T0 into COMP: habu-move-t0-into-16d2feab.

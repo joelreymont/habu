@@ -6,6 +6,7 @@
 \ by the signal. Each case is its own child: its process's end is what it
 \ checks.
 require test/gate-common.f
+require src/lib/process.f
 
 package MEMORY-FAULT-TEST
 private
@@ -19,7 +20,7 @@ private
 
 : RUN-BUF ( -- )
    GE-HB-RESET
-   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN ;
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ PROCESS:WAIT-FOREVER MS>N GE-RUN-STDIN ;
 
 \ The child ended by the signal, not by an exit: crash.f EMIT-CRASH-HANDLER
 \ re-raises it after the dump. An exit of 128 + n is no signal death.
@@ -120,7 +121,6 @@ private
 \ unmapped first page when SUBJECT's breakpoint fires.
 : TRAP-FAULT ( -- )
    GE-SRC-RESET
-   s" 0 set-tier" GE-SRC-LINE
    s" require src/habu/debug.f" GE-SRC-LINE
    s" : SUBJECT ( n -- n ) 1 + ;" GE-SRC-LINE
    s" NULL-PTR BYTE-VIEW 16 + CELL-VIEW DEBUG:BPW+" GE-SRC-LINE

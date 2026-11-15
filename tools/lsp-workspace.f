@@ -1,7 +1,7 @@
 \ lsp-workspace.f - the workspace files whose loads reach a file, for the LSP
-\ server. Subjects are the .f files FS:WALK-FILES finds under the ROOT+ folders
-\ and the open documents. A node is a path and a root: a load resolves against
-\ the root that resolved its file (docs/forth-card.md section 7).
+\ server. Subjects are the .f files under the ROOT+ folders, outside repository
+\ and tool state, and the open documents. A node is a path and a root: a load
+\ resolves against the root that resolved its file (docs/forth-card.md section 7).
 \ PROCESS-GLOBAL: the roots and the request's graph belong to the server's one
 \ task; only the roots are kept between requests.
 
@@ -224,8 +224,14 @@ variable CUR-ROOT                        \ and the root being walked
    a u s" .f" ENDS-WITH? 0= if exit then
    a u SOURCE-ROOT:CANONICAL drop SUBJECT drop ;
 
+\ Repository and tool state is not workspace source.
+: WALKED? ( ptr u8 n -- bool )
+   FS:BASENAME {: a:ptr u:n :}
+   a u s" .jj" STR= a u s" .jj-ws.noindex" STR= or a u s" .git" STR= or
+   a u s" .out" STR= or a u s" .dots" STR= or 0= ;
+
 : WALK ( -- )
-   CUR-ROOT @ ROOT-PATH$ [: FOUND ;] FS:WALK-FILES ;
+   CUR-ROOT @ ROOT-PATH$ [: WALKED? ;] [: FOUND ;] FS:WALK-FILES-IF ;
 
 \ A walk that fails with an E-FS-* code refuses the request, naming R; any
 \ other throw propagates.

@@ -20,13 +20,20 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
    0 OUT OUT-U @ + LE:U64!
    8 OUT-U +! ;
 
-: SPAN+ ( ptr u8 n -- )
+: BYTES+ ( ptr u8 n -- )
    {: a:ptr u:n :}
-   u 7 + -8 and {: end:n :}
-   OUT-U @ end + OUT-RESERVE
+   OUT-U @ u + OUT-RESERVE
    a  0 OUT OUT-U @ +  u BYTE-COPY
-   end u ?do 0  0 OUT OUT-U @ + i + c! loop
-   end OUT-U +! ;
+   u OUT-U +! ;
+
+: BYTE+ ( n -- )
+   OUT-U @ 1 + OUT-RESERVE
+   0 OUT OUT-U @ + c!  1 OUT-U +! ;
+
+\ Zeros up to the next multiple of 8.
+: PAD+ ( -- ) begin OUT-U @ 7 and 0<> while 0 BYTE+ repeat ;
+
+: SPAN+ ( ptr u8 n -- ) BYTES+ PAD+ ;
 
 : NAME+ ( ptr u8 n -- ) dup U64+ SPAN+ ;
 
@@ -40,6 +47,15 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
    {: a:ptr u:n v:n :}
    a u NAME+  v U64+  ENTRY ;
 
+: IMPORTS+ ( n [ n -- ptr u8 n ] -- )
+   {: n:n name :}
+   OUT-U @ {: at:n :}
+   0 U64+
+   n 0 ?do i name execute BYTES+  0 BYTE+ loop
+   OUT-U @ at - 8 -  0 OUT at + LE:U64!
+   PAD+ ;
+
+
 : FLAG+ ( bool -- ) if 1 else 0 then U64+ ;
 
 : CHECK-ROW+ ( n -- )
@@ -47,7 +63,6 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
    row PRIM-SPEC:KIND@ U64+
    row PRIM-SPEC:TRUSTED-ONLY? FLAG+
    row PRIM-SPEC:FIXED-ABI? FLAG+
-   row PRIM-SPEC:C2-STOW-KIND U64+
    row PRIM-SPEC:NAME$ NAME+
    row PRIM-SPEC:PKG$ NAME+
    row PRIM-SPEC:CODE-LEN@ dup U64+

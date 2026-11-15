@@ -1,9 +1,9 @@
 // page.js - a host page's view of a mounted module, shared by host.js
-// (index.html) and app.js (app.html): both pages hold a canvas, a #tree, a
-// #text, a form's input and a #file picker under a #viewport. This file shows
-// the module's text, tree and SVG images, enables its field, and sends the
-// view the field's text and each file picked or dropped on the page. It
-// imports nothing, so app.html can load it from a blob: URL.
+// (index.html) and view.js (view.html): both pages hold a canvas under a
+// #viewport, a #tree, a #text and a form's input, and no file picker. This file
+// shows the module's text, tree and SVG images, enables its field, and sends
+// the view the field's text and each file dropped on the page. It imports
+// nothing, so view.js can import it from a blob: URL.
 //
 // SVG is shown through an img element, whose processing mode disables scripts,
 // interaction and external references; supplied markup is never inserted into
@@ -11,7 +11,6 @@
 
 export const canvas = document.querySelector("canvas");
 const field = document.querySelector("form input");
-const picker = document.querySelector("#file");
 const shown = document.querySelector("#text");
 const tree = document.querySelector("#tree");
 const frame = document.querySelector("#viewport");
@@ -30,30 +29,70 @@ export function enable(enabled) {
   field.disabled = !enabled;
 }
 
+// The nearest ancestor of el that scrolls its content, or null.
+const scroller = (el) => {
+  const scrolls = (o) => o === "auto" || o === "scroll";
+  for (let up = el.parentElement; up; up = up.parentElement) {
+    const { overflowX, overflowY } = getComputedStyle(up);
+    if ((scrolls(overflowY) && up.scrollHeight > up.clientHeight) ||
+        (scrolls(overflowX) && up.scrollWidth > up.clientWidth)) return up;
+  }
+  return null;
+};
+
+// How far a scroller's start edge moves so that a..b lies within its visible
+// lo..hi, keeping a in view when a..b is the longer: 0 when it lies within.
+const nearest = (a, b, lo, hi) => (a < lo ? a - lo : b > hi ? Math.min(b - hi, a - lo) : 0);
+
+// el scrolled into view within its scroller's visible area only, never the
+// page or the page that holds this one.
+const reveal = (el) => {
+  const box = scroller(el);
+  if (!box) return;
+  const r = el.getBoundingClientRect(), b = box.getBoundingClientRect();
+  const top = b.top + box.clientTop, left = b.left + box.clientLeft;
+  box.scrollTop += nearest(r.top, r.bottom, top, top + box.clientHeight);
+  box.scrollLeft += nearest(r.left, r.right, left, left + box.clientWidth);
+};
+
 // Native buttons remain keyboard reachable. A tree sent again with only its
 // selection changed keeps its buttons; a changed tree is rebuilt. A rebuild
 // keeps each row's expansion by key, a row the module sends again keeping its
-// key: a row open before stays open, and a new row starts open exactly when
-// its children have been sent. When focus was on a row's toggle or label, the
+// key: a row open before stays open, and a new row starts open as its open
+// member says, else exactly when its children have been sent. When focus was on a row's toggle or label, the
 // same control of the row with the same key has it after the rebuild, where
 // the row still has that control. A row whose more is true shows a toggle with
 // no children; opening it calls onControl(key, true), once per opening, and
 // the module answers with its children. A selection calls
-// onControl(key, false).
+// onControl(key, false). A pressed key that differs from the one pressed before
+// opens every ancestor of its row, kept open across rebuilds as any opened row
+// is, and scrolls the row's label into view within the tree's scroller, never
+// the page; the same pressed key sent again changes nothing, so an ancestor
+// closed since stays closed.
 export function sceneTree(onControl) {
   let snapshot = null;
   let selected = 0;
   let buttons = new Map(); // a row key -> its label button
   let toggles = new Map(); // a row key -> its toggle
+  let opens = new Map(); // a row key -> the function that opens or closes it
+  let parents = new Map(); // a built row's key -> its parent's key
   let expanded = new Map(); // a row key -> whether its children are shown
 
   const select = (key) => {
     buttons.get(selected)?.setAttribute("aria-pressed", "false");
+    const moved = key !== selected;
     selected = key;
-    buttons.get(key)?.setAttribute("aria-pressed", "true");
+    const button = buttons.get(key);
+    button?.setAttribute("aria-pressed", "true");
+    if (!moved || !button) return;
+    // Parents hold only rows built from the root, so this walk ends there.
+    for (let up = parents.get(key); up; up = parents.get(up))
+      opens.get(up)(true);
+    reveal(button);
   };
 
-  // The toggle of a row shown with branch, its children's list.
+  // The toggle of a row shown with branch, its children's list, and the
+  // function that opens or closes it.
   const toggle = (row, descendants, branch, open) => {
     const button = document.createElement("button");
     button.type = "button";
@@ -71,7 +110,7 @@ export function sceneTree(onControl) {
       if (!branch.hidden && row.more && !descendants.length)
         onControl(row.key, true);
     });
-    return button;
+    return [button, expand];
   };
 
   // The key of the row whose control in controls has focus, or undefined.
@@ -81,8 +120,8 @@ export function sceneTree(onControl) {
   };
 
   return (rows, key) => {
-    const next = JSON.stringify(rows.map(({ key, parent, label, more }) =>
-      [key, parent, label, more === true]));
+    const next = JSON.stringify(rows.map(({ key, parent, label, more, open }) =>
+      [key, parent, label, more === true, open ?? null]));
     if (next !== snapshot) {
       const children = new Map([[0, []]]);
       for (const row of rows) {
@@ -95,6 +134,8 @@ export function sceneTree(onControl) {
       expanded = new Map();
       const nextButtons = new Map();
       const nextToggles = new Map();
+      const nextOpens = new Map();
+      const nextParents = new Map();
       const build = (parent) => {
         const list = document.createElement("ul");
         for (const row of children.get(parent)) {
@@ -102,11 +143,13 @@ export function sceneTree(onControl) {
           const line = document.createElement("div");
           line.className = "tree-row";
           const descendants = children.get(row.key);
+          nextParents.set(row.key, parent);
           if (descendants.length || row.more) {
             const branch = build(row.key);
-            const open = known.get(row.key) ?? descendants.length > 0;
-            const button = toggle(row, descendants, branch, open);
+            const open = known.get(row.key) ?? row.open ?? descendants.length > 0;
+            const [button, expand] = toggle(row, descendants, branch, open);
             nextToggles.set(row.key, button);
+            nextOpens.set(row.key, expand);
             line.append(button);
             item.append(line, branch);
           } else {
@@ -128,6 +171,8 @@ export function sceneTree(onControl) {
       tree.replaceChildren(build(0));
       buttons = nextButtons;
       toggles = nextToggles;
+      opens = nextOpens;
+      parents = nextParents;
       snapshot = next;
       (label === undefined ? toggles.get(opener) : buttons.get(label))?.focus();
     }
@@ -142,7 +187,6 @@ function clearImage() {
   const old = image;
   image = null;
   old.remove();
-  URL.revokeObjectURL(old.src);
 }
 
 export function svg(bytes) {
@@ -154,7 +198,9 @@ export function svg(bytes) {
     if (image === next) fail(new Error("SVG image could not be decoded"));
   };
   image = next;
-  next.src = URL.createObjectURL(new Blob([bytes], { type: "image/svg+xml" }));
+  // A data: URL, the one image source beyond 'self' that an MCP Apps host's
+  // img-src grants (ext-apps 2026-01-26, Security); blob: images are refused.
+  next.src = `data:image/svg+xml;base64,${bytes.toBase64()}`;
   frame.append(next);
 }
 
@@ -170,10 +216,6 @@ export function listen(view) {
     const text = field.value;
     field.value = "";
     view.post({ kind: "typed", text });
-  });
-  picker.addEventListener("change", () => {
-    for (const file of picker.files) view.file(file);
-    picker.value = "";
   });
   document.addEventListener("dragover", (e) => e.preventDefault());
   document.addEventListener("drop", (e) => {

@@ -7,6 +7,8 @@ require src/habu/verify-source.f
 require test/replay-scope.f
 require test/decl-diag-capture.f   \ DECL-DIAG: the check tool's own declaration-packet capture
 require src/lib/test.f
+require src/lib/vector.f
+require src/lib/heap.f
 
 \ Capture every reject's declaration diagnostic from the start; the last
 \ section asserts the rendered lines.
@@ -170,7 +172,7 @@ public
 
 \ Reject diagnostics. STRUCTURE renders through render.f's TDECL-DIAG, the
 \ legacy definers' producer; the assertions read the bytes captured through
-\ DIAG-BUFFER! / DIAG-BUFFER$, the pair tools/check-all-errors-core.f
+\ REJECTION:BUFFER! / REJECTION:BUFFER$, the pair tools/check-all-errors-core.f
 \ CA-DIAG-FULL-START and CA-DIAG-FINISH use. This proves the channel, not a check-tool run. Each case
 \ asserts the whole rendered line.
 
@@ -207,6 +209,11 @@ DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" STRUCTURE-DECL:SD-RUN sdgdrv DERIVE nosuch ;STRUCTURE" TEST-EVAL:RC 7119 T=
 s" habu: bad structure declaration 'sdgdrv': unknown derive feature at 'nosuch'"
+DECL-DIAG:HAS? TTRUE
+
+DECL-DIAG:PROSE
+s" STRUCTURE-DECL:SD-RUN sdgtag DERIVE tag FIELD a n ;STRUCTURE" TEST-EVAL:RC 7119 T=
+s" habu: bad structure declaration 'sdgtag': derive tag requires an enum at 'tag'"
 DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
@@ -267,6 +274,29 @@ s" SDSPX ( ptr sdsplist<n> -- ptr sdsplist<f> ) SDSPLIST:NEXT @" CHECK-QUIET-CAN
 STRUCTURE sdsplistn<a> DERIVE addr FIELD v a FIELD next ptr sdsplistn<n> ;STRUCTURE
 s" SDSNG ( ptr sdsplistn<a> -- ptr sdsplistn<n> ) SDSPLISTN:NEXT @" CHECK-QUIET-CANDIDATE! -1 T=
 s" SDSNC ( ptr sdsplistn<n> -- ptr sdsplistn<n> ) SDSPLISTN:NEXT @" CHECK-QUIET-CANDIDATE! -1 T=
+
+\ An addr family's parameter takes a record through its words and generic ones.
+package SDVEC
+public
+STRUCTURE sdvbox<t> OPAQUE DERIVE addr FIELD k n FIELD j n ;STRUCTURE
+ENUM sdvshade
+   VARIANT dark FIELD k n ;VARIANT
+   VARIANT light FIELD k n ;VARIANT
+;ENUM
+TYPED-VARIABLE SDV-BOX sdvbox<sdvshade>
+: SDV-K ( ptr sdvbox<sdvshade> -- ptr n ) SDVBOX-K ;
+: SDV-CNT ( ptr sdvbox<t> -- n ) SDVBOX-K @ ;
+: SDV-SHADE-CNT ( ptr sdvbox<sdvshade> -- n ) SDV-CNT ;
+: SDV-PICK ( ptr VEC:vector<sdvshade> n -- ptr sdvshade ) VEC:AT ;
+: SDV-STRIDE? ( ptr VEC:vector<sdvshade> -- bool )
+   {: v:ptr :}
+   v 1 SDV-PICK v 0 SDV-PICK -  [type] sdvshade width>n = ;
+: SDV-RUN ( -- n bool )
+   7 SDV-BOX SDV-K !  SDV-BOX SDV-SHADE-CNT
+   HEAP:ALLOCATOR 2 [type] sdvshade VEC:NEW {: v:ptr :}
+   v SDV-STRIDE?  v VEC:DELETE ;
+;package
+SDVEC:SDV-RUN TTRUE 7 T=
 
 \ The declaring package's own `*` does not reach its structure's AT: another
 \ package reads element 2 of three through it.
@@ -505,9 +535,9 @@ s" STRUCTURE sdlbox FIELD t SDLIN:tok FIELD k n ;STRUCTURE" TEST-EVAL:RC 0 T=
 \ depth 2: a field naming that linear family.
 TYPE-FIELD:COUNT B !
 s" STRUCTURE sdlouter FIELD inner sdlbox FIELD z n ;STRUCTURE" TEST-EVAL:RC 0 T=
-B @ TYPE-FIELD:NAME$ s" inner" CORE-STR= TTRUE
-B @ TYPE-FIELD:CELLS@ 2 T=                            \ the field is the whole bundle, not one cell
-B @ 1 + TYPE-FIELD:SLOT@ 2 T=                         \ z sits after it
+B @ TFAM:PF-NAME$ s" inner" CORE-STR= TTRUE
+B @ TYPE-FIELD:BYTES@ 2 cells T=                      \ the field is the whole bundle, not one cell
+B @ 1 + TFAM:PF-BYTE-OFF@ 2 cells T=                  \ z sits after it
 
 \ depth 3: the walk recurses again rather than stopping one level down.
 s" STRUCTURE sdldeep FIELD d sdlouter ;STRUCTURE" TEST-EVAL:RC 0 T=
@@ -626,11 +656,10 @@ DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
 \ 15. DERIVE addr: one accessor per field plus AT / BYTES / CELLS, in the
-\     family's spelling and wordlist, generated at commit because an accessor is
-\     armed with a committed field id (src/core/structure-decl.f). The words are
-\     checked text over `field-project` and `record-at`; the checker derives
-\     family, offset, extent, role and schema from the field id, so the declared
-\     output type is judged.
+\     family's spelling and wordlist, generated at commit because an accessor
+\     takes a committed field id (src/core/structure-decl.f). The checker
+\     derives each accessor's family, offset, extent, role and schema from the
+\     field id, so the declared output type is judged.
 DECL-DIAG:PROSE                                       \ this section rejects too: keep the output clean
 STRUCTURE sdaddr
    DERIVE addr
@@ -815,14 +844,56 @@ TYPE-FIELD:COUNT PFB @ T=
 s" STRUCTURE sdaroll DERIVE addr FIELD z n ;STRUCTURE" TEST-EVAL:RC 0 T=
 s" SDAR1 ( ptr sdaroll -- ptr n ) SDAROLL:Z" CHECK-QUIET-CANDIDATE! -1 T=
 
-\ An accessor's text calls `field-project` unqualified, so a package's own is
-\ refused at its definition (70, `E-RESERVED-DEFINITION habu: ... reserved word
-\ cannot be a definition name: field-project` on fd 2) and no accessor can bind it.
-package SDAFP
-variable V
-s" : field-project ( a n -- ptr n ) drop drop V ;" TEST-EVAL:RC 70 T=
-s" field-project" get-current search-wl 0= TTRUE      \ the definition did not take
+\ A package's own `*`, RECORD-AT, `+` or `swap`, defined before a STRUCTURE with
+\ DERIVE addr, captures none of the words it makes: each reads its own field
+\ and AT element. Each is undefined before the storage, whose definer spells it.
+package SDACAPM
+: * ( n n -- n ) + ;
+STRUCTURE cp DERIVE addr FIELD a n FIELD b n ;STRUCTURE
+undefine *
+2 TYPED-BUFFER CB cp
+public
+: GO ( -- n n n n )
+   11 0 CB CP-A !  22 0 CB CP-B !  33 1 CB CP-A !  44 1 CB CP-B !
+   0 CB 1 CP-AT CP-B @  0 CB CP-A @  CP-BYTES  CP-CELLS ;
 ;package
+SDACAPM:GO 2 T= 16 T= 11 T= 44 T=
+
+package SDACAPR
+8 constant RECORD-AT
+STRUCTURE cp DERIVE addr FIELD a n FIELD b n ;STRUCTURE
+undefine RECORD-AT
+2 TYPED-BUFFER CB cp
+public
+: GO ( -- n n n n )
+   11 0 CB CP-A !  22 0 CB CP-B !  33 1 CB CP-A !  44 1 CB CP-B !
+   0 CB 1 CP-AT CP-B @  0 CB CP-A @  CP-BYTES  CP-CELLS ;
+;package
+SDACAPR:GO 2 T= 16 T= 11 T= 44 T=
+
+package SDACAPP
+: + ( n n -- n ) - ;
+STRUCTURE cp DERIVE addr FIELD a n FIELD b n ;STRUCTURE
+undefine +
+2 TYPED-BUFFER CB cp
+public
+: GO ( -- n n n n )
+   11 0 CB CP-A !  22 0 CB CP-B !  33 1 CB CP-A !  44 1 CB CP-B !
+   0 CB 1 CP-AT CP-B @  0 CB CP-A @  CP-BYTES  CP-CELLS ;
+;package
+SDACAPP:GO 2 T= 16 T= 11 T= 44 T=
+
+package SDACAPS
+: swap ( n n -- n n ) ;
+STRUCTURE cp DERIVE addr FIELD a n FIELD b n ;STRUCTURE
+undefine swap
+2 TYPED-BUFFER CB cp
+public
+: GO ( -- n n n n )
+   11 0 CB CP-A !  22 0 CB CP-B !  33 1 CB CP-A !  44 1 CB CP-B !
+   0 CB 1 CP-AT CP-B @  0 CB CP-A @  CP-BYTES  CP-CELLS ;
+;package
+SDACAPS:GO 2 T= 16 T= 11 T= 44 T=
 
 \ 16. OPAQUE is refused after a field, twice, on a fieldless family, in an ENUM and
 \     outside a package; each reject keeps the field rows at their mark and renders.

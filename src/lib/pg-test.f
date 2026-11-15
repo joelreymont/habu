@@ -40,7 +40,6 @@ using PG
 64 constant RESULTS
 
 CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
-10000000000 constant PROGRESS-NS
 
 0 constant TAG-OK
 1 constant TAG-ROWS
@@ -94,7 +93,7 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
 \ Port 1 is refused before any protocol runs, so the arm carries libpq's own
 \ message and no connection is left behind.
 : PORT-REFUSED$ ( -- ptr u8 n )
-   s" host=127.0.0.1 port=1 dbname=none user=none connect_timeout=2" CONNECT
+   s" host=127.0.0.1 port=1 dbname=none user=none" CONNECT
    MATCH PG:connect-result
       connected OF PG:CLOSE s" " ENDOF
       refused OF ENDOF
@@ -139,7 +138,7 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
    pu 0 > TTRUE
    pa pu ENDS-LF? TFALSE
    s" an attempt on a closed port is refused by AWAIT" T-LABEL
-   s" host=127.0.0.1 port=1 dbname=none user=none connect_timeout=2" AWAIT-REFUSED ;
+   s" host=127.0.0.1 port=1 dbname=none user=none" AWAIT-REFUSED ;
 
 
 \ The cluster refuses a missing database after the protocol starts, so the
@@ -249,45 +248,37 @@ TYPED-VARIABLE HELD-ID n
    fresh PG:CLOSE ;
 
 
-\ A wait past its PROGRESS-NS deadline is no assertion result.
-: CHECK-PROGRESS ( n -- )
-   {: deadline:n :}
-   mono-ns deadline > if s" pg-test CHECK-PROGRESS" TEST-WAIT:EXPIRED then
-   TASK:PAUSE ;
-
 \ PROGRESS-CASES's one task advances both connections, so no progress call
 \ there may wait: a waiting call would keep that task from releasing the lock.
-: AWAIT-READY ( fd n n -- ) {: socket:fd events:n deadline:n :}
+: AWAIT-READY ( fd n -- ) {: socket:fd events:n :}
    begin
       socket events READY? if exit then
-      deadline CHECK-PROGRESS
+      TASK:PAUSE
    again ;
 
 : POLL-CONNECTED ( PG:connection -- PG:connection ) {: c :}
-   mono-ns PROGRESS-NS + {: deadline:n :}
    begin
       c PG:POLL MATCH PG:progress
-         waiting OF deadline AWAIT-READY ENDOF
+         waiting OF AWAIT-READY ENDOF
          connected OF exit ENDOF
          refused OF 2drop E-CONNECT throw ENDOF
          completed OF CLEAR E-CONNECT throw ENDOF
       ;MATCH
-      deadline CHECK-PROGRESS
+      TASK:PAUSE
    again ;
 
 : OPEN-POLL ( -- PG:connection )
    CONNINFO$ CONNECT-START POLL-CONNECTED ;
 
 : RESULT-POLL ( PG:connection -- PG:result ) {: c :}
-   mono-ns PROGRESS-NS + {: deadline:n :}
    begin
       c PG:POLL MATCH PG:progress
-         waiting OF deadline AWAIT-READY ENDOF
+         waiting OF AWAIT-READY ENDOF
          completed OF exit ENDOF
          connected OF drop E-EXEC throw ENDOF
          refused OF 2drop E-EXEC throw ENDOF
       ;MATCH
-      deadline CHECK-PROGRESS
+      TASK:PAUSE
    again ;
 
 : POLL-EXEC ( PG:connection ptr u8 n -- PG:result ) {: c a:ptr u:n :}
@@ -301,7 +292,6 @@ TYPED-VARIABLE HELD-ID n
    OPEN-POLL {: holder :}
    OPEN-POLL {: waiter :}
    holder s" select pg_advisory_lock(987654)" POLL-EXEC CLEAR
-   waiter s" set statement_timeout = '10s'" POLL-EXEC CLEAR
    waiter s" select pg_advisory_lock(987654)" SEND
    waiter PG:POLL MATCH PG:progress
       waiting OF 2drop true ENDOF
@@ -1438,7 +1428,7 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    0 TASK:RETURN ;
 
 : EXIT-REFUSED ( -- )
-   s" host=127.0.0.1 port=1 dbname=none user=none connect_timeout=2"
+   s" host=127.0.0.1 port=1 dbname=none user=none"
    CONNECT-START 0 EXIT-CONN !
    0 EXIT-CONN @ PG:AWAIT MATCH PG:progress
       refused OF 2drop ENDOF
@@ -1482,37 +1472,8 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
       err OF throw ENDOF
    ;MATCH ;
 
-\ Returns once the exit worker has sent its query, or has ended without sending
-\ it: a worker that threw is no deadline, and its code reaches CANCEL-CASES's
-\ join.
 : AWAIT-STARTED ( -- )
-   mono-ns PROGRESS-NS + {: deadline:n :}
-   begin
-      EXIT-STARTED atomic@ 0= EXIT-WORKER TASK:DONE? 0= and while
-      deadline CHECK-PROGRESS
-   repeat ;
-
-\ A worker that has not sent its query when AWAIT-STARTED passes its deadline
-\ may be waiting in PG:AWAIT with an AIO record in flight, and MAIN's AIO:STOP
-\ would meet that record and throw E-AIO-BUSY. So the worker is halted and
-\ joined before the deadline leaves, as the normal path halts it: its scrub
-\ cancels the record and EXIT-CLEAN closes the connection. The halt's own
-\ answer, E-TASK-NO-RESULT, is no assertion, since the deadline came first. Any
-\ other code the join carries, from the body or EXIT-CLEAN, is named on one
-\ line, and the deadline goes on.
-: STARTED-OR-HALT ( -- )
-   [: AWAIT-STARTED ;] catch {: code:n :}
-   code 0= if exit then
-   EXIT-WORKER TASK:HALT
-   EXIT-WORKER TASK:JOIN MATCH result
-      ok OF drop ENDOF
-      err OF
-         dup E-TASK-NO-RESULT = if drop else
-            s" pg-test EXIT-HALT: the halted worker threw " type FMT:.INT cr
-         then
-      ENDOF
-   ;MATCH
-   code throw ;
+   EXIT-STARTED 1 EXIT-WORKER TEST-WAIT:FOR-CELL ;
 
 : EXIT-CASES ( -- )
    ['] EXIT-CLEAN EXIT-WORKER TASK:AT-EXIT
@@ -1536,15 +1497,13 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
 
 : AWAIT-LOCK ( PG:connection n -- )
    {: c pid:n :}
-   mono-ns PROGRESS-NS + {: deadline:n :}
-   begin c pid LOCKED? 0= while deadline CHECK-PROGRESS repeat ;
+   begin c pid LOCKED? 0= while TASK:PAUSE repeat ;
 
 : AWAIT-GONE ( PG:connection n -- )
    {: c pid:n :}
-   mono-ns PROGRESS-NS + {: deadline:n :}
    begin
       c pid s" select count(*) from pg_stat_activity where pid=$1" BACKEND-COUNT 0 >
-   while deadline CHECK-PROGRESS repeat ;
+   while TASK:PAUSE repeat ;
 
 : BACKEND ( PG:connection -- n )
    s" select pg_backend_pid()" [: 0 >ROW 0 >COL INT swap ;] WITH-RESULT ;
@@ -1564,7 +1523,7 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    c peer-pid AWAIT-LOCK
    0 EXIT-STARTED !
    ['] EXIT-HALT EXIT-WORKER TASK:ACTIVATE
-   STARTED-OR-HALT
+   AWAIT-STARTED
    c EXIT-BACKEND atomic@ AWAIT-LOCK
    EXIT-WORKER TASK:HALT
    EXIT-WORKER TASK:JOIN MATCH result
@@ -1604,7 +1563,7 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    0 EXIT-STARTED !
    0 EXIT-RELEASE !
    ['] EXIT-THROW EXIT-WORKER TASK:ACTIVATE
-   STARTED-OR-HALT
+   AWAIT-STARTED
    c EXIT-BACKEND atomic@ AWAIT-LOCK
    1 EXIT-RELEASE atomic!
    EXIT-WORKER TASK:JOIN MATCH result
@@ -1658,7 +1617,6 @@ TASK:MIN-STACK TASK:TASK SILENT-WORKER
 \ A queued connection is libpq's socket, so the attempt holds its slot and its
 \ next PAUSE is its AIO wait. A worker that ended first leaves its code to the join.
 : AWAIT-QUEUED ( TCP4:listener -- ) {: lis :}
-   mono-ns PROGRESS-NS + {: deadline:n :}
    begin
       SILENT-WORKER TASK:DONE? if exit then
       lis TCP4:PENDING? MATCH TCP4:ready-result
@@ -1666,12 +1624,11 @@ TASK:MIN-STACK TASK:TASK SILENT-WORKER
          idle OF ENDOF
          failed OF TCP4:ERRNO>N drop E-EXEC throw ENDOF
       ;MATCH
-      deadline CHECK-PROGRESS
+      TASK:PAUSE
    again ;
 
 : AWAIT-SILENT-DONE ( -- )
-   mono-ns PROGRESS-NS + {: deadline:n :}
-   begin SILENT-WORKER TASK:DONE? 0= while deadline CHECK-PROGRESS repeat ;
+   begin SILENT-WORKER TASK:DONE? 0= while TASK:PAUSE repeat ;
 
 \ A halt observed at PAUSE stores no result, so the join answers
 \ E-TASK-NO-RESULT. The last OPEN needs the slot the halted attempt held.
@@ -1703,7 +1660,6 @@ TASK:MIN-STACK TASK:TASK SILENT-WORKER
    $43 PEER-BYTES STARTUP-LEN + c! ;
 
 : ACCEPT-PEER ( TCP4:listener -- TCP4:connection ) {: lis :}
-   mono-ns PROGRESS-NS + {: deadline:n :}
    begin
       lis TCP4:PENDING? MATCH TCP4:ready-result
          ready OF true ENDOF
@@ -1711,7 +1667,7 @@ TASK:MIN-STACK TASK:TASK SILENT-WORKER
          failed OF TCP4:ERRNO>N drop E-EXEC throw ENDOF
       ;MATCH
    0= while
-      deadline CHECK-PROGRESS
+      TASK:PAUSE
    repeat
    lis TCP4:ACCEPT MATCH TCP4:accept-result
       accepted OF TCP4:PORT>N drop TCP4:ADDRESS>N drop ENDOF
@@ -1765,16 +1721,15 @@ TASK:MIN-STACK TASK:TASK SILENT-WORKER
    fresh PG:CLOSE ;
 
 
-\ A lost connection or a halt cuts a NOTIFY-MS wait short, a notification a
-\ FOREVER-MS one past WAIT-MAX; PROMPT-MS bounds how long each takes.
-10000 constant NOTIFY-MS
+\ NOTIFIED?'s largest wait, past WAIT-MAX: a lost connection, a halt or a
+\ notification cuts it short, and PROMPT-MS bounds how long each takes.
 MEM-MAX-N constant FOREVER-MS
 
 : NOTIFY-NOW ( PG:connection -- PG:connection )
    dup 0 >MS NOTIFIED? drop ;
 
 : NOTIFY-LONG ( PG:connection -- PG:connection )
-   dup NOTIFY-MS >MS NOTIFIED? drop ;
+   dup FOREVER-MS >MS NOTIFIED? drop ;
 
 : NOTIFY-NEGATIVE ( PG:connection -- PG:connection )
    dup -1 >MS NOTIFIED? drop ;
@@ -1787,14 +1742,14 @@ MEM-MAX-N constant FOREVER-MS
    c body catch {: stale code:n :}
    code want T= ;
 
-\ Returns once the backend has exited and closed its socket (the timeout form);
-\ a backend still running after PROGRESS-NS is an expired wait.
+\ pg_terminate_backend's own wait has no unbounded timeout, so the backend's
+\ exit is awaited in pg_stat_activity.
 : TERMINATE ( PG:connection n -- )
    {: c pid:n :}
-   c PARAMS c pid INT+ c PROGRESS-NS PROCESS:NS-PER-MS / INT+
-   c s" select pg_terminate_backend($1, $2)"
-   [: OUTCOME-TAG TAG-ROWS T= 0 >ROW 0 >COL TEXT$ s" t" STR= 0=
-      if s" pg-test TERMINATE" TEST-WAIT:EXPIRED then ;] WITH-RESULT ;
+   c PARAMS c pid INT+
+   c s" select pg_terminate_backend($1)"
+   [: OUTCOME-TAG TAG-ROWS T= 0 >ROW 0 >COL TEXT$ s" t" T$= ;] WITH-RESULT
+   c pid AWAIT-GONE ;
 
 
 \ The worker waits on its own connection, which its cleanup closes. It answers
@@ -1810,7 +1765,7 @@ TASK:MIN-STACK TASK:TASK NOTE-WORKER
    OPEN dup 0 NOTE-CONN !
    dup s" listen pqtnote" EXEC-OK
    1 NOTE-STARTED atomic!
-   NOTIFY-MS >MS NOTIFIED? drop
+   FOREVER-MS >MS NOTIFIED? drop
    0 TASK:RETURN ;
 
 
@@ -1819,11 +1774,7 @@ TASK:MIN-STACK TASK:TASK NOTE-WORKER
    0 NOTE-STARTED !
    ['] NOTE-CLEAN NOTE-WORKER TASK:AT-EXIT
    ['] NOTE-WAIT NOTE-WORKER TASK:ACTIVATE
-   mono-ns PROGRESS-NS + {: deadline:n :}
-   begin
-      NOTE-STARTED atomic@ 0= NOTE-WORKER TASK:DONE? 0= and while
-      deadline CHECK-PROGRESS
-   repeat
+   NOTE-STARTED 1 NOTE-WORKER TEST-WAIT:FOR-CELL
    mono-ns {: halted:n :}
    NOTE-WORKER TASK:HALT
    NOTE-WORKER TASK:JOIN MATCH result
@@ -1929,12 +1880,13 @@ variable PATH-U
    s" a notification ENDED? reads stays for NOTIFIED?" T-LABEL
    a s" listen pqtended" EXEC-OK
    b s" notify pqtended" EXEC-OK
-   socket AIO:READABLE mono-ns PROGRESS-NS + AWAIT-READY
+   socket AIO:READABLE AWAIT-READY
    a ENDED? TFALSE
    a 0 >MS NOTIFIED? TTRUE
    s" a connection the server ended has ended and is closed" T-LABEL
    b a BACKEND TERMINATE
-   a ENDED? TTRUE
+   \ The backend leaves pg_stat_activity before its socket closes.
+   begin a ENDED? 0= while TASK:PAUSE repeat
    a PG:LIVE? TFALSE
    b PG:CLOSE ;
 
@@ -2093,32 +2045,12 @@ variable WARN-LINES
    REUSE-CASES ;
 
 
-\ The loop's stop with a deadline pending. The exit worker has been halted and
-\ its records cancelled, but on Linux a cancel completes through the loop, so
-\ the stop retries E-AIO-BUSY, its "not yet". A stop still busy after
-\ PROGRESS-NS is this wait's own deadline, named and thrown as a timeout. Any
-\ other code is named on one line and LATE-STOP returns: the pending deadline
-\ stays the case's result.
-: LATE-STOP ( -- )
-   mono-ns PROGRESS-NS + {: deadline:n :}
-   begin
-      [: AIO:STOP ;] catch {: code:n :}
-      code 0= if exit then
-      code E-AIO-BUSY <> if
-         s" pg-test LATE-STOP: AIO:STOP threw " type code FMT:.INT cr exit
-      then
-      mono-ns deadline > if s" pg-test LATE-STOP" TEST-WAIT:EXPIRED then
-      TASK:PAUSE
-   again ;
-
 : LOOP-CASES ( -- )
    CONNECT-CASES REFUSAL-TEXT-CASES SOCKET-REFUSAL-CASES MALFORMED-CASES
    CONNECT-TEXT-CASES CAPACITY-CASES IDENTITY-CASES
    HALT-CONNECT-CASES REFUSED-SEND-CASES AIO-FAIL-CASES SERVER-CASES ;
 
-\ A code from AIO:STOP replaces the cases' code, except a deadline's: with a
-\ deadline pending, LATE-STOP stops the loop or names why it could not, and the
-\ deadline goes on.
+\ AIO:STOP runs whatever the cases threw; a code it throws replaces theirs.
 : MAIN ( -- )
    SCRIPT-ARGC 1 <> if
       s" pg-test: no conninfo argument; test/db/pg-cluster.f runs this file" 2 die
@@ -2128,22 +2060,11 @@ variable WARN-LINES
    RESULT-CAPACITY-CASES
    AIO:START
    [: LOOP-CASES ;] catch {: code:n :}
-   code E-PROC-TIMEOUT = if LATE-STOP E-PROC-TIMEOUT throw then
    AIO:STOP
    code 0<> if code throw then ;
 
-\ The case engine's entry. A throw code does not cross the process boundary:
-\ an uncaught one exits UNCAUGHT-RC (67), as a failure does. So a progress wait
-\ past its deadline, which CHECK-PROGRESS has named on stdout, ends the engine
-\ with PROCESS:TIMEOUT-RC (124), the case engine's timeout outcome. Every
-\ other code is rethrown.
-: RUN ( -- )
-   ['] MAIN catch {: code:n :}
-   code E-PROC-TIMEOUT = if s" " PROCESS:TIMEOUT-RC die then
-   code 0<> if code throw then ;
-
 T-RESET
-RUN
+MAIN
 T-REPORT
 
 ;using

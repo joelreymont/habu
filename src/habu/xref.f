@@ -6,7 +6,6 @@
 \ `0 set-check` span, so the engine build checks it. tools/check.f refuses it
 \ alone: it defines `undefine` (E-RESERVED-DEFINITION) and every engine already
 \ holds its words (E-DUPLICATE-DEFINITION).
-require src/habu/native-observer-cells.f
 
 \ The cold prefix loads CODE-SPAN and DOES-CLAUSE before XREF.
 
@@ -55,7 +54,6 @@ CAST: N>U8 ( n -- ptr u8 )
 public
 : REC ( n -- ptr n ) XREF-REC-ADDR N>REC ;
 : PTR@ ( ptr n n -- ptr u8 ) XREF-CELL@ N>U8 ;
-: INDEXED-WL ( ptr u8 n n -- ptr n ) xref-wl-newest ;
 ;package
 
 : XREF-REC ( n -- ptr n ) XREF:REC ;
@@ -99,6 +97,13 @@ public
 
 : XREF-PKG-PRIVATE ( ptr n -- n )
    XREF-LEN-SLOT XREF-CELL@ ;
+
+\ The private wid of the package the string names, 0 for no such package or
+\ no private section.
+: XREF-PRIVATE-WL ( ptr u8 n -- n )
+   BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: rec:ptr :}
+   rec NULL-PTR = if 0 exit then
+   rec XREF-PKG-PRIVATE ;
 
 package XREF
 public
@@ -144,15 +149,6 @@ public
 : XREF-EXT? ( ptr n -- bool )
    XREF-FLAGS DNAME-EXT and 0= 0= ;
 
-\ DNAME-WIDE: the record's stack effect
-\ carries a wider-than-cell layout value, so interpret dispatch and interpret '
-\ fail closed before such a bundle lands on the untyped interpret stack, where
-\ scalar dup/drop/swap would corrupt it. Marked by the engine prim `wide-mark`
-\ (habu1.f BWIDEMARK, which stores through the region alias because a record's
-\ own address is read-only); monotonic, no unmark.
-: XREF-WIDE? ( ptr n -- bool )
-   XREF-FLAGS DNAME-WIDE and 0= 0= ;
-
 : XREF-INLINE-NAME ( ptr n -- ptr u8 )
    $18 XREF-REC+ XREF-A>U8 ;
 
@@ -178,12 +174,6 @@ PTR-VARIABLE XREF-FN
 variable XREF-FU
 variable XREF-IDX
 variable XREF-NV
-
-: XREF-SNAPSHOT-PREPARE ( -- )
-   NULL-PTR XREF-A !  NULL-PTR XREF-B !  0 XREF-U !  0 XREF-V !
-   NULL-PTR XREF-SN !  0 XREF-SU !
-   NULL-PTR XREF-FN !  0 XREF-FU !
-   0 XREF-IDX !  0 XREF-NV ! ;
 
 : XREF-A@ ( -- ptr u8 )
    XREF-A @ ;
@@ -299,11 +289,10 @@ INSTALL
 ;package
 
 : XREF-FIND-WL ( ptr u8 n n -- ptr n ) {: a:ptr u:n wid:n :}
-   \ Native unit publication may add duplicate real-WID rows, so the indexed
-   \ probe must take the newest match. RETIRED rows may still be indexed under
-   \ the wordlist they left; that WID retains the descending scan.
+   \ A retired row stays indexed under the wordlist it left, so WL:RETIRED takes
+   \ the descending scan.
    wid 0 >= wid BOOT:NAMESPACE-WL = or if
-      a u wid XREF:INDEXED-WL exit
+      a u wid CHECKER-RESOLVE:WL-PROBE exit
    then
    u XREF-FU !  a XREF-FN!
    ndict@ 1-
@@ -405,23 +394,17 @@ $7FFFFFFFFFFFFFFF constant COUNT-MAX
    split 0 < IF s" xref: generated declaration is not qualified" 76 die THEN
    XREF-SN@ split BOOT:NAMESPACE-WL XREF-FIND-WL XREF-FOUND? ;
 
-\ One wordlist's record for a name, from the dictionary's hash index (habu1.f
-\ WLFIND), the index the definer's own duplicate wall asks. xref-search-wl's
-\ row is this package's own (src/habu/prims.f), as INTERPRETER's is for
-\ interpreter.f WL-PROBE.
-: WL-RECORD ( ptr u8 n n -- ptr n ) xref-search-wl ;
-
-\ The record a generated name would meet in the scope it will LAND in: a
-\ qualified name in the public wordlist its namespace row carries, a bare one in
-\ the current wordlist. XREF-FIND-TARGET-INDEX answers the same question by
+\ The record a generated name would meet in the scope it will LAND in, from the
+\ hash index the definer's own duplicate wall asks: a qualified name in the
+\ public wordlist its namespace row carries, a bare one in the current wordlist. XREF-FIND-TARGET-INDEX answers the same question by
 \ walking every record, which a declaration asked once per generated word.
 : TARGET-RECORD ( ptr u8 n -- ptr n ) {: a:ptr u:n :}
    a u XREF-QUAL-INDEX {: q:n :}
    q -2 = IF XREF-NULL EXIT THEN
-   q 0 < IF a u get-current WL-RECORD EXIT THEN
-   a q BOOT:NAMESPACE-WL WL-RECORD {: ns:ptr :}
+   q 0 < IF a u get-current CHECKER-RESOLVE:WL-PROBE EXIT THEN
+   a q BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: ns:ptr :}
    ns XREF-FOUND? 0= IF XREF-NULL EXIT THEN
-   a q 1+ ZPTR+  u q - 1-  ns XREF-PKG-PUBLIC WL-RECORD ;
+   a q 1+ ZPTR+  u q - 1-  ns XREF-PKG-PUBLIC CHECKER-RESOLVE:WL-PROBE ;
 
 \ A generated declaration is qualified exactly when it reserves a constructor
 \ namespace; a private family's bare words (TF-CTOR-PRIV$) allocate no wordlist.
@@ -477,12 +460,6 @@ CAST: GRID-RETIRE-XT ( n -- [ ptr n -- ] )
 : GRID-RETIRE-OWNER ( ptr n ptr u8 -- )
    {: rec:ptr owner:ptr :}
    owner NULL-PTR = IF EXIT THEN
-   owner CHECKER-OWNER-ABI:HEADER-BYTES - CELL-VIEW @
-      CHECKER-OWNER-ABI:MAGIC <> IF
-      s" xref: invalid checker owner" 76 die
-   THEN
-   owner CELL - CELL-VIEW @
-      CHECKER-OWNER-ABI:GRID-RETIRE-OFF CELL + < IF EXIT THEN
    owner CHECKER-OWNER-ABI:GRID-RETIRE-OFF + CELL-VIEW @ {: action:n :}
    action 0 <> IF rec action GRID-RETIRE-XT execute THEN ;
 
@@ -518,21 +495,35 @@ private
    rec XREF-WORDLIST BOOT:NAMESPACE-WL =
    rec XREF-PKG-PUBLIC wid =  rec XREF-PKG-PRIVATE wid =  or  and ;
 
+\ Whether rec is named and enters at xt.
+: NAMED-AT? ( ptr n n -- bool ) {: rec:ptr xt:n :}
+   rec XREF-START xt =  rec XREF-NAME-LEN 0 >  and ;
+
 public
-\ Whether wid is the public or private wordlist of a live package whose record
-\ is SEALED?. namespace-record and namespace-private mint a package's wids from
-\ WIDN-CELL, which counts up from FIRST-DYNAMIC-WID, so a lower wid is no
-\ package's and answers without walking the dictionary. A build's global and
-\ types wordlists are dynamic too (linker.f MOVE-IN), and interpreter.f
-\ PKG-WID-SEALED? answers those before it asks here.
-: WID-SEALED? ( n -- bool ) {: wid:n :}
-   wid FIRST-DYNAMIC-WID < if XREF-FALSE exit then
+\ The oldest named record entering at xt, -1 for none: an alias shares its
+\ source's entry, and a stripped private original has no name.
+: ENTRY-REC ( n -- n )
+   {: xt:n :}
+   ndict@ 0 ?do
+      i XREF-REC xt NAMED-AT? if i unloop exit then
+   loop
+   -1 ;
+
+\ The live namespace row whose public or private wordlist is wid. Package
+\ wids count up from FIRST-DYNAMIC-WID, so a lower wid answers at once.
+: NS-ROW ( n -- ptr n bool ) {: wid:n :}
+   wid FIRST-DYNAMIC-WID < if XREF-NULL XREF-FALSE exit then
    ndict@ 1-
    begin dup 0 >= while
-      dup XREF-REC wid NS-WID? if XREF-REC SEALED? exit then
+      dup XREF-REC wid NS-WID? if XREF-REC XREF-TRUE exit then
       1-
    repeat drop
-   XREF-FALSE ;
+   XREF-NULL XREF-FALSE ;
+
+\ Whether wid is the public or private wordlist of a live package whose record
+\ is SEALED?.
+: WID-SEALED? ( n -- bool )
+   NS-ROW if SEALED? else drop XREF-FALSE then ;
 
 ;package
 
@@ -552,7 +543,6 @@ public
 \ one slot above the definer, in its wordlist, under its name with `;does`
 \ added, and starting inside its body. Record k+1 is k's clause when it is all
 \ four; the body test is what tells the clause from a word someone named X;does.
-\ aot-capture.f ACAP-DOES-COMPANION? asks the same of a captured record.
 : XREF-DOES-COMPANION? ( n -- bool ) {: k:n :}
    k 1+ ndict@ >= if XREF-FALSE exit then
    k XREF-REC {: parent:ptr :}
@@ -674,14 +664,6 @@ package CODE-RECLAIM
 
 private
 
-CAST: INVALIDATE-XT ( n -- [ n -- ] )
-
-: INVALIDATE ( n -- )
-   {: floor:n :}
-   data-base NATIVE-OBS-CELLS:INVALIDATE + @ dup 0= if drop exit then
-   INVALIDATE-XT {: q :}
-   floor q execute ;
-
 \ The raw engine primitive edits relocation metadata. Its CODE-RECLAIM row
 \ (src/habu/prims.f) admits this checked word, which TRUNCATE calls with its
 \ proved [start,start+len) span; no other checked caller reaches it.
@@ -744,14 +726,6 @@ CAST: INVALIDATE-XT ( n -- [ n -- ] )
 
 public
 
-7230 constant E-INSTALL
-
-\ A source library installs its single code owner while compilation is idle.
-\ The fixed CODE cell is declared at cold boot and relocates in saved images.
-: INVALIDATE! ( [ n -- ] -- )
-   data-base PEND-CELL + @ 0= 0= if E-INSTALL throw then
-   data-base NATIVE-OBS-CELLS:INVALIDATE + xt! ;
-
 \ A floor above the free code slot: there is nothing above the slot to reclaim,
 \ and the request would move the pointer the other way. Refused by name; public
 \ because a caller can reach it.
@@ -781,7 +755,6 @@ public
    {: floor:n :}
    floor cp@ > if E-FLOOR throw then
    floor ndict@ LIVE-SCAN <= if E-LIVE throw then
-   floor INVALIDATE
    floor cp@ over - CLEAR-MAPS
    floor cp! ;
 

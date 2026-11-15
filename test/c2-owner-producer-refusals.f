@@ -1,7 +1,7 @@
 \ Checker and package boundaries of the append-only producer.
 require src/lib/test.f
 require src/lib/test/subject.f
-require src/lib/c2-owner.f
+require src/lib/c2-memory.f
 
 package C2-OWNER-PRODUCER-REFUSALS
 private
@@ -36,20 +36,20 @@ EXPORT REPLACE-R-CALLBACK
 : RUN ( -- )
    T-RESET
    s" a failed append caught directly cannot restore its consumed owner" T-LABEL
-   s" -1 JSON-DIAGS ! : C2OP-CATCH ( C2-MEM:owner<p,i,a> -- C2-MEM:owner<p,i,a> ) [: C2-OWNER-PRODUCER-REFUSALS:FAIL-APPEND ;] catch drop 17 MEM:BYTES-ALLOC-LEN C2-MEM:ALLOC C2-MEM:PUBLISH drop ;"
+   s" -1 REJECTION:JSON ! : C2OP-CATCH ( C2-MEM:owner<p,i,a> -- C2-MEM:owner<p,i,a> ) [: C2-OWNER-PRODUCER-REFUSALS:FAIL-APPEND ;] catch drop 17 MEM:BYTES-ALLOC-LEN C2-MEM:ALLOC C2-MEM:PUBLISH drop ;"
    70 s\" \"code\":\"E-STALE-READ\"" SUBJECT:REFUSED? TTRUE
    s" a wrapper cannot hide the failed append's consumed owner" T-LABEL
-   s" -1 JSON-DIAGS ! : C2OP-WRAP-CATCH ( C2-MEM:owner<p,i,a> -- C2-MEM:owner<p,i,a> ) [: C2-OWNER-PRODUCER-REFUSALS:FAIL-WRAPPER ;] catch drop 17 MEM:BYTES-ALLOC-LEN C2-MEM:ALLOC C2-MEM:PUBLISH drop ;"
+   s" -1 REJECTION:JSON ! : C2OP-WRAP-CATCH ( C2-MEM:owner<p,i,a> -- C2-MEM:owner<p,i,a> ) [: C2-OWNER-PRODUCER-REFUSALS:FAIL-WRAPPER ;] catch drop 17 MEM:BYTES-ALLOC-LEN C2-MEM:ALLOC C2-MEM:PUBLISH drop ;"
    70 s\" \"code\":\"E-STALE-READ\"" SUBJECT:REFUSED? TTRUE
    s" a throw before consuming an owner leaves the owner usable" T-LABEL
    s" : C2OP-EARLY-CATCH ( C2-MEM:owner<p,i,a> -- C2-MEM:owner<p,i,a> ) [: C2-OWNER-PRODUCER-REFUSALS:EARLY-THROW ;] catch drop 17 MEM:BYTES-ALLOC-LEN C2-MEM:ALLOC C2-MEM:PUBLISH drop ;" 0 SUBJECT:EXITED? TTRUE
    s" a trusted callee that throws leaves its owner stale" T-LABEL
-   s" -1 JSON-DIAGS ! : C2OP-TRUSTED-OWNER-CATCH ( C2-MEM:owner<p,i,a> -- C2-MEM:owner<p,i,a> ) [: C2-OWNER-PRODUCER-REFUSALS:TRUSTED-THROW-OWNER ;] catch drop 17 MEM:BYTES-ALLOC-LEN C2-MEM:ALLOC C2-MEM:PUBLISH drop ;"
+   s" -1 REJECTION:JSON ! : C2OP-TRUSTED-OWNER-CATCH ( C2-MEM:owner<p,i,a> -- C2-MEM:owner<p,i,a> ) [: C2-OWNER-PRODUCER-REFUSALS:TRUSTED-THROW-OWNER ;] catch drop 17 MEM:BYTES-ALLOC-LEN C2-MEM:ALLOC C2-MEM:PUBLISH drop ;"
    70 s\" \"code\":\"E-STALE-READ\"" SUBJECT:REFUSED? TTRUE
    s" an early throw keeps an owner parked on the return stack usable" T-LABEL
    s" : C2OP-EARLY-R-OWNER-CATCH ( C2-MEM:owner<p,i,a> -- C2-MEM:owner<p,i,a> ) >r [: -9363 throw ;] catch drop r> 17 MEM:BYTES-ALLOC-LEN C2-MEM:ALLOC C2-MEM:PUBLISH drop ;" 0 SUBJECT:EXITED? TTRUE
    s" a trusted callee that throws leaves its read view stale" T-LABEL
-   s" -1 JSON-DIAGS ! : C2OP-TRUSTED-VIEW-CATCH ( read-view<p,q,u8> -- u8 read-view<p,q,u8> ) [: C2-OWNER-PRODUCER-REFUSALS:TRUSTED-THROW-VIEW ;] catch drop 0 C2-MEM:BYTE@ ;"
+   s" -1 REJECTION:JSON ! : C2OP-TRUSTED-VIEW-CATCH ( read-view<p,q,u8> -- u8 read-view<p,q,u8> ) [: C2-OWNER-PRODUCER-REFUSALS:TRUSTED-THROW-VIEW ;] catch drop 0 C2-MEM:BYTE@ ;"
    70 s\" \"code\":\"E-STALE-READ\"" SUBJECT:REFUSED? TTRUE
    s" a throw cannot restore a scoped callback it replaced on its return stack" T-LABEL
    s" : C2OP-R-CALLBACK-CATCH ( read-view<p,q,u8> [ read-view<p,q,u8> -- read-view<p,q,u8> ] -- read-view<p,q,u8> ) [: C2-OWNER-PRODUCER-REFUSALS:REPLACE-R-CALLBACK ;] catch drop execute ;" 70 SUBJECT:EXITED? TTRUE

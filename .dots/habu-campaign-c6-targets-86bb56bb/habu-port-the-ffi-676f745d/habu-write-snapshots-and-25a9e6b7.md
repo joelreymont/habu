@@ -5,7 +5,7 @@ priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.817662+03:00"
 closed-at: "2026-11-04T11:48:50.207571+02:00"
-close-reason: "Census 2026-11-04: goes with habu-make-a-file-dfc7e030, the cross-build whose product is data (DECISIONS \"how Habu builds Habu\"). SNAP:PERSIST memory images and snap-rebase/SNAP-RELOC relocation (habu2.f) plus link-x64.f; product-as-data cross-build replaces both (\"how Habu builds Habu\")."
+close-reason: "Census 2026-11-04: goes with habu-make-a-file-dfc7e030, the cross-build whose product is data (docs/design.md \"Machinery being replaced\"). SNAP:PERSIST memory images and snap-rebase/SNAP-RELOC relocation (habu2.f) plus link-x64.f; product-as-data cross-build replaces both."
 blocks:
   - habu-resolve-x86-entry-cb671d4d
   - habu-run-bin-hb-6378f297

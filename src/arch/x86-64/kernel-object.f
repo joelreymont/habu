@@ -4,6 +4,7 @@ require src/habu/kernel-format.f
 require src/habu/primitive-registry.f
 require src/habu/kernel-x64.f
 require src/arch/x86-64/boot.f
+require src/os/linux/elf.f
 
 package KERNEL-OBJECT
 private
@@ -53,7 +54,6 @@ DYNAMIC-BUFFER NAME-OFF n
 : EMIT ( bool -- )
    {: engine:bool :}
    X64CODE:OPEN ENGINE-PRIMS:RESET
-   engine ENGINE-PRIMS:SEEDED!
    8 0 ?do X64CODE:LBL i TAIL L! loop
    X64CODE:LBL COUNT-L L! X64CODE:LBL DICT-L L!
    engine 0 TAIL@ 1 TAIL@ 4 TAIL@ 5 TAIL@
@@ -168,7 +168,10 @@ DYNAMIC-BUFFER NAME-OFF n
    0 OUT-U ! s" HBKERNX6" SPAN+ 4 0 ?do 0 U64+ loop
    CODE+ LABELS+ REFS+
    0 U64+ 0 U64+                 \ no data spans or pending ARM fixups
-   PRIMS+ SCOPES+ engine SYMBOLS+ engine PRESETS+ CHECK-ROWS+
+   PRIMS+ SCOPES+ engine SYMBOLS+ engine PRESETS+
+   0 U64+                      \ no Mach-O imports
+   ELF:IMPORTS ['] ELF:IMPORT$ IMPORTS+
+   CHECK-ROWS+
    SUM 0 OUT OUT-U @ sink execute ;
 
 : RELEASE ( -- ) OUT-RELEASE NAME-OFF-RELEASE X64CODE:CLOSE ;

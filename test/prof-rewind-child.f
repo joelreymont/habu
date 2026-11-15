@@ -31,7 +31,6 @@ VERIFY-HIDDEN
 
 \ Ordinary trimming must name pending samples before the dictionary rows go.
 \ Otherwise the next report loses the only owner of these deferred PCs.
-1 set-tier
 0 prof-on
 : PROF-LATE-TRIM ( -- ) 100000000 0 ?do i drop loop ;
 PROF-LATE-TRIM

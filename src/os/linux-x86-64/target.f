@@ -1,4 +1,4 @@
-\ linux-x86-64 runtime/build-script target flag.
+\ linux-x86-64 runtime/build-script target flag and the OS's path capacity.
 
 : HB-TARGET-LINUX? ( -- bool )
    0 0= 0= ;
@@ -17,3 +17,6 @@
 
 : HB-TARGET$ ( -- ptr u8 n )
    s" linux-x86-64" ;
+
+\ The OS's PATH_MAX (linux/limits.h, 4096) less its NUL.
+4095 constant PATH-CAP

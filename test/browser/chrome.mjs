@@ -3,9 +3,16 @@ import { readFileSync } from "node:fs";
 
 // A detached Chrome leads its own process group. Chrome's crash dumps go to the
 // user's own Crashpad folder unless --breakpad-dump-location names another.
+// On Linux Chrome's WebGPU runs on Vulkan: without SwiftShader's Vulkan as its
+// adapter, Chrome finds no shared image backing for a WebGPU swap chain and the
+// canvas stays black.
+const linuxGpu = process.platform === "linux"
+  ? ["--enable-features=Vulkan,WebGPU", "--use-vulkan=swiftshader", "--use-webgpu-adapter=swiftshader"]
+  : [];
+
 export function launch(chrome, profile, log) {
   return Bun.spawn([chrome, "--headless=new", "--no-first-run", "--no-default-browser-check",
-    "--enable-unsafe-webgpu", "--use-angle=swiftshader", "--disable-gpu-sandbox",
+    "--enable-unsafe-webgpu", "--use-angle=swiftshader", "--disable-gpu-sandbox", ...linuxGpu,
     "--disable-updater-scheduler", `--breakpad-dump-location=${profile}`, "--remote-debugging-port=0",
     `--user-data-dir=${profile}`, "about:blank"],
     { detached: true, stdout: "ignore", stderr: Bun.file(log) });

@@ -1,5 +1,8 @@
 // A foreign Wasm/browser peer, not a Habu build driver. The checked display.f
 // fixture drives the production turn protocol, CLI and (with --chrome) DOM.
+// With --chrome the page is served under an MCP Apps host's image policy,
+// img-src 'self' data:, so its SVG renders only from a data: URL; that SVG
+// must run no script, fetch no external reference and follow no link.
 import assert from "node:assert/strict";
 import { readFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -76,7 +79,8 @@ assert.equal(memory(), before, "turns that throw must free their deliveries");
 const scene = join(output, "scene.bin");
 writeFileSync(scene, Uint8Array.of(0, 255, 16));
 const cli = Bun.spawn([process.execPath, "src/lib/browser/host-cli.mjs", file, "--typed", "on", "--typed", "zero",
-  "--typed", "draw", "--typed", "unmesh", "--typed", "ground", "--typed", "ground-none", "--load", scene,
+  "--typed", "draw", "--typed", "unmesh", "--typed", "seam", "--typed", "ground", "--typed", "ground-none",
+  "--load", scene,
   "--focus", "00".repeat(15) + "Ff",
   "--highlight", ""], { stdout: "pipe", stderr: "pipe" });
 const [stdout, stderr, code] = await Promise.all([
@@ -85,13 +89,16 @@ const [stdout, stderr, code] = await Promise.all([
 writeFileSync(join(output, "cli.txt"), stdout);
 assert.equal(code, 0, stderr);
 assert.equal(stdout, `hello\ninput 0\nsvg ${original.length} ${Buffer.from(original).toString("hex")}\ninput 1\ndraw 0\n` +
-  "mesh 1 6 2\nmesh 2 3 1\nmesh 3 3 1\nhighlight 2 0200000004000000\n" +
+  "mesh 1 6 2 0 0 0\nmesh 2 3 1 0 0 0\nmesh 3 3 1 0 0 0\nhighlight 2 0200000004000000\n" +
   "draw 5 1/1/0/0/ff7314/0/32768 2/2/0/0/30a040/65535/16384 " +
   "1/3/1/-/ffffff/0/0 1/4/0/-/2060c0/0/65535 3/5/0/-/30a040/0/0\n" +
   "draw 1 2/2/0/0/30a040/65535/16384\nunmesh 1\n" +
-  "draw 1 2/2/0/0/30a040/65535/16384\nground 0 0 1 0\nground none\n" +
+  "draw 1 2/2/0/0/30a040/65535/16384\n" +
+  "mesh 4 4 2 100000 200000 300000\nmesh 5 4 2 139000 190000 299000\n" +
+  "draw 2 4/8/0/-/ff7314/0/32768 5/9/0/-/ff7314/0/32768\nground 0 0 1 0\nground none\n" +
   `text load 00ff10\ntext focus ${"00".repeat(15)}ff\ntext highlight \n`);
-console.log("SVG/input protocol, independent copy, rejected records, identities, refused delivery and CLI passed");
+console.log("SVG/input protocol, independent copy, rejected records, identities, refused delivery, " +
+  "mesh origins and CLI passed");
 
 if (chrome) await browser();
 
@@ -109,17 +116,15 @@ async function browser() {
     if (path === "/module.wasm") return new Response(bytes, { headers: { "Content-Type": "application/wasm" } });
     if (path === "/") {
       const page = readFileSync(join(root, "index.html"), "utf8").replace('src="host.js"', 'src="peer-boot.js"');
-      return new Response(page, { headers: { "Content-Type": "text/html" } });
+      // An MCP Apps host's image policy: an SVG shown from any other source,
+      // a blob: URL included, is blocked and fails the SVG cases.
+      return new Response(page, { headers: { "Content-Type": "text/html",
+        "Content-Security-Policy": "img-src 'self' data:" } });
     }
     if (path === "/peer-boot.js") return new Response(`
       import { Module } from '/turn.js';
       const load = Module.load;
       Module.load = async (...args) => window.subject = await load.call(Module, ...args);
-      const create = URL.createObjectURL;
-      const revoke = URL.revokeObjectURL;
-      window.created = []; window.revoked = [];
-      URL.createObjectURL = (blob) => { const url = create.call(URL, blob); created.push([url, blob.type]); return url; };
-      URL.revokeObjectURL = (url) => { revoked.push(url); revoke.call(URL, url); };
       await import('/host.js');
     `, { headers: { "Content-Type": "text/javascript" } });
     if (path === "/mount") return new Response(
@@ -190,7 +195,7 @@ async function browser() {
       return { disabled: document.querySelector('input').disabled, canvas: [r.width, r.height, canvas.width, canvas.height],
         visible: getComputedStyle(canvas).visibility, image: image?.src, natural: image && [image.naturalWidth, image.naturalHeight],
         fit: image && getComputedStyle(image).objectFit, text: document.querySelector('#text').textContent,
-        error: document.querySelector('#text').className, created, revoked, script: window.svgScript ?? 0 };
+        error: document.querySelector('#text').className, script: window.svgScript ?? 0 };
     })()`);
     // The screenshot's RGB at each clip-space [x, y] of the canvas, as the
     // page decodes it.
@@ -225,7 +230,6 @@ async function browser() {
     assert.deepEqual(start.natural, [400, 100]);
     assert.equal(start.visible, "hidden");
     assert.equal(start.fit, "contain");
-    assert.equal(start.created[0][1], "image/svg+xml");
     assert.equal(start.script, 0);
     const pixel = await evaluate(`(() => { const c = document.createElement('canvas'); c.width=400; c.height=100;
       const ctx=c.getContext('2d'); ctx.drawImage(document.querySelector('img'),0,0);
@@ -236,7 +240,6 @@ async function browser() {
     await until(() => evaluate("document.querySelector('img')?.naturalHeight === 400"));
     const blue = await state();
     assert.deepEqual(blue.canvas, start.canvas, "SVG replacement must retain canvas layout and buffer size");
-    assert.deepEqual(blue.revoked, [start.image]);
     const portrait = await call("Page.captureScreenshot", { format: "png" });
     writeFileSync(join(output, "portrait.png"), Buffer.from(portrait.data, "base64"));
     await evaluate("oldError?.call(oldImage, new Event('error')); oldLoad?.call(oldImage, new Event('load'))");
@@ -380,6 +383,7 @@ async function browser() {
       `after a draw of 0 rows both boxes pass, got ${open}`);
     console.log(`Headless Chrome occlude after 0 rows: ${open}`);
     await shadowed();
+    await seamed();
     await evaluate("oldError?.call(oldImage,new Event('error'))");
     assert.equal((await state()).error, "");
     await command("broken");
@@ -391,8 +395,6 @@ async function browser() {
     assert.equal((await state()).script, 0);
     assert.equal(requests.includes("/svg-external"), false, "SVG image must not fetch external references");
     assert.equal(requests.includes("/svg-link"), false, "SVG image must not navigate links");
-    const final = await state();
-    assert.deepEqual(final.revoked, final.created.slice(0, -1).map(([url]) => url), "every replaced image URL must be revoked");
     await command("text");
     const shot = await call("Page.captureScreenshot", { format: "png" });
     writeFileSync(join(output, "display.png"), Buffer.from(shot.data, "base64"));
@@ -425,8 +427,8 @@ async function browser() {
           triangles.set([0, 1, 2, 0, 2, 3].map((k) => 4 * f + k), 6 * f);
         }
         vertices.set([-1, -1, -1, 0, 0, 0], 6 * 24); // grid 65535 as u16s
-        subject.host.mesh(100, 24, 12, new Uint16Array(vertices.buffer, 0, 6 * 24), triangles);
-        subject.host.mesh(101, 25, 12, new Uint16Array(vertices.buffer), triangles);
+        subject.host.mesh(100, 24, 12, [0, 0, 0], new Uint16Array(vertices.buffer, 0, 6 * 24), triangles);
+        subject.host.mesh(101, 25, 12, [0, 0, 0], new Uint16Array(vertices.buffer), triangles);
         window.box = (m, handle = 100, k = 1) => {
           const row = new DataView(new ArrayBuffer(72));
           [1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, -0.5, 0].forEach((v, j) =>
@@ -519,7 +521,41 @@ async function browser() {
         `from below ${under}, no ground ${none}`);
     }
 
+    // display.f's seam: meshes 4 and 5, one orange plane split along a shared
+    // edge, reach its grid positions by different origins. Under the rotated
+    // transform the plane's colour is uniform (one normal, an orthographic
+    // matrix), so every canvas pixel along the edge, from 10% to 90% of it,
+    // has that colour: a gap would blend in the white background. The edge's
+    // grid y is +-20000 about the transform's centre, so its ends are
+    // +-20000 2^-15 times R's y column (0.48, 0.6, 0.64), x and y by the
+    // matrix's 0.6. The plane's colour is read 6 pixels to each side.
+    async function seamed() {
+      await command("seam");
+      const [, , width, height] = (await state()).canvas;
+      const half = 0.6 * 20000 / 32768, end = [0.48 * half, 0.6 * half];
+      const along = [end[0] * width / 2, -end[1] * height / 2];
+      const length = Math.hypot(...along);
+      const off = [-along[1] / length * 12 / width, -along[0] / length * 12 / height];
+      const n = Math.ceil(0.8 * length);
+      const edge = Array.from({ length: n + 1 }, (_, k) => -0.8 + 1.6 * k / n)
+        .map((t) => [t * end[0], t * end[1]]);
+      const sides = edge.flatMap(([x, y]) => [[x + off[0], y + off[1]], [x - off[0], y - off[1]]]);
+      const seen = await pixels([...edge, ...sides]);
+      const [line, beside] = [seen.slice(0, edge.length), seen.slice(edge.length)];
+      const plane = beside[0];
+      const near = (a, b) => a.every((v, k) => Math.abs(v - b[k]) <= 2);
+      assert.ok(plane[0] > plane[1] && plane[1] > plane[2],
+        `the plane beside the edge is orange, got ${plane}`);
+      beside.forEach((c, k) => assert.ok(near(c, plane),
+        `the plane ${k & 1 ? "after" : "before"} the edge at sample ${k >> 1} is ${plane}, got ${c}`));
+      line.forEach((c, k) => assert.ok(near(c, plane),
+        `the shared edge's pixel ${k} of ${n + 1} is the plane's ${plane}, got ${c}`));
+      console.log(`Headless Chrome seam: ${n + 1} pixels along the edge of meshes with ` +
+        `different origins, each the plane's ${plane}`);
+    }
+
     // viewport.js alone on a page that owns only a canvas: mount, turns,
+
     // dispose, and a second mount of the same canvas.
     async function mounted() {
       await call("Page.navigate", { url: `http://127.0.0.1:${server.port}/mount` });

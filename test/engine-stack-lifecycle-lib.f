@@ -2,7 +2,6 @@
 \ switches and nonlocal frame restoration.
 require src/habu/stack-abi.f
 require src/lib/error.f
-require src/lib/memory.f
 require src/lib/test.f
 require src/lib/process-argv.f
 require src/lib/engine-candidate.f
@@ -10,17 +9,8 @@ require test/pcap-result.f
 
 package STACK-LIFECYCLE-TEST
 
-\ Every VM stack the engine runs on is a guarded mapping (src/lib/memory.f
-\ MEM:ALLOC-GUARDED): an inaccessible page on each side of the capacity, sized
-\ in whole STACK-ABI:PAGE-BYTES multiples. POOL is that mapping, made once and
-\ reused by every in-process case; POOL-BYTES is its exact capacity.
-PTR-VARIABLE POOL-A
-STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED constant POOL-BYTES POOL-A !
-: POOL ( -- ptr u8 ) POOL-A @ ;
 PTR-VARIABLE SAVED-BASE
 variable SAVED-CAP
-PTR-VARIABLE SEEN-BASE
-variable SEEN-CAP
 
 : ACTIVE-BASE ( -- ptr u8 )
    data-base STACK-ABI:BASE-CELL + 0 ptr-field @ ;
@@ -36,59 +26,40 @@ variable SEEN-CAP
    ACTIVE-BASE SAVED-BASE @ = TTRUE
    ACTIVE-CAP SAVED-CAP @ T= ;
 
-: OBSERVE ( -- )
-   ACTIVE-BASE SEEN-BASE !
-   ACTIVE-CAP SEEN-CAP ! ;
-
-: EMPTY ( -- ) ;
-: RAISE ( -- ) 19 throw ;
-: CAP-ZERO ( -- ) ['] EMPTY POOL 0 run-in-stack ;
-
-public
-: CROSS-THROW ( -- )
-   ['] RAISE POOL POOL-BYTES run-in-stack ;
-
-private
 : EVAL-CROSS-THROW ( -- )
    s" test/engine-stack-cross-throw.f" included ;
-
-: EVAL-OBSERVE ( -- )
-   s" test/engine-stack-evaluate-body.f" included OBSERVE ;
 
 : IN-PROCESS ( -- )
    s" boot stack capacity" T-LABEL
    ACTIVE-CAP STACK-ABI:BOOT-BYTES T=
    SAVE-CALLER
-   s" alternate allocation is active" T-LABEL
-   ['] OBSERVE POOL POOL-BYTES run-in-stack
-   SEEN-BASE @ POOL = TTRUE
-   SEEN-CAP @ POOL-BYTES T=
-   CALLER-RESTORED
-   \ MEM:ALLOC-GUARDED refuses a size that is not a whole STACK-ABI:PAGE-BYTES
-   \ multiple, and run-in-stack's GUARDED-EXTENT? (src/habu/habu1.f) refuses
-   \ capacity 0 before the callback runs, catchable as E-STACK-UNGUARDED: the
-   \ stack never switches, so the caller's allocation is untouched.
-   s" capacity 0 is refused" T-LABEL
-   ['] CAP-ZERO catch E-STACK-UNGUARDED T= CALLER-RESTORED
-   s" catch restores allocation across run-in-stack" T-LABEL
-   ['] CROSS-THROW catch 19 T= CALLER-RESTORED
    s" evaluate unwind restores allocation before catch" T-LABEL
-   ['] EVAL-CROSS-THROW catch 19 T= CALLER-RESTORED
-   s" clean evaluate preserves alternate allocation" T-LABEL
-   ['] EVAL-OBSERVE POOL POOL-BYTES run-in-stack
-   SEEN-BASE @ POOL = TTRUE
-   SEEN-CAP @ POOL-BYTES T= CALLER-RESTORED ;
+   ['] EVAL-CROSS-THROW catch 19 T= CALLER-RESTORED ;
 
 $200 constant IO-CAP
 create OUT IO-CAP allot
 create ERR IO-CAP allot
 variable OUTLEN
 variable ERRLEN
+variable STATUS
 
-: CHILD-RC ( ptr u8 n -- n ) {: src:ptr size:n :}
+: CHILD-CAPTURE ( ptr u8 n -- ) {: src:ptr size:n :}
    PROC-ARGV-RESET
    ENGINE-CANDIDATE:PATH$ >LEN src size >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
-   RUN-ARGV-STDIN-CAPTURE PCAP-RESULT:>N >r ERRLEN ! OUTLEN ! r> ;
+   RUN-ARGV-STDIN-CAPTURE PCAP-RESULT:>N STATUS ! ERRLEN ! OUTLEN ! ;
+
+\ A crashed child's dump outgrows IO-CAP, and E-PROC-TRUNCATED uncaught would
+\ end the file without naming the case. The case fails under its label, and the
+\ empty capture and -1 fail the checks after it.
+: CHILD-TRUNCATED ( -- n )
+   T-NEXT s" child output exceeded the capture" T-ASSERT-DETAIL
+   0 OUTLEN ! 0 ERRLEN ! -1 ;
+
+: CHILD-RC ( ptr u8 n -- n ) {: src:ptr size:n :}
+   [: src size CHILD-CAPTURE ;] catch {: code:n :}
+   code 0= if STATUS @ exit then
+   code E-PROC-TRUNCATED = if CHILD-TRUNCATED exit then
+   code throw ;
 
 : PREFIX? ( ptr u8 n ptr u8 n -- bool ) {: g:ptr gu:n w:ptr wu:n :}
    gu wu < if 0 0= 0= exit then
@@ -120,84 +91,41 @@ variable ERRLEN
    CHILD-RC ENGINE-ERROR:STACK-BOUNDS T=
    ERR ERRLEN @ s" E-STACK-BOUNDS habu: stack bounds exceeded (loop) lr " T-PREFIX= ;
 
-\ src/habu/layout.f UNCAUGHT-RC: the exit status of an uncaught top-level throw
-\ (BTHROW), also pinned by test/protection-span.f.
-67 constant CHILD-UNCAUGHT-RC
-
-: REFUSED-NATIVE-RSTACK ( ptr u8 n -- )
-   CHILD-RC CHILD-UNCAUGHT-RC T=
-   ERR ERRLEN @ S\" ncomp: cannot compile EDGE\nhb: uncaught throw code -8304\n" T$= ;
-
-\ run-in-stack refuses an extent that is not a guarded mapping -- a
-\ create/allot buffer, a null or unaligned base, a capacity that is zero or
-\ not a STACK-ABI:PAGE-BYTES multiple, or a wrapping extent -- by throwing
-\ E-STACK-UNGUARDED (-3802) before the callback ever runs (src/habu/habu1.f
-\ BRUNSTACK GUARDED-EXTENT?). A child program that does not catch it dies
-\ uncaught: "hb: uncaught throw code -3802" on fd 2, exit CHILD-UNCAUGHT-RC.
-: UNGUARDED-REFUSED ( ptr u8 n -- )
-   CHILD-RC CHILD-UNCAUGHT-RC T=
-   ERR ERRLEN @ S\" hb: uncaught throw code -3802\n" T$= ;
-
-\ A data request below the base is the one refusal with a name: a primitive's
-\ seed record states its minimum input depth, so the interpret band refuses a
-\ shallower stack before the body runs, names the token and exits 70.
+\ A data request below the base is the one rejection with a name: the checker
+\ rejects a bare call on a shallower stack before the body runs, names the token
+\ and exits 70.
 : NAMED-UNDERDEPTH ( ptr u8 n ptr u8 n -- ) {: src:ptr size:n diag:ptr diagu:n :}
    src size CHILD-RC 70 T=
    ERR ERRLEN @ diag diagu T$= ;
-
-\ GUARDED-EXTENT? (src/habu/habu1.f) runs at every run-in-stack switch, before
-\ the callback and the switch, so a malformed extent is a catchable
-\ E-STACK-UNGUARDED (-3802), never the E-STACK-BOUNDS exit.
-\ test/stack-guard.f RUN-IN-STACK-REFUSALS owns one in-process case per clause;
-\ this case owns what the refusal looks like from a child that does not catch
-\ it, and that the callback never ran: its body prints, and the child's stdout
-\ is empty.
-: UNGUARDED-UNCAUGHT ( -- )
-   s" an uncaught unguarded extent kills the child before its body runs" T-LABEL
-   s" create BUF 32 allot : LOUD ( -- ) 42 . ; : GO ( -- ) ['] LOUD BUF 8 run-in-stack ; GO"
-   UNGUARDED-REFUSED
-   OUTLEN @ 0 T= ;
 
 \ Tier-0 2>r/2r> use the guarded VM return mapping (src/habu/stack-abi.f). A raw
 \ RSP store inside the compiled word sets each row's slots: the interpreter
 \ parks its own cells on the return stack between top-level words.
 : PRIMITIVE-RETURN-ARM ( -- )
    s" last two return-stack slots" T-LABEL
-   s" 0 set-tier variable OLD-RSP : EDGE ( -- ) data-base RSP-CELL + @ OLD-RSP ! STACK-ABI:RETURN-CELLS 2 - data-base RSP-CELL + ! 11 22 2>r 2r> . . data-base RSP-CELL + @ STACK-ABI:RETURN-CELLS 2 - = bool>n . OLD-RSP @ data-base RSP-CELL + ! ; EDGE"
+   s" variable OLD-RSP : EDGE ( -- ) data-base RSP-CELL + @ OLD-RSP ! STACK-ABI:RETURN-CELLS 2 - data-base RSP-CELL + ! 11 22 2>r 2r> . . data-base RSP-CELL + @ STACK-ABI:RETURN-CELLS 2 - = bool>n . OLD-RSP @ data-base RSP-CELL + ! ; EDGE"
    CHILD-RC 0 T=
    OUT OUTLEN @ S\" 22\n11\n-1\n" T$=
    s" whole return transfer needs two free slots" T-LABEL
-   s" 0 set-tier : EDGE ( -- ) STACK-ABI:RETURN-CELLS 1 - data-base RSP-CELL + ! 11 22 2>r 2r> 2drop ; EDGE" REFUSED-RETURN
+   s" : EDGE ( -- ) STACK-ABI:RETURN-CELLS 1 - data-base RSP-CELL + ! 11 22 2>r 2r> 2drop ; EDGE" REFUSED-RETURN
    s" whole return transfer needs two live slots" T-LABEL
-   s" 0 set-tier : EDGE ( -- ) 11 22 2>r 1 data-base RSP-CELL + ! 2r> 2drop ; EDGE" REFUSED-RETURN
+   s" : EDGE ( -- ) 11 22 2>r 1 data-base RSP-CELL + ! 2r> 2drop ; EDGE" REFUSED-RETURN
    s" empty return-stack read" T-LABEL
-   s" 0 set-tier : EDGE ( -- ) 11 22 2>r 0 data-base RSP-CELL + ! 2r> 2drop ; EDGE" REFUSED-RETURN ;
-
-\ Tier-1 linear return transfers live in the compiler's value vector. Even
-\ with only one VM return slot free, 2>r/2r> leave RSP unchanged; an unmatched
-\ pop is refused while elaborating, before any native word can run.
-: PRIMITIVE-RETURN-X64 ( -- )
-   s" native pair transfer preserves values and VM return depth" T-LABEL
-   s" variable OLD-RSP TRUSTED: EDGE ( -- ) data-base RSP-CELL + @ OLD-RSP ! STACK-ABI:RETURN-CELLS 1 - data-base RSP-CELL + ! 11 22 2>r 2r> . . data-base RSP-CELL + @ STACK-ABI:RETURN-CELLS 1 - = . OLD-RSP @ data-base RSP-CELL + ! ; EDGE"
-   CHILD-RC 0 T=
-   OUT OUTLEN @ S\" 22\n11\n-1\n" T$=
-   s" native return pop without a value is refused" T-LABEL
-   s" TRUSTED: EDGE ( -- ) 2r> 2drop ; EDGE" REFUSED-NATIVE-RSTACK ;
+   s" : EDGE ( -- ) 11 22 2>r 0 data-base RSP-CELL + ! 2r> 2drop ; EDGE" REFUSED-RETURN ;
 
 : PRIMITIVE-BOUNDARIES ( -- )
-   HB-TARGET-LINUX-X86-64? if PRIMITIVE-RETURN-X64 else PRIMITIVE-RETURN-ARM then
+   HB-TARGET-LINUX-X86-64? 0= if PRIMITIVE-RETURN-ARM then
    s" empty data-stack adjustment" T-LABEL
-   s" drop" S\" E-UNDERFLOW habu: interpret stack underdepth: drop\n" NAMED-UNDERDEPTH
+   s" drop" S\" habu: at 'drop' input underflow: the call takes more cells than the definition's declared inputs leave (needs 1, has 0); suggestion: Push the missing inputs before the call, or declare them in the signature; a definition may not consume below its declared inputs.\n" NAMED-UNDERDEPTH
    s" the last loop frame" T-LABEL
    s" : NEST ( n -- ) dup 0= if drop exit then 1 0 do dup 1 - recurse loop drop ; STACK-ABI:LOOP-FRAMES NEST"
    CHILD-RC 0 T=
    s" one loop frame past the region" T-LABEL
+   s" : NEST ( n -- ) dup 0= if drop exit then 1 0 do dup 1 - recurse loop drop ; STACK-ABI:LOOP-FRAMES 1 + NEST"
+   \ x86-64's guard handler writes an `hb:` line with no code and no lr.
    HB-TARGET-LINUX-X86-64? if
-      s" : NEST ( n -- ) dup 0= if drop exit then 1 0 do dup 1 - recurse loop drop ; STACK-ABI:LOOP-FRAMES 1 + NEST data-base LOOPSP-CELL + @ ."
-      CHILD-RC 0 T= OUT OUTLEN @ S\" 0\n" T$=
-   else
-      s" : NEST ( n -- ) dup 0= if drop exit then 1 0 do dup 1 - recurse loop drop ; STACK-ABI:LOOP-FRAMES 1 + NEST"
-      REFUSED-LOOP
-   then ;
+      CHILD-RC ENGINE-ERROR:STACK-BOUNDS T=
+      ERR ERRLEN @ S\" hb: stack bounds exceeded (loop)\n" T$=
+   else REFUSED-LOOP then ;
 
 ;package

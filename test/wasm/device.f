@@ -1,7 +1,5 @@
 \ device.f - the wasm device check: WLINK's modules validated by wasm-tools and
-\ run by bun through test/wasm/harness.f. It needs both tools on PATH, so it is
-\ no row of the ordinary gate; run it from the tree's root as
-\ `bin/hb --load test/wasm/device.f`.
+\ run by bun through test/wasm/harness.f; the wasm-device suite runs it.
 \ The wasm and browser suites it requires run first and report on their own;
 \ the modules stay in the printed directories.
 

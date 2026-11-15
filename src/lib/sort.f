@@ -1,8 +1,7 @@
-\ sort.f - in-place checked heapsort of cell arrays, package SORT: O(n log n), no
-\ scratch buffer; len <= 1 is a no-op. SORT! takes a less-than comparator ([: f< ;]
-\ for floats, [: < ;] for ints, the reversed test for descending); FSORT! is the
-\ float-ascending form and FX@ the float-cell read. Raw indexed access stays in
-\ bounds by construction (array.f's A-SUM idiom). The heap helpers are private.
+\ sort.f - package SORT: in-place checked heapsort of cell arrays, O(n log n)
+\ with no scratch buffer, and binary search. SORT! takes a less-than comparator
+\ ([: f< ;] for floats, [: < ;] for ints, the reversed test for descending).
+\ Raw indexed access stays in bounds by construction.
 
 package SORT
 
@@ -48,5 +47,16 @@ public
    repeat drop ;
 
 : FSORT! ( ptr r n -- )  [: f< ;] SORT! ;
+
+\ The first index of [lo, hi) where q answers false, hi when none does: q answers
+\ true on a leading run of the range and false after it.
+: PARTITION-POINT ( n n [ n -- bool ] -- n )
+   {: q :}
+   begin 2dup < while
+      {: lo:n hi:n :}
+      lo hi + 2 / {: mid:n :}
+      mid q execute if mid 1 + hi else lo mid then
+   repeat
+   drop ;
 
 ;package

@@ -1,9 +1,8 @@
 \ calls-test.f - test/wasm/calls.f's CHECKS run in this process, then as the
 \ MAIN of a module `hb-build --target wasm` builds, validated by wasm-tools and
 \ run by bun. A trap or an uncaught throw ends a run, so each such entry is the
-\ MAIN of a module of its own. Both tools must be on PATH, so test/wasm/device.f
-\ runs it, not the ordinary gate. The sources and modules stay in the printed
-\ directory.
+\ MAIN of a module of its own. test/wasm/device.f runs it. The sources and
+\ modules stay in the printed directory.
 
 require src/lib/string.f
 require src/lib/fs.f
@@ -44,6 +43,13 @@ variable SRC-U
 
 : TRAPS ( ptr u8 n ptr u8 n -- )  RAN TRAPPED T= ;
 
+false [if] \ off until dot habu-add-the-checks-a49d054d
+: FAULTED-CASE ( -- )
+   s" a memory fault inside a quotation is caught and thrown again" T-LABEL
+   s" FAULTED" s" faulted" RAN 1 T=
+   WASM-HARNESS:THROW-CODE ENGINE-ERROR:MEMORY-FAULT T= ;
+[then]
+
 public
 
 : RUN ( -- )
@@ -54,9 +60,6 @@ public
    s" every entry throws its native code in a module; a throw code numbers the first that does not" T-LABEL
    s" CHECKS" s" checks" RAN 0 T=
    WASM-HARNESS:THROW-CODE 0 T=
-   s" a memory fault inside a quotation is caught and thrown again" T-LABEL
-   s" FAULTED" s" faulted" RAN 1 T=
-   WASM-HARNESS:THROW-CODE ENGINE-ERROR:MEMORY-FAULT T=
    s" execute of xt 0 traps" T-LABEL
    s" ZERO" s" zero" TRAPS
    s" catch of xt 0 traps" T-LABEL

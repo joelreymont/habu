@@ -46,9 +46,7 @@ package STDLIB-GATE
 
 \ The registry feeds a row's argv right before it offers the row (src/lib/test/suite.f
 \ ITEM-RUN-FILE), so the tokens are staged as they come. Every argv entry goes
-\ through as written, so a row measures what `bin/hb --load <file>` measures; a
-\ file whose assertions are tier-1 facts selects the tier itself, after harness
-\ and tool requires and before its subject definitions.
+\ through as written, so a row measures what `bin/hb --load <file>` measures.
 : ROW-BEGIN ( -- )
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+ ;

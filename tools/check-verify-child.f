@@ -5,7 +5,7 @@
 \ directory.
 
 \    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT < STDIN
-\    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT LABEL < STDIN
+\    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT --label LABEL [--json-errors] < STDIN
 \    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT --at N < STDIN
 \    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT --of TAIL < STDIN
 \    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT --index < STDIN
@@ -38,9 +38,10 @@
 \ defers the whole index; the parent consumes no rows from a deferred result.
 \ A thrown scan has no result line, even if earlier declarations survived.
 \
-\ stdout is the schema-1 JSON packets, one per line in verification order, each
-\ written as the checker makes it, so a child that dies has passed on every
-\ packet made before; then one result line. The first form verifies with all
+\ stdout is the checker's records in verification order, schema-1 JSON packets
+\ one per line, or prose in the second form without --json-errors, each written
+\ as the checker makes it, so a child that dies has passed on every record made
+\ before; then one result line. The first form verifies with all
 \ errors, going past a duplicate definition as past any refused definition.
 \ Among the packets it writes one JSON object per line: a diagnostic line for
 \ each duplicate, which the checker writes no packet for; a file line for each
@@ -94,7 +95,7 @@
 \ the checker bound: S and N where the use starts and
 \ ends in I, the file it is in as its packets name it, a token, or the bytes
 \ between the quotes of a string literal naming a word before a call of a word
-\ a `names:` row marks (src/core/checker.f CHECKER-NAMES-ROW), F the path the
+\ a `names:` row marks, F the path the
 \ declaration's file was resolved to, TS and TN where the token that declared
 \ it starts and ends there, and D, T, P and V the selected binding's local
 \ visit, canonical tail, package and visibility. For an engine primitive in
@@ -141,14 +142,15 @@
 \ is a throw that ended the composition, whatever was refused before it.
 \
 \ The second form is check.f's pre-pass. The first definition the checker
-\ refuses stops the composition, as it stops the load, and the subject's packets
-\ name it LABEL. SUBJECT is check.f's own copy of the text, which nothing holds.
+\ rejects stops the composition, as it stops the load, and a record that names
+\ the subject names it LABEL. SUBJECT is check.f's own copy of the text, which
+\ nothing holds.
 \ It answers
 \
 \    check-verify: verified | stopped RC BYTE DUP-AT DUP-LEN IN-SUBJECT FILE
 \
 \ RC is the code the composition stopped with, 70 for a definition or top-level
-\ token the checker refused by the throw that rendered its packet, BYTE where
+\ token the checker refused by the throw that rendered its record, BYTE where
 \ the token the verifier read last starts, DUP-AT and DUP-LEN where the name it
 \ refused as a duplicate starts and its length, DUP-LEN 0 when it kept no name
 \ (VERIFY:DUPLICATE), IN-SUBJECT 1 when the stop is in BYTES and 0 when it is

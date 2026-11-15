@@ -8,6 +8,7 @@
 require src/lib/test.f
 require src/lib/test/ending.f
 require src/lib/test/subject.f
+require src/lib/process.f
 require src/lib/byte-buffer.f
 require src/lib/error.f
 require src/lib/fmath.f                       \ FMATH:E-DOMAIN, borrowed for a malformed expected string
@@ -159,10 +160,14 @@ variable WANT-N
    s" 4809c8" E+              \ llvm-mc: orq %rcx, %rax
    E=
 
-   s" OS-OPEN-FLAGS keeps the access mode and moves four flag bits" T-LABEL
+   s" OS-OPEN-FLAGS keeps the access mode and moves five flag bits" T-LABEL
    OS-OPEN-FLAGS
    s" 4889f0" E+              \ llvm-mc: movq %rsi, %rax
    s" 4883e003" E+            \ llvm-mc: andq $3, %rax
+   s" 31c9" E+                \ O_NONBLOCK
+   s" 49c7c300080000" E+      \ llvm-mc: movq $2048, %r11
+   s" 48f7c604000000" E+      \ llvm-mc: testq $4, %rsi
+   s" 490f45cb" E+  s" 4809c8" E+
    s" 31c9" E+                \ O_APPEND
    s" 49c7c300040000" E+      \ llvm-mc: movq $1024, %r11
    s" 48f7c608000000" E+      \ llvm-mc: testq $8, %rsi
@@ -183,7 +188,8 @@ variable WANT-N
    E= ;
 
 : MMAP-CASES ( -- )
-   s" OS-MMAP-FLAGS keeps share/private/fixed and moves MAP_ANON to $20" T-LABEL
+   s" OS-MMAP-FLAGS keeps share/private/fixed and moves MAP_ANON and MAP_NORESERVE"
+   T-LABEL
    OS-MMAP-FLAGS
    s" 4c89d0" E+              \ llvm-mc: movq %r10, %rax
    s" 4883e013" E+            \ llvm-mc: andq $19, %rax
@@ -192,6 +198,10 @@ variable WANT-N
    s" 49f7c200100000" E+      \ llvm-mc: testq $4096, %r10
    s" 490f45cb" E+            \ llvm-mc: cmovneq %r11, %rcx
    s" 4809c8" E+              \ llvm-mc: orq %rcx, %rax
+   s" 31c9" E+                \ MAP_NORESERVE
+   s" 49c7c300400000" E+      \ llvm-mc: movq $16384, %r11
+   s" 49f7c240000000" E+      \ llvm-mc: testq $64, %r10
+   s" 490f45cb" E+  s" 4809c8" E+
    s" 4989c2" E+              \ llvm-mc: movq %rax, %r10
    E= ;
 
@@ -316,7 +326,6 @@ $401000 constant LINK-VA
 \ suite survives it. A rel32 site out of reach needs a 2 GB stream: not built.
 72 constant REFUSE-RC                   \ X64CODE's refusal exit, as src/arch/arm64/icode.f's
 $1000 constant CAPTURE-CAP
-10000 constant TIMEOUT-MS
 create OUT CAPTURE-CAP allot
 create ERR CAPTURE-CAP allot
 
@@ -343,8 +352,8 @@ create ERR CAPTURE-CAP allot
 
 : REFUSES ( ptr u8 n ptr u8 n -- )
    {: source:ptr sourceu:n want:ptr wantu:n :}
-   source sourceu OUT CAPTURE-CAP >LEN ERR CAPTURE-CAP >LEN TIMEOUT-MS >MS
-   SUBJECT:RUN {: outu:len erru:len oc :}
+   source sourceu OUT CAPTURE-CAP >LEN ERR CAPTURE-CAP >LEN
+   PROCESS:WAIT-FOREVER SUBJECT:RUN {: outu:len erru:len oc :}
    source sourceu OUT outu LEN>N ERR erru LEN>N oc REFUSE-RC T-ENDING-EXITED=
    outu LEN>N 0 T=
    ERR erru LEN>N want wantu T$= ;

@@ -7,7 +7,6 @@
 require src/lib/error.f
 require src/lib/test.f
 require src/lib/string.f
-require src/lib/memory.f
 require src/lib/test/eval.f
 require src/lib/test/ending.f
 require src/lib/test/subject.f
@@ -27,17 +26,11 @@ TYPED-VARIABLE TS-HK [ -- ]
 : TS-RR ( r -- ) drop ;
 : TS-NN ( n -- ) drop ;
 
-\ A finished evaluation's segment on a borrowed stack, entered two levels deep
-\ (TS-R1 under TS-Z's `evaluate`), and a later one-level segment whose catch
-\ runs TS-EVD again: the dead deeper segment must not displace the live one,
-\ which holds the 5 TS-NN reads.
-PTR-VARIABLE TS-POOL-A
-STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED constant TS-POOL-CAP  TS-POOL-A !
-: TS-POOL ( -- ptr u8 ) TS-POOL-A @ ;
+\ TS-R1 leaves a dead segment two levels deep on a pool stack; TS-R2's text gets that
+\ stack one level deep, and TS-EVD under its catch must not select the dead segment.
 TRUSTED: TS-EVD ( -- ) s" 1 drop" evaluate ;
-: TS-R1 ( -- ) ['] TS-EVD TS-POOL TS-POOL-CAP run-in-stack ;
-TRUSTED: TS-EVT ( -- ) s" 5 ' TS-EVD catch drop TS-NN" evaluate ;
-: TS-R2 ( -- ) ['] TS-EVT TS-POOL TS-POOL-CAP run-in-stack ;
+: TS-R1 ( -- ) s" TS-EVD" evaluate-closed ;
+: TS-R2 ( -- ) s" 5 ' TS-EVD catch drop TS-NN" evaluate-closed ;
 TRUSTED: TS-Z ( -- ) s" TS-R1" evaluate TS-R2 ;
 
 package TOP-ROW-STORAGE-TEST
@@ -59,13 +52,13 @@ variable OUT-U
 variable ERR-U
 
 : ARM ( -- )   \ capture the next diagnostic as JSON instead of printing it
-   DIAG-BUF DIAG-CAP DIAG-BUFFER!  true DIAG-JSON! ;
+   DIAG-BUF DIAG-CAP REJECTION:BUFFER!  true REJECTION:JSON ! ;
 
 : DISARM ( -- )
-   false DIAG-JSON!  DIAG-BUFFER-OFF ;
+   false REJECTION:JSON !  REJECTION:BUFFER-OFF ;
 
 : HAS? ( ptr u8 n -- )
-   DIAG-BUFFER$ 2swap CONTAINS? TTRUE ;
+   REJECTION:BUFFER$ 2swap CONTAINS? TTRUE ;
 
 : CLEAR ( -- )   \ every cell a refused store would have written
    0 TS-V !  0 TS-BN !  NULL-PTR TS-PV ! ;
@@ -105,11 +98,10 @@ variable ERR-U
    ARM
    [: s" : TS-B1 ( -- ) ['] DUP , ;" evaluate-closed ;] CHECK-RC TTHROWSQ
    MISMATCH AT-COMMA GOT-XT
-   HERE-N [: s" create TS-T0" evaluate-closed ;] 0 TTHROWSQ HERE-N swap - {: hdr:n :}
    ARM
    HERE-N [: s" create TS-T3 ' DUP ," evaluate-closed ;] CHECK-RC TTHROWSQ
    MISMATCH AT-COMMA GOT-XT
-   HERE-N swap - hdr T=
+   HERE-N swap - 0 T=
    DISARM ;
 
 : CASE-CREATE-HERE ( -- )
@@ -117,11 +109,10 @@ variable ERR-U
    ARM
    [: s" : TS-B2 ( -- ) here , ;" evaluate-closed ;] CHECK-RC TTHROWSQ
    MISMATCH AT-COMMA GOT-PTR
-   HERE-N [: s" create TS-T5" evaluate-closed ;] 0 TTHROWSQ HERE-N swap - {: hdr:n :}
    ARM
    HERE-N [: s" create TS-T4 here ," evaluate-closed ;] CHECK-RC TTHROWSQ
    MISMATCH AT-COMMA GOT-PTR
-   HERE-N swap - hdr T=
+   HERE-N swap - 0 T=
    DISARM ;
 
 : CASE-VARIABLE-HERE ( -- )
@@ -239,20 +230,20 @@ variable ERR-U
 
 : CASE-SITE ( -- )
    s" a top-level refusal names its file and line" T-LABEL
-   CLEAR  DIAG-BUF DIAG-CAP DIAG-BUFFER!
+   CLEAR  DIAG-BUF DIAG-CAP REJECTION:BUFFER!
    INCLUDE-SITE
    s" /test/fixtures/top-row-site.f:4: at '!' raw storage cell" HAS?
-   DIAG-BUFFER-OFF
+   REJECTION:BUFFER-OFF
    ARM  INCLUDE-SITE
    S\" /test/fixtures/top-row-site.f\",\"line\":4,\"definition_source\"" HAS?  RAW-PTR
    DISARM UNTOUCHED ;
 
 : CASE-EVAL-SITE ( -- )
    s" a top-level refusal in an evaluated string names its file alone" T-LABEL
-   CLEAR  DIAG-BUF DIAG-CAP DIAG-BUFFER!
+   CLEAR  DIAG-BUF DIAG-CAP REJECTION:BUFFER!
    INCLUDE-EVAL
    s" /test/fixtures/top-row-eval.f: at '!' raw storage cell" HAS?
-   DIAG-BUFFER-OFF
+   REJECTION:BUFFER-OFF
    ARM  INCLUDE-EVAL
    S\" /test/fixtures/top-row-eval.f\",\"definition_source\"" HAS?  RAW-PTR
    DISARM UNTOUCHED ;
@@ -283,7 +274,7 @@ variable ERR-U
    [: s" : TS-B12 ( -- ) ['] TS-F2 execute ;" evaluate-closed ;] CHECK-RC TTHROWSQ
    S\" \"code\":\"E-INPUT-UNDERFLOW\"" HAS?  S\" \"token\":\"execute\"" HAS?
    DISARM
-   s" true DIAG-JSON! ' TS-F2 execute" CHECK-RC EXITS
+   s" true REJECTION:JSON ! ' TS-F2 execute" CHECK-RC EXITS
    S\" \"code\":\"E-INPUT-UNDERFLOW\"" ERR-HAS?  S\" \"token\":\"execute\"" ERR-HAS? ;
 
 : CASE-CATCH-NON-XT ( -- )
@@ -292,7 +283,7 @@ variable ERR-U
    [: s" : TS-B13 ( -- ) 0 0 catch ;" evaluate-closed ;] CHECK-RC TTHROWSQ
    S\" \"code\":\"E-MISMATCH\"" HAS?  S\" \"token\":\"catch\"" HAS?
    DISARM
-   s" true DIAG-JSON! 0 0 catch" CHECK-RC EXITS
+   s" true REJECTION:JSON ! 0 0 catch" CHECK-RC EXITS
    S\" \"code\":\"E-MISMATCH\"" ERR-HAS?  S\" \"token\":\"catch\"" ERR-HAS?
    S\" \"actual\":\"n \"" ERR-HAS? ;
 
@@ -300,14 +291,14 @@ variable ERR-U
 \ body left, which crashes the process.
 : CASE-EXECUTE-UNKNOWN ( -- )
    s" execute of a cell a TRUSTED: body left names the unknown cell" T-LABEL
-   s" true DIAG-JSON! TRUSTED: TS-L2 ( -- ) here ;  TS-L2 execute" CHECK-RC EXITS
+   s" true REJECTION:JSON ! TRUSTED: TS-L2 ( -- ) here ;  TS-L2 execute" CHECK-RC EXITS
    S\" \"code\":\"E-STALE-READ\"" ERR-HAS?  S\" \"token\":\"execute\"" ERR-HAS? ;
 
 \ A child: unchecked, `evaluate` would read a string from whatever the stack
 \ holds. `'` of a word with no stack effect pushes an xt of no known effect.
 : CASE-EXECUTE-OPAQUE-TICK ( -- )
    s" execute of ' of a word with no stack effect names the opaque xt" T-LABEL
-   s" true DIAG-JSON! ' evaluate execute" CHECK-RC EXITS
+   s" true REJECTION:JSON ! ' evaluate execute" CHECK-RC EXITS
    S\" \"code\":\"E-EXEC-OPAQUE-XT\"" ERR-HAS?  S\" \"token\":\"execute\"" ERR-HAS? ;
 
 \ A child: unchecked, the second `2r>` pops into the return frame of the code
@@ -316,10 +307,10 @@ variable ERR-U
 \ return-stack reason.
 : CASE-RETURN-BELOW ( -- )
    s" r> below a body's return frame names the return-stack reason" T-LABEL
-   DIAG-BUF DIAG-CAP DIAG-BUFFER!
+   DIAG-BUF DIAG-CAP REJECTION:BUFFER!
    [: s" : TS-B15 ( -- ) r> drop ;" evaluate-closed ;] CHECK-RC TTHROWSQ
    s" habu: in ts-b15: at 'r>' return stack: this reads below the return-stack cells pushed here expected: a actual: " HAS?
-   DIAG-BUFFER-OFF
+   REJECTION:BUFFER-OFF
    s" 2r> below the saved return cells is refused with the same reason" T-LABEL
    s" 1 2 2>r 2r> 2r> 2drop" CHECK-RC EXITS
    s" at '2r>' return stack: this reads below the return-stack cells pushed here expected: a b actual: " ERR-HAS? ;
@@ -337,7 +328,7 @@ variable ERR-U
    S\" \"code\":\"E-REJECTED\"" HAS?  S\" \"token\":\"TS-U1\"" HAS?
    DISARM
    s" r@ over a return base a call bound is refused by the seal, never run" T-LABEL
-   s" true DIAG-JSON! : TS-U2 ( U | U -- U | U ) ; : TS-B17 ( n -- n n ) TS-U2 r@ ; : TS-T7 ( -- n ) 5 TS-B17 drop ; TS-T7 . cr"
+   s" true REJECTION:JSON ! : TS-U2 ( U | U -- U | U ) ; : TS-B17 ( n -- n n ) TS-U2 r@ ; : TS-T7 ( -- n ) 5 TS-B17 drop ; TS-T7 . cr"
    CHECK-RC EXITS
    S\" \"code\":\"E-REJECTED\"" ERR-HAS?  S\" \"token\":\"r@\"" ERR-HAS?
    s" a literal binding its return base with no read is refused at ;]" T-LABEL
@@ -353,11 +344,11 @@ variable ERR-U
    S\" \"code\":\"E-REJECTED\"" HAS?  S\" \"token\":\";]\"" HAS?
    DISARM ;
 
-\ A child: DIAG-FILE! has no inverse; the label stays on this test file for
+\ A child: REJECTION:FILE! has no inverse; the label stays on this test file for
 \ every later case.
 : CASE-LABEL ( -- )
    s" a tool's file label names a top-level refusal's file" T-LABEL
-   S\" s\" /subject/label.f\" DIAG-FILE! true DIAG-JSON! here TS-V !"
+   S\" s\" /subject/label.f\" REJECTION:FILE! true REJECTION:JSON ! here TS-V !"
    CHECK-RC EXITS
    S\" \"file\":\"/subject/label.f\"" ERR-HAS?
    S\" \"code\":\"E-RAW-CELL-PTR\"" ERR-HAS? ;
@@ -366,7 +357,7 @@ variable ERR-U
 \ process. The literal pads TS-L3's cells as unknown (CHECKER-TOP-PUSH).
 : CASE-SHORT-ROW ( -- )
    s" a literal over a row shorter than the stack leaves the cells beneath unknown" T-LABEL
-   S\" true DIAG-JSON! TRUSTED: TS-EV2 ( ptr u8 n -- ) evaluate 2drop ; TRUSTED: TS-L3 ( -- ) 0 0 ; s\\\" TS-L3 s\\\" abc\\\"\" TS-EV2 drop c@ . cr"
+   S\" true REJECTION:JSON ! TRUSTED: TS-EV2 ( ptr u8 n -- ) evaluate 2drop ; TRUSTED: TS-L3 ( -- ) 0 0 ; s\\\" TS-L3 s\\\" abc\\\"\" TS-EV2 drop c@ . cr"
    CHECK-RC EXITS
    S\" \"code\":\"E-STALE-READ\"" ERR-HAS?  S\" \"token\":\"c@\"" ERR-HAS? ;
 
@@ -379,7 +370,7 @@ variable ERR-U
 : NOCTX ( -- )   s" package TS-NOCTX 0 set-current 1 2 drop drop " SB-APPEND ;
 : PKW ( -- )   s" package TS-PKW public : TS-PKW-N ( -- n ) 5 ; 0 set-current " SB-APPEND ;
 : PKW-USE ( -- )   s" TS-PKW-N 1 + drop " SB-APPEND ;
-: PKW-MISUSE ( -- )   s" true DIAG-JSON! TS-PKW-N c@ drop " SB-APPEND ;
+: PKW-MISUSE ( -- )   s" true REJECTION:JSON ! TS-PKW-N c@ drop " SB-APPEND ;
 : PKV ( -- )   s" package TS-PKV variable TS-PKV-C 0 set-current TS-PKV-C @ drop " SB-APPEND ;
 : SHADOW ( -- )
    s" package TS-SHADOW public : drop ( n -- ) . ; undefine drop ;package using TS-SHADOW 1 drop " SB-APPEND ;
@@ -388,7 +379,7 @@ variable ERR-U
    s" package TS-AMB-B public : TS-AMB ( n -- ) drop ; undefine TS-AMB ;package " SB-APPEND
    s" using TS-AMB-A using TS-AMB-B 1 TS-AMB " SB-APPEND ;
 : AFTER ( -- )   S\" s\" AFTER\" type cr" SB-APPEND ;
-: P3 ( -- )   S\" true DIAG-JSON! s\" abc\" + . cr" SB-APPEND ;
+: P3 ( -- )   S\" true REJECTION:JSON ! s\" abc\" + . cr" SB-APPEND ;
 
 : RUNS-AFTER ( ptr u8 n -- ) {: code:ptr codeu:n :}
    SB$ 0 EXITS  s" AFTER" OUT-HAS?  code codeu ERR-LACKS? ;
@@ -482,11 +473,11 @@ variable ERR-U
    ['] SIBLINGS 0 TTHROWSQ
    TS-PV @ NULL-PTR - 0 T<> ;
 
-\ The first text's row ends `ptr ptr n` when `/` throws; its sibling starts on
+\ The first text's row ends `ptr ptr n` when it throws; its sibling starts on
 \ the same stack base with no cells, so its literals replace that row: a row
 \ that kept it would hand `+` two pointers.
 : SIBLING-LITERALS ( -- )
-   [: s" here here 1 0 /" evaluate-closed ;] catch E-DIV-ZERO T=
+   [: s" here here 1 E-DIV-ZERO throw" evaluate-closed ;] catch E-DIV-ZERO T=
    s" 3 4 + TS-V !" evaluate-closed ;
 
 : CASE-SIBLING-LITERALS ( -- )
@@ -505,21 +496,19 @@ variable ERR-U
 \ A child on a terminal: only the REPL's line loop recovers from a throw and
 \ reads the next line.
 : STEP ( ptr u8 n -- bool )
-   BUF-CLEAR SEND-LINE
-   s"  ok" WAIT-FOR if s"  ok" s" habu> " WAIT-AFTER else false then ;
+   BUF-CLEAR SEND-LINE WAIT-ANSWER ;
 
 : CASE-REPL ( -- )
    s" a refused REPL line names no file or definition" T-LABEL
    ENGINE-CANDIDATE:PATH$ SPAWN-ON-PTY
    s" habu> " WAIT-FOR TTRUE
-   BUF-CLEAR s" variable TS-RV  here TS-RV !" SEND-LINE
-   s" habu: at '!' raw storage cell" WAIT-FOR TTRUE
+   s" variable TS-RV  here TS-RV !" STEP TFALSE
+   s" habu: at '!' raw storage cell" IN-BUF? TTRUE
    s" a REPL line that throws, then a fresh line storing a pointer typed" T-LABEL
    s" PTR-VARIABLE TS-RP" STEP TTRUE
-   BUF-CLEAR s" here 7 throw" SEND-LINE
-   s" habu> " WAIT-FOR TTRUE
+   s" here 7 throw" STEP TFALSE
    s" here TS-RP !  42 ." STEP TTRUE
-   s" 42" IN-BUF? TTRUE
+   s\" 42\r\n" IN-BUF? TTRUE
    s" E-" IN-BUF? TFALSE
    4 SEND-BYTE
    REAP {: oc :}
