@@ -83,14 +83,34 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 : PAD8 ( -- ) A64ICODE:ASM-LEN 7 and 0<> if 0 A64ICODE:EMITW then ;
 
 
+\ The dictionary record entering at a, or -1.
+: ENTRY-REC ( n -- n )
+   {: a:n :}
+   ndict@ 0 ?do
+      i XREF-REC XREF-START a = if i unloop exit then
+   loop
+   -1 ;
+
+
 \ The link address xt cell off's value v gives the image.
 : XT-VALUE ( n n -- n )
    {: off:n v:n :}
    v 0= if 0 exit then
    v LINK-ADDRESS {: to:n :}
    to -1 <> if to exit then
-   s" link: the xt cell at offset " SAY off SAY-INT s"  holds " SAY v SAY-INT SAY-CR
-   s" link: an xt cell names a routine the target does not place" 76 die ;
+   v ENTRY-REC {: r:n :}
+   s" E-LINK-XT-CELL" REJECTION:OPEN
+   s" the xt cell at offset " REJECTION:EMIT-STR  off REJECTION:EMIT-N
+   r 0< if
+      s"  holds " REJECTION:EMIT-STR  v REJECTION:EMIT-N
+      s" , which is no code the program holds" REJECTION:EMIT-STR
+   else
+      s"  holds the xt of `" REJECTION:EMIT-STR  r XREF-REC XREF-NAME$ REJECTION:EMIT-STR
+      s" `, which is no word the program holds" REJECTION:EMIT-STR
+   then
+   REJECTION:HELP
+   s" store in an xt cell only 0 or the xt of a word the program defines" REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 
 : COPY-ROW ( n -- )
@@ -124,8 +144,13 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 : HEADER! ( n n -- )
    ARM64:HEADER-CELL {: v:n off:n :}
    off SPACE-AT @ 0<> if
-      s" link: the build stored into the header cell at offset " SAY off SAY-INT SAY-CR
-      s" link: a build stored into a header cell the link writes" 76 die
+      s" E-LINK-HEADER-CELL" REJECTION:OPEN
+      s" the build stored into the header cell at offset " REJECTION:EMIT-STR
+      off REJECTION:EMIT-N  s" , which the link writes" REJECTION:EMIT-STR
+      REJECTION:HELP
+      s" leave the header cells to the link: store into a cell the build allots"
+      REJECTION:EMIT-STR
+      CHECKER-REJECT-RC REJECTION:STOP
    then
    v off COPY-AT LE:U64! ;
 
@@ -275,9 +300,15 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    a 0= if 0 exit then
    a LINK-ADDRESS {: to:n :}
    to -1 <> if to exit then
-   s" link: record " SAY r XREF-REC XREF-NAME$ SAY s"  enters at " SAY a SAY-INT
-   s" , which the target does not place" SAY SAY-CR
-   s" link: a record enters code the target does not place" 76 die ;
+   r XREF-REC XREF-NAME$ {: name:ptr nameu:n :}
+   s" E-LINK-RECORD-ENTRY" REJECTION:OPEN
+   s" `" REJECTION:EMIT-STR  name nameu REJECTION:EMIT-STR
+   s" ` enters at " REJECTION:EMIT-STR  a REJECTION:EMIT-N
+   s" , which is no code the engine holds" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" define `" REJECTION:EMIT-STR  name nameu REJECTION:EMIT-STR
+   s" ` in a file the engine build loads" REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 
 \ Build record r's source when r is an alias but not of a does> clause, else -1; an owned
@@ -451,7 +482,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    DATA-IMAGE ;
 
 
-\ C2-MEM's word whose entry scope-kind? answers kind k for.
+\ C2-MEM's word whose entry scope-kind? answers kind k for, k from 2 to 8.
 : SCOPE-WORD$ ( n -- ptr u8 n )
    {: k:n :}
    k 2 = if s" WITH-READ" exit then
@@ -460,21 +491,16 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    k 5 = if s" WITH-INIT" exit then
    k 6 = if s" WITH-RECORDS" exit then
    k 7 = if s" WITH-RECORD" exit then
-   k 8 = if s" WITH-FIELD" exit then
-   s" link: scope-kind? has no kind past 8" 76 die ;
+   s" WITH-FIELD" ;
 
 
 \ Kind k's chain in the kernel becomes adrp+add of the entry of k's word in
-\ C2-MEM's public wordlist wid.
+\ C2-MEM's public wordlist wid. An engine build loads and seals C2-MEM's seven
+\ words before its link, which places every routine.
 : SCOPE-ENTRY! ( n n -- )
    {: wid:n k:n :}
    k SCOPE-WORD$ wid CHECKER-RESOLVE:WL-PROBE {: rec:ptr :}
-   rec XREF-FOUND? 0= if
-      s" link: C2-MEM has no " SAY k SCOPE-WORD$ SAY SAY-CR
-      s" link: C2-MEM lacks a scope entry" 76 die
-   then
    rec XREF-START LINK-ADDRESS {: to:n :}
-   to -1 = if s" link: a C2-MEM scope entry is code the target does not place" 76 die then
    k ARM64:SCOPE-SITE ARM64:OFFSET {: at:n :}
    to  ARM64:TEXT-VA at +  A64ICODE:CODE at +  ARM64:CODE-ADDRESS! ;
 
@@ -501,48 +527,56 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    RECORD-IMAGE ;
 
 
-: EMIT-IMAGE ( ptr u8 n ptr u8 n -- )
-   {: sig:ptr sigu:n path:ptr pathu:n :}
-   TARGET @ RTARGET:IMAGE@ MATCH RTARGET:image
-      macho OF
-         sig sigu MACHO:SET-SIGID
-         MACHO:ASM-CODE ARM64:TEXT-VA ARM64:MACHO-IMPORTS$ MACHO:BUILD-IMAGE
-         MACHO:CODESIG2
-      ENDOF
-      elf OF
-         sig sigu ELF:SET-SIGID
-         ELF:ASM-CODE ARM64:TEXT-VA ARM64:ELF-IMPORTS$ ELF:BUILD-IMAGE
-         ELF:CODESIG2
-      ENDOF
-      pe OF s" link: no file writer for a PE target" 76 die ENDOF
-      wasm OF s" link: a Wasm target's module is written by WASM:WRITE-MODULE" 76 die ENDOF
-   ;MATCH
+\ Write the linked image and sign it, a Mach-O one when macho, else an ELF one.
+: EMIT-IMAGE ( ptr u8 n ptr u8 n bool -- )
+   {: sig:ptr sigu:n path:ptr pathu:n macho:bool :}
+   macho if
+      sig sigu MACHO:SET-SIGID
+      MACHO:ASM-CODE ARM64:TEXT-VA ARM64:MACHO-IMPORTS$ MACHO:BUILD-IMAGE
+      MACHO:CODESIG2
+   else
+      sig sigu ELF:SET-SIGID
+      ELF:ASM-CODE ARM64:TEXT-VA ARM64:ELF-IMPORTS$ ELF:BUILD-IMAGE
+      ELF:CODESIG2
+   then
    path pathu DRV-WRITE-IMAGE ;
 
 
-\ Link the open space's program and write it, signed, to the path; the caller
-\ first reads the kernel object of the build's kind and stores the program's
-\ entry. Only an engine's records read facts texts, so only an
-\ engine's link places those the build's body held, after every file, where no
-\ file's literal can name one. The program goes to a sibling renamed over the
-\ path: macOS kills a signed program rewritten in place.
-: WRITE-PROGRAM ( ptr u8 n -- )
-   {: path:ptr pathu:n :}
+\ Link the open space's program and write it, signed, to the path, as Mach-O
+\ when macho, else as ELF; the caller first reads the kernel object of the
+\ build's kind and stores the program's entry. Only an engine's records read
+\ facts texts, so only an engine's link places those the build's body held,
+\ after every file, where no file's literal can name one. The program goes to
+\ a sibling renamed over the path: macOS kills a signed program rewritten in
+\ place.
+: WRITE-PROGRAM ( ptr u8 n bool -- )
+   {: path:ptr pathu:n macho:bool :}
    ENGINE? @ if 0 CHECK:PLACE-FACTS then
    ENGINE? @ if LINK-ENGINE else LINK-STRIPPED then
-   path pathu [: 2dup ENGINE? @ if SIGN-ID:ENGINE$ else SIGN-ID:PROG$ then 2swap EMIT-IMAGE
-      FS:CHMOD-X ;] FS:REPLACE-CACHED
+   path pathu [: 2dup ENGINE? @ if SIGN-ID:ENGINE$ else SIGN-ID:PROG$ then 2swap
+      macho EMIT-IMAGE  FS:CHMOD-X ;] FS:REPLACE-CACHED
    REGIONS  path pathu CODE-END @ WRITE-MAP ;
 
 public
 
 \ Link the open space's program and write it to the path: a Wasm target's as a
-\ module, any other's as WRITE-PROGRAM does. GOING comes first: outside a build
-\ no shadow is open for WASM? to read.
+\ module, a Mach-O or ELF target's as WRITE-PROGRAM does. GOING comes first:
+\ outside a build no target is open for the match to read.
 : WRITE ( ptr u8 n -- )
+   {: path:ptr pathu:n :}
    false GOING
-   WASM? if WASM:WRITE-MODULE exit then
-   WRITE-PROGRAM ;
+   TARGET @ RTARGET:IMAGE@ MATCH RTARGET:image
+      macho OF path pathu true WRITE-PROGRAM ENDOF
+      elf OF path pathu false WRITE-PROGRAM ENDOF
+      pe OF
+         s" E-LINK-NO-WRITER" REJECTION:OPEN
+         s" the link has no file writer for a PE target" REJECTION:EMIT-STR
+         REJECTION:HELP
+         s" build for a Linux or macOS target" REJECTION:EMIT-STR
+         CHECKER-REJECT-RC REJECTION:STOP
+      ENDOF
+      wasm OF path pathu WASM:WRITE-MODULE ENDOF
+   ;MATCH ;
 
 ;package
 ;using
