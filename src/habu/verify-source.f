@@ -464,6 +464,13 @@ variable FLAG-N
    t tu t tu s" no name follows" REJECTION:MISSING-NAME
    CHECKER-REJECT-RC REJECTION:STOP ;
 
+\ The definition's checker reads a `(` after its definer as the signature, so
+\ the name the scan read last, at TOKEN-BYTE, names nothing.
+: SIG-NAME-STOP ( -- )
+   TOP-CUR-A @ TOP-CUR-U @  TOKEN-A @ TOKEN-U @
+   s" a signature, not a name" REJECTION:MISSING-NAME
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
 \ The source ends inside the statement's definition, named by the token after
 \ its opener.
 : UNCLOSED-STOP ( -- )
@@ -4004,6 +4011,7 @@ variable PARSE-IMM-XT s" parse-imm" PARSE-IMM-XT LIBRARY-XT!
    BODY-RESET
    NAME-TOKEN TOKEN-U !  TOKEN-A !
    TOKEN-U @ 0= if NAME-STOP then
+   TOKEN-A @ TOKEN-U @ s" (" CORE-STR= if SIG-NAME-STOP then
    DEF-NAME!
    DEF-NAME-A @ DEF-NAME-U @ NAME-DECLARED
    DEF-NAME-A @ DEF-NAME-U @ DEF-NAME-BYTE @ REFUSE-DUPLICATE IF SKIP-DEFINITION EXIT THEN

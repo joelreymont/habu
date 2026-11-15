@@ -1567,12 +1567,20 @@ private
       PKG-RC-DICT-FULL REJECTION:STOP
    then ;
 
-\ With the input at its end the rejection names `:` and `kernel:` as spelled,
-\ `trusted:` as the reader keyword it is.
+\ The definition's checker reads a `(` after definer kw ku as the signature, so
+\ that token names nothing.
+: SIG-NOT-NAME ( ptr u8 n -- ) {: kw:ptr ku:n :}
+   s" (" TOKEN-IS? 0= if exit then
+   kw ku TOKEN$ s" a signature, not a name" REJECTION:MISSING-NAME
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
+\ The rejections name `:` and `kernel:` as spelled, `trusted:` as the reader
+\ keyword it is.
 : DEF-NAME ( bool -- ) {: trusted:bool :}
    trusted if s" trusted:" OPERAND exit then
-   TOKEN if exit then
-   TOKEN$ RC-NO-NAME NAME-MISSING ;
+   TOKEN$ {: kw:ptr ku:n :}
+   TOKEN 0= if kw ku RC-NO-NAME NAME-MISSING then
+   kw ku SIG-NOT-NAME ;
 
 \ A head with no row makes a top-level package with a public wordlist
 \ and no private one.
