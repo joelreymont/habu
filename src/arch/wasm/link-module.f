@@ -1,9 +1,10 @@
 \ link-module.f - LINKER's Wasm writer: a stripped program's placed emissions and
 \ the link's copy of its data, handed to WLINK and written as one module. It
-\ refuses by name a does> clause, a routine entered inside a function and every
-\ kernel word the program reaches that no kernel-words.f word provides and no
-\ routine of link-routines.f answers; a kernel word resolves to its routine when
-\ the module has one.
+\ rejects by name a does> clause and every kernel word the program reaches that
+\ no kernel-words.f word provides and no routine of link-routines.f answers; a
+\ kernel word resolves to its routine when the module has one. Every record
+\ enters its emission at a function: a definition at function 0, a does>
+\ companion at its clause's function (NSHADOW:TAKE-DOES).
 require src/lib/error.f
 require src/lib/fs-mutate.f
 require src/lib/le.f
@@ -74,12 +75,6 @@ variable KERNEL-N                    \ the kernel routines this link added
    a REFUSED-N @ REFUSED !  1 REFUSED-N +! ;
 
 
-: INSIDE-FUNCTION ( n -- )
-   s" link: " SAY NSHADOW:RECORD@ XREF-REC XREF-NAME$ SAY
-   s"  enters its routine inside a function" SAY SAY-CR
-   s" link: a routine is entered inside a function" 74 die ;
-
-
 \ Host address a's kernel routine handle, or -1 when the module has no routine
 \ for the kernel word entering there; each routine is added once per link.
 : KERNEL-FUNCTION ( n -- n )
@@ -106,7 +101,6 @@ variable KERNEL-N                    \ the kernel routines this link added
    r 0 >= if
       r NSHADOW:EMISSION@ {: e2:n :}
       e2  r NSHADOW:ENTRY@  OWN-FUNCTION {: j:n :}
-      j 0< if r INSIDE-FUNCTION then
       e2 PLACED @ 0= if a REFUSE -1 exit then
       e2 FIRST @ j + exit
    then
@@ -138,8 +132,15 @@ variable KERNEL-N                    \ the kernel routines this link added
 
 
 : CLAUSE-REFUSED ( n -- )
-   s" link: " SAY ROUTINE. s"  has a does> clause, which a Wasm module cannot hold" SAY SAY-CR
-   s" link: a Wasm module cannot hold a does> clause" 74 die ;
+   {: e:n :}
+   s" E-WASM-DOES-CLAUSE" REJECTION:OPEN
+   s" `" REJECTION:EMIT-STR  e ROUTINE-NAME$ REJECTION:EMIT-STR
+   s" ` has a does> clause, which a Wasm module cannot hold" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" a Wasm module cannot patch its code: define `" REJECTION:EMIT-STR
+   e ROUTINE-NAME$ REJECTION:EMIT-STR
+   s" ` without does>, or build it for a native target" REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 
 \ Emission e's call site c; a call field starts one byte past the site and is
@@ -194,17 +195,29 @@ variable KERNEL-N                    \ the kernel routines this link added
    off NEMIT:ADDR-CODE  h SLOT  WLINK:DATA-CELL+ ;
 
 
+\ The record for host address a, through its help; the caller ends it.
 : REFUSED. ( n -- )
    {: a:n :}
-   s" link: a Wasm module has no " SAY
    a NAME-AT {: name:ptr nameu:n :}
-   nameu 0= if s" code at " SAY a SAY-INT else name nameu SAY then
-   SAY-CR ;
+   s" E-WASM-NO-KERNEL-WORD" REJECTION:OPEN
+   s" the program reaches " REJECTION:EMIT-STR
+   nameu 0= if
+      s" the kernel code at " REJECTION:EMIT-STR  a REJECTION:EMIT-N
+   else
+      s" `" REJECTION:EMIT-STR  name nameu REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR
+   then
+   s" , which a Wasm module does not provide" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" call a word src/arch/wasm/kernel-words.f provides instead, or build for a native target"
+   REJECTION:EMIT-STR ;
 
 : REFUSALS ( -- )
    REFUSED-N @ 0= if exit then
-   REFUSED-N @ 0 ?do i REFUSED @ REFUSED. loop
-   s" link: the program reaches kernel words a Wasm module does not provide" 74 die ;
+   REFUSED-N @ 0 ?do
+      i REFUSED @ REFUSED.
+      i 1+ REFUSED-N @ < if REJECTION:KEEP then
+   loop
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 
 \ Every placed emission's functions, in emission order, before any site is read.
@@ -234,10 +247,7 @@ public
 : WRITE-MODULE ( ptr u8 n -- )
    {: path:ptr pathu:n :}
    false GOING
-   KERNEL? @ if s" link: a kernel build writes no program" 74 die then
-   ENGINE? @ if s" link: a Wasm target builds no engine" 74 die then
    APP-ENTRY:XT-CELL SPACE-AT @ {: entry:n :}
-   entry 0= if s" link: the build stored no entry for the program" 74 die then
    ROUTINES REACH-DATA
    EMISSIONS+
    DATA+

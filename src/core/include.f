@@ -2355,7 +2355,7 @@ public
    REJECTION:HELP
    s" build this file only for a target its test admits, or widen the test"
    REJECTION:EMIT-STR
-   INCLUDE-IO-RC REJECTION:STOP ;
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 
 ;using

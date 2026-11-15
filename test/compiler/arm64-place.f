@@ -9,7 +9,7 @@
 \ map holds the kernel's `.` and `execute`. Each program's map names the fixture
 \ words its entry reaches and no other, and a second link of run writes the
 \ same bytes. A link rooted at PL-MAKE itself
-\ exits 74: test/compiler/arm64-place-unsafe-bad.f runs it in a child process.
+\ exits 70: test/compiler/arm64-place-unsafe-bad.f runs it in a child process.
 \ Fixture words are PL- and defined once per process: the host checker keeps a
 \ symbol for each name a build defines.
 
@@ -146,12 +146,10 @@ FILE-CAP BUFFER: FILE-B
    ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
    s" refusal: the child arms before the link" T-LABEL
    CMD:OUT$ s\" ARM64-PLACE-UNSAFE-ARMED\n" T$=
-   s" refusal: the child names the caller and the word" T-LABEL
-   CMD:ERR$ s" link: PL-MAKE calls create, which a stripped program cannot run" CONTAINS? TTRUE
-   s" refusal: the child's reason" T-LABEL
-   CMD:ERR$ s" link: a stripped program reaches a word it cannot run" CONTAINS? TTRUE
-   s" refusal: the child exits 74 and writes no program" T-LABEL
-   rc 74 T=  s" make" PROG$ FS:EXISTS? TFALSE ;
+   s" rejection: the child names the caller and the word" T-LABEL
+   CMD:ERR$ s" error[E-CANNOT-RUN-STRIPPED]: `PL-MAKE` calls `create`" CONTAINS? TTRUE
+   s" rejection: the child exits 70 and writes no program" T-LABEL
+   rc 70 T=  s" make" PROG$ FS:EXISTS? TFALSE ;
 
 
 public

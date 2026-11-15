@@ -1,7 +1,7 @@
 \ arm64-place-unsafe-bad.f - a stripped program rooted at PL-MAKE, whose own body
-\ calls `create`, which a stripped program cannot run: its link exits 74 before
+\ calls `create`, which a stripped program cannot run: its link exits 70 before
 \ it writes. The script arguments are the kernel object the link adopts and the
-\ program's path. test/compiler/arm64-place.f runs it and checks the refusal.
+\ program's path. test/compiler/arm64-place.f runs it and checks the rejection.
 
 require src/lib/error.f
 require src/lib/string.f

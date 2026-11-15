@@ -783,7 +783,7 @@ variable RC
    RC @ rc T= ;
 
 : ASSERT-TARGET ( -- )
-   74 ASSERT-REJECTED ;
+   70 ASSERT-REJECTED ;
 
 : TEST-TARGET ( -- )
    s" a ?TARGET stop prints the rejection form" T-LABEL
