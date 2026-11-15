@@ -60,7 +60,7 @@ create CHK-NUM-BUF CHK-NUM-CAP allot
 create CHK-ROOT-BUF PATH-CAP allot
 create CHK-SRC-PATH-BUF PATH-CAP allot
 create CHK-RUN-PATH-BUF PATH-CAP allot
-create CHK-MARK-PATH-BUF PATH-CAP allot
+create CHK-SUBJECT-PATH-BUF PATH-CAP allot
 create CHK-SUBJ-BUF PATH-CAP allot
 create CHK-SEL-LABEL-BUF PATH-CAP allot
 create CHK-STDIN-PATH-BUF PATH-CAP allot
@@ -115,7 +115,7 @@ variable CHK-LABEL-U
 variable CHK-SRC-A
 variable CHK-SRC-PATH-U
 variable CHK-RUN-PATH-U
-variable CHK-MARK-PATH-U
+variable CHK-SUBJECT-PATH-U
 variable CHK-SUBJ-U                      \ a named file's canonical path, 0 for any other input
 variable CHK-ROOT-U
 variable CHK-EXP-OUT-U
@@ -432,8 +432,8 @@ private
 : CHK-RUN-PATH ( -- ptr u8 n )
    CHK-RUN-PATH-BUF CHK-RUN-PATH-U @ ;
 
-: CHK-MARK-PATH ( -- ptr u8 n )
-   CHK-MARK-PATH-BUF CHK-MARK-PATH-U @ ;
+: CHK-SUBJECT-PATH ( -- ptr u8 n )
+   CHK-SUBJECT-PATH-BUF CHK-SUBJECT-PATH-U @ ;
 
 : CHK-SUBJ$ ( -- ptr u8 n )
    CHK-SUBJ-BUF CHK-SUBJ-U @ ;
@@ -450,7 +450,7 @@ private
    0 CHK-ROOT-U !
    0 CHK-SRC-PATH-U !
    0 CHK-RUN-PATH-U !
-   0 CHK-MARK-PATH-U ! ;
+   0 CHK-SUBJECT-PATH-U ! ;
 
 : CHK-SESSION-CLEAR ( -- )
    CHK-RESET-CFG ;
@@ -486,7 +486,7 @@ private
    CHK-ROOT FS:CLEANUP-TREE+
    CHK-ROOT s" source.f" CHK-SRC-PATH-BUF FS:JOIN-PATH CHK-SRC-PATH-U !
    CHK-ROOT s" run.f" CHK-RUN-PATH-BUF FS:JOIN-PATH CHK-RUN-PATH-U !
-   CHK-ROOT s" subject.f" CHK-MARK-PATH-BUF FS:JOIN-PATH CHK-MARK-PATH-U ! ;
+   CHK-ROOT s" subject.f" CHK-SUBJECT-PATH-BUF FS:JOIN-PATH CHK-SUBJECT-PATH-U ! ;
 
 : CHK-LABEL-STDIN ( -- )
    s" <stdin>" CHK-LABEL-U ! CHK-LABEL-A CHK-PTR-U8! ;
@@ -815,28 +815,24 @@ private
    CHK-SRC-BUF len SOURCE-ROOT:SHEBANG-COMMENT
    CHK-SRC-BUF len CHK-RUN+ ;
 
-\ A named file runs as the command line runs it, loaded by its canonical path
-\ (CHK-APPEND-ENTRY): its own relative requires resolve against its directory,
-\ and a file that requires it back finds it loaded. The engine reads the
-\ subject's own bytes, its shebang commented, from CHK-MARK-PATH, which the
-\ run's loader answers the subject's path with (src/core/include.f
-\ SOURCE-INPUT:USE), so a refusal in the subject names its own line and column.
-: CHK-WRITE-MARKED ( -- )
+\ The subject with its shebang commented, which the run reads for the subject's
+\ canonical path, so a rejection in the subject names its own line and column.
+: CHK-WRITE-SUBJECT ( -- )
    CHK-SUBJ$ CHK-SRC-READ {: len:n :}
    CHK-SRC-BUF len SOURCE-ROOT:SHEBANG-COMMENT
-   CHK-MARK-PATH CHK-SRC-BUF len FS:WRITE-ALL ;
+   CHK-SUBJECT-PATH CHK-SRC-BUF len FS:WRITE-ALL ;
 
 : CHK-BUILD-READER ( -- )
    CHK-LF CHK-RUN-C
    s" : CHECK-F-READ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: p:ptr pu:n r:ptr ru:n :}" CHK-RUN-LN
    s" p pu " CHK-RUN+  CHK-SUBJ$ CHK-RUN-QPATH+  s"  STR= if" CHK-RUN-LN
-   CHK-MARK-PATH CHK-RUN-QPATH+  s"  r ru SOURCE-ROOT:READ-OS exit then" CHK-RUN-LN
+   CHK-SUBJECT-PATH CHK-RUN-QPATH+  s"  r ru SOURCE-ROOT:READ-OS exit then" CHK-RUN-LN
    s" p pu r ru SOURCE-ROOT:READ-OS ;" CHK-RUN-LN
    s" : CHECK-F-INPUT ( -- ) [: SOURCE-ROOT:CANON-OS ;] [: CHECK-F-READ ;] SOURCE-INPUT:USE ;" CHK-RUN-LN
    s" CHECK-F-INPUT" CHK-RUN-LN ;
 
 : CHK-BUILD-ACT ( -- )
-   CHK-SUBJ-U @ 0 > if CHK-WRITE-MARKED then
+   CHK-SUBJ-U @ 0 > if CHK-WRITE-SUBJECT then
    CHK-BUILD-PREFIX
    CHK-SUBJ-U @ 0 > if CHK-BUILD-READER then
    CHK-SOURCE CHK-RUN-SOURCE+ ;
