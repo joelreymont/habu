@@ -2253,6 +2253,7 @@ CHECKER-REG:SCRATCH{
 variable CALL-ARMED   variable CALL-HIT
 CHECKER-REG:}SCRATCH
 variable REC-ON
+variable REC-IX                      \ the ordinal the next reported token takes
 defer CALL-FREEZE-XT ( -- )
 defer CWIN-STATE ( -- ptr ptr n ptr n ptr n )
 
@@ -6246,7 +6247,7 @@ variable QUOT-LOSS
    ELSE QTT @ XT-MISMATCH THEN THEN
    returns IF
       1 MK-CON DCUR @ MK-PUSH {: status:n :}
-      CP-CODE CATCH-N @ 0 0 CP-NEW status P-PROOF!
+      CP-CODE CATCH-N @ REC-IX @ 0 CP-NEW status P-PROOF!
       QUOT-LOSS @ status P-LOST!
       status DCUR !
    THEN ;
@@ -14491,7 +14492,6 @@ variable EFFQ-DOUT          \ dout row offset
 \ Quotation call metadata is recorded at the token the checker consumed.
 \ Its input width is measured before unification binds the quotation's open
 \ row to the caller's stack.
-variable REC-IX                      \ the ordinal the next reported token takes
 variable FIELD-LOAN-ORD
 variable FIELD-LOAN-OFF
 CHECKER-REG:SCRATCH{
@@ -14914,7 +14914,9 @@ package CHECKER-TAPE
 public
 
 \ String classes report the literal's body, not its opener. An event is a
-\ kind and two arguments, a0 and a1, zero where none is named.
+\ kind and two arguments, a0 and a1, zero where none is named. On a K-NAME or
+\ K-CALL row, a1 is the ordinal of the catch whose code this `throw` throws,
+\ else 0: row 0 is the definition's name.
 0 constant K-NAME               \ a0: a call's record index from 0, -1 for none
 1 constant K-INT                \ a0: the value
 2 constant K-REAL               \ a0: the value's bits

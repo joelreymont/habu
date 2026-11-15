@@ -72,6 +72,11 @@ public
    WASM-HARNESS:THROW-CODE UNCAUGHT-RC T=
    WASM-HARNESS:OUT$ s" error[E-PROBE]: probe text" COUNT-SUB 1 T=
    WASM-HARNESS:OUT$ s" error[" COUNT-SUB 1 T=
+   s" a caught code thrown on after a cleanup that throws and catches keeps its record" T-LABEL
+   s" RETHROW-CARRIED" s" rethrow-carried" RAN 1 T=
+   WASM-HARNESS:THROW-CODE UNCAUGHT-RC T=
+   WASM-HARNESS:OUT$ s" error[E-PROBE]: probe text" COUNT-SUB 1 T=
+   WASM-HARNESS:OUT$ s" error[" COUNT-SUB 1 T=
    s" execute of an xt whose upper 32 bits are set traps, though its low half is MARK's slot" T-LABEL
    s" HIGH" s" high" TRAPS
    s" execute of a cell whose upper half is not exactly a record's traps" T-LABEL

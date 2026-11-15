@@ -2218,6 +2218,104 @@ variable RC
    s" error[E-PROBE]: probe text" THROW-RC LOADED
    ERR$ s" error[" COUNT-SUB 1 T= ;
 
+\ A caught code thrown on in the body that caught it keeps its record, after a
+\ cleanup that throws and catches, whether the stack or a local holds it.
+: TEST-RETHROW-STACK ( -- )
+   s" a caught code thrown on from the stack keeps its record" T-LABEL
+   SB-RESET
+   S\" : BODY ( -- ) s\" E-PROBE\" REJECTION:OPEN s\" probe text\" REJECTION:EMIT-STR" SB-APPEND
+   s"  REJECTION:SAVE 9999 REJECTION:PASS ;" SB-APPEND LF+
+   s" : INNER ( -- ) 5000 throw ;" SB-APPEND LF+
+   s" : CLEAN ( -- ) ['] INNER catch drop ;" SB-APPEND LF+
+   s" : MAIN ( -- ) ['] BODY catch dup 0<> if CLEAN throw then drop ;" SB-APPEND LF+
+   s" MAIN" SB-APPEND LF+
+   s" rethrow-stack.f" FIXTURE!
+   s" error[E-PROBE]: probe text" THROW-RC LOADED
+   ERR$ s" error[" COUNT-SUB 1 T= ;
+
+: TEST-RETHROW-LOCAL ( -- )
+   s" a caught code thrown on from a local keeps its record" T-LABEL
+   SB-RESET
+   S\" : BODY ( -- ) s\" E-PROBE\" REJECTION:OPEN s\" probe text\" REJECTION:EMIT-STR" SB-APPEND
+   s"  REJECTION:SAVE 9999 REJECTION:PASS ;" SB-APPEND LF+
+   s" : INNER ( -- ) 5000 throw ;" SB-APPEND LF+
+   s" : CLEAN ( -- ) ['] INNER catch drop ;" SB-APPEND LF+
+   s" : MAIN ( -- ) ['] BODY catch {: rc:n :} CLEAN rc 0<> if rc throw then ;" SB-APPEND LF+
+   s" MAIN" SB-APPEND LF+
+   s" rethrow-local.f" FIXTURE!
+   s" error[E-PROBE]: probe text" THROW-RC LOADED
+   ERR$ s" error[" COUNT-SUB 1 T= ;
+
+\ A caught code joined with another value at an arm is a new throw.
+: TEST-RETHROW-JOINED ( -- )
+   s" a caught code joined with another value is a new throw" T-LABEL
+   SB-RESET
+   S\" : BODY ( -- ) s\" E-PROBE\" REJECTION:OPEN s\" probe text\" REJECTION:EMIT-STR" SB-APPEND
+   s"  REJECTION:SAVE 9999 REJECTION:PASS ;" SB-APPEND LF+
+   s" : MAIN ( -- ) ['] BODY catch dup 9999 = if drop 9998 then dup 0<> if throw then drop ;" SB-APPEND LF+
+   s" MAIN" SB-APPEND LF+
+   s" rethrow-joined.f" FIXTURE!
+   s" error[E-THROW]: nothing caught a throw of code 9998" THROW-RC LOADED
+   ERR$ s" E-PROBE" CONTAINS? TFALSE
+   ERR$ s" error[" COUNT-SUB 1 T= ;
+
+\ A record kept after the catch answered its code is not the caught throw's: the
+\ code thrown on is a new throw.
+: TEST-RETHROW-KEPT-SINCE ( -- )
+   s" a caught code thrown on after a later kept record is a new throw" T-LABEL
+   SB-RESET
+   S\" : BODY ( -- ) s\" E-PROBE\" REJECTION:OPEN s\" probe text\" REJECTION:EMIT-STR" SB-APPEND
+   s"  REJECTION:SAVE 9999 REJECTION:PASS ;" SB-APPEND LF+
+   S\" : BODY2 ( -- ) s\" E-PROBE2\" REJECTION:OPEN s\" probe two\" REJECTION:EMIT-STR" SB-APPEND
+   s"  REJECTION:SAVE 9999 REJECTION:PASS ;" SB-APPEND LF+
+   s" : MAIN ( -- ) ['] BODY catch {: rc:n :} ['] BODY2 catch drop rc 0<> if rc throw then ;" SB-APPEND LF+
+   s" MAIN" SB-APPEND LF+
+   s" rethrow-kept-since.f" FIXTURE!
+   s" error[E-THROW]: nothing caught a throw of code 9999" THROW-RC LOADED
+   ERR$ s" E-PROBE" CONTAINS? TFALSE
+   ERR$ s" error[" COUNT-SUB 1 T= ;
+
+\ A caught code moved through the return stack, or thrown past a second catch
+\ whose code is thrown too, keeps its record.
+: TEST-RETHROW-RSTACK ( -- )
+   s" a caught code thrown on through the return stack keeps its record" T-LABEL
+   SB-RESET
+   S\" : BODY ( -- ) s\" E-PROBE\" REJECTION:OPEN s\" probe text\" REJECTION:EMIT-STR" SB-APPEND
+   s"  REJECTION:SAVE 9999 REJECTION:PASS ;" SB-APPEND LF+
+   s" : INNER ( -- ) 5000 throw ;" SB-APPEND LF+
+   s" : CLEAN ( -- ) ['] INNER catch drop ;" SB-APPEND LF+
+   s" : MAIN ( -- ) ['] BODY catch >r CLEAN r> dup 0<> if throw then drop ;" SB-APPEND LF+
+   s" MAIN" SB-APPEND LF+
+   s" rethrow-rstack.f" FIXTURE!
+   s" error[E-PROBE]: probe text" THROW-RC LOADED
+   ERR$ s" error[" COUNT-SUB 1 T= ;
+
+: TEST-RETHROW-TWO ( -- )
+   s" a caught code thrown on past a second counted catch keeps its record" T-LABEL
+   SB-RESET
+   S\" : BODY ( -- ) s\" E-PROBE\" REJECTION:OPEN s\" probe text\" REJECTION:EMIT-STR" SB-APPEND
+   s"  REJECTION:SAVE 9999 REJECTION:PASS ;" SB-APPEND LF+
+   s" : INNER ( -- ) 5000 throw ;" SB-APPEND LF+
+   s" : MAIN ( -- ) ['] BODY catch {: rc:n :} ['] INNER catch {: ri:n :}" SB-APPEND
+   s"  rc 0<> if rc throw then ri throw ;" SB-APPEND LF+
+   s" MAIN" SB-APPEND LF+
+   s" rethrow-two.f" FIXTURE!
+   s" error[E-PROBE]: probe text" THROW-RC LOADED
+   ERR$ s" error[" COUNT-SUB 1 T= ;
+
+\ A caught local thrown from a quotation is a new throw.
+: TEST-RETHROW-QUOT ( -- )
+   s" a caught local thrown from a quotation is a new throw" T-LABEL
+   SB-RESET
+   S\" : BODY ( -- ) s\" E-PROBE\" REJECTION:OPEN s\" probe text\" REJECTION:EMIT-STR" SB-APPEND
+   s"  REJECTION:SAVE 9999 REJECTION:PASS ;" SB-APPEND LF+
+   s" : MAIN ( -- ) ['] BODY catch {: rc:n :} rc 0<> if [: rc throw ;] execute then ;" SB-APPEND LF+
+   s" MAIN" SB-APPEND LF+
+   s" rethrow-quot.f" FIXTURE!
+   s" error[E-THROW]: nothing caught a throw of code 9999" THROW-RC LOADED
+   ERR$ s" E-PROBE" CONTAINS? TFALSE
+   ERR$ s" error[" COUNT-SUB 1 T= ;
+
 \ A nested require's throw the program caught prints nothing, even when the
 \ same code later goes uncaught.
 : TEST-CAUGHT-STAYS ( -- )
@@ -2503,6 +2601,13 @@ variable RC
    TEST-UNCLOSED
    TEST-UNCAUGHT
    TEST-FINALLY-CARRIED
+   TEST-RETHROW-STACK
+   TEST-RETHROW-LOCAL
+   TEST-RETHROW-JOINED
+   TEST-RETHROW-KEPT-SINCE
+   TEST-RETHROW-RSTACK
+   TEST-RETHROW-TWO
+   TEST-RETHROW-QUOT
    TEST-CAUGHT-STAYS
    TEST-MATCH-DEPTH-PAYLOAD
    TEST-USING-ORDER

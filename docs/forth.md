@@ -2380,11 +2380,15 @@ sections above.
   `: FAIL ( n -- ) throw ;` does in `0 FAIL`; a computed 0 unwinds unchecked, a
   caller bug: a `catch` it reaches answers 0, and a text it unwinds stops with
   `E-THROW-ZERO`, its record placed at the word that threw it in that text.**
-- **Only the catch's own local throws on.** In `[: ... ;] catch {: rc:n :}`,
-  a `throw` of `rc` with no throw since keeps the record the caught throw
-  carried, placed where it was first thrown. A code passed on as a value (a
-  word's input, a field, a variable) and thrown later is a new throw: its
-  record is placed at the word that threw it in the innermost text it left.
+- **A caught code thrown in its own body throws on.** A `throw`, in the
+  definition that caught it, of the code `catch` answered, moved by
+  stack words or a local, tested, and through arms that all hold it,
+  keeps the record the caught throw carried, placed where it was first
+  thrown, unless a rejection has kept a record since. A code computed,
+  joined with another value, passed to or returned from a word, stored
+  in a field or a variable, or read in a quotation, and then thrown, is
+  a new throw: its record is placed at the word that threw it in the
+  innermost text it left.
 - **A definition and a `(` comment close in the source that opened them.**
   Files, stdin and `evaluate` strings refuse an open definition at their end
   (`E-VS-UNTERMINATED-DEFINITION`) or an open comment

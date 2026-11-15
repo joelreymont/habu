@@ -264,10 +264,21 @@
    TOK-LIVE-REC @ IF a u CALL-UNDEFINED drop EXIT THEN
    a u REFUSE-UNDEFINED ;
 
+\ After a step of the engine's `throw` from stack row pre: when the code it
+\ popped is one a catch answered, the token's event takes that catch's ordinal
+\ as a1.
+: THROW-ON-EVENT ( n -- ) {: pre:n :}
+   TOK-CTL @ CTL-CORE-OP and 0= IF EXIT THEN
+   pre R-RES dup TAG S-PUSH <> IF drop EXIT THEN
+   P>PROOF dup 0= IF drop EXIT THEN
+   dup CP-KIND CP-CODE <> IF drop EXIT THEN
+   CURSYM @ s" throw" PE-SYM-OF <> IF drop EXIT THEN
+   CP-TYPE EV-A1 ! ;
+
 : DO-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
    DCUR @ {: pre:n :}  RCUR @ {: prer:n :}
    a u DO-TOK-BODY
-   CURSYM @ 0 <> IF  pre NZ-CALL-CELLS  THEN
+   CURSYM @ 0 <> IF  pre NZ-CALL-CELLS  pre THROW-ON-EVENT  THEN
    pre prer ZERO-USE-TEST ;
 
 \ Open the frames of a match on family FAM: its branches start from MTCH-ROW,

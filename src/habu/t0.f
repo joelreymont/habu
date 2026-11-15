@@ -717,10 +717,9 @@ variable WS-K                        \ operands the word moves
 \ the loop's names. A dead local's slots go to the
 \ next group. A local is its bind sequence, the checker's number for it in the
 \ unit's scan: a K-LOCAL-DECL row names the next one, a K-LOCAL-REF row the
-\ one it reads. A group a `catch` answer binds holds one more slot, the throw
-\ count (THE THROW ON).
+\ one it reads. The locals' slots follow the throw counts the unit keeps (THE
+\ THROW ON).
 DYNAMIC-BUFFER L-SLOT n              \ by sequence: the first of its frame slots
-DYNAMIC-BUFFER L-THROWS n            \ by sequence: the slot of its catch's throw count, else -1
 variable L-N                         \ the frame slots the locals in scope hold
 variable G-CELLS                     \ the cells the open group's names hold so far
 variable BINDS                       \ binds so far: the next one's sequence
@@ -731,8 +730,8 @@ variable CLAUSE                      \ a does> definer's clause unit, else -1
    seq count >= if E-T0-BINDS throw then
    first seq + BIND-WIDTHS @ {: w:n :}
    seq 1+ BINDS !
-   seq 1+ L-SLOT-RESERVE  seq 1+ L-THROWS-RESERVE
-   L-N @ G-CELLS @ +  seq L-SLOT !  -1 seq L-THROWS !
+   seq 1+ L-SLOT-RESERVE
+   L-N @ G-CELLS @ +  seq L-SLOT !
    w G-CELLS +! ;
 
 \ Pop c cells into slots base .. base+c-1, the top cell into the last.
@@ -750,14 +749,13 @@ variable CLAUSE                      \ a does> definer's clause unit, else -1
       r RELEASE
    loop ;
 
-\ The group's names come into scope only once their cells are bound, with e
-\ more slots after theirs.
-: CLOSE-GROUP ( n -- ) {: e:n :}
+\ The group's names come into scope only once their cells are bound.
+: CLOSE-GROUP ( -- )
    L-N @ {: base:n :}
    G-CELLS @ {: cells:n :}
-   base cells + e + EMIT-SLOTS
+   base cells + EMIT-SLOTS
    base cells BIND-CELLS
-   base cells + e + L-N !
+   base cells + L-N !
    0 G-CELLS ! ;
 
 \ The cells of bind sequence seq in the scan that holds text offset at.
@@ -1681,9 +1679,7 @@ variable OP-REC                      \ the last of them
    {: a:ptr u:n code:n :}
    code  a u SEEDED OP-OF ! ;
 
-variable CATCH-REC                   \ the seeded records THE THROW ON lowers
-variable THROW-REC
-variable BASE-REC                    \ data-base's
+variable BASE-REC                    \ data-base's, which THE THROW ON calls
 variable STORE-REC                   \ !'s
 
 : OPS-MAP ( -- )
@@ -1701,7 +1697,6 @@ variable STORE-REC                   \ !'s
    s" 2swap" 35 OP-MAP  s" 2over" 36 OP-MAP  s" cells" 37 OP-MAP
    s" cell+" 38 OP-MAP  s" negate" 39 OP-MAP  s" invert" 40 OP-MAP
    s" lshift" 41 OP-MAP  s" rshift" 42 OP-MAP  s" ptr-field" 43 OP-MAP
-   s" catch" SEEDED CATCH-REC !  s" throw" SEEDED THROW-REC !
    s" data-base" SEEDED BASE-REC !  s" !" SEEDED STORE-REC ! ;
 
 : MAP-OPS ( -- ) OP-MAPPED @ 0= if OPS-MAP then ;
@@ -1714,58 +1709,70 @@ variable STORE-REC                   \ !'s
 
 \ ---- the throw on -------------------------------------------------------------
 \ THE THROW ON. A rejection's record is carried while its throw is the newest
-\ this thread began, as THROWS-CELL counts them. A group whose `{:` row directly
-\ follows a row calling `catch`, its last local one cell, keeps the count in a
-\ slot after its cells as it binds. A `throw` of that local, pushed by the row
-\ just before it outside a quotation reading it from a record, first takes 1
-\ off the count when it still equals the kept one: the throw then leaves the
-\ count as the caught throw left it, and after any throw since the catch
-\ returned it counts as a new one. The count is read through `data-base`, the
-\ running task's region.
+\ this thread began, as THROWS-CELL counts them and STAMP-CELL names it. The
+\ checker files on a `throw` row the catch whose code it throws.
+\ Each catch of a unit that a `throw` of the same unit names keeps, in a frame
+\ slot of its own, the count after it returns: the number of the throw that
+\ landed. That `throw` first moves the stamp to the throw it begins when the
+\ stamp still names the one that landed, so a cleanup that catches throws of
+\ its own between does not lose the record, and a rejection kept since does.
+\ A `throw` in a quotation of a code its parent caught is a plain throw. Both
+\ cells are read through `data-base`, the running task's region.
+
+\ By row: on a counted catch and on each `throw` of its code, the slot of the
+\ catch's count, else -1.
+DYNAMIC-BUFFER COUNT-SLOT n
+
+\ The unit's row after its row j, past a quotation that opens there.
+: NEXT-OWN ( n -- n ) {: j:n :}
+   j ROW-NEST 1 = if j 1+ SPAN-END 1+ exit then
+   j 1+ ;
+
+\ Whether row c is a row of the unit whose rows start at lo.
+: OWN-ROW? ( n n -- bool ) {: lo:n c:n :}
+   lo begin dup UNIT-ROW? over c < and while NEXT-OWN repeat
+   dup UNIT-ROW? swap c = and ;
+
+\ The counts of the unit whose rows start at lo take its first frame slots,
+\ which no local reuses: a code may leave the block its catch is in.
+: KEEP-COUNTS ( n -- ) {: lo:n :}
+   ROWS @ COUNT-SLOT-RESERVE
+   lo begin dup UNIT-ROW? while  -1 over COUNT-SLOT !  NEXT-OWN repeat drop
+   lo begin dup UNIT-ROW? while
+      dup ROW-KIND @ {: kind:n :}
+      dup ROW-A1 @ {: c:n :}
+      kind CHECKER-TAPE:K-NAME =  kind CHECKER-TAPE:K-CALL =  or
+      c 0<> and  if
+         lo c OWN-ROW? if
+            c COUNT-SLOT @ 0< if  L-N @ c COUNT-SLOT !  1 L-N +!  then
+            c COUNT-SLOT @ over COUNT-SLOT !
+         then
+      then
+      NEXT-OWN
+   repeat drop
+   L-N @ 0<> if L-N @ EMIT-SLOTS then ;
 
 \ The address of this thread's throw count pushed, for the token at offset loc.
 : THROWS-AT ( n -- ) {: loc:n :}
    SPILL-ALL  BASE-REC @ XREF-REC REC-START loc EMIT-CALL
    THROWS-CELL PUSH-CONST [: + ;] OP-ADD true ALU2 ;
 
-\ Whether the `:}` row k closes a group bound from a `catch` answer.
-: CATCH-BOUND? ( n -- bool ) {: k:n :}
-   MAP-OPS
-   k 1- {: last:n :}
-   last ROW-KIND @ CHECKER-TAPE:K-LOCAL-DECL <> if false exit then
-   last begin dup ROW-KIND @ CHECKER-TAPE:K-LOCAL-DECL = while 1- repeat {: open:n :}
-   open 2 < if false exit then
-   open ROW-KIND @ CHECKER-TAPE:K-OPERAND <> if false exit then
-   open 1- {: c:n :}
-   c ROW-KIND @ {: kind:n :}
-   kind CHECKER-TAPE:K-NAME =  kind CHECKER-TAPE:K-CALL =  or 0= if false exit then
-   c ROW-A0 @ CATCH-REC @ <> if false exit then
-   last ROW-A0 @  last ROW-OFF @  LOCAL-CELLS 1 = ;
+\ After the call at offset loc of a counted catch: its count into slot s.
+: KEEP-COUNT ( n n -- ) {: s:n loc:n :}
+   loc THROWS-AT  CELL-W FETCH
+   TOP MAT s EMIT-SLOT-STORE  TOP REMOVE ;
 
-\ The `:}` row: a catch-bound group's count goes into its extra slot.
-: CLOSE-LOCALS ( -- )
-   ORD @ 1- {: k:n :}
-   k CATCH-BOUND? 0= if 0 CLOSE-GROUP exit then
-   L-N @ G-CELLS @ + {: slot:n :}
-   1 CLOSE-GROUP
-   slot  k 1- ROW-A0 @  L-THROWS !
-   k ROW-OFF @ THROWS-AT  CELL-W FETCH
-   TOP MAT slot EMIT-SLOT-STORE  TOP REMOVE ;
-
-\ Before the call of record r at offset loc: a `throw` of a catch-bound local
-\ throws on.
-: THROW-ON ( n n -- ) {: r:n loc:n :}
-   r THROW-REC @ <> if exit then
-   READER @ 0< 0= if exit then
-   ORD @ 2 - {: j:n :}
-   j 1 < if exit then
-   j ROW-KIND @ CHECKER-TAPE:K-LOCAL-REF <> if exit then
-   j ROW-A0 @ L-THROWS @ {: slot:n :}
-   slot 0< if exit then
+\ Before the `throw` at offset loc of the code of the catch whose count slot s
+\ keeps: the stamp := (stamp = kept) ? count + 1 : stamp, the throw's number.
+: THROW-ON ( n n -- ) {: s:n loc:n :}
    loc THROWS-AT
-   DUP1 CELL-W FETCH  DUP1
-   ROOM ALLOC {: v:vreg :}  v slot EMIT-SLOT-LOAD  v PUSH-REG
+   DUP1 CELL-W FETCH  1 PUSH-CONST [: + ;] OP-ADD true ALU2
+   SWAP1  STAMP-CELL THROWS-CELL - PUSH-CONST [: + ;] OP-ADD true ALU2
+   DUP1 CELL-W FETCH
+   ROT1  OVER1 [: - ;] OP-SUB false ALU2
+   OVER1  ROOM ALLOC {: v:vreg :}  v s EMIT-SLOT-LOAD  v PUSH-REG
    TOP 1- MAT TOP MAT EMIT-CMP  REMOVE2  CC-EQ PUSH-FLAG
+   [: and ;] OP-AND true ALU2
    [: + ;] OP-ADD true ALU2
    SWAP1
    SPILL-ALL  STORE-REC @ XREF-REC REC-START loc EMIT-CALL ;
@@ -1909,8 +1916,11 @@ variable STORE-REC                   \ !'s
       flags NDICT:INT-CALL? 0= if a u INTERNAL then
    then
    to 0= if a u NO-CODE then
-   r loc THROW-ON
-   to flags DKIND:MASK and r loc WORD-CALL ;
+   ORD @ 1- {: k:n :}
+   k COUNT-SLOT @ {: s:n :}
+   k ROW-A1 @ 0<>  s 0< 0= and if s loc THROW-ON then
+   to flags DKIND:MASK and r loc WORD-CALL
+   k ROW-A1 @ 0=  s 0< 0= and if s loc KEEP-COUNT then ;
 
 : NAME-TOKEN ( ptr u8 n n n -- )
    {: a:ptr u:n r:n loc:n :}
@@ -1937,7 +1947,7 @@ variable STORE-REC                   \ !'s
       CHECKER-TAPE:K-CHAR of k DO-CHAR endof
       CHECKER-TAPE:K-CONTROL of a a0 DO-CONTROL endof
       CHECKER-TAPE:K-LOCAL-DECL of a0 loc DECLARE endof
-      CHECKER-TAPE:K-LOCAL-CLOSE of CLOSE-LOCALS endof
+      CHECKER-TAPE:K-LOCAL-CLOSE of CLOSE-GROUP endof
       CHECKER-TAPE:K-LOCAL-REF of a0 DO-LOCAL endof
       CHECKER-TAPE:K-OPERAND of endof
       CHECKER-TAPE:K-UNREACHED of a u UNREACHED endof
@@ -1983,6 +1993,7 @@ variable STORE-REC                   \ !'s
    RESET-STATE
    k EMIT-QUOT-OPEN
    k QORD @ OPEN-RECORD
+   k QORD @ KEEP-COUNTS
    k QR-N @ 0 > if k READER !  EMIT-ENV-OPEN else -1 READER ! then
    BODY 0= if END$ UNCLOSED then
    ORD @ 1- ROW$ FINISH ;
@@ -2001,6 +2012,7 @@ variable STORE-REC                   \ !'s
    CLAUSE-ORD @ ORD !  k 1+ NQ !  RESET-STATE  0 BINDS !  -1 READER !
    EMPTY-CLAUSE @ if EMIT-UNIT-OPEN else k EMIT-QUOT-OPEN then
    CLAUSE-ORD @ OPEN-RECORD
+   CLAUSE-ORD @ KEEP-COUNTS
    BODY if CONTROL-FAULT then
    END$ FINISH
    CUT @ BINDS-CK ;
@@ -2016,6 +2028,7 @@ variable STORE-REC                   \ !'s
    RESET-STATE
    EMIT-OPEN
    1 OPEN-RECORD
+   1 KEEP-COUNTS
    BODY if CONTROL-FAULT then
    cut 0<> if
       ORD @ SPLIT @ <> if SPLIT @ ROW$ SPLIT-AWAY then
