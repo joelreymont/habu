@@ -1216,6 +1216,46 @@ SUMTYPE tdpq2 VARIANT run [ n n -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
 SUMTYPE tdpqd VARIANT run [ n -- ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
 SUMTYPE tdpqm VARIANT run [ n ptr u8 -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
 
+\ A quotation side of 300 elements declares, and the constructor takes a
+\ quotation of 300 cells, not of 299; a variant of 300 payload elements declares.
+package LONG-DECL-TEST
+300 constant LONG-N
+: Q-HEAD$ ( -- ptr u8 n ) s" SUMTYPE tdpq300 VARIANT run [ " ;
+: Q-TAIL$ ( -- ptr u8 n ) s" -- ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE" ;
+: C-TAIL$ ( -- ptr u8 n ) s" -- ] -- tdpq300 ) construct tdpq300 run ;" ;
+: P-HEAD$ ( -- ptr u8 n ) s" SUMTYPE tdpay300 VARIANT wide " ;
+: P-TAIL$ ( -- ptr u8 n ) s" ;VARIANT ;SUMTYPE" ;
+Q-HEAD$ nip Q-TAIL$ nip +
+s" : TDPQ300-NO ( [ " nip C-TAIL$ nip + max
+P-HEAD$ nip P-TAIL$ nip + max
+LONG-N 2 * + constant CAP
+CAP BUFFER: BUF
+variable BUF-N
+: APPEND ( ptr u8 n -- ) {: a:ptr u:n :}
+   a BUF BUF-N @ + u BYTE-COPY  BUF-N @ u + BUF-N ! ;
+: NS ( n -- ) 0 ?do s" n " APPEND loop ;
+: DECL$ ( -- ptr u8 n )
+   0 BUF-N !  Q-HEAD$ APPEND  LONG-N NS  Q-TAIL$ APPEND  BUF BUF-N @ ;
+\ : NAME ( [ n n … -- ] -- tdpq300 ) … ; of k cells
+: CTOR$ ( ptr u8 n n -- ptr u8 n ) {: a:ptr u:n k:n :}
+   0 BUF-N !  s" : " APPEND  a u APPEND  s"  ( [ " APPEND
+   k NS  C-TAIL$ APPEND  BUF BUF-N @ ;
+: PAY$ ( -- ptr u8 n )
+   0 BUF-N !  P-HEAD$ APPEND  LONG-N NS  P-TAIL$ APPEND  BUF BUF-N @ ;
+: SHORT-CTOR ( -- )
+   TDIAG-BUF 8192 REJECTION:BUFFER!  true REJECTION:JSON !
+   s" TDPQ300-NO" LONG-N 1 - CTOR$ TDT-EVAL-CATCH 70 T=
+   REJECTION:BUFFER$ s\" \"code\":\"E-MISMATCH\"" CONTAINS? TTRUE
+   false REJECTION:JSON !  TDIAG-BUF 8192 REJECTION:BUFFER! ;
+public
+: RUN ( -- )
+   DECL$ TDT-EVAL-CATCH 0 T=
+   s" TDPQ300-OK" LONG-N CTOR$ TDT-EVAL-CATCH 0 T=
+   SHORT-CTOR
+   PAY$ TDT-EVAL-CATCH 0 T= ;
+;package
+LONG-DECL-TEST:RUN
+
 \ declaration-time parameter-arity gate for SUM variant payloads. A payload
 \ parameter letter beyond the family's arity rejects at declaration, not at a
 \ later construct/MATCH site, in a plain element, an application argument, and

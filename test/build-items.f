@@ -17,7 +17,8 @@
 \ an abandoned one is skipped, a call where the family belongs and a type where
 \ a variant belongs get the match's rejection. An item spelled by no token or
 \ by two is rejected. EFFECT:READ-TYPE reads a linear and a width type as a
-\ signature does, and rejects a letter, a type variable's or a view's region's,
+\ signature does, and a quotation type of 300 cells, which a built word takes
+\ from a quotation of 300 cells and not of 299; it rejects a letter, a type variable's or a view's region's,
 \ at the line that ran the definer, with the fix, as EFFECT:NAMED and
 \ EFFECT:READ-TYPE reject an unknown family, which a definer names as source
 \ in its package would, and EFFECT:IN a type that is no effect. A build of a
@@ -452,6 +453,33 @@ s" error[E-UNKNOWN-SIGNATURE-TYPE]: " DECL-DIAG:HAS? TTRUE
 S\" 'no-such-family'\n" DECL-DIAG:HAS? TTRUE  READING-HERE
 s" = help: declare a type of that name, or correct its spelling"
 DECL-DIAG:HAS? TTRUE  DECL-DIAG:OFF
+
+300 constant LONG-N
+s" [ -- ]" nip LONG-N 2 * + constant LONG-TYPE-CAP
+s" : BI-LONG-OK ( -- ) [: ;] BI-LONG drop ;" nip LONG-N 5 * +
+constant LONG-CALL-CAP
+LONG-TYPE-CAP BUFFER: LONG-TYPE
+LONG-CALL-CAP BUFFER: LONG-CALL
+variable LONG-U
+: LONG+ ( ptr u8 ptr u8 n -- ) {: dst:ptr a:ptr u:n :}
+   a dst LONG-U @ + u BYTE-COPY  LONG-U @ u + LONG-U ! ;
+\ [ n n … -- ] of LONG-N cells
+: LONG-TYPE$ ( -- ptr u8 n )
+   0 LONG-U !  LONG-TYPE s" [ " LONG+
+   LONG-N 0 ?do LONG-TYPE s" n " LONG+ loop
+   LONG-TYPE s" -- ]" LONG+  LONG-TYPE LONG-U @ ;
+\ : NAME ( -- ) [: drop drop … ;] BI-LONG drop ; of k drops
+: LONG-CALL$ ( ptr u8 n n -- ptr u8 n ) {: na:ptr nu:n k:n :}
+   0 LONG-U !  LONG-CALL s" : " LONG+  LONG-CALL na nu LONG+
+   LONG-CALL s"  ( -- ) [: " LONG+
+   k 0 ?do LONG-CALL s" drop " LONG+ loop
+   LONG-CALL s" ;] BI-LONG drop ;" LONG+  LONG-CALL LONG-U @ ;
+
+s" BI-LONG" LONG-TYPE$ EFFECT:READ-TYPE MAKE-ID
+s" BI-LONG-OK" LONG-N LONG-CALL$ TEST-EVAL:RC 0 T=
+DECL-DIAG:PROSE
+s" BI-LONG-NO" LONG-N 1 - LONG-CALL$ TEST-EVAL:RC 70 T=
+s" in bi-long-no: at 'BI-LONG' expected: " DECL-DIAG:HAS? TTRUE  DECL-DIAG:OFF
 
 \ : NAME ( n n -- n ) {: a:n b:n :} a b, finished by the text that follows.
 : SUB2-OPEN ( ptr u8 n -- )

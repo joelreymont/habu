@@ -390,14 +390,14 @@ variable TDECL-FAM-ARITY
 \ already sits below argbase) and rewinds. The nodes cannot accumulate directly on
 \ the schema-root pool because a nested application interleaves its own arg roots
 \ between this level's arguments.
-$100 constant TDV-ARG-CAP
-create TDV-ARG-SCR TDV-ARG-CAP cells allot
+\ A push may move this scratch, TDV-QUOT-SCR or TDV-PAY-SCR to a new
+\ mapping, so a reader holds indices into each across a push, never an address.
+PTR-VARIABLE TDV-ARG-P   SCRATCH-VARIABLE TDV-ARG-CAP
 variable TDV-ARG-N
+: TDV-ARG-SCR ( -- ptr n ) TDV-ARG-P @ ;
 
 : TDV-ARG+ ( n -- ) {: node:n :}
-   TDV-ARG-N @ TDV-ARG-CAP >= IF
-      TDN-A @ TDN-U @ s" type application nesting too deep" E-TDECL-PAYLOAD TDECL-THROW
-   THEN
+   TDV-ARG-P TDV-ARG-CAP TDV-ARG-N @ 1 + 1 ARENA-ROWS-ENSURE
    node TDV-ARG-N @ cells TDV-ARG-SCR + !
    TDV-ARG-N @ 1 + TDV-ARG-N ! ;
 
@@ -454,11 +454,10 @@ defer TDV-ELEM-XT ( ptr u8 n -- n )   \ forward ref for the ELEM<->ARGS<->QUOT r
 \ schema roots per side, after every element's own argument roots, so each
 \ SCH-ROW range stays contiguous. No `|` clause stores hasr 0 with empty rin and
 \ rout rows; an explicit clause pins both.
-$100 constant TDV-QUOT-CAP
-create TDV-QUOT-SCR TDV-QUOT-CAP cells allot
-: TDV-QUOT+ ( n [ ptr u8 n n -- ] -- ) {: node:n fail :}
-   TDV-QUOT-N @ TDV-QUOT-CAP >= IF
-      s" quotation effect side too long" E-TDECL-PAYLOAD fail execute THEN
+PTR-VARIABLE TDV-QUOT-P   SCRATCH-VARIABLE TDV-QUOT-CAP
+: TDV-QUOT-SCR ( -- ptr n ) TDV-QUOT-P @ ;
+: TDV-QUOT+ ( n -- ) {: node:n :}
+   TDV-QUOT-P TDV-QUOT-CAP TDV-QUOT-N @ 1 + 1 ARENA-ROWS-ENSURE
    node 0= IF -1 TDV-QUOT-MISS ! THEN
    node TDV-QUOT-N @ cells TDV-QUOT-SCR + !
    TDV-QUOT-N @ 1 + TDV-QUOT-N ! ;
@@ -479,11 +478,11 @@ create TDV-QUOT-SCR TDV-QUOT-CAP cells allot
    outer TDV-QUOT-MISS !
    missing 0 <> IF 0 EXIT THEN
    din dout rin rout hasr SCHEMA-QUOT ;
-: TDV-QUOT-SIDE ( [ -- ptr u8 n ] [ ptr u8 n -- n ] [ ptr u8 n n -- ] -- n ptr u8 n )
-   {: next elem fail :}
+: TDV-QUOT-SIDE ( [ -- ptr u8 n ] [ ptr u8 n -- n ] -- n ptr u8 n )
+   {: next elem :}
    TDV-QUOT-N @ {: base:n :}
    BEGIN next execute 2dup DELIM? 0= WHILE
-      elem execute fail TDV-QUOT+
+      elem execute TDV-QUOT+
    REPEAT
    {: sep:ptr sepu:n :}
    base TDV-QUOT-BUILD-ROW sep sepu ;
@@ -501,13 +500,13 @@ public
    {: next elem fail :}
    TDV-QUOT-MISS @ {: outer:n :}
    0 TDV-QUOT-MISS !
-   next elem fail TDV-QUOT-SIDE {: din:n sep:ptr sepu:n :}
+   next elem TDV-QUOT-SIDE {: din:n sep:ptr sepu:n :}
    sep sepu s" --" fail TDV-QUOT-EXPECT
-   next elem fail TDV-QUOT-SIDE {: dout:n end:ptr endu:n :}
+   next elem TDV-QUOT-SIDE {: dout:n end:ptr endu:n :}
    end endu s" |" CORE-STR= IF
-      next elem fail TDV-QUOT-SIDE {: rin:n rsep:ptr rsepu:n :}
+      next elem TDV-QUOT-SIDE {: rin:n rsep:ptr rsepu:n :}
       rsep rsepu s" --" fail TDV-QUOT-EXPECT
-      next elem fail TDV-QUOT-SIDE {: rout:n rend:ptr rendu:n :}
+      next elem TDV-QUOT-SIDE {: rout:n rend:ptr rendu:n :}
       rend rendu s" ]" fail TDV-QUOT-EXPECT
       din dout rin rout -1 outer TDV-QUOT-FINISH
    ELSE
@@ -585,12 +584,6 @@ TDV-ELEM-INSTALL
       2dup READ-LETTER? IF EXIT THEN 2drop
    REPEAT ;
 
-\ Stages node on the argument scratch; false when it is full.
-: READ-STAGE ( n -- bool ) {: node:n :}
-   TDV-ARG-N @ TDV-ARG-CAP >= IF RES-FALSE EXIT THEN
-   node TDV-ARG-N @ cells TDV-ARG-SCR + !
-   TDV-ARG-N @ 1 + TDV-ARG-N !  RES-TRUE ;
-
 \ Roots the nodes staged from base on as one contiguous run, the last staged
 \ first when flip, unstages them and answers the run's start.
 : READ-ROOTS ( n bool -- n ) {: base:n flip:bool :}
@@ -603,9 +596,9 @@ TDV-ELEM-INSTALL
 
 defer TERM-SCHEMA-XT ( n -- n )
 
-\ Stages term t's node; false when it has none or the scratch is full.
+\ Stages term t's node; false when it has none.
 : READ-STAGE-TERM ( n -- bool )
-   TERM-SCHEMA-XT dup 0= IF drop RES-FALSE EXIT THEN READ-STAGE ;
+   TERM-SCHEMA-XT dup 0= IF drop RES-FALSE EXIT THEN TDV-ARG+ RES-TRUE ;
 
 : READ-APP ( n -- n ) {: t:n :}
    TDV-ARG-N @ {: base:n :}
@@ -708,12 +701,11 @@ PTR-VARIABLE TDV-NA    variable TDV-NU
 \ schema-root pool while the element parses, so element nodes collect here and
 \ land as one contiguous block after every argument root (TDECL-VARIANT-FINISH).
 \ Variants never nest, so one scratch suffices.
-$100 constant TDV-PAY-CAP
-create TDV-PAY-SCR TDV-PAY-CAP cells allot
+PTR-VARIABLE TDV-PAY-P   SCRATCH-VARIABLE TDV-PAY-CAP
 variable TDV-PAY-N
+: TDV-PAY-SCR ( -- ptr n ) TDV-PAY-P @ ;
 : TDV-PAY+ ( n -- ) {: node:n :}
-   TDV-PAY-N @ TDV-PAY-CAP >= IF
-      TDN-A @ TDN-U @ s" too many variant payload elements" E-TDECL-PAYLOAD TDECL-THROW THEN
+   TDV-PAY-P TDV-PAY-CAP TDV-PAY-N @ 1 + 1 ARENA-ROWS-ENSURE
    node TDV-PAY-N @ cells TDV-PAY-SCR + !
    TDV-PAY-N @ 1 + TDV-PAY-N ! ;
 \ Every SCH-PARAM in a landed variant's payload subtree (plain element,
