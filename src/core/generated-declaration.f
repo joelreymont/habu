@@ -461,10 +461,9 @@ public
 : PART-RELEASE ( -- )
    DISARM ;
 
-\ Legal only inside an open declaration transaction and for a family that passes
-\ the gate, so a refused kind fails at ARM, not three phases later.
+\ Legal only for a family that passes the gate, so a refused kind fails at ARM,
+\ not three phases later.
 : ARM ( n -- ) {: fam:n :}
-   DECLARATION-TRANSACTION:ACTIVE? 0= IF E-CTOR-ARM throw THEN
    fam GEN-REQUIRE
    fam ARMED ! ;
 

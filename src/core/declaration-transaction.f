@@ -16,9 +16,5 @@ variable ACTIVE
 : OPEN ( -- ) ACTIVE @ IF E-ACTIVE throw THEN  -1 ACTIVE ! ;
 : CLOSE ( -- ) 0 ACTIVE ! ;
 
-public
-
-: ACTIVE? ( -- bool ) ACTIVE @ 0 <> ;
-
 ;package
 ;package

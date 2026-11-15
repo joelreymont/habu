@@ -127,10 +127,9 @@ public
 
 : PART-RELEASE ( -- ) SM-DISARM ;
 
-\ Legal only inside an open declaration transaction and for a family that passes
-\ the gate, so a refused family fails at ARM, not at commit.
+\ Legal only for a family that passes the gate, so a refused family fails at
+\ ARM, not at commit.
 : ARM ( n -- ) {: fam:n :}
-   DECLARATION-TRANSACTION:ACTIVE? 0= IF E-SM-FAM throw THEN
    fam SM-ADDR-REQUIRE
    fam SM-ARMED ! ;
 

@@ -343,21 +343,6 @@ variable DEV-TX-SERIAL
    tok fam vid index DEV-PAYLOAD-FIELD {: fld:n :}
    DEV-TX-TOP DEVTX.FLDTOK @ fam fld TYPE-FIELD-OWNER:TX-SCHEMA-FOR ;
 
-: DEV-PAYLOAD-WIDTH@ ( n n n n -- n ) {: tok:n fam:n vid:n index:n :}
-   tok fam vid index DEV-PAYLOAD-FIELD {: fld:n :}
-   DEV-TX-TOP DEVTX.FLDTOK @ fam fld TYPE-FIELD-OWNER:TX-CELLS-FOR ;
-
-: DEV-PAYLOAD-CELLS ( n n n -- n ) {: tok:n fam:n vid:n :}
-   tok fam vid DEV-PAYLOAD-RANGE {: start:n end:n :}
-   start
-   0
-   BEGIN over end < WHILE
-      over DEV-PROV-FLD@ {: fld:n :}
-      DEV-TX-TOP DEVTX.FLDTOK @ fam fld TYPE-FIELD-OWNER:TX-CELLS-FOR +
-      swap 1 + swap
-   REPEAT
-   nip ;
-
 : DEV-ARITY ( n n n -- n ) {: tok:n fam:n arity:n :}
    tok fam DEV-FAMILY-USE DEV-FAMILY-REQUIRE
    arity 0 < arity TFAM-DECL-PARAM-COUNT > or IF E-DEV-ARITY throw THEN
@@ -417,10 +402,8 @@ variable DEV-TX-SERIAL
    DEV-FLD-ORD @ 1 + DEV-FLD-ORD !
    tok ;
 
-\ PREPARE proves the field rows are exactly the contiguous provisional range the
-\ event stream names. COMMIT retains both frames for rollback. FINALIZE is the
-\ standalone release and re-proves everything, so the participant releases
-\ through PART-RELEASE instead.
+\ DEV-PREPARE proves the field rows are exactly the contiguous provisional range
+\ the event stream names. DEV-COMMIT retains both frames for rollback.
 : DEV-PREPARE ( n -- ) {: tok:n :}
    tok DEV-TX-OPEN-REQUIRE
    DEV-FLD-PROVISIONAL-COUNT DEV-BASE-FLD @ DEV-FLD-ORD @ + <>
@@ -430,18 +413,6 @@ variable DEV-TX-SERIAL
    tok DEV-PREPARE
    DEV-TX-TOP DEVTX.FLDTOK @ TYPE-FIELD-OWNER:COMMIT
    DEV-TX-COMMITTED DEV-TX-TOP DEVTX.STATE ! ;
-
-: DEV-FINALIZE ( n -- ) {: tok:n :}
-   tok DEV-TX-REQUIRE
-   DEV-TX-TOP DEVTX.STATE @ DEV-TX-COMMITTED <> IF E-DEV-TX throw THEN
-   DEV-TX-TOP DEVTX.FLDTOK @ TYPE-FIELD-OWNER:FINALIZE
-   DEV-TX-DEPTH @ 1 - DEV-TX-DEPTH !
-   DEV-TX-DEPTH @ 0= IF 0 DEV-N ! THEN ;
-
-: DEV-PUBLISH ( n -- ) {: tok:n :}
-   tok DEV-PREPARE
-   tok DEV-COMMIT
-   tok DEV-FINALIZE ;
 
 \ The family, variant, schema and layout cursors and the name pool are retired by
 \ the enclosing checker frame. Open and committed frames roll back alike.
@@ -454,11 +425,6 @@ variable DEV-TX-SERIAL
 : DEV-FRAME-POP ( -- )
    DEV-TX-DEPTH @ 1 - DEV-TX-DEPTH !
    DEV-TX-DEPTH @ DEV-TX-AT DEV-FRAME-RESTORE ;
-
-: DEV-ROLLBACK ( n -- ) {: tok:n :}
-   tok DEV-TX-REQUIRE
-   DEV-TX-TOP DEVTX.FLDTOK @ TYPE-FIELD-OWNER:ROLLBACK
-   DEV-FRAME-POP ;
 
 : DEV-RESET ( -- )
    0 DEV-N !
@@ -496,8 +462,8 @@ variable DEV-PART-FLD
    DEV-TX-TOP DEVTX.FLDTOK @ DEV-PART-FIELD-TOKEN <> IF E-DEV-TX throw THEN ;
 
 \ PREPARE is the participant's whole fallible boundary; commit and release only
-\ advance and drop marks it proved. DEV-PREPARE repeats the token proof as the
-\ standalone entry, so gutting this word still rejects at PART-COMMIT, before any
+\ advance and drop marks it proved. DEV-COMMIT repeats the token proof through
+\ DEV-PREPARE, so gutting this word still rejects at PART-COMMIT, before any
 \ participant has committed (every prepare runs first and this one commits first).
 : DEV-PART-PROVE ( -- )
    DEV-PART-TOKEN DEV-TX-OPEN-REQUIRE
@@ -547,9 +513,9 @@ public
    THEN ;
 
 \ The runner calls release only after every reversible commit succeeded, so it
-\ must not reject and is not caught: hence not DEV-FINALIZE, which re-proves and
-\ can throw. PART-PREPARE already proved the frames; this drops the field frame
-\ through the owner's total release vector, then the event frame.
+\ must not reject and is not caught. PART-PREPARE already proved the frames; this
+\ drops the field frame through the owner's total release vector, then the event
+\ frame.
 : PART-RELEASE ( -- )
    DEV-PART-OPEN? IF
       TDECL-FIELD-RELEASE-XT
@@ -559,16 +525,14 @@ public
    THEN ;
 
 \ Public API. CURRENT answers the frame the declaration savepoint opened and
-\ rejects outside one; OPEN is the standalone interface. The event words and the
-\ provisional FIELD-SCHEMA@ / PAYLOAD-* queries are legal only between OPEN and
-\ COMMIT or ROLLBACK, take and return the same token, and throw E-DEV-TX unless
-\ it is the innermost open frame. The outer release or rollback discards the
+\ rejects outside one. The event words and the provisional FIELD-SCHEMA@ /
+\ PAYLOAD-* queries take and return that token, and throw E-DEV-TX unless it is
+\ the innermost open frame. The declaration's release or rollback discards the
 \ event scratch.
 public
 
 \ The declaration forms parse to their terminators and load nothing, so no
 \ frame spans a file load.
-: OPEN ( -- n ) DEV-OPEN ;
 : CURRENT ( -- n )
    DEV-PART-OPEN? 0= IF E-DEV-TX throw THEN
    DEV-PART-TOKEN dup DEV-TX-OPEN-REQUIRE ;
@@ -583,19 +547,6 @@ public
 : FIELD-SCHEMA@ ( n n n -- n ) DEV-FIELD-SCHEMA@ ;
 : PAYLOAD-N ( n n n -- n ) DEV-PAYLOAD-N ;
 : PAYLOAD-SCHEMA@ ( n n n n -- n ) DEV-PAYLOAD-SCHEMA@ ;
-: PAYLOAD-WIDTH@ ( n n n n -- n ) DEV-PAYLOAD-WIDTH@ ;
-: PAYLOAD-CELLS ( n n n -- n ) DEV-PAYLOAD-CELLS ;
-: PUBLISH ( n -- ) DEV-PUBLISH ;
-: PREPARE ( n -- ) DEV-PREPARE ;
-: COMMIT ( n -- ) DEV-COMMIT ;
-: FINALIZE ( n -- ) DEV-FINALIZE ;
-: ROLLBACK ( n -- ) DEV-ROLLBACK ;
-: RESET ( -- ) DEV-RESET ;
-
-: CURRENT-VARIANT ( -- n ) DEV-CUR-VAR @ ;
-: NO-VARIANT ( -- n ) DEV-NO-VARIANT ;
-
-: DEPTH ( -- n ) DEV-TX-DEPTH @ ;
 
 \ A pointer does not own (TFCL-NODE? stops at it), so `ptr <linear>` would let
 \ its family copy and drop a linear value: E-PAYLOAD with the caller's text.
