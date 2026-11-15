@@ -64,12 +64,10 @@ CAST: AS-ENTRY ( [ R -- S ] -- n )
       name nameu s" -NEW-DISPOSE" PRIVATE-FREE exit
    then
    CHECKER-AUTH-PACKAGE-MODE@ {: mode:n :}
-   mode CHECKER-PACKAGE-NONE = if exit then
+   mode CHECKER-PACKAGE-NONE =  mode CHECKER-PACKAGE-GLOBAL =  or if exit then
    mode OTHER-WID {: wid:n :}
    name nameu s" -NEW" wid OTHER-FREE
    name nameu s" -NEW-DISPOSE" wid OTHER-FREE ;
-
-public
 
 \ Both words must be free in both sections of the package they land in: its
 \ bare calls resolve private-first.
@@ -91,6 +89,8 @@ public
    name nameu s" -NEW-DISPOSE" CHILD-ABI:ARENA-DISPOSE ['] NEW-DISPOSE AS-ENTRY
    type typeu width MAKE ;
 
-;package
+global
 
-: ARENA ( -- ) ARENA-DECL:RUN ;
+: ARENA ( -- ) RUN ;
+
+;package

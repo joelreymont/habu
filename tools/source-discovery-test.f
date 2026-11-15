@@ -660,7 +660,14 @@ PATH-CAP 16 / 16 * constant SDT-FIT
    s" row-part-twin.f"
    S\" package SDT-Q public : W ( -- ) parse-name 2drop ; parses: W 1 ;package\npackage SDT-P package SDT-Q public : W ( -- ) ; ;package\nSDT-Q:W require sd-raw.f\n;package\n"
    SDT-WRITE-ENTRY SDT-HARVEST-ENTRY SDT-SETTLE
-   s" sd-raw.f" SDT-ONE-LOAD ;
+   s" sd-raw.f" SDT-ONE-LOAD
+   \ A W in SDT-R's global section is top-level, not SDT-R's, so `SDT-R:W` still
+   \ selects the row.
+   DISCOVER:ROWS-RESET
+   s" row-global.f" s" package SDT-R global : W ( -- ) ; ;package" SDT-WRITE-ENTRY
+   SDT-HARVEST-ENTRY
+   SDT-ROW-LIB SDT-SETTLE
+   S\" SDT-R:W required SDT-R:;W\nrequire sd-raw.f\n" s" sd-raw.f" SDT-ONE-EVENT ;
 
 \ A redeclaration or retirement makes a spelling insufficient to select the
 \ row's word. This holds whichever file was harvested first.

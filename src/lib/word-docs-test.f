@@ -137,6 +137,22 @@ variable FIX-U
    4 s" G" s" " s" --" REC=
    WORD-DOCS:RESET ;
 
+\ A `global` section's records are top-level ones until `private` ends it.
+: GLOBALS ( -- )
+   s" globals" T-LABEL
+   s" package GLOBE : GL1 ( -- ) ; public : GL2 ( -- ) ; global : GL3 ( -- ) ; private : GL4 ( -- ) ; ;package" DOCS
+   WORD-DOCS:COUNT 4 T=
+   0 s" GL1" s" GLOBE" s" --" REC=
+   0 WORD-DOCS:PUBLIC? TFALSE
+   1 s" GL2" s" GLOBE" s" --" REC=
+   1 WORD-DOCS:PUBLIC? TTRUE
+   2 s" GL3" s" " s" --" REC=
+   2 WORD-DOCS:PUBLIC? TFALSE
+   2 WORD-DOCS:EXPORT? TFALSE
+   3 s" GL4" s" GLOBE" s" --" REC=
+   3 WORD-DOCS:PUBLIC? TFALSE
+   WORD-DOCS:RESET ;
+
 : REFUSALS ( -- )
    s" refusals" T-LABEL
    [: s" : " DOCS ;] WORD-DOCS:E-SOURCE TTHROWSQ
@@ -212,7 +228,7 @@ public
 
 : RUN ( -- )
    FIX-OPEN
-   RULES BARE-NOTES APPEND PARTS REFUSALS MANY-RECORDS REAL-FILE
+   RULES BARE-NOTES APPEND PARTS GLOBALS REFUSALS MANY-RECORDS REAL-FILE
    FIX-CLOSE ;
 
 ;package

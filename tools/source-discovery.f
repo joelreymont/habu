@@ -126,6 +126,9 @@ variable SD-R-START-BYTES
 variable SD-C-PKG
 \ The package row a part returns to, -1 for none.
 variable SD-C-OUTER
+\ 1 from `global` to `public`, `private`, `package` or `;package`: a word
+\ defined there is global, keyed as one defined outside every package is.
+variable SD-C-GLOBAL
 -1 SD-C-PKG !
 -1 SD-C-OUTER !
 
@@ -295,9 +298,12 @@ variable SD-X-N
    noff nu SD-TOK$ SD-R-COPY r SD-R-NAME !
    nu r SD-R-NAME-U !
    \ Keyed by the package open here and its outer, as their `package` spells
-   \ them: (A, B) in part A:B, (none, B) in top-level B. Both share rows' bytes.
-   SD-C-PKG @ SD-C-NAME r SD-R-PKG-U ! r SD-R-PKG !
-   SD-C-OUTER @ SD-C-NAME r SD-R-OUTER-U ! r SD-R-OUTER !
+   \ them: (A, B) in part A:B, (none, B) in top-level B, a global section's
+   \ definition by none. Both share rows' bytes.
+   kind SD-R-DECL = SD-C-GLOBAL @ 0<> and if -1 -1 else SD-C-PKG @ SD-C-OUTER @ then
+   {: pkg:n outer:n :}
+   pkg SD-C-NAME r SD-R-PKG-U ! r SD-R-PKG !
+   outer SD-C-NAME r SD-R-OUTER-U ! r SD-R-OUTER !
    0 r SD-R-COUNT !
    0 r SD-R-TERMS !
    0 r SD-R-TERMS-U !
@@ -1043,6 +1049,11 @@ $1FF constant SD-NAMES                   \ loaders and family openers
    a u s" mutual" STR=CI if 4 exit then
    0 ;
 
+: SD-SECTION? ( n n -- bool ) {: off:n len:n :}
+   off len SD-TOK$ s" global" STR=CI
+   off len SD-TOK$ s" public" STR=CI or
+   off len SD-TOK$ s" private" STR=CI or ;
+
 : SD-FAMILY-END? ( n n n -- bool ) {: off:n len:n kind:n :}
    kind 1 = if off len SD-TOK$ s" ;structure" STR=CI exit then
    kind 2 = if off len SD-TOK$ s" ;enum" STR=CI exit then
@@ -1118,12 +1129,15 @@ $1FF constant SD-NAMES                   \ loaders and family openers
       poff poff pu SD-R-PACKAGE SD-R-RECORD drop
       poff SD-R-AT {: r:n :}
       r 0 >= if r SD-C-PACKAGE-OPEN then
-      exit
+      0 SD-C-GLOBAL ! exit
    then
    SD-DEF @ 0= off len SD-TOK$ s" ;package" STR=CI and if
       off off 0 SD-R-END-PACKAGE SD-R-RECORD drop
       off SD-R-AT 0 >= if SD-C-PACKAGE-CLOSE then
-      exit
+      0 SD-C-GLOBAL ! exit
+   then
+   SD-DEF @ 0= off len SD-SECTION? and if
+      off len SD-TOK$ s" global" STR=CI if 1 else 0 then SD-C-GLOBAL ! exit
    then
    SD-DEF @ 0= off len SD-TOK$ PACKAGE-KEYWORD? and if
       SD-RAW {: noff:n nu:n :}
@@ -1217,10 +1231,10 @@ $1FF constant SD-NAMES                   \ loaders and family openers
    root SD-ROOT rootu BYTE-COPY rootu SD-ROOT-U ! ;
 
 : RUN-SELECTED ( -- )
-   SD-C-PKG @ SD-C-OUTER @ {: pkg:n outer:n :}
+   SD-C-PKG @ SD-C-OUTER @ SD-C-GLOBAL @ {: pkg:n outer:n top:n :}
    SD-HARVESTING @ if
       SD-FILE-OF SD-FILE-ID ! SD-R-BEGIN
-      -1 SD-C-PKG ! -1 SD-C-OUTER !
+      -1 SD-C-PKG ! -1 SD-C-OUTER ! 0 SD-C-GLOBAL !
    else
       SD-ENTRY SD-ENTRY-U @ SD-FILE-FIND SD-FILE-ID !
    then
@@ -1228,7 +1242,7 @@ $1FF constant SD-NAMES                   \ loaders and family openers
    SD-LOADING-U @ 0<> if SD-LOADING SD-LOADING-U @ REQUIRE-STORE 2drop then
    EVENTS-RESET EVENT-ON DISCOVERY-ON
    [: SD-WALK-IN ;] catch {: rc:n :}
-   pkg SD-C-PKG ! outer SD-C-OUTER !
+   pkg SD-C-PKG ! outer SD-C-OUTER ! top SD-C-GLOBAL !
    DISCOVERY-OFF EVENT-OFF
    REQUIRE-RESTORE
    SD-HARVESTING @ if SD-R-END then
@@ -1242,6 +1256,7 @@ public
 : ROWS-RESET ( -- )
    -1 SD-C-PKG !
    -1 SD-C-OUTER !
+   0 SD-C-GLOBAL !
    0 SD-R-N !
    0 SD-F-N !
    0 SD-R-ROWS-N !

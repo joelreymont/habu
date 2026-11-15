@@ -18,8 +18,6 @@ package TYPE-DECL
    [: CHECKER-DEFSUM-BODY GENERATED-DECL-CTOR:ARM ;]
    DECLARATION-TRANSACTION:RUN ;
 
-public
-
 : TDECL-SUMTYPE ( -- )
    SRCLOC:TOKEN$ {: kw:^ ku:n :}
    DECL-FRONT:SOURCE-NEXT {: na:^ nu:n :}
@@ -32,12 +30,10 @@ public
    0= IF [: TDECL-NOEND-BODY ;] TDECL-RUN EXIT THEN
    [: TDECL-SUM-GEN-TXN ;] TDECL-RUN ;
 
-;package
-
-using TYPE-DECL
+global
 
 \ A documented global: it parses its body to its closer at interpret time, so
 \ its checked effect is ( -- ).
 : SUMTYPE ( -- ) TDECL-SUMTYPE ;
 
-;using
+;package

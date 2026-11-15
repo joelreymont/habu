@@ -473,12 +473,16 @@ private
       s" rename the variant: a type family in this scope already has this name"
       E-TDECL-NAME TDECL-THROW ;
 
-\ --- package scope: a declaration registers in the active checker package with
-\ the active visibility (TFAM-ACTIVE-PKG$, type-family.f); top level is the
-\ global scope, public.
+\ --- package scope: a declaration registers in the active checker package
+\ (TFAM-ACTIVE-PKG$, type-family.f). `global` places words, not types: a type
+\ declared at top level or in a `global` section is public.
+public
 : TDECL-VIS ( -- n )
-   CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF CHECKER-PACKAGE-PUBLIC EXIT THEN
-   CHECKER-AUTH-PACKAGE-MODE@ ;
+   CHECKER-AUTH-PACKAGE-MODE@ {: mode:n :}
+   mode CHECKER-PACKAGE-NONE =  mode CHECKER-PACKAGE-GLOBAL =  or IF
+      CHECKER-PACKAGE-PUBLIC EXIT
+   THEN mode ;
+private
 
 \ TFAM-DECL's one failure left here is a duplicate, unless a compile callback
 \ declares: the window rejection comes first, under the general reason.
@@ -1918,30 +1922,35 @@ $100000001b3 constant DRV-FNV-PRIME        \ FNV-1a 64-bit prime
    fam vstart 1 + TDPLAN-UNMAKE TDECL-PROD-ROW
    fam TDECL-DRV-WORDS ;
 
-\ A live declaration's switch runs the `private` / `public` keyword's
-\ operation. A replay defines no word, and its pre-pass (verify-source.f)
-\ opens the package in the checker alone: the engine has no package open
-\ there. A replay switches the checker's mode only.
+\ A live declaration's switch runs the `private` / `public` / `global`
+\ keyword's operation. A replay defines no word, and its pre-pass
+\ (verify-source.f) opens the package in the checker alone: the engine has no
+\ package open there. A replay switches the checker's mode only.
 : TDECL-GEN-PRIVATE ( bool -- ) {: replay:bool :}
    replay IF CHECKER-PRIVATE EXIT THEN
    CHECKER-RESOLVE:PRIVATE-SECTION ;
-: TDECL-GEN-RESTORE ( n bool -- ) {: fam:n replay:bool :}
-   fam TFAM-PUBLIC? 0= IF replay TDECL-GEN-PRIVATE EXIT THEN
+: TDECL-GEN-RESTORE ( n bool -- ) {: mode:n replay:bool :}
+   mode CHECKER-PACKAGE-PRIVATE = IF replay TDECL-GEN-PRIVATE EXIT THEN
+   mode CHECKER-PACKAGE-GLOBAL = IF
+      replay IF CHECKER-GLOBAL EXIT THEN
+      CHECKER-RESOLVE:GLOBAL-SECTION EXIT
+   THEN
    replay IF CHECKER-PUBLIC EXIT THEN
    CHECKER-RESOLVE:PUBLIC-SECTION ;
 
 \ Q plans, preflights and builds (or replays) a family's generated rows. A
 \ private or OPAQUE family's rows (not TFAM-GEN-PUBLIC?) go into the declaring
 \ package's private wordlist, so Q runs between a switch to private and a
-\ restore of the declaration's section, on either exit. Everything that interns
-\ a name runs inside the switch. Q takes and returns the family, which each
-\ caller's generator takes; catch takes only a
+\ restore of the section the declaration runs in, on either exit. Everything
+\ that interns a name runs inside the switch. Q takes and returns the family,
+\ which each caller's generator takes; catch takes only a
 \ stack-preserving quotation.
 : TDECL-GEN-PLACED ( n bool [ n -- n ] -- ) {: fam:n replay:bool q :}
    fam TFAM-GEN-PUBLIC? IF fam q execute drop EXIT THEN
+   CHECKER-AUTH-PACKAGE-MODE@ {: mode:n :}
    replay TDECL-GEN-PRIVATE
    fam q catch {: rc:n :}
-   fam replay TDECL-GEN-RESTORE
+   mode replay TDECL-GEN-RESTORE
    rc 0 <> IF rc throw THEN
    drop ;
 

@@ -109,18 +109,8 @@ CAST: AS-WORKS-ENTRY ( [ n ^n -- ^u8 ] -- n )
    off bytes + USED !
    kind VARIABLE-KIND = operand 0<> and if off operand DEFAULT then ;
 
-\ Global introduction forms keep their existing checker identities. Their
-\ compiled calls retain these closed bridges after the names are retired.
-public
-: BUFFER ( n -- ) BUFFER-KIND DECLARE ;
-: SPAN ( n -- ) SPAN-KIND DECLARE ;
-: VARIABLE ( n -- ) VARIABLE-KIND DECLARE ;
+global
+: CWORK-BUFFER ( n -- ) BUFFER-KIND DECLARE ;
+: CWORK-SPAN ( n -- ) SPAN-KIND DECLARE ;
+: CWORK-VARIABLE ( n -- ) VARIABLE-KIND DECLARE ;
 ;package
-
-: CWORK-BUFFER ( n -- ) CWORK:BUFFER ;
-: CWORK-SPAN ( n -- ) CWORK:SPAN ;
-: CWORK-VARIABLE ( n -- ) CWORK:VARIABLE ;
-
-undefine CWORK:BUFFER
-undefine CWORK:SPAN
-undefine CWORK:VARIABLE

@@ -1,6 +1,7 @@
 \ export-package.f - interpret-level `EXPORT` in fresh child engines. Inside an
 \ open package's public section it publishes an existing word under its own
-\ tail; outside a package it is rejected.
+\ tail; outside a package it is rejected. A package's `global` section defines
+\ bare global words whose bodies call the package's private words.
 
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
 \   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f
@@ -202,6 +203,47 @@ create XPK-EMPTY 1 allot
    s" dup" XPK-LINE
    SB$ ;
 
+\ PKG's private P-HELP stays private; its global P-GLOBAL is bare.
+: XPK-GLOBAL-PKG ( -- )
+   s" package PKG" XPK-LINE
+   s" : P-HELP ( -- n ) 42 ;" XPK-LINE
+   s" global" XPK-LINE
+   s" : P-GLOBAL ( -- n ) P-HELP ;" XPK-LINE
+   s" ;package" XPK-LINE ;
+
+: XPK-GLOBAL-FORGE$ ( -- ^u8 n )
+   SB-RESET XPK-GLOBAL-PKG
+   s" P-GLOBAL . cr" XPK-LINE
+   SB$ ;
+
+\ The package, then the line a u.
+: XPK-GLOBAL-AFTER$ ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
+   SB-RESET XPK-GLOBAL-PKG  a u XPK-LINE  SB$ ;
+
+: XPK-GLOBAL-OUTSIDE$ ( -- ^u8 n )
+   SB-RESET
+   s" global" XPK-LINE
+   s" : P-GLOBAL ( -- n ) 1 ;" XPK-LINE
+   SB$ ;
+
+\ Types declared in XG's global section name its private xgcell; the OPAQUE
+\ xgbox's generated words go to XG's private section, and the section after
+\ it is global again.
+: XPK-GLOBAL-TYPES$ ( -- ^u8 n )
+   SB-RESET
+   s" package XG" XPK-LINE
+   s" STRUCTURE xgcell FIELD v n ;STRUCTURE" XPK-LINE
+   s" global" XPK-LINE
+   s" SUMTYPE xgsum VARIANT at ^xgcell ;VARIANT VARIANT nil ;VARIANT ;SUMTYPE" XPK-LINE
+   s" STRUCTURE xgbox OPAQUE FIELD c xgcell ;STRUCTURE" XPK-LINE
+   s" ENUM xgopt VARIANT some FIELD c xgcell ;VARIANT VARIANT none ;VARIANT ;ENUM" XPK-LINE
+   s" : XG-RUN ( n -- n ) XGCELL-MAKE XGBOX-MAKE XGBOX-UNMAKE XGCELL-UNMAKE 1 + ;" XPK-LINE
+   s" ;package" XPK-LINE
+   s" 40 XG-RUN . cr" XPK-LINE
+   s" XG-XGSUM:nil drop 42 . cr" XPK-LINE
+   s" XG-XGOPT:none drop 43 . cr" XPK-LINE
+   SB$ ;
+
 \ --- child spawn + outcome capture --------------------------------------------
 \ Children run ENGINE-CANDIDATE:PATH$ over piped stdin or under --load.
 
@@ -239,6 +281,18 @@ create XPK-EMPTY 1 allot
    XPK-ERR XPK-CAP >LEN  PROCESS:WAIT-FOREVER
    RUN-ARGV-STDIN-CAPTURE-OUTCOME
    XPK-IN$ XPK-STORE! ;
+
+\ tools/check.f over the child file a --load run wrote.
+: XPK-RUN-CHECK ( -- )
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   s" tools/check.f" >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+
+   XPK-CHILD >LEN PROC-ARGV+
+   ENGINE-CANDIDATE:PATH$ >LEN  XPK-EMPTY 0 >LEN  XPK-OUT XPK-CAP >LEN
+   XPK-ERR XPK-CAP >LEN  PROCESS:WAIT-FOREVER
+   RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   XPK-CHILD XPK-STORE! ;
 
 : XPK-ASSERT-RC ( n -- ) {: rc:n :}
    XPK-EXITED @ TTRUE
@@ -301,6 +355,48 @@ create XPK-EMPTY 1 allot
    s" top-level ?dup over an enum value is undefined" T-LABEL
    XPK-QDUP-FORGE$ XPK-RUN-STDIN XPK-UNDEF-RC XPK-ASSERT-RC
    s" error[E-UNDEFINED]: cannot find word `?dup`" XPK-ERR? ;
+
+\ A name a global section's package does not publish is E-UNDEFINED.
+: XPK-GLOBAL-UNDEFINED ( ^u8 n -- ) {: a:^ u:n :}
+   a u T-LABEL
+   a u XPK-GLOBAL-AFTER$ XPK-RUN-LOAD XPK-UNDEF-RC XPK-ASSERT-RC
+   s" E-UNDEFINED" XPK-ERR? ;
+
+: XPK-GLOBAL ( -- )
+   s" a global section's word is bare and calls the package's private word" T-LABEL
+   XPK-GLOBAL-FORGE$ XPK-RUN-LOAD 0 XPK-ASSERT-RC s" 42" XPK-OUT?
+   s" tools/check.f accepts the global section" T-LABEL
+   XPK-RUN-CHECK 0 XPK-ASSERT-RC
+   s" PKG:P-GLOBAL" XPK-GLOBAL-UNDEFINED
+   s" P-HELP" XPK-GLOBAL-UNDEFINED
+   s" PKG:P-HELP" XPK-GLOBAL-UNDEFINED
+   s" types declared in a global section" T-LABEL
+   XPK-GLOBAL-TYPES$ XPK-RUN-LOAD 0 XPK-ASSERT-RC
+   s" 41" XPK-OUT?  s" 42" XPK-OUT?  s" 43" XPK-OUT?
+   s" tools/check.f accepts types declared in a global section" T-LABEL
+   XPK-RUN-CHECK 0 XPK-ASSERT-RC
+   s" global outside a package is rejected" T-LABEL
+   XPK-GLOBAL-OUTSIDE$ XPK-RUN-LOAD XPK-REJECT-RC XPK-ASSERT-RC
+   s" E-PKG-CONTEXT" XPK-ERR? ;
+
+\ The declaration words are their packages' global words over private
+\ implementations: a checked body reaches no implementation, and may not call
+\ the declaration word itself.
+: XPK-DECL-REJECT ( ^u8 n ^u8 n -- ) {: a:^ u:n e:^ eu:n :}
+   a u T-LABEL
+   SB-RESET a u XPK-LINE SB$ XPK-RUN-LOAD XPK-REJECT-RC XPK-ASSERT-RC
+   e eu XPK-ERR? ;
+
+: XPK-DECL ( -- )
+   s" : XPK-DECL-ENUM ( -- ) ENUM-DECL:DECLARE-ENUM ;" s" E-UNDEFINED" XPK-DECL-REJECT
+   s" : XPK-DECL-SD ( -- ) STRUCTURE-DECL:DECLARE-STRUCTURE ;" s" E-UNDEFINED" XPK-DECL-REJECT
+   s" : XPK-DECL-TV ( -- ) LBUF:TYPED-VARIABLE ;" s" E-UNDEFINED" XPK-DECL-REJECT
+   s" : XPK-DECL-DS ( -- ) DYNAMIC-STORAGE:DECLARE ;" s" E-UNDEFINED" XPK-DECL-REJECT
+   s" : XPK-DECL-AR ( -- ) ARENA-DECL:RUN ;" s" E-UNDEFINED" XPK-DECL-REJECT
+   s" : XPK-DECL-SUM ( -- ) TYPE-DECL:TDECL-SUMTYPE ;" s" E-UNDEFINED" XPK-DECL-REJECT
+   s" : XPK-DECL-NT ( -- ) STRUCTURE-DECL:SD-WRAP ;" s" E-UNDEFINED" XPK-DECL-REJECT
+   s" : XPK-DECL-ENUM ( -- ) ENUM ;" s" E-UNSAFE" XPK-DECL-REJECT
+   s" : XPK-DECL-SUMT ( -- ) SUMTYPE ;" s" E-UNSAFE" XPK-DECL-REJECT ;
 
 \ The source ctor and its alias must behave alike at top level: both run and
 \ leave their two-cell value, and a primitive over it (dup) is rejected alike
@@ -472,6 +568,8 @@ XPK-WIDE-TAKE
 XPK-WIDE-DROP
 XPK-USER-DROP
 XPK-WIDE-KEEP
+XPK-GLOBAL
+XPK-DECL
 XPK-CLEANUP
 T-REPORT
 s" export-package: ok" type cr

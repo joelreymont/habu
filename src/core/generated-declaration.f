@@ -607,9 +607,6 @@ public
    s" name `stack-cell-tag`, `packed-tag` or `niche-null` after `POLICY`"
    E-TDECL-POLICY DECL-REJECT:REJECT throw ;
 
-: VIS ( -- n )                          \ declaration visibility (public at top level)
-   CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF CHECKER-PACKAGE-PUBLIC EXIT THEN CHECKER-AUTH-PACKAGE-MODE@ ;
-
 private
 
 : SEEN? ( ^u8 n -- bool )

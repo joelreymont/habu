@@ -60,11 +60,10 @@ variable ERR-U         \ bytes the last child wrote to fd 2
    PACKAGE-SOURCE$ {: src:^ u:n :}
    HB$ src u RUN-SOURCE ;
 
-\ src/core/checker.f CHECKER-RESOLVE:AUTHORITY answers "no package context" when
-\ the current wordlist is neither the open package's public nor its private one;
-\ CHECKER-PKG-CONTEXT-REJECT names that and throws the reject rc.
+\ A definition inside a package into a wordlist that is none of its public,
+\ private and global ones has no package context: a fresh wordlist is none.
 : NO-CONTEXT-SOURCE$ ( -- ^u8 n )
-   s" package BRIDGE-GAP public 0 set-current : W ( -- n ) 1 ; ;package" ;
+   s" package BRIDGE-GAP public wordlist set-current : W ( -- n ) 1 ; ;package" ;
 
 : NO-CONTEXT-RC ( -- n )
    NO-CONTEXT-SOURCE$ {: src:^ u:n :}
@@ -83,14 +82,14 @@ variable ERR-U         \ bytes the last child wrote to fd 2
 : CAUGHT-SOURCE$ ( -- ^u8 n )
    s" BRIDGE-CATCH" BARE-PREFIX
    S\" : TRY ( -- n ) [: SRC evaluate-closed ;] catch ;\n" SB-APPEND
-   S\" : BARE ( -- n ) 0 set-current TRY CUR @ set-current ;\n" SB-APPEND
+   S\" : BARE ( -- n ) wordlist set-current TRY CUR @ set-current ;\n" SB-APPEND
    S\" s\q caught=\q type BARE .\n" SB-APPEND
    S\" s\q AFTER\q type\n;package\n" SB-APPEND
    SB$ ;
 
 : UNCAUGHT-SOURCE$ ( -- ^u8 n )
    s" BRIDGE-RAW" BARE-PREFIX
-   S\" : BARE ( -- ) 0 set-current SRC evaluate-closed CUR @ set-current ;\n" SB-APPEND
+   S\" : BARE ( -- ) wordlist set-current SRC evaluate-closed CUR @ set-current ;\n" SB-APPEND
    S\" BARE\n" SB-APPEND
    S\" s\q AFTER\q type\n;package\n" SB-APPEND
    SB$ ;

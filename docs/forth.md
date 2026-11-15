@@ -180,6 +180,13 @@ private
   wordlist, then the public wordlist, inside a part `A:B` then A's private
   and public wordlists, then the saved global path, then each used public
   wordlist.
+- `global`, valid only inside a package, switches new definitions to the
+  global wordlist until `public` or `private`; lookup is unchanged, so their
+  bodies still call the package's private words. It is how a package
+  publishes a bare global word, such as a declaration word a program runs at
+  top level: after `global`, `: P-GO ( -- n ) HELP ;` in package P is called
+  `P-GO` and `P:P-GO` is `E-UNDEFINED`. Outside a package it is refused:
+  `E-PKG-CONTEXT habu: <loc>: global`, rc 75.
 - The checker mirrors package scope: certified `private` definitions are visible
   only to later checked code in the same open package, `public` ones as
   `NAME:WORD`; duplicate certified definitions in one active wordlist are
@@ -328,9 +335,10 @@ public
   (`APP:RESET`, `MK:RESET`). A `does>` definer `MK` also publishes its clause
   as `MK;does` in its own wordlist, so a live `MK;does` there refuses `MK` at
   `does>` and a later `MK;does` is refused.
-- A **public** definition whose tail a **private** word of the same package owns
-  is the forwarder pattern (`: PREPARE ( ^n -- ) PREPARE ;` publishing a
-  private `PREPARE`): legal, but both effects must move the same number of
+- A **public** definition, or one in the package's `global` section, whose tail
+  a **private** word of the same package owns is the forwarder pattern
+  (`: PREPARE ( ^n -- ) PREPARE ;` publishing a private `PREPARE`): legal,
+  but both effects must move the same number of
   CELLS, because the bare tail binds the private word and a definition's
   contract is read from that binding. A mismatch is refused where written,
   `E-SHADOWED-ARITY`, naming the package, the tail and both widths. The rule
@@ -1360,9 +1368,8 @@ still publish roles in their `TRUSTED:` effects so checked callers reject swaps.
 
 `DEFTYPE` and `DEFLINEAR` differ in substrate, scope, spelling and diagnostics.
 
-**`DEFTYPE NAME` — a package-scoped value nominal.** `src/lib/type/deftype.f`
-must be required first. The type is a package-scoped arity-0
-family, the substrate of `NEWTYPE`:
+**`DEFTYPE NAME` — a package-scoped value nominal.** The type is a
+package-scoped arity-0 family, the substrate of `NEWTYPE`:
 
 - The signature spells the lower-case fold: `DEFTYPE FRAME-IDX` is `frame-idx`
   inside the package and `PKG:frame-idx` outside it. `DEFTYPE SERIAL` in

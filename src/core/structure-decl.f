@@ -914,7 +914,7 @@ private
    {: na:^ nu:n ta:^ tu:n ar:n :}
    ta tu DECL-REJECT:TOKEN!
    s" duplicate family" SD-DUP-FIX$ E-TFAM-DUP DECL-REJECT:EXPECT
-   TFAM-ACTIVE-PKG$ VIS na nu
+   TFAM-ACTIVE-PKG$ TYPE-DECL:TDECL-VIS na nu
    ar TK-PRODUCT TFAM-DECL ;
 \ Opens family fam's fields: they follow the committed rows and the rows of the
 \ members closed before it.
@@ -1162,12 +1162,12 @@ private
    2swap NAME-U ! NAME-A !
    s" " [: SD-RESET WRAP-DRIVE ;] ;
 
-public
-
 : DECLARE-STRUCTURE ( -- ) SD-FRONT DECL-FRONT:RUN ;
 
 \ Declares the structures a MUTUAL lists, which may point at each other.
 : DECLARE-MUTUAL ( -- ) MUTUAL-FRONT DECL-FRONT:RUN ;
+
+public
 
 \ Registers a STRUCTURE from a body a tool lexed, by DECLARE-STRUCTURE's grammar,
 \ defining no word; a body without ;STRUCTURE is rejected "missing ;STRUCTURE".
@@ -1219,6 +1219,9 @@ public
    ha hu ba bu ta tu ka ku WRAP-FRONT DECL-FRONT:REPLAY-OUTCOME {: ma:^ mu:n miss:bool :}
    miss 0= IF tally WRAP-KEEP THEN
    ma mu miss ;
+
+private
+
 \ The same, raising E-UNRESOLVED instead of answering, and answering the
 \ family, or -1 when a multi-error load rejected it.
 : SD-WRAP ( ^u8 n ^u8 n ^u8 n ^u8 n -- n )
@@ -1227,29 +1230,30 @@ public
 
 ;package
 
-public
-
 EXPORT STRUCTURE-DECL:DECLARE-STRUCTURE
 EXPORT STRUCTURE-DECL:DECLARE-MUTUAL
+EXPORT STRUCTURE-DECL:SD-WRAP
+
+public
+
 EXPORT STRUCTURE-DECL:REPLAY-STRUCTURE
 EXPORT STRUCTURE-DECL:REPLAY-MUTUAL
 EXPORT STRUCTURE-DECL:SD-ONE-NAME
 EXPORT STRUCTURE-DECL:SD-WRAP-OUTCOME
-EXPORT STRUCTURE-DECL:SD-WRAP
 
-;package
+global
 
 \ STRUCTURE is a documented global (package-first exception, like the SUMTYPE
 \ opener); it parses its body to ;STRUCTURE at interpret time, so its
 \ checked effect is ( -- ).
-: STRUCTURE ( -- ) TYPE-DECL:DECLARE-STRUCTURE ;
+: STRUCTURE ( -- ) DECLARE-STRUCTURE ;
 
 \ MUTUAL is a documented global, as STRUCTURE is: it lists the families of a
 \ cycle of structures, then holds one STRUCTURE ... ;STRUCTURE per listed
 \ family, in any order, to ;MUTUAL, as one declaration. A member whose
 \ ;STRUCTURE has not been read is named only beneath `^`. It parses its body at
 \ interpret time, so its checked effect is ( -- ).
-: MUTUAL ( -- ) TYPE-DECL:DECLARE-MUTUAL ;
+: MUTUAL ( -- ) DECLARE-MUTUAL ;
 
 \ NEWTYPE is a documented global. A base is the type on the name's line; a \
 \ there, or a parametrised name, leaves the one-cell family. A missing name is
@@ -1265,7 +1269,9 @@ EXPORT STRUCTURE-DECL:SD-WRAP
    tu 0= IF na nu 2dup s" newtype" TYPE-DECL:TDECL-DEFFAMILY EXIT THEN
    ta LBUF:STORAGE-UNREAD
    tu 1 = IF ta c@ 92 = IF na nu 2dup s" newtype" TYPE-DECL:TDECL-DEFFAMILY EXIT THEN THEN
-   na nu 2dup LBUF:STORAGE-PARSE-TYPE s" newtype" TYPE-DECL:SD-WRAP drop ;
+   na nu 2dup LBUF:STORAGE-PARSE-TYPE s" newtype" SD-WRAP drop ;
+
+;package
 
 ;using
 ;using

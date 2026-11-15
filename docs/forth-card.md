@@ -58,6 +58,10 @@ public
   declaration 'x': reserved name`, rc 70). `;package` of a part returns to A's
   private section. `package` anywhere else inside a package is rejected
   `E-PKG-CONTEXT`, rc 70.
+- `global` in a package sends the definitions after it to the global
+  wordlist; their bodies still call the package's private words (`: P-GO ( --
+  n ) HELP ;` is called `P-GO`; `P:P-GO` is `E-UNDEFINED`). Outside a
+  package it is rejected `E-PKG-CONTEXT`, rc 70.
 - `[package] ( -- ^u8 n )`: the open package's name in lower case (`hb`, a
   part's `hb:b`), empty outside one; a literal in a body, pushed at top level.
 - `EXPORT NAME` in a public section re-exports an existing word under its own
@@ -79,7 +83,8 @@ public
   public and private sections are two wordlists, so a public `R` may share a
   private word's tail, a family's private derived word included: a bare `R`
   in the package calls the private one, `PKG:R` the public one, and a public
-  colon `R` moves the private one's cells (`E-SHADOWED-ARITY`). A `does>`
+  colon `R`, or one in the package's `global` section, moves the private one's
+  cells (`E-SHADOWED-ARITY`). A `does>`
   definer `R` also claims `R;does` there, and so does `EXPORT R`. The new `R`
   is checked and called as itself even when it spells an engine word: the
   checker's rules for `@`, `!`, `create` and the like belong to the engine's

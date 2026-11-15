@@ -2019,7 +2019,7 @@ private
 : TICK-NATIVE-DEFINER? ( ^u8 n -- bool )
    {: a:^ u:n :}
    a u s" package" STR=CI  a u s" ;package" STR=CI or
-   a u s" public" STR=CI or  a u s" private" STR=CI or
+   a u s" public" STR=CI or  a u s" private" STR=CI or  a u s" global" STR=CI or
    a u s" using" STR=CI or  a u s" ;using" STR=CI or
    a u s" seal-package" STR=CI or  a u s" host" STR=CI or
    a u s" target" STR=CI or IF 0 0= EXIT THEN
@@ -2416,6 +2416,9 @@ variable TRUSTED-DOES
 : RECORD-PRIVATE ( -- )
    CHECKER-PRIVATE ;
 
+: RECORD-GLOBAL ( -- )
+   CHECKER-GLOBAL ;
+
 : RECORD-END-PACKAGE ( -- )
    CHECKER-END-PACKAGE ;
 
@@ -2510,6 +2513,8 @@ variable SUM-VAR-NEXT
 \ are tokens there, not comments (`ENUM colr red \ note` refuses 7101 at `\`).
 : DECL-TOKEN ( -- ^u8 n ) NEXT-RAW ;
 
+EXPORT TYPE-DECL:TDECL-SUMTYPE
+
 : RECORD-SUMTYPE-BODY ( ^u8 n -- )
    {: name:^ nameu:n :}
    0 SUM-VAR-N !  0 SUM-VAR-NEXT !
@@ -2526,7 +2531,7 @@ variable SUM-VAR-NEXT
    SRCLOC:TOKEN$ {: oa:^ ou:n :}
    TOP-CUR-A @ TOP-CUR-U @ SRCLOC:TOKEN!
    name nameu BODY$
-   [: [: TYPE-DECL:TDECL-SUMTYPE ;] DECL-REPLAY:RP-RUN ;]
+   [: [: TDECL-SUMTYPE ;] DECL-REPLAY:RP-RUN ;]
    [: oa ou SRCLOC:TOKEN! ;] finally
    TFAM:TFAM-N@ before > IF
       TFAM:TFAM-N@ 1- SUM-VAR-DEFINED
@@ -2862,12 +2867,15 @@ variable STG-TYPE-U
       name nameu s" -NEW" at ARENA-PRIVATE-FREE? 0= IF EXIT THEN
       name nameu s" -NEW-DISPOSE" at ARENA-PRIVATE-FREE? 0= IF EXIT THEN
    ELSE
-      mode CHECKER-PACKAGE-PUBLIC = {: pub:bool :}
-      pub IF CHECKER-PRIVATE ELSE CHECKER-PUBLIC THEN
-      true [: drop name nameu at ARENA-WORDS-FREE? ;] catch {: rc:n :}
-      pub IF CHECKER-PUBLIC ELSE CHECKER-PRIVATE THEN
-      rc 0 <> IF rc throw THEN
-      0= IF EXIT THEN
+      \ A `global` section's words land in neither section of its package.
+      mode CHECKER-PACKAGE-GLOBAL <> IF
+         mode CHECKER-PACKAGE-PUBLIC = {: pub:bool :}
+         pub IF CHECKER-PRIVATE ELSE CHECKER-PUBLIC THEN
+         true [: drop name nameu at ARENA-WORDS-FREE? ;] catch {: rc:n :}
+         pub IF CHECKER-PUBLIC ELSE CHECKER-PRIVATE THEN
+         rc 0 <> IF rc throw THEN
+         0= IF EXIT THEN
+      THEN
    THEN
    type typeu CHECKER-ARENA-INFO 0= IF
       drop name nameu type typeu CHECKER-STORAGE-TYPE-REJECT EXIT
@@ -3748,6 +3756,7 @@ variable PARSE-IMM-XT s" parse-imm" PARSE-IMM-XT LIBRARY-XT!
    a u s" package" STR=CI IF RECORD-PACKAGE 0 0= EXIT THEN
    a u s" public" STR=CI IF RECORD-PUBLIC 0 0= EXIT THEN
    a u s" private" STR=CI IF RECORD-PRIVATE 0 0= EXIT THEN
+   a u s" global" STR=CI IF RECORD-GLOBAL 0 0= EXIT THEN
    a u s" host" STR=CI IF 0 0= EXIT THEN
    a u s" target" STR=CI IF 0 0= EXIT THEN
    a u s" ;package" STR=CI IF RECORD-END-PACKAGE 0 0= EXIT THEN

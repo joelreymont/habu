@@ -370,7 +370,7 @@ create FFI-T-LONG-PATH PATH-CAP allot
    s" error[E-FFI-DLSYM]: no C symbol 'crc32' among the process's symbols"
    CONTAINS? TTRUE
    erru FFI-T-ERR$
-   s" = help: name the library that defines it with LIBRARY, or open it with FFI:GLOBAL"
+   s" = help: name the library that defines it with LIBRARY, or open it with FFI:PROCESS-WIDE"
    CONTAINS? TTRUE ;
 
 : FFI-T-GLOBAL ( -- )
@@ -384,8 +384,8 @@ create FFI-T-LONG-PATH PATH-CAP allot
    else
       FFI-T-LOCAL
    then
-   s" an FFI:NOW FFI:GLOBAL or open puts the function in process-wide resolution" T-LABEL
-   FFI-T-GLOBAL-LIB$ FFI:NOW FFI:GLOBAL or FFI:DLOPEN 0 T<>
+   s" an FFI:NOW FFI:PROCESS-WIDE or open puts the function in process-wide resolution" T-LABEL
+   FFI-T-GLOBAL-LIB$ FFI:NOW FFI:PROCESS-WIDE or FFI:DLOPEN 0 T<>
    0 s" a" FFI-T-GLOBAL-PROBE $E8B7BE43 T= ;
 
 : FFI-T-CHECK-PASSES ( ^u8 n -- )
@@ -662,7 +662,7 @@ create FFI-T-LONG FFI-T-LONG-U allot
    S\" error[E-FFI-DLSYM]: no C symbol 'habu-no-such-symbol' among the process's symbols\n"
    CONTAINS? TTRUE
    erru FFI-T-ERR$
-   s" = help: name the library that defines it with LIBRARY, or open it with FFI:GLOBAL"
+   s" = help: name the library that defines it with LIBRARY, or open it with FFI:PROCESS-WIDE"
    CONTAINS? TTRUE
    s" a missing library symbol fails with its name and the library's path" T-LABEL
    SB-RESET

@@ -262,7 +262,7 @@ ED-RESET
    s" duplicate family"
    s" rename the enum: this package already declares a family by that name"
    E-TFAM-DUP DECL-REJECT:EXPECT
-   TFAM-ACTIVE-PKG$ VIS na nu
+   TFAM-ACTIVE-PKG$ TDECL-VIS na nu
    ar TK-SUM TFAM-DECL FAM !
    OPEN-TX ;
 : REGISTER-COMPACT ( ^u8 n -- )
@@ -271,7 +271,7 @@ ED-RESET
    s" duplicate family"
    s" rename the enum: this package already declares a family by that name"
    E-TFAM-DUP DECL-REJECT:EXPECT
-   TFAM-ACTIVE-PKG$ VIS na nu
+   TFAM-ACTIVE-PKG$ TDECL-VIS na nu
    0 TK-ENUM TFAM-DECL FAM !
    OPEN-TX ;
 
@@ -380,9 +380,9 @@ ED-RESET
 : ED-FRONT ( -- ^u8 n ^u8 n [ -- ] )
    s" enum" s" ;enum" [: ED-RESET DRIVE ;] ;
 
-public
-
 : DECLARE-ENUM ( -- ) ED-FRONT DECL-FRONT:RUN ;
+
+public
 
 \ Registers an ENUM from a body a tool lexed, by DECLARE-ENUM's grammar, defining
 \ no word; a body without ;ENUM is rejected "missing ;ENUM" (enum-decl-suite 23e).
@@ -391,20 +391,21 @@ public
 
 ;package
 
+EXPORT ENUM-DECL:DECLARE-ENUM
+
 public
 
-EXPORT ENUM-DECL:DECLARE-ENUM
 EXPORT ENUM-DECL:REPLAY-ENUM
 
-;package
-
+global
 \ ENUM is a documented global (package-first exception, like STRUCTURE) and the
 \ only ENUM parser; it parses its body to ;ENUM at interpret time, so its checked
 \ effect is ( -- ).
 \   ENUM type-name[<params>] header-clause* (variant-name+ | variant-block+) ;ENUM
 \   header-clause = POLICY policy-name | DERIVE derive-name+
 \   variant-block = VARIANT variant-name (FIELD field-name type-expr)* ;VARIANT
-: ENUM ( -- ) TYPE-DECL:DECLARE-ENUM ;
+: ENUM ( -- ) DECLARE-ENUM ;
+;package
 
 ;using
 ;using

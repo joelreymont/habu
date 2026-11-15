@@ -125,7 +125,8 @@ private
    RESTLIB COMMON s" src/lib/allocator.f" ROW
    RESTLIB COMMON s" src/lib/arena.f" ROW
    RESTLIB COMMON s" src/core/arena.f" ROW
-   RESTLIB COMMON s" src/compiler/fixed-body.f" ROW ;
+   RESTLIB COMMON s" src/compiler/fixed-body.f" ROW
+   RESTLIB COMMON s" src/lib/type/deftype.f" ROW ;
 
 
 create ROWS FILL

@@ -1715,6 +1715,9 @@ public
 0 constant CHECKER-PACKAGE-NONE
 1 constant CHECKER-PACKAGE-PRIVATE
 2 constant CHECKER-PACKAGE-PUBLIC
+\ A package's `global` section: its definitions are global words, their bodies
+\ in the package's scope.
+3 constant CHECKER-PACKAGE-GLOBAL
 \ Bytes at and past CHECKER-PACKAGE-U stay zero (CHECKER-PACKAGE-U!): a package may be open at a file capture.
 create CHECKER-PACKAGE-NAME PACKAGE-PATH:CAP allot
 variable CHECKER-PACKAGE-U
@@ -1766,7 +1769,8 @@ VERIFY-WINDOW-NONE CHECKER-VERIFY-WINDOW !
 : CHECKER-PKG-MIRROR ( -- ^u8 n bool )
    CHECKER-PACKAGE-MODE @ {: mode:n :}
    mode CHECKER-PACKAGE-PRIVATE <>
-   mode CHECKER-PACKAGE-PUBLIC <> and IF
+   mode CHECKER-PACKAGE-PUBLIC <> and
+   mode CHECKER-PACKAGE-GLOBAL <> and IF
       s" " 0 0= 0= EXIT
    THEN
    CHECKER-PACKAGE-U @ dup 0= swap PACKAGE-PATH:CAP >= or IF
@@ -1804,7 +1808,8 @@ CHECKER-PKG-LIVE-DEFAULT
    CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ AUTHORITY's bool says whether the engine's package record names a package
-\ context; a current that is none of the open scope's wordlists is no context.
+\ context; a current that is none of the open scope's wordlists, nor the
+\ global wordlist of a package's `global` section, is no context.
 package CHECKER-RESOLVE
 public
 : AUTHORITY ( -- ^u8 n n bool )
@@ -1814,6 +1819,7 @@ public
    u 0= IF s" " CHECKER-PACKAGE-NONE cur BOOT:GLOBAL-WL = EXIT THEN
    cur data-base PKG-PUB-CELL + @ = IF a u CHECKER-PACKAGE-PUBLIC 0 0= EXIT THEN
    cur data-base PKG-PRI-CELL + @ = IF a u CHECKER-PACKAGE-PRIVATE 0 0= EXIT THEN
+   cur BOOT:GLOBAL-WL = IF a u CHECKER-PACKAGE-GLOBAL 0 0= EXIT THEN
    s" " CHECKER-PACKAGE-NONE 0 0= 0= ;
 ;package
 
@@ -13547,6 +13553,11 @@ ROW-CELLS cells constant SCOPE-BYTES
    PKG-PUB-CELL DATA@ 0= IF EXIT THEN
    off DATA@ set-current ;
 
+\ `global`: the global wordlist while a package is open.
+: GLOBAL-SECTION ( -- )
+   PKG-PUB-CELL DATA@ 0= IF EXIT THEN
+   BOOT:GLOBAL-WL set-current ;
+
 \ `;package`: the enclosing package open again after a part and none after any
 \ other.
 : CLOSE-PACKAGE ( -- )
@@ -13597,7 +13608,7 @@ ROW-CELLS cells constant SCOPE-BYTES
 ;package
 
 \ What `package` opens: PART-GUARD at `package`, PART-PATH at the name; what
-\ `public` and `private` switch to, for the keywords and generated words.
+\ `public`, `private` and `global` switch to, for the keywords and generated words.
 package CHECKER-RESOLVE
 CHECKER-REG:SCRATCH{
 create PATH-KEY PACKAGE-PATH:CAP allot
@@ -13606,15 +13617,16 @@ CHECKER-REG:}SCRATCH
 \ The owner record stores raw execution tokens.
 CAST: AS-ACTION ( n -- [ -- ] )
 
-\ The target owner's operation at off runs first, skipped when there is no
-\ record or the field is empty: a loading checker, or in a build the image's.
-: ENTER-SECTION ( n n -- ) {: cell:n off:n :}
+\ The target owner's operation at off, skipped when there is no record or the
+\ field is empty: a loading checker, or in a build the image's.
+: OWNER-RUN ( n -- ) {: off:n :}
    NCOMP-DISPATCH:TARGET-DECL-A @ {: rec:^ :}
-   rec NULL-PTR <> IF
-      rec off + CELL-VIEW @ {: xt:n :}
-      xt 0 <> IF xt AS-ACTION execute THEN
-   THEN
-   data-base cell + @ set-current ;
+   rec NULL-PTR = IF EXIT THEN
+   rec off + CELL-VIEW @ {: xt:n :}
+   xt 0 <> IF xt AS-ACTION execute THEN ;
+
+: ENTER-SECTION ( n n -- ) {: cell:n off:n :}
+   off OWNER-RUN  data-base cell + @ set-current ;
 \ `package`, the token being read, opens a part where w wu says; the help
 \ h hu says what to do instead.
 : PART-REJECT ( ^u8 n ^u8 n -- ) {: w:^ wu:n h:^ hu:n :}
@@ -13688,6 +13700,10 @@ public
 
 : PRIVATE-SECTION ( -- )
    PKG-PRI-CELL NCOMP-DISPATCH:DECL-PRIVATE-OFF ENTER-SECTION ;
+
+\ The owner reads the section back from the current wordlist (AUTHORITY).
+: GLOBAL-SECTION ( -- )
+   BOOT:GLOBAL-WL set-current  NCOMP-DISPATCH:DECL-PKG-RESYNC-OFF OWNER-RUN ;
 ;package
 
 \ --- the package and using words ---------------------------------------------
@@ -13735,6 +13751,10 @@ package CHECKER-REG
 package CHECKER-REG
 ' CHECKER-PRIVATE DECLARATIONS PRIVATE-OFF + xt!
 ;package
+
+: CHECKER-GLOBAL ( -- )
+   CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE <> IF CHECKER-OVERLAY:GLOBAL-SECTION THEN
+   CHECKER-PACKAGE-ACTIVE? IF CHECKER-PACKAGE-GLOBAL CHECKER-PACKAGE-MODE ! THEN ;
 
 : CHECKER-END-PACKAGE ( -- )
    CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE <> IF CHECKER-OVERLAY:CLOSE-PACKAGE THEN
@@ -14021,14 +14041,18 @@ package CHECKER-REG
    a u CHECKER-QUALIFIED? IF CHECKER-QPKG$ CHECKER-QTAIL$ CHECKER-PUBLIC-SYM EXIT THEN
    CHECKER-QBAD-TOK @ IF 0 EXIT THEN
    CHECKER-PKG-CONTEXT {: pkg:^ pkgu:n vis:n :}
-   vis CHECKER-PACKAGE-NONE <> IF pkg pkgu vis a u CHECKER-PKG-SYM EXIT THEN
+   vis CHECKER-PACKAGE-NONE <>  vis CHECKER-PACKAGE-GLOBAL <>  and IF
+      pkg pkgu vis a u CHECKER-PKG-SYM EXIT
+   THEN
    a u CHECKER-GLOBAL-SYM ;
 
 : CHECKER-RECORD-SYM? ( ^u8 n -- n ) {: a u:n :}
    a u CHECKER-QUALIFIED? IF CHECKER-QPKG$ CHECKER-QTAIL$ CHECKER-PUBLIC-SYM? EXIT THEN
    CHECKER-QBAD-TOK @ IF 0 EXIT THEN
    CHECKER-PKG-CONTEXT {: pkg:^ pkgu:n vis:n :}
-   vis CHECKER-PACKAGE-NONE <> IF pkg pkgu vis a u CHECKER-PKG-SYM? EXIT THEN
+   vis CHECKER-PACKAGE-NONE <>  vis CHECKER-PACKAGE-GLOBAL <>  and IF
+      pkg pkgu vis a u CHECKER-PKG-SYM? EXIT
+   THEN
    a u CHECKER-GLOBAL-SYM? ;
 
 \ The spans are the symbol pool's, borrowed until the next intern can grow it.
@@ -15320,19 +15344,21 @@ package CHECKER-REG
    off E-PTR E-DIN@ EFF-ROW-CELLS  off E-PTR E-DOUT@ EFF-ROW-CELLS ;
 
 \ Asked in the record's scope: the bare-name resolver answers about the token's
-\ scope. Nothing is interned: nothing is written yet.
-: SBA-PRIVATE-TWIN ( ^u8 n -- n )
+\ scope. Nothing is interned: nothing is written yet. Answers the twin and the
+\ section the word is defined in; a qualified name is defined public.
+: SBA-PRIVATE-TWIN ( ^u8 n -- n n )
    {: a:^ u:n :}
    a u CHECKER-QUALIFIED? IF
-      CHECKER-QPKG$ SYM-PRIVATE CHECKER-QTAIL$ CHECKER-PKG-SYM? SYM-VISIBLE EXIT
+      CHECKER-QPKG$ SYM-PRIVATE CHECKER-QTAIL$ CHECKER-PKG-SYM? SYM-VISIBLE
+      CHECKER-PACKAGE-PUBLIC EXIT
    THEN
-   CHECKER-QBAD-TOK @ IF 0 EXIT THEN
+   CHECKER-QBAD-TOK @ IF 0 CHECKER-PACKAGE-NONE EXIT THEN
    CHECKER-PKG-CONTEXT {: pkg:^ pkgu:n vis:n :}
-   vis CHECKER-PACKAGE-PUBLIC <> IF 0 EXIT THEN
-   pkg pkgu SYM-PRIVATE a u CHECKER-PKG-SYM? SYM-VISIBLE ;
+   vis CHECKER-PACKAGE-PUBLIC <>  vis CHECKER-PACKAGE-GLOBAL <>  and IF 0 vis EXIT THEN
+   pkg pkgu SYM-PRIVATE a u CHECKER-PKG-SYM? SYM-VISIBLE  vis ;
 
 \ The widths come from the check, not the store: the rule runs before the
-\ append, so the public has no row to read. Both sides are in cells, what the
+\ append, so the word has no row to read. Both sides are in cells, what the
 \ compiler reads a contract in.
 : SBA-CELLS-TXT ( n n -- )                \ append "(in -- out)"
    {: in:n out:n :}
@@ -15350,6 +15376,14 @@ package CHECKER-REG
    sym SYM-PKG$ PACKAGE-NAME$
    NMOFF @ TADDR NMU @ SBA-TAIL$ EMIT-QUALIFIED ;
 
+\ The word as its section names it: a global word bare, a public one qualified.
+: SBA-WORD ( n n -- ) {: sym:n vis:n :}
+   vis CHECKER-PACKAGE-GLOBAL = IF NMOFF @ TADDR NMU @ REJECTION:EMIT-STR EXIT THEN
+   sym SBA-PUBLIC ;
+
+: SBA-SECTION$ ( n -- ^u8 n ) {: vis:n :}
+   vis CHECKER-PACKAGE-GLOBAL = IF s" global" EXIT THEN  s" public" ;
+
 \ The private twin's name as its dictionary row spells it.
 : SBA-PRIVATE$ ( n -- ^u8 n ) {: sym:n :}
    sym SYM-NAME$ {: a:^ u:n :}
@@ -15364,7 +15398,7 @@ package CHECKER-REG
 \ The DECLARED rows and the name of the colon definition about to be published.
 : SHADOW-ARITY-CK ( n n ^u8 n -- )
    {: din:n dout:n a:^ u:n :}
-   a u SBA-PRIVATE-TWIN {: priv:n :}
+   a u SBA-PRIVATE-TWIN {: priv:n vis:n :}
    priv 0= IF EXIT THEN
    priv SBA-CELLS {: pin:n pout:n :}
    pin CELLS-NONE = pout CELLS-NONE = or IF EXIT THEN
@@ -15372,12 +15406,12 @@ package CHECKER-REG
    nin pin =  nout pout =  and IF EXIT THEN
    NMOFF @ TADDR NMU @ RF-REJECTED PIN-REFUSED!   \ the definition's name, not the walk's token
    s" E-SHADOWED-ARITY" REJECTION:OPEN
-   s" public `" REJECTION:EMIT-STR  priv SBA-PUBLIC
+   vis SBA-SECTION$ REJECTION:EMIT-STR  s"  `" REJECTION:EMIT-STR  priv vis SBA-WORD
    s" ` has a different stack effect from its package's private `" REJECTION:EMIT-STR
    priv SBA-PRIVATE$ REJECTION:EMIT-STR  96 REJECTION:EMIT1
    NMOFF @ TADDR NMU @ REJECTION:AT
    s" its name binds the private word" REJECTION:EMIT-STR
-   s" public" REJECTION:NOTE  priv SBA-PUBLIC  32 REJECTION:EMIT1  nin nout SBA-CELLS-TXT
+   vis SBA-SECTION$ REJECTION:NOTE  priv vis SBA-WORD  32 REJECTION:EMIT1  nin nout SBA-CELLS-TXT
    s" private" REJECTION:NOTE  priv SBA-PRIVATE$ REJECTION:EMIT-STR  32 REJECTION:EMIT1  pin pout SBA-CELLS-TXT
    REJECTION:HELP
    s" declare the same stack effect on both, as the private word's `" REJECTION:EMIT-STR

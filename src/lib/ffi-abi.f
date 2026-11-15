@@ -441,7 +441,7 @@ private
    s" error[E-FFI-DLSYM]: no C symbol '" ;
 
 : PROCESS-HELP$ ( -- ^u8 n )
-   s" name the library that defines it with LIBRARY, or open it with FFI:GLOBAL" ;
+   s" name the library that defines it with LIBRARY, or open it with FFI:PROCESS-WIDE" ;
 
 : LIBRARY-HELP$ ( -- ^u8 n )
    s" check the symbol's spelling against the library's exports" ;
@@ -488,10 +488,10 @@ public
 : NOW ( -- n ) FFI-RTLD-NOW ;
 
 \ FFI:NOW alone is RTLD_LOCAL on Linux, so PROCESS-SYMBOLS cannot see the
-\ library; `FFI:NOW FFI:GLOBAL or` joins its symbols to RTLD_DEFAULT. macOS
-\ opens global either way. <dlfcn.h> spells RTLD_GLOBAL 0x100 in glibc, 0x8 on
-\ macOS.
-: GLOBAL ( -- n ) HB-TARGET-MACOS? if $8 else $100 then ;
+\ library; `FFI:NOW FFI:PROCESS-WIDE or` joins its symbols to RTLD_DEFAULT.
+\ macOS opens global either way. <dlfcn.h> spells RTLD_GLOBAL 0x100 in glibc,
+\ 0x8 on macOS.
+: PROCESS-WIDE ( -- n ) HB-TARGET-MACOS? if $8 else $100 then ;
 
 : >CELL ( ^a -- n ) PTR>CELL ;
 

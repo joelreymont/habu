@@ -96,18 +96,13 @@ TEXTS!
    a p hu + u BYTE-COPY
    p hu u + ;
 : FAMILY-IT ( -- ) BAD$ BAD$ s" newtype" CHECKER-DEFFAMILY ;
-: SUM-IT ( -- )
-   BAD$ s" VARIANT vacant ;VARIANT ;SUMTYPE"
-   [: TYPE-DECL:TDECL-SUMTYPE ;] DECL-REPLAY:RP-RUN ;
-: SUM-NOEND-IT ( -- )
-   BAD$ s" 0" [: TYPE-DECL:TDECL-SUMTYPE ;] DECL-REPLAY:RP-RUN ;
 : CHECK!-IT ( -- ) BODY$ CHECK! drop ;
 : CANDIDATE-IT ( -- ) BODY$ CHECK-CANDIDATE! drop ;
 : HOOK-IT ( -- ) BODY$ CHECK:DEFINITION drop ;
 
-\ A structure whose one field is named BAD$.
+\ A structure whose one field is named BAD$, declared as a program declares it.
 : FIELD-NAME$ ( -- ^u8 n )
-   s" FIELD " {: h:^ hu:n :}
+   s" STRUCTURE nlt-long FIELD " {: h:^ hu:n :}
    BAD$ {: a:^ u:n :}
    s"  n ;STRUCTURE" {: t:^ tu:n :}
    hu u + tu + MEM-ALLOC-BYTES drop {: p:^ :}
@@ -116,8 +111,7 @@ TEXTS!
    t p hu + u + tu BYTE-COPY
    p hu u + tu + ;
 : FIELD-NAME-IT ( -- )
-   s" nlt-long" FIELD-NAME$
-   [: TYPE-DECL:DECLARE-STRUCTURE ;] DECL-REPLAY:RP-RUN ;
+   FIELD-NAME$ evaluate-closed ;
 
 \ ---- the parent's side -------------------------------------------------------
 \ A label keeps what fits in LBL.
@@ -239,8 +233,6 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    LONG-LEN s" long" s" PACKAGE-IT" 70 CAP-HEAD$ CAP-NOTE$ REJECTS-AT
    \ Each child's record is placed at MAIN, the token its parent was loading.
    s" FAMILY-IT" 70 S\" error[E-BAD-DECLARATION]: bad newtype declaration\n" S\" | ^^^^ missing name\n" REJECTS
-   s" SUM-IT" 70 S\" error[E-BAD-DECLARATION]: bad sumtype declaration\n" S\" | ^^^^ missing name\n" REJECTS
-   s" SUM-NOEND-IT" 70 S\" error[E-BAD-DECLARATION]: bad sumtype declaration\n" s" ^ missing ;SUMTYPE" REJECTS
    256 s" 256" s" FIELD-NAME-IT" 70
       S\" error[E-BAD-DECLARATION]: bad structure declaration `nlt-long`\n"
       s" ^ name longer than 255 bytes" REJECTS-AT ;

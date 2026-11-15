@@ -852,7 +852,8 @@ public
    t tu TICKS  s"  is not allowed in this context" SAY
    t tu REJECTION:AT  s" out of context" SAY
    REJECTION:HELP  s" write " SAY  s" public" TICKS  s" , " SAY
-   s" private" TICKS  s" , " SAY  s" seal-package" TICKS  s"  and " SAY
+   s" private" TICKS  s" , " SAY  s" global" TICKS  s" , " SAY
+   s" seal-package" TICKS  s"  and " SAY
    s" ;package" TICKS  s"  inside an open package, and name a part bare" SAY
    s"  inside its enclosing package" SAY ;
 \ Writes the record of a split-str token t tu in a file whose first line is
@@ -897,7 +898,7 @@ CAST: PKG-AS-ACTION ( n -- [ -- ] )
 CAST: PKG-AS-NAME-ACTION ( n -- [ ^u8 n -- ] )
 CAST: PKG-AS-PACKAGE-ACTION ( n -- [ ^u8 n ^u8 n -- ] )
 
-\ `package`, `public`, `private` and `;package` notify the target checker alone:
+\ `package`, the section words and `;package` notify the target checker alone:
 \ a loading checker is the target at once, the source owner only where none was.
 : PKG-TARGET ( n -- n )
    NCOMP-DISPATCH:TARGET-DECL-A swap PKG-OPERATION ;
@@ -1294,6 +1295,10 @@ private
    s" private" TOKEN-IS? if
       PKG-PRI-CELL CELL@ 0= if PKG-CONTEXT-FAIL then
       CHECKER-RESOLVE:PRIVATE-SECTION true exit
+   then
+   s" global" TOKEN-IS? if
+      PKG-PUB-CELL CELL@ 0= if PKG-CONTEXT-FAIL then
+      CHECKER-RESOLVE:GLOBAL-SECTION true exit
    then
    s" ;package" TOKEN-IS? if PKG-END-PACKAGE true exit then
    SECTION? if true exit then
@@ -2798,6 +2803,7 @@ private
    s" package" TOKEN-IS? if true exit then
    s" public" TOKEN-IS? if true exit then
    s" private" TOKEN-IS? if true exit then
+   s" global" TOKEN-IS? if true exit then
    s" ;package" TOKEN-IS? if true exit then
    s" using" TOKEN-IS? if true exit then
    s" ;using" TOKEN-IS? ;
@@ -3355,3 +3361,4 @@ undefine ROLLBACK-CELLS:SAVE
 undefine ROLLBACK-CELLS:RESTORE
 undefine CHECKER-RESOLVE:PUBLIC-SECTION
 undefine CHECKER-RESOLVE:PRIVATE-SECTION
+undefine CHECKER-RESOLVE:GLOBAL-SECTION

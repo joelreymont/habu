@@ -48,6 +48,7 @@ variable PKG-U                                \ 0 at top level
 TYPED-VARIABLE PART ^u8                    \ the part open in PKG, in the text
 variable PART-U                               \ 0 outside a part
 variable PUB                                  \ the open section is public
+variable IN-GLOBAL                            \ the open section is `global`
 
 : CELL! ( n ^u8 -- )
    CELL-VIEW ! ;
@@ -179,10 +180,12 @@ variable PUB                                  \ the open section is public
 
 \ The open package's path, as the engine names its row: PKG, or PKG:PART.
 : PATH-U ( -- n )
+   IN-GLOBAL @ if 0 exit then
    PART-U @ 0= if PKG-U @ exit then
    PKG-U @ 1+ PART-U @ + ;
 
 : PATH-COPY ( ^u8 -- ) {: t:^ :}
+   PATH-U 0= if exit then
    PKG @ t PKG-U @ BYTE-COPY
    PART-U @ 0= if exit then
    COLON-BYTE t PKG-U @ + c!
@@ -190,6 +193,10 @@ variable PUB                                  \ the open section is public
 
 : SECTION ( -- n )
    PUB @ if PUBLIC-BIT else 0 then ;
+
+\ true opens the public section, false the private one.
+: SECTION! ( bool -- )
+   PUB !  false IN-GLOBAL ! ;
 
 : ADD ( n ^u8 n ^u8 n n -- )
    {: k:n a:^ u:n e:^ eu:n flags:n :}
@@ -250,11 +257,11 @@ variable PUB                                  \ the open section is public
 : OPEN-PKG ( n -- )
    NAMED LINT-LEX:TOKEN
    PKG-U @ 0= if PKG-U ! PKG ! else PART-U ! PART ! then
-   false PUB ! ;
+   false SECTION! ;
 
 : CLOSE-PKG ( -- )
    PART-U @ 0= if 0 PKG-U ! else 0 PART-U ! then
-   false PUB ! ;
+   false SECTION! ;
 
 : STEP ( n -- ) {: k:n :}
    k LINT-LEX:KIND@ LINT-LEX:WORD <> if exit then
@@ -264,8 +271,9 @@ variable PUB                                  \ the open section is public
    a u s" package" STR=CI if k OPEN-PKG exit then
    PKG-U @ 0= if exit then
    a u s" ;package" STR=CI if CLOSE-PKG exit then
-   a u s" public" STR=CI if true PUB ! exit then
-   a u s" private" STR=CI if false PUB ! exit then
+   a u s" public" STR=CI if true SECTION! exit then
+   a u s" private" STR=CI if false SECTION! exit then
+   a u s" global" STR=CI if false PUB !  true IN-GLOBAL ! exit then
    a u s" EXPORT" STR=CI if k EXPORT-AT then ;
 
 : READ-ALL ( -- )
@@ -285,14 +293,15 @@ public
 \ definers make no record. `package P` opens P, reopened or not, in its private
 \ section; `package B` inside P opens its part P:B; `public` and `private` switch
 \ sections; `;package` closes the part or P, a part's returning to P's private
-\ section. A text the lexer refuses (LINT-LEX:ERROR?), or a `:`, `package` or
-\ EXPORT it ends before naming, throws E-SOURCE; the records read before it
-\ stay until RESET. Returned or thrown, it leaves no cell holding an address of
-\ the text, and the lexer released (LINT-LEX:RELEASE).
+\ section. A record made in a `global` section is a top-level one. A text the
+\ lexer refuses (LINT-LEX:ERROR?), or a `:`, `package` or EXPORT it ends before
+\ naming, throws E-SOURCE; the records read before it stay until RESET.
+\ Returned or thrown, it leaves no cell holding an address of the text, and the
+\ lexer released (LINT-LEX:RELEASE).
 : FILE ( ^u8 n -- ) {: a:^ u:n :}
    LIVE? 0= if INIT then
    a SRC !  u SRC-U !
-   a PKG !  0 PKG-U !  a PART !  0 PART-U !  false PUB !
+   a PKG !  0 PKG-U !  a PART !  0 PART-U !  false SECTION!
    [: READ-ALL ;] [: FORGET-TEXT ;] finally ;
 
 \ Drops every record and releases their storage. A record at or past COUNT,

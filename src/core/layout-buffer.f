@@ -3,7 +3,7 @@
 \ TYPED-BUFFER, each making its words as typed children and laying each child's
 \ block at the address its body pushes. A ptr variable never gains layout
 \ identity by unification. The words live in package LBUF, and the four
-\ definers are global forwarders.
+\ definers are its global words.
 
 using TYPE-DECL
 
@@ -371,7 +371,7 @@ private
    v HEAD-CELLS cells + {: base:^ :}
    handle base LBUF-N @ type typeu hasaddr STORAGE-BIND ;
 
-public
+global
 
 : LAYOUT-BUFFER ( n -- ) {: count:n :}
    SRCLOC:TOKEN$ {: run:^ runu:n :}
@@ -435,7 +435,7 @@ private
    then
    count swap name nameu STORAGE-SIZE ;
 
-public
+global
 
 : TYPED-BUFFER ( n -- ) {: count:n :}
    SRCLOC:TOKEN$ {: run:^ runu:n :}
@@ -466,6 +466,8 @@ public
    LBUF-BYTES @ allot
    handle v 1 type typeu hasaddr STORAGE-BIND ;
 
+public
+
 \ TYPED-VARIABLE's run over the name and the type node, which no text spells:
 \ a definer's variable (EFFECT:VARIABLE-OF), through PROVIDED-XT:VARIABLE-CELL.
 : TYPED-VARIABLE-NODE ( ^u8 n n -- ) {: name:^ nameu:n node:n :}
@@ -479,10 +481,5 @@ public
    handle v 1 node hasaddr NODE-BIND ;
 
 ;package
-
-: TYPED-VARIABLE ( -- ) LBUF:TYPED-VARIABLE ;
-: TYPED-BUFFER ( n -- ) LBUF:TYPED-BUFFER ;
-: LAYOUT-BUFFER ( n -- ) LBUF:LAYOUT-BUFFER ;
-: DEFER-LAYOUT-BUFFER ( -- ) LBUF:DEFER-LAYOUT-BUFFER ;
 
 ;using

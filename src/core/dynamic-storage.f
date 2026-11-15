@@ -236,8 +236,6 @@ CAST: AS-ENTRY ( [ R -- S ] -- n )
 : CHILD ( ^u8 n n n ^u8 n -- n )
    data-base PROVIDED-XT:CHILD-CELL + @ AS-CHILD-RUN execute ;
 
-public
-
 : DECLARE ( -- )
    SRCLOC:TOKEN$ {: run:^ runu:n :}
    LBUF:STORAGE-LINE-TOKEN {: na:^ nu:n :}
@@ -285,10 +283,11 @@ public
    na nu s" -RELEASE" LBUF:LBUF-SUFFIXED CHILD-ABI:HEAP-RELEASE
    ['] UNMAP-RECORD AS-ENTRY ta tu CHILD drop  bytes , ;
 
+global
+
+: DYNAMIC-BUFFER ( -- ) DECLARE ;
+: HEAP ( -- ) DECLARE-HEAP ;
+
 seal-package
 
 ;package
-
-: DYNAMIC-BUFFER ( -- ) DYNAMIC-STORAGE:DECLARE ;
-
-: HEAP ( -- ) DYNAMIC-STORAGE:DECLARE-HEAP ;

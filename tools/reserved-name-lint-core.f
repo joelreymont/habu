@@ -108,6 +108,7 @@ variable RNL-IN-DEF
    a u s" package" LINT-STR=CI if LINT-TRUE exit then
    a u s" public" LINT-STR=CI if LINT-TRUE exit then
    a u s" private" LINT-STR=CI if LINT-TRUE exit then
+   a u s" global" LINT-STR=CI if LINT-TRUE exit then
    a u s" ;package" LINT-STR=CI if LINT-TRUE exit then
    a u s" seal-package" LINT-STR=CI if LINT-TRUE exit then
    a u s" export" LINT-STR=CI if LINT-TRUE exit then    \ EXPORT re-exports a word from a package

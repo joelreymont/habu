@@ -72,6 +72,14 @@ s\" package SAT-M\n10 constant W\npublic\n: W ( n -- n ) 1 + ;\n;package"
 s" error[E-SHADOWED-ARITY]" SHADOWED-ARITY:SAID  s" = evaluated: : W ( n -- n ) 1 + ;" SHADOWED-ARITY:SAID
 s" its name binds the private word" SHADOWED-ARITY:SAID  REJECTION:BUFFER-OFF
 
+\ A word in the package's `global` section binds its bare tail no better than a
+\ public one, and the rejection names it global.
+REJECTION:CAPTURE
+s\" package SAT-GL\n: R ( n -- n ) 1 + ;\nglobal\n: R ( n n -- n ) + ;\n;package"
+   SHADOWED-ARITY:SAE-CATCH SHADOWED-ARITY:E-REJECT T=
+s" error[E-SHADOWED-ARITY]" SHADOWED-ARITY:SAID  s" = evaluated: : R ( n n -- n ) + ;" SHADOWED-ARITY:SAID
+s" global `R` has a different stack effect" SHADOWED-ARITY:SAID  REJECTION:BUFFER-OFF
+
 \ === accepted: every neighbouring shape that must stay legal =================
 \ A definer-made public is not judged by this rule: `constant` compiles no body.
 \ The checker sees the definer call's effect, `20 constant CV` presents
