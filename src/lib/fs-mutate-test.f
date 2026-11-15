@@ -996,11 +996,13 @@ create MISSING-BUF PATH-CAP allot
 create PROG-BUF PATH-CAP allot
 create FILE-PROG-BUF PATH-CAP allot
 create CANON-PROG-BUF PATH-CAP allot
-create WANT-BUF PATH-CAP 128 + allot  \ a class, a value, a reason, the newline
+create CAUGHT-PROG-BUF PATH-CAP allot
+create WANT-BUF PATH-CAP 256 + allot  \ a record's code, message, value and help
 variable MISSING-U
 variable PROG-U
 variable FILE-PROG-U
 variable CANON-PROG-U
+variable CAUGHT-PROG-U
 variable WANT-U
 
 : MISSING$ ( -- ptr u8 n )
@@ -1015,17 +1017,24 @@ variable WANT-U
 : CANON-PROG$ ( -- ptr u8 n )
    CANON-PROG-BUF CANON-PROG-U @ ;
 
+: CAUGHT-PROG$ ( -- ptr u8 n )
+   CAUGHT-PROG-BUF CAUGHT-PROG-U @ ;
+
 : PATHS! ( -- )
    FMT-ROOT$ s" no-such-tmpdir" MISSING-BUF FS:JOIN-PATH MISSING-U !
    FMT-ROOT$ s" tmpdir-child.f" PROG-BUF FS:JOIN-PATH PROG-U !
    FMT-ROOT$ s" tmpdir-file.f" FILE-PROG-BUF FS:JOIN-PATH FILE-PROG-U !
-   FMT-ROOT$ s" tmpdir-canon.f" CANON-PROG-BUF FS:JOIN-PATH CANON-PROG-U ! ;
+   FMT-ROOT$ s" tmpdir-canon.f" CANON-PROG-BUF FS:JOIN-PATH CANON-PROG-U !
+   FMT-ROOT$ s" tmpdir-caught.f" CAUGHT-PROG-BUF FS:JOIN-PATH CAUGHT-PROG-U ! ;
 
 : PROG-SRC$ ( -- ptr u8 n )
    S\" require src/lib/fs-mutate.f\ns\q tmpdir-child\q FS:MKTEMP-DIR 2drop\n" ;
 
 : FILE-PROG-SRC$ ( -- ptr u8 n )
    S\" require src/lib/fs-mutate.f\ns\q tmpdir-file\q FS:MKTEMP drop 2drop\n" ;
+
+: CAUGHT-PROG-SRC$ ( -- ptr u8 n )
+   S\" require src/lib/fs-mutate.f\n: GO ( -- ) [: s\q tmpdir-caught\q FS:MKTEMP drop 2drop ;] catch E-FS-DIR <> if 3 throw then 1 s\q on\q write drop ;\nGO\n" ;
 
 : CANON-PROG-SRC$ ( -- ptr u8 n )
    S\" require src/lib/fs-mutate.f\n: LINE ( ptr u8 n -- ) {: a:ptr u :} 1 a u write drop 1 S\\\q \\n\q write drop ;\ns\q canon\q FS:MKTEMP-DIR LINE\n" ;
@@ -1049,28 +1058,40 @@ variable WANT-U
    a WANT-BUF WANT-U @ + u BYTE-COPY
    WANT-U @ u + WANT-U ! ;
 
-\ Not built in SB: a value near PATH-CAP bytes with the reason overflows SB-CAP.
-: WANT$ ( n ptr u8 n ptr u8 n -- ptr u8 n )
-   {: code a:ptr u why:ptr whyu :}
+\ The prose record of TMPDIR a u, made in pieces: a value near PATH-CAP bytes
+\ with its texts overflows SB-CAP.
+: WANT! ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: name:ptr nameu why:ptr whyu a:ptr u h:ptr hu :}
    0 WANT-U !
-   code FMT-CLASS$ WANT+
-   s"  habu: " WANT+
-   a u WANT+
-   s" : " WANT+
-   why whyu WANT+
-   S\" \n" WANT+
-   WANT-BUF WANT-U @ ;
+   s" error[" WANT+  name nameu WANT+  s" ]: " WANT+  why whyu WANT+
+   S\" \n  = TMPDIR: " WANT+  a u WANT+
+   S\" \n  = help: " WANT+  h hu WANT+  S\" \n\n" WANT+ ;
 
-: REFUSED ( ptr u8 n ptr u8 n ptr u8 n n -- )
-   {: prog:ptr progu a:ptr u why:ptr whyu code:n :}
+: WANT$ ( -- ptr u8 n ) WANT-BUF WANT-U @ ;
+
+: DIR-WANT! ( ptr u8 n -- ) {: a:ptr u :}
+   s" E-FS-DIR" s" TMPDIR is not a directory" a u
+   s" point TMPDIR at an existing directory, or unset it to use /tmp" WANT! ;
+
+\ The child fails printing WANT$ once, as the record its uncaught throw of code
+\ carries, in place of the engine's own record of that throw.
+: REJECTED ( ptr u8 n ptr u8 n n -- )
+   {: prog:ptr progu a:ptr u code:n :}
    a u CHILD-ENV prog progu CAPTURE {: outu:len erru:len oc :}
    oc MATCH PROCESS:ending
      exited OF 0 T<> ENDOF
      signaled OF s" exit" s" signal" T-ENDING-MISS ENDOF
      timeout OF prog progu OUT outu LEN>N ERR erru LEN>N T-TIMED-OUT ENDOF
    ;MATCH
-   ERR erru LEN>N code a u why whyu WANT$ CONTAINS? TTRUE
-   ERR erru LEN>N code TEST-EVAL:THROWN-HEAD$ CONTAINS? TTRUE ;
+   ERR erru LEN>N WANT$ COUNT-SUB 1 T=
+   ERR erru LEN>N code TEST-EVAL:THROWN-HEAD$ CONTAINS? TFALSE ;
+
+\ A child that catches FS:MKTEMP's E-FS-DIR goes on and prints no record.
+: CAUGHT ( -- )
+   MISSING$ CHILD-ENV CAUGHT-PROG$ CAPTURE {: outu:len erru:len oc :}
+   CAUGHT-PROG$ OUT outu LEN>N ERR erru LEN>N oc 0 T-ENDING-EXITED=
+   OUT outu LEN>N s" on" T$=
+   ERR erru LEN>N s" " T$= ;
 
 \ With TMPDIR a link to a directory, the line the child prints is its own
 \ realpath. The directory is removed by name, so the parent's removal shows the
@@ -1097,13 +1118,20 @@ public
    PROG$ FS:CLEANUP+
    FILE-PROG$ FILE-PROG-SRC$ FS:WRITE-ALL
    FILE-PROG$ FS:CLEANUP+
-   s" a missing TMPDIR is refused by name" T-LABEL
-   PROG$ MISSING$ s" TMPDIR is not a directory" E-FS-DIR REFUSED
-   s" FS:MKTEMP refuses a missing TMPDIR by name" T-LABEL
-   FILE-PROG$ MISSING$ s" TMPDIR is not a directory" E-FS-DIR REFUSED
-   s" a TMPDIR with no room for the temp name is refused by name" T-LABEL
-   PROG$ LONG$ s" TMPDIR is too long for a temp path"
-   E-FS-CAPACITY REFUSED
+   s" a missing TMPDIR is rejected by a record naming it" T-LABEL
+   MISSING$ DIR-WANT!  PROG$ MISSING$ E-FS-DIR REJECTED
+   s" FS:MKTEMP rejects a missing TMPDIR by a record naming it" T-LABEL
+   MISSING$ DIR-WANT!  FILE-PROG$ MISSING$ E-FS-DIR REJECTED
+   s" a TMPDIR with no room for the temp name is rejected by a record naming it"
+   T-LABEL
+   s" E-FS-CAPACITY" s" TMPDIR is too long for a temp path" LONG$
+   s" point TMPDIR at a directory with a shorter path, or unset it to use /tmp"
+   WANT!
+   PROG$ LONG$ E-FS-CAPACITY REJECTED
+   s" a caught rejection of a missing TMPDIR prints no record" T-LABEL
+   CAUGHT-PROG$ CAUGHT-PROG-SRC$ FS:WRITE-ALL
+   CAUGHT-PROG$ FS:CLEANUP+
+   CAUGHT
    s" a TMPDIR through a link makes a canonical temp directory" T-LABEL
    CANONICAL ;
 

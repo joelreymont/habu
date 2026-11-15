@@ -899,16 +899,24 @@ private
 : TEMP-REAL ( ptr u8 n -- n )
    >PATHZ PATHZ2-BUF SPAN:$ drop PATHZ-CAP realpath ;
 
-\ One line on fd 2 naming TMPDIR, why and the root, before anything is made:
-\ without it each refusal dies later on an error that does not name TMPDIR.
-: TMPDIR-REFUSE ( ptr u8 n ptr u8 n n n -- )
-   {: a:ptr u why:ptr whyu code e :}
-   code SAY-CLASS  a u SAY  why whyu SAY-TEXT  e SAY-END ;
+\ One record naming TMPDIR, its value and why, before anything is made:
+\ without it each rejection dies later on an error that does not name TMPDIR.
+\ The value comes from the environment, so the record has no place.
+: TMPDIR-OPEN ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: a:ptr u c:ptr cu why:ptr whyu :}
+   c cu REJECTION:OPEN  why whyu REJECTION:EMIT-STR
+   s" TMPDIR" REJECTION:NOTE  a u REJECTION:EMIT-STR ;
 
-: TMPDIR-LONG ( ptr u8 n -- ) {: a:ptr u :}
-   a u s" TMPDIR is too long for a temp path" E-FS-CAPACITY 0
-   TMPDIR-REFUSE
-   E-FS-CAPACITY throw ;
+\ Throws the code carrying the record, which prints only if nothing catches it:
+\ ZIP:OPEN's callers catch FS:MKTEMP's E-FS-DIR and go on.
+: TMPDIR-REJECT ( ptr u8 n n -- ) {: h:ptr hu code :}
+   REJECTION:HELP  h hu REJECTION:EMIT-STR
+   REJECTION:SAVE  code REJECTION:PASS ;
+
+: TMPDIR-LONG ( ptr u8 n -- )
+   s" E-FS-CAPACITY" s" TMPDIR is too long for a temp path" TMPDIR-OPEN
+   s" point TMPDIR at a directory with a shorter path, or unset it to use /tmp"
+   E-FS-CAPACITY TMPDIR-REJECT ;
 
 \ DIR? recording no read: a temp made in the root moves its change time, which
 \ no compile's answer depends on.
@@ -920,15 +928,18 @@ private
 : TMPDIR-CHECK ( ptr u8 n n -- ptr u8 n ) {: a:ptr u prefixu :}
    u PATH-CAP > if a u TMPDIR-LONG then
    a u TMPDIR-DIR? 0= if
-      a u s" TMPDIR is not a directory" E-FS-DIR 0 TMPDIR-REFUSE
-      E-FS-DIR throw
+      a u s" E-FS-DIR" s" TMPDIR is not a directory" TMPDIR-OPEN
+      s" point TMPDIR at an existing directory, or unset it to use /tmp"
+      E-FS-DIR TMPDIR-REJECT
    then
-   a u TEMP-REAL {: real:n :}
+   a u TEMP-REAL FFI:ERRNO {: real:n e:n :}
    \ -2: the canonical spelling and its NUL do not fit PATHZ-CAP.
    real -2 = if a u TMPDIR-LONG then
    real 0 < if
-      a u s" TMPDIR has no canonical path" E-FS-IO FFI:ERRNO TMPDIR-REFUSE
-      E-FS-IO throw
+      a u s" E-FS-IO" s" TMPDIR has no canonical path" TMPDIR-OPEN
+      s" errno" REJECTION:NOTE  e REJECTION:EMIT-U
+      s" make every directory on TMPDIR's path searchable, or unset it to use /tmp"
+      E-FS-IO TMPDIR-REJECT
    then
    real prefixu TEMP-DIR-BASE-MAX > if a u TMPDIR-LONG then
    PATHZ2-BUF SPAN:$ drop real ;
