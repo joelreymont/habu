@@ -1286,16 +1286,12 @@ variable GROUP-AT
    SKIP-BODY-TOKEN ;
 
 \ The record of a declaration-owner record with no operation for a step the
-\ scan takes, at the statement it is in.
+\ scan takes, at the statement it is in when a source the record knows holds
+\ it. The scan knows the field's offset only, so no operation is named.
 : OWNER-STOP ( -- )
-   s" E-COMP-OWNER" REJECTION:OPEN
-   s" the checker that owns the source carries no operation for this step"
-   REJECTION:EMIT-STR
-   s" needed here" STATEMENT-AT
-   REJECTION:HELP
-   s" publish a declaration-owner record that carries every operation"
-   REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   TOP-CUR-A @ {: p:ptr :}
+   p REJECTION:PLACES? IF p ELSE NULL-PTR THEN {: t:ptr :}
+   NULL-PTR 0 t 0 CHECKER-OWNER-GUARD:MISSING-OP ;
 
 \ Replay-only checker queries use the live declaration owner. The verifier is
 \ source loaded, so the sealed image need not publish these checker names.

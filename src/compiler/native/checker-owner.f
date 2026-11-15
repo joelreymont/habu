@@ -34,10 +34,7 @@ defer SOURCE-DOES-CHECK ( ptr u8 n ptr u8 n -- n )
 defer SOURCE-DOES-REPORT ( n ptr u8 n -- n )
 
 : REFUSE ( ptr u8 n -- ) {: a:ptr u:n :}
-   2 s" compiler: the source owner carries no " write drop
-   2 a u write drop
-   2 S\" \n" write drop
-   E-COMP-OWNER throw ;
+   a u NULL-PTR 0 CHECKER-OWNER-GUARD:MISSING-OP ;
 
 \ The owner record stores raw execution tokens; each view states a field's
 \ signature so native execute has a callable layout.
