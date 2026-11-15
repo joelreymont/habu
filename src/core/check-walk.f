@@ -1357,8 +1357,9 @@ $B0 constant RBF.OVWIDN-OFF
 $B8 constant RBF.FLOOR-OFF
 $C0 constant RBF.VDEFN-OFF
 $C8 constant RBF.VPRSN-OFF
-$D0 constant RBF.NDICT-OFF                 \ the dictionary's record count
-$D8 constant RBF-REC
+$D0 constant RBF.PROWE-OFF                 \ the kept parses rows' end
+$D8 constant RBF.NDICT-OFF                 \ the dictionary's record count
+$E0 constant RBF-REC
 \ RBF.COORD distinguishes an ordinary checker scope (-1) from a declaration
 \ frame's START tag. The declaration runner uses zero: declarations do not nest.
 -1 constant RBF-NO-COORDINATOR
@@ -1389,6 +1390,7 @@ $D8 constant RBF-REC
 : RBF.FLOOR ( ptr a -- ptr a ) RBF.FLOOR-OFF + ;
 : RBF.VDEFN ( ptr a -- ptr a ) RBF.VDEFN-OFF + ;
 : RBF.VPRSN ( ptr a -- ptr a ) RBF.VPRSN-OFF + ;
+: RBF.PROWE ( ptr a -- ptr a ) RBF.PROWE-OFF + ;
 : RBF.NDICT ( ptr a -- ptr a ) RBF.NDICT-OFF + ;
 
 16 constant RBF-CAP-INIT
@@ -1465,6 +1467,7 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    PASS-FLOOR @ r RBF.FLOOR !
    VERIFY-DEFINER-N @ r RBF.VDEFN !
    VERIFY-PARSES-N @ r RBF.VPRSN !
+   PROW-END @ r RBF.PROWE !
    ndict@ r RBF.NDICT !
    RBF-NO-COORDINATOR r RBF.COORD ! ;
 
@@ -1490,6 +1493,7 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    r RBF.FLOOR @ PASS-FLOOR !
    r RBF.VDEFN @ VERIFY-DEFINER-N !
    r RBF.VPRSN @ VERIFY-PARSES-N !
+   r RBF.PROWE @ PROW-REWIND
    r RBF.DFEREND @ DFER-REWIND
    r RBF.PIMMN @ PIMM-REWIND ;
 
@@ -2541,33 +2545,38 @@ TRUSTED: generates: ( -- )
 \ with no record (a primitive or an axiom), whose replacement no record tells
 \ apart. A cold selected dictionary record can likewise have control but no
 \ checker symbol to key a row: the row stands and bounds nothing until a checked
-\ use materializes that binding.
-: PARSES-TARGET ( ptr u8 n ptr u8 n -- n n )
+\ use materializes that binding. The symbol, the visible record's offset + 1
+\ and the selected record; NULL-PTR where nothing keeps the row.
+: PARSES-TARGET ( ptr u8 n ptr u8 n -- n n ptr n )
    {: ka:ptr ku:n a:ptr u:n :}
-   a u TOP-BINDING {: sym:n eff1:n ctl:n :}
+   a u TOP-BINDING-REC {: sym:n eff1:n ctl:n rec:ptr :}
    sym 0= IF
-      ctl CHECKER-OWNER-ABI:BINDING-DEFER and 0 <> IF 0 0 EXIT THEN
-      ctl CTL-PARSES and 0 <> IF 0 0 EXIT THEN
-      ctl 0 <> IF ka ku a u PARSES-READS-NONE PARSES-REFUSE 0 0 EXIT THEN
-      ka ku a u PARSES-UNBOUND 0 0 EXIT
+      ctl CHECKER-OWNER-ABI:BINDING-DEFER and 0 <> IF 0 0 NULL-PTR EXIT THEN
+      ctl CTL-PARSES and 0 <> IF 0 0 NULL-PTR EXIT THEN
+      ctl 0 <> IF ka ku a u PARSES-READS-NONE PARSES-REFUSE 0 0 NULL-PTR EXIT THEN
+      ka ku a u PARSES-UNBOUND 0 0 NULL-PTR EXIT
    THEN
    sym a u NAV-USE-NOW
-   ctl CHECKER-OWNER-ABI:BINDING-DEFER and 0 <> IF 0 0 EXIT THEN
-   ctl CTL-PARSES and 0= IF ka ku a u PARSES-READS-NONE PARSES-REFUSE 0 0 EXIT THEN
-   eff1 0= IF 0 0 EXIT THEN
-   sym eff1 ;
+   ctl CHECKER-OWNER-ABI:BINDING-DEFER and 0 <> IF 0 0 NULL-PTR EXIT THEN
+   ctl CTL-PARSES and 0= IF ka ku a u PARSES-READS-NONE PARSES-REFUSE 0 0 NULL-PTR EXIT THEN
+   eff1 0= IF 0 0 NULL-PTR EXIT THEN
+   sym eff1 rec ;
 
 \ The checks every row passes, for the engine words and the source pre-verifier,
 \ each of which has read the whole row first, so a row refused under
-\ --all-errors leaves none of its tokens to what follows.
-: CHECKER-PARSES-ROW ( ptr u8 n ptr u8 n ptr u8 n bool -- n n n )
+\ --all-errors leaves none of its tokens to what follows. The symbol, the
+\ visible record's offset + 1, the count and the selected record.
+: PARSES-ROW-CHECK ( ptr u8 n ptr u8 n ptr u8 n bool -- n n n ptr n )
    {: ka:ptr ku:n ta:ptr tu:n ca:ptr cu:n bad:bool :}
-   tu 0= IF ka ku ta tu PARSES-NO-TARGET PARSES-REFUSE 0 0 0 EXIT THEN
+   tu 0= IF ka ku ta tu PARSES-NO-TARGET PARSES-REFUSE 0 0 0 NULL-PTR EXIT THEN
    ca cu num-parse {: v:n flt:bool ok:bool :}
-   ok 0=  flt or  v 0 <  or IF ka ku ta tu PARSES-COUNT PARSES-REFUSE 0 0 0 EXIT THEN
-   bad IF ka ku ta tu PARSES-LIST PARSES-REFUSE 0 0 0 EXIT THEN
-   ka ku ta tu PARSES-TARGET {: sym:n eff1:n :}
-   sym eff1 v ;
+   ok 0=  flt or  v 0 <  or IF ka ku ta tu PARSES-COUNT PARSES-REFUSE 0 0 0 NULL-PTR EXIT THEN
+   bad IF ka ku ta tu PARSES-LIST PARSES-REFUSE 0 0 0 NULL-PTR EXIT THEN
+   ka ku ta tu PARSES-TARGET {: sym:n eff1:n rec:ptr :}
+   sym eff1 v rec ;
+
+: CHECKER-PARSES-ROW ( ptr u8 n ptr u8 n ptr u8 n bool -- n n n )
+   PARSES-ROW-CHECK drop ;
 
 \ What a list token is to its reader: 0 a terminator, 1 the closing `)`, 2 the
 \ end of the input, where no `)` came.
@@ -2577,11 +2586,31 @@ TRUSTED: generates: ( -- )
    a u s" )" CORE-STR= IF 1 EXIT THEN
    0 ;
 
-: PARSES-LIST-LOAD ( -- bool )
-   parse-name s" (" CORE-STR= 0= IF RES-TRUE EXIT THEN
-   0 BEGIN parse-name PARSES-ITEM dup 0= WHILE drop 1 + REPEAT
-   {: terms:n end:n :}
-   end 2 =  terms 0=  or ;
+: PARSES-LIST-REST ( ptr u8 -- ptr u8 n )
+   {: last:ptr :}
+   parse-name {: a:ptr u:n :}
+   a u PARSES-ITEM {: kind:n :}
+   kind 0 <> IF last kind EXIT THEN
+   a u + RECURSE ;
+
+\ The terminators as the input holds them, from the first one's start to the
+\ last one's end, and true when the list is malformed.
+: PARSES-LIST-LOAD ( -- ptr u8 n bool )
+   parse-name s" (" CORE-STR= 0= IF NULL-PTR 0 RES-TRUE EXIT THEN
+   parse-name {: a:ptr u:n :}
+   a u PARSES-ITEM 0 <> IF NULL-PTR 0 RES-TRUE EXIT THEN
+   a u + PARSES-LIST-REST {: end:ptr kind:n :}
+   a  end a -  kind 2 = ;
+
+\ Checks a row as CHECKER-PARSES-ROW does and keeps it by its word's symbol,
+\ with the terminators L LU. The word's facts text, written before, lacks
+\ the row: its record is held as CHECKER-NAMES-ROW's is.
+: PARSES-KEEP ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n bool -- )
+   {: ka:ptr ku:n ta:ptr tu:n ca:ptr cu:n la:ptr lu:n bad:bool :}
+   ka ku ta tu ca cu bad PARSES-ROW-CHECK {: sym:n eff1:n cnt:n rec:ptr :}
+   sym 0= IF EXIT THEN
+   sym cnt la lu PROW-ADD-TEXT
+   rec CHECKER-RESOLVE:REC>INDEX sym CHECK:HOLD-AMENDED ;
 
 : NAMES-HELP ( ptr u8 n n -- ) {: ta:ptr tu:n kind:n :}
    kind PARSES-NO-TARGET = IF
@@ -3267,10 +3296,10 @@ CHECKER-REG:}SCRATCH
 \ there, as a top step is (TOP-GUEST): it parses above the term pools' marks,
 \ and the parser's and recorder's cells, which the caller may hold, are saved
 \ and given back however the read ends. One read is open at a time.
-\ GUEST-POOLS saves 16 cells, GUEST-PARSER 38 and its three tables,
-\ GUEST-LATCHES 9; GUEST-POINTERS saves 9 pointers.
-16 38 + 9 +  BINDER-DEPTH-MAX +  TYPE-VAR-MAX 3 + +  26 +  constant GUEST-CAP
-9 constant GUEST-PTRS-CAP
+\ GUEST-POOLS saves 16 cells, GUEST-PARSER 40 and its three tables,
+\ GUEST-LATCHES 9; GUEST-POINTERS saves 10 pointers.
+16 40 + 9 +  BINDER-DEPTH-MAX +  TYPE-VAR-MAX 3 + +  26 +  constant GUEST-CAP
+10 constant GUEST-PTRS-CAP
 CHECKER-REG:SCRATCH{
 create GUEST-SAVED GUEST-CAP cells allot
 GUEST-PTRS-CAP PTR-U8-TABLE GUEST-SAVED-PTRS
@@ -3323,6 +3352,7 @@ CHECKER-REG:}SCRATCH
    SIG-RAW-MODE save GUEST-CELL  SIG-FACTS-MODE save GUEST-CELL  SIG-CTL save GUEST-CELL
    SIG-TAGS-ONLY save GUEST-CELL
    SIG-PE save GUEST-CELL  SIG-PIMM save GUEST-CELL  SIG-CREATES-U save GUEST-CELL
+   SIG-PARSES save GUEST-CELL  SIG-PARSES-U save GUEST-CELL
    SIG-OVERLOAD-U save GUEST-CELL  SIGSCOPE-ON save GUEST-CELL  SIGSCOPE-U save GUEST-CELL ;
 
 \ The latches E-ADD-EFFECT sets for the record the engine publishes next.
@@ -3336,6 +3366,7 @@ CHECKER-REG:}SCRATCH
    0  SB 1 save GUEST-PTRS  SS 1 save GUEST-PTRS  PKA 1 save GUEST-PTRS
    SGBAD-A 1 save GUEST-PTRS  SGBAD-EXP-A 1 save GUEST-PTRS  SIG-UNRES-A 1 save GUEST-PTRS
    SIG-CREATES-A 1 save GUEST-PTRS  SIG-OVERLOAD-A 1 save GUEST-PTRS
+   SIG-PARSES-A 1 save GUEST-PTRS
    SIGSCOPE-P 1 save GUEST-PTRS  drop ;
 
 \ A read parses its fresh names into a table of its own, which this swaps
@@ -3421,7 +3452,8 @@ CHECKER-REG:}SCRATCH
    {: a:ptr u:n sym:n :}
    a u READ-ROWS {: din:n dout:n rin:n rout:n ok:bool :}
    SIG-PE @  SGHASR @  SIG-OVERLOAD-A @  SIG-OVERLOAD-U @ {: pe:n hasr:bool ra:ptr ru:n :}
-   ok 0=  SIG-TAGS-ONLY @ or  SIG-CTL @ 0 <> or  SIG-PIMM @ 0 >= or  SIG-CREATES-U @ 0 <> or IF
+   ok 0=  SIG-TAGS-ONLY @ or  SIG-CTL @ 0 <> or  SIG-PIMM @ 0 >= or
+   SIG-PARSES @ 0 >= or  SIG-CREATES-U @ 0 <> or IF
       NULL-PTR 0 RES-FALSE EXIT
    THEN
    din dout rin rout hasr sym pe READ-ROW
@@ -3475,8 +3507,9 @@ CHECKER-REG:}SCRATCH
    SIG-CTL @  SIG-PIMM @  SIG-PE @  SIG-CREATES-A @  SIG-CREATES-U @  SGHASR @
       {: ctl:n pimm:n pe:n ca:ptr cu:n hasr:bool :}
    SIG-OVERLOAD-A @  SIG-OVERLOAD-U @ {: oa:ptr ou:n :}
+   SIG-PARSES @  SIG-PARSES-A @  SIG-PARSES-U @ {: pn:n pa:ptr pu:n :}
    SIG-TAGS-ONLY @ IF
-      pe 0 <>  pimm 0 >= or  cu 0 <> or  ou 0 <> or
+      pe 0 <>  pimm 0 >= or  pn 0 >= or  cu 0 <> or  ou 0 <> or
       ctl XFER-FLAGS CHECKER-OWNER-ABI:BINDING-DEFER and 0 <> or IF
          a u name nameu READ-REFUSE EXIT
       THEN
@@ -3489,6 +3522,7 @@ CHECKER-REG:}SCRATCH
    sym sym ctl READ-FLAGS ctl XFER-DMASK ctl XFER-RMASK made NORET-ADD-CREATES
    ctl XFER-FLAGS CHECKER-OWNER-ABI:BINDING-DEFER and 0 <> IF sym RES-TRUE DFER-ADD-SYM THEN
    pimm 0 >=  sym PIMM-IX 0 <  and IF sym pimm PIMM-ADD THEN
+   pn 0 >= IF sym pn pa pu PROW-ADD-TEXT THEN
    ix sym mark READ-LINK ;
 
 \ Whether record ix has a link row: its compile, or a read, taught the checker.

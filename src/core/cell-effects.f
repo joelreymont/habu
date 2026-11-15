@@ -53,20 +53,21 @@ PRIM: VERIFY-PARSES-N PE-PTR-N PE-OUT PRIM;
 s" SIG-RAW-MODE" s" -- ptr n" TRUST
 
 \ `parses: W n` and `parses-through: W n ( E1 E2 )`, at top level after W's
-\ definition, read as src/habu/verify-source.f PARSES-ROW reads them and checked
-\ by the checker; nothing is kept. The keyword is the
+\ definition, read as src/habu/verify-source.f PARSES-ROW reads them, checked
+\ by the checker and kept in it by W's symbol and in W's facts text, for the
+\ source pre-verifier, which never reads an engine-provided file. The keyword is the
 \ last token the engine read when the word starts (TKA-CELL). UNSAFE-TOK? bars
 \ both from checked bodies. They load after the hook so this checker records them
 \ and INTRINSIC tags each (CTL-PARSES, INTRINSIC-CTL): a word checker.f defines is
 \ recorded by the build's checker, which may know no such word.
 TRUSTED: parses: ( -- )
    data-base TKA-CELL + @  data-base TKL-CELL + @
-   parse-name parse-name RES-FALSE CHECKER-PARSES-ROW drop drop drop ;
+   parse-name parse-name NULL-PTR 0 RES-FALSE PARSES-KEEP ;
 INTRINSIC-PARSES INTRINSIC
 
 TRUSTED: parses-through: ( -- )
    data-base TKA-CELL + @  data-base TKL-CELL + @
-   parse-name parse-name PARSES-LIST-LOAD CHECKER-PARSES-ROW drop drop drop ;
+   parse-name parse-name PARSES-LIST-LOAD PARSES-KEEP ;
 INTRINSIC-PARSES-THROUGH INTRINSIC
 
 \ `names: W`, at top level after W's definition: W looks its string operand up

@@ -292,8 +292,10 @@ The count is of raw blank-delimited tokens, as `parse-name` reads them; the
 through form then reads through the first token that equals a listed one,
 byte for byte, inclusive (`)` cannot be listed). A `:`, a definer, a comment or
 string opener among the operands is data. The word is still
-`W-CHECK-DEFERRED`: the row is trusted, never compared with the body. The check reads it from the source it checks, so a word whose row it
-did not read, a resident or precompiled one among them, is undeclared;
+`W-CHECK-DEFERRED`: the row is trusted, never compared with the body. The
+engine keeps its own words' rows, so a check knows how many tokens they read;
+any other word whose row the check did not read in the source it checks, a
+precompiled one among them, is undeclared;
 `EXPORT` carries a row, a word that calls the declared one does not.
 The separate dependency discovery walk harvests rows before it follows loads.
 It skips a parsing word's operands only when the harvested files have one

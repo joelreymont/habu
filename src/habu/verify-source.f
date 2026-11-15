@@ -133,9 +133,11 @@
 \ `parses: W n` bounds W to n raw tokens; `parses-through: W n ( E1 E2 )` to n
 \ and then every token through the first one equal byte for byte to a listed
 \ terminator, inclusive. A row is trusted and never compared with W's body: the
-\ call stays the run's, but the scan goes on after it. Only this scan keeps
-\ rows; the load checks them and keeps nothing. A row is keyed by the checker
-\ owner whose scope selected it and by the binding the top-level find selects
+\ call stays the run's, but the scan goes on after it. For a binding none of
+\ this scan's rows names, it reads the row the load kept for the symbol the
+\ find selects, which a word's facts text gives back: an engine-provided file,
+\ which it never reads, states its rows there. A row of this scan is keyed by
+\ the checker owner whose scope selected it and by the binding the top-level find selects
 \ for W, its symbol and visible record's offset + 1, never by spelling or
 \ symbol alone: a redefinition, an `undefine` or another owner selects a
 \ binding no row names. A later row for a binding wins.
@@ -1956,6 +1958,11 @@ TRUSTED: GENERATES-SIGNATURE ( ptr u8 n ptr u8 n bool -- n n )
 TRUSTED: PARSES-CHECK ( ptr u8 n ptr u8 n ptr u8 n bool -- n n n )
    CHECKER-PARSES-ROW ;
 
+\ The row the load kept for a symbol, its own or read back from the word's
+\ facts text: its count and terminators, and true; false for none.
+TRUSTED: KEPT-PARSES ( n -- n ptr u8 n bool )
+   PROW-FIND ;
+
 \ A `names:` row's check: UNSAFE-TOK? rejects `checker-names-row` inside a
 \ checked body. The checker marks the word the row names, so this pre-pass
 \ keeps nothing of the row.
@@ -3111,32 +3118,37 @@ CAST: TOP-ACTION ( n -- [ ptr u8 n bool -- n ] )
 : NAMES-ROW ( ptr u8 n -- )
    NEXT-RAW NAMES-CHECK ;
 
-: PRS-TERM-END ( n n -- n )
-   {: end:n :}
-   BEGIN dup end < IF dup PRS-TERMS c@ 32 <> ELSE 0 0= 0= THEN WHILE 1 + REPEAT ;
+: PRS-TERM-END ( n ptr u8 n -- n )
+   {: t:ptr tu:n :}
+   BEGIN dup tu < IF dup t + c@ 32 <> ELSE 0 0= 0= THEN WHILE 1 + REPEAT ;
 
-: PRS-TERM-AT? ( ptr u8 n n n -- bool )
-   {: a:ptr u:n i:n j:n :}
+: PRS-TERM-AT? ( n n ptr u8 n ptr u8 -- bool )
+   {: i:n j:n a:ptr u:n t:ptr :}
    j i - u <> IF 0 0= 0= EXIT THEN
-   a u  i PRS-TERMS u  CORE-STR= ;
+   a u  t i +  u  CORE-STR= ;
 
-: PRS-TERM? ( ptr u8 n n -- bool )
-   {: a:ptr u:n row:n :}
-   row PRS-AT @ row PRS-LEN @ + {: end:n :}
-   row PRS-AT @
-   BEGIN dup end < WHILE
-      dup end PRS-TERM-END
-      2dup a u 2swap PRS-TERM-AT? IF 2drop 0 0= EXIT THEN
+\ A U is one of the terminators T TU holds, each followed by a blank.
+: PRS-TERM? ( ptr u8 n ptr u8 n -- bool )
+   {: a:ptr u:n t:ptr tu:n :}
+   0
+   BEGIN dup tu < WHILE
+      dup t tu PRS-TERM-END
+      2dup a u t PRS-TERM-AT? IF 2drop 0 0= EXIT THEN
       nip 1 +
    REPEAT drop 0 0= 0= ;
 
+\ A row of this scan as a kept row reads: its count and terminators' bytes.
+: PRS-ROW ( n -- n ptr u8 n )
+   {: row:n :}
+   row PRS-COUNT @  row PRS-AT @ PRS-TERMS  row PRS-LEN @ ;
+
 \ Consumed as the run reads it. The source's end ends it: what is there is
 \ consumed, and the word stays the run's.
-: PRS-CONSUME ( n -- )
-   {: row:n :}
-   row PRS-COUNT @ 0 ?do NEXT-RAW nip 0= IF unloop EXIT THEN loop
-   row PRS-LEN @ 0= IF EXIT THEN
-   BEGIN NEXT-RAW dup 0= IF 2drop EXIT THEN row PRS-TERM? UNTIL ;
+: PRS-CONSUME ( n ptr u8 n -- )
+   {: cnt:n t:ptr tu:n :}
+   cnt 0 ?do NEXT-RAW nip 0= IF unloop EXIT THEN loop
+   tu 0= IF EXIT THEN
+   BEGIN NEXT-RAW dup 0= IF 2drop EXIT THEN t tu PRS-TERM? UNTIL ;
 
 \ Structure bodies take this path too.
 : TOP-PARSER ( ptr u8 n -- )
@@ -3148,9 +3160,11 @@ CAST: TOP-ACTION ( n -- [ ptr u8 n bool -- n ] )
    id CHECKER-OWNER-ABI:BINDING-NAMES-ID = IF a u NAMES-ROW EXIT THEN
    ctl CHECKER-OWNER-ABI:BINDING-DEFER and 0<> IF a u DW-DEFER TOP-OPAQUE EXIT THEN
    sym eff1 PRS-FIND {: row:n :}
-   row 0= IF a u DW-PARSER TOP-OPAQUE EXIT THEN
+   row 0 <> IF a u DW-PARSES DEFER-AT  row 1 - PRS-ROW PRS-CONSUME EXIT THEN
+   sym KEPT-PARSES {: cnt:n t:ptr tu:n kept:bool :}
+   kept 0= IF a u DW-PARSER TOP-OPAQUE EXIT THEN
    a u DW-PARSES DEFER-AT
-   row 1 - PRS-CONSUME ;
+   cnt t tu PRS-CONSUME ;
 
 : TOKEN-TAIL ( ptr u8 n -- ptr u8 n )
    {: a:ptr u:n :}
