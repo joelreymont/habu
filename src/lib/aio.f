@@ -73,8 +73,11 @@ CAST: AIO-N>PTR ( n -- ptr n )
 \ The ring's sizes. A record in flight owes at most two completion entries: its
 \ own and one cancel's (a linked poll's second is its link record's own).
 \ A submission entry is held only from a stage's publish to its enter.
+\ AIO-RECS-MAX is the most live records the process holds, shared by every
+\ task: every wait of a server process at once, its sockets, parked
+\ connections and database waits, with room to spare.
 $100 constant AIO-ENTRIES
-$200 constant AIO-RECS-MAX
+$1000 constant AIO-RECS-MAX
 AIO-RECS-MAX 2 * constant AIO-CQ-ENTRIES
 
 8 constant SETUP-CQSIZE

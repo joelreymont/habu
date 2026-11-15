@@ -1201,10 +1201,10 @@ ENUM course
    LOG:;LINE ;
 
 
-\ WS's task. A throw from its loop - a poll AIO refuses at its ceiling, a
-\ mapping the task cannot get - is reported and rethrown, so TASK:THROW@ keeps
-\ it and CLEANUP closes every socket: each handshake is then 503 until STOP
-\ and START. A halt passes the catch unreported.
+\ WS's task. A throw from its loop - a poll or the timer AIO refuses at its
+\ ceiling, a mapping the task cannot get - is reported and rethrown, so
+\ TASK:THROW@ keeps it and CLEANUP closes every socket: each handshake is then
+\ 503 until STOP and START. A halt passes the catch unreported.
 : SERVE ( -- )
    [: CLEANUP ;] TASK:SELF TASK:AT-EXIT
    [: SERVING ;] catch {: code:n :}

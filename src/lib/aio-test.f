@@ -58,7 +58,7 @@ package AIO-TEST
 8 constant FAN-EACH
 FAN-TASKS FAN-EACH * constant FAN-N
 $180 constant GROW-N                 \ into the third record chunk: chunks end at $40, $C0, $1C0
-$400 constant FULL-CAP                \ more polls than the Linux record ceiling admits
+$2000 constant FULL-CAP               \ more polls than the Linux record ceiling admits
 $11 constant DEFS-N                  \ more groups than the first $10 definitions
 4 constant ANY-N
 

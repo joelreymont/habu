@@ -73,7 +73,7 @@ $10 constant SOCKADDR-N          \ sockaddr_in
 $2000000 constant FLOOD-PUSH      \ what the overflow case may push: QUEUE-MAX and every kernel buffer, many times over
 $101 constant CROWD               \ WS:START's limit: one socket past a one-byte slot field
 $400 constant LOG-CAP             \ the sockets one run may close
-$2800 constant FILL-CAP              \ Darwin's poll bound (OPEN_MAX), past Linux's 512 records: the most polls that fill AIO
+$2800 constant FILL-CAP              \ Darwin's poll bound (OPEN_MAX), past Linux's AIO-RECS-MAX records: the most polls that fill AIO
 CROWD 2 * $40 + FILL-CAP 2 * + constant FDS-WANT \ both ends of CROWD+1 loopback connections, the server's, the files' and the fill's
 8 constant STRAYS                 \ the wake pipe's two, the only ones a stale send's POKE writes, with room to spare
 $12000 constant BUF-CAP           \ the longest frame a case sends or is sent, with its header
