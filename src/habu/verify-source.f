@@ -850,35 +850,43 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
    a u WRAP-BRACKET-TOK? or ;
 
 \ The record of a loader form at t tu that discovery cannot follow, for the
-\ message m mu, written through its help: the caller stops it.
-: FORM-REJECT ( ptr u8 n ptr u8 n -- ) {: t:ptr tu:n m:ptr mu:n :}
+\ message m mu, written through the help HELP writes for t tu: the caller stops
+\ it.
+: FORM-REJECT ( ptr u8 n ptr u8 n [ ptr u8 n -- ] -- ) {: t:ptr tu:n m:ptr mu:n help :}
    s" E-LOADER-FORM" REJECTION:OPEN  m mu REJECTION:EMIT-STR
    t tu REJECTION:AT
    s" discovery cannot follow `" REJECTION:EMIT-STR  t tu REJECTION:EMIT-STR
    s" `" REJECTION:EMIT-STR
    REJECTION:HELP
-   s" load a file by a literal path that resolves within PATH-CAP bytes, written in at most PATH-CAP bytes after include or require and otherwise in under twice PATH-CAP plus 2 counting, when relative, a slash and the longest root searched for it, through a loader word no definition redefines or retires" REJECTION:EMIT-STR ;
+   t tu help execute ;
+
+: TICKED ( ptr u8 n -- )
+   s" `" REJECTION:EMIT-STR  REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR ;
 
 public
 \ Discovery (tools/source-discovery.f) and a quiet composition write the record
 \ of a loader form they reject, at its token t tu, with these, and stop it
 \ with the form's E-DISC code.
 : SHADOW-REJECT ( ptr u8 n -- )
-   s" loader word used after the file defined its name" FORM-REJECT ;
+   s" loader word used after the file defined its name"
+   [: s" load files before the definition that reuses " REJECTION:EMIT-STR  TICKED
+      s" 's name, or rename that definition" REJECTION:EMIT-STR ;] FORM-REJECT ;
 : RETIRE-REJECT ( ptr u8 n -- )
-   s" loader word used after the file retired it" FORM-REJECT ;
+   s" loader word used after the file retired it"
+   [: s" load files before `undefine` retires " REJECTION:EMIT-STR  TICKED ;] FORM-REJECT ;
 : DYNAMIC-REJECT ( ptr u8 n -- )
-   s" dynamic (non-literal) loader path" FORM-REJECT ;
+   s" dynamic (non-literal) loader path"
+   [: 2drop S\" write the path as a literal: `require path/file.f` or `s\" path/file.f\" required`" REJECTION:EMIT-STR ;]
+   FORM-REJECT ;
 : OPENER-REJECT ( ptr u8 n -- )
-   s" unsupported string opener before a loader word" FORM-REJECT ;
+   s" unsupported string opener before a loader word"
+   [: 2drop S\" write the path with `s\"`: `s\" path/file.f\" required`" REJECTION:EMIT-STR ;]
+   FORM-REJECT ;
 : CAPACITY-REJECT ( ptr u8 n -- )
-   s" capacity exceeded" FORM-REJECT ;
+   s" capacity exceeded"
+   [: 2drop s" shorten the path to at most " REJECTION:EMIT-STR  PATH-CAP REJECTION:EMIT-U
+      s"  bytes" REJECTION:EMIT-STR ;] FORM-REJECT ;
 private
-
-\ A refusal stands at TOKEN-BYTE@, FAULT-LEN bytes long.
-: QUIET-REJECT ( n n -- ) {: code:n len:n :}
-   len FAULT-LEN !
-   code throw ;
 
 \ A loader word u bytes long at TOKEN-BYTE@ with no literal path: its record,
 \ stopped with E-DISC-DYNAMIC.
@@ -924,15 +932,22 @@ variable RETIRED
 \ A loader form the walk reads, its word u bytes long at TOKEN-BYTE.
 : QUIET-USE ( ptr u8 n -- ) {: a:ptr u:n :}
    a u LOADER-BIT {: bit:n :}
-   bit SHADOWED @ and 0<> IF E-DISC-SHADOW u QUIET-REJECT THEN
-   bit RETIRED @ and 0<> IF E-DISC-RETIRE u QUIET-REJECT THEN ;
+   SOURCE@ TOKEN-BYTE @ + {: t:ptr :}
+   bit SHADOWED @ and 0<> IF
+      u FAULT-LEN !  t u SHADOW-REJECT  E-DISC-SHADOW REJECTION:STOP
+   THEN
+   bit RETIRED @ and 0<> IF
+      u FAULT-LEN !  t u RETIRE-REJECT  E-DISC-RETIRE REJECTION:STOP
+   THEN ;
 
 \ A string loader u bytes long, after a literal of the given kind. True when it
 \ may load the literal's path, which the resolver alone may still refuse, false
 \ after a literal holding a bad escape, which is the checker's.
 : LITERAL-LOAD? ( n n -- bool ) {: kind:n u:n :}
    kind 0= IF u DYNAMIC-STOP THEN
-   kind LIT-OTHER = IF E-DISC-OPENER u QUIET-REJECT THEN
+   kind LIT-OTHER = IF
+      u FAULT-LEN !  SOURCE@ TOKEN-BYTE @ + u OPENER-REJECT  E-DISC-OPENER REJECTION:STOP
+   THEN
    kind LIT-PATH = ;
 
 DYNAMIC-BUFFER PEND-PATH u8                   \ the waiting loads' paths, end to end
@@ -1213,8 +1228,12 @@ variable GROUP-AT
 \ the word refuses it before the resolver sees it.
 : LOADER-OPERAND ( n -- ptr u8 n ) {: wu:n :}
    NEXT-RAW {: p:ptr pu:n :}
-   pu 0= IF wu DYNAMIC-STOP THEN
-   pu PATH-CAP > IF E-DISC-CAPACITY pu QUIET-REJECT THEN
+   pu 0= IF
+      wu FAULT-LEN !  SOURCE@ TOKEN-BYTE @ + wu INCLUDE-NO-PATH  E-DISC-DYNAMIC REJECTION:STOP
+   THEN
+   pu PATH-CAP > IF
+      pu FAULT-LEN !  SOURCE@ TOKEN-BYTE @ + pu CAPACITY-REJECT  E-DISC-CAPACITY REJECTION:STOP
+   THEN
    p pu ;
 
 \ `include` or `require` in a body, an immediate word the engine refuses there
@@ -3305,15 +3324,14 @@ variable LOAD-U
 
 \ Run Q, the load a loader word wu bytes long at byte w makes, under the word's
 \ claim: a fault no loader below claimed stands at the word when the file is
-\ missing (LOADER-REJECTED?) or unreadable (E-SOURCE-READ) or the resolver
-\ refuses its path (E-PATH-RANGE, refused as discovery refuses it:
-\ E-DISC-CAPACITY). Any other fault keeps the place where it was made.
+\ missing (LOADER-REJECTED?) or unreadable (E-SOURCE-READ). Any other fault,
+\ the resolver's rejection of its path among them, keeps the place where it was
+\ made.
 : CLAIMED-LOAD ( [ -- ] n n -- )
    {: q w:n wu:n :}
    q catch  0 LOAD-END !
-   {: rc:n :}
-   rc E-PATH-RANGE =  rc E-PATH-NUL =  or IF E-DISC-CAPACITY ELSE rc THEN {: code:n :}
-   code E-SOURCE-READ =  code E-DISC-CAPACITY =  or  code LOADER-REJECTED? or
+   {: code:n :}
+   code E-SOURCE-READ =  code LOADER-REJECTED? or
    FAULT-LEN @ 0=  and IF
       w TOKEN-BYTE !  wu FAULT-LEN !
    THEN
