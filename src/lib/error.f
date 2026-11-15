@@ -693,6 +693,8 @@ require src/lib/prelude.f
 \ Enum tags: -9880..-9889, minted in src/core/sumtype.f (FAM:TAG>).
 \ Extended attributes: -9900..-9909, minted in src/lib/xattr.f, which owns
 \ package XATTR.
+\ The key light's volume: -9920..-9929, minted in src/lib/browser/studio.f,
+\ which owns package STUDIO.
 
 \ T0 (src/habu/t0.f): -9600..-9609, minted here, not in package COMP, because
 \ src/compiler/native/definition.f MALFORMED? reads them.
