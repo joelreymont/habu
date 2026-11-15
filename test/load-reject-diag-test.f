@@ -815,7 +815,7 @@ variable RC
    ERR$ s" = left: n n" CONTAINS? TTRUE
    s" a declaration's leftover cell is residue too" T-LABEL
    RTYPE$ RUN
-   s" this file leaves 1 cell " s" /residue-type.f:1:20" ASSERT-RESIDUE
+   s" this file leaves 1 cell " s" /residue-type.f:2:1" ASSERT-RESIDUE
    s" nested residue is named once, at the innermost file" T-LABEL
    RNEST$ RUN
    s" this file leaves 2 cells" s" /residue.f:1:1" ASSERT-RESIDUE

@@ -2453,9 +2453,8 @@ DYNAMIC-BUFFER NOM-TAIL u8
    {: at:n u:n :}
    TOP-CUR-A @ TOP-CUR-U @ DTC-NAME$ DTC-SIG$ at at u + DEF-WORD DEFINED ;
 
-\ Ends a declaration's rejection record: under MULTI-ERR? the scan goes on and
-\ the caller registers nothing, so TOP-DEFINER? opens an unreported stretch;
-\ else the scan stops.
+\ Under MULTI-ERR? the scan goes on and the caller registers nothing, so
+\ TOP-DEFINER? opens an unreported stretch.
 : DECLARATION-END ( -- )
    MULTI-ERR? IF REJECTION:KEEP EXIT THEN
    CHECKER-REJECT-RC REJECTION:STOP ;
@@ -2598,9 +2597,8 @@ variable STG-TYPE-U
    STG-START @  STG-A @ STG-U @ + STG-START @ -
    2dup STG-TYPE-U ! STG-TYPE-A ! ;
 
-\ Missing names and malformed headers are rejected by CHECKER-DEFFAMILY in the
-\ declaration's record (E-BAD-DECLARATION), as on the native path; a base on
-\ the name's line replays as NEWTYPE registers it.
+\ CHECKER-DEFFAMILY's record rejects a missing name or a malformed header; a
+\ base on the name's line replays as NEWTYPE registers it.
 : RECORD-NEWTYPE ( -- )
    NAME-TOKEN TOKEN-BYTE @ {: name:^ nameu:n at:n :}
    TOP-CUR-A @ TOP-CUR-U @ name nameu REJECTION:NOT-A-NAME

@@ -847,14 +847,15 @@ public
    s" private" TICKS  s" , " SAY  s" seal-package" TICKS  s"  and " SAY
    s" ;package" TICKS  s"  inside an open package, and name a part bare" SAY
    s"  inside its enclosing package" SAY ;
-\ Writes the record of a split-str token t tu in a file that does not begin
-\ with the line split-str, through its help; the caller ends it.
+\ Writes the record of a split-str token t tu in a file whose first line is
+\ not split-str alone, through its help; the caller ends it.
 : SPLIT-STR-REJECT ( ^u8 n -- ) {: t:^ tu:n :}
    s" E-PKG-CONTEXT" REJECTION:OPEN
    t tu TICKS  s"  is not allowed in this context" SAY
-   t tu REJECTION:AT  s" its file does not begin with this line" SAY
+   t tu REJECTION:AT  s" its file's first line is not " SAY  s" split-str" TICKS
+   s"  alone" SAY
    REJECTION:HELP  s" write " SAY  s" split-str" TICKS
-   s"  alone on its file's first line, or delete it" SAY ;
+   s"  in lower case, alone on its file's first line, or delete it" SAY ;
 private
 
 : PKG-CONTEXT-FAIL ( -- )
