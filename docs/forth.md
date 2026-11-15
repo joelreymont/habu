@@ -191,9 +191,8 @@ private
   order.
 - `seal-package` is a package keyword beside `public`. Inside a package it
   seals it: reopening it, defining into either of its wordlists or `EXPORT`
-  into it then exits 84 with ``error[E-SEALED-PACKAGE]: `<name>` would change a sealed package``,
-  naming the package or word, and `tools/check.f` refuses it as
-  `E-SEALED-PACKAGE` at the name. Outside a package it is rejected
+  into it is then rejected `E-SEALED-PACKAGE` at the name, rc 70, by the load
+  and by `tools/check.f`. Outside a package it is rejected
   (`E-PKG-CONTEXT`). Like `public` it names no word: in a body
   or after `'` it is `E-UNDEFINED`. A build also seals every package its
   engine files made before it reads program source; an application package
@@ -204,9 +203,9 @@ private
 - `host` and `target` are the section words
   ([xcomp.md](xcomp.md#host-and-target-words)). At top level a bare `host` or
   `target` where a word of that name is in scope could mean either and is
-  refused: `E-SECTION-WORD habu: <file>:<line>: 'target' is the section word and a word of that name is in scope: rename the word or call it qualified`,
-  rc 70. A public word is called qualified (`PKG:TARGET`); a private or global
-  one is renamed; in a body or after `'` the token names the word.
+  rejected `E-SECTION-WORD`, rc 70. A public word is called qualified
+  (`PKG:TARGET`); a private or global one is renamed; in a body or after `'` the
+  token names the word.
 - **Qualify only across package boundaries.** In `NAME`'s own files reopen the
   package and use bare names; `NAME:WORD` there is noise. A call into another
   package qualifies (`OTHER:WORD`) or reopens it. A subsystem is a few internal
@@ -258,11 +257,10 @@ public
   cells on the stack is refused `E-EVAL-RESIDUE`, so a value crosses a load
   only as a word the file defines. A file that ends inside a definition it
   opened is refused at its end, as every source is (**Rules learned by
-  refusal**): `E-VS-UNTERMINATED-DEFINITION habu: <path>:<line>: source ended
-  inside definition: D`, so no definition spans a load. The program file of
-  `hb prog.f` is a loaded file, so a refusal in it names `prog.f:<line>`, but
-  it keeps its top-level stack; a program on stdin is no file and keeps its
-  stack too.
+  refusal**), `E-VS-UNTERMINATED-DEFINITION`, so no definition spans a load. The
+  program file of `hb prog.f` is a loaded file, so a refusal in it names
+  `prog.f:<line>`, but it keeps its top-level stack; a program on stdin is no
+  file and keeps its stack too.
 - **Source roots.** Relative dependencies search the root of the file that
   requires them, then the engine's source root, then the invocation working
   directory, each root once. A named `--load` entry's root is its directory; a
@@ -822,8 +820,8 @@ multi-cell type rationale is `docs/design.md` "Types".
   made, only while that word lives.** A forget, an `undefine`, a failed
   `evaluate` or a failed REPL line that retires it leaves `does>` nothing to
   patch, even when an earlier created word survives, and `does>` is then
-  refused with `E-DOES-UNCREATED habu: <path>:<line>: does> has no created
-  word` (a catchable throw inside `evaluate`):
+  stopped by the kernel with `E-DOES-UNCREATED` (a catchable throw inside
+  `evaluate`):
 
   ```forth
   create K 7 ,
@@ -837,9 +835,8 @@ multi-cell type rationale is `docs/design.md` "Types".
   A native engine boots with no created word, one hb-build `--repl` wrote
   included, so a `does>` before any `create` is refused the same way.
 - **A `STRUCTURE` or `ENUM` body is parsed by its definer.** A `\` or `( … )`
-  comment inside the body is refused, rc 70 (`habu: bad enum declaration 'kind':
-  unexpected token in enum declaration at '('`); `tools/check.f` reports either
-  as `E-BAD-DECLARATION`. Put comments above the opener, including comments
+  comment inside the body is rejected `E-BAD-DECLARATION`, rc 70, by the load
+  and by `tools/check.f`. Put comments above the opener, including comments
   explaining the header or fields.
 - **A `FIELD` holds a value, not a body.** A payload is a type expression
   (letter param, concrete cell type, `ptr T`, closed arity-0 family, or a
@@ -1029,9 +1026,9 @@ named words, with one word that runs them in order.
 - **A file that builds for some targets only states them** on its first code
   line, before its requires: `HB-TARGET-MACOS? HB-TARGET-LINUX-KERNEL? or
   ?TARGET`. `?TARGET ( bool -- )` returns on true; on false the load stops
-  at that line with an E-TARGET rejection naming the target (the seam's
-  `HB-TARGET$ ( -- ptr u8 n )`) and throws 74, so a build exits 74 and
-  writes no program or module. The files that require it inherit the
+  at that line with an `E-TARGET` rejection naming the target (the seam's
+  `HB-TARGET$ ( -- ptr u8 n )`), rc 70, so a build exits 70 and writes no
+  program or module. The files that require it inherit the
   statement through the require and state nothing.
   List the targets the file supports, not the ones it refuses, so a new
   target is refused until the file supports it.
@@ -1141,16 +1138,11 @@ A definition reads only the return-stack cells it pushed with `>r` and leaves
 the return stack as it found it, so no signature declares a return-stack cell.
 A `|` clause may name one row variable, the same on both sides: the word leaves
 its caller's return stack alone, which is what a signature with no bar says.
-Any other clause is refused at the declaration, before the body
-is checked: `habu: in NAME: return-stack effect in signature '<sig>';
-suggestion: Declare no return-stack effect: after '|' write one row variable,
-the same on both sides, or no '|'; park a value with >r and take it back with
-r> in one definition.` (`E-BAD-SIGNATURE`,
-repair class `fix_return_stack`). A stored signature — a `TRUSTED:`
-definition's, a `defer`'s, a `trust` row's or a `CAST:` — is refused as
-`E-BAD-STORED-SIGNATURE` with the same repair class. To keep a value across
-other work, park it with `>r` and take it back with `r>` in the same
-definition.
+Any other clause is rejected at the declaration, before the body is checked,
+as `E-BAD-SIGNATURE` (repair class `fix_return_stack`). A stored signature — a
+`TRUSTED:` definition's, a `defer`'s, a `trust` row's or a `CAST:` — is refused
+as `E-BAD-STORED-SIGNATURE` with the same repair class. To keep a value across
+other work, park it with `>r` and take it back with `r>` in the same definition.
 
 The clause is written in two places, and they are not the same shape.
 
@@ -2048,8 +2040,6 @@ answers alike.
 
   ```forth
   ARG s" child" TOK= if CHILD-MAIN exit then
-  \ habu: in dispatch: at 'exit' after 'CHILD-MAIN'; suggestion: Nothing after a word that never returns runs (throw, die, exit, or a call whose body always ends in one): remove the tokens after it, or move the work before it.
-  \ hook: non-certified definition: dispatch at 'exit'
   ```
 
   Write `if CHILD-MAIN then`: the rest of the definition runs only on paths that
@@ -2061,8 +2051,7 @@ These ceilings are reachable from plain Habu rather than a runaway. Each
 refuses by name with the count it saw and the ceiling, and none truncates; the
 ceiling is a named constant beside the code that enforces it. A definition's
 captured text and its name have no ceiling: they grow with the definition, and
-a refused map ends the run, rc 71, with `E-BODY-TEXT habu: <path>:<line>:
-cannot grow definition body text to <n> bytes`.
+a map that fails ends the run, rc 71, with the kernel stop `E-BODY-TEXT`.
 
 - **One REPL line.** A longer line is refused, `hb: repl line over <cap> bytes:
   <length> typed`, and read again, never truncated, evaluated or saved to
@@ -2105,12 +2094,10 @@ cannot grow definition body text to <n> bytes`.
   `fix_signature_size`. Pass bulk values in a buffer, not on the stack.
 - **Data space**: `allot`, `align`, `,`, `c,`, `create`/`variable`/`defer` and
   the interpret-mode string literals that keep their text (all but `."`)
-  advance the dictionary pointer. Past the DATA reservation: `E-DATA-SPACE
-  habu: <path>:<line>: data space out of range: heap byte <dp> of <cap> bytes`,
-  the place as [debugging.md](debugging.md) "Where a load refusal happened"
-  states, catchable inside `evaluate`, both numbers offsets from the heap's
-  first byte. Hold bulk data in `MEM:ALLOC-BYTES` or a
-  `DYNAMIC-BUFFER`, which map their own pages, not in the dictionary. On a
+  advance the dictionary pointer. Past the DATA reservation the kernel stops
+  with `E-DATA-SPACE`, catchable inside `evaluate`. Hold bulk data in
+  `MEM:ALLOC-BYTES` or a `DYNAMIC-BUFFER`, which map their own pages, not in
+  the dictionary. On a
   task's thread every one of these sinks exits before it writes, as do
   `evaluate` and `evaluate-closed`; the main thread uses them while tasks run
   (the `src/lib/task.f` header).
@@ -2254,7 +2241,7 @@ runtime or analysis layer.
   must accept a zeroed record. The width is the declared type's, so a record's
   size always comes from the declaration. Both words must be free in both
   sections of the package they land in, Q for a qualified `Q:NAME`
-  (`E-DUP-DEFINITION`). Nothing is defined when any check
+  (`E-DUPLICATE-DEFINITION`). Nothing is defined when any check
   refuses, under `--all-errors` too.
 - **`HEAP NAME Type` for a record with its own lifetime**: `NAME-NEW ( -- ptr
   Type )` answers a fresh zero-filled record on its own OS mapping, rounded up
@@ -2371,22 +2358,20 @@ sections above.
 - **A checker replay admits rows, never live namespace changes.** While one is
   open, a definer (`:`, `create`, `variable`, `constant`, `defer`, `TRUSTED:`,
   `CAST:`), `EXPORT`, a new `package` or `wordlist` throws
-  `ENGINE-ERROR:OVERLAY-OPEN` at its name before the dictionary changes
-  (`E-OVERLAY-OPEN ... definition while a checker replay is open: NAME`), and
-  `undefine` throws it before retiring anything (`E-OVERLAY-OPEN habu: undefine
-  while a checker replay is open: NAME`). Reopening an existing package is
-  allowed. The throw is catchable inside `evaluate`; the replay still closes.
+  `ENGINE-ERROR:OVERLAY-OPEN` (`E-OVERLAY-OPEN`) at its name before the
+  dictionary changes, and `undefine` throws it before retiring anything.
+  Reopening an existing package is allowed. The throw is catchable inside
+  `evaluate`; the replay still closes.
 - **A literal `0 throw` is refused (`E-THROW-ZERO`); a computed 0 unwinds
   unchecked, a caller bug: its `catch` answers 0.**
 - **A definition and a `(` comment close in the source that opened them.**
   Files, stdin and `evaluate` strings refuse an open definition at their end
-  (`E-VS-UNTERMINATED-DEFINITION`, `source ended inside definition: NAME`) or
-  an open comment (`E-UNTERMINATED-COMMENT`, `source ended inside a ( comment`).
+  (`E-VS-UNTERMINATED-DEFINITION`) or an open comment
+  (`E-UNTERMINATED-COMMENT`).
   The first includes its stack comment, locals and quotations; the definition
   rolls back on a caught `evaluate`. An immediate word may evaluate text while a
   definition is open, but a `;` from that text may not close the outer
-  definition (`E-VS-UNTERMINATED-DEFINITION`, `source closed a definition it did
-  not open: NAME`). Completed tokens in nested evaluations stay compiled in the
+  definition (`E-VS-UNTERMINATED-DEFINITION`). Completed tokens in nested evaluations stay compiled in the
   outer definition after a caught refusal. The open-definition diagnostic
   locates the name (or `def-open` caller), the open-comment diagnostic its `(`,
   and the foreign-close diagnostic its `;`; stdin has no line location.
@@ -2405,26 +2390,23 @@ sections above.
   the offending token. The name is on the definer's line, the type starts on the
   name's line; a following-line token belongs to the next statement. A computed
   count is bounded by the definer at run time with catchable `E-LAYOUT-BUFFER`.
-  For example, `4 TYPED-BUFFER B no-such-type` prints `habu: in B: unknown type
-  'no-such-type'`.
 - **No storage is declared with a type that may hold a linear value.** A cell's
   type is believed at every read whatever bytes were written, so a cell over a
   token or a type variable, or over a quotation whose rows hold a token, a type
   variable or different tails, at any depth of the type, would mint the token
-  for any package that writes the cell. `TYPED-VARIABLE HK [ -- Q:tok ]` prints `habu:
-  in HK: stored type may hold a linear value '[ -- Q:tok ]'`, as `ptr a`,
-  `[ -- a ]`, `[ ptr t ptr t -- ]` and `[ R -- S ]` do; `[ n -- n ]` and `[ R -- R ]`
-  load, and a `defer` names a quotation over a token or a type variable.
+  for any package that writes the cell. `TYPED-VARIABLE HK [ -- Q:tok ]` is
+  rejected `E-BAD-STORAGE`, as `ptr a`, `[ -- a ]`, `[ ptr t ptr t -- ]` and
+  `[ R -- S ]` are; `[ n -- n ]` and `[ R -- R ]` load, and a `defer` names a
+  quotation over a token or a type variable.
 - **Fixed `TYPED-BUFFER` elements occupy whole cells.** `2 TYPED-BUFFER TB
-  u8` is refused (`type this definer cannot store 'u8'`). Use `n BUFFER: B`
-  for fixed bytes, yielding `( -- ptr u8 )`. `DYNAMIC-BUFFER` and `ARENA`
-  alone store `u8`, with `c@`/`c!`; `u16` is refused. `create … allot`,
-  `BUFFER:` and `TYPED-BUFFER` allocate zeroed, cell-aligned storage; `allot`,
-  `c,` and `,` do not realign following storage (see **Habu Native Tooling
-  Gotchas**).
+  u8` is rejected `E-BAD-STORAGE`. Use `n BUFFER: B` for fixed bytes, yielding
+  `( -- ptr u8 )`. `DYNAMIC-BUFFER` and `ARENA` alone store `u8`, with
+  `c@`/`c!`; `u16` is refused. `create … allot`, `BUFFER:` and `TYPED-BUFFER`
+  allocate zeroed, cell-aligned storage; `allot`, `c,` and `,` do not realign
+  following storage (see **Habu Native Tooling Gotchas**).
 - **A fixed buffer's count may be a literal, `( -- n )` word or expression.**
   The source pre-pass reads a literal without executing it: `0 TYPED-BUFFER B
-  n` is `E-BAD-STORAGE` (`count outside the buffer's extent`), while `$40
+  n` is `E-BAD-STORAGE`, while `$40
   TYPED-BUFFER B n` checks. A single nonliteral count token must resolve to a
   no-input word producing one `n`-compatible cell; an unknown, ambiguous or
   shadowed name, `variable`, or `( -- bool )` word is `E-BAD-STORAGE` (`count

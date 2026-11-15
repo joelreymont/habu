@@ -54,16 +54,16 @@ public
   `checker: bad or duplicate value-record type` for `VALUE-RECORD`, rc 70), and
   that family is refused while the name exists (for `NEWTYPE x`, `bad newtype
   declaration 'x': reserved name`, rc 70). `;package` of a part returns to A's
-  private section. `package` anywhere else inside a package is refused:
-  `E-PKG-CONTEXT habu: <loc>: package`, rc 75.
+  private section. `package` anywhere else inside a package is rejected
+  `E-PKG-CONTEXT`, rc 70.
 - `[package] ( -- ptr u8 n )`: the open package's name in lower case (`hb`, a
   part's `hb:b`), empty outside one; a literal in a body, pushed at top level.
 - `EXPORT NAME` in a public section re-exports an existing word under its own
   tail: same xt, same effect, no body.
 - The package keyword `seal-package` seals the open package: a later
   `package` of it, or a definition or `EXPORT` into it, is
-  `E-SEALED-PACKAGE`, rc 84, and `tools/check.f` refuses the same. Outside a
-  package: `E-PKG-CONTEXT habu: <loc>: seal-package`, rc 75; in a body or after `'`, as
+  `E-SEALED-PACKAGE`, rc 70, and `tools/check.f` rejects the same. Outside a
+  package: `E-PKG-CONTEXT`, rc 70; in a body or after `'`, as
   `public` there, `E-UNDEFINED`. A multi-file owner seals after its last file.
   A build seals every package its engine files made before program source.
 - At top level `host` and `target` are the section words
@@ -206,14 +206,14 @@ before the word runs, and `--load` exits 70 (`evaluate-closed` throws 70).
 | a read of what a throw left; `i`/`leave` outside a loop; `exit` in a loop, no `unloop` | `E-STALE-READ`; `E-REJECTED`, `fix_control_flow`, `no loop is open here`, `exit inside a loop needs unloop first` |
 | any token after a call to a word whose body ends in `die` or `throw`, in the same branch: `: STOP ( -- ) 5 throw ; : AFTER ( -- n ) STOP 0 ;` | `E-DEAD-CODE` |
 | a definer (`:`, `DEFTYPE`, `create`, `package`, …) or a parsing word (`char`, `'`, a field word) with nothing after it | `E-MISSING-NAME` from `tools/check.f` |
-| `defer D`, `: MK ( n -- ) create , does> @ ;`: a definer that declares an effect with no signature after its name, or one never closed | `E-MISSING-SIGNATURE` at the definer, at `does>` for a clause; `--load` exits 76, `E-MISSING-SIGNATURE habu: <file>:<line>: 'D' has no closed ( -- ) signature` |
-| a `\` or `( … )` comment in a `STRUCTURE`/`ENUM` body | rc 70 at load; `E-BAD-DECLARATION` from `tools/check.f` |
-| `ENUM state DERIVE eq closed open ;ENUM` in a package's private section | `habu: bad enum declaration 'state': derive requires a public family at 'eq'`, rc 70; test a private family's values with an exhaustive `MATCH` |
+| `defer D`, `: MK ( n -- ) create , does> @ ;`: a definer that declares an effect with no signature after its name, or one never closed | `E-MISSING-SIGNATURE` at the definer, at `does>` for a clause, rc 70 |
+| a `\` or `( … )` comment in a `STRUCTURE`/`ENUM` body | `E-BAD-DECLARATION`, rc 70 |
+| `ENUM state DERIVE eq closed open ;ENUM` in a package's private section | `E-BAD-DECLARATION` at `eq`, rc 70: a derive needs a public family; test a private family's values with an exhaustive `MATCH` |
 | `4 TYPED-BUFFER B no-such-type`: a type, name or literal count `TYPED-*`, `*LAYOUT-BUFFER`, `DYNAMIC-BUFFER`, `ARENA` or `HEAP` refuses, or a name or type not on the definer's line | `E-BAD-STORAGE` |
 | `( -- ptr a )` for a `variable` | `E-NONPARAMETRIC-EFFECT` |
 | a structure pointer passed where a callback's context is `ptr a` (a pointer to cells): `: RUN ( ptr a [ ptr a -- ] -- ) execute ;`, `: GO ( ptr box -- ) [: CB ;] RUN ;` | `E-MISMATCH` at `RUN`; declare a pass-through context `a` |
 | `( R [ R -- S ] -- S ) drop`, `( R n -- ) drop`, `( R -- S ) 1`: a body that unifies two declared rows, a row with the unnamed row, or binds a row other than its own return row to fixed cells | `E-NONPARAMETRIC-EFFECT`, naming the rows — run the quotation on every path, or declare the row the body leaves |
-| a multi-cell value at the prompt | `E-LAYOUT-VALUE habu: interpret-mode layout value: NAME` |
+| a multi-cell value at the prompt | `E-LAYOUT-VALUE`, rc 70 |
 | `depth` or `.s` over a value held in more than one cell, or a layout value whose width is open there: `3 OPTION:SOME depth`, `( option<a> -- ) depth` | `E-REJECTED`, `count_values`, ``cannot count `option<n>`: it is one value held in 2 cells``, or ``cannot count `option<a>`: it is one value, and how many cells it holds is not known here``; take the value apart first (`MATCH` needs concrete arguments, `E-MATCH-OPEN-ARGS`), or count another way |
 | a bare `using` import a global also names, in a body, at top level or after `'` | `E-USING-SHADOW-GLOBAL`; at top level or after `'` `--load` exits with status 70 |
 | a top-level word, or `'` of one, nothing defined before it, `1.` or `$GG` among them | `E-UNDEFINED-TOP-LEVEL` at the token, before anything runs |
@@ -531,7 +531,7 @@ holds an address**.
   `src/lib/error.f` says where.
   The engine bakes `src/lib/error.f` and every other file of a package it
   bakes, and its build seals the package: loaded source that opens one is
-  `E-SEALED-PACKAGE`, rc 84.
+  `E-SEALED-PACKAGE`, rc 70.
 - A fallible word `throw`s a named code, never an out-of-band flag.
 - A failure caused outside the program (a provider, the network, the OS) is
   logged once, with its text, by the library that saw it, just before it
