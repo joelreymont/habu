@@ -32,8 +32,8 @@ export function enable(enabled) {
 // Native buttons remain keyboard reachable. A tree sent again with only its
 // selection changed keeps its buttons; a changed tree is rebuilt. A rebuild
 // keeps each row's expansion by key, a row the module sends again keeping its
-// key: a row open before stays open, and a new row starts open exactly when
-// its children have been sent. When focus was on a row's toggle or label, the
+// key: a row open before stays open, and a new row starts open as its open
+// member says, else exactly when its children have been sent. When focus was on a row's toggle or label, the
 // same control of the row with the same key has it after the rebuild, where
 // the row still has that control. A row whose more is true shows a toggle with
 // no children; opening it calls onControl(key, true), once per opening, and
@@ -80,8 +80,8 @@ export function sceneTree(onControl) {
   };
 
   return (rows, key) => {
-    const next = JSON.stringify(rows.map(({ key, parent, label, more }) =>
-      [key, parent, label, more === true]));
+    const next = JSON.stringify(rows.map(({ key, parent, label, more, open }) =>
+      [key, parent, label, more === true, open ?? null]));
     if (next !== snapshot) {
       const children = new Map([[0, []]]);
       for (const row of rows) {
@@ -103,7 +103,7 @@ export function sceneTree(onControl) {
           const descendants = children.get(row.key);
           if (descendants.length || row.more) {
             const branch = build(row.key);
-            const open = known.get(row.key) ?? descendants.length > 0;
+            const open = known.get(row.key) ?? row.open ?? descendants.length > 0;
             const button = toggle(row, descendants, branch, open);
             nextToggles.set(row.key, button);
             line.append(button);
