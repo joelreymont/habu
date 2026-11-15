@@ -8574,7 +8574,7 @@ variable VREC-TYPE-U
    SGBAD-A @ SGBAD-U @ + f fu + > IF EXIT THEN
    SGBAD-A @ VREC-TYPE-A !  SGBAD-U @ VREC-TYPE-U ! ;
 
-: VREC-TYPE-REFUSE ( ptr u8 n -- n n )
+: VREC-TYPE-REJECT ( ptr u8 n -- n n )
    VREC-BAD-TOKEN  VREC-WHY-TYPE VREC-REFUSE ;
 
 \ A field text whose length describes no memory holds no field, so its record
@@ -8589,21 +8589,18 @@ variable VREC-TYPE-U
    fieldsu VREC-AT !
    0 VREC-TYPE-U !
    BEGIN
-      NEXT-SIG-TOK dup 0= IF
-         2drop SGBAD @ IF fields fieldsu VREC-TYPE-REFUSE EXIT THEN
-         fieldsu 0 EXIT
-      THEN
+      NEXT-SIG-TOK dup 0= IF 2drop fieldsu 0 EXIT THEN
       over fields - VREC-AT !  0 VREC-TYPE-U !
       2dup VREC-FIELD-BAD? IF 2dup SGBAD-SYNTAX! 2drop VREC-WHY-FIELD VREC-REFUSE EXIT THEN
       2dup id VREC-FIELD-DUP? IF 2drop VREC-WHY-DUP VREC-REFUSE EXIT THEN
-      NEXT-SIG-TOK dup 0= IF 2drop 2drop fields fieldsu VREC-TYPE-REFUSE EXIT THEN
+      NEXT-SIG-TOK dup 0= IF 2drop 2drop fields fieldsu VREC-TYPE-REJECT EXIT THEN
       2dup VREC-TYPE-U ! VREC-TYPE-A !
       SIG-TYPE
       dup SCOPED-TYPE? IF
          drop 2drop VREC-WHY-SCOPED VREC-REFUSE EXIT
       THEN
       >r rec recu 2swap r> VREC-FIELD-STORE
-      SGBAD @ IF fields fieldsu VREC-TYPE-REFUSE EXIT THEN
+      SGBAD @ IF fields fieldsu VREC-TYPE-REJECT EXIT THEN
    AGAIN ;
 
 : VREC-DEFINE ( n ptr u8 n ptr u8 n -- n n )
