@@ -317,8 +317,9 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    s" USING-PUSH-IT" 70
       S\" error[E-PKG-CONTEXT]: `CHECKER-USING-PUSH` ran outside the source verifier's window\n"
       s" = help: leave `CHECKER-USING-PUSH` to the source verifier" REJECTS
-   s" FAMILY-IT" 70 S\" error[E-BAD-DECLARATION]: bad newtype declaration\n" s" ^ missing name" REJECTS
-   s" SUM-IT" 70 S\" error[E-BAD-DECLARATION]: bad sumtype declaration\n" s" ^ missing name" REJECTS
+   \ Each child's record is placed at MAIN, the token its parent was loading.
+   s" FAMILY-IT" 70 S\" error[E-BAD-DECLARATION]: bad newtype declaration\n" S\" | ^^^^ missing name\n" REJECTS
+   s" SUM-IT" 70 S\" error[E-BAD-DECLARATION]: bad sumtype declaration\n" S\" | ^^^^ missing name\n" REJECTS
    s" SUM-NOEND-IT" 70 S\" error[E-BAD-DECLARATION]: bad sumtype declaration\n" s" ^ missing ;SUMTYPE" REJECTS
    256 s" 256" s" FIELD-NAME-IT" 70
       S\" error[E-BAD-DECLARATION]: bad structure declaration `nlt-long`\n"
