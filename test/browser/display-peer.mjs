@@ -635,7 +635,12 @@ async function browser() {
     // has that colour: a gap would blend in the white background. The edge's
     // grid y is +-20000 about the transform's centre, so its ends are
     // +-20000 2^-15 times R's y column (0.48, 0.6, 0.64), x and y by the
-    // matrix's 0.6. The plane's colour is read 6 pixels to each side.
+    // matrix's 0.6. The plane's colour is read 6 pixels to each side. Those
+    // samples all lie within the box top shadowed draws, a uniform orange
+    // square of NDC half side 0.25, so the plane is also read at grid x
+    // 110000 and 170000 on the centre's y, 10000 inside each mesh's far side:
+    // -+30000 2^-15 times R's x column (0.8, 0, -0.6), x by the matrix's 0.6,
+    // NDC x -+0.44, y 0, outside that square.
     async function seamed() {
       await command("seam");
       const [, , width, height] = (await state()).canvas;
@@ -647,12 +652,16 @@ async function browser() {
       const edge = Array.from({ length: n + 1 }, (_, k) => -0.8 + 1.6 * k / n)
         .map((t) => [t * end[0], t * end[1]]);
       const sides = edge.flatMap(([x, y]) => [[x + off[0], y + off[1]], [x - off[0], y - off[1]]]);
-      const seen = await pixels([...edge, ...sides]);
-      const [line, beside] = [seen.slice(0, edge.length), seen.slice(edge.length)];
+      const inside = [-1, 1].map((s) => [s * 0.6 * 0.8 * 30000 / 32768, 0]);
+      const seen = await pixels([...edge, ...sides, ...inside]);
+      const [line, beside, within] = [seen.slice(0, edge.length),
+        seen.slice(edge.length, edge.length + sides.length), seen.slice(edge.length + sides.length)];
       const plane = beside[0];
       const near = (a, b) => a.every((v, k) => Math.abs(v - b[k]) <= 2);
       assert.ok(plane[0] > plane[1] && plane[1] > plane[2],
         `the plane beside the edge is orange, got ${plane}`);
+      within.forEach((c, k) => assert.ok(near(c, plane),
+        `mesh ${4 + k} at NDC ${inside[k]} is the plane's ${plane}, got ${c}`));
       beside.forEach((c, k) => assert.ok(near(c, plane),
         `the plane ${k & 1 ? "after" : "before"} the edge at sample ${k >> 1} is ${plane}, got ${c}`));
       line.forEach((c, k) => assert.ok(near(c, plane),
