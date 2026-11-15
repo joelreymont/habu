@@ -29,8 +29,7 @@ INSTALL
 
 : PREPARES ( -- )
    CHECKER-DECL-FRAME:PART-PREPARE
-   GENERATED-DECL-CTOR:PART-PREPARE
-   STRUCTURE-MAKE:PART-PREPARE ;
+   GENERATED-DECL-CTOR:PART-PREPARE ;
 
 \ DECL-EVENT commits first: it advances PF-COMMIT-N over the declaration's field
 \ rows, which the constructor and address-surface commits read.

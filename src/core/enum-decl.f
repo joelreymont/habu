@@ -294,12 +294,11 @@ ED-RESET
 \ declared arity (PF-OWNER-OK? admits a named variant field on either). TFAM-WIDTH@
 \ treats both alike at zero payload, so a payloadless full ENUM has the compact
 \ width. A variant's fields are the TYPE-FIELD rows keyed (family, variant id);
-\ DEV-VARIANT sets its SV.SCH-COUNT to 0.
+\ DECL-EVENT:VARIANT sets its SV.SCH-COUNT to 0.
 : OPEN-TX ( -- )
    SUMV-N@ VBASE !
    TYPE-FIELD:COUNT FLDBASE !
-   0 NVAR !   0 NFLD !   0 MAXSLOTS !
-   FAM @ DECL-EVENT:DECL ;
+   0 NVAR !   0 NFLD !   0 MAXSLOTS ! ;
 : REGISTER-FULL ( ptr u8 n n -- )
    {: na:ptr nu:n ar:n :}
    na nu DECL-REJECT:TOKEN!

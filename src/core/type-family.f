@@ -2119,8 +2119,7 @@ public
 
 \ The field owner is the only authority that can read a provisional row.  The
 \ caller must present the exact live top transaction token, the row must have
-\ been added by that frame, and its family must match.  DECL-EVENT wraps this
-\ sealed owner seam with its own declaration token and event-range proof.
+\ been added by that frame, and its family must match.
 : TX-SCHEMA-FOR ( n n n -- n ) {: tx:n fam:n id:n :}
    tx STATE-OPEN TX-STATE-REQUIRE
    TX-OPEN-MARKS-REQUIRE
