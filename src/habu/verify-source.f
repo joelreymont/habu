@@ -2207,16 +2207,20 @@ ENGINE-TARGET-INIT
       s e NULL$ 0 0 sym -1 ON-USE
    THEN ;
 
+\ The record of a duplicate named a u, placed at the source token t tu. Under
+\ MULTI-ERR? it is kept and the scan skips the definition and goes on;
+\ otherwise it stops the scan as the duplicate stops the load.
+: DUPLICATE-AT! ( ptr u8 n ptr u8 n -- )
+   REJECTION:DUPLICATE
+   MULTI-ERR? IF REJECTION:KEEP ELSE CHECKER-REJECT-RC REJECTION:STOP THEN ;
+
 \ The record of a duplicate whose name, u bytes long, starts at TOKEN-BYTE in
 \ the scanned source, or of the statement's word there when the definer
-\ generates the name (u = 0). Under MULTI-ERR? it is kept and the scan skips
-\ the definition and goes on; otherwise it stops the scan as the duplicate
-\ stops the load.
+\ generates the name (u = 0).
 : DUPLICATE! ( n -- )
    {: u:n :}
    u 0= IF TOKEN-BYTE @ TOKEN-FROM ELSE SOURCE@ TOKEN-BYTE @ + u THEN
-   2dup REJECTION:DUPLICATE
-   MULTI-ERR? IF REJECTION:KEEP ELSE CHECKER-REJECT-RC REJECTION:STOP THEN ;
+   2dup DUPLICATE-AT! ;
 
 \ A name that lands in a sealed package stops first.
 : REFUSE-DUPLICATE ( ptr u8 n n -- bool )
@@ -2828,20 +2832,22 @@ variable STG-TYPE-U
    SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF EXIT THEN
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
+   name nameu s" -RESERVE" at ARENA-WORD-FREE? 0= IF EXIT THEN
+   name nameu s" -RELEASE" at ARENA-WORD-FREE? 0= IF EXIT THEN
    name nameu at nameu ARM
    type typeu name nameu CHECKER-DEFDYNAMIC-BUFFER
    DISARM
    name nameu s" " at DEF-STORAGE DEFINED-HERE ;
 
 \ NAME, read from byte AT, names no word itself, so a taken derived word is the
-\ duplicate, refused at NAME.
+\ duplicate, rejected at NAME.
 : ARENA-WORD-FREE? ( ptr u8 n ptr u8 n n -- bool )
    {: name:ptr nameu:n sfx:ptr sfxu:n at:n :}
    SB-RESET  name nameu SB-APPEND  sfx sfxu SB-APPEND
    SB$ {: gen:ptr genu:n :}
    gen genu CHECKER-LBUF-NAME-OK? 0= IF false EXIT THEN
    gen genu CHECKER-CERT-DUP? 0= IF true EXIT THEN
-   at TOKEN-BYTE !  nameu DUPLICATE!  false ;
+   at TOKEN-BYTE !  gen genu SOURCE@ at + nameu DUPLICATE-AT!  false ;
 
 \ Whether neither of ARENA's words NAME derives is taken in the checker's
 \ current section.
@@ -2859,7 +2865,8 @@ variable STG-TYPE-U
    wid 0= IF true EXIT THEN
    SB-RESET  CHECKER-QTAIL$ SB-APPEND  sfx sfxu SB-APPEND
    SB$ wid CHECKER-RESOLVE:WL-PROBE NULL-PTR = IF true EXIT THEN
-   at TOKEN-BYTE !  nameu DUPLICATE!  false ;
+   SB-RESET  name nameu SB-APPEND  sfx sfxu SB-APPEND
+   at TOKEN-BYTE !  SB$ SOURCE@ at + nameu DUPLICATE-AT!  false ;
 
 \ ARENA's row asks the definer's questions in the order its run asks them and
 \ registers both words; without it the rest of the source defers to the run.
