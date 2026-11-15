@@ -2055,6 +2055,24 @@ variable RC
    s" E-UNCLOSED" s" :3:1" REJECT-RC LOADED-AT
    s" E-UNCLOSED" s" FUNCTION:" 3 1 42 51 REFUSED-MODES ;
 
+\ A throw nothing catches, outside the exit statuses 1..255, ends the load with
+\ one record at the word that threw it, in the file whose text ran that word.
+: TEST-UNCAUGHT ( -- )
+   s" a throw nothing catches" T-LABEL
+   SB-RESET
+   s" : fail ( -- ) -4000 throw ;" SB-APPEND LF+
+   s" fail" SB-APPEND LF+
+   s" uncaught.f" FIXTURE!
+   s" E-THROW" s" :2:1" THROW-RC LOADED-AT
+   ERR$ s" error[" COUNT-SUB 1 T=
+   FX-P DEP-P FX-PU @ BYTE-COPY  FX-PU @ DEP-PU !
+   s" a throw nothing catches in a required file" T-LABEL
+   s" require uncaught.f" s" uncaught-outer.f" LINE-FIXTURE
+   s" error[E-THROW]" THROW-RC LOADED
+   SB-RESET  s" --> " SB-APPEND  DEP-PATH$ SB-APPEND  s" :2:1" SB-APPEND
+   ERR$ SB$ CONTAINS? TTRUE
+   ERR$ s" error[" COUNT-SUB 1 T= ;
+
 \ A match beyond the control-frame limit leaves its body to the load. The
 \ checker's abandoned-match walk must still spend literal payloads before
 \ counting a real ;MATCH, so their text cannot replace the depth refusal.
@@ -2312,6 +2330,7 @@ variable RC
    TEST-CONTROL-OPEN
    TEST-EMPTY-CLAUSE
    TEST-UNCLOSED
+   TEST-UNCAUGHT
    TEST-MATCH-DEPTH-PAYLOAD
    TEST-USING-ORDER
    TEST-TOP-MISMATCH

@@ -2301,7 +2301,7 @@ public
 
 : LOAD ( ptr u8 n -- ) {: a:ptr u:n :}
    NULL-PTR 0 s" SOURCE-ROOT:LOAD" a u LOAD-RESULT {: committed:bool rc:n :}
-   rc 0 <> if rc throw then ;
+   rc 0 <> if rc REJECTION:PASS then ;
 
 \ PATH has already been resolved by the loader's resolver. This opens a source
 \ frame and makes its root current until the callback returns.
@@ -2370,7 +2370,7 @@ public
    DISCOVERY? if exit then
    a REJECTION:PLACES? if a u else NULL-PTR 0 then
    w wu path pathu LOAD-RESULT {: committed:bool rc:n :}
-   rc 0 <> if rc throw then ;
+   rc 0 <> if rc REJECTION:PASS then ;
 
 : included ( ptr u8 n -- )
    {: a:ptr u:n :}
@@ -2393,7 +2393,7 @@ create SOURCE-ORIGINAL-INCLUDED-ENTRY 0 ,
    w wu row-path row-pathu LOAD-RESULT {: committed:bool rc:n :}
    rc 0 <> if
       committed 0= if row REQUIRE-REG:REMOVE then
-      rc throw
+      rc REJECTION:PASS
    then ;
 
 \ `required` of a u for loader word w, the word the program called.

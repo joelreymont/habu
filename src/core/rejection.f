@@ -39,6 +39,10 @@ variable BUF-FD   2 BUF-FD !
 PERSISTED-PTR-VARIABLE HELD-P   NULL-PTR HELD-P !
 variable HELD-CAP   0 HELD-CAP !        \ bytes mapped at HELD-P, 0 for none
 variable HELD-U   0 HELD-U !
+\ The record SAVE kept, SAVED-U bytes, in a buffer grown as the capture is.
+PERSISTED-PTR-VARIABLE SAVED-P   NULL-PTR SAVED-P !
+variable SAVED-CAP   0 SAVED-CAP !
+variable SAVED-U   0 SAVED-U !
 create NUM-BUF 20 allot  variable NUM-V  variable NUM-N
 
 public
@@ -55,6 +59,10 @@ variable TEXT-LEN
 \ hook exists, so no effect is published for it.
 variable QUIET
 variable TALLY   0 TALLY !               \ rejections counted this load
+\ The handler the newest PASS threw to, 0 for none.
+variable PASSED-TO   0 PASSED-TO !
+\ The code whose record SAVE kept.
+variable SAVED-CODE   0 SAVED-CODE !
 
 private
 
@@ -88,6 +96,10 @@ private
 \ Grows the capture, keeping its bytes, until n more fit.
 : HELD-ROOM ( n -- ) {: u:n :}
    HELD-P @ HELD-CAP @ HELD-U @ u FIT  HELD-CAP !  HELD-P ! ;
+
+: SAVED-ROOM ( n -- )
+   {: u:n :}
+   SAVED-P @ SAVED-CAP @ 0 u FIT  SAVED-CAP !  SAVED-P ! ;
 
 
 public
@@ -637,12 +649,15 @@ private
    WORD-U @ 0= IF EXIT THEN
    s" word" NOTE-KEY  WORD-A @ WORD-U @ EMIT-STR  0 WORD-U !  END-TEXT ;
 
-\ Closes a notes object no HELP closed, then the record; sends the record,
-\ or drops it under QUIET.
-: END-RECORD ( -- )
+\ Closes a notes object no HELP closed, then the record.
+: CLOSE-RECORD ( -- )
    CLOSE-PART
    JSON @ IF  NOTES @ IF 125 EMIT1 THEN  125 EMIT1  THEN  10 EMIT1
-   NO-PART PART !
+   NO-PART PART ! ;
+
+\ Ends the record and sends it, or drops it under QUIET.
+: END-RECORD ( -- )
+   CLOSE-RECORD
    QUIET @ 0= IF FLUSH ELSE 0 TEXT-LEN !  0 DEST ! THEN ;
 
 variable WARNING   0 WARNING !           \ the open record is a warning
@@ -706,6 +721,27 @@ public
 : KEEP ( -- )
    END-RECORD
    QUIET @ 0=  WARNING @ 0=  and IF TALLY @ 1 + TALLY ! THEN ;
+
+\ Ends the record and keeps it, in place of the one kept before, for
+\ SEND-SAVED; under QUIET it keeps none.
+: SAVE ( -- )
+   CLOSE-RECORD
+   0 SAVED-U !
+   QUIET @ 0= IF
+      TEXT-LEN @ SAVED-ROOM
+      TEXT SAVED-P @ TEXT-LEN @ ARENA-COPY
+      TEXT-LEN @ SAVED-U !
+   THEN
+   0 TEXT-LEN !  0 DEST ! ;
+
+\ Sends the record SAVE kept, and keeps none.
+: SEND-SAVED ( -- )
+   SAVED-U @ 0= IF EXIT THEN
+   SAVED-P @ SAVED-U @  0 SAVED-U !  BUF-APPEND ;
+
+\ Throws n, noting the nearest handler, which takes it, in PASSED-TO.
+: PASS ( n -- )
+   data-base HND-CELL + @ PASSED-TO !  throw ;
 
 \ The word kw ku has no operand after it, which what names with its article
 \ ("a name"): the record stands at t tu, which why labels. It is written

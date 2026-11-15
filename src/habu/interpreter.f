@@ -2039,6 +2039,10 @@ TYPED-VARIABLE GROUP-OPEN ptr u8
 variable ENTRY-PEND
 \ SOURCE-ROOT:TEXT-MARK as the buffer began.
 variable DECL-MARK
+\ The handler of the running text's inner catch, which LEFT runs after.
+variable OWN-HND   0 OWN-HND !
+\ The code the outermost text left with, whose record REJECTION:SAVE kept.
+variable ROOT-CODE   0 ROOT-CODE !
 
 : DEF-SOURCE-CLOSE ( -- )
    PEND-CELL CELL@ ENTRY-PEND @ <> if exit then
@@ -3089,6 +3093,72 @@ variable OPENER-U
    c OPENER-A !  u OPENER-U !
    c off + PENDTKA-CELL ADDR! ;
 
+\ A record of a throw of code c that its text did not catch.
+: THROWN-OPEN ( n -- )
+   {: c:n :}
+   c ERROR:NAME$ {: a:ptr u:n :}
+   u 0= if s" E-THROW" REJECTION:OPEN exit then
+   a u REJECTION:OPEN ;
+
+: THROWN-TEXT ( n -- )
+   {: c:n :}
+   c ERROR:TEXT$ {: a:ptr u:n :}
+   u 0 > if a u REJECTION:EMIT-STR exit then
+   s" nothing caught a throw of code " REJECTION:EMIT-STR
+   c REJECTION:EMIT-N ;
+
+: THROWN-HELP ( n -- )
+   {: c:n :}
+   s" code" REJECTION:NOTE  c REJECTION:EMIT-N
+   REJECTION:HELP
+   s" catch the code where the program can go on, or remove its cause"
+   REJECTION:EMIT-STR ;
+
+: THROWN-AT ( n -- )
+   {: c:n :}
+   c THROWN-OPEN  c THROWN-TEXT
+   SRCLOC:TOKEN$ REJECTION:AT  s" thrown here" REJECTION:EMIT-STR
+   c THROWN-HELP ;
+
+\ The running text's inner catch is the nearest handler. A PASS noted to the
+\ same handler before this text began carried no record of this text.
+: BEGIN-TEXT ( -- )
+   HND-CELL CELL@ {: h:n :}
+   h OWN-HND !
+   REJECTION:PASSED-TO @ h = if 0 REJECTION:PASSED-TO ! then ;
+
+\ Whether the top frame, the running text's, has no frame outside it.
+: OUTERMOST? ( -- bool )
+   NULL-PTR EVAL-TOP-CELL CELL@ + EVAL-PREV FR@ 0= ;
+
+\ Ends the running text's inner catch with code c: 0 returns and 1..255 goes
+\ on as thrown. Any other code leaves the text with a record kept at the
+\ running token, unless a PASS to this catch carried the record of c.
+: LEFT ( n -- )
+   {: c:n :}
+   c 0= if exit then
+   c 1 255 BETWEEN? if c throw then
+   REJECTION:PASSED-TO @ OWN-HND @ =
+   REJECTION:SAVED-CODE @ c =  and 0= if
+      c THROWN-AT REJECTION:SAVE  c REJECTION:SAVED-CODE !
+   then
+   OUTERMOST? if c ROOT-CODE ! then
+   c REJECTION:PASS ;
+
+public
+\ Sends the record of code c, which nothing caught: the one the outermost
+\ text kept when it left with c, else one with no place.
+: UNCAUGHT ( n -- )
+   {: c:n :}
+   ROOT-CODE @ c = if
+      REJECTION:SEND-SAVED
+   else
+      c THROWN-OPEN  c THROWN-TEXT  c THROWN-HELP
+      REJECTION:SAVE  REJECTION:SEND-SAVED
+   then
+   0 ROOT-CODE ! ;
+private
+
 : REPL-LINE ( ptr u8 n -- bool ) {: a:ptr u:n :}
    PEND-CELL CELL@ {: open:n :}
    SOURCE-ROOT:TEXT-MARK {: mark:n :}
@@ -3100,7 +3170,8 @@ variable OPENER-U
    REC @ {: found:ptr :}
    a INP-CELL ADDR!  a SRCLOC:INB-CELL ADDR!  a u + INE-CELL ADDR!
    f FRAME-ARG !
-   [: FRAME-ARG @ FRAME-LINK RUN-TOKENS ;] catch {: code:n :}
+   [: FRAME-ARG @ FRAME-LINK [: BEGIN-TEXT RUN-TOKENS ;] catch LEFT ;]
+   catch {: code:n :}
    code 0= if
       f FRAME-UNLINK
       PEND-CELL CELL@ {: now:n :}
@@ -3112,6 +3183,7 @@ variable OPENER-U
    then
    f FRAME-FREE
    code 0<> if
+      code 1 255 BETWEEN? 0= if code UNCAUGHT then
       mark SOURCE-ROOT:TEXT-UNWOUND
       REPL-STACK-CLEAR
       2 REPL-QNL 2 write drop
@@ -3151,6 +3223,7 @@ public
    USE-FLOOR @ {: outer:n :}
    REC @ {: found:ptr :}
    ENTRY-PEND @ {: prior:n :}
+   OWN-HND @ {: prior-hnd:n :}
    DECL-MARK @ {: prior-mark:n :}
    PEND-CELL CELL@ {: entry:n :}
    entry ENTRY-PEND !
@@ -3159,7 +3232,8 @@ public
    1 PKG-OUTSIDE-CELL CELL!
    a first + INP-CELL ADDR!  a SRCLOC:INB-CELL ADDR!  a end + INE-CELL ADDR!
    f FRAME-ARG !
-   [: FRAME-ARG @ FRAME-LINK RUN ;] catch {: code:n :}
+   [: FRAME-ARG @ FRAME-LINK [: BEGIN-TEXT RUN ;] catch LEFT ;]
+   catch {: code:n :}
    code 0= if
       f FRAME-LEAVE
    else
@@ -3167,13 +3241,13 @@ public
       f FRAME-CELLS-RESTORE
    then
    code 0<> if DECL-MARK @ SOURCE-ROOT:TEXT-UNWOUND then
-   prior ENTRY-PEND !  prior-mark DECL-MARK !
+   prior ENTRY-PEND !  prior-hnd OWN-HND !  prior-mark DECL-MARK !
    code 0<> if
       entry PEND-CELL CELL!
    then
    outer USE-FLOOR !  found REC !
    f FRAME-FREE
-   code 0<> if code throw then ;
+   code 0<> if code REJECTION:PASS then ;
 
 : EVAL-FRAMED ( ptr u8 n -- ) {: a:ptr u:n :}
    a u COMPILE-READS:TEXT+
