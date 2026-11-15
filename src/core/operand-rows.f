@@ -1,5 +1,4 @@
-\ cell-effects.f - the `parses:`, `parses-through:` and `names:` words and the
-\ checked call-window store.
+\ operand-rows.f - the `parses:`, `parses-through:` and `names:` words.
 
 \ `parses: W n` and `parses-through: W n ( E1 E2 )`, at top level after W's
 \ definition, read as src/habu/verify-source.f PARSES-ROW reads them and checked
@@ -28,27 +27,3 @@ TRUSTED: names: ( -- )
    data-base TKA-CELL + @  data-base TKL-CELL + @
    parse-name CHECKER-NAMES-ROW ;
 INTRINSIC-NAMES INTRINSIC
-
-\ The checked call-window store, which checker.f reads through CWIN-STATE;
-\ this package only installs it.
-package CHECKER-CALLS
-
-PTR-VARIABLE STATE  variable STATE-N  variable STATE-CAP
-
-\ The owner can record calls before this checked header is loaded. Transfer
-\ that allocation with its rows, then clear the retired header so capture has
-\ only one live store to prepare. Reinstalling the current header is harmless.
-: INSTALL ( -- )
-   CWIN-STATE {: prior:^ prior-n:^ prior-cap:^ :}
-   prior STATE = if exit then
-   prior @ STATE !
-   prior-n @ STATE-N !
-   prior-cap @ STATE-CAP !
-   NULL-PTR prior !
-   0 prior-n !
-   0 prior-cap !
-   [: STATE STATE-N STATE-CAP ;] is CWIN-STATE ;
-INSTALL
-
-seal-package
-;package

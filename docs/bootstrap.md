@@ -143,18 +143,25 @@ load normally from disk. Use the convergence check for changes baked into the
 engine.
 
 The engine knows the files it carries by path only (`src/core/include.f`
-ENGINE-PROVIDES?). Once the tree renames one, a tool the previous engine runs
-that requires the new path loads the file a second time and stops at its first
-definition (`duplicate definition`, rc 78), and an engine built from the tree
-stops at a `require` of the old path. While the renamed file's bytes equal the
-old file's, build the first engine in three steps; edit the file in a later
-change:
+ENGINE-PROVIDES?). Once the tree renames one that is not a start-up file, a
+tool the previous engine runs that requires the new path loads the file a
+second time and stops at its first definition (`duplicate definition`, rc 78),
+and an engine built from the tree stops at a `require` of the old path. While
+the renamed file's bytes equal the old file's, build the first engine in three
+steps; edit the file in a later change:
 1. Run the previous engine with a one-line file, `s" <new path>" provided`,
    loaded before `tools/hb-build.f -- --engine -o $OUT`. Never install this
    engine: the next one differs from it.
 2. On that engine, build again with `tools/hb-build.f -- --engine -o $OUT`.
 3. On the step-2 engine, build once more; qualify and install it once
    CODESIGN:SAME-IMAGE? holds between it and the step-2 engine.
+
+A change that renames, splits or deletes a start-up file (one
+src/habu/boot-files.f lists) stops the previous engine's build at
+`include: cannot open <old path>`, since that engine's own list names the
+files. Build the first engine with it from a copy of the tree that also holds
+the old file as the previous revision has it, then take steps 2 and 3 in the
+tree.
 
 ## Refresh `bin/hb`
 

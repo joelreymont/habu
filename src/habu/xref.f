@@ -355,7 +355,7 @@ variable XREF-QI
    drop XREF-SN@ XREF-SU @ BOOT:GLOBAL-WL
    XREF-FIND-WL ;
 \ The operand names a word: a string literal before a call is a use of it
-\ (src/core/cell-effects.f names:), here and for XREF-FIND-INDEX below.
+\ (src/core/operand-rows.f names:), here and for XREF-FIND-INDEX below.
 names: XREF-FIND
 
 : XREF-FIND-INDEX ( ^u8 n -- n )

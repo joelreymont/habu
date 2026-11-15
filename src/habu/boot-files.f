@@ -81,7 +81,8 @@ private
    CHECKER COMMON s" src/habu/address-cells.f" ROW
    CHECKER COMMON s" src/core/layout-buffer.f" ROW
    CHECKER COMMON s" src/core/check-hook.f" ROW
-   CHECKER COMMON s" src/core/cell-effects.f" ROW
+   CHECKER COMMON s" src/core/operand-rows.f" ROW
+   CHECKER COMMON s" src/core/call-window.f" ROW
    CHECKER COMMON s" src/core/declaration-transaction.f" ROW
    CHECKER COMMON s" src/core/rollback-cells.f" ROW
    CHECKER COMMON s" src/core/generated-declaration.f" ROW
