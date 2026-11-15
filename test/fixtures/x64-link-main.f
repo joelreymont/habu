@@ -12,7 +12,8 @@ $100000007 constant E-BODY
 41 VALUE BASE
 defer NEXT ( n -- n )
 : INC ( n -- n ) 1+ ;
-' INC is NEXT
+: BIND-NEXT ( -- ) ['] INC is NEXT ;
+BIND-NEXT
 
 : SAME ( n n -- ) <> if 1 throw then ;
 : SAY ( -- ) MESSAGE 3 type ;
