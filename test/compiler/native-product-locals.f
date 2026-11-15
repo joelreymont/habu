@@ -1,24 +1,24 @@
-\ Inferred PRODUCT locals retain all cells through reads, calls and scopes.
+\ Inferred STRUCTURE locals retain all cells through reads, calls and scopes.
 require src/lib/test.f
 
 package NPL
 public
 
-PRODUCT rules
+STRUCTURE rules
    FIELD a n FIELD b n FIELD c n FIELD d n FIELD e n FIELD f n
-;PRODUCT
+;STRUCTURE
 
-PRODUCT wide
+STRUCTURE wide
    FIELD f01 n FIELD f02 n FIELD f03 n FIELD f04 n FIELD f05 n FIELD f06 n
    FIELD f07 n FIELD f08 n FIELD f09 n FIELD f10 n FIELD f11 n FIELD f12 n
    FIELD f13 n FIELD f14 n FIELD f15 n FIELD f16 n FIELD f17 n FIELD f18 n
    FIELD f19 n FIELD f20 n FIELD f21 n FIELD f22 n FIELD f23 n FIELD f24 n
-;PRODUCT
+;STRUCTURE
 
 NEWTYPE item-id
 NEWTYPE length
 NEWTYPE angle
-PRODUCT point FIELD x length FIELD y length ;PRODUCT
+STRUCTURE point FIELD x length FIELD y length ;STRUCTURE
 SUMTYPE shape
    VARIANT core n n n n n n ;VARIANT
    VARIANT polygon item-id point angle ;VARIANT

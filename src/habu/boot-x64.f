@@ -74,6 +74,68 @@ variable SNAP-END
    RAX RDI ASM-SINK ENC-CMP-RR
    C-NE bad JCC, ;
 
+public
+
+\ A fresh executable, close-on-exec memfd of REGION bytes, returned in rax.
+\ Only EINVAL retries without MFD_EXEC, for Linux before 6.3. On failure no
+\ descriptor remains open and rsp is restored. Clobbers the syscall scratch
+\ registers and r8; the twin of LIBC-OS:REGION-MEMFD.
+: REGION-MEMFD, ( label -- ) {: bad:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   {: made:label sized:label failed:label :}
+   RSP 16 >IMM8 ASM-SINK ENC-SUB-RI8
+   RAX $6F696765722D6268 IMM,  RAX RSP MEM-AT ASM-SINK ENC-MOV-MR
+   RAX $6E IMM,  RAX RSP 8 MEM-OFF ASM-SINK ENC-MOV-MR
+   RDI RSP ASM-SINK ENC-MOV-RR  RSI $11 IMM,
+   NR-MEMFD-CREATE SYS,  C-AE made JCC,
+   RAX -22 >IMM8 ASM-SINK ENC-CMP-RI8  C-NE failed JCC,
+   RDI RSP ASM-SINK ENC-MOV-RR  RSI 1 IMM,
+   NR-MEMFD-CREATE SYS,  C-B failed JCC,
+   made X64CODE:LBL,
+   R8 RAX ASM-SINK ENC-MOV-RR
+   RDI R8 ASM-SINK ENC-MOV-RR  RSI REGION IMM,
+   NR-FTRUNCATE SYS,  C-AE sized JCC,
+   RDI R8 ASM-SINK ENC-MOV-RR  NR-CLOSE SYS,
+   failed X64CODE:LBL,
+   RSP 16 >IMM8 ASM-SINK ENC-ADD-RI8  bad JMP,
+   sized X64CODE:LBL,
+   RAX R8 ASM-SINK ENC-MOV-RR
+   RSP 16 >IMM8 ASM-SINK ENC-ADD-RI8 ;
+
+private
+
+\ Keep the region's RX addresses and copy its used payload into a shared
+\ memfd. Its second mapping is RW only. Both fresh and restored entry paths
+\ reach here after DATA-INIT, before any Habu code runs.
+: REGION-VIEWS, ( -- )
+   X64CODE:LBL X64CODE:LBL {: unfd:label done:label :}
+   REGION-BAD @ >LABEL REGION-MEMFD,
+   RSP 16 >IMM8 ASM-SINK ENC-SUB-RI8
+   RAX RSP MEM-AT ASM-SINK ENC-MOV-MR
+   R8 RAX ASM-SINK ENC-MOV-RR  RDI ZERO-REG,
+   RSI REGION IMM,  RDX PROT-RW IMM,  R10 MAP-SHARED IMM,  R9 ZERO-REG,
+   NR-MMAP SYS,  C-B unfd JCC,
+   RAX RSP 8 MEM-OFF ASM-SINK ENC-MOV-MR
+   RDI RAX ASM-SINK ENC-MOV-RR  RSI DBASE-REG ASM-SINK ENC-MOV-RR
+   RCX ENGINE-GPR:X64-CP >R64 ASM-SINK ENC-MOV-RR
+   RCX DBASE-REG ASM-SINK ENC-SUB-RR
+   $F3 ASM-SINK BUF:APPEND-BYTE  $A4 ASM-SINK BUF:APPEND-BYTE  \ rep movsb
+   RDI DBASE-REG ASM-SINK ENC-MOV-RR
+   RSI REGION IMM,  RDX PROT-RX IMM,  R10 MAP-SHARED-FIXED IMM,
+   R8 RSP MEM-AT ASM-SINK ENC-MOV-RM  R9 ZERO-REG,
+   NR-MMAP SYS,  C-B unfd JCC,
+   RAX RSP 8 MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX DBASE-REG ASM-SINK ENC-SUB-RR
+   RAX REGION-ALIAS:DELTA-CELL CELL!
+   RDI RSP MEM-AT ASM-SINK ENC-MOV-RM  NR-CLOSE SYS,
+   RSP 16 >IMM8 ASM-SINK ENC-ADD-RI8
+   done JMP,
+   unfd X64CODE:LBL,
+   RDI RSP MEM-AT ASM-SINK ENC-MOV-RM  NR-CLOSE SYS,
+   RSP 16 >IMM8 ASM-SINK ENC-ADD-RI8
+   REGION-BAD @ >LABEL JMP,
+   done X64CODE:LBL, ;
+
 \ The twin of STACK-GUARD:EMIT-MAP (src/habu/rt.f): map one guarded VM stack of
 \ `cap` bytes and leave its base in `dst`. The first mapping reserves cap plus
 \ three guard pages PROT_NONE; the second reopens cap bytes read/write at the
@@ -791,6 +853,7 @@ STACK-ABI:LOOP-BASE-CELL CELL + constant TASK-REGION-MIN
    STACK-ABI:BOOT-BYTES DSTACK-REG STACK-BAD @ >LABEL MAP-STACK, ;
 
 : SETTLE, ( label label label -- ) {: crash:label rest:label stub:label :}
+   REGION-VIEWS,
    SIGNAL-STACK,                 \ once DATA-INIT, has read argc and argv off rsp
    OCC-INIT,
    stub PUBLISH-STUB,

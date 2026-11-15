@@ -767,10 +767,10 @@ public
 
 : SUMV-N@ ( -- n ) SUMV-N @ ;
 
-\ generated-constructor metadata. A PUBLIC sum/enum family stores its
-\ derived constructor package name (interned offset+len) in every variant; the
-\ checker symbol for the generated constructor word lands in SV.CTOR-SYM. Private
-\ families export nothing, so both stay zero. All three cells are integers /
+\ generated-constructor metadata. A PUBLIC family stores its derived
+\ constructor package name (interned offset+len) in every variant; a private
+\ family's stays zero. The checker symbol for each variant's generated word,
+\ public or private, lands in SV.CTOR-SYM. All three cells are integers /
 \ interned offsets, so the existing SUMV snapshot bake persists them verbatim.
 : SUMV-CTOR-PKG! ( n n n -- ) {: id:n off:n u:n :}
    off id SUMV-REC@ SV.CTOR-PKG-OFF !   u id SUMV-REC@ SV.CTOR-PKG-U ! ;
@@ -1178,61 +1178,37 @@ public
 
 private
 
-\ The members a private family's generator publishes, and the only names the
-\ by-name guard protects: MAKE and UNMAKE (structure-make.f SM-EMIT-ROWS,
-\ sumtype.f TDECL-PROD-PLAN). A further private member extends this list and
-\ the recognizer needs no other change. Derived tails are recognized from the
-\ family's derive flags (TFAM-DERIVED-PRIV-TAIL?) and addr accessors from the
-\ field registry (TFAM-ADDR-WORD?). A private SUM or ENUM publishes no word, so
-\ a variant name is not a member: inside a package declaring a private `SUMTYPE
-\ colour`, an ordinary `COLOUR-RED` is the package's own word and stays
-\ undefinable.
-2 constant TF-PRIV-MEMBER-N
-: TF-PRIV-MEMBER$ ( n -- ptr u8 n ) {: i:n :}
-   i 0= IF s" make" EXIT THEN
-   s" unmake" ;
+\ A private family's generated words are its rows' private spellings, a
+\ product's make and unmake rows included, and its derived words: the
+\ family's private prefix and a tail TFAM-DERIVED-KIND-TAIL? accepts, the
+\ qualified half's rule. A name no row or derived tail spells is the package's
+\ own word: beside a private `SUMTYPE colour`, `undefine COLOUR-MAKE` succeeds.
+: TF-PRIV-NAME? ( ptr u8 n n -- bool ) {: a:ptr u:n fam:n :}   \ = a row of THIS family?
+   fam TFAM-VAR-START@ {: vstart:n :}
+   fam TFAM-VAR-COUNT@ 0 ?do
+      a u  fam TFAM-NAME$ vstart i + SUMV-NAME$ TF-CTOR-PRIV$  CORE-STR=CI
+         IF RES-TRUE unloop EXIT THEN
+   loop RES-FALSE ;
 
-: TF-PRIV-NAME? ( ptr u8 n n -- bool ) {: a:ptr u:n fam:n :}   \ = a member of THIS family?
-   0 BEGIN dup TF-PRIV-MEMBER-N < WHILE
-      {: m:n :}
-      a u  fam TFAM-NAME$ m TF-PRIV-MEMBER$ TF-CTOR-PRIV$  CORE-STR=CI
-         IF RES-TRUE EXIT THEN
-      m 1 +
-   REPEAT drop RES-FALSE ;
-
-public
-
-\ A private family derives too, so the private scan answers for a derived tail
-\ as the qualified one does through TFAM-DERIVED-AT?. The candidate spelling
-\ comes from TF-CTOR-PRIV$, so the recognizer cannot drift from TDGEN-DRV-REF.
-: TFAM-PRIV-MEMBER? ( ptr u8 n ptr u8 n n -- bool ) {: a:ptr u:n ma:ptr mu:n fam:n :}
-   a u  fam TFAM-NAME$ ma mu TF-CTOR-PRIV$  CORE-STR=CI ;
-
-: TFAM-DERIVED-PRIV-TAIL? ( ptr u8 n n -- bool ) {: a:ptr u:n fam:n :}
-   fam TFAM-DERIVE-EQ? IF
-      a u s" eq" fam TFAM-PRIV-MEMBER? IF RES-TRUE EXIT THEN THEN
-   fam TFAM-DERIVE-HASH? IF
-      a u s" hash" fam TFAM-PRIV-MEMBER? IF RES-TRUE EXIT THEN THEN
-   fam TFAM-PRODUCT? IF RES-FALSE EXIT THEN   \ products get no discriminant
-   a u s" tag" fam TFAM-PRIV-MEMBER? ;        \ tag rides ANY derive on sum/enum
-
-private
+: TF-PRIV-DERIVED? ( ptr u8 n n -- bool ) {: a:ptr u:n fam:n :}
+   fam TFAM-DERIVE-ANY? 0= IF RES-FALSE EXIT THEN
+   fam TFAM-NAME$ a 0 TF-CTOR-PRIV$ {: pa:ptr pu:n :}   \ FAMILY-
+   u pu <= IF RES-FALSE EXIT THEN
+   a pu pa pu CORE-STR=CI 0= IF RES-FALSE EXIT THEN
+   a pu +  u pu -  fam TFAM-DERIVED-KIND-TAIL? ;
 
 \ A private (or OPAQUE) family's generated word is recognized only while its
 \ declaring package is open, the only scope it resolves in; outside it the name
-\ belongs to whoever spells it. Before that, a family with public generated
-\ words (TFAM-GEN-PUBLIC?) wears the qualified spelling, a private sum or enum
-\ publishes nothing, and a fieldless product published no member pair. Members
-\ are the constructor pair, the derived tails, and the addr accessors
-\ (TFAM-ADDR-WORD-XT).
+\ belongs to whoever spells it. A family with public generated words
+\ (TFAM-GEN-PUBLIC?) wears the qualified spelling instead. Members are the
+\ rows' words, the derived tails, and the addr accessors (TFAM-ADDR-WORD-XT).
 : TF-CTOR-PRIV-FAM? ( ptr u8 n n -- bool ) {: a:ptr u:n fam:n :}
    fam TFAM-GEN-PUBLIC? IF RES-FALSE EXIT THEN
-   fam TFAM-PRODUCT? 0= IF RES-FALSE EXIT THEN
    fam TFAM-VAR-COUNT@ 0= IF RES-FALSE EXIT THEN
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF RES-FALSE EXIT THEN
    CHECKER-AUTH-PACKAGE$ fam TFAM-PKG-MATCH? 0= IF RES-FALSE EXIT THEN
    a u fam TF-PRIV-NAME? IF RES-TRUE EXIT THEN
-   a u fam TFAM-DERIVED-PRIV-TAIL? ;
+   a u fam TF-PRIV-DERIVED? ;
 
 public
 
@@ -1570,9 +1546,10 @@ public
 \ range empty. The accessors below are the one seam for both. A sum/enum family
 \ with a nonzero declared field count uses TYPE-FIELD for every variant; bad
 \ bounds, ownership or a missing named index are invariant failures, never a
-\ fallback into positional storage. PRODUCT keeps positional schemas for its
-\ make/unmake variants. An all-empty family has no payload either way. Only a
-\ bounded, committed, variant-owned field slice is a valid named representation.
+\ fallback into positional storage. A product family keeps positional schemas
+\ for its make/unmake variants. An all-empty family has no payload either way.
+\ Only a bounded, committed, variant-owned field slice is a valid named
+\ representation.
 
 private
 
@@ -2171,8 +2148,6 @@ public
    a u s" ;sumtype" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" enum" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" ;enum" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" product" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" ;product" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" field" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" policy" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" derive" CORE-STR=CI ;
@@ -2270,7 +2245,7 @@ public
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF RES-FALSE EXIT THEN
    CHECKER-AUTH-PACKAGE$ a u TFAM-FIND-IN nip ;
 
-\ The family-name gate every family definer asks: SUMTYPE, PRODUCT and NEWTYPE
+\ The family-name gate every family definer asks: SUMTYPE and NEWTYPE
 \ (sumtype.f) and the STRUCTURE and ENUM front ends. A family tail must be one an
 \ effect reads as that family. The effect parser reads a value record name
 \ (checker.f PSTACK) and a bare `ptr` (SIG-PTR-TOK?) ahead of any family, and an
@@ -2298,9 +2273,8 @@ seal-package
 package TFAM
 
 \ A field tail may not spell a grammar keyword, a control word (TYPE-NAME:CONTROL?)
-\ or a generated-operation name, on every path that registers a field row:
-\ PRODUCT through TDECL-REQUIRE-FIELD-NAME and the STRUCTURE / ENUM front ends
-\ through TYPE-FIELD-OWNER:ADD.
+\ or a generated-operation name, on every path that registers a field row: the
+\ STRUCTURE and ENUM front ends, through TYPE-FIELD-OWNER:ADD.
 : PF-RESERVED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u TF-GRAMMAR-KEYWORD? IF RES-TRUE EXIT THEN
    a u TYPE-NAME:CONTROL? IF RES-TRUE EXIT THEN
@@ -3279,7 +3253,7 @@ LOAN-FIELD-FAM @ 0 PK-REGION TFAM-PK!
 LOAN-FIELD-FAM @ 1 PK-TYPE TFAM-PK!
 
 \ C2's shared and exclusive views have the same address-and-bound stack layout.
-\ They are family records rather than PRODUCT declarations: no constructor,
+\ They are family records rather than STRUCTURE declarations: no constructor,
 \ destructor, or address accessor is published. The fields describe their ABI
 \ for width-aware transport and image replay; checked code cannot project them.
 private
@@ -4083,6 +4057,7 @@ defer TFC-QUOT-ROW ( n n bool -- n )   \ ( rownode base stored -- row )
    node SCHEMA-PARAM? IF node SCHEMA-A@ cells TFC-VARS + @ EXIT THEN
    node SCHEMA-CON?   IF node SCHEMA-A@ MK-CON EXIT THEN
    node SCHEMA-PTR?   IF node SCHEMA-A@ stored RECURSE MK-PTR EXIT THEN
+   node SCHEMA-XT?    IF OPAQUE-XT EXIT THEN
    node SCHEMA-APP? IF
       PARAM-SCR-N @ {: base:n :}
       0 BEGIN dup node SCHEMA-C@ < WHILE
@@ -4121,9 +4096,10 @@ defer TFC-QUOT-ROW ( n n bool -- n )   \ ( rownode base stored -- row )
 : TFC-QUOT-ROW-INSTALL ( -- ) [: TFC-QUOT-ROW-IMPL ;] is TFC-QUOT-ROW ;
 TFC-QUOT-ROW-INSTALL
 
-\ The initialized-record surface is a bounded view of committed PRODUCT
-\ fields. The physical record is canonical cell storage, and each substituted
-\ field must still occupy the cells and byte range its committed id describes.
+\ The initialized-record surface is a bounded view of a product family's
+\ committed fields. The physical record is canonical cell storage, and each
+\ substituted field must still occupy the cells and byte range its committed id
+\ describes.
 \ Comparing only the total width would accept two fields whose changed widths
 \ cancel while the second field's committed offset is now wrong.
 : INIT-NO-RECORD ( -- n n n bool ) 0 0 0 RES-FALSE ;
@@ -4618,9 +4594,10 @@ private
 
 \ Extra pads = instantiated pads - declared pads; instantiated pads =
 \ instantiated payload slots - instantiated payload cells. Only a SUM or ENUM
-\ has a tag cell; a PRODUCT's whole width is payload (scg<scinr>, a parametric
-\ STRUCTURE at a width-2 leaf, is width 3, all payload: subtracting a tag would
-\ report extra -1), so TFC-TAG-CELLS keys the subtraction off the family kind.
+\ has a tag cell; a product family's whole width is payload (scg<scinr>, a
+\ parametric STRUCTURE at a width-2 leaf, is width 3, all payload: subtracting a
+\ tag would report extra -1), so TFC-TAG-CELLS keys the subtraction off the
+\ family kind.
 \ A negative extra on a construct (the widest declared variant is not the
 \ widest instantiated one, or a non-widest variant grows more) is a
 \ contradiction: its lowering pushes the declared pads and can only add cells,
@@ -4629,7 +4606,7 @@ private
 : TFC-XPAD-NARROW-REJECT ( -- )   \ certified instantiated width contradicts add-only lowering: never certify
    0 OK ! -1 FAILSET ! ;
 
-: TFC-TAG-CELLS ( n -- n )   \ layout tag cells for a family: 1 for a tagged SUM/ENUM, 0 for a tagless PRODUCT/STRUCTURE
+: TFC-TAG-CELLS ( n -- n )   \ layout tag cells for a family: 1 for a tagged SUM/ENUM, 0 for a tagless product family
    dup TFAM-SUM? IF drop 1 EXIT THEN
    TFAM-ENUM? IF 1 ELSE 0 THEN ;
 

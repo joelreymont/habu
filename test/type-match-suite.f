@@ -320,9 +320,9 @@ s\" \"code\":\"E-CONSTRUCT-UNTERMINATED\"" MDG?
 \ Products are not eliminable or constructible through the token forms — the
 \ family-kind gate is sum/enum only (docs/forth.md "Structures And Enums"); the
 \ product surface is its generated PKG:MAKE/PKG:UNMAKE words.
-PRODUCT mprod
+STRUCTURE mprod
   FIELD v n
-;PRODUCT
+;STRUCTURE
 s" GP1 ( mprod -- n ) MATCH mprod make OF ENDOF ;MATCH" MDG<
 s\" \"code\":\"E-MATCH-FAMILY-KIND\"" MDG?
 s" GP2 ( n -- mprod ) construct mprod make" MDG<
@@ -342,7 +342,7 @@ s" MATCH-DIAG" type cr
 \ product to its W hidden cells (type-family.f TFC-PAY-ROW), so UNMAKE and typed
 \ locals receive the exact fields (ML1) and branch outputs join. Over-dropping
 \ the bundle leaves a branch imbalance (ML2): the payload is the wide bundle.
-PRODUCT mlw2 FIELD x n FIELD y n ;PRODUCT
+STRUCTURE mlw2 FIELD x n FIELD y n ;STRUCTURE
 SUMTYPE mlopt<a> VARIANT none ;VARIANT VARIANT some a ;VARIANT ;SUMTYPE
 s" ML1 ( mlopt<mlw2> -- n ) MATCH mlopt none OF 0 ENDOF some OF MLW2:UNMAKE {: x:n y:n :} x y + ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
 s" ML2 ( mlopt<mlw2> -- n ) MATCH mlopt none OF 0 ENDOF some OF drop drop 1 ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=

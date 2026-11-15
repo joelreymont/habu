@@ -276,7 +276,7 @@ public
    S\" \"code\":\"E-MISMATCH\",\"repair_class\":\"remove_producer\"" S\" \"verdict\":\"rejected\""
    S\" \"expected\":\"n \",\"actual\":\"n n \"" VERDICT-REFUSED PACKET-HAS
    s" a generic bundle input over a caller's group is a type fault over the same cells" T-LABEL
-   SRC-RESET  s" PRODUCT snz<a,b> FIELD fst a FIELD snd b ;PRODUCT" S+  SRC$ TEST-EVAL:RC 0 T=
+   SRC-RESET  s" STRUCTURE snz<a,b> FIELD fst a FIELD snd b ;STRUCTURE" S+  SRC$ TEST-EVAL:RC 0 T=
    SRC-RESET  s" : SN-SNZ ( n n -- snz<n,n> ) SNZ:MAKE ;" S+  SRC$ TEST-EVAL:RC 0 T=
    SRC-RESET  s" : SN-LHT ( snz<a,b> bool -- ) drop SNZ:UNMAKE drop drop ;" S+  SRC$ TEST-EVAL:RC 0 T=
    SRC-RESET  s" SN-LH1 ( n -- ) 1 2 SN-SNZ 3 SN-LHT drop" S+

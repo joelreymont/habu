@@ -1,6 +1,6 @@
 \ ffi-struct-verify.f - LSP-CHECK:VERIFY-BYTES, the check of tools/check.f
 \ --verify-only, reads FUNCTION: declarations. Loaded by
-\ src/lib/ffi-test.f on macOS and Linux arm64, inside package FFI-TEST. Each
+\ src/lib/ffi-test.f inside package FFI-TEST. Each
 \ declaration is its own source, checked in a verifier child that stops at its
 \ first refusal. Sources select PROCESS-SYMBOLS (LIBRARY leaves the rest of
 \ its file to the run and would hide the clauses) and name no defined symbol,
@@ -225,7 +225,12 @@ variable FFI-SV-SRC-U
    s" a struct call with VARIADIC" FFI-SV-SYNTAX
    s" ( n ptr u8 -- ) 8 STRUCT-RESULT 1 VARIADIC"
    s" a struct call with VARIADIC" FFI-SV-SYNTAX
-   s" ( ptr u8 ptr u8 -- ) 0 129 STRUCT-ARG 16 STRUCT-RESULT" FFI-SV-ARITY FFI-SV-STAGED ;
+   s" ( ptr u8 ptr u8 -- ) 0 129 STRUCT-ARG 16 STRUCT-RESULT" FFI-SV-ARITY FFI-SV-STAGED
+   HB-TARGET-LINUX-X86-64? if
+      s" ( n n n n n ptr u8 ptr u8 -- ) 5 128 STRUCT-ARG 32 STRUCT-RESULT" FFI-SV-PASS
+      s" ( n n n n n n ptr u8 ptr u8 -- ) 6 128 STRUCT-ARG 32 STRUCT-RESULT"
+      FFI-SV-ARITY FFI-SV-STAGED
+   then ;
 
 
 \ A whole source the load rejects, with its message and token.

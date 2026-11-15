@@ -129,12 +129,13 @@ $7FFFFFFFFFFFFFFF CELL / constant SEEN-MAX-CAP
       p CT-NAME$ dup 0 <> IF RSTR ELSE 2drop EMIT-UNSAID THEN
    ELSE EMIT-UNSAID THEN THEN ;
 
-\ Facts text (RFACTS?) writes a plain atom as `'NAME`, which TOK-TYPE reads back.
+\ Facts text (RFACTS?) writes a plain atom other than `xt` as `'NAME`, which
+\ TOK-TYPE reads back.
 \ A fresh atom's ordinal tells two identities of one name apart; a signature
 \ keys a fresh name by its spelling, so its declared effect (RDECL) writes none.
 : ATOM-REND {: t :}
    t ATOM>K 0 = IF
-      RFACTS? IF 39 EMIT1 THEN
+      RFACTS? t OPAQUE-XT? 0= and IF 39 EMIT1 THEN
       t ATOM>A t ATOM>U RSTR EXIT THEN
    s" fresh-" RSTR
    t ATOM>A t ATOM>U RSTR
@@ -620,6 +621,18 @@ LOCSHOW-INSTALL
    {: ctl:n :}
    ctl CTL-THROW and 0= IF EXIT THEN
    s" throws " EMIT-STR  ctl XFER-DMASK RNUM  32 EMIT1  ctl XFER-RMASK RNUM  32 EMIT1 ;
+
+
+\ checker.f NORET.NONZERO n as the tag `nonzero D T` appended at TEXT-LEN, D
+\ the divisor and T the thrown inputs' mask; 0 appends nothing.
+: REND-NONZERO ( n -- ptr u8 n )
+   {: n:n :}
+   1 DEST !
+   n 0 <> IF
+      n NONZERO-UNPACK {: div:n thr:n :}
+      s" nonzero " EMIT-STR  div RNUM  32 EMIT1  thr RNUM  32 EMIT1
+   THEN
+   0 DEST !  TEXT TEXT-LEN @ ;
 
 
 : CTL-INTRINSIC-TAG ( n -- )
@@ -1166,7 +1179,7 @@ variable MDV-I   variable MDV-F
       MD-ARMS-DEPTH   of ['] ROW-CELLS ROWS-SUGGEST$ endof
       MD-LOCAL-ESCAPE of s" Run the quotation inside the block of the locals it reads; a quotation that is stored, kept or returned takes its values from the stack." endof
       MD-BINDER-PLACE of s" Call the scope operation directly in the word that supplies its callback; only a scope operation's callback input may hold a callback binder." endof
-      MD-DEPTH-WIDE   of s" Count the values another way, or take the wide value apart first: MATCH a sum or an enum whose arguments are concrete, UNMAKE a product; a stale value can only be moved or dropped. `depth` and `.s` count raw cells, and a wide value is one value held in several." endof
+      MD-DEPTH-WIDE   of s" Count the values another way, or take the wide value apart first: MATCH a sum or an enum whose arguments are concrete, UNMAKE a structure; a stale value can only be moved or dropped. `depth` and `.s` count raw cells, and a wide value is one value held in several." endof
       MD-LOOP-RDEPTH  of s" Take back with r> in the loop body every cell it pushes with >r, so each pass leaves the return stack as it found it." endof
       MD-LOOP-CARRIED of s" Make each pass leave the cells it carries as it found them, of the same types and with the same facts known of them; keep a value that changes per pass in a variable." endof
       MD-NO-LOOP      of s" Use i, leave, unloop, loop and +loop only inside a do or ?do this definition opened and has not closed." endof
@@ -1307,6 +1320,14 @@ variable MDV-I   variable MDV-F
    s"  " EMIT-STR  MDIAG-LOCAL @ EMIT-N
    s" , which no `{:` group bound before it" EMIT-STR ;
 
+\ The call a literal 0 reached, as written, and the input it reached, after the
+\ reason's prose: `NAME` divides by its top input, or its input J below the top.
+: ZERO-COUNTS ( -- )
+   s" ; `" EMIT-STR  FAILTK FAILTU @ EMIT-STR
+   MDIAG @ MD-DIV-ZERO = IF s" ` divides by its " ELSE s" ` throws its " THEN EMIT-STR
+   MDIAG-ZIN @ 0= IF s" top input" EMIT-STR EXIT THEN
+   s" input " EMIT-STR  MDIAG-ZIN @ EMIT-U  s"  below the top" EMIT-STR ;
+
 \ The wide value `depth` or `.s` met and its cells, or that they are not known
 \ where its width is open, after the reason's `cannot count`.
 : DEPTH-WIDE-COUNTS ( -- )
@@ -1327,6 +1348,7 @@ variable MDV-I   variable MDV-F
    MDIAG @ MD-LIT-FIT = IF LIT-FIT-COUNTS EXIT THEN
    MDIAG @ MD-LOCAL-ENDED = IF LOCAL-ENDED-COUNTS EXIT THEN
    MDIAG @ MD-LOCAL-UNBOUND = IF LOCAL-UNBOUND-COUNTS EXIT THEN
+   MDIAG @ MD-DIV-ZERO =  MDIAG @ MD-THROW-ZERO = or IF ZERO-COUNTS EXIT THEN
    MDIAG @ MD-DEPTH-WIDE = IF DEPTH-WIDE-COUNTS EXIT THEN
    MDIAG @ MD-UNDERFLOW = IF MDIAG-UF-COUNTS EXIT THEN
    MDIAG @ MD-EFFECT-DEPTH = IF MDIAG-DEPTH @ DEPTH-COUNTS EXIT THEN
@@ -1753,7 +1775,8 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    DCODE REPAIR-CLASS DVERDICT JHEAD
    s" word" JSON-KEY
    TOP-STEP @ IF s" null" EMIT-STR ELSE NMA @ NMU @ JSON-STRING THEN  44 EMIT1
-   s" token" JSON-KEY  FAILTK FAILTU @ JSON-STRING  44 EMIT1
+   s" token" JSON-KEY
+   FAILTU @ 0= IF s" null" EMIT-STR ELSE FAILTK FAILTU @ JSON-STRING THEN  44 EMIT1
    k RF-DEAD = IF s" dead_owner" JSON-KEY DEADTA @ DEADTU @ JSON-STRING
       44 EMIT1 THEN
    k RF-REASON = IF
@@ -1771,7 +1794,8 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    s" file" JSON-KEY  DFILE$ JSON-STRING  44 EMIT1
    DLOC-FIELDS
    s" definition_source" JSON-KEY
-   TOP-STEP @ IF s" null" EMIT-STR ELSE TBASE @ TBLEN @ JSON-STRING THEN
+   TOP-STEP @ 0 <>  WALK-ITEMS @ 0 >  or IF s" null" EMIT-STR
+   ELSE TBASE @ TBLEN @ JSON-STRING THEN
       44 EMIT1
    s" declared_effect" JSON-KEY
    RECEFF-ON? TOP-STEP @ 0= and IF AT-PIN DECL-EFFECT ;AT-PIN ELSE s" null" EMIT-STR THEN
@@ -2216,6 +2240,7 @@ RECORD-DIAG-INSTALL
    why STG-WIDTH-TYPE = IF WIDTH-FAM @ UNSTORED-REASON drop EXIT THEN
    why STG-EFFECT-TYPE = IF EFFECT-TYPE-FAM @ UNSTORED-REASON drop EXIT THEN
    why STG-LINEAR-TYPE = IF s" stored type may hold a linear value" EXIT THEN
+   why STG-LAYOUT-TYPE = IF s" type a layout buffer cannot lay out" EXIT THEN
    why STG-MALFORMED-NAME = IF s" more than one ':' in name" EXIT THEN
    why STG-BAD-COUNT = IF s" count outside the buffer's extent" EXIT THEN
    why STG-COUNT-WORD = IF s" count resolves to no ( -- n ) word" EXIT THEN
@@ -2230,7 +2255,9 @@ RECORD-DIAG-INSTALL
    why STGR-NAME-WHY? IF s" Name the storage with at most one inner ':'." EXIT THEN
    why STGR-COUNT-WHY? IF s" Put a positive count before the definer whose cells fit in memory: a literal, a constant or an expression." EXIT THEN
    why STG-LINEAR-TYPE = IF s" Keep a linear value on the stack; name a callable over one, or over an open type, with defer." EXIT THEN
+   why STG-XT-TYPE = IF s" Store a quotation of the word's effect, such as [ n -- n ], in place of xt." EXIT THEN
    why STG-EFFECT-TYPE = IF s" Build the type where it is used, from its text or EFFECT's words, and pass it on the stack or in a local." EXIT THEN
+   why STG-LAYOUT-TYPE = IF s" Give the buffer a declared family: a NEWTYPE or DEFTYPE with no arguments, or a non-empty ENUM, SUMTYPE or STRUCTURE holding no view, region or linear value." EXIT THEN
    s" Declare the type before the storage, or store a closed, copyable type this definer admits." ;
 : STGR-LOCATE ( ptr u8 -- )   \ the token's place, counted from the start of the verifier's buffer
    {: ta:ptr :}

@@ -1825,8 +1825,7 @@ TRUSTED: NAMED-USE ( ptr u8 n -- )
 \ definition only once its body is checked, a storage definition once its type
 \ is read, and it keeps no place. Those rows ask the guard's question as soon as
 \ they have scanned the name, as the engine's wall and the check hook refuse it
-\ under --load, a name only the checker holds included, such as a constructor
-\ the PRODUCT replay publishes.
+\ under --load, a name only the checker holds included.
 \ A definer the checker only trusts (variable, defer, TRUSTED:, ...) is left to
 \ the run, which names its duplicate as --load does, or first refuses an
 \ earlier definition whose text the engine cannot hold.
@@ -2383,9 +2382,9 @@ DYNAMIC-BUFFER NOM-TAIL u8
 : RECORD-NEWTYPE ( -- )
    NAME-TOKEN 2dup CHECKER-DEFFAMILY ;
 
-\ A SUMTYPE defines its constructors when it loads, so after the registration
-\ the scan replays their checked effects: a later definition that calls one
-\ resolves here as in the load.
+\ A SUMTYPE defines its constructors when it loads; the scan replays its body
+\ through the same front end, which publishes their checked effects, so a later
+\ definition that calls one resolves here as in the load.
 DYNAMIC-BUFFER SUM-VAR-AT n
 variable SUM-VAR-N
 variable SUM-VAR-NEXT
@@ -2426,24 +2425,16 @@ variable SUM-VAR-NEXT
    BODY-RESET
    BEGIN
       DECL-TOKEN
-      dup 0= IF
-         2drop
-         name nameu BODY$ CHECKER-DEFSUM-NOEND
-         EXIT
+      dup 0= IF 2drop 0 0= ELSE
+         2dup BODY-APPEND
+         2dup SUMTYPE-END? IF 2drop 0 0= ELSE SUM-VAR-STEP 0 0= 0= THEN
       THEN
-      2dup SUMTYPE-END? IF
-         2drop
-         TFAM:TFAM-N@ {: before:n :}
-         name nameu BODY$ CHECKER-DEFSUM
-         GENERATED-DECL-CTOR:REPLAY-LEGACY
-         TFAM:TFAM-N@ before > IF
-            TFAM:TFAM-N@ 1- SUM-VAR-DEFINED
-         THEN
-         EXIT
-      THEN
-      2dup SUM-VAR-STEP
-      BODY-APPEND
-   AGAIN ;
+   UNTIL
+   TFAM:TFAM-N@ {: before:n :}
+   name nameu BODY$ [: TYPE-DECL:TDECL-SUMTYPE ;] DECL-REPLAY:RP-RUN
+   TFAM:TFAM-N@ before > IF
+      TFAM:TFAM-N@ 1- SUM-VAR-DEFINED
+   THEN ;
 
 : RECORD-SUMTYPE ( -- )
    NAME-TOKEN [: RECORD-SUMTYPE-BODY ;] [: SUM-VAR-AT-RELEASE ;] finally ;
@@ -2480,31 +2471,6 @@ variable SUM-VAR-NEXT
    UNTIL
    name nameu BODY$ STRUCTURE-DECL:SD-REPLAY-OUTCOME
    IF DW-TYPE DEFER-AT ELSE 2drop THEN ;
-
-: PRODUCT-END? ( ptr u8 n -- bool )
-   s" ;PRODUCT" STR=CI ;
-
-\ No dictionary words are generated on this path.
-: RECORD-PRODUCT ( -- )
-   NAME-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
-   nameu 0= IF E-MISSING-NAME throw THEN
-   name nameu at SEALED-NAME
-   BODY-RESET
-   BEGIN
-      DECL-TOKEN
-      dup 0= IF
-         2drop
-         name nameu BODY$ CHECKER-DEFPRODUCT-NOEND
-         EXIT
-      THEN
-      2dup PRODUCT-END? IF
-         2drop
-         name nameu BODY$ CHECKER-DEFPRODUCT
-         GENERATED-DECL-CTOR:REPLAY-LEGACY
-         EXIT
-      THEN
-      BODY-APPEND
-   AGAIN ;
 
 : LEGACY-TYPE-OUTCOME ( n -- ) {: rc:n :}
    rc 0= IF EXIT THEN
@@ -3561,8 +3527,6 @@ variable PARSE-IMM-XT s" parse-imm" PARSE-IMM-XT LIBRARY-XT!
    a u s" sumtype" STR=CI IF
       [: RECORD-SUMTYPE ;] catch LEGACY-TYPE-OUTCOME 0 0= EXIT THEN
    a u s" enum" STR=CI IF RECORD-ENUM 0 0= EXIT THEN
-   a u s" product" STR=CI IF
-      [: RECORD-PRODUCT ;] catch LEGACY-TYPE-OUTCOME 0 0= EXIT THEN
    a u LAYOUT-BUFFER-XT @ s" LAYOUT-BUFFER" LIBRARY-DEFINER? IF
       [: RECORD-LAYOUT-BUFFER ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
    a u DEFER-LAYOUT-BUFFER-XT @ s" DEFER-LAYOUT-BUFFER" LIBRARY-DEFINER? IF

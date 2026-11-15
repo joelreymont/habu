@@ -483,7 +483,7 @@ variable GJA-LX
 
 : GJA-REPAIR-DEF ( SPAN:span<u8> -- ) {: root:SPAN:span<u8> :}
    root s" word" GJA-REQ GJA-NONEMPTY-STR
-   root s" token" GJA-REQ GJA-NONEMPTY-STR
+   root s" token" GJA-REQ-NULL-OR-NONEMPTY-STRF
    root s" token_index" GJA-REQ-INTF
    root GJA-DECL-POSITION
    root s" declared_effect" GJA-REQ-NULL-OR-STRF
@@ -493,7 +493,7 @@ variable GJA-LX
    root s" family" GJA-REQ-NULL-OR-STRF
    root s" reason" GJA-REQ-NULL-OR-STRF
    root s" return_stack" GJA-REQ GJA-OBJ
-   root s" source_excerpt" GJA-REQ GJA-NONEMPTY-STR
+   root s" source_excerpt" GJA-REQ-NULL-OR-NONEMPTY-STRF
    root s" instruction" GJA-REQ
    s" Fix the definition so it certifies. Output only corrected Habu code." GJA-ASSERT-STR ;
 
@@ -609,10 +609,10 @@ variable GJA-LX
 
 : GJA-DIAG-DEF ( SPAN:span<u8> -- )
    dup s" word" GJA-REQ GJA-NONEMPTY-STR
-   dup s" token" GJA-REQ GJA-NONEMPTY-STR
+   dup s" token" GJA-REQ-NULL-OR-NONEMPTY-STRF
    dup s" token_index" GJA-REQ-INTF
    dup GJA-DECL-POSITION
-   dup s" definition_source" GJA-REQ GJA-NONEMPTY-STR
+   dup s" definition_source" GJA-REQ-NULL-OR-NONEMPTY-STRF
    \ null when the definition declares no effect
    dup s" declared_effect" GJA-REQ-NULL-OR-NONEMPTY-STRF
    dup s" declared_effect_source" GJA-REQ-NULL-OR-NONEMPTY-STRF
