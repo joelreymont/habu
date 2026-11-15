@@ -100,28 +100,19 @@ create OWN-TABLE here scratch-cell-mark 4 cells allot
    0 t HIGHEST-CELL ! ;
 
 
-\ To forget it rebuilds: a cleared slot would cut a later body's probe chain.
-: REBUILD ( ptr n n n -- )
-   {: t:ptr size:n limit:n :}
+: WIDEN ( ptr n -- )
+   {: t:ptr :}
    t @ {: old:n :}
    t SIZE-CELL @ {: slots:n :}
-   size TABLE-MAP t !
-   size t SIZE-CELL !
+   slots 2 * TABLE-MAP t !
+   slots 2 * t SIZE-CELL !
    0 t FILLED-CELL !
    0 t HIGHEST-CELL !
    slots 0 ?do
       old i CELL-AT @ {: body:n :}
-      body 0 <> if
-         body BODY$ nip body + limit <= if t body SLOT-PUT then
-      then
+      body 0 <> if t body SLOT-PUT then
    loop
    old slots TABLE-RELEASE ;
-
-
-\ The limit is above every address.
-: WIDEN ( ptr n -- )
-   {: t:ptr :}
-   t  t SIZE-CELL @ 2 *  -1 1 rshift  REBUILD ;
 
 
 \ One `allot` bounds and zeroes the length cell, the text and the byte past it;
@@ -183,12 +174,34 @@ private
    then ;
 
 
+\ The first empty slot; one exists, since a table is never more than half full.
+: EMPTY-SLOT ( ptr n -- n )
+   {: t:ptr :}
+   0 begin t over SLOT-CELL @ 0 <> while 1+ repeat ;
+
+
+: SLOT-KEEP ( ptr n n n -- )
+   {: t:ptr k:n limit:n :}
+   t k SLOT-CELL @ {: body:n :}
+   body 0= if exit then
+   0 t k SLOT-CELL !
+   body BODY$ nip body + limit <= if t body SLOT-PUT then ;
+
+
 \ The address cell comes first: the other cells mean nothing while it is 0.
+\ The rehash starts after an empty slot: a cleared slot would cut a later
+\ body's probe chain unless every body after it in its cluster is put back.
 : TABLE-CUT ( ptr n n -- )
    {: t:ptr limit:n :}
    t @ 0= if exit then
    t HIGHEST-CELL @ limit <= if exit then
-   t  t SIZE-CELL @  limit REBUILD ;
+   t EMPTY-SLOT {: e:n :}
+   t SIZE-CELL @ {: slots:n :}
+   0 t FILLED-CELL !
+   0 t HIGHEST-CELL !
+   slots 0 ?do
+      t  e 1+ i +  slots 1- and  limit SLOT-KEEP
+   loop ;
 
 public
 
