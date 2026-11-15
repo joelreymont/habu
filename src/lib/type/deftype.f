@@ -1,7 +1,7 @@
 \ deftype.f - `DEFTYPE NAME` mints a value-nominal integer type in the active
 \ package with converters `>NAME ( n -- NAME )` and `NAME>N ( NAME -- n )`, the
-\ only way across: the checker never lets n stand in for a nominal or back
-\ (test/deftype-suite.f). The same NAME in two packages is two types.
+\ only way across; `DEFTYPE NAME base` mints one over the base, with `>NAME` and
+\ `NAME>BASE` (test/deftype-suite.f). The same NAME in two packages is two types.
 \ STORAGE CLASS. PROCESS-WIDE: TAIL is a load-time mapping; DEFTYPE runs in
 \ one loading task at a time.
 
@@ -33,11 +33,25 @@ public
    sa su MANGLE {: ta:^ tu:n :}
    sa su ta tu CHECKER-DEFTYPE ;
 
+\ Mints NAME over BASE, one name: a family as wide as the base, with
+\ >NAME ( base -- name ) and NAME>BASE ( name -- base ).
+: MINT-OVER ( ^u8 n ^u8 n -- ) {: sa:^ su:n ba:^ bu:n :}
+   sa su ba bu STRUCTURE-DECL:SD-ONE-NAME 0= IF EXIT THEN
+   sa su MANGLE {: ta:^ tu:n :}
+   ta tu ba bu STRUCTURE-DECL:SD-WRAP {: fam:n :}
+   sa su ba bu fam TYPE-DECL:TDECL-CONVERTERS ;
+
 ;package
 
 \ The one global word, a declarer beside ENUM, SUMTYPE and NEWTYPE, so it reads
 \ bare from any package while the family lands in that package. Top-level
-\ interpret only: it parses the next name and mutates the type registry through
-\ VNOM:MINT, effects its ( -- ) row does not model.
+\ interpret only: it parses the next name, and a base on the name's line, and
+\ mutates the type registry through VNOM:MINT or VNOM:MINT-OVER, effects its
+\ ( -- ) row does not model. A `\` on the name's line is no base.
 : DEFTYPE ( -- )
-   parse-name VNOM:MINT ;
+   parse-name {: na:^ nu:n :}
+   nu 0= IF na nu VNOM:MINT EXIT THEN
+   STORAGE-LINE-TOKEN {: ba:^ bu:n :}
+   bu 0= IF na nu VNOM:MINT EXIT THEN
+   bu 1 = IF ba c@ 92 = IF ba STORAGE-UNREAD  na nu VNOM:MINT EXIT THEN THEN
+   na nu ba bu VNOM:MINT-OVER ;

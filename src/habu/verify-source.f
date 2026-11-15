@@ -2353,25 +2353,6 @@ DYNAMIC-BUFFER NOM-TAIL u8
    {: at:n u:n :}
    TOP-CUR-A @ TOP-CUR-U @ DTC-NAME$ DTC-SIG$ at at u + DEF-WORD DEFINED ;
 
-: RECORD-DEFTYPE ( -- )
-   NAME-TOKEN {: name:^ nameu:n :}
-   nameu 0= IF E-MISSING-NAME throw THEN
-   TOKEN-BYTE @ {: at:n :}
-   name nameu MANGLE {: tail:^ tailu:n :}
-   REJECTION:TALLY @ {: refused:n :}
-   tail tailu name nameu CHECKER-DEFFAMILY
-   REJECTION:TALLY @ refused <> IF EXIT THEN   \ a refused family declares no converters
-   name nameu tail tailu DTC-BUILD-IN
-   DTC-NAME$ at nameu ARM              \ the converter's own name, the TYPE's span
-   DTC-NAME$ CHILD-ABI:NOMINAL-IN CHECKER-NOMINAL-REPLAY
-   DISARM
-   at nameu CAST-DEFINED
-   name nameu tail tailu DTC-BUILD-OUT
-   DTC-NAME$ at nameu ARM
-   DTC-NAME$ CHILD-ABI:NOMINAL-OUT CHECKER-NOMINAL-REPLAY
-   DISARM
-   at nameu CAST-DEFINED ;
-
 : RECORD-DEFLINEAR ( -- )
    NAME-TOKEN {: name:^ nameu:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
@@ -2519,6 +2500,44 @@ variable STG-TYPE-U
    name nameu at SEALED-NAME
    name nameu SCAN-STORAGE-TYPE STRUCTURE-DECL:SD-WRAP-OUTCOME
    IF DW-TYPE DEFER-AT ELSE 2drop THEN ;
+
+\ A DEFTYPE base is the one name on the name's line, consumed; none, or a `\`
+\ left unread, is `n`, and the bool says whether one was spelled.
+: DEFTYPE-BASE ( -- ^u8 n bool )
+   SCAN-I @ {: mark:n :}
+   SCAN-LINE-TOKEN {: ba:^ bu:n :}
+   bu 0= IF mark SCAN-I !  s" n" 0 0= 0= EXIT THEN
+   bu 1 = IF ba c@ 92 = IF mark SCAN-I !  s" n" 0 0= 0= EXIT THEN THEN
+   ba bu 0 0= ;
+
+\ A base replays as DEFTYPE registers it; a deferred or refused family
+\ declares no converters.
+: RECORD-DEFTYPE ( -- )
+   NAME-TOKEN {: name:^ nameu:n :}
+   nameu 0= IF E-MISSING-NAME throw THEN
+   TOKEN-BYTE @ {: at:n :}
+   name nameu MANGLE {: tail:^ tailu:n :}
+   DEFTYPE-BASE {: ba:^ bu:n based:bool :}
+   based IF name nameu ba bu STRUCTURE-DECL:SD-ONE-NAME 0= IF EXIT THEN THEN
+   REJECTION:TALLY @ {: refused:n :}
+   based IF
+      name nameu at SEALED-NAME
+      tail tailu ba bu STRUCTURE-DECL:SD-WRAP-OUTCOME
+      IF DW-TYPE DEFER-AT EXIT THEN 2drop
+   ELSE
+      tail tailu name nameu CHECKER-DEFFAMILY
+   THEN
+   REJECTION:TALLY @ refused <> IF EXIT THEN
+   name nameu tail tailu ba bu DTC-BUILD-IN
+   DTC-NAME$ at nameu ARM              \ the converter's own name, the TYPE's span
+   DTC-NAME$ CHILD-ABI:NOMINAL-IN CHECKER-NOMINAL-REPLAY
+   DISARM
+   at nameu CAST-DEFINED
+   name nameu tail tailu ba bu DTC-BUILD-OUT
+   DTC-NAME$ at nameu ARM
+   DTC-NAME$ CHILD-ABI:NOMINAL-OUT CHECKER-NOMINAL-REPLAY
+   DISARM
+   at nameu CAST-DEFINED ;
 
 \ A refused name, malformed or a duplicate, is empty and still owns its type
 \ span; consume it before resuming the statement scan so a type token cannot

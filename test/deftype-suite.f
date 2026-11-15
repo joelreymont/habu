@@ -72,8 +72,61 @@ TFAM:TF-NAME-MAX 32 + CODEGEN:BUFFER VN-CAP-SRC
    VN-CAP-SRC CODEGEN:RESET
    s" package VNCAP DEFTYPE " VN-CAP-SRC CODEGEN:APPEND-STRING
    TFAM:TF-NAME-MAX 1+ 0 ?do 78 VN-CAP-SRC CODEGEN:APPEND-BYTE loop
-   s"  ;package" VN-CAP-SRC CODEGEN:APPEND-STRING ;
+   10 VN-CAP-SRC CODEGEN:APPEND-BYTE
+   s" ;package" VN-CAP-SRC CODEGEN:APPEND-STRING ;
 VN-CAP-SRC!
 VN-CAP-SRC CODEGEN:CONTENTS TEST-EVAL:RC TYPE-DECL:E-TDECL-CAP T=
+
+\ 6. a base on the name's line: the type is as wide as the base and apart from
+\    it, crossed by >NAME and NAME>BASE, the base in upper case.
+DEFTYPE REV str
+s" abc" >str >REV REV>STR str> nip 3 T=
+\ a rev is not a str: 70, the checker's refusal ("expected: str actual: rev").
+s" : DTX ( rev -- str ) ;" TEST-EVAL:RC 70 T=
+\ the base is one name, since NAME>BASE is made from it; the refusal names the
+\ type.
+VNDIAG-BUF 8192 REJECTION:BUFFER!
+s" DEFTYPE DTBAD option<n>" TEST-EVAL:RC TYPE-DECL:E-TDECL-SYNTAX T=
+REJECTION:BUFFER$ s" DTBAD" CONTAINS? TTRUE
+s" DEFTYPE DTBAD2 pkg:thing" TEST-EVAL:RC TYPE-DECL:E-TDECL-SYNTAX T=
+\ a comment on the name's line is no base: the type stays one cell over n.
+DEFTYPE DTNOTE   \ a comment
+s" VN-NOTE-RT ( n -- n ) >DTNOTE DTNOTE>N" CHECK-QUIET-CANDIDATE! -1 T=
+\ the verifier replays a base as the load registers it.
+: DT-VERIFY ( -- )
+   s\" DEFTYPE REV2 str\n: DTV ( str -- rev2 ) >REV2 ;" VERIFY:SOURCE-BUF ;
+' DT-VERIFY catch 0 T=
+\ the verifier's converter text holds NAME>BASE with a name at the cap.
+TFAM:TF-NAME-MAX 32 + CODEGEN:BUFFER VN-VMAX-SRC
+: VN-VMAX-SRC! ( -- )
+   VN-VMAX-SRC CODEGEN:RESET
+   s" DEFTYPE " VN-VMAX-SRC CODEGEN:APPEND-STRING
+   TFAM:TF-NAME-MAX 0 ?do 81 VN-VMAX-SRC CODEGEN:APPEND-BYTE loop
+   s"  str" VN-VMAX-SRC CODEGEN:APPEND-STRING ;
+VN-VMAX-SRC!
+: DT-VERIFY-MAX ( -- ) VN-VMAX-SRC CODEGEN:CONTENTS VERIFY:SOURCE-BUF ;
+' DT-VERIFY-MAX catch 0 T=
+
+\ 7. a multi-error load records a base the wrap refuses and declares no
+\    converters for it; an earlier DEFTYPE's converter still verifies.
+256 CODEGEN:BUFFER DT-MULTI-SRC
+: DT-LINE ( ^u8 n -- )
+   DT-MULTI-SRC CODEGEN:APPEND-STRING
+   10 DT-MULTI-SRC CODEGEN:APPEND-BYTE ;
+: DT-MULTI-SRC! ( -- )
+   DT-MULTI-SRC CODEGEN:RESET
+   s" DEFTYPE DTGOOD str" DT-LINE
+   s" DEFTYPE DTWRAP option" DT-LINE
+   s" : DTUSE ( n -- dtwrap ) >DTWRAP ;" DT-LINE
+   s" : DTGUSE ( str -- dtgood ) >DTGOOD ;" DT-LINE ;
+DT-MULTI-SRC!
+: DT-MULTI ( -- )
+   DT-MULTI-SRC CODEGEN:CONTENTS VERIFY:SOURCE-BUF ;
+VNDIAG-BUF 8192 REJECTION:BUFFER!
+MULTI-ERR-BEGIN ' DT-MULTI catch MULTI-ERR-END
+2 T=  0 T=
+REJECTION:BUFFER$ s" undefined word '>DTWRAP'"
+CONTAINS? TTRUE
+REJECTION:BUFFER$ s" dtguse" CONTAINS? TFALSE
 
 T-REPORT

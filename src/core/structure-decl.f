@@ -576,14 +576,42 @@ public
 : SD-REPLAY ( ^u8 n ^u8 n -- )
    SD-FRONT DECL-FRONT:REPLAY ;
 
-\ Registers NEWTYPE NAME's family over BASE, a type spelling: one field `base`,
-\ the family as wide as it; no word is made. A base not yet declared is
-\ answered as SD-REPLAY-OUTCOME answers one.
+private
+
+\ TYPE-DECL:TDECL-FAM-REG holds the family only when the wrap left no refusal,
+\ which a multi-error load tallies and any other load throws.
+: WRAP-KEEP ( n -- ) {: tally:n :}
+   REJECTION:TALLY @ tally <> IF EXIT THEN
+   FAM @ TYPE-DECL:TDECL-FAM-REG ! ;
+
+: NAME-STOP? ( n -- bool ) {: c:n :}
+   c 58 =  c 60 = or  c 94 = or  c 91 = or ;
+
+public
+
+\ Whether BASE is one name, as a DEFTYPE converter's name needs; if not, refuses NAME.
+: SD-ONE-NAME ( ^u8 n ^u8 n -- bool ) {: na:^ nu:n ba:^ bu:n :}
+   NO bu 0 ?do ba i + c@ NAME-STOP? or loop
+   0= IF YES EXIT THEN
+   s" newtype" DECL-REJECT:OPEN
+   na nu DECL-REJECT:FAMILY!
+   s" a deftype base is one name" TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT
+   DECL-REJECT:GUARD-CODE
+   NO ;
+
+\ Registers NEWTYPE NAME's family over BASE: one field base, no word made.
+\ Answers as SD-REPLAY-OUTCOME; TDECL-FAM-REG is the family, or -1 if none.
 : SD-WRAP-OUTCOME ( ^u8 n ^u8 n -- ^u8 n bool )
-   WRAP-FRONT DECL-FRONT:REPLAY-OUTCOME ;
-\ The same, raising E-UNRESOLVED instead of answering.
-: SD-WRAP ( ^u8 n ^u8 n -- )
-   WRAP-FRONT DECL-FRONT:REPLAY ;
+   -1 TYPE-DECL:TDECL-FAM-REG !  REJECTION:TALLY @ {: tally:n :}
+   WRAP-FRONT DECL-FRONT:REPLAY-OUTCOME {: ma:^ mu:n miss:bool :}
+   miss 0= IF tally WRAP-KEEP THEN
+   ma mu miss ;
+\ The same, raising E-UNRESOLVED instead of answering, and answering the
+\ family, or -1 when a multi-error load refused it.
+: SD-WRAP ( ^u8 n ^u8 n -- n )
+   -1 TYPE-DECL:TDECL-FAM-REG !  REJECTION:TALLY @ {: tally:n :}
+   WRAP-FRONT DECL-FRONT:REPLAY
+   tally WRAP-KEEP  TYPE-DECL:TDECL-FAM-REG @ ;
 
 ;package
 
@@ -602,7 +630,7 @@ public
    tu 0= IF na nu 2dup TYPE-DECL:TDECL-DEFFAMILY EXIT THEN
    ta STORAGE-UNREAD
    tu 1 = IF ta c@ 92 = IF na nu 2dup TYPE-DECL:TDECL-DEFFAMILY EXIT THEN THEN
-   na nu STORAGE-PARSE-TYPE STRUCTURE-DECL:SD-WRAP ;
+   na nu STORAGE-PARSE-TYPE STRUCTURE-DECL:SD-WRAP drop ;
 
 ;using
 ;using

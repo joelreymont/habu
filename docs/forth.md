@@ -1361,6 +1361,10 @@ family, the substrate of `NEWTYPE`:
 - It derives the converters `>NAME ( n -- name )` and `NAME>N ( name -- n )`,
   no-op casts and the only crossing. They follow package visibility: declared
   without `public`, `PKG:>NAME` is `E-UNDEFINED` outside.
+- `DEFTYPE NAME base`, the base one name on the name's line, makes the type as
+  wide as the base, with `>NAME ( base -- name )` and `NAME>BASE ( name -- base )`:
+  `DEFTYPE REV str` gives `>REV` and `REV>STR`. A base holding `:`, `<`, `^` or
+  `[` is refused.
 - The name cannot be a built-in type, a role, an atom prefix, a one-letter type
   variable or `ptr`: `DEFTYPE IDX`, `DEFTYPE A` and `DEFTYPE PTR` reject with
   `bad newtype declaration '…': reserved name`. A family the

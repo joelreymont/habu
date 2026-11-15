@@ -1738,18 +1738,23 @@ public
 : TDECL-ADDR-REPLAY ( n -- )
    RES-TRUE [: TDECL-ADDR-REPLAY-REG ;] TDECL-GEN-PLACED ;
 
-\ Declares DEFTYPE's family, tail TA TU named by surface NA NU, and makes each
-\ converter, >NAME then NAME>N. A family refused under a multi-error load
-\ leaves -1 and has no converters.
-: TDECL-DEFTYPE ( ^u8 n ^u8 n -- )
-   {: na:^ nu:n ta:^ tu:n :}
-   ta tu na nu TDECL-DEFFAMILY
-   TDECL-FAM-REG @ {: fam:n :}
+\ Makes DEFTYPE's converters over FAM, named from surface NA NU and base BA BU:
+\ >NAME then NAME>BASE, the base in upper case. A family refused under a
+\ multi-error load is -1 and has no converters.
+: TDECL-CONVERTERS ( ^u8 n ^u8 n n -- )
+   {: na:^ nu:n ba:^ bu:n fam:n :}
    fam 0 < IF EXIT THEN
    TDGEN-CLEAR  [char] > TDGEN-C,  na nu TDGEN-APP
    TDGEN-BUF TDGEN-U @  CHILD-ABI:NOMINAL-IN fam  TDECL-CHILD
-   TDGEN-CLEAR  na nu TDGEN-APP  s" >N" TDGEN-APP
+   TDGEN-CLEAR  na nu TDGEN-APP  [char] > TDGEN-C,  ba bu TDGEN-UPPER
    TDGEN-BUF TDGEN-U @  CHILD-ABI:NOMINAL-OUT fam  TDECL-CHILD ;
+
+\ Declares DEFTYPE's family, tail TA TU named by surface NA NU, and makes its
+\ converters, >NAME then NAME>N.
+: TDECL-DEFTYPE ( ^u8 n ^u8 n -- )
+   {: na:^ nu:n ta:^ tu:n :}
+   ta tu na nu TDECL-DEFFAMILY
+   na nu s" n" TDECL-FAM-REG @ TDECL-CONVERTERS ;
 
 \ Registers converter NA NU's effect, of SHAPE, over the last declared family.
 : TDECL-NOMINAL-REPLAY ( ^u8 n n -- ) {: na:^ nu:n shape:n :}

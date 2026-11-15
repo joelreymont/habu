@@ -4606,13 +4606,16 @@ private
    shape CHILD-ABI:MAKE = IF pay value ELSE value pay THEN
    0 ;
 
-\ A DEFTYPE converter's rows over FAM: NOMINAL-IN takes n and answers the
-\ nominal, NOMINAL-OUT the reverse. Its body is a cast, so its value is unread.
+\ A DEFTYPE converter's rows over FAM, between its base (n, or the one field of
+\ a family over a base) and the nominal. Its body is a cast: the value is unread.
 : NOMINAL-ROWS ( n n -- n n n ) {: shape:n fam:n :}
    FRESH MK-ROW {: base:n :}
-   CC-N MK-CON base MK-PUSH {: num:n :}
+   fam TFAM-FLD-COUNT@ 1 = IF
+      fam TFAM-FLD-START@ PF-SCH@ SCHEMA-ROOT@ RES-FALSE TFC-SCH-TERM
+      base TFC-PUSH-PAY
+   ELSE CC-N MK-CON base MK-PUSH THEN {: val:n :}
    fam TFAM-FRESH-TERM base PUSH-LOGICAL {: nom:n :}
-   shape CHILD-ABI:NOMINAL-IN = IF num nom ELSE nom num THEN
+   shape CHILD-ABI:NOMINAL-IN = IF val nom ELSE nom val THEN
    0 ;
 
 public

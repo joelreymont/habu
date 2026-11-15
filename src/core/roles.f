@@ -9,8 +9,11 @@
 \ converter pair, >NAME ( n -- NAME ) and NAME>N ( NAME -- n ), for
 \ verify-source.f's definition report. A nominal is one cell, distinct from n
 \ and every other nominal, with no widening. The builder takes the upper-case
-\ surface name and the lowercase family tail separately.
-$200 constant DTC-CAP
+\ surface name, the lowercase family tail and the base separately; a nominal
+\ over a base has >NAME ( base -- NAME ) and NAME>BASE ( NAME -- base ).
+\ The longest pair is NAME>BASE's with NAME, its tail and BASE each at the family
+\ name cap: a name of two and a signature of two, with their `>` and ` -- `.
+TFAM:TF-NAME-MAX 4 * 16 + constant DTC-CAP
 create DTC-BUF DTC-CAP allot
 variable DTC-U
 variable DTC-NAME-OFF
@@ -50,15 +53,27 @@ variable DTC-SIG-U
 : DTC-SIG-END ( -- )
    DTC-U @ DTC-SIG-OFF @ - DTC-SIG-U ! ;
 
-: DTC-BUILD-IN ( ^u8 n ^u8 n -- ) {: sa:^ su:n ta:^ tu:n :}
+\ DTC+, with each byte a-z in upper case.
+: DTC-UPPER+ ( ^u8 n -- ) {: a:^ u:n :}
+   a u DTC+
+   DTC-BUF DTC-U @ u - + {: at:^ :}
+   0 BEGIN dup u < WHILE
+      dup at + c@ dup 97 < over 122 > or 0= IF 32 - THEN  over at + c!
+      1+
+   REPEAT drop ;
+
+\ >NAME ( base -- tail ) of surface SA SU, tail TA TU and base BA BU, which is
+\ `n` for a one-cell nominal.
+: DTC-BUILD-IN ( ^u8 n ^u8 n ^u8 n -- ) {: sa:^ su:n ta:^ tu:n ba:^ bu:n :}
    DTC-BEGIN
    s" >" DTC+ sa su DTC+ DTC-NAME-END
-   s" n -- " DTC+ ta tu DTC+ DTC-SIG-END ;
+   ba bu DTC+ s"  -- " DTC+ ta tu DTC+ DTC-SIG-END ;
 
-: DTC-BUILD-OUT ( ^u8 n ^u8 n -- ) {: sa:^ su:n ta:^ tu:n :}
+\ NAME>BASE ( tail -- base ), the base in upper case in the name: NAME>N for `n`.
+: DTC-BUILD-OUT ( ^u8 n ^u8 n ^u8 n -- ) {: sa:^ su:n ta:^ tu:n ba:^ bu:n :}
    DTC-BEGIN
-   sa su DTC+ s" >N" DTC+ DTC-NAME-END
-   ta tu DTC+ s"  -- n" DTC+ DTC-SIG-END ;
+   sa su DTC+ s" >" DTC+ ba bu DTC-UPPER+ DTC-NAME-END
+   ta tu DTC+ s"  -- " DTC+ ba bu DTC+ DTC-SIG-END ;
 
 \ The role conversions are casts, not trusted declarations: checker.f
 \ CAST-CERTIFY refuses a bad cast at its declaration, while
