@@ -121,6 +121,7 @@ create TAB
    PROT:RLO                           1 cells                 CLAIM PROT-RLO
    ENGINE-HOOK-OFF                    ENGINE-HOOK-LEN         CLAIM ENGINE-HOOK
    SUSP-HOOK-OFF                      SUSP-HOOK-LEN           CLAIM SUSP-HOOK
+   PASSED-TO-CELL                     1 cells                 CLAIM PASSED-TO-CELL
    EXIT-HOOK-CELL                     1 cells                 CLAIM EXIT-HOOK-CELL
    EXIT-OWNER-CELL                    1 cells                 CLAIM EXIT-OWNER-CELL
    FLOORREC-CELL                      1 cells                 CLAIM FLOORREC-CELL
