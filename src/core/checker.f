@@ -16124,7 +16124,7 @@ PENDING-MARKED 0 CELL-ROW+
 \ dictionary occurrence: a closed `,` run.
 : CHECKER-GRID-ATTACH ( n ^a n -- )
    {: ord:n base:^ count:n :}
-   \ The text is fixed and parses: `^a` points at the type variable `a`.
+   \ The text is fixed and parses.
    s" -- ^a" CREATED-RECORD-BUILD {: grid:n :}
    grid base count CHECKER-STORAGE-GRID
    ord grid RECORD-LINK-GRID-ATTACH ;

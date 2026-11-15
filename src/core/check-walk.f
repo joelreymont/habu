@@ -2908,17 +2908,6 @@ public
    TKF TKFU @ s" evaluate" CORE-STR= 0= IF RES-FALSE EXIT THEN
    TKF TKFU @ TOK-CORE-OP? ;
 
-package SRCLOC
-private
-OWNED-CELL RESERVED-PTR-U8-CELL FILE-START
-public
-
-\ The cursor's line from the file's first owned byte; 0 outside file text.
-: LINE ( -- n )
-   FILE-BUFFER? 0= IF 0 EXIT THEN
-   FILE-START @ CURSOR @ ERROR-TEXT:LINE ;
-;package
-
 \ A type whose cell count is not known here; a stale value keeps its type's.
 : TOP-OPEN-TYPE? ( n -- bool )
    T-UNSTALE T-RES {: t:n :}

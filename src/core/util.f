@@ -63,10 +63,6 @@ variable DIGIT-AT
 
 public
 
-: LINE ( ^u8 ^u8 -- n )
-   {: b:^ p:^ :}
-   1 p b - 0 ?do b i + c@ 10 = if 1 + then loop ;
-
 \ A number's digits without its sign, from the end of DIGITS: taken on the
 \ non-positive side, so MIN-N has them too, as / and mod truncate toward zero.
 : DIGITS$ ( n -- ^u8 n )

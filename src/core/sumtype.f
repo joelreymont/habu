@@ -523,7 +523,7 @@ private
    a u TFAM-MAY-ARRIVE? ;
 : TDECL-NO-END-THROW ( ^u8 n -- ) {: a:^ u:n :}
    a u s" missing ;VARIANT"
-      s" close each `VARIANT` with `;VARIANT`, and join each `^` to the type it points at"
+      s" close each `VARIANT` with `;VARIANT`"
       E-TDECL-SYNTAX TDECL-THROW ;
 : TDECL-PAY-ELEM ( ^u8 n -- n ) {: a:^ u:n :}
    u 0= IF a u TDECL-NO-END-THROW THEN
