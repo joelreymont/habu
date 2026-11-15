@@ -82,8 +82,10 @@ TYPED-VARIABLE CHK-MAP-BUF-A ^u8
 DYNAMIC-BUFFER CHK-SRC-MEM u8
 DYNAMIC-BUFFER CHK-RUN-MEM u8
 DYNAMIC-BUFFER CHK-SEL-SRC-MEM u8
-\ The records of the walks' stops under --all-errors, end to end in CHK-KEPT,
-\ and per stop the file and byte it stands at and its record's start and length.
+\ The walks' stops under --all-errors, end to end in CHK-KEPT, each the path of
+\ the file it stands in followed by its record; per stop in CHK-KEPT-ROWS the
+\ path's start and length, the byte it stands at, the record's start and length
+\ and the status it stopped with.
 DYNAMIC-BUFFER CHK-KEPT u8
 DYNAMIC-BUFFER CHK-KEPT-ROWS n
 create CHK-JSON-BUF BUF:HDR-BYTES allot
@@ -526,19 +528,25 @@ private
    FD:STDERR CHECK-ALL-ERRORS:STREAM!
    CHK-JSON @ REJECTION:JSON ! ;
 
-\ The captured record of the walk's stop, kept with the place it stands at. A
-\ stop in no source, a named file that will not open, has no place.
-: CHK-KEEP-STOP ( -- )
-   CHK-STOP-ID @ 0 < if exit then
+6 constant CHK-KEPT-ROW                \ cells per kept stop
+
+\ The captured record of the walk's stop with status RC, kept with the place it
+\ stands at. A stop in no source, a named file that will not open, has no place.
+: CHK-KEEP-STOP ( n -- ) {: rc:n :}
    REJECTION:BUFFER$ {: a:^ u:n :}
-   CHK-KEPT-U @ {: at:n :}
-   at u + 1+ CHK-KEPT-RESERVE
-   a at CHK-KEPT u BYTE-COPY
-   at u + CHK-KEPT-U !
-   CHK-KEPT-N @ 1+ 4 * CHK-KEPT-ROWS-RESERVE
-   CHK-KEPT-N @ 4 * {: row:n :}
-   CHK-STOP-ID @ row CHK-KEPT-ROWS !  CHK-STOP-AT @ row 1+ CHK-KEPT-ROWS !
-   at row 2 + CHK-KEPT-ROWS !  u row 3 + CHK-KEPT-ROWS !
+   REJECTION:LAST-PLACE {: p:^ pu:n at:n :}
+   u 0=  pu 0=  or if exit then
+   p pu CHK-PLACE-PATH$ {: path:^ pathu:n :}
+   CHK-KEPT-U @ {: off:n :}
+   off pathu + {: rec:n :}
+   rec u + 1+ CHK-KEPT-RESERVE
+   path off CHK-KEPT pathu BYTE-COPY
+   a rec CHK-KEPT u BYTE-COPY
+   rec u + CHK-KEPT-U !
+   CHK-KEPT-N @ 1+ CHK-KEPT-ROW * CHK-KEPT-ROWS-RESERVE
+   CHK-KEPT-N @ CHK-KEPT-ROW * {: row:n :}
+   off row CHK-KEPT-ROWS !  pathu row 1+ CHK-KEPT-ROWS !  at row 2 + CHK-KEPT-ROWS !
+   rec row 3 + CHK-KEPT-ROWS !  u row 4 + CHK-KEPT-ROWS !  rc row 5 + CHK-KEPT-ROWS !
    CHK-KEPT-N @ 1+ CHK-KEPT-N ! ;
 
 \ A closure the walk cannot follow, a form discovery rejected, fails the check
@@ -551,7 +559,7 @@ private
    REJECTION:CAPTURE
    [: q execute 0<> if CHK-E-CHECK CHK-THROW then ;] catch {: rc:n :}
    REJECTION:BUFFER-OFF
-   rc CHECKER-REJECT-RC = rc INCLUDE-IO-RC = or if CHK-KEEP-STOP exit then
+   rc CHECKER-REJECT-RC = rc INCLUDE-IO-RC = or if rc CHK-KEEP-STOP exit then
    rc 0<> if rc throw then ;
 
 : CHK-ENTRY-ID ( ^u8 n -- n )
@@ -971,20 +979,31 @@ private
 
 \ Whether the composition never read the place of kept stop n.
 : CHK-KEPT-UNREAD? ( n -- bool )
-   4 * {: row:n :}
-   row CHK-KEPT-ROWS @ CHK-DEP$  row 1+ CHK-KEPT-ROWS @  VERIFY:READ-AT? 0= ;
+   CHK-KEPT-ROW * {: row:n :}
+   row CHK-KEPT-ROWS @ CHK-KEPT  row 1+ CHK-KEPT-ROWS @  row 2 + CHK-KEPT-ROWS @
+   VERIFY:READ-AT? 0= ;
 
-: CHK-KEPT-SEND ( n -- )
-   4 * {: row:n :}
-   row 2 + CHK-KEPT-ROWS @ CHK-KEPT  row 3 + CHK-KEPT-ROWS @  CHK-ERR ;
+\ Writes kept stop n's record and answers the status it stopped with.
+: CHK-KEPT-SEND ( n -- n )
+   CHK-KEPT-ROW * {: row:n :}
+   row 3 + CHK-KEPT-ROWS @ CHK-KEPT  row 4 + CHK-KEPT-ROWS @  CHK-ERR
+   row 5 + CHK-KEPT-ROWS @ ;
+
+\ The status two outcomes end a run with together, each 0, CHECKER-REJECT-RC
+\ or INCLUDE-IO-RC: a file that will not read outranks a rejection.
+: CHK-RC-JOIN ( n n -- n ) {: a:n b:n :}
+   a INCLUDE-IO-RC =  b INCLUDE-IO-RC =  or if INCLUDE-IO-RC exit then
+   a 0<>  b 0<>  or if CHECKER-REJECT-RC exit then
+   0 ;
 
 \ Writes, after the composition's records, the kept record of each stop whose
 \ place the composition never read: an arm this target skips, a file only such
-\ an arm loads, or text after the composition stopped. True when it wrote one.
-: CHK-SEND-UNREAD ( -- bool )
-   false
+\ an arm loads, or text after the composition stopped. Answers the status the
+\ written stops end the run with, 0 when it wrote none.
+: CHK-SEND-UNREAD ( -- n )
+   0
    CHK-KEPT-N @ 0 ?do
-      i CHK-KEPT-UNREAD? if i CHK-KEPT-SEND drop true then
+      i CHK-KEPT-UNREAD? if i CHK-KEPT-SEND CHK-RC-JOIN then
    loop ;
 
 \ How a verifier child that gave no answer ended, as the closing line of its
@@ -1105,9 +1124,14 @@ private
    then
    [: CHK-RUN-RESERVED-NAMES ;] CHK-LINT-ALL
    [: CHK-RUN-BOUNDARY ;] CHK-LINT-ALL or
-   [: CHK-RUN-ALL ;] CHK-LINT-ALL or
-   CHK-SEND-UNREAD or
-   if CHECKER-REJECT-RC throw then ;
+   if CHECKER-REJECT-RC else 0 then {: lints:n :}
+   \ The kept stops are written however the composition ends, and any end but
+   \ a rejection's is the run's.
+   [: CHK-RUN-ALL ;] catch {: rc:n :}
+   CHK-SEND-UNREAD {: sent:n :}
+   rc 0<>  rc CHECKER-REJECT-RC <>  and if rc throw then
+   lints rc CHK-RC-JOIN sent CHK-RC-JOIN {: end:n :}
+   end 0<> if end throw then ;
 
 : CHK-RUN-CURRENT ( -- )
    CHK-RUN-STATIC-LINTS

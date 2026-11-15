@@ -780,9 +780,16 @@ variable RC
    GJA-LINE# @ 0 > dup TTRUE 0= IF EXIT THEN
    0 GJA-LINE$ GJA-PARSE s" notes" FIELD-ABSENT ;
 
+\ Runs q while the file DEP! kept will not open.
+: LOCKED ( [ -- ] -- ) {: q :}
+   DEP-PATH$ 0 FS:CHMOD-MODE
+   q [: DEP-PATH$ $1A4 FS:CHMOD-MODE ;] finally ;
+
 \ No composition reads an arm the running target skips, so the walk's record of
-\ a file only that arm requires comes after the composition's. No suite host is
-\ Wasm.
+\ a fault only that arm holds, at the place plain check gives it, comes after
+\ the composition's, and an unreadable file's status outranks a rejection's. A
+\ skipped arm in a required file leaves the requiring file's own bytes counted
+\ as read, so a stop there prints once. No suite host is Wasm.
 : TEST-ALL-DEAD-ARM ( -- )
    s" a missing file only a skipped arm requires, under --all-errors" T-LABEL
    SB-RESET
@@ -797,7 +804,74 @@ variable RC
    1 s" code" s" E-UNDEFINED" FIELD=
    1 s" nosuchtwo" 3 17 97 106 AT
    2 s" code" s" E-MISSING-SOURCE" FIELD=
-   2 s" deadarm-absent.f" 2 30 57 73 AT ;
+   2 s" deadarm-absent.f" 2 30 57 73 AT
+   s" a skipped arm's missing file alone, under --all-errors" T-LABEL
+   SB-RESET
+   s" HB-TARGET-WASM? [if] require dead-only-absent.f [then]" SB-APPEND LF+
+   s" dead-only.f" FIXTURE!
+   s" --all-errors" CHECK
+   s" E-MISSING-SOURCE" REJECTED-AS
+   0 s" dead-only-absent.f" 1 30 29 47 AT
+   SB-RESET  s" 1 drop" SB-APPEND LF+
+   s" dead-locked.f" FIXTURE!
+   DEP!
+   s" a skipped arm's unreadable file alone, under --all-errors" T-LABEL
+   SB-RESET
+   s" HB-TARGET-WASM? [if] require dead-locked.f [then]" SB-APPEND LF+
+   s" dead-locked-arm.f" FIXTURE!
+   [: s" " INCLUDE-IO-RC CHECK-EXIT ;] LOCKED
+   s" E-UNREADABLE-SOURCE" REJECTED-AS
+   0 s" dead-locked.f" 1 30 29 42 AT
+   [: s" --all-errors" INCLUDE-IO-RC CHECK-EXIT ;] LOCKED
+   s" E-UNREADABLE-SOURCE" REJECTED-AS
+   0 s" dead-locked.f" 1 30 29 42 AT
+   s" a skipped arm's missing file before an unreadable one, under --all-errors" T-LABEL
+   SB-RESET
+   s" : R1 ( -- ) nosuchone ;" SB-APPEND LF+
+   s" HB-TARGET-WASM? [if] require dead-io-absent.f [then]" SB-APPEND LF+
+   s" require dead-locked.f" SB-APPEND LF+
+   s" : R2 ( -- ) nosuchtwo ;" SB-APPEND LF+
+   s" dead-io.f" FIXTURE!
+   [: s" " CHECK ;] LOCKED
+   s" E-MISSING-SOURCE" REJECTED-AS
+   0 s" dead-io-absent.f" 2 30 53 69 AT
+   [: s" --all-errors" INCLUDE-IO-RC CHECK-EXIT ;] LOCKED
+   GJA-LINE# @ 3 T=
+   0 s" code" s" E-UNDEFINED" FIELD=
+   0 s" nosuchone" 1 13 12 21 AT
+   1 s" code" s" E-UNREADABLE-SOURCE" FIELD=
+   1 s" dead-locked.f" 3 9 85 98 AT
+   2 s" code" s" E-MISSING-SOURCE" FIELD=
+   2 s" dead-io-absent.f" 2 30 53 69 AT
+   s" an unclosed locals group in a skipped arm, under --all-errors" T-LABEL
+   SB-RESET
+   s" : G1 ( -- ) nosuchone ;" SB-APPEND LF+
+   s" HB-TARGET-WASM? [if] : G3 ( -- ) {: a:n [then]" SB-APPEND LF+
+   s" : G2 ( -- ) nosuchtwo ;" SB-APPEND LF+
+   s" dead-locals.f" FIXTURE!
+   s" " CHECK
+   s" E-UNCLOSED-LOCALS" REJECTED-AS
+   0 s" {:" 2 34 57 59 AT
+   s" --all-errors" CHECK
+   GJA-LINE# @ 3 T=
+   0 s" code" s" E-UNDEFINED" FIELD=
+   0 s" nosuchone" 1 13 12 21 AT
+   1 s" code" s" E-UNDEFINED" FIELD=
+   1 s" nosuchtwo" 3 13 83 92 AT
+   2 s" code" s" E-UNCLOSED-LOCALS" FIELD=
+   2 s" {:" 2 34 57 59 AT
+   s" a live stop after a required file's skipped arm, under --all-errors" T-LABEL
+   SB-RESET
+   s" \ This comment runs the skipped arm past every byte of the file requiring this one." SB-APPEND LF+
+   s" HB-TARGET-WASM? [if] : DN1 ( -- ) ; [then]" SB-APPEND LF+
+   s" dead-nested.f" FIXTURE!
+   SB-RESET
+   s" require dead-nested.f" SB-APPEND LF+
+   s" : DN ( -- ) {: a:n" SB-APPEND LF+
+   s" dead-nested-live.f" FIXTURE!
+   s" --all-errors" CHECK
+   s" E-UNCLOSED-LOCALS" REJECTED-AS
+   0 s" {:" 2 13 34 36 AT ;
 
 \ A word ARENA derives that is taken in the other section is the duplicate,
 \ refused at the declared name.
