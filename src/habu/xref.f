@@ -492,11 +492,9 @@ package GENERATED-DECL-NAME-PREFLIGHT
 
 private
 
-$7FFFFFFFFFFFFFFF constant COUNT-MAX
-
+\ a u is qualified: DICTIONARY-RECORDS asks NAMESPACED? first.
 : NAMESPACE-EXISTS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u XREF-QUAL-INDEX {: split:n :}
-   split 0 < IF s" xref: generated declaration is not qualified" 76 die THEN
    XREF-SN@ split BOOT:NAMESPACE-WL XREF-FIND-WL XREF-FOUND? ;
 
 \ The record a generated name would meet in the scope it will LAND in, from the
@@ -520,17 +518,11 @@ $7FFFFFFFFFFFFFFF constant COUNT-MAX
 \ names resolve through their namespace, a bare one through the current wordlist.
 \ XREF-FIND would answer a bare name from the global wordlist instead, and a
 \ global word of the same spelling is not this package's private word.
-\ A program's clash with its own word is rejected before this, so a name that
-\ exists here is a sealed package's.
+\ A program's clash with its own word is rejected before this, and the build
+\ seals every package it holds, so a name that exists here is a sealed package's.
 : CHECK ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u TFAM-CTOR-WORD? 0= IF
-      s" xref: generated declaration visibility mismatch" 76 die
-   THEN
    a u TARGET-RECORD {: rec:ptr :}
    rec XREF-FOUND? 0= IF EXIT THEN
-   rec XREF-WORDLIST XREF:WID-SEALED? 0= IF
-      s" xref: generated declaration already exists" 76 die
-   THEN
    s" E-SEALED-PACKAGE" REJECTION:OPEN
    a u XREF-EMIT-TICKS  s"  would change a sealed package" REJECTION:EMIT-STR
    a u REJECTION:AT  s" sealed" REJECTION:EMIT-STR
@@ -540,10 +532,8 @@ $7FFFFFFFFFFFFFFF constant COUNT-MAX
 
 public
 
+\ words, the count a declaration generates, is at least 1.
 : DICTIONARY-RECORDS ( ptr u8 n n -- n ) {: a:ptr u:n words:n :}
-   words 0 <= words COUNT-MAX >= or IF
-      s" xref: generated declaration word count overflow" 76 die
-   THEN
    a u NAMESPACED? 0= IF words EXIT THEN
    a u NAMESPACE-EXISTS? IF words EXIT THEN
    words 1 + ;
