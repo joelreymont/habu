@@ -1894,9 +1894,7 @@ private
 : BGETPID ( -- )                   \ ( -- pid )
    NR-GETPID SYS,  SYS-PUSH ;
 
-\ Argbuf is at least 8 cells. XDS (x19) is callee-saved, so the
-\ data stack survives the call. Every foreign-call primitive is restricted
-\ to TRUSTED: definitions.
+\ XDS (x19) is callee-saved, so the data stack survives the call.
 
 : BFFI-LOAD-X0-X7 ( -- )
    0 15 0  LDR,   1 15 8  LDR,   2 15 16 LDR,   3 15 24 LDR,

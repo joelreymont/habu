@@ -40,13 +40,13 @@ FUNCTION: FFI-T-REQ-STRTOL strtol ( ptr u8 ptr u8 n -- n )
 
 : FFI-T-OUT-PARAM ( -- )
    s\" 42x\z" drop {: num:ptr :}
-   0 FFI-T-OUT FFI:OUT!
+   0 FFI-T-OUT !
    num FFI-T-OUT BYTE-VIEW 10 FFI-T-STRTOL 42 T=
-   FFI-T-OUT FFI:OUT@ num FFI:>CELL 2 + T= ;
+   FFI-T-OUT @ num FFI:>CELL 2 + T= ;
 
 : FFI-T-REQUIRED ( -- )
    s" a declaration open across a require calls C" T-LABEL
-   0 FFI-T-OUT FFI:OUT!
+   0 FFI-T-OUT !
    FFI-T-REQUIRED$ drop FFI-T-OUT BYTE-VIEW 10 FFI-T-REQ-STRTOL 57 T= ;
 
 \ The table these declarations grow lies in the storage the rollback cuts.

@@ -97,35 +97,35 @@ CAST: CELL>PTR ( n -- ptr u8 )
 : FFI-STACK-AT ( n -- ptr u8 )
    {: off:n :}
    FFI-STACK-BYTES off + ;
-: FFI-ARG! ( n n -- ) {: v:n idx:n :}
+: VALUE! ( n n -- ) {: v:n idx:n :}
    v idx FFI-SLOT ! ;
-: FFI-PTR-ARG! ( ptr a n -- ) {: p:ptr idx:n :}
-   p PTR>CELL idx FFI-ARG! ;
-: FFI-FARG! ( r n -- ) {: v:r idx:n :}
+: POINTER! ( ptr a n -- ) {: p:ptr idx:n :}
+   p PTR>CELL idx VALUE! ;
+: FLOAT! ( r n -- ) {: v:r idx:n :}
    v idx FFI-FSLOT ! ;
-: FFI-F32ARG! ( n n -- ) {: bits:n idx:n :}
-   bits idx FFI-F32SLOT ! ;
-: FFI-STACK! ( n n -- )
+: FLOAT32! ( r n -- ) {: value:r idx:n :}
+   value F32:NARROW idx FFI-F32SLOT ! ;
+: STACK-VALUE! ( n n -- )
    {: v:n off:n :}
    v off FFI-STACK-SLOT ! ;
-: FFI-FSTACK! ( r n -- )
+: STACK-FLOAT! ( r n -- )
    {: v:r off:n :}
    v off FFI-STACK-FSLOT ! ;
-: FFI-STACK-U8! ( n n -- )
+: STACK-U8! ( n n -- )
    {: v:n off:n :}
    v $FF and off FFI-STACK-AT c! ;
-: FFI-STACK-U16! ( n n -- )
+: STACK-U16! ( n n -- )
    {: v:n off:n :}
    v off FFI-STACK-AT LE:U16! ;
-: FFI-STACK-U32! ( n n -- )
+: STACK-U32! ( n n -- )
    {: v:n off:n :}
    v off FFI-STACK-AT LE:U32! ;
-
-\ ---- out-params -----------------------------------------------------------
-: FFI-OUT@ ( ptr n -- n )
-   @ ;
-: FFI-OUT! ( n ptr n -- )
-   ! ;
+: STACK-FLOAT32! ( r n -- )
+   {: value:r off:n :}
+   value F32:NARROW off STACK-U32! ;
+: STACK-POINTER! ( ptr a n -- )
+   {: value:ptr off:n :}
+   value PTR>CELL off STACK-VALUE! ;
 
 : DLOPEN-RAW ( ptr u8 n -- n ) {: path:ptr flags:n :}
    path PTR>CELL FFI-DLBUF !
@@ -499,14 +499,6 @@ private
    u 0 <= if E-FFI-SYNTAX throw then
    u LIB-PATH-CAP 1 - > if E-FFI-SYNTAX throw then ;
 
-: BASE-CHECK ( n -- ) {: u:n :}
-   u 0 <= if E-FFI-SYNTAX throw then
-   u LIB-BASE-CAP > if E-FFI-SYNTAX throw then ;
-
-: VERSION-CHECK ( n -- ) {: version:n :}
-   version 0 < if E-FFI-SYNTAX throw then
-   version LIB-VERSION-MAX > if E-FFI-SYNTAX throw then ;
-
 public
 
 : NOW ( -- n ) FFI-RTLD-NOW ;
@@ -518,31 +510,6 @@ public
 : GLOBAL ( -- n ) HB-TARGET-MACOS? if $8 else $100 then ;
 
 : >CELL ( ptr a -- n ) PTR>CELL ;
-
-private
-: VALUE! ( n n -- ) FFI-ARG! ;
-: POINTER! ( ptr a n -- ) FFI-PTR-ARG! ;
-
-: FLOAT! ( r n -- ) FFI-FARG! ;
-: FLOAT32! ( r n -- ) {: value:r idx:n :}
-   value F32:NARROW idx FFI-F32ARG! ;
-
-\ The stack stores take a byte offset into the stack buffer.
-: STACK-VALUE! ( n n -- ) FFI-STACK! ;
-: STACK-U8! ( n n -- ) FFI-STACK-U8! ;
-: STACK-U16! ( n n -- ) FFI-STACK-U16! ;
-: STACK-U32! ( n n -- ) FFI-STACK-U32! ;
-: STACK-FLOAT! ( r n -- ) FFI-FSTACK! ;
-: STACK-FLOAT32! ( r n -- )
-   {: value:r off:n :}
-   value F32:NARROW off FFI-STACK-U32! ;
-: STACK-POINTER! ( ptr a n -- )
-   {: value:ptr off:n :}
-   value PTR>CELL off FFI-STACK! ;
-
-public
-: OUT@ ( ptr n -- n ) FFI-OUT@ ;
-: OUT! ( n ptr n -- ) FFI-OUT! ;
 
 \ FFI is the only library code that writes a terminator.
 private
@@ -596,17 +563,15 @@ public
 \ Habu xt.
 : CALLBACK-ENTRY ( n -- n ) callback-entry ;
 
-\ ---- the declared-function surface ----------------------------------------
+private
 
-: LIBRARY-PATH-CAP ( -- n ) LIB-PATH-CAP ;
+\ ---- the declared-function surface ----------------------------------------
 
 \ The cells a declaration's stack arguments and private record copies share.
 : STACK-CELLS ( -- n ) FFI-MAX-ARGS ;
 
 \ Render into the caller's CODEGEN buffer; the caller owns the returned span.
 : LIBRARY-NAME$ ( ptr u8 n n ptr n -- ptr u8 n ) {: base:ptr u:n version:n buf:ptr :}
-   u BASE-CHECK
-   version VERSION-CHECK
    buf CODEGEN:RESET
    s" lib" buf CODEGEN:APPEND-STRING
    base u buf CODEGEN:APPEND-STRING
@@ -619,9 +584,6 @@ public
       version buf CODEGEN:APPEND-DECIMAL
    else E-FFI-LIBRARY throw then then
    buf CODEGEN:CONTENTS ;
-
-
-private
 
 : PROCESS ( -- n ) 0 ;
 
@@ -895,7 +857,7 @@ FFI-MAX-ARGS constant ARG-MAX
 3 constant C-ABI-R
 4 constant C-STRUCT
 
-LIBRARY-PATH-CAP 1 - CODEGEN:BUFFER LIB-NAME
+LIB-PATH-CAP 1 - CODEGEN:BUFFER LIB-NAME
 
 \ One declaration's working state: a declaration word writes each cell before
 \ it reads it. Outside the open state every cell rests at zero, and the token
