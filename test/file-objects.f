@@ -46,7 +46,9 @@ package FILE-OBJECTS-TEST
 30 constant OPENED-LAST                  \ and the opened sequence's
 31 constant CTOR-SUM                     \ ctor-sum.f's
 32 constant EXPORT-MAIN                  \ export-main.f's
-33 constant TAILS                        \ TAIL$'s tails
+33 constant PT-DEF                       \ pt-def.f's
+34 constant PT-USE                       \ and pt-use.f's
+35 constant TAILS                        \ TAIL$'s tails
 65 constant FILES-C                     \ build C's: count.f's, shape.f's, each sequence's, those that
                                          \ never link included, the twins', the order sequence's four,
                                          \ the header, same and held sequences' three each, e.f's, the
@@ -226,6 +228,8 @@ variable CLASS-N                        \ the class CLASS+ read
    i OPENED-LAST = if s" /opened/main.f+3.hfo" exit then
    i CTOR-SUM = if s" /test/fixtures/file-objects/ctor-sum.f.hfo" exit then
    i EXPORT-MAIN = if s" /test/fixtures/file-objects/export-main.f.hfo" exit then
+   i PT-DEF = if s" /test/fixtures/file-objects/pt-def.f.hfo" exit then
+   i PT-USE = if s" /test/fixtures/file-objects/pt-use.f.hfo" exit then
    s" /test/fixtures/file-objects/seal-second.f.hfo" ;
 
 : ROOT! ( ptr u8 n -- ) {: out:ptr outu:n :}
@@ -823,6 +827,28 @@ variable CLASS-N                        \ the class CLASS+ read
    s" the build rewrites only app-end.f's object" LABEL  n 1 T=
    s" the object it rewrites is app-end.f's" LABEL  FOUND$ s" /app-end.f.hfo" ENDS-WITH? TTRUE
    LOG-RUN ;
+
+\ Guards a kept parses-through: row: T2 compiles pt-use.f's BLK use against pt-def.f's kept object
+\ into T's bytes; without the row pt-use.f's object differs.
+: PT-CASE ( CMD:command -- CMD:command )
+   s" T" WHICH!  s" test/fixtures/file-objects/pt-main.f" FIXTURE-BUILD 0= if exit then
+   F$ s" T" PT-DEF FOUND? 0= if exit then
+   FOUND$ BYTES-A CAP FS:READ-ALL {: u:n :}
+   s" pt-def.f's object holds BLK's parses-through row" LABEL
+   BYTES-A u s" parses-through 0 ( ;BLK )" CONTAINS? TTRUE
+   s" pt-def.f's object holds no parses row" LABEL  BYTES-A u s" parses " CONTAINS? TFALSE
+   PT-DEF KEEP
+   F$ s" T" PT-USE FOUND? 0= if exit then
+   FOUND$ BYTES-B CAP FS:READ-ALL {: bu:n :}
+   FOUND$ FS:REMOVE-FILE  F$ MARK
+   s" T2" WHICH!  s" test/fixtures/file-objects/pt-main.f" FIXTURE-BUILD 0= if exit then
+   s" the build links pt-def.f" PT-DEF LINKED
+   F$ REWRITTEN {: n:n :}
+   s" the build rewrites only pt-use.f's object" LABEL  n 1 T=
+   s" the object it rewrites is pt-use.f's" LABEL  FOUND$ PT-USE TAIL$ ENDS-WITH? TTRUE
+   FOUND$ BYTES-A CAP FS:READ-ALL {: au:n :}
+   s" it has T's bytes from PIECES on" LABEL  au bu FROM-PIECES? TTRUE
+   s\" PT\n" s" the program prints PT" PRINTS-RUN ;
 
 \ Guards a linked file's top-level cache: P2 links path-main.f after M2, and its program reports its own path.
 : PATH-CASE ( CMD:command -- CMD:command )
@@ -1916,7 +1942,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : CHECKS ( -- )
    [: COLD ;] CMD:WITH-COMMAND
    CHECK-COLD
-   [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE PATH-CASE STALE-CASE HIDDEN-CASE SEALED-CASE
+   [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE PT-CASE PATH-CASE STALE-CASE HIDDEN-CASE SEALED-CASE
       STORED-CASE RETIRED-CASE ORDER-CASE PART-LINK-CASE PIECE-CASE SEAL-CASE SQUAT-CASE CAUGHT-CASE
       CTOR-CASE EXPORT-CASE
       NEST-CASE KEPT-CASE SAME-CASE RETIRE-CASE CLAUSE-CASE READ-CASE LIST-CASE LINK-CASE TASK-CASE
