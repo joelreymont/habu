@@ -107,6 +107,8 @@ variable FILE-SIZE
    at u s" context" IS? if
       s" ui/update-model-context" s\" {\"content\":[{\"type\":\"text\",\"text\":\"seen\"}]}" MAKE
       3 RPC exit then
+   at u s" resume" IS? if
+      s" view/resume" s\" {\"project\":\"p1\"}" MAKE  4 RPC exit then
    at u s" after" IS? if 11 250 7 0 RECORD exit then
    at u s" negative after" IS? if 11 -1 7 0 RECORD exit then
    at u s" short" IS? if 10 SPAN BYTES>N 7 1 RECORD exit then
