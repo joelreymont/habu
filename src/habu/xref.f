@@ -497,38 +497,24 @@ private
    a u XREF-QUAL-INDEX {: split:n :}
    XREF-SN@ split BOOT:NAMESPACE-WL XREF-FIND-WL XREF-FOUND? ;
 
-\ The record a generated name would meet in the scope it will LAND in, from the
-\ hash index the definer's own duplicate wall asks: a qualified name in the
-\ public wordlist its namespace row carries, a bare one in the current wordlist. XREF-FIND-TARGET-INDEX answers the same question by
-\ walking every record, which a declaration asked once per generated word.
-: TARGET-RECORD ( ptr u8 n -- ptr n ) {: a:ptr u:n :}
-   a u XREF-QUAL-INDEX {: q:n :}
-   q -2 = IF XREF-NULL EXIT THEN
-   q 0 < IF a u get-current CHECKER-RESOLVE:WL-PROBE EXIT THEN
-   a q BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: ns:ptr :}
-   ns XREF-FOUND? 0= IF XREF-NULL EXIT THEN
-   a q 1+ ZPTR+  u q - 1-  ns XREF-PKG-PUBLIC CHECKER-RESOLVE:WL-PROBE ;
-
 \ A generated declaration is qualified exactly when it reserves a constructor
 \ namespace; a private family's bare words (TF-CTOR-PRIV$) allocate no wordlist.
 : NAMESPACED? ( ptr u8 n -- bool )
    XREF-QUAL-INDEX 0 >= ;
 
-\ The duplicate test is asked in the scope the definition will LAND in: qualified
-\ names resolve through their namespace, a bare one through the current wordlist.
-\ XREF-FIND would answer a bare name from the global wordlist instead, and a
-\ global word of the same spelling is not this package's private word.
-\ A program's clash with its own word is rejected before this, and the build
-\ seals every package it holds, so a name that exists here is a sealed package's.
+\ A generated name in a sealed package's namespace (its row SEALED?) is the
+\ declaration's error, whether or not the package holds it. A bare name lands
+\ in the declaring package's private wordlist, and a sealed package cannot be
+\ opened, so no bare name reaches one.
 : CHECK ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u TARGET-RECORD {: rec:ptr :}
-   rec XREF-FOUND? 0= IF EXIT THEN
-   s" E-SEALED-PACKAGE" REJECTION:OPEN
-   a u XREF-EMIT-TICKS  s"  would change a sealed package" REJECTION:EMIT-STR
-   a u REJECTION:AT  s" sealed" REJECTION:EMIT-STR
-   REJECTION:HELP
-   s" rename the family: a sealed package takes no new words" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   a u XREF-QUAL-INDEX {: q:n :}
+   q 0 < IF EXIT THEN
+   a q BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: ns:ptr :}
+   ns XREF-FOUND? 0= IF EXIT THEN
+   ns XREF:SEALED? 0= IF EXIT THEN
+   a u s" would change a sealed package"
+      s" declare it in a package of your own: a sealed package takes no new words"
+      TYPE-DECL:E-TDECL-NAME TYPE-DECL:TDECL-THROW ;
 
 public
 
