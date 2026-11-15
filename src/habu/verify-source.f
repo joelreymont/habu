@@ -4218,6 +4218,20 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
 \ hands the count reader `char`, which names the count's word. A load a
 \ definition makes waits for the first statement after which the file has
 \ closed every scope it opened, and for the file's end at the latest.
+: SCAN-TOP ( ptr u8 n -- )
+   CSR-TOP
+   2dup FILE-SCOPE-STEP
+   2dup STR-LAST-KIND @ STR-LAST-A @ STR-LAST-U @ TOP-RETIRED
+   2dup KNOWN-IF? IF 2drop ELSE
+   2dup TOP-PARSER? IF TOP-OPERAND ELSE
+   2dup COLON? IF 2drop VERIFY-DEFINITION TOP-CLOSE ELSE
+   2dup COMPOSE-TOP? IF 2drop TOP-CLOSE ELSE
+   2dup TOP-DEFINER? IF 2drop ELSE TOP-TOKEN THEN THEN THEN THEN THEN
+   TOP-CUR-A @ TOP-CUR-U @ FFI-LITERAL
+   FILE-NEUTRAL? TICK-REMAINDER @ 0= and IF PEND-RELEASE THEN
+   TOP-CUR-A @ TOP-CUR-U @ FLAG-STEP ;     \ after any file this token loaded
+
+\ A record no source places is placed at the top-level token.
 : VERIFY-SOURCE ( -- )
    SCAN-RESET
    NULL-PTR TOP-PREV-A !  0 TOP-PREV-U !  NULL-PTR TOP-REFUSED !
@@ -4229,17 +4243,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
       NEXT-SCAN dup 0 > TICK-REMAINDER @ 0= and WHILE
       TOP-DUE
       2dup TOP-CUR-U ! TOP-CUR-A !
-      CSR-TOP
-      2dup FILE-SCOPE-STEP
-      2dup STR-LAST-KIND @ STR-LAST-A @ STR-LAST-U @ TOP-RETIRED
-      2dup KNOWN-IF? IF 2drop ELSE
-      2dup TOP-PARSER? IF TOP-OPERAND ELSE
-      2dup COLON? IF 2drop VERIFY-DEFINITION TOP-CLOSE ELSE
-      2dup COMPOSE-TOP? IF 2drop TOP-CLOSE ELSE
-      2dup TOP-DEFINER? IF 2drop ELSE TOP-TOKEN THEN THEN THEN THEN THEN
-      TOP-CUR-A @ TOP-CUR-U @ FFI-LITERAL
-      FILE-NEUTRAL? TICK-REMAINDER @ 0= and IF PEND-RELEASE THEN
-      TOP-CUR-A @ TOP-CUR-U @ FLAG-STEP      \ after any file this token loaded
+      [: TOP-CUR-A @ TOP-CUR-U @ SCAN-TOP ;] REJECTION:READING
       TOP-CUR-A @ TOP-PREV-A !  TOP-CUR-U @ TOP-PREV-U !
       STR-LAST-A @ TOP-PREV-STR-A !  STR-LAST-U @ TOP-PREV-STR-U !
       STR-LAST-KIND @ TOP-PREV-STR-KIND !
