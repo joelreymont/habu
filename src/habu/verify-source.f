@@ -202,9 +202,9 @@ public
 7189 constant E-MALFORMED-REGISTRY-ROW
 7194 constant E-BAD-ESCAPE
 
-\ A file a quiet composition loads that the system does not open or read stops
-\ it with this, TOKEN-BYTE@ at the loader that loads the file and FAULT-TARGET$
-\ naming the file as it was resolved.
+\ The verifier throws none of this: a file a quiet composition loads that the
+\ system does not read to its end is recorded where the read fails, which then
+\ stops with INCLUDE-IO-RC. check.f's packets still read the code.
 7201 constant E-SOURCE-READ
 
 \ The scan throws none of these: it records each rejection and stops with
@@ -299,8 +299,8 @@ variable FAULT-U
    u FAULT-U ! ;
 
 \ Whether a stop with code n is the rejection of a missing source
-\ (COMPOSE-MISSING) or of one that will not open (COMPOSE-UNREADABLE), whose
-\ file FAULT-TARGET$ names.
+\ (COMPOSE-MISSING) or of one that will not open or read (COMPOSE-UNREADABLE,
+\ COMPOSE-CHANGED, REFUSE-SOURCE-READ), whose file FAULT-TARGET$ names.
 : LOADER-REJECTED? ( n -- bool ) {: rc:n :}
    rc CHECKER-REJECT-RC =  rc INCLUDE-IO-RC =  or  FAULT-U @ 0 >  and ;
 
@@ -1160,10 +1160,10 @@ variable SEALS-N
 : OPERAND ( -- ptr u8 n )
    NEXT-RAW dup 0= IF NAME-STOP THEN ;
 
-\ A definer takes its name by the same rule, so `DEFLINEAR (` and `create s"`
-\ name a type `(` and a word `s"`, and a word's definer rejects a `(` or `\`
-\ name. A comment or string rule there would hand the definer a later token
-\ instead. With no token left TOKEN-BYTE stays at the definer.
+\ A definer takes its name as the next raw token, so `create s"` names a word
+\ `s"`; every definer rejects a `(` or `\` name (REJECTION:NOT-A-NAME). A
+\ comment or string rule there would hand the definer a later token instead.
+\ With no token left TOKEN-BYTE stays at the definer.
 : NAME-TOKEN ( -- ptr u8 n )
    NEXT-RAW ;
 
@@ -2315,7 +2315,7 @@ DUPLICATE-INIT
    dup 0= IF NAME-STOP THEN
    TOKEN-BYTE @
    {: name:ptr nameu:n at:n :}
-   STORAGE-KEYWORD name nameu INTERPRETER:NOT-A-NAME
+   STORAGE-KEYWORD name nameu REJECTION:NOT-A-NAME
    name nameu NAME-DECLARED
    name nameu at REFUSE-DUPLICATE IF EXIT THEN
    name nameu at nameu ARM
@@ -2330,7 +2330,7 @@ DUPLICATE-INIT
    {: dsym:n :}
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF NAME-STOP THEN
-   STORAGE-KEYWORD name nameu INTERPRETER:NOT-A-NAME
+   STORAGE-KEYWORD name nameu REJECTION:NOT-A-NAME
    name nameu NAME-DECLARED
    TOKEN-BYTE @ {: at:n :}
    name nameu at REFUSE-DUPLICATE IF 0 0= EXIT THEN
@@ -2356,7 +2356,7 @@ DUPLICATE-INIT
 : TRUST-DEFER ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF NAME-STOP THEN
-   TOP-CUR-A @ TOP-CUR-U @ name nameu INTERPRETER:NOT-A-NAME
+   TOP-CUR-A @ TOP-CUR-U @ name nameu REJECTION:NOT-A-NAME
    name nameu NAME-DECLARED
    name nameu TOKEN-BYTE @ TRUST-DEFER-SIGNATURE ;
 
@@ -2410,7 +2410,7 @@ variable TRUSTED-DOES
 : TRUSTED-DEFINITION ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF NAME-STOP THEN
-   s" trusted:" name nameu INTERPRETER:NOT-A-NAME
+   s" trusted:" name nameu REJECTION:NOT-A-NAME
    name nameu NAME-DECLARED
    TOKEN-BYTE @ {: at:n :}
    name nameu at REFUSE-DUPLICATE IF
@@ -2433,7 +2433,7 @@ variable TRUSTED-DOES
 : CAST-DECLARATION ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF NAME-STOP THEN
-   TOP-CUR-A @ TOP-CUR-U @ name nameu INTERPRETER:NOT-A-NAME
+   TOP-CUR-A @ TOP-CUR-U @ name nameu REJECTION:NOT-A-NAME
    name nameu NAME-DECLARED
    TOKEN-BYTE @ {: at:n :}
    name nameu at REFUSE-DUPLICATE IF name nameu REQUIRE-SIGNATURE 2drop EXIT THEN
@@ -2448,7 +2448,7 @@ variable TRUSTED-DOES
 : LINEAR-DECLARATION ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF NAME-STOP THEN
-   s" linear:" name nameu INTERPRETER:NOT-A-NAME
+   s" linear:" name nameu REJECTION:NOT-A-NAME
    name nameu NAME-DECLARED
    TOKEN-BYTE @ {: at:n :}
    name nameu REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
@@ -2532,6 +2532,7 @@ DYNAMIC-BUFFER NOM-TAIL u8
 : RECORD-DEFTYPE ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF NAME-STOP THEN
+   TOP-CUR-A @ TOP-CUR-U @ name nameu REJECTION:NOT-A-NAME
    TOKEN-BYTE @ {: at:n :}
    name nameu MANGLE {: tail:ptr tailu:n :}
    REJECTION:TALLY @ {: refused:n :}
@@ -2558,6 +2559,7 @@ DYNAMIC-BUFFER NOM-TAIL u8
 : RECORD-DEFLINEAR ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF NAME-STOP THEN
+   TOP-CUR-A @ TOP-CUR-U @ name nameu REJECTION:NOT-A-NAME
    name nameu TYPE-RESERVED? IF
       name nameu CHECKER-LINEAR-TAKEN  DECLARATION-END EXIT
    THEN
@@ -2572,7 +2574,9 @@ DYNAMIC-BUFFER NOM-TAIL u8
 \ Missing names and malformed headers are reported by CHECKER-DEFFAMILY through
 \ the declaration packet (E-BAD-DECLARATION), as on the native path.
 : RECORD-NEWTYPE ( -- )
-   NAME-TOKEN 2dup CHECKER-DEFFAMILY ;
+   NAME-TOKEN {: name:ptr nameu:n :}
+   TOP-CUR-A @ TOP-CUR-U @ name nameu REJECTION:NOT-A-NAME
+   name nameu name nameu CHECKER-DEFFAMILY ;
 
 \ A SUMTYPE defines its constructors when it loads, so after the registration
 \ the scan replays their checked effects: a later definition that calls one
@@ -2637,7 +2641,9 @@ variable SUM-VAR-NEXT
    AGAIN ;
 
 : RECORD-SUMTYPE ( -- )
-   NAME-TOKEN [: RECORD-SUMTYPE-BODY ;] [: SUM-VAR-AT-RELEASE ;] finally ;
+   NAME-TOKEN {: name:ptr nameu:n :}
+   TOP-CUR-A @ TOP-CUR-U @ name nameu REJECTION:NOT-A-NAME
+   name nameu [: RECORD-SUMTYPE-BODY ;] [: SUM-VAR-AT-RELEASE ;] finally ;
 
 : ENUM-END? ( ptr u8 n -- bool )
    s" ;ENUM" STR=CI ;
@@ -2679,6 +2685,7 @@ variable SUM-VAR-NEXT
 : RECORD-PRODUCT ( -- )
    NAME-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF NAME-STOP THEN
+   TOP-CUR-A @ TOP-CUR-U @ name nameu REJECTION:NOT-A-NAME
    name nameu at nameu SEALED-NAME
    BODY-RESET
    BEGIN
@@ -2944,6 +2951,7 @@ variable STG-TYPE-U
 : RECORD-VALUE-RECORD ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF NAME-STOP THEN
+   TOP-CUR-A @ TOP-CUR-U @ name nameu REJECTION:NOT-A-NAME
    DECL-TOKEN  over {: f:ptr :}
    BEGIN
       dup 0= IF
@@ -3325,15 +3333,14 @@ variable LOAD-U
 
 \ Run Q, the load a loader word wu bytes long at byte w makes, under the word's
 \ claim: a fault no loader below claimed stands at the word when the file is
-\ missing or will not open (LOADER-REJECTED?) or is not read to its end
-\ (E-SOURCE-READ). Any other fault, the resolver's rejection of its path among
-\ them, keeps the place where it was made.
+\ missing, will not open or is not read to its end (LOADER-REJECTED?). Any
+\ other fault, the resolver's rejection of its path among them, keeps the place
+\ where it was made.
 : CLAIMED-LOAD ( [ -- ] n n -- )
    {: q w:n wu:n :}
    q catch  0 LOAD-END !
    {: code:n :}
-   code E-SOURCE-READ =  code LOADER-REJECTED? or
-   FAULT-LEN @ 0=  and IF
+   code LOADER-REJECTED?  FAULT-LEN @ 0=  and IF
       w TOKEN-BYTE !  wu FAULT-LEN !
    THEN
    code 0<> IF code throw THEN ;
@@ -4041,7 +4048,7 @@ variable PARSE-IMM-XT s" parse-imm" PARSE-IMM-XT LIBRARY-XT!
    BODY-RESET
    NAME-TOKEN TOKEN-U !  TOKEN-A !
    TOKEN-U @ 0= if NAME-STOP then
-   TOP-CUR-A @ TOP-CUR-U @ TOKEN-A @ TOKEN-U @ INTERPRETER:NOT-A-NAME
+   TOP-CUR-A @ TOP-CUR-U @ TOKEN-A @ TOKEN-U @ REJECTION:NOT-A-NAME
    DEF-NAME!
    DEF-NAME-A @ DEF-NAME-U @ NAME-DECLARED
    DEF-NAME-A @ DEF-NAME-U @ DEF-NAME-BYTE @ REFUSE-DUPLICATE IF SKIP-DEFINITION EXIT THEN
@@ -4278,21 +4285,24 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
       oldpkg:n olduse:n oldbase:n oldvisit:n oldsubj:n
       oldshadowed:n oldretired:n :}
    src srcu SOURCE!
-   SOURCE-ARM
    path COMPOSE-CUR-PATH-A !  pathu COMPOSE-CUR-PATH-U !
-   diag diagu REJECTION:FILE!
    path pathu VISIT-OPEN
    VISIT-CUR @ VISIT-FIRST @ = CSR-SUBJ !
+   \ ON-FILE runs while the requesting file stays armed, so a reader policy's
+   \ rejection of the acquired bytes stands at the loader that loads them.
    [: FILE$ SOURCE@ SOURCE-U @ ON-FILE ;] catch
-   dup 0= IF drop [: VERIFY-SOURCE ;] catch true ELSE false THEN
+   dup 0= IF
+      drop  SOURCE-ARM  diag diagu REJECTION:FILE!
+      [: VERIFY-SOURCE ;] catch true
+   ELSE false THEN
    {: rc:n scanned:bool :}
    DISARM
    oldvisit VISIT-CUR !
    oldsubj CSR-SUBJ !
-   \ A reader policy may refuse the acquired bytes in ON-FILE. Its loader
+   \ A reader policy may reject the acquired bytes in ON-FILE. Its loader
    \ owns that read fault; this unscanned frame has no faulting source token.
    rc 0<> COMPOSE-STOP-U @ 0= and
-   scanned rc E-SOURCE-READ <> or and IF
+   scanned rc LOADER-REJECTED? 0= or and IF
       diag COMPOSE-STOP-PATH diagu BYTE-COPY
       diagu COMPOSE-STOP-U !
       path pathu COMPOSE-SUBJ? COMPOSE-STOP-SUBJ !
@@ -4372,9 +4382,9 @@ TYPED-VARIABLE THEN-ACTION [ -- ]
 
 \ A quiet composition reads each file a loader loads itself, once
 \ COMPOSE-MISSING has rejected a missing one: a file the system does not open is
-\ the loader's rejection at LOAD-PLACE, and one it does not read to its end
-\ stops it with E-SOURCE-READ, FAULT-TARGET$ naming the file as resolved either
-\ way. Any other refusal, memory's among them, stays itself. The
+\ the loader's rejection at LOAD-PLACE, as is one it does not read to its end,
+\ FAULT-TARGET$ naming the file as resolved either way. Any other refusal,
+\ memory's among them, stays itself. The
 \ loader refuses a resolved path past PATH-CAP before reading, so the path fits
 \ both buffers.
 create READ-PATHZ PATH-CAP 1+ allot
@@ -4395,12 +4405,20 @@ variable READ-META-VALID
    path pathu FAULT-TARGET!
    LOAD-PLACE-A @ LOAD-PLACE-U @ path pathu e SOURCE-ROOT:UNREADABLE-SOURCE ;
 
+\ PATH, resolved, changed while it was read.
+: COMPOSE-CHANGED ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu FAULT-TARGET!
+   LOAD-PLACE-A @ LOAD-PLACE-U @ path pathu SOURCE-ROOT:CHANGED-SOURCE
+   INCLUDE-IO-RC REJECTION:STOP ;
+
+\ Reads the open file READ-PATHZ names to its end; a read the system fails
+\ rejects the file with its errno.
 : READ-FILL ( -- )
    0 READ-U !
    BEGIN
       READ-U @ READ-STEP + READ-BUF-RESERVE
       READ-FD @  READ-U @ READ-BUF  READ-STEP  read
-      dup 0 < IF E-SOURCE-READ throw THEN
+      dup 0 < IF READ-PATHZ READ-PATH-U @ FS:ERRNO COMPOSE-UNREADABLE THEN
       dup 0 >
    WHILE
       READ-U @ + READ-U !
@@ -4420,16 +4438,12 @@ variable READ-META-VALID
    fd READ-FD !
    [: READ-FILL ;] catch {: rc:n :}
    fd close
-   rc E-SOURCE-READ = IF path pathu FAULT-TARGET! THEN
    rc 0<> IF rc throw THEN
    valid IF
       path pathu FS:TRY-FILE-META
       {: after:n amsec:n amns:n acsec:n acns:n still:bool :}
       size after = msec amsec = and mns amns = and
-      csec acsec = and cns acns = and still and 0= IF
-         path pathu FAULT-TARGET!
-         E-SOURCE-READ throw
-      THEN
+      csec acsec = and cns acns = and still and 0= IF path pathu COMPOSE-CHANGED THEN
       size READ-SIZE ! msec READ-MSEC ! mns READ-MNS !
       csec READ-CSEC ! cns READ-CNS !
       true READ-META-VALID !
@@ -4438,11 +4452,12 @@ variable READ-META-VALID
 
 public
 
-\ An ON-FILE consumer that requires a regular-file stamp refuses its source
-\ through the same loader fault boundary as an acquisition failure.
-: REFUSE-SOURCE-READ ( ptr u8 n -- )
-   FAULT-TARGET!
-   E-SOURCE-READ throw ;
+\ An ON-FILE consumer that requires a regular-file stamp rejects PATH, a stream,
+\ with the loader's record of a source it cannot read, at the same loader.
+: REFUSE-SOURCE-READ ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu FAULT-TARGET!
+   LOAD-PLACE-A @ LOAD-PLACE-U @ path pathu SOURCE-ROOT:UNSTAMPED-SOURCE
+   INCLUDE-IO-RC REJECTION:STOP ;
 
 \ The stamp of the disk bytes the quiet reader just handed to SOURCE-INPUT.
 \ ON-FILE runs before another acquisition can replace it. Readable streams
@@ -4636,8 +4651,7 @@ public
    0 COMPOSE-STOP-BYTES COMPOSE-STOP-SRC-U @ ;
 
 : LOADER-FAULT? ( n -- bool ) {: rc:n :}
-   rc E-SOURCE-READ =
-   rc E-DISC-FIRST <= rc E-DISC-LAST >= and or
+   rc E-DISC-FIRST <= rc E-DISC-LAST >= and
    rc LOADER-REJECTED? or ;
 
 \ The length of the loader token the last quiet composition stopped at, 0 when

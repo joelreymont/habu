@@ -1474,19 +1474,6 @@ public
    s" end the definition of `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
    s" ` with `;` before the source ends" REJECTION:EMIT-STR ;
 
-\ The checker reads a `(` as a signature and a `\` as a comment wherever either
-\ stands, so the source token t tu names nothing when definer kw ku takes it as
-\ a name.
-: NOT-A-NAME ( ptr u8 n ptr u8 n -- ) {: kw:ptr ku:n t:ptr tu:n :}
-   t tu s" (" FOLDED= if
-      kw ku t tu s" a signature, not a name" REJECTION:MISSING-NAME
-      CHECKER-REJECT-RC REJECTION:STOP
-   then
-   t tu s" \" FOLDED= if
-      kw ku t tu s" a comment, not a name" REJECTION:MISSING-NAME
-      CHECKER-REJECT-RC REJECTION:STOP
-   then ;
-
 \ The source ends inside the locals group the source token t tu, its `{:`,
 \ opens. It is written through its help, and the caller stops it.
 : GROUP-REJECT ( ptr u8 n -- ) {: t:ptr tu:n :}
@@ -1563,10 +1550,10 @@ private
 \ The rejections name `:` and `kernel:` as spelled, `trusted:` as the reader
 \ keyword it is.
 : DEF-NAME ( bool -- ) {: trusted:bool :}
-   trusted if s" trusted:" OPERAND  s" trusted:" TOKEN$ NOT-A-NAME exit then
+   trusted if s" trusted:" OPERAND  s" trusted:" TOKEN$ REJECTION:NOT-A-NAME exit then
    TOKEN$ {: kw:ptr ku:n :}
    TOKEN 0= if kw ku CHECKER-REJECT-RC NAME-MISSING then
-   kw ku TOKEN$ NOT-A-NAME ;
+   kw ku TOKEN$ REJECTION:NOT-A-NAME ;
 
 \ A head with no row makes a top-level package with a public wordlist
 \ and no private one.
@@ -2432,7 +2419,7 @@ variable LIT-AT
 \ ceiling is refused first, naming the keyword, as `:`'s does.
 : DEF-ADDR-ROW ( ptr u8 n bool -- ) {: kw:ptr ku:n cell?:bool :}
    DEF-CODE-ROOM
-   kw ku OPERAND  kw ku TOKEN$ NOT-A-NAME
+   kw ku OPERAND  kw ku TOKEN$ REJECTION:NOT-A-NAME
    DKIND:ADDR DNAME-ALLOC or cell? if DNAME-CELL or then DEF-START
    DEF-ADDR-TAIL ;
 
@@ -2454,7 +2441,7 @@ variable LIT-AT
 variable DEF-VALUE
 
 : DEF-CONSTANT ( -- )
-   s" constant" OPERAND  s" constant" TOKEN$ NOT-A-NAME
+   s" constant" OPERAND  s" constant" TOKEN$ REJECTION:NOT-A-NAME
    DKIND:VAL DEF-START
    depth 0= if UNDERFLOW then
    [: DEF-VALUE ! ;] CELL-TAKE RUN-LITERAL
@@ -2507,7 +2494,7 @@ variable DEF-VALUE
 : DEF-CAST-ROW ( -- )
    DEF-ROOM
    TOKEN$ {: kw:ptr ku:n :}
-   DEF-CAST-NAME  kw ku TOKEN$ NOT-A-NAME
+   DEF-CAST-NAME  kw ku TOKEN$ REJECTION:NOT-A-NAME
    DEF-CAST-HEAD
    DEF-REGISTER-CAST
    0 0 COMP-BODY:cast DEF-FIXED  DEF-CLOSE
@@ -2615,7 +2602,7 @@ variable DEF-VALUE
 \ with no pending record the capture maps to no input.
 : DEF-LINEAR ( -- )
    DEF-ROOM
-   s" linear:" OPERAND  s" linear:" TOKEN$ NOT-A-NAME
+   s" linear:" OPERAND  s" linear:" TOKEN$ REJECTION:NOT-A-NAME
    DEF-SEED
    false DEF-SIG-SPAN {: s:ptr end:ptr :}
    s end DEF-SIG-PASS
@@ -2732,7 +2719,7 @@ TRUSTED: DEF-XT! ( n n -- ) xt! ;
    DEFER-UNSET-XT {: unset:n :}
    DEF-ROOM
    TOKEN$ {: kw:ptr ku:n :}
-   DEFER-NAME  kw ku TOKEN$ NOT-A-NAME
+   DEFER-NAME  kw ku TOKEN$ REJECTION:NOT-A-NAME
    DEF-SEED
    false DEF-SIG-SPAN {: s:ptr end:ptr :}
    s end DEF-SIG-PASS

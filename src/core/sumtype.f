@@ -2430,7 +2430,10 @@ public
    fam TFAM-DERIVE-INIT? IF fam TDECL-INIT-REPLAY THEN ;
 
 : TDECL-NEWTYPE ( -- )
-   parse-name 2dup TDECL-DEFFAMILY ;
+   SRCLOC:TOKEN$ {: kw:ptr ku:n :}
+   parse-name {: na:ptr nu:n :}
+   kw ku na nu REJECTION:NOT-A-NAME
+   na nu na nu TDECL-DEFFAMILY ;
 
 
 private
@@ -2460,7 +2463,9 @@ public
 \ The definition and its constructor generation share one transaction inside
 \ TDECL-RUN, so a reason either arms is reported and a rejection undoes both.
 : TDECL-SUMTYPE ( -- )
+   SRCLOC:TOKEN$ {: kw:ptr ku:n :}
    parse-name {: na:ptr nu:n :}
+   kw ku na nu REJECTION:NOT-A-NAME
    TDECL-CLEAR
    SUMTYPE-COLLECT 0= IF
       na nu TDECL-BUF TDECL-U @ TDECL-DEFSUM-NOEND EXIT
@@ -2496,7 +2501,9 @@ public
    [: TDECL-PRODUCT-NOEND-BODY ;] TDECL-RUN ;
 
 : TDECL-PRODUCT ( -- )
+   SRCLOC:TOKEN$ {: kw:ptr ku:n :}
    parse-name {: na:ptr nu:n :}
+   kw ku na nu REJECTION:NOT-A-NAME
    TDECL-CLEAR
    PRODUCT-COLLECT
    s" product" na nu TDECL-BUF TDECL-U @ TDECL-CTX!

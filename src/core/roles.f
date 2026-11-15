@@ -143,8 +143,11 @@ CAST: >SNAP ( n -- snap )
    CHECKER-REJECT-RC REJECTION:STOP ;
 
 : DEFLINEAR ( -- )
+   SRCLOC:TOKEN$ {: kw:ptr ku:n :}
    parse-name dup 0= IF DEF-NO-NAME THEN
-   CHECKER-DEFLINEAR ;
+   {: name:ptr nameu:n :}
+   kw ku name nameu REJECTION:NOT-A-NAME
+   name nameu CHECKER-DEFLINEAR ;
 NOMINAL-PROVIDER
 
 : VRDEF-FOLD-C ( n -- n )
@@ -176,8 +179,10 @@ NOMINAL-PROVIDER
 \ parse-name never refills the input, so the span is the record's own bytes and
 \ a rejected field is placed.
 : VALUE-RECORD ( -- )
+   SRCLOC:TOKEN$ {: kw:ptr ku:n :}
    parse-name dup 0= IF DEF-NO-NAME THEN
    {: name:ptr nameu:n :}
+   kw ku name nameu REJECTION:NOT-A-NAME
    parse-name over {: f:ptr :}
    BEGIN
       dup 0= IF

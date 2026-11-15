@@ -12,7 +12,6 @@ package VNOM
 
 private
 
--6001 constant E-VNOM-NAME     \ DEFTYPE given an empty name
 -6002 constant E-VNOM-CAP      \ generated-source or mangle buffer capacity exceeded
 
 \ The longer text is EMIT-OUT's: 19 fixed bytes around the surface name and the
@@ -55,12 +54,10 @@ public
 \ the global scope at top level. A TFAM tail is lowercase (E-TFAM-CASE): the
 \ surface NAME folds to it (FRAME-INDEX -> frame-index; TF-CANON? keeps hyphens);
 \ the converters take the surface spelling (`>SERIAL`), a signature names the
-\ tail (`( serial -- n )`). An empty name is E-VNOM-NAME. CHECKER-DEFFAMILY
-\ refuses a reserved tail (a CT-role, or `ptr`, the pointer constructor) and one
-\ the scope already declares (E-TFAM-DUP); a package may still shadow a global or
-\ another package's family.
+\ tail (`( serial -- n )`). CHECKER-DEFFAMILY refuses a reserved tail (a
+\ CT-role, or `ptr`, the pointer constructor) and one the scope already declares
+\ (E-TFAM-DUP); a package may still shadow a global or another package's family.
 : MINT ( ptr u8 n -- ) {: sa:ptr su:n :}
-   su 0= if E-VNOM-NAME throw then
    sa su MANGLE {: ta:ptr tu:n :}
    ta tu sa su CHECKER-DEFFAMILY
    sa su ta tu EMIT-IN
@@ -73,4 +70,11 @@ public
 \ interpret only: it parses the next name and mutates the type registry through
 \ VNOM:MINT, effects its ( -- ) row does not model.
 : DEFTYPE ( -- )
-   parse-name VNOM:MINT ;
+   SRCLOC:TOKEN$ {: kw:ptr ku:n :}
+   parse-name {: na:ptr nu:n :}
+   nu 0= if
+      kw ku kw ku s" no name follows" REJECTION:MISSING-NAME
+      CHECKER-REJECT-RC REJECTION:STOP
+   then
+   kw ku na nu REJECTION:NOT-A-NAME
+   na nu VNOM:MINT ;

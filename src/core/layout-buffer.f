@@ -43,6 +43,20 @@ variable LBUF-BYTES
    cellsn LBUF-N-MAX CELL / > if 0 LBUF-FALSE exit then
    cellsn cells LBUF-TRUE ;
 
+SRCLOC:INB-CELL RESERVED-PTR-U8-CELL LBUF-INPUT
+
+\ The count's token: the one before the definer's, which stands before the
+\ name; the definer's own when no token precedes it.
+: LBUF-COUNT-TOKEN ( ptr u8 -- ptr u8 n ) {: name:ptr :}
+   LBUF-INPUT @ {: b:ptr :}
+   b name REJECTION:TOKEN-BEFORE {: d:ptr du:n :}
+   b d REJECTION:TOKEN-BEFORE {: c:ptr cu:n :}
+   cu 0= if d du exit then
+   c cu ;
+
+: LBUF-COUNT-REJECT ( ptr u8 n -- ) {: name:ptr nameu:n :}
+   name nameu name LBUF-COUNT-TOKEN STG-BAD-COUNT CHECKER-STORAGE-REFUSE ;
+
 : LBUF-VALIDATE ( n ptr u8 n ptr u8 n -- bool )
    {: count:n name:ptr nameu:n type:ptr typeu:n :}
    type typeu CHECKER-LAYOUT-INFO 0= if
@@ -50,7 +64,9 @@ variable LBUF-BYTES
    then
    LBUF-W ! drop
    count LBUF-N !
-   count LBUF-W @ LBUF-EXTENT? 0= if drop E-LAYOUT-BUFFER throw then
+   count LBUF-W @ LBUF-EXTENT? 0= if
+      drop name nameu LBUF-COUNT-REJECT LBUF-FALSE exit
+   then
    LBUF-BYTES ! LBUF-TRUE ;
 
 \ A name the checker refuses answers false, and the definer defines nothing:
@@ -118,9 +134,9 @@ PTR-VARIABLE STGT-START
    term TFAM:TFAM-STORAGE-SUM? if
       {: fam:n :}
       fam TFAM:TFAM-NICHE? if base ptr-cell-mark exit then
+      \ The block is fresh, so its tag is 0, which every sum's first variant has.
       base term T-WIDTH 1- cells + @
-      fam swap TFAM:TFAM-STORAGE-VARIANT
-      0= if drop E-LAYOUT-BUFFER throw then {: vid:n :}
+      fam swap TFAM:TFAM-STORAGE-VARIANT drop {: vid:n :}
       0
       vid TFAM:SUMV-PAY-N 0 ?do
          term vid i TFAM:TFAM-STORAGE-PAY {: child:n width:n :}
@@ -129,16 +145,15 @@ PTR-VARIABLE STGT-START
       loop drop
    else drop then ;
 
+\ The definer's validation took the type, so CHECKER-STORAGE-TERM takes it too.
 : STORAGE-MARK-FIXED ( ptr n ptr u8 n -- ) {: base:ptr type:ptr typeu:n :}
-   type typeu CHECKER-STORAGE-TERM 0= if drop E-LAYOUT-BUFFER throw then
-   {: term:n :}
+   type typeu CHECKER-STORAGE-TERM drop {: term:n :}
    LBUF-N @ 0 ?do
       base i LBUF-W @ * cells + term STORAGE-MARK-TERM
    loop ;
 
 : STORAGE-HAS-ADDRESS? ( ptr u8 n -- bool )
-   CHECKER-STORAGE-TERM 0= if drop E-LAYOUT-BUFFER throw then
-   TFAM:HAS-ADDRESS? ;
+   CHECKER-STORAGE-TERM drop TFAM:HAS-ADDRESS? ;
 
 \ Quotation cells belong to the image even while null; the term walk declares
 \ each code and address cell of these DATA allocations for capture.
@@ -375,7 +390,9 @@ PRIM: DEFER-LAYOUT-BUFFER PRIM;
    then
    LBUF-W !
    count LBUF-N !
-   count LBUF-W @ LBUF-EXTENT? 0= if drop E-LAYOUT-BUFFER throw then
+   count LBUF-W @ LBUF-EXTENT? 0= if
+      drop name nameu LBUF-COUNT-REJECT LBUF-FALSE exit
+   then
    LBUF-BYTES ! LBUF-TRUE ;
 
 : TYPED-BUFFER ( n -- ) {: count:n :}

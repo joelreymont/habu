@@ -8415,11 +8415,13 @@ variable LBI-LINEAR   \ the refused stored type parsed and may hold a linear val
 
 : VREC-FIELD-BAD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    u 0= IF RES-TRUE EXIT THEN
+   a u s" (" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" \" CORE-STR= IF RES-TRUE EXIT THEN
    a u DELIM? ;
 
 \ Why a record is refused, 0 when it is not.
 1 constant VREC-WHY-NAME     \ the name is a type already, or reserved
-2 constant VREC-WHY-FIELD    \ a field's name is a delimiter
+2 constant VREC-WHY-FIELD    \ a field's name is a delimiter, `(` or `\`
 3 constant VREC-WHY-DUP      \ a field's name repeats
 4 constant VREC-WHY-TYPE     \ a field's type is missing or bad
 5 constant VREC-WHY-SCOPED   \ a field's type has a scoped dependency
@@ -8497,6 +8499,13 @@ variable VREC-AT
    e at = at fu < and IF at 1 + ELSE e THEN {: end:n :}
    f at + end at - ;
 
+\ The label of the rejected field token t tu: the checker reads a `(` as a
+\ signature and a `\` as a comment wherever either stands.
+: VREC-FIELD-LABEL ( ptr u8 n -- ptr u8 n ) {: t:ptr tu:n :}
+   t tu s" (" CORE-STR= IF s" a signature, not a name" EXIT THEN
+   t tu s" \" CORE-STR= IF s" a comment, not a name" EXIT THEN
+   s" not a field name" ;
+
 : VREC-OF ( ptr u8 n -- ) {: a:ptr u:n :}
    s" ` of value record `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
    96 REJECTION:EMIT1 ;
@@ -8526,7 +8535,7 @@ variable VREC-AT
       96 REJECTION:EMIT1  t tu REJECTION:EMIT-STR
       s" ` cannot name a field of value record `" REJECTION:EMIT-STR
       a u REJECTION:EMIT-STR  96 REJECTION:EMIT1
-      t tu REJECTION:AT  s" not a field name" REJECTION:EMIT-STR
+      t tu REJECTION:AT  t tu VREC-FIELD-LABEL REJECTION:EMIT-STR
       REJECTION:HELP  s" name each field with a word and give its type, as `x n`"
       REJECTION:EMIT-STR
    THEN
@@ -15140,42 +15149,37 @@ public
 
 \ The allocator binds the actual generated accessor only after its DATA cells
 \ exist. A verifier's projected signature, an alias, or an imported effect has
-\ no allocation to own and keeps the zero count E-REC-INIT gave it.
+\ no allocation to own and keeps the zero count E-REC-INIT gave it. The
+\ definer hands a block at `here` and a count it took as positive.
 : CHECKER-STORAGE-BIND ( n ptr a n -- )
    {: handle:n base:ptr count:n :}
-   count 0 < IF E-CHECKER-LAYOUT-BUFFER throw THEN
    handle 0= count 0= or IF EXIT THEN
    handle 1- E-PTR {: rec:ptr :}
    base DATA-OFF {: off:n :}
-   off 0 < IF E-CHECKER-LAYOUT-BUFFER throw THEN
    off rec ER.STORAGE-OFF !
    count rec ER.STORAGE-N !
    STORAGE-ACCESSOR rec ER.STORAGE-KIND ! ;
 
 \ A deferred accessor owns a persistent four-cell header, not an allocation at
-\ declaration. Resolve its current region through that header at capture.
+\ declaration. Resolve its current region through that header at capture. The
+\ definer lays the header at `here`.
 : CHECKER-STORAGE-DEFER ( n ptr n -- )
    {: handle:n cb:ptr :}
    handle 0= IF EXIT THEN
    cb DATA-OFF {: off:n :}
-   off 0 < IF E-CHECKER-LAYOUT-BUFFER throw THEN
    handle 1- E-PTR {: rec:ptr :}
    off rec ER.STORAGE-OFF !
    STORAGE-DEFERRED rec ER.STORAGE-N !
    STORAGE-DEFER rec ER.STORAGE-KIND ! ;
 
+\ Its one caller (CHECKER-GRID-ATTACH) hands a record it just built and a run
+\ CHECKER-BODY-CLOSE ended at or below `here`.
 : CHECKER-STORAGE-GRID ( n ptr a n -- )
    {: handle:n base:ptr count:n :}
-   count 0 <= count $7FFFFFFFFFFFFFFF CELL / > or handle 0= or IF
-      E-CHECKER-LAYOUT-BUFFER throw
-   THEN
+   count 0 <= IF E-CHECKER-LAYOUT-BUFFER throw THEN
    base DATA-OFF {: off:n :}
    off 0 < off CELL mod 0 <> or IF E-CHECKER-LAYOUT-BUFFER throw THEN
-   off count CELL * + here BYTE-VIEW data-base BYTE-VIEW - >
-      IF E-CHECKER-LAYOUT-BUFFER throw THEN
    handle 1- E-PTR {: rec:ptr :}
-   rec ER.STORAGE-KIND @ STORAGE-NONE <>
-      IF E-CHECKER-LAYOUT-BUFFER throw THEN
    off rec ER.STORAGE-OFF !
    count rec ER.STORAGE-N !
    STORAGE-GRID rec ER.STORAGE-KIND ! ;
