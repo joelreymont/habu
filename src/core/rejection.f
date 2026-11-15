@@ -627,6 +627,17 @@ public
    END-RECORD
    QUIET @ 0=  WARNING @ 0=  and IF TALLY @ 1 + TALLY ! THEN ;
 
+\ The definer kw ku has no name of one token: the record stands at t tu, which
+\ why labels. It is written through its help, and the caller stops it.
+: MISSING-NAME ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: kw:ptr ku:n t:ptr tu:n why:ptr whyu:n :}
+   s" E-MISSING-NAME" OPEN
+   96 EMIT1  kw ku EMIT-STR  s" ` needs a name" EMIT-STR
+   t tu AT  why whyu EMIT-STR
+   HELP
+   s" give `" EMIT-STR  kw ku EMIT-STR
+   s" ` one name, a token with no blanks" EMIT-STR ;
+
 private
 \ FILE! takes any path a tool names, so a long one is rejected here, after the
 \ words that print a rejection.

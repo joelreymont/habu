@@ -137,18 +137,13 @@ CAST: >SNAP ( n -- snap )
 : SNAP-PHASE ( -- snap )
    0 >SNAP ;
 
-\ The definer just read has no name after it; e shows one, as `DEFLINEAR handle`.
-: DEF-NO-NAME ( ptr u8 n -- ) {: e:ptr eu:n :}
-   s" E-MISSING-NAME" REJECTION:OPEN
-   96 REJECTION:EMIT1  SRCLOC:TOKEN$ REJECTION:EMIT-STR
-   s" ` needs a name" REJECTION:EMIT-STR
-   SRCLOC:TOKEN$ REJECTION:AT  s" no name follows" REJECTION:EMIT-STR
-   REJECTION:HELP  s" write the name after it, as `" REJECTION:EMIT-STR
-   e eu REJECTION:EMIT-STR  96 REJECTION:EMIT1
+\ The definer just read has no name after it.
+: DEF-NO-NAME ( -- )
+   SRCLOC:TOKEN$ SRCLOC:TOKEN$ s" no name follows" REJECTION:MISSING-NAME
    CHECKER-REJECT-RC REJECTION:STOP ;
 
 : DEFLINEAR ( -- )
-   parse-name dup 0= IF s" DEFLINEAR handle" DEF-NO-NAME THEN
+   parse-name dup 0= IF DEF-NO-NAME THEN
    CHECKER-DEFLINEAR ;
 NOMINAL-PROVIDER
 
@@ -211,7 +206,7 @@ variable VRDEF-I
    CHECKER-REJECT-RC REJECTION:STOP ;
 
 : VALUE-RECORD ( -- )
-   parse-name dup 0= IF s" VALUE-RECORD point x n y n END-VALUE-RECORD" DEF-NO-NAME THEN
+   parse-name dup 0= IF DEF-NO-NAME THEN
    {: name:ptr nameu:n :}
    VRDEF-CLEAR
    BEGIN

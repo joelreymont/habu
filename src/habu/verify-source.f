@@ -193,11 +193,10 @@ package VERIFY
 public
 
 \ A source the scan cannot read on stops it with one of these, TOKEN-BYTE@ at
-\ the word that cannot finish: a reader (a definer, a parsing word) with no
-\ token after it, a string opener with no closing quote, a PRIM:, PPRIM:,
-\ EPRIM: or EPPRIM: row with no closer, a top-level escaped literal holding an
-\ escape the engine refuses.
-7187 constant E-MISSING-NAME
+\ the word that cannot finish: a string opener with no closing quote, a PRIM:,
+\ PPRIM:, EPRIM: or EPPRIM: row with no closer, a top-level escaped literal
+\ holding an escape the engine refuses.
+7187 constant E-MISSING-NAME             \ thrown by none; check.f's packets still read it
 7188 constant E-UNTERMINATED-STRING
 7189 constant E-MALFORMED-REGISTRY-ROW
 7194 constant E-BAD-ESCAPE
@@ -229,10 +228,8 @@ PERSISTED-PTR-VARIABLE ENTRY-TICK-OWNER
 
 private
 
-\ A statement the source ends inside or one that lacks a part it must have
-\ stops the scan with one of these at its opener.
+\ A statement the source ends inside stops the scan with this at its opener.
 7155 constant E-VS-UNTERMINATED-DEFINITION \ a definition, signature or group
-7158 constant E-VS-BARE-TRUST              \ TRUST with no name and signature
 
 \ A declaration the source ends inside: BEGIN-STRUCTURE's scan stops with it at
 \ its opener, RECORD-VALUE-RECORD refuses with it in the declaration packet.
@@ -441,6 +438,45 @@ variable FLAG-N
 \ it read last.
 : STATEMENT-STOP ( n -- )
    TOP-CUR-A @ swap STOP-AT ;
+
+\ The token at byte at of the source or after the blanks there; empty at the
+\ source's end.
+: TOKEN-FROM ( n -- ptr u8 n ) {: at:n :}
+   SOURCE@ {: s:ptr :}
+   at BEGIN dup SOURCE-U @ < IF dup s + c@ 33 < ELSE 0 0= 0= THEN WHILE 1 + REPEAT
+   {: b:n :}
+   b BEGIN dup SOURCE-U @ < IF dup s + c@ 32 > ELSE 0 0= 0= THEN WHILE 1 + REPEAT
+   {: e:n :}
+   s b +  e b - ;
+
+\ The definer the scan read last, at TOKEN-BYTE, has no name after it.
+: NAME-STOP ( -- )
+   TOKEN-BYTE @ TOKEN-FROM {: t:ptr tu:n :}
+   t tu t tu s" no name follows" REJECTION:MISSING-NAME
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
+\ The source ends inside the statement's definition, named by the token after
+\ its opener.
+: UNCLOSED-STOP ( -- )
+   TOP-CUR-A @ SOURCE@ - {: at:n :}
+   at TOKEN-BYTE !
+   at TOP-CUR-U @ + TOKEN-FROM {: t:ptr tu:n :}
+   t tu t tu INTERPRETER:UNCLOSED-REJECT
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
+\ `trust` takes the word's name and signature from the two string literals
+\ before it in its statement.
+: BARE-TRUST-STOP ( -- )
+   TOP-CUR-A @ SOURCE@ - TOKEN-BYTE !
+   TOP-CUR-A @ TOP-CUR-U @ {: t:ptr tu:n :}
+   s" E-VS-BARE-TRUST" REJECTION:OPEN
+   96 REJECTION:EMIT1  t tu REJECTION:EMIT-STR
+   s" ` needs a name and a signature before it" REJECTION:EMIT-STR
+   t tu REJECTION:AT  s" no name and signature" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" write the word's name and its signature as two string literals before `"
+   REJECTION:EMIT-STR  t tu REJECTION:EMIT-STR  96 REJECTION:EMIT1
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 : SC-LEAD? ( n -- bool )
    dup $73 = over $53 = or over $63 = or swap $43 = or ;
@@ -678,7 +714,10 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
    at left CHECKER-SIG-SPAN
    {: open:n close:n :}
    open left = IF at 0 0 0= 0= EXIT THEN
-   close 0= IF opener unclosed STOP-AT THEN
+   close 0= IF
+      unclosed E-VS-UNTERMINATED-DEFINITION = IF UNCLOSED-STOP THEN
+      opener unclosed STOP-AT
+   THEN
    SCAN-I @ close + SCAN-I !
    at open +  close open -  0 0= ;
 
@@ -1023,7 +1062,7 @@ variable SEALS-N
    a u s" [char]" STR=CI ;
 
 : OPERAND ( -- ptr u8 n )
-   NEXT-RAW dup 0= IF E-MISSING-NAME throw THEN ;
+   NEXT-RAW dup 0= IF NAME-STOP THEN ;
 
 \ A definer takes its name by the same rule, so `: \`, `DEFLINEAR (` and
 \ `create s"` name a word `\`, a type `(` and a word `s"`. A comment or string
@@ -1078,7 +1117,7 @@ variable GROUP-AT
 : GROUP-NEXT ( -- ptr u8 n )
    NEXT-RAW dup 0= IF
       QUIET @ INDEX-ON @ or IF GROUP-AT @ TOKEN-BYTE !  E-DISC-UNTERM throw THEN
-      E-VS-UNTERMINATED-DEFINITION STATEMENT-STOP
+      UNCLOSED-STOP
    THEN ;
 
 : APPEND-GROUP ( -- )
@@ -1743,7 +1782,7 @@ DYNAMIC-BUFFER TICK-QUAL u8
    LOCALS-RESET
    BEGIN
       BODY!
-      TOKEN-U @ 0= IF E-VS-UNTERMINATED-DEFINITION STATEMENT-STOP THEN
+      TOKEN-U @ 0= IF UNCLOSED-STOP THEN
       TOKEN-A @ TOKEN-U @ s" ;" CORE-STR= IF
          TICK-REMAINDER @ DOES-PARENT-REFUSED @ or IF false EXIT THEN
          sig sigu DEF-NAME-A @ DEF-NAME-U @ VERIFY-DOES-BODY
@@ -2149,7 +2188,7 @@ DUPLICATE-INIT
 : RAW-TRUST-NEXT ( ptr u8 n n -- )
    {: sig:ptr sigu:n class:n :}
    NAME-TOKEN
-   dup 0= IF E-MISSING-NAME throw THEN
+   dup 0= IF NAME-STOP THEN
    TOKEN-BYTE @
    {: name:ptr nameu:n at:n :}
    name nameu NAME-DECLARED
@@ -2165,7 +2204,7 @@ DUPLICATE-INIT
 : CREATED-TRUST-NEXT? ( n -- bool )
    {: dsym:n :}
    NAME-TOKEN {: name:ptr nameu:n :}
-   nameu 0= IF E-MISSING-NAME throw THEN
+   nameu 0= IF NAME-STOP THEN
    name nameu NAME-DECLARED
    TOKEN-BYTE @ {: at:n :}
    name nameu at REFUSE-DUPLICATE IF 0 0= EXIT THEN
@@ -2190,7 +2229,7 @@ DUPLICATE-INIT
 
 : TRUST-DEFER ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
-   nameu 0= IF E-MISSING-NAME throw THEN
+   nameu 0= IF NAME-STOP THEN
    name nameu NAME-DECLARED
    name nameu TOKEN-BYTE @ TRUST-DEFER-SIGNATURE ;
 
@@ -2220,7 +2259,7 @@ variable TRUSTED-DOES
    0 TRUSTED-DOES !
    BEGIN
       BODY!
-      TOKEN-U @ 0= IF E-VS-UNTERMINATED-DEFINITION STATEMENT-STOP THEN
+      TOKEN-U @ 0= IF UNCLOSED-STOP THEN
       TOKEN-A @ TOKEN-U @ s" ;" CORE-STR= IF EXIT THEN
       LOCAL-TOKEN? 0=  TOKEN-A @ TOKEN-U @ s" does>" STR=CI  and IF
          \ This scan skips the clause body, so its acceptance is unknown.
@@ -2243,7 +2282,7 @@ variable TRUSTED-DOES
 \ binds, as in the live load.
 : TRUSTED-DEFINITION ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
-   nameu 0= IF E-MISSING-NAME throw THEN
+   nameu 0= IF NAME-STOP THEN
    name nameu NAME-DECLARED
    TOKEN-BYTE @ {: at:n :}
    name nameu at REFUSE-DUPLICATE IF
@@ -2265,7 +2304,7 @@ variable TRUSTED-DOES
 \ an illegal retype is refused here too and not merely recorded.
 : CAST-DECLARATION ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
-   nameu 0= IF E-MISSING-NAME throw THEN
+   nameu 0= IF NAME-STOP THEN
    name nameu NAME-DECLARED
    TOKEN-BYTE @ {: at:n :}
    name nameu at REFUSE-DUPLICATE IF REQUIRE-SIGNATURE 2drop EXIT THEN
@@ -2279,7 +2318,7 @@ variable TRUSTED-DOES
 \ erase this pre-pass accepts is exactly one the engine accepts.
 : LINEAR-DECLARATION ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
-   nameu 0= IF E-MISSING-NAME throw THEN
+   nameu 0= IF NAME-STOP THEN
    name nameu NAME-DECLARED
    TOKEN-BYTE @ {: at:n :}
    REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
@@ -2297,7 +2336,7 @@ variable TRUSTED-DOES
 
 : UNDEFINE-WORD ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
-   nameu 0= IF E-MISSING-NAME throw THEN
+   nameu 0= IF NAME-STOP THEN
    name nameu NAME-RETIRED
    name nameu CHECKER-UNDEFINE
    name nameu RECORD-SYM? DEFINER-RETIRE ;
@@ -2311,7 +2350,7 @@ variable TRUSTED-DOES
 : RECORD-PACKAGE ( -- )
    CHECKER-RESOLVE:PART-GUARD
    NAME-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
-   nameu 0= IF E-MISSING-NAME throw THEN
+   nameu 0= IF NAME-STOP THEN
    name nameu CHECKER-RESOLVE:PART-PATH {: pa:ptr pu:n :}
    pa pu CHECKER-PACKAGE
    pa pu name nameu at SEALED-PACKAGE ;
@@ -2332,7 +2371,7 @@ variable TRUSTED-DOES
 \ moves it.
 : RECORD-USING ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
-   nameu 0= IF E-MISSING-NAME throw THEN
+   nameu 0= IF NAME-STOP THEN
    name nameu CHECKER-USING-PUSH ;
 
 \ Takes the `;using` token.
@@ -2360,7 +2399,7 @@ DYNAMIC-BUFFER NOM-TAIL u8
 
 : RECORD-DEFTYPE ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
-   nameu 0= IF E-MISSING-NAME throw THEN
+   nameu 0= IF NAME-STOP THEN
    TOKEN-BYTE @ {: at:n :}
    name nameu MANGLE {: tail:ptr tailu:n :}
    REJECTION:TALLY @ {: refused:n :}
@@ -2379,7 +2418,7 @@ DYNAMIC-BUFFER NOM-TAIL u8
 
 : RECORD-DEFLINEAR ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
-   nameu 0= IF E-MISSING-NAME throw THEN
+   nameu 0= IF NAME-STOP THEN
    name nameu TYPE-RESERVED? IF s" reserved name" REASON!  E-BAD-NOMINAL-TYPE throw THEN
    name nameu CHECKER-DEFLINEAR ;
 
@@ -2466,7 +2505,7 @@ variable SUM-VAR-NEXT
 \ ends inside replays without it, and the front end refuses "missing ;ENUM".
 : RECORD-ENUM ( -- )
    DECL-TOKEN {: name:ptr nameu:n :}
-   nameu 0= IF E-MISSING-NAME throw THEN
+   nameu 0= IF NAME-STOP THEN
    BODY-RESET
    BEGIN
       DECL-TOKEN
@@ -2482,7 +2521,7 @@ variable SUM-VAR-NEXT
 \ source; an unclosed body replays as RECORD-ENUM's does: "missing ;STRUCTURE".
 : RECORD-STRUCTURE-DECL ( -- )
    DECL-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
-   nameu 0= IF E-MISSING-NAME throw THEN
+   nameu 0= IF NAME-STOP THEN
    name nameu at nameu SEALED-NAME
    BODY-RESET
    BEGIN
@@ -2498,7 +2537,7 @@ variable SUM-VAR-NEXT
 \ No dictionary words are generated on this path.
 : RECORD-PRODUCT ( -- )
    NAME-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
-   nameu 0= IF E-MISSING-NAME throw THEN
+   nameu 0= IF NAME-STOP THEN
    name nameu at nameu SEALED-NAME
    BODY-RESET
    BEGIN
@@ -2775,7 +2814,7 @@ variable STG-TYPE-U
 \ name, as an unclosed SUMTYPE is.
 : RECORD-VALUE-RECORD ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
-   nameu 0= IF E-MISSING-NAME throw THEN
+   nameu 0= IF NAME-STOP THEN
    TOKEN-BYTE @ {: byte:n :}
    BODY-RESET
    BEGIN
@@ -2814,8 +2853,8 @@ CAST: TRUST-ACTION ( n -- [ ptr u8 n -- bool ] )
    CHECKER-OWNER-ABI:VERIFY-TRUST-OFF OWNER-XT TRUST-ACTION execute ;
 
 : RECORD-TRUST ( -- )
-   STR-LAST-U @ 0= IF E-VS-BARE-TRUST STATEMENT-STOP THEN
-   STR-PREV-U @ 0= IF E-VS-BARE-TRUST STATEMENT-STOP THEN
+   STR-LAST-U @ 0= IF BARE-TRUST-STOP THEN
+   STR-PREV-U @ 0= IF BARE-TRUST-STOP THEN
    STR-PREV-A @ STR-PREV-U @ TRUST-UNSEEN? IF
       STR-PREV-A @ STR-PREV-U @ DW-RENDERED DEFER-AT
       EXIT
@@ -3050,7 +3089,7 @@ CAST: TOP-ACTION ( n -- [ ptr u8 n bool -- n ] )
 \ does, so the refusal is caught here and kept at the name as written.
 : RECORD-EXPORT ( -- )
    NAME-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
-   nameu 0= IF E-MISSING-NAME throw THEN
+   nameu 0= IF NAME-STOP THEN
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF EXIT THEN
    name nameu at nameu SEALED-OPEN
    name nameu TOP-BINDING drop PRS-FIND {: from:n :}
@@ -3308,7 +3347,7 @@ variable FILE-USE
 : RECORD-STRUCTURE-FIELD ( ptr u8 n ptr u8 n -- )
    {: kind:ptr kindu:n sig:ptr sigu:n :}
    NAME-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
-   nameu 0= IF E-MISSING-NAME throw THEN
+   nameu 0= IF NAME-STOP THEN
    name nameu NAME-DECLARED
    name nameu at REFUSE-DUPLICATE IF EXIT THEN
    name nameu at nameu ARM
@@ -3346,7 +3385,7 @@ variable FILE-USE
 
 : RECORD-STRUCTURE ( -- )
    NAME-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
-   nameu 0= IF E-MISSING-NAME throw THEN
+   nameu 0= IF NAME-STOP THEN
    name nameu NAME-DECLARED
    name nameu at STRUCTURE-SIZE
    BEGIN
@@ -3375,7 +3414,7 @@ variable FILE-USE
 : RECORD-GENERATES ( -- )
    NAME-TOKEN
    {: name:ptr nameu:n :}
-   nameu 0= IF E-MISSING-NAME throw THEN
+   nameu 0= IF NAME-STOP THEN
    REQUIRE-SIGNATURE
    {: sig:ptr sigu:n :}
    name nameu FIND-SYM
@@ -3484,7 +3523,7 @@ variable FFI-LIT-B                          \ and the newer
 : RECORD-FFI-FUNCTION ( -- )
    NEXT-SCAN TOKEN-BYTE @
    {: name:ptr nameu:n at:n :}
-   nameu 0= IF E-MISSING-NAME throw THEN
+   nameu 0= IF NAME-STOP THEN
    name nameu NAME-DECLARED
    NEXT-SCAN nip 0= IF E-VS-UNTERMINATED-DEFINITION STATEMENT-STOP THEN
    FFI-SIGNATURE {: sig:ptr sigu:n :}
@@ -3846,7 +3885,7 @@ variable PARSE-IMM-XT s" parse-imm" PARSE-IMM-XT LIBRARY-XT!
    TICK-DEF-LATCH
    BODY-RESET
    NAME-TOKEN TOKEN-U !  TOKEN-A !
-   TOKEN-U @ 0= if E-MISSING-NAME throw then
+   TOKEN-U @ 0= if NAME-STOP then
    DEF-NAME!
    DEF-NAME-A @ DEF-NAME-U @ NAME-DECLARED
    DEF-NAME-A @ DEF-NAME-U @ DEF-NAME-BYTE @ REFUSE-DUPLICATE IF SKIP-DEFINITION EXIT THEN
