@@ -219,17 +219,14 @@ public
    ta tu TDA-KEEP
    code throw ;
 
-private
-
-\ Places the record at one token and names another as its `word` note.
-: TDECL-THROW-AT ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- )   \ place, name, reason, fix, code
-   {: pa:ptr pu:n na:ptr nu:n wa:ptr wu:n fa:ptr fu:n code:n :}
+\ Places the record at the declaration's name and names the generated word NA
+\ NU, which has no source token, as its `word` note.
+: TDECL-THROW-AT ( ptr u8 n ptr u8 n ptr u8 n n -- )   \ name, reason, fix, code
+   {: na:ptr nu:n wa:ptr wu:n fa:ptr fu:n code:n :}
    wa wu fa fu code TDECL-ARM
-   pa pu TDECL-TOK!
+   TDN-A @ TDN-U @ TDECL-TOK!
    na nu TDA-KEEP
    code throw ;
-
-public
 
 \ --- transactional mark/restore over every store a declaration can grow.
 \ The family and variant stores go back through TFAM-REWIND (type-family.f), not
@@ -304,7 +301,7 @@ private
    f  t tu + f -  REJECTION:HELD? 0= IF a u EXIT THEN
    t tu ;
 
-\ A DEFFAMILY packet points at the name whatever the refusal, as the source
+\ A DEFFAMILY packet points at the name whatever the rejection, as the source
 \ token TDS: the folded DEFTYPE header the body checks has no place.
 : TDECL-REPORT-TOK ( -- ptr u8 n )
    TDS-U @ 0 > IF TDS-A @ TDS-U @ EXIT THEN
@@ -471,7 +468,7 @@ private
    CHECKER-AUTH-PACKAGE-MODE@ ;
 
 \ TFAM-DECL's one failure left here is a duplicate, unless a compile callback
-\ declares: the window refusal comes first, under the general reason.
+\ declares: the window rejection comes first, under the general reason.
 : TDECL-FAMILY ( n n -- n ) {: ar:n kind:n :}
    TDN-A @ TDN-U @ TDECL-TOK!
    WRITE-WINDOW-CK                     \ src/core/checker.f WRITE-WINDOW
@@ -1262,9 +1259,7 @@ private
 \ through DECL-EVENT, which only an open transaction admits. TDECL-RUN stays
 \ outside it, so a reject it swallows under a multi-error load is already rolled
 \ back (DECL-EVENT rows, field rows, constructors), as DECL-FRONT's driver
-\ stands outside its transaction (generated-declaration.f). Each transaction step
-\ is a named word because hb-stage0 compiles this file and cannot nest
-\ quotations.
+\ stands outside its transaction (generated-declaration.f).
 : TDECL-PRODUCT-TXN ( [ -- ] -- )
    TDECL-EVENT-ARMED 0= TDECL-TXN-ARMED @ 0= or IF
       s" product: declaration event transaction not installed" 76 die
@@ -1537,7 +1532,7 @@ private
 
 : TDPLAN-NAME+ ( -- n )
    TDGEN-NA @ TDGEN-NU @ CHECKER-DEFINED-HERE? IF
-      TDN-A @ TDN-U @  TDGEN-NA @ TDGEN-NU @  s" generated declaration already defined"
+      TDGEN-NA @ TDGEN-NU @  s" generated declaration already defined"
          TDECL-GEN-FIX$ E-TDECL-NAME TDECL-THROW-AT
    THEN
    TDGEN-NA @ TDGEN-NU @ CHECKER-RECORD-SYM dup TDPLAN-SYM+ ;
@@ -2274,7 +2269,7 @@ private
 \ rejects, is the declaration's error, asked of every child before any is made.
 : TDECL-ADDR-FREE ( ptr u8 n n n -- ) {: na:ptr nu:n shape:n param:n :}
    na nu CHECKER-DEFINED-HERE? IF
-      TDN-A @ TDN-U @  na nu  s" generated declaration already defined"
+      na nu  s" generated declaration already defined"
          TDECL-GEN-FIX$ E-TDECL-NAME TDECL-THROW-AT
    THEN
    na nu TDECL-NAME-PREFLIGHT-XT ;
@@ -2512,7 +2507,7 @@ public
 : TDECL-DEFSUM ( ptr u8 n ptr u8 n -- )   \ name, buffered body tokens
    {: na:ptr nu:n ba:ptr bu:n :}
    s" sumtype" na nu ba bu TDECL-CTX!
-   [: CHECKER-DEFSUM-BODY TDECL-CTOR-WORDS-REPLAY ;] TDECL-RUN ;
+   [: [: CHECKER-DEFSUM-BODY TDECL-CTOR-WORDS-REPLAY ;] TDECL-TXN-XT ;] TDECL-RUN ;
 
 : TDECL-DEFPRODUCT ( ptr u8 n ptr u8 n -- )   \ name, buffered body tokens
    {: na:ptr nu:n ba:ptr bu:n :}

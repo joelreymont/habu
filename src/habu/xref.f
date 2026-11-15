@@ -514,7 +514,7 @@ private
    ns XREF:SEALED? 0= IF EXIT THEN
    a u s" would change a sealed package"
       s" declare it in a package of your own: a sealed package takes no new words"
-      TYPE-DECL:E-TDECL-NAME TYPE-DECL:TDECL-THROW ;
+      TYPE-DECL:E-TDECL-NAME TYPE-DECL:TDECL-THROW-AT ;
 
 public
 
