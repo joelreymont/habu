@@ -559,21 +559,23 @@ s" rpsdpay" s" FIELD h rpsd ;STRUCTURE" struct-replay-test:RP-TRY 0 T=
 DECL-DIAG:PROSE
 s" rpsdbad" s" FIELD one nope ;STRUCTURE" struct-replay-test:RP-TRY 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `rpsdbad`\n" DECL-DIAG:HAS? TTRUE
-s\"   = at `nope`: unknown field type\n" DECL-DIAG:HAS? TTRUE
+s\" ^ unknown field type\n" DECL-DIAG:HAS? TTRUE
+s\" = word: nope\n" DECL-DIAG:HAS? TTRUE
 s\"   = help: name a type declared before this declaration: `n`, `ptr u8`, a header parameter, a" DECL-DIAG:HAS? TTRUE
 
 \ A buffer with no terminator rejects through the front end's own gate.
 DECL-DIAG:PROSE
 s" rpsdnoend" s" FIELD one n" struct-replay-test:RP-TRY 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `rpsdnoend`\n" DECL-DIAG:HAS? TTRUE
-s\"   = at `rpsdnoend`: missing ;STRUCTURE\n" DECL-DIAG:HAS? TTRUE
+s\" ^ missing ;STRUCTURE\n" DECL-DIAG:HAS? TTRUE
+s\" = word: rpsdnoend\n" DECL-DIAG:HAS? TTRUE
 s\"   = help: end the declaration with `;STRUCTURE` after its last field\n" DECL-DIAG:HAS? TTRUE
 
 \ A zero-length name reaches the missing-name gate.
 DECL-DIAG:PROSE
 s" " s" FIELD one n ;STRUCTURE" struct-replay-test:RP-TRY 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration\n" DECL-DIAG:HAS? TTRUE
-s\"   = at ``: missing name\n" DECL-DIAG:HAS? TTRUE
+s\" ^ missing name\n" DECL-DIAG:HAS? TTRUE
 s\"   = help: write the family name after `STRUCTURE`, as in `STRUCTURE point`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
@@ -583,7 +585,7 @@ DECL-DIAG:PROSE
 DECL-DIAG:PROSE
 s" rpsddangle" s" FIELD" struct-replay-test:RP-TRY 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `rpsddangle`\n" DECL-DIAG:HAS? TTRUE
-s\"   = at ``: missing field name\n" DECL-DIAG:HAS? TTRUE
+s\" ^ missing field name\n" DECL-DIAG:HAS? TTRUE
 s\"   = help: write a name and a type after `FIELD`, as in `FIELD x n`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 s" STRUCTURE-DECL:SD-RUN rpsdafter FIELD one n ;STRUCTURE" TEST-EVAL:RC 0 T=

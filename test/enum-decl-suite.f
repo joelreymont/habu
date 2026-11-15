@@ -756,13 +756,15 @@ TOOL-REPLAY:CLOSE
 DECL-DIAG:PROSE
 s" rpbadv" s" VARIANT vv stray ;VARIANT ;ENUM" enum-replay-test:RP-TRY 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `rpbadv`\n" DECL-DIAG:HAS? TTRUE
-s\"   = at `stray`: unexpected token in variant block\n" DECL-DIAG:HAS? TTRUE
+s\" ^ unexpected token in variant block\n" DECL-DIAG:HAS? TTRUE
+s\" = word: stray\n" DECL-DIAG:HAS? TTRUE
 s\"   = help: write only `FIELD name type` clauses before `;VARIANT`, with no comments in the body\n" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
 s" rpbadname" s" red red ;ENUM" enum-replay-test:RP-TRY 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `rpbadname`\n" DECL-DIAG:HAS? TTRUE
-s\"   = at `red`: duplicate variant\n" DECL-DIAG:HAS? TTRUE
+s\" ^ duplicate variant\n" DECL-DIAG:HAS? TTRUE
+s\" = word: red\n" DECL-DIAG:HAS? TTRUE
 s\"   = help: give each variant of the enum its own name\n" DECL-DIAG:HAS? TTRUE
 
 \ 23e. A buffer missing its terminator rejects through the front end's own
@@ -770,7 +772,8 @@ s\"   = help: give each variant of the enum its own name\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" rpnoend" s" red green" enum-replay-test:RP-TRY 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `rpnoend`\n" DECL-DIAG:HAS? TTRUE
-s\"   = at `rpnoend`: missing ;ENUM\n" DECL-DIAG:HAS? TTRUE
+s\" ^ missing ;ENUM\n" DECL-DIAG:HAS? TTRUE
+s\" = word: rpnoend\n" DECL-DIAG:HAS? TTRUE
 s\"   = help: end the declaration with `;ENUM`\n" DECL-DIAG:HAS? TTRUE
 
 \ 23f. A zero-length name reaches the missing-name gate instead of silently
@@ -778,7 +781,7 @@ s\"   = help: end the declaration with `;ENUM`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" " s" red green ;ENUM" enum-replay-test:RP-TRY 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration\n" DECL-DIAG:HAS? TTRUE
-s\"   = at ``: missing name\n" DECL-DIAG:HAS? TTRUE
+s\" ^ missing name\n" DECL-DIAG:HAS? TTRUE
 s\"   = help: write the family name after `ENUM`, as in `ENUM color red green ;ENUM`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
@@ -787,7 +790,7 @@ DECL-DIAG:OFF
 DECL-DIAG:PROSE
 s" rpdangle" s" VARIANT" enum-replay-test:RP-TRY 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `rpdangle`\n" DECL-DIAG:HAS? TTRUE
-s\"   = at ``: missing variant name\n" DECL-DIAG:HAS? TTRUE
+s\" ^ missing variant name\n" DECL-DIAG:HAS? TTRUE
 s\"   = help: write a name after `VARIANT`, as in `VARIANT quit ;VARIANT`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 s" ENUM-DECL:ED-RUN rpafterbad VARIANT vv ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=

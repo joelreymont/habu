@@ -274,30 +274,31 @@ variable LBL-U
 
 SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
 \ A package name past its row is rejected naming its length; no source holds
-\ the name, so the record shows it after `= at` and names this file.
+\ the name, so the record is placed at the word this file ran, names this file
+\ and shows the name in its `word` note. The head is copied out of the string
+\ builder the note reuses.
 : CAP-HEAD$ ( -- ptr u8 n )
    SB-RESET
    s" error[E-PACKAGE-NAME-CAP]: the package name is " SB-APPEND
    LONG-LEN FMT:SB-INT  s"  bytes long, more than the " SB-APPEND
    PACKAGE-PATH:CAP 1 - FMT:SB-INT
-   S\"  a package name may have\n --> " SB-APPEND
+   S\"  a package name may have\n   --> " SB-APPEND
    LOADING @ data-base SRCLOC:PATHLEN-CELL + @ SB-APPEND
-   S\" \n  = at `" SB-APPEND
-   SB$ ;
-: CAP-TAIL$ ( -- ptr u8 n )
+   s" :" SB-APPEND
+   SB$ {: h:ptr hu:n :}
+   hu MEM-ALLOC-BYTES drop {: p:ptr :}
+   h p hu BYTE-COPY
+   p hu ;
+: CAP-NOTE$ ( -- ptr u8 n )
    SB-RESET
-   S\" `: too long\n  = help: shorten the package name to " SB-APPEND
+   S\" \n    = help: shorten the package name to " SB-APPEND
    PACKAGE-PATH:CAP 1 - FMT:SB-INT
-   S\"  bytes or fewer\n\n" SB-APPEND
-   SB$ ;
-: CAP-WANT$ ( -- ptr u8 n )
-   CAP-HEAD$ {: h:ptr hu:n :}
-   hu MEM-ALLOC-BYTES drop {: hp:ptr :}
-   h hp hu BYTE-COPY
-   CAP-TAIL$ {: t:ptr tu:n :}
+   S\"  bytes or fewer\n" SB-APPEND
+   SB$ {: t:ptr tu:n :}
+   s" = word: " {: h:ptr hu:n :}
    hu LONG-LEN + tu + {: wu:n :}
    wu MEM-ALLOC-BYTES drop {: p:ptr :}
-   hp p hu BYTE-COPY
+   h p hu BYTE-COPY
    LONG-LEN TAIL drop p hu + LONG-LEN BYTE-COPY
    t p hu + LONG-LEN + tu BYTE-COPY
    p wu ;
@@ -312,14 +313,14 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    s" TRUNCATE-RAW-IT" 76 S\" checker: missing signature truncation mark\n" DIES
    s" TRUNCATE-IT" 76 S\" seal: cannot truncate sealed checker signatures\n" DIES
    s" PACKAGE-IT" 76 S\" checker: package name too long\n" DIES
-   LONG-LEN s" long" s" PACKAGE-IT" 70 CAP-WANT$ DIES-AT
+   LONG-LEN s" long" s" PACKAGE-IT" 70 CAP-HEAD$ CAP-NOTE$ REJECTS-AT
    s" USING-IT" 76 S\" checker: using name length describes no memory\n" DIES
-   LONG-LEN s" long" s" USING-IT" 70 CAP-WANT$ DIES-AT
+   LONG-LEN s" long" s" USING-IT" 70 CAP-HEAD$ CAP-NOTE$ REJECTS-AT
    s" USING-PUSH-IT" 67 S\" hb: uncaught throw code 7136\n" DIES
-   s" FAMILY-IT" 70 S\" error[E-BAD-DECLARATION]: bad newtype declaration\n" s" = at ``: missing name" REJECTS
-   s" SUM-IT" 70 S\" error[E-BAD-DECLARATION]: bad sumtype declaration\n" s" = at ``: missing name" REJECTS
-   s" SUM-NOEND-IT" 70 S\" error[E-BAD-DECLARATION]: bad sumtype declaration\n" s" = at ``: missing ;SUMTYPE" REJECTS
-   s" PRODUCT-IT" 70 S\" error[E-BAD-DECLARATION]: bad product declaration\n" s" = at ``: missing name" REJECTS
+   s" FAMILY-IT" 70 S\" error[E-BAD-DECLARATION]: bad newtype declaration\n" s" ^ missing name" REJECTS
+   s" SUM-IT" 70 S\" error[E-BAD-DECLARATION]: bad sumtype declaration\n" s" ^ missing name" REJECTS
+   s" SUM-NOEND-IT" 70 S\" error[E-BAD-DECLARATION]: bad sumtype declaration\n" s" ^ missing ;SUMTYPE" REJECTS
+   s" PRODUCT-IT" 70 S\" error[E-BAD-DECLARATION]: bad product declaration\n" s" ^ missing name" REJECTS
    s" FIELD-ADD-IT" 67 S\" hb: uncaught throw code 7101\n" DIES ;
 
 \ TRUST, CHECKER-DEFCAST and CHECKER-NAMED-USE have no effect a
@@ -345,10 +346,10 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
 : MAL$ ( -- ptr u8 n ) s" q:q:q" ;
 : MALFORMED-HEAD$ ( -- ptr u8 n )
    S\" error[E-BAD-QUALIFIED-RECORD]: the record name `q:q:q` has more than one `:`\n" ;
-: MALFORMED-NOTE$ ( -- ptr u8 n ) s" = at `q:q:q`: malformed qualified name" ;
+: MALFORMED-NOTE$ ( -- ptr u8 n ) s" ^ malformed qualified name" ;
 : STALE-HEAD$ ( -- ptr u8 n )
    S\" error[E-TRUST-UNRESOLVED]: the `trust` row for `q:q:q` names no word where its record lands\n" ;
-: STALE-NOTE$ ( -- ptr u8 n ) s" = at `q:q:q`: no word here has this name" ;
+: STALE-NOTE$ ( -- ptr u8 n ) s" ^ no word here has this name" ;
 : MAL-REJECTS ( ptr u8 n n ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n rc:n head:ptr headu:n note:ptr noteu:n :}
    0 s" two inner colons" src srcu rc head headu note noteu REJECTS-AT ;
@@ -366,7 +367,7 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
 : TEST-FIELD-TEXT ( -- )
    s" TRY-FIELDS" RETURNS
    s" FIELDS-IT" 70 S\" error[E-BAD-DECLARATION]: value record `zzrec` has no fields\n"
-      s" = at `zzrec`: no fields" REJECTS ;
+      s" ^ no fields" REJECTS ;
 
 \ A definition's source text, which CHECK and its entries judge, and a
 \ signature, which CHECK-DOES! and CHECKER-DEFCAST parse, are no names either:
@@ -393,7 +394,7 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    s" HOOK-IT" 76 TOO-LARGE$ DIES
    s" CLAUSE$ CLAUSE-SIG$ CHECK-DOES! drop MARKS! CLAUSE$ BAD$ CHECK-DOES! 0= VERDICT"
    RETURNS
-   s" CAST-NAME$ BAD$ CHECKER-DEFCAST" 70 CAST-HEAD$ s" = at `nltcast`" REJECTS ;
+   s" CAST-NAME$ BAD$ CHECKER-DEFCAST" 70 CAST-HEAD$ s" = word: nltcast" REJECTS ;
 
 \ No token is -1 or the maximum cell long, so `package` meets only a long part
 \ name, whose path is past its row: refused, naming it.

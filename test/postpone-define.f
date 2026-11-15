@@ -147,10 +147,15 @@ s" DUP-C" POSTPONE-DEFINER:MAKE-DUP
 : DUPS-C ( -- n ) s" Q" drop NULLABLE:SOME DUP-C NUL-BYTE swap NUL-BYTE + ;
 DUPS-C 162 T=
 
+\ Each rejection's code and place: a name no source holds is placed at the
+\ word the file ran and named in the `word` note.
+: HAS ( ptr u8 n -- ) {: a:ptr u:n :}   REJECTION:BUFFER$ a u CONTAINS? TTRUE ;
+
 : NOT-EFFECT ( -- n ) [: s" NOT-BUILT" EFFECT:N define-word ;] catch ;
 REJECTION:CAPTURE
 NOT-EFFECT 70 T=
-REJECTION:BUFFER$ s" error[E-NOT-EFFECT]" CONTAINS? TTRUE  REJECTION:BUFFER-OFF
+s" error[E-NOT-EFFECT]" HAS  s" postpone-define.f:156:1" HAS
+s" = word: NOT-BUILT" HAS  REJECTION:BUFFER-OFF
 
 \ 23 type parameters fit an effect, a 24th is E-NOT-EFFECT.
 : WIDE ( ptr u8 n n -- n ) {: a:ptr u:n k:n :}
@@ -158,32 +163,49 @@ REJECTION:BUFFER$ s" error[E-NOT-EFFECT]" CONTAINS? TTRUE  REJECTION:BUFFER-OFF
 s" WIDE-23" 23 WIDE 0 T=
 REJECTION:CAPTURE
 s" WIDE-24" 24 WIDE 70 T=
-REJECTION:BUFFER$ s" error[E-NOT-EFFECT]" CONTAINS? TTRUE  REJECTION:BUFFER-OFF
+s" error[E-NOT-EFFECT]" HAS  s" postpone-define.f:165:16" HAS
+s" = word: WIDE-24" HAS  REJECTION:BUFFER-OFF
 
 \ A spelling that names no family is E-UNKNOWN-SIGNATURE-TYPE.
 : NO-FAMILY ( -- n ) [: s" no-such-family" EFFECT:FAMILY drop ;] catch ;
+REJECTION:CAPTURE
 NO-FAMILY 70 T=
+s" error[E-UNKNOWN-SIGNATURE-TYPE]" HAS  s" postpone-define.f:172:1" HAS
+REJECTION:BUFFER-OFF
 
 \ EFFECT:IN given a type that is no effect is E-NOT-EFFECT.
 : IN-NOT-EFFECT ( -- n ) [: EFFECT:N EFFECT:N EFFECT:IN drop ;] catch ;
+REJECTION:CAPTURE
 IN-NOT-EFFECT 70 T=
+s" error[E-NOT-EFFECT]" HAS  s" postpone-define.f:179:1" HAS
+REJECTION:BUFFER-OFF
 
 : APPEND-NONE ( -- n ) [: s" 1" body-append ;] catch ;
 APPEND-NONE 0 T<>
 : LITERAL-NONE ( -- n ) [: 1 literal ;] catch ;
+REJECTION:CAPTURE
 LITERAL-NONE 70 T=
+s" error[E-NO-DEFINITION]" HAS  s" postpone-define.f:187:1" HAS
+REJECTION:BUFFER-OFF
 : COMPILE-NONE ( -- n ) [: ['] DOUBLE compile, ;] catch ;
+REJECTION:CAPTURE
 COMPILE-NONE 70 T=
+s" error[E-NO-DEFINITION]" HAS  s" postpone-define.f:192:1" HAS
+REJECTION:BUFFER-OFF
 
 : BROKEN ( -- n ) [: s" UNDERFLOW" POSTPONE-DEFINER:MAKE-BROKEN ;] catch ;
+REJECTION:CAPTURE
 BROKEN 70 T=
+s" error[E-INPUT-UNDERFLOW]" HAS  s" postpone-define.f:198:1" HAS
+s" = word: drop" HAS  REJECTION:BUFFER-OFF
 s" : AFTER ( -- n ) 7 ;" evaluate-closed
 AFTER 7 T=
 
 : RV-REFUSED ( -- n ) [: s" RV-BAD" POSTPONE-DEFINER:MAKE-RV ;] catch ;
 REJECTION:CAPTURE
 RV-REFUSED 70 T=
-REJECTION:BUFFER$ s" error[E-NOT-EFFECT]" CONTAINS? TTRUE  REJECTION:BUFFER-OFF
+s" error[E-NOT-EFFECT]" HAS  s" postpone-define.f:206:1" HAS
+s" = word: RV-BAD" HAS  REJECTION:BUFFER-OFF
 s" : AFTER-RV ( -- n ) 8 ;" evaluate-closed
 AFTER-RV 8 T=
 

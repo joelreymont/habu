@@ -1384,47 +1384,18 @@ variable RC
    SB-RESET s" --> " SB-APPEND FX-PATH$ SB-APPEND at atu SB-APPEND
    ERR$ SB$ CONTAINS? TTRUE ;
 
-: UNPLACED ( n ptr u8 n ptr u8 n ptr u8 n -- )
-   {: k:n c:ptr cu:n tok:ptr toku:n path:ptr pathu:n :}
-   k s" code" c cu FIELD=
-   k s" token" tok toku FIELD=
-   k s" file" path pathu FIELD=
-   GJA-LINE# @ k > dup TTRUE 0= IF EXIT THEN
-   k GJA-LINE$ GJA-PARSE
-   {: root:SPAN:span<u8> :}
-   root s" line" FIELD-ABSENT
-   root s" column" FIELD-ABSENT
-   root s" byte_start" FIELD-ABSENT
-   root s" byte_end" FIELD-ABSENT ;
-
-: UNPLACED-STALE ( n ptr u8 n ptr u8 n -- )
-   {: k:n tok:ptr toku:n path:ptr pathu:n :}
-   k s" E-TRUST-UNRESOLVED" tok toku path pathu UNPLACED ;
-
-: STALE-UNPLACED ( ptr u8 n -- )
-   {: tok:ptr toku:n :}
-   s" " CHECK
-   GJA-LINE# @ 1 T=
-   0 tok toku FX-PATH$ UNPLACED-STALE
-   s" --all-errors" CHECK
-   GJA-LINE# @ 1 T=
-   0 tok toku FX-PATH$ UNPLACED-STALE
-   s" --verify-only" CHECK
-   GJA-LINE# @ 1 T=
-   0 tok toku FX-PATH$ CANON$ UNPLACED-STALE ;
-
 : VERIFY-REJECTED-AT ( n ptr u8 n ptr u8 n n n n n -- )
    {: k:n c:ptr cu:n tok:ptr toku:n line:n col:n bs:n be:n :}
    k s" code" c cu FIELD=
    k tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
 
 \ A top-level row the check replays gets the bytes the load's literals make. A
-\ decoded name nothing defines is stale and unplaced: the checked text does not
-\ hold it. A bad escape is rejected at the literal's opener, by each check as
-\ by the load, before an unclosed string after it. The lexer's defect comes
-\ before an earlier definition that does not check; --verify-only composes the
-\ file as it reads it and keeps that definition's rejection before the
-\ string's.
+\ decoded name nothing defines is stale, and no source holds it: the record is
+\ placed at the `trust` the reader is on. A bad escape is rejected at the
+\ literal's opener, by each check as by the load, before an unclosed string
+\ after it. The lexer's defect comes before an earlier definition that does not
+\ check; --verify-only composes the file as it reads it and keeps that
+\ definition's rejection before the string's.
 : TEST-ESCAPED-ROW ( -- )
    s" an escaped trust row: a hex escape" T-LABEL
    SB-RESET
@@ -1443,8 +1414,8 @@ variable RC
    s" : NOPE ( -- ) ;" SB-APPEND LF+
    s\" s\\\" NO\\x51E\" s\" -- n\" trust" SB-APPEND LF+
    s" escaped-stale-trust.f" FIXTURE!
-   s" NOQE" STALE-UNPLACED
-   s" E-TRUST-UNRESOLVED" s" " REJECT-RC LOADED-AT
+   s" E-TRUST-UNRESOLVED" s" trust" 2 23 38 43 REFUSED-MODES
+   s" E-TRUST-UNRESOLVED" s" :2:23" REJECT-RC LOADED-AT
    ERR$ s" `NOQE`" CONTAINS? TTRUE
    s" an escaped literal with no escape, naming no word" T-LABEL
    s\" s\\\" NOPF\" s\" -- n\" trust" s" escape-free-stale.f" LINE-FIXTURE
@@ -1718,23 +1689,15 @@ variable RC
    s\" TRUSTED: EV ( -- ) s\" drop\" evaluate ; immediate" SB-APPEND LF+
    s\" s\" EV\" 0 parse-imm" SB-APPEND LF+ ;
 
-: RUN-REFUSED-UNPLACED ( ptr u8 n ptr u8 n -- )
-   {: c:ptr cu:n tok:ptr toku:n :}
-   s" " CHECK
-   c cu REJECTED-AS
-   0 c cu tok toku FX-PATH$ UNPLACED
-   s" --all-errors" CHECK
-   c cu REJECTED-AS
-   0 c cu tok toku FX-PATH$ UNPLACED ;
-
-\ A refusal at a token an immediate evaluated into the run, which no source
-\ holds, names no place; a token after it in the file keeps its true place.
+\ A rejection at a token an immediate evaluated into the run, which no source
+\ holds, is placed at the `;` the reader is on; a token after it in the file
+\ keeps its true place.
 : TEST-RUN-UNSOURCED ( -- )
    s" an underflow at a drop an immediate evaluated, after a comment" T-LABEL
    EV-LINES
    s" : P ( -- ) ( a comment here ) 1 drop EV ;" SB-APPEND LF+
    s" ev-none.f" FIXTURE!
-   s" E-INPUT-UNDERFLOW" s" drop" RUN-REFUSED-UNPLACED
+   s" E-INPUT-UNDERFLOW" s" ;" 3 41 108 109 RUN-REFUSED-AT
    s" a mismatch at a drop in the file after an evaluated one" T-LABEL
    EV-LINES
    s" : P ( -- n ) ( a comment here ) 1 1 EV" SB-APPEND LF+

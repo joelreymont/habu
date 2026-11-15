@@ -2992,9 +2992,11 @@ CHECKER-REG:}SCRATCH
    off 0 <> IF TOP-ROW-COUNT ELSE 0 THEN TOP-ROW-CELLS !
    TOP-RELEASE ;
 
+\ A record no source places is placed at the step's token.
 : TOP-STEP-LOAD ( [ -- ] n -- )
-   {: live:n :}
-   live CHECKER-TOP-LOAD  TOP-RUN ;
+   {: q live:n :}
+   live CHECKER-TOP-LOAD
+   TOK-SPELL-A @ TOK-SPELL-U @ [: q TOP-RUN ;] REJECTION:READING ;
 
 : CHECKER-TOP-WORD ( ptr u8 n n -- )
    {: a:ptr u:n live:n :}

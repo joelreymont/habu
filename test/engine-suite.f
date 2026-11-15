@@ -458,6 +458,15 @@ public
    [: 2dup evaluate-closed ;] catch {: rc:n :}
    2drop rc ;
 
+\ OUTCOME with the records it prints captured, however quiet the caller is.
+: CAPTURED ( ptr u8 n -- n ) {: a:ptr u:n :}
+   REJECTION:QUIET @ {: q:n :}
+   0 REJECTION:QUIET !  REJECTION:CAPTURE
+   a u OUTCOME
+   REJECTION:BUFFER-OFF  q REJECTION:QUIET ! ;
+\ Whether the captured records hold the text a u.
+: HAS ( ptr u8 n -- ) {: a:ptr u:n :}   REJECTION:BUFFER$ a u CONTAINS? TTRUE ;
+
 ;package
 
 1 REJECTION:QUIET +!
@@ -466,13 +475,17 @@ s" : ES-RES-CONTROL ( -- n ) T-LABEL-CAP ;" ES-RES-REFUSE:OUTCOME 0 T=
 s" engine resolution: the control resolved the global row" T-LABEL
 ES-RES-CONTROL 256 T=
 s" engine resolution: a public tail is refused bare outside" T-LABEL
-s" : ES-RES-P1 ( -- n ) ES-RES-PUB ;" ES-RES-REFUSE:OUTCOME ES-RES-REFUSE:UNDEFINED T=
+s" : ES-RES-P1 ( -- n ) ES-RES-PUB ;" ES-RES-REFUSE:CAPTURED ES-RES-REFUSE:UNDEFINED T=
+s" error[E-UNDEFINED]" ES-RES-REFUSE:HAS  s" engine-suite.f:478:39" ES-RES-REFUSE:HAS
 s" engine resolution: a private tail is refused qualified" T-LABEL
-s" : ES-RES-P2 ( -- n ) ES-RESO:ES-RES-PRIV ;" ES-RES-REFUSE:OUTCOME ES-RES-REFUSE:UNDEFINED T=
+s" : ES-RES-P2 ( -- n ) ES-RESO:ES-RES-PRIV ;" ES-RES-REFUSE:CAPTURED ES-RES-REFUSE:UNDEFINED T=
+s" error[E-UNDEFINED]" ES-RES-REFUSE:HAS  s" engine-suite.f:481:48" ES-RES-REFUSE:HAS
 s" engine resolution: a private tail is refused bare outside" T-LABEL
-s" : ES-RES-P3 ( -- n ) ES-RES-PRIV ;" ES-RES-REFUSE:OUTCOME ES-RES-REFUSE:UNDEFINED T=
+s" : ES-RES-P3 ( -- n ) ES-RES-PRIV ;" ES-RES-REFUSE:CAPTURED ES-RES-REFUSE:UNDEFINED T=
+s" error[E-UNDEFINED]" ES-RES-REFUSE:HAS  s" engine-suite.f:484:40" ES-RES-REFUSE:HAS
 s" engine resolution: an unknown package qualifier is refused" T-LABEL
-s" : ES-RES-P4 ( -- n ) ES-NO-SUCH-PKG:T-LABEL-CAP ;" ES-RES-REFUSE:OUTCOME ES-RES-REFUSE:UNDEFINED T=
+s" : ES-RES-P4 ( -- n ) ES-NO-SUCH-PKG:T-LABEL-CAP ;" ES-RES-REFUSE:CAPTURED ES-RES-REFUSE:UNDEFINED T=
+s" error[E-UNDEFINED]" ES-RES-REFUSE:HAS  s" engine-suite.f:487:55" ES-RES-REFUSE:HAS
 s" engine resolution: a duplicate tail is refused case-folded" T-LABEL
 -1 REJECTION:QUIET +!  REJECTION:CAPTURE
 s" 9 constant t-label-cap" ES-RES-REFUSE:OUTCOME CHECKER-REJECT-RC T=
@@ -2228,7 +2241,8 @@ T-LABEL-CAP 256 T=
 s" ndict!: the rebuilt index resolves the qualified tail" T-LABEL
 ES-RESO:T-LABEL-CAP 3 T=
 s" ndict!: the rebuilt index still refuses a bare package public" T-LABEL
-s" : ES-NDX-P1 ( -- n ) ES-RES-PUB ;" ES-RES-REFUSE:OUTCOME ES-RES-REFUSE:UNDEFINED T=
+s" : ES-NDX-P1 ( -- n ) ES-RES-PUB ;" ES-RES-REFUSE:CAPTURED ES-RES-REFUSE:UNDEFINED T=
+s" error[E-UNDEFINED]" ES-RES-REFUSE:HAS  s" engine-suite.f:2244:39" ES-RES-REFUSE:HAS
 
 ES-SWL:CAPTURE-SECOND
 s" search-wl: the rebuilt index ran the same battery" T-LABEL

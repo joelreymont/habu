@@ -360,6 +360,15 @@ PTR-VARIABLE EVALUATED-A  variable EVALUATED-U
 PTR-VARIABLE EVAL-TOKEN-A  variable EVAL-TOKEN-U  variable EVAL-LEAD-U
 PTR-VARIABLE INVOKED-A  variable INVOKED-U
 EVAL-TOP-CELL RESERVED-PTR-U8-CELL EVAL-TOP
+\ A token no source holds is placed at the token READER-A READER-U the reader
+\ walking the subject is on, an empty one for none, else at RUNNING, the token
+\ the engine read last; the label is followed by a `word` note naming the token
+\ WORD-A WORD-U; WORD-U is 0 for no note.
+PTR-VARIABLE READER-A  variable READER-U   0 READER-U !
+TKA-CELL RESERVED-PTR-U8-CELL RUNNING
+PTR-VARIABLE WORD-A  variable WORD-U   0 WORD-U !
+\ The token PLACE placed, t tu or the running token.
+PTR-VARIABLE SHOWN-A  variable SHOWN-U
 
 : END-TEXT ( -- )
    PART @ GAP-PART = IF LABEL-PART PART ! THEN
@@ -520,23 +529,34 @@ public
    inv NULL-PTR = IF 0 0= 0= EXIT THEN
    p 1 inv IN-EVALUATED? nip ;
 private
-\ The armed source holding the token's first byte, else the loader's owned
-\ bytes, else an evaluated text, which places it where the evaluation was run,
-\ else the buffer read, holding the whole token, as itself or as the bytes a
-\ body's text copied it from; else no place.
-: PLACE ( ptr u8 n -- ) {: t:ptr tu:n :}
-   0 PLACED !  0 EVALUATED !
-   t >SOURCE IF t tu SOURCE-PLACE EXIT THEN drop
+\ Places the token t tu in the armed source holding its first byte, else the
+\ loader's owned bytes, else an evaluated text, which places it where the
+\ evaluation was run, else the buffer read, holding the whole token, as itself
+\ or as the bytes a body's text copied it from; answers whether one did.
+: PLACE-IN ( ptr u8 n -- bool ) {: t:ptr tu:n :}
+   t >SOURCE IF t tu SOURCE-PLACE 0 0= EXIT THEN drop
    t tu BODY>INPUT {: s:ptr :}
-   OWNED$ s tu HOLDS? IF OWNED$ s tu BUFFER-PLACE LOAD-FILE$ PLACE-FILE! EXIT THEN
+   OWNED$ s tu HOLDS? IF
+      OWNED$ s tu BUFFER-PLACE LOAD-FILE$ PLACE-FILE!  0 0= EXIT
+   THEN
    INVOKER {: inv:ptr :}
    inv NULL-PTR = 0= IF
       t tu inv IN-EVALUATED? nip IF
-         inv INVOKE-PLACE  PLACED @ IF EXIT THEN
+         inv INVOKE-PLACE  PLACED @ IF 0 0= EXIT THEN
          0 EVALUATED !
       THEN
    THEN
-   INPUT$ s tu HOLDS? IF INPUT$ s tu BUFFER-PLACE NO-FILE$ PLACE-FILE! EXIT THEN
+   INPUT$ s tu HOLDS? IF INPUT$ s tu BUFFER-PLACE NO-FILE$ PLACE-FILE!  0 0= EXIT THEN
+   0 0= 0= ;
+\ Places the token t tu, else the reader's token when it is on one or the
+\ running token when not, naming t tu in a `word` note, else the file alone.
+: PLACE ( ptr u8 n -- ) {: t:ptr tu:n :}
+   0 PLACED !  0 EVALUATED !  0 WORD-U !  t SHOWN-A !  tu SHOWN-U !
+   t tu PLACE-IN IF EXIT THEN
+   t WORD-A !  tu WORD-U !
+   READER-U @ 0 > IF READER-A @ READER-U @ ELSE RUNNING @ data-base TKL-CELL + @ THEN
+   {: r:ptr ru:n :}
+   r ru PLACE-IN IF r SHOWN-A !  ru SHOWN-U !  EXIT THEN
    LOAD-FILE$ {: fa:ptr fu:n :}
    fu 0 > IF fa fu ELSE NO-FILE$ THEN PLACE-FILE! ;
 
@@ -563,10 +583,7 @@ private
    0 BEGIN dup k < WHILE 94 EMIT1 1 + REPEAT drop ;
 : PLACE-PROSE ( ptr u8 n -- ) {: t:ptr tu:n :}
    GUTTER @ BLANKS  s" --> " EMIT-STR  PLACE-FILE$ EMIT-STR
-   PLACED @ 0= IF
-      10 EMIT1  MARGIN  s" = at `" EMIT-STR  t tu EMIT-STR  s" `:" EMIT-STR
-      EXIT
-   THEN
+   PLACED @ 0= IF EXIT THEN
    58 EMIT1  AT-LINE @ EMIT-U  58 EMIT1  AT-COLUMN @ EMIT-U  10 EMIT1
    MARGIN 124 EMIT1 10 EMIT1
    AT-LINE @ EMIT-U  s"  | " EMIT-STR  LINE-A @ LINE-U @ EMIT-STR  10 EMIT1
@@ -594,13 +611,17 @@ private
    MARGIN  k ku EMIT-STR  EVALUATED-A @ EVALUATED-U @ EMIT-STR  10 EMIT1
    MARGIN  ku BLANKS  EVALUATED-A @ EVAL-LEAD-U @ LEAD  EVAL-TOKEN-U @ CARETS
    10 EMIT1 ;
-\ Ends the open text; the label's end writes the evaluated place.
+\ Ends the open text; the label's end writes the evaluated place, then the
+\ `word` note.
 : CLOSE-PART ( -- )
    END-TEXT
    PART @ LABEL-PART = 0= IF EXIT THEN
-   EVALUATED @ 0= IF EXIT THEN
-   0 EVALUATED !
-   JSON @ IF EVALUATED-JSON ELSE EVALUATED-PROSE THEN ;
+   EVALUATED @ IF
+      0 EVALUATED !
+      JSON @ IF EVALUATED-JSON ELSE EVALUATED-PROSE THEN
+   THEN
+   WORD-U @ 0= IF EXIT THEN
+   s" word" NOTE-KEY  WORD-A @ WORD-U @ EMIT-STR  0 WORD-U !  END-TEXT ;
 
 \ Closes a notes object no HELP closed, then the record; sends the record,
 \ or drops it under QUIET.
@@ -612,7 +633,8 @@ private
 
 variable WARNING   0 WARNING !           \ the open record is a warning
 : BEGIN-RECORD ( ptr u8 n ptr u8 n -- ) {: sev:ptr su:n code:ptr cu:n :}
-   1 DEST !  0 TEXT-LEN !  0 NOTES !  1 GUTTER !  0 EVALUATED !  NO-PART PART !
+   1 DEST !  0 TEXT-LEN !  0 NOTES !  1 GUTTER !  0 EVALUATED !  0 WORD-U !
+   NO-PART PART !
    JSON @ IF
       123 EMIT1  s" severity" JSON-KEY  sev su JSON-STRING
       s" code" FIELD  code cu JSON-STRING
@@ -634,7 +656,7 @@ public
    END-TEXT
    t tu PLACE
    PLACED @ IF AT-LINE @ DIGITS ELSE 1 THEN GUTTER !
-   EVALUATED @ IF INVOKED-A @ INVOKED-U @ ELSE t tu THEN {: p:ptr pu:n :}
+   EVALUATED @ IF INVOKED-A @ INVOKED-U @ ELSE SHOWN-A @ SHOWN-U @ THEN {: p:ptr pu:n :}
    JSON @ IF p pu PLACE-JSON LABEL-PART ELSE p pu PLACE-PROSE GAP-PART THEN
    PART ! ;
 \ A note's key; its value follows.
@@ -841,4 +863,12 @@ public
 : PRESERVE-LABEL ( [ -- ] -- ) {: q :}
    LABEL-SAVE  q catch {: rc:n :}
    LABEL-RESTORE  rc 0 <> IF rc throw THEN ;
+
+\ Runs q with a u as the token the reader walking the subject is on, then puts
+\ back the one it found, on a throw too.
+: READING ( ptr u8 n [ -- ] -- ) {: a:ptr u:n q :}
+   READER-A @ READER-U @ {: was:ptr wu:n :}
+   a READER-A !  u READER-U !
+   q catch {: rc:n :}
+   was READER-A !  wu READER-U !  rc 0 <> IF rc throw THEN ;
 ;package
