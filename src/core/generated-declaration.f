@@ -1,16 +1,16 @@
 \ generated-declaration.f: the declaration layer's shared parts, loaded before
-\ structure-decl.f: DECL-REJECT (the reject packet), DECL-REPLAY (a pre-lexed
+\ structure-decl.f: DECL-REJECT (the rejection record), DECL-REPLAY (a pre-lexed
 \ token stream), the checker-frame and constructor-generation participants, and
 \ DECL-FRONT (the driver the STRUCTURE and ENUM front ends wrap). The runner,
 \ DECLARATION-TRANSACTION:RUN, is in generated-declaration-protection.f.
 
-\ DECL-REJECT is the one reject packet the STRUCTURE and ENUM front ends raise
-\ through. RENDER prints it as a rejection through package REJECTION.
+\ DECL-REJECT holds the one rejection record the STRUCTURE and ENUM front ends
+\ raise through. RENDER prints it through package REJECTION.
 \ The reason and fix are TYPE-DECL's armed reason (TDECL-ARM), the one store
 \ every declaration catcher reads; a front end arms it with REJECT or EXPECT. A
 \ code raised with no reason armed for it arrives bare, and PICK-REASON reads the
 \ rows each code's owner lays with EXPLAIN. Declarations never nest, so the
-\ packet is one frame.
+\ record is one frame.
 using TFAM
 using TYPE-DECL
 
@@ -161,7 +161,7 @@ public
    wa wu fa fu code EXPECT
    code ;
 
-\ Reflection for the suites: what the packet would report right now.
+\ Reflection for the suites: what the record would report right now.
 : KIND$ ( -- ptr u8 n ) S-KIND SLOT@ ;
 : FAMILY$ ( -- ptr u8 n ) S-FAMILY SLOT@ ;
 : TOKEN$ ( -- ptr u8 n ) S-TOKEN SLOT@ ;
@@ -265,7 +265,8 @@ E-PF-SCHEMA EXPLAIN
 \ of `parse-name`, and the constructor generators read RP-ACTIVE? to define no
 \ word. One state carries both facts, so no caller can ask for a replay that
 \ generates or a live declaration that does not. The front ends' grammar,
-\ registry calls and packets are unchanged, so a replay registers the same rows.
+\ registry calls and records are those of a live declaration, so a replay
+\ registers the same rows.
 \ The stream is HEAD (the family name the callers lexed first) and BODY (the
 \ space-separated rest). A zero-length HEAD reaches the front end's "missing
 \ name" gate instead of promoting the first body token.
@@ -459,10 +460,10 @@ seal-package
 \ ahead of the interpreter, which would run them: `ENUM m7bad red red blue ;ENUM
 \ NEWTYPE m7cont<a>` would die `E-UNDEFINED` at `blue`. DRIVE skips to the terminator,
 \ except after SEEN-END (that would eat the next declaration) or at end of input.
-\ The skip reads through RAW, not NEXT, so the packet keeps naming the token.
-\ A replay claims the stream before the packet opens: a failed claim belongs to
-\ the caller, keeps the live declaration's packet and stream, and propagates with
-\ no packet. Only a successful claim reaches REPLAY-END, which releases the
+\ The skip reads through RAW, not NEXT, so the record keeps naming the token.
+\ A replay claims the stream before the record opens: a failed claim belongs to
+\ the caller, keeps the live declaration's record and stream, and propagates with
+\ no record. Only a successful claim reaches REPLAY-END, which releases the
 \ stream on both exits.
 \ QUOT-ROLLBACK after a reject is unconditional: it zeroes sumtype.f TDV-QUOT-N
 \ and TDV-QUOT-MISS, which only a quotation field dirties.

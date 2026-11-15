@@ -56,8 +56,8 @@ variable LBUF-BYTES
    LBUF-BYTES ! LBUF-TRUE ;
 
 \ A name the checker rejects answers false, and the definer defines nothing:
-\ the checker has reported it (src/core/checker.f CHECKER-STORAGE-REJECT). A
-\ taken name is rejected at t tu, the declared name the source holds.
+\ the checker has reported it. A taken name is rejected at t tu, the declared
+\ name the source holds.
 : LBUF-NAME-OK? ( ptr u8 n ptr u8 n -- bool ) {: name:ptr nameu:n t:ptr tu:n :}
    name nameu CHECKER-LBUF-NAME-OK? 0= if LBUF-FALSE exit then
    name nameu CHECKER-DEFINED-HERE? if name nameu t tu CHECK:REJECT-DUPLICATE then

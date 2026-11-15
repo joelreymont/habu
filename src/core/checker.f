@@ -676,10 +676,7 @@
 \ REJECTION places a token of the body text the engine captured in the buffer
 \ it was read from, through the same rows, while the definition's name lies in
 \ that buffer; the definitions the checker generates for a declaration have no
-\ place. REJECTION:CLOSER! takes the token that closes a definition's text (its
-\ `;` or a definer's `does>`) and the text's base, as the text does not hold
-\ it: a control structure still open there is refused at that token, as the
-\ load's compiler refuses it.
+\ place. A definition's closer is its `;` or a definer's `does>`.
 \
 \ Completion: CHECKER-RESOLVE:EACH-VISIBLE visits, once each, every folded
 \ spelling that starts with a prefix and that a position's own selection binds:
@@ -2795,12 +2792,9 @@ public
 : WL-PROBE ( ptr u8 n n -- ptr n ) xref-search-wl ;
 ;package
 
-\ A dictionary record's cell at a slot. No record is NULL-PTR (src/habu/xref.f
-\ XREF-NULL), whose cells would be read from the page at address 0, so reading
-\ one is rejected; a caller that may hold no record tests for it first.
-\ src/habu/xref.f XREF-CELL@ and CK-REC-WID read through this word, and
-\ CHECKER-RESOLVE:CK-REC-NAME$ reads its flags through it before any other
-\ cell, so this one guard covers all three.
+\ A dictionary record's cell at a slot. No record is NULL-PTR, whose cells
+\ would be read from the page at address 0, so reading one is rejected; a
+\ caller that may hold no record tests for it first.
 : DICT-CELL@ ( ptr n n -- n )
    over NULL-PTR = IF
       s" E-XREF-NULL" REJECTION:OPEN
@@ -7225,7 +7219,7 @@ CHECKER-REG:}SCRATCH
 
 : SGBAD-SYNTAX! ( ptr u8 n -- )
    SGBAD-SYNTAX-KIND SGBAD-SET ;
-\ Refuses token A U unless it is EA EU, the word the parser expects there.
+\ Rejects token A U unless it is EA EU, the word the parser expects there.
 : SIG-EXPECTED ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n ea:ptr eu:n :}
    a u ea eu CORE-STR= IF EXIT THEN
    SGBAD @ IF EXIT THEN
@@ -8615,7 +8609,7 @@ variable LBI-LINEAR   \ the refused stored type parsed and may hold a linear val
    a u s" \" CORE-STR= IF RES-TRUE EXIT THEN
    a u DELIM? ;
 
-\ Why a record is refused, 0 when it is not.
+\ Why a record is rejected, 0 when it is not.
 1 constant VREC-WHY-NAME     \ the name is a type already, or reserved
 2 constant VREC-WHY-FIELD    \ a field's name is a delimiter, `(` or `\`
 3 constant VREC-WHY-DUP      \ a field's name repeats
@@ -8779,8 +8773,8 @@ variable VREC-TYPE-U
       REJECTION:EMIT-STR
    THEN ;
 
-\ VALUE-RECORD's registrar: a refused record is rejected at the field the
-\ refusal names, or at the record's name.
+\ VALUE-RECORD's registrar: a bad record is rejected at the field at fault, or
+\ at the record's name.
 : CHECKER-DEFRECORD ( ptr u8 n ptr u8 n -- )
    {: name:ptr nameu:n fields:ptr fieldsu:n :}
    name nameu BYTE-SPAN? 0= IF s" checker: a value record's name describes no memory" 76 die THEN
@@ -17723,7 +17717,7 @@ CHECKER-REG:}SCRATCH
    t RES-TRUE ;
 
 
-\ Typed memory refuses t: latch why, then fail.
+\ T is a type typed memory rejects.
 : LAYOUT-MEM-REJECT ( n -- )
    LAYOUT-MEM-WHY MDIAG!  0 OK !  -1 FAILSET ! ;
 

@@ -892,9 +892,9 @@ private
    repeat
    ctx CLOSE-CUR-DIR ;
 
-\ A quotation-typed LOCAL cannot be caught - `{: a u q :} a u q catch` is
-\ "non-certified definition ... at 'catch'" - so the walk travels on the stack
-\ into this preserving word and the literal quotation below catches THAT.
+\ A quotation-typed LOCAL cannot be caught - the checker rejects
+\ `{: a u q :} a u q catch` - so the walk travels on the stack into this
+\ preserving word and the literal quotation below catches THAT.
 : WALK-RUN ( ptr n ptr u8 n [ ptr u8 n -- bool ] [ ptr u8 n -- ] -- ptr n ptr u8 n [ ptr u8 n -- bool ] [ ptr u8 n -- ] )
    {: ctx:ptr a:ptr u allow q :}
    ctx a u WALK-ROOT!

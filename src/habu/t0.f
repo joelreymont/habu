@@ -201,7 +201,7 @@ variable CUT                         \ the byte just past `does> `, or 0
    REJECTION:HELP  a u d du REJECTION:UNDEFINED-HELP
    REJECT ;
 
-\ A tick of an engine-internal record or a scope entry (NDICT:TICK-REFUSED?).
+\ Rejects a tick of an engine-internal record or a scope entry.
 : NO-TICK ( ptr u8 n -- ) {: a:ptr u:n :}
    s" E-UNDEFINED" REJECTION:OPEN
    s" compiled code cannot call " SAY  a u TICKS
@@ -272,10 +272,10 @@ variable CUT                         \ the byte just past `does> `, or 0
 \ slots in scope where its block opened. `while` goes under its `begin`, as
 \ Forth's orig/dest order has it, so `begin ... while ... while ... repeat
 \ then` closes. A structure that does not close, or a loop word outside the
-\ loops it needs, is E-T0-CONTROL, refused before the emitter is called: the
-\ EMIT- structured words (src/habu/t0-emit.f CONTROL) trust this nesting.
-\ The refusal names the closer, or the token that ended a unit with a structure
-\ still open: the stack keeps no opener's row.
+\ loops it needs, is E-T0-CONTROL, rejected before the emitter is called: the
+\ EMIT- structured words trust this nesting. The rejection names the closer,
+\ or the token that ended a unit with a structure still open: the stack keeps
+\ no opener's row.
 0 constant CS-IF
 1 constant CS-ELSE
 2 constant CS-BEGIN
@@ -1257,7 +1257,7 @@ DYNAMIC-BUFFER RS-V vreg     \ reserved to EMIT-VREGS by RESET-STATE: one
    rec XREF-RETIRED? if 0 exit then
    rec XREF-START ;
 
-\ An operand bound to no record, or one NDICT:TICK-REFUSED? refuses, is undefined,
+\ An operand bound to no record, or to one a tick may not reach, is undefined,
 \ even in an unchecked body (THE EVENTS).
 : DO-TICK ( n -- ) {: r:n :}
    ORD @ ROW$ {: a:ptr u:n :}
@@ -1462,7 +1462,7 @@ variable READER                     \ the unit being compiled if it reads locals
    drop -1 ;
 
 \ A vreg holding cell i of local seq: from its frame slot, or in a reading quotation from its
-\ record. A local the record lacks is refused at the token before the cursor.
+\ record. A local the record lacks is rejected at the token before the cursor.
 : LOCAL-CELL ( n n n -- vreg ) {: seq:n i:n at:n :}
    READER @ 0< if seq L-SLOT @ else seq at ENV-CELL then {: c:n :}
    c 0< if ORD @ 1- ROW$ NO-LOCAL then
@@ -1880,7 +1880,7 @@ variable STORE-REC                   \ !'s
 \ reject it.
 \ A token no path reaches (K-UNREACHED) is E-T0-CONTROL.
 \
-\ T0 passes over a parse-neutral immediate and refuses any other.
+\ T0 passes over a parse-neutral immediate and rejects any other.
 : IMM-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
    a u NEUTRAL-PARSE-IMM? if exit then
    a u UNMODELED ;
@@ -2175,7 +2175,7 @@ variable LOST-AT-FAM                  \ the value's family id, -1 for none
    [: ON-SCAN ;] [: ON-TOKEN ;] [: ON-DONE ;]
    CHECKER-TAPE:INSTALL ;
 
-\ A does> clause is named for a refusal by the definition's name.
+\ A does> clause is named for a rejection by the definition's name.
 : CHECK-UNIT ( -- n )
    M-DOES @ 0<> if
       CHECK-DOES-HEAD
@@ -2202,7 +2202,7 @@ variable LOST-AT-FAM                  \ the value's family id, -1 for none
 \ target's (HOST-TAKE), and a native shadow as its one copy.
 \ The shadow walk runs only for a machine an emitter provided (EMIT-PROVIDED?):
 \ for any other a T0 colon definition has no shadow routine, and the capture
-\ refuses one a shadow routine reaches. A refusal in either walk refuses the
+\ rejects one a shadow routine reaches. A rejection in either walk rejects the
 \ definition. Each walk starts clean: WALK and FIXED-BODY
 \ set their own cells and RESET-STATE's, EMIT-OPEN clears the seam's rows and the
 \ selected emitter's sink and LABEL state; the tape and the measures are only

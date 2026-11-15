@@ -195,9 +195,9 @@ package VERIFY
 
 public
 
-\ The verifier throws none of this: a file a quiet composition loads that the
-\ system does not read to its end is recorded where the read fails, which then
-\ stops with INCLUDE-IO-RC. check.f's packets still read the code.
+\ The code a tool's own failed source read throws. The verifier throws none: a
+\ file a quiet composition loads that the system does not read to its end is
+\ recorded where the read fails, which then stops with INCLUDE-IO-RC.
 7201 constant E-SOURCE-READ
 
 \ The E-DISC kind of the discovery rejection that stopped the last walk or

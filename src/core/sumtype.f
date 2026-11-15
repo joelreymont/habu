@@ -288,7 +288,7 @@ variable TDECL-TOK-N
    a u TDECL-ORIGIN-SPAN 0= IF EXIT THEN
    a u REJECTION:KEPT ;
 
-\ A DEFFAMILY packet points at the name whatever the rejection, as the source
+\ A DEFFAMILY record points at the name whatever the rejection, as the source
 \ token TDS: the folded DEFTYPE header the body checks has no place.
 : TDECL-REPORT-TOK ( -- ptr u8 n )
    TDS-U @ 0 > IF TDS-A @ TDS-U @ EXIT THEN
@@ -341,8 +341,9 @@ variable TDECL-TOK-N
    -1 TDECL-CUR-FAM !
    s" " s" " 0 TDECL-ARM ;
 
-\ The unterminated-sum reject: the declaration-shaped E-BAD-DECLARATION packet
-\ (name + partial body) through TDECL-RUN, on the load and a replay alike.
+\ The unterminated-sum rejection: the declaration-shaped E-BAD-DECLARATION
+\ record (name + partial body) through TDECL-RUN, on the load and a replay
+\ alike.
 : TDECL-NOEND-BODY ( -- )
    TDN-A @ TDN-U @ s" missing ;SUMTYPE"
       s" end the declaration with `;SUMTYPE` after its last variant"

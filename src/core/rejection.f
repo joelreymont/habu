@@ -55,8 +55,8 @@ variable DEST   0 DEST !                 \ 0 = stdout, 1 = TEXT (sig recording)
 variable TEXT-LEN
 \ The main DATA's REJECTION-JSON-CELL from any thread: a task's region is not
 \ the main one, and main reads data-base because a cross build's host is not
-\ mapped at DATA-VA. No signature: `ptr n` would refuse a stored flag, and the
-\ inferred row keeps data-base's kind, which takes a flag and refuses an address.
+\ mapped at DATA-VA. No signature: `ptr n` would reject a stored flag, and the
+\ inferred row keeps data-base's kind, which takes a flag and rejects an address.
 : JSON
    data-base TASK-TCB-CELL + @ 0= IF data-base REJECTION-JSON-CELL + EXIT THEN
    data-base  DATA-VA data-base NULL-PTR - -  +  REJECTION-JSON-CELL + ;
@@ -299,7 +299,9 @@ public
 \ Set after MAP!, which clears it.
 : MAP-BIAS! ( n -- )
    ROW-BIAS ! ;
-\ The token a u that closes the text whose first byte is base.
+\ The token a u that closes the text whose first byte is base, which the text
+\ does not hold: a structure still open there is rejected at it, as the load
+\ rejects it.
 : CLOSER! ( ptr u8 n ptr u8 -- )
    {: a:ptr u:n base:ptr :}
    a CLOSER-A !  u CLOSER-U !  base CLOSER-BASE ! ;
