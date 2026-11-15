@@ -211,8 +211,6 @@ public
 \ CHECKER-REJECT-RC. Readers of a stop's code still name them.
 7157 constant E-MISSING-SIGNATURE  \ a definer or `does>` with no closed signature
 7135 constant E-SECTION-WORD       \ `host` or `target`, with a word of that name in scope
-7200 constant E-BAD-NOMINAL-TYPE   \ a DEFLINEAR or VALUE-RECORD name no type may take
-7198 constant E-BAD-RECORD-FIELD   \ a VALUE-RECORD field, or a record with none
 
 \ Captured by the verifier child's body as it starts loading. A direct caller
 \ that does not supply an entry observation retains checking order.
@@ -234,8 +232,7 @@ variable SCAN-I
 variable SKIP-STRINGS
 variable FOUND
 variable TOKEN-START
-\ The stopped token survives scanner restoration after a nested file throws,
-\ and so does the reason a declaration refusal keeps beside it (REASON$).
+\ The stopped token survives scanner restoration after a nested file throws.
 variable TOKEN-BYTE
 PTR-VARIABLE REASON-A
 variable REASON-U
@@ -394,9 +391,6 @@ defer COMPOSE-FILE ( ptr u8 n ptr u8 n -- )
    SOURCE-U !
    SOURCE-A !
    0 TOKEN-BYTE !  0 REASON-U ! ;
-
-: REASON! ( ptr u8 n -- )
-   REASON-U !  REASON-A ! ;
 
 \ The flags the top-level scan knows a `[if]` may take, the top last (FLAG-STEP).
 8 constant FLAG-CAP
@@ -2512,35 +2506,19 @@ DYNAMIC-BUFFER NOM-TAIL u8
    DISARM
    at nameu CAST-DEFINED ;
 
-\ Ends the record of declaration token t tu the scan refused, message m mu,
-\ with the reason it kept (REASON!) as a note and help h hu; then stops.
-: DECLARATION-STOP ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: t:ptr tu:n m:ptr mu:n h:ptr hu:n :}
-   m mu REJECTION:EMIT-STR  s"  `" REJECTION:EMIT-STR
-   t tu REJECTION:EMIT-STR  96 REJECTION:EMIT1
-   t tu REJECTION:AT  m mu REJECTION:EMIT-STR
-   s" reason" REJECTION:NOTE  REASON-A @ REASON-U @ REJECTION:EMIT-STR
-   REJECTION:HELP  h hu REJECTION:EMIT-STR
+\ Ends a declaration's rejection record: under MULTI-ERR? the scan goes on and
+\ the caller registers nothing, so TOP-DEFINER? opens an unreported stretch;
+\ else the scan stops.
+: DECLARATION-END ( -- )
+   MULTI-ERR? IF REJECTION:KEEP EXIT THEN
    CHECKER-REJECT-RC REJECTION:STOP ;
-
-\ A DEFLINEAR or VALUE-RECORD name t tu no type may take.
-: NOMINAL-STOP ( ptr u8 n -- )
-   s" E-BAD-NOMINAL-TYPE" REJECTION:OPEN
-   s" bad nominal type"
-   s" choose a unique non-reserved nominal type name" DECLARATION-STOP ;
-
-\ A VALUE-RECORD field t tu the checker refuses, or the END-VALUE-RECORD of a
-\ record with none.
-: RECORD-FIELD-STOP ( ptr u8 n -- )
-   s" E-BAD-RECORD-FIELD" REJECTION:OPEN
-   s" bad record field"
-   s" declare at least one field, each with a unique name and a known type"
-   DECLARATION-STOP ;
 
 : RECORD-DEFLINEAR ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF NAME-STOP THEN
-   name nameu TYPE-RESERVED? IF s" reserved name" REASON!  name nameu NOMINAL-STOP THEN
+   name nameu TYPE-RESERVED? IF
+      name nameu CHECKER-LINEAR-TAKEN  DECLARATION-END EXIT
+   THEN
    name nameu CHECKER-DEFLINEAR ;
 
 : VALUE-RECORD-END? ( ptr u8 n -- bool )
@@ -2908,38 +2886,24 @@ variable STG-TYPE-U
    STG-TYPE-A @ STG-TYPE-U @ DW-TYPE DEFER-AT
    QUIET-TYPE-CLEAR ;
 
-: BODY>BYTE ( n -- n )
-   {: at:n :}
-   BODY-ROWS @ 2 * 2 max BODY-ROW-RESERVE
-   0 BODY-ROWS @ 0 ?do
-      i 2 * BODY-ROW @ at <= IF drop i THEN
-   loop
-   {: row:n :}
-   row 2 * 1 + BODY-ROW @  at +  row 2 * BODY-ROW @ - ;
-
-\ A refusal stops at the name, at the field the checker refuses or, with no
-\ field, at END-VALUE-RECORD; a checker refusal's message is its reason.
-: VALUE-RECORD-ADD ( ptr u8 n n -- )
-   {: name:ptr nameu:n byte:n :}
-   name nameu TYPE-RESERVED? IF
-      byte TOKEN-BYTE !  s" reserved name" REASON!  name nameu NOMINAL-STOP
-   THEN
-   name nameu BODY$ CHECKER-TRY-RECORD
-   {: at:n msg:ptr msgu:n :}
-   msgu 0= IF EXIT THEN
-   at BODY-U @ < IF at BODY>BYTE TOKEN-BYTE ! THEN
-   msg msgu REASON!
-   TOKEN-BYTE @ TOKEN-FROM RECORD-FIELD-STOP ;
+\ The field list is the source from its first token f to END-VALUE-RECORD at
+\ e, so the field token the checker rejects is placed; a record taken by name
+\ or with no field is rejected at its name.
+: VALUE-RECORD-ADD ( ptr u8 n ptr u8 ptr u8 -- )
+   {: name:ptr nameu:n f:ptr e:ptr :}
+   e f - {: fu:n :}
+   name nameu f fu CHECKER-TRY-RECORD {: at:n why:n :}
+   why 0= IF EXIT THEN
+   name nameu  f fu at VREC-TOKEN  why CHECKER-RECORD-REJECT
+   DECLARATION-END ;
 
 \ A record the input ends inside is refused in the declaration packet, at its
 \ name, as an unclosed SUMTYPE is.
 : RECORD-VALUE-RECORD ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF NAME-STOP THEN
-   TOKEN-BYTE @ {: byte:n :}
-   BODY-RESET
+   DECL-TOKEN  over {: f:ptr :}
    BEGIN
-      DECL-TOKEN
       dup 0= IF
          2drop
          s" value-record" DECL-REJECT:OPEN
@@ -2952,11 +2916,11 @@ variable STG-TYPE-U
          EXIT
       THEN
       2dup VALUE-RECORD-END? IF
-         2drop
-         name nameu byte VALUE-RECORD-ADD
+         drop {: e:ptr :}
+         name nameu f e VALUE-RECORD-ADD
          EXIT
       THEN
-      BODY-APPEND
+      2drop DECL-TOKEN
    AGAIN ;
 
 : VALUE-RECORD-OUTCOME ( n -- ) {: rc:n :}
@@ -4536,8 +4500,7 @@ public
 : TOKEN-BYTE@ ( -- n )
    TOKEN-BYTE @ ;
 
-\ Why the scan refused the declaration it stopped at with E-BAD-NOMINAL-TYPE or
-\ E-BAD-RECORD-FIELD, empty for any other stop.
+\ Empty: no scan stop keeps a reason.
 : REASON$ ( -- ptr u8 n )
    REASON-A @ REASON-U @ ;
 

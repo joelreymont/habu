@@ -758,8 +758,7 @@ variable RC
 : TEST-PREPASS-NOMINAL ( -- )
    s" a reserved DEFLINEAR name under --verify-only" T-LABEL
    s" DEFLINEAR n" s" deflinear-reserved.f" LINE-FIXTURE
-   s" E-BAD-NOMINAL-TYPE" s" fix_nominal_type" s" reserved name"
-   s" n" 1 11 10 11 PREPASS-REFUSED
+   s" E-BAD-DECLARATION" s" already a type or reserved" s" n" 1 11 10 11 PREPASS-REJECTED
    s" a reserved DEFTYPE name under --verify-only, at the name it folds" T-LABEL
    s" DEFTYPE N" s" deftype-reserved.f" LINE-FIXTURE
    s" E-BAD-DECLARATION" s" reserved name" s" N" 1 9 8 9 PREPASS-REJECTED
@@ -775,12 +774,23 @@ variable RC
    s" E-BAD-DECLARATION" s" <a>" 1 9 8 11 REFUSED-MODES
    s" a duplicate VALUE-RECORD field under --verify-only" T-LABEL
    s" VALUE-RECORD vr x n x n END-VALUE-RECORD" s" value-record-dup.f" LINE-FIXTURE
-   s" E-BAD-RECORD-FIELD" s" fix_record_field"
-   s" checker: duplicate value-record field" s" x" 1 21 20 21 PREPASS-REFUSED
-   s" a duplicate VALUE-RECORD field's reason under --all-errors" T-LABEL
+   s" E-BAD-DECLARATION" s" declared again" s" x" 1 21 20 21 PREPASS-REJECTED
+   s" a duplicate VALUE-RECORD field under --all-errors" T-LABEL
    s" --all-errors" CHECK
-   s" E-BAD-RECORD-FIELD" REJECTED-AS
-   0 s" reason" s" checker: duplicate value-record field" NOTE= ;
+   s" E-BAD-DECLARATION" REJECTED-AS
+   0 s" x" 1 21 20 21 AT
+   0 s" label" s" declared again" FIELD=
+   s" a duplicate VALUE-RECORD field, then an undefined word, under --all-errors" T-LABEL
+   SB-RESET
+   s" VALUE-RECORD vr x n x n END-VALUE-RECORD" SB-APPEND LF+
+   s" : VR-USE ( -- ) zork ;" SB-APPEND LF+
+   s" value-record-dup-then.f" FIXTURE!
+   s" --all-errors" CHECK
+   GJA-LINE# @ 2 T=
+   0 s" code" s" E-BAD-DECLARATION" FIELD=
+   0 s" x" 1 21 20 21 AT
+   1 s" code" s" E-UNDEFINED" FIELD=
+   1 s" zork" 2 17 57 61 AT ;
 
 : TEST-PREPASS-OPEN ( -- )
    s" an unclosed VALUE-RECORD under --verify-only" T-LABEL
@@ -830,11 +840,13 @@ variable RC
    s" a comment in a closed VALUE-RECORD" T-LABEL
    s" VALUE-RECORD vr x n \ note" s" END-VALUE-RECORD" s" vrec-comment.f"
       TWO-LINE-FIXTURE
-   s" E-BAD-RECORD-FIELD" s" \" 1 21 20 21 REFUSED-MODES
+   s" E-BAD-DECLARATION" s" \" 1 21 20 21 REFUSED-MODES
+   0 s" label" s" no valid type follows" FIELD=
    s" a closed paren comment in a VALUE-RECORD" T-LABEL
    s" VALUE-RECORD vr x n ( note )" s" END-VALUE-RECORD" s" vrec-paren.f"
       TWO-LINE-FIXTURE
-   s" E-BAD-RECORD-FIELD" s" (" 1 21 20 21 REFUSED-MODES ;
+   s" E-BAD-DECLARATION" s" (" 1 21 20 21 REFUSED-MODES
+   0 s" label" s" no valid type follows" FIELD= ;
 
 : TEST-PREPASS-NAME-COMMENT ( -- )
    s" a comment after a SUMTYPE's name" T-LABEL
@@ -1483,6 +1495,12 @@ variable RC
    0 s" E-UNDEFINED" s" NO-SUCH" 1 12 11 18 VERIFY-REJECTED-AT
    1 s" E-UNTERMINATED-STRING" s\" s\"" 2 1 21 23 VERIFY-REJECTED-AT
    s" E-UNDEFINED" s" :1:12" REJECT-RC LOADED-AT ;
+
+\ The loader rejects a VALUE-RECORD field where the source wrote it.
+: TEST-VALUE-RECORD-LOAD ( -- )
+   s" a duplicate VALUE-RECORD field under the loader, at the second field" T-LABEL
+   s" VALUE-RECORD vr x n x n END-VALUE-RECORD" s" value-record-dup.f" LINE-FIXTURE
+   s" E-BAD-DECLARATION" s" :1:21" REJECT-RC LOADED-AT ;
 
 \ The u bytes at a end the fixture text, built in place for a fixture longer
 \ than the string builder holds.
@@ -2295,6 +2313,7 @@ variable RC
    TEST-ENUM-CLOSE
    TEST-STRUCTURE
    TEST-PREPASS-NOMINAL
+   TEST-VALUE-RECORD-LOAD
    TEST-PREPASS-OPEN
    TEST-PREPASS-COMMENT
    TEST-PREPASS-NAME-COMMENT
