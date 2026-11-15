@@ -82,6 +82,10 @@ TYPED-VARIABLE CHK-MAP-BUF-A ^u8
 DYNAMIC-BUFFER CHK-SRC-MEM u8
 DYNAMIC-BUFFER CHK-RUN-MEM u8
 DYNAMIC-BUFFER CHK-SEL-SRC-MEM u8
+\ The records of the walks' stops under --all-errors, end to end in CHK-KEPT,
+\ and per stop the file and byte it stands at and its record's start and length.
+DYNAMIC-BUFFER CHK-KEPT u8
+DYNAMIC-BUFFER CHK-KEPT-ROWS n
 create CHK-JSON-BUF BUF:HDR-BYTES allot
 TYPED-VARIABLE CHK-JSON-W JSON:writer
 variable CHK-JSON-READY
@@ -119,6 +123,8 @@ variable CHK-SUBJECT-PATH-U
 variable CHK-SUBJ-U                      \ a named file's canonical path, 0 for any other input
 variable CHK-ROOT-U
 variable CHK-EXP-OUT-U
+variable CHK-KEPT-U
+variable CHK-KEPT-N
 
 : CHK-PTR-U8-FIELD ( ^a -- ^^u8 )
    0 ptr-field ;
@@ -398,6 +404,8 @@ private
    NULL$ drop CHK-LABEL-A CHK-PTR-U8!
    NULL$ drop CHK-SRC-A CHK-PTR-U8!
    0 CHK-EXP-OUT-U !
+   0 CHK-KEPT-U !
+   0 CHK-KEPT-N !
    0 CHK-SUBJ-U !
    0 CHK-DEP-N !
    0 CHK-DIR-N !
@@ -518,17 +526,32 @@ private
    FD:STDERR CHECK-ALL-ERRORS:STREAM!
    CHK-JSON @ REJECTION:JSON ! ;
 
+\ The captured record of the walk's stop, kept with the place it stands at. A
+\ stop in no source, a named file that will not open, has no place.
+: CHK-KEEP-STOP ( -- )
+   CHK-STOP-ID @ 0 < if exit then
+   REJECTION:BUFFER$ {: a:^ u:n :}
+   CHK-KEPT-U @ {: at:n :}
+   at u + 1+ CHK-KEPT-RESERVE
+   a at CHK-KEPT u BYTE-COPY
+   at u + CHK-KEPT-U !
+   CHK-KEPT-N @ 1+ 4 * CHK-KEPT-ROWS-RESERVE
+   CHK-KEPT-N @ 4 * {: row:n :}
+   CHK-STOP-ID @ row CHK-KEPT-ROWS !  CHK-STOP-AT @ row 1+ CHK-KEPT-ROWS !
+   at row 2 + CHK-KEPT-ROWS !  u row 3 + CHK-KEPT-ROWS !
+   CHK-KEPT-N @ 1+ CHK-KEPT-N ! ;
+
 \ A closure the walk cannot follow, a form discovery rejected, fails the check
-\ as a rejection whose record discovery wrote. Under --all-errors the walk
-\ writes no record and its rejection, or a file it could not read, ends only
-\ the walk: the composition meets the same fault where it lies, among the
-\ records before and after it.
+\ as a rejection whose record discovery wrote. --all-errors reports every fault
+\ that check reports, each once: the walk's stop ends only the walk and its
+\ record is kept, written only when the composition never reads its place
+\ (CHK-SEND-UNREAD); where it does, the composition writes its own record.
 : CHK-EXPAND-REPORT ( [ -- n ] -- ) {: q :}
    CHK-ALL @ 0= if q execute 0<> if CHK-E-CHECK CHK-THROW then exit then
    REJECTION:CAPTURE
    [: q execute 0<> if CHK-E-CHECK CHK-THROW then ;] catch {: rc:n :}
    REJECTION:BUFFER-OFF
-   rc CHECKER-REJECT-RC = rc INCLUDE-IO-RC = or if exit then
+   rc CHECKER-REJECT-RC = rc INCLUDE-IO-RC = or if CHK-KEEP-STOP exit then
    rc 0<> if rc throw then ;
 
 : CHK-ENTRY-ID ( ^u8 n -- n )
@@ -954,6 +977,24 @@ private
    CHK-ALL-STREAM
    CHK-SOURCE-BYTES CHK-SRC-PATH CHK-LABEL CHECK-ALL-ERRORS:COMPOSE-BUF ;
 
+\ Whether the composition never read the place of kept stop n.
+: CHK-KEPT-UNREAD? ( n -- bool )
+   4 * {: row:n :}
+   row CHK-KEPT-ROWS @ CHK-DEP$  row 1+ CHK-KEPT-ROWS @  VERIFY:READ-AT? 0= ;
+
+: CHK-KEPT-SEND ( n -- )
+   4 * {: row:n :}
+   row 2 + CHK-KEPT-ROWS @ CHK-KEPT  row 3 + CHK-KEPT-ROWS @  CHK-ERR ;
+
+\ The kept record of each stop whose place the composition never read, an arm
+\ this target skips or a file only such an arm loads, after the composition's
+\ records: this target never loads that text. True when it wrote one.
+: CHK-SEND-UNREAD ( -- bool )
+   false
+   CHK-KEPT-N @ 0 ?do
+      i CHK-KEPT-UNREAD? if i CHK-KEPT-SEND drop true then
+   loop ;
+
 \ How a verifier child that gave no answer ended, as the closing line of its
 \ report, where CHK-EXPLAIN-LN puts prose.
 : CHK-STATUS-LN ( PROCESS:ending -- )
@@ -1073,6 +1114,7 @@ private
    [: CHK-RUN-RESERVED-NAMES ;] CHK-LINT-ALL
    [: CHK-RUN-BOUNDARY ;] CHK-LINT-ALL or
    [: CHK-RUN-ALL ;] CHK-LINT-ALL or
+   CHK-SEND-UNREAD or
    if CHECKER-REJECT-RC throw then ;
 
 : CHK-RUN-CURRENT ( -- )

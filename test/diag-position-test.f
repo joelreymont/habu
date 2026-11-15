@@ -778,6 +778,25 @@ variable RC
    GJA-LINE# @ 0 > dup TTRUE 0= IF EXIT THEN
    0 GJA-LINE$ GJA-PARSE s" notes" FIELD-ABSENT ;
 
+\ No composition reads an arm the running target skips, so the walk's record of
+\ a file only that arm requires comes after the composition's. No suite host is
+\ Wasm.
+: TEST-ALL-DEAD-ARM ( -- )
+   s" a missing file only a skipped arm requires, under --all-errors" T-LABEL
+   SB-RESET
+   s" : DA-ONE ( -- ) nosuchone ;" SB-APPEND LF+
+   s" HB-TARGET-WASM? [if] require deadarm-absent.f [then]" SB-APPEND LF+
+   s" : DA-TWO ( -- ) nosuchtwo ;" SB-APPEND LF+
+   s" all-dead-arm.f" FIXTURE!
+   s" --all-errors" CHECK
+   GJA-LINE# @ 3 T=
+   0 s" code" s" E-UNDEFINED" FIELD=
+   0 s" nosuchone" 1 17 16 25 AT
+   1 s" code" s" E-UNDEFINED" FIELD=
+   1 s" nosuchtwo" 3 17 97 106 AT
+   2 s" code" s" E-MISSING-SOURCE" FIELD=
+   2 s" deadarm-absent.f" 2 30 57 73 AT ;
+
 \ A word ARENA derives that is taken in the other section is the duplicate,
 \ refused at the declared name.
 : TEST-ARENA ( -- )
@@ -2599,6 +2618,7 @@ variable RC
    TEST-ALL-LINTS
    TEST-ALL-ORDER
    TEST-ALL-UNREADABLE
+   TEST-ALL-DEAD-ARM
    TEST-NOT-RECORDED
    TEST-GENERATES
    TEST-GENERATES-READS-NONE

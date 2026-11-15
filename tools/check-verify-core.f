@@ -76,6 +76,8 @@ variable CHK-DEP-N
 variable CHK-DIR-N
 variable CHK-DISC-ID
 variable CHK-EDGE                       \ the dependency followed last, -1 for none
+variable CHK-STOP-ID                    \ the file the walk's stop record stands in, -1 for none
+variable CHK-STOP-AT                    \ the byte there it stands at
 variable CHK-BYTES-ID
 TYPED-VARIABLE CHK-BYTES-A ^u8
 variable CHK-BYTES-U
@@ -190,14 +192,24 @@ variable CHK-EXPAND-TOP
    CHK-DISC-ID @ CHK-FILE-NAME$ REJECTION:FILE!
    a u 1 1 0 REJECTION:SOURCE! ;
 
+: CHK-STOP! ( n n -- )
+   CHK-STOP-AT !  CHK-STOP-ID ! ;
+
+\ A rejection that ends discovery of the file stands at the token it read last.
+: CHK-DISCOVER ( [ -- ] -- ) {: q :}
+   q catch {: rc:n :}
+   rc CHECKER-REJECT-RC = if CHK-DISC-ID @ DISCOVER:LAST-TOKEN drop CHK-STOP! then
+   rc 0<> if rc throw then ;
+
 : CHK-RUN-BYTES ( -- )
    CHK-DISC-ID @ {: id:n :}
    CHK-BYTES-A @ CHK-BYTES-U @ CHK-ARM
-   id CHK-DEP$ id CHK-DEP-ROOT$ CHK-BYTES-A @ CHK-BYTES-U @ DISCOVER:RUN-BYTES ;
+   [: id CHK-DEP$ id CHK-DEP-ROOT$ CHK-BYTES-A @ CHK-BYTES-U @ DISCOVER:RUN-BYTES ;]
+   CHK-DISCOVER ;
 
 : CHK-RUN-READ ( -- )
    DISCOVER:BYTES$ CHK-ARM
-   DISCOVER:RUN-READ ;
+   [: DISCOVER:RUN-READ ;] CHK-DISCOVER ;
 
 : CHK-FS-RC? ( n -- bool )
    {: rc:n :}
@@ -269,10 +281,11 @@ DYNAMIC-BUFFER CHK-FILE-SRC u8          \ a closure file's bytes, read for a rec
    id CHK-BYTES-ID @ = if CHK-BYTES-A @ CHK-BYTES-U @ exit then
    id CHK-DEP$ CHK-FILE-READ ;
 
-\ The file that names edge EDGE armed as the rejection source: the span of the
-\ edge's path in it.
+\ The file that names edge EDGE armed as the rejection source, and the walk's
+\ stop placed there: the span of the edge's path in it.
 : CHK-EDGE-ARM ( n -- ^u8 n ) {: edge:n :}
    edge CHK-DIR-FROM @ {: from:n :}
+   from edge CHK-DIR-PATH-AT @ CHK-STOP!
    from CHK-FILE-NAME$ REJECTION:FILE!
    from CHK-FILE-BYTES {: src:^ srcu:n :}
    src srcu 1 1 0 REJECTION:SOURCE!
@@ -342,6 +355,7 @@ DYNAMIC-BUFFER CHK-FILE-SRC u8          \ a closure file's bytes, read for a rec
 : CHK-EXPAND ( n -- n )
    CHK-EXPAND-TOP !
    -1 CHK-EDGE !
+   -1 CHK-STOP-ID !
    [: CHK-EXPAND-TOP-ACT ;] catch {: rc:n :}
    REJECTION:SOURCE-OFF
    rc CHECKER-REJECT-RC = rc 0= or 0= if rc throw then

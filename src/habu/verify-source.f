@@ -3975,13 +3975,49 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    THEN
    0 FLAG-N ! ;
 
+\ The bytes of each file the last composition read, a span apiece: its path's
+\ offset and length in SPAN-PATHS, its first byte and the byte past its last.
+\ A scan's span ends before an arm SKIP-ARM passes over and where the scan
+\ stops; the next starts after the arm.
+DYNAMIC-BUFFER SPAN-PATHS u8
+variable SPAN-PATHS-U
+DYNAMIC-BUFFER SPAN-ROWS n
+variable SPAN-N
+variable SPAN-FROM                      \ where the file being scanned's open span starts
+
+: SPANS-DROP ( -- )
+   SPAN-PATHS-RELEASE  SPAN-ROWS-RELEASE
+   0 SPAN-PATHS-U !  0 SPAN-N ! ;
+
+\ Ends the open span of the file being composed at byte n.
+: SPAN-END ( n -- ) {: end:n :}
+   COMPOSE-ON @ 0=  end SPAN-FROM @ <=  or IF EXIT THEN
+   COMPOSE-CUR-PATH-A @ COMPOSE-CUR-PATH-U @ {: path:^ pathu:n :}
+   SPAN-PATHS-U @ {: off:n :}
+   off pathu + 1 + SPAN-PATHS-RESERVE
+   path off SPAN-PATHS pathu BYTE-COPY
+   off pathu + SPAN-PATHS-U !
+   SPAN-N @ 1 + 4 * SPAN-ROWS-RESERVE
+   SPAN-N @ 4 * {: row:n :}
+   off row SPAN-ROWS !  pathu row 1 + SPAN-ROWS !
+   SPAN-FROM @ row 2 + SPAN-ROWS !  end row 3 + SPAN-ROWS !
+   SPAN-N @ 1 + SPAN-N ! ;
+
+\ Whether span s holds byte n of the file at path a u.
+: SPAN-HOLDS? ( ^u8 n n n -- bool ) {: a:^ u:n at:n s:n :}
+   s 4 * {: row:n :}
+   at row 2 + SPAN-ROWS @ <  at row 3 + SPAN-ROWS @ >= or IF false EXIT THEN
+   row SPAN-ROWS @ SPAN-PATHS  row 1 + SPAN-ROWS @  a u CORE-STR= ;
+
 : SKIP-ARM ( -- bool )
+   SCAN-I @ SPAN-END
    1 BEGIN dup 0 > WHILE
-      NEXT-RAW dup 0= IF 2drop drop false EXIT THEN
+      NEXT-RAW dup 0= IF 2drop drop  SCAN-I @ SPAN-FROM !  false EXIT THEN
       2dup s" [if]" STR=CI IF 2drop 1 + ELSE
          s" [then]" STR=CI IF 1 - THEN
       THEN
-   REPEAT drop true ;
+   REPEAT drop
+   SCAN-I @ SPAN-FROM !  true ;
 
 : KNOWN-IF? ( ^u8 n -- bool ) {: a:^ u:n :}
    STR-LAST-KIND @ 0<> IF 0 FLAG-N ! THEN
@@ -4050,13 +4086,13 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    TOP-DEFER @ TOP-DEFER-A @ TOP-DEFER-U @ TOP-REFUSED @
    COMPOSE-CUR-PATH-A @ COMPOSE-CUR-PATH-U @
    FILE-PKG @ FILE-USE @ PEND-BASE @ VISIT-CUR @ CSR-SUBJ @
-   SHADOWED @ RETIRED @ CHECKER-SPLIT-STR @
+   SHADOWED @ RETIRED @ CHECKER-SPLIT-STR @ SPAN-FROM @
    {: olda:^ oldu:n oldi:n
       oldprev:^ oldprevu:n oldcur:^ oldcuru:n
       olddefer:n olddefa:^ olddefu:n oldrefused:^
       oldpath:^ oldpathu:n
       oldpkg:n olduse:n oldbase:n oldvisit:n oldsubj:n
-      oldshadowed:n oldretired:n oldsplit:n :}
+      oldshadowed:n oldretired:n oldsplit:n oldfrom:n :}
    src srcu SOURCE!
    path COMPOSE-CUR-PATH-A !  pathu COMPOSE-CUR-PATH-U !
    path pathu VISIT-OPEN
@@ -4066,7 +4102,9 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    [: FILE$ SOURCE@ SOURCE-U @ ON-FILE ;] catch
    dup 0= IF
       drop  SOURCE-ARM  diag diagu REJECTION:FILE!
+      0 SPAN-FROM !
       [: VERIFY-SOURCE ;] catch
+      SCAN-I @ SPAN-END
    THEN
    {: rc:n :}
    DISARM
@@ -4080,6 +4118,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    oldpath COMPOSE-CUR-PATH-A !  oldpathu COMPOSE-CUR-PATH-U !
    oldpkg FILE-PKG !  olduse FILE-USE !  oldbase PEND-BASE !
    oldshadowed SHADOWED !  oldretired RETIRED !  oldsplit CHECKER-SPLIT-STR !
+   oldfrom SPAN-FROM !
    oldpathu 0 > IF
       oldpath oldpathu COMPOSE-DIAG$ REJECTION:FILE!
       SOURCE-ARM
@@ -4339,6 +4378,7 @@ public
    COMPOSE-SUBJ-PATH pathu REQUIRE-KNOWN? 0= IF
       COMPOSE-SUBJ-PATH pathu REQUIRE-STORE 2drop
    THEN
+   SPANS-DROP
    -1 COMPOSE-ON !
    [: COMPOSE-WITH-USES ;] catch {: rc:n :}
    VISITS-DROP
@@ -4370,6 +4410,15 @@ public
 \ empty. The string is borrowed until the next quiet composition.
 : FAULT-TARGET$ ( -- ^u8 n )
    FAULT-TARGET FAULT-U @ ;
+
+\ Whether the last composition read byte n of the file at path a u, the path it
+\ resolved: not in an arm a false target flag skips, nor in a file only such
+\ an arm loads, nor past where the scan of the file stopped.
+: READ-AT? ( ^u8 n n -- bool ) {: a:^ u:n at:n :}
+   SPAN-N @ 0 ?do
+      a u at i SPAN-HOLDS? if true unloop exit then
+   loop
+   false ;
 
 : SOURCE-BUF-IN-SCOPE ( ^u8 n -- )
    SOURCE!
