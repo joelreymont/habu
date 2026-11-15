@@ -12,14 +12,10 @@ using TEST
 \ Each `false [if]` block holds tests that are off until their target's step:
 \ Wasm, then x86-64.
 
-\ Off: definition-engine-open and five other cases fail, as a linked hb has no
-\ source location for its own words.
-false [if]
 SUITE lsp-boundary
    tools/lsp-test.f
    tools/lsp-entry-test.f
 ;SUITE
-[then]
 
 \ A cross-build: a linux-aarch64 host builds this target natively, where no
 \ word is a target word.

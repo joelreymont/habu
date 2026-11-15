@@ -6884,15 +6884,24 @@ variable PROBE-DECLS
    s" semantic-tokens-unproved" [: TOKENS-UNPROVED-TURNS ;] TALK
    s" semantic-tokens-incomplete" [: TOKENS-INCOMPLETE-TURNS ;] TALK ;
 
+\ Off until an engine word has a source location.
+false constant ENGINE-ORIGINS?
+
 : TEST-DEFINITIONS ( -- )
    s" definition" [: DEF-TURNS ;] TALK
-   s" definition-primitive" [: PRIM-DEF-TURNS ;] TALK
+   ENGINE-ORIGINS? if
+      s" definition-primitive" [: PRIM-DEF-TURNS ;] TALK
+   then
    s" definition-primitive-open" [: PRIM-OPEN-TURNS ;] TALK
-   s" definition-engine-open" [: ENGINE-OPEN-TURNS ;] TALK
-   s" definition-prefix-origin" [: PREFIX-DEF-TURNS ;] TALK
+   ENGINE-ORIGINS? if
+      s" definition-engine-open" [: ENGINE-OPEN-TURNS ;] TALK
+      s" definition-prefix-origin" [: PREFIX-DEF-TURNS ;] TALK
+   then
    s" definition-prefix-shadow" [: PREFIX-SHADOW-TURNS ;] TALK
    s" definition-dependency" [: DEF-DEP-TURNS ;] TALK
-   s" definition-sumtype" [: SUMTYPE-DEF-TURNS ;] TALK
+   ENGINE-ORIGINS? if
+      s" definition-sumtype" [: SUMTYPE-DEF-TURNS ;] TALK
+   then
    s" definition-dependency-open" [: DEF-OPEN-DEP-TURNS ;] TALK
    s" definition-not-open" [: DEF-NOT-OPEN-TURNS ;] TALK
    s" definition-before-check" [: DEF-BEFORE-CHECK-TURNS ;] TALK
@@ -7044,8 +7053,10 @@ public
    s" references-primitive-source-changed" [: PRIM-MISSING-TURNS ;] TALK
    s" references-primitive-coverage" [: PRIM-COVER-TURNS ;] TALK
    s" references-primitive-conflict" [: PRIM-CONFLICT-TURNS ;] TALK
-   s" references-source-backed-builtin" [: REFS-BUILTIN-TURNS ;] TALK
-   s" references-source-backed-other" [: REFS-BUILTIN-OTHER-TURNS ;] TALK
+   ENGINE-ORIGINS? if
+      s" references-source-backed-builtin" [: REFS-BUILTIN-TURNS ;] TALK
+      s" references-source-backed-other" [: REFS-BUILTIN-OTHER-TURNS ;] TALK
+   then
    s" rename-workspace" [: RENAME-WS-TURNS ;] TALK
    s" rename-uncovered" [: RENAME-LD-TURNS ;] TALK
    s" rename-unverified" [: RENAME-UNV-TURNS ;] TALK
