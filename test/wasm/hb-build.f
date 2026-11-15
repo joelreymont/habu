@@ -382,6 +382,23 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    RAN 0 T=
    WASM-HARNESS:OUT$ S\" 6\n4\n" T$= ;
 
+: DOES-CASE ( -- )
+   S\" require src/lib/span.f\n8 SPAN-BUFFER: B\n: MK ( n -- ) create , does> ( -- n ) @ ;\n5 MK FIVE\n: MAIN ( -- ) B SPAN:LEN .  FIVE . ;"
+   s" does.f" SOURCE!
+   s" a created word's does> clause runs in a Wasm module: B and FIVE print what the host prints" T-LABEL
+   s" does.wasm" BUILD 0 T=
+   RAN 0 T=
+   WASM-HARNESS:OUT$ S\" 8\n5\n" T$=
+   SB-RESET
+   S\" package ADV\nprivate\nvariable ACTION\npublic\n" SB-APPEND
+   S\" : MAKER ( -- ) create 0 , does> ( -- ) drop ;\n: MAIN ( -- ) ACTION @ drop ;\n" SB-APPEND
+   S\" ' MAKER;does ACTION xt!\n;package\n: MAIN ( -- ) ADV:MAIN ;\n" SB-APPEND
+   SB$ s" clause-cell.f" SOURCE!
+   s" a cell naming a does> clause places a definer no live word reaches, and its module runs to status 0" T-LABEL
+   s" clause-cell.wasm" BUILD 0 T=
+   RAN 0 T=
+   WASM-HARNESS:OUT$ s" " T$= ;
+
 
 : ERR-HAS ( ptr u8 n -- )
    {: a:ptr u:n :}
@@ -395,22 +412,6 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" kernel.wasm" BUILD 70 T=
    s" error[E-WASM-NO-KERNEL-WORD]: the program reaches `here`" ERR-HAS
    s" error[E-WASM-NO-KERNEL-WORD]: the program reaches `align`" ERR-HAS
-   NO-MODULE
-   s" require src/lib/span.f 8 SPAN-BUFFER: B : MAIN ( -- ) B SPAN:LEN . ;" s" does.f" SOURCE!
-   s" a does> clause is rejected by name with 70 and no module" T-LABEL
-   s" does.wasm" BUILD 70 T=
-   s" error[E-WASM-DOES-CLAUSE]: `B` has a does> clause" ERR-HAS
-   NO-MODULE
-   SB-RESET
-   S\" package ADV\nprivate\nvariable ACTION\npublic\n" SB-APPEND
-   S\" : MAKER ( -- ) create 0 , does> ( -- ) drop ;\n: MAIN ( -- ) ACTION @ drop ;\n" SB-APPEND
-   S\" ' MAKER;does ACTION xt!\n;package\n: MAIN ( -- ) ADV:MAIN ;\n" SB-APPEND
-   SB$ s" clause-cell.f" SOURCE!
-   \ The cell places its definer's whole emission, and every does> definer calls
-   \ does-patch, which a Wasm module has no function for.
-   s" a cell naming a does> clause is rejected with 70 and no module" T-LABEL
-   s" clause-cell.wasm" BUILD 70 T=
-   s" error[E-WASM-NO-KERNEL-WORD]: the program reaches `does-patch`" ERR-HAS
    NO-MODULE
    s" : MAIN ( -- ) 1 ;" s" unchecked.f" SOURCE!
    s" an unchecked MAIN is rejected with 70 and no module" T-LABEL
@@ -750,6 +751,7 @@ public
    NAN-CASE
    TWICE-CASE
    DEFER-CASE
+   DOES-CASE
    REFUSAL-CASES
    THROW-CASES
    DIE-CASE

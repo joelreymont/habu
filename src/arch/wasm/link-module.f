@@ -1,10 +1,10 @@
 \ link-module.f - LINKER's Wasm writer: a stripped program's placed emissions and
 \ the link's copy of its data, handed to WLINK and written as one module. It
-\ rejects by name a does> clause and every kernel word the program reaches that
-\ no kernel-words.f word provides and no routine of link-routines.f answers; a
-\ kernel word resolves to its routine when the module has one. Every record
-\ enters its emission at a function: a definition at function 0, a does>
-\ companion at its clause's function (NSHADOW:TAKE-DOES).
+\ rejects by name every kernel word the program reaches that no kernel-words.f
+\ word provides and no routine of link-routines.f answers; a kernel word
+\ resolves to its routine when the module has one. Every record enters its
+\ emission at a function: a definition at function 0, a does> companion at its
+\ clause's function (NSHADOW:TAKE-DOES).
 require src/lib/error.f
 require src/lib/fs-mutate.f
 require src/lib/le.f
@@ -29,6 +29,8 @@ private
 \ function k is `e FIRST @ k +`.
 DYNAMIC-BUFFER FIRST n               \ placed emission e's first function's handle
 DYNAMIC-BUFFER SLOTS n               \ function handle h's table slot, 0 for none
+DYNAMIC-BUFFER DEAD n                \ 1 when captured function h's body is `unreachable`
+DYNAMIC-BUFFER DEAD-BODY u8
 variable NFUN                        \ the handles added
 DYNAMIC-BUFFER REFUSED n             \ the host addresses no function answers, each once
 variable REFUSED-N
@@ -44,16 +46,40 @@ variable KERNEL-N                    \ the kernel routines this link added
    e NSHADOW:SIZE ;
 
 
+\ Whether bytes [at, end) of emission e meet a live record's range.
+: LIVE-SPAN? ( n n n -- bool )
+   {: e:n at:n end:n :}
+   e EM-FIRST @
+   begin dup 0 >= while
+      dup LIVE @ 0<> if
+         dup NSHADOW:ENTRY@ end <  over RANGE-END at > and if drop true exit then
+      then
+      REC-NEXT @
+   repeat
+   drop false ;
+
+\ No locals, then `unreachable`.
+: DEAD-BODY$ ( -- ptr u8 n )
+   3 DEAD-BODY-RESERVE
+   0 0 DEAD-BODY c!  WCODE:OP-UNREACHABLE 1 DEAD-BODY c!  WCODE:OP-END 2 DEAD-BODY c!
+   0 DEAD-BODY 3 ;
+
 \ Placed emission e's functions, added in order as WLINK's captured functions.
+\ One no live record's range meets keeps its index with the body `unreachable`
+\ and no sites: a placed definer's own unit calls create, `,` and does-patch,
+\ which a module has no function for.
 : FUNCTIONS+ ( n -- )
    {: e:n :}
    NFUN @ e FIRST !
    e NSHADOW:FUNCTIONS 0 ?do
       e i NSHADOW:FUNCTION-OFFSET@ {: at:n :}
       e i FUNCTION-END {: end:n :}
-      e NSHADOW:BYTES at +  end at -  0 0 1 WLINK-ORIGIN:CAPTURED WLINK:FUNCTION+ {: h:n :}
+      e at end LIVE-SPAN? {: live:bool :}
+      live if e NSHADOW:BYTES at +  end at - else DEAD-BODY$ then
+      0 0 1 WLINK-ORIGIN:CAPTURED WLINK:FUNCTION+ {: h:n :}
       h NFUN @ <> if E-COMP-STATE throw then
       h 1+ SLOTS-RESERVE  0 h SLOTS !
+      h 1+ DEAD-RESERVE  live if 0 else 1 then h DEAD !
       1 NFUN +!
    loop ;
 
@@ -131,28 +157,20 @@ variable KERNEL-N                    \ the kernel routines this link added
    new ;
 
 
-: CLAUSE-REFUSED ( n -- )
-   {: e:n :}
-   s" E-WASM-DOES-CLAUSE" REJECTION:OPEN
-   s" `" REJECTION:EMIT-STR  e ROUTINE-NAME$ REJECTION:EMIT-STR
-   s" ` has a does> clause, which a Wasm module cannot hold" REJECTION:EMIT-STR
-   REJECTION:HELP
-   s" a Wasm module cannot patch its code: define `" REJECTION:EMIT-STR
-   e ROUTINE-NAME$ REJECTION:EMIT-STR
-   s" ` without does>, or build it for a native target" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
-
-
 \ Emission e's call site c; a call field starts one byte past the site and is
-\ counted from its function's first byte.
+\ counted from its function's first byte. The does> slot a clause patched
+\ becomes a call of the clause.
 : CALL-SITE+ ( n n -- )
    {: e:n c:n :}
    e c NSHADOW:CALL-SITE@ {: at:n :}
-   at e NSHADOW:PATCH-SITE@ = if e CLAUSE-REFUSED then
    e at HOLDER {: k:n :}
+   e FIRST @ k + {: f:n :}
+   f DEAD @ 0<> if exit then
    e  e c NSHADOW:CALL-TARGET@  SITE-CALLEE {: h:n :}
    h 0< if exit then
-   e FIRST @ k +   at 1+ e k NSHADOW:FUNCTION-OFFSET@ -   h   WLINK:CALL+ ;
+   at e k NSHADOW:FUNCTION-OFFSET@ - {: off:n :}
+   e c NSHADOW:PATCH-CALL? if f off h WLINK:SLOT-CALL+ exit then
+   f off 1+ h WLINK:CALL+ ;
 
 : CALLS+ ( n -- )
    {: e:n :}
@@ -165,6 +183,7 @@ variable KERNEL-N                    \ the kernel routines this link added
    e c NSHADOW:ADDR-SITE@ {: at:n :}
    e at HOLDER {: k:n :}
    e FIRST @ k + {: f:n :}
+   f DEAD @ 0<> if exit then
    at 1+ e k NSHADOW:FUNCTION-OFFSET@ - {: field:n :}
    e c SITE-VALUE {: v:n has:bool :}
    has 0= if E-COMP-STATE throw then

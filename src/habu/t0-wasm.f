@@ -206,8 +206,8 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
    OP-UNREACHABLE B,  END, ;
 
 
-\ The return is the does> patch slot over the context: a clause patched in
-\ runs with it, and its status is the unit's.
+\ The return is the does> patch slot over the context: the link writes a call of
+\ the clause there, which runs with it, and its status is the unit's.
 : SLOT-CLOSE ( -- )
    REC-RELEASE  SYNC  L-CTX GET,
    HERE-OFF EMIT-PATCH-SLOT!

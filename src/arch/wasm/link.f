@@ -116,6 +116,7 @@ variable NCALLS
 DYNAMIC-BUFFER CALL-FN n             \ each call site's caller
 DYNAMIC-BUFFER CALL-AT n             \ its field, from the start of the body
 DYNAMIC-BUFFER CALL-TGT n            \ its callee
+DYNAMIC-BUFFER CALL-SLOT n           \ 1 when LINK writes the call opcode before the field too
 variable NADDRS
 DYNAMIC-BUFFER ADDR-FN n             \ each address site's function
 DYNAMIC-BUFFER ADDR-AT n
@@ -470,7 +471,8 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
 \ CODE is E-WLINK-KIND. A reserve callee naming no function is E-WLINK-UNRESOLVED,
 \ and one outside the aligned frame E-WLINK-ARITY, as is an entry that takes or
 \ answers a lane. A field that is not a padded LEB of its width inside its body is
-\ WLEB's refusal, and a cell outside the image E-SPAN-RANGE.
+\ WLEB's rejection, and a cell outside the image E-SPAN-RANGE. A does> slot holds
+\ no field until PATCH writes one.
 \ A handle of a function the link holds.
 : RESOLVED ( n -- n )
    {: k:n :}
@@ -503,6 +505,7 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
 : CALL-CK ( n -- )
    {: k:n :}
    k CALL-TGT @ RESOLVED drop
+   k CALL-SLOT @ 0<> if exit then
    k CALL-FN @ RESOLVED BODY$  k CALL-AT @  WLEB:U32-PAD@ drop ;
 
 : IND-CK ( n -- )
@@ -578,15 +581,23 @@ variable RUN-LAST                    \ its last non-zero byte's offset
 
 \ ---- patching the module ---------------------------------------------------------
 \ A call site is a padded five-byte field in its caller's body and gets its
-\ callee's index. An address site, a padded ten-byte field, gets its kind and
-\ target's FINAL value. An indirect site, the padded five-byte field after
+\ callee's index; a does> slot gets the call opcode and then that field. An
+\ address site, a padded ten-byte field, gets its kind and target's FINAL
+\ value. An indirect site, the padded five-byte field after
 \ call_indirect, gets the index of (i32) -> (i32), every table slot's type.
 : MODULE ( -- SPAN:span<u8> )
    0 OUT AT @ SPAN:MAKE ;
 
 : PATCH ( -- )
    NCALLS @ 0 ?do
-      i CALL-TGT @ FN-IDX @  MODULE  i CALL-FN @ FN-POS @ i CALL-AT @ +  WLEB:U32-PATCH
+      i CALL-TGT @ FN-IDX @ {: t:n :}
+      i CALL-FN @ FN-POS @ i CALL-AT @ + {: at:n :}
+      i CALL-SLOT @ 0<> if
+         OP-CALL at 1- OUT c!
+         t  MODULE at SPAN:SKIP  WLEB:U32-PAD! drop
+      else
+         t MODULE at WLEB:U32-PATCH
+      then
    loop
    NINDS @ 0 ?do
       WR-DYN @  MODULE  i IND-FN @ FN-POS @ i IND-AT @ +  WLEB:U32-PATCH
@@ -601,6 +612,14 @@ variable RUN-LAST                    \ its last non-zero byte's offset
    k 1+ FN-AT-RESERVE  k 1+ FN-LEN-RESERVE  k 1+ FN-IN-RESERVE  k 1+ FN-OUT-RESERVE
    k 1+ FN-VAR-RESERVE  k 1+ FN-RANK-RESERVE  k 1+ FN-IDX-RESERVE
    k 1+ FN-TYPE-RESERVE  k 1+ FN-POS-RESERVE ;
+
+: CALL-ROW+ ( n n n n -- )
+   {: f:n at:n t:n slot:n :}
+   NCALLS @ {: k:n :}
+   k 1+ CALL-FN-RESERVE  k 1+ CALL-AT-RESERVE  k 1+ CALL-TGT-RESERVE
+   k 1+ CALL-SLOT-RESERVE
+   f k CALL-FN !  at k CALL-AT !  t k CALL-TGT !  slot k CALL-SLOT !
+   1 NCALLS +! ;
 
 public
 
@@ -627,11 +646,13 @@ public
 
 \ Function f's call field at offset at of its body calls the function t.
 : CALL+ ( n n n -- )
+   0 CALL-ROW+ ;
+
+\ Function f's does> slot, six bytes at offset at of its body, becomes a call of
+\ the function t, which takes the context the slot holds and answers the status.
+: SLOT-CALL+ ( n n n -- )
    {: f:n at:n t:n :}
-   NCALLS @ {: k:n :}
-   k 1+ CALL-FN-RESERVE  k 1+ CALL-AT-RESERVE  k 1+ CALL-TGT-RESERVE
-   f k CALL-FN !  at k CALL-AT !  t k CALL-TGT !
-   1 NCALLS +! ;
+   f at 1+ t 1 CALL-ROW+ ;
 
 \ Function f's call_indirect field at offset at of its body names the type
 \ (i32) -> (i32).
