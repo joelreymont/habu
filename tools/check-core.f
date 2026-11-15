@@ -466,7 +466,6 @@ private
 public
 
 : RESET ( -- )
-   false CHK-ENGINE-REFUSED !
    [: CHK-TEMP-CLEAN ;] catch {: rc:n :}
    CHK-SESSION-CLEAR
    [: CHECKED-BOUNDARY-LINT:RESET ;] catch {: provider-rc:n :}
@@ -860,7 +859,6 @@ private
 \
 \ It runs on the engine src/lib/engine-candidate.f names: a gate's HABU_UNDER_TEST,
 \ else the engine running check.f, never a bin/hb of the working directory.
-\ An engine the resolver refuses is its throw, the check's status (CHK-ENGINE$).
 : CHK-RUN-CAPTURE ( -- )
    PROC-ENV-INHERIT-MISSING
    CHK-ENGINE$ >LEN CHK-OUT-BUF CHK-OUT-CAP >LEN
@@ -1252,20 +1250,12 @@ private
 
 \ A throw that is no exit status ends the check with the engine's record of an
 \ uncaught throw, in the mode the command line asks for: a run whose cleanup
-\ failed clears the session's. Under --json-errors an engine selection the
-\ resolver refused (src/lib/engine-candidate.f), which CHK-ENGINE$ records
-\ where a child starts, is said on stdout instead.
+\ failed clears the session's.
 : CHK-MAIN-UNCAUGHT ( n -- n )
    {: rc:n :}
    rc 0 >= rc 256 < and if rc exit then
-   s" --json-errors" CHK-OPT? {: json:bool :}
-   json CHK-ENGINE-REFUSED @ and if
-      s" check.f: the selected engine (HABU_UNDER_TEST, else the running engine)" CHK-OUT
-      s"  is not a usable executable" CHK-OUT-LN
-   else
-      json REJECTION:JSON !
-      rc INTERPRETER:UNCAUGHT
-   then
+   s" --json-errors" CHK-OPT? REJECTION:JSON !
+   rc INTERPRETER:UNCAUGHT
    UNCAUGHT-RC ;
 
 public

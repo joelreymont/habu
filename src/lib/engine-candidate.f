@@ -5,9 +5,8 @@
 \ launched it. The path is absolute, a relative override joined to this
 \ process's working directory, so it names the same file to a child spawned in
 \ another directory. It is validated as an executable here, so a bad override
-\ fails closed (E-FS-OPEN) before any spawn.
+\ is rejected with its record (E-ENGINE-NOT-EXECUTABLE) before any spawn.
 
-require src/lib/error.f
 require src/lib/fs.f
 require src/lib/process-env.f
 require src/lib/engine-id.f
@@ -32,7 +31,7 @@ PATH-CAP BUFFER: JOINED
    NAME$ GETENV dup 0 > if exit then
    2drop ENGINE-ID:PATH$ ;
 
-\ An empty override stays empty for VALIDATE$ to refuse; joined, it would name
+\ An empty override stays empty for VALIDATE$ to reject; joined, it would name
 \ the working directory.
 : ABSOLUTE$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    u 0= if a u exit then
@@ -40,8 +39,19 @@ PATH-CAP BUFFER: JOINED
    SOURCE-ROOT:CWD$ a u JOINED FS:JOIN-PATH {: ju:n :}
    JOINED ju ;
 
+\ The running engine is always executable, so a path that is not is the
+\ override's.
+: REJECT ( ptr u8 n -- ) {: a:ptr u:n :}
+   s" E-ENGINE-NOT-EXECUTABLE" REJECTION:OPEN
+   NAME$ REJECTION:EMIT-STR  s"  names `" REJECTION:EMIT-STR
+   a u REJECTION:EMIT-STR  s" `, which is not an executable file" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" point " REJECTION:EMIT-STR  NAME$ REJECTION:EMIT-STR
+   s"  at an executable hb, or unset it" REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
 : VALIDATE$ ( ptr u8 n -- ptr u8 n )
-   2dup FS:EXECUTABLE? 0= if E-FS-OPEN throw then ;
+   2dup FS:EXECUTABLE? 0= if 2dup REJECT then ;
 
 public
 

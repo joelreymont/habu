@@ -522,16 +522,8 @@ variable VFY-TARGET-U
    CHK-BYTES-A @ CHK-BYTES-U @ VFY-IN+ ;
 
 
-TYPED-VARIABLE CHK-ENGINE-REFUSED bool
-
-\ A selection the resolver refuses goes on as the resolver's own throw, and
-\ CHK-ENGINE-REFUSED, held while the resolver runs, stays set: the check ended
-\ there, where a failure of the source may share that code, and check.f's
-\ command line reports it apart.
 : CHK-ENGINE$ ( -- ptr u8 n )
-   true CHK-ENGINE-REFUSED !
-   ENGINE-CANDIDATE:PATH$
-   false CHK-ENGINE-REFUSED ! ;
+   ENGINE-CANDIDATE:PATH$ ;
 
 
 \ The child's executable, the engine CHK-ENGINE$ answers, loading this tree's
