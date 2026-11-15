@@ -52,9 +52,6 @@ create FFI-T-SR-BUF 64 allot
 : FFI-T-SR-RESET ( -- )
    64 0 do FFI-T-SR-FILL FFI-T-SR-BUF i + c! loop ;
 
-: FFI-T-SR-UNTOUCHED ( -- )
-   64 0 do FFI-T-SR-BUF i + c@ FFI-T-SR-FILL T= loop ;
-
 : FFI-T-SR-CANARIES ( n -- ) {: size:n :}
    FFI-T-SR-OFF 0 do FFI-T-SR-BUF i + c@ FFI-T-SR-FILL T= loop
    8 0 do FFI-T-SR-DST size + i + c@ FFI-T-SR-FILL T= loop ;
@@ -133,14 +130,6 @@ create FFI-T-SR-BUF 64 allot
    FFI-T-SR-RESET
    2.5 600 FFI-T-SR-DST FFI-T-TIME24-SECONDS
    1500 600 1 0 FFI-T-SR-TIME24
-
-   s" a misaligned result destination is refused before the call" T-LABEL
-   FFI-T-SR-RESET
-   [: 1 2 FFI-T-SR-DST 4 + FFI-T-DIV ;] E-FFI-SYNTAX TTHROWSQ
-   FFI-T-SR-UNTOUCHED
-   s" an x8 result destination needs 16-byte alignment" T-LABEL
-   [: 1 2 FFI-T-SR-DST 8 + FFI-T-TIME24 ;] E-FFI-SYNTAX TTHROWSQ
-   FFI-T-SR-UNTOUCHED
 
    s" malformed struct-result declarations are refused" T-LABEL
    [: FFI-T-SR-ZERO ;]

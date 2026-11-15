@@ -672,16 +672,6 @@ private
 \ dlopen can run constructors that call C through this task's scratch.
 : RESOLVE-ROW ( n -- ) FN-LOOKUP drop ;
 
-\ The caller's result storage rides x8, AAPCS64's indirect-result register. A
-\ record returned in x0/x1 ignores x8. Storage C writes through x8 is
-\ 16-byte aligned, the strictest a supported record can need; a register record
-\ stores into eight-byte-aligned storage.
-: RESULT-DEST! ( ptr u8 n -- ) {: dst:ptr len:n :}
-   dst PTR>CELL {: addr:n :}
-   len 16 > if 15 else 7 then {: mask:n :}
-   addr 0= addr mask and 0<> or if E-FFI-SYNTAX throw then
-   dst 8 POINTER! ;
-
 \ The raw x0 and x1 after the call, in address order. The row's relocation
 \ mask names the staged cells that hold a private struct copy's address in
 \ the stack buffer: bits 0-7 are x0-x7 and bits 8-23 stack cells 0-15. The
@@ -831,12 +821,12 @@ s" dlerror" PROCESS 0 0 0 DECLARE-ROW DLERROR-FN-CELL !
 \ mixed members: an HFA (one to four members of one float type) or an HVA (one
 \ to four 8- or 16-byte vectors) returns in v0-v3, which no byte count reveals,
 \ and must not be declared. AAPCS64 returns up to 8 bytes in x0 and 9..16 in x0
-\ then x1, stored at exactly `bytes`; C writes a larger record through x8. The
-\ storage is eight-byte aligned, 16-byte aligned for a record over 16 bytes; a
-\ record type aligned beyond 16 bytes is excluded.
+\ then x1, stored at exactly `bytes`. C writes a record over 16 bytes through
+\ x8, so its storage is aligned as the C record is: a `create … allot` block is
+\ cell-aligned, and a record holding a 16-byte aligned member needs 16. A record
+\ of 16 bytes or fewer is stored a byte at a time, at any address.
 \ The destination is one of the sixteen inputs, so at most fifteen C arguments
-\ remain, placed as STRUCT-ARG's are. A null or misaligned destination is
-\ E-FFI-SYNTAX at the call.
+\ remain, placed as STRUCT-ARG's are.
 \
 \ `idx bytes STRUCT-ARG` declares input idx, a `ptr u8`, the address of a C
 \ struct of `bytes`, any positive count, passed by value: one C argument,
@@ -1554,7 +1544,8 @@ private
    LOCALS
    slot literal postpone RESOLVE-ROW
    C-ARGS 0 ?do i STAGE-C-ARG loop
-   STRUCT-BYTES @ 0 > if DEST postpone RESULT-DEST! then
+   \ C ignores x8 when it returns the record in x0/x1.
+   STRUCT-BYTES @ 0 > if ARG-N @ 1- EFFECT:LOCAL@ 8 literal postpone POINTER! then
    slot literal
    STRUCT-BYTES @ 0 > if
       postpone CALL-STRUCT DEST postpone STORE-RESULT exit
