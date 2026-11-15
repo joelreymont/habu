@@ -310,31 +310,21 @@ private
 \ The length of the token at s: its bytes up to a blank or e.
 : TOKEN-LEN ( ptr u8 ptr u8 -- n ) {: s:ptr e:ptr :}
    0 BEGIN dup s + e - 0 < IF dup s + c@ 32 > ELSE 0 0= 0= THEN WHILE 1 + REPEAT ;
-\ Whether the run at t, its text ending at te, copies the bytes at s, its
-\ source ending at se: their first tokens match. A run a definer built is
-\ given the place of the token that built it, which does not spell the run.
-: SPELLED? ( ptr u8 ptr u8 ptr u8 ptr u8 -- bool ) {: t:ptr te:ptr s:ptr se:ptr :}
-   t te TOKEN-LEN  s se TOKEN-LEN {: k:n j:n :}
-   k j = IF t k s j CORE-STR= ELSE 0 0= 0= THEN ;
-\ The run text offset x lies in: its first byte, and the armed source's byte
-\ its row gives; false when the row gives none.
-: MAP-RUN ( n -- ptr u8 ptr u8 bool ) {: x:n :}
-   x MAP-ROW {: row:n :}
-   row 1 + ROW@ {: src:n :}
-   MAP-A @ row ROW@ +  SOURCE-A @ src + ROW-BIAS @ -
-   src BODY-SOURCE:NONE = 0= ;
-\ Whether text offset x lies in a run its source does not spell: one with no
+\ The source of the run text offset x lies in (layout.f BODY-SOURCE).
+: MAP-RUN ( n -- n )
+   MAP-ROW 1 + ROW@ ;
+\ Whether text offset x lies in a run its source does not copy: one with no
 \ source, or one a definer built.
 : MAP-NONE? ( n -- bool )
-   MAP-RUN 0= IF 2drop 0 0= EXIT THEN {: run:ptr s:ptr :}
-   run  MAP-A @ MAP-U @ +  s  SOURCE-A @ SOURCE-U @ +  SPELLED? 0= ;
-\ The token that built the run text offset x lies in; empty when its source
-\ spells the run, or it has none.
+   MAP-RUN {: src:n :}
+   src BODY-SOURCE:NONE =  src BODY-SOURCE:BUILT? or ;
+\ The token in the armed source that built the run text offset x lies in;
+\ empty when no definer built the run.
 : MAP-BUILDER ( n -- ptr u8 n )
-   MAP-RUN 0= IF drop 0 EXIT THEN {: run:ptr s:ptr :}
-   SOURCE-A @ SOURCE-U @ + {: se:ptr :}
-   run  MAP-A @ MAP-U @ +  s se SPELLED? IF s 0 EXIT THEN
-   s  s se TOKEN-LEN ;
+   MAP-RUN {: src:n :}
+   src BODY-SOURCE:BUILT? 0= IF NULL-PTR 0 EXIT THEN
+   SOURCE-A @ src BODY-SOURCE:BUILT + ROW-BIAS @ - {: s:ptr :}
+   s  s SOURCE-A @ SOURCE-U @ + TOKEN-LEN ;
 \ The separator after a run maps to the byte after the run, where its last
 \ token ends.
 : MAP>SOURCE ( n -- n )
@@ -457,7 +447,7 @@ private
    t b - {: at:n :}
    at 0 >=  at tu + bu <= and ;
 \ Whether the armed source holds the n bytes at p: its map's text, outside a
-\ run with no source, else its own bytes.
+\ run it does not copy, else its own bytes.
 : ARMED? ( ptr u8 n -- bool ) {: p:ptr n:n :}
    SOURCE-U @ 0 = IF 0 0= 0= EXIT THEN
    ROW-N @ 0 >  MAP-A @ MAP-U @ p n HOLDS?  and IF p MAP-A @ - MAP-NONE? 0= EXIT THEN
@@ -490,42 +480,38 @@ private
    AT-BYTE @ tu + AT-END !
    b bu t LINE! ;
 \ The run of the pending definition's body text that t lies in, by the rows
-\ the copy records (layout.f BODY-SOURCE): its first byte, and the byte of the
-\ buffer read its row gives; false when t is in no run with a source there.
+\ the copy records (layout.f BODY-SOURCE): its first byte and its source;
+\ false when t is in no run with a row there.
 \ Rows count from the buffer's first byte, and they name this buffer only
 \ while the definition's name lies in it: a REPL line refills the buffer that
 \ held the line before, and OPENER-KEEP moves the name out of it.
-: INPUT-RUN ( ptr u8 -- ptr u8 ptr u8 bool ) {: t:ptr :}
+: INPUT-RUN ( ptr u8 -- ptr u8 n bool ) {: t:ptr :}
    BODY-BASE @ {: base:ptr :}
-   data-base PEND-CELL + @ 0=  base NULL-PTR = or IF t t 0 0= 0= EXIT THEN
+   data-base PEND-CELL + @ 0=  base NULL-PTR = or IF t 0 0 0= 0= EXIT THEN
    t base - {: x:n :}
-   x 0 <  x data-base BODYLEN-CELL + @ >= or IF t t 0 0= 0= EXIT THEN
+   x 0 <  x data-base BODYLEN-CELL + @ >= or IF t 0 0 0= 0= EXIT THEN
    data-base BODY-TEXT:ROWS-CELL + @ {: count:n :}
-   count 0 <=  INPUT$ PEND-NAME @ 1 HOLDS? 0= or IF t t 0 0= 0= EXIT THEN
+   count 0 <=  INPUT$ PEND-NAME @ 1 HOLDS? 0= or IF t 0 0 0= 0= EXIT THEN
    base data-base BODY-TEXT:CAP-CELL + @ + cell-view {: rows:ptr :}
    rows count x ROW-AT {: r:n :}
-   r 1 + cells rows + @ {: src:n :}
-   base r cells rows + @ +  INPUT-START @ src +
-   src BODY-SOURCE:NONE = 0= ;
-\ The body text's end, the run's end at the latest.
-: BODY-END ( -- ptr u8 )
-   BODY-BASE @ data-base BODYLEN-CELL + @ + ;
+   base r cells rows + @ +  r 1 + cells rows + @  0 0= ;
 \ The bytes of the buffer read that the pending definition's body text
 \ copied the token t tu from; else t.
 : BODY>INPUT ( ptr u8 n -- ptr u8 ) {: t:ptr tu:n :}
-   t INPUT-RUN 0= IF 2drop t EXIT THEN {: run:ptr s:ptr :}
-   run BODY-END s INPUT-END @ SPELLED? 0= IF t EXIT THEN
-   s t run - + {: p:ptr :}
+   t INPUT-RUN 0= IF 2drop t EXIT THEN {: run:ptr src:n :}
+   src BODY-SOURCE:NONE =  src BODY-SOURCE:BUILT? or IF t EXIT THEN
+   INPUT-START @ src +  t run - + {: p:ptr :}
    INPUT$ p tu HOLDS? IF p EXIT THEN
    t ;
 \ The token that built the run t lies in, in the armed source or the buffer
-\ read; empty when a source spells the run or none is given.
+\ read; empty when no definer built the run.
 : BUILDER ( ptr u8 -- ptr u8 n ) {: t:ptr :}
    SOURCE-U @ 0 >  ROW-N @ 0 > and  t MAP-A @ - MAP-U @ IN-SPAN? and IF
       t MAP-A @ - MAP-BUILDER EXIT
    THEN
-   t INPUT-RUN 0= IF drop 0 EXIT THEN {: run:ptr s:ptr :}
-   run BODY-END s INPUT-END @ SPELLED? IF s 0 EXIT THEN
+   t INPUT-RUN 0= IF 2drop NULL-PTR 0 EXIT THEN nip {: src:n :}
+   src BODY-SOURCE:BUILT? 0= IF NULL-PTR 0 EXIT THEN
+   INPUT-START @ src BODY-SOURCE:BUILT + {: s:ptr :}
    s  s INPUT-END @ TOKEN-LEN ;
 \ Each evaluate frame saved the input it interrupted, its start, end and read
 \ position (layout.f EVAL-INB), and links to the frame it runs in (EVAL-PREV).

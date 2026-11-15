@@ -1477,8 +1477,9 @@ private
    i 0= if 0 exit then
    i 1 - BODY-ITEMS:OFF ITEM@  i 1 - BODY-ITEMS:LEN ITEM@ + 1 + ;
 
-\ Places a run whose bytes the buffer read lacks at the token read last, if the
-\ definition opened there; PENDTKA-CELL is set after the name's run (off 0).
+\ Marks a run whose bytes the buffer read lacks as built at the token read last,
+\ if the definition opened there; PENDTKA-CELL is set after the name's run
+\ (off 0).
 : PLACE-RUN ( n -- )
    {: off:n :}
    BODY-TEXT:ROWS-CELL CELL@ 1 - {: i:n :}
@@ -1492,7 +1493,7 @@ private
    PENDTKA-CELL ADDR@ {: p:ptr :}
    off 0 >  p b - 0 <  e p - 0 <= or  and if exit then
    t b - 0 <  e t - 0 <= or if exit then
-   t b - row 8 FR! ;
+   t b - BODY-SOURCE:BUILT row 8 FR! ;
 
 \ Appends an item and captures its spelling, which the row's off and len span;
 \ a run captured between items is text no item spans.

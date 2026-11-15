@@ -1342,14 +1342,19 @@ $4DD8 constant SECTION-CELL
 SNAP-RELOC:XTCELL-END constant PD-TABLE-OFF
 PD-TABLE-OFF PD-SLOTS-REL + PD-CAP PD-SLOT * + constant PD-TABLE-END
 
-\ Rows (text offset, input-buffer offset or NONE) for the runs
-\ EMIT-BCAP appends, ascending: a run first drops the rows at or past BODYLEN.
+\ Rows (text offset, source) for the runs EMIT-BCAP appends, ascending: a run
+\ first drops the rows at or past BODYLEN. The source is the input-buffer offset
+\ of the bytes a run copies, NONE for a run the buffer read lacks, or BUILT of
+\ the offset of the token that built the run.
 \ The rows live in the body text block after its text: row i at
 \ BODY-TEXT:BASE-CELL's base + cap + i * ROW, the count at BODY-TEXT:ROWS-CELL.
 package BODY-SOURCE
 public
 16 constant ROW                     \ bytes per row
 -1 constant NONE
+\ Its own inverse: BUILT of a built row's source gives the offset back.
+: BUILT ( n -- n ) -2 swap - ;
+: BUILT? ( n -- bool ) NONE < ;
 ;package
 \ DATA-START: the user DP heap's floor (DP-CHECK); all below is the engine's.
 PD-TABLE-END constant DATA-START

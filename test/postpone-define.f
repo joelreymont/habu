@@ -95,6 +95,12 @@ public
    postpone drop
    postpone ; ;
 
+\ : NAME ( -- n ) CUBE ;, an underflow the checker refuses.
+: MAKE-SHORT-CUBER ( ptr u8 n -- )
+   EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word
+   postpone CUBE
+   postpone ; ;
+
 \ : NAME ( -- read-view<a,b,c> ) 1 throw ;, a view no input supplies.
 : MAKE-RV ( ptr u8 n -- )
    EFFECT:EMPTY s" read-view" EFFECT:NAMED EFFECT:OUT define-word
@@ -154,7 +160,7 @@ DUPS-C 162 T=
 : NOT-EFFECT ( -- n ) [: s" NOT-BUILT" EFFECT:N define-word ;] catch ;
 REJECTION:CAPTURE
 NOT-EFFECT 70 T=
-s" error[E-NOT-EFFECT]" HAS  s" postpone-define.f:156:1" HAS
+s" error[E-NOT-EFFECT]" HAS  s" postpone-define.f:162:1" HAS
 s" = word: NOT-BUILT" HAS  REJECTION:BUFFER-OFF
 
 \ 23 type parameters fit an effect, a 24th is E-NOT-EFFECT.
@@ -163,46 +169,52 @@ s" = word: NOT-BUILT" HAS  REJECTION:BUFFER-OFF
 s" WIDE-23" 23 WIDE 0 T=
 REJECTION:CAPTURE
 s" WIDE-24" 24 WIDE 70 T=
-s" error[E-NOT-EFFECT]" HAS  s" postpone-define.f:165:16" HAS
+s" error[E-NOT-EFFECT]" HAS  s" postpone-define.f:171:16" HAS
 s" = word: WIDE-24" HAS  REJECTION:BUFFER-OFF
 
 \ A spelling that names no family is E-UNKNOWN-SIGNATURE-TYPE.
 : NO-FAMILY ( -- n ) [: s" no-such-family" EFFECT:NAMED drop ;] catch ;
 REJECTION:CAPTURE
 NO-FAMILY 70 T=
-s" error[E-UNKNOWN-SIGNATURE-TYPE]" HAS  s" postpone-define.f:172:1" HAS
+s" error[E-UNKNOWN-SIGNATURE-TYPE]" HAS  s" postpone-define.f:178:1" HAS
 REJECTION:BUFFER-OFF
 
 \ EFFECT:IN given a type that is no effect is E-NOT-EFFECT.
 : IN-NOT-EFFECT ( -- n ) [: EFFECT:N EFFECT:N EFFECT:IN drop ;] catch ;
 REJECTION:CAPTURE
 IN-NOT-EFFECT 70 T=
-s" error[E-NOT-EFFECT]" HAS  s" postpone-define.f:179:1" HAS
+s" error[E-NOT-EFFECT]" HAS  s" postpone-define.f:185:1" HAS
 REJECTION:BUFFER-OFF
 
 : LITERAL-NONE ( -- n ) [: 1 literal ;] catch ;
 REJECTION:CAPTURE
 LITERAL-NONE 70 T=
-s" error[E-NO-DEFINITION]" HAS  s" postpone-define.f:185:1" HAS
+s" error[E-NO-DEFINITION]" HAS  s" postpone-define.f:191:1" HAS
 REJECTION:BUFFER-OFF
 : COMPILE-NONE ( -- n ) [: ['] DOUBLE compile, ;] catch ;
 REJECTION:CAPTURE
 COMPILE-NONE 70 T=
-s" error[E-NO-DEFINITION]" HAS  s" postpone-define.f:190:1" HAS
+s" error[E-NO-DEFINITION]" HAS  s" postpone-define.f:196:1" HAS
 REJECTION:BUFFER-OFF
 
 : BROKEN ( -- n ) [: s" UNDERFLOW" POSTPONE-DEFINER:MAKE-BROKEN ;] catch ;
 REJECTION:CAPTURE
 BROKEN 70 T=
-s" error[E-INPUT-UNDERFLOW]" HAS  s" postpone-define.f:196:1" HAS
+s" error[E-INPUT-UNDERFLOW]" HAS  s" postpone-define.f:202:1" HAS
 s" = word: drop" HAS  REJECTION:BUFFER-OFF
+\ The built call is spelled like the file's token that ran its definer.
+: CUBE ( -- n ) [: s" SHORT-CUBE" POSTPONE-DEFINER:MAKE-SHORT-CUBER ;] catch ;
+REJECTION:CAPTURE
+CUBE 70 T=
+s" error[E-INPUT-UNDERFLOW]" HAS  s" postpone-define.f:208:1" HAS
+s" = word: CUBE" HAS  REJECTION:BUFFER-OFF
 s" : AFTER ( -- n ) 7 ;" evaluate-closed
 AFTER 7 T=
 
 : RV-REFUSED ( -- n ) [: s" RV-BAD" POSTPONE-DEFINER:MAKE-RV ;] catch ;
 REJECTION:CAPTURE
 RV-REFUSED 70 T=
-s" error[E-NOT-EFFECT]" HAS  s" postpone-define.f:204:1" HAS
+s" error[E-NOT-EFFECT]" HAS  s" postpone-define.f:216:1" HAS
 s" = word: RV-BAD" HAS  REJECTION:BUFFER-OFF
 s" : AFTER-RV ( -- n ) 8 ;" evaluate-closed
 AFTER-RV 8 T=
