@@ -39,7 +39,9 @@ In a source the engine runs (a file, `--load`, stdin, a `require`d file, a REPL
 line) any other code prints one record and exits 67: `error[NAME]`, NAME being
 the code's name in `src/lib/error.f` (`E-THROW` for a code with none), with a
 `code` note, at the word that threw it in the innermost text it left. A program
-that catches the code and throws it again moves the record to its own throw.
+that catches the code and throws it again moves the record to its own throw,
+unless the code carried its record and the program throws on the local its
+`catch` bound (docs/forth.md "Only the catch's own local throws on").
 An arm64 stripped (AOT) application prints `hb: uncaught throw code N` and
 exits 67; an x86-64 one does not yet run the hook or print the line. Under
 `--load` an uncaught throw of a computed 0 (a literal `0 throw` is rejected,
