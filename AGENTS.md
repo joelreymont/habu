@@ -2,9 +2,6 @@
 
 Application-specific policy and model workflows stay out of the language core.
 
-Agents write, build and debug everything in Habu and on it; no person uses
-Habu directly.
-
 ## Read first
 
 - Before writing Habu: [docs/forth-card.md](docs/forth-card.md); look things
@@ -34,10 +31,6 @@ Habu directly.
 - The test suite, the convergence check and a feature's review run once,
   before the install, never per change; a rebase over changes to `.dots/` alone
   reruns nothing.
-- Never compress code or data without the user's explicit approval.
-  Compression shrinks code or data through a codec; dropping zero-filled,
-  unused or unreachable storage, packing allocations tightly and choosing a
-  compact table encoding are not compression.
 - There are no runtime checks: check things statically as much as possible.
   Code instrumented with bounds and other checks may be generated on demand,
   never by default.
