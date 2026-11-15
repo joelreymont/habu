@@ -589,17 +589,20 @@ DOES-COMPANION-INSTALL
 \ undefines nothing live, as it defines nothing (src/habu/habu1.f
 \ OVERLAY-EMIT:GUARD,): replay-close gives back only the records the overlay
 \ retired and logged, so a record retired here would stay retired after the
-\ pair and the live word would be gone. The refusal names the word before
-\ anything changes and throws ENGINE-ERROR:OVERLAY-OPEN, which ends a top-level
-\ load with that code. Both loops run these words; a replayed `undefine` never
+\ pair and the live word would be gone. The rejection names the word before
+\ anything changes. Both loops run these words; a replayed `undefine` never
 \ reaches them, since the checker's source pass retires through the overlay
 \ (src/core/checker.f CHECKER-OVERLAY:RETIRE).
 : XREF-UNDEFINE-GUARD ( ptr u8 n -- ) {: a:ptr u:n :}
    data-base REPLAY-SCOPE:LATCH + @ 0= if exit then
-   2 s" E-OVERLAY-OPEN habu: undefine while a checker replay is open: " write drop
-   2 a u write drop
-   2 S\" \n" write drop
-   ENGINE-ERROR:OVERLAY-OPEN throw ;
+   s" E-OVERLAY-OPEN" REJECTION:OPEN
+   s" `undefine` " REJECTION:EMIT-STR  a u XREF-EMIT-TICKS
+   s"  while a checker replay is open" REJECTION:EMIT-STR
+   a u REJECTION:AT  s" replay still open" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" end the checker scope with CHECKER-SCOPE-DONE before `undefine`"
+   REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 : XREF-REQUIRE-UNDEFINE ( n ptr u8 n -- n ) {: idx:n a:ptr u:n :}
    idx 0 < if
