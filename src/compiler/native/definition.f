@@ -59,6 +59,7 @@ DYNAMIC-BUFFER PUB-OFF n
 private
 
 EXPORT CHECK:DOES-PUBLISHED
+EXPORT CHECK:ROW-DECLARED
 
 0 CWORK-VARIABLE M-SRC ^u8
 0 CWORK-VARIABLE M-SRC-U n
@@ -186,7 +187,7 @@ public
 \ the tape: the pending dictionary record holds only a qualified name's tail.
 : DECLARE-ROW ( -- bool )
    TRUSTED? 0= if false exit then
-   NAME$ TRUST-SIG$ CHECK:ROW-DECLARED ;
+   NAME$ TRUST-SIG$ ROW-DECLARED ;
 
 private
 

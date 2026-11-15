@@ -227,8 +227,6 @@ CAST: ROW-XT ( n -- [ ^u8 n ^u8 n -- bool ] )
    sym FACTS-TEXT? if REJECTION:TEXT REJECTION:TEXT-LEN @ CK-CLOSED-IX @ FACTS!
    else NULL-PTR 0 CK-CLOSED-IX @ FIND-FACTS! then ;
 
-public
-
 \ Declares a TRUSTED: definition's row NAME SIG as DECLARED does and answers
 \ whether the checker rejected it.
 : ROW-DECLARED ( ^u8 n ^u8 n -- bool )
@@ -236,8 +234,6 @@ public
    na nu sa su ROW-REG @ ROW-XT execute {: rejected:bool :}
    na nu PENDING-FACTS
    rejected ;
-
-private
 
 \ The shapes whose child answers or takes `^t` for its declared type t.
 : STORED-SHAPE? ( n -- bool ) {: shape:n :}

@@ -437,9 +437,8 @@
 \ count is a literal outside its extent or a token the gate cannot certify.
 \ The gate pre-pass and the run-time definers both reject through
 \ CHECKER-STORAGE-REJECT, which prints E-BAD-STORAGE at the rejected token.
-\ Like TRUST-STALE it is a hard stop on the ordinary load path, and is printed
-\ and counted under a MULTI-ERROR load; either way nothing is registered or
-\ defined.
+\ It is a hard stop on the ordinary load path, and is printed and counted under
+\ a MULTI-ERROR load; either way nothing is registered or defined.
 \
 \ Name binding: one lookup binds a name, and it is the engine's. `scope-find`
 \ runs what the compiler's call site runs, so the checker certifies the record
@@ -12811,28 +12810,8 @@ package CHECKER-REG
 \ `using` scope that resolves to a global while a used package also exports it
 \ is ambiguous and fails at the reference.
 7141 constant E-USING-SHADOW-GLOBAL
-\ A declared row whose name describes no memory, so it spells no word.
-7143 constant E-TRUST-UNRESOLVED
 \ A `generates:` row the checker cannot keep.
 7153 constant E-GENERATES-ROW
-\ Neither path stores a row, so a later caller rejects as undefined.
-: TRUST-STALE ( ^u8 n -- ) {: a:^ u:n :}
-   s" E-TRUST-UNRESOLVED" REJECTION:OPEN
-   s" the `trust` row for `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
-   s" ` names no word where its record lands" REJECTION:EMIT-STR
-   a u REJECTION:AT  s" no word here has this name" REJECTION:EMIT-STR
-   s" searched" REJECTION:NOTE
-   s" the open section's wordlist, the global wordlist outside a package, or PKG's public wordlist for PKG:TAIL"
-   REJECTION:EMIT-STR
-   s" reason" REJECTION:NOTE
-   s" the effect would be recorded against a symbol the engine never defined"
-   REJECTION:EMIT-STR
-   REJECTION:HELP
-   s" correct `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
-   s" ` to the word the row describes, write the row in the section that defines that word, or delete the row"
-   REJECTION:EMIT-STR
-   MULTI-ERR? IF REJECTION:KEEP EXIT THEN
-   CHECKER-REJECT-RC REJECTION:STOP ;
 variable USING-UNBOUND   \ no global binds the tail the walk refused: the engine's own lookup refuses it
 variable WALK-REC        \ the walk bound the name to the record the engine's own lookup found (LIVE-BIND)
 CHECKER-REG:SCRATCH{
@@ -17231,8 +17210,6 @@ CHECKER-REG:}SCRATCH
 \ Tokens whose execution from a checked body is unsound whatever their row says.
 : UNSAFE-TOK? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" evaluate" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" trust-decl" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" trust-raw" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" layout-buffer" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" defer-layout-buffer" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" typed-buffer" CORE-STR=CI IF RES-TRUE EXIT THEN
@@ -20884,12 +20861,6 @@ SRCLOC:OWNED-CELL RESERVED-PTR-U8-CELL SRC-OWNED
    ELSE RF-SIG REFUSAL ! THEN
    -1 FAILSET ! ;
 
-\ A NAME whose length describes no memory spells no word, so TRUST-RAW and
-\ TRUST-DECL each reject its row first as E-TRUST-UNRESOLVED with no spelling
-\ rendered: TRUST-RAW before it turns on raw-definer mode (which a caught
-\ rejection would leave on), TRUST-DECL before it steps the definer latch for a
-\ row that is never stored.
-
 \ The registration TRUST-DECL and TRUST-RAW share; it answers the row's outcome.
 : TRUST-USIG-SYM! ( ^u8 n ^u8 n n -- n )
    {: na:^ nu:n sa:^ su:n sym:n :}
@@ -20923,7 +20894,6 @@ SRCLOC:OWNED-CELL RESERVED-PTR-U8-CELL SRC-OWNED
 : TRUST-DECL-ROW ( ^u8 n ^u8 n -- n )
    {: na:^ nu:n sa:^ su:n :}
    WRITE-WINDOW-CK                       \ before the does> latch steps
-   na nu BYTE-SPAN? 0= IF na 0 TRUST-STALE CHECKER-ROW:REJECTED EXIT THEN
    DOES-EFF-STEP
    0 DL-NEW !
    na nu sa su TRUST-USIG!
@@ -20948,9 +20918,9 @@ SRCLOC:OWNED-CELL RESERVED-PTR-U8-CELL SRC-OWNED
 : TRUST-DECL-REJECTED? ( ^u8 n ^u8 n -- bool )
    TRUST-DECL-ROW CHECKER-ROW:REJECTED = ;
 
+package CHECKER-REG
 : TRUST-DECL ( ^u8 n ^u8 n -- )
    TRUST-DECL-ROW drop ;
-package CHECKER-REG
 ' TRUST-DECL DECLARATIONS EFFECT-OFF + xt!
 ' TRUST-DECL-REJECTED? DECLARATIONS CHECKER-OWNER-ABI:DECL-ROW-OFF + xt!
 ;package
@@ -20970,8 +20940,8 @@ package CHECKER-REG
 \ A created word's row, registered in raw-definer mode, the only path that
 \ publishes a created word: every type variable is TVK-RAW, so the cell read
 \ back cannot bind a nominal family.
+package CHECKER-REG
 : TRUST-RAW {: na:^ nu:n sa:^ su:n :}
-   na nu BYTE-SPAN? 0= IF na 0 TRUST-STALE EXIT THEN
    \ A does> patch publishes under the symbol LASTC's record links, if any.
    LASTC-LINK-SYM {: linked:n :}
    RES-TRUE SIG-RAW-DEFINER!
@@ -20990,7 +20960,6 @@ package CHECKER-REG
    THEN
    effect sym NORET-NEWEST data-base LASTC-CELL +
       0 ptr-field @ RECORD-CREATED-XT ;
-package CHECKER-REG
 ' TRUST-RAW DECLARATIONS RAW-OFF + xt!
 ;package
 

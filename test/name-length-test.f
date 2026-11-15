@@ -72,7 +72,6 @@ TEXTS!
 : BODY$ ( -- ^u8 n ) s" NLT-W ( -- )" TEXT ;
 : STORED$ ( -- ^u8 n ) s" nlt-pair" TEXT ;
 
-: SIG$ ( -- ^u8 n ) s" --" ;
 : CAST$ ( -- ^u8 n ) s" len -- n" ;
 : CAST-NAME$ ( -- ^u8 n ) s" nltcast" ;
 : CLAUSE$ ( -- ^u8 n ) s" drop 1 +" ;
@@ -328,10 +327,9 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
 \ CHECKER-DEFCAST and CHECKER-NAMED-USE have no effect a checked body may
 \ call, so the child names them at its top level or in a TRUSTED: body, as
 \ verify-source.f's NAMED-USE calls CHECKER-NAMED-USE: a refused name publishes
-\ no use and reads none of its bytes. TRUST-DECL and
-\ TRUST-RAW are sealed (src/core/checker.f: the interpreter refuses them), so a
-\ TRUSTED: body calls them, as the engine's own callers do. A cast reaches
-\ its name once its signature certifies, and stores it.
+\ no use and reads none of its bytes. TRUST-DECL and TRUST-RAW are
+\ CHECKER-REG's private words, so no source calls them. A cast reaches its name
+\ once its signature certifies, and stores it.
 : TEST-TOP-LEVEL ( -- )
    s" TRUSTED: NL-NU ( -- ) MARKS! BAD$ CHECKER-NAMED-USE 0 0= VERDICT ; NL-NU"
       RETURNS
@@ -354,9 +352,7 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
 : TEST-MALFORMED ( -- )
    s" MAL$ CHECKER-DEFER" 70 MALFORMED-HEAD$ MALFORMED-NOTE$ MAL-REJECTS
    s" MAL$ CHECKER-UNDEFINE" 70 MALFORMED-HEAD$ MALFORMED-NOTE$ MAL-REJECTS
-   s" MAL$ CAST$ CHECKER-DEFCAST" 70 MALFORMED-HEAD$ MALFORMED-NOTE$ MAL-REJECTS
-   s" TRUSTED: NL-TD ( -- ) MAL$ SIG$ TRUST-DECL ; NL-TD" 70 MALFORMED-HEAD$ MALFORMED-NOTE$ MAL-REJECTS
-   s" TRUSTED: NL-TR ( -- ) MAL$ SIG$ TRUST-RAW ; NL-TR" 70 MALFORMED-HEAD$ MALFORMED-NOTE$ MAL-REJECTS ;
+   s" MAL$ CAST$ CHECKER-DEFCAST" 70 MALFORMED-HEAD$ MALFORMED-NOTE$ MAL-REJECTS ;
 
 \ CHECKER-DEFRECORD's and CHECKER-TRY-RECORD's second string is the record's
 \ field text, which is no name, so only -1 and the maximum cell describe no

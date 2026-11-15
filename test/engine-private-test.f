@@ -26,4 +26,13 @@ public
 s\" : EPV-ROWED ( -- n ) 1 ; s\q EPV-ROWED\q PE-OPEN PE-N PE-OUT PE-CLOSE"
    s" error[E-UNDEFINED]: cannot find word `PE-OPEN`" ENGINE-PRIVATE:TCE-REJECTS
 
+\ The effect registrars are private: a program that could rewrite a word's
+\ recorded effect would load code that underflows at run time.
+s\" : EPV-TWO ( -- n ) 2 ;\ns\q EPV-TWO\q s\q -- n n\q trust-decl\n: EPV-USE ( -- n n ) EPV-TWO ;\nEPV-USE . . cr"
+   s" error[E-UNDEFINED]: cannot find word `trust-decl`" ENGINE-PRIVATE:TCE-REJECTS
+s\" : EPV-ONE ( -- n ) 1 ;\ns\q EPV-ONE\q s\q -- n n\q trust-raw"
+   s" error[E-UNDEFINED]: cannot find word `trust-raw`" ENGINE-PRIVATE:TCE-REJECTS
+s\" : EPV-ROW ( -- bool ) s\q EPV-ONE\q s\q -- n n\q CHECK:ROW-DECLARED ;"
+   s" error[E-UNDEFINED]: cannot find word `CHECK:ROW-DECLARED`" ENGINE-PRIVATE:TCE-REJECTS
+
 T-REPORT
