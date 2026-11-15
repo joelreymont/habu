@@ -1279,8 +1279,9 @@ and as `E-BAD-STORED-SIGNATURE` in a stored signature.
   type variable, and renders as `bool`.
 - `r` is a 64-bit float; `f32` is a 32-bit float and does not unify or widen
   with `r`.
-- `str` is declarable, but no primitive produces or consumes it; a string is
-  `^u8 n`.
+- `str` is a string as one value, its base address and byte length; `>str`
+  and `str>` cross between it and `^u8 n`, which the string words still
+  take.
 - The roles are nominal one-cell types, distinct from each other and
   from every integer type.
 - `^τ` is a typed pointer; `@`/`!` move `τ`. `[ in -- out ]` is a quotation

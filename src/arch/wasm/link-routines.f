@@ -160,7 +160,8 @@ variable BUF-U
    ONE-RESULT,
    0 I32,  OP-END B, ;
 
-\ `cell-view`, `byte-view` and `PTR>N` ( a -- a ) leave the address as it is.
+\ `cell-view`, `byte-view` and `PTR>N` ( a -- a ) leave the address as it is;
+\ `>str` and `str>` leave both cells as they are.
 : VIEW-BODY ( -- )  0 U32,  0 I32,  OP-END B, ;
 
 
@@ -662,6 +663,8 @@ public
    name u s" cell-view" STR=CI if VIEW-BODY BODY$ true exit then
    name u s" byte-view" STR=CI if VIEW-BODY BODY$ true exit then
    name u s" PTR>N" STR=CI if VIEW-BODY BODY$ true exit then
+   name u s" >str" STR=CI if VIEW-BODY BODY$ true exit then
+   name u s" str>" STR=CI if VIEW-BODY BODY$ true exit then
    name u s" atomic!" STR=CI if OP-I64-STORE ALIGN-64 STORE-BODY BODY$ true exit then
    name u s" atomic-cas" STR=CI if CAS-BODY BODY$ true exit then
    \ ---- floats

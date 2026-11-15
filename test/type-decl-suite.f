@@ -1112,7 +1112,6 @@ s\" NEWTYPE s\" 1" E-TFAM-CASE TDT-NEG
 s" NEWTYPE a" E-TDECL-NAME TDT-NEG
 s" SUMTYPE n VARIANT x ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
 s" NEWTYPE field<a>" E-TDECL-NAME TDT-NEG
-s" NEWTYPE str<a>" E-TDECL-NAME TDT-NEG
 s" NEWTYPE space-x<a>" E-TDECL-NAME TDT-NEG
 s" NEWTYPE fresh-mask-x<a>" E-TDECL-NAME TDT-NEG
 \ An effect reads the token `ptr` ahead of any family, so the tail is reserved
@@ -1129,6 +1128,7 @@ s" SUMTYPE tdcn3<a> VARIANT ;match a ;VARIANT ;SUMTYPE" E-TFAM-CASE TDT-NEG
 \ top-level declaring scope IS the global scope, so the collision is a real
 \ duplicate — E-TFAM-DUP, not a reserved-name shadow; both classes reject)...
 s" NEWTYPE span<a,b,c>" E-TFAM-DUP TDT-NEG
+s" NEWTYPE str<a>" E-TFAM-DUP TDT-NEG
 \ The global/package same-tail case above is legal; only an exact same-package
 \ duplicate remains E-TFAM-DUP.
 \ variant names may not collide with any family the declaring scope resolves:

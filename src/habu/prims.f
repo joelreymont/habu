@@ -426,6 +426,10 @@ EPRIM: ptr-field  PE-PTR-A PE-IN PE-N PE-IN  PE-PTR-PTR-B PE-OUT EPRIM; REACH st
 \ Explicit memory views preserve address bits while changing the access type.
 EPRIM: byte-view  PE-PTR-A PE-IN PE-PTR-U8 PE-OUT EPRIM; REACH stack
 EPRIM: cell-view  PE-PTR-U8 PE-IN PE-PTR-N PE-OUT EPRIM; REACH stack
+\ The only crossing between a string's two cells and `str`, the one value they
+\ make: base below length either way.
+EPRIM: >str       PE-PTR-U8 PE-IN PE-N PE-IN PE-STR PE-OUT EPRIM; REACH stack
+EPRIM: str>       PE-STR PE-IN PE-PTR-U8 PE-OUT PE-N PE-OUT EPRIM; REACH stack
 \ The address as a number, for a distance or a hash; the way back is a
 \ package's private `CAST:`.
 EPRIM: PTR>N      PE-PTR-A-ADDR PE-IN PE-N PE-OUT EPRIM; REACH stack
