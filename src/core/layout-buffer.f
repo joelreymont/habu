@@ -42,20 +42,6 @@ variable LBUF-BYTES
    cellsn LBUF-N-MAX CELL / > if 0 LBUF-FALSE exit then
    cellsn cells LBUF-TRUE ;
 
-SRCLOC:INB-CELL RESERVED-PTR-U8-CELL LBUF-INPUT
-
-\ The count's token: the one before the definer's, which stands before the
-\ name; the definer's own when no token precedes it.
-: LBUF-COUNT-TOKEN ( ptr u8 -- ptr u8 n ) {: name:ptr :}
-   LBUF-INPUT @ {: b:ptr :}
-   b name REJECTION:TOKEN-BEFORE {: d:ptr du:n :}
-   b d REJECTION:TOKEN-BEFORE {: c:ptr cu:n :}
-   cu 0= if d du exit then
-   c cu ;
-
-: LBUF-COUNT-REJECT ( ptr u8 n -- ) {: name:ptr nameu:n :}
-   name nameu name LBUF-COUNT-TOKEN STG-BAD-COUNT CHECKER-STORAGE-REFUSE ;
-
 : LBUF-VALIDATE ( n ptr u8 n ptr u8 n -- bool )
    {: count:n name:ptr nameu:n type:ptr typeu:n :}
    type typeu CHECKER-LAYOUT-INFO 0= if
@@ -64,7 +50,7 @@ SRCLOC:INB-CELL RESERVED-PTR-U8-CELL LBUF-INPUT
    LBUF-W ! drop
    count LBUF-N !
    count LBUF-W @ LBUF-EXTENT? 0= if
-      drop name nameu LBUF-COUNT-REJECT LBUF-FALSE exit
+      drop name nameu count CHECKER-STORAGE-COUNT-REJECT LBUF-FALSE exit
    then
    LBUF-BYTES ! LBUF-TRUE ;
 
@@ -412,7 +398,7 @@ PRIM: DEFER-LAYOUT-BUFFER PRIM;
    w LBUF-W !
    count LBUF-N !
    count LBUF-W @ LBUF-EXTENT? 0= if
-      drop name nameu LBUF-COUNT-REJECT LBUF-FALSE exit
+      drop name nameu count CHECKER-STORAGE-COUNT-REJECT LBUF-FALSE exit
    then
    LBUF-BYTES ! LBUF-TRUE ;
 

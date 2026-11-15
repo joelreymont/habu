@@ -497,7 +497,6 @@ PTR-VARIABLE SHOWN-A  variable SHOWN-U
       OUTER
    REPEAT drop
    t 0 0= 0= ;
-public
 \ The token in b that ends at or before p: back over blanks, then over the
 \ token's bytes, never before b; empty when only blanks stand between them.
 : TOKEN-BEFORE ( ptr u8 ptr u8 -- ptr u8 n ) {: b:ptr p:ptr :}
@@ -506,7 +505,6 @@ public
    e BEGIN dup 0 > IF dup 1 - b + c@ 32 > ELSE 0 0= 0= THEN WHILE 1 - REPEAT
    {: s:n :}
    b s +  e s - ;
-private
 \ Places at the token the invoker's input had read as the evaluation began, in
 \ the active file or else the line it interrupted.
 : INVOKE-PLACE ( ptr u8 -- ) {: inv:ptr :}

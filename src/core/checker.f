@@ -13526,14 +13526,29 @@ package CHECKER-REG
    s" declare " REJECTION:EMIT-STR  na nu STGR-CODE
    s"  with a closed, copyable type its definer stores, such as `n`" REJECTION:EMIT-STR ;
 
+: STGR-END ( -- )
+   MULTI-ERR? IF REJECTION:KEEP EXIT THEN
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
 \ The declared name, the rejected token and the STG- reason.
 : CHECKER-STORAGE-REFUSE ( ptr u8 n ptr u8 n n -- )
    {: na:ptr nu:n ta:ptr tu:n why:n :}
    s" E-BAD-STORAGE" REJECTION:OPEN  na nu why STGR-MESSAGE
    ta tu REJECTION:AT  why STGR-REASON$ REJECTION:EMIT-STR
    REJECTION:HELP  na nu ta tu why STGR-HELP
-   MULTI-ERR? IF REJECTION:KEEP EXIT THEN
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   STGR-END ;
+
+\ A count the definer took at run time has no token of its own: the record
+\ states its value v and stands at the name, which the definer read.
+: CHECKER-STORAGE-COUNT-REJECT ( ptr u8 n n -- ) {: na:ptr nu:n v:n :}
+   s" E-BAD-STORAGE" REJECTION:OPEN
+   s" the count of " REJECTION:EMIT-STR  na nu STGR-CODE
+   s"  is " REJECTION:EMIT-STR  v REJECTION:EMIT-N
+   s" , outside the buffer's extent" REJECTION:EMIT-STR
+   na nu REJECTION:AT  STG-BAD-COUNT STGR-REASON$ REJECTION:EMIT-STR
+   REJECTION:HELP  s" give " REJECTION:EMIT-STR  na nu STGR-CODE
+   s"  a positive count whose elements fit in memory" REJECTION:EMIT-STR
+   STGR-END ;
 
 \ A definer with no name on its line declares no word, so it is refused at its
 \ own token, which stands in for the word.
