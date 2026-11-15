@@ -717,8 +717,10 @@ variable WS-K                        \ operands the word moves
 \ the loop's names. A dead local's slots go to the
 \ next group. A local is its bind sequence, the checker's number for it in the
 \ unit's scan: a K-LOCAL-DECL row names the next one, a K-LOCAL-REF row the
-\ one it reads.
+\ one it reads. A group a `catch` answer binds holds one more slot, the throw
+\ count (THE THROW ON).
 DYNAMIC-BUFFER L-SLOT n              \ by sequence: the first of its frame slots
+DYNAMIC-BUFFER L-THROWS n            \ by sequence: the slot of its catch's throw count, else -1
 variable L-N                         \ the frame slots the locals in scope hold
 variable G-CELLS                     \ the cells the open group's names hold so far
 variable BINDS                       \ binds so far: the next one's sequence
@@ -729,8 +731,8 @@ variable CLAUSE                      \ a does> definer's clause unit, else -1
    seq count >= if E-T0-BINDS throw then
    first seq + BIND-WIDTHS @ {: w:n :}
    seq 1+ BINDS !
-   seq 1+ L-SLOT-RESERVE
-   L-N @ G-CELLS @ +  seq L-SLOT !
+   seq 1+ L-SLOT-RESERVE  seq 1+ L-THROWS-RESERVE
+   L-N @ G-CELLS @ +  seq L-SLOT !  -1 seq L-THROWS !
    w G-CELLS +! ;
 
 \ Pop c cells into slots base .. base+c-1, the top cell into the last.
@@ -748,13 +750,14 @@ variable CLAUSE                      \ a does> definer's clause unit, else -1
       r RELEASE
    loop ;
 
-\ The group's names come into scope only once their cells are bound.
-: CLOSE-GROUP ( -- )
+\ The group's names come into scope only once their cells are bound, with e
+\ more slots after theirs.
+: CLOSE-GROUP ( n -- ) {: e:n :}
    L-N @ {: base:n :}
    G-CELLS @ {: cells:n :}
-   base cells + EMIT-SLOTS
+   base cells + e + EMIT-SLOTS
    base cells BIND-CELLS
-   base cells + L-N !
+   base cells + e + L-N !
    0 G-CELLS ! ;
 
 \ The cells of bind sequence seq in the scan that holds text offset at.
@@ -1655,23 +1658,33 @@ DYNAMIC-BUFFER OP-OF n
 variable OP-HITS                     \ the seeded records OP-MAP found by the name
 variable OP-REC                      \ the last of them
 
-\ End the process: operation a u names no single seeded record.
+\ End the process: a u, a word T0 lowers itself, names no single seeded record.
 : OP-DIE ( ptr u8 n -- )
    {: a:ptr u:n :}
-   s" : T0: an inlined operation names no single seeded record" {: m:ptr k:n :}
+   s" : T0: a word it lowers itself names no single seeded record" {: m:ptr k:n :}
    u k + STR-BUF-RESERVE
    a 0 STR-BUF u BYTE-COPY
    m u STR-BUF k BYTE-COPY
    0 STR-BUF u k + 76 die ;
 
-: OP-MAP ( ptr u8 n n -- )
-   {: a:ptr u:n code:n :}
+\ The index of the seeded record named a u.
+: SEEDED ( ptr u8 n -- n )
+   {: a:ptr u:n :}
    0 OP-HITS !
    OP-N @ 0 ?do
       i XREF-REC a u XREF-MATCH? if 1 OP-HITS +!  i OP-REC ! then
    loop
    OP-HITS @ 1 <> if a u OP-DIE then
-   code OP-REC @ OP-OF ! ;
+   OP-REC @ ;
+
+: OP-MAP ( ptr u8 n n -- )
+   {: a:ptr u:n code:n :}
+   code  a u SEEDED OP-OF ! ;
+
+variable CATCH-REC                   \ the seeded records THE THROW ON lowers
+variable THROW-REC
+variable BASE-REC                    \ data-base's
+variable STORE-REC                   \ !'s
 
 : OPS-MAP ( -- )
    CORE-PREFIX:FIRST-RECORD {: n:n :}
@@ -1687,13 +1700,75 @@ variable OP-REC                      \ the last of them
    s" -rot" 32 OP-MAP  s" 2dup" 33 OP-MAP  s" 2drop" 34 OP-MAP
    s" 2swap" 35 OP-MAP  s" 2over" 36 OP-MAP  s" cells" 37 OP-MAP
    s" cell+" 38 OP-MAP  s" negate" 39 OP-MAP  s" invert" 40 OP-MAP
-   s" lshift" 41 OP-MAP  s" rshift" 42 OP-MAP  s" ptr-field" 43 OP-MAP ;
+   s" lshift" 41 OP-MAP  s" rshift" 42 OP-MAP  s" ptr-field" 43 OP-MAP
+   s" catch" SEEDED CATCH-REC !  s" throw" SEEDED THROW-REC !
+   s" data-base" SEEDED BASE-REC !  s" !" SEEDED STORE-REC ! ;
+
+: MAP-OPS ( -- ) OP-MAPPED @ 0= if OPS-MAP then ;
 
 : OP-CODE ( n -- n )
    {: r:n :}
-   OP-MAPPED @ 0= if OPS-MAP then
+   MAP-OPS
    r OP-N @ >= if 0 exit then
    r OP-OF @ ;
+
+\ ---- the throw on -------------------------------------------------------------
+\ THE THROW ON. A rejection's record is carried while its throw is the newest
+\ this thread began, as THROWS-CELL counts them. A group whose `{:` row directly
+\ follows a row calling `catch`, its last local one cell, keeps the count in a
+\ slot after its cells as it binds. A `throw` of that local, pushed by the row
+\ just before it outside a quotation reading it from a record, first takes 1
+\ off the count when it still equals the kept one: the throw then leaves the
+\ count as the caught throw left it, and after any throw since the catch
+\ returned it counts as a new one. The count is read through `data-base`, the
+\ running task's region.
+
+\ The address of this thread's throw count pushed, for the token at offset loc.
+: THROWS-AT ( n -- ) {: loc:n :}
+   SPILL-ALL  BASE-REC @ XREF-REC REC-START loc EMIT-CALL
+   THROWS-CELL PUSH-CONST [: + ;] OP-ADD true ALU2 ;
+
+\ Whether the `:}` row k closes a group bound from a `catch` answer.
+: CATCH-BOUND? ( n -- bool ) {: k:n :}
+   MAP-OPS
+   k 1- {: last:n :}
+   last ROW-KIND @ CHECKER-TAPE:K-LOCAL-DECL <> if false exit then
+   last begin dup ROW-KIND @ CHECKER-TAPE:K-LOCAL-DECL = while 1- repeat {: open:n :}
+   open 2 < if false exit then
+   open ROW-KIND @ CHECKER-TAPE:K-OPERAND <> if false exit then
+   open 1- {: c:n :}
+   c ROW-KIND @ {: kind:n :}
+   kind CHECKER-TAPE:K-NAME =  kind CHECKER-TAPE:K-CALL =  or 0= if false exit then
+   c ROW-A0 @ CATCH-REC @ <> if false exit then
+   last ROW-A0 @  last ROW-OFF @  LOCAL-CELLS 1 = ;
+
+\ The `:}` row: a catch-bound group's count goes into its extra slot.
+: CLOSE-LOCALS ( -- )
+   ORD @ 1- {: k:n :}
+   k CATCH-BOUND? 0= if 0 CLOSE-GROUP exit then
+   L-N @ G-CELLS @ + {: slot:n :}
+   1 CLOSE-GROUP
+   slot  k 1- ROW-A0 @  L-THROWS !
+   k ROW-OFF @ THROWS-AT  CELL-W FETCH
+   TOP MAT slot EMIT-SLOT-STORE  TOP REMOVE ;
+
+\ Before the call of record r at offset loc: a `throw` of a catch-bound local
+\ throws on.
+: THROW-ON ( n n -- ) {: r:n loc:n :}
+   r THROW-REC @ <> if exit then
+   READER @ 0< 0= if exit then
+   ORD @ 2 - {: j:n :}
+   j 1 < if exit then
+   j ROW-KIND @ CHECKER-TAPE:K-LOCAL-REF <> if exit then
+   j ROW-A0 @ L-THROWS @ {: slot:n :}
+   slot 0< if exit then
+   loc THROWS-AT
+   DUP1 CELL-W FETCH  DUP1
+   ROOM ALLOC {: v:vreg :}  v slot EMIT-SLOT-LOAD  v PUSH-REG
+   TOP 1- MAT TOP MAT EMIT-CMP  REMOVE2  CC-EQ PUSH-FLAG
+   [: + ;] OP-ADD true ALU2
+   SWAP1
+   SPILL-ALL  STORE-REC @ XREF-REC REC-START loc EMIT-CALL ;
 
 : CELL1 ( ptr u8 -- )
    {: a:ptr :}
@@ -1834,6 +1909,7 @@ variable OP-REC                      \ the last of them
       flags NDICT:INT-CALL? 0= if a u INTERNAL then
    then
    to 0= if a u NO-CODE then
+   r loc THROW-ON
    to flags DKIND:MASK and r loc WORD-CALL ;
 
 : NAME-TOKEN ( ptr u8 n n n -- )
@@ -1861,7 +1937,7 @@ variable OP-REC                      \ the last of them
       CHECKER-TAPE:K-CHAR of k DO-CHAR endof
       CHECKER-TAPE:K-CONTROL of a a0 DO-CONTROL endof
       CHECKER-TAPE:K-LOCAL-DECL of a0 loc DECLARE endof
-      CHECKER-TAPE:K-LOCAL-CLOSE of CLOSE-GROUP endof
+      CHECKER-TAPE:K-LOCAL-CLOSE of CLOSE-LOCALS endof
       CHECKER-TAPE:K-LOCAL-REF of a0 DO-LOCAL endof
       CHECKER-TAPE:K-OPERAND of endof
       CHECKER-TAPE:K-UNREACHED of a u UNREACHED endof

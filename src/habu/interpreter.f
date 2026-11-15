@@ -2026,8 +2026,6 @@ TYPED-VARIABLE GROUP-OPEN ptr u8
 variable ENTRY-PEND
 \ SOURCE-ROOT:TEXT-MARK as the buffer began.
 variable DECL-MARK
-\ The code the outermost text left with, whose record REJECTION:SAVE kept.
-variable ROOT-CODE   0 ROOT-CODE !
 
 : DEF-SOURCE-CLOSE ( -- )
    PEND-CELL CELL@ ENTRY-PEND @ <> if exit then
@@ -3182,15 +3180,6 @@ variable OPENER-U
    SRCLOC:TOKEN$ REJECTION:AT  s" thrown here" REJECTION:EMIT-STR
    c THROWN-HELP ;
 
-\ Whether the top frame, the running text's, has no frame outside it.
-: OUTERMOST? ( -- bool )
-   NULL-PTR EVAL-TOP-CELL CELL@ + EVAL-PREV FR@ 0= ;
-
-\ An outermost text that begins ends the wait for the record of the one before
-\ it, which a program caught.
-: BEGIN-TEXT ( -- )
-   OUTERMOST? if 0 ROOT-CODE ! then ;
-
 \ Ends the running text's inner catch with code c: 0 returns and 1..255 goes
 \ on as thrown. Any other code is passed on with a record: the one its throw
 \ carried, else one kept at the running token.
@@ -3199,21 +3188,18 @@ variable OPENER-U
    c 0= if exit then
    c 1 255 BETWEEN? if c throw then
    REJECTION:CARRIED? 0= if c THROWN-AT REJECTION:SAVE then
-   OUTERMOST? if c ROOT-CODE ! then
    c REJECTION:PASS ;
 
 public
-\ Sends the record of code c, which nothing caught: the one the outermost
-\ text kept when it left with c, else one with no place.
+\ Sends the record of code c, which nothing caught: the one its throw carried,
+\ else one with no place.
 : UNCAUGHT ( n -- )
    {: c:n :}
-   ROOT-CODE @ c = if
-      REJECTION:SEND-SAVED
-   else
+   REJECTION:CARRIED? 0= if
       c THROWN-OPEN  c THROWN-TEXT  c THROWN-HELP
-      REJECTION:SAVE  REJECTION:SEND-SAVED
+      REJECTION:SAVE
    then
-   0 ROOT-CODE ! ;
+   REJECTION:SEND-SAVED ;
 private
 
 : REPL-LINE ( ptr u8 n -- bool ) {: a:ptr u:n :}
@@ -3227,7 +3213,7 @@ private
    REC @ {: found:ptr :}
    a INP-CELL ADDR!  a SRCLOC:INB-CELL ADDR!  a u + INE-CELL ADDR!
    f FRAME-ARG !
-   [: FRAME-ARG @ FRAME-LINK [: BEGIN-TEXT RUN-TOKENS ;] catch LEFT ;]
+   [: FRAME-ARG @ FRAME-LINK [: RUN-TOKENS ;] catch LEFT ;]
    catch {: code:n :}
    code 0= if
       f FRAME-UNLINK
@@ -3288,7 +3274,7 @@ public
    1 PKG-OUTSIDE-CELL CELL!
    a first + INP-CELL ADDR!  a SRCLOC:INB-CELL ADDR!  a end + INE-CELL ADDR!
    f FRAME-ARG !
-   [: FRAME-ARG @ FRAME-LINK [: BEGIN-TEXT RUN ;] catch LEFT ;]
+   [: FRAME-ARG @ FRAME-LINK [: RUN ;] catch LEFT ;]
    catch {: code:n :}
    code 0= if
       f FRAME-LEAVE
@@ -3304,7 +3290,7 @@ public
    then
    outer USE-FLOOR !  found REC !
    f FRAME-FREE
-   code 0<> if code REJECTION:PASS then ;
+   code 0<> if code throw then ;
 
 : EVAL-FRAMED ( ptr u8 n -- ) {: a:ptr u:n :}
    a u COMPILE-READS:TEXT+

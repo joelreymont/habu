@@ -573,15 +573,14 @@ private
 \ The root current at a scope's exit is the scope's own mapping, or the one a
 \ ROOT! in the scope replaced it with; either is released once the caller's
 \ root is back.
-: ROOT-LEAVE ( ptr u8 n n -- )
-   {: old:ptr oldu:n rc:n :}
+: ROOT-LEAVE ( ptr u8 n -- )
+   {: old:ptr oldu:n :}
    -1 SCOPES +!
    CURRENT@ {: cur:ptr curu:n :}
    old oldu CURRENT!
    cur curu 1+ munmap 0 < if
       s" source root: cannot release a root mapping" INCLUDE-IO-RC die
-   then
-   rc 0= 0= if rc throw then ;
+   then ;
 
 public
 
@@ -590,7 +589,8 @@ public
    s" SOURCE-ROOT:WITH" a u ROOT-ENTER {: old:ptr oldu:n :}
    JOIN-BUF JOIN-U @ CURRENT$ COMPILE-READS:ROOT+
    q catch {: rc:n :}
-   old oldu rc ROOT-LEAVE ;
+   old oldu ROOT-LEAVE
+   rc 0= 0= if rc throw then ;
 
 private
 
@@ -1297,7 +1297,7 @@ private
    then
    first SEARCH-ROOTS ;
 
-\ The source token an open that fails stands at: LOAD-RESULT binds its caller's
+\ The source token an open that fails stands at: LOAD-RUN binds its caller's
 \ request token, empty for one no frame holds; RUN-PROGRAM, WITH-BYTES and
 \ WITH-SUPPLIED bind it empty. Each binds it for its load and puts the
 \ previous one back when the load ends.
@@ -2259,7 +2259,8 @@ CAST: CLOSE-ACTION ( n -- [ -- ] )
    INCLUDE-PATH0 drop
    w wu RESOLVED-ROOT$ ROOT-ENTER {: old:ptr oldu:n :}
    [: LOAD-CURRENT ;] catch {: rc:n :}
-   old oldu rc ROOT-LEAVE ;
+   old oldu ROOT-LEAVE
+   rc 0= 0= if rc throw then ;
 
 public
 
@@ -2283,29 +2284,30 @@ public
    POP
    rc 0= 0= if rc throw then ;
 
-\ A completed source range leaves definitions live even if a unit callback
-\ later throws. A require keeps its row in that case. w is the word the
-\ program called; t tu is the request token an open of a u that fails stands
-\ at, or empty.
-: LOAD-RESULT ( ptr u8 n ptr u8 n ptr u8 n -- bool n )
+\ Loads a u for loader word w, the word the program called; t tu is the
+\ request token an open of a u that fails stands at, or empty.
+: LOAD-RUN ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: t:ptr tu:n w:ptr wu:n a:ptr u:n :}
    w wu a u BUILD-REFUSE
    0 LAST-LOAD-EVAL-OK !
    REQUEST-AT$ {: ra:ptr ru:n :}  t tu REQUEST-AT!
-   w wu a u [: 2over 2over LOAD-RAW ;] catch {: rc:n :}
-   2drop 2drop
+   [: w wu a u LOAD-RAW ;] catch {: rc:n :}
    ra ru REQUEST-AT!
-   LAST-LOAD-EVAL-OK @ 0 <> {: committed:bool :}
-   0 LAST-LOAD-EVAL-OK !
-   committed rc ;
+   rc 0 <> if rc throw then
+   0 LAST-LOAD-EVAL-OK ! ;
+
+\ Whether the load LOAD-RUN last threw out of had completed its source range,
+\ which leaves its definitions live; false after one that returned. A require
+\ keeps its row in that case.
+: COMMITTED? ( -- bool )
+   LAST-LOAD-EVAL-OK @ 0 <> ;
 
 : NAMED? ( -- bool )
    TOP@ 0= if INCLUDE-FALSE exit then
    TOP@ FR-NAMED + c@ 0= 0= ;
 
 : LOAD ( ptr u8 n -- ) {: a:ptr u:n :}
-   NULL-PTR 0 s" SOURCE-ROOT:LOAD" a u LOAD-RESULT {: committed:bool rc:n :}
-   rc 0 <> if rc REJECTION:PASS then ;
+   NULL-PTR 0 s" SOURCE-ROOT:LOAD" a u LOAD-RUN ;
 
 \ PATH has already been resolved by the loader's resolver. This opens a source
 \ frame and makes its root current until the callback returns.
@@ -2318,7 +2320,8 @@ public
    q [: WITH-BYTES-CURRENT ;] catch {: rc:n :}
    drop
    ra ru REQUEST-AT!
-   old oldu rc ROOT-LEAVE ;
+   old oldu ROOT-LEAVE
+   rc 0= 0= if rc throw then ;
 
 \ A caller that owns PATH's source bytes can open the same loader frame without
 \ reading a different disk copy.
@@ -2331,7 +2334,8 @@ public
    src srcu q [: WITH-SUPPLIED-CURRENT ;] catch {: rc:n :}
    2drop drop
    ra ru REQUEST-AT!
-   old oldu rc ROOT-LEAVE ;
+   old oldu ROOT-LEAVE
+   rc 0= 0= if rc throw then ;
 
 ;package
 
@@ -2345,7 +2349,8 @@ public
 ;package
 
 : INCLUDE-LOAD ( ptr u8 n -- bool n ) {: a:ptr u:n :}
-   NULL-PTR 0 s" INCLUDE-LOAD" a u LOAD-RESULT ;
+   [: NULL-PTR 0 s" INCLUDE-LOAD" a u LOAD-RUN ;] catch {: rc:n :}
+   COMMITTED? rc ;
 
 \ A discovery pass reads source and opens no file, so it records a missing
 \ file's request like any other; the reader that opens the file rejects it.
@@ -2372,8 +2377,7 @@ public
    a u path pathu EV-INCLUDED EV-STATE-FRESH EVENT-RECORD
    DISCOVERY? if exit then
    a REJECTION:PLACES? if a u else NULL-PTR 0 then
-   w wu path pathu LOAD-RESULT {: committed:bool rc:n :}
-   rc 0 <> if rc REJECTION:PASS then ;
+   w wu path pathu LOAD-RUN ;
 
 : included ( ptr u8 n -- )
    {: a:ptr u:n :}
@@ -2392,11 +2396,11 @@ create SOURCE-ORIGINAL-INCLUDED-ENTRY 0 ,
    REQUIRE-REG:MARK {: row:n :}
    path pathu REQUIRE-STORE {: row-path:ptr row-pathu:n :}
    DISCOVERY? if INCLUDE-FALSE SCRIPT-NAMED-PEND! exit then
-   a REJECTION:PLACES? if a u else NULL-PTR 0 then
-   w wu row-path row-pathu LOAD-RESULT {: committed:bool rc:n :}
+   a REJECTION:PLACES? if a u else NULL-PTR 0 then {: t:ptr tu:n :}
+   [: t tu w wu row-path row-pathu LOAD-RUN ;] catch {: rc:n :}
    rc 0 <> if
-      committed 0= if row REQUIRE-REG:REMOVE then
-      rc REJECTION:PASS
+      COMMITTED? 0= if row REQUIRE-REG:REMOVE then
+      rc throw
    then ;
 
 \ `required` of a u for loader word w, the word the program called.
@@ -2511,7 +2515,7 @@ public
    require-xt POLICY-ROOT-SET
    q catch {: rc:n :}
    data-base POLICY-NDICT-CELL + @ 0 <> if
-      prior prioru 0 ROOT-LEAVE
+      prior prioru ROOT-LEAVE
       old old-u POLICY-ROOT-RELEASE POLICY-SEALED
    then
    had if
@@ -2522,7 +2526,8 @@ public
       0 data-base POLICY-REQUIRE-CELL + xt!
    then
    old old-u POLICY-ROOT-RELEASE
-   prior prioru rc ROOT-LEAVE ;
+   prior prioru ROOT-LEAVE
+   rc 0= 0= if rc throw then ;
 
 ;package
 
