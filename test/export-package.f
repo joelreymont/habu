@@ -322,25 +322,35 @@ variable XPK-WIDE-EXITED   variable XPK-WIDE-RC
    s" 2 3 PT:AT" XPK-LINE ;
 
 \ A point, then the line a u, run; the word w v is named rejected.
-: XPK-PT-REJECT ( ^u8 n ^u8 n -- ) {: a:^ u:n w:^ v:n :}
-   w v T-LABEL
+: XPK-PT-XPORT ( ^u8 n -- ) {: a:^ u:n :}
+   a u T-LABEL
    SB-RESET XPK-PT-LINES  a u XPK-LINE  SB$ XPK-RUN-STDIN
    XPK-REJECT-RC XPK-ASSERT-RC  s" error[E-LAYOUT-VALUE]: `" XPK-ERR?
-   SB-RESET s" `" SB-APPEND  w v SB-APPEND
+   SB-RESET s" `" SB-APPEND  a u SB-APPEND
    s" ` at top level would take part of a value held in more than one cell" SB-APPEND
    SB$ XPK-ERR? ;
 
-: XPK-PT-XPORT ( ^u8 n -- ) {: a:^ u:n :}
-   a u a u XPK-PT-REJECT ;
+\ `constant` over a point is rejected at the keyword, before it takes a cell.
+: XPK-PT-CONSTANT ( -- )
+   s" top-level constant over a point" T-LABEL
+   SB-RESET XPK-PT-LINES  s" constant K" XPK-LINE  SB$ XPK-RUN-STDIN
+   XPK-REJECT-RC XPK-ASSERT-RC
+   s" error[E-LAYOUT-VALUE]: `constant` would take one cell of a value held in more than one cell"
+   XPK-ERR?
+   s"  --> <input>:8:1" XPK-ERR?
+   s" 8 | constant K" XPK-ERR?
+   s"   | ^^^^^^^^ takes one cell" XPK-ERR?
+   s"   = help: define a word that leaves the whole value, `: NAME ( -- TYPE ) ... ;`, in place of the constant"
+   XPK-ERR? ;
 
-\ Over a point at top level each transport primitive and `constant` is rejected
-\ before it runs, naming itself.
+\ Over a point at top level each transport primitive is rejected before it
+\ runs, naming itself.
 : XPK-WIDE-TAKE ( -- )
    s" dup" XPK-PT-XPORT  s" swap" XPK-PT-XPORT  s" over" XPK-PT-XPORT
    s" nip" XPK-PT-XPORT  s" tuck" XPK-PT-XPORT  s" rot" XPK-PT-XPORT
    s" -rot" XPK-PT-XPORT  s" 2dup" XPK-PT-XPORT  s" 2drop" XPK-PT-XPORT
    s" 2swap" XPK-PT-XPORT  s" 2over" XPK-PT-XPORT  s" 2>r" XPK-PT-XPORT
-   s" constant K" s" constant" XPK-PT-REJECT ;
+   XPK-PT-CONSTANT ;
 
 : XPK-PT-DROP ( ^u8 n ^u8 n -- ) {: w:^ v:n a:^ u:n :}
    w v T-LABEL
@@ -364,13 +374,30 @@ variable XPK-WIDE-EXITED   variable XPK-WIDE-RC
    s" error[E-LINEAR-DROP]: a linear value is discarded here" XPK-ERR?
    s" ^^^^ linear value dropped" XPK-ERR? ;
 
+\ An item of open width has no cell count to drop.
+: XPK-OPEN-DROP ( -- )
+   s" top-level drop of a value of open width" T-LABEL
+   SB-RESET
+   s" : XPK-OPEN ( -- option<a> ) OPTION:NONE ;" XPK-LINE
+   s" XPK-OPEN drop" XPK-LINE
+   SB$ XPK-RUN-STDIN
+   XPK-REJECT-RC XPK-ASSERT-RC
+   s" error[E-LAYOUT-VALUE]: `drop` cannot drop a value whose cell count is not known here"
+   XPK-ERR?
+   s"  --> <input>:2:10" XPK-ERR?
+   s" 2 | XPK-OPEN drop" XPK-ERR?
+   s"   |          ^^^^ cell count not known" XPK-ERR?
+   s"   = help: name a concrete type in the effect that leaves the value, `option<n>` in place of `option<a>`"
+   XPK-ERR? ;
+
 \ `drop` over a point, and over one a top-level `catch` left stale, empties the
-\ row, so `depth` runs; a linear token's `drop` is rejected as in a body.
+\ row, so `depth` runs; a linear token's `drop` is rejected as in a body, and
+\ one of open width is rejected.
 : XPK-WIDE-DROP ( -- )
    s" top-level drop of a point" s" drop depth 100 + . cr" XPK-PT-DROP
    s" top-level drop of a stale point"
    s" ' PT:SMASH catch drop drop depth 100 + . cr" XPK-PT-DROP
-   XPK-LT-DROP ;
+   XPK-LT-DROP  XPK-OPEN-DROP ;
 
 \ A user's global `drop`, defined after `undefine drop`, runs once, as any word.
 : XPK-USER-DROP ( -- )

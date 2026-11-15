@@ -2458,8 +2458,9 @@ variable LIT-AT
 variable DEF-VALUE
 
 : DEF-CONSTANT ( -- )
+   TOKEN$ {: kw:^ ku:n :}
    s" constant" OPERAND  s" constant" TOKEN$ REJECTION:NOT-A-NAME
-   s" constant" CHECK:TOP-TAKE
+   kw ku CHECK:TOP-TAKE
    DKIND:VAL DEF-START
    depth 0= if UNDERFLOW then
    [: DEF-VALUE ! ;] CELL-TAKE RUN-LITERAL

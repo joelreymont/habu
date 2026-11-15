@@ -3180,11 +3180,22 @@ CHECKER-REG:}SCRATCH
    a u live TOP-LEFT-MARK
    a TOK-SPELL-A !  u TOK-SPELL-U !  ['] TOP-TICK-STEP live TOP-STEP-LOAD ;
 
+\ `constant`, spelled a u, would take one cell of a multi-cell value.
+: TOP-CONSTANT-REJECT ( ^u8 n -- ) {: a:^ u:n :}
+   s" E-LAYOUT-VALUE" REJECTION:OPEN
+   s" `constant` would take one cell of a value held in more than one cell"
+   REJECTION:EMIT-STR
+   a u REJECTION:AT  s" takes one cell" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" define a word that leaves the whole value, `: NAME ( -- TYPE ) ... ;`, in place of the constant"
+   REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
 \ A keyword takes the top cell with no word event, so the row is not saved:
 \ the next event fits it to the live depth.
 : TOP-TAKE-STEP ( -- )
    DCUR @ 1 TOP-WIDE-IN-K? 0= IF EXIT THEN
-   TOK-SPELL-A @ TOK-SPELL-U @ TOP-LAYOUT-REJECT ;
+   TOK-SPELL-A @ TOK-SPELL-U @ TOP-CONSTANT-REJECT ;
 
 : CHECKER-TOP-TAKE ( ^u8 n n -- )
    {: a:^ u:n live:n :}
@@ -3200,11 +3211,22 @@ variable TOP-DROP-N
    DCUR @ R-RES dup TAG S-PUSH <> IF drop RES-FALSE EXIT THEN
    P>TYPE TOP-OPEN-TYPE? ;
 
+\ `drop`, spelled a u, over an item whose cell count is not known here.
+: TOP-OPEN-DROP-REJECT ( ^u8 n -- ) {: a:^ u:n :}
+   s" E-LAYOUT-VALUE" REJECTION:OPEN
+   s" `drop` cannot drop a value whose cell count is not known here"
+   REJECTION:EMIT-STR
+   a u REJECTION:AT  s" cell count not known" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" name a concrete type in the effect that leaves the value, `option<n>` in place of `option<a>`"
+   REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
+
 \ An item of open width has no cell count to drop, so it is rejected at
 \ `drop`; otherwise a body's step judges it. A rejection is placed at the
 \ source token the engine read last, the `drop` as the program spells it.
 : TOP-DROP-STEP ( -- )
-   TOP-OPEN-TOP? IF TOK-SPELL-A @ TOK-SPELL-U @ TOP-LAYOUT-REJECT THEN
+   TOP-OPEN-TOP? IF TOK-SPELL-A @ TOK-SPELL-U @ TOP-OPEN-DROP-REJECT THEN
    DCUR @ ROW-CELLS {: pre:n :}
    TOP-WORD-STEP
    pre DCUR @ ROW-CELLS - TOP-DROP-N ! ;

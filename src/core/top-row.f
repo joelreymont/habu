@@ -4,7 +4,7 @@
 \ (src/habu/interpreter.f HOOK; a WORD event fires before the word runs), per
 \ token because a line may define a word a later token calls.
 \ The checker keeps one row per evaluator stack base and evaluate level
-\ (src/core/checker.f "the interpret row"); a refused word or tick throws rc 70.
+\ (src/core/checker.f "the interpret row"); a rejected word or tick throws rc 70.
 
 package CHECK
 
@@ -17,7 +17,7 @@ public
 
 \ `depth` is the anchor: each event fits the row to the live depth less the
 \ cells the event pushed, so a step the row cannot model leaves unknown cells,
-\ which a typed consumer refuses.
+\ which a typed consumer rejects.
 : TOP-LEVEL ( ^u8 n n n -- )
    {: a:^ u:n cls:n flg:n :}
    data-base STACK-ABI:BASE-CELL + @ CHECKER-TOP-SEGMENT
@@ -27,13 +27,13 @@ public
    CHECKER-TOP-SAVE ;
 
 \ Before a keyword spelled a u takes the program's top cell: a multi-cell value
-\ there is refused, rc 70, before any cell of it is taken.
+\ there is rejected, rc 70, before any cell of it is taken.
 : TOP-TAKE ( ^u8 n -- )
    {: a:^ u:n :}
    data-base STACK-ABI:BASE-CELL + @ CHECKER-TOP-SEGMENT
    a u depth CHECKER-TOP-TAKE ;
 
-\ Judges the engine `drop` as a body's (a linear item refused, rc 70), takes the
+\ Judges the engine `drop` as a body's (a linear item rejected, rc 70), takes the
 \ top item off the row and answers its width in cells.
 : TOP-DROP ( -- n )
    data-base STACK-ABI:BASE-CELL + @ CHECKER-TOP-SEGMENT
