@@ -5013,6 +5013,8 @@ TOKBUF-INIT-CAP TOKBUF-CAP-U !
 
 variable TOKIX  variable FAILIX
 variable FAILB  variable FAILE
+\ The pin is a call in the definition's own body: no tick's operand and in no quotation.
+variable PIN-BODY-CALL
 CHECKER-REG:SCRATCH{
 variable DVERD     \ the verdict CHECK-VERDICT gave the diagnostic rendered next
 PTR-VARIABLE TBASE  variable TBLEN  variable TI  variable TSTART
@@ -7055,7 +7057,8 @@ CHECKER-REG:}SCRATCH
    a FAILTK u CCOPY  u FAILTU !
    a u CHECKED-OFF {: off:n :}
    off 0 < IF 0 FAILB !  0 FAILE ! ELSE off FAILB !  off u + FAILE ! THEN
-   0 FAILIX !  kind REFUSAL !  -1 FAILSET ! ;
+   0 FAILIX !  kind REFUSAL !  -1 FAILSET !
+   CRTGT @ 0=  QDEPTH @ 0=  and PIN-BODY-CALL ! ;
 
 \ A token refused twice keeps the first: preflight refuses an unmodeled
 \ immediate before anything resolves it, so one the checker cannot resolve
@@ -20576,6 +20579,7 @@ variable CPAY-ON
    a FAILTK u CCOPY
    u FAILTU !
    TOKIX @ FAILIX !
+   CRTGT @ 0=  QDEPTH @ 0=  and PIN-BODY-CALL !
    FAIL-SPAN! ;
 
 : CAP-FAIL ( ptr u8 n -- )
@@ -21447,7 +21451,7 @@ variable IS-PEND-U                   \ and its length
 
 \ The operand IS-NEXT-TOKEN read takes the pin.
 : TARGET-PIN! ( -- )
-   IS-TA@ IS-TU @ FAIL-PIN!
+   IS-TA@ IS-TU @ FAIL-PIN!  0 PIN-BODY-CALL !
    IS-TOFF @ FAILB !
    FAILB @ FAILTU @ + FAILE ! ;
 
@@ -22573,7 +22577,7 @@ CHECKER-REG:}SCRATCH
    0 TOKIX !  0 FAILIX !  0 DVERD !  0 BIND-HORIZON !
    0 FAILB !  0 FAILE !  0 XSET !  0 DEF-LSC !  0 XFACT !  0 DEADP !  0 DEADERR !  NULL-PTR DEADTA !  0 DEADTU !
    0 THDMASK !  0 THRMASK !  0 THSET !  0 INHSET !
-   0 REFUSAL !  0 CREFUSE !  0 CRTGT !  0 RCOMPILE !  0 CUSING !
+   0 REFUSAL !  0 CREFUSE !  0 CRTGT !  0 RCOMPILE !  0 CUSING !  0 PIN-BODY-CALL !
    SGBAD-CLEAR  SIG-UNRES-CLEAR
    0 UNSAFE !  0 RETIRED !  0 IMMERR !  0 LOCALBAD !  0 LOCALBAD-KIND !  0 LINLOCBAD !  0 UNDEFERR !  0 UNSEEN !  0 QUALBAD !  0 QDUPBAD !  0 CAPREQ !
    0 NP-ORIG-N !  0 CALL-MINT-N !  0 RECUR-MAP-N !  0 RECUR-INST-N !

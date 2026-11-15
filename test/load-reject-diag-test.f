@@ -895,6 +895,44 @@ variable RC
    S\" ,\"help\":\"leave n after `drop`, or declare ( n -- )\"}\n" SB-APPEND
    REJECT-RC ASSERT-REJECTED ;
 
+\ An undefined name that is the definition's own gets the `recurse` help only
+\ as a call in its body: a tick of `recurse` gives no xt, and `recurse` in a
+\ quotation calls the quotation.
+: TEST-RECURSE-HELP ( -- )
+   s" a call of the definition's own name is told to use recurse" T-LABEL
+   BODY$ s" : LRD-FACT ( n -- n ) dup 1 > IF dup 1 - LRD-FACT * THEN ;" FS:WRITE-ALL
+   BODY$ RUN
+   SB-RESET
+   S\" error[E-UNDEFINED]: cannot find word `LRD-FACT`\n --> " SB-APPEND
+   BODY$ SB-APPEND
+   S\" :1:42\n  |\n1 | : LRD-FACT ( n -- n ) dup 1 > IF dup 1 - LRD-FACT * THEN ;\n" SB-APPEND
+   S\"   |                                          ^^^^^^^^ not found\n" SB-APPEND
+   s"   = help: `LRD-FACT` is the word this definition defines:" SB-APPEND
+   S\"  call it from its own body with `recurse`\n\n" SB-APPEND
+   REJECT-RC ASSERT-REJECTED
+   s" a tick of the definition's own name is told to define it" T-LABEL
+   BODY$ s" : LRD-TICK ( -- xt ) ['] LRD-TICK ;" FS:WRITE-ALL
+   BODY$ RUN
+   SB-RESET
+   S\" error[E-UNDEFINED]: cannot find word `LRD-TICK`\n --> " SB-APPEND
+   BODY$ SB-APPEND
+   S\" :1:26\n  |\n1 | : LRD-TICK ( -- xt ) ['] LRD-TICK ;\n" SB-APPEND
+   S\"   |                          ^^^^^^^^ not found\n" SB-APPEND
+   s"   = help: define `LRD-TICK` before this point," SB-APPEND
+   S\"  or check its spelling\n\n" SB-APPEND
+   REJECT-RC ASSERT-REJECTED
+   s" a quotation's call of the definition's own name is told to define it" T-LABEL
+   BODY$ s" : LRD-QUOT ( -- ) [: LRD-QUOT ;] drop ;" FS:WRITE-ALL
+   BODY$ RUN
+   SB-RESET
+   S\" error[E-UNDEFINED]: cannot find word `LRD-QUOT`\n --> " SB-APPEND
+   BODY$ SB-APPEND
+   S\" :1:22\n  |\n1 | : LRD-QUOT ( -- ) [: LRD-QUOT ;] drop ;\n" SB-APPEND
+   S\"   |                      ^^^^^^^^ not found\n" SB-APPEND
+   s"   = help: define `LRD-QUOT` before this point," SB-APPEND
+   S\"  or check its spelling\n\n" SB-APPEND
+   REJECT-RC ASSERT-REJECTED ;
+
 : TEST-SHADOW ( -- )
    s" a bare word a global and a used package share is rejected" T-LABEL
    SHADOW$ RUN
@@ -1040,6 +1078,7 @@ variable RC
    TEST-RESIDUE
    TEST-TARGET
    TEST-DEF-ONCE
+   TEST-RECURSE-HELP
    TEST-SHADOW
    TEST-EMPTY-PATH
    TEST-IMM-INCLUDE
