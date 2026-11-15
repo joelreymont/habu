@@ -1,0 +1,100 @@
+\ heap-test.f - src/lib/test/heap-churn.f through HEAP:ALLOCATOR in a module
+\ `hb-build --target wasm` builds, validated by wasm-tools and run by bun
+\ (test/wasm/harness.f): it must print no block taken or grown with a nonzero
+\ byte, none freed or resized with a kept mark changed, E-MEM-MAP for the
+\ request over 4 GiB and its highest live bytes, and end with status 0. Wasm
+\ memory never shrinks, so its size at exit caps the heap's mapped bytes at
+\ every step: it must stay within its size before the run plus 1.25 times the
+\ highest live bytes and three regions. test/wasm/device.f runs it. The source
+\ and the module stay in the printed directory.
+
+require src/lib/string.f
+require src/lib/fmt.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/test.f
+require test/wasm/harness.f
+
+package WASM-HEAP-TEST
+private
+
+$800000 constant REGION             \ HEAP's private REGION-BYTES, 8 MiB
+
+PATH-CAP BUFFER: DIR
+variable DIR-U
+PATH-CAP BUFFER: MOD
+variable MOD-U
+PATH-CAP BUFFER: SRC
+variable SRC-U
+
+: SOURCE$ ( -- ^u8 n )
+   S\" require src/lib/heap.f\nrequire src/lib/test/heap-churn.f\n: MAIN ( -- ) HEAP:ALLOCATOR HEAP-CHURN:RUN {: u:n c:n r:n h:n :} u . c . r . h . ;\n" ;
+
+: SETUP ( -- )
+   s" wasm-heap" FS:MKTEMP-DIR {: a:^ u:n :}
+   a DIR u BYTE-COPY  u DIR-U !
+   s" wasm heap: source and module in " type  DIR u type cr
+   DIR DIR-U @ s" churn.f" SRC FS:JOIN-PATH SRC-U !
+   DIR DIR-U @ s" churn.wasm" MOD FS:JOIN-PATH MOD-U !
+   SRC SRC-U @ SOURCE$ FS:WRITE-ALL ;
+
+
+\ RUN's answers but the last, one a line, as `.` prints them in the module.
+: WANT$ ( -- ^u8 n )
+   SB-RESET  S\" 0\n0\n" SB-APPEND
+   E-MEM-MAP FMT:SB-INT  10 SB-APPEND-C  SB$ ;
+
+
+\ OUT's lines after WANT$'s, the highest live bytes, or 0.
+: HIGHEST ( -- n )
+   WASM-HARNESS:OUT$ {: a:^ u:n :}
+   WANT$ {: w:^ wu:n :}
+   a  wu u min  w wu T$=
+   a wu u min +  u wu - 0 max  RTRIM STR>NUMBER? MATCH option
+      some OF ENDOF
+      none OF 0 ENDOF
+   ;MATCH ;
+
+
+\ (memory grown - three regions) / highest live, in thousandths.
+: RATIO ( n -- n )
+   {: high:n :}
+   WASM-HARNESS:MEMORY-END WASM-HARNESS:MEMORY-START -  REGION 3 * -
+   1000 *  high 1 max / ;
+
+
+: SHOW ( n -- )
+   {: high:n :}
+   SB-RESET  s" wasm heap: memory " SB-APPEND
+   WASM-HARNESS:MEMORY-START FMT:SB-INT  s"  to " SB-APPEND
+   WASM-HARNESS:MEMORY-END FMT:SB-INT  s"  bytes, highest live " SB-APPEND
+   high FMT:SB-INT  s"  bytes, (grown - 3 regions) / highest live " SB-APPEND
+   high RATIO 3 FMT:SB-SCALED  SB$ type cr ;
+
+
+\ Three regions: a view-like churn's excess over 1.25 x live measured 18-22 MB,
+\ 2-3 regions, at every budget from 48 to 192 MiB, not growing with it.
+: BOUNDED ( n -- )
+   {: high:n :}
+   s" memory at exit is within its size before plus 1.25 x highest live plus three regions" T-LABEL
+   high 0 > TTRUE
+   WASM-HARNESS:MEMORY-END
+   WASM-HARNESS:MEMORY-START  high 5 * 4 /  +  REGION 3 * +  <= TTRUE ;
+
+public
+
+: RUN ( -- )
+   T-RESET
+   SETUP
+   s" 100000 blocks of 100 B to 1 MiB, freed or resized, come zeroed and keep their bytes in a Wasm module" T-LABEL
+   SRC SRC-U @ MOD MOD-U @ WASM-HARNESS:BUILD 0 T=
+   MOD MOD-U @ WASM-HARNESS:VALID? TTRUE
+   MOD MOD-U @ WASM-HARNESS:RUN 0 T=
+   HIGHEST {: high:n :}
+   high SHOW
+   high BOUNDED
+   T-REPORT ;
+
+;package
+
+WASM-HEAP-TEST:RUN

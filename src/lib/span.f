@@ -109,12 +109,26 @@ public
    u l > if E-SPAN-CAPACITY throw then
    src b u BYTE-COPY ;
 
+private
+
+\ A cell holding the byte in each of its bytes.
+: SPREAD ( u8 -- n ) $FF and $0101010101010101 * ;
+
+\ The bytes from an address to the next cell boundary, at most n.
+: LEAD ( ^u8 n -- n ) {: p:^ l :} p PTR>N negate CELL-BYTES 1- and l min ;
+
+: SET-BYTES ( u8 ^u8 n -- ) {: v p:^ l :} l 0 ?do v p i + c! loop ;
+
+public
+
+\ Bytes up to a cell boundary, whole cells, then the bytes after them.
 : FILL ( u8 span<u8> -- ) {: v s :}
    s SPAN-SPAN:UNMAKE {: b l :}
-   0 begin dup l < while
-      v over b + c!
-      1+
-   repeat drop ;
+   b l LEAD {: k :}
+   l k - CELL-BYTES / CELL-BYTES * {: m :}
+   v b k SET-BYTES
+   m 0 ?do v SPREAD b k + i + CELL-VIEW ! CELL-BYTES +loop
+   v b k + m + l k - m - SET-BYTES ;
 
 ;package
 

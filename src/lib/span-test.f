@@ -124,6 +124,18 @@ private
    ST-BUF 7 SPAN:U8@ 9 T=
    ST-BUF 8 SPAN:U8@ 7 T= ;
 
+: FILLED? ( n n -- bool )
+   {: at:n len:n :}
+   0 ST-BUF SPAN:FILL
+   $5A ST-BUF at len SPAN:SUB SPAN:FILL
+   true 64 0 ?do
+      ST-BUF i SPAN:U8@
+      i at >= i at len + < and if $5A else 0 then = and
+   loop ;
+
+: T-FILL-ENDS ( -- )
+   true 9 0 ?do 18 0 ?do j i FILLED? and loop loop TTRUE ;
+
 : T-MAKE ( -- )
    ST-BUF SPAN:$ SPAN:MAKE SPAN:LEN 64 T=
    ST-BUF SPAN:$ drop 0 SPAN:MAKE SPAN:LEN 0 T=
@@ -204,6 +216,7 @@ public
    T-COPY
    T-COPY-NARROWED
    T-FILL
+   T-FILL-ENDS
    T-MAKE
    T-ALLOC
    T-GENERIC

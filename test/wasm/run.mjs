@@ -3,6 +3,9 @@
 // region to stdout. Exits 0 or 1 by run's status, 1 with `throw <i64>` on
 // stderr; 2 on a trap; 3 on a compile or link error. On a trap, `fault <kind>
 // <addr>` from fault-kind and fault-addr, in decimal, is stderr's last line.
+// A module that links writes `memory <start> <end>` on stderr, its memory's
+// bytes before run and after it, after the throw line and before the fault
+// line.
 import { readFileSync } from "node:fs";
 
 const bytes = readFileSync(process.argv[2]);
@@ -14,6 +17,7 @@ try {
   process.exitCode = 3;
 }
 if (x) {
+  const start = x.memory.buffer.byteLength;
   try {
     process.exitCode = x.run() === 0 ? 0 : 1;
   } catch (e) {
@@ -22,5 +26,6 @@ if (x) {
   }
   process.stdout.write(new Uint8Array(x.memory.buffer, x["out-base"]() >>> 0, x["out-len"]() >>> 0));
   if (process.exitCode === 1) console.error(`throw ${x["throw-code"]()}`);
+  console.error(`memory ${start} ${x.memory.buffer.byteLength}`);
   if (process.exitCode === 2) console.error(`fault ${x["fault-kind"]()} ${x["fault-addr"]()}`);
 }
