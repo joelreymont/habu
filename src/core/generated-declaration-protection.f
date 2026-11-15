@@ -24,8 +24,7 @@ INSTALL
    GENERATED-DECL-DICTIONARY:SNAPSHOT ;
 
 : PREPARES ( -- )
-   CHECKER-DECL-FRAME:PART-PREPARE
-   GENERATED-DECL-CTOR:PART-PREPARE ;
+   CHECKER-DECL-FRAME:PART-PREPARE ;
 
 \ DECL-EVENT commits first: it advances PF-COMMIT-N over the declaration's field
 \ rows, which the constructor and address-surface commits read.

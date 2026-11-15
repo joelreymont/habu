@@ -396,11 +396,6 @@ package TYPE-DECL
 private
 package GENERATED-DECL-CTOR
 
-7176 constant E-CTOR-ARM   \ armed family is not an ENUM family with variants
-s" family cannot own generated constructors"
-s" report this declaration as a Habu defect: no declaration text should reach this state"
-E-CTOR-ARM DECL-REJECT:EXPLAIN
-
 -1 constant NO-FAMILY
 
 variable ARMED   NO-FAMILY ARMED !   \ the family this declaration armed
@@ -416,34 +411,16 @@ variable ARMED   NO-FAMILY ARMED !   \ the family this declaration armed
    fam TFAM-VAR-COUNT@ 0 <= IF 0 0= 0= EXIT THEN
    fam TFAM-SUM? fam TFAM-ENUM? or ;
 
-\ The words are live when planning recorded a constructor symbol on the first
-\ variant row; a second plan row throws E-TDECL-NAME (sumtype.f TDPLAN-NAME+).
-: GENERATED? ( n -- bool ) {: fam:n :}
-   fam TFAM-VAR-START@ SUMV-CTOR-SYM@ 0 <> ;
-
-\ Order matters: GEN-OK? proves the variant range is non-empty, so the first
-\ variant row GENERATED? reads exists.
-: GEN-REQUIRE ( n -- ) {: fam:n :}
-   fam GEN-OK? 0= IF E-CTOR-ARM throw THEN
-   fam GENERATED? IF E-CTOR-ARM throw THEN ;
-
 public
 
 : PART-SNAPSHOT ( -- )
    DISARM ;
-
-\ A non-mutating re-proof of the gate ARM checked: a family made ineligible
-\ since then fails before any word is made.
-: PART-PREPARE ( -- )
-   ARMED-FAM {: fam:n :}
-   fam NO-FAMILY <> IF fam GEN-REQUIRE THEN ;
 
 \ Replay builds and checks the same words to publish their effects and emits no
 \ runtime code: a call needs the checked effect, not only the package stamp.
 : PART-COMMIT ( -- )
    ARMED-FAM {: fam:n :}
    fam NO-FAMILY = IF EXIT THEN
-   fam GEN-REQUIRE
    fam TFAM-VAR-START@ {: vstart:n :}
    fam TFAM-VAR-COUNT@ {: count:n :}
    fam vstart count TDECL-CTOR-PUBLISH
@@ -458,11 +435,7 @@ public
 : PART-RELEASE ( -- )
    DISARM ;
 
-\ Legal only for a family that passes the gate, so a refused kind fails at ARM,
-\ not three phases later.
-: ARM ( n -- ) {: fam:n :}
-   fam GEN-REQUIRE
-   fam ARMED ! ;
+: ARM ( n -- ) ARMED ! ;
 
 : OWNS? ( n -- bool ) GEN-OK? ;
 
@@ -478,7 +451,7 @@ seal-package
 \ lookahead span, per-declaration parse cells, a replay's field-name window, the
 \ guarded run with resynchronization, and the replay entries; SUMTYPE reads
 \ only the token source. One set of cells serves every
-\ declaration: declarations never nest (the runner refuses a second with
+\ declaration: declarations never nest (the runner rejects a second with
 \ E-ACTIVE, DECL-REPLAY a second stream with E-REPLAY-BUSY). Every borrowed span
 \ is forgotten as the declaration ends (RESET and MISS-CLEAR in DRIVE,
 \ REPLAY-END for an E-UNRESOLVED replay's span).
