@@ -938,16 +938,27 @@ public
 \ Writes the record of word w given a path len bytes long, past cap, the
 \ longest length the failing test allows, through its message: the caller may
 \ write one AT, then writes the help and ends the record. len is 0 for an empty
-\ path and -1 when only the path it resolves to is longer.
+\ path and -1 when only the path it resolves to is longer. A w of length 0
+\ names no word: the message's subject is the path.
 : PATH-RANGE ( ptr u8 n n n -- ) {: w:ptr wu:n len:n cap:n :}
    s" E-PATH-RANGE" OPEN
-   96 EMIT1  w wu EMIT-STR
-   len 0= IF s" ` got an empty path" EMIT-STR  EXIT THEN
-   len 0 < IF
-      s" ` got a path that resolves to more than the " EMIT-STR
+   wu 0= IF
+      len 0= IF s" a path is empty" EMIT-STR  EXIT THEN
+      len 0 < IF
+         s" a path resolves to more than the " EMIT-STR
+      ELSE
+         s" a path is " EMIT-STR  len EMIT-U
+         s"  bytes long, more than the " EMIT-STR
+      THEN
    ELSE
-      s" ` got a path " EMIT-STR  len EMIT-U
-      s"  bytes long, more than the " EMIT-STR
+      96 EMIT1  w wu EMIT-STR
+      len 0= IF s" ` got an empty path" EMIT-STR  EXIT THEN
+      len 0 < IF
+         s" ` got a path that resolves to more than the " EMIT-STR
+      ELSE
+         s" ` got a path " EMIT-STR  len EMIT-U
+         s"  bytes long, more than the " EMIT-STR
+      THEN
    THEN
    cap EMIT-U  s"  bytes a path may have" EMIT-STR ;
 

@@ -988,11 +988,9 @@ variable RC
    REJECT-RC ASSERT-REJECTED ;
 
 \ SRC as the body exits UNCAUGHT-RC, its stderr opening with the line SB holds
-\ and the place PLACE.
-: PATH-PASS-AT ( ptr u8 n ptr u8 n -- )
-   {: src:ptr srcu:n place:ptr placeu:n :}
-   S\" \n --> " SB-APPEND  BODY$ SB-APPEND  place placeu SB-APPEND
-   10 SB-APPEND-C
+\ and then its help: the record has no place.
+: PATH-PASS-NOWHERE ( ptr u8 n -- ) {: src:ptr srcu:n :}
+   S\" \n  = help: " SB-APPEND
    BODY$ src srcu FS:WRITE-ALL
    BODY$ RUN
    ERR$ SB$ STARTS-WITH? TTRUE
@@ -1026,20 +1024,19 @@ variable LONG-U
 : TEST-PATH-PASS ( -- )
    s" CANON-OS's uncaught throw on an empty path prints its record" T-LABEL
    SB-RESET
-   s" error[E-PATH-RANGE]: `SOURCE-ROOT:CANON-OS` got an empty path" SB-APPEND
-   S\" s\" \" SOURCE-ROOT:CANON-OS drop 2drop" s" :1:6" PATH-PASS-AT
+   s" error[E-PATH-RANGE]: a path is empty" SB-APPEND
+   S\" s\" \" SOURCE-ROOT:CANON-OS drop 2drop" PATH-PASS-NOWHERE
    PATH-CAP 2 * 1+ HELP-MOST
    s" JOIN's uncaught throw on a negative root length prints its record" T-LABEL
    SB-RESET
-   s" error[E-PATH-RANGE]: `SOURCE-ROOT:JOIN` got an empty path" SB-APPEND
-   S\" s\" r\" drop -1 s\" x\" SOURCE-ROOT:JOIN 2drop" s" :1:21" PATH-PASS-AT
+   s" error[E-PATH-RANGE]: a path is empty" SB-APPEND
+   S\" s\" r\" drop -1 s\" x\" SOURCE-ROOT:JOIN 2drop" PATH-PASS-NOWHERE
    PATH-CAP 2 * HELP-MOST
    s" CANONICAL's uncaught throw on a long path prints its record" T-LABEL
    SB-RESET
-   s" error[E-PATH-RANGE]: `SOURCE-ROOT:CANONICAL` got a path" SB-APPEND
-   s"  that resolves to more than the " SB-APPEND
+   s" error[E-PATH-RANGE]: a path resolves to more than the " SB-APPEND
    PATH-CAP FMT:SB-INT  s"  bytes a path may have" SB-APPEND
-   LONG$ s" :1:4229" PATH-PASS-AT ;
+   LONG$ PATH-PASS-NOWHERE ;
 
 : TEST-IMM-INCLUDE ( -- )
    s" checked include rejects before executing its fragment" T-LABEL

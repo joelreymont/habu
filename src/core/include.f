@@ -100,39 +100,57 @@ public
 
 ;package
 
-\ Places the record of word w, given the path a u, at a u where a source holds
-\ it, else at w where one holds that, else at the token the engine read last,
-\ and opens its label. Off the path the label says that token passes a path;
-\ the caller writes the rest, which reads after the path or after "that".
-: LOADER-PATH-AT ( ptr u8 n ptr u8 n -- ) {: w:ptr wu:n a:ptr u:n :}
-   a REJECTION:PLACES? if a u REJECTION:AT exit then
-   w REJECTION:PLACES? if w wu else SRCLOC:TOKEN$ then REJECTION:AT
-   s" passes a path that " REJECTION:EMIT-STR ;
+\ Places the record of word w, given the path a u, and opens its label, true;
+\ the caller writes the rest, which reads after the path or after "that". The
+\ place is a u where a source holds it, else the token the engine read last
+\ where it spells w, which it does only when source calls w directly: called
+\ from a definition at run time, that token is another word. It spells w
+\ folded, whole or, when w is qualified, by the parts after their last `:`. A
+\ w of length 0 is spelled by no token. Else the record has no place and no
+\ label, false.
+: LOADER-PATH-AT ( ptr u8 n ptr u8 n -- bool ) {: w:ptr wu:n a:ptr u:n :}
+   a REJECTION:PLACES? if a u REJECTION:AT 0 0= exit then
+   wu 0= if 0 0= 0= exit then
+   SRCLOC:TOKEN$ {: t:ptr tu:n :}
+   wu begin dup 0 > if dup 1 - w + c@ 58 <> else 0 0= 0= then while 1 - repeat
+   tu begin dup 0 > if dup 1 - t + c@ 58 <> else 0 0= 0= then while 1 - repeat
+   {: wi:n ti:n :}
+   t tu w wu CORE-STR=CI
+   wi 0 > if t ti + tu ti - w wi + wu wi - CORE-STR=CI or then
+   0= if 0 0= 0= exit then
+   t tu REJECTION:AT  s" passes a path that " REJECTION:EMIT-STR  0 0= ;
 
 \ Writes the record of word w, given the path a u, which no file name holds,
 \ through its help: kind E-PATH-RANGE with len 0 when the path is empty, -1
 \ when only the path it resolves to is longer than cap, else its length; kind
 \ E-PATH-NUL when it holds a NUL byte. cap is the longest length the failing
-\ test allows.
+\ test allows. A w of length 0 names no word: the message's subject is the
+\ path.
 : LOADER-PATH-RECORD ( ptr u8 n ptr u8 n n n n -- )
    {: w:ptr wu:n a:ptr u:n kind:n len:n cap:n :}
    kind E-PATH-NUL = if
       s" E-PATH-NUL" REJECTION:OPEN
-      96 REJECTION:EMIT1  w wu REJECTION:EMIT-STR
-      s" ` got a path with a NUL byte, which no file name holds" REJECTION:EMIT-STR
+      wu 0= if
+         s" a path holds a NUL byte" REJECTION:EMIT-STR
+      else
+         96 REJECTION:EMIT1  w wu REJECTION:EMIT-STR
+         s" ` got a path with a NUL byte" REJECTION:EMIT-STR
+      then
+      s" , which no file name holds" REJECTION:EMIT-STR
    else
       w wu len cap REJECTION:PATH-RANGE
    then
-   w wu a u LOADER-PATH-AT
-   kind E-PATH-NUL = if
-      s" holds a NUL byte"
-   else
-      len 0= if
-         s" is empty"
+   w wu a u LOADER-PATH-AT if
+      kind E-PATH-NUL = if
+         s" holds a NUL byte"
       else
-         len 0 < if s" is too long once resolved" else s" is too long" then
-      then
-   then REJECTION:EMIT-STR
+         len 0= if
+            s" is empty"
+         else
+            len 0 < if s" is too long once resolved" else s" is too long" then
+         then
+      then REJECTION:EMIT-STR
+   then
    REJECTION:HELP
    kind E-PATH-NUL = if
       s" remove the NUL byte from the path" REJECTION:EMIT-STR
@@ -224,12 +242,12 @@ variable SLOT-N
 : CURRENT@ ( -- ptr u8 n )
    CURRENT-PTR CURRENT-U @ ;
 
-\ Throws kind, E-PATH-RANGE or E-PATH-NUL, carrying the record of the public
-\ word running, which got the path a u: len and cap as LOADER-PATH-RECORD
-\ takes them. Callers catch either code and go on.
+\ Throws kind, E-PATH-RANGE or E-PATH-NUL, carrying the record of the path a
+\ u, which names no word, since its callers serve many public words: len and
+\ cap as LOADER-PATH-RECORD takes them. Callers catch either code and go on.
 : PATH-PASS ( ptr u8 n n n n -- )
    {: a:ptr u:n kind:n len:n cap:n :}
-   SRCLOC:TOKEN$ a u kind len cap LOADER-PATH-RECORD
+   NULL-PTR 0 a u kind len cap LOADER-PATH-RECORD
    REJECTION:SAVE  kind REJECTION:PASS ;
 
 : CHECK ( ptr u8 n -- )
@@ -458,7 +476,7 @@ private
 : PATH-DIE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: w:ptr wu:n a:ptr u:n p:ptr pu:n why:ptr whyu:n help:ptr helpu:n :}
    w wu p pu why whyu PATH-REJECT
-   w wu a u LOADER-PATH-AT  why whyu REJECTION:EMIT-STR
+   w wu a u LOADER-PATH-AT if why whyu REJECTION:EMIT-STR then
    REJECTION:HELP  help helpu REJECTION:EMIT-STR
    CHECKER-REJECT-RC REJECTION:STOP ;
 
@@ -740,12 +758,13 @@ INE-CELL RESERVED-PTR-U8-CELL INPUT-END
 \ than PATH-CAP.
 : ROOT-LONG ( ptr u8 n ptr u8 n n -- ) {: w:ptr wu:n a:ptr u:n len:n :}
    w wu len INCLUDE-PATH-CAP REJECTION:PATH-RANGE
-   w wu a u LOADER-PATH-AT
-   len u = if
-      s" is too long"
-   else
-      s" is too long once joined to the current root"
-   then REJECTION:EMIT-STR
+   w wu a u LOADER-PATH-AT if
+      len u = if
+         s" is too long"
+      else
+         s" is too long once joined to the current root"
+      then REJECTION:EMIT-STR
+   then
    REJECTION:HELP
    s" name a directory whose full path is at most " REJECTION:EMIT-STR
    INCLUDE-PATH-CAP REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR

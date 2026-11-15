@@ -122,7 +122,7 @@ private
    REJECTION:BUFFER$
    S\" error[E-PATH-NUL]: `required` got a path with a NUL byte, which no file name holds\n"
    STARTS-WITH? TTRUE
-   REJECTION:BUFFER$ S\" ^ passes a path that holds a NUL byte\n" CONTAINS? TTRUE
+   REJECTION:BUFFER$ s"  --> " CONTAINS? TFALSE
    REJECTION:BUFFER$
    S\" = help: remove the NUL byte from the path\n" CONTAINS? TTRUE
    REJECTION:BUFFER-OFF
