@@ -15137,42 +15137,37 @@ public
 
 \ The allocator binds the actual generated accessor only after its DATA cells
 \ exist. A verifier's projected signature, an alias, or an imported effect has
-\ no allocation to own and keeps the zero count E-REC-INIT gave it.
+\ no allocation to own and keeps the zero count E-REC-INIT gave it. The
+\ definer hands a block at `here` and a count it took as positive.
 : CHECKER-STORAGE-BIND ( n ptr a n -- )
    {: handle:n base:ptr count:n :}
-   count 0 < IF E-CHECKER-LAYOUT-BUFFER throw THEN
    handle 0= count 0= or IF EXIT THEN
    handle 1- E-PTR {: rec:ptr :}
    base DATA-OFF {: off:n :}
-   off 0 < IF E-CHECKER-LAYOUT-BUFFER throw THEN
    off rec ER.STORAGE-OFF !
    count rec ER.STORAGE-N !
    STORAGE-ACCESSOR rec ER.STORAGE-KIND ! ;
 
 \ A deferred accessor owns a persistent four-cell header, not an allocation at
-\ declaration. Resolve its current region through that header at capture.
+\ declaration. Resolve its current region through that header at capture. The
+\ definer lays the header at `here`.
 : CHECKER-STORAGE-DEFER ( n ptr n -- )
    {: handle:n cb:ptr :}
    handle 0= IF EXIT THEN
    cb DATA-OFF {: off:n :}
-   off 0 < IF E-CHECKER-LAYOUT-BUFFER throw THEN
    handle 1- E-PTR {: rec:ptr :}
    off rec ER.STORAGE-OFF !
    STORAGE-DEFERRED rec ER.STORAGE-N !
    STORAGE-DEFER rec ER.STORAGE-KIND ! ;
 
+\ Its one caller (CHECKER-GRID-ATTACH) hands a record it just built and a run
+\ CHECKER-BODY-CLOSE ended at or below `here`.
 : CHECKER-STORAGE-GRID ( n ptr a n -- )
    {: handle:n base:ptr count:n :}
-   count 0 <= count $7FFFFFFFFFFFFFFF CELL / > or handle 0= or IF
-      E-CHECKER-LAYOUT-BUFFER throw
-   THEN
+   count 0 <= IF E-CHECKER-LAYOUT-BUFFER throw THEN
    base DATA-OFF {: off:n :}
    off 0 < off CELL mod 0 <> or IF E-CHECKER-LAYOUT-BUFFER throw THEN
-   off count CELL * + here BYTE-VIEW data-base BYTE-VIEW - >
-      IF E-CHECKER-LAYOUT-BUFFER throw THEN
    handle 1- E-PTR {: rec:ptr :}
-   rec ER.STORAGE-KIND @ STORAGE-NONE <>
-      IF E-CHECKER-LAYOUT-BUFFER throw THEN
    off rec ER.STORAGE-OFF !
    count rec ER.STORAGE-N !
    STORAGE-GRID rec ER.STORAGE-KIND ! ;

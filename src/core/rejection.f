@@ -471,19 +471,21 @@ EVAL-TOP-CELL RESERVED-PTR-U8-CELL EVAL-TOP
       OUTER
    REPEAT drop
    t 0 0= 0= ;
+public
 \ The token in b that ends at or before p: back over blanks, then over the
-\ token's bytes, never before b.
-: READ-BACK ( ptr u8 ptr u8 -- ptr u8 n ) {: b:ptr p:ptr :}
+\ token's bytes, never before b; empty when only blanks stand between them.
+: TOKEN-BEFORE ( ptr u8 ptr u8 -- ptr u8 n ) {: b:ptr p:ptr :}
    p b - BEGIN dup 0 > IF dup 1 - b + c@ 33 < ELSE 0 0= 0= THEN WHILE 1 - REPEAT
    {: e:n :}
    e BEGIN dup 0 > IF dup 1 - b + c@ 32 > ELSE 0 0= 0= THEN WHILE 1 - REPEAT
    {: s:n :}
    b s +  e s - ;
+private
 \ Places at the token the invoker's input had read as the evaluation began, in
 \ the active file or else the line it interrupted.
 : INVOKE-PLACE ( ptr u8 -- ) {: inv:ptr :}
    inv SAVED$ {: b:ptr bu:n :}
-   b inv EVAL-INP FRAME@ READ-BACK {: a:ptr u:n :}
+   b inv EVAL-INP FRAME@ TOKEN-BEFORE {: a:ptr u:n :}
    u 0= IF EXIT THEN
    -1 EVALUATED !  a INVOKED-A !  u INVOKED-U !
    OWNED$ a u HOLDS? IF OWNED$ a u BUFFER-PLACE LOAD-FILE$ PLACE-FILE! EXIT THEN
