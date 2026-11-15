@@ -1256,6 +1256,9 @@ public
 \ reflection high-water. ADD never returns a row id, so an id becomes observable
 \ only after the outer transaction commits.
 -1 constant PF-NO-VARIANT
+\ A buffer row (STRUCTURE `BUFFER name N`) holds N bytes inline from a whole-cell
+\ slot: its schema is the element, u8, and its cells, ceil(N / CELL), its width.
+1 constant PF-FLAG-BUFFER
 
 private
 
@@ -1708,11 +1711,17 @@ defer TFW-FAM ( n n n -- n )   \ ( fam base top -- width ) forward ref for a nes
    THEN
    1 ;
 
+\ A buffer's width is its row's cells: its schema names only the element.
+: TFW-FIELD ( n n n -- n ) {: id:n base:n top:n :}
+   id PF-ROW {: r:ptr :}
+   r PF.FLAGS @ PF-FLAG-BUFFER = IF r PF.CELLS @ EXIT THEN
+   r PF.SCH @ SCHEMA-ROOT@ base top TFW-NODE ;
+
 : TFW-PRODUCT ( n n n -- n ) {: fam:n base:n top:n :}
    fam TFAM-FLD-START@ {: fs:n :}
    0
    0 BEGIN dup fam TFAM-FLD-COUNT@ < WHILE
-      fs over + PF-PENDING-SCH@ SCHEMA-ROOT@ base top TFW-NODE
+      fs over + base top TFW-FIELD
       rot + swap
       1 +
    REPEAT drop ;
@@ -2100,6 +2109,9 @@ public
 : TX-CELLS-FOR ( n n n -- n ) {: tx:n fam:n id:n :}
    tx fam id TX-SCHEMA-FOR drop
    id PF-ROW PF.CELLS @ ;
+: TX-FLAGS-FOR ( n n n -- n ) {: tx:n fam:n id:n :}   \ the provisional row's flags, as TX-SCHEMA-FOR proves it
+   tx fam id TX-SCHEMA-FOR drop
+   id PF-ROW PF.FLAGS @ ;
 
 private
 
@@ -2489,11 +2501,17 @@ TFAM-SCH-ROW-ARITY-INSTALL
 : PF-CELL-BYTES ( n -- n ) {: n:n :}
    n 0 < n PF-MAX-N CELL / > or IF E-PF-LAYOUT throw THEN
    n cells ;
-: PF-CELL-SLOTS-REQUIRE ( n n n n n -- )   \ a field laid out in whole cells
-   {: slot:n cellsn:n boff:n bytesn:n al:n :}
+: PF-CELL-SLOTS-REQUIRE ( n n n n n n -- )   \ a field laid out in whole cells
+   {: slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
    slot PF-CELL-BYTES boff <> IF E-PF-LAYOUT throw THEN
-   cellsn PF-CELL-BYTES bytesn <> IF E-PF-LAYOUT throw THEN
+   flags PF-FLAG-BUFFER = IF                  \ a buffer's bytes end inside its last cell
+      bytesn 1 - CELL / 1 + cellsn <> IF E-PF-LAYOUT throw THEN
+   ELSE
+      cellsn PF-CELL-BYTES bytesn <> IF E-PF-LAYOUT throw THEN
+   THEN
    al CELL <> IF E-PF-LAYOUT throw THEN ;
+: PF-U8? ( n -- bool ) {: node:n :}   \ a buffer's schema: the con u8
+   node SCHEMA-CON? IF node SCHEMA-A@ CC-U8 = ELSE RES-FALSE THEN ;
 
 public
 
@@ -2511,17 +2529,21 @@ public
    drop RES-FALSE ;
 : PF-LAYOUT-REQUIRE ( n n n n n n n n -- )
    {: fam:n sch:n slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
-   flags PF-FLAGS-NONE <> IF E-PF-FLAGS throw THEN
+   flags PF-FLAGS-NONE <> flags PF-FLAG-BUFFER <> and IF E-PF-FLAGS throw THEN
    slot cellsn PF-RANGE-OK? 0= IF E-PF-LAYOUT throw THEN
    boff bytesn PF-RANGE-OK? 0= IF E-PF-LAYOUT throw THEN
    al PF-POW2? 0= IF E-PF-LAYOUT throw THEN
    boff al mod 0 <> IF E-PF-LAYOUT throw THEN
-   fam sch SCHEMA-ROOT@ TFAM-SCH-WIDTH cellsn <> IF E-PF-LAYOUT throw THEN
+   flags PF-FLAG-BUFFER = IF
+      sch SCHEMA-ROOT@ PF-U8? 0= IF E-PF-LAYOUT throw THEN
+   ELSE
+      fam sch SCHEMA-ROOT@ TFAM-SCH-WIDTH cellsn <> IF E-PF-LAYOUT throw THEN
+   THEN
    fam TFAM-LAYOUT-POLICY@ CASE
       TL-STACK-CELL-TAG OF
-         slot cellsn boff bytesn al PF-CELL-SLOTS-REQUIRE ENDOF
-      TL-PACKED-TAG OF slot cellsn boff bytesn al PF-CELL-SLOTS-REQUIRE ENDOF
-      TL-NICHE OF slot cellsn boff bytesn al PF-CELL-SLOTS-REQUIRE ENDOF
+         slot cellsn boff bytesn al flags PF-CELL-SLOTS-REQUIRE ENDOF
+      TL-PACKED-TAG OF slot cellsn boff bytesn al flags PF-CELL-SLOTS-REQUIRE ENDOF
+      TL-NICHE OF slot cellsn boff bytesn al flags PF-CELL-SLOTS-REQUIRE ENDOF
       TL-BOXED OF E-PF-LAYOUT throw ENDOF
       TL-CUSTOM OF E-PF-LAYOUT throw ENDOF
       E-PF-LAYOUT throw
@@ -4397,12 +4419,13 @@ private
 
 \ A field accessor's rows and byte offset, from the committed field id FID: it
 \ takes `ptr F<..>` and answers `ptr T`, T the field's type over the same
-\ arguments. A field role other than plain storage, or an extent past the
-\ family's width, has no address to answer.
+\ arguments; a buffer answers `ptr u8`, its first byte. A field role other than
+\ plain storage, or an extent past the family's width, has no address to answer.
 : TFAM-FIELD-ROWS ( n -- n n n ) {: fid:n :}
    fid TYPE-FIELD:FAMILY@ {: fam:n :}
    fid TYPE-FIELD:BYTE-OFF@ {: off:n :}
-   fid TYPE-FIELD:FLAGS@ PF-FLAGS-NONE <> IF E-PF-FLAGS throw THEN
+   fid TYPE-FIELD:FLAGS@ {: flags:n :}
+   flags PF-FLAGS-NONE <> flags PF-FLAG-BUFFER <> and IF E-PF-FLAGS throw THEN
    off fid TYPE-FIELD:BYTES@ +  fam TFAM-SLOTS@ CELL *  > IF
       E-PF-LAYOUT throw THEN
    fam TFAM-FRESH-TERM {: term:n :}
@@ -4867,6 +4890,7 @@ public
 : TFAM-STORAGE-FIELD ( n n -- n n ) {: term:n field:n :}
    term TFC-ARGS!
    field TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ RES-FALSE TFC-SCH-TERM
+   field TYPE-FIELD:FLAGS@ PF-FLAG-BUFFER = IF field TYPE-FIELD:CELLS@ EXIT THEN   \ a buffer: its cells
    dup T-WIDTH ;
 : TFAM-STORAGE-VARIANT ( n n -- n bool ) {: fam:n tag:n :}
    fam TFAM-VAR-COUNT@ 0 ?do

@@ -250,11 +250,17 @@ variable DEV-TX-SERIAL
    REPEAT
    drop 0 0= 0= ;
 
-: DEV-FIELD-SCHEMA@ ( n n n -- n ) {: tok:n fam:n fld:n :}
+: DEV-FIELD-TX ( n n n -- n ) {: tok:n fam:n fld:n :}   \ the field owner's token for this frame's field
    tok DEV-TX-OPEN-REQUIRE
    DEV-TX-TOP DEVTX.FAM @ fam <> IF E-DEV-FAMILY-SCOPE throw THEN
    fam fld DEV-CUR-FIELD? 0= IF E-DEV-FIELD-SCOPE throw THEN
-   DEV-TX-TOP DEVTX.FLDTOK @ fam fld TYPE-FIELD-OWNER:TX-SCHEMA-FOR ;
+   DEV-TX-TOP DEVTX.FLDTOK @ ;
+: DEV-FIELD-SCHEMA@ ( n n n -- n ) {: tok:n fam:n fld:n :}
+   tok fam fld DEV-FIELD-TX fam fld TYPE-FIELD-OWNER:TX-SCHEMA-FOR ;
+: DEV-FIELD-CELLS@ ( n n n -- n ) {: tok:n fam:n fld:n :}
+   tok fam fld DEV-FIELD-TX fam fld TYPE-FIELD-OWNER:TX-CELLS-FOR ;
+: DEV-FIELD-FLAGS@ ( n n n -- n ) {: tok:n fam:n fld:n :}
+   tok fam fld DEV-FIELD-TX fam fld TYPE-FIELD-OWNER:TX-FLAGS-FOR ;
 
 : DEV-PAYLOAD-FIELD? ( n n n -- bool ) {: id:n fam:n vid:n :}
    id DEV-PROV-KIND@ DEV-K-FIELD =
@@ -537,7 +543,7 @@ public
 
 \ Public API. CURRENT answers the frame the declaration savepoint opened and
 \ rejects outside one; OPEN is the standalone interface. The event words and the
-\ provisional FIELD-SCHEMA@ / PAYLOAD-* queries are legal only between OPEN and
+\ provisional FIELD-SCHEMA@ / FIELD-CELLS@ / FIELD-FLAGS@ / PAYLOAD-* queries are legal only between OPEN and
 \ COMMIT or ROLLBACK, take and return the same token, and throw E-DEV-TX unless
 \ it is the innermost open frame. The outer release or rollback discards the
 \ event scratch.
@@ -558,6 +564,8 @@ public
 : END-VARIANT ( n n -- n ) DEV-END-VARIANT ;
 : FIELD ( n n ptr u8 n n n n n n n n -- n ) DEV-FIELD ;
 : FIELD-SCHEMA@ ( n n n -- n ) DEV-FIELD-SCHEMA@ ;
+: FIELD-CELLS@ ( n n n -- n ) DEV-FIELD-CELLS@ ;    \ a provisional field's cells
+: FIELD-FLAGS@ ( n n n -- n ) DEV-FIELD-FLAGS@ ;    \ a provisional field's flags (TFAM PF-FLAG-*)
 : PAYLOAD-N ( n n n -- n ) DEV-PAYLOAD-N ;
 : PAYLOAD-SCHEMA@ ( n n n n -- n ) DEV-PAYLOAD-SCHEMA@ ;
 : PAYLOAD-WIDTH@ ( n n n n -- n ) DEV-PAYLOAD-WIDTH@ ;

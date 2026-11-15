@@ -1248,6 +1248,7 @@ $FF constant SD-NAMES                    \ loaders and family openers
       SD-RAW {: off:n len:n :}
       len 0= if exit then
       off len SD-TOK$ s" field" STR=CI
+      off len SD-TOK$ s" buffer" STR=CI or
       off len SD-TOK$ s" variant" STR=CI or if
          SD-RAW 2drop                   \ member name
       else

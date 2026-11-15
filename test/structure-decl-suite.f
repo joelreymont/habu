@@ -1048,4 +1048,51 @@ STRUCTURE oclash OPAQUE DERIVE addr FIELD x n ;STRUCTURE
 ;package
 17 SDOPQ:OCR 17 T=
 
+\ 18. BUFFER name N: N bytes inline from the next slot, in whole cells; the record
+\     stays whole cells and the fields around the bytes keep theirs. The count
+\     is a number literal above 0, judged at declaration.
+DECL-DIAG:PROSE                                       \ this section rejects too: keep the output clean
+STRUCTURE sdbuf
+   DERIVE addr
+   FIELD a n
+   BUFFER b 13
+   FIELD c n
+;STRUCTURE
+1 TYPED-BUFFER SDB-BUF sdbuf
+
+SDBUF:CELLS 4 T=                                      \ a, ceil(13 / CELL) for b, c
+SDBUF:BYTES SDBUF:CELLS CELL * T=
+: SDB-GAP ( -- n ) 0 SDB-BUF SDBUF:C NULL-PTR -  0 SDB-BUF SDBUF:A NULL-PTR -  - ;
+SDB-GAP 3 CELL * T=                                   \ c lies 3 cells after a
+: SDB-W ( -- ) 5 0 0 6 SDBUF:MAKE 0 SDB-BUF ! ;      \ b's cells are MAKE's middle two
+: SDB-FILL ( -- ) 0 SDB-BUF SDBUF:B {: p:ptr :} 13 0 ?do 255 p i + c! loop ;
+: SDB-LAST ( -- n ) 0 SDB-BUF SDBUF:B 12 + c@ ;
+SDB-W SDB-FILL
+SDB-LAST 255 T=
+0 SDB-BUF SDBUF:A @ 5 T=                              \ 13 bytes through b leave a and c
+0 SDB-BUF SDBUF:C @ 6 T=
+
+s" STRUCTURE sdbhex BUFFER b $10 ;STRUCTURE" TEST-EVAL:RC 0 T=
+DECL-DIAG:PROSE
+s" STRUCTURE sdbzero BUFFER b 0 ;STRUCTURE" TEST-EVAL:RC 7107 T=
+s" habu: bad structure declaration 'sdbzero': buffer byte count must be a number above 0 at '0'"
+DECL-DIAG:HAS? TTRUE
+DECL-DIAG:PROSE
+s" STRUCTURE sdbword BUFFER b many ;STRUCTURE" TEST-EVAL:RC 7107 T=
+s" habu: bad structure declaration 'sdbword': buffer byte count must be a number above 0 at 'many'"
+DECL-DIAG:HAS? TTRUE
+13 constant SDB-LEN
+DECL-DIAG:PROSE
+s" STRUCTURE sdbname BUFFER b SDB-LEN ;STRUCTURE" TEST-EVAL:RC 7107 T=
+s" habu: bad structure declaration 'sdbname': buffer byte count must be a number above 0 at 'SDB-LEN'"
+DECL-DIAG:HAS? TTRUE
+DECL-DIAG:OFF
+
+\ A replayed BUFFER record (src/habu/verify-source.f) has the live one's MAKE.
+CHECKER-SCOPE-START-NEUTRAL
+s" rpsdbuf" s" FIELD a n BUFFER b 13 FIELD c n ;STRUCTURE" struct-replay-test:RP-TRY 0 T=
+s" SB1 ( n n n n -- rpsdbuf ) RPSDBUF:MAKE" VERIFY:CANDIDATE-IN-SCOPE -1 T=
+s" SB1BAD ( n n n n n -- rpsdbuf ) RPSDBUF:MAKE" VERIFY:CANDIDATE-IN-SCOPE 0 T=
+CHECKER-SCOPE-FINALIZE
+
 T-REPORT

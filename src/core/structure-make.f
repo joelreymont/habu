@@ -19,18 +19,28 @@ package STRUCTURE-MAKE
 : SM-FIELD-SCHEMA@ ( n n n n -- n ) {: idx:n tok:n fam:n fs:n :}
    tok fam fs idx + DECL-EVENT:FIELD-SCHEMA@ ;
 
-\ The field schemas are still provisional: they are read through DECL-EVENT with
+\ A field's bundle roots: its schema, or for a buffer one `n` per cell, the cells
+\ MAKE and UNMAKE carry its bytes in.
+: SM-FIELD-ROOTS+ ( n n n n -- ) {: idx:n tok:n fam:n fs:n :}
+   tok fam fs idx + DECL-EVENT:FIELD-FLAGS@ PF-FLAG-BUFFER = IF
+      tok fam fs idx + DECL-EVENT:FIELD-CELLS@ 0 ?do CC-N SCHEMA-CON SCHEMA-ROOT+ drop loop
+      EXIT
+   THEN
+   idx tok fam fs SM-FIELD-SCHEMA@ SCHEMA-ROOT@ SCHEMA-ROOT+ drop ;
+
+\ The field rows are still provisional: they are read through DECL-EVENT with
 \ the live declaration token and family, so no uncommitted row is globally readable.
 : SM-EMIT-ROWS ( n n n n -- )
    {: tok:n fam:n fs:n fc:n :}
    SCHEMA-ROOT-N@ {: rstart:n :}
    0 BEGIN dup fc < WHILE
-      dup tok fam fs SM-FIELD-SCHEMA@ SCHEMA-ROOT@ SCHEMA-ROOT+ drop
+      dup tok fam fs SM-FIELD-ROOTS+
       1 +
    REPEAT drop
+   SCHEMA-ROOT-N@ rstart - {: rn:n :}
    SUMV-N@ {: vstart:n :}
-   fam s" make"   0 rstart fc  fam TFAM-SLOTS@ SUMV-ADD drop
-   fam s" unmake" 1 rstart fc  fam TFAM-SLOTS@ SUMV-ADD drop
+   fam s" make"   0 rstart rn  fam TFAM-SLOTS@ SUMV-ADD drop
+   fam s" unmake" 1 rstart rn  fam TFAM-SLOTS@ SUMV-ADD drop
    fam vstart 2 TFAM-VAR-RANGE!
    fam vstart 2 TDECL-CTOR-PUBLISH ;
 

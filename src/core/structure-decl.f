@@ -1,7 +1,8 @@
 \ structure-decl.f: the STRUCTURE front end (package STRUCTURE-DECL), grammar loop
 \ and reject dispatch only. DECL-FRONT (generated-declaration.f) owns the token
 \ source and the guarded run; DECL-EVENT (decl-event.f) owns every event.
-\   STRUCTURE type-name[<params>] (POLICY p | DERIVE f+ | OPAQUE)* (FIELD name type)* ;STRUCTURE
+\   STRUCTURE type-name[<params>] (POLICY p | DERIVE f+ | OPAQUE)*
+\      (FIELD name type | BUFFER name bytes)* ;STRUCTURE
 \ A reject rolls the whole declaration back to a byte-identical registry. Loads
 \ after decl-event.f and structure-make.f, whose GENERATE and ARM ;STRUCTURE calls.
 
@@ -390,7 +391,7 @@ SD-QUOT-INSTALL
    FAM @ TFAM-DERIVE-ADDR? 0= IF 2drop EXIT THEN
    MEMBER-CLASH? IF
       s" field name is a generated member name" TYPE-DECL:E-TDECL-NAME DECL-REJECT:REJECT throw THEN ;
-: FIELD-CLAUSE ( -- )
+: FIELD-NAME ( -- ptr u8 n )                 \ a FIELD or BUFFER name, judged
    NEXT dup 0= IF
       2drop s" missing field name" TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
    {: na:ptr nu:n :}
@@ -398,12 +399,39 @@ SD-QUOT-INSTALL
    na nu REQUIRE-FIELD-NAME
    OUTCOME-NAMES @ 0 <> IF
       na nu NAME-CHECK THEN
+   na nu ;
+: FIELD-CLAUSE ( -- )
+   FIELD-NAME {: na:ptr nu:n :}
    0 FIELD-MISS !  0 POINTEE !
    NEXT {: ta:ptr tu:n :}
    ta tu RESOLVE-TYPE {: node:n :}
    FIELD-MISS @ 0= IF
       ta tu FAM @ node REQUIRE-DERIVABLE
       na nu node EMIT-FIELD THEN
+   -1 SEEN-FIELD ! ;
+
+\ `BUFFER name N`: N bytes inline from the next slot, in whole cells. The count
+\ is a number literal, never a name, so the layout is fixed by the text alone.
+: BUFFER-COUNT ( -- n )
+   NEXT dup 0= IF
+      2drop s" missing buffer byte count" TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
+   num-parse {: v:n flt:bool ok:bool :}
+   ok 0= flt or v 1 < or IF
+      s" buffer byte count must be a number above 0" TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
+   v ;
+: EMIT-BUFFER ( ptr u8 n n -- ) {: na:ptr nu:n bytes:n :}
+   bytes 1 - CELL / 1 + {: fw:n :}
+   CC-U8 SCHEMA-CON SCHEMA-ROOT+ {: sch:n :}
+   na nu DECL-REJECT:TOKEN!
+   s" duplicate field name" E-TFAM-DUP DECL-REJECT:EXPECT
+   TOK @ FAM @ na nu sch
+   SD-CELLS @  fw  SD-CELLS @ CELL *  bytes  CELL  PF-FLAG-BUFFER
+   DECL-EVENT:FIELD TOK !
+   fw SD-CELLS @ + SD-CELLS !
+   NFLD @ 1 + NFLD ! ;
+: BUFFER-CLAUSE ( -- )
+   FIELD-NAME {: na:ptr nu:n :}
+   na nu BUFFER-COUNT EMIT-BUFFER
    -1 SEEN-FIELD ! ;
 
 : SD-REGISTER ( ptr u8 n n -- )
@@ -459,6 +487,7 @@ SD-QUOT-INSTALL
       s" missing ;STRUCTURE" TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
    2dup s" ;structure" CORE-STR=CI IF 2drop -1 SEEN-END ! SD-CLOSE YES EXIT THEN
    2dup s" field" CORE-STR=CI IF 2drop FIELD-CLAUSE NO EXIT THEN
+   2dup s" buffer" CORE-STR=CI IF 2drop BUFFER-CLAUSE NO EXIT THEN
    2dup s" policy" CORE-STR=CI IF 2drop POLICY-CLAUSE NO EXIT THEN
    2dup s" derive" CORE-STR=CI IF 2drop DERIVE-CLAUSE NO EXIT THEN
    2dup s" opaque" CORE-STR=CI IF 2drop OPAQUE-CLAUSE NO EXIT THEN
