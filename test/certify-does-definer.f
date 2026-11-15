@@ -192,9 +192,9 @@ package CERTIFY-DOES-DEFINER
 \ last rows are the latch's lifetime: the store is written between two checker
 \ entry points. The engine checks a clause and then the definer's body; the
 \ scanner checks the body and then the clause. Either order must leave a plain
-\ definition with nothing, and a refused clause nothing at all. The refusal
-\ row's `E-DOES-TWICE habu: <file>:1: does>` line on stderr is the refusal being measured, not a
-\ test failure.
+\ definition with nothing, and a rejected clause nothing at all. The
+\ rejection row's `error[E-DOES-TWICE]` record on stderr is the rejection
+\ being measured, not a test failure.
 : CDD-SECTION-RESIDENT ( -- )
    s\" 8 CDD-RES-D CDD-RES-ONE\n" VERIFY:SOURCE-BUF-IN-SCOPE
    s" a resident definer's created word certifies as the clause effect" T-LABEL

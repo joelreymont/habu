@@ -167,7 +167,7 @@ DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN compact-missing-derive DERIVE ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `compact-missing-derive`\n" DECL-DIAG:HAS? TTRUE
 s" ;ENUM" s" unknown derive feature" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: name `eq` or `hash` after `DERIVE`\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: name `eq`, `hash` or `tag` after `DERIVE`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN compact-bad-policy POLICY unknown alpha ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `compact-bad-policy`\n" DECL-DIAG:HAS? TTRUE
@@ -176,12 +176,12 @@ DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN compact-bad-feature DERIVE unknown alpha ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `compact-bad-feature`\n" DECL-DIAG:HAS? TTRUE
 s" unknown" s" unknown derive feature" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: name `eq` or `hash` after `DERIVE`\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: name `eq`, `hash` or `tag` after `DERIVE`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN compact-order DERIVE order alpha ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `compact-order`\n" DECL-DIAG:HAS? TTRUE
 s" order" s" derive feature not yet supported" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: derive `eq` or `hash` instead: `order` is not implemented\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: derive `eq`, `hash` or `tag` instead: `order` is not implemented\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN compact-no-variant POLICY packed-tag ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `compact-no-variant`\n" DECL-DIAG:HAS? TTRUE
@@ -443,7 +443,7 @@ s" STRUCTURE rollp FIELD value n ;STRUCTURE" evaluate-closed
 s" RP-VALID ( n -- rollp ) ROLLP:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ 21. POLICY packed-tag with DERIVE eq: an n payload declares, and a pointer payload
-\     is refused at the constructor commit (no derived equality, 7119).
+\     is rejected at the constructor commit (no derived equality).
 s" ENUM-DECL:ED-RUN lay-keep POLICY packed-tag DERIVE eq VARIANT one FIELD p n ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN lay-drop POLICY packed-tag DERIVE eq VARIANT one FIELD p ptr n ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
@@ -498,13 +498,13 @@ DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dgdrv DERIVE nosuch red ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `dgdrv`\n" DECL-DIAG:HAS? TTRUE
 s" nosuch" s" unknown derive feature" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: name `eq` or `hash` after `DERIVE`\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: name `eq`, `hash` or `tag` after `DERIVE`\n" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dgord DERIVE order red ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `dgord`\n" DECL-DIAG:HAS? TTRUE
 s" order" s" derive feature not yet supported" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: derive `eq` or `hash` instead: `order` is not implemented\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: derive `eq`, `hash` or `tag` instead: `order` is not implemented\n" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dgfn VARIANT vv FIELD make n ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
@@ -709,8 +709,8 @@ s\" error[E-BAD-DECLARATION]: bad enum declaration `dgdgd`\n" DECL-DIAG:HAS? TTR
 s" eq" s" derive requires a concrete (arity 0) family" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: drop the type parameters or the `DERIVE` clause: only an arity-0 family derives\n" DECL-DIAG:HAS? TTRUE
 
-\      7119 raised by the constructor participant's payload-role check, two
-\      phases after the body, with the reason that check arms.
+\ A pointer payload under DERIVE eq is rejected by the constructor's
+\ payload-role check, two phases after the body, with the reason it arms.
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dgroleq DERIVE eq VARIANT vv FIELD p ptr n ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `dgroleq`\n" DECL-DIAG:HAS? TTRUE

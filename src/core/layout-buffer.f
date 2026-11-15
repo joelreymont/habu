@@ -455,7 +455,7 @@ PRIM: DEFER-LAYOUT-BUFFER PRIM;
 \ a definer's variable (EFFECT:VARIABLE-OF), through PROVIDED-XT:VARIABLE-CELL.
 : TYPED-VARIABLE-NODE ( ptr u8 n n -- ) {: name:ptr nameu:n node:n :}
    nameu 0= if s" EFFECT:VARIABLE-OF" CHECKER-STORAGE-NAME-REFUSE exit then
-   name nameu LBUF-NAME-OK? 0= if exit then
+   name nameu name nameu LBUF-NAME-OK? 0= if exit then
    1 name nameu node NODE-VALIDATE 0= if exit then
    node NODE-HAS-ADDRESS? {: hasaddr:bool :}
    name nameu node TDECL-NODE-CHILD {: handle:n :}

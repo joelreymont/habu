@@ -1910,7 +1910,7 @@ public
 \ Ends the transient schema nodes the active file's load made, keeping its
 \ loader's.
 : END-TYPES ( -- )
-   CHECK-ACTIVE
+   s" SOURCE-ROOT:END-TYPES" CHECK-ACTIVE
    TOP@ {: frame:ptr :}
    frame FR-T-NODES + CELL-VIEW @
    frame FR-T-ROOTS + CELL-VIEW @

@@ -57,7 +57,7 @@ ED-RESET
 : FIELD-FAM? ( ptr u8 n -- n bool )
    TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE 0= IF drop 0 NO EXIT THEN
    {: id:n :}
-   id UNSTORED-REASON IF E-PAYLOAD DECL-REJECT:REJECT throw THEN 2drop
+   id UNSTORED-REASON IF E-PAYLOAD DECL-REJECT:REJECT throw THEN 2drop 2drop
    id TFAM-LAYOUT? id TFAM-CELL? or 0= IF 0 NO EXIT THEN
    id FAM @ = POINTEE @ 0= and IF   \ its own family only beneath `ptr`
       s" payload type cannot recursively name its owner"
@@ -173,16 +173,16 @@ ED-RESET
    2dup s" tag" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-TAG! FAM @ DRV-TAG EMIT-DERIVE EXIT THEN
    2dup s" order" CORE-STR=CI IF
       2drop s" derive feature not yet supported"
-      s" derive `eq` or `hash` instead: `order` is not implemented"
+      s" derive `eq`, `hash` or `tag` instead: `order` is not implemented"
       E-DERIVE DECL-REJECT:REJECT throw THEN
    2drop s" unknown derive feature"
-   s" name `eq` or `hash` after `DERIVE`"
+   s" name `eq`, `hash` or `tag` after `DERIVE`"
    E-DERIVE DECL-REJECT:REJECT throw ;
 : DERIVE-CLAUSE ( -- )
    HEADER-ORDER
    NEXT dup 0= IF
       2drop s" missing derive feature"
-      s" name `eq` or `hash` after `DERIVE`"
+      s" name `eq`, `hash` or `tag` after `DERIVE`"
       E-DERIVE DECL-REJECT:REJECT throw THEN DERIVE-ONE
    BEGIN NEXT dup 0= IF 2drop EXIT THEN
       2dup DERIVE-FEATURE? IF DERIVE-ONE ELSE UNGET EXIT THEN
@@ -349,8 +349,9 @@ ED-RESET
 : TAG-REQUIRE ( -- )
    FAM @ TFAM-DERIVE-TAG? 0= IF EXIT THEN
    NFLD @ 0= IF EXIT THEN
-   s" derive tag requires variants without payload" E-DERIVE
-   DECL-REJECT:REJECT throw ;
+   s" derive tag requires variants without payload"
+   s" drop `tag` from `DERIVE`, or declare every variant without a field"
+   E-DERIVE DECL-REJECT:REJECT throw ;
 
 \ ED-CLOSE builds nothing: it arms the constructor participant, which generates
 \ at commit after DECL-EVENT has promoted this declaration's TYPE-FIELD rows to

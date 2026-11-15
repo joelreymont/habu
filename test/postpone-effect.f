@@ -170,7 +170,7 @@ private
    s" a definer's type ends with the load that built it: build it where it is used"
    DECL-DIAG:HAS? TTRUE ;
 : STORAGE-HELP ( -- )
-   s" Build the type where it is used, from its text or EFFECT's words, and pass it on the stack or in a local."
+   s" build the type where it is used, from its text or EFFECT's words, and pass it on the stack or in a local"
    DECL-DIAG:HAS? TTRUE ;
 : STORAGE ( -- )
    S\" \"code\":\"E-BAD-STORAGE\"" DECL-DIAG:HAS? TTRUE

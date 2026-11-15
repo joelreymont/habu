@@ -495,13 +495,13 @@ variable SRC-LEN
    1 SHADOW-TRACE plain T=
    2 SHADOW-TRACE plain T= ;
 
-\ An ACTION a global and a used public both name is the load's
-\ E-USING-SHADOW-GLOBAL, and the next DEFINE runs.
+\ An ACTION a global and a used public both name is rejected
+\ (E-USING-SHADOW-GLOBAL), and the next DEFINE runs.
 : USING-SHADOW ( -- )
    s" : FSM-USING-ACT ( n -- ) drop ; package FSM-USING-PUB public : FSM-USING-ACT ( n -- ) drop ; ;package"
    TEST-EVAL:RC 0 T=
    s" package FSM-USING ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; using FSM-USING-PUB using FSM DEFINE M ( n ) ph sig IN idle S go FSM-USING-ACT >busy halt - >idle FINAL busy - ;DEFINE ;using ;using ;package"
-   TEST-EVAL:RC ENGINE-ERROR:USING-SHADOW-GLOBAL T=
+   TEST-EVAL:RC CHECKER-REJECT-RC T=
    14 VALID 2 T= ;
 
 \ The size table: STATES rows of INPUTS lines, each naming one long action, so

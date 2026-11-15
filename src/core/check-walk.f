@@ -968,22 +968,25 @@ variable TAGGED-FAM
    fam TFAM:TFAM-NICHE? 0= and
    dup IF fam TAGGED-FAM ! THEN ;
 
-\ Refuses the enum or sum TAGGED-HIT? found on the output when true, else the input.
+\ Rejects the enum or sum TAGGED-HIT? found on the output when true, else the
+\ input.
 : TAGGED-RAISE ( bool -- )
    {: out:bool :}
    TAGGED-FAM @ -1 = IF
       out IF
-         s" the output hands out a value of a type variable, which a caller may bind to an enum or sum: hold it behind a pointer"
+         s" the output hands out a value of a type variable, which a caller may bind to an enum or sum"
       ELSE
-         s" the input is handed a value of a type variable, which a caller may bind to an enum or sum: hold it behind a pointer"
+         s" the input is handed a value of a type variable, which a caller may bind to an enum or sum"
       THEN
+      s" hold the value behind a pointer"
    ELSE
       TAGGED-FAM @ TFAM-NAME$ CAST-ERROR:TOKEN!
       out IF
-         s" the output makes an enum or sum value from a cell, and nothing checks its tag: make an enum from a number with its TAG> (DERIVE tag), a sum with a variant's constructor, or view storage you wrote as ( ptr u8 -- ptr T ) in a private section; found"
+         s" the output makes, from a cell, a value whose tag nothing checks, of"
       ELSE
-         s" the input is handed an enum or sum value from a cell, and nothing checks its tag: make an enum from a number with its TAG> (DERIVE tag), a sum with a variant's constructor, or view storage you wrote as ( ptr u8 -- ptr T ) in a private section; found"
+         s" the input is handed, from a cell, a value whose tag nothing checks, of"
       THEN
+      s" make an enum from a number with its TAG> (DERIVE tag), a sum with a variant's constructor, or view storage you wrote as ( ptr u8 -- ptr T ) in a private section"
    THEN
    E-CAST-CLASS CAST-ERROR:RAISE ;
 
