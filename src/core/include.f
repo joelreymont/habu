@@ -2133,19 +2133,14 @@ CAST: CLOSE-ACTION ( n -- [ -- ] )
    [: CALL-UNIT ;] source-file-run
    align ;
 
-\ The engine's last token is put back as the load found it: a throw out of the
-\ file's run leaves it in the frame POP releases, since throw recovery puts
-\ back the input but not the token.
 : LOAD-CURRENT ( -- )
    data-base SECTION-CELL + @ {: sec:n :}
-   LOADER-TOKEN-SPAN {: toka:n toku:n :}
    PUSH
    [: LOAD-UNIT ;] catch {: rc:n :}
    sec data-base SECTION-CELL + !
    rc 0 <> if TOP@ FR-EVAL-OK + CELL-VIEW @ LAST-LOAD-EVAL-OK ! then
    INCLUDE-CLOSE
    POP
-   toka data-base TKA-CELL + !  toku data-base TKL-CELL + !
    rc 0= 0= if rc throw then
    INCLUDE-EVALERR? if s" include: a load returned with its evaluation failed" 76 die then ;
 
