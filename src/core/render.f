@@ -1458,6 +1458,14 @@ variable MDV-I   variable MDV-F
    TBASE@ TBLEN @ + {: e:^ :}
    e 0 REJECTION:HELD? IF e 0 EXIT THEN
    FAILTK FAILTU @ ;
+\ The span the record places: a local's annotation verdict pins the local's
+\ token, `name:type`, and places its type.
+: DIAG-PLACE ( -- ^u8 n )
+   DIAG-TOKEN {: a:^ u:n :}
+   DKIND RF-SIG =  SGBAD-LOCAL @ 0 <>  and 0= IF a u EXIT THEN
+   a u LCOLON {: col:n :}
+   col u < IF a u col LOC-SUFFIX$ EXIT THEN
+   a u ;
 
 : PIN-TOK$ ( -- ^u8 n ) FAILTK FAILTU @ ;
 : TOK-SPAN ( -- ) PIN-TOK$ CODE-SPAN ;
@@ -1510,10 +1518,11 @@ CHECKER-REG:}SCRATCH
    LOCALBAD-GROUP? IF LOCALBAD-REASON$ EMIT-STR EXIT THEN
    s" a local cannot be bound inside a quotation, or bound on a dead path" EMIT-STR ;
 
-: ARITY-MESSAGE ( -- )
-   s" type family " EMIT-STR  TOK-SPAN
+: ARITY-MESSAGE ( ^u8 n -- ) {: t:^ tu:n :}
+   s" type family " EMIT-STR  t tu CODE-SPAN
    s"  takes " EMIT-STR  SGBAD-AR-DECL @ EMIT-U
-   s"  type arguments, not " EMIT-STR  SGBAD-AR-GOT @ EMIT-U ;
+   SGBAD-AR-DECL @ 1 = IF s"  type argument" ELSE s"  type arguments" THEN EMIT-STR
+   s" , not " EMIT-STR  SGBAD-AR-GOT @ EMIT-U ;
 \ A signature that ended where the parser expected a word.
 : SIG-END-MESSAGE ( -- )
    SGBAD-EXP-U @ 0= IF s" the signature ends before it is complete" EMIT-STR EXIT THEN
@@ -1524,25 +1533,36 @@ CHECKER-REG:}SCRATCH
 : PIN-LOCAL$ ( -- ^u8 n ^u8 n ) PIN-TOK$ {: a:^ u:n :}
    a u LCOLON {: col:n :}
    a u col LOC-SUFFIX$  a col ;
-: ANN-MESSAGE ( -- )
-   PIN-LOCAL$ 2swap
-   s" unknown type " EMIT-STR  CODE-SPAN
-   s"  in the annotation of local " EMIT-STR  CODE-SPAN ;
-: SIG-MESSAGE ( -- )
+\ The type a signature verdict names, and the local whose annotation that
+\ is, empty in a signature.
+: SIG-SUBJECT$ ( -- ^u8 n ^u8 n )
+   SGBAD-LOCAL @ IF PIN-LOCAL$ EXIT THEN
+   PIN-TOK$ over 0 ;
+\ The verdict on type t tu, which is in a signature where the local l lu is
+\ empty.
+: SIG-VERDICT ( ^u8 n ^u8 n -- ) {: t:^ tu:n l:^ lu:n :}
    SGBAD-AMBIG? IF
-      s" type family " EMIT-STR  TOK-SPAN
+      s" type family " EMIT-STR  t tu CODE-SPAN
       s"  is public in more than one used package" EMIT-STR EXIT
    THEN
    SGBAD-UNKNOWN? IF
-      SGBAD-LOCAL @ IF ANN-MESSAGE EXIT THEN
-      s" unknown type " EMIT-STR  TOK-SPAN  s"  in signature" EMIT-STR EXIT
+      s" unknown type " EMIT-STR  t tu CODE-SPAN
+      lu 0= IF s"  in signature" EMIT-STR THEN EXIT
    THEN
    SGBAD-BAREPTR? IF s" `^` needs an element type" EMIT-STR EXIT THEN
-   SGBAD-ARITY? IF ARITY-MESSAGE EXIT THEN
-   SGBAD-RETURN? IF s" return-stack effect in signature " EMIT-STR  TOK-SPAN EXIT THEN
-   SGBAD-SIZE? IF BADSIG-REASON  s"  at " EMIT-STR  TOK-SPAN EXIT THEN
-   PIN-TOK$ nip 0= IF SIG-END-MESSAGE EXIT THEN
-   s" bad signature at " EMIT-STR  TOK-SPAN ;
+   SGBAD-ARITY? IF t tu ARITY-MESSAGE EXIT THEN
+   SGBAD-RETURN? IF
+      s" return-stack effect " EMIT-STR  lu 0= IF s" in signature " EMIT-STR THEN
+      t tu CODE-SPAN EXIT
+   THEN
+   SGBAD-SIZE? IF BADSIG-REASON  s"  at " EMIT-STR  t tu CODE-SPAN EXIT THEN
+   tu 0= IF SIG-END-MESSAGE EXIT THEN
+   s" bad signature at " EMIT-STR  t tu CODE-SPAN ;
+: SIG-MESSAGE ( -- )
+   SIG-SUBJECT$ {: t:^ tu:n l:^ lu:n :}
+   t tu l lu SIG-VERDICT
+   lu 0= IF EXIT THEN
+   s"  in the annotation of local " EMIT-STR  l lu CODE-SPAN ;
 
 : NP-FAM-REND ( -- )
    NPBAD-TERM @ NP-FAM {: fam:n :}
@@ -1830,9 +1850,7 @@ PTR-VARIABLE HOLDER-FIRST
    s" bind the local outside the quotation, on a path that runs, or move this code into a word of its own"
    EMIT-STR ;
 
-: SIG-HELP ( -- )
-   SGBAD-LOCAL @ SGBAD-UNKNOWN? and IF PIN-LOCAL$ SGBAD-FIX EXIT THEN
-   PIN-TOK$ over 0 SGBAD-FIX ;
+: SIG-HELP ( -- )   SIG-SUBJECT$ SGBAD-FIX ;
 
 : DEAD-HELP ( -- )
    s" remove " EMIT-STR  TOK-SPAN
@@ -1934,7 +1952,7 @@ PTR-VARIABLE HOLDER-FIRST
 \ The notes and the help; an ambiguous family's packages note and help are
 \ one part.
 : DIAG-ADVICE ( -- )
-   DKIND RF-SIG =  SGBAD-AMBIG?  and IF PIN-TOK$ SGBAD-AMBIG-HELP EXIT THEN
+   DKIND RF-SIG =  SGBAD-AMBIG?  and IF SIG-SUBJECT$ 2drop SGBAD-AMBIG-HELP EXIT THEN
    DIAG-NOTES
    REJECTION:HELP  DIAG-HELP ;
 
@@ -1944,7 +1962,7 @@ PTR-VARIABLE HOLDER-FIRST
       DIAG-TOKEN REJECTION:LITERAL-RANGE  REJECTION:KEEP EXIT
    THEN
    DCODE REJECTION:OPEN  DIAG-MESSAGE
-   DIAG-TOKEN REJECTION:AT
+   DIAG-PLACE REJECTION:AT
    \ The message names a built local by its index, never by its listing token.
    DKIND RF-REASON =  MDIAG @ MD-LOCAL-ENDED =  MDIAG @ MD-LOCAL-UNBOUND = or  and
    IF REJECTION:NO-WORD THEN

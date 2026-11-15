@@ -20,7 +20,7 @@
 \ by line breaks and tabs loads, and an unknown type ending a line refuses by name.
 \ A pointer is spelled ^T: `ptr` in a signature, a stored signature or a local's
 \ annotation is an unknown type, and a `^` a blank parts from its element type
-\ is a bare `^`.
+\ is a bare `^`. A local's annotation verdict names and places its type.
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/adt/result.f
@@ -398,8 +398,15 @@ public
    s" error[E-UNKNOWN-SIGNATURE-TYPE]: unknown type `ptr` in the annotation of local `p`" REFUSES
    S\" = help: spell a pointer `^T`, `^` joined to the type it points at, as in `p:^u8`\n" SAID
    SRC-RESET  s" SN-PTRL ( ^u8 -- ) {: p:ptr :}" S+
-   S\" \"code\":\"E-UNKNOWN-SIGNATURE-TYPE\"" S\" \"token\":\"p:ptr\""
+   S\" \"code\":\"E-UNKNOWN-SIGNATURE-TYPE\"" S\" \"token\":\"ptr\""
    S\" \"message\":\"unknown type `ptr` in the annotation of local `p`\"" VERDICT-REFUSED PACKET-HAS
+   s" a local's annotation of the wrong arity names its type, its local and the type's place" T-LABEL
+   SRC-RESET  s" : SN-AR ( n -- ) {: p:option<n,n> :} ;" S+
+   s" error[E-WRONG-ARITY]: type family `option<n,n>` takes 1 type argument, not 2 in the annotation of local `p`" REFUSES
+   S\" ^ wrong number of type arguments\n" SAID
+   S\" = evaluated: : SN-AR ( n -- ) {: p:option<n,n> :} ;\n" SAID
+   S\"  ^^^^^^^^^^^\n" SAID
+   S\" = help: give `option<n,n>` 1 type argument\n" SAID
    s" ptr in a stored signature is an unknown type: a pointer is ^T" T-LABEL
    SRC-RESET  s" defer SN-PTRD ( ptr -- )" S+
    s" error[E-BAD-STORED-SIGNATURE]: the signature of `SN-PTRD` cannot be recorded" REFUSES
