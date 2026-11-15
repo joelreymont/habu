@@ -1089,7 +1089,7 @@ s" CBAD-OWN-LOCAL-DIAG ( ES-OWN:own -- ES-OWN:own ES-OWN:own ) {: x:ES-OWN:own :
 s" linear-local diagnostic names E-LINEAR-LOCAL" T-LABEL
 REJECTION:BUFFER$ s" E-LINEAR-LOCAL" CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
-s" CBAD-LOCAL-QUAL-UNKNOWN ( n -- ) {: x:ES-OWN:nosuch :}" s" error[E-UNKNOWN-SIGNATURE-TYPE]: unknown type `x:ES-OWN:nosuch` in signature" T-CHECK-SAYS
+s" CBAD-LOCAL-QUAL-UNKNOWN ( n -- ) {: x:ES-OWN:nosuch :}" s" error[E-UNKNOWN-SIGNATURE-TYPE]: unknown type `ES-OWN:nosuch` in the annotation of local `x`" T-CHECK-SAYS
 \ A bare family tail two used packages make public is ambiguous, not unknown.
 package ES-AMB-A public NEWTYPE es-amb<a> ;package
 package ES-AMB-B public NEWTYPE es-amb<a> ;package

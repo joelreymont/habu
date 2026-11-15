@@ -6932,6 +6932,7 @@ variable SGBAD-SIZE      \ depth and width kinds: the levels or cells measured
 PTR-VARIABLE SGBAD-EXP-A \ syntax kind: the word the parser expected there, if one
 variable SGBAD-EXP-U
 variable SGBAD-USED      \ ambiguous kind: bit i set when using slot i offers the family
+variable SGBAD-LOCAL     \ a local's annotation gave the verdict
 0 constant LOCALBAD-SCOPE    \ a local inside a quotation or on a dead path
 1 constant LOCALBAD-DASH     \ `--` in a locals group
 2 constant LOCALBAD-BAR      \ `|` in a locals group
@@ -7198,6 +7199,7 @@ CHECKER-REG:}SCRATCH
    NULL-PTR SGBAD-EXP-A !
    0 SGBAD-EXP-U !
    0 SGBAD-USED !
+   0 SGBAD-LOCAL !
    SGBAD-SYNTAX-KIND SGBAD-KIND ! ;
 
 : SGBAD-SET ( ^u8 n n -- ) {: a u kind :}
@@ -11298,20 +11300,54 @@ public
    SGBAD-UNSUPPLIED? IF s" its outputs name a variable no input supplies" EXIT THEN
    s" the signature does not parse here" ;
 
-: SGBAD-HELP$ ( -- ^u8 n )
-   SGBAD-RETURN? IF s" after `|` write one row variable, the same on both sides, or write no `|`" EXIT THEN
-   SGBAD-UNKNOWN? IF s" write a declared type, such as `n` or `^u8`, or a single-letter type variable such as `a`" EXIT THEN
-   SGBAD-BAREPTR? IF s" give `^` its element type, as `^u8` or `^a`" EXIT THEN
-   SGBAD-ARITY? IF s" give the type family exactly as many arguments as it declares" EXIT THEN
-   SGBAD-BINDERS? IF s" name an inner callback's effect in a word of its own, so fewer binders nest" EXIT THEN
-   SGBAD-DEPTH? IF s" name an inner callback's effect in a word of its own, and keep bulk values in a buffer instead of on the stack" EXIT THEN
-   SGBAD-UNSUPPLIED? IF s" name each output scope or region variable in an input too, or drop it from the outputs" EXIT THEN
-   s" write the signature as `( inputs -- outputs )`, with one `--` between the rows" ;
+\ A row is deep by its cells or by the types it nests.
+: DEPTH-SUGGEST$ ( -- ^u8 n )
+   s" keep bulk values in a buffer instead of on the stack, and name an inner callback's effect in a word of its own" ;
+
+: CODE-SPAN ( ^u8 n -- ) 96 REJECTION:EMIT1 REJECTION:EMIT-STR 96 REJECTION:EMIT1 ;
+: SGBAD-ARITY-FIX ( ^u8 n -- ) {: t:^ tu:n :}
+   s" give " REJECTION:EMIT-STR  t tu CODE-SPAN  32 REJECTION:EMIT1
+   SGBAD-AR-DECL @ REJECTION:EMIT-U
+   SGBAD-AR-DECL @ 1 = IF s"  type argument" ELSE s"  type arguments" THEN
+   REJECTION:EMIT-STR ;
+\ The example a `ptr` gets is the local's annotation when l lu names a local.
+: SGBAD-UNKNOWN-FIX ( ^u8 n ^u8 n -- ) {: t:^ tu:n l:^ lu:n :}
+   t tu s" ptr" CORE-STR= IF
+      s" spell a pointer `^T`, `^` joined to the type it points at, as in `" REJECTION:EMIT-STR
+      lu 0 > IF l lu REJECTION:EMIT-STR  58 REJECTION:EMIT1 THEN
+      s" ^u8`" REJECTION:EMIT-STR EXIT
+   THEN
+   s" write a type in scope or a one-letter type variable in place of " REJECTION:EMIT-STR
+   t tu CODE-SPAN ;
+\ The help of a verdict other than the ambiguous one: t tu is the token it
+\ rejects, l lu the local whose annotation that is, empty in a signature.
+: SGBAD-FIX ( ^u8 n ^u8 n -- ) {: t:^ tu:n l:^ lu:n :}
+   SGBAD-RETURN? IF
+      s" remove the return-stack clause, or write `| U -- U` with one row variable on both sides"
+      REJECTION:EMIT-STR EXIT
+   THEN
+   SGBAD-UNKNOWN? IF t tu l lu SGBAD-UNKNOWN-FIX EXIT THEN
+   SGBAD-BAREPTR? IF
+      s" follow `^` with its element type, as `^u8` or `^a`" REJECTION:EMIT-STR EXIT
+   THEN
+   SGBAD-ARITY? IF t tu SGBAD-ARITY-FIX EXIT THEN
+   SGBAD-BINDERS? IF
+      s" name an inner callback's effect in a word of its own, so this signature nests fewer binders"
+      REJECTION:EMIT-STR EXIT
+   THEN
+   SGBAD-DEPTH? IF DEPTH-SUGGEST$ REJECTION:EMIT-STR EXIT THEN
+   SGBAD-UNSUPPLIED? IF
+      s" name each output scope or region variable in an input too, or drop it from the outputs"
+      REJECTION:EMIT-STR EXIT
+   THEN
+   s" write the stack effect as `( inputs -- outputs )`, type tokens on each side of one `--`"
+   REJECTION:EMIT-STR ;
 
 \ The help of stored signature sa su's rejection, declared at at atu.
 : SGBAD-HELP ( ^u8 n ^u8 n -- ) {: sa:^ su:n at:^ atu:n :}
-   SGBAD-AMBIG? IF sa su at atu SGBAD-TOKEN SGBAD-AMBIG-HELP EXIT THEN
-   REJECTION:HELP  SGBAD-HELP$ REJECTION:EMIT-STR ;
+   sa su at atu SGBAD-TOKEN {: t:^ tu:n :}
+   SGBAD-AMBIG? IF t tu SGBAD-AMBIG-HELP EXIT THEN
+   REJECTION:HELP  t tu t 0 SGBAD-FIX ;
 
 : SIG-WS? {: c :}  c 32 <= ;
 : SIG-LTRIM ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
@@ -17349,6 +17385,7 @@ variable SV-SGBAD
 PTR-VARIABLE SV-SGBAD-A  variable SV-SGBAD-U  variable SV-SGBAD-KIND
 variable SV-SGBAD-AR-DECL  variable SV-SGBAD-AR-GOT
 PTR-VARIABLE SV-SGBAD-EXP-A  variable SV-SGBAD-EXP-U  variable SV-SGBAD-USED
+variable SV-SGBAD-LOCAL
 variable SV-SGSEEN  variable SV-SGHASR  variable SV-SGIN  variable SV-SGOUT
 variable SV-SGRIN   variable SV-SGROUT
 variable SV-THDMASK  variable SV-THRMASK  variable SV-THSET
@@ -17368,7 +17405,7 @@ CHECKER-REG:}SCRATCH
    SGBAD-U @ SV-SGBAD-U !  SGBAD-KIND @ SV-SGBAD-KIND !
    SGBAD-AR-DECL @ SV-SGBAD-AR-DECL !  SGBAD-AR-GOT @ SV-SGBAD-AR-GOT !
    SGBAD-EXP-A @ SV-SGBAD-EXP-A !  SGBAD-EXP-U @ SV-SGBAD-EXP-U !
-   SGBAD-USED @ SV-SGBAD-USED !
+   SGBAD-USED @ SV-SGBAD-USED !  SGBAD-LOCAL @ SV-SGBAD-LOCAL !
    SGSEEN @ SV-SGSEEN !  SGHASR @ SV-SGHASR !
    SGIN @ SV-SGIN !  SGOUT @ SV-SGOUT !  SGRIN @ SV-SGRIN !  SGROUT @ SV-SGROUT !
    THDMASK @ SV-THDMASK !  THRMASK @ SV-THRMASK !  THSET @ SV-THSET ! ;
@@ -17378,7 +17415,7 @@ CHECKER-REG:}SCRATCH
    SV-SGBAD-U @ SGBAD-U !  SV-SGBAD-KIND @ SGBAD-KIND !
    SV-SGBAD-AR-DECL @ SGBAD-AR-DECL !  SV-SGBAD-AR-GOT @ SGBAD-AR-GOT !
    SV-SGBAD-EXP-A @ SGBAD-EXP-A !  SV-SGBAD-EXP-U @ SGBAD-EXP-U !
-   SV-SGBAD-USED @ SGBAD-USED !
+   SV-SGBAD-USED @ SGBAD-USED !  SV-SGBAD-LOCAL @ SGBAD-LOCAL !
    SV-SGSEEN @ SGSEEN !  SV-SGHASR @ SGHASR !
    SV-SGIN @ SGIN !  SV-SGOUT @ SGOUT !  SV-SGRIN @ SGRIN !  SV-SGROUT @ SGROUT ! ;
 
@@ -18972,10 +19009,13 @@ CHECKER-REG:}SCRATCH
    t SCHEME-TYPE? IF a u BAD-LOC-ANN ELSE t LOC-ANN-TERM THEN
    #LOC @ LOC-TYPE-SET ;
 
-\ The annotation A U after a local's colon, read once its slot is open.
+\ The annotation A U after a local's colon, read once its slot is open; a
+\ verdict it gives is the local's, one a failed signature gave keeps its own.
 : LOC-ANN ( ^u8 n -- ) {: a:^ u:n :}
    a u LOC-SHOW-SUFFIX? IF #LOC @ LOC-SHOW-ON! EXIT THEN
-   a u  a u LOCAL-TYPE  LOC-TYPED ;
+   SGBAD @ {: sg0:n :}
+   a u  a u LOCAL-TYPE  LOC-TYPED
+   SGBAD @ sg0 0= and IF -1 SGBAD-LOCAL ! THEN ;
 
 : LOC-ADD ( ^u8 ^u8 n -- )   \ raw declaration, folded declaration, their shared length
    {: ra:^ a:^ u:n :}
@@ -21937,7 +21977,8 @@ variable IS-PEND-U                   \ and its length
 : TYPE-LIT-INFO ( ^u8 n -- n bool ) {: a:^ u:n :}
    SGBAD @ SGBAD-A @ SGBAD-U @ SGBAD-KIND @ {: sg:n sga:^ sgu:n sgk:n :}
    SGBAD-AR-DECL @ SGBAD-AR-GOT @ SGBAD-SIZE @ {: ard:n arg:n sgs:n :}
-   SGBAD-EXP-A @ SGBAD-EXP-U @ SGBAD-USED @ {: sgea:^ sgeu:n sgused:n :}
+   SGBAD-EXP-A @ SGBAD-EXP-U @ SGBAD-USED @ SGBAD-LOCAL @
+   {: sgea:^ sgeu:n sgused:n sgloc:n :}
    SIG-UNRES @ SIG-UNRES-A @ SIG-UNRES-U @ {: un:n una:^ unu:n :}
    SGBAD-CLEAR SIG-UNRES-CLEAR
    0 LBI-SCHEME !  0 LBI-XT !  0 LBI-WIDTH !  0 LBI-EFFECT !
@@ -21947,7 +21988,7 @@ variable IS-PEND-U                   \ and its length
    SGBAD @ 0= one and IF ARENA-TERM-INFO ELSE 0 RES-FALSE THEN
    sg SGBAD !  sga SGBAD-A !  sgu SGBAD-U !  sgk SGBAD-KIND !
    ard SGBAD-AR-DECL !  arg SGBAD-AR-GOT !  sgs SGBAD-SIZE !
-   sgea SGBAD-EXP-A !  sgeu SGBAD-EXP-U !  sgused SGBAD-USED !
+   sgea SGBAD-EXP-A !  sgeu SGBAD-EXP-U !  sgused SGBAD-USED !  sgloc SGBAD-LOCAL !
    un SIG-UNRES !  una SIG-UNRES-A !  unu SIG-UNRES-U !
    dup IF drop t TYPE-CLOSED? THEN ;
 

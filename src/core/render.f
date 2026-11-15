@@ -989,12 +989,6 @@ variable MDV-I   variable MDV-F
    endcase ;
 
 
-
-\ Shared by a definition's depth refusal (MD-SUGGEST$) and a signature's
-\ (SIG-HELP): a row is deep by its cells or by the types it nests.
-: DEPTH-SUGGEST$ ( -- ^u8 n )
-   s" keep bulk values in a buffer instead of on the stack, and name an inner callback's effect in a word of its own" ;
-
 : TAIL-SUGGEST$ ( -- ^u8 n )
    s" declare the callable `[ R -- S ]` from the word's input row, as in `( R [ R -- S ] -- S )`, or pass a callable whose output does not depend on the stack beneath it" ;
 
@@ -1466,7 +1460,6 @@ variable MDV-I   variable MDV-F
    FAILTK FAILTU @ ;
 
 : PIN-TOK$ ( -- ^u8 n ) FAILTK FAILTU @ ;
-: CODE-SPAN ( ^u8 n -- ) 96 EMIT1 EMIT-STR 96 EMIT1 ;
 : TOK-SPAN ( -- ) PIN-TOK$ CODE-SPAN ;
 \ The pin is the closer of a body that walked no token.
 : CLOSER-PINNED? ( -- bool )
@@ -1526,12 +1519,22 @@ CHECKER-REG:}SCRATCH
    SGBAD-EXP-U @ 0= IF s" the signature ends before it is complete" EMIT-STR EXIT THEN
    s" expected " EMIT-STR  SGBAD-EXP-A @ SGBAD-EXP-U @ CODE-SPAN
    s" , found the end of the signature" EMIT-STR ;
+\ A local's annotation is pinned as the local's token, `name:type`: its type
+\ and its name.
+: PIN-LOCAL$ ( -- ^u8 n ^u8 n ) PIN-TOK$ {: a:^ u:n :}
+   a u LCOLON {: col:n :}
+   a u col LOC-SUFFIX$  a col ;
+: ANN-MESSAGE ( -- )
+   PIN-LOCAL$ 2swap
+   s" unknown type " EMIT-STR  CODE-SPAN
+   s"  in the annotation of local " EMIT-STR  CODE-SPAN ;
 : SIG-MESSAGE ( -- )
    SGBAD-AMBIG? IF
       s" type family " EMIT-STR  TOK-SPAN
       s"  is public in more than one used package" EMIT-STR EXIT
    THEN
    SGBAD-UNKNOWN? IF
+      SGBAD-LOCAL @ IF ANN-MESSAGE EXIT THEN
       s" unknown type " EMIT-STR  TOK-SPAN  s"  in signature" EMIT-STR EXIT
    THEN
    SGBAD-BAREPTR? IF s" `^` needs an element type" EMIT-STR EXIT THEN
@@ -1827,40 +1830,9 @@ PTR-VARIABLE HOLDER-FIRST
    s" bind the local outside the quotation, on a path that runs, or move this code into a word of its own"
    EMIT-STR ;
 
-: ARITY-HELP ( -- )
-   s" give " EMIT-STR  TOK-SPAN  32 EMIT1  SGBAD-AR-DECL @ EMIT-U
-   SGBAD-AR-DECL @ 1 = IF s"  type argument" ELSE s"  type arguments" THEN
-   EMIT-STR ;
-\ A local's annotation is pinned as `name:ptr` while SGBAD holds the annotation
-\ alone, three bytes; a signature's `PKG:ptr` holds the whole token.
-: PTR-LOCAL? ( -- bool ) PIN-TOK$ {: a:^ u:n :}
-   u 5 < IF RES-FALSE EXIT THEN
-   a u + 4 - 4 s" :ptr" CORE-STR=  SGBAD-U @ 3 =  and ;
-: PTR-HELP ( ^u8 n -- ) {: a:^ u:n :}
-   s" spell a pointer `^T`, `^` joined to the type it points at, as in `" EMIT-STR
-   a u EMIT-STR  s" ^u8`" EMIT-STR ;
 : SIG-HELP ( -- )
-   SGBAD-RETURN? IF
-      s" remove the return-stack clause, or write `| U -- U` with one row variable on both sides"
-      EMIT-STR EXIT
-   THEN
-   SGBAD-UNKNOWN? IF
-      PIN-TOK$ s" ptr" CORE-STR= IF PIN-TOK$ drop 0 PTR-HELP EXIT THEN
-      PTR-LOCAL? IF PIN-TOK$ 3 - PTR-HELP EXIT THEN
-      s" write a type in scope or a one-letter type variable in place of " EMIT-STR
-      TOK-SPAN EXIT
-   THEN
-   SGBAD-BAREPTR? IF
-      s" follow `^` with its element type, as `^u8` or `^a`" EMIT-STR EXIT
-   THEN
-   SGBAD-ARITY? IF ARITY-HELP EXIT THEN
-   SGBAD-BINDERS? IF
-      s" name an inner callback's effect in a word of its own, so this signature nests fewer binders"
-      EMIT-STR EXIT
-   THEN
-   SGBAD-DEPTH? IF DEPTH-SUGGEST$ EMIT-STR EXIT THEN
-   s" write the stack effect as `( inputs -- outputs )`, type tokens on each side of one `--`"
-   EMIT-STR ;
+   SGBAD-LOCAL @ SGBAD-UNKNOWN? and IF PIN-LOCAL$ SGBAD-FIX EXIT THEN
+   PIN-TOK$ over 0 SGBAD-FIX ;
 
 : DEAD-HELP ( -- )
    s" remove " EMIT-STR  TOK-SPAN

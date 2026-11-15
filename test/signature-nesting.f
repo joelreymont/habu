@@ -18,8 +18,9 @@
 \ A refusal ends the load, so each refused text runs in a child; the deepest
 \ are stored rows (`trust`). A packet is read in this process. An effect split
 \ by line breaks and tabs loads, and an unknown type ending a line refuses by name.
-\ A pointer is spelled ^T: `ptr` in a signature or a local's annotation is an
-\ unknown type, and a `^` a blank parts from its element type is a bare `^`.
+\ A pointer is spelled ^T: `ptr` in a signature, a stored signature or a local's
+\ annotation is an unknown type, and a `^` a blank parts from its element type
+\ is a bare `^`.
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/adt/result.f
@@ -394,11 +395,15 @@ public
    S\" \"message\":\"unknown type `ptr` in signature\"" VERDICT-REFUSED PACKET-HAS
    s" ptr in a local's annotation is an unknown type" T-LABEL
    SRC-RESET  s" : SN-PTRL ( ^u8 -- ) {: p:ptr :} ;" S+
-   s" error[E-UNKNOWN-SIGNATURE-TYPE]: unknown type `p:ptr`" REFUSES
+   s" error[E-UNKNOWN-SIGNATURE-TYPE]: unknown type `ptr` in the annotation of local `p`" REFUSES
    S\" = help: spell a pointer `^T`, `^` joined to the type it points at, as in `p:^u8`\n" SAID
    SRC-RESET  s" SN-PTRL ( ^u8 -- ) {: p:ptr :}" S+
    S\" \"code\":\"E-UNKNOWN-SIGNATURE-TYPE\"" S\" \"token\":\"p:ptr\""
-   S\" \"message\":\"unknown type `p:ptr` in signature\"" VERDICT-REFUSED PACKET-HAS
+   S\" \"message\":\"unknown type `ptr` in the annotation of local `p`\"" VERDICT-REFUSED PACKET-HAS
+   s" ptr in a stored signature is an unknown type: a pointer is ^T" T-LABEL
+   SRC-RESET  s" defer SN-PTRD ( ptr -- )" S+
+   s" error[E-BAD-STORED-SIGNATURE]: the signature of `SN-PTRD` cannot be recorded" REFUSES
+   S\" = help: spell a pointer `^T`, `^` joined to the type it points at, as in `^u8`\n" SAID
    s" a trust-boundary primitive in a checked body is rejected by name" T-LABEL
    SRC-RESET  s" : SN-CAP ( -- ) reloc-maps-clear ;" S+
    s" error[E-CAP-TRUSTED]: `reloc-maps-clear` is a trust-boundary primitive" REFUSES ;
