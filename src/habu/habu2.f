@@ -2396,13 +2396,12 @@ private
 
 \ In x0 = the exit or throw code, the diagnostic written without its newline.
 : EM-COMPILE-DIE ( -- )
-   LBL {: ldie:label :}
-   LBL S" E-OVERLAY-OPEN habu: " {: oclass:label oca:ptr ocu:n :}
-   LBL S" definition while a checker replay is open: " {: omsg:label oma:ptr omu:n :}
+   LBL LBL {: ldie:label deliver:label :}
    LBL {: dpbad-end:label :}
    LCOMPILEDIE LABEL@ LBL,
    15 0 0 ADDI,                                             \ x15 = code (LEVALREC delivers it as the throw code)
    0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 NL-LEN MOVZ,  NR-WRITE SYS,
+   deliver LBL,
    9 DATA EVALD-CELL LDR,  9 ldie CBZ,
       10 DATA EVALREC-CELL LDR,  10 BR,                     \ -> LEVALREC (escaped-frame unwind + deliver x15)
    ldie LBL,
@@ -2428,16 +2427,15 @@ private
    \ A writer of a record or a wid ran while a checker overlay was open,
    \ before it wrote anything. TKA/TKL hold its token: the definition's name,
    \ the package's, the EXPORT operand, or the word that ran `wordlist` or a
-   \ writer primitive. The code is a literal so a pre-window host need not
+   \ writer primitive. The record ends its own line, so the stop delivers past
+   \ LCOMPILEDIE's newline. The code is a literal so a pre-window host need not
    \ carry the constant.
    OVERLAY-EMIT:LDIE LABEL@ LBL,
-   0 2 MOVZ,  1 oclass ADR,  2 ocu MOVZ,  NR-WRITE SYS,
-   LPLACE LABEL@ BL,
-   0 2 MOVZ,  1 omsg ADR,  2 omu MOVZ,  NR-WRITE SYS,
-   0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-   0 108 MOVZ,  LCOMPILEDIE LABEL@ B,                     \ 108 = ENGINE-ERROR:OVERLAY-OPEN
-   oclass LBL,  oca ocu BYTES,
-   omsg LBL,  oma omu BYTES, ;
+   3 DATA TKA-CELL LDR,  4 DATA TKL-CELL LDR,
+   s" E-OVERLAY-OPEN" s" a definition ran while a checker replay is open" FAULT-OPEN,
+   s" word" 3 4 FAULT-TEXT,
+   s" end the checker scope with CHECKER-SCOPE-DONE before defining" FAULT-KEEP,
+   15 108 MOVZ,  deliver B, ;                               \ 108 = ENGINE-ERROR:OVERLAY-OPEN
 
 \ LDIAGU ( x9 = value ): unsigned decimal on fd 2, no newline. A diagnostic
 \ never leaves through the output device, so a refusal stating a count calls
