@@ -1256,25 +1256,21 @@ private
    CHK-PARSE-CLI
    RUN dup 0 <> if throw then drop ;
 
-\ hb exits by the code of a throw that reaches the top when it is 1 to 255,
-\ writing nothing, and reports any other as `hb: uncaught throw code N` on
-\ stderr, exiting UNCAUGHT-RC. Under --json-errors stderr holds packets only,
-\ so the command line says such a throw on stdout, with the same status: an
-\ engine selection the resolver refused (src/lib/engine-candidate.f: a path that
-\ names no executable, E-FS-OPEN, or one the file system refuses, E-FS-PATH),
-\ which CHK-ENGINE$ records where a child starts, as that, and any other, such
-\ as a scratch directory TMPDIR will not hold, by its code. The option is read
-\ from the command line: a run whose cleanup failed clears the session's.
+\ A throw that is no exit status ends the check with the engine's record of an
+\ uncaught throw, in the mode the command line asks for: a run whose cleanup
+\ failed clears the session's. Under --json-errors an engine selection the
+\ resolver refused (src/lib/engine-candidate.f), which CHK-ENGINE$ records
+\ where a child starts, is said on stdout instead.
 : CHK-MAIN-UNCAUGHT ( n -- n )
    {: rc:n :}
    rc 0 >= rc 256 < and if rc exit then
-   s" --json-errors" CHK-OPT? 0= if rc exit then
-   CHK-ENGINE-REFUSED @ if
+   s" --json-errors" CHK-OPT? {: json:bool :}
+   json CHK-ENGINE-REFUSED @ and if
       s" check.f: the selected engine (HABU_UNDER_TEST, else the running engine)" CHK-OUT
       s"  is not a usable executable" CHK-OUT-LN
    else
-      s" check.f: uncaught throw code " CHK-OUT
-      SB-RESET rc FMT:SB-INT SB$ CHK-OUT-LN
+      json REJECTION:JSON !
+      rc INTERPRETER:UNCAUGHT
    then
    UNCAUGHT-RC ;
 
