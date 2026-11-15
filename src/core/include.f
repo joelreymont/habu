@@ -1256,7 +1256,38 @@ private
    then
    first SEARCH-ROOTS ;
 
+\ The source token an open that fails stands at: LOAD-RESULT binds its caller's
+\ request token, empty for one no frame holds; RUN-PROGRAM, WITH-BYTES and
+\ WITH-SUPPLIED bind it empty. Each binds it for its load and puts the
+\ previous one back when the load ends.
+PTR-VARIABLE REQUEST-AT-A
+variable REQUEST-AT-U
+: REQUEST-AT! ( ptr u8 n -- ) REQUEST-AT-U ! REQUEST-AT-A ! ;
+: REQUEST-AT$ ( -- ptr u8 n ) REQUEST-AT-A @ REQUEST-AT-U @ ;
+
+: OPEN-ERRNO$ ( n -- ptr u8 n ) {: e:n :}
+   e 2 = if s" no such file" exit then
+   e 13 = if s" permission denied" exit then
+   e 20 = if s" a directory in the path is a file" exit then
+   e 21 = if s" is a directory" exit then
+   s" cannot open" ;
+
 public
+
+\ The file path was found but its open failed with errno e. Placed at the
+\ request t tu, or at path when t tu is empty. Public so the walks that open a
+\ found file reject it with the loader's record.
+: UNREADABLE-SOURCE ( ptr u8 n ptr u8 n n -- )
+   {: t:ptr tu:n path:ptr pathu:n e:n :}
+   tu 0= if path pathu else t tu then {: p:ptr pu:n :}
+   s" E-UNREADABLE-SOURCE" REJECTION:OPEN
+   s" cannot read `" REJECTION:EMIT-STR  p pu REJECTION:EMIT-STR
+   96 REJECTION:EMIT1
+   p pu REJECTION:AT  e OPEN-ERRNO$ REJECTION:EMIT-STR
+   s" resolved" REJECTION:NOTE  path pathu REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" check that the file exists and is readable" REJECTION:EMIT-STR
+   INCLUDE-IO-RC REJECTION:STOP ;
 
 \ Names every path the request a u was looked for at, in SEARCH-ROOTS's order;
 \ an entry's and an absolute request's is one. Placed at p. Public so the
@@ -1383,27 +1414,6 @@ variable SCRIPT-NAMED-PEND
 : SCRIPT-NAMED-PEND! ( bool -- )
    SCRIPT-NAMED-PEND ! ;
 
-
-\ A file the resolver found that open-rd could not open, labelled by the
-\ open's errno.
-: INCLUDE-OPEN-DIE ( ptr u8 n -- ) {: a:ptr u:n :}
-   data-base FS-ABI:ERRNO-OFF + @ {: e:n :}
-   s" E-MISSING-SOURCE" REJECTION:OPEN
-   s" cannot open `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
-   96 REJECTION:EMIT1
-   a u REJECTION:AT
-   e 2 = if s" no such file" else
-   e 13 = if s" permission denied" else
-   e 20 = if s" a directory in the path is a file" else
-   e 21 = if s" is a directory" else
-   s" cannot open" then then then then REJECTION:EMIT-STR
-   REJECTION:HELP
-   s" check that the file exists and is readable" REJECTION:EMIT-STR
-   INCLUDE-IO-RC REJECTION:STOP ;
-
-: INCLUDE-OPEN ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u INCLUDE-PATH0 open-rd INCLUDE-FD !
-   INCLUDE-FD @ 0 < if a u INCLUDE-OPEN-DIE then ;
 
 : INCLUDE-EVALERR? ( -- bool )
    data-base EVALERR-CELL + @ 0 = 0= ;
@@ -1702,17 +1712,17 @@ variable LAST-LOAD-EVAL-OK
 \ nothing else decides when they are right: PUBLISH-LOCATION republishes them
 \ when the top frame, its size, execution copy or root-run count changes, so
 \ they name the file being read, or 0 for none (the REPL, a stdin session, the
-\ boot prefix, a root program run over an open file: FR-ROOT-RUNS).
+\ boot prefix, a root program run over an open file: FR-ROOT-RUNS). A file
+\ that cannot be opened publishes the frame that asked for it (INCLUDE-OPEN-DIE).
 : PUBLISH-NONE ( -- )
    0 data-base SRCLOC:PATH-CELL + !
    0 data-base SRCLOC:PATHLEN-CELL + !
    0 data-base SRCLOC:OWNED-CELL + !
    0 data-base SRCLOC:OWNEDLEN-CELL + ! ;
 
-: PUBLISH-LOCATION ( -- )
+: PUBLISH-FRAME ( ptr u8 -- ) {: frame:ptr :}
    CHECK:FILE-POS-CLEAR
-   TOP@ 0= if PUBLISH-NONE exit then
-   TOP@ {: frame:ptr :}
+   frame 0= if PUBLISH-NONE exit then
    frame FR-ROOT-RUNS + CELL-VIEW @ 0 > if PUBLISH-NONE exit then
    frame FR-PATH + NULL-PTR - data-base SRCLOC:PATH-CELL + !
    frame FR-PATHLEN + CELL-VIEW @ data-base SRCLOC:PATHLEN-CELL + !
@@ -1724,6 +1734,8 @@ variable LAST-LOAD-EVAL-OK
    data-base SRCLOC:OWNEDLEN-CELL + !
    frame FRAME-EXEC-SOURCE NULL-PTR -
       data-base SRCLOC:OWNED-CELL + ! ;
+
+: PUBLISH-LOCATION ( -- ) TOP@ PUBLISH-FRAME ;
 
 : MAPPED ( ptr u8 -- n ) FR-ROOM + CELL-VIEW @ HEADER-BYTES + ;
 
@@ -1808,6 +1820,18 @@ variable LAST-LOAD-EVAL-OK
    s" SOURCE-ROOT:READ-OS" path pathu s" is not the file a load is opening"
    s" call it only from a reader installed with `SOURCE-INPUT:USE`, for the path the loader passes"
    PATH-DIE ;
+
+\ The file a u the resolver found and open-rd could not open: the record
+\ stands at the request in the file that asked for it, or at a u for an entry.
+: INCLUDE-OPEN-DIE ( ptr u8 n -- ) {: a:ptr u:n :}
+   data-base FS-ABI:ERRNO-OFF + @ {: e:n :}
+   TOP@ FRAME-PREV @ {: prev:ptr :}
+   prev 0= if NULL-PTR 0 else prev PUBLISH-FRAME REQUEST-AT$ then
+   a u e UNREADABLE-SOURCE ;
+
+: INCLUDE-OPEN ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u INCLUDE-PATH0 open-rd INCLUDE-FD !
+   INCLUDE-FD @ 0 < if a u INCLUDE-OPEN-DIE then ;
 
 : INCLUDE-READ-ALL ( ptr u8 n -- ptr u8 n )
    2dup INCLUDE-PATH0 STAMP!
@@ -2103,20 +2127,26 @@ public
    path pathu INCLUDE-PATH0 drop
    exists 0= if a u a u INCLUDE-TRUE MISSING-SOURCE then
    PUSH
+   REQUEST-AT$ {: ra:ptr ru:n :}  NULL-PTR 0 REQUEST-AT!
    [: LOAD-BYTES TOP@ RANGE-OWNER ! 0 TOP@ FR-SIZE + CELL-VIEW @ RUN-RANGE ;]
    catch {: rc:n :}
+   ra ru REQUEST-AT!
    INCLUDE-CLOSE
    POP
    rc 0= 0= if rc throw then ;
 
 \ A completed source range leaves definitions live even if a unit callback
 \ later throws. A require keeps its row in that case. w is the word the
-\ program called.
-: LOAD-RESULT ( ptr u8 n ptr u8 n -- bool n ) {: w:ptr wu:n a:ptr u:n :}
+\ program called; t tu is the request token an open of a u that fails stands
+\ at, or empty.
+: LOAD-RESULT ( ptr u8 n ptr u8 n ptr u8 n -- bool n )
+   {: t:ptr tu:n w:ptr wu:n a:ptr u:n :}
    w wu a u BUILD-REFUSE
    0 LAST-LOAD-EVAL-OK !
+   REQUEST-AT$ {: ra:ptr ru:n :}  t tu REQUEST-AT!
    w wu a u [: 2over 2over LOAD-RAW ;] catch {: rc:n :}
    2drop 2drop
+   ra ru REQUEST-AT!
    LAST-LOAD-EVAL-OK @ 0 <> {: committed:bool :}
    0 LAST-LOAD-EVAL-OK !
    committed rc ;
@@ -2126,7 +2156,7 @@ public
    TOP@ FR-NAMED + c@ 0= 0= ;
 
 : LOAD ( ptr u8 n -- ) {: a:ptr u:n :}
-   s" SOURCE-ROOT:LOAD" a u LOAD-RESULT {: committed:bool rc:n :}
+   NULL-PTR 0 s" SOURCE-ROOT:LOAD" a u LOAD-RESULT {: committed:bool rc:n :}
    rc 0 <> if rc throw then ;
 
 \ PATH has already been resolved by the loader's resolver. This opens a source
@@ -2136,8 +2166,10 @@ public
    s" SOURCE-ROOT:WITH-BYTES" path pathu BUILD-REFUSE
    path pathu CONFINE INCLUDE-PATH0 drop
    s" SOURCE-ROOT:WITH-BYTES" RESOLVED-ROOT$ ROOT-ENTER {: old:ptr oldu:n :}
+   REQUEST-AT$ {: ra:ptr ru:n :}  NULL-PTR 0 REQUEST-AT!
    q [: WITH-BYTES-CURRENT ;] catch {: rc:n :}
    drop
+   ra ru REQUEST-AT!
    old oldu rc ROOT-LEAVE ;
 
 \ A caller that owns PATH's source bytes can open the same loader frame without
@@ -2147,8 +2179,10 @@ public
    s" SOURCE-ROOT:WITH-SUPPLIED" path pathu BUILD-REFUSE
    path pathu CONFINE INCLUDE-PATH0 drop
    s" SOURCE-ROOT:WITH-SUPPLIED" RESOLVED-ROOT$ ROOT-ENTER {: old:ptr oldu:n :}
+   REQUEST-AT$ {: ra:ptr ru:n :}  NULL-PTR 0 REQUEST-AT!
    src srcu q [: WITH-SUPPLIED-CURRENT ;] catch {: rc:n :}
    2drop drop
+   ra ru REQUEST-AT!
    old oldu rc ROOT-LEAVE ;
 
 ;package
@@ -2163,13 +2197,14 @@ public
 ;package
 
 : INCLUDE-LOAD ( ptr u8 n -- bool n ) {: a:ptr u:n :}
-   s" INCLUDE-LOAD" a u LOAD-RESULT ;
+   NULL-PTR 0 s" INCLUDE-LOAD" a u LOAD-RESULT ;
 
 : included ( ptr u8 n -- )
    {: a:ptr u:n :}
    a u LOAD-RESOLVE drop {: path:ptr pathu:n :}
    a u path pathu EV-INCLUDED EV-STATE-FRESH EVENT-RECORD
    DISCOVERY? if exit then
+   a REJECTION:PLACES? if a u else NULL-PTR 0 then
    s" included" path pathu LOAD-RESULT {: committed:bool rc:n :}
    rc 0 <> if rc throw then ;
 
@@ -2186,6 +2221,7 @@ create SOURCE-ORIGINAL-INCLUDED-ENTRY 0 ,
    REQUIRE-REG:MARK {: row:n :}
    path pathu REQUIRE-STORE {: row-path:ptr row-pathu:n :}
    DISCOVERY? if INCLUDE-FALSE SCRIPT-NAMED-PEND! exit then
+   a REJECTION:PLACES? if a u else NULL-PTR 0 then
    w wu row-path row-pathu LOAD-RESULT {: committed:bool rc:n :}
    rc 0 <> if
       committed 0= if row REQUIRE-REG:REMOVE then
