@@ -51,14 +51,19 @@ variable STRUCT-OPEN
 
 \ ---- the defining words -----------------------------------------------------
 
+: STRUCT-ABANDON ( -- )
+   0 STRUCT-OPEN ! ;
+
 \ BEGIN-STRUCTURE publishes its size through create/does>: a generated
 \ `data-base <off> + @` reads the calling thread's data region (register 20, the
 \ task's own region under src/lib/task.f), so a size read inside a task faults
 \ (measured). Checked source has no expression for the absolute address (`dbase@`
 \ is typed `-- n`); END-STRUCTURE publishing the size as a literal would narrow
-\ the three definers' `( ptr a n )` threading effects to `( n )`.
+\ the three definers' `( ptr a n )` threading effects to `( n )`. The loader's
+\ abandon action is a named word: a quotation before `create` is a bend, and
+\ `does>` needs its `create` before any bend.
 : BEGIN-STRUCTURE ( -- ptr n n )
-   SRCLOC:TOKEN$ s" END-STRUCTURE" [: 0 STRUCT-OPEN ! ;] SOURCE-ROOT:OPENED
+   SRCLOC:TOKEN$ s" END-STRUCTURE" ['] STRUCT-ABANDON SOURCE-ROOT:OPENED
    create ndict@ STRUCT-OPEN !
    here 0 , 0 does> ( -- n ) @ ;
 
