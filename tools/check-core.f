@@ -712,7 +712,7 @@ private
    loop
    [: ENGINE-PROVIDES? ;] CHK-INPUTS-ALL? 0= if exit then
    CHK-POS-N @ 0 ?do  i CHK-POS$ CHK-ENGINE-PROVIDED  loop
-   CHK-E-USAGE CHK-THROW ;
+   CHECKER-REJECT-RC CHK-THROW ;
 
 \ The run stage quotes the label into REJECTION:FILE! only after the stages
 \ that read the source, so a label the materializer takes from its caller is
@@ -1267,14 +1267,17 @@ private
    VERIFY-OUT$ CHK-ERR
    VERIFY-LOG$ CHK-OUT ;
 
-: CHK-VERIFY-REPORT ( verdict -- )
+: CHK-VERIFY-REPORT ( verdict ptr u8 n -- ) {: path:ptr pathu:n :}
    CHK-VERIFY-RELAY
    MATCH verdict
       verified OF ENDOF
-      refused OF CHK-E-CHECK CHK-THROW ENDOF
+      refused OF
+         VERIFY-STOP {: rc:n :}
+         rc 1 >= rc 255 <= and if rc CHK-THROW then
+         CHK-E-CHECK CHK-THROW
+      ENDOF
       engine-provided OF
-         s" check.f: the engine provides the source; it is not verified" CHK-OUT-LN
-         CHK-E-USAGE CHK-THROW
+         path pathu CHK-ENGINE-PROVIDED  CHECKER-REJECT-RC CHK-THROW
       ENDOF
       held OF
          s" check.f: the verifier's own image holds the source; it cannot be verified there" CHK-OUT-LN
@@ -1289,7 +1292,7 @@ private
 : CHK-VERIFY-ACT ( -- )
    CHK-VERIFY-SELECT {: path:ptr pathu:n :}
    CHK-SRC-BUF CHK-SRC-U @ path pathu [: drop ;] CHK-DEADLINE@ VERIFY-BYTES
-   CHK-VERIFY-REPORT ;
+   path pathu CHK-VERIFY-REPORT ;
 
 \ More output than the verifier's capture holds leaves no verdict: the packets
 \ received before it, the prose and a closing line.

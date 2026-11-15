@@ -320,6 +320,6 @@ public
    2dup FILE-AS ;
 
 : FINISH ( -- )
-   RNL-BAD @ 0 > if 1 throw then ;
+   RNL-BAD @ 0 > if CHECKER-REJECT-RC throw then ;
 
 ;package

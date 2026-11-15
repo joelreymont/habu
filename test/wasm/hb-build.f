@@ -416,11 +416,10 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" link: the program reaches kernel words a Wasm module does not provide" ERR-HAS
    NO-MODULE
    s" : MAIN ( -- ) 1 ;" s" unchecked.f" SOURCE!
-   s" an unchecked MAIN is refused with 74 and no module" T-LABEL
-   s" unchecked.wasm" BUILD 74 T=
+   s" an unchecked MAIN is rejected with 70 and no module" T-LABEL
+   s" unchecked.wasm" BUILD 70 T=
    s" error[E-MISMATCH]" ERR-HAS
    s" unchecked.f:1:15" ERR-HAS
-   s" threw 70" ERR-HAS
    NO-MODULE
    s" require src/lib/span.f : MAIN ( -- ) 8 SPAN-BUFFER: ;" s" reached-definer.f" SOURCE!
    s" a definer MAIN reaches is refused with 74 and no module" T-LABEL
@@ -428,8 +427,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" link: a stripped program reaches a word it cannot run" ERR-HAS
    NO-MODULE
    s" : MAIN ( n -- ) drop ;" s" cells.f" SOURCE!
-   s" a MAIN that takes a cell is refused with 74 and no module" T-LABEL
-   s" cells.wasm" BUILD 74 T=
+   s" a MAIN that takes a cell is rejected with 70 and no module" T-LABEL
+   s" cells.wasm" BUILD 70 T=
    s" APP-ENTRY:XT!" ERR-HAS
    s\" = expected: [ -- ]\n  = found: [ n -- ]" ERR-HAS
    NO-MODULE
