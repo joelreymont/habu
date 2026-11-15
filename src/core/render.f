@@ -1831,12 +1831,22 @@ PTR-VARIABLE HOLDER-FIRST
    s" give " EMIT-STR  TOK-SPAN  32 EMIT1  SGBAD-AR-DECL @ EMIT-U
    SGBAD-AR-DECL @ 1 = IF s"  type argument" ELSE s"  type arguments" THEN
    EMIT-STR ;
+\ A local's annotation is pinned as `name:ptr` while SGBAD holds the annotation
+\ alone, three bytes; a signature's `PKG:ptr` holds the whole token.
+: PTR-LOCAL? ( -- bool ) PIN-TOK$ {: a:^ u:n :}
+   u 5 < IF RES-FALSE EXIT THEN
+   a u + 4 - 4 s" :ptr" CORE-STR=  SGBAD-U @ 3 =  and ;
+: PTR-HELP ( ^u8 n -- ) {: a:^ u:n :}
+   s" spell a pointer `^T`, `^` joined to the type it points at, as in `" EMIT-STR
+   a u EMIT-STR  s" ^u8`" EMIT-STR ;
 : SIG-HELP ( -- )
    SGBAD-RETURN? IF
       s" remove the return-stack clause, or write `| U -- U` with one row variable on both sides"
       EMIT-STR EXIT
    THEN
    SGBAD-UNKNOWN? IF
+      PIN-TOK$ s" ptr" CORE-STR= IF PIN-TOK$ drop 0 PTR-HELP EXIT THEN
+      PTR-LOCAL? IF PIN-TOK$ 3 - PTR-HELP EXIT THEN
       s" write a type in scope or a one-letter type variable in place of " EMIT-STR
       TOK-SPAN EXIT
    THEN

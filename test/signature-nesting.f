@@ -388,12 +388,14 @@ public
    s" ptr in a signature is an unknown type: a pointer is ^T" T-LABEL
    SRC-RESET  s" : SN-PTR ( ptr u8 -- ) drop ;" S+
    s" error[E-UNKNOWN-SIGNATURE-TYPE]: unknown type `ptr`" REFUSES
+   S\" = help: spell a pointer `^T`, `^` joined to the type it points at, as in `^u8`\n" SAID
    SRC-RESET  s" SN-PTR ( ptr u8 -- ) drop" S+
    S\" \"code\":\"E-UNKNOWN-SIGNATURE-TYPE\"" S\" \"token\":\"ptr\""
    S\" \"message\":\"unknown type `ptr` in signature\"" VERDICT-REFUSED PACKET-HAS
    s" ptr in a local's annotation is an unknown type" T-LABEL
    SRC-RESET  s" : SN-PTRL ( ^u8 -- ) {: p:ptr :} ;" S+
    s" error[E-UNKNOWN-SIGNATURE-TYPE]: unknown type `p:ptr`" REFUSES
+   S\" = help: spell a pointer `^T`, `^` joined to the type it points at, as in `p:^u8`\n" SAID
    SRC-RESET  s" SN-PTRL ( ^u8 -- ) {: p:ptr :}" S+
    S\" \"code\":\"E-UNKNOWN-SIGNATURE-TYPE\"" S\" \"token\":\"p:ptr\""
    S\" \"message\":\"unknown type `p:ptr` in signature\"" VERDICT-REFUSED PACKET-HAS
