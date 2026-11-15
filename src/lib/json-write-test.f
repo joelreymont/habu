@@ -425,7 +425,7 @@ JWT-EVERY-CAP BUFFER: JWT-EVERY-OUT
    JWT-B JSON:WRITE-CLOSE ;
 
 : JWT-NULL-OUT ( -- ptr u8 )   \ the zero image's null output pointer
-   JWT-FRESH @ JSON-WRITER:UNMAKE 2drop 2drop 2drop ;
+   JWT-FRESH @ JSON-WRITER:UNMAKE 2drop 2drop 2drop drop ;
 
 : JWT-CLOSED-FIELD-S-NULL-KEY ( -- )
    JWT-OPEN-B JSON:WRITE-CLOSE
@@ -596,6 +596,42 @@ create JWT-UTF8-OK $C3 c, $A9 c, $E2 c, $82 c, $AC c, $F0 c, $9F c, $98 c, $80 c
    [: JWT-BAD-SURROGATE ;] JWT-BYTE-REFUSED
    [: JWT-BAD-KEY ;] JWT-BYTE-REFUSED
    JWT-UTF8-OK 9 JWT-RT-ENCODE JWT-RT-DECODE$ JWT-UTF8-OK 9 T$= ;
+
+\ é (2 bytes), € (3), 😀 (4), DEL, a quote, a tab, U+FFFF and U+10000: in
+\ ASCII mode each scalar above U+007F and DEL is \uXXXX, one above U+FFFF a
+\ surrogate pair.
+: JWT-WIDE$ ( -- ptr u8 n )
+   S\" \xC3\xA9\xE2\x82\xAC\xF0\x9F\x98\x80\x7F\"\t\xEF\xBF\xBF\xF0\x90\x80\x80" ;
+
+: JWT-WIDE-ESC$ ( -- ptr u8 n )
+   S\" \\u00e9\\u20ac\\ud83d\\ude00\\u007f\\\"\\t\\uffff\\ud800\\udc00" ;
+
+: JWT-WIDE-WANT$ ( -- ptr u8 n )
+   SB-RESET [char] { SB-APPEND-C
+   [char] " SB-APPEND-C JWT-WIDE-ESC$ SB-APPEND [char] " SB-APPEND-C
+   [char] : SB-APPEND-C
+   [char] " SB-APPEND-C JWT-WIDE-ESC$ SB-APPEND [char] " SB-APPEND-C
+   [char] } SB-APPEND-C SB$ ;
+
+\ The value goes in two parts, split after é and €.
+: JWT-TEST-ASCII ( -- )
+   JWT-OPEN-A JWT-TRUE JSON:WRITE-ASCII!
+   JSON:WRITE-OBJECT-START JWT-WIDE$ JSON:WRITE-KEY
+   JSON:WRITE-STRING-START
+   JWT-WIDE$ drop 5 JSON:WRITE-STRING-PART
+   JWT-WIDE$ 5 - swap 5 + swap JSON:WRITE-STRING-PART
+   JSON:WRITE-STRING-END JSON:WRITE-OBJECT-END
+   JSON:WRITTEN$ JWT-WIDE-WANT$ T$= ;
+
+: JWT-QUOTE$ ( ptr u8 n -- ptr u8 n )
+   SB-RESET [char] " SB-APPEND-C SB-APPEND [char] " SB-APPEND-C SB$ ;
+
+: JWT-TEST-ASCII-RESET ( -- )
+   JWT-OPEN-A JWT-TRUE JSON:WRITE-ASCII! s" x" JSON:WRITE-STRING
+   JSON:WRITE-RESET JWT-WIDE$ JSON:WRITE-STRING
+   JSON:WRITTEN$ JWT-WIDE-ESC$ JWT-QUOTE$ T$=
+   JWT-OPEN-A JWT-WIDE$ JSON:WRITE-STRING JSON:WRITTEN$
+   S\" \xC3\xA9\xE2\x82\xAC\xF0\x9F\x98\x80\x7F\\\"\\t\xEF\xBF\xBF\xF0\x90\x80\x80" JWT-QUOTE$ T$= ;
 
 \ One nested document: a sub-object, an array of two numbers, an empty object
 \ and an empty array. Width 2 breaks after each START and COMMA and closes on
@@ -864,6 +900,8 @@ create JWT-PARTS-WANT
    JWT-TEST-OPEN-BUF-COMPACT
    JWT-TEST-PART-LAYOUT
    JWT-TEST-INDENT-RESET
+   JWT-TEST-ASCII
+   JWT-TEST-ASCII-RESET
    JWT-TEST-PARTS
    JWT-TEST-KEY-FULL
    JWT-TEST-LAYOUT-REFUSALS
