@@ -331,7 +331,7 @@ variable XPK-WIDE-EXITED   variable XPK-WIDE-RC
    s" ;package" XPK-LINE
    s" 2 3 PT:AT" XPK-LINE ;
 
-\ A point, then the line a u, run; the word w v is named rejected.
+\ A point, then the primitive a u on its own line, run; the record names a u.
 : XPK-PT-XPORT ( ^u8 n -- ) {: a:^ u:n :}
    a u T-LABEL
    SB-RESET XPK-PT-LINES  a u XPK-LINE  SB$ XPK-RUN-STDIN
@@ -345,12 +345,12 @@ variable XPK-WIDE-EXITED   variable XPK-WIDE-RC
    s" top-level constant over a point" T-LABEL
    SB-RESET XPK-PT-LINES  s" constant K" XPK-LINE  SB$ XPK-RUN-STDIN
    XPK-REJECT-RC XPK-ASSERT-RC
-   s" error[E-LAYOUT-VALUE]: `constant` would take one cell of a value held in more than one cell"
+   s" error[E-LAYOUT-VALUE]: `constant` would take one cell of `pt:point`, a value held in more than one cell"
    XPK-ERR?
    s"  --> <input>:8:1" XPK-ERR?
    s" 8 | constant K" XPK-ERR?
    s"   | ^^^^^^^^ takes one cell" XPK-ERR?
-   s"   = help: define a word that leaves the whole value, `: NAME ( -- TYPE ) ... ;`, in place of the constant"
+   s"   = help: define a word that leaves the whole value, `: K ( -- pt:point ) ... ;`, in place of the constant"
    XPK-ERR? ;
 
 \ Over a point at top level each transport primitive is rejected before it
@@ -388,16 +388,17 @@ variable XPK-WIDE-EXITED   variable XPK-WIDE-RC
 : XPK-OPEN-DROP ( -- )
    s" top-level drop of a value of open width" T-LABEL
    SB-RESET
-   s" : XPK-OPEN ( -- option<a> ) OPTION:NONE ;" XPK-LINE
+   s" SUMTYPE myopt<a> VARIANT none ;VARIANT VARIANT some a ;VARIANT ;SUMTYPE" XPK-LINE
+   s" : XPK-OPEN ( -- myopt<a> ) MYOPT:NONE ;" XPK-LINE
    s" XPK-OPEN drop" XPK-LINE
    SB$ XPK-RUN-STDIN
    XPK-REJECT-RC XPK-ASSERT-RC
-   s" error[E-LAYOUT-VALUE]: `drop` cannot drop a value whose cell count is not known here"
+   s" error[E-LAYOUT-VALUE]: `drop` cannot drop `myopt<a>`, a value whose cell count is not known here"
    XPK-ERR?
-   s"  --> <input>:2:10" XPK-ERR?
-   s" 2 | XPK-OPEN drop" XPK-ERR?
+   s"  --> <input>:3:10" XPK-ERR?
+   s" 3 | XPK-OPEN drop" XPK-ERR?
    s"   |          ^^^^ cell count not known" XPK-ERR?
-   s"   = help: name a concrete type in the effect that leaves the value, `option<n>` in place of `option<a>`"
+   s"   = help: leave the value from a word whose effect gives `myopt<a>` concrete type arguments, as `( -- myopt<n> )`"
    XPK-ERR? ;
 
 \ `drop` over a point, and over one a top-level `catch` left stale, empties the

@@ -3185,28 +3185,32 @@ CHECKER-REG:}SCRATCH
    a u live TOP-LEFT-MARK
    a TOK-SPELL-A !  u TOK-SPELL-U !  ['] TOP-TICK-STEP live TOP-STEP-LOAD ;
 
-\ `constant`, spelled a u, would take one cell of a multi-cell value.
-: TOP-CONSTANT-REJECT ( ^u8 n -- ) {: a:^ u:n :}
+\ `constant`, spelled a u, would take one cell of the multi-cell value atop the
+\ row, the value it would name w v. A hidden cell's type names its whole value.
+: TOP-CONSTANT-REJECT ( ^u8 n ^u8 n -- ) {: a:^ u:n w:^ v:n :}
+   DCUR @ R-RES P>TYPE  dup HIDDEN-PARAM? IF MK-LOGICAL THEN {: ty:n :}
+   SEEN-RESET RATOM-RESET 0 NLET !
    s" E-LAYOUT-VALUE" REJECTION:OPEN
-   s" `constant` would take one cell of a value held in more than one cell"
-   REJECTION:EMIT-STR
+   s" `constant` would take one cell of `" REJECTION:EMIT-STR  ty REND-TYPE
+   s" `, a value held in more than one cell" REJECTION:EMIT-STR
    a u REJECTION:AT  s" takes one cell" REJECTION:EMIT-STR
    REJECTION:HELP
-   s" define a word that leaves the whole value, `: NAME ( -- TYPE ) ... ;`, in place of the constant"
-   REJECTION:EMIT-STR
+   s" define a word that leaves the whole value, `: " REJECTION:EMIT-STR
+   w v REJECTION:EMIT-STR  s"  ( -- " REJECTION:EMIT-STR  ty REND-TYPE
+   s"  ) ... ;`, in place of the constant" REJECTION:EMIT-STR
    CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ A keyword takes the top cell with no word event, so the row is not saved:
 \ the next event fits it to the live depth.
-: TOP-TAKE-STEP ( -- )
+: TOP-TAKE-STEP ( ^u8 n ^u8 n -- ) {: a:^ u:n w:^ v:n :}
    DCUR @ 1 TOP-WIDE-IN-K? 0= IF EXIT THEN
-   TOK-SPELL-A @ TOK-SPELL-U @ TOP-CONSTANT-REJECT ;
+   a u w v TOP-CONSTANT-REJECT ;
 
-: CHECKER-TOP-TAKE ( ^u8 n n -- )
-   {: a:^ u:n live:n :}
+: CHECKER-TOP-TAKE ( ^u8 n ^u8 n n -- )
+   {: a:^ u:n w:^ v:n live:n :}
    a TOK-SPELL-A !  u TOK-SPELL-U !
    live CHECKER-TOP-LOAD
-   ['] TOP-TAKE-STEP catch {: rc:n :}
+   [: a u w v TOP-TAKE-STEP ;] catch {: rc:n :}
    TOP-RELEASE
    rc 0 <> IF rc throw THEN ;
 
@@ -3216,15 +3220,35 @@ variable TOP-DROP-N
    DCUR @ R-RES dup TAG S-PUSH <> IF drop RES-FALSE EXIT THEN
    P>TYPE TOP-OPEN-TYPE? ;
 
+\ Type t as written, but each open argument its width reads is `n`, one cell.
+: REND-CELL-ARGS ( n -- ) {: t:n :}
+   t T-UNSTALE {: p:n :}
+   p PARAM-HEAD
+   p PARAM>ARGC 0= IF EXIT THEN
+   60 REJECTION:EMIT1
+   0 BEGIN dup p PARAM>ARGC < WHILE
+      dup 0 > IF 44 REJECTION:EMIT1 THEN
+      p over PARAM>ARG T-UNSTALE {: arg:n :}
+      p PARAM>FAM over TFAM-WIDTH-SLOT-XT 0= IF arg REND-TYPE ELSE
+      arg ISVAR IF s" n" REJECTION:EMIT-STR ELSE
+      arg LAYOUT-PARAM? IF arg RECURSE ELSE
+      arg REND-TYPE THEN THEN THEN
+      1 +
+   REPEAT drop
+   62 REJECTION:EMIT1 ;
+
 \ `drop`, spelled a u, over an item whose cell count is not known here.
 : TOP-OPEN-DROP-REJECT ( ^u8 n -- ) {: a:^ u:n :}
+   DCUR @ R-RES P>TYPE {: ty:n :}
+   SEEN-RESET RATOM-RESET 0 NLET !
    s" E-LAYOUT-VALUE" REJECTION:OPEN
-   s" `drop` cannot drop a value whose cell count is not known here"
-   REJECTION:EMIT-STR
+   s" `drop` cannot drop `" REJECTION:EMIT-STR  ty REND-TYPE
+   s" `, a value whose cell count is not known here" REJECTION:EMIT-STR
    a u REJECTION:AT  s" cell count not known" REJECTION:EMIT-STR
    REJECTION:HELP
-   s" name a concrete type in the effect that leaves the value, `option<n>` in place of `option<a>`"
-   REJECTION:EMIT-STR
+   s" leave the value from a word whose effect gives `" REJECTION:EMIT-STR
+   ty REND-TYPE  s" ` concrete type arguments, as `( -- " REJECTION:EMIT-STR
+   ty REND-CELL-ARGS  s"  )`" REJECTION:EMIT-STR
    CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ An item of open width has no cell count to drop, so it is rejected at

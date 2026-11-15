@@ -26,12 +26,12 @@ public
    cls TOP-EV-WORD = IF a u live CHECKER-TOP-WORD ELSE a u live CHECKER-TOP-TICK THEN
    CHECKER-TOP-SAVE ;
 
-\ Before a keyword spelled a u takes the program's top cell: a multi-cell value
-\ there is rejected, rc 70, before any cell of it is taken.
-: TOP-TAKE ( ^u8 n -- )
-   {: a:^ u:n :}
+\ Before a keyword spelled a u takes the program's top cell for the name w v: a
+\ multi-cell value there is rejected, rc 70, before any cell of it is taken.
+: TOP-TAKE ( ^u8 n ^u8 n -- )
+   {: a:^ u:n w:^ v:n :}
    data-base STACK-ABI:BASE-CELL + @ CHECKER-TOP-SEGMENT
-   a u depth CHECKER-TOP-TAKE ;
+   a u w v depth CHECKER-TOP-TAKE ;
 
 \ Judges the engine `drop` as a body's (a linear item rejected, rc 70), takes the
 \ top item off the row and answers its width in cells.
