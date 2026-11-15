@@ -310,7 +310,7 @@ $400001 constant PID-CEIL               \ past the kernel's pid_max ceiling
    KEPT RECALL, F-GETFD N, 0 N, s" fcntl" ROW  0 WANT
    KEPT RECALL, F-SETFD N, FD-CLOEXEC N, s" fcntl" ROW  0 WANT
    KEPT RECALL, F-GETFD N, 0 N, s" fcntl" ROW  FD-CLOEXEC WANT
-   BAD-FD N, F-GETFD N, 0 N, s" fcntl" ROW  -1 WANT
+   BAD-FD N, F-GETFD N, 0 N, s" fcntl" ROW  EBADF negate WANT
    KEPT2 RECALL, F-SETNOSIGPIPE N, 0 N, s" fcntl" ROW  0 WANT
    KEPT RECALL, s" close" ROW
    KEPT2 RECALL, s" x" X64HARNESS:PUSH-TEXT, s" write" ROW  -1 WANT

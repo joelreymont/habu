@@ -879,10 +879,8 @@ $687461706C616572 constant REALPATH-NAME
    RSP RP-FRAME >IMM8 ASM-SINK ENC-ADD-RI8
    0 G-PUSH ;
 
-\ The twins of habu1.f's Linux process bodies: LINUX-SPAWN under the four spawn
-\ rows and BRUNRC, LINUX-SPAWN-FDS, then BPIPE .. BWAITSTATUS and LIBC-OS
-\ FORK. Every failure is -1, as habu1.f's errno rule has it, except poll's and
-\ spawn-fds's -errno.
+\ The twins of habu1.f's Linux process bodies. A failure answers -1, except
+\ pipe's, fcntl's, poll's and spawn-fds's -errno.
 
 17 constant CLONE-SIGCHLD           \ SIGCHLD at exit, nothing shared
 $80000 constant PIPE-CLOEXEC        \ O_CLOEXEC
@@ -1228,7 +1226,7 @@ SPN-ARGV0 constant SPN-LIFTED
    RAX 0 FRAME32@,  SYS-PUSH
    RSP CELL >IMM8 ASM-SINK ENC-ADD-RI8 ;
 
-\ ( -- rfd wfd 0 | -1 -1 -1 ): pipe2(fds, 0), as BPIPE.
+\ ( -- rfd wfd 0 | -errno thrice ): pipe2(fds, 0).
 : PIPE-ROW ( -- )
    X64CODE:LBL X64CODE:LBL {: failed:label done:label :}
    RSP CELL >IMM8 ASM-SINK ENC-SUB-RI8
@@ -1236,20 +1234,18 @@ SPN-ARGV0 constant SPN-LIFTED
    RAX 0 FRAME32@,  RAX PUSH,  RAX 4 FRAME32@,  RAX PUSH,
    RAX ZERO-REG,  RAX PUSH,  done JMP,
    failed X64CODE:LBL,
-   RAX MINUS-1,  RAX PUSH,  RAX PUSH,  RAX PUSH,
+   RAX PUSH,  RAX PUSH,  RAX PUSH,
    done X64CODE:LBL,
    RSP CELL >IMM8 ASM-SINK ENC-ADD-RI8 ;
 
-\ ( fd cmd arg -- rc ): fcntl, as BFCNTL. FCNTL-NOSIGPIPE, the macOS
-\ F_SETNOSIGPIPE, has no Linux command: it ignores SIGPIPE for the process
-\ through rt_sigaction, as LINUX-IGNORE-SIGPIPE does. The four cells pushed
-\ are the kernel's struct sigaction, the handler SIG_IGN and then zero flags,
-\ restorer and mask, and the lea that drops them keeps the carry.
+\ ( fd cmd arg -- rc|-errno ): fcntl. FCNTL-NOSIGPIPE, macOS's F_SETNOSIGPIPE,
+\ has no Linux command, so it ignores SIGPIPE process-wide via rt_sigaction.
 : FCNTL-ROW ( -- )
    X64CODE:LBL X64CODE:LBL {: real:label done:label :}
    RDX POP,  RSI POP,  RDI POP,
    RSI FCNTL-NOSIGPIPE >IMM8 ASM-SINK ENC-CMP-RI8  C-NE real JCC,
    RAX ZERO-REG,
+   \ The kernel's struct sigaction: SIG_IGN, zero flags, restorer and mask.
    RAX ASM-SINK ENC-PUSH  RAX ASM-SINK ENC-PUSH  RAX ASM-SINK ENC-PUSH
    RAX SIG-IGN IMM32,  RAX ASM-SINK ENC-PUSH
    RDI SIGPIPE IMM32,  RSI RSP ASM-SINK ENC-MOV-RR  RDX ZERO-REG,
@@ -1259,7 +1255,7 @@ SPN-ARGV0 constant SPN-LIFTED
    real X64CODE:LBL,
    NR-FCNTL SYS,
    done X64CODE:LBL,
-   SYS-PUSH ;
+   RAX PUSH, ;
 
 \ ( fds nfds ms -- n|0|-errno ): ppoll, as BPOLL. ms becomes a timespec, and a negative ms none, which waits
 \ without end. rax is pushed raw: poll alone is not restarted after a signal,

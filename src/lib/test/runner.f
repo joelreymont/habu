@@ -218,7 +218,7 @@ create GT-CAP-PATH PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
    -1 FD:STDERR FD>N GT-CAP-READER ! ;
 
 \ A copy of fd at GT-FD-HOLD-MIN or above, close-on-exec from its first
-\ instant; -1 when the host refuses.
+\ instant; -errno when the host refuses.
 : GT-CAP-DUP ( n -- n )
    FD:F-DUPFD-CLOEXEC GT-FD-HOLD-MIN fcntl ;
 

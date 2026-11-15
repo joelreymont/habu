@@ -7,10 +7,10 @@
 \ no byte and a count past the asked one are E-FS-IO, which TRY-WRITE-FULL
 \ answers as how far its write got; TRY-WRITE answers 0 for a full descriptor
 \ or a signal. A negative length or offset is E-SPAN-LENGTH. A refused
-\ PIPE-PAIR, FD-CLOEXEC!, FD-NOSIGPIPE! or WITH-NOSIGPIPE fcntl is
-\ E-PROC-OUTPUT. A refused read, write, sync, resize, mode change, seek,
-\ duplicate or FIFO open leaves its errno in FS:ERRNO, the write words' included; a refused mark,
-\ PIPE, poll or fcntl leaves FS:ERRNO as it was.
+\ PIPE-PAIR, FD-CLOEXEC!, FD-NOSIGPIPE! or WITH-NOSIGPIPE is E-PROC-OUTPUT.
+\ Every refused call leaves its errno in FS:ERRNO; a write that takes no byte,
+\ a count past the asked one and a mark the host drops make no failed call,
+\ so FS:ERRNO holds no errno of theirs.
 \ Signals and descriptors stay the caller's.
 \ STORAGE CLASS. TASK-LOCAL: one pollfd row, and src/lib/fs.f's task-local path
 \ and stat buffers for TRY-FIFO-WRITER; byte spans stay with the caller.
@@ -67,11 +67,22 @@ ENUM wrote all none part ;ENUM
 : F-DUPFD-CLOEXEC ( -- n )
    HB-TARGET-LINUX-KERNEL? if 1030 else 67 then ;
 
+private
+
+\ Throws n with -rc, an engine call's -errno answer, as this task's FS:ERRNO.
+: RC-FAIL ( n n -- )
+   {: rc:n code:n :}
+   rc negate FS:CAUSE! code throw ;
+
+public
+
 : FD-CLOEXEC! ( fd -- ) {: fd :}
-   fd FD>N F-SETFD FD-CLOEXEC fcntl 0 <> if E-PROC-OUTPUT throw then ;
+   fd FD>N F-SETFD FD-CLOEXEC fcntl {: rc:n :}
+   rc 0 <> if rc E-PROC-OUTPUT RC-FAIL then ;
 
 : FD-NOSIGPIPE! ( fd -- ) {: fd :}
-   fd FD>N F-SETNOSIGPIPE 1 fcntl 0 <> if E-PROC-OUTPUT throw then ;
+   fd FD>N F-SETNOSIGPIPE 1 fcntl {: rc:n :}
+   rc 0 <> if rc E-PROC-OUTPUT RC-FAIL then ;
 
 
 \ Holds SIGPIPE off on fd for the quotation, then puts fd's flag back, throw or
@@ -84,16 +95,17 @@ ENUM wrote all none part ;ENUM
    {: f:fd body :}
    HB-TARGET-LINUX-KERNEL? if f FD-NOSIGPIPE! body execute exit then
    f FD>N F-GETNOSIGPIPE 0 fcntl {: old:n :}
-   old 0 < if E-PROC-OUTPUT throw then
+   old 0 < if old E-PROC-OUTPUT RC-FAIL then
    f FD-NOSIGPIPE!
    body catch {: code:n :}
-   f FD>N F-SETNOSIGPIPE old fcntl 0 <> if E-PROC-OUTPUT throw then
+   f FD>N F-SETNOSIGPIPE old fcntl {: rc:n :}
+   rc 0 <> if rc E-PROC-OUTPUT RC-FAIL then
    code 0<> if code throw then ;
 
 
 : PIPE-PAIR ( -- fd fd )
    pipe {: r w rc :}
-   rc 0 <> if E-PROC-OUTPUT throw then
+   rc 0 <> if rc E-PROC-OUTPUT RC-FAIL then
    r >FD w >FD ;
 
 private
@@ -121,22 +133,22 @@ FUNCTION: FCNTL-CALL fcntl ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
 : POLL-FD ( -- ^u8 ) 0 POLL-STORAGE ;
 
 : FLAGS ( fd -- n )
-   FD>N F-GETFL 0 fcntl dup 0 < if E-FS-IO throw then ;
+   FD>N F-GETFL 0 fcntl dup 0 < if E-FS-IO RC-FAIL then ;
 
 : RESTORE ( fd n -- )
    {: f:fd flags:n :}
-   f FD>N F-SETFL flags fcntl 0 < if E-FS-IO throw then ;
+   f FD>N F-SETFL flags fcntl {: rc:n :}
+   rc 0 < if rc E-FS-IO RC-FAIL then ;
 
 \ F_SETFL may silently ignore an unknown flag, so check the bit it accepted.
 : ARM ( fd n -- bool )
    {: f:fd flags:n :}
    flags O-NONBLOCK and 0<> if false exit then
-   f FD>N F-SETFL flags O-NONBLOCK or fcntl 0 < if f flags RESTORE E-FS-IO throw then
+   f FD>N F-SETFL flags O-NONBLOCK or fcntl {: rc:n :}
+   rc 0 < if f flags RESTORE rc E-FS-IO RC-FAIL then
    f FD>N F-GETFL 0 fcntl {: armed:n :}
-   armed 0 < armed O-NONBLOCK and 0= or if
-      f flags RESTORE
-      E-FS-IO throw
-   then
+   armed 0 < if f flags RESTORE armed E-FS-IO RC-FAIL then
+   armed O-NONBLOCK and 0= if f flags RESTORE E-FS-IO throw then
    true ;
 
 \ A positive poll count includes POLLERR/HUP/NVAL. The next write names that
@@ -153,7 +165,7 @@ FUNCTION: FCNTL-CALL fcntl ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
       0 6 POLL-STORAGE LE:U16!
       POLL-FD 1 ms poll {: rc:n :}
       rc 0 > if exit then
-      rc 0 < rc EINTR# negate <> and if E-FS-IO throw then
+      rc 0 < rc EINTR# negate <> and if rc E-FS-IO RC-FAIL then
    again ;
 
 public
@@ -209,11 +221,10 @@ private
 
 : PIPE-HELD ( -- fd fd )
    pipe {: r:n w:n rc:n :}
-   rc 0 <> if E-FS-IO throw then
+   rc 0 <> if rc E-FS-IO RC-FAIL then
    r F-SETFD FD-CLOEXEC fcntl
-   w F-SETFD FD-CLOEXEC fcntl or 0 <> if
-      r close w close E-FS-IO throw
-   then
+   w F-SETFD FD-CLOEXEC fcntl min {: set:n :}
+   set 0 <> if r close w close set E-FS-IO RC-FAIL then
    r >FD w >FD ;
 
 public
@@ -333,7 +344,8 @@ public
    then
    \ F_SETFL 0 clears the status flags F_SETFL can change; of those, the open
    \ set only O_NONBLOCK, so this leaves the write end blocking.
-   opened F-SETFL 0 fcntl 0 < if opened close E-FS-IO throw then
+   opened F-SETFL 0 fcntl {: rc:n :}
+   rc 0 < if opened close rc E-FS-IO RC-FAIL then
    opened >FD OPTION:SOME ;
 
 ;using

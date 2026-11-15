@@ -27,6 +27,8 @@ using MEM
 
 PROCESS-SYMBOLS
 FUNCTION: KQUEUE-CALL kqueue ( -- i32 ) ;FUNCTION
+FUNCTION: GET-LIMIT getrlimit ( n ^u8 -- i32 ) ;FUNCTION
+FUNCTION: SET-LIMIT setrlimit ( n ^u8 -- i32 ) ;FUNCTION
 
 $400000 constant PAYLOAD          \ 4 MiB: past any default pipe and Linux's pipe-max-size
 251 constant PATTERN-MOD          \ prime, so no power-of-two chunk realigns the pattern
@@ -47,6 +49,12 @@ variable UNTIL-AT                 \ deadline used by caught bounded-write cases
 variable FLAG-IN                  \ the SIGPIPE flag WITH-NOSIGPIPE's quotation read
 variable WROTE-IN                 \ WROTE>N of a write WITH-NOSIGPIPE's quotation tried
 1 TYPED-BUFFER NO-ENV ^u8      \ a NULL slot: the exec'd child's empty environment
+$40 constant SOFT-LIMIT           \ the descriptor limit the exhaustion case sets
+0 constant F-DUPFD                \ the same number on Linux and macOS
+: RLIMIT-NOFILE ( -- n ) HB-TARGET-MACOS? if 8 else 7 then ;
+create LIMITS 16 allot            \ struct rlimit: soft, then hard
+SOFT-LIMIT TYPED-BUFFER FILLER n
+variable FILLED                   \ FILLER's descriptors still open
 
 : OUTCOME ( FD:fill -- n )        \ FULL-MARK, or the bytes before end of file
    MATCH FD:fill
@@ -394,7 +402,6 @@ variable WROTE-IN                 \ WROTE>N of a write WITH-NOSIGPIPE's quotatio
    r FD>N ERR-FD !
    [: READ-CLOSED ;] E-FS-IO TTHROWSQ
    [: SYNC-CLOSED ;] E-FS-IO TTHROWSQ
-   [: NONBLOCK-ERR ;] E-FS-IO TTHROWSQ
    w FD:FD-NOSIGPIPE!
    w FD>N ERR-FD !
    [: WRITE-NO-READER ;] E-FS-IO TTHROWSQ
@@ -406,11 +413,36 @@ variable WROTE-IN                 \ WROTE>N of a write WITH-NOSIGPIPE's quotatio
 : SEEK-PIPE ( -- )
    ERR-FD @ >FD 0 SEEK ;
 
+: CLOEXEC-ERR ( -- )
+   ERR-FD @ >FD FD-CLOEXEC! ;
+
+: NOSIGPIPE-ERR ( -- )
+   ERR-FD @ >FD FD-NOSIGPIPE! ;
+
+: HOLD-ERR ( -- )
+   ERR-FD @ >FD [: ;] WITH-NOSIGPIPE ;
+
+: CAUSE-LEFT ( [ -- ] n n -- )
+   {: want:n :}
+   FS:CAUSE-CLEAR TTHROWSQ
+   FS:ERRNO want T= ;
+
+: EBADF-LEFT ( [ -- ] n -- )
+   FS:EBADF CAUSE-LEFT ;
+
+\ The E-PROC-OUTPUT words refused a closed descriptor leave EBADF too;
+\ Linux's SIGPIPE hold is process-wide and refuses no descriptor.
+: PROC-ERRNO ( -- )
+   [: CLOEXEC-ERR ;] E-PROC-OUTPUT EBADF-LEFT
+   HB-TARGET-MACOS? 0= if exit then
+   [: NOSIGPIPE-ERR ;] E-PROC-OUTPUT EBADF-LEFT
+   [: HOLD-ERR ;] E-PROC-OUTPUT EBADF-LEFT ;
+
 : MODE-CLOSED ( -- )
    ERR-FD @ >FD 416 MODE! ;
 
-\ A refused seek on a pipe and a refused mode change on a closed descriptor
-\ leave the call's errno in FS:ERRNO.
+\ A refused seek on a pipe, and a refused mode change or flags read on a
+\ closed descriptor, leave the call's errno in FS:ERRNO.
 : ERRNO-LEFT ( -- )
    FD:PIPE-PAIR {: r:fd w:fd :}
    r FD>N ERR-FD !
@@ -419,9 +451,9 @@ variable WROTE-IN                 \ WROTE>N of a write WITH-NOSIGPIPE's quotatio
    FS:ERRNO ESPIPE T=
    r FD>N close
    w FD>N close
-   FS:CAUSE-CLEAR
-   [: MODE-CLOSED ;] E-FS-IO TTHROWSQ
-   FS:ERRNO FS:EBADF T= ;
+   [: MODE-CLOSED ;] E-FS-IO EBADF-LEFT
+   [: NONBLOCK-ERR ;] E-FS-IO EBADF-LEFT
+   PROC-ERRNO ;
 
 
 \ The duplicate, close-on-exec where PIPE-PAIR's end is not, still carries bytes
@@ -523,15 +555,58 @@ variable WROTE-IN                 \ WROTE>N of a write WITH-NOSIGPIPE's quotatio
 
 
 \ XNU stores the flags before a kqueue refuses FIONBIO, so the refused mark
-\ must put them back.
+\ must put them back, and it leaves the refusal's errno in FS:ERRNO.
 : REFUSED-MARK ( -- )
    HB-TARGET-MACOS? 0= if exit then
    KQUEUE-CALL {: kq:n :}
    kq >FD FD-FLAGS {: before:n :}
    kq ERR-FD !
+   FS:CAUSE-CLEAR
    [: NONBLOCK-ERR ;] E-FS-IO TTHROWSQ
+   FS:ERRNO 0<> TTRUE
    kq >FD FD-FLAGS before T=
    kq close ;
+
+: LIMIT! ( n -- ) {: soft:n :}
+   RLIMIT-NOFILE LIMITS GET-LIMIT 0 T=
+   soft LIMITS !
+   RLIMIT-NOFILE LIMITS SET-LIMIT 0 T= ;
+
+\ Duplicates stdin until the limit refuses one: true when it did.
+: FILL ( -- bool )
+   0 FILLED !
+   begin
+      FILLED @ SOFT-LIMIT < while
+      0 F-DUPFD 0 fcntl {: fd:n :}
+      fd 0 < if true exit then
+      fd FILLED @ FILLER !
+      1 FILLED +!
+   repeat
+   false ;
+
+: CLOSE-FILLERS ( -- )
+   begin FILLED @ 0 > while
+      -1 FILLED +!
+      FILLED @ FILLER @ close
+   repeat ;
+
+: PAIR-STARVED ( -- )
+   FD:PIPE-PAIR FD>N close FD>N close ;
+
+: PIPE-STARVED ( -- )
+   FD:PIPE FD>N close FD>N close ;
+
+\ With the descriptor table full, PIPE-PAIR and PIPE are refused with EMFILE
+\ in FS:ERRNO.
+: PIPES-STARVED ( -- )
+   RLIMIT-NOFILE LIMITS GET-LIMIT 0 T=
+   LIMITS @ {: saved:n :}
+   SOFT-LIMIT LIMIT!
+   FILL TTRUE
+   [: PAIR-STARVED ;] E-PROC-OUTPUT FS:EMFILE CAUSE-LEFT
+   [: PIPE-STARVED ;] E-FS-IO FS:EMFILE CAUSE-LEFT
+   CLOSE-FILLERS
+   saved LIMIT! ;
 
 : MAIN ( -- )
    T-RESET
@@ -554,6 +629,7 @@ variable WROTE-IN                 \ WROTE>N of a write WITH-NOSIGPIPE's quotatio
    MODE-THEN-SEEK
    ERRORS
    ERRNO-LEFT
+   PIPES-STARVED
    DUPLICATE-WRITE
    DUPLICATE-CLOSED
    HELD-WRITE

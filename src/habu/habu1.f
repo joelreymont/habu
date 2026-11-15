@@ -631,14 +631,14 @@ variable NUM-LINT
    leave LBL,
    SP SP LINUX-SPAWN-FRAME ADDI, ;
 
-: BPIPE ( -- )                     \ ( -- rfd wfd rc ) rc=0, or -1 -1 -1
+: BPIPE ( -- )                     \ ( -- rfd wfd rc ) rc=0, or -errno thrice
    LBL LNX-OK !
    LBL LNX-DONE !
    HB-TARGET-LINUX? IF
       SP SP 16 SUBI,
       0 SP 0 ADDI,  1 0 MOVZ,  NR-PIPE SYS,
       9 C-CS CSET,  9 LNX-OK LABEL@ CBZ,
-         9 0 MOVN,  9 G-PUSH  9 G-PUSH  9 G-PUSH  LNX-DONE LABEL@ B,
+         0 G-PUSH  0 G-PUSH  0 G-PUSH  LNX-DONE LABEL@ B,
       LNX-OK LABEL@ LBL,
       0 SP 0 LDRW,  1 SP 4 LDRW,
       0 G-PUSH  1 G-PUSH  9 0 MOVZ,  9 G-PUSH
@@ -649,7 +649,7 @@ variable NUM-LINT
    HB-TARGET-MACOS? IF
       NR-PIPE SYS,
       9 C-CS CSET,  9 LNX-OK LABEL@ CBZ,
-         9 0 MOVN,  9 G-PUSH  9 G-PUSH  9 G-PUSH  LNX-DONE LABEL@ B,
+         0 31 0 SUB,  0 G-PUSH  0 G-PUSH  0 G-PUSH  LNX-DONE LABEL@ B,
       LNX-OK LABEL@ LBL,
       0 G-PUSH  1 G-PUSH  9 0 MOVZ,  9 G-PUSH
       LNX-DONE LABEL@ LBL,
@@ -688,22 +688,16 @@ public
 8 constant LINUX-SIGSET-SIZE
 
 private
+\ x0 is rt_sigaction's answer: 0, or -errno.
 : LINUX-IGNORE-SIGPIPE ( -- )
-   LBL {: ok:label :}
-   LBL {: done:label :}
    SP SP 64 SUBI,
    9 LINUX-SIG-IGN MOVZ,  9 SP 0 STR,
    9 0 MOVZ,  9 SP 8 STR,  9 SP 16 STR,  9 SP 24 STR,
    0 LINUX-SIGPIPE MOVZ,  1 SP 0 ADDI,  2 0 MOVZ,  3 LINUX-SIGSET-SIZE MOVZ,
    NR-SIGACTION SYS,
-   9 C-CS CSET,  9 ok CBZ,
-      0 0 MOVN,  done B,
-   ok LBL,
-      0 0 MOVZ,
-   done LBL,
    SP SP 64 ADDI, ;
 
-: BFCNTL ( -- )                    \ ( fd cmd arg -- rc ) rc=sysret or -1
+: BFCNTL ( -- )                    \ ( fd cmd arg -- rc ) rc=sysret or -errno
    2 G-POP  1 G-POP  0 G-POP
    LBL {: ok:label :}
    LBL {: done:label :}
@@ -714,9 +708,6 @@ private
          done B,
       LNX-REAL LABEL@ LBL,
       NR-FCNTL SYS,
-      9 C-CS CSET,  9 ok CBZ,
-         0 0 MOVN,  done B,
-      ok LBL,
       done LBL,
       0 G-PUSH
       exit
@@ -724,7 +715,7 @@ private
    HB-TARGET-MACOS? IF
       NR-FCNTL SYS,
       9 C-CS CSET,  9 ok CBZ,
-         0 0 MOVN,  done B,
+         0 31 0 SUB,  done B,
       ok LBL,
       done LBL,
       0 G-PUSH
