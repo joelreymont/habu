@@ -683,14 +683,23 @@ LOCSHOW-INSTALL
    0 DEST !  TEXT TEXT-LEN @ ;
 
 
-\ Record off's facts text, appended at TEXT-LEN.
-: REND-RECORD ( n -- ptr u8 n )
+\ Record off instantiated: its data rows, its return rows (0 0 when it has
+\ none) and whether it has them.
+: RECORD-ROWS ( n -- n n n n bool )
    {: off:n :}
    off E-PTR E-INST-RESET
    off E-PTR E-HASR@ 0 <> {: hasr:bool :}
    off E-PTR E-DIN@ E-INST  off E-PTR E-DOUT@ E-INST
    hasr IF off E-PTR E-RIN@ E-INST  off E-PTR E-ROUT@ E-INST ELSE 0 0 THEN
-   hasr REND-FACTS ;
+   hasr ;
+
+
+\ Record off's facts text, appended at TEXT-LEN.
+: REND-RECORD ( n -- ptr u8 n ) RECORD-ROWS REND-FACTS ;
+
+
+\ Record off's effect as REND-EFFECT writes it, appended at TEXT-LEN.
+: REND-RECORD-EFFECT ( n -- ptr u8 n ) RECORD-ROWS REND-EFFECT ;
 
 
 \ `creates-effect ` and the facts text of n, a created effect as checker.f
@@ -825,11 +834,7 @@ variable DSUGE  variable DSUGA
 : DECL-EFFECT ( -- )
    RECEFF @ {: off:n :}
    NLET @ RROW-N @ RATOM-N @ {: nlet:n rrow:n ratom:n :}
-   off E-PTR E-INST-RESET
-   off E-PTR E-HASR@ 0 <> {: hasr:bool :}
-   off E-PTR E-DIN@ E-INST  off E-PTR E-DOUT@ E-INST
-   hasr IF off E-PTR E-RIN@ E-INST  off E-PTR E-ROUT@ E-INST ELSE 0 0 THEN
-   {: din:n dout:n rin:n rout:n :}
+   off RECORD-ROWS {: din:n dout:n rin:n rout:n hasr:bool :}
    JSON-OPEN  TEXT-LEN @ {: from:n :}
    -1 RDECL !  0 RPOS-N !
    1 RNAMES !  din dout rin rout hasr from nlet rrow ratom DECL-PASS

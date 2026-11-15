@@ -272,6 +272,10 @@
 \   ...................................................... hover-dependency-open
 \ - a declaring token not answered with its definition, over it
 \   ...................................................... hover-definition
+\ - a use of a word SCRATCH-BUFFER: made not answered with its definition
+\   and its effect ( -- ptr u8 ) ...................... hover-made-scratch
+\ - a use of a word TYPED-BUFFER made not answered with its definition and
+\   its effect ( n -- ptr n ) ............................ hover-made-typed
 \ - a use of either converter a DEFTYPE declares, both at its name's token,
 \   in either case or package-qualified, not answered with that converter's
 \   own definition ........................................... hover-deftype
@@ -3523,6 +3527,39 @@ DYNAMIC-BUFFER TREE-TEXT u8
    SAY
    2 HV-ONE-MD s" 3" s" markdown" 1 2 8 HOVERED
    2 HV-ONE-MD s" 4" s" markdown" 1 2 8 HOVERED ;
+
+: HOVER-MADE-PATH ( -- ptr u8 n )  s" hover-made.f" IN-TREE ;
+: TEXT-HOVER-MADE ( -- ptr u8 n )
+   s\" package HV-M\n16 SCRATCH-BUFFER: SB\n4 TYPED-BUFFER HV-TB n\n: HV-P ( -- ptr u8 ) SB ;\n: HV-T ( -- n ) 0 HV-TB @ ;\n;package\n" ;
+
+\ The lines of word W, which definer K made with effect E on 1-based line L,
+\ as Markdown.
+: MADE-MD ( ptr u8 n ptr u8 n ptr u8 n n -- )
+   {: k:ptr ku:n w:ptr wu:n e:ptr eu:n l:n :}
+   TXT-B CLEAR s\" ```habu\n" HV+ k ku HV+ s"  " HV+ w wu HV+
+   s"  ( " HV+ e eu HV+ s\"  )\n\\ package hv-m, hover-made.f:" HV+
+   SB-RESET l FMT:SB-INT SB$ HV+ s\" \n```" HV+ ;
+
+\ Asks for the hover at 0-based line L, character C of the checked document.
+: HOVER-MADE-ASK ( n n -- )
+   {: l:n c:n :}
+   MARKDOWN-CLIENT
+   HOVER-MADE-PATH TEXT-HOVER-MADE 1 OPENS
+   SAY
+   SESSION-CAPABILITIES
+   HOVER-MADE-PATH 1 CLEAN
+   s" 3" HOVER-MADE-PATH l c HOVER-ASK
+   SAY ;
+
+: HOVER-SCRATCH-TURNS ( -- )
+   3 21 HOVER-MADE-ASK
+   s" SCRATCH-BUFFER:" s" SB" s" -- ptr u8" 2 MADE-MD
+   s" 3" s" markdown" 3 21 23 HOVERED ;
+
+: HOVER-TYPED-TURNS ( -- )
+   4 18 HOVER-MADE-ASK
+   s" TYPED-BUFFER" s" HV-TB" s" n -- ptr n" 3 MADE-MD
+   s" 3" s" markdown" 4 18 23 HOVERED ;
 
 : HOVER-CVT-PATH ( -- ptr u8 n )  s" hover-cvt.f" IN-TREE ;
 : TEXT-HOVER-CVT ( -- ptr u8 n )
@@ -6822,6 +6859,8 @@ variable PROBE-DECLS
    s" hover-dependency" [: HOVER-DEP-TURNS ;] TALK
    s" hover-dependency-open" [: HOVER-OPEN-DEP-TURNS ;] TALK
    s" hover-definition" [: HOVER-DEF-TURNS ;] TALK
+   s" hover-made-scratch" [: HOVER-SCRATCH-TURNS ;] TALK
+   s" hover-made-typed" [: HOVER-TYPED-TURNS ;] TALK
    s" hover-deftype" [: HOVER-DEFTYPE-TURNS ;] TALK
    s" hover-none" [: HOVER-NONE-TURNS ;] TALK
    s" hover-not-open" [: HOVER-NOT-OPEN-TURNS ;] TALK

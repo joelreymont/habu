@@ -176,6 +176,10 @@
 require src/lib/error.f
 require src/lib/source-syntax.f
 require src/core/checker-owner-guard.f
+require src/core/checker.f
+require src/core/check-walk.f
+require src/core/rejection.f
+require src/core/render.f
 require src/lib/string.f
 require src/lib/fs.f
 require src/habu/boot-cells.f
@@ -1159,8 +1163,7 @@ variable GROUP-AT
    TOKEN-A @ TOKEN-U @ BLOCK-STEP
    SKIP-BODY-TOKEN ;
 
-\ Replay-only checker queries use the live declaration owner. The verifier is
-\ source loaded, so the sealed image need not publish these checker names.
+\ Replay-only checker queries use the live declaration owner.
 : OWNER-XT ( n -- n ) {: off:n :}
    NCOMP-DISPATCH:DECL-A @
    off CELL + CHECKER-OWNER-GUARD:VALIDATE
@@ -2130,6 +2133,25 @@ DUPLICATE-INIT
    {: name:ptr nameu:n eff:ptr effu:n at:n class:n :}
    TOP-CUR-A @ TOP-CUR-U @ name nameu eff effu at at nameu + class DEFINED ;
 
+\ The effect of NAME's retained newest record, or empty when there is none or
+\ TEXT cannot say it; it lies past TEXT-LEN, where the next TEXT write lands.
+: MADE-EFFECT ( ptr u8 n -- ptr u8 n )
+   RETAINED-SYM {: sym:n :}
+   sym 0= IF s" " EXIT THEN
+   sym USIG-NEWEST {: rec1:n :}
+   rec1 0= IF s" " EXIT THEN
+   REJECTION:TEXT-LEN @ RQM @ REJECTION:DEST @ {: base:n qm:n dst:n :}
+   rec1 1 - REND-RECORD-EFFECT {: a:ptr u:n :}
+   RQM @ {: unsaid:n :}
+   base REJECTION:TEXT-LEN !  qm RQM !  dst REJECTION:DEST !
+   unsaid 0<> IF s" " EXIT THEN
+   a base +  u base - ;
+
+\ DEFINED-HERE for a word a definer made, with the effect its record carries.
+: DEFINED-MADE ( ptr u8 n n n -- )
+   {: name:ptr nameu:n at:n class:n :}
+   name nameu  name nameu MADE-EFFECT  at class DEFINED-HERE ;
+
 : SIG-RAW-MODE! ( n -- ) SIG-RAW-MODE ! ;
 
 \ Registers the effect for the word the next token names with TVK-RAW type
@@ -2161,7 +2183,7 @@ DUPLICATE-INIT
    name nameu dsym RECORD-CREATED
    DISARM
    0= IF 0 0= 0= EXIT THEN
-   name nameu s" " at DEF-STORAGE DEFINED-HERE
+   name nameu at DEF-STORAGE DEFINED-MADE
    0 0= ;
 
 : TRUST-DEFER-SIGNATURE ( ptr u8 n n -- )
@@ -2529,7 +2551,7 @@ variable STG-TYPE-U
    name nameu at nameu ARM
    type typeu count countu name nameu CHECKER-DEFLAYOUT-BUFFER
    DISARM
-   name nameu s" " at DEF-STORAGE DEFINED-HERE ;
+   name nameu at DEF-STORAGE DEFINED-MADE ;
 
 \ DEFER-LAYOUT-BUFFER publishes its accessor and NAME-BIND and NAME-GROW from
 \ one line, so a later definition calling one is E-UNDEFINED without this row,
@@ -2542,7 +2564,7 @@ variable STG-TYPE-U
    name nameu at nameu ARM
    type typeu name nameu CHECKER-DEFDEFER-LAYOUT-BUFFER
    DISARM
-   name nameu s" " at DEF-STORAGE DEFINED-HERE ;
+   name nameu at DEF-STORAGE DEFINED-MADE ;
 
 : RECORD-TYPED-BUFFER ( -- )
    TOP-PREV-A @ TOP-PREV-U @ {: count:ptr countu:n :}
@@ -2553,7 +2575,7 @@ variable STG-TYPE-U
    name nameu at nameu ARM
    type typeu count countu name nameu CHECKER-DEFTYPED-BUFFER
    DISARM
-   name nameu s" " at DEF-STORAGE DEFINED-HERE ;
+   name nameu at DEF-STORAGE DEFINED-MADE ;
 
 : RECORD-TYPED-VARIABLE ( -- )
    SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
@@ -2562,7 +2584,7 @@ variable STG-TYPE-U
    name nameu at nameu ARM
    type typeu name nameu CHECKER-DEFTYPED-VARIABLE
    DISARM
-   name nameu s" " at DEF-STORAGE DEFINED-HERE ;
+   name nameu at DEF-STORAGE DEFINED-MADE ;
 
 : RECORD-BYTE-BUFFER ( -- )
    TOP-PREV-A @ TOP-PREV-U @ {: count:ptr countu:n :}
@@ -2573,7 +2595,7 @@ variable STG-TYPE-U
    name nameu at nameu ARM
    type typeu count countu name nameu CHECKER-DEFBYTE-BUFFER
    DISARM
-   name nameu s" " at DEF-STORAGE DEFINED-HERE ;
+   name nameu at DEF-STORAGE DEFINED-MADE ;
 
 
 : RECORD-CWORK-SPAN ( -- )
@@ -2585,7 +2607,7 @@ variable STG-TYPE-U
    name nameu at nameu ARM
    type typeu count countu name nameu CHECKER-DEFCWORK-SPAN
    DISARM
-   name nameu s" " at DEF-STORAGE DEFINED-HERE ;
+   name nameu at DEF-STORAGE DEFINED-MADE ;
 
 : RECORD-SLOT ( -- )
    SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
@@ -2594,7 +2616,7 @@ variable STG-TYPE-U
    name nameu at nameu ARM
    type typeu name nameu CHECKER-DEFSLOT
    DISARM
-   name nameu s" " at DEF-STORAGE DEFINED-HERE ;
+   name nameu at DEF-STORAGE DEFINED-MADE ;
 
 : RECORD-CWORK-VARIABLE ( -- )
    SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
@@ -2603,7 +2625,7 @@ variable STG-TYPE-U
    name nameu at nameu ARM
    type typeu name nameu CHECKER-DEFCWORK-VARIABLE
    DISARM
-   name nameu s" " at DEF-STORAGE DEFINED-HERE ;
+   name nameu at DEF-STORAGE DEFINED-MADE ;
 
 \ DYNAMIC-BUFFER publishes THREE words from one line - the accessor,
 \ NAME-RESERVE and NAME-RELEASE. Certification never runs the definer, and
@@ -2617,7 +2639,7 @@ variable STG-TYPE-U
    name nameu at nameu ARM
    type typeu name nameu CHECKER-DEFDYNAMIC-BUFFER
    DISARM
-   name nameu s" " at DEF-STORAGE DEFINED-HERE ;
+   name nameu at DEF-STORAGE DEFINED-MADE ;
 
 \ NAME, read from byte AT, names no word itself, so a taken derived word is the
 \ duplicate, refused at NAME.
