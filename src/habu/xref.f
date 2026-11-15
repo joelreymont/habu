@@ -878,15 +878,19 @@ seal-package
 : SEE ( -- )
    XREF ;
 
+\ `undefine`, the source token t tu, has no name after it. It is written
+\ through its help, and the caller stops it.
+: UNDEFINE-NO-NAME ( ptr u8 n -- ) {: t:ptr tu:n :}
+   t tu s" the name of the word to retire"
+   t tu s" no name follows" REJECTION:MISSING-OPERAND
+   s" write the word after it, as in `undefine NAME`" REJECTION:EMIT-STR ;
+
 \ The `undefine` token is kept at entry: parse-name moves the token cells.
 : undefine ( -- )
    data-base TKA-CELL + 0 ptr-field @  data-base TKL-CELL + @
    {: ta:ptr tu:n :}
    parse-name dup 0= if
-      ta tu s" the name of the word to retire"
-      ta tu s" no name follows" REJECTION:MISSING-OPERAND
-      s" write the word after it, as in `undefine NAME`" REJECTION:EMIT-STR
-      CHECKER-REJECT-RC REJECTION:STOP
+      ta tu UNDEFINE-NO-NAME  CHECKER-REJECT-RC REJECTION:STOP
    then
    UNDEFINE-NAME ;
 

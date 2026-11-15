@@ -455,10 +455,30 @@ variable FLAG-N
    {: e:n :}
    s b +  e b - ;
 
+: STRUCTURE-PTR-FIELD? ( ptr u8 n -- bool )
+   s" PTR-FIELD:" STR=CI ;
+
+: STRUCTURE-CFIELD? ( ptr u8 n -- bool )
+   s" CFIELD:" STR=CI ;
+
+: STRUCTURE-CELL-FIELD? ( ptr u8 n -- bool )
+   s" +FIELD" STR=CI ;
+
+: STRUCTURE-FIELD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u STRUCTURE-PTR-FIELD?  a u STRUCTURE-CFIELD? or
+   a u STRUCTURE-CELL-FIELD? or ;
+
+\ The definer t tu has no name after it: the record the loader writes for
+\ that definer, else the general one, written through its help.
+: NO-NAME-RECORD ( ptr u8 n -- ) {: t:ptr tu:n :}
+   t tu s" defer" STR=CI IF t tu INTERPRETER:DEFER-NO-NAME EXIT THEN
+   t tu s" undefine" STR=CI IF t tu UNDEFINE-NO-NAME EXIT THEN
+   t tu STRUCTURE-FIELD? IF t tu t tu STRUCT-NO-NAME EXIT THEN
+   t tu t tu s" no name follows" REJECTION:MISSING-NAME ;
+
 \ The definer the scan read last, at TOKEN-BYTE, has no name after it.
 : NAME-STOP ( -- )
-   TOKEN-BYTE @ TOKEN-FROM {: t:ptr tu:n :}
-   t tu t tu s" no name follows" REJECTION:MISSING-NAME
+   TOKEN-BYTE @ TOKEN-FROM NO-NAME-RECORD
    CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ The definition's checker reads a `(` after its definer as the signature, so
@@ -3494,15 +3514,6 @@ variable FILE-USE
 
 : STRUCTURE-END? ( ptr u8 n -- bool )
    s" END-STRUCTURE" STR=CI ;
-
-: STRUCTURE-PTR-FIELD? ( ptr u8 n -- bool )
-   s" PTR-FIELD:" STR=CI ;
-
-: STRUCTURE-CFIELD? ( ptr u8 n -- bool )
-   s" CFIELD:" STR=CI ;
-
-: STRUCTURE-CELL-FIELD? ( ptr u8 n -- bool )
-   s" +FIELD" STR=CI ;
 
 : TRUST-STRUCTURE-FIELD ( ptr u8 n ptr u8 n -- bool )
    DECL-SIGNATURE ;

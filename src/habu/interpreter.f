@@ -2636,14 +2636,20 @@ variable DEF-VALUE
 \ and the checker gets the effect before the body compiles, which asks it
 \ whether the defer returns.
 
+public
+\ `defer`, the source token t tu, has no name after it. It is written through
+\ its help, and the caller stops it.
+: DEFER-NO-NAME ( ptr u8 n -- ) {: t:ptr tu:n :}
+   t tu s" a name" t tu s" no name follows" REJECTION:MISSING-OPERAND
+   s" write the defer's name and signature after `" REJECTION:EMIT-STR
+   t tu REJECTION:EMIT-STR  s" `, as `defer NAME ( n -- n )`" REJECTION:EMIT-STR ;
+private
+
 \ With the input at its end the token cells still hold the keyword, which the
-\ refusal names.
+\ rejection names.
 : DEFER-NAME ( -- )
    TOKEN if exit then
-   TOKEN$ s" a name" TOKEN$ s" no name follows" REJECTION:MISSING-OPERAND
-   s" write the defer's name and signature after `" REJECTION:EMIT-STR
-   TOKEN$ REJECTION:EMIT-STR  s" `, as `defer NAME ( n -- n )`" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   TOKEN$ DEFER-NO-NAME  CHECKER-REJECT-RC REJECTION:STOP ;
 
 : DEFER-UNSET-XT ( -- n )
    s" defer-unset" FIND-SCOPE {: rec:ptr :}
