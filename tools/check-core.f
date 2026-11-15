@@ -652,22 +652,14 @@ private
    REJECTION:NO-FILE$ REJECTION:FILE!
    code codeu REJECTION:OPEN ;
 
-\ An input that is no file is rejected as the loader rejects a missing entry,
-\ looked up from the directory hb runs in.
+\ An input that is no file gets the load's record: a missing entry's, a
+\ directory's EISDIR, or for any other non-file the stamping reader's.
 : CHK-NO-INPUT ( ^u8 n -- ) {: a:^ u:n :}
-   s" E-MISSING-SOURCE" CHK-INPUT-OPEN
-   s" cannot open `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR  96 REJECTION:EMIT1
-   a u REJECTION:AT
-   a u FS:EXISTS? if s" not a file" else s" not found" then REJECTION:EMIT-STR
-   s" searched" REJECTION:NOTE
-   u 0= if true else a c@ 47 <> then if
-      SOURCE-ROOT:CWD$ REJECTION:EMIT-STR  47 REJECTION:EMIT1
-   then
-   a u REJECTION:EMIT-STR
-   REJECTION:HELP
-   s" name a source file; a path given on the command line is looked up from " REJECTION:EMIT-STR
-   s" the directory hb runs in" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   a u CANONICAL {: path:^ pathu:n exists:bool :}
+   exists 0= if a u a u true SOURCE-ROOT:MISSING-SOURCE then
+   a u FS:DIR? if path pathu FS:EISDIR CHK-UNREADABLE-NAMED then
+   NULL-PTR 0 path pathu SOURCE-ROOT:UNSTAMPED-SOURCE
+   INCLUDE-IO-RC REJECTION:STOP ;
 
 : CHK-ENGINE-PROVIDED ( ^u8 n -- ) {: a:^ u:n :}
    s" E-ENGINE-PROVIDED" CHK-INPUT-OPEN

@@ -1484,6 +1484,51 @@ variable RC
    SB-RESET s" --> " SB-APPEND FX-PATH$ SB-APPEND at atu SB-APPEND
    ERR$ SB$ CONTAINS? TTRUE ;
 
+\ The fixture path names NAME under the test's root, without making it.
+: NAMED! ( ^u8 n -- ) {: name:^ nameu:n :}
+   BASE$ name nameu FX-P FS:JOIN-PATH FX-PU ! ;
+
+\ The check's only record stands in no source: it names no file and no word.
+: UNPLACED ( -- )
+   GJA-LINE# @ 1 T=
+   GJA-LINE# @ 0 > 0= IF EXIT THEN
+   0 GJA-LINE$ GJA-PARSE {: root:SPAN:span<u8> :}
+   root s" file" FIELD-ABSENT
+   root s" notes" GJA-FIELD? IF s" word" FIELD-ABSENT ELSE drop THEN ;
+
+\ A named input that does not exist gets the load's record and status, from the
+\ load and the check alike.
+: TEST-NAMED-MISSING ( -- )
+   s" a named input that does not exist" T-LABEL
+   s" named-missing.f" NAMED!
+   SB-RESET  s" error[E-MISSING-SOURCE]: cannot open `" SB-APPEND  FX-PATH$ SB-APPEND
+   S\" `\n  = searched: " SB-APPEND  FX-PATH$ SB-APPEND
+   S\" \n  = help: a path given on the command line is looked up from the" SB-APPEND
+   S\"  directory hb runs in\n\n" SB-APPEND
+   SB$ REJECT-RC LOADED  ERR$ SB$ T$=
+   s" " CHECK
+   0 s" code" s" E-MISSING-SOURCE" FIELD=
+   SB-RESET  s" cannot open `" SB-APPEND  FX-PATH$ SB-APPEND  s" `" SB-APPEND
+   0 s" message" SB$ FIELD=
+   0 s" searched" FX-PATH$ NOTE=
+   0 s" help" s" a path given on the command line is looked up from the directory hb runs in" FIELD=
+   UNPLACED ;
+
+\ A named directory gets the load's record of an open that fails with EISDIR,
+\ and its status, from the load and the check alike.
+: TEST-NAMED-DIR ( -- )
+   s" a named input that is a directory" T-LABEL
+   s" named-dir" NAMED!  FX-PATH$ FS:MAKE-DIR
+   SB-RESET  s" error[E-UNREADABLE-SOURCE]: cannot read `" SB-APPEND  FX-PATH$ SB-APPEND
+   S\" `: is a directory\n  = help: name a source file, not a directory\n\n" SB-APPEND
+   SB$ INCLUDE-IO-RC LOADED  ERR$ SB$ T$=
+   s" " INCLUDE-IO-RC CHECK-EXIT
+   0 s" code" s" E-UNREADABLE-SOURCE" FIELD=
+   SB-RESET  s" cannot read `" SB-APPEND  FX-PATH$ SB-APPEND  s" `: is a directory" SB-APPEND
+   0 s" message" SB$ FIELD=
+   0 s" help" s" name a source file, not a directory" FIELD=
+   UNPLACED ;
+
 \ The load rejects a malformed qualified name at its `:`, as the check does.
 : TEST-MALFORMED-LOAD ( -- )
    s" a malformed colon definition the load rejects at its `:`" T-LABEL
@@ -2620,6 +2665,8 @@ variable RC
    TEST-ALL-LINTS
    TEST-ALL-ORDER
    TEST-ALL-UNREADABLE
+   TEST-NAMED-MISSING
+   TEST-NAMED-DIR
    TEST-ALL-DEAD-ARM
    TEST-NOT-RECORDED
    TEST-GENERATES

@@ -227,7 +227,6 @@ variable CHK-EXPAND-TOP
 \ PATH, a file the caller named, will not open, with errno E: the loader's
 \ rejection, which no source places.
 : CHK-UNREADABLE-NAMED ( ^u8 n n -- ) {: path:^ pathu:n e:n :}
-   path pathu REJECTION:FILE!
    NULL-PTR 0 path pathu e SOURCE-ROOT:UNREADABLE-SOURCE ;
 
 : CHK-EVENT-DEP+ ( n -- ) {: ix:n :}
