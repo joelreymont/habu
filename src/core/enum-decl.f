@@ -17,7 +17,6 @@ using DECL-FRONT
 \ Transient parse state, not declaration state: ENUM is top-level
 \ interpret-only, so one declaration runs at a time.
 variable FAM        \ family id being declared
-variable TOK        \ declaration-event token; ED-RESET zeroes it at body start
 variable VBASE      \ variant high-water at open (variant range start)
 variable NVAR       \ variant count in this declaration
 variable FLDBASE    \ committed field high-water at open (field range start)
@@ -28,7 +27,7 @@ variable SEEN-VARIANT \ a VARIANT has appeared (header clauses must precede vari
 variable POINTEE    \ resolving the pointee of `ptr`: the declared family may be named
 
 : ED-RESET ( -- )
-   0 TOK !   0 SEEN-VARIANT !   0 POINTEE ! ;
+   0 SEEN-VARIANT !   0 POINTEE ! ;
 ED-RESET
 
 \ The reserved list is TYPE-NAME:FAMILY-RESERVED?, the one every family definer
@@ -120,7 +119,7 @@ ED-RESET
    HEADER-ORDER
    NEXT POLICY-CODE {: code:n :}
    FAM @ code TFAM-LAYOUT!
-   TOK @ FAM @ code DECL-EVENT:POLICY TOK ! ;
+   FAM @ code DECL-EVENT:POLICY ;
 
 : DERIVE-FEATURE? ( ptr u8 n -- bool )
    2dup s" eq" CORE-STR=CI IF 2drop YES EXIT THEN
@@ -164,13 +163,11 @@ ED-RESET
       s" derive requires a concrete (arity 0) family"
       s" drop the type parameters or the `DERIVE` clause: only an arity-0 family derives"
       E-TDECL-DERIVE DECL-REJECT:REJECT throw THEN ;
-: EMIT-DERIVE ( n n -- )
-   TOK @ -rot DECL-EVENT:DERIVE TOK ! ;
 : DERIVE-ONE ( ptr u8 n -- )
    DERIVE-GUARD
-   2dup s" eq" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-EQ! FAM @ DRV-EQ EMIT-DERIVE EXIT THEN
-   2dup s" hash" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-HASH! FAM @ DRV-HASH EMIT-DERIVE EXIT THEN
-   2dup s" tag" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-TAG! FAM @ DRV-TAG EMIT-DERIVE EXIT THEN
+   2dup s" eq" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-EQ! FAM @ DRV-EQ DECL-EVENT:DERIVE EXIT THEN
+   2dup s" hash" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-HASH! FAM @ DRV-HASH DECL-EVENT:DERIVE EXIT THEN
+   2dup s" tag" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-TAG! FAM @ DRV-TAG DECL-EVENT:DERIVE EXIT THEN
    2dup s" order" CORE-STR=CI IF
       2drop s" derive feature not yet supported"
       s" derive `eq`, `hash` or `tag` instead: `order` is not implemented"
@@ -198,9 +195,9 @@ ED-RESET
    s" duplicate field name"
    s" give each field of the variant its own name"
    E-TFAM-DUP DECL-REJECT:EXPECT
-   TOK @ FAM @ 2swap sch
+   FAM @ -rot sch
    VCELLS @  fw  VCELLS @ CELL *  fw CELL *  CELL  PF-FLAGS-NONE
-   DECL-EVENT:FIELD TOK !
+   DECL-EVENT:FIELD
    fw VCELLS @ + VCELLS !
    NFLD @ 1 + NFLD ! ;
 : FIELD-CLAUSE ( -- )
@@ -241,15 +238,14 @@ ED-RESET
    s" duplicate variant"
    s" give each variant of the enum its own name"
    E-TFAM-DUP DECL-REJECT:EXPECT
-   TOK @ FAM @ na nu
-   DECL-EVENT:VARIANT TOK ! ;
+   FAM @ na nu DECL-EVENT:VARIANT ;
 : OPEN-VARIANT ( -- )
    SEEN-CLEAR
    VARIANT-NAME VARIANT-START
    0 VCELLS ! ;
 : CLOSE-VARIANT ( -- )
    VCELLS @ MAXSLOTS @ max MAXSLOTS !
-   TOK @ FAM @ DECL-EVENT:END-VARIANT TOK !
+   FAM @ DECL-EVENT:END-VARIANT
    NVAR @ 1 + NVAR ! ;
 : VARIANT-CLAUSE ( -- bool )            \ read one variant-body token; YES = ;VARIANT
    NEXT dup 0= IF 2drop
@@ -280,7 +276,7 @@ ED-RESET
       E-TDECL-CAP DECL-REJECT:REJECT throw THEN
    -1 SEEN-VARIANT !
    na nu VARIANT-START
-   TOK @ FAM @ DECL-EVENT:END-VARIANT TOK !
+   FAM @ DECL-EVENT:END-VARIANT
    NVAR @ 1 + NVAR ! ;
 : COMPACT-CLAUSE ( ptr u8 n -- bool )    \ dispatch one compact token; YES = ;ENUM
    2dup DECL-REJECT:TOKEN!               \ the mode-selecting token arrives pre-read
@@ -303,8 +299,7 @@ ED-RESET
    SUMV-N@ VBASE !
    TYPE-FIELD:COUNT FLDBASE !
    0 NVAR !   0 NFLD !   0 MAXSLOTS !
-   DECL-EVENT:CURRENT TOK !
-   TOK @ FAM @ DECL-EVENT:DECL TOK ! ;
+   FAM @ DECL-EVENT:DECL ;
 : REGISTER-FULL ( ptr u8 n n -- )
    {: na:ptr nu:n ar:n :}
    na nu DECL-REJECT:TOKEN!
@@ -314,7 +309,7 @@ ED-RESET
    TFAM-ACTIVE-PKG$ VIS na nu
    ar TK-SUM TFAM-DECL FAM !
    OPEN-TX
-   TOK @ FAM @ ar DECL-EVENT:ARITY TOK ! ;
+   FAM @ ar DECL-EVENT:ARITY ;
 : REGISTER-COMPACT ( ptr u8 n -- )
    {: na:ptr nu:n :}
    na nu DECL-REJECT:TOKEN!
@@ -329,9 +324,9 @@ ED-RESET
 \ is read through DECL-EVENT.
 : NICHE-SHAPE? ( -- bool )
    NVAR @ 2 <> IF NO EXIT THEN
-   TOK @ FAM @ VBASE @ DECL-EVENT:PAYLOAD-N 0 <> IF NO EXIT THEN
-   TOK @ FAM @ VBASE @ 1 + DECL-EVENT:PAYLOAD-N 1 <> IF NO EXIT THEN
-   TOK @ FAM @ VBASE @ 1 + 0 DECL-EVENT:PAYLOAD-SCHEMA@
+   FAM @ VBASE @ DECL-EVENT:PAYLOAD-N 0 <> IF NO EXIT THEN
+   FAM @ VBASE @ 1 + DECL-EVENT:PAYLOAD-N 1 <> IF NO EXIT THEN
+   FAM @ VBASE @ 1 + 0 DECL-EVENT:PAYLOAD-SCHEMA@
    SCHEMA-ROOT@ SCHEMA-PTR? ;
 : NICHE-REQUIRE ( -- )
    FAM @ TFAM-NICHE? 0= IF EXIT THEN
@@ -369,7 +364,7 @@ ED-RESET
    FAM @ VBASE @ NVAR @ TFAM-VAR-RANGE!
    FAM @ FLDBASE @ NFLD @ TFAM-FLD-RANGE!
    NFLD @ 0 ?do
-      TOK @ FAM @ FLDBASE @ i + DECL-EVENT:FIELD-SCHEMA@ SCHEMA-ROOT@
+      FAM @ FLDBASE @ i + DECL-EVENT:FIELD-SCHEMA@ SCHEMA-ROOT@
       s" payload type is a pointer to a linear value and cannot own it"
       DECL-EVENT:REQUIRE-POINTEES
    loop

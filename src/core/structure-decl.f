@@ -16,7 +16,6 @@ using DECL-FRONT
 \ Transient parse state, not declaration state: STRUCTURE is top-level
 \ interpret-only, so one declaration runs at a time.
 variable FAM        \ family id being declared
-variable TOK        \ declaration-event token; SD-RESET zeroes it at body start
 variable FLDBASE    \ committed field high-water at open (field range start)
 variable NFLD       \ field count in this declaration
 variable SD-CELLS      \ running field cell width (next field's slot / byte offset)
@@ -28,7 +27,7 @@ create SD-ARGS SD-ARG-CAP cells allot
 variable SD-ARG-N
 
 : SD-RESET ( -- )
-   0 TOK !   0 SEEN-FIELD ! ;
+   0 SEEN-FIELD ! ;
 SD-RESET
 : SD-MISSING! ( -- ) TYPE@ MISSING! ;
 
@@ -368,14 +367,14 @@ SD-QUOT-INSTALL
       s" drop `POLICY niche-null`: only an `ENUM` with an empty variant, then one `ptr` field, can use it"
       TYPE-DECL:E-TDECL-POLICY DECL-REJECT:REJECT throw THEN
    FAM @ code TFAM-LAYOUT!
-   TOK @ FAM @ code DECL-EVENT:POLICY TOK ! ;
+   FAM @ code DECL-EVENT:POLICY ;
 
 \ OPAQUE keeps the family's visibility and moves its generated words to the
 \ private-family placement (TFAM-GEN-PUBLIC? answers placement, TFAM-PUBLIC?
 \ visibility).
 : OPAQUE-CLAUSE ( -- )
    HEADER-ORDER
-   TOK @ FAM @ DECL-EVENT:OPAQUE TOK !
+   FAM @ DECL-EVENT:OPAQUE
    FAM @ TFAM-OPAQUE! ;
 
 : DERIVE-FEATURE? ( ptr u8 n -- bool )
@@ -392,16 +391,14 @@ SD-QUOT-INSTALL
       s" derive requires a concrete (arity 0) family"
       s" drop `eq` and `hash` from `DERIVE`, or declare the structure with no type parameters"
       TYPE-DECL:E-TDECL-DERIVE DECL-REJECT:REJECT throw THEN ;
-: EMIT-DERIVE ( n n -- )
-   TOK @ -rot DECL-EVENT:DERIVE TOK ! ;
 \ `addr` has no arity condition: an accessor projects the field schema at the
 \ caller's instantiation, and the checker refuses the one instantiation a baked
 \ offset would misdescribe (a type argument wider than one cell).
 : DERIVE-ONE ( ptr u8 n -- )
-   2dup s" eq" CORE-STR=CI IF 2drop DERIVE-CONCRETE FAM @ TFAM-DERIVE-EQ! FAM @ DRV-EQ EMIT-DERIVE EXIT THEN
-   2dup s" hash" CORE-STR=CI IF 2drop DERIVE-CONCRETE FAM @ TFAM-DERIVE-HASH! FAM @ DRV-HASH EMIT-DERIVE EXIT THEN
-   2dup s" addr" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-ADDR! FAM @ DRV-ADDR EMIT-DERIVE EXIT THEN
-   2dup s" init" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-INIT! FAM @ DRV-INIT EMIT-DERIVE EXIT THEN
+   2dup s" eq" CORE-STR=CI IF 2drop DERIVE-CONCRETE FAM @ TFAM-DERIVE-EQ! FAM @ DRV-EQ DECL-EVENT:DERIVE EXIT THEN
+   2dup s" hash" CORE-STR=CI IF 2drop DERIVE-CONCRETE FAM @ TFAM-DERIVE-HASH! FAM @ DRV-HASH DECL-EVENT:DERIVE EXIT THEN
+   2dup s" addr" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-ADDR! FAM @ DRV-ADDR DECL-EVENT:DERIVE EXIT THEN
+   2dup s" init" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-INIT! FAM @ DRV-INIT DECL-EVENT:DERIVE EXIT THEN
    2dup s" tag" CORE-STR=CI IF
       2drop s" derive tag requires an enum"
       s" drop `tag` from `DERIVE`: only an `ENUM` derives it"
@@ -429,9 +426,9 @@ SD-QUOT-INSTALL
    2dup DECL-REJECT:TOKEN!
    s" duplicate field name"
    s" give each field of this declaration its own name" E-TFAM-DUP DECL-REJECT:EXPECT
-   TOK @ FAM @ 2swap sch
+   FAM @ -rot sch
    SD-CELLS @  fw  SD-CELLS @ CELL *  fw CELL *  CELL  PF-FLAGS-NONE
-   DECL-EVENT:FIELD TOK !
+   DECL-EVENT:FIELD
    fw SD-CELLS @ + SD-CELLS !
    NFLD @ 1 + NFLD ! ;
 \ A field named like a generated member (MAKE, UNMAKE, F:AT, F:BYTES, F:CELLS, a
@@ -476,9 +473,8 @@ SD-QUOT-INSTALL
    ar TK-PRODUCT TFAM-DECL FAM !
    TYPE-FIELD:COUNT FLDBASE !
    0 NFLD !   0 SD-CELLS !
-   DECL-EVENT:CURRENT TOK !
-   TOK @ FAM @ DECL-EVENT:DECL TOK !
-   TOK @ FAM @ ar DECL-EVENT:ARITY TOK ! ;
+   FAM @ DECL-EVENT:DECL
+   FAM @ ar DECL-EVENT:ARITY ;
 
 : SD-MAKEABLE? ( -- bool )
    NFLD @ 0 > ;
@@ -499,7 +495,7 @@ SD-QUOT-INSTALL
 : SD-CLOSE ( -- )
    DECL-REJECT:AT-FAMILY
    NFLD @ 0 ?do
-      TOK @ FAM @ FLDBASE @ i + DECL-EVENT:FIELD-SCHEMA@ FAM @ swap PF-SCHEMA-OK? 0= IF
+      FAM @ FLDBASE @ i + DECL-EVENT:FIELD-SCHEMA@ FAM @ swap PF-SCHEMA-OK? 0= IF
          s" field type parameter has incompatible kinds"
          s" use each type parameter in one kind of place: a value type, a scope or a region"
          TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw THEN
@@ -507,7 +503,7 @@ SD-QUOT-INSTALL
    MISSING? IF E-UNRESOLVED throw THEN
    FAM @ FLDBASE @ NFLD @ TFAM-FLD-RANGE!
    NFLD @ 0 ?do
-      TOK @ FAM @ FLDBASE @ i + DECL-EVENT:FIELD-SCHEMA@ SCHEMA-ROOT@
+      FAM @ FLDBASE @ i + DECL-EVENT:FIELD-SCHEMA@ SCHEMA-ROOT@
       s" field type is a pointer to a linear value and cannot own it"
       DECL-EVENT:REQUIRE-POINTEES
    loop
@@ -518,7 +514,7 @@ SD-QUOT-INSTALL
       TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
    \ Only a structure with fields gets MAKE / UNMAKE; a fieldless one is an opaque
    \ one-cell family, as a bare NEWTYPE declares.
-   SD-MAKEABLE? IF TOK @ FAM @ STRUCTURE-MAKE:GENERATE THEN
+   SD-MAKEABLE? IF FAM @ STRUCTURE-MAKE:GENERATE THEN
    SD-ADDR-ARM ;
 
 : CLAUSE ( -- bool )                    \ read + dispatch one body token; YES = ;STRUCTURE

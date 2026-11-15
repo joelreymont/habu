@@ -22,16 +22,16 @@ package TYPE-DECL
 private
 package STRUCTURE-MAKE
 
-: SM-FIELD-SCHEMA@ ( n n n n -- n ) {: idx:n tok:n fam:n fs:n :}
-   tok fam fs idx + DECL-EVENT:FIELD-SCHEMA@ ;
+: SM-FIELD-SCHEMA@ ( n n n -- n ) {: idx:n fam:n fs:n :}
+   fam fs idx + DECL-EVENT:FIELD-SCHEMA@ ;
 
-\ The field schemas are still provisional: they are read through DECL-EVENT with
-\ the live declaration token and family, so no uncommitted row is globally readable.
-: SM-EMIT-ROWS ( n n n n -- )
-   {: tok:n fam:n fs:n fc:n :}
+\ The field schemas are still provisional: they are read through DECL-EVENT,
+\ within the open declaration, so no uncommitted row is globally readable.
+: SM-EMIT-ROWS ( n n n -- )
+   {: fam:n fs:n fc:n :}
    SCHEMA-ROOT-N@ {: rstart:n :}
    0 BEGIN dup fc < WHILE
-      dup tok fam fs SM-FIELD-SCHEMA@ SCHEMA-ROOT@ SCHEMA-ROOT+ drop
+      dup fam fs SM-FIELD-SCHEMA@ SCHEMA-ROOT@ SCHEMA-ROOT+ drop
       1 +
    REPEAT drop
    SUMV-N@ {: vstart:n :}
@@ -46,9 +46,9 @@ package STRUCTURE-MAKE
    fam PF-FAM-LIVE? 0= IF E-SM-FAM throw THEN
    fam TFAM-PRODUCT? 0= IF E-SM-FAM throw THEN ;
 
-: SM-REQUIRE-READABLE ( n n n -- ) {: tok:n fam:n fc:n :}   \ every field row is live in this transaction
+: SM-REQUIRE-READABLE ( n n -- ) {: fam:n fc:n :}   \ every field row is live in this transaction
    0 BEGIN dup fc < WHILE
-      dup tok fam fam TFAM-FLD-START@ SM-FIELD-SCHEMA@ drop
+      dup fam fam TFAM-FLD-START@ SM-FIELD-SCHEMA@ drop
       1 +
    REPEAT drop ;
 
@@ -63,13 +63,13 @@ public
 \ package's private wordlist (type-family.f TF-CTOR-PRIV$, TFAM-GEN-PUBLIC?).
 \ Every reject comes before any registry write. A replayed declaration (verify-source.f) registers the checked effects only: no code
 \ and no dictionary entries.
-: GENERATE ( n n -- ) {: tok:n fam:n :}
+: GENERATE ( n -- ) {: fam:n :}
    fam SM-REQUIRE-FAMILY
    fam TFAM-FLD-COUNT@ {: fc:n :}
    fc 1 < IF E-SM-EMPTY throw THEN
    fam SM-REQUIRE-UNGENERATED
-   tok fam fc SM-REQUIRE-READABLE
-   tok fam  fam TFAM-FLD-START@  fc  SM-EMIT-ROWS
+   fam fc SM-REQUIRE-READABLE
+   fam  fam TFAM-FLD-START@  fc  SM-EMIT-ROWS
    DECL-REPLAY:RP-ACTIVE? IF fam TDECL-CTOR-REPLAY EXIT THEN
    fam TDECL-PROD-WORDS ;
 
