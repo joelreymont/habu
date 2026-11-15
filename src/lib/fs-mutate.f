@@ -34,7 +34,6 @@ private
 1 constant CLEANUP-DIR
 2 constant CLEANUP-TREE
 $2D constant DASH
-17 constant EEXIST                    \ EEXIST on both targets
 4 constant RENAME-EXCL                \ renameatx_np's RENAME_EXCL
 1 constant NO-REPLACE                 \ renameat2's RENAME_NOREPLACE
 
@@ -570,7 +569,6 @@ FUNCTION: FCNTL-CALL fcntl ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
 85 constant F-BARRIERFSYNC
 
 \ Host errnos: macOS sys/errno.h, Linux asm-generic/errno.h.
-9 constant EBADF
 25 constant ENOTTY
 : ENOTSUP ( -- n )
    HB-TARGET-MACOS? if 45 else 95 then ;

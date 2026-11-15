@@ -1,6 +1,6 @@
 \ secret.f - credential storage, package SECRET: the native desktop store
-\ (src/lib/secret/macos.f; src/lib/secret/linux.f reads only, its WRITE and
-\ ERASE throw E-CONFIG) unless the host binds its own with STORE!. No
+\ (src/lib/secret/macos.f; src/lib/secret/linux.f reads and writes, its ERASE
+\ throws E-CONFIG) unless the host binds its own with STORE!. No
 \ plaintext fallback; calls are synchronous and may block on the store.
 \ STORAGE CLASS. PROCESS-WIDE: the store binding, written before use and only
 \ read afterwards. CALLER-OWNED: each native call's request record.
@@ -107,8 +107,8 @@ INSTALL-DEFAULT
 \ outside that guarantee, and the caller's buffer is never wiped. A failed access
 \ throws E-ACCESS; no native support (an absent library or symbol, macOS
 \ errSecNotAvailable) E-CONFIG; a failed macOS CoreFoundation allocation
-\ E-MEM-MAP, Habu's code for a failed allocation. On Linux the search is by `service` and
-\ `account` attributes, so a dismissed unlock is an access failure, and the
+\ E-MEM-MAP, Habu's code for a failed allocation. On Linux the search is by the
+\ item's two attributes, so a dismissed unlock is an access failure, and the
 \ value is read by length, keeping NULs.
 : OS-READ ( ^u8 n ^u8 n SPAN:span<u8> -- n bool )
    {: service:^ su:n account:^ au:n dest:SPAN:span<u8> :}

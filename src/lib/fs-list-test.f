@@ -27,6 +27,9 @@ create FLT-MANY-SEEN 160 allot
 create FLT-MANY-NAME 4 allot
 create FLT-LONG-NAME 240 allot
 variable FLT-LONG-SEEN
+variable FLT-AT-DIR                  \ the descriptor the AT cases list
+variable FLT-OUTER-SEEN
+variable FLT-INNER-SEEN
 create FLT-DIRENT-TYPE-FIXTURE 24 allot
 create FLT-CTX-A FS-LIST:STORAGE-BYTES allot
 create FLT-CTX-B FS-LIST:STORAGE-BYTES allot
@@ -166,6 +169,45 @@ TYPED-VARIABLE FLT-B FS-LIST:context
    FLT-TYPED-RESET
    FLT-A @ FLT-ROOT$ [: FLT-TYPE ;] FS-LIST:EACH-TYPED-IN
    FLT-CHECK-TYPED-REFILL ;
+
+\ The refill fixture through a descriptor the test opened.
+: FLT-TYPED-AT ( fd -- ) {: dir:fd :}
+   FLT-TYPED-RESET
+   FLT-A @ dir [: FLT-TYPE ;] FS-LIST:EACH-TYPED-AT
+   FLT-CHECK-TYPED-REFILL ;
+
+: FLT-INNER-COUNT ( ^u8 n u8 -- )
+   drop 2drop 1 FLT-INNER-SEEN +! ;
+
+\ The outer listing's first entry lists the whole directory again through
+\ the same descriptor, before the outer one reads its second block.
+: FLT-OUTER ( ^u8 n u8 -- )
+   drop 2drop 1 FLT-OUTER-SEEN +!
+   FLT-OUTER-SEEN @ 1 <> if exit then
+   FLT-B @ FLT-AT-DIR @ >FD [: FLT-INNER-COUNT ;] FS-LIST:EACH-TYPED-AT ;
+
+: FLT-NESTED-AT ( fd -- ) {: dir:fd :}
+   dir FD>N FLT-AT-DIR !
+   0 FLT-OUTER-SEEN ! 0 FLT-INNER-SEEN !
+   FLT-A @ dir [: FLT-OUTER ;] FS-LIST:EACH-TYPED-AT
+   FLT-INNER-SEEN @ 165 T=
+   FLT-OUTER-SEEN @ 165 T= ;
+
+: FLT-AT-CLOSED ( -- )
+   FLT-A @ FLT-AT-DIR @ >FD [: FLT-INNER-COUNT ;] FS-LIST:EACH-TYPED-AT ;
+
+\ Two listings and a nested one leave the descriptor the test's; once closed, it
+\ is E-FS-LIST-OPEN with EBADF.
+: FLT-TEST-AT ( -- )
+   FLT-ROOT$ FS:OPEN-DIR-READ >FD {: dir:fd :}
+   dir FLT-TYPED-AT
+   dir FLT-TYPED-AT
+   dir FLT-NESTED-AT
+   dir FS:FD-STAT
+   FS:STAT-MODE@ FS:S-IFMT and FS:S-IFDIR T=
+   dir FD>N FS:CLOSE-FD 0 T=
+   [: FLT-AT-CLOSED ;] E-FS-LIST-OPEN TTHROWSQ
+   FS:ERRNO FS:EBADF T= ;
 
 : FLT-CHECK-LONG ( ^u8 n -- )
    2dup FLT-COUNT
@@ -393,6 +435,7 @@ TASK:MIN-STACK TASK:TASK FLT-LISTER
    FLT-TEST-THROW-CLOSES
    FLT-TEST-TYPES
    FLT-TEST-REFILL
+   FLT-TEST-AT
    FLT-TEST-LONG-REFILL
    FLT-ROOT$ FS:REMOVE-TREE
    T-REPORT

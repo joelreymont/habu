@@ -872,6 +872,30 @@ TASK:MIN-STACK TASK:TASK FS-TEST-RACE-TASK
    E-FS-OPEN TTHROWSQ
    T-FAILURES 0 FS-TEST= ;
 
+\ A descriptor's stat reads as its path's does; a directory under the test's
+\ temporary directory takes names of 255 bytes.
+: FS-TEST-FD-STAT ( -- )
+   FS-TEST-LINKS-PATH s" abcde" FS:WRITE-ALL
+   FS-TEST-LINKS-PATH FS:TRY-STAT FS-TEST-ASSERT
+   FS:STAT-INO@ FS:STAT-DEV@ {: ino:n dev:n :}
+   FS:STAT-MTIME-SEC@ FS:STAT-MTIME-NS@ {: msec:n mns:n :}
+   FS:STAT-CTIME-SEC@ FS:STAT-CTIME-NS@ {: csec:n cns:n :}
+   FS-TEST-LINKS-PATH FS:OPEN-SIZED {: file:fd size:n ok :}
+   ok FS-TEST-ASSERT
+   file FS:FD-STAT
+   FS:STAT-SIZE@ 5 FS-TEST=
+   FS:STAT-INO@ ino FS-TEST=
+   FS:STAT-DEV@ dev FS-TEST=
+   FS:STAT-MTIME-SEC@ msec FS-TEST=
+   FS:STAT-MTIME-NS@ mns FS-TEST=
+   FS:STAT-CTIME-SEC@ csec FS-TEST=
+   FS:STAT-CTIME-NS@ cns FS-TEST=
+   file FD>N FS:CLOSE-FD 0 FS-TEST=
+   FS-TEST-LINKS-PATH FS:REMOVE-FILE
+   FS-TEST-BASE FS:OPEN-DIR-READ >FD {: dir:fd :}
+   dir FS:FD-NAME-MAX 255 FS-TEST=
+   dir FD>N FS:CLOSE-FD 0 FS-TEST= ;
+
 : FS-TEST-FD-LINKS ( -- )
    FS-TEST-LINKS-PATH s" abc" FS:WRITE-ALL
    FS-TEST-LINKS-PATH FS:OPEN-SIZED {: file:fd size:n ok :}
@@ -1091,6 +1115,7 @@ public
    FS-TEST-WALK-THROW-CLOSES
    FS-TEST-IO
    FS-TEST-READ-AT
+   FS-TEST-FD-STAT
    FS-TEST-FD-LINKS
    FS-TEST-PARALLEL
    FS-TEST-RACED-REFUSAL

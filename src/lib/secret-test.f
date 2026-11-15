@@ -5,7 +5,8 @@
 \ keeping old bytes or duplicating; an erase that leaves, misreports or
 \ overreaches; ids WRITE/ERASE take that READ refuses; native leaks; source/AOT
 \ mismatch; no store bound refused as anything but E-CONFIG; a host store
-\ bypassed, called before the checks or masked.
+\ bypassed, called before the checks or masked. The native cases run on macOS
+\ only, as Linux has no erase; src/lib/secret/linux-test.f covers Linux.
 require src/lib/secret.f
 require src/lib/test.f
 require src/lib/codegen.f
@@ -244,9 +245,18 @@ variable HOST-CALLS
    [: TEST-HOST-ITEMS TEST-HOST-CHECKS ;] [: TEST-HOST-CLEANUP ;] finally ;
 
 
+HB-TARGET-MACOS? [if]
+: TEST-NATIVE ( -- )
+   TEST-NAMES
+   [: TEST-RUN ;] [: TEST-CLEANUP ;] finally ;
+[then]
+HB-TARGET-MACOS? 0= [if]
+: TEST-NATIVE ( -- ) ;
+[then]
+
+
 : TEST-MAIN ( -- )
-   T-RESET TEST-NAMES
-   [: TEST-RUN ;] [: TEST-CLEANUP ;] finally
+   T-RESET TEST-NATIVE
    TEST-UNBOUND
    TEST-HOST
    T-REPORT ;

@@ -17,7 +17,6 @@ package FS
 using MEM
 
 private
-8 constant INODE-OFFSET
 STAT-CAP PATHZ-CAP + constant WORK-BYTES
 
 PROCESS-SYMBOLS
@@ -28,7 +27,7 @@ FUNCTION: STAT-CALL stat ( ^u8 ^u8 -- i32 )
    HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if buffer LE:U64@ else
       HB-TARGET-MACOS? if buffer LE:U32@ else E-FS-STAT throw then
    then
-   buffer INODE-OFFSET + LE:U64@ ;
+   buffer STAT-INO-OFF + LE:U64@ ;
 
 : FD-IDENTITY ( fd ^u8 -- n n ) {: file buffer :}
    file FD>N buffer FSTAT-CALL 0<> if E-FS-STAT throw then

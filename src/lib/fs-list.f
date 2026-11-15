@@ -1,5 +1,6 @@
-\ fs-list.f - the entries of one directory, through raw open-rd, getdirentries64
-\ and close; record decoding is shared with the walker in src/lib/fs.f.
+\ fs-list.f - the entries of one directory, through raw open-rd or an openat of
+\ "." under the caller's descriptor, getdirentries64 and close; record decoding
+\ is shared with the walker in src/lib/fs.f.
 \ STORAGE CLASS. CALLER-OWNED: INIT binds an aligned caller span to one opaque
 \ context, one listing at a time (re-entry or sharing mid-listing is
 \ E-FS-LIST-ACTIVE, the first listing undisturbed); distinct contexts nest. The
@@ -9,6 +10,7 @@ require src/lib/error.f
 require src/lib/span.f
 require src/lib/memory.f
 require src/lib/fs.f
+require src/lib/ffi-abi.f
 require src/core/compile-reads.f
 
 package FS-LIST
@@ -74,6 +76,17 @@ CAST: CONTEXT>PTR ( context -- ^u8 )
    path size z COMPILE-READS:FILE+
    z open-rd {: handle:n :}
    handle 0 < if E-OPEN throw then
+   handle ls FD-CELL ! ;
+
+PROCESS-SYMBOLS
+FUNCTION: OPEN-AT-CALL openat ( n ^u8 n -- i32 ) ;FUNCTION
+
+\ "." under the caller's directory: an open file description of its own, so
+\ the listing's offset is not the caller's.
+: OPEN-AT ( ^u8 fd -- ) {: ls:^ dir:fd :}
+   COMPILE-READS:MISS
+   dir FD>N S\" .\z" drop FS:OPEN-DIR-FLAGS OPEN-AT-CALL {: handle:n :}
+   handle 0 < if FFI:ERRNO FS:CAUSE! E-OPEN throw then
    handle ls FD-CELL ! ;
 
 
@@ -153,6 +166,9 @@ CAST: CONTEXT>PTR ( context -- ^u8 )
    len size + separator + ;
 
 
+: TYPED-LOOP ( ^u8 [ ^u8 n u8 -- ] -- ) {: ls:^ q :}
+   0 0 begin ls NEXT while q execute repeat drop 2drop 2drop ;
+
 \ The listing runs on the stack into these preserving words, so the catch
 \ around each gives the mapping back however it leaves - a quotation-typed
 \ local cannot be caught (src/lib/fs.f WALK-RUN).
@@ -165,8 +181,14 @@ CAST: CONTEXT>PTR ( context -- ^u8 )
 : EACH-TYPED-RUN ( ^u8 ^u8 n [ ^u8 n u8 -- ] -- ^u8 ^u8 n [ ^u8 n u8 -- ] )
    {: ls:^ path:^ size:n q :}
    ls path size OPEN
-   0 0 begin ls NEXT while q execute repeat drop 2drop 2drop
+   ls q TYPED-LOOP
    ls path size q ;
+
+: EACH-TYPED-AT-RUN ( ^u8 fd [ ^u8 n u8 -- ] -- ^u8 fd [ ^u8 n u8 -- ] )
+   {: ls:^ dir:fd q :}
+   ls dir OPEN-AT
+   ls q TYPED-LOOP
+   ls dir q ;
 
 : NAMES-STEP ( n n n ^u8 ^u8 n -- n n n bool )
    {: len:n filled:n at:n ls:^ dst:^ cap:n :}
@@ -212,6 +234,17 @@ public
    ls ACQUIRE
    ls path size q [: EACH-TYPED-RUN ;] catch {: code:n :}
    drop 2drop drop
+   ls FINISH
+   code 0<> if code throw then ;
+
+\ EACH-TYPED-IN over a directory the caller opened and may search; the
+\ caller's descriptor and offset are untouched. A refused "." is E-FS-LIST-OPEN.
+: EACH-TYPED-AT ( context fd [ ^u8 n u8 -- ] -- )
+   {: ctx dir:fd q :}
+   ctx CONTEXT>PTR {: ls:^ :}
+   ls ACQUIRE
+   ls dir q [: EACH-TYPED-AT-RUN ;] catch {: code:n :}
+   2drop drop
    ls FINISH
    code 0<> if code throw then ;
 

@@ -1,6 +1,7 @@
 \ fd-test.f - close-on-exec pipes, exact reads and full writes over real pipes,
 \ a write with SIGPIPE held off, how far a tried write got, one write that never
-\ waits; a temp file cut back and appended to, and a directory synced.
+\ waits; a temp file cut back and appended to, a directory synced, and a temp
+\ file's mode changed and read from an offset.
 \ Run: bin/hb --load src/lib/fd-test.f
 \ A pipe holds far less than PAYLOAD, so one read answers short and READ-EXACT
 \ loops; a blocking write answers short only when a caught signal lands after
@@ -316,6 +317,20 @@ variable WROTE-IN                 \ WROTE>N of a write WITH-NOSIGPIPE's quotatio
    SMALL $ s" part-onepart-two" T$=
    pa pu FS:REMOVE-FILE ;
 
+\ CHMOD's bits read back through the descriptor's stat, and a read after SEEK
+\ starts at the offset.
+: MODE-THEN-SEEK ( -- )
+   s" fd-test" FS:MKTEMP {: pa:^ pu:n f:fd :}
+   f 416 MODE!                       \ 0640, where mkstemp made 0600
+   f FS:FD-STAT
+   FS:STAT-MODE@ $FFF and 416 T=
+   f s" 0123456789" WRITE-FULL
+   f 4 SEEK
+   f SMALL READ-EXACT OUTCOME 6 T=
+   SMALL $ drop 6 s" 456789" T$=
+   f FD>N close
+   pa pu FS:REMOVE-FILE ;
+
 : DIR-SYNC ( -- )
    s" fd-test" FS:MKTEMP-DIR {: pa:^ pu:n :}
    pa pu FS:OPEN-DIR-READ {: d:n :}
@@ -488,6 +503,7 @@ variable WROTE-IN                 \ WROTE>N of a write WITH-NOSIGPIPE's quotatio
    BOUNDED-BROKEN
    CUT-THEN-APPEND
    DIR-SYNC
+   MODE-THEN-SEEK
    ERRORS
    HELD-WRITE
    FULL-WRITE-OUTCOMES

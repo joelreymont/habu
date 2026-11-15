@@ -661,23 +661,34 @@ public
    REJECTION:TEXT-LEN @ 0 >  RQM @ 0=  and ;
 
 
-\ Sym's primitive rows as one facts text in REJECTION:TEXT: the first row's
-\ effect and tags, then each further row after `overload`; with no row, its tags
-\ alone.
-\ False when a text cannot say them, or a created effect, whose text ends the
-\ facts, would hide the rows.
+\ Stops the build at primitive sym, whose rows REJECTION:TEXT cannot say in part
+\ pa pu: an engine without that text would reject every call of it as undefined.
+: ROWS-UNSAID ( ^u8 n n -- )
+   {: pa:^ pu:n sym:n :}
+   s" checker: facts text does not say " ERROR-TEXT:TYPE  pa pu ERROR-TEXT:TYPE
+   s"  of primitive " ERROR-TEXT:TYPE
+   sym SYM-PKG$ {: ka:^ ku:n :} ku 0 <> if ka ku ERROR-TEXT:TYPE s" :" ERROR-TEXT:TYPE then
+   sym SYM-NAME$ ERROR-TEXT:TYPE
+   s" : " ERROR-TEXT:TYPE
+   REJECTION:TEXT REJECTION:TEXT-LEN @ 76 die ;
+
+\ Sym's first row and tags in REJECTION:TEXT, each further row after `overload`;
+\ no row: its tags, false if none it says. False for rows a created effect ends.
 : ROWS-TEXT? ( n -- bool )
    {: sym:n :}
    sym PRIM-FIRST-IDX {: first:n :}
    first 0= if sym TAGS-TEXT? exit then
    first 1 - {: k:n :}
-   sym k ROWS-SAY? 0= if RES-FALSE exit then
-   sym k PE-EFF@ FACTS-SAME-AT? 0= if RES-FALSE exit then
+   sym k MORE-ROWS? {: more:bool :}
+   more  sym NORET-CREATES@ 0 <>  and if RES-FALSE exit then
+   sym k ROWS-SAY? 0= if s" a row" sym ROWS-UNSAID then
+   sym k PE-EFF@ FACTS-SAME-AT? 0= if s" a row" sym ROWS-UNSAID then
    sym FACTS-TAGS
-   sym k MORE-ROWS? 0= if RQM @ 0= exit then
-   sym NORET-CREATES@ 0 <> if RES-FALSE exit then
+   RQM @ 0 <> if s" the tags" sym ROWS-UNSAID then
+   more 0= if RES-TRUE exit then
    #PE @ k 1 + ?do sym i ROW-OF? if i REND-OVERLOAD 2drop then loop
-   RQM @ 0= ;
+   RQM @ 0 <> if s" the overloads" sym ROWS-UNSAID then
+   RES-TRUE ;
 
 
 \ Sym's rows as one facts text (ROWS-TEXT?), empty for sym 0 or when no text
