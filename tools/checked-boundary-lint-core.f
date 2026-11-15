@@ -254,18 +254,21 @@ private
    s" CHECK-HOOK" LINT-ENDS-WITH? ;
 
 \ A finding is one rejection record, kept so the scan goes on: UB-OPEN opens it
-\ with its code and its message follows; UB-FINDING places it at the token,
-\ whose label is given, and ends it with the expected and found notes and the
-\ help every finding shares.
+\ with its code and its message follows; UB-PLACE places it at the token, whose
+\ label is given, with the expected and found notes; UB-FINDING ends it with the
+\ help every finding but the rearm shares.
 : UB-OPEN ( ptr u8 n -- ) {: code:ptr cu:n :}
    UB-BAD @ 1+ UB-BAD !
    code cu REJECTION:OPEN ;
 
-: UB-FINDING ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+: UB-PLACE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: t:ptr tu:n label:ptr lu:n e:ptr eu:n f:ptr fu:n :}
    t tu REJECTION:AT  label lu REJECTION:EMIT-STR
    s" expected" REJECTION:NOTE  e eu REJECTION:EMIT-STR
-   s" found" REJECTION:NOTE  f fu REJECTION:EMIT-STR
+   s" found" REJECTION:NOTE  f fu REJECTION:EMIT-STR ;
+
+: UB-FINDING ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   UB-PLACE
    REJECTION:HELP
    s" keep generated and user code checked; move checker mutations behind an audited boundary"
    REJECTION:EMIT-STR
@@ -286,11 +289,19 @@ private
    UB-TOK$ s" outside a trusted definition"
    s" checker hook remains installed" UB-TOK$ UB-FINDING ;
 
+\ Its own cause beside E-CHECKER-MUTATION: it holds without strict boundary
+\ mode, and adding `CHECK:INSTALL` clears it while that mutation stays.
 : UB-REPORT-PREFLIGHT ( -- )
-   s" E-CHECKER-MUTATION" UB-OPEN
-   s" the checker hook is replaced without `CHECK:INSTALL`" REJECTION:EMIT-STR
-   UB-TOK$ s" replaces the hook while the checker is disabled"
-   s" CHECK:INSTALL" UB-TOK$ UB-FINDING ;
+   s" E-CHECKER-NOT-REARMED" UB-OPEN
+   s" `" REJECTION:EMIT-STR  UB-PREV$ REJECTION:EMIT-STR
+   s" ` is armed while the checker is suspended, so no compile preflight runs"
+   REJECTION:EMIT-STR
+   UB-TOK$ s" armed without `CHECK:INSTALL`"
+   s" CHECK:INSTALL" UB-TOK$ UB-PLACE
+   REJECTION:HELP
+   s" add `CHECK:INSTALL` before this line to rearm the checker hook with its preflight"
+   REJECTION:EMIT-STR
+   REJECTION:KEEP ;
 
 : UB-REPORT-ROGUE-HOOK ( -- )
    s" E-UNAUDITED-HOOK" UB-OPEN
@@ -453,6 +464,6 @@ public
    2dup FILE-AS ;
 
 : FINISH ( -- )
-   UB-BAD @ 0 > if 1 throw then ;
+   UB-BAD @ 0 > if CHECKER-REJECT-RC throw then ;
 
 ;package
