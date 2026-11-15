@@ -13670,34 +13670,32 @@ package CHECKER-REG
 16 constant STG-LINEAR-TYPE     \ the type parses and may hold a linear value, which no storage holds
 17 constant STG-EFFECT-TYPE     \ the type parses and holds a definer's type, which no storage holds
 18 constant STG-LAYOUT-TYPE     \ the type parses but a layout buffer cannot hold it: no nominal scalar, and no layout family whose members it lays out
-: STGR-CODE ( ^u8 n -- ) {: a:^ u:n :}
-   96 REJECTION:EMIT1  a u REJECTION:EMIT-STR  96 REJECTION:EMIT1 ;
 
 \ The message names the declared word: the definer for STG-NO-NAME, the name
 \ itself for STG-MALFORMED-NAME.
 : STGR-MESSAGE ( ^u8 n n -- ) {: na:^ nu:n why:n :}
    why STG-NO-NAME = IF
-      na nu STGR-CODE  s"  has no name on its line" REJECTION:EMIT-STR EXIT
+      na nu CODE-SPAN  s"  has no name on its line" REJECTION:EMIT-STR EXIT
    THEN
    why STG-NO-TYPE = IF
-      na nu STGR-CODE  s"  has no type on its line" REJECTION:EMIT-STR EXIT
+      na nu CODE-SPAN  s"  has no type on its line" REJECTION:EMIT-STR EXIT
    THEN
    why STG-NO-COUNT = IF
-      na nu STGR-CODE  s"  has no count before its definer" REJECTION:EMIT-STR EXIT
+      na nu CODE-SPAN  s"  has no count before its definer" REJECTION:EMIT-STR EXIT
    THEN
    why STG-MALFORMED-NAME = IF
-      s" the name " REJECTION:EMIT-STR  na nu STGR-CODE
+      s" the name " REJECTION:EMIT-STR  na nu CODE-SPAN
       s"  has more than one inner `:`" REJECTION:EMIT-STR EXIT
    THEN
    why STG-BAD-COUNT = IF
-      s" the count of " REJECTION:EMIT-STR  na nu STGR-CODE
+      s" the count of " REJECTION:EMIT-STR  na nu CODE-SPAN
       s"  is outside the buffer's extent" REJECTION:EMIT-STR EXIT
    THEN
    why STG-COUNT-WORD = IF
-      s" the count of " REJECTION:EMIT-STR  na nu STGR-CODE
+      s" the count of " REJECTION:EMIT-STR  na nu CODE-SPAN
       s"  names no `( -- n )` word" REJECTION:EMIT-STR EXIT
    THEN
-   s" the type of " REJECTION:EMIT-STR  na nu STGR-CODE
+   s" the type of " REJECTION:EMIT-STR  na nu CODE-SPAN
    why STG-UNKNOWN-TYPE = IF s"  names no known type" REJECTION:EMIT-STR EXIT THEN
    why STG-MALFORMED-TYPE = IF s"  does not parse" REJECTION:EMIT-STR EXIT THEN
    why STG-SCHEME-TYPE = IF
@@ -13739,66 +13737,66 @@ package CHECKER-REG
 
 : STGR-HELP ( ^u8 n ^u8 n n -- ) {: na:^ nu:n ta:^ tu:n why:n :}
    why STG-NO-NAME = IF
-      s" write the storage's name after " REJECTION:EMIT-STR  na nu STGR-CODE
+      s" write the storage's name after " REJECTION:EMIT-STR  na nu CODE-SPAN
       s"  on the same line" REJECTION:EMIT-STR EXIT
    THEN
    why STG-NO-TYPE = IF
-      s" write the type of " REJECTION:EMIT-STR  na nu STGR-CODE
+      s" write the type of " REJECTION:EMIT-STR  na nu CODE-SPAN
       s"  after it on the same line" REJECTION:EMIT-STR EXIT
    THEN
    why STG-NO-COUNT = IF
       s" put a positive count before the definer of " REJECTION:EMIT-STR
-      na nu STGR-CODE
+      na nu CODE-SPAN
       s" : a literal, a constant or an expression" REJECTION:EMIT-STR EXIT
    THEN
    why STG-MALFORMED-NAME = IF
-      s" rename " REJECTION:EMIT-STR  na nu STGR-CODE
+      s" rename " REJECTION:EMIT-STR  na nu CODE-SPAN
       s"  with at most one inner `:`" REJECTION:EMIT-STR EXIT
    THEN
    why STG-BAD-COUNT = IF
-      s" replace " REJECTION:EMIT-STR  ta tu STGR-CODE
+      s" replace " REJECTION:EMIT-STR  ta tu CODE-SPAN
       s"  with a positive count whose elements fit in memory" REJECTION:EMIT-STR EXIT
    THEN
    why STG-COUNT-WORD = IF
-      s" replace " REJECTION:EMIT-STR  ta tu STGR-CODE
+      s" replace " REJECTION:EMIT-STR  ta tu CODE-SPAN
       s"  with a literal, a constant or a `( -- n )` word" REJECTION:EMIT-STR EXIT
    THEN
    why STG-UNKNOWN-TYPE = IF
-      s" declare the type " REJECTION:EMIT-STR  ta tu STGR-CODE
-      s"  before " REJECTION:EMIT-STR  na nu STGR-CODE
+      s" declare the type " REJECTION:EMIT-STR  ta tu CODE-SPAN
+      s"  before " REJECTION:EMIT-STR  na nu CODE-SPAN
       s" , or correct its name" REJECTION:EMIT-STR EXIT
    THEN
    why STG-MALFORMED-TYPE = IF
-      s" write one whole type after " REJECTION:EMIT-STR  na nu STGR-CODE
+      s" write one whole type after " REJECTION:EMIT-STR  na nu CODE-SPAN
       s" , such as `n`, `^t` or `[ n -- n ]`" REJECTION:EMIT-STR EXIT
    THEN
    why STG-SCHEME-TYPE = IF
-      s" declare " REJECTION:EMIT-STR  na nu STGR-CODE
+      s" declare " REJECTION:EMIT-STR  na nu CODE-SPAN
       s"  with a closed type; a scheme is only a callback's input" REJECTION:EMIT-STR EXIT
    THEN
    why STG-XT-TYPE = IF
-      s" declare " REJECTION:EMIT-STR  na nu STGR-CODE
+      s" declare " REJECTION:EMIT-STR  na nu CODE-SPAN
       s"  with a quotation type such as `[ n -- n ]` in place of `xt`" REJECTION:EMIT-STR EXIT
    THEN
    why STG-WIDTH-TYPE = IF
-      s" declare " REJECTION:EMIT-STR  na nu STGR-CODE
+      s" declare " REJECTION:EMIT-STR  na nu CODE-SPAN
       s"  as `n` and store the width's bytes, read with `width>n`" REJECTION:EMIT-STR EXIT
    THEN
    why STG-LINEAR-TYPE = IF
-      s" keep a linear value on the stack, not in " REJECTION:EMIT-STR  na nu STGR-CODE
+      s" keep a linear value on the stack, not in " REJECTION:EMIT-STR  na nu CODE-SPAN
       s" ; name a callable over one with `defer`" REJECTION:EMIT-STR EXIT
    THEN
    why STG-EFFECT-TYPE = IF
       EFFECT-TYPE-FAM @ UNSTORED-REASON drop 2swap 2drop REJECTION:EMIT-STR EXIT
    THEN
    why STG-LAYOUT-TYPE = IF
-      s" give " REJECTION:EMIT-STR  na nu STGR-CODE
+      s" give " REJECTION:EMIT-STR  na nu CODE-SPAN
       s"  a declared family: a NEWTYPE or DEFTYPE with no arguments, or a non-empty"
       REJECTION:EMIT-STR
       s"  ENUM, SUMTYPE or STRUCTURE holding no view, region or linear value"
       REJECTION:EMIT-STR EXIT
    THEN
-   s" declare " REJECTION:EMIT-STR  na nu STGR-CODE
+   s" declare " REJECTION:EMIT-STR  na nu CODE-SPAN
    s"  with a closed, copyable type its definer stores, such as `n`" REJECTION:EMIT-STR ;
 
 : STGR-END ( -- )
@@ -13817,8 +13815,8 @@ package CHECKER-REG
 \ package.
 : STGR-AMBIG ( ^u8 n ^u8 n -- ) {: na:^ nu:n ta:^ tu:n :}
    s" E-USING-AMBIGUOUS" REJECTION:OPEN
-   s" the type of " REJECTION:EMIT-STR  na nu STGR-CODE
-   s"  names type family " REJECTION:EMIT-STR  ta tu STGR-CODE
+   s" the type of " REJECTION:EMIT-STR  na nu CODE-SPAN
+   s"  names type family " REJECTION:EMIT-STR  ta tu CODE-SPAN
    s" , which is public in more than one used package" REJECTION:EMIT-STR
    ta tu REJECTION:AT  s" ambiguous here" REJECTION:EMIT-STR
    ta tu SGBAD-AMBIG-HELP
@@ -13828,11 +13826,11 @@ package CHECKER-REG
 \ states its value v and stands at the name, which the definer read.
 : CHECKER-STORAGE-COUNT-REJECT ( ^u8 n n -- ) {: na:^ nu:n v:n :}
    s" E-BAD-STORAGE" REJECTION:OPEN
-   s" the count of " REJECTION:EMIT-STR  na nu STGR-CODE
+   s" the count of " REJECTION:EMIT-STR  na nu CODE-SPAN
    s"  is " REJECTION:EMIT-STR  v REJECTION:EMIT-N
    s" , outside the buffer's extent" REJECTION:EMIT-STR
    na nu REJECTION:AT  STG-BAD-COUNT STGR-REASON$ REJECTION:EMIT-STR
-   REJECTION:HELP  s" give " REJECTION:EMIT-STR  na nu STGR-CODE
+   REJECTION:HELP  s" give " REJECTION:EMIT-STR  na nu CODE-SPAN
    s"  a positive count whose elements fit in memory" REJECTION:EMIT-STR
    STGR-END ;
 

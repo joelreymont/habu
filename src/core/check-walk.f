@@ -2370,7 +2370,7 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    CHECKER-REJECT-RC REJECTION:STOP ;
 
 : GENR-MESSAGE ( ^u8 n n -- ) {: na:^ nu:n kind:n :}
-   s" the `generates:` row names " REJECTION:EMIT-STR  na nu STGR-CODE
+   s" the `generates:` row names " REJECTION:EMIT-STR  na nu CODE-SPAN
    kind GENR-UNRESOLVED = IF
       s" , which is not defined here" REJECTION:EMIT-STR EXIT
    THEN
@@ -2389,15 +2389,15 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
 
 : GENR-HELP ( ^u8 n n -- ) {: na:^ nu:n kind:n :}
    kind GENR-UNRESOLVED = IF
-      s" define " REJECTION:EMIT-STR  na nu STGR-CODE
+      s" define " REJECTION:EMIT-STR  na nu CODE-SPAN
       s"  before this row, or spell it as its definition does" REJECTION:EMIT-STR EXIT
    THEN
    kind GENR-CREATES = IF
-      s" delete this row: the `does>` clause of " REJECTION:EMIT-STR  na nu STGR-CODE
+      s" delete this row: the `does>` clause of " REJECTION:EMIT-STR  na nu CODE-SPAN
       s" , an earlier `generates:` row or the definer it wraps states what it makes"
       REJECTION:EMIT-STR EXIT
    THEN
-   s" make " REJECTION:EMIT-STR  na nu STGR-CODE
+   s" make " REJECTION:EMIT-STR  na nu CODE-SPAN
    s"  read its name with `parse-name`, called directly or through words it" REJECTION:EMIT-STR
    s"  calls by name, not through a `defer` or an executed xt; or delete this row"
    REJECTION:EMIT-STR ;
@@ -2464,7 +2464,7 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
 
 : GENR-SHAPE-OPEN ( ^u8 n -- ) {: na:^ nu:n :}
    s" E-GENERATES-ROW" REJECTION:OPEN
-   s" the `generates:` row for " REJECTION:EMIT-STR  na nu STGR-CODE ;
+   s" the `generates:` row for " REJECTION:EMIT-STR  na nu CODE-SPAN ;
 
 \ Ends a malformed row's help with an example row for D's name NA NU, and
 \ throws.
@@ -2483,7 +2483,7 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
       ta tu REJECTION:AT  s" an effect opens with `(`" REJECTION:EMIT-STR
    THEN
    REJECTION:HELP
-   s" write the effect of the words " REJECTION:EMIT-STR  na nu STGR-CODE
+   s" write the effect of the words " REJECTION:EMIT-STR  na nu CODE-SPAN
    s"  creates after its name" REJECTION:EMIT-STR  na nu GENR-SHAPE-STOP ;
 
 \ D's name NA NU, and the `(` at OPEN that no `)` closes.
@@ -2496,11 +2496,11 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
 \ The keyword KA KU, with no name after it.
 : GENR-NO-NAME ( ^u8 n -- ) {: ka:^ ku:n :}
    s" E-GENERATES-ROW" REJECTION:OPEN
-   ka ku STGR-CODE  s"  has no definer name after it" REJECTION:EMIT-STR
+   ka ku CODE-SPAN  s"  has no definer name after it" REJECTION:EMIT-STR
    ka ku REJECTION:AT  s" no name follows" REJECTION:EMIT-STR
    REJECTION:HELP
    s" write the definer's name and the effect of the words it creates after "
-   REJECTION:EMIT-STR  ka ku STGR-CODE  s" D" GENR-SHAPE-STOP ;
+   REJECTION:EMIT-STR  ka ku CODE-SPAN  s" D" GENR-SHAPE-STOP ;
 
 \ The effect after D's name NA NU, read as a definition head reads a signature.
 : GENR-SIG-READ ( ^u8 n -- ^u8 n )
@@ -2561,11 +2561,11 @@ TRUSTED: generates: ( -- )
 \ The message, place and label of a rejected row, keyword KA KU as the source
 \ spells it and target TA TU, empty when none follows; the help follows.
 : ROW-PARTS ( ^u8 n ^u8 n n -- ) {: ka:^ ku:n ta:^ tu:n kind:n :}
-   s" the " REJECTION:EMIT-STR  ka ku STGR-CODE
+   s" the " REJECTION:EMIT-STR  ka ku CODE-SPAN
    kind PARSES-NO-TARGET = IF
       s"  row names no word" REJECTION:EMIT-STR  ka ku REJECTION:AT
    ELSE
-      s"  row names " REJECTION:EMIT-STR  ta tu STGR-CODE
+      s"  row names " REJECTION:EMIT-STR  ta tu CODE-SPAN
       kind ROW-WHY$ REJECTION:EMIT-STR  ta tu REJECTION:AT
    THEN
    kind ROW-LABEL$ REJECTION:EMIT-STR
@@ -2578,14 +2578,14 @@ TRUSTED: generates: ( -- )
       REJECTION:EMIT-STR EXIT
    THEN
    kind PARSES-SHADOW = IF
-      s" rename the used package's public " REJECTION:EMIT-STR  ta tu STGR-CODE
+      s" rename the used package's public " REJECTION:EMIT-STR  ta tu CODE-SPAN
       s" , which hides the global word of that name" REJECTION:EMIT-STR EXIT
    THEN
    kind PARSES-AMBIGUOUS = IF
       s" write the package's name before the word, as `PKG:" REJECTION:EMIT-STR
       ta tu REJECTION:EMIT-STR  96 REJECTION:EMIT1 EXIT
    THEN
-   s" write the row after the definition of " REJECTION:EMIT-STR  ta tu STGR-CODE
+   s" write the row after the definition of " REJECTION:EMIT-STR  ta tu CODE-SPAN
    s" , spelled as the definition spells it" REJECTION:EMIT-STR ;
 
 : PARSES-FORMS ( -- )
@@ -2597,7 +2597,7 @@ TRUSTED: generates: ( -- )
       REJECTION:EMIT-STR  PARSES-FORMS EXIT
    THEN
    kind PARSES-COUNT = IF
-      s" after " REJECTION:EMIT-STR  ta tu STGR-CODE
+      s" after " REJECTION:EMIT-STR  ta tu CODE-SPAN
       s"  write the count of tokens it reads, 0 or more: " REJECTION:EMIT-STR
       PARSES-FORMS EXIT
    THEN
