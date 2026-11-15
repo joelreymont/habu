@@ -367,7 +367,7 @@ SD-QUOT-INSTALL
       s" drop `POLICY niche-null`: only an `ENUM` with an empty variant, then one `ptr` field, can use it"
       TYPE-DECL:E-TDECL-POLICY DECL-REJECT:REJECT throw THEN
    FAM @ code TFAM-LAYOUT!
-   FAM @ code DECL-EVENT:POLICY ;
+   code DECL-EVENT:POLICY ;
 
 \ OPAQUE keeps the family's visibility and moves its generated words to the
 \ private-family placement (TFAM-GEN-PUBLIC? answers placement, TFAM-PUBLIC?
@@ -395,10 +395,10 @@ SD-QUOT-INSTALL
 \ caller's instantiation, and the checker refuses the one instantiation a baked
 \ offset would misdescribe (a type argument wider than one cell).
 : DERIVE-ONE ( ptr u8 n -- )
-   2dup s" eq" CORE-STR=CI IF 2drop DERIVE-CONCRETE FAM @ TFAM-DERIVE-EQ! FAM @ DRV-EQ DECL-EVENT:DERIVE EXIT THEN
-   2dup s" hash" CORE-STR=CI IF 2drop DERIVE-CONCRETE FAM @ TFAM-DERIVE-HASH! FAM @ DRV-HASH DECL-EVENT:DERIVE EXIT THEN
-   2dup s" addr" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-ADDR! FAM @ DRV-ADDR DECL-EVENT:DERIVE EXIT THEN
-   2dup s" init" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-INIT! FAM @ DRV-INIT DECL-EVENT:DERIVE EXIT THEN
+   2dup s" eq" CORE-STR=CI IF 2drop DERIVE-CONCRETE FAM @ TFAM-DERIVE-EQ! DRV-EQ DECL-EVENT:DERIVE EXIT THEN
+   2dup s" hash" CORE-STR=CI IF 2drop DERIVE-CONCRETE FAM @ TFAM-DERIVE-HASH! DRV-HASH DECL-EVENT:DERIVE EXIT THEN
+   2dup s" addr" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-ADDR! DRV-ADDR DECL-EVENT:DERIVE EXIT THEN
+   2dup s" init" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-INIT! DRV-INIT DECL-EVENT:DERIVE EXIT THEN
    2dup s" tag" CORE-STR=CI IF
       2drop s" derive tag requires an enum"
       s" drop `tag` from `DERIVE`: only an `ENUM` derives it"
@@ -472,8 +472,7 @@ SD-QUOT-INSTALL
    TFAM-ACTIVE-PKG$ VIS na nu
    ar TK-PRODUCT TFAM-DECL FAM !
    TYPE-FIELD:COUNT FLDBASE !
-   0 NFLD !   0 SD-CELLS !
-   FAM @ ar DECL-EVENT:ARITY ;
+   0 NFLD !   0 SD-CELLS ! ;
 
 : SD-MAKEABLE? ( -- bool )
    NFLD @ 0 > ;

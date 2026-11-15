@@ -1234,10 +1234,10 @@ s" tdgaddr" s" generated declaration already defined" TDT-AT
 s\" = word: TDGADDR-AT\n" TDT-HAS
 ;package
 \ DECL-EVENT is a part of TYPE-DECL: no name outside TYPE-DECL reaches it.
-s" DECL-EVENT:ARITY"
-s\" error[E-UNDEFINED]: cannot find word `DECL-EVENT:ARITY`\n" s" not found" TDT-REJ
-s" TYPE-DECL:DECL-EVENT:ARITY"
-s\" error[E-UNDEFINED]: cannot find word `TYPE-DECL:DECL-EVENT:ARITY`\n" s" not found" TDT-REJ
+s" DECL-EVENT:POLICY"
+s\" error[E-UNDEFINED]: cannot find word `DECL-EVENT:POLICY`\n" s" not found" TDT-REJ
+s" TYPE-DECL:DECL-EVENT:POLICY"
+s\" error[E-UNDEFINED]: cannot find word `TYPE-DECL:DECL-EVENT:POLICY`\n" s" not found" TDT-REJ
 \ Package-local variant tails do not reserve unrelated package namespaces.
 package tvordera
 ENUM tvowner tvlocal ;ENUM

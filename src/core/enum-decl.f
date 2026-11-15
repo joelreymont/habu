@@ -119,7 +119,7 @@ ED-RESET
    HEADER-ORDER
    NEXT POLICY-CODE {: code:n :}
    FAM @ code TFAM-LAYOUT!
-   FAM @ code DECL-EVENT:POLICY ;
+   code DECL-EVENT:POLICY ;
 
 : DERIVE-FEATURE? ( ptr u8 n -- bool )
    2dup s" eq" CORE-STR=CI IF 2drop YES EXIT THEN
@@ -165,9 +165,9 @@ ED-RESET
       E-TDECL-DERIVE DECL-REJECT:REJECT throw THEN ;
 : DERIVE-ONE ( ptr u8 n -- )
    DERIVE-GUARD
-   2dup s" eq" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-EQ! FAM @ DRV-EQ DECL-EVENT:DERIVE EXIT THEN
-   2dup s" hash" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-HASH! FAM @ DRV-HASH DECL-EVENT:DERIVE EXIT THEN
-   2dup s" tag" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-TAG! FAM @ DRV-TAG DECL-EVENT:DERIVE EXIT THEN
+   2dup s" eq" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-EQ! DRV-EQ DECL-EVENT:DERIVE EXIT THEN
+   2dup s" hash" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-HASH! DRV-HASH DECL-EVENT:DERIVE EXIT THEN
+   2dup s" tag" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-TAG! DRV-TAG DECL-EVENT:DERIVE EXIT THEN
    2dup s" order" CORE-STR=CI IF
       2drop s" derive feature not yet supported"
       s" derive `eq`, `hash` or `tag` instead: `order` is not implemented"
@@ -245,7 +245,7 @@ ED-RESET
    0 VCELLS ! ;
 : CLOSE-VARIANT ( -- )
    VCELLS @ MAXSLOTS @ max MAXSLOTS !
-   FAM @ DECL-EVENT:END-VARIANT
+   DECL-EVENT:END-VARIANT
    NVAR @ 1 + NVAR ! ;
 : VARIANT-CLAUSE ( -- bool )            \ read one variant-body token; YES = ;VARIANT
    NEXT dup 0= IF 2drop
@@ -276,7 +276,7 @@ ED-RESET
       E-TDECL-CAP DECL-REJECT:REJECT throw THEN
    -1 SEEN-VARIANT !
    na nu VARIANT-START
-   FAM @ DECL-EVENT:END-VARIANT
+   DECL-EVENT:END-VARIANT
    NVAR @ 1 + NVAR ! ;
 : COMPACT-CLAUSE ( ptr u8 n -- bool )    \ dispatch one compact token; YES = ;ENUM
    2dup DECL-REJECT:TOKEN!               \ the mode-selecting token arrives pre-read
@@ -307,8 +307,7 @@ ED-RESET
    E-TFAM-DUP DECL-REJECT:EXPECT
    TFAM-ACTIVE-PKG$ VIS na nu
    ar TK-SUM TFAM-DECL FAM !
-   OPEN-TX
-   FAM @ ar DECL-EVENT:ARITY ;
+   OPEN-TX ;
 : REGISTER-COMPACT ( ptr u8 n -- )
    {: na:ptr nu:n :}
    na nu DECL-REJECT:TOKEN!
@@ -323,9 +322,9 @@ ED-RESET
 \ is read through DECL-EVENT.
 : NICHE-SHAPE? ( -- bool )
    NVAR @ 2 <> IF NO EXIT THEN
-   FAM @ VBASE @ DECL-EVENT:PAYLOAD-N 0 <> IF NO EXIT THEN
-   FAM @ VBASE @ 1 + DECL-EVENT:PAYLOAD-N 1 <> IF NO EXIT THEN
-   FAM @ VBASE @ 1 + 0 DECL-EVENT:PAYLOAD-SCHEMA@
+   VBASE @ DECL-EVENT:PAYLOAD-N 0 <> IF NO EXIT THEN
+   VBASE @ 1 + DECL-EVENT:PAYLOAD-N 1 <> IF NO EXIT THEN
+   VBASE @ 1 + 0 DECL-EVENT:PAYLOAD-SCHEMA@
    SCHEMA-ROOT@ SCHEMA-PTR? ;
 : NICHE-REQUIRE ( -- )
    FAM @ TFAM-NICHE? 0= IF EXIT THEN

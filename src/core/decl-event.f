@@ -11,8 +11,8 @@ package TYPE-DECL
 private
 package DECL-EVENT
 
-\ --- syntax-event kinds (record tag values). Slot meaning by kind (the FAM slot
-\ is always the family id):
+\ --- syntax-event kinds (record tag values). Each event row holds a kind, VAR
+\ and FLD; their meaning by kind:
 \   DEV-K-POLICY       VAR = policy code   FLD = none      (header clause)
 \   DEV-K-DERIVE       VAR = feature code  FLD = none      (header clause)
 \   DEV-K-VARIANT      VAR = variant id    FLD = none      (open one enum variant)
@@ -51,13 +51,11 @@ E-DEV-OPAQUE-PACKAGE DECL-REJECT:EXPLAIN
 
 \ Event scratch: interleaved integer cells, so a grow is a plain cell copy.
 0 cells constant DEV.KIND-OFF
-1 cells constant DEV.FAM-OFF
-2 cells constant DEV.VAR-OFF
-3 cells constant DEV.FLD-OFF
-4 cells constant DEV-REC
+1 cells constant DEV.VAR-OFF
+2 cells constant DEV.FLD-OFF
+3 cells constant DEV-REC
 
 : DEV.KIND ( ptr a -- ptr a ) DEV.KIND-OFF + ;
-: DEV.FAM ( ptr a -- ptr a ) DEV.FAM-OFF + ;
 : DEV.VAR ( ptr a -- ptr a ) DEV.VAR-OFF + ;
 : DEV.FLD ( ptr a -- ptr a ) DEV.FLD-OFF + ;
 
@@ -82,13 +80,12 @@ variable DEV-CUR-VAR  \ current-variant selector: open variant id, else DEV-NO-V
    DEV-N @ 1 + DEV-GROW ;
 
 : DEV-ROW ( n -- ptr n ) DEV-REC * DEV-BASE + ;
-: DEV-EMIT ( n n n n -- ) {: k:n fam:n var:n fld:n :}
+: DEV-EMIT ( n n n -- ) {: k:n var:n fld:n :}
    DEV-ENSURE
    DEV-N @ DEV-ROW {: r:ptr :}
-   k r DEV.KIND !   fam r DEV.FAM !   var r DEV.VAR !   fld r DEV.FLD !
+   k r DEV.KIND !   var r DEV.VAR !   fld r DEV.FLD !
    DEV-N @ 1 + DEV-N ! ;
 : DEV-PROV-KIND@ ( n -- n ) DEV-ROW DEV.KIND @ ;
-: DEV-PROV-FAM@ ( n -- n ) DEV-ROW DEV.FAM @ ;
 : DEV-PROV-VAR@ ( n -- n ) DEV-ROW DEV.VAR @ ;
 : DEV-PROV-FLD@ ( n -- n ) DEV-ROW DEV.FLD @ ;
 : DEV-CUR-HAS-KIND? ( n -- bool ) {: k:n :}
@@ -105,22 +102,20 @@ variable DEV-CUR-VAR  \ current-variant selector: open variant id, else DEV-NO-V
    loop
    0 <> ;
 
-: DEV-PAYLOAD-OPEN? ( n n n -- bool ) {: id:n fam:n vid:n :}
+: DEV-PAYLOAD-OPEN? ( n n -- bool ) {: id:n vid:n :}
    id DEV-PROV-KIND@ DEV-K-VARIANT =
-   id DEV-PROV-FAM@ fam = and
    id DEV-PROV-VAR@ vid = and ;
 
-: DEV-PAYLOAD-END? ( n n n -- bool ) {: id:n fam:n vid:n :}
+: DEV-PAYLOAD-END? ( n n -- bool ) {: id:n vid:n :}
    id DEV-PROV-KIND@ DEV-K-VARIANT-END =
-   id DEV-PROV-FAM@ fam = and
    id DEV-PROV-VAR@ vid = and ;
 
 \ A variant's payload is the field events between its DEV-K-VARIANT and its
 \ DEV-K-VARIANT-END: start and end event ids.
-: DEV-PAYLOAD-RANGE ( n n -- n n ) {: fam:n vid:n :}
-   0 BEGIN dup fam vid DEV-PAYLOAD-OPEN? 0= WHILE 1 + REPEAT
+: DEV-PAYLOAD-RANGE ( n -- n n ) {: vid:n :}
+   0 BEGIN dup vid DEV-PAYLOAD-OPEN? 0= WHILE 1 + REPEAT
    1 + dup
-   BEGIN dup fam vid DEV-PAYLOAD-END? 0= WHILE 1 + REPEAT ;
+   BEGIN dup vid DEV-PAYLOAD-END? 0= WHILE 1 + REPEAT ;
 
 public
 
@@ -139,30 +134,26 @@ public
 \ load nothing, so no declaration spans a file load.
 : FIELD-SCHEMA@ ( n -- n ) PF-ROW PF.SCH @ ;
 
-: PAYLOAD-N ( n n -- n ) DEV-PAYLOAD-RANGE swap - ;
+: PAYLOAD-N ( n -- n ) DEV-PAYLOAD-RANGE swap - ;
 
-: PAYLOAD-SCHEMA@ ( n n n -- n ) {: fam:n vid:n index:n :}
-   fam vid DEV-PAYLOAD-RANGE drop index + DEV-PROV-FLD@ {: fld:n :}
+: PAYLOAD-SCHEMA@ ( n n -- n ) {: vid:n index:n :}
+   vid DEV-PAYLOAD-RANGE drop index + DEV-PROV-FLD@ {: fld:n :}
    fld FIELD-SCHEMA@ ;
 
-\ The arity is a header check: it logs no event.
-: ARITY ( n n -- ) {: fam:n arity:n :}
-   arity 0 < arity TFAM-DECL-PARAM-COUNT > or IF TYPE-DECL:E-TDECL-ARITY throw THEN ;
-
-: POLICY ( n n -- ) {: fam:n policy:n :}
+: POLICY ( n -- ) {: policy:n :}
    DEV-K-POLICY DEV-CUR-HAS-KIND? IF E-DEV-DUP-POLICY throw THEN
-   DEV-K-POLICY fam policy DEV-NO-FIELD DEV-EMIT ;
+   DEV-K-POLICY policy DEV-NO-FIELD DEV-EMIT ;
 
-: DERIVE ( n n -- ) {: fam:n feature:n :}
+: DERIVE ( n -- ) {: feature:n :}
    DEV-K-DERIVE feature DEV-CUR-HAS-KIND-VAR? IF E-DEV-DUP-DERIVE throw THEN
-   DEV-K-DERIVE fam feature DEV-NO-FIELD DEV-EMIT ;
+   DEV-K-DERIVE feature DEV-NO-FIELD DEV-EMIT ;
 
 \ OPAQUE needs a package: the generated words land in the declaring package's
 \ private wordlist, which a top-level family lacks.
 : OPAQUE ( n -- ) {: fam:n :}
    fam TFAM-PKG$ nip 0= IF E-DEV-OPAQUE-PACKAGE throw THEN
    DEV-K-OPAQUE DEV-CUR-HAS-KIND? IF E-DEV-DUP-OPAQUE throw THEN
-   DEV-K-OPAQUE fam DEV-NO-VARIANT DEV-NO-FIELD DEV-EMIT ;
+   DEV-K-OPAQUE DEV-NO-VARIANT DEV-NO-FIELD DEV-EMIT ;
 
 \ Named-field variants carry no positional payload schema (ss=sc=pc=0); their
 \ field rows are found downstream by (family, variant id).
@@ -171,9 +162,9 @@ public
    fam na nu DEV-VAR-ORD @ 0 0 0 SUMV-ADD {: vid:n :}
    vid DEV-CUR-VAR !
    DEV-VAR-ORD @ 1 + DEV-VAR-ORD !
-   DEV-K-VARIANT fam vid DEV-NO-FIELD DEV-EMIT ;
-: END-VARIANT ( n -- ) {: fam:n :}
-   DEV-K-VARIANT-END fam DEV-CUR-VAR @ DEV-NO-FIELD DEV-EMIT
+   DEV-K-VARIANT vid DEV-NO-FIELD DEV-EMIT ;
+: END-VARIANT ( -- )
+   DEV-K-VARIANT-END DEV-CUR-VAR @ DEV-NO-FIELD DEV-EMIT
    DEV-NO-VARIANT DEV-CUR-VAR ! ;
 
 \ FIELD checks the schema against the family's kinds (E-PF-SCHEMA) and the
@@ -185,7 +176,7 @@ public
    {: fam:n na:ptr nu:n sch:n slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
    fam sch PF-SCHEMA-OK? 0= IF E-PF-SCHEMA throw THEN
    fam DEV-CUR-VAR @ na nu sch slot cellsn boff bytesn al flags PF-ADD
-   DEV-K-FIELD fam DEV-CUR-VAR @  DEV-BASE-FLD @ DEV-FLD-ORD @ +  DEV-EMIT
+   DEV-K-FIELD DEV-CUR-VAR @  DEV-BASE-FLD @ DEV-FLD-ORD @ +  DEV-EMIT
    DEV-FLD-ORD @ 1 + DEV-FLD-ORD ! ;
 
 \ A pointer does not own (TFCL-NODE? stops at it), so `ptr <linear>` would let
