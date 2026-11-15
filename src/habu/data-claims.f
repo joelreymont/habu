@@ -221,7 +221,6 @@ create TAB
    POLICY-BITS-OFF                    PROT-BITS-BYTES         CLAIM POLICY-BITS
    POLICY-REQUIRE-CELL                1 cells                 CLAIM POLICY-REQUIRE-CELL
    CLAUSE-CELL                        1 cells                 CLAIM CLAUSE-CELL
-   PACKAGE-PATH:OFF                   PACKAGE-PATH:CAP        CLAIM PACKAGE-PATH
    PKG-OUTSIDE-CELL                   1 cells                 CLAIM PKG-OUTSIDE-CELL
    SECTION-CELL                       1 cells                 CLAIM SECTION-CELL
    \ The profiler band stays the last row, where BAND-ASSERT places it again.

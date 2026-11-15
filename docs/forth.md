@@ -157,8 +157,7 @@ private
   rejected (`E-PKG-CONTEXT`): in a public section, under a using the
   package opened, inside a part, and in a file or string that began inside the
   package, so a file required inside a package cannot open one. A package a
-  file or string leaves open is its includer's from then on. A path of 256
-  bytes or more is rejected at its name (`E-PACKAGE-NAME-CAP`). `;package` of
+  file or string leaves open is its includer's from then on. `;package` of
   a part reopens A in its private section with A's using floor. Inside A and its
   parts a qualifier `B:X` in a word or a family type, `using B` and a qualified
   definition `: B:Q` name the part `A:B` first, then a top-level package B,
@@ -2139,14 +2138,6 @@ definition, and a map the system refuses throws `E-BODY-TEXT`.
   frames, and the checker rejects 33 nested `begin`s with
   `error[E-UNCHECKABLE]: control flow nested too deep to check (depth 33, at
   most 32)`. Factor the inner loops into their own words.
-- **A family, variant, field or package name**: `SUMTYPE`,
-  `NEWTYPE`, `STRUCTURE` and `ENUM` reject a longer one, `tools/check.f`
-  reporting `E-BAD-DECLARATION` with the name as its token and the reason
-  `name longer than <cap> bytes`. `package` rejects a name over 255 bytes,
-  `E-PACKAGE-NAME-CAP` at the name, rc 70, and so does a public type whose
-  constructor package name, `<PKG>-<TYPE>`, would be longer.
-  A type qualified by a longer name names no package,
-  `E-UNKNOWN-SIGNATURE-TYPE`. Shorten the name.
 - **A definition's effect depth**: a row of cells, where a cell's type adds the
   levels it nests, so a returned quotation's row counts from the cell that
   holds it. Past it the definition is uncheckable: `E-UNCHECKABLE`, `effect too

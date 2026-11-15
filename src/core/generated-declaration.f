@@ -243,8 +243,8 @@ E-TDECL-POLICY EXPLAIN
 s" invalid layout policy for recursive sum"
 s" drop the payload that names the family being declared: no family can hold itself"
 E-TDECL-RECURSIVE EXPLAIN
-s" declared name too long or record too wide to make"
-s" shorten the name to 255 bytes or fewer, or give the record at most 4096 items: one per `FIELD` and one per buffer cell"
+s" record too wide to make"
+s" give the record at most 4096 items: one per `FIELD` and one per buffer cell"
 E-TDECL-CAP EXPLAIN
 s" derive requirement not met"
 s" derive a feature only when every payload type has it, or drop it from `DERIVE`"
@@ -528,11 +528,13 @@ PTR-VARIABLE HEAD-A   variable HEAD-U   variable HEAD-I   \ a span read ahead, r
 
 PTR-VARIABLE TYPE-A   variable TYPE-U     \ the field type token under resolution
 PTR-VARIABLE MISS-A   variable MISS-U     \ the first unresolved type span, kept for REPLAY-END
-\ A replay's field names, each count-prefixed: one structure member's, or one
-\ variant's, since a front end's SEEN-CLEAR.
+\ A replay's field names, each after its count cell: one structure member's, or
+\ one variant's, since a front end's SEEN-CLEAR.
 PTR-VARIABLE SEEN-P
 SCRATCH-VARIABLE SEEN-CAP                 \ SEEN-P's room, in cells
 : SEEN ( -- ^u8 ) SEEN-P @ ;
+: SEEN-LEN ( n -- ^n ) SEEN-P @ + ;       \ the count cell at byte offset n
+: SEEN-REC ( n -- n ) CELL + 1 - CELL / cells CELL + ;   \ a name's record bytes, whole cells
 variable SEEN-U
 variable SEEN-I
 
@@ -594,8 +596,6 @@ public
 : NAME-TOKEN ( -- ^u8 n )           \ a name, recorded, never the terminator
    RAW 2dup DECL-REJECT:TOKEN! ;
 
-: NAME-LONG? ( ^u8 n -- bool ) nip TF-NAME-MAX > ;
-
 : POLICY-CODE ( ^u8 n -- n )         \ policy name -> layout code (or reject)
    dup 0= IF 2drop s" missing layout policy name"
       s" name a policy after `POLICY`: `stack-cell-tag`, `packed-tag` or `niche-null`"
@@ -613,11 +613,11 @@ private
    {: a:^ u:n :}
    0 SEEN-I !
    BEGIN SEEN-I @ SEEN-U @ < WHILE
-      SEEN SEEN-I @ + c@ {: len:n :}
+      SEEN-I @ SEEN-LEN @ {: len:n :}
       len u = IF
-         SEEN SEEN-I @ + 1+ len a u CORE-STR= IF YES EXIT THEN
+         SEEN SEEN-I @ + CELL + len a u CORE-STR= IF YES EXIT THEN
       THEN
-      SEEN-I @ len 1+ + SEEN-I !
+      SEEN-I @ len SEEN-REC + SEEN-I !
    REPEAT NO ;
 
 public
@@ -631,15 +631,15 @@ public
    s" duplicate field name" f fu E-TFAM-DUP DECL-REJECT:EXPECT
    a u PF-NAME-REQUIRE
    a u SEEN? IF E-TFAM-DUP throw THEN
-   SEEN-P SEEN-CAP  SEEN-U @ u + 1+ CELL + 1 - CELL /  1 ARENA-ROWS-ENSURE
-   u SEEN SEEN-U @ + c!
+   SEEN-P SEEN-CAP  SEEN-U @ u SEEN-REC + CELL /  1 ARENA-ROWS-ENSURE
+   u SEEN-U @ SEEN-LEN !
    0 SEEN-I !
    BEGIN SEEN-I @ u < WHILE
       a SEEN-I @ + c@
-      SEEN SEEN-U @ + 1+ SEEN-I @ + c!
+      SEEN SEEN-U @ + CELL + SEEN-I @ + c!
       SEEN-I @ 1+ SEEN-I !
    REPEAT
-   SEEN-U @ u + 1+ SEEN-U ! ;
+   SEEN-U @ u SEEN-REC + SEEN-U ! ;
 
 private
 

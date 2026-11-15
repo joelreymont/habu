@@ -1284,11 +1284,9 @@ PARENT CELL + constant REC
 REC CELL + constant END
 ;package
 
-\ The path `A:B` built for `package B` inside package A;
-\ a path of CAP bytes or more is refused.
+\ The x86-64 kernel's head-row frame size.
 package PACKAGE-PATH
 public
-$4CD0 constant OFF
 $100 constant CAP
 ;package
 

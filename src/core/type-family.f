@@ -1101,36 +1101,23 @@ public
 \ segments stay even-length and interior and each single '-' decodes uniquely.
 \ Package `a-b` family `c` derives `A--B-C`; `a`+`b-c` derives `A-B--C`;
 \ top-level `a-b-c` derives `A--B--C`; top level derives the bare escaped tail
-\ (`result` -> `RESULT`). A derived package past 255 bytes (PACKAGE-PATH:CAP
-\ - 1) is refused like an explicit package name.
+\ (`result` -> `RESULT`).
 
 private
 
-$400 constant TF-CTOR-CAP        \ derived-name buffer bytes
-create TF-CTOR-BUF TF-CTOR-CAP allot
+PTR-VARIABLE TF-CTOR-P           \ the derived name, grown on demand
+SCRATCH-VARIABLE TF-CTOR-CAP     \ TF-CTOR-P's room, in cells
 variable TF-CTOR-U               \ derived-name length
+: TF-CTOR-BUF ( -- ^u8 ) TF-CTOR-P @ ;
 
 public
 
 : TF-UPPER-C ( n -- n ) {: c:n :} c TF-LOWER? IF c 32 - EXIT THEN c ;   \ a-z -> A-Z
 
-\ The longest family, variant or field name is the longest package name
-\ (PACKAGE-PATH:CAP - 1), so every derived spelling fits TF-CTOR-BUF: at most
-\ 2*255 + 1 + 2*255 = 1021 bytes escaped, 255 + 1 + 255 + 1 for a private
-\ initialized member. sumtype.f, structure-decl.f and enum-decl.f refuse a
-\ longer name with E-TDECL-CAP and TF-NAME-LONG$'s reason, and ARENA (arena.f)
-\ runs STRUCTURE's gate on its name first; the dies in `TF-CTOR-C,` and
-\ TFAM-INIT-MEMBER$ guard only that arithmetic.
-PACKAGE-PATH:CAP 1 - constant TF-NAME-MAX
-
-\ The reason refusing a name longer than TF-NAME-MAX. It is static text: no
-\ number formatter loads before this file, and the refusal carries the name.
-: TF-NAME-LONG$ ( -- ^u8 n ) s" name longer than 255 bytes" ;
-
 private
 
 : TF-CTOR-C, ( n -- )
-   TF-CTOR-U @ TF-CTOR-CAP >= IF s" tfam: constructor name too long" 76 die THEN
+   TF-CTOR-P TF-CTOR-CAP  TF-CTOR-U @ CELL / 1 +  1 ARENA-ROWS-ENSURE
    TF-CTOR-BUF TF-CTOR-U @ + c!
    TF-CTOR-U @ 1 + TF-CTOR-U ! ;
 : TF-CTOR-ESC ( ^u8 n -- ) {: a:^ u:n :}   \ one uppercased '-'->'--' escaped segment
@@ -1155,35 +1142,16 @@ private
 
 \ The tail must already be canonical lowercase.
 
-\ The built name, TF-CTOR-U bytes past the longest a package name may have,
-\ rejected at the type name na nu.
-: TF-CTOR-LONG-REJECT ( ^u8 n -- ) {: na:^ nu:n :}
-   PACKAGE-PATH:CAP 1 - {: m:n :}
-   s" E-PACKAGE-NAME-CAP" REJECTION:OPEN
-   s" the constructor package name `" REJECTION:EMIT-STR
-   TF-CTOR-BUF TF-CTOR-U @ REJECTION:EMIT-STR
-   s" ` is " REJECTION:EMIT-STR  TF-CTOR-U @ REJECTION:EMIT-U
-   s"  bytes long, more than the " REJECTION:EMIT-STR  m REJECTION:EMIT-U
-   s"  a package name may have" REJECTION:EMIT-STR
-   na nu REJECTION:AT  s" its constructor package name is too long" REJECTION:EMIT-STR
-   REJECTION:HELP
-   s" shorten the package or the type name so `" REJECTION:EMIT-STR
-   TF-CTOR-BUF TF-CTOR-U @ REJECTION:EMIT-STR
-   s" ` has " REJECTION:EMIT-STR  m REJECTION:EMIT-U
-   s"  bytes or fewer" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
-
 public
 
 : TF-CTOR-PKG$ ( ^u8 n ^u8 n -- ^u8 n )
    {: pa:^ pu:n ta:^ tu:n :}
    pa pu ta tu TF-CTOR-BUILD-ESCAPED
-   TF-CTOR-U @ PACKAGE-PATH:CAP >= IF ta tu TF-CTOR-LONG-REJECT THEN
    TF-CTOR-BUF TF-CTOR-U @ ;
 
 \ Two spellings, on purpose:
 \   public   PKG-FAMILY:MEMBER  in the reserved constructor namespace
-\                               TF-CTOR-PKG$ derives, escaped and bounded.
+\                               TF-CTOR-PKG$ derives, escaped.
 \   private  FAMILY-MEMBER      in the declaring package's private wordlist:
 \                               uppercased family tail, '-', uppercased member.
 \ The private form needs no package segment or escaping: every use is inside the
@@ -2582,13 +2550,15 @@ private
 \ A FIELD name is canonical, while the two public initialized members add a
 \ final @ or !. Keep the suffix in its own buffer: TF-CTOR-PRIV$ builds into
 \ TF-CTOR-BUF and must not overwrite its member argument.
-create TF-INIT-TAIL TF-CTOR-CAP allot
+PTR-VARIABLE TF-INIT-P
+SCRATCH-VARIABLE TF-INIT-CAP     \ TF-INIT-P's room, in cells
+: TF-INIT-TAIL ( -- ^u8 ) TF-INIT-P @ ;
 
 public
 
 : TFAM-INIT-MEMBER$ ( n bool -- ^u8 n ) {: fid:n store:bool :}
    fid PF-NAME$ {: a:^ u:n :}
-   u 1 + TF-CTOR-CAP > IF s" tfam: initialized member too long" 76 die THEN
+   TF-INIT-P TF-INIT-CAP  u CELL / 1 +  1 ARENA-ROWS-ENSURE
    u 0 ?do a i + c@ TF-UPPER-C TF-INIT-TAIL i + c! loop
    store IF 33 ELSE 64 THEN TF-INIT-TAIL u + c!
    TF-INIT-TAIL u 1 + ;
@@ -3791,13 +3761,17 @@ public
 
 public
 
-create TFQ-BUF PACKAGE-PATH:CAP allot
+private
+PTR-VARIABLE TFQ-P
+SCRATCH-VARIABLE TFQ-CAP          \ TFQ-P's room, in cells
+public
+: TFQ-BUF ( -- ^u8 ) TFQ-P @ ;
 variable TFQ-U
 PTR-VARIABLE TFQ-TA   variable TFQ-TU  \ qualified tail token
 variable TFQ-COLON
 
 : TFQ-FOLD-COPY ( ^u8 n -- ) {: a:^ u:n :}
-   u PACKAGE-PATH:CAP > IF s" tfam: qualifier too long" 76 die THEN
+   TFQ-P TFQ-CAP  u CELL / 1 +  1 ARENA-ROWS-ENSURE
    0 BEGIN dup u < WHILE
       {: i:n :}
       a i + c@ CORE-FOLD-C  TFQ-BUF i + c!
@@ -3820,7 +3794,6 @@ variable TFQ-COLON
    TFQ-COLON @ 0 < IF RES-FALSE EXIT THEN
    TFQ-COLON @ 0 = IF RES-FALSE EXIT THEN            \ leading ':'
    TFQ-COLON @ u 1 - = IF RES-FALSE EXIT THEN        \ trailing ':'
-   TFQ-COLON @ PACKAGE-PATH:CAP > IF RES-FALSE EXIT THEN      \ names no package
    a TFQ-COLON @ TFQ-FOLD-COPY
    a TFQ-COLON @ + 1 + TFQ-TA !
    u TFQ-COLON @ - 1 - TFQ-TU !

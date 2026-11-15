@@ -1,19 +1,21 @@
 \ name-length-test.f - every checker word source can call with a name or a text
 \ rejects a length that describes no memory, -1 and the maximum cell. A query
 \ answers no; a declaring word ends with its own rejection. A name has no
-\ ceiling: a long one is taken, while a package name past its row and a field
-\ name past 255 bytes are rejected by name.
+\ ceiling: a long one is taken, a package name, a part path and a field name
+\ included.
 
 require src/lib/error.f
 require src/lib/memory.f
 require src/lib/string.f
-require src/lib/fmt.f
 require src/lib/test.f
 require src/lib/test/ending.f
 require src/lib/test/subject.f
 require src/lib/test/rejection-text.f
 require src/lib/process.f
-require src/habu/layout.f
+require src/lib/process-argv.f
+require src/lib/engine-candidate.f
+require src/lib/fs-mutate.f
+require test/e2e-tree.f
 
 package NAME-LENGTH-TEST
 
@@ -85,33 +87,11 @@ TEXTS!
 : LINEAR-IT ( -- ) BAD$ CHECKER-DEFLINEAR ;
 : RECORD-IT ( -- ) BAD$ s" f n" CHECKER-DEFRECORD ;
 : FIELDS-IT ( -- ) s" zzrec" BAD$ CHECKER-DEFRECORD ;
-: PACKAGE-IT ( -- ) BAD$ BAD$ CHECKER-PACKAGE ;
-\ `;package`, then NLTP and its part named BAD$: the part opens in NLTP's
-\ buffer, so `package` reaches the part's path.
-: PART$ ( -- ^u8 n )
-   s" ;package package NLTP package " {: h:^ hu:n :}
-   BAD$ {: a:^ u:n :}
-   hu u + MEM-ALLOC-BYTES drop {: p:^ :}
-   h p hu BYTE-COPY
-   a p hu + u BYTE-COPY
-   p hu u + ;
 : FAMILY-IT ( -- ) BAD$ BAD$ s" newtype" CHECKER-DEFFAMILY ;
 : CHECK!-IT ( -- ) BODY$ CHECK! drop ;
 : CANDIDATE-IT ( -- ) BODY$ CHECK-CANDIDATE! drop ;
 : HOOK-IT ( -- ) BODY$ CHECK:DEFINITION drop ;
 
-\ A structure whose one field is named BAD$, declared as a program declares it.
-: FIELD-NAME$ ( -- ^u8 n )
-   s" STRUCTURE nlt-long FIELD " {: h:^ hu:n :}
-   BAD$ {: a:^ u:n :}
-   s"  n ;STRUCTURE" {: t:^ tu:n :}
-   hu u + tu + MEM-ALLOC-BYTES drop {: p:^ :}
-   h p hu BYTE-COPY
-   a p hu + u BYTE-COPY
-   t p hu + u + tu BYTE-COPY
-   p hu u + tu + ;
-: FIELD-NAME-IT ( -- )
-   FIELD-NAME$ evaluate-closed ;
 
 \ ---- the parent's side -------------------------------------------------------
 \ A label keeps what fits in LBL.
@@ -195,47 +175,12 @@ variable LBL-U
    s" MATCH-FAM" FAM-DIES-AT-MAX
    s" CON-FAM" FAM-DIES-AT-MAX ;
 
-SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
-\ A package name past its row is rejected naming its length; no source holds
-\ the name, so the record is placed at the word this file ran, names this file
-\ and shows the name in its `word` note. The head is copied out of the string
-\ builder the note reuses.
-: CAP-HEAD$ ( -- ^u8 n )
-   SB-RESET
-   s" error[E-PACKAGE-NAME-CAP]: the package name is " SB-APPEND
-   LONG-LEN FMT:SB-INT  s"  bytes long, more than the " SB-APPEND
-   PACKAGE-PATH:CAP 1 - FMT:SB-INT
-   S\"  a package name may have\n--> " SB-APPEND
-   LOADING @ data-base SRCLOC:PATHLEN-CELL + @ SB-APPEND
-   s" :" SB-APPEND
-   SB$ {: h:^ hu:n :}
-   hu MEM-ALLOC-BYTES drop {: p:^ :}
-   h p hu BYTE-COPY
-   p hu ;
-: CAP-NOTE$ ( -- ^u8 n )
-   SB-RESET
-   S\" \n= help: shorten the package name to " SB-APPEND
-   PACKAGE-PATH:CAP 1 - FMT:SB-INT
-   S\"  bytes or fewer\n" SB-APPEND
-   SB$ {: t:^ tu:n :}
-   s" = word: " {: h:^ hu:n :}
-   hu LONG-LEN + tu + {: wu:n :}
-   wu MEM-ALLOC-BYTES drop {: p:^ :}
-   h p hu BYTE-COPY
-   LONG-LEN TAIL drop p hu + LONG-LEN BYTE-COPY
-   t p hu + LONG-LEN + tu BYTE-COPY
-   p wu ;
-
 \ A rejection exits 70 and an engine defect dies 76.
 : TEST-DECLARERS ( -- )
    s" LINEAR-IT" 76 S\" checker: a linear type's name describes no memory\n" DIES
    s" RECORD-IT" 76 S\" checker: a value record's name describes no memory\n" DIES
-   LONG-LEN s" long" s" PACKAGE-IT" 70 CAP-HEAD$ CAP-NOTE$ REJECTS-AT
    \ Each child's record is placed at MAIN, the token its parent was loading.
-   s" FAMILY-IT" 70 S\" error[E-BAD-DECLARATION]: bad newtype declaration\n" S\" | ^^^^ missing name\n" REJECTS
-   256 s" 256" s" FIELD-NAME-IT" 70
-      S\" error[E-BAD-DECLARATION]: bad structure declaration `nlt-long`\n"
-      s" ^ name longer than 255 bytes" REJECTS-AT ;
+   s" FAMILY-IT" 70 S\" error[E-BAD-DECLARATION]: bad newtype declaration\n" S\" | ^^^^ missing name\n" REJECTS ;
 
 \ CHECKER-DEFRECORD's second string is the record's field text, which is no
 \ name, so only -1 and the maximum cell describe no text.
@@ -252,12 +197,6 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    s" CHECK!-IT" 76 TOO-LARGE$ DIES
    s" CANDIDATE-IT" 76 TOO-LARGE$ DIES
    s" HOOK-IT" 76 TOO-LARGE$ DIES ;
-
-\ No token is -1 or the maximum cell long, so `package` meets only a long part
-\ name, whose path is past its row: rejected, naming it.
-: TEST-PART ( -- )
-   LONG-LEN s" long" s" PART$ evaluate" 70 s" error[E-PACKAGE-NAME-CAP]: `"
-      LONG-LEN TAIL REJECTS-AT ;
 
 \ ---- a long name -------------------------------------------------------------
 \ `: <u bytes of c> ;`, in a fresh mapping.
@@ -299,6 +238,41 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    b p au + bu BYTE-COPY
    p au bu + ;
 
+\ A package named by LONG-LEN bytes of Q, with a part named by LONG-LEN bytes
+\ of R, a word in each, and a SUMTYPE whose derived constructor package is
+\ longer still: the part's word runs inside the package, the package's word
+\ runs qualified and then bare under `using`, and the constructor runs. It
+\ prints PWWS.
+: PKG-SRC$ ( -- ^u8 n )
+   LONG-LEN 81 LETTERS {: l:^ lu:n :}
+   LONG-LEN 82 LETTERS {: r:^ ru:n :}
+   s" package " l lu JOIN
+   S\" \npublic\n: NLT-W ( -- ) 87 emit ;\nSUMTYPE nltshape VARIANT dot ;VARIANT ;SUMTYPE\nprivate\npackage " JOIN
+   r ru JOIN S\" \npublic\n: NLT-P ( -- ) 80 emit ;\n;package\n" JOIN
+   r ru JOIN S\" :NLT-P\n;package\n" JOIN
+   l lu JOIN S\" :NLT-W\nusing " JOIN
+   l lu JOIN S\" \nNLT-W\n;using\n: NLT-S ( -- ) " JOIN
+   l lu JOIN S\" -NLTSHAPE:DOT drop 83 emit ;\nNLT-S\n" JOIN ;
+
+\ `--load` and tools/check.f each take the package from a file, so each runs
+\ in a child over a scratch tree's copy of it.
+: TEST-PACKAGE ( -- )
+   s" nlt-package" E2E-TREE:TREE
+   E2E-TREE:ROOT$ FS:CLEANUP-TREE+
+   s" test/nlt-package.f" E2E-TREE:AT-A PKG-SRC$ FS:WRITE-ALL
+   s" a long package name and part path load" T-LABEL
+   s" test/nlt-package.f" E2E-TREE:ARGS
+   ENGINE-CANDIDATE:PATH$ E2E-TREE:ROOT$ E2E-TREE:RUN-ON
+   E2E-TREE:NEED-OK
+   s" ... and their words and the constructor run" T-LABEL
+   E2E-TREE:OUT$ s" PWWS" T$=
+   s" tools/check.f takes them" T-LABEL
+   s" tools/check.f" E2E-TREE:ARGS
+   s" --" >LEN PROC-ARGV+
+   s" test/nlt-package.f" >LEN PROC-ARGV+
+   ENGINE-CANDIDATE:PATH$ E2E-TREE:ROOT$ E2E-TREE:RUN-ON
+   E2E-TREE:NEED-OK ;
+
 \ A candidate that calls the word with a long name.
 : CALL-LONG$ ( -- ^u8 n ) s" NLT-CALL ( -- ) " LONG$ JOIN ;
 
@@ -315,8 +289,8 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    s" ... and the word runs" T-LABEL
    OUT outu LEN>N s" R" T$= ;
 
-\ The word this file defines below, with a long name, and long-named types and
-\ a defer, each declared through source. A second declaration of a type ends
+\ The word this file defines below, with a long name, and long-named types, a
+\ field and a defer, each declared through source. A second declaration of a type ends
 \ the process, so a child makes it.
 : TEST-LONG ( -- )
    s" a word with a long name resolves" T-LABEL
@@ -334,6 +308,9 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    la lu TEST-EVAL:RC 0 T=
    0 s" again" la lu 70 S\" error[E-BAD-DECLARATION]: `DEFLINEAR "
    s" already a type or reserved" REJECTS-AT
+   s" a structure with a long field name is declared" T-LABEL
+   s" STRUCTURE nlt-long FIELD " LONG-LEN 116 LETTERS JOIN s"  n ;STRUCTURE" JOIN
+   TEST-EVAL:RC 0 T=
    s" a deferred long name is stored whole" T-LABEL
    LONG-LEN 112 LETTERS {: da:^ du:n :}
    s" defer " da du JOIN s"  ( -- n )" JOIN TEST-EVAL:RC 0 T=
@@ -347,7 +324,7 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    TEST-QUERIES
    TEST-FAMILIES
    TEST-DECLARERS
-   TEST-PART
+   TEST-PACKAGE
    TEST-FIELD-TEXT
    TEST-TEXTS
    TEST-ENGINE

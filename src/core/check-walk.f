@@ -1560,7 +1560,9 @@ $C8 constant RBF.VPRSN-OFF
 $D0 constant RBF.PROWE-OFF                 \ the kept parses rows' end
 $D8 constant RBF.NDICT-OFF                 \ the dictionary's record count
 $E0 constant RBF.SIMMN-OFF                 \ the source-immediate table's row count
-$E8 constant RBF-REC
+$E8 constant RBF.PKGA-OFF                  \ the open package's name offset
+$F0 constant RBF.USE-OFF                   \ the import rows (CK-USE-SAVE)
+RBF.USE-OFF CK-USE-SNAP-BYTES + constant RBF-REC
 \ RBF.COORD distinguishes an ordinary checker scope (-1) from a declaration
 \ frame's START tag. The declaration runner uses zero: declarations do not nest.
 -1 constant RBF-NO-COORDINATOR
@@ -1581,6 +1583,8 @@ $E8 constant RBF-REC
 : RBF.VSIG ( ^a -- ^a ) RBF.VSIG-OFF + ;
 : RBF.PKGMODE ( ^a -- ^a ) RBF.PKGMODE-OFF + ;
 : RBF.PKGU ( ^a -- ^a ) RBF.PKGU-OFF + ;
+: RBF.PKGA ( ^a -- ^a ) RBF.PKGA-OFF + ;
+: RBF.USE ( ^a -- ^a ) RBF.USE-OFF + ;
 : RBF.DFEREND ( ^a -- ^a ) RBF.DFEREND-OFF + ;
 : RBF.PIMMN ( ^a -- ^a ) RBF.PIMMN-OFF + ;
 : RBF.COORD ( ^a -- ^a ) RBF.COORD-OFF + ;
@@ -1600,50 +1604,26 @@ variable RBF-CAP-V   RBF-CAP-INIT RBF-CAP-V !
 create RBF-A-BOOT      RBF-CAP-INIT RBF-REC * allot
 PERSISTED-PTR-VARIABLE RBF-A-P       RBF-A-BOOT RBF-A-P !
 : RBF-BASE ( -- ^n ) RBF-A-P @ ;
-PACKAGE-PATH:CAP CK-USE-SNAP-BYTES + constant RBF-NAME-REC
-create RBF-NAME-BOOT   RBF-CAP-INIT RBF-NAME-REC * allot
-PERSISTED-PTR-VARIABLE RBF-NAME-P    RBF-NAME-BOOT RBF-NAME-P !
-: RBF-NAME-BASE ( -- ^u8 ) RBF-NAME-P @ ;
 variable RBF-DEPTH   0 RBF-DEPTH !
 
 : RBF-GROW ( -- )
    RBF-CAP-V @ 2 * {: nc:n :}
-   RBF-A-P    RBF-CAP-V @ RBF-REC *              nc RBF-REC *              REG-GROW1
-   RBF-NAME-P RBF-CAP-V @ RBF-NAME-REC *  nc RBF-NAME-REC *  REG-GROW1
+   RBF-A-P RBF-CAP-V @ RBF-REC *  nc RBF-REC *  REG-GROW1
    nc RBF-CAP-V ! ;
 : RBF-ENSURE ( -- )
    RBF-DEPTH @ RBF-CAP-V @ < IF exit THEN
    RBF-GROW ;
 : RBF-CUR ( -- ^n )       RBF-DEPTH @ RBF-REC * RBF-BASE + ;
-: RBF-NAME-CUR ( -- ^u8 )  RBF-DEPTH @ RBF-NAME-REC * RBF-NAME-BASE + ;
 
-\ An import savepoint: the row count, then each row's length and name bytes.
-: CK-USE-SAVE ( ^u8 n -- ) {: dst:^ u:n :}
-   u dst cell-view !
-   u 0 ?DO
-      dst CK-USE-SNAP-HEADER + i CK-USE-SNAP-ROW * + {: row:^ :}
-      CK-USE-LENS i cells + @ {: len:n :}
-      len row cell-view !
-      CK-USE-NAMES i PACKAGE-PATH:CAP * + row CELL + len ARENA-COPY
-   LOOP ;
+\ An import savepoint: the row count, then the reachable rows. Nested neutral
+\ scopes may overwrite any prefix, not just append imports. The names the rows
+\ point at lie below the scope's SYM-STR mark, which the rollback keeps.
+: CK-USE-SAVE ( ^n n -- ) {: dst:^ u:n :}
+   u dst !
+   CK-USE-NAMES dst CELL + u 2 * ARENA-CELLS-COPY ;
 
-: CK-USE-RESTORE ( ^u8 -- ) {: src:^ :}
-   src cell-view @ 0 ?DO
-      src CK-USE-SNAP-HEADER + i CK-USE-SNAP-ROW * + {: row:^ :}
-      row cell-view @ {: len:n :}
-      len CK-USE-LENS i cells + !
-      row CELL + CK-USE-NAMES i PACKAGE-PATH:CAP * + len ARENA-COPY
-   LOOP ;
-
-\ The byte half of each scope owns the package name and reachable import rows.
-\ Nested neutral scopes may overwrite any prefix, not just append imports.
-: RBF-NAME-SAVE ( ^u8 -- ) {: dst:^ :}
-   CHECKER-PACKAGE-NAME dst CHECKER-PACKAGE-U @ ARENA-COPY
-   dst PACKAGE-PATH:CAP + CK-USE-SCAN-N CK-USE-SAVE ;
-
-: RBF-NAME-RESTORE ( ^u8 n -- ) {: src:^ u:n :}
-   src CHECKER-PACKAGE-NAME u ARENA-COPY
-   src PACKAGE-PATH:CAP + CK-USE-RESTORE ;
+: CK-USE-RESTORE ( ^n -- ) {: src:^ :}
+   src CELL + CK-USE-NAMES src @ 2 * ARENA-CELLS-COPY ;
 
 : RBF-SAVE-INTO ( ^n -- ) {: r:^ :}
    UEND @ r RBF.UEND !
@@ -1662,6 +1642,8 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    VSIG @ r RBF.VSIG !
    CHECKER-PACKAGE-MODE @ r RBF.PKGMODE !
    CHECKER-PACKAGE-U @ r RBF.PKGU !
+   CHECKER-PACKAGE-NAME @ r RBF.PKGA !
+   r RBF.USE CK-USE-SCAN-N CK-USE-SAVE
    CHECKER-OVERLAY:MARKS
    r RBF.OVWIDN !  r RBF.OVCP !  r RBF.OVLOG !  r RBF.OVNDICT !
    DFER-END @ r RBF.DFEREND !
@@ -1681,6 +1663,8 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    ndict@ swap ?do 0 i record-facts! loop ;
 
 : RBF-RESTORE-FROM ( ^n -- ) {: r:^ :}
+   r RBF.PKGA @ CHECKER-PACKAGE-NAME !
+   r RBF.USE CK-USE-RESTORE
    r RBF.OVNDICT @  r RBF.OVLOG @  r RBF.OVCP @  r RBF.OVWIDN @
    CHECKER-OVERLAY:ROLLBACK
    r RBF.UEND @ USIGS-RESTORE-END
@@ -1692,7 +1676,7 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    r RBF.CAND @ CHK-CAND !
    r RBF.VSIG @ VSIG !
    r RBF.PKGMODE @ CHECKER-PACKAGE-MODE !
-   r RBF.PKGU @ CHECKER-PACKAGE-U!
+   r RBF.PKGU @ CHECKER-PACKAGE-U !
    r RBF.FLOOR @ PASS-FLOOR !
    r RBF.VDEFN @ VERIFY-DEFINER-N !
    r RBF.VPRSN @ VERIFY-PARSES-N !
@@ -1704,7 +1688,6 @@ variable RBF-DEPTH   0 RBF-DEPTH !
 : RBF-PUSH ( -- )
    RBF-ENSURE
    RBF-CUR RBF-SAVE-INTO
-   RBF-NAME-CUR RBF-NAME-SAVE
    RBF-DEPTH @ 1 + RBF-DEPTH !
    CHECKER-DECL-FRAME:EXT-SAVE ;
 
@@ -1713,7 +1696,6 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    execute
    RBF-DEPTH @ CHECKER-OVERLAY:CLOSE-SCOPE
    RBF-DEPTH @ 1 - RBF-DEPTH !
-   RBF-NAME-CUR RBF-CUR RBF.PKGU @ RBF-NAME-RESTORE
    RBF-CUR RBF-RESTORE-FROM
    RBF-CUR RBF.NDICT @ RBF-FACTS-FORGET ;
 

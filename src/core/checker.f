@@ -1718,15 +1718,23 @@ public
 \ A package's `global` section: its definitions are global words, their bodies
 \ in the package's scope.
 3 constant CHECKER-PACKAGE-GLOBAL
-\ Bytes at and past CHECKER-PACKAGE-U stay zero (CHECKER-PACKAGE-U!): a package may be open at a file capture.
-create CHECKER-PACKAGE-NAME PACKAGE-PATH:CAP allot
+
+\ The symbol string store: every name the checker keeps, folded, by offset.
+\ Keep the boot pool above the self-build's live span.
+$60000 constant SYM-STR-INIT
+variable SYM-STR-CAP-V   SYM-STR-INIT SYM-STR-CAP-V !
+: SYM-STR-CAP ( -- n ) SYM-STR-CAP-V @ ;
+create SYM-STR-BOOT SYM-STR-INIT allot
+PERSISTED-PTR-VARIABLE SYM-STR-P  SYM-STR-BOOT SYM-STR-P !
+variable SYM-STR-U
+: SYM-STR ( -- ^u8 ) SYM-STR-P @ ;
+0 SYM-STR-U !
+
+\ The open package's folded name: its offset in SYM-STR and its length. Growth
+\ moves the store, so a reader makes the address when it reads.
+variable CHECKER-PACKAGE-NAME
 variable CHECKER-PACKAGE-U
 variable CHECKER-PACKAGE-MODE
-
-: CHECKER-PACKAGE-U! ( n -- ) {: u:n :}
-   CHECKER-PACKAGE-U @ {: old:n :}
-   old u > IF old u ?do 0 CHECKER-PACKAGE-NAME i + c! loop THEN
-   u CHECKER-PACKAGE-U ! ;
 
 : CHECKER-PACKAGE-ACTIVE? ( -- bool )
    CHECKER-PACKAGE-MODE @ CHECKER-PACKAGE-NONE <> ;
@@ -1743,12 +1751,10 @@ variable SOURCE-FLOOR
 ;package
 
 \ Import row storage is shared by the live compiler and the verifier window.
-\ A savepoint keeps the names and lengths with their count (CK-USE-SAVE).
-create CK-USE-NAMES USE-MAX PACKAGE-PATH:CAP * allot
-create CK-USE-LENS  USE-MAX cells allot
-PACKAGE-PATH:CAP CELL + constant CK-USE-SNAP-ROW
-CELL constant CK-USE-SNAP-HEADER
-CK-USE-SNAP-HEADER USE-MAX CK-USE-SNAP-ROW * + constant CK-USE-SNAP-BYTES
+\ Row n holds slot n's folded package name: its offset in SYM-STR, then its
+\ length. A savepoint keeps the rows with their count (CK-USE-SAVE).
+create CK-USE-NAMES USE-MAX 2 * cells allot
+CELL USE-MAX 2 * cells + constant CK-USE-SNAP-BYTES
 
 \ The mirror above records parser state and is rollback-aware. Every check, the
 \ verifier window's included, reads the engine's protected package record and
@@ -1773,10 +1779,10 @@ VERIFY-WINDOW-NONE CHECKER-VERIFY-WINDOW !
    mode CHECKER-PACKAGE-GLOBAL <> and IF
       s" " 0 0= 0= EXIT
    THEN
-   CHECKER-PACKAGE-U @ dup 0= swap PACKAGE-PATH:CAP >= or IF
+   CHECKER-PACKAGE-U @ 0= IF
       s" " 0 0= 0= EXIT
    THEN
-   CHECKER-PACKAGE-NAME CHECKER-PACKAGE-U @ 0 0= ;
+   SYM-STR CHECKER-PACKAGE-NAME @ + CHECKER-PACKAGE-U @ 0 0= ;
 
 \ The boot provider names the open package from the mirror: the engine's
 \ package cells only say whether one is open.
@@ -7555,8 +7561,9 @@ variable PKHAVE
 \ A linear type's type entry text, the form CHECK:HEAD$ states.
 package CHECK
 private
-PACKAGE-PATH:CAP 2 * 8 + constant LINEAR-TEXT-CAP   \ a part's `a:b` and the head
-create LINEAR-TEXT LINEAR-TEXT-CAP allot
+PTR-VARIABLE LINEAR-TEXT-P        \ the head and the package, grown on demand
+SCRATCH-VARIABLE LINEAR-TEXT-CAP  \ LINEAR-TEXT-P's room, in cells
+: LINEAR-TEXT ( -- ^u8 ) LINEAR-TEXT-P @ ;
 : TEXT+ ( ^u8 n n -- ) {: a:^ u:n at:n :}
    u 0 ?do a i + c@ LINEAR-TEXT at + i + c! loop ;
 public
@@ -7569,7 +7576,7 @@ public
    CT-PKG$ {: pa:^ pu:n :}
    pu 0= IF s" -" ELSE pa pu THEN {: a:^ u:n :}
    HEAD$ {: ha:^ hu:n :}
-   hu u + LINEAR-TEXT-CAP > IF s" checker: linear type entry too long" 76 die THEN
+   LINEAR-TEXT-P LINEAR-TEXT-CAP  hu u + CELL / 1 +  1 ARENA-ROWS-ENSURE
    ha hu 0 TEXT+  a u hu TEXT+
    LINEAR-TEXT hu u + ;
 ;package
@@ -9253,12 +9260,8 @@ USIGS-CLEAR
 \ SYM-CAP is a live power-of-2 cap. PKG-A/NAME-A hold offsets into SYM-STR, so
 \ moving the pool changes only its base.
 $40 constant SYM-CAP-INIT
-\ Keep the boot pool above the self-build's live span.
-$60000 constant SYM-STR-INIT
 variable SYM-CAP-V   SYM-CAP-INIT SYM-CAP-V !
 : SYM-CAP ( -- n ) SYM-CAP-V @ ;
-variable SYM-STR-CAP-V   SYM-STR-INIT SYM-STR-CAP-V !
-: SYM-STR-CAP ( -- n ) SYM-STR-CAP-V @ ;
 0 constant SYM-GLOBAL
 1 constant SYM-PRIVATE
 2 constant SYM-PUBLIC
@@ -9285,18 +9288,13 @@ $28 constant SYM-REC
    SYM-VIS-OFF + CELL-VIEW ;
 
 create SYMS-BOOT SYM-CAP-INIT SYM-REC * allot
-create SYM-STR-BOOT SYM-STR-INIT allot
 PERSISTED-PTR-VARIABLE SYMS-P     SYMS-BOOT SYMS-P !
-PERSISTED-PTR-VARIABLE SYM-STR-P  SYM-STR-BOOT SYM-STR-P !
 variable SYM-N
-variable SYM-STR-U
 variable SYM-ID
 
 : SYMS ( -- ^u8 ) SYMS-P @ ;
-: SYM-STR ( -- ^u8 ) SYM-STR-P @ ;
 
 1 SYM-N !
-0 SYM-STR-U !
 
 : SYM-ROW ( n -- ^u8 )
    SYM-REC * SYMS + ;
@@ -9331,7 +9329,11 @@ variable SYM-ID
    add SYM-STR-CAP-V @ SYM-STR-U @ - <= IF exit THEN
    SYM-STR-U @ add + SYM-STR-GROW ;
 
+\ A span inside the store is a stored, folded name: a copy would keep it twice,
+\ and a growth during the copy would read the abandoned pool.
 : SYM-COPY-FOLD ( ^u8 n -- n n ) {: a:^ u:n :}
+   a NULL-PTR - SYM-STR NULL-PTR - - {: at:n :}
+   u 0 > at 0 >= and at u + SYM-STR-U @ <= and IF at u EXIT THEN
    u SYM-STR-ENSURE
    SYM-STR-U @ {: off:n :}
    SYM-STR off + {: dst:^ :}
@@ -11189,11 +11191,12 @@ public
    SGBAD-TOKEN RF-SIG PIN-REFUSED! ;
 
 \ A neutral replay starts at zero and may overwrite caller rows, so rollback
-\ savepoints preserve the row bytes and lengths alongside the depth.
+\ savepoints preserve the rows alongside the depth.
 : CK-USE-DEPTH ( -- n )
    CK-USE-ENGINE-DEPTH ;
-: CK-USE-SLOT ( n -- ^u8 )  PACKAGE-PATH:CAP * CK-USE-NAMES + ;
-: CK-USE-LEN@ ( n -- n )  cells CK-USE-LENS + @ ;
+: CK-USE-OFF@ ( n -- n )  2 * cells CK-USE-NAMES + @ ;
+: CK-USE-LEN@ ( n -- n )  2 * 1 + cells CK-USE-NAMES + @ ;
+: CK-USE-SLOT ( n -- ^u8 )  {: ix:n :}  SYM-STR ix CK-USE-OFF@ + ;
 
 \ The scan is capped at USE-MAX so the loop stays inside the mirror whatever
 \ the engine's depth cell holds.
@@ -12582,37 +12585,13 @@ DFERS-P DFER-CAP-V 1 DFER-END CHECK:STORE+
    c $5A > IF c EXIT THEN
    c $20 or ;
 
-: CHECKER-PACKAGE-COPY-C ( ^u8 n -- ) {: a:^ i:n :}
-   a i + c@ CHECKER-FOLD-C CHECKER-PACKAGE-NAME i + c! ;
-
-\ A package name has a row of PACKAGE-PATH:CAP bytes, so it holds one byte fewer.
-\ A length that describes no memory is a caller's fault and stays the dies below.
-: CHECKER-PACKAGE-LONG? ( ^u8 n -- bool )
-   {: a:^ u:n :}
-   a u BYTE-SPAN? u PACKAGE-PATH:CAP >= and ;
-
-: PACKAGE-LONG-REJECT ( ^u8 n ^u8 n -- ) {: a:^ u:n t:^ tu:n :}
-   PACKAGE-PATH:CAP 1 - {: m:n :}
-   s" E-PACKAGE-NAME-CAP" REJECTION:OPEN
-   s" the package name is " REJECTION:EMIT-STR  u REJECTION:EMIT-U
-   s"  bytes long, more than the " REJECTION:EMIT-STR  m REJECTION:EMIT-U
-   s"  a package name may have" REJECTION:EMIT-STR
-   t tu REJECTION:AT  s" too long" REJECTION:EMIT-STR
-   REJECTION:HELP
-   s" shorten the package name to " REJECTION:EMIT-STR  m REJECTION:EMIT-U
-   s"  bytes or fewer" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
-
 \ A package name must have a length that describes memory: a -1 length would
-\ copy nothing and keep its length.
+\ intern nothing and keep its length.
 : CHECKER-PACKAGE-COPY ( ^u8 n -- ) {: a:^ u:n :}
-   a u BYTE-SPAN? 0= IF s" checker: package name length describes no memory" 76 die THEN
-   u PACKAGE-PATH:CAP >= IF s" checker: package name too long" 76 die THEN
-   0 BEGIN dup u < WHILE
-      a over CHECKER-PACKAGE-COPY-C
-      1 +
-   REPEAT drop
-   u CHECKER-PACKAGE-U! ;
+   a u BYTE-SPAN? 0= IF
+      s" checker: package name length describes no memory" 76 die
+   THEN
+   a u SYM-PKG-INTERN  CHECKER-PACKAGE-U !  CHECKER-PACKAGE-NAME ! ;
 
 \ --- `using`-scope import mirror. The engine owns the live using depth in one
 \ DATA cell; this table of folded package names is bounded by that depth, so no
@@ -12621,14 +12600,11 @@ DFERS-P DFER-CAP-V 1 DFER-END CHECK:STORE+
 
 package CHECKER-USE
 public
-\ Slot d names package a u, folded; the name fits the slot.
+\ Slot d names package a u, interned folded in SYM-STR.
 : NAME! ( ^u8 n n -- ) {: a:^ u:n d:n :}
-   d CK-USE-SLOT {: dst:^ :}
-   0 BEGIN dup u < WHILE
-      dup a + c@ CHECKER-FOLD-C  over dst + c!
-      1 +
-   REPEAT drop
-   u d cells CK-USE-LENS + ! ;
+   a u SYM-PKG-INTERN {: off:n len:n :}
+   off d 2 * cells CK-USE-NAMES + !
+   len d 2 * 1 + cells CK-USE-NAMES + ! ;
 ;package
 
 package CHECK
@@ -12785,11 +12761,12 @@ package CHECKER-RESOLVE
    top 0= IF NULL-PTR 0 EXIT THEN
    top dbase@ - DREC / REC-AT CK-REC-NAME$ ;
 
-\ The key `A:<head>`. `package` refuses a part's path of PACKAGE-PATH:CAP
-\ bytes or more, so a longer key names no part.
+\ The key `A:<head>`.
 CHECKER-REG:SCRATCH{
-create HEAD-KEY PACKAGE-PATH:CAP allot
+PTR-VARIABLE HEAD-KEY-P
+SCRATCH-VARIABLE HEAD-KEY-CAP     \ HEAD-KEY-P's room, in cells
 CHECKER-REG:}SCRATCH
+: HEAD-KEY ( -- ^u8 ) HEAD-KEY-P @ ;
 
 public
 \ The row of the open package's part `TOP:<name>`, NULL-PTR when no package is
@@ -12797,7 +12774,8 @@ public
 : PART-ROW ( ^u8 n -- ^n ) {: a:^ u:n :}
    TOP-NAME$ {: ta:^ tu:n :}
    tu 1 + u + {: ku:n :}
-   tu 0=  ku PACKAGE-PATH:CAP >=  or IF NULL-PTR EXIT THEN
+   tu 0= IF NULL-PTR EXIT THEN
+   HEAD-KEY-P HEAD-KEY-CAP  ku CELL / 1 +  1 ARENA-ROWS-ENSURE
    ta HEAD-KEY tu ARENA-COPY
    $3A HEAD-KEY tu + c!
    a HEAD-KEY tu 1 + + u ARENA-COPY
@@ -12813,7 +12791,6 @@ public
 ;package
 
 : CHECKER-USING ( ^u8 n -- ) {: a:^ u:n :}
-   a u CHECKER-PACKAGE-LONG? IF a u a u PACKAGE-LONG-REJECT THEN
    a u BYTE-SPAN? 0= IF s" checker: using name length describes no memory" 76 die THEN
    CK-USE-DEPTH {: d:n :}
    d USE-MAX >= IF s" checker: using stack overflow" 76 die THEN
@@ -12836,7 +12813,7 @@ variable USING-UNBOUND   \ no global binds the tail the walk refused: the engine
 variable WALK-REC        \ the walk bound the name to the record the engine's own lookup found (LIVE-BIND)
 CHECKER-REG:SCRATCH{
 PTR-VARIABLE USH-TOK-A   variable USH-TOK-U     \ the diagnostic's token as written
-PTR-VARIABLE USH-PKG-A   variable USH-PKG-U     \ the used package's folded name (renders PKG:WORD)
+variable USH-PKG-A   variable USH-PKG-U     \ the used package's folded name, its SYM-STR offset (renders PKG:WORD)
 variable USING-HOLD      \ a body token's walk holds its using refusal for the selector (DO-TOK1)
 variable CK-USED-MASK    \ bit i set when used-scan slot i matched, for the using diagnostics
 CHECKER-REG:}SCRATCH
@@ -12845,9 +12822,9 @@ CHECKER-REG:}SCRATCH
 \ writes as PKG:WORD.
 : CK-SHADOW-CAPTURE ( n -- n ) {: ix:n :}
    ix 0 >= IF
-      ix CK-USE-SLOT USH-PKG-A !  ix CK-USE-LEN@ USH-PKG-U !
+      ix CK-USE-OFF@ USH-PKG-A !  ix CK-USE-LEN@ USH-PKG-U !
    ELSE
-      NULL-PTR USH-PKG-A !  0 USH-PKG-U !
+      0 USH-PKG-A !  0 USH-PKG-U !
    THEN
    E-USING-SHADOW-GLOBAL ;
 
@@ -12926,8 +12903,8 @@ package CHECKER-RESYNC
 \ slot's name is read back from its wid.
 : SLOT ( n -- ) {: d:n :}
    d USE-SLOT-XT {: a:^ u:n ok:bool :}
-   ok u PACKAGE-PATH:CAP < and IF a u d CHECKER-USE:NAME! EXIT THEN
-   0 d cells CK-USE-LENS + ! ;
+   ok IF a u d CHECKER-USE:NAME! EXIT THEN
+   0 d 2 * 1 + cells CK-USE-NAMES + ! ;
 
 : SLOTS ( -- )
    CK-USE-SCAN-N 0 ?DO i SLOT LOOP ;
@@ -12941,7 +12918,7 @@ public
    ok 0=  data-base PKG-PUB-CELL + @ 0 <>  and IF EXIT THEN
    ok 0=  mode CHECKER-PACKAGE-NONE =  or IF
       CHECKER-PACKAGE-NONE CHECKER-PACKAGE-MODE !
-      0 CHECKER-PACKAGE-U!
+      0 CHECKER-PACKAGE-U !
       EXIT
    THEN
    a u CHECKER-PACKAGE-COPY
@@ -13611,8 +13588,10 @@ ROW-CELLS cells constant SCOPE-BYTES
 \ `public`, `private` and `global` switch to, for the keywords and generated words.
 package CHECKER-RESOLVE
 CHECKER-REG:SCRATCH{
-create PATH-KEY PACKAGE-PATH:CAP allot
+PTR-VARIABLE PATH-KEY-P
+SCRATCH-VARIABLE PATH-KEY-CAP     \ PATH-KEY-P's room, in cells
 CHECKER-REG:}SCRATCH
+: PATH-KEY ( -- ^u8 ) PATH-KEY-P @ ;
 
 \ The owner record stores raw execution tokens.
 CAST: AS-ACTION ( n -- [ -- ] )
@@ -13635,27 +13614,6 @@ CAST: AS-ACTION ( n -- [ -- ] )
    s" ` " REJECTION:EMIT-STR  w wu REJECTION:EMIT-STR
    NULL-PTR 0 REJECTION:AT  s" a part opens here" REJECTION:EMIT-STR
    REJECTION:HELP  h hu REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
-
-\ The part name a u makes a path past the longest a package name may have
-\ inside the package pa pu.
-: PART-LONG-REJECT ( ^u8 n ^u8 n -- ) {: a:^ u:n pa:^ pu:n :}
-   PACKAGE-PATH:CAP 1 - {: m:n :}
-   m pu - 1 - {: k:n :}
-   s" E-PACKAGE-NAME-CAP" REJECTION:OPEN
-   96 REJECTION:EMIT1  a u REJECTION:EMIT-STR
-   s" ` makes a part path " REJECTION:EMIT-STR  pu 1 + u + REJECTION:EMIT-U
-   s"  bytes long, more than the " REJECTION:EMIT-STR  m REJECTION:EMIT-U
-   s"  a package name may have" REJECTION:EMIT-STR
-   a u REJECTION:AT  s" too long" REJECTION:EMIT-STR
-   REJECTION:HELP
-   k 0 > IF
-      s" shorten the part name to " REJECTION:EMIT-STR  k REJECTION:EMIT-U
-      s"  bytes or fewer" REJECTION:EMIT-STR
-   ELSE
-      s" shorten the name of package `" REJECTION:EMIT-STR  pa pu REJECTION:EMIT-STR
-      s" `, which leaves no room for a part's name" REJECTION:EMIT-STR
-   THEN
    CHECKER-REJECT-RC REJECTION:STOP ;
 
 public
@@ -13685,11 +13643,11 @@ public
 \ NAME, or `A:NAME` in package A.
 : PART-PATH ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
    TOP-NAME$ {: pa:^ pu:n :}
-   pu 0 <>  u PACKAGE-PATH:CAP pu 1 + - < 0=  and IF a u pa pu PART-LONG-REJECT THEN
    a u BYTE-SPAN? 0= IF s" checker: package name length describes no memory" 76 die THEN
    a u CHECKER-COLON-SCAN drop 0 <> IF a u PACKAGE-COLON-REJECT THEN
    pu 0= IF a u EXIT THEN
    pu 1 + u + {: ku:n :}
+   PATH-KEY-P PATH-KEY-CAP  ku CELL / 1 +  1 ARENA-ROWS-ENSURE
    pa PATH-KEY pu ARENA-COPY
    $3A PATH-KEY pu + c!
    a PATH-KEY pu 1 + + u ARENA-COPY
@@ -13728,7 +13686,6 @@ public
 
 \ The path a u, then the name as written t tu.
 : CHECKER-PACKAGE ( ^u8 n ^u8 n -- ) {: a:^ u:n t:^ tu:n :}
-   a u CHECKER-PACKAGE-LONG? IF a u t tu PACKAGE-LONG-REJECT THEN
    a u BYTE-SPAN? 0= IF s" checker: package name length describes no memory" 76 die THEN
    a u CTOR-PKG?-XT IF a u t tu CTOR-PKG-REJECT THEN
    CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE <> IF a u CHECKER-OVERLAY:OPEN-PACKAGE THEN
@@ -13758,12 +13715,12 @@ package CHECKER-REG
 
 : CHECKER-END-PACKAGE ( -- )
    CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE <> IF CHECKER-OVERLAY:CLOSE-PACKAGE THEN
-   CHECKER-PACKAGE-NAME CHECKER-PACKAGE-U @ CHECKER-COLON-SCAN {: ci:n :} drop
+   SYM-STR CHECKER-PACKAGE-NAME @ + CHECKER-PACKAGE-U @ CHECKER-COLON-SCAN {: ci:n :} drop
    ci 0 >= IF
-      CHECKER-PACKAGE-PRIVATE CHECKER-PACKAGE-MODE !  ci CHECKER-PACKAGE-U! EXIT
+      CHECKER-PACKAGE-PRIVATE CHECKER-PACKAGE-MODE !  ci CHECKER-PACKAGE-U ! EXIT
    THEN
    CHECKER-PACKAGE-NONE CHECKER-PACKAGE-MODE !
-   0 CHECKER-PACKAGE-U! ;
+   0 CHECKER-PACKAGE-U ! ;
 package CHECKER-REG
 ' CHECKER-END-PACKAGE DECLARATIONS END-PACKAGE-OFF + xt!
 ;package
@@ -14397,7 +14354,7 @@ public
       EXIT
    THEN
    why E-USING-SHADOW-GLOBAL = IF
-      s su USH-PKG-A @ USH-PKG-U @ USING-SHADOW-REJECT
+      s su SYM-STR USH-PKG-A @ + USH-PKG-U @ USING-SHADOW-REJECT
       CHECKER-REJECT-RC REJECTION:STOP
    THEN
    why E-USING-AMBIGUOUS = IF
@@ -14416,7 +14373,7 @@ public
 \ it, kept from the later lookups and refusals that move them.
 CHECKER-REG:SCRATCH{
 PTR-VARIABLE UHELD-TOK-A   variable UHELD-TOK-U
-PTR-VARIABLE UHELD-PKG-A   variable UHELD-PKG-U
+variable UHELD-PKG-A   variable UHELD-PKG-U
 variable UHELD-MASK
 CHECKER-REG:}SCRATCH
 
@@ -16792,15 +16749,14 @@ package CHECK
    NORET-END @ NORET-ENTRY / 0 ?do i NORET-ENTRY * sym NORET-SOURCE-RETIRE loop ;
 
 
-\ HELD-UNDEFINE's text: the visibility and the package's length, a byte each,
-\ then the package and the tail (CHECKER-SYM-IDENTITY); a package name is
-\ shorter than PACKAGE-PATH:CAP.
+\ HELD-UNDEFINE's text: the package's length, a cell, the visibility, a byte,
+\ then the package and the tail (CHECKER-SYM-IDENTITY).
 : HOLD-UNDEFINE ( n -- )
    CHECKER-SYM-IDENTITY {: pkg:^ pkgu:n name:^ nameu:n vis:n :}
-   2 pkgu + nameu +  HELD-UNDEFINE HOLD {: at:^ :}
-   vis at c!   pkgu at 1 + c!
-   pkg  at 2 +  pkgu ARENA-COPY
-   name  at 2 + pkgu +  nameu ARENA-COPY ;
+   CELL 1 + pkgu + nameu +  HELD-UNDEFINE HOLD {: at:^ :}
+   pkgu at CELL-VIEW !   vis at CELL + c!
+   pkg  at CELL 1 + +  pkgu ARENA-COPY
+   name  at CELL 1 + + pkgu +  nameu ARENA-COPY ;
 public
 \ `undefine` of the name the checker resolved to sym, held while a build's
 \ space is open, so a link of the file's object replays it (READ-UNDEFINE).
@@ -16812,11 +16768,12 @@ private
 \ A malformed text is a linker defect, never a program's, so it dies.
 : READ-UNDEFINE ( ^u8 n -- )
    {: a:^ u:n :}
-   u 3 < IF s" checker: bad held undefine" 76 die THEN
-   a c@ {: vis:n :}
-   a 1 + c@ {: pkgu:n :}
-   u 3 - pkgu <  vis SYM-PUBLIC >  or IF s" checker: bad held undefine" 76 die THEN
-   a 2 + pkgu vis  a 2 + pkgu +  u 2 - pkgu -  SYM-INTERN {: sym:n :}
+   u CELL 2 + < IF s" checker: bad held undefine" 76 die THEN
+   a CELL-VIEW @ {: pkgu:n :}
+   a CELL + c@ {: vis:n :}
+   pkgu 0 <  u CELL 2 + - pkgu <  or  vis SYM-PUBLIC >  or IF s" checker: bad held undefine" 76 die THEN
+   a CELL 1 + + {: pkg:^ :}
+   pkg pkgu vis  pkg pkgu +  u CELL 1 + - pkgu -  SYM-INTERN {: sym:n :}
    CHECKER-REC-SYM @ {: was:n :}
    sym UNDEFINE-SYM
    was CHECKER-REC-SYM ! ;
@@ -20757,9 +20714,11 @@ CHECKER-REG:}SCRATCH
 
 \ A `[package]` literal's body: the open package's record name, folded.
 CHECKER-REG:SCRATCH{
-create PKG-LIT-NAME PACKAGE-PATH:CAP allot
+PTR-VARIABLE PKG-LIT-P
+SCRATCH-VARIABLE PKG-LIT-CAP      \ PKG-LIT-P's room, in cells
 variable PKG-LIT-U
 CHECKER-REG:}SCRATCH
+: PKG-LIT-NAME ( -- ^u8 ) PKG-LIT-P @ ;
 variable PPAY-ON      \ did the token just judged compile PKG-LIT-NAME?
 
 \ A `[type]` row's spelling: its width in decimal.
@@ -21458,7 +21417,7 @@ defer VIS-VISIT ( ^u8 n n n n -- )
    BIND-REC @ {: s-br:^ :}
    BIND-PEND-IX @ BIND-PEND-OFF @ BIND-SEEDED @ {: s-bpi:n s-bpo:n s-bs:n :}
    CK-USED-MASK @ {: s-um:n :}
-   USH-PKG-A @ USH-PKG-U @ {: s-ha:^ s-hn:n :}
+   USH-PKG-A @ USH-PKG-U @ {: s-ha:n s-hn:n :}
    CHECKER-QBAD-TOK @ {: s-qb:n :}
    CHECKER-QA @ CHECKER-QU @ CHECKER-TA @ CHECKER-TU @ {: s-qa:^ s-qu:n s-ta:^ s-tu:n :}
    USING-UNBOUND @ WALK-REC @ {: s-ub:n s-wr:n :}
@@ -22134,7 +22093,7 @@ variable IS-PEND-U                   \ and its length
 : PKG-LIT-TOK ( ^u8 n -- )
    PE-SYM-OF PRIM-FIRST-SYM E-PTR EFF-APPLY
    PKG-LIVE-XT 0= IF CHECKER-PKG-CONTEXT-REJECT THEN {: a:^ u:n :}
-   u PACKAGE-PATH:CAP >= IF s" checker: package name too long" 76 die THEN
+   PKG-LIT-P PKG-LIT-CAP  u CELL / 1 +  1 ARENA-ROWS-ENSURE
    0 BEGIN dup u < WHILE
       a over PKG-LIT-COPY-C
       1 +

@@ -158,7 +158,7 @@ variable LRETIRE
 \ seed's call-site pass.
 package WLFIND
 public
-variable LENTRY
+variable LENTRY  variable LPAIR
 ;package
 package ENGINE-EMIT
 public
@@ -270,11 +270,7 @@ public
 variable SWL-LOOP
 variable SWL-END
 variable SWL-NEXT
-variable SWL-CMP
 variable SWL-MATCH
-variable SWL-F1
-variable SWL-F2
-variable SWL-INL
 private
 variable PARSE-NONE
 variable PARSE-DONE
@@ -3851,28 +3847,47 @@ package ENGINE-EMIT
    pos LBL,
    9 G-PUSH ;
 
-public
-\ Emit the FNV-1a fold+hash of the name at reg nr (ptr), length lr, into hr;
-\ clobbers c3 c4 (byte/fold scratch) and c7 (cursor). This is the hash
-\ index's key derivation.
-: C-HIDX-HASH ( n n n n n n -- ) {: nr:n lr:n hr:n c3:n c4:n c7:n :}
+\ The hash index's key derivation is the FNV-1a hash of the folded name's
+\ bytes. A two-part name hashes as one stream, so it lands in the bucket of
+\ the same name spelled as one span.
+: C-HIDX-STEP, ( n n n -- ) {: hr:n c3:n c4:n :}
+   c3 c4 $41 SUBI,  c3 $1A CMPI,  c3 C-CC CSET,  c3 c3 5 LSLI,  c4 c4 c3 ORR,
+   hr hr c4 EOR,
+   c3 $100000001B3 LIT64,
+   hr hr c3 MUL, ;
+: C-HIDX-SPAN, ( n n n n n n -- ) {: nr:n lr:n hr:n c3:n c4:n c7:n :}
    LBL LBL {: hl:label hd:label :}
-   hr $CBF29CE484222325 LIT64,
    c7 0 MOVZ,
    hl LBL,  c7 lr CMP,  C-GE hd BCOND,
-      c4 nr c7 ADD,  c4 c4 0 LDRB,
-      c3 c4 $41 SUBI,  c3 $1A CMPI,  c3 C-CC CSET,  c3 c3 5 LSLI,  c4 c4 c3 ORR,
-      hr hr c4 EOR,
-      c3 $100000001B3 LIT64,
-      hr hr c3 MUL,
+      c4 nr c7 ADD,  c4 c4 0 LDRB,  hr c3 c4 C-HIDX-STEP,
       c7 c7 1 ADDI,  hl B,
    hd LBL, ;
+public
+\ Emit the hash of the name at reg nr (ptr), length lr, into hr; clobbers c3
+\ c4 (byte/fold scratch) and c7 (cursor).
+: C-HIDX-HASH ( n n n n n n -- ) {: nr:n lr:n hr:n c3:n c4:n c7:n :}
+   hr $CBF29CE484222325 LIT64,
+   nr lr hr c3 c4 c7 C-HIDX-SPAN, ;
+\ C-HIDX-HASH of the name pr's first pl-1 bytes, `:`, then nr/lr; when pl is
+\ 0, of nr/lr alone.
+: C-HIDX-PAIR ( n n n n n n n n -- ) {: pr:n pl:n nr:n lr:n hr:n c3:n c4:n c7:n :}
+   LBL LBL LBL {: hl:label hc:label hd:label :}
+   hr $CBF29CE484222325 LIT64,
+   pl hd CBZ,
+   c7 0 MOVZ,
+   hl LBL,  c3 c7 1 ADDI,  c3 pl CMP,  C-GE hc BCOND,
+      c4 pr c7 ADD,  c4 c4 0 LDRB,  hr c3 c4 C-HIDX-STEP,
+      c7 c7 1 ADDI,  hl B,
+   hc LBL,  c4 $3A MOVZ,  hr c3 c4 C-HIDX-STEP,
+   hd LBL,  nr lr hr c3 c4 c7 C-HIDX-SPAN, ;
 ;package
 
 \ WLFIND:LENTRY is the name's row in one wordlist and the whole of
 \ `search-wl`'s body: in x0 = name, x1 = length, x2 = wid; out x11 = the row's
 \ code cell or 0, x12 = the row or 0. The AOT seed's call-site pass shares it
-\ and needs the row for the sealed-WID gate.
+\ and needs the row for the sealed-WID gate. WLFIND:LPAIR looks up the
+\ two-part name `first:second` without composing it: x9 = first, x10 = its
+\ length (not 0), x0/x1 = second. Both keep x0, x1, x2 and x13.
 \ The scan answers the last matching row; the hash probe, insert-once with one
 \ slot per (name, wid), answers the first validated row. They agree only where
 \ a wid holds one live row per folded name:
@@ -3897,26 +3912,53 @@ package WLFIND
    2 WL:PRIMITIVES MOVZ,  entry BL,
    30 SP 0 LDR,  2 SP 8 LDR,  SP SP 16 ADDI,
    done LBL,  RET, ;
+
+: FOLD, ( n -- ) {: r:n :}
+   3 r $41 SUBI,  3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  r r 3 ORR, ;
+
+\ The record name at x16, of the name's whole length, against the name: x0/x1
+\ when x10 is 0, else x9's first x10-1 bytes, `:`, then x0/x1 (the entries
+\ set x10). Clobbers x3, x4, x7, x15 and x16.
+: SAME, ( label label -- ) {: miss:label hit:label :}
+   LBL LBL LBL {: first:label colon:label second:label :}
+   7 0 MOVZ,
+   10 second CBZ,
+   first LBL,
+      15 7 1 ADDI,  15 10 CMP,  C-GE colon BCOND,
+      15 16 7 ADD,  15 15 0 LDRB,  15 FOLD,
+      4 9 7 ADD,  4 4 0 LDRB,  4 FOLD,
+      15 4 CMP,  C-NE miss BCOND,
+      7 7 1 ADDI,  first B,
+   colon LBL,
+      15 16 7 ADD,  15 15 0 LDRB,  15 $3A CMPI,  C-NE miss BCOND,
+      16 16 10 ADD,  7 0 MOVZ,
+   second LBL,
+      7 1 CMP,  C-GE hit BCOND,
+      15 16 7 ADD,  15 15 0 LDRB,  15 FOLD,
+      4 0 7 ADD,  4 4 0 LDRB,  4 FOLD,
+      15 4 CMP,  C-NE miss BCOND,
+      7 7 1 ADDI,  second B, ;
+
 public
 : EMIT ( -- )
-   LENTRY LABEL@ LBL,
    LBL SWL-LOOP !
    LBL SWL-END !
    LBL SWL-NEXT !
-   LBL SWL-CMP !
    LBL SWL-MATCH !
-   LBL SWL-F1 !
-   LBL SWL-F2 !
-   LBL SWL-INL !
-   LBL LBL LBL LBL LBL LBL LBL
-   {: plin:label ploop:label pnext:label pinl:label pcmp:label pmatch:label pend:label :}
+   LBL LBL LBL LBL LBL LBL LBL LBL
+   {: body:label plin:label ploop:label pnext:label pinl:label pmatch:label pend:label sinl:label :}
+   LPAIR LABEL@ LBL,
+   10 10 1 ADDI,  body B,
+   LENTRY LABEL@ LBL,
+   10 0 MOVZ,
+   body LBL,
    11 0 MOVZ,
    12 0 MOVZ,
-   \ Hash probe. x0 (name), x1 (len), x2 (wid) and x11 (result) are preserved
-   \ across it for the scan the two fallbacks reach.
+   \ Hash probe. x0 (name), x1 (len), x2 (wid), x9/x10 (first part) and x11
+   \ (result) are preserved across it for the scan the two fallbacks reach.
    4 WL:RETIRED LIT64,  2 4 CMP,  C-EQ plin BCOND,
    14 DATA HIDXP-CELL LDR,  14 plin CBZ,
-   0 1 15 4 16 7 C-HIDX-HASH
+   9 10 0 1 15 4 16 7 C-HIDX-PAIR
    6 15 2 EOR,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,
    8 HIDX-SLOTS LIT64,
    ploop LBL,
@@ -3925,48 +3967,33 @@ public
       4 3 1 SUBI,  4 NDICT CMP,  C-GE pnext BCOND,         \ stale (truncated) index
       5 DREC MOVZ,  5 4 5 MUL,  5 DBASE 5 ADD,             \ x5 = record ptr
       16 5 40 LDR,  16 2 CMP,  C-NE pnext BCOND,           \ wid mismatch (retired / other wordlist)
-      16 5 16 LDR,  16 16 DNAME-FLAG-BITS LSLI,  16 16 DNAME-FLAG-BITS LSRI,  16 1 CMP,  C-NE pnext BCOND,  \ name-len mismatch
+      4 1 10 ADD,                                          \ x4 = the name's whole length
+      16 5 16 LDR,  16 16 DNAME-FLAG-BITS LSLI,  16 16 DNAME-FLAG-BITS LSRI,  16 4 CMP,  C-NE pnext BCOND,  \ name-len mismatch
       16 5 24 ADDI,
       3 5 16 LDR,  3 3 DNAME-EXT ANDI,  3 pinl CBZ,
          16 5 24 LDR,
       pinl LBL,
-      7 0 MOVZ,
-      pcmp LBL,
-         7 1 CMP,  C-GE pmatch BCOND,
-         15 16 7 ADD,  15 15 0 LDRB,
-         3 15 $41 SUBI,  3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  15 15 3 ORR,
-         4 0 7 ADD,     4 4 0 LDRB,
-         3 4 $41 SUBI,   3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  4 4 3 ORR,
-         15 4 CMP,  C-NE pnext BCOND,
-         7 7 1 ADDI,  pcmp B,
+      pnext pmatch SAME,
       pmatch LBL,
          11 5 0 LDR,  12 5 0 ADDI,  RET,
       pnext LBL,
          8 8 1 SUBI,  8 plin CBZ,
          6 6 1 ADDI,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,  ploop B,
    plin LBL,
-   3 $20 MOVZ,  5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
+   5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
    SWL-LOOP LABEL@ LBL,  6 SWL-END LABEL@ CBZ,
-      9 5 40 LDR,  9 2 CMP,  C-NE SWL-NEXT LABEL@ BCOND,
-      9 5 16 LDR,  9 9 DNAME-FLAG-BITS LSLI,  9 9 DNAME-FLAG-BITS LSRI,  9 1 CMP,  C-NE SWL-NEXT LABEL@ BCOND,
+      15 5 40 LDR,  15 2 CMP,  C-NE SWL-NEXT LABEL@ BCOND,
+      4 1 10 ADD,
+      15 5 16 LDR,  15 15 DNAME-FLAG-BITS LSLI,  15 15 DNAME-FLAG-BITS LSRI,  15 4 CMP,  C-NE SWL-NEXT LABEL@ BCOND,
       16 5 24 ADDI,
-      9 5 16 LDR,  9 9 DNAME-EXT ANDI,  9 SWL-INL LABEL@ CBZ,
+      15 5 16 LDR,  15 15 DNAME-EXT ANDI,  15 sinl CBZ,
          16 5 24 LDR,
-      SWL-INL LABEL@ LBL,
-      7 0 MOVZ,
-      SWL-CMP LABEL@ LBL,  7 1 CMP,  C-GE SWL-MATCH LABEL@ BCOND,
-         9 16 7 ADD,  9 9 0 LDRB,
-         9 $41 CMPI,  C-LT SWL-F1 LABEL@ BCOND,  9 $5A CMPI,  C-GT SWL-F1 LABEL@ BCOND,  9 9 3 ORR,
-         SWL-F1 LABEL@ LBL,
-         10 0 7 ADD,  10 10 0 LDRB,
-         10 $41 CMPI,  C-LT SWL-F2 LABEL@ BCOND,  10 $5A CMPI,  C-GT SWL-F2 LABEL@ BCOND,  10 10 3 ORR,
-         SWL-F2 LABEL@ LBL,
-         9 10 CMP,  C-NE SWL-NEXT LABEL@ BCOND,
-         7 7 1 ADDI,  SWL-CMP LABEL@ B,
+      sinl LBL,
+      SWL-NEXT LABEL@ SWL-MATCH LABEL@ SAME,
       SWL-MATCH LABEL@ LBL,  11 5 0 LDR,  12 5 0 ADDI,  SWL-NEXT LABEL@ B,
       SWL-NEXT LABEL@ LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  SWL-LOOP LABEL@ B,
    SWL-END LABEL@ LBL,
-   pend LBL,  LENTRY LABEL@ RETRY, ;
+   pend LBL,  body RETRY, ;
 ;package
 
 package ENGINE-EMIT
@@ -4867,51 +4894,34 @@ public
 \ qualified definition and `using`. Inside package A, or a part of it, the
 \ head names A's part `A:head` first, then a top-level package. In: x9 =
 \ head, x17 = its length. Out: x12 = the row or 0. It preserves x0, x1, x9,
-\ x10, x13 and x17 and clobbers x2-x8, x11, x14-x16. The path is composed on
-\ the machine stack: PACKAGE-PATH holds the token `package` is opening while a
-\ lookup runs.
+\ x10, x13 and x17 and clobbers x2-x8, x11, x14-x16.
 variable LHEADROW
 private
 : EMIT-HEAD-ROW ( -- )
-   LBL LBL LBL LBL LBL LBL LBL LBL
-   {: top:label inline:label head:label colon:label tail:label probe:label bare:label done:label :}
-   PACKAGE-PATH:CAP 64 + {: frame:n :}
+   LBL LBL LBL LBL
+   {: top:label inline:label bare:label done:label :}
    LHEADROW LABEL@ LBL,
-   SP SP frame SUBI,
+   SP SP 64 SUBI,
    30 SP 0 STR,  0 SP 8 STR,  1 SP 16 STR,  9 SP 24 STR,
    10 SP 32 STR,  13 SP 40 STR,  17 SP 48 STR,
+   0 9 0 ADDI,  1 17 0 ADDI,
+   2 DATA BOOT:NAMESPACE-WL-CELL LDR,
    5 DATA ENCLOSING:REC LDR,  5 top CBNZ,
    5 DATA PKG-REC-CELL LDR,  5 bare CBZ,
    top LBL,
-   2 5 16 LDR,  2 2 DNAME-FLAG-BITS LSLI,  2 2 DNAME-FLAG-BITS LSRI,
-   4 5 24 ADDI,
+   10 5 16 LDR,  10 10 DNAME-FLAG-BITS LSLI,  10 10 DNAME-FLAG-BITS LSRI,
+   9 5 24 ADDI,
    14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 inline CBZ,
-      4 5 24 LDR,
+      9 5 24 LDR,
    inline LBL,
-   1 2 17 ADD,  1 1 1 ADDI,
-   1 PACKAGE-PATH:CAP CMPI,  C-CS bare BCOND,         \ no part has a path so long
-   0 SP 64 ADDI,
-   7 0 MOVZ,
-   head LBL,  7 2 CMP,  C-CS colon BCOND,
-      14 4 7 ADD,  14 14 0 LDRB,  15 0 7 ADD,  14 15 0 STRB,
-      7 7 1 ADDI,  head B,
-   colon LBL,
-   14 $3A MOVZ,  15 0 2 ADD,  14 15 0 STRB,
-   16 15 1 ADDI,
-   7 0 MOVZ,
-   tail LBL,  7 17 CMP,  C-CS probe BCOND,
-      14 9 7 ADD,  14 14 0 LDRB,  15 16 7 ADD,  14 15 0 STRB,
-      7 7 1 ADDI,  tail B,
-   probe LBL,
-   2 DATA BOOT:NAMESPACE-WL-CELL LDR,  WLFIND:LENTRY LABEL@ BL,
+   WLFIND:LPAIR LABEL@ BL,
    12 done CBNZ,
    bare LBL,
-   0 SP 24 LDR,  1 SP 48 LDR,
-   2 DATA BOOT:NAMESPACE-WL-CELL LDR,  WLFIND:LENTRY LABEL@ BL,
+   WLFIND:LENTRY LABEL@ BL,
    done LBL,
    30 SP 0 LDR,  0 SP 8 LDR,  1 SP 16 LDR,  9 SP 24 LDR,
    10 SP 32 LDR,  13 SP 40 LDR,  17 SP 48 LDR,
-   SP SP frame ADDI,  RET, ;
+   SP SP 64 ADDI,  RET, ;
 
 \ LFIND's register ABI. In: x9 = name address, x10 = name length. Out:
 \ x13 = 0 when the name is not in scope, else 1 | the folded record flags

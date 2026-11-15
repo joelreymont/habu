@@ -22,7 +22,7 @@ public
 7110 constant E-TDECL-NAME      \ reserved or colliding family/variant name
 7116 constant E-TDECL-POLICY    \ unknown or not-yet-supported layout policy (7111-7115 = checker.f E-CTOR/E-EXPORT)
 7117 constant E-TDECL-RECURSIVE \ direct self-family payload under a non-boxed policy
-7118 constant E-TDECL-CAP       \ a declared name past TF-NAME-MAX, or a record past MAKE's items
+7118 constant E-TDECL-CAP       \ a record past MAKE's items
 7119 constant E-TDECL-DERIVE    \ unknown, deferred, or kind-gated DERIVE clause
 7204 constant E-TDECL-UNRESOLVED \ quiet replay: a nominal payload declaration may arrive
 
@@ -36,23 +36,30 @@ private
 create DECL-PARAM-NAMES TFAM-DECL-PARAM-COUNT allot
 variable DECL-PARAM-N
 \ A header parameter's state: PARAM-UNUSED, ANY-VALUE while only pointees and
-\ quotation elements use it, else the kind a use fixed; and the field setting it.
+\ quotation elements use it, else the kind a use fixed; and the field setting it,
+\ at an offset in FIELD-NAMES.
 -2 constant PARAM-UNUSED
 create PARAM-USES TFAM-DECL-PARAM-COUNT cells allot
-create PARAM-FIELDS TFAM-DECL-PARAM-COUNT TF-NAME-MAX * allot
+create PARAM-FIELD-OS TFAM-DECL-PARAM-COUNT cells allot
 create PARAM-FIELD-US TFAM-DECL-PARAM-COUNT cells allot
-create OPEN-FIELD TF-NAME-MAX allot
+\ The names of the fields that set parameters, then the open field's name.
+PTR-VARIABLE FIELD-NAMES-P
+SCRATCH-VARIABLE FIELD-NAMES-CAP   \ FIELD-NAMES-P's room, in cells
+variable FIELD-NAMES-U             \ bytes the parameters' fields take
+variable OPEN-FIELD-O
 variable OPEN-FIELD-U
+: FIELD-NAMES ( -- ^u8 ) FIELD-NAMES-P @ ;
 : USE-SLOT ( n -- ^n ) cells PARAM-USES + ;
+: FIELD-O-SLOT ( n -- ^n ) cells PARAM-FIELD-OS + ;
 : FIELD-U-SLOT ( n -- ^n ) cells PARAM-FIELD-US + ;
 \ Forgets the header parameters: a declaration opens with none until its
 \ header lists them.
 : DECL-PARAM-CLEAR ( -- )
-   0 DECL-PARAM-N !  0 OPEN-FIELD-U !
+   0 DECL-PARAM-N !  0 FIELD-NAMES-U !  0 OPEN-FIELD-O !  0 OPEN-FIELD-U !
    TFAM-DECL-PARAM-COUNT 0 ?DO
       0 DECL-PARAM-NAMES i + c!
       PARAM-UNUSED i USE-SLOT !
-      0 i FIELD-U-SLOT !
+      0 i FIELD-O-SLOT !  0 i FIELD-U-SLOT !
    LOOP ;
 DECL-PARAM-CLEAR
 
@@ -70,18 +77,21 @@ public
 \ A use any value kind fits: a pointee or a quotation element.
 -1 constant ANY-VALUE
 
-\ The open field's name, at most TF-NAME-MAX bytes.
+\ The open field's name, kept after the names the parameters hold.
 : DECL-FIELD! ( ^u8 n -- ) {: a:^ u:n :}
-   u 0 ?DO a i + c@ OPEN-FIELD i + c! LOOP u OPEN-FIELD-U ! ;
+   FIELD-NAMES-P FIELD-NAMES-CAP
+   FIELD-NAMES-U @ u + CELL / 1 +  1 ARENA-ROWS-ENSURE
+   FIELD-NAMES-U @ OPEN-FIELD-O !
+   u 0 ?DO a i + c@ FIELD-NAMES OPEN-FIELD-O @ + i + c! LOOP u OPEN-FIELD-U ! ;
 
 private
 
 : PARAM-FIELD ( n -- ^u8 n ) {: idx:n :}
-   PARAM-FIELDS idx TF-NAME-MAX * +  idx FIELD-U-SLOT @ ;
+   FIELD-NAMES idx FIELD-O-SLOT @ +  idx FIELD-U-SLOT @ ;
+\ Parameter idx keeps the open field's name, which stays when the next opens.
 : PARAM-FIELD! ( n -- ) {: idx:n :}
-   PARAM-FIELDS idx TF-NAME-MAX * + {: dst:^u8 :}
-   OPEN-FIELD-U @ 0 ?DO OPEN-FIELD i + c@ dst i + c! LOOP
-   OPEN-FIELD-U @ idx FIELD-U-SLOT ! ;
+   OPEN-FIELD-O @ idx FIELD-O-SLOT !  OPEN-FIELD-U @ idx FIELD-U-SLOT !
+   OPEN-FIELD-O @ OPEN-FIELD-U @ + FIELD-NAMES-U ! ;
 : NONVALUE? ( n -- bool ) dup PK-SCOPE = swap PK-REGION = or ;
 \ A pointee or quotation element fits a value kind; a scope or region fits
 \ only itself.
@@ -174,7 +184,6 @@ variable TDECL-U
 
 : TDECL-TOK! ( ^u8 n -- ) TDT-U ! TDT-A ! ;
 \ The fixes several rejections share.
-: TDECL-LONG-FIX$ ( -- ^u8 n ) s" shorten the name to 255 bytes or fewer" ;
 : TDECL-PARAM-FIX$ ( -- ^u8 n )
    s" list the parameter in the family header, as in `box<a>`, before a payload names it" ;
 : TDECL-SELF-FIX$ ( -- ^u8 n )
@@ -422,12 +431,8 @@ private
       THEN
    loop RES-FALSE ;
 
-\ A family, variant or field name longer than TF-NAME-MAX has no room in the
-\ spellings derived from it (type-family.f TF-CTOR-BUF). A missing name is
-\ rejected before, at the keyword that wants it.
+\ A missing name is rejected before, at the keyword that wants it.
 : TDECL-REQUIRE-NAME ( ^u8 n -- ) {: a:^ u:n :}
-   u TF-NAME-MAX > IF a u TF-NAME-LONG$
-      TDECL-LONG-FIX$ E-TDECL-CAP TDECL-THROW THEN
    a u TF-CANON? 0= IF
       a u s" name must be a lowercase family tail"
          s" write the name as a lowercase tail with no package qualifier, as in `point`"
@@ -1357,10 +1362,10 @@ private
    [: TDECL-CAPACITY-PREFLIGHT-MISSING ;] is TDECL-CAPACITY-PREFLIGHT-XT ;
 TDECL-PREFLIGHT-DEFAULTS
 
-\ Two TF-NAME-MAX tails joined by ':' or '-', the second maybe ending in @ or !.
-TF-NAME-MAX 2 * 2 + constant TDGEN-CAP
-create TDGEN-BUF TDGEN-CAP allot
+PTR-VARIABLE TDGEN-P
+SCRATCH-VARIABLE TDGEN-CAP        \ TDGEN-P's room, in cells
 variable TDGEN-U
+: TDGEN-BUF ( -- ^u8 ) TDGEN-P @ ;
 
 \ TDGEN-BUF holds the name being made. This plan arena grows before publication,
 \ so a large family cannot fail halfway through. Each row keeps relocation-safe
@@ -1652,6 +1657,7 @@ private
 
 : TDGEN-CLEAR ( -- ) 0 TDGEN-U ! ;
 : TDGEN-C, ( n -- )
+   TDGEN-P TDGEN-CAP  TDGEN-U @ CELL / 1 +  1 ARENA-ROWS-ENSURE
    TDGEN-BUF TDGEN-U @ + c!
    TDGEN-U @ 1 + TDGEN-U ! ;
 : TDGEN-APP ( ^u8 n -- ) {: a:^ u:n :}

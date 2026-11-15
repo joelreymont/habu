@@ -38,10 +38,6 @@ ED-RESET
       s" missing name"
       s" write the family name after `ENUM`, as in `ENUM color red green ;ENUM`"
       E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
-   2dup NAME-LONG? IF 2drop
-      TF-NAME-LONG$
-      s" shorten the family name to 255 bytes or fewer"
-      E-TDECL-CAP DECL-REJECT:REJECT throw THEN
    2dup TF-CANON? 0= IF
       2drop s" name must be a lowercase family tail"
       s" write the family name as a lowercase tail with no package qualifier, as in `color`"
@@ -162,10 +158,6 @@ ED-RESET
       s" write a name and a type after `FIELD`, as in `FIELD x n`"
       E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
    {: na:^ nu:n :}
-   na nu NAME-LONG? IF
-      TF-NAME-LONG$
-      s" shorten the field name to 255 bytes or fewer"
-      E-TDECL-CAP DECL-REJECT:REJECT throw THEN
    OUTCOME-NAMES @ 0 <> IF
       na nu ED-FIELD-FIX$ NAME-CHECK THEN
    na nu DECL-FIELD!
@@ -180,11 +172,7 @@ ED-RESET
    NEXT dup 0= IF
       2drop s" missing variant name"
       s" write a name after `VARIANT`, as in `VARIANT quit ;VARIANT`"
-      E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
-   2dup NAME-LONG? IF 2drop
-      TF-NAME-LONG$
-      s" shorten the variant name to 255 bytes or fewer"
-      E-TDECL-CAP DECL-REJECT:REJECT throw THEN ;
+      E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN ;
 \ Records variant NAME, rejected at its token when a word DERIVE generates
 \ takes its name or a variant already has it. DERIVE precedes every variant,
 \ so the family's derive flags are set here.
@@ -227,10 +215,6 @@ ED-RESET
    s" field" CORE-STR=CI ;
 : COMPACT-VARIANT ( ^u8 n -- )
    {: na:^ nu:n :}
-   na nu NAME-LONG? IF
-      TF-NAME-LONG$
-      s" shorten the variant name to 255 bytes or fewer"
-      E-TDECL-CAP DECL-REJECT:REJECT throw THEN
    -1 SEEN-VARIANT !
    na nu VARIANT-START
    DECL-EVENT:END-VARIANT

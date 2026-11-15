@@ -1689,9 +1689,10 @@ s\" error[E-BAD-STORED-SIGNATURE]: the signature of `SDGDEEP:MAKE` cannot be rec
 s\"   = reason: effect too deep to record (depth 4097, at most 4096)\n" DECL-DIAG:HAS? TTRUE
 s" = signature:" DECL-DIAG:HAS? TFALSE
 DECL-DIAG:OFF
-\ A pointee's label holds its whole name, even one of TFAM:TF-NAME-MAX bytes
-\ (sdgtoscoped has a short one): sdgwideq… is sdgwide and q to the cap.
-: SDGW-Q ( -- ) TFAM:TF-NAME-MAX 7 - 0 ?do s" q" SDBIG:SRC+ loop ;
+\ A pointee's label holds its whole name, however long
+\ (sdgtoscoped has a short one).
+1000 constant SDGW-U
+: SDGW-Q ( -- ) SDGW-U 7 - 0 ?do s" q" SDBIG:SRC+ loop ;
 s" sdgwide" 0 SDBIG:FIELDS  SDGW-Q  s" <p> FIELD v read-view<p,p,u8> ;STRUCTURE" SDBIG:SRC+
 SDBIG:SRC$ TEST-EVAL:RC 0 T=
 DECL-DIAG:PROSE
@@ -1700,7 +1701,7 @@ SDBIG:SRC$ TEST-EVAL:RC 70 T=
 s" a pointer cannot reach `sdgwideqqqq" DECL-DIAG:HAS? TTRUE
 s" qqqq`, which takes a scope or region" DECL-DIAG:HAS? TTRUE
 7109 DECL-REJECT:REASON$ nip
-s" a pointer cannot reach `" nip TFAM:TF-NAME-MAX +  s" `, which takes a scope or region" nip + T=
+s" a pointer cannot reach `" nip SDGW-U +  s" `, which takes a scope or region" nip + T=
 DECL-DIAG:OFF
 
 ' struct-replay-test:RP-SDBUF CHECK:SCOPED

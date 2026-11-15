@@ -136,7 +136,6 @@ PTR-VARIABLE NOUN-A   variable NOUN-U
    pa pu sa su SD-TEXT fa fu code DECL-REJECT:REJECT ;
 
 : SD-NAME-FIX$ ( -- ^u8 n ) s" write the family name after `STRUCTURE`, as in `STRUCTURE point`" ;
-: SD-LONG-FIX$ ( -- ^u8 n ) s" shorten the name to 255 bytes or fewer" ;
 : SD-FIELD-FIX$ ( -- ^u8 n ) s" give each field of the structure its own name" ;
 : DEFTYPE? ( -- bool ) DECL-REJECT:KIND$ s" deftype" CORE-STR= ;
 : ENUM? ( -- bool ) DECL-REJECT:KIND$ s" enum" CORE-STR= ;
@@ -246,7 +245,6 @@ variable HELP-U
 
 : REQUIRE-NAME ( ^u8 n -- )
    dup 0= IF 2drop s" missing name" SD-NAME-FIX$ TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
-   2dup NAME-LONG? IF 2drop TF-NAME-LONG$ SD-LONG-FIX$ TYPE-DECL:E-TDECL-CAP DECL-REJECT:REJECT throw THEN
    2dup TF-CANON? 0= IF
       2drop s" name must be a lowercase family tail"
       s" write the name as a lowercase tail with no package qualifier, as in `point`"
@@ -837,7 +835,6 @@ private
       s" write a name and a type after `FIELD`, as in `FIELD x n`"
       TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
    {: na:^ nu:n :}
-   na nu NAME-LONG? IF TF-NAME-LONG$ SD-LONG-FIX$ TYPE-DECL:E-TDECL-CAP DECL-REJECT:REJECT throw THEN
    na nu REQUIRE-FIELD-NAME
    OUTCOME-NAMES @ 0 <> IF
       na nu SD-FIELD-FIX$ NAME-CHECK THEN

@@ -26,7 +26,7 @@ public
 \ the global scope at top level. A TFAM tail is lowercase (E-TFAM-CASE): the
 \ surface NAME folds to it (FRAME-INDEX -> frame-index; TF-CANON? keeps hyphens);
 \ the converters take the surface spelling (`>SERIAL`), a signature names the
-\ tail (`( serial -- n )`). CHECKER-DEFTYPE rejects an empty or over-cap name,
+\ tail (`( serial -- n )`). CHECKER-DEFTYPE rejects an empty name,
 \ a reserved tail (a CT-role, or `ptr`, which an effect never reads as a
 \ family) and one the scope already declares (E-TFAM-DUP); a package may still
 \ shadow a global or another package's family.
