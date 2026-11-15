@@ -499,7 +499,7 @@ public
 : DEFINITION ( ptr u8 n -- n )
    {: a:ptr u:n :}
    a u FIRST-TOKEN {: na:ptr nu:n :}
-   na nu CHECKER-CERT-DUP? if na nu REFUSE-DUPLICATE then
+   na nu CHECKER-CERT-DUP? if na nu  na nu SOURCE-NAME$  REFUSE-DUPLICATE then
    UEND @ {: mark:n :}
    a u [: CHECK! REPORT-DEFERRED ;]
    a u BODY-ARM DISARMER  finally

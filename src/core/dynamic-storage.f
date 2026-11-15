@@ -220,7 +220,7 @@ public
    STORAGE-LINE-TOKEN {: na:ptr nu:n :}
    nu 0= if s" DYNAMIC-BUFFER" CHECKER-STORAGE-NAME-REFUSE exit then
    STORAGE-PARSE-TYPE {: ta:ptr tu:n :}
-   na nu LBUF-NAME-OK? 0= if exit then
+   na nu na nu LBUF-NAME-OK? 0= if exit then
    na nu s" -RESERVE" LBUF-SUFFIX-OK? 0= if exit then
    na nu s" -RELEASE" LBUF-SUFFIX-OK? 0= if exit then
    ta tu CHECKER-DYNAMIC-INFO 0= if
