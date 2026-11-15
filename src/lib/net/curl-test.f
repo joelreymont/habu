@@ -217,6 +217,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 : PATH-CUT-HEAD$ ( -- ptr u8 n ) s" /cut-head" ;
 : PATH-CR-END$ ( -- ptr u8 n ) s" /cr-end" ;
 : PATH-HINT-CUT$ ( -- ptr u8 n ) s" /hint-cut" ;
+: PATH-BAD-CHUNK$ ( -- ptr u8 n ) s" /bad-chunk" ;
 : SENT-BYTES ( -- ptr u8 ) HUGE-SENT @ ;
 : GOT-BYTES ( -- ptr u8 ) HUGE-GOT @ ;
 : FORM$ ( -- ptr u8 n ) s" a=1" ;
@@ -230,6 +231,8 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 : CR-BODY$ ( -- ptr u8 n ) s" abc" ;
 : INTERIM-FINAL$ ( -- ptr u8 n )
    S\" HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nTrailer: Cache-Control\r\nConnection: close\r\n\r\n" ;
+: BAD-CHUNK-HEAD$ ( -- ptr u8 n )
+   S\" HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n" ;
 : DRIBBLE$ ( -- ptr u8 n ) DRIBBLE-BUF DRIBBLE-U ;
 
 
@@ -591,6 +594,15 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    conn SEND-RESPONSE ;
 
 
+\ A final block, a three-byte chunk and a chunk size that is not hex, in one
+\ write: libcurl reads them in one recv and fails the transfer in that turn.
+: SERVE-BAD-CHUNK ( TCP4:connection -- ) {: conn:TCP4:connection :}
+   RES-RESET
+   BAD-CHUNK-HEAD$ RES+
+   S\" 3\r\nabc\r\nzz\r\n" RES+
+   conn SEND-RESPONSE ;
+
+
 : SERVE-CR-END ( TCP4:connection -- ) {: conn:TCP4:connection :}
    RES-RESET
    CR-END$ RES+ CR-BODY$ RES+
@@ -883,6 +895,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    PATH-CUT-HEAD$ PATH-IS? if conn SERVE-CUT-HEAD exit then
    PATH-CR-END$ PATH-IS? if conn SERVE-CR-END exit then
    PATH-HINT-CUT$ PATH-IS? if conn SERVE-HINT-CUT exit then
+   PATH-BAD-CHUNK$ PATH-IS? if conn SERVE-BAD-CHUNK exit then
    PATH-BODIED-REDIRECT$ PATH-IS? if conn SERVE-BODIED-REDIRECT exit then
    PATH-HELLO$ PATH-IS? if conn SERVE-HELLO exit then
    PATH-COOKIE$ PATH-IS? if conn SERVE-COOKIE exit then
@@ -2272,6 +2285,34 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    subject CURL:CLEANUP ;
 
 
+\ The body bytes and the failure land in one curl_multi_perform, and REAP runs
+\ before SERVICE-RECORDS, so the loop finishes the record before any chunk
+\ publishes its headers: only STREAM-FINISH publishes them, armed or not.
+: CASE-STREAM-BAD-CHUNK ( -- )
+   s" a stream failed in the turn its body arrived keeps its final header block" T-LABEL
+   PATH-BAD-CHUNK$ GET-READY {: subject:CURL:handle :}
+   subject CURL:STREAM-START EXPECT-OK
+   subject STREAM-CHUNK STREAM-CAP >LEN CURL:NEXT
+   MATCH CURL:chunk-result
+      chunk OF
+         swap CURL:HTTP-STATUS>N 200 T=
+         dup LEN>N 3 T=
+         STREAM-CHUNK swap LEN>N s" abc" T$=
+      ENDOF
+      response OF CURL:HTTP-STATUS>N 0 T= ENDOF
+      failed OF CURL:CODE>N 0 T= ENDOF
+   ;MATCH
+   subject BAD-CHUNK-HEAD$ HEADER-EXACT
+   subject STREAM-CHUNK STREAM-CAP >LEN CURL:NEXT
+   MATCH CURL:chunk-result
+      chunk OF 2drop false TTRUE ENDOF
+      response OF drop false TTRUE ENDOF
+      failed OF CURL:CODE>N 56 T= ENDOF
+   ;MATCH
+   subject HEADER-REFUSED
+   subject CURL:CLEANUP ;
+
+
 : CASE-STREAM-CUT-HEAD ( -- )
    s" a stream cut inside its header block ends failed as CURLE_PARTIAL_FILE" T-LABEL
    PATH-CUT-HEAD$ GET-READY {: subject:CURL:handle :}
@@ -3032,6 +3073,7 @@ variable DEFER-RETURNED
    CASE-STREAM-HTTP-ERROR
    CASE-STREAM-FAILURES
    CASE-STREAM-PARTIAL
+   CASE-STREAM-BAD-CHUNK
    CASE-STREAM-CUT-HEAD
    CASE-MULTI-CUT-HEAD
    CASE-STREAM-HINT-CUT
@@ -3074,7 +3116,7 @@ variable DEFER-RETURNED
    SERVER-BAD @ 0 T=
    SERVER-ERRNO @ 0 T=
    SERVER-HITS atomic@
-   104 MANY-N MANY-ROUNDS * + CEILING-HITS @ + T= ;
+   105 MANY-N MANY-ROUNDS * + CEILING-HITS @ + T= ;
 
 
 : NET-TESTS? ( -- bool )
