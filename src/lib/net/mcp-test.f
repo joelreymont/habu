@@ -12,6 +12,9 @@
 \ resources/read in both eras, a read's Mcp-Name, a read without _meta, an unknown uri
 \ and one that is no string, an empty resources/templates/list, and ADD-RESOURCE's
 \ refusals. The info line a tools/call and a resources/read log, without arguments.
+\ MCP:ANSWER on a request worker: a tools/call appended as HANDLE sends it, a
+\ notification appending nothing, a message that is not JSON-RPC or not JSON, an
+\ unknown tool, and ANSWER off a worker.
 \ MCP's client against the same server and plain routes: TOOLS across pages,
 \ CALL's result, one holding content blocks, isError, refusals, a reply past the first buffer, timeouts of
 \ CALL and TOOLS, TOOLS's over all its pages, the Mcp-Name encoding,
@@ -140,16 +143,20 @@ TASK:MIN-STACK TASK:TASK STALLER
    h a u CURL:HEADER+ OK h ;
 
 
-: OPEN-WITH ( ptr u8 n ptr u8 n -- CURL:handle )
-   {: kind:ptr ku:n accept:ptr au:n :}
+: OPEN-PATH ( ptr u8 n ptr u8 n ptr u8 n -- CURL:handle )
+   {: path:ptr pu:n kind:ptr ku:n accept:ptr au:n :}
    CURL:INIT
    MATCH CURL:init-result
       ready OF ENDOF
       failed OF drop -1 CURL:>HANDLE ENDOF
    ;MATCH {: h:CURL:handle :}
-   SB-RESET  s" http://127.0.0.1:" SB-APPEND  HTTP:PORT FMT:SB-U  s" /mcp" SB-APPEND
+   SB-RESET  s" http://127.0.0.1:" SB-APPEND  HTTP:PORT FMT:SB-U  path pu SB-APPEND
    h SB$ CURL:URL! OK
    h kind ku ADD accept au ADD ;
+
+: OPEN-WITH ( ptr u8 n ptr u8 n -- CURL:handle )
+   {: kind:ptr ku:n accept:ptr au:n :}
+   s" /mcp" kind ku accept au OPEN-PATH ;
 
 : OPEN ( -- CURL:handle )
    s" Content-Type: application/json"
@@ -297,12 +304,16 @@ TASK:MIN-STACK TASK:TASK STALLER
    200 SB$ ANSWERED ;
 
 
+\ A modern call of echo with {"a":1}, in SB.
+: ECHO-A1 ( -- ptr u8 n )
+   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":8,\"method\":\"tools/call\",\"params\":" SB-APPEND
+   S\" {\"name\":\"echo\",\"arguments\":{\"a\":1}," SB-APPEND
+   META S\" }}" SB-APPEND SB$ ;
+
 : TOOL-RESULT ( -- )
    s" a modern call with a base64 Mcp-Name answers structuredContent.data" T-LABEL
    MODERN s" Mcp-Method: tools/call" ADD s" Mcp-Name: =?base64?ZWNobw==?=" ADD
-   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":8,\"method\":\"tools/call\",\"params\":" SB-APPEND
-   S\" {\"name\":\"echo\",\"arguments\":{\"a\":1}," SB-APPEND
-   META S\" }}" SB-APPEND SB$ POST
+   ECHO-A1 POST
    SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":8,\"result\":{\"resultType\":\"complete\"," SB-APPEND
    S\" \"content\":[{\"type\":\"text\",\"text\":\"{\\\"a\\\":1}\"}]," SB-APPEND
    S\" \"structuredContent\":{\"data\":{\"a\":1}},\"isError\":false," SB-APPEND
@@ -1527,6 +1538,61 @@ CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
    HIDDEN-LIST HIDDEN-CALL OWNER-LIST OWNER-CALL GUARDED-CLIENT ;
 
 
+BUF:HDR-BYTES BUFFER: REPLIES
+
+\ MCP:ANSWER of the body's message into REPLIES after a mark, so the reply
+\ shows what ANSWER appended.
+: ANSWER-ROUTE ( HTTP:request HTTP:response -- )
+   {: asked:HTTP:request answer:HTTP:response :}
+   REPLIES BUF:CLEAR
+   62 REPLIES BUF:APPEND-BYTE
+   asked HTTP:BODY$ REPLIES MCP:ANSWER
+   answer JSON-HEADER
+   answer REPLIES BUF:SPAN$ BUF:BLEN>N HTTP:BODY! ;
+
+: ANSWER-OPEN ( -- CURL:handle )
+   s" /answer" s" Content-Type: application/json" s" Accept: application/json"
+   OPEN-PATH ;
+
+: ANSWER-CALL ( -- )
+   s" ANSWER of a tools/call appends the text HANDLE sends for it" T-LABEL
+   MODERN s" Mcp-Method: tools/call" ADD s" Mcp-Name: echo" ADD
+   ECHO-A1 POST 200 T=
+   W-RESET s" >" W+ BODY BODY-U @ W+
+   ANSWER-OPEN ECHO-A1 POST
+   200 W$ ANSWERED ;
+
+: ANSWER-NOTIFIED ( -- )
+   s" ANSWER of a notification appends nothing" T-LABEL
+   ANSWER-OPEN S\" {\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}" POST
+   200 s" >" ANSWERED ;
+
+: ANSWER-ENVELOPE ( -- )
+   s" ANSWER of a message that is not JSON-RPC appends -32600" T-LABEL
+   ANSWER-OPEN S\" {\"jsonrpc\":\"1.0\",\"id\":9,\"method\":\"ping\"}" POST
+   200 S\" >{\"jsonrpc\":\"2.0\",\"id\":9,\"error\":{\"code\":-32600,\"message\":\"Invalid MCP request\"}}"
+   ANSWERED
+   s" ANSWER of a message that is not JSON appends -32700" T-LABEL
+   ANSWER-OPEN S\" {\"jsonrpc\":" POST
+   200 S\" >{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32700,\"message\":\"Invalid JSON\"}}"
+   ANSWERED ;
+
+: ANSWER-UNKNOWN ( -- )
+   s" ANSWER of a call of an unregistered tool appends -32602" T-LABEL
+   ANSWER-OPEN
+   S\" {\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\",\"params\":{\"name\":\"none\"}}" POST
+   200 T=
+   BODY 1 s" >" T$=
+   BODY 1+ BODY-U @ 1- s" none" UNKNOWN-REPLY T$= ;
+
+: ANSWER-OFF-WORKER ( -- )
+   s" ANSWER off a request worker throws E-STATE" T-LABEL
+   [: s" {}" REPLIES MCP:ANSWER ;] MCP:E-STATE TTHROWSQ ;
+
+: ANSWER-CASES ( -- )
+   ANSWER-CALL ANSWER-NOTIFIED ANSWER-ENVELOPE ANSWER-UNKNOWN ANSWER-OFF-WORKER ;
+
+
 : SERVE-CASES ( -- )
    AIO:START
    HTTP:ROUTES-RESET
@@ -1538,6 +1604,8 @@ CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
    s" POST" s" /endless" [: ENDLESS-ROUTE ;] HTTP:ROUTE
    s" POST" s" /late" [: LATE-ROUTE ;] HTTP:ROUTE
    s" POST" s" /counted" [: COUNTED-ROUTE ;] HTTP:ROUTE
+   s" POST" s" /answer" [: ANSWER-ROUTE ;] HTTP:ROUTE
+   REPLIES $1000 BUF:N>BLEN BUF:INIT
    s" test-server" s" 1.0" MCP:SERVER-INFO!
    GUIDE$ MCP:INSTRUCTIONS!
    BIG-FILL
@@ -1585,9 +1653,11 @@ CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
    LEGACY-NOTIFIED ARGUMENTS-NOT-OBJECT NOT-JSON-RESULT SILENT
    RESOURCES-LIST MODERN-RESOURCES RESOURCE-READ PLAIN-READ MODERN-READ READ-MISMATCH
    UNKNOWN-RESOURCE URI-NOT-STRING TEMPLATES
+   ANSWER-CASES
    CLIENT-CASES
    PROTECTED-CASES
    HTTP:STOP
+   REPLIES BUF:DISPOSE
    AIO:STOP ;
 
 T-RESET
