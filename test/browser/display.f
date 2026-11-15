@@ -30,8 +30,9 @@
 \ through twice the identity moved by x 0.4, y -0.2 and z 0.5, so w is 2,
 \ and picks with id 5 a pixel of their face 1 that the identity leaves
 \ empty. Each picked event comes back as the text picked and its a, b, c and
-\ d in decimal. Typed "ground" sends the ground z = 0 with +z up,
-\ "ground-none" no ground. Typed "seam", once, sends meshes 4 and 5, two
+\ d in decimal. Typed "ground" sends the ground z = 0 with +z up and the
+\ casters' box of the unit box display-peer.mjs draws on it, x and y -0.5 to
+\ 0.5 and z 0 to 1; "ground-none" no ground. Typed "seam", once, sends meshes 4 and 5, two
 \ orange rectangles in one grid plane with origins 100000, 200000, 300000
 \ and 139000, 190000, 299000 that share the edge from grid 140000, 200000,
 \ 300000 to 140000, 240000, 300000, and draws them, ids 8 and 9, through one
@@ -61,7 +62,7 @@ CAST: BYTES>N ( ^u8 -- n )
 8 BUFFER: WORDS
 64 BUFFER: MATRIX
 64 BUFFER: SHIFTED
-16 BUFFER: PLANE
+40 BUFFER: PLANE
 4097 24 * BUFFER: BOXES
 512 BUFFER: IMAGE
 variable IMAGE-U
@@ -319,9 +320,15 @@ variable ECHO-U
 : UP ( -- )
    0 0 $3F800000 0 PLANE! ;
 
+: CASTERS ( -- )
+   \ The casters' box after the plane: x, y -0.5..0.5 and z 0..1, f32 bits.
+   $BF000000 PLANE 16 + U32!  $BF000000 PLANE 20 + U32!  0 PLANE 24 + U32!
+   $3F000000 PLANE 28 + U32!  $3F000000 PLANE 32 + U32!
+   $3F800000 PLANE 36 + U32! ;
+
 : GROUND ( n n -- )
    {: b:n c:n :}
-   17 PLANE BYTES>N b c RECORD ;
+   CASTERS  17 PLANE BYTES>N b c RECORD ;
 
 : IS? ( ^u8 n -- bool )
    {: a:^ u:n :}
@@ -359,16 +366,16 @@ variable ECHO-U
    s" negative-flag" IS? if 9 -1 0 0 RECORD exit then
    s" input-b" IS? if 9 1 1 0 RECORD exit then
    s" input-c" IS? if 9 0 0 1 RECORD exit then
-   s" ground" IS? if UP 16 0 GROUND exit then
+   s" ground" IS? if UP 40 0 GROUND exit then
    s" ground-none" IS? if 17 0 0 0 RECORD exit then
-   s" ground-c" IS? if UP 16 1 GROUND exit then
+   s" ground-c" IS? if UP 40 1 GROUND exit then
    s" ground-b" IS? if UP 12 0 GROUND exit then
-   s" ground-outside" IS? if 17 -1 16 0 RECORD exit then
+   s" ground-outside" IS? if 17 -1 40 0 RECORD exit then
    \ Refused planes: nz NaN, n zero, and nz the least subnormal with d 1,
    \ so d / |n| is past f32's range.
-   s" ground-nan" IS? if 0 0 $7FC00000 0 PLANE! 16 0 GROUND exit then
-   s" ground-flat" IS? if 0 0 0 $3F800000 PLANE! 16 0 GROUND exit then
-   s" ground-far" IS? if 0 0 1 $3F800000 PLANE! 16 0 GROUND exit then ;
+   s" ground-nan" IS? if 0 0 $7FC00000 0 PLANE! 40 0 GROUND exit then
+   s" ground-flat" IS? if 0 0 0 $3F800000 PLANE! 40 0 GROUND exit then
+   s" ground-far" IS? if 0 0 1 $3F800000 PLANE! 40 0 GROUND exit then ;
 
 : CHAR+ ( n -- )
    ECHO-U @ ECHO-CAP >= if -1 throw then

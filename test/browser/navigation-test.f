@@ -216,7 +216,7 @@ PATH-CAP BUFFER: FILE
    s" short"
       s" a highlight of 0 words, fewer than the 1 the last draw's rows need"
       REJECT
-   s" flags" s" flags 2 set a bit other than bit 0" REJECT
+   s" flags" s" flags 4 set a bit other than bits 0 and 1" REJECT
    s" colour" s" a draw row's colour byte 3 is 1, not 0" REJECT
    s" pick-id" s" a pick needs a positive id, got 0" REJECT
    s" span" s" an occlude of 47 bytes, not whole 24-byte boxes" REJECT

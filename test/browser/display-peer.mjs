@@ -48,7 +48,7 @@ for (const [command, reason] of [
   ["flag", /input a must be 0 or 1/], ["negative-flag", /input a must be 0 or 1/],
   ["input-b", /input b and c must be zero/], ["input-c", /input b and c must be zero/],
   ["occlude", /occlude 7 before any draw/],
-  ["ground-c", /ground c must be zero/], ["ground-b", /a ground of 12 bytes, not 0 or 16/],
+  ["ground-c", /ground c must be zero/], ["ground-b", /a ground of 12 bytes, not 0 or 40/],
   ["ground-outside", /outside the module/], ["ground-nan", /not all finite/],
   ["ground-flat", /normal is \(0, 0, 0\)/], ["ground-far", /is not a finite f32/],
 ]) {
@@ -95,7 +95,8 @@ assert.equal(stdout, `hello\ninput 0\nsvg ${original.length} ${Buffer.from(origi
   "draw 1 2/2/0/0/30a040/65535/16384\nunmesh 1\n" +
   "draw 1 2/2/0/0/30a040/65535/16384\n" +
   "mesh 4 4 2 100000 200000 300000\nmesh 5 4 2 139000 190000 299000\n" +
-  "draw 2 4/8/0/-/ff7314/0/32768 5/9/0/-/ff7314/0/32768\nground 0 0 1 0\nground none\n" +
+  "draw 2 4/8/0/-/ff7314/0/32768 5/9/0/-/ff7314/0/32768\n" +
+  "ground 0 0 1 0 -0.5 -0.5 0 0.5 0.5 1\nground none\n" +
   `text load 00ff10\ntext focus ${"00".repeat(15)}ff\ntext highlight \n`);
 console.log("SVG/input protocol, independent copy, rejected records, identities, refused delivery, " +
   "mesh origins and CLI passed");
@@ -409,8 +410,8 @@ async function browser() {
     // seen straight down through x / 2, y / 2. The key, from the studio's
     // front left, casts the box's shadow up and right on screen. Mesh 101 is
     // the box with one more vertex, at grid 65535 on each axis, that no
-    // triangle names. box(m, handle, k) draws the box of that mesh scaled by
-    // k about the world's origin.
+    // triangle names. box(m, handle, k, flags) draws the box of that mesh
+    // scaled by k about the world's origin, with the row's flags.
     async function shadowed() {
       await evaluate(`(() => {
         // +-x, +-y and +-z as octahedral i16s.
@@ -429,11 +430,12 @@ async function browser() {
         vertices.set([-1, -1, -1, 0, 0, 0], 6 * 24); // grid 65535 as u16s
         subject.host.mesh(100, 24, 12, [0, 0, 0], new Uint16Array(vertices.buffer, 0, 6 * 24), triangles);
         subject.host.mesh(101, 25, 12, [0, 0, 0], new Uint16Array(vertices.buffer), triangles);
-        window.box = (m, handle = 100, k = 1) => {
+        window.box = (m, handle = 100, k = 1, flags = 0) => {
           const row = new DataView(new ArrayBuffer(72));
           [1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, -0.5, 0].forEach((v, j) =>
             row.setFloat32(4 * j, k * v, true));
-          row.setUint32(48, handle, true); row.setUint32(60, 0xFFFFFFFF, true);
+          row.setUint32(48, handle, true); row.setUint32(56, flags, true);
+          row.setUint32(60, 0xFFFFFFFF, true);
           [0xff, 0x73, 0x14].forEach((v, j) => row.setUint8(64 + j, v));
           row.setUint16(70, 32768, true);
           subject.host.draw(new Uint8Array(row.buffer), 1, Float32Array.from(m));
@@ -487,15 +489,15 @@ async function browser() {
       assert.ok(grey(turned) && Math.abs(turned[0] - shade[0]) <= 20,
         `orbited 180°, the shadow stays on the same screen side, got ${turned}`);
       assert.deepEqual(turnedMirror, background, `orbited, the mirror stays white, got ${turnedMirror}`);
-      // A vertex no triangle names, however far, leaves the shadow as it is.
-      await evaluate(`box(${JSON.stringify(down)}, 101)`);
-      const [unnamed] = await pixels(points);
-      assert.ok(grey(unnamed), `a far vertex no triangle names keeps the shadow, got ${unnamed}`);
-      // The box and the camera scaled by 1e-12 draw the same picture.
+      // The box, the casters' box and the camera scaled by 1e-12 draw the same
+      // picture.
       const small = down.map((v, k) => (k < 12 ? v * 1e12 : v));
-      await evaluate(`box(${JSON.stringify(small)}, 100, 1e-12)`);
+      await evaluate(`subject.host.ground(Float32Array.of(0, 0, 1, 0),
+        Float32Array.from([-0.5, -0.5, 0, 0.5, 0.5, 1], (v) => v * 1e-12));
+        box(${JSON.stringify(small)}, 100, 1e-12)`);
       const [tiny] = await pixels(points);
       assert.ok(grey(tiny), `the box at 1e-12 scale casts the shadow, got ${tiny}`);
+      await command("ground");
       // Tilted 45° about x, the camera's right is down's, so the turntable
       // keeps the key where it was; were the studio the view's own frame, the
       // key would stand nearly overhead and leave this floor point, x 0.6 and
@@ -509,6 +511,63 @@ async function browser() {
       await evaluate(`box(${JSON.stringify(below)})`);
       const [under] = await pixels([[0.2, -0.4]]);
       assert.deepEqual(under, background, `a camera below the ground shows no shadow, got ${under}`);
+      // zoomed looks down at world x 0.15..0.65 and y 0.55..1.05, past the
+      // box's y 0.5: its centre is the floor point shade read, which the box
+      // outside the view shades as a cast-only row and which is white with
+      // no row.
+      const zoomed = [4, 0, 0, 0, 0, 4, 0, 0, 0, 0, -0.25, 0, -1.6, -3.2, 0.5, 1];
+      await evaluate(`subject.host.draw(new Uint8Array(0), 0, Float32Array.from(${JSON.stringify(zoomed)}))`);
+      const [bare] = await pixels([[0, 0]]);
+      assert.deepEqual(bare, background, `the floor in view with no row is white, got ${bare}`);
+      await evaluate(`box(${JSON.stringify(zoomed)}, 100, 1, 2)`);
+      const [outside] = await pixels([[0, 0]]);
+      assert.ok(grey(outside), `a cast-only box outside the view shades the floor in view, got ${outside}`);
+      // The cast-only box in view casts the shadow the drawn box casts and
+      // leaves its own pixels as the ground's, a neutral grey or white, which
+      // a pick passes through.
+      await evaluate(`box(${JSON.stringify(down)}, 100, 1, 2)`);
+      const [castShade, , , castTop] = await pixels(points);
+      assert.deepEqual(castShade, shade, `a cast-only box casts the drawn box's shadow, got ${castShade}`);
+      assert.ok(castTop.every((v) => v === castTop[0]),
+        `a cast-only box leaves the ground's neutral pixels, got ${castTop}`);
+      const castPick = await evaluate(`(() => { const c = document.querySelector("canvas");
+        return subject.host.pick(BigInt(Math.floor(c.width / 2)), BigInt(Math.floor(c.height / 2))); })()`);
+      assert.deepEqual(castPick, [-1, 0, 0x3F800000], `a pick on a cast-only box answers none, got ${castPick}`);
+      // The map covers M, the ground in view's rectangle in the key's x and y
+      // grown by g and cut to the casters' box, so its texel is M's larger
+      // side over its side. For zoomed, a casters' box of x, y -10..10 and z
+      // 0..1, and the key's axes on this ground (x 0.86824, -0.49614, 0;
+      // y 0.29621, 0.51836, 0.80222; z -0.39801, -0.69653, 0.59702): the
+      // view's corners span key x -0.39071..0.29148 and y 0.32953..0.73681,
+      // T is 1, g is 0.45 / 0.59702 = 0.75374 and 0.27 / 0.59702 / (1 - 0.27
+      // 0.80222 / 0.59702) = 0.70974, and the box does not cut, so M is x
+      // -1.14445..1.04522 and y -0.38021..1.44655, sides 2.18967 and 1.82676.
+      // The drawn box's own rectangle, which a fit to the rows would cover,
+      // is 1.36398 wide in key x.
+      const fitted = await evaluate(`(() => {
+        const write = GPUQueue.prototype.writeBuffer, light = [];
+        GPUQueue.prototype.writeBuffer = function (buffer, offset, data, ...rest) {
+          if (buffer.size === 160 && buffer.usage & GPUBufferUsage.UNIFORM) light.push(Array.from(data));
+          return write.call(this, buffer, offset, data, ...rest);
+        };
+        try {
+          subject.host.ground(Float32Array.of(0, 0, 1, 0), Float32Array.of(-10, -10, 0, 10, 10, 1));
+          box(${JSON.stringify(zoomed)}, 100, 1, 2);
+        } finally { GPUQueue.prototype.writeBuffer = write; }
+        const c = document.querySelector("canvas");
+        return { light: light.at(-1), side: Math.max(c.width, c.height) };
+      })()`);
+      const [ex, ey] = [0, 1].map((r) => 1 / Math.hypot(...[0, 4, 8].map((k) => fitted.light[k + r])));
+      const centre = [0, 1].map((r) => -fitted.light[12 + r] * [ex, ey][r]);
+      const near = (a, b) => Math.abs(a - b) < 1e-4;
+      assert.ok(near(2 * ex, 2.18967) && near(2 * ey, 1.82676),
+        `the map covers M's sides 2.18967 by 1.82676, got ${2 * ex} by ${2 * ey}`);
+      assert.ok(near(centre[0], -0.04961) && near(centre[1], 0.53317),
+        `the map is centred on M's centre -0.04961, 0.53317, got ${centre}`);
+      const texel = 2 * Math.max(ex, ey) / fitted.side;
+      assert.ok(fitted.side <= 4104 && near(texel * fitted.side, 2.18967),
+        `the map's texel ${texel} is M's larger side 2.18967 over its side ${fitted.side}`);
+      await command("ground");
       await command("ground-none");
       await evaluate(`box(${JSON.stringify(down)})`);
       const [none] = await pixels(points);
@@ -517,8 +576,10 @@ async function browser() {
         subject.host.unmesh(100); subject.host.unmesh(101)`);
       console.log(`Headless Chrome ground: shadow ${shade}, mirror ${mirror}, far ${far}, ` +
         `box ${top}, row darkest ${row[darkest]} rising at most ${rise}, orbited ${turned}, ` +
-        `unnamed vertex ${unnamed}, 1e-12 scale ${tiny}, tilted ${leaning}, ` +
-        `from below ${under}, no ground ${none}`);
+        `1e-12 scale ${tiny}, tilted ${leaning}, ` +
+        `from below ${under}, outside the view bare ${bare} and cast-only ${outside}, ` +
+        `cast-only in view shade ${castShade} top ${castTop} pick ${castPick}, ` +
+        `map ${2 * ex} by ${2 * ey} at ${centre}, texel ${texel}, no ground ${none}`);
     }
 
     // display.f's seam: meshes 4 and 5, one orange plane split along a shared

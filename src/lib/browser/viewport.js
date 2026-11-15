@@ -78,18 +78,23 @@
 // direction when 0. The normal is turned toward V: meshes are drawn without
 // culling and may be open. hit, after vs, marks the nearest fragment in
 // pick's one texel, with 1 in its fourth channel to tell a hit from the clear.
-// The key casts the instances' soft shadow on the ground: caster draws them
-// into a depth map by light.clip, whose x and y run along the key softbox's
-// tangents and whose depth runs away from the key; rows and columns sum the
-// map's blockers into summed-area tables, counts and heights; and ground
-// draws the catcher, the quad light.corners on the plane, whose fragment,
-// shadow, finds by PCSS over those tables the share V of the softbox it sees
-// past the casters. The ground is not in the map: the plane's depth at light
-// x, y is light.ground.x x + light.ground.y y + light.ground.z,
-// light.reach.xy is the softbox's half extents in light x and y per unit of
-// depth, and light.reach.z the tallest caster's height above the plane in
-// units of depth. A caster below the plane neither shades it nor hides one
-// above it from the key. The catcher reads white times
+// The key casts the instances' soft shadow on the ground: caster draws every
+// row, cast-only (flags bit 1) or not, into a depth map by light.clip, whose
+// x and y run along the key softbox's tangents and cover the key's volume
+// (keyVolume) and whose depth runs away from the key over the casters' box;
+// rows and columns sum the map's blockers into summed-area tables, counts and
+// heights; and ground draws the catcher, the quad light.corners on the plane,
+// whose fragment, shadow, finds by PCSS over those tables the share V of the
+// softbox it sees past the casters. vs, a pick's probe and so the depth an
+// occlude reads take only the rows whose bit 1 is clear. The fit depends on
+// the draw's matrix, the plane and the casters' box alone, never on the rows,
+// so a row outside the view still shades the ground in view, and the map's
+// texel is the same whichever rows a module sends. The ground is not in the
+// map: the plane's depth at light x, y is light.ground.x x + light.ground.y y
+// + light.ground.z, light.reach.xy is the softbox's half extents in light x
+// and y per unit of depth, and light.reach.z the casters' box's greatest
+// height above the plane in units of depth. A caster below the plane neither
+// shades it nor hides one above it from the key. The catcher reads white times
 // (env(up, 1) + key V) / (env(up, 1) + key), key the key's irradiance on the
 // ground, in linear light and not tone-mapped, so an unshadowed ground reads
 // white as the clear does.
@@ -463,11 +468,11 @@ fn texels(q: vec2<f32>, e: vec2<f32>) -> mat2x2<f32> {
     mapped(q + vec2<f32>(e.x, -e.y)) * side);
 }
 
-// The search region is the softbox as the fragment sees it at the tallest
-// caster's height; the blockers' mean height there sets the penumbra
-// rectangle, the softbox as the fragment sees it at that height and at least
-// a texel wide, and V is 1 less the share of it the blockers cover. No
-// blocker in the search region leaves V 1.
+// The search region is the softbox as the fragment sees it at T, the
+// casters' box's greatest height; the blockers' mean height there sets the
+// penumbra rectangle, the softbox as the fragment sees it at that height and
+// at least a texel wide, and V is 1 less the share of it the blockers cover.
+// No blocker in the search region leaves V 1.
 @fragment fn shadow(f: Floor) -> @location(0) vec4<f32> {
   let side = f32(textureDimensions(countSums).x);
   let search = texels(f.seen.xy, light.reach.z * light.reach.xy);
@@ -514,6 +519,7 @@ const NONE = [-1, 0, 0x3F800000];
 
 const ROW = 72; // bytes in an instance row
 const PLACED = ROW + 12; // a row with its mesh's origin, as grouped writes it
+const CAST_ONLY = 2; // a row's flags bit 1: it casts and is not drawn
 const QUERIES = 4096; // WebGPU's most queries in one query set
 
 // The rows of the inverse of m, a column-major 4x4, in binary64 by
@@ -541,7 +547,7 @@ const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const unit = (a) => { const l = Math.hypot(...a); return a.map((v) => v / l); };
 
 // SHADER's view of clip matrix m, column-major: eye, right, up and back, 16
-// f32s, or null when m is singular or the view comes out not finite. eye is
+// numbers in binary64, or null when m is singular or the view comes out not finite. eye is
 // m⁻¹ (0, 0, 1, 0), the centre of projection (E, 1), or the direction (d, 0)
 // when its w is 0, as an affine m's is exactly, negated if need be so that
 // the way toward it lowers NDC depth; back is V at the unprojected NDC
@@ -573,7 +579,7 @@ function viewer(m) {
   const right = unit(minus(across, along(across, back)));
   const above = minus(unproject(0, 1, 0.5), centre);
   const up = unit(minus(minus(above, along(above, back)), along(above, right)));
-  const view = Float32Array.of(...eye, ...right, 0, ...up, 0, ...back, 0);
+  const view = [...eye, ...right, 0, ...up, 0, ...back, 0];
   return view.every(Number.isFinite) ? view : null;
 }
 
@@ -591,15 +597,14 @@ const plus = (...vs) => [0, 1, 2].map((k) => vs.reduce((s, v) => s + v[k], 0));
 // rolled 90° leaves about 4e-8.
 function studio(view, plane) {
   if (!plane) return view.slice();
-  const [right, up, back] = [4, 8, 12].map((k) => Array.from(view.subarray(k, k + 3)));
+  const [right, up, back] = [4, 8, 12].map((k) => view.slice(k, k + 3));
   const n = unit(Array.from(plane.subarray(0, 3)));
   const laid = (a) => plus(a, scaled(n, -dot3(a, n)));
   const s = Math.sign(dot3(right, cross3(up, back)));
   const along = laid(right);
   const r = Math.hypot(...along) >= 1e-6 ? unit(along)
     : scaled(unit(cross3(n, laid(back))), s);
-  return Float32Array.of(...view.subarray(0, 4), ...r, 0, ...n, 0,
-    ...scaled(cross3(r, n), s), 0);
+  return [...view.slice(0, 4), ...r, 0, ...n, 0, ...scaled(cross3(r, n), s), 0];
 }
 
 // The key light's world axes from the studio's view and the ground plane: x
@@ -608,26 +613,87 @@ function studio(view, plane) {
 function keyAxes(axes, plane) {
   const c = unit(KEY);
   const across = unit(cross3([0, 1, 0], c));
-  const [right, up, back] = [4, 8, 12].map((k) => Array.from(axes.subarray(k, k + 3)));
+  const [right, up, back] = [4, 8, 12].map((k) => axes.slice(k, k + 3));
   const world = (a) => plus(scaled(right, a[0]), scaled(up, a[1]), scaled(back, a[2]));
   const length = Math.hypot(plane[0], plane[1], plane[2]);
   return { x: world(across), y: world(cross3(c, across)), z: world(c),
     n: Array.from(plane.subarray(0, 3), (v) => v / length), d: plane[3] / length };
 }
 
-// The Light uniform, 40 f32s, for the casters fit found with the key's axes.
-// The map's x and y cover the casters; its depth runs from the nearest
-// caster, 0, to the farthest, 1, 1% to spare at each end, so a cleared 1
-// holds none. The catcher grows the casters' rectangle on each side by
-// h D / (1 - h |slope|), the farthest past them a point of the plane can
-// see a caster against the softbox: h the softbox's half extent, D the tallest caster's
-// distance to the plane along the key and slope the plane's rise along the
-// key per unit along that axis. The growth is finite, since the key stands
-// 36.6° above the ground, more than the softbox's half-angle atan(0.45) =
-// 24.2°. An axis in which the casters have no extent, all of them a point or
-// a sheet seen edge-on, takes a spare of a millionth of their largest extent,
-// so the fit keeps the casters' own scale whatever the scene's units.
-// Casters with no extent at all draw no shadow: fit answers null for them.
+// g, how far in the key's x and y past casters at most tall above the plane
+// a point of the plane can see one against the softbox, with the key's axes
+// a: h D / (1 - h |slope|) in each, h the softbox's half extent, D = tall /
+// nz the casters' reach to the plane along the key and slope the plane's
+// rise along the key per unit along that axis. It is finite, since the key
+// stands 36.6° above the ground, more than the softbox's half-angle
+// atan(0.45) = 24.2°.
+function growth(tall, a) {
+  const nx = dot3(a.n, a.x), ny = dot3(a.n, a.y), nz = dot3(a.n, a.z);
+  const D = tall / nz;
+  return [KEY_BOX[0] * D / (1 - KEY_BOX[0] * Math.abs(nx / nz)),
+    KEY_BOX[1] * D / (1 - KEY_BOX[1] * Math.abs(ny / nz))];
+}
+
+// The world point of the plane, unit n and d, that clip matrix m, column-major,
+// takes to NDC x, y, in binary64 by Cramer's rule over the plane and the two
+// planes m takes to x and y; null when the view runs along the plane or the
+// point lies behind the camera, w not above 0.
+function onPlane(m, n, d, x, y) {
+  const row = (r) => [m[r], m[4 + r], m[8 + r], m[12 + r]];
+  const w = row(3);
+  const [e0, e1, e2] = [row(0).map((v, k) => v - x * w[k]),
+    row(1).map((v, k) => v - y * w[k]), [...n, d]];
+  const [a, b, c] = [e0, e1, e2].map((e) => e.slice(0, 3));
+  const p = scaled(plus(scaled(cross3(b, c), -e0[3]), scaled(cross3(c, a), -e1[3]),
+    scaled(cross3(a, b), -e2[3])), 1 / dot3(a, cross3(b, c)));
+  return p.every(Number.isFinite) && dot3(w, p) + w[3] > 0 ? p : null;
+}
+
+// The key's volume, every point on or above the plane whose key x and y lie
+// in M, for clip matrix m, the casters' box (six f32, its lowest corner then
+// its highest) and the key's axes a, as lit takes it: M as lo and hi, the
+// box's greatest and least key z as near and far, and T as tall; or null,
+// when no shadow is drawn. V, the ground in view, is the plane's points at
+// NDC x, y = ±1 and R their rectangle in key x and y, unbounded where one of
+// them is none (onPlane). T is the most the box's corners rise above the
+// plane and g growth's for T; M is R grown by g on each side, cut to the
+// rectangle of the box's corners. Null when T is not above 0, M is empty, or
+// M and the box's depth along the key all have no extent, a box that is a
+// point. Every summed-table read shadow makes for a ground point in view lies
+// in M or outside the box, so the picture does not depend on rows outside
+// the volume.
+function keyVolume(m, box, a) {
+  const corners = Array.from({ length: 8 }, (_, k) =>
+    [0, 1, 2].map((j) => box[(k >> j) & 1 ? 3 + j : j]));
+  const tall = Math.max(...corners.map((p) => dot3(a.n, p) + a.d));
+  if (!(tall > 0)) return null;
+  // The rectangle of points in key x and y, lowest then highest.
+  const rect = (points) => [0, 1].map((side) => [a.x, a.y].map((axis) =>
+    (side ? Math.max : Math.min)(...points.map((p) => dot3(axis, p)))));
+  const seen = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([x, y]) =>
+    onPlane(m, a.n, a.d, x, y));
+  const [r0, r1] = seen.every((p) => p) ? rect(seen)
+    : [[-Infinity, -Infinity], [Infinity, Infinity]];
+  const [b0, b1] = rect(corners);
+  const g = growth(tall, a);
+  const lo = [0, 1].map((k) => Math.max(r0[k] - g[k], b0[k]));
+  const hi = [0, 1].map((k) => Math.min(r1[k] + g[k], b1[k]));
+  const depths = corners.map((p) => dot3(a.z, p));
+  const [near, far] = [Math.max(...depths), Math.min(...depths)];
+  if (lo[0] > hi[0] || lo[1] > hi[1]) return null;
+  const wide = Math.max(hi[0] - lo[0], hi[1] - lo[1], near - far);
+  return wide > 0 ? { lo, hi, near, far, tall } : null;
+}
+
+// The Light uniform, 40 f32s, for the key's volume keyVolume found with the
+// key's axes. The map's x and y cover M, so its texel is M's larger side
+// over the map's side; its depth runs over the casters' box along the key,
+// from its nearest corner, 0, to its farthest, 1, 1% to spare at each end,
+// so a cleared 1 holds none. reach.z is T, the casters' greatest height
+// above the plane, in units of depth. The catcher is M grown by growth's g
+// on each side, laid on the plane. An axis in which M has no extent takes a
+// spare of a millionth of its largest extent or the box's depth, so the
+// fit keeps the scene's own scale whatever its units.
 function lit(fitted, a) {
   const { lo, hi, near, far, tall } = fitted;
   const nx = dot3(a.n, a.x), ny = dot3(a.n, a.y), nz = dot3(a.n, a.z);
@@ -642,8 +708,7 @@ function lit(fitted, a) {
   const rows = [[...scaled(a.x, 1 / ex), -cx / ex], [...scaled(a.y, 1 / ey), -cy / ey],
     [...scaled(a.z, -1 / span), top / span], [0, 0, 0, 1]];
   const D = tall / nz;
-  const gx = KEY_BOX[0] * D / (1 - KEY_BOX[0] * Math.abs(nx / nz));
-  const gy = KEY_BOX[1] * D / (1 - KEY_BOX[1] * Math.abs(ny / nz));
+  const [gx, gy] = growth(tall, a);
   const corner = (x, y) => [...plus(scaled(a.x, x), scaled(a.y, y),
     scaled(a.z, -(a.d + x * nx + y * ny) / nz)), 1];
   const out = new Float32Array(40);
@@ -678,31 +743,36 @@ async function gpu(canvas, fail) {
   }
 }
 
-// The rows regrouped by handle, each handle in the order it first appears,
-// each followed by origin(handle)'s three u32s in PLACED bytes, and the
-// [handle, first, count] runs over them.
+// The rows regrouped, the drawn rows (flags bit 1 clear) then the cast-only
+// rows, each by handle, each handle in the order it first appears, each row
+// followed by origin(handle)'s three u32s in PLACED bytes; and the [handle,
+// first, count] runs over the drawn rows and over the cast-only rows.
 function grouped(rows, count, origin) {
   const v = new DataView(rows.buffer, rows.byteOffset, rows.byteLength);
-  const groups = new Map();
+  const groups = [new Map(), new Map()];
   for (let i = 0; i < count; i++) {
     const handle = v.getUint32(i * ROW + 48, true);
-    if (!groups.has(handle)) groups.set(handle, []);
-    groups.get(handle).push(i);
+    const group = groups[v.getUint32(i * ROW + 56, true) & CAST_ONLY ? 1 : 0];
+    if (!group.has(handle)) group.set(handle, []);
+    group.get(handle).push(i);
   }
   const ordered = new Uint8Array(count * PLACED);
   const out = new DataView(ordered.buffer);
-  const runs = [];
   let at = 0;
-  for (const [handle, list] of groups) {
-    runs.push([handle, at, list.length]);
-    const o = origin(handle);
-    for (const i of list) {
-      ordered.set(rows.subarray(i * ROW, (i + 1) * ROW), PLACED * at);
-      o.forEach((v, k) => out.setUint32(PLACED * at + ROW + 4 * k, v, true));
-      at++;
+  const [runs, casts] = groups.map((group) => {
+    const list = [];
+    for (const [handle, rowsOf] of group) {
+      list.push([handle, at, rowsOf.length]);
+      const o = origin(handle);
+      for (const i of rowsOf) {
+        ordered.set(rows.subarray(i * ROW, (i + 1) * ROW), PLACED * at);
+        o.forEach((v, k) => out.setUint32(PLACED * at + ROW + 4 * k, v, true));
+        at++;
+      }
     }
-  }
-  return [ordered, runs];
+    return list;
+  });
+  return [ordered, runs, casts];
 }
 
 // The renderer holds each mesh by handle as a vertex buffer of its 12-byte
@@ -719,9 +789,11 @@ function grouped(rows, count, origin) {
 // matrix's before any. While a ground is held, a square depth32float shadow
 // map whose side is the drawing buffer's larger side, at most SHADOW_SIDE,
 // exists with its two r32uint tables, and a draw whose eye is above the plane
-// and some of whose instances rise above it first draws them into the map
+// and whose key's volume is not null first draws every row into the map
 // along the key, sums the tables from it, then draws the catcher first in its
-// main pass. occlude draws its boxes
+// main pass, which draws only the rows that are not cast-only; so does a
+// pick's probe. With no ground or no shadow a cast-only row draws nothing.
+// occlude draws its boxes
 // against them in passes of at most QUERIES occlusion queries, one per box,
 // and reads the resolved sample counts back through buffers of its own,
 // released once read, so a box passes when any sample does. pick,
@@ -798,7 +870,8 @@ function setup(canvas, context, device, release, fail) {
   const { UNIFORM, STORAGE, VERTEX, INDEX, COPY_DST, COPY_SRC, QUERY_RESOLVE, MAP_READ } =
     GPUBufferUsage;
   const matrix = device.createBuffer({ size: 64, usage: UNIFORM | COPY_DST });
-  // The last view viewer gave, kept for a draw whose matrix is singular.
+  // The last view viewer gave, kept for a draw whose matrix is singular; each
+  // write of it or studio's view to the view buffer takes it to f32.
   let seen = viewer(Float32Array.of(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1));
   const view = device.createBuffer({ size: 64, usage: UNIFORM | COPY_DST,
     mappedAtCreation: true });
@@ -813,7 +886,8 @@ function setup(canvas, context, device, release, fail) {
     layout: caster.getBindGroupLayout(0),
     entries: [{ binding: 3, resource: { buffer: light } }],
   });
-  let plane = null; // the ground held, or null
+  let plane = null; // the ground's plane held, or null
+  let casters = null; // the casters' box held with it
   // The shadow map, its tables and the bind groups of rows, columns and the
   // catcher, while a ground is held.
   let shadows = null;
@@ -867,10 +941,7 @@ function setup(canvas, context, device, release, fail) {
   });
   let depth = depthTexture();
   let color = colorTexture();
-  // A held handle -> { vertices, indices, count, origin, lo, hi }, lo and hi
-  // the corners of the box of the grid positions (origin plus u16s) of the
-  // vertices its triangles name, null for a mesh of no triangles: record 13
-  // allows vertices no triangle names.
+  // A held handle -> { vertices, indices, count, origin }.
   const meshes = new Map();
   let instances = null;
   let words = null;
@@ -917,15 +988,8 @@ function setup(canvas, context, device, release, fail) {
       held.destroy();
       throw e;
     }
-    let lo = null, hi = null;
-    for (const k of triangles) {
-      const g = Array.from(vertices.subarray(6 * k, 6 * k + 3),
-        (v, j) => v + origin[j]);
-      lo = lo ? lo.map((v, j) => Math.min(v, g[j])) : g;
-      hi = hi ? hi.map((v, j) => Math.max(v, g[j])) : g;
-    }
     meshes.set(handle, { vertices: held, indices, count: 3 * triangleCount,
-      origin: origin.slice(), lo, hi });
+      origin: origin.slice() });
   };
   const unmesh = (handle) => {
     const { vertices, indices } = meshes.get(handle);
@@ -945,53 +1009,21 @@ function setup(canvas, context, device, release, fail) {
     }
   };
 
-  const ground = (held) => {
+  const ground = (held, box) => {
     plane = held && held.slice();
+    casters = held && box.slice();
     if (plane && !shadows) shadowMap();
     if (!plane && shadows) unshadow();
   };
 
-  // The casters among the count rows of ordered, by their meshes' grid boxes
-  // taken to world, in the key's axes: lo and hi the x, y rectangle covering
-  // them, near and far their greatest and least z, tall the most any rises
-  // above the plane; null when none does or when they have no extent in any
-  // of x, y and z. A row wholly on or below the plane, or of a mesh of no
-  // triangles, casts nothing.
-  const fit = (ordered, count, axes) => {
-    const v = new DataView(ordered.buffer, ordered.byteOffset, ordered.byteLength);
-    const lo = [Infinity, Infinity], hi = [-Infinity, -Infinity];
-    let near = -Infinity, far = Infinity, tall = 0;
-    for (let i = 0; i < count; i++) {
-      const c = Array.from({ length: 12 }, (_, k) => v.getFloat32(i * PLACED + 4 * k, true));
-      const { lo: g0, hi: g1 } = meshes.get(v.getUint32(i * PLACED + 48, true));
-      if (!g0) continue;
-      const corners = [];
-      for (let k = 0; k < 8; k++) {
-        const g = [0, 1, 2].map((j) => ((k >> j) & 1 ? g1[j] : g0[j]));
-        corners.push([0, 1, 2].map((j) => c[j] * g[0] + c[3 + j] * g[1] +
-          c[6 + j] * g[2] + c[9 + j]));
-      }
-      const rise = Math.max(...corners.map((p) => dot3(axes.n, p) + axes.d));
-      if (!(rise > 0)) continue;
-      tall = Math.max(tall, rise);
-      for (const p of corners) {
-        const [x, y, z] = [dot3(axes.x, p), dot3(axes.y, p), dot3(axes.z, p)];
-        lo[0] = Math.min(lo[0], x); hi[0] = Math.max(hi[0], x);
-        lo[1] = Math.min(lo[1], y); hi[1] = Math.max(hi[1], y);
-        near = Math.max(near, z); far = Math.min(far, z);
-      }
-    }
-    const wide = Math.max(hi[0] - lo[0], hi[1] - lo[1], near - far);
-    return tall > 0 && wide > 0 ? { lo, hi, near, far, tall } : null;
-  };
-
-  // The last draw's runs and its matrix, copied, as a pick reads them; null
-  // before the first.
+  // The last draw's runs of drawn rows and its matrix, copied, as a pick
+  // reads them; null before the first.
   let last = null;
 
   // rows, count instance rows of held meshes (turn.js); 0 rows clears.
   const draw = (rows, count, clip) => {
-    const [ordered, runs] = grouped(rows, count, (h) => meshes.get(h).origin);
+    const [ordered, runs, casts] = grouped(rows, count,
+      (h) => meshes.get(h).origin);
 
     last = { runs, clip: new Float32Array(clip.slice().buffer) };
     if (count) {
@@ -1001,10 +1033,10 @@ function setup(canvas, context, device, release, fail) {
     device.queue.writeBuffer(matrix, 0, clip);
     seen = viewer(last.clip) ?? seen;
     const axes = studio(seen, plane);
-    device.queue.writeBuffer(view, 0, axes);
+    device.queue.writeBuffer(view, 0, Float32Array.from(axes));
     const key = plane && keyAxes(axes, plane);
     const above = key && dot3(key.n, seen) + key.d * seen[3] > 0;
-    const cast = above ? fit(ordered, count, key) : null;
+    const cast = above ? keyVolume(last.clip, casters, key) : null;
     const encoder = device.createCommandEncoder();
     if (cast) {
       device.queue.writeBuffer(light, 0, lit(cast, key));
@@ -1013,8 +1045,8 @@ function setup(canvas, context, device, release, fail) {
           depthLoadOp: "clear", depthStoreOp: "store" } });
       shade.setPipeline(caster);
       shade.setBindGroup(0, casterBind);
-      shade.setVertexBuffer(1, instances);
-      for (const [handle, first, n] of runs) {
+      if (count) shade.setVertexBuffer(1, instances);
+      for (const [handle, first, n] of [...runs, ...casts]) {
         const { vertices, indices, count: indexCount } = meshes.get(handle);
         shade.setVertexBuffer(0, vertices);
         shade.setIndexBuffer(indices, "uint16");
@@ -1264,7 +1296,7 @@ export async function mount(canvas, { Module, module: url, fetch: load, rpc, onT
       mesh: live((...args) => renderer.mesh(...args)),
       unmesh: live((handle) => renderer.unmesh(handle)),
       highlight: live((words) => renderer.highlight(words)),
-      ground: live((plane) => renderer.ground(plane)),
+      ground: live((plane, box) => renderer.ground(plane, box)),
       pick: live((x, y) => renderer.pick(x, y)),
       occlude: live((boxes) => renderer.occlude(boxes)),
       draw: live((...args) => {

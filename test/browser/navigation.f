@@ -217,7 +217,7 @@ variable PRESS-MODS
    s" short" IS? if 0 HIGHLIGHT exit then
    s" remesh" IS? if 0 DRAW 7 UNMESH 104 7 MESH 2 DRAW exit then
 
-   s" flags" IS? if 2 INSTANCE-ROWS 56 + U32! 2 DRAW exit then
+   s" flags" IS? if 4 INSTANCE-ROWS 56 + U32! 2 DRAW exit then
    s" colour" IS? if 1 INSTANCE-ROWS 67 + c! 2 DRAW exit then
    s" zero" IS? if 0 DRAW 0 HIGHLIGHT exit then
    s" redraw" IS? if 2 DRAW exit then
