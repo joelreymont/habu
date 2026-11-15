@@ -252,8 +252,9 @@ $90 constant EVAL-INB
 \ puts back as it ends.
 0 constant EVAL-INP
 8 constant EVAL-INE
-\ EVAL-TKA, EVAL-TKL: the outer input's last token (TKA-CELL, TKL-CELL), which a
-\ clean end puts back, so the token never names a buffer released after it.
+\ EVAL-TKA, EVAL-TKL: the outer input's last token (TKA-CELL, TKL-CELL), which
+\ the evaluate puts back as it ends, so the token never names a buffer released
+\ after it.
 $130 constant EVAL-TKA
 $168 constant EVAL-TKL
 package EVAL-FRAME

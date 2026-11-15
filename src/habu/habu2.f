@@ -2226,6 +2226,8 @@ private
       12 13 EVAL-INP LDR,  12 DATA INP-CELL STR,
       12 13 EVAL-INE LDR,  12 DATA INE-CELL STR,
       12 13 EVAL-INB LDR,  12 DATA SRCLOC:INB-CELL STR,
+      12 13 EVAL-TKA LDR,  12 DATA TKA-CELL STR,
+      12 13 EVAL-TKL LDR,  12 DATA TKL-CELL STR,
       XDS 13 32 LDR,
       12 13 EVAL-FRAME:PEND LDR,  12 owned CBZ,       \ no definition open as it began: it owns the compile
          \ The outer definition as the interrupted token began.
