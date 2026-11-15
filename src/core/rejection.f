@@ -24,13 +24,15 @@ PTR-VARIABLE TEXT-P
 SCRATCH-VARIABLE TEXT-CAP               \ bytes mapped at TEXT-P, 0 for none
 variable IN-JSON   0 IN-JSON !          \ inside a JSON string: EMIT1 escapes
 \ Which text of the record is open. A prose AT opens GAP-PART: the label's
-\ first byte writes the space after the carets and opens LABEL-PART.
+\ first byte writes the space after the carets and opens LABEL-PART. An AT no
+\ source holds opens DROP-PART, which drops the label: no place carries it.
 0 constant NO-PART
 1 constant MESSAGE-PART
 2 constant LABEL-PART
 3 constant VALUE-PART
 4 constant HELP-PART
 5 constant GAP-PART
+6 constant DROP-PART
 variable PART   NO-PART PART !
 variable BUF-ON
 variable BUF-FD   2 BUF-FD !
@@ -132,6 +134,7 @@ private
 public
 \ Between JSON-OPEN and JSON-CLOSE every byte is escaped: a package may be named `\`.
 : EMIT1 {: c :}
+   PART @ DROP-PART = IF EXIT THEN
    PART @ GAP-PART = IF  LABEL-PART PART !  32 EMIT-RAW  THEN
    IN-JSON @ IF c JSON-CHAR ELSE c EMIT-RAW THEN ;
 : JSON-OPEN ( -- )   34 EMIT-RAW  -1 IN-JSON ! ;
@@ -427,7 +430,7 @@ public
 private
 : END-TEXT ( -- )
    PART @ GAP-PART = IF LABEL-PART PART ! THEN
-   PART @ NO-PART = IF EXIT THEN
+   PART @ NO-PART =  PART @ DROP-PART = or IF EXIT THEN
    JSON @ IF JSON-CLOSE EXIT THEN
    10 EMIT1 ;
 : BLANKS ( n -- ) {: k:n :}
@@ -621,10 +624,9 @@ private
    PATH$ LABELS? 0= ;
 \ Places the token t tu, else the token that built its run, else the reader's
 \ token when it is on one or the running token when not, naming t tu in a
-\ `word` note, else the file alone.
+\ `word` note, else nowhere.
 \ While the file being read is the tool's own, that token places only in an
-\ armed source. With no place, the record names FILE$ when the file being read
-\ is labelled or a tool named a file, else the file being read, else NO-FILE$.
+\ armed source.
 : PLACE ( ptr u8 n -- ) {: t:ptr tu:n :}
    0 PLACED !  0 EVALUATED !  0 WORD-U !  t SHOWN-A !  tu SHOWN-U !
    t tu PLACE-IN IF EXIT THEN
@@ -638,20 +640,16 @@ private
       r >SOURCE IF r ru SOURCE-PLACE  r SHOWN-A !  ru SHOWN-U !  EXIT THEN drop
    ELSE
       r ru PLACE-IN IF r SHOWN-A !  ru SHOWN-U !  EXIT THEN
-   THEN
-   NAMED @ 0= 0= PATH$ LABELS? or IF FILE$ ELSE PATH$ THEN {: fa:ptr fu:n :}
-   fu 0 > IF fa fu ELSE NO-FILE$ THEN PLACE-FILE! ;
+   THEN ;
 
 : PLACE-JSON ( ptr u8 n -- ) {: t:ptr tu:n :}
    s" file" FIELD  PLACE-FILE$ JSON-STRING
-   PLACED @ IF
-      s" line" FIELD  AT-LINE @ EMIT-U
-      s" column" FIELD  AT-COLUMN @ EMIT-U
-      s" byte_start" FIELD  AT-BYTE @ EMIT-U
-      s" byte_end" FIELD  AT-END @ EMIT-U
-   THEN
+   s" line" FIELD  AT-LINE @ EMIT-U
+   s" column" FIELD  AT-COLUMN @ EMIT-U
+   s" byte_start" FIELD  AT-BYTE @ EMIT-U
+   s" byte_end" FIELD  AT-END @ EMIT-U
    s" token" FIELD  t tu JSON-STRING
-   PLACED @ IF s" source_line" FIELD  LINE-A @ LINE-U @ JSON-STRING THEN
+   s" source_line" FIELD  LINE-A @ LINE-U @ JSON-STRING
    s" label" FIELD  JSON-OPEN ;
 \ The caret line copies the tabs in the line's first n bytes, before the token,
 \ and a blank for each other character, so the carets line up.
@@ -693,7 +691,6 @@ private
    a k +  u WIDTH > IF  tu e k - > IF e k - ELSE tu THEN  ELSE tu THEN CARETS ;
 : PLACE-PROSE ( ptr u8 n -- ) {: t:ptr tu:n :}
    GUTTER @ BLANKS  s" --> " EMIT-STR  PLACE-FILE$ EMIT-STR
-   PLACED @ 0= IF EXIT THEN
    58 EMIT1  AT-LINE @ EMIT-U  58 EMIT1  AT-COLUMN @ EMIT-U  10 EMIT1
    MARGIN 124 EMIT1 10 EMIT1
    AT-LINE @ EMIT-U  s"  | " EMIT-STR  LINE-A @ LINE-U @ LEAD-U @ SHOW-LINE  10 EMIT1
@@ -722,11 +719,11 @@ private
    MARGIN  k ku EMIT-STR  a u lead SHOW-LINE  10 EMIT1
    MARGIN  ku BLANKS  a u lead EVAL-TOKEN-U @ SHOW-CARETS
    10 EMIT1 ;
-\ Ends the open text; the label's end writes the evaluated place, then the
-\ `word` note.
+\ Ends the open text; the label's end, or a dropped label's, writes the
+\ evaluated place, then the `word` note.
 : CLOSE-PART ( -- )
    END-TEXT
-   PART @ LABEL-PART = 0= IF EXIT THEN
+   PART @ LABEL-PART =  PART @ DROP-PART = or 0= IF EXIT THEN
    EVALUATED @ IF
       0 EVALUATED !
       JSON @ IF EVALUATED-JSON ELSE EVALUATED-PROSE THEN
@@ -765,11 +762,13 @@ public
 \ Opens a warning with its code, which KEEP does not count; the message follows.
 : WARN ( ptr u8 n -- ) {: code:ptr cu:n :}
    -1 WARNING !  s" warning" code cu BEGIN-RECORD ;
-\ Places the token t tu; its label follows.
+\ Places the token t tu; its label follows. A token no source holds has no
+\ place, so the record writes none and drops the label.
 : AT ( ptr u8 n -- ) {: t:ptr tu:n :}
    END-TEXT
    t tu PLACE
-   PLACED @ IF AT-LINE @ DIGITS ELSE 1 THEN GUTTER !
+   PLACED @ 0= IF DROP-PART PART ! EXIT THEN
+   AT-LINE @ DIGITS GUTTER !
    EVALUATED @ IF INVOKED-A @ INVOKED-U @ ELSE SHOWN-A @ SHOWN-U @ THEN {: p:ptr pu:n :}
    JSON @ IF p pu PLACE-JSON LABEL-PART ELSE p pu PLACE-PROSE GAP-PART THEN
    PART ! ;

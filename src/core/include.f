@@ -1334,14 +1334,15 @@ public
    s" load a regular file, whose bytes a stamp can name" REJECTION:EMIT-STR ;
 
 \ Names every path the request a u was looked for at, in SEARCH-ROOTS's order;
-\ an entry's and an absolute request's is one. Placed at p. Public so the
-\ verifier's composition rejects a missing source with the loader's record.
+\ an entry's and an absolute request's is one. Placed at p, but for an entry:
+\ the command line named it, which no source holds. Public so the verifier's
+\ composition rejects a missing source with the loader's record.
 : MISSING-SOURCE ( ptr u8 n ptr u8 n bool -- )
    {: a:ptr u:n p:ptr pu:n entry:bool :}
    s" E-MISSING-SOURCE" REJECTION:OPEN
    s" cannot open `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
    96 REJECTION:EMIT1
-   p pu REJECTION:AT  s" not found" REJECTION:EMIT-STR
+   entry 0= if p pu REJECTION:AT  s" not found" REJECTION:EMIT-STR then
    s" searched" REJECTION:NOTE
    entry  a c@ 47 =  or if
       CWD$ a u UNDER REJECTION:EMIT-STR
