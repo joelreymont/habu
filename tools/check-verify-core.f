@@ -71,11 +71,9 @@ DYNAMIC-BUFFER CHK-DIR-PATH-AT n
 DYNAMIC-BUFFER CHK-DIR-PATH-LEN n
 DYNAMIC-BUFFER CHK-DIR-REQ-END n
 DYNAMIC-BUFFER CHK-DIR-REQS u8
-DYNAMIC-BUFFER CHK-DEP-ORDER n
 
 variable CHK-DEP-N
 variable CHK-DIR-N
-variable CHK-DEP-ORDER-N
 variable CHK-DISC-ID
 variable CHK-EDGE                       \ the dependency followed last, -1 for none
 variable CHK-BYTES-ID
@@ -176,12 +174,6 @@ variable CHK-EXPAND-TOP
    ev EVENT-PATH-TOK@ ix CHK-DIR-PATH-LEN ! ix CHK-DIR-PATH-AT !
    ev EVENT-SPELLED@ ix CHK-DIR-REQ!
    ix 1+ CHK-DIR-N ! ;
-
-: CHK-DEP-ORDER-PUSH ( n -- )
-   {: id:n :}
-   CHK-DEP-ORDER-N @ 1+ CHK-DEP-ORDER-RESERVE
-   id CHK-DEP-ORDER-N @ CHK-DEP-ORDER !
-   CHK-DEP-ORDER-N @ 1+ CHK-DEP-ORDER-N ! ;
 
 : CHK-READ-ACT ( -- )
    CHK-DISC-ID @ {: id:n :}
@@ -331,14 +323,12 @@ DYNAMIC-BUFFER CHK-FILE-SRC u8          \ a closure file's bytes, read for a rec
       swap 1+ swap
    repeat
    2drop CHK-DIR-N !
-   id CHK-DEP-ORDER-PUSH
    2 id CHK-DEP-STATE ! ;
 
 : CHK-EXPAND-RESET ( -- )
    DISCOVER:ROWS-RESET
    0 CHK-DEP-N !
    0 CHK-DIR-N !
-   0 CHK-DEP-ORDER-N !
    -1 CHK-BYTES-ID ! ;
 
 : CHK-EXPAND-TOP-ACT ( -- )
@@ -373,9 +363,6 @@ DYNAMIC-BUFFER CHK-FILE-SRC u8          \ a closure file's bytes, read for a rec
    id CHK-BYTES-ID !
    path pathu DISCOVER:LOADING!
    id [: CHK-EXPAND ;] [: NULL$ DISCOVER:LOADING! ;] finally ;
-
-: CHK-DEP-ORDER@ ( n -- n )
-   CHK-DEP-ORDER @ ;
 
 public
 

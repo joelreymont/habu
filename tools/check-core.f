@@ -119,8 +119,6 @@ variable CHK-SUBJECT-PATH-U
 variable CHK-SUBJ-U                      \ a named file's canonical path, 0 for any other input
 variable CHK-ROOT-U
 variable CHK-EXP-OUT-U
-variable CHK-ALL-ID
-variable CHK-ALL-RC
 
 : CHK-PTR-U8-FIELD ( ^a -- ^^u8 )
    0 ptr-field ;
@@ -403,10 +401,7 @@ private
    0 CHK-SUBJ-U !
    0 CHK-DEP-N !
    0 CHK-DIR-N !
-   0 CHK-DEP-ORDER-N !
-   0 CHK-DISC-ID !
-   0 CHK-ALL-ID !
-   0 CHK-ALL-RC ! ;
+   0 CHK-DISC-ID ! ;
 
 : CHK-RESET-CFG ( -- )
    0 CHK-ARG-I !
@@ -524,15 +519,24 @@ private
    CHK-JSON @ REJECTION:JSON ! ;
 
 \ A closure the walk cannot follow, a form discovery rejected, fails the check
-\ as a rejection whose record discovery wrote.
-: CHK-EXPAND-REPORT ( n -- )
-   0<> if CHK-E-CHECK CHK-THROW then ;
+\ as a rejection whose record discovery wrote. Under --all-errors the walk
+\ writes no record and its rejection, or a file it could not read, ends only
+\ the walk: the composition meets the same fault where it lies, among the
+\ records before and after it.
+: CHK-EXPAND-REPORT ( [ -- n ] -- ) {: q :}
+   CHK-ALL @ 0= if q execute 0<> if CHK-E-CHECK CHK-THROW then exit then
+   REJECTION:CAPTURE
+   [: q execute 0<> if CHK-E-CHECK CHK-THROW then ;] catch {: rc:n :}
+   REJECTION:BUFFER-OFF
+   rc CHECKER-REJECT-RC = rc INCLUDE-IO-RC = or if exit then
+   rc 0<> if rc throw then ;
 
 : CHK-ENTRY-ID ( ^u8 n -- n )
    ENTRY-RESOLVE drop RESOLVED-ROOT$ CHK-DEP-ID ;
 
 : CHK-EXPAND-PATH ( ^u8 n -- )
-   CHK-ENTRY-ID CHK-EXPAND CHK-EXPAND-REPORT ;
+   CHK-ENTRY-ID {: id:n :}
+   [: id CHK-EXPAND ;] CHK-EXPAND-REPORT ;
 
 : CHK-WRITE-EXPANDED-SOURCE ( -- )
    CHK-SRC-PATH CHK-SRC-BUF CHK-EXP-OUT-U @ LEN>N FS:WRITE-ALL
@@ -587,7 +591,7 @@ private
 : CHK-MATERIALIZE-BYTES ( -- )
    CHK-SRC-BUF CHK-SRC-U @ {: a:^ u:n :}
    CHK-SRC-PATH a u FS:WRITE-ALL
-   a u CHK-SRC-PATH CHK-LABEL CHK-EXPAND-BYTES CHK-EXPAND-REPORT
+   [: a u CHK-SRC-PATH CHK-LABEL CHK-EXPAND-BYTES ;] CHK-EXPAND-REPORT
    CHK-SRC-PATH CHK-SOURCE! ;
 
 : CHK-MATERIALIZE-STDIN ( -- )
@@ -679,7 +683,7 @@ private
    id CHK-DEP$ CHK-APPEND-ENTRY
    id CHK-DEP$ CHK-SUBJ!
    CHK-JSON @ if CHK-SUBJ$ CHK-LABEL! else CHK-CHECK-LABEL then
-   id CHK-EXPAND CHK-EXPAND-REPORT
+   [: id CHK-EXPAND ;] CHK-EXPAND-REPORT
    CHK-WRITE-EXPANDED-SOURCE ;
 
 : CHK-MATERIALIZE-SOURCE ( -- )
@@ -765,9 +769,6 @@ private
       10 /
    repeat drop
    CHK-NUM-BUF CHK-NUM-I @ + CHK-NUM-CAP CHK-NUM-I @ - ;
-
-: CHK-DEP-PRELOAD? ( n -- bool ) {: id:n :}
-   id CHK-DEP$ RESOLVE nip nip 0= ;
 
 : CHK-RUN-RESET ( -- )
    0 CHK-RUN-U ! ;
@@ -934,45 +935,16 @@ private
    then
    RESERVED-NAME-LINT:FINISH ;
 
-\ The lexer's file-local diagnostics still visit discovered files. Definition
-\ verification then follows the loader composition in one checker scope and
-\ one multi-error session, so a definition a loaded file makes before its
-\ loader's next statement is in scope there, and a refused definition's
-\ declared signature stands for it, as at a whole-file check.
-
-: CHK-ALL-ID-ACT ( -- )
-   CHK-ALL-ID @ {: id:n :}
-   id CHK-FILE-NAME$ id CHK-DEP$ CHECK-ALL-ERRORS:LEX-FILE ;
-
-: CHK-ALL-RC-NOTE ( n -- ) {: rc:n :}
-   CHK-ALL-RC @ 0= if rc CHK-ALL-RC ! then ;
-
-: CHK-RUN-ALL-ID ( n -- ) {: id:n :}
-   id CHK-DEP-PRELOAD? 0= if exit then
-   id CHK-ALL-ID !
-   [: CHK-ALL-ID-ACT ;] catch {: rc:n :}
-   rc 0= if exit then
-   rc CHK-E-CHECK = if rc CHK-ALL-RC-NOTE exit then
-   rc throw ;
-
-: CHK-RUN-ALL-ORDER ( -- )
-   0 CHK-ALL-RC !
-   0 begin dup CHK-DEP-ORDER-N @ < while
-      dup CHK-DEP-ORDER@ CHK-RUN-ALL-ID
-      1+
-   repeat drop
-   CHK-ALL-RC @ 0 <> if CHK-ALL-RC @ throw then ;
-
-: CHK-RUN-ALL-COMPOSE ( -- )
-   CHK-SOURCE-BYTES CHK-SRC-PATH CHK-LABEL CHECK-ALL-ERRORS:COMPOSE-BUF ;
-
+\ Definition verification follows the loader composition in one checker scope
+\ and one multi-error session, so a definition a loaded file makes before its
+\ loader's next statement is in scope there, and a rejected definition's
+\ declared signature stands for it, as at a whole-file check. The composition
+\ reads each file a loader loads, so it meets each lexer defect where it lies.
 \ The report goes to standard error as the core makes it: every record of every
 \ file, however many and however long, with no buffer to outgrow.
 : CHK-RUN-ALL ( -- )
    CHK-ALL-STREAM
-   CHK-RUN-ALL-ORDER
-   [: CHK-RUN-ALL-COMPOSE ;] catch {: rc:n :}
-   rc 0 <> if rc CHK-THROW then ;
+   CHK-SOURCE-BYTES CHK-SRC-PATH CHK-LABEL CHECK-ALL-ERRORS:COMPOSE-BUF ;
 
 \ How a verifier child that gave no answer ended, as the closing line of its
 \ report, where CHK-EXPLAIN-LN puts prose.

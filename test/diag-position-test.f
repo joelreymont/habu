@@ -464,6 +464,22 @@ variable RC
    1 s" message" s" cannot find word `undefined-word`" FIELD=
    1 s" undefined-word" 2 14 27 41 AT ;
 
+\ Under --all-errors a form discovery rejects is reported where the composition
+\ meets it, after the records before it.
+: TEST-ALL-ORDER ( -- )
+   s" an undefined word, then a retired loader word, under --all-errors" T-LABEL
+   SB-RESET
+   s" : RT-ONE ( -- ) nosuchword ;" SB-APPEND LF+
+   s" undefine required" SB-APPEND LF+
+   S\" s\" absent.f\" required" SB-APPEND LF+
+   s" all-retire.f" FIXTURE!
+   s" --all-errors" CHECK
+   GJA-LINE# @ 2 T=
+   0 s" code" s" E-UNDEFINED" FIELD=
+   0 s" nosuchword" 1 17 16 26 AT
+   1 s" code" s" E-LOADER-FORM" FIELD=
+   1 s" required" 3 14 60 68 AT ;
+
 \ WIDE's inferred effect nests 33 binders, more than an effect text holds: the
 \ checker certifies it and warns, at its name, that the effect is not recorded.
 : NOT-RECORDED-TEXT ( -- )
@@ -1478,7 +1494,15 @@ variable RC
    s" : X ( -- ) NO-SUCH ;" SB-APPEND LF+
    s\" s\" abc" SB-APPEND LF+
    s" undefined-unterminated.f" FIXTURE!
-   s" E-UNTERMINATED-STRING" s\" s\"" 2 1 21 23 RUN-REFUSED-AT
+   s" " CHECK
+   s" E-UNTERMINATED-STRING" REJECTED-AS
+   0 S\" s\"" 2 1 21 23 AT
+   s" --all-errors" CHECK
+   GJA-LINE# @ 2 T=
+   0 s" code" s" E-UNDEFINED" FIELD=
+   0 s" NO-SUCH" 1 12 11 18 AT
+   1 s" code" s" E-UNTERMINATED-STRING" FIELD=
+   1 S\" s\"" 2 1 21 23 AT
    s" --verify-only" CHECK
    GJA-LINE# @ 2 T=
    0 s" E-UNDEFINED" s" NO-SUCH" 1 12 11 18 VERIFY-REJECTED-AT
@@ -2556,6 +2580,7 @@ variable RC
    TEST-IS-SHADOW
    TEST-SHADOWED-ARITY
    TEST-ALL-LINTS
+   TEST-ALL-ORDER
    TEST-NOT-RECORDED
    TEST-GENERATES
    TEST-GENERATES-READS-NONE

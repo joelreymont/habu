@@ -190,7 +190,7 @@ variable CA-COMPOSING                   \ the run is a composition
 : CA-CHECK-COMPOSE-VERIFY ( -- )
    CA-SRC-A@ CA-SRC-U @ CA-COMPOSE-PATH-A @ CA-COMPOSE-PATH-U @
    CA-COMPOSE-LABEL-A @ CA-COMPOSE-LABEL-U @
-   VERIFY:SOURCE-COMPOSE-LABELED-IN-SCOPE ;
+   VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;
 
 : CA-CHECK-COMPOSE ( -- )
    CA-COMPOSE-PATH-A @ CA-COMPOSE-PATH-U @ SOURCE-ROOT:DIRNAME
@@ -209,7 +209,6 @@ variable CA-COMPOSING                   \ the run is a composition
    rc ;
 
 variable CA-RC                          \ how the last run's check ended
-variable CA-LEXED                       \ the last lex wrote a record
 
 : CA-RUN-BODY ( bool -- ) {: report:bool :}
    report VERIFY:REPORT-DEFERRALS
@@ -279,20 +278,11 @@ public
       patha pathu CA-COMPOSE-AT
       true true CA-RUN ;] REJECTION:PRESERVE-LABEL ;
 
-\ Report the lexer defect of the source file at the given path under the given
-\ label, by its record, and throw the rejection status; return when the file
-\ lexes clean. Nothing is checked, so a caller that cannot check the file
-\ still reports the defect where it stands.
-: LEX-FILE ( ^u8 n ^u8 n -- )
-   {: labela:^ labelu:n patha:^ pathu:n :}
-   [: labela labelu CA-START
-      patha pathu CA-READ-SOURCE
-      [: CA-LEX CA-LEXED ! ;] CA-RECORDS ;] REJECTION:PRESERVE-LABEL
-   CA-LEXED @ IF CHECKER-REJECT-RC throw THEN ;
-
 \ Check the given source bytes as the file at the given path, reporting them
 \ under the given label: the composition verifies every file a top-level
-\ loader statement loads where it stands, under its own path, in one session.
+\ loader statement loads where it stands, under its own path, in one session,
+\ and rejects a loader form discovery rejects, or a file it cannot read, where
+\ it meets it.
 : COMPOSE-BUF ( ^u8 n ^u8 n ^u8 n -- )
    {: src:^ srcu:n path:^ pathu:n label:^ labelu:n :}
    [: label labelu CA-START

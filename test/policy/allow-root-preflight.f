@@ -4,13 +4,13 @@ require src/habu/verify-source.f
 : CHECK-OK ( -- )
    CHECKER-SCOPE-START-NEUTRAL
    [: S\" require sub/keep.f\n" s" test/policy/confined/scene.f"
-      VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;] catch
+      s" test/policy/confined/scene.f" VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;] catch
    CHECKER-SCOPE-DONE
    . ;
 : CHECK-IN ( -- )
    CHECKER-SCOPE-START-NEUTRAL
    [: S\" require ../outside.f\n" s" test/policy/confined/scene.f"
-      VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;] catch
+      s" test/policy/confined/scene.f" VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;] catch
    CHECKER-SCOPE-DONE
    . ;
 : RUN ( -- )

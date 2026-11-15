@@ -4308,17 +4308,17 @@ public
 : SOURCE-COMPOSE-IN-SCOPE ( ^u8 n ^u8 n -- )
    2dup SOURCE-COMPOSE-LABELED-IN-SCOPE ;
 
-\ SOURCE-COMPOSE-IN-SCOPE, quiet: the composition itself refuses the loader
-\ forms discovery refuses, where it meets them and after the packets it made
-\ before, and reads each file a loader loads, so no walk need run first.
+\ SOURCE-COMPOSE-LABELED-IN-SCOPE, quiet: the composition itself rejects the
+\ loader forms discovery rejects, where it meets them and after the packets it
+\ made before, and reads each file a loader loads, so no walk need run first.
 \ FAULT-TARGET$ names a file it could not read.
-: SOURCE-COMPOSE-QUIET-IN-SCOPE ( ^u8 n ^u8 n -- )
-   {: src:^ srcu:n path:^ pathu:n :}
+: SOURCE-COMPOSE-QUIET-IN-SCOPE ( ^u8 n ^u8 n ^u8 n -- )
+   {: src:^ srcu:n path:^ pathu:n label:^ labelu:n :}
    COMPOSE-ON @ 0<> IF s" VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE" COMPOSE-NESTED THEN
    0 FAULT-U !  0 DISCOVERY-STOPPED !
    [: SOURCE-ROOT:CANON-OS ;] [: QUIET-READ ;] SOURCE-INPUT:USE
    true QUIET !
-   [: src srcu path pathu SOURCE-COMPOSE-IN-SCOPE ;]
+   [: src srcu path pathu label labelu SOURCE-COMPOSE-LABELED-IN-SCOPE ;]
    catch {: rc:n :}
    false QUIET !
    SOURCE-INPUT:RESET

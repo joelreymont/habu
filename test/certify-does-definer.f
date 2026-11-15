@@ -480,7 +480,7 @@ defer CDD-VSAME ( mut-view<p,q,a,u8> mut-view<p,q,a,u8> -- )
    true VERIFY:REPORT-DEFERRALS
    REJECTION:CAPTURE
    CHECKER-SCOPE-START-NEUTRAL
-   [: CDD-QUIET$ s" cdd-quiet.f" VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;] catch
+   [: CDD-QUIET$ s" cdd-quiet.f" s" cdd-quiet.f" VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;] catch
    CHECKER-SCOPE-DONE
    0 T=
    REJECTION:BUFFER$ s" warning[W-CHECK-DEFERRED]: the check cannot follow the source from `cdd-qt`" CONTAINS? TTRUE
