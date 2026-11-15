@@ -1,8 +1,6 @@
 name: Recover the T0 compiler
 
 on:
-  push:
-    branches: [x86-bootstrap-validation]
   workflow_dispatch:
 
 permissions:
