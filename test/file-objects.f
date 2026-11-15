@@ -1650,6 +1650,64 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" the build compiles pf-main.f" PFIELD-MAIN COMPILED
    s\" 5\n6\n" s" the program prints both new fields" PRINTS-RUN ;
 
+\ The divisor sequence's dz-callee.f: package FILE-OBJECTS-DIVISOR's public
+\ HALVE, which divides by its top input when the flag is true, else drops it.
+: WRITE-HALVE ( bool -- )
+   {: div:bool :}
+   s\" package FILE-OBJECTS-DIVISOR\npublic\n: HALVE ( n n -- n ) " SRC+
+   div if s" /" SRC+ else s" drop" SRC+ then
+   s\"  ;\n;package\n" SRC+  s" dz-callee.f" NEST-WRITE ;
+
+\ dz-main.f's MAIN prints 7 D H2, D the text given.
+: WRITE-DZ-MAIN ( ptr u8 n -- ) {: d:ptr du:n :}
+   s" dz-mid.f" REQUIRE+
+   s" : MAIN ( -- ) 7 " SRC+  d du SRC+  s\"  H2 . ;\n" SRC+
+   s" dz-main.f" NEST-WRITE ;
+
+\ dz-mid.f's H2 calls HALVE, and dz-main.f's MAIN prints 7 0 H2.
+: WRITE-DIVISOR ( -- )
+   L$ s" divisor" NEST-DIR FS:JOIN-PATH NEST-DIR-U !
+   NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
+   true WRITE-HALVE
+   s" dz-callee.f" REQUIRE+
+   s\" : H2 ( n n -- n ) FILE-OBJECTS-DIVISOR:HALVE ;\n" SRC+
+   s" dz-mid.f" NEST-WRITE
+   s" 0" WRITE-DZ-MAIN ;
+
+\ dz-main.f's build, rejected where MAIN compiles: a part the build linked
+\ would not be checked again. Answers its exit code.
+: DIVISOR-REJECTED ( CMD:command -- CMD:command n )
+   s" dz-main.f" s" prog-dz" NEST-RC {: rc:n :}
+   CMD:ERR$ s" zero divisor: a literal 0 divisor has no quotient"
+      CONTAINS? {: said:bool :}
+   CMD:ERR$ s" cannot compile MAIN at H2 in "
+      CONTAINS? {: compiled:bool :}
+   CMD:ERR$ s" dz-main.f" NEST-PATH$ CONTAINS? {: named:bool :}
+   said compiled and named and  rc 0<> and 0= if rc SHOW then
+   s" the build fails" LABEL  rc 0<> TTRUE
+   s" the rejection gives the zero divisor's reason" LABEL  said TTRUE
+   s" the build compiles dz-main.f's MAIN" LABEL  compiled TTRUE
+   s" the rejection names dz-main.f" LABEL  named TTRUE
+   rc ;
+
+\ Guards that a definition's facts text carries the inputs its body divides
+\ by: H2's source never changes, so in DZ3, where HALVE divides again, only
+\ H2's facts text has MAIN, linked in DZ2 against a HALVE that drops, compiled
+\ again; DZ5 edits only MAIN, whose call H2's facts text rejects.
+: DIVISOR-CASE ( CMD:command -- CMD:command )
+   WRITE-DIVISOR
+   s" DZ" WHICH!  DIVISOR-REJECTED {: cold:n :}
+   false WRITE-HALVE
+   s" DZ2" WHICH!  s" dz-main.f" s" prog-dz" NEST-BUILD 0= if exit then
+   true WRITE-HALVE
+   s" DZ3" WHICH!  DIVISOR-REJECTED {: warm:n :}
+   s" the build exits as DZ does" LABEL  warm cold T=
+   s" 1" WRITE-DZ-MAIN
+   s" DZ4" WHICH!  s" dz-main.f" s" prog-dz" NEST-BUILD 0= if exit then
+   s" 0" WRITE-DZ-MAIN
+   s" DZ5" WHICH!  DIVISOR-REJECTED {: edit:n :}
+   s" the build exits as DZ does" LABEL  edit cold T= ;
+
 \ The route sequence's f.f: its top level makes D, a device whose emit and write add their byte
 \ counts to N, the output, types to it and leaves it there, and stores 7 into the user row U.
 \ main.f's MAIN prints U, N, how making D the output ends, and N. genio-core.f needs --repl.
@@ -1963,9 +2021,9 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
       STORED-CASE RETIRED-CASE ORDER-CASE PART-LINK-CASE PIECE-CASE SEAL-CASE SQUAT-CASE CAUGHT-CASE
       CTOR-CASE EXPORT-CASE
       NEST-CASE KEPT-CASE SAME-CASE RETIRE-CASE CLAUSE-CASE READ-CASE LIST-CASE LINK-CASE TASK-CASE
-      SAMEFILE-CASE ANCHORED-CASE SPAWN-CASE ZIP-CASE JSONL-CASE KIND-CASE ARENA-CASE PFIELD-CASE ROUTE-CASE
-      DEVICE-CASE SPELLED-CASE PACKAGED-CASE EVALUATED-CASE OPENED-CASE BUILT-CASE CAST-CASE
-      CROSS-CASE TARGET-CASE ;]
+      SAMEFILE-CASE ANCHORED-CASE SPAWN-CASE ZIP-CASE JSONL-CASE KIND-CASE ARENA-CASE PFIELD-CASE
+      DIVISOR-CASE ROUTE-CASE DEVICE-CASE SPELLED-CASE PACKAGED-CASE EVALUATED-CASE OPENED-CASE
+      BUILT-CASE CAST-CASE CROSS-CASE TARGET-CASE ;]
    CMD:WITH-COMMAND ;
 
 

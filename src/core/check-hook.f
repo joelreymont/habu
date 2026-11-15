@@ -100,6 +100,7 @@ private
    {: sym:n :}
    sym CTL-WORD-SYM  sym DFER-FIND-SYM if CHECKER-OWNER-ABI:BINDING-DEFER or then
    REND-CTL 2drop
+   sym NORET-NONZERO@ REND-NONZERO 2drop
    sym PRIM-FIRST-IDX {: prim:n :}
    prim 0 <> if prim 1 - PE-FLAGS@ else 0 then REND-PE 2drop
    sym PIMM-IX {: ix:n :}

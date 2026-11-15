@@ -1971,11 +1971,17 @@ Cells are two's-complement 64-bit. The signed bounds are
 is the one partial operation; its `-1` case is a contract every backend
 answers alike.
 
-- **A literal 0 divisor is refused (`E-DIV-ZERO`); a computed one's answer is
-  undefined**: the checker refuses `/`, `mod` and `/mod` over a literal 0, which
-  stack words carry, and at run time they do not test the divisor (arm64 `sdiv`
-  answers 0; x86-64 `idiv` and Wasm `i64.div_s` trap). An extent's divisor that
-  cannot be zero says so in its type: `NUM:positive-divisor`
+- **A literal 0 divisor is rejected (`E-DIV-ZERO`); a computed one's answer is
+  undefined**: the checker rejects a literal 0 at `/`, `mod` and `/mod`, and at
+  a call of a word with a declared signature that divides by that input, one
+  integer cell, with only stack words, locals, integer and string literals and
+  calls before the division, as `: HALVE ( n n -- n ) / ;` does in
+  `7 0 HALVE`. A call that does not divide by an input it pops takes that
+  input, and any other token before the division (a control word, a quotation,
+  a fetch or store, a return-stack word, `[char]`, `[']`) takes every input; a
+  taken input admits any value. At run time nothing tests the divisor (arm64
+  `sdiv` answers 0; x86-64 `idiv` and Wasm `i64.div_s` trap). An extent's
+  divisor that cannot be zero says so in its type: `NUM:positive-divisor`
   (`src/lib/num-types.f`), which NUM's `DIV-` and `REM-` words take.
 - **`$8000000000000000 -1 /` is `$8000000000000000`, and
   `$8000000000000000 -1 mod` is `0`.** The quotient `2^63` has no signed cell,
@@ -2381,8 +2387,11 @@ sections above.
   `undefine` throws it before retiring anything (`E-OVERLAY-OPEN habu: undefine
   while a checker replay is open: NAME`). Reopening an existing package is
   allowed. The throw is catchable inside `evaluate`; the replay still closes.
-- **A literal `0 throw` is refused (`E-THROW-ZERO`); a computed 0 unwinds
-  unchecked, a caller bug: its `catch` answers 0.**
+- **A literal `0 throw` is rejected (`E-THROW-ZERO`), and so is a literal 0 at
+  a call of a word with a declared signature that throws that input, with only
+  the tokens that carry a divisor (Integer arithmetic) before the `throw`, as
+  `: FAIL ( n -- ) throw ;` does in `0 FAIL`; a computed 0 unwinds unchecked, a
+  caller bug: its `catch` answers 0.**
 - **A definition and a `(` comment close in the source that opened them.**
   Files, stdin and `evaluate` strings refuse an open definition at their end
   (`E-VS-UNTERMINATED-DEFINITION`, `source ended inside definition: NAME`) or

@@ -247,6 +247,7 @@
 : DO-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
    DCUR @ {: pre:n :}  RCUR @ {: prer:n :}
    a u DO-TOK-BODY
+   CURSYM @ 0 <> IF  pre NZ-CALL-CELLS  THEN
    pre prer ZERO-USE-TEST ;
 
 \ Open the frames of a match on family FAM: its branches start from MTCH-ROW,
@@ -642,6 +643,7 @@ public
 \ An item of kind KIND inside a `{:` group: a LOCAL item opens a local of
 \ type node V's term under its listing name A U, and `:}` binds the group.
 : ITEM-IN-GROUP ( n n ptr u8 n -- ) {: v:n kind:n a:ptr u:n :}
+   NZ-MOVED
    kind BODY-ITEM-KIND:LOCAL = IF
       a u LOC-OPEN
       a u  v TFAM:EFFECT-TYPE LOC-TYPED
@@ -1324,11 +1326,17 @@ variable TAGGED-FAM
          THRMASK @ XBASE-R ROW-TERMS XMASK-LOW
       ELSE 0 0 THEN
       CTLRNEW !  CTLDNEW !
-      \ One word holds both, so one comparison decides whether this definition
-      \ says anything the store does not already hold about its symbol.
+      \ The inputs the body divides by or throws before anything takes them, about
+      \ the same rows.
+      CHECK-SIG? IF NZ-FACT ELSE 0 THEN CTLZNEW !
+      \ The control word and the NONZERO cell together say whether this
+      \ definition adds anything the store does not already hold about its
+      \ symbol.
       sym CTL-WORD-SYM
-      CTLNEW @ CTLDNEW @ CTLRNEW @ XFER-PACK <> IF
-         sym CTLNEW @ CTLDNEW @ CTLRNEW @ NORET-ADD-SYM
+      CTLNEW @ CTLDNEW @ CTLRNEW @ XFER-PACK <>
+      sym NORET-NONZERO@ CTLZNEW @ <> or IF
+         sym CTLNEW @ CTLDNEW @ CTLRNEW @
+         sym NORET-CREATES@ sym NORET-SOURCE@ CTLZNEW @ NORET-APPEND
       THEN
       CHECK-SIG? IF
          NMA @ NMU @  CHECKER-USIG-CERT-PARSED
@@ -2180,7 +2188,8 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    sym CHECKER-FIND-USIG-SYM 0= IF EXIT THEN
    sym EFFECT-EXTERNAL-SYM? 0= IF EXIT THEN
    creates sym NORET-CREATES@ = IF EXIT THEN
-   sym sym CTL-FLAGS-SYM sym CTL-MASKS-SYM creates NORET-ADD-CREATES
+   sym sym CTL-FLAGS-SYM sym CTL-MASKS-SYM creates sym NORET-NONZERO@
+   NORET-ADD-CREATES
    sym VIS-SYM-REC sym RECORD-CONTROL-AT! ;
 
 : CHECKER-NATIVE-DOES-FINISH ( ptr u8 n bool -- )
@@ -2261,7 +2270,8 @@ TRUSTED: generates: ( -- )
    {: sym:n rec:n :}
    rec 0= IF EXIT THEN
    BIND-REC @ {: selected:ptr :}
-   sym sym CTL-FLAGS-SYM CTL-GENERATES or sym CTL-MASKS-SYM rec NORET-ADD-CREATES
+   sym sym CTL-FLAGS-SYM CTL-GENERATES or sym CTL-MASKS-SYM rec
+   sym NORET-NONZERO@ NORET-ADD-CREATES
    selected sym RECORD-CONTROL-AT! ;
 7 constant PARSES-LIST                    \ no `(`, no terminator, or no `)`
 
@@ -3017,7 +3027,7 @@ CHECKER-REG:}SCRATCH
    SGBAD-AR-DECL save GUEST-CELL  SGBAD-AR-GOT save GUEST-CELL  SGBAD-SIZE save GUEST-CELL
    SIG-UNRES save GUEST-CELL  SIG-UNRES-U save GUEST-CELL
    SIG-RAW-MODE save GUEST-CELL  SIG-FACTS-MODE save GUEST-CELL  SIG-CTL save GUEST-CELL
-   SIG-TAGS-ONLY save GUEST-CELL
+   SIG-NONZERO save GUEST-CELL  SIG-TAGS-ONLY save GUEST-CELL
    SIG-PE save GUEST-CELL  SIG-PIMM save GUEST-CELL  SIG-CREATES-U save GUEST-CELL
    SIG-OVERLOAD-U save GUEST-CELL  SIGSCOPE-ON save GUEST-CELL  SIGSCOPE-U save GUEST-CELL ;
 
@@ -3144,8 +3154,8 @@ CHECKER-REG:}SCRATCH
    ix 0 sym NORET-NEWEST occurrence RECORD-LINK-WRITE
    ix mark 1 + RECORD-LINK-READ! ;
 
-: READ-TAGS ( n n n n -- ) {: ix:n sym:n ctl:n mark:n :}
-   sym sym ctl READ-FLAGS ctl XFER-DMASK ctl XFER-RMASK 0 NORET-ADD-CREATES
+: READ-TAGS ( n n n n n -- ) {: ix:n sym:n ctl:n nz:n mark:n :}
+   sym sym ctl READ-FLAGS ctl XFER-DMASK ctl XFER-RMASK 0 nz NORET-ADD-CREATES
    ix sym mark READ-LINK ;
 
 : READ-BODY ( ptr u8 n n -- )
@@ -3161,19 +3171,20 @@ CHECKER-REG:}SCRATCH
    ok 0= IF a u name nameu READ-REFUSE EXIT THEN
    SIG-CTL @  SIG-PIMM @  SIG-PE @  SIG-CREATES-A @  SIG-CREATES-U @  SGHASR @
       {: ctl:n pimm:n pe:n ca:ptr cu:n hasr:bool :}
-   SIG-OVERLOAD-A @  SIG-OVERLOAD-U @ {: oa:ptr ou:n :}
+   SIG-OVERLOAD-A @  SIG-OVERLOAD-U @  SIG-NONZERO @ {: oa:ptr ou:n nz:n :}
    SIG-TAGS-ONLY @ IF
       pe 0 <>  pimm 0 >= or  cu 0 <> or  ou 0 <> or
       ctl XFER-FLAGS CHECKER-OWNER-ABI:BINDING-DEFER and 0 <> or IF
          a u name nameu READ-REFUSE EXIT
       THEN
-      ix sym ctl mark READ-TAGS EXIT
+      ix sym ctl nz mark READ-TAGS EXIT
    THEN
    din dout rin rout hasr sym pe ou 0 <> READ-FIRST
    oa ou sym READ-OVERLOADS 0= IF a u name nameu READ-REFUSE EXIT THEN
    ca cu READ-MADE {: made:n good:bool :}
    good 0= IF a u name nameu READ-REFUSE EXIT THEN
-   sym sym ctl READ-FLAGS ctl XFER-DMASK ctl XFER-RMASK made NORET-ADD-CREATES
+   sym sym ctl READ-FLAGS ctl XFER-DMASK ctl XFER-RMASK made nz
+   NORET-ADD-CREATES
    ctl XFER-FLAGS CHECKER-OWNER-ABI:BINDING-DEFER and 0 <> IF sym RES-TRUE DFER-ADD-SYM THEN
    pimm 0 >=  sym PIMM-IX 0 <  and IF sym pimm PIMM-ADD THEN
    ix sym mark READ-LINK ;
@@ -3194,7 +3205,7 @@ CHECKER-REG:}SCRATCH
    src CTL-FLAGS-SYM CTL-IDENTITY invert and {: ctl:n :}
    src CTL-MASKS-SYM {: dm:n rm:n :}
    src NORET-CREATES@ {: creates:n :}
-   sym ctl dm rm creates src CHECKER-SYM-SOURCE NORET-APPEND ;
+   sym ctl dm rm creates src CHECKER-SYM-SOURCE src NORET-NONZERO@ NORET-APPEND ;
 
 \ An export's facts are its source's, as CHECKER-EXPORT-ROW records them.
 : ALIAS-BODY ( n n -- )
