@@ -1129,23 +1129,6 @@ variable USE-FLOOR
    PKG-NOTIFY-USING
    d 1+ USE-DEPTH-CELL CELL! ;
 
-: USING-UNBALANCED ( -- )
-   s" E-USING-UNBALANCED" REJECTION:OPEN
-   TOKEN$ TICKS  s"  has no open using to close" SAY
-   TOKEN$ REJECTION:AT  s" nothing to close" SAY
-   REJECTION:HELP  s" remove this " SAY  TOKEN$ TICKS
-   s" , or open a using before it" SAY
-   CHECKER-REJECT-RC REJECTION:STOP ;
-
-\ w names where the using to close was opened from: a package or a file.
-: USING-OUTER ( ptr u8 n -- ) {: w:ptr wu:n :}
-   s" E-USING-OUTER" REJECTION:OPEN
-   TOKEN$ TICKS  s"  would close a using opened outside this " SAY  w wu SAY
-   TOKEN$ REJECTION:AT  s" using opened outside" SAY
-   REJECTION:HELP  s" close each using in the " SAY  w wu SAY
-   s"  that opens it" SAY
-   CHECKER-REJECT-RC REJECTION:STOP ;
-
 \ In an open package the most recent using must be the package's own: one
 \ opened before `package` sits at or below the depth `;package` restores, so
 \ closing it here would come undone there. Nor may a buffer close a using its
@@ -1153,11 +1136,15 @@ variable USE-FLOOR
 \ when the buffer ends.
 : PKG-END-USING ( -- )
    USE-DEPTH-CELL CELL@ {: d:n :}
-   d 0= if USING-UNBALANCED then
-   PKG-PUB-CELL CELL@ 0<>  d USE-PKG-SAVE-CELL CELL@ <=  and if
-      s" package" USING-OUTER
+   d 0= if
+      TOKEN$ REJECTION:USING-UNBALANCED  CHECKER-REJECT-RC REJECTION:STOP
    then
-   d USE-FLOOR @ <= if s" file" USING-OUTER then
+   PKG-PUB-CELL CELL@ 0<>  d USE-PKG-SAVE-CELL CELL@ <=  and if
+      TOKEN$ s" package" REJECTION:USING-OUTER  CHECKER-REJECT-RC REJECTION:STOP
+   then
+   d USE-FLOOR @ <= if
+      TOKEN$ s" file" REJECTION:USING-OUTER  CHECKER-REJECT-RC REJECTION:STOP
+   then
    d 1- USE-DEPTH-CELL CELL! ;
 
 : PKG-TAIL ( -- ptr u8 n )
