@@ -255,9 +255,6 @@ CALLBACK: FFI-T-SA-CB ( -- n ) 0 FALLBACK ;CALLBACK
    [: s" FUNCTION: FFI-T-SA-CAP6 hb_none ( ptr u8 -- n ) 0 $7FFFFFFFFFFFFFFF STRUCT-ARG ;FUNCTION"
       evaluate-closed ;] FFI-T-SA-STAGING
    [: FFI-T-SA-WRAP$ evaluate-closed ;] FFI-T-SA-STAGING
-   s" a row's relocation mask names only that row's cells" T-LABEL
-   [: s" getpid" FFI:PROCESS 0 0 $4000 FFI:DECLARE-ROW drop ;] E-FFI-ARITY TTHROWSQ
-   [: s" getpid" FFI:PROCESS 0 0 1 FFI:DECLARE-ROW drop ;] E-FFI-ARITY TTHROWSQ
    s" sixteen inputs are the limit, a struct destination included" T-LABEL
    s" FUNCTION: FFI-T-SA-CAP4 hb_none ( n n n n n n n n n n n n n n n ptr u8 -- ) 32 STRUCT-RESULT ;FUNCTION"
    evaluate-closed

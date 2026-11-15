@@ -202,14 +202,11 @@ variable BUILD-FMT-READY
 : TASK-DQ ( -- )
    $22 SB-APPEND-C ;
 
-s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
+PROCESS-SYMBOLS
+FUNCTION: TASK-STRLEN strlen ( ptr u8 -- n ) ;FUNCTION
 
-\ Exact strlen fixture pauses after task-local argument staging to prove tasks
-\ do not share FFI tables.
-: TASK-CSTRLEN ( ptr u8 -- n ) {: cstr:ptr :}
-   cstr 0 FFI:POINTER!
-   TASK:PAUSE
-   TASK-STRLEN-ROW FFI:CALL ;
+\ The pause comes before the call: a FUNCTION: word stages and calls at once.
+: TASK-CSTRLEN ( ptr u8 -- n ) TASK:PAUSE TASK-STRLEN ;
 
 : APP-BAD+ ( -- )
    1 APP-BAD atomic-add drop ;

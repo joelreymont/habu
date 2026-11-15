@@ -200,7 +200,7 @@ variable FFI-T-PAIR-AFTER
    s" FUNCTION: FFI-T-X9 getpid ( -- n ) ;FUNCTION" evaluate-closed ;
 
 \ A child declares 270 distinct symbols and 270 library paths, past any fixed
-\ table: an exact alias takes no row, paths keep their ids and later rows call.
+\ table; an alias and a declaration after the paths then call.
 $800 constant FFI-T-SRC-CAP
 $4000 constant FFI-T-CAP
 67 constant FFI-T-UNCAUGHT-RC             \ hb's exit status for an uncaught throw
@@ -218,7 +218,6 @@ create FFI-T-LONG-PATH PATH-CAP allot
 : FFI-T-FILL-SRC+ ( -- )
    s\" require src/lib/ffi-abi.f\nrequire src/lib/codegen.f\nPROCESS-SYMBOLS\n" FFI-T-SRC+
    s\" FUNCTION: ZZ-BASE getpid ( -- i32 ) ;FUNCTION\n" FFI-T-SRC+
-   s\" : ZZ-PROBE ( ptr u8 n -- n ) FFI:PROCESS 0 FFI:DECLARE ;\n" FFI-T-SRC+
    s\" 128 CODEGEN:BUFFER ZZ-DECL\n: ZZ-FILL ( -- ) 270 0 ?do\n" FFI-T-SRC+
    s\"    ZZ-DECL CODEGEN:RESET\n" FFI-T-SRC+
    s\"    s\" FUNCTION: ZZ-OVER habu-ffi-fill-\" ZZ-DECL CODEGEN:APPEND-STRING\n" FFI-T-SRC+
@@ -226,30 +225,28 @@ create FFI-T-LONG-PATH PATH-CAP allot
    s\"    s\"  ( -- n ) ;FUNCTION\" ZZ-DECL CODEGEN:APPEND-STRING\n" FFI-T-SRC+
    s\"    ZZ-DECL CODEGEN:CONTENTS evaluate-closed\n" FFI-T-SRC+
    s\"    s\" undefine ZZ-OVER\" evaluate-closed\n" FFI-T-SRC+
-   s\" loop ;\nZZ-FILL\ns\" habu-ffi-probe-before\" ZZ-PROBE constant ZZ-BEFORE\n" FFI-T-SRC+ ;
+   s\" loop ;\nZZ-FILL\n" FFI-T-SRC+ ;
 
 : FFI-T-LIBS-SRC+ ( -- )
-   s\" 128 CODEGEN:BUFFER ZZ-PATH\nvariable ZZ-FIRST-LIB\nvariable ZZ-LAST-LIB\n" FFI-T-SRC+
+   s\" 128 CODEGEN:BUFFER ZZ-PATH\n" FFI-T-SRC+
    s\" : ZZ-PATH$ ( n -- ptr u8 n ) {: id:n :} ZZ-PATH CODEGEN:RESET\n" FFI-T-SRC+
    s\"    s\" /tmp/habu-ffi-path-missing-\" ZZ-PATH CODEGEN:APPEND-STRING\n" FFI-T-SRC+
    s\"    id ZZ-PATH CODEGEN:APPEND-DECIMAL ZZ-PATH CODEGEN:CONTENTS ;\n" FFI-T-SRC+
-   s\" : ZZ-LIBS ( -- ) 270 0 ?do i ZZ-PATH$ FFI:LIBRARY-PATH\n" FFI-T-SRC+
-   s\"    i 0= if dup ZZ-FIRST-LIB ! then ZZ-LAST-LIB ! loop ;\nZZ-LIBS\n" FFI-T-SRC+
+   s\" : ZZ-LIBS ( -- ) 270 0 ?do i ZZ-PATH$ FFI:SELECT-LIBRARY loop ;\n" FFI-T-SRC+
+   s\" ZZ-LIBS\n" FFI-T-SRC+
    s\" : ZZ-SYSTEM$ ( -- ptr u8 n ) HB-TARGET-MACOS? if s\" /usr/lib/libSystem.B.dylib\" exit then\n" FFI-T-SRC+
    s\"    s\" libc.so.6\" ;\n" FFI-T-SRC+
-   s\" s\" getpid\" ZZ-SYSTEM$ FFI:LIBRARY-PATH 0 FFI:DECLARE constant ZZ-LIB-ROW\n" FFI-T-SRC+
+   s\" ZZ-SYSTEM$ FFI:SELECT-LIBRARY\n" FFI-T-SRC+
+   s\" FUNCTION: ZZ-LATE getpid ( -- i32 ) ;FUNCTION\n" FFI-T-SRC+
    s\" : ZZ-LIB-CHECK ( -- )\n" FFI-T-SRC+
-   s\"    0 ZZ-PATH$ FFI:LIBRARY-PATH ZZ-FIRST-LIB @ <> if s\" early library\" 1 die then\n" FFI-T-SRC+
-   s\"    ZZ-LAST-LIB @ ZZ-FIRST-LIB @ <= if s\" library ids\" 1 die then\n" FFI-T-SRC+
-   s\"    ZZ-LIB-ROW FFI:CALL 0 <= if s\" late library call\" 1 die then ;\n" FFI-T-SRC+ ;
+   s\"    ZZ-LATE 0 <= if s\" late library call\" 1 die then ;\n" FFI-T-SRC+ ;
 
 : FFI-T-GROW-SRC$ ( -- ptr u8 n )
    FFI-T-SRC CODEGEN:RESET
    FFI-T-FILL-SRC+
    s\" FUNCTION: ZZ-ALIAS getpid ( -- i32 ) ;FUNCTION\n" FFI-T-SRC+
-   s\" s\" habu-ffi-probe-after\" ZZ-PROBE constant ZZ-AFTER\n" FFI-T-SRC+
    FFI-T-LIBS-SRC+
-   s\" : ZZ-CHECK ( -- ) ZZ-BEFORE 1+ ZZ-AFTER <> if s\" alias took row\" 1 die then\n" FFI-T-SRC+
+   s\" : ZZ-CHECK ( -- )\n" FFI-T-SRC+
    s\"    ZZ-BASE 0 <= ZZ-ALIAS 0 <= or if s\" getpid refused\" 1 die then\n" FFI-T-SRC+
    s\"    ZZ-LIB-CHECK\n" FFI-T-SRC+
    s\"    s\" growth-alias:ok\" type cr ;\nZZ-CHECK\n" FFI-T-SRC+
@@ -275,7 +272,7 @@ create FFI-T-LONG-PATH PATH-CAP allot
    SB$ ;
 
 : FFI-T-GROW-ALIAS ( -- )
-   s" descriptors and library paths grow past 256 and an alias keeps its row" T-LABEL
+   s" descriptors and library paths grow past 256 and later declarations call" T-LABEL
    FFI-T-GROW-SRC$ 0 FFI-T-RUN-EXITS
    {: outu:len erru:len :}
    FFI-T-OUT outu LEN>N s\" growth-alias:ok\n" T$=
@@ -339,19 +336,12 @@ create FFI-T-LONG-PATH PATH-CAP allot
 : FFI-T-LONG-PATH! ( -- )
    PATH-CAP 0 ?do [char] a FFI-T-LONG-PATH i + c! loop ;
 
-: FFI-T-PATH-IDENTITY ( -- )
-   s" different path bytes use different rows" T-LABEL
-   s" /tmp/ffi-path/libx.so.1" FFI:LIBRARY-PATH {: a:n :}
-   s" /tmp/ffi-path/libx.so.1" FFI:LIBRARY-PATH a T=
-   s" /tmp/ffi-path/libx.so.2" FFI:LIBRARY-PATH a T<>
-   s" /tmp/ffi-path/libX.so.1" FFI:LIBRARY-PATH a T<>
-   s" /tmp/ffi-other/libx.so.1" FFI:LIBRARY-PATH a T<>
+: FFI-T-PATH-LENGTH ( -- )
    s" path length is exact from one through PATH-CAP" T-LABEL
-   [: FFI-T-LONG-PATH 0 FFI:LIBRARY-PATH drop ;] E-FFI-SYNTAX TTHROWSQ
+   [: FFI-T-LONG-PATH 0 FFI:SELECT-LIBRARY ;] E-FFI-SYNTAX TTHROWSQ
    FFI-T-LONG-PATH!
-   FFI-T-LONG-PATH PATH-CAP FFI:LIBRARY-PATH {: long:n :}
-   FFI-T-LONG-PATH PATH-CAP FFI:LIBRARY-PATH long T=
-   [: FFI-T-LONG-PATH PATH-CAP 1+ FFI:LIBRARY-PATH drop ;]
+   FFI-T-LONG-PATH PATH-CAP FFI:SELECT-LIBRARY
+   [: FFI-T-LONG-PATH PATH-CAP 1+ FFI:SELECT-LIBRARY ;]
    E-FFI-SYNTAX TTHROWSQ ;
 
 : FFI-T-LONG-SRC! ( -- )
@@ -544,10 +534,6 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
 : FFI-T-GUARDED-PATH ( -- )
    FFI:LIBRARY-PATH-CAP [char] a GUARD-PAGE:TAIL
    FFI:LIBRARY-PATH-CAP 1+ FFI:SELECT-LIBRARY ;
-
-: FFI-T-GUARDED-DIRECT ( -- )
-   PATH-CAP [char] a GUARD-PAGE:TAIL
-   PATH-CAP 1+ FFI:LIBRARY-PATH drop ;
 
 \ A literal spelled in the OTHER target's convention names no file here, so the
 \ declarer rejects it where it is stated. The rejection ends the load, which is
@@ -842,29 +828,14 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    [: FFI-T-CSTR-SRC -1 FFI-T-CSTR-DST FFI:CSTR drop ;] E-SPAN-LENGTH TTHROWSQ
    [: FFI-T-CSTR-SRC STR-MIN-I64 FFI-T-CSTR-DST FFI:CSTR drop ;] E-SPAN-LENGTH TTHROWSQ
    [: s" abcdefgh" FFI-T-CSTR-DST FFI:CSTR drop ;] E-SPAN-CAPACITY TTHROWSQ
-   [: FFI-T-CSTR-SRC -1 FFI:LIBRARY-PATH drop ;] E-FFI-SYNTAX TTHROWSQ
-   [: FFI-T-CSTR-SRC STR-MIN-I64 FFI:LIBRARY-PATH drop ;] E-FFI-SYNTAX TTHROWSQ
-   [: FFI-T-CSTR-SRC -1 FFI:PROCESS 0 FFI:DECLARE drop ;] E-FFI-SYNTAX TTHROWSQ
-   [: FFI-T-CSTR-SRC STR-MIN-I64 FFI:PROCESS 0 FFI:DECLARE drop ;] E-FFI-SYNTAX TTHROWSQ
    [: FFI-T-CSTR-SRC -1 FFI:SELECT-LIBRARY ;] E-FFI-SYNTAX TTHROWSQ
    [: FFI-T-CSTR-SRC STR-MIN-I64 FFI:SELECT-LIBRARY ;] E-FFI-SYNTAX TTHROWSQ
    [: FFI-T-GUARDED-PATH ;] E-FFI-SYNTAX TTHROWSQ
-   [: FFI-T-GUARDED-DIRECT ;] E-FFI-SYNTAX TTHROWSQ
    s" a string holding a 0 byte is refused before it reaches C" T-LABEL
    0 FFI-T-CSTR-DST SPAN:FILL
    [: s\" a\zb" FFI-T-CSTR-DST FFI:CSTR drop ;] E-FFI-NUL TTHROWSQ
    FFI-T-CSTR-DST SPAN:$ drop c@ 0 T=                  \ a refused copy wrote nothing
-   \ A refused path or name adds no row; a declared symbol followed by a 0 byte
-   \ is a different name, not that symbol's row.
-   s" /tmp/habu-ffi-nul-before" FFI:LIBRARY-PATH {: lib-before:n :}
-   [: s\" libz\z.so" FFI:LIBRARY-PATH drop ;] E-FFI-NUL TTHROWSQ
-   s" /tmp/habu-ffi-nul-after" FFI:LIBRARY-PATH lib-before 1+ T=
-   s" getpid" FFI:PROCESS 0 FFI:DECLARE drop
-   s" habu-ffi-nul-before" FFI:PROCESS 0 FFI:DECLARE {: fn-before:n :}
-   [: s\" getpid\z" FFI:PROCESS 0 FFI:DECLARE drop ;] E-FFI-NUL TTHROWSQ
-   s" habu-ffi-nul-after" FFI:PROCESS 0 FFI:DECLARE fn-before 1+ T=
-   s" FFI:DECLARE rejects a ninth argument" T-LABEL
-   [: s" getpid" FFI:PROCESS 9 FFI:DECLARE drop ;] E-FFI-ARITY TTHROWSQ
+   [: s\" lib\zz" FFI:SELECT-LIBRARY ;] E-FFI-NUL TTHROWSQ
    s" a version list opens the first version present, in the order written" T-LABEL
    FFI-T-LISTED-CALL
    s" a declaration through the versioned form resolves its symbol" T-LABEL
@@ -875,7 +846,7 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
 
    FFI-T-GROW-ALIAS
    FFI-T-LIBRARY-SHARED
-   FFI-T-PATH-IDENTITY
+   FFI-T-PATH-LENGTH
    FFI-T-FOREIGN-LIBRARY
    FFI-T-UNSELECTED
    FFI-T-LONG-FOREIGN-LIBRARY

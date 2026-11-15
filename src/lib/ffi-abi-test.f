@@ -49,25 +49,9 @@ FUNCTION: FFI-T-REQ-STRTOL strtol ( ptr u8 ptr u8 n -- n )
    0 FFI-T-OUT FFI:OUT!
    FFI-T-REQUIRED$ drop FFI-T-OUT BYTE-VIEW 10 FFI-T-REQ-STRTOL 57 T= ;
 
-\ A row no other declaration shares: k's two base-16 digits are its argument
-\ and spill counts.
-variable FFI-T-PADS
-: FFI-T-PAD ( -- n )
-   FFI-T-PADS @ {: k:n :}
-   1 FFI-T-PADS +!
-   s" hb_pad_row" 0
-   k 16 /mod  0
-   FFI:DECLARE-ROW 1+ ;
-
-: FFI-T-POW2? ( n -- bool ) dup 1- and 0= ;
-
-\ A full table, so the next declaration grows it.
-: FFI-T-FULL ( -- )
-   begin FFI-T-PAD dup FFI-T-POW2? 0= while drop repeat drop ;
-
-\ The table this declaration grows lies in the storage its rollback cuts.
+\ The table these declarations grow lies in the storage the rollback cuts.
 : FFI-T-CUT-TEXT$ ( -- ptr u8 n )
-   s\" FUNCTION: FFI-T-CUT getpid ( -- i32 ) ;FUNCTION  1 throw" ;
+   s" include test/fixtures/ffi-grow.f  1 throw" ;
 
 : FFI-T-AFTER-TEXT$ ( -- ptr u8 n )
    s\" FUNCTION: FFI-T-LLABS llabs ( n -- n ) ;FUNCTION  -7 FFI-T-LLABS" ;
@@ -83,7 +67,6 @@ variable FFI-T-PADS
 \ Calls through rows declared before and after a rolled-back declaration.
 : FFI-T-ROLLBACK ( -- )
    -5 FFI-T-LABS 5 T=
-   FFI-T-FULL
    FFI-T-CUT-TEXT$ TEST-EVAL:RC 1 T=
    4000 FFI-T-FILL
    -6 FFI-T-LABS 6 T=
