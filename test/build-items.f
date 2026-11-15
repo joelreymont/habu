@@ -487,6 +487,9 @@ s" BITEM:TEXT-REF-GO" 70
 s" EFFECT:LOCAL@ needs a definition define-word opened" SUBJECT:REFUSED? TTRUE
 s" BITEM:ENDED-GO" 70
 s" reads built local 0, whose `{:` block has ended" SUBJECT:REFUSED? TTRUE
+\ A built body's rejection names the line of the definer's call.
+s" include test/fixtures/build-items/placed.f" 70
+s" placed.f:19" SUBJECT:REFUSED? TTRUE
 BITEM:LNEG-CHILD
 
 \ A fresh hb runs the build, since the build is under test.

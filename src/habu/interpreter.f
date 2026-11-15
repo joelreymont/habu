@@ -1348,6 +1348,21 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
    i 0= if 0 exit then
    i 1 - BODY-ITEMS:OFF ITEM@  i 1 - BODY-ITEMS:LEN ITEM@ + 1 + ;
 
+\ Places the run at text offset off at the token read last when its bytes lie
+\ outside the buffer read: a built item is spelled by its definer, not the source.
+: PLACE-RUN ( n -- )
+   {: off:n :}
+   BODY-TEXT:ROWS-CELL CELL@ 1 - {: i:n :}
+   i 0 < if exit then
+   BODY-TEXT:BASE-CELL ADDR@ BODY-TEXT:CAP-CELL CELL@ +
+   i BODY-SOURCE:ROW * + {: row:ptr :}
+   row 0 FR@ off <> if exit then
+   row 8 FR@ BODY-SOURCE:NONE <> if exit then
+   TKA-CELL ADDR@ SRCLOC:INB-CELL ADDR@ INE-CELL ADDR@
+   {: t:ptr b:ptr e:ptr :}
+   t b - 0 <  e t - 0 <= or if exit then
+   t b - row 8 FR! ;
+
 \ Appends an item and captures its spelling, which the row's off and len span;
 \ a run captured between items is text no item spans.
 : ITEM+ ( n n n ptr u8 n -- ) {: kind:n a:n b:n s:ptr u:n :}
@@ -1355,6 +1370,7 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
    off ITEMS-END <> if -1 BODY-ITEMS:RAW-CELL CELL! then
    ITEM-ROOM
    s u DEF-CAPTURE
+   off PLACE-RUN
    BODY-ITEMS:COUNT-CELL CELL@ {: i:n :}
    kind i BODY-ITEMS:KIND ITEM!  a i BODY-ITEMS:A ITEM!  b i BODY-ITEMS:B ITEM!
    off i BODY-ITEMS:OFF ITEM!  u i BODY-ITEMS:LEN ITEM!
