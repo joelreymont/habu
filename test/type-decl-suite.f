@@ -1500,8 +1500,7 @@ s" STRUCTURE tdpfc<a> FIELD X a ;STRUCTURE"
 s\" error[E-BAD-DECLARATION]: bad structure declaration `tdpfc`\n"
 s" X" s" name must be a lowercase tail" TDT-AT
 s\"   = help: write the name as a lowercase tail with no package qualifier, as in `point`\n" TDT-HAS
-\ control words are rejected in the family and variant positions too, on this
-\ legacy path, with the reason the unified front ends give.
+\ a control word is a reserved name in the family and variant positions too.
 s" SUMTYPE do VARIANT one ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `do`\n"
 s" do" s" reserved name" TDT-AT
