@@ -1094,9 +1094,17 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
       FFI-STOP
    then ;
 
-: >VERSION ( ptr u8 n -- n )
-   STR-PARSE-POS MATCH option
-      none OF E-FFI-SYNTAX throw ENDOF
+: BAD-VERSION ( ptr u8 n -- ) {: a:ptr u:n :}
+   s" E-FFI-SYNTAX" s" a library version is not a number"
+   TOK-AT u 0= if s" an empty version" FFI-PLACE
+   else s" `" FFI-PLACE  a u SAY s" ` is not a version" SAY then
+   REJECTION:HELP
+   s" write the versions as numbers separated by commas, such as `1,2`" SAY
+   FFI-STOP ;
+
+: >VERSION ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u STR-PARSE-POS MATCH option
+      none OF a u BAD-VERSION ENDOF
       some OF dup VERSION-ROOM ENDOF
    ;MATCH ;
 
@@ -1265,7 +1273,13 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
    {: int:n flt:n stk:n i:n :}
    i FLOAT-ARG? if
       flt REG-MAX < if flt ARG-REG i cells + ! int flt 1+ stk exit then
-      i ARG-KIND@ K-FLOAT32 = if E-FFI-ARITY throw then
+      i ARG-KIND@ K-FLOAT32 = if
+         s" E-FFI-ARITY" s" an `f32` input passes the float registers, and SysV stages no `f32` on the stack"
+         NAME-AT s" input " FFI-PLACE  i REJECTION:EMIT-N s"  is an `f32` past them" SAY
+         REG-MAX s" float registers" LIMIT-HELP
+         s" pass the floats past the limit in memory, through a `ptr u8` input" SAY
+         FFI-STOP
+      then
       int flt stk i X86-SPILL exit
    then
    int X86-INT-REG-MAX < if int ARG-REG i cells + ! int 1+ flt stk exit then
@@ -1601,30 +1615,115 @@ public
 
 private
 
-\ A refused clause ABANDONS the declaration rather than leaving it half open:
-\ the next FUNCTION: in the file would otherwise refuse too, and the first
-\ diagnostic would name the wrong declaration.
-: REFUSE ( -- )
-   0 OPEN !
-   E-FFI-SYNTAX throw ;
+\ ---- a bad clause's rejection ---------------------------------------------
+\ A clause's record stands at the clause word as the source wrote it; the caller
+\ extends the label, opens the help and ends the record with FFI-STOP.
+: CLAUSE-PLACE ( ptr u8 n ptr u8 n -- ) {: m:ptr mu:n l:ptr lu:n :}
+   s" E-FFI-SYNTAX" m mu SRCLOC:TOKEN$ l lu FFI-PLACE ;
+
+: NEED-OPEN ( -- )
+   OPEN @ 0= if
+      s" a declaration clause stands outside a declaration"
+      s" no declaration is open" CLAUSE-PLACE
+      REJECTION:HELP
+      s" write the clause after the effect of a `FUNCTION:`, before its `;FUNCTION`" SAY
+      FFI-STOP
+   then ;
+
+: NEED-INPUT ( n -- ) {: idx:n :}
+   idx 0 < idx ARG-N @ >= or if
+      s" a clause names an input the declaration does not have"
+      s" no input " CLAUSE-PLACE  idx REJECTION:EMIT-N
+      REJECTION:HELP
+      ARG-N @ 0= if
+         s" declare the input in the effect: this declaration has none" SAY
+      else
+         s" the inputs count from 0, so the last is input " SAY  ARG-N @ 1- REJECTION:EMIT-N
+      then
+      FFI-STOP
+   then ;
+
+: NEED-BYTES ( n -- ) {: bytes:n :}
+   bytes 0 <= if
+      s" a clause's byte count is not positive"
+      s" a size of " CLAUSE-PLACE  bytes REJECTION:EMIT-N s"  bytes" SAY
+      REJECTION:HELP
+      s" `" SAY SRCLOC:TOKEN$ SAY s" ` takes a size in bytes of at least 1" SAY
+      FFI-STOP
+   then ;
+
+\ The struct call has no variadic form, so a declaration holds one or the other.
+: NO-VARIADIC ( ptr u8 n -- ) {: l:ptr lu:n :}
+   s" a variadic declaration passes or returns no record" l lu CLAUSE-PLACE
+   REJECTION:HELP
+   s" remove `VARIADIC` or the `STRUCT-RESULT` and `STRUCT-ARG` clauses" SAY
+   FFI-STOP ;
+
+: NEED-STRUCT-TARGET ( -- )
+   HB-TARGET-LINUX-X86-64? if
+      s" this target has no struct call" s" a struct clause on linux-x86-64" CLAUSE-PLACE
+      REJECTION:HELP
+      s" pass the record's address as a `ptr u8` to a C function that takes a pointer" SAY
+      FFI-STOP
+   then ;
 
 : CLAUSE-TARGET ( n -- ) {: idx:n :}
-   OPEN @ 0= if REFUSE then
-   idx 0 < if REFUSE then
-   idx ARG-N @ >= if REFUSE then
-   idx ARG-KIND@ K-POINTER <> if REFUSE then
-   idx ARG-EXT@ NO-EXT <> if REFUSE then
-   idx ARG-EXT-ARG@ NO-EXT <> if REFUSE then
-   idx ARG-SBYTES@ 0 <> if REFUSE then
-   STRUCT-BYTES @ 0 <> idx ARG-N @ 1- = and if REFUSE then ;
+   NEED-OPEN
+   idx NEED-INPUT
+   idx ARG-KIND@ K-POINTER <> if
+      s" a clause names an input that is not a `ptr u8`"
+      s" input " CLAUSE-PLACE  idx REJECTION:EMIT-N s"  is not a `ptr u8`" SAY
+      REJECTION:HELP
+      s" `" SAY SRCLOC:TOKEN$ SAY s" ` needs a `ptr u8` there: declare input " SAY
+      idx REJECTION:EMIT-N s"  `ptr u8`" SAY
+      FFI-STOP
+   then
+   idx ARG-EXT@ NO-EXT <>  idx ARG-EXT-ARG@ NO-EXT <> or  idx ARG-SBYTES@ 0 <> or if
+      s" a second clause names the same input"
+      s" input " CLAUSE-PLACE  idx REJECTION:EMIT-N s"  already has a clause" SAY
+      REJECTION:HELP
+      s" give each `ptr u8` input one clause: remove this one or the earlier one" SAY
+      FFI-STOP
+   then
+   STRUCT-BYTES @ 0 <> idx ARG-N @ 1- = and if
+      s" a clause names the struct result's storage"
+      s" input " CLAUSE-PLACE  idx REJECTION:EMIT-N s"  holds the `STRUCT-RESULT` record" SAY
+      REJECTION:HELP
+      s" the last input is the record's storage, no C argument: name another input" SAY
+      FFI-STOP
+   then ;
 
 : VARIADIC-CLAUSE ( n -- ) {: fixed:n :}
-   OPEN @ 0= if REFUSE then
-   VAR-START @ -1 <> if REFUSE then
-   STRUCT-BYTES @ 0 <> RECORDS? or if REFUSE then
-   fixed 1 < fixed ARG-N @ > or if REFUSE then
+   NEED-OPEN
+   VAR-START @ -1 <> if
+      s" a declaration has a second `VARIADIC`" s" a second `" CLAUSE-PLACE
+      SRCLOC:TOKEN$ SAY s" `" SAY
+      REJECTION:HELP
+      s" remove one: a declaration has one variadic tail" SAY
+      FFI-STOP
+   then
+   STRUCT-BYTES @ 0 <> RECORDS? or if s" `VARIADIC` in a struct call" NO-VARIADIC then
+   fixed 1 < fixed ARG-N @ > or if
+      s" a variadic declaration's fixed input count is out of range"
+      s" a count of " CLAUSE-PLACE  fixed REJECTION:EMIT-N s"  fixed inputs" SAY
+      REJECTION:HELP
+      ARG-N @ 0= if
+         s" declare the fixed inputs in the effect: a variadic C function has at least one" SAY
+      else
+         s" write how many inputs come before the variadic ones: at least 1, at most " SAY
+         ARG-N @ REJECTION:EMIT-N
+      then
+      FFI-STOP
+   then
    ARG-N @ fixed ?do
-      i ARG-KIND@ K-FLOAT32 = if REFUSE then
+      i ARG-KIND@ K-FLOAT32 = if
+         s" a variadic input is declared `f32`"
+         s" input " CLAUSE-PLACE  i REJECTION:EMIT-N s"  is an `f32` past the fixed inputs" SAY
+         REJECTION:HELP
+         s" C promotes a variadic float to double: declare input " SAY
+         i REJECTION:EMIT-N s"  `r`" SAY
+         FFI-STOP
+      then
    loop
    fixed VAR-START !
    1 OPEN +! ;
@@ -1633,38 +1732,68 @@ private
 \ or the argument that carries the length.
 : EXTENT-CLAUSE ( n n -- ) {: idx:n len:n :}
    idx CLAUSE-TARGET
-   len 0 <= if REFUSE then
+   len NEED-BYTES
    len idx ARG-EXT!
    1 OPEN +! ;
 
 : LENGTH-CLAUSE ( n n -- ) {: idx:n src:n :}
    idx CLAUSE-TARGET
-   src 0 < if REFUSE then
-   src ARG-N @ >= if REFUSE then
-   src ARG-KIND@ K-VALUE <> if REFUSE then
+   src NEED-INPUT
+   src ARG-KIND@ K-VALUE <> if
+      s" the length input is not a value"
+      s" input " CLAUSE-PLACE  src REJECTION:EMIT-N s"  is not an `n`" SAY
+      REJECTION:HELP
+      s" name the input that carries the length, declared `n`" SAY
+      FFI-STOP
+   then
    src idx ARG-EXT-ARG!
    1 OPEN +! ;
 
 : STRUCT-RESULT-CLAUSE ( n -- ) {: bytes:n :}
-   OPEN @ 0= if REFUSE then
-   HB-TARGET-LINUX-X86-64? if REFUSE then
-   STRUCT-BYTES @ 0 <> if REFUSE then
-   bytes 0 <= if REFUSE then
-   RES-KIND @ R-NONE <> if REFUSE then
-   VAR-START @ -1 <> if REFUSE then
-   ARG-N @ 0= if REFUSE then
+   NEED-OPEN
+   NEED-STRUCT-TARGET
+   STRUCT-BYTES @ 0 <> if
+      s" a declaration has a second `STRUCT-RESULT`" s" a second `" CLAUSE-PLACE
+      SRCLOC:TOKEN$ SAY s" `" SAY
+      REJECTION:HELP
+      s" remove one: a C function returns one record" SAY
+      FFI-STOP
+   then
+   bytes NEED-BYTES
+   RES-KIND @ R-NONE <> if
+      s" a struct result's declaration has an output"
+      s" the effect has an output" CLAUSE-PLACE
+      REJECTION:HELP
+      s" empty the outputs after `--`: the record lands in the last input" SAY
+      FFI-STOP
+   then
+   VAR-START @ -1 <> if s" a struct result in a variadic call" NO-VARIADIC then
+   ARG-N @ 0= if
+      s" a struct result has no storage input"
+      s" no input holds the record" CLAUSE-PLACE
+      REJECTION:HELP
+      s" declare a last input `ptr u8`, storage of at least " SAY
+      bytes REJECTION:EMIT-N s"  bytes" SAY
+      FFI-STOP
+   then
    ARG-N @ 1- CLAUSE-TARGET
    bytes STRUCT-BYTES !
    1 OPEN +! ;
 
 \ The struct call returns x0 and x1 only, so a float result has no shape here.
 : STRUCT-ARG-CLAUSE ( n n -- ) {: idx:n bytes:n :}
-   OPEN @ 0= if REFUSE then
-   HB-TARGET-LINUX-X86-64? if REFUSE then
+   NEED-OPEN
+   NEED-STRUCT-TARGET
    idx CLAUSE-TARGET
-   bytes 0 <= if REFUSE then
-   VAR-START @ -1 <> if REFUSE then
-   RES-KIND @ R-FLOAT = RES-KIND @ R-FLOAT32 = or if REFUSE then
+   bytes NEED-BYTES
+   VAR-START @ -1 <> if s" a struct input in a variadic call" NO-VARIADIC then
+   RES-KIND @ R-FLOAT = RES-KIND @ R-FLOAT32 = or if
+      s" a struct call returns no float"
+      s" the effect returns a float" CLAUSE-PLACE
+      REJECTION:HELP
+      s" declare an integer or pointer result, or none: the struct call returns x0 and x1" SAY
+      FFI-STOP
+   then
    bytes idx ARG-SBYTES!
    1 OPEN +! ;
 public
