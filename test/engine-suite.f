@@ -482,6 +482,17 @@ REJECTION:BUFFER$ s" error[E-DUPLICATE-DEFINITION]" CONTAINS? TTRUE
 REJECTION:BUFFER-OFF  1 REJECTION:QUIET +!
 s" engine resolution: the global row survived the refusals" T-LABEL
 T-LABEL-CAP 256 T=
+s" evaluate: a computed 0 throw is rejected as E-THROW-ZERO" T-LABEL
+s" 5 5 - throw" ES-RES-REFUSE:OUTCOME E-THROW-ZERO T=
+variable ES-EVAL-AFTER
+: ES-EVAL-SKIPS ( -- n )
+   0 ES-EVAL-AFTER !
+   [: s" 5 5 - throw" evaluate-closed  1 ES-EVAL-AFTER ! ;] catch drop
+   ES-EVAL-AFTER @ ;
+s" evaluate: a 0 throw skips the rest of the caller's quotation" T-LABEL
+ES-EVAL-SKIPS 0 T=
+s" evaluate: a throw after the 0 throws answers its code" T-LABEL
+s" 7 throw" ES-RES-REFUSE:OUTCOME 7 T=
 -1 REJECTION:QUIET +!
 
 \ mid-body ( ... ) comments are comments, never a second signature.

@@ -82,6 +82,19 @@ using PTY-HARNESS
    then
    0 EXIT= ;
 
+\ A line whose throw computes 0 still fails: it answers `?`, and a definition
+\ on the next line works.
+: ZERO-THROW-CASE ( -- )
+   OPEN dup TTRUE if
+      s" 5 5 - throw" STEP TFALSE
+      s\" ?\r\n\r\x1B[Khabu> " IN-BUF? TTRUE
+      s" : AFTER-ZERO ( -- n ) 56 ;" STEP TTRUE
+      s" AFTER-ZERO ." STEP TTRUE
+      s" 56" IN-BUF? TTRUE
+      4 SEND-BYTE
+   then
+   0 EXIT= ;
+
 \ Once EOF ends the session, a throwing exit hook is an uncaught exit, not a
 \ jump back into the reader's retired REPL savepoint: on both targets the
 \ hook's throw ends the process with its code.
@@ -142,6 +155,7 @@ public
    SPAN-CASE
    EOF-CASE
    REJECT-CASE
+   ZERO-THROW-CASE
    USING-CASE
    HOOK-CASE
    DIE-HOOK-CASE

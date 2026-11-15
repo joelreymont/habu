@@ -726,6 +726,38 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    [: s" [1]" JSON:READ-REPEATS? drop ;] E-JSON-READ-STATE TTHROWSQ
    [: s\" {\"a\":1," JSON:READ-REPEATS? drop ;] E-JSON-READ-EOF TTHROWSQ ;
 
+: JRT-MEMBER$ ( ^u8 n ^u8 n -- ^u8 n )
+   {: t:^ u:n k:^ ku:n :}
+   t u k ku JRT-A JSON:READ-MEMBER$ ;
+
+: JRT-NO-MEMBER ( ^u8 n -- )
+   {: t:^ u:n :}
+   [: t u s" a" JRT-MEMBER$ 2drop ;] JSON:E-MEMBER TTHROWSQ ;
+
+: JRT-TEST-MEMBER-FOUND ( -- )
+   s\" {\"a\":1,\"b\":2}" s" a" JRT-MEMBER$ s" 1" T$=
+   s\" {\"b\":[2],\"a\":{\"c\":3}}" s" a" JRT-MEMBER$
+   s\" {\"c\":3}" T$=
+   s\" {\"b\":1,\"\\u0061\":\"x\",\"b\":2}" s" a" JRT-MEMBER$
+   s\" \"x\"" T$=
+   s\" {\"a\":{\"a\":1},\"b\":{\"a\":2}}" s" a" JRT-MEMBER$
+   s\" {\"a\":1}" T$= ;
+
+: JRT-TEST-MEMBER-REFUSED ( -- )
+   s\" {\"b\":1}" JRT-NO-MEMBER
+   s\" {\"a\":1,\"b\":2,\"a\":1}" JRT-NO-MEMBER
+   s\" [{\"a\":1}]" JRT-NO-MEMBER
+   s\" \"a\"" JRT-NO-MEMBER
+   s\" {\"b\":{\"a\":1}}" JRT-NO-MEMBER
+   [: s\" {\"a\":1," s" a" JRT-MEMBER$ 2drop ;]
+   E-JSON-READ-EOF TTHROWSQ ;
+
+\ A refused text leaves JRT-A for the next call.
+: JRT-TEST-MEMBER-REUSE ( -- )
+   s\" {\"a\":1,\"a\":2}" JRT-NO-MEMBER
+   s\" {\"a\":2}" s" a" JRT-MEMBER$ s" 2" T$=
+   s\" {\"a\":3}" s" a" JRT-MEMBER$ s" 3" T$= ;
+
 : JRT-TEST-VALUE-EQ-SCALARS ( -- )
    s" 1" s" 1.0" JSON:VALUE= TTRUE
    s" 1" s" 1e0" JSON:VALUE= TTRUE
@@ -1412,6 +1444,9 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
    JRT-TEST-FIND-ANCHOR
    JRT-TEST-FIND-MISUSE
    JRT-TEST-REPEATS
+   JRT-TEST-MEMBER-FOUND
+   JRT-TEST-MEMBER-REFUSED
+   JRT-TEST-MEMBER-REUSE
    JRT-TEST-VALUE-EQ-SCALARS
    JRT-TEST-VALUE-EQ-ARRAYS
    JRT-TEST-VALUE-EQ-OBJECTS

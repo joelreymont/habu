@@ -1,5 +1,5 @@
-\ read.f - the JSON pull/cursor reader, READ-INIT through READ-REPEATS?. A file
-\ of package JSON (src/lib/json.f).
+\ read.f - the JSON pull/cursor reader, READ-INIT through READ-REPEATS?, and
+\ READ-MEMBER$. A file of package JSON (src/lib/json.f).
 
 require src/lib/error.f
 require src/lib/memory.f
@@ -31,6 +31,8 @@ package JSON
 public
 
 -3914 constant E-READ-SOURCE      \ source length is negative or a positive length has a null source
+-3915 s" the text is no object holding the member exactly once"
+ERROR:CODE E-MEMBER
 
 DEFLINEAR JSON:reader
 
@@ -988,6 +990,20 @@ public
 : READ-FIND-KEY ( JSON:reader ^u8 n -- JSON:reader bool )
    {: key:^ len:n :}
    READER>STATE key len FIND-INNER ;
+
+\ The value text of the one top-level member the key names, as
+\ serde reads a struct's field: other keys, repeated or not, are
+\ skipped. E-MEMBER stands only once the whole text reads well
+\ formed. A throw leaves the cursor for the next READ-INIT.
+: READ-MEMBER$ ( ^u8 n ^u8 n ^cursor -- ^u8 n )
+   {: t:^ u:n k:^ ku:n c:^ :}
+   c t u READ-INIT READ-NEXT
+   T-OBJ <> if READ-FINISH E-MEMBER throw then
+   k ku READ-FIND-KEY 0= if READ-FINISH E-MEMBER throw then
+   READ-ANY-SPAN$ {: v:^ vu:n :}
+   k ku READ-FIND-KEY {: again:bool :}
+   READ-FINISH again if E-MEMBER throw then
+   v vu ;
 
 \ Whether the current string or key decodes to exactly these bytes. The bytes
 \ stream through READ-STR's decoder, so no buffer bounds the string, and the
