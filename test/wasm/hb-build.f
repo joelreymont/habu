@@ -437,8 +437,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" no-main.f" ERR-HAS
    NO-MODULE
    s" require src/lib/fs.f" s" native-only.f" SOURCE!
-   s" a file that does not build for Wasm stops its load with 70 and no module" T-LABEL
-   s" native-only.wasm" BUILD 70 T=
+   s" a file that does not build for Wasm stops its load with 74 and no module" T-LABEL
+   s" native-only.wasm" BUILD 74 T=
    s" error[E-TARGET]: this file does not build for wasm" ERR-HAS
    s" src/lib/ffi-abi.f:" ERR-HAS
    NO-MODULE
