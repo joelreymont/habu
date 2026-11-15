@@ -177,12 +177,37 @@ s" ENUM-DECL:ED-RUN tagpay DERIVE tag VARIANT one FIELD a n ;VARIANT VARIANT two
 s" habu: bad enum declaration 'tagpay': derive tag requires variants without payload at 'tagpay'"
 DECL-DIAG:HAS? TTRUE
 
-\      A private family derives nothing, tag included.
+\      A private ENUM or SUMTYPE generates its variants and derived words into
+\      its package's private wordlist, protected there as a public family's are.
 package enum-tag-test
-DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN tagpriv DERIVE tag one two ;ENUM" TEST-EVAL:RC 7119 T=
-s" habu: bad enum declaration 'tagpriv': derive requires a public family at 'tag'"
-DECL-DIAG:HAS? TTRUE
+private
+ENUM tagpriv DERIVE eq tag one two ;ENUM
+s" ETPI ( n -- ) TAGPRIV-TAG> drop" CHECK-QUIET-CANDIDATE! -1 T=
+s" undefine TAGPRIV-ONE" TEST-EVAL:RC 7111 T=
+s" undefine TAGPRIV-TAG>" TEST-EVAL:RC 7111 T=
+SUMTYPE sumpriv DERIVE eq
+  VARIANT bare ;VARIANT
+  VARIANT held n ;VARIANT
+;SUMTYPE
+public
+: TPRT ( n -- n ) TAGPRIV-TAG> TAGPRIV-TAG ;
+: TPEQT ( -- bool ) TAGPRIV-ONE TAGPRIV-ONE TAGPRIV-EQ ;
+: TPEQF ( -- bool ) TAGPRIV-ONE TAGPRIV-TWO TAGPRIV-EQ ;
+: TPSEQT ( -- bool ) 5 SUMPRIV-HELD 5 SUMPRIV-HELD SUMPRIV-EQ ;
+: TPSEQF ( -- bool ) 5 SUMPRIV-HELD SUMPRIV-BARE SUMPRIV-EQ ;
+;package
+1 enum-tag-test:TPRT 1 T=
+enum-tag-test:TPEQT TTRUE
+enum-tag-test:TPEQF TFALSE
+enum-tag-test:TPSEQT TTRUE
+enum-tag-test:TPSEQF TFALSE
+
+\      Another package reaches the derived TAG> under no spelling.
+package enum-tag-other
+private
+s" ETPO ( n -- ) TAGPRIV-TAG> drop" CHECK-QUIET-CANDIDATE! 0 T=
+s" ETPQ ( n -- ) enum-tag-test:TAGPRIV-TAG> drop" CHECK-QUIET-CANDIDATE! 0 T=
+public
 ;package
 
 s" ENUM lgpar red green blue ;ENUM" evaluate-closed

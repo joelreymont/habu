@@ -208,7 +208,7 @@ create WAKE-BYTE $01 c,
 ENUM run idle starting running ;ENUM
 TYPED-VARIABLE RUN run
 
-: RUN-IDLE ( -- )
+: SET-RUN-IDLE ( -- )
    construct run idle RUN ! ;
 
 \ How a read toward a frame went: the bytes are all held, the input ran out
@@ -218,7 +218,7 @@ ENUM progress through late fault ;ENUM
 \ No task is live while this file loads, so the lock is made ready here; it is
 \ never destroyed.
 LOCK TASK:FACILITY-INIT
-RUN-IDLE
+SET-RUN-IDLE
 
 
 : >SLOT ( n -- n )
@@ -1203,7 +1203,7 @@ ENUM course
 \ Under LOCK: the run START claimed is running once its task is activated, or
 \ idle again when START threw first.
 : SETTLE ( n -- ) {: code:n :}
-   code 0= if construct run running RUN ! else RUN-IDLE then ;
+   code 0= if construct run running RUN ! else SET-RUN-IDLE then ;
 
 
 : ACTIVATE-TASK ( -- )
@@ -1263,7 +1263,7 @@ public
    AWAIT-GIVEN
    PIPE-CLOSE
    LOCK TASK:GET
-   RUN-IDLE
+   SET-RUN-IDLE
    LOCK TASK:RELEASE ;
 
 

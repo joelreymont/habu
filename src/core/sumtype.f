@@ -767,12 +767,12 @@ create TDV-BADLETTER 1 allot
       2drop fam TDECL-VARIANT
    AGAIN ;
 
-\ A PUBLIC family derives its constructor package once and records it in every
-\ variant's SV.CTOR-PKG, keyed by family id so same-tail families in different
-\ packages get disjoint namespaces. A PRIVATE family's slot stays empty: a
-\ private PRODUCT spells its generated words with TF-CTOR-PRIV$ into the
-\ declaring package's private wordlist; a private SUM or ENUM publishes no word
-\ and constructs through `construct`. The name is interned after the escaped
+\ Only a family with public generated words (TFAM-GEN-PUBLIC?) reserves a
+\ constructor package: it derives it once and records it in every variant's
+\ SV.CTOR-PKG, keyed by family id so same-tail families in different packages
+\ get disjoint namespaces. A private or OPAQUE family's slot stays empty: its
+\ generated words are spelled with TF-CTOR-PRIV$ into the declaring package's
+\ private wordlist. The name is interned after the escaped
 \ spelling is built, so the transient package/tail pointers are consumed before
 \ any pool grow.
 
@@ -844,7 +844,7 @@ private
    TDECL-NICHE-THROW ;
 
 \ `DERIVE <feature>...` follows the POLICY position, before the variants/fields.
-\ eq and hash need a PUBLIC arity-0 family, init a product, tag an ENUM (so
+\ eq and hash need an arity-0 family, init a product, tag an ENUM (so
 \ under SUMTYPE and PRODUCT it always rejects); order rejects as not supported;
 \ an unknown first token rejects, and the list ends at the first non-feature
 \ token by pushback. With eq or hash, payload roles are checked per
@@ -855,8 +855,6 @@ private
 \ EQ and hashes through its HASH, so that family derives what the outer does.
 
 : TDECL-DERIVE-GUARD ( ptr u8 n n -- ) {: a:ptr u:n fam:n :}
-   fam TFAM-PUBLIC? 0= IF
-      a u s" derive requires a public family" E-TDECL-DERIVE TDECL-THROW THEN
    fam TFAM-ARITY@ 0 <> IF
       a u s" derive requires a concrete (arity 0) family" E-TDECL-DERIVE TDECL-THROW THEN ;
 : TDECL-DERIVE-SET ( ptr u8 n n -- ) {: a:ptr u:n fam:n :}
@@ -893,7 +891,7 @@ private
    BEGIN fam TDECL-DERIVE-MORE? 0= UNTIL ;   \ later tokens end the order-free list by pushback
 
 \ a DERIVE-marked family must not declare a variant spelled like a generated
-\ derived tail: the ctor package would hold two words with one name.
+\ derived tail: the family would generate two words with one name.
 public
 
 : TDECL-DERIVE-COLLIDE ( n n n -- ) {: fam:n vstart:n count:n :}
@@ -1985,18 +1983,8 @@ TDECL-INIT-ARM-DEFAULT
 
 private
 
-\ A PUBLIC family always publishes generated words: into the reserved
-\ constructor namespace, or, when OPAQUE, into the declaring package's private
-\ wordlist (TDECL-GEN-PLACED). A PRIVATE PRODUCT publishes into that private
-\ wordlist too. A private SUM or ENUM publishes nothing: it constructs through
-\ the checker-owned `construct` token, which needs no dictionary word.
-: TDECL-GENERATES? ( n -- bool ) {: fam:n :}
-   fam TFAM-PUBLIC? IF RES-TRUE EXIT THEN
-   fam TFAM-PRODUCT? ;
-
 : TDECL-GEN-PLAN ( n -- n )
    {: fam:n :}
-   fam TDECL-GENERATES? 0= IF fam EXIT THEN
    fam TFAM-PRODUCT? IF
       fam TDECL-PROD-PLAN  fam EXIT THEN
    \ Parametric families publish too: a constructor's parametric result expands
@@ -2019,18 +2007,15 @@ private
 public
 
 : TDECL-CTOR-REPLAY ( n -- )
-   dup TDECL-GENERATES? 0= IF drop EXIT THEN
    RES-TRUE [: TDECL-REPLAY-PLAN ;] TDECL-GEN-PLACED ;
 
 : TDECL-CTOR-WORDS-BODY ( n -- ) {: fam:n :}
-   fam TDECL-GENERATES? 0= IF EXIT THEN
    fam TDECL-GEN-PLAN TDECL-GEN-EVAL ;
 
 \ Every declaration announces its family through TDECL-FAM-REG; that ambient
 \ read lives only in the adapters below and in TDECL-DEFTYPE and
-\ TDECL-NOMINAL-REPLAY. A SUMTYPE refused under a multi-error load leaves -1
-\ (TDECL-RUN's continue path) and generates nothing; PRODUCT generates inside
-\ the body TDECL-RUN guards, so a refused one never reaches generation.
+\ TDECL-NOMINAL-REPLAY. SUMTYPE and PRODUCT generate inside the body TDECL-RUN
+\ guards, so a refused declaration never reaches generation.
 
 private
 
@@ -2045,10 +2030,14 @@ private
    fam TFAM-DERIVE-INIT? IF fam TDECL-INIT-ARM-XT THEN ;
 
 \ A generation fault is the declaration's own: report it at the family name,
-\ not at the last field the body armed.
+\ not at the last field or variant the body armed.
 : TDECL-PRODUCT-GENERATE ( -- )
    TDN-A @ TDN-U @ TDECL-TOK!  s" declaration failed" TDECL-WHY!
    TDECL-CTOR-WORDS TDECL-PRODUCT-INIT-ARM ;
+
+: TDECL-SUM-GENERATE ( -- )
+   TDN-A @ TDN-U @ TDECL-TOK!  s" declaration failed" TDECL-WHY!
+   TDECL-CTOR-WORDS ;
 
 public
 
@@ -2093,21 +2082,21 @@ private
       TDECL-TOKEN+
    AGAIN ;
 
+: TDECL-SUM-GEN-TXN ( -- )
+   [: CHECKER-DEFSUM-BODY TDECL-SUM-GENERATE ;] TDECL-TXN-XT ;
+
 
 public
 
-\ Under a multi-error load TDECL-RUN counts a refusal and returns, so each
-\ refusal exits before the transaction opens.
 : TDECL-SUMTYPE ( -- )
    parse-name {: na:ptr nu:n :}
    TDECL-CLEAR
    SUMTYPE-COLLECT 0= IF
       na nu TDECL-BUF TDECL-U @ TDECL-DEFSUM-NOEND EXIT
    THEN
-   na TDN-A !  nu TDN-U !
    TDECL-TXN-ARMED @ 0= IF s" sumtype: declaration transaction not installed" 76 die THEN
-   [: TDN-A @ TDN-U @ TDECL-BUF TDECL-U @ TDECL-DEFSUM TDECL-CTOR-WORDS ;]
-      TDECL-TXN-XT ;
+   s" sumtype" na nu TDECL-BUF TDECL-U @ TDECL-CTX!
+   [: TDECL-SUM-GEN-TXN ;] TDECL-RUN ;
 
 private
 

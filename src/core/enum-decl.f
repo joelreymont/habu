@@ -133,8 +133,6 @@ ED-RESET
    size 0 <> IF first  last lastu + first -  HEAD! THEN
    last lastu s" variant" CORE-STR=CI ;
 : DERIVE-GUARD ( -- )
-   FAM @ TFAM-PUBLIC? 0= IF
-      s" derive requires a public family" E-DERIVE DECL-REJECT:REJECT throw THEN
    FAM @ TFAM-ARITY@ 0 <> IF
       s" derive requires a concrete (arity 0) family" E-DERIVE DECL-REJECT:REJECT throw THEN ;
 : EMIT-DERIVE ( n n -- )

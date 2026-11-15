@@ -167,7 +167,7 @@ s" ZP7 ( own -- zpoly<own,n> ) ZPMK-G" CHECK-QUIET-CANDIDATE! 0 T=
 \ body (possibly-linear conservative path).
 s" ZP8 ( n -- zpoly<n,n> zpoly<n,n> ) ZPOLY:OK dup" CHECK-QUIET-CANDIDATE! 0 T=
 
-\ private families export nothing: no constructor package, no words.
+\ a private family has no constructor package: its words are private.
 package zp8
 private
 SUMTYPE zsec
@@ -322,7 +322,8 @@ PRODUCT prow
 : ZPPK-MK ( n -- zppk:prow ) ZPPK-PROW:MAKE ;
 : ZPPK-UN ( zppk:prow -- n ) ZPPK-PROW:UNMAKE ;
 s" GEN-PRODUCT-PKG" type cr
-\ private products export nothing: no package, no words, no construct form.
+\ a private product has no constructor package: its words are the package's
+\ private PHID-MAKE and PHID-UNMAKE.
 package zpsec
 private
 PRODUCT phid

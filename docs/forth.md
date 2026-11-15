@@ -574,9 +574,9 @@ multi-cell type rationale is `docs/design.md` "Types".
   global public `point` with `FIELD x n` gains `POINT:X ( ptr point -- ptr n )`,
   read and written with the field type's ordinary checked operations
   (`docs/design.md` "Families and layout policies" gives the layout
-  policies). `DERIVE eq`/`DERIVE hash` on a public arity-0 family
+  policies). `DERIVE eq`/`DERIVE hash` on an arity-0 family
   generate those operations; compare an enum with its family's derived `EQ`,
-  never raw `=`. `DERIVE tag` on a public arity-0 enum whose variants carry no
+  never raw `=`. `DERIVE tag` on an arity-0 enum whose variants carry no
   payload adds `PKG-FAMILY:TAG> ( n -- family )`, the inverse of the
   `PKG-FAMILY:TAG ( family -- n )` (the variant's declaration order) that any
   `DERIVE` on an enum generates; a number that is not one of the enum's tags
@@ -662,10 +662,13 @@ multi-cell type rationale is `docs/design.md` "Types".
   the address; a `some` of a null pointer matches `none`.
 - **A `FUNCTION:` result declared `nullable<u8>`** is the C pointer as a
   `nullable<u8>`: NULL is `none`.
-- **A package family's generated words are `PKG-FAMILY:tail` with every hyphen
-  in the package and family names doubled**: an `ENUM read-result` in `package TCP4`
-  constructs its `data` variant through `TCP4-READ--RESULT:data`; a `STRUCTURE
-  captured` in `package PCAP` unmakes through `PCAP-CAPTURED:UNMAKE`.
+- **A public, non-`OPAQUE` package family's generated words are
+  `PKG-FAMILY:tail` with every hyphen in the package and family names
+  doubled**: an `ENUM read-result` in `package TCP4` constructs its `data`
+  variant through `TCP4-READ--RESULT:data`; a `STRUCTURE captured` in
+  `package PCAP` unmakes through `PCAP-CAPTURED:UNMAKE`. A private family's are `FAMILY-tail` in its package's
+  private wordlist: `ENUM shade DERIVE tag dark light ;ENUM` in a private
+  section gives `SHADE-DARK` and `SHADE-TAG>`, which no other package reaches.
   `SIGNAL-RESULT:signal` and `SIGNAL:signal` are both `E-UNDEFINED`. Stack
   effects and `MATCH` name the family `PKG:family` (`( -- TCP4:read-result )`,
   `MATCH TCP4:read-result`); a body inside the owning package writes the bare

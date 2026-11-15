@@ -210,7 +210,6 @@ before the word runs, and `--load` exits 70 (`evaluate-closed` throws 70).
 | a definer (`:`, `DEFTYPE`, `create`, `package`, …) or a parsing word (`char`, `'`, a field word) with nothing after it | `E-MISSING-NAME` from `tools/check.f` |
 | `defer D`, `: MK ( n -- ) create , does> @ ;`: a definer that declares an effect with no signature after its name, or one never closed | `E-MISSING-SIGNATURE` at the definer, at `does>` for a clause; `--load` exits 76, `E-MISSING-SIGNATURE habu: <file>:<line>: 'D' has no closed ( -- ) signature` |
 | a `\` or `( … )` comment in a `STRUCTURE`/`ENUM` body | rc 70 at load; `E-BAD-DECLARATION` from `tools/check.f` |
-| `ENUM state DERIVE eq closed open ;ENUM` in a package's private section | `habu: bad enum declaration 'state': derive requires a public family at 'eq'`, rc 70; test a private family's values with an exhaustive `MATCH` |
 | `4 TYPED-BUFFER B no-such-type`: a type, name or literal count `TYPED-*`, `*LAYOUT-BUFFER`, `DYNAMIC-BUFFER`, `ARENA` or `HEAP` refuses, or a name or type not on the definer's line | `E-BAD-STORAGE` |
 | `( -- ptr a )` for a `variable` | `E-NONPARAMETRIC-EFFECT` |
 | a structure pointer passed where a callback's context is `ptr a` (a pointer to cells): `: RUN ( ptr a [ ptr a -- ] -- ) execute ;`, `: GO ( ptr box -- ) [: CB ;] RUN ;` | `E-MISMATCH` at `RUN`; declare a pass-through context `a` |
@@ -385,7 +384,7 @@ width, cell count or byte count worked out by hand: a type's width can change.
 | `ARENA AR t` | records of `t` in an arena the caller holds, never moved | `AR-NEW ( ptr ARENA:arena -- ptr t )` a zeroed record, `AR-NEW-DISPOSE ( ptr ARENA:arena [ ptr t -- ] -- ptr t )` with an action run once at reset or release; `ARENA:NEW` or `ARENA:WITH` makes the arena, `ARENA:ALLOC` and `ARENA:ALLOC-DISPOSE` (with an action) answer raw bytes in it, `ARENA:RESET` or `ARENA:RELEASE` frees its records at once, and a pointer kept across either is stale; tasks sharing one arena serialise every call |
 | `HEAP H t` | one record with its own lifetime, never moved | `H-NEW ( -- ptr t )` a zero-filled record on its own mapping, `H-RELEASE ( ptr t -- )` unmaps it; a pointer kept across it is stale, and a second RELEASE can unmap a later mapping; nothing registers a record, so release it before an image save |
 | `n LAYOUT-BUFFER LB fam` | capacity for a declared family | `( n -- ptr fam )` |
-| `STRUCTURE p FIELD x n … ;STRUCTURE` | a by-value record | `P:MAKE` / `P:UNMAKE`; under `package PKG` the tail is `PKG-P:MAKE`, hyphens doubled in both names (`package A-B`, `STRUCTURE c-d` gives `A--B-C--D:MAKE`); `STRUCTURE p OPAQUE …` keeps `PKG:p` public and makes the pair PKG's private `P-MAKE` / `P-UNMAKE` |
+| `STRUCTURE p FIELD x n … ;STRUCTURE` | a by-value record | `P:MAKE` / `P:UNMAKE`; under `package PKG` the tail is `PKG-P:MAKE`, hyphens doubled in both names (`package A-B`, `STRUCTURE c-d` gives `A--B-C--D:MAKE`); `STRUCTURE p OPAQUE …` keeps `PKG:p` public and makes the pair PKG's private `P-MAKE` / `P-UNMAKE`, as a `STRUCTURE` in a private section does; a private `ENUM` or `SUMTYPE` likewise gets `FAMILY-VARIANT` and its `DERIVE` words |
 
 A build tracks a compile-time read of storage as a read of the record whose
 address it derives from, within that record's extent: `L 16 +` past

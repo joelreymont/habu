@@ -354,11 +354,11 @@ public
 seal-package
 ;package
 
-\ One family's checked FAMILY:VARIANT constructors, generated from ARM's family
-\ inside the transaction; a throw mid-set rolls back and publishes none.
+\ One family's checked generated constructors, made from ARM's family inside
+\ the transaction; a throw mid-set rolls back and publishes none.
 package GENERATED-DECL-CTOR
 
-7176 constant E-CTOR-ARM   \ armed family is not a public ENUM family with variants
+7176 constant E-CTOR-ARM   \ armed family is not an ENUM family with variants
 s" family cannot own generated constructors" E-CTOR-ARM DECL-REJECT:EXPLAIN
 
 -1 constant NO-FAMILY
@@ -368,13 +368,11 @@ variable ARMED   NO-FAMILY ARMED !   \ the family this declaration armed
 : ARMED-FAM ( -- n ) ARMED @ ;
 : DISARM ( -- ) NO-FAMILY ARMED ! ;
 
-\ The one gate: a family owns generated constructors when it is public (a
-\ private family exports nothing), has a variant, and is a sum or an enum, the
-\ two ENUM front-end kinds: the compact payloadless mode publishes constructors
-\ as sumtype.f's definer does. A product is excluded: structure-make.f generates
-\ its own make/unmake.
+\ The one gate: a family owns generated constructors when it has a variant
+\ and is a sum or an enum, the two ENUM front-end kinds; its visibility picks
+\ only their spelling. A product is excluded: structure-make.f generates its
+\ own make/unmake.
 : GEN-OK? ( n -- bool ) {: fam:n :}
-   fam TFAM-PUBLIC? 0= IF 0 0= 0= EXIT THEN
    fam TFAM-VAR-COUNT@ 0 <= IF 0 0= 0= EXIT THEN
    fam TFAM-SUM? fam TFAM-ENUM? or ;
 

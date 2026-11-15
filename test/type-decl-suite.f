@@ -1547,6 +1547,16 @@ s" SUMTYPE tdpoldg<a> POLICY boxed VARIANT some a ;VARIANT ;SUMTYPE" E-TDECL-POL
 
 REJECTION:BUFFER$ s" bad sumtype declaration" CONTAINS? TTRUE
 REJECTION:BUFFER$ s" layout policy not yet supported" CONTAINS? TTRUE
+\ A private SUMTYPE's generated word whose name is taken is rejected at it.
+TDIAG-BUF 8192 REJECTION:BUFFER!
+package tdpq private
+: TDHUE-RED ( -- n ) 1 ;
+s" SUMTYPE tdhue VARIANT red ;VARIANT VARIANT blue ;VARIANT ;SUMTYPE"
+E-TDECL-NAME TDT-NEG
+;package
+REJECTION:BUFFER$ s" bad sumtype declaration 'tdhue'" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" generated declaration already defined at 'TDHUE-RED'"
+CONTAINS? TTRUE
 
 \ No byte count caps a declaration's body: the fixture's SUMTYPE loads, and its
 \ constructor and derived EQ and HASH run.
@@ -1676,12 +1686,6 @@ s" package tdrv" E-CTOR-PROTECTED TDT-NEG
 s" ENUM tdrb2 DERIVE order aa bb ;ENUM" E-TDECL-DERIVE TDT-NEG
 s" ENUM tdrb3 DERIVE frobnicate aa bb ;ENUM" E-TDECL-DERIVE TDT-NEG
 s" ENUM tdrb4 DERIVE ;ENUM" E-TDECL-DERIVE TDT-NEG
-\ visibility gate (docs/forth.md "Structures And Enums"): DERIVE requires a
-\ PUBLIC family — a family declared in a private package section rejects.
-package tdprv
-private
-s" ENUM tdrb11 DERIVE eq aa bb ;ENUM" E-TDECL-DERIVE TDT-NEG
-;package
 \ a feature token right after the clause reads as a feature (a repeated one
 \ rejects); a variant spelled like a derived word follows another variant and
 \ collides.
