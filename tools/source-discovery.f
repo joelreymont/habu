@@ -1194,13 +1194,10 @@ $FF constant SD-NAMES                    \ loaders and family openers
    SD-LOCALS @ 1+ SD-LOCALS ! ;
 
 
-\ The `{:` at SD-OPENER that the source ends inside, in the open definition,
-\ or named by itself outside one.
+\ The `{:` at SD-OPENER that the source ends inside.
 : SD-GROUP-STOP ( -- )
    E-DISC-UNTERM SD-HARVEST-THROW
-   SD-OPENER @ 2 SD-TOK$ {: t:ptr tu:n :}
-   SD-DEF @ 0= SD-NAME-LEN @ 0= or if t tu else SD-NAME-OFF @ SD-NAME-LEN @ SD-TOK$ then
-   t tu INTERPRETER:UNCLOSED-REJECT  E-DISC-UNTERM REJECTION:STOP ;
+   SD-OPENER @ 2 SD-TOK$ INTERPRETER:GROUP-REJECT  E-DISC-UNTERM REJECTION:STOP ;
 
 : SD-LOCAL-GROUP ( -- )
    begin

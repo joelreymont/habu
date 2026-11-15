@@ -1197,17 +1197,15 @@ variable SEALS-N
 
 variable GROUP-AT
 
-\ The next token of a group. The source ending inside one stops the statement
-\ it is in, and a quiet composition at the group's `{:`, as discovery's lexer
+\ The next token of a group. The source ending inside one is rejected at the
+\ group's `{:`; a quiet composition stops with discovery's code, as its lexer
 \ stops there (E-DISC-UNTERM).
 : GROUP-NEXT ( -- ptr u8 n )
    NEXT-RAW dup 0= IF
-      QUIET @ INDEX-ON @ or IF
-         GROUP-AT @ TOKEN-BYTE !
-         TOP-CUR-A @ SOURCE@ - TOP-CUR-U @ + TOKEN-FROM  GROUP-AT @ TOKEN-FROM
-         INTERPRETER:UNCLOSED-REJECT  E-DISC-UNTERM REJECTION:STOP
-      THEN
-      UNCLOSED-STOP
+      GROUP-AT @ TOKEN-BYTE !
+      GROUP-AT @ TOKEN-FROM INTERPRETER:GROUP-REJECT
+      QUIET @ INDEX-ON @ or IF E-DISC-UNTERM REJECTION:STOP THEN
+      CHECKER-REJECT-RC REJECTION:STOP
    THEN ;
 
 : APPEND-GROUP ( -- )
