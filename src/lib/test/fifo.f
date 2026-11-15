@@ -38,14 +38,14 @@ create SINK SINK-CAP allot
 variable MADE
 
 PROCESS-SYMBOLS
-FUNCTION: MKFIFO-CALL mkfifo ( ptr u8 n -- i32 ) ;FUNCTION
-FUNCTION: READ-CALL read ( n ptr u8 n -- n ) ;FUNCTION
+FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
+FUNCTION: READ-CALL read ( n ^u8 n -- n ) ;FUNCTION
 
 \ The child's fd n is the parent's fd; a negative parent fd maps nothing.
 : SLOT ( PROCESS:request n fd -- PROCESS:request ) {: child:n parent:fd :}
    parent FD>N 0 >= if child >FD parent PROCESS:FD then ;
 
-: READ-END ( ptr u8 n -- fd ) {: a:ptr u:n :}
+: READ-END ( ^u8 n -- fd ) {: a:^ u:n :}
    a u FS:>PATHZ FS:O-NONBLOCK 0 open {: rd:n :}
    rd 0 < if E-FS-OPEN throw then
    rd >FD {: r:fd :}
@@ -58,7 +58,7 @@ public
 \ used, so a writer a failed case left cannot open a later case's. Its path goes
 \ to dst (PATH-CAP bytes); the read end is nonblocking and close-on-exec. A
 \ refused mkfifo or open throws E-FS-OPEN.
-: MAKE ( ptr u8 n ptr u8 -- n fd ) {: dir:ptr diru:n dst:ptr :}
+: MAKE ( ^u8 n ^u8 -- n fd ) {: dir:^ diru:n dst:^ :}
    MADE @ 1+ MADE !
    SB-RESET s" fifo-" SB-APPEND MADE @ FMT:SB-INT
    dir diru SB$ dst FS:JOIN-PATH {: u:n :}
@@ -68,8 +68,8 @@ public
 \ The write end of the FIFO the environment variable name gives the path of,
 \ blocking and inheritable. A variable unset or empty, a path that is no FIFO,
 \ and a FIFO no reader has open throw E-FS-OPEN.
-: WRITER ( ptr u8 n -- fd ) {: name:ptr nameu:n :}
-   name nameu GETENV {: a:ptr u:n :}
+: WRITER ( ^u8 n -- fd ) {: name:^ nameu:n :}
+   name nameu GETENV {: a:^ u:n :}
    u 0= if E-FS-OPEN throw then
    a u FD:TRY-FIFO-WRITER MATCH option
       none OF E-FS-OPEN throw ENDOF
@@ -81,8 +81,8 @@ public
 \ write end w at its own number in the child; a negative w maps none. The
 \ staging is reset once the request holds its copy, so a refused spawn, which
 \ throws E-PROC-SPAWN, leaves none.
-: SPAWN ( ptr u8 len fd fd fd fd -- pid ) {: a:ptr u in:fd out:fd err:fd w:fd :}
-   a u PROC-ARGV-PREPARE {: pathz:ptr argv :}
+: SPAWN ( ^u8 len fd fd fd fd -- pid ) {: a:^ u in:fd out:fd err:fd w:fd :}
+   a u PROC-ARGV-PREPARE {: pathz:^ argv :}
    PROC-ENV-PREPARE {: envp :}
    pathz dup ZLEN PROCESS:NEW PROCESS:HERMETIC
    argv PROCESS:ARGV-ROWS

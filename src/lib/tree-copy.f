@@ -16,32 +16,32 @@ private
 PTR-VARIABLE INTO-P                    variable INTO-U
 create DEST PATH-CAP allot          variable DEST-U
 
-: INTO$ ( -- ptr u8 n ) INTO-P @ INTO-U @ ;
-: DEST$ ( -- ptr u8 n ) DEST DEST-U @ ;
+: INTO$ ( -- ^u8 n ) INTO-P @ INTO-U @ ;
+: DEST$ ( -- ^u8 n ) DEST DEST-U @ ;
 
-: INTO! ( ptr u8 n -- ) INTO-U ! INTO-P ! ;
+: INTO! ( ^u8 n -- ) INTO-U ! INTO-P ! ;
 
-: CHECKOUT-REL ( ptr u8 n -- ptr u8 n )
-   SOURCE-ROOT:CANONICAL drop {: a:ptr u:n :}
+: CHECKOUT-REL ( ^u8 n -- ^u8 n )
+   SOURCE-ROOT:CANONICAL drop {: a:^ u:n :}
    a u SOURCE-ROOT:CWD$ SOURCE-ROOT:BELOW? 0= if E-FS-PATH throw then
    a u SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE ;
 
 \ A walk callback has no context, so the root is read from INTO$.
-: MEMBER ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: MEMBER ( ^u8 n -- )
+   {: a:^ u:n :}
    INTO$ a u CHECKOUT-REL DEST FS:JOIN-PATH DEST-U !
    DEST$ SOURCE-ROOT:DIRNAME FS:MAKE-DIRS
    a u DEST$ FS:COPY-FILE-STREAM ;
 
 public
 
-: FILE ( ptr u8 n ptr u8 n -- ) INTO! MEMBER ;
+: FILE ( ^u8 n ^u8 n -- ) INTO! MEMBER ;
 
-: TREE ( ptr u8 n ptr u8 n -- ) INTO! [: MEMBER ;] FS:WALK-FILES ;
+: TREE ( ^u8 n ^u8 n -- ) INTO! [: MEMBER ;] FS:WALK-FILES ;
 
 \ src/ and tools/: the sources tools/hb-build.f builds from.
-: BUILD-SOURCES ( ptr u8 n -- )
-   {: root:ptr rootu:n :}
+: BUILD-SOURCES ( ^u8 n -- )
+   {: root:^ rootu:n :}
    s" src" root rootu TREE
    s" tools" root rootu TREE ;
 

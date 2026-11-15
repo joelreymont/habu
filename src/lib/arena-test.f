@@ -30,25 +30,25 @@ variable BAD                       \ failed checks inside a loop
 variable ORDER                     \ the ids actions saw in run order, a digit each
 
 : CHECK ( bool -- ) 0= if 1 BAD +! then ;
-: ALIGNED? ( ptr u8 -- bool ) NULL-PTR - CELL mod 0= ;
-: FILL-FF ( ptr u8 n -- ) SPAN:MAKE $FF swap SPAN:FILL ;
+: ALIGNED? ( ^u8 -- bool ) NULL-PTR - CELL mod 0= ;
+: FILL-FF ( ^u8 n -- ) SPAN:MAKE $FF swap SPAN:FILL ;
 
 
-: ZEROED? ( ptr u8 n -- bool )
-   {: p:ptr len:n :}
+: ZEROED? ( ^u8 n -- bool )
+   {: p:^ len:n :}
    true len 0 ?do p i + c@ 0<> if drop false then loop ;
 
 
-: NOTE ( ptr u8 -- ) c@ ORDER @ 10 * + ORDER ! ;
+: NOTE ( ^u8 -- ) c@ ORDER @ 10 * + ORDER ! ;
 
-: TAGGED ( ptr ARENA:arena n -- )
-   {: a:ptr id:n :}
+: TAGGED ( ^ARENA:arena n -- )
+   {: a:^ id:n :}
    a 8 [: NOTE ;] ARENA:ALLOC-DISPOSE drop id swap c! ;
 
 
-: NEXT-ALLOC ( ptr ARENA:arena n ptr u8 -- n ptr u8 )
-   {: a:ptr jumps:n prev:ptr :}
-   a 1000 ARENA:ALLOC {: q:ptr qn:n :}
+: NEXT-ALLOC ( ^ARENA:arena n ^u8 -- n ^u8 )
+   {: a:^ jumps:n prev:^ :}
+   a 1000 ARENA:ALLOC {: q:^ qn:n :}
    q qn ZEROED? CHECK
    q ALIGNED? CHECK
    q qn FILL-FF
@@ -59,13 +59,13 @@ variable ORDER                     \ the ids actions saw in run order, a digit e
 : MANY ( -- )
    s" many" T-LABEL
    0 BAD !
-   ARENA:NEW {: a:ptr :}
-   a 5 ARENA:ALLOC {: first:ptr fn:n :}
+   ARENA:NEW {: a:^ :}
+   a 5 ARENA:ALLOC {: first:^ fn:n :}
    fn 5 T=
    first fn ZEROED? TTRUE
    first ALIGNED? TTRUE
    5 0 do i 1+ first i + c! loop
-   a 1000 ARENA:ALLOC {: prev:ptr pn:n :}
+   a 1000 ARENA:ALLOC {: prev:^ pn:n :}
    prev first - 8 T=
    prev pn FILL-FF
    0 prev 120 0 do a -rot NEXT-ALLOC loop drop
@@ -78,8 +78,8 @@ variable ORDER                     \ the ids actions saw in run order, a digit e
 \ 2. A request larger than the first chunk.
 : LARGE ( -- )
    s" large" T-LABEL
-   ARENA:NEW {: a:ptr :}
-   a 40000 ARENA:ALLOC {: p:ptr pn:n :}
+   ARENA:NEW {: a:^ :}
+   a 40000 ARENA:ALLOC {: p:^ pn:n :}
    pn 40000 T=
    p pn ZEROED? TTRUE
    p pn FILL-FF
@@ -92,7 +92,7 @@ variable ORDER                     \ the ids actions saw in run order, a digit e
 : ACTIONS-ONCE ( -- )
    s" actions-once" T-LABEL
    0 ORDER !
-   ARENA:NEW {: a:ptr :}
+   ARENA:NEW {: a:^ :}
    a 1 TAGGED a 2 TAGGED a 3 TAGGED
    ORDER @ 0 T=
    a ARENA:RESET
@@ -104,12 +104,12 @@ variable ORDER                     \ the ids actions saw in run order, a digit e
 \ 4. RESET keeps the handle and zeroes what was written.
 : RESET-ZEROES ( -- )
    s" reset-zeroes" T-LABEL
-   ARENA:NEW {: a:ptr :}
-   a 64 ARENA:ALLOC {: p:ptr pn:n :}
+   ARENA:NEW {: a:^ :}
+   a 64 ARENA:ALLOC {: p:^ pn:n :}
    p pn FILL-FF
    a 40000 ARENA:ALLOC FILL-FF
    a ARENA:RESET
-   a 64 ARENA:ALLOC {: q:ptr qn:n :}
+   a 64 ARENA:ALLOC {: q:^ qn:n :}
    q p = TTRUE
    q qn ZEROED? TTRUE
    a ARENA:RELEASE ;
@@ -122,10 +122,10 @@ variable ORDER                     \ the ids actions saw in run order, a digit e
 : CHILDREN ( -- )
    s" children" T-LABEL
    0 ORDER !
-   ARENA:NEW {: p:ptr :}
+   ARENA:NEW {: p:^ :}
    p 6 TAGGED
    p ARENA:NEW-IN 1 TAGGED
-   p ARENA:NEW-IN {: mid:ptr :}
+   p ARENA:NEW-IN {: mid:^ :}
    mid 2 TAGGED
    p ARENA:NEW-IN 3 TAGGED
    mid ARENA:RELEASE
@@ -133,9 +133,9 @@ variable ORDER                     \ the ids actions saw in run order, a digit e
    p ARENA:RELEASE
    ORDER @ 2316 T=
    0 ORDER !
-   ARENA:NEW {: r:ptr :}
+   ARENA:NEW {: r:^ :}
    r 7 TAGGED
-   r ARENA:NEW-IN {: kid:ptr :}
+   r ARENA:NEW-IN {: kid:^ :}
    kid ARENA:NEW-IN 5 TAGGED
    kid 4 TAGGED
    r ARENA:RESET
@@ -144,8 +144,8 @@ variable ORDER                     \ the ids actions saw in run order, a digit e
    r ARENA:RELEASE
    ORDER @ 547 T=
    0 ORDER !
-   ARENA:NEW {: q:ptr :}
-   q ARENA:NEW-IN {: son:ptr :}
+   ARENA:NEW {: q:^ :}
+   q ARENA:NEW-IN {: son:^ :}
    son 4 TAGGED
    son ARENA:RESET
    ORDER @ 4 T=
@@ -154,9 +154,9 @@ variable ORDER                     \ the ids actions saw in run order, a digit e
    q ARENA:RELEASE
    ORDER @ 456 T=
    0 ORDER !
-   ARENA:NEW {: s:ptr :}
+   ARENA:NEW {: s:^ :}
    s 9 TAGGED
-   s ARENA:NEW-IN {: oldest:ptr :}
+   s ARENA:NEW-IN {: oldest:^ :}
    oldest 1 TAGGED
    s ARENA:NEW-IN 2 TAGGED
    s ARENA:NEW-IN 3 TAGGED
@@ -177,14 +177,14 @@ variable ORDER                     \ the ids actions saw in run order, a digit e
    ORDER @ 7 T= ;
 
 
-: THROW-SIZE ( ptr u8 -- ) drop E-MEM-SIZE throw ;
-: THROW-DIV ( ptr u8 -- ) drop E-DIV-ZERO throw ;
+: THROW-SIZE ( ^u8 -- ) drop E-MEM-SIZE throw ;
+: THROW-DIV ( ^u8 -- ) drop E-DIV-ZERO throw ;
 
 \ 7. A throwing action stops none of the others; RESET rethrows the first code.
 : ACTION-THROWS ( -- )
    s" action-throws" T-LABEL
    0 ORDER !
-   ARENA:NEW {: a:ptr :}
+   ARENA:NEW {: a:^ :}
    a 1 TAGGED
    a 8 [: THROW-SIZE ;] ARENA:ALLOC-DISPOSE 2drop
    a 3 TAGGED
@@ -199,32 +199,32 @@ variable ORDER                     \ the ids actions saw in run order, a digit e
 : EDGES ( -- )
    s" edges" T-LABEL
    NULL-PTR ARENA:RELEASE
-   ARENA:NEW {: a:ptr :}
-   a 8 ARENA:ALLOC drop {: p:ptr :}
+   ARENA:NEW {: a:^ :}
+   a 8 ARENA:ALLOC drop {: p:^ :}
    [: a MEM-MAX-N 2 / ARENA:ALLOC 2drop ;] E-MEM-MAP TTHROWSQ
    a 8 ARENA:ALLOC drop p - 8 T=
    a ARENA:RELEASE ;
 
 
 \ 9. A run-time record holds an arena in a field, and an action typed for a
-\ record runs through a private cast to `[ ptr u8 -- ]`.
-STRUCTURE root DERIVE addr FIELD store ptr ARENA:arena FIELD id n ;STRUCTURE
+\ record runs through a private cast to `[ ^u8 -- ]`.
+STRUCTURE root DERIVE addr FIELD store ^ARENA:arena FIELD id n ;STRUCTURE
 STRUCTURE item DERIVE addr FIELD id n ;STRUCTURE
 HEAP ROOTS root
 
 private
 
-CAST: >ITEM ( ptr u8 -- ptr item )
-CAST: ERASE-ITEM ( [ ptr item -- ] -- [ ptr u8 -- ] )
+CAST: >ITEM ( ^u8 -- ^item )
+CAST: ERASE-ITEM ( [ ^item -- ] -- [ ^u8 -- ] )
 
-: ITEM-NOTE ( ptr item -- ) ITEM-ID @ ORDER @ 10 * + ORDER ! ;
+: ITEM-NOTE ( ^item -- ) ITEM-ID @ ORDER @ 10 * + ORDER ! ;
 
 public
 
 : HELD ( -- )
    s" held" T-LABEL
    0 ORDER !
-   ROOTS-NEW {: r:ptr :}
+   ROOTS-NEW {: r:^ :}
    r ROOT-STORE @ ARENA:RELEASE
    ARENA:NEW r ROOT-STORE !
    r ROOT-STORE @ ITEM-BYTES [: ITEM-NOTE ;] ERASE-ITEM ARENA:ALLOC-DISPOSE drop
@@ -244,15 +244,15 @@ public
 \ dies of SIGSEGV on x86-64. SUBJECT:RUN's child evaluates each by its public
 \ name.
 : RESET-TOUCH ( -- )
-   ARENA:NEW {: a:ptr :}
-   a 40000 ARENA:ALLOC drop {: p:ptr :}
+   ARENA:NEW {: a:^ :}
+   a 40000 ARENA:ALLOC drop {: p:^ :}
    a ARENA:RESET
    p c@ drop ;
 
 
 : RELEASE-TOUCH ( -- )
-   ARENA:NEW {: a:ptr :}
-   a 8 ARENA:ALLOC drop {: p:ptr :}
+   ARENA:NEW {: a:^ :}
+   a 8 ARENA:ALLOC drop {: p:^ :}
    a ARENA:RELEASE
    p c@ drop ;
 
@@ -264,8 +264,8 @@ CAP BUFFER: CAP-ERR
 
 
 HB-TARGET-LINUX-X86-64? 0= [if]
-: EXPECT-FAULT ( ptr u8 n -- )
-   {: src:ptr srcu:n :}
+: EXPECT-FAULT ( ^u8 n -- )
+   {: src:^ srcu:n :}
    src srcu CAP-OUT CAP >LEN CAP-ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    {: outu:len erru:len oc :}
    src srcu CAP-OUT outu LEN>N CAP-ERR erru LEN>N oc
@@ -274,8 +274,8 @@ HB-TARGET-LINUX-X86-64? 0= [if]
 \ The x86-64 engine has no memory-fault throw.
 HB-TARGET-LINUX-X86-64? [if]
 11 constant FAULT-SIG
-: EXPECT-FAULT ( ptr u8 n -- )
-   {: src:ptr srcu:n :}
+: EXPECT-FAULT ( ^u8 n -- )
+   {: src:^ srcu:n :}
    src srcu CAP-OUT CAP >LEN CAP-ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    {: outu:len erru:len oc :}
    src srcu CAP-OUT outu LEN>N CAP-ERR erru LEN>N oc
@@ -293,10 +293,10 @@ HB-TARGET-LINUX-X86-64? [if]
 \ after it: the halt unwinds past every catch.
 variable HALT-READY
 variable HALT-SEEN                 \ the halting action has run once
-TYPED-VARIABLE HALT-ARENA ptr ARENA:arena
+TYPED-VARIABLE HALT-ARENA ^ARENA:arena
 TASK:MIN-STACK TASK:TASK HALT-TASK
 
-: HALT-NOTE ( ptr u8 -- )
+: HALT-NOTE ( ^u8 -- )
    NOTE
    HALT-SEEN @ 0<> if exit then
    1 HALT-SEEN !
@@ -309,7 +309,7 @@ TASK:MIN-STACK TASK:TASK HALT-TASK
 : HALTED ( -- )
    s" halted" T-LABEL
    0 ORDER !  0 HALT-SEEN !  0 HALT-READY atomic!
-   ARENA:NEW {: a:ptr :}
+   ARENA:NEW {: a:^ :}
    a 1 TAGGED a 2 TAGGED
    a 8 [: HALT-NOTE ;] ARENA:ALLOC-DISPOSE drop 3 swap c!
    a HALT-ARENA !
@@ -326,14 +326,14 @@ TASK:MIN-STACK TASK:TASK HALT-TASK
 
 
 \ The newest block grows in place; an older one moves, its old bytes as written.
-: RESIZE-MOVES ( ptr ALLOC:allocator -- ptr u8 )
-   {: al:ptr :}
-   al 16 ALLOC:BYTES drop {: block:ptr :}
+: RESIZE-MOVES ( ^ALLOC:allocator -- ^u8 )
+   {: al:^ :}
+   al 16 ALLOC:BYTES drop {: block:^ :}
    block 16 FILL-FF
-   al block 16 40 ALLOC:RESIZE 40 T= {: grown:ptr :}
+   al block 16 40 ALLOC:RESIZE 40 T= {: grown:^ :}
    grown block = TTRUE
-   al 16 ALLOC:BYTES drop {: mid:ptr :}
-   al grown 40 64 ALLOC:RESIZE 64 T= {: moved:ptr :}
+   al 16 ALLOC:BYTES drop {: mid:^ :}
+   al grown 40 64 ALLOC:RESIZE 64 T= {: moved:^ :}
    moved grown <> TTRUE  moved 15 + c@ $FF T=  moved 16 + 48 ZEROED? TTRUE
    grown c@ $FF T=  grown 15 + c@ $FF T=
    al mid 16 8 ALLOC:RESIZE 8 T= mid = TTRUE
@@ -342,13 +342,13 @@ TASK:MIN-STACK TASK:TASK HALT-TASK
 
 \ A shrunk newest block regrows in place past its old extent and reads zeros
 \ there; a growth past the first chunk moves the block and keeps its bytes.
-: RESIZE-REGROWS ( ptr ALLOC:allocator ptr u8 -- )
-   {: al:ptr block:ptr :}
+: RESIZE-REGROWS ( ^ALLOC:allocator ^u8 -- )
+   {: al:^ block:^ :}
    block 64 FILL-FF
    al block 64 20 ALLOC:RESIZE 20 T= block = TTRUE
    al block 20 128 ALLOC:RESIZE 128 T= block = TTRUE
    block 19 + c@ $FF T=  block 20 + 108 ZEROED? TTRUE
-   al block 128 $5000 ALLOC:RESIZE $5000 T= {: far:ptr :}
+   al block 128 $5000 ALLOC:RESIZE $5000 T= {: far:^ :}
    far block <> TTRUE
    far c@ $FF T=  far 19 + c@ $FF T=  far 20 + $5000 20 - ZEROED? TTRUE ;
 
@@ -357,8 +357,8 @@ TASK:MIN-STACK TASK:TASK HALT-TASK
 \ shrink and past the first chunk.
 : RESIZES ( -- )
    s" resize" T-LABEL
-   ARENA:NEW {: a:ptr :}
-   a ARENA:ALLOCATOR {: al:ptr :}
+   ARENA:NEW {: a:^ :}
+   a ARENA:ALLOCATOR {: al:^ :}
    al al RESIZE-MOVES RESIZE-REGROWS
    a ARENA:RELEASE ;
 
@@ -376,7 +376,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 \ An arena that admits a zero, negative or overflowing size.
 : EDGE-SIZES ( -- )
    s" edge sizes" T-LABEL
-   ARENA:NEW {: a:ptr :}
+   ARENA:NEW {: a:^ :}
    [: a 0 ARENA:ALLOC 2drop ;] E-MEM-SIZE TTHROWSQ
    [: a -1 ARENA:ALLOC 2drop ;] E-MEM-SIZE TTHROWSQ
    [: a MEM-MAX-N ARENA:ALLOC 2drop ;] E-MEM-SIZE TTHROWSQ

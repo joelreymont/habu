@@ -40,12 +40,12 @@ variable WRITTEN
 : DIGIT-COUNT ( n -- n )
    1 swap begin 10 / dup 0 > while swap 1+ swap repeat drop ;
 
-: DIGITS! ( n ptr u8 -- n ) {: value:n dst :}
+: DIGITS! ( n ^u8 -- n ) {: value:n dst :}
    value DIGIT-COUNT {: count:n :}
    value count 0 do 10 /mod swap [char] 0 + dst count 1- i - + c! loop drop
    count ;
 
-: SLAVE-PATH! ( n ptr u8 -- n ) {: number:n path :}
+: SLAVE-PATH! ( n ^u8 -- n ) {: number:n path :}
    s" /dev/pts/" {: prefix plen:n :}
    plen 0 do prefix i + c@ path i + c! loop
    number path plen + DIGITS! plen + ;
@@ -61,7 +61,7 @@ variable WRITTEN
    m ;
 
 
-: NAME-LINUX ( n ptr u8 -- n ) {: m:n path :}
+: NAME-LINUX ( n ^u8 -- n ) {: m:n path :}
    0 LOCK !
    m  m LINUX-TIOCSPTLCK LOCK ioctl  IOCTL-CK
    0 NUMBER !
@@ -71,7 +71,7 @@ variable WRITTEN
 
 \ Darwin writes the name itself, NUL-terminated, so its length is the distance
 \ to that NUL rather than something this side built.
-: NAME-LEN ( ptr u8 -- n ) {: path :}
+: NAME-LEN ( ^u8 -- n ) {: path :}
    0 begin dup SLAVE-PATH-CAP < while
       dup path + c@ 0= if exit then
       1+
@@ -79,18 +79,18 @@ variable WRITTEN
    drop E-CAPACITY throw ;
 
 
-: NAME-MACOS ( n ptr u8 -- n ) {: m:n path :}
+: NAME-MACOS ( n ^u8 -- n ) {: m:n path :}
    m  m MACOS-TIOCPTYGRANT NULL-PTR ioctl  IOCTL-CK
    m  m MACOS-TIOCPTYUNLK NULL-PTR ioctl  IOCTL-CK
    m  m MACOS-TIOCPTYGNAME path ioctl  IOCTL-CK
    path NAME-LEN ;
 
 
-: NAME-SLAVE ( n ptr u8 -- n ) {: m:n path :}
+: NAME-SLAVE ( n ^u8 -- n ) {: m:n path :}
    HB-TARGET-LINUX-KERNEL? if m path NAME-LINUX else m path NAME-MACOS then ;
 
 
-: READ-READY ( master ptr u8 n -- n ) {: m:master bytes cap:n :}
+: READ-READY ( master ^u8 n -- n ) {: m:master bytes cap:n :}
    m MASTER>N bytes cap read {: got:n :}
    got 0 < if E-IO throw then got ;
 
@@ -102,7 +102,7 @@ public
 \ and names /dev/pts/<TIOCGPTN> (needs a mounted /dev/pts); Darwin grants and
 \ unlocks with TIOCPTYGRANT/TIOCPTYUNLK and asks TIOCPTYGNAME. The request
 \ numbers stay private to this file.
-: OPEN ( ptr u8 n -- master n ) {: path cap:n :}
+: OPEN ( ^u8 n -- master n ) {: path cap:n :}
    cap SLAVE-PATH-CAP < if E-CAPACITY throw then
    OPEN-MASTER {: m:n :}
    m path NAME-SLAVE {: len:n :}
@@ -117,7 +117,7 @@ public
 \ `cancelled` cannot arrive (nothing cancels, the ticket stays here, AIO's
 \ cleanup runs only after the submitting task ends): it is a broken foreign
 \ result.
-: READ ( master ptr u8 n ms -- n ) {: m:master bytes cap:n timeout:ms :}
+: READ ( master ^u8 n ms -- n ) {: m:master bytes cap:n timeout:ms :}
    m MASTER>N >FD AIO:READABLE timeout AIO:POLL AIO:AWAIT
    MATCH AIO:outcome
       ready OF drop m bytes cap READ-READY ENDOF
@@ -127,7 +127,7 @@ public
    ;MATCH ;
 
 
-: WRITE ( master ptr u8 n -- ) {: m:master bytes size:n :}
+: WRITE ( master ^u8 n -- ) {: m:master bytes size:n :}
    0 WRITTEN !
    begin WRITTEN @ size < while
       m MASTER>N bytes WRITTEN @ + size WRITTEN @ - write {: wrote:n :}

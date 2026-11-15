@@ -11,7 +11,7 @@ private
 
 $7FFFFFFFFFFFFFF constant IMGD-HEX-MAX-PRE
 
-TYPED-VARIABLE IMGD-IMG ptr u8
+TYPED-VARIABLE IMGD-IMG ^u8
 variable IMGD-LEN
 variable IMGD-FD
 variable IMGD-OFF
@@ -21,10 +21,10 @@ variable IMGD-HEX-ACC
 variable IMGD-HEX-DIG
 variable IMGD-LOWER
 
-: IMGD-IMG@ ( -- ptr u8 )
+: IMGD-IMG@ ( -- ^u8 )
    IMGD-IMG @ ;
 
-: IMGD-IMG! ( ptr u8 -- )
+: IMGD-IMG! ( ^u8 -- )
    IMGD-IMG ! ;
 
 : IMGD-USAGE ( -- )
@@ -34,11 +34,11 @@ variable IMGD-LOWER
    s" imagedisasm: range outside image" 74 die ;
 
 \ mmap answers the mapping's address as an integer; a failed map dies first.
-CAST: MAP>BYTES ( n -- ptr u8 )
-: IMGD-MMAP-PTR ( n -- ptr u8 )
+CAST: MAP>BYTES ( n -- ^u8 )
+: IMGD-MMAP-PTR ( n -- ^u8 )
    dup 0 < IF IMGD-FD @ close s" imagedisasm: mmap failed" 74 die THEN MAP>BYTES ;
 
-: IMGD-READ ( ptr u8 n -- )
+: IMGD-READ ( ^u8 n -- )
    FS:OPEN-SIZED 0= IF 2drop s" imagedisasm: open failed" 74 die THEN
    IMGD-LEN !  FD>N IMGD-FD !
    IMGD-LEN @ 0 > 0= IF IMGD-FD @ close s" imagedisasm: empty image" 74 die THEN
@@ -57,8 +57,8 @@ CAST: MAP>BYTES ( n -- ptr u8 )
    acc IMGD-HEX-MAX-PRE > IF OPTION:NONE EXIT THEN
    acc 16 * digit + OPTION:SOME ;
 
-: IMGD-PARSE-HEX ( ptr u8 n -- option<n> )
-   {: a:ptr u:n :}
+: IMGD-PARSE-HEX ( ^u8 n -- option<n> )
+   {: a:^ u:n :}
    u 0= IF OPTION:NONE EXIT THEN
    0 IMGD-HEX-I !
    0 IMGD-HEX-ACC !
@@ -75,8 +75,8 @@ CAST: MAP>BYTES ( n -- ptr u8 )
    REPEAT
    IMGD-HEX-ACC @ OPTION:SOME ;
 
-: IMGD-HEX-BODY ( ptr u8 n -- ptr u8 n bool )
-   {: a:ptr u :}
+: IMGD-HEX-BODY ( ^u8 n -- ^u8 n bool )
+   {: a:^ u :}
    u 1 > IF
       a c@ 36 = IF a 1 + u 1 - STR-TRUE EXIT THEN
    THEN
@@ -89,13 +89,13 @@ CAST: MAP>BYTES ( n -- ptr u8 )
 
 public
 
-: IMGD>NUMBER? ( ptr u8 n -- option<n> )   \ accepts $hex, 0xhex and decimal
+: IMGD>NUMBER? ( ^u8 n -- option<n> )   \ accepts $hex, 0xhex and decimal
    IMGD-HEX-BODY IF IMGD-PARSE-HEX EXIT THEN
    STR>NUMBER? ;
 
 private
 
-: IMGD-POS-NUM ( ptr u8 n -- n )
+: IMGD-POS-NUM ( ^u8 n -- n )
    IMGD>NUMBER? MATCH option
      none OF IMGD-USAGE ENDOF
      some OF ENDOF

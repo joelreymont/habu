@@ -54,7 +54,7 @@ variable PENDING-COUNT
 variable PACKET-COUNT
 variable COMMIT-COUNT
 variable STORE-COUNT
-TYPED-VARIABLE PROGRAM ptr n                       \ the caller's program words
+TYPED-VARIABLE PROGRAM ^n                       \ the caller's program words
 variable PROGRAM-WORDS
 variable NEXT-WORD                                 \ word index of the next instruction
 variable CYCLES
@@ -94,12 +94,12 @@ variable F-IDLE
    value 1 bits lshift 1- and dup 1 bits 1- lshift and 0 <> if 1 bits lshift - then ;
 
 
-: REG-CELL ( n -- ptr n ) dup 0 < over 63 > or if E-OPERAND throw then cells REGS + CELL-VIEW ;
+: REG-CELL ( n -- ^n ) dup 0 < over 63 > or if E-OPERAND throw then cells REGS + CELL-VIEW ;
 : REG@ ( n -- n ) REG-CELL @ ;
 : REG! ( n n -- ) swap >U32 swap REG-CELL ! ;
 
 
-: ADDRESS ( n -- ptr u8 ) {: address:n :}
+: ADDRESS ( n -- ^u8 ) {: address:n :}
    address MEMORY-BASE - dup 0 < over MEMORY-BYTES >= or if E-FAULT throw then MEMORY + ;
 : BYTE@ ( n -- n ) ADDRESS c@ ;
 : BYTE! ( n n -- ) swap 255 and swap ADDRESS c! ;
@@ -115,31 +115,31 @@ variable F-IDLE
 \ A packet's instructions read the registers and memory as they stand; their
 \ results queue here and land together when the packet ends, loads later.
 
-: COMMIT-ROW ( n -- ptr n ) COMMIT-BYTES * COMMITS + CELL-VIEW ;
-: PENDING-ROW ( n -- ptr n ) PENDING-BYTES * PENDING + CELL-VIEW ;
-: STORE-ROW ( n -- ptr n ) STORE-BYTES * STORES + CELL-VIEW ;
+: COMMIT-ROW ( n -- ^n ) COMMIT-BYTES * COMMITS + CELL-VIEW ;
+: PENDING-ROW ( n -- ^n ) PENDING-BYTES * PENDING + CELL-VIEW ;
+: STORE-ROW ( n -- ^n ) STORE-BYTES * STORES + CELL-VIEW ;
 
 : RESULT ( n n -- ) {: value:n reg:n :}
    COMMIT-COUNT @ COMMIT-MAX >= if E-LIMIT throw then
-   COMMIT-COUNT @ COMMIT-ROW {: row:ptr :}
+   COMMIT-COUNT @ COMMIT-ROW {: row:^ :}
    reg row COMMIT.REG ! value >U32 row COMMIT.VALUE !
    1 COMMIT-COUNT +! ;
 
 : STORE ( n n n -- ) {: value:n address:n size:n :}
    STORE-COUNT @ STORE-MAX >= if E-LIMIT throw then
-   STORE-COUNT @ STORE-ROW {: row:ptr :}
+   STORE-COUNT @ STORE-ROW {: row:^ :}
    address row STORE.ADDRESS ! size row STORE.SIZE ! value row STORE.VALUE !
    1 STORE-COUNT +! ;
 
 : SCHEDULE ( n n n -- ) {: reg:n value:n delay:n :}
    PENDING-COUNT @ PENDING-MAX >= if E-LIMIT throw then
-   PENDING-COUNT @ PENDING-ROW {: row:ptr :}
+   PENDING-COUNT @ PENDING-ROW {: row:^ :}
    reg row PENDING.REG ! value >U32 row PENDING.VALUE ! delay 1+ row PENDING.LEFT !
    1 PENDING-COUNT +! ;
 
 \ A load landing on a register another write reached in the same cycle is
 \ undefined on the chip: E-CONFLICT.
-: LAND ( ptr n -- ) {: row:ptr :}
+: LAND ( ^n -- ) {: row:^ :}
    row PENDING.REG @ {: reg:n :}
    LANDED @ reg MASK-BIT and 0 <> WRITTEN-LAST @ reg MASK-BIT and 0 <> or if E-CONFLICT throw then
    LANDED @ reg MASK-BIT or LANDED !
@@ -148,11 +148,11 @@ variable F-IDLE
 : SETTLE ( -- )
    0 LANDED ! 0 SCAN !
    begin SCAN @ PENDING-COUNT @ < while
-      SCAN @ PENDING-ROW {: row:ptr :}
+      SCAN @ PENDING-ROW {: row:^ :}
       row PENDING.LEFT @ 1- dup row PENDING.LEFT !
       0= if
          row LAND
-         PENDING-COUNT @ 1- PENDING-ROW {: last:ptr :}
+         PENDING-COUNT @ 1- PENDING-ROW {: last:^ :}
          last PENDING.REG @ row PENDING.REG ! last PENDING.VALUE @ row PENDING.VALUE !
          last PENDING.LEFT @ row PENDING.LEFT !
          -1 PENDING-COUNT +!
@@ -160,21 +160,21 @@ variable F-IDLE
    repeat ;
 
 : LAND-COMMIT ( n -- ) {: idx:n :}
-   idx COMMIT-ROW {: row:ptr :}
+   idx COMMIT-ROW {: row:^ :}
    row COMMIT.REG @ {: reg:n :}
    WRITTEN-LAST @ reg MASK-BIT and 0 <> if E-CONFLICT throw then
    WRITTEN-LAST @ reg MASK-BIT or WRITTEN-LAST !
    row COMMIT.VALUE @ reg REG! ;
 
 : OVERLAP? ( n n -- bool ) {: a:n b:n :}
-   a STORE-ROW {: first:ptr :} b STORE-ROW {: second:ptr :}
+   a STORE-ROW {: first:^ :} b STORE-ROW {: second:^ :}
    first STORE.ADDRESS @ {: start:n :} start first STORE.SIZE @ + {: limit:n :}
    second STORE.ADDRESS @ {: other:n :} other second STORE.SIZE @ + {: other-limit:n :}
    start other-limit < other limit < and ;
 
 : LAND-STORE ( n -- ) {: idx:n :}
    idx 0 ?do idx i OVERLAP? if E-CONFLICT throw then loop
-   idx STORE-ROW {: row:ptr :}
+   idx STORE-ROW {: row:^ :}
    row STORE.SIZE @ 1 = if row STORE.VALUE @ row STORE.ADDRESS @ BYTE! else row STORE.VALUE @ row STORE.ADDRESS @ WORD! then ;
 
 \ Two writes on one register in one cycle, or overlapping stores, are undefined
@@ -359,7 +359,7 @@ variable F-IDLE
 
 : FETCH ( -- n )
    NEXT-WORD @ 0 < NEXT-WORD @ PROGRAM-WORDS @ >= or if E-FAULT throw then
-   PROGRAM @ {: base:ptr :}
+   PROGRAM @ {: base:^ :}
    base NEXT-WORD @ cells + @ >U32 1 NEXT-WORD +! ;
 
 : GATHER ( -- )
@@ -374,7 +374,7 @@ variable F-IDLE
 \ One cross path carries one register per cycle, though any number of units may read it.
 : CLAIM-CROSS ( -- )
    F-CROSS @ {: reg:n :}
-   reg 32 >= if CROSS-1X else CROSS-2X then {: path:ptr :}
+   reg 32 >= if CROSS-1X else CROSS-2X then {: path:^ :}
    path @ 0 >= path @ reg <> and if E-CONFLICT throw then
    reg path !
    CROSS-READS @ reg MASK-BIT or CROSS-READS ! ;
@@ -459,7 +459,7 @@ public
 
 \ Runs the program from its first word with B3 set to RETURN-ADDRESS until the
 \ program branches there and its delay slots have drained; returns the cycles used.
-: CALL ( ptr n n -- n ) {: words:ptr count:n :}
+: CALL ( ^n n -- n ) {: words:^ count:n :}
    count 0 <= if E-OPERAND throw then
    words PROGRAM ! count PROGRAM-WORDS ! 0 NEXT-WORD ! 0 CYCLES ! 0 BRANCH-PENDING ! 0 PENDING-COUNT !
    0 WRITTEN-LAST ! 0 RECENT ! 0 LANDED !

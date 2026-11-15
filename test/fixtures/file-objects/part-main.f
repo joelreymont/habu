@@ -4,9 +4,9 @@ package APP
 
 ENUM lay fresh valued ;ENUM
 TYPED-VARIABLE SLOT lay
-CAST: RAW ( ptr lay -- ptr n )
+CAST: RAW ( ^lay -- ^n )
 
-: L-GET ( ptr lay -- lay ) @ ;
+: L-GET ( ^lay -- lay ) @ ;
 
 public
 

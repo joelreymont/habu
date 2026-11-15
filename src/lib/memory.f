@@ -39,22 +39,22 @@ $1012 constant MEM-MAP-PRIVATE-ANON-FIXED   \ the engine's mmap treats $10 as MA
 
 \ Fresh storage gets its element type from the caller. The engine owns only
 \ the OS mapping and its pointer/error result.
-: MEM-ALLOC-PTR ( n -- ptr a )
+: MEM-ALLOC-PTR ( n -- ^a )
    map-anon 0<> if drop E-MEM-MAP throw then ;
 
-: MEM-ALLOC-BYTES ( n -- ptr u8 n ) {: bytes :}
+: MEM-ALLOC-BYTES ( n -- ^u8 n ) {: bytes :}
    bytes MEM-ALLOC-PTR bytes ;
 
-: MEM-ALLOC-CELLS ( count -- ptr a )
+: MEM-ALLOC-CELLS ( count -- ^a )
    MEM-CELLS>BYTES MEM-ALLOC-PTR ;
 
-: MEM-ALLOC-64K-BUFFERS ( n -- ptr u8 n )
+: MEM-ALLOC-64K-BUFFERS ( n -- ^u8 n )
    MEM-64K-BYTES MEM-ALLOC-BYTES ;
 
-: MEM-ALLOC-64K-SPAN ( n -- ptr u8 n )
+: MEM-ALLOC-64K-SPAN ( n -- ^u8 n )
    MEM-64K-SPAN-BYTES MEM-ALLOC-BYTES ;
 
-: MEM-ALLOC-64K ( -- ptr u8 n )
+: MEM-ALLOC-64K ( -- ^u8 n )
    1 MEM-ALLOC-64K-BUFFERS ;
 
 \ Package MEM states the raw MEM-ALLOC-* sizing as checked words over NUM roles:
@@ -105,7 +105,7 @@ CAST: BYTE-LEN>N ( NUM:byte-len -- n )
 
 $47 constant UNMAP-EXIT
 
-: RELEASE-RANGE ( ptr a n -- )
+: RELEASE-RANGE ( ^a n -- )
    munmap 0 < if
       s" memory: unmap failed" UNMAP-EXIT die
    then ;
@@ -123,22 +123,22 @@ public
    \ unreachable; a zero need is 0 buffers.
    64K-LEN NUM:DIV-BYTES-CEIL ;
 
-: ALLOC-BYTES ( NUM:alloc-byte-len -- ptr u8 NUM:alloc-byte-len )
+: ALLOC-BYTES ( NUM:alloc-byte-len -- ^u8 NUM:alloc-byte-len )
    dup ALLOC-BYTES>N MEM-ALLOC-PTR
    swap ;
-: ALLOC-CELLS ( NUM:alloc-cell-count -- ptr a )
+: ALLOC-CELLS ( NUM:alloc-cell-count -- ^a )
    ALLOC-CELLS>N cells MEM-ALLOC-PTR ;
 \ Takes the count ALLOC-CELLS took.
-: RELEASE-CELLS ( ptr a NUM:alloc-cell-count -- )
+: RELEASE-CELLS ( ^a NUM:alloc-cell-count -- )
    ALLOC-CELLS>N cells RELEASE-RANGE ;
-: ALLOC-64K ( -- ptr u8 NUM:alloc-byte-len )
+: ALLOC-64K ( -- ^u8 NUM:alloc-byte-len )
    64K-ALLOC-LEN ALLOC-BYTES ;
 
 \ Takes the exact extent ALLOC-BYTES gave.
-: RELEASE-BYTES ( ptr u8 NUM:alloc-byte-len -- )
+: RELEASE-BYTES ( ^u8 NUM:alloc-byte-len -- )
    ALLOC-BYTES>N RELEASE-RANGE ;
 
-: UNMAP ( ptr u8 NUM:byte-len -- )
+: UNMAP ( ^u8 NUM:byte-len -- )
    BYTE-LEN>N RELEASE-RANGE ;
 
 \ Callers name a raw size as the positive alloc role before the allocation
@@ -156,7 +156,7 @@ CAST: SPAN-ALLOC-LEN>N ( NUM:alloc-byte-len -- n )
 
 public
 
-: ALLOCATION>SPAN ( ptr u8 NUM:alloc-byte-len -- SPAN:span<u8> )
+: ALLOCATION>SPAN ( ^u8 NUM:alloc-byte-len -- SPAN:span<u8> )
    SPAN-ALLOC-LEN>N SPAN:MAKE ;
 
 : ALLOC-SPAN ( NUM:alloc-byte-len -- SPAN:span<u8> )
@@ -170,19 +170,19 @@ private
 \ A scope's header; the body follows FRAME-BYTES in, 16-aligned. extent is the
 \ pooled slot (<= POOL-MAX) or the mapping, and WB-LEAVE routes on it.
 STRUCTURE frame DERIVE addr
-   FIELD prev ptr u8
+   FIELD prev ^u8
    FIELD extent n
 ;STRUCTURE
 
 \ Only the first chunk's inner and cur are read: the innermost frame and the chunk of the
 \ innermost pooled slot. CHUNK-BYTES is a multiple of 16, so slot bodies stay 16-aligned.
 STRUCTURE chunk DERIVE addr
-   FIELD prev ptr u8
-   FIELD next ptr u8
+   FIELD prev ^u8
+   FIELD next ^u8
    FIELD extent n
    FIELD top n
-   FIELD inner ptr u8
-   FIELD cur ptr u8
+   FIELD inner ^u8
+   FIELD cur ^u8
 ;STRUCTURE
 
 \ The largest pooled slot, a 1024-byte body's: SPAN:FILL zeroes a slot byte by
@@ -194,37 +194,37 @@ STRUCTURE chunk DERIVE addr
 POOL-MAX CHUNK-BYTES + STACK-ABI:PAGE-BYTES 1 - +
    STACK-ABI:PAGE-BYTES negate and constant FIRST-EXTENT
 
-CAST: >HEAD ( ptr u8 -- ptr ptr chunk )
-CAST: FRAME>BYTES ( ptr frame -- ptr u8 )
-CAST: >FRAME ( ptr u8 -- ptr frame )
-CAST: CHUNK>BYTES ( ptr chunk -- ptr u8 )
-CAST: >CHUNK ( ptr u8 -- ptr chunk )
+CAST: >HEAD ( ^u8 -- ^^chunk )
+CAST: FRAME>BYTES ( ^frame -- ^u8 )
+CAST: >FRAME ( ^u8 -- ^frame )
+CAST: CHUNK>BYTES ( ^chunk -- ^u8 )
+CAST: >CHUNK ( ^u8 -- ^chunk )
 
 \ The head cell of the DATA region at `base`: its first chunk, null until its
 \ first scope.
-: REGION-HEAD ( ptr u8 -- ptr ptr chunk )
+: REGION-HEAD ( ^u8 -- ^^chunk )
    MEM-ABI:HEAD-OFF + >HEAD ;
 
-: HEAD ( -- ptr ptr chunk )
+: HEAD ( -- ^^chunk )
    data-base BYTE-VIEW REGION-HEAD ;
 
-: NEW-FRAME ( n -- ptr frame )
+: NEW-FRAME ( n -- ^frame )
    MEM-ALLOC-PTR >FRAME ;
 
-: FRAME>BODY ( ptr frame -- ptr u8 )
+: FRAME>BODY ( ^frame -- ^u8 )
    FRAME>BYTES FRAME-BYTES + ;
 
 \ An empty chunk of `extent` bytes after `prev`; a fresh mapping reads 0, so
 \ its next, inner and cur are null.
-: NEW-CHUNK ( n ptr u8 -- ptr chunk )
-   {: extent:n prev:ptr :}
+: NEW-CHUNK ( n ^u8 -- ^chunk )
+   {: extent:n prev:^ :}
    extent MEM-ALLOC-PTR >CHUNK {: c :}
    prev c CHUNK-PREV !
    extent c CHUNK-EXTENT !
    CHUNK-BYTES c CHUNK-TOP !
    c ;
 
-: FIRST-CHUNK ( -- ptr chunk )
+: FIRST-CHUNK ( -- ^chunk )
    HEAD @ {: first :}
    first NULL-PTR = 0= if first exit then
    FIRST-EXTENT NULL-PTR NEW-CHUNK {: fresh :}
@@ -234,7 +234,7 @@ CAST: >CHUNK ( ptr u8 -- ptr chunk )
 
 \ The chunk after `cur`: the kept one, empty under LIFO, else a new one twice
 \ `cur`'s extent.
-: NEXT-CHUNK ( ptr chunk -- ptr chunk )
+: NEXT-CHUNK ( ^chunk -- ^chunk )
    {: cur :}
    cur CHUNK-NEXT @ >CHUNK {: next :}
    next NULL-PTR = 0= if next exit then
@@ -244,7 +244,7 @@ CAST: >CHUNK ( ptr u8 -- ptr chunk )
 
 \ Takes the next `slot` bytes in the chunks of the region whose first chunk is
 \ `first`.
-: SLOT ( ptr chunk n -- ptr frame )
+: SLOT ( ^chunk n -- ^frame )
    {: first slot:n :}
    first CHUNK-CUR @ >CHUNK
    dup CHUNK-TOP @ slot + over CHUNK-EXTENT @ > if NEXT-CHUNK then {: cur :}
@@ -259,13 +259,13 @@ CAST: >CHUNK ( ptr u8 -- ptr chunk )
 
 \ A scope links only once its storage is taken, so a refused mapping links
 \ nothing.
-: PUSH-FRAME ( ptr frame n ptr chunk -- )
+: PUSH-FRAME ( ^frame n ^chunk -- )
    {: extent:n first :}
    first CHUNK-INNER @ over FRAME-PREV !
    extent over FRAME-EXTENT !
    FRAME>BYTES first CHUNK-INNER ! ;
 
-: WB-ENTER ( NUM:alloc-byte-len -- ptr u8 NUM:alloc-byte-len )
+: WB-ENTER ( NUM:alloc-byte-len -- ^u8 NUM:alloc-byte-len )
    dup SCOPE-EXTENT {: extent:n :}
    FIRST-CHUNK {: first :}
    extent POOL-MAX > if
@@ -293,18 +293,18 @@ CAST: >CHUNK ( ptr u8 -- ptr chunk )
       cur CHUNK-PREV @ first CHUNK-CUR !
    then ;
 
-: WB-BODY ( R ptr u8 NUM:alloc-byte-len [ R ptr u8 NUM:alloc-byte-len -- S ] -- S )
+: WB-BODY ( R ^u8 NUM:alloc-byte-len [ R ^u8 NUM:alloc-byte-len -- S ] -- S )
    execute ;
 
 public
 
-: WITH-BYTES ( R NUM:alloc-byte-len [ R ptr u8 NUM:alloc-byte-len -- S ] -- S )
+: WITH-BYTES ( R NUM:alloc-byte-len [ R ^u8 NUM:alloc-byte-len -- S ] -- S )
    {: body :}
    WB-ENTER body [: WB-BODY ;] [: WB-LEAVE ;] finally ;
 
 \ Unmaps the scope chunks of the DATA region at `base`, which has no scope
 \ open, after clearing its head cell.
-: RELEASE-SCOPES ( ptr u8 -- )
+: RELEASE-SCOPES ( ^u8 -- )
    REGION-HEAD {: head :}
    head @ CHUNK>BYTES
    NULL-PTR head !
@@ -320,7 +320,7 @@ private
 
 \ The address a raw mmap returned, as the byte pointer of the mapping the
 \ word below just made; the only place in this file a bare address becomes a pointer.
-CAST: MAPPED>PTR ( n -- ptr u8 )
+CAST: MAPPED>PTR ( n -- ^u8 )
 
 : GUARDED-SPAN-BYTES ( n -- n ) {: cap:n :}
    cap STACK-ABI:PAGE-BYTES 3 * + ;
@@ -341,7 +341,7 @@ public
 \ release below unmaps exactly that. A release computed from the span would
 \ reach past its end into whatever the kernel mapped next (a task's DATA
 \ region).
-: ALLOC-GUARDED ( n -- ptr u8 n ) {: cap:n :}
+: ALLOC-GUARDED ( n -- ^u8 n ) {: cap:n :}
    cap GUARDED-SPAN-BYTES {: span-bytes:n :}
    MEM-ADDR-ANY span-bytes MEM-PROT-NONE MEM-MAP-PRIVATE-ANON MEM-ANON-FD MEM-OFF-ZERO mmap {: span:n :}
    span 0 < if E-MEM-MAP throw then
@@ -360,6 +360,6 @@ public
 
 \ Release a guarded stack: exactly the extent ALLOC-GUARDED kept, the
 \ capacity and its two guard pages.
-: RELEASE-GUARDED ( ptr u8 n -- ) {: base:ptr cap:n :}
+: RELEASE-GUARDED ( ^u8 n -- ) {: base:^ cap:n :}
    base STACK-ABI:PAGE-BYTES - cap STACK-ABI:PAGE-BYTES 2 * + munmap 0 <> if E-MEM-UNMAP throw then ;
 ;package

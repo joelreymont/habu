@@ -10,8 +10,8 @@ package REQUEST-TURN
 private
 using BROWSER-EVENT
 
-CAST: >BYTES ( n -- ptr u8 )
-CAST: BYTES>N ( ptr u8 -- n )
+CAST: >BYTES ( n -- ^u8 )
+CAST: BYTES>N ( ^u8 -- n )
 
 128 BUFFER: REQ
 128 BUFFER: REQ2
@@ -44,8 +44,8 @@ variable TEXT-U
 : REQ-CELL ( n -- )
    8 0 do dup $FF and REQ-C 8 rshift loop drop ;
 
-: REQ+ ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: REQ+ ( ^u8 n -- )
+   {: a:^ u:n :}
    u 0 ?do a i + c@ REQ-C loop ;
 
 : BOM ( -- )
@@ -55,8 +55,8 @@ variable TEXT-U
    {: id:n :}
    7 REQ BYTES>N REQ-U @ id RECORD ;
 
-: IS? ( n n ptr u8 n -- bool )
-   {: at:n u:n t:ptr tu:n :}
+: IS? ( n n ^u8 n -- bool )
+   {: at:n u:n t:^ tu:n :}
    u tu <> if false exit then
    tu 0 ?do at i + >BYTES c@ t i + c@ <> if false unloop exit then loop
    true ;
@@ -76,7 +76,7 @@ variable TEXT-U
    at u s" trap" IS? if SINK exit then
    at u s" throw" IS? if $20000000000001 REQUEST 94 throw then
    at u s" fetch throw" IS? if
-      s" /state" {: path:ptr len:n :}
+      s" /state" {: path:^ len:n :}
       1 path BYTES>N len 0 RECORD 94 throw
    then
    at u s" short header" IS? if 7 REQ BYTES>N 15 $20000000000001 RECORD exit then
@@ -117,13 +117,13 @@ variable TEXT-U
       4 REQ BYTES>N REQ-U @ 6 RECORD exit
    then
    at u s" legacy fetch" IS? if
-      s" /state" {: path:ptr len:n :}
+      s" /state" {: path:^ len:n :}
       1 path BYTES>N len 0 RECORD exit
    then
    at u s" legacy two" IS? if
       0 REQ-U ! s" /state" REQ+ 0 REQ-C $FF REQ-C
       4 REQ BYTES>N REQ-U @ 6 RECORD
-      s" /state" {: path:ptr len:n :}
+      s" /state" {: path:^ len:n :}
       1 path BYTES>N len 0 RECORD exit
    then
    at u s" two" IS? if
@@ -139,7 +139,7 @@ variable TEXT-U
    at u s" interleaved" IS? if
       REQ-U @ 0 ?do REQ i + c@ REQ2 i + c! loop
       7 REQ2 BYTES>N REQ-U @ $20000000000001 RECORD
-      s" /legacy*" {: span:ptr len:n :}
+      s" /legacy*" {: span:^ len:n :}
       4 span BYTES>N len 7 RECORD
       0 REQ-U ! 3 REQ-CELL 9 REQ-CELL
       s" GET" REQ+ s" /projects" REQ+

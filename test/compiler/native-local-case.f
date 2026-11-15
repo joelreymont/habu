@@ -19,10 +19,10 @@ variable ERR-U
 variable RC
 variable EXITED
 
-: OUT$ ( -- ptr u8 n ) OUT OUT-U @ ;
-: ERR$ ( -- ptr u8 n ) ERR ERR-U @ ;
+: OUT$ ( -- ^u8 n ) OUT OUT-U @ ;
+: ERR$ ( -- ^u8 n ) ERR ERR-U @ ;
 
-: STORE ( len len PROCESS:ending ptr u8 n -- ) {: outu:len erru:len oc src:ptr u:n :}
+: STORE ( len len PROCESS:ending ^u8 n -- ) {: outu:len erru:len oc src:^ u:n :}
    erru LEN>N ERR-U !  outu LEN>N OUT-U !
    oc MATCH PROCESS:ending
       exited OF RC ! true EXITED ! ENDOF
@@ -30,7 +30,7 @@ variable EXITED
       timeout OF src u OUT$ ERR$ T-TIMED-OUT ENDOF
    ;MATCH ;
 
-: RUN-SOURCE ( ptr u8 n -- ) {: src:ptr u:n :}
+: RUN-SOURCE ( ^u8 n -- ) {: src:^ u:n :}
    src u OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN src u STORE ;
 
 : EXPECT-RC ( n -- ) {: want:n :}
@@ -38,17 +38,17 @@ variable EXITED
    EXITED @ TTRUE
    RC @ want T= ;
 
-: EXPECT-OUT ( ptr u8 n -- )
+: EXPECT-OUT ( ^u8 n -- )
    0 EXPECT-RC
    ERR-U @ 0 T=
    OUT$ STR= TTRUE ;
 
-: SCOPE-SOURCE$ ( -- ptr u8 n )
+: SCOPE-SOURCE$ ( -- ^u8 n )
    S\" package LC-SUBJECT\npublic\n: LATEST ( n n -- n ) {: item:n ITEM:n :} ITEM ;\n: EARLIER ( n n -- n ) {: item:n ITEM:n :} item ;\n: REPEATED ( n n -- n ) {: v:n v:n :} v ;\n: SHADOW ( n -- n ) {: value:n :} value 0 > if false {: value:bool :} value if 1 else 2 then else 0 then value + ;\n: DISTINCT ( n -- n ) {: value:n :} value 0 > if 100 {: VALUE:n :} VALUE value + else 0 then ;\n;package\n3 9 LC-SUBJECT:LATEST . 3 9 LC-SUBJECT:EARLIER . 3 9 LC-SUBJECT:REPEATED . 5 LC-SUBJECT:SHADOW . -1 LC-SUBJECT:SHADOW . 5 LC-SUBJECT:DISTINCT .\n" ;
 
 \ A name whose scope has closed, a name spelled like a control word, and names
 \ that are punctuation: the second half of the scope question.
-: CONTROL-SOURCE$ ( -- ptr u8 n )
+: CONTROL-SOURCE$ ( -- ^u8 n )
    S\" package LC-SUBJECT\npublic\n99 constant V\n: AFTER ( n -- n ) dup 0 > if {: v:n :} v else drop 0 then V + ;\n: INNER-V ( n -- n ) dup 0 > if {: v:n :} V else drop 0 then ;\n: TAIL ( n -- n ) dup 0 > if {: endof:n :} endof 2 * else drop 0 then ;\n: LOOPTAIL ( n -- n ) {: k:n :} 0 2 0 ?do k i + {: again:n :} again + loop ;\n: PUNCT ( n n -- n ) {: [v:n {v:n :} [v {v - ;\n;package\n5 LC-SUBJECT:AFTER . -1 LC-SUBJECT:AFTER . 5 LC-SUBJECT:INNER-V . 5 LC-SUBJECT:TAIL . -1 LC-SUBJECT:TAIL . 5 LC-SUBJECT:LOOPTAIL . 3 9 LC-SUBJECT:PUNCT .\n" ;
 
 : SCOPE-CASE ( -- )

@@ -81,7 +81,7 @@ DEFTYPE COL
 
 SUMTYPE connect-result
    VARIANT connected connection ;VARIANT
-   VARIANT refused ptr u8 n ;VARIANT
+   VARIANT refused ^u8 n ;VARIANT
 ;SUMTYPE
 
 \ The failure spans are the SQLSTATE and libpq's whole report in the result's
@@ -89,7 +89,7 @@ SUMTYPE connect-result
 SUMTYPE outcome
    VARIANT ok ;VARIANT
    VARIANT rows ;VARIANT
-   VARIANT failed ptr u8 n ptr u8 n ;VARIANT
+   VARIANT failed ^u8 n ^u8 n ;VARIANT
 ;SUMTYPE
 
 \ A dispatcher registers the waiting descriptor and event mask with its own
@@ -98,7 +98,7 @@ SUMTYPE progress
    VARIANT waiting fd n ;VARIANT
    VARIANT connected connection ;VARIANT
    VARIANT completed PG:result ;VARIANT
-   VARIANT refused ptr u8 n ;VARIANT
+   VARIANT refused ^u8 n ;VARIANT
 ;SUMTYPE
 
 private
@@ -151,26 +151,26 @@ SCRATCH-VARIABLE CONN-CAPACITY
 SCRATCH-VARIABLE RESULT-CAPACITY
 SCRATCH-VARIABLE CONFIGURED                \ 1 once CONFIGURE published the registry
 
-DYNAMIC-BUFFER CONN-PG ptr u8
+DYNAMIC-BUFFER CONN-PG ^u8
 DYNAMIC-BUFFER CONN-GEN n
 DYNAMIC-BUFFER CONN-LIVE n
 DYNAMIC-BUFFER CONN-OWNER n
 DYNAMIC-BUFFER CONN-TX n
 DYNAMIC-BUFFER CONN-PARAM-N n
-DYNAMIC-BUFFER CONN-ARENA ptr u8
+DYNAMIC-BUFFER CONN-ARENA ^u8
 DYNAMIC-BUFFER CONN-ARENA-CAP n
 DYNAMIC-BUFFER CONN-ARENA-U n
-DYNAMIC-BUFFER CONN-LAST-RESULT ptr u8
+DYNAMIC-BUFFER CONN-LAST-RESULT ^u8
 DYNAMIC-BUFFER CONN-PENDING n
 DYNAMIC-BUFFER CONN-CONNECTING n
-DYNAMIC-BUFFER CONN-PARAM-OFFS ptr n
-DYNAMIC-BUFFER CONN-PARAM-LENS ptr n
+DYNAMIC-BUFFER CONN-PARAM-OFFS ^n
+DYNAMIC-BUFFER CONN-PARAM-LENS ^n
 DYNAMIC-BUFFER CONN-PARAM-OFFS-CAP n
 DYNAMIC-BUFFER CONN-VERB n
 DYNAMIC-BUFFER CONN-BOUND n
-DYNAMIC-BUFFER CONN-COPY-ROW ptr u8
+DYNAMIC-BUFFER CONN-COPY-ROW ^u8
 
-DYNAMIC-BUFFER RES-PG ptr u8
+DYNAMIC-BUFFER RES-PG ^u8
 DYNAMIC-BUFFER RES-GEN n
 DYNAMIC-BUFFER RES-LIVE n
 DYNAMIC-BUFFER RES-OWNER n
@@ -205,67 +205,67 @@ TASK:+USER REFUSED-HOLD n
 : RESULT-CAP ( -- n ) RESULT-CAPACITY @ ;
 
 
-\ Every pointer is `ptr u8`, passed back or read at the width libpq states.
+\ Every pointer is `^u8`, passed back or read at the width libpq states.
 VERSIONED-LIBRARY pq 5
 
-FUNCTION: LIB-CONNECT-START PQconnectStart ( ptr u8 -- ptr u8 ) ;FUNCTION
-FUNCTION: LIB-CONNINFO-PARSE PQconninfoParse ( ptr u8 ptr u8 -- ptr u8 ) ;FUNCTION
-FUNCTION: LIB-CONNINFO-FREE PQconninfoFree ( ptr u8 -- ) ;FUNCTION
-FUNCTION: LIB-CONNECT-POLL PQconnectPoll ( ptr u8 -- i32 ) ;FUNCTION
-FUNCTION: LIB-STATUS PQstatus ( ptr u8 -- i32 ) ;FUNCTION
-FUNCTION: LIB-TRANSACTION-STATUS PQtransactionStatus ( ptr u8 -- i32 ) ;FUNCTION
-FUNCTION: LIB-SET-NONBLOCKING PQsetnonblocking ( ptr u8 n -- i32 ) ;FUNCTION
-FUNCTION: LIB-SOCKET PQsocket ( ptr u8 -- i32 ) ;FUNCTION
-FUNCTION: LIB-ERROR-MESSAGE PQerrorMessage ( ptr u8 -- ptr u8 ) ;FUNCTION
-FUNCTION: LIB-FINISH PQfinish ( ptr u8 -- ) ;FUNCTION
+FUNCTION: LIB-CONNECT-START PQconnectStart ( ^u8 -- ^u8 ) ;FUNCTION
+FUNCTION: LIB-CONNINFO-PARSE PQconninfoParse ( ^u8 ^u8 -- ^u8 ) ;FUNCTION
+FUNCTION: LIB-CONNINFO-FREE PQconninfoFree ( ^u8 -- ) ;FUNCTION
+FUNCTION: LIB-CONNECT-POLL PQconnectPoll ( ^u8 -- i32 ) ;FUNCTION
+FUNCTION: LIB-STATUS PQstatus ( ^u8 -- i32 ) ;FUNCTION
+FUNCTION: LIB-TRANSACTION-STATUS PQtransactionStatus ( ^u8 -- i32 ) ;FUNCTION
+FUNCTION: LIB-SET-NONBLOCKING PQsetnonblocking ( ^u8 n -- i32 ) ;FUNCTION
+FUNCTION: LIB-SOCKET PQsocket ( ^u8 -- i32 ) ;FUNCTION
+FUNCTION: LIB-ERROR-MESSAGE PQerrorMessage ( ^u8 -- ^u8 ) ;FUNCTION
+FUNCTION: LIB-FINISH PQfinish ( ^u8 -- ) ;FUNCTION
 FUNCTION: LIB-SET-NOTICE-PROCESSOR PQsetNoticeProcessor
-   ( ptr u8 n ptr u8 -- n ) ;FUNCTION
-FUNCTION: LIB-CANCEL-CREATE PQcancelCreate ( ptr u8 -- ptr u8 ) ;FUNCTION
-FUNCTION: LIB-CANCEL-BLOCKING PQcancelBlocking ( ptr u8 -- i32 ) ;FUNCTION
-FUNCTION: LIB-CANCEL-FINISH PQcancelFinish ( ptr u8 -- ) ;FUNCTION
-FUNCTION: LIB-SEND-QUERY PQsendQuery ( ptr u8 ptr u8 -- i32 ) ;FUNCTION
+   ( ^u8 n ^u8 -- n ) ;FUNCTION
+FUNCTION: LIB-CANCEL-CREATE PQcancelCreate ( ^u8 -- ^u8 ) ;FUNCTION
+FUNCTION: LIB-CANCEL-BLOCKING PQcancelBlocking ( ^u8 -- i32 ) ;FUNCTION
+FUNCTION: LIB-CANCEL-FINISH PQcancelFinish ( ^u8 -- ) ;FUNCTION
+FUNCTION: LIB-SEND-QUERY PQsendQuery ( ^u8 ^u8 -- i32 ) ;FUNCTION
 FUNCTION: LIB-SEND-QUERY-PARAMS PQsendQueryParams
-   ( ptr u8 ptr u8 n ptr u8 ptr u8 ptr u8 ptr u8 n -- i32 ) ;FUNCTION
+   ( ^u8 ^u8 n ^u8 ^u8 ^u8 ^u8 n -- i32 ) ;FUNCTION
 FUNCTION: LIB-SEND-PREPARE PQsendPrepare
-   ( ptr u8 ptr u8 ptr u8 n ptr u8 -- i32 ) ;FUNCTION
+   ( ^u8 ^u8 ^u8 n ^u8 -- i32 ) ;FUNCTION
 FUNCTION: LIB-SEND-QUERY-PREPARED PQsendQueryPrepared
-   ( ptr u8 ptr u8 n ptr u8 ptr u8 ptr u8 n -- i32 ) ;FUNCTION
+   ( ^u8 ^u8 n ^u8 ^u8 ^u8 n -- i32 ) ;FUNCTION
 FUNCTION: LIB-SEND-DESCRIBE-PREPARED PQsendDescribePrepared
-   ( ptr u8 ptr u8 -- i32 ) ;FUNCTION
-FUNCTION: LIB-FLUSH PQflush ( ptr u8 -- i32 ) ;FUNCTION
-FUNCTION: LIB-CONSUME-INPUT PQconsumeInput ( ptr u8 -- i32 ) ;FUNCTION
-FUNCTION: LIB-IS-BUSY PQisBusy ( ptr u8 -- i32 ) ;FUNCTION
-FUNCTION: LIB-GET-RESULT PQgetResult ( ptr u8 -- ptr u8 ) ;FUNCTION
-FUNCTION: LIB-RESULT-STATUS PQresultStatus ( ptr u8 -- i32 ) ;FUNCTION
-FUNCTION: LIB-RESULT-ERROR-FIELD PQresultErrorField ( ptr u8 n -- ptr u8 ) ;FUNCTION
-FUNCTION: LIB-RESULT-ERROR-MESSAGE PQresultErrorMessage ( ptr u8 -- ptr u8 ) ;FUNCTION
-FUNCTION: LIB-NTUPLES PQntuples ( ptr u8 -- i32 ) ;FUNCTION
-FUNCTION: LIB-NFIELDS PQnfields ( ptr u8 -- i32 ) ;FUNCTION
-FUNCTION: LIB-FNAME PQfname ( ptr u8 n -- ptr u8 ) ;FUNCTION
-FUNCTION: LIB-FTYPE PQftype ( ptr u8 n -- u32 ) ;FUNCTION
-FUNCTION: LIB-FTABLE PQftable ( ptr u8 n -- u32 ) ;FUNCTION
-FUNCTION: LIB-FTABLECOL PQftablecol ( ptr u8 n -- i32 ) ;FUNCTION
-FUNCTION: LIB-GETVALUE PQgetvalue ( ptr u8 n n -- ptr u8 ) ;FUNCTION
-FUNCTION: LIB-GETISNULL PQgetisnull ( ptr u8 n n -- i32 ) ;FUNCTION
-FUNCTION: LIB-GETLENGTH PQgetlength ( ptr u8 n n -- i32 ) ;FUNCTION
-FUNCTION: LIB-CLEAR PQclear ( ptr u8 -- ) ;FUNCTION
-FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
-FUNCTION: LIB-NOTIFIES PQnotifies ( ptr u8 -- ptr u8 ) ;FUNCTION
-FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
-FUNCTION: LIB-PUT-COPY-END PQputCopyEnd ( ptr u8 ptr u8 -- i32 ) ;FUNCTION
-FUNCTION: LIB-GET-COPY-DATA PQgetCopyData ( ptr u8 ptr u8 n -- i32 ) ;FUNCTION
+   ( ^u8 ^u8 -- i32 ) ;FUNCTION
+FUNCTION: LIB-FLUSH PQflush ( ^u8 -- i32 ) ;FUNCTION
+FUNCTION: LIB-CONSUME-INPUT PQconsumeInput ( ^u8 -- i32 ) ;FUNCTION
+FUNCTION: LIB-IS-BUSY PQisBusy ( ^u8 -- i32 ) ;FUNCTION
+FUNCTION: LIB-GET-RESULT PQgetResult ( ^u8 -- ^u8 ) ;FUNCTION
+FUNCTION: LIB-RESULT-STATUS PQresultStatus ( ^u8 -- i32 ) ;FUNCTION
+FUNCTION: LIB-RESULT-ERROR-FIELD PQresultErrorField ( ^u8 n -- ^u8 ) ;FUNCTION
+FUNCTION: LIB-RESULT-ERROR-MESSAGE PQresultErrorMessage ( ^u8 -- ^u8 ) ;FUNCTION
+FUNCTION: LIB-NTUPLES PQntuples ( ^u8 -- i32 ) ;FUNCTION
+FUNCTION: LIB-NFIELDS PQnfields ( ^u8 -- i32 ) ;FUNCTION
+FUNCTION: LIB-FNAME PQfname ( ^u8 n -- ^u8 ) ;FUNCTION
+FUNCTION: LIB-FTYPE PQftype ( ^u8 n -- u32 ) ;FUNCTION
+FUNCTION: LIB-FTABLE PQftable ( ^u8 n -- u32 ) ;FUNCTION
+FUNCTION: LIB-FTABLECOL PQftablecol ( ^u8 n -- i32 ) ;FUNCTION
+FUNCTION: LIB-GETVALUE PQgetvalue ( ^u8 n n -- ^u8 ) ;FUNCTION
+FUNCTION: LIB-GETISNULL PQgetisnull ( ^u8 n n -- i32 ) ;FUNCTION
+FUNCTION: LIB-GETLENGTH PQgetlength ( ^u8 n n -- i32 ) ;FUNCTION
+FUNCTION: LIB-CLEAR PQclear ( ^u8 -- ) ;FUNCTION
+FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ^u8 -- ^u8 ) ;FUNCTION
+FUNCTION: LIB-NOTIFIES PQnotifies ( ^u8 -- ^u8 ) ;FUNCTION
+FUNCTION: LIB-FREEMEM PQfreemem ( ^u8 -- ) ;FUNCTION
+FUNCTION: LIB-PUT-COPY-END PQputCopyEnd ( ^u8 ^u8 -- i32 ) ;FUNCTION
+FUNCTION: LIB-GET-COPY-DATA PQgetCopyData ( ^u8 ^u8 n -- i32 ) ;FUNCTION
 
 
-: NULL-ARG ( -- ptr u8 )
+: NULL-ARG ( -- ^u8 )
    NULL-PTR BYTE-VIEW ;
 
 
-: NULL-ADDR? ( ptr u8 -- bool ) {: p :}
+: NULL-ADDR? ( ^u8 -- bool ) {: p :}
    p FFI:>CELL 0= ;
 
 
 \ libpq gives its strings no extent: each ends at its NUL.
-: CSTR$ ( ptr u8 -- ptr u8 n )
+: CSTR$ ( ^u8 -- ^u8 n )
    dup ZLEN ;
 
 
@@ -275,36 +275,36 @@ FUNCTION: LIB-GET-COPY-DATA PQgetCopyData ( ptr u8 ptr u8 n -- i32 ) ;FUNCTION
    slot CONN-CAP >= if E-HANDLE throw then ;
 
 
-: CONN-PG-CELL ( n -- ptr ptr u8 ) {: slot:n :}
+: CONN-PG-CELL ( n -- ^^u8 ) {: slot:n :}
    slot CONN-CHECK
    slot CONN-PG ;
 
 
-: CONN-PG@ ( n -- ptr u8 )   CONN-PG-CELL @ ;
-: CONN-PG! ( ptr u8 n -- ) {: p slot:n :}   p slot CONN-PG-CELL ! ;
+: CONN-PG@ ( n -- ^u8 )   CONN-PG-CELL @ ;
+: CONN-PG! ( ^u8 n -- ) {: p slot:n :}   p slot CONN-PG-CELL ! ;
 
-: ARENA-CELL ( n -- ptr ptr u8 ) {: slot:n :}
+: ARENA-CELL ( n -- ^^u8 ) {: slot:n :}
    slot CONN-CHECK
    slot CONN-ARENA ;
 
-: PARAM-OFFS-CELL ( n -- ptr ptr n ) {: slot:n :}
+: PARAM-OFFS-CELL ( n -- ^^n ) {: slot:n :}
    slot CONN-CHECK
    slot CONN-PARAM-OFFS ;
 
-: PARAM-LENS-CELL ( n -- ptr ptr n )
+: PARAM-LENS-CELL ( n -- ^^n )
    {: slot:n :}
    slot CONN-CHECK
    slot CONN-PARAM-LENS ;
 
-: DRAIN-LAST-CELL ( n -- ptr ptr u8 ) {: slot:n :}
+: DRAIN-LAST-CELL ( n -- ^^u8 ) {: slot:n :}
    slot CONN-CHECK
    slot CONN-LAST-RESULT ;
 
-: DRAIN-LAST@ ( n -- ptr u8 )   DRAIN-LAST-CELL @ ;
-: DRAIN-LAST! ( ptr u8 n -- ) {: p slot:n :}   p slot DRAIN-LAST-CELL ! ;
+: DRAIN-LAST@ ( n -- ^u8 )   DRAIN-LAST-CELL @ ;
+: DRAIN-LAST! ( ^u8 n -- ) {: p slot:n :}   p slot DRAIN-LAST-CELL ! ;
 
 \ PQgetCopyData's char** out-parameter: the row libpq allocated.
-: COPY-ROW-CELL ( n -- ptr ptr u8 ) {: slot:n :}
+: COPY-ROW-CELL ( n -- ^^u8 ) {: slot:n :}
    slot CONN-CHECK
    slot CONN-COPY-ROW ;
 
@@ -317,19 +317,19 @@ FUNCTION: LIB-GET-COPY-DATA PQgetCopyData ( ptr u8 ptr u8 n -- i32 ) ;FUNCTION
    slot PENDING@ 0<> slot CONNECTING@ 0<> or if E-STATEMENT throw then ;
 
 
-: ARENA-BASE ( n -- ptr u8 )   ARENA-CELL @ ;
-: ARENA-BASE! ( ptr u8 n -- ) {: p slot:n :}   p slot ARENA-CELL ! ;
-: PARAM-OFFS ( n -- ptr n )   PARAM-OFFS-CELL @ ;
-: PARAM-OFFS! ( ptr n n -- ) {: p slot:n :}   p slot PARAM-OFFS-CELL ! ;
-: PARAM-LENS ( n -- ptr n )   PARAM-LENS-CELL @ ;
-: PARAM-LENS! ( ptr n n -- ) {: p slot:n :}   p slot PARAM-LENS-CELL ! ;
+: ARENA-BASE ( n -- ^u8 )   ARENA-CELL @ ;
+: ARENA-BASE! ( ^u8 n -- ) {: p slot:n :}   p slot ARENA-CELL ! ;
+: PARAM-OFFS ( n -- ^n )   PARAM-OFFS-CELL @ ;
+: PARAM-OFFS! ( ^n n -- ) {: p slot:n :}   p slot PARAM-OFFS-CELL ! ;
+: PARAM-LENS ( n -- ^n )   PARAM-LENS-CELL @ ;
+: PARAM-LENS! ( ^n n -- ) {: p slot:n :}   p slot PARAM-LENS-CELL ! ;
 
 \ The generation publishes the slot's owner: written with release after the
 \ owner and read with acquire before it, so a reader that sees a generation
 \ sees the owner stored with it.
 : CONN-GEN@ ( n -- n ) {: slot:n :}   slot CONN-CHECK slot CONN-GEN atomic@ ;
 : CONN-GEN! ( n n -- ) {: v:n slot:n :}   slot CONN-CHECK v slot CONN-GEN atomic! ;
-: CONN-LIVE-CELL ( n -- ptr n ) {: slot:n :}   slot CONN-CHECK slot CONN-LIVE ;
+: CONN-LIVE-CELL ( n -- ^n ) {: slot:n :}   slot CONN-CHECK slot CONN-LIVE ;
 : CONN-LIVE@ ( n -- n )   CONN-LIVE-CELL atomic@ ;
 : CONN-LIVE! ( n n -- ) {: v:n slot:n :}   v slot CONN-LIVE-CELL atomic! ;
 : CONN-OWNER@ ( n -- n ) {: slot:n :}   slot CONN-CHECK slot CONN-OWNER @ ;
@@ -347,7 +347,7 @@ FUNCTION: LIB-GET-COPY-DATA PQgetCopyData ( ptr u8 ptr u8 n -- i32 ) ;FUNCTION
 : BOUND@ ( n -- n ) {: slot:n :}   slot CONN-CHECK slot CONN-BOUND @ ;
 : BOUND! ( n n -- ) {: v:n slot:n :}   slot CONN-CHECK v slot CONN-BOUND ! ;
 
-: VERB-BUF ( n -- ptr u8 ) {: slot:n :}   slot CONN-CHECK 0 CONN-VERB BYTE-VIEW slot VERB-CAP * + ;
+: VERB-BUF ( n -- ^u8 ) {: slot:n :}   slot CONN-CHECK 0 CONN-VERB BYTE-VIEW slot VERB-CAP * + ;
 
 : PARAM-CHECK ( n n -- ) {: slot:n idx:n :}
    idx 0 < if E-CAPACITY throw then
@@ -382,17 +382,17 @@ FUNCTION: LIB-GET-COPY-DATA PQgetCopyData ( ptr u8 ptr u8 n -- i32 ) ;FUNCTION
    slot RESULT-CAP >= if E-HANDLE throw then ;
 
 
-: RES-PG-CELL ( n -- ptr ptr u8 ) {: slot:n :}
+: RES-PG-CELL ( n -- ^^u8 ) {: slot:n :}
    slot RES-CHECK
    slot RES-PG ;
 
 
-: RES-PG@ ( n -- ptr u8 )   RES-PG-CELL @ ;
-: RES-PG! ( ptr u8 n -- ) {: p slot:n :}   p slot RES-PG-CELL ! ;
+: RES-PG@ ( n -- ^u8 )   RES-PG-CELL @ ;
+: RES-PG! ( ^u8 n -- ) {: p slot:n :}   p slot RES-PG-CELL ! ;
 
 : RES-GEN@ ( n -- n ) {: slot:n :}   slot RES-CHECK slot RES-GEN @ ;
 : RES-GEN! ( n n -- ) {: v:n slot:n :}   slot RES-CHECK v slot RES-GEN ! ;
-: RES-LIVE-CELL ( n -- ptr n ) {: slot:n :}   slot RES-CHECK slot RES-LIVE ;
+: RES-LIVE-CELL ( n -- ^n ) {: slot:n :}   slot RES-CHECK slot RES-LIVE ;
 : RES-LIVE@ ( n -- n )   RES-LIVE-CELL atomic@ ;
 : RES-LIVE! ( n n -- ) {: v:n slot:n :}   v slot RES-LIVE-CELL atomic! ;
 : RES-OWNER@ ( n -- n ) {: slot:n :}   slot RES-CHECK slot RES-OWNER @ ;
@@ -405,11 +405,11 @@ FUNCTION: LIB-GET-COPY-DATA PQgetCopyData ( ptr u8 ptr u8 n -- i32 ) ;FUNCTION
 : RES-SCOPED! ( n n -- ) {: v:n slot:n :}   slot RES-CHECK v slot RES-SCOPED ! ;
 
 
-: ALLOC-ARENA ( n -- ptr u8 )
+: ALLOC-ARENA ( n -- ^u8 )
    MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop ;
 
 
-: RELEASE-ARENA ( ptr u8 n -- )
+: RELEASE-ARENA ( ^u8 n -- )
    MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
 
 
@@ -460,7 +460,7 @@ FUNCTION: LIB-GET-COPY-DATA PQgetCopyData ( ptr u8 ptr u8 n -- i32 ) ;FUNCTION
 
 
 \ Reserve first: an impossible length must fail without reading source bytes.
-: ARENA-CSTR ( ptr u8 n n -- n )
+: ARENA-CSTR ( ^u8 n n -- n )
    {: a u:n slot:n :}
    u 0 < if E-CAPACITY throw then
    u FFI:CSTR-ROOM {: room:n :}
@@ -471,7 +471,7 @@ FUNCTION: LIB-GET-COPY-DATA PQgetCopyData ( ptr u8 ptr u8 n -- i32 ) ;FUNCTION
    off ;
 
 
-: ARENA-BYTES ( ptr u8 n n -- n )
+: ARENA-BYTES ( ^u8 n n -- n )
    {: a u:n slot:n :}
    slot u ARENA-ENSURE
    slot ARENA-U@ {: off:n :}
@@ -527,10 +527,10 @@ FUNCTION: LIB-GET-COPY-DATA PQgetCopyData ( ptr u8 ptr u8 n -- i32 ) ;FUNCTION
    0 slot PARAM-OFFS-CAP! ;
 
 
-: PARAM-CELLS ( n -- ptr n )   MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS ;
+: PARAM-CELLS ( n -- ^n )   MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS ;
 
 \ catch's preserving shape: a mapping and its count in, a new one out.
-: SECOND-CELLS ( ptr n n -- ptr n n )   nip dup PARAM-CELLS swap ;
+: SECOND-CELLS ( ^n n -- ^n n )   nip dup PARAM-CELLS swap ;
 
 
 \ Offsets and lengths share one capacity. A failed second mapping releases
@@ -566,13 +566,13 @@ FUNCTION: LIB-GET-COPY-DATA PQgetCopyData ( ptr u8 ptr u8 n -- i32 ) ;FUNCTION
    idx 1 + slot PARAM-N! ;
 
 
-: ARENA-ARG ( n n -- ptr u8 )
+: ARENA-ARG ( n n -- ^u8 )
    {: slot:n off:n :}
    off NO-OFFSET = if NULL-ARG exit then
    slot ARENA-BASE off + ;
 
 
-: PARAM-PTR ( n n -- ptr u8 )
+: PARAM-PTR ( n n -- ^u8 )
    {: slot:n idx:n :}
    slot slot idx PARAM-OFF@ ARENA-ARG ;
 
@@ -769,7 +769,7 @@ FUNCTION: LIB-GET-COPY-DATA PQgetCopyData ( ptr u8 ptr u8 n -- i32 ) ;FUNCTION
 \ Cancel only an outstanding operation on this connection, before closing it.
 \ libpq 17+ preserves the connection's encryption and timeout options. Dispatch
 \ cannot undo a statement the server already completed.
-: DISPATCH-CANCEL ( ptr u8 -- ptr u8 )
+: DISPATCH-CANCEL ( ^u8 -- ^u8 )
    dup LIB-CANCEL-BLOCKING 0= if E-EXEC throw then ;
 
 
@@ -836,7 +836,7 @@ REGISTER-CHILD-RESET
    0 slot CONN-LIVE! ;
 
 
-: FILL-RES-SLOT ( ptr u8 n n -- n ) {: pg conn:n slot:n :}
+: FILL-RES-SLOT ( ^u8 n n -- n ) {: pg conn:n slot:n :}
    pg slot RES-PG!
    slot BUMP-RES-GEN
    TASK:SELF-N slot RES-OWNER!
@@ -901,13 +901,13 @@ REGISTER-CHILD-RESET
    slot CLOSE-SLOT drop ;
 
 
-: FIELD$ ( ptr u8 -- ptr u8 n ) {: p :}
+: FIELD$ ( ^u8 -- ^u8 n ) {: p :}
    p NULL-ADDR? if NULL-ARG 0 exit then
    p CSTR$ ;
 
 
-: -TRAILING-LF ( ptr u8 n -- ptr u8 n )
-   {: a:ptr u:n :}
+: -TRAILING-LF ( ^u8 n -- ^u8 n )
+   {: a:^ u:n :}
    u 0 > if a u 1- + c@ STR-LF = if a u 1- exit then then
    a u ;
 
@@ -917,13 +917,13 @@ REGISTER-CHILD-RESET
 $7FFFFFFF constant NOTICE-MAX
 
 
-: NOTICE-LEN ( ptr u8 -- n ) {: p :}
+: NOTICE-LEN ( ^u8 -- n ) {: p :}
    0 begin
       dup NOTICE-MAX < if p over + c@ 0<> else false then
    while 1 + repeat ;
 
 
-: NOTICE-DROPPED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: NOTICE-DROPPED? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" NOTICE:" STARTS-WITH?
    a u s" INFO:" STARTS-WITH? or
    a u s" DEBUG:" STARTS-WITH? or
@@ -932,31 +932,31 @@ $7FFFFFFF constant NOTICE-MAX
 
 \ libpq's PQnoticeProcessor ( void *arg, const char *message ): the message is
 \ libpq's for the call, and libpq calls this only inside a call a task makes.
-: NOTICE-LOG ( ptr u8 ptr u8 -- )
+: NOTICE-LOG ( ^u8 ^u8 -- )
    nip {: msg :}
    msg NULL-ADDR? if exit then
-   msg dup NOTICE-LEN -TRAILING-LF {: a:ptr u:n :}
+   msg dup NOTICE-LEN -TRAILING-LF {: a:^ u:n :}
    a u NOTICE-DROPPED? if exit then
    a u s" WARNING:" STARTS-WITH? if LOG:WARN else LOG:ERROR then
    s" pg" LOG:LINE  a u LOG:TEXT+  LOG:;LINE ;
 
-CALLBACK: NOTICE ( ptr u8 ptr u8 -- ) ;CALLBACK
+CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
 ' NOTICE-LOG NOTICE-BODY !
 
 
 \ PQresultErrorMessage ends with a newline, is empty for an empty query, and
 \ holds the connection's message for a result libpq made without the server.
-: REPORT$ ( ptr u8 -- ptr u8 n )
+: REPORT$ ( ^u8 -- ^u8 n )
    LIB-RESULT-ERROR-MESSAGE FIELD$ -TRAILING-LF ;
 
 
-: COPY-REFUSAL-Z ( -- ptr u8 n )   S\" COPY is not supported\z" ;
-: COPY-REFUSAL$ ( -- ptr u8 n )   COPY-REFUSAL-Z 1- ;
+: COPY-REFUSAL-Z ( -- ^u8 n )   S\" COPY is not supported\z" ;
+: COPY-REFUSAL$ ( -- ^u8 n )   COPY-REFUSAL-Z 1- ;
 
 
 \ A COPY_OUT result, kept for a COPY TO STDOUT (KEEP-RESULT), has no server
 \ report: its spans are feature_not_supported's SQLSTATE and COPY-REFUSAL$.
-: FAILED-SPANS ( ptr u8 -- ptr u8 n ptr u8 n ) {: res :}
+: FAILED-SPANS ( ^u8 -- ^u8 n ^u8 n ) {: res :}
    res LIB-RESULT-STATUS PGRES-COPY-OUT = if s" 0A000" COPY-REFUSAL$ exit then
    res PG-DIAG-SQLSTATE LIB-RESULT-ERROR-FIELD FIELD$
    res REPORT$ ;
@@ -1076,7 +1076,7 @@ CALLBACK: NOTICE ( ptr u8 ptr u8 -- ) ;CALLBACK
 
 \ A COPY_OUT result stays the query's last unless an error result follows it,
 \ so FAILED-SPANS' 0A000 and COPY-REFUSAL$ mean the server ran the whole query.
-: KEEP-RESULT ( ptr u8 n -- ) {: pg slot:n :}
+: KEEP-RESULT ( ^u8 n -- ) {: pg slot:n :}
    slot DRAIN-LAST@ {: previous :}
    previous NULL-ADDR? 0= if
       previous LIB-RESULT-STATUS PGRES-COPY-OUT =
@@ -1088,7 +1088,7 @@ CALLBACK: NOTICE ( ptr u8 ptr u8 -- ) ;CALLBACK
 
 \ PQputCopyEnd answers 1 sent or queued, -1 a hard error, 0 a full buffer that
 \ leaves libpq in COPY_IN to be ended again; the next poll flushes either way.
-: END-COPY-IN ( ptr u8 n -- n ) {: pg slot:n :}
+: END-COPY-IN ( ^u8 n -- n ) {: pg slot:n :}
    pg LIB-CLEAR
    slot CONN-PG@ COPY-REFUSAL-Z drop LIB-PUT-COPY-END 0 < if slot CONN-LOST then
    AIO:READABLE AIO:WRITABLE or ;
@@ -1114,7 +1114,7 @@ CALLBACK: NOTICE ( ptr u8 ptr u8 -- ) ;CALLBACK
    true ;
 
 
-: SKIP-COPY-OUT ( ptr u8 n -- n ) {: pg slot:n :}
+: SKIP-COPY-OUT ( ^u8 n -- n ) {: pg slot:n :}
    pg slot KEEP-RESULT
    slot SKIP-COPY-ROWS if 0 exit then
    AIO:READABLE ;
@@ -1122,7 +1122,7 @@ CALLBACK: NOTICE ( ptr u8 ptr u8 -- ) ;CALLBACK
 
 \ Events to wait for, or 0 to drain on. PQgetResult answers a new COPY result
 \ per call and never NULL until the copy ends, so a COPY status ends the copy.
-: DRAIN-STEP ( ptr u8 n -- n ) {: pg slot:n :}
+: DRAIN-STEP ( ^u8 n -- n ) {: pg slot:n :}
    pg LIB-RESULT-STATUS {: status:n :}
    status PGRES-COPY-IN = status PGRES-COPY-BOTH = or if pg slot END-COPY-IN exit then
    status PGRES-COPY-OUT = if pg slot SKIP-COPY-OUT exit then
@@ -1220,11 +1220,11 @@ CALLBACK: NOTICE ( ptr u8 ptr u8 -- ) ;CALLBACK
 
 
 \ libpq NUL-ends a notification's channel and payload.
-: NOTIFY-TEXT ( ptr u8 n -- ptr u8 n ) {: note idx:n :}
+: NOTIFY-TEXT ( ^u8 n -- ^u8 n ) {: note idx:n :}
    note idx ptr-field @ CSTR$ ;
 
 
-: HAND-NOTIFY ( ptr u8 [ ptr u8 n ptr u8 n -- ] -- )
+: HAND-NOTIFY ( ^u8 [ ^u8 n ^u8 n -- ] -- )
    {: note act :}
    [: note NOTIFY-RELNAME NOTIFY-TEXT
       note NOTIFY-EXTRA NOTIFY-TEXT act execute ;]
@@ -1241,7 +1241,7 @@ CALLBACK: NOTICE ( ptr u8 ptr u8 -- ) ;CALLBACK
 
 \ The cleanup frees what a throw from act left queued; after a whole pass
 \ libpq holds none, so it frees nothing.
-: DRAIN-NOTIFIES ( n [ ptr u8 n ptr u8 n -- ] -- bool )
+: DRAIN-NOTIFIES ( n [ ^u8 n ^u8 n -- ] -- bool )
    {: slot:n act :}
    [: false
       begin slot CONN-PG@ LIB-NOTIFIES dup NULL-ADDR? 0= while
@@ -1251,7 +1251,7 @@ CALLBACK: NOTICE ( ptr u8 ptr u8 -- ) ;CALLBACK
    [: slot FREE-NOTIFIES ;] finally ;
 
 
-: TAKE-NOTIFIES ( n [ ptr u8 n ptr u8 n -- ] -- bool )
+: TAKE-NOTIFIES ( n [ ^u8 n ^u8 n -- ] -- bool )
    {: slot:n act :}
    slot CONN-PG@ LIB-CONSUME-INPUT 0= if slot CONN-LOST then
    slot act DRAIN-NOTIFIES ;
@@ -1272,7 +1272,7 @@ CALLBACK: NOTICE ( ptr u8 ptr u8 -- ) ;CALLBACK
 
 \ Readable bytes need not hold a notification (a notice, a parameter status, a
 \ partial message), so the wait goes on until one arrives or the deadline.
-: NOTIFY-WAIT ( n n [ ptr u8 n ptr u8 n -- ] -- bool )
+: NOTIFY-WAIT ( n n [ ^u8 n ^u8 n -- ] -- bool )
    {: slot:n deadline:n act :}
    begin deadline LEFT-MS WAIT-MAX min dup 0 > while
       slot swap READABLE-WITHIN if
@@ -1295,7 +1295,7 @@ CALLBACK: NOTICE ( ptr u8 ptr u8 -- ) ;CALLBACK
    slot CONN-LOST ;
 
 
-: EXEC-START ( n ptr u8 n -- )
+: EXEC-START ( n ^u8 n -- )
    {: slot:n a u:n :}
    OP-START
    slot IDLE-CHECK
@@ -1311,7 +1311,7 @@ CALLBACK: NOTICE ( ptr u8 ptr u8 -- ) ;CALLBACK
    slot RESET-PARAMS ;
 
 
-: PREPARED-START ( n ptr u8 n -- )
+: PREPARED-START ( n ^u8 n -- )
    {: slot:n a u:n :}
    OP-START
    slot IDLE-CHECK
@@ -1328,7 +1328,7 @@ CALLBACK: NOTICE ( ptr u8 ptr u8 -- ) ;CALLBACK
 
 
 \ The empty name is the unnamed statement, which only DESCRIBE sends.
-: PREPARE-SEND ( n ptr u8 n ptr u8 n -- )
+: PREPARE-SEND ( n ^u8 n ^u8 n -- )
    {: slot:n na nu:n sa su:n :}
    OP-START
    slot IDLE-CHECK
@@ -1343,7 +1343,7 @@ CALLBACK: NOTICE ( ptr u8 ptr u8 -- ) ;CALLBACK
    slot RESET-PARAMS ;
 
 
-: PREPARE-START ( n ptr u8 n ptr u8 n -- )
+: PREPARE-START ( n ^u8 n ^u8 n -- )
    {: slot:n na nu:n sa su:n :}
    nu 0 <= if E-STATEMENT throw then
    slot na nu sa su PREPARE-SEND ;
@@ -1363,7 +1363,7 @@ CALLBACK: NOTICE ( ptr u8 ptr u8 -- ) ;CALLBACK
 
 \ The simple-query protocol. It takes no parameters at all, so a pending
 \ parameter list is a caller error with nowhere to go.
-: SCRIPT-START ( n ptr u8 n -- ) {: slot:n a u:n :}
+: SCRIPT-START ( n ^u8 n -- ) {: slot:n a u:n :}
    OP-START
    slot IDLE-CHECK
    u 0 <= if E-STATEMENT throw then
@@ -1390,14 +1390,14 @@ CALLBACK: NOTICE ( ptr u8 ptr u8 -- ) ;CALLBACK
 \ the arena. That is what lets a caller build parameters BEFORE
 \ WITH-TRANSACTION and spend them inside the body, which is the only way into a
 \ quotation that may not read the caller's locals.
-: VERB-TEXT! ( n ptr u8 n -- ptr u8 )
+: VERB-TEXT! ( n ^u8 n -- ^u8 )
    {: slot:n a u:n :}
    u 0 <= if E-STATEMENT throw then
    u VERB-CAP 1 - > if E-CAPACITY throw then
    a u slot VERB-BUF VERB-CAP SPAN:MAKE FFI:CSTR ;
 
 
-: RUN-VERB ( n ptr u8 n -- n )
+: RUN-VERB ( n ^u8 n -- n )
    {: slot:n a u:n :}
    slot OP-DEADLINE {: deadline:n :}
    OP-START
@@ -1413,7 +1413,7 @@ CALLBACK: NOTICE ( ptr u8 ptr u8 -- ) ;CALLBACK
 
 \ A transaction verb must succeed or the caller's framing is a lie, so a server
 \ refusal is E-EXEC rather than an outcome the caller could ignore.
-: VERB ( n ptr u8 n -- ) {: slot:n a u:n :}
+: VERB ( n ^u8 n -- ) {: slot:n a u:n :}
    slot a u RUN-VERB {: res:n :}
    res RESULT-STATUS {: status:n :}
    status PGRES-COMMAND-OK <> if
@@ -1449,7 +1449,7 @@ CALLBACK: NOTICE ( ptr u8 ptr u8 -- ) ;CALLBACK
    slot ri ci ;
 
 
-: VALUE$ ( n n n -- ptr u8 n ) {: slot:n ri:n ci:n :}
+: VALUE$ ( n n n -- ^u8 n ) {: slot:n ri:n ci:n :}
    slot RES-PG@ {: res :}
    res ri ci LIB-GETVALUE
    res ri ci LIB-GETLENGTH ;
@@ -1459,7 +1459,7 @@ CALLBACK: NOTICE ( ptr u8 ptr u8 -- ) ;CALLBACK
    slot RES-PG@ ri ci LIB-GETISNULL 0 <> ;
 
 
-: COLUMN-AT ( n col -- ptr u8 n )
+: COLUMN-AT ( n col -- ^u8 n )
    {: slot:n c:col :}
    slot RES-PG@ {: res :}
    c COL>N {: ci:n :}
@@ -1516,7 +1516,7 @@ CALLBACK: NOTICE ( ptr u8 ptr u8 -- ) ;CALLBACK
 
 \ The new arena starts at offset zero, so the staging helper can preserve its
 \ catch input row.
-: STAGE-CONNINFO ( ptr u8 n n -- ptr u8 n n ) {: a u:n slot:n :}
+: STAGE-CONNINFO ( ^u8 n n -- ^u8 n n ) {: a u:n slot:n :}
    a u slot ARENA-CSTR drop
    a u slot ;
 
@@ -1535,7 +1535,7 @@ public
 \ connection.
 \ A conninfo libpq cannot parse throws E-CONNECT and keeps no text, because
 \ libpq's parse message can quote the conninfo's values, a password among them.
-: CONNECT-START ( ptr u8 n -- connection )
+: CONNECT-START ( ^u8 n -- connection )
    {: a u:n :}
    OP-START
    NOTICE TASK:CALLER-CONTEXT FFI-CB:ENTRY {: proc:n :}
@@ -1606,7 +1606,7 @@ public
 
 \ A TASK:HALT of the waiting task ends the attempt at once, sending nothing, and
 \ frees its slot; the join answers as for any halt.
-: CONNECT ( ptr u8 n -- connect-result )
+: CONNECT ( ^u8 n -- connect-result )
    CONNECT-START dup CONNECTION>N CONNECT-HEAD !
    [: AWAIT-ATTEMPT ;] [: FINISH-ATTEMPT ;] finally MATCH progress
       connected OF PG-CONNECT--RESULT:connected ENDOF
@@ -1669,7 +1669,7 @@ public
    CONN-SLOT dup IDLE-CHECK RESET-PARAMS ;
 
 
-: TEXT+ ( connection ptr u8 n -- ) {: handle:connection a u:n :}
+: TEXT+ ( connection ^u8 n -- ) {: handle:connection a u:n :}
    handle CONN-SLOT {: slot:n :}
    slot IDLE-CHECK
    slot PARAM-ROOM
@@ -1692,7 +1692,7 @@ public
 
 \ The bytes are the binary form of the type PostgreSQL infers from a cast or
 \ the statement's context; u = 0 is an empty value, not NULL.
-: BINARY+ ( connection ptr u8 n -- )
+: BINARY+ ( connection ^u8 n -- )
    {: handle:connection a u:n :}
    handle CONN-SLOT {: slot:n :}
    slot IDLE-CHECK
@@ -1701,20 +1701,20 @@ public
    a u slot ARENA-BYTES u slot PARAM-OFF+ ;
 
 
-: SEND ( connection ptr u8 n -- ) {: handle:connection a u:n :}
+: SEND ( connection ^u8 n -- ) {: handle:connection a u:n :}
    handle CONN-SLOT a u EXEC-START ;
 
 
-: SEND-SCRIPT ( connection ptr u8 n -- ) {: handle:connection a u:n :}
+: SEND-SCRIPT ( connection ^u8 n -- ) {: handle:connection a u:n :}
    handle CONN-SLOT a u SCRIPT-START ;
 
 
-: SEND-PREPARE ( connection ptr u8 n ptr u8 n -- )
+: SEND-PREPARE ( connection ^u8 n ^u8 n -- )
    {: handle:connection na nu:n sa su:n :}
    handle CONN-SLOT na nu sa su PREPARE-START ;
 
 
-: SEND-PREPARED ( connection ptr u8 n -- ) {: handle:connection a u:n :}
+: SEND-PREPARED ( connection ^u8 n -- ) {: handle:connection a u:n :}
    handle CONN-SLOT a u PREPARED-START ;
 
 
@@ -1722,7 +1722,7 @@ public
 \ report "COPY is not supported" though its whole script ran and stands.
 
 \ WITH-RESULT runs exactly one statement on the extended protocol.
-: WITH-RESULT ( R connection ptr u8 n [ R PG:result -- S PG:result ] -- S )
+: WITH-RESULT ( R connection ^u8 n [ R PG:result -- S PG:result ] -- S )
    {: handle:connection a u:n body :}
    handle CONN-SLOT {: slot:n :}
    slot OP-DEADLINE {: deadline:n :}
@@ -1735,7 +1735,7 @@ public
 
 \ The script is one implicit transaction: a failure rolls it back, stops it and
 \ is the outcome, else the last result is, or a COPY TO STDOUT's.
-: WITH-SCRIPT ( R connection ptr u8 n [ R PG:result -- S PG:result ] -- S )
+: WITH-SCRIPT ( R connection ^u8 n [ R PG:result -- S PG:result ] -- S )
    {: handle:connection a u:n body :}
    handle CONN-SLOT {: slot:n :}
    slot OP-DEADLINE {: deadline:n :}
@@ -1743,7 +1743,7 @@ public
    slot deadline WAIT-QUERY body RESULT-SCOPE ;
 
 
-: WITH-PREPARE ( R connection ptr u8 n ptr u8 n [ R PG:result -- S PG:result ] -- S )
+: WITH-PREPARE ( R connection ^u8 n ^u8 n [ R PG:result -- S PG:result ] -- S )
    {: handle:connection na nu:n sa su:n body :}
    handle CONN-SLOT {: slot:n :}
    slot OP-DEADLINE {: deadline:n :}
@@ -1751,7 +1751,7 @@ public
    slot deadline WAIT-QUERY body RESULT-SCOPE ;
 
 
-: WITH-PREPARED ( R connection ptr u8 n [ R PG:result -- S PG:result ] -- S )
+: WITH-PREPARED ( R connection ^u8 n [ R PG:result -- S PG:result ] -- S )
    {: handle:connection a u:n body :}
    handle CONN-SLOT {: slot:n :}
    slot OP-DEADLINE {: deadline:n :}
@@ -1763,7 +1763,7 @@ public
 \ without running it: the result answers COLS, NAME$ and OID and has no rows. A
 \ rejected prepare is the body's result, with its `failed` outcome. A pending
 \ parameter list is E-STATEMENT.
-: WITH-DESCRIPTION ( R connection ptr u8 n [ R PG:result -- S PG:result ] -- S )
+: WITH-DESCRIPTION ( R connection ^u8 n [ R PG:result -- S PG:result ] -- S )
    {: handle:connection a u:n body :}
    handle CONN-SLOT {: slot:n :}
    slot OP-DEADLINE {: deadline:n :}
@@ -1805,7 +1805,7 @@ public
 
 private
 
-: WAIT-NOTIFIES ( connection ms [ ptr u8 n ptr u8 n -- ] -- bool )
+: WAIT-NOTIFIES ( connection ms [ ^u8 n ^u8 n -- ] -- bool )
    {: handle:connection timeout:ms act :}
    handle CONN-SLOT {: slot:n :}
    timeout MS>N {: limit:n :}
@@ -1842,7 +1842,7 @@ public
 \ payload's, borrowed for the call. Each is freed as act returns or throws;
 \ after a throw the rest are freed unread and the throw goes on. It answers
 \ true when any arrived.
-: NOTIFIED ( connection ms [ ptr u8 n ptr u8 n -- ] -- bool )
+: NOTIFIED ( connection ms [ ^u8 n ^u8 n -- ] -- bool )
    WAIT-NOTIFIES ;
 
 
@@ -1900,7 +1900,7 @@ public
    PEEK CMD-COUNT >COUNT ;
 
 
-: NAME$ ( PG:result col -- PG:result ptr u8 n ) {: c:col :}
+: NAME$ ( PG:result col -- PG:result ^u8 n ) {: c:col :}
    PEEK c COLUMN-AT LIB-FNAME {: p :}
    p NULL-ADDR? if E-COLUMN throw then
    p CSTR$ ;
@@ -1923,7 +1923,7 @@ public
 
 \ The span, like NAME$, is libpq's bytes in the result, valid until the scope
 \ ends (CLEAR for a progress token) or the connection closes; a body copies it.
-: TEXT$ ( PG:result row col -- PG:result ptr u8 n ) {: r:row c:col :}
+: TEXT$ ( PG:result row col -- PG:result ^u8 n ) {: r:row c:col :}
    PEEK r c CELL-AT VALUE$ ;
 
 

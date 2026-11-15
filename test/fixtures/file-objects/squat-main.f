@@ -3,7 +3,7 @@
 
 package CHECKER-RESOLVE
 public
-: SQUAT-SEARCH ( ptr u8 n n -- ptr n ) xref-search-wl ;
+: SQUAT-SEARCH ( ^u8 n n -- ^n ) xref-search-wl ;
 ;package
 
 : MAIN ( -- ) ;

@@ -28,48 +28,48 @@ create OUT IO-CAP allot variable OUT-U
 create ERR IO-CAP allot variable ERR-U
 variable RC
 
-: ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
-: PROG$ ( -- ptr u8 n ) PROG PROG-U @ ;
-: ERR$ ( -- ptr u8 n ) ERR ERR-U @ ;
+: ROOT$ ( -- ^u8 n ) ROOT ROOT-U @ ;
+: PROG$ ( -- ^u8 n ) PROG PROG-U @ ;
+: ERR$ ( -- ^u8 n ) ERR ERR-U @ ;
 
 \ <root>/<rel>, until the next call.
-: AT ( ptr u8 n -- ptr u8 n )
-   {: rel:ptr relu:n :}
+: AT ( ^u8 n -- ^u8 n )
+   {: rel:^ relu:n :}
    ROOT$ rel relu PATH FS:JOIN-PATH {: u:n :}
    PATH u ;
 
 : SETUP ( -- )
-   s" habu-include-refusal" FS:MKTEMP-DIR CANONICAL TTRUE {: a:ptr u:n :}
+   s" habu-include-refusal" FS:MKTEMP-DIR CANONICAL TTRUE {: a:^ u:n :}
    a u FS:CLEANUP-TREE+
    a ROOT u BYTE-COPY u ROOT-U !
    s" cases" AT FS:MAKE-DIR
    s" plain.f" AT s" \ a file, not a directory" FS:WRITE-ALL ;
 
-: PROG+ ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: PROG+ ( ^u8 n -- )
+   {: a:^ u:n :}
    u IO-CAP PROG-U @ - > if E-STR-CAPACITY throw then
    a PROG PROG-U @ + u BYTE-COPY
    u PROG-U +! ;
 
-: PLINE ( ptr u8 n -- ) PROG+ S\" \n" PROG+ ;
+: PLINE ( ^u8 n -- ) PROG+ S\" \n" PROG+ ;
 
 \ <root>/cases/<name><suffix>.
-: NAMED ( ptr u8 n ptr u8 n -- ptr u8 n )
-   {: name:ptr nameu:n suffix:ptr suffixu:n :}
+: NAMED ( ^u8 n ^u8 n -- ^u8 n )
+   {: name:^ nameu:n suffix:^ suffixu:n :}
    SB-RESET s" cases/" SB-APPEND name nameu SB-APPEND suffix suffixu SB-APPEND SB$ AT ;
 
 : RESULT! ( result<pcap:captured,pcap:failed> -- )
    PCAP-RESULT:>N RC ! ERR-U ! OUT-U ! ;
 
 \ The child's streams, beside its program.
-: KEEP ( ptr u8 n -- )
-   {: name:ptr nameu:n :}
+: KEEP ( ^u8 n -- )
+   {: name:^ nameu:n :}
    name nameu s" .out" NAMED OUT OUT-U @ FS:WRITE-ALL
    name nameu s" .err" NAMED ERR$ FS:WRITE-ALL ;
 
 \ The engine under test runs the program as <root>/cases/<name>.f with --load.
-: LOAD-CASE ( ptr u8 n -- )
-   {: name:ptr nameu:n :}
+: LOAD-CASE ( ^u8 n -- )
+   {: name:^ nameu:n :}
    name nameu s" .f" NAMED PROG$ FS:WRITE-ALL
    PROC-CWD:ARGV-ENV-CWD-RESET
    s" --load" >LEN PROC-ARGV+
@@ -84,17 +84,17 @@ variable RC
    RC @ rc T=
    OUT-U @ 0 T= ;
 
-: ERR-HAS ( ptr u8 n -- ) {: a:ptr u:n :}
+: ERR-HAS ( ^u8 n -- ) {: a:^ u:n :}
    ERR$ a u CONTAINS? TTRUE ;
 
 \ The string builder holds <pre><root>/<rel>`.
-: SB-NAMES ( ptr u8 n ptr u8 n -- )
-   {: pre:ptr preu:n rel:ptr relu:n :}
+: SB-NAMES ( ^u8 n ^u8 n -- )
+   {: pre:^ preu:n rel:^ relu:n :}
    SB-RESET pre preu SB-APPEND rel relu AT SB-APPEND 96 SB-APPEND-C ;
 
 \ A program that scopes the root <root>/<rel>, and the rejection naming that path.
-: WITH-AT ( ptr u8 n ptr u8 n -- )
-   {: name:ptr nameu:n rel:ptr relu:n :}
+: WITH-AT ( ^u8 n ^u8 n -- )
+   {: name:^ nameu:n rel:^ relu:n :}
    0 PROG-U !
    s" package INCLUDE-REFUSAL-WITH" PLINE
    s" public" PLINE
@@ -117,8 +117,8 @@ variable RC
 
 \ A program whose one line requires the absolute path <root>/<rel>, and the
 \ loader's missing-source rejection naming that path.
-: REQUIRE-AT ( ptr u8 n ptr u8 n -- )
-   {: name:ptr nameu:n rel:ptr relu:n :}
+: REQUIRE-AT ( ^u8 n ^u8 n -- )
+   {: name:^ nameu:n rel:^ relu:n :}
    0 PROG-U !
    s" require " PROG+ rel relu AT PLINE
    name nameu LOAD-CASE
@@ -136,7 +136,7 @@ variable RC
    0 PROG-U !
    s" package INCLUDE-REFUSAL-CANON" PLINE
    s" private" PLINE
-   s" : NONE ( ptr u8 n -- ptr u8 n bool ) 0 0= 0= ;" PLINE
+   s" : NONE ( ^u8 n -- ^u8 n bool ) 0 0= 0= ;" PLINE
    s" public" PLINE
    s" : RUN ( -- )" PLINE
    s"    [: NONE ;] [: SOURCE-ROOT:READ-OS ;] SOURCE-INPUT:USE" PLINE

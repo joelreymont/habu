@@ -12,8 +12,8 @@ DYNAMIC-BUFFER TOKENS token
 DYNAMIC-BUFFER OPTIONS option<n>
 \ Address cells: the accessor hands back a pointer to a pointer; this element
 \ type reads the head's declared cell and moves pointers when a reserve copies.
-DYNAMIC-BUFFER ADDRS ptr u8
-\ The byte row: the accessor is `ptr u8` at byte i and a reserve counts bytes.
+DYNAMIC-BUFFER ADDRS ^u8
+\ The byte row: the accessor is `^u8` at byte i and a reserve counts bytes.
 \ A cell row cannot be named CELLS: it collides with the built-in `cells`
 \ (E-DUPLICATE-DEFINITION, rc 78, measured).
 DYNAMIC-BUFFER BYTES u8
@@ -30,10 +30,10 @@ variable RAW
 
 \ Declaration refusals are measured by evaluating the line and catching its
 \ code.
-TYPED-VARIABLE DB-EVAL-A ptr u8
+TYPED-VARIABLE DB-EVAL-A ^u8
 variable DB-EVAL-U
 : DB-EVAL-RUN ( -- ) DB-EVAL-A @ DB-EVAL-U @ evaluate-closed ;
-: DB-EVAL ( ptr u8 n -- n ) DB-EVAL-U ! DB-EVAL-A ! [: DB-EVAL-RUN ;] catch ;
+: DB-EVAL ( ^u8 n -- n ) DB-EVAL-U ! DB-EVAL-A ! [: DB-EVAL-RUN ;] catch ;
 
 : OPTION-N ( option<n> -- n )
    MATCH option
@@ -87,7 +87,7 @@ variable DB-EVAL-U
    RAW-CTL @ 0 T= ;
 
 \ Every element admitted before the byte one keeps its old accessor: a bare
-\ cell's is `( n -- ptr n )` over whole cells.
+\ cell's is `( n -- ^n )` over whole cells.
 : CELL-ROWS ( -- )
    4 CELLROW-RESERVE
    5 0 CELLROW !
@@ -121,7 +121,7 @@ variable DB-EVAL-U
    3 ADDRS @ MARK byte-view = TTRUE
    0 TOKENS @ TOKEN-N 42 T=
    s" BAD-TOKEN-STORE ( n -- ) 0 TOKENS !" CHECK! 0 T=
-   s" BAD-TOKEN-POINTER ( -- ptr token ) RAW" CHECK! 0 T=
+   s" BAD-TOKEN-POINTER ( -- ^token ) RAW" CHECK! 0 T=
    s" BAD-DYNAMIC-DEF ( -- ) DYNAMIC-BUFFER X n" CHECK! 0 T=
    TOKENS-RELEASE
    TOKENS-RELEASE

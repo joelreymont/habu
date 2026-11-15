@@ -16,10 +16,10 @@ variable ERR-U
 variable RC
 variable EXITED
 
-: OUT$ ( -- ptr u8 n ) OUT OUT-U @ ;
-: ERR$ ( -- ptr u8 n ) ERR ERR-U @ ;
+: OUT$ ( -- ^u8 n ) OUT OUT-U @ ;
+: ERR$ ( -- ^u8 n ) ERR ERR-U @ ;
 
-: STORE ( len len PROCESS:ending ptr u8 n -- ) {: outu:len erru:len oc src:ptr u:n :}
+: STORE ( len len PROCESS:ending ^u8 n -- ) {: outu:len erru:len oc src:^ u:n :}
    erru LEN>N ERR-U !  outu LEN>N OUT-U !
    oc MATCH PROCESS:ending
       exited OF RC ! true EXITED ! ENDOF
@@ -27,7 +27,7 @@ variable EXITED
       timeout OF src u OUT$ ERR$ T-TIMED-OUT ENDOF
    ;MATCH ;
 
-: RUN-SOURCE ( ptr u8 n -- ) {: src:ptr u:n :}
+: RUN-SOURCE ( ^u8 n -- ) {: src:^ u:n :}
    src u OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN src u STORE ;
 
 : EXPECT-RC ( n -- ) {: want:n :}
@@ -35,12 +35,12 @@ variable EXITED
    EXITED @ TTRUE
    RC @ want T= ;
 
-: EXPECT-OUT ( ptr u8 n -- ) {: exp:ptr expu:u :}
+: EXPECT-OUT ( ^u8 n -- ) {: exp:^ expu:u :}
    0 EXPECT-RC
    ERR-U @ 0 T=
    OUT$ exp expu STR= TTRUE ;
 
-: SOURCE$ ( -- ptr u8 n )
+: SOURCE$ ( -- ^u8 n )
    S\" package PRE\npublic\n: TARGET ( n -- n ) 9 + ;\n;package\npackage ONE\npublic\n: LAYERS ( n -- n ) 1 + ;\n;package\npackage TWO\npublic\n: LAYERS ( n -- n ) 2 + ;\n;package\npackage SUBJECT\nusing PRE\nusing ONE\nusing TWO\nprivate\n: TARGET ( n n -- n ) {: layers:n :} layers + ;\npublic\n: NLA-RUN ( -- n ) 3 4 TARGET ;\n;package\nSUBJECT:NLA-RUN .\n" ;
 
 public

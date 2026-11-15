@@ -21,11 +21,11 @@ package HEAP-CAPTURE
 \ A part spelled as the runtime's package, whose words would answer a null
 \ record and skip the unmap.
 package DYNAMIC-STORAGE
-CAST: N>RECORD ( n -- ptr a )
+CAST: N>RECORD ( n -- ^a )
 public
 variable RELEASED
-: MAP-RECORD ( ptr n -- ptr a ) drop 0 N>RECORD ;
-: UNMAP-RECORD ( ptr a ptr n -- ) 2drop 1 RELEASED ! ;
+: MAP-RECORD ( ^n -- ^a ) drop 0 N>RECORD ;
+: UNMAP-RECORD ( ^a ^n -- ) 2drop 1 RELEASED ! ;
 ;package
 
 STRUCTURE cap DERIVE addr FIELD id n ;STRUCTURE
@@ -35,7 +35,7 @@ public
 
 : CAPTURE ( -- )
    s" a part spelled as the runtime's package captures no HEAP word" T-LABEL
-   CAPS-NEW {: a:ptr :}
+   CAPS-NEW {: a:^ :}
    a NULL-PTR = TFALSE
    a CAPS-RELEASE
    DYNAMIC-STORAGE:RELEASED @ 0 T= ;
@@ -44,36 +44,36 @@ public
 
 package HEAP-TEST
 
-STRUCTURE note DERIVE addr FIELD id n FIELD text ptr u8 ;STRUCTURE
+STRUCTURE note DERIVE addr FIELD id n FIELD text ^u8 ;STRUCTURE
 HEAP NOTES note
 
 STRUCTURE part DERIVE addr FIELD reader JSON:cursor FIELD total n ;STRUCTURE
 HEAP PARTS part
 
-STRUCTURE holder DERIVE addr FIELD arena ptr ARENA:arena ;STRUCTURE
+STRUCTURE holder DERIVE addr FIELD arena ^ARENA:arena ;STRUCTURE
 HEAP HOLDERS holder
 
 
 \ An ordinary word that reads its generic pointee as a cell.
-: TAKE ( ptr a n -- ) drop @ drop ;
+: TAKE ( ^a n -- ) drop @ drop ;
 
-TYPED-VARIABLE EVAL-A ptr u8
+TYPED-VARIABLE EVAL-A ^u8
 variable EVAL-U
 : EVAL-RUN ( -- ) EVAL-A @ EVAL-U @ evaluate-closed ;
-: EVAL ( ptr u8 n -- n ) EVAL-U ! EVAL-A ! [: EVAL-RUN ;] catch ;
+: EVAL ( ^u8 n -- n ) EVAL-U ! EVAL-A ! [: EVAL-RUN ;] catch ;
 
-: UNDEFINED? ( ptr u8 n -- bool ) get-current search-wl 0= ;
+: UNDEFINED? ( ^u8 n -- bool ) get-current search-wl 0= ;
 
 
 : RECORDS ( -- )
    s" a record is zero-filled and typed" T-LABEL
-   NOTES-NEW {: a:ptr :}
+   NOTES-NEW {: a:^ :}
    a NOTE-ID @ 0 T=
    a NOTE-TEXT @ NULL-PTR = TTRUE
    7 a NOTE-ID !  s" hi" drop a NOTE-TEXT !
    a NOTE-ID @ 7 T=
    s" a second record is distinct" T-LABEL
-   NOTES-NEW {: b:ptr :}
+   NOTES-NEW {: b:^ :}
    b NOTE-ID @ 0 T=
    9 b NOTE-ID !
    a NOTE-ID @ 7 T=
@@ -85,8 +85,8 @@ variable EVAL-U
    a NOTES-RELEASE ;
 
 
-: READ-PART ( ptr part -- )
-   {: p:ptr :}
+: READ-PART ( ^part -- )
+   {: p:^ :}
    p PART-READER s" [40,2]" JSON:READ-INIT
    JSON:READ-NEXT JSON:T-ARR T=
    JSON:READ-NEXT JSON:T-INT T=  JSON:READ-INT p PART-TOTAL !
@@ -98,7 +98,7 @@ variable EVAL-U
 
 : READER ( -- )
    s" a record holding a JSON:cursor runs a reader" T-LABEL
-   PARTS-NEW {: p:ptr :}
+   PARTS-NEW {: p:^ :}
    p READ-PART
    p PART-TOTAL @ 42 T=
    p PARTS-RELEASE ;
@@ -106,9 +106,9 @@ variable EVAL-U
 
 : HOLDER ( -- )
    s" a record holds an arena by pointer" T-LABEL
-   HOLDERS-NEW {: h:ptr :}
+   HOLDERS-NEW {: h:^ :}
    h HOLDER-ARENA @ NULL-PTR = TTRUE
-   ARENA:NEW {: a:ptr :}
+   ARENA:NEW {: a:^ :}
    a h HOLDER-ARENA !
    h HOLDER-ARENA @ NULL-PTR - a NULL-PTR - T=
    h HOLDER-ARENA @ ARENA:RELEASE
@@ -131,14 +131,14 @@ variable EVAL-U
    s" : Z7 ( -- ) NULL-PTR 16 DYNAMIC-STORAGE:UNMAP-RECORD ;" EVAL CHECKER-REJECT-RC T=
    s" Z7" UNDEFINED? TTRUE
    s" a record pointer enters no generic-pointer word that reads a cell" T-LABEL
-   s" : Z4 ( ptr note -- ) 16 TAKE ;" EVAL CHECKER-REJECT-RC T=
+   s" : Z4 ( ^note -- ) 16 TAKE ;" EVAL CHECKER-REJECT-RC T=
    s" Z4" UNDEFINED? TTRUE ;
 
 
 \ tools/check.f --verify-only checks a file without running it, so it gets its
 \ own child over a scratch tree's copy.
-: VERIFY-SRC$ ( -- ptr u8 n )
-   S\" package HEAP-VERIFY\nSTRUCTURE item DERIVE addr FIELD count n ;STRUCTURE\nHEAP ITEMS item\n: USE ( -- n ) ITEMS-NEW {: p:ptr :} 5 p ITEM-COUNT ! p ITEM-COUNT @ p ITEMS-RELEASE ;\n;package\n" ;
+: VERIFY-SRC$ ( -- ^u8 n )
+   S\" package HEAP-VERIFY\nSTRUCTURE item DERIVE addr FIELD count n ;STRUCTURE\nHEAP ITEMS item\n: USE ( -- n ) ITEMS-NEW {: p:^ :} 5 p ITEM-COUNT ! p ITEM-COUNT @ p ITEMS-RELEASE ;\n;package\n" ;
 
 : VERIFY ( -- )
    s" tools/check.f --verify-only certifies a word using a HEAP's words" T-LABEL

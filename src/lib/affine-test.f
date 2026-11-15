@@ -18,20 +18,20 @@ package AFFINE-TEST
    {: x:r y:r z:r u:r v:r w:r :}
    x u NEAR  y v NEAR  z w NEAR ;
 
-: IDENTITY! ( ptr r -- )
-   {: m:ptr :}
+: IDENTITY! ( ^r -- )
+   {: m:^ :}
    12 0 ?do 0.0 m i cells + ! loop
    1.0 m !  1.0 m 5 cells + !  1.0 m 10 cells + ! ;
 
 \ A transform that is neither orthogonal nor fixed at the origin.
-: SKEWED! ( ptr r -- )
-   {: m:ptr :}
+: SKEWED! ( ^r -- )
+   {: m:^ :}
    12 0 ?do i s>f 0.25 f* 0.5 f- m i cells + ! loop
    2.0 m ! ;
 
-: ROW@ ( ptr r n -- r r r r )
-   {: m:ptr row:n :}
-   m row 4 * cells + {: p:ptr :}
+: ROW@ ( ^r n -- r r r r )
+   {: m:^ row:n :}
+   m row 4 * cells + {: p:^ :}
    p @  p cell+ @  p 2 cells + @  p 3 cells + @ ;
 
 : QUARTER ( -- r ) FMATH:PI 0.5 f* ;
@@ -71,8 +71,8 @@ package AFFINE-TEST
    8 -9 AT49 9 32 AT49 10 36 AT49 11 -16 AT49 ;
 
 \ The test's skew axis: through (1,2,3) along (1,2,2)/3.
-: SKEW-TURN ( ptr r r -- )
-   {: m:ptr angle:r :}
+: SKEW-TURN ( ^r r -- )
+   {: m:^ angle:r :}
    m 1.0 2.0 3.0
    1.0 3.0 f/ 2.0 3.0 f/ 2.0 3.0 f/
    angle AFFINE:ROTATE ;

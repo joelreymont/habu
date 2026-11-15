@@ -5,5 +5,5 @@
 
 ENUM nullable<a> POLICY niche-null
   VARIANT none ;VARIANT
-  VARIANT some FIELD value ptr a ;VARIANT
+  VARIANT some FIELD value ^a ;VARIANT
 ;ENUM

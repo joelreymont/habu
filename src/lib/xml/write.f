@@ -4,7 +4,7 @@ require src/lib/xml/scalar.f
 
 package XML
 private
-: ESCAPED$ ( n bool -- ptr u8 n )
+: ESCAPED$ ( n bool -- ^u8 n )
    {: scalar:n attr:bool :}
    scalar case
       $26 of s" &amp;" endof
@@ -31,7 +31,7 @@ private
    scalar attr ESCAPED$ nip
    dup 0= if drop scalar SCALAR-WIDTH then ;
 
-: ESCAPED-SIZE ( ptr u8 n bool -- n )
+: ESCAPED-SIZE ( ^u8 n bool -- n )
    {: source size:n attr:bool :}
    0 0
    begin dup size < while
@@ -43,14 +43,14 @@ private
    repeat
    drop ;
 
-: WRITE-ESCAPED ( n bool ptr u8 -- ptr u8 )
+: WRITE-ESCAPED ( n bool ^u8 -- ^u8 )
    {: scalar:n attr:bool destination :}
    scalar attr ESCAPED$ {: escaped size:n :}
    size 0= if scalar destination PUT-SCALAR exit then
    escaped destination size >LEN BYTE-COPY-LEN
    destination size + ;
 
-: ESCAPE-WRITE ( ptr u8 n bool ptr u8 -- )
+: ESCAPE-WRITE ( ^u8 n bool ^u8 -- )
    {: source size:n attr:bool destination :}
    destination 0
    begin dup size < while
@@ -60,7 +60,7 @@ private
    repeat
    2drop ;
 
-: ESCAPE-INTO ( ptr u8 n bool ptr u8 n -- n )
+: ESCAPE-INTO ( ^u8 n bool ^u8 n -- n )
    {: source size:n attr:bool destination cap:n :}
    source size SPAN-CHECK
    destination cap SPAN-CHECK
@@ -72,11 +72,11 @@ private
    needed ;
 
 public
-: ESCAPE-TEXT ( ptr u8 n ptr u8 n -- n )
+: ESCAPE-TEXT ( ^u8 n ^u8 n -- n )
    {: source size:n destination cap:n :}
    source size false destination cap ESCAPE-INTO ;
 
-: ESCAPE-ATTR ( ptr u8 n ptr u8 n -- n )
+: ESCAPE-ATTR ( ^u8 n ^u8 n -- n )
    {: source size:n destination cap:n :}
    source size true destination cap ESCAPE-INTO ;
 

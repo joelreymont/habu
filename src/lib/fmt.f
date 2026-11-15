@@ -21,13 +21,13 @@ package FMT
 \ a `require src/lib/task.f` here would pull pthread, mmap and the FFI staging
 \ tables into the base image for 52 bytes of scratch. A region is a fresh zeroed
 \ mapping, so a new task's cells start at zero.
-: FMT-IX ( -- ptr n )
+: FMT-IX ( -- ^n )
    data-base FMT-ABI:IX-OFF + ;
 
-: FMT-FR ( -- ptr n )
+: FMT-FR ( -- ^n )
    data-base FMT-ABI:FR-OFF + ;
 
-: FMT-DV ( -- ptr n )
+: FMT-DV ( -- ^n )
    data-base FMT-ABI:DV-OFF + ;
 
 \ An i64 never renders wider than one sign byte plus the STR-I64-DIGITS digits
@@ -44,17 +44,17 @@ STR-I64-DIGITS 1+ constant FMT-NUM-CAP
    FMT-NUM-CAP FMT-ABI:NUM-BUF-BYTES <> if E-FMT-BAND throw then ;
 BAND-AGREE
 
-: FMT-NUM-BUF ( -- ptr u8 )
+: FMT-NUM-BUF ( -- ^u8 )
    data-base FMT-ABI:NUM-BUF-OFF + BYTE-VIEW ;
 
-: FMT-NUM-U ( -- ptr n )
+: FMT-NUM-U ( -- ^n )
    data-base FMT-ABI:NUM-U-OFF + ;
 
 : NUM-C+ ( n -- )
    FMT-NUM-BUF FMT-NUM-U @ + c!
    FMT-NUM-U @ 1+ FMT-NUM-U ! ;
 
-: NUM$ ( -- ptr u8 n )
+: NUM$ ( -- ^u8 n )
    FMT-NUM-BUF FMT-NUM-U @ ;
 
 : DIGITS>NUM ( n -- )                      \ nonnegative magnitude, most significant digit first
@@ -124,9 +124,9 @@ public
    places 0= if NUM$ SB-APPEND exit then
    value 0= if FMT-ZERO SB-APPEND-C exit then
 
-   NUM$ {: num-p:ptr width:n :}
+   NUM$ {: num-p:^ width:n :}
    value 0 < if 1 else 0 then {: sign:n :}
-   num-p sign + {: p:ptr :}
+   num-p sign + {: p:^ :}
    width sign - {: digits:n :}
    0 FMT-IX !
    begin
@@ -202,7 +202,7 @@ $7FF0000000000000 constant SCI-EXP-MASK
 $7FFFFFFFFFFFFFFF constant SCI-MAG-MASK
 1000000000 constant SCI-BASE
 
-: SCI-LIMB ( n -- ptr n )
+: SCI-LIMB ( n -- ^n )
    data-base FMT-ABI:SCI-LIMBS-OFF + swap cells + ;
 
 : SCI-PARTS ( n -- n n )
@@ -310,7 +310,7 @@ public
 
 : .U ( n -- )     U>NUM   NUM$ type ;          \ unsigned, no trailing space, SB untouched
 : .INT ( n -- )   INT>NUM NUM$ type ;          \ signed, no trailing space, SB untouched
-: INT$ ( n -- ptr u8 n )   INT>NUM NUM$ ;      \ signed, SB untouched; valid until FMT's next render
+: INT$ ( n -- ^u8 n )   INT>NUM NUM$ ;      \ signed, SB untouched; valid until FMT's next render
 : F.N ( r n -- )  SB-RESET SB-FIX SB$ type ;   \ unbounded width: assembled in the shared builder
 
 ;package

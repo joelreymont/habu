@@ -120,7 +120,7 @@ CHECK-DEFINER-FACTS
    s" TOP-RECOVERY" get-current search-wl 0<> if s" native top refusal published" 1 die then ;
 
 START
-: TOP-RECOVERY ( n -- ptr u8 ) drop ;
+: TOP-RECOVERY ( n -- ^u8 ) drop ;
 CHECK-TOP
 
 \ EXPORT runs at once too, so it publishes the global it finds under the
@@ -136,7 +136,7 @@ CHECK-TOP
 
 START
 private
-: EXPORT-RECOVERY ( n -- ptr u8 ) drop ;
+: EXPORT-RECOVERY ( n -- ^u8 ) drop ;
 public
 EXPORT EXPORT-RECOVERY
 private
@@ -145,7 +145,7 @@ public
 
 : CHECK-CAST ( -- )
    REJECTION:CAPTURE
-   [: s" cast: CAST-WIDE ( n -- ptr u8 n )" evaluate-closed ;] catch
+   [: s" cast: CAST-WIDE ( n -- ^u8 n )" evaluate-closed ;] catch
    REJECTION:BUFFER-OFF
    CHECKER-REJECT-RC <> if s" native cast rejection status" 1 die then
    REJECTION:BUFFER$ s" error[E-CAST-ARITY]" CONTAINS? 0= if s" native cast refusal code" 1 die then

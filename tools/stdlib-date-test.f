@@ -20,8 +20,8 @@ TASK:SEMAPHORE DATE-READY
 TASK:SEMAPHORE DATE-START
 20000 constant DATE-ROUNDS
 
-: DATE-ROUND ( n n n n ptr u8 n n ptr u8 n ptr u8 -- bool )
-   {: y:n m:n d:n days:n datea:ptr dateu:n seconds:n timea:ptr timeu:n buf:ptr :}
+: DATE-ROUND ( n n n n ^u8 n n ^u8 n ^u8 -- bool )
+   {: y:n m:n d:n days:n datea:^ dateu:n seconds:n timea:^ timeu:n buf:^ :}
    y m d DATE:YMD>DAYS days <> if 0 0= 0= exit then
    days DATE:DAYS>YMD {: goty:n gotm:n gotd:n :}
    goty y <> gotm m <> or gotd d <> or if 0 0= 0= exit then
@@ -72,23 +72,23 @@ TASK:SEMAPHORE DATE-START
    DATE-START TASK:SEMAPHORE-DESTROY
    DATE-READY TASK:SEMAPHORE-DESTROY ;
 
-: DATE-PARSE= {: a:ptr u:n days:n :} ( ptr u8 n n -- )
+: DATE-PARSE= {: a:^ u:n days:n :} ( ^u8 n n -- )
    a u DATE:PARSE-YMD MATCH option
      none OF 0 0= 0= TTRUE ENDOF                      \ an unexpected NONE fails
      some OF days T= ENDOF
    ;MATCH ;
 
-: DATE-PARSE-BAD ( ptr u8 n -- )
+: DATE-PARSE-BAD ( ^u8 n -- )
    DATE:PARSE-YMD MATCH option
      none OF 0 0= TTRUE ENDOF
      some OF drop 0 0= 0= TTRUE ENDOF                 \ an unexpected SOME fails
    ;MATCH ;
 
-: DATE-FORMAT= {: days:n a:ptr u:n :} ( n ptr u8 n -- )
+: DATE-FORMAT= {: days:n a:^ u:n :} ( n ^u8 n -- )
    days DATE-TEST-BUF DATE-TEST-BUF-LEN DATE:FORMAT-YMD
    a u T$= ;
 
-: DATE-TIMESTAMP= {: seconds:n a:ptr u:n :} ( n ptr u8 n -- )
+: DATE-TIMESTAMP= {: seconds:n a:^ u:n :} ( n ^u8 n -- )
    seconds DATE-TEST-BUF DATE-TEST-BUF-LEN DATE:FORMAT-EPOCH-UTC
    a u T$= ;
 
@@ -101,22 +101,22 @@ TASK:SEMAPHORE DATE-START
 : DATE-YEAR-AT ( n -- n )   \ epoch seconds of June 1st of a year
    6 1 DATE:YMD>DAYS DATE:SECONDS-DAY * ;
 
-: DATE-HTTP-AT= ( ptr u8 n n n -- )
-   {: a:ptr u:n now:n want:n :}
+: DATE-HTTP-AT= ( ^u8 n n n -- )
+   {: a:^ u:n now:n want:n :}
    a u now DATE:PARSE-HTTP MATCH option
      none OF false TTRUE ENDOF                        \ an unexpected NONE fails
      some OF want T= ENDOF
    ;MATCH ;
 
-: DATE-HTTP= ( ptr u8 n n -- ) 2026 DATE-YEAR-AT swap DATE-HTTP-AT= ;
+: DATE-HTTP= ( ^u8 n n -- ) 2026 DATE-YEAR-AT swap DATE-HTTP-AT= ;
 
-: DATE-HTTP-BAD-AT ( ptr u8 n n -- )
+: DATE-HTTP-BAD-AT ( ^u8 n n -- )
    DATE:PARSE-HTTP MATCH option
      none OF true TTRUE ENDOF
      some OF drop false TTRUE ENDOF                   \ an unexpected SOME fails
    ;MATCH ;
 
-: DATE-HTTP-BAD ( ptr u8 n -- ) 2026 DATE-YEAR-AT DATE-HTTP-BAD-AT ;
+: DATE-HTTP-BAD ( ^u8 n -- ) 2026 DATE-YEAR-AT DATE-HTTP-BAD-AT ;
 
 T-RESET
 

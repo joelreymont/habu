@@ -45,7 +45,7 @@ using NDICT
 
 \ Test-only record identity and retired-wordlist inspection.
 \ No raw record is exported.
-: RECORD ( ptr u8 n n -- ptr n ) CHECKER-RESOLVE:WL-PROBE ;
+: RECORD ( ^u8 n n -- ^n ) CHECKER-RESOLVE:WL-PROBE ;
 CAST: REF-WORD ( n -- [ -- n ] )
 : REF-VALUE ( n n -- n ) DEF-OCC:CALLABLE REF-WORD execute ;
 variable REF-SLOT
@@ -54,7 +54,7 @@ variable ROLL-SLOT
 variable ROLL-OCC
 
 
-: EV ( ptr u8 n -- ) evaluate-closed ;
+: EV ( ^u8 n -- ) evaluate-closed ;
 
 
 : OPEN-SCOPE ( -- )
@@ -79,8 +79,8 @@ variable ROLL-OCC
    s" using NDB-LEFT : NDB-USED ( -- n ) SOLO ; ;using NDB-USED 29 T=" EV ;
 
 
-: HASH-SLOT ( ptr u8 n -- n )
-   {: name:ptr size:n :}
+: HASH-SLOT ( ^u8 n -- n )
+   {: name:^ size:n :}
    $CBF29CE484222325
    size 0 ?do name i + c@ XREF-FOLD-C xor $100000001B3 * loop
    HIDX-SLOTS 1- and ;
@@ -130,7 +130,7 @@ variable ROLL-OCC
 
 : HIDE-REUSE ( -- )
    s" : NDB-HIDE ( -- n ) 51 ; : NDB-HIDE-TAIL ( -- n ) 52 ;" EV
-   s" NDB-HIDE" 0 RECORD {: old:ptr :}
+   s" NDB-HIDE" 0 RECORD {: old:^ :}
    old DEF-OCC:SELECT {: old-slot:n old-occ:n :}
    s" NDB-HIDE" HIDE-DEFS-FROM
    s" NDB-HIDE" SPELL-START 0 T=
@@ -145,7 +145,7 @@ variable ROLL-OCC
 
 : FORGET-REUSE ( -- )
    s" : NDB-FORGET ( -- n ) 61 ;" EV
-   s" NDB-FORGET" 0 RECORD {: old:ptr :}
+   s" NDB-FORGET" 0 RECORD {: old:^ :}
    old DEF-OCC:SELECT {: old-slot:n old-occ:n :}
    s" NDB-FORGET" FORGET-DEFS-FROM
    s" NDB-FORGET" SPELL-START 0 T=

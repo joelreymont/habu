@@ -9,7 +9,7 @@ STRUCTURE lvp-pixel
 ;STRUCTURE
 1 LAYOUT-BUFFER BUF lvp-pixel
 
-CAST: RAW ( ptr lvp-pixel -- ptr n )
+CAST: RAW ( ^lvp-pixel -- ^n )
 
 : GET ( -- lvp-pixel )
    0 BUF @ ;

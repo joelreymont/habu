@@ -39,7 +39,7 @@ $5ABE11 constant PUSHED
 $B0B0B0B0B0 constant CALLER-RBX
 
 : DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
-: ROW ( ptr u8 n -- ) X64HARNESS:CALL-ROW, ;
+: ROW ( ^u8 n -- ) X64HARNESS:CALL-ROW, ;
 : N, ( n -- ) X64HARNESS:PUSH, ;
 : WANT ( n -- ) X64HARNESS:EXPECT-POP, ;
 : DESC-FIELD ( n -- n ) DESC + ;
@@ -89,7 +89,7 @@ $B0B0B0B0B0 constant CALLER-RBX
 \ ---- the thread ---------------------------------------------------------------
 \ Push the function dlsym finds for the name, whose bytes sit NUL-terminated
 \ behind a jump.
-: SYM, ( ptr u8 n -- ) {: a:ptr u:n :}
+: SYM, ( ^u8 n -- ) {: a:^ u:n :}
    LBL LBL {: name:label past:label :}
    past JMP,
    name LBL,  a u BUF:N>BLEN ASM-SINK BUF:APPEND-SPAN  0 ASM-SINK BUF:APPEND-BYTE
@@ -148,7 +148,7 @@ $B0B0B0B0B0 constant CALLER-RBX
    TASK-ABI:HALT-REQ REGION SAW-STATUS + X64HARNESS:EXPECT-CELL, ;
 
 \ An image: the case, then the stack checks every case ends with.
-: BUILD ( [ -- ] bool ptr u8 n -- ) {: negative:bool path:ptr pathu:n :}
+: BUILD ( [ -- ] bool ^u8 n -- ) {: negative:bool path:^ pathu:n :}
    negative X64HARNESS:BOOT-OPEN,
    execute
    0 X64HARNESS:EXPECT-DEPTH,

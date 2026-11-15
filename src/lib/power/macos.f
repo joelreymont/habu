@@ -11,28 +11,28 @@ private
 
 \ https://developer.apple.com/documentation/iokit/iopmlib_h
 LIBRARY /System/Library/Frameworks/CoreFoundation.framework/CoreFoundation
-FUNCTION: CF-STRING CFStringCreateWithBytes ( n ptr u8 n n n -- n ) ;FUNCTION
+FUNCTION: CF-STRING CFStringCreateWithBytes ( n ^u8 n n n -- n ) ;FUNCTION
 FUNCTION: CF-RELEASE CFRelease ( n -- ) ;FUNCTION
 
 4 constant ID-BYTES          \ IOPMAssertionID, a uint32_t
 
 LIBRARY /System/Library/Frameworks/IOKit.framework/IOKit
-FUNCTION: PM-CREATE IOPMAssertionCreateWithName ( n u32 n ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: PM-CREATE IOPMAssertionCreateWithName ( n u32 n ^u8 -- i32 ) ;FUNCTION
 FUNCTION: PM-RELEASE IOPMAssertionRelease ( u32 -- i32 ) ;FUNCTION
 
 $08000100 constant UTF8      \ kCFStringEncodingUTF8
 255 constant LEVEL-ON        \ kIOPMAssertionLevelOn
 
 \ An owned CFString of the bytes, 0 when they are not UTF-8.
-: CF-TEXT ( ptr u8 n -- n )
-   {: p:ptr u:n :}
+: CF-TEXT ( ^u8 n -- n )
+   {: p:^ u:n :}
    0 p u UTF8 0 CF-STRING ;
 
 : CF-FREE ( n -- )
    dup 0 <> if CF-RELEASE else drop then ;
 
-: CHECK ( n ptr u8 n -- )
-   {: status:n verb:ptr verbu:n :}
+: CHECK ( n ^u8 n -- )
+   {: status:n verb:^ verbu:n :}
    status 0= if exit then
    LOG:ERROR s" power" LOG:LINE verb verbu LOG:TEXT+ s"  refused, IOReturn " LOG:TEXT+
       status LOG:INT+ LOG:;LINE
@@ -40,8 +40,8 @@ $08000100 constant UTF8      \ kCFStringEncodingUTF8
 
 
 \ Nothing that can throw runs between creating the strings and releasing them.
-: CREATE-ID ( ptr u8 n ptr u8 NUM:alloc-byte-len -- n )
-   drop {: name:ptr len:n id:ptr :}
+: CREATE-ID ( ^u8 n ^u8 NUM:alloc-byte-len -- n )
+   drop {: name:^ len:n id:^ :}
    s" PreventUserIdleSystemSleep" CF-TEXT {: kind:n :}
    name len CF-TEXT {: label:n :}
    kind 0= label 0= or if kind CF-FREE label CF-FREE E-ASSERTION throw then
@@ -51,7 +51,7 @@ $08000100 constant UTF8      \ kCFStringEncodingUTF8
    id LE:U32@ ;
 
 
-: MAC-KEEP ( ptr u8 n -- n )
+: MAC-KEEP ( ^u8 n -- n )
    ID-BYTES MEM:BYTES-ALLOC-LEN [: CREATE-ID ;] MEM:WITH-BYTES ;
 
 : MAC-ALLOW ( n -- )

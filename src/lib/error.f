@@ -704,22 +704,22 @@ PERSISTED-PTR-VARIABLE HEAD
 HEAD ROLLBACK-CELLS:MARK
 create NL $0A c,
 
-: ROW-PREV ( ptr n -- ptr n )  0 ptr-field @ ;
-: ROW-CODE ( ptr n -- n )  cell+ @ ;
+: ROW-PREV ( ^n -- ^n )  0 ptr-field @ ;
+: ROW-CODE ( ^n -- n )  cell+ @ ;
 
 
-: ROW-FAULT? ( ptr n -- bool )  4 cells + @ 0<> ;
+: ROW-FAULT? ( ^n -- bool )  4 cells + @ 0<> ;
 
 
-: ROW-NAME$ ( ptr n -- ptr u8 n ) {: r:ptr :}
+: ROW-NAME$ ( ^n -- ^u8 n ) {: r:^ :}
    r 5 cells + BYTE-VIEW r 2 cells + @ ;
 
 
-: ROW-TEXT$ ( ptr n -- ptr u8 n ) {: r:ptr :}
+: ROW-TEXT$ ( ^n -- ^u8 n ) {: r:^ :}
    r 5 cells + BYTE-VIEW r 2 cells + @ + r 3 cells + @ ;
 
 
-: FIND ( n -- ptr n ) {: code:n :}
+: FIND ( n -- ^n ) {: code:n :}
    HEAD @
    begin dup NULL-PTR <> while
       dup ROW-CODE code = if exit then
@@ -728,12 +728,12 @@ create NL $0A c,
 
 
 \ The open package's own spelling, empty outside a package.
-: PKG$ ( -- ptr u8 n )
+: PKG$ ( -- ^u8 n )
    data-base PKG-REC-CELL + @ dup 0= if drop s" " exit then
    XREF-ADDR>REC XREF-NAME$ ;
 
 
-: SAY ( ptr u8 n -- )  ERROR-TEXT:TYPE ;
+: SAY ( ^u8 n -- )  ERROR-TEXT:TYPE ;
 
 
 : SAY-INT ( n -- )
@@ -741,8 +741,8 @@ create NL $0A c,
    ERROR-TEXT:DIGITS$ SAY ;
 
 
-: SAY-NAME ( ptr u8 n -- ) {: name:ptr nameu:n :}
-   PKG$ {: p:ptr pu:n :}
+: SAY-NAME ( ^u8 n -- ) {: name:^ nameu:n :}
+   PKG$ {: p:^ pu:n :}
    pu 0<> if p pu SAY s" :" SAY then
    name nameu SAY ;
 
@@ -759,10 +759,10 @@ create NL $0A c,
    s" ERROR:CODE: " SAY ;
 
 
-: SAME-NAME? ( ptr n ptr u8 n -- bool )
-   {: at:ptr name:ptr nameu:n :}
-   at ROW-NAME$ {: r:ptr ru:n :}
-   PKG$ {: p:ptr pu:n :}
+: SAME-NAME? ( ^n ^u8 n -- bool )
+   {: at:^ name:^ nameu:n :}
+   at ROW-NAME$ {: r:^ ru:n :}
+   PKG$ {: p:^ pu:n :}
    pu 0= if r ru name nameu XREF-STR=CI exit then
    ru pu nameu + 1+ <> if false exit then
    r pu + c@ $3A <> if false exit then
@@ -773,8 +773,8 @@ create NL $0A c,
 \ Ends the process, exit 70 and one line on fd 2 that starts with the declaring
 \ word, for a missing name, a name past 255 bytes, an empty text, or a code
 \ outside 0..255 another name holds.
-: CHECK ( n ptr u8 n n bool -- )
-   {: code:n name:ptr nameu:n textu:n fault:bool :}
+: CHECK ( n ^u8 n n bool -- )
+   {: code:n name:^ nameu:n textu:n fault:bool :}
    nameu 0= if
       fault SAY-WORD s" no name after the code " SAY code SAY-INT REFUSE
    then
@@ -786,23 +786,23 @@ create NL $0A c,
       fault SAY-WORD name nameu SAY-NAME s"  has an empty text" SAY REFUSE
    then
    code 0 < code 255 > or 0= if exit then
-   code FIND {: at:ptr :}
+   code FIND {: at:^ :}
    at NULL-PTR = if exit then
    at name nameu SAME-NAME? if exit then
    fault SAY-WORD code SAY-INT s"  is " SAY at ROW-NAME$ SAY
    s" , declared again as " SAY name nameu SAY-NAME REFUSE ;
 
 
-CAST: AS-CHILD-RUN ( n -- [ ptr u8 n n n ptr u8 n -- n ] )
+CAST: AS-CHILD-RUN ( n -- [ ^u8 n n n ^u8 n -- n ] )
 
 \ The name becomes a folded constant in the current wordlist, made with no
 \ text: a value child, whose type is empty.
-: DEFINE ( n ptr u8 n -- ) {: code:n name:ptr nameu:n :}
+: DEFINE ( n ^u8 n -- ) {: code:n name:^ nameu:n :}
    name nameu CHILD-ABI:VALUE code NULL-PTR 0
    data-base PROVIDED-XT:CHILD-CELL + @ AS-CHILD-RUN execute drop ;
 
 
-: BYTES, ( ptr u8 n -- ) {: a:ptr u:n :}
+: BYTES, ( ^u8 n -- ) {: a:^ u:n :}
    a here u BYTE-COPY
    u allot ;
 
@@ -813,11 +813,11 @@ CAST: AS-CHILD-RUN ( n -- [ ptr u8 n n n ptr u8 n -- n ] )
 
 \ A row is five cells, the previous row, the code, the qualified name's length,
 \ the text's length and the fault flag (-1 or 0), then the name and the text.
-: ROW, ( n ptr u8 n ptr u8 n bool -- )
-   {: code:n name:ptr nameu:n text:ptr textu:n fault:bool :}
+: ROW, ( n ^u8 n ^u8 n bool -- )
+   {: code:n name:^ nameu:n text:^ textu:n fault:bool :}
    datum
-   PKG$ {: p:ptr pu:n :}
-   here CELL-VIEW {: at:ptr :}
+   PKG$ {: p:^ pu:n :}
+   here CELL-VIEW {: at:^ :}
    here ptr-cell-mark 0 ,
    HEAD @ at 0 ptr-field !
    code ,
@@ -833,9 +833,9 @@ CAST: AS-CHILD-RUN ( n -- [ ptr u8 n n n ptr u8 n -- n ] )
 
 
 \ CODE's and FAULT's declaration of the name after them, the flag saying FAULT.
-: DECLARE ( n ptr u8 n bool -- )
-   {: code:n text:ptr textu:n fault:bool :}
-   parse-name {: name:ptr nameu:n :}
+: DECLARE ( n ^u8 n bool -- )
+   {: code:n text:^ textu:n fault:bool :}
+   parse-name {: name:^ nameu:n :}
    code name nameu textu fault CHECK
    code name nameu DEFINE
    code name nameu text textu fault ROW, ;
@@ -844,12 +844,12 @@ public
 
 \ A name the wordlist holds is E-DUPLICATE-DEFINITION; a keyword or a number
 \ is rejected as any definition's name is.
-: CODE ( n ptr u8 n -- )  false DECLARE ;
+: CODE ( n ^u8 n -- )  false DECLARE ;
 generates: CODE ( -- n )
 
 \ Declares a code as CODE does, refusals included, and marks it a fault: a
 \ defect in the program or its environment rather than in what its caller gave.
-: FAULT ( n ptr u8 n -- )  true DECLARE ;
+: FAULT ( n ^u8 n -- )  true DECLARE ;
 generates: FAULT ( -- n )
 
 \ True when the newest declaration of a code was by FAULT; false when it was by
@@ -859,12 +859,12 @@ generates: FAULT ( -- n )
    ROW-FAULT? ;
 
 \ The newest declaration's name or text for a code, empty when none.
-: NAME$ ( n -- ptr u8 n )
+: NAME$ ( n -- ^u8 n )
    FIND dup NULL-PTR = if drop s" " exit then
    ROW-NAME$ ;
 
 
-: TEXT$ ( n -- ptr u8 n )
+: TEXT$ ( n -- ^u8 n )
    FIND dup NULL-PTR = if drop s" " exit then
    ROW-TEXT$ ;
 

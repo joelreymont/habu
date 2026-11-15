@@ -22,7 +22,7 @@ create PIDFILE PATH-CAP allot
 create TEXT PIDFILE-CAP allot
 variable HOLD                       \ the FIFO's write end
 
-: REPORT ( ptr u8 n -- ) {: a:ptr u:n :}
+: REPORT ( ^u8 n -- ) {: a:^ u:n :}
    HOLD @ {: fd:n :}
    fd a u write u <> if s" pg-hold: report refused" USAGE-RC die then
    fd s\" \n" write 1 <> if s" pg-hold: report refused" USAGE-RC die then ;
@@ -38,7 +38,7 @@ variable HOLD                       \ the FIFO's write end
    loop
    drop -1 ;
 
-: LINE$ ( n n -- ptr u8 n ) {: line:n u:n :}
+: LINE$ ( n n -- ^u8 n ) {: line:n u:n :}
    line u LINE-AT {: at:n :}
    at 0 < if s" pg-hold: postmaster.pid is short" 1 die then
    at begin dup u < if TEXT over + c@ NEWLINE <> else false then while 1+ repeat
@@ -55,7 +55,7 @@ using PG
    ;MATCH ;
 
 \ The one value a one-row, one-column query answers, reported.
-: REPORT-SHOW ( PG:connection ptr u8 n -- ) {: c:PG:connection q:ptr qu:n :}
+: REPORT-SHOW ( PG:connection ^u8 n -- ) {: c:PG:connection q:^ qu:n :}
    c q qu [: 0 >ROW 0 >COL TEXT$ REPORT ;] WITH-RESULT ;
 
 : REPORT-SEGMENT ( PG:connection -- ) {: c:PG:connection :}

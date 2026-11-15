@@ -7,15 +7,15 @@ package JSON
 
 public
 
-: COPY-VALUE ( JSON:reader ptr JSON:writer ptr u8 n -- JSON:reader ptr JSON:writer )
-   {: dst:ptr cap:n :}
+: COPY-VALUE ( JSON:reader ^JSON:writer ^u8 n -- JSON:reader ^JSON:writer )
+   {: dst:^ cap:n :}
    swap READ-TOKEN {: kind:n :} swap
    kind T-STR = if
       swap dst cap READ-STR {: len:n :} swap
       dst len WRITE-STRING exit
    then
    kind T-INT = kind T-FLOAT = or if
-      swap READ-SPAN$ {: a:ptr u:n :} swap
+      swap READ-SPAN$ {: a:^ u:n :} swap
       a u WRITE-RAW exit
    then
    kind T-TRUE = if true WRITE-BOOL exit then

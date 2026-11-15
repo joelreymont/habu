@@ -32,17 +32,17 @@ DYNAMIC-BUFFER SLOTS n
 variable SLOT-COUNT
 variable NEXT-ID
 
-: SLOT-CELL ( n n -- ptr n )  swap SLOT-CELLS * + SLOTS ;
+: SLOT-CELL ( n n -- ^n )  swap SLOT-CELLS * + SLOTS ;
 : LIVE? ( n -- bool )  LIVE-AT SLOT-CELL @ 0<> ;
-: BYTES$ ( n n -- ptr u8 n )  SLOT-CELL SPAN$ BLEN>N ;
+: BYTES$ ( n n -- ^u8 n )  SLOT-CELL SPAN$ BLEN>N ;
 
-: KEEP ( ptr u8 n n n -- )
-   {: a:ptr u:n slot:n at:n :}
+: KEEP ( ^u8 n n n -- )
+   {: a:^ u:n slot:n at:n :}
    slot at SLOT-CELL u 1 max N>BLEN INIT
    a u N>BLEN slot at SLOT-CELL REPLACE ;
 
-: STORE ( ptr u8 n n n -- )
-   {: a:ptr u:n slot:n at:n :}
+: STORE ( ^u8 n n n -- )
+   {: a:^ u:n slot:n at:n :}
    a u N>BLEN slot at SLOT-CELL REPLACE ;
 
 : FREE-SLOT ( -- n )
@@ -51,8 +51,8 @@ variable NEXT-ID
    SLOT-COUNT @
    1 SLOT-COUNT +! ;
 
-: HOLDER ( ptr u8 n n -- option<n> )
-   {: a:ptr u:n at:n :}
+: HOLDER ( ^u8 n n -- option<n> )
+   {: a:^ u:n at:n :}
    SLOT-COUNT @ 0 ?do
       i LIVE? if
          i at BYTES$ a u STR= if i OPTION:SOME unloop exit then
@@ -66,23 +66,23 @@ public
 
 : DOC-LIVE? ( n -- bool )  LIVE? ;
 
-: DOC-URI$ ( n -- ptr u8 n )  URI-AT BYTES$ ;
-: DOC-PATH$ ( n -- ptr u8 n )  PATH-AT BYTES$ ;
-: DOC-TEXT$ ( n -- ptr u8 n )  TEXT-AT BYTES$ ;
+: DOC-URI$ ( n -- ^u8 n )  URI-AT BYTES$ ;
+: DOC-PATH$ ( n -- ^u8 n )  PATH-AT BYTES$ ;
+: DOC-TEXT$ ( n -- ^u8 n )  TEXT-AT BYTES$ ;
 : DOC-VERSION@ ( n -- n )  VERSION-AT SLOT-CELL @ ;
 : DOC-ID@ ( n -- n )  ID-AT SLOT-CELL @ ;
 
 \ The checker names the document by its path's canonical spelling, taken at open.
-: DOC-CANON$ ( n -- ptr u8 n )  CANON-AT BYTES$ ;
+: DOC-CANON$ ( n -- ^u8 n )  CANON-AT BYTES$ ;
 
 \ Each path ended by LF.
-: DOC-DEPS$ ( n -- ptr u8 n )  DEPS-AT BYTES$ ;
-: DOC-DEPS! ( ptr u8 n n -- )  DEPS-AT STORE ;
+: DOC-DEPS$ ( n -- ^u8 n )  DEPS-AT BYTES$ ;
+: DOC-DEPS! ( ^u8 n n -- )  DEPS-AT STORE ;
 
 \ The loads the last completed check reported, one JSON object per line as
 \ LSP-CHECK:VERIFY-LOADS$ gives them.
-: DOC-LOADS$ ( n -- ptr u8 n )  LOADS-AT BYTES$ ;
-: DOC-LOADS! ( ptr u8 n n -- )  LOADS-AT STORE ;
+: DOC-LOADS$ ( n -- ^u8 n )  LOADS-AT BYTES$ ;
+: DOC-LOADS! ( ^u8 n n -- )  LOADS-AT STORE ;
 
 : DOC-DIRTY ( n -- )  1 swap DIRTY-AT SLOT-CELL ! ;
 : DOC-CLEAN ( n -- )  0 swap DIRTY-AT SLOT-CELL ! ;
@@ -104,17 +104,17 @@ public
    OPTION:NONE ;
 
 \ In slot order, skipping slot N; -1 skips none.
-: DOC-EACH-BUT ( n [ ptr u8 n ptr u8 n -- ] -- )
+: DOC-EACH-BUT ( n [ ^u8 n ^u8 n -- ] -- )
    {: but:n each :}
    SLOT-COUNT @ 0 ?do
       i LIVE? i but <> and if i DOC-CANON$ i DOC-TEXT$ each execute then
    loop ;
 
-: DOC-FIND ( ptr u8 n -- option<n> )  URI-AT HOLDER ;
+: DOC-FIND ( ^u8 n -- option<n> )  URI-AT HOLDER ;
 
-: DOC-HOLDING ( ptr u8 n -- option<n> )  CANON-AT HOLDER ;
+: DOC-HOLDING ( ^u8 n -- option<n> )  CANON-AT HOLDER ;
 
-: DOC-OPENED-AS ( ptr u8 n -- option<n> )  PATH-AT HOLDER ;
+: DOC-OPENED-AS ( ^u8 n -- option<n> )  PATH-AT HOLDER ;
 
 : DOC-CLOSE ( n -- )
    {: slot:n :}
@@ -127,8 +127,8 @@ public
    slot DOC-CLEAN
    0 slot LIVE-AT SLOT-CELL ! ;
 
-: DOC-CHANGE ( n n ptr u8 n -- )
-   {: slot:n v:n t:ptr tu:n :}
+: DOC-CHANGE ( n n ^u8 n -- )
+   {: slot:n v:n t:^ tu:n :}
    t tu slot TEXT-AT STORE
    v slot VERSION-AT SLOT-CELL !
    slot DOC-DIRTY ;
@@ -137,9 +137,9 @@ private
 
 \ A document in a free slot. Its path's canonical spelling comes first, so a
 \ path without one throws before anything changes.
-: ADD ( ptr u8 n n ptr u8 n ptr u8 n -- )
-   {: u:ptr uu:n v:n p:ptr pu:n t:ptr tu:n :}
-   p pu SOURCE-ROOT:CANONICAL drop {: c:ptr cu:n :}
+: ADD ( ^u8 n n ^u8 n ^u8 n -- )
+   {: u:^ uu:n v:n p:^ pu:n t:^ tu:n :}
+   p pu SOURCE-ROOT:CANONICAL drop {: c:^ cu:n :}
    FREE-SLOT {: slot:n :}
    u uu slot URI-AT KEEP
    p pu slot PATH-AT KEEP
@@ -158,8 +158,8 @@ public
 \ the version and text as a change would, so each URI is held once and keeps
 \ what its checks published. A path holding a NUL or longer than PATH-CAP has
 \ no canonical spelling: E-PATH-NUL or E-PATH-RANGE, and nothing opens.
-: DOC-OPEN ( ptr u8 n n ptr u8 n ptr u8 n -- )
-   {: u:ptr uu:n v:n p:ptr pu:n t:ptr tu:n :}
+: DOC-OPEN ( ^u8 n n ^u8 n ^u8 n -- )
+   {: u:^ uu:n v:n p:^ pu:n t:^ tu:n :}
    u uu DOC-FIND MATCH option
       some OF v t tu DOC-CHANGE ENDOF
       none OF u uu v p pu t tu ADD ENDOF

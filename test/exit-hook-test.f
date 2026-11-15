@@ -32,35 +32,35 @@ variable ROOT-U
 variable SCRIPT-U
 variable TREE-U
 
-: ROOT$ ( -- ptr u8 n ) ROOT-BUF ROOT-U @ ;
-: SCRIPT$ ( -- ptr u8 n ) SCRIPT-BUF SCRIPT-U @ ;
-: TREE$ ( -- ptr u8 n ) TREE-BUF TREE-U @ ;
-: TEXT$ ( -- ptr u8 n ) TEXT-BUF TEXT-U @ ;
+: ROOT$ ( -- ^u8 n ) ROOT-BUF ROOT-U @ ;
+: SCRIPT$ ( -- ^u8 n ) SCRIPT-BUF SCRIPT-U @ ;
+: TREE$ ( -- ^u8 n ) TREE-BUF TREE-U @ ;
+: TEXT$ ( -- ^u8 n ) TEXT-BUF TEXT-U @ ;
 
 \ Child sources are built a line at a time: one 255-byte source line of this
 \ file cannot hold a whole script, and the pieces read as the program they are.
-: TEXT+ ( ptr u8 n -- ) {: src:ptr srcu :}
+: TEXT+ ( ^u8 n -- ) {: src:^ srcu :}
    TEXT-U @ srcu + TEXT-CAP > if E-FS-CAPACITY throw then
    src TEXT-BUF TEXT-U @ + srcu BYTE-COPY
    TEXT-U @ srcu + TEXT-U ! ;
 
 : PREPARE ( -- )
    FS:CLEANUP-RESET
-   s" exit-hook" FS:MKTEMP-DIR {: path:ptr pathu :}
+   s" exit-hook" FS:MKTEMP-DIR {: path:^ pathu :}
    path ROOT-BUF pathu BYTE-COPY pathu ROOT-U !
    ROOT$ FS:CLEANUP-TREE+ ;
 
-: TREE-PATH ( ptr u8 n -- ) {: name:ptr nameu :}
+: TREE-PATH ( ^u8 n -- ) {: name:^ nameu :}
    ROOT$ name nameu TREE-BUF FS:JOIN-PATH TREE-U ! ;
 
 \ The script path, the directory the child is told to register, and the two
 \ lines every child script starts with.
-: CASE-PATHS ( ptr u8 n ptr u8 n -- ) {: script:ptr scriptu tree:ptr treeu :}
+: CASE-PATHS ( ^u8 n ^u8 n -- ) {: script:^ scriptu tree:^ treeu :}
    ROOT$ script scriptu SCRIPT-BUF FS:JOIN-PATH SCRIPT-U !
    tree treeu TREE-PATH
    0 TEXT-U !
    S\" require src/lib/fs-mutate.f\n" TEXT+
-   S\" : CHILD-TREE ( -- ptr u8 n ) 0 SCRIPT-ARGV$ ;\n" TEXT+ ;
+   S\" : CHILD-TREE ( -- ^u8 n ) 0 SCRIPT-ARGV$ ;\n" TEXT+ ;
 
 : SHOW-FAILURE ( n n n -- ) {: outu:n erru:n rc:n :}
    s" exit-hook child rc " type rc . cr
@@ -70,14 +70,14 @@ variable TREE-U
    rc want = 0= if outu erru rc SHOW-FAILURE then
    rc want T= ;
 
-: ERR-HAS? ( n ptr u8 n -- bool ) {: erru:n want:ptr wantu :}
+: ERR-HAS? ( n ^u8 n -- bool ) {: erru:n want:^ wantu :}
    ERR erru want wantu CONTAINS? ;
 
 \ The child runs the program at the path with the arguments put so far, and
 \ with this process's environment, so TMPDIR and the working directory are the
 \ ones the suite itself runs with. Capture gives the child no stdin, so the
 \ program's own exit is what the case measures.
-: RUN-PATH ( ptr u8 n -- n n n ) {: path:ptr pathu :}
+: RUN-PATH ( ^u8 n -- n n n ) {: path:^ pathu :}
    PROC-ENV-INHERIT-MISSING
    path pathu >LEN
    OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
@@ -114,7 +114,7 @@ variable TREE-U
    PROC-ARGV-ENV-RESET
    TREE$ RUN-PATH ;
 
-: OUT-HAS? ( n ptr u8 n -- bool ) {: outu:n want:ptr wantu :}
+: OUT-HAS? ( n ^u8 n -- bool ) {: outu:n want:^ wantu :}
    OUT outu want wantu CONTAINS? ;
 
 \ A normal top-level exit reaches the vector.
@@ -253,9 +253,9 @@ create STAGED-OUT-BUF PATH-CAP allot
 variable STAGED-OUT-U
 variable STAGED-FILES
 
-: STAGED-OUT$ ( -- ptr u8 n ) STAGED-OUT-BUF STAGED-OUT-U @ ;
+: STAGED-OUT$ ( -- ^u8 n ) STAGED-OUT-BUF STAGED-OUT-U @ ;
 
-: STAGED-COUNT ( ptr u8 n -- )
+: STAGED-COUNT ( ^u8 n -- )
    2drop STAGED-FILES @ 1+ STAGED-FILES ! ;
 
 : STAGED-FILES# ( -- n )
@@ -266,9 +266,9 @@ variable STAGED-FILES
 : CASE-STAGED ( -- )
    s" staged.f" s" staged-tree" CASE-PATHS
    S\" create CHILD-BUF PATH-CAP allot\nvariable CHILD-U\n" TEXT+
-   S\" : CHILD-OUT ( -- ptr u8 n ) CHILD-BUF CHILD-U @ ;\n" TEXT+
+   S\" : CHILD-OUT ( -- ^u8 n ) CHILD-BUF CHILD-U @ ;\n" TEXT+
    S\" : CHILD-OUT! ( -- ) CHILD-TREE s\q out\q CHILD-BUF FS:JOIN-PATH CHILD-U ! ;\n" TEXT+
-   S\" : CHILD-FILL ( ptr u8 n -- ) 2drop s\q child: dying\q 7 die ;\n" TEXT+
+   S\" : CHILD-FILL ( ^u8 n -- ) 2drop s\q child: dying\q 7 die ;\n" TEXT+
    S\" : CHILD-MAIN ( -- ) CHILD-TREE FS:MAKE-DIR CHILD-OUT! CHILD-OUT s\q previous\q FS:WRITE-ALL\n" TEXT+
    S\"    CHILD-OUT [: CHILD-FILL ;] FS:REPLACE-STAGED ;\n" TEXT+
    S\" CHILD-MAIN\n" TEXT+
@@ -411,7 +411,7 @@ variable STAGED-FILES
 create RUN-FILE-BUF PATH-CAP allot
 variable RUN-FILE-U
 
-: RUN-FILE$ ( -- ptr u8 n ) RUN-FILE-BUF RUN-FILE-U @ ;
+: RUN-FILE$ ( -- ^u8 n ) RUN-FILE-BUF RUN-FILE-U @ ;
 
 \ It builds and runs a program because the build boundary is under test: the
 \ exit actions and cleanups its source's top level registers run when the
@@ -427,8 +427,8 @@ variable RUN-FILE-U
    S\" $10 QUEUE:QUEUE JOBS\n" TEXT+
    S\" : BUILD-ACTION ( -- ) s\q build-time exit action ran\q type cr ;\n" TEXT+
    S\" : RUN-ACTION ( -- ) s\q run-time exit action ran\q type cr ;\n" TEXT+
-   S\" : BUILT-FILE ( -- ptr u8 n ) s\q " TEXT+  TREE$ TEXT+  S\" .built\q ;\n" TEXT+
-   S\" : RUN-FILE ( -- ptr u8 n ) s\q " TEXT+  RUN-FILE$ TEXT+  S\" \q ;\n" TEXT+
+   S\" : BUILT-FILE ( -- ^u8 n ) s\q " TEXT+  TREE$ TEXT+  S\" .built\q ;\n" TEXT+
+   S\" : RUN-FILE ( -- ^u8 n ) s\q " TEXT+  RUN-FILE$ TEXT+  S\" \q ;\n" TEXT+
    S\" ' BUILD-ACTION AT-EXIT:ADD\n" TEXT+
    S\" BUILT-FILE s\q b\q FS:WRITE-ALL BUILT-FILE FS:CLEANUP+\n" TEXT+
    S\" : MAIN ( -- ) SRCLOC:TOKEN$ 2drop ['] RUN-ACTION AT-EXIT:ADD\n" TEXT+
@@ -521,7 +521,7 @@ variable RUN-FILE-U
    CLEANUPS-TEXT
    S\" : CHILD-HOLD ( n -- ) {: k:n :} k 0= if ['] CHILD-FIRST CHILD-TASK TASK:AT-EXIT\n" TEXT+
    S\"    ['] CHILD-SECOND CHILD-TASK TASK:AT-EXIT exit then\n" TEXT+
-   S\"    TASK:MIN-STACK TASK:NEW {: t:ptr :} [: ;] t TASK:AT-EXIT k 1 - RECURSE t TASK:FREE ;\n" TEXT+
+   S\"    TASK:MIN-STACK TASK:NEW {: t:^ :} [: ;] t TASK:AT-EXIT k 1 - RECURSE t TASK:FREE ;\n" TEXT+
    S\" 128 CHILD-HOLD\n: MAIN ( -- ) ;\n" TEXT+
    RUN-BUILD {: outu:n erru:n rc:n :}
    s" a source that leaves a cleanup chunk mapped is refused" T-LABEL

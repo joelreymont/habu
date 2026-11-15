@@ -39,11 +39,11 @@ variable ZERO-SIZE
 variable PAD-SIZE
 variable OTHER-SIZE
 
-: IMG@ ( -- ptr u8 )
+: IMG@ ( -- ^u8 )
    0 IMG BYTE-VIEW ;
 
-: READ-IMAGE ( ptr u8 n -- )
-   {: path:ptr pathu:n :}
+: READ-IMAGE ( ^u8 n -- )
+   {: path:^ pathu:n :}
    path pathu FS:FILE-SIZE {: size:n :}
    size CELL < if s" image-size: image too small" RC die then
    size CELL 1- + CELL / IMG-RESERVE
@@ -54,7 +54,7 @@ variable OTHER-SIZE
 
 : ELF? ( -- bool ) IMG@ ILEN @ ELF:MAGIC? ;
 
-: REFUSAL$ ( -- ptr u8 n )
+: REFUSAL$ ( -- ^u8 n )
    IMG@ LE:U32@ $6D736100 = if
       s" image-size: a Wasm module, which this report does not read" exit
    then
@@ -67,10 +67,10 @@ variable OTHER-SIZE
    ELF? if IMG@ ILEN @ ELF:OPEN exit then
    IMG@ ILEN @ MACHO:OPEN ;
 
-: MAP-CHECK ( ptr u8 n -- )
+: MAP-CHECK ( ^u8 n -- )
    IMAGE-NAMES:MAP$ 0= if
       2drop s" image-size: the program path is too long for its map path" RC die
-   then {: map:ptr mapu:n :}
+   then {: map:^ mapu:n :}
    map mapu FS:FILE? if exit then
    2 s" image-size: no map " write drop
    map mapu RC die ;
@@ -181,14 +181,14 @@ variable OTHER-SIZE
    bytes 1000 * ILEN @ / {: tenths:n :}
    tenths 10 / FMT:.U 46 emit  tenths 10 mod FMT:.U ;
 
-: ROW ( ptr u8 n n -- )
-   {: name:ptr nameu:n bytes:n :}
+: ROW ( ^u8 n n -- )
+   {: name:^ nameu:n bytes:n :}
    name nameu type TAB bytes FMT:.U TAB bytes SHARE cr ;
 
 public
 
-: MEASURE ( ptr u8 n -- )
-   {: path:ptr pathu:n :}
+: MEASURE ( ^u8 n -- )
+   {: path:^ pathu:n :}
    path pathu READ-IMAGE
    REFUSE
    OPEN
@@ -217,8 +217,8 @@ public
    s" total" TOTAL-BYTES ROW
    IMAGE-NAMES:REPORT-CODE ;
 
-: .SUMMARY ( ptr u8 n -- )
-   {: name:ptr nameu:n :}
+: .SUMMARY ( ^u8 n -- )
+   {: name:^ nameu:n :}
    s" size: " type name nameu type
    s"  " type TOTAL-BYTES FMT:.U s"  bytes = code " type CODE-BYTES FMT:.U
    s" , names " type NAME-BYTES FMT:.U

@@ -4,7 +4,7 @@ require src/lib/xml/names.f
 
 package XML
 private
-: EVENT-RESET ( ptr n -- )
+: EVENT-RESET ( ^n -- )
    {: state :}
    state POSITION + @ state RAW-OFF + !
    0 state RAW-LEN + !
@@ -15,30 +15,30 @@ private
    0 state ATTR-COUNT + !
    -1 state ATTR-INDEX + ! ;
 
-: EVENT-FINISH ( ptr n kind -- )
+: EVENT-FINISH ( ^n kind -- )
    {: state token:kind :}
    state POSITION + @ state RAW-OFF + @ - state RAW-LEN + !
    token KIND>N state TOKEN-KIND + ! ;
 
-: VALUE-BEGIN ( ptr n -- )
+: VALUE-BEGIN ( ^n -- )
    dup POSITION + @ swap VALUE-OFF + ! ;
 
-: VALUE-END ( ptr n -- )
+: VALUE-END ( ^n -- )
    {: state :}
    state POSITION + @ state VALUE-OFF + @ - state VALUE-LEN + ! ;
 
-: SCAN-ELEMENT-NAME ( ptr n -- )
+: SCAN-ELEMENT-NAME ( ^n -- )
    {: state :}
    state SCAN-NAME {: start:n size:n :}
    state start size QNAME-CHECK
    start state NAME-OFF + !
    size state NAME-LEN + ! ;
 
-: OPEN-END? ( ptr n -- bool )
+: OPEN-END? ( ^n -- bool )
    {: state :}
    state PEEK $3E = state s" />" MATCH$ or ;
 
-: SCAN-OPEN-ATTRIBUTES ( ptr n -- bool )
+: SCAN-OPEN-ATTRIBUTES ( ^n -- bool )
    {: state :}
    begin state OPEN-END? 0= while
       state WHITE? 0= if E-MALFORMED throw then
@@ -50,7 +50,7 @@ private
    state $3E REQUIRE-BYTE
    empty ;
 
-: PUSH-CHECK ( ptr n -- )
+: PUSH-CHECK ( ^n -- )
    {: state :}
    state OPEN-DEPTH + @ 0= if
       state ROOT-COUNT + @ 0<> if E-MALFORMED throw then
@@ -58,21 +58,21 @@ private
    then
    state state OPEN-DEPTH + @ 1+ FRAMES-GROW ;
 
-: SAVE-FRAME ( ptr n -- )
+: SAVE-FRAME ( ^n -- )
    {: state :}
    state state OPEN-DEPTH + @ FRAME {: frame :}
    state state NAME-OFF + @ state NAME-LEN + @ SCOPE-REF
    frame CELL + ! frame !
    state NS-COUNT + @ frame 2 cells + ! ;
 
-: PUSH-FRAME ( ptr n -- )
+: PUSH-FRAME ( ^n -- )
    {: state :}
    state state OPEN-DEPTH + @ FRAME {: frame :}
    state URI-OFF + @ frame 3 cells + !
    state URI-LEN + @ frame 4 cells + !
    1 state OPEN-DEPTH + +! ;
 
-: READ-START ( ptr n -- )
+: READ-START ( ^n -- )
    {: state :}
    state PUSH-CHECK
    state ADVANCE
@@ -84,7 +84,7 @@ private
    empty if EMPTY-END state PENDING + ! then
    state XML-KIND:START EVENT-FINISH ;
 
-: MATCH-END-NAME ( ptr n -- )
+: MATCH-END-NAME ( ^n -- )
    {: state :}
    state CURRENT-FRAME {: frame :}
    state frame @ frame CELL + @ SPAN$
@@ -94,7 +94,7 @@ private
    frame 3 cells + @ state URI-OFF + !
    frame 4 cells + @ state URI-LEN + ! ;
 
-: READ-END ( ptr n -- )
+: READ-END ( ^n -- )
    {: state :}
    state OPEN-DEPTH + @ 0= if E-MALFORMED throw then
    state 2 ADVANCE-N
@@ -105,7 +105,7 @@ private
    POP-NEXT state PENDING + !
    state XML-KIND:END EVENT-FINISH ;
 
-: POP-FRAME ( ptr n -- )
+: POP-FRAME ( ^n -- )
    {: state :}
    state CURRENT-FRAME {: frame :}
    state frame 2 cells + @ POP-BINDINGS
@@ -113,7 +113,7 @@ private
    -1 state OPEN-DEPTH + +!
    0 state PENDING + ! ;
 
-: READ-EMPTY-END ( ptr n -- )
+: READ-EMPTY-END ( ^n -- )
    {: state :}
    state CURRENT-FRAME {: frame :}
    frame @ state NAME-OFF + !
@@ -123,7 +123,7 @@ private
    POP-NEXT state PENDING + !
    state XML-KIND:END EVENT-FINISH ;
 
-: TEXT-CONTINUES? ( ptr n -- bool )
+: TEXT-CONTINUES? ( ^n -- bool )
    {: state :}
    state INPUT? if
       state POSITION + @ state VALUE-OFF + @ -
@@ -132,7 +132,7 @@ private
    state EOF? if false exit then
    state PEEK $3C <> ;
 
-: TEXT-SCALAR ( ptr n -- )
+: TEXT-SCALAR ( ^n -- )
    {: state :}
    state s" ]]>" MATCH$ if E-MALFORMED throw then
    state OPEN-DEPTH + @ 0= if
@@ -141,14 +141,14 @@ private
    state DECODE-TEXT SCAN-DECODE
    state POSITION + ! drop ;
 
-: READ-TEXT ( ptr n -- )
+: READ-TEXT ( ^n -- )
    {: state :}
    state VALUE-BEGIN
    begin state TEXT-CONTINUES? while state TEXT-SCALAR repeat
    state VALUE-END
    state XML-KIND:TEXT EVENT-FINISH ;
 
-: READ-COMMENT ( ptr n -- )
+: READ-COMMENT ( ^n -- )
    {: state :}
    state 4 ADVANCE-N
    state VALUE-BEGIN
@@ -160,7 +160,7 @@ private
    state 3 ADVANCE-N
    state XML-KIND:COMMENT EVENT-FINISH ;
 
-: READ-CDATA ( ptr n -- )
+: READ-CDATA ( ^n -- )
    {: state :}
    state OPEN-DEPTH + @ 0= if E-MALFORMED throw then
    state 9 ADVANCE-N
@@ -170,7 +170,7 @@ private
    state 3 ADVANCE-N
    state XML-KIND:CDATA EVENT-FINISH ;
 
-: DECLARATION-POSITION ( ptr n -- )
+: DECLARATION-POSITION ( ^n -- )
    {: state :}
    state INPUT? if
       state state RAW-OFF + @ ABS-OFF
@@ -187,25 +187,25 @@ private
    then
    E-MALFORMED throw ;
 
-: DECLARATION-NAME? ( ptr n n ptr u8 n -- bool )
+: DECLARATION-NAME? ( ^n n ^u8 n -- bool )
    {: state index:n name size:n :}
    state state index ATTRIBUTE name size NAME-MATCH? ;
 
-: DECLARATION-VALUE$ ( ptr n n -- ptr u8 n )
+: DECLARATION-VALUE$ ( ^n n -- ^u8 n )
    {: state index:n :}
    state state index ATTRIBUTE ATTRIBUTE-VALUE$ ;
 
-: VERSION-CHECK ( ptr n -- )
+: VERSION-CHECK ( ^n -- )
    {: state :}
    state ATTR-COUNT + @ 0= if E-MALFORMED throw then
    state 0 s" version" DECLARATION-NAME? 0= if E-MALFORMED throw then
    state 0 DECLARATION-VALUE$ s" 1.0" BYTES= 0= if E-ENCODING throw then ;
 
-: ENCODING-REQUIRED? ( ptr n -- bool )
+: ENCODING-REQUIRED? ( ^n -- bool )
    SOURCE-MODE + @ dup SOURCE-ASCII = over SOURCE-UTF16-LE-DECL = or
    swap SOURCE-UTF16-BE-DECL = or ;
 
-: UTF8-OR-ASCII? ( ptr n -- bool )
+: UTF8-OR-ASCII? ( ^n -- bool )
    {: state :}
    state 1 DECLARATION-VALUE$ s" UTF-8" FOLD-EQUAL? if true exit then
    state 1 DECLARATION-VALUE$ s" US-ASCII" FOLD-EQUAL? 0= if
@@ -221,7 +221,7 @@ private
    state SOURCE-MODE + !
    true ;
 
-: ENCODING-CHECK ( ptr n -- n )
+: ENCODING-CHECK ( ^n -- n )
    {: state :}
    state ATTR-COUNT + @ 1 = if
       state ENCODING-REQUIRED? if E-ENCODING throw then
@@ -251,7 +251,7 @@ private
    then
    2 ;
 
-: BOMLESS-DECLARATION ( ptr n -- )
+: BOMLESS-DECLARATION ( ^n -- )
    {: state :}
    state SOURCE-MODE + @ SOURCE-UTF16-LE-DECL =
    state SOURCE-MODE + @ SOURCE-UTF16-BE-DECL = or
@@ -260,7 +260,7 @@ private
    state SOURCE-LEN + @ 6 < if E-ENCODING throw then
    state 5 AT XML-SPACE? 0= if E-ENCODING throw then ;
 
-: STANDALONE-CHECK ( ptr n n -- )
+: STANDALONE-CHECK ( ^n n -- )
    {: state index:n :}
    state ATTR-COUNT + @ index = if exit then
    state ATTR-COUNT + @ index 1+ <> if E-MALFORMED throw then
@@ -270,7 +270,7 @@ private
       E-MALFORMED throw
    then ;
 
-: READ-DECLARATION ( ptr n -- )
+: READ-DECLARATION ( ^n -- )
    {: state :}
    state DECLARATION-POSITION
    state state NAME-OFF + @ state NAME-LEN + @ SPAN$ s" xml" BYTES= 0= if
@@ -287,7 +287,7 @@ private
    state state ENCODING-CHECK STANDALONE-CHECK
    state VALUE-END ;
 
-: READ-PI-CONTENT ( ptr n -- )
+: READ-PI-CONTENT ( ^n -- )
    {: state :}
    state EOF? if E-TRUNCATED throw then
    state s" ?>" MATCH$ 0= if
@@ -298,7 +298,7 @@ private
    begin state s" ?>" MATCH$ 0= while state SCAN-SCALAR drop repeat
    state VALUE-END ;
 
-: READ-PI ( ptr n -- )
+: READ-PI ( ^n -- )
    {: state :}
    state 2 ADVANCE-N
    state SCAN-NAME
@@ -312,7 +312,7 @@ private
    state 2 ADVANCE-N
    state XML-KIND:PI EVENT-FINISH ;
 
-: READ-MARKUP ( ptr n -- )
+: READ-MARKUP ( ^n -- )
    {: state :}
    state s" </" MATCH$ if state READ-END exit then
    state s" <!--" MATCH$ if state READ-COMMENT exit then
@@ -322,13 +322,13 @@ private
    state s" <!" MATCH$ if E-MALFORMED throw then
    state READ-START ;
 
-: READ-EOF ( ptr n -- )
+: READ-EOF ( ^n -- )
    {: state :}
    state OPEN-DEPTH + @ 0<> if E-TRUNCATED throw then
    state ROOT-COUNT + @ 1 <> if E-MALFORMED throw then
    state XML-KIND:EOF EVENT-FINISH ;
 
-: READ-EVENT ( ptr n -- )
+: READ-EVENT ( ^n -- )
    {: state :}
    state PENDING + @ POP-NEXT = if state POP-FRAME then
    state INPUT? if
@@ -345,7 +345,7 @@ private
    state EOF? if state READ-EOF exit then
    state PEEK $3C = if state READ-MARKUP else state READ-TEXT then ;
 
-: NEXT-STATE ( ptr n -- kind )
+: NEXT-STATE ( ^n -- kind )
    {: state :}
    state LIVE
    1 state FAILED + !
@@ -353,7 +353,7 @@ private
    0 state FAILED + !
    state TOKEN-KIND + >KIND-CELL @ ;
 
-: TEXT-MODE ( ptr n -- n )
+: TEXT-MODE ( ^n -- n )
    TOKEN-KIND + >KIND-CELL @ MATCH kind
       start OF E-STATE throw ENDOF
       end OF E-STATE throw ENDOF
@@ -364,13 +364,13 @@ private
       eof OF E-STATE throw ENDOF
    ;MATCH ;
 
-: CONTENT-STATE ( ptr n -- off len )
+: CONTENT-STATE ( ^n -- off len )
    {: state :}
    state LIVE
    state TEXT-MODE drop
    state state VALUE-OFF + @ ABS-OFF >OFF state VALUE-LEN + @ >LEN ;
 
-: TEXT-STATE ( ptr n ptr u8 n -- n )
+: TEXT-STATE ( ^n ^u8 n -- n )
    {: state destination cap:n :}
    state LIVE
    state TEXT-MODE {: mode:n :}
@@ -385,7 +385,7 @@ public
 : CONTENT ( XML:reader -- XML:reader off len )
    STATE CONTENT-STATE ;
 
-: TEXT ( XML:reader ptr u8 n -- XML:reader n )
+: TEXT ( XML:reader ^u8 n -- XML:reader n )
    DECODE-ARGS TEXT-STATE ;
 
 ;package

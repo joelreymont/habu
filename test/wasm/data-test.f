@@ -43,13 +43,13 @@ variable AFTER-PATH-U
 \ The module's memory as the peer dumped it after the run.
 DYNAMIC-BUFFER AFTER u8
 
-: ARG+ ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
+: ARG+ ( ^u8 n -- ) >LEN PROC-ARGV+ ;
 
 : NUM-ARG ( n -- )
    SB-RESET FMT:SB-U SB$ ARG+ ;
 
-: SPAWN ( ptr u8 n -- n )
-   {: exe:ptr eu:n :}
+: SPAWN ( ^u8 n -- n )
+   {: exe:^ eu:n :}
    exe eu >LEN EXE RESOLVE-EXECUTABLE {: xu:len :}
    EXE xu OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N
@@ -58,10 +58,10 @@ DYNAMIC-BUFFER AFTER u8
    rc 0<> if ERR er LEN>N type cr then
    rc ;
 
-: OUT$ ( -- ptr u8 n ) OUT OUT-U @ ;
+: OUT$ ( -- ^u8 n ) OUT OUT-U @ ;
 
 : SETUP ( -- )
-   s" wasm-data" FS:MKTEMP-DIR {: dir:ptr u:n :}
+   s" wasm-data" FS:MKTEMP-DIR {: dir:^ u:n :}
    dir DIR u BYTE-COPY
    DIR u s" data-region.wasm" MOD FS:JOIN-PATH MOD-U !
    DIR u s" before.bin" BEFORE-PATH FS:JOIN-PATH BEFORE-PATH-U !
@@ -77,8 +77,8 @@ DYNAMIC-BUFFER AFTER u8
    HOST-OFFSET NUM-ARG HOST-BYTE NUM-ARG
    s" bun" SPAWN ;
 
-: READ-DUMP ( ptr u8 n ptr u8 n -- )
-   {: pa:ptr pu:n dst:ptr u:n :}
+: READ-DUMP ( ^u8 n ^u8 n -- )
+   {: pa:^ pu:n dst:^ u:n :}
    pa pu dst u FS:READ-ALL u <> if E-FS-IO throw then ;
 
 \ Reads the dump after the run; answers the size of the one before it, the
@@ -89,20 +89,20 @@ DYNAMIC-BUFFER AFTER u8
    AFTER-PATH AFTER-PATH-U @ 0 AFTER au READ-DUMP
    BEFORE-PATH BEFORE-PATH-U @ FS:FILE-SIZE ;
 
-: LAST-LINE ( ptr u8 n -- ptr u8 n )
-   RTRIM {: a:ptr u:n :}
+: LAST-LINE ( ^u8 n -- ^u8 n )
+   RTRIM {: a:^ u:n :}
    u begin dup 0 > while
       a over 1- + c@ STR-LF = if a over + u rot - exit then
       1-
    repeat drop a u ;
 
-: NO-BASE ( ptr u8 n -- )
+: NO-BASE ( ^u8 n -- )
    type cr
    s" wasm data test: OUT's last line is not the dynamic buffer's address" T-EX-FAIL die ;
 
 \ data-region.f prints the dynamic buffer's address last.
 : DYN-BASE ( -- n )
-   OUT$ LAST-LINE {: a:ptr u:n :}
+   OUT$ LAST-LINE {: a:^ u:n :}
    a u STR>NUMBER? MATCH option
       some OF ENDOF
       none OF a u NO-BASE ENDOF

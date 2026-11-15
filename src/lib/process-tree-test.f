@@ -99,8 +99,8 @@ variable TARGET
    s" /bin/sleep" >LEN OUT CAP >LEN ERR CAP >LEN CAPTURE-MS >MS
    RUN-ARGV-CAPTURE-OUTCOME T-ENDING-TIMEOUT 2drop ;
 
-: SLEEPER-REAPED ( ptr u8 n -- )
-   {: label:ptr labelu:n :}
+: SLEEPER-REAPED ( ^u8 n -- )
+   {: label:^ labelu:n :}
    label labelu T-LABEL
    PROCESS:PID @ PROCESS:NO-PID T=
    PROCESS:RC @ 128 PROCESS:SIGKILL + T= ;
@@ -155,7 +155,7 @@ PROCESS:NO-PID ROOT !
 PROCESS:NO-FD CROWD-RD !
 PROCESS:NO-FD CROWD-WR !
 
-: CROWD-SCRIPT$ ( -- ptr u8 n )
+: CROWD-SCRIPT$ ( -- ^u8 n )
    SB-RESET
    s" i=0; while [ $i -lt " SB-APPEND
    DESCENDANTS FMT:SB-INT
@@ -245,8 +245,8 @@ variable RUNS-DIR-U
 create IDLE-COPY PATH-CAP allot
 variable IDLE-COPY-U
 
-: RUNS-DIR$ ( -- ptr u8 n ) RUNS-DIR RUNS-DIR-U @ ;
-: IDLE-COPY$ ( -- ptr u8 n ) IDLE-COPY IDLE-COPY-U @ ;
+: RUNS-DIR$ ( -- ^u8 n ) RUNS-DIR RUNS-DIR-U @ ;
+: IDLE-COPY$ ( -- ^u8 n ) IDLE-COPY IDLE-COPY-U @ ;
 
 : RUNS-BODY ( -- )
    RUNS-DIR$ s" hb" IDLE-COPY FS:JOIN-PATH IDLE-COPY-U !
@@ -258,12 +258,12 @@ variable IDLE-COPY-U
 
 \ MKTEMP-DIR's answer lasts until this task's next temp, so RUNS-DIR keeps it.
 : RUNS ( -- )
-   s" proc-tree-runs" FS:MKTEMP-DIR {: dir:ptr diru:n :}
+   s" proc-tree-runs" FS:MKTEMP-DIR {: dir:^ diru:n :}
    dir RUNS-DIR diru BYTE-COPY
    diru RUNS-DIR-U !
    [: RUNS-BODY ;] [: RUNS-DIR$ FS:REMOVE-TREE ;] finally ;
 
-: SANDBOX$ ( -- ptr u8 n )
+: SANDBOX$ ( -- ^u8 n )
    s" sandbox-exec" >LEN SANDBOX FIND-EXECUTABLE MATCH option
       none OF s" process-tree-test: required executable missing on PATH: sandbox-exec" 1 die ENDOF
       some OF LEN>N ENDOF
@@ -278,8 +278,8 @@ variable IDLE-COPY-U
 
 \ This file again as the walker named mode, under a profile that denies one
 \ operation: its stdout and stderr lengths and its exit code.
-: SANDBOXED ( ptr u8 n ptr u8 n -- n n n )
-   {: profile:ptr profileu:n mode:ptr modeu:n :}
+: SANDBOXED ( ^u8 n ^u8 n -- n n n )
+   {: profile:^ profileu:n mode:^ modeu:n :}
    PROC-ARGV-RESET
    s" -p" >LEN PROC-ARGV+
    profile profileu >LEN PROC-ARGV+
@@ -292,8 +292,8 @@ variable IDLE-COPY-U
    CAPTURE>RC ;
 
 \ A walker's own report is its verdict; on a failure it is printed here.
-: VERDICT ( n n n ptr u8 n -- )
-   {: outn:n errn:n rc:n label:ptr labelu:n :}
+: VERDICT ( n n n ^u8 n -- )
+   {: outn:n errn:n rc:n label:^ labelu:n :}
    label labelu T-LABEL
    rc 0 T=
    rc 0<> if
@@ -301,12 +301,12 @@ variable IDLE-COPY-U
       OUT outn type ERR errn type cr
    then ;
 
-: REFUSED ( ptr u8 n ptr u8 n -- )
-   {: profile:ptr profileu:n label:ptr labelu:n :}
+: REFUSED ( ^u8 n ^u8 n -- )
+   {: profile:^ profileu:n label:^ labelu:n :}
    profile profileu s" walker" SANDBOXED label labelu VERDICT ;
 
 \ What stderr gets from src/lib/process.f for n walks the kernel refused.
-: WALK-LINES$ ( n -- ptr u8 n ) {: walks:n :}
+: WALK-LINES$ ( n -- ^u8 n ) {: walks:n :}
    SB-RESET
    walks 0 ?do
       s" process: process tree of a killed child not walked, throw " SB-APPEND

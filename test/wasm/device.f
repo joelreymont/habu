@@ -36,13 +36,13 @@ PATH-CAP BUFFER: PATH
 variable PATH-U
 
 : SETUP ( -- )
-   s" wasm-device" FS:MKTEMP-DIR {: a:ptr u:n :}
+   s" wasm-device" FS:MKTEMP-DIR {: a:^ u:n :}
    a DIR u BYTE-COPY  u DIR-U !
    s" wasm device: modules in " type  DIR u type cr ;
 
 \ The module run calling function e, written as name in DIR; answers its path.
-: MODULE ( n ptr u8 n -- ptr u8 n )
-   {: e:n name:ptr nu:n :}
+: MODULE ( n ^u8 n -- ^u8 n )
+   {: e:n name:^ nu:n :}
    DIR DIR-U @ name nu PATH FS:JOIN-PATH PATH-U !
    PATH PATH-U @  e WLINK:LINK  FS:WRITE-ALL
    PATH PATH-U @ ;
@@ -58,7 +58,7 @@ variable PATH-U
 
 \ ---- one function ------------------------------------------------------------------
 $8000000000000001 constant CODE        \ MIN-N + 1, which a double rounds to MIN-N
-: TEXT$ ( -- ptr u8 n )  S\" wasm ok\n" ;
+: TEXT$ ( -- ^u8 n )  S\" wasm ok\n" ;
 
 \ i32.const ctx's base, the address of a store into one of its fields.
 : CTX, ( -- )  $41 B, WPROF:CTX-BASE S32, ;
@@ -68,7 +68,7 @@ $8000000000000001 constant CODE        \ MIN-N + 1, which a double rounds to MIN
 : THROWER ( -- )
    0 BODY-U !
    0 B,
-   TEXT$ {: t:ptr tu:n :}
+   TEXT$ {: t:^ tu:n :}
    tu 0 do
       $41 B, WPROF:OUT-BASE i + S32,  $41 B, t i + c@ S32,  $3A B, 0 B, 0 B,
    loop
@@ -79,7 +79,7 @@ $8000000000000001 constant CODE        \ MIN-N + 1, which a double rounds to MIN
 
 : ONE-ROW ( -- )
    THROWER KERNEL0
-   0 s" one.wasm" MODULE {: a:ptr u:n :}
+   0 s" one.wasm" MODULE {: a:^ u:n :}
    s" a one-function module validates" T-LABEL
    a u WASM-HARNESS:VALID? TTRUE
    s" it exits 1, its entry's status" T-LABEL
@@ -92,7 +92,7 @@ $8000000000000001 constant CODE        \ MIN-N + 1, which a double rounds to MIN
 : TRAP-ROW ( -- )
    0 BODY-U !  0 B,  $00 B,  $0B B,            \ unreachable
    KERNEL0
-   0 s" trap.wasm" MODULE {: a:ptr u:n :}
+   0 s" trap.wasm" MODULE {: a:^ u:n :}
    s" a body that traps validates" T-LABEL
    a u WASM-HARNESS:VALID? TTRUE
    s" it exits 2" T-LABEL
@@ -101,7 +101,7 @@ $8000000000000001 constant CODE        \ MIN-N + 1, which a double rounds to MIN
 : INVALID-ROW ( -- )
    0 BODY-U !  0 B,  $42 B, 0 S64,  $0B B,     \ an i64 for its i32 status
    KERNEL0
-   0 s" invalid.wasm" MODULE {: a:ptr u:n :}
+   0 s" invalid.wasm" MODULE {: a:^ u:n :}
    s" a body answering the wrong type is invalid" T-LABEL
    a u WASM-HARNESS:VALID? TFALSE
    s" it exits 3" T-LABEL
@@ -110,7 +110,7 @@ $8000000000000001 constant CODE        \ MIN-N + 1, which a double rounds to MIN
 \ ---- W03 -------------------------------------------------------------------------
 : W03-ROW ( -- )
    BUILD
-   CHAIN s" w03.wasm" MODULE {: a:ptr u:n :}
+   CHAIN s" w03.wasm" MODULE {: a:^ u:n :}
    s" W03's module validates" T-LABEL
    a u WASM-HARNESS:VALID? TTRUE
    s" W03's module runs to status 0" T-LABEL

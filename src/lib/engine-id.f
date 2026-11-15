@@ -51,11 +51,11 @@ EID-REGION-BYTES SCRATCH-BUFFER: EID-MAPPED
 EID-FD-BYTES SCRATCH-BUFFER: EID-OPENED
 
 PROCESS-SYMBOLS
-FUNCTION: SELF-PATH proc_pidpath ( n ptr u8 n -- n ) ;FUNCTION
+FUNCTION: SELF-PATH proc_pidpath ( n ^u8 n -- n ) ;FUNCTION
 \ dyld image 0 is the first inserted library when DYLD_INSERT_LIBRARIES names one.
 FUNCTION: MAIN-HEADER _NSGetMachExecuteHeader ( -- n ) ;FUNCTION
-FUNCTION: MAPPED-INFO proc_pidinfo ( n n n ptr u8 n -- i32 ) ;FUNCTION
-FUNCTION: OPENED-INFO proc_pidfdinfo ( n n n ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: MAPPED-INFO proc_pidinfo ( n n n ^u8 n -- i32 ) ;FUNCTION
+FUNCTION: OPENED-INFO proc_pidfdinfo ( n n n ^u8 n -- i32 ) ;FUNCTION
 
 \ The kernel's byte count for the engine's pathname in EID-PATH; zero or
 \ negative when it refuses.
@@ -71,7 +71,7 @@ FUNCTION: OPENED-INFO proc_pidfdinfo ( n n n ptr u8 n -- i32 ) ;FUNCTION
 \ PATH-CAP. EID-PATH holds one byte more than PATH-CAP, so a count that fills it
 \ is a truncated pathname: readlink stops at the buffer's size without saying
 \ so. Only a reported, whole pathname is cached.
-: CACHED-PATH ( -- ptr u8 n )
+: CACHED-PATH ( -- ^u8 n )
    EID-PATH-DONE @ 0= if
       ENGINE-SELF-PATH dup 0 <= over EID-PATH-CAP >= or if
          drop E-ENGINE-PATH throw
@@ -106,7 +106,7 @@ FUNCTION: OPENED-INFO proc_pidfdinfo ( n n n ptr u8 n -- i32 ) ;FUNCTION
 \ Appends a number, at least zero, to the key in decimal without padding.
 : DEC+ ( n -- ) {: v:n :}
    v 0 < if E-ENGINE-KEY throw then
-   v FMT:INT$ {: a:ptr u:n :}
+   v FMT:INT$ {: a:^ u:n :}
    a EID-KEY EID-KEY-U @ + u BYTE-COPY
    EID-KEY-U @ u + EID-KEY-U ! ;
 
@@ -126,9 +126,9 @@ FUNCTION: OPENED-INFO proc_pidfdinfo ( n n n ptr u8 n -- i32 ) ;FUNCTION
 
 public
 
-: PATH$ ( -- ptr u8 n ) CACHED-PATH ;
+: PATH$ ( -- ^u8 n ) CACHED-PATH ;
 
-: KEY$ ( -- ptr u8 n )
+: KEY$ ( -- ^u8 n )
    EID-KEY-DONE @ 0= if
       OPEN-RUNNING {: fd:n :}
       fd 0 < if E-ENGINE-KEY throw then

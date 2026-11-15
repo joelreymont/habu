@@ -6,7 +6,7 @@ require src/lib/string.f
 package SOURCE-SYNTAX
 public
 
-: PARSING-KEYWORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: PARSING-KEYWORD? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" char" STR=CI if STR-TRUE exit then
    a u s" [char]" STR=CI if STR-TRUE exit then
    a u s" '" STR= if STR-TRUE exit then
@@ -14,19 +14,19 @@ public
 
 \ In a body only the bracketed keywords and `postpone` parse, once no live
 \ local claims the token; `char` and `'` there are names.
-: BODY-PARSING-KEYWORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: BODY-PARSING-KEYWORD? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" [char]" STR=CI if STR-TRUE exit then
    a u s" postpone" STR=CI if STR-TRUE exit then
    a u s" [']" STR= ;
 
 \ The engine opens a definition body at these.
-: BODY-OPENER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: BODY-OPENER? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" :" STR= if STR-TRUE exit then
    a u s" TRUSTED:" STR=CI if STR-TRUE exit then
    a u s" kernel:" STR=CI ;
 
 \ Block tokens alter local lifetime only after byte-exact local lookup.
-: BLOCK-OPENER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: BLOCK-OPENER? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" if" STR=CI if STR-TRUE exit then
    a u s" begin" STR=CI if STR-TRUE exit then
    a u s" do" STR=CI if STR-TRUE exit then
@@ -36,7 +36,7 @@ public
    a u s" match" STR=CI if STR-TRUE exit then
    a u s" [:" STR= ;
 
-: BLOCK-CLOSER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: BLOCK-CLOSER? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" then" STR=CI if STR-TRUE exit then
    a u s" until" STR=CI if STR-TRUE exit then
    a u s" repeat" STR=CI if STR-TRUE exit then

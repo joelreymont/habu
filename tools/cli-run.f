@@ -16,34 +16,34 @@ variable CLI-TOOLS-TRUST-U
 create CLI-TOOLS-BUF PATH-CAP allot
 create CLI-TOOLS-TRUST-BUF PATH-CAP allot
 
-: CLI-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr up:ptr :}
+: CLI-COPY! ( ^u8 n ^u8 ^n -- ) {: a:^ u:n dst:^ up:^ :}
    u 0 < if E-FS-PATH throw then
    u PATH-CAP > if E-FS-PATH throw then
    a dst u BYTE-COPY
    u up ! ;
 
-: CLI-TOOLS! ( ptr u8 n ptr u8 n -- ) {: exe:ptr exeu:n ta:ptr tu:n :}
+: CLI-TOOLS! ( ^u8 n ^u8 n -- ) {: exe:^ exeu:n ta:^ tu:n :}
    exe exeu CLI-TOOLS-BUF CLI-TOOLS-U CLI-COPY!
    ta tu CLI-TOOLS-TRUST-BUF CLI-TOOLS-TRUST-U CLI-COPY! ;
 
 : CLI-TOOLS-OVERRIDE? ( -- bool )
    CLI-TOOLS-U @ 0 > ;
 
-: CLI-ARG+ ( ptr u8 n -- )
+: CLI-ARG+ ( ^u8 n -- )
    >LEN PROC-ARGV+ ;
 
 : CLI-TOOLS? ( -- bool )
    CLI-TOOLS-OVERRIDE? ;
 
-: CLI-TOOLS$ ( -- ptr u8 n )
+: CLI-TOOLS$ ( -- ^u8 n )
    CLI-TOOLS-OVERRIDE? if CLI-TOOLS-BUF CLI-TOOLS-U @ exit then
    s" bin/hb" ;
 
-: CLI-TOOLS-TRUST$ ( -- ptr u8 n )
+: CLI-TOOLS-TRUST$ ( -- ^u8 n )
    CLI-TOOLS-OVERRIDE? if CLI-TOOLS-TRUST-BUF CLI-TOOLS-TRUST-U @ exit then
    E-FS-OPEN throw ;
 
-: CLI-TOOLS-LOAD ( ptr u8 n -- bool ) {: entry:ptr entryu:n :}
+: CLI-TOOLS-LOAD ( ^u8 n -- bool ) {: entry:^ entryu:n :}
    CLI-TOOLS? if
       s" --load" CLI-ARG+
       CLI-TOOLS-TRUST$ CLI-ARG+
@@ -53,8 +53,8 @@ create CLI-TOOLS-TRUST-BUF PATH-CAP allot
    then
    CLI-FALSE ;
 
-: CLI-TOOLS-LOAD2 ( ptr u8 n ptr u8 n -- bool )
-   {: first:ptr firstu:n second:ptr secondu:n :}
+: CLI-TOOLS-LOAD2 ( ^u8 n ^u8 n -- bool )
+   {: first:^ firstu:n second:^ secondu:n :}
    CLI-TOOLS? if
       s" --load" CLI-ARG+
       CLI-TOOLS-TRUST$ CLI-ARG+

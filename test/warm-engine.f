@@ -21,10 +21,10 @@ PATH-CAP BUFFER: ROOT     variable ROOT-U
 PATH-CAP BUFFER: JOINED
 PATH-CAP BUFFER: JOINED-2
 
-: ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
+: ROOT$ ( -- ^u8 n ) ROOT ROOT-U @ ;
 
 \ The path of name under the test's directory, in JOINED.
-: AT$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+: AT$ ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
    ROOT$ a u JOINED FS:JOIN-PATH {: ju:n :}
    JOINED ju ;
 
@@ -34,8 +34,8 @@ PATH-CAP BUFFER: JOINED-2
    s" stdout: " type CMD:OUT$ type cr  s" stderr: " type CMD:ERR$ type cr ;
 
 \ The candidate builds the copy's engine to dst, with out as its out root.
-: BUILD ( CMD:command ptr u8 n ptr u8 n -- CMD:command )
-   {: out:ptr outu:n dst:ptr dstu:n :}
+: BUILD ( CMD:command ^u8 n ^u8 n -- CMD:command )
+   {: out:^ outu:n dst:^ dstu:n :}
    CMD:RESET
    s" --load" CMD:ARG+  s" tools/hb-build.f" CMD:ARG+  s" --" CMD:ARG+
    s" --engine" CMD:ARG+  s" -o" CMD:ARG+  dst dstu AT$ CMD:ARG+
@@ -51,8 +51,8 @@ PATH-CAP BUFFER: JOINED-2
    s" tree/src/core/checker.f" AT$
    s\" \ncreate WARM-PAD 64 cells allot\n" FS:APPEND-FILE ;
 
-: SAME? ( ptr u8 n ptr u8 n -- bool )
-   {: a:ptr au:n b:ptr bu:n :}
+: SAME? ( ^u8 n ^u8 n -- bool )
+   {: a:^ au:n b:^ bu:n :}
    ROOT$ a au JOINED FS:JOIN-PATH {: ju:n :}
    ROOT$ b bu JOINED-2 FS:JOIN-PATH {: ku:n :}
    JOINED ju JOINED-2 ku CHAIN-RUN:SAME-FILES? ;
@@ -81,7 +81,7 @@ public
 
 : RUN ( -- )
    T-RESET
-   s" habu-warm-engine" FS:MKTEMP-DIR {: a:ptr u:n :}
+   s" habu-warm-engine" FS:MKTEMP-DIR {: a:^ u:n :}
    a ROOT u BYTE-COPY  u ROOT-U !
    ['] CHECKS ['] REMOVE-ROOT finally
    T-REPORT ;

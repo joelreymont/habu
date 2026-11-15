@@ -120,7 +120,7 @@ C-IX XREF-REC XREF-START constant C-START
 0 SNAP-RELOC:XTCELL-OFF-MAX CELL + PROF-BAND-AT constant HOST-BAND
 
 : DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
-: ROW ( ptr u8 n -- ) X64HARNESS:CALL-ROW, ;
+: ROW ( ^u8 n -- ) X64HARNESS:CALL-ROW, ;
 : N, ( n -- ) X64HARNESS:PUSH, ;
 : WANT ( n -- ) X64HARNESS:EXPECT-POP, ;
 : LOAD, ( r64 mem -- ) ASM-SINK ENC-MOV-RM ;
@@ -384,7 +384,7 @@ TEXTS TYPED-BUFFER TEXT-LEN n
 variable GOT-N
 variable AT-BYTE
 
-: TEXT ( n -- ptr u8 n ) {: k:n :}  TEXT-BYTES k TEXT-CAP * +  k TEXT-LEN @ ;
+: TEXT ( n -- ^u8 n ) {: k:n :}  TEXT-BYTES k TEXT-CAP * +  k TEXT-LEN @ ;
 
 \ Run the quotation with this host's fd 1 on a pipe, put fd 1 back, which
 \ closes the pipe's last write end, and keep what the pipe holds as capture k.
@@ -409,7 +409,7 @@ variable AT-BYTE
 : HOST-BAND! ( n n -- ) {: v:n off:n :}  v  data-base HOST-BAND + off +  ! ;
 
 \ The one cast: the arena's address, which the band holds as a number.
-CAST: >ARENA ( n -- ptr n )
+CAST: >ARENA ( n -- ^n )
 
 : ARENA@ ( n -- n ) {: off:n :}  PROF-ARENA HOST-BAND@ >ARENA off + @ ;
 : ARENA! ( n n -- ) {: v:n off:n :}  v  PROF-ARENA HOST-BAND@ >ARENA off +  ! ;
@@ -449,8 +449,8 @@ variable ENTRY-AT
    DEFERRED ARN-DEFER ARENA! ;
 
 \ The byte past the key in capture k, which must hold it.
-: KEY-END ( ptr u8 n n -- n ) {: key:ptr keyu:n k:n :}
-   k TEXT {: a:ptr u:n :}
+: KEY-END ( ^u8 n n -- n ) {: key:^ keyu:n k:n :}
+   k TEXT {: a:^ u:n :}
    0 AT-BYTE !
    begin
       AT-BYTE @ keyu + u <= if  a AT-BYTE @ + keyu key keyu STR= 0=  else  false  then
@@ -462,7 +462,7 @@ variable ENTRY-AT
 
 \ The byte past the digits that start at byte at of capture k.
 : DIGITS-END ( n n -- n ) {: at:n k:n :}
-   k TEXT {: a:ptr u:n :}
+   k TEXT {: a:^ u:n :}
    at AT-BYTE !
    begin
       AT-BYTE @ u < if  a AT-BYTE @ + c@ STR-DIGIT?  else  false  then
@@ -473,12 +473,12 @@ variable ENTRY-AT
 
 \ Drop capture k's bytes from byte from up to byte past.
 : CLOSE-GAP ( n n n -- ) {: from:n past:n k:n :}
-   k TEXT {: a:ptr u:n :}
+   k TEXT {: a:^ u:n :}
    a past +  a from +  u past -  BYTE-COPY
    u past - from +  k TEXT-LEN ! ;
 
 \ Replace the digits after the key in capture k with the image's count.
-: REINDEX ( ptr u8 n n -- ) {: key:ptr keyu:n k:n :}
+: REINDEX ( ^u8 n n -- ) {: key:^ keyu:n k:n :}
    key keyu k KEY-END {: at:n :}
    at k DIGITS-END {: past:n :}
    IMAGE-INDEXED [char] 0 +  k TEXT drop at + c!
@@ -486,7 +486,7 @@ variable ENTRY-AT
 
 \ Cut the key and its digits out of capture k: a header field arm64 prints
 \ and x86-64 does not.
-: CUT-FIELD ( ptr u8 n n -- ) {: key:ptr keyu:n k:n :}
+: CUT-FIELD ( ^u8 n n -- ) {: key:^ keyu:n k:n :}
    key keyu k KEY-END {: at:n :}
    at keyu -  at k DIGITS-END  k CLOSE-GAP ;
 
@@ -614,8 +614,8 @@ variable ENTRY-AT
 
 \ Check whether the latest captured report contains these bytes. This names
 \ a failed check with the sought text instead of spending a numbered status.
-: HAS, ( ptr u8 n bool -- )
-   {: a:ptr u:n present:bool :}
+: HAS, ( ^u8 n bool -- )
+   {: a:^ u:n present:bool :}
    LBL LBL LBL LBL LBL {: next:label byte:label miss:label found:label done:label :}
    a u X64HARNESS:PUSH-TEXT,
    R9 R64>N G-POP  RDI R64>N G-POP
@@ -774,7 +774,7 @@ variable ENTRY-AT
 
 \ Check the count read into GOT and its bytes: 0 when GOT starts with the
 \ text, which the count must reach.
-: STARTS, ( ptr u8 n -- ) {: a:ptr u:n :}
+: STARTS, ( ^u8 n -- ) {: a:^ u:n :}
    LBL {: enough:label :}
    a u X64HARNESS:PUSH-TEXT,
    GOT AT,
@@ -881,7 +881,7 @@ variable ENTRY-AT
    0 N,  s" prof-on" ROW ;
 
 \ An image: the case, then the stack checks every case ends with.
-: BUILD ( [ -- ] bool ptr u8 n -- ) {: negative:bool path:ptr pathu:n :}
+: BUILD ( [ -- ] bool ^u8 n -- ) {: negative:bool path:^ pathu:n :}
    negative X64HARNESS:BOOT-OPEN,
    execute
    0 X64HARNESS:EXPECT-DEPTH,

@@ -42,14 +42,14 @@ public
 
 \ The text of the calling task's last REASON:THROW when that threw code n, else
 \ empty; valid until the task's next REASON:THROW.
-: TEXT$ ( n -- ptr u8 n ) {: code:n :}
+: TEXT$ ( n -- ^u8 n ) {: code:n :}
    code 0=  LAST-CODE @ code <>  or if s" " exit then
    0 LAST-TEXT BUF:SPAN$ BUF:BLEN>N ;
 
 \ Throws code n with the span kept as the calling task's text, replacing any
 \ earlier one. The span is copied first, so it may be the caller's scratch; a
 \ copy that throws passes its own code on with no text kept.
-: THROW ( ptr u8 n n -- ) {: a:ptr u:n code:n :}
+: THROW ( ^u8 n n -- ) {: a:^ u:n code:n :}
    0 LAST-CODE !
    OPEN
    0 LAST-TEXT BUF:CLEAR

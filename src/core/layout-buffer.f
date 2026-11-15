@@ -1,5 +1,5 @@
 \ layout-buffer.f: the generative storage definers LAYOUT-BUFFER (the only
-\ introduction form for `ptr layout`), DEFER-LAYOUT-BUFFER, TYPED-VARIABLE and
+\ introduction form for `^layout`), DEFER-LAYOUT-BUFFER, TYPED-VARIABLE and
 \ TYPED-BUFFER, each making its words as typed children and laying each child's
 \ block at the address its body pushes. A ptr variable never gains layout
 \ identity by unification.
@@ -22,14 +22,14 @@ variable LBUF-BYTES
 : LBUF-CLEAR ( -- )
    0 LBUF-GEN-U ! ;
 
-: LBUF-GEN ( -- ptr u8 ) LBUF-GEN-P @ ;
+: LBUF-GEN ( -- ^u8 ) LBUF-GEN-P @ ;
 
 : LBUF-C, ( n -- ) {: c:n :}
    LBUF-GEN-P LBUF-GEN-CAP LBUF-GEN-U @ 1 + ARENA-BYTES-ENSURE
    c LBUF-GEN LBUF-GEN-U @ + c!
    LBUF-GEN-U @ 1 + LBUF-GEN-U ! ;
 
-: LBUF-APP ( ptr u8 n -- ) {: a:ptr u:n :}
+: LBUF-APP ( ^u8 n -- ) {: a:^ u:n :}
    0 LBUF-I !
    begin LBUF-I @ u < while
       a LBUF-I @ + c@ LBUF-C,
@@ -43,8 +43,8 @@ variable LBUF-BYTES
    cellsn LBUF-N-MAX CELL / > if 0 LBUF-FALSE exit then
    cellsn cells LBUF-TRUE ;
 
-: LBUF-VALIDATE ( n ptr u8 n ptr u8 n -- bool )
-   {: count:n name:ptr nameu:n type:ptr typeu:n :}
+: LBUF-VALIDATE ( n ^u8 n ^u8 n -- bool )
+   {: count:n name:^ nameu:n type:^ typeu:n :}
    type typeu CHECKER-LAYOUT-INFO 0= if
       2drop name nameu type typeu CHECKER-LAYOUT-TYPE-REJECT LBUF-FALSE exit
    then
@@ -58,13 +58,13 @@ variable LBUF-BYTES
 \ A name the checker rejects answers false, and the definer defines nothing:
 \ the checker has reported it. A taken name is rejected at t tu, the declared
 \ name the source holds.
-: LBUF-NAME-OK? ( ptr u8 n ptr u8 n -- bool ) {: name:ptr nameu:n t:ptr tu:n :}
+: LBUF-NAME-OK? ( ^u8 n ^u8 n -- bool ) {: name:^ nameu:n t:^ tu:n :}
    name nameu CHECKER-LBUF-NAME-OK? 0= if LBUF-FALSE exit then
    name nameu CHECKER-DEFINED-HERE? if name nameu t tu CHECK:REJECT-DUPLICATE then
    name nameu get-current search-wl 0 <> if name nameu t tu CHECK:REJECT-DUPLICATE then
    LBUF-TRUE ;
 
-: LBUF-ZERO ( ptr n n -- ) {: base:ptr bytes:n :}
+: LBUF-ZERO ( ^n n -- ) {: base:^ bytes:n :}
    0 LBUF-I !
    begin LBUF-I @ bytes < while
       0 base LBUF-I @ + !
@@ -73,7 +73,7 @@ variable LBUF-BYTES
 
 \ bytes is a whole number of cells; src and dst are disjoint, so a forward copy
 \ is safe.
-: LBUF-COPY ( ptr a ptr a n -- ) {: src:ptr dst:ptr bytes:n :}
+: LBUF-COPY ( ^a ^a n -- ) {: src:^ dst:^ bytes:n :}
    0 LBUF-I !
    begin LBUF-I @ bytes < while
       src LBUF-I @ + @  dst LBUF-I @ + !
@@ -81,15 +81,15 @@ variable LBUF-BYTES
    repeat ;
 
 \ The answer stays in LBUF-GEN until the next LBUF-CLEAR.
-: LBUF-SUFFIXED ( ptr u8 n ptr u8 n -- ptr u8 n )
-   {: name:ptr nameu:n sfx:ptr sfxu:n :}
+: LBUF-SUFFIXED ( ^u8 n ^u8 n -- ^u8 n )
+   {: name:^ nameu:n sfx:^ sfxu:n :}
    LBUF-CLEAR  name nameu LBUF-APP  sfx sfxu LBUF-APP
    LBUF-GEN LBUF-GEN-U @ ;
 
 \ Every derived name (NAME-BIND, NAME-GROW, NAME-RESERVE, NAME-RELEASE) is
 \ guarded like the declared one, so a collision fails loudly instead of
 \ rebinding a word.
-: LBUF-SUFFIX-OK? ( ptr u8 n ptr u8 n -- bool ) {: name:ptr nameu:n sfx:ptr sfxu:n :}
+: LBUF-SUFFIX-OK? ( ^u8 n ^u8 n -- bool ) {: name:^ nameu:n sfx:^ sfxu:n :}
    name nameu sfx sfxu LBUF-SUFFIXED name nameu LBUF-NAME-OK? ;
 
 PTR-VARIABLE STGT-A
@@ -104,7 +104,7 @@ PTR-VARIABLE STGT-START
 \ A sum is marked by its active tag: a shared payload slot is a code
 \ cell while it holds a quotation and an address cell while it holds a pointer.
 \ A niche value has no tag: its one cell is an address cell, zero or not.
-: STORAGE-MARK-TERM ( ptr n n -- ) {: base:ptr term:n :}
+: STORAGE-MARK-TERM ( ^n n -- ) {: base:^ term:n :}
    term TFAM:TFAM-STORAGE-QUOT? if base @ base xt! exit then
    term T-RES TAG T-PTR = if base ptr-cell-mark exit then
    term TFAM:TFAM-STORAGE-PRODUCT? if
@@ -132,7 +132,7 @@ PTR-VARIABLE STGT-START
       loop drop
    else drop then ;
 
-: STORAGE-MARK-FIXED ( ptr n n -- ) {: base:ptr term:n :}
+: STORAGE-MARK-FIXED ( ^n n -- ) {: base:^ term:n :}
    LBUF-N @ 0 ?do
       base i LBUF-W @ * cells + term STORAGE-MARK-TERM
    loop ;
@@ -143,32 +143,32 @@ PTR-VARIABLE STGT-START
    STORAGE-RESET
    node TFAM:EFFECT-TYPE T-RES LBI-T !  0 LBI-BAD ! ;
 
-: NODE-TYPE-REFUSE ( ptr u8 n -- ) {: name:ptr nameu:n :}
+: NODE-TYPE-REFUSE ( ^u8 n -- ) {: name:^ nameu:n :}
    LBUF-CLEAR  LBI-T @ TYPE-TEXT LBUF-APP
    name nameu LBUF-GEN LBUF-GEN-U @ CHECKER-STORAGE-TYPE-REJECT ;
 
 : NODE-STORAGE-TERM ( n -- n bool ) NODE-READ LBI-TERM ;
 
 \ The definer's validation took the type or node, so its term is taken too.
-: TYPE-TERM ( ptr u8 n -- n ) CHECKER-STORAGE-TERM drop ;
+: TYPE-TERM ( ^u8 n -- n ) CHECKER-STORAGE-TERM drop ;
 
 : NODE-TERM ( n -- n ) NODE-STORAGE-TERM drop ;
 
-: STORAGE-HAS-ADDRESS? ( ptr u8 n -- bool ) TYPE-TERM TFAM:HAS-ADDRESS? ;
+: STORAGE-HAS-ADDRESS? ( ^u8 n -- bool ) TYPE-TERM TFAM:HAS-ADDRESS? ;
 
 : NODE-HAS-ADDRESS? ( n -- bool ) NODE-TERM TFAM:HAS-ADDRESS? ;
 
 \ Quotation cells belong to the image even while null; the term walk declares
 \ each code and address cell of these DATA allocations for capture.
-: STORAGE-BIND ( n ptr n n ptr u8 n bool -- )
-   {: handle:n base:ptr count:n type:ptr typeu:n hasaddr:bool :}
+: STORAGE-BIND ( n ^n n ^u8 n bool -- )
+   {: handle:n base:^ count:n type:^ typeu:n hasaddr:bool :}
    hasaddr if
       base type typeu TYPE-TERM STORAGE-MARK-FIXED
    then
    handle base count CHECKER-STORAGE-BIND ;
 
-: NODE-BIND ( n ptr n n n bool -- )
-   {: handle:n base:ptr count:n node:n hasaddr:bool :}
+: NODE-BIND ( n ^n n n bool -- )
+   {: handle:n base:^ count:n node:n hasaddr:bool :}
    hasaddr if
       base node NODE-TERM STORAGE-MARK-FIXED
    then
@@ -181,28 +181,28 @@ PTR-VARIABLE STGT-START
 \ name is rejected at the definer's token, an empty type by the checker.
 
 \ Leaves a token parse-name read to the next statement.
-: STORAGE-UNREAD ( ptr u8 -- )
+: STORAGE-UNREAD ( ^u8 -- )
    NULL-PTR - data-base INP-CELL + ! ;
 
 \ The next token, as parse-name reads one, when it stands on the cursor's line:
 \ the bytes the read skips hold no line feed (CHECKER-TYPE-SPAN-BREAK?). A token
 \ on a later line goes back to the input, and none is read.
-: STORAGE-LINE-TOKEN ( -- ptr u8 n )
+: STORAGE-LINE-TOKEN ( -- ^u8 n )
    data-base INP-CELL + @ {: at:n :}
-   parse-name {: a:ptr u:n :}
+   parse-name {: a:^ u:n :}
    a NULL-PTR - at - {: gap:n :}
    a gap - gap CHECKER-TYPE-SPAN-BREAK? if a STORAGE-UNREAD a 0 exit then
    a u ;
 
 : STORAGE-MORE? ( bool -- bool ) {: ended:bool :}
    ended if LBUF-FALSE exit then
-   STORAGE-LINE-TOKEN {: a:ptr u:n :}
+   STORAGE-LINE-TOKEN {: a:^ u:n :}
    u 0= if LBUF-FALSE exit then
    a STGT-A !  u STGT-U !  LBUF-TRUE ;
 
 \ The whole spelling, ended where the checker ends one (CHECKER-TYPE-SPAN-STEP)
 \ or with its line.
-: STORAGE-PARSE-TYPE ( -- ptr u8 n )
+: STORAGE-PARSE-TYPE ( -- ^u8 n )
    STORAGE-LINE-TOKEN STGT-U !  STGT-A !
    STGT-A @ STGT-START !
    0 begin STGT-A @ STGT-U @ CHECKER-TYPE-SPAN-STEP STORAGE-MORE? 0= until drop
@@ -222,19 +222,19 @@ CAST: width>n ( width<t> -- n )
 \ The region offset is measured from the block, not from `data-base`, so it
 \ relocates with the block. Retiring a moved column clears its old cells'
 \ declarations and bytes after the new region is published.
-: LDEFER-RETIRE ( n n n ptr n -- ) {: oldoff:n oldcap:n wc:n cb:ptr :}
+: LDEFER-RETIRE ( n n n ^n -- ) {: oldoff:n oldcap:n wc:n cb:^ :}
    oldcap 0= oldoff cb @ = or if exit then
-   cb oldoff + {: oldbase:ptr :}
+   cb oldoff + {: oldbase:^ :}
    oldbase BYTE-VIEW data-base BYTE-VIEW - oldcap wc * cells ADDRESS-CELLS:REMOVE-SPAN
    oldbase oldcap wc * cells LBUF-ZERO ;
 
-: LDEFER-BIND ( n ptr n n -- )   \ count cbase wc
-   {: count:n cb:ptr wc:n :}
+: LDEFER-BIND ( n ^n n -- )   \ count cbase wc
+   {: count:n cb:^ wc:n :}
    count wc * {: need:n :}
    cb @ {: oldoff:n :} cb CELL + @ {: oldcap:n :}
    count  cb CELL + @  > if
       LBUF-ALIGN
-      here {: base:ptr :}
+      here {: base:^ :}
       need cells allot
       base cb -  cb  !                                  \ off-cell = new region offset from cb
       count  cb CELL +  !                               \ cap-cell = new allotted capacity
@@ -245,15 +245,15 @@ CAST: width>n ( width<t> -- n )
 \ NAME-GROW extends a column, preserving written cells. Past capacity the
 \ region becomes max(2*capacity, count). A within-capacity grow
 \ zeroes [old-live, count): a prior shrink may have left it dirty.
-: LDEFER-GROW ( n ptr n n -- )   \ count cbase wc
-   {: count:n cb:ptr wc:n :}
+: LDEFER-GROW ( n ^n n -- )   \ count cbase wc
+   {: count:n cb:^ wc:n :}
    cb @ {: oldoff:n :} cb CELL + @ {: oldcap:n :}
    count  cb CELL + @  > if
       cb 2 CELL * + @ {: live:n :}
-      cb  cb @  + {: obase:ptr :}
+      cb  cb @  + {: obase:^ :}
       cb CELL + @ 2 *  count max {: newcap:n :}
       LBUF-ALIGN
-      here {: nbase:ptr :}
+      here {: nbase:^ :}
       newcap wc * cells allot                                \ allot hands the fresh region out zeroed
       obase nbase  live wc * cells  LBUF-COPY
       nbase cb -  cb  !
@@ -268,8 +268,8 @@ CAST: width>n ( width<t> -- n )
 
 \ A companion's one cell, laid after it: it holds the block v and keeps the
 \ address across a save.
-: LDEFER-CELL ( ptr n -- ) {: v:ptr :}
-   here cell-view {: at:ptr :}
+: LDEFER-CELL ( ^n -- ) {: v:^ :}
+   here cell-view {: at:^ :}
    here ptr-cell-mark 0 ,
    v at 0 ptr-field ! ;
 
@@ -290,41 +290,41 @@ public
 private
 
 \ Element i of the block.
-: ELEMENT ( n ptr n -- ptr n )
-   {: i:n v:ptr :}
+: ELEMENT ( n ^n -- ^n )
+   {: i:n v:^ :}
    v  v OFF cells + @ +  i v STRIDE cells + @ * cells + ;
 
 \ Binds the block in the cell to count elements, as LDEFER-BIND does.
-: BIND ( n ptr ptr n -- )
-   {: count:n b:ptr :}
-   b @ {: v:ptr :}
+: BIND ( n ^^n -- )
+   {: count:n b:^ :}
+   b @ {: v:^ :}
    count v  v STRIDE cells + @  LDEFER-BIND ;
 
 \ Grows the block in the cell to count elements, as LDEFER-GROW does.
-: GROW ( n ptr ptr n -- )
-   {: count:n b:ptr :}
-   b @ {: v:ptr :}
+: GROW ( n ^^n -- )
+   {: count:n b:^ :}
+   b @ {: v:^ :}
    count v  v STRIDE cells + @  LDEFER-GROW ;
 
 \ A buffer's children are made over these routines' entries.
-CAST: AS-ENTRY ( [ n ptr n -- ptr n ] -- n )
-CAST: AS-RESIZE-ENTRY ( [ n ptr ptr n -- ] -- n )
+CAST: AS-ENTRY ( [ n ^n -- ^n ] -- n )
+CAST: AS-RESIZE-ENTRY ( [ n ^^n -- ] -- n )
 
-CAST: AS-CHILD-RUN ( n -- [ ptr u8 n n n ptr u8 n -- n ] )
+CAST: AS-CHILD-RUN ( n -- [ ^u8 n n n ^u8 n -- n ] )
 
-: CHILD ( ptr u8 n n n ptr u8 n -- n )
+: CHILD ( ^u8 n n n ^u8 n -- n )
    data-base PROVIDED-XT:CHILD-CELL + @ AS-CHILD-RUN execute ;
 
 public
 
 \ Makes the buffer child NAME over TYPE and answers its effect handle.
-: BUFFER-CHILD ( ptr u8 n ptr u8 n -- n )
-   {: name:ptr nameu:n type:ptr typeu:n :}
+: BUFFER-CHILD ( ^u8 n ^u8 n -- n )
+   {: name:^ nameu:n type:^ typeu:n :}
    name nameu CHILD-ABI:BUFFER ['] ELEMENT AS-ENTRY
    type typeu CHILD ;
 
 \ Lays NAME's -BIND and -GROW companions over the block v.
-: COMPANIONS ( ptr u8 n ptr n -- ) {: name:ptr nameu:n v:ptr :}
+: COMPANIONS ( ^u8 n ^n -- ) {: name:^ nameu:n v:^ :}
    name nameu s" -BIND" LBUF-SUFFIXED CHILD-ABI:BIND
    ['] BIND AS-RESIZE-ENTRY s" " CHILD drop  v LDEFER-CELL
    name nameu s" -GROW" LBUF-SUFFIXED CHILD-ABI:GROW
@@ -335,34 +335,34 @@ public
 \ ---- LAYOUT-BUFFER ------------------------------------------------------------
 \ Makes the buffer child NAME and lays its block: the header, bound to LBUF-N
 \ elements of LBUF-W cells, then the elements, which the checker binds.
-: LBUF-CHILD ( ptr u8 n ptr u8 n bool -- )
-   {: name:ptr nameu:n type:ptr typeu:n hasaddr:bool :}
+: LBUF-CHILD ( ^u8 n ^u8 n bool -- )
+   {: name:^ nameu:n type:^ typeu:n hasaddr:bool :}
    name nameu type typeu LBUF:BUFFER-CHILD {: handle:n :}
-   here {: v:ptr :}
+   here {: v:^ :}
    LBUF:HEAD-CELLS cells ,  LBUF-N @ ,  LBUF-N @ ,  LBUF-W @ ,
    LBUF-BYTES @ allot
-   v LBUF:HEAD-CELLS cells + {: base:ptr :}
+   v LBUF:HEAD-CELLS cells + {: base:^ :}
    handle base LBUF-N @ type typeu hasaddr STORAGE-BIND ;
 
 : LAYOUT-BUFFER ( n -- ) {: count:n :}
-   SRCLOC:TOKEN$ {: run:ptr runu:n :}
-   STORAGE-LINE-TOKEN {: name:ptr nameu:n :}
+   SRCLOC:TOKEN$ {: run:^ runu:n :}
+   STORAGE-LINE-TOKEN {: name:^ nameu:n :}
    nameu 0= if
       s" LAYOUT-BUFFER" run runu STG-NO-NAME CHECKER-STORAGE-REJECT exit
    then
-   STORAGE-PARSE-TYPE {: type:ptr typeu:n :}
+   STORAGE-PARSE-TYPE {: type:^ typeu:n :}
    name nameu name nameu LBUF-NAME-OK? 0= if exit then
    count name nameu type typeu LBUF-VALIDATE 0= if exit then
    type typeu STORAGE-HAS-ADDRESS? {: hasaddr:bool :}
    name nameu type typeu hasaddr LBUF-CHILD ;
 
 : DEFER-LAYOUT-BUFFER ( -- )
-   SRCLOC:TOKEN$ {: run:ptr runu:n :}
-   STORAGE-LINE-TOKEN {: name:ptr nameu:n :}
+   SRCLOC:TOKEN$ {: run:^ runu:n :}
+   STORAGE-LINE-TOKEN {: name:^ nameu:n :}
    nameu 0= if
       s" DEFER-LAYOUT-BUFFER" run runu STG-NO-NAME CHECKER-STORAGE-REJECT exit
    then
-   STORAGE-PARSE-TYPE {: type:ptr typeu:n :}
+   STORAGE-PARSE-TYPE {: type:^ typeu:n :}
    name nameu name nameu LBUF-NAME-OK? 0= if exit then
    name nameu s" -BIND" LBUF-SUFFIX-OK? 0= if exit then
    name nameu s" -GROW" LBUF-SUFFIX-OK? 0= if exit then
@@ -371,18 +371,18 @@ public
    then
    LBUF-W !  drop
    name nameu type typeu LBUF:BUFFER-CHILD {: handle:n :}
-   here {: v:ptr :}
+   here {: v:^ :}
    0 ,  0 ,  0 ,  LBUF-W @ ,
    handle v CHECKER-STORAGE-DEFER
    name nameu v LBUF:COMPANIONS ;
 
 \ ---- TYPED-VARIABLE / TYPED-BUFFER --------------------------------------------
 \ LAYOUT-BUFFER's machinery gated by CHECKER-STORAGE-INFO, so closed typed
-\ pointers (`ptr TARGET`, `ptr res<n,n>`) and spaced quotations are expressible.
+\ pointers (`^TARGET`, `^res<n,n>`) and spaced quotations are expressible.
 
 \ Sizes COUNT elements of W cells each; false once a count outside the extent
 \ is rejected.
-: STORAGE-SIZE ( n n ptr u8 n -- bool ) {: count:n w:n name:ptr nameu:n :}
+: STORAGE-SIZE ( n n ^u8 n -- bool ) {: count:n w:n name:^ nameu:n :}
    w LBUF-W !
    count LBUF-N !
    count LBUF-W @ LBUF-EXTENT? 0= if
@@ -390,27 +390,27 @@ public
    then
    LBUF-BYTES ! LBUF-TRUE ;
 
-: STORAGE-VALIDATE ( n ptr u8 n ptr u8 n -- bool )
-   {: count:n name:ptr nameu:n type:ptr typeu:n :}
+: STORAGE-VALIDATE ( n ^u8 n ^u8 n -- bool )
+   {: count:n name:^ nameu:n type:^ typeu:n :}
    type typeu CHECKER-STORAGE-INFO 0= if
       drop name nameu type typeu CHECKER-STORAGE-TYPE-REJECT LBUF-FALSE exit
    then
    count swap name nameu STORAGE-SIZE ;
 
-: NODE-VALIDATE ( n ptr u8 n n -- bool )
-   {: count:n name:ptr nameu:n node:n :}
+: NODE-VALIDATE ( n ^u8 n n -- bool )
+   {: count:n name:^ nameu:n node:n :}
    node NODE-READ LBI-CELLS 0= if
       drop name nameu NODE-TYPE-REFUSE LBUF-FALSE exit
    then
    count swap name nameu STORAGE-SIZE ;
 
 : TYPED-BUFFER ( n -- ) {: count:n :}
-   SRCLOC:TOKEN$ {: run:ptr runu:n :}
-   STORAGE-LINE-TOKEN {: name:ptr nameu:n :}
+   SRCLOC:TOKEN$ {: run:^ runu:n :}
+   STORAGE-LINE-TOKEN {: name:^ nameu:n :}
    nameu 0= if
       s" TYPED-BUFFER" run runu STG-NO-NAME CHECKER-STORAGE-REJECT exit
    then
-   STORAGE-PARSE-TYPE {: type:ptr typeu:n :}
+   STORAGE-PARSE-TYPE {: type:^ typeu:n :}
    name nameu name nameu LBUF-NAME-OK? 0= if exit then
    count name nameu type typeu STORAGE-VALIDATE 0= if exit then
    type typeu STORAGE-HAS-ADDRESS? {: hasaddr:bool :}
@@ -419,29 +419,29 @@ public
 \ A missing name is rejected at the token that ran the definer, which the
 \ message names.
 : TYPED-VARIABLE ( -- )
-   SRCLOC:TOKEN$ {: run:ptr runu:n :}
-   STORAGE-LINE-TOKEN {: name:ptr nameu:n :}
+   SRCLOC:TOKEN$ {: run:^ runu:n :}
+   STORAGE-LINE-TOKEN {: name:^ nameu:n :}
    nameu 0= if
       s" TYPED-VARIABLE" run runu STG-NO-NAME CHECKER-STORAGE-REJECT exit
    then
-   STORAGE-PARSE-TYPE {: type:ptr typeu:n :}
+   STORAGE-PARSE-TYPE {: type:^ typeu:n :}
    name nameu name nameu LBUF-NAME-OK? 0= if exit then
    1 name nameu type typeu STORAGE-VALIDATE 0= if exit then
    type typeu STORAGE-HAS-ADDRESS? {: hasaddr:bool :}
    name nameu type typeu TDECL-STORED-CHILD {: handle:n :}
-   here {: v:ptr :}
+   here {: v:^ :}
    LBUF-BYTES @ allot
    handle v 1 type typeu hasaddr STORAGE-BIND ;
 
 \ TYPED-VARIABLE's run over the name and the type node, which no text spells:
 \ a definer's variable (EFFECT:VARIABLE-OF), through PROVIDED-XT:VARIABLE-CELL.
-: TYPED-VARIABLE-NODE ( ptr u8 n n -- ) {: name:ptr nameu:n node:n :}
+: TYPED-VARIABLE-NODE ( ^u8 n n -- ) {: name:^ nameu:n node:n :}
    nameu 0= if s" EFFECT:VARIABLE-OF" CHECKER-STORAGE-NAME-REFUSE exit then
    name nameu name nameu LBUF-NAME-OK? 0= if exit then
    1 name nameu node NODE-VALIDATE 0= if exit then
    node NODE-HAS-ADDRESS? {: hasaddr:bool :}
    name nameu node TDECL-NODE-CHILD {: handle:n :}
-   here {: v:ptr :}
+   here {: v:^ :}
    LBUF-BYTES @ allot
    handle v 1 node hasaddr NODE-BIND ;
 

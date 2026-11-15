@@ -238,7 +238,7 @@ public
    RAX R12 ASM-SINK ENC-MOV-RR  RAX RBP ASM-SINK ENC-SUB-RR  16 EXPECT,
    RDI 0 IMM EXIT-LBL JMP, ;
 
-: APPEND-ROUTINE ( ptr u8 n -- ) {: a:ptr u:n :}
+: APPEND-ROUTINE ( ^u8 n -- ) {: a:^ u:n :}
    ASM-LEN {: at:n :}
    u 0 > TTRUE
    a u BUF:N>BLEN ASM-SINK BUF:APPEND-SPAN
@@ -247,7 +247,7 @@ public
 
 \ The same for a routine whose answer is the address of its own function `off`
 \ bytes in: its bytes go in two parts, and QUOTED-LBL is bound between them.
-: APPEND-QUOTING ( ptr u8 n n -- ) {: a:ptr u:n off:n :}
+: APPEND-QUOTING ( ^u8 n n -- ) {: a:^ u:n off:n :}
    a off APPEND-ROUTINE
    QUOTED-LBL LBL,
    a off +  u off -  APPEND-ROUTINE ;
@@ -275,15 +275,15 @@ private
 8 constant IMM64-N
 
 \ The `u` staged bytes at absolute address `at`, all of them inside the stream.
-: STAGED ( n n -- ptr u8 ) {: at:n u:n :}
+: STAGED ( n n -- ^u8 ) {: at:n u:n :}
    at VMBASE X64LAYOUT:CODE-OFF + - {: off:n :}
    off 0 <  off u + ASM-LEN >  or if E-BUF-BOUNDS throw then
    CODE off + ;
 
-: LE! ( n ptr u8 n -- ) {: v:n p:ptr u:n :}
+: LE! ( n ^u8 n -- ) {: v:n p:^ u:n :}
    u 0 ?do  v i 8 * rshift $FF and  p i + c!  loop ;
 
-: LE@ ( ptr u8 n -- n ) {: p:ptr u:n :}
+: LE@ ( ^u8 n -- n ) {: p:^ u:n :}
    0  u 0 ?do  p i + c@  i 8 * lshift or  loop ;
 
 public
@@ -300,11 +300,11 @@ public
 \ The immediate of the CODE literal whose `mov r64, imm64` is at address
 \ `site`, moved by `moved` bytes.
 : LINK-CODE ( n n -- ) {: site:n moved:n :}
-   site MOV-RI64-IMM-OFF + IMM64-N STAGED {: p:ptr :}
+   site MOV-RI64-IMM-OFF + IMM64-N STAGED {: p:^ :}
    p IMM64-N LE@ moved +  p IMM64-N LE! ;
 
 \ Write the staged stream as it stands: byte 0 is the ELF entry.
-: WRITE ( ptr u8 n -- ) {: path:ptr pathu:n :}
+: WRITE ( ^u8 n -- ) {: path:^ pathu:n :}
    ASM-CODE BUILD-IMAGE
    s" x64-peer" SET-SIGID CODESIG2
    path pathu DRV-WRITE-IMAGE
@@ -314,7 +314,7 @@ public
    $1C M-OFF M-LE32@ 0 T= ;
 
 \ Close a peer image with the exit syscall every check reaches, then write it.
-: WRITE-ELF ( ptr u8 n -- ) EXIT, WRITE ;
+: WRITE-ELF ( ^u8 n -- ) EXIT, WRITE ;
 
 \ The sink every image is staged in, held across the images of one run.
 : INIT ( -- ) ASM-SINK CODE-CAP-BYTES BUF:N>BLEN BUF:INIT ;

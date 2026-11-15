@@ -10,8 +10,8 @@ package NAV
 private
 using BROWSER-EVENT
 
-CAST: >BYTES ( n -- ptr u8 )
-CAST: BYTES>N ( ptr u8 -- n )
+CAST: >BYTES ( n -- ^u8 )
+CAST: BYTES>N ( ^u8 -- n )
 
 256 BUFFER: TEXT
 variable TEXT-U
@@ -36,8 +36,8 @@ variable PRESS-MODS
 : CHAR+ ( n -- )
    TEXT TEXT-U @ + c! TEXT-U @ 1+ TEXT-U ! ;
 
-: SAY ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: SAY ( ^u8 n -- )
+   {: a:^ u:n :}
    u 0 ?do a i + c@ CHAR+ loop ;
 
 : DIGITS ( n -- )
@@ -52,8 +52,8 @@ variable PRESS-MODS
 : TEXT-RECORD ( -- )
    3 TEXT BYTES>N TEXT-U @ 0 RECORD ;
 
-: TREE ( ptr u8 n n -- )
-   {: a:ptr u:n key:n :}
+: TREE ( ^u8 n n -- )
+   {: a:^ u:n key:n :}
    5 a BYTES>N u key RECORD ;
 
 : MESH ( n n -- )
@@ -72,19 +72,19 @@ variable PRESS-MODS
    {: count:n :}
    2 INSTANCE-ROWS BYTES>N count MATRIX BYTES>N RECORD ;
 
-: U16! ( n ptr u8 -- )
-   {: bits:n dst:ptr :}
+: U16! ( n ^u8 -- )
+   {: bits:n dst:^ :}
    2 0 do bits i 8 * rshift $FF and dst i + c! loop ;
 
-: U32! ( n ptr u8 -- )
-   {: bits:n dst:ptr :}
+: U32! ( n ^u8 -- )
+   {: bits:n dst:^ :}
    4 0 do bits i 8 * rshift $FF and dst i + c! loop ;
 
 : VERTEX ( n n n n -- )
    \ Vertex k at x, y and z 16384 on the grid, of a face; its normal, +z, is
    \ octahedral 0, 0, the zeroed bytes after it.
    {: k:n x:n y:n face:n :}
-   GEOMETRY 20 + k 12 * + {: at:ptr :}
+   GEOMETRY 20 + k 12 * + {: at:^ :}
    x at U16!  y at 2 + U16!  16384 at 4 + U16!  face at 6 + U16! ;
 
 : INDEX! ( n n -- )
@@ -95,7 +95,7 @@ variable PRESS-MODS
 : ROW ( n n n n n -- )
    \ Instance row r: scale 2^-15 and x, y moved by tx (f32 bits) and -1.
    {: r:n tx:n id:n flags:n offset:n :}
-   INSTANCE-ROWS r 72 * + {: at:ptr :}
+   INSTANCE-ROWS r 72 * + {: at:^ :}
    48 0 do 0 at i + c! loop
    $38000000 at U32!  $38000000 at 16 + U32!  $38000000 at 32 + U32!
    tx at 36 + U32!  $BF800000 at 40 + U32!
@@ -104,7 +104,7 @@ variable PRESS-MODS
 : PAINT ( n n n n -- )
    \ Row r's colour $rrggbb, metallic and roughness.
    {: r:n rgb:n metal:n rough:n :}
-   INSTANCE-ROWS r 72 * + {: at:ptr :}
+   INSTANCE-ROWS r 72 * + {: at:^ :}
    rgb 16 rshift at 64 + c!  rgb 8 rshift $FF and at 65 + c!
    rgb $FF and at 66 + c!  metal at 68 + U16!  rough at 70 + U16! ;
 
@@ -179,8 +179,8 @@ variable PRESS-MODS
    32 CHAR+ 6 EVENT@ SIGNED
    TEXT-RECORD ;
 
-: IS? ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
+: IS? ( ^u8 n -- bool )
+   {: a:^ u:n :}
    2 EVENT@ u <> if false exit then
    u 0 ?do 1 EVENT@ i + >BYTES c@ a i + c@ <> if false unloop exit then loop
    true ;

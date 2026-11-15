@@ -67,37 +67,37 @@ TASK:SEMAPHORE PET-ENV-START
      some OF LEN>N 0 0= ENDOF
    ;MATCH ;
 
-: PET-ENV+ ( ptr u8 n ptr u8 n -- )
-   {: name:ptr nameu val:ptr valu :}
+: PET-ENV+ ( ^u8 n ^u8 n -- )
+   {: name:^ nameu val:^ valu :}
    name nameu >LEN val valu >LEN PROC-ENV+ ;
 
-: PET-CAPTURE ( ptr u8 n ptr u8 n ptr u8 n n -- n n n )
-   {: path:ptr pathu out:ptr outcap err:ptr errcap timeout :}
+: PET-CAPTURE ( ^u8 n ^u8 n ^u8 n n -- n n n )
+   {: path:^ pathu out:^ outcap err:^ errcap timeout :}
    path pathu >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-ENV-CAPTURE
    PET-CAPTURE>N ;
 
-: PET-OUTCOME ( ptr u8 n ptr u8 n ptr u8 n n -- len len PROCESS:ending )
-   {: path:ptr pathu out:ptr outcap err:ptr errcap timeout :}
+: PET-OUTCOME ( ^u8 n ^u8 n ^u8 n n -- len len PROCESS:ending )
+   {: path:^ pathu out:^ outcap err:^ errcap timeout :}
    path pathu >LEN out outcap >LEN err errcap >LEN timeout >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME ;
 
-: PET-STDIN-CAPTURE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- n n n )
-   {: path:ptr pathu in:ptr inu out:ptr outcap err:ptr errcap timeout :}
+: PET-STDIN-CAPTURE ( ^u8 n ^u8 n ^u8 n ^u8 n n -- n n n )
+   {: path:^ pathu in:^ inu out:^ outcap err:^ errcap timeout :}
    path pathu >LEN in inu >LEN out outcap >LEN err errcap >LEN timeout >MS
    RUN-ARGV-ENV-STDIN-CAPTURE PET-CAPTURE>N ;
 
-: PET-STDIN-OUTCOME ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- len len PROCESS:ending )
-   {: path:ptr pathu in:ptr inu out:ptr outcap err:ptr errcap timeout :}
+: PET-STDIN-OUTCOME ( ^u8 n ^u8 n ^u8 n ^u8 n n -- len len PROCESS:ending )
+   {: path:^ pathu in:^ inu out:^ outcap err:^ errcap timeout :}
    path pathu >LEN in inu >LEN out outcap >LEN err errcap >LEN timeout >MS
    RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME ;
 
-: PET-FIND-IN-PATH ( ptr u8 n ptr u8 n ptr u8 -- n bool )
-   {: cmd:ptr cmdu path:ptr pathu dst:ptr :}
+: PET-FIND-IN-PATH ( ^u8 n ^u8 n ^u8 -- n bool )
+   {: cmd:^ cmdu path:^ pathu dst:^ :}
    cmd cmdu >LEN path pathu >LEN dst FIND-EXECUTABLE-IN-PATH
    PET-FIND>N ;
 
-: PET-RESOLVE ( ptr u8 n ptr u8 -- n )
-   {: cmd:ptr cmdu dst:ptr :}
+: PET-RESOLVE ( ^u8 n ^u8 -- n )
+   {: cmd:^ cmdu dst:^ :}
    cmd cmdu >LEN dst RESOLVE-EXECUTABLE LEN>N ;
 
 : PET-SB-N ( n -- ) {: v:n :}
@@ -107,23 +107,23 @@ TASK:SEMAPHORE PET-ENV-START
 
 \ HABU_BIG_001 .. HABU_BIG_600: fixed width, so the child can count them by
 \ prefix and the parent never has to parse the name back.
-: PET-BIG-NAME$ ( n -- ptr u8 n ) {: i:n :}
+: PET-BIG-NAME$ ( n -- ^u8 n ) {: i:n :}
    s" HABU_BIG_" PET-BIG-NAME swap BYTE-COPY
    i 100 / STR-ZERO + PET-BIG-NAME PET-BIG-PREFIX-U + c!
    i 100 mod 10 / STR-ZERO + PET-BIG-NAME PET-BIG-PREFIX-U 1 + + c!
    i 10 mod STR-ZERO + PET-BIG-NAME PET-BIG-PREFIX-U 2 + + c!
    PET-BIG-NAME PET-BIG-NAME-U ;
 
-: PET-ENV-CMD$ ( -- ptr u8 n )
+: PET-ENV-CMD$ ( -- ^u8 n )
    s" /usr/bin/env" ;
 
-: PET-ALPHA-LINE$ ( -- ptr u8 n )
+: PET-ALPHA-LINE$ ( -- ^u8 n )
    SB-RESET
    s" HABU_PROC_ENV_TEST=alpha" SB-APPEND
    $0A SB-APPEND-C
    SB$ ;
 
-: PET-CASE ( ptr u8 n [ -- ] -- ) {: label:ptr labelu:n q :}
+: PET-CASE ( ^u8 n [ -- ] -- ) {: label:^ labelu:n q :}
    mono-ns PET-START-NS !
    q execute
    s" PASS: " type label labelu type
@@ -144,9 +144,9 @@ TASK:SEMAPHORE PET-ENV-START
    0 T= 0 T= 0 T= ;
 
 : PET-HAS-ENV-LINE-BODY
-   ( ptr u8 n ptr u8 n ptr u8 n n ptr u8 NUM:alloc-byte-len -- bool )
+   ( ^u8 n ^u8 n ^u8 n n ^u8 NUM:alloc-byte-len -- bool )
    drop
-   {: out:ptr outu:n name:ptr nameu:n val:ptr valu:n lineu:n expected:ptr :}
+   {: out:^ outu:n name:^ nameu:n val:^ valu:n lineu:n expected:^ :}
    $0A expected c!
    name expected 1+ nameu BYTE-COPY
    $3D expected nameu 1+ + c!
@@ -155,14 +155,14 @@ TASK:SEMAPHORE PET-ENV-START
    out outu expected 1+ lineu STARTS-WITH?
    out outu expected lineu 1+ CONTAINS? or ;
 
-: PET-HAS-ENV-LINE? ( ptr u8 n ptr u8 n ptr u8 n -- bool )
-   {: out:ptr outu:n name:ptr nameu:n val:ptr valu:n :}
+: PET-HAS-ENV-LINE? ( ^u8 n ^u8 n ^u8 n -- bool )
+   {: out:^ outu:n name:^ nameu:n val:^ valu:n :}
    nameu valu + 2 + {: lineu:n :}
    out outu name nameu val valu lineu
    lineu 1+ MEM:BYTES-ALLOC-LEN [: PET-HAS-ENV-LINE-BODY ;] MEM:WITH-BYTES ;
 
-: PET-EXPECT-INHERITED ( n ptr u8 n -- ) {: outu:n name:ptr nameu:n :}
-   name nameu GETENV {: val:ptr valu:n :}
+: PET-EXPECT-INHERITED ( n ^u8 n -- ) {: outu:n name:^ nameu:n :}
+   name nameu GETENV {: val:^ valu:n :}
    valu 0= if exit then
    PET-OUT outu name nameu val valu PET-HAS-ENV-LINE? TTRUE ;
 
@@ -173,8 +173,8 @@ TASK:SEMAPHORE PET-ENV-START
    S\" OTHER=HOME=alpha\n" s" HOME" s" alpha" PET-HAS-ENV-LINE? TFALSE
    S\" HOME=prefix-alpha\n" s" HOME" s" alpha" PET-HAS-ENV-LINE? TFALSE ;
 
-: PET-GETENV-CHECK ( ptr u8 n ptr u8 n -- n )
-   {: name:ptr nameu:n expected:ptr expectedu:n :}
+: PET-GETENV-CHECK ( ^u8 n ^u8 n -- n )
+   {: name:^ nameu:n expected:^ expectedu:n :}
    PET-ENV-ROUNDS 0 ?do
       name nameu GETENV expected expectedu STR= 0= if unloop 0 exit then
    loop
@@ -359,19 +359,19 @@ package PET-GROW-BOTH
 DYNAMIC-BUFFER OUT u8
 DYNAMIC-BUFFER ERR u8
 
-: OUT-ROOM ( n -- ptr u8 )
+: OUT-ROOM ( n -- ^u8 )
    OUT-RESERVE 0 OUT ;
 
-: ERR-ROOM ( n -- ptr u8 )
+: ERR-ROOM ( n -- ^u8 )
    ERR-RESERVE 0 ERR ;
 
-: SHELL ( ptr u8 n -- )
+: SHELL ( ^u8 n -- )
    PET-RESET
    s" -c" >LEN PROC-ARGV+
    >LEN PROC-ARGV+ ;
 
-: CAPTURE ( ptr u8 len [ n -- ptr u8 ] [ n -- ptr u8 ] ms -- len len PROCESS:ending )
-   {: in:ptr inu out err timeout :}
+: CAPTURE ( ^u8 len [ n -- ^u8 ] [ n -- ^u8 ] ms -- len len PROCESS:ending )
+   {: in:^ inu out err timeout :}
    s" /bin/sh" >LEN in inu out err timeout
    RUN-ARGV-ENV-STDIN-GROWING-BOTH-CAPTURE-OUTCOME ;
 
@@ -420,10 +420,10 @@ DYNAMIC-BUFFER ERR u8
    0 OUT 10 s" before-out" T$=
    0 ERR 10 s" before-err" T$= ;
 
-: REFUSE ( n -- ptr u8 )
+: REFUSE ( n -- ^u8 )
    drop E-STR-CAPACITY throw ;
 
-: SINK-FAILS ( [ n -- ptr u8 ] [ n -- ptr u8 ] -- )
+: SINK-FAILS ( [ n -- ^u8 ] [ n -- ^u8 ] -- )
    {: out err :}
    s" printf out; printf err >&2; exec /bin/sleep 5" SHELL
    s" " >LEN out err PROCESS:WAIT-FOREVER CAPTURE
@@ -451,8 +451,8 @@ public
 
 : PET-SPAWN-RAW-MISSING ( -- )
    PET-RESET
-   s" /no/such/habu-process-env-test" >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
-   PROC-ENV-PREPARE {: envp:ptr :}
+   s" /no/such/habu-process-env-test" >LEN PROC-ARGV-PREPARE {: pathz:^ argv:^ :}
+   PROC-ENV-PREPARE {: envp:^ :}
    pathz argv envp -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-ENV-RAW PID>N {: code:n :}
    PROC-ARGV-ENV-RESET
    code 0 < TTRUE
@@ -460,8 +460,8 @@ public
 
 : PET-SPAWN-RAW-TRUE-ONE ( -- )
    PET-RESET
-   s" /usr/bin/true" >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
-   PROC-ENV-PREPARE {: envp:ptr :}
+   s" /usr/bin/true" >LEN PROC-ARGV-PREPARE {: pathz:^ argv:^ :}
+   PROC-ENV-PREPARE {: envp:^ :}
    pathz argv envp -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-ENV-RAW {: pid:pid :}
    PROC-ARGV-ENV-RESET
    pid PID>N 0 > TTRUE
@@ -484,7 +484,7 @@ public
    repeat
    PROC-ENV-INHERIT-MISSING ;
 
-: PET-BIG-EXPECT$ ( -- ptr u8 n )
+: PET-BIG-EXPECT$ ( -- ^u8 n )
    SB-RESET
    s" big-env-child " SB-APPEND
    PET-BIG-N PET-SB-N
@@ -546,7 +546,7 @@ public
 \ it; a negative length, or one whose row would not fit a cell, is refused unread.
 7 constant PET-READABLE                  \ bytes of `x` before the inaccessible page
 
-: PET-UNREAD ( -- ptr u8 )
+: PET-UNREAD ( -- ^u8 )
    PET-READABLE [char] x GUARD-PAGE:TAIL ;
 
 : PET-ENTRY-UNREAD ( n -- ) {: u:n :}
@@ -633,26 +633,26 @@ NAME-U 1 + VAL-U + 1 + constant LINE-U   \ name=value and the newline env prints
 create LINE LINE-U allot
 DYNAMIC-BUFFER OUT u8
 
-: DIGITS! ( n ptr u8 -- ) {: k:n dst:ptr :}
+: DIGITS! ( n ^u8 -- ) {: k:n dst:^ :}
    k 1000 / STR-ZERO + dst c!
    k 1000 mod 100 / STR-ZERO + dst 1 + c!
    k 100 mod 10 / STR-ZERO + dst 2 + c!
    k 10 mod STR-ZERO + dst 3 + c! ;
 
-: LINE! ( n ptr u8 -- ) {: k:n prefix:ptr :}
+: LINE! ( n ^u8 -- ) {: k:n prefix:^ :}
    prefix LINE PREFIX-U BYTE-COPY
    k LINE PREFIX-U + DIGITS!
    PROC-ENV-EQUAL LINE NAME-U + c!
    VAL-U DIGITS / 0 ?do k LINE NAME-U 1 + + i DIGITS * + DIGITS! loop
    $0A LINE LINE-U 1 - + c! ;
 
-: ADD ( n ptr u8 [ ptr u8 len ptr u8 len -- ] -- ) {: rows:n prefix:ptr q :}
+: ADD ( n ^u8 [ ^u8 len ^u8 len -- ] -- ) {: rows:n prefix:^ q :}
    rows 0 ?do
       i prefix LINE!
       LINE NAME-U >LEN LINE NAME-U 1 + + VAL-U >LEN q execute
    loop ;
 
-: OUT-ROOM ( n -- ptr u8 )
+: OUT-ROOM ( n -- ^u8 )
    OUT-RESERVE 0 OUT ;
 
 : RUN ( -- n )
@@ -662,7 +662,7 @@ DYNAMIC-BUFFER OUT u8
    oc PROCESS:ENDING>RC RC>N 0 T=
    outu LEN>N ;
 
-: MISMATCHES ( n n ptr u8 -- n ) {: rows:n outu:n prefix:ptr :}
+: MISMATCHES ( n n ^u8 -- n ) {: rows:n outu:n prefix:^ :}
    0 rows 0 ?do
       i prefix LINE!
       i 1+ LINE-U * outu > if

@@ -9,16 +9,16 @@ s" E-LINT-TOKEN-CAP" E-LINT-TOKEN-CAP LINT-CODE-NAME+
 -4821 constant E-LINT-TOKEN-SOURCE
 
 \ Each token's start is an address into the linted source.
-TMAX TYPED-BUFFER TOFF ptr u8
+TMAX TYPED-BUFFER TOFF ^u8
 create TLEN TMAX cells allot
 
 variable TN#
 variable PARENS?
 
-: T-OFF@ ( n -- ptr u8 )
+: T-OFF@ ( n -- ^u8 )
    TOFF @ ;
 
-: T-OFF! ( ptr u8 n -- ) {: a:ptr k :}
+: T-OFF! ( ^u8 n -- ) {: a:^ k :}
    a k TOFF ! ;
 
 : T-LEN@ ( n -- n )
@@ -36,16 +36,16 @@ variable PARENS?
 : TOKEN-ENSURE ( -- )   \ labeled capacity exit: a bare rc 77 is unattributable
    TN# @ TMAX >= if s" lint: token table full (TMAX); grow tools/lint/token.f" E-LINT-TOKEN-CAP die then ;
 
-: TOKEN+ ( ptr u8 n -- ) {: a:ptr u :}
+: TOKEN+ ( ^u8 n -- ) {: a:^ u :}
    TOKEN-ENSURE
    a TN# @ T-OFF!
    u TN# @ T-LEN!
    TN# @ 1+ TN# ! ;
 
-: TOK ( n -- ptr u8 n ) {: k :}
+: TOK ( n -- ^u8 n ) {: k :}
    k T-OFF@ k T-LEN@ ;
 
-: TOK= ( n ptr u8 n -- bool ) {: k a:ptr u :}
+: TOK= ( n ^u8 n -- bool ) {: k a:^ u :}
    k TOK a u LINT-STR= ;
 
 \ Primitive-name and REPL-path consumers expect an opener followed by its
@@ -60,7 +60,7 @@ variable PARENS?
       k LINT-LEX:CONTENT 1+ TOKEN+
    then ;
 
-: TOKENIZE ( ptr u8 n -- )
+: TOKENIZE ( ^u8 n -- )
    0 TN# !
    LINT-LEX:SOURCE
    LINT-LEX:ERROR? if E-LINT-TOKEN-SOURCE throw then

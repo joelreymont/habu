@@ -20,7 +20,7 @@ using LSP-DOCS
 
 private
 
-TYPED-VARIABLE OUT ptr JSON:writer
+TYPED-VARIABLE OUT ^JSON:writer
 
 \ A Location at these positions in group G.
 : LOCATION-AT ( n n n n n -- )
@@ -35,8 +35,8 @@ TYPED-VARIABLE OUT ptr JSON:writer
    {: g:n r:n :}
    g r REC-RANGE LOCATION-AT ;
 
-: TEXT-OF! ( ptr u8 n -- )
-   {: path:ptr pathu:n :}
+: TEXT-OF! ( ^u8 n -- )
+   {: path:^ pathu:n :}
    path pathu DOC-HOLDING MATCH option
       some OF DOC-TEXT$ LSP-TEXT:TEXT! ENDOF
       none OF path pathu LSP-TEXT:FILE-TEXT! ENDOF
@@ -49,7 +49,7 @@ TYPED-VARIABLE OUT ptr JSON:writer
    {: sym:n found:bool :}
    found 0= if exit then
    sym ENGINE-ORIGIN:TARGET
-   {: rel:ptr relu:n at:n end:n name:ptr nameu:n live:bool :}
+   {: rel:^ relu:n at:n end:n name:^ nameu:n live:bool :}
    live at old = and old-end 0= old-end end = or and 0= if exit then
    g [: dup GROUP-PATH$ TEXT-OF! ;] catch {: rc:n :} drop
    rc 0<> if rc LSP-TEXT:FS-RC? 0= if rc throw then exit then
@@ -85,7 +85,7 @@ public
 \ primitive whose source is missing or differs from the running table, or an
 \ engine word whose current declaration is missing or ambiguous. An engine word's
 \ declaration prefers an open document's text.
-: ANSWER ( ptr JSON:writer n n -- ptr JSON:writer )
+: ANSWER ( ^JSON:writer n n -- ^JSON:writer )
    {: w slot:n at:n :}
    w OUT !
    w WRITE-ARRAY-START drop

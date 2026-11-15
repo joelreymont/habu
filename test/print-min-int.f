@@ -36,7 +36,7 @@ variable SINK-DEV
    c SINK SINK-N @ + c!
    SINK-N @ 1+ SINK-N ! ;
 
-: SINK-WRITE ( ptr u8 n -- ) {: a:ptr u:n :}
+: SINK-WRITE ( ^u8 n -- ) {: a:^ u:n :}
    u 0 ?do a i + c@ SINK-PUT loop ;
 
 : SINK-KEY ( -- n )
@@ -45,10 +45,10 @@ variable SINK-DEV
 : SINK-READY? ( -- bool )
    0 0= 0= ;
 
-: SINK-READ ( ptr u8 n -- n ) {: a:ptr cap:n :}
+: SINK-READ ( ^u8 n -- n ) {: a:^ cap:n :}
    0 ;
 
-: SINK-ACCEPT ( ptr u8 n -- n ) {: a:ptr cap:n :}
+: SINK-ACCEPT ( ^u8 n -- n ) {: a:^ cap:n :}
    0 ;
 
 : SINK-NOTHING ( -- ) ;
@@ -63,7 +63,7 @@ variable SINK-DEV
 
 \ Both printers end their text with a newline, so the case compares what came
 \ before it and asserts the newline separately.
-: BODY$ ( -- ptr u8 n )
+: BODY$ ( -- ^u8 n )
    SINK-N @ 0= if SINK 0 exit then
    SINK SINK-N @ 1- ;
 
@@ -83,17 +83,17 @@ variable SINK-DEV
    v u.
    GENIO:TERMINAL GENIO:OUTPUT! ;
 
-: CHECKED ( ptr u8 n -- ) {: wa:ptr wu:n :}
+: CHECKED ( ^u8 n -- ) {: wa:^ wu:n :}
    BODY$ wa wu T$=
    TERMINATOR LF T=
    SINK-OVER @ 0 T= ;
 
-: T-DOT ( n ptr u8 n -- ) {: v:n wa:ptr wu:n :}
+: T-DOT ( n ^u8 n -- ) {: v:n wa:^ wu:n :}
    wa wu T-LABEL
    v DOT-CAPTURED
    wa wu CHECKED ;
 
-: T-U. ( n ptr u8 n -- ) {: v:n wa:ptr wu:n :}
+: T-U. ( n ^u8 n -- ) {: v:n wa:^ wu:n :}
    wa wu T-LABEL
    v U-CAPTURED
    wa wu CHECKED ;

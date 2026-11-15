@@ -22,12 +22,12 @@ $1F constant SORTS-ALL               \ SORTS with every case true
 
 PROCESS-SYMBOLS
 
-FUNCTION: QSORT qsort ( ptr u8 n n n -- ) ;FUNCTION
+FUNCTION: QSORT qsort ( ^u8 n n n -- ) ;FUNCTION
 
 \ The matched element's address as a number, 0 for none.
-FUNCTION: BSEARCH bsearch ( ptr u8 ptr u8 n n n -- n ) ;FUNCTION
+FUNCTION: BSEARCH bsearch ( ^u8 ^u8 n n n -- n ) ;FUNCTION
 
-FUNCTION: PTHREAD-CREATE pthread_create ( ptr u8 n n n -- i32 ) ;FUNCTION
+FUNCTION: PTHREAD-CREATE pthread_create ( ^u8 n n n -- i32 ) ;FUNCTION
 
 create OUTER ROW-N cells allot        \ the row the calling task sorts
 create INNER ROW-N cells allot        \ the row a comparator sorts, nested
@@ -64,13 +64,13 @@ TASK:MIN-STACK TASK:TASK WORKER-A
 TASK:MIN-STACK TASK:TASK WORKER-B
 
 \ High to low, so a sort has every pair to order: base+ROW-N .. base+1.
-: ROW-FILL ( ptr n n -- ) {: row:ptr base:n :}
+: ROW-FILL ( ^n n -- ) {: row:^ base:n :}
    ROW-N 0 ?do base ROW-N + i - row i cells + ! loop ;
 
-: ROW-SORTED? ( ptr n n -- bool ) {: row:ptr base:n :}
+: ROW-SORTED? ( ^n n -- bool ) {: row:^ base:n :}
    true ROW-N 0 ?do row i cells + @ base 1 + i + = and loop ;
 
-: ROW-SUM ( ptr n -- n ) {: row:ptr :}
+: ROW-SUM ( ^n -- n ) {: row:^ :}
    0 ROW-N 0 ?do row i cells + @ + loop ;
 
 : SIGN-OF ( n n -- n ) {: a:n b:n :}
@@ -78,28 +78,28 @@ TASK:MIN-STACK TASK:TASK WORKER-B
    a b > if 1 exit then
    0 ;
 
-: ROW-ORDER ( ptr u8 ptr u8 -- n ) {: a b :}
+: ROW-ORDER ( ^u8 ^u8 -- n ) {: a b :}
    a CELL-VIEW @ b CELL-VIEW @ SIGN-OF ;
 
-CALLBACK: CMP ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
-CALLBACK: CMP-SELF ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
-CALLBACK: CMP-VIA ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
-CALLBACK: CMP-BOOM ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
-CALLBACK: CMP-UNBIND ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
+CALLBACK: CMP ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK
+CALLBACK: CMP-SELF ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK
+CALLBACK: CMP-VIA ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK
+CALLBACK: CMP-BOOM ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK
+CALLBACK: CMP-UNBIND ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK
 CALLBACK: START ( n -- n ) 0 FALLBACK ;CALLBACK
 \ The longest dispatch a declaration can generate, never called: no C caller
 \ checks i32/u32 narrowing, float arguments, an r result or a full n result.
 : DECLARE-MARSHAL ( -- )
    HB-TARGET-LINUX-X86-64? if
-      s" CALLBACK: MARSHAL ( n i32 u32 ptr u8 i32 u32 r r r r r r r r -- r ) 0.5 FFALLBACK ;CALLBACK" evaluate-closed
+      s" CALLBACK: MARSHAL ( n i32 u32 ^u8 i32 u32 r r r r r r r r -- r ) 0.5 FFALLBACK ;CALLBACK" evaluate-closed
    else
-      s" CALLBACK: MARSHAL ( n i32 u32 ptr u8 i32 u32 i32 u32 r r r r r r r r -- r ) 0.5 FFALLBACK ;CALLBACK" evaluate-closed
+      s" CALLBACK: MARSHAL ( n i32 u32 ^u8 i32 u32 i32 u32 r r r r r r r r -- r ) 0.5 FFALLBACK ;CALLBACK" evaluate-closed
    then ;
 DECLARE-MARSHAL
-CALLBACK: UNSET ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
-CALLBACK: UNSET-ONE ( ptr u8 ptr u8 -- i32 ) 1 FALLBACK ;CALLBACK
-CALLBACK: WHO ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
-CALLBACK: CMP-CALLER ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
+CALLBACK: UNSET ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK
+CALLBACK: UNSET-ONE ( ^u8 ^u8 -- i32 ) 1 FALLBACK ;CALLBACK
+CALLBACK: WHO ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK
+CALLBACK: CMP-CALLER ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK
 10000 constant CALLER-WAIT-MS
 
 : NEST ( n -- ) {: fn:n :}
@@ -110,7 +110,7 @@ CALLBACK: CMP-CALLER ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
 
 \ Nests through its own slot: the inner sort's comparisons arrive on the row
 \ this call already holds.
-: CMP-SELF-IMPL ( ptr u8 ptr u8 -- n ) {: a b :}
+: CMP-SELF-IMPL ( ^u8 ^u8 -- n ) {: a b :}
    SELF-DEPTH @ 0= if
       1 SELF-DEPTH !
       CMP-SELF-FN @ NEST
@@ -119,7 +119,7 @@ CALLBACK: CMP-CALLER ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
    a b ROW-ORDER ;
 
 \ Nests through a second slot bound to the same context.
-: CMP-VIA-IMPL ( ptr u8 ptr u8 -- n ) {: a b :}
+: CMP-VIA-IMPL ( ^u8 ^u8 -- n ) {: a b :}
    CMP-FN @ NEST
    a b ROW-ORDER ;
 
@@ -127,11 +127,11 @@ CALLBACK: CMP-CALLER ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
    1 BOOMS atomic-add drop
    BOOM-ON @ 0 <> if E-BOOM throw then ;
 
-: CMP-BOOM-IMPL ( ptr u8 ptr u8 -- n ) {: a b :}
+: CMP-BOOM-IMPL ( ^u8 ^u8 -- n ) {: a b :}
    BOOM
    a b ROW-ORDER ;
 
-: CMP-UNBIND-IMPL ( ptr u8 ptr u8 -- n ) {: a b :}
+: CMP-UNBIND-IMPL ( ^u8 ^u8 -- n ) {: a b :}
    [: CMP-UNBIND UNBIND ;] catch UNBIND-CODE !
    a b ROW-ORDER ;
 
@@ -150,7 +150,7 @@ CALLBACK: CMP-CALLER ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
 
 \ A comparator that keeps the owner of the region it runs on, which is the
 \ calling thread's.
-: WHO-IMPL ( ptr u8 ptr u8 -- n ) {: a b :}
+: WHO-IMPL ( ^u8 ^u8 -- n ) {: a b :}
    data-base CB-OWNER + atomic@ WHO-OWNER !
    a b ROW-ORDER ;
 
@@ -172,7 +172,7 @@ CALLBACK: CMP-CALLER ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
 
 \ For a slot on TASK:CALLER-CONTEXT: a value's hundreds name the sorter whose
 \ row it is, and the call must run on that sorter's region.
-: CMP-CALLER-IMPL ( ptr u8 ptr u8 -- n ) {: a b :}
+: CMP-CALLER-IMPL ( ^u8 ^u8 -- n ) {: a b :}
    a CELL-VIEW @ 100 / {: band:n :}
    CALLER-REGIONS band cells + @ data-base FFI:>CELL <> if
       1 CALLER-MISSES atomic-add drop
@@ -292,7 +292,7 @@ CALLBACK: CMP-CALLER ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
 : WORK-ENDS ( -- )
    BIND-SELF SORTS TASK:RETURN ;
 
-: CALLER-SORT ( ptr n n -- bool ) {: row:ptr band:n :}
+: CALLER-SORT ( ^n n -- bool ) {: row:^ band:n :}
    data-base FFI:>CELL CALLER-REGIONS band cells + !
    row band 100 * ROW-FILL
    row BYTE-VIEW ROW-N CELL CMP-CALLER-FN @ QSORT

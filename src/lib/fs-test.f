@@ -21,7 +21,7 @@ require src/lib/fd.f                    \ FD:TRY-FIFO-WRITER, WRITE-FULL, READ-E
 require src/lib/ffi-abi.f
 
 PROCESS-SYMBOLS
-FUNCTION: ACCESS-CALL access ( ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: ACCESS-CALL access ( ^u8 n -- i32 ) ;FUNCTION
 
 $4000 constant FS-TEST-S-IFDIR             \ S_IFDIR on both targets
 2 constant FS-TEST-ENOENT                   \ ENOENT on both targets
@@ -119,77 +119,77 @@ create FS-TEST-READ-BUF FS-TEST-READ-CAP allot
 : FS-TEST-FALSE ( bool -- )
    0= FS-TEST-ASSERT ;
 
-: FS-TEST$= ( ptr u8 n ptr u8 n -- )
+: FS-TEST$= ( ^u8 n ^u8 n -- )
    STR= FS-TEST-ASSERT ;
 
 \ Fills dst[0,u) with c; FS-TEST-PARALLEL compares the bytes, so a wrong fill
 \ fails there.
-: FS-TEST-FILL ( ptr u8 n n -- ) {: dst:ptr u c :}
+: FS-TEST-FILL ( ^u8 n n -- ) {: dst:^ u c :}
    0 begin dup u < while
       c over dst + c!
       1+
    repeat drop ;
 
-: FS-TEST-JOIN$ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: pa:ptr pu na:ptr nu :}
+: FS-TEST-JOIN$ ( ^u8 n ^u8 n -- ^u8 n ) {: pa:^ pu na:^ nu :}
    pa pu na nu FS-TEST-OUT FS:JOIN-PATH
    FS-TEST-OUT swap ;
 
-: FS-TEST-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
+: FS-TEST-COPY! ( ^u8 n ^u8 ^n -- ) {: a:^ u dst:^ lenp:^ :}
    a dst u BYTE-COPY
    u lenp ! ;
 
-: FS-TEST-PATH! ( ptr u8 n ptr u8 n ptr u8 ptr n -- ) {: pa:ptr pu na:ptr nu dst:ptr lenp:ptr :}
+: FS-TEST-PATH! ( ^u8 n ^u8 n ^u8 ^n -- ) {: pa:^ pu na:^ nu dst:^ lenp:^ :}
    pa pu na nu dst FS:JOIN-PATH lenp ! ;
 
-: FS-TEST-BASE ( -- ptr u8 n )
+: FS-TEST-BASE ( -- ^u8 n )
    FS-TEST-BASE-BUF FS-TEST-BASE-U @ ;
 
-: FS-TEST-ROOT ( -- ptr u8 n )
+: FS-TEST-ROOT ( -- ^u8 n )
    FS-TEST-ROOT-BUF FS-TEST-ROOT-U @ ;
 
 \ The two trees the two-context rows walk: separate roots, so a path from one
 \ walk can never pass the other's prefix check.
-: FS-TEST-WA ( -- ptr u8 n )
+: FS-TEST-WA ( -- ^u8 n )
    FS-TEST-WA-BUF FS-TEST-WA-U @ ;
 
-: FS-TEST-WB ( -- ptr u8 n )
+: FS-TEST-WB ( -- ^u8 n )
    FS-TEST-WB-BUF FS-TEST-WB-U @ ;
 
-: FS-TEST-WB-SUB ( -- ptr u8 n )
+: FS-TEST-WB-SUB ( -- ^u8 n )
    FS-TEST-WB-SUB-BUF FS-TEST-WB-SUB-U @ ;
 
-: FS-TEST-ALPHA ( -- ptr u8 n )
+: FS-TEST-ALPHA ( -- ^u8 n )
    FS-TEST-ALPHA-BUF FS-TEST-ALPHA-U @ ;
 
-: FS-TEST-CHILD ( -- ptr u8 n )
+: FS-TEST-CHILD ( -- ^u8 n )
    FS-TEST-CHILD-BUF FS-TEST-CHILD-U @ ;
 
-: FS-TEST-ROOT-GIT ( -- ptr u8 n )
+: FS-TEST-ROOT-GIT ( -- ^u8 n )
    FS-TEST-ROOT-GIT-BUF FS-TEST-ROOT-GIT-U @ ;
 
-: FS-TEST-DEEP ( -- ptr u8 n )
+: FS-TEST-DEEP ( -- ^u8 n )
    FS-TEST-DEEP-BUF FS-TEST-DEEP-U @ ;
 
-: FS-TEST-DEEP-CUR ( -- ptr u8 n )
+: FS-TEST-DEEP-CUR ( -- ^u8 n )
    FS-TEST-DEEP-CUR-BUF FS-TEST-DEEP-CUR-U @ ;
 
-: FS-TEST-IO-PATH ( -- ptr u8 n )
+: FS-TEST-IO-PATH ( -- ^u8 n )
    FS-TEST-IO-BUF FS-TEST-IO-U @ ;
 
-: FS-TEST-BIG-PATH ( -- ptr u8 n )
+: FS-TEST-BIG-PATH ( -- ^u8 n )
    FS-TEST-BIG-BUF FS-TEST-BIG-U @ ;
 
-: FS-TEST-EMPTY-PATH ( -- ptr u8 n )
+: FS-TEST-EMPTY-PATH ( -- ^u8 n )
    FS-TEST-EMPTY-BUF FS-TEST-EMPTY-U @ ;
 
-: FS-TEST-RANGE-PATH ( -- ptr u8 n )
+: FS-TEST-RANGE-PATH ( -- ^u8 n )
    FS-TEST-RANGE-BUF FS-TEST-RANGE-U @ ;
 
-: FS-TEST-LINKS-PATH ( -- ptr u8 n )
+: FS-TEST-LINKS-PATH ( -- ^u8 n )
    FS-TEST-LINKS-BUF FS-TEST-LINKS-U @ ;
 
 : FS-TEST-BASE! ( -- )
-   s" habu-fs" FS:MKTEMP-DIR {: a:ptr u :}
+   s" habu-fs" FS:MKTEMP-DIR {: a:^ u :}
    a u FS-TEST-BASE-BUF FS-TEST-BASE-U FS-TEST-COPY! ;
 
 : FS-TEST-PATHS! ( -- )
@@ -207,17 +207,17 @@ create FS-TEST-READ-BUF FS-TEST-READ-CAP allot
    FS-TEST-BASE s" range.txt" FS-TEST-RANGE-BUF FS-TEST-RANGE-U FS-TEST-PATH!
    FS-TEST-BASE s" links.txt" FS-TEST-LINKS-BUF FS-TEST-LINKS-U FS-TEST-PATH! ;
 
-: FS-TEST-MAKE-REGISTERED-DIR ( ptr u8 n -- )
+: FS-TEST-MAKE-REGISTERED-DIR ( ^u8 n -- )
    2dup FS:MAKE-DIR FS:CLEANUP-DIR+ ;
 
-: FS-TEST-WRITE-PLAIN ( ptr u8 n ptr u8 n ptr u8 n -- n ) {: pa:ptr pu na:ptr nu data:ptr datau :}
+: FS-TEST-WRITE-PLAIN ( ^u8 n ^u8 n ^u8 n -- n ) {: pa:^ pu na:^ nu data:^ datau :}
    pa pu na nu FS-TEST-OUT FS:JOIN-PATH {: pathu :}
    FS-TEST-OUT pathu data datau FS:WRITE-ALL
    pathu ;
 
 \ Each child file is registered for removal at exit. The two walk trees the
 \ concurrent rows own are not: FS-TEST-CLEANUP removes them by hand.
-: FS-TEST-WRITE-CHILD ( ptr u8 n ptr u8 n ptr u8 n -- )
+: FS-TEST-WRITE-CHILD ( ^u8 n ^u8 n ^u8 n -- )
    FS-TEST-WRITE-PLAIN FS-TEST-OUT swap FS:CLEANUP+ ;
 
 : FS-TEST-MAKE-WALK-DIRS ( -- )
@@ -250,14 +250,14 @@ create FS-TEST-READ-BUF FS-TEST-READ-CAP allot
    FS-TEST-WB s" b2.txt" s" " FS-TEST-WRITE-PLAIN drop
    FS-TEST-WB-SUB s" b3.txt" s" " FS-TEST-WRITE-PLAIN drop ;
 
-: FS-TEST-DEEP-COMP ( n -- ptr u8 n )
+: FS-TEST-DEEP-COMP ( n -- ^u8 n )
    SB-RESET
    s" d" SB-APPEND
    FMT:SB-U
    SB$ ;
 
 : FS-TEST-DEEP-STEP ( n -- ) {: idx :}
-   idx FS-TEST-DEEP-COMP {: ca:ptr cu :}
+   idx FS-TEST-DEEP-COMP {: ca:^ cu :}
    FS-TEST-DEEP-CUR ca cu FS-TEST-OUT FS:JOIN-PATH {: u :}
    FS-TEST-OUT u FS-TEST-DEEP-CUR-BUF FS-TEST-DEEP-CUR-U FS-TEST-COPY!
    FS-TEST-DEEP-CUR FS-TEST-MAKE-REGISTERED-DIR ;
@@ -303,7 +303,7 @@ create FS-TEST-READ-BUF FS-TEST-READ-CAP allot
 
 \ A long name joined to a short parent, `extra` bytes past an exact fill.
 : FS-TEST-JOIN-NAME-FILL ( n -- n ) {: extra :}
-   s" root" {: pa:ptr pu :}
+   s" root" {: pa:^ pu :}
    pa pu FS-TEST-LONG PATH-CAP pu - 1 - extra + FS-TEST-OUT FS:JOIN-PATH ;
 
 \ A negative length is malformed whatever the other length is. Each pair sums
@@ -341,8 +341,8 @@ create FS-TEST-READ-BUF FS-TEST-READ-CAP allot
 : FS-TEST-MISSING-WALK ( -- )
    s" no-such-habu-fs-path-for-stdlib-test" [: 2drop ;] FS:WALK-FILES ;
 
-: FS-TEST-UNDER$ ( ptr u8 n -- ptr u8 n )
-   {: na:ptr nu :}
+: FS-TEST-UNDER$ ( ^u8 n -- ^u8 n )
+   {: na:^ nu :}
    FS-TEST-BASE na nu FS-TEST-JOIN$ ;
 
 \ kept.txt's stat in a directory that can be read but not searched is EACCES.
@@ -451,7 +451,7 @@ create FS-TEST-READ-BUF FS-TEST-READ-CAP allot
    PATH-CAP FS-TEST=
    0 FS-TEST-JOIN-NAME-FILL PATH-CAP FS-TEST= ;
 
-: FS-TEST-WALK-CB ( ptr u8 n -- ) {: a:ptr u :}
+: FS-TEST-WALK-CB ( ^u8 n -- ) {: a:^ u :}
    FS-TEST-WALK-COUNT @ 1 + FS-TEST-WALK-COUNT !
    a u s" /alpha/aa-child/deep.txt" ENDS-WITH? if
       FS-TEST-WALK-COUNT @ FS-TEST-DEEP-IDX !
@@ -466,7 +466,7 @@ create FS-TEST-READ-BUF FS-TEST-READ-CAP allot
       FS-TEST-DOTTED-COUNT @ 1 + FS-TEST-DOTTED-COUNT !
    then ;
 
-: FS-TEST-FILE-CB ( ptr u8 n -- ) {: a:ptr u :}
+: FS-TEST-FILE-CB ( ^u8 n -- ) {: a:^ u :}
    FS-TEST-FILE-COUNT @ 1 + FS-TEST-FILE-COUNT !
    a u s" /beta.txt" ENDS-WITH? FS-TEST-TRUE ;
 
@@ -481,7 +481,7 @@ create FS-TEST-READ-BUF FS-TEST-READ-CAP allot
    FS-TEST-OUT swap [: FS-TEST-FILE-CB ;] FS:WALK-FILES
    FS-TEST-FILE-COUNT @ 1 FS-TEST= ;
 
-: FS-TEST-GONE-CB ( ptr u8 n -- ) {: a:ptr u :}
+: FS-TEST-GONE-CB ( ^u8 n -- ) {: a:^ u :}
    FS-TEST-GONE-N @ 1 + FS-TEST-GONE-N !
    FS-TEST-GONE-N @ 1 = if
       a u s" /one.txt" ENDS-WITH? if s" gone-walk/two.txt"
@@ -499,23 +499,23 @@ create FS-TEST-READ-BUF FS-TEST-READ-CAP allot
    catch 0 FS-TEST=
    FS-TEST-GONE-N @ 1 FS-TEST= ;
 
-: FS-TEST-WALK-THROW-CB ( ptr u8 n -- )
+: FS-TEST-WALK-THROW-CB ( ^u8 n -- )
    2drop E-A-BOUNDS throw ;       \ no walk path raises the callback's code
 
 : FS-TEST-WALK-THROW ( -- )
    FS-TEST-ROOT [: FS-TEST-WALK-THROW-CB ;] FS:WALK-FILES ;
 
-: FS-TEST-NEST-INNER-CB ( ptr u8 n -- )
+: FS-TEST-NEST-INNER-CB ( ^u8 n -- )
    2drop FS-TEST-NEST-N @ 1 + FS-TEST-NEST-N ! ;
 
-: FS-TEST-WALK-NEST-CB ( ptr u8 n -- )
+: FS-TEST-WALK-NEST-CB ( ^u8 n -- )
    2drop FS-TEST-ROOT [: FS-TEST-NEST-INNER-CB ;] FS:WALK-FILES ;
 
 : FS-TEST-WALK-NEST ( -- )
    0 FS-TEST-NEST-N !
    FS-TEST-ROOT [: FS-TEST-WALK-NEST-CB ;] FS:WALK-FILES ;
 
-: FS-TEST-WALK-NEST-THROW-CB ( ptr u8 n -- )
+: FS-TEST-WALK-NEST-THROW-CB ( ^u8 n -- )
    2drop FS-TEST-ROOT [: FS-TEST-WALK-THROW-CB ;] FS:WALK-FILES ;
 
 : FS-TEST-WALK-NEST-THROW ( -- )
@@ -525,7 +525,7 @@ create FS-TEST-READ-BUF FS-TEST-READ-CAP allot
 \ removal both grow their frames while a descriptor is open at every depth
 \ above. The leaf's whole path is checked, so every depth the frames moved
 \ under still joined its name onto the right parent.
-: FS-TEST-DEEP-CB ( ptr u8 n -- ) {: a:ptr u :}
+: FS-TEST-DEEP-CB ( ^u8 n -- ) {: a:^ u :}
    FS-TEST-LEAF-N @ 1 + FS-TEST-LEAF-N !
    a u FS-TEST-OUT FS-TEST-LEAF-U @ FS-TEST$= ;
 
@@ -539,13 +539,13 @@ create FS-TEST-READ-BUF FS-TEST-READ-CAP allot
 
 \ PATH-CAP bounds the path string, not the tree; past PATH-CAP's lstat limit a
 \ failed lstat reads as a vanished entry.
-: FS-TEST-CAP ( -- ptr u8 n )
+: FS-TEST-CAP ( -- ^u8 n )
    FS-TEST-CAP-PATH FS-TEST-CAP-U @ ;
 
-: FS-TEST-CAP-OVER ( -- ptr u8 n )
+: FS-TEST-CAP-OVER ( -- ^u8 n )
    FS-TEST-CAP-PATH FS-TEST-CAP-U @ 1 + ;
 
-: FS-TEST-CAP-ROOT ( -- ptr u8 n )
+: FS-TEST-CAP-ROOT ( -- ^u8 n )
    FS-TEST-CAP-PATH FS-TEST-CAP-ROOT-U @ ;
 
 : FS-TEST-CAP-NAME+ ( n -- ) {: k :}
@@ -573,7 +573,7 @@ create FS-TEST-READ-BUF FS-TEST-READ-CAP allot
    1 FS-TEST-CAP-NAME+
    FS-TEST-FILL-C FS-TEST-CAP-PATH FS-TEST-CAP-U @ + c! ;
 
-: FS-TEST-CAP-CB ( ptr u8 n -- )
+: FS-TEST-CAP-CB ( ^u8 n -- )
    FS-TEST-CAP-SEEN @ 1 + FS-TEST-CAP-SEEN !
    FS-TEST-CAP FS-TEST$= ;
 
@@ -612,15 +612,15 @@ variable FS-TEST-WALK-READY
 TASK:MIN-STACK TASK:TASK FS-TEST-WALK-A-TASK
 TASK:MIN-STACK TASK:TASK FS-TEST-WALK-B-TASK
 
-: FS-TEST-UNDER? ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u ra:ptr ru :}
+: FS-TEST-UNDER? ( ^u8 n ^u8 n -- bool ) {: a:^ u ra:^ ru :}
    u ru <= if false exit then
    a ru ra ru STR= ;
 
-: FS-TEST-WA-CB ( ptr u8 n -- ) {: a:ptr u :}
+: FS-TEST-WA-CB ( ^u8 n -- ) {: a:^ u :}
    a u FS-TEST-WA FS-TEST-UNDER? 0= if 1 FS-TEST-WALK-BAD atomic-add drop then
    1 FS-TEST-WA-N atomic-add drop ;
 
-: FS-TEST-WB-CB ( ptr u8 n -- ) {: a:ptr u :}
+: FS-TEST-WB-CB ( ^u8 n -- ) {: a:^ u :}
    a u FS-TEST-WB FS-TEST-UNDER? 0= if 1 FS-TEST-WALK-BAD atomic-add drop then
    1 FS-TEST-WB-N atomic-add drop ;
 
@@ -646,7 +646,7 @@ TASK:MIN-STACK TASK:TASK FS-TEST-WALK-B-TASK
 : FS-TEST-WALK-COUNTS-RESET ( -- )
    0 FS-TEST-WA-N !  0 FS-TEST-WB-N !  0 FS-TEST-WALK-BAD ! ;
 
-: FS-TEST-JOIN-OK ( ptr n -- )
+: FS-TEST-JOIN-OK ( ^n -- )
    TASK:JOIN MATCH result
       ok OF 0 FS-TEST= ENDOF
       err OF dup 0 FS-TEST= . ENDOF
@@ -663,7 +663,7 @@ TASK:MIN-STACK TASK:TASK FS-TEST-WALK-B-TASK
    FS-TEST-WA-N @ FS-TEST-WA-FILES FS-TEST-WALK-ROUNDS * FS-TEST=
    FS-TEST-WB-N @ FS-TEST-WB-FILES FS-TEST-WALK-ROUNDS * FS-TEST= ;
 
-: FS-TEST-WALK-SECOND-CB ( ptr u8 n -- )
+: FS-TEST-WALK-SECOND-CB ( ^u8 n -- )
    2drop FS-TEST-WB [: FS-TEST-WB-CB ;] FS:WALK-FILES ;
 
 : FS-TEST-WALK-SECOND ( -- )
@@ -759,21 +759,21 @@ TASK:MIN-STACK TASK:TASK FS-TEST-WALK-B-TASK
 TASK:MIN-STACK TASK:TASK FS-TEST-PAR-A-TASK
 TASK:MIN-STACK TASK:TASK FS-TEST-PAR-B-TASK
 
-: FS-TEST-PAR-A ( -- ptr u8 n )
+: FS-TEST-PAR-A ( -- ^u8 n )
    FS-TEST-PAR-A-BUF FS-TEST-PAR-A-U @ ;
 
-: FS-TEST-PAR-B ( -- ptr u8 n )
+: FS-TEST-PAR-B ( -- ^u8 n )
    FS-TEST-PAR-B-BUF FS-TEST-PAR-B-U @ ;
 
 : FS-TEST-PAR-BAD+ ( -- )
    1 FS-TEST-PAR-BAD atomic-add drop ;
 
-: FS-TEST-PAR-ROUND ( ptr u8 n ptr u8 n n -- ) {: pa:ptr pu buf:ptr want:n c :}
+: FS-TEST-PAR-ROUND ( ^u8 n ^u8 n n -- ) {: pa:^ pu buf:^ want:n c :}
    pa pu FS:FILE-SIZE want <> if FS-TEST-PAR-BAD+ exit then
    pa pu buf FS-TEST-PAR-CAP FS:READ-ALL want <> if FS-TEST-PAR-BAD+ exit then
    want 0 do buf i + c@ c <> if FS-TEST-PAR-BAD+ unloop exit then loop ;
 
-: FS-TEST-PAR-WORK ( ptr u8 n ptr u8 n n -- ) {: pa:ptr pu buf:ptr want:n c :}
+: FS-TEST-PAR-WORK ( ^u8 n ^u8 n n -- ) {: pa:^ pu buf:^ want:n c :}
    1 FS-TEST-PAR-READY atomic-add drop
    begin FS-TEST-PAR-READY atomic@ 2 < while TASK:PAUSE repeat
    FS-TEST-PAR-ITERS 0 do pa pu buf want c FS-TEST-PAR-ROUND loop
@@ -785,7 +785,7 @@ TASK:MIN-STACK TASK:TASK FS-TEST-PAR-B-TASK
 : FS-TEST-PAR-WORK-B ( -- )
    FS-TEST-PAR-B FS-TEST-PAR-B-DATA FS-TEST-PAR-B-N FS-TEST-PAR-B-C FS-TEST-PAR-WORK ;
 
-: FS-TEST-PAR-WRITE ( ptr u8 n n n -- ) {: pa:ptr pu n c :}
+: FS-TEST-PAR-WRITE ( ^u8 n n n -- ) {: pa:^ pu n c :}
    FS-TEST-PAR-SEED n c FS-TEST-FILL
    pa pu FS-TEST-PAR-SEED n FS:WRITE-ALL
    pa pu FS:CLEANUP+ ;
@@ -814,11 +814,11 @@ variable FS-TEST-RACE-REFUSED
 variable FS-TEST-RACE-BAD
 TASK:MIN-STACK TASK:TASK FS-TEST-RACE-TASK
 
-: FS-TEST-RACE-LIVE ( -- ptr u8 n )
+: FS-TEST-RACE-LIVE ( -- ^u8 n )
    FS-TEST-RACE-LIVE-BUF FS-TEST-RACE-LIVE-U @ ;
-: FS-TEST-RACE-NEXT ( -- ptr u8 n )
+: FS-TEST-RACE-NEXT ( -- ^u8 n )
    FS-TEST-RACE-NEXT-BUF FS-TEST-RACE-NEXT-U @ ;
-: FS-TEST-RACE-REPLACE ( ptr u8 n -- )
+: FS-TEST-RACE-REPLACE ( ^u8 n -- )
    FS-TEST-RACE-NEXT FS:MAKE-SYMLINK
    FS-TEST-RACE-NEXT FS-TEST-RACE-LIVE FS:RENAME-FILE ;
 : FS-TEST-RACE-WORK ( -- )
@@ -935,20 +935,20 @@ variable LINK-U
 variable WRITER
 variable VISITS
 
-: DIR$ ( -- ptr u8 n )
+: DIR$ ( -- ^u8 n )
    DIR-BUF DIR-U @ ;
 
-: FIFO$ ( -- ptr u8 n )
+: FIFO$ ( -- ^u8 n )
    FIFO-BUF FIFO-U @ ;
 
-: LINK$ ( -- ptr u8 n )
+: LINK$ ( -- ^u8 n )
    LINK-BUF LINK-U @ ;
 
-: PAYLOAD$ ( -- ptr u8 n )
+: PAYLOAD$ ( -- ^u8 n )
    s" through the fifo" ;
 
 \ A system tool's path, resolved through PATH into TOOL-BUF.
-: TOOL ( ptr u8 n -- ptr u8 len )
+: TOOL ( ^u8 n -- ^u8 len )
    >LEN TOOL-BUF RESOLVE-EXECUTABLE TOOL-BUF swap ;
 
 : MAKE-FIFO ( -- )
@@ -1044,7 +1044,7 @@ variable VISITS
    then
    r FD>N close ;
 
-: VISIT ( ptr u8 n -- )
+: VISIT ( ^u8 n -- )
    2drop VISITS @ 1 + VISITS ! ;
 
 : WALK-DIR ( -- )

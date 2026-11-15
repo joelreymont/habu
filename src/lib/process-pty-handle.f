@@ -35,7 +35,7 @@ LINEAR: RESERVATION>N ( process-pty-reservation -- n )
 LINEAR: N>TEARDOWN ( n -- process-pty-teardown )
 LINEAR: TEARDOWN>N ( process-pty-teardown -- n )
 
-: CELL-AT ( ptr a idx -- ptr a ) {: base:ptr idx:idx :}
+: CELL-AT ( ^a idx -- ^a ) {: base:^ idx:idx :}
    base idx IDX>N cells + ;
 
 : GEN@ ( idx -- n )
@@ -264,8 +264,8 @@ LINEAR: TEARDOWN>N ( process-pty-teardown -- n )
 : TEARDOWN-TARGET@ ( process-pty-teardown -- process-pty-teardown pid )
    TEARDOWN-IDX TARGET@ ;
 
-: TEARDOWN-FD-TAKE ( process-pty-teardown ptr n -- process-pty-teardown fd )
-   {: slot:ptr :}
+: TEARDOWN-FD-TAKE ( process-pty-teardown ^n -- process-pty-teardown fd )
+   {: slot:^ :}
    OPEN-TEARDOWN {: raw:n :}
    raw N>TEARDOWN
    raw UNPACK-IDX {: idx:idx :}

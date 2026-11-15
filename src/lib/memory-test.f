@@ -27,30 +27,30 @@ variable MEMT-HERE
 : MEMT-SPAN-TOTAL ( -- n )
    MEMT-SPAN-BUFS MEM-64K * ;
 
-: MEMT-END ( ptr u8 n -- ptr u8 ) {: a:ptr u :}
+: MEMT-END ( ^u8 n -- ^u8 ) {: a:^ u :}
    a u 1 - + ;
 
-: MEMT-TOUCH-ENDS ( ptr u8 n -- ) {: a:ptr u :}
+: MEMT-TOUCH-ENDS ( ^u8 n -- ) {: a:^ u :}
    MEMT-MARK-A a c!
    MEMT-MARK-Z a u MEMT-END c!
    a c@ MEMT-MARK-A T=
    a u MEMT-END c@ MEMT-MARK-Z T= ;
 
-: MEMT-TOUCH-SLOTS ( ptr u8 n n -- ) {: a:ptr u count :}
+: MEMT-TOUCH-SLOTS ( ^u8 n n -- ) {: a:^ u count :}
    count MEM-64K * u T=
    count 0 ?do
       MEMT-MARK-A i + a i MEM-64K * + c!
       a i MEM-64K * + c@ MEMT-MARK-A i + T=
    loop ;
 
-: MEMT-TOUCH-64K-SLOTS ( ptr u8 n -- )
+: MEMT-TOUCH-64K-SLOTS ( ^u8 n -- )
    MEMT-BUFS MEMT-TOUCH-SLOTS ;
 
-: MEMT-TOUCH-SPAN-SLOTS ( ptr u8 n -- )
+: MEMT-TOUCH-SPAN-SLOTS ( ^u8 n -- )
    MEMT-SPAN-BUFS MEMT-TOUCH-SLOTS ;
 
 : MEMT-CELL-SPAN ( -- )
-   4 >COUNT MEM-ALLOC-CELLS {: a:ptr :}
+   4 >COUNT MEM-ALLOC-CELLS {: a:^ :}
    111 a !
    222 a 1 cells + !
    a @ 111 T=
@@ -70,7 +70,7 @@ variable MEMT-HERE
    MEM-ALLOC-64K 2drop
    here data-base - MEMT-HERE @ T= ;
 
-: MEMT-LIVE-SPAN-FRAME ( ptr u8 n n -- ) {: a:ptr u remaining :}
+: MEMT-LIVE-SPAN-FRAME ( ^u8 n n -- ) {: a:^ u remaining :}
    u MEMT-SPAN-TOTAL T=
    a u MEMT-TOUCH-SPAN-SLOTS
    remaining 0 > if
@@ -95,7 +95,7 @@ require src/lib/ffi-abi.f
 create MEMT-CORE-LIMIT 16 allot
 
 PROCESS-SYMBOLS
-FUNCTION: MEMT-SET-LIMIT setrlimit ( n ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: MEMT-SET-LIMIT setrlimit ( n ^u8 -- i32 ) ;FUNCTION
 
 : MEMT-NO-CORE ( -- )
    1 MEMT-CORE-LIMIT !
@@ -227,17 +227,17 @@ T-REPORT
 \ memory over the KNOWN raw extent and drop the role.
 \ MEM:WITH-BYTES releases the mapping on scope exit. The body is a named word
 \ because a quotation cannot hold locals.
-: MEMT-TYPED-BYTES-BODY ( ptr u8 NUM:alloc-byte-len -- ) {: a:ptr len :}
+: MEMT-TYPED-BYTES-BODY ( ^u8 NUM:alloc-byte-len -- ) {: a:^ len :}
    MEMT-MARK-A a c!  MEMT-MARK-Z a MEM-64K 1 - + c!
    a c@ MEMT-MARK-A T=  a MEM-64K 1 - + c@ MEMT-MARK-Z T= ;
 : MEMT-TYPED-BYTES ( -- )
    MEM-64K MEM:BYTES-ALLOC-LEN [: MEMT-TYPED-BYTES-BODY ;] MEM:WITH-BYTES ;
 : MEMT-TYPED-64K ( -- )
-   MEM:ALLOC-64K drop {: a:ptr :}
+   MEM:ALLOC-64K drop {: a:^ :}
    MEMT-MARK-A a c!  MEMT-MARK-Z a MEM-64K 1 - + c!
    a c@ MEMT-MARK-A T=  a MEM-64K 1 - + c@ MEMT-MARK-Z T= ;
 : MEMT-TYPED-CELLS ( -- )
-   4 MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS {: a:ptr :}
+   4 MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS {: a:^ :}
    111 a !  222 a 1 cells + !
    a @ 111 T=  a 1 cells + @ 222 T= ;
 
@@ -297,9 +297,9 @@ create RBT-ERR RBT-CAP allot
 : MEMT-FORK-CLEAN ( [ -- ] -- )
    MEMT-FORK PROCESS:STATUS>RC RC>N 0 T= ;
 
-: RBT-RELEASED-BASE ( -- ptr u8 )
+: RBT-RELEASED-BASE ( -- ^u8 )
    MEM-64K 2 * BYTES-ALLOC-LEN ALLOC-BYTES
-   over {: base:ptr :}
+   over {: base:^ :}
    MEMT-MARK-A base c!
    MEMT-MARK-Z base MEM-64K 2 * 1 - + c!
    RELEASE-BYTES
@@ -311,24 +311,24 @@ create RBT-ERR RBT-CAP allot
 : RBT-RELEASE-LAST ( -- )
    RBT-RELEASED-BASE MEM-64K 2 * 1 - + c@ drop ;
 
-: RBT-RELEASE-OUTERS ( ptr u8 -- ) {: base:ptr :}
+: RBT-RELEASE-OUTERS ( ^u8 -- ) {: base:^ :}
    base MEM-64K RBT-LEN UNMAP
    base MEM-64K 3 * + MEM-64K RBT-LEN UNMAP ;
 
-: RBT-ONE-CLEANUP ( ptr u8 -- ) {: base:ptr :}
+: RBT-ONE-CLEANUP ( ^u8 -- ) {: base:^ :}
    base MEM-64K RBT-LEN UNMAP
    base MEM-64K 2 * + MEM-64K RBT-LEN UNMAP ;
 
-: RBT-ONE-MAP ( -- ptr u8 )
+: RBT-ONE-MAP ( -- ^u8 )
    MEM-64K 3 * BYTES-ALLOC-LEN ALLOC-BYTES
-   drop {: base:ptr :}
+   drop {: base:^ :}
    MEMT-MARK-A base MEM-64K 1 - + c!
    MEMT-MARK-Z base MEM-64K 2 * + c!
    base MEM-64K + MEM-64K RBT-LEN UNMAP
    base ;
 
 : RBT-ONE-GUARDS ( -- )
-   RBT-ONE-MAP {: base:ptr :}
+   RBT-ONE-MAP {: base:^ :}
    base MEM-64K 1 - + c@ MEMT-MARK-A <> if E-PRIMARY throw then
    base MEM-64K 2 * + c@ MEMT-MARK-Z <> if E-PRIMARY throw then
    base RBT-ONE-CLEANUP ;
@@ -336,25 +336,25 @@ create RBT-ERR RBT-CAP allot
 : RBT-ONE-FAULT ( -- )
    RBT-ONE-MAP MEM-64K + c@ drop ;
 
-: RBT-UNMAP-MID ( -- ptr u8 )
+: RBT-UNMAP-MID ( -- ^u8 )
    MEM-64K 4 * BYTES-ALLOC-LEN ALLOC-BYTES
-   drop {: base:ptr :}
+   drop {: base:^ :}
    MEMT-MARK-A base MEM-64K 1 - + c!
    MEMT-MARK-Z base MEM-64K 3 * + c!
    base MEM-64K + MEM-64K 2 * RBT-LEN UNMAP
    base ;
 
 : RBT-UNMAP-LEFT ( -- )
-   RBT-UNMAP-MID {: base:ptr :}
+   RBT-UNMAP-MID {: base:^ :}
    base MEM-64K 1 - + c@ MEMT-MARK-A <> if E-PRIMARY throw then
    base RBT-RELEASE-OUTERS ;
 
 : RBT-UNMAP-RIGHT ( -- )
-   RBT-UNMAP-MID {: base:ptr :}
+   RBT-UNMAP-MID {: base:^ :}
    base MEM-64K 3 * + c@ MEMT-MARK-Z <> if E-PRIMARY throw then
    base RBT-RELEASE-OUTERS ;
 
-: RBT-UNMAPPED-BASE ( -- ptr u8 )
+: RBT-UNMAPPED-BASE ( -- ^u8 )
    RBT-UNMAP-MID
    dup RBT-RELEASE-OUTERS ;
 
@@ -364,33 +364,33 @@ create RBT-ERR RBT-CAP allot
 : RBT-UNMAP-LAST ( -- )
    RBT-UNMAPPED-BASE MEM-64K 3 * 1 - + c@ drop ;
 
-: RBT-RELEASE-FIRST-SRC ( -- ptr u8 n )
+: RBT-RELEASE-FIRST-SRC ( -- ^u8 n )
    s" package MEMT RBT-RELEASE-FIRST ;package" ;
 
-: RBT-RELEASE-LAST-SRC ( -- ptr u8 n )
+: RBT-RELEASE-LAST-SRC ( -- ^u8 n )
    s" package MEMT RBT-RELEASE-LAST ;package" ;
 
-: RBT-UNMAP-FIRST-SRC ( -- ptr u8 n )
+: RBT-UNMAP-FIRST-SRC ( -- ^u8 n )
    s" package MEMT RBT-UNMAP-FIRST ;package" ;
 
-: RBT-UNMAP-LAST-SRC ( -- ptr u8 n )
+: RBT-UNMAP-LAST-SRC ( -- ^u8 n )
    s" package MEMT RBT-UNMAP-LAST ;package" ;
 
-: RBT-UNMAP-LEFT-SRC ( -- ptr u8 n )
+: RBT-UNMAP-LEFT-SRC ( -- ^u8 n )
    s" package MEMT RBT-UNMAP-LEFT ;package" ;
 
-: RBT-UNMAP-RIGHT-SRC ( -- ptr u8 n )
+: RBT-UNMAP-RIGHT-SRC ( -- ^u8 n )
    s" package MEMT RBT-UNMAP-RIGHT ;package" ;
 
-: RBT-ONE-GUARDS-SRC ( -- ptr u8 n )
+: RBT-ONE-GUARDS-SRC ( -- ^u8 n )
    s" package MEMT RBT-ONE-GUARDS ;package" ;
 
-: RBT-ONE-FAULT-SRC ( -- ptr u8 n )
+: RBT-ONE-FAULT-SRC ( -- ^u8 n )
    s" package MEMT RBT-ONE-FAULT ;package" ;
 
 \ Runs the source in a subject child and asserts its exit code, leaving the
 \ stdout and stderr lengths.
-: RBT-EXITS ( ptr u8 n n -- n n ) {: src:ptr srcu:n want:n :}
+: RBT-EXITS ( ^u8 n n -- n n ) {: src:^ srcu:n want:n :}
    src srcu RBT-OUT RBT-CAP >LEN RBT-ERR RBT-CAP >LEN
    PROCESS:WAIT-FOREVER SUBJECT:RUN {: outu:len erru:len oc :}
    src srcu RBT-OUT outu LEN>N RBT-ERR erru LEN>N oc want T-ENDING-EXITED=
@@ -399,7 +399,7 @@ create RBT-ERR RBT-CAP allot
 \ On arm64 a child that touches released memory exits 110 after the fault's
 \ line on fd 2.
 HB-TARGET-LINUX-X86-64? 0= [if]
-: RBT-EXPECT-FAULT ( ptr u8 n -- )
+: RBT-EXPECT-FAULT ( ^u8 n -- )
    ENGINE-ERROR:MEMORY-FAULT RBT-EXITS
    0 > TTRUE
    0 T= ;
@@ -408,7 +408,7 @@ HB-TARGET-LINUX-X86-64? 0= [if]
 \ and dies of the SIGSEGV itself.
 HB-TARGET-LINUX-X86-64? [if]
 11 constant MEMT-FAULT-SIG
-: RBT-EXPECT-FAULT ( ptr u8 n -- ) {: src:ptr srcu:n :}
+: RBT-EXPECT-FAULT ( ^u8 n -- ) {: src:^ srcu:n :}
    src srcu RBT-OUT RBT-CAP >LEN RBT-ERR RBT-CAP >LEN
    PROCESS:WAIT-FOREVER SUBJECT:RUN {: outu:len erru:len oc :}
    src srcu RBT-OUT outu LEN>N RBT-ERR erru LEN>N oc
@@ -417,7 +417,7 @@ HB-TARGET-LINUX-X86-64? [if]
    outu LEN>N 0 T= ;
 [then]
 
-: RBT-EXPECT-CLEAN ( ptr u8 n -- )
+: RBT-EXPECT-CLEAN ( ^u8 n -- )
    0 RBT-EXITS
    0 T=
    0 T= ;
@@ -484,20 +484,20 @@ $47 constant FATAL-RC
 create CAP-OUT CAP allot
 create CAP-ERR CAP allot
 
-: EXPECT-FATAL ( ptr u8 n -- ) {: src:ptr srcu:n :}
+: EXPECT-FATAL ( ^u8 n -- ) {: src:^ srcu:n :}
    src srcu CAP-OUT CAP >LEN CAP-ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    {: outu:len erru:len oc :}
    src srcu CAP-OUT outu LEN>N CAP-ERR erru LEN>N oc FATAL-RC T-ENDING-EXITED=
    outu LEN>N 0 T=
    CAP-ERR erru LEN>N S\" memory: unmap failed\n" T$= ;   \ die ends the message with one newline
 
-: RELEASE-SRC ( -- ptr u8 n )
+: RELEASE-SRC ( -- ^u8 n )
    s" package MFR : RUN ( -- ) MEM:ALLOC-64K swap 1 + swap MEM:RELEASE-BYTES ; ' RUN ;package catch $53 emit" ;
 
-: UNMAP-SRC ( -- ptr u8 n )
+: UNMAP-SRC ( -- ^u8 n )
    s" package MFU : RUN ( -- ) MEM:ALLOC-64K drop 1 + MEM-64K STR:LENGTH MEM:UNMAP ; ' RUN ;package catch $53 emit" ;
 
-: ZERO-SRC ( -- ptr u8 n )
+: ZERO-SRC ( -- ^u8 n )
    s" package MFZ : RUN ( -- ) MEM:ALLOC-64K drop 0 STR:LENGTH MEM:UNMAP ; ' RUN ;package catch $53 emit" ;
 
 public
@@ -547,37 +547,37 @@ HB-TARGET-LINUX-X86-64? [if]
    ;MATCH ;
 [then]
 
-: WBT-RESULT-BODY ( ptr u8 NUM:alloc-byte-len -- n )
-   drop {: buf:ptr :}
+: WBT-RESULT-BODY ( ^u8 NUM:alloc-byte-len -- n )
+   drop {: buf:^ :}
    buf WBT-SAVED !
    MEMT-MARK-A buf c!
    buf c@ ;
 
-: WBT-THROW-BODY ( ptr u8 NUM:alloc-byte-len -- )
-   drop {: buf:ptr :}
+: WBT-THROW-BODY ( ^u8 NUM:alloc-byte-len -- )
+   drop {: buf:^ :}
    buf WBT-SAVED !
    E-PRIMARY throw ;
 
-: WBT-SAVE-INNER ( ptr u8 NUM:alloc-byte-len -- )
-   drop {: buf:ptr :}
+: WBT-SAVE-INNER ( ^u8 NUM:alloc-byte-len -- )
+   drop {: buf:^ :}
    buf WBT-SAVED !
    MEMT-MARK-Z buf c! ;
 
-: WBT-TOUCH-INNER ( ptr u8 NUM:alloc-byte-len -- )
-   drop {: buf:ptr :}
+: WBT-TOUCH-INNER ( ^u8 NUM:alloc-byte-len -- )
+   drop {: buf:^ :}
    MEMT-MARK-Z buf c!
    buf c@ MEMT-MARK-Z <> if E-PRIMARY throw then ;
 
-: WBT-INNER-RELEASE ( ptr u8 NUM:alloc-byte-len -- )
-   drop {: outer:ptr :}
+: WBT-INNER-RELEASE ( ^u8 NUM:alloc-byte-len -- )
+   drop {: outer:^ :}
    outer WBT-OUTER !
    MEMT-MARK-A outer c!
    MEM-64K BYTES-ALLOC-LEN [: WBT-SAVE-INNER ;] WITH-BYTES
    WBT-OUTER @ c@ MEMT-MARK-A <> if E-PRIMARY throw then
    WBT-RELEASED ;
 
-: WBT-OUTER-RELEASE ( ptr u8 NUM:alloc-byte-len -- )
-   drop {: outer:ptr :}
+: WBT-OUTER-RELEASE ( ^u8 NUM:alloc-byte-len -- )
+   drop {: outer:^ :}
    outer WBT-SAVED !
    MEMT-MARK-A outer c!
    MEM-64K BYTES-ALLOC-LEN [: WBT-TOUCH-INNER ;] WITH-BYTES
@@ -610,7 +610,7 @@ HB-TARGET-LINUX-X86-64? [if]
 
 : WBT-RETAINED-CHILD ( -- )
    MEM-64K BYTES-ALLOC-LEN ALLOC-BYTES
-   drop {: buf:ptr :}
+   drop {: buf:^ :}
    buf WBT-SAVED !
    MEMT-MARK-A buf c!
    WBT-PROBE-RELEASED ;
@@ -620,8 +620,8 @@ HB-TARGET-LINUX-X86-64? [if]
    MEM-MAX-N 2 / BYTES-ALLOC-LEN [: 2drop ;] WITH-BYTES ;
 
 
-: WBT-ALLOC-RETRY ( ptr u8 NUM:alloc-byte-len -- )
-   drop {: outer:ptr :}
+: WBT-ALLOC-RETRY ( ^u8 NUM:alloc-byte-len -- )
+   drop {: outer:^ :}
    MEMT-MARK-A outer c!
    [: WBT-ALLOC-FAIL ;] E-MEM-MAP TTHROWSQ
    outer c@ MEMT-MARK-A T=
@@ -629,8 +629,8 @@ HB-TARGET-LINUX-X86-64? [if]
 
 \ Scopes nest per task: a peer leaving its own scope leaves this task's open
 \ mapping intact, where a process-wide scope stack would release it and fault.
-: WBT-PEER-BODY ( ptr u8 NUM:alloc-byte-len -- )
-   drop {: buf:ptr :}
+: WBT-PEER-BODY ( ^u8 NUM:alloc-byte-len -- )
+   drop {: buf:^ :}
    MEMT-MARK-Z buf c!
    1 WBT-PEER-IN atomic!
    WBT-OWN-MARKED TASK:WAIT-SEM
@@ -639,8 +639,8 @@ HB-TARGET-LINUX-X86-64? [if]
 : WBT-PEER-WORK ( -- )
    MEM-64K BYTES-ALLOC-LEN [: WBT-PEER-BODY ;] WITH-BYTES ;
 
-: WBT-OWN-BODY ( ptr u8 NUM:alloc-byte-len -- )
-   drop {: buf:ptr :}
+: WBT-OWN-BODY ( ^u8 NUM:alloc-byte-len -- )
+   drop {: buf:^ :}
    MEMT-MARK-A buf c!
    WBT-OWN-MARKED TASK:SIGNAL-SEM
    WBT-PEER TASK:JOIN MATCH result
@@ -668,7 +668,7 @@ align
 variable WBT-HALT-READY
 TASK:MIN-STACK TASK:TASK WBT-HALT-TASK
 
-: WBT-HALT-BODY ( ptr u8 NUM:alloc-byte-len -- )
+: WBT-HALT-BODY ( ^u8 NUM:alloc-byte-len -- )
    drop WBT-SAVED !
    1 WBT-HALT-READY atomic!
    begin TASK:PAUSE again ;
@@ -714,13 +714,13 @@ PTR-VARIABLE WBP-LAST
 variable WBP-THROW-DEEP
 TASK:MIN-STACK TASK:TASK WBP-TASK
 
-: WBP-FILL ( ptr u8 n -- )
-   {: a:ptr c :}
+: WBP-FILL ( ^u8 n -- )
+   {: a:^ c :}
    WBP-LEN 0 ?do c a i + c! loop ;
 
 \ The count of body bytes that do not hold `c`.
-: WBP-MISS ( ptr u8 n -- n )
-   {: a:ptr c :}
+: WBP-MISS ( ^u8 n -- n )
+   {: a:^ c :}
    0 WBP-LEN 0 ?do a i + c@ c <> if 1 + then loop ;
 
 \ A forked case exits nonzero when one of its assertions failed.
@@ -728,10 +728,10 @@ TASK:MIN-STACK TASK:TASK WBP-TASK
    T-FAILURES 0 <> if s" pooled case failed" 1 die then
    MEMT-EXIT0 ;
 
-: WBP-DIRTY ( ptr u8 NUM:alloc-byte-len -- )
+: WBP-DIRTY ( ^u8 NUM:alloc-byte-len -- )
    drop MEMT-MARK-A WBP-FILL ;
 
-: WBP-CLEAN ( ptr u8 NUM:alloc-byte-len -- )
+: WBP-CLEAN ( ^u8 NUM:alloc-byte-len -- )
    drop
    s" a reentered pooled scope reads 0" T-LABEL
    0 WBP-MISS 0 T= ;
@@ -740,8 +740,8 @@ TASK:MIN-STACK TASK:TASK WBP-TASK
    WBP-LEN BYTES-ALLOC-LEN [: WBP-DIRTY ;] WITH-BYTES
    WBP-LEN BYTES-ALLOC-LEN [: WBP-CLEAN ;] WITH-BYTES ;
 
-: WBP-REENTER-OUTER ( ptr u8 NUM:alloc-byte-len -- )
-   drop {: outer:ptr :}
+: WBP-REENTER-OUTER ( ^u8 NUM:alloc-byte-len -- )
+   drop {: outer:^ :}
    outer MEMT-MARK-Z WBP-FILL
    WBP-REENTER
    s" an outer pooled scope keeps its marks" T-LABEL
@@ -753,10 +753,10 @@ TASK:MIN-STACK TASK:TASK WBP-TASK
    WBP-LEN BYTES-ALLOC-LEN [: WBP-REENTER-OUTER ;] WITH-BYTES
    WBP-EXIT ;
 
-: WBP-SAVE ( ptr u8 NUM:alloc-byte-len -- )
+: WBP-SAVE ( ^u8 NUM:alloc-byte-len -- )
    drop WBT-SAVED ! ;
 
-: WBP-SAME ( ptr u8 NUM:alloc-byte-len -- )
+: WBP-SAME ( ^u8 NUM:alloc-byte-len -- )
    drop WBT-SAVED @ = TTRUE ;
 
 : WBP-THROW ( -- )
@@ -782,8 +782,8 @@ defer WBP-NEST ( n -- )
 : WBP-LEVEL-MARK ( n -- n )
    251 mod 1 + ;
 
-: WBP-LEVEL-BODY ( n ptr u8 NUM:alloc-byte-len -- )
-   drop {: lvl buf:ptr :}
+: WBP-LEVEL-BODY ( n ^u8 NUM:alloc-byte-len -- )
+   drop {: lvl buf:^ :}
    lvl 1 = if buf WBP-FIRST ! then
    lvl WBP-DEPTH = if buf WBP-LAST ! then
    buf lvl WBP-LEVEL-MARK WBP-FILL
@@ -807,8 +807,8 @@ defer WBP-NEST ( n -- )
    WBP-DEEP
    WBP-EXIT ;
 
-: WBP-FIRST-AGAIN ( ptr u8 NUM:alloc-byte-len -- )
-   drop {: buf:ptr :}
+: WBP-FIRST-AGAIN ( ^u8 NUM:alloc-byte-len -- )
+   drop {: buf:^ :}
    s" a pooled scope after an unwind reuses the first body" T-LABEL
    buf WBP-FIRST @ = TTRUE
    s" a pooled scope after an unwind reads 0" T-LABEL
@@ -818,7 +818,7 @@ defer WBP-NEST ( n -- )
    T-RESET
    1 WBP-THROW-DEEP !
    [: WBP-DEEP ;] E-PRIMARY TTHROWSQ
-   WBP-LAST @ {: deepest:ptr :}
+   WBP-LAST @ {: deepest:^ :}
    WBP-LEN BYTES-ALLOC-LEN [: WBP-FIRST-AGAIN ;] WITH-BYTES
    0 WBP-THROW-DEEP ! WBP-DEEP
    s" a re-nest reuses the chunks the unwind kept" T-LABEL
@@ -859,8 +859,8 @@ defer WBP-NEST ( n -- )
    WBT-RELEASED
    WBP-EXIT ;
 
-: WBP-PEER-BODY ( ptr u8 NUM:alloc-byte-len -- )
-   drop {: buf:ptr :}
+: WBP-PEER-BODY ( ^u8 NUM:alloc-byte-len -- )
+   drop {: buf:^ :}
    buf MEMT-MARK-Z WBP-FILL
    1 WBT-PEER-IN atomic!
    WBT-OWN-MARKED TASK:WAIT-SEM
@@ -869,8 +869,8 @@ defer WBP-NEST ( n -- )
 : WBP-PEER-WORK ( -- )
    WBP-LEN BYTES-ALLOC-LEN [: WBP-PEER-BODY ;] WITH-BYTES ;
 
-: WBP-OWN-BODY ( ptr u8 NUM:alloc-byte-len -- )
-   drop {: buf:ptr :}
+: WBP-OWN-BODY ( ^u8 NUM:alloc-byte-len -- )
+   drop {: buf:^ :}
    buf MEMT-MARK-A WBP-FILL
    WBT-OWN-MARKED TASK:SIGNAL-SEM
    s" a peer's pooled body keeps its marks" T-LABEL
@@ -912,15 +912,15 @@ defer WBP-NEST ( n -- )
 \ reads apart from both.
 66 constant WBP-MARK-B
 
-: WBP-MAPPED-BODY ( ptr u8 NUM:alloc-byte-len -- )
-   drop {: buf:ptr :}
+: WBP-MAPPED-BODY ( ^u8 NUM:alloc-byte-len -- )
+   drop {: buf:^ :}
    buf MEMT-MARK-A WBP-FILL
    WBP-LEN BYTES-ALLOC-LEN [: WBP-REENTER-OUTER ;] WITH-BYTES
    s" a mapped body keeps its marks around a pooled scope" T-LABEL
    buf MEMT-MARK-A WBP-MISS 0 T= ;
 
-: WBP-MIXED-OUTER ( ptr u8 NUM:alloc-byte-len -- )
-   drop {: buf:ptr :}
+: WBP-MIXED-OUTER ( ^u8 NUM:alloc-byte-len -- )
+   drop {: buf:^ :}
    buf WBP-MARK-B WBP-FILL
    WBP-LEN BYTES-ALLOC-LEN [: WBP-SAVE ;] WITH-BYTES
    MEM-64K 16 + BYTES-ALLOC-LEN [: WBP-MAPPED-BODY ;] WITH-BYTES
@@ -974,9 +974,9 @@ private
 : GUARDED ( -- )
    T-RESET
    s" releasing a guarded stack leaves its neighbours mapped" T-LABEL
-   STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED {: a:ptr au:n :}
-   STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED {: b:ptr bu:n :}
-   STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED {: c:ptr cu:n :}
+   STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED {: a:^ au:n :}
+   STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED {: b:^ bu:n :}
+   STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED {: c:^ cu:n :}
    a au MEM:RELEASE-GUARDED
    c cu MEM:RELEASE-GUARDED
    77 b CELL-VIEW !
@@ -1009,55 +1009,55 @@ GUARDED-SIZE
       CHECK-QUIET-CANDIDATE! -1 T=
    s" G-64K-SPAN ( NUM:byte-len -- NUM:numeric-result<NUM:byte-len> ) MEM:64K-SPAN-BYTES"
       CHECK-QUIET-CANDIDATE! -1 T=
-   s" G-ALLOC ( NUM:alloc-byte-len -- ptr u8 NUM:alloc-byte-len ) MEM:ALLOC-BYTES"
+   s" G-ALLOC ( NUM:alloc-byte-len -- ^u8 NUM:alloc-byte-len ) MEM:ALLOC-BYTES"
       CHECK-QUIET-CANDIDATE! -1 T=
-   s" G-ALLOC-CELLS ( NUM:alloc-cell-count -- ptr a ) MEM:ALLOC-CELLS"
+   s" G-ALLOC-CELLS ( NUM:alloc-cell-count -- ^a ) MEM:ALLOC-CELLS"
       CHECK-QUIET-CANDIDATE! -1 T=
-   s" G-ALLOC-64K ( -- ptr u8 NUM:alloc-byte-len ) MEM:ALLOC-64K"
+   s" G-ALLOC-64K ( -- ^u8 NUM:alloc-byte-len ) MEM:ALLOC-64K"
       CHECK-QUIET-CANDIDATE! -1 T=
    s" G-BYTES-ALLOC-LEN ( n -- NUM:alloc-byte-len ) MEM:BYTES-ALLOC-LEN"
       CHECK-QUIET-CANDIDATE! -1 T=
    s" G-CELLS-ALLOC-COUNT ( n -- NUM:alloc-cell-count ) MEM:CELLS-ALLOC-COUNT"
       CHECK-QUIET-CANDIDATE! -1 T=
-   s" B-ZEROABLE-ALLOC ( NUM:byte-len -- ptr u8 NUM:alloc-byte-len ) MEM:ALLOC-BYTES"
+   s" B-ZEROABLE-ALLOC ( NUM:byte-len -- ^u8 NUM:alloc-byte-len ) MEM:ALLOC-BYTES"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" B-CELL-ROLE-BYTES ( NUM:alloc-cell-count -- ptr u8 NUM:alloc-byte-len ) MEM:ALLOC-BYTES"
+   s" B-CELL-ROLE-BYTES ( NUM:alloc-cell-count -- ^u8 NUM:alloc-byte-len ) MEM:ALLOC-BYTES"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" B-BYTE-ROLE-CELLS ( NUM:alloc-byte-len -- ptr a ) MEM:ALLOC-CELLS"
+   s" B-BYTE-ROLE-CELLS ( NUM:alloc-byte-len -- ^a ) MEM:ALLOC-CELLS"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" B-RAW-CELLS>BYTES ( n -- NUM:numeric-result<NUM:byte-len> ) MEM:CELLS>BYTES"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" B-BYTE-ROLE-64K-BYTES ( NUM:byte-len -- NUM:numeric-result<NUM:byte-len> ) MEM:64K-BYTES"
       CHECK-QUIET-CANDIDATE! 0 T=
-   \ RELEASE-BYTES admits only the ptr u8 + alloc-byte-len ALLOC-BYTES mints, so no
+   \ RELEASE-BYTES admits only the ^u8 + alloc-byte-len ALLOC-BYTES mints, so no
    \ forged address or unvalidated size reaches munmap.
-   s" G-RELEASE ( ptr u8 NUM:alloc-byte-len -- ) MEM:RELEASE-BYTES"
+   s" G-RELEASE ( ^u8 NUM:alloc-byte-len -- ) MEM:RELEASE-BYTES"
       CHECK-QUIET-CANDIDATE! -1 T=
    s" B-RELEASE-RAW-PTR ( n NUM:alloc-byte-len -- ) MEM:RELEASE-BYTES"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" B-RELEASE-RAW-LEN ( ptr u8 n -- ) MEM:RELEASE-BYTES"
+   s" B-RELEASE-RAW-LEN ( ^u8 n -- ) MEM:RELEASE-BYTES"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" B-RELEASE-ZEROABLE-LEN ( ptr u8 NUM:byte-len -- ) MEM:RELEASE-BYTES"
+   s" B-RELEASE-ZEROABLE-LEN ( ^u8 NUM:byte-len -- ) MEM:RELEASE-BYTES"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" B-RELEASE-CELL-LEN ( ptr u8 NUM:alloc-cell-count -- ) MEM:RELEASE-BYTES"
+   s" B-RELEASE-CELL-LEN ( ^u8 NUM:alloc-cell-count -- ) MEM:RELEASE-BYTES"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" G-UNMAP ( ptr u8 NUM:byte-len -- ) MEM:UNMAP"
+   s" G-UNMAP ( ^u8 NUM:byte-len -- ) MEM:UNMAP"
       CHECK-QUIET-CANDIDATE! -1 T=
-   s" B-UNMAP-BOOL-PTR ( ptr bool NUM:byte-len -- ) MEM:UNMAP"
+   s" B-UNMAP-BOOL-PTR ( ^bool NUM:byte-len -- ) MEM:UNMAP"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" B-UNMAP-RAW-LEN ( ptr u8 n -- ) MEM:UNMAP"
+   s" B-UNMAP-RAW-LEN ( ^u8 n -- ) MEM:UNMAP"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" B-UNMAP-ALLOC-LEN ( ptr u8 NUM:alloc-byte-len -- ) MEM:UNMAP"
+   s" B-UNMAP-ALLOC-LEN ( ^u8 NUM:alloc-byte-len -- ) MEM:UNMAP"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" B-UNMAP-CELL-LEN ( ptr u8 NUM:cell-count -- ) MEM:UNMAP"
+   s" B-UNMAP-CELL-LEN ( ^u8 NUM:cell-count -- ) MEM:UNMAP"
       CHECK-QUIET-CANDIDATE! 0 T=
    \ WITH-BYTES types the body row, so a caller cannot scope a mapping over an
    \ unvalidated size or a byte/cell role swap.
-   s" G-WITH-BYTES ( R NUM:alloc-byte-len [ R ptr u8 NUM:alloc-byte-len -- S ] -- S ) MEM:WITH-BYTES"
+   s" G-WITH-BYTES ( R NUM:alloc-byte-len [ R ^u8 NUM:alloc-byte-len -- S ] -- S ) MEM:WITH-BYTES"
       CHECK-QUIET-CANDIDATE! -1 T=
-   s" B-WB-RAW-LEN ( R n [ R ptr u8 NUM:alloc-byte-len -- S ] -- S ) MEM:WITH-BYTES"
+   s" B-WB-RAW-LEN ( R n [ R ^u8 NUM:alloc-byte-len -- S ] -- S ) MEM:WITH-BYTES"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" B-WB-CELL-LEN ( R NUM:alloc-cell-count [ R ptr u8 NUM:alloc-cell-count -- S ] -- S ) MEM:WITH-BYTES"
+   s" B-WB-CELL-LEN ( R NUM:alloc-cell-count [ R ^u8 NUM:alloc-cell-count -- S ] -- S ) MEM:WITH-BYTES"
       CHECK-QUIET-CANDIDATE! 0 T=
    T-REPORT ;
 

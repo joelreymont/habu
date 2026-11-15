@@ -98,7 +98,7 @@ $1000 constant WINDOW
    INSTALL,  PIPE,  STDIN-PIPE,  RAISE,
    EAGAIN-RC DRAIN, ;
 
-: BUILD ( [ -- ] bool ptr u8 n -- ) {: negative:bool path:ptr pathu:n :}
+: BUILD ( [ -- ] bool ^u8 n -- ) {: negative:bool path:^ pathu:n :}
    negative X64HARNESS:BOOT-OPEN,
    execute
    0 X64HARNESS:EXPECT-DEPTH,

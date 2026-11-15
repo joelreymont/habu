@@ -19,7 +19,7 @@ package LINKER
 private
 
 \ The linker's error lines go whole to the error output.
-: SAY ( ptr u8 n -- ) ERROR-TEXT:TYPE ;
+: SAY ( ^u8 n -- ) ERROR-TEXT:TYPE ;
 
 : SAY-INT ( n -- )
    dup 0< if s" -" SAY then
@@ -160,7 +160,7 @@ variable PATH-U
 : LABEL-AT ( n -- n ) 8 * LABELS-AT @ + KOBJ@ ;
 
 \ The name at AT: its length, then its bytes padded to 8.
-: NAME-NEXT ( -- ptr u8 n )
+: NAME-NEXT ( -- ^u8 n )
    NEXT {: u:n :}
    AT @ {: at:n :}
    u SKIP
@@ -171,9 +171,9 @@ variable PATH-U
 : STATE-ROW ( -- )
    NEXT NEXT NEXT {: kind:n trusted:n fixed:n :}
    AT @ 8 + {: name-at:n :}
-   NAME-NEXT {: name:ptr nameu:n :}
+   NAME-NEXT {: name:^ nameu:n :}
    AT @ 8 + {: pkg-at:n :}
-   NAME-NEXT {: pkg:ptr pkgu:n :}
+   NAME-NEXT {: pkg:^ pkgu:n :}
    NEXT {: atoms:n :}
    atoms 0<  atoms KOBJ-U @ > or if BAD then
    kind PRIM-SPEC:K-PKG-PRIVATE = {: owned:bool :}
@@ -201,8 +201,8 @@ public
 \ True once READ read an object.
 : READ? ( -- bool ) KOBJ-U @ 0<> ;
 
-: SYM ( ptr u8 n -- n )
-   {: a:ptr u:n :}
+: SYM ( ^u8 n -- n )
+   {: a:^ u:n :}
    SYMS-AT @
    SYMS-N @ 0 ?do
       {: at:n :}
@@ -216,7 +216,7 @@ public
    s" link: the kernel object has no symbol " SAY a u SAY SAY-CR
    s" link: the kernel object lacks a symbol the link reads" 74 die ;
 
-: SYM-LABEL ( ptr u8 n -- label ) SYM >LABEL ;
+: SYM-LABEL ( ^u8 n -- label ) SYM >LABEL ;
 
 \ The address the target links its code at, from the kernel object.
 : TEXT-VA ( -- n ) KTEXT-VA @ ;
@@ -230,14 +230,14 @@ public
 : ROW-LAST ( n -- label ) PRIM-AT @ 8 + KOBJ@ >LABEL ;
 : ROW-WID ( n -- n ) PRIM-AT @ 16 + KOBJ@ ;
 
-: ROW-NAME$ ( n -- ptr u8 n )
+: ROW-NAME$ ( n -- ^u8 n )
    PRIM-AT @ 24 + {: at:n :}
    0 KOBJ at 8 + +  at KOBJ@ ;
 
 \ The package-private rows STATE-PRIMS stated: row k's package and name.
 : OWNED-N ( -- n ) OWNED-ROWS @ ;
-: OWNED-PKG$ ( n -- ptr u8 n ) 4 * {: o:n :}  0 KOBJ o OWNED-AT @ +  o 1 + OWNED-AT @ ;
-: OWNED-NAME$ ( n -- ptr u8 n ) 4 * {: o:n :}  0 KOBJ o 2 + OWNED-AT @ +  o 3 + OWNED-AT @ ;
+: OWNED-PKG$ ( n -- ^u8 n ) 4 * {: o:n :}  0 KOBJ o OWNED-AT @ +  o 1 + OWNED-AT @ ;
+: OWNED-NAME$ ( n -- ^u8 n ) 4 * {: o:n :}  0 KOBJ o 2 + OWNED-AT @ +  o 3 + OWNED-AT @ ;
 
 \ The label of the chain holding the entry scope-kind? answers kind k for, k
 \ from 2 to 8.
@@ -247,8 +247,8 @@ public
    j 8 * SCOPES-AT @ + KOBJ@ >LABEL ;
 
 \ The Mach-O and the ELF import sections' bytes.
-: MACHO-IMPORTS$ ( -- ptr u8 n ) 0 KOBJ MACHO-AT @ +  MACHO-U @ ;
-: ELF-IMPORTS$ ( -- ptr u8 n ) 0 KOBJ ELF-AT @ +  ELF-U @ ;
+: MACHO-IMPORTS$ ( -- ^u8 n ) 0 KOBJ MACHO-AT @ +  MACHO-U @ ;
+: ELF-IMPORTS$ ( -- ^u8 n ) 0 KOBJ ELF-AT @ +  ELF-U @ ;
 
 \ The header cells the object gives a value: preset k's value and offset.
 : PRESET-N ( -- n ) PRESETS-N @ ;
@@ -291,8 +291,8 @@ public
 
 \ The kernel object at the path, which the links that follow adopt; one whose
 \ DATA-START is above hb's dies: hb routes only its own header's stores.
-: READ ( ptr u8 n -- )
-   {: path:ptr pathu:n :}
+: READ ( ^u8 n -- )
+   {: path:^ pathu:n :}
    0 KOBJ-U !
    pathu PATH-CAP min PATH-U !
    path PATH PATH-U @ BYTE-COPY
@@ -352,8 +352,8 @@ private
 
 
 \ The object's row of the primitive with the name in wordlist w, or -1.
-: ROW-OF ( ptr u8 n n -- n )
-   {: a:ptr u:n w:n :}
+: ROW-OF ( ^u8 n n -- n )
+   {: a:^ u:n w:n :}
    ROW-N 0 ?do
       i ROW-WID w = if
          i ROW-NAME$ a u CORE-STR=CI if i unloop exit then
@@ -368,7 +368,7 @@ private
    off 0= if s" link: this hb has no primitive table" 74 die then
    rbase off + ;
 
-: HOST-ROW ( n n -- ptr u8 )
+: HOST-ROW ( n n -- ^u8 )
    {: table:n k:n :}
    table k DREC * +  DREC CODE-BYTES:AT drop ;
 
@@ -376,8 +376,8 @@ private
 \ A table row enters at rbase plus [0] and keeps an out-of-line name at rbase
 \ plus [24]; a package row, wordlist -1, holds its wid
 \ in [0], never code.
-: KEEP ( ptr u8 -- )
-   {: rec:ptr :}
+: KEEP ( ^u8 -- )
+   {: rec:^ :}
    rec 40 + LE:U64@ {: wid:n :}
    wid -1 = if exit then
    rec 16 + LE:U64@ {: flags:n :}

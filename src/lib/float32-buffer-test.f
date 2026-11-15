@@ -31,10 +31,10 @@ create BACK 4 cells allot
    -13.25 SRC ! SRC @ IEEE754:F64>BITS $C02A800000000000 T= ;
 
 : REFUSALS ( -- )
-   s" BAD-REAL-INT-STORE ( ptr n -- ) 1.0 swap !" CHECK-QUIET-CANDIDATE! 0 T=
+   s" BAD-REAL-INT-STORE ( ^n -- ) 1.0 swap !" CHECK-QUIET-CANDIDATE! 0 T=
    s" BAD-REAL-ADDRESS ( n -- ) 1.0 !" CHECK-QUIET-CANDIDATE! 0 T=
    s" BAD-REAL-ADD ( -- n ) 1.0 1 +" CHECK-QUIET-CANDIDATE! 0 T=
-   s" BAD-REAL-BYTE-STORE ( ptr u8 -- ) 1.0 swap c!" CHECK-QUIET-CANDIDATE! 0 T= ;
+   s" BAD-REAL-BYTE-STORE ( ^u8 -- ) 1.0 swap c!" CHECK-QUIET-CANDIDATE! 0 T= ;
 
 
 : ARRAYS ( -- )

@@ -66,8 +66,8 @@ variable PREV-CHAR                       \ one written last
 \ Typed by the record its spelling names (LSP-DEFS:GROUP-REC-NAMED), as hover
 \ and highlight select it. A string literal before a call of a word `names:`
 \ states is a use too.
-: USED ( ptr u8 n n -- )
-   {: t:ptr tu:n u:n :}
+: USED ( ^u8 n n -- )
+   {: t:^ tu:n u:n :}
    u USE-GROUP 0 < if exit then
    u USE-GROUP u USE-TARGET t tu u USE-WORD$ GROUP-REC-NAMED MATCH option
       some OF {: r:n :} u USE-BYTES r REC-CLASS GATHER ENDOF
@@ -96,7 +96,7 @@ variable PREV-CHAR                       \ one written last
 \ line, else from the line's start (UTF-16 units, LSP-TEXT). A token lies on one
 \ line, since the check binds nothing in a literal its line leaves open, so its
 \ length is its end's character less its start's.
-: ENCODED ( ptr JSON:writer n bool -- ptr JSON:writer )
+: ENCODED ( ^JSON:writer n bool -- ^JSON:writer )
    {: k:n first:bool :}
    first 0= if WRITE-COMMA then
    k K-START TOKEN@ {: from:n :}
@@ -112,7 +112,7 @@ variable PREV-CHAR                       \ one written last
 
 public
 
-: LEGEND ( ptr JSON:writer -- ptr JSON:writer )
+: LEGEND ( ^JSON:writer -- ^JSON:writer )
    s" semanticTokensProvider" WRITE-KEY WRITE-OBJECT-START
       s" legend" WRITE-KEY WRITE-OBJECT-START
          s" tokenTypes" WRITE-KEY WRITE-ARRAY-START
@@ -130,9 +130,9 @@ public
 \ of the text: a refused or deferred check stopped at a point, and what it
 \ reported before is still what it bound. Otherwise, as while a check of the
 \ document runs, the list is empty. Positions count in the text from now on.
-: ANSWER ( ptr JSON:writer n -- ptr JSON:writer )
+: ANSWER ( ^JSON:writer n -- ^JSON:writer )
    {: w slot:n :}
-   slot LSP-DOCS:DOC-TEXT$ {: t:ptr tu:n :}
+   slot LSP-DOCS:DOC-TEXT$ {: t:^ tu:n :}
    t tu LSP-TEXT:TEXT!
    0 TOKEN-N !
    slot DEFS-OWN-GROUP MATCH option

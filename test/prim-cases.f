@@ -46,13 +46,13 @@
        MIN-N       MIN-N                   0  NN-N
 ;CASES
 
-1 CASES +                              \ (ptr a n -- ptr a)
+1 CASES +                              \ (^a n -- ^a)
            4           3                   7  PN-P
            8          -3                   5  PN-P
            0           0                   0  PN-P
 ;CASES
 
-2 CASES +                              \ (n ptr a -- ptr a)
+2 CASES +                              \ (n ^a -- ^a)
            3           4                   7  NP-P
           -3           8                   5  NP-P
            0           0                   0  NP-P
@@ -65,14 +65,14 @@
           -1          -1                   0  NN-N
 ;CASES
 
-1 CASES -                              \ (ptr a n -- ptr a)
+1 CASES -                              \ (^a n -- ^a)
            8           3                   5  PN-P
            4          -3                   7  PN-P
            0           0                   0  PN-P
 ;CASES
 
 \ Rows 2-3 run this subtraction; test/compiler/base-pointer-arith-refusals.f types them.
-4 CASES -                              \ (ptr a ptr a -- n)
+4 CASES -                              \ (^a ^a -- n)
            8           3                   5  PP-N
            3           8                  -5  PP-N
            4           4                   0  PP-N
@@ -379,7 +379,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
          $FF                             $FF  MEM
 ;CASES
 
-0 CASES ptr-field                      \ (ptr a n -- ptr ptr b), n counts cells
+0 CASES ptr-field                      \ (^a n -- ^^b), n counts cells
            0           0                   0  PN-P
            0           1                   8  PN-P
            8           2                  24  PN-P
@@ -396,7 +396,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
           -1                              -1  MEM
 ;CASES
 
-0 CASES PTR>N                          \ (ptr a -- n), the value a byte offset into the fixture
+0 CASES PTR>N                          \ (^a -- n), the value a byte offset into the fixture
            0                               0  MEM
           24                              24  MEM
 ;CASES

@@ -39,7 +39,7 @@ create REPORT 1 cells allot
    PROC-ENV-INHERIT-MISSING
    s" /bin/sh" >LEN -1 >FD -1 >FD -1 >FD w TEST-FIFO:SPAWN ;
 
-: LINE$ ( -- ptr u8 n )
+: LINE$ ( -- ^u8 n )
    s\" check-signal-subject: up\n" ;
 
 public

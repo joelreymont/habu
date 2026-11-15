@@ -140,9 +140,9 @@ create TASK TASK-BYTES allot
 
 PROCESS-SYMBOLS
 
-FUNCTION: LIST-PIDS proc_listpids ( n n ptr u8 n -- i32 ) ;FUNCTION
-FUNCTION: PID-INFO proc_pidinfo ( n n n ptr u8 n -- i32 ) ;FUNCTION
-FUNCTION: ERRNO-CELL __error ( -- ptr u8 ) ;FUNCTION
+FUNCTION: LIST-PIDS proc_listpids ( n n ^u8 n -- i32 ) ;FUNCTION
+FUNCTION: PID-INFO proc_pidinfo ( n n n ^u8 n -- i32 ) ;FUNCTION
+FUNCTION: ERRNO-CELL __error ( -- ^u8 ) ;FUNCTION
 
 : ERRNO-CLEAR ( -- )
    0 ERRNO-CELL LE:U32! ;
@@ -152,7 +152,7 @@ FUNCTION: ERRNO-CELL __error ( -- ptr u8 ) ;FUNCTION
 
 \ TRUE with the record of the given flavor and size filled, FALSE when pid is
 \ not there - or, asked LIVE-ONLY, is a zombie.
-: RECORD? ( n n n ptr u8 n -- bool ) {: pid:n flavor:n arg:n buf:ptr size:n :}
+: RECORD? ( n n n ^u8 n -- bool ) {: pid:n flavor:n arg:n buf:^ size:n :}
    ERRNO-CLEAR
    pid flavor arg buf size PID-INFO size = if true exit then
    ERRNO@ ESRCH = if false exit then
@@ -263,18 +263,18 @@ variable STAT-PATH-U
 variable TASK-DIR-U
 variable CUR
 
-: PATH+ ( ptr u8 n -- )
+: PATH+ ( ^u8 n -- )
    STAT-PATH STAT-PATH-CAP STAT-PATH-U BUF-APPEND ;
 
-: STAT-PATHZ ( ptr u8 n -- ptr u8 )
-   {: name:ptr nameu:n :}
+: STAT-PATHZ ( ^u8 n -- ^u8 )
+   {: name:^ nameu:n :}
    STAT-PATH-U BUF-RESET
    s" /proc/" PATH+
    name nameu PATH+
    s" /stat" PATH+
    STAT-PATH STAT-PATH-U BUF-LEN@ FS:>PATHZ ;
 
-: LOAD-STAT? ( ptr u8 -- bool ) {: pathz:ptr :}
+: LOAD-STAT? ( ^u8 -- bool ) {: pathz:^ :}
    pathz open-rd {: fd:n :}
    fd 0 < if false exit then
    fd STAT STAT-CAP read {: got:n :}
@@ -324,13 +324,13 @@ variable CUR
    ppid SELF @ = if exit then
    ppid MEMBER? pgid MEMBER? or if pid MEMBER+ then ;
 
-: PROCESS-ROW ( ptr u8 n n -- ) {: name:ptr nameu:n pid:n :}
+: PROCESS-ROW ( ^u8 n n -- ) {: name:^ nameu:n pid:n :}
    name nameu STAT-PATHZ LOAD-STAT? 0= if exit then
    TAKE-STATE drop
    TAKE-INT TAKE-INT {: ppid:n pgid:n :}
    pid ppid pgid VISIT ;
 
-: VISIT-LINUX ( ptr u8 n -- ) {: name:ptr nameu:n :}
+: VISIT-LINUX ( ^u8 n -- ) {: name:^ nameu:n :}
    name nameu STR>NUMBER? MATCH option
       none OF ENDOF
       some OF name nameu rot PROCESS-ROW ENDOF
@@ -339,7 +339,7 @@ variable CUR
 : SETTLED-STATE? ( n -- bool ) {: c:n :}
    c [char] T = c [char] t = or c [char] Z = or c [char] X = or ;
 
-: TASK-DIR+ ( ptr u8 n -- )
+: TASK-DIR+ ( ^u8 n -- )
    TASK-DIR TASK-DIR-CAP TASK-DIR-U BUF-APPEND ;
 
 : DIGITS+ ( n -- ) {: pid:n :}
@@ -349,8 +349,8 @@ variable CUR
       RADIX /
    repeat drop ;
 
-: THREAD-VISIT ( ptr u8 n -- )
-   {: tid:ptr tidu:n :}
+: THREAD-VISIT ( ^u8 n -- )
+   {: tid:^ tidu:n :}
    STAT-PATH-U BUF-RESET
    TASK-DIR TASK-DIR-U BUF-LEN@ PATH+
    s" /" PATH+
@@ -452,7 +452,7 @@ create STATUS STATUS-CAP allot
 variable KINFO-U                    \ sysctl's size_t in and out
 variable STATUS-U
 
-FUNCTION: SYSCTL sysctl ( ptr u8 n ptr u8 ptr u8 ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: SYSCTL sysctl ( ^u8 n ^u8 ^u8 ^u8 n -- i32 ) ;FUNCTION
 
 : CAUGHT-BIT? ( n n -- bool ) {: set:n sig:n :}
    set 1 sig 1- lshift and 0<> ;
@@ -473,7 +473,7 @@ FUNCTION: SYSCTL sysctl ( ptr u8 n ptr u8 ptr u8 ptr u8 n -- i32 ) ;FUNCTION
    -1 ;
 
 : SIGCGT-AT ( -- n )
-   s" SigCgt:" {: key:ptr keyu:n :}
+   s" SigCgt:" {: key:^ keyu:n :}
    STATUS-U @ 0 ?do
       i 0= if true else STATUS i 1- + c@ 10 = then
       if
@@ -539,8 +539,8 @@ create RUSAGE RUSAGE-BYTES allot
 create TIMEBASE TIMEBASE-BYTES allot
 variable TICKS
 
-FUNCTION: PID-RUSAGE proc_pid_rusage ( n n ptr u8 -- i32 ) ;FUNCTION
-FUNCTION: TIMEBASE-INFO mach_timebase_info ( ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: PID-RUSAGE proc_pid_rusage ( n n ^u8 -- i32 ) ;FUNCTION
+FUNCTION: TIMEBASE-INFO mach_timebase_info ( ^u8 -- i32 ) ;FUNCTION
 
 : RU@ ( n -- n ) {: off:n :}
    RUSAGE off + LE:U64@ ;
@@ -576,7 +576,7 @@ FUNCTION: TIMEBASE-INFO mach_timebase_info ( ptr u8 -- i32 ) ;FUNCTION
    9 0 ?do TAKE-INT drop loop
    TAKE-INT TAKE-INT + TAKE-INT + TAKE-INT + ;
 
-: CPU-ROW ( ptr u8 n n -- ) {: name:ptr nameu:n pid:n :}
+: CPU-ROW ( ^u8 n n -- ) {: name:^ nameu:n pid:n :}
    pid MEMBER? if exit then
    name nameu STAT-PATHZ LOAD-STAT? 0= if exit then
    TAKE-STATE drop
@@ -584,7 +584,7 @@ FUNCTION: TIMEBASE-INFO mach_timebase_info ( ptr u8 -- i32 ) ;FUNCTION
    pid JOIN
    TAKE-TIMES TICKS @ + TICKS ! ;
 
-: CPU-VISIT-LINUX ( ptr u8 n -- ) {: name:ptr nameu:n :}
+: CPU-VISIT-LINUX ( ^u8 n -- ) {: name:^ nameu:n :}
    name nameu STR>NUMBER? MATCH option
       none OF ENDOF
       some OF name nameu rot CPU-ROW ENDOF
@@ -630,13 +630,13 @@ variable RUN-INODE
 variable RUN-N
 
 \ An executable the caller may not stat (on Linux, another user's) is skipped.
-: EXE-MATCH ( ptr u8 n -- )
+: EXE-MATCH ( ^u8 n -- )
    FS:TRY-PATH-IDENTITY 0= if 2drop exit then
    RUN-INODE @ = swap RUN-DEVICE @ = and if 1 RUN-N +! then ;
 
 \ The NUL-terminated path, empty for a pid that ended (errno ESRCH, cleared
 \ first) or that names no executable.
-: EXE-PATH-MACOS ( n -- ptr u8 n ) {: pid:n :}
+: EXE-PATH-MACOS ( n -- ^u8 n ) {: pid:n :}
    0 EXE-PATH c!
    ERRNO-CLEAR
    pid PATH-FLAVOR 0 EXE-PATH EXE-PATH-BYTES PID-INFO drop
@@ -646,18 +646,18 @@ variable RUN-N
 
 : RUNS-MACOS ( -- )
    LIST-ALL 0 LIST! 0 ?do
-      i LISTED@ EXE-PATH-MACOS {: path:ptr pathu:n :}
+      i LISTED@ EXE-PATH-MACOS {: path:^ pathu:n :}
       pathu 0 > if path pathu EXE-MATCH then
    loop ;
 
-: EXE-PATH-LINUX ( ptr u8 n -- ptr u8 n ) {: name:ptr nameu:n :}
+: EXE-PATH-LINUX ( ^u8 n -- ^u8 n ) {: name:^ nameu:n :}
    TASK-DIR-U BUF-RESET
    s" /proc/" TASK-DIR+
    name nameu TASK-DIR+
    s" /exe" TASK-DIR+
    TASK-DIR TASK-DIR-U BUF-LEN@ ;
 
-: EXE-VISIT-LINUX ( ptr u8 n -- ) {: name:ptr nameu:n :}
+: EXE-VISIT-LINUX ( ^u8 n -- ) {: name:^ nameu:n :}
    name nameu STR>NUMBER? MATCH option
       none OF ENDOF
       some OF drop name nameu EXE-PATH-LINUX EXE-MATCH ENDOF
@@ -712,7 +712,7 @@ public
 
 \ TRUE when a process the caller may inspect, itself included, runs the path's
 \ file (device and inode). E-FS-STAT: no stat; E-PROC-OUTPUT: no process list.
-: RUNS? ( ptr u8 n -- bool )
+: RUNS? ( ^u8 n -- bool )
    FS:PATH-IDENTITY {: device:n inode:n :}
    WALK-GET
    device inode [: RUNS-READ ;] [: WALK-RELEASE ;] finally ;

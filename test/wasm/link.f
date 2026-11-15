@@ -39,7 +39,7 @@ variable IDS                          \ the section ids in order, a hex digit ea
 variable POS                          \ where the walk reads next
 variable WALKED                       \ where the walk of the sections ended
 
-: MBUF ( -- ptr u8 )  MOD-A @ ;
+: MBUF ( -- ^u8 )  MOD-A @ ;
 
 : B@ ( n -- n )  MBUF + c@ ;
 
@@ -92,22 +92,22 @@ HEX-CAP BUFFER: GOT-BUF
 HEX-CAP BUFFER: WANT-BUF
 TYPED-VARIABLE WANT-U len
 
-: HEX$ ( n n -- ptr u8 n )
+: HEX$ ( n n -- ^u8 n )
    {: at:n len:n :}
    len 0 ?do  at i + B@  GOT-BUF i 2 * +  BYTE>HEX  loop
    GOT-BUF len 2 * ;
 
-: SECTION$ ( n -- ptr u8 n )
+: SECTION$ ( n -- ^u8 n )
    {: id:n :}
    id SEC-AT @ id SEC-LEN @ HEX$ ;
 
 : WANT-RESET ( -- )
    WANT-U BUF-RESET ;
 
-: W+ ( ptr u8 n -- )
+: W+ ( ^u8 n -- )
    WANT-BUF HEX-CAP WANT-U BUF-APPEND ;
 
-: WANT$ ( -- ptr u8 n )
+: WANT$ ( -- ^u8 n )
    WANT-BUF WANT-U @ LEN>N ;
 
 \ ---- refusals ----------------------------------------------------------------------
@@ -273,7 +273,7 @@ IMAGE-LEN BUFFER: IMAGE-BUF            \ byte i holds i
 \ zeroed, where a BUFFER: would hold them in the dictionary.
 DYNAMIC-BUFFER BIG u8
 
-: ZEROS ( n -- ptr u8 )
+: ZEROS ( n -- ^u8 )
    BIG-RESERVE  0 BIG ;
 
 \ The DATA region ends at $311000, in page 50; page 53 ends at $350000.

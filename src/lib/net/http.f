@@ -107,7 +107,7 @@ WORKER-STACK TASK:TASK WORKER-5
 WORKER-STACK TASK:TASK WORKER-6
 WORKER-STACK TASK:TASK WORKER-7
 
-MAX-WORKERS TYPED-BUFFER WORKER-TCB ptr n
+MAX-WORKERS TYPED-BUFFER WORKER-TCB ^n
 
 \ The job each worker took last: its argument and, for a call, its quotation.
 MAX-WORKERS TYPED-BUFFER TAKEN-ARG n
@@ -116,7 +116,7 @@ MAX-WORKERS TYPED-BUFFER TAKEN-RUN [ n -- ]
 \ The task that raised STOPPING, in the same row type the pool's tasks live in.
 \ Zero is the main thread's own record, which is the thread every caller of STOP
 \ is on, so a hint before the first stop still reaches a thread that re-checks.
-1 TYPED-BUFFER STOPPER-TCB ptr n
+1 TYPED-BUFFER STOPPER-TCB ^n
 
 WORKER-0 0 WORKER-TCB !
 WORKER-1 1 WORKER-TCB !
@@ -956,8 +956,8 @@ variable EXIT-HOOK-N
 
 \ The step of BIND-LISTENER the OS refused, logged as
 \ `<step> <a.b.c.d>:<port> failed, errno <n>` before E-SOCKET.
-: REPORT-UNBOUND ( TCP4:errno n n ptr u8 n -- )
-   {: cause:TCP4:errno address:n port:n step:ptr stepn:n :}
+: REPORT-UNBOUND ( TCP4:errno n n ^u8 n -- )
+   {: cause:TCP4:errno address:n port:n step:^ stepn:n :}
    LOG:ERROR s" http" LOG:LINE
    step stepn LOG:TEXT+  s"  " LOG:TEXT+
    address 24 OCTET+  s" ." LOG:TEXT+
@@ -1192,7 +1192,7 @@ MEM-MAX-N NS-PER-MS / constant MAX-DEADLINE-MS
    0 LINGER-SCRATCH LINGER-CAP SPAN:MAKE ;
 
 
-: REPLY-HEAD ( n ptr u8 n n -- ) {: status:n type:ptr type-n:n body-n:n :}
+: REPLY-HEAD ( n ^u8 n n -- ) {: status:n type:^ type-n:n body-n:n :}
    SB-RESET
    s" HTTP/1.1 " SB-APPEND
    status FMT:SB-U
@@ -1213,8 +1213,8 @@ MEM-MAX-N NS-PER-MS / constant MAX-DEADLINE-MS
    REPLYING @ TCP4:>CONNECTION CLOSE-CONNECTION ;
 
 
-: SEND-REPLY ( n ptr u8 n ptr u8 n -- bool )
-   {: status:n type:ptr type-n:n body:ptr body-n:n :}
+: SEND-REPLY ( n ^u8 n ^u8 n -- bool )
+   {: status:n type:^ type-n:n body:^ body-n:n :}
    status type type-n body-n REPLY-HEAD
    REPLYING @ TCP4:>CONNECTION {: conn:TCP4:connection :}
    conn SB$ WRITE-SPAN 0= if false exit then
@@ -1281,14 +1281,14 @@ public
 \ throws there is reported on stderr under the request id, and the client gets
 \ the plain-text default with code error_hook and the status it was owed, so
 \ the worker answers and takes the next connection.
-: ON-ERROR ( [ response n ptr u8 n ptr u8 n -- ] -- ) {: q :}
+: ON-ERROR ( [ response n ^u8 n ^u8 n -- ] -- ) {: q :}
    HOOKS-OPEN
    q 0 ERROR-HOOK ! ;
 
 
 \ The Cache-Control value a static file is sent with, given its path. It
 \ replaces the default, `no-cache` for every file.
-: CACHE-RULE! ( [ ptr u8 n -- ptr u8 n ] -- ) {: q :}
+: CACHE-RULE! ( [ ^u8 n -- ^u8 n ] -- ) {: q :}
    HOOKS-OPEN
    q 0 CACHE-HOOK ! ;
 
@@ -1297,7 +1297,7 @@ public
 \ given that path; an empty answer is no fallback, which is the default. A
 \ single-page application answers its client routes with its one page this
 \ way.
-: FALLBACK-RULE! ( [ ptr u8 n -- ptr u8 n ] -- ) {: q :}
+: FALLBACK-RULE! ( [ ^u8 n -- ^u8 n ] -- ) {: q :}
    HOOKS-OPEN
    q 0 FALLBACK-HOOK ! ;
 
@@ -1318,7 +1318,7 @@ public
 \ The connection and the peer's bytes past what the worker read (valid until the
 \ handler ends); the taker closes it, or REPLY does. E-STATE outside a handler
 \ or a second time.
-: TAKE-OVER ( request -- TCP4:connection ptr u8 n ) {: subject:request :}
+: TAKE-OVER ( request -- TCP4:connection ^u8 n ) {: subject:request :}
    subject SLOT-OF-REQUEST {: idx:n :}
    idx SELF-SLOT <> if E-HANDLE throw then
    idx HOLDER @ OFFERED <> if E-STATE throw then
@@ -1335,8 +1335,8 @@ public
 \ (the peer has reset the connection). The head is built in the calling task's
 \ string builder, so a content type past its room is E-STR-CAPACITY. REPLY
 \ closes the connection on every way out, a throw or a TASK:HALT included.
-: REPLY ( TCP4:connection n ptr u8 n ptr u8 n -- bool )
-   {: conn:TCP4:connection status:n type:ptr type-n:n body:ptr body-n:n :}
+: REPLY ( TCP4:connection n ^u8 n ^u8 n -- bool )
+   {: conn:TCP4:connection status:n type:^ type-n:n body:^ body-n:n :}
    conn TCP4:CONNECTION>N REPLYING !
    status type type-n body body-n [: SEND-REPLY ;] [: CLOSE-REPLYING ;] finally ;
 

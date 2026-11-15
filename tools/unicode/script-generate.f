@@ -30,7 +30,7 @@ $110000 constant SCALAR-COUNT
 95 constant UNDERSCORE
 45 constant HYPHEN
 
-NAME-CAPACITY TYPED-BUFFER NAME-A ptr u8
+NAME-CAPACITY TYPED-BUFFER NAME-A ^u8
 NAME-CAPACITY TYPED-BUFFER NAME-U n
 variable NAME-N
 \ Each scalar's script index plus one; zero for no Scripts.txt row.
@@ -43,19 +43,19 @@ variable READY
 
 CODEGEN:BUFFER OUTPUT
 
-: SCRIPTS-PATH$ ( -- ptr u8 n )
+: SCRIPTS-PATH$ ( -- ^u8 n )
    s" data/unicode/16.0.0/Scripts.txt" ;
 
-: ALIASES-PATH$ ( -- ptr u8 n )
+: ALIASES-PATH$ ( -- ^u8 n )
    s" data/unicode/16.0.0/PropertyValueAliases.txt" ;
 
-: OUTPUT-PATH$ ( -- ptr u8 n )
+: OUTPUT-PATH$ ( -- ^u8 n )
    s" src/lib/unicode/script-data.f" ;
 
-: EXPECTED-SCRIPTS-DIGEST$ ( -- ptr u8 n )
+: EXPECTED-SCRIPTS-DIGEST$ ( -- ^u8 n )
    s" 9e88f0a677df47311106340be8ede2ecdacd9c1c931831218d2be6d5508e0039" ;
 
-: EXPECTED-ALIASES-DIGEST$ ( -- ptr u8 n )
+: EXPECTED-ALIASES-DIGEST$ ( -- ^u8 n )
    s" 440fd3e5460b9bfe31da67b6f923992e1989d31fe2ed91e091c4b8f8e2620bf9" ;
 
 : CHECK-INPUT-DIGESTS ( -- )
@@ -65,53 +65,53 @@ CODEGEN:BUFFER OUTPUT
    UNICODE-CLASS-TOOL:CHECK-FILE-DIGEST ;
 
 \ The whole file, in a buffer the process keeps: names point into it.
-: READ-INPUT ( ptr u8 n -- ptr u8 n )
-   2dup FS:FILE-SIZE 1+ MEM-ALLOC-64K-SPAN {: path:ptr pathu:n buf:ptr cap:n :}
+: READ-INPUT ( ^u8 n -- ^u8 n )
+   2dup FS:FILE-SIZE 1+ MEM-ALLOC-64K-SPAN {: path:^ pathu:n buf:^ cap:n :}
    path pathu buf cap FS:READ-ALL {: got:n :}
    buf got ;
 
-: NAME+ ( ptr u8 n -- ) {: a:ptr u:n :}
+: NAME+ ( ^u8 n -- ) {: a:^ u:n :}
    u 0= if E-SYNTAX throw then
    NAME-N @ NAME-CAPACITY >= if E-CAPACITY throw then
    a NAME-N @ NAME-A !
    u NAME-N @ NAME-U !
    NAME-N @ 1+ NAME-N ! ;
 
-: NEXT-FIELD ( ptr u8 n n -- ptr u8 n n bool ) {: a:ptr u:n start:n :}
-   a u SEMICOLON start SPLIT-NEXT {: fa:ptr fu:n next:n valid:bool :}
+: NEXT-FIELD ( ^u8 n n -- ^u8 n n bool ) {: a:^ u:n start:n :}
+   a u SEMICOLON start SPLIT-NEXT {: fa:^ fu:n next:n valid:bool :}
    fa fu TRIM next valid ;
 
 \ An `sc ; Code ; Long_Name [; Alias]` row adds its long name.
-: ALIAS-ROW ( ptr u8 n -- ) {: line:ptr lineu:n :}
-   line lineu 0 NEXT-FIELD {: pa:ptr pu:n next1:n ok1:bool :}
+: ALIAS-ROW ( ^u8 n -- ) {: line:^ lineu:n :}
+   line lineu 0 NEXT-FIELD {: pa:^ pu:n next1:n ok1:bool :}
    pa pu s" sc" STR= 0= if exit then
-   line lineu next1 NEXT-FIELD {: ca:ptr cu:n next2:n ok2:bool :}
-   line lineu next2 NEXT-FIELD {: la:ptr lu:n next3:n ok3:bool :}
+   line lineu next1 NEXT-FIELD {: ca:^ cu:n next2:n ok2:bool :}
+   line lineu next2 NEXT-FIELD {: la:^ lu:n next3:n ok3:bool :}
    ok1 ok2 and ok3 and 0= if E-SYNTAX throw then
    cu 4 <> if E-SYNTAX throw then
    next3 drop la lu NAME+ ;
 
-: SCAN-ALIASES ( ptr u8 n -- ) {: a:ptr u:n :}
+: SCAN-ALIASES ( ^u8 n -- ) {: a:^ u:n :}
    0 begin dup u <= while
       {: start:n :}
-      a u LINE-FEED start SPLIT-NEXT {: line:ptr lineu:n next:n valid:bool :}
+      a u LINE-FEED start SPLIT-NEXT {: line:^ lineu:n next:n valid:bool :}
       valid 0= if E-SYNTAX throw then
       line lineu ALIAS-ROW
       next
    repeat drop ;
 
-: NAME-INDEX ( ptr u8 n -- n ) {: a:ptr u:n :}
+: NAME-INDEX ( ^u8 n -- n ) {: a:^ u:n :}
    NAME-N @ 0 ?do
       a u i NAME-A @ i NAME-U @ STR= if i unloop exit then
    loop
    E-SYNTAX throw ;
 
 : MARK-SCALAR ( n n -- ) {: cp:n tag:n :}
-   cp MARK {: at:ptr :}
+   cp MARK {: at:^ :}
    at @ 0<> if E-RANGE throw then
    tag 1+ at ! ;
 
-: SCRIPT-ROW ( n n ptr u8 n -- ) {: lo:n hi:n a:ptr u:n :}
+: SCRIPT-ROW ( n n ^u8 n -- ) {: lo:n hi:n a:^ u:n :}
    lo 0 < hi lo < or hi SCALAR-MAX > or if E-RANGE throw then
    a u NAME-INDEX {: tag:n :}
    hi 1+ lo ?do i tag MARK-SCALAR loop ;
@@ -143,7 +143,7 @@ CODEGEN:BUFFER OUTPUT
       end
    repeat drop ;
 
-: OUT$ ( ptr u8 n -- )
+: OUT$ ( ^u8 n -- )
    OUTPUT CODEGEN:APPEND-STRING ;
 
 : OUT-N ( n -- )
@@ -152,7 +152,7 @@ CODEGEN:BUFFER OUTPUT
 : OUT-BYTE ( n -- )
    OUTPUT CODEGEN:APPEND-BYTE ;
 
-: OUT-LINE ( ptr u8 n -- )
+: OUT-LINE ( ^u8 n -- )
    OUT$ LINE-FEED OUT-BYTE ;
 
 \ Lower case, with `_` as `-`.
@@ -163,7 +163,7 @@ CODEGEN:BUFFER OUTPUT
 
 : OUT-VARIANT ( n -- ) {: idx:n :}
    s"    " OUT$
-   idx NAME-A @ idx NAME-U @ {: a:ptr u:n :}
+   idx NAME-A @ idx NAME-U @ {: a:^ u:n :}
    u 0 ?do a i + c@ VARIANT-BYTE OUT-BYTE loop
    s" " OUT-LINE ;
 
@@ -189,8 +189,8 @@ CODEGEN:BUFFER OUTPUT
 : OUT-WRITER ( -- )
    s" private" OUT-LINE
    s" " OUT-LINE
-   s" : RANGE, ( ptr n n n n -- ptr n )" OUT-LINE
-   s"    {: at:ptr lo:n hi:n tag:n :}" OUT-LINE
+   s" : RANGE, ( ^n n n n -- ^n )" OUT-LINE
+   s"    {: at:^ lo:n hi:n tag:n :}" OUT-LINE
    s"    lo at ! hi at cell+ ! tag at 2 cells + !" OUT-LINE
    s"    at 3 cells + ;" OUT-LINE
    s" " OUT-LINE ;
@@ -224,7 +224,7 @@ public
    COLLECT-RANGES
    true READY ! ;
 
-: RENDER ( -- ptr u8 n )
+: RENDER ( -- ^u8 n )
    READY @ 0= if E-STATE throw then
    OUTPUT CODEGEN:RESET
    OUT-PREAMBLE

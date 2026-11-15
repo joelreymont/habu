@@ -22,13 +22,13 @@ require src/lib/test/stderr.f
 
 \ LOG's line row, read to show a task's release disposed it.
 package LOG
-: LOG-TEST:ROW ( -- ptr u8 ) 0 ROW ;
+: LOG-TEST:ROW ( -- ^u8 ) 0 ROW ;
 ;package
 
 package LOG-TEST
 
 private
-CAST: N>PTR ( n -- ptr u8 )
+CAST: N>PTR ( n -- ^u8 )
 public
 
 -9672 s" the log test's code" ERROR:CODE E-LOG-CODE
@@ -79,17 +79,17 @@ TASK:MIN-STACK TASK:TASK RELEASER
 
 : BLEN ( n -- NUM:byte-len )  BUF:N>BLEN ;
 
-: PATH$ ( -- ptr u8 n )  PATH-BUF PATH-U @ ;
+: PATH$ ( -- ^u8 n )  PATH-BUF PATH-U @ ;
 
 
 : PATH-MAKE ( -- )
-   s" log-test" FS:MKTEMP-DIR {: dir:ptr dirlen:n :}
+   s" log-test" FS:MKTEMP-DIR {: dir:^ dirlen:n :}
    dir dirlen FS:CLEANUP-TREE+
    dir dirlen s" log.txt" PATH-BUF FS:JOIN-PATH PATH-U ! ;
 
 
 \ The whole file, valid until the next read.
-: FILE$ ( -- ptr u8 n )
+: FILE$ ( -- ^u8 n )
    PATH$ FS:FILE-SIZE {: size:n :}
    FILE-B BUF:CLEAR
    PATH$ FILE-B size BLEN BUF:GROW SPAN:$ FS:READ-ALL size T=
@@ -104,27 +104,27 @@ TASK:MIN-STACK TASK:TASK RELEASER
 
 
 \ '0' in the shape stands for any digit.
-: SHAPE-AT? ( ptr u8 n -- bool )
-   {: at:ptr i:n :}
+: SHAPE-AT? ( ^u8 n -- bool )
+   {: at:^ i:n :}
    s" 0000-00-00T00:00:00Z" drop i + c@ {: want:n :}
    at i + c@ {: got:n :}
    want STR-ZERO <> if got want = exit then
    got STR-ZERO >= got STR-ZERO 9 + <= and ;
 
 
-: SHAPE? ( ptr u8 -- bool )
-   {: at:ptr :}
+: SHAPE? ( ^u8 -- bool )
+   {: at:^ :}
    true DATE:TIME-LEN 0 ?do at i SHAPE-AT? and loop ;
 
 
-: DIGITS ( ptr u8 n -- n )
-   {: at:ptr u:n :}
+: DIGITS ( ^u8 n -- n )
+   {: at:^ u:n :}
    0 u 0 ?do 10 * at i + c@ STR-ZERO - + loop ;
 
 
 \ The stamp's epoch seconds, -1 for a date PARSE-YMD refuses.
-: STAMP-SECONDS ( ptr u8 -- n )
-   {: at:ptr :}
+: STAMP-SECONDS ( ^u8 -- n )
+   {: at:^ :}
    at DATE:LEN DATE:PARSE-YMD MATCH option
       none OF -1 exit ENDOF
       some OF DAY-SECONDS * ENDOF
@@ -134,16 +134,16 @@ TASK:MIN-STACK TASK:TASK RELEASER
    at 17 + 2 DIGITS + ;
 
 
-: STAMP-OK ( ptr u8 -- )
-   {: at:ptr :}
+: STAMP-OK ( ^u8 -- )
+   {: at:^ :}
    at SHAPE? TTRUE
    at STAMP-SECONDS {: s:n :}
    s T0 @ >= s T1 @ <= and TTRUE ;
 
 
 \ The file holds exactly a stamp followed by the rest, for each rest in turn.
-: LINE-OK ( ptr u8 n ptr u8 n -- ptr u8 n )
-   {: at:ptr u:n rest:ptr ru:n :}
+: LINE-OK ( ^u8 n ^u8 n -- ^u8 n )
+   {: at:^ u:n rest:^ ru:n :}
    at STAMP-OK
    at DATE:TIME-LEN + ru rest ru T$=
    at DATE:TIME-LEN + ru + u DATE:TIME-LEN - ru - ;
@@ -155,15 +155,15 @@ TASK:MIN-STACK TASK:TASK RELEASER
    LOG:INFO s" mcp" LOG:LINE s" ping" LOG:TEXT+ LOG:;LINE ;
 
 
-: MODEL-REST$ ( -- ptr u8 n )  S\"  error model: refused -42\n" ;
-: MIN-REST$ ( -- ptr u8 n )  S\"  warn crew: min -9223372036854775808\n" ;
-: PING-REST$ ( -- ptr u8 n )  S\"  info mcp: ping\n" ;
+: MODEL-REST$ ( -- ^u8 n )  S\"  error model: refused -42\n" ;
+: MIN-REST$ ( -- ^u8 n )  S\"  warn crew: min -9223372036854775808\n" ;
+: PING-REST$ ( -- ^u8 n )  S\"  info mcp: ping\n" ;
 
 
 : LEVELS-CASE ( -- )
    s" error, warn and info lines, text and numbers" T-LABEL
    [: LEVEL-LINES ;] CAPTURED
-   FILE$ {: at:ptr u:n :}
+   FILE$ {: at:^ u:n :}
    u DATE:TIME-LEN 3 * MODEL-REST$ nip + MIN-REST$ nip + PING-REST$ nip + T=
    at u MODEL-REST$ LINE-OK
    MIN-REST$ LINE-OK PING-REST$ LINE-OK nip 0 T= ;
@@ -171,20 +171,20 @@ TASK:MIN-STACK TASK:TASK RELEASER
 
 : BIG-MAKE ( -- )
    BIG-B BIG-U BLEN BUF:INIT
-   BIG-B BIG-U BLEN BUF:GROW SPAN:$ {: at:ptr u:n :}
+   BIG-B BIG-U BLEN BUF:GROW SPAN:$ {: at:^ u:n :}
    u 0 ?do i 26 mod [char] a + at i + c! loop ;
 
 
-: BIG$ ( -- ptr u8 n )  BIG-B BUF:SPAN$ BUF:BLEN>N ;
-: BIG-HEAD$ ( -- ptr u8 n )  s"  error big: " ;
+: BIG$ ( -- ^u8 n )  BIG-B BUF:SPAN$ BUF:BLEN>N ;
+: BIG-HEAD$ ( -- ^u8 n )  s"  error big: " ;
 
 
 : BIG-LINE ( -- )
    LOG:ERROR s" big" LOG:LINE BIG$ LOG:TEXT+ LOG:;LINE ;
 
 
-: BIG-OK ( ptr u8 n -- )
-   {: at:ptr u:n :}
+: BIG-OK ( ^u8 n -- )
+   {: at:^ u:n :}
    u DATE:TIME-LEN BIG-HEAD$ nip + BIG-U + 1 + T=
    at STAMP-OK
    at DATE:TIME-LEN + BIG-HEAD$ nip BIG-HEAD$ T$=
@@ -232,13 +232,13 @@ TASK:MIN-STACK TASK:TASK RELEASER
    [: KEPT-LINE ;] catch CODE-B ! ;
 
 
-: KEPT-REST$ ( -- ptr u8 n )  S\"  warn t: kept\n" ;
+: KEPT-REST$ ( -- ^u8 n )  S\"  warn t: kept\n" ;
 
 
 : ABANDON-CASE ( -- )
    s" a line a throw abandoned is never written" T-LABEL
    [: ABANDON-THEN-LINE ;] CAPTURED
-   FILE$ {: at:ptr u:n :}
+   FILE$ {: at:^ u:n :}
    u DATE:TIME-LEN KEPT-REST$ nip + T=
    at u KEPT-REST$ LINE-OK nip 0 T=
    CODE-A @ E-FS-IO T=
@@ -251,7 +251,7 @@ TASK:MIN-STACK TASK:TASK RELEASER
 : UNPAIRED-CASE ( -- )
    s" a ;LINE with no line open writes nothing" T-LABEL
    [: UNPAIRED-LINES ;] CAPTURED
-   FILE$ {: at:ptr u:n :}
+   FILE$ {: at:^ u:n :}
    u DATE:TIME-LEN KEPT-REST$ nip + T=
    at u KEPT-REST$ LINE-OK nip 0 T= ;
 
@@ -271,7 +271,7 @@ TASK:MIN-STACK TASK:TASK RELEASER
 : LINE-IN-LINE-CASE ( -- )
    s" a line inside an open line is written once, the open one never" T-LABEL
    [: SHORT-IN-LINE ;] CAPTURED
-   FILE$ {: at:ptr u:n :}
+   FILE$ {: at:^ u:n :}
    u DATE:TIME-LEN KEPT-REST$ nip + T=
    at u KEPT-REST$ LINE-OK nip 0 T=
    CODE-A @ 0 T=
@@ -284,13 +284,13 @@ TASK:MIN-STACK TASK:TASK RELEASER
    LOG:ERROR s" t" LOG:LINE S\" a\nb\x1b\x7f\\x0a" LOG:TEXT+ LOG:;LINE ;
 
 
-: CONTROL-REST$ ( -- ptr u8 n )  S\"  error t: a\\x0ab\\x1b\\x7f\\x5cx0a\n" ;
+: CONTROL-REST$ ( -- ^u8 n )  S\"  error t: a\\x0ab\\x1b\\x7f\\x5cx0a\n" ;
 
 
 : CONTROL-CASE ( -- )
    s" control bytes and a backslash in a text are escaped" T-LABEL
    [: CONTROL-LINE ;] CAPTURED
-   FILE$ {: at:ptr u:n :}
+   FILE$ {: at:^ u:n :}
    u DATE:TIME-LEN CONTROL-REST$ nip + T=
    at u CONTROL-REST$ LINE-OK nip 0 T= ;
 
@@ -302,11 +302,11 @@ TASK:MIN-STACK TASK:TASK RELEASER
    [: KEPT-LINE ;] catch CODE-B ! ;
 
 
-: NOTICE-REST$ ( -- ptr u8 n )  S\"  error log: out of memory, a line was lost\n" ;
+: NOTICE-REST$ ( -- ^u8 n )  S\"  error log: out of memory, a line was lost\n" ;
 
 
 : NOTICE-THEN-KEPT ( -- )
-   FILE$ {: at:ptr u:n :}
+   FILE$ {: at:^ u:n :}
    u DATE:TIME-LEN 2 * NOTICE-REST$ nip + KEPT-REST$ nip + T=
    at u NOTICE-REST$ LINE-OK
    KEPT-REST$ LINE-OK nip 0 T= ;
@@ -438,16 +438,16 @@ TASK:MIN-STACK TASK:TASK RELEASER
    CODE-B @ 0 T= ;
 
 
-: NEXT ( n -- ptr n )  [char] a - NEXTS ;
+: NEXT ( n -- ^n )  [char] a - NEXTS ;
 
 
-: PAD$ ( -- ptr u8 n )  BIG$ drop PAD-U ;
+: PAD$ ( -- ^u8 n )  BIG$ drop PAD-U ;
 
 
 \ Each writer's lines arrive whole and in its own order: `<stamp> warn a: line
 \ <k> <pad>` with k counting from 0.
-: TASK-LINE-OK ( ptr u8 n -- )
-   {: at:ptr u:n :}
+: TASK-LINE-OK ( ^u8 n -- )
+   {: at:^ u:n :}
    1 LINES +!
    u DATE:TIME-LEN 8 + < if 1 BAD +! exit then
    at SHAPE? 0= if 1 BAD +! exit then
@@ -455,16 +455,16 @@ TASK:MIN-STACK TASK:TASK RELEASER
    tag [char] a <> tag [char] b <> and if 1 BAD +! exit then
    SB-RESET s"  warn " SB-APPEND tag SB-APPEND-C s" : line " SB-APPEND
    tag NEXT @ FMT:SB-INT s"  " SB-APPEND
-   SB$ {: head:ptr hu:n :}
-   at DATE:TIME-LEN + {: rest:ptr :}
+   SB$ {: head:^ hu:n :}
+   at DATE:TIME-LEN + {: rest:^ :}
    u DATE:TIME-LEN - hu PAD-U + <> if 1 BAD +! exit then
    rest hu head hu STR= 0= if 1 BAD +! exit then
    rest hu + PAD-U PAD$ STR= 0= if 1 BAD +! exit then
    1 tag NEXT +! ;
 
 
-: TASK-LINES-OK ( ptr u8 n -- )
-   {: at:ptr u:n :}
+: TASK-LINES-OK ( ^u8 n -- )
+   {: at:^ u:n :}
    0 START !  0 LINES !  0 BAD !  0 0 NEXTS !  0 1 NEXTS !
    u 0 ?do
       at i + c@ LF = if
@@ -475,8 +475,8 @@ TASK:MIN-STACK TASK:TASK RELEASER
    START @ u <> if 1 BAD +! then ;
 
 
-: WRITE-LINES ( ptr u8 n -- )
-   {: tag:ptr tu:n :}
+: WRITE-LINES ( ^u8 n -- )
+   {: tag:^ tu:n :}
    1 READY atomic-add drop
    begin READY atomic@ 2 < while TASK:PAUSE repeat
    TASK-LINES 0 ?do
@@ -566,7 +566,7 @@ TASK:MIN-STACK TASK:TASK RELEASER
    [: KEPT-LINE ;] catch CODE-A !
    ERR-BACK
    [: KEPT-LINE ;] CAPTURED
-   FILE$ {: at:ptr u:n :}
+   FILE$ {: at:^ u:n :}
    u DATE:TIME-LEN KEPT-REST$ nip + T=
    at u KEPT-REST$ LINE-OK nip 0 T=
    r close-rc 0 T=
@@ -620,7 +620,7 @@ TASK:MIN-STACK TASK:TASK RELEASER
    epoch-seconds T1 !
    PIPE-BACK
    PIPE-R @ close-rc 0 T=
-   PIPE-B BUF:SPAN$ BUF:BLEN>N {: at:ptr u:n :}
+   PIPE-B BUF:SPAN$ BUF:BLEN>N {: at:^ u:n :}
    u 1 DATE:TIME-LEN + KEPT-REST$ nip + T=
    at c@ LF T=
    at 1+ u 1- KEPT-REST$ LINE-OK nip 0 T=
@@ -634,14 +634,14 @@ TASK:MIN-STACK TASK:TASK RELEASER
    LOG:ERROR s" t" LOG:LINE UNDECLARED LOG:CODE+ LOG:;LINE ;
 
 
-: CODE-REST$ ( -- ptr u8 n )  S\"  error t: -9672 LOG-TEST:E-LOG-CODE: the log test's code\n" ;
-: BARE-REST$ ( -- ptr u8 n )  S\"  error t: -9678\n" ;
+: CODE-REST$ ( -- ^u8 n )  S\"  error t: -9672 LOG-TEST:E-LOG-CODE: the log test's code\n" ;
+: BARE-REST$ ( -- ^u8 n )  S\"  error t: -9678\n" ;
 
 
 : CODE-CASE ( -- )
    s" a declared code is written with its name and text, another alone" T-LABEL
    [: CODE-LINES ;] CAPTURED
-   FILE$ {: at:ptr u:n :}
+   FILE$ {: at:^ u:n :}
    u DATE:TIME-LEN 2 * CODE-REST$ nip + BARE-REST$ nip + T=
    at u CODE-REST$ LINE-OK
    BARE-REST$ LINE-OK nip 0 T= ;

@@ -77,7 +77,7 @@ variable RX  variable RACC
 0 8 CL-ADD 16 CL-ADD constant SYS-SCRATCH-MASK
 
 : CL-DIGIT?  ( n -- bool )  dup 47 > swap 58 < and ;
-: CL-NUM-REG  ( ptr u8 n -- n ) {: a:ptr u :}
+: CL-NUM-REG  ( ^u8 n -- n ) {: a:^ u :}
    u 0= if -1 exit then
    0 RACC !  0 RX !
    begin RX @ u < while
@@ -86,7 +86,7 @@ variable RX  variable RACC
       RX @ 1+ RX !
    repeat
    RACC @ 32 < if RACC @ else -1 then ;
-: REG-OF  ( ptr u8 n -- n ) {: a:ptr u :}
+: REG-OF  ( ^u8 n -- n ) {: a:^ u :}
    a u s" XDS"   LINT-STR= if 19 exit then
    a u s" SP"    LINT-STR= if 31 exit then
    a u s" A"     LINT-STR= if 9 exit then
@@ -99,25 +99,25 @@ variable RX  variable RACC
    a u s" DATA"  LINT-STR= if 20 exit then
    a u CL-NUM-REG ;
 
-: START-L?  ( ptr u8 n -- bool ) {: a:ptr u :}
+: START-L?  ( ^u8 n -- bool ) {: a:^ u :}
    0 u 0 ?do a i + c@ 58 = if drop i 1+ then loop {: off:n :}
    off u < if a off + c@ LINT-FOLD 108 = else LINT-FALSE then ;
-: LABEL-ACCESS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: LABEL-ACCESS? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" LABEL@" LINT-STR=CI IF LINT-TRUE exit THEN
    u 7 > IF a u s" :LABEL@" LINT-SUFFIX? ELSE LINT-FALSE THEN ;
-: ENDS-COMMA?  ( ptr u8 n -- bool ) {: a:ptr u :}
+: ENDS-COMMA?  ( ^u8 n -- bool ) {: a:^ u :}
    u 0 > if a u 1- + c@ 44 = else LINT-FALSE then ;
-: START-DOLLAR?  ( ptr u8 n -- bool ) {: a:ptr u :}
+: START-DOLLAR?  ( ^u8 n -- bool ) {: a:^ u :}
    u 0 > if a c@ 36 = else LINT-FALSE then ;
 : LOWER-CHAR?  ( n -- bool )  dup 96 > swap 123 < and ;
-: UPPERISH?  ( ptr u8 n -- bool ) {: a:ptr u :}
+: UPPERISH?  ( ^u8 n -- bool ) {: a:^ u :}
    0 RX !
    begin RX @ u < while
       a RX @ + c@ LOWER-CHAR? if LINT-FALSE exit then
       RX @ 1+ RX !
    repeat  LINT-TRUE ;
 
-: RETURNS-MASK  ( ptr u8 n -- n ) {: a:ptr u :}
+: RETURNS-MASK  ( ^u8 n -- n ) {: a:^ u :}
    \ LCOUNT publishes the requested count in NDICT; APPEND and RESET use it.
    a u s" EM-DEF-OCC:LCOUNT" LINT-STR=CI
    a u s" EM-DEF-OCC:LAPPEND" LINT-STR=CI or
@@ -138,7 +138,7 @@ variable RX  variable RACC
       0 5 CL-ADD 6 CL-ADD 11 CL-ADD 12 CL-ADD 13 CL-ADD 16 CL-ADD exit then
    a u s" Lnum" LINT-STR=CI if 0 2 CL-ADD 11 CL-ADD 12 CL-ADD exit then
    0 ;
-: PRESERVE-MASK  ( ptr u8 n -- n ) {: a:ptr u :}
+: PRESERVE-MASK  ( ^u8 n -- n ) {: a:^ u :}
    \ LCOUNT frames x9-x14/x30 and leaves x15 untouched. APPEND also frames
    \ x15-x17 around its forwarded checker callback; RESET frames LCOUNT.
    a u s" EM-DEF-OCC:LAPPEND" LINT-STR=CI if
@@ -183,25 +183,25 @@ using CLOBBER
 
 public
 
-: GLOBAL-FIND? ( ptr u8 n -- bool ) s" C-FIND-GLOBAL" LINT-STR= ;
+: GLOBAL-FIND? ( ^u8 n -- bool ) s" C-FIND-GLOBAL" LINT-STR= ;
 
-: WRAP?  ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: WRAP?  ( ^u8 n -- bool ) {: a:^ u:n :}
    a u GLOBAL-FIND? if LINT-TRUE exit then
    u 6 < if LINT-FALSE exit then
    a u s" :CALL" LINT-SUFFIX? ;
 
-: MASK  ( ptr u8 n n n -- n ) {: a:ptr u:n addr:n len:n :}   \ clobbered registers
+: MASK  ( ^u8 n n n -- n ) {: a:^ u:n addr:n len:n :}   \ clobbered registers
    \ C-FIND-GLOBAL loads a literal name, calls LFIND, then restores package
    \ state through x14. Its successful path preserves x0/x1 and clobbers
    \ x2..x17 and x30. A missing name exits the process.
    a u GLOBAL-FIND? if $3FFFC 30 CL-ADD exit then
    E-CLOBBER-WRAP-UNRESOLVED throw ;
 
-: READS  ( ptr u8 n n n -- n ) {: a:ptr u:n addr:n len:n :}   \ input registers read
+: READS  ( ^u8 n n n -- n ) {: a:^ u:n addr:n len:n :}   \ input registers read
    a u GLOBAL-FIND? if 0 exit then
    E-CLOBBER-WRAP-UNRESOLVED throw ;
 
-: RETURNS  ( ptr u8 n n n -- n ) {: a:ptr u:n addr:n len:n :}   \ registers the call redefines
+: RETURNS  ( ^u8 n n n -- n ) {: a:^ u:n addr:n len:n :}   \ registers the call redefines
    a u GLOBAL-FIND? if 0 5 CL-ADD 11 CL-ADD 12 CL-ADD 13 CL-ADD exit then
    E-CLOBBER-WRAP-UNRESOLVED throw ;
 
@@ -210,7 +210,7 @@ public
 
 package CLOBBER
 
-: PSEUDO?  ( ptr u8 n -- bool ) {: a:ptr u :}
+: PSEUDO?  ( ^u8 n -- bool ) {: a:^ u :}
    a u s" mark-save" LINT-STR=CI if LINT-TRUE exit then
    a u s" mark-restore" LINT-STR=CI if LINT-TRUE exit then
    a u s" mark-header" LINT-STR=CI if LINT-TRUE exit then
@@ -225,24 +225,24 @@ package CLOBBER
    a u s" g-pop" LINT-STR=CI if LINT-TRUE exit then
    a u s" c-hidx-hash" LINT-STR=CI if LINT-TRUE exit then
    a u s" g-print9" LINT-STR=CI ;
-: INSTR?  ( ptr u8 n -- bool ) {: a:ptr u :}
+: INSTR?  ( ^u8 n -- bool ) {: a:^ u :}
    a u PSEUDO? if LINT-TRUE exit then
    a u ENDS-COMMA?  a u START-DOLLAR? 0= and  a u UPPERISH? and ;
 
-: MN-W3?  ( ptr u8 n -- bool ) {: a:ptr u :}
+: MN-W3?  ( ^u8 n -- bool ) {: a:^ u :}
    a u s" ADD," LINT-STR= if LINT-TRUE exit then  a u s" SUB," LINT-STR= if LINT-TRUE exit then
    a u s" MUL," LINT-STR= if LINT-TRUE exit then  a u s" AND," LINT-STR= if LINT-TRUE exit then
    a u s" ORR," LINT-STR= if LINT-TRUE exit then  a u s" EOR," LINT-STR= if LINT-TRUE exit then
    a u s" LSLV," LINT-STR= if LINT-TRUE exit then  a u s" LSRV," LINT-STR= if LINT-TRUE exit then
    a u s" SDIV," LINT-STR= if LINT-TRUE exit then  a u s" UDIV," LINT-STR= if LINT-TRUE exit then
    a u s" CSEL," LINT-STR= ;
-: MN-W2I?  ( ptr u8 n -- bool ) {: a:ptr u :}
+: MN-W2I?  ( ^u8 n -- bool ) {: a:^ u :}
    a u s" ADDI," LINT-STR= if LINT-TRUE exit then  a u s" SUBI," LINT-STR= if LINT-TRUE exit then
    a u s" LSLI," LINT-STR= if LINT-TRUE exit then  a u s" LSRI," LINT-STR= if LINT-TRUE exit then
    a u s" ASRI," LINT-STR= if LINT-TRUE exit then  a u s" ANDI," LINT-STR= if LINT-TRUE exit then
    a u s" ORRI," LINT-STR= if LINT-TRUE exit then  a u s" EORI," LINT-STR= if LINT-TRUE exit then
    a u s" ADDI-4K," LINT-STR= if LINT-TRUE exit then  a u s" SUBI-4K," LINT-STR= ;
-: MN-W1?  ( ptr u8 n -- bool ) {: a:ptr u :}
+: MN-W1?  ( ^u8 n -- bool ) {: a:^ u :}
    a u s" MOVZ," LINT-STR= if LINT-TRUE exit then  a u s" MOVN," LINT-STR= if LINT-TRUE exit then
    a u s" ADR," LINT-STR= if LINT-TRUE exit then  a u s" LIT64," LINT-STR= if LINT-TRUE exit then
    a u s" CSET," LINT-STR= if LINT-TRUE exit then  a u s" CSETM," LINT-STR= if LINT-TRUE exit then
@@ -251,19 +251,19 @@ package CLOBBER
    a u s" FMOVDX," LINT-STR= if LINT-TRUE exit then  a u s" FCVTZS," LINT-STR= if LINT-TRUE exit then
    \ CB-SELF reads the thread base into its register.
    a u s" CB-SELF," LINT-STR= ;
-: MN-WRMW?  ( ptr u8 n -- bool ) {: a:ptr u :}
+: MN-WRMW?  ( ^u8 n -- bool ) {: a:^ u :}
    a u s" MOVK," LINT-STR= if LINT-TRUE exit then  a u s" MOVZHW," LINT-STR= if LINT-TRUE exit then
    a u s" MOVKHW," LINT-STR= if LINT-TRUE exit then  a u s" MOVNHW," LINT-STR= ;
-: MN-LD?  ( ptr u8 n -- bool ) {: a:ptr u :}
+: MN-LD?  ( ^u8 n -- bool ) {: a:^ u :}
    a u s" LDR," LINT-STR= if LINT-TRUE exit then  a u s" LDRB," LINT-STR= if LINT-TRUE exit then
    a u s" LDRW," LINT-STR= if LINT-TRUE exit then  a u s" LDAR," LINT-STR= ;
-: MN-ST?  ( ptr u8 n -- bool ) {: a:ptr u :}
+: MN-ST?  ( ^u8 n -- bool ) {: a:^ u :}
    a u s" STR," LINT-STR= if LINT-TRUE exit then  a u s" STRB," LINT-STR= if LINT-TRUE exit then
    a u s" STRW," LINT-STR= if LINT-TRUE exit then  a u s" STLR," LINT-STR= ;
-: MN-DATA?  ( ptr u8 n -- bool ) {: a:ptr u :}
+: MN-DATA?  ( ^u8 n -- bool ) {: a:^ u :}
    a u s" ," LINT-STR= if LINT-TRUE exit then  a u s" BYTES," LINT-STR= if LINT-TRUE exit then
    a u s" DCQ," LINT-STR= if LINT-TRUE exit then  a u s" DLBL," LINT-STR= ;
-: MN-QUIET?  ( ptr u8 n -- bool ) {: a:ptr u :}
+: MN-QUIET?  ( ^u8 n -- bool ) {: a:^ u :}
    a u s" ISB," LINT-STR= if LINT-TRUE exit then  a u s" DSB-ISH," LINT-STR= if LINT-TRUE exit then
    a u s" FADD," LINT-STR= if LINT-TRUE exit then  a u s" FSUB," LINT-STR= if LINT-TRUE exit then
    a u s" FMUL," LINT-STR= if LINT-TRUE exit then  a u s" FDIV," LINT-STR= if LINT-TRUE exit then
@@ -298,7 +298,7 @@ package CLOBBER
 23 constant MN-DATA    \ never executed: leaves the path as it found it
 
 \ The one list of mnemonics the lint models.
-: MN-KIND  ( ptr u8 n -- n ) {: a:ptr u:n :}
+: MN-KIND  ( ^u8 n -- n ) {: a:^ u:n :}
    a u ENDS-COMMA? 0= if MN-NONE exit then      \ every mnemonic ends in a comma
    a u MN-W3? if MN-WRR exit then
    a u MN-W2I?  a u MN-LD? or if MN-WR exit then
@@ -400,7 +400,7 @@ DYNAMIC-BUFFER ROLES u8
    a u s" g-pop" LINT-STR=CI if 0 EW exit then
    a u s" g-print9" LINT-STR=CI if 0 0 CL-ADD 1 CL-ADD 2 CL-ADD 16 CL-ADD CL-WOR  0 9 CL-ADD CL-ROR exit then ;
 
-: SYS-EXIT-NAME? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: SYS-EXIT-NAME? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" NR-EXIT" LINT-STR= if LINT-TRUE exit then
    a u s" NR-EXIT-GROUP" LINT-STR= ;
 
@@ -448,8 +448,8 @@ LS-POIS 32 + constant LS-STRIDE
 
 \ Join the DIRTY and POIS cells saved at s into the current state: written or
 \ poisoned on either side; a register poisoned on both keeps its current callee.
-: JOIN-STATE  ( ptr n -- )
-   {: s:ptr :}
+: JOIN-STATE  ( ^n -- )
+   {: s:^ :}
    s @ DIRTY @ or DIRTY !
    32 0 do
       i POIS@ 0 <  s i 1+ cells + @ 0 >= and if  s i 1+ cells + @ i POIS!  then
@@ -462,7 +462,7 @@ DYNAMIC-BUFFER FLOWS n   variable FLOW#
 0 constant FL-LOOP
 1 constant FL-PATH
 
-: FL  ( n n -- ptr n ) {: e:n field:n :}  e LS-STRIDE * field + FLOWS ;
+: FL  ( n n -- ^n ) {: e:n field:n :}  e LS-STRIDE * field + FLOWS ;
 : FLOW-COPY  ( n n -- ) {: from:n to:n :}  LS-STRIDE 0 do from i FL @ to i FL ! loop ;
 
 
@@ -534,7 +534,7 @@ DYNAMIC-BUFFER FLOWS n   variable FLOW#
 \ A host control word moves the current state through the stack as the host's
 \ control flow moves the path. Back edges are not modeled: a loop body is walked once.
 : FLOW-STEP  ( n -- )
-   TOK {: a:ptr u:n :}
+   TOK {: a:^ u:n :}
    a u s" if" LINT-STR=CI  a u s" of" LINT-STR=CI or  a u s" begin" LINT-STR=CI or if
       LINT-FALSE FLOW-PUSH drop exit
    then
@@ -560,7 +560,7 @@ DYNAMIC-BUFFER FLOWS n   variable FLOW#
    then ;
 
 \ The instruction at token hi, of this kind, with operands from lo.
-: EFFECTS  ( ptr u8 n n n n -- ) {: a:ptr u:n kind:n lo:n hi:n :}
+: EFFECTS  ( ^u8 n n n n -- ) {: a:^ u:n kind:n lo:n hi:n :}
    0 WMSK !  0 RMSK !  lo hi COLLECT-REGS
    kind MN-WRR = if 0 EW 1 ER 2 ER exit then
    kind MN-WR = if 0 EW 1 ER exit then
@@ -596,18 +596,18 @@ $10000 constant CNBUF-CAP
 create CNBUF CNBUF-CAP allot   variable CEND
 \ Each collected name's start is an address into the name buffer, so the starts
 \ are declared pointer storage; the lengths beside them stay plain cells.
-CMAX TYPED-BUFFER CNOFF ptr u8
+CMAX TYPED-BUFFER CNOFF ^u8
 create CNLEN CMAX cells allot
 create CWS CMAX cells allot     variable CN#
 create EFROM EMAX cells allot   create ETO EMAX cells allot   variable EN#
 variable CX  variable EX
 
-: C-NAME  ( n -- ptr u8 n )
+: C-NAME  ( n -- ^u8 n )
    dup CNOFF @  swap CNLEN swap cells + @ ;
 : CWS@  ( n -- n )  CWS swap cells + @ ;
 : CWS!  ( n n -- )  CWS swap cells + ! ;
 : C-WOR  ( n n -- ) {: idx m :}  idx CWS@ m or idx CWS! ;
-: C-FIND  ( ptr u8 n -- n ) {: a:ptr u :}
+: C-FIND  ( ^u8 n -- n ) {: a:^ u :}
    0 CX !
    begin CX @ CN# @ < while
       CX @ C-NAME a u LINT-STR=CI if CX @ exit then
@@ -628,11 +628,11 @@ PTR-VARIABLE PKG-A
 variable PKG-U
 
 \ The unused tail of the name pool is scratch until C-ADD commits a name.
-: C-QUALIFIED$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+: C-QUALIFIED$ ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
    PKG-U @ 0= a u s" :" CONTAINS? or if a u exit then
    PKG-U @ u + 1+ {: size:n :}
    size CNBUF-CAP CEND @ - > if s" clobber-lint: label store full" 1 die then
-   CNBUF CEND @ + {: dst:ptr :}
+   CNBUF CEND @ + {: dst:^ :}
    PKG-A @ dst PKG-U @ LINT-BMOVE
    58 dst PKG-U @ + c!
    a dst PKG-U @ 1+ + u LINT-BMOVE
@@ -640,7 +640,7 @@ variable PKG-U
 
 \ Bare labels prefer declarations in their current package, then globals.
 \ Explicitly qualified labels already name their owner.
-: C-LABEL$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+: C-LABEL$ ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
    a u C-QUALIFIED$ C-FIND {: idx:n :}
    idx 0 >= if idx C-NAME else a u then ;
 : EDGE?  ( n n -- bool ) {: from to :}
@@ -657,7 +657,7 @@ variable PKG-U
 
 $80 constant OMAX
 create OPENINGS OMAX cells allot   variable ON#
-TYPED-VARIABLE CALA ptr u8   \ start of the callee name CALLEE? resolved
+TYPED-VARIABLE CALA ^u8   \ start of the callee name CALLEE? resolved
 variable DI  variable OX  variable OPLO  variable CALU
 variable RNEXT  variable RDONE  variable CUR
 
@@ -705,14 +705,14 @@ DYNAMIC-BUFFER BLOCKS n   variable BLOCK#
    HOSTS-RELEASE  HOST-NAMES-RELEASE  HOST-MAP-RELEASE  HREF-RELEASE
    ROLES-RELEASE  LOCALS-RELEASE  BLOCKS-RELEASE  FLOWS-RELEASE ;
 
-: MAP-ROW  ( ptr u8 n -- n ) {: a:ptr u:n :}
+: MAP-ROW  ( ^u8 n -- n ) {: a:^ u:n :}
    0 HOST-MAP MAP-CAP @ >COUNT a u >LEN MAP:GET MATCH option
       none OF -1 ENDOF
       some OF ENDOF
    ;MATCH ;
 
 \ The folded copy of a name in the label pool's unused tail.
-: KEY$  ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+: KEY$  ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
    u CNBUF-CAP CEND @ - > if s" clobber-lint: label store full" 1 die then
    a u CNBUF CEND @ + FOLD-TO
    CNBUF CEND @ + u ;
@@ -722,7 +722,7 @@ DYNAMIC-BUFFER BLOCKS n   variable BLOCK#
 
 \ A word the lint models by hand keeps that model where a scanned
 \ file defines it.
-: HAND-MODEL?  ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: HAND-MODEL?  ( ^u8 n -- bool ) {: a:^ u:n :}
    a u MN-KIND MN-NONE <> if LINT-TRUE exit then
    a u PSEUDO? if LINT-TRUE exit then
    a u CLOBBER-WRAP:WRAP? ;
@@ -755,13 +755,13 @@ DYNAMIC-BUFFER BLOCKS n   variable BLOCK#
    TN# @ 0 ?do UNSEEN i HREF !  OPERAND i ROLES c! loop ;
 
 \ A local's name is its text before any `:type`.
-: LOCAL-NAME  ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+: LOCAL-NAME  ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
    a u 58 LINT-INDEX-OF MATCH option
       none OF a u ENDOF
       some OF a swap ENDOF
    ;MATCH ;
 
-: BLOCK-OPEN?  ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: BLOCK-OPEN?  ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" if" LINT-STR=CI if LINT-TRUE exit then
    a u s" begin" LINT-STR=CI if LINT-TRUE exit then
    a u s" do" LINT-STR=CI if LINT-TRUE exit then
@@ -769,7 +769,7 @@ DYNAMIC-BUFFER BLOCKS n   variable BLOCK#
    a u s" case" LINT-STR=CI if LINT-TRUE exit then
    a u s" of" LINT-STR=CI ;
 
-: BLOCK-CLOSE?  ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: BLOCK-CLOSE?  ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" then" LINT-STR=CI if LINT-TRUE exit then
    a u s" loop" LINT-STR=CI if LINT-TRUE exit then
    a u s" +loop" LINT-STR=CI if LINT-TRUE exit then
@@ -780,7 +780,7 @@ DYNAMIC-BUFFER BLOCKS n   variable BLOCK#
    a u s" endcase" LINT-STR=CI ;
 
 \ The host control words FLOW-STEP reads.
-: FLOW-WORD?  ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: FLOW-WORD?  ( ^u8 n -- bool ) {: a:^ u:n :}
    a u BLOCK-OPEN? if LINT-TRUE exit then
    a u BLOCK-CLOSE? if LINT-TRUE exit then
    a u s" else" LINT-STR=CI if LINT-TRUE exit then
@@ -792,12 +792,12 @@ DYNAMIC-BUFFER BLOCKS n   variable BLOCK#
 : LOCAL+  ( n n -- )  LOCAL# @ 2 * {: s:n :}  s 1+ LOCALS !  s LOCALS !  LOCAL# @ 1+ LOCAL# ! ;
 
 \ Whether live local e is spelled a u, byte for byte as a local binds.
-: NAMES?  ( ptr u8 n n -- bool ) {: a:ptr u:n e:n :}
+: NAMES?  ( ^u8 n n -- bool ) {: a:^ u:n e:n :}
    e 2 * 1+ LOCALS @ u <> if LINT-FALSE exit then
    e 2 * LOCALS @ TOK drop u a u LINT-STR= ;
 
 : LIVE-LOCAL?  ( n -- bool )
-   TOK {: a:ptr u:n :}
+   TOK {: a:^ u:n :}
    LOCAL# @ begin dup 0 > while
       1- dup a u rot NAMES? if drop LINT-TRUE exit then
    repeat drop LINT-FALSE ;
@@ -810,7 +810,7 @@ DYNAMIC-BUFFER BLOCKS n   variable BLOCK#
 
 \ Whether a token spells a number: decimal with an optional sign and within a
 \ signed cell, or `$` and one to sixteen hex digits.
-: NUMBER?  ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: NUMBER?  ( ^u8 n -- bool ) {: a:^ u:n :}
    a u START-DOLLAR? if a 1+ u 1- HEX>NUMBER? else a u STR>NUMBER? then
    MATCH option
       none OF LINT-FALSE ENDOF
@@ -818,7 +818,7 @@ DYNAMIC-BUFFER BLOCKS n   variable BLOCK#
    ;MATCH ;
 
 \ A `( … )` comment, which the scan keeps as one token.
-: PAREN-COMMENT?  ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: PAREN-COMMENT?  ( ^u8 n -- bool ) {: a:^ u:n :}
    u 0= if LINT-FALSE exit then
    a c@ 40 <> if LINT-FALSE exit then
    u 1 = if LINT-TRUE exit then
@@ -907,16 +907,16 @@ variable HIDDEN
    repeat drop ;
 
 \ The folded copy of a row's name in HOST-NAMES, kept while the map holds it.
-: HOST-NAME$  ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+: HOST-NAME$  ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
    NAME-END @ u + NAME-CAP @ > if s" clobber-lint: host name store full" 1 die then
    a u NAME-END @ HOST-NAMES FOLD-TO
    NAME-END @ HOST-NAMES u
    NAME-END @ u + NAME-END ! ;
 
 \ A row for the qualified name, whose body emits or not.
-: HOST-ROW  ( ptr u8 n bool -- ) {: a:ptr u:n emits:bool :}
+: HOST-ROW  ( ^u8 n bool -- ) {: a:^ u:n emits:bool :}
    HOST# @ {: row:n :}
-   a u HOST-NAME$ {: key:ptr len:n :}
+   a u HOST-NAME$ {: key:^ len:n :}
    key len MAP-ROW row PREV HOST!
    emits bool>n row EMITTER HOST!
    row 0 HOST-MAP MAP-CAP @ >COUNT key len >LEN MAP:SET
@@ -931,13 +931,13 @@ variable HIDDEN
 
 \ EMITW appends an instruction word the lint cannot read; each spelling gets
 \ an emitting row ahead of the scanned files', found as theirs are.
-: EMITW-NAMES  ( [ ptr u8 n -- ] -- ) {: visit :}
+: EMITW-NAMES  ( [ ^u8 n -- ] -- ) {: visit :}
    s" EMITW" visit execute  s" A64ICODE:EMITW" visit execute ;
 
-: SEED-SIZE  ( ptr u8 n -- )
+: SEED-SIZE  ( ^u8 n -- )
    nip NAME-CAP @ + NAME-CAP !  SEED# @ 1+ SEED# ! ;
 
-: SEED-ROW  ( ptr u8 n -- )  LINT-TRUE HOST-ROW ;
+: SEED-ROW  ( ^u8 n -- )  LINT-TRUE HOST-ROW ;
 
 \ A row for each EMITW spelling and each colon definition DECL-FILE counted.
 : HOSTS-OPEN  ( -- )
@@ -966,7 +966,7 @@ variable HIDDEN
 \ Declarations precede body analysis, including labels owned by another file.
 \ Colon bodies are skipped so emitter operands cannot declare a label; DEF#
 \ counts them and NAME-CAP their qualified names' bytes.
-: DECL-FILE ( ptr u8 n -- )
+: DECL-FILE ( ^u8 n -- )
    LINT-SOURCE:LOAD LINT-SOURCE:TEXT TOKENIZE 0 PKG-U !
    0 begin dup TN# @ < while
       {: k:n :}
@@ -1098,7 +1098,7 @@ variable HIDDEN
    repeat  drop LINT-FALSE ;
 
 variable WI  variable WE
-: PASS1-FILE ( ptr u8 n -- ) {: pa:ptr pu:n :}
+: PASS1-FILE ( ^u8 n -- ) {: pa:^ pu:n :}
    pa pu LINT-SOURCE:LOAD  LINT-SOURCE:TEXT TOKENIZE  FILE-START
    0 PKG-U ! 0 WI !
    begin WI @ TN# @ 1- < while
@@ -1143,9 +1143,9 @@ variable TRACK-LR
 
 : WORD-NAME!  ( n -- )
    TOK dup WLEN !  WNAME FOLD-TO ;
-: CRASH-FILE?  ( ptr u8 n -- bool ) {: a:ptr u :}
+: CRASH-FILE?  ( ^u8 n -- bool ) {: a:^ u :}
    a u s" src/habu/crash.f" LINT-STR= ;
-: ALLOW?  ( ptr u8 n n n -- bool ) {: fa:ptr fu reg cidx :}
+: ALLOW?  ( ^u8 n n n -- bool ) {: fa:^ fu reg cidx :}
    fa fu CRASH-FILE? 0= if LINT-FALSE exit then
    WNAME WLEN @ s" emit-crash-handler" LINT-STR=CI 0= if LINT-FALSE exit then
    reg 1 = reg 2 = or 0= if LINT-FALSE exit then
@@ -1161,7 +1161,7 @@ variable TRACK-LR
    s"  written, clobbered by " type cidx C-NAME type
    s" , then read" type NL ;
 variable QUIET
-: REPORT  ( ptr u8 n n n -- ) {: fa:ptr fu:n reg:n cidx:n :}
+: REPORT  ( ^u8 n n n -- ) {: fa:^ fu:n reg:n cidx:n :}
    QUIET @ if exit then
    fa fu reg cidx ALLOW? if exit then
    fa fu reg cidx FINDING  BAD @ 1+ BAD ! ;
@@ -1234,7 +1234,7 @@ variable QUIET
 \ Modeled wrapped emitter call at token DI: its argument registers are read
 \ first, then its move+guard clobbers poison any live value, its emitted branch
 \ poisons the link register, and its ABI-return registers are redefined.
-: APPLY-WRAP  ( ptr u8 n -- ) {: fa:ptr fu:n :}
+: APPLY-WRAP  ( ^u8 n -- ) {: fa:^ fu:n :}
    fa fu WRAP-READS NOTE-READS
    DI @ TOK C-ENSURE CALIDX !
    WRAP-MASK CALIDX @ POISON-DIRTY
@@ -1264,7 +1264,7 @@ DYNAMIC-BUFFER LSTATE n
 1 constant LS-KEY
 variable LBL#  variable LX  variable GROWN
 
-: LS  ( n n -- ptr n ) {: lbl:n field:n :}
+: LS  ( n n -- ^n ) {: lbl:n field:n :}
    lbl LS-STRIDE * field + LSTATE ;
 
 \ A label's key is its index in the label table; -1 marks a name only its
@@ -1321,7 +1321,7 @@ variable LBL#  variable LX  variable GROWN
    LX @ LS-NAME LS @ hi LABEL-OPEN? if DIRTY @ ENTRY-DIRTY or DIRTY ! then
    LX @ 1+ LX ! ;
 
-: PASS2-INSTR  ( ptr u8 n n -- ) {: fa:ptr fu:n hi:n :}
+: PASS2-INSTR  ( ^u8 n n -- ) {: fa:^ fu:n hi:n :}
    DI @ TOK MN-KIND {: kind:n :}
    PATH @ ENDED =  kind MN-LBL <> and if DI @ 1+ OPLO ! exit then
    OPLO @ DI @ CALLEE?  kind MN-BL = and if
@@ -1341,7 +1341,7 @@ variable LBL#  variable LX  variable GROWN
 
 \ After an unknown call nothing is known, as at an entry: it may rewrite any
 \ register, place a label or not return.
-: PASS2-TOKEN  ( ptr u8 n n -- ) {: fa:ptr fu:n hi:n :}
+: PASS2-TOKEN  ( ^u8 n n -- ) {: fa:^ fu:n hi:n :}
    DI @ LOCAL-AT? if exit then
    DI @ ROLE@ FLOW = if DI @ FLOW-STEP  DI @ 1+ OPLO ! exit then
    DI @ TOK CLOBBER-WRAP:WRAP? if
@@ -1350,14 +1350,14 @@ variable LBL#  variable LX  variable GROWN
    DI @ UNKNOWN-AT? if PASS2-ENTRY  MAY-END PATH !  DI @ 1+ OPLO ! exit then
    DI @ TOK INSTR? if fa fu hi PASS2-INSTR then ;
 
-: PASS2-WALK  ( ptr u8 n n n -- ) {: fa:ptr fu:n lo:n hi:n :}
+: PASS2-WALK  ( ^u8 n n n -- ) {: fa:^ fu:n lo:n hi:n :}
    PASS2-ENTRY  LIVE PATH !  0 FLOW# !  0 LX !  0 GROWN !  lo OPLO !  lo DI !
    begin DI @ hi < while
       fa fu hi PASS2-TOKEN
       DI @ 1+ DI !
    repeat ;
 
-: PASS2-DEF  ( ptr u8 n n n -- ) {: fa:ptr fu:n lo:n hi:n :}
+: PASS2-DEF  ( ^u8 n n n -- ) {: fa:^ fu:n lo:n hi:n :}
    lo hi RET-IN-RANGE? TRACK-LR !
    lo hi COLLECT-LABELS
    -1 QUIET !
@@ -1368,7 +1368,7 @@ variable LBL#  variable LX  variable GROWN
 \ the calls see its row.
 : HOST-PASSED  ( -- )  BOUND# @ 1+ BOUND# ! ;
 
-: PASS2-FILE ( ptr u8 n -- ) {: pa:ptr pu:n :}
+: PASS2-FILE ( ^u8 n -- ) {: pa:^ pu:n :}
    pa pu LINT-SOURCE:LOAD  LINT-SOURCE:TEXT TOKENIZE  FILE-START
    0 PKG-U ! 0 WI !
    begin WI @ TN# @ 1- < while
@@ -1387,7 +1387,7 @@ variable LBL#  variable LX  variable GROWN
 
 \ The engine's files in load order: a call binds an earlier definition, so
 \ every host row precedes its callers.
-: EACH-FILE ( [ ptr u8 n -- ] -- ) {: visit :}
+: EACH-FILE ( [ ^u8 n -- ] -- ) {: visit :}
    s" src/habu/rt.f" visit execute  s" src/habu/crash.f" visit execute
    s" src/habu/habu1.f" visit execute
    s" src/habu/prof.f" visit execute
@@ -1402,7 +1402,7 @@ variable LBL#  variable LX  variable GROWN
 
 \ Both passes over the files the enumerator visits, in its order; BAD and
 \ the census hold the result.
-: ANALYZE  ( [ [ ptr u8 n -- ] -- ] -- ) {: files :}
+: ANALYZE  ( [ [ ^u8 n -- ] -- ] -- ) {: files :}
    FRESH-SCAN
    [: DECL-FILE ;] files execute
    HOSTS-OPEN

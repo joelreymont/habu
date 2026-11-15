@@ -2,48 +2,48 @@
 \ at fixed offsets below DATA-START; every process, image or task reads them
 \ through its own DATA base.
 
-: ENV-DATA ( -- ptr n ) data-base ;
+: ENV-DATA ( -- ^n ) data-base ;
 $2D constant ENV-DASH
 
 : ARGC ( -- n )
    ENV-DATA ARGC-CELL + @ ;
 
-: ARGV-BASE ( -- ptr ptr u8 )
+: ARGV-BASE ( -- ^^u8 )
    ENV-DATA ARGV-CELL CELL / ptr-field @ ;
 
-: ARGV ( n -- ptr u8 )
+: ARGV ( n -- ^u8 )
    ARGV-BASE swap ptr-field @ ;
 
-: ENVP-BASE ( -- ptr ptr u8 )
+: ENVP-BASE ( -- ^^u8 )
    ENV-DATA ENVP-CELL CELL / ptr-field @ ;
 
-: ENVP ( n -- ptr u8 )
+: ENVP ( n -- ^u8 )
    ENVP-BASE swap ptr-field @ ;
 
-: ZBYTE@ ( ptr u8 n -- u8 )
+: ZBYTE@ ( ^u8 n -- u8 )
    + c@ ;
 
-: ZBYTE! ( u8 ptr u8 n -- )
+: ZBYTE! ( u8 ^u8 n -- )
    + c! ;
 
-: ZPTR+ ( ptr u8 n -- ptr u8 )
+: ZPTR+ ( ^u8 n -- ^u8 )
    + ;
 
-: ZLEN ( ptr u8 -- n )
+: ZLEN ( ^u8 -- n )
    0 begin 2dup ZBYTE@ 0= 0= while 1 + repeat swap drop ;
 
-: ARGV$ ( n -- ptr u8 n )
+: ARGV$ ( n -- ^u8 n )
    ARGV dup ZLEN ;
 
 : ENV-FALSE ( -- bool )
    0 0= 0= ;
 
-: ENV=? ( ptr u8 ptr u8 n -- bool )
-   {: z:ptr a:ptr u:n :}
+: ENV=? ( ^u8 ^u8 n -- bool )
+   {: z:^ a:^ u:n :}
    u 0 ?do z i ZBYTE@ a i ZBYTE@ = 0= if unloop ENV-FALSE exit then loop
    z u ZBYTE@ $3D = ;
 
-: NULL$ ( -- ptr u8 n )
+: NULL$ ( -- ^u8 n )
    NULL-PTR 0 ;
 
 \ CURRENT$ reads a variable unrecorded; GETENV records the read in the
@@ -51,8 +51,8 @@ $2D constant ENV-DASH
 package ENV-INPUT
 public
 
-: CURRENT$ ( ptr u8 n -- ptr u8 n )
-   {: query:ptr queryu:n :}
+: CURRENT$ ( ^u8 n -- ^u8 n )
+   {: query:^ queryu:n :}
    ENVP-BASE 0= if NULL$ exit then
    0 begin dup ENVP 0= 0= while
       dup ENVP query queryu ENV=? if ENVP queryu 1 + ZPTR+ dup ZLEN exit then
@@ -62,9 +62,9 @@ public
 
 ;package
 
-: GETENV ( ptr u8 n -- ptr u8 n )
-   {: query:ptr queryu:n :}
-   query queryu ENV-INPUT:CURRENT$ {: value:ptr valueu:n :}
+: GETENV ( ^u8 n -- ^u8 n )
+   {: query:^ queryu:n :}
+   query queryu ENV-INPUT:CURRENT$ {: value:^ valueu:n :}
    query queryu value valueu COMPILE-READS:ENV+
    value valueu ;
 
@@ -77,13 +77,13 @@ variable TPQ
 PTR-VARIABLE TPS
 variable TPU
 
-: TPP@ ( -- ptr u8 )
+: TPP@ ( -- ^u8 )
    TPP @ ;
 
-: TPS@ ( -- ptr u8 )
+: TPS@ ( -- ^u8 )
    TPS @ ;
 
-: TPS! ( ptr u8 -- )
+: TPS! ( ^u8 -- )
    TPS ! ;
 
 \ The name has to fit the room the root and its slash leave. Its length is
@@ -93,10 +93,10 @@ variable TPU
    dup 0 < swap PATH-CAP TPQ @ - 1 - > or
    if s" env: TMP-PATH exceeds buffer" 76 die then ;
 
-: TMP-PATH-COPY-SRC ( ptr u8 n -- )
+: TMP-PATH-COPY-SRC ( ^u8 n -- )
    0 ?do dup i ZBYTE@ TPB TPQ @ 1 + i + ZBYTE! loop drop ;
 
-: TMP-PATH ( ptr u8 n -- ptr u8 n )
+: TMP-PATH ( ^u8 n -- ^u8 n )
    TPU ! TPS!
    s" TMPDIR" GETENV dup 0 = if drop drop s" /tmp" then TPQ ! TPP !
    TPU @ TMP-PATH-CHECK

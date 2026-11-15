@@ -9,10 +9,10 @@ public
 
 \ GETAFIX's context: the key text, the next byte to read in it and the output.
 STRUCTURE line DERIVE addr
-   FIELD text ptr u8
+   FIELD text ^u8
    FIELD len n
    FIELD pos n
-   FIELD out ptr u8
+   FIELD out ^u8
    FIELD used n
 ;STRUCTURE
 
@@ -21,13 +21,13 @@ private
 TYPED-VARIABLE LINE-REC line
 16 BUFFER: OUT-BUF
 
-: TEXT@ ( ptr line -- ptr u8 ) FSM--TEST-LINE:TEXT @ ;
-: LEN@ ( ptr line -- n ) FSM--TEST-LINE:LEN @ ;
-: POS@ ( ptr line -- n ) FSM--TEST-LINE:POS @ ;
-: POS! ( n ptr line -- ) FSM--TEST-LINE:POS ! ;
-: OUT@ ( ptr line -- ptr u8 ) FSM--TEST-LINE:OUT @ ;
-: USED@ ( ptr line -- n ) FSM--TEST-LINE:USED @ ;
-: USED! ( n ptr line -- ) FSM--TEST-LINE:USED ! ;
+: TEXT@ ( ^line -- ^u8 ) FSM--TEST-LINE:TEXT @ ;
+: LEN@ ( ^line -- n ) FSM--TEST-LINE:LEN @ ;
+: POS@ ( ^line -- n ) FSM--TEST-LINE:POS @ ;
+: POS! ( n ^line -- ) FSM--TEST-LINE:POS ! ;
+: OUT@ ( ^line -- ^u8 ) FSM--TEST-LINE:OUT @ ;
+: USED@ ( ^line -- n ) FSM--TEST-LINE:USED @ ;
+: USED! ( n ^line -- ) FSM--TEST-LINE:USED ! ;
 
 using FSM
 ENUM entry start whole fraction ended ;ENUM
@@ -41,21 +41,21 @@ ENUM key other digit minus point enter ;ENUM
    construct key other ;
 
 
-: READ-KEY ( ptr line -- key )
+: READ-KEY ( ^line -- key )
    {: l :}
    l POS@ l LEN@ >= if construct key enter exit then
    l TEXT@ l POS@ + c@ CLASS ;
 
-: DROP-KEY ( ptr line -- ) dup POS@ 1+ swap POS! ;
+: DROP-KEY ( ^line -- ) dup POS@ 1+ swap POS! ;
 
 
-: ECHO ( ptr line -- )
+: ECHO ( ^line -- )
    {: l :}
    l TEXT@ l POS@ + c@ l OUT@ l USED@ + c!
    l USED@ 1+ l USED!
    l DROP-KEY ;
 
-DEFINE GETAFIX ( ptr line ) entry key
+DEFINE GETAFIX ( ^line ) entry key
    IN start     READ-KEY
       other   DROP-KEY  >start
       digit   ECHO      >whole
@@ -79,8 +79,8 @@ DEFINE GETAFIX ( ptr line ) entry key
 ;using
 
 
-: GETAFIX$ ( ptr u8 n -- ptr u8 n )
-   {: a:ptr u:n :}
+: GETAFIX$ ( ^u8 n -- ^u8 n )
+   {: a:^ u:n :}
    LINE-REC {: l :}
    a l FSM--TEST-LINE:TEXT !
    u l FSM--TEST-LINE:LEN !
@@ -106,14 +106,14 @@ ENUM pulse tick ;ENUM
 TYPED-VARIABLE COUNT-CELL n
 5 constant LIMIT
 
-: PULSE ( ptr n -- pulse ) drop construct pulse tick ;
-: BUMP ( ptr n -- ) 1 swap +! ;
+: PULSE ( ^n -- pulse ) drop construct pulse tick ;
+: BUMP ( ^n -- ) 1 swap +! ;
 
 
-: TALLY-NEXT ( ptr n -- tally )
+: TALLY-NEXT ( ^n -- tally )
    @ LIMIT < if construct tally counting else construct tally counted then ;
 
-DEFINE COUNT-UP ( ptr n ) tally pulse
+DEFINE COUNT-UP ( ^n ) tally pulse
    IN counting  PULSE
       tick  BUMP  TALLY-NEXT
    FINAL counted  -
@@ -131,14 +131,14 @@ ENUM door opening opened shut ;ENUM
 ENUM push left right ;ENUM
 TYPED-VARIABLE DOOR-CELL n
 
-: PUSH-SIDE ( ptr n -- push )
+: PUSH-SIDE ( ^n -- push )
    @ 1 and 0= if construct push left else construct push right then ;
 
-: NOTE ( ptr n -- ) 1000 swap +! ;
-: MARK-OPENED ( ptr n -- ) 10 swap +! ;
-: MARK-SHUT ( ptr n -- ) 100 swap +! ;
+: NOTE ( ^n -- ) 1000 swap +! ;
+: MARK-OPENED ( ^n -- ) 10 swap +! ;
+: MARK-SHUT ( ^n -- ) 100 swap +! ;
 
-DEFINE SWING ( ptr n ) door push
+DEFINE SWING ( ^n ) door push
    IN opening  PUSH-SIDE
       left   NOTE  >opened
       right  NOTE  >shut
@@ -166,15 +166,15 @@ ENUM turn step ;ENUM
 TYPED-VARIABLE SPIN-CELL n
 42 constant THIRD-CODE
 
-: TURN ( ptr n -- turn ) drop construct turn step ;
+: TURN ( ^n -- turn ) drop construct turn step ;
 
 
-: TURN-COUNT ( ptr n -- )
-   {: c:ptr :}
+: TURN-COUNT ( ^n -- )
+   {: c:^ :}
    1 c +!
    c @ 3 = if THIRD-CODE throw then ;
 
-DEFINE SPIN ( ptr n ) spin turn
+DEFINE SPIN ( ^n ) spin turn
    IN turning  TURN
       step   TURN-COUNT  >turning
    FINAL stopped  -
@@ -197,10 +197,10 @@ ENUM work break ;ENUM
 TYPED-VARIABLE JOB-CELL n
 43 constant FAIL-CODE
 
-: BREAK ( ptr n -- work ) drop construct work break ;
-: FAIL ( ptr n -- ) drop FAIL-CODE throw ;
+: BREAK ( ^n -- work ) drop construct work break ;
+: FAIL ( ^n -- ) drop FAIL-CODE throw ;
 
-DEFINE JOB ( ptr n ) job work
+DEFINE JOB ( ^n ) job work
    IN working  BREAK
       break  -  >failed
    FINAL failed  FAIL
@@ -222,17 +222,17 @@ TYPED-VARIABLE GATE-CELL n
 44 constant KICK-CODE
 45 constant STUCK-CODE
 
-: KNOCK ( ptr n -- knock )
+: KNOCK ( ^n -- knock )
    @ {: k:n :}
    k 0= if construct knock tap exit then
    k 1 = if construct knock kick exit then
    construct knock wedge ;
 
-: OPEN-UP ( ptr n -- ) 10 swap ! ;
-: KICKED ( ptr n -- ) drop KICK-CODE throw ;
-: JAMMED ( ptr n -- gate ) drop STUCK-CODE throw ;
+: OPEN-UP ( ^n -- ) 10 swap ! ;
+: KICKED ( ^n -- ) drop KICK-CODE throw ;
+: JAMMED ( ^n -- gate ) drop STUCK-CODE throw ;
 
-DEFINE GATE ( ptr n ) gate knock
+DEFINE GATE ( ^n ) gate knock
    IN closed  KNOCK
       tap    OPEN-UP  >opened
       kick   KICKED   >closed
@@ -260,12 +260,12 @@ ENUM probe ok fault ;ENUM
 ENUM latch ok ;ENUM
 TYPED-VARIABLE RELAY-CELL n
 
-: PROBE ( ptr n -- probe ) drop construct probe ok ;
-: LATCH ( ptr n -- latch ) drop construct latch ok ;
-: ARM ( ptr n -- ) 1 swap +! ;
-: TRIP ( ptr n -- ) 10 swap +! ;
+: PROBE ( ^n -- probe ) drop construct probe ok ;
+: LATCH ( ^n -- latch ) drop construct latch ok ;
+: ARM ( ^n -- ) 1 swap +! ;
+: TRIP ( ^n -- ) 10 swap +! ;
 
-DEFINE RELAY ( ptr n ) relay probe
+DEFINE RELAY ( ^n ) relay probe
    IN arming  PROBE
       ok     ARM  >armed
       fault  -    >tripped
@@ -286,9 +286,9 @@ ENUM lamp dark lit ;ENUM
 ENUM flick flip ;ENUM
 TYPED-VARIABLE LAMP-CELL n
 
-: FLICK ( ptr n -- flick ) drop construct flick flip ;
+: FLICK ( ^n -- flick ) drop construct flick flip ;
 
-DEFINE LAMP ( ptr n ) lamp flick
+DEFINE LAMP ( ^n ) lamp flick
    IN dark  FLICK
       flip  BUMP  >lit
    IN lit   FLICK
@@ -301,9 +301,9 @@ using FSM
 TYPED-VARIABLE PEEK-CELL n
 48 constant SENSE-CODE
 
-: BLIND ( ptr n -- pulse ) @ 0= if SENSE-CODE throw then construct pulse tick ;
+: BLIND ( ^n -- pulse ) @ 0= if SENSE-CODE throw then construct pulse tick ;
 
-DEFINE PEEK ( ptr n ) tally pulse
+DEFINE PEEK ( ^n ) tally pulse
    IN counting  BLIND
       tick  BUMP  >counted
    FINAL counted  -
@@ -341,14 +341,14 @@ DEFINE PEEK ( ptr n ) tally pulse
 DYNAMIC-BUFFER SRC u8
 variable SRC-LEN
 
-: SRC+ ( ptr u8 n -- ) {: a:ptr u:n :}
+: SRC+ ( ^u8 n -- ) {: a:^ u:n :}
    u 0= if exit then
    SRC-LEN @ u + SRC-RESERVE
    a SRC-LEN @ SRC u BYTE-COPY
    SRC-LEN @ u + SRC-LEN ! ;
 
 : N+ ( n -- ) FMT:INT$ SRC+ ;
-: SRC$ ( -- ptr u8 n ) 0 SRC SRC-LEN @ ;
+: SRC$ ( -- ^u8 n ) 0 SRC SRC-LEN @ ;
 
 
 \ A machine that runs after a rejected table: the next DEFINE starts from an
@@ -358,8 +358,8 @@ variable SRC-LEN
    0 SRC-LEN !
    s" package FSM-OK-" SRC+ k N+
    s"  TYPED-VARIABLE C n ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM" SRC+
-   s"  : S ( ptr n -- sig ) drop construct sig go ; : BUMP ( ptr n -- ) 1 swap +! ;" SRC+
-   s"  using FSM DEFINE M ( ptr n ) ph sig IN idle S go BUMP >busy halt - >idle" SRC+
+   s"  : S ( ^n -- sig ) drop construct sig go ; : BUMP ( ^n -- ) 1 swap +! ;" SRC+
+   s"  using FSM DEFINE M ( ^n ) ph sig IN idle S go BUMP >busy halt - >idle" SRC+
    s"  FINAL busy BUMP ;DEFINE ;using" SRC+
    s"  public : GO ( -- n ) 0 C ! C construct ph idle M C @ ; ;package FSM-OK-" SRC+
    k N+ s" :GO" SRC+
@@ -411,7 +411,7 @@ variable SRC-LEN
 \ the action's own line.
 : PLACED-EFFECT ( -- )
    s" include test/fixtures/fsm/wrong-effect.f" 70 SUBJECT:REJECTED
-   {: e:ptr eu:n exited:bool :}
+   {: e:^ eu:n exited:bool :}
    exited TTRUE
    e eu s" `bump`" CONTAINS? TTRUE
    e eu s" wrong-effect.f:15" CONTAINS? TTRUE ;
@@ -492,13 +492,13 @@ variable SRC-LEN
    s" package FSM-SHADOW-" SRC+ k N+
    s"  TYPED-VARIABLE C n ENUM ph idle busy done halted ;ENUM" SRC+
    s"  ENUM sig go stop ;ENUM" SRC+
-   s"  : S ( ptr n -- sig ) @ 20 < if construct sig go else construct sig stop then ;" SRC+
-   s"  : PICK ( ptr n -- ph ) @ 20 < if construct ph busy else construct ph done then ;" SRC+
-   s"  : ADD1 ( ptr n -- ) 1 swap +! ; : ADD10 ( ptr n -- ) 10 swap +! ;" SRC+
-   s"  : ADD100 ( ptr n -- ) 100 swap +! ;" SRC+
+   s"  : S ( ^n -- sig ) @ 20 < if construct sig go else construct sig stop then ;" SRC+
+   s"  : PICK ( ^n -- ph ) @ 20 < if construct ph busy else construct ph done then ;" SRC+
+   s"  : ADD1 ( ^n -- ) 1 swap +! ; : ADD10 ( ^n -- ) 10 swap +! ;" SRC+
+   s"  : ADD100 ( ^n -- ) 100 swap +! ;" SRC+
    k 1 = if SHADOW-WORDS then
    k 2 = if IMMEDIATE-WORDS then
-   s"  using FSM DEFINE M ( ptr n ) ph sig" SRC+
+   s"  using FSM DEFINE M ( ^n ) ph sig" SRC+
    s"  IN idle S go ADD1 >busy stop - >done" SRC+
    s"  IN busy S go ADD10 PICK stop - PICK" SRC+
    s"  FINAL done ADD100 FINAL halted - ;DEFINE ;using" SRC+
@@ -530,7 +530,7 @@ variable SRC-LEN
 44 constant INPUTS
 $100000 constant MIB
 
-: LONG$ ( -- ptr u8 n )
+: LONG$ ( -- ^u8 n )
    s" COUNT-ONE-TURN-OF-THE-LARGE-TABLE-WHOSE-ACTION-NAME-IS-LONG-SO-THAT-ITS-TEXT-PASSES-ONE-MEBIBYTE-UNDER-THE-BODY-CAP" ;
 
 
@@ -541,9 +541,9 @@ $100000 constant MIB
    s"  ;ENUM ENUM big-input" SRC+
    INPUTS 0 ?do s"  i" SRC+ i N+ loop
    s"  ;ENUM TYPED-VARIABLE BIG-CELL n" SRC+
-   s"  : BIG-SENSE ( ptr n -- big-input ) drop construct big-input i0 ;" SRC+
-   s"  : " SRC+ LONG$ SRC+ s"  ( ptr n -- ) 1 swap +! ;" SRC+
-   s"  using FSM DEFINE BIG ( ptr n ) big-state big-input" SRC+ ;
+   s"  : BIG-SENSE ( ^n -- big-input ) drop construct big-input i0 ;" SRC+
+   s"  : " SRC+ LONG$ SRC+ s"  ( ^n -- ) 1 swap +! ;" SRC+
+   s"  using FSM DEFINE BIG ( ^n ) big-state big-input" SRC+ ;
 
 
 : BIG-ROW ( n -- )
@@ -554,7 +554,7 @@ $100000 constant MIB
    loop ;
 
 
-: BIG$ ( -- ptr u8 n )
+: BIG$ ( -- ^u8 n )
    BIG-HEAD
    STATES 1- 0 ?do i BIG-ROW loop
    s"  FINAL s" SRC+ STATES 1- N+ s"  -" SRC+

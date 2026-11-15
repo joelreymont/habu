@@ -25,14 +25,14 @@ variable EXITED?
 
 \ A child program that fills the require table to K entries.
 
-: FORGE$ ( -- ptr u8 n )  FORGE-BUF FORGE-U @ ;
+: FORGE$ ( -- ^u8 n )  FORGE-BUF FORGE-U @ ;
 
 : FORGE-C ( n -- ) {: c:n :}
    FORGE-U @ 1+ FORGE-CAP > if s" require-cap: forge overflow" 1 die then
    c FORGE-BUF FORGE-U @ + c!
    FORGE-U @ 1+ FORGE-U ! ;
 
-: FORGE-APPEND ( ptr u8 n -- ) {: a:ptr u:n :}
+: FORGE-APPEND ( ^u8 n -- ) {: a:^ u:n :}
    FORGE-U @ u + FORGE-CAP > if s" require-cap: forge overflow" 1 die then
    a FORGE-BUF FORGE-U @ + u BYTE-COPY
    FORGE-U @ u + FORGE-U ! ;
@@ -45,7 +45,7 @@ variable EXITED?
 
 \ After the last growth every row must still be found: requiring them all again
 \ leaves the count alone, so each path and length survived the copies.
-: FORGE-GEN ( n -- ptr u8 n ) {: k:n :}
+: FORGE-GEN ( n -- ^u8 n ) {: k:n :}
    0 FORGE-U !
    s" 0 REQUIRE-REG:TRUNCATE 0 REQUIRE-BASE ! DISCOVERY-ON" FORGE-APPEND  10 FORGE-C
    0 begin dup k < while dup FORGE-LINE 1+ repeat drop
@@ -55,7 +55,7 @@ variable EXITED?
    s" SAME-COUNT" FORGE-APPEND  10 FORGE-C
    FORGE$ ;
 
-: STORE ( len len PROCESS:ending ptr u8 n -- ) {: outu:len erru:len oc src:ptr u:n :}
+: STORE ( len len PROCESS:ending ^u8 n -- ) {: outu:len erru:len oc src:^ u:n :}
    erru LEN>N ERR-U !
    oc MATCH PROCESS:ending
      exited OF   RC-N ! -1 EXITED? ! ENDOF
@@ -64,7 +64,7 @@ variable EXITED?
    ;MATCH ;
 
 : RUN-CHILD ( n -- )
-   FORGE-GEN {: src:ptr u:n :}
+   FORGE-GEN {: src:^ u:n :}
    src u
    OUT-BUF IO-CAP >LEN
    ERR-BUF IO-CAP >LEN

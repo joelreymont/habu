@@ -28,10 +28,10 @@ variable HELD-FD
 \ that reaches WAIT late still passes, only with less of a wait in between.
 200 constant HOLD-MS
 
-: ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
+: ROOT$ ( -- ^u8 n ) ROOT ROOT-U @ ;
 
 : SETUP ( -- )
-   s" hb-fs-lock" FS:MKTEMP-DIR {: path:ptr u:n :}
+   s" hb-fs-lock" FS:MKTEMP-DIR {: path:^ u:n :}
    path ROOT u BYTE-COPY
    u ROOT-U ! ;
 

@@ -19,8 +19,8 @@ create MPT-STATIC MPT-SPAN allot
 \ went blind once any release happened, fails one of these six assertions.
 : MPT-CASES ( -- )
    MPT-STATIC MAPPED:LIVE? TTRUE
-   MPT-SPAN MEM-ALLOC-64K-SPAN {: a:ptr acap:n :}
-   MPT-SPAN MEM-ALLOC-64K-SPAN {: b:ptr bcap:n :}
+   MPT-SPAN MEM-ALLOC-64K-SPAN {: a:^ acap:n :}
+   MPT-SPAN MEM-ALLOC-64K-SPAN {: b:^ bcap:n :}
    a MAPPED:LIVE? TTRUE
    b MAPPED:LIVE? TTRUE
    a acap MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES

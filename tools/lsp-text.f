@@ -23,7 +23,7 @@ private
 
 10 constant LF
 
-TYPED-VARIABLE TEXT-A ptr u8             \ the text positions count in,
+TYPED-VARIABLE TEXT-A ^u8             \ the text positions count in,
 variable TEXT-U
 variable CUR-AT                          \ the cursor in it: its offset,
 variable CUR-LINE                        \ the line the offset is on,
@@ -52,14 +52,14 @@ variable DISK-VALID
    repeat drop
    o CUR-AT ! ;
 
-: DISK-ROOM ( n -- ptr u8 )
+: DISK-ROOM ( n -- ^u8 )
    DISK-RESERVE 0 DISK ;
 
 \ The file at this path read into DISK, its length in DISK-U, to its end
 \ however it grows while it is read: its size, whose refusal (E-FS-STAT) stays
 \ a missing file's, is only the first room (src/lib/source.f READ-WHOLE-SAMPLED).
-: SLURP ( ptr u8 n -- ptr u8 n )
-   {: f:ptr fu:n :}
+: SLURP ( ^u8 n -- ^u8 n )
+   {: f:^ fu:n :}
    f fu FS:FILE-META {: size:n msec:n mns:n csec:n cns:n :}
    f fu  f fu FS:FILE-SIZE  [: DISK-ROOM ;] SOURCE:READ-WHOLE-SAMPLED DISK-U !
    f fu FS:FILE-META {: after:n amsec:n amns:n acsec:n acns:n :}
@@ -71,20 +71,20 @@ variable DISK-VALID
    then
    f fu ;
 
-: ERR ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: ERR ( ^u8 n -- )
+   {: a:^ u:n :}
    FD:STDERR a u FD:WRITE-FULL ;
 
 public
 
-: TEXT! ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: TEXT! ( ^u8 n -- )
+   {: a:^ u:n :}
    a TEXT-A !
    u TEXT-U !
    false DISK-VALID !
    CUR-RESET ;
 
-: TEXT$ ( -- ptr u8 n )  TEXT-A @ TEXT-U @ ;
+: TEXT$ ( -- ^u8 n )  TEXT-A @ TEXT-U @ ;
 
 \ Whether a throw of this code is a file system call's (src/lib/error.f E-FS-*).
 : FS-RC? ( n -- bool )
@@ -96,8 +96,8 @@ private
 \ Keep every byte acquired by a completed read, even when its metadata changed.
 \ The validity flag separately tells navigation whether the read stayed stable.
 \ A file that cannot be read says so on stderr and counts as empty.
-: READ-TEXT? ( ptr u8 n -- bool )
-   {: f:ptr fu:n :}
+: READ-TEXT? ( ^u8 n -- bool )
+   {: f:^ fu:n :}
    false DISK-VALID !
    f fu [: SLURP ;] catch {: code:n :} 2drop
    code 0<> if
@@ -117,13 +117,13 @@ public
 
 \ Diagnostic positions count in the complete acquired snapshot. Changed
 \ metadata grants no freshness: DISK-META and DISK-CURRENT? remain false.
-: FILE-SNAPSHOT! ( ptr u8 n -- )
+: FILE-SNAPSHOT! ( ^u8 n -- )
    READ-TEXT? drop ;
 
 \ Navigation requires a stable read. Take the buffer after reading, since
 \ growth may move it; a missing or changed file counts as empty text.
-: FILE-TEXT! ( ptr u8 n -- )
-   {: f:ptr fu:n :}
+: FILE-TEXT! ( ^u8 n -- )
+   {: f:^ fu:n :}
    f fu READ-TEXT? 0= if exit then
    DISK-VALID @ 0= if
       s" lsp: " ERR f fu ERR s" : changed while read\n" ERR
@@ -135,7 +135,7 @@ public
 : DISK-META ( -- n n n n n bool )
    DISK-SIZE @ DISK-MSEC @ DISK-MNS @ DISK-CSEC @ DISK-CNS @ DISK-VALID @ 0<> ;
 
-: DISK-CURRENT? ( ptr u8 n -- bool )
+: DISK-CURRENT? ( ^u8 n -- bool )
    DISK-VALID @ 0= if 2drop false exit then
    FS:TRY-STAT 0= if false exit then
    FS:STAT-MODE@ FS:S-IFMT and FS:S-IFREG <> if false exit then
@@ -155,7 +155,7 @@ public
 
 private
 
-: POSITION ( ptr JSON:writer n n -- ptr JSON:writer )
+: POSITION ( ^JSON:writer n n -- ^JSON:writer )
    {: ln:n ch:n :}
    WRITE-OBJECT-START
    s" line" ln WRITE-FIELD-U WRITE-COMMA
@@ -164,14 +164,14 @@ private
 
 public
 
-: RANGE-VALUE ( ptr JSON:writer n n n n -- ptr JSON:writer )
+: RANGE-VALUE ( ^JSON:writer n n n n -- ^JSON:writer )
    {: l1:n c1:n l2:n c2:n :}
    WRITE-OBJECT-START
    s" start" WRITE-KEY l1 c1 POSITION WRITE-COMMA
    s" end" WRITE-KEY l2 c2 POSITION
    WRITE-OBJECT-END ;
 
-: RANGE-AT ( ptr JSON:writer n n n n -- ptr JSON:writer )
+: RANGE-AT ( ^JSON:writer n n n n -- ^JSON:writer )
    {: l1:n c1:n l2:n c2:n :}
    s" range" WRITE-KEY l1 c1 l2 c2 RANGE-VALUE ;
 
@@ -179,8 +179,8 @@ public
 \ byte_end, as the checker's packets do: a missing start is 0, a missing end
 \ the start; both are held to the text and the end to no less than the start,
 \ so the range is valid whatever the line says.
-: RANGE ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
-   {: a:ptr u:n :}
+: RANGE ( ^JSON:writer ^u8 n -- ^JSON:writer )
+   {: a:^ u:n :}
    a u s" byte_start" INT-MEMBER 0= if drop 0 then {: from:n :}
    a u s" byte_end" INT-MEMBER 0= if drop from then from max {: to:n :}
    from LINE-CHARACTER to LINE-CHARACTER RANGE-AT ;

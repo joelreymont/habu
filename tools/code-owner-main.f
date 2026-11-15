@@ -16,7 +16,7 @@ package CODE-OWNER-CLI
    s" usage: --load tools/code-owner-main.f -- <region offset>"
    RC die ;
 
-: HEX-BODY ( ptr u8 n -- ptr u8 n bool ) {: a:ptr u:n :}
+: HEX-BODY ( ^u8 n -- ^u8 n bool ) {: a:^ u:n :}
    u 1 > if a c@ 36 = if a 1 + u 1 - 0 0= exit then then
    a u 0 0= 0= ;
 
@@ -27,7 +27,7 @@ package CODE-OWNER-CLI
    -1 ;
 
 variable ACC
-: HEX>N ( ptr u8 n -- n ) {: a:ptr u:n :}
+: HEX>N ( ^u8 n -- n ) {: a:^ u:n :}
    0 ACC !
    u 0 ?do
       a i + c@ DIGIT {: d:n :}
@@ -39,7 +39,7 @@ variable ACC
 \ `$1a2b` or plain decimal, the two spellings a debugger prints.
 : BAD ( -- ) s" code-owner: offset is not a number" RC die ;
 
-: OFFSET ( ptr u8 n -- n )
+: OFFSET ( ^u8 n -- n )
    HEX-BODY if HEX>N exit then
    STR>NUMBER? MATCH option
      none OF BAD ENDOF

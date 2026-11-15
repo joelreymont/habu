@@ -68,15 +68,15 @@ variable MAC-WRITE-FD
 
 PROCESS-SYMBOLS
 FUNCTION: MAC-FCNTL-CALL fcntl ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
-FUNCTION: MAC-POLL poll ( ptr u8 n n -- i32 ) ;FUNCTION
-FUNCTION: MAC-READ read ( n ptr u8 n -- n ) ;FUNCTION
-FUNCTION: MAC-PREAD pread ( n ptr u8 n n -- n ) ;FUNCTION
-FUNCTION: MAC-WRITE write ( n ptr u8 n -- n ) ;FUNCTION
+FUNCTION: MAC-POLL poll ( ^u8 n n -- i32 ) ;FUNCTION
+FUNCTION: MAC-READ read ( n ^u8 n -- n ) ;FUNCTION
+FUNCTION: MAC-PREAD pread ( n ^u8 n n -- n ) ;FUNCTION
+FUNCTION: MAC-WRITE write ( n ^u8 n -- n ) ;FUNCTION
 FUNCTION: MAC-SEEK lseek ( n n n -- n ) ;FUNCTION
 
-: MR ( n -- ptr n ) REC REC.HOST ;
+: MR ( n -- ^n ) REC REC.HOST ;
 
-: MAC-PFD ( n -- ptr u8 ) {: slot:n :}
+: MAC-PFD ( n -- ^u8 ) {: slot:n :}
    slot 0 < slot OPEN-MAX >= or if s" aio: poll entry" E-AIO-STATE die then
    MAC-POLLS @ slot MAC-POLL-BYTES * + ;
 
@@ -86,7 +86,7 @@ FUNCTION: MAC-SEEK lseek ( n n n -- n ) ;FUNCTION
 : MAC-POLLS-FREE ( -- )
    MAC-POLLS @ MAC-POLLS-LEN MEM:RELEASE-BYTES ;
 
-: FD-ROW ( n -- ptr n ) {: fd:n :}
+: FD-ROW ( n -- ^n ) {: fd:n :}
    fd 0 < fd FD-CAP @ >= or if s" aio: descriptor row" E-AIO-STATE die then
    FD-ROWS @ fd FD-ROW-BYTES * + AIO-N>PTR ;
 
@@ -128,14 +128,14 @@ FUNCTION: MAC-SEEK lseek ( n n n -- n ) ;FUNCTION
 : MAC-FD! ( n n -- ) {: fd:n idx:n :}
    fd idx MR MR.FD !
    fd 0 < if exit then
-   fd FD-ROW {: row:ptr :}
+   fd FD-ROW {: row:^ :}
    row FD.REF @ 0= if 1 FD-DISTINCT +! then
    1 row FD.REF +! ;
 
 : MAC-FD-DROP ( n -- ) {: idx:n :}
    idx MR MR.FD @ {: fd:n :}
    fd 0 < if exit then
-   fd FD-ROW {: row:ptr :}
+   fd FD-ROW {: row:^ :}
    -1 row FD.REF +!
    row FD.REF @ 0= if -1 FD-DISTINCT +! then ;
 : MAC-ACTIVE? ( n -- bool )
@@ -165,7 +165,7 @@ FUNCTION: MAC-SEEK lseek ( n n n -- n ) ;FUNCTION
    REC-CLAIM {: rc:n idx:n :}
    rc 0<> if rc -1 exit then
    idx kind 1 REC-ARM
-   idx MR {: row:ptr :}
+   idx MR {: row:^ :}
    MAC-REC-BYTES 0 ?do 0 row BYTE-VIEW i + c! loop
    -1 row MR.FD ! -1 row MR.DEADLINE ! -1 row MR.GEN ! -1 row MR.SLOT !
    fd idx MAC-FD!
@@ -174,14 +174,14 @@ FUNCTION: MAC-SEEK lseek ( n n n -- n ) ;FUNCTION
 \ Status flags belong to the open file description, shared by dup aliases.
 \ Save and restore around each host call under AIO-LOCK, never across waits.
 : MAC-TAKE-FLAGS ( n -- n ) {: idx:n :}
-   idx MR {: row:ptr :} row MR.FD @ {: fd:n :}
+   idx MR {: row:^ :} row MR.FD @ {: fd:n :}
    fd 3 0 MAC-FCNTL dup 0 < if negate exit then {: flags:n :}
    fd 4 flags MAC-NONBLOCK or MAC-FCNTL dup 0 < if negate exit then drop
    flags row MR.OLD-FLAGS ! 1 row MR.OWNS-FLAGS !
    0 ;
 
 : MAC-GIVE-FLAGS ( n -- ) {: idx:n :}
-   idx MR {: row:ptr :}
+   idx MR {: row:^ :}
    row MR.OWNS-FLAGS @ 0= if exit then
    0 row MR.OWNS-FLAGS !
    row MR.FD @ 4 row MR.OLD-FLAGS @ MAC-FCNTL 0 < if
@@ -214,8 +214,8 @@ FUNCTION: MAC-SEEK lseek ( n n n -- n ) ;FUNCTION
    ms 0 < if idx MAC-INVAL negate MAC-FINISH then
    MAC-NOTIFY idx ;
 
-: MAC-XFER-STAGE ( n ptr u8 NUM:alloc-byte-len n n n -- n n )
-   {: fd:n buf:ptr cap:NUM:alloc-byte-len count:n off:n kind:n :}
+: MAC-XFER-STAGE ( n ^u8 NUM:alloc-byte-len n n n -- n n )
+   {: fd:n buf:^ cap:NUM:alloc-byte-len count:n off:n kind:n :}
    fd kind MAC-CLAIM {: rc:n idx:n :}
    rc 0<> if rc -1 exit then
    buf idx REC-BUF ! cap idx REC-BUF-LEN! 1 idx REC REC.HOLD !
@@ -259,8 +259,8 @@ FUNCTION: MAC-SEEK lseek ( n n n -- n ) ;FUNCTION
    0 FD-ROWS ! 0 FD-CAP ! 0 FD-DISTINCT ! ;
 
 : MAC-TRANSFER ( n -- n ) {: idx:n :}
-   idx MR {: row:ptr :}
-   row MR.FD @ {: fd:n :} idx REC-BUF @ {: buf:ptr :}
+   idx MR {: row:^ :}
+   row MR.FD @ {: fd:n :} idx REC-BUF @ {: buf:^ :}
    row MR.COUNT @ {: count:n :} row MR.OFFSET @ {: off:n :}
    row MR.SEEKABLE @ 0 <> off 0 >= and {: positioned:bool :}
    positioned if fd buf count off MAC-PREAD else fd buf count MAC-READ then
@@ -277,14 +277,14 @@ FUNCTION: MAC-SEEK lseek ( n n n -- n ) ;FUNCTION
    idx result MAC-FINISH ;
 
 : MAC-PFD! ( n n n -- ) {: fd:n events:n slot:n :}
-   slot MAC-PFD {: out:ptr :}
+   slot MAC-PFD {: out:^ :}
    fd out LE:U32! events out 4 + LE:U16! 0 out 6 + LE:U16! ;
 
 \ One entry per distinct descriptor, its events the union of the records on it;
 \ timers occupy none. The descriptor's row says whether this turn has written
 \ its entry yet.
 : MAC-POLL-SLOT ( n n -- n ) {: fd:n events:n :}
-   fd FD-ROW {: row:ptr :}
+   fd FD-ROW {: row:^ :}
    row FD.TURN @ MAC-TURN @ = if
       row FD.SLOT @ MAC-PFD 4 + dup LE:U16@ events or swap LE:U16!
       row FD.SLOT @ exit
@@ -303,7 +303,7 @@ FUNCTION: MAC-SEEK lseek ( n n n -- n ) ;FUNCTION
    1 MAC-POLL-COUNT !
    -1
    REC-CAP 0 ?do
-      i MR {: row:ptr :}
+      i MR {: row:^ :}
       -1 row MR.GEN !
       -1 row MR.SLOT !
       i MAC-ACTIVE? if

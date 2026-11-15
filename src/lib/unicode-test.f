@@ -9,14 +9,14 @@ using PROP
 create OUTPUT CAPACITY allot
 create SECOND-BUF CAPACITY allot
 
-: FOLDED= ( ptr u8 n ptr u8 n -- )
-   {: expected:ptr expected-size:n :}
+: FOLDED= ( ^u8 n ^u8 n -- )
+   {: expected:^ expected-size:n :}
    2dup FOLDED-BYTES expected-size T=
    OUTPUT CAPACITY UNICODE:FOLD
    OUTPUT swap expected expected-size T$= ;
 
-: LOWERED= ( ptr u8 n ptr u8 n -- )
-   {: expected:ptr expected-size:n :}
+: LOWERED= ( ^u8 n ^u8 n -- )
+   {: expected:^ expected-size:n :}
    2dup expected expected-size LOWERS-TO? TTRUE
    2dup LOWERED-BYTES expected-size T=
    OUTPUT CAPACITY UNICODE:LOWER
@@ -46,7 +46,7 @@ create SECOND-BUF CAPACITY allot
    [: s\" x\xFF" s" x" LOWERS-TO? drop ;] E-UTF8 TTHROWSQ
    [: s" x" s\" x\xFF" LOWERS-TO? drop ;] E-UTF8 TTHROWSQ ;
 
-: CHUNK$ ( -- ptr u8 n )
+: CHUNK$ ( -- ^u8 n )
    8 RND% case
       0 of s" ẞ" endof
       1 of s" İ" endof
@@ -69,15 +69,15 @@ create SECOND-BUF CAPACITY allot
       OUTPUT size SECOND-BUF repeated T$=
    loop ;
 
-: EQUAL ( ptr u8 n ptr u8 n -- )
+: EQUAL ( ^u8 n ^u8 n -- )
    2over 2over CASEFOLD= TTRUE
    2swap CASEFOLD= TTRUE ;
 
-: DIFFERENT ( ptr u8 n ptr u8 n -- )
+: DIFFERENT ( ^u8 n ^u8 n -- )
    2over 2over CASEFOLD= TFALSE
    2swap CASEFOLD= TFALSE ;
 
-: INVALID ( ptr u8 n -- )
+: INVALID ( ^u8 n -- )
    [: 2dup s" " CASEFOLD= drop ;] catch E-UTF8 T=
    [: 2dup s" " 2swap CASEFOLD= drop ;] catch E-UTF8 T=
    2drop ;

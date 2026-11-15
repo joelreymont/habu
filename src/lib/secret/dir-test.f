@@ -24,21 +24,21 @@ PATH-CAP SPAN-BUFFER: ENTRY-PATH
 $180 constant FIFO-MODE                \ 0600
 
 PROCESS-SYMBOLS
-FUNCTION: MKFIFO-CALL mkfifo ( ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 
-: ROOT$ ( -- ptr u8 n ) ROOT SPAN:$ drop ROOT-U @ ;
-: SERVICE$ ( -- ptr u8 n ) s" org.habu.secret-dir-test" ;
+: ROOT$ ( -- ^u8 n ) ROOT SPAN:$ drop ROOT-U @ ;
+: SERVICE$ ( -- ^u8 n ) s" org.habu.secret-dir-test" ;
 
 
 \ The path of the named entry in ROOT, borrowed until the next call.
-: ENTRY ( ptr u8 n -- ptr u8 n )
-   {: name:ptr u:n :}
+: ENTRY ( ^u8 n -- ^u8 n )
+   {: name:^ u:n :}
    ROOT$ name u ENTRY-PATH FS:JOIN-PATH-INTO {: k:n :}
    ENTRY-PATH SPAN:$ drop k ;
 
 
 : SETUP ( -- )
-   s" habu-secret-dir" FS:MKTEMP-DIR {: a:ptr u:n :}
+   s" habu-secret-dir" FS:MKTEMP-DIR {: a:^ u:n :}
    a u ROOT SPAN:COPY u ROOT-U !
    s" key" ENTRY s\" dir\x00value" FS:WRITE-ALL
    s" empty" ENTRY s" " FS:WRITE-ALL
@@ -50,8 +50,8 @@ FUNCTION: MKFIFO-CALL mkfifo ( ptr u8 n -- i32 ) ;FUNCTION
    ROOT$ FS:REMOVE-TREE ;
 
 
-: FOUND ( ptr u8 n ptr u8 n -- )
-   {: account:ptr au:n want:ptr wu:n :}
+: FOUND ( ^u8 n ^u8 n -- )
+   {: account:^ au:n want:^ wu:n :}
    SERVICE$ account au OUT SECRET:READ TTRUE {: got:n :}
    got wu T=
    OUT SPAN:$ drop got want wu T$= ;

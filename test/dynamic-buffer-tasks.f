@@ -44,7 +44,7 @@ variable BASE-N
 : SPIN ( [ n -- ] -- ) {: churn :}
    GATE ROUNDS-N 0 ?do i churn execute loop ;
 
-: JOIN ( ptr n -- n ) {: worker:ptr :}
+: JOIN ( ^n -- n ) {: worker:^ :}
    begin worker TASK:DONE? 0= while TASK:PAUSE repeat
    worker TASK:THROW@
    worker TASK:KILL ;

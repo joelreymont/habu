@@ -46,9 +46,9 @@ CAST: ENTRY-XT ( n -- [ -- n ] )
 
 \ The marshal frame is C's register file as the engine's thunk parked it, and a
 \ pointer argument is whatever address C passed.
-CAST: N>CELLS ( n -- ptr n )
-CAST: N>FLOATS ( n -- ptr r )
-CAST: N>BYTES ( n -- ptr u8 )
+CAST: N>CELLS ( n -- ^n )
+CAST: N>FLOATS ( n -- ^r )
+CAST: N>BYTES ( n -- ^u8 )
 
 \ The thunk indexes one contiguous descriptor table by stable slot ID. The
 \ native entry is a code address, opaque to Habu callers. It is registered as
@@ -64,41 +64,41 @@ variable CAP
 variable SLOTS
 SLOTS ROLLBACK-CELLS:MARK
 
-CAST: >DISPATCH-CELL ( ptr n -- ptr [ -- ] )
-CAST: >FLOAT-CELL ( ptr n -- ptr r )
+CAST: >DISPATCH-CELL ( ^n -- ^[ -- ] )
+CAST: >FLOAT-CELL ( ^n -- ^r )
 CAST: >ENTRY-XT ( n -- [ -- ] )
 
-: ROW ( n -- ptr n )
+: ROW ( n -- ^n )
    ROW-BYTES * TABLE @ + CELL-VIEW ;
 
-: DISPATCH ( n -- ptr [ -- ] )
+: DISPATCH ( n -- ^[ -- ] )
    ROW DISPATCH-OFF + >DISPATCH-CELL ;
 
-: ENTRY-CELL ( n -- ptr n ) ROW ENTRY-OFF + ;
-: FAULTS ( n -- ptr n ) ROW FAULT-OFF + ;
-: FALLBACKS ( n -- ptr n ) ROW FALLBACK-OFF + ;
-: FFALLBACKS ( n -- ptr r ) ROW FFALLBACK-OFF + >FLOAT-CELL ;
+: ENTRY-CELL ( n -- ^n ) ROW ENTRY-OFF + ;
+: FAULTS ( n -- ^n ) ROW FAULT-OFF + ;
+: FALLBACKS ( n -- ^n ) ROW FALLBACK-OFF + ;
+: FFALLBACKS ( n -- ^r ) ROW FFALLBACK-OFF + >FLOAT-CELL ;
 
-: ALIGNED-ROWS ( n -- ptr u8 ) {: size:n :}
+: ALIGNED-ROWS ( n -- ^u8 ) {: size:n :}
    here data-base - negate 7 and allot
-   here BYTE-VIEW {: rows:ptr :}
+   here BYTE-VIEW {: rows:^ :}
    size allot
    rows ;
 
 \ Declarations precede task execution. Once the new table is published, old
 \ rows are unreachable; clear their address rows and stored values so
 \ the image scanner does not read former numeric fallback fields bytewise.
-: RETIRE-TABLE ( ptr u8 n -- ) {: old:ptr cap:n :}
+: RETIRE-TABLE ( ^u8 n -- ) {: old:^ cap:n :}
    cap 0= if exit then
    old BYTE-VIEW data-base BYTE-VIEW - cap ROW-BYTES *
       ADDRESS-CELLS:REMOVE-SPAN
    cap ROW-BYTES * CELL / 0 ?do 0 old i cells + CELL-VIEW ! loop ;
 
 : GROW ( -- )
-   TABLE @ {: old:ptr :}
+   TABLE @ {: old:^ :}
    CAP @ {: oldcap:n :}
    oldcap dup 0= if drop 1 else 2 * then {: next:n :}
-   next ROW-BYTES * ALIGNED-ROWS {: rows:ptr :}
+   next ROW-BYTES * ALIGNED-ROWS {: rows:^ :}
    \ No rollback cuts a grown table.
    DATA-FLOOR:RAISE
    SLOTS @ 0 > if
@@ -141,7 +141,7 @@ public
 : U32-ARG@ ( n -- n )
    ARG@ $FFFFFFFF and ;
 
-: PTR-ARG@ ( n -- ptr u8 )
+: PTR-ARG@ ( n -- ^u8 )
    ARG@ N>BYTES ;
 
 : FARG@ ( n -- r ) {: i:n :}
@@ -170,7 +170,7 @@ public
 \ A body cell nobody stored into holds zero, which the typed fetch would hand
 \ to execute. The dispatch asks first, reading the same cell as a number, and
 \ inside its catch: the call is a fault, and C gets the declared fallback.
-: BODY-CHECK ( ptr a -- )
+: BODY-CHECK ( ^a -- )
    BYTE-VIEW CELL-VIEW @ 0= if E-FFI-CALLBACK-STATE throw then ;
 
 : INSTALL ( [ -- ] n -- ) {: q k:n :}
@@ -241,16 +241,16 @@ TYPED-VARIABLE FFB-VALUE r
 variable OPEN
 
 \ A message that ends quoting the token the user wrote.
-: TOKEN-REJECT ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: m:ptr mu:n t:ptr tu:n h:ptr hu:n :}
+: TOKEN-REJECT ( ^u8 n ^u8 n ^u8 n -- )
+   {: m:^ mu:n t:^ tu:n h:^ hu:n :}
    FFI:SYNTAX-OPEN  m mu REJECTION:EMIT-STR
    s" '" REJECTION:EMIT-STR  t tu REJECTION:EMIT-STR
    s" '" REJECTION:EMIT-STR  h hu FFI:HELP-STOP ;
 
 \ The next token. parse-name's bytes stay valid until the next parse, and each
 \ token is matched or copied before then, so it lives on the stack.
-: TOK@ ( -- ptr u8 n )
-   parse-name {: a:ptr u:n :}
+: TOK@ ( -- ^u8 n )
+   parse-name {: a:^ u:n :}
    u 0= if
       s" the text ends inside the callback declaration"
       s" complete it: CALLBACK: NAME ( in -- out ) clauses ;CALLBACK"
@@ -258,24 +258,24 @@ variable OPEN
    then
    a u ;
 
-: TOO-MANY ( n ptr u8 n -- )
-   {: cap:n k:ptr ku:n :}
+: TOO-MANY ( n ^u8 n -- )
+   {: cap:n k:^ ku:n :}
    FFI:ARITY-OPEN
    s" a callback takes at most " REJECTION:EMIT-STR
    cap REJECTION:EMIT-U  k ku REJECTION:EMIT-STR
-   s" pass the rest in memory through a ptr u8 argument"
+   s" pass the rest in memory through a ^u8 argument"
    FFI:HELP-STOP ;
 
 \ A ':' at either end of the name, with nothing on one side.
-: EDGE-COLON? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: EDGE-COLON? ( ^u8 n -- bool ) {: a:^ u:n :}
    a c@ [char] : =  a u + 1 - c@ [char] : = or ;
 
-: COLON-HELP$ ( -- ptr u8 n )
+: COLON-HELP$ ( -- ^u8 n )
    s" name it NAME, or PACKAGE:NAME for a word in package PACKAGE" ;
 
 \ The name's words are NAME, NAME-BODY and the like: one ':' between a
 \ package and a word makes them the package's; any other ':' names nothing.
-: NAME! ( ptr u8 n -- ) {: a:ptr u:n :}
+: NAME! ( ^u8 n -- ) {: a:^ u:n :}
    a u [char] : COUNT-CHAR 1 > if
       s" more than one ':' in callback name " a u COLON-HELP$
       TOKEN-REJECT
@@ -287,10 +287,10 @@ variable OPEN
    NAME CODEGEN:RESET
    a u NAME CODEGEN:APPEND-STRING ;
 
-: NAME$ ( -- ptr u8 n )
+: NAME$ ( -- ^u8 n )
    NAME CODEGEN:CONTENTS ;
 
-: NAME+ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+: NAME+ ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
    WORD-NAME CODEGEN:RESET
    NAME$ WORD-NAME CODEGEN:APPEND-STRING
    a u WORD-NAME CODEGEN:APPEND-STRING
@@ -309,16 +309,15 @@ variable OPEN
    i by ARG+
    i 1 + f ;
 
-: IN-TOKEN ( n n ptr u8 n -- n n )
-   {: i:n f:n a:ptr u:n :}
+: IN-TOKEN ( n n ^u8 n -- n n )
+   {: i:n f:n a:^ u:n :}
    a u s" n" STR= if i f BY-N INT+ exit then
    a u s" i32" STR= if i f BY-I32 INT+ exit then
    a u s" u32" STR= if i f BY-U32 INT+ exit then
-   a u s" ptr" STR= if
-      TOK@ {: pa:ptr pu:n :}
-      pa pu s" u8" STR= 0= if
-         s" expected u8 after ptr, found " pa pu
-         s" a pointer argument is ptr u8" TOKEN-REJECT
+   a u 1 min s" ^" STR= if
+      a u s" ^u8" STR= 0= if
+         s" expected u8 after ^, found " a 1 + u 1 -
+         s" a pointer argument is ^u8" TOKEN-REJECT
       then
       i f BY-PTR INT+ exit
    then
@@ -328,10 +327,10 @@ variable OPEN
       i f 1 + exit
    then
    s" unknown argument type " a u
-   s" an argument is n, i32, u32, r or ptr u8" TOKEN-REJECT ;
+   s" an argument is n, i32, u32, r or ^u8" TOKEN-REJECT ;
 
-: OUT-TOKEN ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: OUT-TOKEN ( ^u8 n -- )
+   {: a:^ u:n :}
    RES-KIND @ R-NONE <> if
       s" a callback has at most one result"
       s" keep one result after --: n, i32, u32 or r"
@@ -347,7 +346,7 @@ variable OPEN
 
 \ One input token: true at the -- that ends the inputs.
 : INPUT? ( n n -- n n bool )
-   TOK@ {: i:n f:n a:ptr u:n :}
+   TOK@ {: i:n f:n a:^ u:n :}
    a u s" --" STR= if i f true exit then
    a u s" )" STR= if
       s" expected '--' before ')'"
@@ -358,7 +357,7 @@ variable OPEN
 
 \ One output token: true at the ) that ends the effect.
 : OUTPUT? ( -- bool )
-   TOK@ {: a:ptr u:n :}
+   TOK@ {: a:^ u:n :}
    a u s" )" STR= if true exit then
    a u s" --" STR= if
       s" a second '--' in the effect"
@@ -408,7 +407,7 @@ variable OPEN
 
 \ The type the body leaves for reader BY (BY-*) to take.
 : ARG-TYPE ( n -- EFFECT:type ) {: by:n :}
-   by BY-PTR = if s" ptr u8" EFFECT:READ-TYPE exit then
+   by BY-PTR = if s" ^u8" EFFECT:READ-TYPE exit then
    by BY-R = if s" r" EFFECT:NAMED exit then
    EFFECT:N ;
 
@@ -435,7 +434,7 @@ variable OPEN
 
 \ A rejection between the two keywords abandons the declaration, so nothing
 \ is left open for the next one.
-: REJECT ( ptr u8 n ptr u8 n -- )
+: REJECT ( ^u8 n ^u8 n -- )
    OPEN @ 0 <> if SOURCE-ROOT:CLOSED then
    0 OPEN !  FFI:SYNTAX-REJECT ;
 
@@ -450,13 +449,13 @@ variable OPEN
 public
 
 : OPEN-CALLBACK ( -- )
-   SRCLOC:TOKEN$ {: t:ptr tu:n :}
+   SRCLOC:TOKEN$ {: t:^ tu:n :}
    \ The load holds the open declaration's opener: it rejects it there.
    OPEN @ 0 <> if t tu s" ;CALLBACK" ['] DISCARD SOURCE-ROOT:OPENED then
    R-NONE RES-KIND ! 0 FB-SET !
    0 READS !
    TOK@ NAME!
-   TOK@ {: a:ptr u:n :}
+   TOK@ {: a:^ u:n :}
    a u s" (" STR= 0= if
       s" expected '(' after the callback name, found " a u
       s" write CALLBACK: NAME ( in -- out )" TOKEN-REJECT
@@ -505,18 +504,18 @@ public
 \ CALLBACK: NAME ( in -- out ) clauses ;CALLBACK generates
 \   NAME           ( -- FFI-CB:callback )  the descriptor;
 \   NAME-BODY      a TYPED-VARIABLE holding the checked body, typed from the
-\                  declaration (i32/u32 read as n, ptr u8 as ptr u8);
+\                  declaration (i32/u32 read as n, ^u8 as ^u8);
 \   NAME-DISPATCH  ( -- ) reads the arguments from the marshal frame, runs the
 \                  body under catch and leaves the result for C, or the declared
 \                  fallback after a throw; a body never stored throws
 \                  E-FFI-CALLBACK-STATE.
-\ Arguments are register arguments only: n, i32, u32, r and ptr u8, at most
+\ Arguments are register arguments only: n, i32, u32, r and ^u8, at most
 \ INT-REGS integer and FLOAT-REGS float ones. A result is n, i32, u32, r or
 \ none; a value result needs `n FALLBACK` (r: `r FFALLBACK`), the answer C gets
 \ when the body throws. The throw code is kept for FAULT@ until CLEAR.
 \ The body may call C again, but a nested call shares the task's FFI scratch,
 \ so a scratch area C reads through a pointer is not safe across it. It may
-\ not UNBIND its own slot, keep a ptr u8 argument past its return, or define:
+\ not UNBIND its own slot, keep a ^u8 argument past its return, or define:
 \ exit $4F with a task live, exit 106 otherwise. TASK:PAUSE inside it only
 \ yields, so TASK:HALT and TASK:KILL take effect after C returns.
 \ A declaration defines words: declare every callback before the first task

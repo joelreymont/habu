@@ -62,7 +62,7 @@ $10FFFF constant SCALAR-LAST
       E-STR-BOUNDS throw
    then ;
 
-: LEAD@ ( ptr u8 n n -- n ) {: source:ptr length:n cursor:n :}
+: LEAD@ ( ^u8 n n -- n ) {: source:^ length:n cursor:n :}
    length cursor CURSOR-CHECK
    source cursor + c@ ;
 
@@ -102,8 +102,8 @@ $10FFFF constant SCALAR-LAST
    then
    E-STR-BOUNDS throw ;
 
-: FOLD-CONTINUATIONS ( ptr u8 n n n n -- n bool )
-   {: source:ptr remaining:n width:n index:n scalar:n :}
+: FOLD-CONTINUATIONS ( ^u8 n n n n -- n bool )
+   {: source:^ remaining:n width:n index:n scalar:n :}
    index width = if
       scalar YES exit
    then
@@ -132,8 +132,8 @@ $10FFFF constant SCALAR-LAST
       lead cursor >RAW-BYTE
    then ;
 
-: DECODE-MULTIBYTE ( ptr u8 n n n n -- scalar-step )
-   {: source:ptr remaining:n cursor:n lead:n width:n :}
+: DECODE-MULTIBYTE ( ^u8 n n n n -- scalar-step )
+   {: source:^ remaining:n cursor:n lead:n width:n :}
    source remaining width RAW-WIDTH lead width LEAD-SEED
    FOLD-CONTINUATIONS if
       cursor lead width DECODED-STEP
@@ -141,8 +141,8 @@ $10FFFF constant SCALAR-LAST
       drop lead cursor >RAW-BYTE
    then ;
 
-: DECODE-LEAD ( ptr u8 n n n -- scalar-step )
-   {: source:ptr remaining:n cursor:n lead:n :}
+: DECODE-LEAD ( ^u8 n n n -- scalar-step )
+   {: source:^ remaining:n cursor:n lead:n :}
    lead ASCII-LIMIT < if
       lead cursor RAW-WIDTH >SCALAR exit
    then
@@ -162,12 +162,12 @@ $10FFFF constant SCALAR-LAST
 
 public
 
-: NEXT ( ptr u8 n n -- scalar-step ) {: source:ptr length:n cursor:n :}
+: NEXT ( ^u8 n n -- scalar-step ) {: source:^ length:n cursor:n :}
    source length cursor LEAD@ {: lead:n :}
    source cursor + length cursor - cursor lead DECODE-LEAD ;
 
-: VALID? ( ptr u8 n -- bool )
-   {: source:ptr length:n :}
+: VALID? ( ^u8 n -- bool )
+   {: source:^ length:n :}
    length NONNEGATIVE
    0 begin dup length < while
       dup source + c@ ASCII-LIMIT < if
@@ -184,7 +184,7 @@ public
 
 \ A cap before a continuation byte backs up to its lead, and never more than a
 \ character's three trailing bytes, however many stray continuations precede it.
-: FIT ( ptr u8 n n -- n ) {: source:ptr length:n cap:n :}
+: FIT ( ^u8 n n -- n ) {: source:^ length:n cap:n :}
    length NONNEGATIVE  cap NONNEGATIVE
    length cap <= if length exit then
    cap begin

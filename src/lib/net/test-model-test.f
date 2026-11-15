@@ -29,31 +29,31 @@ $7F000001 constant LOOPBACK
 500 constant IDLE-MS
 
 1 TYPED-BUFFER CALL MODEL:call
-: M ( -- ptr MODEL:call ) 0 CALL ;
+: M ( -- ^MODEL:call ) 0 CALL ;
 
 $10000 TASK:TASK WORK-TASK
 TASK:SEMAPHORE IN-REC
 TASK:SEMAPHORE GO
 
-: KEY$ ( -- ptr u8 n ) s" test-model-key" ;
-: TEXT$ ( -- ptr u8 n ) S\" {\qanswer\q:\qsay \\\qhi\\\q\q}" ;
-: REASON$ ( -- ptr u8 n ) s" max_output_tokens" ;
+: KEY$ ( -- ^u8 n ) s" test-model-key" ;
+: TEXT$ ( -- ^u8 n ) S\" {\qanswer\q:\qsay \\\qhi\\\q\q}" ;
+: REASON$ ( -- ^u8 n ) s" max_output_tokens" ;
 
-: SCHEMA$ ( -- ptr u8 n )
+: SCHEMA$ ( -- ^u8 n )
    S\" {\qtype\q:\qobject\q,\qproperties\q:{\qanswer\q:{\qtype\q:\qstring\q}},\qrequired\q:[\qanswer\q]}" ;
-: TOOLS$ ( -- ptr u8 n )
+: TOOLS$ ( -- ^u8 n )
    S\" [{\qtype\q:\qfunction\q,\qname\q:\qlookup\q,\qparameters\q:{\qtype\q:\qobject\q,\qproperties\q:{}}}]" ;
-: TOOL-OUTPUT$ ( -- ptr u8 n )
+: TOOL-OUTPUT$ ( -- ^u8 n )
    S\" [{\qtype\q:\qreasoning\q,\qid\q:\qrs_1\q,\qsummary\q:[]},{\qtype\q:\qfunction_call\q,\qid\q:\qfc_1\q,\qcall_id\q:\qcall_1\q,\qname\q:\qlookup\q,\qarguments\q:\q{}\q,\qstatus\q:\qcompleted\q}]" ;
 
 
-: WINDOW$ ( -- ptr u8 n )
+: WINDOW$ ( -- ^u8 n )
    S\" [{\qtype\q:\qmessage\q,\qrole\q:\quser\q,\qcontent\q:[{\qtype\q:\qinput_text\q,\qtext\q:\qkept\q}]},{\qtype\q:\qcompaction\q,\qid\q:\qcmp_item\q,\qencrypted_content\q:\qsealed\q}]" ;
 
 
 \ Every item holds KEY$; a span too short for it is SECRET:E-CAPACITY, which
 \ MODEL answers by reading again into more room.
-: STORE-READ ( ptr u8 n ptr u8 n SPAN:span<u8> -- n bool )
+: STORE-READ ( ^u8 n ^u8 n SPAN:span<u8> -- n bool )
    {: dest:SPAN:span<u8> :}
    2drop 2drop
    KEY$ nip dest SPAN:LEN > if SECRET:E-CAPACITY throw then
@@ -61,11 +61,11 @@ TASK:SEMAPHORE GO
    KEY$ nip true ;
 
 
-: STORE-WRITE ( ptr u8 n ptr u8 n ptr u8 n -- )
+: STORE-WRITE ( ^u8 n ^u8 n ^u8 n -- )
    2drop 2drop 2drop SECRET:E-CONFIG throw ;
 
 
-: STORE-ERASE ( ptr u8 n ptr u8 n -- bool )
+: STORE-ERASE ( ^u8 n ^u8 n -- bool )
    2drop 2drop SECRET:E-CONFIG throw ;
 
 
@@ -80,8 +80,8 @@ TASK:SEMAPHORE GO
    s" POST" s" /compact/responses/compact" [: nip WINDOW$ TEST-MODEL:COMPACTION! ;] HTTP:ROUTE ;
 
 
-: AT ( ptr u8 n -- )
-   {: path:ptr pu:n :}
+: AT ( ^u8 n -- )
+   {: path:^ pu:n :}
    SB-RESET s" http://127.0.0.1:" SB-APPEND HTTP:PORT FMT:SB-U path pu SB-APPEND
    SB$ M MODEL:BASE-URL!
    M MODEL:PARTS-RESET
@@ -148,7 +148,7 @@ TASK:SEMAPHORE GO
    M MODEL:INPUT-TOKENS 11 T= ;
 
 
-: RECORD ( n ptr u8 n -- n )
+: RECORD ( n ^u8 n -- n )
    2drop drop
    IN-REC TASK:SIGNAL-SEM
    GO TASK:WAIT-SEM

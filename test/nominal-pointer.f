@@ -10,23 +10,23 @@ CAST: IDENTITY>N ( identity -- n )
 4 LAYOUT-BUFFER SLOT identity
 create RAW-CELL 1 cells allot
 
-: SECOND@ ( ptr identity -- identity ) cell+ @ ;
-: INDEX@ ( ptr identity n -- identity ) {: base index:n :}
+: SECOND@ ( ^identity -- identity ) cell+ @ ;
+: INDEX@ ( ^identity n -- identity ) {: base index:n :}
    base index cells + @ ;
-: REVERSE@ ( n ptr identity -- identity ) + @ ;
-: PREVIOUS@ ( ptr identity -- identity ) 1 cells - @ ;
-: DISTANCE ( ptr identity ptr identity -- n ) - ;
-: BYTE-ROUNDTRIP ( ptr identity -- identity ) char+ 1- @ ;
-: UNIT-ROUNDTRIP ( ptr identity -- identity ) 1+ 1- @ ;
+: REVERSE@ ( n ^identity -- identity ) + @ ;
+: PREVIOUS@ ( ^identity -- identity ) 1 cells - @ ;
+: DISTANCE ( ^identity ^identity -- n ) - ;
+: BYTE-ROUNDTRIP ( ^identity -- identity ) char+ 1- @ ;
+: UNIT-ROUNDTRIP ( ^identity -- identity ) 1+ 1- @ ;
 
-: PASS ( ptr a -- ptr a ) ;
-: GENERIC@ ( ptr a -- a ) @ ;
-: GENERIC! ( a ptr a -- ) ! ;
-: PASSED@ ( ptr identity -- identity ) PASS GENERIC@ ;
-: VIEWED-BYTE ( ptr identity -- u8 ) BYTE-VIEW c@ ;
-: STRUCT-BYTE ( ptr identity -- u8 ) 0 STRUCT-BYTE+ c@ ;
+: PASS ( ^a -- ^a ) ;
+: GENERIC@ ( ^a -- a ) @ ;
+: GENERIC! ( a ^a -- ) ! ;
+: PASSED@ ( ^identity -- identity ) PASS GENERIC@ ;
+: VIEWED-BYTE ( ^identity -- u8 ) BYTE-VIEW c@ ;
+: STRUCT-BYTE ( ^identity -- u8 ) 0 STRUCT-BYTE+ c@ ;
 
-: REJECT ( ptr u8 n -- )
+: REJECT ( ^u8 n -- )
    2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T= ;
 
 : RUN ( -- )
@@ -46,22 +46,22 @@ create RAW-CELL 1 cells allot
    0 SLOT STRUCT-BYTE 17 T=
    71 >IDENTITY 3 SLOT GENERIC!
    3 SLOT GENERIC@ IDENTITY>N 71 T=
-   s" NP-GOOD-STEP ( ptr identity -- identity ) cell+ @"
+   s" NP-GOOD-STEP ( ^identity -- identity ) cell+ @"
    CHECK-QUIET-CANDIDATE! -1 T=
-   s" NP-WRONG-STEP ( ptr identity -- ptr other ) cell+" REJECT
-   s" NP-WRONG-INDEX ( ptr identity n -- other ) cells + @" REJECT
-   s" NP-WRONG-DIFF ( ptr identity ptr other -- n ) -" REJECT
-   s" NP-WRONG-DIFF-REV ( ptr other ptr identity -- n ) -" REJECT
-   s" NP-PTR-PLUS-PTR ( ptr identity ptr identity -- ptr identity ) +" REJECT
-   s" NP-N-MINUS-PTR ( n ptr identity -- ptr identity ) -" REJECT
-   s" NP-RAW-STEP ( ptr a -- ptr identity ) cell+" REJECT
-   s" NP-RAW-DIFF ( ptr a ptr identity -- n ) -" REJECT
-   s" NP-RAW-DIFF-REV ( ptr identity ptr a -- n ) -" REJECT
-   s" NP-RAW-ADDRESS ( -- ptr identity ) RAW-CELL" REJECT
+   s" NP-WRONG-STEP ( ^identity -- ^other ) cell+" REJECT
+   s" NP-WRONG-INDEX ( ^identity n -- other ) cells + @" REJECT
+   s" NP-WRONG-DIFF ( ^identity ^other -- n ) -" REJECT
+   s" NP-WRONG-DIFF-REV ( ^other ^identity -- n ) -" REJECT
+   s" NP-PTR-PLUS-PTR ( ^identity ^identity -- ^identity ) +" REJECT
+   s" NP-N-MINUS-PTR ( n ^identity -- ^identity ) -" REJECT
+   s" NP-RAW-STEP ( ^a -- ^identity ) cell+" REJECT
+   s" NP-RAW-DIFF ( ^a ^identity -- n ) -" REJECT
+   s" NP-RAW-DIFF-REV ( ^identity ^a -- n ) -" REJECT
+   s" NP-RAW-ADDRESS ( -- ^identity ) RAW-CELL" REJECT
    s" NP-RAW-FETCH ( -- identity ) RAW-CELL GENERIC@" REJECT
    s" NP-RAW-STORE ( identity -- ) RAW-CELL GENERIC!" REJECT
-   s" NP-IMPLICIT-IDENTITY ( ptr a -- ptr identity ) PASS" REJECT
-   s" NP-BYTE-CELL ( ptr u8 -- n ) cell+ @" REJECT
+   s" NP-IMPLICIT-IDENTITY ( ^a -- ^identity ) PASS" REJECT
+   s" NP-BYTE-CELL ( ^u8 -- n ) cell+ @" REJECT
    T-REPORT ;
 
 RUN

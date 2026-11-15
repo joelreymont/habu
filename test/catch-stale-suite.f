@@ -25,22 +25,22 @@ package CATCH-STALE-TEST
 public
 
 variable CS-TICK
-: WBOOM ( ptr u8 -- ) drop E-CS-BOOM throw ;
-: WMAYBE ( ptr u8 -- ptr u8 ) dup c@ 0= IF E-CS-BOOM throw THEN ;
-: WKEEP ( ptr u8 -- ptr u8 ) dup c@ drop ;
+: WBOOM ( ^u8 -- ) drop E-CS-BOOM throw ;
+: WMAYBE ( ^u8 -- ^u8 ) dup c@ 0= IF E-CS-BOOM throw THEN ;
+: WKEEP ( ^u8 -- ^u8 ) dup c@ drop ;
 : CLEANMAYBE ( -- ) CS-TICK @ 0= IF E-CS-BOOM throw THEN ;
-: FINBODY ( ptr u8 -- ptr u8 ) dup c@ drop ;
-: FINW ( ptr u8 -- ptr u8 ) [: FINBODY ;] [: CLEANMAYBE ;] finally ;
+: FINBODY ( ^u8 -- ^u8 ) dup c@ drop ;
+: FINW ( ^u8 -- ^u8 ) [: FINBODY ;] [: CLEANMAYBE ;] finally ;
 
-: WMAYBE2 ( ptr u8 -- ptr u8 )
+: WMAYBE2 ( ^u8 -- ^u8 )
    dup c@ 0= IF E-CS-BOOM throw THEN
    dup c@ 65 = IF E-CS-BOOM throw THEN ;
-: WPARTLY ( ptr u8 -- ptr u8 )
+: WPARTLY ( ^u8 -- ^u8 )
    dup c@ 0= IF E-CS-BOOM throw THEN
    dup c@ 65 = IF drop 5 E-CS-BOOM throw THEN ;
-: WSWAPT ( n ptr u8 -- n ptr u8 ) swap E-CS-BOOM throw ;
-: WBIND ( ptr u8 -- ptr u8 ) {: p :} p drop E-CS-BOOM throw ;
-: WKEEPTOP ( ptr u8 n -- ptr u8 n )
+: WSWAPT ( n ^u8 -- n ^u8 ) swap E-CS-BOOM throw ;
+: WBIND ( ^u8 -- ^u8 ) {: p :} p drop E-CS-BOOM throw ;
+: WKEEPTOP ( ^u8 n -- ^u8 n )
    swap drop 5 swap E-CS-BOOM throw ;
 : WNUMBER-NEW ( -- n )
    CS-TICK @ 0= if E-CS-BOOM throw then
@@ -57,7 +57,7 @@ variable CS-TICK
    drop
    [: 5 ['] WNUMBER catch dup 0= if drop 1+ else 2drop 0 then ;] execute
    E-CS-BOOM throw ;
-: OUTER-PARTIAL-QUOTE ( ptr u8 n -- ptr u8 n )
+: OUTER-PARTIAL-QUOTE ( ^u8 n -- ^u8 n )
    [: swap dup drop swap ['] WNUMBER catch
       dup 0= if drop 1+ else 2drop 0 then ;] catch drop
    E-CS-BOOM throw ;
@@ -72,10 +72,10 @@ variable CS-TICK
 : ORDINARY-ZERO ( -- n ) 0 ;
 : ANY-ZERO? ( n -- bool ) drop true ;
 
-: CS-CODE< ( ptr u8 n -- )
+: CS-CODE< ( ^u8 n -- )
    REJECTION:CAPTURE  0 0= REJECTION:JSON !
    CHECK-CANDIDATE! 0 T= ;
-: CS-CODE? ( ptr u8 n -- )
+: CS-CODE? ( ^u8 n -- )
    REJECTION:BUFFER$ 2swap CONTAINS? TTRUE ;
 : CS-CODE-END ( -- ) 0 0= 0= REJECTION:JSON ! REJECTION:BUFFER-OFF ;
 \ A body's stale read is the catch's, never the interpret row's unknown cell,
@@ -88,7 +88,7 @@ variable CS-TICK
 
 \ R1: the throw path swapped the two cells and `catch` put back only the depth.
 : CS-SECTION-REPRODUCERS ( -- )
-   s" R1 ( n ptr u8 -- n ptr u8 n ) [: swap -99 throw ;] catch" CS-CODE<
+   s" R1 ( n ^u8 -- n ^u8 n ) [: swap -99 throw ;] catch" CS-CODE<
    CS-STALE?  CS-CODE-END ;
 
 \ `catch` restores the depth of both stacks, never their contents: a window cell
@@ -97,14 +97,14 @@ variable CS-TICK
 \ and a read is E-STALE-READ, named on the token that reads it, not on the
 \ binding.
 : CS-SECTION-READS ( -- )
-   s" R3 ( ptr u8 -- n ) [: WBOOM ;] catch {: v code:n :} v c@" CS-CODE<
+   s" R3 ( ^u8 -- n ) [: WBOOM ;] catch {: v code:n :} v c@" CS-CODE<
    CS-STALE?  s\" \"token\":\"c@\"" CS-CODE?  CS-CODE-END
    \ arithmetic on the stale cell is named E-STALE-READ on that token, not a ptr
    \ u8 / n mismatch
-   s" R4 ( ptr u8 -- n ) [: WBOOM ;] catch {: v code:n :} v 1 +" CS-CODE<
+   s" R4 ( ^u8 -- n ) [: WBOOM ;] catch {: v code:n :} v 1 +" CS-CODE<
    CS-STALE?  s\" \"token\":\"+\"" CS-CODE?  CS-CODE-END
    \ a typed local is itself the read
-   s" R5 ( ptr u8 -- n ) [: WBOOM ;] catch {: v:n code:n :} code" CS-CODE<
+   s" R5 ( ^u8 -- n ) [: WBOOM ;] catch {: v:n code:n :} code" CS-CODE<
    CS-STALE?  CS-CODE-END ;
 
 \ A zero branch proves only the matching catch completed normally. Equal
@@ -190,7 +190,7 @@ variable CS-TICK
    \ The quotation only replaces its numeric output; the pointer below it
    \ remains intact when the enclosing word throws.
    s" normal output loss stays with its occurrence" T-LABEL
-   s" PP2 ( ptr u8 n -- n ) ['] OUTER-PARTIAL-QUOTE catch {: code:n :} drop c@"
+   s" PP2 ( ^u8 n -- n ) ['] OUTER-PARTIAL-QUOTE catch {: code:n :} drop c@"
       CHECK-QUIET-CANDIDATE! -1 T= ;
 
 4096 constant CS-CHILD-CAP
@@ -198,9 +198,9 @@ create CS-CHILD-OUT CS-CHILD-CAP allot
 create CS-CHILD-ERR CS-CHILD-CAP allot
 create CS-PRODUCT-PATH PATH-CAP allot
 
-: CS-HB$ ( -- ptr u8 n ) s" bin/hb" ;
+: CS-HB$ ( -- ^u8 n ) s" bin/hb" ;
 
-: CS-PRODUCT$ ( -- ptr u8 n )
+: CS-PRODUCT$ ( -- ^u8 n )
    SOURCE-ROOT:CWD$ CS-HB$ CS-PRODUCT-PATH FS:JOIN-PATH {: u:n :}
    CS-PRODUCT-PATH u ;
 
@@ -219,11 +219,11 @@ variable CS-IMAGE-PATH-U
 variable CS-CHILD-OUT-U
 variable CS-CHILD-ERR-U
 
-: CS-IMAGE-ROOT$ ( -- ptr u8 n ) CS-IMAGE-ROOT-BUF CS-IMAGE-ROOT-U @ ;
-: CS-IMAGE$ ( -- ptr u8 n ) CS-IMAGE-PATH-BUF CS-IMAGE-PATH-U @ ;
+: CS-IMAGE-ROOT$ ( -- ^u8 n ) CS-IMAGE-ROOT-BUF CS-IMAGE-ROOT-U @ ;
+: CS-IMAGE$ ( -- ^u8 n ) CS-IMAGE-PATH-BUF CS-IMAGE-PATH-U @ ;
 
 : CS-IMAGE-PREPARE ( -- )
-   s" habu-catch-success" FS:MKTEMP-DIR {: path:ptr size:n :}
+   s" habu-catch-success" FS:MKTEMP-DIR {: path:^ size:n :}
    path CS-IMAGE-ROOT-BUF size BYTE-COPY
    size CS-IMAGE-ROOT-U !
    CS-IMAGE-ROOT$ FS:CLEANUP-TREE+
@@ -256,8 +256,8 @@ variable CS-CHILD-ERR-U
    CS-CHILD-OUT CS-CHILD-OUT-U @ s" catch-image: ok" CONTAINS? TTRUE
    CS-CHILD-OUT CS-CHILD-OUT-U @ s" catch-image-fresh: ok" CONTAINS? TTRUE ;
 
-: CS-SAVED-REFUSAL ( ptr u8 n ptr u8 n -- )
-   {: src:ptr size:n want:ptr wantu:n :}
+: CS-SAVED-REFUSAL ( ^u8 n ^u8 n -- )
+   {: src:^ size:n want:^ wantu:n :}
    PROC-ARGV-RESET
    CS-ENV!
    CS-IMAGE$ >LEN src size >LEN
@@ -288,15 +288,15 @@ variable CS-CHILD-ERR-U
 \ inputs every throw path left in place, and a call takes the edge with those
 \ cells kept. WMAYBE only reads its input, so R6 certifies.
 : CS-SECTION-EDGES ( -- )
-   s" R6 ( ptr u8 -- ptr u8 n ) [: WMAYBE ;] catch" CHECK-QUIET-CANDIDATE! -1 T=
+   s" R6 ( ^u8 -- ^u8 n ) [: WMAYBE ;] catch" CHECK-QUIET-CANDIDATE! -1 T=
    \ a `finally` cleanup that throws is a throw edge of the word that runs it
-   s" R7 ( ptr u8 -- ptr u8 n ) [: FINW ;] catch" CS-CODE<
+   s" R7 ( ^u8 -- ^u8 n ) [: FINW ;] catch" CS-CODE<
    CS-STALE?  CS-CODE-END
    \ a join: the loop needs the cell's type on the back edge, and WMAYBE's
    \ evidence is what carries it there (with WBOOM in its place this is refused,
    \ and no refinement ever un-stales a cell)
-   s" R8 ( ptr u8 -- ptr u8 ) begin [: WMAYBE ;] catch 0= until" CHECK-QUIET-CANDIDATE! -1 T=
-   s" R8B ( ptr u8 -- ptr u8 ) begin [: WBOOM CS-BUF ;] catch 0= until" CS-CODE<
+   s" R8 ( ^u8 -- ^u8 ) begin [: WMAYBE ;] catch 0= until" CHECK-QUIET-CANDIDATE! -1 T=
+   s" R8B ( ^u8 -- ^u8 ) begin [: WBOOM CS-BUF ;] catch 0= until" CS-CODE<
    CS-CODE-END
    \ A quotation literal infers its window on a fresh row, so at the edge the
    \ window cell is still an unbound variable and a rewrite with a value of the
@@ -316,22 +316,22 @@ variable CS-CHILD-ERR-U
 \ every path.
 : CS-SECTION-CALLEES ( -- )
    \ both throw paths leave the input where it was
-   s" C1 ( ptr u8 -- ptr u8 n ) [: WMAYBE2 ;] catch" CHECK-QUIET-CANDIDATE! -1 T=
+   s" C1 ( ^u8 -- ^u8 n ) [: WMAYBE2 ;] catch" CHECK-QUIET-CANDIDATE! -1 T=
    \ one of the two overwrote it
-   s" C2 ( ptr u8 -- ptr u8 n ) [: WPARTLY ;] catch" CS-CODE<
+   s" C2 ( ^u8 -- ^u8 n ) [: WPARTLY ;] catch" CS-CODE<
    CS-STALE?  CS-CODE-END
    \ R1's body as a callee: the throw path swapped the two cells
-   s" C3 ( n ptr u8 -- n ptr u8 n ) [: WSWAPT ;] catch" CS-CODE<
+   s" C3 ( n ^u8 -- n ^u8 n ) [: WSWAPT ;] catch" CS-CODE<
    CS-STALE?  CS-CODE-END
    \ the input was bound to a local: the cells the callee was given are spent
-   s" C4 ( ptr u8 -- ptr u8 n ) [: WBIND ;] catch" CS-CODE<
+   s" C4 ( ^u8 -- ^u8 n ) [: WBIND ;] catch" CS-CODE<
    CS-STALE?  CS-CODE-END
    \ per cell, not per word: WKEEPTOP keeps the top of its window and not the
    \ cell below it, so the `n` comes back typed ...
-   s" C6 ( ptr u8 n -- n ) [: WKEEPTOP ;] catch {: code:n :} nip"
+   s" C6 ( ^u8 n -- n ) [: WKEEPTOP ;] catch {: code:n :} nip"
       CHECK-QUIET-CANDIDATE! -1 T=
    \ ... and reading the cell below it is E-STALE-READ on the token that reads
-   s" C7 ( ptr u8 n -- n ) [: WKEEPTOP ;] catch {: code:n :} drop c@" CS-CODE<
+   s" C7 ( ^u8 n -- n ) [: WKEEPTOP ;] catch {: code:n :} drop c@" CS-CODE<
    CS-STALE?  s\" \"token\":\"c@\"" CS-CODE?  CS-CODE-END ;
 
 : CS-SECTION-ADMITS ( -- )
@@ -340,13 +340,13 @@ variable CS-CHILD-ERR-U
    s" A2 ( -- n ) [: 1 2 3 throw ;] catch" CHECK-QUIET-CANDIDATE! -1 T=
    s" A3 ( -- n ) [: 1 throw ;] catch" CHECK-QUIET-CANDIDATE! -1 T=
    \ the throw path left the window cell exactly where it was
-   s" A4 ( ptr u8 -- ptr u8 n ) [: dup c@ drop -99 throw ;] catch" CHECK-QUIET-CANDIDATE! -1 T=
+   s" A4 ( ^u8 -- ^u8 n ) [: dup c@ drop -99 throw ;] catch" CHECK-QUIET-CANDIDATE! -1 T=
    \ a body with no throw edge records nothing and stales nothing
-   s" A5 ( ptr u8 -- ptr u8 n ) [: WKEEP ;] catch" CHECK-QUIET-CANDIDATE! -1 T=
+   s" A5 ( ^u8 -- ^u8 n ) [: WKEEP ;] catch" CHECK-QUIET-CANDIDATE! -1 T=
    \ a stale cell may be bound to an untyped local and never read
-   s" A6 ( ptr u8 -- ) [: WBOOM ;] catch {: v code:n :}" CHECK-QUIET-CANDIDATE! -1 T=
+   s" A6 ( ^u8 -- ) [: WBOOM ;] catch {: v code:n :}" CHECK-QUIET-CANDIDATE! -1 T=
    \ and it may be moved and dropped
-   s" A7 ( ptr u8 ptr u8 -- ) [: WBOOM ;] catch drop swap 2drop" CHECK-QUIET-CANDIDATE! -1 T= ;
+   s" A7 ( ^u8 ^u8 -- ) [: WBOOM ;] catch drop swap 2drop" CHECK-QUIET-CANDIDATE! -1 T= ;
 
 \ A multicell bundle is one stale value: `catch` wraps each of a layout value's
 \ W hidden cells, and every question that finds the group sees through the
@@ -446,9 +446,9 @@ STRUCTURE cspt
 \ A4's shape, run: the caught body reads the address and throws, and the catch
 \ hands back the SAME address with the throw code on top.
 16 BUFFER: CS-BUF
-: CS-RT ( ptr u8 -- ptr u8 n ) [: dup c@ drop E-CS-BOOM throw ;] catch ;
+: CS-RT ( ^u8 -- ^u8 n ) [: dup c@ drop E-CS-BOOM throw ;] catch ;
 
-: CS-CRT ( ptr u8 -- ptr u8 n ) [: WMAYBE ;] catch ;
+: CS-CRT ( ^u8 -- ^u8 n ) [: WMAYBE ;] catch ;
 
 : CS-SECTION-RUNTIME ( -- )
    CS-BUF CS-RT {: p code:n :}
@@ -472,43 +472,43 @@ STRUCTURE cspt
 \ no body's evidence; the direct tick of that callee (T3) is refused beside
 \ them. A tick bound to a local in the same body is the term the tick pushed
 \ and keeps its edge (T7, T8).
-: WREPL ( ptr u8 -- ptr u8 ) drop CS-BUF E-CS-BOOM throw ;
-TYPED-VARIABLE CS-XT [ ptr u8 -- ptr u8 ]
-: CS-CATCHP ( ptr u8 [ ptr u8 -- ptr u8 ] -- ptr u8 n ) catch ;
-: CS-TRT ( ptr u8 -- ptr u8 n ) ['] WMAYBE catch ;
+: WREPL ( ^u8 -- ^u8 ) drop CS-BUF E-CS-BOOM throw ;
+TYPED-VARIABLE CS-XT [ ^u8 -- ^u8 ]
+: CS-CATCHP ( ^u8 [ ^u8 -- ^u8 ] -- ^u8 n ) catch ;
+: CS-TRT ( ^u8 -- ^u8 n ) ['] WMAYBE catch ;
 
 : CS-SECTION-TICK ( -- )
    \ R1's twin with the body as a callee: the tick carries its evidence
-   s" T1 ( n ptr u8 -- n ptr u8 n ) ['] WSWAPT catch" CS-CODE<
+   s" T1 ( n ^u8 -- n ^u8 n ) ['] WSWAPT catch" CS-CODE<
    CS-STALE?  CS-CODE-END
    \ R6's twin: the callee that only reads its input keeps the address typed
-   s" T2 ( ptr u8 -- ptr u8 n ) ['] WMAYBE catch" CHECK-QUIET-CANDIDATE! -1 T=
+   s" T2 ( ^u8 -- ^u8 n ) ['] WMAYBE catch" CHECK-QUIET-CANDIDATE! -1 T=
    \ the callee that replaces it does not, and the refusal names the read
-   s" T3 ( ptr u8 -- n ) ['] WREPL catch {: v code:n :} v c@" CS-CODE<
+   s" T3 ( ^u8 -- n ) ['] WREPL catch {: v code:n :} v c@" CS-CODE<
    CS-STALE?  s\" \"token\":\"c@\"" CS-CODE?  CS-CODE-END
    \ per cell, as C6/C7: WKEEPTOP keeps the top of its window ...
-   s" T4 ( ptr u8 n -- n ) ['] WKEEPTOP catch {: code:n :} nip"
+   s" T4 ( ^u8 n -- n ) ['] WKEEPTOP catch {: code:n :} nip"
       CHECK-QUIET-CANDIDATE! -1 T=
    \ ... and the cell below it is stale, named on the token that reads it
-   s" T5 ( ptr u8 n -- n ) ['] WKEEPTOP catch {: code:n :} drop c@" CS-CODE<
+   s" T5 ( ^u8 n -- n ) ['] WKEEPTOP catch {: code:n :} drop c@" CS-CODE<
    CS-STALE?  s\" \"token\":\"c@\"" CS-CODE?  CS-CODE-END
    \ C4's twin: a callee that bound its input to a local proved nothing
-   s" T6 ( ptr u8 -- ptr u8 n ) ['] WBIND catch" CS-CODE<
+   s" T6 ( ^u8 -- ^u8 n ) ['] WBIND catch" CS-CODE<
    CS-STALE?  CS-CODE-END
    \ the local-bound tick: the same term, so the same edge
-   s" T7 ( ptr u8 -- ptr u8 n ) ['] WREPL {: x :} x catch" CS-CODE<
+   s" T7 ( ^u8 -- ^u8 n ) ['] WREPL {: x :} x catch" CS-CODE<
    CS-STALE?  CS-CODE-END
-   s" T8 ( ptr u8 -- ptr u8 n ) ['] WMAYBE {: x :} x catch" CHECK-QUIET-CANDIDATE! -1 T=
+   s" T8 ( ^u8 -- ^u8 n ) ['] WMAYBE {: x :} x catch" CHECK-QUIET-CANDIDATE! -1 T=
    \ the boundary: the cell read and the parameter are fresh instances of the
    \ declared xt type, which carries no edge, so both still certify
-   s" T9 ( ptr u8 -- n ) ['] WREPL CS-XT ! CS-XT @ catch {: v code:n :} v c@"
+   s" T9 ( ^u8 -- n ) ['] WREPL CS-XT ! CS-XT @ catch {: v code:n :} v c@"
       CHECK-QUIET-CANDIDATE! -1 T=
-   s" T10 ( ptr u8 -- n ) ['] WREPL CS-CATCHP {: v code:n :} v c@"
+   s" T10 ( ^u8 -- n ) ['] WREPL CS-CATCHP {: v code:n :} v c@"
       CHECK-QUIET-CANDIDATE! -1 T=
    \ a callee that never returns is fit-checked against its declared output row:
    \ WBOOM leaves nothing where its window was, and that is the refusal, not the
    \ stale rule, which would need the dead flag the tick does not take
-   s" T11 ( ptr u8 -- n ) ['] WBOOM catch {: v code:n :} code" CS-CODE<
+   s" T11 ( ^u8 -- n ) ['] WBOOM catch {: v code:n :} code" CS-CODE<
    s\" \"code\":\"E-STALE-READ\"" REJECTION:BUFFER$ 2swap CONTAINS? TFALSE
    CS-CODE-END
    \ and the intact cell is honest at run time through the tick as well: WMAYBE

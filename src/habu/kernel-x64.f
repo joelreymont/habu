@@ -89,7 +89,7 @@ $1000 constant PAGE-BYTES              \ the x86-64 Linux base page
 : IMM32, ( r64 n -- ) {: r:r64 v:n :}
    r R64>N >R32 v >IMM32 ASM-SINK ENC-MOV32-RI32 ;
 
-: TEXT, ( ptr u8 n -- ) BUF:N>BLEN ASM-SINK BUF:APPEND-SPAN ;
+: TEXT, ( ^u8 n -- ) BUF:N>BLEN ASM-SINK BUF:APPEND-SPAN ;
 
 : EXIT-GROUP, ( n -- ) {: rc:n :} RDI rc IMM32,  NR-EXIT-GROUP SYS, ;
 
@@ -126,9 +126,9 @@ variable SCOPE-KIND-CELL
 defer BODY ( -- )
 PTR-VARIABLE ROW-A
 variable ROW-U
-: ROW$ ( -- ptr u8 n ) ROW-A @ ROW-U @ ;
+: ROW$ ( -- ^u8 n ) ROW-A @ ROW-U @ ;
 
-: ARGS ( ptr u8 n [ -- ] -- )
+: ARGS ( ^u8 n [ -- ] -- )
    is BODY  ROW-U !  ROW-A !
    ROW$ ENGINE-PRIMS:SPEC-CHECK ;
 
@@ -139,14 +139,14 @@ variable ROW-U
    first X64CODE:LBL,  BODY  ASM-SINK ENC-RET  last X64CODE:LBL,
    row ;
 
-: REFUSE-HEAD$ ( -- ptr u8 n ) s" hb: " ;
-: REFUSE-TAIL$ ( -- ptr u8 n ) s"  is not in the x86-64 kernel" ;
+: REFUSE-HEAD$ ( -- ^u8 n ) s" hb: " ;
+: REFUSE-TAIL$ ( -- ^u8 n ) s"  is not in the x86-64 kernel" ;
 
 : STDERR-WRITE, ( label n -- ) {: msg:label len:n :}
    RDI STDERR IMM32,  RSI msg MOVABS,  RDX len IMM32,  NR-WRITE SYS, ;
 
 \ The text follows the exit, inside the record.
-: STDERR-EXIT, ( ptr u8 n n -- ) {: a:ptr u:n rc:n :}
+: STDERR-EXIT, ( ^u8 n n -- ) {: a:^ u:n rc:n :}
    X64CODE:LBL {: msg:label :}
    msg u STDERR-WRITE,
    rc EXIT-GROUP,
@@ -165,24 +165,24 @@ variable ROW-U
 
 public
 
-: PRIM ( ptr u8 n [ -- ] -- )
+: PRIM ( ^u8 n [ -- ] -- )
    ARGS
    EMIT-ROW drop ;
 
 \ The twin of habu1.f FPRIM-WID.
-: PRIM-WID ( ptr u8 n [ -- ] n -- ) {: wid:n :}
+: PRIM-WID ( ^u8 n [ -- ] n -- ) {: wid:n :}
    ARGS
    wid EMIT-ROW ENGINE-PRIMS:WID! ;
 
 \ A row the x86-64 kernel does not carry: its body writes `hb: <name> is not
 \ in the x86-64 kernel` on fd 2 and exits REFUSE-RC.
-: REFUSE ( ptr u8 n -- ) [: REFUSE-BODY ;] PRIM ;
+: REFUSE ( ^u8 n -- ) [: REFUSE-BODY ;] PRIM ;
 
 \ REFUSE whose record carries wid n, for a row ARM64 registers through
 \ FPRIM-WID: the refusal's record is as visible as the body that replaces it.
-: REFUSE-WID ( ptr u8 n n -- ) {: wid:n :} [: REFUSE-BODY ;] wid PRIM-WID ;
+: REFUSE-WID ( ^u8 n n -- ) {: wid:n :} [: REFUSE-BODY ;] wid PRIM-WID ;
 
-: ENTRY-LABEL ( ptr u8 n -- label ) {: a:ptr u:n :}
+: ENTRY-LABEL ( ^u8 n -- label ) {: a:^ u:n :}
    ENGINE-PRIMS:COUNT 0 ?do
       i ENGINE-PRIMS:NAME$ a u CORE-STR= if
          i ENGINE-PRIMS:FIRST-LABEL unloop exit
@@ -263,15 +263,15 @@ CELL 4 * constant DIAG-BYTES
    RSP DIAG-BYTES >IMM8 ASM-SINK ENC-ADD-RI8 ;
 
 \ The DP refusal's line, before and between its two numbers.
-: DPBAD-HEAD$ ( -- ptr u8 n ) s" hb: data space out of range: heap byte " ;
+: DPBAD-HEAD$ ( -- ^u8 n ) s" hb: data space out of range: heap byte " ;
 \ The line CONTROL,'s floor recovery writes before the token.
-: UNDERDEPTH$ ( -- ptr u8 n ) s" E-UNDERFLOW habu: interpret stack underdepth: " ;
-: DPBAD-OF$ ( -- ptr u8 n ) s"  of " ;
-: DPBAD-UNIT$ ( -- ptr u8 n ) s"  bytes" ;
-: DPBAD-AT$ ( -- ptr u8 n ) s"  at " ;
-: DPBAD-COLON$ ( -- ptr u8 n ) s" :" ;
+: UNDERDEPTH$ ( -- ^u8 n ) s" E-UNDERFLOW habu: interpret stack underdepth: " ;
+: DPBAD-OF$ ( -- ^u8 n ) s"  of " ;
+: DPBAD-UNIT$ ( -- ^u8 n ) s"  bytes" ;
+: DPBAD-AT$ ( -- ^u8 n ) s"  at " ;
+: DPBAD-COLON$ ( -- ^u8 n ) s" :" ;
 \ The line the overlay refusal writes before the token.
-: OVERLAY-OPEN$ ( -- ptr u8 n ) s" E-OVERLAY-OPEN habu: definition while a checker replay is open: " ;
+: OVERLAY-OPEN$ ( -- ^u8 n ) s" E-OVERLAY-OPEN habu: definition while a checker replay is open: " ;
 
 \ The status a refused DP exits with: habu2.f LDPBAD's.
 76 constant DPBAD-RC
@@ -1898,7 +1898,7 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
    RCX ASM-SINK ENC-POP
    quiet X64CODE:LBL, ;
 
-\ die ( ptr u8 n n -- ): the text, then the exit hook, then the exit. The
+\ die ( ^u8 n n -- ): the text, then the exit hook, then the exit. The
 \ hook's cell is cleared before the call (layout.f EXIT-HOOK-CELL, habu2.f
 \ EMIT-EXITHOOK), so a hook that dies or throws finds it empty, and the
 \ handler chain with it, so a hook's throw is uncaught rather than resuming a
@@ -1915,7 +1915,7 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
    RDI ASM-SINK ENC-POP
    0 RC-EXIT, ;
 
-\ die-closed ( ptr u8 n n -- ): the text, then the exit; no exit hook runs.
+\ die-closed ( ^u8 n n -- ): the text, then the exit; no exit hook runs.
 : DIE-CLOSED, ( -- )
    DIE-TEXT,  RDI ASM-SINK ENC-POP  0 RC-EXIT, ;
 
@@ -1938,7 +1938,7 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
 48 constant SF-INDEX
 56 constant SF-QUAL-PUB
 
-\ scope-find ( ptr u8 n -- bound used used2 flags ). A qualified name searches
+\ scope-find ( ^u8 n -- bound used used2 flags ). A qualified name searches
 \ the namespace record's public wid. Bare names search the open private/public
 \ wids, the enclosing package's (layout.f ENCLOSING) while a part is open,
 \ then global, while the used publics are collected independently. Two
@@ -2422,13 +2422,13 @@ private
    1 X64RT:G-POP  0 X64RT:G-POP
    RAX RCX MEM-AT ASM-SINK ENC-XCHG-MR ;
 
-\ atomic-add ( n ptr n -- n ), answering the value the cell held.
+\ atomic-add ( n ^n -- n ), answering the value the cell held.
 : ATOMIC-ADD, ( -- )
    1 X64RT:G-POP  0 X64RT:G-POP
    RAX RCX MEM-AT ASM-SINK ENC-LOCK-XADD-MR
    0 X64RT:G-PUSH ;
 
-\ atomic-cas ( a a ptr a -- a ): the expected value in rax and the new one in
+\ atomic-cas ( a a ^a -- a ): the expected value in rax and the new one in
 \ rdx. It answers the value the cell held, which cmpxchg leaves in rax whether
 \ or not it matched.
 : ATOMIC-CAS, ( -- )
@@ -2742,7 +2742,7 @@ variable SITE-TRAP-CELL
 24 constant PUB-SLOT
 32 constant PUB-FRAME
 
-\ code-publish ( ptr u8 n n -- ): the twin of BCODEPUBLISH. The span is nonzero,
+\ code-publish ( ^u8 n n -- ): the twin of BCODEPUBLISH. The span is nonzero,
 \ does not wrap and lies in [DBASE+DICT-SIZE, DBASE+REGION), and dst is CP: a
 \ publication is an append. int3 fills [dst+len, slot), and the site rows of
 \ both kinds in [dst, slot) go, since the span's sites are recorded after and
@@ -2966,7 +2966,7 @@ variable SITE-TRAP-CELL
 
 \ Store the suffix's bytes at rdi and step past them.
 : SUFFIX, ( -- )
-   DOES-CLAUSE:SUFFIX$ {: a:ptr u:n :}
+   DOES-CLAUSE:SUFFIX$ {: a:^ u:n :}
    u 0 ?do
       RAX a i + c@ IMM32,
       0 >R8 RDI i MEM-OFF ASM-SINK ENC-MOV8-MR
@@ -3075,7 +3075,7 @@ private
 : FIND-ARGS, ( -- )
    RDX R64>N X64RT:G-POP  RSI R64>N X64RT:G-POP  RDI R64>N X64RT:G-POP ;
 
-\ `search-wl ( ptr u8 n n -- n )`, the twin of habu1.f BSWL: the code cell of
+\ `search-wl ( ^u8 n n -- n )`, the twin of habu1.f BSWL: the code cell of
 \ the name's record in one wordlist, or 0. An engine helper's wid
 \ (OWNER-API-PRI-WID) is refused before the search and a DNAME-INT record
 \ answers 0, so `search-wl execute` never reaches an internal word.
@@ -3094,7 +3094,7 @@ private
    push X64CODE:LBL,
    RAX R64>N X64RT:G-PUSH ;
 
-\ `xref-search-wl ( ptr u8 n n -- ptr n )`, the twin of habu1.f BCOMPILERSWL:
+\ `xref-search-wl ( ^u8 n n -- ^n )`, the twin of habu1.f BCOMPILERSWL:
 \ the record itself, or 0, with neither refusal; its checker row admits it
 \ only at a trusted boundary.
 : XREF-SEARCH-WL-BODY ( -- )
@@ -3478,7 +3478,7 @@ private
    R8 RCX PD-SLOT >IMM32 ASM-SINK ENC-IMUL-RRI32
    R8 DATA-REG R8 1 PD-TABLE-OFF PD-SLOTS-REL + MEM-IDX ASM-SINK ENC-LEA ;
 
-: UNDRAINED$ ( -- ptr u8 n ) s" hb: undrained pre-trust defer: " ;
+: UNDRAINED$ ( -- ^u8 n ) s" hb: undrained pre-trust defer: " ;
 
 \ SEAL-CAPTURE ( -- ): record the count as the seal floor. The pending table
 \ must be empty by then, since checker.f drains it after `: TRUST`; a pending
@@ -4142,7 +4142,7 @@ $C8 constant CBT-BYTES              \ entry rsp becomes 16-byte aligned
 16 constant CBT-STUB-BYTES
 
 \ These exits have the same messages and status as the ARM callback thunk.
-: CB-DIE, ( ptr u8 n label -- ) {: a:ptr u:n at:label :}
+: CB-DIE, ( ^u8 n label -- ) {: a:^ u:n at:label :}
    at X64CODE:LBL,
    a u ENGINE-ERROR:CALLBACK STDERR-EXIT, ;
 
@@ -4439,7 +4439,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
    NDICT-REG REPLAY-SCOPE:HW CELL!,
    keep X64CODE:LBL, ;
 
-\ namespace-record ( ptr u8 n bool -- n ): habu2.f DEFWRITE:NAMESPACE-RECORD's
+\ namespace-record ( ^u8 n bool -- n ): habu2.f DEFWRITE:NAMESPACE-RECORD's
 \ twin; src/habu/prims.f states its contract.
 : NAMESPACE-RECORD-BODY ( -- )
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: scan:label next:label clean:label one:label :}
@@ -4598,7 +4598,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RDX PKG-PARENT-CELL CELL!,  R8 PKG-REC-CELL CELL!,
    done X64CODE:LBL, ;
 
-\ def-open ( ptr u8 n n n -- ) name, wid, kind: record NDICT unpublished, [0]
+\ def-open ( ^u8 n n n -- ) name, wid, kind: record NDICT unpublished, [0]
 \ CP past the name, [8] 0, the kind beside the length and the wid in [40];
 \ PEND-CELL the record; TSIG, TCSIG, DOESB, CLAUSE and TRUSTED clear;
 \ COMP-LATCH-CELL takes the latch. A DKIND:ADDR kind carries DNAME-ALLOC, and
@@ -4780,8 +4780,8 @@ $3A constant NAME-COLON                \ a qualified name's separator
 \ A capacity doubled to 2^59 is refused before its map: 17 * 2^58 stays below
 \ 2^63, so a block's size never wraps.
 59 constant GROW-LIMIT-SHIFT
-: GROW-HEAD$ ( -- ptr u8 n ) s" hb: cannot grow definition body text to " ;
-: GROW-UNIT$ ( -- ptr u8 n ) s"  bytes" ;
+: GROW-HEAD$ ( -- ^u8 n ) s" hb: cannot grow definition body text to " ;
+: GROW-UNIT$ ( -- ^u8 n ) s"  bytes" ;
 
 variable GROW-CELL
 : GROW-LBL ( -- label ) GROW-CELL @ >LABEL ;
@@ -4856,7 +4856,7 @@ variable GROW-CELL
    head X64CODE:LBL,  GROW-HEAD$ TEXT,
    unit X64CODE:LBL,  GROW-UNIT$ TEXT, ;
 
-\ body-capture ( ptr u8 n -- ): habu2.f BODY-APPEND's twin, with BODY-ROW,.
+\ body-capture ( ^u8 n -- ): habu2.f BODY-APPEND's twin, with BODY-ROW,.
 \ BODYLEN past the capacity and a length that wraps exit SEAL-VIOLATION; with
 \ no block, or none the run and its space fit, GROW-LBL grows it first.
 : BODY-APPEND-BODY ( -- )
@@ -4880,7 +4880,7 @@ variable GROW-CELL
    0 >R8 RDI MEM-AT ASM-SINK ENC-MOV8-MR
    RDX BODYLEN-CELL CELL!, ;
 
-\ ( ptr u8 n -- ): the span into the cells aoff and uoff while a
+\ ( ^u8 n -- ): the span into the cells aoff and uoff while a
 \ definition is pending.
 : PENDING-SPAN-BODY ( n n -- ) {: aoff:n uoff:n :}
    RCX POP,  RAX POP,
@@ -4888,12 +4888,12 @@ variable GROW-CELL
    RDX RDX ASM-SINK ENC-TEST-RR  C-E SEAL-TRAP-LBL JCC,
    RAX aoff CELL!,  RCX uoff CELL!, ;
 
-\ trust-sig! ( ptr u8 n -- ): the pending definition's signature span into
+\ trust-sig! ( ^u8 n -- ): the pending definition's signature span into
 \ TSIG-A and TSIG-U.
 : TRUST-SIG-BODY ( -- )
    TSIG-A-CELL TSIG-U-CELL PENDING-SPAN-BODY ;
 
-\ created-sig! ( ptr u8 n -- ): the pending definition's `does>` signature
+\ created-sig! ( ^u8 n -- ): the pending definition's `does>` signature
 \ span into TCSIG-A and TCSIG-U.
 : CREATED-SIG-BODY ( -- )
    TCSIG-A-CELL TCSIG-U-CELL PENDING-SPAN-BODY ;
@@ -5024,7 +5024,7 @@ JMP-BYTES 1+ constant PATCH-SLOT       \ the jump and the return
 
 \ rax = the active checker's operation at offset n of its record; with no
 \ record or no operation the process ends naming it.
-: OWNER-OP, ( n ptr u8 n -- ) {: off:n a:ptr u:n :}
+: OWNER-OP, ( n ^u8 n -- ) {: off:n a:^ u:n :}
    X64CODE:LBL X64CODE:LBL {: absent:label found:label :}
    RAX NCOMP-DISPATCH:DECL-CELL CELL@,
    RAX RAX ASM-SINK ENC-TEST-RR  C-E absent JCC,
@@ -5060,7 +5060,7 @@ JMP-BYTES 1+ constant PATCH-SLOT       \ the jump and the return
    R8 PROT-RX PROT-REC,
    done X64CODE:LBL, ;
 
-\ does-patch ( n ptr u8 n -- ) clause entry, created signature: the twin of
+\ does-patch ( n ^u8 n -- ) clause entry, created signature: the twin of
 \ habu2.f DOESPATCH:PRIM and LDOESPATCH over the record LASTC-CELL names. Its
 \ absent or retired record throws named code 70 before any patch. Its routine
 \ must end in the slot, E9 at slot and C3 at slot+5, else the row exits 83
@@ -5109,7 +5109,7 @@ JMP-BYTES 1+ constant PATCH-SLOT       \ the jump and the return
    scan JMP,
    done X64CODE:LBL, ;
 
-: DOES-NONE$ ( -- ptr u8 n )
+: DOES-NONE$ ( -- ^u8 n )
    S\" hb: does> has no created word\n" ;
 
 : DOES-PATCH-BODY ( -- )

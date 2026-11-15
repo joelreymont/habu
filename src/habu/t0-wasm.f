@@ -215,7 +215,7 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
    OP-RETURN B,
    CLOSE ;
 
-: BYTES ( -- ptr u8 n ) SINK BUF:SPAN$ BUF:BLEN>N ;
+: BYTES ( -- ^u8 n ) SINK BUF:SPAN$ BUF:BLEN>N ;
 
 \ A Wasm body is never placed at a host address.
 : PATCH ( n -- ) drop E-COMP-STATE throw ;
@@ -463,18 +463,18 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
    ENGINE-ERROR:STACK-BOUNDS FAULT-KIND,  L-AT GET,  OP-I64-EXTEND-I32-U B,
    FAULT-END,  END, ;
 
-: TOR ( ptr vreg n -- ) {: p:ptr n:n :}
+: TOR ( ^vreg n -- ) {: p:^ n:n :}
    RTOP
    WPROF:RETURN-BASE STACK-ABI:RETURN-BYTES +  n CELL-BYTES * -  BOUND
    n 0 ?do  p i VREG-AT  i CELL-BYTES * AT-STORE  loop
    RDEPTH-AT n DEPTH+ ;
 
-: RFROM ( ptr vreg n -- ) {: p:ptr n:n :}
+: RFROM ( ^vreg n -- ) {: p:^ n:n :}
    RDEPTH-AT n negate DEPTH+
    RTOP
    n 0 ?do  p i VREG-AT  i CELL-BYTES * AT-LOAD  loop ;
 
-: RFETCH ( ptr vreg n n -- ) {: p:ptr n:n k:n :}
+: RFETCH ( ^vreg n n -- ) {: p:^ n:n k:n :}
    RTOP  n k + CELL-BYTES * AT-,
    n 0 ?do  p i VREG-AT  i CELL-BYTES * AT-LOAD  loop ;
 

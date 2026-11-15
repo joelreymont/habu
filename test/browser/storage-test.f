@@ -36,16 +36,16 @@ PATH-CAP BUFFER: FILE
 variable FILE-U
 DYNAMIC-BUFFER PAYLOAD u8
 
-: ARG+ ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
+: ARG+ ( ^u8 n -- ) >LEN PROC-ARGV+ ;
 
 : SETUP ( -- )
-   s" browser-storage" FS:MKTEMP-DIR {: a:ptr u:n :}
+   s" browser-storage" FS:MKTEMP-DIR {: a:^ u:n :}
    a DIR u BYTE-COPY u DIR-U !
    DIR u s" storage.wasm" MOD FS:JOIN-PATH MOD-U !
    DIR u s" payload.bin" FILE FS:JOIN-PATH FILE-U !
    s" browser storage: module, payload and output in " type DIR u type cr ;
 
-: SPAWN ( ptr u8 len -- n )
+: SPAWN ( ^u8 len -- n )
    OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N
    {: outu:len erru:len rc:n :}
@@ -56,8 +56,8 @@ DYNAMIC-BUFFER PAYLOAD u8
 : BUILD ( -- n )
    s" test/browser/storage.f" MOD MOD-U @ WASM-HARNESS:BUILD ;
 
-: SUM ( ptr u8 n -- n )
-   {: a:ptr u:n :}
+: SUM ( ^u8 n -- n )
+   {: a:^ u:n :}
    0 u 0 ?do 31 * a i + c@ + $FFFFFFFF and loop ;
 
 : PAYLOAD! ( -- n )
@@ -67,7 +67,7 @@ DYNAMIC-BUFFER PAYLOAD u8
    FILE FILE-U @ 0 PAYLOAD u FS:WRITE-ALL
    0 PAYLOAD u SUM ;
 
-: WANT ( n -- ptr u8 n )
+: WANT ( n -- ^u8 n )
    {: sum:n :}
    SB-RESET
    S\" hello\ntext loading\nfetch fixture\ntext " SB-APPEND
@@ -109,7 +109,7 @@ public
    s" it validates" T-LABEL
    MOD MOD-U @ WASM-HARNESS:VALID? TTRUE
    PAYLOAD! {: sum:n :}
-   sum WANT {: want:ptr wu:n :}
+   sum WANT {: want:^ wu:n :}
    s" the buffer grows beside the fetched bytes, keeps them, and its freed pages return cleared" T-LABEL
    false HOST {: status:n :}
    status 0 T=
@@ -121,7 +121,7 @@ public
    true HOST 0 T=
    sum WANT drop drop
    s\" text typed 1000\n" SB-APPEND
-   SB$ {: all:ptr allu:n :}
+   SB$ {: all:^ allu:n :}
    DIR DIR-U @ s" actual.txt" FILE FS:JOIN-PATH FILE-U !
    FILE FILE-U @ OUT OUT-U @ FS:WRITE-ALL
    DIR DIR-U @ s" expected.txt" FILE FS:JOIN-PATH FILE-U !

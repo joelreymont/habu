@@ -66,8 +66,8 @@ $100018B0 constant RAW-CONTROL   \ BOTHER both ways, CS8 | CREAD | CLOCAL.
 
 \ Two records: Darwin's 72-byte termios or Linux's 44-byte termios2.
 144 TASK:+USERS IO-STORAGE u8
-: TERM ( -- ptr u8 ) 0 IO-STORAGE ;
-: SAVED ( -- ptr u8 ) 72 IO-STORAGE ;
+: TERM ( -- ^u8 ) 0 IO-STORAGE ;
+: SAVED ( -- ^u8 ) 72 IO-STORAGE ;
 
 CAST: BLEN>N ( NUM:byte-len -- n )
 
@@ -91,11 +91,11 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 : CHECK-HANDLE ( handle -- ) HANDLE>N 0 $7FFFFFFF RANGE ;
 
 
-: LE32! ( n ptr u8 -- ) {: value:n target :}
+: LE32! ( n ^u8 -- ) {: value:n target :}
    4 0 do value i 8 * rshift $FF and target i + c! loop ;
 
 
-: LE32@ ( ptr u8 -- n ) {: source :}
+: LE32@ ( ^u8 -- n ) {: source :}
    source c@ source $01 + c@ 8 lshift or
    source $02 + c@ 16 lshift or source $03 + c@ 24 lshift or ;
 
@@ -103,13 +103,13 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 \ libc's calls. Darwin passes ioctl's variadic pointer on the stack.
 \ test/serial.py covers these boundaries through real kernel pseudoterminals.
 PROCESS-SYMBOLS
-FUNCTION: OPEN-CALL open ( ptr u8 n -- i32 ) ;FUNCTION
-FUNCTION: GET-CALL ioctl ( n n ptr u8 -- i32 )
+FUNCTION: OPEN-CALL open ( ^u8 n -- i32 ) ;FUNCTION
+FUNCTION: GET-CALL ioctl ( n n ^u8 -- i32 )
    2 VARIADIC
 ;FUNCTION
-FUNCTION: SET-CALL ioctl ( n n ptr u8 -- i32 ) 2 VARIADIC ;FUNCTION
-FUNCTION: READ-CALL read ( n ptr u8 n -- n ) ;FUNCTION
-FUNCTION: WRITE-CALL write ( n ptr u8 n -- n ) ;FUNCTION
+FUNCTION: SET-CALL ioctl ( n n ^u8 -- i32 ) 2 VARIADIC ;FUNCTION
+FUNCTION: READ-CALL read ( n ^u8 n -- n ) ;FUNCTION
+FUNCTION: WRITE-CALL write ( n ^u8 n -- n ) ;FUNCTION
 FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
 
@@ -117,23 +117,23 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 : LAST-ERROR ( -- errno ) FFI:ERRNO >ERRNO ;
 
 
-: OPEN-RAW ( ptr u8 -- n ) OPEN-FLAGS OPEN-CALL ;
+: OPEN-RAW ( ^u8 -- n ) OPEN-FLAGS OPEN-CALL ;
 
 
-: GET-RAW ( handle ptr u8 -- n ) {: handle:handle target :}
+: GET-RAW ( handle ^u8 -- n ) {: handle:handle target :}
    handle HANDLE>N GET-TERM target GET-CALL ;
 
 
-: SET-RAW ( handle ptr u8 -- n ) {: handle:handle source :}
+: SET-RAW ( handle ^u8 -- n ) {: handle:handle source :}
    handle HANDLE>N SET-TERM source SET-CALL ;
 
 
-: READ-RAW ( handle ptr u8 NUM:byte-len -- n )
+: READ-RAW ( handle ^u8 NUM:byte-len -- n )
    {: handle:handle bytes capacity:NUM:byte-len :}
    handle HANDLE>N bytes capacity BLEN>N READ-CALL ;
 
 
-: WRITE-RAW ( handle ptr u8 NUM:byte-len -- n )
+: WRITE-RAW ( handle ^u8 NUM:byte-len -- n )
    {: handle:handle bytes size:NUM:byte-len :}
    handle HANDLE>N bytes size BLEN>N WRITE-CALL ;
 
@@ -143,7 +143,7 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
 \ The OS answers a path too long for it; the copy's mapping is released on
 \ every exit, the refusal of a 0 byte included.
-: PATH-OPEN ( ptr u8 n -- n )
+: PATH-OPEN ( ^u8 n -- n )
    {: text size:n :}
    size 1 < if E-OPERAND throw then
    text size size FFI:CSTR-ROOM MEM:BYTES-ALLOC-LEN
@@ -258,7 +258,7 @@ public
 \ speeds), keeps HUPCL, and reads the settings back: anything short of that is
 \ `unsupported`. A failed configure restores the old settings best-effort and
 \ closes. The caller uses CLOSE exactly once.
-: OPEN8N1 ( ptr u8 n baud -- open-result ) {: path size:n baud:baud :}
+: OPEN8N1 ( ^u8 n baud -- open-result ) {: path size:n baud:baud :}
    baud BAUD>N 1 $FFFFFFFF RANGE
    path size PATH-OPEN dup 0 < if negate >ERRNO SERIAL-OPEN--RESULT:failed exit then
    >HANDLE {: handle:handle :}
@@ -273,7 +273,7 @@ public
 \ refused.
 \ Timeout is 0..INT32_MAX milliseconds, negative for no deadline; zero never
 \ waits for future readiness.
-: READ ( handle ptr u8 NUM:byte-len ms -- io-result )
+: READ ( handle ^u8 NUM:byte-len ms -- io-result )
    {: handle:handle bytes capacity:NUM:byte-len timeout:ms :}
    handle capacity CHECK-IO timeout DEADLINE {: deadline:ns :}
    begin
@@ -292,7 +292,7 @@ public
 \ is refused. Success does not prove bytes reached the device. Input is
 \ borrowed for this call. Timeout is 0..INT32_MAX milliseconds, negative for no
 \ deadline.
-: WRITE ( handle ptr u8 NUM:byte-len ms -- io-result )
+: WRITE ( handle ^u8 NUM:byte-len ms -- io-result )
    {: handle:handle bytes size:NUM:byte-len timeout:ms :}
    handle size CHECK-IO timeout DEADLINE {: deadline:ns :}
    begin

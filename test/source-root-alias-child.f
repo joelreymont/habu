@@ -12,24 +12,24 @@ public
 : BUMP ( n -- ) LOADED +! ;
 private
 
-: ROOT$ ( -- ptr u8 n ) 0 SCRIPT-ARGV$ ;
+: ROOT$ ( -- ^u8 n ) 0 SCRIPT-ARGV$ ;
 
-: PATH! ( ptr u8 n -- ) {: a:ptr u:n :}
+: PATH! ( ^u8 n -- ) {: a:^ u:n :}
    u INCLUDE-PATH-CAP > if E-FS-CAPACITY throw then
    a PATH-BUF u BYTE-COPY u PATH-U ! ;
 
-: PATH$ ( -- ptr u8 n ) PATH-BUF PATH-U @ ;
+: PATH$ ( -- ^u8 n ) PATH-BUF PATH-U @ ;
 
 \ JOIN storage is resolver scratch; each query may overwrite it. Retain the
 \ requested spelling so every consumer sees the same original bytes.
-: KNOWN ( ptr u8 n -- )
+: KNOWN ( ^u8 n -- )
    PATH!
    PATH$ ENGINE-PROVIDES? TTRUE
    PATH$ RESOLVE TTRUE 2drop
    PATH$ ENTRY-RESOLVE TTRUE 2drop
    PATH$ required ;
 
-: UNKNOWN ( ptr u8 n -- )
+: UNKNOWN ( ^u8 n -- )
    PATH!
    PATH$ ENGINE-PROVIDES? TFALSE
    PATH$ RESOLVE TFALSE 2drop ;
@@ -49,7 +49,7 @@ private
    s" src/lib/error.f" RESOLVE TFALSE 2drop
    REQUIRE-RESTORE ;
 
-: OWNED ( ptr u8 n -- )
+: OWNED ( ^u8 n -- )
    [: s" src/lib/error.f" required ;] WITH ;
 
 : DISTINCT ( -- )

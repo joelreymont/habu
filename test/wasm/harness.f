@@ -31,22 +31,22 @@ variable CODE
 variable KIND
 variable ADDR
 
-: ARG+ ( ptr u8 n -- )  >LEN PROC-ARGV+ ;
+: ARG+ ( ^u8 n -- )  >LEN PROC-ARGV+ ;
 
 \ The program at the path, run with the arguments staged; answers its exit
 \ status, or 128 plus the signal that ended it.
-: RUN-AT ( ptr u8 len -- n )
+: RUN-AT ( ^u8 len -- n )
    OUT OUT-BYTES >LEN  ERR ERR-CAP >LEN  PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N {: outu:len erru:len rc:n :}
    outu LEN>N OUT-U !  erru LEN>N ERR-U !
    rc ;
 
-: SPAWN ( ptr u8 n -- n )
+: SPAWN ( ^u8 n -- n )
    >LEN EXE RESOLVE-EXECUTABLE {: u:len :}
    EXE u RUN-AT ;
 
-: FIRST-LINE ( -- ptr u8 n )
-   ERR ERR-U @ RTRIM {: a:ptr u:n :}
+: FIRST-LINE ( -- ^u8 n )
+   ERR ERR-U @ RTRIM {: a:^ u:n :}
    a u 10 INDEX-OF MATCH option
       some OF IDX>N a swap ENDOF
       none OF a u ENDOF
@@ -54,12 +54,12 @@ variable ADDR
 
 \ run.mjs's first stderr line for status 1 is its throw line; bun's own failures
 \ exit 1 as well, so any other text ends the check.
-: NO-THROW-LINE ( ptr u8 n -- )
+: NO-THROW-LINE ( ^u8 n -- )
    type cr
    s" wasm harness: bun exited 1 without a `throw <i64>` line" 1 die ;
 
 : THROWN ( -- n )
-   FIRST-LINE {: a:ptr u:n :}
+   FIRST-LINE {: a:^ u:n :}
    a u s" throw " STARTS-WITH? 0= if  a u NO-THROW-LINE  then
    a 6 + u 6 - STR>NUMBER? MATCH option
       some OF ENDOF
@@ -68,26 +68,26 @@ variable ADDR
 
 \ run.mjs's last stderr line for status 2 is its fault line; bun's own failures
 \ may exit 2 as well, so any other text ends the check.
-: NO-FAULT-LINE ( ptr u8 n -- )
+: NO-FAULT-LINE ( ^u8 n -- )
    type cr
    s" wasm harness: bun's stderr ends without a `fault <kind> <addr>` line" 1 die ;
 
-: LAST-LINE ( -- ptr u8 n )
-   ERR ERR-U @ RTRIM {: a:ptr u:n :}
+: LAST-LINE ( -- ^u8 n )
+   ERR ERR-U @ RTRIM {: a:^ u:n :}
    u begin dup 0 > while
       dup 1- a + c@ 10 = if  a over +  u rot -  exit  then
       1-
    repeat drop a u ;
 
-: FAULT-FIELD ( ptr u8 n ptr u8 n -- n )
-   {: line:ptr lu:n a:ptr u:n :}
+: FAULT-FIELD ( ^u8 n ^u8 n -- n )
+   {: line:^ lu:n a:^ u:n :}
    a u STR>NUMBER? MATCH option
       some OF ENDOF
       none OF line lu NO-FAULT-LINE ENDOF
    ;MATCH ;
 
 : FAULTED ( -- )
-   LAST-LINE {: a:ptr u:n :}
+   LAST-LINE {: a:^ u:n :}
    a u s" fault " STARTS-WITH? 0= if  a u NO-FAULT-LINE  then
    a 6 + u 6 - 32 INDEX-OF MATCH option
       some OF IDX>N ENDOF
@@ -96,8 +96,8 @@ variable ADDR
    a u  a 6 + k FAULT-FIELD KIND !
    a u  a 7 + k +  u 7 - k -  FAULT-FIELD ADDR ! ;
 
-: VALIDATE ( ptr u8 n bool -- bool )
-   {: path:ptr u:n no-sat:bool :}
+: VALIDATE ( ^u8 n bool -- bool )
+   {: path:^ u:n no-sat:bool :}
    PROC-ARGV-RESET
    s" validate" ARG+
    s" --features" ARG+  s" mvp" ARG+          \ each list adds to the last
@@ -113,8 +113,8 @@ variable ADDR
 
 public
 
-: BUILD ( ptr u8 n ptr u8 n -- n )
-   {: src:ptr su:n mod:ptr mu:n :}
+: BUILD ( ^u8 n ^u8 n -- n )
+   {: src:^ su:n mod:^ mu:n :}
    PROC-ARGV-RESET
    s" --load" ARG+  s" tools/hb-build.f" ARG+  s" --" ARG+  s" --target" ARG+  s" wasm" ARG+
    src su ARG+  s" -o" ARG+  mod mu ARG+
@@ -122,13 +122,13 @@ public
    rc 0<> if  ERR ERR-U @ type cr  then
    rc ;
 
-: VALID? ( ptr u8 n -- bool )  false VALIDATE ;
+: VALID? ( ^u8 n -- bool )  false VALIDATE ;
 
 \ W05 probes one missing required feature on the same generated module.
-: VALID-WITHOUT-SAT? ( ptr u8 n -- bool )  true VALIDATE ;
+: VALID-WITHOUT-SAT? ( ^u8 n -- bool )  true VALIDATE ;
 
-: RUN ( ptr u8 n -- n )
-   {: path:ptr u:n :}
+: RUN ( ^u8 n -- n )
+   {: path:^ u:n :}
    PROC-ARGV-RESET
    s" test/wasm/run.mjs" ARG+  path u ARG+
    s" bun" SPAWN {: rc:n :}
@@ -137,7 +137,7 @@ public
    rc 2 = if  FAULTED  then
    rc ;
 
-: OUT$ ( -- ptr u8 n )  OUT OUT-U @ ;
+: OUT$ ( -- ^u8 n )  OUT OUT-U @ ;
 
 : THROW-CODE ( -- n )  CODE @ ;
 : FAULT-KIND ( -- n )  KIND @ ;

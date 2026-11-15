@@ -27,14 +27,14 @@ variable FILE-U
 variable TARGET-V                        \ and the bytes its declaring token
 variable TARGET-END-V                    \ starts and ends at there
 create DETAIL-B BUF:HDR-BYTES allot      \ an item's detail
-TYPED-VARIABLE OUT ptr JSON:writer \ the answer's writer,
+TYPED-VARIABLE OUT ^JSON:writer \ the answer's writer,
 variable ASKED                           \ the slot of the document asked about,
 variable SHOWN-N                         \ and the items written so far
 
-: WORD$ ( -- ptr u8 n )  0 WORD-B WORD-U @ ;
-: FILE$ ( -- ptr u8 n )  0 FILE-B FILE-U @ ;
-: D+ ( ptr u8 n -- )  BUF:N>BLEN DETAIL-B BUF:APPEND-SPAN ;
-: DETAIL$ ( -- ptr u8 n )  DETAIL-B BUF:SPAN$ BUF:BLEN>N ;
+: WORD$ ( -- ^u8 n )  0 WORD-B WORD-U @ ;
+: FILE$ ( -- ^u8 n )  0 FILE-B FILE-U @ ;
+: D+ ( ^u8 n -- )  BUF:N>BLEN DETAIL-B BUF:APPEND-SPAN ;
+: DETAIL$ ( -- ^u8 n )  DETAIL-B BUF:SPAN$ BUF:BLEN>N ;
 
 : STRING>WORD ( JSON:reader -- JSON:reader )
    READ-SPAN$ nip {: raw:n :}
@@ -57,8 +57,8 @@ variable SHOWN-N                         \ and the items written so far
 
 \ The candidate line's members decoded, each once; a member it lacks is empty
 \ or 0.
-: DECODE ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: DECODE ( ^u8 n -- )
+   {: a:^ u:n :}
    0 WORD-U !
    0 FILE-U !
    0 TARGET-V !
@@ -84,8 +84,8 @@ variable SHOWN-N                         \ and the items written so far
 \ no effect, gets none.
 : DETAIL ( n -- )
    {: r:n :}
-   r REC-EFFECT$ {: e:ptr eu:n :}
-   r REC-PACKAGE$ {: p:ptr pu:n :}
+   r REC-EFFECT$ {: e:^ eu:n :}
+   r REC-PACKAGE$ {: p:^ pu:n :}
    eu pu or 0= if exit then
    DETAIL-B BUF:CLEAR
    eu 0 > if s" ( " D+ e eu D+ s"  )" D+ then
@@ -95,7 +95,7 @@ variable SHOWN-N                         \ and the items written so far
    then
    OUT @ WRITE-COMMA s" detail" DETAIL$ WRITE-FIELD-S drop ;
 
-: ITEM ( ptr u8 n -- )
+: ITEM ( ^u8 n -- )
    DECODE
    OUT @
    SHOWN-N @ 0 > if WRITE-COMMA then
@@ -114,7 +114,7 @@ public
 : PREPARE ( -- )
    DETAIL-B 1 BUF:N>BLEN BUF:INIT ;
 
-: ANSWER ( ptr JSON:writer n -- ptr JSON:writer )
+: ANSWER ( ^JSON:writer n -- ^JSON:writer )
    {: w slot:n :}
    w OUT !
    slot ASKED !

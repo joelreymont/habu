@@ -11,7 +11,7 @@ public
    s" a source name keeps the source lifetime, not the cursor lifetime" T-LABEL
    s" : X-C2-LIFE ( mut-view<b,i,a,init<i,XML-C2:reader-state<p,q>>> -- mut-view<b,i,a,init<i,XML-C2:reader-state<p,q>>> read-view<b,i,u8> ) XML-C2:NAME$ ;" 70 SUBJECT:EXITED? TTRUE
    s" a cursor cannot become a raw byte pointer" T-LABEL
-   s" : X-C2-RAW ( mut-view<b,i,a,init<i,XML-C2:reader-state<p,q>>> -- ptr u8 n ) ;" 70 SUBJECT:EXITED? TTRUE
+   s" : X-C2-RAW ( mut-view<b,i,a,init<i,XML-C2:reader-state<p,q>>> -- ^u8 n ) ;" 70 SUBJECT:EXITED? TTRUE
    s" a source projection cannot be written through mutable byte access" T-LABEL
    s" : X-C2-SOURCE-WRITE ( mut-view<b,i,a,init<i,XML-C2:reader-state<p,q>>> -- mut-view<b,i,a,init<i,XML-C2:reader-state<p,q>>> ) XML-C2:NAME$ 0 65 C2-MEM:MUT-BYTE! ;" 70 SUBJECT:EXITED? TTRUE
    s" a cursor cannot be held in an ordinary local" T-LABEL
@@ -37,7 +37,7 @@ public
    s" a mutable prefix cannot be called through a read view" T-LABEL
    s" : X-C2-READ-PREFIX ( read-view<p,q,u8> -- read-view<p,q,u8> ) 0 C2-BYTES:PREFIX ;" 70 SUBJECT:EXITED? TTRUE
    s" the private read pack cannot be called or ticked" T-LABEL
-   s" : X-C2-PACK ( ptr u8 n -- read-view<p,q,u8> ) C2-MEM:READ-PACK ;" 70 SUBJECT:EXITED? TTRUE
+   s" : X-C2-PACK ( ^u8 n -- read-view<p,q,u8> ) C2-MEM:READ-PACK ;" 70 SUBJECT:EXITED? TTRUE
    s" ' C2-MEM:READ-PACK drop" 70 SUBJECT:EXITED? TTRUE
    s" a reopened package cannot export the source slice" T-LABEL
    s" package XML-C2 public EXPORT SOURCE-SLICE ;package" 70 SUBJECT:EXITED? TTRUE

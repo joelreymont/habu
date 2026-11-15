@@ -59,7 +59,7 @@ variable KERNEL-N                    \ the kernel routines this link added
    drop false ;
 
 \ No locals, then `unreachable`.
-: DEAD-BODY$ ( -- ptr u8 n )
+: DEAD-BODY$ ( -- ^u8 n )
    3 DEAD-BODY-RESERVE
    0 0 DEAD-BODY c!  WCODE:OP-UNREACHABLE 1 DEAD-BODY c!  WCODE:OP-END 2 DEAD-BODY c!
    0 DEAD-BODY 3 ;
@@ -106,7 +106,7 @@ variable KERNEL-N                    \ the kernel routines this link added
 : KERNEL-FUNCTION ( n -- n )
    {: a:n :}
    KERNEL-N @ 0 ?do i KERNEL-HOST @ a = if i KERNEL-HANDLE @ unloop exit then loop
-   a NAME-AT ROUTINE-BODY {: body:ptr bu:n has:bool :}
+   a NAME-AT ROUTINE-BODY {: body:^ bu:n has:bool :}
    has 0= if -1 exit then
    body bu  0 0 1 WLINK-ORIGIN:KERNEL WLINK:FUNCTION+ {: h:n :}
    ROUTINE-SITES 0 ?do  h  i ROUTINE-SITE  WLINK:INDIRECT+  loop
@@ -217,7 +217,7 @@ variable KERNEL-N                    \ the kernel routines this link added
 \ The record for host address a, through its help; the caller ends it.
 : REFUSED. ( n -- )
    {: a:n :}
-   a NAME-AT {: name:ptr nameu:n :}
+   a NAME-AT {: name:^ nameu:n :}
    s" E-WASM-NO-KERNEL-WORD" REJECTION:OPEN
    s" the program reaches " REJECTION:EMIT-STR
    nameu 0= if
@@ -263,8 +263,8 @@ public
 
 \ Link the open space's stripped program into one Wasm module at the path, its reserve
 \ calling map-anon; the header's DP, bounds and heap start stay as the copy holds them.
-: WRITE-MODULE ( ptr u8 n -- )
-   {: path:ptr pathu:n :}
+: WRITE-MODULE ( ^u8 n -- )
+   {: path:^ pathu:n :}
    false GOING
    APP-ENTRY:XT-CELL SPACE-AT @ {: entry:n :}
    ROUTINES REACH-DATA

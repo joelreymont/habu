@@ -21,59 +21,59 @@ private
 9 constant UB-TAB
 92 constant UB-BSLASH
 
-TYPED-VARIABLE UB-FILE-A ptr u8
+TYPED-VARIABLE UB-FILE-A ^u8
 variable UB-FILE-U
-TYPED-VARIABLE UB-LABEL-A ptr u8
+TYPED-VARIABLE UB-LABEL-A ^u8
 variable UB-LABEL-U
-TYPED-VARIABLE UB-SRC-A ptr u8
+TYPED-VARIABLE UB-SRC-A ^u8
 DYNAMIC-BUFFER UB-SRC-MEM u8   \ the file being scanned, read whole; released after its scan
 variable UB-SRC-U
 variable UB-I
-TYPED-VARIABLE UB-TOK-A ptr u8
+TYPED-VARIABLE UB-TOK-A ^u8
 variable UB-TOK-U
-TYPED-VARIABLE UB-PREV-A ptr u8
+TYPED-VARIABLE UB-PREV-A ^u8
 variable UB-PREV-U
-TYPED-VARIABLE UB-PREV2-A ptr u8
+TYPED-VARIABLE UB-PREV2-A ^u8
 variable UB-PREV2-U
 variable UB-BAD
 
-: UB-FILE-A@ ( -- ptr u8 )
+: UB-FILE-A@ ( -- ^u8 )
    UB-FILE-A @ ;
 
-: UB-FILE$ ( -- ptr u8 n )
+: UB-FILE$ ( -- ^u8 n )
    UB-FILE-A@ UB-FILE-U @ ;
 
-: UB-LABEL$ ( -- ptr u8 n )
+: UB-LABEL$ ( -- ^u8 n )
    UB-LABEL-A @ UB-LABEL-U @ ;
 
-: UB-SRC-A@ ( -- ptr u8 )
+: UB-SRC-A@ ( -- ^u8 )
    UB-SRC-A @ ;
 
-: UB-TOK-A@ ( -- ptr u8 )
+: UB-TOK-A@ ( -- ^u8 )
    UB-TOK-A @ ;
 
-: UB-PREV-A@ ( -- ptr u8 )
+: UB-PREV-A@ ( -- ^u8 )
    UB-PREV-A @ ;
 
-: UB-PREV2-A@ ( -- ptr u8 )
+: UB-PREV2-A@ ( -- ^u8 )
    UB-PREV2-A @ ;
 
-: UB-FILE-A! ( ptr u8 -- )
+: UB-FILE-A! ( ^u8 -- )
    UB-FILE-A ! ;
 
-: UB-LABEL-A! ( ptr u8 -- )
+: UB-LABEL-A! ( ^u8 -- )
    UB-LABEL-A ! ;
 
-: UB-SRC-A! ( ptr u8 -- )
+: UB-SRC-A! ( ^u8 -- )
    UB-SRC-A ! ;
 
-: UB-TOK-A! ( ptr u8 -- )
+: UB-TOK-A! ( ^u8 -- )
    UB-TOK-A ! ;
 
-: UB-PREV-A! ( ptr u8 -- )
+: UB-PREV-A! ( ^u8 -- )
    UB-PREV-A ! ;
 
-: UB-PREV2-A! ( ptr u8 -- )
+: UB-PREV2-A! ( ^u8 -- )
    UB-PREV2-A ! ;
 
 : UB-TRUE ( -- bool )
@@ -135,21 +135,21 @@ variable UB-BAD
       else drop exit then then then
    repeat ;
 
-: UB-TOK$ ( -- ptr u8 n )
+: UB-TOK$ ( -- ^u8 n )
    UB-TOK-A@ UB-TOK-U @ ;
 
-: UB-PREV$ ( -- ptr u8 n )
+: UB-PREV$ ( -- ^u8 n )
    UB-PREV-A@ UB-PREV-U @ ;
 
-: UB-PREV2$ ( -- ptr u8 n )
+: UB-PREV2$ ( -- ^u8 n )
    UB-PREV2-A@ UB-PREV2-U @ ;
 
-: UB-TOK=CI ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
+: UB-TOK=CI ( ^u8 n -- bool )
+   {: a:^ u:n :}
    UB-TOK$ a u LINT-STR=CI ;
 
-: UB-PREV2= ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
+: UB-PREV2= ( ^u8 n -- bool )
+   {: a:^ u:n :}
    UB-PREV2$ a u LINT-STR= ;
 
 : UB-SAVE-PREV ( -- )
@@ -195,17 +195,17 @@ variable UB-BAD
 \ with its code and its message follows; UB-PLACE places it at the token, whose
 \ label is given, with the expected and found notes; UB-FINDING ends it with its
 \ help.
-: UB-OPEN ( ptr u8 n -- ) {: code:ptr cu:n :}
+: UB-OPEN ( ^u8 n -- ) {: code:^ cu:n :}
    UB-BAD @ 1+ UB-BAD !
    code cu REJECTION:OPEN ;
 
-: UB-PLACE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
-   {: t:ptr tu:n label:ptr lu:n e:ptr eu:n f:ptr fu:n :}
+: UB-PLACE ( ^u8 n ^u8 n ^u8 n ^u8 n -- )
+   {: t:^ tu:n label:^ lu:n e:^ eu:n f:^ fu:n :}
    t tu REJECTION:AT  label lu REJECTION:EMIT-STR
    s" expected" REJECTION:NOTE  e eu REJECTION:EMIT-STR
    s" found" REJECTION:NOTE  f fu REJECTION:EMIT-STR ;
 
-: UB-FINDING ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+: UB-FINDING ( ^u8 n ^u8 n ^u8 n ^u8 n -- )
    UB-PLACE
    REJECTION:HELP
    s" keep generated and user code checked; move checker mutations behind an audited boundary"
@@ -268,7 +268,7 @@ variable UB-BAD
       UB-SAVE-PREV
    repeat ;
 
-: UB-SRC-ROOM ( n -- ptr u8 )
+: UB-SRC-ROOM ( n -- ^u8 )
    UB-SRC-MEM-RESERVE 0 UB-SRC-MEM ;
 
 \ The file is read to its end however it grows while it is read: its size,
@@ -301,8 +301,8 @@ public
 
 \ PATH is read and matched against the hook registry as spelled; LABEL names it
 \ in every report.
-: FILE-AS ( ptr u8 n ptr u8 n -- )
-   {: path:ptr pu:n label:ptr lu:n :}
+: FILE-AS ( ^u8 n ^u8 n -- )
+   {: path:^ pu:n label:^ lu:n :}
    UB-REQUIRE-IDLE
    path UB-FILE-A! pu UB-FILE-U !
    label UB-LABEL-A! lu UB-LABEL-U !
@@ -310,7 +310,7 @@ public
    UB-CLEAR-SPANS
    rc 0 <> if rc throw then ;
 
-: FILE ( ptr u8 n -- )
+: FILE ( ^u8 n -- )
    2dup FILE-AS ;
 
 : FINISH ( -- )

@@ -35,24 +35,24 @@ $10000 constant CHUNK-BYTES
 
 \ Each record in source order, and each chunk, whose first cell holds its
 \ length; each vector is NULL-PTR while it is not made.
-TYPED-VARIABLE RECS ptr VEC:vector<ptr u8>
-TYPED-VARIABLE CHUNKS ptr VEC:vector<ptr u8>
-TYPED-VARIABLE CHUNK ptr u8                   \ the chunk records are taken from
+TYPED-VARIABLE RECS ^VEC:vector<^u8>
+TYPED-VARIABLE CHUNKS ^VEC:vector<^u8>
+TYPED-VARIABLE CHUNK ^u8                   \ the chunk records are taken from
 variable USED                                 \ bytes of CHUNK taken
 variable ROOM                                 \ CHUNK's length; 0 when there is none
 
-TYPED-VARIABLE SRC ptr u8                     \ the text FILE reads; null outside FILE
+TYPED-VARIABLE SRC ^u8                     \ the text FILE reads; null outside FILE
 variable SRC-U
-TYPED-VARIABLE PKG ptr u8                     \ the open package's name, in the text
+TYPED-VARIABLE PKG ^u8                     \ the open package's name, in the text
 variable PKG-U                                \ 0 at top level
-TYPED-VARIABLE PART ptr u8                    \ the part open in PKG, in the text
+TYPED-VARIABLE PART ^u8                    \ the part open in PKG, in the text
 variable PART-U                               \ 0 outside a part
 variable PUB                                  \ the open section is public
 
-: CELL! ( n ptr u8 -- )
+: CELL! ( n ^u8 -- )
    CELL-VIEW ! ;
 
-: CELL@ ( ptr u8 -- n )
+: CELL@ ( ^u8 -- n )
    CELL-VIEW @ ;
 
 : LIVE? ( -- bool )
@@ -60,12 +60,12 @@ variable PUB                                  \ the open section is public
 
 \ CHUNKS first: a made RECS says both are made (LIVE?).
 : INIT ( -- )
-   HEAP:ALLOCATOR 0 [type] ptr u8 VEC:NEW CHUNKS !
-   HEAP:ALLOCATOR 0 [type] ptr u8 VEC:NEW RECS ! ;
+   HEAP:ALLOCATOR 0 [type] ^u8 VEC:NEW CHUNKS !
+   HEAP:ALLOCATOR 0 [type] ^u8 VEC:NEW RECS ! ;
 
 : RELEASE-CHUNKS ( -- )
    CHUNKS @ VEC:COUNT 0 ?do
-      CHUNKS @ i VEC:AT @ {: base:ptr :}
+      CHUNKS @ i VEC:AT @ {: base:^ :}
       base base CELL@ MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES
    loop ;
 
@@ -75,7 +75,7 @@ variable PUB                                  \ the open section is public
 \ Map a chunk with room for n bytes past its length cell and take from it.
 : NEW-CHUNK ( n -- ) {: need:n :}
    need CELL + CHUNK-BYTES max {: len:n :}
-   len MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop {: base:ptr :}
+   len MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop {: base:^ :}
    base CHUNKS @ VEC:PUSH !
    len base CELL!
    base CHUNK !
@@ -83,13 +83,13 @@ variable PUB                                  \ the open section is public
    len ROOM ! ;
 
 \ n bytes at a cell boundary, which stay in place until RESET.
-: TAKE ( n -- ptr u8 ) {: need:n :}
+: TAKE ( n -- ^u8 ) {: need:n :}
    ROOM @ USED @ ALIGNED - need < if need NEW-CHUNK then
    USED @ ALIGNED {: at:n :}
    at need + USED !
    CHUNK @ at + ;
 
-: SRC@ ( -- ptr u8 )
+: SRC@ ( -- ^u8 )
    SRC @ ;
 
 : BYTE ( n -- n )
@@ -134,7 +134,7 @@ variable PUB                                  \ the open section is public
    dup e < if dup BYTE STR-SPACE = if 1+ then then ;
 
 \ The text of the comment line that starts at s, and the next line's start.
-: NOTE ( n -- ptr u8 n n ) {: s:n :}
+: NOTE ( n -- ^u8 n n ) {: s:n :}
    s LINE-END {: e:n :}
    s e INK 1+ e SKIP-SPACE {: t:n :}
    SRC@ t + e t - RTRIM
@@ -150,17 +150,17 @@ variable PUB                                  \ the open section is public
 
 \ Copy them to dst, a newline before each line but the run's first, as
 \ NOTES-LEN counts them.
-: NOTES-COPY ( ptr u8 n n -- ) {: dst:ptr top:n stop:n :}
+: NOTES-COPY ( ^u8 n n -- ) {: dst:^ top:n stop:n :}
    dst top
    begin dup stop < while
       dup top <> {: later:bool :}
-      NOTE {: a:ptr u:n next:n :}
+      NOTE {: a:^ u:n next:n :}
       later if STR-LF over c! 1+ then
       a over u BYTE-COPY u +
       next
    repeat 2drop ;
 
-: REC ( n -- ptr u8 )
+: REC ( n -- ^u8 )
    {: k:n :}
    LIVE? 0= if E-VEC-BOUNDS throw then
    RECS @ k VEC:AT @ ;
@@ -169,7 +169,7 @@ variable PUB                                  \ the open section is public
    k REC f cells + CELL@ ;
 
 \ Text field f of record k: package 0, name 1, effect 2, comment 3.
-: TEXT$ ( n n -- ptr u8 n ) {: k:n f:n :}
+: TEXT$ ( n n -- ^u8 n ) {: k:n f:n :}
    k REC HEAD-CELLS cells +
    f 0 ?do k i FIELD@ + loop
    k f FIELD@ ;
@@ -182,7 +182,7 @@ variable PUB                                  \ the open section is public
    PART-U @ 0= if PKG-U @ exit then
    PKG-U @ 1+ PART-U @ + ;
 
-: PATH-COPY ( ptr u8 -- ) {: t:ptr :}
+: PATH-COPY ( ^u8 -- ) {: t:^ :}
    PKG @ t PKG-U @ BYTE-COPY
    PART-U @ 0= if exit then
    COLON-BYTE t PKG-U @ + c!
@@ -191,21 +191,21 @@ variable PUB                                  \ the open section is public
 : SECTION ( -- n )
    PUB @ if PUBLIC-BIT else 0 then ;
 
-: ADD ( n ptr u8 n ptr u8 n n -- )
-   {: k:n a:ptr u:n e:ptr eu:n flags:n :}
+: ADD ( n ^u8 n ^u8 n n -- )
+   {: k:n a:^ u:n e:^ eu:n flags:n :}
    k LINT-LEX:BYTE@ LINE-START {: stop:n :}
    k 0= if 0 else k 1- PAST then {: floor:n :}
    stop floor NOTES-START {: top:n :}
    top stop NOTES-LEN {: cu:n :}
    PATH-U {: pu:n :}
    pu u + eu + cu + {: tu:n :}
-   HEAD-CELLS cells tu + TAKE {: r:ptr :}
+   HEAD-CELLS cells tu + TAKE {: r:^ :}
    pu r CELL!
    u r CELL + CELL!
    eu r 2 cells + CELL!
    cu r 3 cells + CELL!
    flags r FLAGS-CELL cells + CELL!
-   r HEAD-CELLS cells + {: t:ptr :}
+   r HEAD-CELLS cells + {: t:^ :}
    t PATH-COPY
    a t pu + u BYTE-COPY
    e t pu + u + eu BYTE-COPY
@@ -221,14 +221,14 @@ variable PUB                                  \ the open section is public
    k 1+ LINT-LEX:COUNT >= if E-SOURCE throw then
    k 1+ ;
 
-: NO-TEXT ( -- ptr u8 n )
+: NO-TEXT ( -- ^u8 n )
    SRC@ 0 ;
 
 \ The effect after name token j: a `( ... )` comment that is the next token,
 \ on its line or a later one, with no `\` comment between. The lexer drops `\`
 \ comments, and only delimiters and them lie between tokens, so a byte in that
 \ gap that ends no token starts one.
-: EFFECT ( n -- ptr u8 n ) {: j:n :}
+: EFFECT ( n -- ^u8 n ) {: j:n :}
    j 1+ {: c:n :}
    c LINT-LEX:COUNT >= if NO-TEXT exit then
    c LINT-LEX:KIND@ LINT-LEX:COMMENT <> if NO-TEXT exit then
@@ -259,7 +259,7 @@ variable PUB                                  \ the open section is public
 : STEP ( n -- ) {: k:n :}
    k LINT-LEX:KIND@ LINT-LEX:WORD <> if exit then
    k LINT-LEX:OPERAND? if exit then
-   k LINT-LEX:TOKEN {: a:ptr u:n :}
+   k LINT-LEX:TOKEN {: a:^ u:n :}
    a u s" :" STR= if k COLON exit then
    a u s" package" STR=CI if k OPEN-PKG exit then
    PKG-U @ 0= if exit then
@@ -289,7 +289,7 @@ public
 \ EXPORT it ends before naming, throws E-SOURCE; the records read before it
 \ stay until RESET. Returned or thrown, it leaves no cell holding an address of
 \ the text, and the lexer released (LINT-LEX:RELEASE).
-: FILE ( ptr u8 n -- ) {: a:ptr u:n :}
+: FILE ( ^u8 n -- ) {: a:^ u:n :}
    LIVE? 0= if INIT then
    a SRC !  u SRC-U !
    a PKG !  0 PKG-U !  a PART !  0 PART-U !  false PUB !
@@ -307,23 +307,23 @@ public
    0 USED ! ;
 
 \ Empty at top level; `A:B` inside part B of A.
-: PACKAGE$ ( n -- ptr u8 n )
+: PACKAGE$ ( n -- ^u8 n )
    0 TEXT$ ;
 
 \ For EXPORT, its operand as written (`MAKI-SKETCH:XY`), whose tail the package
 \ publishes.
-: NAME$ ( n -- ptr u8 n )
+: NAME$ ( n -- ^u8 n )
    1 TEXT$ ;
 
 \ The trimmed body of the `( ... )` comment EFFECT finds after the name, as the
 \ checker reads a declared effect; empty without one, and for EXPORT.
-: EFFECT$ ( n -- ptr u8 n )
+: EFFECT$ ( n -- ^u8 n )
    2 TEXT$ ;
 
 \ The whole `\` comment lines that end on the line above the definition, each
 \ without its `\` and one space after it and trimmed at its end, joined by
 \ newlines; a blank line or code ends them. Empty without one.
-: COMMENT$ ( n -- ptr u8 n )
+: COMMENT$ ( n -- ^u8 n )
    3 TEXT$ ;
 
 : PUBLIC? ( n -- bool )

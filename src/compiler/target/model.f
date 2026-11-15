@@ -163,7 +163,7 @@ private
       x86-64-pc-windows-msvc OF CTARGET:F-BASE CTARGET:F-FP CTARGET:WITH ENDOF
    ;MATCH ;
 
-: LABEL ( profile-id -- ptr u8 n )
+: LABEL ( profile-id -- ^u8 n )
    MATCH profile-id
       aarch64-apple-darwin OF s" aarch64-apple-darwin" ENDOF
       aarch64-unknown-linux-gnu OF s" aarch64-unknown-linux-gnu" ENDOF
@@ -174,7 +174,7 @@ private
       wasm64-unknown-unknown OF s" wasm64-unknown-unknown" ENDOF
    ;MATCH ;
 
-: NAME? ( ptr u8 n ptr u8 n -- bool ) STR= ;
+: NAME? ( ^u8 n ^u8 n -- bool ) STR= ;
 
 \ Q runs on each profile, in declaration order.
 : EACH-PROFILE ( R [ R profile-id -- R ] -- R )
@@ -188,7 +188,7 @@ private
    RTARGET-PROFILE--ID:WASM64-UNKNOWN-UNKNOWN q execute ;
 
 \ A target's platform name, one per target; empty for a profile with none.
-: PLATFORM-NAME ( profile-id -- ptr u8 n )
+: PLATFORM-NAME ( profile-id -- ^u8 n )
    MATCH profile-id
       aarch64-apple-darwin OF s" macos-aarch64" ENDOF
       aarch64-unknown-linux-gnu OF s" linux-aarch64" ENDOF
@@ -200,32 +200,32 @@ private
    ;MATCH ;
 
 \ The profile found and true; else p and true when NAMES spells p as the name.
-: FIND-STEP ( profile-id bool profile-id ptr u8 n [ profile-id -- ptr u8 n ] -- profile-id bool )
-   {: found:profile-id hit:bool p:profile-id name:ptr size:n names :}
+: FIND-STEP ( profile-id bool profile-id ^u8 n [ profile-id -- ^u8 n ] -- profile-id bool )
+   {: found:profile-id hit:bool p:profile-id name:^ size:n names :}
    hit if found true exit then
-   p names execute {: a:ptr u:n :}
+   p names execute {: a:^ u:n :}
    u 0<> a u name size NAME? and if p true exit then
    found false ;
 
 \ The profile NAMES spells as the name and true; else false over a filler.
-: FIND ( ptr u8 n [ profile-id -- ptr u8 n ] -- profile-id bool )
-   {: name:ptr size:n names :}
+: FIND ( ^u8 n [ profile-id -- ^u8 n ] -- profile-id bool )
+   {: name:^ size:n names :}
    RTARGET-PROFILE--ID:AARCH64-APPLE-DARWIN false
    [: name size names FIND-STEP ;] EACH-PROFILE ;
 
 \ A platform name's profile and true; else false over a filler profile the caller drops.
-: PLATFORM ( ptr u8 n -- profile-id bool )
+: PLATFORM ( ^u8 n -- profile-id bool )
    ['] PLATFORM-NAME FIND ;
 
 \ A platform name's or a triple's profile and true; else false over a filler.
-: PROFILE ( ptr u8 n -- profile-id bool )
-   {: name:ptr size:n :}
+: PROFILE ( ^u8 n -- profile-id bool )
+   {: name:^ size:n :}
    name size PLATFORM if true exit then drop
    name size ['] LABEL FIND ;
 
 \ Writes a comma before the name unless it is the first; an empty name is skipped.
-: SAY-ITEM ( bool ptr u8 n -- bool )
-   {: more:bool a:ptr u:n :}
+: SAY-ITEM ( bool ^u8 n -- bool )
+   {: more:bool a:^ u:n :}
    u 0= if more exit then
    more if s" , " REJECTION:EMIT-STR then
    a u REJECTION:EMIT-STR true ;
@@ -235,8 +235,8 @@ private
    [: LABEL SAY-ITEM ;] EACH-PROFILE drop ;
 
 \ The name came from a caller at run time, so the rejection has no source token.
-: UNKNOWN ( ptr u8 n -- )
-   {: name:ptr size:n :}
+: UNKNOWN ( ^u8 n -- )
+   {: name:^ size:n :}
    s" E-UNKNOWN-TARGET" REJECTION:OPEN
    96 REJECTION:EMIT1  name size REJECTION:EMIT-STR  96 REJECTION:EMIT1
    s"  is not a target Habu knows" REJECTION:EMIT-STR
@@ -280,13 +280,13 @@ private
 
 public
 
-: KNOWN? ( ptr u8 n -- bool ) PROFILE nip ;
+: KNOWN? ( ^u8 n -- bool ) PROFILE nip ;
 
 \ True for a platform name, one per target; false for a triple.
-: PLATFORM? ( ptr u8 n -- bool ) PLATFORM nip ;
+: PLATFORM? ( ^u8 n -- bool ) PLATFORM nip ;
 
-: RESOLVE ( ptr u8 n -- resolved-target )
-   {: name:ptr size:n :}
+: RESOLVE ( ^u8 n -- resolved-target )
+   {: name:^ size:n :}
    name size PROFILE 0= if drop name size UNKNOWN then
    dup DEFAULT-FEATURES RTARGET-RESOLVED--TARGET:MAKE ;
 
@@ -303,7 +303,7 @@ public
 : IMAGE@ ( resolved-target -- image )
    PROFILE@ PROFILE-IMAGE ;
 
-: PROFILE$ ( resolved-target -- ptr u8 n )
+: PROFILE$ ( resolved-target -- ^u8 n )
    PROFILE@ LABEL ;
 
 : SAME? ( resolved-target resolved-target -- bool )

@@ -65,11 +65,11 @@ variable CONNECTIONS-FROZEN
 SCRATCH-VARIABLE READER-N         \ the declared rows, zero until CONFIGURE-READERS
 
 STRUCTURE chunk DERIVE addr
-   FIELD prev ptr u8
+   FIELD prev ^u8
    FIELD prev-len n
 ;STRUCTURE
 
-CAST: >CHUNK ( ptr u8 -- ptr chunk )
+CAST: >CHUNK ( ^u8 -- ^chunk )
 
 CHUNK-CELLS cells constant HEADER-BYTES
 
@@ -96,7 +96,7 @@ DYNAMIC-BUFFER REFUSAL-U n                \ the last refusal's bytes in use, rea
 
 : CHUNK+ ( n n -- ) {: at:n len:n :}
    len MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: fresh :}
-   at READ-CHUNK @ SPAN:$ {: before:ptr before-len:n :}
+   at READ-CHUNK @ SPAN:$ {: before:^ before-len:n :}
    fresh SPAN:$ drop >CHUNK {: c :}
    before c CHUNK-PREV !
    before-len c CHUNK-PREV-LEN !
@@ -130,7 +130,7 @@ DYNAMIC-BUFFER REFUSAL-U n                \ the last refusal's bytes in use, rea
    at READ-CHUNK @ ;
 
 
-: ARENA+ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+: ARENA+ ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
    MY-ARENA {: at:n :}
    at u ROOM {: chunk :}
    at READ-USED @ {: used:n :}
@@ -149,7 +149,7 @@ DYNAMIC-BUFFER REFUSAL-U n                \ the last refusal's bytes in use, rea
    fresh at REFUSAL ! ;
 
 
-: REFUSAL+ ( ptr u8 n n -- ) {: a:ptr u:n at:n :}
+: REFUSAL+ ( ^u8 n n -- ) {: a:^ u:n at:n :}
    a u at REFUSAL @ at REFUSAL-U @ SPAN:SKIP SPAN:COPY
    u at REFUSAL-U +! ;
 
@@ -157,7 +157,7 @@ DYNAMIC-BUFFER REFUSAL-U n                \ the last refusal's bytes in use, rea
 \ A `failed` outcome's SQLSTATE and message become the task's refusal text,
 \ `SQLSTATE: message`, or the message alone when libpq made the failure
 \ without a SQLSTATE; then the query is E-QUERY.
-: REFUSED ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n ma:ptr mu:n :}
+: REFUSED ( ^u8 n ^u8 n -- ) {: sa:^ su:n ma:^ mu:n :}
    MY-ARENA {: at:n :}
    0 at REFUSAL-U !
    at su mu + 2 + REFUSAL-ROOM
@@ -175,12 +175,12 @@ DYNAMIC-BUFFER REFUSAL-U n                \ the last refusal's bytes in use, rea
    MY-ARENA drop RECORD-NONE ;
 
 
-: CELL$ ( PG:result n -- PG:result ptr u8 n ) {: c:n :}
+: CELL$ ( PG:result n -- PG:result ^u8 n ) {: c:n :}
    0 >ROW c >COL NULL? if E-ROW throw then
    0 >ROW c >COL TEXT$ ;
 
 
-: BOOL$ ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: BOOL$ ( ^u8 n -- bool ) {: a:^ u:n :}
    u 1 <> if E-ROW throw then
    a c@ TRUE-BYTE = ;
 
@@ -217,7 +217,7 @@ public
 
 
 \ The attempt for a caller that drives POLL itself.
-: OPEN-START ( ptr u8 n -- PG:connection )
+: OPEN-START ( ^u8 n -- PG:connection )
    CONNECTIONS RESULTS CONFIGURE
    1 CONNECTIONS-FROZEN !
    CONNECT-START ;
@@ -226,7 +226,7 @@ public
 \ A connection for the calling task. The refusal text is libpq's and can name
 \ the server and the user, so it stays inside the module and the caller gets
 \ the code. AWAIT waits through AIO, so AIO:START comes first.
-: OPEN ( ptr u8 n -- PG:connection )
+: OPEN ( ^u8 n -- PG:connection )
    OPEN-START AWAIT MATCH progress
       connected OF ENDOF
       refused OF 2drop E-CONNECT throw ENDOF
@@ -273,7 +273,7 @@ public
 
 \ The text of the task's last refused statement or lost connection, valid until
 \ its next PG operation. A statement's start empties it; see pg.f OP-START.
-: REFUSED$ ( -- ptr u8 n )
+: REFUSED$ ( -- ^u8 n )
    MY-ARENA {: at:n :}
    REFUSED-KIND @ {: kind:n :}
    kind KIND-REFUSAL = if at REFUSAL @ SPAN:$ drop at REFUSAL-U @ exit then
@@ -302,7 +302,7 @@ public
 \ DDL, or a command without RETURNING. Rows answered, even none, are E-QUERY.
 \ The task's reader row is taken before the statement is sent, so an undeclared
 \ task sends nothing.
-: EXEC ( PG:connection ptr u8 n -- )
+: EXEC ( PG:connection ^u8 n -- )
    NOT-REFUSED
    [: NO-ROWS ;] WITH-RESULT ;
 
@@ -310,8 +310,8 @@ public
 \ A statement that answers rows, run on the parameters the caller staged. The
 \ body runs on the result, whatever its row count, inside the result's scope,
 \ which clears it when the body returns or throws.
-: QUERY ( R PG:connection ptr u8 n [ R PG:result -- S PG:result ] -- S )
-   {: c a:ptr u:n body :}
+: QUERY ( R PG:connection ^u8 n [ R PG:result -- S PG:result ] -- S )
+   {: c a:^ u:n body :}
    READ-RESET
    body c a u [: RUN-ROWS ;] WITH-RESULT ;
 
@@ -319,8 +319,8 @@ public
 \ One parameter, one row: the read of a row by its identity. The body runs on
 \ the result once its first row is there; the scope clears the result when
 \ the body returns or throws.
-: BY-ID ( R PG:connection n ptr u8 n [ R PG:result -- S PG:result ] -- S )
-   {: c id:n a:ptr u:n body :}
+: BY-ID ( R PG:connection n ^u8 n [ R PG:result -- S PG:result ] -- S )
+   {: c id:n a:^ u:n body :}
    READ-RESET
    c PARAMS
    c id INT+
@@ -330,12 +330,12 @@ public
 \ The first row's columns, copied into the task's arena.
 
 \ SQL NULL is E-ROW; COL-TEXT? is the nullable reader.
-: COL-TEXT ( PG:result n -- PG:result ptr u8 n )
+: COL-TEXT ( PG:result n -- PG:result ^u8 n )
    CELL$ ARENA+ ;
 
 
 \ A nullable text: false means SQL NULL, and the span is then empty.
-: COL-TEXT? ( PG:result n -- PG:result ptr u8 n bool ) {: c:n :}
+: COL-TEXT? ( PG:result n -- PG:result ^u8 n bool ) {: c:n :}
    0 >ROW c >COL NULL? if s" " ARENA+ false exit then
    c COL-TEXT true ;
 
@@ -368,11 +368,11 @@ public
 \ These answer libpq's own bytes, valid until the result's scope ends: a page
 \ of rows is read inside its scope, and nothing is copied.
 
-: AT$ ( PG:result n n -- PG:result ptr u8 n ) {: at:n col:n :}
+: AT$ ( PG:result n n -- PG:result ^u8 n ) {: at:n col:n :}
    at >ROW col >COL TEXT$ ;
 
 
-: AT?$ ( PG:result n n -- PG:result ptr u8 n bool ) {: at:n col:n :}
+: AT?$ ( PG:result n n -- PG:result ^u8 n bool ) {: at:n col:n :}
    at >ROW col >COL NULL? if s" " false exit then
    at col AT$ true ;
 
@@ -399,7 +399,7 @@ public
 \ The one integer a count or an aggregate answers, run in its own scope on
 \ the parameters the caller staged. A NULL, a fraction or no row is E-ROW.
 \ Like EXEC, it takes the task's reader row before the statement is sent.
-: ONE-INT ( PG:connection ptr u8 n -- n )
+: ONE-INT ( PG:connection ^u8 n -- n )
    NOT-REFUSED
    [: FIRST-INT ;] WITH-RESULT ;
 

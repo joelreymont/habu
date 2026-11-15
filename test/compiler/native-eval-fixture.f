@@ -14,7 +14,7 @@ variable LENGTH
 public
 
 
-: DEFINE-RC ( ptr u8 n -- n )
+: DEFINE-RC ( ^u8 n -- n )
    LENGTH ! SOURCE !
    [: EVALUATE-SOURCE ;] catch ;
 

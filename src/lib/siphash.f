@@ -24,8 +24,8 @@ $FF constant FINAL-MARK            \ xored into v2 before the finalization round
 
 \ State layout: v0..v3 in cells 0..3, the partial block in cell 4, the
 \ message length in bytes in cell 5.
-: TAIL-AT ( ptr n -- ptr n ) 4 cells + ;
-: LEN-AT ( ptr n -- ptr n ) 5 cells + ;
+: TAIL-AT ( ^n -- ^n ) 4 cells + ;
+: LEN-AT ( ^n -- ^n ) 5 cells + ;
 
 : ROTL ( n n -- n )
    {: x:n k:n :}
@@ -68,17 +68,17 @@ $FF constant FINAL-MARK            \ xored into v2 before the finalization round
    k0 INIT0 xor  k1 INIT1 xor  k0 INIT2 xor  k1 INIT3 xor ;
 
 
-: V@ ( ptr n -- n n n n )
-   {: s:ptr :}
+: V@ ( ^n -- n n n n )
+   {: s:^ :}
    s @  s cell+ @  s 2 cells + @  s 3 cells + @ ;
 
 
-: V! ( n n n n ptr n -- )
-   {: v0:n v1:n v2:n v3:n s:ptr :}
+: V! ( n n n n ^n -- )
+   {: v0:n v1:n v2:n v3:n s:^ :}
    v0 s !  v1 s cell+ !  v2 s 2 cells + !  v3 s 3 cells + ! ;
 
 
-: PARTIAL@ ( ptr u8 n -- n )
+: PARTIAL@ ( ^u8 n -- n )
    {: p bytes:n :}
    0 bytes 0 ?do p i + c@ i 8 * lshift or loop ;
 
@@ -87,15 +87,15 @@ public
 6 constant STATE-CELLS
 
 
-: INIT ( ptr n n n -- )
-   {: s:ptr k0:n k1:n :}
+: INIT ( ^n n n -- )
+   {: s:^ k0:n k1:n :}
    k0 k1 KEYED s V!
    0 s TAIL-AT !
    0 s LEN-AT ! ;
 
 
-: ABSORB-BYTE ( ptr n u8 -- )
-   {: s:ptr b:u8 :}
+: ABSORB-BYTE ( ^n u8 -- )
+   {: s:^ b:u8 :}
    s LEN-AT @ {: len:n :}
    b $FF and  len BLOCK-MASK and 8 * lshift  s TAIL-AT @ or {: tail:n :}
    len 1+ s LEN-AT !
@@ -107,8 +107,8 @@ public
    then ;
 
 
-: ABSORB-WORD ( ptr n n -- )
-   {: s:ptr w:n :}
+: ABSORB-WORD ( ^n n -- )
+   {: s:^ w:n :}
    s LEN-AT @ BLOCK-MASK and 0= if
       s V@ w MIX s V!
       s LEN-AT @ BLOCK-BYTES + s LEN-AT !
@@ -117,12 +117,12 @@ public
    BLOCK-BYTES 0 ?do s  w i 8 * rshift  ABSORB-BYTE loop ;
 
 
-: FINISH ( ptr n -- n )
-   {: s:ptr :}
+: FINISH ( ^n -- n )
+   {: s:^ :}
    s V@  s LEN-AT @ LEN-SHIFT lshift  s TAIL-AT @ or  FINAL ;
 
 
-: BYTES ( n n ptr u8 n -- n )
+: BYTES ( n n ^u8 n -- n )
    {: k0:n k1:n p len:n :}
    len 0 < if E-SPAN-LENGTH throw then
    len BLOCK-MASK invert and {: whole:n :}

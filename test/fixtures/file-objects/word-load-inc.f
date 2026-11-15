@@ -3,5 +3,5 @@
 
 package FILE-OBJECTS-WORD-INC
 public
-: GREETING ( -- ptr u8 n ) s" loaded" ;
+: GREETING ( -- ^u8 n ) s" loaded" ;
 ;package

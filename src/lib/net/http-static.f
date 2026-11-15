@@ -53,11 +53,11 @@ variable ROOT-U
 PATH-CAP SPAN-BUFFER: ROOT-BUF
 
 
-: ROOT$ ( -- ptr u8 n )
+: ROOT$ ( -- ^u8 n )
    ROOT-BUF ROOT-U @ SPAN:TAKE SPAN:$ ;
 
 
-: TEXT+ ( ptr u8 n -- n ) {: bytes:ptr len:n :}
+: TEXT+ ( ^u8 n -- n ) {: bytes:^ len:n :}
    TEXT-U @ {: at:n :}
    len 0= if at exit then
    at len + TEXT-ROW-RESERVE
@@ -67,25 +67,25 @@ PATH-CAP SPAN-BUFFER: ROOT-BUF
 
 
 \ The root directory's url is the one empty text, and it has no byte to point at.
-: TEXT$ ( n n -- ptr u8 n ) {: at:n len:n :}
+: TEXT$ ( n n -- ^u8 n ) {: at:n len:n :}
    len 0= if s" " exit then
    at TEXT-ROW len ;
 
 
-: FILE-PATH$ ( n -- ptr u8 n ) {: at:n :}
+: FILE-PATH$ ( n -- ^u8 n ) {: at:n :}
    at FILE-PATH-AT @ at FILE-PATH-N @ TEXT$ ;
 
 
-: FILE-ETAG$ ( n -- ptr u8 n ) {: at:n :}
+: FILE-ETAG$ ( n -- ^u8 n ) {: at:n :}
    at FILE-ETAG-AT @ at FILE-ETAG-N @ TEXT$ ;
 
 
-: FILE-BODY$ ( n -- ptr u8 n ) {: at:n :}
+: FILE-BODY$ ( n -- ^u8 n ) {: at:n :}
    at FILE-BODY @ at FILE-BODY-N @ SPAN:TAKE SPAN:$ ;
 
 
 
-: CONTENT-TYPE$ ( ptr u8 n -- ptr u8 n ) {: path:ptr len:n :}
+: CONTENT-TYPE$ ( ^u8 n -- ^u8 n ) {: path:^ len:n :}
    path len s" .html" ENDS-WITH? if s" text/html; charset=utf-8" exit then
    path len s" .js" ENDS-WITH? if s" text/javascript; charset=utf-8" exit then
    path len s" .css" ENDS-WITH? if s" text/css; charset=utf-8" exit then
@@ -102,15 +102,15 @@ PATH-CAP SPAN-BUFFER: ROOT-BUF
 
 \ The rows hold quotations, the checker's proven-quotation store
 \ (src/lib/task.f): an xt in a plain cell would lose the effect.
-1 TYPED-BUFFER CACHE-HOOK [ ptr u8 n -- ptr u8 n ]
-1 TYPED-BUFFER FALLBACK-HOOK [ ptr u8 n -- ptr u8 n ]
+1 TYPED-BUFFER CACHE-HOOK [ ^u8 n -- ^u8 n ]
+1 TYPED-BUFFER FALLBACK-HOOK [ ^u8 n -- ^u8 n ]
 
 
-: NO-CACHE ( ptr u8 n -- ptr u8 n )
+: NO-CACHE ( ^u8 n -- ^u8 n )
    2drop s" no-cache" ;
 
 
-: NO-FALLBACK ( ptr u8 n -- ptr u8 n )
+: NO-FALLBACK ( ^u8 n -- ^u8 n )
    drop 0 ;
 
 
@@ -121,26 +121,26 @@ PATH-CAP SPAN-BUFFER: ROOT-BUF
 DEFAULT-RULES
 
 
-: CACHE$ ( ptr u8 n -- ptr u8 n )
+: CACHE$ ( ^u8 n -- ^u8 n )
    0 CACHE-HOOK @ execute ;
 
 
 
-: UNDER-ROOT ( ptr u8 n -- n ) {: rel:ptr len:n :}
-   len 0= if ROOT$ {: base:ptr baselen:n :} base baselen PATH-BUF SPAN:COPY baselen exit then
+: UNDER-ROOT ( ^u8 n -- n ) {: rel:^ len:n :}
+   len 0= if ROOT$ {: base:^ baselen:n :} base baselen PATH-BUF SPAN:COPY baselen exit then
    \ FS:JOIN-PATH checks its own PATH-CAP and takes no capacity: the bound is
    \ src/lib/fs.f's, and PATH-BUF is that wide.
    ROOT$ rel 1+ len 1- PATH-BUF SPAN:$ drop FS:JOIN-PATH ;
 
 
-: ETAG-HASH-IN ( ptr u8 n ptr u8 -- ptr u8 n ptr u8 )
+: ETAG-HASH-IN ( ^u8 n ^u8 -- ^u8 n ^u8 )
    {: bytes len:n hash :}
    hash bytes len DIGEST-RAW SHA256-IN
    DIGEST-RAW DIGEST-HEX SHA256>HEX
    bytes len hash ;
 
 
-: ETAG-HASH ( ptr u8 n -- )
+: ETAG-HASH ( ^u8 n -- )
    {: bytes len:n :}
    SHA256-CTX-BYTES BYTES-ALLOC-LEN ALLOC-BYTES drop {: hash :}
    bytes len hash [: ETAG-HASH-IN ;] catch {: code:n :}
@@ -149,7 +149,7 @@ DEFAULT-RULES
    code 0<> if code throw then ;
 
 
-: ETAG-FOR ( ptr u8 n -- n n ) {: bytes:ptr len:n :}
+: ETAG-FOR ( ^u8 n -- n n ) {: bytes:^ len:n :}
    bytes len ETAG-HASH
    S\" \q" TEXT+ {: at:n :}
    DIGEST-HEX DIGEST-HEX-BYTES TEXT+ drop
@@ -168,8 +168,8 @@ DEFAULT-RULES
 
 \ Reads the file into body and records all of entry at but the body itself.
 \ The stack is kept, so the catch around it can give the body back.
-: FILE-ENTRY ( ptr u8 n n SPAN:span<u8> n -- ptr u8 n n SPAN:span<u8> n )
-   {: url:ptr urllen:n pathlen:n body at:n :}
+: FILE-ENTRY ( ^u8 n n SPAN:span<u8> n -- ^u8 n n SPAN:span<u8> n )
+   {: url:^ urllen:n pathlen:n body at:n :}
    PATH-BUF pathlen SPAN:TAKE SPAN:$ body SPAN:$ FS:READ-ALL {: got:n :}
    url urllen TEXT+ at FILE-PATH-AT !
    urllen at FILE-PATH-N !
@@ -182,7 +182,7 @@ DEFAULT-RULES
 
 \ The entry counts only once it owns its body, so STATIC-CLOSE frees each body
 \ once and a failed read frees its own.
-: LOAD-FILE ( ptr u8 n -- ) {: url:ptr urllen:n :}
+: LOAD-FILE ( ^u8 n -- ) {: url:^ urllen:n :}
    FILE-COUNT @ {: at:n :}
    at 1+ FILE-ROWS
    url urllen UNDER-ROOT {: pathlen:n :}
@@ -205,7 +205,7 @@ DEFAULT-RULES
 \ served under its link's path. One whose device and inode match an ancestor's
 \ is a cycle and refuses the root before it is walked; two links to one
 \ directory that is not an ancestor are both served.
-: DIR+ ( ptr u8 n n -- ) {: url:ptr urllen:n up:n :}
+: DIR+ ( ^u8 n n -- ) {: url:^ urllen:n up:n :}
    url urllen UNDER-ROOT {: pathlen:n :}
    PATH-BUF pathlen SPAN:TAKE SPAN:$ FS:PATH-IDENTITY {: device:n inode:n :}
    up device inode ANCESTOR? if E-STATIC throw then
@@ -223,11 +223,11 @@ DEFAULT-RULES
    at 1+ DIR-TAIL ! ;
 
 
-: DIR$ ( n -- ptr u8 n ) {: at:n :}
+: DIR$ ( n -- ^u8 n ) {: at:n :}
    at DIR-AT @ at DIR-N @ TEXT$ ;
 
 
-: URL-JOIN ( ptr u8 n ptr u8 n -- n ) {: base:ptr baselen:n name:ptr namelen:n :}
+: URL-JOIN ( ^u8 n ^u8 n -- n ) {: base:^ baselen:n name:^ namelen:n :}
    baselen namelen + 1+ PATH-CAP > if E-STATIC throw then
    base baselen URL-BUF SPAN:COPY
    SLASH URL-BUF baselen SPAN:U8!
@@ -235,7 +235,7 @@ DEFAULT-RULES
    baselen namelen + 1+ ;
 
 
-: ENTRY ( ptr u8 n ptr u8 n -- ) {: base:ptr baselen:n name:ptr namelen:n :}
+: ENTRY ( ^u8 n ^u8 n -- ) {: base:^ baselen:n name:^ namelen:n :}
    base baselen name namelen URL-JOIN {: urllen:n :}
    URL-BUF urllen SPAN:TAKE SPAN:$ UNDER-ROOT {: pathlen:n :}
    PATH-BUF pathlen SPAN:TAKE SPAN:$ FS:DIR? if
@@ -246,7 +246,7 @@ DEFAULT-RULES
 
 \ One name in the directory DIR-HEAD names. Its url is taken again for every
 \ name, because the entry before may have grown TEXT-ROW and moved it.
-: NAME-ENTRY ( ptr u8 n -- ) {: name:ptr namelen:n :}
+: NAME-ENTRY ( ^u8 n -- ) {: name:^ namelen:n :}
    DIR-HEAD @ DIR$ name namelen ENTRY ;
 
 
@@ -266,7 +266,7 @@ DEFAULT-RULES
 
 
 
-: DOT-DOT-AT? ( ptr u8 n n -- bool ) {: path:ptr len:n at:n :}
+: DOT-DOT-AT? ( ^u8 n n -- bool ) {: path:^ len:n at:n :}
    at 2 + len > if false exit then
    path at + c@ DOT-BYTE <> if false exit then
    path at 1+ + c@ DOT-BYTE <> if false exit then
@@ -275,20 +275,20 @@ DEFAULT-RULES
    path at 2 + + c@ SLASH = ;
 
 
-: TRAVERSAL? ( ptr u8 n -- bool ) {: path:ptr len:n :}
+: TRAVERSAL? ( ^u8 n -- bool ) {: path:^ len:n :}
    len 0 ?do
       path len i DOT-DOT-AT? if true unloop exit then
    loop
    false ;
 
 
-: SERVED-PATH$ ( n -- ptr u8 n ) {: idx:n :}
-   idx SLOT-PATH$ {: path:ptr len:n :}
+: SERVED-PATH$ ( n -- ^u8 n ) {: idx:n :}
+   idx SLOT-PATH$ {: path:^ len:n :}
    path len s" /" STR= if s" /index.html" exit then
    path len ;
 
 
-: FIND-FILE ( ptr u8 n -- n ) {: path:ptr len:n :}
+: FIND-FILE ( ^u8 n -- n ) {: path:^ len:n :}
    FILE-COUNT @ 0 ?do
       i FILE-PATH$ path len STR= if i unloop exit then
    loop
@@ -300,14 +300,14 @@ DEFAULT-RULES
 : SERVED-FILE ( n -- n ) {: idx:n :}
    idx SERVED-PATH$ FIND-FILE {: at:n :}
    at 0 >= if at exit then
-   idx SLOT-PATH$ 0 FALLBACK-HOOK @ execute {: fa:ptr fu:n :}
+   idx SLOT-PATH$ 0 FALLBACK-HOOK @ execute {: fa:^ fu:n :}
    fu 0= if -1 exit then
    fa fu FIND-FILE ;
 
 
 \ If-None-Match may list several tags, and * matches any file.
 : MATCHES-ETAG? ( n n -- bool ) {: idx:n at:n :}
-   idx s" if-none-match" HEADER$ {: va:ptr vu:n found:bool :}
+   idx s" if-none-match" HEADER$ {: va:^ vu:n found:bool :}
    found 0= if false exit then
    va vu TRIM s" *" STR= if true exit then
    va vu at FILE-ETAG$ CONTAINS? ;
@@ -369,7 +369,7 @@ public
 \ starts. A failure while reading it gives back what was read and is rethrown.
 \ STOP and failures opening worker resources or starting tasks empty the
 \ table. Rejected arguments/context and listener-open failures retain it.
-: STATIC-ROOT ( ptr u8 n -- ) {: root:ptr len:n :}
+: STATIC-ROOT ( ^u8 n -- ) {: root:^ len:n :}
    len 0 <= if E-STATIC throw then
    len PATH-CAP >= if E-STATIC throw then
    FILE-COUNT @ 0 <> if E-STATE throw then

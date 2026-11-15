@@ -100,13 +100,13 @@ $7FFFFFFF constant MAX-POLL-MS
 : EAGAIN ( -- n ) HB-TARGET-MACOS? if 35 else 11 then ;
 
 PROCESS-SYMBOLS
-FUNCTION: WRITE-CALL write ( n ptr u8 n -- n ) ;FUNCTION
-FUNCTION: OPEN-CALL open ( ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: WRITE-CALL write ( n ^u8 n -- n ) ;FUNCTION
+FUNCTION: OPEN-CALL open ( ^u8 n -- i32 ) ;FUNCTION
 FUNCTION: SYNC-CALL fsync ( n -- i32 ) ;FUNCTION
 FUNCTION: RESIZE-CALL ftruncate ( n n -- i32 ) ;FUNCTION
 
 8 TASK:+USERS POLL-STORAGE u8
-: POLL-FD ( -- ptr u8 ) 0 POLL-STORAGE ;
+: POLL-FD ( -- ^u8 ) 0 POLL-STORAGE ;
 
 : FLAGS ( fd -- n )
    FD>N F-GETFL 0 fcntl dup 0 < if E-FS-IO throw then ;
@@ -147,8 +147,8 @@ FUNCTION: RESIZE-CALL ftruncate ( n n -- i32 ) ;FUNCTION
 public
 
 \ One write to a descriptor the caller made non-blocking: the bytes it moved.
-: TRY-WRITE ( fd ptr u8 n -- n )
-   {: f:fd src:ptr u:n :}
+: TRY-WRITE ( fd ^u8 n -- n )
+   {: f:fd src:^ u:n :}
    u 0 < if E-SPAN-LENGTH throw then
    u 0= if 0 exit then
    f FD>N src u WRITE-CALL {: k:n :}
@@ -162,28 +162,28 @@ public
 private
 
 \ A positive result advances; a 0 waits for POLLOUT against the same deadline.
-: SEND-UNTIL ( fd ptr u8 n n n -- n )
-   {: f:fd src:ptr u:n done:n deadline:n :}
+: SEND-UNTIL ( fd ^u8 n n n -- n )
+   {: f:fd src:^ u:n done:n deadline:n :}
    f src done + u done - TRY-WRITE {: k:n :}
    k 0= if f deadline WAIT-OUT then
    k ;
 
-: SEND-ALL-UNTIL ( fd ptr u8 n n -- )
-   {: f:fd src:ptr u:n deadline:n :}
+: SEND-ALL-UNTIL ( fd ^u8 n n -- )
+   {: f:fd src:^ u:n deadline:n :}
    0 begin dup u < while
       mono-ns deadline >= if E-FS-TIMEOUT throw then
       dup {: done:n :}
       f src u done deadline SEND-UNTIL +
    repeat drop ;
 
-: SEND-KEEP ( fd ptr u8 n n -- fd ptr u8 n n )
-   {: f:fd src:ptr u:n deadline:n :}
+: SEND-KEEP ( fd ^u8 n n -- fd ^u8 n n )
+   {: f:fd src:^ u:n deadline:n :}
    f src u deadline SEND-ALL-UNTIL
    f src u deadline ;
 
 : MORE ( n fd SPAN:span<u8> -- n )
    {: got:n f:fd dst :}
-   dst got SKIP $ {: at:ptr want:n :}
+   dst got SKIP $ {: at:^ want:n :}
    f FD>N at want read {: k:n :}
    k 0 < if E-FS-IO throw then
    k want > if E-FS-IO throw then
@@ -191,8 +191,8 @@ private
 
 \ The bytes one write moved, 0 when it moved none; a count past the asked one is
 \ answered as the call gave it.
-: SENT ( n fd ptr u8 n -- n )
-   {: done:n f:fd src:ptr u:n :}
+: SENT ( n fd ^u8 n -- n )
+   {: done:n f:fd src:^ u:n :}
    f FD>N src done + u done - write 0 max ;
 
 : PIPE-HELD ( -- fd fd )
@@ -225,8 +225,8 @@ public
 \ with no reader raises SIGPIPE, which ends the process unless the caller armed
 \ FD-NOSIGPIPE! or writes inside WITH-NOSIGPIPE; then the write is refused. A
 \ count past the asked one is `part`: bytes moved, but not the ones asked.
-: TRY-WRITE-FULL ( fd ptr u8 n -- wrote )
-   {: f:fd src:ptr u:n :}
+: TRY-WRITE-FULL ( fd ^u8 n -- wrote )
+   {: f:fd src:^ u:n :}
    u 0 < if E-SPAN-LENGTH throw then
    0 begin dup u < while
       dup dup f src u SENT +
@@ -237,7 +237,7 @@ public
 
 
 \ TRY-WRITE-FULL, with E-FS-IO for anything short of `all`.
-: WRITE-FULL ( fd ptr u8 n -- )
+: WRITE-FULL ( fd ^u8 n -- )
    TRY-WRITE-FULL MATCH wrote
       all OF ENDOF
       none OF E-FS-IO throw ENDOF
@@ -251,8 +251,8 @@ public
 \ flags are restored before success or a catchable failure is reported. On
 \ timeout or failure some bytes may have reached the peer; the caller decides
 \ whether to discard that conversation.
-: WRITE-FULL-UNTIL ( fd ptr u8 n n -- )
-   {: f:fd src:ptr u:n deadline:n :}
+: WRITE-FULL-UNTIL ( fd ^u8 n n -- )
+   {: f:fd src:^ u:n deadline:n :}
    u 0 < if E-SPAN-LENGTH throw then
    u 0= if exit then
    f FLAGS {: flags:n :}
@@ -292,8 +292,8 @@ public
 \ the open throw E-FS-OPEN; a descriptor whose O_NONBLOCK cannot be cleared is
 \ closed and throws E-FS-IO. It neither sleeps nor polls: the caller owns the
 \ deadline and the retries.
-: TRY-FIFO-WRITER ( ptr u8 n -- option<fd> )
-   {: pa:ptr pu:n :}
+: TRY-FIFO-WRITER ( ^u8 n -- option<fd> )
+   {: pa:^ pu:n :}
    pa pu FS:FIFO? 0= if E-FS-OPEN throw then
    pa pu FS:>PATHZ FS:O-WRONLY O-NONBLOCK or OPEN-CALL {: opened:n :}
    opened 0 < if

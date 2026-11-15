@@ -40,19 +40,19 @@ DEFAULT-TIMEOUT-MS TIMEOUT-MS !
 
 \ ---- env-driven configuration ------------------------------------------------
 
-: ENV-OR ( ptr u8 n ptr u8 n -- ptr u8 n ) {: da:ptr du:n name:ptr nameu:n :}
+: ENV-OR ( ^u8 n ^u8 n -- ^u8 n ) {: da:^ du:n name:^ nameu:n :}
    name nameu GETENV dup 0= if 2drop da du then ;
 
-: HOST$ ( -- ptr u8 n )
+: HOST$ ( -- ^u8 n )
    s" zed" s" ZED_HOST" ENV-OR ;
 
-: SSH$ ( -- ptr u8 n )
+: SSH$ ( -- ^u8 n )
    s" /usr/bin/ssh" s" ZED_SSH" ENV-OR ;
 
-: SCP$ ( -- ptr u8 n )
+: SCP$ ( -- ^u8 n )
    s" /usr/bin/scp" s" ZED_SCP" ENV-OR ;
 
-: RSYNC$ ( -- ptr u8 n )
+: RSYNC$ ( -- ^u8 n )
    s" /usr/bin/rsync" s" ZED_RSYNC" ENV-OR ;
 
 \ ---- remote-command string builder (space-separated tokens) ------------------
@@ -60,21 +60,21 @@ DEFAULT-TIMEOUT-MS TIMEOUT-MS !
 : CMD-RESET ( -- )
    0 CMD-U ! ;
 
-: CMD-RAW ( ptr u8 n -- ) {: a:ptr u:n :}
+: CMD-RAW ( ^u8 n -- ) {: a:^ u:n :}
    CMD-U @ u + CMD-CAP > if E-ZED-ARG throw then
    a CMD-BUF CMD-U @ + u BYTE-COPY
    CMD-U @ u + CMD-U ! ;
 
-: CMD-TOK ( ptr u8 n -- )
+: CMD-TOK ( ^u8 n -- )
    CMD-U @ 0 > if s"  " CMD-RAW then
    CMD-RAW ;
 
-: CMD$ ( -- ptr u8 n )
+: CMD$ ( -- ^u8 n )
    CMD-BUF CMD-U @ ;
 
 \ ---- rsync/scp destination: host:scratch/ ------------------------------------
 
-: DEST+ ( ptr u8 n -- ) {: a:ptr u:n :}
+: DEST+ ( ^u8 n -- ) {: a:^ u:n :}
    DEST-U @ u + DEST-CAP > if E-ZED-ARG throw then
    a DEST-BUF DEST-U @ + u BYTE-COPY
    DEST-U @ u + DEST-U ! ;
@@ -83,7 +83,7 @@ DEFAULT-TIMEOUT-MS TIMEOUT-MS !
    0 DEST-U !
    HOST$ DEST+  s" :" DEST+  SCRATCH-BUF SCRATCH-U @ DEST+  s" /" DEST+ ;
 
-: DEST$ ( -- ptr u8 n )
+: DEST$ ( -- ^u8 n )
    DEST-BUF DEST-U @ ;
 
 \ ---- ssh/scp/rsync argv runners (capture stdout/stderr/rc) -------------------
@@ -92,8 +92,8 @@ DEFAULT-TIMEOUT-MS TIMEOUT-MS !
    s" -o" CMD:ARG+  s" BatchMode=yes" CMD:ARG+
    s" -o" CMD:ARG+  s" ConnectTimeout=10" CMD:ARG+ ;
 
-: SSH-RUN ( CMD:command ptr u8 n -- CMD:command rc )
-   {: a:ptr u:n :}
+: SSH-RUN ( CMD:command ^u8 n -- CMD:command rc )
+   {: a:^ u:n :}
    BATCH-OPTS
    HOST$ CMD:ARG+
    a u CMD:ARG+
@@ -102,33 +102,33 @@ DEFAULT-TIMEOUT-MS TIMEOUT-MS !
      err OF >RC ENDOF
    ;MATCH ;
 
-: EXEC-BODY ( ptr u8 n CMD:command -- rc CMD:command )
-   >r {: a:ptr u:n :} r>
+: EXEC-BODY ( ^u8 n CMD:command -- rc CMD:command )
+   >r {: a:^ u:n :} r>
    a u SSH-RUN swap ;
 
-: SSH-EXEC ( ptr u8 n -- rc )   \ the rc alone; the captures end with the scope
+: SSH-EXEC ( ^u8 n -- rc )   \ the rc alone; the captures end with the scope
    [: EXEC-BODY ;] CMD:WITH-COMMAND ;
 
-: WITH-RUN-BODY ( R ptr u8 n [ R rc CMD:command -- S CMD:command ] CMD:command -- S CMD:command )
-   >r {: a:ptr u:n body :} r>
+: WITH-RUN-BODY ( R ^u8 n [ R rc CMD:command -- S CMD:command ] CMD:command -- S CMD:command )
+   >r {: a:^ u:n body :} r>
    a u SSH-RUN swap body execute ;
 
 \ Run the upload's argv and throw E-ZED-PUT for a nonzero completion.
-: PUT-RUN ( CMD:command ptr u8 n -- CMD:command )
+: PUT-RUN ( CMD:command ^u8 n -- CMD:command )
    TIMEOUT-MS @ >MS CMD:RUN-RC MATCH result
      ok  OF drop ENDOF
      err OF drop E-ZED-PUT throw ENDOF
    ;MATCH ;
 
-: PUT-DIR-BODY ( ptr u8 n CMD:command -- CMD:command )
-   >r {: a:ptr u:n :} r>
+: PUT-DIR-BODY ( ^u8 n CMD:command -- CMD:command )
+   >r {: a:^ u:n :} r>
    s" -rlt" CMD:ARG+
    a u CMD:ARG+
    DEST$ CMD:ARG+
    RSYNC$ PUT-RUN ;
 
-: PUT-FILE-BODY ( ptr u8 n CMD:command -- CMD:command )
-   >r {: a:ptr u:n :} r>
+: PUT-FILE-BODY ( ^u8 n CMD:command -- CMD:command )
+   >r {: a:^ u:n :} r>
    s" -o" CMD:ARG+  s" BatchMode=yes" CMD:ARG+
    a u CMD:ARG+
    DEST$ CMD:ARG+
@@ -139,7 +139,7 @@ DEFAULT-TIMEOUT-MS TIMEOUT-MS !
 : WS-BYTE? ( n -- bool ) {: c:n :}   \ trailing whitespace: LF $0A, CR $0D, space $20
    c $0A = c $0D = or c $20 = or ;
 
-: TRIM-TRAIL ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+: TRIM-TRAIL ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
    u TRIM-N !
    begin
       TRIM-N @ 0 > if a TRIM-N @ 1- + c@ WS-BYTE? else NO then
@@ -148,7 +148,7 @@ DEFAULT-TIMEOUT-MS TIMEOUT-MS !
    repeat
    a TRIM-N @ ;
 
-: SCRATCH! ( ptr u8 n -- ) {: a:ptr u:n :}
+: SCRATCH! ( ^u8 n -- ) {: a:^ u:n :}
    u SCRATCH-CAP > if E-ZED-ARG throw then
    a SCRATCH-BUF u BYTE-COPY
    u SCRATCH-U ! ;
@@ -157,7 +157,7 @@ public
 
 \ ---- availability / skip policy ----------------------------------------------
 
-: ENV-AVAILABLE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: ENV-AVAILABLE? ( ^u8 n -- bool ) {: a:^ u:n :}
    u 0= if NO exit then
    a u s" 0" STR= if NO exit then
    YES ;
@@ -165,7 +165,7 @@ public
 : AVAILABLE? ( -- bool )
    s" HABU_ZED" GETENV ENV-AVAILABLE? ;
 
-: SKIP ( ptr u8 n -- )
+: SKIP ( ^u8 n -- )
    s" SKIP (HABU_ZED unset/0): " type
    type cr ;
 
@@ -193,16 +193,16 @@ public
 
 \ ---- remote command execution ------------------------------------------------
 
-: RUN ( ptr u8 n -- rc )
+: RUN ( ^u8 n -- rc )
    SSH-EXEC ;
 
 \ Run one remote command string and hand the body its rc and the command, whose
 \ CMD:OUT$ and CMD:ERR$ hold the run's whole stdout and stderr until the body
 \ returns or throws.
-: WITH-RUN ( R ptr u8 n [ R rc CMD:command -- S CMD:command ] -- S )
+: WITH-RUN ( R ^u8 n [ R rc CMD:command -- S CMD:command ] -- S )
    [: WITH-RUN-BODY ;] CMD:WITH-COMMAND ;
 
-: RUN-IN ( ptr u8 n -- rc ) {: a:ptr u:n :}   \ run with cwd = scratch
+: RUN-IN ( ^u8 n -- rc ) {: a:^ u:n :}   \ run with cwd = scratch
    CMD-RESET
    s" cd" CMD-TOK  SCRATCH-BUF SCRATCH-U @ CMD-TOK  s" &&" CMD-TOK  a u CMD-TOK
    CMD$ SSH-EXEC ;
@@ -210,7 +210,7 @@ public
 : PING ( -- )   \ reachability probe: throws E-ZED-UNREACH if the host is down
    s" true" RUN UNREACH-OK ;
 
-: SCRATCH$ ( -- ptr u8 n )
+: SCRATCH$ ( -- ^u8 n )
    SCRATCH-BUF SCRATCH-U @ ;
 
 private
@@ -232,20 +232,20 @@ public
    CMD$ SSH-EXEC RUN-OK
    0 SCRATCH-U ! ;
 
-: PUT-DIR ( ptr u8 n -- )   \ rsync local dir into scratch/
+: PUT-DIR ( ^u8 n -- )   \ rsync local dir into scratch/
    DEST-BUILD
    [: PUT-DIR-BODY ;] CMD:WITH-COMMAND ;
 
-: PUT-FILE ( ptr u8 n -- )   \ scp local file into scratch/
+: PUT-FILE ( ^u8 n -- )   \ scp local file into scratch/
    DEST-BUILD
    [: PUT-FILE-BODY ;] CMD:WITH-COMMAND ;
 
-: HAVE-TOOL? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ remote `command -v <tool>`
+: HAVE-TOOL? ( ^u8 n -- bool ) {: a:^ u:n :}   \ remote `command -v <tool>`
    CMD-RESET
    s" command -v" CMD-TOK  a u CMD-TOK  s" >/dev/null 2>&1" CMD-TOK
    CMD$ SSH-EXEC RC>N 0= ;
 
-: NEED-TOOL ( ptr u8 n -- )   \ fail-closed if a required remote tool is absent
+: NEED-TOOL ( ^u8 n -- )   \ fail-closed if a required remote tool is absent
    2dup HAVE-TOOL? if 2drop exit then
    2drop E-ZED-TOOLCHAIN throw ;
 

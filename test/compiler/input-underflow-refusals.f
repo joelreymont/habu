@@ -31,30 +31,30 @@ private
 : DISARM ( -- )
    false REJECTION:JSON !  REJECTION:BUFFER-OFF ;
 
-: CODE$ ( -- ptr u8 n )
+: CODE$ ( -- ^u8 n )
    S\" \"code\":\"E-INPUT-UNDERFLOW\"" ;
 
-: MISMATCH$ ( -- ptr u8 n )
+: MISMATCH$ ( -- ^u8 n )
    S\" \"code\":\"E-MISMATCH\"" ;
 
-: HAS? ( ptr u8 n -- )
+: HAS? ( ^u8 n -- )
    REJECTION:BUFFER$ 2swap CONTAINS? TTRUE ;
 
-: LACKS? ( ptr u8 n -- )
+: LACKS? ( ^u8 n -- )
    REJECTION:BUFFER$ 2swap CONTAINS? TFALSE ;
 
-: TOKEN=? ( ptr u8 n -- bool )
+: TOKEN=? ( ^u8 n -- bool )
    SB-RESET
    S\" \"token\":\"" SB-APPEND  SB-APPEND  34 SB-APPEND-C
    REJECTION:BUFFER$ SB$ CONTAINS? ;
 
-: TOKEN? ( ptr u8 n -- )
+: TOKEN? ( ^u8 n -- )
    TOKEN=? TTRUE ;
 
-: NOT-TOKEN? ( ptr u8 n -- )
+: NOT-TOKEN? ( ^u8 n -- )
    TOKEN=? TFALSE ;
 
-: SHORT-BY? ( ptr u8 n ptr u8 n -- ) {: needs:ptr needsu:n has:ptr hasu:n :}
+: SHORT-BY? ( ^u8 n ^u8 n -- ) {: needs:^ needsu:n has:^ hasu:n :}
    SB-RESET
    s" input underflow: the call takes more cells than the definition's declared inputs leave (needs " SB-APPEND
    needs needsu SB-APPEND  s" , has " SB-APPEND  has hasu SB-APPEND  s" )" SB-APPEND
@@ -63,13 +63,13 @@ private
 : NAMED ( -- )
    CODE$ HAS? ;
 
-: DECLARED? ( ptr u8 n -- )   \ the record's declared note
+: DECLARED? ( ^u8 n -- )   \ the record's declared note
    SB-RESET
    S\" \"declared\":\"" SB-APPEND  SB-APPEND  34 SB-APPEND-C
    SB$ HAS? ;
 
-: ROWS? ( ptr u8 n ptr u8 n -- )   \ the record's expected and found notes
-   {: e:ptr eu:n a:ptr au:n :}
+: ROWS? ( ^u8 n ^u8 n -- )   \ the record's expected and found notes
+   {: e:^ eu:n a:^ au:n :}
    SB-RESET
    S\" \"expected\":\"" SB-APPEND  e eu SB-APPEND
    S\" \",\"found\":\"" SB-APPEND  a au SB-APPEND  34 SB-APPEND-C
@@ -177,7 +177,7 @@ private
    DISARM ;
 
 \ A refusal raised on a candidate row the checker then abandons must not put its
-\ name on this one. `IUF-V @ cell+` refuses the `ptr a -- ptr a` candidate
+\ name on this one. `IUF-V @ cell+` refuses the `^a -- ^a` candidate
 \ (raw cell, no address) before succeeding on `n -- n`, and the underflow two
 \ tokens later is what the reader has to be sent to.
 : CASE-OVER-ABANDONED-CANDIDATE ( -- )
@@ -281,9 +281,9 @@ private
 : CASE-ROWS-AT-REFUSAL ( -- )
    s" a refusal's rows take no binding a later token makes" T-LABEL
    ARM
-   [: s" : IUF-LATE ( ptr u8 bool -- ) if 1 then drop drop drop ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : IUF-LATE ( ^u8 bool -- ) if 1 then drop drop drop ;" evaluate-closed ;] CHECK-RC TTHROWSQ
    MISMATCH$ HAS?  s" then" TOKEN?
-   s" ptr u8" s" ptr u8 n" ROWS?
+   s" ^u8" s" ^u8 n" ROWS?
    DISARM ;
 
 \ A row variable a later token specialises keeps its letter in the refusal's rows.
@@ -299,8 +299,8 @@ private
 : CASE-ROWS-REPAIR ( -- )
    s" a refusal's help reads the rows its token saw" T-LABEL
    ARM
-   [: s" : IUF-LATE-CALL ( ptr u8 bool -- ) UFC2 drop drop drop drop ;" evaluate-closed ;] CHECK-RC TTHROWSQ
-   s" n n" s" ptr u8 bool" ROWS?  s" convert or replace the value" HAS?
+   [: s" : IUF-LATE-CALL ( ^u8 bool -- ) UFC2 drop drop drop drop ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   s" n n" s" ^u8 bool" ROWS?  s" convert or replace the value" HAS?
    DISARM ;
 
 \ ---- the controls ------------------------------------------------------------

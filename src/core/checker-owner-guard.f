@@ -9,7 +9,7 @@ public
 \ The checker that owns the source published a declaration-owner record
 \ without the operation op opu, needed at t tu. An empty op names none; a
 \ NULL-PTR t leaves the record unplaced.
-: MISSING-OP ( ptr u8 n ptr u8 n -- ) {: op:ptr opu:n t:ptr tu:n :}
+: MISSING-OP ( ^u8 n ^u8 n -- ) {: op:^ opu:n t:^ tu:n :}
    s" E-COMP-OWNER" REJECTION:OPEN
    s" the checker that owns the source carries no " REJECTION:EMIT-STR
    opu 0= IF
@@ -37,13 +37,13 @@ public
 private
 
 : BAD ( -- ) MALFORMED ;
-: ADDRESS ( ptr u8 -- n ) NULL-PTR BYTE-VIEW - ;
+: ADDRESS ( ^u8 -- n ) NULL-PTR BYTE-VIEW - ;
 : DATA-SPAN ( -- n n ) data-base BYTE-VIEW ADDRESS here BYTE-VIEW ADDRESS ;
 
 public
 
 \ `need` is the exclusive end of the fields the caller reads.
-: VALIDATE ( ptr u8 n -- ptr u8 ) {: owner:ptr need:n :}
+: VALIDATE ( ^u8 n -- ^u8 ) {: owner:^ need:n :}
    DATA-SPAN {: lo:n hi:n :}
    owner ADDRESS {: at:n :}
    at lo < at hi > or at CELL mod 0 <> or IF BAD THEN

@@ -46,7 +46,7 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
 2 constant TAG-FAILED
 
 
-: CONNINFO$ ( -- ptr u8 n )
+: CONNINFO$ ( -- ^u8 n )
    0 SCRIPT-ARGV$ ;
 
 
@@ -66,7 +66,7 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
    ;MATCH ;
 
 
-: FAILED-SQLSTATE$ ( PG:result -- PG:result ptr u8 n )
+: FAILED-SQLSTATE$ ( PG:result -- PG:result ^u8 n )
    OUTCOME MATCH PG:outcome
       ok OF s" <ok>" ENDOF
       rows OF s" <rows>" ENDOF
@@ -74,7 +74,7 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
    ;MATCH ;
 
 
-: FAILED-MESSAGE$ ( PG:result -- PG:result ptr u8 n )
+: FAILED-MESSAGE$ ( PG:result -- PG:result ^u8 n )
    OUTCOME MATCH PG:outcome
       ok OF s" " ENDOF
       rows OF s" " ENDOF
@@ -82,17 +82,17 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
    ;MATCH ;
 
 
-: EXEC-TAG ( PG:connection ptr u8 n -- n )
+: EXEC-TAG ( PG:connection ^u8 n -- n )
    [: OUTCOME-TAG swap ;] WITH-RESULT ;
 
 
-: EXEC-OK ( PG:connection ptr u8 n -- )
+: EXEC-OK ( PG:connection ^u8 n -- )
    EXEC-TAG TAG-OK T= ;
 
 
 \ Port 1 is refused before any protocol runs, so the arm carries libpq's own
 \ message and no connection is left behind.
-: PORT-REFUSED$ ( -- ptr u8 n )
+: PORT-REFUSED$ ( -- ^u8 n )
    s" host=127.0.0.1 port=1 dbname=none user=none" CONNECT
    MATCH PG:connect-result
       connected OF PG:CLOSE s" " ENDOF
@@ -100,8 +100,8 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
    ;MATCH ;
 
 
-: ENDS-LF? ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
+: ENDS-LF? ( ^u8 n -- bool )
+   {: a:^ u:n :}
    u 0= if false exit then
    a u 1- + c@ STR-LF = ;
 
@@ -110,7 +110,7 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
    dup PG:CLOSE ;
 
 
-: AWAIT-REFUSED ( ptr u8 n -- )
+: AWAIT-REFUSED ( ^u8 n -- )
    CONNECT-START {: refused :}
    refused PG:AWAIT MATCH PG:progress
       refused OF 2drop true ENDOF
@@ -134,7 +134,7 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
 
 
 : CONNECT-CASES ( -- )
-   PORT-REFUSED$ {: pa:ptr pu:n :}
+   PORT-REFUSED$ {: pa:^ pu:n :}
    pu 0 > TTRUE
    pa pu ENDS-LF? TFALSE
    s" an attempt on a closed port is refused by AWAIT" T-LABEL
@@ -143,12 +143,12 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
 
 \ The cluster refuses a missing database after the protocol starts, so the
 \ text is the server's and grows with the name.
-: MISSING-DB ( ptr u8 n -- PG:connect-result )
-   {: name:ptr nu:n :}
+: MISSING-DB ( ^u8 n -- PG:connect-result )
+   {: name:^ nu:n :}
    SB-RESET CONNINFO$ SB-APPEND s"  dbname=" SB-APPEND name nu SB-APPEND
    SB$ CONNECT ;
 
-: REFUSED$ ( PG:connect-result -- ptr u8 n )
+: REFUSED$ ( PG:connect-result -- ^u8 n )
    MATCH PG:connect-result
       connected OF PG:CLOSE E-CONNECT throw ENDOF
       refused OF ENDOF
@@ -168,10 +168,10 @@ TASK:MIN-STACK TASK:TASK LONG-REFUSED-WORKER
 \ other slot frees between them.
 : REFUSAL-TEXT-CASES ( -- )
    s" a refusal's text survives a longer refusal in another task" T-LABEL
-   s" pgtest_refused" MISSING-DB REFUSED$ {: a:ptr u:n :}
+   s" pgtest_refused" MISSING-DB REFUSED$ {: a:^ u:n :}
    u 0 > TTRUE
    a u ENDS-LF? TFALSE
-   u MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: copy:ptr cu :}
+   u MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: copy:^ cu :}
    a copy u BYTE-COPY
    0 LONG-REFUSED-U !
    ['] LONG-REFUSED LONG-REFUSED-WORKER TASK:ACTIVATE
@@ -186,7 +186,7 @@ TASK:MIN-STACK TASK:TASK LONG-REFUSED-WORKER
 
 \ A socket directory that does not exist makes libpq reject the attempt inside
 \ PQconnectStart, before any POLL.
-: SOCKET-CONNINFO$ ( -- ptr u8 n )
+: SOCKET-CONNINFO$ ( -- ^u8 n )
    s" host=/nonexistent-habu-pgtest port=5432 dbname=none user=none" ;
 
 
@@ -281,7 +281,7 @@ TYPED-VARIABLE HELD-ID n
       TASK:PAUSE
    again ;
 
-: POLL-EXEC ( PG:connection ptr u8 n -- PG:result ) {: c a:ptr u:n :}
+: POLL-EXEC ( PG:connection ^u8 n -- PG:result ) {: c a:^ u:n :}
    c a u SEND c RESULT-POLL ;
 
 : SEND-SELECT ( PG:connection -- PG:connection )
@@ -357,7 +357,7 @@ TYPED-VARIABLE HELD-ID n
    c ;
 
 
-: INSERT-ROW ( PG:connection n ptr u8 n -- ) {: c id:n la:ptr lu:n :}
+: INSERT-ROW ( PG:connection n ^u8 n -- ) {: c id:n la:^ lu:n :}
    c PARAMS
    c id INT+
    c la lu TEXT+
@@ -493,7 +493,7 @@ TYPED-VARIABLE HELD-ID n
 
 \ Checked against the report the server builds: six KiB of two-byte characters,
 \ then a longer message the connection's copy must grow past the first to hold.
-: RAISED-SAME ( PG:connection ptr u8 n ptr u8 n -- PG:connection )
+: RAISED-SAME ( PG:connection ^u8 n ^u8 n -- PG:connection )
    {: c same sameu:n ma mu:n :}
    c PARAMS
    c ma mu TEXT+
@@ -502,13 +502,13 @@ TYPED-VARIABLE HELD-ID n
    c ;
 
 
-: RAISED-BODY ( PG:connection ptr u8 n PG:result -- PG:connection PG:result )
+: RAISED-BODY ( PG:connection ^u8 n PG:result -- PG:connection PG:result )
    FAILED-SQLSTATE$ s" P0001" T$=
    FAILED-MESSAGE$ rot >r
    RAISED-SAME r> ;
 
 
-: RAISED-WHOLE ( PG:connection ptr u8 n ptr u8 n -- PG:connection )
+: RAISED-WHOLE ( PG:connection ^u8 n ^u8 n -- PG:connection )
    {: c raise raiseu:n same sameu:n :}
    c PARAMS
    c same sameu c raise raiseu [: RAISED-BODY ;] WITH-RESULT ;
@@ -594,7 +594,7 @@ TYPED-VARIABLE HELD-ID n
    c c s" do $$ begin raise exception 'short'; end $$" [: HELD-SPAN-BODY ;] WITH-RESULT ;
 
 
-: PREPARED-INSERT ( PG:connection n ptr u8 n -- ) {: c id:n la:ptr lu:n :}
+: PREPARED-INSERT ( PG:connection n ^u8 n -- ) {: c id:n la:^ lu:n :}
    c PARAMS
    c id INT+
    c la lu TEXT+
@@ -625,7 +625,7 @@ TYPED-VARIABLE HELD-ID n
    mono-ns swap - PROCESS:NS-PER-MS / ;
 
 
-: DESCRIBED$ ( -- ptr u8 n )
+: DESCRIBED$ ( -- ^u8 n )
    s" select pg_sleep(5) as nap, array[1::int8] as ids, 'x'::text as label" ;
 
 
@@ -674,15 +674,15 @@ TYPED-VARIABLE HELD-ID n
    c ;
 
 
-: ORIGIN-SQL$ ( -- ptr u8 n )
+: ORIGIN-SQL$ ( -- ^u8 n )
    s" select id as key, label, length(label) as len from pqt" ;
 
 
-: SCALAR ( PG:connection ptr u8 n -- n )
+: SCALAR ( PG:connection ^u8 n -- n )
    [: 0 >ROW 0 >COL INT swap ;] WITH-RESULT ;
 
 
-: ATTNUM ( PG:connection ptr u8 n -- n ) {: c name:ptr nu:n :}
+: ATTNUM ( PG:connection ^u8 n -- n ) {: c name:^ nu:n :}
    c PARAMS
    c name nu TEXT+
    c s" select attnum from pg_attribute where attrelid = 'pqt'::regclass and attname = $1"
@@ -1095,7 +1095,7 @@ variable STMT-U
 2147385345 constant BIND-SUM              \ 0 + 1 + ... + BIND-MAX - 1
 
 
-: BIG$ ( -- ptr u8 n )
+: BIG$ ( -- ^u8 n )
    BIG-BUF BYTE-VIEW BIG-LEN ;
 
 
@@ -1123,7 +1123,7 @@ variable STMT-U
    0 STMT-U ! ;
 
 
-: STMT+ ( ptr u8 n -- ) {: a u:n :}
+: STMT+ ( ^u8 n -- ) {: a u:n :}
    STMT-U @ u + STMT-CAP > if E-CAPACITY throw then
    a STMT-BUF BYTE-VIEW STMT-U @ + u BYTE-COPY
    STMT-U @ u + STMT-U ! ;
@@ -1141,7 +1141,7 @@ variable STMT-U
    v 10 mod $30 + STMT-C+ ;
 
 
-: STMT$ ( -- ptr u8 n )
+: STMT$ ( -- ^u8 n )
    STMT-BUF BYTE-VIEW STMT-U @ ;
 
 
@@ -1291,8 +1291,8 @@ variable STMT-U
 
 
 \ COPY TO STDOUT fails with PG's own spans although the server completed it.
-: COPY-OUT-FAILS ( PG:connection ptr u8 n -- )
-   {: c a:ptr u:n :}
+: COPY-OUT-FAILS ( PG:connection ^u8 n -- )
+   {: c a:^ u:n :}
    c a u
    [: OUTCOME-TAG TAG-FAILED T=
       FAILED-SQLSTATE$ s" 0A000" T$=
@@ -1486,8 +1486,8 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    EXIT-LIVE @ TFALSE
    0 EXIT-CONN @ PG:LIVE? TFALSE ;
 
-: BACKEND-COUNT ( PG:connection n ptr u8 n -- n )
-   {: c pid:n sql:ptr size:n :}
+: BACKEND-COUNT ( PG:connection n ^u8 n -- n )
+   {: c pid:n sql:^ size:n :}
    c PARAMS c pid INT+
    c sql size [: 0 >ROW 0 >COL INT swap ;] WITH-RESULT ;
 
@@ -1583,7 +1583,7 @@ TASK:MIN-STACK TASK:TASK SILENT-WORKER
 
 \ The server at LISTENER-PORT is the test itself, which answers no SSL or GSS
 \ request, so libpq sends neither.
-: LISTENER-CONNINFO$ ( -- ptr u8 n )
+: LISTENER-CONNINFO$ ( -- ^u8 n )
    SB-RESET s" hostaddr=127.0.0.1 dbname=none user=none sslmode=disable gssencmode=disable port=" SB-APPEND
    LISTENER-PORT @ FMT:SB-U
    SB$ ;
@@ -1674,7 +1674,7 @@ TASK:MIN-STACK TASK:TASK SILENT-WORKER
       failed OF TCP4:ERRNO>N drop E-EXEC throw ENDOF
    ;MATCH ;
 
-: PEER-WRITE ( TCP4:connection ptr u8 n -- ) {: peer a u:n :}
+: PEER-WRITE ( TCP4:connection ^u8 n -- ) {: peer a u:n :}
    peer a u TCP4:TRANSFER-BYTES TCP4:WRITE STATUS-ERRNO 0 T= ;
 
 \ libpq drops a connection whose reply breaks the protocol, so pg.f's next send
@@ -1787,10 +1787,10 @@ TASK:MIN-STACK TASK:TASK NOTE-WORKER
 create PATH-BUF PATH-CAP allot          \ the stderr capture file's path
 variable PATH-U
 
-: PATH$ ( -- ptr u8 n )  PATH-BUF PATH-U @ ;
+: PATH$ ( -- ^u8 n )  PATH-BUF PATH-U @ ;
 
 : PATH-MAKE ( -- )
-   s" pg-test" FS:MKTEMP-DIR {: dir:ptr dirlen:n :}
+   s" pg-test" FS:MKTEMP-DIR {: dir:^ dirlen:n :}
    dir dirlen FS:CLEANUP-TREE+
    dir dirlen s" stderr.txt" PATH-BUF FS:JOIN-PATH PATH-U ! ;
 
@@ -1853,13 +1853,13 @@ $100 constant HEARD-CAP
 HEARD-CAP BUFFER: HEARD
 variable HEARD-U
 
-: HEARD+ ( ptr u8 n -- ) {: a u:n :}
+: HEARD+ ( ^u8 n -- ) {: a u:n :}
    HEARD-U @ u + HEARD-CAP > if E-CAPACITY throw then
    a HEARD HEARD-U @ + u BYTE-COPY
    HEARD-U @ u + HEARD-U ! ;
 
 \ Each pair lands as `channel=payload;`.
-: HEAR ( ptr u8 n ptr u8 n -- ) {: ca cu:n pa pu:n :}
+: HEAR ( ^u8 n ^u8 n -- ) {: ca cu:n pa pu:n :}
    ca cu HEARD+ s" =" HEARD+ pa pu HEARD+ s" ;" HEARD+ ;
 
 \ b's three notifications commit in one implicit transaction, so a's backend
@@ -1929,7 +1929,7 @@ variable WARN-LINES
 
 
 \ The whole file, valid until the next read.
-: FILE$ ( -- ptr u8 n )
+: FILE$ ( -- ^u8 n )
    PATH$ FS:FILE-SIZE {: size:n :}
    FILE-B BUF:CLEAR
    PATH$ FILE-B size BUF:N>BLEN BUF:GROW SPAN:$ FS:READ-ALL size T=
@@ -1937,26 +1937,26 @@ variable WARN-LINES
 
 
 \ libpq's default notice processor writes the message as is.
-: BARE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: BARE? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" FATAL:" STARTS-WITH?
    a u s" NOTICE:" STARTS-WITH? or
    a u s" WARNING:" STARTS-WITH? or ;
 
 
-: PG-ERROR? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: PG-ERROR? ( ^u8 n -- bool ) {: a:^ u:n :}
    u DATE:TIME-LEN < if false exit then
-   a DATE:TIME-LEN + u DATE:TIME-LEN - {: r:ptr ru:n :}
+   a DATE:TIME-LEN + u DATE:TIME-LEN - {: r:^ ru:n :}
    r ru s"  error pg: " STARTS-WITH?
    r ru s" terminating connection due to administrator command" CONTAINS?
    and ;
 
 
-: PG-WARN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: PG-WARN? ( ^u8 n -- bool ) {: a:^ u:n :}
    u DATE:TIME-LEN < if false exit then
    a DATE:TIME-LEN + u DATE:TIME-LEN - s"  warn pg: WARNING:  w" STR= ;
 
 
-: LINE-COUNT ( ptr u8 n -- ) {: a:ptr u:n :}
+: LINE-COUNT ( ^u8 n -- ) {: a:^ u:n :}
    u 0= if exit then
    1 ALL-LINES +!
    a u BARE? if 1 BARE-LINES +! then
@@ -1964,7 +1964,7 @@ variable WARN-LINES
    a u PG-WARN? if 1 WARN-LINES +! then ;
 
 
-: LINES-COUNT ( ptr u8 n -- ) {: at:ptr u:n :}
+: LINES-COUNT ( ^u8 n -- ) {: at:^ u:n :}
    0 ALL-LINES !  0 BARE-LINES !  0 PG-LINES !  0 WARN-LINES !
    0 begin
       at u rot STR-LF swap SPLIT-NEXT

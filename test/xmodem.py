@@ -14,7 +14,7 @@ using BUF
 create INPUT HDR-BYTES allot
 create OUTPUT HDR-BYTES allot
 
-: INPUT-READ ( ptr u8 n n -- ) {: path size:n capacity:n :}
+: INPUT-READ ( ^u8 n n -- ) {: path size:n capacity:n :}
    INPUT capacity 1 max BYTES INIT
    INPUT SPAN$ drop {: data :}
    path size data capacity FS:READ-ALL data swap BYTES INPUT REPLACE ;
@@ -68,7 +68,7 @@ EXERCISE
     def decode(self, data, kind, *, error=0):
         output = self.out / 'payload.bin'
         source = self.input(data) + f'''
-: SAVE ( ptr u8 NUM:byte-len sequence -- )
+: SAVE ( ^u8 NUM:byte-len sequence -- )
    SEQUENCE>N . {{: payload size:NUM:byte-len :}}
    s" {output}" payload size BLEN>N FS:WRITE-ALL ;
 

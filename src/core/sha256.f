@@ -45,56 +45,56 @@ SHA-FILE-DG-OFF $20 + constant SHA-FILE-IO-OFF
 SHA-FILE-IO-OFF SHA-IO-CAP + constant SHA-FILE-PATH-OFF
 SHA-FILE-PATH-OFF PATH-CAP + CELL + constant SHA256-FILE-CTX-BYTES
 
-: BE32@ ( ptr u8 -- n )
+: BE32@ ( ^u8 -- n )
    dup 0 ZBYTE@ 24 lshift  over 1 ZBYTE@ 16 lshift or
    over 2 ZBYTE@ 8 lshift or  swap 3 ZBYTE@ or ;
 
-: BE32! ( n ptr u8 -- ) {: w:n p :}
+: BE32! ( n ^u8 -- ) {: w:n p :}
    w 24 rshift $FF and  p 0 ZBYTE!
    w 16 rshift $FF and  p 1 ZBYTE!
    w 8 rshift $FF and   p 2 ZBYTE!
    w $FF and            p 3 ZBYTE! ;
 
-: BE64! ( n ptr u8 -- ) {: w:n p :}
+: BE64! ( n ^u8 -- ) {: w:n p :}
    8 0 DO  w 56 i 8 * - rshift $FF and  p i ZBYTE!  LOOP ;
 
-: ZFILL ( ptr u8 n -- ) {: p n:n :}
+: ZFILL ( ^u8 n -- ) {: p n:n :}
    n 0 DO  0 p i ZBYTE!  LOOP ;
 
 \ NB: the standalone's plain DO is do-while (0 0 DO runs once), so every loop that
 \ can have zero trips is guarded with `0 > if ... then`.
-: BMOVE ( ptr u8 ptr u8 n -- ) {: src dst n:n :}
+: BMOVE ( ^u8 ^u8 n -- ) {: src dst n:n :}
    n 0 > if
       n 0 DO  src i ZBYTE@  dst i ZBYTE!  LOOP
    then ;
 
 \ The cell accessors take the context's CELL-VIEW, not the span: a caller that
 \ touches several cells views it once.
-: SHA-H@ ( ptr n n -- n )
+: SHA-H@ ( ^n n -- n )
    SHA-H-CELL + cells + @ ;
 
-: SHA-H! ( n ptr n n -- )
+: SHA-H! ( n ^n n -- )
    SHA-H-CELL + cells + ! ;
 
-: SHA-TAIL-A ( ptr u8 -- ptr u8 )
+: SHA-TAIL-A ( ^u8 -- ^u8 )
    SHA-TAIL-OFF ZPTR+ ;
 
-: SHA-PBLK-A ( ptr u8 -- ptr u8 )
+: SHA-PBLK-A ( ^u8 -- ^u8 )
    SHA-PBLK-OFF ZPTR+ ;
 
-: SHA-TAIL-U@ ( ptr n -- n )
+: SHA-TAIL-U@ ( ^n -- n )
    SHA-TAIL-U-CELL cells + @ ;
 
-: SHA-TAIL-U! ( n ptr n -- )
+: SHA-TAIL-U! ( n ^n -- )
    SHA-TAIL-U-CELL cells + ! ;
 
-: SHA-TOTAL@ ( ptr n -- n )
+: SHA-TOTAL@ ( ^n -- n )
    SHA-TOTAL-CELL cells + @ ;
 
-: SHA-TOTAL! ( n ptr n -- )
+: SHA-TOTAL! ( n ^n -- )
    SHA-TOTAL-CELL cells + ! ;
 
-: SHA-BLOCK ( ptr u8 ptr u8 -- ) {: ctx blk :}
+: SHA-BLOCK ( ^u8 ^u8 -- ) {: ctx blk :}
    ctx CELL-VIEW {: cv :}
    \ The schedule is read and written 190 times a block, inline on purpose: the
    \ same 4 MiB pass took 72 ms through a one-line SHA-WS@/SHA-WS! pair against
@@ -141,26 +141,26 @@ SHA-FILE-PATH-OFF PATH-CAP + CELL + constant SHA256-FILE-CTX-BYTES
 
 \ The CPU's SHA-256 instructions compress what blocks they can (sha256-blocks
 \ answers 0 on a machine without them); SHA-BLOCK compresses the rest.
-: SHA-COMPRESS ( ptr u8 ptr u8 n -- )
+: SHA-COMPRESS ( ^u8 ^u8 n -- )
    {: ctx blk n:n :}
    ctx CELL-VIEW blk n sha256-blocks {: done:n :}
    n done - 0 > if
       n done DO  ctx blk i $40 * ZPTR+ SHA-BLOCK  LOOP
    then ;
 
-: SHA256-BEGIN ( ptr u8 -- )
+: SHA256-BEGIN ( ^u8 -- )
    CELL-VIEW {: cv :}
    8 0 DO  HH0 i cells + @  cv i SHA-H!  LOOP
    0 cv SHA-TAIL-U!
    0 cv SHA-TOTAL! ;
 
-: SHA-TAKE-TAIL ( ptr u8 ptr u8 n -- ) {: ctx a n:n :}
+: SHA-TAKE-TAIL ( ^u8 ^u8 n -- ) {: ctx a n:n :}
    ctx CELL-VIEW {: cv :}
    a  ctx SHA-TAIL-A cv SHA-TAIL-U@ ZPTR+  n BMOVE
    cv SHA-TAIL-U@ n + cv SHA-TAIL-U! ;
 
 \ top the tail up from [a,u) and compress it when it fills; answers what is left
-: SHA-FILL-TAIL ( ptr u8 ptr u8 n -- ptr u8 n ) {: ctx a u:n :}
+: SHA-FILL-TAIL ( ^u8 ^u8 n -- ^u8 n ) {: ctx a u:n :}
    ctx CELL-VIEW {: cv :}
    cv SHA-TAIL-U@ 0 = if a u exit then
    u 0 = if a u exit then
@@ -175,13 +175,13 @@ SHA-FILE-PATH-OFF PATH-CAP + CELL + constant SHA256-FILE-CTX-BYTES
    a need ZPTR+  u need - ;
 
 \ compress every whole block of [a,u); answers the short span left over
-: SHA-BLOCKS ( ptr u8 ptr u8 n -- ptr u8 n )
+: SHA-BLOCKS ( ^u8 ^u8 n -- ^u8 n )
    {: ctx a u:n :}
    u $40 / {: nb:n :}
    ctx a nb SHA-COMPRESS
    a nb $40 * ZPTR+  u nb $40 * - ;
 
-: SHA256-FEED ( ptr u8 ptr u8 n -- ) {: ctx a u:n :}
+: SHA256-FEED ( ^u8 ^u8 n -- ) {: ctx a u:n :}
    ctx CELL-VIEW {: cv :}
    cv SHA-TOTAL@ u + cv SHA-TOTAL!
    ctx a u SHA-FILL-TAIL {: a1 u1:n :}
@@ -190,7 +190,7 @@ SHA-FILE-PATH-OFF PATH-CAP + CELL + constant SHA256-FILE-CTX-BYTES
 
 \ pad the context's live tail, as the end of a ub-byte message, into its PBLK;
 \ returns the block count (1|2)
-: SHA-PAD ( ptr u8 n -- n ) {: ctx ub:n :}
+: SHA-PAD ( ^u8 n -- n ) {: ctx ub:n :}
    ctx CELL-VIEW SHA-TAIL-U@ {: tl:n :}
    ctx SHA-PBLK-A {: pblk :}
    pblk $80 ZFILL  ctx SHA-TAIL-A pblk tl BMOVE  $80 pblk tl ZBYTE!
@@ -200,13 +200,13 @@ SHA-FILE-PATH-OFF PATH-CAP + CELL + constant SHA256-FILE-CTX-BYTES
 
 \ Writes the $20-byte digest to out. Once per SHA256-BEGIN: a second END reads
 \ the state the first one padded, and nothing diagnoses it.
-: SHA256-END ( ptr u8 ptr u8 -- ) {: ctx out :}
+: SHA256-END ( ^u8 ^u8 -- ) {: ctx out :}
    ctx CELL-VIEW {: cv :}
    ctx cv SHA-TOTAL@ SHA-PAD {: nblk:n :}
    ctx ctx SHA-PBLK-A nblk SHA-COMPRESS
    8 0 DO  cv i SHA-H@  out i 4 * ZPTR+ BE32!  LOOP ;
 
-: SHA256-IN ( ptr u8 ptr u8 n ptr u8 -- ) {: ctx a u:n out :}
+: SHA256-IN ( ^u8 ^u8 n ^u8 -- ) {: ctx a u:n out :}
    ctx SHA256-BEGIN
    ctx a u SHA256-FEED
    ctx out SHA256-END ;
@@ -214,25 +214,25 @@ SHA-FILE-PATH-OFF PATH-CAP + CELL + constant SHA256-FILE-CTX-BYTES
 : NIB>HEX ( n -- n )
    dup 10 < if $30 + else $57 + then ;
 
-: BYTE>HEX ( n ptr u8 -- ) {: w:n p :}
+: BYTE>HEX ( n ^u8 -- ) {: w:n p :}
    w 4 rshift $F and NIB>HEX  p 0 ZBYTE!
    w $F and NIB>HEX           p 1 ZBYTE! ;
 
-: SHA256>HEX ( ptr u8 ptr u8 -- ) {: src dst :}
+: SHA256>HEX ( ^u8 ^u8 -- ) {: src dst :}
    $20 0 DO  src i ZBYTE@  dst i 2 * ZPTR+  BYTE>HEX  LOOP ;
 
-: SHA-FILE-DG ( ptr u8 -- ptr u8 )
+: SHA-FILE-DG ( ^u8 -- ^u8 )
    SHA-FILE-DG-OFF ZPTR+ ;
 
-: SHA-FILE-IO ( ptr u8 -- ptr u8 )
+: SHA-FILE-IO ( ^u8 -- ^u8 )
    SHA-FILE-IO-OFF ZPTR+ ;
 
-: SHA-FILE-PATH ( ptr u8 -- ptr u8 )
+: SHA-FILE-PATH ( ^u8 -- ^u8 )
    SHA-FILE-PATH-OFF ZPTR+ ;
 
 \ Hash from an already-open descriptor. The caller owns and closes it; the
 \ digest context and read buffer remain caller-owned as for the path form.
-: SHA256-FD-IN ( ptr u8 n ptr u8 -- n ) {: fctx fd:n out:ptr :}
+: SHA256-FD-IN ( ^u8 n ^u8 -- n ) {: fctx fd:n out:^ :}
    fctx SHA-FILE-IO {: io :}
    fctx SHA256-BEGIN
    begin
@@ -244,14 +244,14 @@ SHA-FILE-PATH-OFF PATH-CAP + CELL + constant SHA256-FILE-CTX-BYTES
    fctx out SHA256-END
    0 ;
 
-: SHA256-FD-HEX-IN ( ptr u8 n ptr u8 -- n ) {: fctx fd:n out:ptr :}
+: SHA256-FD-HEX-IN ( ^u8 n ^u8 -- n ) {: fctx fd:n out:^ :}
    fctx SHA-FILE-DG {: dg :}
    fctx fd dg SHA256-FD-IN {: rc:n :}
    rc 0 <> if rc exit then
    dg out SHA256>HEX
    0 ;
 
-: SHA256-FILE-IN ( ptr u8 ptr u8 n ptr u8 -- n )
+: SHA256-FILE-IN ( ^u8 ^u8 n ^u8 -- n )
    {: fctx a u:n out :}
    fctx SHA-FILE-PATH {: pz :}
    a u pz PATH-CAP 1+ PATHZ
@@ -262,7 +262,7 @@ SHA-FILE-PATH-OFF PATH-CAP + CELL + constant SHA256-FILE-CTX-BYTES
    fd close
    rc ;
 
-: SHA256-FILE-HEX-IN ( ptr u8 ptr u8 n ptr u8 -- n ) {: fctx a u:n out :}
+: SHA256-FILE-HEX-IN ( ^u8 ^u8 n ^u8 -- n ) {: fctx a u:n out :}
    fctx SHA-FILE-DG {: dg :}
    fctx a u dg SHA256-FILE-IN {: rc:n :}
    rc 0 <> if rc exit then

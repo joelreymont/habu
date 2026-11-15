@@ -14,18 +14,18 @@ $1000 constant PROG-CAP
 create PROG PROG-CAP allot
 variable PROG-U
 
-: PRELUDE$ ( -- ptr u8 n )
+: PRELUDE$ ( -- ^u8 n )
    s" -1 REJECTION:JSON ! package RQ public defer RG-ONE ( -- fresh-region-a ) defer RG-PAIR ( -- fresh-region-a fresh-region-a ) defer RG-DIFF ( -- fresh-region-a fresh-region-b ) : SAME-ID ( x x -- ) 2drop ; : USE-INF RG-ONE ; : USE-PAIR RG-PAIR ; : USE-DIFF RG-DIFF ; : NEST USE-INF ; " ;
 
-: PROGRAM ( ptr u8 n -- ptr u8 n )
-   {: case:ptr caseu:n :}
+: PROGRAM ( ^u8 n -- ^u8 n )
+   {: case:^ caseu:n :}
    0 PROG-U !
    PRELUDE$ PROG PROG-CAP PROG-U BUF-APPEND
    case caseu PROG PROG-CAP PROG-U BUF-APPEND
    s"  ;package" PROG PROG-CAP PROG-U BUF-APPEND
    PROG PROG-U @ ;
 
-: REFUSED ( ptr u8 n -- )
+: REFUSED ( ^u8 n -- )
    PROGRAM 70 s\" \"code\":\"E-RIGID-REGION-MISMATCH\"" SUBJECT:REFUSED? TTRUE ;
 
 public

@@ -10,17 +10,17 @@ require src/lib/test.f
 
 T-RESET
 
-TYPED-VARIABLE UCE-A ptr u8   variable UCE-U
+TYPED-VARIABLE UCE-A ^u8   variable UCE-U
 : UCE-GO ( -- )  UCE-A @ UCE-U @ evaluate-closed ;
-: UCE-CATCH ( ptr u8 n -- n )  UCE-U ! UCE-A !  [: UCE-GO ;] catch ;
+: UCE-CATCH ( ^u8 n -- n )  UCE-U ! UCE-A !  [: UCE-GO ;] catch ;
 
 \ the same source through the production source verifier: the checker resolves the
 \ bare tail itself there, with no engine body lookup in front of it.
 : VS-GO ( -- )   UCE-A @ UCE-U @ VERIFY:SOURCE-BUF ;
-: VS-CATCH ( ptr u8 n -- n )  UCE-U ! UCE-A !  [: VS-GO ;] catch ;
+: VS-CATCH ( ^u8 n -- n )  UCE-U ! UCE-A !  [: VS-GO ;] catch ;
 
 \ The captured rejection record contains the text.
-: UCE-SAID ( ptr u8 n -- )  {: a:ptr u:n :}  REJECTION:BUFFER$ a u CONTAINS? TTRUE ;
+: UCE-SAID ( ^u8 n -- )  {: a:^ u:n :}  REJECTION:BUFFER$ a u CONTAINS? TTRUE ;
 
 70 constant E-REJECT            \ E-UNDEFINED / checker rejection
 

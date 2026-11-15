@@ -61,7 +61,7 @@ TYPED-VARIABLE STORED [ -- ]
 : NESTED-THROWS ( -- ) [: INNER-THROWS ;] [: 3 LOG ;] finally ;
 
 
-: REJECT ( ptr u8 n -- )
+: REJECT ( ^u8 n -- )
    2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T= ;
 
 

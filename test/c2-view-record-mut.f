@@ -22,7 +22,7 @@ public
    s" a region parameter cannot become a scope" T-LABEL
    s" STRUCTURE c2vregscope<a,b,c,d> FIELD view mut-view<a,b,c,d> FIELD source read-view<a,c,u8> ;STRUCTURE" 70 SUBJECT:EXITED? TTRUE
    s" a raw pointer cannot hide an exclusive view" T-LABEL
-   s" STRUCTURE c2vptrmut<a,b,c,d> FIELD view ptr mut-view<a,b,c,d> ;STRUCTURE" 70 SUBJECT:EXITED? TTRUE
+   s" STRUCTURE c2vptrmut<a,b,c,d> FIELD view ^mut-view<a,b,c,d> ;STRUCTURE" 70 SUBJECT:EXITED? TTRUE
    T-REPORT
    s" c2-view-record-mut: ok" type cr ;
 

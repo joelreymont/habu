@@ -16,22 +16,22 @@ private
 \ file's object holds it released.
 1 DYNAMIC-STORAGE:CONTROL-CELLS + constant CB-CELLS
 $100 constant CB-FIRST
-CAST: CB-HEAD ( ptr n -- ptr ptr u8 )
-: CB-CTL   ( ptr n -- ptr n )  CELL + ;
+CAST: CB-HEAD ( ^n -- ^^u8 )
+: CB-CTL   ( ^n -- ^n )  CELL + ;
 
 \ The mapping, reserved at first use: the length cell and CB-FIRST bytes.
-: CB-MAP ( ptr n -- ptr u8 ) {: d:ptr :}
+: CB-MAP ( ^n -- ^u8 ) {: d:^ :}
    d CB-CTL @ 0= if
       CELL CB-FIRST + d CB-HEAD d CB-CTL 1 DYNAMIC-STORAGE:RESERVE
    then
    d CB-HEAD @ ;
-: CB-LEN@  ( ptr n -- n )  CB-MAP CELL-VIEW @ ;
-: CB-LEN!  ( n ptr n -- )  CB-MAP CELL-VIEW ! ;
-: CB-DATA  ( ptr n -- ptr u8 )  CB-MAP CELL + ;   \ content bytes past the length
+: CB-LEN@  ( ^n -- n )  CB-MAP CELL-VIEW @ ;
+: CB-LEN!  ( n ^n -- )  CB-MAP CELL-VIEW ! ;
+: CB-DATA  ( ^n -- ^u8 )  CB-MAP CELL + ;   \ content bytes past the length
 
 \ Room for one more byte. RESERVE at least doubles a mapping it grows and keeps
 \ its bytes.
-: CB-ROOM ( ptr n -- ) {: d:ptr :}
+: CB-ROOM ( ^n -- ) {: d:^ :}
    CELL d CB-LEN@ + 1 + d CB-HEAD d CB-CTL 1 DYNAMIC-STORAGE:RESERVE ;
 
 : CB-HEADER, ( -- )
@@ -43,32 +43,32 @@ public
 \ `create`. The definer has no trailing colon: a package word ending in `:`
 \ cannot be resolved through a `CODEGEN:` qualifier.
 : BUFFER ( -- )
-   create CB-HEADER,  does> ( -- ptr n ) ;
+   create CB-HEADER,  does> ( -- ^n ) ;
 
-: RESET ( ptr n -- )  0 swap CB-LEN! ;
+: RESET ( ^n -- )  0 swap CB-LEN! ;
 
-: APPEND-BYTE ( n ptr n -- ) {: c:n d:ptr :}
+: APPEND-BYTE ( n ^n -- ) {: c:n d:^ :}
    d CB-ROOM
    c  d CB-DATA d CB-LEN@ +  c!
    d CB-LEN@ 1 + d CB-LEN! ;
 
-: APPEND-STRING ( ptr u8 n ptr n -- ) {: a:ptr u:n d:ptr :}
+: APPEND-STRING ( ^u8 n ^n -- ) {: a:^ u:n d:^ :}
    0 begin dup u < while  dup a + c@ d APPEND-BYTE  1 +  repeat drop ;
 
 private
 
 \ The digits of a value at most zero. Division truncates toward zero, so each
 \ remainder is at most zero and the most negative value needs no negate.
-: CB-DIGITS ( n ptr n -- ) {: v:n d:ptr :}
+: CB-DIGITS ( n ^n -- ) {: v:n d:^ :}
    v -10 <= if v 10 / d recurse then
    [char] 0 v 10 mod - d APPEND-BYTE ;
 
 public
 
-: APPEND-DECIMAL ( n ptr n -- ) {: v:n d:ptr :}
+: APPEND-DECIMAL ( n ^n -- ) {: v:n d:^ :}
    v 0 < if [char] - d APPEND-BYTE then
    v 0 > if v negate else v then d CB-DIGITS ;
 
-: CONTENTS ( ptr n -- ptr u8 n ) {: d:ptr :}  d CB-DATA d CB-LEN@ ;
+: CONTENTS ( ^n -- ^u8 n ) {: d:^ :}  d CB-DATA d CB-LEN@ ;
 
 ;package

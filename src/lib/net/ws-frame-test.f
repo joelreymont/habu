@@ -21,10 +21,10 @@ variable STAGED-LEN
 variable BOUND
 TYPED-VARIABLE WHO WS:sender
 
-: OUT$ ( n -- ptr u8 n )
+: OUT$ ( n -- ^u8 n )
    OUT SPAN:$ drop swap ;
 
-: HEX$ ( ptr u8 n -- ptr u8 n ) {: a u:n :}
+: HEX$ ( ^u8 n -- ^u8 n ) {: a u:n :}
    HEX u 2 * SPAN:TAKE SPAN:$ {: h hu:n :}
    u 0 ?do a i + c@ h i 2 * + BYTE>HEX loop
    h hu ;
@@ -35,7 +35,7 @@ TYPED-VARIABLE WHO WS:sender
 
 \ A case's bytes are staged, with the sender and the bound, because a refusal
 \ runs in a quotation and a quotation sees no locals.
-: STAGE ( ptr u8 n WS:sender n -- ) {: a u:n who max:n :}
+: STAGE ( ^u8 n WS:sender n -- ) {: a u:n who max:n :}
    u 2 / {: k:n :}
    k 0 ?do
       a i 2 * + c@ NIBBLE 4 lshift a i 2 * + 1+ c@ NIBBLE or $FF and
@@ -45,7 +45,7 @@ TYPED-VARIABLE WHO WS:sender
    who WHO !
    max BOUND ! ;
 
-: STAGED$ ( -- ptr u8 n )
+: STAGED$ ( -- ^u8 n )
    STAGED SPAN:$ drop STAGED-LEN @ ;
 
 : DECODE-STAGED ( -- WS:decoded )
@@ -54,11 +54,11 @@ TYPED-VARIABLE WHO WS:sender
 : PUT ( WS:header WS:sender -- )
    OUT WS:ENCODE-HEADER drop ;
 
-: ENCODES ( WS:header WS:sender ptr u8 n -- ) {: h who want wu:n :}
+: ENCODES ( WS:header WS:sender ^u8 n -- ) {: h who want wu:n :}
    want wu T-LABEL
    h who OUT WS:ENCODE-HEADER OUT$ HEX$ want wu T$= ;
 
-: DECODES ( ptr u8 n WS:sender n n -- ) {: a u:n who max:n size:n :}
+: DECODES ( ^u8 n WS:sender n n -- ) {: a u:n who max:n size:n :}
    a u who max STAGE
    a u T-LABEL
    DECODE-STAGED MATCH WS:decoded
@@ -70,7 +70,7 @@ TYPED-VARIABLE WHO WS:sender
       ENDOF
    ;MATCH ;
 
-: NEEDS ( ptr u8 n WS:sender n -- ) {: a u:n who want:n :}
+: NEEDS ( ^u8 n WS:sender n -- ) {: a u:n who want:n :}
    a u who LEN-MAX STAGE
    a u T-LABEL
    DECODE-STAGED MATCH WS:decoded
@@ -78,7 +78,7 @@ TYPED-VARIABLE WHO WS:sender
       frame OF drop drop s" a frame, not a need" T-FAIL-AS ENDOF
    ;MATCH ;
 
-: REFUSES ( ptr u8 n WS:sender n n -- ) {: a u:n who max:n code:n :}
+: REFUSES ( ^u8 n WS:sender n n -- ) {: a u:n who max:n code:n :}
    a u who max STAGE
    a u T-LABEL
    [: DECODE-STAGED drop ;] code TTHROWSQ ;

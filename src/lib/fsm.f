@@ -43,17 +43,17 @@ PTR-VARIABLE CTX-A    variable CTX-U
 PTR-VARIABLE STATES-A variable STATES-U
 PTR-VARIABLE INPUTS-A variable INPUTS-U
 
-: AT ( ptr u8 n -- ptr u8 n ) 2dup SRCLOC:TOKEN! ;
+: AT ( ^u8 n -- ^u8 n ) 2dup SRCLOC:TOKEN! ;
 
-: NAME$ ( -- ptr u8 n ) NAME-A @ NAME-U @ AT ;
-: CTX$ ( -- ptr u8 n ) CTX-A @ CTX-U @ AT ;
-: STATES$ ( -- ptr u8 n ) STATES-A @ STATES-U @ AT ;
-: INPUTS$ ( -- ptr u8 n ) INPUTS-A @ INPUTS-U @ AT ;
+: NAME$ ( -- ^u8 n ) NAME-A @ NAME-U @ AT ;
+: CTX$ ( -- ^u8 n ) CTX-A @ CTX-U @ AT ;
+: STATES$ ( -- ^u8 n ) STATES-A @ STATES-U @ AT ;
+: INPUTS$ ( -- ^u8 n ) INPUTS-A @ INPUTS-U @ AT ;
 
 \ The table's rows in order. A row's tokens start at its ROW-AT: an IN row's
 \ state, SENSE and inputs, then ROW-LINES lines of input, ACTION and NEXT; a
 \ FINAL row's state and ACTION, and no lines, as every IN row has one.
-DYNAMIC-BUFFER TOK-A ptr u8
+DYNAMIC-BUFFER TOK-A ^u8
 DYNAMIC-BUFFER TOK-U n
 variable TOKS
 DYNAMIC-BUFFER ROW-AT n
@@ -64,13 +64,13 @@ variable ROWS
 DYNAMIC-BUFFER WORD-TEXT u8
 variable WORD-LEN
 
-: TOK+ ( ptr u8 n -- ) {: a:ptr u:n :}
+: TOK+ ( ^u8 n -- ) {: a:^ u:n :}
    TOKS @ {: k:n :}
    k 1+ TOK-A-RESERVE  k 1+ TOK-U-RESERVE
    a k TOK-A !  u k TOK-U !
    k 1+ TOKS ! ;
 
-: TOK$ ( n -- ptr u8 n ) {: k:n :} k TOK-A @ k TOK-U @ AT ;
+: TOK$ ( n -- ^u8 n ) {: k:n :} k TOK-A @ k TOK-U @ AT ;
 
 \ Opens a row at the next token.
 : ROW+ ( -- )
@@ -91,10 +91,10 @@ variable WORD-LEN
    ROW-AT-RELEASE ROW-LINES-RELEASE 0 ROWS !
    WORD-TEXT-RELEASE 0 WORD-LEN ! ;
 
-: TOKEN ( -- ptr u8 n )
+: TOKEN ( -- ^u8 n )
    parse-name dup 0= if 2drop E-SYNTAX throw then ;
 
-: KEYWORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: KEYWORD? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" IN" STR=
    a u s" FINAL" STR= or
    a u s" ;DEFINE" STR= or ;
@@ -102,13 +102,13 @@ variable WORD-LEN
 \ DEFINE reads the table with parse-name, so `\` and `(` are tokens where a
 \ reader sees a comment; no line holds either, and `(` only opens a row's
 \ inputs right after its SENSE.
-: COMMENT? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: COMMENT? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" \" STR=
    a u s" (" STR= or ;
 
 \ A token a row needs: a keyword in its place cuts the row short.
-: OPERAND ( -- ptr u8 n )
-   TOKEN {: a:ptr u:n :}
+: OPERAND ( -- ^u8 n )
+   TOKEN {: a:^ u:n :}
    a u KEYWORD? a u COMMENT? or if E-SYNTAX throw then
    a u ;
 
@@ -116,7 +116,7 @@ variable WORD-LEN
 : HEADER ( -- )
    TOKEN NAME-U ! NAME-A !
    TOKEN s" (" STR= 0= if E-SYNTAX throw then
-   TOKEN {: a:ptr u:n :}
+   TOKEN {: a:^ u:n :}
    a CTX-A ! 0 CTX-U !
    a u
    begin 2dup s" )" STR= 0= while
@@ -126,11 +126,11 @@ variable WORD-LEN
    TOKEN STATES-U ! STATES-A !
    TOKEN INPUTS-U ! INPUTS-A ! ;
 
-: LINE ( ptr u8 n -- ) TOK+ OPERAND TOK+ OPERAND TOK+ LINES+ ;
+: LINE ( ^u8 n -- ) TOK+ OPERAND TOK+ OPERAND TOK+ LINES+ ;
 
 
-: ROW-INPUTS ( -- ptr u8 n )
-   OPERAND {: i:ptr iu:n :}
+: ROW-INPUTS ( -- ^u8 n )
+   OPERAND {: i:^ iu:n :}
    i iu s" )" STR= if E-SYNTAX throw then
    TOKEN s" )" STR= 0= if E-SYNTAX throw then
    i iu ;
@@ -141,12 +141,12 @@ variable WORD-LEN
 : IN-ROW ( -- )
    ROW+
    OPERAND TOK+  OPERAND TOK+
-   TOKEN {: t:ptr tu:n :}
+   TOKEN {: t:^ tu:n :}
    t tu s" (" STR= if
       ROW-INPUTS TOK+ TOKEN
    else
       INPUTS$ TOK+ t tu
-   then {: l:ptr lu:n :}
+   then {: l:^ lu:n :}
    l lu KEYWORD? l lu COMMENT? or if E-SYNTAX throw then
    l lu LINE ;
 
@@ -156,7 +156,7 @@ variable WORD-LEN
 \ One token after the header, in one of two states, an IN row open or not:
 \ IN and FINAL close it, and any other token but `\` or `(` is a line of the
 \ open row.
-: STEP ( bool ptr u8 n -- bool ) {: open:bool a:ptr u:n :}
+: STEP ( bool ^u8 n -- bool ) {: open:bool a:^ u:n :}
    a u s" IN" STR= if IN-ROW true exit then
    a u s" FINAL" STR= if FINAL-ROW false exit then
    open a u COMMENT? 0= and if a u LINE true exit then
@@ -169,35 +169,35 @@ variable WORD-LEN
    2drop drop ;
 
 
-: WORD+ ( ptr u8 n -- ) {: a:ptr u:n :}
+: WORD+ ( ^u8 n -- ) {: a:^ u:n :}
    WORD-LEN @ u + WORD-TEXT-RESERVE
    a WORD-LEN @ WORD-TEXT u BYTE-COPY
    WORD-LEN @ u + WORD-LEN ! ;
 
-: WORD$ ( -- ptr u8 n ) 0 WORD-TEXT WORD-LEN @ ;
+: WORD$ ( -- ^u8 n ) 0 WORD-TEXT WORD-LEN @ ;
 
 \ <NAME>/<state>, of state token K.
-: STATE-NAME ( n -- ptr u8 n ) {: k:n :}
+: STATE-NAME ( n -- ^u8 n ) {: k:n :}
    0 WORD-LEN ! NAME$ WORD+ s" /" WORD+ k TOK$ WORD+ WORD$ ;
 
 \ <NAME>/<state>/<input>, of state token K and line token L.
-: LINE-NAME ( n n -- ptr u8 n ) {: k:n l:n :}
+: LINE-NAME ( n n -- ^u8 n ) {: k:n l:n :}
    k STATE-NAME 2drop s" /" WORD+ l TOK$ WORD+ WORD$ ;
 
-: STEP-NAME ( -- ptr u8 n )
+: STEP-NAME ( -- ^u8 n )
    0 WORD-LEN ! NAME$ WORD+ s" -STEP" WORD+ WORD$ ;
 
 : CTX-TYPE ( -- EFFECT:type ) CTX$ EFFECT:READ-TYPE ;
 : STATES-TYPE ( -- EFFECT:type ) STATES$ EFFECT:READ-TYPE ;
 
 \ `construct <states> <state>`.
-: NEW-STATE ( ptr u8 n -- ) {: a:ptr u:n :}
+: NEW-STATE ( ^u8 n -- ) {: a:^ u:n :}
    s" construct" EFFECT:KEYWORD
    STATES$ STATES-TYPE EFFECT:TYPE-ITEM
    a u EFFECT:OPERAND ;
 
 \ <word> ( CTX -- ) runs the ACTION, `drop` for `-`.
-: ACT-WORD ( ptr u8 n ptr u8 n -- ) {: w:ptr wu:n a:ptr au:n :}
+: ACT-WORD ( ^u8 n ^u8 n -- ) {: w:^ wu:n a:^ au:n :}
    w wu EFFECT:EMPTY CTX-TYPE EFFECT:IN define-word
    a au s" -" STR= if postpone drop else a au EFFECT:CALL then
    postpone ; ;
@@ -215,7 +215,7 @@ variable WORD-LEN
 
 \ The NEXT of line L of state token K; ACT says the line has a word.
 : NEXT-ITEMS ( bool n n -- ) {: act:bool k:n l:n :}
-   l 2 + TOK$ {: x:ptr xu:n :}
+   l 2 + TOK$ {: x:^ xu:n :}
    x c@ [char] > = 0= if
       act if postpone dup  k l LINE-NAME EFFECT:CALL then
       x xu EFFECT:CALL exit
@@ -275,7 +275,7 @@ variable WORD-LEN
 \ READ-TABLE stopped at is read last again.
 : GENERATE ( -- )
    READ-TABLE
-   SRCLOC:TOKEN$ {: a:ptr u:n :}
+   SRCLOC:TOKEN$ {: a:^ u:n :}
    [: ROWS @ 0 ?do i ROW-ACTS loop
       ROWS @ 0 ?do i FINAL? 0= if i ROW-WORD then loop
       STEP-WORD  RUN-WORD ;]

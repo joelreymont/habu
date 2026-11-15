@@ -12,7 +12,7 @@ $100 constant GJA-LINE-MAX
 create GJA-IN GJA-IN-CAP allot
 TYPED-VARIABLE GJA-CURSOR JSON:cursor
 create GJA-STR-BUF GJA-IN-CAP allot
-GJA-LINE-MAX TYPED-BUFFER GJA-LINE-A ptr u8   \ one line start per captured line
+GJA-LINE-MAX TYPED-BUFFER GJA-LINE-A ^u8   \ one line start per captured line
 create GJA-LINE-U GJA-LINE-MAX cells allot
 
 variable GJA-FD
@@ -34,13 +34,13 @@ variable GJA-LX
 : GJA-FALSE ( -- bool )
    GJA-TRUE 0= ;
 
-: GJA-LINE-A@ ( n -- ptr u8 )
+: GJA-LINE-A@ ( n -- ^u8 )
    GJA-LINE-A @ ;
 
-: GJA-LINE-A! ( ptr u8 n -- )
+: GJA-LINE-A! ( ^u8 n -- )
    GJA-LINE-A ! ;
 
-: GJA-FAIL ( ptr u8 n -- )
+: GJA-FAIL ( ^u8 n -- )
    1 die ;
 
 : GJA-USAGE ( -- )
@@ -49,28 +49,28 @@ variable GJA-LX
 : GJA-ARGC= ( n -- ) {: n :}
    SCRIPT-ARGC n <> IF GJA-USAGE THEN ;
 
-: GJA-BYTES= ( ptr u8 n ptr u8 n -- bool )
-   {: a:ptr u b:ptr v :}
+: GJA-BYTES= ( ^u8 n ^u8 n -- bool )
+   {: a:^ u b:^ v :}
    u v <> IF GJA-FALSE exit THEN
    0 begin dup u < while
       dup a + c@ over b + c@ <> IF drop GJA-FALSE exit THEN
       1+
    repeat drop GJA-TRUE ;
 
-: GJA-CMD? ( ptr u8 n -- bool ) {: a:ptr u :}
+: GJA-CMD? ( ^u8 n -- bool ) {: a:^ u :}
    0 SCRIPT-ARGV$ a u GJA-BYTES= ;
 
 
-: GJA-LINE! ( ptr u8 n n -- )
-   {: a:ptr u k :}
+: GJA-LINE! ( ^u8 n n -- )
+   {: a:^ u k :}
    a k GJA-LINE-A!
    u k cells GJA-LINE-U + ! ;
 
-: GJA-LINE$ ( n -- ptr u8 n )
+: GJA-LINE$ ( n -- ^u8 n )
    dup GJA-LINE-A@
    swap cells GJA-LINE-U + @ ;
 
-: GJA-LINE+ ( ptr u8 n -- )
+: GJA-LINE+ ( ^u8 n -- )
    GJA-LINE# @ GJA-LINE-MAX >= IF s" too many JSON lines" GJA-FAIL THEN
    dup 0 > IF
       2dup + 1- c@ 13 = IF 1- THEN
@@ -78,8 +78,8 @@ variable GJA-LX
    GJA-LINE# @ GJA-LINE!
    GJA-LINE# @ 1+ GJA-LINE# ! ;
 
-: GJA-SPLIT-LINES ( ptr u8 n -- )
-   {: a:ptr u :}
+: GJA-SPLIT-LINES ( ^u8 n -- )
+   {: a:^ u :}
    0 GJA-LINE# !
    0 GJA-LS !
    0 GJA-LX !
@@ -94,7 +94,7 @@ variable GJA-LX
       a GJA-LS @ + u GJA-LS @ - GJA-LINE+
    THEN ;
 
-: GJA-READ ( ptr u8 n -- ptr u8 n )
+: GJA-READ ( ^u8 n -- ^u8 n )
    FS:>PATHZ 0 0 open GJA-FD !
    GJA-FD @ 0 < IF s" cannot open JSON fixture" GJA-FAIL THEN
    0 GJA-LEN !
@@ -123,29 +123,29 @@ variable GJA-LX
 : GJA-VALUE ( JSON:reader -- JSON:reader SPAN:span<u8> )
    JSON:READ-TOKEN {: kind:n :}
    kind JSON:T-OBJ = kind JSON:T-ARR = or if JSON:READ-VALUE-SPAN$ SPAN:MAKE exit then
-   JSON:READ-SPAN$ {: a:ptr u:n :}
+   JSON:READ-SPAN$ {: a:^ u:n :}
    kind JSON:T-STR = if a 1- u 2 + SPAN:MAKE exit then
    a u SPAN:MAKE ;
 
-: GJA-PARSE ( ptr u8 n -- SPAN:span<u8> )
-   {: a:ptr u:n :}
+: GJA-PARSE ( ^u8 n -- SPAN:span<u8> )
+   {: a:^ u:n :}
    GJA-CURSOR a u JSON:READ-INIT JSON:READ-NEXT drop
    JSON:READ-SKIP-VALUE JSON:READ-NEXT JSON:T-END <> if E-JSON-READ-TRAILING throw then JSON:READ-CLOSE
    a u SPAN:MAKE ;
 
-: GJA-PARSE-FILE ( ptr u8 n -- SPAN:span<u8> )
+: GJA-PARSE-FILE ( ^u8 n -- SPAN:span<u8> )
    GJA-READ GJA-PARSE ;
 
 : GJA-KIND ( SPAN:span<u8> -- n )
    GJA-OPEN JSON:READ-TOKEN swap JSON:READ-CLOSE ;
 
-: GJA-FIELD? ( SPAN:span<u8> ptr u8 n -- SPAN:span<u8> bool )
-   {: value:SPAN:span<u8> key:ptr keyu:n :}
+: GJA-FIELD? ( SPAN:span<u8> ^u8 n -- SPAN:span<u8> bool )
+   {: value:SPAN:span<u8> key:^ keyu:n :}
    value GJA-OPEN key keyu JSON:READ-FIND-KEY
    if GJA-VALUE swap JSON:READ-CLOSE true exit then
    JSON:READ-CLOSE value false ;
 
-: GJA-REQ ( SPAN:span<u8> ptr u8 n -- SPAN:span<u8> )
+: GJA-REQ ( SPAN:span<u8> ^u8 n -- SPAN:span<u8> )
    GJA-FIELD? 0= if drop s" missing JSON field" GJA-FAIL then ;
 
 : GJA-ARR@ ( SPAN:span<u8> n -- SPAN:span<u8> )
@@ -177,39 +177,39 @@ variable GJA-LX
    value 0 < if s" expected unsigned JSON integer" GJA-FAIL then value ;
 
 
-: GJA-STR= ( SPAN:span<u8> ptr u8 n -- bool )
-   {: value:SPAN:span<u8> want:ptr wantu:n :}
+: GJA-STR= ( SPAN:span<u8> ^u8 n -- bool )
+   {: value:SPAN:span<u8> want:^ wantu:n :}
    value GJA-OPEN JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE GJA-FALSE exit then
    want wantu JSON:READ-STR-EQ? swap JSON:READ-CLOSE ;
 
-: GJA-ASSERT-STR ( SPAN:span<u8> ptr u8 n -- )
+: GJA-ASSERT-STR ( SPAN:span<u8> ^u8 n -- )
    GJA-STR= 0= IF s" unexpected JSON string" GJA-FAIL THEN ;
 
-: GJA-STRING-INTO ( SPAN:span<u8> ptr u8 n -- ptr u8 n )
-   {: value:SPAN:span<u8> dst:ptr cap:n :}
+: GJA-STRING-INTO ( SPAN:span<u8> ^u8 n -- ^u8 n )
+   {: value:SPAN:span<u8> dst:^ cap:n :}
    value GJA-OPEN JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE s" expected JSON string" GJA-FAIL then
    dst cap JSON:READ-STR {: u:n :} JSON:READ-CLOSE dst u ;
 
-: GJA-STRING$ ( SPAN:span<u8> -- ptr u8 n )
+: GJA-STRING$ ( SPAN:span<u8> -- ^u8 n )
    GJA-STR-BUF GJA-IN-CAP GJA-STRING-INTO ;
 
 : GJA-NONEMPTY-STR ( SPAN:span<u8> -- )
    GJA-STRING$ nip 0= IF s" expected nonempty JSON string" GJA-FAIL THEN ;
 
-: GJA-REQ-STRF ( SPAN:span<u8> ptr u8 n -- )
+: GJA-REQ-STRF ( SPAN:span<u8> ^u8 n -- )
    GJA-REQ GJA-STRING$ 2drop ;
 
-: GJA-REQ-INTF ( SPAN:span<u8> ptr u8 n -- )
+: GJA-REQ-INTF ( SPAN:span<u8> ^u8 n -- )
    GJA-REQ GJA-INT drop ;
 
-: GJA-ASSERT-INT-FIELD ( SPAN:span<u8> ptr u8 n n -- )
-   {: root:SPAN:span<u8> key:ptr keyu want :}
+: GJA-ASSERT-INT-FIELD ( SPAN:span<u8> ^u8 n n -- )
+   {: root:SPAN:span<u8> key:^ keyu want :}
    root key keyu GJA-REQ GJA-INT want <> IF s" unexpected JSON integer field" GJA-FAIL THEN ;
 
-: GJA-HAS? ( SPAN:span<u8> ptr u8 n -- bool )
+: GJA-HAS? ( SPAN:span<u8> ^u8 n -- bool )
    GJA-FIELD? {: value:SPAN:span<u8> found:bool :} found ;
 
-: GJA-NO-FIELD ( SPAN:span<u8> ptr u8 n -- )
+: GJA-NO-FIELD ( SPAN:span<u8> ^u8 n -- )
    GJA-HAS? IF s" unexpected JSON field" GJA-FAIL THEN ;
 
 : GJA-FORM-KEY? ( JSON:reader -- JSON:reader bool )
@@ -235,7 +235,7 @@ variable GJA-LX
 
 \ Fails naming the key the reader is on.
 : GJA-KEY-FAIL ( JSON:reader -- )
-   s" unexpected JSON field " {: p:ptr pu:n :}
+   s" unexpected JSON field " {: p:^ pu:n :}
    p GJA-STR-BUF pu BYTE-COPY
    GJA-STR-BUF pu + GJA-IN-CAP pu - JSON:READ-STR {: u:n :} JSON:READ-CLOSE
    GJA-STR-BUF pu u + GJA-FAIL ;
@@ -307,7 +307,7 @@ variable GJA-LX
       exit
    THEN ;
 
-: GJA-PUBLIC-SIGNATURES ( ptr u8 n -- )
+: GJA-PUBLIC-SIGNATURES ( ^u8 n -- )
    0 GJA-OK1 ! 0 GJA-OK2 !
    GJA-PARSE-FILE GJA-ROOT !
    GJA-ROOT @ s" definitions" GJA-REQ dup GJA-ARR-KIND GJA-ARR !
@@ -319,8 +319,8 @@ variable GJA-LX
    GJA-OK1 @ 0= IF s" missing SQUARE public signature" GJA-FAIL THEN
    GJA-OK2 @ 0= IF s" missing APPLY public signature" GJA-FAIL THEN ;
 
-: GJA-DISPATCH-ONE-FILE-ROW ( ptr u8 n [ ptr u8 n -- ] -- bool )
-   {: cmd:ptr cmdu q :}
+: GJA-DISPATCH-ONE-FILE-ROW ( ^u8 n [ ^u8 n -- ] -- bool )
+   {: cmd:^ cmdu q :}
    cmd cmdu GJA-CMD? IF
       2 GJA-ARGC=
       1 SCRIPT-ARGV$ q execute

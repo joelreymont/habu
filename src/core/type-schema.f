@@ -49,10 +49,10 @@ public
 4 cells constant SCH-REC
 private
 
-: SCH.TAG ( ptr a -- ptr a ) SCH.TAG-OFF + ;
-: SCH.A ( ptr a -- ptr a ) SCH.A-OFF + ;
-: SCH.B ( ptr a -- ptr a ) SCH.B-OFF + ;
-: SCH.C ( ptr a -- ptr a ) SCH.C-OFF + ;
+: SCH.TAG ( ^a -- ^a ) SCH.TAG-OFF + ;
+: SCH.A ( ^a -- ^a ) SCH.A-OFF + ;
+: SCH.B ( ^a -- ^a ) SCH.B-OFF + ;
+: SCH.C ( ^a -- ^a ) SCH.C-OFF + ;
 
 16 constant SCH-CAP-INIT        \ holds the built-ins' schemas (TF-CAP-INIT)
 16 constant SCH-ROOT-INIT       \ cells; holds the built-ins' schema roots
@@ -69,7 +69,7 @@ PERSISTED-PTR-VARIABLE SCH-A-P    SCH-A-BOOT SCH-A-P !
 
 public
 
-: SCH-BASE ( -- ptr n ) SCH-A-P @ ;
+: SCH-BASE ( -- ^n ) SCH-A-P @ ;
 
 variable SCH-ROOT-CAP-V   SCH-ROOT-INIT SCH-ROOT-CAP-V !
 
@@ -81,7 +81,7 @@ PERSISTED-PTR-VARIABLE SCH-ROOT-P   SCH-ROOT-BOOT SCH-ROOT-P !
 
 public
 
-: SCH-ROOT-BASE ( -- ptr n ) SCH-ROOT-P @ ;
+: SCH-ROOT-BASE ( -- ^n ) SCH-ROOT-P @ ;
 
 variable SCH-N   \ next node id; 1 leaves node 0 as the nil sentinel
 variable SCH-ROOT-N   \ next schema-root index
@@ -143,8 +143,8 @@ SCRATCH-VARIABLE SCH-MODE        \ 0 persistent, 1 transient
 : TRANSIENT-MODE? ( -- bool ) SCH-MODE @ 0 <> ;
 
 \ SCHEMA-REG:WORD was given V, which is WHAT; FIX says what to pass instead.
-: SCHEMA-BAD ( n ptr u8 n ptr u8 n ptr u8 n -- )
-   {: v:n w:ptr wu:n what:ptr whatu:n fix:ptr fixu:n :}
+: SCHEMA-BAD ( n ^u8 n ^u8 n ^u8 n -- )
+   {: v:n w:^ wu:n what:^ whatu:n fix:^ fixu:n :}
    s" E-SCHEMA-BAD" REJECTION:OPEN
    s" `SCHEMA-REG:" REJECTION:EMIT-STR  w wu REJECTION:EMIT-STR
    s" ` was given " REJECTION:EMIT-STR  what whatu REJECTION:EMIT-STR
@@ -153,7 +153,7 @@ SCRATCH-VARIABLE SCH-MODE        \ 0 persistent, 1 transient
    CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ A persistent node or root never names a transient one.
-: KEEP-CK ( n ptr u8 n -- ) {: id:n w:ptr wu:n :}
+: KEEP-CK ( n ^u8 n -- ) {: id:n w:^ wu:n :}
    TRANSIENT-MODE? IF EXIT THEN
    id TRANSIENT-BASE >= IF
       id w wu s" a transient node outside transient mode"
@@ -194,7 +194,7 @@ SCRATCH-VARIABLE SCH-MODE        \ 0 persistent, 1 transient
    i SCH-T-ROOT-N @ >= IF s" tfam: bad schema root index" 76 die THEN
    i cells SCH-T-ROOT-P @ + @ ;
 
-: SCH-REC@ ( n -- ptr n ) {: id:n :}     \ address of node `id` (nil/oob is a bug)
+: SCH-REC@ ( n -- ^n ) {: id:n :}     \ address of node `id` (nil/oob is a bug)
    id T-NODE? IF id TRANSIENT-BASE - SCH-REC * SCH-T-P @ + EXIT THEN
    id 0 <= IF s" tfam: bad schema node" 76 die THEN
    id SCH-N @ >= IF s" tfam: bad schema node" 76 die THEN
@@ -213,7 +213,7 @@ public
       SCHEMA-BAD
    THEN
    SCH-NEW-ID {: id:n :}
-   id SCH-REC@ {: r:ptr :}
+   id SCH-REC@ {: r:^ :}
    tag r SCH.TAG !   a r SCH.A !   b r SCH.B !   c r SCH.C !
    id ;
 
@@ -377,7 +377,7 @@ public
    eff SCHEMA-QUOT-RIN@  eff SCHEMA-QUOT-ROUT@
    eff SCHEMA-QUOT-HASR@ SCHEMA-QUOT ;
 
-\ --- SCH-PTR: a `ptr T` variant payload element. A malformed child (nil or out
+\ --- SCH-PTR: a `^T` variant payload element. A malformed child (nil or out
 \ of range) is rejected.
 : SCHEMA-PTR ( n -- n )
    dup s" SCHEMA-PTR" KEEP-CK
@@ -406,15 +406,15 @@ public
 2 cells constant SCH-RBF-REC
 private
 
-: SCHRB.N ( ptr a -- ptr a ) SCHRB.N-OFF + ;
-: SCHRB.ROOTN ( ptr a -- ptr a ) SCHRB.ROOTN-OFF + ;
+: SCHRB.N ( ^a -- ^a ) SCHRB.N-OFF + ;
+: SCHRB.ROOTN ( ^a -- ^a ) SCHRB.ROOTN-OFF + ;
 
 
 16 constant SCH-RBF-CAP-INIT
 variable SCH-RBF-CAP-V   SCH-RBF-CAP-INIT SCH-RBF-CAP-V !
 create SCH-RBF-BOOT   SCH-RBF-CAP-INIT SCH-RBF-REC * allot
 PERSISTED-PTR-VARIABLE SCH-RBF-P    SCH-RBF-BOOT SCH-RBF-P !
-: SCH-RBF-BASE ( -- ptr n ) SCH-RBF-P @ ;
+: SCH-RBF-BASE ( -- ^n ) SCH-RBF-P @ ;
 
 public
 
@@ -429,7 +429,7 @@ private
 : SCH-RBF-ENSURE ( -- )
    SCH-RBF-DEPTH @ SCH-RBF-CAP-V @ < IF exit THEN
    SCH-RBF-GROW ;
-: SCH-RBF-CUR ( -- ptr n ) SCH-RBF-DEPTH @ SCH-RBF-REC * SCH-RBF-BASE + ;
+: SCH-RBF-CUR ( -- ^n ) SCH-RBF-DEPTH @ SCH-RBF-REC * SCH-RBF-BASE + ;
 
 \ ---- rewind to a recorded pair ----------------------------------------------
 \ Every place that lowers the schema counts comes through REWIND, which scrubs
@@ -450,13 +450,13 @@ public
 
 : SCHEMA-ROLLBACK-SAVE ( -- )
    SCH-RBF-ENSURE
-   SCH-RBF-CUR {: r:ptr :}
+   SCH-RBF-CUR {: r:^ :}
    SCH-N @ r SCHRB.N !
    SCH-ROOT-N @ r SCHRB.ROOTN !
    SCH-RBF-DEPTH @ 1 + SCH-RBF-DEPTH ! ;
 : SCHEMA-ROLLBACK-RESTORE ( -- )
    SCH-RBF-DEPTH @ 1 - SCH-RBF-DEPTH !
-   SCH-RBF-CUR {: r:ptr :}
+   SCH-RBF-CUR {: r:^ :}
    r SCHRB.N @ r SCHRB.ROOTN @ REWIND ;
 : SCHEMA-ROLLBACK-FINALIZE ( -- )
    SCH-RBF-DEPTH @ 1 - SCH-RBF-DEPTH ! ;

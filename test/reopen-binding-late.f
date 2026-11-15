@@ -8,7 +8,7 @@ package REOPEN-ORDER
 
 public
 
-: @ ( ptr n n -- n ) {: base:ptr off:n :} base off cells + @ ;
+: @ ( ^n n -- n ) {: base:^ off:n :} base off cells + @ ;
 
 : LATE ( -- n ) SLOT 0 @ ;
 

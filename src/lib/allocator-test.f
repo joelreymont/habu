@@ -12,40 +12,40 @@ require src/lib/test/allocator-cases.f
 
 package ALLOC-TEST
 
-: CELLS-N ( ptr ALLOC:allocator -- )
-   {: al:ptr :}
+: CELLS-N ( ^ALLOC:allocator -- )
+   {: al:^ :}
    s" and so for n" T-LABEL
-   al [type] n ALLOC:NEW {: p1:ptr :}
-   al [type] n ALLOC:NEW {: p2:ptr :}
+   al [type] n ALLOC:NEW {: p1:^ :}
+   al [type] n ALLOC:NEW {: p2:^ :}
    p1 @ 0 T=  p2 @ 0 T=  p1 NULL-PTR - p2 NULL-PTR - APART
    5 p1 !  6 p2 !  p1 @ 5 T=  p2 @ 6 T= ;
 
 
-: CELLS-R ( ptr ALLOC:allocator -- )
-   {: al:ptr :}
+: CELLS-R ( ^ALLOC:allocator -- )
+   {: al:^ :}
    s" and so for r" T-LABEL
-   al [type] r ALLOC:NEW {: p1:ptr :}
-   al [type] r ALLOC:NEW {: p2:ptr :}
+   al [type] r ALLOC:NEW {: p1:^ :}
+   al [type] r ALLOC:NEW {: p2:^ :}
    p1 @ 0.0 f= TTRUE  p2 @ 0.0 f= TTRUE  p1 NULL-PTR - p2 NULL-PTR - APART
    2.5 p1 !  -1.5 p2 !  p1 @ 2.5 f= TTRUE  p2 @ -1.5 f= TTRUE ;
 
 
 \ $8000 bytes pass the first chunk, so they come from a later one.
-: BYTES ( ptr ALLOC:allocator -- )
-   {: al:ptr :}
+: BYTES ( ^ALLOC:allocator -- )
+   {: al:^ :}
    s" ALLOC:BYTES answers zeroed bytes and the length asked" T-LABEL
    al 100 ALLOC:BYTES dup 100 T= ZEROED
    s" and so past the first chunk" T-LABEL
    al $8000 ALLOC:BYTES dup $8000 T= ZEROED
    s" and no bytes as NULL-PTR, which ALLOC:FREE frees as nothing" T-LABEL
-   al 0 ALLOC:BYTES 0 T= {: z:ptr :}
+   al 0 ALLOC:BYTES 0 T= {: z:^ :}
    z NULL-PTR = TTRUE
    al z ALLOC:FREE ;
 
 
 : RECORDS ( -- )
-   ARENA:NEW {: a:ptr :}
-   a ARENA:ALLOCATOR {: al:ptr :}
+   ARENA:NEW {: a:^ :}
+   a ARENA:ALLOCATOR {: al:^ :}
    al TURNS  al CELLS-N  al CELLS-R  al BYTES
    a ARENA:RELEASE ;
 
@@ -54,9 +54,9 @@ package ALLOC-TEST
 \ chunk the reset left unzeroed shows in it.
 : RESETS ( -- )
    s" after ARENA:RESET the allocator answers a fresh zeroed record" T-LABEL
-   ARENA:NEW {: a:ptr :}
-   a ARENA:ALLOCATOR {: al:ptr :}
-   al NEW-TURN {: t1:ptr :}
+   ARENA:NEW {: a:^ :}
+   a ARENA:ALLOCATOR {: al:^ :}
+   al NEW-TURN {: t1:^ :}
    7 t1 TURN-ID !  8 t1 TURN-STEP !
    a ARENA:RESET
    a ARENA:ALLOCATOR NULL-PTR - al NULL-PTR - T=
@@ -66,9 +66,9 @@ package ALLOC-TEST
 
 : CHILDREN ( -- )
    s" a child from ARENA:NEW-IN has its own allocator" T-LABEL
-   ARENA:NEW {: a:ptr :}
-   a ARENA:NEW-IN {: c:ptr :}
-   c ARENA:ALLOCATOR {: cl:ptr :}
+   ARENA:NEW {: a:^ :}
+   a ARENA:NEW-IN {: c:^ :}
+   c ARENA:ALLOCATOR {: cl:^ :}
    cl NULL-PTR - a ARENA:ALLOCATOR NULL-PTR - <> TTRUE
    cl NEW-TURN TURN-ZERO
    a ARENA:RELEASE ;
@@ -76,12 +76,12 @@ package ALLOC-TEST
 
 : FREES ( -- )
    s" ALLOC:DELETE and ALLOC:FREE leave earlier records readable" T-LABEL
-   ARENA:NEW {: a:ptr :}
-   a ARENA:ALLOCATOR {: al:ptr :}
-   al NEW-TURN {: t1:ptr :}
-   al NEW-TURN {: t2:ptr :}
+   ARENA:NEW {: a:^ :}
+   a ARENA:ALLOCATOR {: al:^ :}
+   al NEW-TURN {: t1:^ :}
+   al NEW-TURN {: t2:^ :}
    1 t1 TURN-ID !  2 t2 TURN-ID !
-   al 16 ALLOC:BYTES drop {: b:ptr :}
+   al 16 ALLOC:BYTES drop {: b:^ :}
    al t2 ALLOC:DELETE
    al b ALLOC:FREE
    t1 TURN-ID @ 1 T=  t2 TURN-ID @ 2 T=
@@ -98,43 +98,43 @@ variable FREED-STATE
 variable FREED-AT
 TYPED-VARIABLE AL ALLOC:allocator
 
-: OFFSET ( ptr u8 -- n ) NULL-PTR - POOL NULL-PTR - - ;
+: OFFSET ( ^u8 -- n ) NULL-PTR - POOL NULL-PTR - - ;
 
 
 \ A bump allocator over POOL that counts its calls and keeps the last length.
-: P-ALLOC ( ptr u8 n -- ptr u8 )
-   {: st:ptr len:n :}
+: P-ALLOC ( ^u8 n -- ^u8 )
+   {: st:^ len:n :}
    1 ALLOCS +!  len LAST-N !
    st TOP @ +  len 7 + -8 and TOP +! ;
 
 
-: P-FREE ( ptr u8 ptr u8 -- )
-   {: st:ptr p:ptr :}
+: P-FREE ( ^u8 ^u8 -- )
+   {: st:^ p:^ :}
    1 FREES-MADE +!  st OFFSET FREED-STATE !  p OFFSET FREED-AT ! ;
 
 
 \ Moves every block, so a byte RESIZE keeps was copied.
-: P-RESIZE ( ptr u8 ptr u8 n n -- ptr u8 )
-   {: st:ptr block:ptr old:n new:n :}
+: P-RESIZE ( ^u8 ^u8 n n -- ^u8 )
+   {: st:^ block:^ old:n new:n :}
    1 RESIZES-MADE +!
-   st new P-ALLOC {: moved:ptr :}
+   st new P-ALLOC {: moved:^ :}
    block moved old new min BYTE-COPY moved ;
 
 
-: FILL ( ptr ALLOC:allocator -- )
-   {: al:ptr :}
+: FILL ( ^ALLOC:allocator -- )
+   {: al:^ :}
    POOL [: P-ALLOC ;] [: P-RESIZE ;] [: P-FREE ;] al ALLOC:INIT ;
 
 
 : NO-CALLS ( -- )
-   AL 0 ALLOC:BYTES 0 T= {: z:ptr :}
+   AL 0 ALLOC:BYTES 0 T= {: z:^ :}
    z NULL-PTR = TTRUE
    AL z ALLOC:FREE
    ALLOCS @ 0 T=  FREES-MADE @ 0 T= ;
 
 
 : ONE-CALL ( -- )
-   AL 16 ALLOC:BYTES 16 T= {: b:ptr :}
+   AL 16 ALLOC:BYTES 16 T= {: b:^ :}
    ALLOCS @ 1 T=  LAST-N @ 16 T=
    AL b ALLOC:FREE
    FREES-MADE @ 1 T=  FREED-STATE @ 0 T=  FREED-AT @ b OFFSET T= ;
@@ -147,7 +147,7 @@ TYPED-VARIABLE AL ALLOC:allocator
 
 : REFILLS ( -- )
    [: AL FILL ;] E-ALLOC-STATE TTHROWSQ
-   ARENA:NEW {: a:ptr :}
+   ARENA:NEW {: a:^ :}
    [: a ARENA:ALLOCATOR FILL ;] E-ALLOC-STATE TTHROWSQ
    a ARENA:RELEASE ;
 
@@ -159,32 +159,32 @@ TYPED-VARIABLE AL ALLOC:allocator
    NO-CALLS ONE-CALL REFUSED REFILLS ;
 
 
-: GROWN ( -- ptr u8 )
+: GROWN ( -- ^u8 )
    s" ALLOC:RESIZE keeps a block's bytes" T-LABEL
-   AL 8 ALLOC:BYTES drop {: block:ptr :}
+   AL 8 ALLOC:BYTES drop {: block:^ :}
    7 block c!  9 block 7 + c!
-   AL block 8 24 ALLOC:RESIZE 24 T= {: grown:ptr :}
+   AL block 8 24 ALLOC:RESIZE 24 T= {: grown:^ :}
    RESIZES-MADE @ 1 T=  grown c@ 7 T=  grown 7 + c@ 9 T=
    grown ;
 
 
-: SAME-SIZE ( ptr u8 -- )
-   {: block:ptr :}
+: SAME-SIZE ( ^u8 -- )
+   {: block:^ :}
    s" and answers the block with no call when the count is unchanged" T-LABEL
    AL block 24 24 ALLOC:RESIZE 24 T= block = TTRUE
    RESIZES-MADE @ 1 T= ;
 
 
-: NEGATIVE ( ptr u8 -- )
-   {: block:ptr :}
+: NEGATIVE ( ^u8 -- )
+   {: block:^ :}
    s" and refuses a negative count" T-LABEL
    [: AL block -1 8 ALLOC:RESIZE drop drop ;] E-MEM-SIZE TTHROWSQ
    [: AL block 24 -1 ALLOC:RESIZE drop drop ;] E-MEM-SIZE TTHROWSQ
    RESIZES-MADE @ 1 T= ;
 
 
-: TO-ZERO ( ptr u8 -- )
-   {: block:ptr :}
+: TO-ZERO ( ^u8 -- )
+   {: block:^ :}
    s" and frees the block at zero bytes" T-LABEL
    FREES-MADE @ {: f0:n :}
    AL block 24 0 ALLOC:RESIZE 0 T= NULL-PTR = TTRUE

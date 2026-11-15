@@ -131,15 +131,15 @@ public
    mp DATE-MP-LIMIT < IF mp DATE-MAR-BIAS + ELSE mp DATE-JAN-FEB-BIAS - THEN {: m:n :}
    m DATE-FEB <= IF y 1+ ELSE y THEN m d ;
 
-: N ( ptr u8 n n -- option<n> )
-   {: a:ptr pos:n len:n :}   \ SOME parsed field, NONE on a non-digit
+: N ( ^u8 n n -- option<n> )
+   {: a:^ pos:n len:n :}   \ SOME parsed field, NONE on a non-digit
    0 len 0 ?do
       a pos + i + c@ dup DIGIT? 0= IF drop drop unloop OPTION:NONE exit THEN
       DATE-ZERO - swap DATE-BASE * +
    loop OPTION:SOME ;
 
-: PARSE-YMD ( ptr u8 n -- option<n> )
-   {: a:ptr u:n :}   \ SOME Unix epoch day, NONE on bad YYYY-MM-DD
+: PARSE-YMD ( ^u8 n -- option<n> )
+   {: a:^ u:n :}   \ SOME Unix epoch day, NONE on bad YYYY-MM-DD
    u LEN <> IF OPTION:NONE exit THEN
    a DATE-YEAR-DASH + c@ DATE-DASH <> IF OPTION:NONE exit THEN
    a DATE-MONTH-DASH + c@ DATE-DASH <> IF OPTION:NONE exit THEN
@@ -164,15 +164,15 @@ public
      ENDOF
    ;MATCH ;
 
-: WIDTH! ( n n ptr u8 n -- )
-   {: n:n width:n dst:ptr pos:n :}
+: WIDTH! ( n n ^u8 n -- )
+   {: n:n width:n dst:^ pos:n :}
    n width 0 ?do
       dup DATE-BASE mod DATE-ZERO +  dst pos + width 1- i - + c!
       DATE-BASE /
    loop drop ;
 
-: FORMAT-YMD ( n ptr u8 n -- ptr u8 n )
-   {: days:n dst:ptr cap:n :}
+: FORMAT-YMD ( n ^u8 n -- ^u8 n )
+   {: days:n dst:^ cap:n :}
    cap LEN < IF E-TIME-CAPACITY throw THEN
    days DAYS>YMD {: y:n m:n d:n :}
    y 0 < y DATE-YEAR-MAX > or IF E-TIME-RANGE throw THEN
@@ -183,8 +183,8 @@ public
    d DATE-PART-LEN dst DATE-MONTH-DASH 1+ WIDTH!
    dst LEN ;
 
-: FORMAT-EPOCH-UTC ( n ptr u8 n -- ptr u8 n )
-   {: seconds:n dst:ptr cap:n :}
+: FORMAT-EPOCH-UTC ( n ^u8 n -- ^u8 n )
+   {: seconds:n dst:^ cap:n :}
    cap TIME-LEN < IF E-TIME-CAPACITY throw THEN
    seconds 0 < IF E-TIME-RANGE throw THEN
    seconds SECONDS-DAY / dst cap FORMAT-YMD 2drop
@@ -220,25 +220,25 @@ private
 11 constant DATE-ASCTIME-CLOCK
 20 constant DATE-ASCTIME-YEAR
 
-: IMF-TEMPLATE ( -- ptr u8 n ) s" ___, __ ___ ____ __:__:__ GMT" ;
-: RFC850-TEMPLATE ( -- ptr u8 n ) s" , __-___-__ __:__:__ GMT" ;
-: ASCTIME-TEMPLATE ( -- ptr u8 n ) s" ___ ___ __ __:__:__ ____" ;
+: IMF-TEMPLATE ( -- ^u8 n ) s" ___, __ ___ ____ __:__:__ GMT" ;
+: RFC850-TEMPLATE ( -- ^u8 n ) s" , __-___-__ __:__:__ GMT" ;
+: ASCTIME-TEMPLATE ( -- ^u8 n ) s" ___ ___ __ __:__:__ ____" ;
 
-: TEMPLATE? ( ptr u8 n n ptr u8 n -- bool )
-   {: a:ptr u:n k:n t:ptr tu:n :}   \ t matches the text from byte k on
+: TEMPLATE? ( ^u8 n n ^u8 n -- bool )
+   {: a:^ u:n k:n t:^ tu:n :}   \ t matches the text from byte k on
    k 0 <  u k tu + <> or IF false exit THEN
    tu 0 ?do
       t i + c@ dup DATE-HOLE <>
       swap a k + i + c@ <> and IF unloop false exit THEN
    loop true ;
 
-: DAY-NAME= ( ptr u8 n bool ptr u8 n -- bool )
-   {: a:ptr u:n short:bool name:ptr len:n :}
+: DAY-NAME= ( ^u8 n bool ^u8 n -- bool )
+   {: a:^ u:n short:bool name:^ len:n :}
    short IF a u name DATE-NAME-LEN STR= exit THEN
    a u name len STR= ;
 
-: DAY-NAME? ( ptr u8 n bool -- bool )
-   {: a:ptr u:n short:bool :}   \ short: the name's first three bytes
+: DAY-NAME? ( ^u8 n bool -- bool )
+   {: a:^ u:n short:bool :}   \ short: the name's first three bytes
    a u short s" Monday" DAY-NAME=
    a u short s" Tuesday" DAY-NAME= or
    a u short s" Wednesday" DAY-NAME= or
@@ -247,9 +247,9 @@ private
    a u short s" Saturday" DAY-NAME= or
    a u short s" Sunday" DAY-NAME= or ;
 
-: MONTH-NAME ( ptr u8 n -- option<n> )
-   {: a:ptr pos:n :}   \ SOME month 1..12 named at pos
-   s" JanFebMarAprMayJunJulAugSepOctNovDec" drop {: names:ptr :}
+: MONTH-NAME ( ^u8 n -- option<n> )
+   {: a:^ pos:n :}   \ SOME month 1..12 named at pos
+   s" JanFebMarAprMayJunJulAugSepOctNovDec" drop {: names:^ :}
    DATE-DEC 0 ?do
       a pos + DATE-NAME-LEN
       names i DATE-NAME-LEN * + DATE-NAME-LEN STR=
@@ -263,8 +263,8 @@ private
    h DATE-SECONDS-HOUR *  mi DATE-SECONDS-MINUTE * +
    s DATE-SECOND-MAX min + OPTION:SOME ;
 
-: CLOCK ( ptr u8 n -- option<n> )
-   {: a:ptr pos:n :}   \ SOME seconds into the day of HH:MM:SS at pos
+: CLOCK ( ^u8 n -- option<n> )
+   {: a:^ pos:n :}   \ SOME seconds into the day of HH:MM:SS at pos
    a pos DATE-PART-LEN N MATCH option
      none OF OPTION:NONE ENDOF
      some OF
@@ -307,8 +307,8 @@ private
    y m d VALID-YMD? 0= or
    IF y DATE-CENTURY-YEARS - ELSE y THEN ;
 
-: STAMP ( ptr u8 n n n [ n n n n n -- n ] -- option<n> )
-   {: a:ptr base:n width:n now:n year :}   \ year: ( yy m d s now -- y )
+: STAMP ( ^u8 n n n [ n n n n n -- n ] -- option<n> )
+   {: a:^ base:n width:n now:n year :}   \ year: ( yy m d s now -- y )
    a base DATE-STAMP-DAY + DATE-PART-LEN N MATCH option
      none OF OPTION:NONE ENDOF
      some OF
@@ -336,24 +336,24 @@ private
      ENDOF
    ;MATCH ;
 
-: IMF ( ptr u8 -- option<n> )
-   {: a:ptr :}
+: IMF ( ^u8 -- option<n> )
+   {: a:^ :}
    a DATE-NAME-LEN true DAY-NAME? 0= IF OPTION:NONE exit THEN
    a DATE-NAME-LEN DATE-YEAR-LEN 0 [: 2drop 2drop ;] STAMP ;
 
-: RFC850 ( ptr u8 n n -- option<n> )
-   {: a:ptr k:n now:n :}   \ k bytes of day name
+: RFC850 ( ^u8 n n -- option<n> )
+   {: a:^ k:n now:n :}   \ k bytes of day name
    a k false DAY-NAME? 0= IF OPTION:NONE exit THEN
    a k DATE-PART-LEN now [: FULL-YEAR ;] STAMP ;
 
-: ASCTIME-DAY ( ptr u8 -- option<n> )
-   {: a:ptr :}   \ two digits, or a space and one
+: ASCTIME-DAY ( ^u8 -- option<n> )
+   {: a:^ :}   \ two digits, or a space and one
    a DATE-ASCTIME-DAY + c@ STR-SPACE =
    IF a DATE-ASCTIME-DAY 1+ 1 N exit THEN
    a DATE-ASCTIME-DAY DATE-PART-LEN N ;
 
-: ASCTIME ( ptr u8 -- option<n> )
-   {: a:ptr :}
+: ASCTIME ( ^u8 -- option<n> )
+   {: a:^ :}
    a DATE-NAME-LEN true DAY-NAME? 0= IF OPTION:NONE exit THEN
    a DATE-ASCTIME-MONTH MONTH-NAME MATCH option
      none OF OPTION:NONE ENDOF
@@ -380,8 +380,8 @@ private
 
 public
 
-: PARSE-HTTP ( ptr u8 n n -- option<n> )
-   {: a:ptr u:n now:n :}   \ SOME epoch seconds; now serves RFC 850's year
+: PARSE-HTTP ( ^u8 n n -- option<n> )
+   {: a:^ u:n now:n :}   \ SOME epoch seconds; now serves RFC 850's year
    a u 0 IMF-TEMPLATE TEMPLATE? IF a IMF exit THEN
    a u 0 ASCTIME-TEMPLATE TEMPLATE? IF a ASCTIME exit THEN
    u RFC850-TEMPLATE nip - {: k:n :}

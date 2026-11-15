@@ -28,10 +28,10 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
       misaligned OF E-BUF-BOUNDS throw ENDOF
    ;MATCH ;
 
-: BUFT-TLEN ( ptr a -- n )  BUF:LEN@ BUFT-BL>RAW ;
-: BUFT-TCAP ( ptr a -- n )  BUF:CAP@ BUFT-BL>RAW ;
+: BUFT-TLEN ( ^a -- n )  BUF:LEN@ BUFT-BL>RAW ;
+: BUFT-TCAP ( ^a -- n )  BUF:CAP@ BUFT-BL>RAW ;
 
-: BUFT-CHECK-REJECTS ( ptr u8 n -- )
+: BUFT-CHECK-REJECTS ( ^u8 n -- )
    CHECK-QUIET-CANDIDATE! 0 T= ;
 
 \ Re-init of a live header would leak its mapping, so each test opens from a
@@ -168,7 +168,7 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
 : BUFT-CLEAR ( -- )
    8 BUFT-FRESH
    s" data" BUFT-N>BLEN BUFT-BUF BUF:APPEND-SPAN
-   BUFT-BUF BUF:SPAN$ drop {: before:ptr :}
+   BUFT-BUF BUF:SPAN$ drop {: before:^ :}
    BUFT-BUF BUF:CLEAR
    BUFT-BUF BUFT-TLEN 0 T=
    BUFT-BUF BUFT-TCAP 8 T=
@@ -179,11 +179,11 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
 : BUFT-LEN-STORE ( -- )
    8 BUFT-FRESH
    s" data" BUFT-N>BLEN BUFT-BUF BUF:APPEND-SPAN
-   BUFT-BUF BUF:SPAN$ drop {: before:ptr :}
+   BUFT-BUF BUF:SPAN$ drop {: before:^ :}
    2 BUFT-N>BLEN BUFT-BUF BUF:LEN!
    BUFT-BUF BUFT-TLEN 2 T=
    BUFT-BUF BUFT-TCAP 8 T=
-   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW {: data:ptr len:n :}
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW {: data:^ len:n :}
    data before = TTRUE
    data len s" da" T$=
    s" X" BUFT-N>BLEN BUFT-BUF BUF:APPEND-SPAN
@@ -219,16 +219,16 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
 \ Address reuse proves a mapping was freed.
 : BUFT-GROW-RELEASES ( -- )
    BUFT-CAP0 BUFT-REL-INIT
-   BUFT-REL-BUF BUF:SPAN$ drop {: old:ptr :}
+   BUFT-REL-BUF BUF:SPAN$ drop {: old:^ :}
    BUFT-REL-BUF BUFT-CAP0 2 * BUFT-N>BLEN BUF:RESERVE
-   BUFT-CAP0 MEM-ALLOC-BYTES drop {: reuse:ptr :}        \ a fresh same-size mapping refills the freed hole
+   BUFT-CAP0 MEM-ALLOC-BYTES drop {: reuse:^ :}        \ a fresh same-size mapping refills the freed hole
    reuse old = TTRUE ;
 
 : BUFT-DISPOSE-RELEASES ( -- )
    BUFT-CAP0 BUFT-REL-INIT
-   BUFT-REL-BUF BUF:SPAN$ drop {: old:ptr :}
+   BUFT-REL-BUF BUF:SPAN$ drop {: old:^ :}
    BUFT-REL-BUF BUF:DISPOSE
-   BUFT-CAP0 MEM-ALLOC-BYTES drop {: reuse:ptr :}
+   BUFT-CAP0 MEM-ALLOC-BYTES drop {: reuse:^ :}
    reuse old = TTRUE ;
 
 : BUFT-DISPOSE-DOUBLE ( -- )
@@ -238,7 +238,7 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
 
 : BUFT-DISPOSE-CYCLE-BOUNDED ( -- )
    BUFT-CAP0 BUFT-REL-INIT
-   BUFT-REL-BUF BUF:SPAN$ drop {: base:ptr :}
+   BUFT-REL-BUF BUF:SPAN$ drop {: base:^ :}
    BUFT-REL-BUF BUF:DISPOSE
    8 0 ?do
       BUFT-CAP0 BUFT-REL-INIT
@@ -257,7 +257,7 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
 : BUFT-GROW-FAIL-ATOMIC ( -- )
    BUFT-CAP0 BUFT-REL-INIT
    s" keep" BUFT-N>BLEN BUFT-REL-BUF BUF:APPEND-SPAN
-   BUFT-REL-BUF BUF:SPAN$ drop {: before:ptr :}
+   BUFT-REL-BUF BUF:SPAN$ drop {: before:^ :}
    [: BUFT-REL-BUF MEM-MAX-N BUFT-N>BLEN BUF:RESERVE ;] E-MEM-MAP TTHROWSQ   \ mmap of the whole space fails
    BUFT-REL-BUF BUF:SPAN$ drop before = TTRUE
    BUFT-REL-BUF BUFT-TLEN 4 T=
@@ -277,7 +277,7 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    BUFT-CHUNK-FILL
    2048 0 ?do  BUFT-CHUNK 1024 BUFT-N>BLEN BUFT-BIG-BUF BUF:APPEND-SPAN  loop
    BUFT-BIG-BUF BUFT-TLEN BUFT-BIG-N T=
-   BUFT-BIG-BUF BUF:SPAN$ BUFT-BL>RAW {: data:ptr len:n :}
+   BUFT-BIG-BUF BUF:SPAN$ BUFT-BL>RAW {: data:^ len:n :}
    len BUFT-BIG-N T=
    data 0 + c@ 0 T=
    data 1000 + c@ 232 T=                                              \ 1000 & 255
@@ -329,14 +329,14 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    BUFT-REL-BUF BUF:DISPOSE
    BUFT-BIG-FILL
    BUFT-PROP
-   s" BOK-INIT ( ptr a NUM:byte-len -- ) BUF:INIT" CHECK-QUIET-CANDIDATE! -1 T=
-   s" BOK-SPAN ( ptr u8 NUM:byte-len ptr a -- ) BUF:APPEND-SPAN" CHECK-QUIET-CANDIDATE! -1 T=
-   s" BSWAP-RAW-CAP ( ptr a n -- ) BUF:INIT" BUFT-CHECK-REJECTS
-   s" BSWAP-RAW-SPAN ( ptr u8 n ptr a -- ) BUF:APPEND-SPAN" BUFT-CHECK-REJECTS
-   s" BSWAP-RAW-RESERVE ( ptr a n -- ) BUF:RESERVE" BUFT-CHECK-REJECTS
-   s" BSWAP-RAW-ENSURE ( ptr a n -- ) BUF:ENSURE" BUFT-CHECK-REJECTS
-   s" BOK-LEN ( NUM:byte-len ptr a -- ) BUF:LEN!" CHECK-QUIET-CANDIDATE! -1 T=
-   s" BSWAP-RAW-LEN ( n ptr a -- ) BUF:LEN!" BUFT-CHECK-REJECTS
+   s" BOK-INIT ( ^a NUM:byte-len -- ) BUF:INIT" CHECK-QUIET-CANDIDATE! -1 T=
+   s" BOK-SPAN ( ^u8 NUM:byte-len ^a -- ) BUF:APPEND-SPAN" CHECK-QUIET-CANDIDATE! -1 T=
+   s" BSWAP-RAW-CAP ( ^a n -- ) BUF:INIT" BUFT-CHECK-REJECTS
+   s" BSWAP-RAW-SPAN ( ^u8 n ^a -- ) BUF:APPEND-SPAN" BUFT-CHECK-REJECTS
+   s" BSWAP-RAW-RESERVE ( ^a n -- ) BUF:RESERVE" BUFT-CHECK-REJECTS
+   s" BSWAP-RAW-ENSURE ( ^a n -- ) BUF:ENSURE" BUFT-CHECK-REJECTS
+   s" BOK-LEN ( NUM:byte-len ^a -- ) BUF:LEN!" CHECK-QUIET-CANDIDATE! -1 T=
+   s" BSWAP-RAW-LEN ( n ^a -- ) BUF:LEN!" BUFT-CHECK-REJECTS
    T-REPORT ;
 
 BUFT-RUN

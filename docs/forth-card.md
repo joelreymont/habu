@@ -56,7 +56,7 @@ public
   declaration 'x': reserved name`, rc 70). `;package` of a part returns to A's
   private section. `package` anywhere else inside a package is rejected
   `E-PKG-CONTEXT`, rc 70.
-- `[package] ( -- ptr u8 n )`: the open package's name in lower case (`hb`, a
+- `[package] ( -- ^u8 n )`: the open package's name in lower case (`hb`, a
   part's `hb:b`), empty outside one; a literal in a body, pushed at top level.
 - `EXPORT NAME` in a public section re-exports an existing word under its own
   tail: same xt, same effect, no body.
@@ -100,7 +100,7 @@ learned by refusal**.
 ## 2 Effects, locals, quotations
 
 Every definition carries `( before -- after )` and the checker reads it as the
-signature. Type tokens only (`n`, `u8`, `bool`, `xt`, `ptr a`, `ptr u8`, `idx`,
+signature. Type tokens only (`n`, `u8`, `bool`, `xt`, `^a`, `^u8`, `idx`,
 `len`, `fd`, `rc`), never role prose like `( got want -- )`.
 `xt` is a ticked engine primitive's token (`['] type`), which checked code
 cannot execute: `E-EXEC-OPAQUE-XT`.
@@ -110,24 +110,24 @@ cast holds or yields one.
 `[type] t` in a body makes one for a closed type `ARENA` stores; it refuses an
 open, linear, `xt`, `u32` or quotation type (`E-BAD-STORAGE`).
 
-- A string is `ptr u8 n`, a cell address `ptr a`, `n` only a genuine scalar.
-  `ptr a` needs a body that keeps the pointee parametric — a `ptr` local admits
+- A string is `^u8 n`, a cell address `^a`, `n` only a genuine scalar.
+  `^a` needs a body that keeps the pointee parametric — a `^` local admits
   `@` and `!`, but reading the cell specialises `a`; read it as a number and
-  declare `( ptr n -- n )`. `ptr u8` is a byte span — `c@`/`c!`; cell `@` on
+  declare `( ^n -- n )`. `^u8` is a byte span — `c@`/`c!`; cell `@` on
   it is `E-MISMATCH`.
 
   ```forth
-  : PEEK-A ( ptr a -- n )    \ E-NONPARAMETRIC-EFFECT: a is specialised
-     {: p:ptr :}
+  : PEEK-A ( ^a -- n )    \ E-NONPARAMETRIC-EFFECT: a is specialised
+     {: p:^ :}
      p @ ;
 
-  : PEEK-N ( ptr n -- n )    \ certifies
-     {: p:ptr :}
+  : PEEK-N ( ^n -- n )    \ certifies
+     {: p:^ :}
      p @ ;
   ```
-- A type var named only behind `ptr`, or in a family argument the family's
-  width does not read, takes any stored type: `: SAME ( ptr t -- ptr t ) ;`
-  takes `ptr turn`. Fetching, storing or stepping through it, or passing it to
+- A type var named only behind `^`, or in a family argument the family's
+  width does not read, takes any stored type: `: SAME ( ^t -- ^t ) ;`
+  takes `^turn`. Fetching, storing or stepping through it, or passing it to
   a `defer`, `RECURSE` or any primitive but a distance and `PTR>N`, makes it
   one cell: a record is `E-MISMATCH` at the call.
 - A type var named only on the stack, whose body only moves it (stack words
@@ -144,11 +144,11 @@ open, linear, `xt`, `u32` or quotation type (`E-BAD-STORAGE`).
   comparison, never a raw `0`/`-1`; a `bool` never passes as `n`, so convert
   it with `bool>n` (-1 or 0).
 - `nullable<a>` (`src/lib/adt/nullable.f`) is one cell, an address or zero:
-  `NULLABLE:SOME ( ptr a -- nullable<a> )`, `NULLABLE:NONE`, and `MATCH
+  `NULLABLE:SOME ( ^a -- nullable<a> )`, `NULLABLE:NONE`, and `MATCH
   nullable` with `none` and `some` arms reaches the address. Zero-filled
   storage and a null `some` read as `none`.
 - A `FUNCTION:` result declared `nullable<u8>` is `none` for NULL.
-- Locals `{: a b:ptr :}` bind left to right from the deepest item, so
+- Locals `{: a b:^ :}` bind left to right from the deepest item, so
   `1 2 {: a:n b:n :}` gives `a`=1. A local binds **once**: a per-turn value
   lives on the stack or in a cell. Locals are block-scoped, bindable after a
   closed early-exit guard. A local hides the word of its spelling, the loop
@@ -162,7 +162,7 @@ open, linear, `xt`, `u32` or quotation type (`E-BAD-STORAGE`).
   Destructure only to compute; pass the whole local between words.
 - Quotations `[: … ;]` are xts. The token `[ in -- out ]` works as
   a parameter, a `TYPED-VARIABLE` or `TYPED-BUFFER` element, and a
-  `STRUCTURE FIELD` value. A derived field accessor returns `ptr [ in -- out ]`.
+  `STRUCTURE FIELD` value. A derived field accessor returns `^[ in -- out ]`.
   `: A ( n [ n -- n ] -- n ) execute ;` certifies and `2 [: 1 + ;] A` runs. A
   quotation may read the locals of the word it is written in while that word
   runs: `{: v :} [: v RENDER ;] [: v CLOSE ;] finally`. It may not outlive
@@ -210,10 +210,10 @@ before the word runs, and `--load` exits 70 (`evaluate-closed` throws 70).
 | `defer D`, `: MK ( n -- ) create , does> @ ;`: a definer that declares an effect with no signature after its name, or one never closed | `E-MISSING-SIGNATURE` at the definer, at `does>` for a clause, rc 70 |
 | a `\` or `( … )` comment in a `STRUCTURE`/`ENUM` body | `E-BAD-DECLARATION`, rc 70 |
 | `4 TYPED-BUFFER B no-such-type`: a type, name or literal count `TYPED-*`, `*LAYOUT-BUFFER`, `DYNAMIC-BUFFER`, `ARENA` or `HEAP` refuses, or a name or type not on the definer's line | `E-BAD-STORAGE` |
-| `( -- ptr a )` for a `variable` | `E-NONPARAMETRIC-EFFECT` |
-| a structure pointer passed where a callback's context is `ptr a` (a pointer to cells): `: RUN ( ptr a [ ptr a -- ] -- ) execute ;`, `: GO ( ptr box -- ) [: CB ;] RUN ;` | `E-MISMATCH` at `RUN`; declare a pass-through context `a` |
+| `( -- ^a )` for a `variable` | `E-NONPARAMETRIC-EFFECT` |
+| a structure pointer passed where a callback's context is `^a` (a pointer to cells): `: RUN ( ^a [ ^a -- ] -- ) execute ;`, `: GO ( ^box -- ) [: CB ;] RUN ;` | `E-MISMATCH` at `RUN`; declare a pass-through context `a` |
 | `( R [ R -- S ] -- S ) drop`, `( R n -- ) drop`, `( R -- S ) 1`: a body that unifies two declared rows, a row with the unnamed row, or binds a row other than its own return row to fixed cells | `E-NONPARAMETRIC-EFFECT`, naming the rows — run the quotation on every path, or declare the row the body leaves |
-| a multi-cell value at the prompt | `E-LAYOUT-VALUE`, rc 70 |
+| `2 3 DEMO:AT dup`: an engine stack primitive (`dup`, `swap`, `over`, `2>r`, their kin) at top level whose operands hold a multi-cell value, or `constant` over one; a word that takes or returns one runs there, and `drop` drops the whole value, refusing one of open width | `E-LAYOUT-VALUE`, rc 70, before it runs; consume the value with a word, or move it inside a definition |
 | `depth` or `.s` over a value held in more than one cell, or a layout value whose width is open there: `3 OPTION:SOME depth`, `( option<a> -- ) depth` | `E-DEPTH-WIDE`, `count_values`, ``cannot count `option<n>`: it is one value held in 2 cells``, or ``cannot count `option<a>`: it is one value, and how many cells it holds is not known here``; take the value apart first (`MATCH` needs concrete arguments, `E-MATCH-OPEN-ARGS`), or count another way |
 | a bare `using` import a global also names, in a body, at top level or after `'` | `E-USING-SHADOW-GLOBAL`; at top level or after `'` `--load` exits with status 70 |
 | a top-level word, or `'` of one, nothing defined before it, `1.` or `$GG` among them | `E-UNDEFINED-TOP-LEVEL` at the token, before anything runs |
@@ -305,7 +305,7 @@ definition, and a string literal right before a call of it is then a use of
 the word between its quotes, which references list:
 
 ```forth
-names: LOOK                         \ LOOK finds ( ptr u8 n ) as a name
+names: LOOK                         \ LOOK finds ( ^u8 n ) as a name
 : SEEK ( -- ) s" ROOK" LOOK ;       \ ROOK between the quotes is a use of ROOK
 ```
 
@@ -314,7 +314,7 @@ global one. A computed operand, a literal a caller passes on and a literal with 
 escape in it bind nothing. The row is trusted, never compared with the body;
 `EXPORT` carries it, a word that calls the declared one declares its own. A
 row with no target, naming no word or naming a word whose input row does not
-end in the string `( ptr u8 n )`, as `names: dup` does, is `E-NAMES-ROW`.
+end in the string `( ^u8 n )`, as `names: dup` does, is `E-NAMES-ROW`.
 
 A word that makes definitions at load time (anything reaching `define-word` or
 an evaluate word: `FUNCTION:`/`;FUNCTION`, `FSM:DEFINE`) makes names
@@ -348,7 +348,7 @@ value must leave the selector on top (`30 swap endcase`). `do` always takes its
 first turn: `0 0 do … loop` and `-1 0 do … loop` run once. `?do … loop` enters
 only while start < limit, signed, so `0 0`, `-1 0` and `$8000000000000000 0` run zero times
 and `u 0 ?do` runs max(u,0); `?do … +loop` skips only equal bounds, so
-`0 10 ?do … -1 +loop` counts down eleven turns. `evaluate-closed ( ptr u8 n -- )`
+`0 10 ?do … -1 +loop` counts down eleven turns. `evaluate-closed ( ^u8 n -- )`
 evaluates source in a body: the text's `depth` starts at 0, a token reaching
 below it throws a stack underflow and a text that leaves cells throws
 `E-EVAL-RESIDUE`, the caller's cells intact either way. An xt the text runs
@@ -369,32 +369,32 @@ width, cell count or byte count worked out by hand: a type's width can change.
 | form | for | accessor |
 |---|---|---|
 | `variable V` | a raw scalar, role or atom cell | `V @` / `V !` |
-| `SCRATCH-VARIABLE V` | a `variable` whose value a build leaves out | `( -- ptr a )` |
+| `SCRATCH-VARIABLE V` | a `variable` whose value a build leaves out | `( -- ^a )` |
 | `datum` | a nameless row laid at top level | none: the row's address is `here` after it |
 | `create B 256 allot` | static dictionary storage | `B`, pointee bound by the use (`B 4 type`, `B @`) |
-| `n BUFFER: B` | a fixed zeroed byte row | `( -- ptr u8 )`; bytes are never a `TYPED-BUFFER` element |
-| `n SCRATCH-BUFFER: B` | a `BUFFER:` whose bytes a build leaves out | `( -- ptr u8 )` |
-| `PTR-VARIABLE P` | a global slot holding an address | `( -- ptr ptr a )`; callers declare the pointee: `: F ( -- ptr u8 ) P @ ;` |
-| `TYPED-VARIABLE V t` | one typed cell or record | `( -- ptr t )` |
-| `TYPED-VARIABLE V ptr t` | a cell holding an address of `t` | `( -- ptr ptr t )` |
-| `n TYPED-BUFFER TB t` | a fixed array of `t` | `( n -- ptr t )` |
-| `n PTR-U8-TABLE TT` | a fixed table of byte pointers | `( -- ptr ptr u8 )`, indexed with `ptr-field` |
-| `n PERSISTED-PTR-U8-TABLE TT` | a `PTR-U8-TABLE` whose cells keep their addresses across a save | `( -- ptr ptr u8 )`, indexed with `ptr-field` |
-| `DYNAMIC-BUFFER DB t` | a growable mapped array, `u8` a byte row | `( n -- ptr t )` plus `DB-RESERVE` / `DB-RELEASE`; growth moves it — keep indices, reacquire ptrs, release before an image save |
-| `ARENA AR t` | records of `t` in an arena the caller holds, never moved | `AR-NEW ( ptr ARENA:arena -- ptr t )` a zeroed record, `AR-NEW-DISPOSE ( ptr ARENA:arena [ ptr t -- ] -- ptr t )` with an action run once at reset or release; `ARENA:NEW` or `ARENA:WITH` makes the arena, `ARENA:ALLOC` and `ARENA:ALLOC-DISPOSE` (with an action) answer raw bytes in it, `ARENA:RESET` or `ARENA:RELEASE` frees its records at once, and a pointer kept across either is stale; tasks sharing one arena serialise every call |
-| `HEAP H t` | one record with its own lifetime, never moved | `H-NEW ( -- ptr t )` a zero-filled record on its own mapping, `H-RELEASE ( ptr t -- )` unmaps it; a pointer kept across it is stale, and a second RELEASE can unmap a later mapping; nothing registers a record, so release it before an image save |
-| `n LAYOUT-BUFFER LB fam` | capacity for a declared family | `( n -- ptr fam )` |
-| `STRUCTURE p … BUFFER b N … ;STRUCTURE` | N bytes inline in a record, N a number literal above 0, from the next cell; the record stays whole cells; `MAKE` takes ceil(N / CELL) `n` for it; a record of more than 4096 items is rejected (`error[E-BAD-DECLARATION]`), and one with a `BUFFER` rejects `DERIVE eq`, `hash` and `init` | under `DERIVE addr`, `P:B ( ptr p -- SPAN:span<u8> )`, N bytes |
+| `n BUFFER: B` | a fixed zeroed byte row | `( -- ^u8 )`; bytes are never a `TYPED-BUFFER` element |
+| `n SCRATCH-BUFFER: B` | a `BUFFER:` whose bytes a build leaves out | `( -- ^u8 )` |
+| `PTR-VARIABLE P` | a global slot holding an address | `( -- ^^a )`; callers declare the pointee: `: F ( -- ^u8 ) P @ ;` |
+| `TYPED-VARIABLE V t` | one typed cell or record | `( -- ^t )` |
+| `TYPED-VARIABLE V ^t` | a cell holding an address of `t` | `( -- ^^t )` |
+| `n TYPED-BUFFER TB t` | a fixed array of `t` | `( n -- ^t )` |
+| `n PTR-U8-TABLE TT` | a fixed table of byte pointers | `( -- ^^u8 )`, indexed with `ptr-field` |
+| `n PERSISTED-PTR-U8-TABLE TT` | a `PTR-U8-TABLE` whose cells keep their addresses across a save | `( -- ^^u8 )`, indexed with `ptr-field` |
+| `DYNAMIC-BUFFER DB t` | a growable mapped array, `u8` a byte row | `( n -- ^t )` plus `DB-RESERVE` / `DB-RELEASE`; growth moves it — keep indices, reacquire ptrs, release before an image save |
+| `ARENA AR t` | records of `t` in an arena the caller holds, never moved | `AR-NEW ( ^ARENA:arena -- ^t )` a zeroed record, `AR-NEW-DISPOSE ( ^ARENA:arena [ ^t -- ] -- ^t )` with an action run once at reset or release; `ARENA:NEW` or `ARENA:WITH` makes the arena, `ARENA:ALLOC` and `ARENA:ALLOC-DISPOSE` (with an action) answer raw bytes in it, `ARENA:RESET` or `ARENA:RELEASE` frees its records at once, and a pointer kept across either is stale; tasks sharing one arena serialise every call |
+| `HEAP H t` | one record with its own lifetime, never moved | `H-NEW ( -- ^t )` a zero-filled record on its own mapping, `H-RELEASE ( ^t -- )` unmaps it; a pointer kept across it is stale, and a second RELEASE can unmap a later mapping; nothing registers a record, so release it before an image save |
+| `n LAYOUT-BUFFER LB fam` | capacity for a declared family | `( n -- ^fam )` |
+| `STRUCTURE p … BUFFER b N … ;STRUCTURE` | N bytes inline in a record, N a number literal above 0, from the next cell; the record stays whole cells; `MAKE` takes ceil(N / CELL) `n` for it; a record of more than 4096 items is rejected (`error[E-BAD-DECLARATION]`), and one with a `BUFFER` rejects `DERIVE eq`, `hash` and `init` | under `DERIVE addr`, `P:B ( ^p -- SPAN:span<u8> )`, N bytes |
 | `STRUCTURE p FIELD x n … ;STRUCTURE` | a by-value record | `P:MAKE` / `P:UNMAKE`; under `package PKG` the tail is `PKG-P:MAKE`, hyphens doubled in both names (`package A-B`, `STRUCTURE c-d` gives `A--B-C--D:MAKE`); `STRUCTURE p OPAQUE …` keeps `PKG:p` public and makes the pair PKG's private `P-MAKE` / `P-UNMAKE`, as a `STRUCTURE` in a private section does; a private `ENUM` or `SUMTYPE` likewise gets `FAMILY-VARIANT` and its `DERIVE` words |
 
 A build tracks a compile-time read of storage as a read of the record whose
 address it derives from, within that record's extent: `L 16 +` past
 `create L 8 allot` reads the next record, whose edit a warm build misses.
 
-A word a definer's `create` makes has `-- ptr a` from the moment it is made, in
+A word a definer's `create` makes has `-- ^a` from the moment it is made, in
 a package or under `evaluate`, until a `does>` the definer then
 reaches replaces it with the clause effect; a branch that `exit`s before
-`does>` leaves `-- ptr a`.
+`does>` leaves `-- ^a`.
 
 Lay a created body's data right after its `create`, before the next definition
 or row: a definition's `;` may lay its facts text at `here`, so data laid after
@@ -417,7 +417,7 @@ A definer that builds a word from words it found writes no text:
 the word (`s" bool" EFFECT:NAMED` names a built-in type or a family: a
 qualified spelling, `ARENA:arena`, names that package's family whatever the
 running package holds, and a bare one is looked up as source where the
-definer runs would; `s" ptr u8" EFFECT:READ-TYPE` reads one type with no
+definer runs would; `s" ^u8" EFFECT:READ-TYPE` reads one type with no
 letters as that source would), `postpone W` appends the W found where the
 definer was compiled, which no package the definer later runs in can shadow,
 and `postpone ;` ends the word: `postpone` of an immediate W compiles a call
@@ -434,7 +434,7 @@ appends a call of W, a word whose tick is a quotation (a primitive's tick is
 an `xt`, which `compile,` rejects), and `; ( -- )` ends the word.
 
 `PTR-U8-TABLE-VARIABLE` is a cell holding a `PTR-U8-TABLE`'s base
-(`( -- ptr ptr ptr u8 )`). An image save writes `PTR-VARIABLE`, `PTR-U8-TABLE` and
+(`( -- ^^^u8 )`). An image save writes `PTR-VARIABLE`, `PTR-U8-TABLE` and
 `PTR-U8-TABLE-VARIABLE` cells as null; their `PERSISTED-` siblings keep their
 addresses, and so do the pointer fields of typed storage. A pointer into memory
 the build mapped is refused at save, naming the cell. Scratch storage belongs to
@@ -459,7 +459,7 @@ variable V                    \ E-RAW-CELL-PTR at the fetch,
 : PEEK ( n -- n ) V ! V @ @ ; \ repair class declare_pointer_cell
 
 PTR-VARIABLE V                \ the declared twin certifies
-: PEEK ( -- ptr u8 ) V @ ;
+: PEEK ( -- ^u8 ) V @ ;
 ```
 
 The declared forms are the `PTR-*` and `TYPED-*` rows of § 4. Such a cell takes
@@ -472,10 +472,10 @@ unwritten: `variable V  here V !` is `E-RAW-CELL-PTR` at `!` and
 a `require`, and `' X HK !` for `TYPED-VARIABLE HK [ -- ]`.
 
 An integer or an `xt` becomes an address or a quotation only through a private
-`CAST:` (`CAST: >BYTES ( n -- ptr u8 )` in a package's private section, else
+`CAST:` (`CAST: >BYTES ( n -- ^u8 )` in a package's private section, else
 `E-CAST-MINT`); `X NULL-PTR -` is the address-to-integer distance for any
 pointer `X`, with no view: a distance against `NULL-PTR` or `data-base` binds
-neither pointee, so `: D ( ptr a -- n ) NULL-PTR - ;` keeps `a` free.
+neither pointee, so `: D ( ^a -- n ) NULL-PTR - ;` keeps `a` free.
 A cast may take an `xt` (`CAST: XT>N ( xt -- n )`) but never yields one
 (`E-CAST-CLASS`), and no storage holds one (`E-BAD-STORAGE`, `xt in a stored
 type`).
@@ -488,8 +488,8 @@ cell family or `OPAQUE` structure is the writer's claim, which the checker does
 not prove.
 
 In checked code a `DEFLINEAR` token is minted and erased the same way, by the
-package that declared the type: `LINEAR: MINT ( ptr n -- PKG:tok )` and `LINEAR: ERASE
-( PKG:tok -- ptr n )` in its private section. Under `public` that is
+package that declared the type: `LINEAR: MINT ( ^n -- PKG:tok )` and `LINEAR: ERASE
+( PKG:tok -- ^n )` in its private section. Under `public` that is
 `E-LINEAR-SCOPE`, as is a qualified `LINEAR:` name in the private section;
 in any other package or for a top-level `DEFLINEAR`
 `E-LINEAR-OWNER`, and a row that is not one token and one non-linear con (or
@@ -498,8 +498,8 @@ linear value (`E-CAST-LINEAR`); a quotation whose rows end in different tails
 (`[ R -- S ]`) counts as one, except in a cast's input outside a view's element,
 where it is any quotation; where the output mints, an input row ending in a row
 variable keeps that variable and its cell count in place (`E-CAST-CLASS`). A
-type variable only where a type is stored is admitted (`CAST: >ELEM ( ptr u8 --
-ptr t )` mints a pointer, so only in a private section); a type bound to it
+type variable only where a type is stored is admitted (`CAST: >ELEM ( ^u8 --
+^t )` mints a pointer, so only in a private section); a type bound to it
 later that may hold a linear value is `E-CAST-LINEAR`, an atom or a width
 `E-CAST-CLASS`, and `is` refuses a callable over it into a cell over any type
 (`E-CAST-LINEAR`). Both identity declarers preserve the stack below their
@@ -508,7 +508,7 @@ operand: `LINEAR: MINT ( R n -- R PKG:tok )` is valid, but different tails are
 No storage is declared with a type that may hold a linear value (`E-BAD-STORAGE`,
 `stored type may hold a linear value`): a token or a type variable, or a
 quotation over a token, a type variable or different tails, at any depth
-(`TYPED-VARIABLE HK [ -- PKG:tok ]`, `ptr a`, `[ ptr t ptr t -- ]`,
+(`TYPED-VARIABLE HK [ -- PKG:tok ]`, `^a`, `[ ^t ^t -- ]`,
 `[ R -- S ]`). A cell's type is believed at every read, so such a cell would
 hand any package the token; a token stays on the stack and a `defer` names
 such a quotation.
@@ -535,7 +535,7 @@ holds an address**.
 - A code is declared with its text: `-9701 s" the provider refused the key"
   ERROR:CODE E-KEY` defines the constant `E-KEY` and keeps its name, qualified
   by the open package (`MODEL:E-KEY`), and the text in the program's data.
-  `ERROR:NAME$` and `ERROR:TEXT$` ( n -- ptr u8 n ) answer them, empty for an
+  `ERROR:NAME$` and `ERROR:TEXT$` ( n -- ^u8 n ) answer them, empty for an
   undeclared code. `src/lib/error.f` states the refusals (CODE, CHECK).
 - A block with codes in a package (`JSON:E-READ-SOURCE`) is minted, bounds and
   all, in the file that throws its codes and that every other file throwing
@@ -552,7 +552,7 @@ holds an address**.
   (`src/lib/log.f`), the tag its package name in lower case. `LOG:CODE+`
   appends a code with its declared name and text.
 - `throw` is catchable and belongs to the checker's exception edge. `die`
-  (`ptr u8 n n --`, a real message and exit code) ends the process and is
+  (`^u8 n n --`, a real message and exit code) ends the process and is
   no-return (§ 3). `throw` for recoverable and interactive paths, `die` for
   build makers and CLI boundaries.
 - Exit 79 (`$4F`) is compilation from a task: a definition, `create`, `allot`,

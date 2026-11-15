@@ -35,15 +35,15 @@ create SLV-OUT SLV-CAP allot
 create SLV-ERR SLV-CAP allot
 create SLV-EMPTY 1 allot            \ zero-length stdin
 
-: SLV-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: src:ptr u:n dst:ptr lenp:ptr :}
+: SLV-COPY! ( ^u8 n ^u8 ^n -- ) {: src:^ u:n dst:^ lenp:^ :}
    u PATH-CAP > if E-FS-CAPACITY throw then
    src dst u BYTE-COPY
    u lenp ! ;
 
-: SLV-ROOT ( -- ptr u8 n )
+: SLV-ROOT ( -- ^u8 n )
    SLV-ROOT-BUF SLV-ROOT-U @ ;
 
-: SLV-CHILD ( -- ptr u8 n )
+: SLV-CHILD ( -- ^u8 n )
    SLV-CHILD-BUF SLV-CHILD-U @ ;
 
 : SLV-LF ( -- )
@@ -51,7 +51,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 
 \ Legit FORGET marks live in the code region (>= DATA-START, in the DBASE region),
 \ so the cp!/ndict! guards must leave a real save-mark/roll-back/redefine intact.
-: SLV-FORGET-FORGE$ ( -- ptr u8 n )
+: SLV-FORGET-FORGE$ ( -- ^u8 n )
    SB-RESET
    s" : SLF-A ( -- n ) 1 ;" SB-APPEND SLV-LF
    s" cp@ ndict@" SB-APPEND SLV-LF                 \ save code/dict marks
@@ -67,12 +67,12 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 \ engine source) would retire engine definitions and rewind CP into engine code,
 \ so post-seal source is rejected (E-SEAL-VIOLATION). `WORDS` is an
 \ engine word (xref.f), well below the watermark.
-: SLV-FORGET-ENGINE-FORGE$ ( -- ptr u8 n )
+: SLV-FORGET-ENGINE-FORGE$ ( -- ^u8 n )
    SB-RESET
    S\" s\" WORDS\" FORGET-DEFS-FROM" SB-APPEND SLV-LF
    SB$ ;
 
-: SLV-HIDE-ENGINE-FORGE$ ( -- ptr u8 n )
+: SLV-HIDE-ENGINE-FORGE$ ( -- ^u8 n )
    SB-RESET
    S\" s\" WORDS\" HIDE-DEFS-FROM" SB-APPEND SLV-LF
    SB$ ;
@@ -80,12 +80,12 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 \ The engine-prefix tail: src/os/script-argv.f loads after xref.f, and
 \ SEAL-CAPTURE sits at the true engine-prefix end, so the tail is rejected like
 \ any engine definition.
-: SLV-FORGET-TAIL-FORGE$ ( -- ptr u8 n )
+: SLV-FORGET-TAIL-FORGE$ ( -- ^u8 n )
    SB-RESET
    S\" s\" SCRIPT-ARGV$\" FORGET-DEFS-FROM" SB-APPEND SLV-LF
    SB$ ;
 
-: SLV-HIDE-TAIL-FORGE$ ( -- ptr u8 n )
+: SLV-HIDE-TAIL-FORGE$ ( -- ^u8 n )
    SB-RESET
    S\" s\" SCRIPT-ARGV$\" HIDE-DEFS-FROM" SB-APPEND SLV-LF
    SB$ ;
@@ -93,7 +93,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 \ Public ndict! may forget user definitions, but it cannot retire the sealed
 \ engine. The attack continues from already compiled code and would evaluate a
 \ reserved-package publication attempt if the dictionary sink failed open.
-: SLV-NDICT-CONTINUATION-FORGE$ ( -- ptr u8 n )
+: SLV-NDICT-CONTINUATION-FORGE$ ( -- ^u8 n )
    SB-RESET
    s" TRUSTED: SLF-NDICT-ATTACK ( -- )" SB-APPEND SLV-LF
    s"    0 ndict!" SB-APPEND SLV-LF
@@ -102,7 +102,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    SB$ ;
 
 \ record-facts! refuses a record below the floor: record 0 is a kernel word's.
-: SLV-RECFACTS-FORGE$ ( -- ptr u8 n )
+: SLV-RECFACTS-FORGE$ ( -- ^u8 n )
    SB-RESET
    s" : SLF-RF ( -- ) 0 0 record-facts! ; SLF-RF" SB-APPEND SLV-LF
    SB$ ;
@@ -111,14 +111,14 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 \ guard but would forget an engine word's checker signature so it could be
 \ redefined (a spoof). Only the engine calls CHECKER-USIGS-TRUNCATE-FROM, so a
 \ post-seal call is an engine defect (status 76).
-: SLV-USIG-TRUNC-FORGE$ ( -- ptr u8 n )
+: SLV-USIG-TRUNC-FORGE$ ( -- ^u8 n )
    SB-RESET
    S\" s\" WORDS\" CHECKER-USIGS-TRUNCATE-FROM" SB-APPEND SLV-LF
    SB$ ;
 
 \ A user mark defined after the seal is above the watermark, so FORGET/HIDE of
 \ it stays a working round-trip (retire the user tail, redefine).
-: SLV-FORGET-USER-FORGE$ ( -- ptr u8 n )
+: SLV-FORGET-USER-FORGE$ ( -- ^u8 n )
    SB-RESET
    s" : SLF-UMARK ( -- ) ;" SB-APPEND SLV-LF
    s" : SLF-UA ( -- n ) 1 ;" SB-APPEND SLV-LF
@@ -127,14 +127,14 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" SLF-UB . cr" SB-APPEND SLV-LF
    SB$ ;
 
-: SLV-HIDE-USER-FORGE$ ( -- ptr u8 n )
+: SLV-HIDE-USER-FORGE$ ( -- ^u8 n )
    SB-RESET
    s" : SLF-UMARK ( -- ) ;" SB-APPEND SLV-LF
    s" : SLF-UA ( -- n ) 1 ;" SB-APPEND SLV-LF
    S\" s\" SLF-UMARK\" HIDE-DEFS-FROM" SB-APPEND SLV-LF
    SB$ ;
 
-: SLV-STORE! ( len len PROCESS:ending ptr u8 n -- ) {: outu:len erru:len oc src:ptr u:n :}
+: SLV-STORE! ( len len PROCESS:ending ^u8 n -- ) {: outu:len erru:len oc src:^ u:n :}
    erru LEN>N SLV-ERR-U !  outu LEN>N SLV-OUT-U !
    oc MATCH PROCESS:ending
      exited OF SLV-RC ! 0 0= SLV-EXITED ! ENDOF
@@ -142,7 +142,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
      timeout OF src u SLV-OUT SLV-OUT-U @ SLV-ERR SLV-ERR-U @ T-TIMED-OUT ENDOF
    ;MATCH ;
 
-: SLV-RUN-LOAD ( ptr u8 n -- ) {: src:ptr u:n :}
+: SLV-RUN-LOAD ( ^u8 n -- ) {: src:^ u:n :}
    SLV-CHILD src u FS:WRITE-ALL
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
@@ -152,7 +152,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    src u SLV-STORE! ;
 
 \ Fixtures run in SUBJECT forks of the sealed candidate.
-: SLV-SUBJECT ( ptr u8 n -- ) {: src:ptr u:n :}
+: SLV-SUBJECT ( ^u8 n -- ) {: src:^ u:n :}
    src u SLV-OUT SLV-CAP >LEN SLV-ERR SLV-CAP >LEN
    PROCESS:WAIT-FOREVER SUBJECT:RUN src u SLV-STORE! ;
 
@@ -163,19 +163,19 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 : SLV-ASSERT-SEAL ( -- )
    SLV-SEAL-RC SLV-ASSERT-RC ;
 
-: SLV-ERR$ ( -- ptr u8 n )  SLV-ERR SLV-ERR-U @ ;
+: SLV-ERR$ ( -- ^u8 n )  SLV-ERR SLV-ERR-U @ ;
 
 \ The child's record opens with the line L and holds the help line H.
-: SLV-ASSERT-REJECT ( ptr u8 n ptr u8 n -- )
-   {: l:ptr lu:n h:ptr hu:n :}
+: SLV-ASSERT-REJECT ( ^u8 n ^u8 n -- )
+   {: l:^ lu:n h:^ hu:n :}
    CHECKER-REJECT-RC SLV-ASSERT-RC
    SLV-ERR$ l lu STARTS-WITH? TTRUE
    SLV-ERR$ h hu CONTAINS? TTRUE ;
 
-: SLV-FORGET-HELP$ ( -- ptr u8 n )
+: SLV-FORGET-HELP$ ( -- ^u8 n )
    S\" = help: pass a word this program defined, as in `s\" MY-WORD\" FORGET-DEFS-FROM`\n" ;
 
-: SLV-HIDE-HELP$ ( -- ptr u8 n )
+: SLV-HIDE-HELP$ ( -- ^u8 n )
    S\" = help: pass a word this program defined, as in `s\" MY-WORD\" HIDE-DEFS-FROM`\n" ;
 
 : SLV-ASSERT-OK ( -- )
@@ -184,7 +184,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 
 \ prot-wid-add refuses an id at or above PROT-WID-MAX, the protected-WID
 \ bitmap's bound, and exits 84 rather than writing outside it, printing the id.
-: SLV-ASSERT-PWID-OOR ( ptr u8 n -- ) {: want:ptr wantu:n :}
+: SLV-ASSERT-PWID-OOR ( ^u8 n -- ) {: want:^ wantu:n :}
    SLV-EXITED @ TTRUE
    SLV-RC @ ENGINE-ERROR:SEAL-PACKAGE T=
    SLV-ERR$ want wantu CONTAINS? TTRUE ;
@@ -201,7 +201,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 
 \ Publishing into a protected WID is rejected with exit 70 and an
 \ E-SEALED-PACKAGE record naming the word it would add.
-: SLV-ASSERT-PROT-PUBLISH ( ptr u8 n -- ) {: prose:ptr proseu:n :}
+: SLV-ASSERT-PROT-PUBLISH ( ^u8 n -- ) {: prose:^ proseu:n :}
    SLV-EXITED @ TTRUE
    SLV-RC @ CHECKER-REJECT-RC T=
    SLV-ERR$ s" error[E-SEALED-PACKAGE]" CONTAINS? TTRUE
@@ -212,12 +212,12 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 \ `2 set-current : X ;` would stamp X with OWNER-API-PRI-WID, the marker that
 \ seals a record as a system-private engine helper and hides it from raw word
 \ searches.
-: SLV-OWNER-PRI-FORGE$ ( -- ptr u8 n )       \ publish into the private engine-API wordlist (helper marker)
+: SLV-OWNER-PRI-FORGE$ ( -- ^u8 n )       \ publish into the private engine-API wordlist (helper marker)
    SB-RESET
    s" 2 set-current : OWNERFORGE ( -- ) ;" SB-APPEND SLV-LF
    SB$ ;
 
-: SLV-OWNER-PUB-FORGE$ ( -- ptr u8 n )       \ publish into the public engine-API wordlist
+: SLV-OWNER-PUB-FORGE$ ( -- ^u8 n )       \ publish into the public engine-API wordlist
    SB-RESET
    s" 1 set-current : OWNERFORGE ( -- ) ;" SB-APPEND SLV-LF
    SB$ ;
@@ -228,7 +228,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" : X ; via 1 set-current into OWNER-API-PUB-WID -> labeled exit 70" T-LABEL
    SLV-OWNER-PUB-FORGE$ SLV-SUBJECT s" `OWNERFORGE` would change a sealed package" SLV-ASSERT-PROT-PUBLISH ;
 
-: SLV-LINE ( ptr u8 n -- )
+: SLV-LINE ( ^u8 n -- )
    SB-APPEND SLV-LF ;
 
 \ Package SP with A in its public wordlist, sealed and left open.
@@ -237,16 +237,16 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" package SP" SLV-LINE  s" public" SLV-LINE  s" : A ( -- ) ;" SLV-LINE
    s" seal-package" SLV-LINE ;
 
-: SLV-SP-COLON$ ( -- ptr u8 n )
+: SLV-SP-COLON$ ( -- ^u8 n )
    SLV-SP-SEALED  s" ;package" SLV-LINE  s" : SP:B ( -- ) ;" SLV-LINE  SB$ ;
 
-: SLV-SP-VAR$ ( -- ptr u8 n )
+: SLV-SP-VAR$ ( -- ^u8 n )
    SLV-SP-SEALED  s" ;package" SLV-LINE  s" variable SP:V" SLV-LINE  SB$ ;
 
-: SLV-SP-INSIDE$ ( -- ptr u8 n )
+: SLV-SP-INSIDE$ ( -- ^u8 n )
    SLV-SP-SEALED  s" : C ( -- ) ;" SLV-LINE  s" ;package" SLV-LINE  SB$ ;
 
-: SLV-SP-EXPORT$ ( -- ptr u8 n )
+: SLV-SP-EXPORT$ ( -- ^u8 n )
    SB-RESET
    s" package SP2" SLV-LINE  s" public" SLV-LINE  s" : Z ( -- ) ;" SLV-LINE
    s" ;package" SLV-LINE
@@ -272,7 +272,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 
 : SLV-PREPARE ( -- )
    FS:CLEANUP-RESET
-   s" habu-seal" FS:MKTEMP-DIR {: a:ptr u:n :}
+   s" habu-seal" FS:MKTEMP-DIR {: a:^ u:n :}
    a u SLV-ROOT-BUF SLV-ROOT-U SLV-COPY!
    SLV-ROOT FS:CLEANUP-TREE+
    SLV-ROOT s" forge.f" SLV-CHILD-BUF FS:JOIN-PATH SLV-CHILD-U ! ;

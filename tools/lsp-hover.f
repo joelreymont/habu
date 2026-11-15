@@ -20,14 +20,14 @@ private
 10 constant LF
 
 create VALUE-B BUF:HDR-BYTES allot       \ the contents' text, grown as it is written
-TYPED-VARIABLE OUT ptr JSON:writer \ the answer's writer,
+TYPED-VARIABLE OUT ^JSON:writer \ the answer's writer,
 variable TARGET-G                        \ and the group of the record it shows
 
-: V+ ( ptr u8 n -- )  BUF:N>BLEN VALUE-B BUF:APPEND-SPAN ;
+: V+ ( ^u8 n -- )  BUF:N>BLEN VALUE-B BUF:APPEND-SPAN ;
 : NL ( -- )  LF VALUE-B BUF:APPEND-BYTE ;
-: VALUE$ ( -- ptr u8 n )  VALUE-B BUF:SPAN$ BUF:BLEN>N ;
+: VALUE$ ( -- ^u8 n )  VALUE-B BUF:SPAN$ BUF:BLEN>N ;
 
-: WHERE+ ( ptr u8 n -- )  SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE V+ ;
+: WHERE+ ( ^u8 n -- )  SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE V+ ;
 
 : OPEN ( bool -- )
    if s" ```habu" V+ NL then ;
@@ -39,20 +39,20 @@ variable TARGET-G                        \ and the group of the record it shows
 : RECORD-LINES ( n n -- )
    {: g:n r:n :}
    r REC-KIND$ V+ s"  " V+ r REC-WORD$ V+
-   r REC-EFFECT$ {: e:ptr eu:n :}
+   r REC-EFFECT$ {: e:^ eu:n :}
    eu 0 > if s"  ( " V+ e eu V+ s"  )" V+ then
    NL s" \ " V+
-   r REC-PACKAGE$ {: p:ptr pu:n :}
+   r REC-PACKAGE$ {: p:^ pu:n :}
    pu 0 > if s" package " V+ p pu V+ s" , " V+ then
    g GROUP-PATH$ WHERE+ s" :" V+
    r REC-RANGE 2drop drop 1+ SB-RESET FMT:SB-INT SB$ V+ ;
 
-: USE-LINES ( ptr u8 n n -- )
-   {: t:ptr tu:n u:n :}
+: USE-LINES ( ^u8 n n -- )
+   {: t:^ tu:n u:n :}
    t tu u USE-WORD$ V+
    NL s" \ " V+ u USE-GROUP GROUP-PATH$ WHERE+ ;
 
-: CONTENTS ( bool -- ptr JSON:writer )
+: CONTENTS ( bool -- ^JSON:writer )
    {: md:bool :}
    md if NL s" ```" V+ then
    OUT @
@@ -63,13 +63,13 @@ variable TARGET-G                        \ and the group of the record it shows
    WRITE-OBJECT-END WRITE-COMMA ;
 
 \ Leaves the record's group in TARGET-G.
-: TARGET-REC ( ptr u8 n n -- option<n> )
-   {: t:ptr tu:n u:n :}
+: TARGET-REC ( ^u8 n n -- option<n> )
+   {: t:^ tu:n u:n :}
    u USE-GROUP dup TARGET-G !
    u USE-TARGET t tu u USE-WORD$ GROUP-REC-NAMED ;
 
-: USE-HOVER ( ptr u8 n n bool -- )
-   {: t:ptr tu:n u:n md:bool :}
+: USE-HOVER ( ^u8 n n bool -- )
+   {: t:^ tu:n u:n md:bool :}
    md OPEN
    t tu u TARGET-REC MATCH option
       some OF TARGET-G @ swap RECORD-LINES ENDOF
@@ -114,7 +114,7 @@ public
 \ document's own file while the check's positions are of this text
 \ (LSP-DEFS:DEFS-OWN-GROUP), the first such definition. The range is the use's
 \ or the token's. Any other byte, or no completed check, answers null.
-: ANSWER ( ptr JSON:writer n n bool -- ptr JSON:writer )
+: ANSWER ( ^JSON:writer n n bool -- ^JSON:writer )
    {: w slot:n at:n md:bool :}
    w OUT !
    VALUE-B BUF:CLEAR

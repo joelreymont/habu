@@ -54,9 +54,9 @@ defer SETUP ( -- )
 defer TEARDOWN ( n -- )
 defer DRAIN ( -- )
 defer ARGS-BEGIN ( -- )
-defer ARG+ ( ptr u8 n -- )
-defer RUNNER ( ptr u8 n -- )
-defer STDIN-RUNNER ( ptr u8 n ptr u8 n -- )
+defer ARG+ ( ^u8 n -- )
+defer RUNNER ( ^u8 n -- )
+defer STDIN-RUNNER ( ^u8 n ^u8 n -- )
 
 : TRUE ( -- bool )
    0 0= ;
@@ -64,13 +64,13 @@ defer STDIN-RUNNER ( ptr u8 n ptr u8 n -- )
 : NOOP ( -- )
 ;
 
-: ARG-DROP ( ptr u8 n -- )
+: ARG-DROP ( ^u8 n -- )
    2drop ;
 
-: RUN-MISSING ( ptr u8 n -- )
+: RUN-MISSING ( ^u8 n -- )
    2drop E-FS-OPEN throw ;
 
-: STDIN-RUN-MISSING ( ptr u8 n ptr u8 n -- )
+: STDIN-RUN-MISSING ( ^u8 n ^u8 n -- )
    2drop 2drop E-FS-OPEN throw ;
 
 : CAP-CHECK ( n n -- ) {: u:n cap:n :}
@@ -85,50 +85,50 @@ defer STDIN-RUNNER ( ptr u8 n ptr u8 n -- )
    id 0 < if E-TBL-BOUNDS throw then
    id GROUP-MAX >= if E-TBL-BOUNDS throw then ;
 
-: ITEM-NAME-BUF ( n -- ptr u8 ) {: id:n :}
+: ITEM-NAME-BUF ( n -- ^u8 ) {: id:n :}
    id ITEM-CHECK
    ITEM-NAMES id NAME-CAP * + ;
 
-: ITEM-STDIN-BUF ( n -- ptr u8 ) {: id:n :}
+: ITEM-STDIN-BUF ( n -- ^u8 ) {: id:n :}
    id ITEM-CHECK
    ITEM-STDINS id STDIN-CAP * + ;
 
-: GROUP-NAME-BUF ( n -- ptr u8 ) {: id:n :}
+: GROUP-NAME-BUF ( n -- ^u8 ) {: id:n :}
    id GROUP-CHECK
    GROUP-NAMES id NAME-CAP * + ;
 
-: ITEM-CELL ( ptr a n -- ptr a ) {: base:ptr id:n :}
+: ITEM-CELL ( ^a n -- ^a ) {: base:^ id:n :}
    id ITEM-CHECK
    base id cells + ;
 
-: GROUP-CELL ( ptr a n -- ptr a ) {: base:ptr id:n :}
+: GROUP-CELL ( ^a n -- ^a ) {: base:^ id:n :}
    id GROUP-CHECK
    base id cells + ;
 
-: ITEM-NAME! ( ptr u8 n n -- ) {: a:ptr u:n id:n :}
+: ITEM-NAME! ( ^u8 n n -- ) {: a:^ u:n id:n :}
    u NAME-CAP CAP-CHECK
    a id ITEM-NAME-BUF u BYTE-COPY
    u ITEM-NAME-US id ITEM-CELL ! ;
 
-: GROUP-NAME! ( ptr u8 n n -- ) {: a:ptr u:n id:n :}
+: GROUP-NAME! ( ^u8 n n -- ) {: a:^ u:n id:n :}
    u NAME-CAP CAP-CHECK
    a id GROUP-NAME-BUF u BYTE-COPY
    u GROUP-NAME-US id GROUP-CELL ! ;
 
-: ITEM-STDIN! ( ptr u8 n n -- ) {: a:ptr u:n id:n :}
+: ITEM-STDIN! ( ^u8 n n -- ) {: a:^ u:n id:n :}
    u STDIN-CAP CAP-CHECK
    a id ITEM-STDIN-BUF u BYTE-COPY
    u ITEM-STDIN-US id ITEM-CELL ! ;
 
-: ITEM-NAME$ ( n -- ptr u8 n ) {: id:n :}
+: ITEM-NAME$ ( n -- ^u8 n ) {: id:n :}
    id ITEM-NAME-BUF
    ITEM-NAME-US id ITEM-CELL @ ;
 
-: GROUP-NAME$ ( n -- ptr u8 n ) {: id:n :}
+: GROUP-NAME$ ( n -- ^u8 n ) {: id:n :}
    id GROUP-NAME-BUF
    GROUP-NAME-US id GROUP-CELL @ ;
 
-: ITEM-STDIN$ ( n -- ptr u8 n ) {: id:n :}
+: ITEM-STDIN$ ( n -- ^u8 n ) {: id:n :}
    id ITEM-STDIN-BUF
    ITEM-STDIN-US id ITEM-CELL @ ;
 
@@ -154,10 +154,10 @@ defer STDIN-RUNNER ( ptr u8 n ptr u8 n -- )
 \ case-insensitive, so a private PARSE-NAME shadows the engine's word for every
 \ later definition in this package, and PARSE-ARGS' end-of-input branch then
 \ answers E-STR-BOUNDS instead of the row refusal.
-: REQUIRED-NAME ( -- ptr u8 n )
+: REQUIRED-NAME ( -- ^u8 n )
    parse-name dup 0= if 2drop E-STR-BOUNDS throw then ;
 
-: RESERVED-NAME? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: RESERVED-NAME? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" GROUP"       STR=CI
    a u s" SUITE"       STR=CI or
    a u s" SUITE-STDIN" STR=CI or
@@ -166,35 +166,35 @@ defer STDIN-RUNNER ( ptr u8 n ptr u8 n -- )
    a u s" SEQ"         STR=CI or
    a u s" PARA"        STR=CI or ;
 
-: MODE-OF ( ptr u8 n -- n ) {: a:ptr u:n :}
+: MODE-OF ( ^u8 n -- n ) {: a:^ u:n :}
    a u s" SEQ"  STR=CI if GROUP-SEQUENTIAL else
    a u s" PARA" STR=CI if GROUP-PARALLEL else
       E-SUITE-MODE throw
    then then ;
 
-: CHECK-NAME ( ptr u8 n -- ptr u8 n )
+: CHECK-NAME ( ^u8 n -- ^u8 n )
    dup 0= if 2drop E-SUITE-NAME throw then
    2dup RESERVED-NAME? if 2drop E-SUITE-NAME throw then ;
 
 : MODE-TOKEN ( -- n )
    REQUIRED-NAME MODE-OF ;
 
-: NAME-TOKEN ( -- ptr u8 n )
+: NAME-TOKEN ( -- ^u8 n )
    REQUIRED-NAME CHECK-NAME ;
 
-: ;SUITE? ( ptr u8 n -- bool )              \ suite terminator: qualified TEST:;SUITE or bare ;SUITE under `using TEST`
+: ;SUITE? ( ^u8 n -- bool )              \ suite terminator: qualified TEST:;SUITE or bare ;SUITE under `using TEST`
    2dup s" TEST:;SUITE" STR= if 2drop TRUE exit then
    s" ;SUITE" STR= ;
 
-: UNQUALIFIED ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+: UNQUALIFIED ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
    u 5 > if a 5 s" TEST:" STR=CI if a 5 + u 5 - exit then then
    a u ;
 
 \ A row opener, bare or TEST:-qualified. Such a token can never be an argument:
 \ the row before it was never closed, so its argument list ran on into this row.
 \ SEQ/PARA are absent on purpose — they are mode tokens, reserved only as names.
-: ROW-KEYWORD? ( ptr u8 n -- bool )
-   UNQUALIFIED {: a:ptr u:n :}
+: ROW-KEYWORD? ( ^u8 n -- bool )
+   UNQUALIFIED {: a:^ u:n :}
    a u s" SUITE"          STR=CI
    a u s" SUITE-STDIN"    STR=CI or
    a u s" GROUP"          STR=CI or
@@ -212,7 +212,7 @@ defer STDIN-RUNNER ( ptr u8 n ptr u8 n -- )
    id 1+ GROUP-N !
    id ;
 
-: GROUP-ADD ( ptr u8 n n -- n ) {: a:ptr u:n mode:n :}
+: GROUP-ADD ( ^u8 n n -- n ) {: a:^ u:n mode:n :}
    GROUP-ALLOC {: id:n :}
    a u id GROUP-NAME!
    mode GROUP-MODES id GROUP-CELL !
@@ -224,7 +224,7 @@ defer STDIN-RUNNER ( ptr u8 n ptr u8 n -- )
 : ARG-ROOM ( n -- )
    ARG-U @ + ARG-CAP > if E-STR-CAPACITY throw then ;
 
-: ARG-WRITE ( ptr u8 n -- ) {: a:ptr u:n :}
+: ARG-WRITE ( ^u8 n -- ) {: a:^ u:n :}
    u 0 < if E-STR-BOUNDS throw then
    u cell + ARG-ROOM
    ARG-U @ {: off:n :}
@@ -232,7 +232,7 @@ defer STDIN-RUNNER ( ptr u8 n ptr u8 n -- )
    a ARGS off + cell + u BYTE-COPY
    off cell + u + ARG-U ! ;
 
-: ITEM-ADD-ARG ( ptr u8 n n -- ) {: a:ptr u:n id:n :}
+: ITEM-ADD-ARG ( ^u8 n n -- ) {: a:^ u:n id:n :}
    a u ARG-WRITE
    ITEM-ARG-COUNTS id ITEM-CELL @ 1+ ITEM-ARG-COUNTS id ITEM-CELL ! ;
 
@@ -254,7 +254,7 @@ defer STDIN-RUNNER ( ptr u8 n ptr u8 n -- )
 
 \ One token of a row's argument list. A row ends at ;SUITE and nowhere else, so
 \ the end of input and a row keyword are both the missing terminator, named.
-: ARG-TOKEN ( ptr u8 n n -- ) {: a:ptr u:n id:n :}
+: ARG-TOKEN ( ^u8 n n -- ) {: a:^ u:n id:n :}
    a u ;SUITE? if
       DEF-ENTRIES @ if id ENTRY-PRESENT? 0= if id ROW-BAD-ENTRIES then then
       -1 DEF-ID ! exit
@@ -282,7 +282,7 @@ defer STDIN-RUNNER ( ptr u8 n ptr u8 n -- )
       parse-name id ARG-TOKEN
    repeat ;
 
-: ITEM-ADD ( n ptr u8 n ptr u8 n -- ) {: kind:n name:ptr nameu:n inptr:ptr inu:n :}
+: ITEM-ADD ( n ^u8 n ^u8 n -- ) {: kind:n name:^ nameu:n inptr:^ inu:n :}
    ITEM-ALLOC {: id:n :}
    name nameu id ITEM-NAME!
    kind ITEM-KINDS id ITEM-CELL !
@@ -375,13 +375,13 @@ EXPORT ITEM-NAME$
 : ARGS-BEGIN! ( [ -- ] -- )
    is ARGS-BEGIN ;
 
-: ARG+! ( [ ptr u8 n -- ] -- )
+: ARG+! ( [ ^u8 n -- ] -- )
    is ARG+ ;
 
-: RUNNER! ( [ ptr u8 n -- ] -- )
+: RUNNER! ( [ ^u8 n -- ] -- )
    is RUNNER ;
 
-: STDIN-RUNNER! ( [ ptr u8 n ptr u8 n -- ] -- )
+: STDIN-RUNNER! ( [ ^u8 n ^u8 n -- ] -- )
    is STDIN-RUNNER ;
 
 : ITEMS-REGISTERED ( -- n )
@@ -392,8 +392,8 @@ EXPORT ITEM-NAME$
 
 \ Mark every item with this name; answer whether one has it. Once any is marked,
 \ RUN and VISIT-LOAD-FILES skip the unmarked ones.
-: ONLY ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
+: ONLY ( ^u8 n -- bool )
+   {: a:^ u:n :}
    TRUE 0=
    ITEM-N @ 0 ?do
       i ITEM-NAME$ a u STR= if
@@ -406,17 +406,17 @@ EXPORT ITEM-NAME$
 \ Visit the source files before a row's script separator. The registry is the
 \ authority for what the adapter passes after --load; the same file can belong
 \ to several rows with different argv.
-: VISIT-ROW-FILES ( n [ n bool ptr u8 n -- ] -- ) {: id:n visit :}
+: VISIT-ROW-FILES ( n [ n bool ^u8 n -- ] -- ) {: id:n visit :}
    id ITEM-ARG-OFF@
    id ITEM-ARG-COUNT@ 0 ?do
       dup ARGS + @ {: u:n :}
       dup ARGS + cell + u s" --" STR= if drop unloop exit then
-      dup ARGS + cell + {: path:ptr :}
+      dup ARGS + cell + {: path:^ :}
       id i id ITEM-PRELOAD-COUNT@ >= path u visit execute
       cell + u +
    loop drop ;
 
-: VISIT-LOAD-FILES ( [ n bool ptr u8 n -- ] -- ) {: visit :}
+: VISIT-LOAD-FILES ( [ n bool ^u8 n -- ] -- ) {: visit :}
    ITEM-N @ 0 ?do i RUNS? if i visit VISIT-ROW-FILES then loop ;
 
 : DEFAULTS ( -- )
@@ -440,19 +440,19 @@ EXPORT ITEM-NAME$
 \ for each other, so a row that needs an idle pool belongs in a SEQ group.
 : GROUP ( -- )
    MODE-TOKEN {: mode:n :}
-   NAME-TOKEN {: a:ptr u:n :}
+   NAME-TOKEN {: a:^ u:n :}
    a u mode GROUP-ADD GROUP-CUR ! ;
 
 : ;GROUP ( -- )
    0 GROUP-CUR ! ;
 
 : SUITE ( -- )
-   REQUIRED-NAME {: name:ptr nameu:n :}
+   REQUIRED-NAME {: name:^ nameu:n :}
    ITEM-FILE name nameu s" " ITEM-ADD ;
 
 : SUITE-STDIN ( -- )
-   REQUIRED-NAME {: name:ptr nameu:n :}
-   REQUIRED-NAME {: inptr:ptr inu:n :}
+   REQUIRED-NAME {: name:^ nameu:n :}
+   REQUIRED-NAME {: inptr:^ inu:n :}
    ITEM-STDIN name nameu inptr inu ITEM-ADD ;
 
 : ;SUITE ( -- )

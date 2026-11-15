@@ -15,17 +15,17 @@ ENGINE-ERROR:SEAL-VIOLATION constant VIOLATION-RC
 create OUT CAP allot
 create ERR CAP allot
 
-: CAPTURE ( ptr u8 n -- len len PROCESS:ending ) {: src:ptr u:n :}
+: CAPTURE ( ^u8 n -- len len PROCESS:ending ) {: src:^ u:n :}
    src u OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN ;
 
-: EXPECT ( ptr u8 n n -- ) {: src:ptr u:n want:n :}
+: EXPECT ( ^u8 n n -- ) {: src:^ u:n want:n :}
    src u CAPTURE {: outu:len erru:len oc :}
    src u OUT outu LEN>N ERR erru LEN>N oc want T-ENDING-EXITED= ;
 
-: REJECTS ( ptr u8 n -- )
+: REJECTS ( ^u8 n -- )
    VIOLATION-RC EXPECT ;
 
-: ACCEPTS ( ptr u8 n -- )
+: ACCEPTS ( ^u8 n -- )
    0 EXPECT ;
 
 \ At the code ceiling `create` and `:` refuse before they write (src/habu/interpreter.f
@@ -47,13 +47,13 @@ create ERR CAP allot
 $6000 constant LONG-CAP
 create LONG-SRC LONG-CAP allot
 variable LONG-U
-: LONG+ ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: LONG+ ( ^u8 n -- )
+   {: a:^ u:n :}
    u 0 ?do a i + c@ LONG-SRC LONG-U @ + i + c! loop
    LONG-U @ u + LONG-U ! ;
-: STEP$ ( -- ptr u8 n )
+: STEP$ ( -- ^u8 n )
    s" PST-ADD-ONE-TO-THE-COUNT-OF-STEPS-IN-A-LONG-DEFINITION-BODY" ;
-: LONG$ ( -- ptr u8 n )
+: LONG$ ( -- ^u8 n )
    0 LONG-U !
    s" : " LONG+  STEP$ LONG+  s"  ( n -- n ) 1 + ; : PST-LONG ( -- n ) 0" LONG+
    350 0 ?do s"  " LONG+  STEP$ LONG+ loop

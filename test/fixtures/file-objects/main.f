@@ -20,12 +20,12 @@ variable TO-TALLY  FILE-OBJECTS-COUNT:TALLY NULL-PTR - TO-TALLY !  TO-TALLY ptr-
 variable SCRATCH  7 SCRATCH !  SCRATCH scratch-cell-mark
 variable NOWHERE  NOWHERE ptr-cell-mark
 : COLORS ( -- ) s" red" type  s" green" type  s" blue" type ;
-: AT-EDGE ( -- ptr u8 ) FILE-OBJECTS-SHAPE:EDGE ;
+: AT-EDGE ( -- ^u8 ) FILE-OBJECTS-SHAPE:EDGE ;
 \ Keeps the xts, so the program reaches both words.
 variable KEEP-COLORS  ' COLORS KEEP-COLORS xt!
 variable KEEP-EDGE  ' AT-EDGE KEEP-EDGE xt!
 public
-: HI-TEXT ( -- ptr u8 n ) s" ( -- ) " ;
+: HI-TEXT ( -- ^u8 n ) s" ( -- ) " ;
 : RUN ( -- )
    FILE-OBJECTS-SHAPE:BUMP  Q @ XT execute
    FILE-OBJECTS-COUNT:TALLY @ 7 = if FILE-OBJECTS-COUNT:HI then

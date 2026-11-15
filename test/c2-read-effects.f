@@ -44,7 +44,7 @@ public
 
 : CHECK-REFUSALS ( -- )
    s" a view cannot be erased into a raw pointer" T-LABEL
-   s" : C2-RAW ( read-view<p,q,u8> -- ptr u8 ) ;" 70 SUBJECT:EXITED? TTRUE
+   s" : C2-RAW ( read-view<p,q,u8> -- ^u8 ) ;" 70 SUBJECT:EXITED? TTRUE
    s" the element type is invariant" T-LABEL
    s" : C2-WIDEN ( read-view<p,q,u8> -- read-view<p,q,n> ) ;" 70 SUBJECT:EXITED? TTRUE
    s" distinct scopes cannot be exchanged" T-LABEL
@@ -59,9 +59,9 @@ public
    s" raw storage cannot hold a scoped view" T-LABEL
    s" variable C2-RAW-SLOT : C2-RAW-STORE ( read-view<p,q,u8> -- ) C2-RAW-SLOT ! ;" 70 SUBJECT:EXITED? TTRUE
    s" typed pointer storage cannot hold a scoped view" T-LABEL
-   s" : C2-TYPED-STORE ( read-view<p,q,u8> ptr read-view<p,q,u8> -- ) ! ;" 70 SUBJECT:EXITED? TTRUE
+   s" : C2-TYPED-STORE ( read-view<p,q,u8> ^read-view<p,q,u8> -- ) ! ;" 70 SUBJECT:EXITED? TTRUE
    s" a generic store cannot hide a view dependency" T-LABEL
-   s" : C2-GENERIC-STORE ( a ptr a -- ) ! ; : C2-GENERIC-BAD ( read-view<p,q,u8> ptr read-view<p,q,u8> -- ) C2-GENERIC-STORE ;" 70 SUBJECT:EXITED? TTRUE
+   s" : C2-GENERIC-STORE ( a ^a -- ) ! ; : C2-GENERIC-BAD ( read-view<p,q,u8> ^read-view<p,q,u8> -- ) C2-GENERIC-STORE ;" 70 SUBJECT:EXITED? TTRUE
    s" a typed global cannot hold a scoped view" T-LABEL
    s" TYPED-VARIABLE C2-TYPED-SLOT read-view<p,q,u8>" 70 SUBJECT:EXITED? TTRUE
    s" a dynamic buffer cannot hold a scoped view" T-LABEL

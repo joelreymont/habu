@@ -22,7 +22,7 @@ package FILE-OBJECTS-BUILD
 
 PATH-CAP BUFFER: PROG-BUF
 
-: PROG$ ( -- ptr u8 n )
+: PROG$ ( -- ^u8 n )
    BUILD-OUT:BASE$ s" prog" PROG-BUF FS:JOIN-PATH {: u:n :}
    PROG-BUF u ;
 
@@ -43,7 +43,7 @@ PATH-CAP BUFFER: PROG-BUF
 : NEW-WORDLIST ( -- ) s" test/fixtures/file-objects/wordlist.f" included ;
 
 \ The second argument, second, shifted, stop or facts, or none; any other ends the build, rc 1.
-: MODE$ ( -- ptr u8 n )
+: MODE$ ( -- ^u8 n )
    SCRIPT-ARGC 1 = if s" " exit then
    SCRIPT-ARGC 2 = if
       1 SCRIPT-ARGV$ s" second" STR= if s" second" exit then
@@ -59,8 +59,8 @@ PATH-CAP BUFFER: PROG-BUF
 : FACTS? ( -- bool ) MODE$ s" facts" STR= ;
 
 \ The case's code is the one wanted, or the build ends rc 1 with the message.
-: EXPECT ( n n ptr u8 n -- )
-   {: rc:n want:n msg:ptr msgu:n :}
+: EXPECT ( n n ^u8 n -- )
+   {: rc:n want:n msg:^ msgu:n :}
    rc want <> if msg msgu 1 die then ;
 
 : STOP-FILE ( -- )
@@ -109,30 +109,30 @@ PATH-CAP BUFFER: PROG-BUF
 variable STRINGS                      \ the bodies INTERN:EACH-STRING visited
 
 CAST: >DOUBLE ( n -- [ n -- n ] )
-CAST: >CELL ( n -- [ -- ptr n ] )
+CAST: >CELL ( n -- [ -- ^n ] )
 CAST: >RUN ( n -- [ -- ] )
-CAST: >LITERAL ( n -- [ -- ptr u8 n ] )
-CAST: >TEXT ( n -- ptr u8 )
+CAST: >LITERAL ( n -- [ -- ^u8 n ] )
+CAST: >TEXT ( n -- ^u8 )
 
 \ The host entry of the build's word named by the string.
-: ENTRY ( ptr u8 n -- n ) XREF-FIND-INDEX XREF-REC XREF-START ;
+: ENTRY ( ^u8 n -- n ) XREF-FIND-INDEX XREF-REC XREF-START ;
 
 : IMAGE-BASE ( -- n ) data-base BOOT:IMAGE-BASE-CELL + @ ;
 
 \ The record's facts text's address: bytes 32-39 hold its offset from the image base, 0 for none.
-: FACTS-ADDR ( ptr n -- n )
+: FACTS-ADDR ( ^n -- n )
    4 XREF-CELL@ {: off:n :}
    off 0= if 0 exit then
    IMAGE-BASE off + ;
 
 \ An interned text: its bytes, after the cell holding their count.
 : TEXT. ( n -- )
-   >TEXT {: t:ptr :}
+   >TEXT {: t:^ :}
    t  t 8 - LE:U64@  type ;
 
 \ The record's name, then its fields and its facts text, `-` for none.
 : RECORD. ( n -- )
-   XREF-REC {: rec:ptr :}
+   XREF-REC {: rec:^ :}
    rec XREF-NAME$ type cr
    rec XREF-FLAGS FMT:.INT space  rec XREF-WORDLIST FMT:.INT space  rec XREF-RAW-LEN FMT:.INT space
    rec FACTS-ADDR {: at:n :}
@@ -185,57 +185,57 @@ PATH-CAP BUFFER: THIRD-BUF
 PATH-CAP BUFFER: FOURTH-BUF
 PATH-CAP BUFFER: FIFTH-BUF
 
-: DIR$ ( ptr u8 n -- ptr u8 n )
-   {: d:ptr du:n :}
+: DIR$ ( ^u8 n -- ^u8 n )
+   {: d:^ du:n :}
    BUILD-OUT:BASE$ d du DIR-BUF FS:JOIN-PATH {: u:n :}
    DIR-BUF u ;
 
 \ The named file in the directory under the out root, joined into the buffer.
-: FILE-IN ( ptr u8 n ptr u8 n ptr u8 -- ptr u8 n )
-   {: d:ptr du:n name:ptr nameu:n dst:ptr :}
+: FILE-IN ( ^u8 n ^u8 n ^u8 -- ^u8 n )
+   {: d:^ du:n name:^ nameu:n dst:^ :}
    d du DIR$ name nameu dst FS:JOIN-PATH {: u:n :}
    dst u ;
 
-: EDIT-A$ ( -- ptr u8 n ) s" edit" s" a.f" FIRST-BUF FILE-IN ;
-: TAIL-C$ ( -- ptr u8 n ) s" tail" s" c.f" FIRST-BUF FILE-IN ;
-: TAIL-D$ ( -- ptr u8 n ) s" tail" s" d.f" SECOND-BUF FILE-IN ;
-: SHARE-P$ ( -- ptr u8 n ) s" share" s" p.f" FIRST-BUF FILE-IN ;
-: SHARE-Q$ ( -- ptr u8 n ) s" share" s" q.f" SECOND-BUF FILE-IN ;
-: LAID-R$ ( -- ptr u8 n ) s" laid" s" r.f" FIRST-BUF FILE-IN ;
-: LAID-S$ ( -- ptr u8 n ) s" laid" s" s.f" SECOND-BUF FILE-IN ;
-: PRIV-P$ ( -- ptr u8 n ) s" private" s" p.f" FIRST-BUF FILE-IN ;
-: PRIV-Q$ ( -- ptr u8 n ) s" private" s" q.f" SECOND-BUF FILE-IN ;
-: PARTS-A$ ( -- ptr u8 n ) s" parts" s" a.f" FIRST-BUF FILE-IN ;
-: PARTS-B$ ( -- ptr u8 n ) s" parts" s" b.f" SECOND-BUF FILE-IN ;
-: PARTS-C$ ( -- ptr u8 n ) s" parts" s" c.f" THIRD-BUF FILE-IN ;
-: SCOPE-A$ ( -- ptr u8 n ) s" scope" s" a.f" FIRST-BUF FILE-IN ;
-: SCOPE-B$ ( -- ptr u8 n ) s" scope" s" b.f" SECOND-BUF FILE-IN ;
-: SCOPE-C$ ( -- ptr u8 n ) s" scope" s" c.f" THIRD-BUF FILE-IN ;
-: INSIDE-P$ ( -- ptr u8 n ) s" inside" s" p.f" FIRST-BUF FILE-IN ;
-: INSIDE-I$ ( -- ptr u8 n ) s" inside" s" i.f" SECOND-BUF FILE-IN ;
-: INSIDE-Q$ ( -- ptr u8 n ) s" inside" s" q.f" THIRD-BUF FILE-IN ;
-: TWIN-X$ ( -- ptr u8 n ) s" twin-x" s" a.f" FIRST-BUF FILE-IN ;
-: TWIN-Y$ ( -- ptr u8 n ) s" twin-y" s" a.f" SECOND-BUF FILE-IN ;
-: ORDER-M$ ( -- ptr u8 n ) s" order" s" m.f" FIRST-BUF FILE-IN ;
-: ORDER-S$ ( -- ptr u8 n ) s" order" s" s.f" SECOND-BUF FILE-IN ;
-: ORDER-T$ ( -- ptr u8 n ) s" order" s" t.f" THIRD-BUF FILE-IN ;
-: ORDER-F$ ( -- ptr u8 n ) s" order" s" f.f" FOURTH-BUF FILE-IN ;
-: HEAD-W$ ( -- ptr u8 n ) s" header" s" w.f" FIRST-BUF FILE-IN ;
-: HEAD-H$ ( -- ptr u8 n ) s" header" s" h.f" SECOND-BUF FILE-IN ;
-: HEAD-R$ ( -- ptr u8 n ) s" header" s" r.f" THIRD-BUF FILE-IN ;
-: HELD-W$ ( -- ptr u8 n ) s" held" s" w.f" FIRST-BUF FILE-IN ;
-: HELD-H$ ( -- ptr u8 n ) s" held" s" h.f" SECOND-BUF FILE-IN ;
-: HELD-R$ ( -- ptr u8 n ) s" held" s" r.f" THIRD-BUF FILE-IN ;
-: SAME-K$ ( -- ptr u8 n ) s" same" s" k.f" FIRST-BUF FILE-IN ;
-: SAME-S1$ ( -- ptr u8 n ) s" same" s" s1.f" SECOND-BUF FILE-IN ;
-: SAME-S2$ ( -- ptr u8 n ) s" same" s" s2.f" THIRD-BUF FILE-IN ;
+: EDIT-A$ ( -- ^u8 n ) s" edit" s" a.f" FIRST-BUF FILE-IN ;
+: TAIL-C$ ( -- ^u8 n ) s" tail" s" c.f" FIRST-BUF FILE-IN ;
+: TAIL-D$ ( -- ^u8 n ) s" tail" s" d.f" SECOND-BUF FILE-IN ;
+: SHARE-P$ ( -- ^u8 n ) s" share" s" p.f" FIRST-BUF FILE-IN ;
+: SHARE-Q$ ( -- ^u8 n ) s" share" s" q.f" SECOND-BUF FILE-IN ;
+: LAID-R$ ( -- ^u8 n ) s" laid" s" r.f" FIRST-BUF FILE-IN ;
+: LAID-S$ ( -- ^u8 n ) s" laid" s" s.f" SECOND-BUF FILE-IN ;
+: PRIV-P$ ( -- ^u8 n ) s" private" s" p.f" FIRST-BUF FILE-IN ;
+: PRIV-Q$ ( -- ^u8 n ) s" private" s" q.f" SECOND-BUF FILE-IN ;
+: PARTS-A$ ( -- ^u8 n ) s" parts" s" a.f" FIRST-BUF FILE-IN ;
+: PARTS-B$ ( -- ^u8 n ) s" parts" s" b.f" SECOND-BUF FILE-IN ;
+: PARTS-C$ ( -- ^u8 n ) s" parts" s" c.f" THIRD-BUF FILE-IN ;
+: SCOPE-A$ ( -- ^u8 n ) s" scope" s" a.f" FIRST-BUF FILE-IN ;
+: SCOPE-B$ ( -- ^u8 n ) s" scope" s" b.f" SECOND-BUF FILE-IN ;
+: SCOPE-C$ ( -- ^u8 n ) s" scope" s" c.f" THIRD-BUF FILE-IN ;
+: INSIDE-P$ ( -- ^u8 n ) s" inside" s" p.f" FIRST-BUF FILE-IN ;
+: INSIDE-I$ ( -- ^u8 n ) s" inside" s" i.f" SECOND-BUF FILE-IN ;
+: INSIDE-Q$ ( -- ^u8 n ) s" inside" s" q.f" THIRD-BUF FILE-IN ;
+: TWIN-X$ ( -- ^u8 n ) s" twin-x" s" a.f" FIRST-BUF FILE-IN ;
+: TWIN-Y$ ( -- ^u8 n ) s" twin-y" s" a.f" SECOND-BUF FILE-IN ;
+: ORDER-M$ ( -- ^u8 n ) s" order" s" m.f" FIRST-BUF FILE-IN ;
+: ORDER-S$ ( -- ^u8 n ) s" order" s" s.f" SECOND-BUF FILE-IN ;
+: ORDER-T$ ( -- ^u8 n ) s" order" s" t.f" THIRD-BUF FILE-IN ;
+: ORDER-F$ ( -- ^u8 n ) s" order" s" f.f" FOURTH-BUF FILE-IN ;
+: HEAD-W$ ( -- ^u8 n ) s" header" s" w.f" FIRST-BUF FILE-IN ;
+: HEAD-H$ ( -- ^u8 n ) s" header" s" h.f" SECOND-BUF FILE-IN ;
+: HEAD-R$ ( -- ^u8 n ) s" header" s" r.f" THIRD-BUF FILE-IN ;
+: HELD-W$ ( -- ^u8 n ) s" held" s" w.f" FIRST-BUF FILE-IN ;
+: HELD-H$ ( -- ^u8 n ) s" held" s" h.f" SECOND-BUF FILE-IN ;
+: HELD-R$ ( -- ^u8 n ) s" held" s" r.f" THIRD-BUF FILE-IN ;
+: SAME-K$ ( -- ^u8 n ) s" same" s" k.f" FIRST-BUF FILE-IN ;
+: SAME-S1$ ( -- ^u8 n ) s" same" s" s1.f" SECOND-BUF FILE-IN ;
+: SAME-S2$ ( -- ^u8 n ) s" same" s" s2.f" THIRD-BUF FILE-IN ;
 
 \ Given a build's caught code: that code, or its LINKER:COMPILED when it threw none.
 : RESULT ( n -- n ) dup 0= if drop LINKER:COMPILED then ;
 
 \ The text, then three builds' results; the caller ends the line.
-: RESULTS. ( ptr u8 n n n n -- )
-   {: a:ptr u:n one:n two:n three:n :}
+: RESULTS. ( ^u8 n n n n -- )
+   {: a:^ u:n one:n two:n three:n :}
    a u type  one FMT:.INT space  two FMT:.INT space  three FMT:.INT ;
 
 : MIXED-BUILD ( -- n )
@@ -306,7 +306,7 @@ PATH-CAP BUFFER: FIFTH-BUF
 : LAIDS ( -- )
    s" laid" DIR$ FS:MAKE-DIR
    LAID-R$ s\" package FILE-OBJECTS-LAID-R public variable V ;package\n" FS:WRITE-ALL
-   LAID-S$ s\" package FILE-OBJECTS-LAID-S public : SAY ( -- ptr u8 n ) s\" late\" ; ;package\n"
+   LAID-S$ s\" package FILE-OBJECTS-LAID-S public : SAY ( -- ^u8 n ) s\" late\" ; ;package\n"
    FS:WRITE-ALL
    LAID-BUILD {: one:n :}
    LAID-R$ s\" package FILE-OBJECTS-LAID-R : WORDS ( -- ) s\" late\" type ; ;package\n"
@@ -463,7 +463,7 @@ PATH-CAP BUFFER: FIFTH-BUF
    HELD-W$ s\" package FILE-OBJECTS-HELD public : W ( -- n ) 3 ; ;package\n" FS:WRITE-ALL
    HELD-H$ s\" package FILE-OBJECTS-HELD-H public : H ( -- ) ; ;package\n' FILE-OBJECTS-HELD-H:H data-base $43A0 + xt!\n"
    FS:WRITE-ALL
-   HELD-R$ s\" package FILE-OBJECTS-HELD-R public : T ( -- ptr u8 n ) s\" ( -- ) primitive \" ; ;package\nFILE-OBJECTS-HELD:W constant FILE-OBJECTS-HELD-N\n"
+   HELD-R$ s\" package FILE-OBJECTS-HELD-R public : T ( -- ^u8 n ) s\" ( -- ) primitive \" ; ;package\nFILE-OBJECTS-HELD:W constant FILE-OBJECTS-HELD-N\n"
    FS:WRITE-ALL
    HELD-BUILD {: one:n :}
    HELD-STORED {: two:n :}
@@ -515,7 +515,7 @@ variable LATE-FLAG-AT                    \ the late package entry's own-private 
 variable LATE-AT                         \ the late package's KIND-PRIVATE entry's offset
 variable SLOT-AT                         \ the first does> slot's P: its offset
 
-: CRAFT-E$ ( -- ptr u8 n ) s" crafted" s" e.f" CRAFT-BUF FILE-IN ;
+: CRAFT-E$ ( -- ^u8 n ) s" crafted" s" e.f" CRAFT-BUF FILE-IN ;
 
 : CRAFT-BUILD ( -- n )
    [: s" app" RTARGET:HOST-TARGET [: CRAFT-E$ included ;] LINKER:WITH ;] catch RESULT ;
@@ -549,7 +549,7 @@ variable SLOT-AT                         \ the first does> slot's P: its offset
    kind 4 = if at LATE-AT ! then
    kind 4 =  kind 5 =  or if 3 OBJ-SKIP exit then
    OBJ-U64 {: u:n :}
-   CRAFT-OBJ AT @ + u {: name:ptr nu:n :}
+   CRAFT-OBJ AT @ + u {: name:^ nu:n :}
    u AT +!  1 OBJ-SKIP
    OBJ-U64 {: role:n :}
    role 3 =  role 4 =  or if 3 OBJ-SKIP then        \ a role 3 or 4 names its package
@@ -626,14 +626,14 @@ variable SLOT-AT                         \ the first does> slot's P: its offset
 
 
 \ A path of the walk that ends with CRAFT-TAIL into CRAFT-PATH.
-: CRAFT-SEEN ( ptr u8 n -- )
-   {: p:ptr pu:n :}
+: CRAFT-SEEN ( ^u8 n -- )
+   {: p:^ pu:n :}
    p pu CRAFT-TAIL CRAFT-TAIL-U @ ENDS-WITH? 0= if exit then
    p CRAFT-PATH pu BYTE-COPY  pu CRAFT-PATH-U ! ;
 
 \ The object under <out>/obj whose path ends with the tail, into CRAFT-FIRST and CRAFT-PATH.
-: CRAFT-FIND ( ptr u8 n -- )
-   {: t:ptr tu:n :}
+: CRAFT-FIND ( ^u8 n -- )
+   {: t:^ tu:n :}
    t CRAFT-TAIL tu BYTE-COPY  tu CRAFT-TAIL-U !
    0 CRAFT-PATH-U !
    s" obj" DIR$ ['] CRAFT-SEEN FS:WALK-FILES
@@ -729,11 +729,11 @@ variable SLOT-AT                         \ the first does> slot's P: its offset
 144 constant WORDS-FIELD                \ the header's WORDS offset, then length (linker.f WRITE-OBJECT)
 32 constant WORD-ROW-BYTES               \ a WORDS row: FILES row, sum, count, time
 
-: WORDS-A$ ( -- ptr u8 n ) s" words" s" a.f" FIRST-BUF FILE-IN ;
-: WORDS-B$ ( -- ptr u8 n ) s" words" s" b.f" SECOND-BUF FILE-IN ;
-: WORDS-C$ ( -- ptr u8 n ) s" words" s" c.f" THIRD-BUF FILE-IN ;
-: WORDS-D$ ( -- ptr u8 n ) s" words" s" d.f" FOURTH-BUF FILE-IN ;
-: WORDS-E$ ( -- ptr u8 n ) s" words" s" e.f" FIFTH-BUF FILE-IN ;
+: WORDS-A$ ( -- ^u8 n ) s" words" s" a.f" FIRST-BUF FILE-IN ;
+: WORDS-B$ ( -- ^u8 n ) s" words" s" b.f" SECOND-BUF FILE-IN ;
+: WORDS-C$ ( -- ^u8 n ) s" words" s" c.f" THIRD-BUF FILE-IN ;
+: WORDS-D$ ( -- ^u8 n ) s" words" s" d.f" FOURTH-BUF FILE-IN ;
+: WORDS-E$ ( -- ^u8 n ) s" words" s" e.f" FIFTH-BUF FILE-IN ;
 
 : WORDS-BUILD ( -- n )
    [: s" app" RTARGET:HOST-TARGET
@@ -782,10 +782,10 @@ variable SLOT-AT                         \ the first does> slot's P: its offset
    space four FMT:.INT  space five FMT:.INT  space six FMT:.INT  space seven FMT:.INT cr ;
 
 \ ---- words a run word reaches ----
-: RAN-A$ ( -- ptr u8 n ) s" ran" s" a.f" FIRST-BUF FILE-IN ;
-: RAN-B$ ( -- ptr u8 n ) s" ran" s" b.f" SECOND-BUF FILE-IN ;
-: RAN-C$ ( -- ptr u8 n ) s" ran" s" c.f" THIRD-BUF FILE-IN ;
-: RAN-D$ ( -- ptr u8 n ) s" ran" s" d.f" FOURTH-BUF FILE-IN ;
+: RAN-A$ ( -- ^u8 n ) s" ran" s" a.f" FIRST-BUF FILE-IN ;
+: RAN-B$ ( -- ^u8 n ) s" ran" s" b.f" SECOND-BUF FILE-IN ;
+: RAN-C$ ( -- ^u8 n ) s" ran" s" c.f" THIRD-BUF FILE-IN ;
+: RAN-D$ ( -- ^u8 n ) s" ran" s" d.f" FOURTH-BUF FILE-IN ;
 
 : RAN-BUILD ( -- n )
    [: s" app" RTARGET:HOST-TARGET
@@ -816,9 +816,9 @@ variable SLOT-AT                         \ the first does> slot's P: its offset
    space four FMT:.INT  space five FMT:.INT  space six FMT:.INT cr ;
 
 \ ---- data a storer stored ----
-: STORES-H$ ( -- ptr u8 n ) s" stores" s" h.f" FIRST-BUF FILE-IN ;
-: STORES-S$ ( -- ptr u8 n ) s" stores" s" s.f" SECOND-BUF FILE-IN ;
-: STORES-R$ ( -- ptr u8 n ) s" stores" s" r.f" THIRD-BUF FILE-IN ;
+: STORES-H$ ( -- ^u8 n ) s" stores" s" h.f" FIRST-BUF FILE-IN ;
+: STORES-S$ ( -- ^u8 n ) s" stores" s" s.f" SECOND-BUF FILE-IN ;
+: STORES-R$ ( -- ^u8 n ) s" stores" s" r.f" THIRD-BUF FILE-IN ;
 
 \ pointer-storage.f loads first for the PERSISTED- definers h.f and s.f use: a file here cannot require them, as the
 \ kernel defines no require (h.f's `require` is E-UNDEFINED).
@@ -830,13 +830,13 @@ variable SLOT-AT                         \ the first does> slot's P: its offset
 
 \ s.f with NOTE's and ALPHA's strings, the word whose string table entry 0 points at, the size it stores and the
 \ literal the quotation it stores in HOOK answers.
-: STORES-S! ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
-   {: note:ptr noteu:n alpha:ptr alphau:n entry:ptr entryu:n size:ptr sizeu:n lit:ptr litu:n :}
-   STORES-S$ s\" package FILE-OBJECTS-STORES-S public\n: NOTE ( -- ptr u8 n ) s\" " FS:WRITE-ALL
+: STORES-S! ( ^u8 n ^u8 n ^u8 n ^u8 n ^u8 n -- )
+   {: note:^ noteu:n alpha:^ alphau:n entry:^ entryu:n size:^ sizeu:n lit:^ litu:n :}
+   STORES-S$ s\" package FILE-OBJECTS-STORES-S public\n: NOTE ( -- ^u8 n ) s\" " FS:WRITE-ALL
    STORES-S$ note noteu FS:APPEND-FILE
-   STORES-S$ s\" \" ;\n: ALPHA ( -- ptr u8 n ) s\" " FS:APPEND-FILE
+   STORES-S$ s\" \" ;\n: ALPHA ( -- ^u8 n ) s\" " FS:APPEND-FILE
    STORES-S$ alpha alphau FS:APPEND-FILE
-   STORES-S$ s\" \" ;\n: BETA ( -- ptr u8 n ) s\" beta\" ;\n2 PERSISTED-PTR-U8-TABLE T\n;package\nFILE-OBJECTS-STORES-S:"
+   STORES-S$ s\" \" ;\n: BETA ( -- ^u8 n ) s\" beta\" ;\n2 PERSISTED-PTR-U8-TABLE T\n;package\nFILE-OBJECTS-STORES-S:"
    FS:APPEND-FILE
    STORES-S$ entry entryu FS:APPEND-FILE
    STORES-S$ s\"  drop FILE-OBJECTS-STORES-S:T 0 ptr-field !\nFILE-OBJECTS-STORES-S:BETA drop FILE-OBJECTS-STORES-S:T 1 ptr-field !\n"
@@ -875,39 +875,39 @@ variable SLOT-AT                         \ the first does> slot's P: its offset
 variable SEEN-Q   \ the linked Q of the last own or through build, -1 when it threw
 PATH-CAP BUFFER: SEQ-DIR  variable SEQ-DIR-U   \ the directory the build loads from: LINKER:WITH keeps its quotation
 
-: SEQ-DIR! ( ptr u8 n -- ) {: d:ptr du:n :}  d SEQ-DIR du BYTE-COPY  du SEQ-DIR-U ! ;
-: SEQ-DIR$ ( -- ptr u8 n ) SEQ-DIR SEQ-DIR-U @ ;
+: SEQ-DIR! ( ^u8 n -- ) {: d:^ du:n :}  d SEQ-DIR du BYTE-COPY  du SEQ-DIR-U ! ;
+: SEQ-DIR$ ( -- ^u8 n ) SEQ-DIR SEQ-DIR-U @ ;
 
 CAST: >ANSWER ( n -- [ -- n ] )
 
-: Q! ( ptr u8 n -- ) ENTRY >ANSWER execute SEEN-Q ! ;
+: Q! ( ^u8 n -- ) ENTRY >ANSWER execute SEEN-Q ! ;
 
 \ The line's text, then four builds' compiled counts and Qs, then a cold build's
 \ of the last sources.
-: COLD-WARM. ( ptr u8 n n n n n n n n n n n -- )
-   {: a:ptr u:n one:n two:n three:n four:n q1:n q2:n q3:n q4:n cold:n qc:n :}
+: COLD-WARM. ( ^u8 n n n n n n n n n n n -- )
+   {: a:^ u:n one:n two:n three:n four:n q1:n q2:n q3:n q4:n cold:n qc:n :}
    a u one two three RESULTS.  space four FMT:.INT
    s"  q " type  q1 FMT:.INT space  q2 FMT:.INT space  q3 FMT:.INT space  q4 FMT:.INT
    s"  cold " type  cold FMT:.INT  s"  q " type  qc FMT:.INT cr ;
 
-: OWN-P$ ( ptr u8 n -- ptr u8 n ) s" p.f" FIRST-BUF FILE-IN ;
-: OWN-R$ ( ptr u8 n -- ptr u8 n ) s" r.f" SECOND-BUF FILE-IN ;
+: OWN-P$ ( ^u8 n -- ^u8 n ) s" p.f" FIRST-BUF FILE-IN ;
+: OWN-R$ ( ^u8 n -- ^u8 n ) s" r.f" SECOND-BUF FILE-IN ;
 
 \ The directory's p.f, whose INSTALL stores in p.f's own HOOK a quotation answering the literal. A rewrite of a file
 \ compiles it whatever its bytes, so an edit writes p.f alone.
-: OWN-P! ( ptr u8 n ptr u8 n -- )
-   {: d:ptr du:n lit:ptr litu:n :}
+: OWN-P! ( ^u8 n ^u8 n -- )
+   {: d:^ du:n lit:^ litu:n :}
    d du OWN-P$ s\" package FILE-OBJECTS-OWN public variable HOOK\n: INSTALL ( -- ) [: " FS:WRITE-ALL
    d du OWN-P$ lit litu FS:APPEND-FILE
    d du OWN-P$ s\"  ;] HOOK xt! ;\nINSTALL\n;package\n" FS:APPEND-FILE ;
 
 \ The directory's r.f, which runs HOOK's quotation.
-: OWN-R! ( ptr u8 n -- )
-   {: d:ptr du:n :}
+: OWN-R! ( ^u8 n -- )
+   {: d:^ du:n :}
    d du OWN-R$ s\" package FILE-OBJECTS-OWN-R\nCAST: XT ( n -- [ -- n ] )\npublic\nFILE-OBJECTS-OWN:HOOK @ XT execute constant Q\n;package\n"
    FS:WRITE-ALL ;
 
-: OWN-BUILD ( ptr u8 n -- n )
+: OWN-BUILD ( ^u8 n -- n )
    SEQ-DIR!  -1 SEEN-Q !
    [: s" app" RTARGET:HOST-TARGET
       [: SEQ-DIR$ OWN-P$ included  SEQ-DIR$ OWN-R$ included  s" FILE-OBJECTS-OWN-R:Q" Q! ;]
@@ -928,28 +928,28 @@ CAST: >ANSWER ( n -- [ -- n ] )
    s" own-cold" OWN-BUILD {: cold:n :}  SEEN-Q @ {: qc:n :}
    s" own: compiled " one two three four q1 q2 q3 q4 cold qc COLD-WARM. ;
 
-: THROUGH-H$ ( ptr u8 n -- ptr u8 n ) s" h.f" FIRST-BUF FILE-IN ;
-: THROUGH-P$ ( ptr u8 n -- ptr u8 n ) s" p.f" SECOND-BUF FILE-IN ;
-: THROUGH-M$ ( ptr u8 n -- ptr u8 n ) s" m.f" THIRD-BUF FILE-IN ;
-: THROUGH-R$ ( ptr u8 n -- ptr u8 n ) s" r.f" FOURTH-BUF FILE-IN ;
+: THROUGH-H$ ( ^u8 n -- ^u8 n ) s" h.f" FIRST-BUF FILE-IN ;
+: THROUGH-P$ ( ^u8 n -- ^u8 n ) s" p.f" SECOND-BUF FILE-IN ;
+: THROUGH-M$ ( ^u8 n -- ^u8 n ) s" m.f" THIRD-BUF FILE-IN ;
+: THROUGH-R$ ( ^u8 n -- ^u8 n ) s" r.f" FOURTH-BUF FILE-IN ;
 
 \ The directory's p.f, whose MAKE answers a quotation answering the literal.
-: THROUGH-P! ( ptr u8 n ptr u8 n -- )
-   {: d:ptr du:n lit:ptr litu:n :}
+: THROUGH-P! ( ^u8 n ^u8 n -- )
+   {: d:^ du:n lit:^ litu:n :}
    d du THROUGH-P$ s\" package FILE-OBJECTS-THROUGH-P public\n: MAKE ( -- [ -- n ] ) [: " FS:WRITE-ALL
    d du THROUGH-P$ lit litu FS:APPEND-FILE
    d du THROUGH-P$ s\"  ;] ;\n;package\n" FS:APPEND-FILE ;
 
 \ The directory's h.f holding HOOK, m.f storing MAKE's answer into HOOK, and r.f running HOOK.
-: THROUGH-REST! ( ptr u8 n -- )
-   {: d:ptr du:n :}
+: THROUGH-REST! ( ^u8 n -- )
+   {: d:^ du:n :}
    d du THROUGH-H$ s\" package FILE-OBJECTS-THROUGH public variable HOOK ;package\n" FS:WRITE-ALL
    d du THROUGH-M$ s\" package FILE-OBJECTS-THROUGH-M public\n: STORE ( -- ) FILE-OBJECTS-THROUGH-P:MAKE FILE-OBJECTS-THROUGH:HOOK xt! ;\nSTORE\n;package\n"
    FS:WRITE-ALL
    d du THROUGH-R$ s\" package FILE-OBJECTS-THROUGH-R\nCAST: XT ( n -- [ -- n ] )\npublic\nFILE-OBJECTS-THROUGH:HOOK @ XT execute constant Q\n;package\n"
    FS:WRITE-ALL ;
 
-: THROUGH-BUILD ( ptr u8 n -- n )
+: THROUGH-BUILD ( ^u8 n -- n )
    SEQ-DIR!  -1 SEEN-Q !
    [: s" app" RTARGET:HOST-TARGET
       [: SEQ-DIR$ THROUGH-H$ included  SEQ-DIR$ THROUGH-P$ included  SEQ-DIR$ THROUGH-M$ included
@@ -975,14 +975,14 @@ CAST: >ANSWER ( n -- [ -- n ] )
 1024 constant RECORD-CAP
 RECORD-CAP BUFFER: WARM-RECORD   variable WARM-RECORD-U
 
-: FULL-A$ ( ptr u8 n -- ptr u8 n ) s" a.f" FIRST-BUF FILE-IN ;
-: FULL-B$ ( ptr u8 n -- ptr u8 n ) s" b.f" SECOND-BUF FILE-IN ;
+: FULL-A$ ( ^u8 n -- ^u8 n ) s" a.f" FIRST-BUF FILE-IN ;
+: FULL-B$ ( ^u8 n -- ^u8 n ) s" b.f" SECOND-BUF FILE-IN ;
 
 \ The directory's a.f, which creates words until the number of records the text spells is free, counted from DICT-CAP,
 \ which a.f cannot spell, as a literal. Each text a compile evaluates is recorded after a scan of those before it
 \ (COMPILE-READS:APPEND), so a text creates a thousand words.
-: FULL-A! ( ptr u8 n ptr u8 n -- )
-   {: d:ptr du:n free:ptr freeu:n :}
+: FULL-A! ( ^u8 n ^u8 n -- )
+   {: d:^ du:n free:^ freeu:n :}
    d du FULL-A$ s\" package FILE-OBJECTS-FULL\ncreate NB 15000 allot\n: ENTRY ( n n -- ) {: k:n at:n :}\n" FS:WRITE-ALL
    d du FULL-A$ s\"    15 0 do  s\" create F000000 \" drop i + c@  NB at 15 * + i + c!  loop\n" FS:APPEND-FILE
    d du FULL-A$ s\"    k  6 0 do  dup 10 mod 48 +  NB at 15 * 13 + i - + c!  10 /  loop drop ;\n" FS:APPEND-FILE
@@ -994,13 +994,13 @@ RECORD-CAP BUFFER: WARM-RECORD   variable WARM-RECORD-U
    d du FULL-A$ s\"  FILL\n;package\n" FS:APPEND-FILE ;
 
 \ The directory's b.f, three words spelling no name of a.f's.
-: FULL-B! ( ptr u8 n -- )
-   {: d:ptr du:n :}
+: FULL-B! ( ^u8 n -- )
+   {: d:^ du:n :}
    d du FULL-B$ s\" : FILE-OBJECTS-FULL-ONE ( -- n ) 1 ;\n: FILE-OBJECTS-FULL-TWO ( -- n ) 2 ;\n" FS:WRITE-ALL
    d du FULL-B$ s\" : FILE-OBJECTS-FULL-THREE ( -- n ) 3 ;\n" FS:APPEND-FILE ;
 
 \ A build of the directory's a.f and b.f, the records it prints captured.
-: FULL-BUILD ( ptr u8 n -- n )
+: FULL-BUILD ( ^u8 n -- n )
    SEQ-DIR!
    REJECTION:QUIET @ {: q:n :}
    0 REJECTION:QUIET !  REJECTION:CAPTURE
@@ -1010,9 +1010,9 @@ RECORD-CAP BUFFER: WARM-RECORD   variable WARM-RECORD-U
 
 \ Whether WARM-RECORD is the cold build's record, whose path names full-cold where the warm one's names full.
 : SAME-RECORD? ( -- bool )
-   REJECTION:BUFFER$ {: c:ptr cu:n :}
-   WARM-RECORD WARM-RECORD-U @ {: w:ptr wu:n :}
-   s" full-cold" DIR$ {: d:ptr du:n :}
+   REJECTION:BUFFER$ {: c:^ cu:n :}
+   WARM-RECORD WARM-RECORD-U @ {: w:^ wu:n :}
+   s" full-cold" DIR$ {: d:^ du:n :}
    c cu d du FIND-SUB MATCH option
       none OF -1 ENDOF
       some OF IDX>N du + 5 - ENDOF
@@ -1032,7 +1032,7 @@ RECORD-CAP BUFFER: WARM-RECORD   variable WARM-RECORD-U
    s" full" FULL-BUILD {: two:n :}
    s" full" s" 2" FULL-A!
    s" full" FULL-BUILD {: three:n :}
-   REJECTION:BUFFER$ RECORD-CAP min {: a:ptr u:n :}
+   REJECTION:BUFFER$ RECORD-CAP min {: a:^ u:n :}
    a WARM-RECORD u BYTE-COPY  u WARM-RECORD-U !
    s" full" FULL-BUILD {: four:n :}
    s" full-cold" s" 2" FULL-A!  s" full-cold" FULL-B!
@@ -1041,9 +1041,9 @@ RECORD-CAP BUFFER: WARM-RECORD   variable WARM-RECORD-U
    s"  same record " type  SAME-RECORD? bool>n FMT:.INT cr ;
 
 \ ---- a piece that gains a store into reached data ----
-: GAIN-H$ ( -- ptr u8 n ) s" gain" s" h.f" FIRST-BUF FILE-IN ;
-: GAIN-S$ ( -- ptr u8 n ) s" gain" s" s.f" SECOND-BUF FILE-IN ;
-: GAIN-R$ ( -- ptr u8 n ) s" gain" s" r.f" THIRD-BUF FILE-IN ;
+: GAIN-H$ ( -- ^u8 n ) s" gain" s" h.f" FIRST-BUF FILE-IN ;
+: GAIN-S$ ( -- ^u8 n ) s" gain" s" s.f" SECOND-BUF FILE-IN ;
+: GAIN-R$ ( -- ^u8 n ) s" gain" s" r.f" THIRD-BUF FILE-IN ;
 
 : GAIN-BUILD ( -- n )
    [: s" app" RTARGET:HOST-TARGET [: GAIN-H$ included  GAIN-S$ included  GAIN-R$ included ;] LINKER:WITH ;]
@@ -1083,7 +1083,7 @@ RECORD-CAP BUFFER: WARM-RECORD   variable WARM-RECORD-U
 \ ---- facts mode: a body compiled against the words count.f and facts.f define ----
 
 \ The label, then a case's caught code, on a line of its own.
-: CODE. ( n ptr u8 n -- ) {: rc:n a:ptr u:n :}  a u type  rc FMT:.INT cr ;
+: CODE. ( n ^u8 n -- ) {: rc:n a:^ u:n :}  a u type  rc FMT:.INT cr ;
 
 : FACTS-AFTER ( -- n )
    [: s" : FOB-AFTER ( -- ) FILE-OBJECTS-COUNT:BUMP FILE-OBJECTS-COUNT:HI FILE-OBJECTS-COUNT:TALLY @ drop FILE-OBJECTS-LATE:ONE drop ;  ' FOB-AFTER data-base $43A0 + xt!" evaluate-closed ;]

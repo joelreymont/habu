@@ -32,7 +32,7 @@ variable SRC-N
    c CHB c!
    CHB 1 type ;
 
-: EMIT$ ( ptr u8 n -- ) {: a:ptr u :}
+: EMIT$ ( ^u8 n -- ) {: a:^ u :}
    u 0 ?do a i + c@ EMIT-C loop ;
 
 : EMIT-DEC ( n -- )
@@ -58,7 +58,7 @@ variable SRC-N
    c SRC SRC-N @ + c!
    SRC-N @ 1 + SRC-N ! ;
 
-: SRC$+ ( ptr u8 n -- ) {: a:ptr u :}
+: SRC$+ ( ^u8 n -- ) {: a:^ u :}
    u 0 ?do a i + c@ SRC-C+ loop ;
 
 : SRC-DEC+ ( n -- )
@@ -83,7 +83,7 @@ variable SRC-N
 
 \ ---- arguments --------------------------------------------------------------
 
-: STR= ( ptr u8 n ptr u8 n -- bool ) {: a:ptr au b:ptr bu :}
+: STR= ( ^u8 n ^u8 n -- bool ) {: a:^ au b:^ bu :}
    au bu <> if 0 0= 0= exit then
    0 {: bad :}
    bad au 0 ?do a i + c@ b i + c@ <> if 1 + then loop
@@ -93,7 +93,7 @@ variable SRC-N
    s" usage: bin/hb --load tools/tier0-profile.f -- corpus|trivial <usec> <arg>..."
    USAGE-RC die ;
 
-: ARG>N ( ptr u8 n -- n ) {: a:ptr u :}
+: ARG>N ( ^u8 n -- n ) {: a:^ u :}
    u 0= if USAGE then
    0 {: acc :}
    acc u 0 ?do
@@ -112,7 +112,7 @@ variable SRC-N
 : COMPILE-TRIVIAL ( n -- ) {: n :}
    n 0 ?do i 1 + TRIVIAL-SRC  SRC SRC-N @ evaluate-closed loop ;
 
-: REPORT-HEAD ( ptr u8 n n n -- ) {: name:ptr nu defs ns :}
+: REPORT-HEAD ( ^u8 n n n -- ) {: name:^ nu defs ns :}
    s" P " EMIT$  name nu EMIT$
    s"  defs" EMIT$  defs EMIT-FIELD
    s"  ns" EMIT$  ns EMIT-FIELD
@@ -125,7 +125,7 @@ public
    script-argc 3 < if USAGE then
    1 script-argv$ ARG>N {: usec :}
    usec 0 > 0= if USAGE then
-   0 script-argv$ {: mode:ptr mu :}
+   0 script-argv$ {: mode:^ mu :}
    usec prof-rate
    mode mu s" corpus" STR= if
       ndict@ {: first :}

@@ -15,7 +15,7 @@ CODEGEN:BUFFER CGT-W
    CGT-D CODEGEN:RESET
    CGT-LONG 0 ?do  i CGT-DIGIT CGT-D CODEGEN:APPEND-BYTE  loop ;
 : CGT-LONG-KEPT? ( -- bool )
-   CGT-D CODEGEN:CONTENTS {: a:ptr u:n :}
+   CGT-D CODEGEN:CONTENTS {: a:^ u:n :}
    true  u 0 ?do  a i + c@ i CGT-DIGIT = and  loop ;
 
 : CGT-GROW ( -- )
@@ -23,7 +23,7 @@ CODEGEN:BUFFER CGT-W
    CGT-D CODEGEN:CONTENTS nip CGT-LONG T=
    CGT-LONG-KEPT? TTRUE ;
 
-: CGT-DEC$ ( n -- ptr u8 n )
+: CGT-DEC$ ( n -- ^u8 n )
    CGT-W CODEGEN:RESET  CGT-W CODEGEN:APPEND-DECIMAL  CGT-W CODEGEN:CONTENTS ;
 
 : CGT-DECIMAL ( -- )

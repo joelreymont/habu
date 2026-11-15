@@ -22,7 +22,7 @@ NEST-DEPTH CELL + constant QSORT-FN
 
 : DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
 : N, ( n -- ) X64HARNESS:PUSH, ;
-: ROW ( ptr u8 n -- ) X64HARNESS:CALL-ROW, ;
+: ROW ( ^u8 n -- ) X64HARNESS:CALL-ROW, ;
 : ARG ( n -- n ) CELL * ARGS + ;
 
 \ The checked dispatch ABI reads C's two pointer arguments through CB-FRAME
@@ -50,7 +50,7 @@ NEST-DEPTH CELL + constant QSORT-FN
    RCX RDX ASM-SINK ENC-SUB-RR
    RCX RAX MEM-AT ASM-SINK ENC-MOV-MR ;
 
-: SYM, ( ptr u8 n -- ) {: a:ptr u:n :}
+: SYM, ( ^u8 n -- ) {: a:^ u:n :}
    LBL LBL {: name:label past:label :}
    past JMP,
    name LBL,  a u BUF:N>BLEN ASM-SINK BUF:APPEND-SPAN
@@ -124,7 +124,7 @@ STUB-MOV 5 + constant STUB-NEXT          \ where the displacement counts from
    0 ROWS X64HARNESS:DATA-ADDR!,
    CALL-ENTRY, ;
 
-: BUILD ( [ -- ] ptr u8 n -- ) {: path:ptr u:n :}
+: BUILD ( [ -- ] ^u8 n -- ) {: path:^ u:n :}
    false X64HARNESS:BOOT-OPEN,
    execute
    0 X64HARNESS:EXPECT-DEPTH,

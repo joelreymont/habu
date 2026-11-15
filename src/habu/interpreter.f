@@ -56,11 +56,11 @@ $8000000000000000 constant MIN-N
    0 false ;
 
 
-: AT? ( ptr u8 n n n -- bool ) {: a:ptr u:n idx:n c:n :}
+: AT? ( ^u8 n n n -- bool ) {: a:^ u:n idx:n c:n :}
    idx u < if a idx + c@ c = else false then ;
 
 
-: RUN-END ( ptr u8 n n n -- n ) {: a:ptr u:n idx:n radix:n :}
+: RUN-END ( ^u8 n n n -- n ) {: a:^ u:n idx:n radix:n :}
    idx begin
       dup u < if dup a + c@ radix DIGIT nip else false then
    while 1+ repeat ;
@@ -83,7 +83,7 @@ $8000000000000000 constant MIN-N
    int d radix CARRIES? wrapped or ;
 
 
-: INTEGER ( ptr u8 n n n -- n bool ) {: a:ptr lo:n hi:n radix:n :}
+: INTEGER ( ^u8 n n n -- n bool ) {: a:^ lo:n hi:n radix:n :}
    0 false
    hi lo ?do a i + c@ radix DIGIT drop radix INT-STEP loop ;
 
@@ -96,12 +96,12 @@ $8000000000000000 constant MIN-N
    scale MAX-N 10 / > wrapped or ;
 
 
-: FRACTION ( ptr u8 n n bool -- n n bool ) {: a:ptr lo:n hi:n wrapped:bool :}
+: FRACTION ( ^u8 n n bool -- n n bool ) {: a:^ lo:n hi:n wrapped:bool :}
    0 1 wrapped
    hi lo ?do a i + c@ 10 DIGIT drop FRAC-STEP loop ;
 
 
-: FRACTION? ( ptr u8 n n n -- bool ) {: a:ptr u:n dot:n radix:n :}
+: FRACTION? ( ^u8 n n n -- bool ) {: a:^ u:n dot:n radix:n :}
    radix 10 <> if false exit then
    a u dot [char] . AT? 0= if false exit then
    dot 1+ u <  a u dot 1+ 10 RUN-END u =  and ;
@@ -171,7 +171,7 @@ $8000000000000000 constant MIN-N
 
 \ An optional `-`, then an optional `$` for radix 16: the index after them,
 \ whether `-` led, and the radix.
-: PREFIX ( ptr u8 n -- n bool n ) {: a:ptr u:n :}
+: PREFIX ( ^u8 n -- n bool n ) {: a:^ u:n :}
    a u 0 [char] - AT? {: neg:bool :}
    neg if 1 else 0 then {: idx:n :}
    a u idx [char] $ AT? if idx 1+ neg 16 else idx neg 10 then ;
@@ -181,7 +181,7 @@ public
 \ The token's value (a float's bits), whether it is a float, whether it is a
 \ number, and whether its shape is a number's but its value out of range.
 \ The value and the float flag are zero unless it is a number.
-: NUMBER ( ptr u8 n -- n bool bool bool ) {: a:ptr u:n :}
+: NUMBER ( ^u8 n -- n bool bool bool ) {: a:^ u:n :}
    a u PREFIX {: lo:n neg:bool radix:n :}
    lo u >= if NOT-NUMBER exit then
    a u lo radix RUN-END {: dot:n :}
@@ -200,10 +200,10 @@ package INTERPRETER
 private
 
 \ Not the lookup: the row one wordlist holds under a name, whatever its flags.
-: WL-PROBE ( ptr u8 n n -- ptr n ) CHECKER-RESOLVE:WL-PROBE ;
+: WL-PROBE ( ^u8 n n -- ^n ) CHECKER-RESOLVE:WL-PROBE ;
 
-: COLON-AT ( ptr u8 n n -- n )
-   {: a:ptr u:n from:n :}
+: COLON-AT ( ^u8 n n -- n )
+   {: a:^ u:n from:n :}
    u from ?do
       a i + c@ $3A = if i unloop exit then
    loop
@@ -212,8 +212,8 @@ private
 \ The scope's answer (open package, enclosing package, global, NAME:tail), never
 \ a used public's: a row the used publics bound is a miss, except in the open
 \ or the enclosing package's public wordlist, which the scope searched first.
-: FIND-SCOPE ( ptr u8 n -- ptr n )
-   scope-find drop drop {: rec:ptr used:ptr :}
+: FIND-SCOPE ( ^u8 n -- ^n )
+   scope-find drop drop {: rec:^ used:^ :}
    rec used <> if rec exit then
    rec XREF-FOUND? 0= if rec exit then
    rec XREF-WORDLIST {: wl:n :}
@@ -223,7 +223,7 @@ private
 
 public
 
-: FIND ( ptr u8 n -- ptr n )
+: FIND ( ^u8 n -- ^n )
    NDICT:SCOPE-REC ;
 
 ;package
@@ -253,17 +253,17 @@ create NL NEWLINE c,
 
 \ The input cells hold byte addresses. These two are the file's one crossing
 \ between such a cell and a byte pointer.
-: ADDR@ ( n -- ptr u8 ) data-base + 0 ptr-field @ ;
-: ADDR! ( ptr u8 n -- ) data-base + 0 ptr-field ! ;
+: ADDR@ ( n -- ^u8 ) data-base + 0 ptr-field @ ;
+: ADDR! ( ^u8 n -- ) data-base + 0 ptr-field ! ;
 
 \ A cell of a frame the engine holds.
-: FR! ( n ptr u8 n -- )
+: FR! ( n ^u8 n -- )
    + CELL-VIEW ! ;
 
-: FR@ ( ptr u8 n -- n )
+: FR@ ( ^u8 n -- n )
    + CELL-VIEW @ ;
 
-: TOKEN$ ( -- ptr u8 n )
+: TOKEN$ ( -- ^u8 n )
    TKA-CELL ADDR@ TKL-CELL CELL@ ;
 
 : FOLD ( n -- n ) {: c:n :}
@@ -272,43 +272,43 @@ create NL NEWLINE c,
 
 \ Whether the span a u spells kw, which is lowercase. Only the span's A-Z are
 \ folded.
-: FOLDED= ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n kw:ptr v:n :}
+: FOLDED= ( ^u8 n ^u8 n -- bool ) {: a:^ u:n kw:^ v:n :}
    u v <> if false exit then
    u 0 ?do
       a i + c@ FOLD  kw i + c@ <> if false unloop exit then
    loop
    true ;
 
-: TOKEN-IS? ( ptr u8 n -- bool )
+: TOKEN-IS? ( ^u8 n -- bool )
    TOKEN$ 2swap FOLDED= ;
 
-: BLANKS-END ( ptr u8 ptr u8 -- ptr u8 ) {: p:ptr e:ptr :}
+: BLANKS-END ( ^u8 ^u8 -- ^u8 ) {: p:^ e:^ :}
    p begin dup e < if dup c@ BLANK <= else false then while 1 + repeat ;
 
-: WORD-END ( ptr u8 ptr u8 -- ptr u8 ) {: p:ptr e:ptr :}
+: WORD-END ( ^u8 ^u8 -- ^u8 ) {: p:^ e:^ :}
    p begin dup e < if dup c@ BLANK > else false then while 1 + repeat ;
 
 \ With no token left INP is the end and the token cells keep the last token.
 : TOKEN ( -- bool )
-   INP-CELL ADDR@ INE-CELL ADDR@ {: p:ptr e:ptr :}
-   p e BLANKS-END {: s:ptr :}
-   s e WORD-END {: t:ptr :}
+   INP-CELL ADDR@ INE-CELL ADDR@ {: p:^ e:^ :}
+   p e BLANKS-END {: s:^ :}
+   s e WORD-END {: t:^ :}
    t INP-CELL ADDR!
    s t = if false exit then
    s TKA-CELL ADDR!
    t s - TKL-CELL CELL!
    true ;
 
-: SAY ( ptr u8 n -- ) REJECTION:EMIT-STR ;
+: SAY ( ^u8 n -- ) REJECTION:EMIT-STR ;
 
 \ Code in a rejection's text sits in backticks.
-: TICKS ( ptr u8 n -- ) {: a:ptr u:n :}
+: TICKS ( ^u8 n -- ) {: a:^ u:n :}
    96 REJECTION:EMIT1  a u SAY  96 REJECTION:EMIT1 ;
 
 
 \ The capture's first token, the definition's name, which a head seeds.
-: DEF-CAPTURED-NAME ( -- ptr u8 n )
-   BODY-TEXT:BASE-CELL ADDR@ BODYLEN-CELL CELL@ {: b:ptr len:n :}
+: DEF-CAPTURED-NAME ( -- ^u8 n )
+   BODY-TEXT:BASE-CELL ADDR@ BODYLEN-CELL CELL@ {: b:^ len:n :}
    0 begin
       dup len < if b over + c@ dup BLANK <> swap 0<> and else false then
    while 1+ repeat
@@ -316,13 +316,13 @@ create NL NEWLINE c,
    b u ;
 
 \ The name of the definition the engine holds open, empty when none is.
-: OPEN-NAME ( -- ptr u8 n )
+: OPEN-NAME ( -- ^u8 n )
    PEND-CELL CELL@ 0= if NULL$ exit then
    DEF-CAPTURED-NAME ;
 
 \ Placed at the name's own line when its bytes lie in the open file: a definer
 \ may call a name it read earlier.
-: UNDEFINED-NAME ( ptr u8 n -- ) {: a:ptr u:n :}
+: UNDEFINED-NAME ( ^u8 n -- ) {: a:^ u:n :}
    s" E-UNDEFINED" REJECTION:OPEN
    s" cannot find word " SAY  a u TICKS
    a u REJECTION:AT  s" not found" SAY
@@ -349,7 +349,7 @@ create NL NEWLINE c,
 
 \ Whether using slot s exports the name a u and no earlier slot uses its
 \ package.
-: ANSWERS? ( ptr u8 n n -- bool ) {: a:ptr u:n s:n :}
+: ANSWERS? ( ^u8 n n -- bool ) {: a:^ u:n s:n :}
    a u s USED-WID WL-PROBE XREF-FOUND? 0= if false exit then
    s 0 ?do
       i USED-WID s USED-WID = if false unloop exit then
@@ -357,14 +357,14 @@ create NL NEWLINE c,
    true ;
 
 \ xt runs on each using slot that exports the name a u, in using order.
-: ANSWERING ( [ n -- ] ptr u8 n -- ) {: xt a:ptr u:n :}
+: ANSWERING ( [ n -- ] ^u8 n -- ) {: xt a:^ u:n :}
    CHECKER-USING-N 0 ?do
       a u i ANSWERS? if i xt execute then
    loop ;
 
 variable ANSWERERS   \ bit i set when using slot i exports the ambiguous name
 
-: AMBIGUOUS ( ptr u8 n -- ) {: a:ptr u:n :}
+: AMBIGUOUS ( ^u8 n -- ) {: a:^ u:n :}
    0 ANSWERERS !
    [: 1 swap lshift ANSWERERS @ or ANSWERERS ! ;] a u ANSWERING
    a u ANSWERERS @ USING-AMBIGUOUS-REJECT
@@ -373,16 +373,16 @@ variable ANSWERERS   \ bit i set when using slot i exports the ambiguous name
 variable ANSWERED
 
 \ The first using slot that exports the name a u.
-: ANSWER ( ptr u8 n -- n ) {: a:ptr u:n :}
+: ANSWER ( ^u8 n -- n ) {: a:^ u:n :}
    -1 ANSWERED !
    [: ANSWERED @ 0< if ANSWERED ! else drop then ;] a u ANSWERING
    ANSWERED @ ;
 
-: SHADOWED ( ptr u8 n -- ) {: a:ptr u:n :}
+: SHADOWED ( ^u8 n -- ) {: a:^ u:n :}
    a u  a u ANSWER CHECKER-USING$ USING-SHADOW-REJECT
    CHECKER-REJECT-RC REJECTION:STOP ;
 
-: SEALED-FAIL ( ptr u8 n ptr u8 n -- )
+: SEALED-FAIL ( ^u8 n ^u8 n -- )
    REJECTION:SEALED  REJECTION:KEEP  s" " CHECKER-REJECT-RC die-closed ;
 
 \ While a checker overlay is open a definer head, a new package row or private
@@ -400,7 +400,7 @@ variable ANSWERED
 \ Whether c was found: INP stops past it, else at the end of the input.
 : SKIP-PAST ( n -- bool )
    {: c:n :}
-   INP-CELL ADDR@ INE-CELL ADDR@ {: p:ptr e:ptr :}
+   INP-CELL ADDR@ INE-CELL ADDR@ {: p:^ e:^ :}
    p begin dup e < if dup c@ c <> else false then while 1 + repeat
    dup e < {: found:bool :}
    found if 1 + then
@@ -428,10 +428,8 @@ variable ANSWERED
 : FLOORED ( bool -- )
    if UNDERFLOW then ;
 
-\ CHECK:TOP-LEVEL gets ( token class flags ) for each number after the push
-\ and for each word, past its gates, before it runs, and consumes those four
-\ cells. A check that leaves the stack below its base on a word event is
-\ refused here, before the word runs.
+\ CHECK:TOP-LEVEL judges each number after its push and each word but the engine
+\ `drop` before it runs; a check that leaves the stack below its base is refused.
 CAST: HOOK-CALL ( [ -- ] -- n )
 
 \ The call runs under the floor, so it pushes the event itself: a quotation
@@ -455,11 +453,11 @@ variable VALUE
 \ EVAL-FRAMED-RANGE restores it as the buffer ends, since a stripped image
 \ would hold a record that outlived its buffer as an undeclared dictionary
 \ pointer.
-TYPED-VARIABLE REC ptr n
+TYPED-VARIABLE REC ^n
 
 \ A sealed source may name a record it defined after the seal or a callable
 \ public record in an admitted wordlist.
-: POLICY-REFUSE ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n t:ptr tu:n :}
+: POLICY-REFUSE ( ^u8 n ^u8 n -- ) {: a:^ u:n t:^ tu:n :}
    s" E-POLICY" REJECTION:OPEN
    a u TICKS  s"  is not in the vocabulary this source may use" SAY
    t tu REJECTION:AT  s" not admitted" SAY
@@ -467,7 +465,7 @@ TYPED-VARIABLE REC ptr n
    s" call only public words of the packages admitted before the seal" SAY
    CHECKER-REJECT-RC REJECTION:STOP ;
 
-: POLICY-CHECK-REC ( ptr u8 n ptr n -- ) {: a:ptr u:n rec:ptr :}
+: POLICY-CHECK-REC ( ^u8 n ^n -- ) {: a:^ u:n rec:^ :}
    POLICY-NDICT-CELL CELL@ {: seal:n :}
    seal 0= if exit then
    rec XREF-FOUND? 0= if a u a u POLICY-REFUSE then
@@ -483,7 +481,7 @@ TYPED-VARIABLE REC ptr n
 
 \ At top level the ordinary `require`'s global record, spelled so, is in the
 \ vocabulary as well. A body never admits it.
-: POLICY-REQUIRE? ( ptr u8 n ptr n -- bool ) {: a:ptr u:n rec:ptr :}
+: POLICY-REQUIRE? ( ^u8 n ^n -- bool ) {: a:^ u:n rec:^ :}
    POLICY-REQUIRE-CELL CELL@ {: req:n :}
    req 0= if false exit then
    rec XREF-FOUND? 0= if false exit then
@@ -493,8 +491,8 @@ TYPED-VARIABLE REC ptr n
 
 \ The record, rejected, naming it, where a bare name meets two used publics
 \ that export it, or a global and a used public that do.
-: USING-CHECK ( ptr u8 n ptr n ptr n n -- ptr n )
-   {: a:ptr u:n rec:ptr used:ptr flags:n :}
+: USING-CHECK ( ^u8 n ^n ^n n -- ^n )
+   {: a:^ u:n rec:^ used:^ flags:n :}
    flags SCOPE-FIND-AMBIGUOUS and 0<> {: amb:bool :}
    rec XREF-FOUND? 0= if amb if a u AMBIGUOUS then rec exit then
    rec XREF-WORDLIST WL:GLOBAL? 0= if rec exit then
@@ -504,30 +502,21 @@ TYPED-VARIABLE REC ptr n
 
 \ The record the name binds, rejected, naming it, where a sealed source may
 \ not call it, then where USING-CHECK rejects it.
-: LOOKUP-NAME ( ptr u8 n -- ptr n ) {: a:ptr u:n :}
-   a u scope-find {: rec:ptr used:ptr used2:ptr flags:n :}
+: LOOKUP-NAME ( ^u8 n -- ^n ) {: a:^ u:n :}
+   a u scope-find {: rec:^ used:^ used2:^ flags:n :}
    a u rec POLICY-CHECK-REC
    a u rec used flags USING-CHECK ;
 
 \ LOOKUP-NAME for the top-level token, whose policy also admits the exempt
 \ require.
 : SEARCH ( -- )
-   TOKEN$ scope-find {: rec:ptr used:ptr used2:ptr flags:n :}
+   TOKEN$ scope-find {: rec:^ used:^ used2:^ flags:n :}
    TOKEN$ rec POLICY-REQUIRE? 0= if TOKEN$ rec POLICY-CHECK-REC then
    TOKEN$ rec used flags USING-CHECK REC ! ;
 
 : LOOKUP ( -- )
    SEARCH
    REC @ XREF-FOUND? 0= if UNDEFINED then ;
-
-: LAYOUT-VALUE ( -- )
-   s" E-LAYOUT-VALUE" REJECTION:OPEN
-   TOKEN$ TICKS
-   s"  leaves a layout value, which top-level code cannot hold" SAY
-   TOKEN$ REJECTION:AT  s" returns a layout value" SAY
-   REJECTION:HELP  s" call " SAY  TOKEN$ TICKS
-   s"  inside a definition that takes its value" SAY
-   CHECKER-REJECT-RC REJECTION:STOP ;
 
 : INTERNAL ( -- )
    s" E-UNSAFE" REJECTION:OPEN
@@ -538,11 +527,12 @@ TYPED-VARIABLE REC ptr n
    SAY
    CHECKER-REJECT-RC REJECTION:STOP ;
 
-\ The gates before a record's xt leaves the loop, in the engine's order: a
-\ wide effect, then an internal word.
+\ The gate before a record's xt leaves the loop: an internal word. A wide
+\ effect passes: the interpret row carries each multi-cell value as one item
+\ of its type, and the checker rejects an engine primitive that would move
+\ part of one (src/core/check-walk.f TOP-XPORT-GUARD).
 : XT-GATE ( -- )
    REC @ XREF-FLAGS {: f:n :}
-   f DNAME-WIDE and 0<> if LAYOUT-VALUE then
    f DNAME-INT and 0<> if INTERNAL then ;
 
 \ Name dispatch and tick reject an exact native code entry, including an alias,
@@ -583,13 +573,25 @@ TYPED-VARIABLE RUNS-ON bool
    RUNS-N @ 1 + RUNS-N ! ;
 
 
-\ The flags and xt are read before the hooks run.
+\ The engine's `drop` in any case: a user's global `drop` takes the hook.
+: DROP-WORD? ( -- bool )
+   REC @ XREF-START ['] drop COMP:XT>N = ;
+
+\ Counts a run of the found word.
+: RUN-COUNTED ( -- )
+   REC @ XREF-NULL - XREF-ADDR>INDEX RUN+ ;
+
+\ The flags and xt are read before the hooks run. The engine `drop` runs once
+\ per cell of its item, so a multi-cell value leaves whole, as in a body; any
+\ other word runs once outside a loop, so it has every loop frame.
 : RUN-FOUND ( -- )
    GATE
    WORD-FLAGS REC @ XREF-START {: flags:n xt:n :}
-   TOP-EV-WORD flags HOOK
-   REC @ XREF-NULL - XREF-ADDR>INDEX {: idx:n :}
-   idx RUN+
+   DROP-WORD? if
+      CHECK:TOP-DROP RUN-COUNTED
+      0 ?do xt execute-floor FLOORED loop exit
+   then
+   TOP-EV-WORD flags HOOK RUN-COUNTED
    xt execute-floor FLOORED ;
 
 : RUN-WORD ( -- )
@@ -601,11 +603,11 @@ TYPED-VARIABLE RUNS-ON bool
 
 \ The input ended after keyword kw: the token cells still hold the keyword, and
 \ the text names kw lowercase whatever the token's case.
-: NAME-MISSING ( ptr u8 n -- ) {: kw:ptr u:n :}
+: NAME-MISSING ( ^u8 n -- ) {: kw:^ u:n :}
    kw u TOKEN$ s" no name follows" REJECTION:MISSING-NAME
    CHECKER-REJECT-RC REJECTION:STOP ;
 
-: OPERAND ( ptr u8 n -- ) {: kw:ptr u:n :}
+: OPERAND ( ^u8 n -- ) {: kw:^ u:n :}
    TOKEN if exit then
    kw u NAME-MISSING ;
 
@@ -619,7 +621,7 @@ public
 \ Writes the record of the string literal its opener t tu opens, which has no
 \ closing quote or holds a bad escape, through its help and leaves it open: the
 \ caller ends it.
-: LITERAL-REJECT ( ptr u8 n -- ) {: t:ptr tu:n :}
+: LITERAL-REJECT ( ^u8 n -- ) {: t:^ tu:n :}
    s" E-UNTERMINATED-STRING" REJECTION:OPEN
    s" the string " SAY  t tu TICKS
    s"  opens has no closing quote or holds a bad escape" SAY
@@ -636,57 +638,57 @@ private
    TOKEN$ CHECKER-TAPE:COUNTED-MAX REJECTION:COUNTED-RANGE
    CHECKER-REJECT-RC REJECTION:STOP ;
 
-: PAST ( ptr u8 -- )
+: PAST ( ^u8 -- )
    1 + INP-CELL ADDR! ;
 
-: ROOM ( n -- ptr u8 )
+: ROOM ( n -- ^u8 )
    here swap allot ;
 
-: TEXT ( -- ptr u8 n )
-   INP-CELL ADDR@ 1 + INE-CELL ADDR@ {: s:ptr e:ptr :}
+: TEXT ( -- ^u8 n )
+   INP-CELL ADDR@ 1 + INE-CELL ADDR@ {: s:^ e:^ :}
    s begin dup e < if dup c@ QUOTE <> else false then while 1 + repeat
-   {: q:ptr :}
+   {: q:^ :}
    q e >= if BAD-LITERAL then
    q PAST
    s q s - ;
 
-: COPY-HERE ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   u ROOM {: d:ptr :}
+: COPY-HERE ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
+   u ROOM {: d:^ :}
    a d u BYTE-COPY
    d u ;
 
-: KEEP ( -- ptr u8 n )
+: KEEP ( -- ^u8 n )
    TEXT COPY-HERE ;
 
 \ c": a count byte, then the text.
-: COUNTED ( -- ptr u8 )
-   TEXT {: a:ptr u:n :}
+: COUNTED ( -- ^u8 )
+   TEXT {: a:^ u:n :}
    u CHECKER-TAPE:COUNTED-MAX > if TOO-LONG then
-   u 1 + ROOM {: d:ptr :}
+   u 1 + ROOM {: d:^ :}
    u d c!
    a d 1 + u BYTE-COPY
    d ;
 
 \ An escaped literal's start, its closing quote and the count of bytes it
 \ decodes to. A bad escape refuses as a missing quote does, INP unmoved.
-: ESC-SCAN ( -- ptr u8 ptr u8 n )
-   INP-CELL ADDR@ 1 + {: s:ptr :}
-   s INE-CELL ADDR@ ESCAPE:SPAN {: q:ptr u:n ok:bool :}
+: ESC-SCAN ( -- ^u8 ^u8 n )
+   INP-CELL ADDR@ 1 + {: s:^ :}
+   s INE-CELL ADDR@ ESCAPE:SPAN {: q:^ u:n ok:bool :}
    ok 0= if BAD-LITERAL then
    s q u ;
 
-: ESC-KEEP ( -- ptr u8 n )
-   ESC-SCAN {: s:ptr q:ptr u:n :}
+: ESC-KEEP ( -- ^u8 n )
+   ESC-SCAN {: s:^ q:^ u:n :}
    q PAST
-   u ROOM {: d:ptr :}
+   u ROOM {: d:^ :}
    s q d ESCAPE:COPY
    d u ;
 
-: ESC-COUNTED ( -- ptr u8 )
-   ESC-SCAN {: s:ptr q:ptr u:n :}
+: ESC-COUNTED ( -- ^u8 )
+   ESC-SCAN {: s:^ q:^ u:n :}
    u CHECKER-TAPE:COUNTED-MAX > if TOO-LONG then
    q PAST
-   u 1 + ROOM {: d:ptr :}
+   u 1 + ROOM {: d:^ :}
    u d c!
    s q d 1 + ESCAPE:COPY
    d ;
@@ -695,8 +697,8 @@ private
 \ under the floor as a word does. The cells it leaves are the program's, so
 \ these views state its effect only to project it to the number execute-floor
 \ takes.
-CAST: STR-LITERAL ( [ -- ptr u8 n ] -- n )
-CAST: CSTR-LITERAL ( [ -- ptr u8 ] -- n )
+CAST: STR-LITERAL ( [ -- ^u8 n ] -- n )
+CAST: CSTR-LITERAL ( [ -- ^u8 ] -- n )
 CAST: CELL-LITERAL ( [ -- n ] -- n )
 \ A cell a definer takes from the program.
 CAST: CELL-TAKE ( [ n -- ] -- n )
@@ -722,11 +724,11 @@ CAST: CELL-TAKE ( [ n -- ] -- n )
 : TYPE-ESC-STR ( -- )
    ESC-KEEP type ;
 
-: OPEN-PKG-NAME ( -- ptr u8 n )
+: OPEN-PKG-NAME ( -- ^u8 n )
    PKG-REC-CELL CELL@ {: rec:n :}
    rec 0= if 0 ROOM 0 exit then
-   rec XREF-ADDR>REC XREF-NAME$ {: a:ptr u:n :}
-   u ROOM {: d:ptr :}
+   rec XREF-ADDR>REC XREF-NAME$ {: a:^ u:n :}
+   u ROOM {: d:^ :}
    u 0 ?do a i + c@ XREF-FOLD-C d i + c! loop
    d u ;
 
@@ -753,7 +755,7 @@ CAST: CELL-TAKE ( [ n -- ] -- n )
    NCOMP-DISPATCH:DECL-TRUSTED-TICK-OFF + CELL-VIEW @ ;
 
 \ The owner record's trusted-tick field holds a raw execution token.
-CAST: TICK-ACTION ( n -- [ ptr u8 n -- bool ] )
+CAST: TICK-ACTION ( n -- [ ^u8 n -- bool ] )
 
 : TRUSTED-TICK? ( -- bool )
    TICK-QUERY-READY? 0= if false exit then
@@ -832,12 +834,12 @@ private
 \ The code ceiling's distance below the end of the region.
 $4000 constant PKG-CODE-RESERVE
 
-: PKG-INDEX ( ptr n -- n ) BYTE-VIEW NULL-PTR BYTE-VIEW - dbase@ - DREC / ;
+: PKG-INDEX ( ^n -- n ) BYTE-VIEW NULL-PTR BYTE-VIEW - dbase@ - DREC / ;
 
 public
 \ Writes the record of package keyword t tu out of its context through its
 \ help; the caller ends it.
-: PKG-CONTEXT-REJECT ( ptr u8 n -- ) {: t:ptr tu:n :}
+: PKG-CONTEXT-REJECT ( ^u8 n -- ) {: t:^ tu:n :}
    s" E-PKG-CONTEXT" REJECTION:OPEN
    t tu TICKS  s"  is not allowed in this context" SAY
    t tu REJECTION:AT  s" out of context" SAY
@@ -850,7 +852,7 @@ private
 : PKG-CONTEXT-FAIL ( -- )
    TOKEN$ PKG-CONTEXT-REJECT  CHECKER-REJECT-RC REJECTION:STOP ;
 
-: PKG-DUPLICATE ( ptr u8 n -- )
+: PKG-DUPLICATE ( ^u8 n -- )
    2dup REJECTION:DUPLICATE CHECKER-REJECT-RC REJECTION:STOP ;
 
 : PKG-NAME ( -- )
@@ -858,7 +860,7 @@ private
    TOKEN$ NAME-MISSING ;
 
 \ Rejects making the name a u, placed at t tu, when no record is left.
-: PKG-DICT-ROOM ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n t:ptr tu:n :}
+: PKG-DICT-ROOM ( ^u8 n ^u8 n -- ) {: a:^ u:n t:^ tu:n :}
    ndict@ DICT-CAP < if exit then
    a u t tu REJECTION:DICTIONARY-FULL ;
 
@@ -881,7 +883,7 @@ private
    room used - {: left:n :}
    left u PKG-CODE-SPAN U> ;
 
-: PKG-CODE-ROOM-AFTER ( ptr u8 n ptr u8 n n -- ) {: a:ptr u:n t:ptr tu:n used:n :}
+: PKG-CODE-ROOM-AFTER ( ^u8 n ^u8 n n -- ) {: a:^ u:n t:^ tu:n used:n :}
    u used PKG-FITS-AFTER? if exit then
    s" E-CODE-SPACE-FULL" REJECTION:OPEN
    s" code space has no room for the name " SAY  a u TICKS
@@ -890,20 +892,20 @@ private
    s" shorten the name, or define fewer words in this load" SAY
    PKG-RC-CODE-FULL REJECTION:STOP ;
 
-: PKG-CODE-ROOM ( ptr u8 n ptr u8 n -- ) 0 PKG-CODE-ROOM-AFTER ;
+: PKG-CODE-ROOM ( ^u8 n ^u8 n -- ) 0 PKG-CODE-ROOM-AFTER ;
 
 \ The operation at off in the owner record a dispatch cell names, 0 when there
 \ is no record or the field is empty: the call is then skipped, not refused.
-: PKG-OPERATION ( ptr ptr u8 n -- n )
-   {: cell:ptr off:n :}
-   cell @ {: rec:ptr :}
+: PKG-OPERATION ( ^^u8 n -- n )
+   {: cell:^ off:n :}
+   cell @ {: rec:^ :}
    rec 0= if 0 exit then
    rec off + CELL-VIEW @ ;
 
 \ The owner record stores raw execution tokens; these views state the
 \ signatures called here.
 CAST: PKG-AS-ACTION ( n -- [ -- ] )
-CAST: PKG-AS-NAME-ACTION ( n -- [ ptr u8 n -- ] )
+CAST: PKG-AS-NAME-ACTION ( n -- [ ^u8 n -- ] )
 
 \ `package`, `public`, `private` and `;package` notify the target checker alone:
 \ a loading checker is the target at once, the source owner only where none was.
@@ -947,13 +949,13 @@ CAST: PKG-AS-NAME-ACTION ( n -- [ ptr u8 n -- ] )
    then
    TOKEN$ xt PKG-AS-NAME-ACTION execute ;
 
-: PKG-ROW ( -- ptr n )
+: PKG-ROW ( -- ^n )
    TOKEN$ BOOT:NAMESPACE-WL WL-PROBE ;
 
 \ A sealed package ends the process when named again; a package is sealed only
 \ by the last file that opens it.
 : PKG-SEALED? ( -- bool )
-   PKG-ROW {: row:ptr :}
+   PKG-ROW {: row:^ :}
    row XREF-FOUND? 0= if false exit then
    row XREF:SEALED? ;
 
@@ -964,7 +966,7 @@ CAST: PKG-AS-NAME-ACTION ( n -- [ ptr u8 n -- ] )
 : PKG-POLICY-GUARD ( -- )
    POLICY-NDICT-CELL CELL@ {: seal:n :}
    seal 0= if exit then
-   PKG-ROW {: row:ptr :}
+   PKG-ROW {: row:^ :}
    row XREF-FOUND? 0= if exit then
    row PKG-INDEX seal >= if exit then
    s" E-POLICY" REJECTION:OPEN
@@ -975,7 +977,7 @@ CAST: PKG-AS-NAME-ACTION ( n -- [ ptr u8 n -- ] )
    s" give the sealed source's package a name of its own" SAY
    CHECKER-REJECT-RC REJECTION:STOP ;
 
-: PKG-REOPEN ( ptr n -- n ) {: row:ptr :}
+: PKG-REOPEN ( ^n -- n ) {: row:^ :}
    row PKG-INDEX {: ix:n :}
    row XREF-PKG-PRIVATE 0= if ix namespace-private then
    ix ;
@@ -994,7 +996,7 @@ private
 \ The index of the row `package` opens; a new row takes a public and a private
 \ wid.
 : PKG-ENSURE ( -- n )
-   PKG-ROW {: row:ptr :}
+   PKG-ROW {: row:^ :}
    row XREF-FOUND? if row PKG-REOPEN exit then
    OVERLAY-GUARD
    TOKEN$ TOKEN$ PKG-DICT-ROOM
@@ -1003,8 +1005,8 @@ private
 
 \ namespace-record's name refusals, as E-COMP-STATE: a colon at either edge
 \ and a second colon.
-: PKG-PATH-CK ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: PKG-PATH-CK ( ^u8 n -- )
+   {: a:^ u:n :}
    a u 0 COLON-AT {: q:n :}
    q 0 < if exit then
    q 0=  q 1+ u =  or if E-COMP-STATE throw then
@@ -1014,8 +1016,8 @@ public
 \ A file object's link records package a u, which must lie in the caller's
 \ buffer, with its private wordlist right after the public one when the flag is
 \ set.
-: PACKAGE-RECORD ( ptr u8 n bool -- n )
-   {: a:ptr u:n own:bool :}
+: PACKAGE-RECORD ( ^u8 n bool -- n )
+   {: a:^ u:n own:bool :}
    u 1 < if E-COMP-STATE throw then
    a u PKG-PATH-CK
    a u a u PKG-DICT-ROOM
@@ -1101,7 +1103,7 @@ private
    TOKEN$ 0 COLON-AT 0 >= if
       TOKEN$ REJECTION:USING-BAD-NAME  CHECKER-REJECT-RC REJECTION:STOP
    then
-   TOKEN$ CHECKER-RESOLVE:HEAD-ROW {: row:ptr :}
+   TOKEN$ CHECKER-RESOLVE:HEAD-ROW {: row:^ :}
    row XREF-FOUND? 0= if USING-UNKNOWN then
    row XREF-PKG-PUBLIC ;
 
@@ -1146,8 +1148,8 @@ variable USE-FLOOR
    then
    d 1- USE-DEPTH-CELL CELL! ;
 
-: PKG-TAIL ( -- ptr u8 n )
-   TOKEN$ {: a:ptr u:n :}
+: PKG-TAIL ( -- ^u8 n )
+   TOKEN$ {: a:^ u:n :}
    a u 0 COLON-AT {: q:n :}
    q 1 <  q 1+ u >=  or if a u exit then
    a q 1+ ZPTR+  u q - 1- ;
@@ -1172,8 +1174,8 @@ variable USE-FLOOR
 \ interpret gate without the DNAME-INT mark, so the gate's rejection is made
 \ here. DEF-TKA and DEF-TKL take the operand, which the rejections after them
 \ name.
-: PKG-EXPORT-SOURCE ( -- ptr n )
-   TOKEN$ FIND-SCOPE {: src:ptr :}
+: PKG-EXPORT-SOURCE ( -- ^n )
+   TOKEN$ FIND-SCOPE {: src:^ :}
    src XREF-FOUND? 0= if EXPORT-UNDEFINED then
    src XREF-FLAGS DNAME-INT and 0<> if EXPORT-UNSAFE then
    TKA-CELL CELL@ DEF-TKA-CELL CELL!
@@ -1182,7 +1184,7 @@ variable USE-FLOOR
 
 \ The record index of the source's does> clause, which its export carries, or
 \ -1 for a source that is not a definer.
-: PKG-CLAUSE ( ptr n -- n ) {: src:ptr :}
+: PKG-CLAUSE ( ^n -- n ) {: src:^ :}
    src PKG-INDEX {: k:n :}
    k XREF-DOES-COMPANION? if k 1+ exit then
    -1 ;
@@ -1211,18 +1213,18 @@ variable USE-FLOOR
    then ;
 
 : PKG-CLAUSE-ALIAS ( n -- ) {: k:n :}
-   k XREF-REC XREF-NAME$ {: a:ptr u:n :}
+   k XREF-REC XREF-NAME$ {: a:^ u:n :}
    a u k get-current alias-record ;
 
 public
 \ A file object's link publishes name a u, which must lie in the caller's
 \ buffer, for record src in wordlist wid.
-: ALIAS-RECORD ( ptr u8 n n n -- )
-   {: a:ptr u:n src:n wid:n :}
+: ALIAS-RECORD ( ^u8 n n n -- )
+   {: a:^ u:n src:n wid:n :}
    u 1 <  wid 0 <  or if E-COMP-STATE throw then
    SEAL-NDICT@ 0<>  wid XREF-WID-PROTECTED?  and if E-COMP-STATE throw then
    src 0 <  src ndict@ >=  or if E-COMP-STATE throw then
-   src XREF-REC {: rec:ptr :}
+   src XREF-REC {: rec:^ :}
    rec XREF-WORDLIST {: swid:n :}
    swid XREF:PACKAGE-WL?  swid XREF:RETIRED-WL?  or if E-COMP-STATE throw then
    rec XREF-FLAGS DNAME-INT and 0<> if E-COMP-STATE throw then
@@ -1260,10 +1262,10 @@ private
    get-current PKG-PRI-CELL CELL@ = if EXPORT-PRIVATE then
    PKG-NAME
    OVERLAY-GUARD
-   PKG-EXPORT-SOURCE {: src:ptr :}
-   TOKEN$ {: operand:ptr operand-u:n :}
+   PKG-EXPORT-SOURCE {: src:^ :}
+   TOKEN$ {: operand:^ operand-u:n :}
    get-current PKG-WID-SEALED? if operand operand-u 2dup SEALED-FAIL then
-   PKG-TAIL {: ta:ptr tu:n :}
+   PKG-TAIL {: ta:^ tu:n :}
    ta tu operand operand-u PKG-DICT-ROOM
    ta tu get-current WL-PROBE XREF-FOUND? if
       TOKEN$ PKG-DUPLICATE
@@ -1283,7 +1285,7 @@ private
 public
 \ Writes the record of section word t tu, which a word in scope also names,
 \ through its help; the caller ends it.
-: SECTION-REJECT ( ptr u8 n -- ) {: t:ptr tu:n :}
+: SECTION-REJECT ( ^u8 n -- ) {: t:^ tu:n :}
    s" E-SECTION-WORD" REJECTION:OPEN
    t tu TICKS
    s"  is the section word, and a word of that name is in scope" SAY
@@ -1364,7 +1366,7 @@ DYNAMIC-BUFFER LOCAL-END n
 
 72 constant DEF-RC-PD-FULL       \ no pending slot holds the defer
 
-: DEF-TRUST-SIG ( ptr u8 n -- ) trust-sig! ;
+: DEF-TRUST-SIG ( ^u8 n -- ) trust-sig! ;
 
 \ The block BODY-ITEMS describes. Each opener zeroes CAP-CELL, so a
 \ definition's first item reserves the block again, as it must after a capture
@@ -1400,10 +1402,10 @@ private
 
 \ The engine's cells hold the compiler entries, the body hook and the checker's
 \ declaration operations as raw execution tokens.
-CAST: AS-COMPILE ( n -- [ ptr u8 n -- ] )
+CAST: AS-COMPILE ( n -- [ ^u8 n -- ] )
 CAST: AS-COMPILE-FIXED ( n -- [ n n COMP:body -- ] )
-CAST: AS-BODY-HOOK ( n -- [ -- ptr u8 bool ] )
-CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
+CAST: AS-BODY-HOOK ( n -- [ -- ^u8 bool ] )
+CAST: AS-DECLARE ( n -- [ ^u8 n ^u8 n -- ] )
 
 \ A head with no compiler (COMP-CELL 0), or a body token or fixed body whose
 \ latch is 0, refuses. `immediate` passes.
@@ -1418,17 +1420,17 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
    CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ The checker declaration xt given takes the name a u and the signature given.
-: DEF-DECLARE-NAME ( ptr u8 n ptr u8 n n -- ) {: a:ptr u:n sig:ptr len:n xt:n :}
+: DEF-DECLARE-NAME ( ^u8 n ^u8 n n -- ) {: a:^ u:n sig:^ len:n xt:n :}
    a u sig len xt AS-DECLARE execute ;
 
 \ DEF-DECLARE-NAME with the name as the capture spells it, qualified.
-: DEF-DECLARE ( ptr u8 n n -- ) {: sig:ptr len:n xt:n :}
+: DEF-DECLARE ( ^u8 n n -- ) {: sig:^ len:n xt:n :}
    DEF-CAPTURED-NAME sig len xt DEF-DECLARE-NAME ;
 
 public
 \ The source ends inside the definition of a u, whose name stands at the source
 \ token t tu. It is written through its help, and the caller stops it.
-: UNCLOSED-REJECT ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n t:ptr tu:n :}
+: UNCLOSED-REJECT ( ^u8 n ^u8 n -- ) {: a:^ u:n t:^ tu:n :}
    s" E-VS-UNTERMINATED-DEFINITION" REJECTION:OPEN
    s" the source ends inside the definition of `" REJECTION:EMIT-STR
    a u REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR
@@ -1439,7 +1441,7 @@ public
 
 \ The source ends inside the locals group the source token t tu, its `{:`,
 \ opens. It is written through its help, and the caller stops it.
-: GROUP-REJECT ( ptr u8 n -- ) {: t:ptr tu:n :}
+: GROUP-REJECT ( ^u8 n -- ) {: t:^ tu:n :}
    s" E-UNCLOSED-LOCALS" REJECTION:OPEN
    s" the locals group `{:` opens is never closed" REJECTION:EMIT-STR
    t tu REJECTION:AT  s" never closed" REJECTION:EMIT-STR
@@ -1451,14 +1453,14 @@ private
 \ definition captures.
 : DEF-ENDED ( -- )
    PENDTKA-CELL CELL@ INP-CELL CELL!
-   INP-CELL ADDR@ {: p:ptr :}
+   INP-CELL ADDR@ {: p:^ :}
    p INE-CELL ADDR@ WORD-END p - {: pu:n :}
    DEF-CAPTURED-NAME p pu UNCLOSED-REJECT
    CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ body-capture grows the block when the text would pass its capacity, so an
 \ address into the text is formed after the capture, never kept across it.
-: DEF-CAPTURE ( ptr u8 n -- ) body-capture ;
+: DEF-CAPTURE ( ^u8 n -- ) body-capture ;
 
 : ITEM-ROOM ( -- )
    BODY-ITEMS:CAP-CELL CELL@ {: cap:n :}
@@ -1476,18 +1478,18 @@ private
    BODY-TEXT:ROWS-CELL CELL@ 1 - {: i:n :}
    i 0 < if exit then
    BODY-TEXT:BASE-CELL ADDR@ BODY-TEXT:CAP-CELL CELL@ +
-   i BODY-SOURCE:ROW * + {: row:ptr :}
+   i BODY-SOURCE:ROW * + {: row:^ :}
    row 0 FR@ off <> if exit then
    row 8 FR@ BODY-SOURCE:NONE <> if exit then
    TKA-CELL ADDR@ SRCLOC:INB-CELL ADDR@ INE-CELL ADDR@
-   {: t:ptr b:ptr e:ptr :}
-   PENDTKA-CELL ADDR@ {: p:ptr :}
+   {: t:^ b:^ e:^ :}
+   PENDTKA-CELL ADDR@ {: p:^ :}
    off 0 >  p b - 0 <  e p - 0 <= or  and if exit then
    t b - 0 <  e t - 0 <= or if exit then
    t b - BODY-SOURCE:BUILT row 8 FR! ;
 
 \ Appends an item and captures its spelling, which the row's off and len span.
-: ITEM+ ( n n n ptr u8 n -- ) {: kind:n a:n b:n s:ptr u:n :}
+: ITEM+ ( n n n ^u8 n -- ) {: kind:n a:n b:n s:^ u:n :}
    BODYLEN-CELL CELL@ {: off:n :}
    ITEM-ROOM
    s u DEF-CAPTURE
@@ -1513,14 +1515,14 @@ private
 \ keyword it is.
 : DEF-NAME ( bool -- ) {: trusted:bool :}
    trusted if s" trusted:" OPERAND  s" trusted:" TOKEN$ REJECTION:NOT-A-NAME exit then
-   TOKEN$ {: kw:ptr ku:n :}
+   TOKEN$ {: kw:^ ku:n :}
    TOKEN 0= if kw ku NAME-MISSING then
    kw ku TOKEN$ REJECTION:NOT-A-NAME ;
 
 \ A head with no row makes a top-level package with a public wordlist
 \ and no private one.
-: DEF-NAMESPACE ( ptr u8 n -- n bool ) {: a:ptr q:n :}
-   a q CHECKER-RESOLVE:HEAD-ROW {: row:ptr :}
+: DEF-NAMESPACE ( ^u8 n -- n bool ) {: a:^ q:n :}
+   a q CHECKER-RESOLVE:HEAD-ROW {: row:^ :}
    row XREF-FOUND? if row XREF-PKG-PUBLIC  row XREF:SEALED? exit then
    a q TOKEN$ PKG-DICT-ROOM
    a q a q PKG-CODE-ROOM
@@ -1528,7 +1530,7 @@ private
 
 \ A wordlist of a sealed package rejects the name token. Checked as source names
 \ a definition, not in DEF-RECORD, which a file object's link replays.
-: DEF-SEAL-GUARD ( n ptr u8 n -- n ) {: wid:n a:ptr u:n :}
+: DEF-SEAL-GUARD ( n ^u8 n -- n ) {: wid:n a:^ u:n :}
    wid PKG-WID-SEALED? if a u TOKEN$ SEALED-FAIL then
    wid ;
 
@@ -1536,13 +1538,13 @@ private
 \ DEF-TKL take the name token, which a `does>` clause's rejections name. A bare name
 \ goes into the current wordlist; the qualifier is the first colon at neither
 \ edge (`:a:b` is bare), and a second colon after it is rejected.
-: DEF-QUALIFY-NAME ( ptr u8 n -- ptr u8 n n ) {: a:ptr u:n :}
+: DEF-QUALIFY-NAME ( ^u8 n -- ^u8 n n ) {: a:^ u:n :}
    a u 0 COLON-AT {: q:n :}
    q 1 <  q 1+ u >=  or if a u get-current a u DEF-SEAL-GUARD exit then
    a u q 1+ COLON-AT 0 >= if a u TOKEN$ CHECKER-RESOLVE:REJECT-QUALIFIED then
    a q 1+ ZPTR+  u q - 1-  a q DEF-NAMESPACE  if a u TOKEN$ SEALED-FAIL then ;
 
-: DEF-QUALIFY ( -- ptr u8 n n )
+: DEF-QUALIFY ( -- ^u8 n n )
    OVERLAY-GUARD
    TKA-CELL CELL@ DEF-TKA-CELL CELL!
    TKL-CELL CELL@ DEF-TKL-CELL CELL!
@@ -1550,34 +1552,34 @@ private
 
 \ The keywords a body's compiler reads before it looks a word up: a word named
 \ by one could never be called from a body.
-: DEF-KEYWORDS ( -- ptr u8 n )
+: DEF-KEYWORDS ( -- ^u8 n )
    S\" if then else begin until again while repeat case of endof endcase construct match s\q c\q .\q s\\\q c\\\q .\\\q ['] [char] [package] [type] does> [: is ;] do loop i >r r> r@ exit recurse ?do +loop j leave unloop {: postpone" ;
 
 \ A design may define none of the engine's dispatch-row names. The admitted
 \ syntax rows other than S\" keep the ordinary reserved-name error; every other
 \ row is outside the vocabulary before dictionary duplicate checks run.
-: DEF-DESIGN-KEYWORDS ( -- ptr u8 n )
+: DEF-DESIGN-KEYWORDS ( -- ^u8 n )
    S\" if else then {: :} s\q [package] package public private ;package using ;using" ;
 
 \ The interpret dispatch rows, plus kernel: and ;match. Ordinary words such as
 \ require and include may be published by a package even though a definition
 \ cannot take their names at this checked head boundary.
-: DEF-INTERPRET-KEYWORDS ( -- ptr u8 n )
+: DEF-INTERPRET-KEYWORDS ( -- ^u8 n )
    S\" kernel: trusted: cast: linear: immediate create variable constant defer export seal-package char ' ;match" ;
 
-: DEF-NAME-ONLY-KEYWORDS ( -- ptr u8 n )
+: DEF-NAME-ONLY-KEYWORDS ( -- ^u8 n )
    s" : 2constant to require include sumtype variant ;variant ;sumtype" ;
 
-: DEF-OP-KEYWORDS ( -- ptr u8 n )
+: DEF-OP-KEYWORDS ( -- ^u8 n )
    s" + - * / mod and or xor lshift rshift dup drop swap over nip = <> < > <= >= 1+ 1- 0= 0< negate invert f+ f- f* f/" ;
 
-: DEF-P2-KEYWORDS ( -- ptr u8 n )
+: DEF-P2-KEYWORDS ( -- ^u8 n )
    s" tuck rot -rot 2dup 2drop 2swap 2over 2>r 2r> 2r@ @ !" ;
 
-: DEF-KEYWORD-END ( ptr u8 n n -- n ) {: t:ptr tu:n s:n :}
+: DEF-KEYWORD-END ( ^u8 n n -- n ) {: t:^ tu:n s:n :}
    s begin dup tu < if t over + c@ BLANK <> else false then while 1+ repeat ;
 
-: DEF-IN-TABLE? ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n t:ptr tu:n :}
+: DEF-IN-TABLE? ( ^u8 n ^u8 n -- bool ) {: a:^ u:n t:^ tu:n :}
    0 begin dup tu < while
       {: s:n :}
       t tu s DEF-KEYWORD-END {: e:n :}
@@ -1586,30 +1588,30 @@ private
    repeat
    drop false ;
 
-: DEF-KEYWORD? ( ptr u8 n -- bool )
+: DEF-KEYWORD? ( ^u8 n -- bool )
    DEF-KEYWORDS DEF-IN-TABLE? ;
 
-: DEF-DESIGN-KEYWORD? ( ptr u8 n -- bool )
+: DEF-DESIGN-KEYWORD? ( ^u8 n -- bool )
    DEF-DESIGN-KEYWORDS DEF-IN-TABLE? ;
 
-: DEF-ROW-KEYWORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: DEF-ROW-KEYWORD? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u DEF-KEYWORD? if true exit then
    a u DEF-INTERPRET-KEYWORDS DEF-IN-TABLE? if true exit then
    a u DEF-OP-KEYWORDS DEF-IN-TABLE? if true exit then
    a u DEF-P2-KEYWORDS DEF-IN-TABLE? ;
 
-: DEF-NAME-KEYWORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: DEF-NAME-KEYWORD? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u DEF-ROW-KEYWORD? if true exit then
    a u DEF-NAME-ONLY-KEYWORDS DEF-IN-TABLE? ;
 
 \ Every engine's policy writer asks this captured interpreter once per package,
 \ before setting its admission bit.
 public
-: POLICY-KEYWORD ( n -- ptr u8 n bool ) {: wid:n :}
+: POLICY-KEYWORD ( n -- ^u8 n bool ) {: wid:n :}
    ndict@ 0 ?do
-      i XREF-REC {: rec:ptr :}
+      i XREF-REC {: rec:^ :}
       rec XREF-WORDLIST wid = if
-         rec XREF-NAME$ {: a:ptr u:n :}
+         rec XREF-NAME$ {: a:^ u:n :}
          a u DEF-DESIGN-KEYWORD? a u DEF-ROW-KEYWORD? or if
             a u true unloop exit
          then
@@ -1621,7 +1623,7 @@ public
    ['] POLICY-KEYWORD data-base POLICY-ABI:KEYWORD-CELL + xt! ;
 private
 
-: DEF-KEYWORD-REFUSE ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n t:ptr tu:n :}
+: DEF-KEYWORD-REFUSE ( ^u8 n ^u8 n -- ) {: a:^ u:n t:^ tu:n :}
    s" E-RESERVED-DEFINITION" REJECTION:OPEN
    s" `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
    s" ` is a compile keyword and cannot name a definition" REJECTION:EMIT-STR
@@ -1630,7 +1632,7 @@ private
    s" give the definition a name that is not a compile keyword" REJECTION:EMIT-STR
    CHECKER-REJECT-RC REJECTION:STOP ;
 
-: DEF-NUMBER-REFUSE ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n t:ptr tu:n :}
+: DEF-NUMBER-REFUSE ( ^u8 n ^u8 n -- ) {: a:^ u:n t:^ tu:n :}
    s" E-NUMERIC-DEFINITION" REJECTION:OPEN
    s" `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
    s" ` reads as a number and cannot name a definition" REJECTION:EMIT-STR
@@ -1639,7 +1641,7 @@ private
    s" give the definition a name that does not read as a number" REJECTION:EMIT-STR
    CHECKER-REJECT-RC REJECTION:STOP ;
 
-: DEF-WALL ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n t:ptr tu:n :}
+: DEF-WALL ( ^u8 n ^u8 n -- ) {: a:^ u:n t:^ tu:n :}
    POLICY-NDICT-CELL CELL@ 0<> if
       a u DEF-DESIGN-KEYWORD? if a u t tu DEF-KEYWORD-REFUSE then
       a u DEF-NAME-KEYWORD? if a u t tu POLICY-REFUSE then
@@ -1651,44 +1653,44 @@ private
 
 \ A signature starts at the first byte past the blanks when that byte is `(`,
 \ whole token or not: where it starts, and whether one does.
-: DEF-SIG-START ( -- ptr u8 bool )
-   INP-CELL ADDR@ INE-CELL ADDR@ {: p:ptr e:ptr :}
-   p e BLANKS-END {: s:ptr :}
+: DEF-SIG-START ( -- ^u8 bool )
+   INP-CELL ADDR@ INE-CELL ADDR@ {: p:^ e:^ :}
+   p e BLANKS-END {: s:^ :}
    s e < if s c@ OPEN-COMMENT = else false then {: open:bool :}
    s open ;
 
-: DEF-SIG-END ( ptr u8 -- ptr u8 bool ) {: s:ptr :}
-   INE-CELL ADDR@ {: e:ptr :}
+: DEF-SIG-END ( ^u8 -- ^u8 bool ) {: s:^ :}
+   INE-CELL ADDR@ {: e:^ :}
    s begin dup e < if dup c@ CLOSE-COMMENT <> else false then while 1 + repeat
-   {: c:ptr :}
+   {: c:^ :}
    c e < if c 1 + true exit then
    e false ;
 
-: DEF-SIG-PASS ( ptr u8 ptr u8 -- ) {: s:ptr end:ptr :}
+: DEF-SIG-PASS ( ^u8 ^u8 -- ) {: s:^ end:^ :}
    end INP-CELL ADDR!
    s end s - DEF-CAPTURE ;
 
 \ trust-sig! takes the text inside the parentheses. The inner length is the
 \ engine's, two less than the whole: one less than the text for a signature
 \ the input ends inside.
-: DEF-SIG-INNER ( ptr u8 ptr u8 -- ) {: s:ptr end:ptr :}
+: DEF-SIG-INNER ( ^u8 ^u8 -- ) {: s:^ end:^ :}
    s 1 + end s - 2 - DEF-TRUST-SIG ;
 
-: DEF-SIG-TAKE ( ptr u8 ptr u8 -- ) {: s:ptr end:ptr :}
+: DEF-SIG-TAKE ( ^u8 ^u8 -- ) {: s:^ end:^ :}
    s end DEF-SIG-INNER
    s end DEF-SIG-PASS ;
 
 \ `:` takes one if it is there, to the input's end if it is not closed.
 : DEF-MAYBE-SIG ( -- )
-   DEF-SIG-START {: s:ptr open:bool :}
+   DEF-SIG-START {: s:^ open:bool :}
    open 0= if exit then
-   s DEF-SIG-END drop {: end:ptr :}
+   s DEF-SIG-END drop {: end:^ :}
    s end DEF-SIG-TAKE ;
 
 public
 \ Writes the record of t tu, a definition's name or `does>`, with no closed
 \ signature after it, through its help; the caller ends it.
-: SIGNATURE-REJECT ( ptr u8 n -- ) {: t:ptr tu:n :}
+: SIGNATURE-REJECT ( ^u8 n -- ) {: t:^ tu:n :}
    s" E-MISSING-SIGNATURE" REJECTION:OPEN
    t tu TICKS  s"  has no closed `( -- )` signature" SAY
    t tu REJECTION:AT  s" no closed signature after this" SAY
@@ -1702,11 +1704,11 @@ private
 
 \ A head's signature that the input ends before or inside is the source ending
 \ inside the definition.
-: DEF-SIG-SPAN ( bool -- ptr u8 ptr u8 ) {: head:bool :}
-   DEF-SIG-START {: s:ptr open:bool :}
+: DEF-SIG-SPAN ( bool -- ^u8 ^u8 ) {: head:bool :}
+   DEF-SIG-START {: s:^ open:bool :}
    head s INE-CELL ADDR@ = and if DEF-ENDED then
    open 0= if DEF-SIG-BAD then
-   s DEF-SIG-END {: end:ptr closed:bool :}
+   s DEF-SIG-END {: end:^ closed:bool :}
    closed 0= if head if DEF-ENDED then DEF-SIG-BAD then
    s end ;
 
@@ -1737,8 +1739,8 @@ public
 \ protected-wordlist tests, then def-open records it; every rejection is placed
 \ at t tu. kind: 0 (compiled), DKIND:ADDR, VAL or CAST. def-open rejects a
 \ protected wordlist too, but without a word.
-: DEF-RECORD ( ptr u8 n ptr u8 n n n -- )
-   {: a:ptr u:n t:ptr tu:n wid:n kind:n :}
+: DEF-RECORD ( ^u8 n ^u8 n n n -- )
+   {: a:^ u:n t:^ tu:n wid:n kind:n :}
    a u t tu DEF-WALL
    ndict@ DICT-CAP >= if a u t tu REJECTION:DICTIONARY-FULL then
    a u wid WL-PROBE XREF-FOUND? if
@@ -1762,7 +1764,7 @@ private
 : DEF-START ( n -- )
    {: kind:n :}
    DEF-SEED
-   DEF-QUALIFY {: a:ptr u:n wid:n :}
+   DEF-QUALIFY {: a:^ u:n wid:n :}
    a u TOKEN$ wid kind DEF-RECORD ;
 
 \ On true the body hook has installed the definition, the source resumes past
@@ -1770,7 +1772,7 @@ private
 : DEF-BODY-HOOK? ( -- bool )
    NCOMP-DISPATCH:BODY-HOOK-CELL CELL@ {: xt:n :}
    xt 0= if false exit then
-   xt AS-BODY-HOOK execute {: resume:ptr installed:bool :}
+   xt AS-BODY-HOOK execute {: resume:^ installed:bool :}
    installed 0= if false exit then
    resume INP-CELL ADDR!
    DEF-CLOSE
@@ -1799,11 +1801,11 @@ private
 \ as the top-level keyword does, before any of it is captured. A counted
 \ string's length waits for `;`, which compiles the body.
 : DEF-TEXT ( -- )
-   TEXT {: a:ptr u:n :}
+   TEXT {: a:^ u:n :}
    a u 1+ DEF-CAPTURE ;
 
 : DEF-ESC-TEXT ( -- )
-   ESC-SCAN drop {: s:ptr q:ptr :}
+   ESC-SCAN drop {: s:^ q:^ :}
    q PAST
    s q s - 1+ DEF-CAPTURE ;
 
@@ -1822,7 +1824,7 @@ private
 \ The capture records each `{:` declaration here; the compiler reads it from the
 \ body text at `;`.
 : BODY-LOCAL? ( -- bool )
-   TOKEN$ {: a:ptr u:n :}
+   TOKEN$ {: a:^ u:n :}
    LOCN-CELL CELL@ 0 ?do
       i LOCAL-END @ i LOCAL-START - u = if
          a u  i LOCAL-START LOCAL-NAMES  u STR= if true unloop exit then
@@ -1831,7 +1833,7 @@ private
    false ;
 
 : BODY-LOCAL-ONE ( -- )
-   TOKEN$ {: a:ptr u:n :}
+   TOKEN$ {: a:^ u:n :}
    LOCN-CELL CELL@ {: idx:n :}
    a u 0 COLON-AT {: colon:n :}
    colon 0 < if u else colon then {: len:n :}
@@ -1845,10 +1847,10 @@ private
 
 \ The `{:` of the locals group the source ended inside, NULL-PTR while it has
 \ not. A REPL line's end leaves the group to the next line; RUN rejects it.
-TYPED-VARIABLE GROUP-OPEN ptr u8
+TYPED-VARIABLE GROUP-OPEN ^u8
 
 : BODY-LOCAL-GROUP ( -- )
-   TOKEN$ drop {: at:ptr :}
+   TOKEN$ drop {: at:^ :}
    begin TOKEN while
       TOKEN$ DEF-CAPTURE
       s" :}" TOKEN-IS? if exit then
@@ -1884,9 +1886,9 @@ TYPED-VARIABLE GROUP-OPEN ptr u8
    range if NUMBER-RANGE then
    POLICY-NDICT-CELL CELL@ 0= if exit then
    num if exit then
-   TOKEN$ FIND-SCOPE {: rec:ptr :}
+   TOKEN$ FIND-SCOPE {: rec:^ :}
    rec XREF-FOUND? if TOKEN$ rec POLICY-CHECK-REC exit then
-   TOKEN$ FIND {: used:ptr :}
+   TOKEN$ FIND {: used:^ :}
    used XREF-FOUND? if TOKEN$ used POLICY-CHECK-REC exit then
    s" if" TOKEN-IS? if exit then
    s" else" TOKEN-IS? if exit then
@@ -1904,8 +1906,8 @@ TYPED-VARIABLE GROUP-OPEN ptr u8
 
 \ NEUTRAL-PARSE-IMM? asks the live checker: the retained one lacks a build window's
 \ `parse-imm` rows.
-: DEF-IMMEDIATE ( -- ptr n bool )
-   TOKEN$ FIND-SCOPE {: rec:ptr :}
+: DEF-IMMEDIATE ( -- ^n bool )
+   TOKEN$ FIND-SCOPE {: rec:^ :}
    rec XREF-FOUND? 0= if NULL-PTR false exit then
    rec XREF-FLAGS DNAME-IMM and 0= if NULL-PTR false exit then
    TOKEN$ rec POLICY-CHECK-REC
@@ -1914,10 +1916,10 @@ TYPED-VARIABLE GROUP-OPEN ptr u8
 
 \ The occurrence is selected before the preflight, so a preflight that retires
 \ it cannot substitute a reused dictionary slot.
-: DEF-RUN ( ptr n -- )
+: DEF-RUN ( ^n -- )
    DEF-OCC:SELECT {: slot:n occurrence:n :}
    DEF-PREFLIGHT
-   slot occurrence DEF-OCC:RESOLVE {: rec:ptr :}
+   slot occurrence DEF-OCC:RESOLVE {: rec:^ :}
    rec XREF-NULL - XREF-ADDR>INDEX RUN+
    rec XREF-START
    execute-floor FLOORED ;
@@ -1933,28 +1935,28 @@ TYPED-VARIABLE GROUP-OPEN ptr u8
 \ capture, where created-sig! takes the inside and a clause's scan reads a
 \ comment.
 : DEF-CREATED ( -- )
-   false DEF-SIG-SPAN {: s:ptr end:ptr :}
+   false DEF-SIG-SPAN {: s:^ end:^ :}
    end INP-CELL ADDR!
    end s - 2 - {: len:n :}
    BODYLEN-CELL CELL@ 2 + {: at:n :}
    s 1 DEF-CAPTURE
    s 1 + len DEF-CAPTURE
    end 1 - 1 DEF-CAPTURE
-   BODY-TEXT:BASE-CELL ADDR@ at + {: copy:ptr :}
+   BODY-TEXT:BASE-CELL ADDR@ at + {: copy:^ :}
    copy len created-sig! ;
 
 \ The pending parent is record NDICT. Its clause will be published under the
 \ parent's name plus ;does in the same wordlist. Check the live records before
 \ the signature copy or split changes any state, including a folded-case hit.
 : DEF-DOES-NAME ( -- )
-   ndict@ XREF-REC {: parent:ptr :}
-   parent XREF-NAME$ {: stem:ptr stemu:n :}
+   ndict@ XREF-REC {: parent:^ :}
+   parent XREF-NAME$ {: stem:^ stemu:n :}
    parent XREF-WORDLIST {: wid:n :}
-   DOES-CLAUSE:SUFFIX$ {: suffix:ptr sufu:n :}
+   DOES-CLAUSE:SUFFIX$ {: suffix:^ sufu:n :}
    ndict@ 0 ?do
-      i XREF-REC {: row:ptr :}
+      i XREF-REC {: row:^ :}
       row XREF-WORDLIST wid = if
-         row XREF-NAME$ {: name:ptr size:n :}
+         row XREF-NAME$ {: name:^ size:n :}
          size stemu sufu + = if
             name stemu stem stemu STR=CI
             name stemu + sufu suffix sufu STR=CI and if
@@ -1991,7 +1993,7 @@ TYPED-VARIABLE GROUP-OPEN ptr u8
 \ the scope holds a word of that spelling that is not immediate, which the body
 \ calls instead.
 : DEF-CALL? ( -- bool )
-   TOKEN$ FIND-SCOPE {: rec:ptr :}
+   TOKEN$ FIND-SCOPE {: rec:^ :}
    rec XREF-FOUND? 0= if false exit then
    rec XREF-FLAGS DNAME-IMM and 0= ;
 
@@ -2009,7 +2011,7 @@ variable DECL-MARK
 
 : DEF-SOURCE-CLOSE ( -- )
    PEND-CELL CELL@ ENTRY-PEND @ <> if exit then
-   DEF-CAPTURED-NAME {: a:ptr u:n :}
+   DEF-CAPTURED-NAME {: a:^ u:n :}
    s" E-VS-UNTERMINATED-DEFINITION" REJECTION:OPEN
    s" this source closed `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
    s" `, a definition it did not open" REJECTION:EMIT-STR
@@ -2046,7 +2048,7 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
 \ The end recovers: it declares so in RECOVER-CELL for the compile, and
 \ abandons the definition the compiler refused with E-COMP-RECOVERY, which
 \ only a multi-error run throws, and reads on.
-: DEF-COMPILE ( ptr u8 n -- )
+: DEF-COMPILE ( ^u8 n -- )
    DEF-DISPATCH DEF-COMPILER AS-COMPILE execute ;
 
 : DEF-END ( -- )
@@ -2071,11 +2073,11 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
 
 \ w names the rejected operation: `define-word`, a declaration's child or an
 \ item.
-: DEF-NAME-REFUSE ( ptr u8 n ptr u8 n -- ) {: w:ptr wu:n a:ptr u:n :}
+: DEF-NAME-REFUSE ( ^u8 n ^u8 n -- ) {: w:^ wu:n a:^ u:n :}
    w wu a u s" not one token" REJECTION:MISSING-NAME
    CHECKER-REJECT-RC REJECTION:STOP ;
 
-: DEF-OPEN-REFUSE ( ptr u8 n ptr u8 n -- ) {: w:ptr wu:n a:ptr u:n :}
+: DEF-OPEN-REFUSE ( ^u8 n ^u8 n -- ) {: w:^ wu:n a:^ u:n :}
    s" E-DEFINITION-OPEN" REJECTION:OPEN
    s" cannot define `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
    s" ` while another definition is open" REJECTION:EMIT-STR
@@ -2090,7 +2092,7 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
 \ EFFECT:N or one a local's type widens past the parameter cap, through its
 \ label; the quotation writes why, and the caller adds the notes, the help and
 \ CHECKER-REJECT-RC REJECTION:STOP.
-: DEF-NOT-EFFECT ( [ -- ] ptr u8 n -- ) {: a:ptr u:n :}
+: DEF-NOT-EFFECT ( [ -- ] ^u8 n -- ) {: a:^ u:n :}
    s" E-NOT-EFFECT" REJECTION:OPEN
    s" the effect `define-word` got for `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
    s" ` " REJECTION:EMIT-STR  execute
@@ -2098,7 +2100,7 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
 
 \ Rejects the definition a u, whose effect and locals' types have more
 \ distinct type parameters than the cap.
-: DEF-WIDE ( ptr u8 n -- ) {: a:ptr u:n :}
+: DEF-WIDE ( ^u8 n -- ) {: a:^ u:n :}
    [: s" has too many type parameters" REJECTION:EMIT-STR ;]
    a u DEF-NOT-EFFECT
    TFAM:TFAM-DECL-PARAM-COUNT s" " REJECTION:LIMIT
@@ -2107,13 +2109,13 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    REJECTION:EMIT-STR
    CHECKER-REJECT-RC REJECTION:STOP ;
 
-: DEF-ONE-TOKEN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: DEF-ONE-TOKEN? ( ^u8 n -- bool ) {: a:^ u:n :}
    u 0= if false exit then
    a a u + WORD-END a u + = ;
 
 \ The checker reads the signature from the effect cell; the SIG item spells
 \ the effect for the listing alone, and TSIG is read for a trusted head alone.
-: DEFINE-RUN ( ptr u8 n n -- ) {: a:ptr u:n eff:n :}
+: DEFINE-RUN ( ^u8 n n -- ) {: a:^ u:n eff:n :}
    PEND-CELL CELL@ 0<> if s" define-word" a u DEF-OPEN-REFUSE then
    a u DEF-ONE-TOKEN? 0= if s" define-word" a u DEF-NAME-REFUSE then
    eff CHECK:EFFECT? 0= if
@@ -2139,7 +2141,7 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    then
    DEF-CODE-ROOM
    OVERLAY-GUARD
-   a u DEF-QUALIFY-NAME {: ta:ptr tu:n wid:n :}
+   a u DEF-QUALIFY-NAME {: ta:^ tu:n wid:n :}
    ta tu wid WL-PROBE XREF-FOUND? if a u PKG-DUPLICATE then
    ITEMS-RESET
    0 BODYLEN-CELL CELL!  BODY-ITEM-KIND:NAME 0 0 a u ITEM+
@@ -2151,43 +2153,43 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    BODY-ITEM-KIND:SIG 0 0 dense CHECK:EFFECT-TEXT ITEM+
    DEF-DISPATCH ;
 
-: HANDLE-SPLIT ( ptr u8 n -- ptr u8 n ptr u8 n ) {: a:ptr u:n :}
-   a u + {: e:ptr :}
-   a e WORD-END {: w:ptr :}
+: HANDLE-SPLIT ( ^u8 n -- ^u8 n ^u8 n ) {: a:^ u:n :}
+   a u + {: e:^ :}
+   a e WORD-END {: w:^ :}
    w e = if a u e 0 exit then
    a w a -  w 1 + e w 1 + - ;
 
-: HANDLE-PROBE ( ptr u8 n n -- ptr n ) {: a:ptr u:n wid:n :}
-   a u wid WL-PROBE {: rec:ptr :}
+: HANDLE-PROBE ( ^u8 n n -- ^n ) {: a:^ u:n wid:n :}
+   a u wid WL-PROBE {: rec:^ :}
    rec XREF-FOUND? 0= if a u UNDEFINED-NAME then
    rec ;
 
 \ The current namespace's record of the name in the package path's public
 \ section, or its private one.
-: HOME-REC ( ptr u8 n bool ptr u8 n -- ptr n )
-   {: pa:ptr pu:n pub:bool t:ptr tu:n :}
-   pa pu BOOT:NAMESPACE-WL WL-PROBE {: row:ptr :}
+: HOME-REC ( ^u8 n bool ^u8 n -- ^n )
+   {: pa:^ pu:n pub:bool t:^ tu:n :}
+   pa pu BOOT:NAMESPACE-WL WL-PROBE {: row:^ :}
    row XREF-FOUND? 0= if pa pu UNDEFINED-NAME then
    pub if t tu row XREF-PKG-PUBLIC HANDLE-PROBE exit then
    t tu row XREF-PKG-PRIVATE HANDLE-PROBE ;
 
 \ The record a handle names in this dictionary: `global TAIL`, or `public` or
 \ `private` then the package's path and TAIL.
-: HANDLE-REC ( ptr u8 n -- ptr n ) {: h:ptr hu:n :}
-   h hu HANDLE-SPLIT {: k:ptr ku:n r:ptr ru:n :}
+: HANDLE-REC ( ^u8 n -- ^n ) {: h:^ hu:n :}
+   h hu HANDLE-SPLIT {: k:^ ku:n r:^ ru:n :}
    k ku s" global" STR= if r ru BOOT:GLOBAL-WL HANDLE-PROBE exit then
-   r ru HANDLE-SPLIT {: pa:ptr pu:n t:ptr tu:n :}
+   r ru HANDLE-SPLIT {: pa:^ pu:n t:^ tu:n :}
    pa pu  k ku s" public" STR=  t tu HOME-REC ;
 
 \ The record of the word A U run with no definition open, up to its help.
-: NO-DEFINITION ( ptr u8 n -- ) {: a:ptr u:n :}
+: NO-DEFINITION ( ^u8 n -- ) {: a:^ u:n :}
    s" E-NO-DEFINITION" REJECTION:OPEN
    s" `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
    s" ` ran with no definition open" REJECTION:EMIT-STR
    TOKEN$ REJECTION:AT  s" no definition is open here" REJECTION:EMIT-STR
    REJECTION:HELP ;
 
-: BUILT-PENDING ( ptr u8 n -- ) {: a:ptr u:n :}
+: BUILT-PENDING ( ^u8 n -- ) {: a:^ u:n :}
    PEND-CELL CELL@ 0<> if exit then
    a u NO-DEFINITION
    s" open a definition with `define-word` before `" REJECTION:EMIT-STR
@@ -2219,7 +2221,7 @@ CAST: QUOT-ENTRY ( [ R -- S ] -- n )
 
 \ Refuses a call of a retired word, and of a package word whose package is
 \ not in the current namespace.
-: CALLEE-CHECK ( ptr n -- ) {: r:ptr :}
+: CALLEE-CHECK ( ^n -- ) {: r:^ :}
    r XREF-WORDLIST {: wid:n :}
    wid XREF-RETIRED-WL = if r XREF-NAME$ UNDEFINED-NAME then
    wid WL:GLOBAL? if exit then
@@ -2228,7 +2230,7 @@ CAST: QUOT-ENTRY ( [ R -- S ] -- n )
 
 \ Appends a call of the word at record index R, spelled S U, which the checker
 \ binds.
-: CALL-ITEM ( ptr u8 n n -- ) {: s:ptr u:n r:n :}
+: CALL-ITEM ( ^u8 n n -- ) {: s:^ u:n r:n :}
    r XREF-REC CALLEE-CHECK
    BODY-ITEM-KIND:CALL r 0 s u ITEM+ ;
 
@@ -2256,16 +2258,16 @@ variable LIT-AT
    v v 10 / 10 * - {: r:n :}
    r 0 < if 0 r - else r then ;
 
-: LIT-SPAN ( -- ptr u8 n ) LIT-DIGITS LIT-AT @ +  21 LIT-AT @ - ;
+: LIT-SPAN ( -- ^u8 n ) LIT-DIGITS LIT-AT @ +  21 LIT-AT @ - ;
 
-: LIT$ ( n -- ptr u8 n ) {: v:n :}
+: LIT$ ( n -- ^u8 n ) {: v:n :}
    21 LIT-AT !
    v begin dup LIT-REM 48 + LIT-DIGIT  10 / dup 0= until drop
    v 0 < if 45 LIT-DIGIT then
    LIT-SPAN ;
 
 \ A local's spelling in the listing: `l` and its index.
-: LOCAL$ ( n -- ptr u8 n ) LIT$ 2drop  108 LIT-DIGIT  LIT-SPAN ;
+: LOCAL$ ( n -- ^u8 n ) LIT$ 2drop  108 LIT-DIGIT  LIT-SPAN ;
 
 \ What `literal` runs: an INT item, spelled in decimal.
 : LITERAL-RUN ( n -- ) {: v:n :}
@@ -2273,7 +2275,7 @@ variable LIT-AT
    BODY-ITEM-KIND:INT v 0 v LIT$ ITEM+ ;
 
 \ Appends a call of the word a lookup of the name found.
-: FOUND-CALL ( ptr u8 n ptr n -- ) {: a:ptr u:n rec:ptr :}
+: FOUND-CALL ( ^u8 n ^n -- ) {: a:^ u:n rec:^ :}
    rec XREF-FOUND? 0= if a u UNDEFINED-NAME then
    a u  rec XREF-NULL - XREF-ADDR>INDEX CALL-ITEM ;
 
@@ -2287,7 +2289,7 @@ variable LIT-AT
 
 \ Rejects the item A U unless define-word opened the definition: only its
 \ effect numbers the parameters a local's type is read by.
-: LOCAL-UNBUILT ( ptr u8 n -- ) {: a:ptr u:n :}
+: LOCAL-UNBUILT ( ^u8 n -- ) {: a:^ u:n :}
    BODY-ITEMS:EFFECT-CELL CELL@ 0<> if exit then
    s" E-NO-DEFINITION" REJECTION:OPEN
    s" the local " SAY  a u TICKS
@@ -2299,7 +2301,7 @@ variable LIT-AT
 
 \ Appends a local of type node T, whose index is the LOCAL items before it;
 \ its node numbers T's parameters on from the definition's effect.
-: LOCAL-ITEM ( ptr u8 n n -- ) {: a:ptr u:n t:n :}
+: LOCAL-ITEM ( ^u8 n n -- ) {: a:^ u:n t:n :}
    a u LOCAL-UNBUILT
    t CHECK:TYPE-DENSE 0= if DEF-CAPTURED-NAME DEF-WIDE then
    {: dense:n :}
@@ -2309,7 +2311,7 @@ variable LIT-AT
 
 \ Runs a definer's item: ITEM-ABI op OP, one-token spelling A U, and V, a
 \ TYPE's or LOCAL's schema node or a LOCAL-REF's index.
-: ITEM-RUN ( ptr u8 n n n -- ) {: a:ptr u:n v:n op:n :}
+: ITEM-RUN ( ^u8 n n n -- ) {: a:^ u:n v:n op:n :}
    a u BUILT-PENDING
    a u DEF-ONE-TOKEN? 0= if s" item" a u DEF-NAME-REFUSE then
    op ITEM-ABI:KEYWORD = if BODY-ITEM-KIND:KEYWORD 0 0 a u ITEM+ exit then
@@ -2321,7 +2323,7 @@ variable LIT-AT
    then
    op ITEM-ABI:CALL = if a u  a u LOOKUP-NAME  FOUND-CALL exit then
    op ITEM-ABI:CALL-EXACT = if
-      a u XREF-FIND {: rec:ptr :}
+      a u XREF-FIND {: rec:^ :}
       a u rec POLICY-CHECK-REC  a u rec FOUND-CALL exit
    then
    op ITEM-OP-REFUSE ;
@@ -2363,7 +2365,7 @@ variable LIT-AT
 \ created word, its verdict dropped: a definer's word always publishes. The
 \ check runs on the program's stack, so neither this word nor its callers keep
 \ locals.
-: DEF-HOOK ( ptr u8 n -- )
+: DEF-HOOK ( ^u8 n -- )
    DEF-CAPTURE
    BODY-TEXT:BASE-CELL ADDR@ BODYLEN-CELL CELL@
    CHECK:DEFINITION drop ;
@@ -2389,7 +2391,7 @@ variable LIT-AT
 
 \ A definer's effect, raw dictionary storage stated by sig; the
 \ checker seals it.
-: DEF-RAW-PUBLISH ( ptr u8 n -- ) {: sig:ptr su:n :}
+: DEF-RAW-PUBLISH ( ^u8 n -- ) {: sig:^ su:n :}
    DEF-RAW-ACTIVE {: own:n :}
    sig su own DEF-DECLARE
    NCOMP-DISPATCH:DECL-CELL CELL@ 0= if exit then
@@ -2399,7 +2401,7 @@ variable LIT-AT
    sig su target DEF-DECLARE ;
 
 : DEF-ADDR-PUBLISH ( -- )
-   s" -- ptr a" DEF-RAW-PUBLISH ;
+   s" -- ^a" DEF-RAW-PUBLISH ;
 
 \ The DATA address a created word's body pushes, as a number.
 : DEF-HERE ( -- n ) here NULL-PTR - ;
@@ -2432,7 +2434,7 @@ variable LIT-AT
 
 \ No record slot left is refused after the name, naming it. CP at the code
 \ ceiling is refused first, naming the keyword, as `:`'s does.
-: DEF-ADDR-ROW ( ptr u8 n bool -- ) {: kw:ptr ku:n cell?:bool :}
+: DEF-ADDR-ROW ( ^u8 n bool -- ) {: kw:^ ku:n cell?:bool :}
    DEF-CODE-ROOM
    kw ku OPERAND  kw ku TOKEN$ REJECTION:NOT-A-NAME
    DKIND:ADDR DNAME-ALLOC or cell? if DNAME-CELL or then DEF-START
@@ -2440,23 +2442,24 @@ variable LIT-AT
 
 \ A compiled defining word reaches `create` through the engine primitive,
 \ which calls the row through CREATEP-CELL. The keyword's hook belongs to the
-\ interpreting `create` only; `-- ptr a` is published at both, or the word
+\ interpreting `create` only; `-- ^a` is published at both, or the word
 \ made is E-UNDEFINED where it is next read.
 : DEF-CREATE-ROW ( -- )
    s" create" false DEF-ADDR-ROW
    DEF-ADDR-PUBLISH ;
 
-: DEF-ADDR ( ptr u8 n bool -- )
+: DEF-ADDR ( ^u8 n bool -- )
    DEF-ADDR-ROW
    DEF-ADDR-HOOK
    DEF-ADDR-PUBLISH ;
 
-\ A constant's record opens as DKIND:VAL, the stamp a mention of it folds to.
-\ It takes the program's top cell after its record opens.
+\ A constant's record opens as DKIND:VAL, the stamp a mention of it folds to,
+\ after the top item is judged and before the constant takes the top cell.
 variable DEF-VALUE
 
 : DEF-CONSTANT ( -- )
    s" constant" OPERAND  s" constant" TOKEN$ REJECTION:NOT-A-NAME
+   s" constant" CHECK:TOP-TAKE
    DKIND:VAL DEF-START
    depth 0= if UNDERFLOW then
    [: DEF-VALUE ! ;] CELL-TAKE RUN-LITERAL
@@ -2480,15 +2483,15 @@ variable DEF-VALUE
 \ open.
 : DEF-CAST-HEAD ( -- )
    DEF-SEED
-   false DEF-SIG-SPAN {: s:ptr end:ptr :}
+   false DEF-SIG-SPAN {: s:^ end:^ :}
    s end DEF-SIG-PASS
-   DEF-QUALIFY {: a:ptr u:n wid:n :}
+   DEF-QUALIFY {: a:^ u:n wid:n :}
    a u TOKEN$ wid DKIND:CAST DEF-RECORD
    s end DEF-SIG-INNER ;
 
 \ A row the checker refuses throws before DEF-FIXED counts the record, so no
 \ callable name is left.
-: DEF-REGISTER-IDENTITY ( ptr u8 n ptr u8 n n -- ) {: a:ptr u:n sig:ptr su:n off:n :}
+: DEF-REGISTER-IDENTITY ( ^u8 n ^u8 n n -- ) {: a:^ u:n sig:^ su:n off:n :}
    NCOMP-DISPATCH:DECL-A off PKG-OPERATION {: own:n :}
    own 0<> if a u sig su own DEF-DECLARE-NAME then
    off PKG-TARGET {: target:n :}
@@ -2505,7 +2508,7 @@ variable DEF-VALUE
    CHECK:REC-WIDE-PUBLISH ;
 
 : DEF-CAST-ROW ( -- )
-   TOKEN$ {: kw:ptr ku:n :}
+   TOKEN$ {: kw:^ ku:n :}
    DEF-CAST-NAME  kw ku TOKEN$ REJECTION:NOT-A-NAME
    DEF-CODE-ROOM
    DEF-CAST-HEAD
@@ -2520,7 +2523,7 @@ variable DEF-VALUE
 \ pushes its own data address, which the declaration fills after the return.
 
 \ The handle of a routine child's routine.
-: ROUTINE$ ( n -- ptr u8 n ) {: shape:n :}
+: ROUTINE$ ( n -- ^u8 n ) {: shape:n :}
    shape CHILD-ABI:BUFFER = if s" private LBUF ELEMENT" exit then
    shape CHILD-ABI:BIND = if s" private LBUF BIND" exit then
    shape CHILD-ABI:GROW = if s" private LBUF GROW" exit then
@@ -2575,16 +2578,16 @@ variable DEF-VALUE
    shape CHILD-ANCHORED? if DNAME-ALLOC exit then
    0 ;
 
-: CHILD-RECORD ( ptr u8 n n -- ) {: a:ptr u:n shape:n :}
-   a u DEF-QUALIFY-NAME {: ta:ptr tu:n wid:n :}
+: CHILD-RECORD ( ^u8 n n -- ) {: a:^ u:n shape:n :}
+   a u DEF-QUALIFY-NAME {: ta:^ tu:n wid:n :}
    ta tu wid WL-PROBE XREF-FOUND? if a u PKG-DUPLICATE then
    0 BODYLEN-CELL CELL!  a u DEF-CAPTURE
    ta tu TOKEN$ wid shape CHILD-KIND DEF-RECORD ;
 
 \ The anchor is taken after CHECK:CHILD, whose facts may open an intern segment
 \ at here.
-: CHILD-CLOSE ( n n ptr u8 n -- n )
-   {: shape:n param:n ta:ptr tu:n :}
+: CHILD-CLOSE ( n n ^u8 n -- n )
+   {: shape:n param:n ta:^ tu:n :}
    DEF-CAPTURED-NAME shape param ta tu CHECK:CHILD {: val:n h:n :}
    shape param CHILD-BODY {: kind:COMP:body entry:n :}
    shape CHILD-ANCHORED? if DEF-ANCHOR entry else val 0 then
@@ -2593,13 +2596,13 @@ variable DEF-VALUE
    DEF-CAST-FACTS
    h ;
 
-: CHILD-DEFINE ( ptr u8 n n n ptr u8 n -- n )
-   {: a:ptr u:n shape:n param:n ta:ptr tu:n :}
+: CHILD-DEFINE ( ^u8 n n n ^u8 n -- n )
+   {: a:^ u:n shape:n param:n ta:^ tu:n :}
    a u shape CHILD-RECORD  shape param ta tu CHILD-CLOSE ;
 
 \ Answers the child's effect handle. TYPE is empty for the shapes before STORED.
-: CHILD-RUN ( ptr u8 n n n ptr u8 n -- n )
-   {: a:ptr u:n shape:n param:n ta:ptr tu:n :}
+: CHILD-RUN ( ^u8 n n n ^u8 n -- n )
+   {: a:^ u:n shape:n param:n ta:^ tu:n :}
    PEND-CELL CELL@ 0<> if s" child word" a u DEF-OPEN-REFUSE then
    a u DEF-ONE-TOKEN? 0= if s" child word" a u DEF-NAME-REFUSE then
    shape param CHILD-BODY 2drop
@@ -2611,7 +2614,7 @@ variable DEF-VALUE
 \ A qualified linear name is refused by the certifier before DEF-QUALIFY can
 \ create its namespace. A second colon is left to DEF-QUALIFY's syntax refusal.
 : LINEAR-QUALIFIED? ( -- bool )
-   TOKEN$ {: a:ptr u:n :}
+   TOKEN$ {: a:^ u:n :}
    a u 0 COLON-AT {: q:n :}
    q 0 <= q 1+ u >= or if false exit then
    a u q 1+ COLON-AT 0< ;
@@ -2622,7 +2625,7 @@ variable DEF-VALUE
    s" linear:" OPERAND  s" linear:" TOKEN$ REJECTION:NOT-A-NAME
    DEF-CODE-ROOM
    DEF-SEED
-   false DEF-SIG-SPAN {: s:ptr end:ptr :}
+   false DEF-SIG-SPAN {: s:^ end:^ :}
    s end DEF-SIG-PASS
    LINEAR-QUALIFIED? if
       TOKEN$ s 1 + end s - 2 - NCOMP-DISPATCH:DECL-LINEAR-OFF
@@ -2636,7 +2639,7 @@ variable DEF-VALUE
       REJECTION:EMIT-STR
       CHECKER-REJECT-RC REJECTION:STOP
    then
-   DEF-QUALIFY {: a:ptr u:n wid:n :}
+   DEF-QUALIFY {: a:^ u:n wid:n :}
    a u TOKEN$ wid DKIND:CAST DEF-RECORD
    s end DEF-SIG-INNER
    DEF-CAPTURED-NAME TSIG-A-CELL ADDR@ TSIG-U-CELL CELL@
@@ -2653,7 +2656,7 @@ variable DEF-VALUE
 public
 \ `defer`, the source token t tu, has no name after it. It is written through
 \ its help, and the caller stops it.
-: DEFER-NO-NAME ( ptr u8 n -- ) {: t:ptr tu:n :}
+: DEFER-NO-NAME ( ^u8 n -- ) {: t:^ tu:n :}
    t tu s" a name" t tu s" no name follows" REJECTION:MISSING-OPERAND
    s" write the defer's name and signature after `" REJECTION:EMIT-STR
    t tu REJECTION:EMIT-STR  s" `, as `defer NAME ( n -- n )`" REJECTION:EMIT-STR ;
@@ -2666,7 +2669,7 @@ private
    TOKEN$ DEFER-NO-NAME  CHECKER-REJECT-RC REJECTION:STOP ;
 
 : DEFER-UNSET-XT ( -- n )
-   s" defer-unset" FIND-SCOPE {: rec:ptr :}
+   s" defer-unset" FIND-SCOPE {: rec:^ :}
    rec XREF-FOUND? 0= if s" defer-unset" UNDEFINED-NAME then
    rec XREF-START ;
 
@@ -2701,12 +2704,12 @@ TRUSTED: DEF-XT! ( n n -- ) xt! ;
    REJECTION:EMIT-STR
    REJECTION:KEEP  s" " DEF-RC-PD-FULL die-closed ;
 
-: PD-PUT ( ptr u8 n n n n -- ) {: a:ptr u:n cap:n lenoff:n off:n :}
+: PD-PUT ( ^u8 n n n n -- ) {: a:^ u:n cap:n lenoff:n off:n :}
    u cap > if PD-FULL then
    u lenoff CELL!
    a data-base off + BYTE-VIEW u BYTE-COPY ;
 
-: PD-HOLD ( ptr u8 n -- ) {: sig:ptr su:n :}
+: PD-HOLD ( ^u8 n -- ) {: sig:^ su:n :}
    PD-TABLE-OFF CELL@ {: count:n :}
    count PD-CAP >= if PD-FULL then
    PD-TABLE-OFF PD-SLOTS-REL + count PD-SLOT * + {: slot:n :}
@@ -2723,7 +2726,7 @@ TRUSTED: DEF-XT! ( n n -- ) xt! ;
 
 \ Before the target owner is ready only the active owner's two are called, and
 \ the pending slot holds the defer for the target's.
-: DEFER-REGISTER ( ptr u8 n -- ) {: sig:ptr su:n :}
+: DEFER-REGISTER ( ^u8 n -- ) {: sig:^ su:n :}
    DEFER-READY? {: ready:bool :}
    NCOMP-DISPATCH:DECL-EFFECT-OFF DEF-OWNERS {: own:n target:n :}
    own 0<> if sig su own DEF-DECLARE then
@@ -2736,14 +2739,14 @@ TRUSTED: DEF-XT! ( n n -- ) xt! ;
 \ defer-unset is looked up before DEF-SEED, so its rejection leaves no capture.
 : DEF-DEFER ( -- )
    DEFER-UNSET-XT {: unset:n :}
-   TOKEN$ {: kw:ptr ku:n :}
+   TOKEN$ {: kw:^ ku:n :}
    DEFER-NAME  kw ku TOKEN$ REJECTION:NOT-A-NAME
    DEF-CODE-ROOM
    DEF-SEED
-   false DEF-SIG-SPAN {: s:ptr end:ptr :}
+   false DEF-SIG-SPAN {: s:^ end:^ :}
    s end DEF-SIG-PASS
    unset DEFER-CELL {: cell:n :}
-   DEF-QUALIFY {: a:ptr u:n wid:n :}
+   DEF-QUALIFY {: a:^ u:n wid:n :}
    a u TOKEN$ wid 0 DEF-RECORD
    s end DEF-SIG-INNER
    s 1 + end s - 2 - DEFER-REGISTER
@@ -2827,8 +2830,6 @@ private
 \ spelling runs instead. hb's global wordlist is 0, as every linked program's.
 : DECLARATION? ( -- bool )
    s" trust" TOKEN-IS? if true exit then
-   s" prim-top-only!" TOKEN-IS? if true exit then
-   s" prim-trusted-only!" TOKEN-IS? if true exit then
    s" intrinsic" TOKEN-IS? if true exit then
    s" nominal-provider" TOKEN-IS? if true exit then
    s" parse-imm" TOKEN-IS? if true exit then
@@ -2908,7 +2909,7 @@ private
 
 \ A definition this source opened ends inside its locals group.
 : GROUP-SOURCE-END ( -- )
-   GROUP-OPEN @ {: at:ptr :}
+   GROUP-OPEN @ {: at:^ :}
    at NULL-PTR - 0= if exit then
    PEND-CELL CELL@ ENTRY-PEND @ = if exit then
    at 2 GROUP-REJECT  CHECKER-REJECT-RC REJECTION:STOP ;
@@ -2938,7 +2939,7 @@ $30 constant FR-NDICT
 $38 constant FR-DP
 
 \ The frame on its way into the catch that links it; empty at rest.
-TYPED-VARIABLE FRAME-ARG ptr u8
+TYPED-VARIABLE FRAME-ARG ^u8
 
 \ The source owner's record end and its cut, raw execution tokens in the owner
 \ record.
@@ -2954,7 +2955,7 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
 
 \ Cut the checker's records back to the frame's mark, so no definition the
 \ rollback drops keeps a record.
-: ROWS-CUT ( ptr u8 -- ) {: f:ptr :}
+: ROWS-CUT ( ^u8 -- ) {: f:^ :}
    f EVAL-FRAME:ROWS FR@ {: mark:n :}
    mark 0= if exit then
    NCOMP-DISPATCH:DECL-A NCOMP-DISPATCH:DECL-RETRACT-ROWS-OFF PKG-OPERATION {: xt:n :}
@@ -2962,13 +2963,13 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    mark 1- xt AS-ROWS-CUT execute ;
 
 \ Past the frame, its mapping holds the mapping's length, then the saved cells.
-: FRAME-CELLS ( ptr u8 -- ptr u8 ) EVAL-FRAME-SIZE CELL + + ;
+: FRAME-CELLS ( ^u8 -- ^u8 ) EVAL-FRAME-SIZE CELL + + ;
 
 \ The frame of a buffer whose caller leaves n cells on the data stack, all but
 \ its link. Its using depth is also the buffer's using floor.
-: FRAME-OPEN ( n -- ptr u8 ) {: cells-in:n :}
+: FRAME-OPEN ( n -- ^u8 ) {: cells-in:n :}
    EVAL-FRAME-SIZE CELL + ROLLBACK-CELLS:BYTES + {: total:n :}
-   total MEM-ALLOC-PTR {: f:ptr :}
+   total MEM-ALLOC-PTR {: f:^ :}
    total f EVAL-FRAME-SIZE FR!
    INP-CELL CELL@ f EVAL-INP FR!
    INE-CELL CELL@ f EVAL-INE FR!
@@ -2982,7 +2983,7 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    STACK-ABI:BASE-CELL CELL@ f STACK-ABI:EVAL-BASE FR!
    STACK-ABI:CAP-CELL CELL@ f STACK-ABI:EVAL-CAP FR!
    PEND-CELL CELL@ f EVAL-FRAME:PEND FR!
-   f EVAL-PKG + {: snap:ptr :}
+   f EVAL-PKG + {: snap:^ :}
    CUR-CELL CELL@ snap PKGSNAP-CUR FR!
    PKG-PUB-CELL CELL@ snap PKGSNAP-PUB FR!
    PKG-PRI-CELL CELL@ snap PKGSNAP-PRI FR!
@@ -3005,14 +3006,14 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
 \ It runs first in the evaluate's catch, so the nearest handler is that
 \ catch's: throw recovery pops a frame whose boundary lies at or below the
 \ nearest handler, and leaves it for a handler the buffer installs, below.
-: FRAME-LINK ( ptr u8 -- ) {: f:ptr :}
+: FRAME-LINK ( ^u8 -- ) {: f:^ :}
    NULL-PTR FRAME-ARG !
    HND-CELL CELL@ f FR-BOUND FR!
    EVAL-TOP-CELL CELL@ f EVAL-PREV FR!
    f NULL-PTR - EVAL-TOP-CELL CELL!
    EVALD-CELL CELL@ 1+ EVALD-CELL CELL! ;
 
-: FRAME-UNLINK ( ptr u8 -- ) {: f:ptr :}
+: FRAME-UNLINK ( ^u8 -- ) {: f:^ :}
    f EVAL-PREV FR@ EVAL-TOP-CELL CELL!
    EVALD-CELL CELL@ 1- EVALD-CELL CELL!
    f EVAL-INP FR@ INP-CELL CELL!
@@ -3021,22 +3022,22 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    f EVAL-TKA FR@ TKA-CELL CELL!
    f EVAL-TKL FR@ TKL-CELL CELL! ;
 
-: FRAME-LEAVE ( ptr u8 -- ) {: f:ptr :}
+: FRAME-LEAVE ( ^u8 -- ) {: f:^ :}
    f FRAME-UNLINK
    f EVAL-FRAME:SECTION FR@ SECTION-CELL CELL!
    f EVAL-FRAME:PKG-OUTSIDE FR@ CLEAN-END ;
 
 
-: FRAME-CUT ( ptr u8 -- n )
-   {: f:ptr :}
+: FRAME-CUT ( ^u8 -- n )
+   {: f:^ :}
    data-base BYTE-VIEW NULL-PTR BYTE-VIEW - {: base:n :}
    f FR-DP FR@ base DATA-FLOOR-CELL CELL@ + max ;
 
 \ x86 THROW returns with the evaluation frame still linked; arm64's throw
 \ recovery has already popped it before catch returns. The top link is the
 \ ownership test: exactly one path performs the rollback.
-: FRAME-ROLLBACK-CODE ( ptr u8 -- )
-   {: f:ptr :}
+: FRAME-ROLLBACK-CODE ( ^u8 -- )
+   {: f:^ :}
    DEF-ABORT
    f ROWS-CUT
    \ A buffer may start a task and throw without allocating a definition.
@@ -3062,8 +3063,8 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    dbase@ TOKCP-CELL CELL@ + CODE-RECLAIM:TRUNCATE
    TOKVSP-CELL CELL@ VSP-CELL CELL! ;
 
-: FRAME-RESTORE-SCOPE ( ptr u8 -- ) {: f:ptr :}
-   f EVAL-PKG + {: snap:ptr :}
+: FRAME-RESTORE-SCOPE ( ^u8 -- ) {: f:^ :}
+   f EVAL-PKG + {: snap:^ :}
    snap PKGSNAP-USE FR@ USE-DEPTH-CELL CELL!
    f EVAL-FRAME:PKG-OUTSIDE FR@ PKG-OUTSIDE-CELL CELL!
    f EVAL-FRAME:SECTION FR@ SECTION-CELL CELL!
@@ -3076,7 +3077,7 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    snap PKGSNAP-REC FR@ snap PKGSNAP-PARENT FR@
    snap PKGSNAP-CUR FR@ snap PKGSNAP:FLOOR FR@ PKG-RECOVER ;
 
-: FRAME-RECOVER ( ptr u8 -- ) {: f:ptr :}
+: FRAME-RECOVER ( ^u8 -- ) {: f:^ :}
    f EVAL-FRAME:PEND FR@ 0= if f FRAME-ROLLBACK-CODE else FRAME-ROLLBACK-TOKEN then
    f EVAL-INP FR@ INP-CELL CELL!
    f EVAL-INE FR@ INE-CELL CELL!
@@ -3087,13 +3088,13 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    f EVAL-PREV FR@ EVAL-TOP-CELL CELL!
    EVALD-CELL CELL@ 1- EVALD-CELL CELL! ;
 
-: FRAME-FREE ( ptr u8 -- )
+: FRAME-FREE ( ^u8 -- )
    dup EVAL-FRAME-SIZE FR@ munmap 0<> if E-MEM-UNMAP throw then ;
 
 \ A rollback that left DP above the cut (a live task's, a pending definition's)
 \ kept every body; one that left DP at the cut puts the marked cells back.
-: FRAME-CELLS-RESTORE ( ptr u8 -- )
-   {: f:ptr :}
+: FRAME-CELLS-RESTORE ( ^u8 -- )
+   {: f:^ :}
    DP-CELL CELL@ f FRAME-CUT = if
       f FRAME-CELLS ROLLBACK-CELLS:RESTORE
    then ;
@@ -3106,7 +3107,7 @@ variable REPL-OK
 : REPL-STACK-CLEAR ( -- )
    stack-clear ;
 
-: REPL-RECOVER ( ptr u8 n ptr n -- ) {: f:ptr prior:n found:ptr :}
+: REPL-RECOVER ( ^u8 n ^n -- ) {: f:^ prior:n found:^ :}
    f FRAME-ROLLBACK-CODE
    f EVAL-INP FR@ INP-CELL CELL!
    f EVAL-INE FR@ INE-CELL CELL!
@@ -3120,7 +3121,7 @@ variable REPL-OK
 \ A copy of the line that opened the pending definition: the reader reuses its
 \ buffer for each line, and the line's frame puts back the input cells, so an
 \ end of input inside the definition is placed on this copy.
-TYPED-VARIABLE OPENER-A ptr u8
+TYPED-VARIABLE OPENER-A ^u8
 variable OPENER-U
 
 : OPENER-DROP ( -- )
@@ -3130,24 +3131,24 @@ variable OPENER-U
    0 OPENER-U ! ;
 
 \ The opener's token moves into the copy.
-: OPENER-KEEP ( ptr u8 n -- ) {: a:ptr u:n :}
+: OPENER-KEEP ( ^u8 n -- ) {: a:^ u:n :}
    OPENER-DROP
    PENDTKA-CELL ADDR@ a - {: off:n :}
    off 0 >=  off u < and 0= if exit then
-   u MEM-ALLOC-PTR {: c:ptr :}
+   u MEM-ALLOC-PTR {: c:^ :}
    a c u BYTE-COPY
    c OPENER-A !  u OPENER-U !
    c off + PENDTKA-CELL ADDR! ;
 
 : THROWN-OPEN ( n -- )
    {: c:n :}
-   c ERROR:NAME$ {: a:ptr u:n :}
+   c ERROR:NAME$ {: a:^ u:n :}
    u 0= if s" E-THROW" REJECTION:OPEN exit then
    a u REJECTION:OPEN ;
 
 : THROWN-TEXT ( n -- )
    {: c:n :}
-   c ERROR:TEXT$ {: a:ptr u:n :}
+   c ERROR:TEXT$ {: a:^ u:n :}
    u 0 > if a u REJECTION:EMIT-STR exit then
    s" nothing caught a throw of code " REJECTION:EMIT-STR
    c REJECTION:EMIT-N ;
@@ -3209,15 +3210,15 @@ public
    REJECTION:SEND-SAVED ;
 private
 
-: REPL-LINE ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: REPL-LINE ( ^u8 n -- bool ) {: a:^ u:n :}
    PEND-CELL CELL@ {: open:n :}
    SOURCE-ROOT:TEXT-MARK {: mark:n :}
-   depth FRAME-OPEN {: f:ptr :}
+   depth FRAME-OPEN {: f:^ :}
    \ The session, not this line, owns a pending definition from an earlier
    \ line, yet a failed line abandons it through this savepoint's full rollback.
    0 f EVAL-FRAME:PEND FR!
    USE-FLOOR @ {: prior:n :}
-   REC @ {: found:ptr :}
+   REC @ {: found:^ :}
    a INP-CELL ADDR!  a SRCLOC:INB-CELL ADDR!  a u + INE-CELL ADDR!
    f FRAME-ARG !
    [: FRAME-ARG @ FRAME-LINK [: RUN-TOKENS true ENDED ! ;] catch LEFT ;]
@@ -3244,7 +3245,7 @@ private
 : REPL-END ( -- )
    OPENER-U @ {: u:n :}
    u 0<> if
-      OPENER-A @ {: c:ptr :}
+      OPENER-A @ {: c:^ :}
       c SRCLOC:INB-CELL ADDR!  c u + INE-CELL ADDR!
    then
    [: DEF-SOURCE-END DECL-SOURCE-END ;] catch {: code:n :}
@@ -3261,17 +3262,17 @@ public
    true REPL-OK !
    begin
       REPL-OK @ if S\"  ok\n" type then
-      REPL-READ {: a:ptr u:n :}
+      REPL-READ {: a:^ u:n :}
       a 0= if REPL-END exit then
       a u REPL-LINE REPL-OK !
    again ;
 
 \ The input base stays the buffer's first byte, so a refusal's line counts
 \ from the start of the whole source.
-: EVAL-FRAMED-RANGE ( ptr u8 n n n -- ) {: a:ptr u:n first:n end:n :}
-   depth FRAME-OPEN {: f:ptr :}
+: EVAL-FRAMED-RANGE ( ^u8 n n n -- ) {: a:^ u:n first:n end:n :}
+   depth FRAME-OPEN {: f:^ :}
    USE-FLOOR @ {: outer:n :}
-   REC @ {: found:ptr :}
+   REC @ {: found:^ :}
    ENTRY-PEND @ {: prior:n :}
    DECL-MARK @ {: prior-mark:n :}
    PEND-CELL CELL@ {: entry:n :}
@@ -3299,14 +3300,14 @@ public
    f FRAME-FREE
    code 0<> if code throw then ;
 
-: EVAL-FRAMED ( ptr u8 n -- ) {: a:ptr u:n :}
+: EVAL-FRAMED ( ^u8 n -- ) {: a:^ u:n :}
    a u COMPILE-READS:TEXT+
    a u 0 u EVAL-FRAMED-RANGE ;
 
 private
 \ `evaluate-closed`'s text runs on a stack of its own (habu1.f B-EVAL-CLOSED),
 \ so `depth` after it counts the cells the text left.
-: EVAL-CLOSED ( ptr u8 n -- )
+: EVAL-CLOSED ( ^u8 n -- )
    EVAL-FRAMED  depth {: left:n :}
    left 0= if exit then
    s" E-EVAL-RESIDUE" REJECTION:OPEN

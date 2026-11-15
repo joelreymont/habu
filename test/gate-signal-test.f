@@ -63,8 +63,8 @@ false CASE-NOHUP !
 PROCESS:NO-FD FIFO-RD !
 PROCESS:NO-FD ROOT-WATCH !
 
-: TMP$ ( -- ptr u8 n )    TMP TMP-U @ ;
-: LOG$ ( -- ptr u8 n )    LOG LOG-U @ ;
+: TMP$ ( -- ^u8 n )    TMP TMP-U @ ;
+: LOG$ ( -- ^u8 n )    LOG LOG-U @ ;
 
 : PAUSE ( n -- ) {: ms:n :}
    PAUSE-PFD 0 ms poll drop ;
@@ -87,7 +87,7 @@ PROCESS:NO-FD ROOT-WATCH !
    GT-ROOT s" root.log" LOG FS:JOIN-PATH LOG-U !
    TMP$ FS:MAKE-DIRS ;
 
-: ENTRY+ ( ptr u8 n -- )
+: ENTRY+ ( ^u8 n -- )
    2drop ENTRY-N @ 1+ ENTRY-N ! ;
 
 : TMP-ENTRIES ( -- n )
@@ -101,7 +101,7 @@ PROCESS:NO-FD ROOT-WATCH !
 
 \ ---- the report FIFO --------------------------------------------------------
 
-: FIFO$ ( -- ptr u8 n )
+: FIFO$ ( -- ^u8 n )
    FIFO FIFO-U @ ;
 
 \ A new FIFO for the case, its read end open before the row starts, so the
@@ -114,7 +114,7 @@ PROCESS:NO-FD ROOT-WATCH !
    REPORT-N 0 ?do 0 i cells STARTS + ! loop
    false FIFO-DONE ! ;
 
-: FD-TEXT$ ( n -- ptr u8 n )
+: FD-TEXT$ ( n -- ^u8 n )
    SB-RESET FMT:SB-INT SB$ ;
 
 \ ---- who reported -----------------------------------------------------------
@@ -130,7 +130,7 @@ PROCESS:NO-FD ROOT-WATCH !
 \ Either way 0 is "no such process".
 
 PROCESS-SYMBOLS
-FUNCTION: PID-INFO proc_pidinfo ( n n n ptr u8 n -- i32 )
+FUNCTION: PID-INFO proc_pidinfo ( n n n ^u8 n -- i32 )
 ;FUNCTION
 
 3 constant BSD-FLAVOR
@@ -151,7 +151,7 @@ variable STAT-PATH-U
    pid BSD-FLAVOR 0 BSD BSD-BYTES PID-INFO BSD-BYTES <> if 0 exit then
    BSD BSD-START-S + LE:U64@ US-PER-S * BSD BSD-START-US + LE:U64@ + ;
 
-: STAT-PATH+ ( ptr u8 n -- )
+: STAT-PATH+ ( ^u8 n -- )
    STAT-PATH PATH-CAP STAT-PATH-U BUF-APPEND ;
 
 \ The first index from at, below end, that is not a space; then that is one.
@@ -294,7 +294,7 @@ variable STAT-PATH-U
    fd 0 < if E-FS-OPEN throw then
    fd ;
 
-: NOHUP$ ( -- ptr u8 n )
+: NOHUP$ ( -- ^u8 n )
    s" nohup" >LEN NOHUP FIND-EXECUTABLE MATCH option
       none OF s" gate-signal-test: required executable missing on PATH: nohup" 1 die ENDOF
       some OF LEN>N ENDOF
@@ -304,7 +304,7 @@ variable STAT-PATH-U
 \ Stages the root's argv and answers the executable: the engine, or nohup with
 \ the engine as its first argument. nohup sets SIGHUP to ignored and becomes
 \ the engine, so the pid spawned is the root's either way.
-: ROOT-ARGV ( -- ptr u8 n )
+: ROOT-ARGV ( -- ^u8 n )
    PROC-ARGV-ENV-RESET
    CASE-NOHUP @ if ENGINE-CANDIDATE:PATH$ >LEN PROC-ARGV+ then
    s" --load" >LEN PROC-ARGV+
@@ -316,7 +316,7 @@ variable STAT-PATH-U
 \ that has already exited.
 : ROOT-START ( -- )
    OPEN-FIFO
-   ROOT-ARGV {: exe:ptr exeu:n :}
+   ROOT-ARGV {: exe:^ exeu:n :}
    s" TMPDIR" >LEN TMP$ >LEN PROC-ENV+
    REPORT-ENV
    PROC-ENV-INHERIT-MISSING

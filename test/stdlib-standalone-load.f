@@ -35,27 +35,27 @@ variable PATHS-USED
 : TRUE ( -- bool ) 0 0= ;
 : FALSE ( -- bool ) 0 0= 0= ;
 
-: SLASHES ( ptr u8 n -- n ) {: a:ptr u:n :}
+: SLASHES ( ^u8 n -- n ) {: a:^ u:n :}
    0 0 begin dup u < while
       dup a + c@ SLASH = if swap 1+ swap then
       1+
    repeat drop ;
 
-: SUFFIX? ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n sa:ptr su:n :}
+: SUFFIX? ( ^u8 n ^u8 n -- bool ) {: a:^ u:n sa:^ su:n :}
    u su < if FALSE exit then
    a u su - +  su  sa su  STR= ;
 
 \ A flat module is src/lib/<name>.f and not a -test.f: two '/' bytes; a nested
 \ src/lib/<sub>/<name>.f has three.
-: FLAT-MODULE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: FLAT-MODULE? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" .f" SUFFIX? 0= if FALSE exit then
    a u s" -test.f" SUFFIX? if FALSE exit then
    a u SLASHES 2 = ;
 
-: PATH$ ( n -- ptr u8 n ) {: k:n :}
+: PATH$ ( n -- ^u8 n ) {: k:n :}
    PATHS-BUF PATH-OFF k cells + @ +  PATH-LEN k cells + @ ;
 
-: COLLECT ( ptr u8 n -- ) {: a:ptr u:n :}     \ FS:WALK-FILES callback
+: COLLECT ( ^u8 n -- ) {: a:^ u:n :}     \ FS:WALK-FILES callback
    a u FLAT-MODULE? 0= if exit then
    PATHS-N @ PATHS-MAX >= if E-TBL-BOUNDS throw then
    PATHS-USED @ u + PATHS-CAP > if E-TBL-BOUNDS throw then
@@ -65,14 +65,14 @@ variable PATHS-USED
    PATHS-USED @ u + PATHS-USED !
    PATHS-N @ 1+ PATHS-N ! ;
 
-: COLLECTED? ( ptr u8 n -- bool ) {: qa:ptr qu:n :}
+: COLLECTED? ( ^u8 n -- bool ) {: qa:^ qu:n :}
    0 begin dup PATHS-N @ < while
       dup PATH$ qa qu STR= if drop TRUE exit then
       1+
    repeat drop FALSE ;
 
-: LOADS ( ptr u8 n -- )
-   {: p:ptr u:n :}
+: LOADS ( ^u8 n -- )
+   {: p:^ u:n :}
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    p u >LEN PROC-ARGV+

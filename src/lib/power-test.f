@@ -22,13 +22,13 @@ create BAD-NAME $FF c,
 
 \ The pid keeps two runs at once apart.
 : NAME! ( -- )
-   s" habu-power-test-" {: p:ptr u:n :}
+   s" habu-power-test-" {: p:^ u:n :}
    p NAME u BYTE-COPY
-   getpid FMT:INT$ {: d:ptr du:n :}
+   getpid FMT:INT$ {: d:^ du:n :}
    d NAME u + du BYTE-COPY
    u du + NAME-LEN ! ;
 
-: NAME$ ( -- ptr u8 n ) NAME NAME-LEN @ ;
+: NAME$ ( -- ^u8 n ) NAME NAME-LEN @ ;
 
 : PMSET ( CMD:command -- CMD:command bool )
    CMD:RESET

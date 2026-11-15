@@ -48,7 +48,7 @@ variable LINK-N
 
 
 : SYMLINK ( -- )
-   s" habu-realpath" FS:MKTEMP-DIR {: root:ptr rootu:n :}
+   s" habu-realpath" FS:MKTEMP-DIR {: root:^ rootu:n :}
    root rootu FS:CLEANUP-TREE+
    root rootu s" target.f" TARGET FS:JOIN-PATH TARGET-N !
    root rootu s" alias.f" LINK FS:JOIN-PATH LINK-N !

@@ -19,8 +19,8 @@ create NEW-LIMIT 16 allot
 variable START-VM
 
 PROCESS-SYMBOLS
-FUNCTION: GET-LIMIT getrlimit ( n ptr u8 -- i32 ) ;FUNCTION
-FUNCTION: SET-LIMIT setrlimit ( n ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: GET-LIMIT getrlimit ( n ^u8 -- i32 ) ;FUNCTION
+FUNCTION: SET-LIMIT setrlimit ( n ^u8 -- i32 ) ;FUNCTION
 FUNCTION: PAGE-SIZE getpagesize ( -- i32 ) ;FUNCTION
 
 TASK:MIN-STACK TASK:TASK WORKER

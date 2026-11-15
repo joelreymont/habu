@@ -20,8 +20,8 @@ package STORAGE-TURN
 private
 using BROWSER-EVENT
 
-CAST: >BYTES ( n -- ptr u8 )
-CAST: BYTES>N ( ptr u8 -- n )
+CAST: >BYTES ( n -- ^u8 )
+CAST: BYTES>N ( ^u8 -- n )
 
 40 BUFFER: TEXT
 variable TEXT-U
@@ -61,10 +61,10 @@ variable TYPED-N
    0 HELD FIRST !
    42 131071 HELD c!
    0 EVENT BYTES>N TURN-REVISION:PROTOCOL 0 RECORD
-   s" fixture" {: path:ptr u:n :}
+   s" fixture" {: path:^ u:n :}
    1 path BYTES>N u 0 RECORD
    0 TEXT-U !
-   s" loading" {: t:ptr tu:n :}
+   s" loading" {: t:^ tu:n :}
    tu 0 ?do  t i + c@ CHAR+  loop
    TEXT-RECORD ;
 
@@ -99,7 +99,7 @@ variable TYPED-N
    TYPED-N @ 1000 = if
       FETCH-AT @ FETCH-LEN @ SUM FETCH-SUM @ <> if 99 throw then
       0 TEXT-U !
-      s" typed " {: t:ptr tu:n :}
+      s" typed " {: t:^ tu:n :}
       tu 0 ?do t i + c@ CHAR+ loop
       TYPED-N @ DIGITS TEXT-RECORD
    then ;

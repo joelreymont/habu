@@ -5,17 +5,18 @@ package BITEM-LONG
 private
 
 5000 BUFFER: TEXT  variable TEXT-U
-: TEXT$ ( -- ptr u8 n ) TEXT TEXT-U @ ;
-: ADD ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: TEXT$ ( -- ^u8 n ) TEXT TEXT-U @ ;
+: ADD ( ^u8 n -- )
+   {: a:^ u:n :}
    a TEXT TEXT-U @ + u BYTE-COPY  u TEXT-U +! ;
-: ELEM ( -- ) 17 0 ?do s" ptr " ADD loop  s" u8 " ADD ;
+: ELEM ( -- ) 17 0 ?do s" ^" ADD loop  s" u8 " ADD ;
 
-\ [ ptr … ptr u8 … -- ]: 64 inputs of 17 ptrs, 4550 bytes.
-: LONG$ ( -- ptr u8 n )
-   0 TEXT-U !  s" [ " ADD  64 0 ?do ELEM loop  s" -- ]" ADD  TEXT$ ;
+\ [ ^^…^u8 … -- ]: 228 inputs of 17 carets, 4566 bytes, above checker.f
+\ TOKBUF-INIT-CAP (4096).
+: LONG$ ( -- ^u8 n )
+   0 TEXT-U !  s" [ " ADD  228 0 ?do ELEM loop  s" -- ]" ADD  TEXT$ ;
 
-: MAKE-LONG ( ptr u8 n -- )
+: MAKE-LONG ( ^u8 n -- )
    EFFECT:EMPTY define-word  LONG$ EFFECT:READ-TYPE EFFECT:LOCAL drop
    postpone ; ;
 

@@ -28,7 +28,7 @@ $7F constant IO-EXEC-FAIL          \ child exit code when execve never replaces 
 \ Load-time scratch shared by the parent build path and by each forked child (a
 \ fork copies this memory, so a child reads the same values the parent stored).
 create IO-PATH-BUF IO-PATH-CAP allot   \ supervised executable path bytes (child reads)
-1 TYPED-BUFFER IO-ENVP ptr u8          \ single NULL slot: the empty child environment
+1 TYPED-BUFFER IO-ENVP ^u8          \ single NULL slot: the empty child environment
 create IO-GOBYTE 1 allot               \ the one-byte release token written by LAUNCH
 create IO-PTY-NAME PTY:SLAVE-PATH-CAP allot \ slave path (NUL-terminated)
 create IO-LFBYTE 1 allot                \ the line terminator WRITE-LINE appends
@@ -77,7 +77,7 @@ variable IO-GO-R                                 \ child-side release gate
 
 \ What the master had to give once the loop answered: the bytes read, or -1 for
 \ a hang-up or an end of file. POLLNVAL is a broken descriptor, not an exit.
-: IO-READ-READY ( n fd ptr u8 n -- n ) {: ev:n m:fd buf:ptr cap:n :}
+: IO-READ-READY ( n fd ^u8 n -- n ) {: ev:n m:fd buf:^ cap:n :}
    ev FD:POLLNVAL and 0 <> if E-PROC-OUTPUT throw then
    ev FD:POLLIN and 0= if -1 exit then
    m FD>N buf cap read {: got:n :}
@@ -143,7 +143,7 @@ variable IO-GO-R                                 \ child-side release gate
    -1 IO-TW !  -1 IO-GO-W !
    -1 IO-SOUT-W !  -1 IO-SIN-R !  -1 IO-GO-R ! ;
 
-: IO-STORE-PATH ( ptr u8 len -- ) {: path:ptr pathu:len :}
+: IO-STORE-PATH ( ^u8 len -- ) {: path:^ pathu:len :}
    path pathu IO-PATH-BUF IO-PATH-CAP >LEN PROCESS:ZCOPY drop
    pathu LEN>N IO-PATH-LEN ! ;
 
@@ -228,7 +228,7 @@ variable IO-GO-R                                 \ child-side release gate
    IO-COMMIT
    HANDLE>N IO-RAW ! ;
 
-: IO-SPAWN-MODE ( ptr u8 len bool -- process-pty-handle ) {: path:ptr pathu:len tty:bool :}
+: IO-SPAWN-MODE ( ^u8 len bool -- process-pty-handle ) {: path:^ pathu:len tty:bool :}
    ROOM? 0= if E-PROC-PTY-CAPACITY throw then
    IO-RESET-STX
    tty IO-TTY !
@@ -275,8 +275,8 @@ create IO-OUTER SLOT-CAP cells allot
 : IO-RUN-BODY ( R process-pty-handle [ R process-pty-handle -- S process-pty-handle ] -- S )
    execute HANDLE>N IO-SCOPE @ <> if E-PROC-PTY-HANDLE throw then ;
 
-: IO-WITH ( R ptr u8 n [ R process-pty-handle -- S process-pty-handle ] bool -- S )
-   {: path:ptr pathu:n body tty:bool :}
+: IO-WITH ( R ^u8 n [ R process-pty-handle -- S process-pty-handle ] bool -- S )
+   {: path:^ pathu:n body tty:bool :}
    path pathu >LEN tty IO-SPAWN-MODE IO-ENTER
    body [: IO-RUN-BODY ;] [: IO-LEAVE ;] finally ;
 
@@ -288,7 +288,7 @@ public
 \ teardown are private, so no handle outlives its scope. The target is forked
 \ but blocked before exec with its lifetime watch open; LAUNCH releases it.
 \ The handle's `master` is the target's stdout read end, `done` its stdin.
-: WITH-TARGET ( R ptr u8 n [ R process-pty-handle -- S process-pty-handle ] -- S )
+: WITH-TARGET ( R ^u8 n [ R process-pty-handle -- S process-pty-handle ] -- S )
    false IO-WITH ;
 
 \ The same scope with the target's standard descriptors on the slave side of a
@@ -297,12 +297,12 @@ public
 \ stopping at it. The handle's `master` is the PTY master and `done` a duplicate
 \ of it. Nobody acquires the terminal as controlling (TIOCSCTTY is an unencoded
 \ request the engine's ioctl guard refuses), so there is no job control.
-: WITH-TTY-TARGET ( R ptr u8 n [ R process-pty-handle -- S process-pty-handle ] -- S )
+: WITH-TTY-TARGET ( R ^u8 n [ R process-pty-handle -- S process-pty-handle ] -- S )
    true IO-WITH ;
 
 \ Send one line to the target's input: the bytes then a line feed. A short write
 \ is an error, never a silent truncation.
-: WRITE-LINE ( process-pty-handle ptr u8 n -- process-pty-handle ) {: a:ptr u:n :}
+: WRITE-LINE ( process-pty-handle ^u8 n -- process-pty-handle ) {: a:^ u:n :}
    HANDLE-IDX DONE@ {: w:fd :}
    u 0 > if w FD>N a u write u <> if E-PROC-OUTPUT throw then then
    IO-LF IO-LFBYTE c!
@@ -326,7 +326,7 @@ public
 \ IO-POLL-READY? gives. AIO:START comes first: a wait with no loop running is
 \ E-AIO-STATE. It answers ONE read, never a whole reply: a caller waiting for
 \ text loops to its marker under one absolute deadline (PROCESS:DEADLINE-AT).
-: AWAIT-BYTES ( process-pty-handle ptr u8 n n -- process-pty-handle n ) {: buf:ptr cap:n ms:n :}
+: AWAIT-BYTES ( process-pty-handle ^u8 n n -- process-pty-handle n ) {: buf:^ cap:n ms:n :}
    cap 0 <= if E-PROC-OUTPUT throw then
    HANDLE-MASTER@ {: m:fd :}
    m AIO:READABLE ms >MS AIO:POLL AIO:AWAIT

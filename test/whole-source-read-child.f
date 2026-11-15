@@ -19,20 +19,20 @@ PATH-CAP 256 + constant PKT-CAP
 create PKT PKT-CAP allot
 variable PKT-U
 
-: SUBJECT$ ( -- ptr u8 n )
+: SUBJECT$ ( -- ^u8 n )
    SUBJECT-PATH SUBJECT-PATH-U @ ;
 
-: FILE$ ( -- ptr u8 n )
+: FILE$ ( -- ^u8 n )
    FILE-PATH FILE-PATH-U @ ;
 
 \ dst receives a's bytes and u its length, refused past cap.
-: KEEP! ( ptr u8 n ptr u8 ptr n n -- ) {: a:ptr u:n dst:ptr up:ptr cap:n :}
+: KEEP! ( ^u8 n ^u8 ^n n -- ) {: a:^ u:n dst:^ up:^ cap:n :}
    u cap > if E-STR-CAPACITY throw then
    a dst u BYTE-COPY
    u up ! ;
 
-: PKT+ ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: PKT+ ( ^u8 n -- )
+   {: a:^ u:n :}
    PKT-U @ u + PKT-CAP > if E-STR-CAPACITY throw then
    a PKT PKT-U @ + u BYTE-COPY
    u PKT-U +! ;
@@ -40,8 +40,8 @@ variable PKT-U
 public
 
 \ SUBJECT is the open document, FILE the file the packet names.
-: CASE! ( ptr u8 n ptr u8 n -- )
-   {: subj:ptr subju:n file:ptr fileu:n :}
+: CASE! ( ^u8 n ^u8 n -- )
+   {: subj:^ subju:n file:^ fileu:n :}
    subj subju SUBJECT-PATH SUBJECT-PATH-U PATH-CAP KEEP!
    file fileu FILE-PATH FILE-PATH-U PATH-CAP KEEP! ;
 

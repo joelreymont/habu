@@ -35,19 +35,19 @@ LONG-LEN 1 + STACK-ABI:PAGE-BYTES / 1 + STACK-ABI:PAGE-BYTES *
    constant ROOM
 PTR-VARIABLE NAMES
 : NAMES! ( -- )
-   ROOM MEM:ALLOC-GUARDED drop {: p:ptr :}
+   ROOM MEM:ALLOC-GUARDED drop {: p:^ :}
    ROOM 0 ?do 113 p i + c! loop
    p NAMES ! ;
 NAMES!
 
-: TAIL ( n -- ptr u8 n )
+: TAIL ( n -- ^u8 n )
    {: u:n :}
    NAMES @ ROOM + u - u ;
 
 \ The name the next case hands its word: LEN bytes of q ending at the guard
 \ page, or for a length no span has, its two last bytes.
 variable LEN
-: BAD$ ( -- ptr u8 n )
+: BAD$ ( -- ^u8 n )
    LEN @ {: u:n :}
    u 0 < u ROOM > or IF 2 TAIL drop u EXIT THEN
    u TAIL ;
@@ -57,26 +57,26 @@ variable LEN
 PTR-VARIABLE TEXTS
 : TEXTS! ( -- ) ROOM MEM:ALLOC-GUARDED drop TEXTS ! ;
 TEXTS!
-: TEXT ( ptr u8 n -- ptr u8 n )
-   {: h:ptr hu:n :}
-   TEXTS @ {: p:ptr :}
+: TEXT ( ^u8 n -- ^u8 n )
+   {: h:^ hu:n :}
+   TEXTS @ {: p:^ :}
    ROOM 0 ?do 32 p i + c! loop
    LEN @ {: u:n :}
    u 0 < u ROOM > or IF p ROOM + 2 - u EXIT THEN
-   p ROOM + u - {: t:ptr :}
+   p ROOM + u - {: t:^ :}
    hu 0 ?do h i + c@ t i + c! loop
    t u ;
 
 \ A definition CHECK certifies, and a type every storage gate admits: the
 \ structure this file declares below.
-: BODY$ ( -- ptr u8 n ) s" NLT-W ( -- )" TEXT ;
-: STORED$ ( -- ptr u8 n ) s" nlt-pair" TEXT ;
+: BODY$ ( -- ^u8 n ) s" NLT-W ( -- )" TEXT ;
+: STORED$ ( -- ^u8 n ) s" nlt-pair" TEXT ;
 
-: SIG$ ( -- ptr u8 n ) s" --" ;
-: CAST$ ( -- ptr u8 n ) s" len -- n" ;
-: CAST-NAME$ ( -- ptr u8 n ) s" nltcast" ;
-: CLAUSE$ ( -- ptr u8 n ) s" drop 1 +" ;
-: CLAUSE-SIG$ ( -- ptr u8 n ) s" ( n -- n )" ;
+: SIG$ ( -- ^u8 n ) s" --" ;
+: CAST$ ( -- ^u8 n ) s" len -- n" ;
+: CAST-NAME$ ( -- ^u8 n ) s" nltcast" ;
+: CLAUSE$ ( -- ^u8 n ) s" drop 1 +" ;
+: CLAUSE-SIG$ ( -- ^u8 n ) s" ( n -- n )" ;
 
 \ The checker's pool marks, which a refused name leaves where it found them.
 11 constant MARK-N
@@ -142,10 +142,10 @@ create BEFORE MARK-N cells allot
 : USING-PUSH-IT ( -- ) BAD$ CHECKER-USING-PUSH ;
 \ `;package`, then NLTP and its part named BAD$: the part opens in NLTP's
 \ buffer, so `package` reaches the part's path.
-: PART$ ( -- ptr u8 n )
-   s" ;package package NLTP package " {: h:ptr hu:n :}
-   BAD$ {: a:ptr u:n :}
-   hu u + MEM-ALLOC-BYTES drop {: p:ptr :}
+: PART$ ( -- ^u8 n )
+   s" ;package package NLTP package " {: h:^ hu:n :}
+   BAD$ {: a:^ u:n :}
+   hu u + MEM-ALLOC-BYTES drop {: p:^ :}
    h p hu BYTE-COPY
    a p hu + u BYTE-COPY
    p hu u + ;
@@ -164,11 +164,11 @@ STRUCTURE nlt-pair
    FIELD a n
 ;STRUCTURE
 \ A structure whose one field is named BAD$.
-: FIELD-NAME$ ( -- ptr u8 n )
-   s" FIELD " {: h:ptr hu:n :}
-   BAD$ {: a:ptr u:n :}
-   s"  n ;STRUCTURE" {: t:ptr tu:n :}
-   hu u + tu + MEM-ALLOC-BYTES drop {: p:ptr :}
+: FIELD-NAME$ ( -- ^u8 n )
+   s" FIELD " {: h:^ hu:n :}
+   BAD$ {: a:^ u:n :}
+   s"  n ;STRUCTURE" {: t:^ tu:n :}
+   hu u + tu + MEM-ALLOC-BYTES drop {: p:^ :}
    h p hu BYTE-COPY
    a p hu + u BYTE-COPY
    t p hu + u + tu BYTE-COPY
@@ -182,26 +182,26 @@ STRUCTURE nlt-pair
 128 constant LBL-CAP
 create LBL LBL-CAP allot
 variable LBL-U
-: LBL+ ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: LBL+ ( ^u8 n -- )
+   {: a:^ u:n :}
    u LBL-CAP LBL-U @ - min {: k:n :}
    k 0 ?do a i + c@ LBL LBL-U @ + i + c! loop
    LBL-U @ k + LBL-U ! ;
 : RELABEL ( -- ) LBL LBL-U @ T-LABEL ;
-: LABEL-AT ( ptr u8 n ptr u8 n -- )
-   {: at:ptr atu:n src:ptr srcu:n :}
+: LABEL-AT ( ^u8 n ^u8 n -- )
+   {: at:^ atu:n src:^ srcu:n :}
    0 LBL-U !  src srcu LBL+  s"  at " LBL+  at atu LBL+ ;
 
 \ A declaring word's refusal ends the process, so every case runs `src` in a
 \ forked child, with LEN at `u`.
-: RUN-AT ( n ptr u8 n -- len len PROCESS:ending )
-   {: u:n src:ptr srcu:n :}
+: RUN-AT ( n ^u8 n -- len len PROCESS:ending )
+   {: u:n src:^ srcu:n :}
    u LEN !
    src srcu OUT OUT-CAP >LEN ERR ERR-CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN ;
 
 \ The child prints that its word refused, and nothing else, and exits 0.
-: RETURNS-AT ( n ptr u8 n ptr u8 n -- )
-   {: u:n at:ptr atu:n src:ptr srcu:n :}
+: RETURNS-AT ( n ^u8 n ^u8 n -- )
+   {: u:n at:^ atu:n src:^ srcu:n :}
    at atu src srcu LABEL-AT
    u src srcu RUN-AT {: outu:len erru:len oc :}
    RELABEL src srcu OUT outu LEN>N ERR erru LEN>N oc 0 T-ENDING-EXITED=
@@ -209,8 +209,8 @@ variable LBL-U
    RELABEL OUT outu LEN>N S\" refused\n" T$= ;
 
 \ The child ends with the word's own refusal: `rc` and its one-line message.
-: DIES-AT ( n ptr u8 n ptr u8 n n ptr u8 n -- )
-   {: u:n at:ptr atu:n src:ptr srcu:n rc:n want:ptr wantu:n :}
+: DIES-AT ( n ^u8 n ^u8 n n ^u8 n -- )
+   {: u:n at:^ atu:n src:^ srcu:n rc:n want:^ wantu:n :}
    at atu src srcu LABEL-AT
    u src srcu RUN-AT {: outu:len erru:len oc :}
    RELABEL src srcu OUT outu LEN>N ERR erru LEN>N oc rc T-ENDING-EXITED=
@@ -219,8 +219,8 @@ variable LBL-U
 
 \ The child ends with one rejection record: `rc`, a record that starts with
 \ `head`, holds `note` and is followed by no other.
-: REJECTS-AT ( n ptr u8 n ptr u8 n n ptr u8 n ptr u8 n -- )
-   {: u:n at:ptr atu:n src:ptr srcu:n rc:n head:ptr headu:n note:ptr noteu:n :}
+: REJECTS-AT ( n ^u8 n ^u8 n n ^u8 n ^u8 n -- )
+   {: u:n at:^ atu:n src:^ srcu:n rc:n head:^ headu:n note:^ noteu:n :}
    at atu src srcu LABEL-AT
    u src srcu RUN-AT {: outu:len erru:len oc :}
    RELABEL src srcu OUT outu LEN>N ERR erru LEN>N oc rc T-ENDING-EXITED=
@@ -230,16 +230,16 @@ variable LBL-U
    RELABEL ERR erru LEN>N S\" \nerror[" CONTAINS? TFALSE ;
 
 \ -1 and the maximum cell, for a name or a text with no bound of its own.
-: RETURNS ( ptr u8 n -- )
-   {: src:ptr srcu:n :}
+: RETURNS ( ^u8 n -- )
+   {: src:^ srcu:n :}
    -1 s" -1" src srcu RETURNS-AT
    MAX-CELL s" max" src srcu RETURNS-AT ;
-: DIES ( ptr u8 n n ptr u8 n -- )
-   {: src:ptr srcu:n rc:n want:ptr wantu:n :}
+: DIES ( ^u8 n n ^u8 n -- )
+   {: src:^ srcu:n rc:n want:^ wantu:n :}
    -1 s" -1" src srcu rc want wantu DIES-AT
    MAX-CELL s" max" src srcu rc want wantu DIES-AT ;
-: REJECTS ( ptr u8 n n ptr u8 n ptr u8 n -- )
-   {: src:ptr srcu:n rc:n head:ptr headu:n note:ptr noteu:n :}
+: REJECTS ( ^u8 n n ^u8 n ^u8 n -- )
+   {: src:^ srcu:n rc:n head:^ headu:n note:^ noteu:n :}
    -1 s" -1" src srcu rc head headu note noteu REJECTS-AT
    MAX-CELL s" max" src srcu rc head headu note noteu REJECTS-AT ;
 
@@ -262,8 +262,8 @@ variable LBL-U
 
 \ The family lookups copy the name into the checker's token buffer, which
 \ refuses a maximum-cell length by ending the process.
-: FAM-DIES-AT-MAX ( ptr u8 n -- )
-   {: src:ptr srcu:n :}
+: FAM-DIES-AT-MAX ( ^u8 n -- )
+   {: src:^ srcu:n :}
    -1 s" -1" src srcu RETURNS-AT
    MAX-CELL s" max" src srcu 76 S\" checker: token buffer too large\n" DIES-AT ;
 
@@ -276,7 +276,7 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
 \ the name, so the record is placed at the word this file ran, names this file
 \ and shows the name in its `word` note. The head is copied out of the string
 \ builder the note reuses.
-: CAP-HEAD$ ( -- ptr u8 n )
+: CAP-HEAD$ ( -- ^u8 n )
    SB-RESET
    s" error[E-PACKAGE-NAME-CAP]: the package name is " SB-APPEND
    LONG-LEN FMT:SB-INT  s"  bytes long, more than the " SB-APPEND
@@ -284,19 +284,19 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    S\"  a package name may have\n   --> " SB-APPEND
    LOADING @ data-base SRCLOC:PATHLEN-CELL + @ SB-APPEND
    s" :" SB-APPEND
-   SB$ {: h:ptr hu:n :}
-   hu MEM-ALLOC-BYTES drop {: p:ptr :}
+   SB$ {: h:^ hu:n :}
+   hu MEM-ALLOC-BYTES drop {: p:^ :}
    h p hu BYTE-COPY
    p hu ;
-: CAP-NOTE$ ( -- ptr u8 n )
+: CAP-NOTE$ ( -- ^u8 n )
    SB-RESET
    S\" \n    = help: shorten the package name to " SB-APPEND
    PACKAGE-PATH:CAP 1 - FMT:SB-INT
    S\"  bytes or fewer\n" SB-APPEND
-   SB$ {: t:ptr tu:n :}
-   s" = word: " {: h:ptr hu:n :}
+   SB$ {: t:^ tu:n :}
+   s" = word: " {: h:^ hu:n :}
    hu LONG-LEN + tu + {: wu:n :}
-   wu MEM-ALLOC-BYTES drop {: p:ptr :}
+   wu MEM-ALLOC-BYTES drop {: p:^ :}
    h p hu BYTE-COPY
    LONG-LEN TAIL drop p hu + LONG-LEN BYTE-COPY
    t p hu + LONG-LEN + tu BYTE-COPY
@@ -345,15 +345,15 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
 \ the name as naming no word, and echoes it; every other word that records a
 \ symbol for it names it as malformed and throws. Each refusal is rendered
 \ before its throw, so the child exits 70.
-: MAL$ ( -- ptr u8 n ) s" q:q:q" ;
-: MALFORMED-HEAD$ ( -- ptr u8 n )
+: MAL$ ( -- ^u8 n ) s" q:q:q" ;
+: MALFORMED-HEAD$ ( -- ^u8 n )
    S\" error[E-BAD-QUALIFIED-RECORD]: the record name `q:q:q` has more than one `:`\n" ;
-: MALFORMED-NOTE$ ( -- ptr u8 n ) s" ^ malformed qualified name" ;
-: STALE-HEAD$ ( -- ptr u8 n )
+: MALFORMED-NOTE$ ( -- ^u8 n ) s" ^ malformed qualified name" ;
+: STALE-HEAD$ ( -- ^u8 n )
    S\" error[E-TRUST-UNRESOLVED]: the `trust` row for `q:q:q` names no word where its record lands\n" ;
-: STALE-NOTE$ ( -- ptr u8 n ) s" ^ no word here has this name" ;
-: MAL-REJECTS ( ptr u8 n n ptr u8 n ptr u8 n -- )
-   {: src:ptr srcu:n rc:n head:ptr headu:n note:ptr noteu:n :}
+: STALE-NOTE$ ( -- ^u8 n ) s" ^ no word here has this name" ;
+: MAL-REJECTS ( ^u8 n n ^u8 n ^u8 n -- )
+   {: src:^ srcu:n rc:n head:^ headu:n note:^ noteu:n :}
    0 s" two inner colons" src srcu rc head headu note noteu REJECTS-AT ;
 : TEST-MALFORMED ( -- )
    s" MAL$ CHECKER-DEFER" 70 MALFORMED-HEAD$ MALFORMED-NOTE$ MAL-REJECTS
@@ -383,8 +383,8 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
 \ holds only what its own files' top levels interned (the builder's checker
 \ checked hb's definitions), so the first top-level CHECK-DOES! interns its row:
 \ the child runs one with a signature that parses before it takes the marks.
-: TOO-LARGE$ ( -- ptr u8 n ) S\" checker: token buffer too large\n" ;
-: CAST-HEAD$ ( -- ptr u8 n )
+: TOO-LARGE$ ( -- ^u8 n ) S\" checker: token buffer too large\n" ;
+: CAST-HEAD$ ( -- ^u8 n )
    S\" error[E-CAST-ARITY]: in `cast: nltcast`, the signature's length describes no memory\n" ;
 : TEST-TEXTS ( -- )
    s" LAYOUT-TEXT" RETURNS
@@ -406,9 +406,9 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
 
 \ ---- a long name -------------------------------------------------------------
 \ `: <u bytes of c> ;`, in a fresh mapping.
-: DEF-SRC ( n n -- ptr u8 n )
+: DEF-SRC ( n n -- ^u8 n )
    {: u:n c:n :}
-   u 4 + MEM-ALLOC-BYTES drop {: p:ptr :}
+   u 4 + MEM-ALLOC-BYTES drop {: p:^ :}
    58 p c!  32 p 1 + c!
    u 0 ?do c p 2 + i + c! loop
    32 p u 2 + + c!  59 p u 3 + + c!
@@ -416,31 +416,31 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
 
 \ `: <u bytes of c> ( -- ) 82 emit ; <u bytes of c>`, in a fresh mapping: a
 \ definition and its one call, which prints R.
-: RAN$ ( -- ptr u8 n ) s"  ( -- ) 82 emit ; " ;
-: RUN-SRC ( n n -- ptr u8 n )
+: RAN$ ( -- ^u8 n ) s"  ( -- ) 82 emit ; " ;
+: RUN-SRC ( n n -- ^u8 n )
    {: u:n c:n :}
-   RAN$ {: b:ptr bu:n :}
+   RAN$ {: b:^ bu:n :}
    u 2 * bu + 2 + {: su:n :}
-   su MEM-ALLOC-BYTES drop {: p:ptr :}
+   su MEM-ALLOC-BYTES drop {: p:^ :}
    58 p c!  32 p 1 + c!
    u 0 ?do c p 2 + i + c! loop
    bu 0 ?do b i + c@ p u 2 + + i + c! loop
    u 0 ?do c p u 2 + bu + + i + c! loop
    p su ;
 
-: LETTERS ( n n -- ptr u8 n )
+: LETTERS ( n n -- ^u8 n )
    {: u:n c:n :}
-   u MEM-ALLOC-BYTES drop {: p:ptr :}
+   u MEM-ALLOC-BYTES drop {: p:^ :}
    u 0 ?do c p i + c! loop
    p u ;
 
-: LONG$ ( -- ptr u8 n ) LONG-LEN TAIL ;
+: LONG$ ( -- ^u8 n ) LONG-LEN TAIL ;
 
 \ The body text grows with the definition: on the load path a child's `:`
 \ defines a word with a long name, whose body text passes 20000 bytes, and
 \ the word runs. The name is w, which no word of this file is named.
 : TEST-ENGINE ( -- )
-   LONG-LEN 119 RUN-SRC {: da:ptr du:n :}
+   LONG-LEN 119 RUN-SRC {: da:^ du:n :}
    0 da du RUN-AT {: outu:len erru:len oc :}
    s" `:` defines a word with a long name" T-LABEL
    da du OUT outu LEN>N ERR erru LEN>N oc 0 T-ENDING-EXITED=
@@ -462,11 +462,11 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    s" ... names no type" T-LABEL
    LONG$ TYPE-RESERVED? TFALSE
    s" a value-record with a long name is declared" T-LABEL
-   LONG-LEN 114 LETTERS {: ra:ptr ru:n :}
+   LONG-LEN 114 LETTERS {: ra:^ ru:n :}
    ra ru s" f n" CHECKER-DEFRECORD
    ra ru TYPE-RESERVED? TTRUE
    s" a linear type with a long name is declared" T-LABEL
-   LONG-LEN 115 LETTERS {: la:ptr lu:n :}
+   LONG-LEN 115 LETTERS {: la:^ lu:n :}
    la lu CHECKER-DEFLINEAR
    la lu TYPE-RESERVED? TTRUE
    s" a record tried with a long name is registered" T-LABEL

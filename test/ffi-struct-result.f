@@ -21,23 +21,23 @@
    then FFI:SELECT-LIBRARY ;
 FFI-T-SR-LIBC
 
-FUNCTION: FFI-T-MAKEADDR inet_makeaddr ( n n ptr u8 -- ) 4 STRUCT-RESULT ;FUNCTION
-FUNCTION: FFI-T-DIV div ( n n ptr u8 -- ) 8 STRUCT-RESULT ;FUNCTION
-FUNCTION: FFI-T-LLDIV12 lldiv ( n n ptr u8 -- ) 12 STRUCT-RESULT ;FUNCTION
-FUNCTION: FFI-T-LLDIV lldiv ( n n ptr u8 -- ) 16 STRUCT-RESULT ;FUNCTION
+FUNCTION: FFI-T-MAKEADDR inet_makeaddr ( n n ^u8 -- ) 4 STRUCT-RESULT ;FUNCTION
+FUNCTION: FFI-T-DIV div ( n n ^u8 -- ) 8 STRUCT-RESULT ;FUNCTION
+FUNCTION: FFI-T-LLDIV12 lldiv ( n n ^u8 -- ) 12 STRUCT-RESULT ;FUNCTION
+FUNCTION: FFI-T-LLDIV lldiv ( n n ^u8 -- ) 16 STRUCT-RESULT ;FUNCTION
 
 STRUCT-FIXTURE:SELECT
-FUNCTION: FFI-T-TIME24 hb_time24 ( n n ptr u8 -- ) 24 STRUCT-RESULT ;FUNCTION
-FUNCTION: FFI-T-TIME24-EPOCH hb_time24_epoch ( n n n ptr u8 -- )
+FUNCTION: FFI-T-TIME24 hb_time24 ( n n ^u8 -- ) 24 STRUCT-RESULT ;FUNCTION
+FUNCTION: FFI-T-TIME24-EPOCH hb_time24_epoch ( n n n ^u8 -- )
    24 STRUCT-RESULT
 ;FUNCTION
-FUNCTION: FFI-T-TIME24-SECONDS hb_time24_seconds ( r n ptr u8 -- )
+FUNCTION: FFI-T-TIME24-SECONDS hb_time24_seconds ( r n ^u8 -- )
    24 STRUCT-RESULT
 ;FUNCTION
 
 \ Eight C arguments fill x0-x7 and the destination rides x8, so this shape is
 \ admitted; it is declared only, never called.
-FUNCTION: FFI-T-SR-FULL habu-no-such-struct ( n n n n n n n n ptr u8 -- )
+FUNCTION: FFI-T-SR-FULL habu-no-such-struct ( n n n n n n n n ^u8 -- )
    32 STRUCT-RESULT
 ;FUNCTION
 
@@ -47,7 +47,7 @@ create FFI-T-SR-BUF 64 allot
 \ The destination is the buffer's first 16-byte-aligned address past its
 \ first cell, leaving a leading canary of 8 or 16 bytes.
 : FFI-T-SR-OFF ( -- n ) 16 FFI-T-SR-BUF FFI:>CELL 15 and - ;
-: FFI-T-SR-DST ( -- ptr u8 ) FFI-T-SR-BUF FFI-T-SR-OFF + ;
+: FFI-T-SR-DST ( -- ^u8 ) FFI-T-SR-BUF FFI-T-SR-OFF + ;
 
 : FFI-T-SR-RESET ( -- )
    64 0 do FFI-T-SR-FILL FFI-T-SR-BUF i + c! loop ;
@@ -65,26 +65,26 @@ create FFI-T-SR-BUF 64 allot
    24 FFI-T-SR-CANARIES ;
 
 : FFI-T-SR-ZERO ( -- )
-   s" FUNCTION: FFI-T-SRX2 div ( n n ptr u8 -- ) 0 STRUCT-RESULT ;FUNCTION" evaluate-closed ;
+   s" FUNCTION: FFI-T-SRX2 div ( n n ^u8 -- ) 0 STRUCT-RESULT ;FUNCTION" evaluate-closed ;
 : FFI-T-SR-OUTPUT ( -- )
-   s" FUNCTION: FFI-T-SRX3 div ( n n ptr u8 -- n ) 8 STRUCT-RESULT ;FUNCTION" evaluate-closed ;
+   s" FUNCTION: FFI-T-SRX3 div ( n n ^u8 -- n ) 8 STRUCT-RESULT ;FUNCTION" evaluate-closed ;
 : FFI-T-SR-NOT-LAST ( -- )
-   s" FUNCTION: FFI-T-SRX4 div ( n ptr u8 n -- ) 8 STRUCT-RESULT ;FUNCTION" evaluate-closed ;
+   s" FUNCTION: FFI-T-SRX4 div ( n ^u8 n -- ) 8 STRUCT-RESULT ;FUNCTION" evaluate-closed ;
 : FFI-T-SR-NO-INPUT ( -- )
    s" FUNCTION: FFI-T-SRX5 div ( -- ) 8 STRUCT-RESULT ;FUNCTION" evaluate-closed ;
 : FFI-T-SR-TWICE ( -- )
-   s" FUNCTION: FFI-T-SRX6 div ( n n ptr u8 -- ) 8 STRUCT-RESULT 8 STRUCT-RESULT ;FUNCTION"
+   s" FUNCTION: FFI-T-SRX6 div ( n n ^u8 -- ) 8 STRUCT-RESULT 8 STRUCT-RESULT ;FUNCTION"
    evaluate-closed ;
 : FFI-T-SR-VARIADIC-BEFORE ( -- )
-   s" FUNCTION: FFI-T-SRX7 div ( n n ptr u8 -- ) 1 VARIADIC 8 STRUCT-RESULT ;FUNCTION"
+   s" FUNCTION: FFI-T-SRX7 div ( n n ^u8 -- ) 1 VARIADIC 8 STRUCT-RESULT ;FUNCTION"
    evaluate-closed ;
 : FFI-T-SR-VARIADIC-AFTER ( -- )
-   s" FUNCTION: FFI-T-SRX8 div ( n n ptr u8 -- ) 8 STRUCT-RESULT 1 VARIADIC ;FUNCTION"
+   s" FUNCTION: FFI-T-SRX8 div ( n n ^u8 -- ) 8 STRUCT-RESULT 1 VARIADIC ;FUNCTION"
    evaluate-closed ;
 : FFI-T-SR-OUTSIDE ( -- )
    s" 8 STRUCT-RESULT" evaluate-closed ;
 : FFI-T-SR-INPUTS ( -- )
-   s" FUNCTION: FFI-T-SRXC div ( n n n n n n n n n n n n n n n n ptr u8 -- ) 32 STRUCT-RESULT ;FUNCTION"
+   s" FUNCTION: FFI-T-SRXC div ( n n n n n n n n n n n n n n n n ^u8 -- ) 32 STRUCT-RESULT ;FUNCTION"
    evaluate-closed ;
 
 : FFI-T-STRUCT-RESULTS ( -- )
@@ -137,7 +137,7 @@ create FFI-T-SR-BUF 64 allot
    [: FFI-T-SR-OUTPUT ;]
    s" error[E-FFI-SYNTAX]: STRUCT-RESULT with a declared output" FFI-T-RECORD
    [: FFI-T-SR-NOT-LAST ;]
-   s" error[E-FFI-SYNTAX]: the clause names an input that is not ptr u8" FFI-T-RECORD
+   s" error[E-FFI-SYNTAX]: the clause names an input that is not ^u8" FFI-T-RECORD
    [: FFI-T-SR-NO-INPUT ;]
    s" error[E-FFI-SYNTAX]: STRUCT-RESULT with no input to write to" FFI-T-RECORD
    [: FFI-T-SR-TWICE ;]

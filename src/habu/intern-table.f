@@ -12,8 +12,8 @@ private
 variable HV
 
 \ FNV-1a; the top bit can run into the sign.
-: FNV ( ptr u8 n -- n )
-   {: a:ptr u:n :}
+: FNV ( ^u8 n -- n )
+   {: a:^ u:n :}
    $811C9DC5 HV !
    u 0 ?do
       a i + c@ HV @ xor  $1000193 *  HV !
@@ -25,9 +25,9 @@ variable HV
 \ highest text's end; addresses are distances from NULL-PTR, 0 for none.
 1024 constant FIRST-SLOTS
 
-: SIZE-CELL ( ptr n -- ptr n ) cell+ ;              \ a power of two
-: FILLED-CELL ( ptr n -- ptr n ) cell+ cell+ ;
-: HIGHEST-CELL ( ptr n -- ptr n ) 3 cells + ;
+: SIZE-CELL ( ^n -- ^n ) cell+ ;              \ a power of two
+: FILLED-CELL ( ^n -- ^n ) cell+ cell+ ;
+: HIGHEST-CELL ( ^n -- ^n ) 3 cells + ;
 
 \ These cells name memory this process mapped, so a save writes them null and
 \ the saved program's TABLE maps a fresh table.
@@ -39,25 +39,25 @@ create OWN-TABLE here scratch-cell-mark 4 cells allot
 : IMAGE-BASE ( -- n ) data-base BOOT:IMAGE-BASE-CELL + @ ;
 : SPACE? ( -- bool ) IMAGE-BASE 0 <> ;
 
-: CELL-AT ( n n -- ptr n )
+: CELL-AT ( n n -- ^n )
    {: base:n k:n :}
    NULL-PTR BYTE-VIEW base + k cells + CELL-VIEW ;
 
 
-: SLOT-CELL ( ptr n n -- ptr n )
-   {: t:ptr k:n :}
+: SLOT-CELL ( ^n n -- ^n )
+   {: t:^ k:n :}
    t @ k CELL-AT ;
 
 
 \ A slot holds a body's address, 0 when empty; the length is the cell before it.
-: BODY$ ( n -- ptr u8 n )
+: BODY$ ( n -- ^u8 n )
    {: body:n :}
    NULL-PTR BYTE-VIEW body +
    body CELL - 0 CELL-AT @ ;
 
 
-: SLOT-ENDS? ( n ptr n ptr u8 n -- bool )
-   {: k:n t:ptr a:ptr u:n :}
+: SLOT-ENDS? ( n ^n ^u8 n -- bool )
+   {: k:n t:^ a:^ u:n :}
    t k SLOT-CELL @ {: body:n :}
    body 0= if 0 0= exit then
    body BODY$ a u CORE-STR= ;
@@ -65,15 +65,15 @@ create OWN-TABLE here scratch-cell-mark 4 cells allot
 
 \ The slot holding the body equal to a u, else the empty slot it goes in: one
 \ exists, since a table is never more than half full (LAY).
-: SLOT-FOR ( ptr n ptr u8 n -- n )
-   {: t:ptr a:ptr u:n :}
+: SLOT-FOR ( ^n ^u8 n -- n )
+   {: t:^ a:^ u:n :}
    t SIZE-CELL @ 1- {: mask:n :}
    a u FNV mask and
    begin dup t a u SLOT-ENDS? 0= while 1+ mask and repeat ;
 
 
-: SLOT-PUT ( ptr n n -- )
-   {: t:ptr body:n :}
+: SLOT-PUT ( ^n n -- )
+   {: t:^ body:n :}
    body  t  t body BODY$ SLOT-FOR  SLOT-CELL !
    1 t FILLED-CELL +!
    body BODY$ nip body +  t HIGHEST-CELL @  max  t HIGHEST-CELL ! ;
@@ -92,16 +92,16 @@ create OWN-TABLE here scratch-cell-mark 4 cells allot
    then ;
 
 
-: TABLE-OPEN ( ptr n -- )
-   {: t:ptr :}
+: TABLE-OPEN ( ^n -- )
+   {: t:^ :}
    FIRST-SLOTS TABLE-MAP t !
    FIRST-SLOTS t SIZE-CELL !
    0 t FILLED-CELL !
    0 t HIGHEST-CELL ! ;
 
 
-: WIDEN ( ptr n -- )
-   {: t:ptr :}
+: WIDEN ( ^n -- )
+   {: t:^ :}
    t @ {: old:n :}
    t SIZE-CELL @ {: slots:n :}
    slots 2 * TABLE-MAP t !
@@ -117,14 +117,14 @@ create OWN-TABLE here scratch-cell-mark 4 cells allot
 
 \ One `allot` bounds and zeroes the length cell, the text and the byte past it;
 \ no `,`, so the cell never joins a created body's grid. It ends aligned.
-: LAY ( ptr n ptr u8 n -- n )
-   {: t:ptr a:ptr u:n :}
+: LAY ( ^n ^u8 n -- n )
+   {: t:^ a:^ u:n :}
    t FILLED-CELL @ 1+ 2 *  t SIZE-CELL @ > if t WIDEN then
    POINTER-STORAGE:ALIGN-APART here NULL-PTR - {: head:n :}
    CELL u 1 + + allot
    u head 0 CELL-AT !
    head CELL + {: address:n :}
-   NULL-PTR BYTE-VIEW address + {: dst:ptr :}
+   NULL-PTR BYTE-VIEW address + {: dst:^ :}
    u 0 ?do a i + c@ dst i + c! loop
    align
    t address SLOT-PUT
@@ -157,7 +157,7 @@ private
    IMAGE-BASE SPACE-IMAGE ! ;
 
 
-: TABLE ( -- ptr n )
+: TABLE ( -- ^n )
    SPACE? if
       SPACE-IMAGE @ IMAGE-BASE <> if SPACE-OPEN then
       SPACE-TABLE exit
@@ -175,13 +175,13 @@ private
 
 
 \ The first empty slot; one exists, since a table is never more than half full.
-: EMPTY-SLOT ( ptr n -- n )
-   {: t:ptr :}
+: EMPTY-SLOT ( ^n -- n )
+   {: t:^ :}
    0 begin t over SLOT-CELL @ 0 <> while 1+ repeat ;
 
 
-: SLOT-KEEP ( ptr n n n -- )
-   {: t:ptr k:n limit:n :}
+: SLOT-KEEP ( ^n n n -- )
+   {: t:^ k:n limit:n :}
    t k SLOT-CELL @ {: body:n :}
    body 0= if exit then
    0 t k SLOT-CELL !
@@ -191,8 +191,8 @@ private
 \ The address cell comes first: the other cells mean nothing while it is 0.
 \ The rehash starts after an empty slot: a cleared slot would cut a later
 \ body's probe chain unless every body after it in its cluster is put back.
-: TABLE-CUT ( ptr n n -- )
-   {: t:ptr limit:n :}
+: TABLE-CUT ( ^n n -- )
+   {: t:^ limit:n :}
    t @ 0= if exit then
    t HIGHEST-CELL @ limit <= if exit then
    t EMPTY-SLOT {: e:n :}
@@ -207,15 +207,15 @@ public
 
 \ The address of the body equal to a u in the current table, as its distance
 \ from NULL-PTR (DP-CELL's units); 0 when none.
-: FIND ( ptr u8 n -- n )
-   {: a:ptr u:n :}
+: FIND ( ^u8 n -- n )
+   {: a:^ u:n :}
    REWIND-REFUSE
-   TABLE {: t:ptr :}
+   TABLE {: t:^ :}
    t  t a u SLOT-FOR  SLOT-CELL @ ;
 
 
-: TEXT ( ptr u8 n -- n )
-   {: a:ptr u:n :}
+: TEXT ( ^u8 n -- n )
+   {: a:^ u:n :}
    a u FIND {: body:n :}
    body 0 <> if body exit then
    TABLE a u LAY ;
@@ -233,7 +233,7 @@ public
 private
 
 \ src/habu/intern.f STRING's entry while SPACE? holds.
-: SPACE-STRING ( ptr u8 n -- n ) TEXT ;
+: SPACE-STRING ( ^u8 n -- n ) TEXT ;
 
 
 \ src/habu/intern.f ADOPT's entry while SPACE? holds: puts a body the space's data
@@ -241,7 +241,7 @@ private
 \ nothing and answers that body.
 : SPACE-ADOPT ( n -- n )
    {: body:n :}
-   TABLE {: t:ptr :}
+   TABLE {: t:^ :}
    t  t body BODY$ SLOT-FOR  SLOT-CELL @ {: held:n :}
    held 0 <> if held exit then
    t FILLED-CELL @ 1+ 2 *  t SIZE-CELL @ > if t WIDEN then

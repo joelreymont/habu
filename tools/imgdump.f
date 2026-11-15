@@ -31,7 +31,7 @@ require src/os/linux-x86-64/target-layout.f
 
 package IMAGE-DUMP
 
-TYPED-VARIABLE IB ptr u8                     \ image buffer
+TYPED-VARIABLE IB ^u8                     \ image buffer
 variable IL                                  \ image length
 variable MACHO
 variable IFD
@@ -41,9 +41,9 @@ variable RUNV  variable BESTO  variable BESTN
 variable XTBASE
 variable HN  variable ISZ
 variable A-N  variable CMP-NAME-LEN-DIFF  variable CMP-OFF-DIFF  variable CMP-IDX
-TYPED-VARIABLE CMP-B0-P ptr u8
+TYPED-VARIABLE CMP-B0-P ^u8
 variable CMP-B0-U  variable CMP-B0-S  variable CMP-B0-L
-TYPED-VARIABLE CMP-BAD-P ptr u8
+TYPED-VARIABLE CMP-BAD-P ^u8
 variable CMP-BAD-IDX  variable CMP-BAD-U  variable CMP-BAD-L
 variable PCV
 variable NUM-I  variable NUM-ACC  variable NUM-DIG
@@ -66,31 +66,31 @@ $38 constant ELF-PHNUM-OFF
 $40 constant ELF-EHDR-BYTES
 56 constant ELF-PHDR-BYTES
 
-DICT-CAP TYPED-BUFFER A-NAME-P-SLOT ptr u8   \ one dictionary name start per row
+DICT-CAP TYPED-BUFFER A-NAME-P-SLOT ^u8   \ one dictionary name start per row
 create A-NAME-U DICT-CAP cells allot
 create A-START DICT-CAP cells allot
 create A-LEN DICT-CAP cells allot
 
-: IB@ ( -- ptr u8 )
+: IB@ ( -- ^u8 )
    IB @ ;
 
-: IB! ( ptr u8 -- )
+: IB! ( ^u8 -- )
    IB ! ;
 
 \ mmap answers the mapping's address as an integer; a failed map dies first.
-CAST: MAP>BYTES ( n -- ptr u8 )
-: IMG-MMAP-PTR ( n -- ptr u8 )
+CAST: MAP>BYTES ( n -- ^u8 )
+: IMG-MMAP-PTR ( n -- ^u8 )
    dup 0 < IF IFD @ close s" imgdump: mmap failed" 74 die THEN MAP>BYTES ;
 
 : IMG-USAGE ( -- )
    s" usage: bin/hb --load tools/imgdump.f -- image [image2] | --pc image pc [pc ...] | --wid image name" 64 die ;
 
-: IMG-PATH$ ( -- ptr u8 n )
+: IMG-PATH$ ( -- ^u8 n )
    SCRIPT-ARGC 1 < if IMG-USAGE then
    SCRIPT-ARGC 2 > if IMG-USAGE then
    0 SCRIPT-ARGV$ ;
 
-: READ-IMG-PATH ( ptr u8 n -- )
+: READ-IMG-PATH ( ^u8 n -- )
    FS:OPEN-SIZED 0= IF 2drop s" imgdump: open failed" 74 die THEN
    ISZ !  FD>N IFD !
    ISZ @ 0 > 0= IF IFD @ close s" imgdump: empty image" 74 die THEN
@@ -111,7 +111,7 @@ create EB 4 allot
 create HB 24 allot
 variable HV  variable HP
 \ The view lives in HB and dies at the next call.
-: HEX$ {: u :} ( n -- ptr u8 n )
+: HEX$ {: u :} ( n -- ^u8 n )
    u HV !  20 HP !  0 HN !
    begin
      HP @ 1 - HP !
@@ -128,7 +128,7 @@ variable HV  variable HP
 
 \ ---- dict entry fields ----
 : I@ ( n -- n ) {: o :}
-   IB@ o + {: p:ptr :}
+   IB@ o + {: p:^ :}
    p c@
    p 1 + c@ 8 lshift or
    p 2 + c@ 16 lshift or
@@ -219,7 +219,7 @@ variable HV  variable HP
 variable OKV
 \ FIND-DICT asks this at every 4-byte offset, where a garbage length can be 2^44: the loop
 \ stops at the first byte that is not printable ASCII.
-: PRN? {: a:ptr u :} ( ptr u8 n -- bool )     \ a..a+u all printable ascii?
+: PRN? {: a:^ u :} ( ^u8 n -- bool )     \ a..a+u all printable ascii?
    1 OKV !
    0 begin dup u < OKV @ 0<> and while
      dup a + c@ 32 >  OKV @ and
@@ -257,7 +257,7 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
    off IL @ > if -1 exit then
    o E-L IL @ off - > if -1 exit then
    off ;
-: E-NAME ( n -- ptr u8 n )
+: E-NAME ( n -- ^u8 n )
    {: o:n :}
    o E-NAME-OFF dup 0 < if s" imgdump: name out of range" 74 die then
    IB@ +  o E-L ;
@@ -380,11 +380,11 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
    READ-XTBASE XTBASE !
    FIND-DICT ;
 
-: A-NAME-P! ( ptr u8 n -- ) A-NAME-P-SLOT ! ;
+: A-NAME-P! ( ^u8 n -- ) A-NAME-P-SLOT ! ;
 : A-NAME-U! ( n n -- ) cells A-NAME-U + ! ;
 : A-START! ( n n -- ) cells A-START + ! ;
 : A-LEN! ( n n -- ) cells A-LEN + ! ;
-: A-NAME-P@ ( n -- ptr u8 ) A-NAME-P-SLOT @ ;
+: A-NAME-P@ ( n -- ^u8 ) A-NAME-P-SLOT @ ;
 : A-NAME-U@ ( n -- n ) cells A-NAME-U + @ ;
 : A-START@ ( n -- n ) cells A-START + @ ;
 : A-LEN@ ( n -- n ) cells A-LEN + @ ;
@@ -399,12 +399,12 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
    c 48 >= c 57 <= and if c 48 - OPTION:SOME exit then
    OPTION:NONE ;
 
-: HEX-BODY ( ptr u8 n -- ptr u8 n bool ) {: a:ptr u :}
+: HEX-BODY ( ^u8 n -- ^u8 n bool ) {: a:^ u :}
    u 1 > if a c@ 36 = if a 1 + u 1 - 0 0= exit then then
    u 2 > if a c@ 48 = a 1 + c@ 120 = and if a 2 + u 2 - 0 0= exit then then
    a u 0 0= 0= ;
 
-: PARSE-HEX ( ptr u8 n -- option<n> ) {: a:ptr u:n :}   \ SOME parsed hex value, else NONE
+: PARSE-HEX ( ^u8 n -- option<n> ) {: a:^ u:n :}   \ SOME parsed hex value, else NONE
    u 0= if OPTION:NONE exit then
    0 NUM-I !
    0 NUM-ACC !
@@ -418,7 +418,7 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
    repeat
    NUM-ACC @ OPTION:SOME ;
 
-: PARSE-DEC ( ptr u8 n -- option<n> ) {: a:ptr u:n :}   \ SOME parsed decimal value, else NONE
+: PARSE-DEC ( ^u8 n -- option<n> ) {: a:^ u:n :}   \ SOME parsed decimal value, else NONE
    u 0= if OPTION:NONE exit then
    0 NUM-I !
    0 NUM-ACC !
@@ -432,7 +432,7 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
    repeat
    NUM-ACC @ OPTION:SOME ;
 
-: IMG>NUMBER? ( ptr u8 n -- option<n> )   \ SOME parsed $hex/0xhex/decimal, else NONE
+: IMG>NUMBER? ( ^u8 n -- option<n> )   \ SOME parsed $hex/0xhex/decimal, else NONE
    HEX-BODY if PARSE-HEX exit then
    PARSE-DEC ;
 

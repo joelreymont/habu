@@ -26,13 +26,13 @@ PATH-CAP BUFFER: SRC      variable SRC-U
 PATH-CAP BUFFER: PROG     variable PROG-U
 20 SPAN-BUFFER: HEAD
 
-: DIR$ ( -- ptr u8 n ) DIR DIR-U @ ;
-: OUT-DIR$ ( -- ptr u8 n ) OUT-DIR OUT-DIR-U @ ;
-: EXE$ ( -- ptr u8 n ) EXE EXE-U @ ;
-: SRC$ ( -- ptr u8 n ) SRC SRC-U @ ;
-: PROG$ ( -- ptr u8 n ) PROG PROG-U @ ;
+: DIR$ ( -- ^u8 n ) DIR DIR-U @ ;
+: OUT-DIR$ ( -- ^u8 n ) OUT-DIR OUT-DIR-U @ ;
+: EXE$ ( -- ^u8 n ) EXE EXE-U @ ;
+: SRC$ ( -- ^u8 n ) SRC SRC-U @ ;
+: PROG$ ( -- ^u8 n ) PROG PROG-U @ ;
 
-: ELF-MAG ( -- ptr u8 n ) s\" \x7FELF" ;
+: ELF-MAG ( -- ^u8 n ) s\" \x7FELF" ;
 
 : SHOW ( CMD:command n -- CMD:command )
    {: rc:n :}
@@ -40,8 +40,8 @@ PATH-CAP BUFFER: PROG     variable PROG-U
    s" stdout: " type CMD:OUT$ type cr  s" stderr: " type CMD:ERR$ type cr ;
 
 \ What to build, `--engine` or a source path, and the path it writes.
-: BUILD ( CMD:command ptr u8 n ptr u8 n -- CMD:command n )
-   {: w:ptr wu:n o:ptr ou:n :}
+: BUILD ( CMD:command ^u8 n ^u8 n -- CMD:command n )
+   {: w:^ wu:n o:^ ou:n :}
    CMD:RESET
    s" --load" CMD:ARG+  s" tools/hb-build.f" CMD:ARG+  s" --" CMD:ARG+
    s" --target" CMD:ARG+  s" linux-aarch64" CMD:ARG+  w wu CMD:ARG+
@@ -56,7 +56,7 @@ PATH-CAP BUFFER: PROG     variable PROG-U
       eof OF drop false ENDOF
    ;MATCH ;
 
-: READ-HEAD ( ptr u8 n -- bool )
+: READ-HEAD ( ^u8 n -- bool )
    FS:OPEN-SIZED {: f:fd size:n found:bool :}
    found 0= if false exit then
    [: f HEAD-READ ;] [: f FD>N close ;] finally ;
@@ -68,14 +68,14 @@ PATH-CAP BUFFER: PROG     variable PROG-U
    rc 0<> if exit then
    s" the engine holds an ELF header's first 20 bytes" T-LABEL
    EXE$ READ-HEAD dup TTRUE 0= if exit then
-   HEAD SPAN:$ drop {: h:ptr :}
+   HEAD SPAN:$ drop {: h:^ :}
    s" the engine starts with the ELF magic" T-LABEL  h 4 ELF-MAG T$=
    s" the engine is for AArch64" T-LABEL  h 18 + LE:U16@ EM-AARCH64 T= ;
 
 \ A callback's accessor compiles under the target's shadow only in a program:
 \ the engine declares no CALLBACK:.
-: PROGRAM-SOURCE$ ( -- ptr u8 n )
-   S\" require src/lib/ffi-callback.f\nCALLBACK: CMP ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK\n: MAIN ( -- ) ;\n" ;
+: PROGRAM-SOURCE$ ( -- ^u8 n )
+   S\" require src/lib/ffi-callback.f\nCALLBACK: CMP ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK\n: MAIN ( -- ) ;\n" ;
 
 : PROGRAM-CASE ( CMD:command -- CMD:command )
    SRC$ PROGRAM-SOURCE$ FS:WRITE-ALL
@@ -89,8 +89,8 @@ PATH-CAP BUFFER: PROG     variable PROG-U
    HEAD SPAN:$ drop 4 ELF-MAG T$= ;
 
 \ The same program, binding its callback on line 3.
-: BIND-SOURCE$ ( -- ptr u8 n )
-   S\" require src/lib/ffi-callback.f\nCALLBACK: CMP ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK\nCMP TASK:SELF-CONTEXT FFI-CB:ENTRY drop\n: MAIN ( -- ) ;\n" ;
+: BIND-SOURCE$ ( -- ^u8 n )
+   S\" require src/lib/ffi-callback.f\nCALLBACK: CMP ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK\nCMP TASK:SELF-CONTEXT FFI-CB:ENTRY drop\n: MAIN ( -- ) ;\n" ;
 
 : BIND-CASE ( CMD:command -- CMD:command )
    SRC$ BIND-SOURCE$ FS:WRITE-ALL
@@ -111,7 +111,7 @@ public
 
 : RUN ( -- )
    T-RESET
-   s" habu-linux-engine-build" FS:MKTEMP-DIR {: a:ptr u:n :}
+   s" habu-linux-engine-build" FS:MKTEMP-DIR {: a:^ u:n :}
    a DIR u BYTE-COPY  u DIR-U !
    DIR$ s" out" OUT-DIR FS:JOIN-PATH OUT-DIR-U !
    DIR$ s" hb" EXE FS:JOIN-PATH EXE-U !

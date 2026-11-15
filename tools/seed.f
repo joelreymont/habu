@@ -45,7 +45,7 @@ variable SEED-LAST
 : SEED-RC0 ( n -- )
    0 <> if E-BUILD-STATUS throw then ;
 
-: SEED-EXPECT-FILE ( ptr u8 n -- ) {: a:ptr u :}
+: SEED-EXPECT-FILE ( ^u8 n -- ) {: a:^ u :}
    u 0 <= if E-BUILD-PATH throw then
    a u FS:FILE? 0= if E-BUILD-PATH throw then ;
 
@@ -55,7 +55,7 @@ variable SEED-LAST
    c 65 >= c 70 <= and if SEED-TRUE exit then
    SEED-FALSE ;
 
-: SEED-HEX64? ( ptr u8 n -- bool ) {: a:ptr u :}
+: SEED-HEX64? ( ^u8 n -- bool ) {: a:^ u :}
    u SEED-SHA256-HEX-U <> if SEED-FALSE exit then
    0 begin dup u < while
       dup a + c@ SEED-HEX-DIGIT? 0= if drop SEED-FALSE exit then
@@ -67,7 +67,7 @@ variable SEED-LAST
    c 65 >= c 70 <= and if c 32 + exit then
    c ;
 
-: SEED-HEX= ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u b:ptr v :}
+: SEED-HEX= ( ^u8 n ^u8 n -- bool ) {: a:^ u b:^ v :}
    u v <> if SEED-FALSE exit then
    0 begin dup u < while
       dup a + c@ SEED-LOWER-HEX
@@ -81,19 +81,19 @@ variable SEED-LAST
    SHA-E-OPEN = if E-BUILD-PATH throw then
    E-FS-IO throw ;
 
-: SEED-VERIFY-SHA256 ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu expect:ptr expectu :}
+: SEED-VERIFY-SHA256 ( ^u8 n ^u8 n -- ) {: path:^ pathu expect:^ expectu :}
    expect expectu SEED-HEX64? 0= if E-BUILD-SOURCE throw then
    SEED-FSHA-CTX path pathu SEED-SHA-HEX SHA256-FILE-HEX-IN SEED-SHA-RC0
    SEED-SHA-HEX SEED-SHA256-HEX-U expect expectu SEED-HEX= 0= if
       E-BUILD-SOURCE throw
    then ;
 
-: SEED-VERIFY-OPTIONAL-SHA256 ( ptr u8 n -- ) {: path:ptr pathu :}
-   s" HABU_SEED_SHA256" GETENV {: expect:ptr expectu :}
+: SEED-VERIFY-OPTIONAL-SHA256 ( ^u8 n -- ) {: path:^ pathu :}
+   s" HABU_SEED_SHA256" GETENV {: expect:^ expectu :}
    expectu 0= if exit then
    path pathu expect expectu SEED-VERIFY-SHA256 ;
 
-: SEED-LAST-SLASH ( ptr u8 n -- n ) {: a:ptr u :}
+: SEED-LAST-SLASH ( ^u8 n -- n ) {: a:^ u :}
    -1 SEED-LAST !
    0 begin dup u < while
       dup a + c@ SEED-SLASH = if dup SEED-LAST ! then
@@ -101,24 +101,24 @@ variable SEED-LAST
    repeat drop
    SEED-LAST @ ;
 
-: SEED-MAKE-PARENT-DIRS ( ptr u8 n -- ) {: a:ptr u :}
+: SEED-MAKE-PARENT-DIRS ( ^u8 n -- ) {: a:^ u :}
    a u SEED-LAST-SLASH {: idx :}
    idx 0 > if a idx FS:MAKE-DIRS then ;
 
-: SEED-FILL ( ptr u8 n ptr u8 n -- ptr u8 n )
-   {: src:ptr srcu tmp:ptr tmpu :}
+: SEED-FILL ( ^u8 n ^u8 n -- ^u8 n )
+   {: src:^ srcu tmp:^ tmpu :}
    src srcu tmp tmpu FS:COPY-FILE-STREAM
    tmp tmpu FS:CHMOD-X
    src srcu ;
 
-: SEED-INSTALL ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu dst:ptr dstu :}
+: SEED-INSTALL ( ^u8 n ^u8 n -- ) {: src:^ srcu dst:^ dstu :}
    src srcu SEED-EXPECT-FILE
    dstu 0 <= if E-BUILD-PATH throw then
    dst dstu SEED-MAKE-PARENT-DIRS
    src srcu dst dstu [: SEED-FILL ;] FS:REPLACE-STAGED 2drop
    dst dstu CODESIGN:VERIFY ;
 
-: SEED-SMOKE-OUT-OK? ( ptr u8 n -- bool ) {: a:ptr u :}
+: SEED-SMOKE-OUT-OK? ( ^u8 n -- bool ) {: a:^ u :}
    u 4 <> if SEED-FALSE exit then
    a c@ 52 <> if SEED-FALSE exit then
    a 1 + c@ 50 <> if SEED-FALSE exit then
@@ -129,11 +129,11 @@ variable SEED-LAST
 : SEED-EXPECT-NO-STDERR ( n -- )
    0 <> if E-BUILD-STATUS throw then ;
 
-: SEED-OUT ( ptr u8 n -- )
+: SEED-OUT ( ^u8 n -- )
    dup 0 <= if 2drop exit then
    1 -rot write drop ;
 
-: SEED-ERR ( ptr u8 n -- )
+: SEED-ERR ( ^u8 n -- )
    dup 0 <= if 2drop exit then
    2 -rot write drop ;
 
@@ -146,7 +146,7 @@ variable SEED-LAST
    erru LEN>N SEED-EXPECT-NO-STDERR
    SEED-SMOKE-OUT outu LEN>N SEED-SMOKE-OUT-OK? 0= if E-BUILD-STATUS throw then ;
 
-: SEED-SMOKE ( ptr u8 n -- ) {: hb:ptr hbu :}
+: SEED-SMOKE ( ^u8 n -- ) {: hb:^ hbu :}
    PROC-ARGV-RESET
    hb hbu >LEN SEED-SMOKE-IN SEED-SMOKE-IN-U >LEN
    SEED-SMOKE-OUT SEED-SMOKE-OUT-CAP >LEN
@@ -156,7 +156,7 @@ variable SEED-LAST
      err OF PCAP-FAILED:UNMAKE  SEED-SMOKE-CHECK ENDOF
    ;MATCH ;
 
-: SEED-ARGV+ ( ptr u8 n -- )
+: SEED-ARGV+ ( ^u8 n -- )
    >LEN PROC-ARGV+ ;
 
 : SEED-PREPARE-BUILD-ARGV ( -- )
@@ -168,7 +168,7 @@ variable SEED-LAST
    s" -o"  >LEN PROC-ARGV+
    s" bin/hb"  >LEN PROC-ARGV+ ;
 
-: SEED-RUN-BUILD ( ptr u8 n -- ) {: hb:ptr hbu :}
+: SEED-RUN-BUILD ( ^u8 n -- ) {: hb:^ hbu :}
    SEED-PREPARE-BUILD-ARGV
    hb hbu >LEN
    SEED-BUILD-OUT SEED-BUILD-OUT-CAP >LEN
@@ -182,7 +182,7 @@ variable SEED-LAST
              E-BUILD-STATUS throw ENDOF
    ;MATCH ;
 
-: SEED-INSTALL-SMOKE-BUILD ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu dst:ptr dstu :}
+: SEED-INSTALL-SMOKE-BUILD ( ^u8 n ^u8 n -- ) {: src:^ srcu dst:^ dstu :}
    src srcu SEED-VERIFY-OPTIONAL-SHA256
    src srcu dst dstu SEED-INSTALL
    dst dstu SEED-SMOKE

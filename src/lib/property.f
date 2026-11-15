@@ -82,7 +82,7 @@ public
 : BUF-RESET ( -- )
    0 PROP-BUF-LEN ! ;
 
-: BUF+ ( ptr u8 n -- ) {: a:ptr u:n :}
+: BUF+ ( ^u8 n -- ) {: a:^ u:n :}
    u BUF-CHECK-ROOM
    0 begin dup u < while
       dup a + c@ PROP-BUF PROP-BUF-LEN @ + c!
@@ -102,7 +102,7 @@ public
    digit 9 > if E-PROP-GENERATOR throw then
    digit PROP-ZERO + BUF-C+ ;
 
-: BUF$ ( -- ptr u8 n )
+: BUF$ ( -- ^u8 n )
    PROP-BUF PROP-BUF-LEN @ ;
 
 ;package

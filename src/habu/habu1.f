@@ -32,7 +32,7 @@ require src/os/linux/elf.f
 package ENGINE-EMIT
 public
 variable STDIN?   0 0= 0= STDIN? !
-s" STDIN?" s" -- ptr bool" TRUST
+s" STDIN?" s" -- ^bool" TRUST
 ;package
 using ENGINE-EMIT
 using A64ASM
@@ -52,11 +52,11 @@ package ENGINE-EMIT
 PTR-VARIABLE FP-A  variable FP-U
 
 defer FP-EMIT ( -- )
-: FP-A@ ( -- ptr u8 ) FP-A @ ;
+: FP-A@ ( -- ^u8 ) FP-A @ ;
 
 variable FPL  variable FPE
 
-: FP-ARGS ( ptr u8 n [ -- ] -- )
+: FP-ARGS ( ^u8 n [ -- ] -- )
    is FP-EMIT  FP-U !  FP-A !
    FP-A@ FP-U @ ENGINE-PRIMS:SPEC-CHECK ;
 
@@ -64,7 +64,7 @@ variable FPL  variable FPE
    FP-A@ FP-U @ FPL LABEL@ FPE LABEL@ ENGINE-PRIMS:ADD ;
 
 public
-: FPRIM ( ptr u8 n [ -- ] -- )
+: FPRIM ( ^u8 n [ -- ] -- )
    FP-ARGS
    LBL FPL !  LBL FPE !
    FP-REG drop
@@ -73,7 +73,7 @@ public
 
 \ FPRIM-L only for a body that emits no BL or BLR of its own; any other body
 \ uses FPRIM, whose frame preserves the caller's return address in x30.
-: FPRIM-L ( ptr u8 n [ -- ] -- )      \ body preserves LR; stack guards frame their own BL
+: FPRIM-L ( ^u8 n [ -- ] -- )      \ body preserves LR; stack guards frame their own BL
    FP-ARGS
    LBL FPL !  LBL FPE !
    FP-REG drop
@@ -82,7 +82,7 @@ public
 private
 variable FP-WID
 
-: FPRIM-WID ( ptr u8 n [ -- ] n -- )
+: FPRIM-WID ( ^u8 n [ -- ] n -- )
    FP-WID !
    FP-ARGS
    LBL FPL !  LBL FPE !
@@ -1290,18 +1290,18 @@ private
 128 constant GUARD-MSG-CAP
 create GUARD-MSG GUARD-MSG-CAP allot
 TYPED-VARIABLE GUARD-MSG-U len
-: GUARD-MSG+ ( ptr u8 n -- )
+: GUARD-MSG+ ( ^u8 n -- )
    GUARD-MSG GUARD-MSG-CAP GUARD-MSG-U BUF-APPEND ;
 \ "`<name>` <rest>", held in GUARD-MSG until the next call.
-: GUARD-MSG$ ( ptr u8 n ptr u8 n -- ptr u8 n )
-   {: p:ptr pu:n r:ptr ru:n :}
+: GUARD-MSG$ ( ^u8 n ^u8 n -- ^u8 n )
+   {: p:^ pu:n r:^ ru:n :}
    GUARD-MSG-U BUF-RESET
    s" `" GUARD-MSG+  p pu GUARD-MSG+  s" ` " GUARD-MSG+
    r ru GUARD-MSG+
    GUARD-MSG GUARD-MSG-U BUF-LEN@ ;
 \ x3 = the lr, copied before FAULT-OPEN,'s calls replace x30.
-: GUARD-RECORD, ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
-   {: c:ptr cu:n p:ptr pu:n r:ptr ru:n h:ptr hu:n :}
+: GUARD-RECORD, ( ^u8 n ^u8 n ^u8 n ^u8 n -- )
+   {: c:^ cu:n p:^ pu:n r:^ ru:n h:^ hu:n :}
    3 30 0 ADDI,
    c cu  p pu r ru GUARD-MSG$  FAULT-OPEN,
    4 DBASE 0 ADDI,  6 NDICT 0 ADDI,  FAULT-IN,
@@ -1316,8 +1316,8 @@ public
 \ may reference. Each takes the code and the primitive's name and prints a
 \ record naming the primitive, its note `in` the word whose code holds the
 \ lr, so it runs before the body's first BL. Clobbers x9.
-: B-TASK-GUARD ( ptr u8 n ptr u8 n -- )
-   {: c:ptr cu:n p:ptr pu:n :}
+: B-TASK-GUARD ( ^u8 n ^u8 n -- )
+   {: c:^ cu:n p:^ pu:n :}
    LBL {: ok:label :}
    9 DATA TASK-TCB-CELL LDR,  9 ok CBZ,
       c cu p pu
@@ -1327,8 +1327,8 @@ public
    ok LBL, ;
 
 private
-: B-LOWER-GUARD ( ptr u8 n ptr u8 n -- )
-   {: c:ptr cu:n p:ptr pu:n :}
+: B-LOWER-GUARD ( ^u8 n ^u8 n -- )
+   {: c:^ cu:n p:^ pu:n :}
    LBL {: ok:label :}
    9 DATA TASKS-LIVE-CELL LDR,  9 ok CBZ,
       c cu p pu  s" ran while a task is live"
@@ -1529,7 +1529,7 @@ private
    s" E-TASK-COMPILE" s" create" B-TASK-GUARD
    15 0 MOVZ,  16 20 CREATEP-CELL LDR,  16 BLR, ;   \ ( "name" -- ) runtime CREATE via the
                                      \ startup-stored cell: subsets emit prims w/o labels;
-                                     \ LCREATE publishes the word's `-- ptr a` in both modes
+                                     \ LCREATE publishes the word's `-- ^a` in both modes
 
 : BEMIT ( -- )
    A G-POP  13 9 0 ADDI,  G-EMITC ;
@@ -1693,9 +1693,9 @@ private
    B G-POP A G-POP  A B 0 STRB, ;
 
 \ Atomic primitives (ARMv8.1 LSE). A=x9 B=x10 C=x11.
-: BATFETCH ( -- )   \ atomic@ ( ptr a -- a ) : LDAR x9,[x9]
+: BATFETCH ( -- )   \ atomic@ ( ^a -- a ) : LDAR x9,[x9]
    A G-POP  A A LDAR,  A G-PUSH ;
-: BATSTORE ( -- )   \ atomic! ( a ptr a -- ) : STLR x9,[x10]
+: BATSTORE ( -- )   \ atomic! ( a ^a -- ) : STLR x9,[x10]
    B G-POP A G-POP  A B STLR, ;
 : BATADD ( -- )     \ atomic-add ( delta addr -- old ) : LDADDAL x9,x9,[x10]
    B G-POP A G-POP  A A B LDADDAL,  A G-PUSH ;
@@ -1905,7 +1905,7 @@ private
 \ Fresh anonymous storage has no prior element type. The caller chooses the
 \ pointee type; the OS boundary returns a null pointer and -1 on failure.
 \ Darwin accepts a zero-length mmap; an empty extent owns no storage here.
-: BMAPANON ( -- )                      \ ( bytes -- ptr a ior )
+: BMAPANON ( -- )                      \ ( bytes -- ^a ior )
    LBL {: failed:label :}
    LBL {: done:label :}
    1 G-POP
@@ -2151,7 +2151,7 @@ $58 constant CBT-LR                     \ C's x30
 \ A callback rejection at the label, sp at the thunk's frame: its record with
 \ the slot and C's lr, which no word owns, then exit ENGINE-ERROR:CALLBACK.
 \ FAULT-OPEN, moves sp and the record writes no x3 or x4, so both are read first.
-: CBT-DIE, ( ptr u8 n ptr u8 n label -- ) {: msg:ptr mu:n help:ptr hu:n at:label :}
+: CBT-DIE, ( ^u8 n ^u8 n label -- ) {: msg:^ mu:n help:^ hu:n at:label :}
    at LBL,
    3 SP CBT-SLOT LDR,  4 SP CBT-LR LDR,
    s" E-CALLBACK" msg mu FAULT-OPEN,
@@ -2417,7 +2417,7 @@ package LIBC-OS
 \ x16 = the address the loader bound to the named import, from x16 = this
 \ run's __text base. Read on every call: an image saves no libc address.
 \ Clobbers x15, x17.
-: SLOT-AT, ( ptr u8 n -- ) {: name:ptr u:n :}
+: SLOT-AT, ( ^u8 n -- ) {: name:^ u:n :}
    15 CODE-OFF LIT64,  16 16 15 SUB,
    17 16 IMAGE-TEXT-SIZE-OFF LDR,
    HB-TARGET-LINUX? if
@@ -2430,7 +2430,7 @@ package LIBC-OS
       ENGINE-EMIT:TARGET-UNKNOWN
    then then ;
 
-: SLOT, ( ptr u8 n -- )   16 DATA RBASE-CELL LDR,  SLOT-AT, ;
+: SLOT, ( ^u8 n -- )   16 DATA RBASE-CELL LDR,  SLOT-AT, ;
 
 \ Copy [x1, x2) of the region to the same offsets x12 bytes away, a cell at a
 \ time; x1 and x2 are 8-byte aligned. Clobbers x1, x3, x4.
@@ -2442,8 +2442,8 @@ package LIBC-OS
    done LBL, ;
 
 \ The text's eight bytes from off as one little-endian cell, zero past len.
-: TEXT-CELL ( ptr u8 n n -- n )
-   {: a:ptr off:n len:n :}
+: TEXT-CELL ( ^u8 n n -- n )
+   {: a:^ off:n len:n :}
    0
    8 0 ?do
       8 lshift
@@ -2451,8 +2451,8 @@ package LIBC-OS
    loop ;
 
 \ Clobbers x0-x2, x9 and the system call's registers.
-: ERR-TEXT, ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: ERR-TEXT, ( ^u8 n -- )
+   {: a:^ u:n :}
    u 15 + -16 and {: frame:n :}
    SP SP frame SUBI,
    frame 8 / 0 ?do
@@ -3201,7 +3201,7 @@ private
    XDS SP 16 LDR,
    SP SP 32 ADDI, ;
 
-\ evaluate-closed ( ptr u8 n -- ): the text runs on a guarded stack of its own
+\ evaluate-closed ( ^u8 n -- ): the text runs on a guarded stack of its own
 \ from the CLOSED-FREE-CELL pool; this frame holds the caller's base, capacity
 \ and cursor at [0] [8] [16] and the text's stack at [24], which CLOSED-LEAVE
 \ reads. PROVIDED-XT:EVALUATE-CLOSED-CELL's word runs the text under this
@@ -3461,7 +3461,7 @@ private
 \ window cannot tell a word entry from another in-range address.
 : BSETCHECK ( -- )
    LBL LBL LBL LBL LBL LBL {: bad:label disarm:label kept:label armed:label done:label msg:label :}
-   S\" set-check: invalid checker xt\n" {: ma:ptr mu:n :}
+   S\" set-check: invalid checker xt\n" {: ma:^ mu:n :}
    A G-POP                               \ x9 = candidate xt
    9 disarm CBZ,
       9 DBASE CMP,  C-CC bad BCOND,
@@ -3541,8 +3541,8 @@ private
 : BSETPREFLIGHT ( -- )
    LBL LBL LBL LBL LBL LBL LBL
    {: bad:label invalid:label empty:label emit:label done:label msg:label invalid-msg:label :}
-   S\" set-preflight: invalid or replaced hook\n" {: ma:ptr mu:n :}
-   S\" set-preflight: invalid hook\n" {: ia:ptr iu:n :}
+   S\" set-preflight: invalid or replaced hook\n" {: ma:^ mu:n :}
+   S\" set-preflight: invalid hook\n" {: ia:^ iu:n :}
    A G-POP
    10 DATA COMPILE-PREFLIGHT-CELL LDR,
    10 empty CBZ,
@@ -3568,7 +3568,7 @@ private
 \ set-top-check ( xt -- ): install the top-row token hook.
 : BSETTOPCHECK ( -- )
    LBL LBL LBL LBL {: bad:label ok:label done:label msg:label :}
-   S\" set-top-check: invalid top-row hook xt\n" {: ma:ptr mu:n :}
+   S\" set-top-check: invalid top-row hook xt\n" {: ma:^ mu:n :}
    A G-POP                               \ x9 = candidate xt
    9 ok CBZ,
       9 DBASE CMP,  C-CC bad BCOND,
@@ -3712,7 +3712,7 @@ $748f82ee , $78a5636f , $84c87814 , $8cc70208 , $90befffa , $a4506ceb , $bef9a3f
    2 A LD2V,  2 2 0 ADD4S,  2 A ST2V,
    4 13 LD2V,  4 4 1 ADD4S,  4 13 ST2V, ;
 
-\ sha256-blocks ( ptr n ptr u8 n -- n ) state cells, bytes, block count: runs the
+\ sha256-blocks ( ^n ^u8 n -- n ) state cells, bytes, block count: runs the
 \ blocks through the SHA-256 instructions and answers the count, 0 where the CPU
 \ lacks them (every Apple arm64 CPU has them). A state cell holds its word in the
 \ low half, so LD2 splits four cells into the words and their zero halves.
@@ -3762,13 +3762,13 @@ private
 \ it loads the design; once POLICY-NDICT-CELL is set either prim writes the
 \ sealed record and exits ENGINE-ERROR:POLICY, so nothing the design can reach
 \ widens its own vocabulary.
-: POLICY-BOUND$ ( -- ptr u8 n ) s" E-POLICY habu: policy: package wid above the bound" ;
+: POLICY-BOUND$ ( -- ^u8 n ) s" E-POLICY habu: policy: package wid above the bound" ;
 
 \ x3 = the caller's lr, read from FPRIM's frame.
 : POLICY-LR, ( -- )  3 SP 0 LDR, ;
 
 \ Note `in` and help, the dictionary read through x26/x27; never returns.
-: POLICY-STOP, ( ptr u8 n -- ) {: h:ptr hu:n :}
+: POLICY-STOP, ( ^u8 n -- ) {: h:^ hu:n :}
    4 DBASE 0 ADDI,  6 NDICT 0 ADDI,  FAULT-IN,
    h hu ENGINE-ERROR:POLICY FAULT-STOP, ;
 
@@ -3781,7 +3781,7 @@ private
       s" admit every package before `VOCABULARY:RESTRICT`" POLICY-STOP,
    open LBL, ;
 
-\ policy-admit ( ptr u8 n -- ): admit the public wordlist of the package the
+\ policy-admit ( ^u8 n -- ): admit the public wordlist of the package the
 \ span names, found as a top-level `using` finds it.
 : BPOLICYADMIT ( -- )
    LBL LBL LBL {: found:label bounded:label walked:label :}
@@ -3963,7 +3963,7 @@ public
 ;package
 
 package ENGINE-EMIT
-\ `search-wl ( ptr u8 n n -- n )`: the routine above, minus one wordlist.
+\ `search-wl ( ^u8 n n -- n )`: the routine above, minus one wordlist.
 \ Engine-helper WID records and DNAME-INT records are never raw-searchable: the
 \ first are private implementation entries, and the second would otherwise let
 \ `search-wl execute` bypass the interpreter/tick internal-word gate. The refusal
@@ -3979,7 +3979,7 @@ package ENGINE-EMIT
    11 0 MOVZ,
    done LBL,  11 G-PUSH ;
 
-\ xref-search-wl ( ptr u8 n n -- ptr n ): the same lookup's record result.
+\ xref-search-wl ( ^u8 n n -- ^n ): the same lookup's record result.
 \ DNAME-INT and a trusted-only checker row restrict it to a trusted boundary;
 \ NDICT checks live callee visibility after resolving namespace records.
 : BCOMPILERSWL ( -- )
@@ -4001,7 +4001,7 @@ package ENGINE-EMIT
    PARSE-DONE LABEL@ LBL, ;
 ;package
 
-\ num-parse ( ptr u8 n -- n bool bool ): the engine's own number reader, the
+\ num-parse ( ^u8 n -- n bool bool ): the engine's own number reader, the
 \ LNUM routine. x11 is the value (a double's bits for a float), x2 whether it
 \ read a float, x12 whether it read a number. A refused spelling answers zero
 \ (the two ANDs): a syntax miss stops at the first unreadable byte (`12a`

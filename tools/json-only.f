@@ -13,23 +13,23 @@ variable JSON-ONLY-LEN
 variable JSON-ONLY-RD
 variable JSON-ONLY-IN-A
 
-: JSON-ONLY-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
+: JSON-ONLY-PTR-U8-FIELD ( ^a -- ^^u8 )
    0 ptr-field ;
 
-: JSON-ONLY-PTR-U8@ ( ptr a -- ptr u8 )
+: JSON-ONLY-PTR-U8@ ( ^a -- ^u8 )
    JSON-ONLY-PTR-U8-FIELD @ ;
 
-: JSON-ONLY-PTR-U8! ( ptr u8 ptr a -- )
+: JSON-ONLY-PTR-U8! ( ^u8 ^a -- )
    JSON-ONLY-PTR-U8-FIELD ! ;
 
-: JSON-ONLY-ALLOC-IN ( -- ptr u8 )
+: JSON-ONLY-ALLOC-IN ( -- ^u8 )
    JSON-ONLY-IN-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop ;
 
-: JSON-ONLY-IN ( -- ptr u8 )
+: JSON-ONLY-IN ( -- ^u8 )
    JSON-ONLY-IN-A @ 0= if JSON-ONLY-ALLOC-IN JSON-ONLY-IN-A JSON-ONLY-PTR-U8! then
    JSON-ONLY-IN-A JSON-ONLY-PTR-U8@ ;
 
-: JSON-ONLY-DST ( -- ptr u8 )
+: JSON-ONLY-DST ( -- ^u8 )
    JSON-ONLY-IN JSON-ONLY-LEN @ + ;
 
 : JSON-ONLY-ROOM ( -- n )
@@ -38,8 +38,8 @@ variable JSON-ONLY-IN-A
 : JSON-ONLY-READ-CHUNK ( -- )
    JSON-ONLY-FD @ JSON-ONLY-DST JSON-ONLY-ROOM read JSON-ONLY-RD ! ;
 
-: JSON-ONLY-READ-FILE ( ptr u8 n -- ptr u8 n )
-   {: a:ptr u :}
+: JSON-ONLY-READ-FILE ( ^u8 n -- ^u8 n )
+   {: a:^ u :}
    a u FS:>PATHZ 0 0 open JSON-ONLY-FD !
    JSON-ONLY-FD @ 0 < IF s" json-only: cannot open input" JSON-ONLY-E-IO die THEN
    0 JSON-ONLY-LEN !
@@ -65,7 +65,7 @@ variable JSON-ONLY-IN-A
    2 JSON-ONLY-LF$ JSON-ONLY-WRITE
    ARGV:E-USAGE throw ;
 
-: JSON-ONLY-INPUT$ ( -- ptr u8 n )
+: JSON-ONLY-INPUT$ ( -- ^u8 n )
    ARGV:COUNT 1 <> IF JSON-ONLY-USAGE THEN
    0 ARGV:TOK$ ;
 

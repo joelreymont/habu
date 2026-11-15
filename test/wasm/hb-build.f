@@ -36,11 +36,11 @@ PATH-CAP BUFFER: MOD
 variable MOD-U
 
 : SETUP ( -- )
-   s" wasm-hb-build" FS:MKTEMP-DIR {: a:ptr u:n :}
+   s" wasm-hb-build" FS:MKTEMP-DIR {: a:^ u:n :}
    a DIR u BYTE-COPY  u DIR-U !
    s" wasm hb-build: sources and modules in " type  DIR u type cr ;
 
-: ARG+ ( ptr u8 n -- )  >LEN PROC-ARGV+ ;
+: ARG+ ( ^u8 n -- )  >LEN PROC-ARGV+ ;
 
 : DRIVER ( -- n )
    s" bin/hb" >LEN  OUT CAP >LEN  ERR CAP >LEN  PROCESS:WAIT-FOREVER
@@ -48,13 +48,13 @@ variable MOD-U
    erru LEN>N ERR-U !
    rc ;
 
-: SOURCE! ( ptr u8 n ptr u8 n -- )
-   {: text:ptr tu:n name:ptr nu:n :}
+: SOURCE! ( ^u8 n ^u8 n -- )
+   {: text:^ tu:n name:^ nu:n :}
    DIR DIR-U @ name nu SRC FS:JOIN-PATH SRC-U !
    SRC SRC-U @ text tu FS:WRITE-ALL ;
 
-: START ( ptr u8 n -- )
-   {: name:ptr nu:n :}
+: START ( ^u8 n -- )
+   {: name:^ nu:n :}
    DIR DIR-U @ name nu MOD FS:JOIN-PATH MOD-U !
    PROC-ARGV-RESET
    s" --load" ARG+  s" tools/hb-build.f" ARG+  s" --" ARG+ ;
@@ -64,15 +64,15 @@ variable MOD-U
 : MOD+ ( -- )  s" -o" ARG+  MOD MOD-U @ ARG+ ;
 
 \ The source's module at the name, by `hb-build --target wasm`; answers its exit status.
-: BUILD ( ptr u8 n -- n )
+: BUILD ( ^u8 n -- n )
    START  WASM+  SRC+  MOD+  DRIVER ;
 
 \ `hb-build --engine --target wasm`, and `--repl --target wasm` of the source,
 \ each writing to the name and answering its exit status.
-: BUILD-ENGINE ( ptr u8 n -- n )
+: BUILD-ENGINE ( ^u8 n -- n )
    START  s" --engine" ARG+  WASM+  MOD+  DRIVER ;
 
-: BUILD-REPL ( ptr u8 n -- n )
+: BUILD-REPL ( ^u8 n -- n )
    START  s" --repl" ARG+  WASM+  SRC+  MOD+  DRIVER ;
 
 : RAN ( -- n )
@@ -85,13 +85,13 @@ variable MOD-U
 CAP BUFFER: TEXT
 variable TEXT-U
 
-: TEXT+ ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: TEXT+ ( ^u8 n -- )
+   {: a:^ u:n :}
    TEXT-U @ u + CAP > if E-STR-CAPACITY throw then
    a TEXT TEXT-U @ + u BYTE-COPY  u TEXT-U +! ;
 
-: REQUIRE+ ( ptr u8 n -- )
-   {: name:ptr nu:n :}
+: REQUIRE+ ( ^u8 n -- )
+   {: name:^ nu:n :}
    s" require " TEXT+  DIR DIR-U @ TEXT+  s" /" TEXT+  name nu TEXT+  S\" \n" TEXT+ ;
 
 
@@ -102,15 +102,15 @@ variable TEXT-U
    RAN 0 T=
    WASM-HARNESS:OUT$ s" 5" T$= ;
 
-: EMITS! ( n ptr u8 n -- )
-   {: reps:n name:ptr nu:n :}
+: EMITS! ( n ^u8 n -- )
+   {: reps:n name:^ nu:n :}
    SB-RESET
    s" : MAIN ( -- ) " SB-APPEND  reps FMT:SB-U  s"  0 do 120 emit loop ;" SB-APPEND
    SB$ name nu SOURCE! ;
 
 \ Every byte OUT received is EMITS!'s x, 120.
 : ALL-X? ( -- bool )
-   WASM-HARNESS:OUT$ {: a:ptr u:n :}
+   WASM-HARNESS:OUT$ {: a:^ u:n :}
    u 0 ?do  a i + c@ 120 <> if false unloop exit then  loop
    true ;
 
@@ -132,8 +132,8 @@ variable TEXT-U
 
 
 \ Package K at the name, its first test comparing 5 FACT with want.
-: K! ( n ptr u8 n -- )
-   {: want:n name:ptr nu:n :}
+: K! ( n ^u8 n -- )
+   {: want:n name:^ nu:n :}
    SB-RESET
    S\" package K\nprivate\nvariable SEED\n9 SEED !\n" SB-APPEND
    S\" variable ACC\n8 BUFFER: SPOT\n" SB-APPEND
@@ -159,7 +159,7 @@ variable TEXT-U
 
 false [if] \ off until dot habu-add-the-checks-a49d054d
 : LOW-CASE ( -- )
-   S\" package K private CAST: >BYTES ( n -- ptr u8 ) public : MAIN ( -- ) 65 8 >BYTES c! ; ;package : MAIN ( -- ) K:MAIN ;"
+   S\" package K private CAST: >BYTES ( n -- ^u8 ) public : MAIN ( -- ) 65 8 >BYTES c! ; ;package : MAIN ( -- ) K:MAIN ;"
    s" low.f" SOURCE!
    s" a c! below WPROF:CTX-BASE faults and throws E-MEMORY-FAULT" T-LABEL
    s" low.wasm" BUILD 0 T=
@@ -168,10 +168,10 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    WASM-HARNESS:FAULT-KIND WPROF:CRASH-RC T=
    WASM-HARNESS:FAULT-ADDR 8 T=
    SB-RESET
-   S\" package K private CAST: >BYTES ( n -- ptr u8 )\n" SB-APPEND
+   S\" package K private CAST: >BYTES ( n -- ^u8 )\n" SB-APPEND
    S\" : LOW ( -- ) 65 8 >BYTES c! ;\npublic\n" SB-APPEND
    S\" : MAIN ( -- ) [: LOW ;] catch 110 <> if 1 >BYTES c@ drop then\n" SB-APPEND
-   S\"    65536 map-anon drop {: p:ptr :} p 65536 munmap drop p 65536 munmap drop ;\n" SB-APPEND
+   S\"    65536 map-anon drop {: p:^ :} p 65536 munmap drop p 65536 munmap drop ;\n" SB-APPEND
    S\" ;package\n: MAIN ( -- ) K:MAIN ;\n" SB-APPEND
    SB$ s" caught.f" SOURCE!
    s" a caught fault leaves no fault kind for a later trap that records none" T-LABEL
@@ -179,7 +179,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    RAN 2 T=
    WASM-HARNESS:FAULT-KIND 0 T=
    SB-RESET
-   S\" package K private CAST: >BYTES ( n -- ptr u8 )\n" SB-APPEND
+   S\" package K private CAST: >BYTES ( n -- ^u8 )\n" SB-APPEND
    S\" : LOW ( -- ) 65 8 >BYTES c! ;\npublic\n" SB-APPEND
    S\" : MAIN ( -- ) [: LOW ;] [: [: 9 throw ;] catch drop ;] finally ;\n" SB-APPEND
    S\" ;package\n: MAIN ( -- ) K:MAIN ;\n" SB-APPEND
@@ -237,7 +237,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 
 \ What F!'s MAIN prints on the host: the square root of -4 is a NaN, which
 \ truncates to 0 and equals nothing; 1e30 and -1e30 truncate to MAX-N and MIN-N.
-: F-HOST$ ( -- ptr u8 n )
+: F-HOST$ ( -- ^u8 n )
    SB-RESET
    S\" 3.750000\n-0.750000\n3.375000\n6.000000\n1.414213\n0\n0\n2.500000\n2.500000\n" SB-APPEND
    S\" -1\n0\n-1\n0\n-1\n0\n0\n0\n-1\n-1\n-1\n0\n" SB-APPEND
@@ -265,7 +265,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    S\" : MAIN ( -- ) STEP3 . DOWN . NONE . OUTER . 7 PEEK . QUIT5 . UNTIL3 . AGAIN4 . ;\n" SB-APPEND
    SB$ s" loops.f" SOURCE! ;
 
-: LOOPS-HOST$ ( -- ptr u8 n )  S\" 18\n15\n0\n12\n14\n5\n3\n4\n" ;
+: LOOPS-HOST$ ( -- ^u8 n )  S\" 18\n15\n0\n12\n14\n5\n3\n4\n" ;
 
 : LOOP-CASE ( -- )
    LOOPS!
@@ -281,13 +281,13 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    SB-RESET
    S\" require src/core/sha256.f\nSHA256-CTX-BYTES BUFFER: CTX\n32 BUFFER: DG\n" SB-APPEND
    S\" 64 BUFFER: HX\n200 BUFFER: AS\n" SB-APPEND
-   S\" : SHOW ( ptr u8 n -- ) {: a:ptr u:n :} CTX a u DG SHA256-IN  DG HX SHA256>HEX  HX 64 type cr ;\n" SB-APPEND
+   S\" : SHOW ( ^u8 n -- ) {: a:^ u:n :} CTX a u DG SHA256-IN  DG HX SHA256>HEX  HX 64 type cr ;\n" SB-APPEND
    S\" : MAIN ( -- ) s\" abc\" SHOW\n" SB-APPEND
    S\"    s\" abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq\" SHOW\n" SB-APPEND
    S\"    200 0 do 97 AS i + c! loop  AS 200 SHOW ;\n" SB-APPEND
    SB$ s" sha.f" SOURCE! ;
 
-: SHA-HOST$ ( -- ptr u8 n )
+: SHA-HOST$ ( -- ^u8 n )
    SB-RESET
    S\" ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\n" SB-APPEND
    S\" 248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1\n" SB-APPEND
@@ -316,7 +316,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    S\"    1 ODD ROOT BITS . ;\n;package\n: MAIN ( -- ) N:MAIN ;\n" SB-APPEND
    SB$ s" nan.f" SOURCE! ;
 
-: NAN-HOST$ ( -- ptr u8 n )
+: NAN-HOST$ ( -- ^u8 n )
    SB-RESET
    S\" 9221120237041090560\n9221120237041090561\n9221120237041090562\n" SB-APPEND
    S\" 9221120237041090561\n9221120237041090561\n" SB-APPEND
@@ -333,41 +333,41 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 \ Package M in m.f: map-anon and munmap through words.
 : M! ( -- )
    0 TEXT-U !
-   S\" package M\nprivate\nCAST: >N ( ptr u8 -- n )\n" TEXT+
+   S\" package M\nprivate\nCAST: >N ( ^u8 -- n )\n" TEXT+
    S\" : FAIL ( n -- ) throw ;\n" TEXT+
    S\" : CHECK ( bool n -- ) swap if drop else FAIL then ;\n: ONE-PAGE ( -- n ) 65536 ;\n" TEXT+
-   S\" : MAP ( n -- ptr u8 n ) map-anon ;\n: UNMAP ( ptr u8 n -- n ) munmap ;\n" TEXT+
-   S\" : AT ( ptr u8 n -- bool ) swap >N swap = ;\n" TEXT+
-   S\" : ALIGNED ( ptr u8 -- bool ) >N 65535 and 0= ;\n" TEXT+
-   S\" : FRESH ( n n -- ptr u8 ) {: u:n k:n :} u MAP 0= k CHECK ;\n" TEXT+
-   S\" : FREE-RUN ( ptr u8 n n -- ) {: k:n :} UNMAP 0= k CHECK ;\n" TEXT+
-   S\" : TWO ( -- ptr u8 )\n   ONE-PAGE 1 FRESH {: a:ptr :}  ONE-PAGE 2 FRESH {: b:ptr :}\n" TEXT+
+   S\" : MAP ( n -- ^u8 n ) map-anon ;\n: UNMAP ( ^u8 n -- n ) munmap ;\n" TEXT+
+   S\" : AT ( ^u8 n -- bool ) swap >N swap = ;\n" TEXT+
+   S\" : ALIGNED ( ^u8 -- bool ) >N 65535 and 0= ;\n" TEXT+
+   S\" : FRESH ( n n -- ^u8 ) {: u:n k:n :} u MAP 0= k CHECK ;\n" TEXT+
+   S\" : FREE-RUN ( ^u8 n n -- ) {: k:n :} UNMAP 0= k CHECK ;\n" TEXT+
+   S\" : TWO ( -- ^u8 )\n   ONE-PAGE 1 FRESH {: a:^ :}  ONE-PAGE 2 FRESH {: b:^ :}\n" TEXT+
    S\"    a >N b >N <> 3 CHECK  a ALIGNED 4 CHECK  b ALIGNED 5 CHECK\n" TEXT+
    S\"    a c@ 0= 6 CHECK  b 65535 + c@ 0= 7 CHECK  b ONE-PAGE 8 FREE-RUN  a ;\n" TEXT+
-   S\" : REUSE ( ptr u8 -- )\n   {: a:ptr :}  99 a 100 + c!  a ONE-PAGE 9 FREE-RUN\n" TEXT+
-   S\"    ONE-PAGE 10 FRESH {: c:ptr :}  c a >N AT 11 CHECK  c 100 + c@ 0= 12 CHECK\n" TEXT+
+   S\" : REUSE ( ^u8 -- )\n   {: a:^ :}  99 a 100 + c!  a ONE-PAGE 9 FREE-RUN\n" TEXT+
+   S\"    ONE-PAGE 10 FRESH {: c:^ :}  c a >N AT 11 CHECK  c 100 + c@ 0= 12 CHECK\n" TEXT+
    S\"    c ONE-PAGE 13 FREE-RUN ;\n" TEXT+
-   S\" : JOIN ( -- )\n   ONE-PAGE 14 FRESH {: d:ptr :}  ONE-PAGE 15 FRESH {: e:ptr :}\n" TEXT+
-   S\"    ONE-PAGE 16 FRESH {: f:ptr :}\n" TEXT+
+   S\" : JOIN ( -- )\n   ONE-PAGE 14 FRESH {: d:^ :}  ONE-PAGE 15 FRESH {: e:^ :}\n" TEXT+
+   S\"    ONE-PAGE 16 FRESH {: f:^ :}\n" TEXT+
    S\"    e d >N ONE-PAGE + AT 17 CHECK  f d >N ONE-PAGE 2 * + AT 18 CHECK\n" TEXT+
    S\"    d ONE-PAGE 19 FREE-RUN  f ONE-PAGE 20 FREE-RUN  e ONE-PAGE 21 FREE-RUN\n" TEXT+
-   S\"    ONE-PAGE 3 * 22 FRESH {: g:ptr :}  g d >N AT 23 CHECK  g ONE-PAGE 3 * 24 FREE-RUN\n" TEXT+
-   S\"    ONE-PAGE 2 * 25 FRESH {: h:ptr :}  h d >N AT 26 CHECK\n" TEXT+
-   S\"    ONE-PAGE 27 FRESH {: t:ptr :}  t d >N ONE-PAGE 2 * + AT 28 CHECK\n" TEXT+
+   S\"    ONE-PAGE 3 * 22 FRESH {: g:^ :}  g d >N AT 23 CHECK  g ONE-PAGE 3 * 24 FREE-RUN\n" TEXT+
+   S\"    ONE-PAGE 2 * 25 FRESH {: h:^ :}  h d >N AT 26 CHECK\n" TEXT+
+   S\"    ONE-PAGE 27 FRESH {: t:^ :}  t d >N ONE-PAGE 2 * + AT 28 CHECK\n" TEXT+
    S\"    h ONE-PAGE 2 * 29 FREE-RUN  t ONE-PAGE 30 FREE-RUN ;\n" TEXT+
    S\" : REFUSALS ( -- )\n   0 MAP -1 = 31 CHECK  0 AT 32 CHECK\n" TEXT+
-   S\"    ONE-PAGE 33 FRESH {: p:ptr :}  p 1 + ONE-PAGE UNMAP -1 = 34 CHECK  p ONE-PAGE 35 FREE-RUN\n" TEXT+
+   S\"    ONE-PAGE 33 FRESH {: p:^ :}  p 1 + ONE-PAGE UNMAP -1 = 34 CHECK  p ONE-PAGE 35 FREE-RUN\n" TEXT+
    S\"    NULL-PTR ONE-PAGE UNMAP -1 = 36 CHECK\n" TEXT+
-   S\"    ONE-PAGE 37 FRESH {: q:ptr :}  q ONE-PAGE 38 FREE-RUN  NULL-PTR ONE-PAGE UNMAP -1 = 39 CHECK\n" TEXT+
-   S\"    ONE-PAGE 40 FRESH {: w:ptr :}  w q >N AT 41 CHECK  w ONE-PAGE 42 FREE-RUN\n" TEXT+
+   S\"    ONE-PAGE 37 FRESH {: q:^ :}  q ONE-PAGE 38 FREE-RUN  NULL-PTR ONE-PAGE UNMAP -1 = 39 CHECK\n" TEXT+
+   S\"    ONE-PAGE 40 FRESH {: w:^ :}  w q >N AT 41 CHECK  w ONE-PAGE 42 FREE-RUN\n" TEXT+
    S\"    -1 MAP -1 = 43 CHECK  0 AT 44 CHECK  1 32 lshift 1 + MAP -1 = 45 CHECK  0 AT 46 CHECK\n" TEXT+
    S\"    1 32 lshift MAP -1 = 47 CHECK  0 AT 48 CHECK\n" TEXT+
-   S\"    ONE-PAGE 49 FRESH {: z:ptr :}  z 0 UNMAP -1 = 50 CHECK  z ONE-PAGE 51 FREE-RUN ;\n" TEXT+
+   S\"    ONE-PAGE 49 FRESH {: z:^ :}  z 0 UNMAP -1 = 50 CHECK  z ONE-PAGE 51 FREE-RUN ;\n" TEXT+
    S\" public\n: MAIN ( -- ) TWO REUSE JOIN REFUSALS ;\n;package\n" TEXT+
    TEXT TEXT-U @ s" m.f" SOURCE! ;
 
 : TWICE-CASE ( -- )
-   S\" : MAIN ( -- ) 65536 map-anon . {: p:ptr :} p 65536 munmap . p 65536 munmap . ;"
+   S\" : MAIN ( -- ) 65536 map-anon . {: p:^ :} p 65536 munmap . p 65536 munmap . ;"
    s" twice.f" SOURCE!
    s" a run unmapped twice traps after both earlier answers" T-LABEL
    s" twice.wasm" BUILD 0 T=
@@ -400,8 +400,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    WASM-HARNESS:OUT$ s" " T$= ;
 
 
-: ERR-HAS ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: ERR-HAS ( ^u8 n -- )
+   {: a:^ u:n :}
    ERR ERR-U @ a u CONTAINS? TTRUE ;
 
 : NO-MODULE ( -- )  MOD MOD-U @ FS:EXISTS? TFALSE ;
@@ -616,7 +616,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 \ fixture's type; its table slot is execute's kernel routine.
 : EXECUTE-CELL! ( -- )
    SB-RESET
-   S\" package PROBE\nprivate\n: CODE-CELL: ( -- ) create 0 , does> ( -- ptr [ [ -- ] -- ] ) ;\n" SB-APPEND
+   S\" package PROBE\nprivate\n: CODE-CELL: ( -- ) create 0 , does> ( -- ^[ [ -- ] -- ] ) ;\n" SB-APPEND
    S\" CODE-CELL: ACTION\nTRUSTED: ACTION-XT ( -- [ [ -- ] -- ] ) ['] execute ;\npublic\n: TARGET ( -- ) 31 . ;\n" SB-APPEND
    S\" : MAIN ( -- ) ['] TARGET ACTION @ execute ;\nACTION-XT ACTION xt!\n;package\n" SB-APPEND
    S\" : MAIN ( -- ) PROBE:MAIN ;\n" SB-APPEND
@@ -624,7 +624,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 
 : CATCH-CELL! ( -- )
    SB-RESET
-   S\" package PROBE\nprivate\n: CODE-CELL: ( -- ) create 0 , does> ( -- ptr [ [ -- ] -- n ] ) ;\n" SB-APPEND
+   S\" package PROBE\nprivate\n: CODE-CELL: ( -- ) create 0 , does> ( -- ^[ [ -- ] -- n ] ) ;\n" SB-APPEND
    S\" CODE-CELL: ACTION\nTRUSTED: ACTION-XT ( -- [ [ -- ] -- n ] ) ['] catch ;\npublic\n: TARGET ( -- ) -37 throw ;\n" SB-APPEND
    S\" : MAIN ( -- ) ['] TARGET ACTION @ execute . ;\nACTION-XT ACTION xt!\n;package\n" SB-APPEND
    S\" : MAIN ( -- ) PROBE:MAIN ;\n" SB-APPEND
@@ -632,7 +632,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 
 : WORD-CELL! ( -- )
    SB-RESET
-   S\" package PROBE\nprivate\n: CODE-CELL: ( -- ) create 0 , does> ( -- ptr [ -- ] ) ;\n" SB-APPEND
+   S\" package PROBE\nprivate\n: CODE-CELL: ( -- ) create 0 , does> ( -- ^[ -- ] ) ;\n" SB-APPEND
    S\" CODE-CELL: ACTION\npublic\n: TARGET ( -- ) 31 . ;\n" SB-APPEND
    S\" : MAIN ( -- ) ACTION @ execute ;\n' TARGET ACTION xt!\n;package\n" SB-APPEND
    S\" : MAIN ( -- ) PROBE:MAIN ;\n" SB-APPEND
@@ -660,7 +660,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : FETCH! ( -- )
    SB-RESET
    S\" package PROBE\npublic\nENUM shade dark light grey ;ENUM\nTYPED-VARIABLE V shade\n" SB-APPEND
-   S\" private\nCAST: >CELL ( ptr shade -- ptr n )\npublic\n: TONE@ ( ptr shade -- shade ) @ ;\n" SB-APPEND
+   S\" private\nCAST: >CELL ( ^shade -- ^n )\npublic\n: TONE@ ( ^shade -- shade ) @ ;\n" SB-APPEND
    S\" : CODE ( -- n ) V TONE@ MATCH shade dark OF 0 ENDOF light OF 1 ENDOF grey OF 2 ENDOF ;MATCH ;\n" SB-APPEND
    S\" : MAIN ( -- ) construct shade grey V ! CODE .  7 V >CELL ! CODE . ;\n;package\n" SB-APPEND
    S\" : MAIN ( -- ) PROBE:MAIN ;\n" SB-APPEND
@@ -680,22 +680,22 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 variable POS                         \ the byte offset in MODULE read next
 DYNAMIC-BUFFER MODULE u8
 
-: ACCESS! ( n bool ptr u8 n -- )
-   {: a:n cell:bool name:ptr nu:n :}
+: ACCESS! ( n bool ^u8 n -- )
+   {: a:n cell:bool name:^ nu:n :}
    SB-RESET
-   S\" package WASM-MEMORY\nprivate\nCAST: >CELL ( n -- ptr n )\n" SB-APPEND
-   S\" CAST: >BYTE ( n -- ptr u8 )\npublic\n: ACCESS ( -- ) " SB-APPEND
+   S\" package WASM-MEMORY\nprivate\nCAST: >CELL ( n -- ^n )\n" SB-APPEND
+   S\" CAST: >BYTE ( n -- ^u8 )\npublic\n: ACCESS ( -- ) " SB-APPEND
    a FMT:SB-U
    cell if s"  >CELL @" else s"  >BYTE c@" then SB-APPEND
    S\"  drop ;\n;package\n: MAIN ( -- ) WASM-MEMORY:ACCESS ;\n" SB-APPEND
    SB$ name nu SOURCE! ;
 
-: ACCESS ( ptr u8 n -- n )
+: ACCESS ( ^u8 n -- n )
    BUILD 0 T=
    RAN ;
 
-: U32> ( ptr u8 n -- n )
-   {: m:ptr u:n :}
+: U32> ( ^u8 n -- n )
+   {: m:^ u:n :}
    m POS @ +  u POS @ -  WLEB:U32@ POS +! ;
 
 \ The module's memory size in bytes: past the 8-byte header, section by section
@@ -704,7 +704,7 @@ DYNAMIC-BUFFER MODULE u8
    MOD MOD-U @ FS:FILE-SIZE {: u:n :}
    u MODULE-RESERVE
    MOD MOD-U @ 0 MODULE u FS:READ-ALL u T=
-   0 MODULE {: m:ptr :}
+   0 MODULE {: m:^ :}
    8 POS !
    begin m POS @ + c@ SEC-MEMORY <> while
       1 POS +!  m u U32> POS +!

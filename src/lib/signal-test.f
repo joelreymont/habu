@@ -110,19 +110,19 @@ TASK:MIN-STACK TASK:TASK OUTSIDER
 
 PROCESS-SYMBOLS
 
-FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
+FUNCTION: SIGACTION-CALL sigaction ( n ^u8 ^u8 -- i32 )
 ;FUNCTION
 
-FUNCTION: WAITPID-CALL waitpid ( n ptr u8 n -- i32 )
+FUNCTION: WAITPID-CALL waitpid ( n ^u8 n -- i32 )
 ;FUNCTION
 
-: ZERO-BYTES ( ptr u8 n -- ) {: a:ptr u :}
+: ZERO-BYTES ( ^u8 n -- ) {: a:^ u :}
    0 begin dup u < while
       0 over a + c!
       1+
    repeat drop ;
 
-: ABI-SLOT ( n -- ptr n ) {: off:n :}
+: ABI-SLOT ( n -- ^n ) {: off:n :}
    data-base off + ;
 
 : STUB@ ( -- n )
@@ -135,7 +135,7 @@ FUNCTION: WAITPID-CALL waitpid ( n ptr u8 n -- i32 )
 : KEEP-FD-WORD ( -- )
    SIGNAL-ABI:FD-PTR-CELL ABI-SLOT 0 ptr-field @ ABI-KEPT ! ;
 
-: FD-WORD ( -- ptr n )
+: FD-WORD ( -- ^n )
    ABI-KEPT @ ;
 
 : RAISE ( n -- ) {: sig:n :}
@@ -206,11 +206,11 @@ FUNCTION: WAITPID-CALL waitpid ( n ptr u8 n -- i32 )
    s" ... and so does SIGCONT" T-LABEL
    SIGNAL:SIGCONT EXPECT-SIGCONT T= ;
 
-: READER-PATH ( -- ptr u8 n )
+: READER-PATH ( -- ^u8 n )
    s" /bin/cat" ;
 
-: CLOSE-END ( ptr n -- )
-   {: v:ptr :}
+: CLOSE-END ( ^n -- )
+   {: v:^ :}
    v @ 0 < if exit then
    v @ close
    -1 v ! ;
@@ -408,7 +408,7 @@ FUNCTION: WAITPID-CALL waitpid ( n ptr u8 n -- i32 )
    SIGNAL:SIGUSR1 RAISE
    1 TASK-RAISED ! ;
 
-: JOIN-TASK ( ptr n -- )
+: JOIN-TASK ( ^n -- )
    [: dup TASK:DONE? ;] TEST-WAIT:POLL drop ;
 
 : TASK-CASE ( -- )
@@ -438,8 +438,8 @@ FUNCTION: WAITPID-CALL waitpid ( n ptr u8 n -- i32 )
 \ until the NEXT signal instead, which turns a race into a task that never
 \ finishes the window it was given.
 
-: RACE-RUN ( ptr n ptr n ptr n ptr n -- )
-   {: kind:ptr signo:ptr elapsed:ptr start:ptr :}
+: RACE-RUN ( ^n ^n ^n ^n -- )
+   {: kind:^ signo:^ elapsed:^ start:^ :}
    mono-ns {: started :}
    started start !
    RACE-WINDOW-MS >MS SIGNAL:WAIT {: answer :}

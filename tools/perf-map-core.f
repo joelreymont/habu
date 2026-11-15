@@ -38,7 +38,7 @@ variable MAPPED    \ has this line's address column been rewritten already
 \ A caller-owned builder: the shared SB is 1 KiB and a fixture may hand LINE$ a
 \ line that lives in it, which is also why the offset does not go through
 \ src/lib/fmt.f (FMT appends to SB only). A full buffer throws E-STR-CAPACITY.
-: OUT+ ( ptr u8 n -- )
+: OUT+ ( ^u8 n -- )
    OUT-BUF OUT-CAP OUT-U BUF-APPEND ;
 
 : DIGIT+ ( n -- )
@@ -64,7 +64,7 @@ variable MAPPED    \ has this line's address column been rewritten already
 : PKG-SCAN ( -- )
    0 PKG-N !
    ndict@ 0 ?do
-      i XREF-REC {: rec:ptr :}
+      i XREF-REC {: rec:^ :}
       rec XREF-WORDLIST BOOT:NAMESPACE-WL = if
          rec XREF-PKG-PUBLIC i PKG+
          rec XREF-PKG-PRIVATE i PKG+
@@ -80,7 +80,7 @@ variable MAPPED    \ has this line's address column been rewritten already
    ACC @ ;
 
 : QNAME+ ( n -- ) {: idx:n :}           \ append the record's qualified name
-   idx XREF-REC {: rec:ptr :}
+   idx XREF-REC {: rec:^ :}
    rec XREF-WORDLIST PKG-OF {: p:n :}
    p 0 >= if p XREF-REC XREF-NAME$ OUT+ s" :" OUT+ then
    rec XREF-NAME$ OUT+ ;
@@ -92,19 +92,19 @@ variable MAPPED    \ has this line's address column been rewritten already
    c [char] A >= c [char] F <= and if c [char] A - 10 + exit then
    -1 ;
 
-: HEX@ ( ptr u8 n -- n ) {: a:ptr u:n :}
+: HEX@ ( ^u8 n -- n ) {: a:^ u:n :}
    0 ACC !
    u 0 ?do ACC @ 16 * a i + c@ HEX-DIGIT + ACC ! loop
    ACC @ ;
 
-: HEX? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: HEX? ( ^u8 n -- bool ) {: a:^ u:n :}
    u ADDR-MIN < if STR-FALSE exit then
    u ADDR-MAX > if STR-FALSE exit then
    1 OK !
    u 0 ?do a i + c@ HEX-DIGIT 0 < if 0 OK ! then loop
    OK @ 0<> ;
 
-: ADDR+ ( ptr u8 n -- ) {: a:ptr u:n :}
+: ADDR+ ( ^u8 n -- ) {: a:^ u:n :}
    a u HEX@ {: addr:n :}
    addr prof-pc>rec {: idx:n :}
    idx 0 < if a u OUT+ exit then
@@ -116,14 +116,14 @@ variable MAPPED    \ has this line's address column been rewritten already
 : SEP? ( n -- bool ) {: c:n :}
    c STR-SPACE = c TAB = or ;
 
-: INDENTED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: INDENTED? ( ^u8 n -- bool ) {: a:^ u:n :}
    u 0= if STR-FALSE exit then
    a 0 + c@ SEP? ;
 
 \ The address column is the first token of an indented line, and only that
 \ one: a sample's unindented header holds a decimal pid and period that are
 \ also valid hex.
-: ADDR-HERE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: ADDR-HERE? ( ^u8 n -- bool ) {: a:^ u:n :}
    MAPPED @ 0<> if STR-FALSE exit then
    a u HEX? ;
 
@@ -133,7 +133,7 @@ public
 \ internal profiler's deferred bucket. The dso column is not read: an address
 \ outside this dictionary's code range (every shared library sits above it) is
 \ left alone.
-: LINE$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+: LINE$ ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
    OUT-U BUF-RESET
    0 CUR !
    a u INDENTED? 0= if 1 else 0 then MAPPED !
@@ -155,7 +155,7 @@ public
    OUT-BUF OUT-U BUF-LEN@ ;
 private
 
-: LINE. ( ptr u8 n -- )
+: LINE. ( ^u8 n -- )
    LINE$ type cr ;
 
 \ ---- streaming stdin ----------------------------------------------------------

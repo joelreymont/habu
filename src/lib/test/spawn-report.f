@@ -31,7 +31,7 @@ variable MARK-U
 : TRUE ( -- bool )
    0 0= ;
 
-: YN$ ( bool -- ptr u8 n )
+: YN$ ( bool -- ^u8 n )
    if s" yes" else s" no" then ;
 
 \ `.` ends the line; a report line carries several fields, so print digits
@@ -44,13 +44,13 @@ variable MARK-U
    n 0 < if [char] - emit 0 n - U-TYPE exit then
    n U-TYPE ;
 
-: KEY ( ptr u8 n -- ) {: a:ptr u:n :}
+: KEY ( ^u8 n -- ) {: a:^ u:n :}
    s" ctx " type a u type s"  " type ;
 
-: LINE$ ( ptr u8 n ptr u8 n -- ) {: ka:ptr ku:n va:ptr vu:n :}
+: LINE$ ( ^u8 n ^u8 n -- ) {: ka:^ ku:n va:^ vu:n :}
    ka ku KEY va vu type cr ;
 
-: LINE# ( ptr u8 n n -- ) {: ka:ptr ku:n v:n :}
+: LINE# ( ^u8 n n -- ) {: ka:^ ku:n v:n :}
    ka ku KEY v N-TYPE cr ;
 
 : FD-OPEN? ( n -- bool ) {: fd:n :}
@@ -65,7 +65,7 @@ variable MARK-U
 : FD-TTY? ( n -- bool ) {: fd:n :}
    fd TIO-GET TIO-BUF ioctl 0 = ;
 
-: FD-LINE ( ptr u8 n n -- ) {: ka:ptr ku:n fd:n :}
+: FD-LINE ( ^u8 n n -- ) {: ka:^ ku:n fd:n :}
    ka ku KEY
    s" open " type fd FD-OPEN? YN$ type
    s"  flags " type fd FD-FLAGS N-TYPE
@@ -95,10 +95,10 @@ variable MARK-U
       1+
    repeat drop ;
 
-: ENGINE-REL$ ( -- ptr u8 n )
+: ENGINE-REL$ ( -- ^u8 n )
    s" bin/hb" ;
 
-: MARK$ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: ba:ptr bu:n ra:ptr ru:n :}
+: MARK$ ( ^u8 n ^u8 n -- ^u8 n ) {: ba:^ bu:n ra:^ ru:n :}
    ba bu ra ru MARK-BUF FS:JOIN-PATH MARK-U !
    MARK-BUF MARK-U @ ;
 
@@ -124,8 +124,8 @@ public
    FD-LINES
    ENV-LINES ;
 
-: CHILD ( ptr u8 n n n ptr u8 n ptr u8 n -- )
-   {: la:ptr lu:n want:n got:n oa:ptr ou:n ea:ptr eu:n :}
+: CHILD ( ^u8 n n n ^u8 n ^u8 n -- )
+   {: la:^ lu:n want:n got:n oa:^ ou:n ea:^ eu:n :}
    s" child-outcome: " type la lu type cr
    s" child rc: want " type want N-TYPE s"  got " type got N-TYPE cr
    s" child stdout (" type ou N-TYPE s"  bytes):" type cr

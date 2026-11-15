@@ -12,8 +12,8 @@ using PTY-HARNESS
 
 \ Each path raises the release high-water (src/habu/layout.f DPHW-CELL) and
 \ allot zeroes the reused space below it; fresh DATA pages are zero.
-: ZERO3? ( ptr n -- bool )
-   {: p:ptr :}
+: ZERO3? ( ^n -- bool )
+   {: p:^ :}
    p @ 0=  p cell+ @ 0= and  p 2 cells + @ 0= and ;
 
 
@@ -25,7 +25,7 @@ using PTY-HARNESS
 PTR-VARIABLE OUTER-A
 variable OUTER-U
 
-: OUTER-RC ( ptr u8 n -- n )
+: OUTER-RC ( ^u8 n -- n )
    OUTER-U !  OUTER-A !
    [: OUTER-A @ OUTER-U @ INTERPRETER:EVAL-FRAMED ;] catch ;
 
@@ -57,8 +57,8 @@ OUTER-RC  create OU-B 3 cells allot  constant OU-RC
 \ After a line the prompt that proves the child holds the terminal raw again is
 \ the one AFTER the answer.
 : PROMPT ( -- ) s" habu> " WAIT-FOR TTRUE ;
-: PROMPT-AFTER ( ptr u8 n -- ) s" habu> " WAIT-AFTER TTRUE ;
-: STEP ( ptr u8 n -- )
+: PROMPT-AFTER ( ^u8 n -- ) s" habu> " WAIT-AFTER TTRUE ;
+: STEP ( ^u8 n -- )
    BUF-CLEAR SEND-LINE WAIT-ANSWER TTRUE ;
 : STOP ( -- )
    4 SEND-BYTE

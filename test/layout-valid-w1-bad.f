@@ -5,7 +5,7 @@ package LAYOUT-VALID-W1
 ENUM lv-color red green ;ENUM
 1 LAYOUT-BUFFER BUF lv-color
 
-CAST: RAW ( ptr lv-color -- ptr n )
+CAST: RAW ( ^lv-color -- ^n )
 
 : GET ( -- lv-color )
    0 BUF @ ;

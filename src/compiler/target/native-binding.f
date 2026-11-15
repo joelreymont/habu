@@ -6,7 +6,7 @@ package RTARGET
 private
 
 \ The target's name when CORE supports it, else empty.
-: SUPPORTED-LABEL ( profile-id -- ptr u8 n )
+: SUPPORTED-LABEL ( profile-id -- ^u8 n )
    {: p:profile-id :}
    p dup DEFAULT-FEATURES RTARGET-RESOLVED--TARGET:MAKE CORE
    MATCH core-result

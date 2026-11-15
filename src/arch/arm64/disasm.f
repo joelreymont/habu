@@ -12,8 +12,8 @@ variable DTB-N
 
 \ Lays a DTB row [mask:8][val:8][kind:1][nlen:1][name]; the first row whose mask
 \ and value match a word decides, and DROW-EMIT prints each kind's operands.
-: ROW, ( n n n ptr u8 n -- )
-   {: mask val kind name:ptr u :}
+: ROW, ( n n n ^u8 n -- )
+   {: mask val kind name:^ u :}
    mask U64,  val U64,  kind c,  u c,
    u 0 ?do name i + c@ c, loop
    1 DTB-N +! ;
@@ -54,11 +54,11 @@ variable DTB-N
 create DTB DTB-ROWS
 
 
-: U64@ ( ptr u8 -- n ) {: p :}
+: U64@ ( ^u8 -- n ) {: p :}
    p c@  p 1 + c@ 8 lshift or  p 2 + c@ 16 lshift or  p 3 + c@ 24 lshift or
    p 4 + c@ 32 lshift or  p 5 + c@ 40 lshift or  p 6 + c@ 48 lshift or  p 7 + c@ 56 lshift or ;
 
-: U32@ ( ptr u8 -- n ) {: p :}
+: U32@ ( ^u8 -- n ) {: p :}
    p c@  p 1 + c@ 8 lshift or  p 2 + c@ 16 lshift or  p 3 + c@ 24 lshift or ;
 
 : FRD ( n -- n ) {: w :} w 31 and ;
@@ -160,13 +160,13 @@ create CHB 4 allot
 : OP? ( n n -- bool ) {: w val :} w $FFC00000 and val = ;
 
 
-: DLS1 ( n ptr u8 n -- )
-   {: w name:ptr u :}
+: DLS1 ( n ^u8 n -- )
+   {: w name:^ u :}
    name u type  w FRD DOUT w FRN DOUT w FI12 DOUT ;
 
 
-: DLS4 ( n ptr u8 n -- )
-   {: w name:ptr u :}
+: DLS4 ( n ^u8 n -- )
+   {: w name:^ u :}
    name u type  w FRD DOUT w FRN DOUT w FI12 4 * DOUT ;
 
 
@@ -224,8 +224,8 @@ create CHB 4 allot
    2drop w DUNKNOWN ;
 
 
-: DISASM ( ptr u8 n -- )
-   {: a:ptr n :}
+: DISASM ( ^u8 n -- )
+   {: a:^ n :}
    0 BEGIN dup n < WHILE
       a over 4 * + U32@ DIS1 cr
       1 +

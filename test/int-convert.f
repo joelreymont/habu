@@ -9,13 +9,13 @@ package INT-CONVERT-TEST
 
 \ Captures the rejection record of one evaluated definition, in prose, which
 \ SAYS reads; answers its throw code, 0 when the definition loaded.
-: DEF-RC ( ptr u8 n -- n )
+: DEF-RC ( ^u8 n -- n )
    REJECTION:CAPTURE
    REJECTION:JSON @ {: was:n :}
    false REJECTION:JSON !  TEST-EVAL:RC
    was REJECTION:JSON ! ;
 
-: SAYS ( ptr u8 n ptr u8 n -- ) {: code:ptr codeu:n note:ptr noteu:n :}
+: SAYS ( ^u8 n ^u8 n -- ) {: code:^ codeu:n note:^ noteu:n :}
    REJECTION:BUFFER$ code codeu CONTAINS? TTRUE
    REJECTION:BUFFER$ note noteu CONTAINS? TTRUE  REJECTION:BUFFER-OFF ;
 

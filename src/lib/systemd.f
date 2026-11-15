@@ -32,14 +32,14 @@ $4000 constant MSG-NOSIGNAL
 22 constant EINVAL
 
 SOCKADDR-BYTES TASK:+USERS ADDRESS-ROW u8
-: SOCKADDR ( -- ptr u8 ) 0 ADDRESS-ROW ;
-: SUN-PATH ( -- ptr u8 ) SOCKADDR 2 + ;
+: SOCKADDR ( -- ^u8 ) 0 ADDRESS-ROW ;
+: SUN-PATH ( -- ^u8 ) SOCKADDR 2 + ;
 
 PROCESS-SYMBOLS
 
 FUNCTION: SOCKET-CALL socket ( n n n -- i32 ) ;FUNCTION
 FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
-FUNCTION: SEND-CALL sendto ( n ptr u8 n n ptr u8 n -- n ) ;FUNCTION
+FUNCTION: SEND-CALL sendto ( n ^u8 n n ^u8 n -- n ) ;FUNCTION
 
 : LAST-ERROR ( -- errno )
    FFI:ERRNO >ERRNO ;
@@ -49,15 +49,15 @@ FUNCTION: SEND-CALL sendto ( n ptr u8 n n ptr u8 n -- n ) ;FUNCTION
 
 \ libsystemd's bounds: at least two bytes, and room for a NUL after them
 \ in sun_path.
-: NAME? ( ptr u8 n -- bool )
-   {: name:ptr size:n :}
+: NAME? ( ^u8 n -- bool )
+   {: name:^ size:n :}
    size 2 <  size PATH-BYTES >=  or if false exit then
    name c@ $2F =  name c@ $40 =  or ;
 
 \ Answers the address length. A path ends in a NUL, which the length counts;
 \ an abstract name's @ becomes the NUL that marks it.
-: ADDRESS! ( ptr u8 n -- n )
-   {: name:ptr size:n :}
+: ADDRESS! ( ^u8 n -- n )
+   {: name:^ size:n :}
    AF-UNIX SOCKADDR LE:U16!
    name SUN-PATH size BYTE-COPY
    name c@ $40 = if 0 SUN-PATH c! size 2 + exit then
@@ -81,7 +81,7 @@ public
 \ Once the service serves. Off Linux no service manager speaks this protocol.
 : NOTIFY-READY ( -- status )
    HB-TARGET-LINUX-KERNEL? 0= if SYSTEMD-STATUS:ok exit then
-   s" NOTIFY_SOCKET" GETENV {: name:ptr size:n :}
+   s" NOTIFY_SOCKET" GETENV {: name:^ size:n :}
    size 0= if SYSTEMD-STATUS:ok exit then
    name size NAME? 0= if INVALID exit then
    name size ADDRESS! NOTIFY ;

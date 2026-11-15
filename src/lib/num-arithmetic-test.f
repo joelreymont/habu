@@ -523,7 +523,7 @@ create BP-BUF 16 allot
       CHECK-QUIET-CANDIDATE! -1 T=
    s" GOOD-BYTE-BOUND ( NUM:byte-off NUM:byte-len -- bool ) NUM:BYTE-OFF-IN-LEN?"
       CHECK-QUIET-CANDIDATE! -1 T=
-   s" GOOD-BYTE-ADVANCE ( ptr u8 NUM:byte-off -- ptr u8 ) NUM:BYTE+"
+   s" GOOD-BYTE-ADVANCE ( ^u8 NUM:byte-off -- ^u8 ) NUM:BYTE+"
       CHECK-QUIET-CANDIDATE! -1 T= ;
 
 : STATIC-BAD ( -- )
@@ -541,15 +541,15 @@ create BP-BUF 16 allot
       CHECK-QUIET-CANDIDATE! 0 T=
    s" BAD-INDEX-OFF-RAW ( n n -- NUM:numeric-result<NUM:byte-off> ) NUM:INDEX-BYTE-OFF"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" BAD-ADVANCE-RAW-OFF ( ptr u8 n -- ptr u8 ) NUM:BYTE+"
+   s" BAD-ADVANCE-RAW-OFF ( ^u8 n -- ^u8 ) NUM:BYTE+"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" BAD-ADVANCE-BYTE-LEN ( ptr u8 NUM:byte-len -- ptr u8 ) NUM:BYTE+"
+   s" BAD-ADVANCE-BYTE-LEN ( ^u8 NUM:byte-len -- ^u8 ) NUM:BYTE+"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" BAD-ADVANCE-INDEX ( ptr u8 NUM:index -- ptr u8 ) NUM:BYTE+"
+   s" BAD-ADVANCE-INDEX ( ^u8 NUM:index -- ^u8 ) NUM:BYTE+"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" BAD-ADVANCE-CELL-OFF ( ptr u8 NUM:cell-off -- ptr u8 ) NUM:BYTE+"
+   s" BAD-ADVANCE-CELL-OFF ( ^u8 NUM:cell-off -- ^u8 ) NUM:BYTE+"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" BAD-ADVANCE-RAW-PTR ( n NUM:byte-off -- ptr u8 ) NUM:BYTE+"
+   s" BAD-ADVANCE-RAW-PTR ( n NUM:byte-off -- ^u8 ) NUM:BYTE+"
       CHECK-QUIET-CANDIDATE! 0 T= ;
 
 : STATIC-PRIVATE ( -- )

@@ -26,7 +26,7 @@ variable OUT-N
    OUT-N @ 1 + OUT-N ! ;
 
 \ A JSON key emitter, reduced: it writes the key bytes and the colon.
-: KEY ( ptr u8 n -- ) {: a:ptr u:n :}
+: KEY ( ^u8 n -- ) {: a:^ u:n :}
    u 0 ?do a i + c@ PUTC loop
    58 PUTC ;
 
@@ -34,19 +34,19 @@ public
 
 \ A field writer with its local spelled `key`:
 \ `key keyu KEY` is the local, the local, and then the WORD.
-: FIELD-S ( ptr u8 n ptr u8 n -- ) {: key:ptr keyu:n v:ptr vu:n :}
+: FIELD-S ( ^u8 n ^u8 n -- ) {: key:^ keyu:n v:^ vu:n :}
    0 OUT-N !
    key keyu KEY
    vu 0 ?do v i + c@ PUTC loop ;
 
-: OUT$ ( -- ptr u8 n )
+: OUT$ ( -- ^u8 n )
    OUT OUT-N @ ;
 
 \ The buffer incident: `text` is the source span, `TEXT` the buffer it fills.
-: PUT ( ptr u8 n -- ) {: text:ptr size:n :}
+: PUT ( ^u8 n -- ) {: text:^ size:n :}
    size 0 ?do  text i + c@  TEXT i + c!  loop ;
 
-: TEXT$ ( n -- ptr u8 n ) {: u:n :}
+: TEXT$ ( n -- ^u8 n ) {: u:n :}
    TEXT u ;
 
 \ The variable incident: `rev` is the addend, `REV` the variable.
@@ -65,7 +65,7 @@ public
 package LSP-SHADOW
 public
 
-\ `count` is an engine prim ( ptr u8 -- ptr u8 n ). Referenced in its declared
+\ `count` is an engine prim ( ^u8 -- ^u8 n ). Referenced in its declared
 \ spelling it is the local, and the body is arithmetic on one number.
 : SCALE ( n -- n ) {: count:n :}
    count 3 * ;
@@ -113,7 +113,7 @@ create OUT CAP allot
 create ERR CAP allot
 variable ERR-U
 
-: RUN ( ptr u8 n -- n ) {: src:ptr u:n :}   \ source -> child exit status (-1 = signal)
+: RUN ( ^u8 n -- n ) {: src:^ u:n :}   \ source -> child exit status (-1 = signal)
    src u OUT CAP >LEN ERR CAP >LEN CHILD-MS >MS SUBJECT:RUN {: outu:len erru:len oc :}
    erru LEN>N ERR-U !
    oc MATCH PROCESS:ending
@@ -122,7 +122,7 @@ variable ERR-U
      timeout OF src u OUT outu LEN>N ERR erru LEN>N T-TIMED-OUT ENDOF
    ;MATCH ;
 
-: ERR$ ( -- ptr u8 n )
+: ERR$ ( -- ^u8 n )
    ERR ERR-U @ ;
 
 ;package

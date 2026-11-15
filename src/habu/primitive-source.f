@@ -23,12 +23,12 @@ variable ROW
 variable READY
 variable VALID
 
-: PATH$ ( -- ptr u8 n ) PATH PATH-U @ ;
+: PATH$ ( -- ^u8 n ) PATH PATH-U @ ;
 
 : ENGINE-PATH ( -- bool )
    0 PATH-U !
-   SOURCE-ROOT:ENGINE$ {: root:ptr rootu:n :}
-   s" /src/habu/prims.f" {: tail:ptr tailu:n :}
+   SOURCE-ROOT:ENGINE$ {: root:^ rootu:n :}
+   s" /src/habu/prims.f" {: tail:^ tailu:n :}
    rootu tailu + PATH-CAP > if false exit then
    root PATH rootu BYTE-COPY
    tail PATH rootu + tailu BYTE-COPY
@@ -46,8 +46,8 @@ variable VALID
       got SOURCE-U +!
    again ;
 
-: READ-FILE ( ptr u8 n -- bool )
-   {: path:ptr pathu:n :}
+: READ-FILE ( ^u8 n -- bool )
+   {: path:^ pathu:n :}
    pathu 0 <= pathu PATH-CAP > or if false exit then
    path pathu ZPATH PATH-CAP 1+ PATHZ
    ZPATH open-rd {: fd:n :}
@@ -56,8 +56,8 @@ variable VALID
    fd close
    read-ok ;
 
-: FIELD ( ptr u8 n n -- n n )
-   {: a:ptr u:n from:n :}
+: FIELD ( ^u8 n n -- n n )
+   {: a:^ u:n from:n :}
    from
    begin dup u < if a over + c@ LINT-LEX:ENGINE-DELIM? else false then while 1+ repeat
    dup {: start:n :}
@@ -74,7 +74,7 @@ variable VALID
 
 : MATCH-NAME ( n n n -- bool )
    {: token:n row:n after:n :}
-   token LINT-LEX:TOKEN {: a:ptr u:n :}
+   token LINT-LEX:TOKEN {: a:^ u:n :}
    a u after FIELD {: name:n name-end:n :}
    name-end name <= if false exit then
    a name + name-end name - row PRIM-SPEC:NAME$ STR= 0= if false exit then
@@ -84,10 +84,10 @@ variable VALID
 
 : MATCH-ROW ( n n -- bool )
    {: token:n row:n :}
-   token LINT-LEX:TOKEN {: a:ptr u:n :}
+   token LINT-LEX:TOKEN {: a:^ u:n :}
    a u 0 FIELD {: opener:n after:n :}
    after opener <= if false exit then
-   a opener + after opener - {: op:ptr opu:n :}
+   a opener + after opener - {: op:^ opu:n :}
    row PRIM-SPEC:KIND@ {: kind:n :}
    kind PRIM-SPEC:K-PRIM = if
       op opu s" EPRIM:" STR=CI 0= if false exit then
@@ -111,7 +111,7 @@ variable VALID
    end row ENDS !
    true ;
 
-: SCAN-IN ( ptr u8 n -- bool )
+: SCAN-IN ( ^u8 n -- bool )
    LINT-LEX:SOURCE
    LINT-LEX:ERROR? if false exit then
    PRIM-SPEC:COUNT STARTS-RESERVE
@@ -145,8 +145,8 @@ variable VALID
 
 : CANON-ROW ( n -- n )
    {: row:n :}
-   row PRIM-SPEC:PKG$ {: pkg:ptr pkgu:n :}
-   row PRIM-SPEC:NAME$ {: name:ptr nameu:n :}
+   row PRIM-SPEC:PKG$ {: pkg:^ pkgu:n :}
+   row PRIM-SPEC:NAME$ {: name:^ nameu:n :}
    row 0 ?do
       i PRIM-SPEC:KIND@ {: kind:n :}
       kind PRIM-SPEC:K-PRIM = kind PRIM-SPEC:K-PKG-PRIVATE = or
@@ -160,17 +160,17 @@ variable VALID
 public
 
 \ The bytes are borrowed until another read through this package.
-: FILE-BYTES ( ptr u8 n -- ptr u8 n bool )
+: FILE-BYTES ( ^u8 n -- ^u8 n bool )
    READ-FILE if 0 SOURCE-B SOURCE-U @ true exit then
    NULL$ false ;
 
-: ENGINE-PATH$ ( -- ptr u8 n bool )
+: ENGINE-PATH$ ( -- ^u8 n bool )
    ENGINE-PATH
    PATH$ rot ;
 
 \ Match the entire raw specification before trusting a target in it.
-: TARGET-IN ( ptr u8 n n -- n n bool )
-   {: a:ptr u:n row:n :}
+: TARGET-IN ( ^u8 n n -- n n bool )
+   {: a:^ u:n row:n :}
    0 READY ! 0 VALID !
    a u SCAN-IN VALID !
    VALID @ 0= if 0 0 false exit then
@@ -182,8 +182,8 @@ public
 
 \ Reverse lookup in raw or supplied source, after validating the whole table.
 \ Overload names map to the first row, the same marker a checker use carries.
-: MARKER-IN ( ptr u8 n n -- n n n bool )
-   {: a:ptr u:n byte:n :}
+: MARKER-IN ( ^u8 n n -- n n n bool )
+   {: a:^ u:n byte:n :}
    0 READY ! 0 VALID !
    a u SCAN-IN 0= if 0 0 0 false exit then
    PRIM-SPEC:COUNT 0 ?do
@@ -198,7 +198,7 @@ public
 
 \ The engine path and its matched row offsets are read once per verifier
 \ child. A missing or changed source has no location for any primitive.
-: TARGET ( n -- ptr u8 n n n bool )
+: TARGET ( n -- ^u8 n n n bool )
    {: row:n :}
    READY @ 0= if
       1 READY !

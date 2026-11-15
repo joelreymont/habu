@@ -3,7 +3,7 @@
 require src/lib/string.f
 
 package FILE-OBJECTS-PT
-: END? ( ptr u8 n -- bool ) {: p:ptr u:n :} u 0=  p u s" ;BLK" STR=  or ;
+: END? ( ^u8 n -- bool ) {: p:^ u:n :} u 0=  p u s" ;BLK" STR=  or ;
 public
 : BLK ( -- ) begin parse-name END? until ;
 ;package

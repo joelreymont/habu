@@ -13,8 +13,8 @@ package ENGINE-SPAN-END-TEST
 private
 
 \ A copy of the text whose last byte is the last readable one.
-: EDGE ( ptr u8 n -- ptr u8 n ) {: t:ptr tu:n :}
-   tu 32 GUARD-PAGE:TAIL {: a:ptr :}
+: EDGE ( ^u8 n -- ^u8 n ) {: t:^ tu:n :}
+   tu 32 GUARD-PAGE:TAIL {: a:^ :}
    t a tu BYTE-COPY
    a tu ;
 

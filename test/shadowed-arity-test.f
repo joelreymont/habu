@@ -14,7 +14,7 @@ private
 
 T-RESET
 
-TYPED-VARIABLE SAE-A ptr u8   variable SAE-U
+TYPED-VARIABLE SAE-A ^u8   variable SAE-U
 : SAE-GO ( -- )  SAE-A @ SAE-U @ evaluate-closed ;
 
 public
@@ -22,14 +22,14 @@ public
 \ One source string per case, answering its throw code (0 = accepted): the code
 \ comes back from the string that carried the second definition, so the refusal
 \ is seen at the definition, not at the build.
-: SAE-CATCH ( ptr u8 n -- n )  SAE-U ! SAE-A !  [: SAE-GO ;] catch ;
+: SAE-CATCH ( ^u8 n -- n )  SAE-U ! SAE-A !  [: SAE-GO ;] catch ;
 
 \ The status the rejected cases expect. It lives in the package because a global
 \ `E-*` constant is src/lib/error.f's surface alone.
 70 constant E-REJECT           \ the throw code of every rejection
 
 \ The captured rejection record contains the text.
-: SAID ( ptr u8 n -- )  {: a:ptr u:n :}  REJECTION:BUFFER$ a u CONTAINS? TTRUE ;
+: SAID ( ^u8 n -- )  {: a:^ u:n :}  REJECTION:BUFFER$ a u CONTAINS? TTRUE ;
 
 ;package
 
@@ -55,10 +55,10 @@ s\" package SAT-C\n: H ( n -- n ) 1 + ;\npublic\n: H ( n -- n n ) dup ;\n;packag
 s" error[E-SHADOWED-ARITY]" SHADOWED-ARITY:SAID  s" = evaluated: : H ( n -- n n ) dup ;" SHADOWED-ARITY:SAID
 s" its name binds the private word" SHADOWED-ARITY:SAID  REJECTION:BUFFER-OFF
 
-\ CELLS, not terms: `ptr u8 n` is two terms and two cells, and the public tail
+\ CELLS, not terms: `^u8 n` is two terms and two cells, and the public tail
 \ here moves one. A rule written over term counts would accept this.
 REJECTION:CAPTURE
-s\" package SAT-D\n: K ( ptr u8 n -- n ) drop c@ ;\npublic\n: K ( n -- n ) 1 + ;\n;package"
+s\" package SAT-D\n: K ( ^u8 n -- n ) drop c@ ;\npublic\n: K ( n -- n ) 1 + ;\n;package"
    SHADOWED-ARITY:SAE-CATCH SHADOWED-ARITY:E-REJECT T=
 s" error[E-SHADOWED-ARITY]" SHADOWED-ARITY:SAID  s" = evaluated: : K ( n -- n ) 1 + ;" SHADOWED-ARITY:SAID
 s" its name binds the private word" SHADOWED-ARITY:SAID  REJECTION:BUFFER-OFF
@@ -96,7 +96,7 @@ s\" : SAT-E-CK ( -- ) 41 SAT-E:P 42 <> if s\q forwarder missed the private word\
 
 \ Same cells through different types: two cells either way, so the compiler
 \ reads an arity that fits.
-s\" package SAT-F\n: Q ( ptr u8 n -- n ) drop c@ ;\npublic\n: Q ( n n -- n ) + ;\n;package"
+s\" package SAT-F\n: Q ( ^u8 n -- n ) drop c@ ;\npublic\n: Q ( n n -- n ) + ;\n;package"
    SHADOWED-ARITY:SAE-CATCH 0 T=
 
 \ Different tails in one package: nothing shadows anything.
@@ -172,11 +172,11 @@ s\" : SAT-D-CK ( -- ) SAT-DA:SAT-DA-USE SAT-DB:SAT-DB-USE + SAT-DC:SAT-DC-USE + 
 
 \ A private word with no checker record (SAT-DT) still binds before its public
 \ twin, so its use is refused; after `undefine` the twin binds (SAT-DV).
-s\" package SAT-DT\n: SAT-DT-X ( n -- n ) 1 + ;\npublic\n: SAT-DT-X ( ptr u8 -- n ) drop 5 ;\n;package"
+s\" package SAT-DT\n: SAT-DT-X ( n -- n ) 1 + ;\npublic\n: SAT-DT-X ( ^u8 -- n ) drop 5 ;\n;package"
    SHADOWED-ARITY:SAE-CATCH 0 T=
 s\" package SAT-DT\ns\q SAT-DT-X\q CHECKER-UNDEFINE\n: SAT-DT-USE ( -- n ) s\q ab\q drop SAT-DT-X ;\n;package"
    SHADOWED-ARITY:SAE-CATCH SHADOWED-ARITY:E-REJECT T=
-s\" package SAT-DV\n: SAT-DV-X ( n -- n ) 1 + ;\npublic\n: SAT-DV-X ( ptr u8 -- n ) drop 5 ;\n;package"
+s\" package SAT-DV\n: SAT-DV-X ( n -- n ) 1 + ;\npublic\n: SAT-DV-X ( ^u8 -- n ) drop 5 ;\n;package"
    SHADOWED-ARITY:SAE-CATCH 0 T=
 s\" package SAT-DV\nundefine SAT-DV-X\npublic\n: SAT-DV-USE ( -- n ) s\q ab\q drop SAT-DV-X ;\n;package"
    SHADOWED-ARITY:SAE-CATCH 0 T=

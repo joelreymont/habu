@@ -10,11 +10,11 @@ package DEBUG
 \ The table stores DATA pointers, so it is declared storage;
 \ its helper prints an address as its distance
 \ from zero.
-BPW-MAX TYPED-BUFFER BPW-TAB ptr n
+BPW-MAX TYPED-BUFFER BPW-TAB ^n
 variable BPW-IDX
 variable BPW-LAST
 
-: BPW-PRINT-ADDR ( ptr n -- )
+: BPW-PRINT-ADDR ( ^n -- )
    BYTE-VIEW NULL-PTR BYTE-VIEW - . ;
 
 \ The cell holds the table's ADDRESS, so it is reached through `ptr-field`,
@@ -30,11 +30,11 @@ variable BPW-LAST
 : BPW-N! ( n -- )
    data-base BPWN-CELL + ! ;
 
-: BPW-SLOT ( n -- ptr ptr n )
+: BPW-SLOT ( n -- ^^n )
    BPW-TAB ;
 
-: BPW-FIND ( ptr n -- n )
-   {: addr:ptr :}
+: BPW-FIND ( ^n -- n )
+   {: addr:^ :}
    0 begin dup BPW-N@ < while
       dup BPW-SLOT @ addr = if exit then
       1+
@@ -46,14 +46,14 @@ public
 : BPW-CLEAR ( -- )
    0 BPW-N! ;
 
-: BPW+ ( ptr n -- )
-   {: addr:ptr :}
+: BPW+ ( ^n -- )
+   {: addr:^ :}
    addr BPW-FIND 0 >= if exit then
    BPW-N@ BPW-MAX >= if s" bpw: table full" type 76 throw then
    addr BPW-N@ BPW-SLOT !
    BPW-N@ 1+ BPW-N! ;
 
-: BPW- ( ptr n -- )
+: BPW- ( ^n -- )
    BPW-FIND dup 0 < if drop exit then
    BPW-IDX !
    BPW-N@ 1- BPW-LAST !

@@ -24,25 +24,25 @@ public
 \ An id as the JSON text it came in: a number's digits, a string with its
 \ quotes, or `null`.
 STRUCTURE id
-   FIELD json ptr u8
+   FIELD json ^u8
    FIELD len n
 ;STRUCTURE
 
 ENUM message
-   VARIANT request FIELD id id FIELD method ptr u8 FIELD method-len n FIELD params ptr u8 FIELD params-len n ;VARIANT
-   VARIANT notification FIELD method ptr u8 FIELD method-len n FIELD params ptr u8 FIELD params-len n ;VARIANT
-   VARIANT success FIELD id id FIELD value ptr u8 FIELD value-len n ;VARIANT
-   VARIANT failure FIELD id id FIELD value ptr u8 FIELD value-len n ;VARIANT
-   VARIANT invalid FIELD code n FIELD why ptr u8 FIELD why-len n FIELD id id ;VARIANT
+   VARIANT request FIELD id id FIELD method ^u8 FIELD method-len n FIELD params ^u8 FIELD params-len n ;VARIANT
+   VARIANT notification FIELD method ^u8 FIELD method-len n FIELD params ^u8 FIELD params-len n ;VARIANT
+   VARIANT success FIELD id id FIELD value ^u8 FIELD value-len n ;VARIANT
+   VARIANT failure FIELD id id FIELD value ^u8 FIELD value-len n ;VARIANT
+   VARIANT invalid FIELD code n FIELD why ^u8 FIELD why-len n FIELD id id ;VARIANT
 ;ENUM
 
-: ID$ ( id -- ptr u8 n )  JSON--RPC-ID:UNMAKE ;
+: ID$ ( id -- ^u8 n )  JSON--RPC-ID:UNMAKE ;
 : NULL-ID ( -- id )  s" null" JSON--RPC-ID:MAKE ;
 
 \ Whether a method's JSON text, as >MESSAGE gives it, names this method once
 \ decoded: `"initialize"` names initialize.
-: METHOD? ( ptr JSON:cursor ptr u8 n ptr u8 n -- bool )
-   {: st:ptr m:ptr mu:n name:ptr nu:n :}
+: METHOD? ( ^JSON:cursor ^u8 n ^u8 n -- bool )
+   {: st:^ m:^ mu:n name:^ nu:n :}
    st m mu READ-INIT
    READ-NEXT drop
    name nu READ-STR-EQ? {: same:bool :}
@@ -57,12 +57,12 @@ private
 \ JSON text.
 STRUCTURE member
    FIELD kind n
-   FIELD json ptr u8
+   FIELD json ^u8
    FIELD len n
 ;STRUCTURE
 
 : KIND ( member -- n )  MEMBER-UNMAKE 2drop ;
-: TEXT$ ( member -- ptr u8 n )  MEMBER-UNMAKE rot drop ;
+: TEXT$ ( member -- ^u8 n )  MEMBER-UNMAKE rot drop ;
 : PRESENT? ( member -- bool )  KIND ABSENT <> ;
 : >ID ( member -- id )  TEXT$ JSON--RPC-ID:MAKE ;
 : NO-MEMBER ( -- member )  ABSENT s" " MEMBER-MAKE ;
@@ -83,7 +83,7 @@ STRUCTURE envelope
 : NO-ENVELOPE ( -- envelope )
    false NO-MEMBER NO-MEMBER NO-MEMBER NO-MEMBER NO-MEMBER false ENVELOPE-MAKE ;
 
-: INVALID ( n ptr u8 n id -- message )  JSON--RPC-MESSAGE:invalid ;
+: INVALID ( n ^u8 n id -- message )  JSON--RPC-MESSAGE:invalid ;
 
 : NOT-JSON ( -- message )
    PARSE-ERROR s" a body that is not JSON" NULL-ID INVALID ;
@@ -107,7 +107,7 @@ STRUCTURE envelope
 \ first, as that word leaves a container's reader on its close.
 : >MEMBER ( JSON:reader -- JSON:reader member )
    READ-TOKEN {: kind:n :}
-   READ-ANY-SPAN$ {: a:ptr u:n :}
+   READ-ANY-SPAN$ {: a:^ u:n :}
    kind a u MEMBER-MAKE ;
 
 : V2? ( JSON:reader -- JSON:reader bool )
@@ -130,9 +130,9 @@ STRUCTURE envelope
 \ The current value as the error member, and whether it is an error object.
 : ERROR-VALUE ( JSON:reader -- JSON:reader member bool )
    READ-TOKEN T-OBJ <> if >MEMBER false exit then
-   READ-SPAN$ drop {: open:ptr :}
+   READ-SPAN$ drop {: open:^ :}
    false false begin ERROR-MEMBER 0= until and {: ok:bool :}
-   READ-SPAN$ drop {: close:ptr :}
+   READ-SPAN$ drop {: close:^ :}
    T-OBJ open close 1+ open - MEMBER-MAKE ok ;
 
 \ The member at the current key: recorded when the envelope names it, over any
@@ -165,7 +165,7 @@ STRUCTURE envelope
    pk CONTAINER? pk ABSENT = or pk T-NULL = or 0= if
       INVALID-REQUEST s" params that are not an object or array" reply INVALID exit
    then
-   pk CONTAINER? if p TEXT$ else s" " then {: pa:ptr pu:n :}
+   pk CONTAINER? if p TEXT$ else s" " then {: pa:^ pu:n :}
    i PRESENT? if reply m TEXT$ pa pu JSON--RPC-MESSAGE:request exit then
    m TEXT$ pa pu JSON--RPC-MESSAGE:notification ;
 
@@ -208,8 +208,8 @@ STRUCTURE envelope
 
 \ Reads the body once; READ-NEXT answers its end or refuses it with E-JSON-READ-TRAILING.
 \ Text that is not JSON throws the JSON reader's code first.
-: READ-BODY ( message ptr JSON:cursor ptr u8 n -- message ptr JSON:cursor ptr u8 n )
-   {: prior st:ptr body:ptr len:n :}
+: READ-BODY ( message ^JSON:cursor ^u8 n -- message ^JSON:cursor ^u8 n )
+   {: prior st:^ body:^ len:n :}
    st body len READ-INIT
    READ-NEXT {: root:n :}
    root T-OBJ = if
@@ -232,8 +232,8 @@ public
 \ message. Member names compare decoded, the last repeat counts, other members are
 \ passed over. An invalid message carries its own id when that id is valid and it
 \ has a method, else the null id, so a reply never answers a response.
-: >MESSAGE ( ptr JSON:cursor ptr u8 n -- message )
-   {: st:ptr body:ptr len:n :}
+: >MESSAGE ( ^JSON:cursor ^u8 n -- message )
+   {: st:^ body:^ len:n :}
    NOT-JSON st body len [: READ-BODY ;] catch {: code:n :}
    2drop drop {: m :}
    code 0= if m exit then
@@ -242,31 +242,31 @@ public
 
 private
 
-: ID-TEXT$ ( id -- ptr u8 n )
-   ID$ {: a:ptr u:n :}
+: ID-TEXT$ ( id -- ^u8 n )
+   ID$ {: a:^ u:n :}
    u 0 <= if E-JSON-RPC-ID throw then
    a u ;
 
-: HEAD ( ptr JSON:writer -- ptr JSON:writer )
+: HEAD ( ^JSON:writer -- ^JSON:writer )
    WRITE-OBJECT-START  s" jsonrpc" s" 2.0" WRITE-FIELD-S ;
 
-: ID-FIELD ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
-   {: a:ptr u:n :}
+: ID-FIELD ( ^JSON:writer ^u8 n -- ^JSON:writer )
+   {: a:^ u:n :}
    WRITE-COMMA  s" id" a u WRITE-FIELD-RAW ;
 
 public
 
 \ A reply needs an id: an empty one is E-JSON-RPC-ID before any byte is written.
 \ `{"jsonrpc":"2.0","id":ID,"result":`; the caller writes the value, then END.
-: RESULT ( ptr JSON:writer id -- ptr JSON:writer )
-   ID-TEXT$ {: a:ptr u:n :}
+: RESULT ( ^JSON:writer id -- ^JSON:writer )
+   ID-TEXT$ {: a:^ u:n :}
    HEAD a u ID-FIELD
    WRITE-COMMA  s" result" WRITE-KEY ;
 
 \ A whole error reply: `{"jsonrpc":"2.0","id":ID,"error":{"code":N,"message":M}}`.
-: ERROR ( ptr JSON:writer id n ptr u8 n -- ptr JSON:writer )
-   {: code:n msg:ptr mu:n :}
-   ID-TEXT$ {: a:ptr u:n :}
+: ERROR ( ^JSON:writer id n ^u8 n -- ^JSON:writer )
+   {: code:n msg:^ mu:n :}
+   ID-TEXT$ {: a:^ u:n :}
    HEAD a u ID-FIELD
    WRITE-COMMA  s" error" WRITE-KEY
    WRITE-OBJECT-START
@@ -276,13 +276,13 @@ public
    WRITE-OBJECT-END ;
 
 \ `{"jsonrpc":"2.0","method":M,"params":`; the caller writes params, then END.
-: NOTIFY ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
-   {: m:ptr mu:n :}
+: NOTIFY ( ^JSON:writer ^u8 n -- ^JSON:writer )
+   {: m:^ mu:n :}
    HEAD
    WRITE-COMMA  s" method" m mu WRITE-FIELD-S
    WRITE-COMMA  s" params" WRITE-KEY ;
 
-: END ( ptr JSON:writer -- ptr JSON:writer )
+: END ( ^JSON:writer -- ^JSON:writer )
    WRITE-OBJECT-END ;
 
 ;using

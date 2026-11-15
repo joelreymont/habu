@@ -31,10 +31,10 @@ variable MUTEX
 
 \ The vector is an engine DATA cell holding a code pointer; only a private CAST:
 \ gives an address a quotation pointee.
-CAST: >VECTOR ( n -- ptr [ -- ] )
+CAST: >VECTOR ( n -- ^[ -- ] )
 CAST: XT>N ( [ -- ] -- n )
 
-: VECTOR ( -- ptr [ -- ] )
+: VECTOR ( -- ^[ -- ] )
    BOOT:EXIT-VECTOR NULL-PTR - >VECTOR ;
 
 \ The newest action, taken off the table, or false when none is left.

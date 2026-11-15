@@ -39,23 +39,23 @@ variable I-X
 variable I-N
 variable I-W
 
-: CODE-ALLOC ( -- ptr u8 )
+: CODE-ALLOC ( -- ^u8 )
    CODE-CAP-BYTES map-anon 0 <> if
       drop s" icode: code mmap failed" ICODE-EXIT-RC die then ;
 
-: CODE ( -- ptr u8 )
+: CODE ( -- ^u8 )
    CODE-A @ NULL-PTR = IF CODE-ALLOC CODE-A ! THEN
    CODE-A @ ;
 
-: ICODE-TAB-ALLOC ( -- ptr n )
+: ICODE-TAB-ALLOC ( -- ^n )
    ICODE-TAB-BYTES map-anon 0 <> if
       drop s" icode: table mmap failed" ICODE-EXIT-RC die then ;
 
-: ICODE-TABS ( -- ptr n )
+: ICODE-TABS ( -- ^n )
    ICODE-TAB-A @ NULL-PTR = IF ICODE-TAB-ALLOC ICODE-TAB-A ! THEN
    ICODE-TAB-A @ ;
 
-: ICODE-TAB ( n -- ptr n )
+: ICODE-TAB ( n -- ^n )
    ICODE-TABS swap ICODE-TAB-CELLS * cells + ;
 
 private
@@ -103,15 +103,15 @@ public
    0 ASM-CP !
    0 NREF !  0 NSPAN ! ;
 
-: CODE-BYTE+ ( ptr u8 n -- ptr u8 ) + ;
+: CODE-BYTE+ ( ^u8 n -- ^u8 ) + ;
 
-: CW@ ( n -- ptr u8 )
+: CW@ ( n -- ^u8 )
    $4 * CODE swap CODE-BYTE+ ;
 
 : ASM-CP? ( n -- )
    ASM-CP @ + CODE-CAP-WORDS > if s" icode: code buffer overflow" ICODE-EXIT-RC die then ;
 PTR-VARIABLE EP
-: EP@ ( -- ptr u8 ) EP @ ;
+: EP@ ( -- ^u8 ) EP @ ;
 
 : EMITW ( n -- )
    I-W !
@@ -137,9 +137,9 @@ variable NLBL
 1 constant FX-B19                              \ cond/CBZ/CBNZ: 19-bit word delta
 2 constant FX-ADR                              \ ADR: 21-bit byte delta
 3 constant FX-LOFF                             \ movz/movk pair: label byte offset
-: FXS ( -- ptr n ) 0 ICODE-TAB ;
-: FXN ( -- ptr n ) 1 ICODE-TAB ;
-: FXK ( -- ptr n ) 2 ICODE-TAB ;
+: FXS ( -- ^n ) 0 ICODE-TAB ;
+: FXN ( -- ^n ) 1 ICODE-TAB ;
+: FXK ( -- ^n ) 2 ICODE-TAB ;
 DYNAMIC-BUFFER FXH n
 variable NFX
 variable FX-FREE
@@ -151,7 +151,7 @@ variable FX-NEW
 
 private
 
-: ICODE-UNMAP ( ptr a n -- )
+: ICODE-UNMAP ( ^a n -- )
    munmap 0 <> if s" icode: unmap failed" ICODE-EXIT-RC die then ;
 
 : BUFFERS-RELEASE ( -- )
@@ -199,9 +199,9 @@ public
    dup FXH -1 swap !
    dup 1 + NLBL ! >LABEL ;
 
-: LABEL@ ( ptr n -- label ) @ >LABEL ;
+: LABEL@ ( ^n -- label ) @ >LABEL ;
 
-: LABEL! ( label ptr n -- ) swap LABEL>N swap ! ;
+: LABEL! ( label ^n -- ) swap LABEL>N swap ! ;
 
 : LBL-BOUND? ( label -- bool )
    LABEL>N LBLP @ 0 >= ;
@@ -294,7 +294,7 @@ variable IDEC-N                     \ fill cursor: digits land backwards from th
    IDEC-V @ 0 < IF  0 IDEC-V @ 1 + -  IDEC-V !  1 IDEC-CY !  1 IDEC-NEG !
    ELSE  0 IDEC-CY !  0 IDEC-NEG !  THEN ;
 
-: IDEC$ ( n -- ptr u8 n )
+: IDEC$ ( n -- ^u8 n )
    IDEC-SET
    BEGIN IDEC-DIGIT  IDEC-V @ 0 = IDEC-CY @ 0 = and UNTIL
    IDEC-NEG @ 0 <> IF IDEC-MINUS IDEC-PUT THEN
@@ -313,9 +313,9 @@ PTR-VARIABLE IMSG-A
 variable IMSG-U
 variable IMSG-V
 
-: IMSG-A@ ( -- ptr u8 ) IMSG-A @ ;
+: IMSG-A@ ( -- ^u8 ) IMSG-A @ ;
 
-: IMSG+ ( ptr u8 n -- )
+: IMSG+ ( ^u8 n -- )
    IMSG-U ! IMSG-A !
    \ Any source can call IMSG+, so the length is compared with the room left: in
    \ a sum, a length near the maximum cell wraps back under the capacity.
@@ -328,10 +328,10 @@ variable IMSG-V
       1 +
    REPEAT drop ;
 
-: IMSG-FIELD ( ptr u8 n n -- )
+: IMSG-FIELD ( ^u8 n n -- )
    IMSG-V !  IMSG+  IMSG-V @ IDEC$ IMSG+ ;
 
-: REACH-DIE ( ptr u8 n -- )
+: REACH-DIE ( ^u8 n -- )
    0 IMSG-N !  IMSG+
    s"  site="   I-RSITE   @ IMSG-FIELD
    s"  target=" I-RTARGET @ IMSG-FIELD
@@ -514,11 +514,11 @@ variable CUT-W
 variable CUT-NEW                    \ next new word position
 PTR-VARIABLE CUT-RANGES
 PTR-VARIABLE CUT-SRC
-: RANGES@ ( -- ptr n ) CUT-RANGES @ ;
-: CUT-SRC@ ( -- ptr u8 ) CUT-SRC @ ;
+: RANGES@ ( -- ^n ) CUT-RANGES @ ;
+: CUT-SRC@ ( -- ^u8 ) CUT-SRC @ ;
 : RANGE-START ( n -- n ) 2 * cells RANGES@ swap + @ ;
 : RANGE-END ( n -- n ) 2 * 1 + cells RANGES@ swap + @ ;
-: MAP-CELL ( n -- ptr n ) CUT-FROM @ - CUT-MAP ;
+: MAP-CELL ( n -- ^n ) CUT-FROM @ - CUT-MAP ;
 : REF-POS ( n -- n ) REF-LABELS @ LBLP @ ;      \ record's label position, -1 unbound
 
 \ A position after the cut: itself outside [CUT-FROM, ASM-CP], else its map
@@ -667,7 +667,7 @@ public
 \ CUT ( ranges count from -- ) keeps only the ranges' words of [from, ASM-CP),
 \ moved down with their references and data spans; ranges: count ascending
 \ [start, end) pairs.
-: CUT ( ptr n n n -- )
+: CUT ( ^n n n -- )
    CUT-FROM ! CUT-N ! CUT-RANGES !
    ?RANGES  MAP-BUILD  ?REFS  ?SPANS
    CODE-MOVE  REF-MOVE  SPAN-MOVE  LABEL-MOVE
@@ -684,10 +684,10 @@ public
 PTR-VARIABLE BYP
 PTR-VARIABLE BYA
 variable BYU
-: BYP@ ( -- ptr u8 ) BYP @ ;
-: BYA@ ( -- ptr u8 ) BYA @ ;
+: BYP@ ( -- ^u8 ) BYP @ ;
+: BYA@ ( -- ^u8 ) BYA @ ;
 
-: BYTES-ARGS ( ptr u8 n -- )
+: BYTES-ARGS ( ^u8 n -- )
    BYU !  BYA ! ;
 
 : BYTES-CAP ( -- )
@@ -704,7 +704,7 @@ variable BYU
 \ Each call is its own run, recorded as a data span: the bytes, then NUL pad to
 \ the next word. A span written as one, such as a message and its newline, is
 \ one call.
-: BYTES, ( ptr u8 n -- )
+: BYTES, ( ^u8 n -- )
    BYTES-ARGS
    BYTES-CAP
    BYTES-COPY

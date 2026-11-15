@@ -98,7 +98,7 @@ $1B8 constant VERIFY-SOURCE-CLAUSE-OFF
 \ no local answers.
 $1C0 constant VERIFY-CURSOR-OFF
 $1C8 constant VERIFY-EACH-VISIBLE-OFF
-\ The load's top-level find of a token, asked quietly ( ptr u8 n -- sym eff1 ctl ), eff1 the
+\ The load's top-level find of a token, asked quietly ( ^u8 n -- sym eff1 ctl ), eff1 the
 \ visible effect record's offset + 1: 0 0 0 if nothing live binds it, 0 0 BINDING-REFUSED if refused.
 $1D0 constant VERIFY-TOP-BINDING-OFF
 \ The control word's facts its reader tests: the word may read the source after
@@ -122,7 +122,7 @@ $1F00 constant BINDING-ID-MASK
 0 constant VISIBLE-BODY
 1 constant VISIBLE-TOP
 2 constant VISIBLE-NAMED
-\ Whether a `trust` row is the run's to judge: ( ptr u8 n -- bool ), true when
+\ Whether a `trust` row is the run's to judge: ( ^u8 n -- bool ), true when
 \ the row names no word in the wordlist its record lands in and a rendering
 \ statement read before it marked that wordlist.
 $1D8 constant VERIFY-TRUST-OFF
@@ -130,19 +130,19 @@ $1D8 constant VERIFY-TRUST-OFF
 \ exports, through any re-exports; otherwise the symbol itself.
 $1E0 constant VERIFY-SYM-SOURCE-OFF
 CHECKER-OWNER-EXT:RECORD-PUBLISHED-OFF constant RECORD-PUBLISHED-OFF      \ ( n -- )
-CHECKER-OWNER-EXT:GRID-BEFORE-OFF constant GRID-BEFORE-OFF               \ ( ptr n -- n )
-CHECKER-OWNER-EXT:GRID-AFTER-OFF constant GRID-AFTER-OFF                 \ ( ptr n n -- )
+CHECKER-OWNER-EXT:GRID-BEFORE-OFF constant GRID-BEFORE-OFF               \ ( ^n -- n )
+CHECKER-OWNER-EXT:GRID-AFTER-OFF constant GRID-AFTER-OFF                 \ ( ^n n -- )
 CHECKER-OWNER-EXT:GRID-REVOKE-OFF constant GRID-REVOKE-OFF               \ ( n -- )
-CHECKER-OWNER-EXT:GRID-RETIRE-OFF constant GRID-RETIRE-OFF               \ ( ptr n -- )
+CHECKER-OWNER-EXT:GRID-RETIRE-OFF constant GRID-RETIRE-OFF               \ ( ^n -- )
 CHECKER-OWNER-EXT:PUBLICATION-USE-OFF constant PUBLICATION-USE-OFF \ ( [ n -- ] -- )
 CHECKER-OWNER-EXT:VERIFY-CTOR-DECL-OFF constant VERIFY-CTOR-DECL-OFF \ ( sym name len visit start end -- )
 CHECKER-OWNER-EXT:BODY-CLOSE-OFF constant BODY-CLOSE-OFF \ ( -- )
 \ The body-close action of the owner record at ptr, 0 for no record. Every
 \ owner record is laid out from this field list, so it holds the slot.
-: CLOSER ( ptr u8 -- n ) {: rec:ptr :}
+: CLOSER ( ^u8 -- n ) {: rec:^ :}
    rec NULL-PTR = if 0 exit then
    rec BODY-CLOSE-OFF + CELL-VIEW @ ;
-CHECKER-OWNER-EXT:DECL-ROW-OFF constant DECL-ROW-OFF \ ( ptr u8 n ptr u8 n -- bool )
+CHECKER-OWNER-EXT:DECL-ROW-OFF constant DECL-ROW-OFF \ ( ^u8 n ^u8 n -- bool )
 
 \ These cells precede the record; callable offsets count from the record
 \ pointer, after them.

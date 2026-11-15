@@ -48,39 +48,39 @@ variable WANT-U
 CAP BUFFER: PROG                       \ the program being written
 variable PROG-U
 
-: ARG+ ( ptr u8 n -- )  >LEN PROC-ARGV+ ;
+: ARG+ ( ^u8 n -- )  >LEN PROC-ARGV+ ;
 
-: TEXT+ ( ptr u8 n ptr u8 ptr n -- )
-   {: a:ptr u:n buf:ptr len:ptr :}
+: TEXT+ ( ^u8 n ^u8 ^n -- )
+   {: a:^ u:n buf:^ len:^ :}
    len @ u + CAP > if E-STR-CAPACITY throw then
    a  buf len @ +  u BYTE-COPY
    u len +! ;
 
-: ALL+ ( ptr u8 n -- )  ALL ALL-U TEXT+ ;
-: CALLS+ ( ptr u8 n -- )  CALLS CALLS-U TEXT+ ;
-: WANT+ ( ptr u8 n -- )  WANT WANT-U TEXT+ ;
-: PROG+ ( ptr u8 n -- )  PROG PROG-U TEXT+ ;
+: ALL+ ( ^u8 n -- )  ALL ALL-U TEXT+ ;
+: CALLS+ ( ^u8 n -- )  CALLS CALLS-U TEXT+ ;
+: WANT+ ( ^u8 n -- )  WANT WANT-U TEXT+ ;
+: PROG+ ( ^u8 n -- )  PROG PROG-U TEXT+ ;
 
-: NAME$ ( -- ptr u8 n )  NAME-A @ NAME-U @ ;
+: NAME$ ( -- ^u8 n )  NAME-A @ NAME-U @ ;
 
 : LABEL ( -- )  NAME$ T-LABEL ;
 
 \ DIR's file named NAME and then suffix, written into buf; answers its length.
-: PATH ( ptr u8 n ptr u8 -- n )
-   {: sfx:ptr su:n buf:ptr :}
+: PATH ( ^u8 n ^u8 -- n )
+   {: sfx:^ su:n buf:^ :}
    SB-RESET  NAME$ SB-APPEND  sfx su SB-APPEND
    DIR DIR-U @ SB$ buf FS:JOIN-PATH ;
 
 \ DIR's file named NAME and then suffix holds the bytes.
-: KEEP ( ptr u8 n ptr u8 n -- )
-   {: a:ptr u:n sfx:ptr su:n :}
+: KEEP ( ^u8 n ^u8 n -- )
+   {: a:^ u:n sfx:^ su:n :}
    sfx su FILE PATH {: fu:n :}
    FILE fu a u FS:WRITE-ALL ;
 
 \ The program's files: the source and a MAIN of the body as NAME.f, MAIN's call
 \ as NAME-call.f, and its module's path, NAME.wasm.
-: FILES ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: name:ptr nu:n src:ptr su:n body:ptr bu:n :}
+: FILES ( ^u8 n ^u8 n ^u8 n -- )
+   {: name:^ nu:n src:^ su:n body:^ bu:n :}
    name NAME-A !  nu NAME-U !
    s" .f" SRC PATH SRC-U !
    s" -call.f" CALLER PATH CALLER-U !
@@ -99,13 +99,13 @@ variable PROG-U
 
 \ The first line of the engine's record of an uncaught throw of code c, with its
 \ line feed.
-: THROWN-LINE$ ( n -- ptr u8 n )
+: THROWN-LINE$ ( n -- ^u8 n )
    SB-RESET TEST-EVAL:THROWN-HEAD$ SB-APPEND  10 SB-APPEND-C  SB$ ;
 
 \ The program natively: it prints want and exits rc; answers its stderr's
 \ length.
-: NATIVE-RUN ( ptr u8 n n -- n )
-   {: want:ptr wu:n rc:n :}
+: NATIVE-RUN ( ^u8 n n -- n )
+   {: want:^ wu:n rc:n :}
    want wu s" -expected.txt" KEEP
    PROC-ARGV-RESET
    s" --load" ARG+  SRC SRC-U @ ARG+  CALLER CALLER-U @ ARG+
@@ -117,16 +117,16 @@ variable PROG-U
 
 \ NATIVE-RUN with nothing on stderr for 0, and for UNCAUGHT-RC the record of
 \ the uncaught throw of code first.
-: NATIVE ( ptr u8 n n n -- )
-   {: want:ptr wu:n rc:n code:n :}
+: NATIVE ( ^u8 n n n -- )
+   {: want:^ wu:n rc:n code:n :}
    want wu rc NATIVE-RUN {: e:n :}
    rc 0= if  LABEL  ERR e s" " T$=  then
    rc UNCAUGHT-RC = if  LABEL  ERR e code THROWN-LINE$ STARTS-WITH? TTRUE  then ;
 
 \ The program as a module, valid and run: it prints want and answers status, a
 \ throw's code whole.
-: WASM ( ptr u8 n n n -- )
-   {: want:ptr wu:n status:n code:n :}
+: WASM ( ^u8 n n n -- )
+   {: want:^ wu:n status:n code:n :}
    SRC SRC-U @ MODULE MODULE-U @ WASM-HARNESS:BUILD {: r:n :}
    LABEL  r 0 T=
    r 0<> if  exit  then
@@ -144,8 +144,8 @@ variable PROG-U
 \ every answer into the cell it takes; W03 runs the groups from 0.
 12 constant SHAPES
 
-: G+ ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: G+ ( ^u8 n -- )
+   {: a:^ u:n :}
    GEN-U @ u + GEN-RESERVE
    a  GEN-U @ GEN  u BYTE-COPY
    u GEN-U +! ;
@@ -184,7 +184,7 @@ variable PROG-U
 
 public
 
-: W03$ ( -- ptr u8 n )
+: W03$ ( -- ^u8 n )
    0 GEN-U !
    SHAPES SHAPES * 0 ?do  i WORD+  loop
    SHAPES 0 ?do  i GROUP+  loop
@@ -195,14 +195,14 @@ public
 
 \ ---- the rows --------------------------------------------------------------------
 : SETUP ( -- )
-   s" wasm-differential" FS:MKTEMP-DIR {: a:ptr u:n :}
+   s" wasm-differential" FS:MKTEMP-DIR {: a:^ u:n :}
    a DIR u BYTE-COPY  u DIR-U !
    s" wasm differential: sources and modules in " type  DIR u type cr ;
 
 \ A row's NAME, the SOURCE defining it and the bytes it prints (numeric-rows.f) join
 \ RETURNING's program.
-: ROW ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: name:ptr nu:n src:ptr su:n want:ptr wu:n :}
+: ROW ( ^u8 n ^u8 n ^u8 n -- )
+   {: name:^ nu:n src:^ su:n want:^ wu:n :}
    src su ALL+  S\" \n" ALL+
    S\"  s\" " CALLS+  name nu CALLS+  S\" \" type cr " CALLS+  name nu CALLS+  S\" \n" CALLS+
    name nu WANT+  S\" \n" WANT+  want wu WANT+ ;
@@ -217,21 +217,21 @@ public
 
 \ THROW-ROW's program throws a code uncaught: natively the engine's record of
 \ the uncaught throw names it, and the run answers status 1 with the code whole.
-: THROW-ROW ( ptr u8 n ptr u8 n ptr u8 n n -- )
-   {: name:ptr nu:n src:ptr su:n want:ptr wu:n code:n :}
+: THROW-ROW ( ^u8 n ^u8 n ^u8 n n -- )
+   {: name:^ nu:n src:^ su:n want:^ wu:n code:n :}
    name nu src su name nu FILES
    want wu UNCAUGHT-RC code NATIVE
    want wu 1 code WASM ;
 
 false [if] \ off until dot habu-add-the-checks-a49d054d
 \ Stderr is the native engine's record of a caught memory fault.
-: FAULT-RECORD? ( ptr u8 n -- bool )
+: FAULT-RECORD? ( ^u8 n -- bool )
    S\" error[E-MEMORY-FAULT]: a read or write faulted\n" STARTS-WITH? ;
 
 \ FAULT-ROW's program catches a memory fault and ends with status 0; natively
 \ the engine reports the fault on stderr, the module reports nothing.
-: FAULT-ROW ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: name:ptr nu:n src:ptr su:n want:ptr wu:n :}
+: FAULT-ROW ( ^u8 n ^u8 n ^u8 n -- )
+   {: name:^ nu:n src:^ su:n want:^ wu:n :}
    name nu src su name nu FILES
    want wu 0 NATIVE-RUN {: e:n :}
    LABEL  ERR e FAULT-RECORD? TTRUE
@@ -280,7 +280,7 @@ s\" -9223372036854775807\n" $8000000000000001 THROW-ROW
 false [if] \ off until dot habu-add-the-checks-a49d054d
 \ A byte read in the null region throws E-MEMORY-FAULT through the catch around it.
 s" W07-FAULT"
-s" package W07-FAULT-CAST private CAST: >BYTE ( n -- ptr u8 ) public : PEEK ( -- ) $FFFF >BYTE c@ drop ; ;package : W07-FAULT ( -- ) 2 . [: W07-FAULT-CAST:PEEK ;] catch . ;"
+s" package W07-FAULT-CAST private CAST: >BYTE ( n -- ^u8 ) public : PEEK ( -- ) $FFFF >BYTE c@ drop ; ;package : W07-FAULT ( -- ) 2 . [: W07-FAULT-CAST:PEEK ;] catch . ;"
 s\" 2\n110\n" FAULT-ROW
 [then]
 
@@ -319,7 +319,7 @@ S\" {\"name\":\"é\",\"min\":-9223372036854775808}\n" ROW
 \ MAP's keyed words, held to one order on native and wasm: INIT-KEYED under a
 \ fixed key, SET, GET and EACH's visit order.
 s" WMAP:STEP"
-S\" require src/lib/map-core.f\npackage WMAP\nprivate\n8 constant ROOM\ncreate M ROOM >COUNT MAP:CELL-COUNT COUNT>N cells allot\n: SHOW ( ptr u8 len n -- ) {: a:ptr u:len v:n :}\n   a u LEN>N type space v . ;\npublic\n: STEP ( -- )\n   M ROOM >COUNT $5EED $C0DE MAP:INIT-KEYED\n   1 M ROOM >COUNT s\" one\" >LEN MAP:SET\n   2 M ROOM >COUNT s\" two\" >LEN MAP:SET\n   3 M ROOM >COUNT s\" three\" >LEN MAP:SET\n   M ROOM >COUNT s\" two\" >LEN MAP:GET MATCH option\n     none OF -1 . ENDOF\n     some OF . ENDOF\n   ;MATCH\n   M ROOM >COUNT ['] SHOW MAP:EACH ;\n;package\n"
+S\" require src/lib/map-core.f\npackage WMAP\nprivate\n8 constant ROOM\ncreate M ROOM >COUNT MAP:CELL-COUNT COUNT>N cells allot\n: SHOW ( ^u8 len n -- ) {: a:^ u:len v:n :}\n   a u LEN>N type space v . ;\npublic\n: STEP ( -- )\n   M ROOM >COUNT $5EED $C0DE MAP:INIT-KEYED\n   1 M ROOM >COUNT s\" one\" >LEN MAP:SET\n   2 M ROOM >COUNT s\" two\" >LEN MAP:SET\n   3 M ROOM >COUNT s\" three\" >LEN MAP:SET\n   M ROOM >COUNT s\" two\" >LEN MAP:GET MATCH option\n     none OF -1 . ENDOF\n     some OF . ENDOF\n   ;MATCH\n   M ROOM >COUNT ['] SHOW MAP:EACH ;\n;package\n"
 S\" 2\ntwo 2\nthree 3\none 1\n" ROW
 
 \ Core byte copying is forward, including when the destination overlaps the

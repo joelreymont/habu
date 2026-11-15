@@ -26,7 +26,7 @@ variable TAT-COUNT-READY
    loop
    0 TASK:RETURN ;
 
-: TAT-COUNT-JOIN ( ptr n -- )
+: TAT-COUNT-JOIN ( ^n -- )
    TASK:JOIN MATCH result
       ok OF drop ENDOF
       err OF throw ENDOF
@@ -77,10 +77,10 @@ variable TAT-SCRIPT-U
 : TAT-LF ( -- )
    10 SB-APPEND-C ;
 
-: TAT-SCRIPT$ ( -- ptr u8 n )
+: TAT-SCRIPT$ ( -- ^u8 n )
    TAT-SCRIPT-PATH TAT-SCRIPT-U @ ;
 
-: TAT-FAIL-SRC$ ( -- ptr u8 n )
+: TAT-FAIL-SRC$ ( -- ^u8 n )
    SB-RESET
    s" require src/lib/test.f" SB-APPEND TAT-LF
    s" T-RESET" SB-APPEND TAT-LF
@@ -88,8 +88,8 @@ variable TAT-SCRIPT-U
    s" T-REPORT" SB-APPEND TAT-LF
    SB$ ;
 
-: TAT-PREPARE ( ptr u8 n ptr u8 n -- )
-   {: prefix:ptr prefixu:n name:ptr nameu:n :}
+: TAT-PREPARE ( ^u8 n ^u8 n -- )
+   {: prefix:^ prefixu:n name:^ nameu:n :}
    prefix prefixu GT-START
    name nameu TAT-SCRIPT-PATH GT-PATH TAT-SCRIPT-U ! ;
 

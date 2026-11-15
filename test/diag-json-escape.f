@@ -31,8 +31,8 @@ TYPED-VARIABLE READER-STORAGE JSON:cursor
    c GE-SRC-C
    s" jesc-nosuch -- n ) dup ;" GE-SRC-LINE ;
 
-: FAIL ( ptr u8 n -- )
-   {: msg:ptr msgu:n :}
+: FAIL ( ^u8 n -- )
+   {: msg:^ msgu:n :}
    s" control byte " type BYTE @ .
    msg msgu GE-FAIL ;
 
@@ -48,7 +48,7 @@ TYPED-VARIABLE READER-STORAGE JSON:cursor
 
 \ "token" precedes "source_line" in the packet, and READ-FIND-KEY only reads
 \ forward.
-: TOKEN-AND-SOURCE ( ptr u8 n -- )
+: TOKEN-AND-SOURCE ( ^u8 n -- )
    READER-STORAGE -rot JSON:READ-INIT JSON:READ-NEXT drop
    s" token" JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE s" packet has no token field" FAIL then
    JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE s" packet token field is not a string" FAIL then
@@ -68,14 +68,14 @@ TYPED-VARIABLE READER-STORAGE JSON:cursor
       s" packet source_line field does not decode to the line written" FAIL
    then JSON:READ-CLOSE ;
 
-: BLANK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: BLANK? ( ^u8 n -- bool ) {: a:^ u:n :}
    u 0 ?do
       a i + c@ dup 32 = over 9 = or over 13 = or swap 10 = or
       0= if false unloop exit then
    loop true ;
 
-: ROW ( ptr u8 n bool -- )
-   {: a:ptr u:n first:bool :}
+: ROW ( ^u8 n bool -- )
+   {: a:^ u:n first:bool :}
    READER-STORAGE a u JSON:READ-INIT JSON:READ-NEXT JSON:T-OBJ <> if
       JSON:READ-CLOSE s" packet stream has a non-object" FAIL
    then
@@ -85,11 +85,11 @@ TYPED-VARIABLE READER-STORAGE JSON:cursor
 
 \ Every row of the stream parses strictly; the first object is the packet.
 : STREAM ( -- )
-   GT-ERR$ {: a:ptr u:n :}
+   GT-ERR$ {: a:^ u:n :}
    0 POS !
    0 COUNT !
    begin POS @ u < while
-      a u POS @ JSONL:SPLIT-LINE drop {: line:ptr lu:n next:n :}
+      a u POS @ JSONL:SPLIT-LINE drop {: line:^ lu:n next:n :}
       line lu BLANK? 0= if
          line lu COUNT @ 0= ROW
          COUNT @ 1+ COUNT !

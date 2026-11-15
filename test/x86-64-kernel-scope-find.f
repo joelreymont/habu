@@ -8,8 +8,8 @@ using X64ASM
 using X64CODE
 using X64LAYOUT
 
-: ROW ( ptr u8 n -- ) X64HARNESS:CALL-ROW, ;
-: SCOPE, ( ptr u8 n -- ) X64HARNESS:PUSH-TEXT,  s" scope-find" ROW ;
+: ROW ( ^u8 n -- ) X64HARNESS:CALL-ROW, ;
+: SCOPE, ( ^u8 n -- ) X64HARNESS:PUSH-TEXT,  s" scope-find" ROW ;
 
 \ -1 means the null record; every other expected value is a record index.
 : REC?, ( n -- ) dup 0 < if drop 0 X64HARNESS:EXPECT-POP, else X64HARNESS:EXPECT-ROW, then ;
@@ -86,7 +86,7 @@ using X64LAYOUT
    X64HARNESS:EXPECT-BALANCED,
    s" hb-x64-scope-late-seed" TMP-PATH X64HARNESS:BOOT-CLOSE, ;
 
-: BUILD ( bool n ptr u8 n -- ) {: indexed:bool kind:n path:ptr u:n :}
+: BUILD ( bool n ^u8 n -- ) {: indexed:bool kind:n path:^ u:n :}
    false X64HARNESS:BOOT-OPEN,
    SEED,
    indexed if X64KERNEL:HIDX-BUILD, then

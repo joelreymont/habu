@@ -181,10 +181,10 @@ $1024 constant SO-NWRITE           \ Darwin's count of SIOCOUTQ, a socket option
 \ (int fd, short events, short revents). Calls must not nest within one task;
 \ readers sharing a connection coordinate themselves.
 $20 TASK:+USERS IO-STORAGE u8
-: SOCKADDR ( -- ptr u8 ) 0 IO-STORAGE ;
-: ADDRLEN ( -- ptr u8 ) $10 IO-STORAGE ;
-: OPTION ( -- ptr u8 ) $14 IO-STORAGE ;
-: POLLFD ( -- ptr u8 ) $18 IO-STORAGE ;
+: SOCKADDR ( -- ^u8 ) 0 IO-STORAGE ;
+: ADDRLEN ( -- ^u8 ) $10 IO-STORAGE ;
+: OPTION ( -- ^u8 ) $14 IO-STORAGE ;
+: POLLFD ( -- ^u8 ) $18 IO-STORAGE ;
 
 CAST: BLEN>N ( NUM:byte-len -- n )
 
@@ -217,19 +217,19 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    CONNECTION>N dup CHECK-FD ;
 
 
-: BE16! ( n ptr u8 -- ) {: value:n target :}
+: BE16! ( n ^u8 -- ) {: value:n target :}
    value 8 rshift $FF and target c! value $FF and target $01 + c! ;
 
 
-: BE16@ ( ptr u8 -- n ) {: source :}
+: BE16@ ( ^u8 -- n ) {: source :}
    source c@ 8 lshift source $01 + c@ or ;
 
 
-: BE32! ( n ptr u8 -- ) {: value:n target :}
+: BE32! ( n ^u8 -- ) {: value:n target :}
    value 16 rshift target BE16! value target $02 + BE16! ;
 
 
-: BE32@ ( ptr u8 -- n ) {: source :}
+: BE32@ ( ^u8 -- n ) {: source :}
    source BE16@ 16 lshift source $02 + BE16@ or ;
 
 
@@ -278,24 +278,24 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 PROCESS-SYMBOLS
 
 FUNCTION: SOCKET-CALL socket ( n n n -- i32 ) ;FUNCTION
-FUNCTION: BIND-CALL bind ( n ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: BIND-CALL bind ( n ^u8 n -- i32 ) ;FUNCTION
 FUNCTION: LISTEN-CALL listen ( n n -- i32 ) ;FUNCTION
-FUNCTION: CONNECT-CALL connect ( n ptr u8 n -- i32 ) ;FUNCTION
-FUNCTION: SEND-CALL send ( n ptr u8 n n -- n ) ;FUNCTION
-FUNCTION: OPTION-CALL setsockopt ( n n n ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: CONNECT-CALL connect ( n ^u8 n -- i32 ) ;FUNCTION
+FUNCTION: SEND-CALL send ( n ^u8 n n -- n ) ;FUNCTION
+FUNCTION: OPTION-CALL setsockopt ( n n n ^u8 n -- i32 ) ;FUNCTION
 FUNCTION: SHUTDOWN-CALL shutdown ( n n -- i32 ) ;FUNCTION
 FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
-FUNCTION: DARWIN-ACCEPT accept ( n ptr u8 ptr u8 -- i32 ) ;FUNCTION
-FUNCTION: ACCEPT-CALL accept4 ( n ptr u8 ptr u8 n -- i32 ) ;FUNCTION
-FUNCTION: LOCAL-CALL getsockname ( n ptr u8 ptr u8 -- i32 ) ;FUNCTION
-FUNCTION: RECEIVE-CALL recv ( n ptr u8 n n -- n ) ;FUNCTION
+FUNCTION: DARWIN-ACCEPT accept ( n ^u8 ^u8 -- i32 ) ;FUNCTION
+FUNCTION: ACCEPT-CALL accept4 ( n ^u8 ^u8 n -- i32 ) ;FUNCTION
+FUNCTION: LOCAL-CALL getsockname ( n ^u8 ^u8 -- i32 ) ;FUNCTION
+FUNCTION: RECEIVE-CALL recv ( n ^u8 n n -- n ) ;FUNCTION
 
 \ ioctl's third argument is variadic: Darwin passes it on the stack.
-FUNCTION: QUEUE-CALL ioctl ( n n ptr u8 -- i32 )
+FUNCTION: QUEUE-CALL ioctl ( n n ^u8 -- i32 )
    2 VARIADIC
 ;FUNCTION
 
-FUNCTION: OPTION-GET-CALL getsockopt ( n n n ptr u8 ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
 
 
 : LAST-ERROR ( -- errno )
@@ -361,11 +361,11 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ptr u8 ptr u8 -- i32 ) ;FUNCTION
    fd SOCKADDR ADDRLEN LOCAL-CALL ;
 
 
-: RECEIVE-RAW ( n ptr u8 n -- n ) {: fd:n bytes size:n :}
+: RECEIVE-RAW ( n ^u8 n -- n ) {: fd:n bytes size:n :}
    fd bytes size 0 RECEIVE-CALL ;
 
 
-: SEND-RAW ( n ptr u8 n -- n ) {: fd:n bytes size:n :}
+: SEND-RAW ( n ^u8 n -- n ) {: fd:n bytes size:n :}
    fd bytes size MSG-NOSIGNAL SEND-CALL ;
 
 
@@ -444,7 +444,7 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ptr u8 ptr u8 -- i32 ) ;FUNCTION
 
 \ A stream read of zero bytes is the peer's orderly end of stream, never an
 \ empty message.
-: TRY-CHUNK ( n ptr u8 n -- try-read-result ) {: fd:n bytes size:n :}
+: TRY-CHUNK ( n ^u8 n -- try-read-result ) {: fd:n bytes size:n :}
    begin
       fd bytes size RECEIVE-RAW dup 0 > if size RECEIVED TCP4-TRY--READ--RESULT:data exit then
       0= if 0 LENGTH TCP4-TRY--READ--RESULT:closed exit then
@@ -456,7 +456,7 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ptr u8 ptr u8 -- i32 ) ;FUNCTION
 \ One receive, tried again after a wait for data while there is nothing to
 \ receive yet, so a read on a non-blocking connection still blocks until the
 \ stream answers.
-: READ-CHUNK ( n ptr u8 n -- read-result ) {: fd:n bytes size:n :}
+: READ-CHUNK ( n ^u8 n -- read-result ) {: fd:n bytes size:n :}
    begin
       fd bytes size TRY-CHUNK
       MATCH try-read-result
@@ -473,13 +473,13 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ptr u8 ptr u8 -- i32 ) ;FUNCTION
    again ;
 
 
-: EXACT-STEP ( n connection ptr u8 NUM:byte-len -- read-result )
+: EXACT-STEP ( n connection ^u8 NUM:byte-len -- read-result )
    {: got:n conn:connection bytes want:NUM:byte-len :}
    conn CONNECTION-FD bytes got + want BLEN>N got - READ-CHUNK ;
 
 
 \ A count past the span is a broken foreign result.
-: SEND-STEP ( n ptr u8 n -- n ) {: fd:n bytes size:n :}
+: SEND-STEP ( n ^u8 n -- n ) {: fd:n bytes size:n :}
    fd bytes size SEND-RAW
    dup size > if E-RESULT throw then ;
 
@@ -488,7 +488,7 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ptr u8 ptr u8 -- i32 ) ;FUNCTION
 \ `failed`. An interrupt retries it until the mono-ns deadline has passed and
 \ is `empty` after that, so no retry carries a slice past it; NO-DEADLINE
 \ retries every interrupt.
-: SEND-BY ( n ptr u8 n n -- slice-result ) {: fd:n bytes size:n deadline:n :}
+: SEND-BY ( n ^u8 n n -- slice-result ) {: fd:n bytes size:n deadline:n :}
    begin
       fd bytes size SEND-STEP
       dup 0 > if LENGTH TCP4-SLICE--RESULT:moved exit then
@@ -525,7 +525,7 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ptr u8 ptr u8 -- i32 ) ;FUNCTION
    again ;
 
 
-: AFTER-ROOM ( n ptr u8 n n -- slice-result ) {: fd:n bytes size:n deadline:n :}
+: AFTER-ROOM ( n ^u8 n n -- slice-result ) {: fd:n bytes size:n deadline:n :}
    fd deadline ROOM-BY
    MATCH ready-result
       ready OF fd bytes size deadline SEND-BY ENDOF
@@ -646,7 +646,7 @@ public
 \ One partial read of 1..capacity bytes, waiting in poll(2) on the task's own
 \ thread, with no AIO loop or deadline, until the stream answers. The caller owns
 \ the writable span. `closed` carries zero bytes.
-: READ ( connection ptr u8 NUM:byte-len -- read-result )
+: READ ( connection ^u8 NUM:byte-len -- read-result )
    {: conn:connection bytes capacity:NUM:byte-len :}
    capacity BLEN>N 1 MAX-TRANSFER WITHIN-RANGE
    conn CONNECTION-FD bytes capacity BLEN>N READ-CHUNK ;
@@ -657,7 +657,7 @@ public
 \ readiness loop even where the OS reports readiness spuriously, as Linux may.
 \ The caller owns the writable span. `closed` carries zero bytes. The connection
 \ must be non-blocking.
-: TRY-READ ( connection ptr u8 NUM:byte-len -- try-read-result )
+: TRY-READ ( connection ^u8 NUM:byte-len -- try-read-result )
    {: conn:connection bytes capacity:NUM:byte-len :}
    capacity BLEN>N 1 MAX-TRANSFER WITHIN-RANGE
    conn CONNECTION-FD bytes capacity BLEN>N TRY-CHUNK ;
@@ -665,7 +665,7 @@ public
 
 \ Blocks until the whole span is filled. An end of stream before that is
 \ `closed` carrying the bytes already written into the span.
-: READ-EXACT ( connection ptr u8 NUM:byte-len -- read-result )
+: READ-EXACT ( connection ^u8 NUM:byte-len -- read-result )
    {: conn:connection bytes want:NUM:byte-len :}
    want BLEN>N 1 MAX-TRANSFER WITHIN-RANGE
    0
@@ -691,7 +691,7 @@ public
 \ descriptor's owner has set O_NONBLOCK; a send on a blocking one waits in the
 \ kernel for as long as the peer takes. Nothing here pauses or weighs a bound;
 \ a caller writing a span in slices does both between them.
-: SEND-SLICE ( connection ptr u8 NUM:byte-len -- slice-result )
+: SEND-SLICE ( connection ^u8 NUM:byte-len -- slice-result )
    {: conn:connection bytes size:NUM:byte-len :}
    size SEND-SPAN {: span:n :}
    conn CONNECTION-FD {: fd:n :}
@@ -707,7 +707,7 @@ public
 \ One send of the span's first MAX-TRANSFER bytes at most that never waits:
 \ `moved` carries the bytes the OS took, `empty` says there was no room, and
 \ `failed` carries the errno. The connection must be non-blocking.
-: TRY-SEND ( connection ptr u8 NUM:byte-len -- slice-result )
+: TRY-SEND ( connection ^u8 NUM:byte-len -- slice-result )
    {: conn:connection bytes size:NUM:byte-len :}
    size SEND-SPAN {: span:n :}
    conn CONNECTION-FD bytes span NO-DEADLINE SEND-BY ;
@@ -718,7 +718,7 @@ public
 \ Every send slice that leaves bytes to send ends in a TASK:PAUSE, where a halt
 \ ends the task, whether it moved some or none: a peer that takes a few bytes in
 \ every slice holds the write for as long as it reads, but not past a halt.
-: WRITE ( connection ptr u8 NUM:byte-len -- status )
+: WRITE ( connection ^u8 NUM:byte-len -- status )
    {: conn:connection bytes size:NUM:byte-len :}
    size BLEN>N 0 MAX-TRANSFER WITHIN-RANGE
    size BLEN>N 0= if TCP4-STATUS:ok exit then

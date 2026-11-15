@@ -25,9 +25,9 @@ create DECODED 64 allot
 variable STREAM-POS
 
 DYNAMIC-BUFFER OWNERS XML:source-owner
-DYNAMIC-BUFFER SOURCES ptr u8
+DYNAMIC-BUFFER SOURCES ^u8
 DYNAMIC-BUFFER SOURCE-SIZES NUM:alloc-byte-len
-DYNAMIC-BUFFER ORIGINALS ptr u8
+DYNAMIC-BUFFER ORIGINALS ^u8
 DYNAMIC-BUFFER ORIGINAL-SIZES NUM:alloc-byte-len
 DYNAMIC-BUFFER ATTR-OFF off
 DYNAMIC-BUFFER ATTR-LEN len
@@ -49,7 +49,7 @@ variable INVALID-LAST
 CAST: KIND>N ( XML:kind -- n )
 CAST: ENCODING>N ( XML:encoding -- n )
 
-: UTF16$ ( ptr u8 n bool -- ptr u8 n )
+: UTF16$ ( ^u8 n bool -- ^u8 n )
    {: ascii size:n little:bool :}
    size WIRE-CAP 2 - 2 / > if XML:E-CAPACITY throw then
    little if $FF WIRE c! $FE WIRE 1+ c!
@@ -64,7 +64,7 @@ CAST: ENCODING>N ( XML:encoding -- n )
    loop
    WIRE size 2 * 2 + ;
 
-: PART$ ( n bool -- ptr u8 n )
+: PART$ ( n bool -- ^u8 n )
    {: index:n malformed:bool :}
    index COUNT @ 1- = INVALID-LAST @ 0<> and if
       s\" <r>\xC0\x80</r>" exit
@@ -79,11 +79,11 @@ CAST: ENCODING>N ( XML:encoding -- n )
    KIND>N {: want:n :}
    XML:NEXT KIND>N want T= ;
 
-: STREAM$ ( -- ptr u8 n )
+: STREAM$ ( -- ^u8 n )
    s" <a xmlns:p='urn:x'><p:b q='&amp;'>Aé&amp;Z</p:b></a>" ;
 
-: STREAM-FILL ( ptr n SPAN:span<u8> -- n )
-   {: pos:ptr output :}
+: STREAM-FILL ( ^n SPAN:span<u8> -- n )
+   {: pos:^ output :}
    STREAM$ {: source size:n :}
    pos @ size >= if 0 exit then
    source pos @ + c@ output 0 SPAN:U8!

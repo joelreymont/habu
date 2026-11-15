@@ -9,24 +9,24 @@ package ZIP
 \ The only asserted effects are exact C entry points. Habu owns all policy,
 \ range checks and storage. Pointer results are libzip-owned opaque objects.
 VERSIONED-LIBRARY zip 5,4                 \ Debian and Ubuntu ship libzip as libzip.so.4
-FUNCTION: OPEN-CALL zip_open ( ptr u8 n n -- ptr u8 ) ;FUNCTION
-FUNCTION: COUNT-CALL zip_get_num_entries ( ptr u8 n -- n ) ;FUNCTION
-FUNCTION: STAT-CALL zip_stat_index ( ptr u8 n n ptr u8 -- i32 ) ;FUNCTION
-FUNCTION: FOPEN-CALL zip_fopen_index ( ptr u8 n n -- ptr u8 ) ;FUNCTION
-FUNCTION: C-FREAD zip_fread ( ptr u8 ptr u8 n -- n ) ;FUNCTION
-FUNCTION: C-FCLOSE zip_fclose ( ptr u8 -- i32 ) ;FUNCTION
-FUNCTION: C-DISCARD zip_discard ( ptr u8 -- ) ;FUNCTION
+FUNCTION: OPEN-CALL zip_open ( ^u8 n n -- ^u8 ) ;FUNCTION
+FUNCTION: COUNT-CALL zip_get_num_entries ( ^u8 n -- n ) ;FUNCTION
+FUNCTION: STAT-CALL zip_stat_index ( ^u8 n n ^u8 -- i32 ) ;FUNCTION
+FUNCTION: FOPEN-CALL zip_fopen_index ( ^u8 n n -- ^u8 ) ;FUNCTION
+FUNCTION: C-FREAD zip_fread ( ^u8 ^u8 n -- n ) ;FUNCTION
+FUNCTION: C-FCLOSE zip_fclose ( ^u8 -- i32 ) ;FUNCTION
+FUNCTION: C-DISCARD zip_discard ( ^u8 -- ) ;FUNCTION
 
 PROCESS-SYMBOLS
 FUNCTION: C-CLOSE-FD close ( n -- i32 ) ;FUNCTION
-FUNCTION: C-PREAD pread ( n ptr u8 n n -- n ) ;FUNCTION
-FUNCTION: C-PWRITE pwrite ( n ptr u8 n n -- n ) ;FUNCTION
+FUNCTION: C-PREAD pread ( n ^u8 n n -- n ) ;FUNCTION
+FUNCTION: C-PWRITE pwrite ( n ^u8 n n -- n ) ;FUNCTION
 
-: DETACH-OWNED ( ptr n -- ptr n ) {: owner:ptr :}
+: DETACH-OWNED ( ^n -- ^n ) {: owner:^ :}
    STATE-GET
    INPUTS begin dup @ NULL? 0= while
       dup @ INPUT-OWNER @ owner = if
-         dup @ {: found:ptr :}
+         dup @ {: found:^ :}
          found LINK @ swap !
          STATE-RELEASE found exit
       then
@@ -35,7 +35,7 @@ FUNCTION: C-PWRITE pwrite ( n ptr u8 n n -- n ) ;FUNCTION
    @ STATE-RELEASE ;
 
 \ 0, or E-FS-IO for a failed descriptor close, E-READ for a failed libzip one.
-: CLOSE-INPUT-OBJECT ( ptr n -- n ) {: node:ptr :}
+: CLOSE-INPUT-OBJECT ( ^n -- n ) {: node:^ :}
    node INPUT-KIND @ 1 = if
       node INPUT-FD @ C-CLOSE-FD 0<> if E-FS-IO else 0 then exit
    then
@@ -47,15 +47,15 @@ FUNCTION: C-PWRITE pwrite ( n ptr u8 n n -- n ) ;FUNCTION
    a E-FS-IO = b E-FS-IO = or if E-FS-IO exit then
    a 0<> if a else b then ;
 
-: CLOSE-OWNED ( ptr n -- n ) {: owner:ptr :}
+: CLOSE-OWNED ( ^n -- n ) {: owner:^ :}
    0 begin owner DETACH-OWNED dup NULL? 0= while
-      {: input:ptr :}
+      {: input:^ :}
       input CLOSE-INPUT-OBJECT WORSE-CODE
       input NODE-FREE
    repeat drop ;
 
-: DISCARD-NODE ( ptr n -- )
-   {: node:ptr :}
+: DISCARD-NODE ( ^n -- )
+   {: node:^ :}
    node CLOSE-OWNED {: inputs:n :}
    node OBJECT @ dup NULL? if drop else C-DISCARD then
    false
@@ -71,14 +71,14 @@ FUNCTION: C-PWRITE pwrite ( n ptr u8 n n -- n ) ;FUNCTION
    inputs 0<> if inputs throw then ;
 
 
-: C-OPEN ( ptr u8 n -- ptr u8 ) {: path:ptr flags:n :}
+: C-OPEN ( ^u8 n -- ^u8 ) {: path:^ flags:n :}
    path flags 0 OPEN-CALL ;
 
-: C-COUNT ( ptr u8 -- n ) 0 COUNT-CALL ;
+: C-COUNT ( ^u8 -- n ) 0 COUNT-CALL ;
 
-: C-STAT ( ptr u8 n ptr n -- n ) {: archive:ptr idx:n stat:ptr :}
+: C-STAT ( ^u8 n ^n -- n ) {: archive:^ idx:n stat:^ :}
    archive idx 0 stat BYTE-VIEW STAT-CALL ;
 
-: C-FOPEN ( ptr u8 n -- ptr u8 ) 0 FOPEN-CALL ;
+: C-FOPEN ( ^u8 n -- ^u8 ) 0 FOPEN-CALL ;
 
 ;package

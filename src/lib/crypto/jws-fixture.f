@@ -14,13 +14,13 @@ variable MODULUS-U
 PEM-CAP BUFFER: PEM-ROW
 variable PEM-U
 
-: MODULUS+ ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: MODULUS+ ( ^u8 n -- )
+   {: a:^ u:n :}
    a MODULUS-ROW MODULUS-U @ + u BYTE-COPY
    MODULUS-U @ u + MODULUS-U ! ;
 
-: PEM+ ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: PEM+ ( ^u8 n -- )
+   {: a:^ u:n :}
    a PEM-ROW PEM-U @ + u BYTE-COPY
    10 PEM-ROW PEM-U @ u + + c!
    PEM-U @ u + 1+ PEM-U ! ;
@@ -67,8 +67,8 @@ FILL
 
 public
 
-: MODULUS$ ( -- ptr u8 n ) MODULUS-ROW MODULUS-U @ ;
-: EXPONENT$ ( -- ptr u8 n ) s" AQAB" ;
-: PEM$ ( -- ptr u8 n ) PEM-ROW PEM-U @ ;
+: MODULUS$ ( -- ^u8 n ) MODULUS-ROW MODULUS-U @ ;
+: EXPONENT$ ( -- ^u8 n ) s" AQAB" ;
+: PEM$ ( -- ^u8 n ) PEM-ROW PEM-U @ ;
 
 ;package

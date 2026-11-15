@@ -239,7 +239,7 @@ TLOC-DO 6 T=
 : CONST ( n -- ) create , does> ( -- n ) @ ;
 5 CONST FIVE
 FIVE 5 T=
-: ARR ( n -- ) create cells allot does> ( n -- ptr a ) swap cells + ;
+: ARR ( n -- ) create cells allot does> ( n -- ^a ) swap cells + ;
 4 ARR A4
 7 2 A4 !
 2 A4 @ 7 T=
@@ -248,9 +248,9 @@ here 10 over ! 5 over +! @ 15 T=
 
 create TESC-S-WANT
    $41 c, $5C c, $42 c, $22 c, $0A c, $09 c, $0D c, $00 c, $41 c,
-: TESC-S-WANT$ ( -- ptr u8 n )
+: TESC-S-WANT$ ( -- ^u8 n )
    TESC-S-WANT 9 ;
-: TESC-S-COMPILED$ ( -- ptr u8 n )
+: TESC-S-COMPILED$ ( -- ^u8 n )
    S\" A\\B\"\n\t\r\z\x41" ;
 S\" A\\B\"\n\t\r\z\x41" TESC-S-WANT$ T$=
 TESC-S-COMPILED$ TESC-S-WANT$ T$=
@@ -258,9 +258,9 @@ TESC-S-COMPILED$ TESC-S-WANT$ T$=
 create TESC-S-MULTILINE-WANT
    $7B c, $0A c, $20 c, $22 c, $6B c, $22 c, $3A c,
    $20 c, $22 c, $76 c, $22 c, $0A c, $7D c, $0A c,
-: TESC-S-MULTILINE-WANT$ ( -- ptr u8 n )
+: TESC-S-MULTILINE-WANT$ ( -- ^u8 n )
    TESC-S-MULTILINE-WANT 14 ;
-: TESC-S-MULTILINE$ ( -- ptr u8 n )
+: TESC-S-MULTILINE$ ( -- ^u8 n )
    S\" {
  \"k\": \"v\"
 }
@@ -269,9 +269,9 @@ TESC-S-MULTILINE$ TESC-S-MULTILINE-WANT$ T$=
 
 create TESC-C-WANT
    $41 c, $22 c, $0A c, $42 c,
-: TESC-C-WANT$ ( -- ptr u8 n )
+: TESC-C-WANT$ ( -- ^u8 n )
    TESC-C-WANT 4 ;
-: TESC-C-COMPILED$ ( -- ptr u8 n )
+: TESC-C-COMPILED$ ( -- ^u8 n )
    C\" A\q\n\x42" count ;
 C\" A\q\n\x42" count TESC-C-WANT$ T$=
 TESC-C-COMPILED$ TESC-C-WANT$ T$=
@@ -297,11 +297,11 @@ TFOLD 6 T=
 : TMAP ( -- ) IARR 3 [: 1+ ;] MAP ;
 TMAP
 TFOLD 9 T=
-: T-CHECK-REJECTS ( ptr u8 n -- )
+: T-CHECK-REJECTS ( ^u8 n -- )
    2dup T-LABEL
    CHECK-QUIET-CANDIDATE! 0 T= ;
 
-: T-CHECK-PASSES ( ptr u8 n -- )
+: T-CHECK-PASSES ( ^u8 n -- )
    2dup T-LABEL
    CHECK! -1 T= ;
 
@@ -454,18 +454,18 @@ public
 
 \ The source travels through the quotation and back out, because x86-64
 \ refuses a quotation that reads a local.
-: OUTCOME ( ptr u8 n -- n )
+: OUTCOME ( ^u8 n -- n )
    [: 2dup evaluate-closed ;] catch {: rc:n :}
    2drop rc ;
 
 \ OUTCOME with the records it prints captured, however quiet the caller is.
-: CAPTURED ( ptr u8 n -- n ) {: a:ptr u:n :}
+: CAPTURED ( ^u8 n -- n ) {: a:^ u:n :}
    REJECTION:QUIET @ {: q:n :}
    0 REJECTION:QUIET !  REJECTION:CAPTURE
    a u OUTCOME
    REJECTION:BUFFER-OFF  q REJECTION:QUIET ! ;
 \ Whether the captured records hold the text a u.
-: HAS ( ptr u8 n -- ) {: a:ptr u:n :}   REJECTION:BUFFER$ a u CONTAINS? TTRUE ;
+: HAS ( ^u8 n -- ) {: a:^ u:n :}   REJECTION:BUFFER$ a u CONTAINS? TTRUE ;
 
 ;package
 
@@ -503,11 +503,11 @@ s" sigless-mid-comment certifies" T-LABEL
 s" COK-SIGLESS-MID-COMMENT dup ( n -- n ) drop" CHECK-QUIET-CANDIDATE! -1 T=
 \ escaped-string payloads: the checker accepts exactly the engine's escape set
 \ and rejects what the load path rejects.
-s\" COK-ESC-GOOD ( -- ptr u8 n ) s\\\" a\\n b\\\\ c\\\" d\\x41 e\\XaF f\\q g\\z\" " T-CHECK-PASSES
-s\" CBAD-ESC-LETTER ( -- ptr u8 n ) s\\\" bad\\g\" " T-CHECK-REJECTS
-s\" CBAD-ESC-HEX ( -- ptr u8 n ) s\\\" bad\\xZZ\" " T-CHECK-REJECTS
-s\" CBAD-ESC-HEX-SHORT ( -- ptr u8 n ) s\\\" bad\\x4\" " T-CHECK-REJECTS
-s\" CBAD-ESC-UNTERMINATED ( -- ptr u8 n ) s\\\" no end" T-CHECK-REJECTS
+s\" COK-ESC-GOOD ( -- ^u8 n ) s\\\" a\\n b\\\\ c\\\" d\\x41 e\\XaF f\\q g\\z\" " T-CHECK-PASSES
+s\" CBAD-ESC-LETTER ( -- ^u8 n ) s\\\" bad\\g\" " T-CHECK-REJECTS
+s\" CBAD-ESC-HEX ( -- ^u8 n ) s\\\" bad\\xZZ\" " T-CHECK-REJECTS
+s\" CBAD-ESC-HEX-SHORT ( -- ^u8 n ) s\\\" bad\\x4\" " T-CHECK-REJECTS
+s\" CBAD-ESC-UNTERMINATED ( -- ^u8 n ) s\\\" no end" T-CHECK-REJECTS
 \ A body's `char` or `'` calls the word of that spelling, and the `;` after it
 \ ends the definition.
 package ES-CHAR-N
@@ -522,33 +522,33 @@ s" a body tick calls the word of that spelling" T-LABEL
 ;package
 \ A pointer's pointee element type is invariant: the u8->cell/u32 integer
 \ widening that applies to top-level scalar cells must NOT apply inside a ptr.
-s" COK-PTR-ADD ( ptr a n -- ptr a ) +" T-CHECK-PASSES
-s" COK-PTR-ADD-REV ( n ptr a -- ptr a ) +" T-CHECK-PASSES
-s" COK-PTR-SUB ( ptr a n -- ptr a ) -" T-CHECK-PASSES
-s" COK-PTR-DIFF ( ptr a ptr a -- n ) -" T-CHECK-PASSES
-s" COK-PTR-CELLPLUS ( ptr a -- ptr a ) cell+" T-CHECK-PASSES
-s" COK-PTR-CHARPLUS ( ptr a -- ptr a ) char+" T-CHECK-PASSES
-s" COK-PTR-BYTEADD ( ptr u8 n -- ptr u8 ) +" T-CHECK-PASSES
-s" COK-PTR-VIEW ( ptr a -- ptr u8 ) BYTE-VIEW" T-CHECK-PASSES
-s" COK-PTR-SAME-EQ ( ptr u8 ptr u8 -- bool ) =" T-CHECK-PASSES
+s" COK-PTR-ADD ( ^a n -- ^a ) +" T-CHECK-PASSES
+s" COK-PTR-ADD-REV ( n ^a -- ^a ) +" T-CHECK-PASSES
+s" COK-PTR-SUB ( ^a n -- ^a ) -" T-CHECK-PASSES
+s" COK-PTR-DIFF ( ^a ^a -- n ) -" T-CHECK-PASSES
+s" COK-PTR-CELLPLUS ( ^a -- ^a ) cell+" T-CHECK-PASSES
+s" COK-PTR-CHARPLUS ( ^a -- ^a ) char+" T-CHECK-PASSES
+s" COK-PTR-BYTEADD ( ^u8 n -- ^u8 ) +" T-CHECK-PASSES
+s" COK-PTR-VIEW ( ^a -- ^u8 ) BYTE-VIEW" T-CHECK-PASSES
+s" COK-PTR-SAME-EQ ( ^u8 ^u8 -- bool ) =" T-CHECK-PASSES
 s" COK-PTR-SCALAR-WIDEN ( u8 -- cell )" T-CHECK-PASSES
-s" CBAD-PTR-ADD-PP ( ptr a ptr a -- ptr a ) +" T-CHECK-REJECTS
-s" CBAD-PTR-WIDEN-CELL ( ptr u8 -- ptr cell )" T-CHECK-REJECTS
-s" CBAD-PTR-WIDEN-U32 ( ptr u8 -- ptr u32 )" T-CHECK-REJECTS
-s" CBAD-PTR-WIDEN-NEST ( ptr ptr u8 -- ptr ptr cell )" T-CHECK-REJECTS
-s" CBAD-PTR-UNIFY-EQ ( ptr u8 ptr cell -- bool ) =" T-CHECK-REJECTS
-s" CBAD-PTR-UNIFY-EQ-REV ( ptr cell ptr u8 -- bool ) =" T-CHECK-REJECTS
-s" CBAD-PTR-CELL-ON-BYTE ( ptr u8 -- n ) @" T-CHECK-REJECTS
-\ A head accessor declared ( -- ptr u8 ) whose caller stores a cell with
-\ `0 WORD !` must reject, because `!` requires a ptr a target.
-s" CBAD-PTR-CELL-STORE-ON-BYTE ( ptr u8 -- ) 0 swap !" T-CHECK-REJECTS
-s" COK-PTR-CELL-STORE ( ptr n -- ) 0 swap !" T-CHECK-PASSES
-TYPED-VARIABLE ESB-BYTE-P ptr u8
-: ESB-BYTE-HEAD ( -- ptr u8 ) ESB-BYTE-P @ ;
+s" CBAD-PTR-ADD-PP ( ^a ^a -- ^a ) +" T-CHECK-REJECTS
+s" CBAD-PTR-WIDEN-CELL ( ^u8 -- ^cell )" T-CHECK-REJECTS
+s" CBAD-PTR-WIDEN-U32 ( ^u8 -- ^u32 )" T-CHECK-REJECTS
+s" CBAD-PTR-WIDEN-NEST ( ^^u8 -- ^^cell )" T-CHECK-REJECTS
+s" CBAD-PTR-UNIFY-EQ ( ^u8 ^cell -- bool ) =" T-CHECK-REJECTS
+s" CBAD-PTR-UNIFY-EQ-REV ( ^cell ^u8 -- bool ) =" T-CHECK-REJECTS
+s" CBAD-PTR-CELL-ON-BYTE ( ^u8 -- n ) @" T-CHECK-REJECTS
+\ A head accessor declared ( -- ^u8 ) whose caller stores a cell with
+\ `0 WORD !` must reject, because `!` requires a ^a target.
+s" CBAD-PTR-CELL-STORE-ON-BYTE ( ^u8 -- ) 0 swap !" T-CHECK-REJECTS
+s" COK-PTR-CELL-STORE ( ^n -- ) 0 swap !" T-CHECK-PASSES
+TYPED-VARIABLE ESB-BYTE-P ^u8
+: ESB-BYTE-HEAD ( -- ^u8 ) ESB-BYTE-P @ ;
 s" CBAD-USIGS-BYTE-STORE ( -- ) 0 ESB-BYTE-HEAD !" T-CHECK-REJECTS
 \ REC-SIG refusal is certified-but-unrecorded and must say which word and why.
-: T-CHECK-SAYS ( ptr u8 n ptr u8 n -- )
-   {: ta:ptr tu:n :}
+: T-CHECK-SAYS ( ^u8 n ^u8 n -- )
+   {: ta:^ tu:n :}
    REJECTION:CAPTURE
    2dup T-LABEL
    CHECK-CANDIDATE! 0 T=
@@ -665,12 +665,12 @@ s" CBAD-PHASE-BORROW ( -- ) T-PHASE-ID" T-CHECK-REJECTS
 : T-BUILD-IMAGE ( asm -- img ) ASM-DROP IMG-PHASE ;
 : T-CODESIG2 ( img -- img ) ;
 : T-BUILD-SNAP-HDR ( n -- snap n ) drop SNAP-PHASE 0 ;
-: T-SNAP-EXTRA-PTR ( -- ptr u8 ) NULL-PTR BYTE-VIEW ;
+: T-SNAP-EXTRA-PTR ( -- ^u8 ) NULL-PTR BYTE-VIEW ;
 : T-SNAP-EXTRA-SIZE ( -- n ) 0 ;
 s" COK-BUILD-IMAGE ( -- img ) T-ASM-CODE T-BUILD-IMAGE" T-CHECK-PASSES
 s" COK-CODESIG2 ( -- img ) T-ASM-CODE T-BUILD-IMAGE T-CODESIG2" T-CHECK-PASSES
 s" COK-SNAP-HDR ( n -- snap n ) T-BUILD-SNAP-HDR" T-CHECK-PASSES
-s" COK-SNAP-EXTRA ( -- ptr u8 n ) T-SNAP-EXTRA-PTR T-SNAP-EXTRA-SIZE" T-CHECK-PASSES
+s" COK-SNAP-EXTRA ( -- ^u8 n ) T-SNAP-EXTRA-PTR T-SNAP-EXTRA-SIZE" T-CHECK-PASSES
 s" COK-THROW-GUARD ( i64 -- i64 ) dup 0 < if 1 throw then 1 +" T-CHECK-PASSES
 s" COK-DIE-GUARD ( i64 -- i64 ) dup 0 < if here 0 1 die then 1 +" T-CHECK-PASSES
 defer T-PTX-LOAD ( span<space-global,f32,extent-n> gridctx<block-256,extent-n,mask-live> -- tile<f32,block-256,mask-live> )
@@ -703,8 +703,8 @@ variable LOCG-U
       s" engine-suite: generated definition too long" 1 die
    then
    LOCG-BUF LOCG-U @ + c!  LOCG-U @ 1 + LOCG-U ! ;
-: LOCG+ ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: LOCG+ ( ^u8 n -- )
+   {: a:^ u:n :}
    0 begin dup u < while  dup a + c@ LOCG-C  1 + repeat drop ;
 : LOCG-NAME ( n -- )
    s"  local-name-past-sixteen-" LOCG+
@@ -717,8 +717,8 @@ variable LOCG-U
    s"  {:" LOCG+  100 0 ?do  i LOCG-NAME  loop  s"  :}" LOCG+
    99 LOCG-NAME  0 LOCG-NAME  s"  - ;" LOCG+ ;
 \ The definition without its leading ": " and trailing " ;".
-: LOCG-DEF$ ( -- ptr u8 n ) LOCG-BUF 2 + LOCG-U @ 4 - ;
-: LOCG-SRC$ ( -- ptr u8 n ) LOCG-BUF LOCG-U @ ;
+: LOCG-DEF$ ( -- ^u8 n ) LOCG-BUF 2 + LOCG-U @ 4 - ;
+: LOCG-SRC$ ( -- ^u8 n ) LOCG-BUF LOCG-U @ ;
 LOCG-BUILD
 s" 100 locals with long names certify" T-LABEL
 LOCG-DEF$ CHECK-CANDIDATE! -1 T=
@@ -938,7 +938,7 @@ s" CBAD-PTX-RET-LONE-CALL ( n n -- ) COK-PTX-RET-LONE T-PTX-SAME-EXTENT" T-CHECK
 s" COK-PTX-MASK-SHARED {: s :} s T-PTX-GRID {: g :} s g T-PTX-MLOAD s g T-PTX-MLOAD T-PTX-MADD" T-CHECK-PASSES
 s" CBAD-PTX-MASK-DISTINCT {: s :} s T-PTX-GRID {: g1 :} s T-PTX-GRID {: g2 :} s g1 T-PTX-MLOAD s g2 T-PTX-MLOAD T-PTX-MADD" T-CHECK-REJECTS
 s" COK-TFAM-SPAN ( span<space-global,f32,extent-n> -- span<space-global,f32,extent-n> )" T-CHECK-PASSES
-s" COK-TFAM-PTRPLAIN ( ptr u8 -- ) drop" T-CHECK-PASSES
+s" COK-TFAM-PTRPLAIN ( ^u8 -- ) drop" T-CHECK-PASSES
 s" COK-TFAM-PTRP ( ptr<space-global,f32> u32 -- ) drop drop" T-CHECK-PASSES
 : COK-TFAM-NEST ( acc<t,tile<t,b,m>,b> -- acc<t,tile<t,b,m>,b> ) ;
 : COK-TFAM-NEST4 ( matrix<tile<x,y,z>,a,b,c> -- matrix<tile<x,y,z>,a,b,c> ) ;
@@ -975,8 +975,8 @@ s" CBAD-TFAM-ARITY-DIAG ( span<a,b> -- ) drop" s" error[E-WRONG-ARITY]: type fam
 s" CBAD-TFAM-ARITY4-DIAG ( tile<a,b,c,d> -- ) drop" s" error[E-WRONG-ARITY]: type family `tile` takes 3 type arguments, not 4" T-CHECK-SAYS
 s" COK-PTR-IN-FAM ( span<space-global,ptr<space-global,f32>,extent-n> -- ) drop" T-CHECK-PASSES
 s" CBAD-PTR-OVERARITY ( ptr<a,b,c> -- ) drop" s" error[E-WRONG-ARITY]: type family `ptr` takes 2 type arguments, not 3" T-CHECK-SAYS
-s" CBAD-PTR-BARE-ROWEND ( a ptr -- ) drop" s" error[E-BARE-PTR-SIGNATURE]: `ptr` needs an element type" T-CHECK-SAYS
-s" CBAD-PTR-BARE-IN-FAM ( span<space-global,ptr,extent-n> -- ) drop" T-CHECK-REJECTS
+s" CBAD-PTR-BARE-ROWEND ( a ^ -- ) drop" s" error[E-BARE-PTR-SIGNATURE]: `^` needs an element type" T-CHECK-SAYS
+s" CBAD-PTR-BARE-IN-FAM ( span<space-global,^,extent-n> -- ) drop" T-CHECK-REJECTS
 NEWTYPE tfam6r-big<a,b,c,d,e,g>
 : COK-BIG6 ( tfam6r-big<a,b,c,d,e,f> -- tfam6r-big<a,b,c,d,e,f> ) ;
 s" COK-BIG6-CALL ( tfam6r-big<a,b,c,d,e,f> -- tfam6r-big<a,b,c,d,e,f> ) COK-BIG6" T-CHECK-PASSES
@@ -1050,8 +1050,8 @@ s" COK-OWN-FREE ( ES-OWN:own -- ) ES-OWN:T-FREE-OWN" T-CHECK-PASSES
 s" CBAD-OWN-DUP ( ES-OWN:own -- ES-OWN:own ES-OWN:own ) dup" T-CHECK-REJECTS
 s" CBAD-OWN-DROP ( ES-OWN:own -- ) drop" T-CHECK-REJECTS
 s" CBAD-OWN-OVER ( ES-OWN:own n -- ES-OWN:own n ES-OWN:own ) over" T-CHECK-REJECTS
-s" CBAD-OWN-FETCH ( ptr ES-OWN:own -- ES-OWN:own ) @" T-CHECK-REJECTS
-s" CBAD-OWN-STORE ( ES-OWN:own ptr ES-OWN:own -- ) !" T-CHECK-REJECTS
+s" CBAD-OWN-FETCH ( ^ES-OWN:own -- ES-OWN:own ) @" T-CHECK-REJECTS
+s" CBAD-OWN-STORE ( ES-OWN:own ^ES-OWN:own -- ) !" T-CHECK-REJECTS
 s" COK-OWN-EXEC-FREE ( ES-OWN:own -- ) [: ES-OWN:T-FREE-OWN ;] execute" T-CHECK-PASSES
 s" COK-OWN-EXEC-ID ( ES-OWN:own -- ES-OWN:own ) [: ;] execute" T-CHECK-PASSES
 s" COK-OWN-EXEC-MAKE ( -- ES-OWN:own ) [: ES-OWN:T-MAKE-OWN ;] execute" T-CHECK-PASSES
@@ -1131,7 +1131,7 @@ s" = help: write the package's name before the type family, as `ES-AMB-A:es-amb`
 VALUE-RECORD point x n y n END-VALUE-RECORD
 VALUE-RECORD rect w n h n END-VALUE-RECORD
 VALUE-RECORD box value a END-VALUE-RECORD
-VALUE-RECORD hdl owner ES-OWN:own raw ptr u8 END-VALUE-RECORD
+VALUE-RECORD hdl owner ES-OWN:own raw ^u8 END-VALUE-RECORD
 : T->POINT ( n n -- point ) ;
 : T-POINT> ( point -- n n ) ;
 : T-POINT-DUP ( point -- point point ) over over ;
@@ -1190,7 +1190,7 @@ s" CBAD-DIP ( i64 i64 -- i64 ) [: 1+ ;] DIP" T-CHECK-REJECTS
 s" CBAD-KEEP ( i64 -- i64 ) [: 1+ ;] KEEP" T-CHECK-REJECTS
 s" CBAD-BI ( i64 -- i64 ) [: 1+ ;] [: drop ;] BI" T-CHECK-REJECTS
 s" CBAD-TIMES ( i64 -- i64 i64 ) 5 [: 1+ ;] TIMES" T-CHECK-REJECTS
-s" CBAD-MAP ( ptr i64 i64 -- i64 ) [: 1+ ;] MAP" T-CHECK-REJECTS
+s" CBAD-MAP ( ^i64 i64 -- i64 ) [: 1+ ;] MAP" T-CHECK-REJECTS
 s" COK-CASE ( i64 -- i64 ) case 1 of 10 endof 2 of 20 endof 30 swap endcase" T-CHECK-PASSES
 s" CBAD-CASE-ARM ( i64 -- i64 ) case 1 of 10 11 endof 20 swap endcase" T-CHECK-REJECTS
 s" CBAD-CASE-MISSING ( i64 -- i64 ) case 1 of 10 endof" T-CHECK-REJECTS
@@ -1231,8 +1231,8 @@ s" TROLE-DARWIN-DUP2 ( reg fd -- ) T-SPAWN-DUP2-ACTION" T-CHECK-PASSES
 s" TROLE-DARWIN-FINISH ( label label -- ) T-SPAWN-DARWIN-FINISH" T-CHECK-PASSES
 s" CBAD-DARWIN-DUP2 ( reg reg -- ) T-SPAWN-DUP2-ACTION" T-CHECK-REJECTS
 s" CBAD-DARWIN-FINISH ( reg label -- ) T-SPAWN-DARWIN-FINISH" T-CHECK-REJECTS
-: ES-BYTE-FIELD ( ptr n -- ptr ptr u8 ) 0 ptr-field ;
-s" CBAD-FIELD ( ptr n n -- ) swap ES-BYTE-FIELD !" T-CHECK-REJECTS
+: ES-BYTE-FIELD ( ^n -- ^^u8 ) 0 ptr-field ;
+s" CBAD-FIELD ( ^n n -- ) swap ES-BYTE-FIELD !" T-CHECK-REJECTS
 s" CBAD-LOCAL-SCOPE ( i64 bool -- i64 ) if {: drop:i64 :} drop else drop 0 then drop" T-CHECK-REJECTS
 s" CBAD-LOCAL-DEAD ( i64 -- i64 ) exit {: x:i64 :} x" T-CHECK-REJECTS
 
@@ -1250,9 +1250,9 @@ create ES-SFBUF 16 allot
 variable ES-SFPID
 variable ES-R1  variable ES-W1  variable ES-R2  variable ES-W2
 variable ES-FA  variable ES-FB
-: ES-ADDR ( ptr a -- n ) NULL-PTR - ;
+: ES-ADDR ( ^a -- n ) NULL-PTR - ;
 : ES-REQ! ( n n -- ) ES-SFREQ + ! ;               \ ( value field -- )
-: ES-SFZ! ( ptr u8 n n -- ) {: a:ptr u:n off:n :}
+: ES-SFZ! ( ^u8 n n -- ) {: a:^ u:n off:n :}
    0 begin dup u < while  dup a + c@  over off + ES-SFZ + c!  1 + repeat drop
    0 ES-SFZ off u + + c! ;
 : ES-SFDIGIT ( n n -- ) {: fd:n off:n :}  fd 48 +  ES-SFZ ES-SF-SCRIPT off + + c! ;
@@ -1271,11 +1271,11 @@ variable ES-FA  variable ES-FB
 : ES-SFMAP! ( n n -- ) cells ES-SFMAP + ! ;       \ ( parent-fd slot -- )
 : ES-SFUNMAP ( n -- ) {: n:n :}                    \ slots 0 .. n-1 closed
    0 begin dup n < while  -1 over ES-SFMAP!  1+ repeat drop ;
-: ES-SFSCRIPT ( ptr u8 n -- ) ES-SF-SCRIPT ES-SFZ! ;
+: ES-SFSCRIPT ( ^u8 n -- ) ES-SF-SCRIPT ES-SFZ! ;
 : ES-SFSPAWN ( n -- n ) SPAWN-ABI:NFDS ES-REQ!  ES-SFREQ spawn-fds ;
 : ES-FREE-FD ( n -- n ) begin dup ES-F-GETFD 0 fcntl 0 < 0= while 1+ repeat ;
 : ES-SFREAD ( n -- n ) ES-SFBUF 16 read ;
-: ES-SFLINE? ( ptr u8 n n -- bool ) {: a:ptr u:n got:n :}
+: ES-SFLINE? ( ^u8 n n -- bool ) {: a:^ u:n got:n :}
    got u 1+ =  ES-SFBUF u a u T-STR= and  ES-SFBUF u + c@ 10 = and ;
 ES-SFSETUP
 
@@ -1355,12 +1355,12 @@ create DIRBASE 8 allot
 create ES-ROOT PATH-CAP allot
 variable ES-ROOT-U
 create ES-JOIN PATH-CAP allot
-: ES-ROOT$ ( -- ptr u8 n ) ES-ROOT ES-ROOT-U @ ;
-: ES-ROOT! ( ptr u8 n -- ) {: a:ptr u:n :}  a ES-ROOT u BYTE-COPY  u ES-ROOT-U ! ;
-: ES-TMPZ ( ptr u8 n -- ptr u8 ) {: name:ptr nameu:n :}
+: ES-ROOT$ ( -- ^u8 n ) ES-ROOT ES-ROOT-U @ ;
+: ES-ROOT! ( ^u8 n -- ) {: a:^ u:n :}  a ES-ROOT u BYTE-COPY  u ES-ROOT-U ! ;
+: ES-TMPZ ( ^u8 n -- ^u8 ) {: name:^ nameu:n :}
    ES-ROOT$ name nameu ES-JOIN FS:JOIN-PATH {: u:n :}  ES-JOIN u FS:>PATHZ ;
 variable DFD
-: U16@ ( ptr u8 -- n ) {: a:ptr :} a c@ a 1 + c@ 8 lshift or ;
+: U16@ ( ^u8 -- n ) {: a:^ :} a c@ a 1 + c@ 8 lshift or ;
 : MODE@ ( -- n ) ES-STB 4 + U16@ ;
 s" AGENTS.md" PATH0 0 access 0 T=
 s" /nonexistent-habu-fs" PATH0 0 access -1 T=
@@ -1393,7 +1393,7 @@ ES-ROOT$ FS:>PATHZ rmdir 0 T=
 
 \ mmap answers an address as a number; a private cast makes it a byte row.
 package ENGINE-SUITE
-CAST: MAP>BYTES ( n -- ptr u8 )
+CAST: MAP>BYTES ( n -- ^u8 )
 0 4096 3 $1002 -1 0 mmap dup 0 < TFALSE MAP>BYTES dup 65 swap c! c@ 65 T=
 ;package
 
@@ -1541,10 +1541,10 @@ TFG TTRUE
 variable ES-CPX-CP
 variable ES-CPX-ND
 \ unsigned body with an unsafe token: the checker refuses it E-UNSAFE
-: ES-CPX-BAD$ ( -- ptr u8 n ) s" : CPX-BAD evaluate ;" ;
+: ES-CPX-BAD$ ( -- ^u8 n ) s" : CPX-BAD evaluate ;" ;
 \ a name longer than DNAME-INL: the definer copies it into code space before
 \ the entry, so the reject rollback must reclaim the name bytes too
-: ES-CPX-BAD-EXT$ ( -- ptr u8 n ) s" : ES-CPX-BAD-EXTENDED-NAME evaluate ;" ;
+: ES-CPX-BAD-EXT$ ( -- ^u8 n ) s" : ES-CPX-BAD-EXTENDED-NAME evaluate ;" ;
 TRUSTED: ES-CPX-BAD-EVAL ( -- ) ES-CPX-BAD$ evaluate ;
 TRUSTED: ES-CPX-BAD-EXT-EVAL ( -- ) ES-CPX-BAD-EXT$ evaluate ;
 : ES-CPX-BAD-RUN ( -- )
@@ -1579,25 +1579,25 @@ s" smoke-baked-word-resolves" T-LABEL ' spawn-argv-env-cwd-io drop true TTRUE
 \ After body checking, every declared type-variable quantifier must still
 \ resolve to a DISTINCT variable.
 NEWTYPE esnp
-4 LAYOUT-BUFFER ESNP-AT esnp                  \ ESNP-AT ( n -- ptr esnp ) accessor
+4 LAYOUT-BUFFER ESNP-AT esnp                  \ ESNP-AT ( n -- ^esnp ) accessor
 : ESNP-ID ( esnp -- esnp ) ;
 : ESNP-MERGE ( g g -- g ) nip ;
 
 s" specialize declared quantifier to a nominal family rejects" T-LABEL
 s" ESNP-SPEC ( a -- a ) ESNP-ID" CHECK-QUIET-CANDIDATE! 0 T=
-s" specialize declared ptr pointee to a nominal family rejects" T-LABEL
-s" ESNP-PSPEC ( -- ptr a ) 0 ESNP-AT" CHECK-QUIET-CANDIDATE! 0 T=
+s" specialize declared pointee to a nominal family rejects" T-LABEL
+s" ESNP-PSPEC ( -- ^a ) 0 ESNP-AT" CHECK-QUIET-CANDIDATE! 0 T=
 s" aliasing two declared quantifiers rejects" T-LABEL
 s" ESNP-ALIAS ( a b -- a ) ESNP-MERGE" CHECK-QUIET-CANDIDATE! 0 T=
 
 s" generic ID wrapper certifies" T-LABEL
 s" ESNP-GEN-ID ( a -- a )" CHECK-QUIET-CANDIDATE! -1 T=
 s" generic LOAD wrapper certifies" T-LABEL
-s" ESNP-GEN-LOAD ( ptr a -- a ) @" CHECK-QUIET-CANDIDATE! -1 T=
+s" ESNP-GEN-LOAD ( ^a -- a ) @" CHECK-QUIET-CANDIDATE! -1 T=
 s" generic pointee cannot be specialized to n" T-LABEL
-s" ESNP-FETCH-N ( ptr a -- n ) @" CHECK-QUIET-CANDIDATE! 0 T=
+s" ESNP-FETCH-N ( ^a -- n ) @" CHECK-QUIET-CANDIDATE! 0 T=
 s" concrete numeric pointee fetch certifies" T-LABEL
-s" ESNP-FETCH-N-OK ( ptr n -- n ) @" CHECK-QUIET-CANDIDATE! -1 T=
+s" ESNP-FETCH-N-OK ( ^n -- n ) @" CHECK-QUIET-CANDIDATE! -1 T=
 
 REJECTION:CAPTURE
 s" ESNP-SPEC ( a -- a ) ESNP-ID" CHECK-CANDIDATE! 0 T=
@@ -1655,7 +1655,7 @@ REJECTION:BUFFER-OFF
 
 \ the ptr instance rejects via the mismatch diagnostic, which names the family.
 REJECTION:CAPTURE
-s" ESNP-PSPEC ( -- ptr a ) 0 ESNP-AT" CHECK-CANDIDATE! 0 T=
+s" ESNP-PSPEC ( -- ^a ) 0 ESNP-AT" CHECK-CANDIDATE! 0 T=
 s" ptr-family diag names the forged family" T-LABEL
 REJECTION:BUFFER$ s" esnp" CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
@@ -1665,13 +1665,13 @@ s" ESNP-SPEC-2 ( a -- a ) ESNP-ID" CHECK-QUIET-CANDIDATE! 0 T=
 s" clean generic check after a reject certifies (state rolled back)" T-LABEL
 s" ESNP-GEN-ID-2 ( a -- a )" CHECK-QUIET-CANDIDATE! -1 T=
 s" plain-scalar fetch after a reject certifies" T-LABEL
-s" ESNP-FETCH-N-2 ( ptr n -- n ) @" CHECK-QUIET-CANDIDATE! -1 T=
+s" ESNP-FETCH-N-2 ( ^n -- n ) @" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ x18 is Darwin-reserved: XNU zeroes it on any trap return, so an escaped
 \ literal whose copy crosses a DATA page or a code page must not depend on it.
 \ The fixtures sit at top level: evaluate cannot carry escaped literals.
-: TX18-CHK ( ptr u8 n -- ) 150 T=  c@ [char] A T= ;
-: TX18-QCHK ( ptr u8 n -- ) 180 T=  c@ [char] B T= ;
+: TX18-CHK ( ^u8 n -- ) 150 T=  c@ [char] A T= ;
+: TX18-QCHK ( ^u8 n -- ) 180 T=  c@ [char] B T= ;
 S\" AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" TX18-CHK
 S\" AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" TX18-CHK
 S\" AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" TX18-CHK
@@ -2075,7 +2075,7 @@ package ES-SWL
 \ case here can name a row without searching for it.
 : REC-ADDR ( n -- n )   DREC * dbase@ + ;
 \ A dictionary row's address is an integer offset from dbase@.
-CAST: N>REC ( n -- ptr n )
+CAST: N>REC ( n -- ^n )
 
 0 constant XT-SLOT          \ a word's code address; a package row's PUBLIC wid
 1 constant PRI-WID-SLOT     \ a package row's PRIVATE wid
@@ -2104,7 +2104,7 @@ variable NDX-WID
    then
    ANS-I @ 1+ ANS-I ! ;
 
-: PROBE ( ptr u8 n n -- ) {: a:ptr u:n w:n :}
+: PROBE ( ^u8 n n -- ) {: a:^ u:n w:n :}
    a u w search-wl ANS+ ;
 
 public

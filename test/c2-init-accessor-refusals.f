@@ -14,8 +14,8 @@ create OUT CAP allot
 create ERR CAP allot
 variable ERR-U
 
-: REFUSED? ( ptr u8 n n -- bool )
-   {: src:ptr srcu:n expected:n :}
+: REFUSED? ( ^u8 n n -- bool )
+   {: src:^ srcu:n expected:n :}
    src srcu OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    {: outu:len erru:len oc :}
    erru LEN>N ERR-U !
@@ -46,7 +46,7 @@ public
    s" package C2IA : BAD ( mut-view<a,b,c,init<d,shelf<a,b>>> read-view<c,d,u8> -- mut-view<a,b,c,init<d,shelf<a,b>>> ) C2IA-SHELF:SOURCE! ; ;package"
       70 REFUSED? TTRUE
    s" a getter cannot return a raw pointer" T-LABEL
-   s" package C2IA : BAD ( mut-view<a,b,c,init<d,shelf<a,b>>> -- mut-view<a,b,c,init<d,shelf<a,b>>> ptr ) C2IA-SHELF:SOURCE@ ; ;package"
+   s" package C2IA : BAD ( mut-view<a,b,c,init<d,shelf<a,b>>> -- mut-view<a,b,c,init<d,shelf<a,b>>> ^ ) C2IA-SHELF:SOURCE@ ; ;package"
       70 REFUSED? TTRUE
    T-REPORT
    s" c2-init-accessor-refusals: ok" type cr ;

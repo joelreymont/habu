@@ -80,7 +80,7 @@ variable PACKET-START
 \ enough that its five delay slots hold the rest of the block and every load
 \ has landed when the target runs, so no successor needs to know the block.
 
-: ROW ( n -- ptr n ) ROW-BYTES * PENDING + CELL-VIEW ;
+: ROW ( n -- ^n ) ROW-BYTES * PENDING + CELL-VIEW ;
 : P-WORD ( n -- n ) ROW ROW.WORD @ ;
 : P-UNIT ( n -- n ) ROW ROW.UNIT @ ;
 : P-CROSS ( n -- n ) ROW ROW.CROSS @ ;
@@ -90,13 +90,13 @@ variable PACKET-START
 : P-MEMORY ( n -- n ) ROW ROW.MEMORY @ ;
 : P-SIDE ( n -- n ) ROW ROW.SIDE @ ;
 : P-CYCLE ( n -- n ) cells CYCLE-OF + @ ;
-: SLOT ( n -- ptr n ) SLOT-BYTES * SLOTS + CELL-VIEW ;
-: FIXUP ( n -- ptr n ) FIXUP-BYTES * FIXUPS + CELL-VIEW ;
+: SLOT ( n -- ^n ) SLOT-BYTES * SLOTS + CELL-VIEW ;
+: FIXUP ( n -- ^n ) FIXUP-BYTES * FIXUPS + CELL-VIEW ;
 
 : FILL-ROW ( n n -- ) {: w:n idx:n :}
    w CLASSIFY C6XFACTS-FACTS:UNMAKE
    {: unit:n cross:n reads:n writes:n loads:n memory:n side:n branch:bool idle:n :}
-   idx ROW {: row:ptr :}
+   idx ROW {: row:^ :}
    w row ROW.WORD ! unit row ROW.UNIT ! cross row ROW.CROSS ! reads row ROW.READS !
    writes row ROW.WRITES ! loads row ROW.LOADS ! memory row ROW.MEMORY ! side row ROW.SIDE ! ;
 
@@ -129,7 +129,7 @@ variable PACKET-START
 \ Whether cycle has room for row idx: its unit, its cross path (one register
 \ per path per cycle) and, for a memory access, its data path.
 : FREE? ( n n -- bool ) {: idx:n cycle:n :}
-   cycle SLOT {: slot:ptr :}
+   cycle SLOT {: slot:^ :}
    slot SLOT.UNITS @ idx P-UNIT MASK-BIT and 0 <> if FALSE exit then
    idx P-CROSS 0 >= if
       idx P-CROSS 32 >= if slot SLOT.CROSS-1X else slot SLOT.CROSS-2X then @ {: held:n :}
@@ -139,7 +139,7 @@ variable PACKET-START
    TRUE ;
 
 : CLAIM ( n n -- ) {: idx:n cycle:n :}
-   cycle SLOT {: slot:ptr :}
+   cycle SLOT {: slot:^ :}
    slot SLOT.UNITS @ idx P-UNIT MASK-BIT or slot SLOT.UNITS !
    idx P-CROSS 0 >= if idx P-CROSS idx P-CROSS 32 >= if slot SLOT.CROSS-1X else slot SLOT.CROSS-2X then ! then
    idx P-MEMORY 0 <> if slot SLOT.SIDES @ idx P-SIDE MASK-BIT or slot SLOT.SIDES ! then
@@ -156,7 +156,7 @@ variable PACKET-START
 
 : CLEAR-SLOTS ( -- )
    CYCLE-MAX 0 ?do
-      i SLOT {: slot:ptr :}
+      i SLOT {: slot:^ :}
       0 slot SLOT.UNITS ! -1 slot SLOT.CROSS-1X ! -1 slot SLOT.CROSS-2X ! 0 slot SLOT.SIDES !
    loop ;
 
@@ -265,12 +265,12 @@ variable PACKET-START
 : FORWARD ( n n -- n ) {: guard:n inverted:n :}
    FIXUP-COUNT @ FIXUP-MAX >= if E-CAPACITY throw then
    0 0 guard inverted REL INSTRUCTION>N 1 CLOSE {: at:n :}
-   FIXUP-COUNT @ FIXUP {: row:ptr :}
+   FIXUP-COUNT @ FIXUP {: row:^ :}
    at row FIXUP.AT ! guard row FIXUP.GUARD ! inverted row FIXUP.INVERTED ! BRANCH-SIDE @ row FIXUP.SIDE !
    FIXUP-COUNT @ 1 FIXUP-COUNT +! ;
 
 : RESOLVE ( n -- ) {: ref:n :}
-   ref FIXUP {: row:ptr :}
+   ref FIXUP {: row:^ :}
    row FIXUP.AT @ 0 < if E-OPERAND throw then               \ resolved twice
    HERE {: target:n :}
    row FIXUP.AT @ {: at:n :}
@@ -785,7 +785,7 @@ PERMITTED!
 
 public
 
-: HELPER-NAME$ ( n -- ptr u8 n ) {: idx:n :}
+: HELPER-NAME$ ( n -- ^u8 n ) {: idx:n :}
    idx 0 = if s" __c6xabi_divi" exit then
    idx 1 = if s" __c6xabi_divu" exit then
    idx 2 = if s" __c6xabi_remi" exit then
@@ -817,7 +817,7 @@ public
    0 LEN ! 0 FIXUP-COUNT ! 0 PENDING-COUNT !
    idx HELPER FLUSH RESOLVED ;
 
-: PROGRAM$ ( -- ptr n n ) WORDS LEN @ ;
+: PROGRAM$ ( -- ^n n ) WORDS LEN @ ;
 
 \ TRUE when helper idx may modify the register with that code (A0..A31 = 0..31,
 \ B0..B31 = 32..63); B3 is the return address and is never checked.

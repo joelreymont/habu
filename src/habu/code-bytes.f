@@ -7,7 +7,7 @@ package CODE-BYTES
 
 private
 
-CAST: N>U8 ( n -- ptr u8 )
+CAST: N>U8 ( n -- ^u8 )
 
 \ Code lives in two disjoint bands and a span lies wholly inside one: a span
 \ straddling the gap, landing among the dictionary records or control-flow stack
@@ -54,7 +54,7 @@ public
    at bytes TEXT-LO TEXT-HI WITHIN? if true exit then
    at bytes BAND-LO BAND-HI WITHIN? ;
 
-: AT ( n n -- ptr u8 n ) {: at:n bytes:n :}
+: AT ( n n -- ^u8 n ) {: at:n bytes:n :}
    at bytes IN-CODE? 0= if at bytes OUTSIDE then
    at N>U8 bytes ;
 

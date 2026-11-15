@@ -14,12 +14,12 @@ $10FFFF constant SCALAR-MAX
 $D800 constant SURROGATE-FIRST
 $DFFF constant SURROGATE-LAST
 
-: ENTRY ( ptr n n -- ptr n )
-   {: table:ptr idx:n :}
+: ENTRY ( ^n n -- ^n )
+   {: table:^ idx:n :}
    table idx 2 * cells + ;
 
-: RANGE-SEARCH ( n ptr n n -- bool )
-   {: cp:n ranges:ptr count:n :}
+: RANGE-SEARCH ( n ^n n -- bool )
+   {: cp:n ranges:^ count:n :}
    0 count [: ranges swap ENTRY @ cp <= ;] SORT:PARTITION-POINT
    {: at:n :}
    at 0= if false exit then
@@ -27,12 +27,12 @@ $DFFF constant SURROGATE-LAST
 
 \ The second cell of the entry whose first cell is cp, and whether
 \ there is one.
-: PAIR-SEARCH ( n ptr n n -- n bool )
-   {: cp:n pairs:ptr count:n :}
+: PAIR-SEARCH ( n ^n n -- n bool )
+   {: cp:n pairs:^ count:n :}
    0 count [: pairs swap ENTRY @ cp <= ;] SORT:PARTITION-POINT
    {: at:n :}
    at 0= if 0 false exit then
-   pairs at 1- ENTRY {: pair:ptr :}
+   pairs at 1- ENTRY {: pair:^ :}
    pair @ cp <> if 0 false exit then
    pair cell+ @ true ;
 

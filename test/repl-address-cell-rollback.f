@@ -13,8 +13,8 @@ using PTY-HARNESS
 \ the answer. ^D sent on the echoed prompt lands
 \ in the cooked window and is read as a NUL, never as the end of file STOP means.
 : PROMPT ( -- ) s" habu> " WAIT-FOR TTRUE ;
-: PROMPT-AFTER ( ptr u8 n -- ) s" habu> " WAIT-AFTER TTRUE ;
-: STEP ( ptr u8 n -- )
+: PROMPT-AFTER ( ^u8 n -- ) s" habu> " WAIT-AFTER TTRUE ;
+: STEP ( ^u8 n -- )
    BUF-CLEAR SEND-LINE WAIT-ANSWER TTRUE ;
 \ The terminal carries both of the child's streams, so BUF$ is its stdout and
 \ there is no stderr apart from it.
@@ -24,7 +24,7 @@ using PTY-HARNESS
    ENGINE-CANDIDATE:PATH$ BUF$ s" " oc 0 T-ENDING-EXITED=
    CLOSE-MASTER ;
 
-: REUSE-CASE ( ptr u8 n ptr u8 n -- ) {: bad:ptr badu:n next:ptr nextu:n :}
+: REUSE-CASE ( ^u8 n ^u8 n -- ) {: bad:^ badu:n next:^ nextu:n :}
    ENGINE-CANDIDATE:PATH$ SPAWN-ON-PTY PROMPT
    s" require test/repl-address-cell-probe.f" STEP
    s" REPL-ROWS:SAVE" STEP

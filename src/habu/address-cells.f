@@ -33,22 +33,22 @@ private
    cap 0 <= cap MAX-ROWS > or count 0 < or if REFUSE then
    count cap > if REFUSE then ;
 
-: HEADER ( -- ptr n ) data-base SNAP-RELOC:XTCELL-N-CELL + ;
+: HEADER ( -- ^n ) data-base SNAP-RELOC:XTCELL-N-CELL + ;
 
 \ The header's base and the index cell hold an outside mapping's address as an integer.
-CAST: N>ROWS ( n -- ptr n )
-: DATA-ROWS ( n -- ptr n ) data-base + ;
+CAST: N>ROWS ( n -- ^n )
+: DATA-ROWS ( n -- ^n ) data-base + ;
 
-: LOCK-ADDR ( -- ptr n ) data-base LOCK-CELL + ;
-: INDEX-ADDR ( -- ptr n ) data-base INDEX-CELL + ;
+: LOCK-ADDR ( -- ^n ) data-base LOCK-CELL + ;
+: INDEX-ADDR ( -- ^n ) data-base INDEX-CELL + ;
 : LOCK ( -- ) begin 0 1 LOCK-ADDR atomic-cas 0= until ;
 : UNLOCK ( -- ) 0 LOCK-ADDR atomic! ;
 
 public
 \ Unmaps the index the cell holds and zeroes the cell. On a table markers reach, the caller holds
 \ its mutex through this AND the row/header mutation after, so no marker rebuilds the view between.
-: INDEX-RELEASE ( ptr n -- )
-   {: held:ptr :}
+: INDEX-RELEASE ( ^n -- )
+   {: held:^ :}
    held @ dup 0= if drop exit then {: address:n :}
    address 0 < address 7 and 0 <> or
    address $7FFFFFFFFFFFFFFF INDEX-HEADER - > or if REFUSE then
@@ -67,8 +67,8 @@ private
    off 0 < off bytes > or if REFUSE then
    cap bytes off - CELL / > if REFUSE then ;
 
-: LIVE-HEADER ( -- ptr n n n )
-   HEADER {: h:ptr :}
+: LIVE-HEADER ( -- ^n n n )
+   HEADER {: h:^ :}
    h MAGIC-FIELD + @ MAGIC <> if REFUSE then
    h @ h CAP-FIELD + @ SHAPE
    h BASE-FIELD + @ {: base:n :}
@@ -84,11 +84,11 @@ private
 
 public
 
-: LIVE-SPAN ( -- ptr n n )
+: LIVE-SPAN ( -- ^n n )
    LIVE-HEADER 2drop HEADER @ ;
 
 : ROW@ ( n -- n ) {: row:n :}
-   LIVE-SPAN {: base:ptr count:n :}
+   LIVE-SPAN {: base:^ count:n :}
    row 0 < row count >= or if REFUSE then
    base row cells + @ ;
 
@@ -97,7 +97,7 @@ private
 \ Mode-0 rows live only in the boot area, below every DP a rewind returns to,
 \ so a rewind keeps them in place.
 : KEEP-ROWS ( n -- ) {: floor:n :}
-   LIVE-SPAN {: base:ptr count:n :}
+   LIVE-SPAN {: base:^ count:n :}
    0 count 0 ?do
       base i cells + @ {: row:n :}
       row SNAP-RELOC:XTCELL-OFF-MASK and floor < if
@@ -135,7 +135,7 @@ public
 private
 : REMOVE-LOCKED ( n n -- ) {: first:n limit:n :}
    INDEX-ADDR INDEX-RELEASE
-   LIVE-SPAN {: rows:ptr count:n :}
+   LIVE-SPAN {: rows:^ count:n :}
    0
    count 0 ?do
       rows i cells + @ {: row:n :}
@@ -155,9 +155,9 @@ public
    first first bytes + [: REMOVE-LOCKED ;] WITH-LOCK ;
 
 \ Reads a complete snapshot DATA copy.
-: DATA-SPAN ( ptr u8 n -- ptr n n ) {: data:ptr bytes:n :}
+: DATA-SPAN ( ^u8 n -- ^n n ) {: data:^ bytes:n :}
    bytes SNAP-RELOC:XTCELL-N-CELL HEADER-BYTES + < if REFUSE then
-   data SNAP-RELOC:XTCELL-N-CELL + cell-view {: h:ptr :}
+   data SNAP-RELOC:XTCELL-N-CELL + cell-view {: h:^ :}
    h MAGIC-FIELD + @ MAGIC <> if REFUSE then
    h MODE-FIELD + @ 0 <> if REFUSE then
    h @ h CAP-FIELD + @ SHAPE

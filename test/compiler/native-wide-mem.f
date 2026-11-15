@@ -34,7 +34,7 @@ STRUCTURE w3
 \ alignment code. Its first field being a POINTER is what makes an exchanged
 \ slot a wrong string.
 STRUCTURE col
-  FIELD ha ptr u8
+  FIELD ha ^u8
   FIELD hn n
   FIELD al n
 ;STRUCTURE
@@ -82,8 +82,8 @@ variable REAL-SLOT
 
 \ A narrow test view of one physical cell of W2 as a scalar. The checked wide
 \ accessors below remain the production path under test.
-CAST: W2>CELLS ( ptr w2 -- ptr n )
-: W2-SCALAR-AT ( n -- ptr n )
+CAST: W2>CELLS ( ^w2 -- ^n )
+: W2-SCALAR-AT ( n -- ^n )
    0 W2-AT W2>CELLS swap cells + ;
 
 : W2-SCALAR! ( n n -- )
@@ -126,10 +126,10 @@ CAST: W2>CELLS ( ptr w2 -- ptr n )
    k E-L3 ;
 
 \ ---- a column store's three rows -------------------------------------------
-: E-COL+ ( ptr u8 n n n -- )
-   {: h:ptr u:n al:n k:n :} h u al NWM-COL:MAKE k COL-AT ! ;
+: E-COL+ ( ^u8 n n n -- )
+   {: h:^ u:n al:n k:n :} h u al NWM-COL:MAKE k COL-AT ! ;
 
-: E-COL-HDR ( n -- ptr u8 n )
+: E-COL-HDR ( n -- ^u8 n )
    COL-AT @ NWM-COL:UNMAKE drop ;
 
 : E-COL-AL ( n -- n )
@@ -198,7 +198,7 @@ CAST: W2>CELLS ( ptr w2 -- ptr n )
 
 
 \ Dynamic compilation is needed only for the checker-refusal probe.
-: EV-RC ( ptr u8 n -- n )
+: EV-RC ( ^u8 n -- n )
    NATIVE-EVAL:DEFINE-RC ;
 
 : LOAD-CASE ( -- )
@@ -266,7 +266,7 @@ CAST: W2>CELLS ( ptr w2 -- ptr n )
 
 : REFUSED-CASE ( -- )
    s" a cell load through a byte pointer remains a checker refusal" T-LABEL
-   s" : NWM-BYTEP ( ptr u8 n -- n ) drop @ ;" EV-RC 70 T= ;
+   s" : NWM-BYTEP ( ^u8 n -- n ) drop @ ;" EV-RC 70 T= ;
 
 public
 
@@ -296,8 +296,8 @@ variable CELL-SLOT
 create BYTE-SLOT 1 allot
 : CELL! ( n -- ) CELL-SLOT ! ;
 : BYTE! ( u8 -- ) BYTE-SLOT c! ;
-: ! ( n ptr n -- ) 2drop ;
-: c! ( u8 ptr u8 -- ) 2drop ;
+: ! ( n ^n -- ) 2drop ;
+: c! ( u8 ^u8 -- ) 2drop ;
 public
 : CHECK ( -- )
    7 CELL! 99 CELL-SLOT ! CELL-SLOT @ 7 T=

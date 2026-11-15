@@ -15,7 +15,7 @@ require src/habu/verify-source.f
 package CVPS
 private
 
-TYPED-VARIABLE SRC-A ptr u8
+TYPED-VARIABLE SRC-A ^u8
 variable SRC-U
 
 \ x86-64 refuses a quotation that reads a local, so the source span travels
@@ -27,20 +27,20 @@ public
 
 \ Replay one source span in the caller's live package context; 0 means the
 \ verifier accepted both the package context and the source.
-: REPLAY ( ptr u8 n -- n ) {: a:ptr u:n :}
+: REPLAY ( ^u8 n -- n ) {: a:^ u:n :}
    a SRC-A !
    u SRC-U !
    [: ACT ;] catch ;
 
 \ Replay in a neutral scope, which starts at top level with no imports.
-: REPLAY-NEUTRAL ( ptr u8 n -- n ) {: a:ptr u:n :}
+: REPLAY-NEUTRAL ( ^u8 n -- n ) {: a:^ u:n :}
    a SRC-A !
    u SRC-U !
    CHECKER-SCOPE-START-NEUTRAL [: ACT ;] catch CHECKER-SCOPE-DONE ;
 
 \ Diagnostics are collected in prose, not printed, so the rejecting case reports
 \ its own text instead of leaving a rejection on the gate's stderr.
-: REPLAY-QUIET ( ptr u8 n -- n ) {: a:ptr u:n :}
+: REPLAY-QUIET ( ^u8 n -- n ) {: a:^ u:n :}
    REJECTION:CAPTURE
    REJECTION:JSON @ {: was:n :}
    false REJECTION:JSON !
@@ -49,7 +49,7 @@ public
    REJECTION:BUFFER-OFF
    rc ;
 
-: DIAG$ ( -- ptr u8 n )
+: DIAG$ ( -- ^u8 n )
    REJECTION:BUFFER$ ;
 
 ;package

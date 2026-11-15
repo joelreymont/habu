@@ -7,8 +7,8 @@ package QUOT-ROLLBACK-TEST
 
 \ REJECTS asserts the text stops with the checker's status after a declaration
 \ record whose evaluated note marks `nope` under the label.
-: REJECTS ( ptr u8 n ptr u8 n -- )
-   {: sa:ptr su:n la:ptr lu:n :}
+: REJECTS ( ^u8 n ^u8 n -- )
+   {: sa:^ su:n la:^ lu:n :}
    REJECTION:CAPTURE  sa su TEST-EVAL:RC CHECKER-REJECT-RC T=
    REJECTION:BUFFER$ s" error[E-BAD-DECLARATION]" CONTAINS? TTRUE
    s" nope" la lu DECL-DIAG:CAUSE? TTRUE

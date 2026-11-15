@@ -30,16 +30,16 @@ public
 \ C writes through a staged cell: strtol stores its end pointer in argument 1,
 \ an eight-byte output.
 PROCESS-SYMBOLS
-FUNCTION: FFI-T-STRTOL strtol ( ptr u8 ptr u8 n -- n ) ;FUNCTION
+FUNCTION: FFI-T-STRTOL strtol ( ^u8 ^u8 n -- n ) ;FUNCTION
 FUNCTION: FFI-T-LABS labs ( n -- n ) ;FUNCTION
 
 \ A declaration held open across a require: the file ends before ;FUNCTION.
-FUNCTION: FFI-T-REQ-STRTOL strtol ( ptr u8 ptr u8 n -- n )
+FUNCTION: FFI-T-REQ-STRTOL strtol ( ^u8 ^u8 n -- n )
    require test/fixtures/ffi-abi-require.f
 ;FUNCTION
 
 : FFI-T-OUT-PARAM ( -- )
-   s\" 42x\z" drop {: num:ptr :}
+   s\" 42x\z" drop {: num:^ :}
    0 FFI-T-OUT !
    num FFI-T-OUT BYTE-VIEW 10 FFI-T-STRTOL 42 T=
    FFI-T-OUT @ num FFI:>CELL 2 + T= ;
@@ -50,18 +50,18 @@ FUNCTION: FFI-T-REQ-STRTOL strtol ( ptr u8 ptr u8 n -- n )
    FFI-T-REQUIRED$ drop FFI-T-OUT BYTE-VIEW 10 FFI-T-REQ-STRTOL 57 T= ;
 
 \ The table these declarations grow lies in the storage the rollback cuts.
-: FFI-T-CUT-TEXT$ ( -- ptr u8 n )
+: FFI-T-CUT-TEXT$ ( -- ^u8 n )
    s" include test/fixtures/ffi-grow.f  1 throw" ;
 
-: FFI-T-AFTER-TEXT$ ( -- ptr u8 n )
+: FFI-T-AFTER-TEXT$ ( -- ^u8 n )
    s\" FUNCTION: FFI-T-LLABS llabs ( n -- n ) ;FUNCTION  -7 FFI-T-LLABS" ;
 
 : FFI-T-FILL ( n -- ) 0 ?do 777 , loop ;
 
-: FFI-T-SELECT-TEXT$ ( -- ptr u8 n )
+: FFI-T-SELECT-TEXT$ ( -- ^u8 n )
    s" VERSIONED-LIBRARY habu-no-such 1  1 throw" ;
 
-: FFI-T-ABS-TEXT$ ( -- ptr u8 n )
+: FFI-T-ABS-TEXT$ ( -- ^u8 n )
    s" FUNCTION: FFI-T-ABS abs ( n -- i32 ) ;FUNCTION  -9 FFI-T-ABS" ;
 
 \ Calls through rows declared before and after a rolled-back declaration.
@@ -77,7 +77,7 @@ FUNCTION: FFI-T-REQ-STRTOL strtol ( ptr u8 ptr u8 n -- n )
    FFI-T-ABS-TEXT$ TEST-EVAL:N 9 T= ;
 
 \ A declaration's syntax error prints a record naming the token it read last.
-: FFI-T-NO-DASHES$ ( -- ptr u8 n )
+: FFI-T-NO-DASHES$ ( -- ^u8 n )
    s" FUNCTION: FFI-T-NO-DASHES labs ( n n ) ;FUNCTION" ;
 
 : FFI-T-NO-DASHES ( -- )
@@ -101,18 +101,18 @@ FUNCTION: FFI-T-REQ-STRTOL strtol ( ptr u8 ptr u8 n -- n )
    DECL-DIAG:OFF ;
 
 \ A library name spelled in the other target's convention.
-: FFI-T-FOREIGN$ ( -- ptr u8 n )
+: FFI-T-FOREIGN$ ( -- ^u8 n )
    HB-TARGET-MACOS? if s" LIBRARY libx.so.5" exit then
    s" LIBRARY libx.5.dylib" ;
 
-: FFI-T-FOREIGN-HEAD$ ( -- ptr u8 n )
+: FFI-T-FOREIGN-HEAD$ ( -- ^u8 n )
    HB-TARGET-MACOS? if
       s" error[E-FFI-LIBRARY]: library 'libx.so.5' is spelled for the other target"
       exit
    then
    s" error[E-FFI-LIBRARY]: library 'libx.5.dylib' is spelled for the other target" ;
 
-: FFI-T-FOREIGN-HELP$ ( -- ptr u8 n )
+: FFI-T-FOREIGN-HELP$ ( -- ^u8 n )
    HB-TARGET-MACOS? if
       s" = help: name it with VERSIONED-LIBRARY, which spells it for macos" exit
    then

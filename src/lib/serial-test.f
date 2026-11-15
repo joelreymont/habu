@@ -84,7 +84,7 @@ TASK:MIN-STACK TASK:TASK READER
 
 \ One chunk at a time until the master has handed over every byte, so a split
 \ answer from the terminal is not read as a short transfer.
-: PEER-EXACT ( ptr u8 n -- ) {: bytes size:n :}
+: PEER-EXACT ( ^u8 n -- ) {: bytes size:n :}
    0 begin dup size < while
       dup {: offset:n :}
       PEER bytes offset + size offset - -1 >MS PTY:READ {: got:n :}

@@ -71,7 +71,7 @@ variable UNSAFE-COUNT
 
 
 \ The name of the record entering emission e at its first byte, empty for none.
-: ROUTINE-NAME$ ( n -- ptr u8 n )
+: ROUTINE-NAME$ ( n -- ^u8 n )
    {: e:n :}
    NSHADOW:RECORDS 0 ?do
       i NSHADOW:EMISSION@ e =  i NSHADOW:ENTRY@ 0= and if
@@ -83,7 +83,7 @@ variable UNSAFE-COUNT
 
 : ROUTINE. ( n -- )
    {: e:n :}
-   e ROUTINE-NAME$ {: name:ptr nameu:n :}
+   e ROUTINE-NAME$ {: name:^ nameu:n :}
    nameu 0<> if name nameu SAY exit then
    s" emission " SAY e SAY-INT ;
 
@@ -166,8 +166,8 @@ variable UNSAFE-COUNT
 \ The kernel words a stripped program cannot run: it has no dictionary to read
 \ or write, no writable code and no interpreter for the evaluate words,
 \ literal, compile, and ;.
-: UNSAFE-NAME? ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
+: UNSAFE-NAME? ( ^u8 n -- bool )
+   {: a:^ u:n :}
    a u s" create" XREF-STR=CI
    a u s" patch32" XREF-STR=CI or
    a u s" code-publish" XREF-STR=CI or
@@ -246,8 +246,8 @@ variable UNSAFE-COUNT
 
 \ The address value machine a's emission bytes b, s of them, hold at site for a row of
 \ kind, and whether they hold one there, read by a's part of LINKER.
-: ADDRESS@ ( CTARGET:arch ptr u8 n n n -- n bool )
-   {: a:CTARGET:arch b:ptr s:n site:n kind:n :}
+: ADDRESS@ ( CTARGET:arch ^u8 n n n -- n bool )
+   {: a:CTARGET:arch b:^ s:n site:n kind:n :}
    a CTARGET-ARCH:AARCH64 CTARGET-ARCH:EQ if b s site kind ARM64:ADDRESS@ exit then
    a CTARGET-ARCH:WASM CTARGET-ARCH:EQ if b s site kind WASM:ADDRESS@ exit then
    NO-PART ;
@@ -255,8 +255,8 @@ variable UNSAFE-COUNT
 
 \ v written as ADDRESS@ reads it, by a's part of LINKER; false, with nothing written,
 \ where ADDRESS@ answers false.
-: ADDRESS! ( n CTARGET:arch ptr u8 n n n -- bool )
-   {: v:n a:CTARGET:arch b:ptr s:n site:n kind:n :}
+: ADDRESS! ( n CTARGET:arch ^u8 n n n -- bool )
+   {: v:n a:CTARGET:arch b:^ s:n site:n kind:n :}
    a CTARGET-ARCH:AARCH64 CTARGET-ARCH:EQ if v b s site kind ARM64:ADDRESS! exit then
    a CTARGET-ARCH:WASM CTARGET-ARCH:EQ if v b s site kind WASM:ADDRESS! exit then
    NO-PART ;
@@ -327,7 +327,7 @@ variable UNSAFE-COUNT
 \ at dictionary index d. No record keeps its source, so the record is unplaced.
 : CANNOT-RUN ( n n -- )
    {: r:n d:n :}
-   d XREF-REC XREF-NAME$ {: name:ptr nameu:n :}
+   d XREF-REC XREF-NAME$ {: name:^ nameu:n :}
    s" E-CANNOT-RUN-STRIPPED" REJECTION:OPEN
    r 0< if
       s" the program starts at `" REJECTION:EMIT-STR
@@ -447,7 +447,7 @@ variable UNSAFE-COUNT
    {: e:n :}
    e EM-FIRST @
    begin dup 0 >= while
-      dup NSHADOW:RECORD@ XREF-REC {: rec:ptr :}
+      dup NSHADOW:RECORD@ XREF-REC {: rec:^ :}
       rec NDICT:TRAILER-CELL {: cell:n :}
       cell 0<> if drop cell exit then
       REC-NEXT @
@@ -502,7 +502,7 @@ variable UNSAFE-COUNT
    {: a:n :}
    a LINK-ADDRESS {: to:n :}
    to -1 <> if to exit then
-   PLACING @ ROUTINE-NAME$ {: name:ptr nameu:n :}
+   PLACING @ ROUTINE-NAME$ {: name:^ nameu:n :}
    s" E-LINK-FOREIGN-WORD" REJECTION:OPEN
    nameu 0<> if
       s" `" REJECTION:EMIT-STR  name nameu REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR

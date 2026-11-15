@@ -43,8 +43,8 @@ public
    REJECT-ACTIVE
    RTARGET:HOST-TARGET PENDING ! ;
 
-: SELECT? ( ptr u8 n -- bool )
-   {: name:ptr size:n :}
+: SELECT? ( ^u8 n -- bool )
+   {: name:^ size:n :}
    REJECT-ACTIVE
    name size RTARGET:KNOWN? 0= if false exit then
    name size RTARGET:RESOLVE PENDING ! true ;

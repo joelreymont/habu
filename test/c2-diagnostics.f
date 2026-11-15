@@ -15,8 +15,8 @@ $4000 constant CAP
 create OUT CAP allot
 create ERR CAP allot
 
-: REFUSAL ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
-   {: source:ptr source-u:n operation:ptr operation-u:n culprit:ptr culprit-u:n reason:ptr reason-u:n :}
+: REFUSAL ( ^u8 n ^u8 n ^u8 n ^u8 n -- )
+   {: source:^ source-u:n operation:^ operation-u:n culprit:^ culprit-u:n reason:^ reason-u:n :}
    source source-u OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    {: out-u:len err-u:len oc :}
    oc MATCH PROCESS:ending

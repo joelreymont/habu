@@ -28,7 +28,7 @@ public
 0 CWORK-VARIABLE M-ROW-REJECTED bool           \ the checker rejected a TRUSTED: definition's row
 0 CWORK-VARIABLE M-DOES-FRAME n                \ checker-owned transaction spans a split compilation
 0 CWORK-VARIABLE M-DOES n                      \ byte split after `does> `, or zero
-0 CWORK-VARIABLE M-DOES-SIG ptr u8
+0 CWORK-VARIABLE M-DOES-SIG ^u8
 0 CWORK-VARIABLE M-DOES-SIG-U n
 0 CWORK-VARIABLE M-DOES-FUN n                  \ hidden clause function ordinal
 0 CWORK-VARIABLE M-DOES-OFF n                  \ published clause's byte offset, or zero
@@ -41,7 +41,7 @@ public
 
 \ The definition's name is its source spelling, whole, which stays put until the
 \ next definition is recorded: no copy that a longer name could run past.
-0 CWORK-VARIABLE NAME-A ptr u8
+0 CWORK-VARIABLE NAME-A ^u8
 0 CWORK-VARIABLE NAME-U n
 
 \ How PUBLISH-IT publishes the emission: a pending body (its `does>` clause,
@@ -58,7 +58,7 @@ DYNAMIC-BUFFER PUB-OFF n
 
 private
 
-0 CWORK-VARIABLE M-SRC ptr u8
+0 CWORK-VARIABLE M-SRC ^u8
 0 CWORK-VARIABLE M-SRC-U n
 0 CWORK-VARIABLE M-ROWS n                      \ where the checker store ended at STAGE-UNIT
 0 CWORK-VARIABLE M-HEAD-RECOVERY bool          \ a split definition's head bound a recovery row
@@ -68,13 +68,13 @@ private
 
 public
 
-: SRC$ ( -- ptr u8 n )
+: SRC$ ( -- ^u8 n )
    M-SRC @ M-SRC-U @ ;
 
 : DOES-BYTE@ ( -- n )
    data-base DOESB-CELL + @ ;
 
-: NAME$ ( -- ptr u8 n )
+: NAME$ ( -- ^u8 n )
    NAME-A @ NAME-U @ ;
 
 \ A compiler entry reached while a compilation runs would stage one definition
@@ -108,20 +108,20 @@ public
 
 private
 
-: DOES-SIG-FIELD ( -- ptr ptr u8 )
+: DOES-SIG-FIELD ( -- ^^u8 )
    data-base TCSIG-A-CELL CELL / ptr-field ;
 
 : TRUSTED? ( -- bool )
    data-base TRUSTED-CELL + @ 0<> ;
 
-: TRUST-SIG-A-FIELD ( -- ptr ptr u8 )
+: TRUST-SIG-A-FIELD ( -- ^^u8 )
    data-base TSIG-A-CELL CELL / ptr-field ;
 
-: TRUST-SIG$ ( -- ptr u8 n )
+: TRUST-SIG$ ( -- ^u8 n )
    TRUST-SIG-A-FIELD @  data-base TSIG-U-CELL + @ ;
 
-: CHECK-PARENT ( ptr u8 n -- n )
-   {: a:ptr u:n :}
+: CHECK-PARENT ( ^u8 n -- n )
+   {: a:^ u:n :}
    TRUSTED? if -1 CHECKER-OWNER:BIND-REGIME!
       a u CHECK-UNJUDGED! exit then
    0 CHECKER-OWNER:BIND-REGIME!
@@ -137,14 +137,14 @@ private
 \ A refused clause is reported as CHECK:DEFINITION reports a refused body: the
 \ checker's reason, then its reject status, which the run names the
 \ definition under. The clause is named by the caller, from its open unit.
-: CLAUSE-CK ( n ptr u8 n -- )
+: CLAUSE-CK ( n ^u8 n -- )
    CHECKER-OWNER:DOES-REPORT -1 <> if CHECKER-REJECT-RC throw then ;
 
 \ The engine records the split just past the `does> ` it consumed, so a cut
 \ that is not just past a `does> ` in this source means the source and the
 \ pending definition disagree.
 : DOES-CUT-CK ( -- )
-   M-SRC @ {: src:ptr :}
+   M-SRC @ {: src:^ :}
    M-DOES @ {: cut:n :}
    cut DOES-SPAN < cut M-SRC-U @ > or if E-NFEED-CUT throw then
    src cut DOES-SPAN - + DOES-SPAN 1- s" does>" STR=CI 0= if E-NFEED-CUT throw then
@@ -166,11 +166,11 @@ public
 
 \ The `does>` clause, named for a refusal by the unit's name. The checker's
 \ token ordinal first steps past the `does>` keyword between the two bodies.
-: CHECK-DOES-CLAUSE ( ptr u8 n -- n )
-   {: na:ptr nu:n :}
+: CHECK-DOES-CLAUSE ( ^u8 n -- n )
+   {: na:^ nu:n :}
    CHECKER-TAPE:ADVANCE
    M-DOES @ {: cut:n :}
-   M-SRC @ cut +  M-SRC-U @ cut -  {: ca:ptr cu:n :}
+   M-SRC @ cut +  M-SRC-U @ cut -  {: ca:^ cu:n :}
    ca cu CHECK:CLOSER-ARM
    ca cu  M-DOES-SIG @ M-DOES-SIG-U @
    CHECKER-OWNER:DOES-CHECK na nu CLAUSE-CK
@@ -220,15 +220,15 @@ private
 : REC-INDEX ( -- n )
    ndict@ ;
 
-: QUALIFIED-RECORD-NAME? ( ptr n ptr u8 n n -- bool )
-   {: rec:ptr a:ptr u:n split:n :}
+: QUALIFIED-RECORD-NAME? ( ^n ^u8 n n -- bool )
+   {: rec:^ a:^ u:n split:n :}
    rec  a split 1+ ZPTR+  u split - 1-  XREF-MATCH? 0= if false exit then
    a split CHECKER-RESOLVE:HEAD-ROW
    dup XREF-FOUND? 0= if drop false exit then
    XREF-PKG-PUBLIC  rec XREF-WORDLIST  = ;
 
-: RECORD-NAME? ( ptr n ptr u8 n -- bool )
-   {: rec:ptr a:ptr u:n :}
+: RECORD-NAME? ( ^n ^u8 n -- bool )
+   {: rec:^ a:^ u:n :}
    a u XREF-QUAL-INDEX {: split:n :}
    split 0 < if rec a u XREF-MATCH? exit then
    rec a u split QUALIFIED-RECORD-NAME? ;
@@ -315,7 +315,7 @@ public
 : TARGET-ERROR ( n -- )
    XREF:ENTRY-REC {: r:n :}
    r -1 = if E-COMP-STATE throw then
-   r XREF-REC XREF-NAME$ {: na:ptr nu:n :}
+   r XREF-REC XREF-NAME$ {: na:^ nu:n :}
    s" E-TARGET-WORD" REJECTION:OPEN
    s" a build cannot run target word `" REJECTION:EMIT-STR
    na nu REJECTION:EMIT-STR  96 REJECTION:EMIT1
@@ -328,7 +328,7 @@ public
 
 \ The `;` that ends the definition: the token the engine read last, whose
 \ address in the input places a refusal there on its line.
-: CLOSE$ ( -- ptr u8 n ) READ-AT @ data-base TKL-CELL + @ ;
+: CLOSE$ ( -- ^u8 n ) READ-AT @ data-base TKL-CELL + @ ;
 
 private
 
@@ -358,7 +358,7 @@ public
    then
    rc 0 <> if RETRACT rc throw then ;
 
-: STAGE-UNIT ( ptr u8 n -- )
+: STAGE-UNIT ( ^u8 n -- )
    {: sa su:n :}
    0 CHECKER-OWNER:BIND-REGIME!
    sa M-SRC ! su M-SRC-U !

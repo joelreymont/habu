@@ -31,23 +31,23 @@ using XMODEM
 
 \ Caller-owned session header. The packet BUF is the only owned allocation;
 \ the serial handle, source span, and destination BUF remain borrowed.
-: HANDLE-FIELD ( ptr a -- ptr n ) BYTE-VIEW CELL-VIEW ;
-: CONTROL-WAIT-FIELD ( ptr a -- ptr n ) BYTE-VIEW 1 cells + CELL-VIEW ;
-: DEADLINE-FIELD ( ptr a -- ptr n ) BYTE-VIEW 2 cells + CELL-VIEW ;
-: IO-ERROR-FIELD ( ptr a -- ptr n ) BYTE-VIEW 3 cells + CELL-VIEW ;
-: KIND-FIELD ( ptr a -- ptr n ) BYTE-VIEW 4 cells + CELL-VIEW ;
-: NEXT-FIELD ( ptr a -- ptr n ) BYTE-VIEW 5 cells + CELL-VIEW ;
-: TRIES-FIELD ( ptr a -- ptr n ) BYTE-VIEW 6 cells + CELL-VIEW ;
-: PROGRESS-FIELD ( ptr a -- ptr n ) BYTE-VIEW 7 cells + CELL-VIEW ;
-: PACKET-BUF ( ptr a -- ptr a ) 8 cells + ;
-: CONTROL-DATA ( ptr a -- ptr u8 ) BYTE-VIEW 11 cells + ;
-: SOURCE-FIELD ( ptr a -- ptr ptr u8 ) 12 cells ptr-field ;
-: SOURCE-LEN-FIELD ( ptr a -- ptr n ) BYTE-VIEW 13 cells + CELL-VIEW ;
-: BLOCK-FIELD ( ptr a -- ptr n ) BYTE-VIEW 14 cells + CELL-VIEW ;
-: OUTPUT-FIELD ( ptr a -- ptr ptr a ) 15 cells ptr-field ;
-: MAXIMUM-FIELD ( ptr a -- ptr n ) BYTE-VIEW 16 cells + CELL-VIEW ;
-: NEGOTIATED-FIELD ( ptr a -- ptr n ) BYTE-VIEW 17 cells + CELL-VIEW ;
-: RECEIVE-WAIT-FIELD ( ptr a -- ptr n ) BYTE-VIEW 18 cells + CELL-VIEW ;
+: HANDLE-FIELD ( ^a -- ^n ) BYTE-VIEW CELL-VIEW ;
+: CONTROL-WAIT-FIELD ( ^a -- ^n ) BYTE-VIEW 1 cells + CELL-VIEW ;
+: DEADLINE-FIELD ( ^a -- ^n ) BYTE-VIEW 2 cells + CELL-VIEW ;
+: IO-ERROR-FIELD ( ^a -- ^n ) BYTE-VIEW 3 cells + CELL-VIEW ;
+: KIND-FIELD ( ^a -- ^n ) BYTE-VIEW 4 cells + CELL-VIEW ;
+: NEXT-FIELD ( ^a -- ^n ) BYTE-VIEW 5 cells + CELL-VIEW ;
+: TRIES-FIELD ( ^a -- ^n ) BYTE-VIEW 6 cells + CELL-VIEW ;
+: PROGRESS-FIELD ( ^a -- ^n ) BYTE-VIEW 7 cells + CELL-VIEW ;
+: PACKET-BUF ( ^a -- ^a ) 8 cells + ;
+: CONTROL-DATA ( ^a -- ^u8 ) BYTE-VIEW 11 cells + ;
+: SOURCE-FIELD ( ^a -- ^^u8 ) 12 cells ptr-field ;
+: SOURCE-LEN-FIELD ( ^a -- ^n ) BYTE-VIEW 13 cells + CELL-VIEW ;
+: BLOCK-FIELD ( ^a -- ^n ) BYTE-VIEW 14 cells + CELL-VIEW ;
+: OUTPUT-FIELD ( ^a -- ^^a ) 15 cells ptr-field ;
+: MAXIMUM-FIELD ( ^a -- ^n ) BYTE-VIEW 16 cells + CELL-VIEW ;
+: NEGOTIATED-FIELD ( ^a -- ^n ) BYTE-VIEW 17 cells + CELL-VIEW ;
+: RECEIVE-WAIT-FIELD ( ^a -- ^n ) BYTE-VIEW 18 cells + CELL-VIEW ;
 
 CAST: BLEN>N ( NUM:byte-len -- n )
 
@@ -65,28 +65,28 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    NS-PER-MS 1 - + NS-PER-MS / >MS ;
 
 
-: CHECK-TIME ( ptr a -- )
+: CHECK-TIME ( ^a -- )
    DEADLINE-FIELD @ mono-ns <= if E-SXMODEM-TIMEOUT throw then ;
 
 
-: WINDOW ( n ptr a -- ns ) {: wait:n session:ptr :}
+: WINDOW ( n ^a -- ns ) {: wait:n session:^ :}
    session CHECK-TIME
    wait NS-PER-MS * mono-ns + session DEADLINE-FIELD @ min >NS ;
 
 
-: CONTROL-WINDOW ( ptr a -- ns )
+: CONTROL-WINDOW ( ^a -- ns )
    dup CONTROL-WAIT-FIELD @ swap WINDOW ;
 
 
-: RECEIVE-WINDOW ( ptr a -- ns )
+: RECEIVE-WINDOW ( ^a -- ns )
    dup RECEIVE-WAIT-FIELD @ swap WINDOW ;
 
 
-: FAIL-IO ( SERIAL:errno ptr a -- )
+: FAIL-IO ( SERIAL:errno ^a -- )
    IO-ERROR-FIELD swap SERIAL:ERRNO>N swap ! E-SXMODEM-IO throw ;
 
 
-: READ-BYTE ( ns ptr a -- n ) {: deadline:ns session:ptr :}
+: READ-BYTE ( ns ^a -- n ) {: deadline:ns session:^ :}
    deadline REMAINING {: timeout:ms :}
    timeout MS>N 0= if -1 exit then
    session HANDLE-FIELD @ SERIAL:>HANDLE session CONTROL-DATA 1 SERIAL:BYTES timeout SERIAL:READ
@@ -98,7 +98,7 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    ;MATCH ;
 
 
-: WRITE-CHUNK ( n ptr u8 n ptr a -- n ) {: offset:n data size:n session:ptr :}
+: WRITE-CHUNK ( n ^u8 n ^a -- n ) {: offset:n data size:n session:^ :}
    session CHECK-TIME
    session HANDLE-FIELD @ SERIAL:>HANDLE data offset + size offset - SERIAL:BYTES
    session DEADLINE-FIELD @ >NS REMAINING SERIAL:WRITE
@@ -110,36 +110,36 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    ;MATCH ;
 
 
-: WRITE-ALL ( ptr u8 n ptr a -- ) {: data size:n session:ptr :}
+: WRITE-ALL ( ^u8 n ^a -- ) {: data size:n session:^ :}
    0 begin dup size < while data size session WRITE-CHUNK repeat drop ;
 
 
-: SEND-BYTE ( n ptr a -- ) {: value:n session:ptr :}
+: SEND-BYTE ( n ^a -- ) {: value:n session:^ :}
    value session CONTROL-DATA c! session CONTROL-DATA 1 session WRITE-ALL ;
 
 
-: READ-CONTROL ( ns ptr a -- n ) {: deadline:ns session:ptr :}
+: READ-CONTROL ( ns ^a -- n ) {: deadline:ns session:^ :}
    deadline session READ-BYTE dup CAN <> if exit then drop
    deadline session READ-BYTE dup CAN = if
       drop ACK session SEND-BYTE E-SXMODEM-CANCELLED throw
    then ;
 
 
-: WAIT-REPLY ( ns ptr a -- n ) {: deadline:ns session:ptr :}
+: WAIT-REPLY ( ns ^a -- n ) {: deadline:ns session:^ :}
    begin
       deadline session READ-CONTROL
       dup ACK = over NAK = or over -1 = or if exit then drop
    again ;
 
 
-: WAIT-HEADER ( ns ptr a -- n ) {: deadline:ns session:ptr :}
+: WAIT-HEADER ( ns ^a -- n ) {: deadline:ns session:^ :}
    begin
       deadline session READ-CONTROL
       dup SOH = over STX = or over EOT = or over -1 = or if exit then drop
    again ;
 
 
-: READ-CHUNK ( n ptr u8 n ptr a -- n ) {: offset:n data size:n session:ptr :}
+: READ-CHUNK ( n ^u8 n ^a -- n ) {: offset:n data size:n session:^ :}
    session HANDLE-FIELD @ SERIAL:>HANDLE data offset + size offset - SERIAL:BYTES
    session RECEIVE-WINDOW REMAINING SERIAL:READ
    MATCH SERIAL:io-result
@@ -152,18 +152,18 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 
 \ A partial frame may continue while each chunk arrives within the configured
 \ wait. The overall transfer deadline still bounds every chunk and drain.
-: READ-REST ( ptr u8 n ptr a -- bool ) {: data size:n session:ptr :}
+: READ-REST ( ^u8 n ^a -- bool ) {: data size:n session:^ :}
    0 begin dup size < while
       data size session READ-CHUNK dup 0 < if drop FALSE exit then
    repeat drop TRUE ;
 
 
-: DRAIN ( ptr a -- ) {: session:ptr :}
+: DRAIN ( ^a -- ) {: session:^ :}
    begin session RECEIVE-WINDOW session READ-BYTE -1 = until
    session CHECK-TIME ;
 
 
-: TRY+ ( ptr a -- )
+: TRY+ ( ^a -- )
    TRIES-FIELD dup @ 1 + dup MAX-TRIES >= if drop drop E-SXMODEM-RETRIES throw then swap ! ;
 
 
@@ -175,12 +175,12 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 
 
 \ Best effort only, without waiting beyond the transfer deadline.
-: CANCEL-PEER ( ptr a -- ) {: session:ptr :}
+: CANCEL-PEER ( ^a -- ) {: session:^ :}
    CAN session CONTROL-DATA c! CAN session CONTROL-DATA 1 + c! CAN session CONTROL-DATA 2 + c!
    session HANDLE-FIELD @ SERIAL:>HANDLE session CONTROL-DATA 3 SERIAL:BYTES 0 >MS SERIAL:WRITE IGNORE-IO ;
 
 
-: RESULT ( ptr a n -- transfer-result ) {: session:ptr error:n :}
+: RESULT ( ^a n -- transfer-result ) {: session:^ error:n :}
    error 0= if session PROGRESS-FIELD @ BYTES SERIAL--XMODEM-TRANSFER--RESULT:completed exit then
    error E-SXMODEM-CANCELLED <> if session CANCEL-PEER then
    error E-SXMODEM-TIMEOUT = if SERIAL--XMODEM-TRANSFER--RESULT:timeout exit then
@@ -192,14 +192,14 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    error throw ;
 
 
-: START ( ms ptr a -- ) {: timeout:ms session:ptr :}
+: START ( ms ^a -- ) {: timeout:ms session:^ :}
    timeout CHECK-MS session PACKET-BUF BUF:CLEAR
    timeout MS>N NS-PER-MS * mono-ns + session DEADLINE-FIELD !
    0 session IO-ERROR-FIELD ! 0 session PROGRESS-FIELD ! 0 session TRIES-FIELD !
    1 session NEXT-FIELD ! 1 session KIND-FIELD ! 0 session NEGOTIATED-FIELD ! ;
 
 
-: NEGOTIATE-SEND ( ptr a -- ) {: session:ptr :}
+: NEGOTIATE-SEND ( ^a -- ) {: session:^ :}
    begin
       session DEADLINE-FIELD @ >NS session READ-CONTROL
       dup REQUEST-CRC = if drop 1 session KIND-FIELD ! exit then
@@ -208,17 +208,17 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    again ;
 
 
-: CHUNK-SIZE ( ptr a -- n ) {: session:ptr :}
+: CHUNK-SIZE ( ^a -- n ) {: session:^ :}
    session SOURCE-LEN-FIELD @ session PROGRESS-FIELD @ - session BLOCK-FIELD @ min ;
 
 
-: BUILD-PACKET ( ptr a -- ) {: session:ptr :}
+: BUILD-PACKET ( ^a -- ) {: session:^ :}
    session SOURCE-FIELD @ session PROGRESS-FIELD @ + session CHUNK-SIZE BYTES
    session NEXT-FIELD @ >SEQUENCE session BLOCK-FIELD @ >PAYLOAD-SIZE
    session KIND-FIELD @ >CHECK-KIND session PACKET-BUF ENCODE ;
 
 
-: SEND-PACKET ( ptr a -- ) {: session:ptr :}
+: SEND-PACKET ( ^a -- ) {: session:^ :}
    MAX-TRIES 0 do
       session PACKET-BUF BUF:SPAN$ BLEN>N session WRITE-ALL
       session CONTROL-WINDOW session WAIT-REPLY ACK = if unloop exit then
@@ -226,7 +226,7 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    loop E-SXMODEM-RETRIES throw ;
 
 
-: SEND-EOT ( ptr a -- ) {: session:ptr :}
+: SEND-EOT ( ^a -- ) {: session:^ :}
    MAX-TRIES 0 do
       EOT session SEND-BYTE
       session CONTROL-WINDOW session WAIT-REPLY ACK = if unloop exit then
@@ -234,25 +234,25 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    loop E-SXMODEM-RETRIES throw ;
 
 
-: ADVANCE ( n ptr a -- ) {: size:n session:ptr :}
+: ADVANCE ( n ^a -- ) {: size:n session:^ :}
    size session PROGRESS-FIELD @ + session PROGRESS-FIELD !
    session NEXT-FIELD @ 1 + $FF and session NEXT-FIELD !
    0 session TRIES-FIELD ! ;
 
 
-: SEND-RUN ( ptr a -- ) {: session:ptr :}
+: SEND-RUN ( ^a -- ) {: session:^ :}
    session NEGOTIATE-SEND
    begin session PROGRESS-FIELD @ session SOURCE-LEN-FIELD @ < while
       session BUILD-PACKET session SEND-PACKET session CHUNK-SIZE session ADVANCE
    repeat session SEND-EOT ;
 
 
-: FRAME-SIZE ( n ptr a -- NUM:byte-len ) {: header:n session:ptr :}
+: FRAME-SIZE ( n ^a -- NUM:byte-len ) {: header:n session:^ :}
    header SOH = if 128 else 1024 then >PAYLOAD-SIZE
    session KIND-FIELD @ >CHECK-KIND PACKET-BYTES ;
 
 
-: READ-FRAME ( ptr a -- NUM:byte-len ) {: session:ptr :}
+: READ-FRAME ( ^a -- NUM:byte-len ) {: session:^ :}
    session CONTROL-DATA c@ {: header:n :}
    header session FRAME-SIZE {: size:NUM:byte-len :}
    session PACKET-BUF BUF:SPAN$ drop {: data :}
@@ -260,13 +260,13 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    data 1 + size BLEN>N 1 - session READ-REST 0= if E-FRAME throw then size ;
 
 
-: PREVIOUS? ( sequence ptr a -- bool ) {: sequence:sequence session:ptr :}
+: PREVIOUS? ( sequence ^a -- bool ) {: sequence:sequence session:^ :}
    session PROGRESS-FIELD @ 0 >
    sequence SEQUENCE>N session NEXT-FIELD @ 1 - $FF and = and ;
 
 
-: ACCEPT-PAYLOAD ( ptr u8 NUM:byte-len sequence ptr a -- )
-   {: data size:NUM:byte-len sequence:sequence session:ptr :}
+: ACCEPT-PAYLOAD ( ^u8 NUM:byte-len sequence ^a -- )
+   {: data size:NUM:byte-len sequence:sequence session:^ :}
    sequence SEQUENCE>N session NEXT-FIELD @ = if
       size BLEN>N session MAXIMUM-FIELD @ session PROGRESS-FIELD @ - >
       if E-SXMODEM-CAPACITY throw then
@@ -277,20 +277,20 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    E-FRAME throw ;
 
 
-: RECEIVE-PACKET ( ptr a -- ) {: session:ptr :}
+: RECEIVE-PACKET ( ^a -- ) {: session:^ :}
    1 session NEGOTIATED-FIELD !
    session READ-FRAME {: size:NUM:byte-len :}
    session PACKET-BUF BUF:SPAN$ drop size session KIND-FIELD @ >CHECK-KIND DECODE
    session ACCEPT-PAYLOAD ;
 
 
-: RECEIVE-ONE ( ptr a -- bool )
+: RECEIVE-ONE ( ^a -- bool )
    [: dup RECEIVE-PACKET ;] catch swap drop
    dup 0= if drop TRUE exit then
    dup E-FRAME = if drop FALSE exit then throw ;
 
 
-: RECEIVE-RETRY ( ptr a -- ) {: session:ptr :}
+: RECEIVE-RETRY ( ^a -- ) {: session:^ :}
    session CHECK-TIME session TRY+
    session NEGOTIATED-FIELD @ 0= if
       session TRIES-FIELD @ 3 = if 0 session KIND-FIELD ! then
@@ -298,7 +298,7 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    else NAK then session SEND-BYTE ;
 
 
-: RECEIVE-RUN ( ptr a -- ) {: session:ptr :}
+: RECEIVE-RUN ( ^a -- ) {: session:^ :}
    session OUTPUT-FIELD @ BUF:CLEAR REQUEST-CRC session SEND-BYTE
    begin
       session CONTROL-WINDOW session WAIT-HEADER {: header:n :}
@@ -317,8 +317,8 @@ public
 \ wait covers an ACK or the next header and must allow a whole packet at the
 \ line's baud rate; the inactivity wait covers gaps inside a frame and must be
 \ shorter than the peer's retransmission interval.
-: INIT ( SERIAL:handle ms ms ptr a -- )
-   {: handle:SERIAL:handle control-wait:ms receive-wait:ms session:ptr :}
+: INIT ( SERIAL:handle ms ms ^a -- )
+   {: handle:SERIAL:handle control-wait:ms receive-wait:ms session:^ :}
    control-wait CHECK-MS receive-wait CHECK-MS
    handle SERIAL:HANDLE>N dup 0 < swap $7FFFFFFF > or if E-OPERAND throw then
    session PACKET-BUF 1029 BYTES BUF:INIT
@@ -326,14 +326,14 @@ public
    control-wait MS>N session CONTROL-WAIT-FIELD ! receive-wait MS>N session RECEIVE-WAIT-FIELD ! ;
 
 
-: DISPOSE ( ptr a -- ) PACKET-BUF BUF:DISPOSE ;
+: DISPOSE ( ^a -- ) PACKET-BUF BUF:DISPOSE ;
 
 
 \ The source must be disjoint from the session and its private packet buffer.
 \ CRC mode uses the requested payload size; checksum negotiation selects 128.
 \ Success requires the peer's EOT ACK and reports the original source length.
-: SEND ( ptr u8 NUM:byte-len XMODEM:payload-size ms ptr a -- transfer-result )
-   {: data size:NUM:byte-len block:XMODEM:payload-size timeout:ms session:ptr :}
+: SEND ( ^u8 NUM:byte-len XMODEM:payload-size ms ^a -- transfer-result )
+   {: data size:NUM:byte-len block:XMODEM:payload-size timeout:ms session:^ :}
    size CHECK-LENGTH block PAYLOAD-SIZE>N XMODEM:BLOCK drop
    timeout session START
    data session SOURCE-FIELD ! size BLEN>N session SOURCE-LEN-FIELD !
@@ -343,8 +343,8 @@ public
 
 \ The output is an initialized caller-owned BUF, disjoint from the session. The
 \ limit includes whole padded packets.
-: RECEIVE ( NUM:byte-len ptr a ms ptr a -- transfer-result )
-   {: maximum:NUM:byte-len output:ptr timeout:ms session:ptr :}
+: RECEIVE ( NUM:byte-len ^a ms ^a -- transfer-result )
+   {: maximum:NUM:byte-len output:^ timeout:ms session:^ :}
    maximum CHECK-LENGTH output BUF:SPAN$ 2drop timeout session START
    output session OUTPUT-FIELD ! maximum BLEN>N session MAXIMUM-FIELD !
    session [: dup RECEIVE-RUN ;] catch RESULT ;

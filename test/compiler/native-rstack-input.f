@@ -22,22 +22,22 @@ create ERR CAP allot
 variable OUT-U
 variable ERR-U
 
-: OUT$ ( -- ptr u8 n ) OUT OUT-U @ ;
-: ERR$ ( -- ptr u8 n ) ERR ERR-U @ ;
+: OUT$ ( -- ^u8 n ) OUT OUT-U @ ;
+: ERR$ ( -- ^u8 n ) ERR ERR-U @ ;
 
-: EXEC ( ptr u8 n -- len len PROCESS:ending ) {: src:ptr u:n :}
+: EXEC ( ^u8 n -- len len PROCESS:ending ) {: src:^ u:n :}
    PROC-ARGV-RESET
    ENGINE-CANDIDATE:PATH$ >LEN  src u >LEN  OUT CAP >LEN  ERR CAP >LEN
    PROCESS:WAIT-FOREVER  RUN-ARGV-STDIN-CAPTURE-OUTCOME ;
 
-: SHOW ( ptr u8 n n -- ) {: src:ptr u:n before:n :}
+: SHOW ( ^u8 n n -- ) {: src:^ u:n before:n :}
    T-FAILURES before = if exit then
    s" program:" type cr src u type
    s" stderr:" type cr ERR$ type ;
 
 \ One admitted run: the child exits 0 and prints exactly WANT.
-: ADMITTED ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: label:ptr lu:n src:ptr u:n want:ptr wu:n :}
+: ADMITTED ( ^u8 n ^u8 n ^u8 n -- )
+   {: label:^ lu:n src:^ u:n want:^ wu:n :}
    T-FAILURES {: before:n :}
    src u EXEC {: outu:len erru:len oc :}
    outu LEN>N OUT-U !  erru LEN>N ERR-U !
@@ -47,8 +47,8 @@ variable ERR-U
 
 \ One refused run: the child exits RC, prints nothing, and its stderr begins
 \ with DIAG, the record's headline, and holds NOTE.
-: REFUSED ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- )
-   {: label:ptr lu:n src:ptr u:n diag:ptr du:n note:ptr nu:n rc:n :}
+: REFUSED ( ^u8 n ^u8 n ^u8 n ^u8 n n -- )
+   {: label:^ lu:n src:^ u:n diag:^ du:n note:^ nu:n rc:n :}
    T-FAILURES {: before:n :}
    src u EXEC {: outu:len erru:len oc :}
    outu LEN>N OUT-U !  erru LEN>N ERR-U !

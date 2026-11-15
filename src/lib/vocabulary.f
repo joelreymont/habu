@@ -15,19 +15,19 @@ public
 
 \ Admit the public words of the package this span names. A name no package
 \ owns exits with an E-POLICY record whose note `package` holds the name.
-: ALLOW-PACKAGE ( ptr u8 n -- ) policy-admit ;
+: ALLOW-PACKAGE ( ^u8 n -- ) policy-admit ;
 
 \ Opt in to ordinary static require within this canonical searchable directory.
 \ The resolver and loader then refuse a canonical path outside it (`..`,
 \ absolute, symlink, library fallback) before a registry hit or a read, in checks
 \ before RESTRICT and in the sealed load, the harness's `script-required` entry
 \ included.
-: SOURCE-ROOT! ( ptr u8 n -- ) REQUIRE-XT @ SOURCE-ROOT:POLICY-ROOT ;
+: SOURCE-ROOT! ( ^u8 n -- ) REQUIRE-XT @ SOURCE-ROOT:POLICY-ROOT ;
 
 \ Scopes the root and the nested-require owner around one callback: restores both
 \ on return or throw, nests, refuses once sealed, and throws 70 on leaving if its
 \ callback sealed.
-: WITH-SOURCE-ROOT ( ptr u8 n [ -- ] -- ) REQUIRE-XT @ SOURCE-ROOT:POLICY-WITH-ROOT ;
+: WITH-SOURCE-ROOT ( ^u8 n [ -- ] -- ) REQUIRE-XT @ SOURCE-ROOT:POLICY-WITH-ROOT ;
 
 \ Seals, with no unseal. The seal is src/habu/layout.f POLICY-NDICT-CELL,
 \ POLICY-BITS-OFF and POLICY-REQUIRE-CELL; capture and warm restore clear all

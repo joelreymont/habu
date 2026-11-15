@@ -23,11 +23,11 @@ $1000 constant INTERN-CHUNK-MIN
 $100 constant INTERN-FOLD-CAP
 
 \ NULL-PTR until INTERN-INIT-ONCE makes them; every public word runs it first.
-TYPED-VARIABLE INTERN-ADDR-V ptr VEC:vector<ptr u8>
-TYPED-VARIABLE INTERN-LEN-V ptr VEC:vector<n>
-TYPED-VARIABLE INTERN-CHUNK-A-V ptr VEC:vector<ptr u8>
-TYPED-VARIABLE INTERN-CHUNK-CAP-V ptr VEC:vector<n>
-TYPED-VARIABLE INTERN-CHUNK-USED-V ptr VEC:vector<n>
+TYPED-VARIABLE INTERN-ADDR-V ^VEC:vector<^u8>
+TYPED-VARIABLE INTERN-LEN-V ^VEC:vector<n>
+TYPED-VARIABLE INTERN-CHUNK-A-V ^VEC:vector<^u8>
+TYPED-VARIABLE INTERN-CHUNK-CAP-V ^VEC:vector<n>
+TYPED-VARIABLE INTERN-CHUNK-USED-V ^VEC:vector<n>
 create INTERN-FOLD-BUF INTERN-FOLD-CAP allot
 variable INTERN-READY
 variable INTERN-CHUNK-I
@@ -37,9 +37,9 @@ variable INTERN-CHUNK-I
 
 : INTERN-INIT-ONCE ( -- )
    INTERN-READY? IF exit THEN
-   HEAP:ALLOCATOR 0 [type] ptr u8 VEC:NEW INTERN-ADDR-V !
+   HEAP:ALLOCATOR 0 [type] ^u8 VEC:NEW INTERN-ADDR-V !
    HEAP:ALLOCATOR 0 [type] n VEC:NEW INTERN-LEN-V !
-   HEAP:ALLOCATOR 0 [type] ptr u8 VEC:NEW INTERN-CHUNK-A-V !
+   HEAP:ALLOCATOR 0 [type] ^u8 VEC:NEW INTERN-CHUNK-A-V !
    HEAP:ALLOCATOR 0 [type] n VEC:NEW INTERN-CHUNK-CAP-V !
    HEAP:ALLOCATOR 0 [type] n VEC:NEW INTERN-CHUNK-USED-V !
    1 INTERN-READY ! ;
@@ -51,7 +51,7 @@ variable INTERN-CHUNK-I
 : INTERN-CHUNK# ( -- n )
    INTERN-CHUNK-A-V @ VEC:COUNT ;
 
-: INTERN-CHUNK-A@ ( n -- ptr u8 )
+: INTERN-CHUNK-A@ ( n -- ^u8 )
    INTERN-CHUNK-A-V @ swap VEC:AT @ ;
 
 : INTERN-CHUNK-CAP@ ( n -- n )
@@ -78,21 +78,21 @@ public
    0 INTERN-CHUNK-I !
    INTERN-RESET-CHUNKS ;
 
-: INTERN$ ( n -- ptr u8 n ) {: id :}
+: INTERN$ ( n -- ^u8 n ) {: id :}
    INTERN-INIT-ONCE
    id 0 < IF E-LINT-INTERN-CAP throw THEN
    id INTERN# >= IF E-LINT-INTERN-CAP throw THEN
    INTERN-ADDR-V @ id VEC:AT @
    INTERN-LEN-V @ id VEC:AT @ ;
 
-: INTERN-FIND ( ptr u8 n -- n ) {: a:ptr u :}
+: INTERN-FIND ( ^u8 n -- n ) {: a:^ u :}
    INTERN-INIT-ONCE
    0 begin dup INTERN# < while
       dup INTERN$ a u STR= IF exit THEN
       1+
    repeat drop -1 ;
 
-: INTERN? ( ptr u8 n -- bool )
+: INTERN? ( ^u8 n -- bool )
    INTERN-FIND 0 >= ;
 
 private
@@ -100,7 +100,7 @@ private
 : INTERN-CHUNK-SIZE ( n -- n )
    dup INTERN-CHUNK-MIN < IF drop INTERN-CHUNK-MIN THEN ;
 
-: INTERN-STORE-CHUNK ( ptr u8 n -- ) {: a:ptr cap :}
+: INTERN-STORE-CHUNK ( ^u8 n -- ) {: a:^ cap :}
    a INTERN-CHUNK-A-V @ VEC:PUSH !
    cap INTERN-CHUNK-CAP-V @ VEC:PUSH !
    0 INTERN-CHUNK-USED-V @ VEC:PUSH ! ;
@@ -126,39 +126,39 @@ private
       INTERN-CHUNK-I @ INTERN-CHUNK# >= IF need INTERN-ADD-CHUNK THEN
    repeat ;
 
-: INTERN-ALLOC-IN-CHUNK ( n n -- ptr u8 ) {: u k :}
+: INTERN-ALLOC-IN-CHUNK ( n n -- ^u8 ) {: u k :}
    k INTERN-CHUNK-A@ k INTERN-CHUNK-USED@ +
    k INTERN-CHUNK-USED@ u + k INTERN-CHUNK-USED! ;
 
-: INTERN-ALLOC-SPAN ( n -- ptr u8 ) {: u :}
+: INTERN-ALLOC-SPAN ( n -- ^u8 ) {: u :}
    u 0 < IF E-LINT-INTERN-CAP throw THEN
    u INTERN-ENSURE-CHUNK
    u INTERN-CHUNK-I @ INTERN-ALLOC-IN-CHUNK ;
 
-: INTERN-COPY-TO ( ptr u8 n ptr u8 -- ptr u8 ) {: a:ptr u dst:ptr :}
+: INTERN-COPY-TO ( ^u8 n ^u8 -- ^u8 ) {: a:^ u dst:^ :}
    a dst u LINT-BMOVE
    dst ;
 
-: INTERN-COPY$ ( ptr u8 n -- ptr u8 ) {: a:ptr u :}
+: INTERN-COPY$ ( ^u8 n -- ^u8 ) {: a:^ u :}
    a u u INTERN-ALLOC-SPAN INTERN-COPY-TO ;
 
-: INTERN-STORE-NEW ( ptr u8 n n -- n ) {: a:ptr u id :}
+: INTERN-STORE-NEW ( ^u8 n n -- n ) {: a:^ u id :}
    a u INTERN-COPY$ INTERN-ADDR-V @ VEC:PUSH !
    u INTERN-LEN-V @ VEC:PUSH !
    id ;
 
 public
 
-: INTERN ( ptr u8 n -- n ) {: a:ptr u :}
+: INTERN ( ^u8 n -- n ) {: a:^ u :}
    a u INTERN-FIND dup 0 >= IF exit THEN drop
    a u INTERN# INTERN-STORE-NEW ;
 
-: INTERN-FOLD ( ptr u8 n -- n ) {: a:ptr u :}
+: INTERN-FOLD ( ^u8 n -- n ) {: a:^ u :}
    u INTERN-FOLD-CAP > IF E-LINT-INTERN-CAP throw THEN
    a u INTERN-FOLD-BUF FOLD-TO
    INTERN-FOLD-BUF u INTERN ;
 
-: INTERN-FOLD? ( ptr u8 n -- bool ) {: a:ptr u :}
+: INTERN-FOLD? ( ^u8 n -- bool ) {: a:^ u :}
    u INTERN-FOLD-CAP > IF E-LINT-INTERN-CAP throw THEN
    a u INTERN-FOLD-BUF FOLD-TO
    INTERN-FOLD-BUF u INTERN? ;

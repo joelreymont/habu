@@ -10,7 +10,7 @@ package FFI-CB-GROWTH-TEST
 private
 
 PROCESS-SYMBOLS
-FUNCTION: QSORT qsort ( ptr u8 n n n -- )
+FUNCTION: QSORT qsort ( ^u8 n n n -- )
 ;FUNCTION
 
 4 constant ROW-N
@@ -20,9 +20,9 @@ variable LATE-FN
 CODEGEN:BUFFER GEN
 TASK:MIN-STACK TASK:TASK WORKER
 
-CALLBACK: EARLY ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
+CALLBACK: EARLY ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK
 
-: ORDER ( ptr u8 ptr u8 -- n ) {: a b :}
+: ORDER ( ^u8 ^u8 -- n ) {: a b :}
    a CELL-VIEW @ b CELL-VIEW @ - ;
 
 ' ORDER EARLY-BODY !
@@ -43,13 +43,13 @@ CALLBACK: EARLY ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
 BIND-EARLY
 FILL
 
-CALLBACK: LATE ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
+CALLBACK: LATE ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK
 ' ORDER LATE-BODY !
-CALLBACK: FAULTY ( ptr u8 ptr u8 -- i32 ) -777 FALLBACK ;CALLBACK
+CALLBACK: FAULTY ( ^u8 ^u8 -- i32 ) -777 FALLBACK ;CALLBACK
 
 -9917 constant FAULT-CODE
 
-: FAIL ( ptr u8 ptr u8 -- n ) 2drop FAULT-CODE throw ;
+: FAIL ( ^u8 ^u8 -- n ) 2drop FAULT-CODE throw ;
 ' FAIL FAULTY-BODY !
 
 : SORT ( n -- bool ) {: fn:n :}

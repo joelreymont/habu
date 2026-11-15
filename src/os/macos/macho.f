@@ -53,7 +53,7 @@ $4000     constant DATA-CONST-SIZE
 public
 \ The libSystem functions and variables dyld binds into the GOT of the tree's
 \ kernel, in slot order, by C name; the kernel object carries them to the link.
-: IMPORT$ ( n -- ptr u8 n )
+: IMPORT$ ( n -- ^u8 n )
    case
       0 of s" dlopen" endof
       1 of s" dlsym" endof
@@ -67,8 +67,8 @@ public
 7 constant IMPORTS
 
 \ The row whose C name this is; the build dies on a name the table lacks.
-: IMPORT-ROW ( ptr u8 n -- n )
-   {: a:ptr u:n :}
+: IMPORT-ROW ( ^u8 n -- n )
+   {: a:^ u:n :}
    IMPORTS 0 ?do i IMPORT$ a u STR= if i unloop exit then loop
    SB-RESET  s" macho: no such import " SB-APPEND  a u SB-APPEND
    SB$ 73 die ;
@@ -79,16 +79,16 @@ private
 
 \ Darwin's plain realpath is its legacy entry, which reads every parent
 \ directory of a relative path; C programs link realpath$DARWIN_EXTSN.
-: SUFFIX$ ( ptr u8 n -- ptr u8 n )
+: SUFFIX$ ( ^u8 n -- ^u8 n )
    s" realpath" STR= if s" $DARWIN_EXTSN" else s" " then ;
 
 \ A name's symbol is an underscore, the name, then the suffix.
-: SYMBOL-LEN ( ptr u8 n -- n )
-   {: a:ptr u:n :}
+: SYMBOL-LEN ( ^u8 n -- n )
+   {: a:^ u:n :}
    a u SUFFIX$ nip u + 1 + ;
 
-: SYMBOL, ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: SYMBOL, ( ^u8 n -- )
+   {: a:^ u:n :}
    s" _" M-BYTES  a u M-BYTES  a u SUFFIX$ M-BYTES ;
 
 \ From a symbol's offset in the symbol strings and its name's in the imports to
@@ -139,14 +139,14 @@ public
 : TEXTSZ ( -- n )  CODE-OFF CODELEN @ +  $3FFF +  $3FFF invert and ;
 private
 PTR-VARIABLE SIGA  variable SIGU
-: SIGA@ ( -- ptr u8 )
+: SIGA@ ( -- ^u8 )
    SIGA @ ;
 
-: SIGA! ( ptr u8 -- )
+: SIGA! ( ^u8 -- )
    SIGA ! ;
 
 public
-: SET-SIGID ( ptr u8 n -- ) {: a:ptr u:n :}
+: SET-SIGID ( ^u8 n -- ) {: a:^ u:n :}
    a SIGA!
    u SIGU ! ;
 
@@ -184,23 +184,23 @@ variable NCMDS
 : VA+ ( n -- n )
    VMBASE @ + ;
 
-: SEGX, ( ptr u8 n n n n n n n n n -- ) {: a:ptr u:n vma:n vmsz:n foff:n fsz:n prot:n nsects:n extra:n flags:n :}
+: SEGX, ( ^u8 n n n n n n n n n -- ) {: a:^ u:n vma:n vmsz:n foff:n fsz:n prot:n nsects:n extra:n flags:n :}
    LC-SEG64 IMG-M32   72 extra + IMG-M32
    a u M-LEN M-NAME16-LEN
    vma IMG-M64  vmsz IMG-M64  foff IMG-M64  fsz IMG-M64
    prot IMG-M32  prot IMG-M32  nsects IMG-M32  flags IMG-M32 ;
 
-: SEG, ( ptr u8 n n n n n n n n -- )
+: SEG, ( ^u8 n n n n n n n n -- )
    0 SEGX, ;
 
-: SECT, ( ptr u8 n ptr u8 n n n n n n -- ) {: na:ptr nu:n sa:ptr su:n addr:n size:n off:n al:n fl:n :}
+: SECT, ( ^u8 n ^u8 n n n n n n -- ) {: na:^ nu:n sa:^ su:n addr:n size:n off:n al:n fl:n :}
    na nu M-LEN M-NAME16-LEN   sa su M-LEN M-NAME16-LEN
    addr IMG-M64  size IMG-M64  off IMG-M32  al IMG-M32
    0 IMG-M32  0 IMG-M32  fl IMG-M32  0 IMG-M32 0 IMG-M32 0 IMG-M32 ;
 
 : DYLINKER, ( -- )
    LC-DYLINKER IMG-M32  32 IMG-M32  12 IMG-M32
-   s" /usr/lib/dyld" {: a:ptr u :}
+   s" /usr/lib/dyld" {: a:^ u :}
    a u M-LEN M-BYTES-LEN
    32 12 - u - M-LEN M-ZEROS-LEN ;
 
@@ -210,13 +210,13 @@ variable NCMDS
 : DYLIB, ( -- )
    LC-DYLIB IMG-M32  56 IMG-M32  24 IMG-M32
    2 IMG-M32  $054C0000 IMG-M32  $00010000 IMG-M32     \ ts=2, cur=1356.0.0, compat=1.0.0
-   s" /usr/lib/libSystem.B.dylib" {: a:ptr u :}
+   s" /usr/lib/libSystem.B.dylib" {: a:^ u :}
    a u M-LEN M-BYTES-LEN
    56 24 - u - M-LEN M-ZEROS-LEN ;
 
 \ dyld searches these runpaths for basename dlopen calls. System libraries keep
 \ their normal dyld-cache lookup; Homebrew's arm64 prefix is outside that path.
-: RPATH, ( ptr u8 n -- ) {: path:ptr u:n :}
+: RPATH, ( ^u8 n -- ) {: path:^ u:n :}
    u 13 + 7 + -8 and {: size:n :}
    LC-RPATH IMG-M32 size IMG-M32 12 IMG-M32
    path u M-BYTES
@@ -331,7 +331,7 @@ variable NCMDS
 public
 \ The program in icode's CODE as a Mach-O file whose code maps at the address,
 \ its GOT binding the import names given.
-: BUILD-IMAGE ( asm n ptr u8 n -- img )
+: BUILD-IMAGE ( asm n ^u8 n -- img )
    IMPORT-NAMES:SPAN!
    CODE-OFF - VMBASE !
    ASM-DROP
@@ -353,7 +353,7 @@ variable CURSOR
 : CHECK ( bool -- )
    0= if s" macho: invalid Habu Mach-O container" 74 die then ;
 
-: AT ( n n -- ptr u8 ) {: off:n size:n :}
+: AT ( n n -- ^u8 ) {: off:n size:n :}
    off 0 >= size 0 >= and off BYTES @ <= and CHECK
    size BYTES @ off - <= CHECK
    IMAGE @ off + ;
@@ -361,11 +361,11 @@ variable CURSOR
 : U32@ ( n -- n ) 4 AT LE:U32@ ;
 : U64@ ( n -- n ) 8 AT LE:U64@ ;
 
-: NAME? ( n ptr u8 n -- bool ) {: off:n name:ptr size:n :}
+: NAME? ( n ^u8 n -- bool ) {: off:n name:^ size:n :}
    off 16 AT size name size STR= 0= if false exit then
    size 16 < if off size + 1 AT c@ 0= else true then ;
 
-: UNIQUE! ( n ptr n -- ) {: off:n slot:ptr :}
+: UNIQUE! ( n ^n -- ) {: off:n slot:^ :}
    slot @ 0= CHECK off slot ! ;
 
 : SEGMENT ( n n -- ) {: off:n size:n :}
@@ -385,7 +385,7 @@ variable CURSOR
 
 public
 
-: MAGIC? ( ptr u8 n -- bool ) {: image:ptr size:n :}
+: MAGIC? ( ^u8 n -- bool ) {: image:^ size:n :}
    size MH-HDR-SZ < if false exit then
    image LE:U32@ MH-MAGIC64 = ;
 
@@ -440,7 +440,7 @@ private
 
 public
 
-: OPEN ( ptr u8 n -- ) {: image:ptr size:n :}
+: OPEN ( ^u8 n -- ) {: image:^ size:n :}
    image size MAGIC? CHECK
    image IMAGE ! size BYTES !
    4 U32@ CPU-ARM64 = 12 U32@ MH-EXECUTE = and CHECK

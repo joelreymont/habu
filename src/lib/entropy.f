@@ -21,12 +21,12 @@ private
 256 constant CHUNK-MAX      \ getentropy's per-call ceiling, GETENTROPY_MAX
 
 PROCESS-SYMBOLS
-FUNCTION: GETENTROPY-CALL getentropy ( ptr u8 n -- i32 )
+FUNCTION: GETENTROPY-CALL getentropy ( ^u8 n -- i32 )
 ;FUNCTION
 
 public
 
-: FILL ( ptr u8 n -- )
+: FILL ( ^u8 n -- )
    {: buf len:n :}
    len 0 < if E-SPAN-LENGTH throw then
    len 0 ?do

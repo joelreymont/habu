@@ -28,17 +28,17 @@ create NL $0A c,
 
 ENUM route load build plain ;ENUM
 
-: LOAD$ ( -- ptr u8 n ) s" --load" ;
-: BUILD$ ( -- ptr u8 n ) s" --build" ;
-: SEP$ ( -- ptr u8 n ) s" --" ;
+: LOAD$ ( -- ^u8 n ) s" --load" ;
+: BUILD$ ( -- ^u8 n ) s" --build" ;
+: SEP$ ( -- ^u8 n ) s" --" ;
 
 \ Argument idx of an argv vector, a NUL-terminated string.
-: ARG ( ptr ptr u8 n -- ptr u8 n )
+: ARG ( ^^u8 n -- ^u8 n )
    ptr-field @ dup ZLEN ;
 
 \ The unknown argument, then the usage line, which lists the
 \ flags the route test below knows.
-: USAGE ( ptr u8 n -- )
+: USAGE ( ^u8 n -- )
    s" hb: unknown flag: " ERROR-TEXT:TYPE  ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
    s" usage: bin/hb " ERROR-TEXT:TYPE  LOAD$ ERROR-TEXT:TYPE
    s"  " ERROR-TEXT:TYPE  BUILD$ ERROR-TEXT:TYPE
@@ -50,7 +50,7 @@ ENUM route load build plain ;ENUM
 : NO-FILES ( -- )
    s" hb: no source files" RC-SOURCE die ;
 
-: CANNOT-OPEN ( ptr u8 n -- )
+: CANNOT-OPEN ( ^u8 n -- )
    s" hb: cannot open " ERROR-TEXT:TYPE  RC-SOURCE die ;
 
 : CANNOT-READ ( -- )
@@ -67,7 +67,7 @@ ENUM route load build plain ;ENUM
 \ Any other argument starting with `-` is refused with the usage line, exit 64.
 \ Anything else, `--` included, is the program file. Past argv[1] only `--` is
 \ special: `--load a.f --x` loads a file named `--x`.
-: ROUTE ( ptr u8 n -- route ) {: a:ptr u:n :}
+: ROUTE ( ^u8 n -- route ) {: a:^ u:n :}
    a u LOAD$ STR= if construct route load exit then
    a u BUILD$ STR= if construct route build exit then
    a u SEP$ STR= if construct route plain exit then
@@ -75,14 +75,14 @@ ENUM route load build plain ;ENUM
    construct route plain ;
 
 \ The first `--` from argv[2] on, or argc: where a list's files end.
-: LIST-END ( ptr ptr u8 n -- n ) {: argv:ptr argc:n :}
+: LIST-END ( ^^u8 n -- n ) {: argv:^ argc:n :}
    argc 2 ?do
       argv i ARG SEP$ STR= if i unloop exit then
    loop
    argc ;
 
 \ The argv indices [first, end) of the files a route loads.
-: FILES ( ptr ptr u8 n route -- n n ) {: argv:ptr argc:n r:route :}
+: FILES ( ^^u8 n route -- n n ) {: argv:^ argc:n r:route :}
    r MATCH route
       plain OF 1 2 ENDOF
       load OF 2 argv argc LIST-END ENDOF
@@ -98,7 +98,7 @@ ENUM route load build plain ;ENUM
 \ The bytes stay mapped for the
 \ process's life; the arena pointer is src/habu/layout.f ARENA-CELL, which the
 \ snapshot writer zeroes.
-: SOURCE-ARENA ( -- ptr ptr u8 )
+: SOURCE-ARENA ( -- ^^u8 )
    data-base ENGINE-MAIN:ARENA-CELL + 0 ptr-field ;
 
 variable USED
@@ -106,16 +106,16 @@ variable USED
 : ROOM ( -- n )
    SOURCE-ARENA-CAP USED @ - ;
 
-: CURSOR ( -- ptr u8 )
+: CURSOR ( -- ^u8 )
    SOURCE-ARENA @ USED @ + ;
 
-: APPEND ( ptr u8 n -- ) {: a:ptr u:n :}
+: APPEND ( ^u8 n -- ) {: a:^ u:n :}
    u ROOM > if FULL then
    a CURSOR u BYTE-COPY
    USED @ u + USED ! ;
 
 \ One row: `s" <path>" <word>`.
-: ROW ( ptr u8 n ptr u8 n -- ) {: path:ptr u:n word:ptr w:n :}
+: ROW ( ^u8 n ^u8 n -- ) {: path:^ u:n word:^ w:n :}
    S\" s\" " APPEND  path u APPEND  S\" \" " APPEND  word w APPEND  NL 1 APPEND ;
 
 \ One read at the cursor; whether the file has ended. A full arena refuses
@@ -128,7 +128,7 @@ variable USED
    got 0 = ;
 
 \ A file that starts `#!` starts a line comment instead.
-: SHEBANG ( ptr u8 n -- ) {: a:ptr u:n :}
+: SHEBANG ( ^u8 n -- ) {: a:^ u:n :}
    u 2 < if exit then
    a c@ HASH <> if exit then
    a 1 + c@ BANG <> if exit then
@@ -137,7 +137,7 @@ variable USED
 
 \ The whole file at the cursor. The path is NUL-terminated, as
 \ every argv string is.
-: FILE ( ptr u8 n -- ) {: path:ptr u:n :}
+: FILE ( ^u8 n -- ) {: path:^ u:n :}
    path open-rd {: fd:n :}
    fd 0 < if path u CANNOT-OPEN then
    USED @ {: from:n :}
@@ -152,12 +152,12 @@ variable USED
 \ The program file's argv string, 0 off the plain route: PROGRAM-FILE-CELL
 \ (src/habu/layout.f), from which src/core/include.f derives the program's
 \ canonical path and its directory, the top-level root.
-: PROGRAM-ARG ( -- ptr ptr u8 )
+: PROGRAM-ARG ( -- ^^u8 )
    data-base PROGRAM-FILE-CELL + 0 ptr-field ;
 
 \ The stream for files [first, end); raw says whether the first, a `--build`
 \ payload, is read raw after its `provided` row.
-: STREAM ( ptr ptr u8 n n bool -- ptr u8 n ) {: argv:ptr first:n end:n raw:bool :}
+: STREAM ( ^^u8 n n bool -- ^u8 n ) {: argv:^ first:n end:n raw:bool :}
    START-STREAM
    end first ?do
       i first > if NL 1 APPEND then
@@ -171,7 +171,7 @@ variable USED
    loop
    SOURCE-ARENA @ USED @ ;
 
-: STDIN ( -- ptr u8 n )
+: STDIN ( -- ^u8 n )
    START-STREAM
    begin 0 STEP until
    SOURCE-ARENA @ USED @ SHEBANG
@@ -179,7 +179,7 @@ variable USED
 
 \ The root stream runs open, as the engine's loop runs it: a stream that
 \ leaves cells still exits 0 (src/core/include.f SOURCE-ROOT:RUN-ROOT).
-: RUN-TEXT ( ptr u8 n -- ) SOURCE-ROOT:RUN-ROOT ;
+: RUN-TEXT ( ^u8 n -- ) SOURCE-ROOT:RUN-ROOT ;
 
 \ APP-ENTRY holds an executable token supplied by the image writer. Keep the
 \ cell intact: SCRIPT-ARGC uses its nonzero value to choose the app convention.
@@ -197,7 +197,7 @@ public
 \ vector with nothing after it has no file to load (the assembly sends that
 \ one to the REPL before it reaches its file list). The program file of the
 \ plain route runs as a loaded file, its stack kept, as the stream's is.
-: RUN ( ptr ptr u8 n -- ) {: argv:ptr argc:n :}
+: RUN ( ^^u8 n -- ) {: argv:^ argc:n :}
    argc 2 < if NO-FILES then
    argv 1 ARG ROUTE {: r:route :}
    argv argc r FILES {: first:n end:n :}

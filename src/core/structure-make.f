@@ -19,7 +19,7 @@ package STRUCTURE-MAKE
 \ A field's bundle roots: its schema, or for a buffer one `n` per cell, the cells
 \ MAKE and UNMAKE carry its bytes in.
 : SM-FIELD-ROOTS+ ( n n -- ) {: idx:n fs:n :}
-   fs idx + PF-ROW {: r:ptr :}
+   fs idx + PF-ROW {: r:^ :}
    r PF.FLAGS @ PF-FLAG-BUFFER = IF
       r PF.CELLS @ 0 ?do CC-N SCHEMA-CON SCHEMA-ROOT+ drop loop
       EXIT

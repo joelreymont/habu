@@ -16,12 +16,12 @@ using SPAN
 2 BUFFER: ONE                     \ `/` and the byte a round trip takes
 $A5 constant CANARY
 
-: PATH$ ( ptr u8 n -- ptr u8 n )
+: PATH$ ( ^u8 n -- ^u8 n )
    DST URI:FILE>PATH {: u:n :}
    DST $ drop u ;
 
-: PATH= ( ptr u8 n ptr u8 n -- )
-   {: a:ptr u:n b:ptr v:n :}
+: PATH= ( ^u8 n ^u8 n -- )
+   {: a:^ u:n b:^ v:n :}
    a u PATH$ b v T$= ;
 
 \ An empty or `localhost` authority, the scheme and the host in any case.
@@ -44,7 +44,7 @@ $A5 constant CANARY
    s" file:///a%3Fb%23c" s" /a?b#c" PATH=
    s\" file:///\xC3\xA9" s\" /\xC3\xA9" PATH= ;
 
-: DECODE-DROP ( ptr u8 n -- )
+: DECODE-DROP ( ^u8 n -- )
    DST URI:FILE>PATH drop ;
 
 : SCHEMES ( -- )
@@ -103,12 +103,12 @@ $A5 constant CANARY
    s" file:///abcd" DST 5 TAKE URI:FILE>PATH 5 T=
    DST $ drop 5 s" /abcd" T$= ;
 
-: URI$ ( ptr u8 n -- ptr u8 n )
+: URI$ ( ^u8 n -- ^u8 n )
    URI-DST URI:PATH>FILE {: u:n :}
    URI-DST $ drop u ;
 
-: URI= ( ptr u8 n ptr u8 n -- )
-   {: a:ptr u:n b:ptr v:n :}
+: URI= ( ^u8 n ^u8 n -- )
+   {: a:^ u:n b:^ v:n :}
    a u URI$ b v T$= ;
 
 \ `file://` and the path, whose `/`, letters, digits and `-._~` stay as they
@@ -126,7 +126,7 @@ $A5 constant CANARY
    s" /%?#:@+()" s" file:///%25%3F%23%3A%40%2B%28%29" URI=
    s\" /a\x00b\xFF" s" file:///a%00b%FF" URI= ;
 
-: ENCODE-DROP ( ptr u8 n -- )
+: ENCODE-DROP ( ^u8 n -- )
    URI-DST URI:PATH>FILE drop ;
 
 \ A path that is not absolute: relative, empty, or a URI already.

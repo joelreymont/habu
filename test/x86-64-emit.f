@@ -42,11 +42,11 @@ using X64RT
    c 97 >= c 102 <= and 0= if FMATH:E-DOMAIN throw then
    c 97 - 10 + ;
 
-: HEX-BYTE ( ptr u8 n -- n ) {: a:ptr i:n :}
+: HEX-BYTE ( ^u8 n -- n ) {: a:^ i:n :}
    a i 2 * + c@ HEX-DIGIT 4 lshift
    a i 2 * 1 + + c@ HEX-DIGIT or ;
 
-: SPAN=HEX? ( ptr u8 n ptr u8 n -- bool ) {: da:ptr dlen:n ea:ptr eu:n :}
+: SPAN=HEX? ( ^u8 n ^u8 n -- bool ) {: da:^ dlen:n ea:^ eu:n :}
    eu 2 mod 0<> if FMATH:E-DOMAIN throw then
    dlen eu 2 / <> if false exit then
    dlen 0 ?do
@@ -54,28 +54,28 @@ using X64RT
    loop
    true ;
 
-: SPAN=? ( ptr u8 n ptr u8 n -- bool ) {: aa:ptr au:n ba:ptr bu:n :}
+: SPAN=? ( ^u8 n ^u8 n -- bool ) {: aa:^ au:n ba:^ bu:n :}
    au bu <> if false exit then
    au 0 ?do
       aa i + c@ ba i + c@ <> if false unloop exit then
    loop
    true ;
 
-: SINK$ ( -- ptr u8 n )
+: SINK$ ( -- ^u8 n )
    CODE ASM-LEN ;
 
-: X= ( ptr u8 n -- ) {: ea:ptr eu:n :}
+: X= ( ^u8 n -- ) {: ea:^ eu:n :}
    SINK$ ea eu SPAN=HEX? TTRUE
    ASM-RESET ;
 
-: S= ( ptr u8 n ptr u8 n -- ) {: da:ptr dlen:n ea:ptr eu:n :}
+: S= ( ^u8 n ^u8 n -- ) {: da:^ dlen:n ea:^ eu:n :}
    da dlen ea eu SPAN=HEX? TTRUE ;
 
 256 constant WANT-CAP
 create WANT WANT-CAP allot
 variable WANT-N
 
-: E+ ( ptr u8 n -- ) {: ea:ptr eu:n :}
+: E+ ( ^u8 n -- ) {: ea:^ eu:n :}
    eu 2 mod 0<> if FMATH:E-DOMAIN throw then
    eu 2 / 0 ?do
       WANT-N @ WANT-CAP >= if E-BUF-BOUNDS throw then
@@ -350,8 +350,8 @@ create ERR CAPTURE-CAP allot
    ASM-SINK BUF:CLEAR
    LINK-VA ASM-LINK ;
 
-: REFUSES ( ptr u8 n ptr u8 n -- )
-   {: source:ptr sourceu:n want:ptr wantu:n :}
+: REFUSES ( ^u8 n ^u8 n -- )
+   {: source:^ sourceu:n want:^ wantu:n :}
    source sourceu OUT CAPTURE-CAP >LEN ERR CAPTURE-CAP >LEN
    PROCESS:WAIT-FOREVER SUBJECT:RUN {: outu:len erru:len oc :}
    source sourceu OUT outu LEN>N ERR erru LEN>N oc REFUSE-RC T-ENDING-EXITED=

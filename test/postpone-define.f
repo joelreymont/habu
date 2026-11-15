@@ -31,28 +31,28 @@ public
    s" nullable" EFFECT:NAMED ;
 
 \ : NAME ( n -- n ) 3 * ;
-: MAKE-TRIPLER ( ptr u8 n -- )
+: MAKE-TRIPLER ( ^u8 n -- )
    N>N define-word
    3 literal
    postpone *
    postpone ; ;
 
 \ : NAME ( n -- n ) BUMP DOUBLE ;
-: MAKE-STEPPER ( ptr u8 n -- )
+: MAKE-STEPPER ( ^u8 n -- )
    N>N define-word
    postpone BUMP
    postpone DOUBLE
    postpone ; ;
 
 \ MAKE-STEPPER through compile,.
-: MAKE-STEPPER2 ( ptr u8 n -- )
+: MAKE-STEPPER2 ( ^u8 n -- )
    N>N define-word
    ['] BUMP compile,
    ['] DOUBLE compile,
    postpone ; ;
 
 \ : NAME ( -- n ) -6 7 * ;
-: MAKE-NEG-ANSWER ( ptr u8 n -- )
+: MAKE-NEG-ANSWER ( ^u8 n -- )
    EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word
    -6 literal  7 literal
    postpone *
@@ -60,14 +60,14 @@ public
 
 \ : NAME ( nullable<a> -- nullable<a> nullable<a> ) dup ; one type value in
 \ all three places.
-: MAKE-DUP ( ptr u8 n -- )
+: MAKE-DUP ( ^u8 n -- )
    NULLABLE-T {: t :}
    EFFECT:EMPTY t EFFECT:IN  t EFFECT:OUT  t EFFECT:OUT  define-word
    postpone dup
    postpone ; ;
 
 \ : NAME ( nullable<a> nullable<b> ... -- ) drop drop ... ; K inputs.
-: MAKE-WIDE ( ptr u8 n n -- ) {: k:n :}
+: MAKE-WIDE ( ^u8 n n -- ) {: k:n :}
    EFFECT:EMPTY  k 0 ?do NULLABLE-T EFFECT:IN loop  define-word
    k 0 ?do postpone drop loop
    postpone ; ;
@@ -78,31 +78,31 @@ public
 : .HALF ( n -- n ) 2 / ;
 
 \ : NAME ( n -- n ) CUBE ;
-: MAKE-CUBER ( ptr u8 n -- )
+: MAKE-CUBER ( ^u8 n -- )
    N>N define-word
    postpone CUBE
    postpone ; ;
 
 \ : NAME ( n -- n ) .HALF ;
-: MAKE-HALVER ( ptr u8 n -- )
+: MAKE-HALVER ( ^u8 n -- )
    N>N define-word
    postpone .HALF
    postpone ; ;
 
 \ : NAME ( -- n ) drop ;, an underflow the checker rejects.
-: MAKE-BROKEN ( ptr u8 n -- )
+: MAKE-BROKEN ( ^u8 n -- )
    EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word
    postpone drop
    postpone ; ;
 
 \ : NAME ( -- n ) CUBE ;, an underflow the checker rejects.
-: MAKE-SHORT-CUBER ( ptr u8 n -- )
+: MAKE-SHORT-CUBER ( ^u8 n -- )
    EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word
    postpone CUBE
    postpone ; ;
 
 \ : NAME ( -- read-view<a,b,c> ) 1 throw ;, a view no input supplies.
-: MAKE-RV ( ptr u8 n -- )
+: MAKE-RV ( ^u8 n -- )
    EFFECT:EMPTY s" read-view" EFFECT:NAMED EFFECT:OUT define-word
    1 literal
    postpone throw
@@ -155,7 +155,7 @@ DUPS-C 162 T=
 
 \ Each rejection's code and place: a name no source holds is placed at the
 \ word the file ran and named in the `word` note.
-: HAS ( ptr u8 n -- ) {: a:ptr u:n :}   REJECTION:BUFFER$ a u CONTAINS? TTRUE ;
+: HAS ( ^u8 n -- ) {: a:^ u:n :}   REJECTION:BUFFER$ a u CONTAINS? TTRUE ;
 
 : NOT-EFFECT ( -- n ) [: s" NOT-BUILT" EFFECT:N define-word ;] catch ;
 REJECTION:CAPTURE
@@ -164,7 +164,7 @@ s" error[E-NOT-EFFECT]" HAS  REJECTION:BUFFER$ s" postpone-define.f" 1 s" NOT-EF
 s" = word: NOT-BUILT" HAS  REJECTION:BUFFER-OFF
 
 \ 23 type parameters fit an effect, a 24th is E-NOT-EFFECT.
-: WIDE ( ptr u8 n n -- n ) {: a:ptr u:n k:n :}
+: WIDE ( ^u8 n n -- n ) {: a:^ u:n k:n :}
    [: a u k POSTPONE-DEFINER:MAKE-WIDE ;] catch ;
 s" WIDE-23" 23 WIDE 0 T=
 REJECTION:CAPTURE
@@ -226,12 +226,12 @@ public
 package POSTPONE-AT
 private
 : * ( n n -- n ) + ;
-: record-at ( ptr n n -- ptr n ) drop ;
+: record-at ( ^n n -- ^n ) drop ;
 STRUCTURE pdpair DERIVE addr FIELD a n FIELD b n ;STRUCTURE
 3 TYPED-BUFFER PD-PAIRS pdpair
 \ AT's stride, measured from the buffer's element 0.
 : PD-STRIDE ( -- n )
-   0 PD-PAIRS {: p:ptr :}
+   0 PD-PAIRS {: p:^ :}
    p 1 PDPAIR-AT NULL-PTR -  p NULL-PTR - - ;
 PD-STRIDE PDPAIR-BYTES T=
 ;package

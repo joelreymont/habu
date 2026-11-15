@@ -25,10 +25,10 @@ private
 LINEAR: >AWAKE ( n -- POWER:awake )
 LINEAR: AWAKE> ( POWER:awake -- n )
 
-defer KEEP-HOOK ( ptr u8 n -- n )
+defer KEEP-HOOK ( ^u8 n -- n )
 defer ALLOW-HOOK ( n -- )
 
-: NO-KEEP ( ptr u8 n -- n ) 2drop E-PLATFORM throw ;
+: NO-KEEP ( ^u8 n -- n ) 2drop E-PLATFORM throw ;
 : NO-ALLOW ( n -- ) drop E-PLATFORM throw ;
 
 : INSTALL-NONE ( -- )
@@ -39,7 +39,7 @@ INSTALL-NONE
 public
 
 \ The name is UTF-8 text the OS shows beside the hold.
-: KEEP-AWAKE ( ptr u8 n -- POWER:awake )
+: KEEP-AWAKE ( ^u8 n -- POWER:awake )
    KEEP-HOOK >AWAKE ;
 
 \ The token is spent before the release's outcome is known: a refused release

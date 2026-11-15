@@ -16,17 +16,17 @@ using DIFF
 create OUT BUF:HDR-BYTES allot
 create WANT BUF:HDR-BYTES allot
 
-: W+ ( ptr u8 n -- )  BUF:N>BLEN WANT BUF:APPEND-SPAN ;
-: GOT$ ( -- ptr u8 n )  OUT BUF:SPAN$ BUF:BLEN>N ;
-: WANT$ ( -- ptr u8 n )  WANT BUF:SPAN$ BUF:BLEN>N ;
+: W+ ( ^u8 n -- )  BUF:N>BLEN WANT BUF:APPEND-SPAN ;
+: GOT$ ( -- ^u8 n )  OUT BUF:SPAN$ BUF:BLEN>N ;
+: WANT$ ( -- ^u8 n )  WANT BUF:SPAN$ BUF:BLEN>N ;
 : SAME ( -- )  GOT$ WANT$ T$= ;
 
-: FRESH ( ptr u8 n -- )  T-LABEL OUT BUF:CLEAR WANT BUF:CLEAR ;
+: FRESH ( ^u8 n -- )  T-LABEL OUT BUF:CLEAR WANT BUF:CLEAR ;
 
-: PATH ( -- ptr u8 n )  s" src/f.f" ;
+: PATH ( -- ^u8 n )  s" src/f.f" ;
 : HEAD+ ( -- )  s\" diff --git a/src/f.f b/src/f.f\n--- a/src/f.f\n+++ b/src/f.f\n" W+ ;
-: NINE ( -- ptr u8 n )  s\" 1\n2\n3\n4\n5\n6\n7\n8\n9\n" ;
-: TWENTY ( -- ptr u8 n )
+: NINE ( -- ^u8 n )  s\" 1\n2\n3\n4\n5\n6\n7\n8\n9\n" ;
+: TWENTY ( -- ^u8 n )
    s\" 1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n20\n" ;
 
 

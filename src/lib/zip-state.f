@@ -27,8 +27,8 @@ $4 constant STAT-SIZE-VALID
 3 constant STAT-SIZE-CELL
 \ libzip writes these scratch bytes.
 STAT-BYTES 1+ TASK:+USERS ZIP-SCRATCH u8
-: STAT-DATA ( -- ptr n ) 0 ZIP-SCRATCH CELL-VIEW ;
-: EOF-BYTE ( -- ptr u8 ) STAT-BYTES ZIP-SCRATCH ;
+: STAT-DATA ( -- ^n ) 0 ZIP-SCRATCH CELL-VIEW ;
+: EOF-BYTE ( -- ^u8 ) STAT-BYTES ZIP-SCRATCH ;
 
 \ Only the short registry operations take this lock; decompression and
 \ archive-owned buffers remain independent.
@@ -55,36 +55,36 @@ PTR-VARIABLE INPUTS
 \ handle's number.
 variable SERIAL
 
-: NULL? ( ptr a -- bool ) >CELL 0= ;
-: LINK ( ptr n -- ptr ptr n ) 0 ptr-field ;
-: ID ( ptr n -- ptr n ) 1 cells + ;
-: OBJECT ( ptr n -- ptr ptr u8 ) 2 ptr-field ;
-: ENTRIES ( ptr n -- ptr ptr n ) 3 ptr-field ;
-: BUFFERS ( ptr n -- ptr ptr n ) 4 ptr-field ;
-: MODE ( ptr n -- ptr n ) 5 cells + ;
-: RAW-PTR ( ptr n -- ptr ptr u8 ) 8 ptr-field ;
-: RAW-LEN ( ptr n -- ptr n ) 9 cells + ;
-: SOURCE-PTR ( ptr n -- ptr ptr u8 ) 23 ptr-field ;
-: SOURCE-LEN ( ptr n -- ptr n ) 24 cells + ;
-: SOURCE-FD ( ptr n -- ptr n ) 25 cells + ;
-: SNAP-FD ( ptr n -- ptr n ) 26 cells + ;
-: SOURCE-LIVE ( ptr n -- ptr n ) 27 cells + ;
-: COPY-BUF ( ptr n -- ptr ptr u8 ) 28 ptr-field ;
-: DIRECTORY-PTR ( ptr n -- ptr ptr u8 ) 29 ptr-field ;
-: RAW-SCRATCH ( ptr n -- ptr ptr u8 ) 30 ptr-field ;
-: CHUNKS ( ptr n -- ptr ptr n ) 31 ptr-field ;
-: INDEX ( ptr n -- ptr n ) 2 cells + ;
-: DATA-PTR ( ptr n -- ptr ptr u8 ) 1 ptr-field ;
-: CAPACITY ( ptr n -- ptr n ) 2 cells + ;
-: CHUNK-LINK ( ptr n -- ptr ptr n ) 0 ptr-field ;
-: CHUNK-TOTAL ( ptr n -- ptr n ) 1 cells + ;
-: CHUNK-USED ( ptr n -- ptr n ) 2 cells + ;
+: NULL? ( ^a -- bool ) >CELL 0= ;
+: LINK ( ^n -- ^^n ) 0 ptr-field ;
+: ID ( ^n -- ^n ) 1 cells + ;
+: OBJECT ( ^n -- ^^u8 ) 2 ptr-field ;
+: ENTRIES ( ^n -- ^^n ) 3 ptr-field ;
+: BUFFERS ( ^n -- ^^n ) 4 ptr-field ;
+: MODE ( ^n -- ^n ) 5 cells + ;
+: RAW-PTR ( ^n -- ^^u8 ) 8 ptr-field ;
+: RAW-LEN ( ^n -- ^n ) 9 cells + ;
+: SOURCE-PTR ( ^n -- ^^u8 ) 23 ptr-field ;
+: SOURCE-LEN ( ^n -- ^n ) 24 cells + ;
+: SOURCE-FD ( ^n -- ^n ) 25 cells + ;
+: SNAP-FD ( ^n -- ^n ) 26 cells + ;
+: SOURCE-LIVE ( ^n -- ^n ) 27 cells + ;
+: COPY-BUF ( ^n -- ^^u8 ) 28 ptr-field ;
+: DIRECTORY-PTR ( ^n -- ^^u8 ) 29 ptr-field ;
+: RAW-SCRATCH ( ^n -- ^^u8 ) 30 ptr-field ;
+: CHUNKS ( ^n -- ^^n ) 31 ptr-field ;
+: INDEX ( ^n -- ^n ) 2 cells + ;
+: DATA-PTR ( ^n -- ^^u8 ) 1 ptr-field ;
+: CAPACITY ( ^n -- ^n ) 2 cells + ;
+: CHUNK-LINK ( ^n -- ^^n ) 0 ptr-field ;
+: CHUNK-TOTAL ( ^n -- ^n ) 1 cells + ;
+: CHUNK-USED ( ^n -- ^n ) 2 cells + ;
 
-: NODE-ALLOC ( -- ptr n ) NODE-CELLS >COUNT MEM-ALLOC-CELLS ;
-: ARCHIVE-ALLOC ( -- ptr n ) ARCHIVE-CELLS >COUNT MEM-ALLOC-CELLS ;
-: BYTES-FREE ( ptr u8 n -- ) BYTES-ALLOC-LEN RELEASE-BYTES ;
-: NODE-FREE ( ptr n -- ) BYTE-VIEW NODE-CELLS cells BYTES-FREE ;
-: ARCHIVE-FREE ( ptr n -- ) BYTE-VIEW ARCHIVE-CELLS cells BYTES-FREE ;
+: NODE-ALLOC ( -- ^n ) NODE-CELLS >COUNT MEM-ALLOC-CELLS ;
+: ARCHIVE-ALLOC ( -- ^n ) ARCHIVE-CELLS >COUNT MEM-ALLOC-CELLS ;
+: BYTES-FREE ( ^u8 n -- ) BYTES-ALLOC-LEN RELEASE-BYTES ;
+: NODE-FREE ( ^n -- ) BYTE-VIEW NODE-CELLS cells BYTES-FREE ;
+: ARCHIVE-FREE ( ^n -- ) BYTE-VIEW ARCHIVE-CELLS cells BYTES-FREE ;
 
 : NEXT-ID-LOCKED ( -- n )
    SERIAL @ MAX-SIZE = if E-SIZE throw then
@@ -103,129 +103,129 @@ variable SERIAL
    dup MAX-SIZE CHUNK-HEADER-BYTES - CELL 1- - > if E-SIZE throw then
    CELL 1- + CELL negate and ;
 
-: NEW-CHUNK ( ptr n n -- ptr n )
-   {: archive:ptr size:n :}
+: NEW-CHUNK ( ^n n -- ^n )
+   {: archive:^ size:n :}
    size CHUNK-HEADER-BYTES + CHUNK-BYTES max MEM-ALLOC-BYTES
-   {: base:ptr total:n :}
-   base CELL-VIEW {: chunk:ptr :}
+   {: base:^ total:n :}
+   base CELL-VIEW {: chunk:^ :}
    total chunk CHUNK-TOTAL !
    CHUNK-HEADER-BYTES chunk CHUNK-USED !
    archive CHUNKS @ chunk CHUNK-LINK !
    chunk archive CHUNKS ! chunk ;
 
-: CHUNK-FITS? ( ptr n n -- bool )
-   {: chunk:ptr size:n :}
+: CHUNK-FITS? ( ^n n -- bool )
+   {: chunk:^ size:n :}
    size chunk CHUNK-TOTAL @ chunk CHUNK-USED @ - <= ;
 
-: CHUNK-FOR ( ptr n n -- ptr n )
-   {: archive:ptr size:n :}
+: CHUNK-FOR ( ^n n -- ^n )
+   {: archive:^ size:n :}
    archive CHUNKS @ dup NULL? if drop archive size NEW-CHUNK exit then
    dup size CHUNK-FITS? if exit then
    drop archive size NEW-CHUNK ;
 
-: CHUNK-RESERVE ( ptr n n -- ptr u8 )
-   {: archive:ptr len:n :}
+: CHUNK-RESERVE ( ^n n -- ^u8 )
+   {: archive:^ len:n :}
    len CHUNK-SIZE {: size:n :}
-   archive size CHUNK-FOR {: chunk:ptr :}
+   archive size CHUNK-FOR {: chunk:^ :}
    chunk CHUNK-USED @ {: off:n :}
    off size + chunk CHUNK-USED !
    chunk BYTE-VIEW off + ;
 
-: FIND-ID ( n ptr n -- ptr n ) {: wanted:n head:ptr :}
+: FIND-ID ( n ^n -- ^n ) {: wanted:n head:^ :}
    head begin dup NULL? 0= while
       dup ID @ wanted = if exit then
       LINK @
    repeat ;
 
-: ARCHIVE-NODE ( archive -- ptr n )
+: ARCHIVE-NODE ( archive -- ^n )
    ARCHIVE>N STATE-GET ARCHIVES @ FIND-ID STATE-RELEASE
    dup NULL? if E-HANDLE throw then ;
 
-: ENTRY-NODE ( ptr n entry -- ptr n )
+: ENTRY-NODE ( ^n entry -- ^n )
    ENTRY>N swap ENTRIES @ FIND-ID
    dup NULL? if E-ENTRY throw then ;
 
-: ENTRY-INDEX ( ptr n entry -- n ) ENTRY-NODE INDEX @ ;
+: ENTRY-INDEX ( ^n entry -- n ) ENTRY-NODE INDEX @ ;
 
-: ADD-NODE ( ptr n ptr ptr n -- ) {: node:ptr head:ptr :}
+: ADD-NODE ( ^n ^^n -- ) {: node:^ head:^ :}
    head @ node LINK ! node head ! ;
 
-: INPUT-OBJECT ( ptr n -- ptr ptr u8 ) 2 ptr-field ;
-: INPUT-OWNER ( ptr n -- ptr ptr n ) 3 ptr-field ;
-: INPUT-OFF ( ptr n -- ptr n ) 5 cells + ;
-: INPUT-LEN ( ptr n -- ptr n ) 6 cells + ;
-: INPUT-CRC ( ptr n -- ptr n ) 7 cells + ;
-: INPUT-EXPECT ( ptr n -- ptr n ) 8 cells + ;
-: INPUT-DATA ( ptr n -- ptr ptr u8 ) 9 ptr-field ;
-: INPUT-DONE ( ptr n -- ptr n ) 10 cells + ;
-: INPUT-LAST ( ptr n -- ptr n ) 11 cells + ;
-: INPUT-KIND ( ptr n -- ptr n ) 12 cells + ;
-: INPUT-FD ( ptr n -- ptr n ) 13 cells + ;
-: INPUT-PAYLOAD ( ptr n -- ptr n ) 14 cells + ;
-: INPUT-COMPRESSED ( ptr n -- ptr n ) 15 cells + ;
+: INPUT-OBJECT ( ^n -- ^^u8 ) 2 ptr-field ;
+: INPUT-OWNER ( ^n -- ^^n ) 3 ptr-field ;
+: INPUT-OFF ( ^n -- ^n ) 5 cells + ;
+: INPUT-LEN ( ^n -- ^n ) 6 cells + ;
+: INPUT-CRC ( ^n -- ^n ) 7 cells + ;
+: INPUT-EXPECT ( ^n -- ^n ) 8 cells + ;
+: INPUT-DATA ( ^n -- ^^u8 ) 9 ptr-field ;
+: INPUT-DONE ( ^n -- ^n ) 10 cells + ;
+: INPUT-LAST ( ^n -- ^n ) 11 cells + ;
+: INPUT-KIND ( ^n -- ^n ) 12 cells + ;
+: INPUT-FD ( ^n -- ^n ) 13 cells + ;
+: INPUT-PAYLOAD ( ^n -- ^n ) 14 cells + ;
+: INPUT-COMPRESSED ( ^n -- ^n ) 15 cells + ;
 
-: INPUT-NODE ( input -- ptr n )
+: INPUT-NODE ( input -- ^n )
    INPUT>N STATE-GET INPUTS @ FIND-ID STATE-RELEASE
    dup NULL? if E-HANDLE throw then ;
 
-: REGISTER-INPUT ( ptr n -- input ) {: node:ptr :}
+: REGISTER-INPUT ( ^n -- input ) {: node:^ :}
    STATE-GET node INPUTS ADD-NODE STATE-RELEASE
    node ID @ >INPUT ;
 
-: UNREGISTER-INPUT ( ptr n -- ) {: node:ptr :}
+: UNREGISTER-INPUT ( ^n -- ) {: node:^ :}
    STATE-GET
    INPUTS begin dup @ node <> while @ LINK repeat
    node LINK @ swap !
    STATE-RELEASE ;
 
 : REGISTER ( -- archive )
-   NEXT-ID ARCHIVE-ALLOC {: ident:n node:ptr :}
+   NEXT-ID ARCHIVE-ALLOC {: ident:n node:^ :}
    ident node ID !
    -1 node SOURCE-FD ! -1 node SNAP-FD !
    STATE-GET node ARCHIVES ADD-NODE STATE-RELEASE
    ident >ARCHIVE ;
 
-: UNREGISTER ( ptr n -- ) {: node:ptr :}
+: UNREGISTER ( ^n -- ) {: node:^ :}
    STATE-GET
    ARCHIVES begin dup @ node <> while
       @ LINK
    repeat node LINK @ swap !
    STATE-RELEASE ;
 
-: FREE-CHUNK ( ptr n -- ptr n )
-   {: chunk:ptr :}
+: FREE-CHUNK ( ^n -- ^n )
+   {: chunk:^ :}
    chunk CHUNK-LINK @
    chunk BYTE-VIEW chunk CHUNK-TOTAL @ BYTES-FREE ;
 
-: FREE-CHUNKS ( ptr n -- )
+: FREE-CHUNKS ( ^n -- )
    begin dup NULL? 0= while FREE-CHUNK repeat drop ;
 
-: FREE-BUFFER ( ptr n -- ) {: node:ptr :}
+: FREE-BUFFER ( ^n -- ) {: node:^ :}
    node DATA-PTR @ NULL? 0= if
       node DATA-PTR @ node CAPACITY @ BYTES-FREE
    then node NODE-FREE ;
 
-: FREE-BUFFERS ( ptr n -- )
+: FREE-BUFFERS ( ^n -- )
    begin dup NULL? 0= while
       dup LINK @ swap FREE-BUFFER
    repeat drop ;
 
-: FORGET-ARCHIVE ( ptr n -- )
+: FORGET-ARCHIVE ( ^n -- )
    dup UNREGISTER
    dup CHUNKS @ FREE-CHUNKS
    dup BUFFERS @ FREE-BUFFERS ARCHIVE-FREE ;
 
-: BUFFER-ALLOC ( ptr n n -- ptr u8 ) {: archive:ptr len:n :}
-   len SIZE-CHECK NODE-ALLOC {: node:ptr :}
+: BUFFER-ALLOC ( ^n n -- ^u8 ) {: archive:^ len:n :}
+   len SIZE-CHECK NODE-ALLOC {: node:^ :}
    node archive BUFFERS ADD-NODE
-   len 1 max MEM-ALLOC-BYTES {: buf:ptr cap:n :}
+   len 1 max MEM-ALLOC-BYTES {: buf:^ cap:n :}
    buf node DATA-PTR ! cap node CAPACITY ! buf ;
 
-: BUFFER-RELEASE ( ptr n ptr u8 -- ) {: archive:ptr buf:ptr :}
+: BUFFER-RELEASE ( ^n ^u8 -- ) {: archive:^ buf:^ :}
    archive BUFFERS
    begin dup @ NULL? 0= while
       dup @ DATA-PTR @ buf = if
-         dup @ {: node:ptr :}
+         dup @ {: node:^ :}
          node LINK @ swap !
          node FREE-BUFFER exit
       then
@@ -233,8 +233,8 @@ variable SERIAL
    repeat
    drop E-READ throw ;
 
-: COPY-IN ( ptr n ptr u8 n -- ptr u8 n ) {: archive:ptr src:ptr len:n :}
-   archive len BUFFER-ALLOC {: dst:ptr :}
+: COPY-IN ( ^n ^u8 n -- ^u8 n ) {: archive:^ src:^ len:n :}
+   archive len BUFFER-ALLOC {: dst:^ :}
    src dst len BYTE-COPY dst len ;
 
 ;using

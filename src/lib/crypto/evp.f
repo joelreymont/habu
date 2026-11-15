@@ -58,7 +58,7 @@ $7FFFFFFF constant MAX-SPAN               \ every length this package passes is 
 \ libcrypto's EVP cipher interface and its one-shot HMAC. EVP_CIPHER_CTX*,
 \ EVP_CIPHER* and EVP_MD* are OPAQUE here - nothing in this package dereferences
 \ one - so they are declared `n`: both host ABIs pass a pointer and an integer in the
-\ same register. Only a span Habu or the callee really reads or writes is `ptr u8`.
+\ same register. Only a span Habu or the callee really reads or writes is `^u8`.
 \
 \ Three symbols carry two argument SHAPES each, under different Habu names.
 \ EVP_EncryptInit_ex selects the cipher with a NULL key and IV and then installs
@@ -72,70 +72,70 @@ FUNCTION: CTX-FREE EVP_CIPHER_CTX_free ( n -- ) ;FUNCTION
 FUNCTION: AES-256-GCM EVP_aes_256_gcm ( -- n ) ;FUNCTION
 FUNCTION: SHA-256 EVP_sha256 ( -- n ) ;FUNCTION
 FUNCTION: SHA-1 EVP_sha1 ( -- n ) ;FUNCTION
-FUNCTION: RAND-BYTES RAND_bytes ( ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: RAND-BYTES RAND_bytes ( ^u8 n -- i32 ) ;FUNCTION
 FUNCTION: ENC-CIPHER EVP_EncryptInit_ex ( n n n n n -- i32 ) ;FUNCTION
-FUNCTION: ENC-KEY EVP_EncryptInit_ex ( n n n ptr u8 ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: ENC-KEY EVP_EncryptInit_ex ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
 FUNCTION: DEC-CIPHER EVP_DecryptInit_ex ( n n n n n -- i32 ) ;FUNCTION
-FUNCTION: DEC-KEY EVP_DecryptInit_ex ( n n n ptr u8 ptr u8 -- i32 ) ;FUNCTION
-FUNCTION: ENC-AAD EVP_EncryptUpdate ( n n ptr u8 ptr u8 n -- i32 ) ;FUNCTION
-FUNCTION: DEC-AAD EVP_DecryptUpdate ( n n ptr u8 ptr u8 n -- i32 ) ;FUNCTION
-FUNCTION: ENC-UPDATE EVP_EncryptUpdate ( n ptr u8 ptr u8 ptr u8 n -- i32 ) ;FUNCTION
-FUNCTION: DEC-UPDATE EVP_DecryptUpdate ( n ptr u8 ptr u8 ptr u8 n -- i32 ) ;FUNCTION
-FUNCTION: ENC-FINAL EVP_EncryptFinal_ex ( n ptr u8 ptr u8 -- i32 ) ;FUNCTION
-FUNCTION: DEC-FINAL EVP_DecryptFinal_ex ( n ptr u8 ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: DEC-KEY EVP_DecryptInit_ex ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
+FUNCTION: ENC-AAD EVP_EncryptUpdate ( n n ^u8 ^u8 n -- i32 ) ;FUNCTION
+FUNCTION: DEC-AAD EVP_DecryptUpdate ( n n ^u8 ^u8 n -- i32 ) ;FUNCTION
+FUNCTION: ENC-UPDATE EVP_EncryptUpdate ( n ^u8 ^u8 ^u8 n -- i32 ) ;FUNCTION
+FUNCTION: DEC-UPDATE EVP_DecryptUpdate ( n ^u8 ^u8 ^u8 n -- i32 ) ;FUNCTION
+FUNCTION: ENC-FINAL EVP_EncryptFinal_ex ( n ^u8 ^u8 -- i32 ) ;FUNCTION
+FUNCTION: DEC-FINAL EVP_DecryptFinal_ex ( n ^u8 ^u8 -- i32 ) ;FUNCTION
 FUNCTION: CTL-VALUE EVP_CIPHER_CTX_ctrl ( n n n n -- i32 ) ;FUNCTION
-FUNCTION: CTL-TAG-OUT EVP_CIPHER_CTX_ctrl ( n n n ptr u8 -- i32 ) ;FUNCTION
-FUNCTION: CTL-TAG-IN EVP_CIPHER_CTX_ctrl ( n n n ptr u8 -- i32 ) ;FUNCTION
-FUNCTION: HMAC-CALL HMAC ( n ptr u8 n ptr u8 n ptr u8 ptr u8 -- n ) ;FUNCTION
-FUNCTION: HMAC1-CALL HMAC ( n ptr u8 n ptr u8 n ptr u8 ptr u8 -- n ) ;FUNCTION
+FUNCTION: CTL-TAG-OUT EVP_CIPHER_CTX_ctrl ( n n n ^u8 -- i32 ) ;FUNCTION
+FUNCTION: CTL-TAG-IN EVP_CIPHER_CTX_ctrl ( n n n ^u8 -- i32 ) ;FUNCTION
+FUNCTION: HMAC-CALL HMAC ( n ^u8 n ^u8 n ^u8 ^u8 -- n ) ;FUNCTION
+FUNCTION: HMAC1-CALL HMAC ( n ^u8 n ^u8 n ^u8 ^u8 -- n ) ;FUNCTION
 
 \ RS256 uses provider-owned opaque keys and parameters. No OpenSSL struct is
 \ laid out in Habu.
-FUNCTION: BN-FROM-BYTES BN_bin2bn ( ptr u8 n n -- n ) ;FUNCTION
+FUNCTION: BN-FROM-BYTES BN_bin2bn ( ^u8 n n -- n ) ;FUNCTION
 FUNCTION: BN-FREE BN_free ( n -- ) ;FUNCTION
 FUNCTION: BN-BITS BN_num_bits ( n -- i32 ) ;FUNCTION
 FUNCTION: BN-COMPARE BN_ucmp ( n n -- i32 ) ;FUNCTION
 FUNCTION: BN-BIT? BN_is_bit_set ( n n -- i32 ) ;FUNCTION
 FUNCTION: PARAM-BLD-NEW OSSL_PARAM_BLD_new ( -- n ) ;FUNCTION
 FUNCTION: PARAM-BLD-FREE OSSL_PARAM_BLD_free ( n -- ) ;FUNCTION
-FUNCTION: PARAM-PUSH-BN OSSL_PARAM_BLD_push_BN ( n ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: PARAM-PUSH-BN OSSL_PARAM_BLD_push_BN ( n ^u8 n -- i32 ) ;FUNCTION
 FUNCTION: PARAM-FROM-BLD OSSL_PARAM_BLD_to_param ( n -- n ) ;FUNCTION
 FUNCTION: PARAM-FREE OSSL_PARAM_free ( n -- ) ;FUNCTION
-FUNCTION: PKEY-CTX-FROM-NAME EVP_PKEY_CTX_new_from_name ( n ptr u8 ptr u8 -- n ) ;FUNCTION
-FUNCTION: PKEY-CTX-FROM-KEY EVP_PKEY_CTX_new_from_pkey ( n n ptr u8 -- n ) ;FUNCTION
+FUNCTION: PKEY-CTX-FROM-NAME EVP_PKEY_CTX_new_from_name ( n ^u8 ^u8 -- n ) ;FUNCTION
+FUNCTION: PKEY-CTX-FROM-KEY EVP_PKEY_CTX_new_from_pkey ( n n ^u8 -- n ) ;FUNCTION
 FUNCTION: PKEY-CTX-FREE EVP_PKEY_CTX_free ( n -- ) ;FUNCTION
 FUNCTION: PKEY-FROMDATA-INIT EVP_PKEY_fromdata_init ( n -- i32 ) ;FUNCTION
-FUNCTION: PKEY-FROMDATA EVP_PKEY_fromdata ( n ptr u8 n n -- i32 ) ;FUNCTION
+FUNCTION: PKEY-FROMDATA EVP_PKEY_fromdata ( n ^u8 n n -- i32 ) ;FUNCTION
 FUNCTION: PKEY-FREE EVP_PKEY_free ( n -- ) ;FUNCTION
-FUNCTION: PKEY-IS-A EVP_PKEY_is_a ( n ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: PKEY-IS-A EVP_PKEY_is_a ( n ^u8 -- i32 ) ;FUNCTION
 FUNCTION: PKEY-PROVIDER EVP_PKEY_get0_provider ( n -- n ) ;FUNCTION
 FUNCTION: PKEY-BITS EVP_PKEY_get_bits ( n -- i32 ) ;FUNCTION
 FUNCTION: PKEY-SIZE EVP_PKEY_get_size ( n -- i32 ) ;FUNCTION
-FUNCTION: PKEY-GET-BN EVP_PKEY_get_bn_param ( n ptr u8 ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: PKEY-GET-BN EVP_PKEY_get_bn_param ( n ^u8 ^u8 -- i32 ) ;FUNCTION
 FUNCTION: PKEY-PUBLIC-CHECK EVP_PKEY_public_check ( n -- i32 ) ;FUNCTION
 FUNCTION: PKEY-PAIR-CHECK EVP_PKEY_pairwise_check ( n -- i32 ) ;FUNCTION
-FUNCTION: BIO-FROM-DATA BIO_new_mem_buf ( ptr u8 n -- n ) ;FUNCTION
+FUNCTION: BIO-FROM-DATA BIO_new_mem_buf ( ^u8 n -- n ) ;FUNCTION
 FUNCTION: BIO-FREE BIO_free ( n -- i32 ) ;FUNCTION
-FUNCTION: PEM-READ PEM_read_bio_ex ( n ptr u8 ptr u8 ptr u8 ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: PEM-READ PEM_read_bio_ex ( n ^u8 ^u8 ^u8 ^u8 n -- i32 ) ;FUNCTION
 FUNCTION: CRYPTO-FREE CRYPTO_free ( n n n -- ) ;FUNCTION
 FUNCTION: CRYPTO-CLEAR-FREE CRYPTO_clear_free ( n n n n -- ) ;FUNCTION
-FUNCTION: P8-READ d2i_PKCS8_PRIV_KEY_INFO ( n ptr u8 n -- n ) ;FUNCTION
+FUNCTION: P8-READ d2i_PKCS8_PRIV_KEY_INFO ( n ^u8 n -- n ) ;FUNCTION
 FUNCTION: P8-FREE PKCS8_PRIV_KEY_INFO_free ( n -- ) ;FUNCTION
-FUNCTION: P8-KEY PKCS8_pkey_get0 ( n ptr u8 ptr u8 n n -- i32 ) ;FUNCTION
-FUNCTION: ASN1-OBJECT ASN1_get_object ( ptr u8 ptr u8 ptr u8 ptr u8 n -- i32 ) ;FUNCTION
-FUNCTION: P8>KEY EVP_PKCS82PKEY_ex ( n n ptr u8 -- n ) ;FUNCTION
+FUNCTION: P8-KEY PKCS8_pkey_get0 ( n ^u8 ^u8 n n -- i32 ) ;FUNCTION
+FUNCTION: ASN1-OBJECT ASN1_get_object ( ^u8 ^u8 ^u8 ^u8 n -- i32 ) ;FUNCTION
+FUNCTION: P8>KEY EVP_PKCS82PKEY_ex ( n n ^u8 -- n ) ;FUNCTION
 FUNCTION: MD-CTX-NEW EVP_MD_CTX_new ( -- n ) ;FUNCTION
 FUNCTION: MD-CTX-FREE EVP_MD_CTX_free ( n -- ) ;FUNCTION
-FUNCTION: DIGEST-VERIFY-INIT EVP_DigestVerifyInit_ex ( n ptr u8 ptr u8 n ptr u8 n n -- i32 ) ;FUNCTION
-FUNCTION: DIGEST-SIGN-INIT EVP_DigestSignInit_ex ( n ptr u8 ptr u8 n ptr u8 n n -- i32 ) ;FUNCTION
+FUNCTION: DIGEST-VERIFY-INIT EVP_DigestVerifyInit_ex ( n ^u8 ^u8 n ^u8 n n -- i32 ) ;FUNCTION
+FUNCTION: DIGEST-SIGN-INIT EVP_DigestSignInit_ex ( n ^u8 ^u8 n ^u8 n n -- i32 ) ;FUNCTION
 FUNCTION: RSA-PADDING EVP_PKEY_CTX_set_rsa_padding ( n n -- i32 ) ;FUNCTION
-FUNCTION: DIGEST-VERIFY EVP_DigestVerify ( n ptr u8 n ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: DIGEST-VERIFY EVP_DigestVerify ( n ^u8 n ^u8 n -- i32 ) ;FUNCTION
 FUNCTION: ERROR-CLEAR ERR_clear_error ( -- ) ;FUNCTION
 FUNCTION: ERROR-GET ERR_get_error ( -- n ) ;FUNCTION
-FUNCTION: DIGEST-SIGN-SIZE EVP_DigestSign ( n n ptr u8 ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: DIGEST-SIGN-SIZE EVP_DigestSign ( n n ^u8 ^u8 n -- i32 ) ;FUNCTION
 \ C writes the signature over input 1, at most the length the cell at input 2
 \ holds, and stores the length it wrote in that cell.
-FUNCTION: DIGEST-SIGN EVP_DigestSign ( n ptr u8 ptr u8 ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: DIGEST-SIGN EVP_DigestSign ( n ^u8 ^u8 ^u8 n -- i32 ) ;FUNCTION
 
 \ Foreign out-parameter storage, per task: two tasks may be sealing at once and
 \ each needs its own live context.
@@ -147,16 +147,16 @@ $28 constant STORAGE-BYTES
 
 STORAGE-BYTES TASK:+USERS EVP-STORAGE u8
 
-: CTX-SLOT ( -- ptr n )
+: CTX-SLOT ( -- ^n )
    CTX-OFF EVP-STORAGE CELL-VIEW ;
 
-: OUTL-BUF ( -- ptr u8 )
+: OUTL-BUF ( -- ^u8 )
    OUTL-OFF EVP-STORAGE ;
 
-: FINAL-BUF ( -- ptr u8 )
+: FINAL-BUF ( -- ^u8 )
    FINAL-OFF EVP-STORAGE ;
 
-: MAC-LEN-BUF ( -- ptr u8 )
+: MAC-LEN-BUF ( -- ^u8 )
    MAC-LEN-OFF EVP-STORAGE ;
 
 
@@ -177,7 +177,7 @@ STORAGE-BYTES TASK:+USERS EVP-STORAGE u8
    u 0 MAX-SPAN WITHIN-RANGE ;
 
 
-: SPAN-ZERO ( ptr u8 n -- ) {: target u:n :}
+: SPAN-ZERO ( ^u8 n -- ) {: target u:n :}
    u 0 ?do 0 target i + c! loop ;
 
 
@@ -201,13 +201,13 @@ STORAGE-BYTES TASK:+USERS EVP-STORAGE u8
 
 \ GCM's three-step start: name the cipher, state the IV length, then install the
 \ key and nonce. The IV length must be set while the key slot is still empty.
-: SEAL-BEGIN ( ptr u8 ptr u8 -- ) {: key nonce :}
+: SEAL-BEGIN ( ^u8 ^u8 -- ) {: key nonce :}
    CTX@ AES-256-GCM 0 0 0 ENC-CIPHER OSSL-OK <> if E-SEAL throw then
    CTX@ CTRL-SET-IVLEN NONCE-BYTES 0 CTL-VALUE OSSL-OK <> if E-SEAL throw then
    CTX@ 0 0 key nonce ENC-KEY OSSL-OK <> if E-SEAL throw then ;
 
 
-: UNSEAL-BEGIN ( ptr u8 ptr u8 -- ) {: key nonce :}
+: UNSEAL-BEGIN ( ^u8 ^u8 -- ) {: key nonce :}
    CTX@ AES-256-GCM 0 0 0 DEC-CIPHER OSSL-OK <> if E-OPEN throw then
    CTX@ CTRL-SET-IVLEN NONCE-BYTES 0 CTL-VALUE OSSL-OK <> if E-OPEN throw then
    CTX@ 0 0 key nonce DEC-KEY OSSL-OK <> if E-OPEN throw then ;
@@ -215,19 +215,19 @@ STORAGE-BYTES TASK:+USERS EVP-STORAGE u8
 
 \ Associated data is authenticated, not encrypted, so the update takes a NULL
 \ output. Empty associated data needs no call at all.
-: SEAL-AAD ( ptr u8 n -- ) {: aad au:n :}
+: SEAL-AAD ( ^u8 n -- ) {: aad au:n :}
    au 0= if exit then
    CTX@ 0 OUTL-BUF aad au ENC-AAD OSSL-OK <> if E-SEAL throw then ;
 
 
-: UNSEAL-AAD ( ptr u8 n -- ) {: aad au:n :}
+: UNSEAL-AAD ( ^u8 n -- ) {: aad au:n :}
    au 0= if exit then
    CTX@ 0 OUTL-BUF aad au DEC-AAD OSSL-OK <> if E-OPEN throw then ;
 
 
 \ GCM is a stream cipher: one update consumes the whole plaintext and emits
 \ exactly as many bytes, so a short write is a broken library, not a partial call.
-: SEAL-TEXT ( ptr u8 n ptr u8 -- ) {: plain pu:n out :}
+: SEAL-TEXT ( ^u8 n ^u8 -- ) {: plain pu:n out :}
    pu 0= if exit then
    CTX@ out OUTL-BUF plain pu ENC-UPDATE OSSL-OK <> if E-SEAL throw then
    OUTL@ pu <> if E-SEAL throw then ;
@@ -235,14 +235,14 @@ STORAGE-BYTES TASK:+USERS EVP-STORAGE u8
 
 \ The final call emits nothing for GCM; it only closes the GHASH. The tag then
 \ lands directly past the ciphertext, which is where the sealed record carries it.
-: SEAL-FINISH ( ptr u8 n -- n ) {: out pu:n :}
+: SEAL-FINISH ( ^u8 n -- n ) {: out pu:n :}
    CTX@ FINAL-BUF OUTL-BUF ENC-FINAL OSSL-OK <> if E-SEAL throw then
    OUTL@ 0 <> if E-SEAL throw then
    CTX@ CTRL-GET-TAG TAG-BYTES out pu + CTL-TAG-OUT OSSL-OK <> if E-SEAL throw then
    pu TAG-BYTES + ;
 
 
-: SEAL-RUN ( ptr u8 ptr u8 ptr u8 n ptr u8 n ptr u8 -- n )
+: SEAL-RUN ( ^u8 ^u8 ^u8 n ^u8 n ^u8 -- n )
    {: key nonce aad au:n plain pu:n out :}
    key nonce SEAL-BEGIN
    aad au SEAL-AAD
@@ -252,12 +252,12 @@ STORAGE-BYTES TASK:+USERS EVP-STORAGE u8
 
 \ A refused record never leaves plaintext behind: the bytes the caller would have
 \ read as the message are cleared before the failure is answered.
-: UNSEAL-REFUSED ( ptr u8 n n -- unseal-result ) {: out pu:n failure:n :}
+: UNSEAL-REFUSED ( ^u8 n n -- unseal-result ) {: out pu:n failure:n :}
    out pu SPAN-ZERO
    failure >CODE CRYPTO-UNSEAL--RESULT:failed ;
 
 
-: TEXT-DECRYPTED? ( ptr u8 n ptr u8 -- bool ) {: cipher pu:n out :}
+: TEXT-DECRYPTED? ( ^u8 n ^u8 -- bool ) {: cipher pu:n out :}
    pu 0= if true exit then
    CTX@ out OUTL-BUF cipher pu DEC-UPDATE OSSL-OK <> if false exit then
    OUTL@ pu <> if E-OPEN throw then
@@ -266,14 +266,14 @@ STORAGE-BYTES TASK:+USERS EVP-STORAGE u8
 
 \ The tag the record carries is installed before the final call, and that call is
 \ the whole authentication decision.
-: TAG-VERIFIED? ( ptr u8 n -- bool ) {: cipher pu:n :}
+: TAG-VERIFIED? ( ^u8 n -- bool ) {: cipher pu:n :}
    CTX@ CTRL-SET-TAG TAG-BYTES cipher pu + CTL-TAG-IN OSSL-OK <> if E-OPEN throw then
    CTX@ FINAL-BUF OUTL-BUF DEC-FINAL OSSL-OK <> if false exit then
    OUTL@ 0 <> if E-OPEN throw then
    true ;
 
 
-: UNSEAL-RUN ( ptr u8 ptr u8 ptr u8 n ptr u8 n ptr u8 -- unseal-result )
+: UNSEAL-RUN ( ^u8 ^u8 ^u8 n ^u8 n ^u8 -- unseal-result )
    {: key nonce aad au:n cipher cu:n out :}
    cu TAG-BYTES - {: pu:n :}
    key nonce UNSEAL-BEGIN
@@ -356,14 +356,14 @@ $C0000 constant ERR-REASON-FLAGS
 57 constant ERR-PROV-LIB
 $80004 constant ERR-PROV-RSA-LIB
 
-: RS-SLOT ( n -- ptr n ) RS-STORAGE CELL-VIEW ;
-: RS-BUF ( n -- ptr u8 ) RS-STORAGE ;
+: RS-SLOT ( n -- ^n ) RS-STORAGE CELL-VIEW ;
+: RS-BUF ( n -- ^u8 ) RS-STORAGE ;
 : RS@ ( n -- n ) RS-SLOT @ ;
 : RS! ( n n -- ) RS-SLOT ! ;
 : RS-KEY@ ( -- n ) RS-KEY RS@ ;
 : RS-MD@ ( -- n ) RS-MD-CTX RS@ ;
 
-CAST: RS>BYTES ( n -- ptr u8 )
+CAST: RS>BYTES ( n -- ^u8 )
 
 \ Lookup of a destructor is lazy. Resolve every destructor while no resource
 \ exists, so an absent symbol cannot interrupt the finalizer.
@@ -395,7 +395,7 @@ CAST: RS>BYTES ( n -- ptr u8 )
    RS-N RS@ BN-FREE
    RS-RECORD-BYTES 0 ?do 0 i RS-SLOT ! 8 +loop ;
 
-: RS-SPAN ( ptr u8 n -- )
+: RS-SPAN ( ^u8 n -- )
    {: source u:n :}
    u SPAN-LEN
    source FFI:>CELL {: start:n :}
@@ -403,18 +403,18 @@ CAST: RS>BYTES ( n -- ptr u8 )
    u 0 > start 0= and if E-OPERAND throw then
    u RS-MAX-ADDRESS start - > if E-OPERAND throw then ;
 
-: RS-OVERLAP? ( ptr u8 n ptr u8 n -- bool )
+: RS-OVERLAP? ( ^u8 n ^u8 n -- bool )
    {: a au:n b bu:n :}
    au 0= bu 0= or if false exit then
    a FFI:>CELL b FFI:>CELL bu + <
    b FFI:>CELL a FFI:>CELL au + < and ;
 
-: RS-JWK-INT ( ptr u8 n -- )
+: RS-JWK-INT ( ^u8 n -- )
    {: bytes u:n :}
    u 0= if E-KEY throw then
    bytes c@ 0= if E-KEY throw then ;
 
-: RS-JWK-CHECK ( ptr u8 n ptr u8 n -- )
+: RS-JWK-CHECK ( ^u8 n ^u8 n -- )
    {: modulus nu:n exponent eu:n :}
    modulus nu RS-JWK-INT
    exponent eu RS-JWK-INT
@@ -423,7 +423,7 @@ CAST: RS>BYTES ( n -- ptr u8 )
    exponent eu 1- + c@ 1 and 0= if E-KEY throw then
    eu 1 = if exponent c@ 3 < if E-KEY throw then then ;
 
-: RS-PUBLIC-IMPORT ( ptr u8 n ptr u8 n -- n )
+: RS-PUBLIC-IMPORT ( ^u8 n ^u8 n -- n )
    {: modulus nu:n exponent eu:n :}
    modulus nu 0 BN-FROM-BYTES dup RS-N RS! 0= if E-KEY throw then
    exponent eu 0 BN-FROM-BYTES dup RS-E RS! 0= if E-KEY throw then
@@ -462,7 +462,7 @@ CAST: RS>BYTES ( n -- ptr u8 )
    {: c:n :}
    c 32 = c 9 = or c 10 = or c 13 = or ;
 
-: RS-SKIP-SPACE ( ptr u8 n n -- n )
+: RS-SKIP-SPACE ( ^u8 n n -- n )
    {: source u:n at:n :}
    at
    begin dup u < while
@@ -470,13 +470,13 @@ CAST: RS>BYTES ( n -- ptr u8 )
       1+
    repeat ;
 
-: RS-MATCH-AT? ( ptr u8 n n ptr u8 n -- bool )
+: RS-MATCH-AT? ( ^u8 n n ^u8 n -- bool )
    {: source u:n at:n want wu:n :}
    at 0 < if false exit then
    wu u at - > if false exit then
    source at + wu want wu STR= ;
 
-: RS-PEM-LF ( ptr u8 n n -- n )
+: RS-PEM-LF ( ^u8 n n -- n )
    {: pem u:n at:n :}
    u at ?do
       pem i + c@ 10 = if i unloop exit then
@@ -493,7 +493,7 @@ CAST: RS>BYTES ( n -- ptr u8 )
 \ OpenSSL ONLY_B64 discards a line's suffix at its first invalid byte.
 \ Its 254-byte line read also needs room for CRLF. Validate complete raw
 \ lines before the decoder can hide any payload.
-: RS-PEM-B64-LINE ( ptr u8 n n -- n )
+: RS-PEM-B64-LINE ( ^u8 n n -- n )
    {: pem u:n at:n :}
    pem u at RS-PEM-LF {: lf:n :}
    lf at - dup 0= if E-KEY throw then
@@ -515,7 +515,7 @@ CAST: RS>BYTES ( n -- ptr u8 )
    then
    lf 1+ ;
 
-: RS-PEM-LINE ( ptr u8 n n -- n bool )
+: RS-PEM-LINE ( ^u8 n n -- n bool )
    {: pem u:n at:n :}
    pem u at s" -----END PRIVATE KEY-----" RS-MATCH-AT? if
       at s" -----END PRIVATE KEY-----" nip + {: tail:n :}
@@ -525,7 +525,7 @@ CAST: RS>BYTES ( n -- ptr u8 )
    pem u at RS-PEM-B64-LINE false ;
 
 \ Check the full caller span, then pass only its original armor bytes to OpenSSL.
-: RS-PEM-SHAPE ( ptr u8 n -- ptr u8 n )
+: RS-PEM-SHAPE ( ^u8 n -- ^u8 n )
    {: pem u:n :}
    pem u 0 RS-SKIP-SPACE {: start:n :}
    pem u start s" -----BEGIN PRIVATE KEY-----" RS-MATCH-AT? 0= if E-KEY throw then
@@ -541,7 +541,7 @@ CAST: RS>BYTES ( n -- ptr u8 )
    repeat
    E-KEY throw ;
 
-: RS-PEM-LABEL? ( ptr u8 -- bool )
+: RS-PEM-LABEL? ( ^u8 -- bool )
    {: label :}
    11 0 ?do
       label i + c@ PRIVATE-KEY-NAME i + c@ <> if false unloop exit then
@@ -551,7 +551,7 @@ CAST: RS>BYTES ( n -- ptr u8 )
 \ d2i advances the caller's DER cursor. The OpenSSL 3.0 provider decoder
 \ imports a parsed PrivateKeyInfo without comparing that cursor to its end:
 \ https://github.com/openssl/openssl/blob/openssl-3.0.18/providers/implementations/encode_decode/decode_der2key.c
-: RS-PRIVATE-IMPORT ( ptr u8 n -- )
+: RS-PRIVATE-IMPORT ( ^u8 n -- )
    {: pem u:n :}
    pem u BIO-FROM-DATA dup RS-BIO RS! 0= if E-KEY throw then
    RS-BIO RS@ RS-PEM-LABEL RS-BUF RS-PEM-HEADER RS-BUF
@@ -659,7 +659,7 @@ CAST: RS>BYTES ( n -- ptr u8 )
       dup 0= if drop false exit then
    again ;
 
-: RS-VERIFY-RUN ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- bool )
+: RS-VERIFY-RUN ( ^u8 n ^u8 n ^u8 n ^u8 n -- bool )
    {: modulus nu:n exponent eu:n msg mu:n sig su:n :}
    modulus nu exponent eu RS-PUBLIC-IMPORT {: k:n :}
    false RS-KEY-CHECK k <> if E-KEY throw then
@@ -676,7 +676,7 @@ CAST: RS>BYTES ( n -- ptr u8 )
    then
    drop ERROR-CLEAR E-VERIFY throw ;
 
-: RS-SIGN-RUN ( ptr u8 n ptr u8 n ptr u8 n -- n )
+: RS-SIGN-RUN ( ^u8 n ^u8 n ^u8 n -- n )
    {: pem pu:n msg mu:n out cap:n :}
    pem pu RS-PRIVATE-IMPORT
    RS-PRIVATE-PARAMS
@@ -697,7 +697,7 @@ public
 
 \ Fill the span with cryptographically strong bytes. An empty span is a caller
 \ mistake, not a no-op.
-: RANDOM-BYTES ( ptr u8 n -- ) {: out u:n :}
+: RANDOM-BYTES ( ^u8 n -- ) {: out u:n :}
    u 1 MAX-SPAN WITHIN-RANGE
    out u RAND-BYTES OSSL-OK <> if E-RANDOM throw then ;
 
@@ -708,7 +708,7 @@ public
 \ leaks the two plaintexts' XOR and the authentication key. The associated data
 \ (such as a record's row identity) is authenticated, never copied into the
 \ output: the record fails to open under any other.
-: SEAL ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- n )
+: SEAL ( ^u8 n ^u8 n ^u8 n ^u8 n ^u8 n -- n )
    {: key ku:n nonce nu:n aad au:n plain pu:n out ou:n :}
    ku nu au pu ou SEAL-OPERANDS
    E-SEAL CTX-OPEN
@@ -720,7 +720,7 @@ public
 \ plaintext is TAG-BYTES shorter and the output span must hold that much. A
 \ record whose tag does not authenticate its ciphertext and associated data
 \ answers `failed` with the output cleared; no partial plaintext is ever visible.
-: UNSEAL ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- unseal-result )
+: UNSEAL ( ^u8 n ^u8 n ^u8 n ^u8 n ^u8 n -- unseal-result )
    {: key ku:n nonce nu:n aad au:n cipher cu:n out ou:n :}
    ku nu au cu ou UNSEAL-OPERANDS
    E-OPEN CTX-OPEN
@@ -730,7 +730,7 @@ public
 
 \ HMAC-SHA-256 of the message under the key, into a span of at least MAC-BYTES.
 \ The key may be any length; libcrypto folds a long one with SHA-256 itself.
-: HMAC-SHA256 ( ptr u8 n ptr u8 n ptr u8 n -- ) {: key ku:n msg mu:n out ou:n :}
+: HMAC-SHA256 ( ^u8 n ^u8 n ^u8 n -- ) {: key ku:n msg mu:n out ou:n :}
    ku SPAN-LEN
    mu SPAN-LEN
    ou MAC-BYTES < if E-OPERAND throw then
@@ -738,7 +738,7 @@ public
    MAC-LEN@ MAC-BYTES <> if E-MAC throw then ;
 
 \ HMAC-SHA-1 has the same span contract, with a MAC1-BYTES digest.
-: HMAC-SHA1 ( ptr u8 n ptr u8 n ptr u8 n -- ) {: key ku:n msg mu:n out ou:n :}
+: HMAC-SHA1 ( ^u8 n ^u8 n ^u8 n -- ) {: key ku:n msg mu:n out ou:n :}
    ku SPAN-LEN
    mu SPAN-LEN
    ou MAC1-BYTES < if E-OPERAND throw then
@@ -747,7 +747,7 @@ public
 
 \ Verify PKCS#1 v1.5 SHA-256 over exact message bytes. JWK integers are
 \ canonical unsigned big-endian byte strings. A wrong signature is false.
-: RS256-VERIFY? ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- bool )
+: RS256-VERIFY? ( ^u8 n ^u8 n ^u8 n ^u8 n -- bool )
    {: modulus nu:n exponent eu:n msg mu:n sig su:n :}
    modulus nu RS-SPAN exponent eu RS-SPAN
    msg mu RS-SPAN sig su RS-SPAN
@@ -758,7 +758,7 @@ public
 
 \ Sign with one unencrypted PKCS#8 RSA PRIVATE KEY PEM. The caller owns the
 \ output; on success exactly the modulus width is written and returned.
-: RS256-SIGN ( ptr u8 n ptr u8 n ptr u8 n -- n )
+: RS256-SIGN ( ^u8 n ^u8 n ^u8 n -- n )
    {: pem pu:n msg mu:n out cap:n :}
    pem pu RS-SPAN msg mu RS-SPAN out cap RS-SPAN
    out cap pem pu RS-OVERLAP? if E-OPERAND throw then

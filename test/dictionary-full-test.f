@@ -15,17 +15,17 @@ private
 
 \ Lines 1-3 of each child: LEAVE-FREE ( n -- ) creates words until n records
 \ are free.
-: PRELUDE$ ( -- ptr u8 n )
-   S\" require src/lib/fmt.f\ncreate NB 32 allot\n: LEAVE-FREE ( n -- ) DICT-CAP ndict@ - swap - 0 ?do s\" create F\" NB swap BYTE-COPY  i FMT:INT$ {: a:ptr u:n :}  a NB 8 + u BYTE-COPY  NB 8 u + evaluate-closed loop ;\n" ;
+: PRELUDE$ ( -- ^u8 n )
+   S\" require src/lib/fmt.f\ncreate NB 32 allot\n: LEAVE-FREE ( n -- ) DICT-CAP ndict@ - swap - 0 ?do s\" create F\" NB swap BYTE-COPY  i FMT:INT$ {: a:^ u:n :}  a NB 8 + u BYTE-COPY  NB 8 u + evaluate-closed loop ;\n" ;
 
 \ Runs the prelude, then the case's lines from line 4.
-: RUN-CASE ( ptr u8 n -- ) {: a:ptr u:n :}
+: RUN-CASE ( ^u8 n -- ) {: a:^ u:n :}
    GE-SRC-RESET  PRELUDE$ GE-SRC+  a u GE-SRC+
    GE-HB-RESET
    GE-HB$ GE-SRC-BUF GE-SRC-U @ PROCESS:WAIT-FOREVER MS>N GE-RUN-STDIN ;
 
-: EXPECT ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: src:ptr srcu:n want:ptr wantu:n label:ptr labelu:n :}
+: EXPECT ( ^u8 n ^u8 n ^u8 n -- )
+   {: src:^ srcu:n want:^ wantu:n label:^ labelu:n :}
    src srcu RUN-CASE
    want wantu label labelu GE-EXPECT-ERR
    REJECTION:DICT-FULL-RC label labelu GE-EXPECT-RC

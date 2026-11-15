@@ -16,7 +16,7 @@ private
 
 $2D constant ARGV-CHAR-DASH
 
-STRUCTURE span FIELD base ptr u8 FIELD size len ;STRUCTURE
+STRUCTURE span FIELD base ^u8 FIELD size len ;STRUCTURE
 ENUM configured-value
    VARIANT defaulted FIELD value span ;VARIANT
    VARIANT explicit FIELD value span ;VARIANT
@@ -43,11 +43,11 @@ variable ARGV-QUIET
 
 : ARGV-TRUE ( -- bool )  0 0= ;
 
-: >SPAN ( ptr u8 n -- span )
+: >SPAN ( ^u8 n -- span )
    dup 0 < if E-INTERNAL throw then
    >LEN SPAN-MAKE ;
 
-: SPAN$ ( span -- ptr u8 n )
+: SPAN$ ( span -- ^u8 n )
    SPAN-UNMAKE LEN>N ;
 
 : EXPLICIT? ( configured-value -- bool )
@@ -56,25 +56,25 @@ variable ARGV-QUIET
       explicit OF drop ARGV-TRUE ENDOF
    ;MATCH ;
 
-: VALUE$ ( configured-value -- ptr u8 n )
+: VALUE$ ( configured-value -- ^u8 n )
    MATCH configured-value
       defaulted OF SPAN$ ENDOF
       explicit OF SPAN$ ENDOF
    ;MATCH ;
 
-: ARGV-BYTES= ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u b:ptr v :}
+: ARGV-BYTES= ( ^u8 n ^u8 n -- bool ) {: a:^ u b:^ v :}
    u v <> if ARGV-FALSE exit then
    0 begin dup u < while
       dup a + c@  over b + c@  <> if drop ARGV-FALSE exit then
       1 +
    repeat drop ARGV-TRUE ;
 
-: ARGV-ERR ( ptr u8 n -- ) {: a:ptr u:n :}   \ one piece of a refusal line
+: ARGV-ERR ( ^u8 n -- ) {: a:^ u:n :}   \ one piece of a refusal line
    ARGV-QUIET @ 0 = if 2 a u write drop then ;
 
 public
 
-: USAGE! ( ptr u8 n -- )
+: USAGE! ( ^u8 n -- )
    >SPAN ARGV-USAGE ! ;
 
 : QUIET! ( n -- )  ARGV-QUIET ! ;
@@ -89,19 +89,19 @@ private
 
 public
 
-: FAIL ( ptr u8 n -- ) {: a:ptr u:n :}
+: FAIL ( ^u8 n -- ) {: a:^ u:n :}
    u 0 < if E-INTERNAL throw then
    a u ARGV-ERR
    ARGV-FAIL-DONE ;
 
 private
 
-: ARGV-UNKNOWN ( ptr u8 n -- ) {: a:ptr u :}
+: ARGV-UNKNOWN ( ^u8 n -- ) {: a:^ u :}
    s" unknown option: " ARGV-ERR
    a u ARGV-ERR
    ARGV-FAIL-DONE ;
 
-: ARGV-MISSING ( ptr u8 n -- ) {: a:ptr u :}
+: ARGV-MISSING ( ^u8 n -- ) {: a:^ u :}
    s" missing value for " ARGV-ERR
    a u ARGV-ERR
    ARGV-FAIL-DONE ;
@@ -121,7 +121,7 @@ public
    -1 ARGV-USE-MOCK? !
    0 ARGV-MOCK# ! ;
 
-: MOCK+ ( ptr u8 n -- )
+: MOCK+ ( ^u8 n -- )
    >SPAN {: arg:span :}
    ARGV-MOCK# @ 1+ ARGV-MOCK-RESERVE
    arg ARGV-MOCK# @ ARGV-MOCK !
@@ -142,15 +142,15 @@ private
 
 public
 
-: TOK$ ( n -- ptr u8 n )
+: TOK$ ( n -- ^u8 n )
    ARGV-TOKEN SPAN$ ;
 
-: TOK= ( n ptr u8 n -- bool ) {: idx:n a:ptr u:n :}
+: TOK= ( n ^u8 n -- bool ) {: idx:n a:^ u:n :}
    idx TOK$ a u ARGV-BYTES= ;
 
 private
 
-: ARGV-DASH? ( ptr u8 n -- bool ) {: a:ptr u :}
+: ARGV-DASH? ( ^u8 n -- bool ) {: a:^ u :}
    u 1 > if a c@ ARGV-CHAR-DASH = else ARGV-FALSE then ;
 
 : ARGV-POS+ ( span bool -- ) {: arg:span dry:bool :}
@@ -161,26 +161,26 @@ public
 
 : POS# ( -- n )  ARGV-NPOS @ ;
 
-: POS$ ( n -- ptr u8 n ) {: idx:n :}
+: POS$ ( n -- ^u8 n ) {: idx:n :}
    idx 0 <  idx ARGV-NPOS @ >= or if s" positional index out of range" FAIL then
    idx ARGV-POS @ SPAN$ ;
 
-: LABEL! ( ptr u8 n -- )
+: LABEL! ( ^u8 n -- )
    >SPAN construct configured-value explicit ARGV-LABEL ! ;
 
 : LABEL? ( -- bool )
    ARGV-LABEL @ EXPLICIT? ;
 
-: LABEL$ ( -- ptr u8 n )
+: LABEL$ ( -- ^u8 n )
    ARGV-LABEL @ VALUE$ ;
 
-: OUT! ( ptr u8 n -- )
+: OUT! ( ^u8 n -- )
    >SPAN construct configured-value explicit ARGV-OUT ! ;
 
 : OUT? ( -- bool )
    ARGV-OUT @ EXPLICIT? ;
 
-: OUT$ ( -- ptr u8 n )
+: OUT$ ( -- ^u8 n )
    ARGV-OUT @ VALUE$ ;
 
 : JSON? ( -- bool )  ARGV-JSON @ ;

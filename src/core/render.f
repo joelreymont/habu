@@ -41,7 +41,7 @@ variable RATOM-N
 variable RATOM-I
 $7FFFFFFFFFFFFFFF CELL / constant SEEN-MAX-CAP
 
-: SEEN-UNMAP-RC ( ptr a n -- n ) {: base:ptr cap:n :}
+: SEEN-UNMAP-RC ( ^a n -- n ) {: base:^ cap:n :}
    cap 0= IF 0 EXIT THEN
    base cap cells munmap ;
 
@@ -52,7 +52,7 @@ $7FFFFFFFFFFFFFFF CELL / constant SEEN-MAX-CAP
 : SEEN-GROW ( n -- ) {: need:n :}
    need SEEN-GROW-CAP {: nc:n :}
    SEEN-CAP @ {: oc:n :}
-   nc cells ARENA-ALLOC {: next:ptr :}
+   nc cells ARENA-ALLOC {: next:^ :}
    oc 0 > IF SEEN-P @ next oc ARENA-CELLS-COPY THEN
    next oc nc ARENA-CELLS-UNBOUND
    SEEN-P @ oc SEEN-UNMAP-RC 0 <> IF
@@ -67,7 +67,7 @@ $7FFFFFFFFFFFFFFF CELL / constant SEEN-MAX-CAP
    need SEEN-CAP @ <= IF EXIT THEN
    need SEEN-GROW ;
 
-: SEEN ( -- ptr n ) SEEN-ENSURE SEEN-P @ ;
+: SEEN ( -- ^n ) SEEN-ENSURE SEEN-P @ ;
 
 : SEEN-RESET ( -- )
    SEEN-ENSURE
@@ -114,13 +114,13 @@ $7FFFFFFFFFFFFFFF CELL / constant SEEN-MAX-CAP
    key RATOM-FIND IF EXIT THEN drop
    key RATOM-ADD ;
 
-: RSTR ( ptr u8 n -- ) {: a:ptr u:n :}
+: RSTR ( ^u8 n -- ) {: a:^ u:n :}
    0 BEGIN dup u < WHILE dup a + c@ EMIT1 1 + REPEAT drop ;
 
 \ RFOLD emits the case-folded spelling. Diagnostics name identifiers folded; only
 \ a declaring-package name reaches the renderer unfolded, because TFAM-DECL
 \ interns the spelling the source `package` line typed.
-: RFOLD ( ptr u8 n -- ) {: a:ptr u:n :}
+: RFOLD ( ^u8 n -- ) {: a:^ u:n :}
    0 BEGIN dup u < WHILE dup a + c@ CORE-FOLD-C EMIT1 1 + REPEAT drop ;
 
 : CON-OUT ( n -- ) {: p:n :}
@@ -167,7 +167,7 @@ $7FFFFFFFFFFFFFFF CELL / constant SEEN-MAX-CAP
 \ names every package but "" ("@" included), so it reads back with no scope.
 : FAM-FOREIGN? ( n -- f )
    {: fam:n :}
-   fam TFAM-PKG$ {: pa:ptr pu:n :}
+   fam TFAM-PKG$ {: pa:^ pu:n :}
    pu 0 = IF RES-FALSE EXIT THEN
    RFACTS? IF RES-TRUE EXIT THEN
    pa pu s" @" CORE-STR= IF RES-FALSE EXIT THEN
@@ -310,7 +310,7 @@ create RROW-KEY RROW-CAP cells allot   variable RROW-N   0 RROW-N !
 PERSISTED-PTR-VARIABLE RPOS-P   NULL-PTR RPOS-P !
 variable RPOS-CAP   0 RPOS-CAP !          \ pairs mapped at RPOS-P, 0 for none
 variable RPOS-N   variable RVISIT
-: RPOS ( -- ptr n ) RPOS-P @ ;
+: RPOS ( -- ^n ) RPOS-P @ ;
 
 : RPOS+ ( n n -- )
    {: t:n owner:n :}
@@ -391,7 +391,7 @@ create RQUOT-BLOCK SQUOT-CAP cells allot
    r TAG case
       T-VAR of r PAY SEEN-IDX VAR-NAME endof
       T-CON of r PAY CON-OUT endof
-      T-PTR of s" ptr " RSTR  r PTR>INNER d 0 RECURSE endof
+      T-PTR of s" ^" RSTR  r PTR>INNER d 0 RECURSE endof
       \ A cell a caught throw may have overwritten names the type it lost.
       \ `stale<...>` is not a declarable type, so it sets RQM: REC-SIG never
       \ records a row carrying one.
@@ -468,7 +468,7 @@ create RQUOT-BLOCK SQUOT-CAP cells allot
 : REND-TYPE {: t:n :}  t 0 0 QREND ;
 
 \ Type T as a diagnostic spells it, in TEXT until TEXT is next written.
-: TYPE-TEXT ( n -- ptr u8 n ) {: t:n :}
+: TYPE-TEXT ( n -- ^u8 n ) {: t:n :}
    1 DEST !  0 TEXT-LEN !  SEEN-RESET RATOM-RESET 0 NLET !
    t REND-TYPE
    0 DEST !  TEXT TEXT-LEN @ ;
@@ -479,7 +479,7 @@ variable RSHOW-DST
 : RENDER  SEEN-RESET RATOM-RESET 0 NLET !  DCUR @ REND-COLLECT
    RBN @ BEGIN dup 0 > WHILE 1 - dup cells RBUF + @ REND-TYPE 32 EMIT1 REPEAT drop ;
 
-: SHOW-LOCAL-TYPE ( ptr u8 n n -- ) {: name:ptr nameu:n t:n :}
+: SHOW-LOCAL-TYPE ( ^u8 n n -- ) {: name:^ nameu:n t:n :}
    DEST @ RSHOW-DST !
    0 DEST !
    s" inferred " RSTR
@@ -512,7 +512,7 @@ LOCSHOW-INSTALL
 \ Both passes write from the TEXT-LEN it is called with, after what the caller
 \ wrote: the first records the row tails, the second writes them as RPOS-NAMED?
 \ names them.
-: REND-EFFECT ( n n n n bool -- ptr u8 n )
+: REND-EFFECT ( n n n n bool -- ^u8 n )
    {: din:n dout:n rin:n rout:n hasr:bool :}
    TEXT-LEN @ {: base:n :}
    1 DEST !  0 RPOS-N !
@@ -521,12 +521,12 @@ LOCSHOW-INSTALL
    0 RNAMES !  0 DEST !  TEXT TEXT-LEN @ ;
 
 
-: FACT-TAG ( ptr u8 n n -- ) {: a:ptr u:n letter:n :}
+: FACT-TAG ( ^u8 n n -- ) {: a:^ u:n letter:n :}
    a u EMIT-STR  32 EMIT1  letter EMIT1  32 EMIT1 ;
 
 
-: VAR-FACT-TAG ( ptr u8 n n -- )
-   {: a:ptr u:n idx:n :}
+: VAR-FACT-TAG ( ^u8 n n -- )
+   {: a:^ u:n idx:n :}
    a u EMIT-STR  32 EMIT1  idx VAR-NAME  32 EMIT1 ;
 
 \ The type variable REND-EFFECT gave name index idx, -1 for a forall's name.
@@ -539,7 +539,7 @@ LOCSHOW-INSTALL
 : VAR-KIND-TAG ( n -- ) {: idx:n :}
    idx SEEN-VAR {: id:n :}
    id 0 < IF EXIT THEN
-   id TVK@ KIND>TAG$ {: a:ptr u:n :}
+   id TVK@ KIND>TAG$ {: a:^ u:n :}
    u 0 = IF EXIT THEN
    a u idx VAR-FACT-TAG ;
 
@@ -555,7 +555,7 @@ LOCSHOW-INSTALL
 : ROW-KIND-TAG ( n -- ) {: idx:n :}
    idx cells RROW-KEY + @ TVK@ {: kind:n :}
    kind 0 = IF EXIT THEN
-   kind KIND>TAG$ {: a:ptr u:n :}
+   kind KIND>TAG$ {: a:^ u:n :}
    u 0 = IF 1 RQM ! EXIT THEN
    a u idx 65 + FACT-TAG ;
 
@@ -583,7 +583,7 @@ LOCSHOW-INSTALL
 \ Facts text, `( E ) offset a noscope A nolinear a block 1 2 noblock 1 `,
 \ written from the TEXT-LEN it is called with: a caller that wants a fresh text
 \ sets `0 TEXT-LEN !` first.
-: REND-FACTS ( n n n n bool -- ptr u8 n )
+: REND-FACTS ( n n n n bool -- ^u8 n )
    {: din:n dout:n rin:n rout:n hasr:bool :}
    1 DEST !  s" ( " EMIT-STR
    din dout rin rout hasr REND-EFFECT 2drop
@@ -601,7 +601,7 @@ LOCSHOW-INSTALL
 : CTL-FLAG-TAG ( n n -- )
    {: ctl:n bit:n :}
    ctl 1 bit lshift and 0= IF EXIT THEN
-   bit CTL-BIT>TAG$ {: a:ptr u:n :}
+   bit CTL-BIT>TAG$ {: a:^ u:n :}
    u 0 = IF EXIT THEN
    a u EMIT-STR  32 EMIT1 ;
 
@@ -614,7 +614,7 @@ LOCSHOW-INSTALL
 
 \ checker.f NORET.NONZERO n as the tag `nonzero D T` appended at TEXT-LEN, D
 \ the divisor and T the thrown inputs' mask; 0 appends nothing.
-: REND-NONZERO ( n -- ptr u8 n )
+: REND-NONZERO ( n -- ^u8 n )
    {: n:n :}
    1 DEST !
    n 0 <> IF
@@ -628,14 +628,14 @@ LOCSHOW-INSTALL
    {: ctl:n :}
    ctl CTL>INTRINSIC {: id:n :}
    id 0 = IF EXIT THEN
-   id INTRINSIC-NAME$ {: a:ptr u:n :}
+   id INTRINSIC-NAME$ {: a:^ u:n :}
    u 0 = IF 1 RQM ! EXIT THEN
    s" intrinsic " EMIT-STR  a u EMIT-STR  32 EMIT1 ;
 
 
 \ Control word n's tags for checker.f SIG-CTL-TAG, in bit order, appended at TEXT-LEN.
 \ RQM: a bit XFER-PACK does not keep, an unnamed intrinsic id, masks without CTL-THROW.
-: REND-CTL ( n -- ptr u8 n )
+: REND-CTL ( n -- ^u8 n )
    {: ctl:n :}
    1 DEST !
    ctl XFER-FLAGS  ctl XFER-DMASK  ctl XFER-RMASK  XFER-PACK  ctl <> IF 1 RQM ! THEN
@@ -654,7 +654,7 @@ LOCSHOW-INSTALL
 \ `primitive` (PE-ACTIVE) makes the read a primitive row, whose tick is an
 \ opaque xt: without it a text reads as the word's declaration, whose tick is
 \ its quotation (`['] die`).
-: REND-PE ( n -- ptr u8 n )
+: REND-PE ( n -- ^u8 n )
    {: flags:n :}
    1 DEST !
    flags PE-ACTIVE and 0 <> IF s" primitive " EMIT-STR THEN
@@ -665,7 +665,7 @@ LOCSHOW-INSTALL
 
 \ A parsing immediate's payload count as a facts tag appended at TEXT-LEN,
 \ nothing for -1.
-: REND-PIMM ( n -- ptr u8 n )
+: REND-PIMM ( n -- ^u8 n )
    {: cnt:n :}
    1 DEST !
    cnt 0 >= IF s" parse-imm " EMIT-STR  cnt RNUM  32 EMIT1 THEN
@@ -675,8 +675,8 @@ LOCSHOW-INSTALL
 \ A `parses:` row as a facts tag appended at TEXT-LEN, spelled as the row:
 \ `parses N`, or `parses-through N ( E1 E2 )` for terminators T TU, each
 \ followed by a blank; nothing for a count of -1.
-: REND-PARSES ( n ptr u8 n -- ptr u8 n )
-   {: cnt:n t:ptr tu:n :}
+: REND-PARSES ( n ^u8 n -- ^u8 n )
+   {: cnt:n t:^ tu:n :}
    1 DEST !
    cnt 0 >= IF
       tu 0= IF s" parses " ELSE s" parses-through " THEN EMIT-STR
@@ -696,17 +696,17 @@ LOCSHOW-INSTALL
    hasr IF off E-PTR E-RIN@ E-INST  off E-PTR E-ROUT@ E-INST ELSE 0 0 THEN
    hasr ;
 \ Record off's facts text, appended at TEXT-LEN.
-: REND-RECORD ( n -- ptr u8 n ) RECORD-ROWS REND-FACTS ;
+: REND-RECORD ( n -- ^u8 n ) RECORD-ROWS REND-FACTS ;
 
 
 \ Record off's effect as REND-EFFECT writes it, appended at TEXT-LEN.
-: REND-RECORD-EFFECT ( n -- ptr u8 n ) RECORD-ROWS REND-EFFECT ;
+: REND-RECORD-EFFECT ( n -- ^u8 n ) RECORD-ROWS REND-EFFECT ;
 
 
 \ `creates-effect ` and the facts text of n, a created effect as checker.f
 \ NORET-CREATES@ answers it, appended at TEXT-LEN; 0 appends nothing. RQM stays
 \ set.
-: REND-CREATES ( n -- ptr u8 n )
+: REND-CREATES ( n -- ^u8 n )
    {: n:n :}
    n 0= IF 0 DEST !  TEXT TEXT-LEN @ EXIT THEN
    RQM @ {: qm:n :}
@@ -718,7 +718,7 @@ LOCSHOW-INSTALL
 \ `overload `, primitive row k's effect and its tags, appended at TEXT-LEN;
 \ checker.f SIG-TAGS reads the rest of the text as the primitive's next row, so
 \ the row needs no `primitive`.
-: REND-OVERLOAD ( n -- ptr u8 n )
+: REND-OVERLOAD ( n -- ^u8 n )
    {: k:n :}
    1 DEST !  s" overload " EMIT-STR
    k PE-EFF@ REND-RECORD 2drop
@@ -783,7 +783,7 @@ variable FACTS-REC   variable FACTS-MARK   variable FACTS-WAS   variable FACTS-N
 
 
 \ Inputs from the base row's instantiation (BROW), outputs from DCUR.
-: REND-SIG ( -- ptr u8 n )
+: REND-SIG ( -- ^u8 n )
    0 TEXT-LEN !  BROW @ DCUR @ 0 0 RES-FALSE REND-EFFECT ;
 
 variable DSUGE  variable DSUGA
@@ -821,11 +821,11 @@ variable DSUGE  variable DSUGA
 PERSISTED-PTR-VARIABLE TCAP-P   NULL-PTR TCAP-P !
 variable TCAP-CAP   0 TCAP-CAP !          \ bytes mapped at TCAP-P, 0 for none
 variable TCAP-INF   variable TCAP-EXP   variable TCAP-ACT   variable TCAP-HELD
-: TCAP ( -- ptr u8 ) TCAP-P @ ;
-: TCAP-INF$ ( -- ptr u8 n ) TCAP TCAP-INF @ ;
-: TCAP-EXP$ ( -- ptr u8 n ) TCAP TCAP-INF @ +  TCAP-EXP @ TCAP-INF @ - ;
-: TCAP-ACT$ ( -- ptr u8 n ) TCAP TCAP-EXP @ +  TCAP-ACT @ TCAP-EXP @ - ;
-: TCAP-HELD$ ( -- ptr u8 n ) TCAP TCAP-ACT @ +  TCAP-HELD @ TCAP-ACT @ -  SIG-RTRIM ;
+: TCAP ( -- ^u8 ) TCAP-P @ ;
+: TCAP-INF$ ( -- ^u8 n ) TCAP TCAP-INF @ ;
+: TCAP-EXP$ ( -- ^u8 n ) TCAP TCAP-INF @ +  TCAP-EXP @ TCAP-INF @ - ;
+: TCAP-ACT$ ( -- ^u8 n ) TCAP TCAP-EXP @ +  TCAP-ACT @ TCAP-EXP @ - ;
+: TCAP-HELD$ ( -- ^u8 n ) TCAP TCAP-ACT @ +  TCAP-HELD @ TCAP-ACT @ -  SIG-RTRIM ;
 
 
 : TCAP-ROW ( n -- )   \ the escaped-into row: its tail's letter and cells
@@ -839,7 +839,7 @@ variable TCAP-INF   variable TCAP-EXP   variable TCAP-ACT   variable TCAP-HELD
    {: need:n :}
    need TCAP-CAP @ <= IF EXIT THEN
    need TCAP-CAP @ 2 * max TCAP-FIRST max {: nc:n :}
-   nc ARENA-ALLOC-BYTES {: next:ptr :}
+   nc ARENA-ALLOC-BYTES {: next:^ :}
    TCAP-P @ TCAP-CAP @ ARENA-UNMAP
    next TCAP-P !  nc TCAP-CAP ! ;
 
@@ -880,14 +880,14 @@ variable MDV-I   variable MDV-F
    ;AT-PIN ;
 
 
-: ROWS-SUGGEST$ ( [ n -- n ] -- ptr u8 n )
+: ROWS-SUGGEST$ ( [ n -- n ] -- ^u8 n )
    ROWS-DEPTHS
    DSUGA @ DSUGE @ > IF s" drop the extra value, or remove the word that pushes it" EXIT THEN
    DSUGA @ DSUGE @ < IF s" push the missing value before it is taken, or stop taking it" EXIT THEN
    s" change the body so the values it leaves have the types the signature declares" ;
 
 
-: MD-CODE$ ( n -- ptr u8 n )
+: MD-CODE$ ( n -- ^u8 n )
    case
       MD-FAM-UNKNOWN  of s" E-MATCH-UNKNOWN-FAMILY" endof
       MD-FAM-AMBIG    of s" E-USING-AMBIGUOUS" endof
@@ -992,14 +992,14 @@ variable MDV-I   variable MDV-F
 
 \ Shared by a definition's depth refusal (MD-SUGGEST$) and a signature's
 \ (SIG-HELP): a row is deep by its cells or by the types it nests.
-: DEPTH-SUGGEST$ ( -- ptr u8 n )
+: DEPTH-SUGGEST$ ( -- ^u8 n )
    s" keep bulk values in a buffer instead of on the stack, and name an inner callback's effect in a word of its own" ;
 
-: TAIL-SUGGEST$ ( -- ptr u8 n )
+: TAIL-SUGGEST$ ( -- ^u8 n )
    s" declare the callable `[ R -- S ]` from the word's input row, as in `( R [ R -- S ] -- S )`, or pass a callable whose output does not depend on the stack beneath it" ;
 
 
-: MD-SUGGEST$ ( n -- ptr u8 n )
+: MD-SUGGEST$ ( n -- ^u8 n )
    case
       MD-NONEXH       of s" add a `variant OF ... ENDOF` arm for each missing variant" endof
       MD-VAR-DUP      of s" keep one `OF ... ENDOF` arm for this variant and delete the other" endof
@@ -1020,11 +1020,11 @@ variable MDV-I   variable MDV-F
       MD-DIVBAR       of s" call the block collective where no control structure or quotation is open, so every thread of the block reaches it" endof
       MD-EXEC-OPAQUE  of s" `execute` a quotation parameter, a `defer` bound with `is`, or an xt fetched from a `TYPED-VARIABLE NAME [ in -- out ]` cell" endof
       MD-CATCH-OPAQUE of s" `catch` a quotation parameter, a `defer` bound with `is`, or an xt fetched from a `TYPED-VARIABLE NAME [ in -- out ]` cell" endof
-      MD-RAW-PTR      of s" declare the cell that holds the address with `PTR-VARIABLE`, `PERSISTED-PTR-VARIABLE`, `TYPED-VARIABLE NAME ptr t` or `TYPED-BUFFER NAME ptr t`" endof
+      MD-RAW-PTR      of s" declare the cell that holds the address with `PTR-VARIABLE`, `PERSISTED-PTR-VARIABLE`, `TYPED-VARIABLE NAME ^t` or `TYPED-BUFFER NAME ^t`" endof
       MD-NULL-PTR     of s" read the value from the cell that holds it, not through `NULL-PTR`" endof
-      MD-DBASE-PTR    of s" reach the cell through an accessor that names its pointee, as `( -- ptr n )`, or take a pointer it holds with `ptr-field`" endof
+      MD-DBASE-PTR    of s" reach the cell through an accessor that names its pointee, as `( -- ^n )`, or take a pointer it holds with `ptr-field`" endof
       MD-RAW-EXEC     of s" declare the cell that holds the code as `TYPED-VARIABLE NAME [ in -- out ]`, a `TYPED-BUFFER` or `DYNAMIC-BUFFER` of `[ in -- out ]`, or a `defer` bound with `is`" endof
-      MD-RAW-FIELD    of s" take `ptr-field` of a cell declared with `PTR-VARIABLE`, `PERSISTED-PTR-VARIABLE`, `TYPED-VARIABLE NAME ptr t` or `TYPED-BUFFER NAME ptr t`" endof
+      MD-RAW-FIELD    of s" take `ptr-field` of a cell declared with `PTR-VARIABLE`, `PERSISTED-PTR-VARIABLE`, `TYPED-VARIABLE NAME ^t` or `TYPED-BUFFER NAME ^t`" endof
       MD-RIGID-REGION of s" pass a value of the allocation this position takes, or borrow again from that allocation" endof
       MD-RIGID-EXTENT of s" pass the value whose extent this position takes" endof
       MD-RIGID-GEN    of s" derive the index again after the mutation that outdated it" endof
@@ -1083,7 +1083,7 @@ variable MDV-I   variable MDV-F
       MD-FINALLY-CLEANUP of s" put a cleanup of effect `[ -- ]` on top, as `[: body ;] [: cleanup ;] finally`" endof
       MD-CALLABLE-NARROW of s" store a callable whose effect works for every type the cell's effect names, or declare the cell's effect with the types this one takes" endof
       MD-RECORD-AT-WIDE of s" index a `LAYOUT-BUFFER` or `TYPED-BUFFER` of the instantiated type, which steps by its width" endof
-      MD-CONSTRUCT-WIDE of s" declare the widest variant over the type argument, or hold the argument through a one-cell `ptr`" endof
+      MD-CONSTRUCT-WIDE of s" declare the widest variant over the type argument, or hold the argument through a one-cell `^`" endof
       MD-C2-BINDER    of s" declare the callback `forall<i inside [l,T],[ mut-view<p,i,a,init<i,T>> -- … ]>`, with `l` the view's scope and `T` the record" endof
       MD-C2-RECORDS-BINDER of s" declare the callback `forall<i inside [l,T],[ records<p,i,a,T> -- … ]>`, with `l` the view's scope and `T` the record" endof
       MD-C2-CHILD-BINDER of s" declare the callback `forall<j inside l,[ … ]>`, with `l` the parent view's scope" endof
@@ -1096,7 +1096,7 @@ variable MDV-I   variable MDV-F
    endcase ;
 
 
-: MD-REASON$ ( n -- ptr u8 n )
+: MD-REASON$ ( n -- ^u8 n )
    case
       MD-FAM-UNKNOWN  of s" bad match: unknown type family" endof
       MD-FAM-AMBIG    of s" bad match: ambiguous type family" endof
@@ -1197,7 +1197,7 @@ variable MDV-I   variable MDV-F
    endcase ;
 
 \ A reason's label: a few words under its token.
-: MD-LABEL$ ( n -- ptr u8 n )
+: MD-LABEL$ ( n -- ^u8 n )
    case
       MD-SCOPE-STORE  of s" scoped value in memory" endof
       MD-LINEAR-MEMORY of s" linear value in memory" endof
@@ -1370,12 +1370,12 @@ variable MDV-I   variable MDV-F
    MDIAG @ MD-CF-DEPTH = IF CF-FRAMES-MAX 1 + CF-FRAMES-MAX CAP-DEPTH-COUNTS THEN ;
 
 
-: IMM-CODE$ ( -- ptr u8 n )
+: IMM-CODE$ ( -- ^u8 n )
    s" E-UNMODELED-IMMEDIATE" ;
 
 
 
-: LOCALBAD-CODE$ ( -- ptr u8 n )
+: LOCALBAD-CODE$ ( -- ^u8 n )
    s" E-BAD-LOCAL-SHAPE" ;
 
 
@@ -1383,13 +1383,13 @@ variable MDV-I   variable MDV-F
 : LOCALBAD-GROUP? ( -- bool )
    LOCALBAD-KIND @ LOCALBAD-SCOPE <> ;
 
-: LOCALBAD-REASON$ ( -- ptr u8 n )
+: LOCALBAD-REASON$ ( -- ^u8 n )
    LOCALBAD-KIND @ LOCALBAD-DASH = IF s" a locals group names only locals; the signature declares the outputs" EXIT THEN
    s" a locals group names only locals; Habu has no uninitialised locals" ;
 
 \ A definition's signature, a local's type or a stored signature that does not
 \ parse; SGBAD's state from the failed parse names the kind.
-: SGBAD-CODE$ ( -- ptr u8 n )
+: SGBAD-CODE$ ( -- ^u8 n )
    SGBAD-AMBIG? IF s" E-USING-AMBIGUOUS" EXIT THEN
    SGBAD-UNKNOWN? IF s" E-UNKNOWN-SIGNATURE-TYPE" EXIT THEN
    SGBAD-BAREPTR? IF s" E-BARE-PTR-SIGNATURE" EXIT THEN
@@ -1398,7 +1398,7 @@ variable MDV-I   variable MDV-F
 
 \ The code, message, label, notes and help all name the one rejection REFUSAL@
 \ chose.
-: DCODE ( -- ptr u8 n )
+: DCODE ( -- ^u8 n )
    REFUSAL@ {: k:n :}
    k RF-IMM = IF IMM-CODE$ EXIT THEN
    k RF-UNDEF = IF s" E-UNDEFINED" EXIT THEN
@@ -1415,7 +1415,7 @@ variable MDV-I   variable MDV-F
    k RF-MISMATCH = IF s" E-MISMATCH" EXIT THEN
    k RF-RETURN = IF s" E-RETURN-STACK" EXIT THEN
    s" render: a rejection with no code" 76 die ;
-: NM-SPAN ( -- ptr u8 n )
+: NM-SPAN ( -- ^u8 n )
    NMOFF @ TADDR NMU @ ;
 \ The return rows `return_stack` names, expected then actual: a rejected read's
 \ and the row it met (RSR-EXP), a quotation literal's own when its seal refused
@@ -1425,13 +1425,13 @@ variable MDV-I   variable MDV-F
    RSBAD @ 3 >= IF QRS-EXP @ QRS-ACT @ EXIT THEN
    SGHASR @ IF SGROUT @ ELSE RBROW @ THEN  RCUR @ ;
 
-: RS-REASON$ ( -- ptr u8 n )
+: RS-REASON$ ( -- ^u8 n )
    RSBAD @ 2 = IF s" return stack: this reads below the return-stack cells pushed here" EXIT THEN
    RSBAD @ 3 = IF s" return stack: the quotation leaves its return row unbalanced" EXIT THEN
    RSBAD @ 4 = IF s" return stack: the quotation reads below the return-stack cells it pushed" EXIT THEN
    s" return stack: the return row does not balance at exit" ;
 
-: RS-LABEL$ ( -- ptr u8 n )
+: RS-LABEL$ ( -- ^u8 n )
    RSBAD @ 2 = IF s" reads below the definition's return cells" EXIT THEN
    RSBAD @ 3 = IF s" quotation's return row unbalanced" EXIT THEN
    RSBAD @ 4 = IF s" reads below the quotation's return cells" EXIT THEN
@@ -1456,17 +1456,17 @@ variable MDV-I   variable MDV-F
 \ a body's in the checked text. A closer past the text's end that no source
 \ holds, as a checked string's, is the empty token at the text's end where that
 \ is held, else FAILTK, the copy of its spelling.
-: DIAG-TOKEN ( -- ptr u8 n )
+: DIAG-TOKEN ( -- ^u8 n )
    TOP-STEP @ IF TOK-SPELL-A @ TOK-SPELL-U @ EXIT THEN
-   TBASE@ FAILB @ + {: p:ptr :}
+   TBASE@ FAILB @ + {: p:^ :}
    FAILE @ FAILB @ - {: u:n :}
    FAILE @ TBLEN @ <=  p u REJECTION:HELD?  or IF p u EXIT THEN
-   TBASE@ TBLEN @ + {: e:ptr :}
+   TBASE@ TBLEN @ + {: e:^ :}
    e 0 REJECTION:HELD? IF e 0 EXIT THEN
    FAILTK FAILTU @ ;
 
-: PIN-TOK$ ( -- ptr u8 n ) FAILTK FAILTU @ ;
-: CODE-SPAN ( ptr u8 n -- ) 96 EMIT1 EMIT-STR 96 EMIT1 ;
+: PIN-TOK$ ( -- ^u8 n ) FAILTK FAILTU @ ;
+: CODE-SPAN ( ^u8 n -- ) 96 EMIT1 EMIT-STR 96 EMIT1 ;
 : TOK-SPAN ( -- ) PIN-TOK$ CODE-SPAN ;
 \ The pin is the closer of a body that walked no token.
 : CLOSER-PINNED? ( -- bool )
@@ -1477,7 +1477,7 @@ variable MDV-I   variable MDV-F
    TEXT TEXT-LEN @ 1 - + c@ 32 = IF TEXT-LEN @ 1 - TEXT-LEN ! THEN ;
 
 \ Row s as DROW writes it, or the word e for an empty row.
-: ROW-OR ( n ptr u8 n -- ) {: s:n ea:ptr eu:n :}
+: ROW-OR ( n ^u8 n -- ) {: s:n ea:^ eu:n :}
    TEXT-LEN @ {: at:n :}
    s DROW
    TEXT-LEN @ at = IF ea eu EMIT-STR EXIT THEN
@@ -1486,8 +1486,8 @@ variable MDV-I   variable MDV-F
 : ROW-NOTE ( n -- ) s" (nothing)" ROW-OR ;
 
 \ A signature as written, without its parentheses.
-: SIG-BARE ( ptr u8 n -- ptr u8 n )
-   SIG-TRIM {: a:ptr u:n :}
+: SIG-BARE ( ^u8 n -- ^u8 n )
+   SIG-TRIM {: a:^ u:n :}
    u 2 < IF a u EXIT THEN
    a c@ 40 <>  a u + 1 - c@ 41 <>  or IF a u EXIT THEN
    a 1 + u 2 - SIG-TRIM ;
@@ -1534,7 +1534,7 @@ CHECKER-REG:}SCRATCH
    SGBAD-UNKNOWN? IF
       s" unknown type " EMIT-STR  TOK-SPAN  s"  in signature" EMIT-STR EXIT
    THEN
-   SGBAD-BAREPTR? IF s" `ptr` needs an element type" EMIT-STR EXIT THEN
+   SGBAD-BAREPTR? IF s" `^` needs an element type" EMIT-STR EXIT THEN
    SGBAD-ARITY? IF ARITY-MESSAGE EXIT THEN
    SGBAD-RETURN? IF s" return-stack effect in signature " EMIT-STR  TOK-SPAN EXIT THEN
    SGBAD-SIZE? IF BADSIG-REASON  s"  at " EMIT-STR  TOK-SPAN EXIT THEN
@@ -1609,7 +1609,7 @@ CHECKER-REG:}SCRATCH
    TOK-SPAN  s"  never runs: " EMIT-STR  DEADTA @ DEADTU @ CODE-SPAN
    s"  before it never returns" EMIT-STR ;
 
-: TOK-MESSAGE ( ptr u8 n -- ) {: a:ptr u:n :}
+: TOK-MESSAGE ( ^u8 n -- ) {: a:^ u:n :}
    TOK-SPAN  a u EMIT-STR ;
 
 : DIAG-MESSAGE ( -- )
@@ -1670,7 +1670,7 @@ CHECKER-REG:}SCRATCH
       s" render: a rejection with no label" 76 die
    endcase ;
 
-: TEXT-NOTE ( ptr u8 n ptr u8 n -- ) {: ka:ptr ku:n va:ptr vu:n :}
+: TEXT-NOTE ( ^u8 n ^u8 n -- ) {: ka:^ ku:n va:^ vu:n :}
    ka ku REJECTION:NOTE  va vu SIG-RTRIM EMIT-STR ;
 : PAIR-NOTES ( n n -- ) {: e:n a:n :}
    s" expected" REJECTION:NOTE  e ROW-NOTE
@@ -1770,8 +1770,8 @@ CHECKER-REG:}SCRATCH
 \ The package record at dictionary index i whose public wordlist holds the
 \ token t tu, else NULL-PTR. A part, named A:B, is left out: no qualifier
 \ outside A reaches it.
-: PUBLIC-IN ( ptr u8 n n -- ptr n ) {: t:ptr tu:n i:n :}
-   i CHECKER-RESOLVE:REC-AT {: rec:ptr :}
+: PUBLIC-IN ( ^u8 n n -- ^n ) {: t:^ tu:n i:n :}
+   i CHECKER-RESOLVE:REC-AT {: rec:^ :}
    rec CK-REC-WID BOOT:NAMESPACE-WL <> IF NULL-PTR EXIT THEN
    rec @ {: wid:n :}
    rec CHECKER-RESOLVE:CK-REC-NAME$ CHECKER-COLON-SCAN drop {: colons:n :}
@@ -1780,27 +1780,27 @@ CHECKER-REG:}SCRATCH
    rec ;
 variable HOLDER-N
 PTR-VARIABLE HOLDER-FIRST
-: HOLDER-NAME ( ptr n -- ) CHECKER-RESOLVE:CK-REC-NAME$ CODE-SPAN ;
+: HOLDER-NAME ( ^n -- ) CHECKER-RESOLVE:CK-REC-NAME$ CODE-SPAN ;
 \ Counts the packages whose public wordlist holds t tu, writes their names when
 \ list is set.
-: HOLDER-SCAN ( ptr u8 n bool -- ) {: t:ptr tu:n list:bool :}
+: HOLDER-SCAN ( ^u8 n bool -- ) {: t:^ tu:n list:bool :}
    0 HOLDER-N !
    ndict@ 0 ?do
-      t tu i PUBLIC-IN {: rec:ptr :}
+      t tu i PUBLIC-IN {: rec:^ :}
       rec NULL-PTR <> IF
          HOLDER-N @ 0= IF rec HOLDER-FIRST ! THEN
          list IF HOLDER-N @ 0 > IF s" , " EMIT-STR THEN  rec HOLDER-NAME THEN
          HOLDER-N @ 1 + HOLDER-N !
       THEN
    loop ;
-: QUALIFIED ( ptr u8 n -- ) {: t:ptr tu:n :}
+: QUALIFIED ( ^u8 n -- ) {: t:^ tu:n :}
    96 EMIT1  HOLDER-FIRST @ CHECKER-RESOLVE:CK-REC-NAME$ EMIT-STR
    58 EMIT1  t tu EMIT-STR  96 EMIT1 ;
 \ Only a call in the definition's own body may become `recurse`: a top-level
 \ step is in no body, a tick of `recurse` gives no xt, and `recurse` in a
 \ quotation calls the quotation.
-: UNDEF-HELP ( ptr u8 n -- ) {: t:ptr tu:n :}
-   TOP-STEP @ 0=  PIN-BODY-CALL @ 0 <>  and IF NMA @ NMU @ ELSE NMA @ 0 THEN {: d:ptr du:n :}
+: UNDEF-HELP ( ^u8 n -- ) {: t:^ tu:n :}
+   TOP-STEP @ 0=  PIN-BODY-CALL @ 0 <>  and IF NMA @ NMU @ ELSE NMA @ 0 THEN {: d:^ du:n :}
    t tu d du CORE-STR=CI IF 0 HOLDER-N ! ELSE t tu RES-FALSE HOLDER-SCAN THEN
    HOLDER-N @ 0= IF t tu d du REJECTION:UNDEFINED-HELP EXIT THEN
    t tu CODE-SPAN  s"  is public in " EMIT-STR
@@ -1841,7 +1841,7 @@ PTR-VARIABLE HOLDER-FIRST
       TOK-SPAN EXIT
    THEN
    SGBAD-BAREPTR? IF
-      s" follow `ptr` with its element type, as `ptr u8` or `ptr a`" EMIT-STR EXIT
+      s" follow `^` with its element type, as `^u8` or `^a`" EMIT-STR EXIT
    THEN
    SGBAD-ARITY? IF ARITY-HELP EXIT THEN
    SGBAD-BINDERS? IF
@@ -1860,9 +1860,9 @@ PTR-VARIABLE HOLDER-FIRST
 \ A declared type or row variable's letter in backticks.
 : NP-GENERIC ( -- )
    s" , or keep the body generic over " EMIT-STR  NPBAD-Q1 @ VAR-SPAN ;
-: NP-POINTEE ( ptr u8 n -- ) {: a:ptr u:n :}
+: NP-POINTEE ( ^u8 n -- ) {: a:^ u:n :}
    s" declare the pointee the " EMIT-STR  a u EMIT-STR
-   s" , as `ptr n` or `ptr u8`, in place of " EMIT-STR  NPBAD-Q1 @ VAR-SPAN ;
+   s" , as `^n` or `^u8`, in place of " EMIT-STR  NPBAD-Q1 @ VAR-SPAN ;
 : NP-HELP ( -- )
    NPBAD-KIND @ case
       4 of s" base address reaches" NP-POINTEE endof
@@ -1943,7 +1943,7 @@ PTR-VARIABLE HOLDER-FIRST
 
 \ The record of a does> head that creates no word, placed at its `does>` token
 \ t tu, for a reader that judges the head without CHECK; the caller ends it.
-: DOES-UNMADE-OPEN ( ptr u8 n -- ) {: t:ptr tu:n :}
+: DOES-UNMADE-OPEN ( ^u8 n -- ) {: t:^ tu:n :}
    MD-DOES-UNMADE MD-CODE$ REJECTION:OPEN
    MD-DOES-UNMADE MD-REASON$ EMIT-STR
    t tu REJECTION:AT  MD-DOES-UNMADE MD-LABEL$ EMIT-STR
@@ -1972,15 +1972,15 @@ PTR-VARIABLE HOLDER-FIRST
 
 
 
-: TDECL-TITLE ( ptr u8 n ptr u8 n ptr u8 n -- ) {: c:ptr cu:n ka:ptr ku:n fa:ptr fu:n :}
+: TDECL-TITLE ( ^u8 n ^u8 n ^u8 n -- ) {: c:^ cu:n ka:^ ku:n fa:^ fu:n :}
    c cu REJECTION:OPEN
    s" bad " EMIT-STR  ka ku EMIT-STR  s"  declaration" EMIT-STR
    fu 0 > IF s"  `" EMIT-STR  fa fu EMIT-STR  96 EMIT1 THEN ;
 \ A rejected declaration of a kind and family: its token labeled with the
 \ reason, the word it names as a `word` note unless empty, the fix as help.
 \ The caller ends the record.
-: TDECL-DIAG ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
-   {: ka:ptr ku:n fa:ptr fu:n ta:ptr tu:n wa:ptr wu:n xa:ptr xu:n na:ptr nu:n :}
+: TDECL-DIAG ( ^u8 n ^u8 n ^u8 n ^u8 n ^u8 n ^u8 n -- )
+   {: ka:^ ku:n fa:^ fu:n ta:^ tu:n wa:^ wu:n xa:^ xu:n na:^ nu:n :}
    s" E-BAD-DECLARATION" ka ku fa fu TDECL-TITLE
    ta tu REJECTION:AT  wa wu EMIT-STR
    nu 0 > IF s" word" REJECTION:NOTE  na nu EMIT-STR THEN
@@ -1997,7 +1997,7 @@ PTR-VARIABLE HOLDER-FIRST
    s" unmodeled type tag in inferred effect" EMIT-STR ;
 
 \ The fix for REC-REFUSE-WHY's reason, for the word na nu.
-: REC-REJECT-HELP ( ptr u8 n -- ) {: na:ptr nu:n :}
+: REC-REJECT-HELP ( ^u8 n -- ) {: na:^ nu:n :}
    RBIND-FULL @ IF
       s" name an inner callback's effect in a word of its own, so at most "
       EMIT-STR  BINDER-DEPTH-MAX EMIT-U  s"  binders nest" EMIT-STR EXIT
@@ -2019,7 +2019,7 @@ variable WARN-DIAGS   -1 WARN-DIAGS !
 \ its source token is spelled.
 : REC-REFUSE-DIAG ( -- )
    WARN-DIAGS @ 0= IF EXIT THEN
-   NM-SPAN {: na:ptr nu:n :}
+   NM-SPAN {: na:^ nu:n :}
    s" W-EFFECT-NOT-RECORDED" REJECTION:WARN
    s" the effect of `" EMIT-STR  na nu EMIT-STR
    s" ` cannot be recorded, so a later call of it is rejected as undefined"
@@ -2031,8 +2031,8 @@ variable WARN-DIAGS   -1 WARN-DIAGS !
 
 \ A sig-less word's inferred effect is recorded (CHECKER-USIG-CERT-CURRENT) unless
 \ its text sets RQM.
-: REC-SIG ( ptr u8 n -- )
-   {: na:ptr nu:n :}
+: REC-SIG ( ^u8 n -- )
+   {: na:^ nu:n :}
    REND-SIG 2drop
    RQM @ 0 = IF
       na nu CHECKER-USIG-CERT-CURRENT
@@ -2043,7 +2043,7 @@ variable WARN-DIAGS   -1 WARN-DIAGS !
 
 \ The text of a rejected `cast:` or `linear:` declaration.
 package CAST-ERROR
-: CODE$ ( n -- ptr u8 n ) {: code:n :}
+: CODE$ ( n -- ^u8 n ) {: code:n :}
    code E-CAST-ARITY = IF s" E-CAST-ARITY" EXIT THEN
    code E-CAST-CLASS = IF s" E-CAST-CLASS" EXIT THEN
    code E-CAST-FAM = IF s" E-CAST-FAM" EXIT THEN
@@ -2055,7 +2055,7 @@ package CAST-ERROR
    code E-LINEAR-SCOPE = IF s" E-LINEAR-SCOPE" EXIT THEN
    s" checker: a cast rejection with no code name" 76 die ;
 \ E-CAST-FAM's label is the parse's: only PARSE raises it, with SGBAD set.
-: LABEL$ ( n -- ptr u8 n ) {: code:n :}
+: LABEL$ ( n -- ^u8 n ) {: code:n :}
    code E-CAST-ARITY = IF s" not one term on each side" EXIT THEN
    code E-CAST-CLASS = IF s" a retype no cast may make" EXIT THEN
    code E-CAST-FAM = IF SGBAD-LABEL$ EXIT THEN
@@ -2065,11 +2065,11 @@ package CAST-ERROR
    code E-LINEAR-PAYLOAD = IF s" not one token and one payload" EXIT THEN
    code E-LINEAR-OWNER = IF s" declared outside the type's package" EXIT THEN
    s" outside its owner's private section" ;
-: WORD$ ( -- ptr u8 n ) WORD-A @ WORD-U @ ;
-: SIG$ ( -- ptr u8 n ) SIG-A @ SIG-U @ ;
+: WORD$ ( -- ^u8 n ) WORD-A @ WORD-U @ ;
+: SIG$ ( -- ^u8 n ) SIG-A @ SIG-U @ ;
 \ The message: the declaration in backticks, why wa wu, then the token TOKEN!
 \ named in backticks.
-: TITLE ( ptr u8 n -- ) {: wa:ptr wu:n :}
+: TITLE ( ^u8 n -- ) {: wa:^ wu:n :}
    s" in `" EMIT-STR  KEY-A @ KEY-U @ EMIT-STR  32 EMIT1  WORD$ EMIT-STR
    s" `, " EMIT-STR  wa wu EMIT-STR
    TOK-U @ 0 > IF
@@ -2077,7 +2077,7 @@ package CAST-ERROR
    THEN ;
 \ The token the record places: TOKEN!'s when the signature holds it (a package
 \ name it named is no source), else the declared name.
-: SPOT$ ( -- ptr u8 n )
+: SPOT$ ( -- ^u8 n )
    TOK-A @ SIG-A @ - {: d:n :}
    TOK-U @ 0 >  d 0 >= and  d SIG-U @ < and IF TOK-A @ TOK-U @ EXIT THEN
    WORD$ ;
@@ -2086,4 +2086,4 @@ package CAST-ERROR
 ;using
 
 \ `+` and `cell+` refuse a layout pointee; bounds stay the caller's.
-: record-at ( ptr a n -- ptr a ) cells + ;  INTRINSIC-RECORD-AT INTRINSIC
+: record-at ( ^a n -- ^a ) cells + ;  INTRINSIC-RECORD-AT INTRINSIC

@@ -28,8 +28,8 @@ HTTP:MAX-WORKERS TYPED-BUFFER MADE bool
 HTTP:MAX-WORKERS TYPED-BUFFER WRITER JSON:writer
 
 : SLOT ( -- n ) HTTP:WORKER-SLOT ;
-: ROW ( -- ptr n ) SLOT BUF:HDR-BYTES * HEADS + CELL-VIEW ;
-: ROW$ ( -- ptr u8 n ) ROW BUF:SPAN$ BUF:BLEN>N ;
+: ROW ( -- ^n ) SLOT BUF:HDR-BYTES * HEADS + CELL-VIEW ;
+: ROW$ ( -- ^u8 n ) ROW BUF:SPAN$ BUF:BLEN>N ;
 
 
 : READY ( -- )
@@ -39,54 +39,54 @@ HTTP:MAX-WORKERS TYPED-BUFFER WRITER JSON:writer
 
 
 \ Opens the data of an event of the type numbered n, after its type and number.
-: EVENT-OPEN ( ptr JSON:writer ptr u8 n n -- ptr JSON:writer )
-   {: type:ptr type-u:n seq:n :}
+: EVENT-OPEN ( ^JSON:writer ^u8 n n -- ^JSON:writer )
+   {: type:^ type-u:n seq:n :}
    s" event: " JSON:WRITE-RAW type type-u JSON:WRITE-RAW
    S\" \ndata: {" JSON:WRITE-RAW
    s" type" type type-u JSON:WRITE-FIELD-S
    S\" ,\qsequence_number\q:" JSON:WRITE-RAW seq JSON:WRITE-U ;
 
 
-: EVENT-CLOSE ( ptr JSON:writer -- ptr JSON:writer )
+: EVENT-CLOSE ( ^JSON:writer -- ^JSON:writer )
    S\" }\n\n" JSON:WRITE-RAW ;
 
 
 \ EVENT-OPEN for an event that carries a response, which comes next.
-: RESPONSE-OPEN ( ptr JSON:writer ptr u8 n n -- ptr JSON:writer )
+: RESPONSE-OPEN ( ^JSON:writer ^u8 n n -- ^JSON:writer )
    EVENT-OPEN S\" ,\qresponse\q:" JSON:WRITE-RAW ;
 
 
-: PENDING ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
-   {: status:ptr status-u:n :}
+: PENDING ( ^JSON:writer ^u8 n -- ^JSON:writer )
+   {: status:^ status-u:n :}
    S\" {\qid\q:\qresp_1\q,\qobject\q:\qresponse\q," JSON:WRITE-RAW
    s" status" status status-u JSON:WRITE-FIELD-S
    S\" ,\qoutput\q:[]}" JSON:WRITE-RAW ;
 
 
 \ A reply object's members through its first output item, a reasoning item.
-: REPLY-HEAD ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
-   {: status:ptr status-u:n :}
+: REPLY-HEAD ( ^JSON:writer ^u8 n -- ^JSON:writer )
+   {: status:^ status-u:n :}
    S\" {\qid\q:\qresp_1\q,\qobject\q:\qresponse\q," JSON:WRITE-RAW
    s" status" status status-u JSON:WRITE-FIELD-S
    S\" ,\qoutput\q:[{\qtype\q:\qreasoning\q,\qid\q:\qrs_1\q,\qsummary\q:[]}" JSON:WRITE-RAW ;
 
 
-: USAGE ( ptr JSON:writer -- ptr JSON:writer )
+: USAGE ( ^JSON:writer -- ^JSON:writer )
    S\" ,\qusage\q:{\qinput_tokens\q:11,\qinput_tokens_details\q:{\qcached_tokens\q:4},\qoutput_tokens\q:6,\qoutput_tokens_details\q:{\qreasoning_tokens\q:2},\qtotal_tokens\q:17}" JSON:WRITE-RAW ;
 
 
 \ A reply's message item, up to its one content part.
-: MESSAGE-OPEN ( ptr JSON:writer -- ptr JSON:writer )
+: MESSAGE-OPEN ( ^JSON:writer -- ^JSON:writer )
    S\" ,{\qtype\q:\qmessage\q,\qid\q:\qmsg_1\q,\qrole\q:\qassistant\q,\qcontent\q:[{" JSON:WRITE-RAW ;
 
 
-: MESSAGE-CLOSE ( ptr JSON:writer -- ptr JSON:writer )
+: MESSAGE-CLOSE ( ^JSON:writer -- ^JSON:writer )
    S\" }]}],\qincomplete_details\q:null,\qerror\q:null" JSON:WRITE-RAW USAGE
    s" }" JSON:WRITE-RAW ;
 
 
-: COMPLETED-REPLY ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
-   {: text:ptr text-u:n :}
+: COMPLETED-REPLY ( ^JSON:writer ^u8 n -- ^JSON:writer )
+   {: text:^ text-u:n :}
    s" completed" REPLY-HEAD MESSAGE-OPEN
    S\" \qtype\q:\qoutput_text\q," JSON:WRITE-RAW
    s" text" text text-u JSON:WRITE-FIELD-S
@@ -94,8 +94,8 @@ HTTP:MAX-WORKERS TYPED-BUFFER WRITER JSON:writer
    MESSAGE-CLOSE ;
 
 
-: INCOMPLETE-REPLY ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
-   {: reason:ptr reason-u:n :}
+: INCOMPLETE-REPLY ( ^JSON:writer ^u8 n -- ^JSON:writer )
+   {: reason:^ reason-u:n :}
    s" incomplete" REPLY-HEAD
    S\" ],\qincomplete_details\q:{" JSON:WRITE-RAW
    s" reason" reason reason-u JSON:WRITE-FIELD-S
@@ -103,38 +103,38 @@ HTTP:MAX-WORKERS TYPED-BUFFER WRITER JSON:writer
    s" }" JSON:WRITE-RAW ;
 
 
-: REFUSAL-REPLY ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
-   {: text:ptr text-u:n :}
+: REFUSAL-REPLY ( ^JSON:writer ^u8 n -- ^JSON:writer )
+   {: text:^ text-u:n :}
    s" completed" REPLY-HEAD MESSAGE-OPEN
    S\" \qtype\q:\qrefusal\q," JSON:WRITE-RAW
    s" refusal" text text-u JSON:WRITE-FIELD-S
    MESSAGE-CLOSE ;
 
 
-: OUTPUT-REPLY ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
-   {: items:ptr items-u:n :}
+: OUTPUT-REPLY ( ^JSON:writer ^u8 n -- ^JSON:writer )
+   {: items:^ items-u:n :}
    S\" {\qid\q:\qresp_1\q,\qobject\q:\qresponse\q,\qstatus\q:\qcompleted\q,\qoutput\q:" JSON:WRITE-RAW
    items items-u JSON:WRITE-RAW
    S\" ,\qincomplete_details\q:null,\qerror\q:null" JSON:WRITE-RAW USAGE
    s" }" JSON:WRITE-RAW ;
 
 
-: OPENED ( -- ptr JSON:writer )
+: OPENED ( -- ^JSON:writer )
    READY
    SLOT WRITER ROW JSON:WRITE-OPEN-BUF
    s" response.created" 0 RESPONSE-OPEN s" queued" PENDING EVENT-CLOSE
    s" response.in_progress" 1 RESPONSE-OPEN s" in_progress" PENDING EVENT-CLOSE ;
 
 
-: SENT ( ptr JSON:writer HTTP:response -- )
+: SENT ( ^JSON:writer HTTP:response -- )
    {: answer:HTTP:response :}
    JSON:WRITE-CLOSE
    answer s" Content-Type" s" text/event-stream" HTTP:HEADER!
    answer ROW$ HTTP:BODY! ;
 
 
-: STREAMED ( HTTP:response ptr u8 n [ ptr JSON:writer ptr u8 n -- ptr JSON:writer ] ptr u8 n -- )
-   {: answer:HTTP:response text:ptr text-u:n body type:ptr type-u:n :}
+: STREAMED ( HTTP:response ^u8 n [ ^JSON:writer ^u8 n -- ^JSON:writer ] ^u8 n -- )
+   {: answer:HTTP:response text:^ text-u:n body type:^ type-u:n :}
    OPENED
    type type-u 2 RESPONSE-OPEN text text-u body execute EVENT-CLOSE
    answer SENT ;
@@ -142,12 +142,12 @@ HTTP:MAX-WORKERS TYPED-BUFFER WRITER JSON:writer
 public
 
 \ A stream ending in a completed reply whose message holds the text.
-: COMPLETED! ( HTTP:response ptr u8 n -- )
+: COMPLETED! ( HTTP:response ^u8 n -- )
    [: COMPLETED-REPLY ;] s" response.completed" STREAMED ;
 
 
 \ A stream ending in an incomplete reply with the reason.
-: INCOMPLETE! ( HTTP:response ptr u8 n -- )
+: INCOMPLETE! ( HTTP:response ^u8 n -- )
    [: INCOMPLETE-REPLY ;] s" response.incomplete" STREAMED ;
 
 
@@ -159,12 +159,12 @@ public
 
 \ A stream ending in a completed reply whose message part is a refusal with
 \ the text.
-: REFUSAL! ( HTTP:response ptr u8 n -- )
+: REFUSAL! ( HTTP:response ^u8 n -- )
    [: REFUSAL-REPLY ;] s" response.completed" STREAMED ;
 
 
 \ A stream ending in a completed reply whose output is exactly the JSON array.
-: OUTPUT! ( HTTP:response ptr u8 n -- )
+: OUTPUT! ( HTTP:response ^u8 n -- )
    [: OUTPUT-REPLY ;] s" response.completed" STREAMED ;
 
 
@@ -184,8 +184,8 @@ public
 \ A compaction of the request's input, the reply OpenAI gives at
 \ /responses/compact: one JSON object, no event stream, whose output is
 \ exactly the JSON array and whose usage is the terminal replies' own.
-: COMPACTION! ( HTTP:response ptr u8 n -- )
-   {: answer:HTTP:response items:ptr items-u:n :}
+: COMPACTION! ( HTTP:response ^u8 n -- )
+   {: answer:HTTP:response items:^ items-u:n :}
    READY
    SLOT WRITER ROW JSON:WRITE-OPEN-BUF
    S\" {\qid\q:\qcmp_1\q,\qobject\q:\qresponse.compaction\q,\qcreated_at\q:0,\qoutput\q:" JSON:WRITE-RAW

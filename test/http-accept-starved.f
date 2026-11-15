@@ -37,8 +37,8 @@ $1000 constant RES-CAP
 CAST: BLEN>N ( NUM:byte-len -- n )
 
 PROCESS-SYMBOLS
-FUNCTION: GET-LIMIT getrlimit ( n ptr u8 -- i32 ) ;FUNCTION
-FUNCTION: SET-LIMIT setrlimit ( n ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: GET-LIMIT getrlimit ( n ^u8 -- i32 ) ;FUNCTION
+FUNCTION: SET-LIMIT setrlimit ( n ^u8 -- i32 ) ;FUNCTION
 FUNCTION: DUP2 dup2 ( n n -- i32 ) ;FUNCTION
 
 create LIMITS 16 allot            \ struct rlimit: soft, then hard
@@ -104,12 +104,12 @@ variable READ-ERRNO
    PIPE-R @ close ;
 
 
-: LINE$ ( -- ptr u8 n )
+: LINE$ ( -- ^u8 n )
    LINE-BUF LINE-U @ ;
 
 
 \ The line after its LOG stamp, or all of it when it is shorter than one.
-: UNSTAMPED$ ( -- ptr u8 n )
+: UNSTAMPED$ ( -- ^u8 n )
    LINE-U @ DATE:TIME-LEN < if LINE$ exit then
    LINE-BUF DATE:TIME-LEN + LINE-U @ DATE:TIME-LEN - ;
 
@@ -148,7 +148,7 @@ variable READ-ERRNO
 
 \ The answer's first bytes, once some have arrived. A refused read answers none
 \ and leaves its errno in READ-ERRNO.
-: ANSWER$ ( TCP4:connection -- ptr u8 n ) {: conn:TCP4:connection :}
+: ANSWER$ ( TCP4:connection -- ^u8 n ) {: conn:TCP4:connection :}
    0 READ-ERRNO !
    conn -1 >MS TCP4:READABLE-WITHIN?
    MATCH TCP4:ready-result

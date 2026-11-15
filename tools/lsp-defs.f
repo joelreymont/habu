@@ -232,16 +232,16 @@ TYPED-VARIABLE ESC-W JSON:writer
 : DECL@ ( n n -- n )  swap DECL-CELLS * + DECLS @ ;
 : DECL! ( n n n -- )  swap DECL-CELLS * + DECLS ! ;
 
-: AT$ ( n n -- ptr u8 n )
+: AT$ ( n n -- ^u8 n )
    {: at:n u:n :}
    at BYTES u ;
 
-: PATH$ ( n -- ptr u8 n )  dup G-PATH GROUP@ swap G-PATH-U GROUP@ AT$ ;
-: FILE$ ( -- ptr u8 n )  0 FILE-B FILE-U @ ;
-: IN$ ( -- ptr u8 n )  0 IN-B IN-U @ ;
+: PATH$ ( n -- ^u8 n )  dup G-PATH GROUP@ swap G-PATH-U GROUP@ AT$ ;
+: FILE$ ( -- ^u8 n )  0 FILE-B FILE-U @ ;
+: IN$ ( -- ^u8 n )  0 IN-B IN-U @ ;
 
-: BYTES+ ( ptr u8 n -- n )
-   {: a:ptr u:n :}
+: BYTES+ ( ^u8 n -- n )
+   {: a:^ u:n :}
    BYTES-U @ {: at:n :}
    at u + 1+ BYTES-RESERVE
    a at BYTES u BYTE-COPY
@@ -336,8 +336,8 @@ TYPED-VARIABLE ESC-W JSON:writer
    s" target_end" JSON:READ-STR-EQ? if JSON:READ-NEXT drop JSON:READ-INT TARGET-END-V ! exit then
    JSON:READ-NEXT drop JSON:READ-SKIP-VALUE ;
 
-: DECODE ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: DECODE ( ^u8 n -- )
+   {: a:^ u:n :}
    BYTES-U @ LINE-AT !
    CLASS-WORD CLASS-V !
    BYTES-U @ WORD-AT !
@@ -369,8 +369,8 @@ TYPED-VARIABLE ESC-W JSON:writer
    begin JSON:READ-NEXT JSON:T-KEY = while MEMBER repeat
    JSON:READ-CLOSE ;
 
-: FOUND ( ptr u8 n -- option<n> )
-   {: p:ptr pu:n :}
+: FOUND ( ^u8 n -- option<n> )
+   {: p:^ pu:n :}
    CUR-G @ {: cur:n :}
    cur 0 >= if
       cur PATH$ p pu STR= if cur OPTION:SOME exit then
@@ -380,7 +380,7 @@ TYPED-VARIABLE ESC-W JSON:writer
    loop
    OPTION:NONE ;
 
-: FILE-URI$ ( ptr u8 n -- ptr u8 n )
+: FILE-URI$ ( ^u8 n -- ^u8 n )
    URI-SPAN URI:PATH>FILE {: n:n :}
    URI-SPAN SPAN:$ drop n ;
 
@@ -388,8 +388,8 @@ public
 
 \ The URI positions count at in the file at this path, another than the
 \ checked document's own.
-: DEP-URI$ ( ptr u8 n -- ptr u8 n )
-   {: p:ptr pu:n :}
+: DEP-URI$ ( ^u8 n -- ^u8 n )
+   {: p:^ pu:n :}
    p pu DOC-HOLDING MATCH option
       some OF DOC-URI$ ENDOF
       none OF p pu FILE-URI$ ENDOF
@@ -397,8 +397,8 @@ public
 
 private
 
-: URI-JSON ( ptr u8 n -- ptr u8 n )
-   {: u:ptr uu:n :}
+: URI-JSON ( ^u8 n -- ^u8 n )
+   {: u:^ uu:n :}
    ESC-W ESC-B JSON:WRITE-OPEN-BUF
    u uu JSON:WRITE-STRING JSON:WRITTEN$ ;
 
@@ -406,8 +406,8 @@ private
 
 \ A new group of this check's, for the file at this path, which does not lie
 \ in BYTES, with no file visit yet: its index.
-: GROUP+ ( ptr u8 n -- n )
-   {: p:ptr pu:n :}
+: GROUP+ ( ^u8 n -- n )
+   {: p:^ pu:n :}
    GROUP-N @ {: g:n :}
    g 1+ GROUP-CELLS * GROUPS-RESERVE
    KEPT-SLOT {: slot:n :}
@@ -416,7 +416,7 @@ private
    ST-UNSEEN g G-STAMP GROUP!
    p pu BYTES+ g G-PATH GROUP!
    pu g G-PATH-U GROUP!
-   own if KEPT-SLOT DOC-URI$ else p pu DEP-URI$ then URI-JSON {: ua:ptr uu:n :}
+   own if KEPT-SLOT DOC-URI$ else p pu DEP-URI$ then URI-JSON {: ua:^ uu:n :}
    ua uu BYTES+ g G-URI GROUP!
    uu g G-URI-U GROUP!
    -1 g G-FIRST GROUP!
@@ -436,8 +436,8 @@ private
 
 \ The group of the file at this path, which does not lie in BYTES, made if
 \ this check has none.
-: GROUP-AT ( ptr u8 n -- n )
-   {: p:ptr pu:n :}
+: GROUP-AT ( ^u8 n -- n )
+   {: p:^ pu:n :}
    p pu FOUND MATCH option
       some OF ENDOF
       none OF p pu GROUP+ ENDOF
@@ -655,8 +655,8 @@ private
    in u U-IN USE!
    1 USE-N +! ;
 
-: STEP ( ptr u8 n n [ -- ] -- n )
-   {: a:ptr u:n o:n xt :}
+: STEP ( ^u8 n n [ -- ] -- n )
+   {: a:^ u:n o:n xt :}
    a o + u o - LF INDEX-OF MATCH option
       none OF u o - ENDOF
       some OF IDX>N ENDOF
@@ -665,8 +665,8 @@ private
    xt execute
    o len + 1+ ;
 
-: LINES ( ptr u8 n [ -- ] -- )
-   {: a:ptr u:n xt :}
+: LINES ( ^u8 n [ -- ] -- )
+   {: a:^ u:n xt :}
    0 begin dup u < while a u rot xt STEP repeat drop ;
 
 \ Whether group H answers for its file in place of group G: the group of the
@@ -697,7 +697,7 @@ private
    {: k:n f:n total:n :}
    k 1+ BLOCK-N @ < if k 1+ f BLOCK@ else total then ;
 
-: CELLS-DOWN ( n n n [ n -- ptr n ] -- )
+: CELLS-DOWN ( n n n [ n -- ^n ] -- )
    {: from:n to:n count:n xt :}
    count 0 ?do
       from i + xt execute @ to i + xt execute !
@@ -826,13 +826,13 @@ private
    1 BLOCK-N +!
    -1 CUR-G ! ;
 
-: UNREAD-PATH$ ( n -- ptr u8 n )
+: UNREAD-PATH$ ( n -- ^u8 n )
    dup B-UNREAD BLOCK@ swap B-UNREAD-U BLOCK@ AT$ ;
 
 \ A completed check may stop at one loader target it could not read. Keep its
 \ actual path and stat at failure; the path is separate from files it read.
-: UNREAD! ( ptr u8 n n -- )
-   {: path:ptr pathu:n k:n :}
+: UNREAD! ( ^u8 n n -- )
+   {: path:^ pathu:n k:n :}
    pathu 0= if exit then
    path pathu BYTES+ k B-UNREAD BLOCK!
    pathu k B-UNREAD-U BLOCK!
@@ -882,8 +882,8 @@ public
 \ Keeps these file, definition and use lines of the completed check of the
 \ document in this slot, its failed loader target if any, and whether its
 \ verdict was verified.
-: DEFS-KEEP ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n bool -- )
-   {: fa:ptr fu:n a:ptr u:n ua:ptr uu:n unread:ptr unreadu:n slot:n verified:bool :}
+: DEFS-KEEP ( ^u8 n ^u8 n ^u8 n ^u8 n n bool -- )
+   {: fa:^ fu:n a:^ u:n ua:^ uu:n unread:^ unreadu:n slot:n verified:bool :}
    slot DEFS-DROP
    slot verified BLOCK+
    BLOCK-N @ 1- {: k:n :}
@@ -905,8 +905,8 @@ public
 \ of an open document's text or of the file on disk, whether its verdict
 \ was verified and which slot supplied the subject (-1 for disk), as the
 \ probe.
-: DEFS-PROBE ( ptr u8 n ptr u8 n ptr u8 n bool n -- )
-   {: fa:ptr fu:n a:ptr u:n ua:ptr uu:n verified:bool source:n :}
+: DEFS-PROBE ( ^u8 n ^u8 n ^u8 n bool n -- )
+   {: fa:^ fu:n a:^ u:n ua:^ uu:n verified:bool source:n :}
    DEFS-UNPROBE
    source PROBE-SOURCE !
    PROBE verified BLOCK+
@@ -917,8 +917,8 @@ public
 
 \ The metadata captured with a disk subject's bytes before a references
 \ probe. The next probe consumes it.
-: PROBE-DISK-STAMP! ( ptr u8 n n n n n n -- )
-   {: path:ptr pathu:n size:n msec:n mns:n csec:n cns:n :}
+: PROBE-DISK-STAMP! ( ^u8 n n n n n n -- )
+   {: path:^ pathu:n size:n msec:n mns:n csec:n cns:n :}
    pathu PATH-CAP > if E-PATH-RANGE throw then
    path PROBE-PATH pathu BYTE-COPY
    pathu PROBE-PATH-U !
@@ -941,13 +941,13 @@ public
       i GROUP-OVER? 0= if i xt execute then
    loop ;
 
-: GROUP-PATH$ ( n -- ptr u8 n )  PATH$ ;
+: GROUP-PATH$ ( n -- ^u8 n )  PATH$ ;
 
 \ The JSON string of the URI the group's positions count at.
-: GROUP-URI$ ( n -- ptr u8 n )  dup G-URI GROUP@ swap G-URI-U GROUP@ AT$ ;
+: GROUP-URI$ ( n -- ^u8 n )  dup G-URI GROUP@ swap G-URI-U GROUP@ AT$ ;
 
 \ The raw URI whose document or disk bytes the group read.
-: GROUP-SOURCE-URI$ ( n -- ptr u8 n )
+: GROUP-SOURCE-URI$ ( n -- ^u8 n )
    {: g:n :}
    g G-STAMP GROUP@ ST-DOCUMENT = if g G-SOURCE GROUP@ DOC-URI$ exit then
    g PATH$ FILE-URI$ ;
@@ -958,10 +958,10 @@ public
 : REC-NEXT ( n -- n )  R-NEXT REC@ ;
 
 : REC-CLASS ( n -- n )  R-CLASS REC@ ;
-: REC-WORD$ ( n -- ptr u8 n )  dup R-WORD REC@ swap R-WORD-U REC@ AT$ ;
-: REC-PACKAGE$ ( n -- ptr u8 n )  dup R-PKG REC@ swap R-PKG-U REC@ AT$ ;
-: REC-KIND$ ( n -- ptr u8 n )  dup R-KIND REC@ swap R-KIND-U REC@ AT$ ;
-: REC-EFFECT$ ( n -- ptr u8 n )  dup R-EFF REC@ swap R-EFF-U REC@ AT$ ;
+: REC-WORD$ ( n -- ^u8 n )  dup R-WORD REC@ swap R-WORD-U REC@ AT$ ;
+: REC-PACKAGE$ ( n -- ^u8 n )  dup R-PKG REC@ swap R-PKG-U REC@ AT$ ;
+: REC-KIND$ ( n -- ^u8 n )  dup R-KIND REC@ swap R-KIND-U REC@ AT$ ;
+: REC-EFFECT$ ( n -- ^u8 n )  dup R-EFF REC@ swap R-EFF-U REC@ AT$ ;
 
 \ Whether the record stands for several words: the check read its file again
 \ and declared its word at its token again, letters compared without case.
@@ -1020,8 +1020,8 @@ public
    {: u:n :}
    u U-START USE@ u U-END USE@ ;
 
-: USE-WORD$ ( ptr u8 n n -- ptr u8 n )
-   {: t:ptr tu:n u:n :}
+: USE-WORD$ ( ^u8 n n -- ^u8 n )
+   {: t:^ tu:n u:n :}
    u USE-BYTES {: from:n to:n :}
    from 0 max tu min {: a:n :}
    to a max tu min {: b:n :}
@@ -1178,14 +1178,14 @@ public
 \ whole identity; then its lower-case tail, its package, empty for a global,
 \ and its visibility, the same number for the same one.
 : DECL-VISIT ( n -- n )  D-VISIT DECL@ ;
-: DECL-NAME$ ( n -- ptr u8 n )  dup D-NAME DECL@ swap D-NAME-U DECL@ AT$ ;
-: DECL-PACKAGE$ ( n -- ptr u8 n )  dup D-PKG DECL@ swap D-PKG-U DECL@ AT$ ;
+: DECL-NAME$ ( n -- ^u8 n )  dup D-NAME DECL@ swap D-NAME-U DECL@ AT$ ;
+: DECL-PACKAGE$ ( n -- ^u8 n )  dup D-PKG DECL@ swap D-PKG-U DECL@ AT$ ;
 : DECL-VIS ( n -- n )  D-VIS DECL@ ;
 
 \ The same of the declaration the use is bound to, as its line states them.
 : USE-VISIT ( n -- n )  U-VISIT USE@ ;
-: USE-NAME$ ( n -- ptr u8 n )  dup U-NAME USE@ swap U-NAME-U USE@ AT$ ;
-: USE-PACKAGE$ ( n -- ptr u8 n )  dup U-PKG USE@ swap U-PKG-U USE@ AT$ ;
+: USE-NAME$ ( n -- ^u8 n )  dup U-NAME USE@ swap U-NAME-U USE@ AT$ ;
+: USE-PACKAGE$ ( n -- ^u8 n )  dup U-PKG USE@ swap U-PKG-U USE@ AT$ ;
 : USE-VIS ( n -- n )  U-VIS USE@ ;
 
 : GROUP-REC-AT ( n n n -- option<n> )
@@ -1210,8 +1210,8 @@ public
 \ first byte nor its last: the byte after that colon; else -1. SPLIT-NEXT's
 \ flag says only that its start was valid: the position it returns lies past
 \ W's end when no colon follows that start.
-: QUALIFIER-AT ( ptr u8 n -- n )
-   {: w:ptr wu:n :}
+: QUALIFIER-AT ( ^u8 n -- n )
+   {: w:^ wu:n :}
    w wu [char] : 0 SPLIT-NEXT drop nip nip
    {: at:n :}
    w wu [char] : at SPLIT-NEXT drop nip nip
@@ -1220,8 +1220,8 @@ public
 
 private
 
-: GROUP-REC-WORD ( n n n ptr u8 n -- option<n> )
-   {: g:n ts:n te:n w:ptr wu:n :}
+: GROUP-REC-WORD ( n n n ^u8 n -- option<n> )
+   {: g:n ts:n te:n w:^ wu:n :}
    g G-FIRST GROUP@
    begin dup 0 >= while
       dup REC-BYTES te = swap ts = and if
@@ -1231,8 +1231,8 @@ private
    repeat
    drop OPTION:NONE ;
 
-: GROUP-REC-TAIL ( n n n ptr u8 n -- option<n> )
-   {: g:n ts:n te:n w:ptr wu:n :}
+: GROUP-REC-TAIL ( n n n ^u8 n -- option<n> )
+   {: g:n ts:n te:n w:^ wu:n :}
    w wu QUALIFIER-AT {: at:n :}
    at 0 < if g ts te GROUP-REC-SOLE exit then
    g ts te w at + wu at - GROUP-REC-WORD MATCH option
@@ -1248,8 +1248,8 @@ public
 \ one record whose token does, if exactly one does. Records can share a token,
 \ as a DEFTYPE's two converters share its name's, so with several there and
 \ none of them W or its tail, none answers.
-: GROUP-REC-NAMED ( n n n ptr u8 n -- option<n> )
-   {: g:n ts:n te:n w:ptr wu:n :}
+: GROUP-REC-NAMED ( n n n ^u8 n -- option<n> )
+   {: g:n ts:n te:n w:^ wu:n :}
    g ts te w wu GROUP-REC-WORD MATCH option
       some OF OPTION:SOME ENDOF
       none OF g ts te w wu GROUP-REC-TAIL ENDOF
@@ -1274,15 +1274,15 @@ private
    loop
    OPTION:NONE ;
 
-: GROUP-IN ( n ptr u8 n -- option<n> )
-   {: k:n p:ptr pu:n :}
+: GROUP-IN ( n ^u8 n -- option<n> )
+   {: k:n p:^ pu:n :}
    k B-GROUP GROUP-N @ BLOCK-END k B-GROUP BLOCK@ ?do
       i PATH$ p pu STR= if i OPTION:SOME unloop exit then
    loop
    OPTION:NONE ;
 
-: PATH-IN ( n ptr u8 n -- option<n> )
-   {: k:n p:ptr pu:n :}
+: PATH-IN ( n ^u8 n -- option<n> )
+   {: k:n p:^ pu:n :}
    k B-CURRENT BLOCK@ 0= if OPTION:NONE exit then
    k p pu GROUP-IN ;
 
@@ -1301,8 +1301,8 @@ public
 \ Whether the last completed check of the document in this slot read the file
 \ at this canonical path, whether or not a check of it has started since;
 \ false if the store keeps no check of it.
-: DEFS-READ? ( n ptr u8 n -- bool )
-   {: slot:n p:ptr pu:n :}
+: DEFS-READ? ( n ^u8 n -- bool )
+   {: slot:n p:^ pu:n :}
    slot BLOCK-OF MATCH option
       some OF
          {: k:n :}
@@ -1316,8 +1316,8 @@ public
 
 \ A check depends on files it read and on the loader target at which it
 \ stopped. The latter has no source group because the check read no bytes.
-: DEFS-DEPENDS? ( n ptr u8 n -- bool )
-   {: slot:n p:ptr pu:n :}
+: DEFS-DEPENDS? ( n ^u8 n -- bool )
+   {: slot:n p:^ pu:n :}
    slot p pu DEFS-READ? if true exit then
    slot BLOCK-OF MATCH option
       some OF
@@ -1333,8 +1333,8 @@ public
 \ document in this slot, while that check's positions are of the document's
 \ text; none if the store keeps no check of it, a check of it has started
 \ since, or the check kept no group for the file.
-: DEFS-GROUP-OF ( n ptr u8 n -- option<n> )
-   {: slot:n p:ptr pu:n :}
+: DEFS-GROUP-OF ( n ^u8 n -- option<n> )
+   {: slot:n p:^ pu:n :}
    slot BLOCK-OF MATCH option
       some OF p pu PATH-IN ENDOF
       none OF OPTION:NONE ENDOF

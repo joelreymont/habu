@@ -30,25 +30,25 @@ SHA256-CTX-BYTES CWORK-SPAN SHA-CTX u8   \ this package's digest context
 
 public
 
-: SLOT! ( n ptr u8 n -- ) SLOT-BYTES * + LE:U64! ;
-: SLOT@ ( ptr u8 n -- n ) SLOT-BYTES * + LE:U64@ ;
+: SLOT! ( n ^u8 n -- ) SLOT-BYTES * + LE:U64! ;
+: SLOT@ ( ^u8 n -- n ) SLOT-BYTES * + LE:U64@ ;
 
 \ ---- whole runs of slots -----------------------------------------------------
 
-: SLOTS-COPY ( ptr u8 ptr u8 n -- )
-   {: src:ptr dst:ptr n:n :}
+: SLOTS-COPY ( ^u8 ^u8 n -- )
+   {: src:^ dst:^ n:n :}
    n 0 <= if exit then
    n 0 ?do
       src i SLOT-BYTES * + CELL-VIEW @
       dst i SLOT-BYTES * + CELL-VIEW !
    loop ;
 
-: SLOTS-ZERO ( ptr u8 n -- )
-   {: dst:ptr n:n :}
+: SLOTS-ZERO ( ^u8 n -- )
+   {: dst:^ n:n :}
    n 0 <= if exit then
    n 0 ?do 0 dst i SLOT-BYTES * + CELL-VIEW ! loop ;
 
-: COMPUTE ( ptr u8 n -- CDIGEST:digest ) {: a u:n :}
+: COMPUTE ( ^u8 n -- CDIGEST:digest ) {: a u:n :}
    SHA-CTX a u DG SHA256-IN
    DG 0 SLOT@  DG 1 SLOT@  DG 2 SLOT@  DG 3 SLOT@
    CDIGEST-DIGEST:MAKE ;

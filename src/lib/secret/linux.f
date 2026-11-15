@@ -9,7 +9,7 @@ private
 
 LIBRARY libglib-2.0.so.0
 FUNCTION: HASH-NEW g_hash_table_new ( n n -- n ) ;FUNCTION
-FUNCTION: HASH-INSERT g_hash_table_insert ( n ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: HASH-INSERT g_hash_table_insert ( n ^u8 n -- i32 ) ;FUNCTION
 FUNCTION: HASH-FREE g_hash_table_unref ( n -- ) ;FUNCTION
 FUNCTION: ERROR-FREE g_error_free ( n -- ) ;FUNCTION
 FUNCTION: LIST-DATA g_list_nth_data ( n n -- n ) ;FUNCTION
@@ -19,9 +19,9 @@ LIBRARY libgobject-2.0.so.0
 FUNCTION: OBJECT-FREE g_object_unref ( n -- ) ;FUNCTION
 
 LIBRARY libsecret-1.so.0
-FUNCTION: SECRET-SEARCH secret_service_search_sync ( n n n n n ptr u8 -- n ) ;FUNCTION
+FUNCTION: SECRET-SEARCH secret_service_search_sync ( n n n n n ^u8 -- n ) ;FUNCTION
 FUNCTION: SECRET-GET secret_item_get_secret ( n -- n ) ;FUNCTION
-FUNCTION: VALUE-GET secret_value_get ( n ptr u8 -- ptr u8 ) ;FUNCTION
+FUNCTION: VALUE-GET secret_value_get ( n ^u8 -- ^u8 ) ;FUNCTION
 FUNCTION: VALUE-FREE secret_value_unref ( n -- ) ;FUNCTION
 
 PROCESS-SYMBOLS
@@ -43,7 +43,7 @@ FUNCTION: LIB-CLOSE dlclose ( n -- i32 ) ;FUNCTION
 : ID-ALLOC ( n -- n )
    FFI:CSTR-ROOM MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN SPAN:$ drop FFI:>CELL ;
 
-: ID-COPY ( ptr u8 n n -- )
+: ID-COPY ( ^u8 n n -- )
    {: text u:n cell:n :}
    text u cell u ID-SPAN FFI:CSTR drop ;
 
@@ -52,8 +52,8 @@ FUNCTION: LIB-CLOSE dlclose ( n -- i32 ) ;FUNCTION
    cell 0= if exit then
    cell u ID-SPAN MEM:FREE-SPAN ;
 
-: LINUX-OPEN ( ptr request -- )
-   {: req:ptr :}
+: LINUX-OPEN ( ^request -- )
+   {: req:^ :}
    s\" libglib-2.0.so.0\z" drop FFI:NOW FFI:DLOPEN AVAILABLE req REQUEST-LIBRARY !
    req REQUEST-LIBRARY @ s\" g_str_hash\z" drop FFI:DLSYM AVAILABLE
    req REQUEST-LIBRARY @ s\" g_str_equal\z" drop FFI:DLSYM AVAILABLE
@@ -66,8 +66,8 @@ FUNCTION: LIB-CLOSE dlclose ( n -- i32 ) ;FUNCTION
    req REQUEST-QUERY @ s\" service\z" drop req REQUEST-SERVICE-OBJ @ HASH-INSERT drop
    req REQUEST-QUERY @ s\" account\z" drop req REQUEST-ACCOUNT-OBJ @ HASH-INSERT drop ;
 
-: LINUX-READ ( ptr request -- )
-   {: req:ptr :}
+: LINUX-READ ( ^request -- )
+   {: req:^ :}
    req LINUX-OPEN
    \ Search retains a matching locked item even when its unlock prompt is dismissed.
    0 0 req REQUEST-QUERY @ 12 0 req REQUEST-ERROR BYTE-VIEW SECRET-SEARCH
@@ -79,8 +79,8 @@ FUNCTION: LIB-CLOSE dlclose ( n -- i32 ) ;FUNCTION
    req REQUEST-VALUE @ req REQUEST-SIZE BYTE-VIEW VALUE-GET
    req REQUEST-SIZE @ req COPY-VALUE ;
 
-: LINUX-CLOSE ( ptr request -- )
-   {: req:ptr :}
+: LINUX-CLOSE ( ^request -- )
+   {: req:^ :}
    req REQUEST-VALUE @ dup 0 <> if VALUE-FREE else drop then
    req REQUEST-ERROR @ dup 0 <> if ERROR-FREE else drop then
    req REQUEST-LIST @ dup 0 <> if

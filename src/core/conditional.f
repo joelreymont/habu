@@ -12,7 +12,7 @@
 : [if] ( bool -- )
    if exit then
    data-base TKA-CELL + 0 ptr-field @  data-base TKL-CELL + @
-   {: ta:ptr tu:n :}
+   {: ta:^ tu:n :}
    1 begin dup 0 > while
       parse-name dup 0= if
          s" E-UNTERMINATED-IF" REJECTION:OPEN

@@ -17,19 +17,19 @@ create BIG BUF:HDR-BYTES allot
 TYPED-VARIABLE ACTIVE SSE:decoder
 variable CALLS
 
-: APPEND ( ptr u8 n ptr a -- )
-   {: src:ptr u:n buf:ptr :}
+: APPEND ( ^u8 n ^a -- )
+   {: src:^ u:n buf:^ :}
    src u BUF:N>BLEN buf BUF:APPEND-SPAN ;
 
-: RECORD ( ptr a ptr u8 n ptr u8 n -- )
-   {: ctx:ptr kind:ptr ku:n data:ptr du:n :}
+: RECORD ( ^a ^u8 n ^u8 n -- )
+   {: ctx:^ kind:^ ku:n data:^ du:n :}
    ctx drop
    kind ku GOT APPEND 0 GOT BUF:APPEND-BYTE
    data du GOT APPEND 0 GOT BUF:APPEND-BYTE
    1 CALLS +! ;
 
-: EXPECT ( ptr u8 n ptr u8 n -- )
-   {: kind:ptr ku:n data:ptr du:n :}
+: EXPECT ( ^u8 n ^u8 n -- )
+   {: kind:^ ku:n data:^ du:n :}
    kind ku WANT APPEND 0 WANT BUF:APPEND-BYTE
    data du WANT APPEND 0 WANT BUF:APPEND-BYTE ;
 
@@ -43,7 +43,7 @@ variable CALLS
 : A-OPEN ( -- SSE:decoder ) DEC-A DEC-BYTES SSE:OPEN ;
 : B-OPEN ( -- SSE:decoder ) DEC-B DEC-BYTES SSE:OPEN ;
 
-: SEND ( SSE:decoder ptr u8 n -- )
+: SEND ( SSE:decoder ^u8 n -- )
    NULL-PTR [: RECORD ;] SSE:FEED ;
 
 : BASIC ( -- )
@@ -72,7 +72,7 @@ variable CALLS
    s" message" s" z" EXPECT
    A-OPEN {: d:SSE:decoder :}
    s\" \xEF\xBB\xBF:ignored\r\nevent: custom\r\ndata: A\rdata: é\n\r\ndata:\n\nid: ignored\n\nevent:\ndata: z\n\n"
-   {: src:ptr u:n :}
+   {: src:^ u:n :}
    d src cut SEND
    d src cut + u cut - SEND
    d SSE:FINISH d SSE:CLOSE
@@ -125,8 +125,8 @@ variable CALLS
    d SSE:CLOSE
    1 CHECK ;
 
-: BOM-CUT ( ptr u8 n n -- )
-   {: src:ptr u:n cut:n :}
+: BOM-CUT ( ^u8 n n -- )
+   {: src:^ u:n cut:n :}
    A-OPEN {: d:SSE:decoder :}
    d src cut SEND
    d src cut + u cut - SEND
@@ -175,7 +175,7 @@ variable CALLS
    ACTIVE @ SSE:CLOSE
    0 CHECK ;
 
-: BOOM ( ptr a ptr u8 n ptr u8 n -- )
+: BOOM ( ^a ^u8 n ^u8 n -- )
    2drop 2drop drop -12345 throw ;
 
 : CALLBACK-FAILURE ( -- )

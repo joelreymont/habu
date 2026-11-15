@@ -23,23 +23,23 @@ variable INC-CORE-U
 variable INC-API-U
 variable INC-MAIN-U
 variable INC-DUP-U
-TYPED-VARIABLE LABEL-A ptr u8
+TYPED-VARIABLE LABEL-A ^u8
 variable LABEL-U
-TYPED-VARIABLE CANDIDATE-A ptr u8
+TYPED-VARIABLE CANDIDATE-A ^u8
 variable CANDIDATE-U
 variable CANDIDATE-VERDICT
 
-: LABEL$ ( -- ptr u8 n )
+: LABEL$ ( -- ^u8 n )
    LABEL-A @ LABEL-U @ ;
 
-: CANDIDATE$ ( -- ptr u8 n )
+: CANDIDATE$ ( -- ^u8 n )
    CANDIDATE-A @ CANDIDATE-U @ ;
 
-: LABEL! ( ptr u8 n -- ) {: a:ptr u:n :}
+: LABEL! ( ^u8 n -- ) {: a:^ u:n :}
    u LABEL-U !
    a LABEL-A ! ;
 
-: CANDIDATE! ( ptr u8 n -- ) {: a:ptr u:n :}
+: CANDIDATE! ( ^u8 n -- ) {: a:^ u:n :}
    u CANDIDATE-U !
    a CANDIDATE-A ! ;
 
@@ -53,33 +53,33 @@ variable CANDIDATE-VERDICT
    EMIT-LONG-NAME
    GE-DQ GE-SRC-C ;
 
-: SRC-DOTQ ( ptr u8 n -- ) {: a:ptr u:n :}
+: SRC-DOTQ ( ^u8 n -- ) {: a:^ u:n :}
    DOT-CHAR GE-SRC-C
    GE-DQ GE-SRC-C
    GE-SRC-SP
    a u GE-SRC+
    GE-DQ GE-SRC-C ;
 
-: SRC-CQ ( ptr u8 n -- ) {: a:ptr u:n :}
+: SRC-CQ ( ^u8 n -- ) {: a:^ u:n :}
    C-LOWER-CHAR GE-SRC-C
    GE-DQ GE-SRC-C
    GE-SRC-SP
    a u GE-SRC+
    GE-DQ GE-SRC-C ;
 
-: INC-CORE$ ( -- ptr u8 n )
+: INC-CORE$ ( -- ^u8 n )
    INC-CORE INC-CORE-U @ ;
 
-: INC-API$ ( -- ptr u8 n )
+: INC-API$ ( -- ^u8 n )
    INC-API INC-API-U @ ;
 
-: INC-MAIN$ ( -- ptr u8 n )
+: INC-MAIN$ ( -- ^u8 n )
    INC-MAIN INC-MAIN-U @ ;
 
-: INC-DUP$ ( -- ptr u8 n )
+: INC-DUP$ ( -- ^u8 n )
    INC-DUP INC-DUP-U @ ;
 
-: INC-PATH! ( ptr u8 n ptr u8 ptr n -- ) {: name:ptr nameu:n dst:ptr up:ptr :}
+: INC-PATH! ( ^u8 n ^u8 ^n -- ) {: name:^ nameu:n dst:^ up:^ :}
    GT-ROOT name nameu dst FS:JOIN-PATH up ! ;
 
 : INC-PATHS ( -- )
@@ -88,16 +88,16 @@ variable CANDIDATE-VERDICT
    s" app-main.f" INC-MAIN INC-MAIN-U INC-PATH!
    s" app-dup.f" INC-DUP INC-DUP-U INC-PATH! ;
 
-: SB-LINE ( ptr u8 n -- )
+: SB-LINE ( ^u8 n -- )
    SB-APPEND
    GE-LF SB-APPEND-C ;
 
-: SB-INCLUDE-LINE ( ptr u8 n -- )
+: SB-INCLUDE-LINE ( ^u8 n -- )
    s" include " SB-APPEND
    SB-APPEND
    GE-LF SB-APPEND-C ;
 
-: SB-S" ( ptr u8 n -- )
+: SB-S" ( ^u8 n -- )
    s" s" SB-APPEND
    GE-DQ SB-APPEND-C
    GE-SP SB-APPEND-C
@@ -256,13 +256,13 @@ variable CANDIDATE-VERDICT
    SB$ s" hb dictionary name over 255 bytes output" GE-EXPECT-OUT ;
 
 \ The clause hands back a cell of raw allot'd storage, so both it and the checked
-\ consumer declare `ptr n`: a parametric pointee over raw storage is
+\ consumer declare `^n`: a parametric pointee over raw storage is
 \ E-NONPARAMETRIC-EFFECT (docs/forth.md "Real types, not reflexive `n`.").
 : TRUSTED-DOES-SOURCE ( -- )
    GE-SRC-RESET
-   s" TRUSTED: ARR ( n -- ) create cells allot does> ( n -- ptr n ) swap 0 ?do cell+ loop ;" GE-SRC-LINE
+   s" TRUSTED: ARR ( n -- ) create cells allot does> ( n -- ^n ) swap 0 ?do cell+ loop ;" GE-SRC-LINE
    s" 4 ARR A4" GE-SRC-LINE
-   s" USE ( n -- ptr n ) A4" GE-SRC-CHECK-LINE
+   s" USE ( n -- ^n ) A4" GE-SRC-CHECK-LINE
    s" 7 2 A4 !" GE-SRC-LINE
    s" 2 A4 @ ." GE-SRC-LINE ;
 
@@ -278,11 +278,11 @@ variable CANDIDATE-VERDICT
 : BAD-DOES ( -- )
    GE-HB-RESET
    GE-SRC-RESET
-   s" TRUSTED: BADARR ( n -- ) create cells allot does> ( n -- ptr a ) drop ;" GE-SRC-LINE
-   70 s" error[E-MISMATCH]: the `does>` clause of BADARR ends with n on the stack; its signature promises ptr a" s" hb bad trusted DOES> diagnostic" GE-EVAL-FORK-BAD
-   s" = evaluated: TRUSTED: BADARR ( n -- ) create cells allot does> ( n -- ptr a ) drop ;" s" hb bad trusted DOES> diagnostic evaluated note" GE-EXPECT-ERR-HAS
+   s" TRUSTED: BADARR ( n -- ) create cells allot does> ( n -- ^a ) drop ;" GE-SRC-LINE
+   70 s" error[E-MISMATCH]: the `does>` clause of BADARR ends with n on the stack; its signature promises ^a" s" hb bad trusted DOES> diagnostic" GE-EVAL-FORK-BAD
+   s" = evaluated: TRUSTED: BADARR ( n -- ) create cells allot does> ( n -- ^a ) drop ;" s" hb bad trusted DOES> diagnostic evaluated note" GE-EXPECT-ERR-HAS
    s" the stack holds n after this" s" hb bad trusted DOES> diagnostic label" GE-EXPECT-ERR-HAS
-   s" = help: leave ptr a after `drop`, or declare ( n -- n )" s" hb bad trusted DOES> diagnostic help" GE-EXPECT-ERR-HAS
+   s" = help: leave ^a after `drop`, or declare ( n -- n )" s" hb bad trusted DOES> diagnostic help" GE-EXPECT-ERR-HAS
    s" = inferred: n -- n" s" hb bad trusted DOES> diagnostic inferred note" GE-EXPECT-ERR-HAS
    GE-HB-RESET
    GE-SRC-RESET
@@ -333,10 +333,10 @@ variable CANDIDATE-VERDICT
    s" P2 ( i64 i64 -- i64 i64 ) 2>r 2r>" GE-SRC-CHECK-LINE
    s" P3 ( i64 -- i64 ) abs" GE-SRC-CHECK-LINE
    s" P4 ( i64 i64 -- i64 i64 ) /mod" GE-SRC-CHECK-LINE
-   s" P5 ( ptr u8 -- ptr u8 i64 ) count" GE-SRC-CHECK-LINE
+   s" P5 ( ^u8 -- ^u8 i64 ) count" GE-SRC-CHECK-LINE
    s" P6 ( i64 i64 -- i64 i64 i64 ) depth" GE-SRC-CHECK-LINE
    s" P7 ( -- n ) 0 4096 3 $1002 -1 0 mmap" GE-SRC-CHECK-LINE
-   s" P8 ( ptr u8 ptr a -- ptr u8 ) swap over 0 ptr-field ! 0 ptr-field @" GE-SRC-CHECK-LINE
+   s" P8 ( ^u8 ^a -- ^u8 ) swap over 0 ptr-field ! 0 ptr-field @" GE-SRC-CHECK-LINE
    s" hb primitive checklist signatures" GE-EVAL-RUN-STDIN
    SB-RESET
    s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE
@@ -364,11 +364,11 @@ variable CANDIDATE-VERDICT
    s" CTRI ( i64 -- i64 i64 i64 ) [: 1+ ;] [: 2 * ;] [: 3 + ;] TRI" GE-SRC-CHECK-LINE
    s" CTIMES ( i64 -- i64 ) 5 [: 1+ ;] TIMES" GE-SRC-CHECK-LINE
    \ The array's element and the quotation's operand are one type in
-   \ EACH/MAP/FOLD (`ptr a` with `[ .. a .. ]`); `[: + ;]` and `[: 1+ ;]` are
-   \ `n` arithmetic, so the array is `ptr n`.
-   s" CEACH ( i64 ptr n i64 -- i64 ) [: + ;] EACH" GE-SRC-CHECK-LINE
-   s" CMAP ( ptr n i64 -- ) [: 1+ ;] MAP" GE-SRC-CHECK-LINE
-   s" CFOLD ( ptr n i64 i64 -- i64 ) [: + ;] FOLD" GE-SRC-CHECK-LINE
+   \ EACH/MAP/FOLD (`^a` with `[ .. a .. ]`); `[: + ;]` and `[: 1+ ;]` are
+   \ `n` arithmetic, so the array is `^n`.
+   s" CEACH ( i64 ^n i64 -- i64 ) [: + ;] EACH" GE-SRC-CHECK-LINE
+   s" CMAP ( ^n i64 -- ) [: 1+ ;] MAP" GE-SRC-CHECK-LINE
+   s" CFOLD ( ^n i64 i64 -- i64 ) [: + ;] FOLD" GE-SRC-CHECK-LINE
    s" hb combinator/iterator verdicts" GE-EVAL-RUN-STDIN
    SB-RESET
    s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE
@@ -547,15 +547,15 @@ variable CANDIDATE-VERDICT
    0 GT-OUT-U !
    CHECK-ALL-ERRORS:OUT$ nip GT-ERR-U ! ;
 
-: CHECK-BUF-RUN ( ptr u8 n -- ) {: label:ptr labelu:n :}
+: CHECK-BUF-RUN ( ^u8 n -- ) {: label:^ labelu:n :}
    label labelu GT-PROGRESS-RUN
    label labelu LABEL!
    GT-ERR-BUF GT-ERR-CAP CHECK-ALL-ERRORS:BUFFERS!
    false REJECTION:JSON !
    [: CHECK-BUF-ACT ;] catch CHECK-BUF-STORE ;
 
-: CHECK-BUF-BAD ( n ptr u8 n ptr u8 n -- )
-   {: rc:n needle:ptr needleu:n label:ptr labelu:n :}
+: CHECK-BUF-BAD ( n ^u8 n ^u8 n -- )
+   {: rc:n needle:^ needleu:n label:^ labelu:n :}
    label labelu CHECK-BUF-RUN
    rc label labelu GE-EXPECT-RC
    needle needleu label labelu GE-EXPECT-ERR-HAS
@@ -574,31 +574,31 @@ variable CANDIDATE-VERDICT
    rc CANDIDATE-RC PROCESS-ENDING:exited GT-OUTCOME!
    0 GT-OUT-U !
    REJECTION:BUFFER-OFF
-   REJECTION:BUFFER$ {: a:ptr u:n :}
+   REJECTION:BUFFER$ {: a:^ u:n :}
    u GT-ERR-CAP > if E-STR-CAPACITY throw then
    a GT-ERR-BUF u BYTE-COPY
    u GT-ERR-U ! ;
 
-: CANDIDATE-RUN ( ptr u8 n ptr u8 n -- ) {: body:ptr bodyu:n label:ptr labelu:n :}
+: CANDIDATE-RUN ( ^u8 n ^u8 n -- ) {: body:^ bodyu:n label:^ labelu:n :}
    label labelu GT-PROGRESS-RUN
    body bodyu CANDIDATE!
    -1 CANDIDATE-VERDICT !
    REJECTION:CAPTURE
    [: CANDIDATE-ACT ;] catch CANDIDATE-STORE ;
 
-: CANDIDATE-BAD ( ptr u8 n n ptr u8 n ptr u8 n -- )
-   {: body:ptr bodyu:n rc:n needle:ptr needleu:n label:ptr labelu:n :}
+: CANDIDATE-BAD ( ^u8 n n ^u8 n ^u8 n -- )
+   {: body:^ bodyu:n rc:n needle:^ needleu:n label:^ labelu:n :}
    body bodyu label labelu CANDIDATE-RUN
    rc label labelu GE-EXPECT-RC
    needle needleu label labelu GE-EXPECT-ERR-HAS
    label labelu GT-PROGRESS-PASS ;
 
-: CHECK-BAD-ALL ( ptr u8 n -- ) {: label:ptr labelu:n :}
+: CHECK-BAD-ALL ( ^u8 n -- ) {: label:^ labelu:n :}
    label labelu CHECK-BUF-RUN
    70 label labelu GE-EXPECT-RC
    label labelu GT-PROGRESS-PASS ;
 
-: CHECK-BUF-GOOD ( ptr u8 n -- ) {: label:ptr labelu:n :}
+: CHECK-BUF-GOOD ( ^u8 n -- ) {: label:^ labelu:n :}
    label labelu CHECK-BUF-RUN
    label labelu GE-EXPECT-OK
    label labelu GE-EXPECT-SILENT
@@ -653,11 +653,11 @@ variable CANDIDATE-VERDICT
    $46 s" E-DEAD-CODE" s" package undefine keeps other no-return symbol" CHECK-BUF-BAD
    s" `GD-NRA:STOP`" s" package undefine keeps GD-NRA:STOP no-return" GE-EXPECT-ERR-HAS ;
 
-: RUN-BAD-SOURCE ( n ptr u8 n ptr u8 n -- )
+: RUN-BAD-SOURCE ( n ^u8 n ^u8 n -- )
    GE-EVAL-FORK-BAD ;
 
-: RUN-BAD-CHILD ( n ptr u8 n ptr u8 n -- )
-   {: rc:n needle:ptr needleu:n label:ptr labelu:n :}
+: RUN-BAD-CHILD ( n ^u8 n ^u8 n -- )
+   {: rc:n needle:^ needleu:n label:^ labelu:n :}
    GE-HB$ GE-SRC-BUF GE-SRC-U @
    PROCESS:WAIT-FOREVER MS>N GE-RUN-STDIN
    rc label labelu GE-EXPECT-RC
@@ -747,16 +747,16 @@ variable CANDIDATE-VERDICT
    s" -4332462841530417152" GE-OUT-LINE
    SB$ s" hb last safe decimal value" GE-EXPECT-OUT ;
 
-: LITERAL-FLOAT-BAD-INTERPRETED ( ptr u8 n ptr u8 n -- )
-   {: lit:ptr litu:n label:ptr labelu:n :}
+: LITERAL-FLOAT-BAD-INTERPRETED ( ^u8 n ^u8 n -- )
+   {: lit:^ litu:n label:^ labelu:n :}
    GE-HB-RESET
    GE-SRC-RESET
    lit litu GE-SRC+
    s"  ." GE-SRC-LINE
    70 lit litu label labelu GE-EVAL-FORK-BAD ;
 
-: LITERAL-FLOAT-BAD-CHECKED ( ptr u8 n ptr u8 n -- )
-   {: lit:ptr litu:n label:ptr labelu:n :}
+: LITERAL-FLOAT-BAD-CHECKED ( ^u8 n ^u8 n -- )
+   {: lit:^ litu:n label:^ labelu:n :}
    GE-HB-RESET
    GE-SRC-RESET
    s" : GD-FLOAT-OVERFLOW ( -- r ) " GE-SRC+
@@ -764,7 +764,7 @@ variable CANDIDATE-VERDICT
    s"  ;" GE-SRC-LINE
    70 lit litu label labelu GE-EVAL-FORK-BAD ;
 
-: LITERAL-FLOAT-HOSTILE ( ptr u8 n -- ) {: lit:ptr litu:n :}
+: LITERAL-FLOAT-HOSTILE ( ^u8 n -- ) {: lit:^ litu:n :}
    GE-HB-RESET
    GE-SRC-RESET
    s" : " GE-SRC+ lit litu GE-SRC+
@@ -931,9 +931,9 @@ variable CANDIDATE-VERDICT
    s" : TARGET ( -- n ) 42 ;" GE-SRC-LINE
    s" ;package" GE-SRC-LINE
    s" GD-QUNDEF:TARGET ." GE-SRC-LINE
-   s" TYPED-VARIABLE GD-UQ-A ptr u8   variable GD-UQ-U" GE-SRC-LINE
+   s" TYPED-VARIABLE GD-UQ-A ^u8   variable GD-UQ-U" GE-SRC-LINE
    s" : GD-UQ-GO ( -- ) GD-UQ-A @ GD-UQ-U @ evaluate-closed ;" GE-SRC-LINE
-   s" : GD-UQ-CATCH ( ptr u8 n -- n ) GD-UQ-U ! GD-UQ-A ! [: GD-UQ-GO ;] catch ;" GE-SRC-LINE
+   s" : GD-UQ-CATCH ( ^u8 n -- n ) GD-UQ-U ! GD-UQ-A ! [: GD-UQ-GO ;] catch ;" GE-SRC-LINE
    s" s" GE-SRC+ GE-DQ GE-SRC-C s"  undefine PCAP-CAPTURED:MAKE" GE-SRC+ GE-DQ GE-SRC-C
    s"  GD-UQ-CATCH ." GE-SRC-LINE
    s" s" GE-SRC+ GE-DQ GE-SRC-C s"  PCAP-CAPTURED:MAKE" GE-SRC+ GE-DQ GE-SRC-C
@@ -1004,7 +1004,7 @@ variable CANDIDATE-VERDICT
    s" ;package" GE-SRC-LINE
    $46 s" error[E-DUPLICATE-DEFINITION]" s" checker rejects package duplicate definition" CHECK-BUF-BAD ;
 
-: RUN-LOAD-ONE ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu:n label:ptr labelu:n :}
+: RUN-LOAD-ONE ( ^u8 n ^u8 n -- ) {: path:^ pathu:n label:^ labelu:n :}
    GE-HB-RESET
    s" --load" GE-ARG+
    path pathu GE-ARG+
@@ -1014,7 +1014,7 @@ variable CANDIDATE-VERDICT
    label labelu GE-EXPECT-OK
    label labelu GT-PROGRESS-PASS ;
 
-: RUN-LOAD-THREE ( ptr u8 n -- ) {: label:ptr labelu:n :}
+: RUN-LOAD-THREE ( ^u8 n -- ) {: label:^ labelu:n :}
    GE-HB-RESET
    s" --load" GE-ARG+
    INC-CORE$ GE-ARG+
@@ -1026,8 +1026,8 @@ variable CANDIDATE-VERDICT
    label labelu GE-EXPECT-OK
    label labelu GT-PROGRESS-PASS ;
 
-: RUN-LOAD-BAD ( n ptr u8 n ptr u8 n -- )
-   {: rc:n needle:ptr needleu:n label:ptr labelu:n :}
+: RUN-LOAD-BAD ( n ^u8 n ^u8 n -- )
+   {: rc:n needle:^ needleu:n label:^ labelu:n :}
    GE-HB-RESET
    s" --load" GE-ARG+
    INC-MAIN$ GE-ARG+
@@ -1036,7 +1036,7 @@ variable CANDIDATE-VERDICT
    rc label labelu GE-EXPECT-RC
    needle needleu label labelu GE-EXPECT-ERR-HAS ;
 
-: EXPECT-GET9 ( ptr u8 n -- ) {: label:ptr labelu:n :}
+: EXPECT-GET9 ( ^u8 n -- ) {: label:^ labelu:n :}
    SB-RESET
    s" 9" GE-OUT-LINE
    SB$ label labelu GE-EXPECT-OUT ;
@@ -1119,9 +1119,9 @@ variable CANDIDATE-VERDICT
 \ field words it declares: they read POINT's layout.
 : FIELD-WORDS-SOURCE ( -- )
    s" package GD-FW" GE-SRC-LINE
-   s" : ptr-field ( ptr a n -- ptr ptr b ) 1 + ptr-field ;" GE-SRC-LINE
-   s" : STRUCT-BYTE+ ( ptr a n -- ptr u8 ) 1 + STRUCT-BYTE+ ;" GE-SRC-LINE
-   s" : + ( ptr a n -- ptr a ) CELL + + ;" GE-SRC-LINE
+   s" : ptr-field ( ^a n -- ^^b ) 1 + ptr-field ;" GE-SRC-LINE
+   s" : STRUCT-BYTE+ ( ^a n -- ^u8 ) 1 + STRUCT-BYTE+ ;" GE-SRC-LINE
+   s" : + ( ^a n -- ^a ) CELL + + ;" GE-SRC-LINE
    s" public" GE-SRC-LINE
    s" BEGIN-STRUCTURE FW" GE-SRC-LINE
    s" CELL +FIELD FW.X" GE-SRC-LINE
@@ -1157,10 +1157,10 @@ variable CANDIDATE-VERDICT
    s" GD-POINT POINT.FLAGS c@ ." GE-SRC-LINE
    s" GD-POINT POINT.NAME @ 2 type cr" GE-SRC-LINE
    s" GD-PTR @ 2 type cr" GE-SRC-LINE
-   s" : GD-USE-X ( ptr a -- ptr a ) POINT.X ;" GE-SRC-LINE
-   s" : GD-USE-NAME ( ptr a -- ptr ptr u8 ) POINT.NAME ;" GE-SRC-LINE
-   s" : GD-USE-PTR ( -- ptr ptr u8 ) GD-PTR ;" GE-SRC-LINE
-   s" : GD-USE-FLAGS ( ptr a -- ptr u8 ) POINT.FLAGS ;" GE-SRC-LINE
+   s" : GD-USE-X ( ^a -- ^a ) POINT.X ;" GE-SRC-LINE
+   s" : GD-USE-NAME ( ^a -- ^^u8 ) POINT.NAME ;" GE-SRC-LINE
+   s" : GD-USE-PTR ( -- ^^u8 ) GD-PTR ;" GE-SRC-LINE
+   s" : GD-USE-FLAGS ( ^a -- ^u8 ) POINT.FLAGS ;" GE-SRC-LINE
    FIELD-WORDS-SOURCE ;
 
 : STRUCTURES ( -- )
@@ -1187,13 +1187,13 @@ variable CANDIDATE-VERDICT
    s" structures byte-field checker setup" GE-EXPECT-SILENT ;
 
 : STRUCTURE-BAD ( -- )
-   s" GD-BAD-FLAGS ( ptr a -- n ) POINT.FLAGS @"
-   $46 s" error[E-MISMATCH]: `@` takes ptr a; the stack holds ptr u8" s" structures reject byte field cell load" CANDIDATE-BAD ;
+   s" GD-BAD-FLAGS ( ^a -- n ) POINT.FLAGS @"
+   $46 s" error[E-MISMATCH]: `@` takes ^a; the stack holds ^u8" s" structures reject byte field cell load" CANDIDATE-BAD ;
 
 : STRUCTURE-MISUSE ( -- )
    GE-HB-RESET
    GE-SRC-RESET
-   \ Depth satisfies +FIELD's declared inputs ( ptr a n n ) so the body's own
+   \ Depth satisfies +FIELD's declared inputs ( ^a n n ) so the body's own
    \ state check is reached; an underdepth bare call fails earlier with the
    \ checker's E-INPUT-UNDERFLOW record at the word.
    s" NULL-PTR 0 CELL +FIELD GD-NO-STRUCT.FIELD" GE-SRC-LINE
@@ -1259,10 +1259,10 @@ variable CANDIDATE-VERDICT
    s" : GD-XV-CALL ( -- i64 ) GD-XV-INSTALL-FIVE GD-XV-ACTION ;" GE-SRC-LINE ;
 
 : VECTOR-READER-BODY ( -- )
-   s" defer GD-XV-READER ( -- ptr u8 n )" GE-SRC-LINE
-   s" : GD-XV-LINE ( -- ptr u8 n ) 0 script-argv$ ;" GE-SRC-LINE
+   s" defer GD-XV-READER ( -- ^u8 n )" GE-SRC-LINE
+   s" : GD-XV-LINE ( -- ^u8 n ) 0 script-argv$ ;" GE-SRC-LINE
    s" : GD-XV-ENABLE ( -- ) [: GD-XV-LINE ;] is GD-XV-READER ;" GE-SRC-LINE
-   s" : GD-XV-READ ( -- ptr u8 n ) GD-XV-ENABLE GD-XV-READER ;" GE-SRC-LINE ;
+   s" : GD-XV-READ ( -- ^u8 n ) GD-XV-ENABLE GD-XV-READER ;" GE-SRC-LINE ;
 
 : EXEC-VECTORS ( -- )
    GE-HB-RESET
@@ -1316,7 +1316,7 @@ variable CANDIDATE-VERDICT
    s" : GD-XV-BAD-TICK-B ( -- ) ['] GD-XV-FIVE-B is GD-XV-ACTION-B ;" GE-SRC-LINE
    s" : GD-XV-NOT-DEFER-C ( -- ) ;" GE-SRC-LINE
    s" : GD-XV-BAD-TARGET-C ( -- ) [: ;] is GD-XV-NOT-DEFER-C ;" GE-SRC-LINE
-   s" defer GD-XV-READER-D ( -- ptr u8 n )" GE-SRC-LINE
+   s" defer GD-XV-READER-D ( -- ^u8 n )" GE-SRC-LINE
    s" : GD-XV-BAD-READER-D ( -- ) [: 1 ;] is GD-XV-READER-D ;" GE-SRC-LINE
    s" check.f rejects execution vector misuse batch" CHECK-BAD-ALL
    s" E-MISMATCH" s" check.f rejects an execution vector effect mismatch" GE-EXPECT-ERR-HAS
@@ -1389,7 +1389,7 @@ variable CANDIDATE-VERDICT
    s" ok" SRC-CQ s"  count type cr" GE-SRC-LINE
    s" : DQ ( -- ) " GE-SRC+ s" bye" SRC-DOTQ s"  ;" GE-SRC-LINE
    s" DQ cr" GE-SRC-LINE
-   s" : CQ ( -- ptr u8 n ) " GE-SRC+ s" yo" SRC-CQ s"  count ;" GE-SRC-LINE
+   s" : CQ ( -- ^u8 n ) " GE-SRC+ s" yo" SRC-CQ s"  count ;" GE-SRC-LINE
    s" CQ type cr" GE-SRC-LINE ;
 
 : PARSING-RUNTIME ( -- )
@@ -1402,7 +1402,7 @@ variable CANDIDATE-VERDICT
 
 : PARSING-CHECK-BODY ( -- )
    s" : DQ ( -- ) " GE-SRC+ s" ok" SRC-DOTQ s"  ;" GE-SRC-LINE
-   s" : CQ ( -- ptr u8 n ) " GE-SRC+ s" ok" SRC-CQ s"  count ;" GE-SRC-LINE ;
+   s" : CQ ( -- ^u8 n ) " GE-SRC+ s" ok" SRC-CQ s"  count ;" GE-SRC-LINE ;
 
 : CHECK-POSITIVE-BATCH ( -- )
    GE-HB-RESET
@@ -1441,7 +1441,7 @@ variable CANDIDATE-VERDICT
    s" hb native xref words" GE-EVAL-RUN-STDIN
    s" xref-test: ok" s" hb native xref words output" GE-EXPECT-OUT-HAS ;
 
-: NDICT-BAD-COUNT ( ptr u8 n -- ) {: lit:ptr litu:n :}
+: NDICT-BAD-COUNT ( ^u8 n -- ) {: lit:^ litu:n :}
    GE-SRC-RESET
    lit litu GE-SRC+ s"  ndict!" GE-SRC-LINE
    SB-RESET s" interpreted ndict! refuses " SB-APPEND lit litu SB-APPEND

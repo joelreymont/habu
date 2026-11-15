@@ -19,7 +19,7 @@ EXPORT C2-MEM:WITH-READ
 package C2-MEMORY-NATIVE-BOUNDARY
 private
 
-: ENTRY ( ptr u8 n -- n )
+: ENTRY ( ^u8 n -- n )
    XREF-FIND dup XREF-FOUND? 0= if
       drop s" c2-memory-native-boundary: missing entry" 71 die
    then XREF-START ;

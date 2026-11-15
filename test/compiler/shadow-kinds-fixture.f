@@ -53,7 +53,7 @@ package KINDS-FIXTURE
 
 \ == colon word with an s" literal
 package KINDS-FIXTURE
-: KD-TEXT ( -- ptr u8 n ) s" kinds" ;
+: KD-TEXT ( -- ^u8 n ) s" kinds" ;
 ;package
 
 \ == colon word with a quotation

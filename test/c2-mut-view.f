@@ -44,7 +44,7 @@ public
    s" raw storage cannot hold an exclusive view" T-LABEL
    s" variable C2-MUT-RAW : C2-MUT-STORE ( mut-view<p,q,a,u8> -- ) C2-MUT-RAW ! ;" 70 SUBJECT:EXITED? TTRUE
    s" typed pointer storage cannot hold an exclusive view" T-LABEL
-   s" : C2-MUT-TYPED-STORE ( mut-view<p,q,a,u8> ptr mut-view<p,q,a,u8> -- ) ! ;" 70 SUBJECT:EXITED? TTRUE
+   s" : C2-MUT-TYPED-STORE ( mut-view<p,q,a,u8> ^mut-view<p,q,a,u8> -- ) ! ;" 70 SUBJECT:EXITED? TTRUE
    s" a typed global cannot hold an exclusive view" T-LABEL
    s" TYPED-VARIABLE C2-MUT-SLOT mut-view<p,q,a,u8>" 70 SUBJECT:EXITED? TTRUE
    s" two raw cells cannot introduce exclusive authority" T-LABEL

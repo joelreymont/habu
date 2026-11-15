@@ -17,11 +17,11 @@ $A5 constant CANARY
 3 SPAN-BUFFER: OUT-3
 variable STAGED-LEN
 
-: OUT$ ( n -- ptr u8 n )
+: OUT$ ( n -- ^u8 n )
    OUT SPAN:$ drop swap ;
 
 
-: DECODES ( ptr u8 n ptr u8 n -- )
+: DECODES ( ^u8 n ^u8 n -- )
    {: a u:n want wu:n :}
    a u T-LABEL
    a u OUT BASE85:DECODE {: k:n :}
@@ -29,7 +29,7 @@ variable STAGED-LEN
 
 
 \ k bytes of value b, then the text t: what WANT holds after it.
-: BYTES ( n n ptr u8 n -- ptr u8 n )
+: BYTES ( n n ^u8 n -- ^u8 n )
    {: b:n k:n t tu:n :}
    k 0 ?do b WANT i SPAN:U8! loop
    tu 0 ?do t i + c@ WANT k i + SPAN:U8! loop
@@ -37,17 +37,17 @@ variable STAGED-LEN
 
 
 \ A refusal runs in a quotation, which sees no locals, so its input is staged.
-: STAGE ( ptr u8 n -- )
+: STAGE ( ^u8 n -- )
    {: a u:n :}
    a u STAGED SPAN:COPY
    u STAGED-LEN ! ;
 
 
-: STAGED$ ( -- ptr u8 n )
+: STAGED$ ( -- ^u8 n )
    STAGED SPAN:$ drop STAGED-LEN @ ;
 
 
-: REFUSES ( ptr u8 n n -- )
+: REFUSES ( ^u8 n n -- )
    {: a u:n code:n :}
    a u STAGE
    a u T-LABEL

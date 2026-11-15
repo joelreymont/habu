@@ -21,10 +21,10 @@ $8000 constant CAP
 create OUT CAP allot
 create ERR CAP allot
 
-: SELF$ ( -- ptr u8 n )
+: SELF$ ( -- ^u8 n )
    s" tools/launch-context.f" ;
 
-: HB$ ( -- ptr u8 n )
+: HB$ ( -- ^u8 n )
    s" HABU_UNDER_TEST" GETENV dup 0= if 2drop s" bin/hb" then ;
 
 : CHILD-ENV ( -- )

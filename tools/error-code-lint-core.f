@@ -109,7 +109,7 @@ variable JX
    EMIT-U ;
 
 \ ---- numeric-literal parse --------------------------------------------------
-: DEC? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
+: DEC? ( ^u8 n -- n bool ) {: a:^ u:n :}
    u 0= if 0 LINT-FALSE exit then
    0 NV !
    0 begin dup u < while
@@ -126,7 +126,7 @@ variable JX
    dup 97 >= over 102 <= and if 87 - exit then
    drop -1 ;
 
-: HEX? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
+: HEX? ( ^u8 n -- n bool ) {: a:^ u:n :}
    u 0= if 0 LINT-FALSE exit then
    0 NV !
    0 begin dup u < while
@@ -137,12 +137,12 @@ variable JX
    repeat drop
    NV @ LINT-TRUE ;
 
-: MAG? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
+: MAG? ( ^u8 n -- n bool ) {: a:^ u:n :}
    u 0= if 0 LINT-FALSE exit then
    a c@ DOLLAR-C = if a 1 + u 1- HEX? exit then
    a u DEC? ;
 
-: NEG? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
+: NEG? ( ^u8 n -- n bool ) {: a:^ u:n :}
    u 2 < if 0 LINT-FALSE exit then
    a c@ MINUS-C <> if 0 LINT-FALSE exit then
    a 1 + u 1- MAG? {: v:n ok:bool :}
@@ -151,7 +151,7 @@ variable JX
 
 \ A code is the literal's signed-cell value: `$FFFFFFFFFFFFDCD7 constant E-X`
 \ claims -9001.
-: CODE? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
+: CODE? ( ^u8 n -- n bool ) {: a:^ u:n :}
    a u NEG? {: code:n negative:bool :}
    negative if code LINT-TRUE exit then
    a u MAG? ;
@@ -160,16 +160,16 @@ variable JX
    code 0 <  code EXIT-MAX > or ;
 
 \ ---- claim table ------------------------------------------------------------
-: SENTINEL? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: SENTINEL? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" -FIRST" LINT-ENDS-WITH?  a u s" -LAST" LINT-ENDS-WITH? or ;
 
 : CODE@  ( n -- n )         CLAIM-ROWS CLAIM-CODE @ ;
 : NAME@  ( n -- intern-id ) CLAIM-ROWS CLAIM-NAME @ ;
 : OWNER@ ( n -- file-id )   CLAIM-ROWS CLAIM-OWNER @ ;
 
-: NAME$ ( intern-id -- ptr u8 n ) NAME>N INTERN$ ;
-: FILE$ ( file-id -- ptr u8 n ) FILE>N INTERN$ ;
-: STEM-NAME$ ( stem-id -- ptr u8 n ) STEM>N INTERN$ ;
+: NAME$ ( intern-id -- ^u8 n ) NAME>N INTERN$ ;
+: FILE$ ( file-id -- ^u8 n ) FILE>N INTERN$ ;
+: STEM-NAME$ ( stem-id -- ^u8 n ) STEM>N INTERN$ ;
 
 \ A (code, name) pair registered in two files (a re-export shim, a boot file loaded
 \ before src/lib/) is one identity, admitted even inside another file's range.
@@ -178,11 +178,11 @@ variable JX
    code name file CLAIM-MAKE CLAIM# @ CLAIM-ROWS !
    CLAIM# @ 1+ CLAIM# ! ;
 
-: PATH! ( ptr u8 n -- ) {: a:ptr u:n :}
+: PATH! ( ^u8 n -- ) {: a:^ u:n :}
    u PATH-CAP > if s" error-code-lint: path too long" 1 die then
    a PATH u LINT-BMOVE  u PATH-U ! ;
 
-: PATH$ ( -- ptr u8 n )  PATH PATH-U @ ;
+: PATH$ ( -- ^u8 n )  PATH PATH-U @ ;
 
 \ ---- reservation table (E-*-FIRST/E-*-LAST range blocks) --------------------
 \ E-*-FIRST / E-*-LAST are range sentinels aliasing their block's boundary codes,
@@ -194,11 +194,11 @@ variable JX
 : RES-STATE@ ( n -- reservation-state ) RES-ROWS RESERVATION-STATE @ ;
 
 \ the caller guarantees SENTINEL?
-: STEM$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+: STEM$ ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
    a u s" -FIRST" LINT-ENDS-WITH? if a u 6 - exit then
    a u 5 - ;
 
-: FIRST-TOK? ( ptr u8 n -- bool )  s" -FIRST" LINT-ENDS-WITH? ;
+: FIRST-TOK? ( ^u8 n -- bool )  s" -FIRST" LINT-ENDS-WITH? ;
 
 : RES-FIND ( stem-id file-id -- option<n> ) {: stem:stem-id file:file-id :}
    RES# @ 0 ?do
@@ -245,7 +245,7 @@ variable JX
 
 \ A new row is published whole after capacity checks; an existing row changes
 \ only after the exhaustive transition has produced its replacement state.
-: RES+ ( n ptr u8 n -- ) {: code:n a:ptr u:n :}
+: RES+ ( n ^u8 n -- ) {: code:n a:^ u:n :}
    a u STEM$ INTERN N>STEM {: stem:stem-id :}
    PATH$ INTERN N>FILE {: file:file-id :}
    a u FIRST-TOK? {: first:bool :}
@@ -281,7 +281,7 @@ variable JX
       1+
    repeat ;
 
-: DECLARER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: DECLARER? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" ERROR:CODE" LINT-STR=CI
    a u s" ERROR:FAULT" LINT-STR=CI or ;
 
@@ -304,7 +304,7 @@ variable JX
    ki LINT-LEX:COUNT >= if exit then
    ki NAME-TOKEN {: ni:n :}
    ni LINT-LEX:COUNT >= if exit then
-   ni LINT-LEX:TOKEN {: na:ptr nu:n :}
+   ni LINT-LEX:TOKEN {: na:^ nu:n :}
    na nu s" E-" LINT-PREFIX? 0= if exit then
    k LINT-LEX:TOKEN CODE? {: code:n numeric:bool :}
    numeric 0= if exit then
@@ -350,7 +350,7 @@ variable JX
    then
    s" unknown lexer diagnostic" type NL  E-LEX throw ;
 
-: SCAN-TEXT ( ptr u8 n -- ) {: a:ptr u:n :}
+: SCAN-TEXT ( ^u8 n -- ) {: a:^ u:n :}
    a u LINT-LEX:SOURCE
    LINT-LEX:ERROR? if LEX-DEFECT then
    SCAN-TOKENS ;
@@ -436,17 +436,17 @@ variable JX
    0 BAD !  0 CLAIM# !  0 RES# ! ;
 
 \ ---- file walk --------------------------------------------------------------
-: FORTH? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: FORTH? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u s" .f" HAS-EXT?  a u s" .fs" HAS-EXT? or ;
 
-: SCAN-FILE ( ptr u8 n -- ) {: a:ptr u:n :}
+: SCAN-FILE ( ^u8 n -- ) {: a:^ u:n :}
    a u FORTH? 0= if exit then
    a u PATH!
    FILE# @ 1+ FILE# !
    a u SRC-SLAB LINT-SLAB:LOAD
    SRC-SLAB LINT-SLAB:TEXT SCAN-TEXT ;
 
-: ROOT ( ptr u8 n -- )
+: ROOT ( ^u8 n -- )
    [: SCAN-FILE ;] FS:WALK-FILES ;
 
 : WALK ( -- )
@@ -465,7 +465,7 @@ variable JX
 
 public
 
-: COUNT ( ptr u8 n -- n ) {: a:ptr u:n :}
+: COUNT ( ^u8 n -- n ) {: a:^ u:n :}
    SHOW? @ {: show:bool :}
    SHOW-OFF
    RESET-LEDGER
@@ -475,7 +475,7 @@ public
    show SHOW!
    BAD @ ;
 
-: COUNT2 ( ptr u8 n ptr u8 n -- n ) {: ao:ptr auo:n af:ptr auf:n :}
+: COUNT2 ( ^u8 n ^u8 n -- n ) {: ao:^ auo:n af:^ auf:n :}
    SHOW? @ {: show:bool :}
    SHOW-OFF
    RESET-LEDGER

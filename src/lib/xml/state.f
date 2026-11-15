@@ -16,7 +16,7 @@ ENUM kind start end text comment pi cdata eof ;ENUM
 private
 CAST: KIND>N ( kind -- n )
 \ Views the token kind cell, which holds only KIND>N values.
-CAST: >KIND-CELL ( ptr n -- ptr kind )
+CAST: >KIND-CELL ( ^n -- ^kind )
 
 \ The reader's whole fixed state lives in the caller's XML:cursor record: the
 \ header cells below, ending with the reader's SipHash key drawn by
@@ -27,7 +27,7 @@ CAST: >KIND-CELL ( ptr n -- ptr kind )
 \ owns nothing; CLOSE and DISPOSE leave it owning nothing.
 public
 STRUCTURE cursor OPAQUE DERIVE addr
-   FIELD source ptr u8
+   FIELD source ^u8
    FIELD source-len n
    FIELD position n
    FIELD frame-cap n
@@ -49,14 +49,14 @@ STRUCTURE cursor OPAQUE DERIVE addr
    FIELD failed n
    FIELD attr-cap n
    FIELD source-mode n
-   FIELD wire-original ptr u8
+   FIELD wire-original ^u8
    FIELD wire-original-len n
-   FIELD wire-storage ptr u8
+   FIELD wire-storage ^u8
    FIELD wire-storage-len n
    FIELD ns-cap n
-   FIELD frames ptr n
-   FIELD attrs ptr n
-   FIELD namespaces ptr n
+   FIELD frames ^n
+   FIELD attrs ^n
+   FIELD namespaces ^n
    FIELD hash-k0 n
    FIELD hash-k1 n
    FIELD sip0 n
@@ -72,7 +72,7 @@ STRUCTURE cursor OPAQUE DERIVE addr
 EXPORT CURSOR-BYTES
 
 private
-CAST: >STATE ( ptr cursor -- ptr n )
+CAST: >STATE ( ^cursor -- ^n )
 32 constant HEADER-CELLS
 HEADER-CELLS SIPHASH:STATE-CELLS + constant FIXED-CELLS
 : LAYOUT-CHECK ( -- )
@@ -141,57 +141,57 @@ HEADER-CELLS cells constant SIP-STATE
 \ Its metadata and byte buffers are released by CLOSE, including after a
 \ failed NEXT. The caller retains the callback, context and input.
 STRUCTURE stream DERIVE addr
-   FIELD fill [ ptr n SPAN:span<u8> -- n ]
-   FIELD ctx ptr n
-   FIELD input ptr u8
+   FIELD fill [ ^n SPAN:span<u8> -- n ]
+   FIELD ctx ^n
+   FIELD input ^u8
    FIELD input-cap n
    FIELD eof n
    FIELD base n
    FIELD started n
-   FIELD token ptr u8
+   FIELD token ^u8
    FIELD token-len n
    FIELD token-cap n
-   FIELD scope ptr u8
+   FIELD scope ^u8
    FIELD scope-len n
    FIELD scope-cap n
 ;STRUCTURE
 
-: INPUT? ( ptr n -- bool )
+: INPUT? ( ^n -- bool )
    SOURCE-MODE + @ dup INPUT-UTF8 = swap INPUT-ASCII = or ;
 
-CAST: >STREAM ( ptr u8 -- ptr stream )
-CAST: STREAM>BYTES ( ptr stream -- ptr u8 )
+CAST: >STREAM ( ^u8 -- ^stream )
+CAST: STREAM>BYTES ( ^stream -- ^u8 )
 
-: STREAM@ ( ptr n -- ptr stream )
+: STREAM@ ( ^n -- ^stream )
    WIRE-STORAGE-IDX ptr-field @ >STREAM ;
 
-: ABS-OFF ( ptr n n -- n )
+: ABS-OFF ( ^n n -- n )
    {: state offset:n :}
    state INPUT? if state STREAM@ STREAM-BASE @ offset + else offset then ;
 
-: TOKEN-BUF ( ptr stream -- ptr ptr u8 ) STREAM-TOKEN ;
-: SCOPE-BUF ( ptr stream -- ptr ptr u8 ) STREAM-SCOPE ;
+: TOKEN-BUF ( ^stream -- ^^u8 ) STREAM-TOKEN ;
+: SCOPE-BUF ( ^stream -- ^^u8 ) STREAM-SCOPE ;
 
-: BUF-LEN ( ptr a -- n ) BUF:LEN@ BUF:BLEN>N ;
-: BUF-CAP ( ptr a -- n ) BUF:CAP@ BUF:BLEN>N ;
+: BUF-LEN ( ^a -- n ) BUF:LEN@ BUF:BLEN>N ;
+: BUF-CAP ( ^a -- n ) BUF:CAP@ BUF:BLEN>N ;
 
-: SCOPE$ ( ptr n -- ptr u8 n )
+: SCOPE$ ( ^n -- ^u8 n )
    STREAM@ SCOPE-BUF BUF:SPAN$ BUF:BLEN>N ;
 
-: STREAM-CLOSE ( ptr stream -- )
+: STREAM-CLOSE ( ^stream -- )
    {: stream :}
    stream STREAM-TOKEN-CAP @ 0<> if stream TOKEN-BUF BUF:DISPOSE then
    stream STREAM-SCOPE-CAP @ 0<> if stream SCOPE-BUF BUF:DISPOSE then
    stream STREAM>BYTES STREAM-CELLS cells
       MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
 
-: STREAM-OPEN-BUFS ( ptr stream n -- ptr stream n )
+: STREAM-OPEN-BUFS ( ^stream n -- ^stream n )
    {: stream cap:n :}
    stream TOKEN-BUF cap BUF:N>BLEN BUF:INIT
    stream SCOPE-BUF 16 BUF:N>BLEN BUF:INIT
    stream cap ;
 
-: STREAM-OPEN ( ptr n [ ptr n SPAN:span<u8> -- n ] SPAN:span<u8> -- ptr stream )
+: STREAM-OPEN ( ^n [ ^n SPAN:span<u8> -- n ] SPAN:span<u8> -- ^stream )
    {: ctx fill input :}
    input SPAN:$ {: bytes cap:n :}
    cap 0= if E-CAPACITY throw then
@@ -212,39 +212,39 @@ CAST: STREAM>BYTES ( ptr stream -- ptr u8 )
 -2 constant XMLNS-URI
 
 \ A reader token is its record's header cells; only these rows cross it.
-LINEAR: MINT ( ptr n -- XML:reader )
-LINEAR: ERASE ( XML:reader -- ptr n )
+LINEAR: MINT ( ^n -- XML:reader )
+LINEAR: ERASE ( XML:reader -- ^n )
 
-: STATE ( XML:reader -- XML:reader ptr n )
+: STATE ( XML:reader -- XML:reader ^n )
    ERASE dup MINT swap ;
 
-: RECORD ( ptr n n n n -- ptr n )
+: RECORD ( ^n n n n -- ^n )
    {: state table:n index:n size:n :}
    state table ptr-field @ index size * cells + ;
 
-: FRAME ( ptr n n -- ptr n ) FRAMES-IDX swap FRAME-CELLS RECORD ;
-: ATTRIBUTE ( ptr n n -- ptr n ) ATTRS-IDX swap ATTR-CELLS RECORD ;
-: NAMESPACE ( ptr n n -- ptr n ) NS-IDX swap NS-CELLS RECORD ;
+: FRAME ( ^n n -- ^n ) FRAMES-IDX swap FRAME-CELLS RECORD ;
+: ATTRIBUTE ( ^n n -- ^n ) ATTRS-IDX swap ATTR-CELLS RECORD ;
+: NAMESPACE ( ^n n -- ^n ) NS-IDX swap NS-CELLS RECORD ;
 
 \ Release a table and leave the header owning none, so a second release is a
 \ no-op.
-: TABLE-RELEASE ( ptr n n n n -- )
+: TABLE-RELEASE ( ^n n n n -- )
    {: state table:n cap-off:n size:n :}
    state cap-off + @ {: cap:n :}
    cap 0= if exit then
-   state table ptr-field @ {: old:ptr :}
+   state table ptr-field @ {: old:^ :}
    0 state cap-off + !
    NULL-PTR state table ptr-field !
    old cap size * MEM:CELLS-ALLOC-COUNT MEM:RELEASE-CELLS ;
 
 \ Doubles into a fresh mapping. Records move, so no caller keeps a record's
 \ address across a growth; a failed allocation leaves the table as it was.
-: GROW ( ptr n n n n n -- )
+: GROW ( ^n n n n n -- )
    {: state want:n table:n cap-off:n size:n :}
    state cap-off + @ {: cap:n :}
    want cap <= if exit then
    cap 2 * TABLE-START max want max {: fresh-cap:n :}
-   fresh-cap size * MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS {: fresh:ptr :}
+   fresh-cap size * MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS {: fresh:^ :}
    cap 0<> if
       state table ptr-field @ BYTE-VIEW fresh BYTE-VIEW cap size * cells BYTE-COPY
    then
@@ -252,20 +252,20 @@ LINEAR: ERASE ( XML:reader -- ptr n )
    fresh state table ptr-field !
    fresh-cap state cap-off + ! ;
 
-: FRAMES-GROW ( ptr n n -- ) FRAMES-IDX FRAME-CAP FRAME-CELLS GROW ;
-: ATTRS-GROW ( ptr n n -- ) ATTRS-IDX ATTR-CAP ATTR-CELLS GROW ;
-: NS-GROW ( ptr n n -- ) NS-IDX NS-CAP NS-CELLS GROW ;
+: FRAMES-GROW ( ^n n -- ) FRAMES-IDX FRAME-CAP FRAME-CELLS GROW ;
+: ATTRS-GROW ( ^n n -- ) ATTRS-IDX ATTR-CAP ATTR-CELLS GROW ;
+: NS-GROW ( ^n n -- ) NS-IDX NS-CAP NS-CELLS GROW ;
 
 \ Empty every prefix bucket: src/lib/xml/names.f relinks the bindings.
-: NS-HEADS-CLEAR ( ptr n -- )
+: NS-HEADS-CLEAR ( ^n -- )
    {: state :}
    state NS-CAP + @ 0 ?do -1 state i NAMESPACE NS-HEAD + ! loop ;
 
-: SOURCE$ ( ptr n -- ptr u8 n )
+: SOURCE$ ( ^n -- ^u8 n )
    {: state :}
    state SOURCE-IDX ptr-field @ state SOURCE-LEN + @ ;
 
-: INPUT-REFILL ( ptr n -- bool )
+: INPUT-REFILL ( ^n -- bool )
    {: state :}
    state STREAM@ {: stream :}
    stream STREAM-EOF @ 0<> if false exit then
@@ -282,7 +282,7 @@ LINEAR: ERASE ( XML:reader -- ptr n )
    state SOURCE-LEN + ! state SOURCE-IDX ptr-field !
    true ;
 
-: INPUT-ENSURE ( ptr n n -- bool )
+: INPUT-ENSURE ( ^n n -- bool )
    {: state want:n :}
    want 0 < if E-RANGE throw then
    begin want state SOURCE-LEN + @ > while
@@ -290,23 +290,23 @@ LINEAR: ERASE ( XML:reader -- ptr n )
    repeat
    true ;
 
-: AT ( ptr n n -- n )
+: AT ( ^n n -- n )
    {: state index:n :}
    state INPUT? if state index 1+ INPUT-ENSURE drop then
    state SOURCE$ index BYTE@ ;
 
-: EOF? ( ptr n -- bool )
+: EOF? ( ^n -- bool )
    {: state :}
    state INPUT? if state state POSITION + @ 1+ INPUT-ENSURE drop then
    state POSITION + @ state SOURCE-LEN + @ = ;
 
-: PEEK ( ptr n -- n )
+: PEEK ( ^n -- n )
    dup POSITION + @ AT ;
 
-: ADVANCE ( ptr n -- )
+: ADVANCE ( ^n -- )
    POSITION + 1 swap +! ;
 
-: ADVANCE-N ( ptr n n -- )
+: ADVANCE-N ( ^n n -- )
    {: state count:n :}
    state INPUT? if
       state state POSITION + @ count + INPUT-ENSURE drop
@@ -316,14 +316,14 @@ LINEAR: ERASE ( XML:reader -- ptr n )
    then
    count state POSITION + +! ;
 
-: SPAN$ ( ptr n n n -- ptr u8 n )
+: SPAN$ ( ^n n n -- ^u8 n )
    {: state start:n size:n :}
    start -2 < if
       state SCOPE$ drop start negate 3 - + size exit
    then
    state SOURCE-IDX ptr-field @ start + size ;
 
-: MATCH$ ( ptr n ptr u8 n -- bool )
+: MATCH$ ( ^n ^u8 n -- bool )
    {: state value size:n :}
    size 0 ?do
       state INPUT? if
@@ -339,19 +339,19 @@ LINEAR: ERASE ( XML:reader -- ptr n )
    loop
    true ;
 
-: REQUIRE-BYTE ( ptr n n -- )
+: REQUIRE-BYTE ( ^n n -- )
    {: state byte:n :}
    state PEEK byte <> if E-MALFORMED throw then
    state ADVANCE ;
 
-: WHITE? ( ptr n -- bool )
+: WHITE? ( ^n -- bool )
    dup EOF? if drop false exit then
    PEEK XML-SPACE? ;
 
-: SKIP-WHITE ( ptr n -- )
+: SKIP-WHITE ( ^n -- )
    begin dup WHITE? while dup ADVANCE repeat drop ;
 
-: INPUT-SCALAR-ENSURE ( ptr n -- )
+: INPUT-SCALAR-ENSURE ( ^n -- )
    {: state :}
    state state POSITION + @ 1+ INPUT-ENSURE 0= if exit then
    state PEEK {: lead:n :}
@@ -374,13 +374,13 @@ LINEAR: ERASE ( XML:reader -- ptr n )
       then
    loop ;
 
-: SCAN-SCALAR ( ptr n -- n )
+: SCAN-SCALAR ( ^n -- n )
    {: state :}
    state INPUT? if state INPUT-SCALAR-ENSURE then
    state SOURCE$ state POSITION + @ SCALAR-AT
    state POSITION + ! ;
 
-: INPUT-NUMERIC-LOOKAHEAD ( ptr n -- )
+: INPUT-NUMERIC-LOOKAHEAD ( ^n -- )
    {: state :}
    state state POSITION + @ 3 + INPUT-ENSURE 0= if exit then
    state state POSITION + @ 2 + AT $78 = if 0 3 $10 else 0 2 10 then
@@ -393,7 +393,7 @@ LINEAR: ERASE ( XML:reader -- ptr n )
       value digit radix NUMERIC-STEP count 1+ radix
    again ;
 
-: INPUT-ENTITY-LOOKAHEAD ( ptr n -- )
+: INPUT-ENTITY-LOOKAHEAD ( ^n -- )
    {: state :}
    state state POSITION + @ 2 + INPUT-ENSURE 0= if exit then
    state state POSITION + @ 1+ AT $23 = if
@@ -408,7 +408,7 @@ LINEAR: ERASE ( XML:reader -- ptr n )
       count 1+
    again ;
 
-: SCAN-DECODE ( ptr n n -- n n )
+: SCAN-DECODE ( ^n n -- n n )
    {: state mode:n :}
    state INPUT? if
       state state POSITION + @ 1+ INPUT-ENSURE drop
@@ -427,7 +427,7 @@ LINEAR: ERASE ( XML:reader -- ptr n )
 \ URI in the scope buffer: SCOPE-REF appends them when the frame opens or the
 \ binding is declared, SCOPE-CUT drops a frame's strings and its bindings' when it
 \ pops. A reference below -2 is a scope offset.
-: SCOPE-REF ( ptr n n n -- n n )
+: SCOPE-REF ( ^n n n -- n n )
    {: state start:n size:n :}
    state INPUT? 0= if start size exit then
    state STREAM@ SCOPE-BUF {: scope :}
@@ -435,7 +435,7 @@ LINEAR: ERASE ( XML:reader -- ptr n )
    state start size SPAN$ BUF:N>BLEN scope BUF:APPEND-SPAN
    index negate 3 - size ;
 
-: TOKEN-TRIM ( ptr stream -- )
+: TOKEN-TRIM ( ^stream -- )
    {: stream :}
    stream TOKEN-BUF BUF-LEN {: used:n :}
    stream STREAM-INPUT-CAP @
@@ -449,7 +449,7 @@ LINEAR: ERASE ( XML:reader -- ptr n )
    used stream STREAM-TOKEN-LEN !
    cap stream STREAM-TOKEN-CAP ! ;
 
-: SCOPE-TRIM ( ptr stream -- )
+: SCOPE-TRIM ( ^stream -- )
    {: stream :}
    stream SCOPE-BUF BUF-LEN {: used:n :}
    used 16 max {: need:n :}
@@ -462,7 +462,7 @@ LINEAR: ERASE ( XML:reader -- ptr n )
    used stream STREAM-SCOPE-LEN !
    cap stream STREAM-SCOPE-CAP ! ;
 
-: SCOPE-CUT ( ptr n n -- )
+: SCOPE-CUT ( ^n n -- )
    {: state ref:n :}
    state INPUT? 0= if exit then
    state STREAM@ {: stream :}
@@ -473,7 +473,7 @@ LINEAR: ERASE ( XML:reader -- ptr n )
 \ fit or the buffer is four times what it keeps, and only once at least as many
 \ bytes were consumed as remain: each move copies fewer bytes than were read
 \ since the last one, so streaming costs time linear in the input.
-: INPUT-REBASE ( ptr n -- )
+: INPUT-REBASE ( ^n -- )
    {: state :}
    state STREAM@ {: stream :}
    state POSITION + @ {: consumed:n :}
@@ -491,14 +491,14 @@ LINEAR: ERASE ( XML:reader -- ptr n )
    stream STREAM-BASE @ consumed + stream STREAM-BASE !
    0 state POSITION + ! ;
 
-: URI$ ( ptr n n n -- ptr u8 n )
+: URI$ ( ^n n n -- ^u8 n )
    {: state start:n size:n :}
    start XML-URI = if s" http://www.w3.org/XML/1998/namespace" exit then
    start XMLNS-URI = if s" http://www.w3.org/2000/xmlns/" exit then
    state start size SPAN$ ;
 
 \ A value of bytes $20..$7F other than `&` decodes to itself.
-: PLAIN-VALUE? ( ptr u8 n -- bool )
+: PLAIN-VALUE? ( ^u8 n -- bool )
    {: source size:n :}
    size 0 ?do
       source i + c@ {: byte:n :}
@@ -508,7 +508,7 @@ LINEAR: ERASE ( XML:reader -- ptr n )
 
 \ Decode a URI into destination, copying a plain one directly, with
 \ DECODE-INTO's refusals in its order.
-: URI-INTO ( ptr u8 n ptr u8 n -- n )
+: URI-INTO ( ^u8 n ^u8 n -- n )
    {: source size:n destination cap:n :}
    source size PLAIN-VALUE? 0= if
       source size DECODE-ATTR destination cap DECODE-INTO exit
@@ -519,12 +519,12 @@ LINEAR: ERASE ( XML:reader -- ptr n )
    source destination size BYTE-COPY
    size ;
 
-: CURRENT-FRAME ( ptr n -- ptr n )
+: CURRENT-FRAME ( ^n -- ^n )
    dup OPEN-DEPTH + @ 1- FRAME ;
 
 \ Release the three tables and an input reader's stream, leaving the record owning
 \ nothing and the mode LEGACY-UTF8.
-: RECORD-FREE ( ptr n -- )
+: RECORD-FREE ( ^n -- )
    {: state :}
    state FRAMES-IDX FRAME-CAP FRAME-CELLS TABLE-RELEASE
    state ATTRS-IDX ATTR-CAP ATTR-CELLS TABLE-RELEASE
@@ -538,20 +538,20 @@ LINEAR: ERASE ( XML:reader -- ptr n )
 
 
 \ Refuse bytes that overlap the record: the reader writes it on every event.
-: RECORD-CHECK ( ptr n ptr u8 n -- )
+: RECORD-CHECK ( ^n ^u8 n -- )
    {: state bytes size:n :}
    state BYTE-VIEW FIXED-CELLS cells bytes size OVERLAP? if E-ALIAS throw then ;
 
 
 \ A record a caller's throw abandoned still holds its tables: release them,
 \ then zero the header, so a failed build releases exactly what it made.
-: INIT-STATE ( ptr n -- )
+: INIT-STATE ( ^n -- )
    {: state :}
    state RECORD-FREE
    HEADER-CELLS 0 ?do 0 state i cells + ! loop ;
 
 
-: READER-TABLES ( ptr n -- )
+: READER-TABLES ( ^n -- )
    {: state :}
    state HASH-K0 + BYTE-VIEW 2 cells ENTROPY:FILL
    state 1 FRAMES-GROW
@@ -563,12 +563,12 @@ LINEAR: ERASE ( XML:reader -- ptr n )
 
 
 \ Answer the reader a build body made, or release it and rethrow the body's code.
-: BUILT ( ptr n n -- XML:reader )
+: BUILT ( ^n n -- XML:reader )
    {: state code:n :}
    code 0<> if state RECORD-FREE code throw then
    state MINT ;
 
-: BOM ( ptr n -- )
+: BOM ( ^n -- )
    {: state :}
    state s\" \xFF\xFE" MATCH$ state s\" \xFE\xFF" MATCH$ or if
       E-ENCODING throw
@@ -578,7 +578,7 @@ LINEAR: ERASE ( XML:reader -- ptr n )
    then
    state s\" \xEF\xBB\xBF" MATCH$ if state 3 ADVANCE-N then ;
 
-: INIT-BODY ( ptr n ptr u8 n -- ptr n ptr u8 n )
+: INIT-BODY ( ^n ^u8 n -- ^n ^u8 n )
    {: state source size:n :}
    source state SOURCE-IDX ptr-field !
    size state SOURCE-LEN + !
@@ -589,7 +589,7 @@ LINEAR: ERASE ( XML:reader -- ptr n )
 
 \ The stream goes into the header before the tables, so a failed table step
 \ leaves RECORD-FREE to release both.
-: INPUT-BODY ( ptr n ptr n [ ptr n SPAN:span<u8> -- n ] SPAN:span<u8> -- ptr n ptr n [ ptr n SPAN:span<u8> -- n ] SPAN:span<u8> )
+: INPUT-BODY ( ^n ^n [ ^n SPAN:span<u8> -- n ] SPAN:span<u8> -- ^n ^n [ ^n SPAN:span<u8> -- n ] SPAN:span<u8> )
    {: state ctx fill input :}
    ctx fill input STREAM-OPEN
    STREAM>BYTES state WIRE-STORAGE-IDX ptr-field !
@@ -598,7 +598,7 @@ LINEAR: ERASE ( XML:reader -- ptr n )
    state ctx fill input ;
 
 public
-: INIT ( ptr cursor ptr u8 n -- XML:reader )
+: INIT ( ^cursor ^u8 n -- XML:reader )
    {: record source size:n :}
    source size SPAN-CHECK
    record >STATE {: state :}
@@ -612,7 +612,7 @@ public
 \ chunk span's reach and answers its count: zero ends input, a negative count or one
 \ past the reach is E-RANGE. The context, callback and chunk span stay live through
 \ CLOSE. A long tag, comment or CDATA grows the event buffer.
-: INIT-INPUT ( ptr cursor ptr n [ ptr n SPAN:span<u8> -- n ] SPAN:span<u8> -- XML:reader )
+: INIT-INPUT ( ^cursor ^n [ ^n SPAN:span<u8> -- n ] SPAN:span<u8> -- XML:reader )
    {: record ctx fill input :}
    input SPAN:$ SPAN-CHECK
    record >STATE {: state :}
@@ -623,7 +623,7 @@ public
    state code BUILT ;
 
 private
-: SOURCE-READER-MODE ( ptr n -- n )
+: SOURCE-READER-MODE ( ^n -- n )
    {: source-state :}
    source-state SRC-ENCODING-N {: encoding:n :}
    encoding XML-ENCODING:UTF8 ENCODING>N = if SOURCE-UTF8 exit then
@@ -642,7 +642,7 @@ private
       then
    then ;
 
-: SOURCE-BODY ( ptr n ptr n -- ptr n ptr n )
+: SOURCE-BODY ( ^n ^n -- ^n ^n )
    {: state source-state :}
    source-state SRC-LEXICAL$ {: lexical size:n :}
    lexical state SOURCE-IDX ptr-field !
@@ -657,7 +657,7 @@ private
    state source-state ;
 
 
-: SOURCE-READER ( ptr cursor ptr n -- XML:reader )
+: SOURCE-READER ( ^cursor ^n -- XML:reader )
    {: record source-state :}
    source-state SRC-LEXICAL$ SPAN-CHECK
    record >STATE {: state :}
@@ -672,10 +672,10 @@ private
 public
 \ The source stays in place under the reader's inputs, so a caller that
 \ catches a refusal still holds it to close.
-: INIT-SOURCE ( XML:source ptr cursor -- XML:source XML:reader )
+: INIT-SOURCE ( XML:source ^cursor -- XML:source XML:reader )
    >r SRC-STATE r> swap SOURCE-READER ;
 
-: OWNER-READER ( ptr cursor source-owner -- XML:reader )
+: OWNER-READER ( ^cursor source-owner -- XML:reader )
    OWNER-STATE SOURCE-READER ;
 
 : CLOSE ( XML:reader -- )
@@ -683,16 +683,16 @@ public
 
 \ Release what a record owns after a caller's throw abandoned its live reader.
 \ A second DISPOSE, or one on a closed or zero-filled record, does nothing.
-: DISPOSE ( ptr cursor -- )
+: DISPOSE ( ^cursor -- )
    >STATE RECORD-FREE ;
 
 private
-CAST: BYTES>CURSOR ( ptr u8 -- ptr cursor )
+CAST: BYTES>CURSOR ( ^u8 -- ^cursor )
 
 public
 \ A record over the first CURSOR-BYTES of a caller's bytes, zero-filled so it
 \ owns nothing; a shorter span is E-CAPACITY. A live record there leaks its tables.
-: EMPTY-CURSOR ( ptr u8 n -- ptr cursor )
+: EMPTY-CURSOR ( ^u8 n -- ^cursor )
    {: bytes size:n :}
    bytes size SPAN-CHECK
    size CURSOR-BYTES < if E-CAPACITY throw then
@@ -700,15 +700,15 @@ public
    bytes BYTES>CURSOR ;
 
 private
-: LIVE ( ptr n -- )
+: LIVE ( ^n -- )
    FAILED + @ 0<> if E-STATE throw then ;
 
-: NAMED ( ptr n -- )
+: NAMED ( ^n -- )
    {: state :}
    state LIVE
    state NAME-LEN + @ 0= if E-STATE throw then ;
 
-: ACTIVE-ATTRIBUTE ( ptr n -- ptr n )
+: ACTIVE-ATTRIBUTE ( ^n -- ^n )
    {: state :}
    state LIVE
    state TOKEN-KIND + @ XML-KIND:START KIND>N <> if E-STATE throw then
@@ -716,7 +716,7 @@ private
    index 0 < index state ATTR-COUNT + @ >= or if E-STATE throw then
    state index ATTRIBUTE ;
 
-: LOCAL-SPAN ( ptr u8 n -- ptr u8 n )
+: LOCAL-SPAN ( ^u8 n -- ^u8 n )
    {: name size:n :}
    size 0 ?do
       name i + c@ $3A = if
@@ -725,7 +725,7 @@ private
    loop
    name size ;
 
-: OUTPUT-CHECK ( ptr n ptr u8 n -- )
+: OUTPUT-CHECK ( ^n ^u8 n -- )
    {: state destination cap:n :}
    destination cap SPAN-CHECK
    state SOURCE$ destination cap OVERLAP? if E-ALIAS throw then
@@ -748,39 +748,39 @@ private
 
 \ Keep the reader below throwing workers' arguments. Native catch restores
 \ stack depth, so public locals could overwrite the reader's saved stack cell.
-: RAW-STATE ( ptr n -- off len )
+: RAW-STATE ( ^n -- off len )
    {: state :}
    state LIVE
    state state RAW-OFF + @ ABS-OFF >OFF state RAW-LEN + @ >LEN ;
 
-: RAW$-STATE ( ptr n -- ptr u8 n )
+: RAW$-STATE ( ^n -- ^u8 n )
    {: state :}
    state LIVE
    state state RAW-OFF + @ state RAW-LEN + @ SPAN$ ;
 
-: NAME$-STATE ( ptr n -- ptr u8 n )
+: NAME$-STATE ( ^n -- ^u8 n )
    {: state :}
    state NAMED
    state state NAME-OFF + @ state NAME-LEN + @ SPAN$ ;
 
-: DECODE-ARGS ( XML:reader ptr u8 n -- XML:reader ptr n ptr u8 n )
+: DECODE-ARGS ( XML:reader ^u8 n -- XML:reader ^n ^u8 n )
    {: destination cap:n :}
    STATE destination cap ;
 
-: URI-STATE ( ptr n ptr u8 n -- n )
+: URI-STATE ( ^n ^u8 n -- n )
    {: state destination cap:n :}
    state NAMED
    state destination cap OUTPUT-CHECK
    state state URI-OFF + @ state URI-LEN + @ URI$
    destination cap URI-INTO ;
 
-: ATTR-RESET-STATE ( ptr n -- )
+: ATTR-RESET-STATE ( ^n -- )
    {: state :}
    state LIVE
    state TOKEN-KIND + @ XML-KIND:START KIND>N <> if E-STATE throw then
    -1 state ATTR-INDEX + ! ;
 
-: ATTR-NEXT-STATE ( ptr n -- bool )
+: ATTR-NEXT-STATE ( ^n -- bool )
    {: state :}
    state LIVE
    state TOKEN-KIND + @ XML-KIND:START KIND>N <> if E-STATE throw then
@@ -788,34 +788,34 @@ private
    1 state ATTR-INDEX + +!
    state ATTR-INDEX + @ state ATTR-COUNT + @ < ;
 
-: ATTR-RAW-STATE ( ptr n -- off len )
+: ATTR-RAW-STATE ( ^n -- off len )
    {: state :}
    state ACTIVE-ATTRIBUTE {: attr :}
    state attr 4 cells + @ ABS-OFF >OFF attr 5 cells + @ >LEN ;
 
-: ATTR-NAME$-STATE ( ptr n -- ptr u8 n )
+: ATTR-NAME$-STATE ( ^n -- ^u8 n )
    {: state :}
    state ACTIVE-ATTRIBUTE {: attr :}
    state attr @ attr CELL + @ SPAN$ ;
 
-: ATTR-VALUE$-STATE ( ptr n -- ptr u8 n )
+: ATTR-VALUE$-STATE ( ^n -- ^u8 n )
    {: state :}
    state ACTIVE-ATTRIBUTE {: attr :}
    state attr 2 cells + @ attr 3 cells + @ SPAN$ ;
 
-: ATTR-VALUE-STATE ( ptr n -- off len )
+: ATTR-VALUE-STATE ( ^n -- off len )
    {: state :}
    state ACTIVE-ATTRIBUTE {: attr :}
    state attr 2 cells + @ ABS-OFF >OFF attr 3 cells + @ >LEN ;
 
-: ATTR-URI-STATE ( ptr n ptr u8 n -- n )
+: ATTR-URI-STATE ( ^n ^u8 n -- n )
    {: state destination cap:n :}
    state ACTIVE-ATTRIBUTE {: attr :}
    state destination cap OUTPUT-CHECK
    state attr 6 cells + @ attr 7 cells + @ URI$
    destination cap URI-INTO ;
 
-: ATTR-TEXT-STATE ( ptr n ptr u8 n -- n )
+: ATTR-TEXT-STATE ( ^n ^u8 n -- n )
    {: state destination cap:n :}
    state ACTIVE-ATTRIBUTE {: attr :}
    state destination cap OUTPUT-CHECK
@@ -829,19 +829,19 @@ public
 : RAW ( XML:reader -- XML:reader off len )
    STATE RAW-STATE ;
 
-: RAW$ ( XML:reader -- XML:reader ptr u8 n )
+: RAW$ ( XML:reader -- XML:reader ^u8 n )
    STATE RAW$-STATE ;
 
-: NAME$ ( XML:reader -- XML:reader ptr u8 n )
+: NAME$ ( XML:reader -- XML:reader ^u8 n )
    STATE NAME$-STATE ;
 
-: LOCAL$ ( XML:reader -- XML:reader ptr u8 n )
+: LOCAL$ ( XML:reader -- XML:reader ^u8 n )
    NAME$ LOCAL-SPAN ;
 
 : DEPTH ( XML:reader -- XML:reader n )
    STATE dup LIVE OPEN-DEPTH + @ ;
 
-: URI ( XML:reader ptr u8 n -- XML:reader n )
+: URI ( XML:reader ^u8 n -- XML:reader n )
    DECODE-ARGS URI-STATE ;
 
 \ Attribute access works only on a start event, after ATTR-NEXT selects one and
@@ -856,22 +856,22 @@ public
 : ATTR-RAW ( XML:reader -- XML:reader off len )
    STATE ATTR-RAW-STATE ;
 
-: ATTR-NAME$ ( XML:reader -- XML:reader ptr u8 n )
+: ATTR-NAME$ ( XML:reader -- XML:reader ^u8 n )
    STATE ATTR-NAME$-STATE ;
 
-: ATTR-LOCAL$ ( XML:reader -- XML:reader ptr u8 n )
+: ATTR-LOCAL$ ( XML:reader -- XML:reader ^u8 n )
    ATTR-NAME$ LOCAL-SPAN ;
 
-: ATTR-VALUE$ ( XML:reader -- XML:reader ptr u8 n )
+: ATTR-VALUE$ ( XML:reader -- XML:reader ^u8 n )
    STATE ATTR-VALUE$-STATE ;
 
 : ATTR-VALUE ( XML:reader -- XML:reader off len )
    STATE ATTR-VALUE-STATE ;
 
-: ATTR-URI ( XML:reader ptr u8 n -- XML:reader n )
+: ATTR-URI ( XML:reader ^u8 n -- XML:reader n )
    DECODE-ARGS ATTR-URI-STATE ;
 
-: ATTR-TEXT ( XML:reader ptr u8 n -- XML:reader n )
+: ATTR-TEXT ( XML:reader ^u8 n -- XML:reader n )
    DECODE-ARGS ATTR-TEXT-STATE ;
 
 ;package

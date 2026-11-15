@@ -35,17 +35,17 @@ CELL constant REC-MAP
 create READS-REC REC-BYTES SCRATCH-ALLOT   \ a saved program starts with it empty
 SRCLOC:READS-CELL RESERVED-PTR-U8-CELL READS-CELL
 READS-REC READS-CELL ptr-cell!             \ a build's store goes to its image
-CAST: REC-CELLS ( ptr u8 -- ptr ptr u8 )
-: REC ( -- ptr u8 ) READS-CELL @ ;
-: STATUS ( -- ptr n ) REC REC-STATE + CELL-VIEW ;
-: MAP ( -- ptr ptr u8 ) REC REC-CELLS REC-MAP CELL / ptr-field ;
-: CAP ( -- ptr n ) REC REC-CAP + CELL-VIEW ;
-: USED ( -- ptr n ) REC REC-USED + CELL-VIEW ;
+CAST: REC-CELLS ( ^u8 -- ^^u8 )
+: REC ( -- ^u8 ) READS-CELL @ ;
+: STATUS ( -- ^n ) REC REC-STATE + CELL-VIEW ;
+: MAP ( -- ^^u8 ) REC REC-CELLS REC-MAP CELL / ptr-field ;
+: CAP ( -- ^n ) REC REC-CAP + CELL-VIEW ;
+: USED ( -- ^n ) REC REC-USED + CELL-VIEW ;
 
-: SAVED ( -- n ptr u8 n n ) STATUS @ MAP @ CAP @ USED @ ;
-: RESTORE ( n ptr u8 n n -- ) USED ! CAP ! MAP ! STATUS ! ;
+: SAVED ( -- n ^u8 n n ) STATUS @ MAP @ CAP @ USED @ ;
+: RESTORE ( n ^u8 n n -- ) USED ! CAP ! MAP ! STATUS ! ;
 
-: UNMAP ( ptr u8 n -- ) {: a:ptr u:n :}
+: UNMAP ( ^u8 n -- ) {: a:^ u:n :}
    u 0= if exit then
    a u munmap 0 < if s" compile reads: cannot release a recording" INCLUDE-IO-RC die then ;
 
@@ -54,7 +54,7 @@ CAST: REC-CELLS ( ptr u8 -- ptr ptr u8 )
    NULL-PTR MAP !  0 CAP !  0 USED ! ;
 
 : PAD ( n -- n ) CELL 1- + CELL / CELL * ;
-: AT ( n -- ptr u8 ) MAP @ + ;
+: AT ( n -- ^u8 ) MAP @ + ;
 : CELL@ ( n -- n ) AT CELL-VIEW @ ;
 
 \ This file's own stat buffer, main thread only: FILE+ and LFILE+ MISS on any
@@ -64,7 +64,7 @@ create STAT-BUF FS-ABI:STAT-BYTES allot
 : STAT-CELL@ ( n -- n ) STAT-BUF + CELL-VIEW @ ;
 
 : STAT-TYPE ( -- n )
-   STAT-BUF FS-ABI:STAT-MODE-OFF + {: m:ptr :}
+   STAT-BUF FS-ABI:STAT-MODE-OFF + {: m:^ :}
    m c@  m 1 + c@ 256 * or  FS-ABI:S-IFMT and ;
 
 create STAMP-BUF 3 cells SCRATCH-ALLOT   \ STAMP+'s second bytes
@@ -73,16 +73,16 @@ create STAMP-BUF 3 cells SCRATCH-ALLOT   \ STAMP+'s second bytes
 : SPAN ( n -- n ) {: off:n :}
    off CELL + CELL@ off 2 cells + CELL@ + PAD 3 cells + ;
 
-: SAME? ( n n ptr u8 n ptr u8 n -- bool )
-   {: off:n kind:n a:ptr u:n b:ptr v:n :}
+: SAME? ( n n ^u8 n ^u8 n -- bool )
+   {: off:n kind:n a:^ u:n b:^ v:n :}
    off CELL@ kind =  off CELL + CELL@ u = and  off 2 cells + CELL@ v = and if
       off 3 cells + AT u a u CORE-STR=
       off 3 cells + u + AT v b v CORE-STR= and exit
    then
    0 0= 0= ;
 
-: SEEN? ( n ptr u8 n ptr u8 n -- bool )
-   {: kind:n a:ptr u:n b:ptr v:n :}
+: SEEN? ( n ^u8 n ^u8 n -- bool )
+   {: kind:n a:^ u:n b:^ v:n :}
    0 begin dup USED @ < while
       dup kind a u b v SAME? if drop 0 0= exit then
       dup SPAN +
@@ -92,7 +92,7 @@ create STAMP-BUF 3 cells SCRATCH-ALLOT   \ STAMP+'s second bytes
    need CAP @ <= if exit then
    CAP @ 2 * need max ROOM-MIN max {: cap:n :}
    cap map-anon 0= 0= if drop s" compile reads: cannot map a recording" INCLUDE-IO-RC die then
-   {: fresh:ptr :}
+   {: fresh:^ :}
    MAP @ fresh USED @ BYTE-COPY
    MAP @ CAP @ UNMAP
    fresh MAP !
@@ -113,7 +113,7 @@ public
 private
 
 \ Word w, which the program called, gave a span of length n.
-: NEGATIVE ( ptr u8 n n -- ) {: w:ptr wu:n n:n :}
+: NEGATIVE ( ^u8 n n -- ) {: w:^ wu:n n:n :}
    s" E-PATH-RANGE" REJECTION:OPEN
    96 REJECTION:EMIT1  w wu REJECTION:EMIT-STR
    s" ` got a length of " REJECTION:EMIT-STR  n REJECTION:EMIT-N
@@ -121,8 +121,8 @@ private
    CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ w is the word the program called.
-: APPEND ( ptr u8 n n ptr u8 n ptr u8 n -- )
-   {: w:ptr wu:n kind:n a:ptr u:n b:ptr v:n :}
+: APPEND ( ^u8 n n ^u8 n ^u8 n -- )
+   {: w:^ wu:n kind:n a:^ u:n b:^ v:n :}
    OFF-MAIN? if MISS exit then
    STATUS @ ST-OFF = if exit then
    u 0 < if w wu u NEGATIVE then
@@ -142,7 +142,7 @@ private
 \ Runs q with the record swapped for a fresh one in state st.
 : SCOPE ( n [ -- ] -- )
    {: st:n q :}
-   SAVED {: old-st:n old-map:ptr old-cap:n old-used:n :}
+   SAVED {: old-st:n old-map:^ old-cap:n old-used:n :}
    st STATUS !  NULL-PTR MAP !  0 CAP !  0 USED !
    q catch {: rc:n :}
    RELEASE old-st old-map old-cap old-used RESTORE
@@ -158,21 +158,21 @@ public
 : UNRECORDED ( [ -- ] -- ) {: q :} ST-OFF q SCOPE ;
 
 \ The active recording's bytes, valid until its next append or its end.
-: READS$ ( -- ptr u8 n )
+: READS$ ( -- ^u8 n )
    STATUS @ ST-OFF = if NULL-PTR 0 exit then
    MAP @ USED @ ;
 
 \ A root's absolute spelling and its canonical directory.
-: ROOT+ ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n b:ptr v:n :}
+: ROOT+ ( ^u8 n ^u8 n -- ) {: a:^ u:n b:^ v:n :}
    s" COMPILE-READS:ROOT+" ROOT-READ a u b v APPEND ;
 
 \ An environment variable's name and value; a NULL-PTR value is an absent one.
-: ENV+ ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n b:ptr v:n :}
+: ENV+ ( ^u8 n ^u8 n -- ) {: a:^ u:n b:^ v:n :}
    b NULL-PTR - 0= if s" COMPILE-READS:ENV+" ENV-ABSENT a u b 0 APPEND exit then
    s" COMPILE-READS:ENV+" ENV-READ a u b v APPEND ;
 
 \ A text the compile evaluates. One of length 0 or less records nothing: `evaluate` reads no byte of it.
-: TEXT+ ( ptr u8 n -- ) {: a:ptr u:n :}
+: TEXT+ ( ^u8 n -- ) {: a:^ u:n :}
    u 0 <= if exit then
    s" COMPILE-READS:TEXT+" TEXT-READ a u a 0 APPEND ;
 
@@ -191,10 +191,10 @@ public
 \ and S_IFMT) shifted 32 bits over its change time nanoseconds, and its size; 0 0
 \ -1 when it is missing. A directory's change time moves when an entry is added,
 \ removed or renamed.
-: STAMP ( ptr u8 -- n n n ) STAT-BUF stat64 STAT-STAMP ;
+: STAMP ( ^u8 -- n n n ) STAT-BUF stat64 STAT-STAMP ;
 
 \ STAMP of the path itself, a symlink's own and never its target's.
-: LSTAMP ( ptr u8 -- n n n ) STAT-BUF lstat64 STAT-STAMP ;
+: LSTAMP ( ^u8 -- n n n ) STAT-BUF lstat64 STAT-STAMP ;
 
 \ Whether a STAMP or LSTAMP still holding means the file reads the same: true for
 \ a missing file, a regular file, a directory or a symlink, whose change time
@@ -205,8 +205,8 @@ public
 
 private
 
-: STAMP+ ( ptr u8 n n ptr u8 n n n n -- )
-   {: w:ptr wu:n kind:n a:ptr u:n sec:n ns:n size:n :}
+: STAMP+ ( ^u8 n n ^u8 n n n n -- )
+   {: w:^ wu:n kind:n a:^ u:n sec:n ns:n size:n :}
    sec STAMP-BUF CELL-VIEW !
    ns STAMP-BUF CELL + CELL-VIEW !
    size STAMP-BUF 2 cells + CELL-VIEW !
@@ -216,14 +216,14 @@ public
 
 \ A path a word reads and z, its NUL-terminated copy, recorded with its STAMP
 \ while a recording is active; on a thread other than main, MISS.
-: FILE+ ( ptr u8 n ptr u8 -- ) {: a:ptr u:n z:ptr :}
+: FILE+ ( ^u8 n ^u8 -- ) {: a:^ u:n z:^ :}
    OFF-MAIN? if MISS exit then
    STATUS @ ST-OFF = if exit then
    s" COMPILE-READS:FILE+" FILE-READ a u z STAT-BUF stat64 STAT-STAMP STAMP+ ;
 
 \ FILE+ of a path a word reads without following a symlink at its end, which
 \ LSTAMP stats.
-: LFILE+ ( ptr u8 n ptr u8 -- ) {: a:ptr u:n z:ptr :}
+: LFILE+ ( ^u8 n ^u8 -- ) {: a:^ u:n z:^ :}
    OFF-MAIN? if MISS exit then
    STATUS @ ST-OFF = if exit then
    s" COMPILE-READS:LFILE+" FILE-LREAD a u z STAT-BUF lstat64 STAT-STAMP STAMP+ ;

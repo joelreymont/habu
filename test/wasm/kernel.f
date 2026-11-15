@@ -19,15 +19,15 @@ CAP BUFFER: OUT-K
 CAP BUFFER: ERR-K
 
 \ The word the map names for an engine name; an empty spelling is a failed case.
-: WORD$ ( ptr u8 n -- ptr u8 n )
-   WKMAP:WORD-OF {: w:ptr wu:n :}
+: WORD$ ( ^u8 n -- ^u8 n )
+   WKMAP:WORD-OF {: w:^ wu:n :}
    wu 0= if  s" the map answers a word" T-LABEL  false TTRUE  then
    w wu ;
 
 \ The text args, w and tail, run in a child with its stdout into o and its
 \ stderr into e; answers their lengths and its exit status.
-: CHILD ( ptr u8 n ptr u8 n ptr u8 n ptr u8 ptr u8 -- n n n )
-   {: a:ptr au:n w:ptr wu:n t:ptr tu:n o:ptr e:ptr :}
+: CHILD ( ^u8 n ^u8 n ^u8 n ^u8 ^u8 -- n n n )
+   {: a:^ au:n w:^ wu:n t:^ tu:n o:^ e:^ :}
    SB-RESET  a au SB-APPEND  s"  " SB-APPEND  w wu SB-APPEND
    s"  " SB-APPEND  t tu SB-APPEND
    SB$  o CAP >LEN  e CAP >LEN  PROCESS:WAIT-FOREVER  SUBJECT:RUN
@@ -36,7 +36,7 @@ CAP BUFFER: ERR-K
 
 \ A rejection's first line, its code and message: the place below it quotes the
 \ case's own spelling.
-: HEAD ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+: HEAD ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
    a u 10 INDEX-OF MATCH option
       some OF IDX>N a swap ENDOF
       none OF a u ENDOF
@@ -44,8 +44,8 @@ CAP BUFFER: ERR-K
 
 \ The engine name on args, its results consumed by tail, against the word the
 \ map names for it; both exit 0, so two alike rejections fail the case.
-: SAME ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: a:ptr au:n nm:ptr nu:n t:ptr tu:n :}
+: SAME ( ^u8 n ^u8 n ^u8 n -- )
+   {: a:^ au:n nm:^ nu:n t:^ tu:n :}
    SB-RESET  a au SB-APPEND  s"  " SB-APPEND  nm nu SB-APPEND  SB$ T-LABEL
    a au nm nu t tu OUT-E ERR-E CHILD {: oe:n ee:n re:n :}
    a au  nm nu WORD$  t tu OUT-K ERR-K CHILD {: ok:n ek:n rk:n :}
@@ -116,8 +116,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d, then called by RUN
    s" " s" true" s" bool>n ." SAME
    s" " s" false" s" bool>n ." SAME ;
 
-: ORDER ( ptr u8 n -- )
-   {: nm:ptr nu:n :}
+: ORDER ( ^u8 n -- )
+   {: nm:^ nu:n :}
    s" 1 s>f 1 s>f" nm nu s" bool>n ." SAME
    s" 1 s>f 2 s>f" nm nu s" bool>n ." SAME
    s" 2 s>f 1 s>f" nm nu s" bool>n ." SAME

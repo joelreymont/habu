@@ -18,7 +18,7 @@ package FS-LOCK
 11 constant WOULD-BLOCK-LINUX
 
 PROCESS-SYMBOLS
-FUNCTION: OPEN-CALL open ( ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: OPEN-CALL open ( ^u8 n -- i32 ) ;FUNCTION
 FUNCTION: FLOCK-CALL flock ( n n -- i32 ) ;FUNCTION
 
 : OPEN-FLAGS ( -- n )
@@ -35,7 +35,7 @@ FUNCTION: FLOCK-CALL flock ( n n -- i32 ) ;FUNCTION
 
 public
 
-: OPEN-DIR ( ptr u8 n -- fd )
+: OPEN-DIR ( ^u8 n -- fd )
    FS:>PATHZ OPEN-FLAGS OPEN-CALL {: opened:n :}
    opened 0 < if E-FS-OPEN throw then
    opened >FD ;

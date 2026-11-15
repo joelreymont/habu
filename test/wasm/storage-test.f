@@ -25,19 +25,19 @@ PATH-CAP BUFFER: FILE
 variable FILE-U
 
 : SETUP ( -- )
-   s" wasm-storage" FS:MKTEMP-DIR {: a:ptr u:n :}
+   s" wasm-storage" FS:MKTEMP-DIR {: a:^ u:n :}
    a DIR u BYTE-COPY  u DIR-U !
    s" wasm storage: modules and output in " type  DIR u type cr ;
 
-: FILE! ( ptr u8 n ptr u8 n -- )
-   {: a:ptr u:n name:ptr nu:n :}
+: FILE! ( ^u8 n ^u8 n -- )
+   {: a:^ u:n name:^ nu:n :}
    DIR DIR-U @ name nu FILE FS:JOIN-PATH FILE-U !
    FILE FILE-U @ a u FS:WRITE-ALL ;
 
 \ The source name.f in DIR, whose MAIN is storage.f's entry, built into
 \ name.wasm there; answers the build's status.
-: BUILD ( ptr u8 n ptr u8 n -- n )
-   {: entry:ptr eu:n name:ptr nu:n :}
+: BUILD ( ^u8 n ^u8 n -- n )
+   {: entry:^ eu:n name:^ nu:n :}
    SB-RESET name nu SB-APPEND s" .wasm" SB-APPEND
    DIR DIR-U @ SB$ MOD FS:JOIN-PATH MOD-U !
    SB-RESET name nu SB-APPEND s" .f" SB-APPEND
@@ -50,8 +50,8 @@ variable FILE-U
 \ The entry's module, the file name with .wasm, builds, validates and runs to
 \ status, printing want; want and the output stay as name-expected.txt and
 \ name-actual.txt.
-: ENTRY-CASE ( ptr u8 n ptr u8 n ptr u8 n n -- )
-   {: entry:ptr eu:n name:ptr nu:n want:ptr wu:n status:n :}
+: ENTRY-CASE ( ^u8 n ^u8 n ^u8 n n -- )
+   {: entry:^ eu:n name:^ nu:n want:^ wu:n status:n :}
    SB-RESET name nu SB-APPEND s" -expected.txt" SB-APPEND
    want wu SB$ FILE!
    entry eu name nu BUILD 0 T=
@@ -62,25 +62,25 @@ variable FILE-U
    WASM-HARNESS:OUT$ want wu T$= ;
 
 \ GROW's lines, REFUSE's and REUSE's.
-: BUFFER$ ( -- ptr u8 n )
+: BUFFER$ ( -- ^u8 n )
    S\" 77\n88\n312\n1\n7138\n7138\n77\n88\n1\n0\n0\n" ;
 
-: HOLES$ ( -- ptr u8 n )
+: HOLES$ ( -- ^u8 n )
    S\" 1\n0\n1\n1\n" ;
 
-: FRACTIONAL$ ( -- ptr u8 n )
+: FRACTIONAL$ ( -- ^u8 n )
    S\" 7\n" ;
 
 \ Each map's and free's ior, and INSIDE's pages' distance, up to the trap.
-: TWICE$ ( -- ptr u8 n )
+: TWICE$ ( -- ^u8 n )
    S\" 0\n0\n" ;
 
-: INSIDE$ ( -- ptr u8 n )
+: INSIDE$ ( -- ^u8 n )
    S\" 0\n0\n65536\n0\n0\n" ;
 
 \ The map's ior, the five refused frees', the free's, the map back's, that it
 \ handed out the same page, and the last free's.
-: REFUSED$ ( -- ptr u8 n )
+: REFUSED$ ( -- ^u8 n )
    S\" 0\n-1\n-1\n-1\n-1\n-1\n0\n0\n1\n0\n" ;
 
 public
@@ -106,7 +106,7 @@ public
 
 false [if] \ off until dot habu-add-the-checks-a49d054d
 \ BOUNDS's lines: one per refused index or reserve.
-: BOUNDS$ ( -- ptr u8 n )
+: BOUNDS$ ( -- ^u8 n )
    S\" 7122\n7121\n7122\n7121\n7122\n7122\n7122\n7122\n7122\n" ;
 
 : RUN-BOUNDS ( -- )

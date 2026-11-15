@@ -35,8 +35,8 @@ private
 \ Public search hides internal words; the compiler admits them only while a
 \ TRUSTED: definition is being compiled, and a call to an owned one always
 \ (CALL-BINDING). Re-read that authority on every call.
-: VISIBLE-RECORD? ( ptr n -- bool )
-   {: rec:ptr :}
+: VISIBLE-RECORD? ( ^n -- bool )
+   {: rec:^ :}
    rec XREF-FLAGS DNAME-INT and 0<> if
       data-base TRUSTED-CELL + @ 0<> exit
    then
@@ -47,8 +47,8 @@ public
 
 \ A tick refuses an internal record outside a TRUSTED: body, and in every body a
 \ scope entry, as interpreter.f SCOPE-ENTRY-GUARD does.
-: TICK-REFUSED? ( ptr n -- bool )
-   {: rec:ptr :}
+: TICK-REFUSED? ( ^n -- bool )
+   {: rec:^ :}
    rec XREF-FLAGS DNAME-INT and 0<>  rec VISIBLE-RECORD? 0= and if
       true exit
    then
@@ -57,8 +57,8 @@ public
 \ The bound record whatever its flags, or none. Two used publics that both
 \ export the tail, with nothing earlier binding it, are the ambiguity the engine
 \ refuses.
-: SCOPE-REC ( ptr u8 n -- ptr n )
-   scope-find {: rec:ptr used:ptr used2:ptr flags:n :}
+: SCOPE-REC ( ^u8 n -- ^n )
+   scope-find {: rec:^ used:^ used2:^ flags:n :}
    rec XREF-FOUND? 0= flags SCOPE-FIND-AMBIGUOUS and 0<> and if E-USING-AMBIGUOUS throw then
    rec ;
 
@@ -67,8 +67,8 @@ public
 \ used public also exports the tail a global binds (E-USING-SHADOW-GLOBAL, or
 \ E-USING-AMBIGUOUS when a second used public exports it too). The engine's
 \ lookup and the checker's binder refuse the same two shapes.
-: USING-REFUSED? ( ptr u8 n -- bool )
-   scope-find {: rec:ptr used:ptr used2:ptr flags:n :}
+: USING-REFUSED? ( ^u8 n -- bool )
+   scope-find {: rec:^ used:^ used2:^ flags:n :}
    rec XREF-FOUND? 0= if flags SCOPE-FIND-AMBIGUOUS and 0<> exit then
    rec XREF-WORDLIST WL:GLOBAL?  used XREF-FOUND?  and ;
 
@@ -76,8 +76,8 @@ public
 \ seeded primitive of that spelling, or nothing at all (a keyword such as `>r`
 \ has no record). A package word, an EXPORT alias and a redefinition after
 \ `undefine` each bind a record of their own, and the call path reaches it.
-: SPELL-PRIM? ( ptr u8 n -- bool )
-   scope-find {: rec:ptr used:ptr used2:ptr flags:n :}
+: SPELL-PRIM? ( ^u8 n -- bool )
+   scope-find {: rec:^ used:^ used2:^ flags:n :}
    flags SCOPE-FIND-AMBIGUOUS and 0<> if false exit then
    rec XREF-FOUND? 0= if true exit then
    flags SCOPE-SEEDED and 0<> ;
@@ -88,8 +88,8 @@ private
 \ One it may not is refused where it binds, so the spelling is never handed on
 \ to a later scope. An internal record needs the TRUSTED: cell here even when
 \ owned: only a call binds an owned primitive (CALL-BINDING).
-: SPELL-REC ( ptr u8 n -- ptr n )
-   SCOPE-REC {: rec:ptr :}
+: SPELL-REC ( ^u8 n -- ^n )
+   SCOPE-REC {: rec:^ :}
    rec XREF-FOUND? 0= if rec exit then
    rec VISIBLE-RECORD? 0= if XREF-NULL exit then
    rec ;
@@ -108,7 +108,7 @@ CAST: AS-FIXED ( n -- [ -- n ] )
 
 public
 
-: SPELL-START ( ptr u8 n -- n )
+: SPELL-START ( ^u8 n -- n )
    {: a u:n :}
    a u SPELL-REC dup XREF-FOUND? 0= if drop 0 exit then
    XREF-START ;
@@ -122,8 +122,8 @@ private
 
 \ Which definer stamped a record, retired or not: `undefine` removes a name,
 \ while the record's storage and the code compiled against it stay.
-: STAMP-FIXED ( ptr n -- COMP:body )
-   {: rec:ptr :}
+: STAMP-FIXED ( ^n -- COMP:body )
+   {: rec:^ :}
    rec XREF-FOUND? 0= if COMP-BODY:compiled exit then
    rec XREF-START 0= if COMP-BODY:compiled exit then
    rec XREF-FLAGS DKIND:MASK and {: kind:n :}
@@ -132,15 +132,15 @@ private
    COMP-BODY:compiled ;
 
 \ A caller already holding the record asks here instead of SPELL-FIXED.
-: REC-FIXED ( ptr n -- COMP:body )
-   {: rec:ptr :}
+: REC-FIXED ( ^n -- COMP:body )
+   {: rec:^ :}
    rec XREF-FOUND? 0= if COMP-BODY:compiled exit then
    rec XREF-RETIRED? if COMP-BODY:compiled exit then
    rec STAMP-FIXED ;
 
 public
 
-: SPELL-FIXED ( ptr u8 n -- COMP:body )
+: SPELL-FIXED ( ^u8 n -- COMP:body )
    {: a u:n :}
    a u SPELL-REC REC-FIXED ;
 
@@ -149,8 +149,8 @@ public
 \ record only for this operation; later source may mutate its binding or slot.
 private
 
-: FIXED-ENTRY ( ptr n -- n )
-   {: rec:ptr :}
+: FIXED-ENTRY ( ^n -- n )
+   {: rec:^ :}
    rec XREF-FOUND? 0= if E-NDICT-NAME throw then
    rec XREF-START {: start:n :}
    start 0= if E-NDICT-NAME throw then
@@ -168,17 +168,17 @@ public
 \ A record no definer stamped is refused BEFORE the word is entered. The count
 \ settles the arity but not the TYPE (habu-guard-an-executed-8a0f2f77). A
 \ caller already holding the record, as a dictionary walk does, asks REC-VALUE.
-: REC-VALUE ( ptr n -- n )
-   {: rec:ptr :}
+: REC-VALUE ( ^n -- n )
+   {: rec:^ :}
    rec FIXED-ENTRY drop
    rec XREF-START READ-FIXED ;
 
-: FIXED-VALUE ( ptr u8 n -- n ) SPELL-REC REC-VALUE ;
+: FIXED-VALUE ( ^u8 n -- n ) SPELL-REC REC-VALUE ;
 
 \ A fixed DATA literal keeps the exact declaration that produced its address.
 \ -1 means the fixed value is a scalar and has no DATA owner.
-: FIXED-OWNER ( ptr u8 n -- n )
-   SPELL-REC {: rec:ptr :}
+: FIXED-OWNER ( ^u8 n -- n )
+   SPELL-REC {: rec:^ :}
    rec REC-FIXED COMP-BODY:address COMP-BODY:EQ 0= if -1 exit then
    rec XREF-A>U8 NULL-PTR BYTE-VIEW - dbase@ - DREC / ;
 
@@ -202,9 +202,9 @@ public
    entry READ-FIXED ;
 
 \ ---- and how many cells a call to it moves --------------------------------
-\ CELLS and not terms: `ptr u8 n` is two terms and two cells, while one term of
+\ CELLS and not terms: `^u8 n` is two terms and two cells, while one term of
 \ a three-cell family is one term and three cells. The checker publishes cells.
-: EFF-CELLS ( ptr u8 n -- n n )
+: EFF-CELLS ( ^u8 n -- n n )
    EFFECT-QUERY if EFFECT-DIN-CELLS EFFECT-DOUT-CELLS else -1 -1 then ;
 
 private
@@ -212,8 +212,8 @@ private
 \ 0 0. A RETIRED record's start is code nothing can reach. An IMMEDIATE word
 \ runs at compile time, so a CALL may not branch to it; a code-address literal
 \ (a tick) may still name it without running it (CALLABLE false).
-: REC-CODE ( ptr n bool -- n n )
-   {: rec:ptr callable:bool :}
+: REC-CODE ( ^n bool -- n n )
+   {: rec:^ callable:bool :}
    rec XREF-FOUND? 0= if 0 0 exit then
    rec XREF-START {: start:n :}
    start 0= if 0 0 exit then
@@ -222,7 +222,7 @@ private
    callable f DNAME-IMM and 0<> and if 0 0 exit then
    start f DKIND:MASK and ;
 
-: REC-BINDING ( ptr n -- n n )
+: REC-BINDING ( ^n -- n n )
    true REC-CODE ;
 
 public
@@ -238,8 +238,8 @@ private
 
 \ Where a compiled CALL to the bound record may branch, or zero: an internal
 \ record as INT-CALL? admits it, any other when visible.
-: REC-CALL ( ptr n -- n n )
-   {: rec:ptr :}
+: REC-CALL ( ^n -- n n )
+   {: rec:^ :}
    rec XREF-FOUND? 0= if 0 0 exit then
    rec XREF-FLAGS {: f:n :}
    f DNAME-INT and 0<> if f INT-CALL? else rec VISIBLE-RECORD? then
@@ -249,30 +249,30 @@ private
 \ A `PACKAGE:WORD` spelling's record among the publics of the top-level package
 \ BOOT:NAMESPACE-WL holds, whatever its visibility, which REC-CALL checks; any
 \ other spelling binds none.
-: TOP-REC ( ptr u8 n -- ptr n )
-   {: a:ptr u:n :}
+: TOP-REC ( ^u8 n -- ^n )
+   {: a:^ u:n :}
    a u XREF-QUAL-INDEX {: q:n :}
    q 0 < if XREF-NULL exit then
-   a q BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: pkg:ptr :}
+   a q BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: pkg:^ :}
    pkg XREF-FOUND? 0= if XREF-NULL exit then
    a q 1+ +  u q - 1-  pkg XREF-PKG-PUBLIC CHECKER-RESOLVE:WL-PROBE ;
 
 public
 
-: CALL-BINDING ( ptr u8 n -- n n ) SCOPE-REC REC-CALL ;
+: CALL-BINDING ( ^u8 n -- n n ) SCOPE-REC REC-CALL ;
 
 \ A caller that needs definer semantics captures them with the same resolved
 \ entry. Most call sites only need the target address.
-: CALL-TARGET ( ptr u8 n -- n ) CALL-BINDING drop ;
+: CALL-TARGET ( ^u8 n -- n ) CALL-BINDING drop ;
 
 \ CALL-TARGET for a runtime word the compiler itself calls: bound at the top
 \ level, so no part or using of the code being compiled can stand in for it.
-: TOP-TARGET ( ptr u8 n -- n ) TOP-REC REC-CALL drop ;
+: TOP-TARGET ( ^u8 n -- n ) TOP-REC REC-CALL drop ;
 
 \ Where a compiled `[']` may take its xt from, or zero. An xt runs wherever it
 \ is handed, so a tick binds no record TICK-REFUSED? refuses, owned or not.
-: TICK-TARGET ( ptr u8 n -- n )
-   SPELL-REC {: rec:ptr :}
+: TICK-TARGET ( ^u8 n -- n )
+   SPELL-REC {: rec:^ :}
    rec XREF-FOUND? if rec TICK-REFUSED? if 0 exit then then
    rec false REC-CODE drop ;
 
@@ -280,7 +280,7 @@ public
 
 \ Absent is tested as "not a count", not as a particular number: a width is a
 \ count of cells and never negative, whichever vocabulary spelled the absence.
-: SPELL-ARITY ( ptr u8 n -- n n )
+: SPELL-ARITY ( ^u8 n -- n n )
    EFF-CELLS {: din:n dout:n :}
    din 0 < if ARITY-NONE ARITY-NONE exit then
    dout 0 < if ARITY-NONE ARITY-NONE exit then
@@ -328,7 +328,7 @@ private
 \ ---- and which cell a deferred word dispatches through ------------------------
 \ The trailer is recognised by DEFER-MAGIC and never by its shape, because an
 \ ordinary integer may hold any value.
-CAST: >TRAILER-CELL ( n -- ptr n )
+CAST: >TRAILER-CELL ( n -- ^n )
 : TRAILER@ ( n -- n ) >TRAILER-CELL @ ;
 
 public
@@ -337,8 +337,8 @@ public
 \ or not: retirement leaves the cell and the code that dispatches through it.
 \ A data word cannot qualify by putting the magic in its body, and a row with
 \ no code bytes, a package row live or retired, has no trailer.
-: TRAILER-CELL ( ptr n -- n )
-   {: rec:ptr :}
+: TRAILER-CELL ( ^n -- n )
+   {: rec:^ :}
    rec XREF-FOUND? 0= if 0 exit then
    rec XREF-START 0= if 0 exit then
    rec XREF-CODE-BYTES 0= if 0 exit then
@@ -348,15 +348,15 @@ public
    meta 8 + TRAILER@ ;
 
 \ The selected live record's dispatch cell: a retired one no spelling names.
-: REC-DEFER-CELL ( ptr n -- n )
-   {: rec:ptr :}
+: REC-DEFER-CELL ( ^n -- n )
+   {: rec:^ :}
    rec XREF-FOUND? 0= if 0 exit then
    rec XREF-RETIRED? if 0 exit then
    rec TRAILER-CELL ;
 
 \ ---- and the engine word a does> body leaves through --------------------------
 private
-CAST: PATCH>N ( [ n ptr u8 n -- ] -- n )
+CAST: PATCH>N ( [ n ^u8 n -- ] -- n )
 
 public
 \ The engine's own, whatever the compiled source's package scope.

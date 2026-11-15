@@ -43,7 +43,7 @@ CELL-DEFINER DOES-CELL
    s" F3 ( -- rlsk ) CON-CELL" CHECK-QUIET-CANDIDATE! 0 T= ;
 
 : FORGE-PTR ( -- )
-   s" F4 ( ptr a -- rlsk ) PTR-CELL ! PTR-CELL @" CHECK-QUIET-CANDIDATE! 0 T= ;
+   s" F4 ( ^a -- rlsk ) PTR-CELL ! PTR-CELL @" CHECK-QUIET-CANDIDATE! 0 T= ;
 
 : FORGE-DOES ( -- )
    s" F5 ( -- rlsk ) DOES-CELL" CHECK-QUIET-CANDIDATE! 0 T= ;
@@ -62,7 +62,7 @@ CELL-DEFINER DOES-CELL
    s" S3 ( -- n ) CON-CELL" CHECK-QUIET-CANDIDATE! -1 T= ;
 
 : SCALAR-PTR ( -- )
-   s" S4 ( -- ptr ptr n ) PTR-CELL" CHECK-QUIET-CANDIDATE! -1 T= ;
+   s" S4 ( -- ^^n ) PTR-CELL" CHECK-QUIET-CANDIDATE! -1 T= ;
 
 : SCALAR-DOES ( -- )
    s" S5 ( -- n ) DOES-CELL" CHECK-QUIET-CANDIDATE! -1 T= ;

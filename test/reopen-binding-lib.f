@@ -14,12 +14,12 @@ public
 : GET ( -- n ) REC 2 cells + @ ;
 
 \ The control: the same indexed fetch under a tail no engine word spells.
-: NTH ( ptr n n -- n ) {: base:ptr off:n :} base off cells + @ ;
+: NTH ( ^n n -- n ) {: base:^ off:n :} base off cells + @ ;
 
 \ `@` is a spelling the checker types by a rule of its own; `dup` and `+` are
 \ spellings tier 0 inlines. Each is defined after its last use as the
 \ engine's word, so the bodies above and `dup`'s own keep the engine meaning.
-: @ ( ptr n n -- n ) NTH ;
+: @ ( ^n n -- n ) NTH ;
 : dup ( n -- n ) 1 + ;
 : + ( n n -- n ) - ;
 

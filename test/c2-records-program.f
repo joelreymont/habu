@@ -11,7 +11,7 @@ private
 41 constant MANY
 MANY 2 * CELL * constant MANY-BYTES
 
-: ENTRY ( ptr u8 n -- n )
+: ENTRY ( ^u8 n -- n )
    XREF-FIND dup XREF-FOUND? 0= if
       drop s" c2-records-program: missing native entry" 71 die
    then XREF-START ;

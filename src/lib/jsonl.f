@@ -23,10 +23,10 @@ public
 -9472 constant E-LIMIT       \ a physical line exceeds its inclusive byte limit
 
 STRUCTURE cursor OPAQUE DERIVE addr
-   FIELD buf-base ptr u8
+   FIELD buf-base ^u8
    FIELD buf-len n
    FIELD buf-cap n
-   FIELD storage ptr u8
+   FIELD storage ^u8
    FIELD pos n
    FIELD end n
    FIELD fd fd
@@ -47,18 +47,18 @@ $47 constant CLOSE-EXIT      \ close releases the descriptor even when it fails
 
 \ BUF's public header is the first three cells of cursor. Its API accepts a
 \ pointer to that header, so project the record base at this one boundary.
-CAST: BUF-HDR ( ptr cursor -- ptr n )
+CAST: BUF-HDR ( ^cursor -- ^n )
 
-: LIVE ( ptr cursor -- )
+: LIVE ( ^cursor -- )
    CURSOR-LIVE @ 0= if E-STATE throw then ;
 
-: LINE-LEN ( ptr cursor -- n )
+: LINE-LEN ( ^cursor -- n )
    BUF-HDR BUF:LEN@ BUF:BLEN>N ;
 
 public
 
-: CLOSE ( ptr cursor -- )
-   {: cur:ptr :}
+: CLOSE ( ^cursor -- )
+   {: cur:^ :}
    cur CURSOR-LIVE @ 0= if exit then
    false cur CURSOR-LIVE !
    cur CURSOR-FD @ FD>N close-rc 0<> if s" jsonl: close failed" CLOSE-EXIT die then
@@ -70,18 +70,18 @@ public
 
 private
 
-: PREPARE ( ptr cursor -- ptr cursor )
-   {: cur:ptr :}
+: PREPARE ( ^cursor -- ^cursor )
+   {: cur:^ :}
    BLOCK-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN SPAN:$ drop cur CURSOR-STORAGE !
    cur BUF-HDR FIRST-CAP BUF:N>BLEN BUF:INIT
    cur ;
 
 public
 
-: OPEN ( ptr cursor ptr u8 n NUM:byte-len -- )
-   {: cur:ptr path:ptr u:n max:NUM:byte-len :}
+: OPEN ( ^cursor ^u8 n NUM:byte-len -- )
+   {: cur:^ path:^ u:n max:NUM:byte-len :}
    cur CURSOR-LIVE @ if E-STATE throw then
-   path u FS:>PATHZ {: z:ptr :}
+   path u FS:>PATHZ {: z:^ :}
    path u z COMPILE-READS:FILE+
    z open-rd {: fd:n :}
    fd 0 < if E-FS-OPEN throw then
@@ -95,14 +95,14 @@ public
 
 private
 
-: APPEND ( ptr cursor ptr u8 n -- )
-   {: cur:ptr seg:ptr u:n :}
+: APPEND ( ^cursor ^u8 n -- )
+   {: cur:^ seg:^ u:n :}
    cur LINE-LEN u + cur CURSOR-MAX @ BUF:BLEN>N > if E-LIMIT throw then
    seg u BUF:N>BLEN cur BUF-HDR BUF:APPEND-SPAN ;
 
 \ Only a zero read is the end.
-: FILL ( ptr cursor -- bool )
-   {: cur:ptr :}
+: FILL ( ^cursor -- bool )
+   {: cur:^ :}
    cur CURSOR-FD @ FD>N cur CURSOR-STORAGE @ BLOCK-BYTES read {: n:n :}
    n 0 < if E-FS-IO throw then
    0 cur CURSOR-POS !
@@ -111,14 +111,14 @@ private
 
 \ SPLIT-NEXT answers end+1 as the next position of a segment the block ends
 \ before its LF.
-: FRAME ( ptr cursor -- ptr cursor )
-   {: cur:ptr :}
+: FRAME ( ^cursor -- ^cursor )
+   {: cur:^ :}
    begin
       cur CURSOR-POS @ cur CURSOR-END @ >= if
          cur FILL 0= if cur exit then
       then
       cur CURSOR-STORAGE @ cur CURSOR-END @ LF cur CURSOR-POS @ SPLIT-NEXT drop
-      {: seg:ptr segu:n next:n :}
+      {: seg:^ segu:n next:n :}
       cur seg segu APPEND
       next cur CURSOR-END @ > if
          cur CURSOR-END @ cur CURSOR-POS !
@@ -135,8 +135,8 @@ public
 \ LF; at the end of input it answers false once, after which NEXT is E-STATE.
 \ READER lends the line as a fresh linear JSON reader until the next NEXT or
 \ CLOSE, and the caller closes that reader first.
-: NEXT ( ptr cursor -- bool )
-   {: cur:ptr :}
+: NEXT ( ^cursor -- bool )
+   {: cur:^ :}
    cur LIVE
    cur BUF-HDR BUF:CLEAR
    cur ['] FRAME catch {: code:n :} drop
@@ -145,8 +145,8 @@ public
    cur CLOSE
    false ;
 
-: READER ( ptr cursor -- JSON:reader )
-   {: cur:ptr :}
+: READER ( ^cursor -- JSON:reader )
+   {: cur:^ :}
    cur LIVE
    cur LINE-LEN 0= if E-STATE throw then
    cur CURSOR-READER
@@ -155,13 +155,13 @@ public
 
 \ The physical line at pos, the position after its LF (u when unterminated)
 \ and true; at or past the end an empty span at pos, pos and false.
-: SPLIT-LINE ( ptr u8 n n -- ptr u8 n n bool )
-   {: a:ptr u:n pos:n :}
+: SPLIT-LINE ( ^u8 n n -- ^u8 n n bool )
+   {: a:^ u:n pos:n :}
    u 0 < if E-SOURCE throw then
    u 0 > a 0= and if E-SOURCE throw then
    pos 0 < if E-SOURCE throw then
    pos u >= if a pos + 0 pos false exit then
-   a u LF pos SPLIT-NEXT {: la:ptr lu:n next:n found:bool :}
+   a u LF pos SPLIT-NEXT {: la:^ lu:n next:n found:bool :}
    la lu next u min found ;
 
 ;package

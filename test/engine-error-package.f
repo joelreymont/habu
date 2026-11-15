@@ -22,65 +22,65 @@ create ERR CAP allot
 variable OUT-U         \ bytes the last child wrote to fd 1
 variable ERR-U         \ bytes the last child wrote to fd 2
 
-: ERR$ ( -- ptr u8 n )
+: ERR$ ( -- ^u8 n )
    ERR ERR-U @ ;
 
-: OUT$ ( -- ptr u8 n )
+: OUT$ ( -- ^u8 n )
    OUT OUT-U @ ;
 
 \ The engine under test: the gate's freshly built candidate when it exported
 \ one, else the running engine itself (src/lib/engine-candidate.f).
-: HB$ ( -- ptr u8 n )       ENGINE-CANDIDATE:PATH$ ;
+: HB$ ( -- ^u8 n )       ENGINE-CANDIDATE:PATH$ ;
 
 \ The fault is injected through source: the engine reaches the package registrar
 \ through src/habu/layout.f NCOMP-DISPATCH:DECL-CELL, so patching image strings
 \ is a no-op.
-: SOURCE$ ( ptr u8 n -- ptr u8 n ) {: name:ptr u:n :}
+: SOURCE$ ( ^u8 n -- ^u8 n ) {: name:^ u:n :}
    SB-RESET
    S\" s\" engine-error-test\" " SB-APPEND
    name u SB-APPEND
    s"  die" SB-APPEND
    SB$ ;
 
-: RUN-SOURCE ( ptr u8 n ptr u8 n -- n ) {: exe:ptr exeu:n src:ptr srcu:n :}
+: RUN-SOURCE ( ^u8 n ^u8 n -- n ) {: exe:^ exeu:n src:^ srcu:n :}
    PROC-ARGV-RESET
    exe exeu >LEN src srcu >LEN OUT CAP >LEN ERR CAP >LEN
    PROCESS:WAIT-FOREVER
    RUN-ARGV-STDIN-CAPTURE
    PCAP-RESULT:>N {: outu:n erru:n rc:n :} outu OUT-U ! erru ERR-U ! rc ;
 
-: CHILD-RC ( ptr u8 n -- n )
-   SOURCE$ {: src:ptr u:n :}
+: CHILD-RC ( ^u8 n -- n )
+   SOURCE$ {: src:^ u:n :}
    HB$ src u RUN-SOURCE ;
 
-: PACKAGE-SOURCE$ ( -- ptr u8 n )
+: PACKAGE-SOURCE$ ( -- ^u8 n )
    s" package BRIDGE public : W ( -- n ) 1 ; ;package BRIDGE:W drop" ;
 
 : PACKAGE-RC ( -- n )
-   PACKAGE-SOURCE$ {: src:ptr u:n :}
+   PACKAGE-SOURCE$ {: src:^ u:n :}
    HB$ src u RUN-SOURCE ;
 
 \ src/core/checker.f CHECKER-RESOLVE:AUTHORITY answers "no package context" when
 \ the current wordlist is neither the open package's public nor its private one;
 \ CHECKER-PKG-CONTEXT-REJECT names that and throws the reject rc.
-: NO-CONTEXT-SOURCE$ ( -- ptr u8 n )
+: NO-CONTEXT-SOURCE$ ( -- ^u8 n )
    s" package BRIDGE-GAP public 0 set-current : W ( -- n ) 1 ; ;package" ;
 
 : NO-CONTEXT-RC ( -- n )
-   NO-CONTEXT-SOURCE$ {: src:ptr u:n :}
+   NO-CONTEXT-SOURCE$ {: src:^ u:n :}
    HB$ src u RUN-SOURCE ;
 
 \ Inside a nested evaluate-closed: with TRY's catch the reject arrives as 70;
 \ without it the throw leaves the evaluate and the process exits 70. BARE
 \ restores the package's wordlist itself.
-: BARE-PREFIX ( ptr u8 n -- ) {: pkg:ptr pkgu:n :}
+: BARE-PREFIX ( ^u8 n -- ) {: pkg:^ pkgu:n :}
    SB-RESET
    s" package " SB-APPEND
    pkg pkgu SB-APPEND
    S\"  public variable CUR get-current CUR !\n" SB-APPEND
-   S\" : SRC ( -- ptr u8 n ) s\q : W ( -- n ) 1 ;\q ;\n" SB-APPEND ;
+   S\" : SRC ( -- ^u8 n ) s\q : W ( -- n ) 1 ;\q ;\n" SB-APPEND ;
 
-: CAUGHT-SOURCE$ ( -- ptr u8 n )
+: CAUGHT-SOURCE$ ( -- ^u8 n )
    s" BRIDGE-CATCH" BARE-PREFIX
    S\" : TRY ( -- n ) [: SRC evaluate-closed ;] catch ;\n" SB-APPEND
    S\" : BARE ( -- n ) 0 set-current TRY CUR @ set-current ;\n" SB-APPEND
@@ -88,7 +88,7 @@ variable ERR-U         \ bytes the last child wrote to fd 2
    S\" s\q AFTER\q type\n;package\n" SB-APPEND
    SB$ ;
 
-: UNCAUGHT-SOURCE$ ( -- ptr u8 n )
+: UNCAUGHT-SOURCE$ ( -- ^u8 n )
    s" BRIDGE-RAW" BARE-PREFIX
    S\" : BARE ( -- ) 0 set-current SRC evaluate-closed CUR @ set-current ;\n" SB-APPEND
    S\" BARE\n" SB-APPEND
@@ -114,15 +114,15 @@ variable ERR-U         \ bytes the last child wrote to fd 2
    s" code certificate exits 88" T-LABEL
    s" ENGINE-ERROR:CODE-CERT" CHILD-RC 88 T= ;
 
-: COMPILE-KEYWORD-SOURCE$ ( ptr u8 n -- ptr u8 n ) {: tok:ptr toku:n :}
+: COMPILE-KEYWORD-SOURCE$ ( ^u8 n -- ^u8 n ) {: tok:^ toku:n :}
    SB-RESET
    s" package KW-NAME private : " SB-APPEND
    tok toku SB-APPEND
    S\"  ( -- ) ; s\" AFTER\" type ;package" SB-APPEND
    SB$ ;
 
-: COMPILE-KEYWORD-REJECT ( ptr u8 n -- ) {: tok:ptr toku:n :}
-   tok toku COMPILE-KEYWORD-SOURCE$ {: src:ptr srcu:n :}
+: COMPILE-KEYWORD-REJECT ( ^u8 n -- ) {: tok:^ toku:n :}
+   tok toku COMPILE-KEYWORD-SOURCE$ {: src:^ srcu:n :}
    s" compile keyword definition rejects at its name" T-LABEL
    HB$ src srcu RUN-SOURCE 70 T=
    s" compile keyword definition names the constraint" T-LABEL
@@ -180,13 +180,13 @@ variable ERR-U         \ bytes the last child wrote to fd 2
    \ must name the state the checker refused on.
    s" a definition with no package authority names the refused state" T-LABEL
    ERR$ s" no authenticated package context" CONTAINS? TTRUE
-   CAUGHT-SOURCE$ {: csrc:ptr csrcu:n :}
+   CAUGHT-SOURCE$ {: csrc:^ csrcu:n :}
    s" a nested no-context definition under catch is caught as 70" T-LABEL
    HB$ csrc csrcu RUN-SOURCE 0 T=
    ERR$ s" no authenticated package context" CONTAINS? TTRUE
    s" the catch prints 70 and the source after it runs" T-LABEL
    OUT$ S\" caught=70\nAFTER" T$=
-   UNCAUGHT-SOURCE$ {: usrc:ptr usrcu:n :}
+   UNCAUGHT-SOURCE$ {: usrc:^ usrcu:n :}
    s" a nested no-context definition with no catch exits 70" T-LABEL
    HB$ usrc usrcu RUN-SOURCE 70 T=
    ERR$ s" no authenticated package context" CONTAINS? TTRUE

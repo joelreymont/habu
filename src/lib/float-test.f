@@ -11,17 +11,17 @@ require src/core/bytes.f
 
 : FL-NEAR ( r r -- bool ) f- fabs 0.000001 f< ;
 
-: T-FL ( ptr u8 n r -- ) {: want:r :}
+: T-FL ( ^u8 n r -- ) {: want:r :}
    STR>FLOAT MATCH option
      none OF 0 0= 0= ENDOF
      some OF want FL-NEAR ENDOF
    ;MATCH T-ASSERT ;
-: T-FL-BAD ( ptr u8 n -- )
+: T-FL-BAD ( ^u8 n -- )
    STR>FLOAT MATCH option
      none OF 0 0= ENDOF
      some OF drop 0 0= 0= ENDOF
    ;MATCH T-ASSERT ;
-: T-FL-OK ( ptr u8 n -- )
+: T-FL-OK ( ^u8 n -- )
    STR>FLOAT MATCH option
      none OF false ENDOF
      some OF drop true ENDOF
@@ -62,8 +62,8 @@ package DECIMAL-FLOAT-TEST
 
 \ The checked decimal admission used by STR>FLOAT must agree with the
 \ engine's literal reader at its accumulator boundaries.
-: ADMISSION ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: ADMISSION ( ^u8 n -- )
+   {: a:^ u:n :}
    a u FL-ENGINE-DECIMAL-ADMITTED? {: checked:bool :}
    a u num-parse and nip {: native:bool :}
    checked native and checked 0= native 0= and or TTRUE ;
@@ -93,7 +93,7 @@ package DECIMAL-FLOAT-TEST
    got want - abs ulps <= ;
 
 
-: CHECK-BITS ( ptr u8 n n n -- ) {: a:ptr u:n want:n ulps:n :}
+: CHECK-BITS ( ^u8 n n n -- ) {: a:^ u:n want:n ulps:n :}
    a u 80 min T-LABEL
    a u STR>FLOAT MATCH option
      none OF false ENDOF
@@ -208,7 +208,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    0 0 GUARD-PAGE:TAIL u STR>FLOAT FL-DROP ;
 
 : FL-SIGNED-NEG ( n n -- ) {: sign:n u:n :}
-   2 [char] 1 GUARD-PAGE:TAIL {: a:ptr :}
+   2 [char] 1 GUARD-PAGE:TAIL {: a:^ :}
    sign a c!
    a u STR>FLOAT FL-DROP ;
 

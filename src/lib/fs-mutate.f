@@ -82,13 +82,13 @@ SCRATCH-BAND-AGREE
 : TMP-PATH-BUF ( -- SPAN:span<u8> )
    data-base FS-MUT-ABI:TMP-OFF + BYTE-VIEW PATH-CAP SPAN:MAKE ;
 
-: >PATHZ2 ( ptr u8 n -- ptr u8 )
+: >PATHZ2 ( ^u8 n -- ^u8 )
    PATHZ2-BUF PATHZ-INTO ;
 
 public
 \ A path that does not fit dst is E-FS-CAPACITY, with nothing written: the
 \ suffix meets the room the path leaves, which no length can wrap.
-: SUFFIX-PATH ( ptr u8 n ptr u8 n SPAN:span<u8> -- n ) {: a:ptr u s:ptr su dst :}
+: SUFFIX-PATH ( ^u8 n ^u8 n SPAN:span<u8> -- n ) {: a:^ u s:^ su dst :}
    CAUSE-CLEAR
    u 0 < if E-FS-PATH throw then
    su 0 < if E-FS-PATH throw then
@@ -99,25 +99,25 @@ public
    u su + ;
 
 private
-: CLEANUP-AT ( n -- ptr n ) {: idx :}
+: CLEANUP-AT ( n -- ^n ) {: idx :}
    idx 0 < if E-FS-CAPACITY throw then
    idx CLEANUP-CAP @ >= if E-FS-CAPACITY throw then
    CLEANUP-ROW @ idx CLEANUP-STRIDE * cells + ;
 
-: CLEANUP-KIND ( n -- ptr n ) CLEANUP-AT CELL + ;
+: CLEANUP-KIND ( n -- ^n ) CLEANUP-AT CELL + ;
 
 : CLEANUP-SLOT ( n -- SPAN:span<u8> )
    CLEANUP-AT 2 cells + BYTE-VIEW PATH-CAP SPAN:MAKE ;
 
-: CLEANUP-PATH ( n -- ptr u8 n ) {: idx :}
+: CLEANUP-PATH ( n -- ^u8 n ) {: idx :}
    idx CLEANUP-SLOT idx CLEANUP-AT @ SPAN:TAKE SPAN:$ ;
 
 \ Under the lock. A refused mapping leaves the row, its capacity and N as found.
 : CLEANUP-GROW ( -- )
    CLEANUP-CAP @ {: cap :}
    cap 2 * CLEANUP-FIRST max {: grown :}
-   grown CLEANUP-STRIDE * MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS {: row:ptr :}
-   CLEANUP-ROW @ {: old:ptr :}
+   grown CLEANUP-STRIDE * MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS {: row:^ :}
+   CLEANUP-ROW @ {: old:^ :}
    cap 0 > if
       old BYTE-VIEW row BYTE-VIEW
       CLEANUP-N @ CLEANUP-STRIDE * cells BYTE-COPY
@@ -138,23 +138,23 @@ private
 
 public
 \ A throw sets FS:ERRNO.
-: REMOVE-FILE ( ptr u8 n -- ) {: a:ptr u :}
+: REMOVE-FILE ( ^u8 n -- ) {: a:^ u :}
    a u >PATHZ unlink 0 < if E-FS-IO throw then ;
 
 \ A throw sets FS:ERRNO.
-: RENAME-FILE ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu dst:ptr dstu :}
+: RENAME-FILE ( ^u8 n ^u8 n -- ) {: src:^ srcu dst:^ dstu :}
    src srcu >PATHZ dst dstu >PATHZ2 rename 0 < if E-FS-IO throw then ;
 
 private
 PROCESS-SYMBOLS
-FUNCTION: LINK-CALL link ( ptr u8 ptr u8 -- i32 ) ;FUNCTION
-FUNCTION: RENAMEAT2-CALL renameat2 ( n ptr u8 n ptr u8 n -- i32 ) ;FUNCTION
-FUNCTION: RENAMEATX-CALL renameatx_np ( n ptr u8 n ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: LINK-CALL link ( ^u8 ^u8 -- i32 ) ;FUNCTION
+FUNCTION: RENAMEAT2-CALL renameat2 ( n ^u8 n ^u8 n -- i32 ) ;FUNCTION
+FUNCTION: RENAMEATX-CALL renameatx_np ( n ^u8 n ^u8 n -- i32 ) ;FUNCTION
 
 \ One rename that never replaces dst, so a throw has not published; false, src
 \ kept, if dst names an entry. File systems without it (NFS, 9p) throw E-FS-IO.
-: RENAME-NOREPLACE ( n ptr u8 ptr u8 -- bool )
-   {: dir src:ptr dst:ptr :}
+: RENAME-NOREPLACE ( n ^u8 ^u8 -- bool )
+   {: dir src:^ dst:^ :}
    HB-TARGET-MACOS? if dir src dir dst RENAME-EXCL RENAMEATX-CALL
    else dir src dir dst NO-REPLACE RENAMEAT2-CALL then
    0= if true exit then
@@ -163,42 +163,42 @@ FUNCTION: RENAMEATX-CALL renameatx_np ( n ptr u8 n ptr u8 n -- i32 ) ;FUNCTION
 
 public
 \ A throw sets FS:ERRNO.
-: CHMOD-MODE ( ptr u8 n n -- ) {: a:ptr u mode :}
+: CHMOD-MODE ( ^u8 n n -- ) {: a:^ u mode :}
    a u >PATHZ mode chmod 0 < if E-FS-IO throw then ;
 
 \ A throw sets FS:ERRNO.
-: CHMOD-X ( ptr u8 n -- ) {: a:ptr u :}
+: CHMOD-X ( ^u8 n -- ) {: a:^ u :}
    a u STAT-MODE MODE-PERM and MODE-EXEC or {: mode :}
    a u mode CHMOD-MODE ;
 
 \ A throw sets FS:ERRNO.
-: MAKE-SYMLINK ( ptr u8 n ptr u8 n -- ) {: target:ptr targetu link:ptr linku :}
+: MAKE-SYMLINK ( ^u8 n ^u8 n -- ) {: target:^ targetu link:^ linku :}
    target targetu >PATHZ link linku >PATHZ2 symlink 0 < if E-FS-IO throw then ;
 
 \ A hard link; an existing LINK is E-FS-IO, not replaced. A throw sets FS:ERRNO.
-: MAKE-LINK ( ptr u8 n ptr u8 n -- )
-   {: target:ptr targetu link:ptr linku :}
+: MAKE-LINK ( ^u8 n ^u8 n -- )
+   {: target:^ targetu link:^ linku :}
    target targetu >PATHZ link linku >PATHZ2 LINK-CALL 0<> if E-FS-IO ERRNO-FAIL then ;
 
 private
 \ mkdir(2) is bound through libc, so a failure leaves its errno in FFI:ERRNO
 \ for ERRNO-FAIL: the engine primitive collapses every failure to a bare -1.
 PROCESS-SYMBOLS
-FUNCTION: MKDIR-CALL mkdir ( ptr u8 n -- i32 ) ;FUNCTION
-: MADE? ( ptr u8 n -- bool )
+FUNCTION: MKDIR-CALL mkdir ( ^u8 n -- i32 ) ;FUNCTION
+: MADE? ( ^u8 n -- bool )
    MKDIR-CALL 0= ;
 
 public
 \ A throw sets FS:ERRNO.
-: MKDIR-MODE ( ptr u8 n n -- ) {: a:ptr u mode :}
+: MKDIR-MODE ( ^u8 n n -- ) {: a:^ u mode :}
    a u >PATHZ mode MADE? 0= if E-FS-IO ERRNO-FAIL then ;
 
 \ A throw sets FS:ERRNO.
-: MAKE-DIR ( ptr u8 n -- )
+: MAKE-DIR ( ^u8 n -- )
    MODE-DIR MKDIR-MODE ;
 
 \ A throw sets FS:ERRNO.
-: REMOVE-DIR ( ptr u8 n -- ) {: a:ptr u :}
+: REMOVE-DIR ( ^u8 n -- ) {: a:^ u :}
    a u >PATHZ rmdir 0 < if E-FS-IO throw then ;
 
 \ WALK-UNMAP closes whatever descriptors the walk's frames still hold, however
@@ -208,13 +208,13 @@ private
 \ The entry's own mode, never a link target's, lands in STAT-BUF. A name
 \ already gone (ENOENT) is false: a missing root, or an entry removed since its
 \ directory was read. Any other failure is E-FS-STAT.
-: LSTAT-AT? ( n ptr u8 n -- bool ) {: parent:n name:ptr u:n :}
+: LSTAT-AT? ( n ^u8 n -- bool ) {: parent:n name:^ u:n :}
    parent name u >PATHZ STAT-BUF AT-NOFOLLOW STAT-AT-CALL 0= if true exit then
    FFI:ERRNO ENOENT = if false exit then
    E-FS-STAT ERRNO-FAIL ;
 
 
-: UNLINK-AT ( n ptr u8 n n -- ) {: parent:n name:ptr u:n flags:n :}
+: UNLINK-AT ( n ^u8 n n -- ) {: parent:n name:^ u:n flags:n :}
    parent name u >PATHZ flags UNLINK-AT-CALL 0= if exit then
    E-FS-IO ERRNO-FAIL ;
 
@@ -223,8 +223,8 @@ private
 \ the stat is refused, never followed. The name is staged before that depth's
 \ frame is made: a child's name lies in its parent's dirent block, which
 \ growing the frames moves.
-: OPEN-AT ( ptr n n ptr u8 n -- ) {: ctx:ptr parent:n name:ptr u:n :}
-   name u >PATHZ {: z:ptr :}
+: OPEN-AT ( ^n n ^u8 n -- ) {: ctx:^ parent:n name:^ u:n :}
+   name u >PATHZ {: z:^ :}
    ctx WALK-DEPTH@ 1 + {: d :}
    ctx d ENSURE-DEPTH
    d ctx WALK-DEPTH!
@@ -237,11 +237,11 @@ private
 \ its parent's depth. That traversal may have grown the frames and so moved the
 \ parent's dirent block: a child's name is read again from its parent's
 \ current entry. The root's, at depth -1, is the caller's path and never moves.
-: OWN-NAME ( ptr n ptr u8 n -- ptr u8 n ) {: ctx:ptr name:ptr u:n :}
+: OWN-NAME ( ^n ^u8 n -- ^u8 n ) {: ctx:^ name:^ u:n :}
    ctx WALK-DEPTH@ 0 < if name u exit then
    ctx CUR-ENTRY DIRENT-NAME ;
 
-: REMOVE-AT ( ptr n n ptr u8 n -- ) {: ctx:ptr parent:n name:ptr u:n :}
+: REMOVE-AT ( ^n n ^u8 n -- ) {: ctx:^ parent:n name:^ u:n :}
    parent name u LSTAT-AT? 0= if exit then
    STAT-BUF LIBC-MODE@ S-IFMT and S-IFDIR <> if
       parent name u 0 UNLINK-AT exit
@@ -268,7 +268,7 @@ private
 \ `dang/` - is stat'ed without them and unlinked however it is spelled. Any
 \ other root is stat'ed as spelled: `plain/` on a regular file stays ENOTDIR.
 \ A root of slashes only keeps one, the filesystem root.
-: ROOT-LEN ( ptr u8 n -- n ) {: a:ptr u :}
+: ROOT-LEN ( ^u8 n -- n ) {: a:^ u :}
    u begin
       dup 1 > if dup 1 - a + c@ SLASH = else false then
    while 1 - repeat {: s :}
@@ -277,14 +277,14 @@ private
 
 \ Caught as a whole, so one site closes the descriptors and releases the frames
 \ for every way out, a root refused by ROOT-LEN's stat included.
-: REMOVE-RUN ( ptr n ptr u8 n -- ptr n ptr u8 n ) {: ctx:ptr a:ptr u :}
+: REMOVE-RUN ( ^n ^u8 n -- ^n ^u8 n ) {: ctx:^ a:^ u :}
    ctx AT-CWD a a u ROOT-LEN REMOVE-AT
    ctx a u ;
 
 \ No flag guards the context: it is this call's alone, so the process exit hook
 \ removes trees through CLEANUP-RUN whatever a task was doing.
-: REMOVE-SCOPE ( ptr u8 n ptr u8 NUM:alloc-byte-len -- )
-   drop CELL-VIEW {: a:ptr u ctx:ptr :}
+: REMOVE-SCOPE ( ^u8 n ^u8 NUM:alloc-byte-len -- )
+   drop CELL-VIEW {: a:^ u ctx:^ :}
    ctx WALK-MAP
    \ The depth names the directory being emptied: none until the root opens.
    -1 ctx WALK-DEPTH!
@@ -296,7 +296,7 @@ private
 public
 \ Removes the tree at a, unlinking a symlink root even with a trailing slash; a
 \ missing root is a no-op. Descriptors bound its depth. A throw sets FS:ERRNO.
-: REMOVE-TREE ( ptr u8 n -- ) {: a:ptr u :}
+: REMOVE-TREE ( ^u8 n -- ) {: a:^ u :}
    u 0 <= if CAUSE-CLEAR E-FS-PATH throw then
    a u WALK-HANDLE-BYTES MEM:BYTES-ALLOC-LEN [: REMOVE-SCOPE ;] MEM:WITH-BYTES ;
 
@@ -304,14 +304,14 @@ private
 \ Only EEXIST can mean the folder is already there, so only it is checked
 \ with a stat, which accepts a link to a directory. Any other failure throws at
 \ once with mkdir's cause; a non-directory in the way throws with EEXIST.
-: MKDIR-ONE ( ptr u8 n -- ) {: a:ptr u :}
+: MKDIR-ONE ( ^u8 n -- ) {: a:^ u :}
    a u >PATHZ MODE-DIR MADE? if exit then
    FFI:ERRNO EEXIST <> if E-FS-IO ERRNO-FAIL then
    a u DIR? 0= if E-FS-IO EEXIST CAUSE-FAIL then ;
 
 public
 \ A throw sets FS:ERRNO.
-: MAKE-DIRS ( ptr u8 n -- ) {: a:ptr u :}
+: MAKE-DIRS ( ^u8 n -- ) {: a:^ u :}
    u 0 <= if CAUSE-CLEAR E-FS-PATH throw then
    1 begin dup u < while
       a over + c@ SLASH = if
@@ -336,7 +336,7 @@ private
    out CLOSE-COPY-FD
    code throw ;
 
-: COPY-OPEN-SRC ( ptr u8 n -- n ) {: src:ptr srcu :}
+: COPY-OPEN-SRC ( ^u8 n -- n ) {: src:^ srcu :}
    src srcu READ-PATHZ open-rd {: in :}
    in 0 < if E-FS-OPEN throw then
    in ;
@@ -349,13 +349,13 @@ private
 
 \ Runs before the source opens, so a refused destination has nothing to close.
 \ The answer lives in the PATHZ2 buffer, which opening the source leaves alone.
-: COPY-DST-PATHZ ( ptr u8 n -- ptr u8 ) {: dst:ptr dstu :}
+: COPY-DST-PATHZ ( ^u8 n -- ^u8 ) {: dst:^ dstu :}
    dst dstu EXISTS? if
       dst dstu FILE? 0= if E-FS-OPEN throw then
    then
    dst dstu >PATHZ2 ;
 
-: COPY-OPEN-DST ( n ptr u8 -- n ) {: in dstz:ptr :}
+: COPY-OPEN-DST ( n ^u8 -- n ) {: in dstz:^ :}
    dstz O-WRONLY O-CREAT or MODE-0644 open {: out :}
    out 0 < if in -1 E-FS-OPEN COPY-THROW then
    \ Opening must not truncate until the descriptor identities differ.
@@ -391,9 +391,9 @@ private
 
 \ The WITH-BYTES body: the scope's bytes are this copy's buffer, mapped before
 \ either file opens, so a refused mapping leaves nothing to close.
-: COPY-SCOPE ( ptr u8 n ptr u8 n ptr u8 NUM:alloc-byte-len -- )
-   MEM:ALLOCATION>SPAN {: src:ptr srcu dst:ptr dstu buf :}
-   dst dstu COPY-DST-PATHZ {: dstz:ptr :}
+: COPY-SCOPE ( ^u8 n ^u8 n ^u8 NUM:alloc-byte-len -- )
+   MEM:ALLOCATION>SPAN {: src:^ srcu dst:^ dstu buf :}
+   dst dstu COPY-DST-PATHZ {: dstz:^ :}
    src srcu COPY-OPEN-SRC {: in :}
    in dstz COPY-OPEN-DST {: out :}
    buf in out COPY-PUMP
@@ -403,7 +403,7 @@ private
 public
 \ Copies src's bytes to dst, a regular file made or truncated, through a buffer
 \ of the call's own that a throw releases, so tasks may copy at once.
-: COPY-FILE-STREAM ( ptr u8 n ptr u8 n -- )
+: COPY-FILE-STREAM ( ^u8 n ^u8 n -- )
    COPY-CAP MEM:BYTES-ALLOC-LEN [: COPY-SCOPE ;] MEM:WITH-BYTES ;
 
 private
@@ -418,7 +418,7 @@ private
    value 10 mod 48 + dst next SPAN:U8!
    next 1+ ;
 
-: PATH-COLLISION? ( ptr u8 n -- bool ) {: a:ptr u :}
+: PATH-COLLISION? ( ^u8 n -- bool ) {: a:^ u :}
    a u EXISTS? if 0 0= exit then
    a u SYMLINK? ;
 
@@ -429,11 +429,11 @@ private
 6 -1 1 rshift U-DIGITS +
 ATOMIC-RETRIES 1- U-DIGITS + constant SIBLING-LEN-MAX
 
-: SIBLING-Z ( -- ptr u8 )
+: SIBLING-Z ( -- ^u8 )
    ATOMIC-PATH SPAN:$ drop ;
 
-: ATOMIC-BASE-OFF ( ptr u8 n -- n )
-   {: path:ptr pathu:n :}
+: ATOMIC-BASE-OFF ( ^u8 n -- n )
+   {: path:^ pathu:n :}
    pathu begin dup 0 > while
       dup 1 - path + c@ SLASH = if exit then
       1-
@@ -444,7 +444,7 @@ ATOMIC-RETRIES 1- U-DIGITS + constant SIBLING-LEN-MAX
 \ that directory's descriptor. A prefix that leaves no room within PATH-CAP
 \ for the longest sibling name is E-FS-CAPACITY whatever the seed, a semantic
 \ refusal.
-: BUILD-SIBLING ( ptr u8 n n n -- ptr u8 n ) {: pre:ptr preu seed attempt :}
+: BUILD-SIBLING ( ^u8 n n n -- ^u8 n ) {: pre:^ preu seed attempt :}
    CAUSE-CLEAR
    preu 0 < if E-FS-PATH throw then
    preu SIBLING-LEN-MAX + PATH-CAP > if E-FS-CAPACITY throw then
@@ -459,7 +459,7 @@ ATOMIC-RETRIES 1- U-DIGITS + constant SIBLING-LEN-MAX
 \ Habu's portable `open` flags do not include O_EXCL. This narrow libc call
 \ takes the host's exclusive-create flags, so creation stays one syscall.
 PROCESS-SYMBOLS
-FUNCTION: OPEN-CALL open ( ptr u8 n n -- i32 ) 2 VARIADIC ;FUNCTION
+FUNCTION: OPEN-CALL open ( ^u8 n n -- i32 ) 2 VARIADIC ;FUNCTION
 
 \ O_WRONLY|O_CREAT|O_EXCL for the host.
 : EXCL-WRITE-FLAGS ( -- n )
@@ -484,14 +484,14 @@ private
 \ Create and open one candidate with the exclusive flags and mode: its
 \ descriptor, -1 when the name is taken, E-FS-OPEN with the host's cause for
 \ any other refusal.
-: OPEN-CANDIDATE ( ptr u8 n n n -- n )
-   {: path:ptr pathu flags mode :}
+: OPEN-CANDIDATE ( ^u8 n n n -- n )
+   {: path:^ pathu flags mode :}
    path pathu >PATHZ flags mode OPEN-CALL {: fd :}
    fd 0 >= if fd exit then
    FFI:ERRNO EEXIST = if -1 exit then
    E-FS-OPEN ERRNO-FAIL ;
 
-: ATOMIC-WRITE-FD ( n ptr u8 n -- ) {: fd src:ptr srcu :}
+: ATOMIC-WRITE-FD ( n ^u8 n -- ) {: fd src:^ srcu :}
    0 begin dup srcu < while
       {: off:n :}
       fd src off + srcu off - write {: wr:n :}
@@ -502,20 +502,20 @@ private
 
 public
 \ A throw sets FS:ERRNO.
-: ATOMIC-CLEAN-TEMP ( ptr u8 n -- ) {: temp:ptr tempu :}
+: ATOMIC-CLEAN-TEMP ( ^u8 n -- ) {: temp:^ tempu :}
    temp tempu PATH-COLLISION? if temp tempu REMOVE-FILE then ;
 
 private
 \ The realpath of the directory holding path's last component, borrowed from
 \ this task's PATHZ2 buffer.
-: PARENT-REAL ( ptr u8 n -- ptr u8 n )
-   {: path:ptr pathu:n :}
+: PARENT-REAL ( ^u8 n -- ^u8 n )
+   {: path:^ pathu:n :}
    path pathu ATOMIC-BASE-OFF {: off:n :}
    off 0= if s" ." >PATHZ else
       off 1 = if s" /" >PATHZ else
          path off 1 - >PATHZ
       then
-   then {: parent:ptr :}
+   then {: parent:^ :}
    parent PATHZ2-BUF SPAN:$ drop PATHZ-CAP realpath {: u:n :}
    u -2 = if CAUSE-CLEAR E-FS-CAPACITY throw then
    u 0 < if E-FS-STAT ERRNO-FAIL then
@@ -527,9 +527,9 @@ public
 \ The answer is absolute and borrowed from this task's PATHZ2 buffer until the
 \ next use of that buffer; callers retaining it copy it.
 \ This buffer survives sibling reservation and is used unchanged at rename.
-: ATOMIC-TARGET ( ptr u8 n -- ptr u8 n )
-   {: path:ptr pathu:n :}
-   path pathu >PATHZ {: input:ptr :}
+: ATOMIC-TARGET ( ^u8 n -- ^u8 n )
+   {: path:^ pathu:n :}
+   path pathu >PATHZ {: input:^ :}
    input PATHZ2-BUF SPAN:$ drop PATHZ-CAP realpath {: u:n :}
    u -2 = if CAUSE-CLEAR E-FS-CAPACITY throw then
    u 0 >= if PATHZ2-BUF SPAN:$ drop u exit then
@@ -543,7 +543,7 @@ public
    PATHZ2-BUF SPAN:$ drop targetu ;
 
 private
-: ATOMIC-OLD-MODE ( ptr u8 n -- n ) {: path:ptr pathu :}
+: ATOMIC-OLD-MODE ( ^u8 n -- n ) {: path:^ pathu :}
    path pathu TRY-STAT if
       STAT-MODE@ dup S-IFMT and S-IFREG = if MODE-PERM and exit then
       drop
@@ -556,9 +556,9 @@ private
    mono-ns getpid xor ;
 
 PROCESS-SYMBOLS
-FUNCTION: OPENAT-CALL openat ( n ptr u8 n n -- i32 ) 3 VARIADIC ;FUNCTION
+FUNCTION: OPENAT-CALL openat ( n ^u8 n n -- i32 ) 3 VARIADIC ;FUNCTION
 FUNCTION: FCHMOD-CALL fchmod ( n n -- i32 ) ;FUNCTION
-FUNCTION: RENAMEAT-CALL renameat ( n ptr u8 n ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: RENAMEAT-CALL renameat ( n ^u8 n ^u8 -- i32 ) ;FUNCTION
 FUNCTION: FSYNC-CALL fsync ( n -- i32 ) ;FUNCTION
 FUNCTION: FCNTL-CALL fcntl ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
 
@@ -577,16 +577,16 @@ FUNCTION: FCNTL-CALL fcntl ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
 
 \ A line `<CLASS> habu: <place>: <text>` on fd 2 is written in pieces: a place
 \ of PATH-CAP bytes with its text overflows the 1 KiB string builder.
-: SAY ( ptr u8 n -- ) {: a:ptr u :}
+: SAY ( ^u8 n -- ) {: a:^ u :}
    2 a u write drop ;
 
 \ The code's declared name, else its signed number.
 : SAY-CLASS ( n -- ) {: code :}
-   code ERROR:NAME$ {: name:ptr nameu :}
+   code ERROR:NAME$ {: name:^ nameu :}
    nameu 0= if code FMT:INT$ else name nameu then SAY
    s"  habu: " SAY ;
 
-: SAY-TEXT ( ptr u8 n -- )
+: SAY-TEXT ( ^u8 n -- )
    s" : " SAY SAY ;
 
 \ `, errno N` when e is a host errno, then the line's end.
@@ -598,8 +598,8 @@ FUNCTION: FCNTL-CALL fcntl ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
 \ replace the fill or rename error. The sibling is named as a directory prefix
 \ and a name. The errno is the failed step's FS:ERRNO, which the caller clears
 \ before the step; it is read before the first write, which replaces it.
-: STAGED-REPORT ( ptr u8 n ptr u8 n n ptr u8 n ptr u8 n -- )
-   {: op:ptr opu step:ptr stepu code path:ptr pathu name:ptr nameu :}
+: STAGED-REPORT ( ^u8 n ^u8 n n ^u8 n ^u8 n -- )
+   {: op:^ opu step:^ stepu code path:^ pathu name:^ nameu :}
    ERRNO {: e:n :}
    code SAY-CLASS
    path pathu SAY  name nameu SAY
@@ -609,14 +609,14 @@ FUNCTION: FCNTL-CALL fcntl ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
 
 \ Opened for search only: a directory the caller may write and search but not
 \ list still opens.
-: OPEN-DIR-SEARCH ( ptr u8 n -- n ) {: a:ptr u :}
+: OPEN-DIR-SEARCH ( ^u8 n -- n ) {: a:^ u :}
    AT-CWD a u >PATHZ SEARCH-DIR-FLAGS OPEN-AT-CALL {: dir :}
    dir 0 < if E-FS-OPEN ERRNO-FAIL then
    dir ;
 
 \ The absolute target's directory, for every call naming the sibling or the
 \ target: what precedes its last slash, or the root.
-: ATOMIC-OPEN-DIR ( ptr u8 n -- n ) {: dst:ptr dstu :}
+: ATOMIC-OPEN-DIR ( ^u8 n -- n ) {: dst:^ dstu :}
    dst dstu ATOMIC-BASE-OFF 1- 1 max {: diru :}
    dst diru OPEN-DIR-SEARCH ;
 
@@ -626,7 +626,7 @@ FUNCTION: FCNTL-CALL fcntl ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
    {: dir seed mode :}
    0 begin dup ATOMIC-RETRIES < while
       dup {: attempt:n :}
-      s" " seed attempt BUILD-SIBLING {: name:ptr nameu :}
+      s" " seed attempt BUILD-SIBLING {: name:^ nameu :}
       nameu ATOMIC-PATH FFI:CSTR! drop
       dir name EXCL-WRITE-FLAGS mode OPENAT-CALL {: fd:n :}
       fd 0 >= if drop nameu fd exit then
@@ -651,7 +651,7 @@ FUNCTION: FCNTL-CALL fcntl ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
 : ORDER-SYNC ( n -- n ) F-BARRIERFSYNC FCNTL-SYNC ;
 
 \ Stack-preserving under `catch`.
-: ATOMIC-FILL ( n ptr u8 n n -- n ptr u8 n n ) {: fd src:ptr srcu mode :}
+: ATOMIC-FILL ( n ^u8 n n -- n ^u8 n n ) {: fd src:^ srcu mode :}
    fd src srcu ATOMIC-WRITE-FD
    mode 0 >= if
       fd mode FCHMOD-CALL 0<> if E-FS-IO ERRNO-FAIL then
@@ -680,7 +680,7 @@ FUNCTION: FCNTL-CALL fcntl ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
 PROCESS-SYMBOLS
 FUNCTION: SYNCFS-CALL syncfs ( n -- i32 ) ;FUNCTION
 
-: SYNC-PATH ( ptr u8 n [ n -- n ] -- ) {: sync :}
+: SYNC-PATH ( ^u8 n [ n -- n ] -- ) {: sync :}
    >PATHZ open-rd {: fd :}
    fd 0 < if E-FS-OPEN throw then
    fd sync catch {: code:n :}
@@ -688,31 +688,31 @@ FUNCTION: SYNCFS-CALL syncfs ( n -- i32 ) ;FUNCTION
    fd CLOSE-FD drop
    code 0<> if code throw then ;
 
-: SYNC-ENTRY ( ptr u8 n -- )
+: SYNC-ENTRY ( ^u8 n -- )
    [: dup FSYNC-CALL 0<> if E-FS-IO ERRNO-FAIL then ;] SYNC-PATH ;
 
-: SYNC-WALKED? ( ptr u8 n -- bool ) {: a:ptr u :}
+: SYNC-WALKED? ( ^u8 n -- bool ) {: a:^ u :}
    a u DIR? if a u SYNC-ENTRY then
    true ;
 
 \ The F_FULLFSYNC last flushes the drive's cache once for every fsync before.
-: SYNC-EACH ( ptr u8 n -- ) {: a:ptr u :}
+: SYNC-EACH ( ^u8 n -- ) {: a:^ u :}
    a u [: SYNC-WALKED? ;] [: SYNC-ENTRY ;] WALK-FILES-IF
    a u PARENT-REAL SYNC-ENTRY
    a u [: ATOMIC-SYNC ;] SYNC-PATH ;
 
-: SYNC-FS ( ptr u8 n -- )
+: SYNC-FS ( ^u8 n -- )
    [: dup SYNCFS-CALL 0<> if E-FS-IO ERRNO-FAIL then ;] SYNC-PATH ;
 
 public
 \ On return directory path, every directory and regular file under it and its
 \ name in its parent are on disk. A throw sets FS:ERRNO.
-: SYNC-TREE ( ptr u8 n -- )
+: SYNC-TREE ( ^u8 n -- )
    HB-TARGET-MACOS? if SYNC-EACH else SYNC-FS then ;
 
 \ Renames from over to and syncs to's directory, opened first: a throw before
 \ the rename leaves both names; E-FS-SYNC is the sync's, after the rename.
-: RENAME-SYNCED ( ptr u8 n ptr u8 n -- ) {: from:ptr fromu to:ptr tou :}
+: RENAME-SYNCED ( ^u8 n ^u8 n -- ) {: from:^ fromu to:^ tou :}
    to tou PARENT-REAL OPEN-DIR-SEARCH {: dir :}
    [: from fromu to tou RENAME-FILE dir ATOMIC-SYNC-DIR drop ;]
    catch {: code:n :}
@@ -727,7 +727,7 @@ private
    fd CLOSE-FD 0<> if E-FS-IO ERRNO-FAIL then
    fd ;
 
-: ATOMIC-PUBLISH ( n ptr u8 -- n ptr u8 ) {: dir name:ptr :}
+: ATOMIC-PUBLISH ( n ^u8 -- n ^u8 ) {: dir name:^ :}
    dir SIBLING-Z dir name RENAMEAT-CALL 0<> if E-FS-IO ERRNO-FAIL then
    dir name ;
 
@@ -735,7 +735,7 @@ private
    dir SIBLING-Z 0 UNLINK-AT-CALL 0<> if E-FS-IO ERRNO-FAIL then
    dir ;
 
-: ATOMIC-ABANDON ( n ptr u8 n n n -- ) {: dir dst:ptr off nameu code :}
+: ATOMIC-ABANDON ( n ^u8 n n n -- ) {: dir dst:^ off nameu code :}
    ERRNO {: cause :}
    CAUSE-CLEAR
    dir [: ATOMIC-UNLINK ;] catch {: clean-code:n :}
@@ -748,8 +748,8 @@ private
 
 \ Stack-preserving under `catch`; a throw after the publish leaves the new file.
 \ Answers whether it published; a claim on a taken name unlinks the sibling.
-: ATOMIC-IN-DIR ( n ptr u8 n ptr u8 n n n bool -- n ptr u8 n ptr u8 n n n bool )
-   {: dir dst:ptr off src:ptr srcu mode seed claim?:bool :}
+: ATOMIC-IN-DIR ( n ^u8 n ^u8 n n n bool -- n ^u8 n ^u8 n n n bool )
+   {: dir dst:^ off src:^ srcu mode seed claim?:bool :}
    mode 0 >= if MODE-PRIVATE-FILE else MODE-0644 then {: create-mode :}
    dir seed create-mode ATOMIC-RESERVE-AT {: nameu fd :}
    fd src srcu mode [: ATOMIC-FILL ;] catch {: write-code:n :}
@@ -772,10 +772,10 @@ private
 
 \ PATH-CAP bounds only dst: the sibling is named in dst's directory. Private is
 \ 0600, else the old regular mode or umasked 0644; false if claimed and taken.
-: ATOMIC-WRITE-SEED ( ptr u8 n ptr u8 n n bool bool -- bool )
-   {: path:ptr pathu src:ptr srcu seed private?:bool claim?:bool :}
+: ATOMIC-WRITE-SEED ( ^u8 n ^u8 n n bool bool -- bool )
+   {: path:^ pathu src:^ srcu seed private?:bool claim?:bool :}
    srcu 0 < if CAUSE-CLEAR E-FS-CAPACITY throw then
-   path pathu ATOMIC-TARGET {: dst:ptr dstu :}
+   path pathu ATOMIC-TARGET {: dst:^ dstu :}
    dstu PATHZ2-BUF FFI:CSTR! drop
    claim? if dst dstu TRY-LSTAT if false exit then then
    private? if MODE-PRIVATE-FILE else dst dstu ATOMIC-OLD-MODE then {: mode:n :}
@@ -789,9 +789,9 @@ private
    2drop 2drop 2drop drop
    published ;
 
-: RESERVE-MODE ( ptr u8 n n -- ptr u8 n n ) {: path:ptr pathu mode :}
+: RESERVE-MODE ( ^u8 n n -- ^u8 n n ) {: path:^ pathu mode :}
    pathu 0 < if CAUSE-CLEAR E-FS-PATH throw then
-   path path pathu ATOMIC-BASE-OFF {: pre:ptr preu :}
+   path path pathu ATOMIC-BASE-OFF {: pre:^ preu :}
    ATOMIC-SEED {: seed :}
    0 begin dup ATOMIC-RETRIES < while
       dup {: attempt:n :}
@@ -805,28 +805,28 @@ private
 public
 \ Opens a new `.tmp-*` sibling of path, the caller's to remove; this task's next
 \ sibling, ATOMIC-WRITE-* or ATOMIC-TARGET ends its path. A throw sets FS:ERRNO.
-: RESERVE-SIBLING ( ptr u8 n -- ptr u8 n n )
+: RESERVE-SIBLING ( ^u8 n -- ^u8 n n )
    MODE-0644 RESERVE-MODE ;
 
 \ Replace path's file with src's bytes; a reader or crash sees old or whole new,
 \ durable as ATOMIC-SYNC-DIR says. A throw sets FS:ERRNO; one from the
 \ directory sync after the rename is E-FS-SYNC, the new file in place.
-: ATOMIC-WRITE-FILE ( ptr u8 n ptr u8 n -- )
-   {: path:ptr pathu src:ptr srcu :}
+: ATOMIC-WRITE-FILE ( ^u8 n ^u8 n -- )
+   {: path:^ pathu src:^ srcu :}
    path pathu src srcu ATOMIC-SEED false false ATOMIC-WRITE-SEED drop ;
 
 
 \ ATOMIC-WRITE-FILE for a file only its owner may read: sibling and result are
 \ 0600 whatever the destination held. A throw sets FS:ERRNO.
-: ATOMIC-WRITE-PRIVATE ( ptr u8 n ptr u8 n -- )
-   {: path:ptr pathu src:ptr srcu :}
+: ATOMIC-WRITE-PRIVATE ( ^u8 n ^u8 n -- )
+   {: path:^ pathu src:^ srcu :}
    path pathu src srcu ATOMIC-SEED true false ATOMIC-WRITE-SEED drop ;
 
 
 \ ATOMIC-WRITE-PRIVATE to a free name, else false, the entry untouched. A final
 \ symlink counts as its target, a dangling one E-FS-STAT. A throw sets FS:ERRNO.
-: ATOMIC-CREATE-PRIVATE ( ptr u8 n ptr u8 n -- bool )
-   {: path:ptr pathu src:ptr srcu :}
+: ATOMIC-CREATE-PRIVATE ( ^u8 n ^u8 n -- bool )
+   {: path:^ pathu src:^ srcu :}
    path pathu src srcu ATOMIC-SEED true true ATOMIC-WRITE-SEED ;
 
 
@@ -840,7 +840,7 @@ public
    TMP-RETRIES 1- U-DIGITS - ;
 
 private
-: BUILD-TEMP-TRY ( ptr u8 n ptr u8 n n n -- ptr u8 n ) {: base:ptr baseu prefix:ptr prefixu seed attempt :}
+: BUILD-TEMP-TRY ( ^u8 n ^u8 n n n -- ^u8 n ) {: base:^ baseu prefix:^ prefixu seed attempt :}
    baseu prefixu TEMP-DIR-BASE-MAX > if E-FS-CAPACITY throw then
    TMP-PATH-BUF {: dst :}
    base baseu dst SPAN:COPY
@@ -854,16 +854,16 @@ private
    attempt dst next 1+ ATOMIC-U+ {: u:n :}
    dst u SPAN:TAKE SPAN:$ ;
 
-: TMP-COLLISION? ( ptr u8 n -- bool ) {: a:ptr u :}
+: TMP-COLLISION? ( ^u8 n -- bool ) {: a:^ u :}
    a u PATH-COLLISION? ;
 
-: MKDIR-CANDIDATE? ( ptr u8 n -- bool ) {: a:ptr u :}
+: MKDIR-CANDIDATE? ( ^u8 n -- bool ) {: a:^ u :}
    a u >PATHZ MODE-PRIVATE-DIR mkdir {: rc :}
    rc 0= if 0 0= exit then
    a u TMP-COLLISION? if 0 0= 0= exit then
    E-FS-IO throw ;
 
-: MKTEMP-DIR-SEED ( ptr u8 n ptr u8 n n -- ptr u8 n ) {: base:ptr baseu prefix:ptr prefixu seed :}
+: MKTEMP-DIR-SEED ( ^u8 n ^u8 n n -- ^u8 n ) {: base:^ baseu prefix:^ prefixu seed :}
    0 begin dup TMP-RETRIES < while
       dup {: attempt:n :}
       base baseu prefix prefixu seed attempt BUILD-TEMP-TRY
@@ -872,8 +872,8 @@ private
    repeat drop
    E-FS-IO throw ;
 
-: MKTEMP-SEED ( ptr u8 n ptr u8 n n -- ptr u8 n n )
-   {: base:ptr baseu prefix:ptr prefixu seed :}
+: MKTEMP-SEED ( ^u8 n ^u8 n n -- ^u8 n n )
+   {: base:^ baseu prefix:^ prefixu seed :}
    0 begin dup TMP-RETRIES < while
       dup {: attempt:n :}
       base baseu prefix prefixu seed attempt BUILD-TEMP-TRY
@@ -888,7 +888,7 @@ public
 \ keeps the caller's spelling: a relative base gives a relative answer. The
 \ answer stays this task's until its next FS:MKTEMP, FS:MKTEMP-DIR or
 \ FS:MKTEMP-DIR-IN: a caller that makes two copies the first.
-: MKTEMP-DIR-IN ( ptr u8 n ptr u8 n -- ptr u8 n )
+: MKTEMP-DIR-IN ( ^u8 n ^u8 n -- ^u8 n )
    mono-ns MKTEMP-DIR-SEED ;
 
 private
@@ -896,36 +896,36 @@ private
 \ spelling's length, below 0 when realpath refuses the root. FS:MKTEMP-DIR-IN
 \ and FS:MKTEMP build and make their candidates through TMP-PATH-BUF and
 \ >PATHZ only, so the spelling stands through every attempt.
-: TEMP-REAL ( ptr u8 n -- n )
+: TEMP-REAL ( ^u8 n -- n )
    >PATHZ PATHZ2-BUF SPAN:$ drop PATHZ-CAP realpath ;
 
 \ One record naming TMPDIR, its value and why, before anything is made:
 \ without it each rejection dies later on an error that does not name TMPDIR.
 \ The value comes from the environment, so the record has no place.
-: TMPDIR-OPEN ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: a:ptr u c:ptr cu why:ptr whyu :}
+: TMPDIR-OPEN ( ^u8 n ^u8 n ^u8 n -- )
+   {: a:^ u c:^ cu why:^ whyu :}
    c cu REJECTION:OPEN  why whyu REJECTION:EMIT-STR
    s" TMPDIR" REJECTION:NOTE  a u REJECTION:EMIT-STR ;
 
 \ Throws the code carrying the record, which prints only if nothing catches it:
 \ ZIP:OPEN's callers catch FS:MKTEMP's E-FS-DIR and go on.
-: TMPDIR-REJECT ( ptr u8 n n -- ) {: h:ptr hu code :}
+: TMPDIR-REJECT ( ^u8 n n -- ) {: h:^ hu code :}
    REJECTION:HELP  h hu REJECTION:EMIT-STR
    REJECTION:SAVE  code REJECTION:PASS ;
 
-: TMPDIR-LONG ( ptr u8 n -- )
+: TMPDIR-LONG ( ^u8 n -- )
    s" E-FS-CAPACITY" s" TMPDIR is too long for a temp path" TMPDIR-OPEN
    s" point TMPDIR at a directory with a shorter path, or unset it to use /tmp"
    E-FS-CAPACITY TMPDIR-REJECT ;
 
 \ DIR? recording no read: a temp made in the root moves its change time, which
 \ no compile's answer depends on.
-: TMPDIR-DIR? ( ptr u8 n -- bool )
+: TMPDIR-DIR? ( ^u8 n -- bool )
    >PATHZ STAT-Z? 0= if false exit then
    STAT-MODE@ S-IFMT and S-IFDIR = ;
 
 \ The answer is the canonical spelling, borrowed from this task's PATHZ2 buffer.
-: TMPDIR-CHECK ( ptr u8 n n -- ptr u8 n ) {: a:ptr u prefixu :}
+: TMPDIR-CHECK ( ^u8 n n -- ^u8 n ) {: a:^ u prefixu :}
    u PATH-CAP > if a u TMPDIR-LONG then
    a u TMPDIR-DIR? 0= if
       a u s" E-FS-DIR" s" TMPDIR is not a directory" TMPDIR-OPEN
@@ -952,14 +952,14 @@ private
 \ away with it even when the child is killed before its own CLEANUP-RUN;
 \ anywhere else nobody reaps the root, and a maker that leaks there leaks for
 \ good.
-: TEMP-ROOT ( n -- ptr u8 n )
+: TEMP-ROOT ( n -- ^u8 n )
    {: prefixu:n :}
    s" TMPDIR" GETENV dup 0= if 2drop s" /tmp" then
    prefixu TMPDIR-CHECK ;
 
 public
-: MKTEMP-DIR ( ptr u8 n -- ptr u8 n )
-   {: prefix:ptr prefixu :}
+: MKTEMP-DIR ( ^u8 n -- ^u8 n )
+   {: prefix:^ prefixu :}
    prefixu TEMP-ROOT prefix prefixu MKTEMP-DIR-IN ;
 
 \ Create and open a new file `<root>/<prefix>-<seed>-<attempt>` under the temp
@@ -967,8 +967,8 @@ public
 \ stays this task's until its next FS:MKTEMP, FS:MKTEMP-DIR or
 \ FS:MKTEMP-DIR-IN, and the descriptor. The caller owns both and the removal;
 \ nothing is registered.
-: MKTEMP ( ptr u8 n -- ptr u8 n fd )
-   {: prefix:ptr prefixu :}
+: MKTEMP ( ^u8 n -- ^u8 n fd )
+   {: prefix:^ prefixu :}
    prefixu TEMP-ROOT prefix prefixu mono-ns MKTEMP-SEED >FD ;
 
 \ One task only: a forked child's inherited paths are its parent's to remove,
@@ -979,7 +979,7 @@ public
 
 private
 : CLEANUP-REMOVE ( n -- ) {: idx :}
-   idx CLEANUP-PATH {: a:ptr u :}
+   idx CLEANUP-PATH {: a:^ u :}
    idx CLEANUP-KIND @ {: kind :}
    a u SYMLINK? if a u REMOVE-FILE exit then
    a u EXISTS? 0= if exit then
@@ -1046,7 +1046,7 @@ private
 \ when it is full, the slot is written, and only then is it counted, so every
 \ counted slot names a path and a refused registration - a path past PATH-CAP
 \ (E-FS-PATH) or a row that cannot grow - leaves the count it found.
-: CLEANUP-APPEND ( ptr u8 n n -- ) {: a:ptr u kind :}
+: CLEANUP-APPEND ( ^u8 n n -- ) {: a:^ u kind :}
    CLEANUP-N @ {: idx :}
    u PATH-CAP > if E-FS-PATH throw then
    idx CLEANUP-CAP @ = if CLEANUP-GROW then
@@ -1055,7 +1055,7 @@ private
    kind idx CLEANUP-KIND !
    idx 1+ CLEANUP-N ! ;
 
-: CLEANUP-KIND+ ( ptr u8 n n -- ) {: a:ptr u kind :}
+: CLEANUP-KIND+ ( ^u8 n n -- ) {: a:^ u kind :}
    ['] CLEANUP-AT-EXIT AT-EXIT:ADD
    u 0 < if E-FS-PATH throw then
    kind CLEANUP-FILE <>
@@ -1065,21 +1065,21 @@ private
    a u kind [: CLEANUP-APPEND ;] [: CLEANUP-RELEASE ;] finally ;
 
 public
-: CLEANUP+ ( ptr u8 n -- )
+: CLEANUP+ ( ^u8 n -- )
    CLEANUP-FILE CLEANUP-KIND+ ;
 
-: CLEANUP-DIR+ ( ptr u8 n -- )
+: CLEANUP-DIR+ ( ^u8 n -- )
    CLEANUP-DIR CLEANUP-KIND+ ;
 
-: CLEANUP-TREE+ ( ptr u8 n -- )
+: CLEANUP-TREE+ ( ^u8 n -- )
    CLEANUP-TREE CLEANUP-KIND+ ;
 
 private
-: CLEANUP-NAMES? ( ptr u8 n n -- bool ) {: a:ptr u idx :}
+: CLEANUP-NAMES? ( ^u8 n n -- bool ) {: a:^ u idx :}
    idx CLEANUP-AT @ u <> if 0 0= 0= exit then
    idx CLEANUP-PATH a u STR= ;
 
-: CLEANUP-FIND ( ptr u8 n -- n ) {: a:ptr u :}
+: CLEANUP-FIND ( ^u8 n -- n ) {: a:^ u :}
    CLEANUP-N @ begin dup 0 > while
       1 -
       dup >r a u r> CLEANUP-NAMES? if exit then
@@ -1088,7 +1088,7 @@ private
 
 \ The slots above idx move down one in a single forward copy, which is safe
 \ because the destination lies below the source.
-: CLEANUP-DROP ( ptr u8 n -- ) {: a:ptr u :}
+: CLEANUP-DROP ( ^u8 n -- ) {: a:^ u :}
    a u CLEANUP-FIND {: idx :}
    idx 0 < if exit then
    CLEANUP-N @ 1- {: last :}
@@ -1103,7 +1103,7 @@ public
 \ The newest slot naming the path goes and every newer slot moves down one, so
 \ the run order keeps no gap. A path no slot names is a no-op; an empty path is
 \ E-FS-PATH.
-: CLEANUP-FORGET ( ptr u8 n -- ) {: a:ptr u :}
+: CLEANUP-FORGET ( ^u8 n -- ) {: a:^ u :}
    u 0 <= if E-FS-PATH throw then
    CLEANUP-ACQUIRE
    a u [: CLEANUP-DROP ;] [: CLEANUP-RELEASE ;] finally ;
@@ -1111,8 +1111,8 @@ public
 private
 \ The sibling is umasked 0644, or 0600 over a regular file; once open for the
 \ sync it takes that file's mode plus fill's execute bits, which may deny reads.
-: STAGED-SYNC ( ptr u8 n n bool -- )
-   {: tmp:ptr tmpu mode:n durable:bool :}
+: STAGED-SYNC ( ^u8 n n bool -- )
+   {: tmp:^ tmpu mode:n durable:bool :}
    mode 0 >= if
       tmp tmpu TRY-STAT 0= if E-FS-IO throw then
       STAT-MODE@ MODE-EXEC and mode or
@@ -1124,8 +1124,8 @@ private
       durable if ATOMIC-SYNC else ORDER-SYNC then ;] SYNC-PATH ;
 
 \ Stack-preserving under `catch`, the sibling left to remove.
-: STAGED-RUN ( R ptr u8 n ptr u8 n n bool [ R ptr u8 n -- R ] -- R ptr u8 n ptr u8 n n bool [ R ptr u8 n -- R ] )
-   {: path:ptr pathu tmp:ptr tmpu mode:n durable:bool fill :}
+: STAGED-RUN ( R ^u8 n ^u8 n n bool [ R ^u8 n -- R ] -- R ^u8 n ^u8 n n bool [ R ^u8 n -- R ] )
+   {: path:^ pathu tmp:^ tmpu mode:n durable:bool fill :}
    tmp tmpu CLEANUP+
    tmp tmpu fill execute
    tmp tmpu mode durable STAGED-SYNC
@@ -1136,17 +1136,17 @@ private
    then
    path pathu tmp tmpu mode durable fill ;
 
-: STAGED-CLEAN ( ptr u8 n -- ptr u8 n )
+: STAGED-CLEAN ( ^u8 n -- ^u8 n )
    2dup ATOMIC-CLEAN-TEMP ;
 
-: STAGED-FORGET ( ptr u8 n -- ptr u8 n )
+: STAGED-FORGET ( ^u8 n -- ^u8 n )
    2dup CLEANUP-FORGET ;
 
-: STAGED-REPLACE ( R ptr u8 n [ R ptr u8 n -- R ] bool -- R )
-   {: path:ptr pathu fill durable:bool :}
+: STAGED-REPLACE ( R ^u8 n [ R ^u8 n -- R ] bool -- R )
+   {: path:^ pathu fill durable:bool :}
    path pathu ATOMIC-OLD-MODE {: mode:n :}
    mode 0 >= if MODE-PRIVATE-FILE else MODE-0644 then {: create-mode :}
-   path pathu create-mode RESERVE-MODE {: tmp:ptr tmpu fd :}
+   path pathu create-mode RESERVE-MODE {: tmp:^ tmpu fd :}
    fd CLOSE-FD 0<> if
       FFI:ERRNO {: close-cause:n :}
       CAUSE-CLEAR
@@ -1185,12 +1185,12 @@ private
 public
 \ Renames fill's synced sibling over path, else removes it; fill must not end
 \ RESERVE-SIBLING's path. Throws set FS:ERRNO or keep fill's, E-FS-SYNC after.
-: REPLACE-STAGED ( R ptr u8 n [ R ptr u8 n -- R ] -- R )
+: REPLACE-STAGED ( R ^u8 n [ R ^u8 n -- R ] -- R )
    true STAGED-REPLACE ;
 
 \ REPLACE-STAGED without the directory sync: a crash leaves path's old file,
 \ the whole new one, or none where there was none.
-: REPLACE-CACHED ( R ptr u8 n [ R ptr u8 n -- R ] -- R )
+: REPLACE-CACHED ( R ^u8 n [ R ^u8 n -- R ] -- R )
    false STAGED-REPLACE ;
 
 ;package

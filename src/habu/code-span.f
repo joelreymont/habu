@@ -27,8 +27,8 @@ $FFFFFFFF constant RAW-MAX
 private
 \ Rejects V given to the public word W: WHAT says what V is not, OK the values
 \ the word takes, TEST the CODE-SPAN word that answers whether a value is one.
-: BAD ( n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
-   {: v:n w:ptr wu:n what:ptr whatu:n ok:ptr oku:n test:ptr testu:n :}
+: BAD ( n ^u8 n ^u8 n ^u8 n ^u8 n -- )
+   {: v:n w:^ wu:n what:^ whatu:n ok:^ oku:n test:^ testu:n :}
    s" E-CODE-SPAN" REJECTION:OPEN
    s" `CODE-SPAN:" REJECTION:EMIT-STR  w wu REJECTION:EMIT-STR
    s" ` was given " REJECTION:EMIT-STR  v REJECTION:EMIT-N
@@ -39,7 +39,7 @@ private
    s" ` first and pass only one it accepts" REJECTION:EMIT-STR
    CHECKER-REJECT-RC REJECTION:STOP ;
 
-: LENGTH-CK ( n ptr u8 n -- ) {: raw:n w:ptr wu:n :}
+: LENGTH-CK ( n ^u8 n -- ) {: raw:n w:^ wu:n :}
    raw VALID? 0= if
       raw w wu s" a dictionary code length"
       s" whole 4-byte instructions, or bit 31 set over 1 to 2147483647 bytes"

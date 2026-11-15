@@ -110,12 +110,12 @@ variable INCREMENT
 
 16 constant STRIDE-BYTES
 create STRIDE-BUF STRIDE-BYTES allot
-: COPY-DATA ( ptr u8 -- ) {: p:ptr :}
+: COPY-DATA ( ^u8 -- ) {: p:^ :}
    16 0 ?do p i + c@ drop 4 +loop ;
-: CONDITIONAL ( ptr u8 n -- ) {: p:ptr n:n :}
+: CONDITIONAL ( ^u8 n -- ) {: p:^ n:n :}
    n 1 = if 16 0 ?do p i + c@ drop 4 +loop exit then
    p c@ drop ;
-: STRIDE-SUM ( ptr u8 -- n ) {: p:ptr :}
+: STRIDE-SUM ( ^u8 -- n ) {: p:^ :}
    0 16 0 ?do p i + c@ + 4 +loop ;
 
 ;package

@@ -11,7 +11,7 @@ package STALE
 private
 using BROWSER-EVENT
 
-CAST: BYTES>N ( ptr u8 -- n )
+CAST: BYTES>N ( ^u8 -- n )
 
 \ A record field, eight bytes low first, appended to OUT.
 : FIELD, ( n -- )

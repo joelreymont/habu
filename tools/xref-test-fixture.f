@@ -30,9 +30,9 @@ public
 : XRT-CALLER ( n -- n )
    XRT-SAMPLE + ;
 
-\ A record is `ptr n`; declaring the pointee parametric here specializes the
+\ A record is `^n`; declaring the pointee parametric here specializes the
 \ quantifier in the body and is refused.
-: XRT-EXPECT-FOUND ( ptr u8 n -- ptr n )
+: XRT-EXPECT-FOUND ( ^u8 n -- ^n )
    XREF-FIND dup XREF-FOUND? TTRUE ;
 
 : XRT-FOUND ( -- )

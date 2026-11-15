@@ -262,7 +262,7 @@ public
    10 PROF-CALLER-NONE LIT64,  LPROFEDGE LABEL@ BL,
    wret LBL, ;
 
-: C-PROF-SAY ( ptr u8 n -- ) {: a:ptr u:n :}
+: C-PROF-SAY ( ^u8 n -- ) {: a:^ u:n :}
    LBL LBL {: skip txt :}
    skip B,
    txt LBL,  a u BYTES,
@@ -277,7 +277,7 @@ public
 : C-PROF-NL ( -- )  s\" \n" C-PROF-SAY ;
 : C-PROF-DQ ( -- )  s\" \q" C-PROF-SAY ;
 
-: C-PROF-FIELD ( ptr u8 n n -- ) {: a:ptr u:n reg:n :}
+: C-PROF-FIELD ( ^u8 n n -- ) {: a:^ u:n reg:n :}
    a u C-PROF-SAY
    9 reg 0 ADDI,  10 1 MOVZ,  LPROFNUM LABEL@ BL, ;
 
@@ -935,7 +935,7 @@ private
       7 PROF-BAND-VA LIT64,  0 7 PROF-ARENA STR,
    have LBL, ;
 
-: C-PROF-DIE ( ptr u8 n -- ) {: a:ptr u:n :}
+: C-PROF-DIE ( ^u8 n -- ) {: a:^ u:n :}
    LBL {: msg :}
    0 2 MOVZ,  1 msg ADR,  2 u LIT64,  NR-WRITE SYS,
    0 PROF-MAP-RC MOVZ,  NR-EXIT-GROUP SYS,

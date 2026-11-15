@@ -29,18 +29,18 @@ create CKT-INT-A 80 allot
 create CKT-INT-B 80 allot
 
 
-: CKT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
+: CKT-COPY! ( ^u8 n ^u8 ^n -- ) {: a:^ u:n dst:^ lenp:^ :}
    a dst u BYTE-COPY
    u lenp ! ;
 
-: CKT-PATH! ( ptr u8 n ptr u8 n ptr u8 ptr n -- )
-   {: pa:ptr pu:n na:ptr nu:n dst:ptr lenp:ptr :}
+: CKT-PATH! ( ^u8 n ^u8 n ^u8 ^n -- )
+   {: pa:^ pu:n na:^ nu:n dst:^ lenp:^ :}
    pa pu na nu dst FS:JOIN-PATH lenp ! ;
 
-: CKT-ROOT$ ( -- ptr u8 n )
+: CKT-ROOT$ ( -- ^u8 n )
    CKT-ROOT CKT-ROOT-U @ ;
 
-: CKT-SRC$ ( -- ptr u8 n )
+: CKT-SRC$ ( -- ^u8 n )
    CKT-SRC CKT-SRC-U @ ;
 
 : CKT-SETUP ( -- )
@@ -186,18 +186,18 @@ CKT-NEST-INSTALL
    s" CKT-C-DROP ( CONTENT-KEY:fold -- ) CKT-SEQ-A 1 TEXT+ drop"
    CHECK-QUIET-CANDIDATE! 0 T= ;
 
-: CKT-NAMED-BODY ( ptr u8 n ptr u8 n ptr u8 CONTENT-KEY:fold -- )
-   >r {: a:ptr u:n name:ptr size:n key:ptr :} r>
+: CKT-NAMED-BODY ( ^u8 n ^u8 n ^u8 CONTENT-KEY:fold -- )
+   >r {: a:^ u:n name:^ size:n key:^ :} r>
    a u name size FILE-NAMED+ key FINAL-HEX ;
 
-: CKT-NAMED-KEY ( ptr u8 n ptr u8 n ptr u8 -- )
+: CKT-NAMED-KEY ( ^u8 n ^u8 n ^u8 -- )
    [: CKT-NAMED-BODY ;] WITH-FOLD ;
 
-: CKT-FILE-BODY ( ptr u8 n ptr u8 CONTENT-KEY:fold -- )
-   >r {: a:ptr u:n key:ptr :} r>
+: CKT-FILE-BODY ( ^u8 n ^u8 CONTENT-KEY:fold -- )
+   >r {: a:^ u:n key:^ :} r>
    a u FILE+ key FINAL-HEX ;
 
-: CKT-FILE-KEY ( ptr u8 n ptr u8 -- )
+: CKT-FILE-KEY ( ^u8 n ^u8 -- )
    [: CKT-FILE-BODY ;] WITH-FOLD ;
 
 : CKT-LOGICAL-NAME ( -- )
@@ -229,11 +229,11 @@ create CKT-NAME CK-FRAG-MAX 1+ allot
 : CKT-NAME-FILL ( -- )
    CK-FRAG-MAX 1+ 0 ?do [char] a CKT-NAME i + c! loop ;
 
-: CKT-NAMED ( n ptr u8 -- ) {: u:n key:ptr :}
+: CKT-NAMED ( n ^u8 -- ) {: u:n key:^ :}
    CKT-SRC$ CKT-NAME u key CKT-NAMED-KEY ;
 
 : CKT-LONG-NAME ( n -- ) {: u:n :}
-   CKT-NAME u + 1- {: last:ptr :}
+   CKT-NAME u + 1- {: last:^ :}
    u CKT-KEY1 CKT-NAMED
    [char] b last c!
    u CKT-KEY2 CKT-NAMED

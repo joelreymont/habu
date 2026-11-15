@@ -29,7 +29,7 @@ variable BODY-U
 
 : PAD5, ( n -- )  ROOM WLEB:U32-PAD! BODY-U +! ;
 
-: BODY$ ( -- ptr u8 n )  BODY-BUF BODY-U @ ;
+: BODY$ ( -- ^u8 n )  BODY-BUF BODY-U @ ;
 
 \ i32.const tag, then out zero lanes: a body of any lanes in.
 : RET-BODY ( n n -- )

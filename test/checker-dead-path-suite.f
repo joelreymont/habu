@@ -40,7 +40,7 @@ public
 package DEADPATH-OWN
 public
 
-: DIE ( ptr u8 n -- )
+: DIE ( ^u8 n -- )
    3 die ;
 
 : THROW ( n -- )

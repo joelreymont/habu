@@ -18,12 +18,12 @@ private
 
 \ The symbol for record R of group G, a comma before it unless it is the
 \ group's first.
-: LISTED ( ptr JSON:writer n n -- ptr JSON:writer )
+: LISTED ( ^JSON:writer n n -- ^JSON:writer )
    {: w g:n r:n :}
    w r g GROUP-FIRST <> if WRITE-COMMA then
    g r LSP-SYMBOLS:SYMBOL ;
 
-: SYMBOLS ( ptr JSON:writer n -- ptr JSON:writer )
+: SYMBOLS ( ^JSON:writer n -- ^JSON:writer )
    {: w g:n :}
    g GROUP-FIRST begin dup 0 >= while
       w over g swap LISTED drop
@@ -33,7 +33,7 @@ private
 
 public
 
-: ANSWER ( ptr JSON:writer n -- ptr JSON:writer )
+: ANSWER ( ^JSON:writer n -- ^JSON:writer )
    {: w slot:n :}
    w WRITE-ARRAY-START
    slot DEFS-OWN-GROUP MATCH option

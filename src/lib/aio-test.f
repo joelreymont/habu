@@ -43,7 +43,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 [then]
 
 \ The loop's task, so a case can hold it busy and make START's activation fail.
-: AIO-TEST:LOOP-TASK ( -- ptr n )
+: AIO-TEST:LOOP-TASK ( -- ^n )
    AIO-LOOP ;
 
 ;package
@@ -133,9 +133,9 @@ TYPED-VARIABLE STALE-TICKET AIO:ticket
 TYPED-VARIABLE STALE-XFER AIO:xfer
 TYPED-VARIABLE LIVE-TICKET AIO:ticket
 TYPED-VARIABLE LIVE-XFER AIO:xfer
-TYPED-VARIABLE XB-PTR ptr u8          \ an allocation a quotation has to reach, and
+TYPED-VARIABLE XB-PTR ^u8          \ an allocation a quotation has to reach, and
 TYPED-VARIABLE XB-CAP NUM:alloc-byte-len   \ so cannot hold in a local of its own
-TYPED-VARIABLE FORGET-PTR ptr u8
+TYPED-VARIABLE FORGET-PTR ^u8
 TYPED-VARIABLE XL TCP4:listener
 TYPED-VARIABLE XC TCP4:connection
 
@@ -197,13 +197,13 @@ TASK:MIN-STACK TASK:TASK FAN7
 : AWAIT>N ( AIO:ticket -- n )
    AIO:AWAIT OUTCOME>N ;
 
-: PIPE-OPEN ( ptr n ptr n -- ) {: rcell:ptr wcell:ptr :}
+: PIPE-OPEN ( ^n ^n -- ) {: rcell:^ wcell:^ :}
    pipe {: r w rc :}
    rc 0 <> if E-AIO-SETUP throw then
    r rcell !
    w wcell ! ;
 
-: PIPE-CLOSE ( ptr n ptr n -- ) {: rcell:ptr wcell:ptr :}
+: PIPE-CLOSE ( ^n ^n -- ) {: rcell:^ wcell:^ :}
    rcell @ close-rc drop
    wcell @ close-rc drop
    0 rcell !
@@ -212,15 +212,15 @@ TASK:MIN-STACK TASK:TASK FAN7
 : POKE ( n -- ) {: w:n :}
    w POKE-BYTE 1 write drop ;
 
-: SLOT ( ptr n n -- ptr n ) {: base:ptr idx:n :}
+: SLOT ( ^n n -- ^n ) {: base:^ idx:n :}
    base idx cells + ;
 
 : THREADS ( -- n ) TEST-HOST:THREADS ;
 
-: REACH ( ptr n n -- )
+: REACH ( ^n n -- )
    [: 2dup swap atomic@ <= ;] TEST-WAIT:POLL 2drop ;
 
-: AWAIT-END ( ptr n -- )
+: AWAIT-END ( ^n -- )
    [: dup TASK:DONE? ;] TEST-WAIT:POLL drop ;
 
 \ The scrub a halted task runs cancels its operations, and the cancels have to
@@ -454,19 +454,19 @@ TASK:MIN-STACK TASK:TASK FAN7
 : PAT-C ( n -- n )
    PAT-MOD mod ;
 
-: PAT-FILL ( ptr u8 -- ) {: buf :}
+: PAT-FILL ( ^u8 -- ) {: buf :}
    XFER-N 0 ?do i PAT-C buf i + c! loop ;
 
 \ The bytes at file offset `off` are the pattern's, and the pattern's period is
 \ no divisor of the offsets this suite reads at, so a chunk read at the wrong
 \ offset does not match.
-: PAT-CHECK ( ptr u8 n n -- bool ) {: buf off:n cnt:n :}
+: PAT-CHECK ( ^u8 n n -- bool ) {: buf off:n cnt:n :}
    cnt 0 ?do
       buf i + c@ off i + PAT-C <> if 0 0= 0= unloop exit then
    loop
    0 0= ;
 
-: XFER-ALLOC ( -- ptr u8 NUM:alloc-byte-len )
+: XFER-ALLOC ( -- ^u8 NUM:alloc-byte-len )
    XFER-N MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES ;
 
 : XB-ALLOC ( -- )
@@ -475,18 +475,18 @@ TASK:MIN-STACK TASK:TASK FAN7
 : XB-FREE ( -- )
    XB-PTR @ XB-CAP @ MEM:RELEASE-BYTES ;
 
-: XFER-DROP ( ptr u8 NUM:alloc-byte-len AIO:outcome -- )
+: XFER-DROP ( ^u8 NUM:alloc-byte-len AIO:outcome -- )
    OUTCOME>N drop drop drop ;
 
 : XFER-TICKET-DROP ( AIO:xfer -- )
    drop ;
 
-: XFER-PATH ( -- ptr u8 n )
+: XFER-PATH ( -- ^u8 n )
    XFER-PATH-BUF XFER-PATH-U @ ;
 
 : XFER-FILE! ( -- )
    XFER-PAT PAT-FILL
-   s" habu-aio" FS:MKTEMP-DIR {: a:ptr u :}
+   s" habu-aio" FS:MKTEMP-DIR {: a:^ u :}
    a u FS:CLEANUP-TREE+
    a u s" xfer.bin" XFER-PATH-BUF FS:JOIN-PATH XFER-PATH-U !
    XFER-PATH XFER-PAT XFER-N FS:WRITE-ALL ;
@@ -921,11 +921,11 @@ CAST: XFER>N ( AIO:xfer -- n )
       CHECK-QUIET-CANDIDATE! -1 T=
    s" AIO-CANCEL-RAW ( n -- ) AIO:CANCEL"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" AIO-READ-OK ( fd ptr u8 NUM:alloc-byte-len n n -- AIO:xfer ) AIO:READ"
+   s" AIO-READ-OK ( fd ^u8 NUM:alloc-byte-len n n -- AIO:xfer ) AIO:READ"
       CHECK-QUIET-CANDIDATE! -1 T=
-   s" AIO-READ-TICKET ( fd ptr u8 NUM:alloc-byte-len n n -- AIO:ticket ) AIO:READ"
+   s" AIO-READ-TICKET ( fd ^u8 NUM:alloc-byte-len n n -- AIO:ticket ) AIO:READ"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" AIO-XFER-OK ( AIO:xfer -- ptr u8 NUM:alloc-byte-len AIO:outcome ) AIO:AWAIT-XFER"
+   s" AIO-XFER-OK ( AIO:xfer -- ^u8 NUM:alloc-byte-len AIO:outcome ) AIO:AWAIT-XFER"
       CHECK-QUIET-CANDIDATE! -1 T=
    s" AIO-XFER-AWAIT ( AIO:xfer -- AIO:outcome ) AIO:AWAIT"
       CHECK-QUIET-CANDIDATE! 0 T=
@@ -933,7 +933,7 @@ CAST: XFER>N ( AIO:xfer -- n )
       CHECK-QUIET-CANDIDATE! 0 T=
    s" AIO-XFER-GROUP-OUT ( AIO:xfer AIO:group -- ) AIO:GROUP-"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" AIO-TICKET-AWAIT-XFER ( AIO:ticket -- ptr u8 NUM:alloc-byte-len AIO:outcome ) AIO:AWAIT-XFER"
+   s" AIO-TICKET-AWAIT-XFER ( AIO:ticket -- ^u8 NUM:alloc-byte-len AIO:outcome ) AIO:AWAIT-XFER"
       CHECK-QUIET-CANDIDATE! 0 T= ;
 
 : AIO-TEST-RUN ( -- )

@@ -40,7 +40,7 @@ private
 \ cannot number it. The linker holds no source place, so the record is unplaced.
 : BAD-WID ( n n -- )
    {: wid:n r:n :}
-   r XREF-REC XREF-NAME$ {: name:ptr nameu:n :}
+   r XREF-REC XREF-NAME$ {: name:^ nameu:n :}
    s" E-LINK-WORDLIST" REJECTION:OPEN
    s" `" REJECTION:EMIT-STR  name nameu REJECTION:EMIT-STR
    s" ` names wordlist " REJECTION:EMIT-STR  wid REJECTION:EMIT-N
@@ -189,7 +189,7 @@ variable REGION-N
    loop ;
 
 
-: MAP+ ( ptr u8 n -- ) MAP-TEXT SPAN+ ;
+: MAP+ ( ^u8 n -- ) MAP-TEXT SPAN+ ;
 : MAP-NL ( -- ) S\" \n" MAP+ ;
 
 : MAP-INT+ ( n -- )
@@ -199,8 +199,8 @@ variable REGION-N
 : MAP-HEX+ ( n -- ) s" 0123456789ABCDEF" drop swap + 1 MAP+ ;
 
 \ A path, its bytes at or below a space and its '%' as %XX, and none as `-`.
-: MAP-ESC+ ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: MAP-ESC+ ( ^u8 n -- )
+   {: a:^ u:n :}
    u 0= if s" -" MAP+ exit then
    u 0 ?do
       a i + c@ {: c:n :}
@@ -209,8 +209,8 @@ variable REGION-N
       else a i + 1 MAP+ then
    loop ;
 
-: MAP-NAME+ ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: MAP-NAME+ ( ^u8 n -- )
+   {: a:^ u:n :}
    u 0= if s" -" MAP+ else a u MAP+ then ;
 
 : REC+ ( -- n ) MAP-REC @  1 MAP-REC +! ;
@@ -229,17 +229,17 @@ variable REGION-N
 
 : NAMED ( -- n ) ENGINE? @ if 1 else 0 then ;
 
-: MAP-KIND$ ( n -- ptr u8 n ) MAP-ALIAS @ 0<> if s"  alias " else s"  word " then ;
+: MAP-KIND$ ( n -- ^u8 n ) MAP-ALIAS @ 0<> if s"  alias " else s"  word " then ;
 
 \ An engine's records are baked into the program it writes; a stripped program's
 \ are loaded on the kernel's.
-: ORIGIN$ ( -- ptr u8 n ) ENGINE? @ if s" baked " else s" loaded " then ;
+: ORIGIN$ ( -- ^u8 n ) ENGINE? @ if s" baked " else s" loaded " then ;
 
 \ BUILT row's path below the root that resolved its file; none for -1.
-: FILE-PATH$ ( n -- ptr u8 n )
+: FILE-PATH$ ( n -- ^u8 n )
    {: row:n :}
    row 0 < if s" " exit then
-   LOAD-PATHS BYTES$ drop  row BUILT-PATHS @ + {: at:ptr :}
+   LOAD-PATHS BYTES$ drop  row BUILT-PATHS @ + {: at:^ :}
    at 8 +  at LE:U64@ ;
 
 
@@ -252,7 +252,7 @@ variable REGION-N
 : RECORD-ROW+ ( n -- )
    {: k:n :}
    k ARM64:ROW-N - FIRST-REC @ + {: r:n :}
-   r XREF-REC {: rec:ptr :}
+   r XREF-REC {: rec:^ :}
    REC+ NAMED  k MAP-START @  k MAP-LEN  rec XREF-WORDLIST r WID-MAP MAP-WID  MAP-HEAD
    rec XREF-NAME$ MAP-NAME+  k MAP-KIND$ MAP+  ORIGIN$ MAP+
    k MAP-FILE @ FILE-PATH$ MAP-ESC+  MAP-NL ;
@@ -261,7 +261,7 @@ variable REGION-N
 : PACKAGE-ROW+ ( n -- )
    {: k:n :}
    k ARM64:ROW-N - FIRST-REC @ + {: r:n :}
-   r XREF-REC {: rec:ptr :}
+   r XREF-REC {: rec:^ :}
    REC+ NAMED  rec XREF-PKG-PUBLIC r WID-MAP  rec XREF-PKG-PRIVATE r WID-MAP  -1 MAP-HEAD
    rec XREF-NAME$ MAP-NAME+  s"  namespace " MAP+  ORIGIN$ MAP+
    k MAP-FILE @ FILE-PATH$ MAP-ESC+  MAP-NL ;
@@ -304,7 +304,7 @@ variable REGION-N
    BAND-END @ end RUNTIME-ROW+ ;
 
 \ Region kind k's name; REGION+'s callers pass only the five kinds above.
-: KIND$ ( n -- ptr u8 n )
+: KIND$ ( n -- ^u8 n )
    {: k:n :}
    k DATA-KIND = if s" data" exit then
    k DATA-LIST-KIND = if s" data-list" exit then
@@ -322,8 +322,8 @@ variable REGION-N
    i 1 + REGION-N ! ;
 
 \ The bytes [at, end) the link appended after the code, if any, of the kind.
-: TAIL-ROW+ ( ptr u8 n n n -- )
-   {: kind:ptr kindu:n at:n end:n :}
+: TAIL-ROW+ ( ^u8 n n n -- )
+   {: kind:^ kindu:n at:n end:n :}
    end at > if
       REC+ 0 at  end at - CODE-SPAN:EXACT  -1 MAP-HEAD
       s" - " MAP+  kind kindu MAP+  s"  generated -" MAP+  MAP-NL
@@ -348,8 +348,8 @@ variable REGION-N
    loop ;
 
 
-: MAP-WRITE ( ptr u8 n n -- )
-   {: path:ptr pathu:n end:n :}
+: MAP-WRITE ( ^u8 n n -- )
+   {: path:^ pathu:n end:n :}
    MAP-TEXT 4096 BUF:N>BLEN BUF:INIT  MAP-PATH 256 BUF:N>BLEN BUF:INIT
    MAP-FILL MAP-SORT MAP-ENDS MAP-ALIASES
    S\" habu-names 1\ncolumns rec named start len wid name kind origin source\n" MAP+
@@ -365,6 +365,6 @@ variable REGION-N
 
 \ The linked program's map to <path>.map, its code ending at offset end, after
 \ the link placed its code and REGION+ recorded what it appended.
-: WRITE-MAP ( ptr u8 n n -- ) ['] MAP-WRITE ['] MAP-RELEASE finally ;
+: WRITE-MAP ( ^u8 n n -- ) ['] MAP-WRITE ['] MAP-RELEASE finally ;
 
 ;package

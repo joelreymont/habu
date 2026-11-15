@@ -39,37 +39,37 @@ package CHECK-ALL-ERRORS
 private
 
 variable CA-OUT-LEN
-TYPED-VARIABLE CA-OUT-A ptr u8
+TYPED-VARIABLE CA-OUT-A ^u8
 variable CA-OUT-CAP
 variable CA-OUT-FD                      \ where the report goes, or -1 for the buffer
 -1 CA-OUT-FD !
-TYPED-VARIABLE CA-SRC-A ptr u8
+TYPED-VARIABLE CA-SRC-A ^u8
 variable CA-SRC-U
 variable CA-SRC-CAP
 
-TYPED-VARIABLE CA-FILE-A ptr u8
+TYPED-VARIABLE CA-FILE-A ^u8
 variable CA-FILE-U
-TYPED-VARIABLE CA-COMPOSE-PATH-A ptr u8
+TYPED-VARIABLE CA-COMPOSE-PATH-A ^u8
 variable CA-COMPOSE-PATH-U
-TYPED-VARIABLE CA-COMPOSE-LABEL-A ptr u8
+TYPED-VARIABLE CA-COMPOSE-LABEL-A ^u8
 variable CA-COMPOSE-LABEL-U
 
-: CA-SRC-A@ ( -- ptr u8 )
+: CA-SRC-A@ ( -- ^u8 )
    CA-SRC-A @ ;
 
-: CA-SRC-A! ( ptr u8 -- )
+: CA-SRC-A! ( ^u8 -- )
    CA-SRC-A ! ;
 
-: CA-FILE-A@ ( -- ptr u8 )
+: CA-FILE-A@ ( -- ^u8 )
    CA-FILE-A @ ;
 
-: CA-FILE-A! ( ptr u8 -- )
+: CA-FILE-A! ( ^u8 -- )
    CA-FILE-A ! ;
 
-: CA-OUT-A@ ( -- ptr u8 )
+: CA-OUT-A@ ( -- ^u8 )
    CA-OUT-A @ ;
 
-: CA-OUT-A! ( ptr u8 -- )
+: CA-OUT-A! ( ^u8 -- )
    CA-OUT-A ! ;
 
 \ The report buffer is the caller's and cannot grow, so a run's records that do
@@ -79,7 +79,7 @@ variable CA-COMPOSE-LABEL-U
    CA-OUT-FD @ 0 >= IF drop exit THEN
    CA-OUT-LEN @ + CA-OUT-CAP @ > IF E-DIAG-CAPACITY throw THEN ;
 
-: CA-ERR ( ptr u8 n -- ) {: a:ptr u:n :}
+: CA-ERR ( ^u8 n -- ) {: a:^ u:n :}
    u 0= IF exit THEN
    CA-OUT-FD @ 0 >= IF
       CA-OUT-FD @ a u write u <> IF E-FS-IO throw THEN
@@ -103,10 +103,10 @@ variable CA-COMPOSE-LABEL-U
 \ Room for n bytes of the source being read, in a region of the read's own: a
 \ larger region takes the bytes the last one holds, and the last is released
 \ when this read made it.
-: CA-SRC-ROOM ( n -- ptr u8 ) {: need:n :}
+: CA-SRC-ROOM ( n -- ^u8 ) {: need:n :}
    need CA-SRC-CAP @ > if
-      CA-SRC-A@ CA-SRC-CAP @ {: old:ptr oldcap:n :}
-      need MEM-ALLOC-64K-SPAN CA-SRC-CAP ! {: fresh:ptr :}
+      CA-SRC-A@ CA-SRC-CAP @ {: old:^ oldcap:n :}
+      need MEM-ALLOC-64K-SPAN CA-SRC-CAP ! {: fresh:^ :}
       old fresh oldcap BYTE-COPY
       oldcap 0 > if old oldcap MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES then
       fresh CA-SRC-A!
@@ -117,16 +117,16 @@ variable CA-COMPOSE-LABEL-U
 \ caller left (CA-SOURCE-BUF!) stay where they are. The file is read to its end
 \ however it grows while it is read: its size, whose rejection (E-FS-STAT) stays
 \ a missing or irregular file's, is only the first room.
-: CA-READ-SOURCE ( ptr u8 n -- ) {: path:ptr pu:n :}
+: CA-READ-SOURCE ( ^u8 n -- ) {: path:^ pu:n :}
    0 CA-SRC-CAP !
    path pu  path pu FS:FILE-SIZE  [: CA-SRC-ROOM ;] SOURCE:READ-WHOLE-SAMPLED CA-SRC-U ! ;
 
-: CA-SOURCE-BUF! ( ptr u8 n -- ) {: a:ptr u:n :}
+: CA-SOURCE-BUF! ( ^u8 n -- ) {: a:^ u:n :}
    u CA-SRC-CAP !
    u CA-SRC-U !
    a CA-SRC-A! ;
 
-: CA-START ( ptr u8 n -- ) {: labela:ptr labelu:n :}
+: CA-START ( ^u8 n -- ) {: labela:^ labelu:n :}
    labelu CA-FILE-U !
    labela CA-FILE-A! ;
 
@@ -143,15 +143,15 @@ variable CA-COMPOSE-LABEL-U
    CA-FILE-A@ CA-FILE-U @ REJECTION:FILE!
    CA-SRC-A@ CA-SRC-U @ 1 1 0 REJECTION:SOURCE! ;
 
-: CA-SAY ( ptr u8 n -- )
+: CA-SAY ( ^u8 n -- )
    REJECTION:EMIT-STR ;
 
-: CA-TICKS ( ptr u8 n -- )
+: CA-TICKS ( ^u8 n -- )
    96 REJECTION:EMIT1  CA-SAY  96 REJECTION:EMIT1 ;
 
 \ Each lexer defect sits at an opener word, a string opener or a row opener, so
 \ the record's token is that word read out of the source, at its own width.
-: CA-LEX-TOKEN$ ( -- ptr u8 n )
+: CA-LEX-TOKEN$ ( -- ^u8 n )
    LINT-LEX:ERROR-BYTE@ {: at:n :}
    CA-SRC-A@ at +  at CA-WORD-END at - ;
 
@@ -240,14 +240,14 @@ public
 
 \ The caller's report buffer, which this core appends to and OUT$ hands back.
 \ Also clears the recorded report length.
-: BUFFERS! ( ptr u8 n -- ) {: outa:ptr outcap:n :}
+: BUFFERS! ( ^u8 n -- ) {: outa:^ outcap:n :}
    outcap CA-OUT-CAP !
    outa CA-OUT-A!
    0 CA-OUT-LEN !
    -1 CA-OUT-FD ! ;
 
 \ The report the last run accumulated in the caller's first buffer.
-: OUT$ ( -- ptr u8 n )
+: OUT$ ( -- ^u8 n )
    CA-OUT-A@ CA-OUT-LEN @ ;
 
 \ BUFFERS! for a report written to the given file descriptor as it is made, so
@@ -280,7 +280,7 @@ private
    compose CA-COMPOSING !
    [: report CA-RUN-BODY ;] SESSION ;
 
-: CA-COMPOSE-AT ( ptr u8 n -- ) {: path:ptr pathu:n :}
+: CA-COMPOSE-AT ( ^u8 n -- ) {: path:^ pathu:n :}
    path CA-COMPOSE-PATH-A !  pathu CA-COMPOSE-PATH-U !
    CA-FILE-A@ CA-COMPOSE-LABEL-A !  CA-FILE-U @ CA-COMPOSE-LABEL-U ! ;
 
@@ -289,7 +289,7 @@ public
 \ Check the source file at the given path under the given label as a load runs
 \ it, every file a top-level loader statement loads included (COMPOSE-BUF). No
 \ run of the program follows, so the check reports what it leaves to one.
-: FILE ( ptr u8 n ptr u8 n -- ) {: labela:ptr labelu:n patha:ptr pathu:n :}
+: FILE ( ^u8 n ^u8 n -- ) {: labela:^ labelu:n patha:^ pathu:n :}
    [: labela labelu CA-START
       patha pathu CA-READ-SOURCE
       patha pathu CA-COMPOSE-AT
@@ -299,8 +299,8 @@ public
 \ label, by its record, and throw the rejection status; return when the file
 \ lexes clean. Nothing is checked, so a caller that cannot check the file
 \ still reports the defect where it stands.
-: LEX-FILE ( ptr u8 n ptr u8 n -- )
-   {: labela:ptr labelu:n patha:ptr pathu:n :}
+: LEX-FILE ( ^u8 n ^u8 n -- )
+   {: labela:^ labelu:n patha:^ pathu:n :}
    [: labela labelu CA-START
       patha pathu CA-READ-SOURCE
       [: CA-LEX CA-LEXED ! ;] CA-RECORDS ;] REJECTION:PRESERVE-LABEL
@@ -309,8 +309,8 @@ public
 \ Check the given source bytes as the file at the given path, reporting them
 \ under the given label: the composition verifies every file a top-level
 \ loader statement loads where it stands, under its own path, in one session.
-: COMPOSE-BUF ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: src:ptr srcu:n path:ptr pathu:n label:ptr labelu:n :}
+: COMPOSE-BUF ( ^u8 n ^u8 n ^u8 n -- )
+   {: src:^ srcu:n path:^ pathu:n label:^ labelu:n :}
    [: label labelu CA-START
       src srcu CA-SOURCE-BUF!
       path pathu CA-COMPOSE-AT
@@ -318,7 +318,7 @@ public
 
 \ Check the given source bytes under the given label as one unit: a loader
 \ statement in them loads nothing, and a top-level token is not resolved.
-: BUF ( ptr u8 n ptr u8 n -- ) {: labela:ptr labelu:n srca:ptr srcu:n :}
+: BUF ( ^u8 n ^u8 n -- ) {: labela:^ labelu:n srca:^ srcu:n :}
    [: labela labelu CA-START
       srca srcu CA-SOURCE-BUF!
       false true CA-RUN ;] REJECTION:PRESERVE-LABEL ;

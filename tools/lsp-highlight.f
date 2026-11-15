@@ -17,12 +17,12 @@ private
 
 1 constant TEXT-KIND                     \ DocumentHighlightKind.Text
 
-: NAMED ( ptr u8 n n -- option<n> )
-   {: t:ptr tu:n u:n :}
+: NAMED ( ^u8 n n -- option<n> )
+   {: t:^ tu:n u:n :}
    u USE-GROUP u USE-TARGET t tu u USE-WORD$ GROUP-REC-NAMED ;
 
 \ LISTED: whether an item came before, for the comma; it holds after.
-: ITEM ( ptr JSON:writer bool n n -- ptr JSON:writer bool )
+: ITEM ( ^JSON:writer bool n n -- ^JSON:writer bool )
    {: listed:bool from:n to:n :}
    listed if WRITE-COMMA then
    WRITE-OBJECT-START
@@ -32,8 +32,8 @@ private
    WRITE-OBJECT-END true ;
 
 \ A use that names no record there is of no word.
-: OF-WORD? ( ptr u8 n n n n n n -- bool )
-   {: t:ptr tu:n u:n g:n ts:n te:n rec:n :}
+: OF-WORD? ( ^u8 n n n n n n -- bool )
+   {: t:^ tu:n u:n g:n ts:n te:n rec:n :}
    u USE-GROUP g <> if false exit then
    u USE-TARGET {: us:n ue:n :}
    us ts <> ue te <> or if false exit then
@@ -45,9 +45,9 @@ private
 \ The declaring token when it is in the document's own file, then each use with
 \ the same declaring token naming the same record, in published order. All are
 \ Text highlights: the checker states no read or write.
-: HIGHLIGHTS ( ptr JSON:writer n n n n n -- ptr JSON:writer )
+: HIGHLIGHTS ( ^JSON:writer n n n n n -- ^JSON:writer )
    {: slot:n g:n ts:n te:n rec:n :}
-   slot LSP-DOCS:DOC-TEXT$ {: t:ptr tu:n :}
+   slot LSP-DOCS:DOC-TEXT$ {: t:^ tu:n :}
    WRITE-ARRAY-START false
    g GROUP-OWN? if ts te ITEM then
    slot DEFS-USE-RANGE ?do
@@ -62,7 +62,7 @@ private
 \ stands for several words (LSP-DEFS:REC-SEVERAL?: a file included into two
 \ packages declares two words at one token) answers null rather than join the
 \ uses of different words; so does no record.
-: SELECTED-LIST ( ptr JSON:writer n n n n option<n> -- ptr JSON:writer )
+: SELECTED-LIST ( ^JSON:writer n n n n option<n> -- ^JSON:writer )
    MATCH option
       some OF {: slot:n g:n ts:n te:n rec:n :}
          rec REC-SEVERAL? if WRITE-NULL else slot g ts te rec HIGHLIGHTS then
@@ -70,16 +70,16 @@ private
       none OF 2drop 2drop WRITE-NULL ENDOF
    ;MATCH ;
 
-: USE-LIST ( ptr JSON:writer n n -- ptr JSON:writer )
+: USE-LIST ( ^JSON:writer n n -- ^JSON:writer )
    {: slot:n u:n :}
    slot u USE-GROUP u USE-TARGET slot LSP-DOCS:DOC-TEXT$ u NAMED SELECTED-LIST ;
 
-: REC-LIST ( ptr JSON:writer n n n -- ptr JSON:writer )
+: REC-LIST ( ^JSON:writer n n n -- ^JSON:writer )
    {: slot:n g:n r:n :}
    r REC-BYTES {: ts:n te:n :}
    slot g ts te g ts te GROUP-REC-SOLE SELECTED-LIST ;
 
-: HELD-LIST ( ptr JSON:writer n n n -- ptr JSON:writer )
+: HELD-LIST ( ^JSON:writer n n n -- ^JSON:writer )
    {: slot:n g:n at:n :}
    g at GROUP-REC-HOLDING MATCH option
       some OF {: r:n :} slot g r REC-LIST ENDOF
@@ -94,7 +94,7 @@ public
 \ may have stopped reporting at a point it does not state, and an incomplete one
 \ kept none: any other document answers null. A byte no use or definition token
 \ holds answers an empty list.
-: ANSWER ( ptr JSON:writer n n -- ptr JSON:writer )
+: ANSWER ( ^JSON:writer n n -- ^JSON:writer )
    {: slot:n at:n :}
    slot DEFS-VERIFIED? 0= if WRITE-NULL exit then
    slot at DEFS-USE-AT MATCH option

@@ -20,7 +20,7 @@ $10000 constant PAGE-BYTES
 
 \ A raw mmap result is a bare integer here; the cast makes it the quotation cell
 \ xt! takes, and the point of the case is precisely that it is NOT a DATA cell.
-CAST: N>CELL ( n -- ptr [ -- n ] )
+CAST: N>CELL ( n -- ^[ -- n ] )
 
 : PAGE ( -- n )
    0 PAGE-BYTES PROT-RW MAP-ANON -1 0 mmap ;
@@ -29,7 +29,7 @@ CAST: N>CELL ( n -- ptr [ -- n ] )
    4711 ;
 
 : GO ( -- )
-   PAGE N>CELL {: cell:ptr :}
+   PAGE N>CELL {: cell:^ :}
    s" XT-CELL-BAND-ARMED" type cr
    [: TARGET ;] cell xt!
    s" STORED" type cr ;

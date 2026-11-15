@@ -27,7 +27,7 @@ private
 300000 constant BUILD-MS
 DYNAMIC-BUFFER FILES u8
 
-: ARG ( n -- ptr u8 n ) SCRIPT-ARGV$ ;
+: ARG ( n -- ^u8 n ) SCRIPT-ARGV$ ;
 
 : NEED-ARGS ( -- )
    SCRIPT-ARGC 5 <> if
@@ -41,8 +41,8 @@ DYNAMIC-BUFFER FILES u8
    s" chain-run: hb-build stderr: " type CMD:ERR$ type cr
    E-BUILD-STATUS throw ;
 
-: BUILD-IN ( ptr u8 n ptr u8 n ptr u8 n CMD:command -- CMD:command )
-   >r {: host:ptr hostu out:ptr outu tmp:ptr tmpu :} r>
+: BUILD-IN ( ^u8 n ^u8 n ^u8 n CMD:command -- CMD:command )
+   >r {: host:^ hostu out:^ outu tmp:^ tmpu :} r>
    s" --load" CMD:ARG+
    s" tools/hb-build.f" CMD:ARG+
    s" --" CMD:ARG+
@@ -57,12 +57,12 @@ DYNAMIC-BUFFER FILES u8
    ;MATCH
    out outu FS:EXISTS? 0= if E-BUILD-PATH throw then ;
 
-: BUILD ( ptr u8 n ptr u8 n ptr u8 n -- )
+: BUILD ( ^u8 n ^u8 n ^u8 n -- )
    [: BUILD-IN ;] CMD:WITH-COMMAND ;
 
 \ Both files, A's bytes then B's. The byte reserved past them keeps index AU
 \ inside the reserve when B is empty.
-: READ-FILES ( ptr u8 n ptr u8 n -- ptr u8 n ptr u8 n ) {: a:ptr au:n b:ptr bu:n :}
+: READ-FILES ( ^u8 n ^u8 n -- ^u8 n ^u8 n ) {: a:^ au:n b:^ bu:n :}
    a au FS:FILE-SIZE {: as:n :}
    b bu FS:FILE-SIZE {: bs:n :}
    as bs + 1 + FILES-RESERVE
@@ -73,7 +73,7 @@ DYNAMIC-BUFFER FILES u8
 public
 
 \ Two files hold the same image: CODESIGN:SAME-IMAGE? of their whole bytes.
-: SAME-FILES? ( ptr u8 n ptr u8 n -- bool )
+: SAME-FILES? ( ^u8 n ^u8 n -- bool )
    [: READ-FILES CODESIGN:SAME-IMAGE? ;] [: FILES-RELEASE ;] finally ;
 
 private

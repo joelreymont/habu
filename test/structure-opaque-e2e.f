@@ -14,12 +14,12 @@ require test/e2e-tree.f
 using E2E-TREE
 package STRUCTURE-OPAQUE-E2E
 private
-: VERIFY$ ( -- ptr u8 n )
+: VERIFY$ ( -- ^u8 n )
    S\" require test/structure-opaque-fixture.f\nrequire test/fixtures/big-decl.f\n" ;
 
 \ OP's public wordlist would answer OP:BOX-MAKE if the replay recorded the pair
 \ in the section the declaration was read in rather than in OP's private one.
-: FORGE$ ( -- ptr u8 n )
+: FORGE$ ( -- ^u8 n )
    S\" require test/structure-opaque-fixture.f\npackage OPQF\npublic\n: ROUND ( n -- n ) OP:WRAP OP:PEEK ;\n: FORGE ( n -- n ) OP:BOX-MAKE OP:BOX-UNMAKE ;\n;package\n" ;
 
 : SETUP ( -- )
@@ -31,7 +31,7 @@ private
    s" test/structure-opaque-verify.f" AT-A VERIFY$ FS:WRITE-ALL
    s" test/structure-opaque-forge.f" AT-A FORGE$ FS:WRITE-ALL ;
 
-: VERIFY-ARGS ( ptr u8 n -- ) {: source:ptr size:n :}
+: VERIFY-ARGS ( ^u8 n -- ) {: source:^ size:n :}
    s" tools/check.f" ARGS
    s" --" >LEN PROC-ARGV+
    s" --json-errors" >LEN PROC-ARGV+
@@ -40,7 +40,7 @@ private
 
 : RUN-HERE ( -- ) ENGINE-CANDIDATE:PATH$ ROOT$ RUN-ON ;
 
-: ERR-HAS ( ptr u8 n -- ) {: a:ptr u:n :}
+: ERR-HAS ( ^u8 n -- ) {: a:^ u:n :}
    ERR$ a u CONTAINS? TTRUE ;
 
 : VERIFY ( -- )

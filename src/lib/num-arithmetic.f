@@ -242,7 +242,7 @@ public
 \ projection of its own. It does not prove bounds: the offset role carries no
 \ extent, so the caller settles that first (ADVANCE-BYTE-OFF, then
 \ BYTE-OFF-IN-LEN? against the owning extent).
-: BYTE+ ( ptr u8 byte-off -- ptr u8 )
+: BYTE+ ( ^u8 byte-off -- ^u8 )
    BYTE-OFF>N + ;
 
 : BYTES-ALIGNED? ( byte-len alignment -- bool )

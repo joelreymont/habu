@@ -32,24 +32,24 @@ SCRIPT-CAP BUFFER: SCRIPT-BYTES
 variable SCRIPT-LEN
 
 
-: SH ( PROCESS:request ptr u8 n -- PROCESS:request )
-   {: script:ptr len :}
+: SH ( PROCESS:request ^u8 n -- PROCESS:request )
+   {: script:^ len :}
    s" -c" PROCESS:ARG
    script len PROCESS:ARG ;
 
 
-: FILL$ ( n n -- ptr u8 n )
+: FILL$ ( n n -- ^u8 n )
    {: len c :}
    len 0 ?do c ROW-BYTES i + c! loop
    ROW-BYTES len ;
 
 
-: SCRIPT! ( ptr u8 n -- )
-   {: src:ptr len :}
+: SCRIPT! ( ^u8 n -- )
+   {: src:^ len :}
    src SCRIPT-BYTES len BYTE-COPY
    len SCRIPT-LEN ! ;
 
-: SCRIPT$ ( -- ptr u8 n ) SCRIPT-BYTES SCRIPT-LEN @ ;
+: SCRIPT$ ( -- ^u8 n ) SCRIPT-BYTES SCRIPT-LEN @ ;
 
 
 : MARKER-AT ( n -- n )
@@ -61,7 +61,7 @@ variable SCRIPT-LEN
    {: fd c :}
    c MARKER-AT {: at :}
    at SCRIPT-LEN @ < 0= if exit then
-   fd FMT:INT$ {: d:ptr du :}
+   fd FMT:INT$ {: d:^ du :}
    SCRIPT-LEN @ 1- du + {: len :}
    len SCRIPT-CAP > if s" spawn-test: script too long" T-EX-FAIL die then
    SCRIPT-LEN @ begin 1- dup at > while
@@ -88,17 +88,17 @@ variable SCRIPT-LEN
    repeat drop
    r FD>N close ;
 
-: OUT$ ( -- ptr u8 n ) 0 OUT OUT-LEN @ ;
+: OUT$ ( -- ^u8 n ) 0 OUT OUT-LEN @ ;
 
 : WAIT ( pid -- n ) PROCESS:WAIT PROCESS:STATUS>RC RC>N ;
 
 
-: NAME-LEN ( ptr u8 n -- n )
-   {: z:ptr u :}
+: NAME-LEN ( ^u8 n -- n )
+   {: z:^ u :}
    0 begin dup u < if dup z + c@ EQUAL-BYTE <> else false then while 1+ repeat ;
 
 : SAFE-ROW? ( n -- bool )
-   ENVP dup ZLEN {: z:ptr u :}
+   ENVP dup ZLEN {: z:^ u :}
    z u NAME-LEN {: nu :}
    nu 0 > nu u < and
    z nu s" DYLD_" STARTS-WITH? 0= and ;
@@ -108,35 +108,35 @@ variable SCRIPT-LEN
       dup ENVP 0= if drop -1 exit then
       dup SAFE-ROW? 0= while 1+ repeat ;
 
-: PARENT-NAME$ ( n -- ptr u8 n )
-   ENVP dup ZLEN {: z:ptr u :}
+: PARENT-NAME$ ( n -- ^u8 n )
+   ENVP dup ZLEN {: z:^ u :}
    z z u NAME-LEN ;
 
-: PARENT-VALUE$ ( n -- ptr u8 n )
-   ENVP dup ZLEN {: z:ptr u :}
+: PARENT-VALUE$ ( n -- ^u8 n )
+   ENVP dup ZLEN {: z:^ u :}
    z u NAME-LEN {: nu :}
    z nu + 1+ u nu - 1- ;
 
 
-: AT? ( n ptr u8 n -- bool )
-   {: pos s:ptr u :}
+: AT? ( n ^u8 n -- bool )
+   {: pos s:^ u :}
    pos u + OUT-LEN @ > if false exit then
    pos OUT u s u STR= ;
 
-: LINE-IS? ( n ptr u8 n -- bool )
-   {: pos s:ptr u :}
+: LINE-IS? ( n ^u8 n -- bool )
+   {: pos s:^ u :}
    pos s u AT? 0= if false exit then
    pos u + OUT-LEN @ < if pos u + OUT c@ LF-BYTE = else false then ;
 
-: PAST-NAME ( n ptr u8 n -- n )
-   {: pos name:ptr u :}
+: PAST-NAME ( n ^u8 n -- n )
+   {: pos name:^ u :}
    pos name u AT? 0= if -1 exit then
    pos u + {: at :}
    at OUT-LEN @ < if at OUT c@ EQUAL-BYTE = if at 1+ exit then then
    -1 ;
 
-: ROW-LINE? ( n ptr u8 n ptr u8 n -- bool )
-   {: pos name:ptr u val:ptr vu :}
+: ROW-LINE? ( n ^u8 n ^u8 n -- bool )
+   {: pos name:^ u val:^ vu :}
    pos name u PAST-NAME dup 0< if drop false exit then
    val vu LINE-IS? ;
 
@@ -144,15 +144,15 @@ variable SCRIPT-LEN
    begin dup OUT-LEN @ < if dup OUT c@ LF-BYTE <> else false then while 1+ repeat
    1+ ;
 
-: NAME-LINES ( ptr u8 n -- n )
-   {: name:ptr u :}
+: NAME-LINES ( ^u8 n -- n )
+   {: name:^ u :}
    0 0 begin dup OUT-LEN @ < while
       dup name u PAST-NAME 0 >= if swap 1+ swap then
       NEXT-LINE
    repeat drop ;
 
-: ROW-LINES ( ptr u8 n ptr u8 n -- n )
-   {: name:ptr u val:ptr vu :}
+: ROW-LINES ( ^u8 n ^u8 n -- n )
+   {: name:^ u val:^ vu :}
    0 0 begin dup OUT-LEN @ < while
       dup name u val vu ROW-LINE? if swap 1+ swap then
       NEXT-LINE
@@ -278,7 +278,7 @@ variable SCRIPT-LEN
    PROCESS:SPAWN {: pid :}
    w FD>N close
    r DRAIN
-   row PARENT-VALUE$ {: val:ptr vu :}
+   row PARENT-VALUE$ {: val:^ vu :}
    OUT-LEN @ vu 1+ T=
    0 val vu LINE-IS? TTRUE
    pid WAIT 0 T= ;
@@ -395,10 +395,10 @@ variable DEAD-FD
 \ the same pages only when DISCARD returned every one.
 4096 constant PROBE-BYTES
 8 constant PROBES
-PROBES TYPED-BUFFER PROBE-AT ptr u8
+PROBES TYPED-BUFFER PROBE-AT ^u8
 
 : PROBE-LEN ( -- NUM:alloc-byte-len ) PROBE-BYTES MEM:BYTES-ALLOC-LEN ;
-: PROBE ( -- ptr u8 ) PROBE-LEN MEM:ALLOC-BYTES drop ;
+: PROBE ( -- ^u8 ) PROBE-LEN MEM:ALLOC-BYTES drop ;
 : UNPROBE ( -- ) PROBES 0 ?do i PROBE-AT @ PROBE-LEN MEM:RELEASE-BYTES loop ;
 
 \ Six ARGs grow argv past its first mapping and child fd 5 grows the map.
@@ -416,7 +416,7 @@ PROBES TYPED-BUFFER PROBE-AT ptr u8
    UNPROBE
    DISCARDED
    true PROBES 0 ?do
-      PROBE {: again:ptr :}
+      PROBE {: again:^ :}
       again i PROBE-AT @ = and
       again i PROBE-AT !
    loop

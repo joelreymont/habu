@@ -128,23 +128,23 @@ variable PARKED
 1 TYPED-BUFFER OWN-REQUEST HTTP:request
 
 
-: ROOT$ ( -- ptr u8 n )
+: ROOT$ ( -- ^u8 n )
    ROOT-BUF ROOT-U @ SPAN:TAKE SPAN:$ ;
 
 
-: RES$ ( -- ptr u8 n )
+: RES$ ( -- ^u8 n )
    RES-BUF RES-U @ ;
 
 
-: REQ$ ( -- ptr u8 n )
+: REQ$ ( -- ^u8 n )
    REQ-BUF REQ-U @ SPAN:TAKE SPAN:$ ;
 
 
-: ETAG$ ( -- ptr u8 n )
+: ETAG$ ( -- ^u8 n )
    ETAG-BUF ETAG-U @ SPAN:TAKE SPAN:$ ;
 
 
-: PING-BODY ( ptr JSON:writer -- ptr JSON:writer )
+: PING-BODY ( ^JSON:writer -- ^JSON:writer )
    JSON:WRITE-OBJECT-START
    s" service" s" http-test" JSON:WRITE-FIELD-S
    JSON:WRITE-OBJECT-END ;
@@ -173,7 +173,7 @@ PTR-VARIABLE ITEM-HOST-A
 variable ITEM-HOST-N
 
 
-: ITEM-BODY ( ptr JSON:writer -- ptr JSON:writer )
+: ITEM-BODY ( ^JSON:writer -- ^JSON:writer )
    JSON:WRITE-OBJECT-START
    s" id" ITEM-ID-A @ ITEM-ID-N @ JSON:WRITE-FIELD-S
    JSON:WRITE-COMMA
@@ -184,14 +184,14 @@ variable ITEM-HOST-N
 
 
 : ITEM ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
-   asked s" id" HTTP:SEGMENT-OF$ {: ida:ptr idu:n found:bool :}
+   asked s" id" HTTP:SEGMENT-OF$ {: ida:^ idu:n found:bool :}
    found 0= if answer 500 s" no_segment" s" the route bound no id" HTTP:ERROR! exit then
    ida ITEM-ID-A !
    idu ITEM-ID-N !
-   asked HTTP:QUERY$ {: qa:ptr qu:n :}
+   asked HTTP:QUERY$ {: qa:^ qu:n :}
    qa ITEM-QUERY-A !
    qu ITEM-QUERY-N !
-   asked s" host" HTTP:HEADER-OF$ {: ha:ptr hu:n seen:bool :}
+   asked s" host" HTTP:HEADER-OF$ {: ha:^ hu:n seen:bool :}
    ha ITEM-HOST-A !
    seen if hu else 0 then ITEM-HOST-N !
    answer 200 HTTP:STATUS!
@@ -201,13 +201,13 @@ variable ITEM-HOST-N
 create PARAM-BUF BUF:HDR-BYTES allot   \ the case disposes it once answered
 
 
-: PARAM-TEXT ( ptr u8 n -- )
+: PARAM-TEXT ( ^u8 n -- )
    BUF:N>BLEN PARAM-BUF BUF:APPEND-SPAN ;
 
 
 \ `key=[value] true`, or `key=[] false` for a parameter the query lacks.
-: PARAM-ONE ( HTTP:request ptr u8 n -- )
-   {: asked:HTTP:request key:ptr keyu:n :}
+: PARAM-ONE ( HTTP:request ^u8 n -- )
+   {: asked:HTTP:request key:^ keyu:n :}
    key keyu PARAM-TEXT
    s" =[" PARAM-TEXT
    asked key keyu PARAM-BUF HTTP:PARAM+ {: found:bool :}
@@ -229,7 +229,7 @@ create PARAM-BUF BUF:HDR-BYTES allot   \ the case disposes it once answered
 PTR-VARIABLE VERSION-A
 variable VERSION-N
 
-: VERSION-BODY ( ptr JSON:writer -- ptr JSON:writer )
+: VERSION-BODY ( ^JSON:writer -- ^JSON:writer )
    JSON:WRITE-OBJECT-START
    s" version" VERSION-A @ VERSION-N @ JSON:WRITE-FIELD-S
    JSON:WRITE-OBJECT-END ;
@@ -237,7 +237,7 @@ variable VERSION-N
 
 : ASKED-VERSION ( HTTP:request HTTP:response -- )
    {: asked:HTTP:request answer:HTTP:response :}
-   asked HTTP:VERSION$ {: va:ptr vu:n :}
+   asked HTTP:VERSION$ {: va:^ vu:n :}
    va VERSION-A !
    vu VERSION-N !
    answer 200 HTTP:STATUS!
@@ -251,14 +251,14 @@ variable ECHO-LEN
 variable ECHO-HITS
 
 
-: ECHO-BODY ( ptr JSON:writer -- ptr JSON:writer )
+: ECHO-BODY ( ^JSON:writer -- ^JSON:writer )
    JSON:WRITE-OBJECT-START
    s" bytes" ECHO-LEN @ JSON:WRITE-FIELD-U
    JSON:WRITE-OBJECT-END ;
 
 
 : ECHO ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
-   asked HTTP:BODY$ {: bytes:ptr len:n :}
+   asked HTTP:BODY$ {: bytes:^ len:n :}
    1 ECHO-HITS atomic-add drop
    len ECHO-LEN !
    answer 200 HTTP:STATUS!
@@ -268,7 +268,7 @@ variable ECHO-HITS
 : LARGE-ECHO ( HTTP:request HTTP:response -- )
    {: asked:HTTP:request answer:HTTP:response :}
    asked 0 OLD-REQUEST !
-   asked HTTP:BODY$ {: bytes:ptr len:n :}
+   asked HTTP:BODY$ {: bytes:^ len:n :}
    len LARGE-CAP <> if E-BOOM throw then
    bytes c@ 32 <> if E-BOOM throw then
    bytes len 1- + c@ 32 <> if E-BOOM throw then
@@ -276,17 +276,17 @@ variable ECHO-HITS
    answer 200 HTTP:STATUS! ;
 
 
-: OWN-FIELD ( ptr JSON:writer -- ptr JSON:writer )
+: OWN-FIELD ( ^JSON:writer -- ^JSON:writer )
    s" own" 0 OWN-REQUEST @ HTTP:SERVING? JSON:WRITE-FIELD-BOOL ;
 
 
-: KEEP-BODY ( ptr JSON:writer -- ptr JSON:writer )
+: KEEP-BODY ( ^JSON:writer -- ^JSON:writer )
    JSON:WRITE-OBJECT-START
    OWN-FIELD
    JSON:WRITE-OBJECT-END ;
 
 
-: CHECK-BODY ( ptr JSON:writer -- ptr JSON:writer )
+: CHECK-BODY ( ^JSON:writer -- ^JSON:writer )
    JSON:WRITE-OBJECT-START
    s" kept" 0 OLD-REQUEST @ HTTP:SERVING? JSON:WRITE-FIELD-BOOL
    JSON:WRITE-COMMA
@@ -310,7 +310,7 @@ variable ECHO-HITS
 
 
 \ A body that is not JSON throws, and the worker's catch boundary answers 500.
-: TEXT-BODY ( ptr JSON:writer -- ptr JSON:writer )
+: TEXT-BODY ( ^JSON:writer -- ^JSON:writer )
    JSON:WRITE-OBJECT-START
    s" text" TEXT-BUF TEXT-N @ JSON:WRITE-FIELD-S
    JSON:WRITE-OBJECT-END ;
@@ -342,7 +342,7 @@ variable ECHO-HITS
 
 \ Throws with this worker's JSON writer open and half filled: the writer must be
 \ closed and reopened empty, or the next answer would carry this one's fragment.
-: BOOM-BODY ( ptr JSON:writer -- ptr JSON:writer )
+: BOOM-BODY ( ^JSON:writer -- ^JSON:writer )
    JSON:WRITE-OBJECT-START
    s" partial" s" yes" JSON:WRITE-FIELD-S
    E-BOOM throw ;
@@ -434,7 +434,7 @@ $400 constant FILL-HEADER-BYTES   \ five of them: past 2 KiB of lines, 4 KiB of 
 FILL-BIG
 
 
-: BIG-BODY ( ptr JSON:writer -- ptr JSON:writer )
+: BIG-BODY ( ^JSON:writer -- ^JSON:writer )
    JSON:WRITE-OBJECT-START
    s" big" BIG-VALUE BIG-VALUE-BYTES JSON:WRITE-FIELD-S
    JSON:WRITE-OBJECT-END ;
@@ -452,7 +452,7 @@ HUGE-VALUE-BYTES 10 + constant HUGE-ANSWER-BYTES   \ {"big":"<value>"}
 $4000 constant RSS-SLACK-KIB      \ 16 MiB
 
 
-: HUGE-BODY ( ptr JSON:writer -- ptr JSON:writer )
+: HUGE-BODY ( ^JSON:writer -- ^JSON:writer )
    JSON:WRITE-OBJECT-START
    s" big" 0 HUGE-VALUE @ SPAN:$ JSON:WRITE-FIELD-S
    JSON:WRITE-OBJECT-END ;
@@ -474,13 +474,13 @@ $4000 constant RSS-SLACK-KIB      \ 16 MiB
 \ A caller's ON-ERROR hook: a JSON body of the code, the message and the request
 \ id, carried to the body quotation in rows of the running worker's own slot.
 HTTP:MAX-WORKERS TYPED-BUFFER ERR-ANSWER HTTP:response
-HTTP:MAX-WORKERS TYPED-BUFFER ERR-CODE-A ptr u8
+HTTP:MAX-WORKERS TYPED-BUFFER ERR-CODE-A ^u8
 HTTP:MAX-WORKERS TYPED-BUFFER ERR-CODE-N n
-HTTP:MAX-WORKERS TYPED-BUFFER ERR-MESSAGE-A ptr u8
+HTTP:MAX-WORKERS TYPED-BUFFER ERR-MESSAGE-A ^u8
 HTTP:MAX-WORKERS TYPED-BUFFER ERR-MESSAGE-N n
 
 
-: JSON-ERROR-BODY ( ptr JSON:writer -- ptr JSON:writer )
+: JSON-ERROR-BODY ( ^JSON:writer -- ^JSON:writer )
    HTTP:WORKER-SLOT {: idx:n :}
    JSON:WRITE-OBJECT-START
    s" code" idx ERR-CODE-A @ idx ERR-CODE-N @ JSON:WRITE-FIELD-S
@@ -491,8 +491,8 @@ HTTP:MAX-WORKERS TYPED-BUFFER ERR-MESSAGE-N n
    JSON:WRITE-OBJECT-END ;
 
 
-: JSON-ERROR ( HTTP:response n ptr u8 n ptr u8 n -- )
-   {: answer:HTTP:response status:n code:ptr codelen:n message:ptr messagelen:n :}
+: JSON-ERROR ( HTTP:response n ^u8 n ^u8 n -- )
+   {: answer:HTTP:response status:n code:^ codelen:n message:^ messagelen:n :}
    HTTP:WORKER-SLOT {: idx:n :}
    answer idx ERR-ANSWER !
    code idx ERR-CODE-A !
@@ -504,13 +504,13 @@ HTTP:MAX-WORKERS TYPED-BUFFER ERR-MESSAGE-N n
 
 
 \ Only a path the build hashes may be cached for a year.
-: IMMUTABLE-CACHE ( ptr u8 n -- ptr u8 n ) {: path:ptr len:n :}
+: IMMUTABLE-CACHE ( ^u8 n -- ^u8 n ) {: path:^ len:n :}
    path len s" /_app/immutable/" STARTS-WITH?
    if s" public, max-age=31536000, immutable" exit then
    s" no-cache" ;
 
 
-: EXTENSION? ( ptr u8 n -- bool ) {: path:ptr len:n :}
+: EXTENSION? ( ^u8 n -- bool ) {: path:^ len:n :}
    len 0 ?do
       path len 1- i - + c@ {: byte:n :}
       byte SLASH = if false unloop exit then
@@ -521,7 +521,7 @@ HTTP:MAX-WORKERS TYPED-BUFFER ERR-MESSAGE-N n
 
 \ A single-page application's client routes: anything outside /api/ whose last
 \ segment names no file extension is answered with the one page.
-: CLIENT-ROUTE ( ptr u8 n -- ptr u8 n ) {: path:ptr len:n :}
+: CLIENT-ROUTE ( ^u8 n -- ^u8 n ) {: path:^ len:n :}
    path len s" /api/" STARTS-WITH? if path 0 exit then
    path len EXTENSION? if path 0 exit then
    s" /index.html" ;
@@ -538,8 +538,8 @@ HTTP:MAX-WORKERS TYPED-BUFFER ERR-MESSAGE-N n
 \ the status it was owed and nothing of the header this hook added.
 variable RENDERS
 
-: RENDER-THROWS ( HTTP:response n ptr u8 n ptr u8 n -- )
-   {: answer:HTTP:response status:n code:ptr codelen:n message:ptr messagelen:n :}
+: RENDER-THROWS ( HTTP:response n ^u8 n ^u8 n -- )
+   {: answer:HTTP:response status:n code:^ codelen:n message:^ messagelen:n :}
    1 RENDERS atomic-add drop
    answer s" X-Hook" s" partial" HTTP:HEADER!
    E-RENDER throw ;
@@ -563,11 +563,11 @@ create TRACE-ROWS SLOTS TRACE-CAP * allot
 SLOTS TYPED-BUFFER TRACE-U n
 
 
-: TRACE-AT ( n -- ptr u8 )
+: TRACE-AT ( n -- ^u8 )
    TRACE-CAP * TRACE-ROWS + ;
 
 
-: TRACE$ ( n -- ptr u8 n ) {: slot:n :}
+: TRACE$ ( n -- ^u8 n ) {: slot:n :}
    slot TRACE-AT slot TRACE-U @ ;
 
 
@@ -654,7 +654,7 @@ $2710 constant PARK-MS            \ far past every stop bound
    ;MATCH ;
 
 
-: TRACE-BODY ( ptr JSON:writer -- ptr JSON:writer )
+: TRACE-BODY ( ^JSON:writer -- ^JSON:writer )
    JSON:WRITE-OBJECT-START
    s" trace" HTTP:WORKER-SLOT TRACE$ JSON:WRITE-FIELD-S
    JSON:WRITE-OBJECT-END ;
@@ -713,20 +713,20 @@ $2710 constant PARK-MS            \ far past every stop bound
    s" GET" s" /api/park" [: PARK ;] HTTP:ROUTE ;
 
 
-: UNDER-ROOT ( ptr u8 n -- n ) {: name:ptr len:n :}
+: UNDER-ROOT ( ^u8 n -- n ) {: name:^ len:n :}
    ROOT$ name len PATH-BUF FS:JOIN-PATH ;
 
 
-: INDEX-TEXT$ ( -- ptr u8 n )
+: INDEX-TEXT$ ( -- ^u8 n )
    S\" <!doctype html><title>http-test</title>\n" ;
 
 
-: ASSET-TEXT$ ( -- ptr u8 n )
+: ASSET-TEXT$ ( -- ^u8 n )
    S\" export const build = 1;\n" ;
 
 
 : MAKE-STATIC ( -- )
-   s" http-test" FS:MKTEMP-DIR {: a:ptr u:n :}
+   s" http-test" FS:MKTEMP-DIR {: a:^ u:n :}
    a u FS:CLEANUP-TREE+
    a u ROOT-BUF SPAN:COPY
    u ROOT-U !
@@ -755,7 +755,7 @@ $2710 constant PARK-MS            \ far past every stop bound
    ;MATCH ;
 
 
-: URL-FOR ( ptr u8 n -- ptr u8 n ) {: path:ptr len:n :}
+: URL-FOR ( ^u8 n -- ^u8 n ) {: path:^ len:n :}
    SB-RESET
    s" http://127.0.0.1:" SB-APPEND
    HTTP:PORT FMT:SB-U
@@ -770,7 +770,7 @@ $2710 constant PARK-MS            \ far past every stop bound
 \ none, so it is the default 300 s connect timeout, met by a starved or stopped
 \ process. A deadline is no assertion result: the wait names itself on stdout
 \ and throws E-PROC-TIMEOUT.
-: TAKE-INTO ( CURL:handle ptr u8 n -- n n ) {: subject:CURL:handle into:ptr cap:n :}
+: TAKE-INTO ( CURL:handle ^u8 n -- n n ) {: subject:CURL:handle into:^ cap:n :}
    subject into cap >LEN CURL:PERFORM
    MATCH CURL:fetch-result
       response OF {: status:CURL:http-status got:len :}
@@ -793,7 +793,7 @@ $2710 constant PARK-MS            \ far past every stop bound
    RES-BUF RES-CAP TAKE-INTO RES-U ! ;
 
 
-: FETCH ( ptr u8 n ptr u8 n -- n ) {: method:ptr methodlen:n path:ptr pathlen:n :}
+: FETCH ( ^u8 n ^u8 n -- n ) {: method:^ methodlen:n path:^ pathlen:n :}
    OPEN-HANDLE {: subject:CURL:handle :}
    subject path pathlen URL-FOR CURL:URL! DROP-CURL-STATUS
    subject method methodlen CURL:METHOD! DROP-CURL-STATUS
@@ -802,8 +802,8 @@ $2710 constant PARK-MS            \ far past every stop bound
    status ;
 
 
-: FETCH-IF-NONE-MATCH ( ptr u8 n ptr u8 n -- n )
-   {: path:ptr pathlen:n etag:ptr etaglen:n :}
+: FETCH-IF-NONE-MATCH ( ^u8 n ^u8 n -- n )
+   {: path:^ pathlen:n etag:^ etaglen:n :}
    OPEN-HANDLE {: subject:CURL:handle :}
    subject path pathlen URL-FOR CURL:URL! DROP-CURL-STATUS
    SB-RESET
@@ -815,7 +815,7 @@ $2710 constant PARK-MS            \ far past every stop bound
    status ;
 
 
-: POST-JSON ( ptr u8 n ptr u8 n -- n ) {: body:ptr bodylen:n path:ptr pathlen:n :}
+: POST-JSON ( ^u8 n ^u8 n -- n ) {: body:^ bodylen:n path:^ pathlen:n :}
    OPEN-HANDLE {: subject:CURL:handle :}
    subject path pathlen URL-FOR CURL:URL! DROP-CURL-STATUS
    subject s" Content-Type: application/json" CURL:HEADER+ DROP-CURL-STATUS
@@ -835,8 +835,8 @@ $2710 constant PARK-MS            \ far past every stop bound
 
 \ A refused request may be answered and the connection closed before the whole
 \ request has been sent, so a short write is part of the case, not a failure.
-: RAW-SEND ( TCP4:connection ptr u8 n -- )
-   {: conn:TCP4:connection bytes:ptr len:n :}
+: RAW-SEND ( TCP4:connection ^u8 n -- )
+   {: conn:TCP4:connection bytes:^ len:n :}
    conn bytes len TCP4:TRANSFER-BYTES TCP4:WRITE DROP-TCP-STATUS ;
 
 
@@ -859,7 +859,7 @@ $2710 constant PARK-MS            \ far past every stop bound
    again ;
 
 
-: RAW-EXCHANGE ( ptr u8 n -- ) {: bytes:ptr len:n :}
+: RAW-EXCHANGE ( ^u8 n -- ) {: bytes:^ len:n :}
    RAW-OPEN {: conn:TCP4:connection :}
    conn bytes len RAW-SEND
    conn RAW-DRAIN
@@ -879,8 +879,8 @@ $2710 constant PARK-MS            \ far past every stop bound
    drop ;
 
 
-: RAW-COLLECT ( TCP4:connection ptr u8 n -- bool )
-   {: conn:TCP4:connection want:ptr len:n :}
+: RAW-COLLECT ( TCP4:connection ^u8 n -- bool )
+   {: conn:TCP4:connection want:^ len:n :}
    0 RES-U !
    begin
       RES$ want len CONTAINS? if true exit then
@@ -890,7 +890,7 @@ $2710 constant PARK-MS            \ far past every stop bound
    again ;
 
 
-: RAW-ASK ( ptr u8 n ptr u8 n -- bool ) {: bytes:ptr len:n want:ptr wantlen:n :}
+: RAW-ASK ( ^u8 n ^u8 n -- bool ) {: bytes:^ len:n want:^ wantlen:n :}
    RAW-OPEN {: conn:TCP4:connection :}
    conn bytes len RAW-SEND
    conn want wantlen RAW-COLLECT
@@ -901,7 +901,7 @@ $2710 constant PARK-MS            \ far past every stop bound
    0 REQ-U ! ;
 
 
-: REQ+ ( ptr u8 n -- ) {: bytes:ptr len:n :}
+: REQ+ ( ^u8 n -- ) {: bytes:^ len:n :}
    bytes len REQ-BUF REQ-U @ SPAN:SKIP SPAN:COPY
    REQ-U @ len + REQ-U ! ;
 
@@ -912,7 +912,7 @@ $2710 constant PARK-MS            \ far past every stop bound
    REQ-U @ count + REQ-U ! ;
 
 
-: RAW-ONE ( ptr u8 n -- )
+: RAW-ONE ( ^u8 n -- )
    REQ-RESET REQ+ REQ$ RAW-EXCHANGE ;
 
 
@@ -920,8 +920,8 @@ $32 constant SPLIT-MS             \ long enough for the worker to read the first
 
 
 \ The pause makes the server read the request in two fills.
-: RAW-SPLIT ( ptr u8 n n -- )
-   {: bytes:ptr len:n cut:n :}
+: RAW-SPLIT ( ^u8 n n -- )
+   {: bytes:^ len:n cut:n :}
    RAW-OPEN {: conn:TCP4:connection :}
    conn bytes cut RAW-SEND
    SPLIT-MS >MS TASK:SLEEP
@@ -930,11 +930,11 @@ $32 constant SPLIT-MS             \ long enough for the worker to read the first
    conn TCP4:CLOSE DROP-TCP-STATUS ;
 
 
-: BEGINS? ( ptr u8 n -- bool ) {: want:ptr len:n :}
+: BEGINS? ( ^u8 n -- bool ) {: want:^ len:n :}
    RES$ want len STARTS-WITH? ;
 
 
-: HAS? ( ptr u8 n -- bool ) {: want:ptr len:n :}
+: HAS? ( ^u8 n -- bool ) {: want:^ len:n :}
    RES$ want len CONTAINS? ;
 
 
@@ -962,11 +962,11 @@ $32 constant SPLIT-MS             \ long enough for the worker to read the first
    len ETAG-U ! ;
 
 
-: SCRIPT$ ( -- ptr u8 n )
+: SCRIPT$ ( -- ^u8 n )
    SCRIPT-BUF SCRIPT-U @ SPAN:TAKE SPAN:$ ;
 
 
-: SCRIPT+ ( ptr u8 n -- ) {: bytes:ptr len:n :}
+: SCRIPT+ ( ^u8 n -- ) {: bytes:^ len:n :}
    bytes len SCRIPT-BUF SCRIPT-U @ SPAN:SKIP SPAN:COPY
    SCRIPT-U @ len + SCRIPT-U ! ;
 
@@ -983,7 +983,7 @@ $32 constant SPLIT-MS             \ long enough for the worker to read the first
    loop ;
 
 
-: BLANK-LINE$ ( -- ptr u8 n )
+: BLANK-LINE$ ( -- ^u8 n )
    S\" \r\n\r\n" ;
 
 
@@ -1005,7 +1005,7 @@ $32 constant SPLIT-MS             \ long enough for the worker to read the first
 
 \ The case's name, then the status line and headers of every response the last
 \ raw exchange read, each followed by a blank line.
-: TRANSCRIBE ( ptr u8 n -- ) {: name:ptr len:n :}
+: TRANSCRIBE ( ^u8 n -- ) {: name:^ len:n :}
    s" == " SCRIPT+ name len SCRIPT+ LF SCRIPT+C
    0
    begin
@@ -1019,11 +1019,11 @@ $32 constant SPLIT-MS             \ long enough for the worker to read the first
    again ;
 
 
-: WANT$ ( -- ptr u8 n )
+: WANT$ ( -- ^u8 n )
    WANT-BUF WANT-U @ SPAN:TAKE SPAN:$ ;
 
 
-: W ( ptr u8 n -- ) {: bytes:ptr len:n :}
+: W ( ^u8 n -- ) {: bytes:^ len:n :}
    bytes len WANT-BUF WANT-U @ SPAN:SKIP SPAN:COPY
    WANT-U @ len + WANT-U !
    LF WANT-BUF WANT-U @ SPAN:U8!
@@ -1198,16 +1198,16 @@ create ERR-PATH-BUF PATH-CAP allot
 ERR-CAP SPAN-BUFFER: ERR-BUF
 
 
-: ERR-PATH$ ( -- ptr u8 n )
+: ERR-PATH$ ( -- ^u8 n )
    ERR-PATH-BUF ERR-PATH-U @ ;
 
 
-: ERR$ ( -- ptr u8 n )
+: ERR$ ( -- ^u8 n )
    ERR-BUF ERR-U @ SPAN:TAKE SPAN:$ ;
 
 
 : ERR-PATH-MAKE ( -- )
-   s" http-stderr" FS:MKTEMP-DIR {: dir:ptr dirlen:n :}
+   s" http-stderr" FS:MKTEMP-DIR {: dir:^ dirlen:n :}
    dir dirlen FS:CLEANUP-TREE+
    dir dirlen s" stderr.txt" ERR-PATH-BUF FS:JOIN-PATH ERR-PATH-U ! ;
 
@@ -1283,7 +1283,7 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
 
 \ A JSON body past 1 MiB arrives whole, and the worker answers the next
 \ request from a cleared writer.
-: BIG-ANSWER? ( ptr u8 n -- bool ) {: bytes:ptr len:n :}
+: BIG-ANSWER? ( ^u8 n -- bool ) {: bytes:^ len:n :}
    len BIG-ANSWER-BYTES <> if false exit then
    bytes 8 S\" {\qbig\q:\q" STR= 0= if false exit then
    bytes len + 2 - 2 S\" \q}" STR= 0= if false exit then
@@ -1319,7 +1319,7 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
 \ ended; the one worker serves the ping after that request.
 : HUGE-JSON-CASE ( -- )
    HUGE-VALUE-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN 0 HUGE-VALUE !
-   0 HUGE-VALUE @ SPAN:$ drop {: value:ptr :}
+   0 HUGE-VALUE @ SPAN:$ drop {: value:^ :}
    HUGE-VALUE-BYTES 0 ?do FILL-BYTE value i + c! loop
    HUGE-ANSWER-BYTES $1000 + MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN 0 BIG-RES !
    [: PS-RSS ;] CMD:WITH-COMMAND {: before:n :}
@@ -1394,8 +1394,8 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    s" bad-request" TRANSCRIBE ;
 
 
-: PING-LINE ( ptr u8 n -- )
-   {: line:ptr lu:n :}
+: PING-LINE ( ^u8 n -- )
+   {: line:^ lu:n :}
    REQ-RESET
    s\" GET /api/ping HTTP/1.1\r\n" REQ+
    line lu REQ+
@@ -1607,7 +1607,7 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
 \ small parsed request checks that no old bytes remain in the worker's slot.
 : LARGE-READER-CASE ( -- )
    32 0 LARGE-SPAN @ SPAN:FILL
-   S\" {\qtext\q:\qok\q}" {: obj:ptr len:n :}
+   S\" {\qtext\q:\qok\q}" {: obj:^ len:n :}
    obj len 0 LARGE-SPAN @ LARGE-CAP len - len SPAN:SUB SPAN:COPY
    0 LARGE-SPAN @ SPAN:$ s" /api/answer" POST-JSON 200 T=
    RES$ S\" {\qtext\q:\qok\q}" T$=
@@ -2003,9 +2003,9 @@ $C8 constant STALL-MARGIN-MS
    s" partial" HAS? TFALSE ;
 
 
-: SPLIT-PING ( n ptr u8 n -- )
-   {: taken:n name:ptr nu:n :}
-   s\" GET /api/ping HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" {: head:ptr len:n :}
+: SPLIT-PING ( n ^u8 n -- )
+   {: taken:n name:^ nu:n :}
+   s\" GET /api/ping HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" {: head:^ len:n :}
    head len len BLANK-LINE$ nip - taken + RAW-SPLIT
    S\" {\qservice\q:\qhttp-test\q}" HAS? TTRUE
    name nu TRANSCRIBE ;
@@ -2208,7 +2208,7 @@ TASK:MIN-STACK TASK:TASK SENDER-TASK
 
 \ Writes the bytes over and over until a write fails: the reset a close sends
 \ a peer whose bytes are still unread.
-: KEEP-SENDING ( ptr u8 n -- ) {: bytes:ptr len:n :}
+: KEEP-SENDING ( ^u8 n -- ) {: bytes:^ len:n :}
    0 SENDER-CONN @ {: conn:TCP4:connection :}
    begin
       conn bytes len TCP4:TRANSFER-BYTES TCP4:WRITE
@@ -2219,7 +2219,7 @@ TASK:MIN-STACK TASK:TASK SENDER-TASK
    again ;
 
 
-: TASK-AWAIT ( ptr n -- )
+: TASK-AWAIT ( ^n -- )
    [: dup TASK:DONE? ;] TEST-WAIT:POLL
    drop ;
 
@@ -2533,7 +2533,7 @@ variable REFUSED-CODE
 \ A start at that address and port with fd 2 captured, then the want text: the
 \ line's part after the stamp, up to the errno, built in the string builder
 \ once the capture and the start no longer use it.
-: REFUSED-START ( n n ptr u8 n -- ) {: address:n port:n dotted:ptr dottedlen:n :}
+: REFUSED-START ( n n ^u8 n -- ) {: address:n port:n dotted:^ dottedlen:n :}
    address REFUSED-ADDRESS !
    port REFUSED-PORT !
    ERR-PATH-MAKE
@@ -2548,8 +2548,8 @@ variable REFUSED-CODE
 
 
 : REFUSED-LINE? ( -- bool )
-   ERR$ {: err:ptr errlen:n :}
-   SB$ {: want:ptr wantlen:n :}
+   ERR$ {: err:^ errlen:n :}
+   SB$ {: want:^ wantlen:n :}
    DATE:TIME-LEN wantlen + {: head:n :}
    errlen head 2 + < if false exit then
    err DATE:TIME-LEN + wantlen want wantlen STR= 0= if false exit then
@@ -2602,18 +2602,18 @@ $400001 constant BIG-FILE-BYTES
 BIG-DIRS 2 * LONG-NAMES + 1+ constant BIG-FILES
 
 
-: TREE$ ( -- ptr u8 n )
+: TREE$ ( -- ^u8 n )
    TREE-BUF TREE-U @ SPAN:TAKE SPAN:$ ;
 
 
 : NEW-TREE ( -- )
-   s" http-static" FS:MKTEMP-DIR {: a:ptr u:n :}
+   s" http-static" FS:MKTEMP-DIR {: a:^ u:n :}
    a u FS:CLEANUP-TREE+
    a u TREE-BUF SPAN:COPY
    u TREE-U ! ;
 
 
-: TREE-UNDER ( ptr u8 n -- n ) {: name:ptr len:n :}
+: TREE-UNDER ( ^u8 n -- n ) {: name:^ len:n :}
    TREE$ name len PATH-BUF FS:JOIN-PATH ;
 
 
@@ -2678,17 +2678,17 @@ BIG-DIRS 2 * LONG-NAMES + 1+ constant BIG-FILES
 \ A directory whose identity matches an ancestor's is a cycle and refuses the
 \ root; links that reach a directory by another path are served under it.
 
-: TREE-FILE ( ptr u8 n ptr u8 n -- ) {: name:ptr namelen:n text:ptr textlen:n :}
+: TREE-FILE ( ^u8 n ^u8 n -- ) {: name:^ namelen:n text:^ textlen:n :}
    name namelen TREE-UNDER {: len:n :}
    PATH-BUF len text textlen FS:WRITE-ALL ;
 
 
-: TREE-DIR ( ptr u8 n -- )
+: TREE-DIR ( ^u8 n -- )
    TREE-UNDER {: len:n :}
    PATH-BUF len FS:MAKE-DIR ;
 
 
-: TREE-LINK ( ptr u8 n ptr u8 n -- ) {: target:ptr targetlen:n name:ptr namelen:n :}
+: TREE-LINK ( ^u8 n ^u8 n -- ) {: target:^ targetlen:n name:^ namelen:n :}
    name namelen TREE-UNDER {: len:n :}
    target targetlen PATH-BUF len FS:MAKE-SYMLINK ;
 
@@ -2771,7 +2771,7 @@ LATER-CAP SPAN-BUFFER: LATER-BUF
 SB-CAP SPAN-BUFFER: LONG-TYPE
 
 
-: LATER$ ( -- ptr u8 n )
+: LATER$ ( -- ^u8 n )
    LATER-BUF LATER-U @ SPAN:TAKE SPAN:$ ;
 
 
@@ -2784,7 +2784,7 @@ SB-CAP SPAN-BUFFER: LONG-TYPE
    ;MATCH ;
 
 
-: LATER-TYPE$ ( -- ptr u8 n )
+: LATER-TYPE$ ( -- ^u8 n )
    LATER-LONG @ 0<> if LONG-TYPE SPAN:$ exit then
    s" application/json" ;
 
@@ -2812,7 +2812,7 @@ SB-CAP SPAN-BUFFER: LONG-TYPE
 \ The request's body is the answer's, copied out: the request's bytes end with
 \ the handler.
 : LATER ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
-   asked HTTP:BODY$ {: bytes:ptr len:n :}
+   asked HTTP:BODY$ {: bytes:^ len:n :}
    bytes len LATER-BUF SPAN:COPY
    len LATER-U !
    asked HTTP:TAKE-OVER drop drop 0 LATER-CONN !
@@ -2845,11 +2845,11 @@ SB-CAP SPAN-BUFFER: LONG-TYPE
    [: LATER-REPLY ;] LATER-ASK ;
 
 
-: LATER-OK$ ( -- ptr u8 n )
+: LATER-OK$ ( -- ^u8 n )
    S\" HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 14\r\nConnection: close\r\n\r\n{\qlater\q:true}" ;
 
 
-: LATER-EMPTY$ ( -- ptr u8 n )
+: LATER-EMPTY$ ( -- ^u8 n )
    S\" HTTP/1.1 204 No Content\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n" ;
 
 

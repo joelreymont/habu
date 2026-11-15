@@ -35,22 +35,22 @@ DEFLINEAR lin-free
 \ its record left in the capture, or 0.
 package LIN-RUN
 public
-TYPED-VARIABLE SRC-A ptr u8
+TYPED-VARIABLE SRC-A ^u8
 variable SRC-U
 : EVAL ( -- ) SRC-A @ SRC-U @ evaluate-closed ;
-: DECL ( ptr u8 n -- n )
+: DECL ( ^u8 n -- n )
    SRC-U !  SRC-A !
    REJECTION:CAPTURE
    [: EVAL ;] catch ;
 \ The status was the checker's and the captured record carries the code and
 \ the word.
-: REJECTS ( n ptr u8 n ptr u8 n -- ) {: rc:n c:ptr cu:n w:ptr wu:n :}
+: REJECTS ( n ^u8 n ^u8 n -- ) {: rc:n c:^ cu:n w:^ wu:n :}
    rc CHECKER-REJECT-RC T=
    REJECTION:BUFFER$ c cu CONTAINS? TTRUE
    REJECTION:BUFFER$ w wu CONTAINS? TTRUE ;
 \ REJECTS, and the record quotes the evaluated text and labels its cause.
-: REJECTS-AT ( n ptr u8 n ptr u8 n ptr u8 n -- )
-   {: rc:n c:ptr cu:n w:ptr wu:n l:ptr lu:n :}
+: REJECTS-AT ( n ^u8 n ^u8 n ^u8 n -- )
+   {: rc:n c:^ cu:n w:^ wu:n l:^ lu:n :}
    rc c cu w wu REJECTS
    REJECTION:BUFFER$ s" = evaluated: " CONTAINS? TTRUE
    REJECTION:BUFFER$ l lu CONTAINS? TTRUE ;
@@ -62,10 +62,10 @@ T-RESET
 package LIN-OWN
 variable WID
 get-current WID !
-: ABSENT? ( ptr u8 n -- bool ) WID @ search-wl 0= ;
+: ABSENT? ( ^u8 n -- bool ) WID @ search-wl 0= ;
 s" the owner's private section declares a mint and an erase" T-LABEL
-s" LINEAR: MINT ( ptr n -- LIN-OWN:tok )"  LIN-RUN:DECL 0 T=
-s" LINEAR: ERASE ( LIN-OWN:tok -- ptr n )" LIN-RUN:DECL 0 T=
+s" LINEAR: MINT ( ^n -- LIN-OWN:tok )"  LIN-RUN:DECL 0 T=
+s" LINEAR: ERASE ( LIN-OWN:tok -- ^n )" LIN-RUN:DECL 0 T=
 s" LINEAR: MINT-ROW ( R n -- R LIN-OWN:tok )" LIN-RUN:DECL 0 T=
 s" LINEAR: ERASE-ROW ( R LIN-OWN:tok -- R n )" LIN-RUN:DECL 0 T=
 s" : ROW-ROUND ( n n -- n n ) MINT-ROW ERASE-ROW ;" LIN-RUN:DECL 0 T=
@@ -94,7 +94,7 @@ s" : PEEK ( LIN-OWN:tok -- LIN-OWN:tok n ) ERASE dup @ swap MINT swap ;" LIN-RUN
 s" LV1 ( LIN-OWN:tok -- ) ERASE drop"                CHECK-QUIET-CANDIDATE! -1 T=
 s" LV2 ( LIN-OWN:tok -- ) dup ERASE drop ERASE drop" CHECK-QUIET-CANDIDATE! 0 T=
 s" LV3 ( LIN-OWN:tok -- ) ERASE drop ERASE drop"     CHECK-QUIET-CANDIDATE! 0 T=
-s" LV4 ( ptr n -- ) MINT drop"                       CHECK-QUIET-CANDIDATE! 0 T=
+s" LV4 ( ^n -- ) MINT drop"                       CHECK-QUIET-CANDIDATE! 0 T=
 s" the declarer inside a checked body is unsafe" T-LABEL
 s" LV5 ( LIN-OWN:tok -- ) linear:"                   CHECK-QUIET-CANDIDATE! 0 T=
 s" exactly one side is linear and the other a payload" T-LABEL
@@ -106,12 +106,12 @@ s" LINEAR: LP3 ( n -- n )"                         LIN-RUN:DECL
    s" error[E-LINEAR-PAYLOAD]" s" `linear: LP3`" s" not one token and one payload" LIN-RUN:REJECTS-AT
 s" LINEAR: LP4 ( n -- idx )"                       LIN-RUN:DECL
    s" error[E-LINEAR-PAYLOAD]" s" `linear: LP4`" s" not one token and one payload" LIN-RUN:REJECTS-AT
-s" LINEAR: LP5 ( n -- ptr LIN-OWN:tok )"           LIN-RUN:DECL
+s" LINEAR: LP5 ( n -- ^LIN-OWN:tok )"           LIN-RUN:DECL
    s" error[E-LINEAR-PAYLOAD]" s" `linear: LP5`" s" not one token and one payload" LIN-RUN:REJECTS-AT
 s" a payload is a non-linear constructor or a pointer chain ending at one" T-LABEL
-s" LINEAR: LP6 ( ptr LIN-OWN:aux -- LIN-OWN:tok )" LIN-RUN:DECL
+s" LINEAR: LP6 ( ^LIN-OWN:aux -- LIN-OWN:tok )" LIN-RUN:DECL
    s" error[E-LINEAR-PAYLOAD]" s" `linear: LP6`" s" not one token and one payload" LIN-RUN:REJECTS-AT
-s" LINEAR: LP7 ( ptr a -- LIN-OWN:tok )"           LIN-RUN:DECL
+s" LINEAR: LP7 ( ^a -- LIN-OWN:tok )"           LIN-RUN:DECL
    s" error[E-LINEAR-PAYLOAD]" s" `linear: LP7`" s" not one token and one payload" LIN-RUN:REJECTS-AT
 s" LINEAR: LP8 ( LIN-OWN:tok -- a )"               LIN-RUN:DECL
    s" error[E-LINEAR-PAYLOAD]" s" `linear: LP8`" s" not one token and one payload" LIN-RUN:REJECTS-AT
@@ -146,9 +146,9 @@ s" LINEAR: LS1 ( n -- LIN-OWN:tok )"               LIN-RUN:DECL
    s" error[E-LINEAR-SCOPE]" s" `linear: LS1`" s" outside its owner's private section" LIN-RUN:REJECTS-AT
 s" LINEAR: LS2 ( LIN-OWN:tok -- n )"               LIN-RUN:DECL
    s" error[E-LINEAR-SCOPE]" s" `linear: LS2`" s" outside its owner's private section" LIN-RUN:REJECTS-AT
-s" : GIVE ( ptr n -- LIN-OWN:tok ) MINT ;"         LIN-RUN:DECL 0 T=
+s" : GIVE ( ^n -- LIN-OWN:tok ) MINT ;"         LIN-RUN:DECL 0 T=
 s" : LOOK ( LIN-OWN:tok -- LIN-OWN:tok n ) PEEK ;" LIN-RUN:DECL 0 T=
-s" : TAKE ( LIN-OWN:tok -- ptr n ) ERASE ;"        LIN-RUN:DECL 0 T=
+s" : TAKE ( LIN-OWN:tok -- ^n ) ERASE ;"        LIN-RUN:DECL 0 T=
 ;package
 s" LIN-OWN:LS1" XREF-FIND XREF-FOUND? TFALSE
 s" LIN-OWN:PUBLIC-MINT" XREF-FIND XREF-FOUND? TFALSE
@@ -186,9 +186,9 @@ s" : LIN-RT ( -- n ) 42 LIN-BOX ! LIN-BOX LIN-OWN:GIVE LIN-OWN:LOOK swap LIN-OWN
 s" LIN-RT LIN-OUT !" LIN-RUN:DECL 0 T=
 LIN-OUT @ 42 T=
 s" and may not copy or drop it" T-LABEL
-s" LIN-DUP ( ptr n -- ) LIN-OWN:GIVE dup LIN-OWN:TAKE drop LIN-OWN:TAKE drop"
+s" LIN-DUP ( ^n -- ) LIN-OWN:GIVE dup LIN-OWN:TAKE drop LIN-OWN:TAKE drop"
    CHECK-QUIET-CANDIDATE! 0 T=
-s" LIN-LEAK ( ptr n -- ) LIN-OWN:GIVE drop" CHECK-QUIET-CANDIDATE! 0 T=
+s" LIN-LEAK ( ^n -- ) LIN-OWN:GIVE drop" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ ---- the source pre-pass applies the same rules ---------------------------------
 package LIN-VRF
@@ -239,7 +239,7 @@ $400 constant CAP
 create OUT CAP allot
 create ERR CAP allot
 variable ERR-U
-: RUN ( ptr u8 n -- n ) {: src:ptr u:n :}   \ source -> child exit status (-1 = signal)
+: RUN ( ^u8 n -- n ) {: src:^ u:n :}   \ source -> child exit status (-1 = signal)
    src u OUT CAP >LEN ERR CAP >LEN CHILD-MS >MS SUBJECT:RUN {: outu:len erru:len oc :}
    erru LEN>N ERR-U !
    oc MATCH PROCESS:ending
@@ -247,12 +247,12 @@ variable ERR-U
      signaled OF drop -1 ENDOF
      timeout OF src u OUT outu LEN>N ERR erru LEN>N SUBJECT:TIMED-OUT ENDOF
    ;MATCH ;
-: ERR$ ( -- ptr u8 n ) ERR ERR-U @ ;
+: ERR$ ( -- ^u8 n ) ERR ERR-U @ ;
 \ The child's record carries the code and the word.
-: SAYS ( ptr u8 n ptr u8 n -- ) {: c:ptr cu:n w:ptr wu:n :}
+: SAYS ( ^u8 n ^u8 n -- ) {: c:^ cu:n w:^ wu:n :}
    ERR$ c cu CONTAINS? TTRUE
    ERR$ w wu CONTAINS? TTRUE ;
-: HAS ( ptr u8 n -- ) {: a:ptr u:n :}   ERR$ a u CONTAINS? TTRUE ;
+: HAS ( ^u8 n -- ) {: a:^ u:n :}   ERR$ a u CONTAINS? TTRUE ;
 ;package
 s" the keyword with nothing after it names itself" T-LABEL
 s" linear:" LIN-CHILD:RUN 70 T=
@@ -281,14 +281,14 @@ create OBJ-BUF PATH-CAP allot  variable OBJ-U
 PROG-CAP BUFFER: PROG
 variable PROG-U
 
-: OUT$ ( -- ptr u8 n ) OUT OUT-U @ ;
-: ERR$ ( -- ptr u8 n ) ERR ERR-U @ ;
-: PATH$ ( -- ptr u8 n ) PATH-BUF PATH-U @ ;
-: IMAGE$ ( -- ptr u8 n ) IMAGE-BUF IMAGE-U @ ;
-: OBJ$ ( -- ptr u8 n ) OBJ-BUF OBJ-U @ ;
-: PROG$ ( -- ptr u8 n ) PROG PROG-U @ ;
+: OUT$ ( -- ^u8 n ) OUT OUT-U @ ;
+: ERR$ ( -- ^u8 n ) ERR ERR-U @ ;
+: PATH$ ( -- ^u8 n ) PATH-BUF PATH-U @ ;
+: IMAGE$ ( -- ^u8 n ) IMAGE-BUF IMAGE-U @ ;
+: OBJ$ ( -- ^u8 n ) OBJ-BUF OBJ-U @ ;
+: PROG$ ( -- ^u8 n ) PROG PROG-U @ ;
 
-: PROG+ ( ptr u8 n -- ) {: a:ptr u:n :}
+: PROG+ ( ^u8 n -- ) {: a:^ u:n :}
    a PROG PROG-U @ + u BYTE-COPY
    PROG-U @ u + PROG-U ! ;
 : PROG-C+ ( n -- )
@@ -296,14 +296,14 @@ variable PROG-U
    PROG-U @ 1 + PROG-U ! ;
 
 \ The caller stages the argv.
-: RUN ( ptr u8 n n -- ) {: path:ptr pathu:n ms:n :}
+: RUN ( ^u8 n n -- ) {: path:^ pathu:n ms:n :}
    PROC-ENV-INHERIT-MISSING
    path pathu >LEN  PROG$ >LEN  OUT CAP >LEN  ERR CAP >LEN  ms >MS
    RUN-ARGV-ENV-STDIN-CAPTURE PCAP-RESULT:>N
    RC ! ERR-U ! OUT-U ! ;
 
 : ROOT ( -- )
-   s" linear-suite" FS:MKTEMP-DIR {: path:ptr size:n :}
+   s" linear-suite" FS:MKTEMP-DIR {: path:^ size:n :}
    path ROOT-BUF size BYTE-COPY size ROOT-U !
    ROOT-BUF ROOT-U @ FS:CLEANUP-TREE+ ;
 
@@ -329,8 +329,8 @@ variable PROG-U
    LSP-CHECK:RUN ;
 
 \ Checks PROG$ written as NAME, in the forked CHILD word.
-: CHECK-IN ( ptr u8 n ptr u8 n -- )
-   {: name:ptr nameu:n child:ptr childu:n :}
+: CHECK-IN ( ^u8 n ^u8 n -- )
+   {: name:^ nameu:n child:^ childu:n :}
    ROOT-BUF ROOT-U @ name nameu PATH-BUF FS:JOIN-PATH PATH-U !
    PATH$ PROG$ FS:WRITE-ALL
    0 PROG-U !
@@ -338,16 +338,16 @@ variable PROG-U
    PROCESS:ENDING>RC RC>N {: outu:len erru:len rc:n :}
    rc RC !  erru LEN>N ERR-U !  outu LEN>N OUT-U ! ;
 
-: CHECK ( ptr u8 n -- )  s" CHECK-CHILD" CHECK-IN ;
-: CHECK-PROSE ( ptr u8 n -- )  s" PROSE-CHILD" CHECK-IN ;
+: CHECK ( ^u8 n -- )  s" CHECK-CHILD" CHECK-IN ;
+: CHECK-PROSE ( ^u8 n -- )  s" PROSE-CHILD" CHECK-IN ;
 
 : OK-FIXTURE ( -- )
    0 PROG-U !
    S\" package LIN-FX\npublic\nDEFLINEAR LIN-FX:tok\n;package\npackage LIN-FX\n" PROG+
-   S\" LINEAR: MINT ( ptr n -- LIN-FX:tok )\nLINEAR: ERASE ( LIN-FX:tok -- ptr n )\n" PROG+
-   S\" public\n: GIVE ( ptr n -- LIN-FX:tok ) MINT ;\n" PROG+
+   S\" LINEAR: MINT ( ^n -- LIN-FX:tok )\nLINEAR: ERASE ( LIN-FX:tok -- ^n )\n" PROG+
+   S\" public\n: GIVE ( ^n -- LIN-FX:tok ) MINT ;\n" PROG+
    S\" : LOOK ( LIN-FX:tok -- LIN-FX:tok n ) ERASE dup @ swap MINT swap ;\n" PROG+
-   S\" : TAKE ( LIN-FX:tok -- ptr n ) ERASE ;\n;package\n" PROG+ ;
+   S\" : TAKE ( LIN-FX:tok -- ^n ) ERASE ;\n;package\n" PROG+ ;
 
 : BAD-FIXTURE ( -- )
    0 PROG-U !
@@ -395,13 +395,13 @@ variable PROG-U
    PROC-ARGV-ENV-RESET
    IMAGE$ IMAGE-MS RUN ;
 
-: AT-ROOT ( ptr u8 n -- ) {: name:ptr nameu:n :}
+: AT-ROOT ( ^u8 n -- ) {: name:^ nameu:n :}
    ROOT-BUF ROOT-U @ name nameu PATH-BUF FS:JOIN-PATH PATH-U ! ;
 
-: WRITE-PROG ( ptr u8 n -- )
+: WRITE-PROG ( ^u8 n -- )
    AT-ROOT  PATH$ PROG$ FS:WRITE-ALL  0 PROG-U ! ;
 
-: LOAD-LINE+ ( ptr u8 n ptr u8 n -- ) {: word:ptr wordu:n name:ptr nameu:n :}
+: LOAD-LINE+ ( ^u8 n ^u8 n -- ) {: word:^ wordu:n name:^ nameu:n :}
    name nameu AT-ROOT
    word wordu PROG+  s"  " PROG+  PATH$ PROG+  10 PROG-C+ ;
 
@@ -437,7 +437,7 @@ variable PROG-U
 
 \ Builds a source under ROOT to ROOT/lb over the objects directory ROOT/<objs>. Each build is a
 \ fresh hb because the build of a program is what is under test.
-: LINK-BUILD ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n objs:ptr objsu:n :}
+: LINK-BUILD ( ^u8 n ^u8 n -- ) {: src:^ srcu:n objs:^ objsu:n :}
    ROOT-BUF ROOT-U @ objs objsu OBJ-BUF FS:JOIN-PATH OBJ-U !
    ROOT-BUF ROOT-U @ s" lb" IMAGE-BUF FS:JOIN-PATH IMAGE-U !
    src srcu AT-ROOT
@@ -464,17 +464,17 @@ SLOTS TYPED-BUFFER KEPT-SIZE n
 SLOTS TYPED-BUFFER KEPT-S n
 SLOTS TYPED-BUFFER KEPT-NS n
 
-: TAIL$ ( -- ptr u8 n ) TAIL-BUF TAIL-U @ ;
-: KEPT-PATH ( n -- ptr u8 ) PATH-CAP * KEPT-BUF swap + ;
-: KEPT$ ( n -- ptr u8 n ) {: i:n :} i KEPT-PATH i KEPT-U @ ;
+: TAIL$ ( -- ^u8 n ) TAIL-BUF TAIL-U @ ;
+: KEPT-PATH ( n -- ^u8 ) PATH-CAP * KEPT-BUF swap + ;
+: KEPT$ ( n -- ^u8 n ) {: i:n :} i KEPT-PATH i KEPT-U @ ;
 
-: TAIL-SEEN ( ptr u8 n -- ) {: p:ptr pu:n :}
+: TAIL-SEEN ( ^u8 n -- ) {: p:^ pu:n :}
    p pu TAIL$ ENDS-WITH? 0= if exit then
    1 FOUND-N +!  p FOUND-BUF pu BYTE-COPY  pu FOUND-U ! ;
 
 \ Holds in slot i the size and change time of the one object under OBJ$ whose path ends with
 \ the tail; the slot stays empty when none or several do.
-: KEEP ( ptr u8 n n -- ) {: t:ptr tu:n i:n :}
+: KEEP ( ^u8 n n -- ) {: t:^ tu:n i:n :}
    0 i KEPT-U !
    t TAIL-BUF tu BYTE-COPY  tu TAIL-U !
    0 FOUND-N !  0 FOUND-U !
@@ -486,7 +486,7 @@ SLOTS TYPED-BUFFER KEPT-NS n
 
 \ The label holds when the object in slot i keeps the size and change time KEEP read: the
 \ build linked it, since a compile replaces the object.
-: LINKED ( ptr u8 n n -- ) {: a:ptr u:n i:n :}
+: LINKED ( ^u8 n n -- ) {: a:^ u:n i:n :}
    a u T-LABEL
    i KEPT-U @ 0= if false TTRUE exit then
    i KEPT$ FS:FILE? 0= if false TTRUE exit then

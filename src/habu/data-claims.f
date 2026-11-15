@@ -30,7 +30,7 @@ variable MSG-U
 : MSG-RESET ( -- )
    0 MSG-U ! ;
 
-: MSG+ ( ptr u8 n -- ) {: a u :}
+: MSG+ ( ^u8 n -- ) {: a u :}
    0 begin dup u < while
       MSG-U @ MSG-CAP < if
          dup a + c@ MSG-BUF MSG-U @ + c!
@@ -39,7 +39,7 @@ variable MSG-U
       1+
    repeat drop ;
 
-: MSG$ ( -- ptr u8 n )
+: MSG$ ( -- ^u8 n )
    MSG-BUF MSG-U @ ;
 
 \ Each claim is one line, `<offset> <length> CLAIM <display name>`. The row is
@@ -235,7 +235,7 @@ create TAB
 : ROW-LEN ( n -- n )
    ROW-CELLS * cells 1 cells + TAB + @ ;
 
-: NAME-AT ( n -- ptr u8 n ) {: ix :}
+: NAME-AT ( n -- ^u8 n ) {: ix :}
    NAMES 0 begin dup ix < while
       swap dup c@ 1+ + swap 1+
    repeat drop dup 1+ swap c@ ;

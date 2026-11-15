@@ -50,35 +50,35 @@ BUF:HDR-BYTES BUFFER: CODE
 CAP BUFFER: BEFORE
 variable BEFORE-U
 
-: RESULT$ ( -- ptr u8 n )  s\" {\"result\":{\"content\":[]}}" ;
-: ERROR$ ( -- ptr u8 n )  s\" {\"error\":{\"code\":-32601,\"message\":\"Method not found\"}}" ;
-: PARAMS$ ( -- ptr u8 n )  s\" {\"structuredContent\":{\"name\":\"Zürich ✓\"}}" ;
+: RESULT$ ( -- ^u8 n )  s\" {\"result\":{\"content\":[]}}" ;
+: ERROR$ ( -- ^u8 n )  s\" {\"error\":{\"code\":-32601,\"message\":\"Method not found\"}}" ;
+: PARAMS$ ( -- ^u8 n )  s\" {\"structuredContent\":{\"name\":\"Zürich ✓\"}}" ;
 \ A method of non-ASCII text, so its length counts bytes, not characters.
-: METHOD$ ( -- ptr u8 n )  s" ui/notifications/tool-résult" ;
-: DATA$ ( -- ptr u8 n )  s\" \x00\x01\x02\x03\x04\x05\x06\xFD\xFE\xFF" ;
-: NAME$ ( -- ptr u8 n )  s" naïve.bin" ;
+: METHOD$ ( -- ^u8 n )  s" ui/notifications/tool-résult" ;
+: DATA$ ( -- ^u8 n )  s\" \x00\x01\x02\x03\x04\x05\x06\xFD\xFE\xFF" ;
+: NAME$ ( -- ^u8 n )  s" naïve.bin" ;
 \ The composed page's title, which HTML must escape and the view must pass
 \ to the host as it is, with its space run, LF and CR.
-: TITLE$ ( -- ptr u8 n )  s\" Zürich  <part>\x0A& \"co\"\x0D" ;
+: TITLE$ ( -- ^u8 n )  s\" Zürich  <part>\x0A& \"co\"\x0D" ;
 
-: OUT$ ( -- ptr u8 n )  OUT OUT-U @ ;
-: ERR$ ( -- ptr u8 n )  ERR ERR-U @ ;
+: OUT$ ( -- ^u8 n )  OUT OUT-U @ ;
+: ERR$ ( -- ^u8 n )  ERR ERR-U @ ;
 
-: FILE! ( ptr u8 n ptr u8 n -- )
-   {: a:ptr u:n name:ptr nu:n :}
+: FILE! ( ^u8 n ^u8 n -- )
+   {: a:^ u:n name:^ nu:n :}
    DIR DIR-U @ name nu FILE FS:JOIN-PATH {: fu:n :}
    FILE fu a u FS:WRITE-ALL ;
 
 
-: SUBDIR ( ptr u8 n ptr u8 -- n )
-   {: name:ptr nu:n dst:ptr :}
+: SUBDIR ( ^u8 n ^u8 -- n )
+   {: name:^ nu:n dst:^ :}
    DIR DIR-U @ name nu dst FS:JOIN-PATH {: u:n :}
    dst u FS:MAKE-DIR
    u ;
 
 
 : SETUP ( -- )
-   s" browser-app" FS:MKTEMP-DIR {: a:ptr u:n :}
+   s" browser-app" FS:MKTEMP-DIR {: a:^ u:n :}
    a DIR u BYTE-COPY  u DIR-U !
    s" browser app: module, answers and transcripts in " type  DIR u type cr
    DIR u s" app.wasm" MOD FS:JOIN-PATH MOD-U !
@@ -90,15 +90,15 @@ variable BEFORE-U
    DATA$ s" data.bin" FILE! ;
 
 
-: ARG+ ( ptr u8 n -- )  >LEN PROC-ARGV+ ;
+: ARG+ ( ^u8 n -- )  >LEN PROC-ARGV+ ;
 
-: FILE-ARG+ ( ptr u8 n -- )
-   {: name:ptr nu:n :}
+: FILE-ARG+ ( ^u8 n -- )
+   {: name:^ nu:n :}
    DIR DIR-U @ name nu FILE FS:JOIN-PATH {: fu:n :}
    FILE fu ARG+ ;
 
 
-: SPAWN ( ptr u8 len -- n )
+: SPAWN ( ^u8 len -- n )
    OUT CAP >LEN  ERR CAP >LEN  PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N {: outu:len erru:len rc:n :}
    outu LEN>N OUT-U !  erru LEN>N ERR-U !
@@ -125,42 +125,42 @@ variable BEFORE-U
    EXE u SPAWN ;
 
 
-: TYPED+ ( ptr u8 n -- )  s" --typed" ARG+  ARG+ ;
+: TYPED+ ( ^u8 n -- )  s" --typed" ARG+  ARG+ ;
 
-: ANSWER-RPC+ ( ptr u8 n ptr u8 n -- )
-   {: id:ptr iu:n name:ptr nu:n :}
+: ANSWER-RPC+ ( ^u8 n ^u8 n -- )
+   {: id:^ iu:n name:^ nu:n :}
    s" --answer-rpc" ARG+  id iu ARG+  name nu FILE-ARG+ ;
 
 
-: FAIL-RPC+ ( ptr u8 n -- )  s" --fail-rpc" ARG+  ARG+ ;
+: FAIL-RPC+ ( ^u8 n -- )  s" --fail-rpc" ARG+  ARG+ ;
 : TICK+ ( -- )  s" --tick" ARG+ ;
 : NOTIFY+ ( -- )  s" --notify" ARG+  METHOD$ ARG+  s" params.json" FILE-ARG+ ;
 : FILE+ ( -- )  s" --file" ARG+  NAME$ ARG+  s" data.bin" FILE-ARG+ ;
 
-: LINE ( ptr u8 n -- )
+: LINE ( ^u8 n -- )
    SB-APPEND  10 SB-APPEND-C ;
 
 
 : HELLO ( -- )
    SB-RESET  s" hello" LINE ;
 
-: CALL-LINE ( ptr u8 n -- )
-   {: id:ptr iu:n :}
+: CALL-LINE ( ^u8 n -- )
+   {: id:^ iu:n :}
    s" rpc tools/call " SB-APPEND  id iu SB-APPEND
    s\"  {\"name\":\"get_project\"}" LINE ;
 
 
-: ANSWERED-LINE ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: c:ptr cu:n id:ptr iu:n body:ptr bu:n :}
+: ANSWERED-LINE ( ^u8 n ^u8 n ^u8 n -- )
+   {: c:^ cu:n id:^ iu:n body:^ bu:n :}
    s" text answered " SB-APPEND  c cu SB-APPEND  32 SB-APPEND-C
    id iu SB-APPEND  32 SB-APPEND-C  body bu LINE ;
 
 
-: RESULT-BODY$ ( -- ptr u8 n )  s\" {\"content\":[]}" ;
-: ERROR-BODY$ ( -- ptr u8 n )  s\" {\"code\":-32601,\"message\":\"Method not found\"}" ;
+: RESULT-BODY$ ( -- ^u8 n )  s\" {\"content\":[]}" ;
+: ERROR-BODY$ ( -- ^u8 n )  s\" {\"code\":-32601,\"message\":\"Method not found\"}" ;
 
-: SAME ( ptr u8 n ptr u8 n -- )
-   {: got:ptr gu:n name:ptr nu:n :}
+: SAME ( ^u8 n ^u8 n -- )
+   {: got:^ gu:n name:^ nu:n :}
    WANT-DIR WANT-U @ name nu FILE FS:JOIN-PATH {: wu:n :}
    FILE wu SB$ FS:WRITE-ALL
    GOT-DIR GOT-U @ name nu FILE FS:JOIN-PATH {: fu:n :}
@@ -235,8 +235,8 @@ variable BEFORE-U
    BROWSER-MEMORY-TEST:FREED ;
 
 
-: MALFORMED ( ptr u8 n ptr u8 n -- )
-   {: cmd:ptr cu:n what:ptr wu:n :}
+: MALFORMED ( ^u8 n ^u8 n -- )
+   {: cmd:^ cu:n what:^ wu:n :}
    SB-RESET  s" refused " SB-APPEND  cmd cu SB-APPEND  s" : " SB-APPEND
    what wu SB-APPEND  SB$ T-LABEL ;
 
@@ -244,8 +244,8 @@ variable BEFORE-U
 \ Typed text whose run leaves a malformed record, after the steps already
 \ staged: the turn fails, and the host prints only the lines given and no rpc,
 \ after or read.
-: REFUSED ( ptr u8 n ptr u8 n -- )
-   {: cmd:ptr cu:n before:ptr bu:n :}
+: REFUSED ( ^u8 n ^u8 n -- )
+   {: cmd:^ cu:n before:^ bu:n :}
    cmd cu TYPED+
    cmd cu s" the turn fails" MALFORMED
    HOST 1 T=
@@ -253,18 +253,18 @@ variable BEFORE-U
    OUT$ before bu T$= ;
 
 
-: REJECT ( ptr u8 n ptr u8 n -- )
-   {: cmd:ptr cu:n why:ptr wu:n :}
+: REJECT ( ^u8 n ^u8 n -- )
+   {: cmd:^ cu:n why:^ wu:n :}
    HOST-OPEN  cmd cu s\" hello\n" REFUSED
    cmd cu s" the failure names the reason" MALFORMED
    ERR$ why wu CONTAINS? TTRUE ;
 
 
 \ A read after the file event: its line is printed before the refusal.
-: REJECT-READ ( ptr u8 n ptr u8 n -- )
-   {: cmd:ptr cu:n why:ptr wu:n :}
+: REJECT-READ ( ^u8 n ^u8 n -- )
+   {: cmd:^ cu:n why:^ wu:n :}
    HELLO  FILE-LINE
-   SB$ {: a:ptr u:n :}
+   SB$ {: a:^ u:n :}
    a BEFORE u BYTE-COPY  u BEFORE-U !
    HOST-OPEN  FILE+  cmd cu BEFORE BEFORE-U @ REFUSED
    cmd cu s" the failure names the reason" MALFORMED
@@ -287,7 +287,7 @@ variable BEFORE-U
    ERR$ s" Invalid byte sequence" CONTAINS?
    ERR$ s" encoded data was not valid" CONTAINS?  or TTRUE ;
 
-: MAC-CHROME ( -- ptr u8 n )
+: MAC-CHROME ( -- ^u8 n )
    s" /Applications/Google Chrome.app/Contents/MacOS/Google Chrome" ;
 
 : CHROME-ASKED? ( -- bool )
@@ -298,7 +298,7 @@ variable BEFORE-U
 \ Chrome's executable in CHROME, CHROME-U 0 when it is not installed.
 : FIND-CHROME ( -- )
    MAC-CHROME FS:EXISTS? if
-      MAC-CHROME {: a:ptr u:n :} a CHROME u BYTE-COPY u CHROME-U ! exit
+      MAC-CHROME {: a:^ u:n :} a CHROME u BYTE-COPY u CHROME-U ! exit
    then
    s" google-chrome" >LEN CHROME FIND-EXECUTABLE MATCH option
       none OF 0 ENDOF
@@ -308,7 +308,7 @@ variable BEFORE-U
 : PAGE! ( -- )
    MOD MOD-U @ FS:FILE-SIZE {: wu:n :}
    WASM wu BUF:N>BLEN BUF:INIT
-   WASM wu BUF:N>BLEN BUF:GROW SPAN:$ {: w:ptr cap:n :}
+   WASM wu BUF:N>BLEN BUF:GROW SPAN:$ {: w:^ cap:n :}
    MOD MOD-U @ w cap FS:READ-ALL cap <> if E-FS-IO throw then
    PAGE wu BUF:N>BLEN BUF:INIT
    TITLE$ PAGE MCP-APP:PAGE+

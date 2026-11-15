@@ -146,7 +146,7 @@ variable DRY                         \ nonzero while the writer only measures
 LEB-MOST SPAN-BUFFER: LEB            \ one LEB, before it is put
 
 \ Never empty: a name, a type, a body or the image.
-: PUT-BYTES ( ptr u8 n -- )
+: PUT-BYTES ( ^u8 n -- )
    {: a u:n :}
    DRY @ 0= if  a u  AT @ OUT u SPAN:MAKE  SPAN:COPY  then
    u AT +! ;
@@ -258,7 +258,7 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
    0 TY-U !
    FUNC-FORM TY-BYTE  0 TY-U32  1 TY-U32  t TY-BYTE ;
 
-: TYPE$ ( n -- ptr u8 n )
+: TYPE$ ( n -- ^u8 n )
    {: k:n :}
    k TYPE-AT @ TYPES  k TYPE-LEN @ ;
 
@@ -378,7 +378,7 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
    OP-END PUT-BYTE ;
 
 \ ---- the sections -------------------------------------------------------------
-: BODY$ ( n -- ptr u8 n )
+: BODY$ ( n -- ^u8 n )
    {: k:n :}
    k FN-AT @ BODIES  k FN-LEN @ ;
 
@@ -407,7 +407,7 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
    1 PUT-U32
    LIMITS-MAX PUT-BYTE  PAGES PUT-U32  PAGES-MAX PUT-U32 ;
 
-: PUT-EXPORT ( ptr u8 n n n -- )
+: PUT-EXPORT ( ^u8 n n n -- )
    {: a u:n kind:n idx:n :}
    u PUT-U32  a u PUT-BYTES  kind PUT-BYTE  idx PUT-U32 ;
 
@@ -632,7 +632,7 @@ public
 \ the order it was added in. Every lane is an i64 at a word boundary: a function
 \ in its lanes has type (i32 ctx, inputs x i64) -> (i32 status, outputs x i64),
 \ one in the aligned frame (i32) -> (i32).
-: FUNCTION+ ( ptr u8 n n n n WLINK:origin -- n )
+: FUNCTION+ ( ^u8 n n n n WLINK:origin -- n )
    {: a u:n in:n out:n var:n o:WLINK:origin :}
    NF @ {: k:n :}
    k COLUMN+
@@ -675,7 +675,7 @@ public
 
 \ The data image, in place of any before it. An image whose end from WPROF's
 \ DATA base passes memory32's 65536 pages is refused before a byte is reserved.
-: DATA! ( ptr u8 n -- )
+: DATA! ( ^u8 n -- )
    {: a u:n :}
    u 0 < if E-SPAN-LENGTH throw then
    u IMAGE-MAX > if E-WLINK-MEMORY throw then
@@ -709,7 +709,7 @@ public
    RES-FN !  1 RESERVES ! ;
 
 \ The module, run calling the function e.
-: LINK ( n -- ptr u8 n )
+: LINK ( n -- ^u8 n )
    {: e:n :}
    e ROWS-CK
    NCELLS @ 0 ?do  i IMAGE-CELL!  loop

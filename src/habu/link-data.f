@@ -72,7 +72,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 
 
 \ A bound label's byte offset in A64ICODE's code buffer.
-: LABEL-OFFSET ( ptr n -- n ) A64ICODE:LABEL@ ARM64:OFFSET ;
+: LABEL-OFFSET ( ^n -- n ) A64ICODE:LABEL@ ARM64:OFFSET ;
 
 
 \ A host address in the open space at its DATA-VA address: the resolver code's
@@ -201,7 +201,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    {: k:n slot:n :}
    A64ICODE:CODE LDICT LABEL-OFFSET +  k DREC * +  slot cells +  LE:U64@ ;
 
-: PRIM-NAME$ ( n -- ptr u8 n )
+: PRIM-NAME$ ( n -- ^u8 n )
    {: k:n :}
    k 2 PRIM@ {: flags:n :}
    flags DNAME-EXT and 0<> if
@@ -217,7 +217,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 : PRIM-TEXT ( n -- n )
    {: k:n :}
    k 5 PRIM@ WL:PRIMITIVES <> if 0 exit then
-   k PRIM-NAME$ CHECK:PRIMITIVE-FACTS {: a:ptr u:n :}
+   k PRIM-NAME$ CHECK:PRIMITIVE-FACTS {: a:^ u:n :}
    u 0= if 0 exit then
    a u INTERN:TEXT BASE @ - ;
 
@@ -274,7 +274,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 \ is the error routine.
 : BUILD-LEN ( n -- n )
    {: r:n :}
-   r XREF-REC {: rec:ptr :}
+   r XREF-REC {: rec:^ :}
    rec XREF-START {: a:n :}
    a ARM64:KERNEL-ROW {: k:n :}
    k 0 >= if k PRIM-LEN exit then
@@ -292,7 +292,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    a 0= if 0 exit then
    a LINK-ADDRESS {: to:n :}
    to -1 <> if to exit then
-   r XREF-REC XREF-NAME$ {: name:ptr nameu:n :}
+   r XREF-REC XREF-NAME$ {: name:^ nameu:n :}
    s" E-LINK-RECORD-ENTRY" REJECTION:OPEN
    s" `" REJECTION:EMIT-STR  name nameu REJECTION:EMIT-STR
    s" ` enters at " REJECTION:EMIT-STR  a REJECTION:EMIT-N
@@ -307,7 +307,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 \ primitive's record has a facts text, an alias none. Asked in index order from SHADOW-AT 0.
 : EXPORT-SOURCE ( n -- n )
    {: r:n :}
-   r XREF-REC {: rec:ptr :}
+   r XREF-REC {: rec:^ :}
    rec CK-REC-FACTS-SLOT XREF-CELL@ 0<> if -1 exit then
    r SHADOW-ROW  rec XREF-WORDLIST  KIND  KIND-ALIAS <> if -1 exit then
    r SAME-START {: src:n :}
@@ -319,7 +319,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 \ holds in the target's, as does an export's source index.
 : BUILD-REC, ( n n -- )
    {: r:n k:n :}
-   r XREF-REC {: rec:ptr :}
+   r XREF-REC {: rec:^ :}
    k DREC * {: at:n :}
    rec XREF-WORDLIST {: wid:n :}
    wid XREF:PACKAGE-WL? if -1 else r EXPORT-SOURCE then {: src:n :}
@@ -345,7 +345,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 : NAME-POOL ( -- )
    ndict@ FIRST-REC @ - NAME-AT-RESERVE
    ndict@ FIRST-REC @ ?do
-      i XREF-REC {: rec:ptr :}
+      i XREF-REC {: rec:^ :}
       rec XREF-EXT? if
          A64ICODE:ASM-LEN  i FIRST-REC @ - NAME-AT !
          rec XREF-NAME$ A64ICODE:BYTES,
@@ -426,8 +426,8 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 
 
 \ Region kind k spans labels a to b.
-: LABEL-REGION+ ( n ptr n ptr n -- )
-   {: k:n a:ptr b:ptr :}
+: LABEL-REGION+ ( n ^n ^n -- )
+   {: k:n a:^ b:^ :}
    k  a LABEL-OFFSET  b LABEL-OFFSET  REGION+ ;
 
 \ What DATA-IMAGE and RECORD-IMAGE appended, for the map.
@@ -475,7 +475,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 
 
 \ C2-MEM's word whose entry scope-kind? answers kind k for, k from 2 to 8.
-: SCOPE-WORD$ ( n -- ptr u8 n )
+: SCOPE-WORD$ ( n -- ^u8 n )
    {: k:n :}
    k 2 = if s" WITH-READ" exit then
    k 3 = if s" WITH-MUT" exit then
@@ -491,7 +491,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 \ words before its link, which places every routine.
 : SCOPE-ENTRY! ( n n -- )
    {: wid:n k:n :}
-   k SCOPE-WORD$ wid CHECKER-RESOLVE:WL-PROBE {: rec:ptr :}
+   k SCOPE-WORD$ wid CHECKER-RESOLVE:WL-PROBE {: rec:^ :}
    rec XREF-START LINK-ADDRESS {: to:n :}
    k ARM64:SCOPE-SITE ARM64:OFFSET {: at:n :}
    to  ARM64:TEXT-VA at +  A64ICODE:CODE at +  ARM64:CODE-ADDRESS! ;
@@ -500,7 +500,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 \ After PLACE-ROUTINES, scope-kind?'s chains name C2-MEM's entries; a target
 \ without C2-MEM leaves them 0.
 : SCOPE-ENTRIES ( -- )
-   s" C2-MEM" BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: pkg:ptr :}
+   s" C2-MEM" BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: pkg:^ :}
    pkg XREF-FOUND? 0= if exit then
    pkg XREF-PKG-PUBLIC {: wid:n :}
    9 2 ?do wid i SCOPE-ENTRY! loop ;
@@ -520,8 +520,8 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 
 
 \ Write the linked image and sign it, a Mach-O one when macho, else an ELF one.
-: EMIT-IMAGE ( ptr u8 n ptr u8 n bool -- )
-   {: sig:ptr sigu:n path:ptr pathu:n macho:bool :}
+: EMIT-IMAGE ( ^u8 n ^u8 n bool -- )
+   {: sig:^ sigu:n path:^ pathu:n macho:bool :}
    macho if
       sig sigu MACHO:SET-SIGID
       MACHO:ASM-CODE ARM64:TEXT-VA ARM64:MACHO-IMPORTS$ MACHO:BUILD-IMAGE
@@ -541,8 +541,8 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 \ after every file, where no file's literal can name one. The program goes to
 \ a sibling renamed over the path: macOS kills a signed program rewritten in
 \ place.
-: WRITE-PROGRAM ( ptr u8 n bool -- )
-   {: path:ptr pathu:n macho:bool :}
+: WRITE-PROGRAM ( ^u8 n bool -- )
+   {: path:^ pathu:n macho:bool :}
    ENGINE? @ if 0 CHECK:PLACE-FACTS then
    ENGINE? @ if LINK-ENGINE else LINK-STRIPPED then
    path pathu [: 2dup ENGINE? @ if SIGN-ID:ENGINE$ else SIGN-ID:PROG$ then 2swap
@@ -554,8 +554,8 @@ public
 \ Link the open space's program and write it to the path: a Wasm target's as a
 \ module, a Mach-O or ELF target's as WRITE-PROGRAM does. GOING comes first:
 \ outside a build no target is open for the match to read.
-: WRITE ( ptr u8 n -- )
-   {: path:ptr pathu:n :}
+: WRITE ( ^u8 n -- )
+   {: path:^ pathu:n :}
    false GOING
    TARGET @ RTARGET:IMAGE@ MATCH RTARGET:image
       macho OF path pathu true WRITE-PROGRAM ENDOF

@@ -62,7 +62,7 @@ variable Q-DRAIN-GOT
 variable Q-POOL-N
 variable Q-POOL-RC
 
-: Q-WAIT-DONE ( ptr n -- ) {: tcb:ptr :}
+: Q-WAIT-DONE ( ^n -- ) {: tcb:^ :}
    begin tcb TASK:DONE? 0= while TASK:PAUSE repeat ;
 
 \ ---- unit shapes -------------------------------------------------------------
@@ -117,7 +117,7 @@ variable Q-POOL-RC
       CHECK-QUIET-CANDIDATE! -1 T=
    s" QT-PUSH-RAW ( n n -- ) QUEUE:PUSH"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" QT-PUSH-PTR ( n ptr n -- ) QUEUE:PUSH"
+   s" QT-PUSH-PTR ( n ^n -- ) QUEUE:PUSH"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" QT-PUSH-SWAP ( QUEUE:queue n -- ) QUEUE:PUSH"
       CHECK-QUIET-CANDIDATE! 0 T=
@@ -138,7 +138,7 @@ variable Q-POOL-RC
 \ A definer parses the name it defines, so a refusal at a definition aborts the
 \ load that carries it: these two are reachable only through a child engine.
 
-: Q-SRC+ ( ptr u8 n -- )
+: Q-SRC+ ( ^u8 n -- )
    Q-SRC CODEGEN:APPEND-STRING ;
 
 : Q-SRC-LF ( -- )
@@ -153,14 +153,14 @@ variable Q-POOL-RC
    ix Q-SRC CODEGEN:APPEND-DECIMAL
    Q-SRC-LF ;
 
-: Q-RUN-STDIN ( ptr u8 n -- len len PROCESS:ending ) {: src:ptr srcu:n :}
+: Q-RUN-STDIN ( ^u8 n -- len len PROCESS:ending ) {: src:^ srcu:n :}
    PROC-ARGV-RESET
    s" bin/hb" >LEN src srcu >LEN
    Q-OUT Q-CAPTURE-CAP >LEN Q-ERR Q-CAPTURE-CAP >LEN
    Q-CAPTURE-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME ;
 
 : Q-EXPECT-THROW ( n -- ) {: code:n :}
-   Q-SRC CODEGEN:CONTENTS {: src:ptr srcu:n :}
+   Q-SRC CODEGEN:CONTENTS {: src:^ srcu:n :}
    src srcu Q-RUN-STDIN {: outu:len erru:len oc :}
    src srcu Q-OUT outu LEN>N Q-ERR erru LEN>N oc Q-THROW-RC T-ENDING-EXITED=
    outu LEN>N 0 T=
@@ -265,7 +265,7 @@ variable Q-POOL-RC
 
 \ ---- the soak ----------------------------------------------------------------
 
-: Q-SEEN-SLOT ( n -- ptr n ) {: v:n :}
+: Q-SEEN-SLOT ( n -- ^n ) {: v:n :}
    Q-SEEN CELL-VIEW v cells + ;
 
 : Q-SEEN+ ( n -- ) {: v:n :}

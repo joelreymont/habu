@@ -9,8 +9,8 @@ private
 
 CAST: KIND>N ( XML:kind -- n )
 
-: ASCII-DOC$ ( -- ptr u8 n ) s" <a/>" ;
-: UTF8-DOC$ ( -- ptr u8 n ) s" <é/>" ;
+: ASCII-DOC$ ( -- ^u8 n ) s" <a/>" ;
+: UTF8-DOC$ ( -- ^u8 n ) s" <é/>" ;
 
 : FIRST ( mut-view<b,i,a,init<i,XML-C2:reader-state<p,q>>> -- read-view<p,q,u8> mut-view<b,i,a,init<i,XML-C2:reader-state<p,q>>> )
    XML-C2:NEXT KIND>N XML-KIND:START KIND>N T=
@@ -195,10 +195,10 @@ CAST: KIND>N ( XML:kind -- n )
 : BAD-COPY ( -- )
    6 MEM:BYTES-ALLOC-LEN [: BAD-COPY-ROOT ;] C2-MEM:WITH-MUT ;
 
-: NS-DOC$ ( -- ptr u8 n ) s" <p:r xmlns:p='urn:p' xmlns:q='urn:q' q:a='v'/>" ;
-: DUP-DOC$ ( -- ptr u8 n ) s" <r xmlns:a='u' xmlns:b='u' a:x='1' b:x='2'/>" ;
+: NS-DOC$ ( -- ^u8 n ) s" <p:r xmlns:p='urn:p' xmlns:q='urn:q' q:a='v'/>" ;
+: DUP-DOC$ ( -- ^u8 n ) s" <r xmlns:a='u' xmlns:b='u' a:x='1' b:x='2'/>" ;
 
-: VIEW= ( read-view<p,q,u8> ptr u8 n -- bool read-view<p,q,u8> )
+: VIEW= ( read-view<p,q,u8> ^u8 n -- bool read-view<p,q,u8> )
    {: text size:n :}
    C2-BYTES:LENGTH {: len:n view :}
    len size = view
@@ -206,7 +206,7 @@ CAST: KIND>N ( XML:kind -- n )
       i C2-MEM:BYTE@ swap text i + c@ = rot and swap
    loop ;
 
-: MUT= ( mut-view<x,y,z,u8> n ptr u8 n -- mut-view<x,y,z,u8> bool )
+: MUT= ( mut-view<x,y,z,u8> n ^u8 n -- mut-view<x,y,z,u8> bool )
    {: count:n text size:n :}
    count size = swap
    count size min 0 ?do
@@ -302,7 +302,7 @@ CAST: KIND>N ( XML:kind -- n )
 \ body maps fewer pages than SLOTS.
 4096 constant PROBE-BYTES
 32 constant SLOTS
-SLOTS TYPED-BUFFER PROBED ptr u8
+SLOTS TYPED-BUFFER PROBED ^u8
 
 : PROBE-FILL ( -- )
    SLOTS 0 ?do
@@ -316,7 +316,7 @@ SLOTS TYPED-BUFFER PROBED ptr u8
 
 : SLOT-AGAIN ( n -- bool )
    {: idx:n :}
-   PROBE-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop {: at:ptr :}
+   PROBE-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop {: at:^ :}
    at idx PROBED @ =
    at idx PROBED ! ;
 

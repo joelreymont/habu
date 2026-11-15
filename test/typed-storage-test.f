@@ -45,10 +45,10 @@ CAST: TSK>N ( tsk -- n )
    MATCH tsres ok OF 0 ENDOF err OF N>TSK 1 ENDOF ;MATCH ;
 
 \ ---- eval helper (define-time reject verdicts) ------------------------------
-TYPED-VARIABLE TS-EVAL-A ptr u8
+TYPED-VARIABLE TS-EVAL-A ^u8
 variable TS-EVAL-U
 : TS-EVAL-RUN ( -- ) TS-EVAL-A @ TS-EVAL-U @ evaluate-closed ;
-: TS-EVAL ( ptr u8 n -- n ) TS-EVAL-U ! TS-EVAL-A ! [: TS-EVAL-RUN ;] catch ;
+: TS-EVAL ( ^u8 n -- n ) TS-EVAL-U ! TS-EVAL-A ! [: TS-EVAL-RUN ;] catch ;
 
 \ 1. TYPED-VARIABLE: single nominal cell — checker seam + live round-trip
 TYPED-VARIABLE TSV tsk
@@ -64,7 +64,7 @@ TYPED-VARIABLE TSV tsk
    s" A4 ( -- tsk2 ) TSV @" CHECK-QUIET-CANDIDATE! 0 T=
    s" A5 ( n -- ) TSV !" CHECK-QUIET-CANDIDATE! 0 T=
    \ raw pointer to the cell can never re-acquire the family (introduction seal)
-   s" A6 ( -- ptr tsk ) here" CHECK-QUIET-CANDIDATE! 0 T=
+   s" A6 ( -- ^tsk ) here" CHECK-QUIET-CANDIDATE! 0 T=
    \ live round-trip: zero image reads as id 0, stored value survives
    TSV-GET 0 T=
    42 TSV-PUT
@@ -91,25 +91,25 @@ TYPED-VARIABLE TSV tsk
    2 TSB-GET 9 T= ;
 
 \ 3. TYPED-VARIABLE: closed typed pointer — checker seam + live deref round-trip
-TYPED-VARIABLE TSP ptr tsk
-TYPED-VARIABLE TSP-LAYOUT ptr SPAN:span<u8>
+TYPED-VARIABLE TSP ^tsk
+TYPED-VARIABLE TSP-LAYOUT ^SPAN:span<u8>
 1 TYPED-BUFFER TSP-SPANS SPAN:span<u8>
 7 SPAN-BUFFER: TSP-BYTES
 
 : TSP-STORE ( -- ) TSV TSP ! ;         \ store the address of the TSV nominal cell
-: TSP-VIA ( -- n ) TSP @ @ TSK>N ;     \ fetch ptr tsk, deref the tsk, to n
+: TSP-VIA ( -- n ) TSP @ @ TSK>N ;     \ fetch ^tsk, deref the tsk, to n
 : TSP-CLEAR ( -- ) NULL-PTR TSP-LAYOUT ! ;
-: TSP-NULL ( -- ptr SPAN:span<u8> ) NULL-PTR ;
+: TSP-NULL ( -- ^SPAN:span<u8> ) NULL-PTR ;
 
 : TS-SECTION-POINTER ( -- )
-   s" C1 ( ptr tsk -- ) TSP !" CHECK-QUIET-CANDIDATE! -1 T=
-   s" C2 ( -- ptr tsk ) TSP @" CHECK-QUIET-CANDIDATE! -1 T=
-   s" C3 ( ptr tsk2 -- ) TSP !" CHECK-QUIET-CANDIDATE! 0 T=
-   s" C4 ( -- ptr tsk2 ) TSP @" CHECK-QUIET-CANDIDATE! 0 T=
-   s" C5 ( ptr SPAN:span<n> -- ) TSP-LAYOUT !" CHECK-QUIET-CANDIDATE! 0 T=
-   s" C6 ( -- ptr SPAN:span<n> ) TSP-LAYOUT @" CHECK-QUIET-CANDIDATE! 0 T=
-   s" C7 ( ptr u8 n -- ptr ptr SPAN:span<u8> ) ptr-field" CHECK-QUIET-CANDIDATE! 0 T=
-   s" C8 ( n -- ptr SPAN:span<u8> ) NULL-PTR +" CHECK-QUIET-CANDIDATE! 0 T=
+   s" C1 ( ^tsk -- ) TSP !" CHECK-QUIET-CANDIDATE! -1 T=
+   s" C2 ( -- ^tsk ) TSP @" CHECK-QUIET-CANDIDATE! -1 T=
+   s" C3 ( ^tsk2 -- ) TSP !" CHECK-QUIET-CANDIDATE! 0 T=
+   s" C4 ( -- ^tsk2 ) TSP @" CHECK-QUIET-CANDIDATE! 0 T=
+   s" C5 ( ^SPAN:span<n> -- ) TSP-LAYOUT !" CHECK-QUIET-CANDIDATE! 0 T=
+   s" C6 ( -- ^SPAN:span<n> ) TSP-LAYOUT @" CHECK-QUIET-CANDIDATE! 0 T=
+   s" C7 ( ^u8 n -- ^^SPAN:span<u8> ) ptr-field" CHECK-QUIET-CANDIDATE! 0 T=
+   s" C8 ( n -- ^SPAN:span<u8> ) NULL-PTR +" CHECK-QUIET-CANDIDATE! 0 T=
    \ live: read TSV's value THROUGH the pointer stored in TSP
    99 TSV-PUT
    TSP-STORE
@@ -146,7 +146,7 @@ TYPED-VARIABLE TSL tsres<n,n>
 \ 5. Define-time admissibility rejects — a stored type is the checker's refusal,
 \    and a count outside the buffer's extent is rejected at its token
 : TS-SECTION-ADMISSIBILITY ( -- )
-   s" TYPED-VARIABLE BAD-OPEN ptr a" TS-EVAL CHECKER-REJECT-RC T=
+   s" TYPED-VARIABLE BAD-OPEN ^a" TS-EVAL CHECKER-REJECT-RC T=
    s" TYPED-VARIABLE BAD-VAR a" TS-EVAL CHECKER-REJECT-RC T=
    \ a well-formed xt<effect> quotation cell is admissible
    \ (test/xt-cell-test.f); a malformed one (missing --) rejects
@@ -176,7 +176,7 @@ PTR-VARIABLE TS-DP
    here TS-DP 0 ptr-field @ = TTRUE
    \ a rejected admissibility decl also defines nothing and rolls back
    here TS-DP 0 ptr-field !
-   s" TYPED-VARIABLE BAD-RB ptr a" TS-EVAL CHECKER-REJECT-RC T=
+   s" TYPED-VARIABLE BAD-RB ^a" TS-EVAL CHECKER-REJECT-RC T=
    here TS-DP 0 ptr-field @ = TTRUE
    s" BAD-RB" 0 search-wl 0= TTRUE ;
 
@@ -270,7 +270,7 @@ TS-ADDRESS-ROWS TS-BEFORE-NUMBER - constant TS-NUMBER-ROWS
 
 \ TS-PKG-CONTEXT asserts the text stops with the checker's status after an
 \ E-PKG-CONTEXT record that quotes the name given.
-: TS-PKG-CONTEXT ( ptr u8 n ptr u8 n -- ) {: wa:ptr wu:n :}
+: TS-PKG-CONTEXT ( ^u8 n ^u8 n -- ) {: wa:^ wu:n :}
    REJECTION:CAPTURE  TS-EVAL CHECKER-REJECT-RC T=
    REJECTION:BUFFER$ s" error[E-PKG-CONTEXT]" CONTAINS? TTRUE
    REJECTION:BUFFER$ wa wu CONTAINS? TTRUE
@@ -282,7 +282,7 @@ TS-ADDRESS-ROWS TS-BEFORE-NUMBER - constant TS-NUMBER-ROWS
    s\" package TSGP\ns\q n\q s\q TSG\q CHECKER-DEFTYPED-VARIABLE\n;package"
       s" `TSG`" TS-PKG-CONTEXT
    s\" package TSGP\npublic\n: TSGP-USE ( -- n ) TSG ;\n;package" TS-EVAL 0 T=
-   s\" package TSGP\npublic\n: TSGP-PTR ( -- ptr n ) TSG ;\n;package"
+   s\" package TSGP\npublic\n: TSGP-PTR ( -- ^n ) TSG ;\n;package"
       TS-EVAL E-TS-REJECT T=
    s\" : TSGP-CK ( -- ) TSGP:TSGP-USE 7 <> if s\q a refused registrar bound the name\q 1 die then ;\nTSGP-CK"
       TS-EVAL 0 T=

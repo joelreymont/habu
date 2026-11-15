@@ -17,8 +17,8 @@ require src/lib/engine-candidate.f
 \ writes them in.
 variable TS-V
 create TS-B 8 allot
-: TS-BN ( -- ptr n ) TS-B ;
-: TS-BC ( -- ptr u8 ) TS-B ;
+: TS-BN ( -- ^n ) TS-B ;
+: TS-BC ( -- ^u8 ) TS-B ;
 PTR-VARIABLE TS-PV
 TYPED-VARIABLE TS-HK [ -- ]
 : TS-X ( -- ) ;
@@ -55,7 +55,7 @@ variable ERR-U
 : DISARM ( -- )
    false REJECTION:JSON !  REJECTION:BUFFER-OFF ;
 
-: HAS? ( ptr u8 n -- )
+: HAS? ( ^u8 n -- )
    REJECTION:BUFFER$ 2swap CONTAINS? TTRUE ;
 
 : CLEAR ( -- )   \ every cell a refused store would have written
@@ -84,7 +84,7 @@ variable ERR-U
 : AT-STORE ( -- )   S\" \"token\":\"!\"" HAS? ;
 : AT-ADD ( -- )     S\" \"token\":\"+!\"" HAS? ;
 : AT-CSTORE ( -- )  S\" \"token\":\"c!\"" HAS? ;
-: GOT-PTR ( -- )    S\" \"found\":\"ptr " HAS? ;
+: GOT-PTR ( -- )    S\" \"found\":\"^" HAS? ;
 : GOT-XT ( -- )     S\" \"found\":\"xt" HAS? ;
 
 \ ---- the refused programs, each beside its colon-body twin --------------------
@@ -132,7 +132,7 @@ variable ERR-U
    DISARM ;                 \ the refused program's TS-NW goes with its rollback
 
 : CASE-TYPED-N-PTR ( -- )
-   s" here BN ! through a ( -- ptr n ) accessor is refused as in a body" T-LABEL
+   s" here BN ! through a ( -- ^n ) accessor is refused as in a body" T-LABEL
    CLEAR ARM
    [: s" : TS-B5 ( -- ) here TS-BN ! ;" evaluate-closed ;] CHECK-RC TTHROWSQ
    MISMATCH AT-STORE GOT-PTR
@@ -168,7 +168,7 @@ variable ERR-U
    DISARM UNTOUCHED ;
 
 : CASE-BYTE-STORE ( -- )
-   s" pointer and xt operands to c! through ( -- ptr u8 ) are refused as in a body" T-LABEL
+   s" pointer and xt operands to c! through ( -- ^u8 ) are refused as in a body" T-LABEL
    CLEAR ARM
    [: s" : TS-B9 ( -- ) here TS-BC c! ;" evaluate-closed ;] CHECK-RC TTHROWSQ
    MISMATCH AT-CSTORE GOT-PTR
@@ -187,10 +187,10 @@ variable ERR-U
    S\" s\" abc\" + . : a byte pointer into a scalar consumer is refused as in a body" T-LABEL
    ARM
    [: S\" : TS-B11 ( -- ) s\" abc\" + . ;" evaluate-closed ;] CHECK-RC TTHROWSQ
-   MISMATCH S\" \"token\":\".\"" HAS?  S\" \"found\":\"ptr u8\"" HAS?
+   MISMATCH S\" \"token\":\".\"" HAS?  S\" \"found\":\"^u8\"" HAS?
    ARM
    [: S\" s\" abc\" + ." evaluate-closed ;] CHECK-RC TTHROWSQ
-   MISMATCH S\" \"token\":\".\"" HAS?  S\" \"found\":\"ptr u8\"" HAS?
+   MISMATCH S\" \"token\":\".\"" HAS?  S\" \"found\":\"^u8\"" HAS?
    DISARM ;
 
 : CASE-REAL-TO-N ( -- )
@@ -248,21 +248,21 @@ variable ERR-U
 
 \ ---- children -----------------------------------------------------------------
 
-: CHILD ( ptr u8 n -- PROCESS:ending ) {: src:ptr srcu:n :}
+: CHILD ( ^u8 n -- PROCESS:ending ) {: src:^ srcu:n :}
    src srcu OUT IO-CAP >LEN ERR IO-CAP >LEN CHILD-MS >MS SUBJECT:RUN
    {: outu:len erru:len oc :}
    outu LEN>N OUT-U !  erru LEN>N ERR-U !  oc ;
 
-: OUT$ ( -- ptr u8 n )   OUT OUT-U @ ;
-: ERR$ ( -- ptr u8 n )   ERR ERR-U @ ;
+: OUT$ ( -- ^u8 n )   OUT OUT-U @ ;
+: ERR$ ( -- ^u8 n )   ERR ERR-U @ ;
 
-: EXITS ( ptr u8 n n -- ) {: src:ptr srcu:n want:n :}
+: EXITS ( ^u8 n n -- ) {: src:^ srcu:n want:n :}
    src srcu CHILD {: oc :}
    src srcu OUT$ ERR$ oc want T-ENDING-EXITED= ;
 
-: ERR-HAS? ( ptr u8 n -- )   ERR$ 2swap CONTAINS? TTRUE ;
-: ERR-LACKS? ( ptr u8 n -- )   ERR$ 2swap CONTAINS? TFALSE ;
-: OUT-HAS? ( ptr u8 n -- )   OUT$ 2swap CONTAINS? TTRUE ;
+: ERR-HAS? ( ^u8 n -- )   ERR$ 2swap CONTAINS? TTRUE ;
+: ERR-LACKS? ( ^u8 n -- )   ERR$ 2swap CONTAINS? TFALSE ;
+: OUT-HAS? ( ^u8 n -- )   OUT$ 2swap CONTAINS? TTRUE ;
 
 \ A child: unchecked, this program reads below the closed floor or branches to
 \ xt 0, which crashes the process.
@@ -360,7 +360,7 @@ variable ERR-U
 \ process. The literal pads TS-L3's cells as unknown (CHECKER-TOP-PUSH).
 : CASE-SHORT-ROW ( -- )
    s" a literal over a row shorter than the stack leaves the cells beneath unknown" T-LABEL
-   S\" true REJECTION:JSON ! TRUSTED: TS-EV2 ( ptr u8 n -- ) evaluate 2drop ; TRUSTED: TS-L3 ( -- ) 0 0 ; s\\\" TS-L3 s\\\" abc\\\"\" TS-EV2 drop c@ . cr"
+   S\" true REJECTION:JSON ! TRUSTED: TS-EV2 ( ^u8 n -- ) evaluate 2drop ; TRUSTED: TS-L3 ( -- ) 0 0 ; s\\\" TS-L3 s\\\" abc\\\"\" TS-EV2 drop c@ . cr"
    CHECK-RC EXITS
    S\" \"code\":\"E-STALE-READ\"" ERR-HAS?  S\" \"token\":\"c@\"" ERR-HAS? ;
 
@@ -384,10 +384,10 @@ variable ERR-U
 : AFTER ( -- )   S\" s\" AFTER\" type cr" SB-APPEND ;
 : P3 ( -- )   S\" true REJECTION:JSON ! s\" abc\" + . cr" SB-APPEND ;
 
-: RUNS-AFTER ( ptr u8 n -- ) {: code:ptr codeu:n :}
+: RUNS-AFTER ( ^u8 n -- ) {: code:^ codeu:n :}
    SB$ 0 EXITS  s" AFTER" OUT-HAS?  code codeu ERR-LACKS? ;
 
-: REFUSES-P3 ( ptr u8 n -- ) {: code:ptr codeu:n :}
+: REFUSES-P3 ( ^u8 n -- ) {: code:^ codeu:n :}
    SB$ CHECK-RC EXITS
    S\" \"code\":\"E-MISMATCH\"" ERR-HAS?  S\" \"token\":\".\"" ERR-HAS?
    code codeu ERR-LACKS? ;
@@ -476,7 +476,7 @@ variable ERR-U
    ['] SIBLINGS 0 TTHROWSQ
    TS-PV @ NULL-PTR - 0 T<> ;
 
-\ The first text's row ends `ptr ptr n` when it throws; its sibling starts on
+\ The first text's row ends `^^n` when it throws; its sibling starts on
 \ the same stack base with no cells, so its literals replace that row: a row
 \ that kept it would hand `+` two pointers.
 : SIBLING-LITERALS ( -- )
@@ -491,14 +491,14 @@ variable ERR-U
 
 : CASE-TRUSTED ( -- )
    s" a TRUSTED: word, the CHECK! probe and a TRUSTED: shim are admitted" T-LABEL
-   [: s" TRUSTED: TS-PASSES? ( ptr u8 n -- bool ) 2drop 0 0= ;" evaluate-closed ;] 0 TTHROWSQ
+   [: s" TRUSTED: TS-PASSES? ( ^u8 n -- bool ) 2drop 0 0= ;" evaluate-closed ;] 0 TTHROWSQ
    [: S\" s\" some source\" TS-PASSES? drop" evaluate-closed ;] 0 TTHROWSQ
    [: S\" s\" : TS-G ( n -- n ) 1 + ;\" CHECK! drop" evaluate-closed ;] 0 TTHROWSQ
    [: s" TRUSTED: TS-SHIM ( n n -- n ) + ;  1 2 TS-SHIM drop" evaluate-closed ;] 0 TTHROWSQ ;
 
 \ A child on a terminal: only the REPL's line loop recovers from a throw and
 \ reads the next line.
-: STEP ( ptr u8 n -- bool )
+: STEP ( ^u8 n -- bool )
    BUF-CLEAR SEND-LINE WAIT-ANSWER ;
 
 : CASE-REPL ( -- )

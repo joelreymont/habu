@@ -18,7 +18,7 @@ create RANDOM-BUF BYTE-CAP allot
 variable TEMPLATE
 TYPED-VARIABLE RD XML:cursor
 
-: ORIGINAL$ ( -- ptr u8 n )
+: ORIGINAL$ ( -- ^u8 n )
    TEMPLATE @ case
       0 of s" <?xml version='1.0'?><p:a xmlns:p='urn:p' q='old'>old</p:a><!--keep-->" endof
       1 of s\" <?xml version=\"1.0\"?><p:a xmlns:p=\"urn:p\" q=\"&amp;\">&#65;</p:a><!--keep-->" endof
@@ -26,7 +26,7 @@ TYPED-VARIABLE RD XML:cursor
       s" <?xml version='1.0'?><p:a xmlns:p='urn:p' q=''>long &lt; old</p:a><!--keep-->" rot
    endcase ;
 
-: OPEN ( ptr u8 n -- XML:reader )
+: OPEN ( ^u8 n -- XML:reader )
    {: source size:n :}
    RD source size INIT ;
 
@@ -41,7 +41,7 @@ TYPED-VARIABLE RD XML:cursor
    CONTENT {: start:off size:len :}
    XML:CLOSE start size ;
 
-: APPLY ( ptr u8 n -- n )
+: APPLY ( ^u8 n -- n )
    {: value size:n :}
    value size ATTRIBUTE-BUF BYTE-CAP ESCAPE-ATTR {: attr-size:n :}
    value size TEXT-BUF BYTE-CAP ESCAPE-TEXT {: text-size:n :}
@@ -53,7 +53,7 @@ TYPED-VARIABLE RD XML:cursor
    DOCUMENT BYTE-CAP EDIT:WRITE {: document-size:n :}
    EDIT:CLOSE document-size ;
 
-: VERIFY ( ptr u8 n n -- )
+: VERIFY ( ^u8 n n -- )
    {: value size:n document-size:n :}
    DOCUMENT document-size OPEN
    NEXT drop NEXT drop
@@ -65,7 +65,7 @@ TYPED-VARIABLE RD XML:cursor
    READBACK BYTE-CAP TEXT READBACK swap s" keep" T$=
    NEXT drop XML:CLOSE ;
 
-: ROUNDTRIP ( ptr u8 n -- )
+: ROUNDTRIP ( ^u8 n -- )
    {: value size:n :}
    value size value size APPLY VERIFY ;
 
@@ -77,7 +77,7 @@ TYPED-VARIABLE RD XML:cursor
 
 \ Chunks include every XML escape, whitespace normalization, multi-byte
 \ offsets, combining text, and expanding Unicode casefold inputs.
-: CHUNK$ ( -- ptr u8 n )
+: CHUNK$ ( -- ^u8 n )
    12 PROP:RND% case
       0 of s" <" endof
       1 of s" &" endof
@@ -93,11 +93,11 @@ TYPED-VARIABLE RD XML:cursor
       s" abc 019" rot
    endcase ;
 
-: RANDOM-VALUE$ ( -- ptr u8 n )
+: RANDOM-VALUE$ ( -- ^u8 n )
    0
    32 PROP:RND% 1+ 0 ?do
       {: size:n :}
-      CHUNK$ {: chunk:ptr count:n :}
+      CHUNK$ {: chunk:^ count:n :}
       chunk RANDOM-BUF size + count BYTE-COPY
       size count +
    loop
@@ -112,7 +112,7 @@ TYPED-VARIABLE RD XML:cursor
 \ The body is a word reached by `[']`, not a quotation literal: the reader is read
 \ and closed after the catch, `catch` restores stack depth but not contents, and
 \ a literal would leave stale<XML:reader>, which can be neither read nor dropped.
-: REJECTS ( ptr u8 n -- )
+: REJECTS ( ^u8 n -- )
    OPEN ['] DRAIN catch 0<> TTRUE
    ['] NEXT-AFTER catch E-STATE T=
    XML:CLOSE ;

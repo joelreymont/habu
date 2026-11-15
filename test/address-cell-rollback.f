@@ -80,8 +80,8 @@ create OLDER CELL allot
    s" address-cell-rollback-text" INTERN:FIND 0 T= ;
 
 \ The facts text `;` stores for ACR-FACTS; no other word in hb has this effect.
-: FACTS$ ( -- ptr u8 n ) s" ( u16 i64 u8 -- u32 u16 ) " ;
-: ACR-SOURCE$ ( -- ptr u8 n ) s" : ACR-FACTS ( u16 i64 u8 -- u32 u16 ) nip swap ;" ;
+: FACTS$ ( -- ^u8 n ) s" ( u16 i64 u8 -- u32 u16 ) " ;
+: ACR-SOURCE$ ( -- ^u8 n ) s" : ACR-FACTS ( u16 i64 u8 -- u32 u16 ) nip swap ;" ;
 : FAIL-FACTS ( -- )
    s" : ACR-FACTS ( u16 i64 u8 -- u32 u16 ) nip swap ; 12345 throw" evaluate-closed ;
 : FACTS-GONE ( -- )

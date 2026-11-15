@@ -37,36 +37,36 @@ PATH-CAP BUFFER: FILE
 
 \ The fixture's request IDs, 2^53 + 1 to 2^53 + 3: past JavaScript's safe
 \ integers, so only an exact BigInt keeps them apart.
-: ID1$ ( -- ptr u8 n )  s" 9007199254740993" ;
-: ID2$ ( -- ptr u8 n )  s" 9007199254740994" ;
-: ID3$ ( -- ptr u8 n )  s" 9007199254740995" ;
+: ID1$ ( -- ^u8 n )  s" 9007199254740993" ;
+: ID2$ ( -- ^u8 n )  s" 9007199254740994" ;
+: ID3$ ( -- ^u8 n )  s" 9007199254740995" ;
 
-: NONE$ ( -- ptr u8 n )  s" " ;
-: ONE$ ( -- ptr u8 n )  s\" \x01" ;
-: TWO$ ( -- ptr u8 n )  s\" \x02" ;
-: THREE$ ( -- ptr u8 n )  s\" \x03" ;
-: ZFF$ ( -- ptr u8 n )  s\" \x00\xFF" ;
+: NONE$ ( -- ^u8 n )  s" " ;
+: ONE$ ( -- ^u8 n )  s\" \x01" ;
+: TWO$ ( -- ^u8 n )  s\" \x02" ;
+: THREE$ ( -- ^u8 n )  s\" \x03" ;
+: ZFF$ ( -- ^u8 n )  s\" \x00\xFF" ;
 
-: KIND99$ ( -- ptr u8 n )  s" a record of kind 99, which names no record" ;
+: KIND99$ ( -- ^u8 n )  s" a record of kind 99, which names no record" ;
 
-: OUT$ ( -- ptr u8 n )  OUT OUT-U @ ;
-: ERR$ ( -- ptr u8 n )  ERR ERR-U @ ;
+: OUT$ ( -- ^u8 n )  OUT OUT-U @ ;
+: ERR$ ( -- ^u8 n )  ERR ERR-U @ ;
 
-: TRAP$ ( -- ptr u8 n )  TRAP TRAP-U @ ;
+: TRAP$ ( -- ^u8 n )  TRAP TRAP-U @ ;
 
-: FILE! ( ptr u8 n ptr u8 n -- )
-   {: a:ptr u:n name:ptr nu:n :}
+: FILE! ( ^u8 n ^u8 n -- )
+   {: a:^ u:n name:^ nu:n :}
    DIR DIR-U @ name nu FILE FS:JOIN-PATH {: fu:n :}
    FILE fu a u FS:WRITE-ALL ;
 
-: SUBDIR ( ptr u8 n ptr u8 -- n )
-   {: name:ptr nu:n dst:ptr :}
+: SUBDIR ( ^u8 n ^u8 -- n )
+   {: name:^ nu:n dst:^ :}
    DIR DIR-U @ name nu dst FS:JOIN-PATH {: u:n :}
    dst u FS:MAKE-DIR
    u ;
 
 : SETUP ( -- )
-   s" browser-request" FS:MKTEMP-DIR {: a:ptr u:n :}
+   s" browser-request" FS:MKTEMP-DIR {: a:^ u:n :}
    a DIR u BYTE-COPY  u DIR-U !
    s" browser request: module, answers and transcripts in " type  DIR u type cr
    DIR u s" request.wasm" MOD FS:JOIN-PATH MOD-U !
@@ -78,17 +78,17 @@ PATH-CAP BUFFER: FILE
    THREE$ s" three.bin" FILE!
    ZFF$ s" zff.bin" FILE! ;
 
-: ARG+ ( ptr u8 n -- )  >LEN PROC-ARGV+ ;
+: ARG+ ( ^u8 n -- )  >LEN PROC-ARGV+ ;
 
 : N-ARG+ ( n -- )
    SB-RESET FMT:SB-INT SB$ ARG+ ;
 
-: FILE-ARG+ ( ptr u8 n -- )
-   {: name:ptr nu:n :}
+: FILE-ARG+ ( ^u8 n -- )
+   {: name:^ nu:n :}
    DIR DIR-U @ name nu FILE FS:JOIN-PATH {: fu:n :}
    FILE fu ARG+ ;
 
-: SPAWN ( ptr u8 len -- n )
+: SPAWN ( ^u8 len -- n )
    OUT CAP >LEN  ERR CAP >LEN  PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N {: outu:len erru:len rc:n :}
    outu LEN>N OUT-U !  erru LEN>N ERR-U !
@@ -106,19 +106,19 @@ PATH-CAP BUFFER: FILE
    PROC-ARGV-RESET
    s" src/lib/browser/host-cli.mjs" ARG+  MOD MOD-U @ ARG+ ;
 
-: TYPED+ ( ptr u8 n -- )
+: TYPED+ ( ^u8 n -- )
    s" --typed" ARG+  ARG+ ;
 
 \ Answers the oldest waiting request with the status and DIR's file of this
 \ name. request.f's replies: 470 leaves a record of no kind, 471 traps, and 202
 \ to a legacy post posts /followup.
-: ANSWER+ ( n ptr u8 n -- )
-   {: status:n name:ptr nu:n :}
+: ANSWER+ ( n ^u8 n -- )
+   {: status:n name:^ nu:n :}
    s" --answer" ARG+  status N-ARG+  name nu FILE-ARG+ ;
 
 \ The waiting tagged request with this ID answered, ahead of older ones.
-: ANSWER-ID+ ( ptr u8 n n ptr u8 n -- )
-   {: id:ptr iu:n status:n name:ptr nu:n :}
+: ANSWER-ID+ ( ^u8 n n ^u8 n -- )
+   {: id:^ iu:n status:n name:^ nu:n :}
    s" --answer-id" ARG+  id iu ARG+  status N-ARG+  name nu FILE-ARG+ ;
 
 : RESIZE+ ( n n -- )
@@ -134,27 +134,27 @@ PATH-CAP BUFFER: FILE
    EXE u SPAWN ;
 
 \ ---- the lines the host prints, built in SB ---------------------------------
-: LINE ( ptr u8 n -- )
+: LINE ( ^u8 n -- )
    SB-APPEND  10 SB-APPEND-C ;
 
 : HELLO ( -- )
    SB-RESET  s" hello" LINE ;
 
-: DECIMALS ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: DECIMALS ( ^u8 n -- )
+   {: a:^ u:n :}
    u 0 ?do  a i + c@ FMT:SB-U  44 SB-APPEND-C  loop ;
 
 \ A tagged request as the host makes it: method and path, the ID, then the
 \ body's length and hex.
-: REQUEST-LINE ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: what:ptr wu:n id:ptr iu:n body:ptr bu:n :}
+: REQUEST-LINE ( ^u8 n ^u8 n ^u8 n -- )
+   {: what:^ wu:n id:^ iu:n body:^ bu:n :}
    s" request " SB-APPEND  what wu SB-APPEND  32 SB-APPEND-C
    id iu SB-APPEND  32 SB-APPEND-C  body bu LINE ;
 
 \ The fixture's requests: POST /state and PUT /view with the body 00 ff, and
 \ GET /projects with none.
-: STATE-LINE ( ptr u8 n -- )
-   {: id:ptr iu:n :}
+: STATE-LINE ( ^u8 n -- )
+   {: id:^ iu:n :}
    s" POST /state" id iu s" 2 00ff" REQUEST-LINE ;
 
 : PROJECTS-LINE ( -- )
@@ -165,24 +165,24 @@ PATH-CAP BUFFER: FILE
 
 \ The text a reply's run answers: the ID, the status and drawing size, then
 \ the body's bytes.
-: REPLY-LINE ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: id:ptr iu:n what:ptr wu:n body:ptr bu:n :}
+: REPLY-LINE ( ^u8 n ^u8 n ^u8 n -- )
+   {: id:^ iu:n what:^ wu:n body:^ bu:n :}
    s" text " SB-APPEND  id iu SB-APPEND  32 SB-APPEND-C
    what wu SB-APPEND  32 SB-APPEND-C  body bu DECIMALS  10 SB-APPEND-C ;
 
-: ERR-LINE$ ( -- ptr u8 n )
+: ERR-LINE$ ( -- ^u8 n )
    ERR ERR-U @ 10 INDEX-OF MATCH option
       none OF ERR 0 ENDOF
       some OF IDX>N ERR swap ENDOF
    ;MATCH ;
 
-: ENDED-LINE ( ptr u8 n -- )
+: ENDED-LINE ( ^u8 n -- )
    s" the module trapped and has ended: Error: " SB-APPEND  LINE ;
 
 \ Writes the expected text and the actual bytes as this name in DIR's expected
 \ and actual directories, then compares them.
-: SAME ( ptr u8 n ptr u8 n -- )
-   {: got:ptr gu:n name:ptr nu:n :}
+: SAME ( ^u8 n ^u8 n -- )
+   {: got:^ gu:n name:^ nu:n :}
    WANT-DIR WANT-U @ name nu FILE FS:JOIN-PATH {: wu:n :}
    FILE wu SB$ FS:WRITE-ALL
    GOT-DIR GOT-U @ name nu FILE FS:JOIN-PATH {: fu:n :}
@@ -225,7 +225,7 @@ PATH-CAP BUFFER: FILE
    HOST-OPEN  s" request" TYPED+  s" trap" TYPED+  200 s" one.bin" ANSWER+
    s" trapped: the run fails" T-LABEL
    HOST 1 T=
-   ERR-LINE$ {: t:ptr u:n :}
+   ERR-LINE$ {: t:^ u:n :}
    t TRAP u BYTE-COPY  u TRAP-U !
    s" trapped: the host names the fault the fixture's trap recorded" T-LABEL
    TRAP$ s" fault kind 102 at " STARTS-WITH? TTRUE
@@ -342,23 +342,23 @@ PATH-CAP BUFFER: FILE
    MOD MOD-U @ [: s" x" TYPED+  ID1$ 201 s" zff.bin" ANSWER-ID+ ;]
    BROWSER-MEMORY-TEST:FREED ;
 
-: MALFORMED ( ptr u8 n ptr u8 n -- )
-   {: cmd:ptr cu:n what:ptr wu:n :}
+: MALFORMED ( ^u8 n ^u8 n -- )
+   {: cmd:^ cu:n what:^ wu:n :}
    SB-RESET  s" malformed " SB-APPEND  cmd cu SB-APPEND  s" : " SB-APPEND
    what wu SB-APPEND  SB$ T-LABEL ;
 
 \ Typed text whose run leaves a malformed request record: the turn fails before
 \ any request reaches the host.
-: REFUSED ( ptr u8 n -- )
-   {: cmd:ptr cu:n :}
+: REFUSED ( ^u8 n -- )
+   {: cmd:^ cu:n :}
    HOST-OPEN  cmd cu TYPED+
    cmd cu s" the turn fails" MALFORMED
    HOST 1 T=
    cmd cu s" no request reaches the host" MALFORMED
    OUT$ s\" hello\n" T$= ;
 
-: REJECT ( ptr u8 n ptr u8 n -- )
-   {: cmd:ptr cu:n why:ptr wu:n :}
+: REJECT ( ^u8 n ^u8 n -- )
+   {: cmd:^ cu:n why:^ wu:n :}
    cmd cu REFUSED
    cmd cu s" the failure names the reason" MALFORMED
    ERR$ why wu CONTAINS? TTRUE ;

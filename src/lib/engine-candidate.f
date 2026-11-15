@@ -21,11 +21,11 @@ package ENGINE-CANDIDATE
 private
 
 \ A gate names the freshly built candidate here.
-: NAME$ ( -- ptr u8 n )  s" HABU_UNDER_TEST" ;
+: NAME$ ( -- ^u8 n )  s" HABU_UNDER_TEST" ;
 
 PATH-CAP BUFFER: JOINED
 
-: RESOLVE$ ( -- ptr u8 n )
+: RESOLVE$ ( -- ^u8 n )
    NAME$ >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
    2drop
    NAME$ GETENV dup 0 > if exit then
@@ -33,7 +33,7 @@ PATH-CAP BUFFER: JOINED
 
 \ An empty override stays empty for VALIDATE$ to reject; joined, it would name
 \ the working directory.
-: ABSOLUTE$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+: ABSOLUTE$ ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
    u 0= if a u exit then
    a c@ [char] / = if a u exit then
    SOURCE-ROOT:CWD$ a u JOINED FS:JOIN-PATH {: ju:n :}
@@ -41,7 +41,7 @@ PATH-CAP BUFFER: JOINED
 
 \ The running engine is always executable, so a path that is not is the
 \ override's.
-: REJECT ( ptr u8 n -- ) {: a:ptr u:n :}
+: REJECT ( ^u8 n -- ) {: a:^ u:n :}
    s" E-ENGINE-NOT-EXECUTABLE" REJECTION:OPEN
    NAME$ REJECTION:EMIT-STR  s"  names `" REJECTION:EMIT-STR
    a u REJECTION:EMIT-STR  s" `, which is not an executable file" REJECTION:EMIT-STR
@@ -50,12 +50,12 @@ PATH-CAP BUFFER: JOINED
    s"  at an executable hb, or unset it" REJECTION:EMIT-STR
    CHECKER-REJECT-RC REJECTION:STOP ;
 
-: VALIDATE$ ( ptr u8 n -- ptr u8 n )
+: VALIDATE$ ( ^u8 n -- ^u8 n )
    2dup FS:EXECUTABLE? 0= if 2dup REJECT then ;
 
 public
 
-: PATH$ ( -- ptr u8 n )
+: PATH$ ( -- ^u8 n )
    RESOLVE$ ABSOLUTE$ VALIDATE$ ;
 
 ;package

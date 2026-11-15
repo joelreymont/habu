@@ -67,7 +67,7 @@ DECL-DIAG:PROSE
 s" STRUCTURE foo FIELD a nope ;STRUCTURE" TEST-EVAL:RC 70 T=  \ unresolved field type
 s\" error[E-BAD-DECLARATION]: bad structure declaration `foo`\n" DECL-DIAG:HAS? TTRUE
 s" nope" s" unknown field type" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: name a type declared before this declaration: `n`, `ptr u8`, a header parameter, a" DECL-DIAG:HAS? TTRUE
+s\"   = help: name a type declared before this declaration: `n`, `^u8`, a header parameter, a" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" STRUCTURE foo FIELD a Q ;STRUCTURE" TEST-EVAL:RC 70 T=    \ upper-case single-letter type
 s\" error[E-BAD-DECLARATION]: bad structure declaration `foo`\n" DECL-DIAG:HAS? TTRUE
@@ -113,9 +113,9 @@ s" BEGIN-STRUCTURE P NO-SUCH-WORD" TEST-EVAL:RC 70 T=
 s" BEGIN-STRUCTURE Q END-STRUCTURE" TEST-EVAL:RC 0 T=
 s" BEGIN-STRUCTURE R" TEST-EVAL:RC 70 T=
 
-\ An effect reads a bare `ptr` as the pointer constructor in every scope, so the
-\ tail is reserved ahead of the global `ptr` family's duplicate check (7102),
-\ and a package may not shadow it as it may shadow any other global family.
+\ An effect reads the token `ptr` ahead of any family, so the tail is reserved
+\ ahead of the global `ptr` family's duplicate check (7102), and a package may
+\ not shadow it as it may shadow any other global family.
 package SDPTR
 DECL-DIAG:PROSE
 s" STRUCTURE ptr FIELD x n ;STRUCTURE" TEST-EVAL:RC 70 T=
@@ -283,7 +283,14 @@ DECL-DIAG:PROSE
 s" STRUCTURE sdgbad FIELD a nosuchtype ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgbad`\n" DECL-DIAG:HAS? TTRUE
 s" nosuchtype" s" unknown field type" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: name a type declared before this declaration: `n`, `ptr u8`, a header parameter, a" DECL-DIAG:HAS? TTRUE
+s\"   = help: name a type declared before this declaration: `n`, `^u8`, a header parameter, a" DECL-DIAG:HAS? TTRUE
+
+\ A pointer field is spelled ^T: `ptr` is an unknown field type.
+DECL-DIAG:PROSE
+s" STRUCTURE sdgptr FIELD a ptr u8 ;STRUCTURE" TEST-EVAL:RC 70 T=
+s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgptr`\n" DECL-DIAG:HAS? TTRUE
+s" ptr" s" unknown field type" DECL-DIAG:CAUSE? TTRUE
+s\"   = help: spell a pointer `^T`, `^` joined to the type it points at, as in `FIELD next ^node`\n" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
 s" STRUCTURE sdgpol POLICY nosuch ;STRUCTURE" TEST-EVAL:RC 70 T=
@@ -325,7 +332,7 @@ DECL-DIAG:PROSE
 s" STRUCTURE sdgself FIELD selffld sdgself ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgself`\n" DECL-DIAG:HAS? TTRUE
 s" sdgself" s" field type cannot recursively name its owner" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: name the structure being declared only beneath `ptr`, as in `FIELD next ptr node`\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: name the structure being declared only beneath `^`, as in `FIELD next ^node`\n" DECL-DIAG:HAS? TTRUE
 
 \ no family leaks from one declaration into the next: a declaration that fails
 \ before its own name is read reports an empty family, not sdgself.
@@ -353,7 +360,7 @@ s\"   = help: use each type parameter in one kind of place: a value type, a scop
 
 \ A field may point at its own family: three linked records walk round, MAKE and
 \ UNMAKE certify, and a pointer to a pointer or to a span of itself declares.
-STRUCTURE sdsnode DERIVE addr FIELD id n FIELD next ptr sdsnode ;STRUCTURE
+STRUCTURE sdsnode DERIVE addr FIELD id n FIELD next ^sdsnode ;STRUCTURE
 3 TYPED-BUFFER SDS-NODES sdsnode
 : SDS-LINK ( -- )
    11 0 SDS-NODES SDSNODE:ID !  22 1 SDS-NODES SDSNODE:ID !  33 2 SDS-NODES SDSNODE:ID !
@@ -365,20 +372,20 @@ STRUCTURE sdsnode DERIVE addr FIELD id n FIELD next ptr sdsnode ;STRUCTURE
    0 SDS-NODES k 0 ?do SDSNODE:NEXT @ loop SDSNODE:ID @ ;
 SDS-LINK
 0 SDS-AT 11 T=  1 SDS-AT 22 T=  2 SDS-AT 33 T=  3 SDS-AT 11 T=
-s" SDSMK ( n ptr sdsnode -- sdsnode ) SDSNODE:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
-s" SDSUN ( sdsnode -- n ptr sdsnode ) SDSNODE:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
-s" STRUCTURE sdsback FIELD id n FIELD back ptr ptr sdsback ;STRUCTURE" TEST-EVAL:RC 0 T=
-s" STRUCTURE sdspspan FIELD id n FIELD s ptr SPAN:span<sdspspan> ;STRUCTURE" TEST-EVAL:RC 0 T=
+s" SDSMK ( n ^sdsnode -- sdsnode ) SDSNODE:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
+s" SDSUN ( sdsnode -- n ^sdsnode ) SDSNODE:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
+s" STRUCTURE sdsback FIELD id n FIELD back ^^sdsback ;STRUCTURE" TEST-EVAL:RC 0 T=
+s" STRUCTURE sdspspan FIELD id n FIELD s ^SPAN:span<sdspspan> ;STRUCTURE" TEST-EVAL:RC 0 T=
 
 \ A parametric family pointing at itself: pairing two of its applications ends,
 \ a generic and a concrete accessor certify, and a mismatched one is refused.
-STRUCTURE sdsplist<a> DERIVE addr FIELD v a FIELD next ptr sdsplist<a> ;STRUCTURE
-s" SDSPG ( ptr sdsplist<a> -- ptr sdsplist<a> ) SDSPLIST:NEXT @" CHECK-QUIET-CANDIDATE! -1 T=
-s" SDSPC ( ptr sdsplist<n> -- ptr sdsplist<n> ) SDSPLIST:NEXT @" CHECK-QUIET-CANDIDATE! -1 T=
-s" SDSPX ( ptr sdsplist<n> -- ptr sdsplist<f> ) SDSPLIST:NEXT @" CHECK-QUIET-CANDIDATE! 0 T=
-STRUCTURE sdsplistn<a> DERIVE addr FIELD v a FIELD next ptr sdsplistn<n> ;STRUCTURE
-s" SDSNG ( ptr sdsplistn<a> -- ptr sdsplistn<n> ) SDSPLISTN:NEXT @" CHECK-QUIET-CANDIDATE! -1 T=
-s" SDSNC ( ptr sdsplistn<n> -- ptr sdsplistn<n> ) SDSPLISTN:NEXT @" CHECK-QUIET-CANDIDATE! -1 T=
+STRUCTURE sdsplist<a> DERIVE addr FIELD v a FIELD next ^sdsplist<a> ;STRUCTURE
+s" SDSPG ( ^sdsplist<a> -- ^sdsplist<a> ) SDSPLIST:NEXT @" CHECK-QUIET-CANDIDATE! -1 T=
+s" SDSPC ( ^sdsplist<n> -- ^sdsplist<n> ) SDSPLIST:NEXT @" CHECK-QUIET-CANDIDATE! -1 T=
+s" SDSPX ( ^sdsplist<n> -- ^sdsplist<f> ) SDSPLIST:NEXT @" CHECK-QUIET-CANDIDATE! 0 T=
+STRUCTURE sdsplistn<a> DERIVE addr FIELD v a FIELD next ^sdsplistn<n> ;STRUCTURE
+s" SDSNG ( ^sdsplistn<a> -- ^sdsplistn<n> ) SDSPLISTN:NEXT @" CHECK-QUIET-CANDIDATE! -1 T=
+s" SDSNC ( ^sdsplistn<n> -- ^sdsplistn<n> ) SDSPLISTN:NEXT @" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ An addr family's parameter takes a record through its words and generic ones.
 package SDVEC
@@ -389,16 +396,16 @@ ENUM sdvshade
    VARIANT light FIELD k n ;VARIANT
 ;ENUM
 TYPED-VARIABLE SDV-BOX sdvbox<sdvshade>
-: SDV-K ( ptr sdvbox<sdvshade> -- ptr n ) SDVBOX-K ;
-: SDV-CNT ( ptr sdvbox<t> -- n ) SDVBOX-K @ ;
-: SDV-SHADE-CNT ( ptr sdvbox<sdvshade> -- n ) SDV-CNT ;
-: SDV-PICK ( ptr VEC:vector<sdvshade> n -- ptr sdvshade ) VEC:AT ;
-: SDV-STRIDE? ( ptr VEC:vector<sdvshade> -- bool )
-   {: v:ptr :}
+: SDV-K ( ^sdvbox<sdvshade> -- ^n ) SDVBOX-K ;
+: SDV-CNT ( ^sdvbox<t> -- n ) SDVBOX-K @ ;
+: SDV-SHADE-CNT ( ^sdvbox<sdvshade> -- n ) SDV-CNT ;
+: SDV-PICK ( ^VEC:vector<sdvshade> n -- ^sdvshade ) VEC:AT ;
+: SDV-STRIDE? ( ^VEC:vector<sdvshade> -- bool )
+   {: v:^ :}
    v 1 SDV-PICK v 0 SDV-PICK -  [type] sdvshade width>n = ;
 : SDV-RUN ( -- n bool )
    7 SDV-BOX SDV-K !  SDV-BOX SDV-SHADE-CNT
-   HEAP:ALLOCATOR 2 [type] sdvshade VEC:NEW {: v:ptr :}
+   HEAP:ALLOCATOR 2 [type] sdvshade VEC:NEW {: v:^ :}
    v SDV-STRIDE?  v VEC:DELETE ;
 ;package
 SDVEC:SDV-RUN TTRUE 7 T=
@@ -428,38 +435,38 @@ DECL-DIAG:PROSE
 s" STRUCTURE sdsvspan FIELD s SPAN:span<sdsvspan> ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdsvspan`\n" DECL-DIAG:HAS? TTRUE
 s" SPAN:span<sdsvspan>" s" field type cannot recursively name its owner" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: name the structure being declared only beneath `ptr`, as in `FIELD next ptr node`\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: name the structure being declared only beneath `^`, as in `FIELD next ^node`\n" DECL-DIAG:HAS? TTRUE
 
 \ A family argument may be a pointer to the declared family; a span of pointers stored in
 \ the field comes back.
 STRUCTURE sdpnode DERIVE addr
    FIELD kind n
-   FIELD kept SPAN:span<ptr sdpnode>
+   FIELD kept SPAN:span<^sdpnode>
 ;STRUCTURE
 2 TYPED-BUFFER SDP-NODES sdpnode
-2 TYPED-BUFFER SDP-REFS ptr sdpnode
+2 TYPED-BUFFER SDP-REFS ^sdpnode
 : SDP-KEPT ( -- n n )
    7 1 SDP-NODES SDPNODE:KIND !
    1 SDP-NODES 1 SDP-REFS !
    0 SDP-REFS 2 cells SPAN:MAKE 0 SDP-NODES SDPNODE:KEPT !
-   0 SDP-NODES SDPNODE:KEPT @ SPAN-SPAN:UNMAKE {: b:ptr l:n :}
+   0 SDP-NODES SDPNODE:KEPT @ SPAN-SPAN:UNMAKE {: b:^ l:n :}
    b 1 cells + @ SDPNODE:KIND @ l ;
 SDP-KEPT 2 cells T= 7 T=
 
-\ A type left open at `;STRUCTURE` is unclosed and `ptr` with no pointee malformed; a type's
+\ A type left open at `;STRUCTURE` is unclosed and `^` with no pointee malformed; a type's
 \ tokens may stand on two lines and hold blanks, as a declaration's do.
 DECL-DIAG:PROSE
-s" STRUCTURE sdpopen FIELD kept SPAN:span<ptr ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" STRUCTURE sdpopen FIELD kept SPAN:span<^ ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdpopen`\n" DECL-DIAG:HAS? TTRUE
-s" SPAN:span<ptr" s" unclosed field type application" DECL-DIAG:CAUSE? TTRUE
+s" SPAN:span<^" s" unclosed field type application" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: close each `<` of the field type with `>` before the next clause\n" DECL-DIAG:HAS? TTRUE
-s\" STRUCTURE sdpline FIELD kept SPAN:span<ptr\n   sdpline> ;STRUCTURE" TEST-EVAL:RC 0 T=
-s" STRUCTURE sdpspaced FIELD kept SPAN:span< ptr sdpspaced > ;STRUCTURE" TEST-EVAL:RC 0 T=
+s\" STRUCTURE sdpline FIELD kept SPAN:span<\n   ^sdpline> ;STRUCTURE" TEST-EVAL:RC 0 T=
+s" STRUCTURE sdpspaced FIELD kept SPAN:span< ^sdpspaced > ;STRUCTURE" TEST-EVAL:RC 0 T=
 DECL-DIAG:PROSE
-s" STRUCTURE sdpbare FIELD kept SPAN:span<ptr> ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" STRUCTURE sdpbare FIELD kept SPAN:span<^> ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdpbare`\n" DECL-DIAG:HAS? TTRUE
-s" SPAN:span<ptr>" s" malformed field type application" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: write a type application as `family<type,type>` with a blank after each `ptr`, as in" DECL-DIAG:HAS? TTRUE
+s" SPAN:span<^>" s" malformed field type application" DECL-DIAG:CAUSE? TTRUE
+s\"   = help: write a type application as `family<type,type>`, as in" DECL-DIAG:HAS? TTRUE
 
 \ A pointer to its own family is a pointer to a linear value when the family
 \ holds one, in either field order: judged once the fields are committed.
@@ -468,11 +475,11 @@ public
 DEFLINEAR SDSELF:tok
 ;package
 DECL-DIAG:PROSE
-s" STRUCTURE sdslnode FIELD next ptr sdslnode FIELD t SDSELF:tok ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" STRUCTURE sdslnode FIELD next ^sdslnode FIELD t SDSELF:tok ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdslnode`\n" DECL-DIAG:HAS? TTRUE
 s" sdslnode" s" field type is a pointer to a linear value and cannot own it" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:PROSE
-s" STRUCTURE sdslnode2 FIELD t SDSELF:tok FIELD next ptr sdslnode2 ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" STRUCTURE sdslnode2 FIELD t SDSELF:tok FIELD next ^sdslnode2 ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdslnode2`\n" DECL-DIAG:HAS? TTRUE
 s" sdslnode2" s" field type is a pointer to a linear value and cannot own it" DECL-DIAG:CAUSE? TTRUE
 
@@ -527,7 +534,7 @@ DECL-DIAG:PROSE
 s" STRUCTURE sdgvrsv FIELD z sdgvrsv ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgvrsv`\n" DECL-DIAG:HAS? TTRUE
 s" sdgvrsv" s" field type cannot recursively name its owner" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: name the structure being declared only beneath `ptr`, as in `FIELD next ptr node`\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: name the structure being declared only beneath `^`, as in `FIELD next ^node`\n" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:OFF
 
@@ -540,8 +547,8 @@ public
 
 \ The replay entry under `catch` on copies of both strings, so a reject answers
 \ its code as TEST-EVAL:RC does for the live entry.
-: RP-EV ( ptr u8 n ptr u8 n -- ) TYPE-DECL:REPLAY-STRUCTURE TFALSE 2drop ;
-: RP-TRY ( ptr u8 n ptr u8 n -- n )
+: RP-EV ( ^u8 n ^u8 n -- ) TYPE-DECL:REPLAY-STRUCTURE TFALSE 2drop ;
+: RP-TRY ( ^u8 n ^u8 n -- n )
    [: 2over 2over RP-EV ;] catch {: rc:n :} 2drop 2drop rc ;
 : DICT-RECS ( -- n ) ndict@ ;
 
@@ -578,7 +585,7 @@ s" rpsdbad" s" FIELD one nope ;STRUCTURE" struct-replay-test:RP-TRY 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `rpsdbad`\n" DECL-DIAG:HAS? TTRUE
 s\" ^ unknown field type\n" DECL-DIAG:HAS? TTRUE
 s\" = word: nope\n" DECL-DIAG:HAS? TTRUE
-s\"   = help: name a type declared before this declaration: `n`, `ptr u8`, a header parameter, a" DECL-DIAG:HAS? TTRUE
+s\"   = help: name a type declared before this declaration: `n`, `^u8`, a header parameter, a" DECL-DIAG:HAS? TTRUE
 
 \ A buffer with no terminator rejects through the front end's own gate.
 DECL-DIAG:PROSE
@@ -703,7 +710,7 @@ DECL-DIAG:PROSE
 s" STRUCTURE sdlfwd FIELD m sdllater ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdlfwd`\n" DECL-DIAG:HAS? TTRUE
 s" sdllater" s" unknown field type" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: name a type declared before this declaration: `n`, `ptr u8`, a header parameter, a" DECL-DIAG:HAS? TTRUE
+s\"   = help: name a type declared before this declaration: `n`, `^u8`, a header parameter, a" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
 \ A name that resolves says why it cannot be a field type: a parametric family
@@ -721,59 +728,59 @@ DECL-DIAG:OFF
 \ would read non-linear, copying and dropping freely with a linear resource
 \ behind the address. TFCL-NODE?, the node walk the linearity accounting
 \ trusts, refuses the con and family spellings alike at every depth:
-\ `ptr ptr sdlbox` rejects on the inner recursion, anchoring the diagnostic on
+\ `^^sdlbox` rejects on the inner recursion, anchoring the diagnostic on
 \ the family that owns the resource. A pointer to something that owns nothing
-\ (`ptr n`, `ptr sdlplain`) stays legal.
+\ (`^n`, `^sdlplain`) stays legal.
 
 \ the two spellings side by side. Naming the value owns it; pointing at it cannot.
 s" STRUCTURE sdlowns FIELD m sdlbox ;STRUCTURE" TEST-EVAL:RC 0 T=
 
 DECL-DIAG:PROSE
-s" STRUCTURE sdlptr FIELD p ptr sdlbox ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" STRUCTURE sdlptr FIELD p ^sdlbox ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdlptr`\n" DECL-DIAG:HAS? TTRUE
 s" sdlbox" s" field type is a pointer to a linear value and cannot own it" DECL-DIAG:CAUSE? TTRUE
 
 \ the con spelling launders the same way, so the same rule refuses it, and the
 \ diagnostic names the con it found rather than some enclosing family.
 DECL-DIAG:PROSE
-s" STRUCTURE sdlptrcon FIELD p ptr SDLIN:tok ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" STRUCTURE sdlptrcon FIELD p ^SDLIN:tok ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdlptrcon`\n" DECL-DIAG:HAS? TTRUE
 s" SDLIN:tok" s" field type is a pointer to a linear value and cannot own it" DECL-DIAG:CAUSE? TTRUE
 
 \ depth: a second pointer does not launder past the rule. The inner recursion
 \ rejects first, so the token names the family that owns the resource.
 DECL-DIAG:PROSE
-s" STRUCTURE sdlptr2 FIELD p ptr ptr sdlbox ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" STRUCTURE sdlptr2 FIELD p ^^sdlbox ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdlptr2`\n" DECL-DIAG:HAS? TTRUE
 s" sdlbox" s" field type is a pointer to a linear value and cannot own it" DECL-DIAG:CAUSE? TTRUE
 
 \ reaching the resource through a nested family or through a sum is still reaching
 \ it, so a pointer to either is refused for the same reason.
 DECL-DIAG:PROSE
-s" STRUCTURE sdlptrdeep FIELD p ptr sdldeep ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" STRUCTURE sdlptrdeep FIELD p ^sdldeep ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdlptrdeep`\n" DECL-DIAG:HAS? TTRUE
 s" sdldeep" s" field type is a pointer to a linear value and cannot own it" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:PROSE
-s" STRUCTURE sdlptrsum FIELD p ptr sdlsum ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" STRUCTURE sdlptrsum FIELD p ^sdlsum ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdlptrsum`\n" DECL-DIAG:HAS? TTRUE
 s" sdlsum" s" field type is a pointer to a linear value and cannot own it" DECL-DIAG:CAUSE? TTRUE
 
 \ a field anywhere in the body is checked, not just the first one, and the token
 \ names the offending field's type rather than the declaration's first field.
 DECL-DIAG:PROSE
-s" STRUCTURE sdlptrlate FIELD a n FIELD p ptr sdlbox FIELD c n ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" STRUCTURE sdlptrlate FIELD a n FIELD p ^sdlbox FIELD c n ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdlptrlate`\n" DECL-DIAG:HAS? TTRUE
 s" sdlbox" s" field type is a pointer to a linear value and cannot own it" DECL-DIAG:CAUSE? TTRUE
 
-\ `ptr` lets a field name its own family only inside the pointee: by value after
+\ `^` lets a field name its own family only inside the pointee: by value after
 \ it, or in the declaration after a refused pointee, the name is rejected.
 DECL-DIAG:PROSE
-s" STRUCTURE sdlpquot FIELD q [ ptr sdlpquot sdlpquot -- ] ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" STRUCTURE sdlpquot FIELD q [ ^sdlpquot sdlpquot -- ] ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdlpquot`\n" DECL-DIAG:HAS? TTRUE
 s" sdlpquot" s" field type cannot recursively name its owner" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: name the structure being declared only beneath `ptr`, as in `FIELD next ptr node`\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: name the structure being declared only beneath `^`, as in `FIELD next ^node`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" STRUCTURE sdlpleak FIELD next ptr Q ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" STRUCTURE sdlpleak FIELD next ^Q ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdlpleak`\n" DECL-DIAG:HAS? TTRUE
 s" Q" s" unknown field type" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: list the parameter in the header, as in `STRUCTURE box<a>`, before a field names it\n" DECL-DIAG:HAS? TTRUE
@@ -781,13 +788,13 @@ DECL-DIAG:PROSE
 s" STRUCTURE sdlpafter FIELD me sdlpafter ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdlpafter`\n" DECL-DIAG:HAS? TTRUE
 s" sdlpafter" s" field type cannot recursively name its owner" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: name the structure being declared only beneath `ptr`, as in `FIELD next ptr node`\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: name the structure being declared only beneath `^`, as in `FIELD next ^node`\n" DECL-DIAG:HAS? TTRUE
 
 \ the controls. A pointer to a family that owns nothing declares, so the rejects
-\ above answer the POINTEE's linearity and not the word `ptr`.
-s" STRUCTURE sdlptrok FIELD p ptr sdlplain FIELD k n ;STRUCTURE" TEST-EVAL:RC 0 T=
-s" STRUCTURE sdlptrok2 FIELD p ptr ptr sdlplain ;STRUCTURE" TEST-EVAL:RC 0 T=
-s" STRUCTURE sdlptrn FIELD p ptr n ;STRUCTURE" TEST-EVAL:RC 0 T=
+\ above answer the POINTEE's linearity and not the word `^`.
+s" STRUCTURE sdlptrok FIELD p ^sdlplain FIELD k n ;STRUCTURE" TEST-EVAL:RC 0 T=
+s" STRUCTURE sdlptrok2 FIELD p ^^sdlplain ;STRUCTURE" TEST-EVAL:RC 0 T=
+s" STRUCTURE sdlptrn FIELD p ^n ;STRUCTURE" TEST-EVAL:RC 0 T=
 
 \ wrong role: the same words in the FIELD NAME position are names, never types.
 \ Neither resolves and neither is refused.
@@ -798,19 +805,19 @@ s" STRUCTURE sdlptrrole2 FIELD sdlbox n ;STRUCTURE" TEST-EVAL:RC 0 T=
 \ ordinary tokens, so the declaration rejects the unexpected token, not a
 \ pointer to a linear value.
 DECL-DIAG:PROSE
-s" STRUCTURE sdlptrpar FIELD v n ( FIELD p ptr sdlbox ) ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" STRUCTURE sdlptrpar FIELD v n ( FIELD p ^sdlbox ) ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdlptrpar`\n" DECL-DIAG:HAS? TTRUE                                  \ the paren itself was the token
 s" (" s" unexpected token in structure declaration" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: start each clause with `FIELD`, `POLICY`, `DERIVE` or `OPAQUE`, and end with `;STRUCTURE`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" STRUCTURE sdlptrbsl FIELD v n \ FIELD p ptr sdlbox" TEST-EVAL:RC 70 T=
+s" STRUCTURE sdlptrbsl FIELD v n \ FIELD p ^sdlbox" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdlptrbsl`\n" DECL-DIAG:HAS? TTRUE                                  \ and so was the backslash
 s\" \\" s" unexpected token in structure declaration" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: start each clause with `FIELD`, `POLICY`, `DERIVE` or `OPAQUE`, and end with `;STRUCTURE`\n" DECL-DIAG:HAS? TTRUE
 \ and trailing text after the offending field cannot suppress the reject, because
 \ the field is resolved before anything following it is read.
 DECL-DIAG:PROSE
-s" STRUCTURE sdlptrtail FIELD p ptr sdlbox ( note ) ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" STRUCTURE sdlptrtail FIELD p ^sdlbox ( note ) ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdlptrtail`\n" DECL-DIAG:HAS? TTRUE
 s" sdlbox" s" field type is a pointer to a linear value and cannot own it" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:OFF
@@ -824,7 +831,7 @@ DECL-DIAG:PROSE                                       \ this section rejects too
 STRUCTURE sdaddr
    DERIVE addr
    FIELD a n
-   FIELD p ptr u8
+   FIELD p ^u8
    FIELD c n
 ;STRUCTURE
 2 TYPED-BUFFER SDA-BUF sdaddr
@@ -832,13 +839,13 @@ STRUCTURE sdaddr
 SDADDR:BYTES 24 T=                                    \ the size words BEGIN-STRUCTURE published
 SDADDR:CELLS 3 T=
 
-: SDA-W ( n ptr u8 n n -- ) {: av:n pv:ptr cv:n i:n :} av pv cv SDADDR:MAKE i SDA-BUF ! ;
+: SDA-W ( n ^u8 n n -- ) {: av:n pv:^ cv:n i:n :} av pv cv SDADDR:MAKE i SDA-BUF ! ;
 : SDA-A ( n -- n ) SDA-BUF SDADDR:A @ ;
 : SDA-C ( n -- n ) SDA-BUF SDADDR:C @ ;
-: SDA-P ( n -- ptr u8 ) SDA-BUF SDADDR:P @ ;
-: SDA-UA ( n -- n ) SDA-BUF @ SDADDR:UNMAKE {: av:n pv:ptr cv:n :} av ;
-: SDA-UC ( n -- n ) SDA-BUF @ SDADDR:UNMAKE {: av:n pv:ptr cv:n :} cv ;
-: SDA-UP ( n -- ptr u8 ) SDA-BUF @ SDADDR:UNMAKE {: av:n pv:ptr cv:n :} pv ;
+: SDA-P ( n -- ^u8 ) SDA-BUF SDADDR:P @ ;
+: SDA-UA ( n -- n ) SDA-BUF @ SDADDR:UNMAKE {: av:n pv:^ cv:n :} av ;
+: SDA-UC ( n -- n ) SDA-BUF @ SDADDR:UNMAKE {: av:n pv:^ cv:n :} cv ;
+: SDA-UP ( n -- ^u8 ) SDA-BUF @ SDADDR:UNMAKE {: av:n pv:^ cv:n :} pv ;
 
 10 NULL-PTR 30 0 SDA-W
 40 NULL-PTR 60 1 SDA-W
@@ -858,14 +865,14 @@ SDA-NEXT 40 T=
 SDA-PREV 30 T=
 
 \ the declared output type is the FIELD's type: a pointer field projects as
-\ `ptr ptr u8` and nothing else, and a scalar field does not coerce.
-s" SDAX1 ( ptr sdaddr -- ptr ptr u8 ) SDADDR:P" CHECK-QUIET-CANDIDATE! -1 T=
-s" SDAX2 ( ptr sdaddr -- ptr n ) SDADDR:P" CHECK-QUIET-CANDIDATE! 0 T=
-s" SDAX3 ( ptr sdaddr -- ptr n ) SDADDR:A" CHECK-QUIET-CANDIDATE! -1 T=
-s" SDAX4 ( ptr sdaddr -- ptr r ) SDADDR:A" CHECK-QUIET-CANDIDATE! 0 T=
+\ `^^u8` and nothing else, and a scalar field does not coerce.
+s" SDAX1 ( ^sdaddr -- ^^u8 ) SDADDR:P" CHECK-QUIET-CANDIDATE! -1 T=
+s" SDAX2 ( ^sdaddr -- ^n ) SDADDR:P" CHECK-QUIET-CANDIDATE! 0 T=
+s" SDAX3 ( ^sdaddr -- ^n ) SDADDR:A" CHECK-QUIET-CANDIDATE! -1 T=
+s" SDAX4 ( ^sdaddr -- ^r ) SDADDR:A" CHECK-QUIET-CANDIDATE! 0 T=
 \ and the accessor of one family is not the accessor of another
 s" STRUCTURE sdaddr2 DERIVE addr FIELD a n ;STRUCTURE" TEST-EVAL:RC 0 T=
-s" SDAX5 ( ptr sdaddr2 -- ptr n ) SDADDR:A" CHECK-QUIET-CANDIDATE! 0 T=
+s" SDAX5 ( ^sdaddr2 -- ^n ) SDADDR:A" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ a GENERIC family projects at the caller's instantiation
 STRUCTURE sdagen<a>
@@ -878,31 +885,31 @@ STRUCTURE sdagen<a>
 : SDAG-V ( n -- n ) SDAG-BUF SDAGEN:V @ ;
 77 88 0 SDAG-W
 0 SDAG-V 77 T=
-s" SDAG1 ( ptr sdagen<a> -- ptr a ) SDAGEN:V" CHECK-QUIET-CANDIDATE! -1 T=
-s" SDAG2 ( ptr sdagen<a> -- ptr n ) SDAGEN:V" CHECK-QUIET-CANDIDATE! 0 T=
+s" SDAG1 ( ^sdagen<a> -- ^a ) SDAGEN:V" CHECK-QUIET-CANDIDATE! -1 T=
+s" SDAG2 ( ^sdagen<a> -- ^n ) SDAGEN:V" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ ...but a type argument that is itself a FAMILY is not an instantiation of the
 \ accessor at all, whatever its width: the parameter binds no family term
-\ (measured: `expected: ptr sdagen<a> actual: ptr sdagen<sdaw1>`), so the call
+\ (measured: `expected: ^sdagen<a> actual: ^sdagen<sdaw1>`), so the call
 \ is refused at the accessor's own token before any address arithmetic is judged.
 STRUCTURE sdaw1 FIELD z n ;STRUCTURE                 \ one cell
 STRUCTURE sdaw2 FIELD z n FIELD w n ;STRUCTURE       \ two cells
-s" SDAW1 ( ptr sdagen<sdaw1> -- ptr sdaw1 ) SDAGEN:V" CHECK-QUIET-CANDIDATE! 0 T=
-s" SDAW2 ( ptr sdagen<sdaw2> -- ptr n ) SDAGEN:K" CHECK-QUIET-CANDIDATE! 0 T=
+s" SDAW1 ( ^sdagen<sdaw1> -- ^sdaw1 ) SDAGEN:V" CHECK-QUIET-CANDIDATE! 0 T=
+s" SDAW2 ( ^sdagen<sdaw2> -- ^n ) SDAGEN:K" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ `record-at` scales by the caller's count, so it refuses a pointee whose
 \ instantiated width is not the committed width: an argument wider than one
 \ cell moves every field past the first, which F:AT's baked multiplier and an
 \ accessor's baked offset assume away. A one-cell argument is not wide, so the
 \ refusal is about width, not about a family argument.
-s" SDAW3 ( ptr sdagen<sdaw2> n -- ptr sdagen<sdaw2> ) record-at" CHECK-QUIET-CANDIDATE! 0 T=
-s" SDAW4 ( ptr sdagen<sdaw1> n -- ptr sdagen<sdaw1> ) record-at" CHECK-QUIET-CANDIDATE! -1 T=
-s" SDAW5 ( ptr sdaddr n -- ptr sdaddr ) record-at" CHECK-QUIET-CANDIDATE! -1 T=
+s" SDAW3 ( ^sdagen<sdaw2> n -- ^sdagen<sdaw2> ) record-at" CHECK-QUIET-CANDIDATE! 0 T=
+s" SDAW4 ( ^sdagen<sdaw1> n -- ^sdagen<sdaw1> ) record-at" CHECK-QUIET-CANDIDATE! -1 T=
+s" SDAW5 ( ^sdaddr n -- ^sdaddr ) record-at" CHECK-QUIET-CANDIDATE! -1 T=
 \ off a layout pointee the plain row answers, and it is `cells +` on any pointer.
-s" SDAW6 ( ptr u8 n -- ptr u8 ) record-at" CHECK-QUIET-CANDIDATE! -1 T=
+s" SDAW6 ( ^u8 n -- ^u8 ) record-at" CHECK-QUIET-CANDIDATE! -1 T=
 \ the wide instantiation itself stays a perfectly ordinary type: what is refused
 \ is the address surface over it, not the pointer.
-s" SDAW7 ( ptr sdagen<sdaw2> -- n ) drop 0" CHECK-QUIET-CANDIDATE! -1 T=
+s" SDAW7 ( ^sdagen<sdaw2> -- n ) drop 0" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ A field may hold an option of a multi-cell STRUCTURE: option's cell parameter
 \ takes the layout-kind argument, as a variant payload's does. SOME and NONE go
@@ -981,8 +988,8 @@ STRUCTURE hrec
 : HW ( n n n -- ) {: xv:n yv:n i:n :} xv yv HREC-MAKE i HB ! ;
 : HX ( n -- n ) HB HREC-X @ ;
 : HY ( n -- n ) HB HREC-Y @ ;
-: HNEXT ( n -- ptr SDAPRIV:hrec ) HB 0 HREC-AT ;
-s" HXI ( ptr hrec -- ptr n ) HREC-X" CHECK-QUIET-CANDIDATE! -1 T=   \ certifies HERE
+: HNEXT ( n -- ^SDAPRIV:hrec ) HB 0 HREC-AT ;
+s" HXI ( ^hrec -- ^n ) HREC-X" CHECK-QUIET-CANDIDATE! -1 T=   \ certifies HERE
 public
 : HGO ( -- n n n ) 5 6 0 HW 0 HX 0 HY HREC-BYTES ;
 ;package
@@ -997,7 +1004,7 @@ DECL-DIAG:PROSE
 s" SDAP1 ( n -- n ) HREC-X" CHECK-CANDIDATE! 0 T=
 s\" error[E-UNDEFINED]: cannot find word `HREC-X`\n" DECL-DIAG:HAS? TTRUE
 s\"  --> <input>:1:18\n" DECL-DIAG:HAS? TTRUE
-s" SDAP2 ( ptr SDAPRIV:hrec -- n ) drop 0" CHECK-QUIET-CANDIDATE! 0 T=
+s" SDAP2 ( ^SDAPRIV:hrec -- n ) drop 0" CHECK-QUIET-CANDIDATE! 0 T=
 public
 ;package
 
@@ -1027,7 +1034,7 @@ s" z" s" duplicate field name" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: give each field of this declaration its own name\n" DECL-DIAG:HAS? TTRUE
 TYPE-FIELD:COUNT PFB @ T=
 s" STRUCTURE sdaroll DERIVE addr FIELD z n ;STRUCTURE" TEST-EVAL:RC 0 T=
-s" SDAR1 ( ptr sdaroll -- ptr n ) SDAROLL:Z" CHECK-QUIET-CANDIDATE! -1 T=
+s" SDAR1 ( ^sdaroll -- ^n ) SDAROLL:Z" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ A package's own `*`, RECORD-AT, `+` or `swap`, defined before a STRUCTURE with
 \ DERIVE addr, captures none of the words it makes: each reads its own field
@@ -1155,7 +1162,7 @@ STRUCTURE oinit OPAQUE DERIVE init FIELD a n FIELD b n ;STRUCTURE
 : OEQF ( -- bool ) 4 OEQ-MAKE 5 OEQ-MAKE OEQ-EQ ;
 : OHSH ( -- bool ) 4 OEQ-MAKE OEQ-HASH 4 OEQ-MAKE OEQ-HASH = ;
 s" SDOI ( n n -- n n ) OBOX-MAKE OBOX-UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
-s" SDOX ( ptr oaddr -- ptr n ) OADDR-X" CHECK-QUIET-CANDIDATE! -1 T=
+s" SDOX ( ^oaddr -- ^n ) OADDR-X" CHECK-QUIET-CANDIDATE! -1 T=
 s" SDON ( mut-view<a,b,c,init<d,oinit>> -- mut-view<a,b,c,init<d,oinit>> n ) OINIT-A@" CHECK-QUIET-CANDIDATE! -1 T=
 private                                               \ the pair lives in the private wordlist
 DECL-DIAG:PROSE
@@ -1180,7 +1187,7 @@ s" SDOO ( n n -- n n ) OBOX-MAKE OBOX-UNMAKE" CHECK-QUIET-CANDIDATE! 0 T=
 s" SDOQ ( n n -- n n ) SDOPQ-OBOX:MAKE SDOPQ-OBOX:UNMAKE" CHECK-QUIET-CANDIDATE! 0 T=
 s" SDOC ( n n -- n n ) SDOPQ:OBOX-MAKE SDOPQ:OBOX-UNMAKE" CHECK-QUIET-CANDIDATE! 0 T=
 s" SDOE ( SDOPQ:oeq SDOPQ:oeq -- bool ) SDOPQ-OEQ:EQ" CHECK-QUIET-CANDIDATE! 0 T=
-s" SDOA ( ptr SDOPQ:oaddr -- ptr n ) SDOPQ-OADDR:X" CHECK-QUIET-CANDIDATE! 0 T=
+s" SDOA ( ^SDOPQ:oaddr -- ^n ) SDOPQ-OADDR:X" CHECK-QUIET-CANDIDATE! 0 T=
 s" SDOB ( mut-view<a,b,c,init<d,SDOPQ:oinit>> -- mut-view<a,b,c,init<d,SDOPQ:oinit>> n ) OINIT-A@" CHECK-QUIET-CANDIDATE! 0 T=
 s" SDOT ( SDOPQ:obox -- SDOPQ:obox )" CHECK-QUIET-CANDIDATE! -1 T=
 public
@@ -1243,13 +1250,13 @@ SDBUF:CELLS 4 T=                                      \ a, ceil(13 / CELL) for b
 SDBUF:BYTES SDBUF:CELLS CELL * T=
 : SDB-GAP ( -- n ) 0 SDB-BUF SDBUF:C NULL-PTR -  0 SDB-BUF SDBUF:A NULL-PTR -  - ;
 SDB-GAP 3 CELL * T=                                   \ c lies 3 cells after a
-: SDB-BYTES ( -- ptr u8 n ) 0 SDB-BUF SDBUF:B SPAN:$ ;
+: SDB-BYTES ( -- ^u8 n ) 0 SDB-BUF SDBUF:B SPAN:$ ;
 : SDB-N ( -- n ) 0 SDB-BUF SDBUF:B SPAN:LEN ;
 SDB-N 13 T=
 : SDB-AT ( -- n ) SDB-BYTES drop NULL-PTR -  0 SDB-BUF NULL-PTR - - ;
 SDB-AT CELL T=                                        \ b starts one cell into the record
 : SDB-W ( -- ) 5 0 0 6 SDBUF:MAKE 0 SDB-BUF ! ;      \ b's cells are MAKE's middle two
-: SDB-FILL ( -- ) SDB-BYTES {: p:ptr u:n :} u 0 ?do 255 p i + c! loop ;
+: SDB-FILL ( -- ) SDB-BYTES {: p:^ u:n :} u 0 ?do 255 p i + c! loop ;
 : SDB-LAST ( -- n ) SDB-BYTES drop 12 + c@ ;
 SDB-W SDB-FILL
 SDB-LAST 255 T=
@@ -1310,7 +1317,7 @@ package SDBIG
 $10000 constant CAP            \ bytes: 4097 fields of 13 bytes and the head
 create SRC CAP allot
 TYPED-VARIABLE SRC-U len
-: S+ ( ptr u8 n -- ) SRC CAP SRC-U BUF-APPEND ;
+: S+ ( ^u8 n -- ) SRC CAP SRC-U BUF-APPEND ;
 : S+C ( n -- ) SRC CAP SRC-U BUF-APPEND-C ;
 : S+LETTER ( n -- ) 26 mod 97 + S+C ;
 \ Field I is `fXYZ`, I in base 26 as three letters.
@@ -1320,12 +1327,12 @@ TYPED-VARIABLE SRC-U len
    i 676 / S+LETTER  i 26 / S+LETTER  i S+LETTER
    s"  n" S+ ;
 public
-: FIELDS ( ptr u8 n n -- )
-   {: na:ptr nu:n k:n :}
+: FIELDS ( ^u8 n n -- )
+   {: na:^ nu:n k:n :}
    SRC-U BUF-RESET  s" STRUCTURE " S+  na nu S+
    k 0 ?do i S+FIELD loop ;
-: SRC+ ( ptr u8 n -- ) S+ ;
-: SRC$ ( -- ptr u8 n ) SRC SRC-U @ LEN>N ;
+: SRC+ ( ^u8 n -- ) S+ ;
+: SRC$ ( -- ^u8 n ) SRC SRC-U @ LEN>N ;
 ;package
 
 \ 4095 fields and one cell of bytes are exactly 4096 items.

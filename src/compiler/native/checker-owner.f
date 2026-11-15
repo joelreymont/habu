@@ -15,7 +15,7 @@ public
 : BIND-REGIME! ( n -- ) BIND-UNJUDGED ! ;
 
 \ A TRUSTED: parent's clause is scanned unjudged, as its body was.
-: DOES-CHECK ( ptr u8 n ptr u8 n -- n )
+: DOES-CHECK ( ^u8 n ^u8 n -- n )
    BIND-UNJUDGED @ 0<> if CHECK-DOES-UNJUDGED! exit then
    CHECK-DOES! ;
 

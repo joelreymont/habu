@@ -32,7 +32,7 @@ create SINK BUF:HDR-BYTES allot
    ;MATCH ;
 
 : SINK-LEN ( -- n )
-   SINK BUF:SPAN$ X64T-BL>RAW {: a:ptr u:n :}  u ;
+   SINK BUF:SPAN$ X64T-BL>RAW {: a:^ u:n :}  u ;
 
 \ A malformed expected string is a defect in this suite's own data, so it dies
 \ with FMATH:E-DOMAIN, the tree's "input outside this word's domain" code.
@@ -41,11 +41,11 @@ create SINK BUF:HDR-BYTES allot
    c 97 >= c 102 <= and 0= if FMATH:E-DOMAIN throw then
    c 97 - 10 + ;
 
-: HEX-BYTE ( ptr u8 n -- n ) {: a:ptr i:n :}
+: HEX-BYTE ( ^u8 n -- n ) {: a:^ i:n :}
    a i 2 * + c@ HEX-DIGIT 4 lshift
    a i 2 * 1 + + c@ HEX-DIGIT or ;
 
-: SPAN=HEX? ( ptr u8 n ptr u8 n -- bool ) {: da:ptr dlen:n ea:ptr eu:n :}
+: SPAN=HEX? ( ^u8 n ^u8 n -- bool ) {: da:^ dlen:n ea:^ eu:n :}
    eu 2 mod 0<> if FMATH:E-DOMAIN throw then
    dlen eu 2 / <> if false exit then
    dlen 0 ?do
@@ -53,8 +53,8 @@ create SINK BUF:HDR-BYTES allot
    loop
    true ;
 
-: X= ( ptr u8 n -- ) {: ea:ptr eu:n :}
-   SINK BUF:SPAN$ X64T-BL>RAW {: da:ptr dlen:n :}
+: X= ( ^u8 n -- ) {: ea:^ eu:n :}
+   SINK BUF:SPAN$ X64T-BL>RAW {: da:^ dlen:n :}
    da dlen ea eu SPAN=HEX? TTRUE
    SINK BUF:CLEAR ;
 
@@ -463,9 +463,9 @@ create SINK BUF:HDR-BYTES allot
    [: 0 >IMM32 4 37 lshift >MEM SINK ENC-MOV32-MI32 ;] E-OPERAND TTHROWSQ
    [: 0 >IMM32 1 44 lshift >MEM SINK ENC-MOV32-MI32 ;] E-OPERAND TTHROWSQ
    s" 50" X=
-   s" X64-GOOD-STORE ( X64ASM:imm32 X64ASM:mem ptr a -- ) X64ASM:ENC-MOV32-MI32"
+   s" X64-GOOD-STORE ( X64ASM:imm32 X64ASM:mem ^a -- ) X64ASM:ENC-MOV32-MI32"
       CHECK-QUIET-CANDIDATE! -1 T=
-   s" X64-BAD-STORE ( X64ASM:imm64 X64ASM:mem ptr a -- ) X64ASM:ENC-MOV32-MI32"
+   s" X64-BAD-STORE ( X64ASM:imm64 X64ASM:mem ^a -- ) X64ASM:ENC-MOV32-MI32"
       CHECK-QUIET-CANDIDATE! 0 T= ;
 
 : SSE-REGISTERS ( -- )
@@ -671,52 +671,52 @@ create SINK BUF:HDR-BYTES allot
 \ The operand types themselves: an ill-formed instruction is a CHECKER refusal,
 \ not a runtime throw. -1 is accepted, 0 refused.
 : SSE-NOMINAL-CASES ( -- )
-   s" X64-GOOD-SSE ( X64ASM:xmm X64ASM:xmm ptr a -- ) X64ASM:ENC-ADDSD-RR"
+   s" X64-GOOD-SSE ( X64ASM:xmm X64ASM:xmm ^a -- ) X64ASM:ENC-ADDSD-RR"
       CHECK-QUIET-CANDIDATE! -1 T=
-   s" X64-GOOD-CVT ( X64ASM:xmm X64ASM:r64 ptr a -- ) X64ASM:ENC-CVTSI2SD-RR"
+   s" X64-GOOD-CVT ( X64ASM:xmm X64ASM:r64 ^a -- ) X64ASM:ENC-CVTSI2SD-RR"
       CHECK-QUIET-CANDIDATE! -1 T=
-   s" X64-BAD-SSE ( X64ASM:r64 X64ASM:xmm ptr a -- ) X64ASM:ENC-MOVSD-RR"
+   s" X64-BAD-SSE ( X64ASM:r64 X64ASM:xmm ^a -- ) X64ASM:ENC-MOVSD-RR"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" X64-BAD-CVT ( X64ASM:xmm X64ASM:xmm ptr a -- ) X64ASM:ENC-CVTSI2SD-RR"
+   s" X64-BAD-CVT ( X64ASM:xmm X64ASM:xmm ^a -- ) X64ASM:ENC-CVTSI2SD-RR"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" X64-BAD-CVTT ( X64ASM:r32 X64ASM:xmm ptr a -- ) X64ASM:ENC-CVTTSD2SI-RR"
+   s" X64-BAD-CVTT ( X64ASM:r32 X64ASM:xmm ^a -- ) X64ASM:ENC-CVTTSD2SI-RR"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" X64-GOOD-MOVQ ( X64ASM:xmm X64ASM:r64 ptr a -- ) X64ASM:ENC-MOVQ-XR"
+   s" X64-GOOD-MOVQ ( X64ASM:xmm X64ASM:r64 ^a -- ) X64ASM:ENC-MOVQ-XR"
       CHECK-QUIET-CANDIDATE! -1 T=
    \ the direction is the type: a general register first is the other form
-   s" X64-BAD-MOVQ ( X64ASM:xmm X64ASM:r64 ptr a -- ) X64ASM:ENC-MOVQ-RX"
+   s" X64-BAD-MOVQ ( X64ASM:xmm X64ASM:r64 ^a -- ) X64ASM:ENC-MOVQ-RX"
       CHECK-QUIET-CANDIDATE! 0 T= ;
 
 : NOMINAL-CASES ( -- )
-   s" X64-GOOD-MOV ( X64ASM:r64 X64ASM:r64 ptr a -- ) X64ASM:ENC-MOV-RR"
+   s" X64-GOOD-MOV ( X64ASM:r64 X64ASM:r64 ^a -- ) X64ASM:ENC-MOV-RR"
       CHECK-QUIET-CANDIDATE! -1 T=
-   s" X64-GOOD-LOAD ( X64ASM:r64 X64ASM:mem ptr a -- ) X64ASM:ENC-MOV-RM"
+   s" X64-GOOD-LOAD ( X64ASM:r64 X64ASM:mem ^a -- ) X64ASM:ENC-MOV-RM"
       CHECK-QUIET-CANDIDATE! -1 T=
-   s" X64-GOOD-SET ( X64ASM:condition X64ASM:r8 ptr a -- ) X64ASM:ENC-SETCC"
+   s" X64-GOOD-SET ( X64ASM:condition X64ASM:r8 ^a -- ) X64ASM:ENC-SETCC"
       CHECK-QUIET-CANDIDATE! -1 T=
    \ a 32-bit register where a 64-bit one is required
-   s" X64-BAD-WIDTH ( X64ASM:r32 X64ASM:r64 ptr a -- ) X64ASM:ENC-MOV-RR"
+   s" X64-BAD-WIDTH ( X64ASM:r32 X64ASM:r64 ^a -- ) X64ASM:ENC-MOV-RR"
       CHECK-QUIET-CANDIDATE! 0 T=
    \ an imm64 where only an imm32 is encodable
-   s" X64-BAD-IMM64 ( X64ASM:r64 X64ASM:imm64 ptr a -- ) X64ASM:ENC-MOV-RI32"
+   s" X64-BAD-IMM64 ( X64ASM:r64 X64ASM:imm64 ^a -- ) X64ASM:ENC-MOV-RI32"
       CHECK-QUIET-CANDIDATE! 0 T=
    \ an imm32 where the relocatable literal needs an imm64
-   s" X64-BAD-IMM32 ( X64ASM:r64 X64ASM:imm32 ptr a -- ) X64ASM:ENC-MOV-RI64"
+   s" X64-BAD-IMM32 ( X64ASM:r64 X64ASM:imm32 ^a -- ) X64ASM:ENC-MOV-RI64"
       CHECK-QUIET-CANDIDATE! 0 T=
    \ a bare cell where a register is required
-   s" X64-BAD-RAW ( n n ptr a -- ) X64ASM:ENC-MOV-RR"
+   s" X64-BAD-RAW ( n n ^a -- ) X64ASM:ENC-MOV-RR"
       CHECK-QUIET-CANDIDATE! 0 T=
    \ a byte register where a 16-bit one is required
-   s" X64-BAD-EXT ( X64ASM:r64 X64ASM:r8 ptr a -- ) X64ASM:ENC-MOVZX-16-RR"
+   s" X64-BAD-EXT ( X64ASM:r64 X64ASM:r8 ^a -- ) X64ASM:ENC-MOVZX-16-RR"
       CHECK-QUIET-CANDIDATE! 0 T=
    \ a memory operand where a register is required
-   s" X64-BAD-MEM ( X64ASM:r64 X64ASM:mem ptr a -- ) X64ASM:ENC-MOV-RR"
+   s" X64-BAD-MEM ( X64ASM:r64 X64ASM:mem ^a -- ) X64ASM:ENC-MOV-RR"
       CHECK-QUIET-CANDIDATE! 0 T=
    \ a displacement where a condition is required
-   s" X64-BAD-COND ( X64ASM:rel X64ASM:rel ptr a -- ) X64ASM:ENC-JCC-REL8"
+   s" X64-BAD-COND ( X64ASM:rel X64ASM:rel ^a -- ) X64ASM:ENC-JCC-REL8"
       CHECK-QUIET-CANDIDATE! 0 T=
    \ an imm8 where a shift by cl takes no immediate at all
-   s" X64-BAD-SHIFT ( X64ASM:r64 X64ASM:imm8 ptr a -- ) X64ASM:ENC-SHL-CL"
+   s" X64-BAD-SHIFT ( X64ASM:r64 X64ASM:imm8 ^a -- ) X64ASM:ENC-SHL-CL"
       CHECK-QUIET-CANDIDATE! 0 T= ;
 
 \ The relocation writer patches the imm64 at this offset; the movabs case above

@@ -37,7 +37,7 @@ variable GAP-PC      \ a pc in a gap between two spans, 0 when none was found
 variable PROBES
 
 : REC-CODE-BYTES ( n -- n ) {: i:n :}   \ 0 when record i owns no code
-   i XREF-REC {: rec:ptr :}
+   i XREF-REC {: rec:^ :}
    rec XREF-RETIRED? if 0 exit then
    rec XREF-START 0= if 0 exit then
    rec XREF-CODE-BYTES ;

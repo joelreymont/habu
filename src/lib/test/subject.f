@@ -23,11 +23,11 @@ create STATUS-ERR STATUS-CAP allot
 \ RUN is synchronous in the parent. The child inherits these cells by COW and
 \ exits before the next RUN, so no source state is shared across cases.
 
-: SRC! ( ptr u8 n -- )
+: SRC! ( ^u8 n -- )
    SRC-U !
    SRC-A ! ;
 
-: SRC$ ( -- ptr u8 n )
+: SRC$ ( -- ^u8 n )
    SRC-A @
    SRC-U @ LEN>N ;
 
@@ -60,8 +60,8 @@ create STATUS-ERR STATUS-CAP allot
 
 public
 
-: RUN ( ptr u8 n ptr u8 len ptr u8 len ms -- len len PROCESS:ending )
-   {: src:ptr srcu:n out:ptr outcap:len err:ptr errcap:len timeout:ms :}
+: RUN ( ^u8 n ^u8 len ^u8 len ms -- len len PROCESS:ending )
+   {: src:^ srcu:n out:^ outcap:len err:^ errcap:len timeout:ms :}
    outcap errcap PROCESS:CAPTURE-CHECK-CAPS
    src srcu SRC!
    timeout PROCESS:CAPTURE-BEGIN
@@ -69,8 +69,8 @@ public
    out outcap err errcap PROCESS:RUN-CAPTURE-ENDING-LOOP
    PROCESS:CAPTURE-FINISH-ENDING ;
 
-: SHOW ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: src:ptr srcu:n out:ptr outu:n err:ptr erru:n :}
+: SHOW ( ^u8 n ^u8 n ^u8 n -- )
+   {: src:^ srcu:n out:^ outu:n err:^ erru:n :}
    s" program:" type cr src srcu type cr
    s" stdout:" type cr out outu type cr
    s" stderr:" type cr err erru type cr ;
@@ -78,8 +78,8 @@ public
 \ The capture is the only evidence of where a child stopped before its deadline,
 \ so the timeout arm prints the program and its streams, then throws
 \ E-PROC-TIMEOUT so the row still reports a timeout.
-: TIMED-OUT ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: src:ptr srcu:n out:ptr outu:n err:ptr erru:n :}
+: TIMED-OUT ( ^u8 n ^u8 n ^u8 n -- )
+   {: src:^ srcu:n out:^ outu:n err:^ erru:n :}
    s" timeout: the child passed its deadline" type cr
    src srcu out outu err erru SHOW
    E-PROC-TIMEOUT throw ;
@@ -88,15 +88,15 @@ public
 \ exits PROCESS:TIMEOUT-RC. Its parent passes the program, the captured stdout and
 \ stderr and the exit code; on that code TIMED-OUT prints them and throws
 \ E-PROC-TIMEOUT. Any other code is the caller's to assert.
-: RC-TIMED-OUT ( ptr u8 n ptr u8 n ptr u8 n n -- )
-   {: src:ptr srcu:n out:ptr outu:n err:ptr erru:n rc:n :}
+: RC-TIMED-OUT ( ^u8 n ^u8 n ^u8 n n -- )
+   {: src:^ srcu:n out:^ outu:n err:^ erru:n rc:n :}
    rc PROCESS:TIMEOUT-RC = if src srcu out outu err erru TIMED-OUT then ;
 
 private
 
 \ A signal is not an exit. A deadline is no verdict.
-: STATUS ( ptr u8 n n -- len len bool )
-   {: src:ptr srcu:n want:n :}
+: STATUS ( ^u8 n n -- len len bool )
+   {: src:^ srcu:n want:n :}
    src srcu STATUS-OUT STATUS-CAP >LEN STATUS-ERR STATUS-CAP >LEN STATUS-MS >MS RUN
    {: outu:len erru:len oc :}
    outu erru
@@ -112,21 +112,21 @@ public
 
 \ The capture is kept only for this answer; a case that reads the child's
 \ streams runs RUN itself, or REJECTED for stderr when stdout stays empty.
-: EXITED? ( ptr u8 n n -- bool )
+: EXITED? ( ^u8 n n -- bool )
    STATUS >r 2drop r> ;
 
 \ src's stderr, valid until the next run, and whether src, run as the subject,
 \ exited with code want and wrote nothing to stdout.
-: REJECTED ( ptr u8 n n -- ptr u8 n bool )
+: REJECTED ( ^u8 n n -- ^u8 n bool )
    STATUS {: outu:len erru:len exited:bool :}
    STATUS-ERR erru LEN>N  exited outu LEN>N 0= and ;
 
 \ Whether src, run as the subject, exited with code want, wrote nothing to
 \ stdout and named why on stderr: a refusal the engine or the checker reports
 \ before anything runs.
-: REFUSED? ( ptr u8 n n ptr u8 n -- bool )
-   {: why:ptr whyu:n :}
-   REJECTED {: err:ptr erru:n ok:bool :}
+: REFUSED? ( ^u8 n n ^u8 n -- bool )
+   {: why:^ whyu:n :}
+   REJECTED {: err:^ erru:n ok:bool :}
    ok  err erru why whyu CONTAINS? and ;
 
 ;package

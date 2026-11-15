@@ -16,9 +16,9 @@ $20 constant MAX-ROUTES
 $7B constant LBRACE
 $7D constant RBRACE
 
-MAX-ROUTES TYPED-BUFFER ROUTE-METHOD-A ptr u8
+MAX-ROUTES TYPED-BUFFER ROUTE-METHOD-A ^u8
 MAX-ROUTES TYPED-BUFFER ROUTE-METHOD-N n
-MAX-ROUTES TYPED-BUFFER ROUTE-PATTERN-A ptr u8
+MAX-ROUTES TYPED-BUFFER ROUTE-PATTERN-A ^u8
 MAX-ROUTES TYPED-BUFFER ROUTE-PATTERN-N n
 MAX-ROUTES TYPED-BUFFER ROUTE-HANDLER [ request response -- ]
 MAX-ROUTES TYPED-BUFFER ROUTE-CAP n       \ -1 inherits BODY-CAP
@@ -33,11 +33,11 @@ variable ROUTE-COUNT
    route ;
 
 
-: ROUTE-METHOD$ ( n -- ptr u8 n ) {: route:n :}
+: ROUTE-METHOD$ ( n -- ^u8 n ) {: route:n :}
    route ROUTE-BOUNDED ROUTE-METHOD-A @ route ROUTE-METHOD-N @ ;
 
 
-: ROUTE-PATTERN$ ( n -- ptr u8 n ) {: route:n :}
+: ROUTE-PATTERN$ ( n -- ^u8 n ) {: route:n :}
    route ROUTE-BOUNDED ROUTE-PATTERN-A @ route ROUTE-PATTERN-N @ ;
 
 
@@ -50,26 +50,26 @@ variable ROUTE-COUNT
 
 \ ---- segments ---------------------------------------------------------------
 
-: SEG-END ( ptr u8 n n -- n ) {: bytes:ptr len:n from:n :}
+: SEG-END ( ^u8 n n -- n ) {: bytes:^ len:n from:n :}
    len from ?do
       bytes i + c@ SLASH = if i unloop exit then
    loop
    len ;
 
 
-: NAMED? ( ptr u8 n -- bool ) {: bytes:ptr len:n :}
+: NAMED? ( ^u8 n -- bool ) {: bytes:^ len:n :}
    len 2 < if false exit then
    bytes c@ LBRACE <> if false exit then
    bytes len + 1- c@ RBRACE = ;
 
 
-: SEGMENT-NAME$ ( ptr u8 n -- ptr u8 n ) {: bytes:ptr len:n :}
+: SEGMENT-NAME$ ( ^u8 n -- ^u8 n ) {: bytes:^ len:n :}
    bytes 1+ len 2 - ;
 
 
 \ The escapes were validated when the request line was parsed, so a percent
 \ always carries the two hex digits this reads.
-: COPY-SEGMENT ( ptr u8 n n -- ) {: bytes:ptr len:n idx:n :}
+: COPY-SEGMENT ( ^u8 n n -- ) {: bytes:^ len:n idx:n :}
    0
    begin
       {: at:n :}
@@ -85,7 +85,7 @@ variable ROUTE-COUNT
    again ;
 
 
-: BIND-SEGMENT ( ptr u8 n n -- ) {: bytes:ptr len:n idx:n :}
+: BIND-SEGMENT ( ^u8 n n -- ) {: bytes:^ len:n idx:n :}
    idx SEGMENT-OPEN {: start:n :}
    bytes len idx COPY-SEGMENT
    start idx SEGMENT-CLOSE ;
@@ -96,8 +96,8 @@ variable ROUTE-COUNT
 \ Select a route from the validated path without copying named segments. The
 \ request's body limit is checked before a selected route binds them.
 : SEGMENTS-MATCH? ( n n -- bool ) {: route:n idx:n :}
-   route ROUTE-PATTERN$ {: pat:ptr patlen:n :}
-   idx SLOT-PATH$ {: path:ptr pathlen:n :}
+   route ROUTE-PATTERN$ {: pat:^ patlen:n :}
+   idx SLOT-PATH$ {: path:^ pathlen:n :}
    0 0
    begin
       {: patat:n pathat:n :}
@@ -105,8 +105,8 @@ variable ROUTE-COUNT
       patat patlen >= pathat pathlen >= or if false exit then
       pat patlen patat 1+ SEG-END {: patend:n :}
       path pathlen pathat 1+ SEG-END {: pathend:n :}
-      pat patat 1+ + patend patat - 1- {: pa:ptr pu:n :}
-      path pathat 1+ + pathend pathat - 1- {: ha:ptr hu:n :}
+      pat patat 1+ + patend patat - 1- {: pa:^ pu:n :}
+      path pathat 1+ + pathend pathat - 1- {: ha:^ hu:n :}
       pa pu NAMED? if
          hu 0= if false exit then
       else
@@ -119,8 +119,8 @@ variable ROUTE-COUNT
 \ The selected pattern already matches this path. Copy only its named
 \ segments once the body has been accepted, just before the handler runs.
 : BIND-ROUTE ( n n -- ) {: route:n idx:n :}
-   route ROUTE-PATTERN$ {: pat:ptr patlen:n :}
-   idx SLOT-PATH$ {: path:ptr pathlen:n :}
+   route ROUTE-PATTERN$ {: pat:^ patlen:n :}
+   idx SLOT-PATH$ {: path:^ pathlen:n :}
    0 idx SEG-U!
    0 idx SEGMENT-N!
    0 0
@@ -156,14 +156,14 @@ variable ROUTE-COUNT
    false ;
 
 
-: NAMED-INDEX ( n ptr u8 n -- n ) {: route:n name:ptr namelen:n :}
-   route ROUTE-PATTERN$ {: pat:ptr patlen:n :}
+: NAMED-INDEX ( n ^u8 n -- n ) {: route:n name:^ namelen:n :}
+   route ROUTE-PATTERN$ {: pat:^ patlen:n :}
    0 0
    begin
       {: at:n count:n :}
       at patlen >= if -1 exit then
       pat patlen at 1+ SEG-END {: end:n :}
-      pat at 1+ + end at - 1- {: pa:ptr pu:n :}
+      pat at 1+ + end at - 1- {: pa:^ pu:n :}
       pa pu NAMED? if
          pa pu SEGMENT-NAME$ name namelen STR= if count exit then
          end count 1+
@@ -202,8 +202,8 @@ variable ROUTE-COUNT
    s" this path does not answer that method" ERROR! ;
 
 
-: ADD-ROUTE ( ptr u8 n ptr u8 n n [ request response -- ] -- )
-   {: method:ptr methodlen:n pattern:ptr patternlen:n cap:n handler :}
+: ADD-ROUTE ( ^u8 n ^u8 n n [ request response -- ] -- )
+   {: method:^ methodlen:n pattern:^ patternlen:n cap:n handler :}
    ROUTE-COUNT @ MAX-ROUTES >= if E-ROUTE throw then
    methodlen 0 <= if E-ROUTE throw then
    patternlen 0 <= if E-ROUTE throw then
@@ -222,14 +222,14 @@ public
 
 \ One route. The method, the pattern and the handler are the caller's and must
 \ outlive the server, which a literal and a definition both do.
-: ROUTE ( ptr u8 n ptr u8 n [ request response -- ] -- )
-   {: method:ptr methodlen:n pattern:ptr patternlen:n handler :}
+: ROUTE ( ^u8 n ^u8 n [ request response -- ] -- )
+   {: method:^ methodlen:n pattern:^ patternlen:n handler :}
    method methodlen pattern patternlen -1 handler ADD-ROUTE ;
 
 
 \ An explicit byte limit for this route, including zero for an empty body.
-: ROUTE-CAPPED ( ptr u8 n ptr u8 n n [ request response -- ] -- )
-   {: method:ptr methodlen:n pattern:ptr patternlen:n cap:n handler :}
+: ROUTE-CAPPED ( ^u8 n ^u8 n n [ request response -- ] -- )
+   {: method:^ methodlen:n pattern:^ patternlen:n cap:n handler :}
    cap 0 < if E-CAPACITY throw then
    method methodlen pattern patternlen cap handler ADD-ROUTE ;
 
@@ -240,8 +240,8 @@ public
 
 \ The text a named pattern segment bound, decoded. False when this request
 \ matched no route, or that route names no such segment.
-: SEGMENT-OF$ ( request ptr u8 n -- ptr u8 n bool )
-   {: subject:request name:ptr namelen:n :}
+: SEGMENT-OF$ ( request ^u8 n -- ^u8 n bool )
+   {: subject:request name:^ namelen:n :}
    subject SLOT-OF-REQUEST {: idx:n :}
    idx ROUTE-AT@ {: route:n :}
    route 0 < if idx SEG-BUF 0 SPAN:TAKE SPAN:$ false exit then

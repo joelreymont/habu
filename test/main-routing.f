@@ -12,21 +12,21 @@ private
 
 create PATH-BUF PATH-CAP allot
 
-: FILE$ ( -- ptr u8 n )
+: FILE$ ( -- ^u8 n )
    s" route.f" PATH-BUF GT-PATH PATH-BUF swap ;
 
-: READ$ ( -- ptr u8 n )
+: READ$ ( -- ^u8 n )
    s" read.f" PATH-BUF GT-PATH PATH-BUF swap ;
 
-: STACK$ ( -- ptr u8 n )
+: STACK$ ( -- ^u8 n )
    s" stack.f" PATH-BUF GT-PATH PATH-BUF swap ;
 
-: RUN ( ptr u8 n [ -- ] -- ) {: input:ptr u:n args :}
+: RUN ( ^u8 n [ -- ] -- ) {: input:^ u:n args :}
    GE-HB-RESET
    args execute
    GE-HB$ input u PROCESS:WAIT-FOREVER MS>N GE-RUN-STDIN ;
 
-: PASS ( ptr u8 n ptr u8 n -- ) {: want:ptr wantu:n label:ptr labelu:n :}
+: PASS ( ^u8 n ^u8 n -- ) {: want:^ wantu:n label:^ labelu:n :}
    label labelu GE-EXPECT-OK
    want wantu label labelu GE-EXPECT-OUT
    s" " label labelu GE-EXPECT-ERR ;

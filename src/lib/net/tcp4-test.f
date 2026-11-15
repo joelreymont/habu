@@ -93,10 +93,10 @@ TASK:MIN-STACK TASK:TASK PARK-TASK
 TASK:MIN-STACK TASK:TASK DRAIN-TASK
 TASK:MIN-STACK TASK:TASK WRITER-TASK
 
-: PING$ ( -- ptr u8 n )
+: PING$ ( -- ^u8 n )
    s" ping" ;
 
-: CHAT$ ( -- ptr u8 n )
+: CHAT$ ( -- ^u8 n )
    s" hey" ;
 
 : PING-BYTES ( -- n )
@@ -283,7 +283,7 @@ TASK:MIN-STACK TASK:TASK WRITER-TASK
 : THREADS ( -- n ) TEST-HOST:THREADS ;
 
 \ The task's end, then that it came within ms of the call.
-: AWAIT-END ( ptr n n -- ) {: tcb:ptr limit:n :}
+: AWAIT-END ( ^n n -- ) {: tcb:^ limit:n :}
    mono-ns {: start:n :}
    tcb [: dup TASK:DONE? ;] TEST-WAIT:POLL drop
    start ELAPSED-MS limit < TTRUE ;
@@ -361,11 +361,11 @@ TASK:MIN-STACK TASK:TASK WRITER-TASK
    1 DRAIN-DONE atomic-add drop ;
 
 
-: FILL-PATTERN ( ptr u8 n -- ) {: bytes size:n :}
+: FILL-PATTERN ( ^u8 n -- ) {: bytes size:n :}
    size 0 ?do i PATTERN-MOD mod bytes i + c! loop ;
 
 
-: FLOOD ( -- ptr u8 )
+: FLOOD ( -- ^u8 )
    FLOOD-PTR @ ;
 
 
@@ -850,7 +850,7 @@ TASK:MIN-STACK TASK:TASK WRITER-TASK
 \ Sends of the flood by SEND to a peer that never reads until one answers empty:
 \ the bytes they moved, and how long that one took, in ms, or -1 when a send
 \ failed.
-: EMPTY-SEND-MS ( [ TCP4:connection ptr u8 NUM:byte-len -- TCP4:slice-result ] -- n n )
+: EMPTY-SEND-MS ( [ TCP4:connection ^u8 NUM:byte-len -- TCP4:slice-result ] -- n n )
    {: send :}
    0
    begin {: sent:n :}

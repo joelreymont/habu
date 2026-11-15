@@ -85,8 +85,8 @@ s" ENUM n red ;ENUM" TEST-EVAL:RC 70 T=                    \ single-letter famil
 s\" error[E-BAD-DECLARATION]: bad enum declaration `n`\n" DECL-DIAG:HAS? TTRUE
 s" n" s" reserved name" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: rename the family: keywords, control words, single letters, `ptr` and value records are reserved\n" DECL-DIAG:HAS? TTRUE
-\ An effect reads a bare `ptr` as the pointer constructor, never as a family, so
-\ the tail is reserved ahead of the global `ptr` family's duplicate check (7102).
+\ An effect reads the token `ptr` ahead of any family, never as this one, so the
+\ tail is reserved ahead of the global `ptr` family's duplicate check (7102).
 DECL-DIAG:PROSE
 s" ENUM ptr red ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `ptr`\n" DECL-DIAG:HAS? TTRUE
@@ -104,7 +104,7 @@ DECL-DIAG:PROSE
 s" ENUM ebs VARIANT alpha FIELD x nope ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=  \ unresolved field type
 s\" error[E-BAD-DECLARATION]: bad enum declaration `ebs`\n" DECL-DIAG:HAS? TTRUE
 s" nope" s" unknown payload type" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: declare the type before this `ENUM`, or use a built-in one such as `n` or `ptr u8`\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: declare the type before this `ENUM`, or use a built-in one such as `n` or `^u8`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" ENUM euc VARIANT alpha FIELD x Q ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=  \ upper-case single-letter type
 s\" error[E-BAD-DECLARATION]: bad enum declaration `euc`\n" DECL-DIAG:HAS? TTRUE
@@ -143,7 +143,7 @@ public
 
 \ REJECT-CODE asserts a declaration's reject code, public so section 24
 \ (control-word names) reuses it.
-: REJECT-CODE ( ptr u8 n n -- ) {: a:ptr u:n want:n :}
+: REJECT-CODE ( ^u8 n n -- ) {: a:^ u:n want:n :}
    a u TEST-EVAL:RC want T= ;
 
 DECL-DIAG:PROSE
@@ -206,7 +206,7 @@ s" ENUM compact-derive-name alpha derive ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `compact-derive-name`\n" DECL-DIAG:HAS? TTRUE
 s" derive" s" header clause after the first variant" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: move the `POLICY` and `DERIVE` clauses before the first variant\n" DECL-DIAG:HAS? TTRUE
-s" ENUM full-niche<a> POLICY niche-null VARIANT none ;VARIANT VARIANT some FIELD value ptr a ;VARIANT ;ENUM" 0 REJECT-CODE
+s" ENUM full-niche<a> POLICY niche-null VARIANT none ;VARIANT VARIANT some FIELD value ^a ;VARIANT ;ENUM" 0 REJECT-CODE
 
 private
 
@@ -303,7 +303,7 @@ s\" error[E-BAD-DECLARATION]: bad enum declaration `duplicate-order`\n" DECL-DIA
 s" ready" s" duplicate variant" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: give each variant of the enum its own name\n" DECL-DIAG:HAS? TTRUE
 \ A package may shadow a global family, but not `ptr`: an effect in this
-\ package would still read `ptr` as the pointer constructor.
+\ package would still read the token `ptr` ahead of any family.
 DECL-DIAG:PROSE
 s" ENUM ptr ready ;ENUM" 70 REJECT-CODE
 s\" error[E-BAD-DECLARATION]: bad enum declaration `ptr`\n" DECL-DIAG:HAS? TTRUE
@@ -329,7 +329,7 @@ variable CT-DICT   variable CT-CP
 
 \ A generation failure must leave the native dictionary byte-identical: what
 \ the generator had defined is truncated with the rest of the declaration.
-: CTOR-REJECT ( ptr u8 n n -- ) {: a:ptr u:n want:n :}
+: CTOR-REJECT ( ^u8 n n -- ) {: a:^ u:n want:n :}
    DICT-MARK
    a u TEST-EVAL:RC want T=
    DICT-SAME ;
@@ -495,7 +495,14 @@ DECL-DIAG:PROSE
 s" ENUM dgpay VARIANT vv FIELD payfld nosuchtype ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `dgpay`\n" DECL-DIAG:HAS? TTRUE
 s" nosuchtype" s" unknown payload type" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: declare the type before this `ENUM`, or use a built-in one such as `n` or `ptr u8`\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: declare the type before this `ENUM`, or use a built-in one such as `n` or `^u8`\n" DECL-DIAG:HAS? TTRUE
+
+\ A pointer payload is spelled ^T: `ptr` is an unknown payload type.
+DECL-DIAG:PROSE
+s" ENUM dgptr VARIANT vv FIELD payfld ptr u8 ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
+s\" error[E-BAD-DECLARATION]: bad enum declaration `dgptr`\n" DECL-DIAG:HAS? TTRUE
+s" ptr" s" unknown payload type" DECL-DIAG:CAUSE? TTRUE
+s\"   = help: spell a pointer `^T`, `^` joined to the type it points at, as in `FIELD next ^list`\n" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
 s" ENUM dgpol POLICY nosuch red ;ENUM" TEST-EVAL:RC 70 T=
@@ -557,7 +564,7 @@ DECL-DIAG:PROSE
 s" ENUM dgnest VARIANT nestvar FIELD nestfld nosuchtype ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `dgnest`\n" DECL-DIAG:HAS? TTRUE
 s" nosuchtype" s" unknown payload type" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: declare the type before this `ENUM`, or use a built-in one such as `n` or `ptr u8`\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: declare the type before this `ENUM`, or use a built-in one such as `n` or `^u8`\n" DECL-DIAG:HAS? TTRUE
 s" declaration `nestvar`" DECL-DIAG:HAS? TFALSE
 s" declaration `nestfld`" DECL-DIAG:HAS? TFALSE
 
@@ -718,9 +725,9 @@ s" eq" s" derive requires a concrete (arity 0) family" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: drop the type parameters or the `DERIVE` clause: only an arity-0 family derives\n" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
-s" ENUM dgroleq DERIVE eq VARIANT vv FIELD p ptr n ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM dgroleq DERIVE eq VARIANT vv FIELD p ^n ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `dgroleq`\n" DECL-DIAG:HAS? TTRUE
-s" ptr" s" pointer payloads have no derived equality" DECL-DIAG:CAUSE? TTRUE
+s" ^n" s" pointer payloads have no derived equality" DECL-DIAG:CAUSE? TTRUE
 
 \      7110 raised by the variant-name gate, and 7101 raised by the field record:
 \      both are deeper owners, both answered from the table.
@@ -751,8 +758,8 @@ s" reason two" s" fix two" 990002 DECL-REJECT:EXPLAIN
 package enum-replay-test
 public
 
-: RP-EV ( ptr u8 n ptr u8 n -- ) TYPE-DECL:REPLAY-ENUM TFALSE 2drop ;
-: RP-TRY ( ptr u8 n ptr u8 n -- n )
+: RP-EV ( ^u8 n ^u8 n -- ) TYPE-DECL:REPLAY-ENUM TFALSE 2drop ;
+: RP-TRY ( ^u8 n ^u8 n -- n )
    [: 2over 2over RP-EV ;] catch {: rc:n :} 2drop 2drop rc ;
 
 \ Force the replay stream open so the re-entry guard can be reached at all; the
@@ -1013,11 +1020,11 @@ variable LI
 
 700 constant LONG-N
 
-: SRC$ ( -- ptr u8 n ) SRC-BUF SRC-U @ ;
+: SRC$ ( -- ^u8 n ) SRC-BUF SRC-U @ ;
 : PUT-C ( n -- ) {: c:n :}
    SRC-U @ SRC-CAP >= IF s" enum-decl-suite: long-enum buffer overflow" 1 die THEN
    c SRC-BUF SRC-U @ + c!  SRC-U @ 1 + SRC-U ! ;
-: PUT$ ( ptr u8 n -- ) {: a:ptr u:n :}
+: PUT$ ( ^u8 n -- ) {: a:^ u:n :}
    0 LI !
    BEGIN LI @ u < WHILE  a LI @ + c@ PUT-C  LI @ 1 + LI !  REPEAT ;
 : PUT-DIGIT ( n -- ) 48 + PUT-C ;
@@ -1063,7 +1070,7 @@ DECL-DIAG:PROSE
 s" ENUM edlfwd VARIANT hold FIELD m edllater ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `edlfwd`\n" DECL-DIAG:HAS? TTRUE
 s" edllater" s" unknown payload type" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: declare the type before this `ENUM`, or use a built-in one such as `n` or `ptr u8`\n" DECL-DIAG:HAS? TTRUE
+s\"   = help: declare the type before this `ENUM`, or use a built-in one such as `n` or `^u8`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
 s" ENUM edlgen<a> VARIANT hold FIELD m a ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
@@ -1082,37 +1089,37 @@ DECL-DIAG:OFF
 s" ENUM edlowns VARIANT hold FIELD m edlmodel ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
 
 DECL-DIAG:PROSE
-s" ENUM edlptr VARIANT hold FIELD p ptr edlmodel ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM edlptr VARIANT hold FIELD p ^edlmodel ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `edlptr`\n" DECL-DIAG:HAS? TTRUE
 s" edlmodel" s" payload type is a pointer to a linear value and cannot own it" DECL-DIAG:CAUSE? TTRUE
 
 DECL-DIAG:PROSE
-s" ENUM edlptrcon VARIANT hold FIELD p ptr EDLIN:tok ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM edlptrcon VARIANT hold FIELD p ^EDLIN:tok ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `edlptrcon`\n" DECL-DIAG:HAS? TTRUE
 s" EDLIN:tok" s" payload type is a pointer to a linear value and cannot own it" DECL-DIAG:CAUSE? TTRUE
 
 \ The inner recursion
 \ rejects first, so the token names the family that owns the resource.
 DECL-DIAG:PROSE
-s" ENUM edlptr2 VARIANT hold FIELD p ptr ptr edlmodel ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM edlptr2 VARIANT hold FIELD p ^^edlmodel ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `edlptr2`\n" DECL-DIAG:HAS? TTRUE
 s" edlmodel" s" payload type is a pointer to a linear value and cannot own it" DECL-DIAG:CAUSE? TTRUE
 
 DECL-DIAG:PROSE
-s" ENUM edlptrsum VARIANT hold FIELD p ptr edl-load-result ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM edlptrsum VARIANT hold FIELD p ^edl-load-result ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `edlptrsum`\n" DECL-DIAG:HAS? TTRUE
 s" edl-load-result" s" payload type is a pointer to a linear value and cannot own it" DECL-DIAG:CAUSE? TTRUE
 
 DECL-DIAG:PROSE
-s" ENUM edlptrlate VARIANT good FIELD c n ;VARIANT VARIANT bad FIELD p ptr edlmodel ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM edlptrlate VARIANT good FIELD c n ;VARIANT VARIANT bad FIELD p ^edlmodel ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `edlptrlate`\n" DECL-DIAG:HAS? TTRUE
 s" edlmodel" s" payload type is a pointer to a linear value and cannot own it" DECL-DIAG:CAUSE? TTRUE
 
 \ A pointer to a family that owns nothing declares, so the
-\ rejects above answer the POINTEE's linearity and not the word `ptr`.
-s" ENUM edlptrok VARIANT hold FIELD p ptr edlplain ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
-s" ENUM edlptrok2 VARIANT hold FIELD p ptr ptr edlplain ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
-s" ENUM edlptrn VARIANT hold FIELD p ptr n ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
+\ rejects above answer the POINTEE's linearity and not the word `^`.
+s" ENUM edlptrok VARIANT hold FIELD p ^edlplain ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
+s" ENUM edlptrok2 VARIANT hold FIELD p ^^edlplain ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
+s" ENUM edlptrn VARIANT hold FIELD p ^n ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
 
 s" ENUM edlptrrole VARIANT hold FIELD ptr n ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
 s" ENUM edlptrrole2 VARIANT hold FIELD edlmodel n ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
@@ -1121,32 +1128,32 @@ s" ENUM edlptrrole2 VARIANT hold FIELD edlmodel n ;VARIANT ;ENUM" TEST-EVAL:RC 0
 \ ordinary tokens, so the declaration is malformed and rejects 7107, not this
 \ rule's 7109.
 DECL-DIAG:PROSE
-s" ENUM edlptrpar VARIANT hold FIELD v n ( FIELD p ptr edlmodel ) ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM edlptrpar VARIANT hold FIELD v n ( FIELD p ^edlmodel ) ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `edlptrpar`\n" DECL-DIAG:HAS? TTRUE
 s" (" s" unexpected token in variant block" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: write only `FIELD name type` clauses before `;VARIANT`, with no comments in the body\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" ENUM edlptrbsl VARIANT hold FIELD v n \ FIELD p ptr edlmodel" TEST-EVAL:RC 70 T=
+s" ENUM edlptrbsl VARIANT hold FIELD v n \ FIELD p ^edlmodel" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `edlptrbsl`\n" DECL-DIAG:HAS? TTRUE
 s\" \\" s" unexpected token in variant block" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: write only `FIELD name type` clauses before `;VARIANT`, with no comments in the body\n" DECL-DIAG:HAS? TTRUE
 \ and trailing text after the offending payload cannot suppress the reject,
 \ because the payload is resolved before anything following it is read.
 DECL-DIAG:PROSE
-s" ENUM edlptrtail VARIANT hold FIELD p ptr edlmodel ( note ) ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM edlptrtail VARIANT hold FIELD p ^edlmodel ( note ) ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `edlptrtail`\n" DECL-DIAG:HAS? TTRUE
 s" edlmodel" s" payload type is a pointer to a linear value and cannot own it" DECL-DIAG:CAUSE? TTRUE
 
-\ A payload names its own family only inside a `ptr` pointee, and that pointer is
+\ A payload names its own family only inside a `^` pointee, and that pointer is
 \ a pointer to a linear value when the enum holds one: judged at ;ENUM.
 DECL-DIAG:PROSE
 s" ENUM edsval VARIANT hold FIELD x edsval ;VARIANT VARIANT none ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `edsval`\n" DECL-DIAG:HAS? TTRUE
 s" edsval" s" payload type cannot recursively name its owner" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: name the enum being declared only beneath `ptr`, as in `FIELD next ptr list`\n" DECL-DIAG:HAS? TTRUE
-s" ENUM edsptr VARIANT hold FIELD next ptr edsptr ;VARIANT VARIANT none ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
+s\"   = help: name the enum being declared only beneath `^`, as in `FIELD next ^list`\n" DECL-DIAG:HAS? TTRUE
+s" ENUM edsptr VARIANT hold FIELD next ^edsptr ;VARIANT VARIANT none ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
 DECL-DIAG:PROSE
-s" ENUM edslin VARIANT hold FIELD next ptr edslin ;VARIANT VARIANT own FIELD t EDLIN:tok ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
+s" ENUM edslin VARIANT hold FIELD next ^edslin ;VARIANT VARIANT own FIELD t EDLIN:tok ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `edslin`\n" DECL-DIAG:HAS? TTRUE
 s" edslin" s" payload type is a pointer to a linear value and cannot own it" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:OFF

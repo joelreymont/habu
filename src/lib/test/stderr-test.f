@@ -19,20 +19,20 @@ create FILE-BUF FILE-CAP allot      \ the capture file's bytes, read back
 variable CODE-A
 variable CODE-B
 
-: PATH$ ( -- ptr u8 n )  PATH-BUF PATH-U @ ;
+: PATH$ ( -- ^u8 n )  PATH-BUF PATH-U @ ;
 
 
 : PATH-MAKE ( -- )
-   s" stderr-test" FS:MKTEMP-DIR {: dir:ptr dirlen:n :}
+   s" stderr-test" FS:MKTEMP-DIR {: dir:^ dirlen:n :}
    dir dirlen FS:CLEANUP-TREE+
    dir dirlen s" err.txt" PATH-BUF FS:JOIN-PATH PATH-U ! ;
 
 
-: FILE$ ( -- ptr u8 n )  FILE-BUF  PATH$ FILE-BUF FILE-CAP FS:READ-ALL ;
+: FILE$ ( -- ^u8 n )  FILE-BUF  PATH$ FILE-BUF FILE-CAP FS:READ-ALL ;
 
 
-: ERR-OUT ( ptr u8 n -- )
-   {: at:ptr u:n :}
+: ERR-OUT ( ^u8 n -- )
+   {: at:^ u:n :}
    FD:STDERR at u FD:WRITE-FULL ;
 
 

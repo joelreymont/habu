@@ -11,7 +11,7 @@ private
 s" DROP-ITEM" 0 parse-imm
 
 \ : NAME ( -- ) drop ;
-: MAKE-EVALUATED ( ptr u8 n -- )
+: MAKE-EVALUATED ( ^u8 n -- )
    EFFECT:EMPTY define-word
    s"           DROP-ITEM" evaluate-closed
    postpone ; ;

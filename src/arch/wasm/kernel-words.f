@@ -11,8 +11,8 @@ private
 \ A real's bits: a cast, where IEEE754:F64>BITS would be a call the map does
 \ not answer.
 CAST: F>BITS ( r -- n )
-CAST: ZERO>PTR ( n -- ptr n )
-CAST: >DATA ( n -- ptr n )
+CAST: ZERO>PTR ( n -- ^n )
+CAST: >DATA ( n -- ^n )
 
 \ The digits of n read as unsigned: (n >> 1) / 5 is the unsigned n / 10, which
 \ a signed division cannot give past MAX-N.
@@ -31,18 +31,18 @@ CAST: >DATA ( n -- ptr n )
 
 public
 
-: DATA-START ( -- ptr n )
+: DATA-START ( -- ^n )
    WPROF:DATA-BASE >DATA ;
 
-: ADD-STORE ( n ptr n -- )
-   {: amount:n cell:ptr :}
+: ADD-STORE ( n ^n -- )
+   {: amount:n cell:^ :}
    cell @ amount + cell ! ;
 
-: NIL ( -- ptr n ) 0 ZERO>PTR ;
+: NIL ( -- ^n ) 0 ZERO>PTR ;
 
 \ src/core/bytes.f is below the rewind mark. Keep its forward-copy behavior,
 \ including a narrow overlap where written bytes become later source bytes.
-: COPY-LEN ( ptr u8 ptr u8 len -- ) {: src:ptr dst:ptr u:len :}
+: COPY-LEN ( ^u8 ^u8 len -- ) {: src:^ dst:^ u:len :}
    u LEN>N {: count:n :}
    count 0 <= if exit then
    0
@@ -56,11 +56,11 @@ public
       dup src + c@ over dst + c! 1+
    repeat drop ;
 
-: COPY-BYTES ( ptr u8 ptr u8 n -- )
+: COPY-BYTES ( ^u8 ^u8 n -- )
    >LEN COPY-LEN ;
 
 \ Wasm has no SHA-256 instructions, so no block is compressed here.
-: SHA-BLOCKS ( ptr n ptr u8 n -- n ) 2drop drop 0 ;
+: SHA-BLOCKS ( ^n ^u8 n -- n ) 2drop drop 0 ;
 
 \ The printers match the engine's (src/habu/rt.f G-PRINT9, G-PRINTU9; habu1.f
 \ BFDOT): the digits, then a newline. F-DOT prints the integer part of the
@@ -72,14 +72,14 @@ public
 : BLANK ( -- )
    32 emit ;
 
-: TYPE-BYTES ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: TYPE-BYTES ( ^u8 n -- )
+   {: a:^ u:n :}
    u 0 ?do  a i + c@ emit  loop ;
 
 \ The host has one output stream, which `type`, `emit` and `die` write to, so
 \ `write` drops the descriptor, writes the bytes there and answers their count.
-: WRITE-BYTES ( n ptr u8 n -- n )
-   {: a:ptr u:n :}
+: WRITE-BYTES ( n ^u8 n -- n )
+   {: a:^ u:n :}
    drop  a u TYPE-BYTES  u ;
 
 : U-DOT ( n -- )

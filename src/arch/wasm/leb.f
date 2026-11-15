@@ -65,7 +65,7 @@ $7FFFFFFF constant S32-MAX
    loop drop
    len ;
 
-: EXTENT ( ptr u8 n n -- n )
+: EXTENT ( ^u8 n n -- n )
    {: p avail:n most:n :}
    0 begin
       dup most = if E-OVERLONG throw then
@@ -84,7 +84,7 @@ $7FFFFFFF constant S32-MAX
       b rest rshift 0=
    then ;
 
-: DECODE ( ptr u8 n n bool -- n n )
+: DECODE ( ^u8 n n bool -- n n )
    {: p avail:n bits:n signed:bool :}
    avail 0 < if E-SPAN-LENGTH throw then
    bits WIDEST {: most:n :}
@@ -99,7 +99,7 @@ $7FFFFFFF constant S32-MAX
    then
    len ;
 
-: FIELD ( ptr u8 n n n bool -- n )
+: FIELD ( ^u8 n n n bool -- n )
    {: p avail:n at:n bits:n signed:bool :}
    at 0 < at avail > or if E-SPAN-RANGE throw then
    p at + avail at - bits signed DECODE
@@ -122,13 +122,13 @@ public
    {: v:n s :}
    v true v SLEN s PUT ;
 
-: U32@ ( ptr u8 n -- u32 n )
+: U32@ ( ^u8 n -- u32 n )
    32 false DECODE ;
 
-: S32@ ( ptr u8 n -- n n )
+: S32@ ( ^u8 n -- n n )
    32 true DECODE ;
 
-: S64@ ( ptr u8 n -- n n )
+: S64@ ( ^u8 n -- n n )
    64 true DECODE ;
 
 \ ---- padded fields ------------------------------------------------------
@@ -143,10 +143,10 @@ public
    {: v:n s :}
    v true 64 WIDEST s PUT ;
 
-: U32-PAD@ ( ptr u8 n n -- u32 )
+: U32-PAD@ ( ^u8 n n -- u32 )
    32 false FIELD ;
 
-: S64-PAD@ ( ptr u8 n n -- n )
+: S64-PAD@ ( ^u8 n n -- n )
    64 true FIELD ;
 
 : U32-PATCH ( n SPAN:span<u8> n -- )

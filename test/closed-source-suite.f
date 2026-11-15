@@ -9,10 +9,10 @@ private
 
 CODEGEN:BUFFER GEN
 
-: GEN+ ( ptr u8 n -- ) GEN CODEGEN:APPEND-STRING ;
+: GEN+ ( ^u8 n -- ) GEN CODEGEN:APPEND-STRING ;
 
 \ The declaration every definer here means: `: <name> ( -- n ) <v> ;`.
-: RENDER ( n ptr u8 n -- ) {: v:n a:ptr u:n :}
+: RENDER ( n ^u8 n -- ) {: v:n a:^ u:n :}
    GEN CODEGEN:RESET
    s" : " GEN+  a u GEN+  s"  ( -- n ) " GEN+
    v GEN CODEGEN:APPEND-DECIMAL  s"  ;" GEN+ ;
@@ -24,12 +24,12 @@ CODEGEN:BUFFER GEN
 \ only in what they append: a sound one's product certifies, one leaving a cell
 \ is rejected with a record and 70, and one taking a cell it never pushed
 \ throws 70 with the caller's cells intact.
-: SOUND ( n ptr u8 n -- ) RENDER CROSS ;
+: SOUND ( n ^u8 n -- ) RENDER CROSS ;
 
-: LEAKY ( n ptr u8 n -- ) {: v:n a:ptr u:n :}
+: LEAKY ( n ^u8 n -- ) {: v:n a:^ u:n :}
    v a u RENDER  s"  " GEN+  v GEN CODEGEN:APPEND-DECIMAL  CROSS ;
 
-: GREEDY ( n ptr u8 n -- ) RENDER  s"  drop" GEN+  CROSS ;
+: GREEDY ( n ^u8 n -- ) RENDER  s"  drop" GEN+  CROSS ;
 
 : CERTIFIES ( -- )
    s" a sound definer's text loads" T-LABEL

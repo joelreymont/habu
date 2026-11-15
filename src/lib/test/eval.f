@@ -18,7 +18,7 @@ variable SRC-U
 variable N-CELL
 TYPED-VARIABLE FLAG-CELL bool
 
-: SRC! ( ptr u8 n -- )
+: SRC! ( ^u8 n -- )
    SRC-U !
    SRC-A ! ;
 
@@ -27,14 +27,14 @@ $400 constant HEAD-CAP
 HEAD-CAP BUFFER: HEAD-BUF
 variable HEAD-LEN
 
-: HEAD+ ( ptr u8 n -- )
+: HEAD+ ( ^u8 n -- )
    HEAD-BUF HEAD-CAP HEAD-LEN BUF-APPEND ;
 
 public
 
 \ SRC$, N! and FLAG! are the hooks of the closed texts below, which run in the
 \ caller's scope and so reach them only qualified. Callers use N, FLAG, RC.
-: SRC$ ( -- ptr u8 n )
+: SRC$ ( -- ^u8 n )
    SRC-A @ SRC-U @ ;
 
 : N! ( n -- )
@@ -49,29 +49,29 @@ public
 \ is N!'s underdepth; two or more is the closed residue, a record: both are 70.
 \ SRC$ reads the text before it runs and N! stores after it, so N nests inside
 \ its own text.
-: N ( ptr u8 n -- n )
+: N ( ^u8 n -- n )
    SRC!
    s" TEST-EVAL:SRC$ evaluate TEST-EVAL:N!" evaluate-closed
    N-CELL @ ;
 
 \ FLAG's text leaves the flag itself, which FLAG! takes as N! takes N's cell.
-: FLAG ( ptr u8 n -- bool )
+: FLAG ( ^u8 n -- bool )
    SRC!
    s" TEST-EVAL:SRC$ evaluate TEST-EVAL:FLAG!" evaluate-closed
    FLAG-CELL @ ;
 
 \ The text's throw code, 0 when it loaded as a closed program.
-: RC ( ptr u8 n -- n )
+: RC ( ^u8 n -- n )
    SRC!
    [: SRC$ evaluate-closed ;] catch ;
 
 \ The head line, without its line feed, of the record the engine prints for a
 \ throw of code c that nothing caught. It is built in a buffer of its own, so a
 \ caller's SB survives it; the next call overwrites it.
-: THROWN-HEAD$ ( n -- ptr u8 n )
+: THROWN-HEAD$ ( n -- ^u8 n )
    {: c:n :}
-   c ERROR:NAME$ {: name:ptr nameu:n :}
-   c ERROR:TEXT$ {: text:ptr textu:n :}
+   c ERROR:NAME$ {: name:^ nameu:n :}
+   c ERROR:TEXT$ {: text:^ textu:n :}
    HEAD-LEN BUF-RESET
    s" error[" HEAD+
    nameu 0= if s" E-THROW" HEAD+ else name nameu HEAD+ then

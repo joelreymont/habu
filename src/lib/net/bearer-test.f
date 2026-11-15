@@ -86,16 +86,16 @@ TASK:MIN-STACK TASK:TASK WAITER
 TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
 
 \ The bytes copied into the span at off; answers the offset past them.
-: PUT ( ptr u8 n SPAN:span<u8> n -- n )
-   {: a:ptr u:n row off:n :}
+: PUT ( ^u8 n SPAN:span<u8> n -- n )
+   {: a:^ u:n row off:n :}
    a row off u SPAN:SUB SPAN:$ drop u BYTE-COPY
    off u + ;
 
 
-: SET+ ( ptr u8 n n -- n ) SETS swap PUT ;
+: SET+ ( ^u8 n n -- n ) SETS swap PUT ;
 
-: RSA-KEY+ ( ptr u8 n n -- n )
-   {: kid:ptr ku:n off:n :}
+: RSA-KEY+ ( ^u8 n n -- n )
+   {: kid:^ ku:n off:n :}
    S\" {\"kty\":\"RSA\",\"kid\":\"" off SET+
    kid ku rot SET+
    S\" \",\"use\":\"sig\",\"alg\":\"RS256\",\"n\":\"" rot SET+
@@ -119,24 +119,24 @@ TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
    s" b" rot RSA-KEY+
    s" ]}" rot SET+ SET-CAP - TWO-U ! ;
 
-: SET-ONE$ ( -- ptr u8 n ) SETS 0 ONE-U @ SPAN:SUB SPAN:$ ;
-: SET-TWO$ ( -- ptr u8 n ) SETS SET-CAP TWO-U @ SPAN:SUB SPAN:$ ;
+: SET-ONE$ ( -- ^u8 n ) SETS 0 ONE-U @ SPAN:SUB SPAN:$ ;
+: SET-TWO$ ( -- ^u8 n ) SETS SET-CAP TWO-U @ SPAN:SUB SPAN:$ ;
 
 
-: CLAIM ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
-   {: name:ptr nu:n :}
-   name nu BEARER:CLAIM$ {: v:ptr vu:n has:bool :}
+: CLAIM ( ^JSON:writer ^u8 n -- ^JSON:writer )
+   {: name:^ nu:n :}
+   name nu BEARER:CLAIM$ {: v:^ vu:n has:bool :}
    has if name nu v vu JSON:WRITE-FIELD-S exit then
    name nu JSON:WRITE-FIELD-NULL ;
 
-: CLAIMS-BODY ( ptr JSON:writer -- ptr JSON:writer )
+: CLAIMS-BODY ( ^JSON:writer -- ^JSON:writer )
    JSON:WRITE-OBJECT-START
    s" azp" CLAIM JSON:WRITE-COMMA
    s" oid" CLAIM JSON:WRITE-COMMA
    s" tid" CLAIM
    JSON:WRITE-OBJECT-END ;
 
-: AZP-BODY ( ptr JSON:writer -- ptr JSON:writer )
+: AZP-BODY ( ^JSON:writer -- ^JSON:writer )
    JSON:WRITE-OBJECT-START s" azp" CLAIM JSON:WRITE-OBJECT-END ;
 
 : GUARDED-ROUTE ( HTTP:request HTTP:response -- )
@@ -182,12 +182,12 @@ TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
       failed OF drop CURL:E-STATE throw ENDOF
    ;MATCH ;
 
-: URL ( ptr u8 n -- ptr u8 n )
-   {: path:ptr pu:n :}
+: URL ( ^u8 n -- ^u8 n )
+   {: path:^ pu:n :}
    SB-RESET s" http://127.0.0.1:" SB-APPEND HTTP:PORT FMT:SB-U path pu SB-APPEND SB$ ;
 
-: OPEN ( ptr u8 n -- CURL:handle )
-   {: path:ptr pu:n :}
+: OPEN ( ^u8 n -- CURL:handle )
+   {: path:^ pu:n :}
    CURL:INIT
    MATCH CURL:init-result
       ready OF ENDOF
@@ -195,8 +195,8 @@ TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
    ;MATCH {: h:CURL:handle :}
    h path pu URL CURL:URL! OK h ;
 
-: ADD ( CURL:handle ptr u8 n -- CURL:handle )
-   {: h:CURL:handle a:ptr u:n :}
+: ADD ( CURL:handle ^u8 n -- CURL:handle )
+   {: h:CURL:handle a:^ u:n :}
    h a u CURL:HEADER+ OK h ;
 
 : BEARING ( CURL:handle -- CURL:handle ) AUTH AUTH-U @ ADD ;
@@ -228,8 +228,8 @@ TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
 
 : SEND ( -- n ) s" /claims" OPEN BEARING FINISH ;
 
-: REFUSED ( n ptr u8 n -- )
-   {: status:n want:ptr wu:n :}
+: REFUSED ( n ^u8 n -- )
+   {: status:n want:^ wu:n :}
    SB-RESET s" WWW-Authenticate: " SB-APPEND want wu SB-APPEND 13 SB-APPEND-C 10 SB-APPEND-C
    HEADS HEADS-U @ SB$ CONTAINS? TTRUE
    BODY-U @ 0 T=
@@ -253,46 +253,46 @@ TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
 : SCOPED-INVALID ( n -- )
    S\" Bearer error=\"invalid_token\", scope=\"tender.read tender.write\"" REFUSED ;
 
-: ANSWERED ( n ptr u8 n -- )
-   {: status:n want:ptr wu:n :}
+: ANSWERED ( n ^u8 n -- )
+   {: status:n want:^ wu:n :}
    BODY BODY-U @ want wu T$=
    status 200 T= ;
 
 
-: TOKEN+ ( ptr u8 n -- ) TOKEN TOKEN-U @ PUT TOKEN-U ! ;
+: TOKEN+ ( ^u8 n -- ) TOKEN TOKEN-U @ PUT TOKEN-U ! ;
 : DOT+ ( -- ) s" ." TOKEN+ ;
-: TOKEN$ ( -- ptr u8 n ) TOKEN 0 TOKEN-U @ SPAN:SUB SPAN:$ ;
+: TOKEN$ ( -- ^u8 n ) TOKEN 0 TOKEN-U @ SPAN:SUB SPAN:$ ;
 
-: ENCODED+ ( ptr u8 n -- )
+: ENCODED+ ( ^u8 n -- )
    TOKEN TOKEN-U @ TOKEN-CAP TOKEN-U @ - SPAN:SUB BASE64:ENCODE-URL
    TOKEN-U @ + TOKEN-U ! ;
 
 : AUTHORIZE ( -- )
-   s" Authorization: Bearer " {: p:ptr pu:n :}
+   s" Authorization: Bearer " {: p:^ pu:n :}
    p AUTH pu BYTE-COPY
-   TOKEN$ {: t:ptr tu:n :}
+   TOKEN$ {: t:^ tu:n :}
    t AUTH pu + tu BYTE-COPY
    pu tu + AUTH-U ! ;
 
-: SIGNED ( ptr u8 n ptr u8 n -- )
-   {: h:ptr hu:n c:ptr cu:n :}
+: SIGNED ( ^u8 n ^u8 n -- )
+   {: h:^ hu:n c:^ cu:n :}
    0 TOKEN-U !
    h hu ENCODED+ DOT+ c cu ENCODED+ ;
 
-: MINT ( ptr u8 n ptr u8 n -- )
+: MINT ( ^u8 n ^u8 n -- )
    SIGNED
    JWS-FIXTURE:PEM$ TOKEN$ SIGNATURE CRYPTO:RS256-MAX-BYTES CRYPTO:RS256-SIGN
    {: su:n :}
    DOT+ SIGNATURE su ENCODED+ AUTHORIZE ;
 
-: HS-MINT ( ptr u8 n ptr u8 n -- )
+: HS-MINT ( ^u8 n ^u8 n -- )
    SIGNED
    JWS-FIXTURE:MODULUS$ TOKEN$ SIGNATURE HS256-BYTES CRYPTO:HMAC-SHA256
    DOT+ SIGNATURE HS256-BYTES ENCODED+ AUTHORIZE ;
 
-: UNSIGNED ( ptr u8 n ptr u8 n -- ) SIGNED DOT+ AUTHORIZE ;
+: UNSIGNED ( ^u8 n ^u8 n -- ) SIGNED DOT+ AUTHORIZE ;
 
-: RAW-TOKEN ( ptr u8 n -- ) 0 TOKEN-U ! TOKEN+ AUTHORIZE ;
+: RAW-TOKEN ( ^u8 n -- ) 0 TOKEN-U ! TOKEN+ AUTHORIZE ;
 
 \ One signature byte changed, away from the last character's padding bits.
 : FLIP ( -- )
@@ -300,18 +300,18 @@ TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
    at c@ [char] A = if [char] B else [char] A then at c!
    AUTHORIZE ;
 
-: CLAIMS ( ptr u8 n n ptr u8 n -- ptr u8 n )
-   {: pre:ptr pu:n exp:n post:ptr postu:n :}
+: CLAIMS ( ^u8 n n ^u8 n -- ^u8 n )
+   {: pre:^ pu:n exp:n post:^ postu:n :}
    SB-RESET pre pu SB-APPEND exp FMT:SB-INT post postu SB-APPEND SB$ ;
 
-: ISS-AUD ( -- ptr u8 n )
+: ISS-AUD ( -- ^u8 n )
    S\" {\"iss\":\"https://issuer.test\",\"aud\":\"api://bearer-test\",\"exp\":" ;
-: WHO ( -- ptr u8 n ) S\" ,\"azp\":\"app-1\",\"oid\":\"o-1\",\"tid\":\"t-1\"}" ;
-: WANT-WHO ( -- ptr u8 n ) S\" {\"azp\":\"app-1\",\"oid\":\"o-1\",\"tid\":\"t-1\"}" ;
+: WHO ( -- ^u8 n ) S\" ,\"azp\":\"app-1\",\"oid\":\"o-1\",\"tid\":\"t-1\"}" ;
+: WANT-WHO ( -- ^u8 n ) S\" {\"azp\":\"app-1\",\"oid\":\"o-1\",\"tid\":\"t-1\"}" ;
 : LATER ( -- n ) epoch-seconds LIFE-S + ;
-: CURRENT ( -- ptr u8 n ) ISS-AUD LATER WHO CLAIMS ;
-: KID-A ( -- ptr u8 n ) S\" {\"alg\":\"RS256\",\"kid\":\"a\"}" ;
-: KID-B ( -- ptr u8 n ) S\" {\"alg\":\"RS256\",\"kid\":\"b\"}" ;
+: CURRENT ( -- ^u8 n ) ISS-AUD LATER WHO CLAIMS ;
+: KID-A ( -- ^u8 n ) S\" {\"alg\":\"RS256\",\"kid\":\"a\"}" ;
+: KID-B ( -- ^u8 n ) S\" {\"alg\":\"RS256\",\"kid\":\"b\"}" ;
 : FETCHED ( -- ) mono-ns FETCHED-BY ! ;
 
 
@@ -513,9 +513,9 @@ TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
    WAITED
    HITS atomic@ 4 T= ;
 
-: METADATA$ ( -- ptr u8 n ) s" https://bearer-test.example/.well-known/oauth-protected-resource" ;
-: REPLACED$ ( -- ptr u8 n ) s" https://replaced.test/.well-known/oauth-protected-resource" ;
-: SCOPE$ ( -- ptr u8 n ) s" tender.read tender.write" ;
+: METADATA$ ( -- ^u8 n ) s" https://bearer-test.example/.well-known/oauth-protected-resource" ;
+: REPLACED$ ( -- ^u8 n ) s" https://replaced.test/.well-known/oauth-protected-resource" ;
+: SCOPE$ ( -- ^u8 n ) s" tender.read tender.write" ;
 
 : METADATA-SCOPE ( -- )
    s" with a URL and a scope no Authorization challenges Bearer naming both" T-LABEL
@@ -554,7 +554,7 @@ TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
    s" METADATA! while HTTP serves throws E-HTTP-STATE" T-LABEL
    [: METADATA$ SCOPE$ BEARER:METADATA! ;] E-HTTP-STATE TTHROWSQ
    HTTP:PORT PORT !
-   s" /keys" URL {: a:ptr u:n :}
+   s" /keys" URL {: a:^ u:n :}
    a KEYS-URL u BYTE-COPY u KEYS-URL-U !
    HTTP:STOP ;
 

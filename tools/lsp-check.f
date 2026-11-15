@@ -29,11 +29,11 @@ variable SUBJECT                         \ the slot being checked
 variable PUBLISHABLE                     \ whether its check completed,
 TYPED-VARIABLE VERIFIED bool             \ whether its verdict was verified,
 variable CURSOR                          \ and the byte of its cursor, -1 for none
-TYPED-VARIABLE SRC-A ptr u8              \ the bytes checked for uses,
+TYPED-VARIABLE SRC-A ^u8              \ the bytes checked for uses,
 variable SRC-U
-TYPED-VARIABLE SRC-P ptr u8              \ its path,
+TYPED-VARIABLE SRC-P ^u8              \ its path,
 variable SRC-PU
-TYPED-VARIABLE SRC-T ptr u8              \ the tail of the word they are of,
+TYPED-VARIABLE SRC-T ^u8              \ the tail of the word they are of,
 variable SRC-TU
 variable SRC-OWNER                      \ slot supplying a probe's subject, -1 for disk
 40 BUFFER: OUTCOME-B                     \ and what its check came to
@@ -41,11 +41,11 @@ variable OUTCOME-U
 variable BATCH-CODE
 variable BATCH-K
 
-: ERR ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: ERR ( ^u8 n -- )
+   {: a:^ u:n :}
    FD:STDERR a u FD:WRITE-FULL ;
 
-: NUMBER$ ( n -- ptr u8 n )  SB-RESET FMT:SB-INT SB$ ;
+: NUMBER$ ( n -- ^u8 n )  SB-RESET FMT:SB-INT SB$ ;
 
 \ A check that did not complete says why on one stderr line; the verifier's prose
 \ follows it verbatim, as it follows a completed check's verdict line:
@@ -60,15 +60,15 @@ variable BATCH-K
 : NEWLINE ( -- )  s\" \n" ERR ;
 
 : RELAY ( -- )
-   VERIFY-LOG$ {: a:ptr u:n :}
+   VERIFY-LOG$ {: a:^ u:n :}
    u 0= if exit then
    a u ERR
    a u + 1- c@ LF <> if NEWLINE then ;
 
 \ A check that completed with this verdict: said only when the verifier wrote
 \ prose.
-: COMPLETED ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: COMPLETED ( ^u8 n -- )
+   {: a:^ u:n :}
    true PUBLISHABLE !
    VERIFY-LOG$ nip 0= if exit then
    HEAD a u ERR NEWLINE RELAY ;
@@ -82,7 +82,7 @@ variable BATCH-K
    ;MATCH
    NEWLINE RELAY ;
 
-: OTHERS ( [ ptr u8 n ptr u8 n -- ] -- )  SUBJECT @ swap DOC-EACH-BUT ;
+: OTHERS ( [ ^u8 n ^u8 n -- ] -- )  SUBJECT @ swap DOC-EACH-BUT ;
 
 : VERIFY ( -- )
    SUBJECT @ {: slot:n :}
@@ -97,12 +97,12 @@ variable BATCH-K
       deferred OF s" deferred" COMPLETED ENDOF
    ;MATCH ;
 
-: OUTCOME! ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: OUTCOME! ( ^u8 n -- )
+   {: a:^ u:n :}
    a OUTCOME-B u BYTE-COPY
    u OUTCOME-U ! ;
 
-: COMPLETE-OUTCOME ( ptr u8 n -- )
+: COMPLETE-OUTCOME ( ^u8 n -- )
    true PUBLISHABLE ! OUTCOME! ;
 
 \ The check of the bytes as the file at the path, for the uses of the tail,
@@ -166,8 +166,8 @@ public
 
 \ Checks the bytes as the file at the path, silently; a completed check is the
 \ store's probe (LSP-DEFS:DEFS-PROBE) only while GATHER runs.
-: USES ( ptr u8 n ptr u8 n ptr u8 n n [ -- ] -- )
-   {: a:ptr u:n p:ptr pu:n t:ptr tu:n owner:n gather :}
+: USES ( ^u8 n ^u8 n ^u8 n n [ -- ] -- )
+   {: a:^ u:n p:^ pu:n t:^ tu:n owner:n gather :}
    a SRC-A !
    u SRC-U !
    p SRC-P !
@@ -188,10 +188,10 @@ public
 
 \ Primitive references can check a bounded group in one isolated child.
 \ Each result is exposed as the usual single probe while GATHER runs.
-: USES-BATCH-BEGIN ( ptr u8 n -- )
+: USES-BATCH-BEGIN ( ^u8 n -- )
    0 BATCH-CODE ! VERIFY-REF-BATCH-BEGIN ;
 
-: USES-BATCH-ADD ( ptr u8 n ptr u8 n -- )
+: USES-BATCH-ADD ( ^u8 n ^u8 n -- )
    [: -1 swap DOC-EACH-BUT ;] VERIFY-BATCH-ADD ;
 
 : USES-BATCH-RUN ( -- )
@@ -228,7 +228,7 @@ public
    true ;
 
 \ What the last USES check came to: its verdict's name, or `throw N`.
-: OUTCOME$ ( -- ptr u8 n )  OUTCOME-B OUTCOME-U @ ;
+: OUTCOME$ ( -- ^u8 n )  OUTCOME-B OUTCOME-U @ ;
 
 ;using
 ;package

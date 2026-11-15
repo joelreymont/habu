@@ -27,8 +27,8 @@ s" A64ASM:ENC-BLR" s" n -- n" TRUST
 s" A64ASM:>LIMM" s" n -- n" TRUST
 s" A64ASM:ENC-ANDI" s" n n n -- n" TRUST
 \ CW@ exposes code bytes; CODE-BYTE+ preserves byte-pointer arithmetic.
-s" A64ICODE:CW@" s" n -- ptr u8" TRUST
-s" A64ICODE:CODE-BYTE+" s" ptr u8 n -- ptr u8" TRUST
+s" A64ICODE:CW@" s" n -- ^u8" TRUST
+s" A64ICODE:CODE-BYTE+" s" ^u8 n -- ^u8" TRUST
 \ ARESET resets the buffer; ADD,/LDAR, emit fixture instructions.
 s" A64ICODE:ARESET" s" --" TRUST
 s" A64ICODE:ADD," s" n n n --" TRUST

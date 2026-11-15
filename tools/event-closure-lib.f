@@ -54,9 +54,9 @@ variable EC-WITH
 variable EC-HARVEST-N
 variable EC-REG-N
 TYPED-VARIABLE EC-HARVEST-RUN [ -- ]
-TYPED-VARIABLE EC-HARVEST-READER [ ptr u8 n ptr u8 n -- ptr u8 n ]
+TYPED-VARIABLE EC-HARVEST-READER [ ^u8 n ^u8 n -- ^u8 n ]
 TYPED-VARIABLE EC-CONTEXT-RUN [ n -- ]
-TYPED-VARIABLE EC-BEFORE [ ptr u8 n -- ]
+TYPED-VARIABLE EC-BEFORE [ ^u8 n -- ]
 
 : EC-TRUE ( -- bool )   0 0= ;
 : EC-FALSE ( -- bool )  EC-TRUE 0= ;
@@ -64,15 +64,15 @@ TYPED-VARIABLE EC-BEFORE [ ptr u8 n -- ]
 : EC-OFF@ ( n -- n )   cells EC-OFF + @ ;
 : EC-LEN@ ( n -- n )   cells EC-LEN + @ ;
 
-: EC-PATH$ ( n -- ptr u8 n ) {: i:n :}
+: EC-PATH$ ( n -- ^u8 n ) {: i:n :}
    i EC-OFF@ EC-POOL + i EC-LEN@ ;
 
-: EC-ROOT$ ( n -- ptr u8 n ) {: idx:n :}
+: EC-ROOT$ ( n -- ^u8 n ) {: idx:n :}
    idx cells EC-ROOT-OFF + @ EC-POOL +
    idx cells EC-ROOT-LEN + @ ;
 
-: EC-SEEN-WITH? ( ptr u8 n ptr u8 n -- bool )
-   {: a:ptr u:n root:ptr rootu:n :}
+: EC-SEEN-WITH? ( ^u8 n ^u8 n -- bool )
+   {: a:^ u:n root:^ rootu:n :}
    0 begin dup EC-N @ < while
       dup EC-PATH$ a u STR= if
          dup EC-ROOT$ root rootu STR= if drop EC-TRUE exit then
@@ -84,7 +84,7 @@ TYPED-VARIABLE EC-BEFORE [ ptr u8 n -- ]
    EC-N @ EC-MAX >= if E-DISC-CAPACITY throw then
    EC-POOL-N @ u + EC-POOL-CAP > if E-DISC-CAPACITY throw then ;
 
-: EC-ADD-ROW ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n root:ptr rootu:n :}
+: EC-ADD-ROW ( ^u8 n ^u8 n -- ) {: a:^ u:n root:^ rootu:n :}
    u rootu + EC-ROOM
    EC-POOL-N @ {: off:n :}
    a off EC-POOL + u BYTE-COPY
@@ -96,12 +96,12 @@ TYPED-VARIABLE EC-BEFORE [ ptr u8 n -- ]
    off u + rootu + EC-POOL-N !
    EC-N @ 1+ EC-N ! ;
 
-: EC-ADD-WITH ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n root:ptr rootu:n :}
+: EC-ADD-WITH ( ^u8 n ^u8 n -- ) {: a:^ u:n root:^ rootu:n :}
    a u root rootu EC-SEEN-WITH? if exit then
    a u root rootu EC-ADD-ROW ;
 
 : EC-SPEC-ONLY? ( n -- bool ) {: ix:n :}
-   ix EVENT-PATH@ {: a:ptr u:n :}
+   ix EVENT-PATH@ {: a:^ u:n :}
    false
    ix 0 ?do
       i EVENT-KIND@ EV-INCLUDED <> if
@@ -137,8 +137,8 @@ TYPED-VARIABLE EC-BEFORE [ ptr u8 n -- ]
 : EC-CLEAR ( -- )
    0 EC-N !  0 EC-POOL-N !  0 EC-HEAD ! ;
 
-: EC-FIND-WITH ( ptr u8 n ptr u8 n -- n )
-   {: a:ptr u:n root:ptr rootu:n :}
+: EC-FIND-WITH ( ^u8 n ^u8 n -- n )
+   {: a:^ u:n root:^ rootu:n :}
    0 begin dup EC-N @ < while
       dup EC-PATH$ a u STR= if
          dup EC-ROOT$ root rootu STR= if exit then
@@ -149,7 +149,7 @@ TYPED-VARIABLE EC-BEFORE [ ptr u8 n -- ]
 : EC-STATE@ ( n -- n )   cells EC-STATE + @ ;
 : EC-STATE! ( n n -- ) {: v:n id:n :}   v id cells EC-STATE + ! ;
 
-: EC-INTERN ( ptr u8 n ptr u8 n -- n ) {: a:ptr u:n root:ptr rootu:n :}
+: EC-INTERN ( ^u8 n ^u8 n -- n ) {: a:^ u:n root:^ rootu:n :}
    a u root rootu EC-FIND-WITH
    dup 0 >= if exit then
    drop
@@ -169,7 +169,7 @@ TYPED-VARIABLE EC-BEFORE [ ptr u8 n -- ]
    EC-DIR-N @ 1+ EC-DIR-N ! ;
 
 : EC-ORDER-FIND ( n -- n ) {: id:n :}
-   id EC-PATH$ {: a:ptr u:n :}
+   id EC-PATH$ {: a:^ u:n :}
    0 begin dup EC-ORD-N @ < while
       dup cells EC-ORDER + @ EC-PATH$ a u STR= if exit then
       1+
@@ -203,7 +203,7 @@ TYPED-VARIABLE EC-BEFORE [ ptr u8 n -- ]
 \ Restoring the registry at its return keeps an uncalled body's provided from
 \ suppressing a later load, including when the body sits inside another body.
 : EC-PATH-KNOWN? ( n -- bool ) {: id:n :}
-   id EC-PATH$ {: a:ptr u:n :}
+   id EC-PATH$ {: a:^ u:n :}
    EC-REG-N @ 0 ?do
       i cells EC-REG + @ EC-PATH$ a u STR= if true unloop exit then
    loop
@@ -232,11 +232,11 @@ TYPED-VARIABLE EC-BEFORE [ ptr u8 n -- ]
 
 : EC-HARVEST-WITH-ACT ( -- )
    EC-HEAD @ EC-PATH$ EC-HEAD @ EC-ROOT$
-   EC-HARVEST-READER @ execute {: bytes:ptr size:n :}
+   EC-HARVEST-READER @ execute {: bytes:^ size:n :}
    EC-HEAD @ EC-PATH$ EC-HEAD @ EC-ROOT$ bytes size DISCOVER:RUN-BYTES ;
 
-: EC-HARVEST-PASS ( ptr u8 n ptr u8 n -- )
-   {: a:ptr u:n root:ptr rootu:n :}
+: EC-HARVEST-PASS ( ^u8 n ^u8 n -- )
+   {: a:^ u:n root:^ rootu:n :}
    EC-CLEAR
    a u root rootu EC-ADD-WITH
    DISCOVER:ROWS-PASS-BEGIN
@@ -248,8 +248,8 @@ TYPED-VARIABLE EC-BEFORE [ ptr u8 n -- ]
    repeat
    DISCOVER:ROWS-PASS-END ;
 
-: EC-HARVEST-LOOP ( ptr u8 n ptr u8 n -- )
-   {: a:ptr u:n root:ptr rootu:n :}
+: EC-HARVEST-LOOP ( ^u8 n ^u8 n -- )
+   {: a:^ u:n root:^ rootu:n :}
    -1 EC-HARVEST-N !
    begin
       DISCOVER:ROWS-VERSION {: ver:n :}
@@ -269,7 +269,7 @@ TYPED-VARIABLE EC-BEFORE [ ptr u8 n -- ]
 
 : EC-CONTEXT-WITH-ACT ( n -- ) {: id:n :}
    id EC-PATH$ id EC-ROOT$ EC-HARVEST-READER @ execute
-   {: bytes:ptr size:n :}
+   {: bytes:^ size:n :}
    id EC-PATH$ id EC-ROOT$ bytes size DISCOVER:RUN-BYTES ;
 
 : EC-CONTEXT-EXPAND ( n bool bool -- )
@@ -315,8 +315,8 @@ TYPED-VARIABLE EC-BEFORE [ ptr u8 n -- ]
    -1 id cells EC-ACTIVE + +!
    speculative if reg-mark EC-REG-N ! then ;
 
-: EC-CONTEXT-CHECK ( ptr u8 n ptr u8 n -- )
-   {: a:ptr u:n root:ptr rootu:n :}
+: EC-CONTEXT-CHECK ( ^u8 n ^u8 n -- )
+   {: a:^ u:n root:^ rootu:n :}
    EC-ORD-RESET
    DISCOVER:CONTEXT-BEGIN
    a u root rootu EC-INTERN
@@ -326,8 +326,8 @@ TYPED-VARIABLE EC-BEFORE [ ptr u8 n -- ]
 \ start and after each load. A replay that learned a site harvests again when
 \ the site's package or a keyed record's key differs (SD-S-LEARN and
 \ SD-R-CONTEXT-KEY).
-: EC-CLOSURE ( ptr u8 n ptr u8 n -- )
-   {: a:ptr u:n root:ptr rootu:n :}
+: EC-CLOSURE ( ^u8 n ^u8 n -- )
+   {: a:^ u:n root:^ rootu:n :}
    DISCOVER:ROWS-RESET
    begin
       a u root rootu EC-HARVEST-LOOP
@@ -337,7 +337,7 @@ TYPED-VARIABLE EC-BEFORE [ ptr u8 n -- ]
    until ;
 
 : EC-OUT-HAS-PATH? ( n -- bool ) {: id:n :}
-   id EC-PATH$ {: a:ptr u:n :}
+   id EC-PATH$ {: a:^ u:n :}
    EC-OUT-N @ 0 ?do
       i cells EC-OUT + @ EC-PATH$ a u STR= if true unloop exit then
    loop
@@ -372,19 +372,19 @@ public
 
 : COUNT ( -- n )   EC-OUT-N @ ;
 
-: PATH$ ( n -- ptr u8 n )   cells EC-OUT + @ EC-PATH$ ;
+: PATH$ ( n -- ^u8 n )   cells EC-OUT + @ EC-PATH$ ;
 
 \ Identity within the root that resolved this member; PATH$ still names the
 \ actual file to read, including a dependency found through a fallback root.
-: NAME$ ( n -- ptr u8 n ) {: i:n :}
+: NAME$ ( n -- ^u8 n ) {: i:n :}
    i cells EC-OUT + @ {: id:n :}
    id EC-PATH$ id EC-ROOT$ RELATIVE ;
 
 \ ENTRY-RESOLVE, callbacks and dependency scans can reuse engine path buffers.
 \ Keep both the selected entry and its owner stable across the two passes.
 private
-: EC-STABLE-IN ( ptr u8 n ptr u8 n -- ptr u8 n ptr u8 n )
-   {: a:ptr u:n root:ptr rootu:n :}
+: EC-STABLE-IN ( ^u8 n ^u8 n -- ^u8 n ^u8 n )
+   {: a:^ u:n root:^ rootu:n :}
    u 0 <= u PATH-CAP > or rootu 0 <= or rootu PATH-CAP > or
       if E-PATH-RANGE throw then
    a EC-ENTRY u BYTE-COPY
@@ -394,10 +394,10 @@ private
 public
 \ A selected entry keeps the root that chose it. The observer runs at each
 \ source read, including harvest reads that learn new family grammar.
-: BUILD-IN-EACH ( ptr u8 n ptr u8 n [ ptr u8 n -- ] -- )
-   {: a:ptr u:n root:ptr rootu:n before :}
+: BUILD-IN-EACH ( ^u8 n ^u8 n [ ^u8 n -- ] -- )
+   {: a:^ u:n root:^ rootu:n before :}
    a u root rootu EC-STABLE-IN
-   {: entry:ptr entryu:n owner:ptr owneru:n :}
+   {: entry:^ entryu:n owner:^ owneru:n :}
    before EC-BEFORE !
    0 EC-WITH !
    [: EC-HARVEST-ACT ;] EC-HARVEST-RUN !
@@ -406,10 +406,10 @@ public
    EC-PUBLISH
    DISCOVER:ROWS-RESET ;
 
-: BUILD-IN ( ptr u8 n ptr u8 n -- )
+: BUILD-IN ( ^u8 n ^u8 n -- )
    [: 2drop ;] BUILD-IN-EACH ;
 
-: BUILD ( ptr u8 n -- )
+: BUILD ( ^u8 n -- )
    ENTRY-RESOLVE drop RESOLVED-ROOT$ BUILD-IN ;
 
 \ A source owner reads every loading event from its own byte table. Discovery
@@ -418,10 +418,10 @@ public
 \ loading event whose path is not a file joins the list, and the read refuses
 \ it (DISCOVER:RUN-IN names it on fd 2 and rethrows E-FS-STAT): a closure that
 \ left it out would key fewer files than the build reads.
-: BUILD-WITH ( ptr u8 n [ ptr u8 n ptr u8 n -- ptr u8 n ] -- )
-   {: a:ptr u:n reader :}
+: BUILD-WITH ( ^u8 n [ ^u8 n ^u8 n -- ^u8 n ] -- )
+   {: a:^ u:n reader :}
    a u ENTRY-RESOLVE drop RESOLVED-ROOT$ EC-STABLE-IN
-   {: entry:ptr entryu:n owner:ptr owneru:n :}
+   {: entry:^ entryu:n owner:^ owneru:n :}
    1 EC-WITH !
    reader EC-HARVEST-READER !
    [: EC-HARVEST-WITH-ACT ;] EC-HARVEST-RUN !
@@ -434,11 +434,11 @@ public
 \ require/include closure, so the last entry is always the entry file itself.
 \ Consumers that replay residual package scope walk indices 0..ORDER-COUNT-2
 \ (the deps in load order) and scan the entry file separately.
-: LOAD-ORDER ( ptr u8 n -- ) BUILD ;
+: LOAD-ORDER ( ^u8 n -- ) BUILD ;
 
 : ORDER-COUNT ( -- n )   EC-ORD-N @ ;
 
-: ORDER-PATH$ ( n -- ptr u8 n )   cells EC-ORDER + @ EC-PATH$ ;
+: ORDER-PATH$ ( n -- ^u8 n )   cells EC-ORDER + @ EC-PATH$ ;
 
 ;using
 ;package

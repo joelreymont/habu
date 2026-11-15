@@ -30,17 +30,17 @@ create SIZES 1 , 63 , 64 , 65 , 127 , 200 , 999 ,
 : FILL-A ( -- )
    [char] a A-BYTES SPAN:FILL ;
 
-: A$ ( n -- ptr u8 n )
+: A$ ( n -- ^u8 n )
    A-BYTES SPAN:$ drop swap ;
 
-: HEX$ ( SHA1:digest -- ptr u8 n )
+: HEX$ ( SHA1:digest -- ^u8 n )
    DG SHA1:DIGEST!
    DG SPAN:$ drop {: d :}
    HEX SPAN:$ drop {: h :}
    SHA1:DIGEST-BYTES 0 do d i + c@ h i 2 * + BYTE>HEX loop
    h 40 ;
 
-: DIGEST= ( SHA1:digest ptr u8 n -- ) {: got want wu:n :}
+: DIGEST= ( SHA1:digest ^u8 n -- ) {: got want wu:n :}
    got HEX$ want wu T$= ;
 
 : FIPS ( -- )
@@ -73,7 +73,7 @@ create SIZES 1 , 63 , 64 , 65 , 127 , 200 , 999 ,
 
 \ The byte-wise stream fills the tail through every position
 \ before the length lands.
-: BOUNDARY ( n ptr u8 n -- ) {: u:n want wu:n :}
+: BOUNDARY ( n ^u8 n -- ) {: u:n want wu:n :}
    CTX-A u A$ SHA1:HASH want wu DIGEST=
    CTX-B SHA1:START
    u 0 do CTX-B 1 A$ SHA1:FEED loop

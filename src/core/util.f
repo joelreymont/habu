@@ -28,7 +28,7 @@ CAST: >I64 ( n -- i64 )
 \ The scope-find flag bit set when two used publics hold the tail.
 2 constant SCOPE-FIND-AMBIGUOUS
 
-: CORE-STR= {: a:ptr u:n b:ptr v:n :}   \ ( ptr u8 n ptr u8 n -- bool ) byte-wise string equality
+: CORE-STR= {: a:^ u:n b:^ v:n :}   \ ( ^u8 n ^u8 n -- bool ) byte-wise string equality
    u v <> IF 0 0= 0= EXIT THEN
    u 0 ?do  a i + c@  b i + c@  <> if 0 0= 0= unloop exit then  loop 0 0= ;
 
@@ -38,13 +38,13 @@ CAST: >I64 ( n -- i64 )
    c $5A > IF c EXIT THEN
    c $20 or ;
 
-: CORE-STR=CI {: a:ptr u:n b:ptr v:n :}   \ ( ptr u8 n ptr u8 n -- bool ) folded equality
+: CORE-STR=CI {: a:^ u:n b:^ v:n :}   \ ( ^u8 n ^u8 n -- bool ) folded equality
    u v <> IF 0 0= 0= EXIT THEN
    u 0 ?do  a i + c@ CORE-FOLD-C  b i + c@ CORE-FOLD-C  <> if 0 0= 0= unloop exit then  loop 0 0= ;
 
 variable RDP
 
-: RD32 {: p:ptr :} ( ptr u8 -- n )
+: RD32 {: p:^ :} ( ^u8 -- n )
    p c@  p 1 + c@ 8 lshift or  p 2 + c@ 16 lshift or  p 3 + c@ 24 lshift or ;
 
 \ The words that build the engine's error messages: the line a position is on,
@@ -63,20 +63,20 @@ variable DIGIT-AT
 
 public
 
-: LINE ( ptr u8 ptr u8 -- n )
-   {: b:ptr p:ptr :}
+: LINE ( ^u8 ^u8 -- n )
+   {: b:^ p:^ :}
    1 p b - 0 ?do b i + c@ 10 = if 1 + then loop ;
 
 \ A number's digits without its sign, from the end of DIGITS: taken on the
 \ non-positive side, so MIN-N has them too, as / and mod truncate toward zero.
-: DIGITS$ ( n -- ptr u8 n )
+: DIGITS$ ( n -- ^u8 n )
    DIGITS-CAP DIGIT-AT !
    dup 0 > if negate then
    begin dup 10 mod negate $30 + DIGIT+ 10 / dup 0= until drop
    DIGITS DIGIT-AT @ +  DIGITS-CAP DIGIT-AT @ - ;
 
 \ Descriptor 2; a failed write has nowhere further to be reported.
-: TYPE ( ptr u8 n -- ) {: a:ptr u:n :}
+: TYPE ( ^u8 n -- ) {: a:^ u:n :}
    2 a u write drop ;
 
 ;package

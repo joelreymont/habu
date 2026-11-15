@@ -44,15 +44,15 @@ variable CHILD-CODE
 
 \ A pipe that holds these bytes and then ends; a reader taking bodies up to the
 \ maximum reads its read end.
-: FEED-MAX ( ptr u8 n n -- )
-   {: a:ptr u:n max:n :}
+: FEED-MAX ( ^u8 n n -- )
+   {: a:^ u:n max:n :}
    FD:PIPE-PAIR {: r:fd w:fd :}
    w a u WRITE-FULL
    w FD>N close
    r FD>N FEED-FD !
    r max BIND-ON ;
 
-: FEED ( ptr u8 n -- )
+: FEED ( ^u8 n -- )
    MAX-BODY FEED-MAX ;
 
 : DONE ( -- )
@@ -66,7 +66,7 @@ variable CHILD-CODE
    ;MATCH ;
 
 \ The pending body of u bytes, read into SMALL.
-: BODY$ ( n -- ptr u8 n )
+: BODY$ ( n -- ^u8 n )
    {: u:n :}
    R SMALL BODY
    SMALL $ drop u ;
@@ -75,11 +75,11 @@ variable CHILD-CODE
    [: NEXT-LEN drop ;] E-CONTENT-LENGTH-STATE TTHROWSQ ;
 
 : PATTERN! ( SPAN:span<u8> -- )
-   $ {: p:ptr u:n :}
+   $ {: p:^ u:n :}
    u 0 ?do i PATTERN-MOD mod p i + c! loop ;
 
 : PATTERN? ( SPAN:span<u8> -- bool )
-   $ {: p:ptr u:n :}
+   $ {: p:^ u:n :}
    u 0 ?do p i + c@ i PATTERN-MOD mod <> if false unloop exit then loop
    true ;
 
@@ -120,7 +120,7 @@ variable CHILD-CODE
    NEXT-LEN -1 T=
    DONE ;
 
-: TRUNCATED-HEADER ( ptr u8 n -- )
+: TRUNCATED-HEADER ( ^u8 n -- )
    FEED
    [: NEXT-LEN drop ;] E-CONTENT-LENGTH-TRUNCATED TTHROWSQ
    SPENT
@@ -137,7 +137,7 @@ variable CHILD-CODE
    SPENT
    DONE ;
 
-: MALFORMED ( ptr u8 n -- )
+: MALFORMED ( ^u8 n -- )
    FEED
    [: NEXT-LEN drop ;] E-CONTENT-LENGTH-MALFORMED TTHROWSQ
    SPENT
@@ -149,7 +149,7 @@ $1000 constant PAD-CAP
 PAD-CAP BUFFER: PAD-BUF
 TYPED-VARIABLE PAD-LEN len
 
-: PAD-LINE$ ( n -- ptr u8 n )
+: PAD-LINE$ ( n -- ^u8 n )
    {: u:n :}
    PAD-LEN BUF-RESET
    s" X-Pad: " PAD-BUF PAD-CAP PAD-LEN BUF-APPEND
@@ -187,8 +187,8 @@ TYPED-VARIABLE PAD-LEN len
    LINE-CAP 1+ PAD-LINE$ MALFORMED
    3000 PAD-LINE$ MALFORMED ;
 
-: FORM ( ptr u8 n ptr u8 n -- )
-   {: a:ptr u:n want:ptr wu:n :}
+: FORM ( ^u8 n ^u8 n -- )
+   {: a:^ u:n want:^ wu:n :}
    a u FEED
    NEXT-LEN wu T=
    wu BODY$ want wu T$=
@@ -238,8 +238,8 @@ TYPED-VARIABLE PAD-LEN len
    pid PROCESS:WAIT PROCESS:STATUS>ENDING 0 T-ENDING-EXITED= ;
 
 
-: PIECE ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: PIECE ( ^u8 n -- )
+   {: a:^ u:n :}
    CHILD-FD @ >FD a u WRITE-FULL
    PIECE-MS >MS TASK:SLEEP ;
 
@@ -287,7 +287,7 @@ TYPED-VARIABLE PAD-LEN len
    DONE ;
 
 \ A message whose body is LONG bytes of b.
-: LONG$ ( -- ptr u8 n )
+: LONG$ ( -- ^u8 n )
    SB-RESET  s" Content-Length: " SB-APPEND  LONG FMT:SB-U  s\" \r\n\r\n" SB-APPEND
    PAD-LEN BUF-RESET
    SB$ PAD-BUF PAD-CAP PAD-LEN BUF-APPEND
@@ -321,7 +321,7 @@ TYPED-VARIABLE PAD-LEN len
    DONE ;
 
 
-: SENT$ ( fd n -- ptr u8 n )
+: SENT$ ( fd n -- ^u8 n )
    {: r:fd u:n :}
    r SMALL u TAKE READ-EXACT MATCH FD:fill
       full OF ENDOF

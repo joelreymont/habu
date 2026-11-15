@@ -29,37 +29,37 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
 
 \ Representation leaf: a span's address as a number, used only by the range
 \ and alias checks; its extent and lifetime stay caller-owned.
-: ADDRESS ( ptr u8 -- n ) NULL-PTR BYTE-VIEW - ;
+: ADDRESS ( ^u8 -- n ) NULL-PTR BYTE-VIEW - ;
 
-LINEAR: MINT ( ptr n -- EDIT:editor )
-LINEAR: ERASE ( EDIT:editor -- ptr n )
+LINEAR: MINT ( ^n -- EDIT:editor )
+LINEAR: ERASE ( EDIT:editor -- ^n )
 
-: STATE ( EDIT:editor -- EDIT:editor ptr n )
+: STATE ( EDIT:editor -- EDIT:editor ^n )
    ERASE dup MINT swap ;
 
-: REQUIRE-SPAN ( ptr u8 n -- )
-   {: source:ptr size:n :}
+: REQUIRE-SPAN ( ^u8 n -- )
+   {: source:^ size:n :}
    size 0 < if E-RANGE throw then
    source ADDRESS {: start:n :}
    start 0 < if E-RANGE throw then
    size 0 > start 0= and if E-RANGE throw then
    size MAX-SIZE start - > if E-RANGE throw then ;
 
-: OVERLAPS? ( ptr u8 n ptr u8 n -- bool )
-   {: first:ptr first-len:n second:ptr second-len:n :}
+: OVERLAPS? ( ^u8 n ^u8 n -- bool )
+   {: first:^ first-len:n second:^ second-len:n :}
    first-len 0= second-len 0= or if false exit then
    first ADDRESS second ADDRESS second-len + <
    second ADDRESS first ADDRESS first-len + < and ;
 
-: ROW ( ptr n n -- ptr n )
+: ROW ( ^n n -- ^n )
    {: state index:n :}
    state HEADER-CELLS index ROW-CELLS * + cells + ;
 
-: SOURCE$ ( ptr n -- ptr u8 n )
+: SOURCE$ ( ^n -- ^u8 n )
    {: state :}
    state SOURCE-IDX ptr-field @ state SOURCE-LEN + @ ;
 
-: ROW-SOURCE ( ptr n -- ptr u8 n )
+: ROW-SOURCE ( ^n -- ^u8 n )
    {: row :}
    row 2 ptr-field @ row 3 cells + @ ;
 
@@ -75,14 +75,14 @@ public
    ROW-CELLS * HEADER-CELLS + cells ;
 
 private
-: STORAGE-CHECK ( ptr n n ptr u8 n -- )
+: STORAGE-CHECK ( ^n n ^u8 n -- )
    {: storage cap:n source size:n :}
    storage BYTE-VIEW cap REQUIRE-SPAN
    cap 0 STORAGE-BYTES < if E-CAPACITY throw then
    source size REQUIRE-SPAN
    storage BYTE-VIEW cap source size OVERLAPS? if E-ALIAS throw then ;
 
-: INIT-STATE ( ptr n n ptr u8 n -- )
+: INIT-STATE ( ^n n ^u8 n -- )
    {: storage cap:n source size:n :}
    source storage SOURCE-IDX ptr-field !
    size storage SOURCE-LEN + !
@@ -93,7 +93,7 @@ private
    cap storage STORAGE-LEN + ! ;
 
 public
-: INIT ( ptr n n ptr u8 n -- EDIT:editor )
+: INIT ( ^n n ^u8 n -- EDIT:editor )
    {: storage cap:n source size:n :}
    storage cap source size STORAGE-CHECK
    storage cap source size INIT-STATE
@@ -103,7 +103,7 @@ public
    ERASE drop ;
 
 private
-: EDIT-CHECK ( ptr n n n ptr u8 n -- )
+: EDIT-CHECK ( ^n n n ^u8 n -- )
    {: state start:n removed:n replacement added:n :}
    replacement added REQUIRE-SPAN
    start 0 < removed 0 < or if E-RANGE throw then
@@ -118,7 +118,7 @@ private
       E-ALIAS throw
    then ;
 
-: SAVE-EDIT ( ptr n n n ptr u8 n -- )
+: SAVE-EDIT ( ^n n n ^u8 n -- )
    {: state start:n removed:n replacement added:n :}
    state state USED + @ ROW {: row :}
    start row !
@@ -129,11 +129,11 @@ private
    state RESULT-LEN + @ removed - added + state RESULT-LEN + !
    1 state USED + +! ;
 
-: REPLACE-ARGS ( EDIT:editor off len ptr u8 n -- EDIT:editor ptr n n n ptr u8 n )
+: REPLACE-ARGS ( EDIT:editor off len ^u8 n -- EDIT:editor ^n n n ^u8 n )
    {: start:off removed:len replacement added:n :}
    STATE start OFF>N removed LEN>N replacement added ;
 
-: APPLY-EDIT ( ptr n n n ptr u8 n -- )
+: APPLY-EDIT ( ^n n n ^u8 n -- )
    {: state start:n removed:n replacement added:n :}
    state start removed replacement added EDIT-CHECK
    state start removed replacement added SAVE-EDIT ;
@@ -141,11 +141,11 @@ private
 public
 \ Keep the editor below every throwing call. catch restores stack depth, so
 \ binding the other arguments to locals here could overwrite its saved slot.
-: REPLACE ( EDIT:editor off len ptr u8 n -- EDIT:editor )
+: REPLACE ( EDIT:editor off len ^u8 n -- EDIT:editor )
    REPLACE-ARGS APPLY-EDIT ;
 
 private
-: DESTINATION-CHECK ( ptr n ptr u8 n -- )
+: DESTINATION-CHECK ( ^n ^u8 n -- )
    {: state destination cap:n :}
    destination cap REQUIRE-SPAN
    state RESULT-LEN + @ cap > if E-CAPACITY throw then
@@ -157,19 +157,19 @@ private
       state i ROW ROW-SOURCE destination cap OVERLAPS? if E-ALIAS throw then
    loop ;
 
-: COPY-SPAN ( ptr u8 n ptr u8 -- ptr u8 )
+: COPY-SPAN ( ^u8 n ^u8 -- ^u8 )
    {: source size:n destination :}
    source destination size >LEN BYTE-COPY-LEN
    destination size + ;
 
-: COPY-EDIT ( ptr n ptr n n ptr u8 -- n ptr u8 )
+: COPY-EDIT ( ^n ^n n ^u8 -- n ^u8 )
    {: state row prior:n destination :}
    state SOURCE-IDX ptr-field @ prior + row @ prior - destination COPY-SPAN
    {: next :}
    row @ row CELL + @ +
    row ROW-SOURCE next COPY-SPAN ;
 
-: WRITE-EDITS ( ptr n ptr u8 -- )
+: WRITE-EDITS ( ^n ^u8 -- )
    {: state destination :}
    0 destination
    state USED + @ 0 ?do
@@ -180,18 +180,18 @@ private
    state SOURCE-IDX ptr-field @ prior +
    state SOURCE-LEN + @ prior - next COPY-SPAN drop ;
 
-: WRITE-ARGS ( EDIT:editor ptr u8 n -- EDIT:editor ptr n ptr u8 n )
+: WRITE-ARGS ( EDIT:editor ^u8 n -- EDIT:editor ^n ^u8 n )
    {: destination cap:n :}
    STATE destination cap ;
 
-: WRITE-STATE ( ptr n ptr u8 n -- n )
+: WRITE-STATE ( ^n ^u8 n -- n )
    {: state destination cap:n :}
    state destination cap DESTINATION-CHECK
    state destination WRITE-EDITS
    state RESULT-LEN + @ ;
 
 public
-: WRITE ( EDIT:editor ptr u8 n -- EDIT:editor n )
+: WRITE ( EDIT:editor ^u8 n -- EDIT:editor n )
    WRITE-ARGS WRITE-STATE ;
 
 seal-package

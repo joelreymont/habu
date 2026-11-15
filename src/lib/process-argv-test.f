@@ -63,24 +63,24 @@ variable PAT-I
      err OF PCAP-FAILED:UNMAKE  {: o:len e:len c:rc :} o LEN>N e LEN>N c RC>N ENDOF
    ;MATCH ;
 
-: PAT-LTRIM-SPACES ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
+: PAT-LTRIM-SPACES ( ^u8 n -- ^u8 n ) {: a:^ u :}
    0 begin dup u < while
       dup a + c@ PAT-SPACE <> if dup a + u rot - exit then
       1+
    repeat drop a 0 ;
 
-: PAT-CAPTURE ( ptr u8 n ptr u8 n ptr u8 n n -- n n n )
-   {: path:ptr pathu out:ptr outcap err:ptr errcap timeout :}
+: PAT-CAPTURE ( ^u8 n ^u8 n ^u8 n n -- n n n )
+   {: path:^ pathu out:^ outcap err:^ errcap timeout :}
    path pathu >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-CAPTURE
    PAT-CAPTURE>N ;
 
-: PAT-STDIN-CAPTURE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- n n n )
-   {: path:ptr pathu in:ptr inu out:ptr outcap err:ptr errcap timeout :}
+: PAT-STDIN-CAPTURE ( ^u8 n ^u8 n ^u8 n ^u8 n n -- n n n )
+   {: path:^ pathu in:^ inu out:^ outcap err:^ errcap timeout :}
    path pathu >LEN in inu >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-STDIN-CAPTURE
    PAT-CAPTURE>N ;
 
-: PAT-STDIN-CAPTURE-OUTCOME ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- len len PROCESS:ending )
-   {: path:ptr pathu in:ptr inu out:ptr outcap err:ptr errcap timeout :}
+: PAT-STDIN-CAPTURE-OUTCOME ( ^u8 n ^u8 n ^u8 n ^u8 n n -- len len PROCESS:ending )
+   {: path:^ pathu in:^ inu out:^ outcap err:^ errcap timeout :}
    path pathu >LEN in inu >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME ;
 
 : PAT-CHECK-WC-COUNT ( n n n -- ) {: outu erru rc :}
@@ -137,8 +137,8 @@ variable PAT-I
 
 
 \ The output at PAT-AT is these bytes and a comma; PAT-AT moves past them.
-: PAT-NEXT ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: PAT-NEXT ( ^u8 n -- )
+   {: a:^ u:n :}
    PAT-BIG-OUT PAT-AT @ + u a u T$=
    PAT-BIG-OUT PAT-AT @ u + + c@ 44 T=
    PAT-AT @ u 1+ + PAT-AT ! ;

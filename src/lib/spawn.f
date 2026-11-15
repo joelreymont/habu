@@ -27,8 +27,8 @@ private
 
 TASK:+USER ERRNO-CELL n
 
-LINEAR: MINT ( ptr n -- PROCESS:request )
-LINEAR: ERASE ( PROCESS:request -- ptr n )
+LINEAR: MINT ( ^n -- PROCESS:request )
+LINEAR: ERASE ( PROCESS:request -- ^n )
 
 \ fcntl's F_GETFD and the errno of a closed fd, on Darwin and Linux alike.
 1 constant F-GETFD
@@ -38,12 +38,12 @@ LINEAR: ERASE ( PROCESS:request -- ptr n )
 $3D constant EQUAL-BYTE
 
 STRUCTURE vectors DERIVE addr
-   FIELD args ptr VEC:vector<ptr u8>
-   FIELD envs ptr VEC:vector<ptr u8>
-   FIELD map ptr VEC:vector<n>
+   FIELD args ^VEC:vector<^u8>
+   FIELD envs ^VEC:vector<^u8>
+   FIELD map ^VEC:vector<n>
 ;STRUCTURE
 
-CAST: >VECTORS ( ptr n -- ptr vectors )
+CAST: >VECTORS ( ^n -- ^vectors )
 
 \ The SPAWN-ABI cells spawn-fds reads come first: PATH and
 \ CWD written as given, the rest just before the spawn.
@@ -57,29 +57,29 @@ ARGS-AT VECTORS-CELLS + constant SET-AT
 SET-AT 1+ constant HERM-AT
 HERM-AT 1+ constant RECORD-CELLS
 
-: PATH-CELL ( ptr n -- ptr ptr u8 ) SPAWN-ABI:PATH 1 cells / ptr-field ;
-: ARGV-CELL ( ptr n -- ptr ptr a ) SPAWN-ABI:ARGV 1 cells / ptr-field ;
-: ENVP-CELL ( ptr n -- ptr ptr a ) SPAWN-ABI:ENVP 1 cells / ptr-field ;
-: CWD-CELL ( ptr n -- ptr ptr u8 ) SPAWN-ABI:CWD 1 cells / ptr-field ;
-: FDS-CELL ( ptr n -- ptr ptr a ) SPAWN-ABI:FDS 1 cells / ptr-field ;
-: NFDS-CELL ( ptr n -- ptr n ) SPAWN-ABI:NFDS + ;
-: CHUNKS ( ptr n -- ptr n ) CHUNKS-AT cells + ;
-: ARGS ( ptr n -- ptr ptr VEC:vector<ptr u8> )
+: PATH-CELL ( ^n -- ^^u8 ) SPAWN-ABI:PATH 1 cells / ptr-field ;
+: ARGV-CELL ( ^n -- ^^a ) SPAWN-ABI:ARGV 1 cells / ptr-field ;
+: ENVP-CELL ( ^n -- ^^a ) SPAWN-ABI:ENVP 1 cells / ptr-field ;
+: CWD-CELL ( ^n -- ^^u8 ) SPAWN-ABI:CWD 1 cells / ptr-field ;
+: FDS-CELL ( ^n -- ^^a ) SPAWN-ABI:FDS 1 cells / ptr-field ;
+: NFDS-CELL ( ^n -- ^n ) SPAWN-ABI:NFDS + ;
+: CHUNKS ( ^n -- ^n ) CHUNKS-AT cells + ;
+: ARGS ( ^n -- ^^VEC:vector<^u8> )
    ARGS-AT cells + >VECTORS VECTORS-ARGS ;
-: ENVS ( ptr n -- ptr ptr VEC:vector<ptr u8> )
+: ENVS ( ^n -- ^^VEC:vector<^u8> )
    ARGS-AT cells + >VECTORS VECTORS-ENVS ;
-: MAP ( ptr n -- ptr ptr VEC:vector<n> )
+: MAP ( ^n -- ^^VEC:vector<n> )
    ARGS-AT cells + >VECTORS VECTORS-MAP ;
-: SET ( ptr n -- ptr n ) SET-AT cells + ;
-: HERM ( ptr n -- ptr n ) HERM-AT cells + ;
+: SET ( ^n -- ^n ) SET-AT cells + ;
+: HERM ( ^n -- ^n ) HERM-AT cells + ;
 
-: MAP-LEN ( ptr n -- n ) MAP @ VEC:COUNT ;
-: MAP! ( n ptr n n -- ) swap MAP @ swap VEC:AT ! ;
+: MAP-LEN ( ^n -- n ) MAP @ VEC:COUNT ;
+: MAP! ( n ^n n -- ) swap MAP @ swap VEC:AT ! ;
 
 
 \ A vector never made is NULL-PTR in its cell, which VEC:DELETE ignores.
-: RELEASE ( ptr n -- )
-   {: h:ptr :}
+: RELEASE ( ^n -- )
+   {: h:^ :}
    h CHUNKS PROC-CHUNKS:OWNED-FREE
    h ARGS @ VEC:DELETE
    h ENVS @ VEC:DELETE
@@ -88,8 +88,8 @@ HERM-AT 1+ constant RECORD-CELLS
 
 
 \ The end of a builder's catch: a throw frees the request and goes on.
-: SETTLE ( n ptr n -- )
-   {: rc h:ptr :}
+: SETTLE ( n ^n -- )
+   {: rc h:^ :}
    rc 0= if exit then
    h RELEASE
    rc throw ;
@@ -98,25 +98,25 @@ HERM-AT 1+ constant RECORD-CELLS
 \ A C-string copy of the bytes in the request's own chunks. This and ADD-ENV's
 \ FFI:CSTR! refuse a path, argument, row or directory holding a 0 byte:
 \ E-FFI-NUL.
-: CHUNK-ZCOPY ( ptr u8 n ptr n -- ptr u8 )
-   {: src:ptr len h:ptr :}
+: CHUNK-ZCOPY ( ^u8 n ^n -- ^u8 )
+   {: src:^ len h:^ :}
    len FFI:CSTR-ROOM {: need :}
    src len need h CHUNKS PROC-CHUNKS:OWNED-ROOM need SPAN:MAKE FFI:CSTR ;
 
 
 \ Pushes a copy of every string before the array's NULL.
-: ROWS+ ( ptr ptr u8 ptr n ptr VEC:vector<ptr u8> -- )
-   {: rows:ptr h:ptr vec:ptr :}
+: ROWS+ ( ^^u8 ^n ^VEC:vector<^u8> -- )
+   {: rows:^ h:^ vec:^ :}
    0 begin rows over cells + @ dup NULL-PTR - 0<> while
       dup ZLEN h CHUNK-ZCOPY vec VEC:PUSH !
       1+
    repeat 2drop ;
 
 
-: START ( ptr n ptr u8 n -- ptr n ptr u8 n )
-   {: h:ptr path:ptr len :}
-   HEAP:ALLOCATOR 0 [type] ptr u8 VEC:NEW h ARGS !
-   HEAP:ALLOCATOR 0 [type] ptr u8 VEC:NEW h ENVS !
+: START ( ^n ^u8 n -- ^n ^u8 n )
+   {: h:^ path:^ len :}
+   HEAP:ALLOCATOR 0 [type] ^u8 VEC:NEW h ARGS !
+   HEAP:ALLOCATOR 0 [type] ^u8 VEC:NEW h ENVS !
    HEAP:ALLOCATOR 0 [type] n VEC:NEW h MAP !
    0 h MAP @ VEC:PUSH !
    1 h MAP @ VEC:PUSH !
@@ -126,8 +126,8 @@ HERM-AT 1+ constant RECORD-CELLS
 
 
 \ argv[0] is the path unless the first rows came from ARGV-ROWS.
-: ADD-ARG ( ptr n ptr u8 n -- ptr n ptr u8 n )
-   {: h:ptr a:ptr len :}
+: ADD-ARG ( ^n ^u8 n -- ^n ^u8 n )
+   {: h:^ a:^ len :}
    len 0 < if E-PROC-OUTPUT throw then
    h ARGS @ VEC:COUNT 0= if h PATH-CELL @ h ARGS @ VEC:PUSH ! then
    a len h CHUNK-ZCOPY h ARGS @ VEC:PUSH !
@@ -135,8 +135,8 @@ HERM-AT 1+ constant RECORD-CELLS
 
 
 \ process-env.f mirrors this check and SAME-NAME?.
-: CHECK-NAME ( ptr u8 n -- )
-   {: a:ptr len :}
+: CHECK-NAME ( ^u8 n -- )
+   {: a:^ len :}
    len 0= if E-PROC-ENV throw then
    0 begin dup len < while
       dup a + c@ EQUAL-BYTE = if E-PROC-ENV throw then
@@ -145,8 +145,8 @@ HERM-AT 1+ constant RECORD-CELLS
 
 
 \ A C-string name=value copy in the request's own chunks.
-: ADD-ENV ( ptr n ptr u8 n ptr u8 n -- ptr n ptr u8 n ptr u8 n )
-   {: h:ptr name:ptr namelen val:ptr vallen :}
+: ADD-ENV ( ^n ^u8 n ^u8 n -- ^n ^u8 n ^u8 n )
+   {: h:^ name:^ namelen val:^ vallen :}
    namelen 0 < vallen 0 < or if E-PROC-ENV throw then
    name namelen CHECK-NAME
    namelen 1+ vallen + {: rowlen :}
@@ -159,22 +159,22 @@ HERM-AT 1+ constant RECORD-CELLS
    h name namelen val vallen ;
 
 
-: ADD-ARGV-ROWS ( ptr n ptr ptr u8 -- ptr n ptr ptr u8 )
+: ADD-ARGV-ROWS ( ^n ^^u8 -- ^n ^^u8 )
    2dup swap dup ARGS @ ROWS+ ;
 
-: ADD-ENV-ROWS ( ptr n ptr ptr u8 -- ptr n ptr ptr u8 )
+: ADD-ENV-ROWS ( ^n ^^u8 -- ^n ^^u8 )
    2dup swap dup ENVS @ ROWS+ ;
 
 
-: SET-CWD ( ptr n ptr u8 n -- ptr n ptr u8 n )
-   {: h:ptr dir:ptr len :}
+: SET-CWD ( ^n ^u8 n -- ^n ^u8 n )
+   {: h:^ dir:^ len :}
    len 0 <= if E-PROC-PATH throw then
    dir len h CHUNK-ZCOPY h CWD-CELL !
    h dir len ;
 
 
-: SET-FD ( ptr n fd fd -- ptr n fd fd )
-   {: h:ptr child parent :}
+: SET-FD ( ^n fd fd -- ^n fd fd )
+   {: h:^ child parent :}
    child FD>N 0 < parent FD>N 0 < or if E-PROC-OUTPUT throw then
    begin h MAP-LEN child FD>N <= while -1 h MAP @ VEC:PUSH ! repeat
    parent FD>N h child FD>N MAP!
@@ -182,8 +182,8 @@ HERM-AT 1+ constant RECORD-CELLS
    h child parent ;
 
 
-: SET-CLOSED ( ptr n fd -- ptr n fd )
-   {: h:ptr fd :}
+: SET-CLOSED ( ^n fd -- ^n fd )
+   {: h:^ fd :}
    fd FD>N 0 < if E-PROC-OUTPUT throw then
    fd FD>N h MAP-LEN < if -1 h fd FD>N MAP! then
    h fd ;
@@ -195,8 +195,8 @@ HERM-AT 1+ constant RECORD-CELLS
 \ A stdio slot no FD set keeps the parent's fd only while that fd is open, so a
 \ parent running with a closed stdio fd still spawns; an FD naming a closed
 \ parent fd fails the spawn with EBADF.
-: INHERIT-SLOT ( ptr n n -- )
-   {: h:ptr slot :}
+: INHERIT-SLOT ( ^n n -- )
+   {: h:^ slot :}
    h SET @ 1 slot lshift and 0<> if exit then
    h MAP @ slot VEC:AT @ {: parent :}
    parent 0 < if exit then
@@ -206,12 +206,12 @@ HERM-AT 1+ constant RECORD-CELLS
 
 \ The length of a NUL-terminated row's name: the bytes before its first `=`,
 \ or the whole row.
-: NAME-LEN ( ptr u8 -- n )
-   {: z:ptr :}
+: NAME-LEN ( ^u8 -- n )
+   {: z:^ :}
    0 begin dup z + c@ dup 0<> swap EQUAL-BYTE <> and while 1+ repeat ;
 
-: SAME-NAME? ( ptr u8 ptr u8 -- bool )
-   {: a:ptr b:ptr :}
+: SAME-NAME? ( ^u8 ^u8 -- bool )
+   {: a:^ b:^ :}
    a NAME-LEN {: alen :}
    b NAME-LEN {: blen :}
    alen blen <> if false exit then
@@ -220,8 +220,8 @@ HERM-AT 1+ constant RECORD-CELLS
 \ A request row names the variable of z. The vector is re-read each turn, as
 \ PUSH may move it. It holds the rows already inherited too, so an inherited
 \ name that the parent holds twice reaches the child once, as its first row.
-: HAS-NAME? ( ptr n ptr u8 -- bool )
-   {: h:ptr z:ptr :}
+: HAS-NAME? ( ^n ^u8 -- bool )
+   {: h:^ z:^ :}
    h ENVS @ VEC:COUNT 0 ?do
       h ENVS @ i VEC:AT @ z SAME-NAME? if true unloop exit then
    loop false ;
@@ -229,21 +229,21 @@ HERM-AT 1+ constant RECORD-CELLS
 
 \ Inheritance appends the address of this process's own row, which never moves,
 \ and skips a row whose name a request row already gives.
-: INHERIT-ROW ( ptr n ptr u8 -- )
-   {: h:ptr z:ptr :}
+: INHERIT-ROW ( ^n ^u8 -- )
+   {: h:^ z:^ :}
    h z HAS-NAME? if exit then
    z h ENVS @ VEC:PUSH ! ;
 
-: INHERIT-PARENT ( ptr n -- )
-   {: h:ptr :}
+: INHERIT-PARENT ( ^n -- )
+   {: h:^ :}
    0 begin dup ENVP NULL-PTR - 0<> while
       h over ENVP INHERIT-ROW
       1+
    repeat drop ;
 
 
-: LAUNCH ( ptr n -- n )
-   {: h:ptr :}
+: LAUNCH ( ^n -- n )
+   {: h:^ :}
    h ARGS @ VEC:COUNT 0= if h PATH-CELL @ h ARGS @ VEC:PUSH ! then
    NULL-PTR h ARGS @ VEC:PUSH !
    h HERM @ 0= if h INHERIT-PARENT then
@@ -263,10 +263,10 @@ public
 
 \ A request for the program at path, map [0 1 2], no argument, this process's
 \ environment and directory. A negative length: E-PROC-PATH.
-: NEW ( ptr u8 n -- PROCESS:request )
-   {: path:ptr len :}
+: NEW ( ^u8 n -- PROCESS:request )
+   {: path:^ len :}
    len 0 < if E-PROC-PATH throw then
-   RECORD-CELLS MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS {: h:ptr :}
+   RECORD-CELLS MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS {: h:^ :}
    h path len [: START ;] catch {: rc :} drop drop drop
    rc h SETTLE
    h MINT ;
@@ -274,15 +274,15 @@ public
 
 \ The child gets only the rows the request adds.
 : HERMETIC ( PROCESS:request -- PROCESS:request )
-   ERASE {: h:ptr :}
+   ERASE {: h:^ :}
    1 h HERM !
    h MINT ;
 
 
 \ Appends a copy of one argument; the first is argv[1], and a request with none
 \ spawns argv {path}. A negative length: E-PROC-OUTPUT.
-: ARG ( PROCESS:request ptr u8 n -- PROCESS:request )
-   rot ERASE {: a:ptr len h:ptr :}
+: ARG ( PROCESS:request ^u8 n -- PROCESS:request )
+   rot ERASE {: a:^ len h:^ :}
    h a len [: ADD-ARG ;] catch {: rc :} drop drop drop
    rc h SETTLE
    h MINT ;
@@ -292,17 +292,17 @@ public
 \ order, then, unless HERMETIC, this process's rows read at SPAWN, skipping a name
 \ a request row gives. A negative length, an empty name or one holding `=`:
 \ E-PROC-ENV.
-: ENV ( PROCESS:request ptr u8 n ptr u8 n -- PROCESS:request )
-   {: name:ptr namelen val:ptr vallen :}
-   ERASE {: h:ptr :}
+: ENV ( PROCESS:request ^u8 n ^u8 n -- PROCESS:request )
+   {: name:^ namelen val:^ vallen :}
+   ERASE {: h:^ :}
    h name namelen val vallen [: ADD-ENV ;] catch {: rc :} drop drop drop drop drop
    rc h SETTLE
    h MINT ;
 
 
 \ The child's directory; a later call replaces it. An empty one: E-PROC-PATH.
-: CWD ( PROCESS:request ptr u8 n -- PROCESS:request )
-   rot ERASE {: dir:ptr len h:ptr :}
+: CWD ( PROCESS:request ^u8 n -- PROCESS:request )
+   rot ERASE {: dir:^ len h:^ :}
    h dir len [: SET-CWD ;] catch {: rc :} drop drop drop
    rc h SETTLE
    h MINT ;
@@ -312,7 +312,7 @@ public
 \ child fd past it grows it with closed slots. Every child fd at or past the map's
 \ end is closed. Either negative: E-PROC-OUTPUT.
 : FD ( PROCESS:request fd fd -- PROCESS:request )
-   rot ERASE {: child parent h:ptr :}
+   rot ERASE {: child parent h:^ :}
    h child parent [: SET-FD ;] catch {: rc :} drop drop drop
    rc h SETTLE
    h MINT ;
@@ -321,7 +321,7 @@ public
 \ The child's fd starts closed; past the map's end this does nothing. A negative
 \ fd: E-PROC-OUTPUT.
 : CLOSED ( PROCESS:request fd -- PROCESS:request )
-   swap ERASE {: fd h:ptr :}
+   swap ERASE {: fd h:^ :}
    h fd [: SET-CLOSED ;] catch {: rc :} drop drop
    rc h SETTLE
    h MINT ;
@@ -330,8 +330,8 @@ public
 \ Appends a copy of each string of a NULL-terminated array to argv, argv[0]
 \ included, so a request whose first rows come from one takes its argv[0] from
 \ it. A RAW-family bridge.
-: ARGV-ROWS ( PROCESS:request ptr ptr u8 -- PROCESS:request )
-   swap ERASE {: rows:ptr h:ptr :}
+: ARGV-ROWS ( PROCESS:request ^^u8 -- PROCESS:request )
+   swap ERASE {: rows:^ h:^ :}
    h rows [: ADD-ARGV-ROWS ;] catch {: rc :} drop drop
    rc h SETTLE
    h MINT ;
@@ -339,8 +339,8 @@ public
 
 \ Appends a copy of each row of a NULL-terminated array to the environment,
 \ unchecked. A RAW-family bridge.
-: ENV-ROWS ( PROCESS:request ptr ptr u8 -- PROCESS:request )
-   swap ERASE {: rows:ptr h:ptr :}
+: ENV-ROWS ( PROCESS:request ^^u8 -- PROCESS:request )
+   swap ERASE {: rows:^ h:^ :}
    h rows [: ADD-ENV-ROWS ;] catch {: rc :} drop drop
    rc h SETTLE
    h MINT ;
@@ -359,7 +359,7 @@ public
 \ E-PROC-SPAWN with the positive errno in ERRNO; a spawn that succeeds sets it 0.
 : SPAWN ( PROCESS:request -- pid )
    COMPILE-READS:MISS
-   ERASE {: h:ptr :}
+   ERASE {: h:^ :}
    h 0 [: drop dup LAUNCH ;] catch {: rc :}
    rc 0<> if drop drop h RELEASE rc throw then
    nip {: result :}

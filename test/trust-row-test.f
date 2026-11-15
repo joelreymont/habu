@@ -14,26 +14,26 @@ private
 
 T-RESET
 
-TYPED-VARIABLE TCE-A ptr u8   variable TCE-U
+TYPED-VARIABLE TCE-A ^u8   variable TCE-U
 : TCE-GO ( -- )  TCE-A @ TCE-U @ evaluate-closed ;
 
 public
 
 \ TCE-CATCH answers the string's throw code, 0 when accepted, and holds the
 \ records it printed in REJECTION:BUFFER$.
-: TCE-CATCH ( ptr u8 n -- n )
+: TCE-CATCH ( ^u8 n -- n )
    TCE-U ! TCE-A !  REJECTION:CAPTURE  [: TCE-GO ;] catch  REJECTION:BUFFER-OFF ;
 
-: TCE-SAID ( ptr u8 n -- )  REJECTION:BUFFER$ 2swap CONTAINS? TTRUE ;
+: TCE-SAID ( ^u8 n -- )  REJECTION:BUFFER$ 2swap CONTAINS? TTRUE ;
 
 \ TCE-REJECTS asserts the string stops with the checker's status after a record
 \ that holds the text given, its code.
-: TCE-REJECTS ( ptr u8 n ptr u8 n -- ) {: wa:ptr wu:n :}
+: TCE-REJECTS ( ^u8 n ^u8 n -- ) {: wa:^ wu:n :}
    TCE-CATCH CHECKER-REJECT-RC T=  wa wu TCE-SAID ;
 
 \ TCE-STALE asserts the string's row is rejected as naming no word, by an
 \ E-TRUST-UNRESOLVED record that quotes the name given.
-: TCE-STALE ( ptr u8 n ptr u8 n -- ) {: wa:ptr wu:n :}
+: TCE-STALE ( ^u8 n ^u8 n -- ) {: wa:^ wu:n :}
    s" error[E-TRUST-UNRESOLVED]" TCE-REJECTS  wa wu TCE-SAID ;
 
 ;package
@@ -49,6 +49,11 @@ s\" s\q TRW-NO-SUCH-WORD\q s\q -- n\q trust" s" `TRW-NO-SUCH-WORD`" TRUST-ROW:TC
 \ definer-facing registrar is a different word, and every row in
 \ src/os/env-base.f sits directly under its definition.
 s\" : TRW-JUST ( -- n ) 6 ; s\q TRW-JUST\q s\q -- n\q trust" TRUST-ROW:TCE-CATCH 0 T=
+
+\ PE-OPEN is private to the checker's sealed package CHECK: user source naming
+\ it is undefined.
+s\" : TRW-ROWED ( -- n ) 1 ; s\q TRW-ROWED\q PE-OPEN PE-N PE-OUT PE-CLOSE"
+   s" error[E-UNDEFINED]: cannot find word `PE-OPEN`" TRUST-ROW:TCE-REJECTS
 
 \ A negative length, or one that runs the name past the top of the address
 \ range, names no word even where its bytes begin a live one. It is refused
@@ -71,7 +76,7 @@ s\" \\ TRW-COMMENT-ONLY is named here and nowhere else\n s\q TRW-COMMENT-ONLY\q 
 
 \ The name inside a string literal that is not the row's name string: refused
 \ the same way.
-s\" : TRW-HOLDER ( -- ptr u8 n ) s\q TRW-IN-A-STRING\q ;\n s\q TRW-IN-A-STRING\q s\q -- n\q trust" s" `TRW-IN-A-STRING`" TRUST-ROW:TCE-STALE
+s\" : TRW-HOLDER ( -- ^u8 n ) s\q TRW-IN-A-STRING\q ;\n s\q TRW-IN-A-STRING\q s\q -- n\q trust" s" `TRW-IN-A-STRING`" TRUST-ROW:TCE-STALE
 
 \ The name as the row's signature string: the signature is text the parser
 \ reads, never a word, so the row is judged on the name it carries, which does

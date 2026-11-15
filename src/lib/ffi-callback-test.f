@@ -51,10 +51,10 @@ CALLBACK: PAD-C ( -- ) ;CALLBACK
 CALLBACK: PAD-D ( -- ) ;CALLBACK
 CALLBACK: PAD-E ( -- ) ;CALLBACK
 
-: SCRIPT$ ( -- ptr u8 n )
+: SCRIPT$ ( -- ^u8 n )
    SCRIPT-BUF SCRIPT-U @ ;
 
-: SCRIPT+ ( ptr u8 n -- ) {: a:ptr u:n :}
+: SCRIPT+ ( ^u8 n -- ) {: a:^ u:n :}
    SCRIPT-U @ u + SCRIPT-CAP > if E-STR-CAPACITY throw then
    a SCRIPT-BUF SCRIPT-U @ + u BYTE-COPY
    u SCRIPT-U +! ;
@@ -67,26 +67,26 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
 : SCRIPT-N ( n -- )
    SB-RESET FMT:SB-INT SB$ SCRIPT+ ;
 
-: SAY ( ptr u8 n -- )
+: SAY ( ^u8 n -- )
    SCRIPT+ LF SCRIPT+C ;
 
 \ A captured stream, ended by a line feed unless it is empty or ends in one.
-: STREAM+ ( ptr u8 n -- ) {: a u:n :}
+: STREAM+ ( ^u8 n -- ) {: a u:n :}
    u 0= if exit then
    a u SCRIPT+
    a u + 1 - c@ LF <> if LF SCRIPT+C then ;
 
 \ One fact: asserted under its own label and written as a transcript line.
-: FACT ( bool ptr u8 n -- ) {: ok:bool a:ptr u:n :}
+: FACT ( bool ^u8 n -- ) {: ok:bool a:^ u:n :}
    a u T-LABEL
    ok TTRUE
    ok if s" ok   " else s" FAIL " then SCRIPT+
    a u SAY ;
 
-: WANT$ ( -- ptr u8 n )
+: WANT$ ( -- ^u8 n )
    WANT-BUF WANT-U @ ;
 
-: W ( ptr u8 n -- ) {: a:ptr u:n :}
+: W ( ^u8 n -- ) {: a:^ u:n :}
    WANT-U @ u + 1 + SCRIPT-CAP > if E-STR-CAPACITY throw then
    a WANT-BUF WANT-U @ + u BYTE-COPY
    LF WANT-BUF WANT-U @ + u + c!
@@ -167,7 +167,7 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
 
 \ Slot k's cell at offset off of its row, reached as the thunk reaches it:
 \ through the table the main region's CB-ROWS publishes.
-: SLOT-CELL ( n n -- ptr n ) {: k:n off:n :}
+: SLOT-CELL ( n n -- ^n ) {: k:n off:n :}
    TASK:MAIN-BASE {: base :}
    base CB-ROWS + atomic@ base FFI:>CELL - {: table:n :}
    base table + k CB-ROW-BYTES * + off + ;
@@ -213,12 +213,14 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
 \ catches.
 : DECL-BAD-TOKEN ( -- )
    s" CALLBACK: CB ( nosuch -- n ) 0 FALLBACK ;CALLBACK" evaluate-closed ;
+: DECL-PTR-WORD ( -- )
+   s" CALLBACK: CBT-XP ( ptr u8 -- ) ;CALLBACK" evaluate-closed ;
 : DECL-BAD-PTR ( -- )
-   s" CALLBACK: CBT-X2 ( ptr n -- ) ;CALLBACK" evaluate-closed ;
+   s" CALLBACK: CBT-X2 ( ^n -- ) ;CALLBACK" evaluate-closed ;
 : DECL-TWO-RESULTS ( -- )
    s" CALLBACK: CBT-X3 ( -- n n ) 0 FALLBACK ;CALLBACK" evaluate-closed ;
 : DECL-PTR-RESULT ( -- )
-   s" CALLBACK: CBT-X4 ( -- ptr u8 ) ;CALLBACK" evaluate-closed ;
+   s" CALLBACK: CBT-X4 ( -- ^u8 ) ;CALLBACK" evaluate-closed ;
 : DECL-NO-FALLBACK ( -- )
    s" CALLBACK: CBT-X5 ( n -- n ) ;CALLBACK" evaluate-closed ;
 : DECL-WRONG-FALLBACK ( -- )
@@ -252,36 +254,40 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    s" CALLBACK: CBT-NAME-100-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX ( -- ) ;CALLBACK  CBT-NAME-100-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX FFI-CB:CLEAR" evaluate-closed ;
 
 \ The quotation stops with the rejection status after a record of code c cu.
-: REJECTS? ( [ -- ] ptr u8 n -- bool ) {: q c:ptr cu:n :}
+: REJECTS? ( [ -- ] ^u8 n -- bool ) {: q c:^ cu:n :}
    REJECTION:CAPTURE
    q catch CHECKER-REJECT-RC =
    REJECTION:BUFFER$ c cu CONTAINS? and
    REJECTION:BUFFER-OFF ;
 
 \ Whether Q stops with the rejection status after a record holding HEAD and HELP.
-: RECORD? ( [ -- ] ptr u8 n ptr u8 n -- bool )
-   {: q h:ptr hu:n p:ptr pu:n :}
+: RECORD? ( [ -- ] ^u8 n ^u8 n -- bool )
+   {: q h:^ hu:n p:^ pu:n :}
    DECL-DIAG:PROSE  q catch CHECKER-REJECT-RC =
    h hu DECL-DIAG:HAS? and  p pu DECL-DIAG:HAS? and
    DECL-DIAG:OFF ;
 
-: INT-ARITY$ ( -- ptr u8 n )
+: INT-ARITY$ ( -- ^u8 n )
    HB-TARGET-LINUX-X86-64? if
       s" error[E-FFI-ARITY]: a callback takes at most 6 integer arguments"
    else
       s" error[E-FFI-ARITY]: a callback takes at most 8 integer arguments"
    then ;
 
-: ARITY-HELP$ ( -- ptr u8 n )
-   s" = help: pass the rest in memory through a ptr u8 argument" ;
+: ARITY-HELP$ ( -- ^u8 n )
+   s" = help: pass the rest in memory through a ^u8 argument" ;
 
 : CASE-DECLARATIONS ( -- )
    s" == declarations rejected" SAY
    [: DECL-BAD-TOKEN ;]
       s" error[E-FFI-SYNTAX]: unknown argument type 'nosuch'"
-      s" = help: an argument is n, i32, u32, r or ptr u8" RECORD?
-      s" an argument type outside n i32 u32 r ptr u8: E-FFI-SYNTAX" FACT
-   [: DECL-BAD-PTR ;] s" E-FFI-SYNTAX" REJECTS? s" a pointer that is not ptr u8: E-FFI-SYNTAX" FACT
+      s" = help: an argument is n, i32, u32, r or ^u8" RECORD?
+      s" an argument type outside n i32 u32 r ^u8: E-FFI-SYNTAX" FACT
+   [: DECL-PTR-WORD ;]
+      s" error[E-FFI-SYNTAX]: unknown argument type 'ptr'"
+      s" = help: an argument is n, i32, u32, r or ^u8" RECORD?
+      s" a pointer spelled ptr, not ^u8: E-FFI-SYNTAX" FACT
+   [: DECL-BAD-PTR ;] s" E-FFI-SYNTAX" REJECTS? s" a pointer that is not ^u8: E-FFI-SYNTAX" FACT
    [: DECL-TWO-RESULTS ;] s" E-FFI-SYNTAX" REJECTS? s" two results: E-FFI-SYNTAX" FACT
    [: DECL-PTR-RESULT ;] s" E-FFI-SYNTAX" REJECTS? s" a pointer result: E-FFI-SYNTAX" FACT
    [: DECL-NO-FALLBACK ;] s" E-FFI-SYNTAX" REJECTS? s" a value result with no fallback: E-FFI-SYNTAX" FACT
@@ -317,8 +323,8 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
 
 : PAD-PAST-EDGE ( -- ) begin DECLARED POW2? while PAD repeat ;
 
-: THROWING$ ( -- ptr u8 n )
-   s" CALLBACK: CBT-RB-IN ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK  1 throw" ;
+: THROWING$ ( -- ^u8 n )
+   s" CALLBACK: CBT-RB-IN ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK  1 throw" ;
 
 \ Non-zero cells laid over the cut, where a grown table the rollback did not
 \ keep would lie.
@@ -327,8 +333,8 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    4000 0 ?do 777 , loop ;
 
 : DECLARE-LATE ( -- )
-   s" : CBT-RB-ORDER ( ptr u8 ptr u8 -- n ) {: a b :} a CELL-VIEW @ b CELL-VIEW @ - ;" evaluate-closed
-   s" CALLBACK: CBT-RB-LATE ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK" evaluate-closed
+   s" : CBT-RB-ORDER ( ^u8 ^u8 -- n ) {: a b :} a CELL-VIEW @ b CELL-VIEW @ - ;" evaluate-closed
+   s" CALLBACK: CBT-RB-LATE ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK" evaluate-closed
    s" ' CBT-RB-ORDER CBT-RB-LATE-BODY !" evaluate-closed ;
 
 : SORTED-BY? ( n -- bool ) {: fn:n :}
@@ -336,7 +342,7 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    OUTER BYTE-VIEW ROW-N CELL fn QSORT
    OUTER 0 ROW-SORTED? ;
 
-: BOUND$ ( -- ptr u8 n )
+: BOUND$ ( -- ^u8 n )
    s" CALLBACK: CBT-RB-BOUND ( -- ) ;CALLBACK  CBT-RB-BOUND TASK:SELF-CONTEXT FFI-CB:ENTRY drop  1 throw" ;
 
 \ CBT-RB-NEXT takes slot n. A caller bind refuses a row that still names a
@@ -347,7 +353,7 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    s" CBT-RB-NEXT TASK:CALLER-CONTEXT FFI-CB:ENTRY drop" TEST-EVAL:RC 0= and ;
 
 \ Only a caller bind leaves the row owner set when the text throws.
-: CALLER-BOUND$ ( -- ptr u8 n )
+: CALLER-BOUND$ ( -- ^u8 n )
    s" CALLBACK: CBT-RB-CALLER ( -- ) ;CALLBACK  CBT-RB-CALLER TASK:CALLER-CONTEXT FFI-CB:ENTRY drop  1 throw" ;
 
 : SELF-BINDS? ( n -- bool ) {: k:n :}
@@ -386,8 +392,8 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
 \ A package whose private `@`, `execute` and `CMP-BODY` would run BACKWARD in
 \ place of the body declares a callback after them: its dispatch still runs the
 \ body stored.
-: CAPTURE$ ( -- ptr u8 n )
-   S\" package CBT-CAPTURE\n: FORWARD ( ptr u8 ptr u8 -- n ) {: a b :} a CELL-VIEW @ b CELL-VIEW @ - ;\n: BACKWARD ( ptr u8 ptr u8 -- n ) {: a b :} b CELL-VIEW @ a CELL-VIEW @ - ;\n: @ ( ptr [ ptr u8 ptr u8 -- n ] -- [ ptr u8 ptr u8 -- n ] ) drop ['] BACKWARD ;\n: execute ( ptr u8 ptr u8 [ ptr u8 ptr u8 -- n ] -- n ) drop BACKWARD ;\nTYPED-VARIABLE CMP-BODY [ ptr u8 ptr u8 -- n ]\n' BACKWARD CMP-BODY !\npublic\nCALLBACK: CMP ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK\n' FORWARD CBT-CAPTURE:CMP-BODY !\n;package\n" ;
+: CAPTURE$ ( -- ^u8 n )
+   S\" package CBT-CAPTURE\n: FORWARD ( ^u8 ^u8 -- n ) {: a b :} a CELL-VIEW @ b CELL-VIEW @ - ;\n: BACKWARD ( ^u8 ^u8 -- n ) {: a b :} b CELL-VIEW @ a CELL-VIEW @ - ;\n: @ ( ^[ ^u8 ^u8 -- n ] -- [ ^u8 ^u8 -- n ] ) drop ['] BACKWARD ;\n: execute ( ^u8 ^u8 [ ^u8 ^u8 -- n ] -- n ) drop BACKWARD ;\nTYPED-VARIABLE CMP-BODY [ ^u8 ^u8 -- n ]\n' BACKWARD CMP-BODY !\npublic\nCALLBACK: CMP ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK\n' FORWARD CBT-CAPTURE:CMP-BODY !\n;package\n" ;
 
 : CASE-CAPTURE ( -- )
    s" == a callback declared under a private @, execute and CMP-BODY" SAY
@@ -401,8 +407,8 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
 
 \ A qualified name puts the callback's words into its package's public
 \ wordlist, not the current one.
-: QUALIFIED$ ( -- ptr u8 n )
-   S\" package CBT-QUALIFIED\npublic\n: ORDER ( ptr u8 ptr u8 -- n ) {: a b :} a CELL-VIEW @ b CELL-VIEW @ - ;\n;package\nCALLBACK: CBT-QUALIFIED:CMP ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK\n' CBT-QUALIFIED:ORDER CBT-QUALIFIED:CMP-BODY !\n" ;
+: QUALIFIED$ ( -- ^u8 n )
+   S\" package CBT-QUALIFIED\npublic\n: ORDER ( ^u8 ^u8 -- n ) {: a b :} a CELL-VIEW @ b CELL-VIEW @ - ;\n;package\nCALLBACK: CBT-QUALIFIED:CMP ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK\n' CBT-QUALIFIED:ORDER CBT-QUALIFIED:CMP-BODY !\n" ;
 
 : CASE-QUALIFIED ( -- )
    s" == a callback declared by a qualified name" SAY
@@ -416,8 +422,8 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
 
 \ A package with a part named FFI-CB declares a callback: the callback's type
 \ FFI-CB:callback is still FFI-CB's.
-: PART$ ( -- ptr u8 n )
-   S\" package CBT-PART\npackage FFI-CB\n: HELD ( -- ) ;\n;package\nCALLBACK: CMP ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK\n;package\n" ;
+: PART$ ( -- ^u8 n )
+   S\" package CBT-PART\npackage FFI-CB\n: HELD ( -- ) ;\n;package\nCALLBACK: CMP ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK\n;package\n" ;
 
 : CASE-PART ( -- )
    s" == a callback declared beside a part named FFI-CB" SAY
@@ -425,8 +431,8 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
 
 \ A file required between the effect and FALLBACK ends while the declaration
 \ is open.
-: REQUIRED$ ( -- ptr u8 n )
-   S\" CALLBACK: CBT-REQUIRED ( ptr u8 ptr u8 -- i32 )\nrequire test/fixtures/ffi-callback-require.f\n0 FALLBACK ;CALLBACK\n' CBT-REQUIRED-ORDER CBT-REQUIRED-BODY !\n" ;
+: REQUIRED$ ( -- ^u8 n )
+   S\" CALLBACK: CBT-REQUIRED ( ^u8 ^u8 -- i32 )\nrequire test/fixtures/ffi-callback-require.f\n0 FALLBACK ;CALLBACK\n' CBT-REQUIRED-ORDER CBT-REQUIRED-BODY !\n" ;
 
 : CASE-REQUIRED ( -- )
    s" == a callback declared across a require" SAY
@@ -441,30 +447,30 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
 \ A callback's record notes C's lr as `caller`, which varies with the build,
 \ and ends with help the case does not pin: the transcript keeps both keys and
 \ drops their values.
-: ERR-LINE+ ( ptr u8 n -- ) {: a:ptr u:n :}
+: ERR-LINE+ ( ^u8 n -- ) {: a:^ u:n :}
    a u s"   = caller: " STARTS-WITH? if s"   = caller:" SAY exit then
    a u s"   = help: " STARTS-WITH? if s"   = help:" SAY exit then
    a u SAY ;
 
 \ A captured stderr as STREAM+ writes it, each line through ERR-LINE+.
-: ERR-STREAM+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u LF 0 begin SPLIT-NEXT while {: p:ptr pu:n next:n :}
+: ERR-STREAM+ ( ^u8 n -- ) {: a:^ u:n :}
+   a u LF 0 begin SPLIT-NEXT while {: p:^ pu:n next:n :}
       pu 0 <>  next u > 0=  or if p pu ERR-LINE+ then
       a u LF next
    repeat drop 2drop ;
 
 \ The name, the exit status and both streams of one spawned process.
-: TRANSCRIBE-RC ( ptr u8 n len len n -- )
-   {: name:ptr nameu:n outu:len erru:len rc:n :}
+: TRANSCRIBE-RC ( ^u8 n len len n -- )
+   {: name:^ nameu:n outu:len erru:len rc:n :}
    s" == child " SCRIPT+ name nameu SCRIPT+ s" : exit " SCRIPT+ rc SCRIPT-N LF SCRIPT+C
    OUT outu LEN>N STREAM+
    s" --" SAY
    ERR erru LEN>N ERR-STREAM+ ;
 
-: TRANSCRIBE ( ptr u8 n len len PROCESS:ending -- )
+: TRANSCRIBE ( ^u8 n len len PROCESS:ending -- )
    PROCESS:ENDING>RC RC>N TRANSCRIBE-RC ;
 
-: CHILD ( ptr u8 n -- len len PROCESS:ending ) {: name:ptr nameu:n :}
+: CHILD ( ^u8 n -- len len PROCESS:ending ) {: name:^ nameu:n :}
    PROC-ARGV-ENV-RESET
    s" --load" >LEN PROC-ARGV+
    s" test/ffi-callback-child.f" >LEN PROC-ARGV+
@@ -475,7 +481,7 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    OUT CAP >LEN ERR CAP >LEN CHILD-MS >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME ;
 
-: CHILD-CASE ( ptr u8 n -- ) {: name:ptr nameu:n :}
+: CHILD-CASE ( ^u8 n -- ) {: name:^ nameu:n :}
    name nameu name nameu CHILD TRANSCRIBE ;
 
 : CASE-CHILDREN ( -- )
@@ -502,8 +508,8 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    BSEARCH 0= s" a fallback of 1 reaches C too: no row matches" FACT
    UNSET-ONE UNBIND ;
 
-: SUBJECT$ ( -- ptr u8 n ) SUBJECT-BUF SUBJECT-U @ ;
-: IMAGE$ ( -- ptr u8 n ) IMAGE-BUF IMAGE-U @ ;
+: SUBJECT$ ( -- ^u8 n ) SUBJECT-BUF SUBJECT-U @ ;
+: IMAGE$ ( -- ^u8 n ) IMAGE-BUF IMAGE-U @ ;
 
 : WRITE-SUBJECT ( -- )
    SUBJECT$ S\" require src/lib/ffi-callback.f\nCALLBACK: FILE-BOUND ( -- ) ;CALLBACK\n" FS:WRITE-ALL
@@ -594,8 +600,9 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
 
 : WANT-DECLARATIONS ( -- )
    s" == declarations rejected" W
-   s" ok   an argument type outside n i32 u32 r ptr u8: E-FFI-SYNTAX" W
-   s" ok   a pointer that is not ptr u8: E-FFI-SYNTAX" W
+   s" ok   an argument type outside n i32 u32 r ^u8: E-FFI-SYNTAX" W
+   s" ok   a pointer spelled ptr, not ^u8: E-FFI-SYNTAX" W
+   s" ok   a pointer that is not ^u8: E-FFI-SYNTAX" W
    s" ok   two results: E-FFI-SYNTAX" W
    s" ok   a pointer result: E-FFI-SYNTAX" W
    s" ok   a value result with no fallback: E-FFI-SYNTAX" W

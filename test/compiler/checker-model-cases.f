@@ -90,7 +90,7 @@ private
 \ wrong reason (`family not declared in the active package`). The phase checks
 \ the package itself: a certifying probe would blame the scope for a `construct`
 \ regression.
-: OWN-PACKAGE$ ( -- ptr u8 n )
+: OWN-PACKAGE$ ( -- ^u8 n )
    s" CHECKER-MODEL-CASES" ;
 
 : ASKED-IN-OWN-PACKAGE? ( -- bool )

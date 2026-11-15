@@ -72,24 +72,24 @@ REGISTER-RESETS
 
 PROCESS-SYMBOLS
 
-FUNCTION: SIGMASK-CALL pthread_sigmask ( n ptr u8 ptr u8 -- i32 )
+FUNCTION: SIGMASK-CALL pthread_sigmask ( n ^u8 ^u8 -- i32 )
 ;FUNCTION
 
-FUNCTION: SIGFILL-CALL sigfillset ( ptr u8 -- i32 )
+FUNCTION: SIGFILL-CALL sigfillset ( ^u8 -- i32 )
 ;FUNCTION
 
-FUNCTION: SIGDEL-CALL sigdelset ( ptr u8 n -- i32 )
+FUNCTION: SIGDEL-CALL sigdelset ( ^u8 n -- i32 )
 ;FUNCTION
 
 : MASK-OK ( n -- )
    0 <> if E-PROC-SPAWN throw then ;
 
-: UNBLOCK ( ptr u8 n -- )
+: UNBLOCK ( ^u8 n -- )
    SIGDEL-CALL MASK-OK ;
 
 \ The engine's crash and breakpoint handlers stay reachable: a fault raised
 \ while blocked kills the process on Linux and refaults for ever on macOS.
-: ASYNC-SET ( ptr u8 -- ) {: set:ptr :}
+: ASYNC-SET ( ^u8 -- ) {: set:^ :}
    set SIGFILL-CALL MASK-OK
    set SIGSEGV UNBLOCK
    set SIGBUS UNBLOCK
@@ -98,19 +98,19 @@ FUNCTION: SIGDEL-CALL sigdelset ( ptr u8 n -- i32 )
    set SIGTRAP UNBLOCK ;
 
 \ The thread's old mask follows the set in RAW's buffer.
-: OLD-MASK ( ptr u8 -- ptr u8 )
+: OLD-MASK ( ^u8 -- ^u8 )
    SIGSET-BYTES + ;
 
-: BLOCK-ASYNC ( ptr u8 -- ) {: set:ptr :}
+: BLOCK-ASYNC ( ^u8 -- ) {: set:^ :}
    set ASYNC-SET
    SIG-BLOCK set set OLD-MASK SIGMASK-CALL MASK-OK ;
 
 \ The answer is dropped: the call cannot fail once BLOCK-ASYNC's did not, and
 \ the child runs this before RAW has returned.
-: RESTORE-MASK ( ptr u8 -- ) {: set:ptr :}
+: RESTORE-MASK ( ^u8 -- ) {: set:^ :}
    SIG-SETMASK set OLD-MASK set SIGMASK-CALL drop ;
 
-: FORK-MASKED ( ptr u8 -- pid ) {: set:ptr :}
+: FORK-MASKED ( ^u8 -- pid ) {: set:^ :}
    set BLOCK-ASYNC
    [: FORK-HELD >PID dup PID>N 0= if FORK-CHILD:RESET then ;]
    [: set RESTORE-MASK ;] finally ;
@@ -194,7 +194,7 @@ private
 : PROC-REAP-KILL-GROUP ( -- )
    0 >PID PROCESS:SIGKILL PROCESS:KILL-RAW drop ;
 
-: PROC-REAP-PFD-SLOT ( idx -- ptr n ) {: idx:idx :}
+: PROC-REAP-PFD-SLOT ( idx -- ^n ) {: idx:idx :}
    idx IDX>N 8 * PROC-REAP-PFD + ;
 
 : PROC-REAP-PFD! ( fd n idx -- ) {: fd:fd events:n idx:idx :}

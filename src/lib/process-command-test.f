@@ -32,11 +32,11 @@ create NUL-NAME 74 c, 74 c, 0 c, 88 c,      \ J J NUL X
 : RESULT-CODE ( result<n,n> -- n )   \ 0 on clean exit, else the completion code
    MATCH result ok OF ENDOF err OF ENDOF ;MATCH ;
 
-: RUN# ( CMD:command ptr u8 n n -- CMD:command n )
+: RUN# ( CMD:command ^u8 n n -- CMD:command n )
    >MS CMD:RUN-RC RESULT-CODE ;
 
-: CHECK-LINE ( ptr u8 n ptr u8 n -- ptr u8 n )
-   {: out:ptr outu:n expected:ptr expectedu:n :}
+: CHECK-LINE ( ^u8 n ^u8 n -- ^u8 n )
+   {: out:^ outu:n expected:^ expectedu:n :}
    outu expectedu 1+ < if
       outu expectedu 1+ T=
       out outu exit
@@ -45,7 +45,7 @@ create NUL-NAME 74 c, 74 c, 0 c, 88 c,      \ J J NUL X
    out expectedu + c@ 10 T=
    out expectedu 1+ + outu expectedu 1+ - ;
 
-: LF-COUNT ( ptr u8 n -- n ) {: a:ptr u:n :}
+: LF-COUNT ( ^u8 n -- n ) {: a:^ u:n :}
    0 u 0 ?do a i + c@ 10 = if 1 + then loop ;
 
 : PRINTF ( CMD:command -- CMD:command )
@@ -213,12 +213,12 @@ create NUL-NAME 74 c, 74 c, 0 c, 88 c,      \ J J NUL X
 
 \ A deadline, path or closed placed fd refused before the run starts throws its
 \ own code and keeps the previous run's outcome and capture.
-: EXIT3$ ( -- ptr u8 n )  s" printf x; exit 3" ;
+: EXIT3$ ( -- ^u8 n )  s" printf x; exit 3" ;
 
 : EXIT3-KEPT ( CMD:command -- CMD:command )
    CMD:OUTCOME@ {: oc :}
-   CMD:OUT$ {: out:ptr outu:n :}
-   CMD:ERR$ {: err:ptr erru:n :}
+   CMD:OUT$ {: out:^ outu:n :}
+   CMD:ERR$ {: err:^ erru:n :}
    EXIT3$ out outu err erru oc 3 T-ENDING-EXITED=
    out outu s" x" T$= ;
 
@@ -243,7 +243,7 @@ create NUL-NAME 74 c, 74 c, 0 c, 88 c,      \ J J NUL X
 \ before any spawn.
 create DIR PATH-CAP allot   variable DIR-U
 create REL PATH-CAP allot   variable REL-U
-: CWD-BODY$ ( -- ptr u8 n )  s" from the private directory" ;
+: CWD-BODY$ ( -- ^u8 n )  s" from the private directory" ;
 
 : CWD-RUN ( CMD:command -- CMD:command )
    DIR DIR-U @ CMD:CWD!
@@ -253,7 +253,7 @@ create REL PATH-CAP allot   variable REL-U
 
 : CWD ( -- )
    FS:CLEANUP-RESET
-   s" hb-cmd-cwd" FS:MKTEMP-DIR {: d:ptr du :}
+   s" hb-cmd-cwd" FS:MKTEMP-DIR {: d:^ du :}
    d du FS:CLEANUP-TREE+
    du PATH-CAP <= TTRUE
    du PATH-CAP > if FS:CLEANUP-RUN exit then
@@ -337,7 +337,7 @@ create IN IN-BYTES allot
    s\" %s\n" CMD:ARG+
    ARGS 0 do s" a" CMD:ARG+ loop
    s" /usr/bin/printf" PROCESS:WAIT-FOREVER MS>N RUN# 0 T=
-   CMD:OUT$ {: a:ptr u:n :}
+   CMD:OUT$ {: a:^ u:n :}
    u ARGS 2 * T=
    a u LF-COUNT ARGS T= ;
 
@@ -359,12 +359,12 @@ create NAME 5 allot                      \ V and four digits
       NAME 5 s" x" CMD:ENV+
    loop
    s" /usr/bin/env" PROCESS:WAIT-FOREVER MS>N RUN# 0 T=
-   CMD:OUT$ {: a:ptr u:n :}
+   CMD:OUT$ {: a:^ u:n :}
    u ROWS 8 * T=                         \ "Vdddd=x\n" per row
    a u LF-COUNT ROWS T= ;
 
 \ An inner scope is its own command.
-: SAY ( CMD:command ptr u8 n -- CMD:command ) {: a:ptr u:n :}
+: SAY ( CMD:command ^u8 n -- CMD:command ) {: a:^ u:n :}
    a u CMD:ARG+
    s" /usr/bin/printf" PROCESS:WAIT-FOREVER MS>N RUN# 0 T= ;
 
@@ -395,15 +395,15 @@ create PIPE-BUF PIPE-CAP allot
 \ The parent writes `|parent` through its own fd, which throws if a run closed it,
 \ then one read takes all the pipe holds; the pipe is never empty, so it never
 \ blocks. A refused read throws E-FS-IO, as FD's reads do.
-: DRAIN$ ( ptr n ptr n -- ptr u8 n )
-   {: r:ptr w:ptr :}
+: DRAIN$ ( ^n ^n -- ^u8 n )
+   {: r:^ w:^ :}
    w @ >FD s" |parent" FD:WRITE-FULL
    r @ PIPE-BUF PIPE-CAP read
    dup 0 < if E-FS-IO throw then
    PIPE-BUF swap ;
 
-: PIPE$ ( -- ptr u8 n ) PIPE-R PIPE-W DRAIN$ ;
-: PIPE4$ ( -- ptr u8 n ) PIPE4-R PIPE4-W DRAIN$ ;
+: PIPE$ ( -- ^u8 n ) PIPE-R PIPE-W DRAIN$ ;
+: PIPE4$ ( -- ^u8 n ) PIPE4-R PIPE4-W DRAIN$ ;
 
 \ rc 0 when the child's fd 3 takes the write, 7 when fd 3 is closed.
 : FD3-RUN ( CMD:command -- CMD:command n )
@@ -508,10 +508,10 @@ create RUSAGE-BUF RUSAGE-BYTES allot
 
 PROCESS-SYMBOLS
 
-FUNCTION: RESOURCE-USAGE getrusage ( n ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: RESOURCE-USAGE getrusage ( n ^u8 -- i32 ) ;FUNCTION
 FUNCTION: SYNC-RANGE msync ( n n n -- i32 ) ;FUNCTION
 
-: LE64@ ( ptr u8 -- n ) {: source :}
+: LE64@ ( ^u8 -- n ) {: source :}
    0 8 0 do source 7 i - + c@ swap 8 lshift or loop ;
 
 : PEAK-RSS ( -- n )
@@ -551,23 +551,23 @@ TASK:MIN-STACK TASK:TASK TASK-A
 TASK:MIN-STACK TASK:TASK TASK-B
 
 \ Bytes that break `yes ch`'s pattern: ch at even offsets, LF at odd ones.
-: BAD-YES ( ptr u8 n n -- n ) {: a:ptr u:n ch:n :}
+: BAD-YES ( ^u8 n n -- n ) {: a:^ u:n ch:n :}
    0 u 0 ?do i 1 and 0<> if 10 else ch then a i + c@ <> if 1 + then loop ;
 
-: YES ( CMD:command ptr u8 n -- CMD:command n ) {: a:ptr u:n :}
+: YES ( CMD:command ^u8 n -- CMD:command n ) {: a:^ u:n :}
    s" -c" CMD:ARG+
    a u CMD:ARG+
    s" /bin/sh" PROCESS:WAIT-FOREVER MS>N RUN# ;
 
 : A-RUN ( CMD:command -- CMD:command )
    s" sleep 0.3; yes A | head -c 100000" YES A-RC !
-   CMD:OUT$ {: a:ptr u:n :}
+   CMD:OUT$ {: a:^ u:n :}
    u A-LEN !
    a u 65 BAD-YES A-BAD ! ;
 
 : B-RUN ( CMD:command -- CMD:command )
    s" sleep 0.3; yes B | head -c 100000" YES B-RC !
-   CMD:OUT$ {: a:ptr u:n :}
+   CMD:OUT$ {: a:^ u:n :}
    u B-LEN !
    a u 66 BAD-YES B-BAD ! ;
 
@@ -577,7 +577,7 @@ TASK:MIN-STACK TASK:TASK TASK-B
 : BOTH-DONE? ( -- bool )
    TASK-A TASK:DONE? TASK-B TASK:DONE? and ;
 
-: JOIN-0 ( ptr n -- )
+: JOIN-0 ( ^n -- )
    TASK:JOIN MATCH result ok OF 0 T= ENDOF err OF 0 T= ENDOF ;MATCH ;
 
 : TWO-TASKS ( -- )
@@ -604,8 +604,8 @@ TASK:MIN-STACK TASK:TASK LATE-TASK
 
 : LATE-RUN ( CMD:command -- CMD:command )
    s" /usr/bin/env" PROCESS:WAIT-FOREVER MS>N RUN# LATE-RC !
-   CMD:OUT$ {: a:ptr u:n :}
-   S\" HABU_CMD_DEFAULT=orig\n" {: first:ptr firstu:n :}
+   CMD:OUT$ {: a:^ u:n :}
+   S\" HABU_CMD_DEFAULT=orig\n" {: first:^ firstu:n :}
    0 LATE-FIRST !
    u firstu >= if a firstu first firstu STR= if 1 LATE-FIRST ! then then
    0 LATE-SEEN !
@@ -655,7 +655,7 @@ TASK:MIN-STACK TASK:TASK PARKER
    s" 1048576" CMD:ARG+
    s" /dev/zero" CMD:ARG+
    s" /usr/bin/head" PROCESS:WAIT-FOREVER MS>N RUN# PARK-RC !
-   CMD:OUT$ {: a:ptr u:n :}
+   CMD:OUT$ {: a:^ u:n :}
    u PARK-LEN !
    a NULL-PTR BYTE-VIEW - PARK-ADDR !
    1 PARK-READY atomic!
@@ -684,7 +684,7 @@ variable YES-ADDR
 
 : RUNAWAY ( CMD:command -- CMD:command )
    s" /usr/bin/yes" SHORT-TIMEOUT-MS >MS CMD:RUN-OUTCOME T-ENDING-TIMEOUT
-   CMD:OUT$ {: a:ptr u:n :}
+   CMD:OUT$ {: a:^ u:n :}
    u PAGE-PROBE > TTRUE
    a NULL-PTR BYTE-VIEW - YES-ADDR !
    YES-ADDR @ MAPPED 0 T= ;

@@ -40,7 +40,7 @@ PROCESS:NO-FD FIFO-RD !
 \ neither is left. A FIFO no writer has opened reads end of file too, so end of
 \ file counts only after the subject's report.
 
-: FIFO$ ( -- ptr u8 n )
+: FIFO$ ( -- ^u8 n )
    FIFO FIFO-U @ ;
 
 \ A new FIFO for the case, its read end open before the capture starts, so the

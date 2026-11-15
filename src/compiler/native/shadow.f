@@ -25,7 +25,7 @@ private
 ENUM state closed open native ;ENUM
 TYPED-VARIABLE SH-STATE state
 TYPED-VARIABLE SH-BIND CBIND:binding \ the binding an open shadow compiles for
-TYPED-VARIABLE NATIVE-ADDRS-XT [ ptr u8 -- ]
+TYPED-VARIABLE NATIVE-ADDRS-XT [ ^u8 -- ]
 variable NATIVE-ADDRS-SET            \ a backend installed NATIVE-ADDRS-XT
 
 \ ---- the emissions -----------------------------------------------------------
@@ -200,7 +200,7 @@ $E9 constant TAIL-OP
       kind NEMIT:CALL = if CALL-OP else
          kind NEMIT:TAIL = if TAIL-OP else E-NSHADOW-ROW throw then
       then {: opcode:n :}
-      at off + CODE-BUF {: p:ptr :}
+      at off + CODE-BUF {: p:^ :}
       p c@ opcode <> if E-NSHADOW-ROW throw then
       0 p REL32-FIELD + LE:U32!
    loop ;
@@ -430,7 +430,7 @@ public
 \ carry an address and return to the unplaced form,
 \ given the first byte of its copy while the emission stands sealed in NEMIT;
 \ COPY refuses such an emission until one has.
-: NATIVE-ADDRS! ( [ ptr u8 -- ] -- )
+: NATIVE-ADDRS! ( [ ^u8 -- ] -- )
    NATIVE-ADDRS-XT !
    1 NATIVE-ADDRS-SET ! ;
 
@@ -587,7 +587,7 @@ public
    EM-SIZE @ ;
 
 \ Its first byte, until the next take moves the storage.
-: BYTES ( n -- ptr u8 )
+: BYTES ( n -- ^u8 )
    EM-AT @ CODE-BUF ;
 
 : RET-BYTES ( n -- n )

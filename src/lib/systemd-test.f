@@ -39,19 +39,19 @@ create GOT GOT-CAP allot
 variable BOUND-FD
 variable ABSTRACT-FD
 
-: SOCKETS$ ( -- ptr u8 n ) SOCKETS SOCKETS-U @ ;
-: BOUND$ ( -- ptr u8 n ) BOUND BOUND-U @ ;
-: MISSING$ ( -- ptr u8 n ) MISSING MISSING-U @ ;
-: ABSTRACT$ ( -- ptr u8 n ) ABSTRACT ABSTRACT-U @ ;
+: SOCKETS$ ( -- ^u8 n ) SOCKETS SOCKETS-U @ ;
+: BOUND$ ( -- ^u8 n ) BOUND BOUND-U @ ;
+: MISSING$ ( -- ^u8 n ) MISSING MISSING-U @ ;
+: ABSTRACT$ ( -- ^u8 n ) ABSTRACT ABSTRACT-U @ ;
 
 PROCESS-SYMBOLS
 
 FUNCTION: SOCKET-CALL socket ( n n n -- i32 ) ;FUNCTION
-FUNCTION: BIND-CALL bind ( n ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: BIND-CALL bind ( n ^u8 n -- i32 ) ;FUNCTION
 FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
-FUNCTION: RECV-CALL recv ( n ptr u8 n n -- n ) ;FUNCTION
+FUNCTION: RECV-CALL recv ( n ^u8 n n -- n ) ;FUNCTION
 
-: P+ ( ptr u8 n -- )
+: P+ ( ^u8 n -- )
    PROG CODEGEN:APPEND-STRING
    10 PROG CODEGEN:APPEND-BYTE ;
 
@@ -67,29 +67,29 @@ FUNCTION: RECV-CALL recv ( n ptr u8 n n -- n ) ;FUNCTION
    s" GO" P+ ;
 
 \ The address NOTIFY_SOCKET's value names; answers its length.
-: ADDRESS! ( ptr u8 n -- n )
-   {: name:ptr size:n :}
+: ADDRESS! ( ^u8 n -- n )
+   {: name:^ size:n :}
    SOCKADDR-BYTES 0 do 0 ADDR i + c! loop
    AF-UNIX ADDR c!
    name ADDR 2 + size BYTE-COPY
    name c@ $40 = if 0 ADDR 2 + c! size 2 + exit then
    size 3 + ;
 
-: BIND-AT ( ptr u8 n -- n )
-   {: name:ptr size:n :}
+: BIND-AT ( ^u8 n -- n )
+   {: name:^ size:n :}
    AF-UNIX SOCKET-FLAGS 0 SOCKET-CALL {: fd:n :}
    fd 0 < if s" systemd-test: socket failed" T-EX-FAIL die then
    fd ADDR name size ADDRESS! BIND-CALL 0 < if
       s" systemd-test: bind failed" T-EX-FAIL die
    then fd ;
 
-: NAMED ( ptr u8 n ptr u8 -- n )
-   {: prefix:ptr prefixu:n dst:ptr :}
+: NAMED ( ^u8 n ^u8 -- n )
+   {: prefix:^ prefixu:n dst:^ :}
    SB-RESET prefix prefixu SB-APPEND getpid FMT:SB-INT
-   SB$ {: a:ptr u:n :} a dst u BYTE-COPY u ;
+   SB$ {: a:^ u:n :} a dst u BYTE-COPY u ;
 
-: SOCKETS! ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: SOCKETS! ( ^u8 n -- )
+   {: a:^ u:n :}
    u PATH-CAP > if E-FS-PATH throw then
    a SOCKETS u BYTE-COPY  u SOCKETS-U ! ;
 
@@ -111,10 +111,10 @@ FUNCTION: RECV-CALL recv ( n ptr u8 n n -- n ) ;FUNCTION
    CHILD-SOURCE ;
 
 \ A child engine per case: GETENV reads the environment the process started with.
-: RUN ( ptr u8 n -- n n )   \ outu rc
-   {: value:ptr valueu:n :}
-   ENGINE-CANDIDATE:PATH$ {: engine:ptr engineu:n :}
-   PROG CODEGEN:CONTENTS {: prog:ptr progu:n :}
+: RUN ( ^u8 n -- n n )   \ outu rc
+   {: value:^ valueu:n :}
+   ENGINE-CANDIDATE:PATH$ {: engine:^ engineu:n :}
+   PROG CODEGEN:CONTENTS {: prog:^ progu:n :}
    PROC-ARGV-ENV-RESET
    s" NOTIFY_SOCKET" >LEN value valueu >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
@@ -125,18 +125,18 @@ FUNCTION: RECV-CALL recv ( n ptr u8 n n -- n ) ;FUNCTION
    rc 0 <> if ERR erru LEN>N type cr then
    outu LEN>N rc ;
 
-: WANT$ ( n -- ptr u8 n )
+: WANT$ ( n -- ^u8 n )
    SB-RESET FMT:SB-INT 10 SB-APPEND-C SB$ ;
 
-: ANSWERS ( ptr u8 n n -- )
-   {: value:ptr valueu:n want:n :}
+: ANSWERS ( ^u8 n n -- )
+   {: value:^ valueu:n want:n :}
    value valueu RUN {: outu:n rc:n :}
    OUT outu want WANT$ T$=
    s" ... and the child engine exits cleanly" T-LABEL
    rc 0 T= ;
 
 \ A unix datagram is queued before sendto returns, so nothing waits.
-: RECEIVED$ ( n -- ptr u8 n )
+: RECEIVED$ ( n -- ^u8 n )
    {: fd:n :}
    fd GOT GOT-CAP MSG-DONTWAIT RECV-CALL {: got:n :}
    GOT got 0 max ;

@@ -55,15 +55,15 @@ E-DEV-OPAQUE-PACKAGE DECL-REJECT:EXPLAIN
 2 cells constant DEV.FLD-OFF
 3 cells constant DEV-REC
 
-: DEV.KIND ( ptr a -- ptr a ) DEV.KIND-OFF + ;
-: DEV.VAR ( ptr a -- ptr a ) DEV.VAR-OFF + ;
-: DEV.FLD ( ptr a -- ptr a ) DEV.FLD-OFF + ;
+: DEV.KIND ( ^a -- ^a ) DEV.KIND-OFF + ;
+: DEV.VAR ( ^a -- ^a ) DEV.VAR-OFF + ;
+: DEV.FLD ( ^a -- ^a ) DEV.FLD-OFF + ;
 
 8 constant DEV-CAP-INIT           \ small seed; grows geometrically (doubles) on demand
 variable DEV-CAP-V   DEV-CAP-INIT DEV-CAP-V !
 create DEV-A-BOOT   DEV-CAP-INIT DEV-REC * allot
 PERSISTED-PTR-VARIABLE DEV-A-P    DEV-A-BOOT DEV-A-P !
-: DEV-BASE ( -- ptr n ) DEV-A-P @ ;
+: DEV-BASE ( -- ^n ) DEV-A-P @ ;
 
 variable DEV-N        \ events logged by the open declaration
 variable DEV-BASE-FLD \ field-record count when the declaration opened
@@ -79,10 +79,10 @@ variable DEV-CUR-VAR  \ current-variant selector: open variant id, else DEV-NO-V
    DEV-N @ DEV-CAP-V @ < IF exit THEN
    DEV-N @ 1 + DEV-GROW ;
 
-: DEV-ROW ( n -- ptr n ) DEV-REC * DEV-BASE + ;
+: DEV-ROW ( n -- ^n ) DEV-REC * DEV-BASE + ;
 : DEV-EMIT ( n n n -- ) {: k:n var:n fld:n :}
    DEV-ENSURE
-   DEV-N @ DEV-ROW {: r:ptr :}
+   DEV-N @ DEV-ROW {: r:^ :}
    k r DEV.KIND !   var r DEV.VAR !   fld r DEV.FLD !
    DEV-N @ 1 + DEV-N ! ;
 : DEV-PROV-KIND@ ( n -- n ) DEV-ROW DEV.KIND @ ;
@@ -156,7 +156,7 @@ public
 
 \ Named-field variants carry no positional payload schema (ss=sc=pc=0); their
 \ field rows are found downstream by (family, variant id).
-: VARIANT ( n ptr u8 n -- ) {: fam:n na:ptr nu:n :}
+: VARIANT ( n ^u8 n -- ) {: fam:n na:^ nu:n :}
    na nu TYPE-NAME:VARIANT-REQUIRE
    fam na nu DEV-VAR-ORD @ 0 0 0 SUMV-ADD {: vid:n :}
    vid DEV-CUR-VAR !
@@ -171,27 +171,27 @@ public
 \ E-TFAM-CASE), so a malformed field emits no event and leaves the ordinal untouched.
 \ The event carries the field's row id: the field record numbers this
 \ declaration's rows from DEV-BASE-FLD in the order they are added.
-: FIELD ( n ptr u8 n n n n n n n n -- )
-   {: fam:n na:ptr nu:n sch:n slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
+: FIELD ( n ^u8 n n n n n n n n -- )
+   {: fam:n na:^ nu:n sch:n slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
    fam sch PF-SCHEMA-OK? 0= IF E-PF-SCHEMA throw THEN
    fam DEV-CUR-VAR @ na nu sch slot cellsn boff bytesn al flags PF-ADD
    DEV-K-FIELD DEV-CUR-VAR @  DEV-BASE-FLD @ DEV-FLD-ORD @ +  DEV-EMIT
    DEV-FLD-ORD @ 1 + DEV-FLD-ORD ! ;
 
-\ A pointer does not own (TFCL-NODE? stops at it), so `ptr <linear>` would let
+\ A pointer does not own (TFCL-NODE? stops at it), so `^<linear>` would let
 \ its family copy and drop a linear value.
-: REQUIRE-POINTEE ( n ptr u8 n -- n )
-   {: node:n why:ptr whyu:n :}
+: REQUIRE-POINTEE ( n ^u8 n -- n )
+   {: node:n why:^ whyu:n :}
    node TFCL-NODE? IF
-      why whyu s" hold the linear value in the field itself, never beneath `ptr`"
+      why whyu s" hold the linear value in the field itself, never beneath `^`"
       TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw
    THEN
    node ;
 
 \ REQUIRE-POINTEE on each pointee in a field type, as SCH-STORE-MASK walks it;
 \ again at close, as a pointee naming the declared family was judged fieldless.
-: REQUIRE-POINTEES ( n ptr u8 n -- )
-   {: node:n why:ptr whyu:n :}
+: REQUIRE-POINTEES ( n ^u8 n -- )
+   {: node:n why:^ whyu:n :}
    node SCHEMA-PTR? IF
       node SCHEMA-A@ why whyu REQUIRE-POINTEE why whyu RECURSE EXIT THEN
    node SCHEMA-APP? IF

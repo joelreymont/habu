@@ -38,10 +38,10 @@ using A64ASM
 using A64ICODE
 
 package CRASH
-: CRH-BYTE+ ( ptr u8 n -- ptr u8 ) + ;
+: CRH-BYTE+ ( ^u8 n -- ^u8 ) + ;
 
 : CRH-INIT ( -- )
-   s" habu-crash regs [sig x0..x28 fp lr sp pc], hex one-per-line:" {: a:ptr u:n :}
+   s" habu-crash regs [sig x0..x28 fp lr sp pc], hex one-per-line:" {: a:^ u:n :}
    0 BEGIN dup u < WHILE
       dup a swap CRH-BYTE+ c@  over CRH swap CRH-BYTE+ c!
       1 +
@@ -175,8 +175,8 @@ public
    0 5 0 ADDI,  NR-EXIT-GROUP SYS, ;
 
 private
-: DIE-LINE-SITE, ( ptr u8 n n n -- )
-   LBL {: a:ptr u:n status:n flag:n msg:label :}
+: DIE-LINE-SITE, ( ^u8 n n n -- )
+   LBL {: a:^ u:n status:n flag:n msg:label :}
    u 0= u DIE-LINE-ROOM > or IF
       s" crash: a DIE-LINE, text is empty or longer than DIE-LINE-ROOM" 76 die
    THEN
@@ -187,12 +187,12 @@ private
 public
 \ A branch to LDIE-LINE with the text and the exit status, the text laid
 \ after it. The caller places its own label before it.
-: DIE-LINE, ( ptr u8 n n -- )  0 DIE-LINE-SITE, ;
+: DIE-LINE, ( ^u8 n n -- )  0 DIE-LINE-SITE, ;
 
 \ DIE-LINE, that also prints the register's value; the register is copied
 \ first, so it may be any of x0..x4.
-: DIE-LINE-VALUE, ( ptr u8 n n n -- )
-   {: a:ptr u:n status:n reg:n :}
+: DIE-LINE-VALUE, ( ^u8 n n n -- )
+   {: a:^ u:n status:n reg:n :}
    u 0= IF 0 ELSE a u + 1- c@ THEN $3A <> IF
       s" crash: a DIE-LINE-VALUE, text does not end with the ':' before its value" 76 die
    THEN
@@ -219,21 +219,21 @@ create FAULT-JSON FAULT-TEXT-CAP allot  variable FAULT-JSON-U
 2 constant FAULT-NOTE
 variable FAULT-PART  FAULT-SHUT FAULT-PART !
 
-: TEXT+ ( ptr u8 n ptr u8 ptr n -- )
-   {: a:ptr u:n buf:ptr len:ptr :}
+: TEXT+ ( ^u8 n ^u8 ^n -- )
+   {: a:^ u:n buf:^ len:^ :}
    len @ u + FAULT-TEXT-CAP > IF
       s" crash: a fault record's text is longer than FAULT-TEXT-CAP" 76 die
    THEN
    u 0 ?do  a i + c@  buf len @ + i + c!  loop
    len @ u + len ! ;
-: PROSE+ ( ptr u8 n -- )  FAULT-PROSE FAULT-PROSE-U TEXT+ ;
-: JSON+ ( ptr u8 n -- )  FAULT-JSON FAULT-JSON-U TEXT+ ;
-: BOTH+ ( ptr u8 n -- ) {: a:ptr u:n :}  a u PROSE+  a u JSON+ ;
+: PROSE+ ( ^u8 n -- )  FAULT-PROSE FAULT-PROSE-U TEXT+ ;
+: JSON+ ( ^u8 n -- )  FAULT-JSON FAULT-JSON-U TEXT+ ;
+: BOTH+ ( ^u8 n -- ) {: a:^ u:n :}  a u PROSE+  a u JSON+ ;
 
 \ A site's text is laid as is in a JSON string, so it holds no byte JSON escapes.
 : PLAIN? ( n -- bool ) {: c:n :}
    c 32 >=  c 34 <> and  c 92 <> and ;
-: CHECK-TEXT ( ptr u8 n -- ) {: a:ptr u:n :}
+: CHECK-TEXT ( ^u8 n -- ) {: a:^ u:n :}
    u 0 ?do
       a i + c@ PLAIN? 0= IF
          s" crash: a fault record's text holds a byte JSON escapes" 76 die
@@ -281,7 +281,7 @@ variable FAULT-PART  FAULT-SHUT FAULT-PART !
    0 FAULT-PROSE-U !  0 FAULT-JSON-U ! ;
 
 \ A note's key, after the text before it.
-: NOTE+ ( ptr u8 n -- ) {: k:ptr ku:n :}
+: NOTE+ ( ^u8 n -- ) {: k:^ ku:n :}
    NOTE-PART?  k ku CHECK-TEXT
    S\" \n  = " PROSE+  k ku PROSE+  s" : " PROSE+
    S\" \"," JSON+
@@ -373,8 +373,8 @@ variable FAULT-PART  FAULT-SHUT FAULT-PART !
 public
 \ Opens a record with its code and message: sp drops FAULT-FRAME, x14 = its
 \ start, x17 = the JSON flag.
-: FAULT-OPEN, ( ptr u8 n ptr u8 n -- )
-   {: code:ptr cu:n msg:ptr mu:n :}
+: FAULT-OPEN, ( ^u8 n ^u8 n -- )
+   {: code:^ cu:n msg:^ mu:n :}
    FAULT-SHUT PART?  code cu CHECK-TEXT  msg mu CHECK-TEXT
    SP SP FAULT-FRAME SUBI,  14 SP 0 ADDI,
    17 DATA-VA VA>N REJECTION-JSON-CELL + LIT64,  17 17 0 LDR,
@@ -401,7 +401,7 @@ public
    done LBL, ;
 
 \ A note with the register's value in decimal; the register is copied first.
-: FAULT-NUMBER, ( ptr u8 n n -- ) {: k:ptr ku:n r:n :}
+: FAULT-NUMBER, ( ^u8 n n -- ) {: k:^ ku:n r:n :}
    7 r 0 ADDI,
    k ku NOTE+  PIECE,
    LFAULT-DEC LABEL@ BL, ;
@@ -409,7 +409,7 @@ public
 \ A note with the bytes at the pointer register, the length register's count of
 \ them. Both are among x3..x7, which the record's parts keep until a note writes
 \ x6 or x7.
-: FAULT-TEXT, ( ptr u8 n n n -- ) {: k:ptr ku:n p:n l:n :}
+: FAULT-TEXT, ( ^u8 n n n -- ) {: k:^ ku:n p:n l:n :}
    p 3 < p 7 > or  l 3 < or  l 7 > or IF
       s" crash: a FAULT-TEXT, register is outside x3..x7" 76 die
    THEN
@@ -418,12 +418,12 @@ public
 
 \ A note with the address in the register, `0x` and 16 hex digits; the
 \ register is copied first.
-: FAULT-ADDRESS, ( ptr u8 n n -- ) {: k:ptr ku:n r:n :}
+: FAULT-ADDRESS, ( ^u8 n n -- ) {: k:^ ku:n r:n :}
    7 r 0 ADDI,
    k ku NOTE+  s" 0x" BOTH+  PIECE,  7 HEX, ;
 
 \ Ends the record with its help and exits with the status.
-: FAULT-STOP, ( ptr u8 n n -- ) {: h:ptr hu:n status:n :}
+: FAULT-STOP, ( ^u8 n n -- ) {: h:^ hu:n status:n :}
    NOTE-PART?  h hu CHECK-TEXT
    S\" \n  = help: " PROSE+  h hu PROSE+  S\" \n\n" PROSE+
    FAULT-PART @ FAULT-NOTE = IF S\" \"}" ELSE S\" \"" THEN JSON+
@@ -434,7 +434,7 @@ public
 
 \ Ends the record with its help, none for an empty text, and returns, sp as
 \ FAULT-OPEN, found it.
-: FAULT-KEEP, ( ptr u8 n -- ) {: h:ptr hu:n :}
+: FAULT-KEEP, ( ^u8 n -- ) {: h:^ hu:n :}
    NOTE-PART?  h hu CHECK-TEXT
    hu 0 <> IF S\" \n  = help: " PROSE+  h hu PROSE+ THEN
    S\" \n\n" PROSE+
@@ -564,11 +564,11 @@ variable CRS-MACHINE-H
 variable CRS-THROW
 
 \ The four stack-bounds messages and their help.
-: CRS-DATA$ ( -- ptr u8 n ) s" the data stack ran past its bounds" ;
-: CRS-RET$ ( -- ptr u8 n ) s" the return stack ran past its bounds" ;
-: CRS-LOOP$ ( -- ptr u8 n ) s" the loop stack ran past its bounds" ;
-: CRS-MACHINE$ ( -- ptr u8 n ) s" the machine stack ran past its bounds" ;
-: CRS-HELP$ ( -- ptr u8 n )
+: CRS-DATA$ ( -- ^u8 n ) s" the data stack ran past its bounds" ;
+: CRS-RET$ ( -- ^u8 n ) s" the return stack ran past its bounds" ;
+: CRS-LOOP$ ( -- ^u8 n ) s" the loop stack ran past its bounds" ;
+: CRS-MACHINE$ ( -- ^u8 n ) s" the machine stack ran past its bounds" ;
+: CRS-HELP$ ( -- ^u8 n )
    s" give a recursion an exit, or keep fewer values on the stack" ;
 
 11 constant CRASH-SIGSEGV
@@ -601,13 +601,13 @@ variable CRS-THROW
 
 \ The record of a stack's overflow, x3, x4 and x6 as FAULT-IN, reads them.
 \ Never returns.
-: C-CRASH-GUARD-RECORD ( ptr u8 n -- ) {: a:ptr u:n :}
+: C-CRASH-GUARD-RECORD ( ^u8 n -- ) {: a:^ u:n :}
    s" E-STACK-BOUNDS" a u FAULT-OPEN,  FAULT-IN,
    CRS-HELP$ ENGINE-ERROR:STACK-BOUNDS FAULT-STOP, ;
 
 \ The record for the guard page hit at the label, which Habu code hit.
-: C-CRASH-GUARD-REPORT ( ptr u8 n label -- )
-   {: a:ptr u:n hit:label :}
+: C-CRASH-GUARD-REPORT ( ^u8 n label -- )
+   {: a:^ u:n hit:label :}
    hit LBL,  C-CRASH-OWNER>R3  a u C-CRASH-GUARD-RECORD ;
 
 \ Row 1's record, whose pc may be C's: it names no word.

@@ -26,13 +26,13 @@ rules. Build and test procedures live in [bootstrap.md](bootstrap.md) and
   `[']` of it is admitted and refused exactly where that call is.
 - Never assert that arbitrary `evaluate` preserves the stack; use typed
   quotations for known callbacks. A checked word evaluates source with
-  `evaluate-closed ( ptr u8 n -- )`: the text runs on a guarded data stack of
+  `evaluate-closed ( ^u8 n -- )`: the text runs on a guarded data stack of
   its own, must leave nothing and must close every definition it opens
   (measured under **Rules learned by refusal**). The loader and every
   source-generating definer evaluate through it, so a loaded file
   (**Packages**) and a generated declaration are closed programs too. A text's
   top-level code is typed as a body is: with `variable V` and
-  `S$ ( -- ptr u8 n )`, `s" S$ drop V !" evaluate-closed` is `E-RAW-CELL-PTR`
+  `S$ ( -- ^u8 n )`, `s" S$ drop V !" evaluate-closed` is `E-RAW-CELL-PTR`
   at `!` and throws 70 before V changes.
 - `TRUST` forms mentioned below are legacy syntax awaiting removal.
 
@@ -170,7 +170,7 @@ private
   no part shadows. It is refused while top-level B or any part named B
   declares the family tail X, and while it exists neither may declare X
   (**Declaring your own scalar types**).
-- `[package] ( -- ptr u8 n )`: the open package's name, A-Z folded (`a:b` in a
+- `[package] ( -- ^u8 n )`: the open package's name, A-Z folded (`a:b` in a
   part), empty outside one; a string literal in a body, kept as `s"` at top level.
 - `public` and `private`, valid only inside a package, switch new definitions to
   the export wordlist and back. Outside code calls a public word as `NAME:WORD`;
@@ -290,12 +290,12 @@ public
   or a `SOURCE-ROOT:WITH` body they are refused by name. They never change the
   engine root or the process working directory, and an image cannot be saved
   with a path pushed. A file sets its root with
-  `SOURCE-ROOT:ROOT! ( ptr u8 n -- )`, legal at the top level, inside a load
+  `SOURCE-ROOT:ROOT! ( ^u8 n -- )`, legal at the top level, inside a load
   and inside a `WITH` body: the directory, relative to the current root when
   relative, becomes the current root, and the end of the load or `WITH` scope
   it runs in restores the root that was current when that load or scope began
   (`CD <dir>` is `ROOT!` at the top level). A file scopes a root with
-  `SOURCE-ROOT:WITH ( ptr u8 n [ -- ] -- )`, which restores the caller's on
+  `SOURCE-ROOT:WITH ( ^u8 n [ -- ] -- )`, which restores the caller's on
   return or throw; a root that does not resolve to a searchable directory, and
   an image save inside the scope, are refused by name.
 - A build's loader does every load, at a file's top level: a word that loads or
@@ -305,7 +305,7 @@ public
   runs during a build, `include: a word loaded or provided a file during a
   build; do it at the file's top level: <path>`, so a file that scoped its
   root by loading from a word sets it with `ROOT!` instead. The refusal is
-  `SOURCE-ROOT:BUILD-REFUSE ( ptr u8 n -- )`, handed the resolved path: in a
+  `SOURCE-ROOT:BUILD-REFUSE ( ^u8 n -- )`, handed the resolved path: in a
   build it ends the process with that text, outside one it returns.
   `SOURCE-ROOT:READ-OS` fills only the frame of a file a load is opening, as
   a reader installed with `SOURCE-INPUT:USE` calls it; any other call, in a
@@ -313,7 +313,7 @@ public
   is opening; a word read: <path>`. `SOURCE-ROOT:RESOLVE`
   resolves in a build as elsewhere, its known flag there answering for the
   built program's own registry. Fixtures resolve
-  against `SOURCE-ROOT:CURRENT$ ( -- ptr u8 n )`, never a script argument.
+  against `SOURCE-ROOT:CURRENT$ ( -- ^u8 n )`, never a script argument.
 - The files the engine bakes are already loaded: `require` of one, such as
   `require src/core/sha256.f`, is a no-op, and an application's file named like
   an engine file outside the engine's source root stays the application's.
@@ -328,7 +328,7 @@ public
   as `MK;does` in its own wordlist, so a live `MK;does` there refuses `MK` at
   `does>` and a later `MK;does` is refused.
 - A **public** definition whose tail a **private** word of the same package owns
-  is the forwarder pattern (`: PREPARE ( ptr n -- ) PREPARE ;` publishing a
+  is the forwarder pattern (`: PREPARE ( ^n -- ) PREPARE ;` publishing a
   private `PREPARE`): legal, but both effects must move the same number of
   CELLS, because the bare tail binds the private word and a definition's
   contract is read from that binding. A mismatch is refused where written,
@@ -336,7 +336,7 @@ public
   judges only a colon definition with a DECLARED signature; a public word made
   by a storage definer (`constant`, `variable`, `create`) is judged by its
   definer's row, so a private and a public `SHARED` constant in one package
-  stay legal. Same cells through different types are accepted (`( ptr u8 n --
+  stay legal. Same cells through different types are accepted (`( ^u8 n --
   n )` against `( n n -- n )`), and so is a public definition made BEFORE the
   private one: it binds its own name when its contract is read.
 - `EXPORT NAME` inside an open package re-exports an EXISTING word into the
@@ -489,14 +489,20 @@ types can still make `MAKE`'s effect too deep (`error[E-BAD-STORED-SIGNATURE]`).
 A record with a `BUFFER` rejects `DERIVE eq`, `hash` and `init`. `buffer` is reserved as a family,
 field and variant name.
 
-A multi-cell record is one logical value and lives inside checked definitions.
-The interpreter prompt refuses words with multi-cell inputs or outputs
-(`E-LAYOUT-VALUE ... interpret-mode layout value`), including a word whose
-`does>` clause effect is multi-cell (`64 SPAN-BUFFER: PBUF`, then a bare
-`PBUF`); so do `evaluate` and
-interpret-mode tick, and bare `dup`, `drop`, `swap` at the prompt move single
-cells. To compute with a record at the REPL, call a word whose public effect is
-single-cell; `2 3 DEMO:AT DEMO:FIRST` at the prompt is refused at `DEMO:AT`:
+A multi-cell record is one logical value, at top level as in a body. A word that
+takes or returns one runs at the prompt: the interpret row carries each
+multi-cell value as one item of its type, and a later word whose row takes that
+type consumes it. Interpret-mode tick, `evaluate` and a word whose `does>`
+clause effect is multi-cell (`64 SPAN-BUFFER: PBUF`, then `PBUF SPAN:LEN`)
+follow the same rule. `drop` drops the whole value at the prompt as in a body, a
+value a top-level `catch` left stale included (after `' W catch`, `drop` drops
+the code, then the value), and refuses a linear one as a body's does, or one of
+open width. The engine's other stack primitives do not: a body lowers `dup`,
+`swap`, `over`, `2>r` and their kin over a multi-cell value as one bundle, but
+at the prompt the primitive moves single cells, so one whose operands hold a
+multi-cell value is rejected before it runs; `2 3 DEMO:AT dup` is `E-LAYOUT-VALUE`
+at `dup`. So is `constant`, which would take one of
+its cells. Consume the value with a word, or move it inside a definition:
 
 ```forth
 package DEMO
@@ -504,9 +510,8 @@ public
 STRUCTURE point FIELD x n FIELD y n ;STRUCTURE
 : AT ( n n -- point ) DEMO-POINT:MAKE ;
 : FIRST ( point -- n ) DEMO-POINT:UNMAKE drop ;
-: FIRST-X ( -- n ) 2 3 AT FIRST ;
 ;package
-DEMO:FIRST-X .                      \ prints 2
+2 3 DEMO:AT DEMO:FIRST .            \ prints 2
 ```
 
 Inside a checked body a record binds to a local, untyped or annotated with the
@@ -532,9 +537,9 @@ An annotation is read by the SIGNATURE type grammar: family arguments (`{:
 r:res<n,n> :}`), nested families (`{: o:opt<opt<n>> :}`), the definition's own
 declared type variables (under `( opt<a> -- opt<a> )`, `{: o:opt<a> :} o`
 certifies and keeps the quantifier) and the same arity check. The one spelling
-only a local has is `{: p:ptr :}`: an annotation is a single token, so the bare
-`ptr` means an INFERRED pointee, and `{: p:ptr n :}` is two locals, not a
-pointee. The annotation is asserted, not decoration: a wrong family, a scalar
+only a local has is `{: p:^ :}`, a bare `^` whose pointee is INFERRED from
+the captured value; `{: p:^n :}` states it, and `{: p:^ n :}` is two locals,
+not a pointee. The annotation is asserted, not decoration: a wrong family, a scalar
 spelling (`{: p:n :}` is `E-MISMATCH`, expected: n actual: @pt.tag), a wrong
 family argument and a bare tail of a family of arity > 0 are all refused. The
 multi-cell type rationale is `docs/design.md` "Types".
@@ -579,10 +584,10 @@ multi-cell type rationale is `docs/design.md` "Types".
   repeating a feature rejects; `OPAQUE` is `STRUCTURE`-only, once, and needs a
   package and a field. `DERIVE addr` on a structure with fields
   generates typed field-address accessors plus `AT`, `BYTES` and `CELLS`: a
-  global public `point` with `FIELD x n` gains `POINT:X ( ptr point -- ptr n )`,
+  global public `point` with `FIELD x n` gains `POINT:X ( ^point -- ^n )`,
   read and written with the field type's ordinary checked operations; a
   `BUFFER b N` field's accessor answers its bytes as a span,
-  `( ptr point -- SPAN:span<u8> )` of N bytes
+  `( ^point -- SPAN:span<u8> )` of N bytes
   (`docs/design.md` "Families and layout policies" gives the layout
   policies). `DERIVE eq`/`DERIVE hash` on an arity-0 family
   generate those operations; compare an enum with its family's derived `EQ`,
@@ -596,14 +601,14 @@ multi-cell type rationale is `docs/design.md` "Types".
 - `POLICY` takes `stack-cell-tag` (the default), `packed-tag` or `niche-null`;
   `boxed` is `E-TDECL-POLICY` ("layout policy not yet supported").
   `niche-null` takes one shape, an empty variant then one holding a single
-  `ptr` field, and refuses any other (`E-TDECL-POLICY`,
-  "niche-null needs an empty variant, then one ptr field"). A `SUMTYPE`
-  payload naming the family being declared (inline, through `ptr` or
+  `^` field, and refuses any other (`E-TDECL-POLICY`,
+  "niche-null needs an empty variant, then one pointer field"). A `SUMTYPE`
+  payload naming the family being declared (inline, through `^` or
   bare) is `E-TDECL-RECURSIVE` under every accepted policy, and a payload naming a family not yet declared is
   `E-TDECL-PAYLOAD`, which also keeps mutual recursion out.
 - A `STRUCTURE` field or `ENUM` payload may name its own family only inside a
-  `ptr` pointee, as a linked record does:
-  `STRUCTURE node FIELD id n FIELD next ptr node ;STRUCTURE`.
+  `^` pointee, as a linked record does:
+  `STRUCTURE node FIELD id n FIELD next ^node ;STRUCTURE`.
   Named by value or as another family's argument (`FIELD o option<node>`, and
   `FIELD s SPAN:span<node>` though a span only points at its element), it is
   `E-TDECL-PAYLOAD` (7109), and so is a pointer to its own family when that
@@ -666,7 +671,7 @@ multi-cell type rationale is `docs/design.md` "Types".
   consumes the sum and gives the arm the payload once, which the arm must
   consume: re-mint it or call its destructor.
 - **`nullable<a>` is an address of an `a` or none, in one cell**
-  (`src/lib/adt/nullable.f`, `POLICY niche-null`): `NULLABLE:SOME ( ptr a --
+  (`src/lib/adt/nullable.f`, `POLICY niche-null`): `NULLABLE:SOME ( ^a --
   nullable<a> )` stores the address, `NULLABLE:NONE` and zero-filled storage
   are zero, and `MATCH nullable` with `none` and `some` arms is the only way to
   the address; a `some` of a null pointer matches `none`.
@@ -683,7 +688,7 @@ multi-cell type rationale is `docs/design.md` "Types".
   effects and `MATCH` name the family `PKG:family` (`( -- TCP4:read-result )`,
   `MATCH TCP4:read-result`); a body inside the owning package writes the bare
   family name in `MATCH`.
-- **An OPEN family instance is placeable.** `STRUCTURE span<a> FIELD base ptr a
+- **An OPEN family instance is placeable.** `STRUCTURE span<a> FIELD base ^a
   FIELD len n ;STRUCTURE` is two cells for every argument, so `: SKIP ( span<t>
   n -- span<t> ) …` compiles exactly like the `span<u8>` row, and so does a row
   carrying an open instance of a family whose parameter is a payload cell
@@ -695,9 +700,9 @@ multi-cell type rationale is `docs/design.md` "Types".
   - Every family named is declared, visible and applied to its declared
     number of arguments (`E-CAST-FAM`): `( n -- box )` for a
     one-parameter `box` is refused by name, not by a later death.
-  - Any other signature fault, bad syntax or a bare `ptr`, is refused as a
+  - Any other signature fault, bad syntax or a bare `^`, is refused as a
     `defer` with that signature is (`E-BAD-STORED-SIGNATURE`). The first
-    fault names the class, so `( ptr -- box )` is this reject, not
+    fault names the class, so `( ^ -- box )` is this reject, not
     `E-CAST-FAM`. An output scope or region variable no input supplies, when
     it is the only fault, is left to the scope rule: it is the shape of a view
     pack.
@@ -706,18 +711,18 @@ multi-cell type rationale is `docs/design.md` "Types".
     or introduce a scope dependency (`E-CAST-SCOPE`).
   - The exception is a view representation cast: it retypes one view,
     `read-view<p,q,T>` or `mut-view<p,q,a,T>`, as the two cells that represent
-    it, `ptr u8 n` (base and length), or back, over the same tail, or retypes
+    it, `^u8 n` (base and length), or back, over the same tail, or retypes
     a callback on the view as one on its two cells. Producing a
-    view is C2-MEM's: the pack `( ptr u8 n -- V )`, the callback pack
-    `( [ V -- ] -- [ ptr u8 n -- ] )`, whose result packs the two cells it is
+    view is C2-MEM's: the pack `( ^u8 n -- V )`, the callback pack
+    `( [ V -- ] -- [ ^u8 n -- ] )`, whose result packs the two cells it is
     called with into the view its callback takes, and the mut-view unpack
-    `( mut-view<p,q,a,T> -- ptr u8 n )`, which takes the raw address of an
+    `( mut-view<p,q,a,T> -- ^u8 n )`, which takes the raw address of an
     exclusive view, are declared only in package C2-MEM's private section.
     Each callback takes one value over its implicit tail and leaves nothing;
     a named tail, any other callback shape, or the reverse direction is
     `E-CAST-SCOPE`.
-    Any package may declare the read-view unpack `( read-view<p,q,T> -- ptr
-    u8 n )` in its private section: the projection erases the type and can
+    Any package may declare the read-view unpack `( read-view<p,q,T> --
+    ^u8 n )` in its private section: the projection erases the type and can
     neither widen bounds nor forge a scope. The element T is a cast term: a
     type variable or a linear type in it is `E-CAST-LINEAR`. A pack's scope and region
     variables are free in its input and, like any callee's, instantiate
@@ -741,7 +746,7 @@ multi-cell type rationale is `docs/design.md` "Types".
     in a row variable meets, at the same place in the output, a row ending in
     that variable with as many cells, else `E-CAST-CLASS`: `( [ R -- S ] -- [
     n -- ] )` and `( [ R -- R ] -- [ R n -- R ] )` are refused, `( [ R n -- R
-    ] -- [ R ptr n -- R ] )` loads.
+    ] -- [ R ^n -- R ] )` loads.
   - A type variable or a linear type anywhere in either term, behind a
     pointer, in any quotation row or in a layout's members, is
     `E-CAST-LINEAR`: a `STRUCTURE` field `[ -- lease ]` carries the lease
@@ -756,7 +761,7 @@ multi-cell type rationale is `docs/design.md` "Types".
     -- S ] -- n )` reads any word's cell.
     A variable that occurs only where a type is stored, behind a pointer or
     in a family slot the family's width does not read, is admitted:
-    `CAST: >ELEM ( ptr u8 -- ptr t )` in a private section loads. Every type
+    `CAST: >ELEM ( ^u8 -- ^t )` in a private section loads. Every type
     later bound to `t`, at a call or through a word that passes `t` on, is
     checked as a closed cast's pointee: one that may hold a linear value is
     `E-CAST-LINEAR`, an atom or a width `E-CAST-CLASS`. The restriction is
@@ -765,13 +770,13 @@ multi-cell type rationale is `docs/design.md` "Types".
     whose variable takes only a cast's stored types into a cell whose
     variable takes any type (`E-CAST-LINEAR`).
     A view cast's element follows the same rule, so `( read-view<p,q,t> --
-    ptr u8 n )` is refused; a scope or region variable binds a scope or a
+    ^u8 n )` is refused; a scope or region variable binds a scope or a
     region, never a value, so one inside the element, such as the `i` of
     C2-MEM's `mut-view<p,i,a,init<i,owner-state>>`, is admitted.
   - A cast into another package's cell family or `OPAQUE` structure is the
     writer's claim, which the checker does not prove: `CAST: >SLOT ( n --
-    slot )` outside `package DOC` is admitted, as is a private `( ptr u8 --
-    ptr OP:box )` outside `package OP`.
+    slot )` outside `package DOC` is admitted, as is a private `( ^u8 --
+    ^OP:box )` outside `package OP`.
   - A cast that makes an `ENUM` or `SUMTYPE` value from a cell is
     `E-CAST-CLASS` in every package, the family's own included: as the output,
     as what a quotation it hands out returns, as a by-value layout's member,
@@ -781,12 +786,12 @@ multi-cell type rationale is `docs/design.md` "Types".
     `nullable<a>` has no invalid tag. A type variable that takes no linear
     value is refused at the same places, since a caller may bind it to an
     enum. An enum is made from a number by its `DERIVE tag` `TAG>`, a sum by
-    a variant's constructor. A private view of storage, `( ptr u8 -- ptr rec )`
+    a variant's constructor. A private view of storage, `( ^u8 -- ^rec )`
     over a record that holds one, is a pointer mint: its writer vouches for
     the stored tags as for the pointers.
   - A pointer or a quotation in an introduction position is a class mint and
     is declared only in a package's private section (`E-CAST-MINT`), under a
-    bare name: a qualified `CAST: Q:FORGE ( n -- ptr u8 )` there publishes
+    bare name: a qualified `CAST: Q:FORGE ( n -- ^u8 )` there publishes
     `Q:FORGE` past the section and is `E-CAST-MINT` too.
 
   The introduction positions are where the destination hands out a value: the
@@ -795,7 +800,7 @@ multi-cell type rationale is `docs/design.md` "Types".
   field and variant payload, instantiated over those arguments: a field
   projection or a `MATCH` arm) and a quotation's produced rows (a call),
   recursively. A layout's fields carry its rules down: after
-  `STRUCTURE pfbox FIELD p ptr u8 ;STRUCTURE`, `CAST: >PFBOX ( n -- pfbox )`
+  `STRUCTURE pfbox FIELD p ^u8 ;STRUCTURE`, `CAST: >PFBOX ( n -- pfbox )`
   is `E-CAST-MINT` outside a private section. A layout that points at its own
   family is read once per instance. A quotation's consumed rows flip the
   direction, so `( n -- [ extent-a -- ] )` introduces no atom and
@@ -806,7 +811,7 @@ multi-cell type rationale is `docs/design.md` "Types".
   `E-CAST-CLASS`, as is a width there, while
   `( [ n -- width<n> ] -- [ n -- n ] )` reads the width the source produces.
   A cell family's arguments are phantom and introduce nothing. Projections out
-  (`fam -- n`, `ptr t -- n`, `[ … ] -- n`, `box<ptr u8> -- n`, `pfbox -- n`)
+  (`fam -- n`, `^t -- n`, `[ … ] -- n`, `box<^u8> -- n`, `pfbox -- n`)
   need no private section.
 - `LINEAR: NAME ( payload -- PKG:tok )` mints a `DEFLINEAR` token and
   `LINEAR: NAME ( PKG:tok -- payload )` erases one: the reader-keyword shape of
@@ -826,8 +831,8 @@ multi-cell type rationale is `docs/design.md` "Types".
   - The input and output stack tails agree (`E-CAST-ARITY`), because
     the emitted identity changes only its explicit payload or token cell.
 
-  After `LINEAR: MINT ( ptr n -- PKG:tok )` and `LINEAR: ERASE ( PKG:tok --
-  ptr n )`, the owner's checked words compose the two, `: PEEK ( PKG:tok --
+  After `LINEAR: MINT ( ^n -- PKG:tok )` and `LINEAR: ERASE ( PKG:tok --
+  ^n )`, the owner's checked words compose the two, `: PEEK ( PKG:tok --
   PKG:tok n ) ERASE dup @ swap MINT swap ;`, and its public words hand the
   token out and take it back; a caller holds it under the linear rules.
   `CAST:` still refuses a linear term, in the owner too (`E-CAST-LINEAR`).
@@ -861,11 +866,11 @@ multi-cell type rationale is `docs/design.md` "Types".
   and by `tools/check.f`. Put comments above the opener, including comments
   explaining the header or fields.
 - **A `FIELD` holds a value, not a body.** A payload is a type expression
-  (letter param, concrete cell type, `ptr T`, closed arity-0 family, or a
+  (letter param, concrete cell type, `^T`, closed arity-0 family, or a
   quotation `[ in -- out ]`). A quotation field is one execution-token cell;
   `MAKE`/`UNMAKE`, whole-record storage and a `DERIVE addr` accessor preserve
   its exact effect, so `FIELD handler [ request response -- ]` yields
-  `ptr [ request response -- ]` and `@ execute` checks the call. A whole record
+  `^[ request response -- ]` and `@ execute` checks the call. A whole record
   stored in a `TYPED-VARIABLE` keeps its quotation callable after image restore.
 - SwiftForth-style relocatable list words (`@REL`, `!REL`, `,REL`, `>LINK`,
   `<LINK`, `CALLS`) are outside the checked surface. Use structures for node
@@ -951,7 +956,7 @@ point and a leading minus (`src/lib/fsm-test.f`):
 using FSM
 ENUM entry start whole fraction ended ;ENUM
 ENUM key other digit minus point enter ;ENUM
-DEFINE GETAFIX ( ptr line ) entry key
+DEFINE GETAFIX ( ^line ) entry key
    IN start     READ-KEY
       other   DROP-KEY  >start
       digit   ECHO      >whole
@@ -1005,8 +1010,8 @@ named words, with one word that runs them in order.
   `begin {: cursor:n :} … cursor' again` pushes the next value before the
   back edge. Use `RECURSE` for a cursor only when depth is bounded; a
   peer-controlled count can overflow the task stack.
-- A `ptr` annotation does not fit a byte span. Under `( ptr u8 n -- n )`,
-  `{: p:ptr :}` is refused at `:}` (`expected: ptr n actual: ptr u8 n`).
+- A `^` annotation does not fit a byte span. Under `( ^u8 n -- n )`,
+  `{: p:^ :}` is refused at `:}` (`expected: ^n actual: ^u8 n`).
   Bind a bare local or factor a helper retaining the detailed effect. Give
   same-type numeric slots names before reordering them: `( cap used add -- )`
   can type-check a wrong `swap`.
@@ -1044,7 +1049,7 @@ named words, with one word that runs them in order.
   line, before its requires: `HB-TARGET-MACOS? HB-TARGET-LINUX-KERNEL? or
   ?TARGET`. `?TARGET ( bool -- )` returns on true; on false the load stops
   at that line with an `E-TARGET` rejection naming the target (the seam's
-  `HB-TARGET$ ( -- ptr u8 n )`), status 74, so a build exits 74 and writes no
+  `HB-TARGET$ ( -- ^u8 n )`), status 74, so a build exits 74 and writes no
   program or module. The files that require it inherit the
   statement through the require and state nothing.
   List the targets the file supports, not the ones it rejects, so a new
@@ -1064,30 +1069,30 @@ named words, with one word that runs them in order.
   after )` only where the stack state is not obvious. No empty stack comments;
   many line comments mean factor.
 - **Checked definitions use type tokens only**: `( n n -- )`, `( bool -- )`, `(
-  ptr u8 n -- )`, never role prose such as `( got want -- )`. Nominal roles such
+  ^u8 n -- )`, never role prose such as `( got want -- )`. Nominal roles such
   as `idx`, `len`, `count`, `fd`, `rc`, `reg`, `label`, `va`, `symidx`, `asm`,
   `img` and `snap` are real types; same-cell values need them, because
   `( n n -- )` hides swaps. Informal names go in locals (`{:
   got want :}`), helper names or prose.
-- **Real types, not reflexive `n`.** A string is `ptr u8 n`; a dereferenced cell
-  address is `ptr a`; a pointer-valued cell keeps its nested pointer role; `n`
-  is a genuine scalar. `ptr a` is only for a body that keeps the pointee
+- **Real types, not reflexive `n`.** A string is `^u8 n`; a dereferenced cell
+  address is `^a`; a pointer-valued cell keeps its nested pointer role; `n`
+  is a genuine scalar. `^a` is only for a body that keeps the pointee
   parametric, since a declared effect must stay parametric over its quantifier:
-  reading the cell as a number makes it `ptr n`, and so does returning a raw
-  cell view of allocated bytes (`( -- ptr a ) 64 MEM:BYTES-ALLOC-LEN
-  MEM:ALLOC-BYTES drop CELL-VIEW` is `E-NONPARAMETRIC-EFFECT`; declare `( -- ptr
-  n )`). A `{: p:ptr :}` local admits cell `@`/`!`: `F` below certifies and
+  reading the cell as a number makes it `^n`, and so does returning a raw
+  cell view of allocated bytes (`( -- ^a ) 64 MEM:BYTES-ALLOC-LEN
+  MEM:ALLOC-BYTES drop CELL-VIEW` is `E-NONPARAMETRIC-EFFECT`; declare `( --
+  ^n )`). A `{: p:^ :}` local admits cell `@`/`!`: `F` below certifies and
   answers the stored cell, while `G`, reading a parametric pointee as a cell, is
   `E-NONPARAMETRIC-EFFECT`. A word over "some cell buffer base" therefore
-  declares the concrete pointee (`ptr n`), not `ptr a`; concrete per-buffer
+  declares the concrete pointee (`^n`), not `^a`; concrete per-buffer
   words sharing scalar cursor helpers remain a fine shape, not a forced one.
 
   ```forth
-  : F ( ptr n -- n )
-     {: p:ptr :}
+  : F ( ^n -- n )
+     {: p:^ :}
      p @ ;
 
-  : G ( ptr a -- n )
+  : G ( ^a -- n )
      {: p :}
      p @ ;
   ```
@@ -1116,7 +1121,7 @@ sig      = side '--' side
 side     = stack ( '|' stack )?
 stack    = rowvar? type*
 type     = conname | role | linear-name | family | tyvar
-         | 'ptr' type
+         | '^' type
          | '[' quot-sig ']'
 quot-sig = stack '--' stack ( '|' stack '--' stack )?
 family   = ( package ':' )? tail ( '<' type ( ',' type )* '>' )?
@@ -1131,16 +1136,16 @@ Some primitive and combinator effects:
 
 ```
 DUP    ( R a -- R a a )
-+      ( R n n -- R n )            \ also ( R ptr a n -- R ptr a ) and ( R n ptr a -- R ptr a )
++      ( R n n -- R n )            \ also ( R ^a n -- R ^a ) and ( R n ^a -- R ^a )
 <      ( R n n -- R bool )         \ comparisons yield bool
-@      ( R ptr a -- R a )
+@      ( R ^a -- R a )
 EXECUTE( R [ R -- S ] -- S )
 DIP    ( R a [ R -- S ] -- S a )
 KEEP   ( R a [ R a -- S ] -- S a )
 BI     ( R a [ R a -- R b ] [ R b a -- R b c ] -- R b c )
 TIMES  ( R n [ R -- R ] -- R )
-EACH   ( R ptr a n [ R a -- R ] -- R )
-FOLD   ( R ptr a n b [ R b a -- R b ] -- R b )
+EACH   ( R ^a n [ R a -- R ] -- R )
+FOLD   ( R ^a n b [ R b a -- R b ] -- R b )
 ```
 
 The arithmetic and comparison axioms are declared over `n`, so a diagnostic
@@ -1222,11 +1227,11 @@ and as `E-BAD-STORED-SIGNATURE` in a stored signature.
 - A **type var** (`a`, `b`, …) is a fresh polymorphic type; one letter in one
   signature is one type. `n`, `f` and `r` are concrete types, not type vars.
 - A type var stands for a one-cell type, except where a checked `:`
-  definition's effect names it only in stored positions: behind a `ptr`, or as
+  definition's effect names it only in stored positions: behind a `^`, or as
   an argument of a family whose width does not read it (a `NEWTYPE`'s, a
   `STRUCTURE`'s phantom argument), at any depth through such positions. There
-  it stands for any stored type, a two-cell record included: `: SAME ( ptr t --
-  ptr t ) ;` takes `ptr turn`. A body that fetches, stores or steps through the
+  it stands for any stored type, a two-cell record included: `: SAME ( ^t --
+  ^t ) ;` takes `^turn`. A body that fetches, stores or steps through the
   pointer, or hands the var to a word whose var stands for one cell (a
   primitive such as `=`, a `defer`, the word's own `RECURSE`), makes it one
   cell again, and a record is refused at the call (`E-MISMATCH`). A var a
@@ -1255,10 +1260,10 @@ and as `E-BAD-STORED-SIGNATURE` in a stored signature.
 - `r` is a 64-bit float; `f32` is a 32-bit float and does not unify or widen
   with `r`.
 - `str` is declarable, but no primitive produces or consumes it; a string is
-  `ptr u8 n`.
+  `^u8 n`.
 - The roles are nominal one-cell types, distinct from each other and
   from every integer type.
-- `ptr τ` is a typed pointer; `@`/`!` move `τ`. `[ in -- out ]` is a quotation
+- `^τ` is a typed pointer; `@`/`!` move `τ`. `[ in -- out ]` is a quotation
   or execution token carrying its effect (prose writes `xt<E>`; the parser does
   not). `pkg:tail<arg,…>` is a declared family (`NEWTYPE`, `ENUM`, `STRUCTURE`,
   `SUMTYPE`, `LAYOUT-BUFFER`, `DEFTYPE`); a `DEFLINEAR` token is a
@@ -1279,7 +1284,7 @@ and as `E-BAD-STORED-SIGNATURE` in a stored signature.
 
 An unknown type token is never interned: it rejects with `unknown type 'tok' in
 signature` (`E-UNKNOWN-SIGNATURE-TYPE`). The other signature codes are
-`E-BARE-PTR-SIGNATURE` (`ptr` with no element), `E-WRONG-ARITY` (a family with
+`E-BARE-PTR-SIGNATURE` (`^` with no element), `E-WRONG-ARITY` (a family with
 the wrong argument count) and `E-BAD-SIGNATURE` (a missing or misplaced `--`,
 `|` or `]`).
 
@@ -1287,7 +1292,7 @@ the wrong argument count) and `E-BAD-SIGNATURE` (a missing or misplaced `--`,
 
 Widening applies only to integer-class types, only
 at the top level of a stack cell, and only in an input or coercion position —
-never inside a `ptr` pointee, never between roles, never between `bool` and an
+never inside a `^` pointee, never between roles, never between `bool` and an
 integer (`bool>n` converts a `bool` to -1 or 0), never between `r` and `f32`.
 
 `n` unifies with every integer type unconditionally. For the others, `got`
@@ -1394,22 +1399,22 @@ New records use `STRUCTURE`.
 
 ### Pointer types and arithmetic
 
-`ptr τ` records the element addressed. Arithmetic is pointee-polymorphic: `+`,
-`-`, `1+`, `1-`, `cell+` and `char+` step a `ptr τ` by an integer and keep `τ`;
-`n + ptr a` is `ptr a`; `ptr a - ptr a` is the distance `n`. Adding two
-pointers or scaling one is refused. `PTR>N ( ptr a -- n )` gives a pointer's
+`^τ` records the element addressed. Arithmetic is pointee-polymorphic: `+`,
+`-`, `1+`, `1-`, `cell+` and `char+` step a `^τ` by an integer and keep `τ`;
+`n + ^a` is `^a`; `^a - ^a` is the distance `n`. Adding two
+pointers or scaling one is refused. `PTR>N ( ^a -- n )` gives a pointer's
 address as `n`, for a distance or a hash; no word turns `n` back into a pointer
 outside a package's private `CAST:`. Its pointee, like a distance's, is any
-type, an open or a linear family included; a declared `ptr a` still takes only
+type, an open or a linear family included; a declared `^a` still takes only
 a stored type, so a word that measures a family pointer names the family
-(`ptr option<a>`).
+(`^option<a>`).
 
-A **byte view** re-reads a pointer as bytes: `: NAME ( ptr a -- ptr u8 ) ;`
-certifies, because the input pointee stays generalized. A `ptr u8` uses
+A **byte view** re-reads a pointer as bytes: `: NAME ( ^a -- ^u8 ) ;`
+certifies, because the input pointee stays generalized. A `^u8` uses
 `c@`/`c!`; cell `@`/`!` on it is refused.
 
-A pointee is **invariant**: widening never applies inside a `ptr`, so
-`ptr u8` never satisfies `ptr cell` or `ptr u32`, at any depth. A byte pointer
+A pointee is **invariant**: widening never applies inside a `^`, so
+`^u8` never satisfies `^cell` or `^u32`, at any depth. A byte pointer
 cannot be laundered into a cell pointer and cell-loaded.
 
 #### Raw storage never holds an address
@@ -1419,16 +1424,16 @@ integer could become one by passing through memory, so an undeclared cell is
 fenced too.
 
 `variable`, `create`, `constant`, `here` and every `create … does>` definer
-publish **raw storage**: `-- ptr a` whose pointee is sealed RAW and
+publish **raw storage**: `-- ^a` whose pointee is sealed RAW and
 re-freshened at every mention. A RAW cell admits a scalar, a role and an atom;
 it refuses a pointer in either direction (`E-RAW-CELL-PTR`,
 `declare_pointer_cell`), a nominal family or layout value, and an execution
 token (below). `variable V : PEEK ( n -- n ) V ! V @ @ ;` is refused at the
 fetch, `V ! V @ !` at the store, `$1234 constant K : F ( -- n ) K @ ;` with no
-store in sight, and `: G ( ptr a -- ) V ! ;`. `create BUF 256 allot BUF 4 type`
+store in sight, and `: G ( ^a -- ) V ! ;`. `create BUF 256 allot BUF 4 type`
 certifies: the pointee binds `u8`.
 
-`ptr-field`'s row `( ptr a n -- ptr ptr b )` cannot carry the refusal, so its
+`ptr-field`'s row `( ^a n -- ^^b )` cannot carry the refusal, so its
 base is checked first: a base whose pointee is still RAW is refused at the
 `ptr-field` token (`V ! V 0 ptr-field @ @`).
 
@@ -1437,11 +1442,11 @@ path: `: N>ID ( n -- CAD-KIND:region ) V ! V @ ;` rejects with
 `expected: cad-kind:region actual: a`.
 
 **A cell that holds an address is declared.** `PTR-VARIABLE`,
-`PERSISTED-PTR-VARIABLE`, `TYPED-VARIABLE NAME ptr t`, `TYPED-BUFFER NAME ptr
-t`, and the `create … does>` definers of `src/core/pointer-storage.f` that spell
+`PERSISTED-PTR-VARIABLE`, `TYPED-VARIABLE NAME ^t`, `TYPED-BUFFER NAME
+^t`, and the `create … does>` definers of `src/core/pointer-storage.f` that spell
 their pointee. A declared cell takes the address it was declared for and
-refuses an address of one: `PTR-VARIABLE X : F ( -- ptr u8 ) X @ ;` certifies
-while `( -- ptr ptr u8 )` does not. An image save writes the scratch forms
+refuses an address of one: `PTR-VARIABLE X : F ( -- ^u8 ) X @ ;` certifies
+while `( -- ^^u8 )` does not. An image save writes the scratch forms
 (`PTR-VARIABLE`, `PTR-U8-TABLE`, `PTR-U8-TABLE-VARIABLE`) as null; their
 `PERSISTED-` siblings keep their addresses, and so do the pointer fields of
 typed storage.
@@ -1449,10 +1454,10 @@ typed storage.
 Records that mix a pointer field with scalars use `STRUCTURE … DERIVE addr`
 (**Structures And Enums**). Two launders remain open and certify today:
 `ptr-field`'s free result pointee reached through a parameter
-(`: F ( ptr a -- ptr ptr u8 ) 0 ptr-field ;` over a `create`d cell, or
+(`: F ( ^a -- ^^u8 ) 0 ptr-field ;` over a `create`d cell, or
 `NULL-PTR swap ptr-field @ @`), and a scalar store through a view of a
 declared pointer cell (`V BYTE-VIEW CELL-VIEW !`). The reach is not closed
-either: `ptr a n + -- ptr a` admits any offset, so a bounded reach needs a span
+either: `^a n + -- ^a` admits any offset, so a bounded reach needs a span
 (**Spans: a pointer that carries its reach**).
 
 #### An undeclared cell holds no execution token
@@ -1461,7 +1466,7 @@ Admissibility is about provenance, not what the store instruction carries. A
 quotation met by a RAW cell or by either base address is refused:
 `E-RAW-CELL-PTR`, reason "an undeclared cell cannot hold an execution token / a
 quotation", repair class `declare_xt_cell`. It is judged at the accessor's own
-declaration, so `variable ZQW : ZQWQ ( -- ptr [ -- n ] ) ZQW ;` dies before any
+declaration, so `variable ZQW : ZQWQ ( -- ^[ -- n ] ) ZQW ;` dies before any
 `execute`. The store
 `[: 1 ;] V !` is refused at the same binding.
 
@@ -1497,17 +1502,17 @@ address of anything. Both are fenced, and both refuse with
 
 - **The null** is fenced in value position and permissive inside a pointee:
   a value read through the null is never a nominal or a pointer, while
-  `ptr thing NULL-PTR =`, `NULL-PTR X !` into a declared pointer cell (also
-  `ptr ptr n`) and `NULL-PTR 0=` certify.
+  `^thing NULL-PTR =`, `NULL-PTR X !` into a declared pointer cell (also
+  `^^n`) and `NULL-PTR 0=` certify.
 - **The DATA base** is fenced at every pointee depth: binding its pointee, at
   any depth, to a nominal, a pointer or a linear con is refused
-  (`( -- ptr ptr ptr n ) data-base 8 +`).
+  (`( -- ^^^n ) data-base 8 +`).
 - **An offset null is a DATA-base pointer.** A null stepped by an integer
   (`+`, `-` with `n`, `1+`, `1-`, `cell+`, `char+`) is fenced as the DATA base:
-  `: F ( -- ptr ptr n ) NULL-PTR OFF + ;` is refused. Stepping any other
-  pointer changes nothing, so `( ptr thing -- thing ) 8 + @` still certifies.
+  `: F ( -- ^^n ) NULL-PTR OFF + ;` is refused. Stepping any other
+  pointer changes nothing, so `( ^thing -- thing ) 8 + @` still certifies.
 - **A distance binds no pointee.** `X NULL-PTR -` and `X data-base -` match the
-  base's pointee alone, so `: D ( ptr a -- n ) NULL-PTR - ;`
+  base's pointee alone, so `: D ( ^a -- n ) NULL-PTR - ;`
   certifies; so does `V BYTE-VIEW NULL-PTR BYTE-VIEW -`.
 
 `data-base OFF + @` still answers the number, xt or role the cell holds; a DATA
@@ -1517,20 +1522,20 @@ erases the fence.
 **The wrapper is refused where it is written.** A declared quantifier the body
 restricts to a base address is `E-NONPARAMETRIC-EFFECT` ("restricted to a base
 address -- the DATA region, or a pointer computed off NULL-PTR", or "restricted
-to the null address"): `: W ( -- ptr a ) data-base 8 + ;` would let its
+to the null address"): `: W ( -- ^a ) data-base 8 + ;` would let its
 caller choose the element type of engine DATA. Name the pointee the
-cell holds (`ptr n`, `ptr u8`). A quantifier restricted through an input-only
-position is excused for the null only (`: RELEASE ( ptr ptr a -- ) … NULL-PTR
-cb ! ;`); one named on both sides is still published (`: LEAK ( ptr a -- ptr a )
+cell holds (`^n`, `^u8`). A quantifier restricted through an input-only
+position is excused for the null only (`: RELEASE ( ^^a -- ) … NULL-PTR
+cb ! ;`); one named on both sides is still published (`: LEAK ( ^a -- ^a )
 drop data-base 8 + ;` is refused). The DATA base has no such excuse:
-`: STASH ( ptr ptr a -- ) data-base 8 + swap ! ;` and `: FEED ( [ ptr a -- ] --
+`: STASH ( ^^a -- ) data-base 8 + swap ! ;` and `: FEED ( [ ^a -- ] --
 ) data-base 8 + swap execute ;` are refused. To read one DATA offset at two
 types, write two accessors, each naming what it reaches.
 
 #### Reading code bytes
 
 A code address reaches checked code as a number. Reading the bytes there goes
-through `CODE-BYTES:AT ( n n -- ptr u8 n )` alone, which rejects a span not
+through `CODE-BYTES:AT ( n n -- ^u8 n )` alone, which rejects a span not
 wholly inside the image's code with `E-CODE-SPAN` and status 70. A site that
 only carries a code address keeps it a number.
 
@@ -1542,8 +1547,8 @@ shapes with `E-NONPARAMETRIC-EFFECT` (`fix_parametric_effect`):
 
 1. **Specialization to a concrete type.** A body that forces a quantifier to a
    concrete type is refused, naming it: `: F ( a -- a ) EFF-ID ;` with
-   `EFF-ID ( region -- region )`, and `( ptr a -- n ) @`, which reads the cell
-   as `n`: declare `( ptr n -- n )`.
+   `EFF-ID ( region -- region )`, and `( ^a -- n ) @`, which reads the cell
+   as `n`: declare `( ^n -- n )`.
 2. **Quantifier aliasing.** A body that unifies two declared quantifiers is
    refused, naming both: `: F ( a b -- a ) MERGE ;` with `MERGE ( g g -- g )`.
 3. **Row aliasing or fixing.** Every named row and the unnamed row stay
@@ -1581,7 +1586,7 @@ A guard may therefore throw directly, with no dummy value for the join:
 
 ```forth
 : REQUIRE-NONEMPTY ( len -- ) LEN>N 0 <= if E-A-EMPTY throw then ;
-: HEAD ( ptr i64 len -- i64 ) REQUIRE-NONEMPTY @ ;
+: HEAD ( ^i64 len -- i64 ) REQUIRE-NONEMPTY @ ;
 ```
 
 `<=` is declared over `n` and `len` is a role, so the guard crosses through
@@ -1613,7 +1618,7 @@ edge) are refused unless they are structural closers (`else`, `then`, `loop`,
 - A trusted defining word is `TRUSTED: NAME ( definer-eff ) create … does> (
   created-eff ) body ;`; the created effect must follow `does>` immediately.
   For a checked `CREATE … DOES>` with created effect `( in -- out )`, the
-  `DOES>` body is checked as a colon body declared `( in ptr a -- out )`. The
+  `DOES>` body is checked as a colon body declared `( in ^a -- out )`. The
   body binds the data-field pointee `a` (`does> ( -- n ) @` is admitted); the
   created effect's own quantifiers and rows stay parametric, a body that never
   returns owes no output, and an effect too deep to record is uncheckable.
@@ -1621,7 +1626,7 @@ edge) are refused unless they are structural closers (`else`, `then`, `loop`,
 
 ### Rigid host-allocation identity domains
 
-`ptr T` and ordinary type vars cannot tell two equal-sized allocations, or a
+`^T` and ordinary type vars cannot tell two equal-sized allocations, or a
 recreated owner, apart, so a stale index could regain authority over reused
 storage. Three checker domains name these rigidly:
 
@@ -1718,7 +1723,7 @@ defined again binds its earlier text against every later record too.
   views** below defines shared `read-view<p,q,T>` and
   exclusive `mut-view<p,q,a,T>` values, lexical loans, initialized fields and
   task-local cleanup. A view occupies two cells and travels as one value through
-  stack permutations. Ordinary `ptr T` and `SPAN` remain lifetime-free.
+  stack permutations. Ordinary `^T` and `SPAN` remain lifetime-free.
 - **Records that share a lifetime go in an arena, one with its own in a
   `HEAP`**: `ARENA NAME Type` and `ARENA:ALLOC` for raw bytes, `HEAP NAME
   Type` (**Habu Native Tooling Gotchas**).
@@ -1726,7 +1731,7 @@ defined again binds its earlier text against every later record too.
   builds verify the body against the declared effect and make rejection fatal.
   Tests for bad programs assert build rejection, not runtime failure.
 - **Typed booleans are `bool`**: produce them with `true`, `false` or a
-  comparison; never store a raw `0`/`-1` in a `ptr bool` cell or compare bools
+  comparison; never store a raw `0`/`-1` in a `^bool` cell or compare bools
   with `=` (`bool bool` is refused).
 - **A quotation reads its word's locals while the word runs.** `[: … ;]` may
   read the locals of the word it is written in, nested quotations included, so
@@ -1748,7 +1753,7 @@ defined again binds its earlier text against every later record too.
   its `;]`; at most 32 are open at once (**Engine limits ordinary source
   reaches**).
 - **A handle over caller-owned storage is a linear token its package mints
-  and erases, or a checked `ptr PKG:type`.** The token is a `DEFLINEAR` type
+  and erases, or a checked `^PKG:type`.** The token is a `DEFLINEAR` type
   with `LINEAR:` rows in the owner's private section (**Structures And
   Enums**), never a `TRUSTED:` mint, state and consume trio: `CAST:` refuses a
   linear operand, behind a pointer or in a quotation row too
@@ -1757,17 +1762,17 @@ defined again binds its earlier text against every later record too.
   `TYPED-VARIABLE` or `TYPED-BUFFER` in the caller trades it for a runtime
   refusal off the definer's zero image.
 - **Pointer-valued cells use cell-indexed `ptr-field`**: `ptr-field` builds a
-  `ptr ptr x` field whose index is a cell slot, not a byte offset, so `@`/`!`
+  `^^x` field whose index is a cell slot, not a byte offset, so `@`/`!`
   keep nested pointer types; never multiply by cell size. Raw byte offsets need
   a checked view or a modeled byte-offset primitive; byte-offset header access
   goes through checked views with explicit bounds; a missing
   primitive model is fixed, never cast around. The base must be a declared cell:
   `ptr-field` over raw storage is refused at the token.
-- **Byte pointers are not cell pointers.** `ptr u8` is a byte span read with
-  `c@`/`c!`; cell `@`/`!` over a concrete `ptr u8` is a checker error. A cell
-  that stores a byte pointer is `ptr ptr u8` through `ptr-field`, then `@`/`!`.
-- **State cells need typed public effects**: `-- ptr n`, `-- ptr bool`, `-- ptr
-  ptr u8` plus a separate length cell for strings; never TRUST rows.
+- **Byte pointers are not cell pointers.** `^u8` is a byte span read with
+  `c@`/`c!`; cell `@`/`!` over a concrete `^u8` is a checker error. A cell
+  that stores a byte pointer is `^^u8` through `ptr-field`, then `@`/`!`.
+- **State cells need typed public effects**: `-- ^n`, `-- ^bool`, `--
+  ^^u8` plus a separate length cell for strings; never TRUST rows.
 - **Path-sensitive control is a checker invariant.** `LEAVE`, `EXIT`, `throw`,
   `die` and `again` fold or kill paths per their control effect; divergent path
   arities are soundness bugs; after a dead path only structural closers (`else`,
@@ -2018,9 +2023,9 @@ answers alike.
   by `ERROR:FAULT`, so a program decides from the declaration, not a list,
   which throws to report as its own failure.
 - **`REASON:THROW` throws a code with a text the thrower states**, the numbers
-  that made it fail, `( ptr u8 n n -- )`: the calling task keeps a copy of the
+  that made it fail, `( ^u8 n n -- )`: the calling task keeps a copy of the
   span, replacing its earlier one, so the span may be scratch.
-  `REASON:TEXT$ ( n -- ptr u8 n )` answers that text when the task's last
+  `REASON:TEXT$ ( n -- ^u8 n )` answers that text when the task's last
   `REASON:THROW` threw code n, else empty (`src/lib/reason.f`). A code is
   thrown through `REASON:THROW` at every place or at none, and a catch reads
   `REASON:TEXT$` before it runs anything else, so a text pairs only with its
@@ -2049,7 +2054,7 @@ answers alike.
   stays written. A fault unwinds past any lock or guard a word holds without
   `finally`, so a word that holds one across loads or stores releases it in
   `finally`. `src/habu/crash.f` states the rows in order.
-- **`die` consumes a real message and code**, `( ptr u8 n n -- )`, never `0 0`
+- **`die` consumes a real message and code**, `( ^u8 n n -- )`, never `0 0`
   as a fake string; model exits as no-return only at certified wrappers.
 - **`die` writes its message as one line**: the span and then exactly one
   newline, so a message never carries its own `\n`; an empty span writes
@@ -2148,7 +2153,7 @@ package FEATURE-TEST
 
 variable RUN-N
 
-: RUNNER ( ptr u8 n -- )
+: RUNNER ( ^u8 n -- )
    2drop
    1 RUN-N +! ;
 
@@ -2212,30 +2217,30 @@ runtime or analysis layer.
   `TYPED-BUFFER`, closed non-linear layouts included, **and `u8`**, the
   growable byte row; it and `ARENA` are the definers that take `u8`
   (`DYNAMIC-BUFFER X u16` is refused). `count NAME-RESERVE` allocates at least that many elements
-  and keeps contents; `index NAME` answers `ptr Type` and checks no index; a
+  and keeps contents; `index NAME` answers `^Type` and checks no index; a
   smaller reserve keeps the allocation; growth may move it, so retain indices
   and reacquire pointers. A growing reserve copies the whole old capacity, so
   stale cells beyond the old count survive: a column whose zero is a default is
   cleared over the newly exposed range by the reserving word.
   `NAME-RELEASE` frees the mapping and is safe to repeat. Mappings are
   transient: release before saving an image; image-retained values use
-  dictionary storage. With `u8`, `index NAME` is `( n -- ptr u8 )` at byte
+  dictionary storage. With `u8`, `index NAME` is `( n -- ^u8 )` at byte
   `index`, read and written with `c@`/`c!`, never cell `@`; `count NAME-RESERVE`
   counts bytes, and the capacity is the request rounded up to a cell.
-- **An arena is a `ptr ARENA:arena` for records that share one lifetime**
-  (`src/lib/arena.f`). `ARENA:NEW ( -- ptr ARENA:arena )` makes one;
-  `ARENA:NEW-IN ( ptr ARENA:arena -- ptr ARENA:arena )` makes a child, released
-  with its parent or by itself first. `ARENA:ALLOC ( ptr ARENA:arena n -- ptr u8
+- **An arena is a `^ARENA:arena` for records that share one lifetime**
+  (`src/lib/arena.f`). `ARENA:NEW ( -- ^ARENA:arena )` makes one;
+  `ARENA:NEW-IN ( ^ARENA:arena -- ^ARENA:arena )` makes a child, released
+  with its parent or by itself first. `ARENA:ALLOC ( ^ARENA:arena n -- ^u8
   n )` answers zeroed, cell-aligned bytes that never move. The size must be
   positive; a refused mapping throws `E-MEM-MAP` and leaves the arena
-  unchanged. `ARENA:ALLOC-DISPOSE ( ptr
-  ARENA:arena n [ ptr u8 -- ] -- ptr u8 n )` answers such bytes and keeps an
-  action the arena runs on them once, at its reset or release. `ARENA:RESET ( ptr
-  ARENA:arena -- )` releases the children, runs the release actions newest
+  unchanged. `ARENA:ALLOC-DISPOSE (
+  ^ARENA:arena n [ ^u8 -- ] -- ^u8 n )` answers such bytes and keeps an
+  action the arena runs on them once, at its reset or release. `ARENA:RESET (
+  ^ARENA:arena -- )` releases the children, runs the release actions newest
   first and empties the arena, whose handle stays valid; `ARENA:RELEASE` does
   the same and frees it, and a null handle is a no-op. An action that throws
   does not stop the others: the first code is rethrown after all have run.
-  `ARENA:WITH ( R [ R ptr ARENA:arena -- S ] -- S )` runs the body over a new
+  `ARENA:WITH ( R [ R ^ARENA:arena -- S ] -- S )` runs the body over a new
   arena and releases it under `finally`. The handle is an ordinary pointer: a
   record field, a variable or a stack cell holds it, and copies share the arena.
   Bytes come from mapped chunks, the first of 16 KiB and each next the larger of
@@ -2248,17 +2253,17 @@ runtime or analysis layer.
   `extent-a`) and no `width<t>` in an introduction position, as `CAST:`
   defines them: the stored type is a pointee,
   so `[ -- xt ]`, `[ xt -- ]`, `[ -- extent-a ]` and `[ width<n> -- ]` all hand
-  one out. It defines `NAME-NEW ( ptr ARENA:arena -- ptr Type )`, a fresh
-  zeroed record, and `NAME-NEW-DISPOSE ( ptr ARENA:arena [ ptr Type -- ] --
-  ptr Type )`, whose action runs once when the arena is reset or released and
+  one out. It defines `NAME-NEW ( ^ARENA:arena -- ^Type )`, a fresh
+  zeroed record, and `NAME-NEW-DISPOSE ( ^ARENA:arena [ ^Type -- ] --
+  ^Type )`, whose action runs once when the arena is reset or released and
   must accept a zeroed record. The width is the declared type's, so a record's
   size always comes from the declaration. Both words must be free in both
   sections of the package they land in, Q for a qualified `Q:NAME`
   (`E-DUPLICATE-DEFINITION`). Nothing is defined when any check
   refuses, under `--all-errors` too.
-- **`HEAP NAME Type` for a record with its own lifetime**: `NAME-NEW ( -- ptr
-  Type )` answers a fresh zero-filled record on its own OS mapping, rounded up
-  to a page, and `NAME-RELEASE ( ptr Type -- )` unmaps it. A pointer kept
+- **`HEAP NAME Type` for a record with its own lifetime**: `NAME-NEW ( --
+  ^Type )` answers a fresh zero-filled record on its own OS mapping, rounded up
+  to a page, and `NAME-RELEASE ( ^Type -- )` unmaps it. A pointer kept
   across NAME-RELEASE is stale, and releasing the same record twice can unmap
   whatever was mapped there since: a release is not safe to repeat. Nothing
   registers a record, so capture has no live-record check: release it before
@@ -2355,11 +2360,11 @@ sections above.
   `[: NULL-PTR ;] execute`. `: E ( -- xt ) ['] type ;` declares the token, and
   `E execute` is `E-EXEC-OPAQUE-XT` as well.
 
-- **A callback's pass-through context is `a`, not `ptr a`.** `ptr a` is a
+- **A callback's pass-through context is `a`, not `^a`.** `^a` is a
   pointer to cells, so a structure pointer does not fit it: with
-  `: RUN ( ptr a [ ptr a -- ] -- ) execute ;`, `: GO ( ptr box -- ) [: CB ;] RUN ;`
-  over a `STRUCTURE box` is `E-MISMATCH` at `RUN` (`expected: ptr a [ ptr a --
-  ] actual: ptr box [ ptr box -- ]`). Declared `( a [ a -- ] -- )`, the same
+  `: RUN ( ^a [ ^a -- ] -- ) execute ;`, `: GO ( ^box -- ) [: CB ;] RUN ;`
+  over a `STRUCTURE box` is `E-MISMATCH` at `RUN` (`expected: ^a [ ^a --
+  ] actual: ^box [ ^box -- ]`). Declared `( a [ a -- ] -- )`, the same
   call certifies.
 
 - **`OPAQUE` belongs in a package's field-bearing `STRUCTURE` header.** After
@@ -2421,12 +2426,12 @@ sections above.
   token or a type variable, or over a quotation whose rows hold a token, a type
   variable or different tails, at any depth of the type, would mint the token
   for any package that writes the cell. `TYPED-VARIABLE HK [ -- Q:tok ]` is
-  rejected `E-BAD-STORAGE`, as `ptr a`, `[ -- a ]`, `[ ptr t ptr t -- ]` and
+  rejected `E-BAD-STORAGE`, as `^a`, `[ -- a ]`, `[ ^t ^t -- ]` and
   `[ R -- S ]` are; `[ n -- n ]` and `[ R -- R ]` load, and a `defer` names a
   quotation over a token or a type variable.
 - **Fixed `TYPED-BUFFER` elements occupy whole cells.** `2 TYPED-BUFFER TB
   u8` is rejected `E-BAD-STORAGE`. Use `n BUFFER: B` for fixed bytes, yielding
-  `( -- ptr u8 )`. `DYNAMIC-BUFFER` and `ARENA` alone store `u8`, with
+  `( -- ^u8 )`. `DYNAMIC-BUFFER` and `ARENA` alone store `u8`, with
   `c@`/`c!`; `u16` is refused. `create … allot`, `BUFFER:` and `TYPED-BUFFER`
   allocate zeroed, cell-aligned storage; `allot`, `c,` and `,` do not realign
   following storage (see **Habu Native Tooling Gotchas**).
@@ -2467,10 +2472,10 @@ sections above.
   `leave` or `recurse` inherits it. A `TRUSTED:` body's clause is a
   declaration even though its body is asserted. The same rule applies to a
   replacement clause (see **Structures And Enums**). A definer's `create`
-  gives each word it makes `-- ptr a` the moment it is made, at top level, in
+  gives each word it makes `-- ^a` the moment it is made, at top level, in
   a package or under `evaluate`; a `does>` the definer then reaches replaces it
   with the clause effect, and a branch that `exit`s before `does>` leaves
-  `-- ptr a`.
+  `-- ^a`.
 - **Renderers can define words absent from source text.** A word whose body
   reaches `evaluate` or `evaluate-closed` marks the
   wordlist of its top-level call. There, a later unresolved name that may be
@@ -2512,12 +2517,12 @@ sections above.
   effect. `--verify-only` reports an undeclared renderer product at its use as
   deferred. A declared product is checked against its row.
 - **A definer can build a definition from words it found.**
-  `define-word ( ptr u8 n EFFECT:type -- )` opens, in the open package and
+  `define-word ( ^u8 n EFFECT:type -- )` opens, in the open package and
   section, the definition named by the string (one token, `E-MISSING-NAME`)
   with an effect the definer built from EFFECT's words (`NEW`, `IN`, `OUT`,
   `N`, `NAMED` (a built-in type's name, `n` or `bool`, else a family's
   spelling, `PKG:name` or a global family's bare name), `READ` (one type of
-  the text, `ptr u8` or `nullable<u8>`, read where the definer runs; a
+  the text, `^u8` or `nullable<u8>`, read where the definer runs; a
   letter, a type variable's or a view's region's, is rejected at the line that
   ran the definer, since a definer's type takes its parameters from `NAMED`),
   `PTR`); a type that is no effect (given to `define-word`, `IN` or `OUT`), a
@@ -2534,13 +2539,13 @@ sections above.
   the quotation is: a primitive's tick is an `xt`, which it refuses, and a
   quotation no named word enters is `E-NAMELESS-WORD`. `EFFECT:KEYWORD`,
   `EFFECT:OPERAND` (the variant an `of` arm or a `construct` takes),
-  `EFFECT:TYPE-ITEM ( ptr u8 n EFFECT:type -- )` and `EFFECT:CALL` append the
+  `EFFECT:TYPE-ITEM ( ^u8 n EFFECT:type -- )` and `EFFECT:CALL` append the
   item the string spells, as its text would; `EFFECT:CALL` binds the name where
   the definer runs, under that file's policy. Inside a `{:` group
   it appended with `EFFECT:KEYWORD`, `EFFECT:LOCAL ( EFFECT:type -- n )`
   declares a local of the type and answers its index, which
   `EFFECT:LOCAL@ ( n -- )` reads.
-  `EFFECT:VARIABLE-OF ( ptr u8 n EFFECT:type -- )` declares the variable the
+  `EFFECT:VARIABLE-OF ( ^u8 n EFFECT:type -- )` declares the variable the
   string names as `TYPED-VARIABLE` does; a type that may hold a linear value
   is rejected. An `EFFECT:type` ends with the load that built it and its
   node is then reused, so no storage, field or payload holds one (`a
@@ -2596,7 +2601,7 @@ sections above.
   `does>` has no created-word effect in checked bodies; the `does>` clause's
   own parsing behavior gives its products no parser facts.
 - **`names: W` marks literal references W resolves.** After W's definition,
-  this row states that W looks up its top `ptr u8 n` input as a name. A
+  this row states that W looks up its top `^u8 n` input as a name. A
   directly preceding unescaped string literal in a body or at top level is
   then a use of the word spelled by its bytes. A bare name resolves globally;
   `PKG:TAIL` selects that package's public word, and only a word already
@@ -2626,13 +2631,13 @@ sections above.
   Multi-file owners seal only after their last file (see
   **Packages**).
 - **A cast that introduces a pointer or xt requires a private package row.**
-  `CAST: >BYTES ( n -- ptr u8 )` and `CAST: >OP ( n -- [ n -- n ] )` are
+  `CAST: >BYTES ( n -- ^u8 )` and `CAST: >OP ( n -- [ n -- n ] )` are
   `E-CAST-MINT` at top level or under `public`. In a private section a
   type-variable pointee is admitted and refuses each type later bound to it
   that may hold a linear value, an atom or a width, at a recursive call too;
   `is` refuses a callable over such a variable into a cell over any type
   (`E-CAST-LINEAR`). A layout's fields carry
-  the mint rule recursively: a `pfbox` whose field is `ptr u8` exposes that pointer through
+  the mint rule recursively: a `pfbox` whose field is `^u8` exposes that pointer through
   `PFBOX:UNMAKE` (see **Structures And Enums**). A `LINEAR:` token conversion
   similarly requires the declaring package's private section; bad payload,
   owner or scope is respectively `E-LINEAR-PAYLOAD`, `E-LINEAR-OWNER` or
@@ -2680,7 +2685,7 @@ sections above.
   accessible storage or on proven-intact input cells.
 
   ```forth
-  : INV ( ptr u8 n [ ptr u8 n -- ] -- ptr u8 n [ ptr u8 n -- ] )
+  : INV ( ^u8 n [ ^u8 n -- ] -- ^u8 n [ ^u8 n -- ] )
      {: a u q :}
      a u q execute a u q ;
   ```
@@ -2727,7 +2732,7 @@ sections above.
   `: F ( -- n ) depth ;` called over `3 OPTION:SOME` answers its 2 cells. Take
   the value apart first (`MATCH` once its arguments are concrete, `UNMAKE`), or
   count the values another way.
-- **`evaluate-closed ( ptr u8 n -- )` isolates a checked caller's stack.**
+- **`evaluate-closed ( ^u8 n -- )` isolates a checked caller's stack.**
   A checked body calling `evaluate` is `E-UNSAFE`. Text under
   `evaluate-closed` starts at depth 0, cannot reach caller cells even through
   an xt, `catch` or `finally`, and must leave no cells or open definition.
@@ -2736,9 +2741,9 @@ sections above.
   exits, and on a task's thread evaluation exits before reading text. The open
   cases are under **Checked code and primitive boundaries**.
 - **`TEST-EVAL` returns a measured value from text.** From
-  `src/lib/test.f`, `TEST-EVAL:N ( ptr u8 n -- n )` takes exactly one cell,
-  `TEST-EVAL:FLAG ( ptr u8 n -- bool )` exactly one flag, and
-  `TEST-EVAL:RC ( ptr u8 n -- n )` returns the `evaluate-closed` throw code
+  `src/lib/test.f`, `TEST-EVAL:N ( ^u8 n -- n )` takes exactly one cell,
+  `TEST-EVAL:FLAG ( ^u8 n -- bool )` exactly one flag, and
+  `TEST-EVAL:RC ( ^u8 n -- n )` returns the `evaluate-closed` throw code
   or zero. An empty N text underflows, `1 2` is `E-EVAL-RESIDUE`, `drop 1`
   underflows without touching caller cells, and an unfinished definition is
   refused. N can run inside N's evaluated text. The value type remains
@@ -2775,10 +2780,10 @@ sections above.
 ## Spans: a pointer that carries its reach
 
 When a word writes into a buffer or indexes one, pass a `SPAN:span<u8>` rather
-than a `ptr u8` and a separate length: `src/lib/span.f` bounds-checks every access
+than a `^u8` and a separate length: `src/lib/span.f` bounds-checks every access
 against the reach the span carries. Take the span from a producer — `n
 SPAN-BUFFER: NAME`, `n SPAN-CELLS: NAME`, `MEM:ALLOC-SPAN` — or narrow one you
 were handed with `SPAN:SKIP` / `SPAN:TAKE` / `SPAN:SUB`, which can never widen
 it. `SPAN:MAKE`, the one place an address and a number become a reach, belongs
-to library source, and so does bare `BYTE-COPY`. A read-only source stays the `( ptr u8 n
+to library source, and so does bare `BYTE-COPY`. A read-only source stays the `( ^u8 n
 )` string idiom. The reach is counted in bytes whatever the element type.

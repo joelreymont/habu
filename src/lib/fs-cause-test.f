@@ -32,11 +32,11 @@ variable BAD-CODE
 TASK:MIN-STACK TASK:TASK WORKER-A
 TASK:MIN-STACK TASK:TASK WORKER-B
 
-: ROOT$ ( -- ptr u8 n ) ROOT-BUF ROOT-U @ ;
-: PATH ( ptr u8 n -- ptr u8 n )
+: ROOT$ ( -- ^u8 n ) ROOT-BUF ROOT-U @ ;
+: PATH ( ^u8 n -- ^u8 n )
    ROOT$ 2swap PATH-BUF FS:JOIN-PATH PATH-BUF swap ;
 : SETUP ( -- )
-   s" habu-fs-cause" FS:MKTEMP-DIR {: a:ptr u:n :}
+   s" habu-fs-cause" FS:MKTEMP-DIR {: a:^ u:n :}
    a ROOT-BUF u BYTE-COPY u ROOT-U !
    LONG-U 0 do [char] x LONG-NAME i + c! loop
    s" file" PATH s" a" FS:WRITE-ALL
@@ -56,7 +56,7 @@ TASK:MIN-STACK TASK:TASK WORKER-B
 : MISSING-STAT ( -- ) s" missing" PATH FS:STAT-MODE drop ;
 : MISSING-LSTAT ( -- ) s" missing" PATH FS:TRY-LSTAT drop ;
 : LINK-DIR ( -- ) ROOT$ s" link" PATH FS:MAKE-LINK ;
-: CALLBACK-FAIL ( ptr u8 n -- ) 2drop MISSING ;
+: CALLBACK-FAIL ( ^u8 n -- ) 2drop MISSING ;
 : CALLBACK-LIST ( -- ) ROOT$ [: CALLBACK-FAIL ;] FS-LIST:EACH ;
 
 \ Both tasks hold a different failed open across the same barrier. Neither
@@ -78,7 +78,7 @@ TASK:MIN-STACK TASK:TASK WORKER-B
    FS:ERRNO CAUSE-B-LATE !
    0 TASK:RETURN ;
 
-: JOIN-OK ( ptr n -- )
+: JOIN-OK ( ^n -- )
    TASK:JOIN MATCH result
       ok OF 0 T= ENDOF
       err OF 0 T= ENDOF
@@ -133,7 +133,7 @@ TASK:MIN-STACK TASK:TASK WORKER-B
    FS:ERRNO FS:ERRNO$ s" No such file or directory" T$=
    FS:ERRNO ENOENT T=
    100000 FS:ERRNO$ s" Unknown error" STARTS-WITH? TTRUE
-   ENOENT FS:ERRNO$ drop {: a:ptr :}
+   ENOENT FS:ERRNO$ drop {: a:^ :}
    FS:EACCES FS:ERRNO$ {: v:n :} drop
    a v s" Permission denied" T$= ;
 

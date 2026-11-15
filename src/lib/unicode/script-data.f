@@ -186,8 +186,8 @@ ENUM script DERIVE eq hash
 
 private
 
-: RANGE, ( ptr n n n n -- ptr n )
-   {: at:ptr lo:n hi:n tag:n :}
+: RANGE, ( ^n n n n -- ^n )
+   {: at:^ lo:n hi:n tag:n :}
    lo at ! hi at cell+ ! tag at 2 cells + !
    at 3 cells + ;
 

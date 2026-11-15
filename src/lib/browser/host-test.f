@@ -34,8 +34,8 @@ variable HEAD-U
       failed OF drop false ENDOF
    ;MATCH TTRUE ;
 
-: URL ( ptr u8 n -- ptr u8 n )
-   {: path:ptr u:n :}
+: URL ( ^u8 n -- ^u8 n )
+   {: path:^ u:n :}
    SB-RESET  s" http://127.0.0.1:" SB-APPEND  HTTP:PORT FMT:SB-U  path u SB-APPEND
    SB$ ;
 
@@ -72,8 +72,8 @@ variable HEAD-U
    ;MATCH ;
 
 \ GET of the path: answers its status, its body in BODY and its head in HEAD.
-: GET ( ptr u8 n -- n )
-   {: path:ptr u:n :}
+: GET ( ^u8 n -- n )
+   {: path:^ u:n :}
    CURL:INIT
    MATCH CURL:init-result
       ready OF ENDOF
@@ -87,8 +87,8 @@ variable HEAD-U
    status ;
 
 \ The path answered 200 with the content type, its body the file's bytes.
-: SERVED ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: path:ptr pu:n file:ptr fu:n type:ptr tu:n :}
+: SERVED ( ^u8 n ^u8 n ^u8 n -- )
+   {: path:^ pu:n file:^ fu:n type:^ tu:n :}
    file fu WANT CAP FS:READ-ALL {: u:n :}
    path pu GET 200 T=
    SB-RESET  s" Content-Type: " SB-APPEND  type tu SB-APPEND  S\" \r\n" SB-APPEND

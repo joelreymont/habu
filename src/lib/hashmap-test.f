@@ -106,8 +106,8 @@ create HMC-AU HMC-CAP cells allot
 create HMC-BK HMC-CAP cells allot
 create HMC-BU HMC-CAP cells allot
 
-: HMC-INSERT ( ptr n ptr n n -- )
-   {: keys:ptr used:ptr key:n :}
+: HMC-INSERT ( ^n ^n n -- )
+   {: keys:^ used:^ key:n :}
    keys used HMC-CAP key HM:PROBE {: slot:n :}
    used slot cells + @ 0= if
       key keys slot cells + !
@@ -122,14 +122,14 @@ create HMC-BU HMC-CAP cells allot
    HMC-N 0 ?do HMC-BK HMC-BU i HMC-N + 1+ HMC-INSERT loop
    0 TASK:RETURN ;
 
-: HMC-JOIN ( ptr n -- )
+: HMC-JOIN ( ^n -- )
    TASK:JOIN MATCH result
       ok OF 0 T= ENDOF
       err OF 0 T= ENDOF
    ;MATCH ;
 
-: HMC-LOST ( ptr n ptr n n -- n )
-   {: keys:ptr used:ptr base:n :}
+: HMC-LOST ( ^n ^n n -- n )
+   {: keys:^ used:^ base:n :}
    0 HMC-N 0 ?do
       i base + 1+ {: key:n :}
       keys used HMC-CAP key HM:PROBE {: slot:n :}

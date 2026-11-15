@@ -7,11 +7,11 @@
 \ The dictionary count just past the open structure's record; 0 when none is open.
 variable STRUCT-OPEN
 
-: STRUCT-BYTE+ ( ptr a n -- ptr u8 )
+: STRUCT-BYTE+ ( ^a n -- ^u8 )
    swap BYTE-VIEW swap + ;
 
 \ w names the word that runs, for the rejection.
-: STRUCT-REQUIRE-OPEN ( ptr u8 n -- ) {: w:ptr wu:n :}
+: STRUCT-REQUIRE-OPEN ( ^u8 n -- ) {: w:^ wu:n :}
    STRUCT-OPEN @ 0 <> if exit then
    s" E-BAD-DECLARATION" REJECTION:OPEN
    96 REJECTION:EMIT1  w wu REJECTION:EMIT-STR
@@ -23,7 +23,7 @@ variable STRUCT-OPEN
 
 \ The field word w, at the source token t tu, has no name after it. It is
 \ written through its help, and the caller stops it.
-: STRUCT-NO-NAME ( ptr u8 n ptr u8 n -- ) {: w:ptr wu:n t:ptr tu:n :}
+: STRUCT-NO-NAME ( ^u8 n ^u8 n -- ) {: w:^ wu:n t:^ tu:n :}
    w wu s" a field name" t tu s" no name follows"
    REJECTION:MISSING-OPERAND
    s" write the field's name after the word, as `" REJECTION:EMIT-STR
@@ -31,12 +31,12 @@ variable STRUCT-OPEN
 
 \ The field's name, which the live input holds next; with none left the
 \ source token is the field word, as the source spells it.
-: STRUCT-NAME ( -- ptr u8 n )
+: STRUCT-NAME ( -- ^u8 n )
    parse-name dup 0= if
       SRCLOC:TOKEN$ SRCLOC:TOKEN$ STRUCT-NO-NAME  CHECKER-REJECT-RC REJECTION:STOP
    then ;
 
-: STRUCT-UNALIGNED ( n ptr u8 n -- ) {: off:n fa:ptr fu:n :}
+: STRUCT-UNALIGNED ( n ^u8 n -- ) {: off:n fa:^ fu:n :}
    s" E-BAD-DECLARATION" REJECTION:OPEN
    s" pointer field `" REJECTION:EMIT-STR  fa fu REJECTION:EMIT-STR
    s" ` starts at byte " REJECTION:EMIT-STR  off REJECTION:EMIT-U
@@ -59,32 +59,32 @@ variable STRUCT-OPEN
 \ task's own region under src/lib/task.f), so a size read inside a task faults
 \ (measured). Checked source has no expression for the absolute address (`dbase@`
 \ is typed `-- n`); END-STRUCTURE publishing the size as a literal would narrow
-\ the three definers' `( ptr a n )` threading effects to `( n )`. The loader's
+\ the three definers' `( ^a n )` threading effects to `( n )`. The loader's
 \ abandon action is a named word: a quotation before `create` is a bend, and
 \ `does>` needs its `create` before any bend.
-: BEGIN-STRUCTURE ( -- ptr n n )
+: BEGIN-STRUCTURE ( -- ^n n )
    SRCLOC:TOKEN$ s" END-STRUCTURE" ['] STRUCT-ABANDON SOURCE-ROOT:OPENED
    create ndict@ STRUCT-OPEN !
    here 0 , 0 does> ( -- n ) @ ;
 
-: +FIELD ( ptr a n n -- ptr a n )
+: +FIELD ( ^a n n -- ^a n )
    s" +FIELD" STRUCT-REQUIRE-OPEN
    over STRUCT-NAME rot TYPE-DECL:TDECL-CELL-CHILD
    + ;
 
-: PTR-FIELD: ( ptr a n -- ptr a n )
+: PTR-FIELD: ( ^a n -- ^a n )
    s" PTR-FIELD:" STRUCT-REQUIRE-OPEN
-   dup STRUCT-NAME {: off:n fa:ptr fu:n :}
+   dup STRUCT-NAME {: off:n fa:^ fu:n :}
    off CELL mod 0 <> if off fa fu STRUCT-UNALIGNED then
    fa fu off TYPE-DECL:TDECL-PTR-CHILD
    CELL + ;
 
-: CFIELD: ( ptr a n -- ptr a n )
+: CFIELD: ( ^a n -- ^a n )
    s" CFIELD:" STRUCT-REQUIRE-OPEN
    dup STRUCT-NAME rot TYPE-DECL:TDECL-BYTE-CHILD
    1 + ;
 
-: END-STRUCTURE ( ptr n n -- )
+: END-STRUCTURE ( ^n n -- )
    s" END-STRUCTURE" STRUCT-REQUIRE-OPEN
    0 STRUCT-OPEN !  SOURCE-ROOT:CLOSED
    swap ! ;

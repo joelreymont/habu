@@ -19,7 +19,7 @@ create LIB-PATH PATH-CAP allot
 variable SRC-U
 variable LIB-U                    \ 0 until BUILD makes the library
 
-: L+ ( ptr u8 n -- )
+: L+ ( ^u8 n -- )
    SRC CODEGEN:APPEND-STRING
    10 SRC CODEGEN:APPEND-BYTE ;
 
@@ -107,20 +107,20 @@ variable LIB-U                    \ 0 until BUILD makes the library
    s"    s32 r = { (i64)hb_fold8(a, b, c, d, e, f, g, k), i, a, k }; return r; }" L+
    TIMES ;
 
-: LIB-NAME$ ( -- ptr u8 n )
+: LIB-NAME$ ( -- ^u8 n )
    HB-TARGET-MACOS? if s" libhbstruct.dylib" exit then
    s" libhbstruct.so" ;
 
-: SRC$ ( -- ptr u8 n ) SRC-PATH SRC-U @ ;
-: LIB$ ( -- ptr u8 n ) LIB-PATH LIB-U @ ;
+: SRC$ ( -- ^u8 n ) SRC-PATH SRC-U @ ;
+: LIB$ ( -- ^u8 n ) LIB-PATH LIB-U @ ;
 
-: PATHS ( ptr u8 n -- )
-   {: dir:ptr diru :}
+: PATHS ( ^u8 n -- )
+   {: dir:^ diru :}
    dir diru s" hb-struct.c" SRC-PATH FS:JOIN-PATH SRC-U !
    dir diru LIB-NAME$ LIB-PATH FS:JOIN-PATH LIB-U ! ;
 
 : BUILD ( -- )
-   s" habu-ffi-struct" FS:MKTEMP-DIR {: dir:ptr diru :}
+   s" habu-ffi-struct" FS:MKTEMP-DIR {: dir:^ diru :}
    dir diru FS:CLEANUP-TREE+
    dir diru PATHS
    SRC CODEGEN:RESET

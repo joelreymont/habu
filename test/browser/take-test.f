@@ -27,16 +27,16 @@ variable DIR-U
 PATH-CAP BUFFER: MOD
 variable MOD-U
 
-: ARG+ ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
+: ARG+ ( ^u8 n -- ) >LEN PROC-ARGV+ ;
 
-: SPAWN ( ptr u8 len -- n )
+: SPAWN ( ^u8 len -- n )
    OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N
    {: outu:len erru:len rc:n :}
    outu LEN>N OUT-U ! erru LEN>N ERR-U ! rc ;
 
 : SETUP ( -- )
-   s" browser-take" FS:MKTEMP-DIR {: a:ptr u:n :}
+   s" browser-take" FS:MKTEMP-DIR {: a:^ u:n :}
    a DIR u BYTE-COPY u DIR-U !
    s" browser take: module in " type DIR u type cr
    DIR u s" take.wasm" MOD FS:JOIN-PATH MOD-U ! ;
@@ -45,8 +45,8 @@ variable MOD-U
    s" test/browser/take.f" MOD MOD-U @ WASM-HARNESS:BUILD ;
 
 \ host-cli.mjs on the module with the typed texts, run by bun.
-: HOST ( ptr u8 n ptr u8 n -- n )
-   {: a:ptr au:n b:ptr bu:n :}
+: HOST ( ^u8 n ^u8 n -- n )
+   {: a:^ au:n b:^ bu:n :}
    PROC-ARGV-RESET
    s" src/lib/browser/host-cli.mjs" ARG+ MOD MOD-U @ ARG+
    s" --typed" ARG+ a au ARG+  s" --typed" ARG+ b bu ARG+

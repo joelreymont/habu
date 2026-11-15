@@ -31,7 +31,7 @@ variable SUM-ROWB
 32 constant OFF-SHIFT
 $FFFFFFFF constant IDX-MASK
 
-: HEAP@ ( n -- ptr u8 ) {: off:n :}
+: HEAP@ ( n -- ^u8 ) {: off:n :}
    data-base BYTE-VIEW off + ;
 
 : TAB ( -- ) 9 emit ;
@@ -42,8 +42,8 @@ $FFFFFFFF constant IDX-MASK
 \ No record slot holds the address: it is decoded from the MOVZ/MOVK carrier a
 \ created body pushes (interpreter.f DEF-ADDR-TAIL) with
 \ ADDRESS-CARRIER:CHAIN-VALUE. The DKIND:ADDR stamp says the body is still the definer's own; `does>` clears it.
-: REC-OFF ( ptr n -- n ) {: rec:ptr :}
-   rec XREF-START-SLOT XREF-PTR@ {: p:ptr :}
+: REC-OFF ( ^n -- n ) {: rec:^ :}
+   rec XREF-START-SLOT XREF-PTR@ {: p:^ :}
    p p rec XREF-CODE-BYTES + ADDRESS-CARRIER:CHAIN-SIZE {: size:n :}
    size 0= if s" data-table-census: malformed DKIND:ADDR body" 74 die then
    p size ADDRESS-CARRIER:CHAIN-VALUE DATA-VA VA>N - {: off:n :}
@@ -51,7 +51,7 @@ $FFFFFFFF constant IDX-MASK
       s" data-table-census: DKIND:ADDR body decodes outside DATA" 74 die then
    off ;
 
-: OWNER? ( ptr n -- bool ) {: rec:ptr :}
+: OWNER? ( ^n -- bool ) {: rec:^ :}
    rec XREF-RETIRED? if false exit then
    rec XREF-START 0= if false exit then
    rec XREF-FLAGS DKIND:MASK and DKIND:ADDR = ;
@@ -63,7 +63,7 @@ $FFFFFFFF constant IDX-MASK
    0 T-N !
    ndict@ T-ROW-RESERVE
    ndict@ 0 ?do
-      i XREF-REC {: rec:ptr :}
+      i XREF-REC {: rec:^ :}
       rec OWNER? if
          rec REC-OFF {: off:n :}
          off DP0 < if
@@ -113,7 +113,7 @@ variable GRP-LAST
 \ non-zero cell costs the LEB128 of its value, and each GROUP-SPAN holding one
 \ costs GROUP-BYTES of bitmap. Sort on cost, not nonzero. Cells and groups
 \ count from the extent's own base, so neighbours sharing one are both charged.
-: ROW ( n n ptr u8 n n -- ) {: off:n len:n name:ptr nameu:n wid:n :}
+: ROW ( n n ^u8 n n -- ) {: off:n len:n name:^ nameu:n wid:n :}
    off len SCAN
    off FMT:.U TAB  len FMT:.U TAB  FILL @ FMT:.U TAB  NZ @ FMT:.U TAB
    RUNS @ FMT:.U TAB  PAY @ ROWB @ + FMT:.U TAB
@@ -128,7 +128,7 @@ variable GRP-LAST
 
 : ROW-AT ( n -- ) {: k:n :}
    k T-ROW @ ROW-OFF {: off:n :}
-   k T-ROW @ ROW-IDX XREF-REC {: rec:ptr :}
+   k T-ROW @ ROW-IDX XREF-REC {: rec:^ :}
    off  k END-OF off -  rec XREF-NAME$  rec XREF-WORDLIST ROW ;
 
 \ No record owns the span below the first base: the engine's fixed cells below

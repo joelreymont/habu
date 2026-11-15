@@ -68,7 +68,7 @@ $200000 DTK-BIND-RC E-LAYOUT-CEIL T=
 
 \ Copy-on-grow (NAME-GROW) keeps live cells across a two-phase grow.
 variable DTK-BASE
-CAST: DTK-ADDR ( ptr dtk -- n )   \ read the accessor's base pointer as a number
+CAST: DTK-ADDR ( ^dtk -- n )   \ read the accessor's base pointer as a number
 : DTK-GROW ( -- )  DTK-I @ DTK-AT-GROW ;
 : DTK-GROW-RC ( n -- n )  DTK-I !  [: DTK-GROW ;] catch ;
 
@@ -125,10 +125,10 @@ SUMTYPE dfl-owned
    VARIANT hold dfl-lin ;VARIANT
 ;SUMTYPE
 
-TYPED-VARIABLE DFL-EVAL-A ptr u8
+TYPED-VARIABLE DFL-EVAL-A ^u8
 variable DFL-EVAL-U
 : DFL-EVAL-RUN ( -- )  DFL-EVAL-A @ DFL-EVAL-U @ evaluate-closed ;
-: DFL-EVAL ( ptr u8 n -- n )  DFL-EVAL-U ! DFL-EVAL-A !  [: DFL-EVAL-RUN ;] catch ;
+: DFL-EVAL ( ^u8 n -- n )  DFL-EVAL-U ! DFL-EVAL-A !  [: DFL-EVAL-RUN ;] catch ;
 
 s" DEFER-LAYOUT-BUFFER DC-OPEN dfl-owned" DFL-EVAL CHECKER-REJECT-RC T=
 \ A second declaration of the column redefines its accessor.

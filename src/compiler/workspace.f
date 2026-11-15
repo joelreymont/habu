@@ -40,29 +40,29 @@ variable DEFAULT-N
 : OPEN ( -- )
    MEM#base @ NULL-PTR <> if exit then
    LIMIT MEM-RESERVE
-   MEM#base @ {: base:ptr :}
+   MEM#base @ {: base:^ :}
    DEFAULT-N @ 0 ?do
       i cells DEFAULT-OFF + @ base +
       i cells DEFAULT-VALUE + @ swap !
    loop ;
 
 \ The routines a child's body calls with its body.
-: WORK ( ptr n -- ptr u8 ) {: body:ptr :}
+: WORK ( ^n -- ^u8 ) {: body:^ :}
    OPEN  MEM#base @ body @ + ;
 
-: WORK-AT ( n ptr n -- ptr u8 ) {: i:n body:ptr :}
+: WORK-AT ( n ^n -- ^u8 ) {: i:n body:^ :}
    body WORK  i body CELL + @ * + ;
 
 0 constant BUFFER-KIND
 1 constant SPAN-KIND
 2 constant VARIABLE-KIND
 
-CAST: AS-STORAGE-LINE ( n -- [ ptr u8 n -- ptr u8 n ptr u8 n n ] )
-CAST: AS-CHILD-RUN ( n -- [ ptr u8 n n n ptr u8 n -- n ] )
-CAST: AS-WORK-ENTRY ( [ ptr n -- ptr u8 ] -- n )
-CAST: AS-WORKS-ENTRY ( [ n ptr n -- ptr u8 ] -- n )
+CAST: AS-STORAGE-LINE ( n -- [ ^u8 n -- ^u8 n ^u8 n n ] )
+CAST: AS-CHILD-RUN ( n -- [ ^u8 n n n ^u8 n -- n ] )
+CAST: AS-WORK-ENTRY ( [ ^n -- ^u8 ] -- n )
+CAST: AS-WORKS-ENTRY ( [ n ^n -- ^u8 ] -- n )
 
-: DEFINER$ ( n -- ptr u8 n ) {: kind:n :}
+: DEFINER$ ( n -- ^u8 n ) {: kind:n :}
    kind BUFFER-KIND = if s" CWORK-BUFFER" exit then
    kind SPAN-KIND = if s" CWORK-SPAN" exit then
    s" CWORK-VARIABLE" ;
@@ -80,10 +80,10 @@ CAST: AS-WORKS-ENTRY ( [ n ptr n -- ptr u8 ] -- n )
 
 \ The product's USED and MEM#base place the storage; the building hb makes the
 \ child.
-: CHILD ( ptr u8 n n n ptr u8 n -- n )
+: CHILD ( ^u8 n n n ^u8 n -- n )
    data-base PROVIDED-XT:CHILD-CELL + @ AS-CHILD-RUN execute ;
 
-: ACCESSOR ( ptr u8 n ptr u8 n n -- ) {: na:ptr nu:n ta:ptr tu:n kind:n :}
+: ACCESSOR ( ^u8 n ^u8 n n -- ) {: na:^ nu:n ta:^ tu:n kind:n :}
    kind BUFFER-KIND = if
       na nu CHILD-ABI:WORKS ['] WORK-AT AS-WORKS-ENTRY ta tu CHILD drop exit
    then
@@ -95,7 +95,7 @@ CAST: AS-WORKS-ENTRY ( [ n ptr n -- ptr u8 ] -- n )
    kind VARIABLE-KIND = if PROVIDED-XT:CELL-LINE-CELL
    else PROVIDED-XT:STORAGE-LINE-CELL then {: reader:n :}
    kind DEFINER$ data-base reader + @
-   AS-STORAGE-LINE execute {: na:ptr nu:n ta:ptr tu:n w:n :}
+   AS-STORAGE-LINE execute {: na:^ nu:n ta:^ tu:n w:n :}
    w 0= if exit then
    operand kind w EXTENT {: bytes:n :}
    kind VARIABLE-KIND = operand 0<> and

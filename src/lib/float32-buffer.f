@@ -12,25 +12,25 @@ using F32
 
 public
 
-: STORE ( n ptr u8 -- ) {: value:n dst:ptr :}
+: STORE ( n ^u8 -- ) {: value:n dst:^ :}
    value           $FF and  dst     c!
    value 8 rshift  $FF and  dst 1 + c!
    value 16 rshift $FF and  dst 2 + c!
    value 24 rshift $FF and  dst 3 + c! ;
 
-: LOAD ( ptr u8 -- n ) {: src:ptr :}
+: LOAD ( ^u8 -- n ) {: src:^ :}
    src     c@
    src 1 + c@ 8  lshift or
    src 2 + c@ 16 lshift or
    src 3 + c@ 24 lshift or ;
 
-: PACK ( ptr r n ptr u8 -- ) {: src:ptr count:n dst:ptr :}
+: PACK ( ^r n ^u8 -- ) {: src:^ count:n dst:^ :}
    count 0 ?do
       src i cells + @ NARROW
       dst i 4 * + STORE
    loop ;
 
-: UNPACK ( ptr u8 n ptr r -- ) {: src:ptr count:n dst:ptr :}
+: UNPACK ( ^u8 n ^r -- ) {: src:^ count:n dst:^ :}
    count 0 ?do
       src i 4 * + LOAD WIDEN
       dst i cells + !

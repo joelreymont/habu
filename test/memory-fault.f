@@ -15,7 +15,7 @@ private
 : FOREIGN-SIG ( -- n ) HB-TARGET-LINUX-KERNEL? if 11 else 10 then ;
 
 \ The uncaught fault's record: the address and the word that read it.
-: RECORD-0$ ( -- ptr u8 n )
+: RECORD-0$ ( -- ^u8 n )
    SB-RESET
    S\" error[E-MEMORY-FAULT]: a read or write faulted\n" SB-APPEND
    S\"   = address: 0x0000000000000000\n  = in: W\n\n" SB-APPEND
@@ -27,7 +27,7 @@ private
 
 \ The child ended by the signal, not by an exit: crash.f EMIT-CRASH-HANDLER
 \ re-raises it after the dump. An exit of 128 + n is no signal death.
-: KILLED-BY ( n ptr u8 n -- ) {: sig:n label:ptr labelu:n :}
+: KILLED-BY ( n ^u8 n -- ) {: sig:n label:^ labelu:n :}
    GT-OUTCOME@ MATCH PROCESS:ending
      exited OF drop label labelu GE-FAIL ENDOF
      signaled OF sig <> if label labelu GE-FAIL then ENDOF
@@ -82,7 +82,7 @@ private
 : FOREIGN ( -- )
    GE-SRC-RESET
    s" PROCESS-SYMBOLS" GE-SRC-LINE
-   s" FUNCTION: STRLEN$ strlen ( ptr u8 -- n ) ;FUNCTION" GE-SRC-LINE
+   s" FUNCTION: STRLEN$ strlen ( ^u8 -- n ) ;FUNCTION" GE-SRC-LINE
    s" : GUARD-OFF ( -- n ) data-base STACK-ABI:BASE-CELL + @ 8 - ;" GE-SRC-LINE
    s" NULL-PTR BYTE-VIEW GUARD-OFF + STRLEN$ ." GE-SRC-LINE
    RUN-BUF

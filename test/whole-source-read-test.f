@@ -30,11 +30,11 @@ create OUT IO-CAP allot
 create ERR IO-CAP allot
 DYNAMIC-BUFFER READ-BUF u8
 
-: ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
-: SUBJECT$ ( -- ptr u8 n ) SUBJECT SUBJECT-U @ ;
-: MISSING$ ( -- ptr u8 n ) MISSING MISSING-U @ ;
+: ROOT$ ( -- ^u8 n ) ROOT ROOT-U @ ;
+: SUBJECT$ ( -- ^u8 n ) SUBJECT SUBJECT-U @ ;
+: MISSING$ ( -- ^u8 n ) MISSING MISSING-U @ ;
 
-: READ-ROOM ( n -- ptr u8 )
+: READ-ROOM ( n -- ^u8 )
    READ-BUF-RESERVE 0 READ-BUF ;
 
 
@@ -42,7 +42,7 @@ DYNAMIC-BUFFER READ-BUF u8
 \ written.
 : SETUP ( -- )
    FS:CLEANUP-RESET
-   s" habu-whole-source-read" FS:MKTEMP-DIR {: a:ptr u:n :}
+   s" habu-whole-source-read" FS:MKTEMP-DIR {: a:^ u:n :}
    a ROOT u BYTE-COPY  u ROOT-U !
    ROOT$ FS:CLEANUP-TREE+
    ROOT$ s" subject.f" SUBJECT FS:JOIN-PATH SUBJECT-U !
@@ -54,8 +54,8 @@ DYNAMIC-BUFFER READ-BUF u8
 
 
 \ The bytes are taken after the read, which may move the buffer.
-: SAMPLE-CASE ( n ptr u8 n -- )
-   {: first:n label:ptr labelu:n :}
+: SAMPLE-CASE ( n ^u8 n -- )
+   {: first:n label:^ labelu:n :}
    SUBJECT$ first [: READ-ROOM ;] SOURCE:READ-WHOLE-SAMPLED {: u:n :}
    label labelu T-LABEL
    0 READ-BUF u TEXT TEXT-LEN STR= TTRUE ;

@@ -17,12 +17,12 @@ package SOURCE-ROOT-EXE-APP
 create PATH-BUF INCLUDE-PATH-CAP allot
 variable PATH-U
 
-: INVOKED$ ( -- ptr u8 n ) 0 SCRIPT-ARGV$ ;
-: ROOT$ ( -- ptr u8 n ) 1 SCRIPT-ARGV$ ;
+: INVOKED$ ( -- ^u8 n ) 0 SCRIPT-ARGV$ ;
+: ROOT$ ( -- ^u8 n ) 1 SCRIPT-ARGV$ ;
 
 \ JOIN answers in resolver scratch that the next query overwrites.
-: ENGINE-COPY$ ( -- ptr u8 n )
-   ROOT$ s" src/lib/error.f" JOIN {: a:ptr u:n :}
+: ENGINE-COPY$ ( -- ^u8 n )
+   ROOT$ s" src/lib/error.f" JOIN {: a:^ u:n :}
    a PATH-BUF u BYTE-COPY u PATH-U !
    PATH-BUF PATH-U @ ;
 

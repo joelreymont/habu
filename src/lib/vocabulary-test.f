@@ -25,34 +25,34 @@ PTR-VARIABLE STEM-A                    \ the harness the next child loads, as it
 variable STEM-U
 variable CODE                          \ the last child's exit code, -1 when it did not exit
 
-: ARTIFACT$ ( -- ptr u8 n ) s" build/vocabulary-run.txt" ;
-: DIR$ ( -- ptr u8 n ) s" test/policy/" ;
+: ARTIFACT$ ( -- ^u8 n ) s" build/vocabulary-run.txt" ;
+: DIR$ ( -- ^u8 n ) s" test/policy/" ;
 
-: HARNESS! ( ptr u8 n -- ) STEM-U ! STEM-A ! ;
-: STEM$ ( -- ptr u8 n ) STEM-A @ STEM-U @ ;
+: HARNESS! ( ^u8 n -- ) STEM-U ! STEM-A ! ;
+: STEM$ ( -- ^u8 n ) STEM-A @ STEM-U @ ;
 : TIER0 ( -- ) s" allow" HARNESS! ;
 
-: FILE$ ( ptr u8 n -- ptr u8 n )
-   {: stem:ptr su:n :}
+: FILE$ ( ^u8 n -- ^u8 n )
+   {: stem:^ su:n :}
    SB-RESET DIR$ SB-APPEND stem su SB-APPEND s" .f" SB-APPEND
    SB$ ;
 
-: CODE! ( CMD:command PROCESS:ending ptr u8 n -- CMD:command )
-   {: oc ran:ptr ranu:n :}
-   CMD:OUT$ {: out:ptr outu:n :}
-   CMD:ERR$ {: err:ptr erru:n :}
+: CODE! ( CMD:command PROCESS:ending ^u8 n -- CMD:command )
+   {: oc ran:^ ranu:n :}
+   CMD:OUT$ {: out:^ outu:n :}
+   CMD:ERR$ {: err:^ erru:n :}
    oc MATCH PROCESS:ending
      exited OF CODE ! ENDOF
      signaled OF drop -1 CODE ! ENDOF
      timeout OF ran ranu out outu err erru T-TIMED-OUT ENDOF
    ;MATCH ;
 
-: FILE-ARG+ ( CMD:command ptr u8 n -- CMD:command )
+: FILE-ARG+ ( CMD:command ^u8 n -- CMD:command )
    FILE$ CMD:ARG+ ;
 
 \ An empty case name loads the harness alone.
-: SPAWN ( CMD:command ptr u8 n -- CMD:command )
-   {: name:ptr nu:n :}
+: SPAWN ( CMD:command ^u8 n -- CMD:command )
+   {: name:^ nu:n :}
    s" --load" CMD:ARG+
    STEM$ FILE-ARG+
    nu 0 > if
@@ -62,8 +62,8 @@ variable CODE                          \ the last child's exit code, -1 when it 
    s" bin/hb" PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME
    nu 0 > if name nu else STEM$ then FILE$ CODE! ;
 
-: ERR-LINE$ ( CMD:command -- CMD:command ptr u8 n )
-   CMD:ERR$ {: a:ptr u:n :}
+: ERR-LINE$ ( CMD:command -- CMD:command ^u8 n )
+   CMD:ERR$ {: a:^ u:n :}
    a u LF INDEX-OF MATCH option
      none OF a u ENDOF
      some OF IDX>N a swap ENDOF
@@ -75,26 +75,26 @@ variable CODE                          \ the last child's exit code, -1 when it 
 
 \ The first `want` bytes of that line, so a case pins a record's first line
 \ whole or by its head.
-: SAID-HEAD$ ( CMD:command n -- CMD:command ptr u8 n ) {: want:n :}
+: SAID-HEAD$ ( CMD:command n -- CMD:command ^u8 n ) {: want:n :}
    SB-RESET SAID+
-   SB$ {: a:ptr u:n :}
+   SB$ {: a:^ u:n :}
    a u want min ;
 
-: LOG ( CMD:command ptr u8 n -- CMD:command ) {: name:ptr nu:n :}
+: LOG ( CMD:command ^u8 n -- CMD:command ) {: name:^ nu:n :}
    SB-RESET STEM$ SB-APPEND s"  " SB-APPEND
    nu 0 > if name nu SB-APPEND else s" -" SB-APPEND then
    s"  rc=" SB-APPEND CODE @ FMT:SB-INT s"  " SB-APPEND
    SAID+ LF SB-APPEND-C
    ARTIFACT$ SB$ FS:APPEND-FILE ;
 
-: LABEL ( ptr u8 n ptr u8 n -- ) {: name:ptr nu:n what:ptr wu:n :}
+: LABEL ( ^u8 n ^u8 n -- ) {: name:^ nu:n what:^ wu:n :}
    SB-RESET STEM$ SB-APPEND s"  " SB-APPEND name nu SB-APPEND
    s" : " SB-APPEND what wu SB-APPEND
    SB$ T-LABEL ;
 
 \ One scope per child: its captures stay readable until the verdict is taken.
-: RUNS-IN ( ptr u8 n n ptr u8 n ptr u8 n CMD:command -- CMD:command )
-   >r {: name:ptr nu:n rc:n line:ptr lu:n out:ptr ou:n :} r>
+: RUNS-IN ( ^u8 n n ^u8 n ^u8 n CMD:command -- CMD:command )
+   >r {: name:^ nu:n rc:n line:^ lu:n out:^ ou:n :} r>
    name nu s" exit code" LABEL
    name nu SPAWN
    name nu LOG
@@ -104,39 +104,39 @@ variable CODE                          \ the last child's exit code, -1 when it 
    name nu s" stdout" LABEL
    CMD:OUT$ out ou T$= ;
 
-: RUNS ( ptr u8 n n ptr u8 n ptr u8 n -- )
+: RUNS ( ^u8 n n ^u8 n ^u8 n -- )
    [: RUNS-IN ;] CMD:WITH-COMMAND ;
 
 \ RUNS, and a span the whole stderr holds: the record's place or its notes.
-: SAYS-IN ( ptr u8 n n ptr u8 n ptr u8 n ptr u8 n CMD:command -- CMD:command )
-   >r {: name:ptr nu:n rc:n line:ptr lu:n span:ptr su:n out:ptr ou:n :} r>
+: SAYS-IN ( ^u8 n n ^u8 n ^u8 n ^u8 n CMD:command -- CMD:command )
+   >r {: name:^ nu:n rc:n line:^ lu:n span:^ su:n out:^ ou:n :} r>
    >r name nu rc line lu out ou r> RUNS-IN
    name nu s" stderr span" LABEL
    CMD:ERR$ span su CONTAINS? TTRUE ;
 
-: SAYS ( ptr u8 n n ptr u8 n ptr u8 n ptr u8 n -- )
+: SAYS ( ^u8 n n ^u8 n ^u8 n ^u8 n -- )
    [: SAYS-IN ;] CMD:WITH-COMMAND ;
 
 \ A rejection the engine throws: the record's first line and its place,
 \ status 70, no output.
-: REFUSES ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: name:ptr nu:n line:ptr lu:n place:ptr pu:n :}
+: REFUSES ( ^u8 n ^u8 n ^u8 n -- )
+   {: name:^ nu:n line:^ lu:n place:^ pu:n :}
    name nu CHECKER-REJECT-RC line lu place pu s" " SAYS ;
 
-: TIER0-REFUSES ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: name:ptr nu:n line:ptr lu:n place:ptr pu:n :}
+: TIER0-REFUSES ( ^u8 n ^u8 n ^u8 n -- )
+   {: name:^ nu:n line:^ lu:n place:^ pu:n :}
    TIER0 name nu line lu place pu REFUSES ;
 
 \ A harness the engine stops with an E-POLICY record: its first line, the
 \ notes span, the stdout.
-: STOPS ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: line:ptr lu:n notes:ptr nu:n out:ptr ou:n :}
+: STOPS ( ^u8 n ^u8 n ^u8 n -- )
+   {: line:^ lu:n notes:^ nu:n out:^ ou:n :}
    s" " ENGINE-ERROR:POLICY line lu notes nu out ou SAYS ;
 
-: SEALED$ ( -- ptr u8 n ) s" error[E-POLICY]: the vocabulary is sealed" ;
-: KEYWORD$ ( -- ptr u8 n ) s" error[E-POLICY]: a package publishes a word spelled like a keyword" ;
+: SEALED$ ( -- ^u8 n ) s" error[E-POLICY]: the vocabulary is sealed" ;
+: KEYWORD$ ( -- ^u8 n ) s" error[E-POLICY]: a package publishes a word spelled like a keyword" ;
 
-: OK-OUT$ ( -- ptr u8 n ) S\" 42\n5\n5\n42\n0\n11\n" ;
+: OK-OUT$ ( -- ^u8 n ) S\" 42\n5\n5\n42\n0\n11\n" ;
 
 \ A local shadows every word, as it does unsealed.
 : LOCALS ( -- )
@@ -271,7 +271,7 @@ variable CODE                          \ the last child's exit code, -1 when it 
    s" bypass" s" error[E-POLICY]: `require` is not in the vocabulary this source may use" s" test/policy/bypass.f:2:" REFUSES ;
 
 \ A record that names a path outside the root, whose head is the same for each.
-: ROOT$ ( -- ptr u8 n ) s" error[E-POLICY]: `" ;
+: ROOT$ ( -- ^u8 n ) s" error[E-POLICY]: `" ;
 
 \ Confined static require uses the original source paths through nested loads.
 \ A registry hit or a symlink still has to pass the resolved path boundary.

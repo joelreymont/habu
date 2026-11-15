@@ -7,8 +7,8 @@ package WKMAP
 public
 
 \ The kernel-words word answering an engine name, or an empty spelling.
-: WORD-OF ( ptr u8 n -- ptr u8 n )
-   {: a:ptr u:n :}
+: WORD-OF ( ^u8 n -- ^u8 n )
+   {: a:^ u:n :}
    a u s" ." STR=CI if s" WKWORDS:DOT" exit then
    a u s" .s" STR=CI if s" WKWORDS:DOT-S" exit then
    a u s" u." STR=CI if s" WKWORDS:U-DOT" exit then

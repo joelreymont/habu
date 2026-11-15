@@ -85,7 +85,7 @@ variable EXT-I                       \ BY-EXT's next row to lay
 
 \ BUILT row r's data span, the data pointer as its piece starts and ends.
 : PIECE-SPAN ( n -- n n )
-   BUILT-AT BUILT-DP + {: at:ptr :}
+   BUILT-AT BUILT-DP + {: at:^ :}
    at LE:U64@  at 8 + LE:U64@ ;
 
 
@@ -163,8 +163,8 @@ variable EXT-I                       \ BY-EXT's next row to lay
    a BODY-U {: au:n :}
    b BODY-U {: bu:n :}
    au bu <> if au bu < exit then
-   NULL-PTR BYTE-VIEW a + {: p:ptr :}
-   NULL-PTR BYTE-VIEW b + {: q:ptr :}
+   NULL-PTR BYTE-VIEW a + {: p:^ :}
+   NULL-PTR BYTE-VIEW b + {: q:^ :}
    au 0 ?do
       p i + c@  q i + c@  2dup <> if < unloop exit then  2drop
    loop
@@ -200,7 +200,7 @@ variable EXT-I                       \ BY-EXT's next row to lay
    BUILT-EXTS-N @ 2 + {: units:n :}
    units UNIT-STATE-RESERVE
    units 0 ?do DEAD-UNIT i UNIT-STATE ! loop
-   ROWS {: rows:ptr count:n :}
+   ROWS {: rows:^ count:n :}
    count CELLS-N !
    count CELL-UNIT-RESERVE  count CELL-READ-RESERVE
    count 0 ?do
@@ -253,7 +253,7 @@ variable EXT-I                       \ BY-EXT's next row to lay
 \ Rows are read in offset order: a cold build lists them in mark order and an
 \ object in extent order.
 : READ-CELLS ( -- )
-   ROWS {: rows:ptr count:n :}
+   ROWS {: rows:^ count:n :}
    count CELLS-N @ <> if E-COMP-STATE throw then
    count 0 ?do
       i BY-OFF @ {: k:n :}
@@ -303,7 +303,7 @@ variable EXT-I                       \ BY-EXT's next row to lay
 \ The build's DP, where the space's data ends.
 : SPACE-END ( -- n ) SPACE-DATA nip BASE @ + ;
 
-: SEG ( n n -- ptr n ) swap SEG-CELLS * + SEGS ;
+: SEG ( n n -- ^n ) swap SEG-CELLS * + SEGS ;
 
 \ The len bytes at build address start, laid at the first offset from LAID-END
 \ that keeps their offset modulo a cell.
@@ -489,15 +489,15 @@ variable EXT-I                       \ BY-EXT's next row to lay
 
 : EACH-KEPT ( [ n -- ] -- )
    {: visit :}
-   ROWS {: rows:ptr count:n :}
+   ROWS {: rows:^ count:n :}
    count 0 ?do i ROW-KEPT? if rows i cells + @ visit execute then loop ;
 
 
 : COPY-N ( -- n ) DATA-IMAGE-LEN CELL 1- + CELL / ;
-: COPY-AT ( n -- ptr u8 ) 0 COPY-CELLS BYTE-VIEW swap + ;
+: COPY-AT ( n -- ^u8 ) 0 COPY-CELLS BYTE-VIEW swap + ;
 
 : COPY-SPACE ( -- )
-   SPACE-DATA {: p:ptr u:n :}
+   SPACE-DATA {: p:^ u:n :}
    p 0 COPY-AT u BYTE-COPY ;
 
 \ The space's u bytes from offset from at image offset at.
@@ -556,7 +556,7 @@ variable EXT-I                       \ BY-EXT's next row to lay
 \ a dropped row's laid cell and its list slot hold 0.
 : KEEP-LIST ( -- )
    0 KEPT-N !
-   ROWS {: rows:ptr count:n :}
+   ROWS {: rows:^ count:n :}
    count 0 ?do
       rows i cells + @ {: row:n :}
       i ROW-KEPT? if

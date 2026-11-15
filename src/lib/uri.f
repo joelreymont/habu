@@ -20,19 +20,19 @@ $23 constant HASH
 3 constant ESCAPE-WIDTH          \ `%` and two hex digits
 4 constant NIBBLE-BITS
 
-: SCHEME$ ( -- ptr u8 n ) s" file:" ;
-: MARKER$ ( -- ptr u8 n ) s" //" ;
-: PREFIX$ ( -- ptr u8 n ) s" file://" ;
-: LOCALHOST$ ( -- ptr u8 n ) s" localhost" ;
-: HEX-DIGITS ( -- ptr u8 n ) s" 0123456789ABCDEF" ;
+: SCHEME$ ( -- ^u8 n ) s" file:" ;
+: MARKER$ ( -- ^u8 n ) s" //" ;
+: PREFIX$ ( -- ^u8 n ) s" file://" ;
+: LOCALHOST$ ( -- ^u8 n ) s" localhost" ;
+: HEX-DIGITS ( -- ^u8 n ) s" 0123456789ABCDEF" ;
 
-: LOCAL? ( ptr u8 n -- bool )
-   {: a:ptr u:n :}   \ an authority naming this machine
+: LOCAL? ( ^u8 n -- bool )
+   {: a:^ u:n :}   \ an authority naming this machine
    u 0= if true exit then
    a u LOCALHOST$ STR=CI ;
 
-: PATH-AT ( ptr u8 n -- n )
-   {: a:ptr u:n :}
+: PATH-AT ( ^u8 n -- n )
+   {: a:^ u:n :}
    SCHEME$ nip {: s:n :}
    u s < if E-URI-SCHEME throw then
    a s SCHEME$ STR=CI 0= if E-URI-SCHEME throw then
@@ -52,8 +52,8 @@ $23 constant HASH
       some OF IDX>N ENDOF
    ;MATCH ;
 
-: BYTE-AT ( n ptr u8 n -- n n )
-   {: i:n a:ptr u:n :}
+: BYTE-AT ( n ^u8 n -- n n )
+   {: i:n a:^ u:n :}
    a i + c@ {: c:n :}
    c QUESTION = c HASH = or if E-URI-ESCAPE throw then
    c PERCENT <> if c i 1+ exit then
@@ -62,20 +62,20 @@ $23 constant HASH
    a i + 2 + c@ NIBBLE or
    i ESCAPE-WIDTH + ;
 
-: MEASURE ( ptr u8 n -- n )
-   {: a:ptr u:n :}
+: MEASURE ( ^u8 n -- n )
+   {: a:^ u:n :}
    0 0 begin dup u < while
       a u BYTE-AT nip swap 1+ swap
    repeat drop ;
 
-: PUT ( n n ptr u8 n ptr u8 -- n n )
-   {: at:n i:n a:ptr u:n out:ptr :}
+: PUT ( n n ^u8 n ^u8 -- n n )
+   {: at:n i:n a:^ u:n out:^ :}
    i a u BYTE-AT {: b:n next:n :}
    b out at + c!
    at 1+ next ;
 
-: DECODE ( ptr u8 n ptr u8 -- )
-   {: a:ptr u:n out:ptr :}
+: DECODE ( ^u8 n ^u8 -- )
+   {: a:^ u:n out:^ :}
    0 0 begin dup u < while a u out PUT repeat 2drop ;
 
 : KEPT? ( n -- bool )
@@ -89,12 +89,12 @@ $23 constant HASH
 : WIDTH ( n -- n )
    KEPT? if 1 else ESCAPE-WIDTH then ;
 
-: ENCODED-LEN ( ptr u8 n -- n )
-   {: a:ptr u:n :}
+: ENCODED-LEN ( ^u8 n -- n )
+   {: a:^ u:n :}
    0 u 0 ?do a i + c@ WIDTH + loop ;
 
-: ENCODE-BYTE ( n ptr u8 n -- n )
-   {: c:n out:ptr at:n :}
+: ENCODE-BYTE ( n ^u8 n -- n )
+   {: c:n out:^ at:n :}
    c KEPT? if c out at + c! at 1+ exit then
    PERCENT out at + c!
    HEX-DIGITS drop c NIBBLE-BITS rshift + c@ out at + 1+ c!
@@ -107,14 +107,14 @@ public
 \ and RFC 3986's unreserved ones (letters, digits, `-._~`) escaped as
 \ upper-case `%XX`, so FILE>PATH gives back any path. A relative path is
 \ E-URI-RELATIVE, a short span E-SPAN-CAPACITY, a negative length E-SPAN-LENGTH.
-: PATH>FILE ( ptr u8 n SPAN:span<u8> -- n )
-   {: a:ptr u:n s :}
+: PATH>FILE ( ^u8 n SPAN:span<u8> -- n )
+   {: a:^ u:n s :}
    u 0 < if E-SPAN-LENGTH throw then
    u 0= if E-URI-RELATIVE throw then
    a c@ SLASH <> if E-URI-RELATIVE throw then
-   PREFIX$ {: f:ptr fu:n :}
+   PREFIX$ {: f:^ fu:n :}
    fu a u ENCODED-LEN + {: len:n :}
-   s SPAN:$ len < if E-SPAN-CAPACITY throw then {: out:ptr :}
+   s SPAN:$ len < if E-SPAN-CAPACITY throw then {: out:^ :}
    f out fu BYTE-COPY
    fu u 0 ?do a i + c@ out rot ENCODE-BYTE loop drop
    len ;
@@ -128,13 +128,13 @@ public
 \ anything else before the path E-URI-AUTHORITY, a `%` without two hex digits
 \ or a bare `?` or `#` E-URI-ESCAPE, a short span E-SPAN-CAPACITY and a
 \ negative length E-SPAN-LENGTH.
-: FILE>PATH ( ptr u8 n SPAN:span<u8> -- n )
-   {: a:ptr u:n s :}
+: FILE>PATH ( ^u8 n SPAN:span<u8> -- n )
+   {: a:^ u:n s :}
    u 0 < if E-SPAN-LENGTH throw then
    a u PATH-AT {: at:n :}
-   a at + u at - {: p:ptr pu:n :}
+   a at + u at - {: p:^ pu:n :}
    p pu MEASURE {: len:n :}
-   s SPAN:$ len < if E-SPAN-CAPACITY throw then {: out:ptr :}
+   s SPAN:$ len < if E-SPAN-CAPACITY throw then {: out:^ :}
    p pu out DECODE
    len ;
 

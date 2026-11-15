@@ -252,10 +252,10 @@ public
 : CHAR-STEP ( n -- n )                  \ char+
    CHAR-SIZE + ;
 
-: ADD-TO ( n ptr n -- )                 \ +!
+: ADD-TO ( n ^n -- )                 \ +!
    dup @ rot + swap ! ;
 
-: COUNTED$ ( ptr u8 -- ptr u8 n )       \ count
+: COUNTED$ ( ^u8 -- ^u8 n )       \ count
    dup char+ swap c@ ;
 
 ;package

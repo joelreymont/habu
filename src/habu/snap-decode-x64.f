@@ -15,7 +15,7 @@ using X64ASM
 using X64CODE
 private
 
-: SINK ( -- ptr u8 ) ASM-SINK ;
+: SINK ( -- ^u8 ) ASM-SINK ;
 : HEAP-VA ( -- n ) X64LAYOUT:DATA-VA VA>N DATA-START + ;
 : MOV, ( r64 r64 -- ) SINK ENC-MOV-RR ;
 : LIT, ( r64 n -- ) >IMM64 SINK ENC-MOV-RI64 ;

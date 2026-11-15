@@ -15,16 +15,16 @@ private
 
 \ The path of the named file beside this one; it holds only while this file
 \ loads.
-: PATH ( ptr u8 n -- ptr u8 n )
-   {: a:ptr u:n :}
+: PATH ( ^u8 n -- ^u8 n )
+   {: a:^ u:n :}
    SOURCE-ROOT:ACTIVE-SOURCE 2drop 2drop SOURCE-ROOT:DIRNAME
    a u SOURCE-ROOT:JOIN ;
 
 \ The file at the path into the buffer of its size; a file that changed size
 \ since it was measured is E-FS-IO, or FS:READ-ALL's E-FS-CAPACITY.
-: READ ( ptr u8 n ptr u8 n -- )
-   {: a:ptr u:n dst:ptr cap:n :}
-   a u PATH {: path:ptr pathu:n :}
+: READ ( ^u8 n ^u8 n -- )
+   {: a:^ u:n dst:^ cap:n :}
+   a u PATH {: path:^ pathu:n :}
    path pathu dst cap FS:READ-ALL cap <> if E-FS-IO throw then ;
 
 s" index.html" PATH FS:FILE-SIZE constant INDEX-U
@@ -51,8 +51,8 @@ s" mcp.js" PATH FS:FILE-SIZE constant MCP-U
 MCP-U BUFFER: MCP
 s" mcp.js" MCP MCP-U READ
 
-: SEND ( HTTP:response ptr u8 n ptr u8 n -- )
-   {: r:HTTP:response a:ptr u:n type:ptr tu:n :}
+: SEND ( HTTP:response ^u8 n ^u8 n -- )
+   {: r:HTTP:response a:^ u:n type:^ tu:n :}
    r s" Content-Type" type tu HTTP:HEADER!
    r a u HTTP:BODY! ;
 

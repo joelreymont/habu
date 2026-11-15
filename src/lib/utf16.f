@@ -42,8 +42,8 @@ $3F constant CONT-MASK
 : SCALAR-UNITS ( n -- n )
    PAIR-FIRST < if 1 else 2 then ;
 
-: STEP ( n n ptr u8 n -- n n )
-   {: units:n cursor:n a:ptr u:n :}
+: STEP ( n n ^u8 n -- n n )
+   {: units:n cursor:n a:^ u:n :}
    a u cursor UTF8:NEXT MATCH UTF8:scalar-step
       scalar OF swap SCALAR-UNITS swap ENDOF
       raw-byte OF nip 1 swap ENDOF
@@ -57,8 +57,8 @@ public
 \ "U+FFFD Substitution of Maximal Subparts") only for a truncated sequence that
 \ starts well (E2 82 then `A`, or F0 9F 98 at the span's end), which it counts
 \ as one unit.
-: UNITS ( ptr u8 n -- n )
-   {: a:ptr u:n :}
+: UNITS ( ^u8 n -- n )
+   {: a:^ u:n :}
    u 0 < if E-STR-BOUNDS throw then
    0 0 begin dup u < while a u STEP repeat
    drop ;
@@ -66,8 +66,8 @@ public
 \ The byte where a unit index starts: index 0 is byte 0, an index at or past the
 \ span's units is its length, and an index inside a surrogate pair rounds to the
 \ byte after that scalar. It inverts UNITS only at scalar boundaries.
-: OFFSET ( ptr u8 n n -- n )
-   {: a:ptr u:n unit:n :}
+: OFFSET ( ^u8 n n -- n )
+   {: a:^ u:n unit:n :}
    u 0 < if E-STR-BOUNDS throw then
    unit 0 < if E-STR-BOUNDS throw then
    0 0 begin over unit < over u < and while a u STEP repeat
@@ -96,8 +96,8 @@ private
 
 \ A lead byte holding the scalar's high bits, then TAIL continuation bytes of
 \ six bits each, highest first.
-: APPEND-ENCODED ( n n n ptr a -- )
-   {: scalar:n lead:n tail:n buf:ptr :}
+: APPEND-ENCODED ( n n n ^a -- )
+   {: scalar:n lead:n tail:n buf:^ :}
    scalar tail CONT-SHIFT * rshift lead or buf BUF:APPEND-BYTE
    tail 0 ?do
       scalar tail 1- i - CONT-SHIFT * rshift CONT-MASK and CONT-TAG or
@@ -105,16 +105,16 @@ private
    loop ;
 
 
-: APPEND-SCALAR ( n ptr a -- )
-   {: scalar:n buf:ptr :}
+: APPEND-SCALAR ( n ^a -- )
+   {: scalar:n buf:^ :}
    scalar ONE-LIMIT < if scalar buf BUF:APPEND-BYTE exit then
    scalar TWO-LIMIT < if scalar TWO-LEAD 1 buf APPEND-ENCODED exit then
    scalar PAIR-FIRST < if scalar THREE-LEAD 2 buf APPEND-ENCODED exit then
    scalar FOUR-LEAD 3 buf APPEND-ENCODED ;
 
 
-: APPEND-PAIR ( n n ptr u8 n ptr a -- n )
-   {: high:n at:n a:ptr u:n buf:ptr :}
+: APPEND-PAIR ( n n ^u8 n ^a -- n )
+   {: high:n at:n a:^ u:n buf:^ :}
    at UNIT-BYTES + u >= if E-UTF16 throw then
    a at UNIT-BYTES + + LE:U16@ {: low:n :}
    low LOW? 0= if E-UTF16 throw then
@@ -122,29 +122,29 @@ private
    at UNIT-BYTES 2 * + ;
 
 
-: DECODE-STEP ( n ptr u8 n ptr a -- n )
-   {: at:n a:ptr u:n buf:ptr :}
+: DECODE-STEP ( n ^u8 n ^a -- n )
+   {: at:n a:^ u:n buf:^ :}
    a at + LE:U16@ {: unit:n :}
    unit HIGH? if unit at a u buf APPEND-PAIR exit then
    unit LOW? if E-UTF16 throw then
    unit buf APPEND-SCALAR
    at UNIT-BYTES + ;
 
-: APPEND-UNIT ( n ptr a -- )
-   {: unit:n buf:ptr :}
+: APPEND-UNIT ( n ^a -- )
+   {: unit:n buf:^ :}
    unit BYTE-MASK and buf BUF:APPEND-BYTE
    unit BYTE-SHIFT rshift buf BUF:APPEND-BYTE ;
 
 
-: APPEND-SCALAR-LE ( n ptr a -- )
-   {: scalar:n buf:ptr :}
+: APPEND-SCALAR-LE ( n ^a -- )
+   {: scalar:n buf:^ :}
    scalar PAIR-FIRST < if scalar buf APPEND-UNIT exit then
    scalar SCALAR>PAIR {: high:n low:n :}
    high buf APPEND-UNIT  low buf APPEND-UNIT ;
 
 
-: ENCODE-STEP ( n ptr u8 n ptr a -- n )
-   {: at:n a:ptr u:n buf:ptr :}
+: ENCODE-STEP ( n ^u8 n ^a -- n )
+   {: at:n a:^ u:n buf:^ :}
    a u at UTF8:NEXT MATCH UTF8:scalar-step
       scalar OF swap buf APPEND-SCALAR-LE ENDOF
       raw-byte OF 2drop E-UTF8 throw ENDOF
@@ -160,8 +160,8 @@ public
 \ Two-byte little-endian units; a high-then-low pair is one scalar. An odd byte
 \ length or an unpaired surrogate, high (at the span's end included) or low, is
 \ E-UTF16.
-: APPEND-LE>UTF8 ( ptr u8 n ptr a -- )
-   {: a:ptr u:n buf:ptr :}
+: APPEND-LE>UTF8 ( ^u8 n ^a -- )
+   {: a:^ u:n buf:^ :}
    u 0 < if E-STR-BOUNDS throw then
    u UNIT-BYTES mod 0<> if E-UTF16 throw then
    0 begin dup u < while a u buf DECODE-STEP repeat
@@ -170,8 +170,8 @@ public
 \ A scalar at or above U+10000 becomes a surrogate pair; every raw byte -
 \ malformed, overlong, an encoded surrogate, past U+10FFFF or truncated - is
 \ E-UTF8.
-: APPEND-UTF8>LE ( ptr u8 n ptr a -- )
-   {: a:ptr u:n buf:ptr :}
+: APPEND-UTF8>LE ( ^u8 n ^a -- )
+   {: a:^ u:n buf:^ :}
    u 0 < if E-STR-BOUNDS throw then
    0 begin dup u < while a u buf ENCODE-STEP repeat
    drop ;

@@ -45,14 +45,14 @@ SUMTYPE lb-owned
 variable LB-RAW
 create LB-RAW-WIDE 2 cells allot
 
-s" LB-CAST ( ptr a -- ptr lb-res<n,n> )" CHECK-QUIET-CANDIDATE! 0 T=
-s" LB-VAR-P ( -- ptr lb-res<n,n> ) LB-RAW" CHECK-QUIET-CANDIDATE! 0 T=
-s" LB-CREATE-P ( -- ptr lb-res<n,n> ) LB-RAW-WIDE" CHECK-QUIET-CANDIDATE! 0 T=
-s" LB-DATA-P ( -- ptr lb-res<n,n> ) data-base" CHECK-QUIET-CANDIDATE! 0 T=
-s" LB-CELL+ ( ptr lb-res<n,n> -- ptr lb-res<n,n> ) cell+" CHECK-QUIET-CANDIDATE! 0 T=
-s" LB-BYTE ( ptr lb-res<n,n> -- ptr u8 )" CHECK-QUIET-CANDIDATE! 0 T=
-s" LB-WRONG-STORE ( lb-other<n> ptr lb-res<n,n> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
-s" LB-WRONG-FETCH ( ptr lb-res<n,n> -- lb-other<n> ) @" CHECK-QUIET-CANDIDATE! 0 T=
+s" LB-CAST ( ^a -- ^lb-res<n,n> )" CHECK-QUIET-CANDIDATE! 0 T=
+s" LB-VAR-P ( -- ^lb-res<n,n> ) LB-RAW" CHECK-QUIET-CANDIDATE! 0 T=
+s" LB-CREATE-P ( -- ^lb-res<n,n> ) LB-RAW-WIDE" CHECK-QUIET-CANDIDATE! 0 T=
+s" LB-DATA-P ( -- ^lb-res<n,n> ) data-base" CHECK-QUIET-CANDIDATE! 0 T=
+s" LB-CELL+ ( ^lb-res<n,n> -- ^lb-res<n,n> ) cell+" CHECK-QUIET-CANDIDATE! 0 T=
+s" LB-BYTE ( ^lb-res<n,n> -- ^u8 )" CHECK-QUIET-CANDIDATE! 0 T=
+s" LB-WRONG-STORE ( lb-other<n> ^lb-res<n,n> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
+s" LB-WRONG-FETCH ( ^lb-res<n,n> -- lb-other<n> ) @" CHECK-QUIET-CANDIDATE! 0 T=
 
 0 LB-GET 0 T= 0 T=
 7 0 LB-PUT  8 1 LB-PUT  9 2 LB-PUT
@@ -65,13 +65,13 @@ LB-LOW-RC E-LAYOUT-BOUNDS T=
 LB-HIGH-RC E-LAYOUT-BOUNDS T=
 [then]
 
-TYPED-VARIABLE LB-EVAL-A ptr u8
+TYPED-VARIABLE LB-EVAL-A ^u8
 variable LB-EVAL-U
 
 : LB-EVAL-RUN ( -- )
    LB-EVAL-A @ LB-EVAL-U @ evaluate-closed ;
 
-: LB-EVAL ( ptr u8 n -- n )
+: LB-EVAL ( ^u8 n -- n )
    LB-EVAL-U ! LB-EVAL-A !
    [: LB-EVAL-RUN ;] catch ;
 
@@ -126,20 +126,20 @@ LBTK-HIGH-RC E-LAYOUT-BOUNDS T=
 [then]
 
 \ checker seam: typed round-trip certifies; raw and foreign-family reject
-s" LBTK-STORE ( lbtk ptr lbtk -- ) !" CHECK-QUIET-CANDIDATE! -1 T=
-s" LBTK-FETCH ( ptr lbtk -- lbtk ) @" CHECK-QUIET-CANDIDATE! -1 T=
-s" LBTK-RAW-STORE ( n ptr lbtk -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
-s" LBTK-RAW-FETCH ( ptr lbtk -- n ) @" CHECK-QUIET-CANDIDATE! 0 T=
-s" LBTK-WRONG-STORE ( lbtk2 ptr lbtk -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
-s" LBTK-WRONG-FETCH ( ptr lbtk -- lbtk2 ) @" CHECK-QUIET-CANDIDATE! 0 T=
+s" LBTK-STORE ( lbtk ^lbtk -- ) !" CHECK-QUIET-CANDIDATE! -1 T=
+s" LBTK-FETCH ( ^lbtk -- lbtk ) @" CHECK-QUIET-CANDIDATE! -1 T=
+s" LBTK-RAW-STORE ( n ^lbtk -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
+s" LBTK-RAW-FETCH ( ^lbtk -- n ) @" CHECK-QUIET-CANDIDATE! 0 T=
+s" LBTK-WRONG-STORE ( lbtk2 ^lbtk -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
+s" LBTK-WRONG-FETCH ( ^lbtk -- lbtk2 ) @" CHECK-QUIET-CANDIDATE! 0 T=
 \ pointee governance: no raw pointer acquires nominal identity
 variable LBTK-RAW-CELL
-s" LBTK-VAR-P ( -- ptr lbtk ) LBTK-RAW-CELL" CHECK-QUIET-CANDIDATE! 0 T=
-s" LBTK-VAR-P2 ( -- ptr lbtk2 ) LBTK-RAW-CELL" CHECK-QUIET-CANDIDATE! 0 T=
-s" LBTK-DATA-P ( -- ptr lbtk ) data-base" CHECK-QUIET-CANDIDATE! 0 T=
-s" LBTK-CAST ( ptr a -- ptr lbtk )" CHECK-QUIET-CANDIDATE! 0 T=
+s" LBTK-VAR-P ( -- ^lbtk ) LBTK-RAW-CELL" CHECK-QUIET-CANDIDATE! 0 T=
+s" LBTK-VAR-P2 ( -- ^lbtk2 ) LBTK-RAW-CELL" CHECK-QUIET-CANDIDATE! 0 T=
+s" LBTK-DATA-P ( -- ^lbtk ) data-base" CHECK-QUIET-CANDIDATE! 0 T=
+s" LBTK-CAST ( ^a -- ^lbtk )" CHECK-QUIET-CANDIDATE! 0 T=
 \ Arithmetic transports an existing nominal pointer; it does not introduce one.
-s" LBTK-CELL+ ( ptr lbtk -- ptr lbtk ) cell+" CHECK-QUIET-CANDIDATE! -1 T=
+s" LBTK-CELL+ ( ^lbtk -- ^lbtk ) cell+" CHECK-QUIET-CANDIDATE! -1 T=
 \ value laundering through the typed cell rejects
 s" LBTK-LAUNDER ( n -- lbtk ) 0 LBTK-AT ! 0 LBTK-AT @" CHECK-QUIET-CANDIDATE! 0 T=
 \ A fetch from a raw `here` cell is a TVK-RAW var that cannot bind a nominal
@@ -214,21 +214,21 @@ public
 variable HITS
 private
 : HIT ( -- ) 1 HITS +! ;
-: DS-RESERVE ( n ptr ptr a ptr n n -- ) HIT DYNAMIC-STORAGE:RESERVE ;
-: DS-RELEASE ( ptr ptr a ptr n -- ) HIT DYNAMIC-STORAGE:RELEASE ;
+: DS-RESERVE ( n ^^a ^n n -- ) HIT DYNAMIC-STORAGE:RESERVE ;
+: DS-RELEASE ( ^^a ^n -- ) HIT DYNAMIC-STORAGE:RELEASE ;
 package DYNAMIC-STORAGE
 public
 : BOUNDS ( n n -- n ) HIT 2drop 0 ;
-: RESERVE ( n ptr ptr a ptr n n -- ) DS-RESERVE ;
-: RELEASE ( ptr ptr a ptr n -- ) DS-RELEASE ;
+: RESERVE ( n ^^a ^n n -- ) DS-RESERVE ;
+: RELEASE ( ^^a ^n -- ) DS-RELEASE ;
 ;package
-: LDEFER-BIND ( n ptr n n -- ) HIT 2drop drop ;
-: LDEFER-GROW ( n ptr n n -- ) HIT 2drop drop ;
+: LDEFER-BIND ( n ^n n -- ) HIT 2drop drop ;
+: LDEFER-GROW ( n ^n n -- ) HIT 2drop drop ;
 : throw ( n -- ) HIT drop ;
 : 0= ( n -- bool ) HIT 0<> ;
 : >= ( n n -- bool ) HIT < ;
 : < ( n n -- bool ) HIT > ;
-: @ ( ptr n -- n ) HIT drop 0 ;
+: @ ( ^n -- n ) HIT drop 0 ;
 : * ( n n -- n ) HIT + ;
 : + ( a n -- a ) HIT drop ;
 : swap ( a b -- b a ) {: x y :} HIT y x ;
@@ -248,15 +248,15 @@ DYNAMIC-BUFFER DB n
 ;package
 
 \ Stores 1, 2 and 3 at indices 0 to 2 and reads them back as one number.
-: LBF-CELLS ( [ n -- ptr n ] -- n ) {: at :}
+: LBF-CELLS ( [ n -- ^n ] -- n ) {: at :}
    3 0 ?do i 1 + i at execute ! loop
    0 3 0 ?do 10 * i at execute @ + loop ;
-: LBF-RES ( [ n -- ptr lb-res<n,n> ] -- n ) {: at :}
+: LBF-RES ( [ n -- ^lb-res<n,n> ] -- n ) {: at :}
    3 0 ?do i 1 + LB--RES:OK i at execute ! loop
    0 3 0 ?do 10 * i at execute @ LB-UN drop + loop ;
-: LBF-AT-RC ( n [ n -- ptr n ] -- n ) {: k:n at :}
+: LBF-AT-RC ( n [ n -- ^n ] -- n ) {: k:n at :}
    [: k at execute drop ;] catch ;
-: LBF-RES-RC ( n [ n -- ptr lb-res<n,n> ] -- n ) {: k:n at :}
+: LBF-RES-RC ( n [ n -- ^lb-res<n,n> ] -- n ) {: k:n at :}
    [: k at execute drop ;] catch ;
 
 \ Each answers LBFW's then LBFC's.

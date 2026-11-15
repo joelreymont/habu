@@ -77,13 +77,13 @@ variable SOURCE-PREV
 variable PENDING
 variable PENDING-LO
 variable PENDING-CLASS
-TYPED-VARIABLE PENDING-NAME-A ptr u8
+TYPED-VARIABLE PENDING-NAME-A ^u8
 variable PENDING-NAME-U
 
 : FALSE-VALUE ( -- bool )   0 0= 0= ;
 : TRUE-VALUE ( -- bool )    0 0= ;
 
-: SLOT ( n ptr a -- ptr a ) {: idx:n base:ptr :}
+: SLOT ( n ^a -- ^a ) {: idx:n base:^ :}
    idx 0 < if E-RANGE throw then
    idx RANGE-CAPACITY >= if E-RANGE throw then
    base idx cells + ;
@@ -94,12 +94,12 @@ variable PENDING-NAME-U
    c 97 >= c 102 <= and if c 87 - TRUE-VALUE exit then
    0 FALSE-VALUE ;
 
-: HEX-FOLD ( ptr u8 n n n -- n ) {: a:ptr u:n pos:n acc:n :}
+: HEX-FOLD ( ^u8 n n n -- n ) {: a:^ u:n pos:n acc:n :}
    pos u >= if acc exit then
    a pos + c@ HEX-DIGIT 0= if drop E-SYNTAX throw then {: digit:n :}
    a u pos 1+ acc 16 * digit + recurse ;
 
-: PARSE-HEX ( ptr u8 n -- n ) {: a:ptr u:n :}
+: PARSE-HEX ( ^u8 n -- n ) {: a:^ u:n :}
    u 0= u 6 > or if E-SYNTAX throw then
    a u 0 0 HEX-FOLD ;
 
@@ -107,18 +107,18 @@ variable PENDING-NAME-U
    lo 0 < hi lo < or hi SCALAR-MAX > or if E-RANGE throw then
    lo SURROGATE-LAST <= hi SURROGATE-FIRST >= and if E-RANGE throw then ;
 
-: BYTE-INDEX ( ptr u8 n n -- n ) {: a:ptr u:n c:n :}
+: BYTE-INDEX ( ^u8 n n -- n ) {: a:^ u:n c:n :}
    0 begin dup u < while
       dup a + c@ c = if exit then
       1+
    repeat ;
 
-: NEXT-FIELD ( ptr u8 n n -- ptr u8 n n ) {: a:ptr u:n start:n :}
-   a u SEMICOLON start SPLIT-NEXT {: fa:ptr fu:n next:n valid:bool :}
+: NEXT-FIELD ( ^u8 n n -- ^u8 n n ) {: a:^ u:n start:n :}
+   a u SEMICOLON start SPLIT-NEXT {: fa:^ fu:n next:n valid:bool :}
    valid 0= next u > or if E-SYNTAX throw then
    fa fu next ;
 
-: CATEGORY-SECOND? ( n ptr u8 n -- bool ) {: c:n allowed:ptr allowedu:n :}
+: CATEGORY-SECOND? ( n ^u8 n -- bool ) {: c:n allowed:^ allowedu:n :}
    allowed allowedu c BYTE-INDEX allowedu < ;
 
 : SYMBOL-CLASS ( n -- n ) {: c:n :}
@@ -127,7 +127,7 @@ variable PENDING-NAME-U
    c 111 = if CLASS-OTHER-SYMBOL exit then
    0 ;
 
-: CATEGORY ( ptr u8 n -- n ) {: a:ptr u:n :}
+: CATEGORY ( ^u8 n -- n ) {: a:^ u:n :}
    u 2 <> if E-SYNTAX throw then
    a c@ 76 = if
       a 1+ c@ s" ultmo" CATEGORY-SECOND? 0= if E-SYNTAX throw then
@@ -144,18 +144,18 @@ variable PENDING-NAME-U
    a c@ 67 = if a 1+ c@ s" cfson" CATEGORY-SECOND? 0= if E-SYNTAX throw then 0 exit then
    E-SYNTAX throw ;
 
-: FIRST-NAME? ( ptr u8 n -- bool )
+: FIRST-NAME? ( ^u8 n -- bool )
    s" , First>" ENDS-WITH? ;
 
-: LAST-NAME? ( ptr u8 n -- bool )
+: LAST-NAME? ( ^u8 n -- bool )
    s" , Last>" ENDS-WITH? ;
 
-: SAME-RANGE-NAME? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: SAME-RANGE-NAME? ( ^u8 n -- bool ) {: a:^ u:n :}
    u 7 < PENDING-NAME-U @ 8 < or if FALSE-VALUE exit then
    a u 7 - PENDING-NAME-A @ PENDING-NAME-U @ 8 - STR= ;
 
-: RANGE-APPEND ( n n ptr n ptr n ptr n -- )
-   {: lo:n hi:n los:ptr his:ptr countp:ptr :}
+: RANGE-APPEND ( n n ^n ^n ^n -- )
+   {: lo:n hi:n los:^ his:^ countp:^ :}
    lo hi SCALAR-RANGE
    countp @ 0 > if
       countp @ 1- his SLOT @ {: prev-hi:n :}
@@ -201,7 +201,7 @@ variable PENDING-NAME-U
    cp 0 < cp SCALAR-MAX > or if E-RANGE throw then
    cp SOURCE-PREV @ <= if E-RANGE throw then ;
 
-: OPEN-RANGE ( n ptr u8 n n -- ) {: cp:n name:ptr nameu:n class:n :}
+: OPEN-RANGE ( n ^u8 n n -- ) {: cp:n name:^ nameu:n class:n :}
    cp SOURCE-ORDER
    cp SOURCE-PREV !
    TRUE-VALUE PENDING !
@@ -210,7 +210,7 @@ variable PENDING-NAME-U
    name PENDING-NAME-A !
    nameu PENDING-NAME-U ! ;
 
-: CLOSE-RANGE ( n ptr u8 n n -- ) {: cp:n name:ptr nameu:n class:n :}
+: CLOSE-RANGE ( n ^u8 n n -- ) {: cp:n name:^ nameu:n class:n :}
    PENDING @ 0= if E-SYNTAX throw then
    cp SOURCE-ORDER
    name nameu SAME-RANGE-NAME? 0= if E-SYNTAX throw then
@@ -219,13 +219,13 @@ variable PENDING-NAME-U
    cp SOURCE-PREV !
    FALSE-VALUE PENDING ! ;
 
-: UNICODE-ROW ( ptr u8 n -- ) {: line:ptr lineu:n :}
-   line lineu TRIM {: row:ptr rowu:n :}
+: UNICODE-ROW ( ^u8 n -- ) {: line:^ lineu:n :}
+   line lineu TRIM {: row:^ rowu:n :}
    rowu 0= if exit then
    row rowu SEMICOLON COUNT-CHAR 14 <> if E-SYNTAX throw then
-   row rowu 0 NEXT-FIELD {: cpa:ptr cpu:n next1:n :}
-   row rowu next1 NEXT-FIELD {: name:ptr nameu:n next2:n :}
-   row rowu next2 NEXT-FIELD {: cat:ptr catu:n next3:n :}
+   row rowu 0 NEXT-FIELD {: cpa:^ cpu:n next1:n :}
+   row rowu next1 NEXT-FIELD {: name:^ nameu:n next2:n :}
+   row rowu next2 NEXT-FIELD {: cat:^ catu:n next3:n :}
    next3 drop
    cpa cpu TRIM PARSE-HEX {: cp:n :}
    cat catu TRIM CATEGORY {: class:n :}
@@ -243,17 +243,17 @@ variable PENDING-NAME-U
    cp SOURCE-PREV !
    cp cp class CLASS+ ;
 
-: SCAN-UNICODE ( ptr u8 n -- ) {: a:ptr u:n :}
+: SCAN-UNICODE ( ^u8 n -- ) {: a:^ u:n :}
    0 begin dup u <= while
       {: start:n :}
-      a u LINE-FEED start SPLIT-NEXT {: line:ptr lineu:n next:n valid:bool :}
+      a u LINE-FEED start SPLIT-NEXT {: line:^ lineu:n next:n valid:bool :}
       valid 0= if E-SYNTAX throw then
       line lineu UNICODE-ROW
       next
    repeat drop
    PENDING @ if E-SYNTAX throw then ;
 
-: RANGE-PART ( ptr u8 n -- n n ) {: a:ptr u:n :}
+: RANGE-PART ( ^u8 n -- n n ) {: a:^ u:n :}
    a u DOT BYTE-INDEX {: pos:n :}
    pos u = if a u TRIM PARSE-HEX dup exit then
    pos 0= pos 1+ u >= or if E-SYNTAX throw then
@@ -261,12 +261,12 @@ variable PENDING-NAME-U
    a pos TRIM PARSE-HEX
    a pos 2 + + u pos 2 + - TRIM PARSE-HEX ;
 
-: RANGE-ROW ( ptr u8 n [ n n ptr u8 n -- ] -- )
-   {: line:ptr lineu:n q :}
+: RANGE-ROW ( ^u8 n [ n n ^u8 n -- ] -- )
+   {: line:^ lineu:n q :}
    line lineu HASH BYTE-INDEX {: comment:n :}
-   line comment TRIM {: row:ptr rowu:n :}
+   line comment TRIM {: row:^ rowu:n :}
    rowu 0= if exit then
-   row rowu 0 NEXT-FIELD {: range:ptr rangeu:n next:n :}
+   row rowu 0 NEXT-FIELD {: range:^ rangeu:n next:n :}
    range rangeu TRIM RANGE-PART
    row next + rowu next - TRIM q execute ;
 
@@ -275,10 +275,10 @@ public
 \ Calls q with the first and last scalar and the trimmed value of each
 \ `XXXX ; Value` or `XXXX..YYYY ; Value` row of a UCD file, skipping blank
 \ and comment text.
-: RANGE-ROWS ( ptr u8 n [ n n ptr u8 n -- ] -- ) {: a:ptr u:n q :}
+: RANGE-ROWS ( ^u8 n [ n n ^u8 n -- ] -- ) {: a:^ u:n q :}
    0 begin dup u <= while
       {: start:n :}
-      a u LINE-FEED start SPLIT-NEXT {: line:ptr lineu:n next:n valid:bool :}
+      a u LINE-FEED start SPLIT-NEXT {: line:^ lineu:n next:n valid:bool :}
       valid 0= if E-SYNTAX throw then
       line lineu q RANGE-ROW
       next
@@ -286,10 +286,10 @@ public
 
 private
 
-: SPACE-PROPERTY? ( ptr u8 n -- bool )
+: SPACE-PROPERTY? ( ^u8 n -- bool )
    TRIM s" White_Space" STR= ;
 
-: PROP+ ( n n ptr u8 n -- ) {: lo:n hi:n prop:ptr propu:n :}
+: PROP+ ( n n ^u8 n -- ) {: lo:n hi:n prop:^ propu:n :}
    prop propu s" Other_Uppercase" STR= if
       lo hi 0 OTHER-UPPER-LO 0 OTHER-UPPER-HI OTHER-UPPER-N RANGE-APPEND exit
    then
@@ -299,12 +299,12 @@ private
    prop propu SPACE-PROPERTY? 0= if lo hi SCALAR-RANGE exit then
    lo hi 0 SPACE-LO 0 SPACE-HI SPACE-N RANGE-APPEND ;
 
-: SCAN-PROPS ( ptr u8 n -- )
+: SCAN-PROPS ( ^u8 n -- )
    [: PROP+ ;] RANGE-ROWS ;
 
 \ A table of scalar and paired-bracket cells, kept strictly ascending by scalar.
-: PAIR-APPEND ( n n ptr n ptr n ptr n -- )
-   {: cp:n pair:n cps:ptr pairs:ptr countp:ptr :}
+: PAIR-APPEND ( n n ^n ^n ^n -- )
+   {: cp:n pair:n cps:^ pairs:^ countp:^ :}
    cp cp SCALAR-RANGE
    pair pair SCALAR-RANGE
    countp @ 0 > if
@@ -325,20 +325,20 @@ private
    then
    E-SYNTAX throw ;
 
-: BRACKET-ROW ( ptr u8 n -- ) {: line:ptr lineu:n :}
+: BRACKET-ROW ( ^u8 n -- ) {: line:^ lineu:n :}
    line lineu HASH BYTE-INDEX {: comment:n :}
-   line comment TRIM {: row:ptr rowu:n :}
+   line comment TRIM {: row:^ rowu:n :}
    rowu 0= if exit then
-   row rowu 0 NEXT-FIELD {: cpa:ptr cpu:n next1:n :}
-   row rowu next1 NEXT-FIELD {: pa:ptr pu:n next2:n :}
-   row next2 + rowu next2 - TRIM {: ta:ptr tu:n :}
+   row rowu 0 NEXT-FIELD {: cpa:^ cpu:n next1:n :}
+   row rowu next1 NEXT-FIELD {: pa:^ pu:n next2:n :}
+   row next2 + rowu next2 - TRIM {: ta:^ tu:n :}
    tu 1 <> if E-SYNTAX throw then
    cpa cpu TRIM PARSE-HEX pa pu TRIM PARSE-HEX ta c@ BRACKET+ ;
 
-: SCAN-BRACKETS ( ptr u8 n -- ) {: a:ptr u:n :}
+: SCAN-BRACKETS ( ^u8 n -- ) {: a:^ u:n :}
    0 begin dup u <= while
       {: start:n :}
-      a u LINE-FEED start SPLIT-NEXT {: line:ptr lineu:n next:n valid:bool :}
+      a u LINE-FEED start SPLIT-NEXT {: line:^ lineu:n next:n valid:bool :}
       valid 0= if E-SYNTAX throw then
       line lineu BRACKET-ROW
       next
@@ -348,7 +348,7 @@ private
    idx 0 < idx count >= or if E-RANGE throw then
    idx ;
 
-: RANGE@ ( n ptr n ptr n n -- n n ) {: idx:n los:ptr his:ptr count:n :}
+: RANGE@ ( n ^n ^n n -- n n ) {: idx:n los:^ his:^ count:n :}
    idx count VALID-INDEX {: safe:n :}
    safe los SLOT @ safe his SLOT @ ;
 
@@ -364,7 +364,7 @@ public
    0 MATH-N ! 0 SO-N !
    0 OPEN-N ! 0 CLOSE-N ! ;
 
-: PARSE-UNICODE ( ptr u8 n -- )
+: PARSE-UNICODE ( ^u8 n -- )
    FALSE-VALUE UNICODE-READY !
    0 LETTER-N ! 0 NUMBER-N ! 0 NL-N ! 0 UPPER-N ! 0 MARK-N !
    0 MATH-N ! 0 SO-N !
@@ -372,13 +372,13 @@ public
    SCAN-UNICODE
    TRUE-VALUE UNICODE-READY ! ;
 
-: PARSE-PROPERTIES ( ptr u8 n -- )
+: PARSE-PROPERTIES ( ^u8 n -- )
    FALSE-VALUE SPACE-READY !
    0 SPACE-N ! 0 OTHER-N ! 0 OTHER-UPPER-N !
    SCAN-PROPS
    TRUE-VALUE SPACE-READY ! ;
 
-: PARSE-BRACKETS ( ptr u8 n -- )
+: PARSE-BRACKETS ( ^u8 n -- )
    FALSE-VALUE BRACKETS-READY !
    0 OPEN-N ! 0 CLOSE-N !
    SCAN-BRACKETS

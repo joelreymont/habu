@@ -89,15 +89,15 @@ variable SPLIT                       \ a does> definer's `does>` row, or -1
 variable ORD                         \ the ordinal of the row the walk reads next
 variable CUT                         \ the byte just past `does> `, or 0
 
-: TXT$ ( -- ptr u8 ) TXT @ ;
+: TXT$ ( -- ^u8 ) TXT @ ;
 
 \ Row k's span, empty past the tape.
-: ROW$ ( n -- ptr u8 n ) {: k:n :}
+: ROW$ ( n -- ^u8 n ) {: k:n :}
    k ROWS @ >= if TXT$ 0 exit then
    TXT$ k ROW-OFF @ +  k ROW-LEN @ ;
 
 \ The row the walk reads next, which it then passes.
-: NEXT$ ( -- ptr u8 n )
+: NEXT$ ( -- ^u8 n )
    ORD @ ROW$
    ORD @ ROWS @ < if 1 ORD +! then ;
 
@@ -112,16 +112,16 @@ variable CUT                         \ the byte just past `does> `, or 0
 \ ---- rejections --------------------------------------------------------------
 \ Each word prints one rejection at the token it is given and throws the
 \ reject status; a body token places while the body's source is armed (RUN).
-: SAY ( ptr u8 n -- ) REJECTION:EMIT-STR ;
+: SAY ( ^u8 n -- ) REJECTION:EMIT-STR ;
 
 \ Code in a rejection's text sits in backticks.
-: TICKS ( ptr u8 n -- ) {: a:ptr u:n :}
+: TICKS ( ^u8 n -- ) {: a:^ u:n :}
    96 REJECTION:EMIT1  a u SAY  96 REJECTION:EMIT1 ;
 
 : REJECT ( -- ) CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ A closer, a `;]` or an arm word with no structure of its kind open.
-: STRAY ( ptr u8 n -- ) {: a:ptr u:n :}
+: STRAY ( ^u8 n -- ) {: a:^ u:n :}
    s" E-T0-CONTROL" REJECTION:OPEN
    a u TICKS  s"  does not close or continue a structure open here" SAY
    a u REJECTION:AT  s" no matching structure is open" SAY
@@ -132,7 +132,7 @@ variable CUT                         \ the byte just past `does> `, or 0
 : CONTROL-FAULT ( -- ) ORD @ 1- ROW$ STRAY ;
 
 \ A loop word outside the loops it reads.
-: NO-LOOP ( ptr u8 n -- ) {: a:ptr u:n :}
+: NO-LOOP ( ^u8 n -- ) {: a:^ u:n :}
    s" E-T0-CONTROL" REJECTION:OPEN
    a u TICKS  s"  is outside the loops it needs" SAY
    a u REJECTION:AT  s" not inside enough loops" SAY
@@ -140,7 +140,7 @@ variable CUT                         \ the byte just past `does> `, or 0
    s"  inside a `do` ... `loop`; `j` needs two nested loops" SAY
    REJECT ;
 
-: UNREACHED ( ptr u8 n -- ) {: a:ptr u:n :}
+: UNREACHED ( ^u8 n -- ) {: a:^ u:n :}
    s" E-T0-CONTROL" REJECTION:OPEN
    s" no path reaches " SAY  a u TICKS
    a u REJECTION:AT  s" unreachable" SAY
@@ -149,7 +149,7 @@ variable CUT                         \ the byte just past `does> `, or 0
    REJECT ;
 
 \ The token that ended a unit with a structure still open.
-: UNCLOSED ( ptr u8 n -- ) {: a:ptr u:n :}
+: UNCLOSED ( ^u8 n -- ) {: a:^ u:n :}
    s" E-T0-CONTROL" REJECTION:OPEN
    s" a control structure is still open at " SAY  a u TICKS
    a u REJECTION:AT  s" the structure must close before this" SAY
@@ -158,7 +158,7 @@ variable CUT                         \ the byte just past `does> `, or 0
    REJECT ;
 
 \ A `does>` the head's walk does not end at.
-: SPLIT-AWAY ( ptr u8 n -- ) {: a:ptr u:n :}
+: SPLIT-AWAY ( ^u8 n -- ) {: a:^ u:n :}
    s" E-T0-CONTROL" REJECTION:OPEN
    a u TICKS  s"  is not at the top level of the definer's body" SAY
    a u REJECTION:AT  s" inside a nested unit" SAY
@@ -167,7 +167,7 @@ variable CUT                         \ the byte just past `does> `, or 0
    REJECT ;
 
 \ A record with no compiled reference: retired, or never given code.
-: NO-CODE ( ptr u8 n -- ) {: a:ptr u:n :}
+: NO-CODE ( ^u8 n -- ) {: a:^ u:n :}
    s" E-T0-UNSUPPORTED" REJECTION:OPEN
    a u TICKS  s"  has no compiled code to call" SAY
    a u REJECTION:AT  s" no compiled code" SAY
@@ -175,7 +175,7 @@ variable CUT                         \ the byte just past `does> `, or 0
    s"  before this point: a word `undefine` retired has no code" SAY
    REJECT ;
 
-: NO-LOCAL ( ptr u8 n -- ) {: a:ptr u:n :}
+: NO-LOCAL ( ^u8 n -- ) {: a:^ u:n :}
    s" E-T0-UNSUPPORTED" REJECTION:OPEN
    s" the quotation cannot reach the local read at " SAY  a u TICKS
    a u REJECTION:AT  s" not in the quotation's record" SAY
@@ -184,7 +184,7 @@ variable CUT                         \ the byte just past `does> `, or 0
    REJECT ;
 
 \ A token whose event the walk has no case for.
-: NO-EVENT ( ptr u8 n -- ) {: a:ptr u:n :}
+: NO-EVENT ( ^u8 n -- ) {: a:^ u:n :}
    s" E-T0-UNSUPPORTED" REJECTION:OPEN
    s" the compiler has no code for " SAY  a u TICKS
    a u REJECTION:AT  s" not compiled" SAY
@@ -194,7 +194,7 @@ variable CUT                         \ the byte just past `does> `, or 0
 
 \ A name bound to no record, even in an unchecked body, called in the body of
 \ d du, empty for a tick's operand.
-: NOT-FOUND ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n d:ptr du:n :}
+: NOT-FOUND ( ^u8 n ^u8 n -- ) {: a:^ u:n d:^ du:n :}
    s" E-UNDEFINED" REJECTION:OPEN
    s" cannot find word " SAY  a u TICKS
    a u REJECTION:AT  s" not found" SAY
@@ -202,7 +202,7 @@ variable CUT                         \ the byte just past `does> `, or 0
    REJECT ;
 
 \ Rejects a tick of an engine-internal record or a scope entry.
-: NO-TICK ( ptr u8 n -- ) {: a:ptr u:n :}
+: NO-TICK ( ^u8 n -- ) {: a:^ u:n :}
    s" E-UNDEFINED" REJECTION:OPEN
    s" compiled code cannot call " SAY  a u TICKS
    a u REJECTION:AT  s" no tick of this word" SAY
@@ -210,7 +210,7 @@ variable CUT                         \ the byte just past `does> `, or 0
    REJECT ;
 
 \ A call of an engine-internal record (NDICT:INT-CALL?).
-: INTERNAL ( ptr u8 n -- ) {: a:ptr u:n :}
+: INTERNAL ( ^u8 n -- ) {: a:^ u:n :}
    s" E-UNDEFINED" REJECTION:OPEN
    s" compiled code cannot call " SAY  a u TICKS
    a u REJECTION:AT  s" internal to the engine" SAY
@@ -219,14 +219,14 @@ variable CUT                         \ the byte just past `does> `, or 0
    REJECT ;
 
 \ `is` with no operand before the body's end.
-: IS-ALONE ( ptr u8 n -- ) {: a:ptr u:n :}
+: IS-ALONE ( ^u8 n -- ) {: a:^ u:n :}
    s" E-T0-DEFER" REJECTION:OPEN
    a u TICKS  s"  names no deferred word" SAY
    a u REJECTION:AT  s" no operand follows" SAY
    REJECTION:HELP  s" name the deferred word after it, as `[: IMPL ;] is W`" SAY
    REJECT ;
 
-: NO-DEFER ( ptr u8 n -- ) {: a:ptr u:n :}
+: NO-DEFER ( ^u8 n -- ) {: a:^ u:n :}
    s" E-T0-DEFER" REJECTION:OPEN
    s" cannot find deferred word " SAY  a u TICKS
    a u REJECTION:AT  s" not found" SAY
@@ -234,7 +234,7 @@ variable CUT                         \ the byte just past `does> `, or 0
    s"  with `defer` before this point, or check its spelling" SAY
    REJECT ;
 
-: NOT-DEFER ( ptr u8 n -- ) {: a:ptr u:n :}
+: NOT-DEFER ( ^u8 n -- ) {: a:^ u:n :}
    s" E-T0-DEFER" REJECTION:OPEN
    a u TICKS  s"  is not a deferred word" SAY
    a u REJECTION:AT  s" `is` needs a deferred word" SAY
@@ -243,7 +243,7 @@ variable CUT                         \ the byte just past `does> `, or 0
    REJECT ;
 
 \ A MATCH or construct token whose facts are missing or disagree.
-: NO-FACTS ( ptr u8 n -- ) {: a:ptr u:n :}
+: NO-FACTS ( ^u8 n -- ) {: a:^ u:n :}
    s" E-T0-MATCH" REJECTION:OPEN
    s" the compiler has no family facts for " SAY  a u TICKS
    a u REJECTION:AT  s" no proved family or variant" SAY
@@ -252,14 +252,14 @@ variable CUT                         \ the byte just past `does> `, or 0
    REJECT ;
 
 \ The token in place of a MATCH arm's `of`.
-: NO-OF ( ptr u8 n -- ) {: a:ptr u:n :}
+: NO-OF ( ^u8 n -- ) {: a:^ u:n :}
    s" E-T0-MATCH" REJECTION:OPEN
    s" a `MATCH` arm's variant is not followed by `of` at " SAY  a u TICKS
    a u REJECTION:AT  s" `of` expected here" SAY
    REJECTION:HELP  s" write each arm as `variant OF ... ENDOF`" SAY
    REJECT ;
 
-: UNMODELED ( ptr u8 n -- ) {: a:ptr u:n :}
+: UNMODELED ( ^u8 n -- ) {: a:^ u:n :}
    s" E-UNMODELED-IMMEDIATE" REJECTION:OPEN
    s" the compiler has no model of immediate word " SAY  a u TICKS
    a u REJECTION:AT  s" immediate, not modeled" SAY
@@ -640,7 +640,7 @@ variable HEAD-BINDS                  \ the binds of the scan at the text's start
 DYNAMIC-BUFFER WS n                  \ the operands' cells, position 0 the top
 variable WS-K                        \ operands the word moves
 
-: WIDTHS ( ptr u8 n -- ) {: a:ptr k:n :}
+: WIDTHS ( ^u8 n -- ) {: a:^ k:n :}
    a TXT$ - {: at:n :}
    k WS-RESERVE
    k 0 ?do at i OPERAND-CELLS i WS ! loop
@@ -685,21 +685,21 @@ variable WS-K                        \ operands the word moves
    c negate EMIT-DSP+ ;
 
 \ How many leading outputs are the bottom operands in their order.
-: KEPT ( ptr u8 n -- n ) {: outs:ptr u:n :}
+: KEPT ( ^u8 n -- n ) {: outs:^ u:n :}
    WS-K @ u min {: m:n :}
    m 0 ?do outs i + c@ $30 -  WS-K @ 1- i -  <> if i unloop exit then loop
    m ;
 
 \ The WS-K operands replaced by outs, the operand positions of the outputs
 \ from the bottom as digits: the kept bottom ones stay, the rest are copied.
-: MOVE-WIDE ( ptr u8 n -- ) {: outs:ptr u:n :}
+: MOVE-WIDE ( ^u8 n -- ) {: outs:^ u:n :}
    outs u KEPT {: j:n :}
    WS-K @ j - DEPTH {: c:n :}
    0 u j ?do outs i + c@ $30 - PUT-OP loop {: o:n :}
    o c NIP-CELLS ;
 
 \ A shuffle with its entry move over one-cell operands.
-: SHUFFLE ( [ -- ] ptr u8 n ptr u8 n -- ) {: a:ptr k:n outs:ptr u:n :}
+: SHUFFLE ( [ -- ] ^u8 n ^u8 n -- ) {: a:^ k:n outs:^ u:n :}
    a k WIDTHS
    WIDE? if drop outs u MOVE-WIDE exit then
    execute ;
@@ -1251,16 +1251,16 @@ DYNAMIC-BUFFER RS-V vreg     \ reserved to EMIT-VREGS by RESET-STATE: one
 
 \ The code record rec offers a compiled reference, or 0: a retired record's
 \ code nothing reaches (src/compiler/native/dict.f REC-CODE).
-: REC-START ( ptr n -- n ) {: rec:ptr :}
+: REC-START ( ^n -- n ) {: rec:^ :}
    rec XREF-RETIRED? if 0 exit then
    rec XREF-START ;
 
 \ An operand bound to no record, or to one a tick may not reach, is undefined,
 \ even in an unchecked body (THE EVENTS).
 : DO-TICK ( n -- ) {: r:n :}
-   ORD @ ROW$ {: a:ptr u:n :}
+   ORD @ ROW$ {: a:^ u:n :}
    r 0< if a u NULL$ NOT-FOUND then
-   r XREF-REC {: rec:ptr :}
+   r XREF-REC {: rec:^ :}
    rec NDICT:TICK-REFUSED? if a u NO-TICK then
    rec REC-START {: xt:n :}
    xt 0= if a u NO-CODE then
@@ -1282,11 +1282,11 @@ DYNAMIC-BUFFER RS-V vreg     \ reserved to EMIT-VREGS by RESET-STATE: one
    then
    to loc EMIT-CALL ;
 
-: MOVE-OP ( ptr u8 n ptr u8 n -- ) {: a:ptr k:n outs:ptr u:n :}
+: MOVE-OP ( ^u8 n ^u8 n -- ) {: a:^ k:n outs:^ u:n :}
    a k WIDTHS  outs u MOVE-WIDE ;
 
 \ ---- whole-width memory ------------------------------------------------------
-: CELLS0 ( ptr u8 -- n ) {: a:ptr :} a 1 WIDTHS 0 WS @ ;
+: CELLS0 ( ^u8 -- n ) {: a:^ :} a 1 WIDTHS 0 WS @ ;
 
 : ADDR+ ( n -- ) {: k:n :}
    k 0= if exit then
@@ -1298,7 +1298,7 @@ DYNAMIC-BUFFER RS-V vreg     \ reserved to EMIT-VREGS by RESET-STATE: one
    v o r EMIT-ADDR-DATA
    r PUSH-REG ;
 
-: DO-FETCH ( ptr u8 -- ) {: a:ptr :}
+: DO-FETCH ( ^u8 -- ) {: a:^ :}
    a CELLS0 {: w:n :}
    w 1 < if E-T0-BUNDLE throw then
    w 1 = if CELL-W FETCH exit then
@@ -1307,7 +1307,7 @@ DYNAMIC-BUFFER RS-V vreg     \ reserved to EMIT-VREGS by RESET-STATE: one
 
 \ The wide store's calls never leave as a tail: each stores a copy of one cell,
 \ so the w cells and the address are still on the stack after the last.
-: DO-STORE ( ptr u8 n -- ) {: a:ptr to:n :}
+: DO-STORE ( ^u8 n -- ) {: a:^ to:n :}
    a CELLS0 {: w:n :}
    w 1 < if E-T0-BUNDLE throw then
    a TXT$ - {: loc:n :}
@@ -1332,7 +1332,7 @@ DYNAMIC-BUFFER STR-BUF u8           \ a decoded or counted body before interning
 
 \ String row k's interned address, its source origin and its length.
 : INTERN-BODY ( n bool -- n n n ) {: k:n counted:bool :}
-   TXT$ k ROW-OFF @ + {: s:ptr :}
+   TXT$ k ROW-OFF @ + {: s:^ :}
    k ROW-AT @ {: body:n :}
    k ROW-U @ {: u:n :}
    body 0< u 0= or counted 0= and if s u INTERN:INTERN-SOURCE u exit then
@@ -1361,7 +1361,7 @@ CAST: XT>N ( xt -- n )
 
 : DO-IS ( n n -- ) {: r:n loc:n :}
    ORD @ ROWS @ >= if ORD @ 1- ROW$ IS-ALONE then
-   ORD @ ROW$ {: a:ptr u:n :}        \ the operand
+   ORD @ ROW$ {: a:^ u:n :}        \ the operand
    r 0< if a u NO-DEFER then
    r XREF-REC NDICT:REC-DEFER-CELL {: cell:n :}
    cell 0= if a u NOT-DEFER then
@@ -1657,17 +1657,17 @@ variable OP-HITS                     \ the seeded records OP-MAP found by the na
 variable OP-REC                      \ the last of them
 
 \ End the process: a u, a word T0 lowers itself, names no single seeded record.
-: OP-DIE ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   s" : T0: a word it lowers itself names no single seeded record" {: m:ptr k:n :}
+: OP-DIE ( ^u8 n -- )
+   {: a:^ u:n :}
+   s" : T0: a word it lowers itself names no single seeded record" {: m:^ k:n :}
    u k + STR-BUF-RESERVE
    a 0 STR-BUF u BYTE-COPY
    m u STR-BUF k BYTE-COPY
    0 STR-BUF u k + 76 die ;
 
 \ The index of the seeded record named a u.
-: SEEDED ( ptr u8 n -- n )
-   {: a:ptr u:n :}
+: SEEDED ( ^u8 n -- n )
+   {: a:^ u:n :}
    0 OP-HITS !
    OP-N @ 0 ?do
       i XREF-REC a u XREF-MATCH? if 1 OP-HITS +!  i OP-REC ! then
@@ -1675,8 +1675,8 @@ variable OP-REC                      \ the last of them
    OP-HITS @ 1 <> if a u OP-DIE then
    OP-REC @ ;
 
-: OP-MAP ( ptr u8 n n -- )
-   {: a:ptr u:n code:n :}
+: OP-MAP ( ^u8 n n -- )
+   {: a:^ u:n code:n :}
    code  a u SEEDED OP-OF ! ;
 
 variable BASE-REC                    \ data-base's, which THE THROW ON calls
@@ -1777,15 +1777,15 @@ DYNAMIC-BUFFER COUNT-SLOT n
    SWAP1
    SPILL-ALL  STORE-REC @ XREF-REC REC-START loc EMIT-CALL ;
 
-: CELL1 ( ptr u8 -- )
-   {: a:ptr :}
+: CELL1 ( ^u8 -- )
+   {: a:^ :}
    a CELLS0 1 <> if E-T0-BUNDLE throw then ;
 
 \ OP-CODE maps every inlined primitive to a case of INLINE, so an op code with
 \ none is the engine's defect.
 : NO-INLINE ( n -- )
-   ERROR-TEXT:DIGITS$ {: d:ptr du:n :}
-   s" t0: INLINE has no case for operation code " {: m:ptr k:n :}
+   ERROR-TEXT:DIGITS$ {: d:^ du:n :}
+   s" t0: INLINE has no case for operation code " {: m:^ k:n :}
    k du + STR-BUF-RESERVE
    m 0 STR-BUF k BYTE-COPY
    d k STR-BUF du BYTE-COPY
@@ -1793,8 +1793,8 @@ DYNAMIC-BUFFER COUNT-SLOT n
 
 \ Operation code at a, whose primitive's entry is to: false when it is not
 \ inlined after all (DIV2), so the name is a call.
-: INLINE ( ptr u8 n n -- bool )
-   {: a:ptr code:n to:n :}
+: INLINE ( ^u8 n n -- bool )
+   {: a:^ code:n to:n :}
    code case
       1 of a CELL1 [: + ;] OP-ADD true ALU2 true endof
       2 of a CELL1 [: - ;] OP-SUB false ALU2 true endof
@@ -1846,7 +1846,7 @@ DYNAMIC-BUFFER COUNT-SLOT n
 \ (src/core/checker.f CF-CODE, then RS-KEYWORD's `>r` `r>` `r@`). The `;]`
 \ ends its unit before it is compiled (BODY), and a stray `;MATCH` (9) never
 \ certifies.
-: DO-CONTROL ( ptr u8 n -- ) {: a:ptr code:n :}
+: DO-CONTROL ( ^u8 n -- ) {: a:^ code:n :}
    code case
       CF-QUOT-OPEN of DO-QUOT endof
       CF-IF of DO-IF endof
@@ -1888,7 +1888,7 @@ DYNAMIC-BUFFER COUNT-SLOT n
 \ A token no path reaches (K-UNREACHED) is E-T0-CONTROL.
 \
 \ T0 passes over a parse-neutral immediate and rejects any other.
-: IMM-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
+: IMM-TOKEN ( ^u8 n -- ) {: a:^ u:n :}
    a u NEUTRAL-PARSE-IMM? if exit then
    a u UNMODELED ;
 
@@ -1904,10 +1904,10 @@ DYNAMIC-BUFFER COUNT-SLOT n
    at NDICT:CALL-EXTRAS 0 ?do  at i NDICT:CALL-EXTRA PUSH-CONST  loop
    to loc DO-CALL ;
 
-: CALL-TOKEN ( ptr u8 n n n -- )
-   {: a:ptr u:n r:n loc:n :}
+: CALL-TOKEN ( ^u8 n n n -- )
+   {: a:^ u:n r:n loc:n :}
    r 0< if a u NDEFINITION:NAME$ NOT-FOUND then
-   r XREF-REC {: rec:ptr :}
+   r XREF-REC {: rec:^ :}
    rec REC-START {: to:n :}
    r OP-CODE {: code:n :}
    code 0<> if a code to INLINE if exit then then
@@ -1922,8 +1922,8 @@ DYNAMIC-BUFFER COUNT-SLOT n
    to flags DKIND:MASK and r loc WORD-CALL
    k ROW-A1 @ 0=  s 0< 0= and if s loc KEEP-COUNT then ;
 
-: NAME-TOKEN ( ptr u8 n n n -- )
-   {: a:ptr u:n r:n loc:n :}
+: NAME-TOKEN ( ^u8 n n n -- )
+   {: a:^ u:n r:n loc:n :}
    r 0 >= if
       r XREF-REC XREF-FLAGS DNAME-IMM and 0<> if a u IMM-TOKEN exit then
    then
@@ -1936,7 +1936,7 @@ DYNAMIC-BUFFER COUNT-SLOT n
    ORD @ {: k:n :}
    k ROW-KIND @ {: event:n :}
    k ROW-A0 @ {: a0:n :}
-   NEXT$ {: a:ptr u:n :}
+   NEXT$ {: a:^ u:n :}
    a TXT$ - {: loc:n :}
    event STRING-KIND? if k DO-STRING exit then
    event case
@@ -1979,11 +1979,11 @@ DYNAMIC-BUFFER COUNT-SLOT n
 
 \ The token that ended a body short of a `;]`: the split's `does>`, or `;` past
 \ the last row.
-: END$ ( -- ptr u8 n )
+: END$ ( -- ^u8 n )
    ORD @ ROWS @ >= if NDEFINITION:CLOSE$ exit then
    ORD @ ROW$ ;
 
-: FINISH ( ptr u8 n -- ) {: a:ptr u:n :}
+: FINISH ( ^u8 n -- ) {: a:^ u:n :}
    CS-N @ 0<> if a u UNCLOSED then
    TAILED @ 0= if SPILL-ALL EMIT-RETURN then
    EMIT-CLOSE ;
@@ -2087,15 +2087,15 @@ variable SCAN-LO                     \ the ordinal of its first row
    m ROWS !
    k ;
 
-: KEEP-BODY ( ptr u8 n n -- ) {: a:ptr u:n k:n :}
+: KEEP-BODY ( ^u8 n n -- ) {: a:^ u:n k:n :}
    BODIES-N @ {: at:n :}
    at u + BODIES-RESERVE
    a at BODIES u BYTE-COPY
    at k ROW-AT !
    at u + BODIES-N ! ;
 
-: ON-SCAN ( ptr u8 n -- )
-   drop {: a:ptr :}
+: ON-SCAN ( ^u8 n -- )
+   drop {: a:^ :}
    a SCAN-TXT !
    a SRC$ drop - {: base:n :}
    base SCAN-BASE !
@@ -2110,9 +2110,9 @@ variable SCAN-LO                     \ the ordinal of its first row
 
 \ An escaped string's body is copied: it is not the text at its offset. Row 0,
 \ the definition's name, names the unit from here on.
-: ON-TOKEN ( ptr u8 n n n n n -- )
-   drop {: a:ptr u:n off:n ru:n kind:n :}
-   SCAN-TXT @ off + {: at:ptr :}
+: ON-TOKEN ( ^u8 n n n n n -- )
+   drop {: a:^ u:n off:n ru:n kind:n :}
+   SCAN-TXT @ off + {: at:^ :}
    SCAN-BASE @ off + ru LAY-ROW {: k:n :}
    kind STRING-KIND? if
       u k ROW-U !
@@ -2170,7 +2170,7 @@ variable LOST-AT-FAM                  \ the value's family id, -1 for none
    LOST-OFF @ 0< 0= if LOST-WIDTH then ;
 
 \ Offsets are made whole by the scan's base.
-: ON-DONE ( ptr u8 n n -- )
+: ON-DONE ( ^u8 n n -- )
    SCAN-VERDICT !  2drop
    SCAN-INCOMPLETE @ 0<> if LOST-KEEP then
    ROWS @ SCAN-LO @ ?do
@@ -2427,7 +2427,7 @@ variable LOST-AT-FAM                  \ the value's family id, -1 for none
    0 rc SETTLE-UNIT ;
 
 \ Compile the pending definition whose body text the engine captured.
-: COMPILE ( ptr u8 n -- )
+: COMPILE ( ^u8 n -- )
    IDLE-CK
    STAGE-UNIT
    COMP-BODY:compiled BODY-KIND !
@@ -2438,10 +2438,12 @@ variable LOST-AT-FAM                  \ the value's family id, -1 for none
    FORGET-MEASURES
    0 rc SETTLE-UNIT ;
 
-: DISPATCH! ( [ ptr u8 n -- ] -- )
+: DISPATCH! ( [ ^u8 n -- ] -- )
    data-base NCOMP-DISPATCH:COMP-CELL + xt! ;
 
 public
+
+EXPORT XT>N
 
 : INSTALL ( -- )
    ['] CALLBACK-STUB! data-base NCOMP-DISPATCH:CALLBACK-STUB-CELL + xt!

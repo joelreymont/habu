@@ -32,7 +32,7 @@ public
    s" a stored source view cannot change its owner identity" T-LABEL
    s" : C2-TABLE-SOURCE ( records<b,i,a,C2-RECORDS-TYPES:shelf<p,q,t,u>> -- records<b,i,a,C2-RECORDS-TYPES:shelf<r,q,t,u>> ) ;" 70 SUBJECT:EXITED? TTRUE
    s" a table cannot be relabeled as a raw byte span" T-LABEL
-   s" : C2-TABLE-RAW ( records<b,i,a,C2-RECORDS-TYPES:pair> -- ptr u8 n ) ;" 70 SUBJECT:EXITED? TTRUE
+   s" : C2-TABLE-RAW ( records<b,i,a,C2-RECORDS-TYPES:pair> -- ^u8 n ) ;" 70 SUBJECT:EXITED? TTRUE
    s" a table cannot be stored in a global" T-LABEL
    s" TYPED-VARIABLE C2-TABLE-GLOBAL records<b,i,a,C2-RECORDS-TYPES:pair>" 70 SUBJECT:EXITED? TTRUE
    s" an extra table authority cannot leave its owner callback" T-LABEL

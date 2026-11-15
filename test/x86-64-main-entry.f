@@ -15,7 +15,7 @@ using X64RT
 : RB ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
 : IMM, ( r64 n -- ) >IMM64 ASM-SINK ENC-MOV-RI64 ;
 
-: BUILD ( bool ptr u8 n -- ) {: main?:bool path:ptr u:n :}
+: BUILD ( bool ^u8 n -- ) {: main?:bool path:^ u:n :}
    X64HARNESS:INIT
    ASM-RESET
    LBL LBL {: floor:label code-end:label :}
@@ -47,7 +47,7 @@ using X64RT
 
 : RUN ( -- )
    T-RESET
-   s" hb-x64-main-entry" TMP-PATH {: path:ptr u:n :}
+   s" hb-x64-main-entry" TMP-PATH {: path:^ u:n :}
    true path u BUILD
    HB-TARGET-LINUX-X86-64? if
       GE-HB-RESET
@@ -56,7 +56,7 @@ using X64RT
       S\" APP\nM" s" captured MAIN and APP" GE-EXPECT-OUT
       s" " s" captured MAIN and APP" GE-EXPECT-ERR
    then
-   s" hb-x64-app-entry" TMP-PATH {: app-path:ptr app-u:n :}
+   s" hb-x64-app-entry" TMP-PATH {: app-path:^ app-u:n :}
    false app-path app-u BUILD
    HB-TARGET-LINUX-X86-64? if
       GE-HB-RESET

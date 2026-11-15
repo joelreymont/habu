@@ -75,7 +75,7 @@ ADDR-CODE constant ADDR-KIND-MAX
 : SIZE ( -- n )
    SEAL-CK CODE-N @ ;
 
-: BYTES ( -- ptr u8 )
+: BYTES ( -- ^u8 )
    SEAL-CK CODE-AT @ ;
 
 \ Zero when the emission ends in no return, so its whole span is its record.
@@ -146,7 +146,7 @@ ADDR-CODE constant ADDR-KIND-MAX
 \ The bytes stay the backend's: they are read in place until CLEAR. OPEN over
 \ uncleared rows is refused, and the architecture it names makes a reader for
 \ another machine refuse before copying a byte.
-: OPEN ( ptr u8 n n CTARGET:arch -- ) {: p:ptr size:n ret:n a:CTARGET:arch :}
+: OPEN ( ^u8 n n CTARGET:arch -- ) {: p:^ size:n ret:n a:CTARGET:arch :}
    ST @
    MATCH state
       empty OF ENDOF

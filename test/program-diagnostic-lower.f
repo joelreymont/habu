@@ -5,7 +5,7 @@ ENUM lcnamed
    VARIANT empty ;VARIANT
    VARIANT shade FIELD value color ;VARIANT
 ;ENUM
-s" LC-NAMED-BAD ( ptr lcnamed -- color ) @" CHECK! drop
+s" LC-NAMED-BAD ( ^lcnamed -- color ) @" CHECK! drop
 ;package
 
 s" ok" type cr

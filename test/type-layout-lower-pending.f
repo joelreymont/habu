@@ -22,11 +22,11 @@ SUMTYPE tlp-mix<a,b>
 ;SUMTYPE
 \ Constructor-produced bundles cross typed storage in the execution rows.
 1 LAYOUT-BUFFER TLP-MEM2-BUF tlp-res<n,n>
-: TLP-MEM2-P ( -- ptr tlp-res<n,n> ) 0 TLP-MEM2-BUF ;
+: TLP-MEM2-P ( -- ^tlp-res<n,n> ) 0 TLP-MEM2-BUF ;
 : TLP-STORE2 ( tlp-res<n,n> -- ) TLP-MEM2-P ! ;
 : TLP-FETCH2 ( -- tlp-res<n,n> ) TLP-MEM2-P @ ;
 1 LAYOUT-BUFFER TLP-MEM4-BUF tlp-mix<n,n>
-: TLP-MEM4-P ( -- ptr tlp-mix<n,n> ) 0 TLP-MEM4-BUF ;
+: TLP-MEM4-P ( -- ^tlp-mix<n,n> ) 0 TLP-MEM4-BUF ;
 : TLP-STORE4 ( tlp-mix<n,n> -- ) TLP-MEM4-P ! ;
 : TLP-FETCH4 ( -- tlp-mix<n,n> ) TLP-MEM4-P @ ;
 

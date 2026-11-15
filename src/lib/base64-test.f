@@ -33,34 +33,34 @@ SHA256-CTX-BYTES BUFFER: URL-CTX
 32 SPAN-BUFFER: URL-DG
 variable STAGED-LEN
 
-: OUT$ ( n -- ptr u8 n )
+: OUT$ ( n -- ^u8 n )
    OUT SPAN:$ drop swap ;
 
-: ENCODES ( ptr u8 n ptr u8 n -- ) {: a u:n want wu:n :}
+: ENCODES ( ^u8 n ^u8 n -- ) {: a u:n want wu:n :}
    a u OUT BASE64:ENCODE {: k:n :}
    want wu T-LABEL
    k OUT$ want wu T$= ;
 
-: DECODES ( ptr u8 n ptr u8 n -- ) {: a u:n want wu:n :}
+: DECODES ( ^u8 n ^u8 n -- ) {: a u:n want wu:n :}
    a u OUT BASE64:DECODE {: k:n :}
    a u T-LABEL
    k OUT$ want wu T$= ;
 
-: BOTH ( ptr u8 n ptr u8 n -- ) {: a u:n b v:n :}
+: BOTH ( ^u8 n ^u8 n -- ) {: a u:n b v:n :}
    a u b v ENCODES
    b v a u DECODES ;
 
-: URL-ENCODES ( ptr u8 n ptr u8 n -- ) {: a u:n want wu:n :}
+: URL-ENCODES ( ^u8 n ^u8 n -- ) {: a u:n want wu:n :}
    a u OUT BASE64:ENCODE-URL {: k:n :}
    want wu T-LABEL
    k OUT$ want wu T$= ;
 
-: URL-DECODES ( ptr u8 n ptr u8 n -- ) {: a u:n want wu:n :}
+: URL-DECODES ( ^u8 n ^u8 n -- ) {: a u:n want wu:n :}
    a u OUT BASE64:DECODE-URL {: k:n :}
    a u T-LABEL
    k OUT$ want wu T$= ;
 
-: URL-BOTH ( ptr u8 n ptr u8 n -- ) {: a u:n b v:n :}
+: URL-BOTH ( ^u8 n ^u8 n -- ) {: a u:n b v:n :}
    a u b v URL-ENCODES
    b v a u URL-DECODES ;
 
@@ -99,7 +99,7 @@ variable STAGED-LEN
    s" fooba" s" Zm9vYmE=" BOTH
    s" foobar" s" Zm9vYmFy" BOTH ;
 
-: HEX$ ( ptr u8 n -- ptr u8 n ) {: a u:n :}
+: HEX$ ( ^u8 n -- ^u8 n ) {: a u:n :}
    HEX SPAN:$ drop {: h :}
    u 0 ?do a i + c@ h i 2 * + BYTE>HEX loop
    h u 2 * ;
@@ -141,19 +141,19 @@ variable STAGED-LEN
    k OUT$ ALL SPAN:$ T$= ;
 
 \ A refusal runs in a quotation, which sees no locals, so its input is staged.
-: STAGE ( ptr u8 n -- ) {: a u:n :}
+: STAGE ( ^u8 n -- ) {: a u:n :}
    a u STAGED SPAN:COPY
    u STAGED-LEN ! ;
 
-: STAGED$ ( -- ptr u8 n )
+: STAGED$ ( -- ^u8 n )
    STAGED SPAN:$ drop STAGED-LEN @ ;
 
-: REFUSES ( ptr u8 n n -- ) {: a u:n code:n :}
+: REFUSES ( ^u8 n n -- ) {: a u:n code:n :}
    a u STAGE
    a u T-LABEL
    [: STAGED$ OUT BASE64:DECODE drop ;] code TTHROWSQ ;
 
-: URL-REFUSES ( ptr u8 n n -- ) {: a u:n code:n :}
+: URL-REFUSES ( ^u8 n n -- ) {: a u:n code:n :}
    a u STAGE
    a u T-LABEL
    [: STAGED$ OUT BASE64:DECODE-URL drop ;] code TTHROWSQ ;
@@ -225,7 +225,7 @@ variable STAGED-LEN
    [: STAGED$ OUT BASE64:DECODE drop ;] E-BASE64-CHAR TTHROWSQ ;
 
 
-: WANT ( ptr u8 n n -- n )
+: WANT ( ^u8 n n -- n )
    {: a u:n c:n :}
    u 0 ?do a i + c@ c = if i unloop exit then loop
    c [char] = = if E-BASE64-PAD else E-BASE64-CHAR then ;
@@ -237,7 +237,7 @@ variable STAGED-LEN
    OUT 0 SPAN:U8@ 2 rshift ;
 
 
-: JUDGES ( ptr u8 n [ -- ] -- )
+: JUDGES ( ^u8 n [ -- ] -- )
    {: a u:n q :}
    256 0 do
       s" ?AAA" STAGE i STAGED 0 SPAN:U8!

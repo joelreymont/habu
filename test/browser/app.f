@@ -12,8 +12,8 @@ package APP-TURN
 private
 using BROWSER-EVENT
 
-CAST: >BYTES ( n -- ptr u8 )
-CAST: BYTES>N ( ptr u8 -- n )
+CAST: >BYTES ( n -- ^u8 )
+CAST: BYTES>N ( ^u8 -- n )
 
 256 BUFFER: SPAN
 variable SPAN-U
@@ -43,8 +43,8 @@ variable FILE-SIZE
    n q 10 * - 48 + SAY-C ;
 
 
-: SAY ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: SAY ( ^u8 n -- )
+   {: a:^ u:n :}
    u 0 ?do a i + c@ SAY-C loop ;
 
 
@@ -63,8 +63,8 @@ variable FILE-SIZE
    SPAN SPAN-U @ + c! SPAN-U @ 1+ SPAN-U ! ;
 
 
-: SPAN+ ( ptr u8 n -- )
-   {: a:ptr u:n :}
+: SPAN+ ( ^u8 n -- )
+   {: a:^ u:n :}
    u 0 ?do a i + c@ SPAN-C loop ;
 
 
@@ -73,8 +73,8 @@ variable FILE-SIZE
 
 
 \ An rpc's span: the method's u64 length, the method, then the params.
-: MAKE ( ptr u8 n ptr u8 n -- )
-   {: m:ptr mu:n p:ptr pu:n :}
+: MAKE ( ^u8 n ^u8 n -- )
+   {: m:^ mu:n p:^ pu:n :}
    0 SPAN-U !
    mu SPAN-CELL m mu SPAN+ p pu SPAN+ ;
 
@@ -92,8 +92,8 @@ variable FILE-SIZE
    12 file offset length RECORD ;
 
 
-: IS? ( n n ptr u8 n -- bool )
-   {: at:n u:n t:ptr tu:n :}
+: IS? ( n n ^u8 n -- bool )
+   {: at:n u:n t:^ tu:n :}
    u tu <> if false exit then
    tu 0 ?do at i + >BYTES c@ t i + c@ <> if false unloop exit then loop
    true ;

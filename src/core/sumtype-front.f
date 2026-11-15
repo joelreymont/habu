@@ -21,8 +21,8 @@ package TYPE-DECL
 public
 
 : TDECL-SUMTYPE ( -- )
-   SRCLOC:TOKEN$ {: kw:ptr ku:n :}
-   DECL-FRONT:SOURCE-NEXT {: na:ptr nu:n :}
+   SRCLOC:TOKEN$ {: kw:^ ku:n :}
+   DECL-FRONT:SOURCE-NEXT {: na:^ nu:n :}
    kw ku na nu REJECTION:NOT-A-NAME
    TDECL-CLEAR
    TDECL-COLLECT

@@ -18,13 +18,13 @@ $2D constant DASH-BYTE
 $30 constant ZERO-BYTE
 
 MAX-WORKERS TYPED-BUFFER JSON-W JSON:writer
-MAX-WORKERS TYPED-BUFFER JSON-BODY [ ptr JSON:writer -- ptr JSON:writer ]
+MAX-WORKERS TYPED-BUFFER JSON-BODY [ ^JSON:writer -- ^JSON:writer ]
 $10000 constant FILE-CHUNK
 MAX-WORKERS TYPED-BUFFER FILE-OFFSET n
 MAX-WORKERS TYPED-BUFFER FILE-TRANSFER AIO:xfer
 
 
-: OUT+ ( ptr u8 n n -- ) {: src:ptr len:n idx:n :}
+: OUT+ ( ^u8 n n -- ) {: src:^ len:n idx:n :}
    src len BUF:N>BLEN idx OUT-BUF BUF:APPEND-SPAN ;
 
 
@@ -32,7 +32,7 @@ MAX-WORKERS TYPED-BUFFER FILE-TRANSFER AIO:xfer
    byte idx OUT-BUF BUF:APPEND-BYTE ;
 
 
-: HDR+ ( ptr u8 n n -- ) {: src:ptr len:n idx:n :}
+: HDR+ ( ^u8 n n -- ) {: src:^ len:n idx:n :}
    src len BUF:N>BLEN idx HDR-BUF BUF:APPEND-SPAN ;
 
 
@@ -53,7 +53,7 @@ MAX-WORKERS TYPED-BUFFER FILE-TRANSFER AIO:xfer
 
 \ One nonnegative number as text in the slot's number scratch, which the next
 \ number in the same slot overwrites.
-: NUM$ ( n n -- ptr u8 n ) {: value:n idx:n :}
+: NUM$ ( n n -- ^u8 n ) {: value:n idx:n :}
    value 0 < if E-CAPACITY throw then
    value idx 0 NUM-DIGITS {: len:n :}
    idx NUM-BUF len SPAN:TAKE SPAN:$ ;
@@ -64,7 +64,7 @@ MAX-WORKERS TYPED-BUFFER FILE-TRANSFER AIO:xfer
    idx ID-U@ 1+ idx ID-U! ;
 
 
-: ID+ ( ptr u8 n n -- ) {: src:ptr len:n idx:n :}
+: ID+ ( ^u8 n n -- ) {: src:^ len:n idx:n :}
    src len idx ID-BUF idx ID-U@ SPAN:SKIP SPAN:COPY
    idx ID-U@ len + idx ID-U! ;
 
@@ -81,7 +81,7 @@ MAX-WORKERS TYPED-BUFFER FILE-TRANSFER AIO:xfer
 
 \ The reason phrase of each code in IANA's HTTP status code registry. An
 \ unregistered code gets an empty phrase, which RFC 9112 section 4 allows.
-: REASON$ ( n -- ptr u8 n )
+: REASON$ ( n -- ^u8 n )
    case
       100 of s" Continue" endof
       101 of s" Switching Protocols" endof
@@ -184,8 +184,8 @@ MAX-WORKERS TYPED-BUFFER FILE-TRANSFER AIO:xfer
    idx CRLF+ ;
 
 
-: WRITE-SPAN ( TCP4:connection ptr u8 n -- bool )
-   {: conn:TCP4:connection bytes:ptr len:n :}
+: WRITE-SPAN ( TCP4:connection ^u8 n -- bool )
+   {: conn:TCP4:connection bytes:^ len:n :}
    len 0= if true exit then
    conn bytes len TCP4:TRANSFER-BYTES TCP4:WRITE
    MATCH TCP4:status
@@ -286,8 +286,8 @@ public
 
 
 \ One header line. The caller owns the name and the value only for this call.
-: HEADER! ( response ptr u8 n ptr u8 n -- )
-   {: subject:response name:ptr namelen:n value:ptr valuelen:n :}
+: HEADER! ( response ^u8 n ^u8 n -- )
+   {: subject:response name:^ namelen:n value:^ valuelen:n :}
    subject SLOT-OF-RESPONSE {: idx:n :}
    name namelen idx HDR+
    COLON idx HDR+C
@@ -299,7 +299,7 @@ public
 
 \ The body is BORROWED: it must stay valid until the response has been sent,
 \ which a literal, a loaded static file and the slot's own JSON buffer all are.
-: BODY! ( response ptr u8 n -- ) {: subject:response bytes:ptr len:n :}
+: BODY! ( response ^u8 n -- ) {: subject:response bytes:^ len:n :}
    subject SLOT-OF-RESPONSE {: idx:n :}
    bytes len idx RESPONSE-BODY! ;
 
@@ -325,7 +325,7 @@ public
 \ worker's own buffer, with the Content-Type this word adds itself. Only the
 \ worker that owns the slot may build its response. The writer is closed however
 \ the body ended, and a body that did not finish is no answer at all.
-: JSON! ( response [ ptr JSON:writer -- ptr JSON:writer ] -- )
+: JSON! ( response [ ^JSON:writer -- ^JSON:writer ] -- )
    {: subject:response body :}
    subject SLOT-OF-RESPONSE {: idx:n :}
    idx SELF-SLOT <> if E-HANDLE throw then
@@ -339,12 +339,12 @@ private
 
 \ The whole error answer as text in the slot's JSON buffer: the code, the
 \ message and the request id the fault was reported under, on one line.
-: ERROR-TEXT+ ( ptr u8 n n -- ) {: src:ptr len:n idx:n :}
+: ERROR-TEXT+ ( ^u8 n n -- ) {: src:^ len:n idx:n :}
    src len BUF:N>BLEN idx JSON-BUF BUF:APPEND-SPAN ;
 
 
-: PLAIN-ERROR ( response n ptr u8 n ptr u8 n -- )
-   {: subject:response status:n code:ptr codelen:n message:ptr messagelen:n :}
+: PLAIN-ERROR ( response n ^u8 n ^u8 n -- )
+   {: subject:response status:n code:^ codelen:n message:^ messagelen:n :}
    subject SLOT-OF-RESPONSE {: idx:n :}
    idx SELF-SLOT <> if E-HANDLE throw then
    subject status STATUS!
@@ -362,7 +362,7 @@ private
 
 \ The quotation lives in a row declared to hold one, the checker's proven
 \ quotation store (src/lib/task.f): an xt in a plain cell would lose the effect.
-1 TYPED-BUFFER ERROR-HOOK [ response n ptr u8 n ptr u8 n -- ]
+1 TYPED-BUFFER ERROR-HOOK [ response n ^u8 n ^u8 n -- ]
 
 
 : PLAIN-ERRORS ( -- )
@@ -375,14 +375,14 @@ public
 
 \ The id this request is reported under, which is what an error answer quotes
 \ so a client's report and the server's own line name one request.
-: REQUEST-ID$ ( response -- ptr u8 n )
+: REQUEST-ID$ ( response -- ^u8 n )
    SLOT-OF-RESPONSE SLOT-ID$ ;
 
 
 \ Every refusal and fault this server answers, and any a handler answers
 \ itself, as the installed hook renders it; plain text until ON-ERROR says
 \ otherwise.
-: ERROR! ( response n ptr u8 n ptr u8 n -- )
+: ERROR! ( response n ^u8 n ^u8 n -- )
    0 ERROR-HOOK @ execute ;
 
 

@@ -12,7 +12,7 @@ require src/habu/verify-source.f
 package CDR
 private
 
-TYPED-VARIABLE SRC-A ptr u8
+TYPED-VARIABLE SRC-A ^u8
 variable SRC-U
 
 \ x86-64 refuses a quotation that reads a local, so the source span travels
@@ -24,8 +24,8 @@ public
 
 \ Verify one span in the caller's scope with the checker's diagnostics
 \ collected; 0 when it certified, else the throw code.
-: VERIFY-QUIET ( ptr u8 n -- n )
-   {: a:ptr u:n :}
+: VERIFY-QUIET ( ^u8 n -- n )
+   {: a:^ u:n :}
    a SRC-A !
    u SRC-U !
    REJECTION:CAPTURE
@@ -35,13 +35,13 @@ public
 
 \ The same span in multi-error mode, where a rejection's record is kept instead
 \ of thrown: the throw code, then the rejections counted.
-: MULTI-QUIET ( ptr u8 n -- n n )
-   {: a:ptr u:n :}
+: MULTI-QUIET ( ^u8 n -- n n )
+   {: a:^ u:n :}
    MULTI-ERR-BEGIN
    a u VERIFY-QUIET
    MULTI-ERR-END ;
 
-: DIAG$ ( -- ptr u8 n )
+: DIAG$ ( -- ^u8 n )
    REJECTION:BUFFER$ ;
 
 ;package

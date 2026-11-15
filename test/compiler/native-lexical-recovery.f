@@ -26,7 +26,7 @@ public
 \ A head local ends at `does>`: the clause's string opener is the string word.
 : NLS-DOES-STRING ( n -- )
    {: s":n :}
-   create s" , does> ( -- ptr u8 n ) drop s" a ; b" ;
+   create s" , does> ( -- ^u8 n ) drop s" a ; b" ;
 5 NLS-DOES-STRING NLS-DOES-WORD
 
 \ The first semicolon is a parser operand; only the second closes the body.

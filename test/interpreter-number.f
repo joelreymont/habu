@@ -15,8 +15,8 @@ create DECIMAL-TEXT F64-TEXT:MAX-BYTES allot
 
 \ Fixed IEEE-754 vectors, independently rounded by C strtod in FE_TONEAREST.
 \ Reader parity alone cannot detect a double rounding both readers share.
-: FLOAT-BITS ( ptr u8 n n -- )
-   {: a:ptr u:n bits:n :}
+: FLOAT-BITS ( ^u8 n n -- )
+   {: a:^ u:n bits:n :}
    a u num-parse {: got:n flt:bool ok:bool :}
    a u T-LABEL got bits T= flt TTRUE ok TTRUE
    a u INTERPRETER:NUMBER {: outer:n outer-flt:bool outer-ok:bool range:bool :}
@@ -49,7 +49,7 @@ create DECIMAL-TEXT F64-TEXT:MAX-BYTES allot
    s" formatted decimal source replay" GE-HB-RUN-STDIN ;
 
 
-: RANGE? ( ptr u8 n -- bool )
+: RANGE? ( ^u8 n -- bool )
    INTERPRETER:NUMBER {: v:n flt:bool ok:bool range:bool :} range ;
 
 
@@ -57,7 +57,7 @@ create DECIMAL-TEXT F64-TEXT:MAX-BYTES allot
    want if got TTRUE else got TFALSE then ;
 
 
-: SAME-PARSE ( ptr u8 n -- ) {: a:ptr u:n :}
+: SAME-PARSE ( ^u8 n -- ) {: a:^ u:n :}
    a u num-parse {: want:n want-flt:bool want-ok:bool :}
    a u INTERPRETER:NUMBER drop {: got:n flt:bool ok:bool :}
    a u T-LABEL got want T=
@@ -65,7 +65,7 @@ create DECIMAL-TEXT F64-TEXT:MAX-BYTES allot
    a u T-LABEL ok want-ok FLAG= ;
 
 
-: HOSTILE-EVAL ( ptr u8 n -- n ) {: a:ptr u:n :}
+: HOSTILE-EVAL ( ^u8 n -- n ) {: a:^ u:n :}
    GE-SRC-RESET
    s" : " GE-SRC+ a u GE-SRC+ s"  ( -- n ) 42 ;" GE-SRC-LINE
    a u GE-SRC+ s"  drop" GE-SRC-LINE
@@ -73,7 +73,7 @@ create DECIMAL-TEXT F64-TEXT:MAX-BYTES allot
    a u GE-RC@ ;
 
 
-: SAME-WALL ( ptr u8 n -- ) {: a:ptr u:n :}
+: SAME-WALL ( ^u8 n -- ) {: a:^ u:n :}
    a u num-parse nip nip  a u RANGE?  or {: number:bool :}
    number if 1 REFUSALS +! 70 else 0 then {: want:n :}
    a u HOSTILE-EVAL {: rc:n :}
@@ -82,14 +82,14 @@ create DECIMAL-TEXT F64-TEXT:MAX-BYTES allot
 
 
 \ A spelling a definition may try to take: both oracles.
-: SPELLING ( ptr u8 n -- ) {: a:ptr u:n :}
+: SPELLING ( ^u8 n -- ) {: a:^ u:n :}
    a u SAME-PARSE
    a u SAME-WALL
    1 COMPARED +! ;
 
 
 \ Text that cannot name a word (empty, or two tokens): num-parse only.
-: TEXT ( ptr u8 n -- )
+: TEXT ( ^u8 n -- )
    SAME-PARSE
    1 COMPARED +! ;
 

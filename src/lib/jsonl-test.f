@@ -30,7 +30,7 @@ $100 constant CAP
 CAP BUFFER: CAP-OUT
 CAP BUFFER: CAP-ERR
 
-: TMP$ ( -- ptr u8 n )
+: TMP$ ( -- ^u8 n )
    s" TMPDIR" GETENV dup 0= if 2drop s" /tmp" then ;
 
 PATH-CAP BUFFER: PATH-A
@@ -38,13 +38,13 @@ variable PATH-A-U
 PATH-CAP BUFFER: PATH-B
 variable PATH-B-U
 
-: PATH$ ( -- ptr u8 n ) PATH-A PATH-A-U @ ;
-: PATH-B$ ( -- ptr u8 n ) PATH-B PATH-B-U @ ;
+: PATH$ ( -- ^u8 n ) PATH-A PATH-A-U @ ;
+: PATH-B$ ( -- ^u8 n ) PATH-B PATH-B-U @ ;
 
 \ A fresh FS:MKTEMP file with its descriptor closed: the cases rewrite and reopen
 \ it by path. Its path is copied out because the next FS:MKTEMP reuses the span.
-: FIXTURE-MAKE ( ptr u8 -- n ) {: buf:ptr :}
-   s" habu-jsonl-e2e" FS:MKTEMP {: path:ptr pathu:n fd:fd :}
+: FIXTURE-MAKE ( ^u8 -- n ) {: buf:^ :}
+   s" habu-jsonl-e2e" FS:MKTEMP {: path:^ pathu:n fd:fd :}
    path pathu FS:CLEANUP+
    fd FD>N close-rc 0 T=
    path buf pathu BYTE-COPY pathu ;
@@ -54,8 +54,8 @@ variable PATH-B-U
    PATH-B FIXTURE-MAKE PATH-B-U ! ;
 
 \ Write a JSON string line of n bytes, "a...a", followed by the tail bytes.
-: STRING-FIXTURE ( n ptr u8 n -- )
-   {: n:n tail:ptr tu:n :}
+: STRING-FIXTURE ( n ^u8 n -- )
+   {: n:n tail:^ tu:n :}
    [char] " FIXTURE c!
    n 1- 1 ?do [char] a FIXTURE i + c! loop
    [char] " FIXTURE n 1- + c!
@@ -82,16 +82,16 @@ variable PATH-B-U
    fd ;
 
 \ The line at pos is want, and the position after it is next.
-: SPLIT= ( ptr u8 n n ptr u8 n n -- )
-   {: a:ptr u:n pos:n want:ptr wu:n next:n :}
-   a u pos JSONL:SPLIT-LINE TTRUE {: la:ptr lu:n got:n :}
+: SPLIT= ( ^u8 n n ^u8 n n -- )
+   {: a:^ u:n pos:n want:^ wu:n next:n :}
+   a u pos JSONL:SPLIT-LINE TTRUE {: la:^ lu:n got:n :}
    la lu want wu T$=
    got next T= ;
 
 \ No line starts at pos.
-: SPLIT-END ( ptr u8 n n -- )
-   {: a:ptr u:n pos:n :}
-   a u pos JSONL:SPLIT-LINE TFALSE {: la:ptr lu:n got:n :}
+: SPLIT-END ( ^u8 n n -- )
+   {: a:^ u:n pos:n :}
+   a u pos JSONL:SPLIT-LINE TFALSE {: la:^ lu:n got:n :}
    lu 0 T=
    got pos T= ;
 
@@ -116,8 +116,8 @@ variable PATH-B-U
    [: s" a" -1 JSONL:SPLIT-LINE drop 2drop drop ;] JSONL:E-SOURCE TTHROWSQ ;
 
 \ Advance cur to a line holding a JSON string of n bytes, all a's inside.
-: STRING-LINE ( ptr JSONL:cursor n -- )
-   {: cur:ptr n:n :}
+: STRING-LINE ( ^JSONL:cursor n -- )
+   {: cur:^ n:n :}
    cur JSONL:NEXT TTRUE
    cur JSONL:READER
    JSON:READ-NEXT JSON:T-STR T=
@@ -126,19 +126,19 @@ variable PATH-B-U
    STR-OUT c@ [char] a T=
    STR-OUT n 3 - + c@ [char] a T= ;
 
-: READ-INT ( ptr JSONL:cursor n -- )
-   {: cur:ptr want:n :}
+: READ-INT ( ^JSONL:cursor n -- )
+   {: cur:^ want:n :}
    cur JSONL:READER
    JSON:READ-NEXT JSON:T-INT T=
    JSON:READ-INT want T=
    JSON:READ-CLOSE ;
 
-: INT-LINE ( ptr JSONL:cursor n -- )
-   {: cur:ptr want:n :}
+: INT-LINE ( ^JSONL:cursor n -- )
+   {: cur:^ want:n :}
    cur JSONL:NEXT TTRUE
    cur want READ-INT ;
 
-: READ-ONE ( ptr JSONL:cursor -- )
+: READ-ONE ( ^JSONL:cursor -- )
    JSONL:READER
    JSON:READ-NEXT JSON:T-OBJ T=
    s" x" JSON:READ-FIND-KEY TTRUE
@@ -294,7 +294,7 @@ public
 private
 
 : CLOSE-FAULT ( -- )
-   s" ' JSONL-TEST:SABOTAGE catch $53 emit" {: src:ptr srcu:n :}
+   s" ' JSONL-TEST:SABOTAGE catch $53 emit" {: src:^ srcu:n :}
    src srcu CAP-OUT CAP >LEN CAP-ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    {: outu:len erru:len oc :}
    src srcu CAP-OUT outu LEN>N CAP-ERR erru LEN>N oc FATAL-RC T-ENDING-EXITED=

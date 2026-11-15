@@ -21,7 +21,7 @@ variable SOURCE-U
 : LOAD-SOURCE ( -- )
    SOURCE-A @ SOURCE-U @ evaluate-closed ;
 
-: REJECT ( ptr u8 n -- )
+: REJECT ( ^u8 n -- )
    SOURCE-U ! SOURCE-A !
    [: LOAD-SOURCE ;] catch 70 EQ! ;
 
