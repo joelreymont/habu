@@ -100,25 +100,28 @@ public
 
 ;package
 
-\ Places the record of word w, given the path a u, and opens its label, true;
-\ the caller writes the rest, which reads after the path or after "that". The
-\ place is a u where a source holds it, else the token the engine read last
-\ where it spells w, which it does only when source calls w directly: called
-\ from a definition at run time, that token is another word. It spells w
-\ folded, whole or, when w is qualified, by the parts after their last `:`. A
-\ w of length 0 is spelled by no token. Else the record has no place and no
-\ label, false.
-: LOADER-PATH-AT ( ptr u8 n ptr u8 n -- bool ) {: w:ptr wu:n a:ptr u:n :}
-   a REJECTION:PLACES? if a u REJECTION:AT 0 0= exit then
+\ True when the token the engine read last spells w, folded, whole or, when w
+\ is qualified, by the parts after their last `:`. A w of length 0 is spelled
+\ by no token.
+: TOKEN-SPELLS? ( ptr u8 n -- bool ) {: w:ptr wu:n :}
    wu 0= if 0 0= 0= exit then
    SRCLOC:TOKEN$ {: t:ptr tu:n :}
    wu begin dup 0 > if dup 1 - w + c@ 58 <> else 0 0= 0= then while 1 - repeat
    tu begin dup 0 > if dup 1 - t + c@ 58 <> else 0 0= 0= then while 1 - repeat
    {: wi:n ti:n :}
    t tu w wu CORE-STR=CI
-   wi 0 > if t ti + tu ti - w wi + wu wi - CORE-STR=CI or then
-   0= if 0 0= 0= exit then
-   t tu REJECTION:AT  s" passes a path that " REJECTION:EMIT-STR  0 0= ;
+   wi 0 > if t ti + tu ti - w wi + wu wi - CORE-STR=CI or then ;
+
+\ Places the record of word w, given the path a u, and opens its label, true;
+\ the caller writes the rest, which reads after the path or after "that". The
+\ place is a u where a source holds it, else the token the engine read last
+\ where it spells w, which it does only when source calls w directly: called
+\ from a definition at run time, that token is another word. Else the record
+\ has no place and no label, false.
+: LOADER-PATH-AT ( ptr u8 n ptr u8 n -- bool ) {: w:ptr wu:n a:ptr u:n :}
+   a REJECTION:PLACES? if a u REJECTION:AT 0 0= exit then
+   w wu TOKEN-SPELLS? 0= if 0 0= 0= exit then
+   SRCLOC:TOKEN$ REJECTION:AT  s" passes a path that " REJECTION:EMIT-STR  0 0= ;
 
 \ Writes the record of word w, given the path a u, which no file name holds,
 \ through its help: kind E-PATH-RANGE with len 0 when the path is empty, -1
@@ -2621,11 +2624,13 @@ public
    if exit then
    s" E-TARGET" REJECTION:OPEN
    s" this file does not build for " REJECTION:EMIT-STR  HB-TARGET$ REJECTION:EMIT-STR
-   SRCLOC:TOKEN$ REJECTION:AT  s" the target test fails here" REJECTION:EMIT-STR
+   s" ?TARGET" TOKEN-SPELLS? if
+      SRCLOC:TOKEN$ REJECTION:AT  s" the target test fails here" REJECTION:EMIT-STR
+   then
    REJECTION:HELP
    s" build this file only for a target its test admits, or widen the test"
    REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   INCLUDE-IO-RC REJECTION:STOP ;
 
 
 ;using

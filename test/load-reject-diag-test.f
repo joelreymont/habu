@@ -55,6 +55,7 @@ create RCATCH-P PATH-CAP allot
 create CF-P PATH-CAP allot
 create TARGET-P PATH-CAP allot
 create TARGET-JSON-P PATH-CAP allot
+create TARGET-DEF-P PATH-CAP allot
 create ONCE-P PATH-CAP allot
 create ONCE-UNDEF-P PATH-CAP allot
 create ONCE-JSON-P PATH-CAP allot
@@ -83,6 +84,7 @@ variable RCATCH-U
 variable CF-U
 variable TARGET-U
 variable TARGET-JSON-U
+variable TARGET-DEF-U
 variable ONCE-U
 variable ONCE-UNDEF-U
 variable ONCE-JSON-U
@@ -161,6 +163,9 @@ variable RC
 : TARGET-JSON$ ( -- ptr u8 n )
    TARGET-JSON-P TARGET-JSON-U @ ;
 
+: TARGET-DEF$ ( -- ptr u8 n )
+   TARGET-DEF-P TARGET-DEF-U @ ;
+
 : ONCE$ ( -- ptr u8 n )
    ONCE-P ONCE-U @ ;
 
@@ -215,6 +220,7 @@ variable RC
    s" residue-caught.f" RCATCH-P RCATCH-U PATH!
    s" target.f" TARGET-P TARGET-U PATH!
    s" target-json.f" TARGET-JSON-P TARGET-JSON-U PATH!
+   s" target-def.f" TARGET-DEF-P TARGET-DEF-U PATH!
    s" once.f" ONCE-P ONCE-U PATH!
    s" once-undef.f" ONCE-UNDEF-P ONCE-UNDEF-U PATH!
    s" once-json.f" ONCE-JSON-P ONCE-JSON-U PATH!
@@ -230,6 +236,7 @@ variable RC
    BPF$ s" TYPED-VARIABLE LRD-Q ptr u8 : LRD-QBASE ( -- ptr u8 ) LRD-Q @ ; : LRD-BPF ( -- n ) LRD-QBASE @ ;" FS:WRITE-ALL
    TARGET$ s" false ?TARGET" FS:WRITE-ALL
    TARGET-JSON$ S\" -1 REJECTION:JSON !\nfalse ?TARGET" FS:WRITE-ALL
+   TARGET-DEF$ S\" : LRD-T ( -- ) false ?TARGET ;\nLRD-T" FS:WRITE-ALL
    ONCE$ s" : F ( n -- n ) drop ;" FS:WRITE-ALL
    ONCE-UNDEF$ s" : H ( -- ) FOO ;" FS:WRITE-ALL
    ONCE-JSON$ S\" -1 REJECTION:JSON !\n: F ( n -- n ) drop ;" FS:WRITE-ALL
@@ -830,7 +837,7 @@ variable RC
    RC @ rc T= ;
 
 : ASSERT-TARGET ( -- )
-   70 ASSERT-REJECTED ;
+   74 ASSERT-REJECTED ;
 
 : TEST-TARGET ( -- )
    s" a ?TARGET stop prints the rejection form" T-LABEL
@@ -854,6 +861,14 @@ variable RC
    S\" ,\"token\":\"?TARGET\",\"source_line\":\"false ?TARGET\"" SB-APPEND
    S\" ,\"label\":\"the target test fails here\"" SB-APPEND
    S\" ,\"help\":\"build this file only for a target its test admits, or widen the test\"}\n"
+   SB-APPEND
+   ASSERT-TARGET
+   s" a ?TARGET a definition calls has no place: its token is the caller" T-LABEL
+   TARGET-DEF$ RUN
+   SB-RESET
+   s" error[E-TARGET]: this file does not build for " SB-APPEND
+   HB-TARGET$ SB-APPEND  10 SB-APPEND-C
+   S\"   = help: build this file only for a target its test admits, or widen the test\n\n"
    SB-APPEND
    ASSERT-TARGET ;
 
