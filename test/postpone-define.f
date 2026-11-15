@@ -89,13 +89,13 @@ public
    postpone .HALF
    postpone ; ;
 
-\ : NAME ( -- n ) drop ;, an underflow the checker refuses.
+\ : NAME ( -- n ) drop ;, an underflow the checker rejects.
 : MAKE-BROKEN ( ptr u8 n -- )
    EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word
    postpone drop
    postpone ; ;
 
-\ : NAME ( -- n ) CUBE ;, an underflow the checker refuses.
+\ : NAME ( -- n ) CUBE ;, an underflow the checker rejects.
 : MAKE-SHORT-CUBER ( ptr u8 n -- )
    EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word
    postpone CUBE

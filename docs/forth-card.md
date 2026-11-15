@@ -574,11 +574,12 @@ holds an address**.
   locals, integer and string literals and calls before it. A computed 0
   unwinds unchecked: a `catch` it reaches answers 0, and a text it unwinds (a
   file, `evaluate`, `include`, a REPL line) stops with `E-THROW-ZERO`, its
-  record placed at the throw.
+  record placed at the word that threw it in that text.
 - Only the catch's own local throws on: `throw` of the one-cell local that `{:`
   binds right after `catch`, with no throw since, keeps the record the caught
   throw carried, at its first place. A code thrown from anywhere else (an
-  input, a field, a variable) is a new throw, placed there.
+  input, a field, a variable) is a new throw, placed at the word that threw
+  it in the innermost text it left.
 - A read or write that faults in Habu code throws `ENGINE-ERROR:MEMORY-FAULT`
   (110) on the faulting thread, after the record `error[E-MEMORY-FAULT]: a
   read or write faulted` with notes `address` and `in` on fd 2: `catch`

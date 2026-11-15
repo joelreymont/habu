@@ -3179,13 +3179,13 @@ variable OPENER-U
 : THROWN-AT ( n -- )
    {: c:n :}
    c THROWN-OPEN  c THROWN-TEXT
-   SRCLOC:TOKEN$ REJECTION:AT  s" thrown here" REJECTION:EMIT-STR
+   SRCLOC:TOKEN$ REJECTION:AT  s" this threw" REJECTION:EMIT-STR
    c THROWN-HELP ;
 
 \ The record, at the running token, of a computed 0 that unwound the text.
 : ZERO-AT ( -- )
    E-THROW-ZERO THROWN-OPEN  E-THROW-ZERO THROWN-TEXT
-   SRCLOC:TOKEN$ REJECTION:AT  s" thrown here" REJECTION:EMIT-STR
+   SRCLOC:TOKEN$ REJECTION:AT  s" this threw" REJECTION:EMIT-STR
    REJECTION:HELP
    s" throw a computed code only when it is nonzero: `rc 0<> if rc throw then`"
    REJECTION:EMIT-STR ;

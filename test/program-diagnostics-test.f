@@ -173,9 +173,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    label labelu GE-EXPECT-ERR-HAS ;
 
 \ A refused storage mapping stops the load with one E-MAP record, which has no
-\ place: the map is refused at run time, so the token the reader holds names no
-\ caller.
-: MAP-REFUSED-CASE ( ptr u8 n ptr u8 n -- )
+\ place, as no run-time record has one.
+: MAP-REJECT-CASE ( ptr u8 n ptr u8 n -- )
    {: path:ptr pathu:n count:ptr countu:n :}
    path pathu RUN-LOAD
    67 path pathu GE-EXPECT-RC
@@ -184,19 +183,19 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    count countu path pathu GE-EXPECT-ERR-HAS
    s"  --> " path pathu GE-EXPECT-ERR-LACKS ;
 
-: MAP-REFUSED ( -- )
+: MAP-REJECTS ( -- )
    s" test/program-diagnostic-map-size.f"
       S\" refused 9223372036854775808 bytes of storage\n  = bytes: 9223372036854775808\n"
-      MAP-REFUSED-CASE
+      MAP-REJECT-CASE
    s" test/program-diagnostic-map-big.f"
       S\" refused 2305843009213693952 bytes of storage\n  = bytes: 2305843009213693952\n"
-      MAP-REFUSED-CASE ;
+      MAP-REJECT-CASE ;
 
 : DIAGNOSTICS ( -- )
    BADSIG-ONCE
    THROW-ZERO-STOPS
    QUIET-COUNT-ONCE
-   MAP-REFUSED
+   MAP-REJECTS
    s" test/program-diagnostic-me.f" s" program-diagnostic-me.f:9:30" DIAGNOSTIC
    s" error[E-MISMATCH]" s" test/program-diagnostic-me.f" GE-EXPECT-ERR-HAS
    s" = evaluated: : MEA1 ( n -- n ) drop ;" s" test/program-diagnostic-me.f" GE-EXPECT-ERR-HAS

@@ -65,7 +65,7 @@ variable MUTEX
 
 \ The record of a map of n bytes the system refused, thrown as E-MAP: a caller
 \ that can go on without the storage catches it, and nothing prints.
-: MAP-REFUSED ( n -- ) {: bytes:n :}
+: MAP-REJECT ( n -- ) {: bytes:n :}
    s" E-MAP" REJECTION:OPEN
    s" the system refused " REJECTION:EMIT-STR  bytes REJECTION:EMIT-U
    s"  bytes of storage" REJECTION:EMIT-STR
@@ -77,7 +77,7 @@ variable MUTEX
 
 : REG-MAP ( n -- ptr ptr u8 )
    REG-BYTES {: bytes:n :}
-   bytes map-anon 0< if drop bytes MAP-REFUSED then ;
+   bytes map-anon 0< if drop bytes MAP-REJECT then ;
 
 \ Capacity is secured before RESERVE publishes either mapping or membership.
 \ A failed grow leaves the old registry and every handle intact.
@@ -132,7 +132,7 @@ variable MUTEX
 : GROW ( n ptr ptr a ptr n n -- )
    {: need:n cb:ptr ctl:ptr old:n :}
    need old CAPACITY {: cap:n :}
-   cap map-anon 0< if drop cap MAP-REFUSED then {: fresh:ptr :}
+   cap map-anon 0< if drop cap MAP-REJECT then {: fresh:ptr :}
    old 0= if
       \ Distinct controls may allocate concurrently. Keep their mapping work
       \ outside the lock; registry room and publication form one commit.
@@ -219,7 +219,7 @@ CONTROL-CELLS 1+ cells constant WIDTH-OFF
 \ bytes last: a zero-filled record on its own mapping, and its unmap.
 : MAP-RECORD ( ptr n -- ptr a )
    @ {: bytes:n :}
-   bytes map-anon 0< if drop bytes MAP-REFUSED then ;
+   bytes map-anon 0< if drop bytes MAP-REJECT then ;
 
 : UNMAP-RECORD ( ptr a ptr n -- )
    @ munmap 0< if

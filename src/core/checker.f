@@ -13136,7 +13136,7 @@ variable SNAP-N
       LOG LOG-N @ IX@  LOG LOG-N @ WID@  UNDO1
    REPEAT ;
 
-\ replay-open refuses a pending definition by exit: reject it here first.
+\ replay-open exits on a pending definition: reject it here first.
 : PENDING-REJECT ( -- )
    s" E-PKG-CONTEXT" REJECTION:OPEN
    s" the checker's replay opened while a definition is being compiled" REJECTION:EMIT-STR

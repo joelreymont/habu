@@ -302,7 +302,8 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    t p hu + LONG-LEN + tu BYTE-COPY
    p wu ;
 
-\ An uncaught code above 255 exits 70 when the checker rendered it, else 67.
+\ A rejection exits 70, an uncaught code above 255 prints the uncaught line and
+\ exits 67, and an engine defect dies 76.
 : TEST-DECLARERS ( -- )
    s" DEFER-IT" 76 S\" checker: symbol string capacity overflow\n" DIES
    s" UNDEFINE-IT" 76 S\" checker: symbol string capacity overflow\n" DIES

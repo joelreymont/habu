@@ -1123,8 +1123,8 @@ private
 : CHK-VERIFY-FILE ( -- ptr u8 n )
    0 CHK-POS$ {: a:ptr u:n :}
    a u FS:FILE? 0= if a u CHK-NO-INPUT then
-   [: CHK-VERIFY-READ ;] CHK-READ-REJECTED {: e:n refused:bool :}
-   refused if a u CANONICAL drop e CHK-UNREADABLE-NAMED then
+   [: CHK-VERIFY-READ ;] CHK-READ-REJECTED {: e:n rejected:bool :}
+   rejected if a u CANONICAL drop e CHK-UNREADABLE-NAMED then
    a u ;
 
 \ stdin's path need not exist.

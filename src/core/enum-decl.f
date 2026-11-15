@@ -345,8 +345,8 @@ ED-RESET
 \ ED-CLOSE builds nothing: it arms the constructor participant, which generates
 \ at commit after DECL-EVENT has promoted this declaration's TYPE-FIELD rows to
 \ the committed watermark the generator reads. GENERATED-DECL-CTOR:OWNS? is the
-\ one gate for arming here and for the participant's re-proof; both modes pass it,
-\ since a compact payloadless enum publishes constructors too.
+\ one gate for arming here; both modes pass it, since a compact payloadless enum
+\ publishes constructors too.
 \ The packed memory descriptor (TDECL-LAYOUT-DESC) needs the variant count and the
 \ slot width bound first; a `POLICY stack-cell-tag` family bakes none. LAY-ADD
 \ lands in the checker participant's savepoint (TF-SAVE carries LAY-N), so a later

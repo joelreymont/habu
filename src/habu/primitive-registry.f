@@ -15,7 +15,7 @@ package ENGINE-PRIMS
 
 6 constant ROW-CELLS
 $7FFFFFFFFFFFFFFF constant MAX-N
-\ The generated storage accessors' index refusal: src/core/layout-buffer.f's
+\ The generated storage accessors' index rejection: src/core/layout-buffer.f's
 \ code, which this file requires.
 E-LAYOUT-BOUNDS constant E-INDEX
 \ Both specification gates exit with the table's own refusal status.
