@@ -3532,6 +3532,10 @@ variable PARSE-IMM-XT s" parse-imm" PARSE-IMM-XT LIBRARY-XT!
    a u s" seal-package" STR=CI IF SEAL-ROW 0 0= EXIT THEN
    a u s" using" STR=CI IF RECORD-USING 0 0= EXIT THEN
    a u s" ;using" STR=CI IF RECORD-END-USING 0 0= EXIT THEN
+   a u s" split-str" STR=CI IF
+      CHECKER-SPLIT-STR @ 0= IF E-PKG-CONTEXT throw THEN
+      0 0= EXIT
+   THEN
    a u s" deftype" STR=CI IF RECORD-DEFTYPE 0 0= EXIT THEN
    a u s" deflinear" STR=CI IF RECORD-DEFLINEAR 0 0= EXIT THEN
    a u s" value-record" STR=CI IF
@@ -3809,6 +3813,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
 \ closed every scope it opened, and for the file's end at the latest.
 : VERIFY-SOURCE ( -- )
    SCAN-RESET
+   SOURCE@ SOURCE-U @ SPLIT-STR-FILE? CHECKER-SPLIT-STR !
    0 DUPLICATE-U !
    SOURCE@ SOURCE-U @ CHECKER-VERIFY-SOURCE!
    NULL-PTR TOP-PREV-A !  0 TOP-PREV-U !  NULL-PTR TOP-REFUSED !
@@ -3858,13 +3863,13 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    TOP-DEFER @ TOP-DEFER-A @ TOP-DEFER-U @ TOP-REFUSED @
    COMPOSE-CUR-PATH-A @ COMPOSE-CUR-PATH-U @
    FILE-PKG @ FILE-USE @ PEND-BASE @ VISIT-CUR @ CSR-SUBJ @
-   SHADOWED @ RETIRED @
+   SHADOWED @ RETIRED @ CHECKER-SPLIT-STR @
    {: olda:^ oldu:n oldi:n
       oldprev:^ oldprevu:n oldcur:^ oldcuru:n
       olddefer:n olddefa:^ olddefu:n oldrefused:^
       oldpath:^ oldpathu:n
       oldpkg:n olduse:n oldbase:n oldvisit:n oldsubj:n
-      oldshadowed:n oldretired:n :}
+      oldshadowed:n oldretired:n oldsplit:n :}
    src srcu SOURCE!
    SOURCE-ARM
    path COMPOSE-CUR-PATH-A !  pathu COMPOSE-CUR-PATH-U !
@@ -3895,7 +3900,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    olddefu TOP-DEFER-U !  oldrefused TOP-REFUSED !
    oldpath COMPOSE-CUR-PATH-A !  oldpathu COMPOSE-CUR-PATH-U !
    oldpkg FILE-PKG !  olduse FILE-USE !  oldbase PEND-BASE !
-   oldshadowed SHADOWED !  oldretired RETIRED !
+   oldshadowed SHADOWED !  oldretired RETIRED !  oldsplit CHECKER-SPLIT-STR !
    oldpathu 0 > IF
       oldpath oldpathu COMPOSE-DIAG$ REJECTION:FILE!
       SOURCE-ARM
@@ -3919,12 +3924,14 @@ COMPOSE-INIT
 \ action replays binds through the engine dictionary; the done closes it and
 \ restores the caller's scope on the clean and the throwing path alike.
 : RUN-IN-SCOPE ( [ -- ] -- )
+   CHECKER-SPLIT-STR @ {: split:n :}
    TICK-CONTEXT-RESET
    false TICK-REMAINDER !  FFI:ABANDON-FUNCTION
    0 CERTIFIED-N !  0 DEFERRED-N !  0 DEFER-SEEN !  0 SEALS-N !
    NCOMP-DISPATCH:DECL-VERIFY-START-OFF OWNER-XT VERIFIER-ACTION execute
    catch
    NCOMP-DISPATCH:DECL-VERIFY-DONE-OFF OWNER-XT VERIFIER-ACTION execute
+   split CHECKER-SPLIT-STR !
    THROW-RESULT ;
 
 : VERIFY-ARMED ( -- )

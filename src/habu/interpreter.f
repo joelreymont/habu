@@ -1222,6 +1222,10 @@ private
    s" using" TOKEN-IS? if PKG-USING true exit then
    s" ;using" TOKEN-IS? if PKG-END-USING true exit then
    s" export" TOKEN-IS? if PKG-EXPORT true exit then
+   s" split-str" TOKEN-IS? if
+      CHECKER-SPLIT-STR @ 0= if PKG-CONTEXT-FAIL then
+      true exit
+   then
    false ;
 
 : PKG-CLEAR ( -- )
@@ -1462,7 +1466,7 @@ CAST: AS-DECLARE ( n -- [ ^u8 n ^u8 n -- ] )
 \ require and include may be published by a package even though a definition
 \ cannot take their names at this checked head boundary.
 : DEF-INTERPRET-KEYWORDS ( -- ^u8 n )
-   S\" kernel: trusted: cast: linear: immediate create variable constant defer export seal-package char ' ;match" ;
+   S\" kernel: trusted: cast: linear: immediate create variable constant defer export seal-package split-str char ' ;match" ;
 
 : DEF-NAME-ONLY-KEYWORDS ( -- ^u8 n )
    s" : 2constant to require include sumtype variant ;variant ;sumtype" ;

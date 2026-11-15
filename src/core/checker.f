@@ -1650,6 +1650,15 @@ variable WIDTH-FAM  -1 WIDTH-FAM !
 variable EFFECT-TYPE-FAM  -1 EFFECT-TYPE-FAM !
 variable C2-RECORDS-FAM -1 C2-RECORDS-FAM ! \ reserved initialized table control
 variable STR-FAM  -1 STR-FAM !          \ `str`, a string as one value
+\ Set while a file whose first line is split-str runs, and what it evaluates:
+\ rows a token is checked against read each str as ^u8 n.
+variable CHECKER-SPLIT-STR  0 CHECKER-SPLIT-STR !
+\ Whether a file's source begins with the line split-str, which marks the file.
+: SPLIT-STR-FILE? ( ^u8 n -- bool ) {: a:^ u:n :}
+   u 9 < IF 0 0= 0= EXIT THEN
+   a 9 s" split-str" CORE-STR= 0= IF 0 0= 0= EXIT THEN
+   u 9 = IF 0 0= EXIT THEN
+   a 9 + c@ 10 = ;
 
 \ The `tile` and `uniform` family ids, captured by type-family.f at
 \ registration. A word whose declared effect consumes a `tile` and produces a
@@ -11394,6 +11403,59 @@ CHECKER-REG:}SCRATCH
       1 +
    REPEAT drop ;
 
+\ One of the two cells of a str value.
+: STR-CELL? ( n -- bool ) {: t:n :}
+   t TAG T-PARAM <> IF RES-FALSE EXIT THEN
+   t HIDDEN-PARAM? 0= IF RES-FALSE EXIT THEN
+   t PARAM>FAM STR-FAM @ = ;
+\ A str cell as its field: slot 0, the base, as ^u8; slot 1, the length, as n.
+: STR-CELL-SPLIT ( n -- n ) {: t:n :}
+   t HIDDEN-SLOT@ 0= IF CC-U8 MK-CON MK-PTR EXIT THEN
+   CC-N MK-CON ;
+
+\ A push over the split type and rest; the push itself when neither changed.
+: SPLIT-PUSH ( n n n n -- n ) {: s0:n p:n t:n rest:n :}
+   p P>TYPE t =  p P>REST rest = and IF s0 EXIT THEN
+   t rest MK-PUSH {: q:n :}
+   p P>PROOF q P-PROOF!  p P>LOST q P-LOST!
+   q ;
+
+\ A quotation over the split rows, keeping its throw windows and block part;
+\ the quotation itself when no row changed.
+: SPLIT-QUOT ( n n n n n n -- n ) {: t0:n q:n din:n dout:n rin:n rout:n :}
+   q Q>DIN din =  q Q>DOUT dout = and  q Q>RIN rin = and  q Q>ROUT rout = and
+   IF t0 EXIT THEN
+   din dout rin rout MK-QUOT {: nq:n :}
+   nq q Q>XHAS q Q>XDEAD q Q>XDFIELD q Q>XRFIELD QX!
+   q Q>BLOCK nq Q-BLOCK!
+   nq ;
+
+\ A scheme over the split quotation; the scheme itself when it did not change.
+: SPLIT-FORALL ( n n n -- n ) {: t0:n f:n body:n :}
+   f F>BODY body = IF t0 EXIT THEN
+   f F>PARENT f F>SECOND f F>DOMAIN body MK-FORALL-IN ;
+
+\ A row with each str value, and each in a quotation row it holds, as ^u8 under n.
+\ One word walks rows and the cell types in them, so a quotation's rows recurse.
+: SPLIT-ROW ( n -- n ) {: x0:n :}
+   x0 R-RES {: s:n :}
+   s TAG S-PUSH = IF
+      x0 s  s P>TYPE RECURSE  s P>REST RECURSE  SPLIT-PUSH EXIT
+   THEN
+   x0 T-RES {: t:n :}
+   t STR-CELL? IF t STR-CELL-SPLIT EXIT THEN
+   t TAG T-QUOT = IF
+      x0 t  t Q>DIN RECURSE  t Q>DOUT RECURSE  t Q>RIN RECURSE  t Q>ROUT RECURSE
+      SPLIT-QUOT EXIT
+   THEN
+   t TAG T-FORALL = IF x0 t  t F>BODY RECURSE  SPLIT-FORALL EXIT THEN
+   x0 ;
+
+\ A row as the file reading it sees it: split under split-str.
+: SPLIT-MARKED ( n -- n )
+   CHECKER-SPLIT-STR @ 0= IF EXIT THEN
+   SPLIT-ROW ;
+
 : EFF-APPLY ( ^u8 -- ) {: h:^ :}
    0 CALL-HIT !
    DCUR @ {: pd:n :}  RCUR @ {: pr:n :}
@@ -11401,11 +11463,11 @@ CHECKER-REG:}SCRATCH
    h E-INST-RESET
    ATOMN @ {: mark:n :}
    h E-DIN@ E-AK-BIND
-   h E-DIN@ E-INST {: din:n :}
-   h E-DOUT@ E-INST {: dout:n :}
+   h E-DIN@ E-INST SPLIT-MARKED {: din:n :}
+   h E-DOUT@ E-INST SPLIT-MARKED {: dout:n :}
    RGN-N @ {: bind-region:n :}
-   h E-RIN@ E-INST {: rin:n :}
-   h E-ROUT@ E-INST {: rout:n :}
+   h E-RIN@ E-INST SPLIT-MARKED {: rin:n :}
+   h E-ROUT@ E-INST SPLIT-MARKED {: rout:n :}
    mark din dout rin rout E-AK-LIST
    -1 SCOPE-INTRO-ON !
    STEP-R @ {: outer-r:n :}
@@ -11426,13 +11488,13 @@ CHECKER-REG:}SCRATCH
 : EFF-QUOT ( ^u8 -- n ) {: h:^ :}
    h E-INST-RESET
    h E-HASR@ 0 <> if
-      h E-DIN@ E-INST
-      h E-DOUT@ E-INST
-      h E-RIN@ E-INST
-      h E-ROUT@ E-INST
+      h E-DIN@ E-INST SPLIT-MARKED
+      h E-DOUT@ E-INST SPLIT-MARKED
+      h E-RIN@ E-INST SPLIT-MARKED
+      h E-ROUT@ E-INST SPLIT-MARKED
    else
-      h E-DIN@ E-INST
-      h E-DOUT@ E-INST
+      h E-DIN@ E-INST SPLIT-MARKED
+      h E-DOUT@ E-INST SPLIT-MARKED
       FRESH MK-ROW dup
    then
    MK-QUOT ;
