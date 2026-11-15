@@ -27,6 +27,12 @@ private
 
 : SAY-CR ( -- ) s\" \n" SAY ;
 
+EXPORT CHECK:PRIM-NAME
+EXPORT CHECK:PRIM-OPEN
+EXPORT CHECK:PRIM-ATOM
+EXPORT CHECK:PRIM-CLOSE
+EXPORT CHECK:PRIMS-END
+
 package ARM64
 
 \ The host-entry table, ascending by host entry: HOSTS[i] is where a running
@@ -185,13 +191,13 @@ variable PATH-U
       1 OWNED-ROWS +!
    then
    kind PRIM-SPEC:K-PRIM =  owned or if
-      name nameu CHECK:PRIM-OPEN
-      atoms 0 ?do NEXT CHECK:PRIM-ATOM loop
-      pkg  pkgu  trusted 0<>  fixed 0<>  CHECK:PRIM-CLOSE
+      name nameu PRIM-OPEN
+      atoms 0 ?do NEXT PRIM-ATOM loop
+      pkg  pkgu  trusted 0<>  fixed 0<>  PRIM-CLOSE
       exit
    then
    atoms 8 * SKIP
-   kind PRIM-SPEC:K-ELAB = if name nameu CHECK:PRIM-NAME exit then
+   kind PRIM-SPEC:K-ELAB = if name nameu PRIM-NAME exit then
    kind PRIM-SPEC:K-UNROWED = if exit then
    BAD ;
 
@@ -324,7 +330,7 @@ public
    0 OWNED-ROWS !
    count 0 ?do STATE-ROW loop
    AT @ end <> if BAD then
-   CHECK:PRIMS-END ;
+   PRIMS-END ;
 
 : HOST-KERNEL? ( n -- bool )
    {: a:n :}

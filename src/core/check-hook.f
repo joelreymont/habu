@@ -553,13 +553,13 @@ public
       then
       CHECK-RC throw then ;
 
-\ At a piece's end (src/habu/linker.f PIECE-END), each record a `TRUST` row or an
-\ amender (`INTRINSIC`, `generates:`, `names:`, NOMINAL-PROVIDER, a does>
-\ publication) changed, held from entry FROM on, takes its facts text again from
-\ its symbol's newest effect, as a definition's does: the record the symbol names
-\ takes the text, and a held record it no longer names an empty one. A text that
-\ cannot say the effect, or a symbol no record holds, fails the build: a link
-\ would read the record's older facts.
+private
+\ At a piece's end, each record an amender (`INTRINSIC`, `generates:`, `names:`,
+\ NOMINAL-PROVIDER, a does> publication) changed, held from entry FROM on, takes
+\ its facts text again from its symbol's newest effect, as a definition's does:
+\ the record the symbol names takes the text, and a held record it no longer
+\ names an empty one. A text that cannot say the effect, or a symbol no record
+\ holds, fails the build: a link would read the record's older facts.
 : AMENDED ( n -- )
    {: from:n :}
    HELD-FACTS from ?do
@@ -576,6 +576,7 @@ public
          REJECTION:TEXT REJECTION:TEXT-LEN @ now FACTS!
       then
    loop ;
+public
 
 \ The active primitive rows of sym after row k: whether one is, and whether
 \ each survives its facts text (FACTS-SAME-AT?).

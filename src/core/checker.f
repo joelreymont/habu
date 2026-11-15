@@ -15501,6 +15501,7 @@ public
    {: sym:n :}
    BUILDING? IF sym HOLD-UNDEFINE THEN
    sym UNDEFINE-SYM ;
+private
 \ A malformed text is a linker defect, never a program's, so it dies.
 : READ-UNDEFINE ( ^u8 n -- )
    {: a:^ u:n :}

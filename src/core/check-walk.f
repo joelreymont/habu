@@ -3307,6 +3307,7 @@ public
    NS-FIND {: row:n :}
    row 0= IF 0 RES-FALSE EXIT THEN
    row 1 - RES-TRUE ;
+private
 
 \ Export record ix of record src, as a compile of its file recorded it: an
 \ export the file retired has no facts, since its `undefine` removed them.
@@ -3316,7 +3317,7 @@ public
    ix src ALIAS-READ ;
 
 \ Reads text a u as record ix's facts now, over what a compile or a read taught:
-\ an earlier file's record whose text a later file's `TRUST` row rewrote.
+\ an earlier file's record whose text a later file's amender rewrote.
 : READ-FACTS ( ^u8 n n -- )
    {: a:^ u:n ix:n :}
    u 0= IF EXIT THEN
