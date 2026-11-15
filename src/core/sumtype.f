@@ -858,6 +858,9 @@ TERM-SCHEMA-INSTALL
 \ The parse's reject: the token SGBAD latched and why.
 : READ-BAD ( [ ptr u8 n ptr u8 n n -- ] -- ) {: fail :}
    SGBAD-A @ SGBAD-U @
+   SGBAD-AMBIG? IF
+      s" ambiguous type family" E-USING-AMBIGUOUS fail execute EXIT
+   THEN
    SGBAD-UNKNOWN? IF s" unknown type" E-TDECL-PAYLOAD fail execute EXIT THEN
    SGBAD-ARITY? IF
       s" type family applied to wrong number of arguments"

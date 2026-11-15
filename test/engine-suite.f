@@ -1071,6 +1071,34 @@ s" linear-local diagnostic names E-LINEAR-LOCAL" T-LABEL
 REJECTION:BUFFER$ s" E-LINEAR-LOCAL" CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
 s" CBAD-LOCAL-QUAL-UNKNOWN ( n -- ) {: x:ES-OWN:nosuch :}" s" error[E-UNKNOWN-SIGNATURE-TYPE]: unknown type `x:ES-OWN:nosuch` in signature" T-CHECK-SAYS
+\ A bare family tail two used packages make public is ambiguous, not unknown.
+package ES-AMB-A public NEWTYPE es-amb<a> ;package
+package ES-AMB-B public NEWTYPE es-amb<a> ;package
+using ES-AMB-A using ES-AMB-B
+REJECTION:CAPTURE
+s" a family two used packages make public is rejected" T-LABEL
+s" CBAD-FAM-AMBIG ( es-amb<n> -- ) drop" CHECK-CANDIDATE! 0 T=
+s" its record says the family is ambiguous" T-LABEL
+REJECTION:BUFFER$ s" error[E-USING-AMBIGUOUS]: type family `es-amb` is public in more than one used package" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" ^^^^^^ ambiguous here" CONTAINS? TTRUE
+s" its note names both packages" T-LABEL
+REJECTION:BUFFER$ s" = packages: ES-AMB-A, ES-AMB-B" CONTAINS? TTRUE
+s" its help gives each qualified spelling" T-LABEL
+REJECTION:BUFFER$ s" = help: write the package's name before the type family, as `ES-AMB-A:es-amb` or `ES-AMB-B:es-amb`" CONTAINS? TTRUE
+REJECTION:BUFFER-OFF
+\ A built definition's type naming that family is ambiguous too.
+: ES-AMB-READ ( -- n ) [: s" es-amb<n>" EFFECT:READ-TYPE drop ;] catch ;
+REJECTION:CAPTURE
+s" a built type naming that family is rejected" T-LABEL
+ES-AMB-READ 70 T=
+s" its record says the family is ambiguous" T-LABEL
+REJECTION:BUFFER$ s" error[E-USING-AMBIGUOUS]: ambiguous type family 'es-amb' in the type 'es-amb<n>'" CONTAINS? TTRUE
+s" its note names both packages" T-LABEL
+REJECTION:BUFFER$ s" = packages: ES-AMB-A, ES-AMB-B" CONTAINS? TTRUE
+s" its help gives each qualified spelling" T-LABEL
+REJECTION:BUFFER$ s" = help: write the package's name before the type family, as `ES-AMB-A:es-amb` or `ES-AMB-B:es-amb`" CONTAINS? TTRUE
+REJECTION:BUFFER-OFF
+;using ;using
 VALUE-RECORD point x n y n END-VALUE-RECORD
 VALUE-RECORD rect w n h n END-VALUE-RECORD
 VALUE-RECORD box value a END-VALUE-RECORD
@@ -2212,7 +2240,7 @@ s" ndict!: the rebuilt index resolves the qualified tail" T-LABEL
 ES-RESO:T-LABEL-CAP 3 T=
 s" ndict!: the rebuilt index still refuses a bare package public" T-LABEL
 s" : ES-NDX-P1 ( -- n ) ES-RES-PUB ;" ES-RES-REFUSE:CAPTURED ES-RES-REFUSE:UNDEFINED T=
-s" error[E-UNDEFINED]" ES-RES-REFUSE:HAS  s" engine-suite.f:2214:39" ES-RES-REFUSE:HAS
+s" error[E-UNDEFINED]" ES-RES-REFUSE:HAS  s" engine-suite.f:2242:39" ES-RES-REFUSE:HAS
 
 ES-SWL:CAPTURE-SECOND
 s" search-wl: the rebuilt index ran the same battery" T-LABEL

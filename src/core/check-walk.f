@@ -2395,7 +2395,7 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    sa su na nu SGBAD-TOKEN REJECTION:AT  SGBAD-LABEL$ REJECTION:EMIT-STR
    s" signature" REJECTION:NOTE  sa su SIG-TRIM REJECTION:EMIT-CUT
    SGBAD-SIZE? IF s" reason" REJECTION:NOTE  BADSIG-REASON THEN
-   REJECTION:HELP  SGBAD-HELP$ REJECTION:EMIT-STR ;
+   sa su na nu SGBAD-HELP ;
 
 \ D's name NA NU and the effect SA SU the row states.
 : GENERATES-REFUSE ( ptr u8 n ptr u8 n n -- )
@@ -3377,9 +3377,9 @@ CHECKER-REG:}SCRATCH
 \ there, as a top step is (TOP-GUEST): it parses above the term pools' marks,
 \ and the parser's and recorder's cells, which the caller may hold, are saved
 \ and given back however the read ends. One read is open at a time.
-\ GUEST-POOLS saves 16 cells, GUEST-PARSER 40 and its three tables,
+\ GUEST-POOLS saves 16 cells, GUEST-PARSER 41 and its three tables,
 \ GUEST-LATCHES 9; GUEST-POINTERS saves 10 pointers.
-16 40 + 9 +  BINDER-DEPTH-MAX +  TYPE-VAR-MAX 3 + +  26 +  constant GUEST-CAP
+16 41 + 9 +  BINDER-DEPTH-MAX +  TYPE-VAR-MAX 3 + +  26 +  constant GUEST-CAP
 10 constant GUEST-PTRS-CAP
 CHECKER-REG:SCRATCH{
 create GUEST-SAVED GUEST-CAP cells allot
@@ -3428,7 +3428,7 @@ CHECKER-REG:}SCRATCH
    NRES save GUEST-CELL  NDI save GUEST-CELL  NDH save GUEST-CELL
    SGBAD save GUEST-CELL  SGBAD-U save GUEST-CELL  SGBAD-KIND save GUEST-CELL
    SGBAD-AR-DECL save GUEST-CELL  SGBAD-AR-GOT save GUEST-CELL  SGBAD-SIZE save GUEST-CELL
-   SGBAD-EXP-U save GUEST-CELL
+   SGBAD-EXP-U save GUEST-CELL  SGBAD-USED save GUEST-CELL
    SIG-UNRES save GUEST-CELL  SIG-UNRES-U save GUEST-CELL
    SIG-RAW-MODE save GUEST-CELL  SIG-FACTS-MODE save GUEST-CELL  SIG-CTL save GUEST-CELL
    SIG-TAGS-ONLY save GUEST-CELL

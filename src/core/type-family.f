@@ -3901,20 +3901,31 @@ public
 
 private
 
-\ A `using` import names its package's public families. Repeating an import
-\ still names the same family; two distinct matches throw E-TFAM-AMBIG.
+\ A `using` import names its package's public families: the family tail na nu
+\ names in the package of using slot ix.
+: TFAM-USED-FIND ( n ptr u8 n -- n bool ) {: ix:n na:ptr nu:n :}
+   ix CHECKER-USING$ na nu TFAM-FIND 0= IF drop 0 RES-FALSE EXIT THEN
+   {: id:n :}
+   id TFAM-PUBLIC? IF id RES-TRUE ELSE 0 RES-FALSE THEN ;
+
+\ Repeating an import still names the same family; two distinct matches throw
+\ E-TFAM-AMBIG.
 : TFAM-FIND-USED ( ptr u8 n -- n bool ) {: na:ptr nu:n :}
    -1 TF-PUB !
    CHECKER-USING-N 0 ?DO
-      i CHECKER-USING$ na nu TFAM-FIND IF
+      i na nu TFAM-USED-FIND IF
          {: id:n :}
-         id TFAM-PUBLIC? IF
-            TF-PUB @ 0< IF id TF-PUB !
-            ELSE id TF-PUB @ <> IF E-TFAM-AMBIG throw THEN THEN
-         THEN
+         TF-PUB @ 0< IF id TF-PUB !
+         ELSE id TF-PUB @ <> IF E-TFAM-AMBIG throw THEN THEN
       ELSE drop THEN
    LOOP
    TF-PUB @ 0< IF 0 RES-FALSE ELSE TF-PUB @ RES-TRUE THEN ;
+
+\ Bit i set when using slot i offers the family tail na nu.
+: TFAM-USED-MASK ( ptr u8 n -- n ) {: na:ptr nu:n :}
+   0  CHECKER-USING-N 0 ?DO
+      i na nu TFAM-USED-FIND nip IF 1 i lshift or THEN
+   LOOP ;
 
 public
 
@@ -4015,13 +4026,13 @@ public
 \ (id,flag) result through cells and run the resolve as a `( -- )` quotation.
 PTR-VARIABLE TFSR-PA   variable TFSR-PU   PTR-VARIABLE TFSR-NA   variable TFSR-NU
 variable TFSR-ID   variable TFSR-FLAG
+\ The last TFAM-SIG-RESOLVE met a bare tail two used packages make public.
 variable TFSR-AMBIG
 : TFSR-RUN ( -- )
    TFSR-PA @ TFSR-PU @ TFSR-NA @ TFSR-NU @ TFAM-RESOLVE
    TFSR-FLAG !  TFSR-ID ! ;
 
-\ The checker's TFAM-RESOLVE-XT target. In source an ambiguous public tail
-\ (E-TFAM-AMBIG) leaves the token unresolved, so the signature is refused.
+\ An ambiguous public tail (E-TFAM-AMBIG) leaves the token unresolved.
 : TFAM-SIG-RESOLVE ( ptr u8 n ptr u8 n -- n bool )
    {: pa:ptr pu:n na:ptr nu:n :}
    0 TFSR-AMBIG !  0 TFSR-HIDDEN !
@@ -4033,6 +4044,14 @@ variable TFSR-AMBIG
    rc 0= IF TFSR-ID @ TFSR-FLAG @ EXIT THEN   \ ( id flag ) from the resolver
    rc E-TFAM-AMBIG = IF -1 TFSR-AMBIG ! 0 RES-FALSE EXIT THEN
    rc throw ;
+
+\ The checker's TFAM-RESOLVE-XT target: an ambiguous tail fails the parse as
+\ SGBAD's ambiguous kind, with the using slots that offer it.
+: TFAM-PARSE-RESOLVE ( ptr u8 n ptr u8 n -- n bool )
+   {: pa:ptr pu:n na:ptr nu:n :}
+   pa pu na nu TFAM-SIG-RESOLVE {: id:n ok:bool :}
+   TFSR-AMBIG @ 0 <> IF na nu  na nu TFAM-USED-MASK  SGBAD-AMBIG! THEN
+   id ok ;
 
 \ The signature parser asks this only after its normal family and concrete
 \ lookups missed. An ambiguous public tail, a malformed qualifier or a
@@ -5008,7 +5027,7 @@ private
 \ The checker's friend hooks: checker.f loads before this file and reaches
 \ family resolution and arities through these defers during signature parsing.
 : TFAM-HOOK-INSTALL ( -- )
-   [: TFAM-SIG-RESOLVE ;] is TFAM-RESOLVE-XT
+   [: TFAM-PARSE-RESOLVE ;] is TFAM-RESOLVE-XT
    [: TFAM-CLAIMED? ;] is TFAM-CLAIMED?-XT
    \ The constructor checks answer from the rows read: a linked family is read first.
    [: READ-PENDING TFAM-CTOR-PKG? ;]    is CTOR-PKG?-XT     \ package reopen

@@ -2873,7 +2873,7 @@ variable STG-TYPE-U
       0= IF EXIT THEN
    THEN
    type typeu CHECKER-ARENA-INFO 0= IF
-      drop name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE EXIT
+      drop name nameu type typeu CHECKER-STORAGE-TYPE-REJECT EXIT
    THEN drop
    name nameu at nameu ARM
    type typeu name nameu CHECKER-DEFARENA
@@ -2890,7 +2890,7 @@ variable STG-TYPE-U
    name nameu s" -NEW" at ARENA-WORD-FREE? 0= IF EXIT THEN
    name nameu s" -RELEASE" at ARENA-WORD-FREE? 0= IF EXIT THEN
    type typeu CHECKER-DYNAMIC-INFO 0= IF
-      drop name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE EXIT
+      drop name nameu type typeu CHECKER-STORAGE-TYPE-REJECT EXIT
    THEN drop
    name nameu at nameu ARM
    type typeu name nameu CHECKER-DEFHEAP

@@ -227,7 +227,7 @@ public
    na nu s" -RESERVE" LBUF-SUFFIX-OK? 0= if exit then
    na nu s" -RELEASE" LBUF-SUFFIX-OK? 0= if exit then
    ta tu CHECKER-DYNAMIC-INFO 0= if
-      drop na nu ta tu CHECKER-STORAGE-TYPE-REFUSE exit
+      drop na nu ta tu CHECKER-STORAGE-TYPE-REJECT exit
    then
    {: bytes:n :}
    na nu CHILD-ABI:DYNAMIC ['] ELEMENT AS-ENTRY ta tu CHILD drop
@@ -255,7 +255,7 @@ public
    na nu s" -NEW" LBUF-SUFFIX-OK? 0= if exit then
    na nu s" -RELEASE" LBUF-SUFFIX-OK? 0= if exit then
    ta tu CHECKER-DYNAMIC-INFO 0= if
-      drop na nu ta tu CHECKER-STORAGE-TYPE-REFUSE exit
+      drop na nu ta tu CHECKER-STORAGE-TYPE-REJECT exit
    then
    {: bytes:n :}
    na nu s" -NEW" LBUF-SUFFIXED CHILD-ABI:HEAP-NEW

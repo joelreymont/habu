@@ -1348,6 +1348,7 @@ variable MDV-I   variable MDV-F
 \ A definition's signature, a local's type or a stored signature that does not
 \ parse; SGBAD's state from the failed parse names the kind.
 : SGBAD-CODE$ ( -- ptr u8 n )
+   SGBAD-AMBIG? IF s" E-USING-AMBIGUOUS" EXIT THEN
    SGBAD-UNKNOWN? IF s" E-UNKNOWN-SIGNATURE-TYPE" EXIT THEN
    SGBAD-BAREPTR? IF s" E-BARE-PTR-SIGNATURE" EXIT THEN
    SGBAD-ARITY? IF s" E-WRONG-ARITY" EXIT THEN
@@ -1484,6 +1485,10 @@ CHECKER-REG:}SCRATCH
    s" expected " EMIT-STR  SGBAD-EXP-A @ SGBAD-EXP-U @ CODE-SPAN
    s" , found the end of the signature" EMIT-STR ;
 : SIG-MESSAGE ( -- )
+   SGBAD-AMBIG? IF
+      s" type family " EMIT-STR  TOK-SPAN
+      s"  is public in more than one used package" EMIT-STR EXIT
+   THEN
    SGBAD-UNKNOWN? IF
       s" unknown type " EMIT-STR  TOK-SPAN  s"  in signature" EMIT-STR EXIT
    THEN
@@ -1597,6 +1602,7 @@ CHECKER-REG:}SCRATCH
    s" bound here" EMIT-STR ;
 
 : SIG-LABEL ( -- )
+   SGBAD-AMBIG? IF s" ambiguous here" EMIT-STR EXIT THEN
    SGBAD-UNKNOWN? IF s" unknown type" EMIT-STR EXIT THEN
    SGBAD-BAREPTR? IF s" no element type" EMIT-STR EXIT THEN
    SGBAD-ARITY? IF s" wrong number of type arguments" EMIT-STR EXIT THEN
@@ -1896,12 +1902,18 @@ PTR-VARIABLE HOLDER-FIRST
    t tu REJECTION:AT  MD-DOES-UNMADE MD-LABEL$ EMIT-STR
    REJECTION:HELP  MD-DOES-UNMADE MD-SUGGEST$ EMIT-STR ;
 
+\ The notes and the help; an ambiguous family's packages note and help are
+\ one part.
+: DIAG-ADVICE ( -- )
+   DKIND RF-SIG =  SGBAD-AMBIG?  and IF PIN-TOK$ SGBAD-AMBIG-HELP EXIT THEN
+   DIAG-NOTES
+   REJECTION:HELP  DIAG-HELP ;
+
 : DIAG-PRINT
    0 RQM !  SEEN-RESET 0 NLET !  0 RROW-N !
    DCODE REJECTION:OPEN  DIAG-MESSAGE
    DIAG-TOKEN REJECTION:AT  DIAG-LABEL
-   DIAG-NOTES
-   REJECTION:HELP  DIAG-HELP
+   DIAG-ADVICE
    REJECTION:KEEP ;
 
 

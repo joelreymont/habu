@@ -84,7 +84,7 @@ public
    name nameu FREE? 0= if exit then
    name nameu OTHERS-FREE
    type typeu CHECKER-ARENA-INFO 0= if
-      drop name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE exit
+      drop name nameu type typeu CHECKER-STORAGE-TYPE-REJECT exit
    then {: width:n :}
    name nameu s" -NEW" CHILD-ABI:ARENA-NEW ['] NEW AS-ENTRY
    type typeu width MAKE

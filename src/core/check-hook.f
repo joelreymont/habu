@@ -249,7 +249,7 @@ CAST: REG-XT ( n -- [ ptr u8 n ptr u8 n -- ] )
    node 0 <> if node NODE-STORAGE-TERM else ta tu CHECKER-STORAGE-TERM then
    0= if
       drop
-      node 0 <> if na nu NODE-TYPE-REFUSE else na nu ta tu CHECKER-STORAGE-TYPE-REFUSE then
+      node 0 <> if na nu NODE-TYPE-REFUSE else na nu ta tu CHECKER-STORAGE-TYPE-REJECT then
       CHECK-RC throw
    then
    shape swap TFAM:TFAM-STORED-ROWS ;
@@ -271,7 +271,7 @@ CAST: REG-XT ( n -- [ ptr u8 n ptr u8 n -- ] )
    STORAGE-PARSE-TYPE {: ta:ptr tu:n :}
    na nu CHECKER-LBUF-NAME-OK? 0= if na nu ta tu 0 exit then
    ta tu whole TYPE-BYTES 0= if
-      drop na nu ta tu CHECKER-STORAGE-TYPE-REFUSE na nu ta tu 0 exit
+      drop na nu ta tu CHECKER-STORAGE-TYPE-REJECT na nu ta tu 0 exit
    then {: bytes:n :}
    na nu ta tu bytes ;
 
@@ -360,16 +360,28 @@ CAST: >BYTES ( n -- ptr u8 )
    then
    a >BYTES u CON-OF ;
 
+\ EFFECT:NAMED's family tail a u is public in more than one used package.
+: NAMED-AMBIG ( ptr u8 n -- ) {: a:ptr u:n :}
+   s" E-USING-AMBIGUOUS" REJECTION:OPEN
+   s" EFFECT:NAMED found type family '" REJECTION:EMIT-STR
+   a u REJECTION:EMIT-STR
+   s" ' public in more than one used package" REJECTION:EMIT-STR
+   DEFINER-PLACE
+   a u SGBAD-AMBIG-HELP
+   CHECK-RC REJECTION:STOP ;
+
 \ The type a spelling names: a built-in type's con code and 0, else 0 and the
 \ family; one that names neither is rejected.
 : NAMED-FAMILY ( n n -- n n )
    {: a:n u:n :}
    a u BUILT-IN dup 0 <> if 0 exit then drop
+   SGBAD-CLEAR
    TFAM:TFAM-ACTIVE-PKG$ a >BYTES u
    a >BYTES u TFAM:TFQ-SPLIT? if TFAM:TFAM-EXACT-RESOLVE
-   else TFAM:TFAM-SIG-RESOLVE then
+   else TFAM:TFAM-PARSE-RESOLVE then
    if 0 swap exit then
    drop
+   SGBAD-AMBIG? if a >BYTES u NAMED-AMBIG then
    s" E-UNKNOWN-SIGNATURE-TYPE" REJECTION:OPEN
    s" EFFECT:NAMED found no type named '" REJECTION:EMIT-STR
    a >BYTES u REJECTION:EMIT-STR  s" '" REJECTION:EMIT-STR
@@ -383,7 +395,9 @@ CAST: >BYTES ( n -- ptr u8 )
    {: ta:ptr tu:n wa:ptr wu:n code:n xa:ptr xu:n :}
    tu 0= if xa xu else ta tu then {: na:ptr nu:n :}
    code TYPE-DECL:E-TDECL-PAYLOAD = {: unknown:bool :}
-   unknown if s" E-UNKNOWN-SIGNATURE-TYPE" else s" E-BAD-SIGNATURE" then
+   code E-USING-AMBIGUOUS = {: ambig:bool :}
+   ambig if s" E-USING-AMBIGUOUS" else
+   unknown if s" E-UNKNOWN-SIGNATURE-TYPE" else s" E-BAD-SIGNATURE" then then
    REJECTION:OPEN
    wa wu REJECTION:EMIT-STR  s"  '" REJECTION:EMIT-STR
    na nu REJECTION:EMIT-STR  s" '" REJECTION:EMIT-STR
@@ -392,10 +406,12 @@ CAST: >BYTES ( n -- ptr u8 )
       s" '" REJECTION:EMIT-STR
    then
    DEFINER-PLACE
-   REJECTION:HELP
-   unknown if s" declare a type of that name, or correct its spelling"
-   else s" write the type as a signature writes it" then
-   REJECTION:EMIT-STR
+   ambig if na nu SGBAD-AMBIG-HELP else
+      REJECTION:HELP
+      unknown if s" declare a type of that name, or correct its spelling"
+      else s" write the type as a signature writes it" then
+      REJECTION:EMIT-STR
+   then
    CHECK-RC REJECTION:STOP ;
 
 \ Rejects a type variable's or region's letter in a type EFFECT:READ-TYPE was

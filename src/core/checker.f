@@ -248,7 +248,7 @@
 \ stands on the definer's line and the type's first token on the name's. A
 \ line feed between tokens, as no next token does, leaves the token to the
 \ next statement: a missing name or type is refused by name
-\ (CHECKER-STORAGE-NAME-REFUSE, CHECKER-STORAGE-TYPE-REFUSE) and SIG-TYPE
+\ (CHECKER-STORAGE-NAME-REFUSE, CHECKER-STORAGE-TYPE-REJECT) and SIG-TYPE
 \ refuses a span left open.
 \
 \ Callable contracts: a stored callable must implement every instantiation its
@@ -6886,6 +6886,8 @@ variable NRES  variable NDI  variable NDH
 7 constant SGBAD-RETURN-KIND
 \ A binder nested inside BINDER-DEPTH-MAX others (SIG-FORALL-DOMAIN).
 8 constant SGBAD-BINDERS-KIND
+\ A bare family tail more than one used package makes public.
+9 constant SGBAD-AMBIG-KIND
 variable SGBAD
 PTR-VARIABLE SGBAD-A
 variable SGBAD-U
@@ -6895,6 +6897,7 @@ variable SGBAD-AR-GOT    \ arity kind: the argument count actually written
 variable SGBAD-SIZE      \ depth and width kinds: the levels or cells measured
 PTR-VARIABLE SGBAD-EXP-A \ syntax kind: the word the parser expected there, if one
 variable SGBAD-EXP-U
+variable SGBAD-USED      \ ambiguous kind: bit i set when using slot i offers the family
 0 constant LOCALBAD-SCOPE    \ a local inside a quotation or on a dead path
 1 constant LOCALBAD-DASH     \ `--` in a locals group
 2 constant LOCALBAD-BAR      \ `|` in a locals group
@@ -7154,6 +7157,7 @@ PTR-VARIABLE SIG-OVERLOAD-A   variable SIG-OVERLOAD-U
    0 SGBAD-U !
    NULL-PTR SGBAD-EXP-A !
    0 SGBAD-EXP-U !
+   0 SGBAD-USED !
    SGBAD-SYNTAX-KIND SGBAD-KIND ! ;
 
 : SGBAD-SET ( ptr u8 n n -- ) {: a u kind :}
@@ -7185,6 +7189,11 @@ PTR-VARIABLE SIG-OVERLOAD-A   variable SIG-OVERLOAD-U
 
 : SGBAD-UNKNOWN? ( -- bool )
    SGBAD @ SGBAD-KIND @ SGBAD-UNKNOWN-KIND = and ;
+: SGBAD-AMBIG! ( ptr u8 n n -- ) {: a:ptr u:n used:n :}
+   SGBAD @ 0= IF used SGBAD-USED ! THEN
+   a u SGBAD-AMBIG-KIND SGBAD-SET ;
+: SGBAD-AMBIG? ( -- bool )
+   SGBAD @ SGBAD-KIND @ SGBAD-AMBIG-KIND = and ;
 : SGBAD-BAREPTR! ( ptr u8 n -- )
    SGBAD-BAREPTR-KIND SGBAD-SET ;
 : SGBAD-BAREPTR? ( -- bool )
@@ -11131,10 +11140,85 @@ variable SIG-COUNTED
 : SGBAD-PIN ( ptr u8 n ptr u8 n -- )
    SGBAD-TOKEN RF-SIG PIN-REFUSED! ;
 
+\ A neutral replay starts at zero and may overwrite caller rows, so rollback
+\ savepoints preserve the row bytes and lengths alongside the depth.
+: CK-USE-DEPTH ( -- n )
+   CK-USE-ENGINE-DEPTH ;
+: CK-USE-SLOT ( n -- ptr u8 )  PACKAGE-PATH:CAP * CK-USE-NAMES + ;
+: CK-USE-LEN@ ( n -- n )  cells CK-USE-LENS + @ ;
+
+\ The scan is capped at USE-MAX so the loop stays inside the mirror whatever
+\ the engine's depth cell holds.
+: CK-USE-SCAN-N ( -- n )
+   CK-USE-DEPTH
+   dup 0 < IF drop 0 EXIT THEN
+   dup USE-MAX > IF drop USE-MAX THEN ;
+
+: CHECKER-USING-N ( -- n ) CK-USE-SCAN-N ;
+: CHECKER-USING$ ( n -- ptr u8 n ) {: ix:n :}
+   ix 0 < ix CHECKER-USING-N >= or IF
+      s" checker: using index out of range" 76 die
+   THEN
+   ix CK-USE-SLOT ix CK-USE-LEN@ ;
+
+\ The using mirror and a sym hold a package's name folded; its row spells it
+\ as the program wrote it. A name no row holds is answered as given.
+: PACKAGE-NAME$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   u 0= IF a u EXIT THEN
+   a u BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: row:ptr :}
+   row NULL-PTR = IF a u EXIT THEN
+   row CHECKER-RESOLVE:CK-REC-NAME$ ;
+
+: EMIT-QUALIFIED ( ptr u8 n ptr u8 n -- ) {: p:ptr pu:n w:ptr wu:n :}
+   p pu REJECTION:EMIT-STR  58 REJECTION:EMIT1  w wu REJECTION:EMIT-STR ;
+
+\ Using slot ix offers the ambiguous family and no earlier slot names its
+\ package.
+: SGBAD-USED-FIRST? ( n -- bool ) {: ix:n :}
+   1 ix lshift SGBAD-USED @ and 0= IF RES-FALSE EXIT THEN
+   RES-TRUE  ix 0 ?DO
+      1 i lshift SGBAD-USED @ and 0 <> IF
+         i CHECKER-USING$ ix CHECKER-USING$ CORE-STR= IF drop RES-FALSE THEN
+      THEN
+   LOOP ;
+: SGBAD-USED-N ( -- n )
+   0  CHECKER-USING-N 0 ?DO i SGBAD-USED-FIRST? IF 1 + THEN LOOP ;
+: SGBAD-USED-PKG$ ( n -- ptr u8 n ) CHECKER-USING$ PACKAGE-NAME$ ;
+
+: SGBAD-USED-NOTE ( -- )
+   s" packages" REJECTION:NOTE
+   0  CHECKER-USING-N 0 ?DO
+      i SGBAD-USED-FIRST? IF
+         dup 0 <> IF s" , " REJECTION:EMIT-STR THEN
+         i SGBAD-USED-PKG$ REJECTION:EMIT-STR  1 +
+      THEN
+   LOOP drop ;
+\ What precedes the k-th of n spellings: nothing, `, `, or ` or ` the last.
+: SGBAD-USED-SEP ( n n -- ) {: k:n n:n :}
+   k 0= IF EXIT THEN
+   k 1 + n = IF s"  or " ELSE s" , " THEN REJECTION:EMIT-STR ;
+\ Each package's qualified spelling of family tail a u.
+: SGBAD-USED-SPELLINGS ( ptr u8 n -- ) {: a:ptr u:n :}
+   SGBAD-USED-N {: n:n :}
+   0  CHECKER-USING-N 0 ?DO
+      i SGBAD-USED-FIRST? IF
+         dup n SGBAD-USED-SEP
+         96 REJECTION:EMIT1  i SGBAD-USED-PKG$ a u EMIT-QUALIFIED
+         96 REJECTION:EMIT1  1 +
+      THEN
+   LOOP drop ;
+\ The packages note and the help of the ambiguous family tail a u.
+: SGBAD-AMBIG-HELP ( ptr u8 n -- ) {: a:ptr u:n :}
+   SGBAD-USED-NOTE
+   REJECTION:HELP
+   s" write the package's name before the type family, as " REJECTION:EMIT-STR
+   a u SGBAD-USED-SPELLINGS ;
+
 \ The return and unsupplied kinds name the whole row, so their label
 \ sits on the declaring name.
 : SGBAD-LABEL$ ( -- ptr u8 n )
    SGBAD-RETURN? IF s" its signature moves the return stack" EXIT THEN
+   SGBAD-AMBIG? IF s" ambiguous here" EXIT THEN
    SGBAD-UNKNOWN? IF s" no type has this name" EXIT THEN
    SGBAD-BAREPTR? IF s" `ptr` with no element type" EXIT THEN
    SGBAD-ARITY? IF s" wrong number of type arguments" EXIT THEN
@@ -11152,6 +11236,11 @@ variable SIG-COUNTED
    SGBAD-DEPTH? IF s" name an inner callback's effect in a word of its own, and keep bulk values in a buffer instead of on the stack" EXIT THEN
    SGBAD-UNSUPPLIED? IF s" name each output scope or region variable in an input too, or drop it from the outputs" EXIT THEN
    s" write the signature as `( inputs -- outputs )`, with one `--` between the rows" ;
+
+\ The help of stored signature sa su's rejection, declared at at atu.
+: SGBAD-HELP ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n at:ptr atu:n :}
+   SGBAD-AMBIG? IF sa su at atu SGBAD-TOKEN SGBAD-AMBIG-HELP EXIT THEN
+   REJECTION:HELP  SGBAD-HELP$ REJECTION:EMIT-STR ;
 
 : SIG-WS? {: c :}  c 32 <= ;
 : SIG-LTRIM ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
@@ -11189,13 +11278,14 @@ variable SIG-COUNTED
 \ read, placed at SGBAD-TOKEN, up to its help; the caller ends it.
 : SGBAD-REJECTION ( ptr u8 n ptr u8 n -- )
    {: sa:ptr su:n at:ptr atu:n :}
-   s" E-BAD-STORED-SIGNATURE" REJECTION:OPEN
+   SGBAD-AMBIG? IF s" E-USING-AMBIGUOUS" ELSE s" E-BAD-STORED-SIGNATURE" THEN
+   REJECTION:OPEN
    s" the signature of `" REJECTION:EMIT-STR  at atu REJECTION:EMIT-STR
    s" ` cannot be recorded" REJECTION:EMIT-STR
    sa su at atu SGBAD-TOKEN REJECTION:AT  SGBAD-LABEL$ REJECTION:EMIT-STR
    s" signature" REJECTION:NOTE  sa su SIG-TRIM REJECTION:EMIT-CUT
    SGBAD-SIZE? IF s" reason" REJECTION:NOTE  BADSIG-REASON THEN
-   REJECTION:HELP  SGBAD-HELP$ REJECTION:EMIT-STR ;
+   sa su at atu SGBAD-HELP ;
 
 \ AT is the declaring name as the caller read it, which the record names and
 \ places.
@@ -12388,27 +12478,6 @@ DFERS-P DFER-CAP-V 1 DFER-END CHECK:STORE+
 \ DATA cell; this table of folded package names is bounded by that depth, so no
 \ checker counter can drift.
 7144 constant E-USING-AMBIGUOUS            \ bare tail resolves in more than one used public wordlist
-
-\ A neutral replay starts at zero and may overwrite caller rows, so rollback
-\ savepoints preserve the row bytes and lengths alongside the depth.
-: CK-USE-DEPTH ( -- n )
-   CK-USE-ENGINE-DEPTH ;
-: CK-USE-SLOT ( n -- ptr u8 )  PACKAGE-PATH:CAP * CK-USE-NAMES + ;
-: CK-USE-LEN@ ( n -- n )  cells CK-USE-LENS + @ ;
-
-\ The scan is capped at USE-MAX so the loop stays inside the mirror whatever
-\ the engine's depth cell holds.
-: CK-USE-SCAN-N ( -- n )
-   CK-USE-DEPTH
-   dup 0 < IF drop 0 EXIT THEN
-   dup USE-MAX > IF drop USE-MAX THEN ;
-
-: CHECKER-USING-N ( -- n ) CK-USE-SCAN-N ;
-: CHECKER-USING$ ( n -- ptr u8 n ) {: ix:n :}
-   ix 0 < ix CHECKER-USING-N >= or IF
-      s" checker: using index out of range" 76 die
-   THEN
-   ix CK-USE-SLOT ix CK-USE-LEN@ ;
 
 package CHECKER-USE
 public
@@ -13674,6 +13743,17 @@ package CHECKER-REG
    REJECTION:HELP  na nu ta tu why STGR-HELP
    STGR-END ;
 
+\ Family tail ta tu in the type of na nu is public in more than one used
+\ package.
+: STGR-AMBIG ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n ta:ptr tu:n :}
+   s" E-USING-AMBIGUOUS" REJECTION:OPEN
+   s" the type of " REJECTION:EMIT-STR  na nu STGR-CODE
+   s"  names type family " REJECTION:EMIT-STR  ta tu STGR-CODE
+   s" , which is public in more than one used package" REJECTION:EMIT-STR
+   ta tu REJECTION:AT  s" ambiguous here" REJECTION:EMIT-STR
+   ta tu SGBAD-AMBIG-HELP
+   STGR-END ;
+
 \ A count the definer took at run time has no token of its own: the record
 \ states its value v and stands at the name, which the definer read.
 : CHECKER-STORAGE-COUNT-REJECT ( ptr u8 n n -- ) {: na:ptr nu:n v:n :}
@@ -14068,17 +14148,6 @@ FACTS-READ-DEFAULT
       i UPKG-FIRST? IF  i xt execute  THEN
    LOOP ;
 
-\ The using mirror and a sym hold a package's name folded; its row spells it
-\ as the program wrote it. A name no row holds is answered as given.
-: PACKAGE-NAME$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   u 0= IF a u EXIT THEN
-   a u BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: row:ptr :}
-   row NULL-PTR = IF a u EXIT THEN
-   row CHECKER-RESOLVE:CK-REC-NAME$ ;
-
-: EMIT-QUALIFIED ( ptr u8 n ptr u8 n -- ) {: p:ptr pu:n w:ptr wu:n :}
-   p pu REJECTION:EMIT-STR  58 REJECTION:EMIT1  w wu REJECTION:EMIT-STR ;
-
 \ The bare token s su names a global word and a public of the used package
 \ p pu; the global has no qualified form, so only the package's word can be
 \ written apart. Writes the record through its help and leaves it open: the
@@ -14243,13 +14312,14 @@ package CHECKER-REG
 
 \ A missing nominal in a complete stored type leaves no allocation or row.
 \ A syntax fault, extra token, or known unstorable scheme keeps its refusal.
-: CHECKER-STORAGE-TYPE-REFUSE ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n ta:ptr tu:n :}
+: CHECKER-STORAGE-TYPE-REJECT ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n ta:ptr tu:n :}
    tu 0= IF na nu na nu STG-NO-TYPE CHECKER-STORAGE-REFUSE EXIT THEN
    SIG-UNRES @ 0 <> SGBAD @ 0= and LBI-BAD @ 0= and
       LBI-SCHEME @ 0= and IF
       CHECKER-UNSEEN-MARK
       E-CHECKER-STORAGE-UNRESOLVED throw
    THEN
+   SGBAD-AMBIG? IF na nu SGBAD-A @ SGBAD-U @ STGR-AMBIG EXIT THEN
    SGBAD-UNKNOWN? IF
       na nu SGBAD-A @ SGBAD-U @ STG-UNKNOWN-TYPE CHECKER-STORAGE-REFUSE EXIT
    THEN
@@ -15323,7 +15393,7 @@ public
       SIG-UNRES @ SGBAD @ 0= and LBI-BAD @ 0= and LBI-SCHEME @ 0= and IF
          name nameu count countu 1 CHECKER-LBUF:COUNT-OK? 0= IF EXIT THEN
       THEN
-      name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE EXIT
+      name nameu type typeu CHECKER-STORAGE-TYPE-REJECT EXIT
    THEN
    nip LBUF-INFO-W !
    name nameu count countu LBUF-INFO-W @ CHECKER-LBUF:COUNT-OK? 0= IF EXIT THEN
@@ -15344,7 +15414,7 @@ public
       SIG-UNRES @ SGBAD @ 0= and LBI-BAD @ 0= and LBI-SCHEME @ 0= and IF
          name nameu count countu 1 CHECKER-LBUF:COUNT-OK? 0= IF EXIT THEN
       THEN
-      name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE EXIT
+      name nameu type typeu CHECKER-STORAGE-TYPE-REJECT EXIT
    THEN
    LBUF-INFO-W !
    name nameu count countu LBUF-INFO-W @ CHECKER-LBUF:COUNT-OK? 0= IF EXIT THEN
@@ -15355,7 +15425,7 @@ public
    {: type:ptr typeu:n name:ptr nameu:n :}
    name nameu CHECKER-REPLAY-NAME-OK? 0= IF EXIT THEN
    type typeu CHECKER-STORAGE-INFO 0= IF
-      drop name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE EXIT
+      drop name nameu type typeu CHECKER-STORAGE-TYPE-REJECT EXIT
    THEN
    drop                                    \ single cell: extent is one slot, width unused here
    type typeu CHECKER-STORAGE-VAR-SIG$ name nameu CHECKER-USIG-CERT-ADD ;
@@ -15367,7 +15437,7 @@ public
    {: type:ptr typeu:n count:ptr countu:n name:ptr nameu:n :}
    name nameu CHECKER-REPLAY-NAME-OK? 0= IF EXIT THEN
    type typeu CHECKER-DYNAMIC-INFO 0= IF
-      drop name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE EXIT
+      drop name nameu type typeu CHECKER-STORAGE-TYPE-REJECT EXIT
    THEN
    LBUF-INFO-W !
    name nameu count countu LBUF-INFO-W @ CHECKER-LBUF:COUNT-OK? 0= IF EXIT THEN
@@ -15379,7 +15449,7 @@ public
    {: type:ptr typeu:n count:ptr countu:n name:ptr nameu:n :}
    name nameu CHECKER-REPLAY-NAME-OK? 0= IF EXIT THEN
    type typeu CHECKER-DYNAMIC-INFO 0= IF
-      drop name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE EXIT
+      drop name nameu type typeu CHECKER-STORAGE-TYPE-REJECT EXIT
    THEN
    LBUF-INFO-W !
    name nameu count countu LBUF-INFO-W @ CHECKER-LBUF:COUNT-OK? 0= IF EXIT THEN
@@ -15393,14 +15463,14 @@ public
       type typeu name nameu CHECKER-DEFTYPED-VARIABLE EXIT
    THEN
    name nameu CHECKER-REPLAY-NAME-OK? 0= IF EXIT THEN
-   name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE ;
+   name nameu type typeu CHECKER-STORAGE-TYPE-REJECT ;
 
 \ A task's single slot admits what CHECK:STORAGE-LINE admits.
 : CHECKER-DEFSLOT ( ptr u8 n ptr u8 n -- )
    {: type:ptr typeu:n name:ptr nameu:n :}
    name nameu CHECKER-REPLAY-NAME-OK? 0= IF EXIT THEN
    type typeu CHECKER-DYNAMIC-INFO nip 0= IF
-      name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE EXIT
+      name nameu type typeu CHECKER-STORAGE-TYPE-REJECT EXIT
    THEN
    type typeu CHECKER-STORAGE-VAR-SIG$ name nameu CHECKER-USIG-CERT-ADD ;
 
@@ -15486,7 +15556,7 @@ PTR-VARIABLE SFX-GEN-A   variable SFX-GEN-U
    {: type:ptr typeu:n name:ptr nameu:n :}
    name nameu CHECKER-REPLAY-NAME-OK? 0= IF EXIT THEN
    type typeu CHECKER-DYNAMIC-INFO 0= IF
-      drop name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE EXIT
+      drop name nameu type typeu CHECKER-STORAGE-TYPE-REJECT EXIT
    THEN
    drop                                    \ two control cells: the extent is dynamic
    type typeu CHECKER-LBUF-SIG$ name nameu CHECKER-USIG-CERT-ADD
@@ -15518,7 +15588,7 @@ PTR-VARIABLE SFX-GEN-A   variable SFX-GEN-U
    {: type:ptr typeu:n name:ptr nameu:n :}
    name nameu CHECKER-REPLAY-NAME-OK? 0= IF EXIT THEN
    type typeu CHECKER-LAYOUT-INFO 0= IF
-      2drop name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE EXIT
+      2drop name nameu type typeu CHECKER-STORAGE-TYPE-REJECT EXIT
    THEN
    2drop
    type typeu CHECKER-LBUF-SIG$ name nameu CHECKER-USIG-CERT-ADD
@@ -17178,7 +17248,7 @@ variable SV-DVAR  variable SV-DPOS  variable SV-MDIAG
 variable SV-SGBAD
 PTR-VARIABLE SV-SGBAD-A  variable SV-SGBAD-U  variable SV-SGBAD-KIND
 variable SV-SGBAD-AR-DECL  variable SV-SGBAD-AR-GOT
-PTR-VARIABLE SV-SGBAD-EXP-A  variable SV-SGBAD-EXP-U
+PTR-VARIABLE SV-SGBAD-EXP-A  variable SV-SGBAD-EXP-U  variable SV-SGBAD-USED
 variable SV-SGSEEN  variable SV-SGHASR  variable SV-SGIN  variable SV-SGOUT
 variable SV-SGRIN   variable SV-SGROUT
 variable SV-THDMASK  variable SV-THRMASK  variable SV-THSET
@@ -17198,6 +17268,7 @@ CHECKER-REG:}SCRATCH
    SGBAD-U @ SV-SGBAD-U !  SGBAD-KIND @ SV-SGBAD-KIND !
    SGBAD-AR-DECL @ SV-SGBAD-AR-DECL !  SGBAD-AR-GOT @ SV-SGBAD-AR-GOT !
    SGBAD-EXP-A @ SV-SGBAD-EXP-A !  SGBAD-EXP-U @ SV-SGBAD-EXP-U !
+   SGBAD-USED @ SV-SGBAD-USED !
    SGSEEN @ SV-SGSEEN !  SGHASR @ SV-SGHASR !
    SGIN @ SV-SGIN !  SGOUT @ SV-SGOUT !  SGRIN @ SV-SGRIN !  SGROUT @ SV-SGROUT !
    THDMASK @ SV-THDMASK !  THRMASK @ SV-THRMASK !  THSET @ SV-THSET ! ;
@@ -17207,6 +17278,7 @@ CHECKER-REG:}SCRATCH
    SV-SGBAD-U @ SGBAD-U !  SV-SGBAD-KIND @ SGBAD-KIND !
    SV-SGBAD-AR-DECL @ SGBAD-AR-DECL !  SV-SGBAD-AR-GOT @ SGBAD-AR-GOT !
    SV-SGBAD-EXP-A @ SGBAD-EXP-A !  SV-SGBAD-EXP-U @ SGBAD-EXP-U !
+   SV-SGBAD-USED @ SGBAD-USED !
    SV-SGSEEN @ SGSEEN !  SV-SGHASR @ SGHASR !
    SV-SGIN @ SGIN !  SV-SGOUT @ SGOUT !  SV-SGRIN @ SGRIN !  SV-SGROUT @ SGROUT ! ;
 
@@ -21781,7 +21853,7 @@ variable IS-PEND-U                   \ and its length
 : TYPE-LIT-INFO ( ptr u8 n -- n bool ) {: a:ptr u:n :}
    SGBAD @ SGBAD-A @ SGBAD-U @ SGBAD-KIND @ {: sg:n sga:ptr sgu:n sgk:n :}
    SGBAD-AR-DECL @ SGBAD-AR-GOT @ SGBAD-SIZE @ {: ard:n arg:n sgs:n :}
-   SGBAD-EXP-A @ SGBAD-EXP-U @ {: sgea:ptr sgeu:n :}
+   SGBAD-EXP-A @ SGBAD-EXP-U @ SGBAD-USED @ {: sgea:ptr sgeu:n sgused:n :}
    SIG-UNRES @ SIG-UNRES-A @ SIG-UNRES-U @ {: un:n una:ptr unu:n :}
    SGBAD-CLEAR SIG-UNRES-CLEAR
    0 LBI-SCHEME !  0 LBI-XT !  0 LBI-WIDTH !  0 LBI-EFFECT !
@@ -21791,7 +21863,7 @@ variable IS-PEND-U                   \ and its length
    SGBAD @ 0= one and IF ARENA-TERM-INFO ELSE 0 RES-FALSE THEN
    sg SGBAD !  sga SGBAD-A !  sgu SGBAD-U !  sgk SGBAD-KIND !
    ard SGBAD-AR-DECL !  arg SGBAD-AR-GOT !  sgs SGBAD-SIZE !
-   sgea SGBAD-EXP-A !  sgeu SGBAD-EXP-U !
+   sgea SGBAD-EXP-A !  sgeu SGBAD-EXP-U !  sgused SGBAD-USED !
    un SIG-UNRES !  una SIG-UNRES-A !  unu SIG-UNRES-U !
    dup IF drop t TYPE-CLOSED? THEN ;
 
