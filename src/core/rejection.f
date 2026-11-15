@@ -162,12 +162,12 @@ private
    a HELD-P @ HELD-U @ + u ARENA-COPY
    HELD-U @ u + HELD-U ! ;
 
-public
 : FLUSH ( -- )
    TEXT TEXT-LEN @
    0 DEST !  0 TEXT-LEN !
    BUF-APPEND ;
 
+public
 : EMIT-STR ( ptr u8 n -- ) {: a:ptr u:n :}
    0 BEGIN dup u < WHILE dup a + c@ EMIT1 1 + REPEAT drop ;
 
@@ -189,6 +189,7 @@ public
    45 EMIT1
    v 1 63 lshift = IF s" 9223372036854775808" EMIT-STR EXIT THEN
    v negate EMIT-U ;
+private
 : JSON-STRING ( ptr u8 n -- )
    JSON-OPEN EMIT-STR JSON-CLOSE ;
 : JSON-KEY ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -196,7 +197,6 @@ public
 
 \ Where a top step's token sits: the active file's path, which an inner
 \ `evaluate` never changes. FILE-PATH is private so no program writes it.
-private
 SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL FILE-PATH
 public
 
@@ -228,10 +228,10 @@ create LABEL-BUF PATH-CAP allot   variable LABEL-U
       over d + c!
       1 +
    REPEAT drop ;
-public
 : LABELS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    LABELED @ 0= IF 0 0= 0= EXIT THEN
    a u LABEL-BUF LABEL-U @ CORE-STR= ;
+public
 : ORIGIN! {: line col byte :}
    line ORIGIN-LINE !  col ORIGIN-COLUMN !  byte ORIGIN-BYTE ! ;
 \ The file line, column and byte of the byte p points at in a buffer whose first
@@ -360,13 +360,13 @@ public
    SOURCE-POSITION 0 0= ;
 1 1 0 ORIGIN!
 
+private
 \ The file a top-level step names; empty when no file or label names it.
 : LOAD-FILE$ ( -- ptr u8 n )
    PATH$ {: pa:ptr pu:n :}
    pa pu LABELS? IF FILE$ EXIT THEN
    pa pu ;
 
-private
 variable NOTES   0 NOTES !              \ the JSON notes object is open
 variable GUTTER   1 GUTTER !            \ digits of AT's line, 1 unplaced
 SRCLOC:OWNED-CELL RESERVED-PTR-U8-CELL OWNED
@@ -430,7 +430,7 @@ public
 private
 : END-TEXT ( -- )
    PART @ GAP-PART = IF LABEL-PART PART ! THEN
-   PART @ NO-PART =  PART @ DROP-PART = or IF EXIT THEN
+   PART @ DROP-PART = IF EXIT THEN
    JSON @ IF JSON-CLOSE EXIT THEN
    10 EMIT1 ;
 : BLANKS ( n -- ) {: k:n :}
