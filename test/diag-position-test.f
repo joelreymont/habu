@@ -1759,6 +1759,36 @@ variable RC
    s" variant-collide.f" FIXTURE!
    s" E-BAD-DECLARATION" s" tag" 1 33 32 35 RUN-REFUSED-AT ;
 
+: TEST-DERIVE-PAYLOAD ( -- )
+   s" a sum payload DERIVE eq cannot compare" T-LABEL
+   SB-RESET
+   s" SUMTYPE dpsum DERIVE eq VARIANT hold ptr n ;VARIANT ;SUMTYPE"
+   SB-APPEND LF+
+   s" derive-payload.f" FIXTURE!
+   s" E-BAD-DECLARATION" s" ptr" 1 38 37 40 RUN-REFUSED-AT ;
+
+: TEST-DERIVE-FIELD ( -- )
+   s" a structure field DERIVE eq cannot compare" T-LABEL
+   SB-RESET
+   s" STRUCTURE dpst DERIVE eq FIELD f ptr n ;STRUCTURE" SB-APPEND LF+
+   s" derive-field.f" FIXTURE!
+   s" E-BAD-DECLARATION" s" ptr" 1 34 33 36 RUN-REFUSED-AT ;
+
+: TEST-DERIVE-ENUM-FIELD ( -- )
+   s" an enum field DERIVE eq cannot compare" T-LABEL
+   SB-RESET
+   s" ENUM dpen DERIVE eq VARIANT hold FIELD raw ptr u8 ;VARIANT ;ENUM"
+   SB-APPEND LF+
+   s" derive-enum-field.f" FIXTURE!
+   s" E-BAD-DECLARATION" s" ptr" 1 44 43 46 RUN-REFUSED-AT ;
+
+: TEST-DERIVE-PRODUCT-FIELD ( -- )
+   s" a product field DERIVE eq cannot compare" T-LABEL
+   SB-RESET
+   s" PRODUCT dppr DERIVE eq FIELD b ptr u8 ;PRODUCT" SB-APPEND LF+
+   s" derive-product-field.f" FIXTURE!
+   s" E-BAD-DECLARATION" s" ptr" 1 32 31 34 RUN-REFUSED-AT ;
+
 : GEN-LINES ( -- )
    SB-RESET
    s\" : GEN ( -- ) s\" : MADE ( -- ) ;\" evaluate-closed ;" SB-APPEND LF+
@@ -2302,6 +2332,10 @@ variable RC
    TEST-RUN-UNSOURCED
    TEST-HEAD-CLOSER
    TEST-VARIANT-COLLIDE
+   TEST-DERIVE-PAYLOAD
+   TEST-DERIVE-FIELD
+   TEST-DERIVE-ENUM-FIELD
+   TEST-DERIVE-PRODUCT-FIELD
    TEST-DEFER-SUGGEST
    TEST-CONTROL-ORPHAN
    TEST-CONTROL-REASON

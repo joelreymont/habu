@@ -224,13 +224,6 @@ s" P6 ( n -- fepar ) FEPAR:RED" CHECK-QUIET-CANDIDATE! 0 T=
 s" PRODUCT prodctor FIELD a n FIELD b n ;PRODUCT" evaluate-closed
 s" G1 ( n n -- prodctor ) PRODCTOR:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
 
-\ 20f. A failure inside the generation commit (a payload with no derived equality,
-\      a variant named like a derived word) rolls the whole declaration back.
-s" ENUM-DECL:ED-RUN rollctor DERIVE eq VARIANT one FIELD a n ;VARIANT VARIANT two FIELD b r ;VARIANT ;ENUM"
-   7119 enum-ctor-test:CTOR-REJECT
-s" ENUM-DECL:ED-RUN rollctor2 DERIVE eq VARIANT tag FIELD a n ;VARIANT ;ENUM"
-   7110 enum-ctor-test:CTOR-REJECT
-
 \ A later constructor collides after the first has entered the generation plan.
 : ROLLCOLL:TAKEN ( -- n ) 37 ;
 s" ENUM-DECL:ED-RUN rollcoll fresh taken ;ENUM"
@@ -255,10 +248,8 @@ undefine ROLLP:UNMAKE
 s" STRUCTURE rollp FIELD value n ;STRUCTURE" evaluate-closed
 s" RP-VALID ( n -- rollp ) ROLLP:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
 
-\ 21. POLICY packed-tag with DERIVE eq: an n payload declares, and a pointer payload
-\     is refused at the constructor commit (no derived equality, 7119).
+\ 21. POLICY packed-tag with DERIVE eq declares.
 s" ENUM-DECL:ED-RUN lay-keep POLICY packed-tag DERIVE eq VARIANT one FIELD p n ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
-s" ENUM-DECL:ED-RUN lay-drop POLICY packed-tag DERIVE eq VARIANT one FIELD p ptr n ;VARIANT ;ENUM" TEST-EVAL:RC 7119 T=
 
 \ 22. Each case asserts the whole rendered line, so text the declaration
 \     supplies cannot satisfy it by appearing elsewhere in the buffer.
@@ -469,11 +460,9 @@ s" ENUM-DECL:ED-RUN dgdgd<a> DERIVE eq VARIANT vv ;VARIANT ;ENUM" TEST-EVAL:RC 7
 s" habu: bad enum declaration 'dgdgd': derive requires a concrete (arity 0) family at 'eq'"
 DECL-DIAG:HAS? TTRUE
 
-\      7119 raised by the constructor participant's payload-role check, two
-\      phases after the body: no reason is armed for it, so the table answers.
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dgroleq DERIVE eq VARIANT vv FIELD p ptr n ;VARIANT ;ENUM" TEST-EVAL:RC 7119 T=
-s" habu: bad enum declaration 'dgroleq': a payload type or role has no derived equality at 'dgroleq'"
+s" habu: bad enum declaration 'dgroleq': pointer payloads have no derived equality at 'ptr'"
 DECL-DIAG:HAS? TTRUE
 
 \      7110 raised by the variant-name gate, and 7101 raised by the field record:

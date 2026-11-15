@@ -174,8 +174,11 @@ ED-RESET
    OUTCOME-NAMES @ 0 <> IF
       na nu NAME-CHECK THEN
    0 FIELD-MISS !
-   NEXT RESOLVE-TYPE {: node:n :}
-   FIELD-MISS @ 0= IF na nu node EMIT-FIELD THEN ;
+   NEXT {: ta:ptr tu:n :}
+   ta tu RESOLVE-TYPE {: node:n :}
+   FIELD-MISS @ 0= IF
+      ta tu FAM @ node REQUIRE-DERIVABLE
+      na nu node EMIT-FIELD THEN ;
 
 : VARIANT-NAME ( -- ptr u8 n )
    NEXT dup 0= IF
@@ -275,8 +278,6 @@ ED-RESET
    TDECL-NICHE-MESSAGE$ E-POLICY DECL-REJECT:REJECT throw ;
 
 \ TAG> builds each value from its tag alone, so no variant may carry a payload.
-\ Checked here, not at the constructor commit, whose E-DERIVE renders the
-\ equality reason from the code table.
 : TAG-REQUIRE ( -- )
    FAM @ TFAM-DERIVE-TAG? 0= IF EXIT THEN
    NFLD @ 0= IF EXIT THEN

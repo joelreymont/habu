@@ -754,6 +754,40 @@ create TDV-BADLETTER 1 allot
    REPEAT drop
    fam TDV-SS @ TDV-PC @ TDECL-VPAY-ARITY
    fam TDECL-VARIANT-CLOSE ;
+
+\ Empty when an integer compares by `=` or a family by its own EQ and HASH; no
+\ checked pointer equality exists, and comparing a linear value consumes it.
+public
+
+: TDECL-DERIVE-WHY ( n n -- ptr u8 n )
+   {: fam:n node:n :}
+   node SCHEMA-CON? IF
+      node SCHEMA-A@ CT-INT? IF s" " EXIT THEN
+      s" payload type has no derived equality" EXIT THEN
+   node SCHEMA-PTR? IF
+      s" pointer payloads have no derived equality" EXIT THEN
+   node SCHEMA-APP? 0= IF
+      s" payload role has no derived equality" EXIT THEN
+   node SCHEMA-A@ {: ff:n :}
+   ff TFAM-GEN-PUBLIC? 0= IF
+      ff TFAM-PKG$ fam TFAM-PKG$ CORE-STR=CI 0= IF
+         s" field family's derived words are private to its package"
+         EXIT THEN THEN
+   fam TFAM-DERIVE-EQ? ff TFAM-DERIVE-EQ? 0= and IF
+      s" field family must also derive eq" EXIT THEN
+   fam TFAM-DERIVE-HASH? ff TFAM-DERIVE-HASH? 0= and IF
+      s" field family must also derive hash" EXIT THEN
+   s" " ;
+
+private
+
+: TDECL-REQUIRE-DERIVABLE ( ptr u8 n n n -- )
+   {: ta:ptr tu:n fam:n node:n :}
+   fam TFAM-DERIVE-EQ? fam TFAM-DERIVE-HASH? or 0= IF EXIT THEN
+   fam node TDECL-DERIVE-WHY {: wa:ptr wu:n :}
+   wu 0= IF EXIT THEN
+   ta tu wa wu E-TDECL-DERIVE TDECL-THROW ;
+
 : TDECL-VARIANT ( n -- ) {: fam:n :}
    TDECL-VARIANT-NAME
    fam TFAM-DERIVE-ANY? TDV-NA @ TDV-NU @ TFAM-DERIVED-TAIL? and IF
@@ -763,8 +797,9 @@ create TDV-BADLETTER 1 allot
    BEGIN
       TDECL-NEXT
       2dup s" ;variant" CORE-STR=CI IF 2drop fam TDECL-VARIANT-FINISH EXIT THEN
-      TDECL-VPAY-ELEM
-      SIG-UNRES @ IF drop ELSE
+      2dup TDECL-VPAY-ELEM
+      SIG-UNRES @ IF drop 2drop ELSE
+         >r fam r@ TDECL-REQUIRE-DERIVABLE r>
          dup fam swap TFAM-SCH-WIDTH TDV-PW @ + TDV-PW ! TDV-PAY+
       THEN
    AGAIN ;
@@ -855,16 +890,8 @@ private
    vstart TDECL-NICHE-SHAPE? IF EXIT THEN
    TDECL-NICHE-THROW ;
 
-\ `DERIVE <feature>...` follows the POLICY position, before the variants/fields.
-\ eq and hash need an arity-0 family, init a product, tag an ENUM (so
-\ under SUMTYPE and PRODUCT it always rejects); order rejects as not supported;
-\ an unknown first token rejects, and the list ends at the first non-feature
-\ token by pushback. With eq or hash, payload roles are checked per
-\ variant/field after the block parses (TDECL-DERIVE-REQUIRE): integer scalars
-\ compare with `=`; pointer payloads have no derived equality (no checked
-\ pointer-equality surface exists); other scalars reject, linear ones because
-\ comparing consumes them; a family-typed field compares through its family's
-\ EQ and hashes through its HASH, so that family derives what the outer does.
+\ `DERIVE <feature>...` follows POLICY and precedes every VARIANT and FIELD, so
+\ each payload is judged against the family's final flags as it is read.
 
 : TDECL-DERIVE-GUARD ( ptr u8 n n -- ) {: a:ptr u:n fam:n :}
    fam TFAM-ARITY@ 0 <> IF
@@ -902,46 +929,6 @@ private
    fa fu fam TDECL-DERIVE-SET          \ the FIRST token must be a feature (unknown rejects);
    BEGIN fam TDECL-DERIVE-MORE? 0= UNTIL ;   \ later tokens end the order-free list by pushback
 
-\ payload-role gate: every payload/field schema node must be
-\ derivably comparable, else the DECLARATION rejects naming the exact role.
-: TDECL-DERIVE-FIELD-OK ( n n -- ) {: fam:n node:n :}
-   node SCHEMA-A@ {: ff:n :}
-   ff TFAM-GEN-PUBLIC? 0= IF
-      ff TFAM-PKG$ fam TFAM-PKG$ CORE-STR=CI 0= IF
-         ff TFAM-NAME$
-         s" field family's derived words are private to its package"
-         E-TDECL-DERIVE TDECL-THROW THEN THEN
-   fam TFAM-DERIVE-EQ? ff TFAM-DERIVE-EQ? 0= and IF
-      ff TFAM-NAME$
-      s" field family must also derive eq" E-TDECL-DERIVE TDECL-THROW THEN
-   fam TFAM-DERIVE-HASH? ff TFAM-DERIVE-HASH? 0= and IF
-      ff TFAM-NAME$
-      s" field family must also derive hash" E-TDECL-DERIVE TDECL-THROW THEN ;
-
-: TDECL-DERIVE-NODE-OK ( n n -- ) {: fam:n node:n :}
-   node SCHEMA-CON? IF
-      node SCHEMA-A@ CT-INT? 0= IF
-         node SCHEMA-A@ CT-NAME$
-         s" payload type has no derived equality" E-TDECL-DERIVE TDECL-THROW THEN
-      EXIT THEN
-   node SCHEMA-PTR? IF
-      TDN-A @ TDN-U @
-      s" pointer payloads have no derived equality" E-TDECL-DERIVE TDECL-THROW THEN
-   node SCHEMA-APP? IF fam node TDECL-DERIVE-FIELD-OK EXIT THEN
-   TDN-A @ TDN-U @
-   s" payload role has no derived equality" E-TDECL-DERIVE TDECL-THROW ;
-
-: TDECL-DERIVE-VARIANT ( n n -- ) {: fam:n vid:n :}
-   vid SUMV-PAY-N 0 ?do
-      fam vid i SUMV-PAY-ROOT SCHEMA-ROOT@ TDECL-DERIVE-NODE-OK
-   loop ;
-
-public
-
-: TDECL-DERIVE-REQUIRE ( n n n -- ) {: fam:n vstart:n count:n :}
-   fam TFAM-DERIVE-EQ? fam TFAM-DERIVE-HASH? or 0= IF EXIT THEN
-   vstart count + vstart ?do fam i TDECL-DERIVE-VARIANT loop ;
-
 \ --- registration entry points (verify-source and the definers below).
 
 private
@@ -960,7 +947,6 @@ private
    SIG-UNRES @ IF E-TDECL-UNRESOLVED throw THEN
    TDV-N @ 0= IF TDN-A @ TDN-U @ s" empty sum" E-TDECL-SYNTAX TDECL-THROW THEN
    fam vstart TDECL-NICHE-REQUIRE
-   fam vstart TDV-N @ TDECL-DERIVE-REQUIRE
    fam vstart TDV-N @ TFAM-VAR-RANGE!
    fam TDV-MAX @ TFAM-SLOTS!
    fam TDECL-LAYOUT-DESC
@@ -1040,13 +1026,15 @@ private
    TDECL-NEXT {: fna:ptr fnu:n :}
    fna fnu TDECL-REQUIRE-FIELD-NAME
    SCHEMA-ROOT-N@ {: ss:n :}
-   TDECL-NEXT TDECL-FIELD-ELEM {: node:n :}
+   TDECL-NEXT {: ta:ptr tu:n :}
+   ta tu TDECL-FIELD-ELEM {: node:n :}
    SIG-UNRES @ IF
       fna fnu TDECL-SEEN? IF
          fna fnu s" duplicate field" E-TFAM-DUP TDECL-THROW THEN
    THEN
    fna fnu TDECL-SEEN+
    SIG-UNRES @ IF EXIT THEN
+   ta tu fam node TDECL-REQUIRE-DERIVABLE
    node SCHEMA-ROOT+ drop    \ one field type (family/letter/con/ptr T)
    fam ss SCHEMA-ROOT@ TFAM-SCH-WIDTH {: fw:n :}
    fna fnu TDECL-TOK!
@@ -1090,8 +1078,7 @@ private
    fam fstart TDP-N @ TFAM-FLD-RANGE!
    fam TDP-W @ TFAM-SLOTS!
    fam TDECL-LAYOUT-DESC
-   fam rstart TDECL-PRODUCT-ROWS
-   fam fam TFAM-VAR-START@ 1 TDECL-DERIVE-REQUIRE ;
+   fam rstart TDECL-PRODUCT-ROWS ;
 
 \ Both entries run the body inside one declaration transaction: field rows go
 \ through DECL-EVENT, which only an open transaction admits. TDECL-RUN stays
@@ -1533,7 +1520,7 @@ variable TDECL-U
 \ constructor package (TDECL-CTOR-PUBLISH exits early), so SUMV-CTOR-PKG$ would
 \ name nothing. A private or OPAQUE family's words bind in the declaring package,
 \ so only a declaration in that package derives through them
-\ (TDECL-DERIVE-FIELD-OK).
+\ (TDECL-DERIVE-WHY).
 : TDGEN-DRV-REF ( n ptr u8 n -- ) {: fam:n ta:ptr tu:n :}
    fam TFAM-GEN-PUBLIC? 0= IF
       fam TFAM-NAME$ ta tu TF-CTOR-PRIV$ TDGEN-APP EXIT THEN

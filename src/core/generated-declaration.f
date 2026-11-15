@@ -210,10 +210,7 @@ s" unknown payload type" E-TDECL-PAYLOAD EXPLAIN
 s" unknown layout policy" E-TDECL-POLICY EXPLAIN
 s" invalid layout policy for recursive sum" E-TDECL-RECURSIVE EXPLAIN
 s" declared name too long" E-TDECL-CAP EXPLAIN
-\ E-TDECL-DERIVE reaching the table (rather than an armed front-end reason)
-\ means the derive requirement failed later, in the constructor participant's
-\ payload role and equality checks, not that the feature token was unknown.
-s" a payload type or role has no derived equality" E-TDECL-DERIVE EXPLAIN
+s" derive requirement not met" E-TDECL-DERIVE EXPLAIN
 \ Both front ends arm "reserved name" at their own name gates, so E-TDECL-NAME
 \ reaching the table was raised by a deeper owner: the variant-name gate (a
 \ reserved tail, a family-name collision or a word the DERIVE clause generates)
@@ -398,17 +395,14 @@ public
    ARMED-FAM {: fam:n :}
    fam NO-FAMILY <> IF fam GEN-REQUIRE THEN ;
 
-\ Mirrors sumtype.f CHECKER-DEFSUM-BODY's close. Both role gates read committed
-\ rows, so they cannot run in the body phase. Replay builds and checks the same
-\ words to publish their effects and emits no runtime code: a call needs the
-\ checked effect, not only the package stamp.
+\ Replay builds and checks the same words to publish their effects and emits no
+\ runtime code: a call needs the checked effect, not only the package stamp.
 : PART-COMMIT ( -- )
    ARMED-FAM {: fam:n :}
    fam NO-FAMILY = IF EXIT THEN
    fam GEN-REQUIRE
    fam TFAM-VAR-START@ {: vstart:n :}
    fam TFAM-VAR-COUNT@ {: count:n :}
-   fam vstart count TDECL-DERIVE-REQUIRE
    fam vstart count TDECL-CTOR-PUBLISH
    DECL-REPLAY:RP-ACTIVE? IF fam TDECL-CTOR-REPLAY EXIT THEN
    fam TDECL-CTOR-WORDS-BODY ;
@@ -476,13 +470,21 @@ E-TDECL-ARITY constant E-ARITY      \ malformed type parameter header
 E-TDECL-PAYLOAD constant E-PAYLOAD  \ unresolved / unknown field type
 E-TDECL-NAME constant E-NAME        \ reserved or colliding family name
 E-TDECL-POLICY constant E-POLICY    \ unknown or not-yet-supported layout policy
-E-TDECL-DERIVE constant E-DERIVE    \ unknown or not-yet-supported derive feature
+E-TDECL-DERIVE constant E-DERIVE    \ a DERIVE requirement not met
 E-TDECL-CAP constant E-CAP          \ a family, variant or field name longer than NAME-MAX
 E-TFAM-CASE constant E-CASE         \ family name is not a lowercase canonical tail
 E-TFAM-DUP constant E-DUP           \ duplicate family, variant or field tail, raised by
                                     \ TFAM-DECL / SUMV-ADD / the field-event path; named
                                     \ here only so a reason can be armed before those calls
 7192 constant E-UNRESOLVED          \ private replay outcome after rollback
+
+: REQUIRE-DERIVABLE ( ptr u8 n n n -- )
+   {: ta:ptr tu:n fam:n node:n :}
+   fam TFAM-DERIVE-EQ? fam TFAM-DERIVE-HASH? or 0= IF EXIT THEN
+   fam node TDECL-DERIVE-WHY {: wa:ptr wu:n :}
+   wu 0= IF EXIT THEN
+   ta tu DECL-REJECT:TOKEN!
+   wa wu E-DERIVE DECL-REJECT:REJECT throw ;
 
 110 constant ASCII-N
 102 constant ASCII-F

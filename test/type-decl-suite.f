@@ -2029,12 +2029,8 @@ TDIAG-BUF 8192 REJECTION:BUFFER!
 s" PRODUCT tdfb DERIVE hash FIELD c tdrv ;PRODUCT" E-TDECL-DERIVE TDT-NEG
 REJECTION:BUFFER$ s" field family must also derive hash" CONTAINS? TTRUE
 
-\ Unified named-field ENUM metadata drives the same derivation validator and
-\ semantic generators. The constructor participant runs TDECL-DERIVE-REQUIRE,
-\ TDECL-CTOR-PUBLISH and the derived-word publisher on the real declaration
-\ path; it commits after DECL-EVENT has promoted these FIELD rows past
-\ PF-COMMIT-N, the committed view TDECL-DERIVE-REQUIRE reads, so the declaration
-\ below is the whole setup.
+\ A full-mode ENUM builds its derived words at commit, once its FIELD rows are
+\ committed, so the declaration below is the whole setup.
 ENUM-DECL:ED-RUN tdnu DERIVE eq hash
   VARIANT empty ;VARIANT
   VARIANT pair FIELD first n FIELD second n ;VARIANT
@@ -2060,10 +2056,7 @@ TDNU-TAG-PAIR 1 T=
 TDNU-HASH-EQ TTRUE
 TDNU-HASH-ORDER TFALSE
 
-\ The named-field derivation validator resolves the field schema too: a pointer
-\ payload rejects at declaration time, like a SUMTYPE, because the constructor
-\ participant runs TDECL-DERIVE-REQUIRE inside the declaration's own reversible
-\ commit.
+\ A pointer field rejects at its type, as a SUMTYPE pointer payload does.
 s" ENUM-DECL:ED-RUN tdnu-bad DERIVE eq VARIANT hold FIELD raw ptr u8 ;VARIANT ;ENUM"
    E-TDECL-DERIVE TDT-NEG
 
