@@ -1,7 +1,6 @@
 \ verify-diagnostics.f - schema-1 fault records for quiet source verification.
 \ Returned bytes belong to this package and last until its next record.
 
-require src/lib/fs.f
 require src/lib/json.f
 require src/lib/source-lex.f
 require src/habu/verify-source.f
@@ -182,10 +181,7 @@ public
       VERIFY:DUPLICATE VERIFY:SOURCE-COMPOSE-STOPPED-SOURCE$ drop
       VERIFY:SOURCE-COMPOSE-STOPPED$ DUP-RECORD$ exit
    then
-   rc RC>N VERIFY:E-SOURCE-READ = if
-      VERIFY:FAULT-TARGET$ FS:EXISTS? if UNREADABLE-SOURCE else MISSING-SOURCE then
-   else rc RC>N then
-   VERIFY:TOKEN-BYTE@ VERIFY:FAULT-LEN@
+   rc RC>N VERIFY:TOKEN-BYTE@ VERIFY:FAULT-LEN@
    VERIFY:SOURCE-COMPOSE-STOPPED-SOURCE$
    VERIFY:SOURCE-COMPOSE-STOPPED$
    LOADER-RECORD$ ;

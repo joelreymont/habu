@@ -742,10 +742,6 @@ using SOURCE-ROOT
    then
    -1 INCLUDE-FD ! ;
 
-: INCLUDE-IO-DIE ( ptr u8 n -- )
-   INCLUDE-CLOSE
-   INCLUDE-DIE ;
-
 \ The loader word, the source token t tu, has no path after it. It is written
 \ through its help, and the caller stops it.
 : INCLUDE-NO-PATH ( ptr u8 n -- ) {: t:ptr tu:n :}
@@ -1271,24 +1267,46 @@ variable REQUEST-AT-U
    e 13 = if s" permission denied" exit then
    e 20 = if s" a directory in the path is a file" exit then
    e 21 = if s" is a directory" exit then
+   e 5 = if s" input/output error" exit then
    s" cannot open" ;
 
-public
-
-\ The file path was found but its open failed with errno e. Placed at the
-\ request t tu, or at path when t tu is empty. Public so the walks that open a
-\ found file reject it with the loader's record.
-: UNREADABLE-SOURCE ( ptr u8 n ptr u8 n n -- )
-   {: t:ptr tu:n path:ptr pathu:n e:n :}
+\ The one record of a found file path the system will not read to its end,
+\ which why labels. Placed at the request t tu, or at path when t tu is empty.
+\ It is written through the start of its help: the caller writes the help.
+: UNREAD-RECORD ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: t:ptr tu:n path:ptr pathu:n why:ptr whyu:n :}
    tu 0= if path pathu else t tu then {: p:ptr pu:n :}
    s" E-UNREADABLE-SOURCE" REJECTION:OPEN
    s" cannot read `" REJECTION:EMIT-STR  p pu REJECTION:EMIT-STR
    96 REJECTION:EMIT1
-   p pu REJECTION:AT  e OPEN-ERRNO$ REJECTION:EMIT-STR
+   p pu REJECTION:AT  why whyu REJECTION:EMIT-STR
    s" resolved" REJECTION:NOTE  path pathu REJECTION:EMIT-STR
-   REJECTION:HELP
+   REJECTION:HELP ;
+
+public
+
+\ The file path was found but its open or a read of it failed with errno e.
+\ Placed at the request t tu, or at path when t tu is empty. Public so the walks
+\ that read a found file reject it with the loader's record.
+: UNREADABLE-SOURCE ( ptr u8 n ptr u8 n n -- )
+   {: t:ptr tu:n path:ptr pathu:n e:n :}
+   t tu path pathu e OPEN-ERRNO$ UNREAD-RECORD
    s" check that the file exists and is readable" REJECTION:EMIT-STR
    INCLUDE-IO-RC REJECTION:STOP ;
+
+\ The file path changed while it was read, so its bytes may be no single
+\ version of it. Placed as UNREADABLE-SOURCE places its record, written through
+\ its help: the caller stops it with INCLUDE-IO-RC.
+: CHANGED-SOURCE ( ptr u8 n ptr u8 n -- )
+   s" changed while it was read" UNREAD-RECORD
+   s" load it again once nothing is writing it" REJECTION:EMIT-STR ;
+
+\ The file path is a stream, not a regular file, so a reader that stamps what
+\ it reads cannot stamp it. Placed as UNREADABLE-SOURCE places its record,
+\ written through its help: the caller stops it with INCLUDE-IO-RC.
+: UNSTAMPED-SOURCE ( ptr u8 n ptr u8 n -- )
+   s" is not a regular file" UNREAD-RECORD
+   s" load a regular file, whose bytes a stamp can name" REJECTION:EMIT-STR ;
 
 \ Names every path the request a u was looked for at, in SEARCH-ROOTS's order;
 \ an entry's and an absolute request's is one. Placed at p. Public so the
@@ -1727,7 +1745,8 @@ variable LAST-LOAD-EVAL-OK
 \ when the top frame, its size, execution copy or root-run count changes, so
 \ they name the file being read, or 0 for none (the REPL, a stdin session, the
 \ boot prefix, a root program run over an open file: FR-ROOT-RUNS). A file
-\ that cannot be opened publishes the frame that asked for it (INCLUDE-OPEN-DIE).
+\ that cannot be opened or read publishes the frame that asked for it
+\ (INCLUDE-UNREADABLE).
 : PUBLISH-NONE ( -- )
    0 data-base SRCLOC:PATH-CELL + !
    0 data-base SRCLOC:PATHLEN-CELL + !
@@ -1809,14 +1828,6 @@ variable LAST-LOAD-EVAL-OK
    fresh TOP!
    PUBLISH-LOCATION ;
 
-: INCLUDE-READ-DONE? ( -- bool )
-   INCLUDE-U @ ROOM = if INCLUDE-U @ 1+ INCLUDE-U @ GROW then
-   INCLUDE-FD @ SOURCE INCLUDE-U @ + ROOM INCLUDE-U @ - read INCLUDE-RD !
-   INCLUDE-RD @ 0 < if s" include: read failed" INCLUDE-IO-DIE then
-   INCLUDE-RD @ 0 = if INCLUDE-TRUE exit then
-   INCLUDE-U @ INCLUDE-RD @ + INCLUDE-U !
-   INCLUDE-FALSE ;
-
 \ The open frame's stamp, from a stat of the path taken before the file is
 \ opened, so a change during the read leaves a stamp no later load matches.
 : STAMP! ( ptr u8 -- )
@@ -1835,23 +1846,34 @@ variable LAST-LOAD-EVAL-OK
    s" call it only from a reader installed with `SOURCE-INPUT:USE`, for the path the loader passes"
    PATH-DIE ;
 
-\ The file a u the resolver found and open-rd could not open: the record
-\ stands at the request in the file that asked for it, or at a u for an entry.
-: INCLUDE-OPEN-DIE ( ptr u8 n -- ) {: a:ptr u:n :}
-   data-base FS-ABI:ERRNO-OFF + @ {: e:n :}
+\ The file a u the resolver found would not open or read, the system's last
+\ call failing with errno e: the record stands at the request in the file that
+\ asked for it, or at a u for an entry.
+: INCLUDE-UNREADABLE ( ptr u8 n n -- ) {: a:ptr u:n e:n :}
+   INCLUDE-CLOSE
    TOP@ FRAME-PREV @ {: prev:ptr :}
    prev 0= if NULL-PTR 0 else prev PUBLISH-FRAME REQUEST-AT$ then
    a u e UNREADABLE-SOURCE ;
 
+: INCLUDE-ERRNO ( -- n )   data-base FS-ABI:ERRNO-OFF + @ ;
+
 : INCLUDE-OPEN ( ptr u8 n -- ) {: a:ptr u:n :}
    a u INCLUDE-PATH0 open-rd INCLUDE-FD !
-   INCLUDE-FD @ 0 < if a u INCLUDE-OPEN-DIE then ;
+   INCLUDE-FD @ 0 < if a u INCLUDE-ERRNO INCLUDE-UNREADABLE then ;
 
-: INCLUDE-READ-ALL ( ptr u8 n -- ptr u8 n )
-   2dup INCLUDE-PATH0 STAMP!
-   INCLUDE-OPEN
+: INCLUDE-READ-DONE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   INCLUDE-U @ ROOM = if INCLUDE-U @ 1+ INCLUDE-U @ GROW then
+   INCLUDE-FD @ SOURCE INCLUDE-U @ + ROOM INCLUDE-U @ - read INCLUDE-RD !
+   INCLUDE-RD @ 0 < if a u INCLUDE-ERRNO INCLUDE-UNREADABLE then
+   INCLUDE-RD @ 0 = if INCLUDE-TRUE exit then
+   INCLUDE-U @ INCLUDE-RD @ + INCLUDE-U !
+   INCLUDE-FALSE ;
+
+: INCLUDE-READ-ALL ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   a u INCLUDE-PATH0 STAMP!
+   a u INCLUDE-OPEN
    0 INCLUDE-U !
-   begin INCLUDE-READ-DONE? 0= while repeat
+   begin a u INCLUDE-READ-DONE? 0= while repeat
    INCLUDE-CLOSE
    SOURCE INCLUDE-U @ ;
 
