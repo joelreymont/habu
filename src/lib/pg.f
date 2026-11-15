@@ -144,7 +144,7 @@ $7FFFFFFF constant BINARY-MAX             \ a libpq parameter length is a C int
 $30 constant DIGIT-ZERO
 0 constant NO-DEADLINE                    \ an operation on a connection with no bound
 1000000 constant NS-PER-MS
-$7FFFFFFF constant WAIT-MAX               \ the longest one NOTIFIED? poll waits, in ms; DEADLINE!'s largest bound
+$7FFFFFFF constant WAIT-MAX               \ the longest one NOTIFIED? or NOTIFIED poll waits, in ms; DEADLINE!'s largest bound
 65535 constant PARAM-MAX                  \ a Bind message counts its parameters in 16 bits
 
 SCRATCH-VARIABLE CONN-CAPACITY
@@ -1631,7 +1631,7 @@ public
 
 
 \ True when what has arrived ends the connection, which it then closes; it never
-\ waits, needs AIO:START, and leaves notifications it reads for NOTIFIED?.
+\ waits, needs AIO:START, and leaves notifications it reads for NOTIFIED? or NOTIFIED.
 : ENDED? ( connection -- bool )
    CONN-SLOT {: slot:n :}
    OP-START
@@ -1783,13 +1783,13 @@ public
 \ DEADLINE! bounds every later WITH- scope's operation and transaction verb on
 \ the connection: each operation's whole wait ends that many milliseconds after
 \ it starts; one in flight keeps the deadline it started with. 0, the default,
-\ sets no bound; a bound outside 0..$7FFFFFFF ms is E-BOUND. CONNECT, AWAIT and
-\ NOTIFIED? are not bounded. On expiry the connection closes and the operation
-\ throws E-DEADLINE. While the bound is nonzero, every close but an explicit
-\ CLOSE - expiry, a transport or readiness failure, an exception caught while
-\ waiting, a failed ROLLBACK under a body's throw - finishes it without the
-\ cancel, as ABANDON does, since a cancel to an unreachable server would
-\ stretch the bound; the primary exception stands.
+\ sets no bound; a bound outside 0..$7FFFFFFF ms is E-BOUND. CONNECT, AWAIT,
+\ NOTIFIED? and NOTIFIED are not bounded. On expiry the connection closes and
+\ the operation throws E-DEADLINE. While the bound is nonzero, every close but
+\ an explicit CLOSE - expiry, a transport or readiness failure, an exception
+\ caught while waiting, a failed ROLLBACK under a body's throw - finishes it
+\ without the cancel, as ABANDON does, since a cancel to an unreachable server
+\ would stretch the bound; the primary exception stands.
 : DEADLINE! ( connection ms -- )
    {: handle:connection bound:ms :}
    handle CONN-SLOT {: slot:n :}
