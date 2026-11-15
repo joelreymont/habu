@@ -93,13 +93,7 @@ variable IN-BODY                \ those tokens end inside a definition body
    0 ERR-COL !
    false HALTED ! ;
 
-: SET-TABLES-RELEASED ( -- )
-   construct tables released TABLES ! ;
-
-SET-TABLES-RELEASED
-
-: SET-TABLES-PARTIAL ( -- )
-   construct tables partial TABLES ! ;
+TABLES-RELEASED TABLES !
 
 : INIT-VECTORS ( -- )
    KIND-V INIT-ONE
@@ -154,7 +148,7 @@ SET-TABLES-RELEASED
 : RESET-TABLES ( -- )
    TABLES @
    MATCH tables
-      released OF SET-TABLES-PARTIAL INIT-VECTORS ENDOF
+      released OF TABLES-PARTIAL TABLES ! INIT-VECTORS ENDOF
       partial OF INIT-VECTORS ENDOF
       made OF CLEAR-VECTORS ENDOF
    ;MATCH
@@ -825,7 +819,7 @@ public
 \ was given or made; the next SOURCE makes them again.
 : RELEASE ( -- )
    DISPOSE-VECTORS
-   SET-TABLES-RELEASED
+   TABLES-RELEASED TABLES !
    NULL-PTR SRC!  0 SRC-U !  0 TOK-N !  0 POS !
    LOCALS-RESET ;
 
