@@ -1,0 +1,29 @@
+name: Recover the T0 compiler
+
+on:
+  push:
+    branches: [x86-bootstrap-validation]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Build the checked bootstrap stages
+        run: bash ci/recovery/run.sh
+      - name: Retain the hosts and diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: t0-recovery
+          path: ${{ runner.temp }}/habu-t0-recovery/results
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 30
