@@ -549,6 +549,11 @@ SUITE fsm
    src/lib/fsm-test.f
 ;SUITE
 
+\ Rotations of a 3D affine transform about a line, and points mapped by one.
+SUITE affine
+   src/lib/affine-test.f
+;SUITE
+
 SUITE log
    src/lib/log-test.f
 ;SUITE
