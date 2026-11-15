@@ -437,8 +437,13 @@ variable EXT-I                       \ BY-EXT's next row to lay
    SPACE-END {: end:n :}
    v end = if LAID-END @ exit then
    v end > if v BASE @ - exit then
-   s" link: a DATA pointer into data the link dropped: " SAY v SAY-INT SAY-CR
-   s" link: a DATA pointer into data the link dropped" 74 die ;
+   s" E-LINK-DATA-POINTER" REJECTION:OPEN
+   s" the data address " REJECTION:EMIT-STR  v REJECTION:EMIT-N
+   s"  lies in no data the program keeps" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" point into the data a variable, buffer or allot made, never at the bytes between"
+   REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ A host address in the open space as its offset in the image's data: an
 \ engine's from the space's start.
@@ -446,8 +451,13 @@ variable EXT-I                       \ BY-EXT's next row to lay
    {: v:n :}
    v BASE @ - {: off:n :}
    off 0<  off SPACE-SIZE @ >=  or if
-      s" link: a DATA pointer outside the build's space: " SAY v SAY-INT SAY-CR
-      s" link: a DATA pointer outside the build's space" 74 die
+      s" E-LINK-DATA-POINTER" REJECTION:OPEN
+      s" the data address " REJECTION:EMIT-STR  v REJECTION:EMIT-N
+      s"  lies outside the build's space" REJECTION:EMIT-STR
+      REJECTION:HELP
+      s" store in a DATA pointer cell only 0 or an address in the data the build allots"
+      REJECTION:EMIT-STR
+      CHECKER-REJECT-RC REJECTION:STOP
    then
    ENGINE? @ if off exit then
    v LAID-OFFSET ;
@@ -465,9 +475,16 @@ variable EXT-I                       \ BY-EXT's next row to lay
 
 : CELL-FITS ( n -- )
    {: off:n :}
-   off CELL + DATA-IMAGE-LEN > if
-      s" link: a declared cell past the build's data, at offset " SAY off SAY-INT SAY-CR
-      s" link: a declared cell lies past the build's data" 74 die
+   DATA-IMAGE-LEN {: len:n :}
+   off CELL + len > if
+      s" E-LINK-DATA-CELL" REJECTION:OPEN
+      s" the declared cell at offset " REJECTION:EMIT-STR  off REJECTION:EMIT-N
+      s"  lies past the program's " REJECTION:EMIT-STR  len REJECTION:EMIT-N
+      s"  bytes of data" REJECTION:EMIT-STR
+      REJECTION:HELP
+      s" declare a cell (`xt!`, `ptr-cell-mark`) only in data the build allotted, below `here`"
+      REJECTION:EMIT-STR
+      CHECKER-REJECT-RC REJECTION:STOP
    then ;
 
 : EACH-KEPT ( [ n -- ] -- )

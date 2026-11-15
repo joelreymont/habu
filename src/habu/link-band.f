@@ -88,29 +88,32 @@ variable UNSAFE-COUNT
    s" emission " SAY e SAY-INT ;
 
 
-\ The name of the dictionary record entering at a, else a itself.
-: TARGET. ( n -- )
+\ The dictionary record entering at a, or -1.
+: ENTRY-REC ( n -- n )
    {: a:n :}
    ndict@ 0 ?do
-      i XREF-REC XREF-START a = if i XREF-REC XREF-NAME$ SAY unloop exit then
+      i XREF-REC XREF-START a = if i unloop exit then
    loop
-   a SAY-INT ;
+   -1 ;
+
+\ The name of the dictionary record entering at a, else a itself, written into
+\ the open record.
+: TARGET-STR ( n -- )
+   {: a:n :}
+   a ENTRY-REC {: r:n :}
+   r 0 < if s" the code at " REJECTION:EMIT-STR  a REJECTION:EMIT-N exit then
+   s" `" REJECTION:EMIT-STR  r XREF-REC XREF-NAME$ REJECTION:EMIT-STR
+   s" `" REJECTION:EMIT-STR ;
 
 
 \ Two records share a host entry only where they enter one emission at one
-\ offset; a does> companion enters its emission at its clause.
+\ offset; a does> companion enters its emission at its clause. The first filed
+\ stands.
 : FILE-ENTRY ( n -- )
    {: r:n :}
    r NSHADOW:RECORD@ XREF-REC XREF-START {: key:n :}
    key ENTRY-SLOT {: s:n :}
-   s ENTRY-USED @ 0<> if
-      s ENTRY-RECS @ {: q:n :}
-      q NSHADOW:EMISSION@ r NSHADOW:EMISSION@ =
-      q NSHADOW:ENTRY@ r NSHADOW:ENTRY@ = and if exit then
-      s" link: " SAY r NSHADOW:RECORD@ XREF-REC XREF-NAME$ SAY
-      s"  enters at two link addresses" SAY SAY-CR
-      s" link: one host entry at two link addresses" 76 die
-   then
+   s ENTRY-USED @ 0<> if exit then
    1 s ENTRY-USED !  key s ENTRY-KEYS !  r s ENTRY-RECS ! ;
 
 
@@ -234,8 +237,15 @@ variable UNSAFE-COUNT
    NSHADOW:BINDING CBIND:TARGET@ CTARGET:ARCH@  CTARGET-ARCH:WASM CTARGET-ARCH:EQ ;
 
 
+\ A build for a machine the linker has no part for, such as an x86-64 target.
+\ The linker holds no source place, so the record is unplaced.
 : NO-PART ( -- )
-   s" link: an emission of a machine the linker has no part for" 76 die ;
+   s" E-LINK-MACHINE" REJECTION:OPEN
+   s" the build's code is for a machine the linker cannot place: it places arm64 and Wasm code"
+   REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" build for macos-aarch64, linux-aarch64 or wasm" REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 
 \ The address value machine a's emission bytes b, s of them, hold at site for a row of
@@ -413,12 +423,7 @@ variable UNSAFE-COUNT
    {: a:n :}
    a NSHADOW:SOURCE-FUNCTION {: e:n f:n :}
    e 0< if exit then
-   e  e f NSHADOW:FUNCTION-OFFSET@  RANGE-REC {: r:n :}
-   r 0< if
-      s" link: no record holds the function at " SAY a SAY-INT SAY-CR
-      s" link: a function lies outside every record" 76 die
-   then
-   r MAKE-LIVE DRAIN ;
+   e  e f NSHADOW:FUNCTION-OFFSET@  RANGE-REC MAKE-LIVE DRAIN ;
 
 
 \ Host address a the program starts from: a record's or quotation's entry makes
@@ -440,26 +445,22 @@ variable UNSAFE-COUNT
    NSHADOW:RECORDS 0 ?do 1 i NSHADOW:EMISSION@ PLACED ! loop ;
 
 
-\ The dispatch cell of the defer whose record emission e holds, or 0.
+\ The dispatch cell of the defer whose record emission e holds, or 0. A
+\ defer's emission holds its record alone, so its trailer follows the emission.
 : EM-TRAILER ( n -- n )
    {: e:n :}
    e EM-FIRST @
    begin dup 0 >= while
       dup NSHADOW:RECORD@ XREF-REC {: rec:ptr :}
       rec NDICT:TRAILER-CELL {: cell:n :}
-      cell 0<> if
-         RANGE-END  e NSHADOW:SIZE <> if
-            s" link: the defer " SAY rec XREF-NAME$ SAY s"  does not end its routine" SAY SAY-CR
-            s" link: a defer does not end its routine" 76 die
-         then
-         cell exit
-      then
+      cell 0<> if drop cell exit then
       REC-NEXT @
    repeat
    drop 0 ;
 
 \ Each placed emission from A64ICODE:ASM-LEN on, in emission order, a defer's
-\ with room for its trailer when the output keeps a dictionary.
+\ with room for its trailer when the output keeps a dictionary. An arm64
+\ emission is whole instruction words, so every offset stays word-aligned.
 : LAYOUT ( bool -- )
    {: dict:bool :}
    NSHADOW:EMISSIONS OFFSETS-RESERVE  NSHADOW:EMISSIONS TRAILERS-RESERVE
@@ -469,10 +470,6 @@ variable UNSAFE-COUNT
       i PLACED @ 0= if
          -1 i OFFSETS !
       else
-         i NSHADOW:SIZE 3 and 0<> if
-            s" link: " SAY i ROUTINE. s"  is not whole 4-byte words" SAY SAY-CR
-            s" link: a routine is not whole 4-byte words" 76 die
-         then
          dup i OFFSETS !  i NSHADOW:SIZE +
          dict if i EM-TRAILER else 0 then {: cell:n :}
          cell i TRAILERS !
@@ -503,13 +500,26 @@ variable UNSAFE-COUNT
    ARM64:TEXT-VA  qe OFFSET@ +  qe qf NSHADOW:FUNCTION-OFFSET@ + ;
 
 
+\ A placed routine names code the target holds no copy of. Unplaced, as
+\ CANNOT-RUN's record is.
 : TARGET-ADDRESS ( n -- n )
    {: a:n :}
    a LINK-ADDRESS {: to:n :}
    to -1 <> if to exit then
-   s" link: " SAY PLACING @ ROUTINE. s"  names " SAY a TARGET.
-   s" , neither a target word nor a kernel primitive" SAY SAY-CR
-   s" link: a target routine names a word outside the target" 76 die ;
+   PLACING @ ROUTINE-NAME$ {: name:ptr nameu:n :}
+   s" E-LINK-FOREIGN-WORD" REJECTION:OPEN
+   nameu 0<> if
+      s" `" REJECTION:EMIT-STR  name nameu REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR
+   else
+      s" emission " REJECTION:EMIT-STR  PLACING @ REJECTION:EMIT-N
+   then
+   s"  calls " REJECTION:EMIT-STR  a TARGET-STR
+   s" , which is neither a word the build defines nor a primitive of the target's kernel"
+   REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" call only words the build's files define or the target's kernel provides"
+   REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 
 \ Emission e's code, then a defer's trailer: DEFER-MAGIC and its dispatch cell

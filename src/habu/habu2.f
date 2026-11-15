@@ -457,15 +457,8 @@ public
 
 ;package
 
-\ The active native compiler retains its checker even while a build replaces
-\ the source dictionary. The record's fields are the actual checker operations;
-\ a distinct target checker owns a second record during source replacement.
 package DECL-OWNER
 public
-
-: TARGET ( n label -- ) {: off:n absent:label :}
-   11 DATA NCOMP-DISPATCH:TARGET-DECL-CELL LDR,  11 absent CBZ,
-   11 11 off LDR,  11 absent CBZ, ;
 
 : SKIP-SAME ( n label -- ) {: off:n same:label :}
    LBL {: different:label :}
@@ -1766,7 +1759,7 @@ public
 
 \ x12 = absolute DP cut. Preserve x0..x17 for both recovery callers.
 : EMIT-ROLLBACK ( -- )
-   LBL LBL LBL {: addrfull:label no-owner:label missing:label :}
+   LBL LBL {: addrfull:label no-owner:label :}
    LROLLBACK LABEL@ LBL,
    \ Registration order is not address order: a late xt! can declare an
    \ older cell. Keep every row below the cut, preserving its relative order.
@@ -1774,8 +1767,7 @@ public
    \ rebuild it before lookup, so stale ordinals cannot survive this cut.
    MARK-SAVE
    SP SP 16 SUBI,  30 SP 0 STR,
-   11 DATA NCOMP-DISPATCH:TARGET-DECL-CELL LDR,  11 no-owner CBZ,
-   11 11 CHECKER-OWNER-ABI:GRID-REVOKE-OFF LDR,  11 missing CBZ,
+   CHECKER-OWNER-ABI:GRID-REVOKE-OFF no-owner DECL-OWNER:TARGET
    9 12 DATA SUB,  9 G-PUSH  11 BLR,
    no-owner LBL,
    30 SP 0 LDR,  SP SP 16 ADDI,
@@ -1827,9 +1819,7 @@ ardone LBL,
    addrfull LBL,
    1 LXTMSG LABEL@ ADR, 0 2 MOVZ,
    2 XTMSG-LEN MOVZ, NR-WRITE SYS,
-   0 SNAP-RELOC:XTCELL-RC MOVZ, NR-EXIT-GROUP SYS,
-   missing LBL,
-   9 -8574 LIT64,  9 G-PUSH  BTHROW ;
+   0 SNAP-RELOC:XTCELL-RC MOVZ, NR-EXIT-GROUP SYS, ;
 
 \ (MARK) spans [LMARK, end) as one sealed record: xt!'s direct BL lands on its entry.
 : EMIT-MARK ( -- )

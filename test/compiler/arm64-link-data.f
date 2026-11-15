@@ -167,15 +167,15 @@ DYNAMIC-BUFFER SECOND-LINK u8
 : NAMES-LABEL ( ptr u8 n -- ) s" the link names what it refuses" CHILD-LABEL ;
 
 : BAD-DATA ( CMD:command -- CMD:command )
-   s" data"  s" link: a DATA pointer outside the build's space" 74 BAD-CHILD
+   s" data"  s" error[E-LINK-DATA-POINTER]" 70 BAD-CHILD
    s" data" NAMES-LABEL
-   CMD:ERR$ s\" link: a DATA pointer outside the build's space: 1\n" CONTAINS? TTRUE ;
+   CMD:ERR$ s" the data address 1 lies outside the build's space" CONTAINS? TTRUE ;
 
 : BAD-HEADER ( CMD:command -- CMD:command )
-   s" header"  s" link: a build stored into a header cell the link writes" 76 BAD-CHILD
+   s" header"  s" error[E-LINK-HEADER-CELL]" 70 BAD-CHILD
    s" header" NAMES-LABEL
-   SB-RESET  s" link: the build stored into the header cell at offset " SB-APPEND
-   UNCGH-CELL FMT:SB-INT  10 SB-APPEND-C
+   SB-RESET  s" the build stored into the header cell at offset " SB-APPEND
+   UNCGH-CELL FMT:SB-INT  s" ," SB-APPEND
    CMD:ERR$ SB$ CONTAINS? TTRUE ;
 
 : BAD-EVAL ( CMD:command -- CMD:command )
