@@ -3000,13 +3000,8 @@ private
 
 public
 
-\ base-state reset. A defect while a field transaction is live, so a frame is
-\ never discarded under its token holder, and does not rewind PF-TX-SERIAL: the
-\ token counter stays monotonic for the process, so a token minted before a
-\ reset never aliases a transaction begun after it.
+\ base-state reset.
 : TFAM-RESET ( -- )
-   PF-TX-DEPTH @ IF
-      s" tfam: TFAM-RESET ran while a field transaction is open" 76 die THEN
    0 SVX-GEN !                           \ every variant row the index points at is going
    0 TFX-READY !                         \ ... and every family row the tail index chains
    0 VNX-READY !                         \ ... and every row the variant tail index chains
@@ -3069,11 +3064,10 @@ private
 4 cells constant TFRB.PFN-OFF
 5 cells constant TFRB.LAYN-OFF
 6 cells constant TFRB.PFCOMMITN-OFF
-7 cells constant TFRB.PFTXDEPTH-OFF
 
 public
 
-8 cells constant TF-RBF-REC
+7 cells constant TF-RBF-REC
 : TFRB.TFAMN ( ptr a -- ptr a ) TFRB.TFAMN-OFF + ;
 : TFRB.STRU ( ptr a -- ptr a ) TFRB.STRU-OFF + ;
 : TFRB.PKN ( ptr a -- ptr a ) TFRB.PKN-OFF + ;
@@ -3081,7 +3075,6 @@ public
 : TFRB.PFN ( ptr a -- ptr a ) TFRB.PFN-OFF + ;
 : TFRB.LAYN ( ptr a -- ptr a ) TFRB.LAYN-OFF + ;
 : TFRB.PFCOMMITN ( ptr a -- ptr a ) TFRB.PFCOMMITN-OFF + ;
-: TFRB.PFTXDEPTH ( ptr a -- ptr a ) TFRB.PFTXDEPTH-OFF + ;
 
 
 private
@@ -3119,12 +3112,6 @@ public
 
 package CHECKER-DECL-FRAME
 
-\ The field transactions open now are the ones open when the frame was saved.
-: PF-DEPTH= ( ptr n -- )
-   TFRB.PFTXDEPTH @ {: saved:n :}
-   saved PF-TX-DEPTH @ = IF EXIT THEN
-   s" pf: the field transactions open differ from those open at EXT-SAVE" 76 die ;
-
 : TF-RELEASE ( -- )
    TF-RBF-DEPTH @ 1 - TF-RBF-DEPTH ! ;
 
@@ -3138,7 +3125,6 @@ package CHECKER-DECL-FRAME
    PF-N @ r TFRB.PFN !
    LAY-N @ r TFRB.LAYN !
    PF-COMMIT-N @ r TFRB.PFCOMMITN !
-   PF-TX-DEPTH @ r TFRB.PFTXDEPTH !
    TF-RBF-DEPTH @ 1 + TF-RBF-DEPTH ! ;
 
 : TF-RESTORE-TOP ( ptr n -- )
@@ -3149,11 +3135,9 @@ package CHECKER-DECL-FRAME
    r TFRB.PFN @ r TFRB.PFCOMMITN @ PF-REWIND ;   \ the field rows this rejected declaration added
 
 : TF-RESTORE ( -- )
-   TF-RBF-TOP PF-DEPTH=
    TF-RBF-TOP TF-RESTORE-TOP ;
 
 : TF-FINALIZE ( -- )
-   TF-RBF-TOP PF-DEPTH=
    TF-RELEASE ;
 
 \ One SAVE/RESTORE pair the checker's core RBF-PUSH/POP drives, so TFAM and
@@ -3819,7 +3803,6 @@ public
    rec CHECKER-RESOLVE:REC>INDEX {: ix:n :}
    \ A linear type's entry shares the wordlist; its text starts `linear`, which is no family.
    ix CHECK:FACTS@ CHECK:LINEAR-TEXT? IF 0 RES-FALSE EXIT THEN
-   PF-TX-DEPTH @ 0 <> IF s" tfam: type entry read inside a declaration" 76 die THEN
    ER-P @ ER-U @ ER-NAME @ ER-NAME-U @ {: sp:ptr su:n sn:ptr snu:n :}
    rec CHECKER-RESOLVE:CK-REC-NAME$ {: ra:ptr ru:n :}
    ra ER-NAME !  ru ER-NAME-U !
