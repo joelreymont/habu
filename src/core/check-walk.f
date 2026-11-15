@@ -549,10 +549,13 @@ public
 
 \ What a walk does around the step of the token at TSTART..TI: the tape's
 \ fields and the cursor before it, answering TOK0, then the summary and the
-\ report after, answering whether the walk ends.
+\ report after, answering whether the walk ends. A walk with no tape still
+\ rejects an over-long counted literal, so the opener's span and the payload
+\ mark are kept on every walk.
 : SCAN-TOK-HEAD ( -- n )
+   TI @ TSTART @ - SCAN-U !  0 SPAY-ON !
    CHECKER-TAPE:ARMED @ IF
-      TI @ TSTART @ - SCAN-U !  TOK0 @ SCAN-TOK0 !  0 SPAY-ON !  0 CPAY-ON !  0 PPAY-ON !  0 POST-ON !  0 TPAY-ON !
+      TOK0 @ SCAN-TOK0 !  0 CPAY-ON !  0 PPAY-ON !  0 POST-ON !  0 TPAY-ON !
       0 IS-PEND !  0 EV-HIT !
    THEN
    CUR-TOKEN
@@ -562,7 +565,9 @@ public
 : SCAN-TOK-TAIL ( n -- bool ) {: was-name:n :}
    TORDER-SCAN-UNKNOWN @ IF RES-TRUE EXIT THEN
    was-name 0= IF TSTART @ TADDR TI @ TSTART @ - ZSUMMARY-TOKEN THEN
-   CHECKER-TAPE:ARMED @ IF SCAN-REPORT THEN
+   CHECKER-TAPE:ARMED @ IF SCAN-REPORT ELSE
+      SPAY-ON @ IF SPAY-BYTES SPAY-COUNTED-CK 2drop THEN
+   THEN
    RES-FALSE ;
 
 : CHECK-SCAN-WALK ( -- )
@@ -1152,7 +1157,7 @@ public
 : CHECK-REC-ADMIT ( ptr u8 n -- )
    {: a:ptr u:n :}
    a u CTOR-EXTEND?-XT IF NMOFF @ TADDR NMU @ CTOR-EXTEND-REJECT THEN
-   a u CHECKER-CERT-DUP? IF CHECKER-DUP-DEFINITION THEN ;
+   a u CHECKER-CERT-DUP? IF NMOFF @ TADDR NMU @ CHECKER-DUP-DEFINITION THEN ;
 
 \ Every refusal a certified definition can meet at publication, asked before its
 \ first write to the store: a write left behind is read by a later verdict.
@@ -2846,8 +2851,6 @@ FILE-POS-CLEAR
 \ The wall's rejection of a duplicate, for one refused off the wall.
 package CHECK
 private
-\ The source tools classify $4E themselves.
-$4E constant DUP-RC
 INP-CELL RESERVED-PTR-U8-CELL SRC-CURSOR
 PENDTKA-CELL RESERVED-PTR-U8-CELL SRC-NAME
 
@@ -2867,13 +2870,8 @@ PENDTKA-CELL RESERVED-PTR-U8-CELL SRC-NAME
 public
 : REFUSE-DUPLICATE ( ptr u8 n -- )
    {: a:ptr u:n :}
-   s" E-DUPLICATE-DEFINITION" REJECTION:OPEN
-   96 REJECTION:EMIT1  a u REJECTION:EMIT-STR
-   s" ` is already defined" REJECTION:EMIT-STR
-   a u SOURCE-NAME$ REJECTION:AT  s" already defined" REJECTION:EMIT-STR
-   REJECTION:HELP
-   s" rename this word, or remove the earlier definition" REJECTION:EMIT-STR
-   DUP-RC REJECTION:STOP ;
+   a u  a u SOURCE-NAME$  REJECTION:DUPLICATE
+   CHECKER-REJECT-RC REJECTION:STOP ;
 ;package
 
 \ The token's verdict as DO-TOK1 and CHECK take it: a checked step runs, as

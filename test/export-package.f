@@ -20,7 +20,6 @@ require src/lib/engine-candidate.f
 2048 constant XPK-CAP
 70 constant XPK-UNDEF-RC              \ undefined-word child exit status
 70 constant XPK-REJECT-RC             \ a rejection's exit status (CHECKER-REJECT-RC)
-78 constant XPK-DUP-RC                \ duplicate definition ($4E)
 
 variable XPK-ROOT-U
 variable XPK-CHILD-U
@@ -266,10 +265,10 @@ create XPK-EMPTY 1 allot
    s" missing name rejects" T-LABEL
    XPK-NONAME-FORGE$ XPK-RUN-STDIN XPK-REJECT-RC XPK-ASSERT-RC
    s" duplicate tail rejects with labeled diagnosis" T-LABEL
-   XPK-DUP-FORGE$ XPK-RUN-STDIN XPK-DUP-RC XPK-ASSERT-RC
+   XPK-DUP-FORGE$ XPK-RUN-STDIN XPK-REJECT-RC XPK-ASSERT-RC
    s" error[E-DUPLICATE-DEFINITION]" XPK-ERR?
    s" self-export rejects as duplicate" T-LABEL
-   XPK-SELF-FORGE$ XPK-RUN-STDIN XPK-DUP-RC XPK-ASSERT-RC
+   XPK-SELF-FORGE$ XPK-RUN-STDIN XPK-REJECT-RC XPK-ASSERT-RC
    s" primitive source rejects (E-EXPORT-PRIM)" T-LABEL
    XPK-PRIM-FORGE$ XPK-RUN-STDIN XPK-REJECT-RC XPK-ASSERT-RC
    s" error[E-EXPORT-PRIM]" XPK-ERR?  s" `dup`" XPK-ERR?

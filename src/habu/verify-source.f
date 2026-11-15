@@ -225,7 +225,7 @@ PERSISTED-PTR-VARIABLE ENTRY-TICK-OWNER
 private
 
 \ A declaration the source ends inside: BEGIN-STRUCTURE's scan stops with it at
-\ its opener, RECORD-VALUE-RECORD refuses with it in the declaration packet.
+\ its opener.
 TYPE-DECL:E-TDECL-SYNTAX constant E-VS-DECL-SYNTAX
 
 PTR-VARIABLE SOURCE-A
@@ -2212,7 +2212,7 @@ ENGINE-TARGET-INIT
 : DUPLICATE-STOP ( n n ptr u8 n bool -- )
    drop 2drop {: at:n u:n :}
    at DUPLICATE-AT !  u DUPLICATE-U !
-   SOURCE@ at + u INTERPRETER:DUPLICATE-REJECT
+   SOURCE@ at + u 2dup REJECTION:DUPLICATE
    CHECKER-REJECT-RC REJECTION:STOP ;
 
 : DUPLICATE-INIT ( -- )
@@ -2955,8 +2955,15 @@ variable STG-TYPE-U
    msg msgu REASON!
    TOKEN-BYTE @ TOKEN-FROM RECORD-FIELD-STOP ;
 
-\ A record the input ends inside is refused in the declaration packet, at its
-\ name, as an unclosed SUMTYPE is.
+\ The body keeps a space after each token, the loader's field list one between
+\ them, so both pass VRDEF-CAP at the same field t tu.
+: VALUE-RECORD-ROOM ( ptr u8 n -- ) {: t:ptr tu:n :}
+   BODY-U @ tu + VRDEF-CAP > IF
+      t tu VRDEF-TOO-LONG  CHECKER-REJECT-RC REJECTION:STOP
+   THEN ;
+
+\ A record the input ends inside is rejected at its name, as the loader
+\ rejects it.
 : RECORD-VALUE-RECORD ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF NAME-STOP THEN
@@ -2965,21 +2972,16 @@ variable STG-TYPE-U
    BEGIN
       DECL-TOKEN
       dup 0= IF
-         2drop
-         s" value-record" DECL-REJECT:OPEN
-         name nameu DECL-REJECT:FAMILY!
-         DECL-REJECT:AT-FAMILY
-         s" missing END-VALUE-RECORD"
-         s" close the `VALUE-RECORD` with `END-VALUE-RECORD`"
-         E-VS-DECL-SYNTAX DECL-REJECT:REJECT
-         DECL-REJECT:GUARD-CODE
-         EXIT
+         name nameu VRDEF-UNCLOSED
+         MULTI-ERR? IF 2drop REJECTION:KEEP EXIT THEN
+         CHECKER-REJECT-RC REJECTION:STOP
       THEN
       2dup VALUE-RECORD-END? IF
          2drop
          name nameu byte VALUE-RECORD-ADD
          EXIT
       THEN
+      2dup VALUE-RECORD-ROOM
       BODY-APPEND
    AGAIN ;
 
