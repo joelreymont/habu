@@ -183,6 +183,18 @@ public
    ta tu TDA-KEEP
    code throw ;
 
+private
+
+\ Places the record at one token and names another as its `word` note.
+: TDECL-THROW-AT ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- )   \ place, name, reason, fix, code
+   {: pa:ptr pu:n na:ptr nu:n wa:ptr wu:n fa:ptr fu:n code:n :}
+   wa wu fa fu code TDECL-ARM
+   pa pu TDECL-TOK!
+   na nu TDA-KEEP
+   code throw ;
+
+public
+
 \ --- transactional mark/restore over every store a declaration can grow.
 \ The family and variant stores go back through TFAM-REWIND (type-family.f), not
 \ here: their indexes chain rows by id, and a chained row whose id is out of
@@ -1057,13 +1069,6 @@ private
    fam TDECL-FAM-REG ! ;
 
 
-public
-
-: TDECL-DEFSUM ( ptr u8 n ptr u8 n -- )   \ name, buffered body tokens
-   {: na:ptr nu:n ba:ptr bu:n :}
-   s" sumtype" na nu ba bu TDECL-CTX!
-   [: CHECKER-DEFSUM-BODY ;] TDECL-RUN ;
-
 \ A PRODUCT is a single-shape TK-PRODUCT record (MAKE and UNMAKE: TDECL-PROD-WORD). Field tails are
 \ their own namespace, one-letter names legal; linear instantiations are refused at the sig and bind layers.
 
@@ -1221,19 +1226,6 @@ private
    fam TDECL-DERIVE
    fam TDECL-PRODUCT-RECORD
    fam TDECL-FAM-REG ! ;
-
-: TDECL-DEFPRODUCT-TXN ( -- ) [: CHECKER-DEFPRODUCT-BODY ;] TDECL-PRODUCT-TXN ;
-
-
-public
-
-: TDECL-DEFPRODUCT ( ptr u8 n ptr u8 n -- )   \ name, buffered body tokens
-   {: na:ptr nu:n ba:ptr bu:n :}
-   s" product" na nu ba bu TDECL-CTX!
-   [: TDECL-DEFPRODUCT-TXN ;] TDECL-RUN ;
-
-
-private
 
 : CHECKER-DEFFAMILY-BODY ( -- )
    TDECL-HEADER! {: ar:n :}
@@ -1488,8 +1480,8 @@ private
 
 : TDPLAN-NAME+ ( -- n )
    TDGEN-NA @ TDGEN-NU @ CHECKER-DEFINED-HERE? IF
-      TDGEN-NA @ TDGEN-NU @ s" generated declaration already defined"
-         TDECL-GEN-FIX$ E-TDECL-NAME TDECL-THROW
+      TDN-A @ TDN-U @  TDGEN-NA @ TDGEN-NU @  s" generated declaration already defined"
+         TDECL-GEN-FIX$ E-TDECL-NAME TDECL-THROW-AT
    THEN
    TDGEN-NA @ TDGEN-NU @ CHECKER-RECORD-SYM dup TDPLAN-SYM+ ;
 
@@ -2225,8 +2217,8 @@ private
 \ rejects, is the declaration's error, asked of every child before any is made.
 : TDECL-ADDR-FREE ( ptr u8 n n n -- ) {: na:ptr nu:n shape:n param:n :}
    na nu CHECKER-DEFINED-HERE? IF
-      na nu s" generated declaration already defined"
-         TDECL-GEN-FIX$ E-TDECL-NAME TDECL-THROW
+      TDN-A @ TDN-U @  na nu  s" generated declaration already defined"
+         TDECL-GEN-FIX$ E-TDECL-NAME TDECL-THROW-AT
    THEN
    na nu TDECL-NAME-PREFLIGHT-XT ;
 
@@ -2434,19 +2426,41 @@ private
    TDN-A @ TDN-U @ TDECL-TOK!  s" " s" " 0 TDECL-ARM
    TDECL-CTOR-WORDS TDECL-PRODUCT-INIT-ARM ;
 
-public
-
-\ The replay twin, for a tool that registered a SUMTYPE or PRODUCT from tokens
+\ The replay twins, for a tool that registers a SUMTYPE or PRODUCT from tokens
 \ it already lexed (verify-source.f): the checked effects of the words the
-\ definer would generate, and no word. These include a PRODUCT's
-\ initialized-field accessors when it derives init (TDECL-PRODUCT-INIT-ARM);
-\ its rows are committed once the registration returns, which is all
-\ TDINIT-REQUIRE reads.
+\ definer would generate, and no word, inside the TDECL-RUN that records a
+\ rejection and rolls the declaration back.
 : TDECL-CTOR-WORDS-REPLAY ( -- )
    TDECL-FAM-REG @ {: fam:n :}
    fam 0 < IF EXIT THEN
-   fam TDECL-CTOR-REPLAY
+   fam TDECL-CTOR-REPLAY ;
+
+: TDECL-PRODUCT-REPLAY ( -- )
+   TDN-A @ TDN-U @ TDECL-TOK!  s" " s" " 0 TDECL-ARM
+   TDECL-CTOR-WORDS-REPLAY ;
+
+: TDECL-DEFPRODUCT-TXN ( -- )
+   [: CHECKER-DEFPRODUCT-BODY TDECL-PRODUCT-REPLAY ;] TDECL-PRODUCT-TXN ;
+
+\ A derived init's accessors replay once the transaction has committed the
+\ field rows TDINIT-REQUIRE reads (TDECL-PRODUCT-INIT-ARM's place).
+: TDECL-DEFPRODUCT-RUN ( -- )
+   TDECL-DEFPRODUCT-TXN
+   TDECL-FAM-REG @ {: fam:n :}
+   fam 0 < IF EXIT THEN
    fam TFAM-DERIVE-INIT? IF fam TDECL-INIT-REPLAY THEN ;
+
+public
+
+: TDECL-DEFSUM ( ptr u8 n ptr u8 n -- )   \ name, buffered body tokens
+   {: na:ptr nu:n ba:ptr bu:n :}
+   s" sumtype" na nu ba bu TDECL-CTX!
+   [: CHECKER-DEFSUM-BODY TDECL-CTOR-WORDS-REPLAY ;] TDECL-RUN ;
+
+: TDECL-DEFPRODUCT ( ptr u8 n ptr u8 n -- )   \ name, buffered body tokens
+   {: na:ptr nu:n ba:ptr bu:n :}
+   s" product" na nu ba bu TDECL-CTX!
+   [: TDECL-DEFPRODUCT-RUN ;] TDECL-RUN ;
 
 : TDECL-NEWTYPE ( -- )
    SRCLOC:TOKEN$ {: kw:ptr ku:n :}

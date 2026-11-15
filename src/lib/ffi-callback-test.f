@@ -240,11 +240,9 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    s" CALLBACK: CBT-XA ( -- ) CALLBACK: CBT-XB ( -- ) ;CALLBACK" INCLUDE-EVALUATE ;
 : DECL-SEVENTEENTH ( -- )
    s" CALLBACK: CBT-XC ( -- ) ;CALLBACK" INCLUDE-EVALUATE ;
-\ A name of NAME-CAP (64) bytes fits; one byte more does not.
-: DECL-NAME-65 ( -- )
-   s" CALLBACK: CBT-NAME-65-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX ( -- ) ;CALLBACK" INCLUDE-EVALUATE ;
-: DECL-NAME-64 ( -- )
-   s" CALLBACK: CBT-NAME-64-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX ( -- ) ;CALLBACK" INCLUDE-EVALUATE ;
+\ A 100-byte name, then its descriptor called by the whole name.
+: DECL-NAME-100 ( -- )
+   s" CALLBACK: CBT-NAME-100-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX ( -- ) ;CALLBACK  CBT-NAME-100-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX FFI-CB:CLEAR" INCLUDE-EVALUATE ;
 
 \ The quotation stops with the rejection status after a record of code c cu.
 : REJECTS? ( [ -- ] ptr u8 n -- bool ) {: q c:ptr cu:n :}
@@ -269,8 +267,7 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    [: DECL-NESTED ;] s" E-FFI-SYNTAX" REJECTS? s" CALLBACK: inside an open declaration: E-FFI-SYNTAX" FACT
    [: DECL-SEVENTEENTH ;] catch 0=
       s" the seventeenth declaration succeeds" FACT
-   [: DECL-NAME-65 ;] s" E-FFI-SYNTAX" REJECTS? s" a 65-byte name: E-FFI-SYNTAX" FACT
-   [: DECL-NAME-64 ;] catch 0= s" a 64-byte name is accepted" FACT ;
+   [: DECL-NAME-100 ;] catch 0= s" a 100-byte name is kept whole" FACT ;
 
 : PAD-PAST-EDGE ( -- ) begin DECLARED POW2? while PAD repeat ;
 
@@ -509,8 +506,7 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    s" ok   FALLBACK with nothing open: E-FFI-SYNTAX" W
    s" ok   CALLBACK: inside an open declaration: E-FFI-SYNTAX" W
    s" ok   the seventeenth declaration succeeds" W
-   s" ok   a 65-byte name: E-FFI-SYNTAX" W
-   s" ok   a 64-byte name is accepted" W ;
+   s" ok   a 100-byte name is kept whole" W ;
 
 : WANT-ROLLBACK ( -- )
    s" == a callback declared in a text that throws" W

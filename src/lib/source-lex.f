@@ -11,6 +11,7 @@ require src/lib/memory.f
 require src/lib/vector.f
 require src/lib/heap.f
 require src/lib/source.f
+require src/habu/escape.f
 
 package LINT-LEX
 private
@@ -187,7 +188,7 @@ public
 2 constant COMMENT              \ KIND@: `( ... )` or `.( ... )` comment, body via CONTENT
 3 constant REGISTRY             \ KIND@: one complete primitive-axiom row
 
-1 constant UNTERMINATED-QUOTE   \ ERROR-KIND@: a string literal ran past end of input
+1 constant BAD-STRING           \ ERROR-KIND@: a string literal has no closing quote or holds a bad escape
 2 constant MALFORMED-REGISTRY   \ ERROR-KIND@: a primitive-axiom row lacked a header or its closer
 
 : COUNT ( -- n )
@@ -269,18 +270,22 @@ private
    begin END? 0= while ADV DQUOTE = if true exit then repeat
    false ;
 
+: TO-END ( -- )
+   begin END? 0= while ADV drop repeat ;
+
+\ The load's reader finds the closing quote, so a bad escape stops the scan
+\ as a missing quote does.
 : SKIP-ESC-QUOTE ( -- bool )
-   begin END? 0= while
-      ADV dup 92 = if
-         drop END? 0= if ADV drop then
-      else
-         DQUOTE = if true exit then
-      then
-   repeat
-   false ;
+   END? if false exit then
+   SRC@ POS @ + 1 +  SRC@ SRC-U @ +  ESCAPE:SPAN nip
+   {: q:ptr ok:bool :}
+   ok 0= if TO-END false exit then
+   q SRC@ - 1 + {: stop:n :}
+   begin POS @ stop < while ADV drop repeat
+   true ;
 
 : MARK-UNTERM ( n -- ) {: k:n :}
-   UNTERMINATED-QUOTE ERR-KIND !
+   BAD-STRING ERR-KIND !
    k BYTE@ ERR-BYTE !
    k LINE@ ERR-LINE !
    k COL@ ERR-COL ! ;
@@ -481,7 +486,8 @@ private
    END? if false exit then
    ADV drop true ;
 
-\ false = the operand ran past end of input, so the row can never close.
+\ false = the operand holds a bad escape or runs past end of input, so the
+\ row can never close.
 : FIELD-OPERAND ( -- bool )
    F$ SOURCE:ESC-STRING-OPENER? if SKIP-ESC-QUOTE exit then
    F$ SOURCE:NORMAL-STRING-OPENER? if SKIP-QUOTE exit then

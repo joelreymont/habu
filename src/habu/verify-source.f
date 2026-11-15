@@ -193,13 +193,12 @@ package VERIFY
 public
 
 \ Nothing throws these: a reader (a definer, a parsing word) with no token
-\ after it, a string opener with no closing quote, a PRIM:, PPRIM:, EPRIM: or
-\ EPPRIM: row with no closer, and a literal holding an escape the engine
-\ rejects are recorded where the scan meets them, which then stops with
-\ CHECKER-REJECT-RC. check.f's packets still read the codes.
+\ after it, a string literal with no closing quote or with a bad escape, and a
+\ PRIM:, PPRIM:, EPRIM: or EPPRIM: row with no closer are recorded where the
+\ scan meets them, which then stops with CHECKER-REJECT-RC. check.f's packets
+\ still read the codes.
 7188 constant E-UNTERMINATED-STRING
 7189 constant E-MALFORMED-REGISTRY-ROW
-7194 constant E-BAD-ESCAPE
 
 \ The verifier throws none of this: a file a quiet composition loads that the
 \ system does not read to its end is recorded where the read fails, which then
@@ -2612,7 +2611,6 @@ variable SUM-VAR-NEXT
          2drop
          TFAM:TFAM-N@ {: before:n :}
          name nameu BODY$ CHECKER-DEFSUM
-         GENERATED-DECL-CTOR:REPLAY-LEGACY
          TFAM:TFAM-N@ before > IF
             TFAM:TFAM-N@ 1- SUM-VAR-DEFINED
          THEN
@@ -2680,7 +2678,6 @@ variable SUM-VAR-NEXT
       2dup PRODUCT-END? IF
          2drop
          name nameu BODY$ CHECKER-DEFPRODUCT
-         GENERATED-DECL-CTOR:REPLAY-LEGACY
          EXIT
       THEN
       BODY-APPEND

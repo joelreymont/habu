@@ -8,44 +8,28 @@ When checked code misbehaves, reduce the failure, find which layer is wrong
 
 ## Where a load refusal happened — read the message
 
-A refusal the engine raises while reading source names the file and the line:
+A rejection the engine raises while reading source names the file, the line
+and the column of its token. The file is the resolved, canonical path of the
+**innermost open** file, so a nested `require` names the file that actually
+holds the offending token, not the entry the command line asked for. The line
+counts newlines from the start of the file.
 
-```
-E-UNTERMINATED-STRING habu: /home/j/Work/habu/test/fixtures/x.f:12: bad string literal
-```
+A rejection with no include frame open names no place, because there is no
+file to name: the root source stream's own text (src/habu/main.f `ROUTED`:
+stdin when `hb` has no argument, tty or piped, or the `--load` and `--build`
+streams themselves) and the engine's own boot prefix. The program file of a
+plain `hb <file>` is an open file and is named. A string `evaluate`d *inside* a
+file is placed at its own token while it is a slice of the file's own bytes
+(`parse-name X evaluate`); any other evaluated string's rejection is placed at
+the word in the file that ran it, with a note quoting the evaluated line and
+marking the cause.
 
-No column. `<path>` is the resolved, canonical path of the **innermost open**
-file, so a nested `require` names the file that actually holds the offending
-token, not the entry the command line asked for. `<line>` counts newlines from
-the start of the file.
-
-A refusal with no include frame open names no place, `E-<class> habu:
-<prose>`, because there is no file to name: the root source stream's own
-text (src/habu/main.f `ROUTED`: stdin when `hb` has no argument, tty or piped,
-or the `--load` and `--build` streams themselves) and the engine's own boot
-prefix. The program file of a plain `hb <file>` is an open file and is named. A
-string `evaluate`d *inside* a file keeps the file line only while it is a slice
-of the file's own bytes (`parse-name X evaluate`). Any other evaluated string
-names the file alone (`<path>: ` after `habu: `) for a refusal in it, and so
-do the `compiler:` and `E-UNDEFINED` lines that follow that
-refusal (src/core/checker.f SRCLOC:FILE-BUFFER?).
-
-An undefined word, `E-UNDEFINED habu: <path>:<line>: undefined word 'X'`, is located like any
-compile refusal on both loops. A loaded file that leaves cells prints
-`E-EVAL-RESIDUE: stack depth N at <path>`, naming the whole file and so no line,
-once at the innermost file, before the throw it raises (uncaught, that throw
-ends the load). The other interpret-level refusals
-(`E-LAYOUT-VALUE habu: <path>:<line>: interpret-mode layout value: X` and its
-siblings) are located the same way. The checker's refusal in a body names
-the definition and the token
-(`habu: in g: at '2' expected: n actual: n n ; suggestion: Remove an extra producer or drop the surplus value.`);
-the compiler's line after it places the token
-(`compiler: cannot compile G at 2 in <path>:<line>`), and an undefined word adds
-`E-UNDEFINED habu: <path>:<line>: undefined word 'x'`. A top-level refusal names the file and line
-in its own line (`habu: <path>:<line>: at '!' …`), the file alone for a token of
-an evaluated string that is not the file's own bytes, and no place outside a
-file; a tool's label replaces the path of the file it labels. For those that
-print no location, search the source for the named definition, or bisect.
+An undefined word (`E-UNDEFINED`), an interpret-level rejection
+(`E-LAYOUT-VALUE` and its siblings) and the checker's rejection in a body are
+placed at their token the same way. A loaded file that leaves cells is
+rejected `E-EVAL-RESIDUE` once, at the innermost file. A tool's label replaces
+the path of the file it labels. For a rejection that names no place, search
+the source for the named definition, or bisect.
 
 ## Reading an exit status
 
@@ -228,15 +212,16 @@ Every VM stack is a guarded mapping and compiled code carries no bounds check,
 so the message names the mechanism that caught the fault
 (`src/habu/stack-abi.f` and `src/habu/crash.f` hold the rules):
 
-- `E-UNDERFLOW habu: interpret stack underdepth: <token>` (exit 70; in a file
-  the place comes before the prose: `<path>:<line>: `, or `<path>: ` in an
-  evaluated string):
-  the interpreter refused a token whose record states more inputs than the
-  stack holds, or compiled code reached through `execute`, `catch`, `finally`
-  or a quotation read below the data stack's base. Catchable; the REPL recovers the line.
-- `E-UNDERFLOW habu: <path>:<line>: stack underflow at '<token>'` (exit 70): a word ran and left the stack below its
-  base because its body consumes more than its record states: a word defined
-  with checking off, or a `TRUSTED:` body that drops more than it declares.
+- `E-UNDERFLOW` (exit 70) at the token: the interpreter rejected a token
+  whose record states more inputs than the stack holds. Catchable; the REPL
+  recovers the line.
+- `E-UNDERFLOW` (exit 70) from the kernel, naming the token: compiled code
+  reached through `execute`, `catch`, `finally` or a quotation read below the
+  data stack's base. Catchable; the REPL recovers the line.
+- `E-UNDERFLOW` (exit 70) at the token: a word ran and left the stack below
+  its base because its body consumes more than its record states: a word
+  defined with checking off, or a `TRUSTED:` body that drops more than it
+  declares.
 - `error[E-STACK-BOUNDS]: the data|return|loop stack ran past its bounds`
   (exit 102): an overflow or a below-base access where no throw entry exists
   (a task's own stack, a stripped AOT image). The note `in` names the word
