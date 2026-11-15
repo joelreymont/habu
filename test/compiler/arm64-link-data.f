@@ -6,9 +6,9 @@
 \ pointer's target; a string it types after filling 4096 bytes at its `here`,
 \ which shows its DP lies past its data, the string's body included. The
 \ program is PIE: these hold only if the start-up slides each code cell once
-\ and no DATA cell. over allots past its ceiling and exits 76 naming the
-\ ceiling the build's ceiling places. A second link of main writes the same
-\ bytes.
+\ and no DATA cell. over allots up to its ceiling, prints that ceiling less its
+\ heap floor, which must be the build's, then allots one byte more, which throws
+\ E-DATA-SPACE uncaught. A second link of main writes the same bytes.
 \ Each refusal (arm64-link-data-bad.f) dies, so each runs in its own child.
 \ The data child also runs on three malformed copies of the kernel object, one
 \ failing its checksum, one whose DATA-START is off a cell and one whose Mach-O
@@ -52,6 +52,14 @@ create PROG-BUF PATH-CAP allot
    PROG-BUF u ;
 
 
+\ The build's wordlists hold no BOOT, so its cell offsets go in as numbers.
+: OVER-SRC ( -- ptr u8 n )
+   SB-RESET
+   s" : LD-OVER ( -- ) data-base " SB-APPEND  BOOT:DP-FLOOR-CELL FMT:SB-INT
+   s"  + @ {: floor:n :}  data-base " SB-APPEND  BOOT:DP-CEILING-CELL FMT:SB-INT
+   s"  + @ here NULL-PTR - - allot  here NULL-PTR - floor - LD-U cr  1 allot ;" SB-APPEND
+   SB$ ;
+
 \ LD-LEAF2 is reached only from the quotation LD-MAKE stores.
 : FIXTURE ( -- )
    s" variable LD-V  11 LD-V !" evaluate-closed
@@ -71,11 +79,11 @@ create PROG-BUF PATH-CAP allot
    s" : LD-U ( n -- ) dup 9 > if dup 10 / recurse then 10 mod 48 + emit ;" evaluate-closed
    s" : LD-U_ ( n -- ) LD-U 32 emit ;" evaluate-closed
    s\" : LD-MAIN ( -- ) 1 LD-XT @ execute LD-U_  1 LD-Q @ execute LD-U_  LD-SCR @ LD-U_  LD-V @ LD-U_  LD-PV LD-U_  LD-FILL  s\" ld-text\" type cr ;" evaluate-closed
-   s" : LD-OVER ( -- ) 1 41 lshift allot ;" evaluate-closed ;
+   OVER-SRC evaluate-closed ;
 
 
-\ The ceiling over's refusal names, less the heap floor, read from the build's
-\ cells as the kernel reads the program's.
+\ The ceiling over prints, less the heap floor, read from the build's cells as
+\ the kernel reads the program's.
 variable OVER-CEILING
 
 : OVER-EXPECT ( -- )
@@ -131,10 +139,12 @@ DYNAMIC-BUFFER SECOND-LINK u8
 
 : RUN-OVER ( CMD:command -- CMD:command )
    s" over" RUN-PROG {: rc:n :}
-   s" over names the ceiling the build's ceiling places" T-LABEL
-   SB-RESET  s"  of " SB-APPEND  OVER-CEILING @ FMT:SB-INT
-   CMD:ERR$ SB$ CONTAINS? TTRUE
-   s" over exits 76" T-LABEL  rc 76 T= ;
+   s" over allots up to the ceiling the build places" T-LABEL
+   SB-RESET  OVER-CEILING @ FMT:SB-INT  s\" \n" SB-APPEND
+   CMD:OUT$ SB$ T$=
+   s" and one byte more throws E-DATA-SPACE uncaught" T-LABEL
+   CMD:ERR$ s" hb: uncaught throw code -9880" CONTAINS? TTRUE
+   s" over exits 67" T-LABEL  rc 67 T= ;
 
 
 : CHILD-LABEL ( ptr u8 n ptr u8 n -- )

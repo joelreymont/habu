@@ -785,17 +785,6 @@ $2D80 constant SUSP-HOOK-CELL
 $2D88 constant SUSP-PREFLIGHT-CELL
 SUSP-HOOK-CELL constant SUSP-HOOK-OFF
 2 cells constant SUSP-HOOK-LEN
-\ REFUSAL-ABI:CODE-CELL: the code of the last refusal whose diagnostic the
-\ checker rendered before throwing it, 0 until one is. The uncaught top-level
-\ throw reporter exits CHECKER-REJECT-RC for a code equal to it, as every
-\ refusal exits, and UNCAUGHT-RC for any other. A catch that takes the throw
-\ leaves it set. A bare throw of the same code after a refusal of it was caught
-\ therefore exits CHECKER-REJECT-RC too. Not sealed, because the checker writes
-\ it after the seal.
-package REFUSAL-ABI
-public
-$27F8 constant CODE-CELL
-;package
 \ EXIT-HOOK-CELL: the process-exit vector, an xt or 0 for no hook. The engine
 \ calls it once with the exit code in x0, the cell cleared FIRST, immediately
 \ before the exit_group of a DELIBERATE program exit: `die`, the uncaught

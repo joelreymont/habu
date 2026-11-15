@@ -52,38 +52,7 @@ variable LUNCRPT   variable LUNCPOS   variable LUNCLOOP   variable LUNCDONE   \ 
 : UNCMSG-LEN ( -- n )   UNCMSG$ nip ;
 public
 
-variable LMINCLASS   variable LMINMSG   \ the underdepth class head and prose LFLOORREC writes
-private
-: MINCLASS$ ( -- ptr u8 n )   s" E-UNDERFLOW habu: " ;
-: MINMSG$ ( -- ptr u8 n )   s" interpret stack underdepth: " ;
-: MINCLASS-LEN ( -- n )   MINCLASS$ nip ;
-: MINMSG-LEN ( -- n )   MINMSG$ nip ;
-public
 variable LFLOORREC   \ the underdepth throw for a data access below the base
-
-\ Capacity refusals that state a count: one line naming what filled up, the
-\ ceiling and the count.
-variable LDIAGU     \ ( x9 = value ) unsigned decimal on fd 2, no newline
-variable LBGROWCLASS   variable LBGROWMSG   variable LBGROWUNIT   \ the body text block could not grow
-variable LDPBADCLASS   variable LDPBADMSG   variable LDPBADOF   variable LDPBADUNIT   \ DP-heap bound reject: the class head, the prose before the DP's offset from the heap floor, the " of " before the ceiling's and the " bytes" that ends the line
-
-private
-: DPBAD-CLASS$ ( -- ptr u8 n )   s" E-DATA-SPACE habu: " ;
-: DPBAD-MSG$ ( -- ptr u8 n )     s" data space out of range: heap byte " ;
-: DPBAD-OF$ ( -- ptr u8 n )      s"  of " ;
-: DPBAD-UNIT$ ( -- ptr u8 n )    s"  bytes" ;
-: BGROW-CLASS$ ( -- ptr u8 n )   s" E-BODY-TEXT habu: " ;
-: BGROW-MSG$ ( -- ptr u8 n )     s" cannot grow definition body text to " ;
-: BGROW-UNIT$ ( -- ptr u8 n )    s"  bytes" ;
-
-: DPBAD-CLASS-LEN ( -- n )   DPBAD-CLASS$ nip ;
-: BGROW-CLASS-LEN ( -- n )   BGROW-CLASS$ nip ;
-: DPBADMSG-LEN ( -- n )      DPBAD-MSG$ nip ;
-: DPBAD-OF-LEN ( -- n )      DPBAD-OF$ nip ;
-: DPBAD-UNIT-LEN ( -- n )    DPBAD-UNIT$ nip ;
-: BGROW-MSG-LEN ( -- n )     BGROW-MSG$ nip ;
-: BGROW-UNIT-LEN ( -- n )    BGROW-UNIT$ nip ;
-public
 
 variable LCOMPILEDIE   \ the die sites' tail, x0 = code: ends their line, then throws x0 inside evaluate (LEVALREC), else exits x0
 variable LPLACE        \ the place writer each die site calls after its class head
@@ -332,15 +301,6 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
    LBPWH LABEL@ LBL, BPW-KW BPW-LEN BYTES,
    LOPENNL LABEL@ LBL, NL-KW NL-LEN BYTES,
    LUNCMSG LABEL@ LBL, UNCMSG$ BYTES,                  \ LUNCAUGHT appends the signed code + newline
-   LMINCLASS LABEL@ LBL, MINCLASS$ BYTES,
-   LMINMSG LABEL@ LBL, MINMSG$ BYTES,                  \ LFLOORREC appends the token + newline
-   LDPBADCLASS LABEL@ LBL, DPBAD-CLASS$ BYTES,
-   LDPBADMSG LABEL@ LBL, DPBAD-MSG$ BYTES,
-   LDPBADOF LABEL@ LBL, DPBAD-OF$ BYTES,
-   LDPBADUNIT LABEL@ LBL, DPBAD-UNIT$ BYTES,
-   LBGROWCLASS LABEL@ LBL, BGROW-CLASS$ BYTES,
-   LBGROWMSG LABEL@ LBL, BGROW-MSG$ BYTES,                               \ EM-BODY-GROW-DIE appends the capacity tried and the unit; LCOMPILEDIE the newline
-   LBGROWUNIT LABEL@ LBL, BGROW-UNIT$ BYTES,
    LPLACEEND LABEL@ LBL, PLACEEND$ BYTES, ;
 
 : C-TARGET-UNKNOWN ( -- )
@@ -2168,7 +2128,7 @@ private
 \ EVALD reaches 0 or the nearest handler (x11) is inside the current frame;
 \ delivery then matches the non-evaluate path.
 : EM-EVAL-THROW-RECOVER ( -- )
-   LBL LBL LBL LBL {: owned:label scope:label unrefused:label kept:label :}
+   LBL LBL LBL {: owned:label scope:label kept:label :}
    LBL {: retired:label :}
    LEVALREC LABEL@ LBL,
    LBL LEVLL !  LBL LEVLP !  LBL LEVLD !  LBL LEVLN !
@@ -2265,10 +2225,9 @@ private
    \ BTHROW reaches LUNCAUGHT through UNCGH-CELL. A code in [1,255] is a
    \ deliberate exit contract and exits as itself with no output. Any other code
    \ would be masked to `code & 0xFF`, so it is reported as "hb: uncaught throw
-   \ code <n>\n" on fd 2 and exits UNCAUGHT-RC, or CHECKER-REJECT-RC when it
-   \ is the refusal the checker last rendered, already named on fd 2. x15 keeps
-   \ the code across the write (the kernel preserves x2-x15). Never returns: no
-   \ RET keeps the FPRIM-L throw leaf-safe.
+   \ code <n>\n" on fd 2 and exits UNCAUGHT-RC. x15 keeps the code across the
+   \ write (the kernel preserves x2-x15). Never returns: no RET keeps the
+   \ FPRIM-L throw leaf-safe.
      LUNCAUGHT LABEL@ LBL,
    LBL LUNCRPT !  LBL LUNCPOS !  LBL LUNCLOOP !  LBL LUNCDONE !
    0 9 0 ADDI,
@@ -2299,10 +2258,6 @@ private
    0 2 MOVZ,  1 12 0 ADDI,  2 SP $20 ADDI,  2 2 12 SUB,
    NR-WRITE SYS,                                       \ write(2, digits, len)
    0 UNCAUGHT-RC MOVZ,
-   9 DATA REFUSAL-ABI:CODE-CELL LDR,  9 unrefused CBZ,
-   9 15 CMP,  C-NE unrefused BCOND,
-   0 CHECKER-REJECT-RC MOVZ,
-   unrefused LBL,
    NR-EXIT-GROUP SYS, ;
 
 : EM-RECOVER-EXITS ( -- )
@@ -2310,18 +2265,12 @@ private
    \ as it faulted, after an access to the data stack's low guard page: a word
    \ took more cells than the stack held, and no cell under the base was
    \ touched. XDS may be under the base, so the stub empties the stack before
-   \ anything runs on it (LEVALREC restores XDS from the frame it delivers to;
-   \ the uncaught exit runs the exit hook on the empty stack). TKA/TKL still
-   \ name the token. The throw goes through LEVALREC: the fault is inside
-   \ running code, maybe under a catch, which receives it as a throw.
+   \ anything runs on it (a catch restores XDS from its frame; the uncaught exit
+   \ runs the exit hook on the empty stack). It throws -9881, E-UNDERFLOW: the
+   \ fault is inside running code, maybe under a catch, which receives the throw.
    LFLOORREC LABEL@ LBL,
    XDS DATA STACK-ABI:BASE-CELL LDR,
-   0 2 MOVZ,  1 LMINCLASS LABEL@ ADR,  2 MINCLASS-LEN MOVZ,  NR-WRITE SYS,
-   15 30 0 ADDI,  LPLACE LABEL@ BL,  30 15 0 ADDI,   \ LEVALREC's exits print the faulting lr
-   0 2 MOVZ,  1 LMINMSG LABEL@ ADR,  2 MINMSG-LEN MOVZ,  NR-WRITE SYS,
-   0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-   0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 NL-LEN MOVZ,  NR-WRITE SYS,
-   15 CHECKER-REJECT-RC MOVZ,  LEVALREC LABEL@ B, ;
+   9 -9881 LIT64,  LFAULTREC LABEL@ B, ;                \ -9881 = E-UNDERFLOW
 
 \ LPLACE, a leaf (x0-x2, x9-x14 and SYS,'s registers; x15 kept), writes
 \ `<path>:<line>: `, or `<path>: ` off the file's bytes, or nothing outside one.
@@ -2359,76 +2308,33 @@ private
 
 \ In x0 = the exit or throw code, the diagnostic written without its newline.
 : EM-COMPILE-DIE ( -- )
-   LBL LBL {: ldie:label deliver:label :}
+   LBL {: ldie:label :}
    LBL {: dpbad-end:label :}
    LCOMPILEDIE LABEL@ LBL,
    15 0 0 ADDI,                                             \ x15 = code (LEVALREC delivers it as the throw code)
    0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 NL-LEN MOVZ,  NR-WRITE SYS,
-   deliver LBL,
    9 DATA EVALD-CELL LDR,  9 ldie CBZ,
       10 DATA EVALREC-CELL LDR,  10 BR,                     \ -> LEVALREC (escaped-frame unwind + deliver x15)
    ldie LBL,
    0 15 0 ADDI,
    NR-EXIT-GROUP SYS,
    EM-SOURCE-PLACE
-   \ DP-CHECK hands the refused DP in x15. No definition is named: no DP sink
-   \ runs inside a colon body (its string literals go to the code region).
+   \ DP-CHECK found the DP outside the data space: it throws -9880, E-DATA-SPACE.
    LDPBAD LABEL@ LBL,
-   0 2 MOVZ,  1 LDPBADCLASS LABEL@ ADR,  2 DPBAD-CLASS-LEN MOVZ,  NR-WRITE SYS,
-   LPLACE LABEL@ BL,
-   0 2 MOVZ,  1 LDPBADMSG LABEL@ ADR,  2 DPBADMSG-LEN MOVZ,  NR-WRITE SYS,
-   9 DATA BOOT:DP-FLOOR-CELL LDR,
-   9 15 9 SUB,  LDIAGU LABEL@ BL,                           \ the refused DP
-   0 2 MOVZ,  1 LDPBADOF LABEL@ ADR,  2 DPBAD-OF-LEN MOVZ,  NR-WRITE SYS,
-   9 DATA BOOT:DP-FLOOR-CELL LDR,
-   10 DATA BOOT:DP-CEILING-CELL LDR,  9 10 9 SUB,
-   LDIAGU LABEL@ BL,                                        \ the ceiling DP-CHECK enforces
-   0 2 MOVZ,  1 LDPBADUNIT LABEL@ ADR,  2 DPBAD-UNIT-LEN MOVZ,  NR-WRITE SYS,
-   0 76 MOVZ,  LCOMPILEDIE LABEL@ B,
+   9 -9880 LIT64,  LFAULTREC LABEL@ B,                    \ -9880 = E-DATA-SPACE
    dpbad-end LBL,
    s" (LDPBAD)" LDPBAD LABEL@ LABEL>N dpbad-end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
-   \ A writer of a record or a wid ran while a checker overlay was open,
-   \ before it wrote anything. TKA/TKL hold its token: the definition's name,
-   \ the package's, the EXPORT operand, or the word that ran `wordlist` or a
-   \ writer primitive. The record ends its own line, so the stop delivers past
-   \ LCOMPILEDIE's newline. The code is a literal so a pre-window host need not
-   \ carry the constant.
+   \ A writer of a record or a wid ran while a checker overlay was open, before
+   \ it wrote anything: it throws -9882, E-OVERLAY-OPEN. Each code here is a
+   \ literal so a host without src/lib/error.f's word still builds.
    OVERLAY-EMIT:LDIE LABEL@ LBL,
-   3 DATA TKA-CELL LDR,  4 DATA TKL-CELL LDR,
-   s" E-OVERLAY-OPEN" s" a definition ran while a checker replay is open" FAULT-OPEN,
-   s" word" 3 4 FAULT-TEXT,
-   s" end the checker scope with CHECKER-SCOPE-DONE before defining" FAULT-KEEP,
-   15 108 MOVZ,  deliver B, ;                               \ 108 = ENGINE-ERROR:OVERLAY-OPEN
+   9 -9882 LIT64,  LFAULTREC LABEL@ B, ;                  \ -9882 = E-OVERLAY-OPEN
 
-\ LDIAGU ( x9 = value ): unsigned decimal on fd 2, no newline. A diagnostic
-\ never leaves through the output device, so a refusal stating a count calls
-\ this, not `u.`/G-PRINTU9. Clobbers x0-x2, x9-x13, x16 (SYS,'s errno
-\ reconciliation) and x30, plus 32 bytes of sp scratch; x14, x15 and x17 survive
-\ for a caller's count.
-: EMIT-DIAGU ( -- )
-   LDIAGU LABEL@ LBL,
-   LBL {: dl:label :}
-   SP SP 32 SUBI,
-   12 SP 32 ADDI,
-   11 $A MOVZ,
-   dl LBL,
-      13 9 11 UDIV,  10 13 11 MUL,  10 9 10 SUB,
-      10 10 $30 ADDI,  12 12 1 SUBI,  10 12 0 STRB,
-      9 13 0 ADDI,  9 dl CBNZ,
-   0 2 MOVZ,  1 12 0 ADDI,  2 SP 32 ADDI,  2 2 12 SUB,  NR-WRITE SYS,
-   SP SP 32 ADDI,  RET, ;
-
-\ x16 = the capacity BCAP-GROW tried, moved to x15 first since SYS, uses x16.
-\ Nothing is stored before the grow fails, so the throw inside evaluate is safe.
+\ The system refused to grow the body text block: it throws -9883, E-BODY-TEXT.
+\ Nothing is stored before the grow fails, so the throw is safe to catch.
 : EM-BODY-GROW-DIE ( -- )
    LBGROWFAIL LABEL@ LBL,
-   15 16 0 ADDI,
-   0 2 MOVZ,  1 LBGROWCLASS LABEL@ ADR,  2 BGROW-CLASS-LEN MOVZ,  NR-WRITE SYS,
-   LPLACE LABEL@ BL,
-   0 2 MOVZ,  1 LBGROWMSG LABEL@ ADR,  2 BGROW-MSG-LEN MOVZ,  NR-WRITE SYS,
-   9 15 0 ADDI,  LDIAGU LABEL@ BL,
-   0 2 MOVZ,  1 LBGROWUNIT LABEL@ ADR,  2 BGROW-UNIT-LEN MOVZ,  NR-WRITE SYS,
-   0 71 MOVZ,  LCOMPILEDIE LABEL@ B, ;
+   9 -9883 LIT64,  LFAULTREC LABEL@ B, ;                  \ -9883 = E-BODY-TEXT
 
 ;package
 
@@ -2438,7 +2344,6 @@ package ENGINE-EMIT
 : EMIT-ROUTINES ( -- )
    EM-RECOVER-EXITS
    EM-COMPILE-DIE
-   EMIT-DIAGU
    EM-BODY-GROW-DIE
    EM-EVAL-THROW-RECOVER ;
 
@@ -2478,11 +2383,10 @@ package LABELS
    LBL LCRASHH !  LBL LHANDLERS-END !  LBL LFAULTREC !  LBL LSIGH !  LBL LHEX !  LBL LDIE-LINE !  LBL LFAULT-PUT !  LBL LFAULT-OWNER !  LBL LFAULT-DEC !  LBL LHDR !  LBL LTRAPH !  LBL LBPH !  LBL BP-CALLER:LBPLH !  LBL LBPSH !  LBL LBPWH !
    LBL LOPENNL !
    LBL LUNCAUGHT !  LBL LUNCMSG !
-   LBL LMINCLASS !  LBL LMINMSG !  LBL LFLOORREC !
-   LBL LDPBAD !  LBL LDPBADCLASS !  LBL LDPBADMSG !  LBL LDPBADOF !  LBL LDPBADUNIT !
+   LBL LFLOORREC !
+   LBL LDPBAD !
    LBL OVERLAY-EMIT:LDIE !
-   LBL LDIAGU !
-   LBL LBGROWFAIL !  LBL LBGROWCLASS !  LBL LBGROWMSG !  LBL LBGROWUNIT !
+   LBL LBGROWFAIL !
    LBL LCOMPILEDIE !  LBL LPLACE !
    LBL LPLACEEND !  ;
 
