@@ -907,6 +907,30 @@ variable RC
    SB-APPEND
    REJECT-RC ASSERT-REJECTED ;
 
+\ A path no file name holds is rejected by the loader word, labelled with why.
+: TEST-EMPTY-PATH ( -- )
+   s" an empty path is rejected at its loader word" T-LABEL
+   BODY$ s\" s\" \" included" FS:WRITE-ALL
+   BODY$ RUN
+   SB-RESET
+   S\" error[E-PATH-RANGE]: `included` got an empty path\n --> " SB-APPEND
+   BODY$ SB-APPEND  S\" :1:6\n  |\n1 | s\" \" included\n" SB-APPEND
+   S\"   |      ^^^^^^^^ empty path\n  = help: pass a path of 1 to " SB-APPEND
+   PATH-CAP FMT:SB-INT  S\"  bytes\n\n" SB-APPEND
+   REJECT-RC ASSERT-REJECTED
+   s" an empty path is rejected in one JSON line under REJECTION:JSON" T-LABEL
+   BODY$ S\" -1 REJECTION:JSON !\ns\" \" included" FS:WRITE-ALL
+   BODY$ RUN
+   SB-RESET
+   S\" {\"severity\":\"error\",\"code\":\"E-PATH-RANGE\"" SB-APPEND
+   S\" ,\"message\":\"`included` got an empty path\",\"file\":\"" SB-APPEND
+   BODY$ SB-APPEND
+   S\" \",\"line\":2,\"column\":6,\"byte_start\":25,\"byte_end\":33" SB-APPEND
+   S\" ,\"token\":\"included\",\"source_line\":\"s\\\" \\\" included\"" SB-APPEND
+   S\" ,\"label\":\"empty path\",\"help\":\"pass a path of 1 to " SB-APPEND
+   PATH-CAP FMT:SB-INT  S\"  bytes\"}\n" SB-APPEND
+   REJECT-RC ASSERT-REJECTED ;
+
 : TEST-IMM-INCLUDE ( -- )
    s" checked include rejects before executing its fragment" T-LABEL
    INC$ RUN
@@ -1016,6 +1040,7 @@ variable RC
    TEST-TARGET
    TEST-DEF-ONCE
    TEST-SHADOW
+   TEST-EMPTY-PATH
    TEST-IMM-INCLUDE
    TEST-IMM-REQUIRE
    TEST-IMM-CALLER

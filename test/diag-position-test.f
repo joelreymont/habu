@@ -1373,6 +1373,21 @@ variable RC
    SB-RESET s" --> " SB-APPEND FX-PATH$ SB-APPEND at atu SB-APPEND
    ERR$ SB$ CONTAINS? TTRUE ;
 
+\ The load rejects a malformed qualified name at its `:`, as the check does.
+: TEST-MALFORMED-LOAD ( -- )
+   s" a malformed colon definition the load rejects at its `:`" T-LABEL
+   s" : P:Q:R ( -- ) ;" s" malformed-colon.f" LINE-FIXTURE
+   s" error[E-BAD-QUALIFIED-RECORD]" REJECT-RC LOADED
+   SB-RESET
+   S\" error[E-BAD-QUALIFIED-RECORD]: the record name `P:Q:R` has more than one `:`\n --> "
+   SB-APPEND  FX-PATH$ SB-APPEND
+   S\" :1:3\n  |\n1 | : P:Q:R ( -- ) ;\n  |   ^^^^^ malformed qualified name\n" SB-APPEND
+   s"   = rule: one `:` not at an edge selects a package," SB-APPEND
+   S\"  and a second `:` names no word\n" SB-APPEND
+   s"   = help: write `P:Q:R` with one `:` between the package and the word," SB-APPEND
+   S\"  as `PKG:WORD`\n\n" SB-APPEND
+   ERR$ SB$ T$= ;
+
 : VERIFY-REJECTED-AT ( n ptr u8 n ptr u8 n n n n n -- )
    {: k:n c:ptr cu:n tok:ptr toku:n line:n col:n bs:n be:n :}
    k s" code" c cu FIELD=
@@ -2290,6 +2305,7 @@ variable RC
    TEST-REPLACED-SIGNATURE
    TEST-DEFINITION-BINDER
    TEST-MALFORMED-RECORD
+   TEST-MALFORMED-LOAD
    TEST-ESCAPED-ROW
    TEST-ESCAPED-PATH
    TEST-REFUSAL-ORDER
