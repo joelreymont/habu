@@ -16,10 +16,9 @@ require src/habu/verify-source.f
 require src/habu/layout.f
 require src/habu/address-cells.f
 
-\ named storage-boundary codes, src/core/layout-buffer.f's; the checker
-\ refuses a declaration with src/core/checker.f CHECKER-REJECT-RC
+\ the storage-boundary code, src/core/layout-buffer.f's; the checker rejects a
+\ declaration with src/core/checker.f CHECKER-REJECT-RC
 E-LAYOUT-BOUNDS constant E-STORAGE-BOUNDS
-78 constant E-STORAGE-DUP
 
 \ ---- families under test ----------------------------------------------------
 \ tsk / tsk2 are arity-0 nominal scalars; tsres a closed non-linear layout
@@ -170,9 +169,13 @@ PTR-VARIABLE TS-DP
 : TS-DUP-RC ( -- n ) [: TS-DUP-DECL ;] catch ;
 
 : TS-SECTION-DUP-ROLLBACK ( -- )
-   \ redefining an existing name rejects and rolls the allocation back
+   \ redefining an existing name rejects with E-DUPLICATE-DEFINITION and rolls
+   \ the allocation back
    here TS-DP 0 ptr-field !
-   TS-DUP-RC E-STORAGE-DUP T=
+   REJECTION:CAPTURE  TS-DUP-RC CHECKER-REJECT-RC T=
+   REJECTION:BUFFER$ s" error[E-DUPLICATE-DEFINITION]" CONTAINS? TTRUE
+   REJECTION:BUFFER$ s" `TSV`" CONTAINS? TTRUE
+   REJECTION:BUFFER-OFF
    here TS-DP 0 ptr-field @ = TTRUE
    \ a rejected admissibility decl also defines nothing and rolls back
    here TS-DP 0 ptr-field !
