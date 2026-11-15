@@ -1751,9 +1751,10 @@ CHECKER-REG:}SCRATCH
    s"  after " EMIT-STR  TOK-SPAN ;
 : END-HELP ( -- )
    s" leave " EMIT-STR  AT-PIN DEXP @ ROW-WORD ;AT-PIN  END-WHERE
-   TEXT-LEN @ {: at:n :}  0 RORDINAL !
+   TEXT-LEN @ {: at:n :}  RQM @ {: qm:n :}  0 RORDINAL !  0 RQM !
    s" , or declare ( " EMIT-STR  DECLARABLE  s"  )" EMIT-STR
-   RORDINAL @ 0 <> IF at TEXT-LEN ! THEN ;
+   RQM @ RORDINAL @ or 0 <> IF at TEXT-LEN ! THEN
+   qm RQM @ or RQM ! ;
 : TAKES-HELP ( -- )
    ['] ROW-VALUES ROWS-DEPTHS
    DSUGA @ DSUGE @ < IF

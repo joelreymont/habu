@@ -592,6 +592,15 @@ REJECTION:BUFFER$ s" help: leave nothing after" CONTAINS? TTRUE
 s" its help offers no declaration" T-LABEL
 REJECTION:BUFFER$ s" or declare" CONTAINS? TFALSE
 REJECTION:CAPTURE
+\ RSN7's effect nests quotations past the depth a diagnostic renders, so its
+\ text holds `?` and the help for a body that leaves it offers no declaration.
+defer T-NEST7 ( -- [ -- [ -- [ -- [ -- [ -- [ -- [ -- ] ] ] ] ] ] ] )
+: RSN7 T-NEST7 ;
+s" a body leaving an unsaid effect rejects" T-LABEL
+s" RSN7C ( -- ) RSN7" CHECK-CANDIDATE! 0 T=
+s" its help offers no declaration of the unsaid effect" T-LABEL
+REJECTION:BUFFER$ s" or declare" CONTAINS? TFALSE
+REJECTION:CAPTURE
 \ RSF33's inferred effect nests one binder per call of T-UN, 33 in all.
 defer T-MK ( -- a )
 : T-UN ( forall<p,[ a -- ]> -- a ) drop T-MK ;
@@ -2258,7 +2267,7 @@ s" ndict!: the rebuilt index resolves the qualified tail" T-LABEL
 ES-RESO:T-LABEL-CAP 3 T=
 s" ndict!: the rebuilt index still refuses a bare package public" T-LABEL
 s" : ES-NDX-P1 ( -- n ) ES-RES-PUB ;" ES-RES-REFUSE:CAPTURED ES-RES-REFUSE:UNDEFINED T=
-s" error[E-UNDEFINED]" ES-RES-REFUSE:HAS  s" engine-suite.f:2260:39" ES-RES-REFUSE:HAS
+s" error[E-UNDEFINED]" ES-RES-REFUSE:HAS  s" engine-suite.f:2269:39" ES-RES-REFUSE:HAS
 
 ES-SWL:CAPTURE-SECOND
 s" search-wl: the rebuilt index ran the same battery" T-LABEL
