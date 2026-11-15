@@ -76,15 +76,18 @@ private
    TEXT-P @ oc oc 2 * ARENA-BYTES-GROW TEXT-P !
    oc 2 * TEXT-CAP ! ;
 
+\ The cap bytes mapped at p, none when cap is 0, grown by doubling and keeping
+\ their bytes until u more fit after the first used, and their new capacity.
+: FIT ( ptr u8 n n n -- ptr u8 n ) {: p:ptr cap:n used:n u:n :}
+   cap 0= IF TEXT-FIRST ARENA-ALLOC-BYTES TEXT-FIRST ELSE p cap THEN
+   {: q:ptr c:n :}
+   c BEGIN dup used u + < WHILE 2 * REPEAT {: nc:n :}
+   nc c > IF q c nc ARENA-BYTES-GROW nc EXIT THEN
+   q c ;
+
 \ Grows the capture, keeping its bytes, until n more fit.
 : HELD-ROOM ( n -- ) {: u:n :}
-   HELD-CAP @ 0= IF
-      TEXT-FIRST ARENA-ALLOC-BYTES HELD-P !  TEXT-FIRST HELD-CAP !
-   THEN
-   HELD-CAP @ BEGIN dup HELD-U @ u + < WHILE 2 * REPEAT {: nc:n :}
-   nc HELD-CAP @ > IF
-      HELD-P @ HELD-CAP @ nc ARENA-BYTES-GROW HELD-P !  nc HELD-CAP !
-   THEN ;
+   HELD-P @ HELD-CAP @ HELD-U @ u FIT  HELD-CAP !  HELD-P ! ;
 
 
 public
@@ -807,40 +810,31 @@ public
    -1 LABELED ! ;
 
 private
-\ The bytes of the labels PRESERVE-LABEL holds, innermost last: KEPT-U bytes at
-\ KEPT-P, mapped on first use and grown to fit. A save is found by its offset,
-\ since a nested save may move them.
-PERSISTED-PTR-VARIABLE KEPT-P   NULL-PTR KEPT-P !
-variable KEPT-CAP   0 KEPT-CAP !
-variable KEPT-U   0 KEPT-U !
+\ The bytes of the labels PRESERVE-LABEL holds, innermost last: LABELS-U bytes
+\ at LABELS-P, mapped on first use and grown to fit. A save is found by its
+\ offset, since a nested save may move them.
+PERSISTED-PTR-VARIABLE LABELS-P   NULL-PTR LABELS-P !
+variable LABELS-CAP   0 LABELS-CAP !
+variable LABELS-U   0 LABELS-U !
 
-: KEPT-ROOM ( n -- ) {: u:n :}
-   KEPT-CAP @ 0= IF
-      TEXT-FIRST ARENA-ALLOC-BYTES KEPT-P !  TEXT-FIRST KEPT-CAP !
-   THEN
-   KEPT-CAP @ BEGIN dup KEPT-U @ u + < WHILE 2 * REPEAT {: nc:n :}
-   nc KEPT-CAP @ > IF
-      KEPT-P @ KEPT-CAP @ nc ARENA-BYTES-GROW KEPT-P !  nc KEPT-CAP !
-   THEN ;
+: LABELS-PUSH ( ptr u8 n -- ) {: a:ptr u:n :}
+   LABELS-P @ LABELS-CAP @ LABELS-U @ u FIT  LABELS-CAP !  LABELS-P !
+   a LABELS-P @ LABELS-U @ + u COPY
+   LABELS-U @ u + LABELS-U ! ;
 
-: KEPT-PUSH ( ptr u8 n -- ) {: a:ptr u:n :}
-   u KEPT-ROOM
-   a KEPT-P @ KEPT-U @ + u COPY
-   KEPT-U @ u + KEPT-U ! ;
-
-\ The label's bytes go to KEPT; where they start, their lengths, LABELED and the
+\ The label's bytes are saved; where they start, their lengths, LABELED and the
 \ origin stay on the stack for LABEL-RESTORE.
 : LABEL-SAVE ( -- n n n n n n n )
-   KEPT-U @  FILE$ KEPT-PUSH  LABEL-BUF LABEL-U @ KEPT-PUSH
+   LABELS-U @  FILE$ LABELS-PUSH  LABEL-BUF LABEL-U @ LABELS-PUSH
    FILE-U @ LABEL-U @ LABELED @
    ORIGIN-LINE @ ORIGIN-COLUMN @ ORIGIN-BYTE @ ;
 
 : LABEL-RESTORE ( n n n n n n n -- )
    {: at:n fu:n lu:n on:n line:n col:n byte:n :}
-   KEPT-P @ at + {: k:ptr :}
+   LABELS-P @ at + {: k:ptr :}
    k FILE-BUF fu COPY  fu FILE-U !
    k fu + LABEL-BUF lu COPY  lu LABEL-U !
-   on LABELED !  line col byte ORIGIN!  at KEPT-U ! ;
+   on LABELED !  line col byte ORIGIN!  at LABELS-U ! ;
 public
 
 \ Runs q, then puts back the label and origin it found, on a throw too.
