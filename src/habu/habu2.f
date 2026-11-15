@@ -2298,6 +2298,7 @@ private
    15 0 0 ADDI,                                             \ x15 = code (LEVALREC delivers it as the throw code)
    0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 NL-LEN MOVZ,  NR-WRITE SYS,
    9 DATA EVALD-CELL LDR,  9 ldie CBZ,
+      BTHROW-COUNT
       10 DATA EVALREC-CELL LDR,  10 BR,                     \ -> LEVALREC (escaped-frame unwind + deliver x15)
    ldie LBL,
    0 15 0 ADDI,

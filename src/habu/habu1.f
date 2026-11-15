@@ -3056,27 +3056,23 @@ private
    NR-EXIT-GROUP SYS,
    THROW-NOREC-FB2 LABEL@ LBL,  0 UNCAUGHT-RC MOVZ,  NR-EXIT-GROUP SYS, ;
 
+\ Adds 1 to THROWS-CELL, at each entry that begins a throw. It writes x10.
+: BTHROW-COUNT ( -- )
+   10 DATA THROWS-CELL LDR,  10 10 1 ADDI,  10 DATA THROWS-CELL STR, ;
+
 public
 \ BTHROW ( code -- ): unwind to the nearest catch handler.
-: BTHROW ( -- )  A G-POP  BTHROW-UNWIND ;
+: BTHROW ( -- )  A G-POP  BTHROW-COUNT  BTHROW-UNWIND ;
 
 \ The fault entry: the crash handler resumes a faulting thread here with the
 \ code in x9, reaching it with ADR, so it sits next to the handler.
-: EMIT-FAULT-REC ( -- )  LFAULTREC LABEL@ LBL,  BTHROW-UNWIND ;
+: EMIT-FAULT-REC ( -- )  LFAULTREC LABEL@ LBL,  BTHROW-COUNT  BTHROW-UNWIND ;
 
 private
-\ Throws again the code in x9 that a catch frame took, for a primitive that kept
-\ a 32-byte frame of its own above that catch frame and has popped both: a
-\ REJECTION:PASS to the catch frame moves to the nearest handler, so the record
-\ it carried stays with the code.
-: BRETHROW ( -- )
-   LBL {: keep:label :}
-   10 SP 32 STACK-ABI:CATCH-BYTES + SUBI,
-   11 DATA PASSED-TO-CELL LDR,
-   10 11 CMP,  C-NE keep BCOND,
-   11 DATA 8 LDR,  11 DATA PASSED-TO-CELL STR,
-   keep LBL,
-   9 G-PUSH  BTHROW ;
+\ Throws on the code in x9 that a catch frame took, for a primitive that has
+\ popped that frame: it keeps the throw count, so a record the code carried
+\ stays with it.
+: BRETHROW ( -- )  BTHROW-UNWIND ;
 
 \ BCATCH-FORWARD sits at CATCH-RES with the code in x9. With HALT-UNWIND-CELL
 \ clear the code is delivered as always. Set, a TASK:HALT is unwinding the task:
@@ -3090,7 +3086,7 @@ private
    10 DATA HND-CELL LDR,  10 inner CBNZ,
    10 DATA HALT-UNWIND-CELL STR,                 \ the root: x10 = HND = 0 clears it
    keep B,
-   inner LBL,  9 G-PUSH  BTHROW
+   inner LBL,  BTHROW-UNWIND
    keep LBL, ;
 
 \ A catch that leaves its code in x9 and does not forward a halt, for the body
@@ -3297,51 +3293,58 @@ private
    done LBL, ;
 
 \ finally ( body cleanup -- ). Frame: [0] cleanup | [8] the body's code | [16] the halt its throw carried, set again
-\ once the cleanup ends or halts. A cleanup's nonzero code goes to [8] only when [8] is 0: a return or a PAUSE halt.
+\ once the cleanup ends or halts | [24] the throw count when [8] was stored. A cleanup's nonzero code goes to [8]
+\ only when [8] is 0: a return or a PAUSE halt. A count moved since [24] means the cleanup threw, so the code
+\ goes on as a new throw.
 : BFINALLY ( -- )
-   LBL LBL LBL {: keep:label calm:label throw:label :}
+   LBL LBL LBL LBL {: keep:label calm:label throw:label same:label :}
    LBL FINALLY-DONE !
    A G-POP  BCALLABLE
    SP SP 32 SUBI,  9 SP 0 STR,
    BCATCH-HELD
-   9 SP 8 STR,
+   9 SP 8 STR,  10 DATA THROWS-CELL LDR,  10 SP 24 STR,
    10 DATA HALT-UNWIND-CELL LDR,  10 SP 16 STR,
    10 0 MOVZ,  10 DATA HALT-UNWIND-CELL STR,
    9 SP 0 LDR,  9 G-PUSH  BCATCH-HELD
    9 keep CBZ,  10 SP 8 LDR,  10 keep CBNZ,
-   9 SP 8 STR,
+   9 SP 8 STR,  10 DATA THROWS-CELL LDR,  10 SP 24 STR,
    keep LBL,
    10 DATA HALT-UNWIND-CELL LDR,  10 calm CBZ,
    10 SP 16 STR,
    calm LBL,
-   9 SP 8 LDR,  10 SP 16 LDR,  SP SP 32 ADDI,
+   9 SP 8 LDR,  10 SP 16 LDR,  11 SP 24 LDR,  SP SP 32 ADDI,
    10 DATA HALT-UNWIND-CELL STR,                 \ the halt taken, 0 when none
    10 throw CBNZ,
    9 FINALLY-DONE LABEL@ CBZ,
-   throw LBL,  BRETHROW
+   throw LBL,
+   12 DATA THROWS-CELL LDR,  12 11 CMP,  C-EQ same BCOND,
+   12 12 1 ADDI,  12 DATA THROWS-CELL STR,
+   same LBL,  BRETHROW
    FINALLY-DONE LABEL@ LBL, ;
 
 \ c2-invoke ( body cleanup finish -- ): both calls have independent handlers.
 \ The finisher sees the selected code while the body's result row is still live;
 \ a nonzero code is rethrown before compiled code reloads that row.
-\ Frame: [0] cleanup | [8] finisher | [16] code | [24] halt. The cleanup's nonzero
-\ code goes to [16] only when [16] is 0. A halt is taken and resumed as BFINALLY
-\ does, one begun inside the cleanup included, and the finisher runs with the
-\ cell clear.
+\ Frame: [0] cleanup | [8] finisher | [16] code | [24] halt | [32] the throw count
+\ when [16] was stored | [40] unused. The cleanup's nonzero code goes to [16] only
+\ when [16] is 0. A halt is taken and resumed as BFINALLY does, one begun inside
+\ the cleanup included, and the finisher runs with the cell clear. A count moved
+\ since [32] means a throw since the code landed, so the code goes on as a new
+\ throw.
 : BC2-INVOKE ( -- )
-   LBL LBL {: calm:label throw:label :}
+   LBL LBL LBL {: calm:label throw:label same:label :}
    LBL C2-INVOKE-DONE !
    LBL C2-INVOKE-CLEAN !
    A G-POP  10 A 0 ADDI,
    A G-POP
-   SP SP 32 SUBI,  A SP 0 STR,  10 SP 8 STR,
+   SP SP 48 SUBI,  A SP 0 STR,  10 SP 8 STR,
    BCATCH-HELD
-   9 SP 16 STR,
+   9 SP 16 STR,  10 DATA THROWS-CELL LDR,  10 SP 32 STR,
    10 DATA HALT-UNWIND-CELL LDR,  10 SP 24 STR,
    10 0 MOVZ,  10 DATA HALT-UNWIND-CELL STR,
    9 SP 0 LDR,  9 G-PUSH  BCATCH-HELD
    9 C2-INVOKE-CLEAN LABEL@ CBZ,  10 SP 16 LDR,  10 C2-INVOKE-CLEAN LABEL@ CBNZ,
-   9 SP 16 STR,
+   9 SP 16 STR,  10 DATA THROWS-CELL LDR,  10 SP 32 STR,
    C2-INVOKE-CLEAN LABEL@ LBL,
    10 DATA HALT-UNWIND-CELL LDR,  10 calm CBZ,
    10 SP 24 STR,
@@ -3349,11 +3352,14 @@ private
    calm LBL,
    9 SP 16 LDR,  9 G-PUSH
    9 SP 8 LDR,  BRECORD  BCALLABLE  9 BLR,
-   9 SP 16 LDR,  10 SP 24 LDR,  SP SP 32 ADDI,
+   9 SP 16 LDR,  10 SP 24 LDR,  11 SP 32 LDR,  SP SP 48 ADDI,
    10 DATA HALT-UNWIND-CELL STR,                 \ the halt taken, 0 when none
    10 throw CBNZ,
    9 C2-INVOKE-DONE LABEL@ CBZ,
-   throw LBL,  BRETHROW
+   throw LBL,
+   12 DATA THROWS-CELL LDR,  12 11 CMP,  C-EQ same BCOND,
+   12 12 1 ADDI,  12 DATA THROWS-CELL STR,
+   same LBL,  BRETHROW
    C2-INVOKE-DONE LABEL@ LBL, ;
 
 \ (R base bound value[W] callback W bytes align frame) -> (R base bytes

@@ -59,10 +59,11 @@ variable TEXT-LEN
 \ hook exists, so no effect is published for it.
 variable QUIET
 variable TALLY   0 TALLY !               \ rejections counted this load
-\ The code whose record SAVE kept.
-variable SAVED-CODE   0 SAVED-CODE !
 
 private
+\ The number of the throw that carries the kept record, 0 for none: a thread
+\ that has thrown counts at least 1.
+variable STAMP   0 STAMP !
 
 : TEXT-MAP ( -- )
    TEXT-FIRST ARENA-ALLOC-BYTES TEXT-P !  TEXT-FIRST TEXT-CAP ! ;
@@ -816,16 +817,21 @@ public
       TEXT SAVED-P @ TEXT-LEN @ ARENA-COPY
       TEXT-LEN @ SAVED-U !
    THEN
-   0 TEXT-LEN !  0 DEST ! ;
+   0 STAMP !  0 TEXT-LEN !  0 DEST ! ;
 
 \ Sends the record SAVE kept, and keeps none.
 : SEND-SAVED ( -- )
+   0 STAMP !
    SAVED-U @ 0= IF EXIT THEN
    SAVED-P @ SAVED-U @  0 SAVED-U !  BUF-APPEND ;
 
-\ Throws n, noting the nearest handler, which takes it, in PASSED-TO-CELL.
+\ Throws n as the throw that carries the kept record.
 : PASS ( n -- )
-   data-base HND-CELL + @  data-base PASSED-TO-CELL + !  throw ;
+   data-base THROWS-CELL + @ 1 + STAMP !  throw ;
+
+\ Whether the newest throw this thread began carries the kept record.
+: CARRIED? ( -- bool )
+   STAMP @  data-base THROWS-CELL + @  = ;
 
 \ The word kw ku has no operand after it, which what names with its article
 \ ("a name"): the record stands at t tu, which why labels. It is written

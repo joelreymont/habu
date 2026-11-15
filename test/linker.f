@@ -67,12 +67,13 @@ variable HEADER0                     \ hb's DATA header, its distance from NULL-
    off WIDN-CELL = off NDICT-HW-CELL = or off HIDX:CLAIMS = or ;
 
 \ Scratch any host definition, evaluation or number printing writes: name and
-\ token cells, the body text's handle, EVALERR and fmt/string scratch.
+\ token cells, the body text's handle, EVALERR, THROWS-CELL (every throw writes
+\ it) and fmt/string scratch.
 : SCRATCH? ( n -- bool )
    {: off:n :}
    off BODYLEN-CELL = off DEF-TKA-CELL = or off DEF-TKL-CELL = or
    off TKA-CELL = or off TKL-CELL = or off PENDTKA-CELL = or
-   off EVALERR-CELL = or
+   off EVALERR-CELL = or  off THROWS-CELL = or
    off TOKBODY-CELL TOKVSP-CELL CELL + IN? or
    off BODY-TEXT:BASE-CELL BODY-TEXT:BASE-CELL 4 cells + IN? or
    off FMT-ABI:START STRING-ABI:END IN? or ;

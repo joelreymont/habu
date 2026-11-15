@@ -2032,8 +2032,6 @@ TYPED-VARIABLE GROUP-OPEN ptr u8
 variable ENTRY-PEND
 \ SOURCE-ROOT:TEXT-MARK as the buffer began.
 variable DECL-MARK
-\ The handler of the running text's inner catch, which LEFT runs after.
-variable OWN-HND   0 OWN-HND !
 \ The code the outermost text left with, whose record REJECTION:SAVE kept.
 variable ROOT-CODE   0 ROOT-CODE !
 
@@ -3182,27 +3180,19 @@ variable OPENER-U
 : OUTERMOST? ( -- bool )
    NULL-PTR EVAL-TOP-CELL CELL@ + EVAL-PREV FR@ 0= ;
 
-\ The running text's inner catch is the nearest handler. A PASS noted to the
-\ same handler before this text began carried no record of this text. An
-\ outermost text that begins ends the wait for the record of the one before
+\ An outermost text that begins ends the wait for the record of the one before
 \ it, which a program caught.
 : BEGIN-TEXT ( -- )
-   HND-CELL CELL@ {: h:n :}
-   h OWN-HND !
-   PASSED-TO-CELL CELL@ h = if 0 PASSED-TO-CELL CELL! then
    OUTERMOST? if 0 ROOT-CODE ! then ;
 
 \ Ends the running text's inner catch with code c: 0 returns and 1..255 goes
-\ on as thrown. Any other code leaves the text with a record kept at the
-\ running token, unless a PASS to this catch carried the record of c.
+\ on as thrown. Any other code is passed on with a record: the one its throw
+\ carried, else one kept at the running token.
 : LEFT ( n -- )
    {: c:n :}
    c 0= if exit then
    c 1 255 BETWEEN? if c throw then
-   PASSED-TO-CELL CELL@ OWN-HND @ =
-   REJECTION:SAVED-CODE @ c =  and 0= if
-      c THROWN-AT REJECTION:SAVE  c REJECTION:SAVED-CODE !
-   then
+   REJECTION:CARRIED? 0= if c THROWN-AT REJECTION:SAVE then
    OUTERMOST? if c ROOT-CODE ! then
    c REJECTION:PASS ;
 
@@ -3284,7 +3274,6 @@ public
    USE-FLOOR @ {: outer:n :}
    REC @ {: found:ptr :}
    ENTRY-PEND @ {: prior:n :}
-   OWN-HND @ {: prior-hnd:n :}
    DECL-MARK @ {: prior-mark:n :}
    PEND-CELL CELL@ {: entry:n :}
    entry ENTRY-PEND !
@@ -3303,7 +3292,7 @@ public
       entry 0<> if BODYLEN-CELL CELL@ ITEMS-CUT then
    then
    code 0<> if DECL-MARK @ SOURCE-ROOT:TEXT-UNWOUND then
-   prior ENTRY-PEND !  prior-hnd OWN-HND !  prior-mark DECL-MARK !
+   prior ENTRY-PEND !  prior-mark DECL-MARK !
    code 0<> if
       entry PEND-CELL CELL!
    then
