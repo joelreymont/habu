@@ -963,6 +963,15 @@ s" NEWTYPE tvfuture"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration `tvfuture`\n"
 s" tvfuture" s" collides with a sum variant" TDT-AT
 ;package
+\ A generated word that collides is placed at the family that generated it.
+package tdgclash
+private
+create TDGCLASH-UNMAKE
+s" PRODUCT tdgclash FIELD a n ;PRODUCT"
+s\" error[E-BAD-DECLARATION]: bad product declaration `tdgclash`\n"
+s" tdgclash" s" generated declaration already defined" TDT-AT
+s\" = word: TDGCLASH-UNMAKE\n" TDT-HAS
+;package
 \ Package-local variant tails do not reserve unrelated package namespaces.
 package tvordera
 ENUM tvowner tvlocal ;ENUM
