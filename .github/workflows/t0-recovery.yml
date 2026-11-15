@@ -18,6 +18,22 @@ jobs:
           persist-credentials: false
       - name: Build the checked bootstrap stages
         run: bash ci/recovery/run.sh
+      - name: Check the ordinary builder before it is sealed
+        run: |
+          stage="$RUNNER_TEMP/habu-t0-recovery/7205e0b606676b4325b3fd60ad9264ee1ac3d7d5"
+          result="$RUNNER_TEMP/habu-t0-recovery/results/7205e0b606676b4325b3fd60ad9264ee1ac3d7d5"
+          seed="$RUNNER_TEMP/habu-t0-recovery/results/0c1e6b799379ed0f16dc55c272309cc53cff90c6/hb"
+          mkdir -p "$stage/tmp" "$stage/objects" "$result"
+          git fetch --depth=1 origin 7205e0b606676b4325b3fd60ad9264ee1ac3d7d5
+          git worktree add --detach "$stage/source" 7205e0b606676b4325b3fd60ad9264ee1ac3d7d5
+          cd "$stage/source"
+          git rev-parse HEAD HEAD^{tree} >"$result/source.txt"
+          test "$(git rev-parse HEAD^{tree})" = 81e481f60d5f36627e556a4da37c1d5fa65d4e0d
+          TMPDIR="$stage/tmp" HABU_OUT="$stage/objects" timeout 300 "$seed" \
+            --load "$GITHUB_WORKSPACE/ci/recovery/t0-first.f" tools/hb-build.f -- \
+            --engine -o "$result/hb" 2>&1 | tee "$result/engine.log"
+          (cd "$result" && sha256sum hb hb.map >sha256.txt)
+          timeout 300 "$result/hb" --load "$GITHUB_WORKSPACE/ci/recovery/smoke.f"
       - name: Retain the hosts and diagnostics
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
