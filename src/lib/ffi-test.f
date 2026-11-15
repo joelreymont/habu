@@ -556,10 +556,10 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
 
 : FFI-T-FOREIGN-LIBRARY ( -- )
    s" a library name spelled for the other target is refused by name" T-LABEL
-   FFI-T-FOREIGN-SRC$ FFI-T-UNCAUGHT-RC FFI-T-RUN-EXITS
+   FFI-T-FOREIGN-SRC$ CHECKER-REJECT-RC FFI-T-RUN-EXITS
    {: outu:len erru:len :}
    outu LEN>N 0 T=
-   erru FFI-T-ERR$ E-FFI-LIBRARY FFI-T-CODE$ CONTAINS? TTRUE
+   erru FFI-T-ERR$ s" error[E-FFI-LIBRARY]" CONTAINS? TTRUE
    s" the refusal names the rejected name and this target" T-LABEL
    erru FFI-T-ERR$ FFI-T-FOREIGN-NAME$ CONTAINS? TTRUE
    erru FFI-T-ERR$ FFI-T-TARGET$ CONTAINS? TTRUE ;
@@ -573,10 +573,10 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
 
 : FFI-T-LONG-FOREIGN-LIBRARY ( -- )
    s" a PATH-CAP foreign name keeps the target refusal and its full name" T-LABEL
-   FFI-T-LONG-FOREIGN-SRC$ FFI-T-UNCAUGHT-RC FFI-T-RUN-EXITS
+   FFI-T-LONG-FOREIGN-SRC$ CHECKER-REJECT-RC FFI-T-RUN-EXITS
    {: outu:len erru:len :}
    outu LEN>N 0 T=
-   erru FFI-T-ERR$ E-FFI-LIBRARY FFI-T-CODE$ CONTAINS? TTRUE
+   erru FFI-T-ERR$ s" error[E-FFI-LIBRARY]" CONTAINS? TTRUE
    FFI-T-LONG-PATH!
    HB-TARGET-MACOS? if s" .so" else s" .dylib" then {: ext:ptr eu:n :}
    ext FFI-T-LONG-PATH PATH-CAP eu - + eu BYTE-COPY
@@ -746,7 +746,9 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    [: FFI-T-LIST-WORD ;] E-FFI-SYNTAX TTHROWSQ
    s" a library selection is scoped to the scope that states it" T-LABEL
    FFI-T-SCOPE-BEFORE FFI-T-DEPTH!
-   [: FFI-T-NO-LIBRARY ;] E-FFI-LIBRARY TTHROWSQ
+   1 REJECTION:QUIET +!
+   [: FFI-T-NO-LIBRARY ;] CHECKER-REJECT-RC TTHROWSQ
+   -1 REJECTION:QUIET +!
    FFI-T-PRIVATE-AGAIN
    [: FFI-T-SCOPED-LIBRARY ;] 0 TTHROWSQ
    FFI-T-RESELECT

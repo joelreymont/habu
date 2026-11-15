@@ -895,8 +895,6 @@ $10 constant ARG-MAX
 $20 constant SP-C
 $24 constant HEX-C                        \ '$' - the hex literal prefix
 
-PATH-CAP 128 + constant DIAG-CAP
-
 public
 
 \ An input's kind, as STRUCT-FITS? reads it: a cell, a `ptr u8`, an `r` or an
@@ -927,7 +925,6 @@ private
 LIBRARY-PATH-CAP 1 - CODEGEN:BUFFER LIB-NAME
 GEN-CAP CODEGEN:BUFFER GEN
 EFF-CAP CODEGEN:BUFFER EFF
-DIAG-CAP CODEGEN:BUFFER DIAG
 
 \ One declaration's working state: a declaration word writes each cell before
 \ it reads it. While no declaration is open (OPEN @ 0=) every cell rests at
@@ -1065,6 +1062,12 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
 
 : SYM! ( -- )
    TOK$ {: a:ptr u:n :}
+   u FN-NAME-CAP 1 - > if
+      s" E-FFI-SYNTAX" s" the symbol is longer than a declared function keeps"
+      TOK-AT s" too long" FFI-PLACE  FN-NAME-CAP 1 - s" bytes" LIMIT-HELP
+      s" declare a shorter symbol, such as a C wrapper that calls this one" SAY
+      FFI-STOP
+   then
    a SYM-BUF u BYTE-COPY
    u SYM-U ! ;
 
@@ -1072,13 +1075,29 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
 \ token overwrites it.
 : BASE! ( -- )
    TOK$ {: a:ptr u:n :}
+   u LIB-BASE-CAP > if
+      s" E-FFI-SYNTAX" s" the library name is longer than a declaration keeps"
+      TOK-AT s" too long" FFI-PLACE  LIB-BASE-CAP s" bytes" LIMIT-HELP
+      s" name the library by its file with `LIBRARY` instead" SAY
+      FFI-STOP
+   then
    a BASE-BUF u BYTE-COPY
    u BASE-U ! ;
+
+\ STR-PARSE-POS answers no negative version, so only the top bound is read.
+: VERSION-ROOM ( n -- ) {: version:n :}
+   version LIB-VERSION-MAX > if
+      s" E-FFI-SYNTAX" s" a library version is past the highest a declaration renders"
+      TOK-AT s" a version past the limit" FFI-PLACE
+      LIB-VERSION-MAX s" as the highest version" LIMIT-HELP
+      s" list only the soname versions the library ships" SAY
+      FFI-STOP
+   then ;
 
 : >VERSION ( ptr u8 n -- n )
    STR-PARSE-POS MATCH option
       none OF E-FFI-SYNTAX throw ENDOF
-      some OF dup VERSION-CHECK ENDOF
+      some OF dup VERSION-ROOM ENDOF
    ;MATCH ;
 
 \ A version list's rows, made from the last version to the first, each next
@@ -1422,10 +1441,7 @@ private
 
 \ ---- the row this declaration takes ----------------------------------------
 
-: DIAG+ ( ptr u8 n -- )
-   DIAG CODEGEN:APPEND-STRING ;
-
-\ A library name spelled in the other target's convention is refused where it
+\ A library name spelled in the other target's convention is rejected where it
 \ is stated, not at the first call in whatever module declared it. A rendered
 \ name passes by construction.
 : TARGET$ ( -- ptr u8 n )
@@ -1448,20 +1464,13 @@ private
    then
    E-FFI-LIBRARY throw ;
 
-: REPORT-LIBRARY-TARGET ( ptr u8 n -- ) {: path:ptr u:n :}
-   DIAG CODEGEN:RESET
-   s" ffi: library " DIAG+
-   path u DIAG+
-   s"  is spelled for the other target; this build loads for " DIAG+
-   TARGET$ DIAG+
-   s" : name it with VERSIONED-LIBRARY" DIAG+
-   LF-C DIAG CODEGEN:APPEND-BYTE
-   DIAG CODEGEN:CONTENTS ERROR-TEXT:TYPE ;
-
 : CHECK-SPELLING ( ptr u8 n -- ) {: path:ptr u:n :}
    path u FOREIGN-SPELLING? 0= if exit then
-   path u REPORT-LIBRARY-TARGET
-   E-FFI-LIBRARY throw ;
+   s" E-FFI-LIBRARY" s" the library name is spelled for the other target"
+   path u s" this build loads for " FFI-PLACE  TARGET$ SAY
+   REJECTION:HELP
+   s" name it with `VERSIONED-LIBRARY`, which spells it for each target" SAY
+   FFI-STOP ;
 
 
 \ The cells holding a larger record's copy address, which the call moves to
@@ -1544,8 +1553,18 @@ private
    1 SCOPE-SET ! ;
 
 : CHECK-SCOPE ( -- )
-   SCOPE-SET @ 0= if E-FFI-LIBRARY throw then
-   get-current SCOPE-WID @ <> if E-FFI-LIBRARY throw then ;
+   SCOPE-SET @ 0= if
+      s" E-FFI-LIBRARY" s" the declaration has no library selected"
+      SRCLOC:TOKEN$ s" no library is selected before this" FFI-REJECT
+      s" select one first in this scope, with `VERSIONED-LIBRARY`, `LIBRARY` or `PROCESS-SYMBOLS`" SAY
+      FFI-STOP
+   then
+   get-current SCOPE-WID @ <> if
+      s" E-FFI-LIBRARY" s" the declaration's scope has no library selected"
+      SRCLOC:TOKEN$ s" the library was selected in another scope" FFI-REJECT
+      s" select the library again in this scope, with `VERSIONED-LIBRARY`, `LIBRARY` or `PROCESS-SYMBOLS`" SAY
+      FFI-STOP
+   then ;
 
 public
 
@@ -1658,7 +1677,7 @@ public
 
 : SELECT-LIBRARY ( ptr u8 n -- ) {: path:ptr u:n :}
    u 0 <= u LIBRARY-PATH-CAP >= or if E-FFI-SYNTAX throw then
-   path u CHECK-SPELLING
+   path u [: CHECK-SPELLING ;] KEEP-REST
    path u LIBRARY-PATH CUR-LIB !
    RECORD-SCOPE ;
 
