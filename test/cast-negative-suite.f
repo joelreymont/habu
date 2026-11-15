@@ -49,8 +49,8 @@ variable SRC-U
 s" cast: CNA1 ( n n -- CN:cnfam )"              CN-RUN:DECL E-CAST-ARITY T=
 s" cast: CNA2 ( n -- CN:cnfam CN:cnfam )"       CN-RUN:DECL E-CAST-ARITY T=
 \ class: an atom is a phantom index, not a cell, and a pointer to one names no
-\ storage. A layout value wider than a cell stands for one term per cell, so it
-\ is refused as arity before its class is asked.
+\ storage. A layout value wider than a cell is one term; a cast between values
+\ of different widths is refused as arity before its class is asked.
 s" cast: CNC1 ( n -- extent-a )"     CN-RUN:DECL E-CAST-CLASS T=
 s" cast: CNC2 ( n -- ^extent-a )" CN-RUN:DECL E-CAST-CLASS T=
 s" cast: CNC3 ( n -- CAST-NEG:wide )" CN-RUN:DECL E-CAST-ARITY T=
@@ -538,5 +538,29 @@ package CN
 \ no window is armed — the reject is the bare token, before any name is parsed.
 s" CNU1 ( n -- CN:cnfam ) cast:"                      CHECK-QUIET-CANDIDATE! 0 T=
 ;package
+
+\ A cast retypes one value of any width, to a value of the same width only: a
+\ str is two cells, and n is one.
+package CN-STR
+create DIAG 4096 allot
+: WIDTH? ( -- bool )
+   REJECTION:BUFFER$ s" the input and output differ in width" CONTAINS? ;
+DIAG 4096 REJECTION:BUFFER!
+s" cast: CNS1 ( str -- n )" CN-RUN:DECL E-CAST-ARITY T=
+WIDTH? TTRUE
+DIAG 4096 REJECTION:BUFFER!
+s" cast: CNS2 ( n -- str )" CN-RUN:DECL E-CAST-ARITY T=
+WIDTH? TTRUE
+\ A package retypes a str as its own role and back in its private section.
+public
+STRUCTURE path OPAQUE FIELD v str ;STRUCTURE
+private
+s" cast: >PATH ( str -- path )" CN-RUN:DECL 0 T=
+s" cast: PATH> ( path -- str )" CN-RUN:DECL 0 T=
+public
+: MK ( str -- path ) >PATH ;
+: UN ( path -- str ) PATH> ;
+;package
+s" abc" >str CN-STR:MK CN-STR:UN str> nip 3 T=
 
 T-REPORT
