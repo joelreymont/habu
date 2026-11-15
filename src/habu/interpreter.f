@@ -2030,26 +2030,26 @@ CAST: QUOT-ENTRY ( [ R -- S ] -- n )
    wid XREF:NS-ROW nip if exit then
    E-COMP-STATE throw ;
 
-\ Appends a call of the word at record index R, which the checker binds.
-: CALL-ITEM ( n -- ) {: r:n :}
-   r XREF-REC {: rec:ptr :}
-   rec CALLEE-CHECK
-   BODY-ITEM-KIND:CALL r 0 rec XREF-NAME$ ITEM+ ;
+\ Appends a call of the word at record index R, spelled S U, which the checker
+\ binds.
+: CALL-ITEM ( ptr u8 n n -- ) {: s:ptr u:n r:n :}
+   r XREF-REC CALLEE-CHECK
+   BODY-ITEM-KIND:CALL r 0 s u ITEM+ ;
 
 \ Appends a call of the word at entry E.
 : COMPILE-CALL ( n -- ) {: e:n :}
    e XREF:ENTRY-REC {: r:n :}
    r -1 = if NAMELESS-REFUSE then
-   r CALL-ITEM ;
+   r XREF-REC XREF-NAME$ r CALL-ITEM ;
 
 \ What `compile,` runs: it appends a call of the word whose entry the quotation is.
 : COMPILE-RUN ( [ R -- S ] -- )
    s" compile," BUILT-PENDING QUOT-ENTRY COMPILE-CALL ;
 
-\ A cell's decimal spelling, written from the end of LIT-DIGITS: 20 bytes
-\ hold any i64 and its sign, and one more a local's `l`. `/` truncates, so a
-\ negative value's remainders are at most 0.
-21 BUFFER: LIT-DIGITS
+\ A cell's decimal spelling, written from the end of LIT-DIGITS: 20 bytes hold
+\ any i64 and its sign. `/` truncates, so a negative value's remainders are at
+\ most 0.
+20 BUFFER: LIT-DIGITS
 variable LIT-AT
 
 : LIT-DIGIT ( n -- ) {: c:n :}
@@ -2060,16 +2060,13 @@ variable LIT-AT
    v v 10 / 10 * - {: r:n :}
    r 0 < if 0 r - else r then ;
 
-: LIT-SPAN ( -- ptr u8 n ) LIT-DIGITS LIT-AT @ +  21 LIT-AT @ - ;
+: LIT-SPAN ( -- ptr u8 n ) LIT-DIGITS LIT-AT @ +  20 LIT-AT @ - ;
 
 : LIT$ ( n -- ptr u8 n ) {: v:n :}
-   21 LIT-AT !
+   20 LIT-AT !
    v begin dup LIT-REM 48 + LIT-DIGIT  10 / dup 0= until drop
    v 0 < if 45 LIT-DIGIT then
    LIT-SPAN ;
-
-\ A local's spelling in the listing: `l` and its index.
-: LOCAL$ ( n -- ptr u8 n ) LIT$ 2drop  108 LIT-DIGIT  LIT-SPAN ;
 
 \ What `literal` runs: an INT item, spelled in decimal.
 : LITERAL-RUN ( n -- ) {: v:n :}
@@ -2079,7 +2076,7 @@ variable LIT-AT
 \ Appends a call of the word a lookup of the name found.
 : FOUND-CALL ( ptr u8 n ptr n -- ) {: a:ptr u:n rec:ptr :}
    rec XREF-FOUND? 0= if a u UNDEFINED-NAME then
-   rec XREF-NULL - XREF-ADDR>INDEX CALL-ITEM ;
+   a u  rec XREF-NULL - XREF-ADDR>INDEX CALL-ITEM ;
 
 : ITEM-OP-REFUSE ( -- )
    s" E-ITEM-OP" REFUSAL
@@ -2095,6 +2092,10 @@ variable LIT-AT
    s"  needs a definition define-word opened" ERROR-TEXT:TYPE
    NL 1 ERROR-TEXT:TYPE  RC-REJECT throw ;
 
+\ Type node T as a diagnostic spells it, the spelling of a built local of that
+\ type.
+: LOCAL-TYPE$ ( n -- ptr u8 n ) TFAM:EFFECT-TYPE TYPE-TEXT ;
+
 \ Appends a local of type node T, whose index is the LOCAL items before it;
 \ its node numbers T's parameters on from the definition's effect.
 : LOCAL-ITEM ( ptr u8 n n -- ) {: a:ptr u:n t:n :}
@@ -2104,8 +2105,18 @@ variable LIT-AT
    then
    {: dense:n :}
    BODY-ITEMS:LOCALS-CELL CELL@ {: i:n :}
-   BODY-ITEM-KIND:LOCAL dense i i LOCAL$ ITEM+
+   BODY-ITEM-KIND:LOCAL dense i dense LOCAL-TYPE$ ITEM+
    i 1 + BODY-ITEMS:LOCALS-CELL CELL! ;
+
+\ The A of the LOCAL item whose B is index I, and false when there is none.
+: LOCAL-NODE ( n -- n bool ) {: want:n :}
+   BODY-ITEMS:COUNT-CELL CELL@ 0 ?do
+      i BODY-ITEMS:KIND ITEM@ BODY-ITEM-KIND:LOCAL =
+      i BODY-ITEMS:B ITEM@ want = and if
+         i BODY-ITEMS:A ITEM@ true unloop exit
+      then
+   loop
+   0 false ;
 
 \ Runs a definer's item: ITEM-ABI op OP, one-token spelling A U, and V, a
 \ TYPE's or LOCAL's schema node or a LOCAL-REF's index.
@@ -2117,7 +2128,8 @@ variable LIT-AT
    op ITEM-ABI:TYPE = if BODY-ITEM-KIND:TYPE v 0 a u ITEM+ exit then
    op ITEM-ABI:LOCAL = if a u v LOCAL-ITEM exit then
    op ITEM-ABI:LOCAL-REF = if
-      a u LOCAL-UNBUILT  BODY-ITEM-KIND:LOCAL-REF v 0 v LOCAL$ ITEM+ exit
+      a u LOCAL-UNBUILT  BODY-ITEM-KIND:LOCAL-REF v 0
+      v LOCAL-NODE if LOCAL-TYPE$ else drop a u then ITEM+ exit
    then
    op ITEM-ABI:CALL = if a u  a u LOOKUP-NAME  FOUND-CALL exit then
    op ITEM-ABI:CALL-EXACT = if

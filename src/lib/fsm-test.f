@@ -407,6 +407,14 @@ variable SRC-LEN
    s" include test/fixtures/fsm/undefined-action.f" 70
    s" undefined-action.f:14" SUBJECT:REFUSED? TTRUE ;
 
+: PLACED-EFFECT ( -- )
+   \ A wrong action is named as the table spells it, not as it was defined.
+   s" include test/fixtures/fsm/wrong-effect.f" 70
+   s" 'bump'" SUBJECT:REFUSED? TTRUE
+   \ Its rejection names the action's own line.
+   s" include test/fixtures/fsm/wrong-effect.f" 70
+   s" wrong-effect.f:15" SUBJECT:REFUSED? TTRUE ;
+
 \ An unknown states type is placed at the header's states token.
 : PLACED-STATES ( -- )
    s" include test/fixtures/fsm/unknown-states.f" 70
@@ -573,6 +581,7 @@ public
    SYNTAX
    REJECTED
    PLACED-ACTION
+   PLACED-EFFECT
    PLACED-STATES
    SHADOWED
    USING-SHADOW
