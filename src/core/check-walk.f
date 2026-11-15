@@ -549,10 +549,13 @@ public
 
 \ What a walk does around the step of the token at TSTART..TI: the tape's
 \ fields and the cursor before it, answering TOK0, then the summary and the
-\ report after, answering whether the walk ends.
+\ report after, answering whether the walk ends. A walk with no tape still
+\ rejects an over-long counted literal, so the opener's span and the payload
+\ mark are kept on every walk.
 : SCAN-TOK-HEAD ( -- n )
+   TI @ TSTART @ - SCAN-U !  0 SPAY-ON !
    CHECKER-TAPE:ARMED @ IF
-      TI @ TSTART @ - SCAN-U !  TOK0 @ SCAN-TOK0 !  0 SPAY-ON !  0 CPAY-ON !  0 PPAY-ON !  0 POST-ON !  0 TPAY-ON !
+      TOK0 @ SCAN-TOK0 !  0 CPAY-ON !  0 PPAY-ON !  0 POST-ON !  0 TPAY-ON !
       0 IS-PEND !  0 EV-HIT !
    THEN
    CUR-TOKEN
@@ -562,7 +565,9 @@ public
 : SCAN-TOK-TAIL ( n -- bool ) {: was-name:n :}
    TORDER-SCAN-UNKNOWN @ IF RES-TRUE EXIT THEN
    was-name 0= IF TSTART @ TADDR TI @ TSTART @ - ZSUMMARY-TOKEN THEN
-   CHECKER-TAPE:ARMED @ IF SCAN-REPORT THEN
+   CHECKER-TAPE:ARMED @ IF SCAN-REPORT ELSE
+      SPAY-ON @ IF SPAY-BYTES SPAY-COUNTED-CK 2drop THEN
+   THEN
    RES-FALSE ;
 
 : CHECK-SCAN-WALK ( -- )
