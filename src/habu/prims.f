@@ -192,6 +192,8 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
    R-NONE          ROW-N @ F-REACH SLOT !
    ROW-N @ 1 + ROW-N ! ;
 
+\ A row body holds only atoms, `PE-...` or `;PE-...`, which parse nothing, and
+\ `REF name` clauses, so the first closer outside a REF clause ends the row.
 : EPRIM: ( -- )
    K-PRIM ROW-OPEN ROW-NAME ;
 

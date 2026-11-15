@@ -121,7 +121,6 @@ variable BIG-LEX-U
 \ Rows are built byte-wise: a primitive can be NAMED `s"`, `s\"` or `."`, and
 \ writing those names as literals here would end this file's own strings.
 $400 constant ROW-CAP
-$0B constant ROW-VT-C
 $28 constant ROW-LPAREN-C
 create ROW-FIX ROW-CAP allot     variable ROW-LEN
 
@@ -521,27 +520,27 @@ variable REG-I
 \ row proves the scanner handed the source back.
 : EIGHT-BARE-ROWS$  ( -- ^u8 n )
    ROW-RESET
-   s" EPRIM: s" ROW+       ROW-Q            s"  A EPRIM;" ROW+  ROW-NL
-   s" EPRIM: c" ROW+       ROW-Q            s"  B EPRIM;" ROW+  ROW-NL
-   s" EPRIM: ." ROW+       ROW-Q            s"  C EPRIM;" ROW+  ROW-NL
-   s" EPRIM: s" ROW+  ROW-BS ROW-Q          s"  D EPRIM;" ROW+  ROW-NL
-   s" EPRIM: c" ROW+  ROW-BS ROW-Q          s"  E EPRIM;" ROW+  ROW-NL
-   s" EPRIM: ." ROW+  ROW-BS ROW-Q          s"  F EPRIM;" ROW+  ROW-NL
-   s" EPRIM: ['] G EPRIM;" ROW+                                 ROW-NL
-   s" EPRIM: [char] H EPRIM;" ROW+                              ROW-NL
+   s" EPRIM: s" ROW+       ROW-Q            s"  PE-N EPRIM;" ROW+  ROW-NL
+   s" EPRIM: c" ROW+       ROW-Q            s"  PE-N EPRIM;" ROW+  ROW-NL
+   s" EPRIM: ." ROW+       ROW-Q            s"  PE-N EPRIM;" ROW+  ROW-NL
+   s" EPRIM: s" ROW+  ROW-BS ROW-Q          s"  PE-N EPRIM;" ROW+  ROW-NL
+   s" EPRIM: c" ROW+  ROW-BS ROW-Q          s"  PE-N EPRIM;" ROW+  ROW-NL
+   s" EPRIM: ." ROW+  ROW-BS ROW-Q          s"  PE-N EPRIM;" ROW+  ROW-NL
+   s" EPRIM: ['] PE-N EPRIM;" ROW+                               ROW-NL
+   s" EPRIM: [char] PE-N EPRIM;" ROW+                            ROW-NL
    s" : AFTER dup ;" ROW+
    ROW$ ;
 
 : EIGHT-PKG-ROWS$  ( -- ^u8 n )
    ROW-RESET
-   s" EPPRIM: PK s" ROW+       ROW-Q     s"  A ECLOSE-PRIVATE" ROW+  ROW-NL
-   s" EPPRIM: PK c" ROW+       ROW-Q     s"  B ECLOSE-PRIVATE" ROW+  ROW-NL
-   s" EPPRIM: PK ." ROW+       ROW-Q     s"  C ECLOSE-PRIVATE" ROW+  ROW-NL
-   s" EPPRIM: PK s" ROW+  ROW-BS ROW-Q   s"  D ECLOSE-PRIVATE" ROW+  ROW-NL
-   s" EPPRIM: PK c" ROW+  ROW-BS ROW-Q   s"  E ECLOSE-PRIVATE" ROW+  ROW-NL
-   s" EPPRIM: PK ." ROW+  ROW-BS ROW-Q   s"  F ECLOSE-PRIVATE" ROW+  ROW-NL
-   s" EPPRIM: PK ['] G ECLOSE-PRIVATE" ROW+                      ROW-NL
-   s" EPPRIM: PK [char] H ECLOSE-PRIVATE" ROW+                   ROW-NL
+   s" EPPRIM: PK s" ROW+       ROW-Q     s"  PE-N ECLOSE-PRIVATE" ROW+  ROW-NL
+   s" EPPRIM: PK c" ROW+       ROW-Q     s"  PE-N ECLOSE-PRIVATE" ROW+  ROW-NL
+   s" EPPRIM: PK ." ROW+       ROW-Q     s"  PE-N ECLOSE-PRIVATE" ROW+  ROW-NL
+   s" EPPRIM: PK s" ROW+  ROW-BS ROW-Q   s"  PE-N ECLOSE-PRIVATE" ROW+  ROW-NL
+   s" EPPRIM: PK c" ROW+  ROW-BS ROW-Q   s"  PE-N ECLOSE-PRIVATE" ROW+  ROW-NL
+   s" EPPRIM: PK ." ROW+  ROW-BS ROW-Q   s"  PE-N ECLOSE-PRIVATE" ROW+  ROW-NL
+   s" EPPRIM: PK ['] PE-N ECLOSE-PRIVATE" ROW+                    ROW-NL
+   s" EPPRIM: PK [char] PE-N ECLOSE-PRIVATE" ROW+                 ROW-NL
    s" : AFTER drop ;" ROW+
    ROW$ ;
 
@@ -550,9 +549,9 @@ variable REG-I
    LINT-LEX:ERROR? 0= ASSERT
    LINT-LEX:COUNT 12 ASSERT=
    REG-COUNT 8 ASSERT=
-   0 1 18 ASSERT-BARE-ROW   1 2 18 ASSERT-BARE-ROW   2 3 18 ASSERT-BARE-ROW
-   3 4 19 ASSERT-BARE-ROW   4 5 19 ASSERT-BARE-ROW   5 6 19 ASSERT-BARE-ROW
-   6 7 19 ASSERT-BARE-ROW   7 8 22 ASSERT-BARE-ROW
+   0 1 21 ASSERT-BARE-ROW   1 2 21 ASSERT-BARE-ROW   2 3 21 ASSERT-BARE-ROW
+   3 4 22 ASSERT-BARE-ROW   4 5 22 ASSERT-BARE-ROW   5 6 22 ASSERT-BARE-ROW
+   6 7 22 ASSERT-BARE-ROW   7 8 25 ASSERT-BARE-ROW
    8 LINT-LEX:TOKEN s" :" ASSERT$      8 LINT-LEX:LINE@ 9 ASSERT=
    9 LINT-LEX:TOKEN s" AFTER" ASSERT$
    10 LINT-LEX:TOKEN s" dup" ASSERT$
@@ -561,128 +560,12 @@ variable REG-I
    LINT-LEX:ERROR? 0= ASSERT
    LINT-LEX:COUNT 12 ASSERT=
    REG-COUNT 8 ASSERT=
-   0 1 30 ASSERT-PKG-ROW    1 2 30 ASSERT-PKG-ROW    2 3 30 ASSERT-PKG-ROW
-   3 4 31 ASSERT-PKG-ROW    4 5 31 ASSERT-PKG-ROW    5 6 31 ASSERT-PKG-ROW
-   6 7 31 ASSERT-PKG-ROW    7 8 34 ASSERT-PKG-ROW
+   0 1 33 ASSERT-PKG-ROW    1 2 33 ASSERT-PKG-ROW    2 3 33 ASSERT-PKG-ROW
+   3 4 34 ASSERT-PKG-ROW    4 5 34 ASSERT-PKG-ROW    5 6 34 ASSERT-PKG-ROW
+   6 7 34 ASSERT-PKG-ROW    7 8 37 ASSERT-PKG-ROW
    8 LINT-LEX:TOKEN s" :" ASSERT$      8 LINT-LEX:LINE@ 9 ASSERT=
    9 LINT-LEX:TOKEN s" AFTER" ASSERT$
    11 LINT-LEX:TOKEN s" ;" ASSERT$ ;
-
-\ The differential probe from the row contract. The engine accepts this row: `s"`
-\ in the body is executed, so its literal swallows the `EPRIM;` and the `create
-\ LEAK` inside it, and the row closes at the LAST closer. A scanner that read the
-\ body as flat raw fields would close at the embedded closer and then report
-\ `create LEAK y"` as live source.
-: STRING-BODY-ROW$  ( -- ^u8 n )
-   ROW-RESET
-   s" EPRIM: FOO s" ROW+  ROW-Q
-   s"  q EPRIM; create LEAK y" ROW+  ROW-Q
-   s"  2drop EPRIM;" ROW+  ROW-NL
-   s" : REAL dup ;" ROW+
-   ROW$ ;
-
-: TEST-ROW-STRING-BODY ( -- )
-   STRING-BODY-ROW$ LINT-LEX:SOURCE
-   LINT-LEX:ERROR? 0= ASSERT
-   LINT-LEX:COUNT 5 ASSERT=
-   REG-COUNT 1 ASSERT=
-   0 1 50 ASSERT-BARE-ROW
-   1 LINT-LEX:TOKEN s" :" ASSERT$      1 LINT-LEX:LINE@ 2 ASSERT=
-   2 LINT-LEX:TOKEN s" REAL" ASSERT$
-   3 LINT-LEX:TOKEN s" dup" ASSERT$
-   4 LINT-LEX:TOKEN s" ;" ASSERT$ ;
-
-\ `[']` and `[char]` parse one raw operand, so a closer spelled in that operand is
-\ the operand. Both rows must close at their SECOND closer.
-: PARSED-OPERAND-ROWS$  ( -- ^u8 n )
-   ROW-RESET
-   s" EPRIM: FOO ['] EPRIM; PE-N EPRIM;" ROW+  ROW-NL
-   s" EPRIM: BAR [char] ECLOSE-PRIVATE PE-N EPRIM;" ROW+
-   ROW$ ;
-
-: TEST-ROW-PARSED-OPERAND ( -- )
-   PARSED-OPERAND-ROWS$ LINT-LEX:SOURCE
-   LINT-LEX:ERROR? 0= ASSERT
-   LINT-LEX:COUNT 2 ASSERT=
-   0 1 33 ASSERT-BARE-ROW
-   1 2 44 ASSERT-BARE-ROW ;
-
-\ Comments are inert everywhere, including inside a row body: a closer or an
-\ opener written in one is text, not row structure. The first fixture hides both
-\ closers in comments; the second hides an opener, which would otherwise read as
-\ a nested row.
-: COMMENTED-ROW$  ( -- ^u8 n )
-   ROW-RESET
-   s" EPRIM: FOO PE-N PE-IN " ROW+  ROW-BS
-   s"  EPRIM; ECLOSE-PRIVATE not closers" ROW+  ROW-NL
-   s"    PE-N PE-OUT ( ECLOSE-PRIVATE also inert ) EPRIM;" ROW+  ROW-NL
-   s" : TAIL dup ;" ROW+
-   ROW$ ;
-
-: OPENER-IN-COMMENT-ROW$  ( -- ^u8 n )
-   ROW-RESET
-   s" EPRIM: FOO ( EPRIM: EPPRIM: not nested ) PE-N PE-IN EPRIM;" ROW+
-   ROW$ ;
-
-: TEST-ROW-COMMENTS-INERT ( -- )
-   COMMENTED-ROW$ LINT-LEX:SOURCE
-   LINT-LEX:ERROR? 0= ASSERT
-   LINT-LEX:COUNT 5 ASSERT=
-   0 LINT-LEX:KIND@ LINT-LEX:REGISTRY ASSERT=
-   0 LINT-LEX:LINE@ 1 ASSERT=
-   0 LINT-LEX:TOKEN s" EPRIM;" ENDS-WITH? ASSERT
-   1 LINT-LEX:TOKEN s" :" ASSERT$      1 LINT-LEX:LINE@ 3 ASSERT=
-   2 LINT-LEX:TOKEN s" TAIL" ASSERT$
-   4 LINT-LEX:TOKEN s" ;" ASSERT$
-   OPENER-IN-COMMENT-ROW$ LINT-LEX:SOURCE
-   ASSERT-ONE-ROW ;
-
-\ A parenthesized prefix attached to a closer is one row-body word.  Treating
-\ only `(X)` as a comment would expose the suffix as a false row closer.
-: TEST-ROW-ATTACHED-PAREN ( -- )
-   ROW-RESET
-   s" EPRIM: FOO (X)EPRIM;" ROW+
-   LEX-ROW
-   0 1 1 ASSERT-BAD-AT
-   LINT-LEX:COUNT 0 ASSERT= ;
-
-\ The first apparent closer is inside a comment whose opener is followed by a
-\ vertical tab.  The row must extend to the later real closer.
-: TEST-ROW-CONTROL-COMMENT ( -- )
-   ROW-RESET
-   s" EPRIM: FOO " ROW+
-   ROW-LPAREN-C ROW-C+  ROW-VT-C ROW-C+  s" EPRIM; package FAKE )" ROW+
-   ROW-VT-C ROW-C+  s" PE-N EPRIM;" ROW+
-   ROW$ nip {: rowu:n :}
-   ROW-NL  s" : REAL dup ;" ROW+
-   LEX-ROW
-   LINT-LEX:ERROR? 0= ASSERT
-   LINT-LEX:COUNT 5 ASSERT=
-   REG-COUNT 1 ASSERT=
-   0 LINT-LEX:TOKEN nip rowu ASSERT=
-   1 LINT-LEX:TOKEN s" :" ASSERT$
-   2 LINT-LEX:TOKEN s" REAL" ASSERT$
-   4 LINT-LEX:TOKEN s" ;" ASSERT$ ;
-
-\ A row body is interpreted, so a `.( ... )` there parses its own text just like
-\ `s" ... "` does. The closer spelled inside the print body is that text, and the
-\ row must run on to the later real closer. A print body that never closes means
-\ the row can never close either, which is the malformed-row diagnostic.
-: TEST-ROW-PRINT-BODY ( -- )
-   ROW-RESET
-   s" EPRIM: FOO .( EPRIM; package FAKE ) PE-N EPRIM;" ROW+
-   ROW$ nip {: rowu:n :}
-   ROW-NL  s" : REAL dup ;" ROW+
-   LEX-ROW
-   LINT-LEX:ERROR? 0= ASSERT
-   LINT-LEX:COUNT 5 ASSERT=
-   REG-COUNT 1 ASSERT=
-   0 LINT-LEX:TOKEN nip rowu ASSERT=
-   1 LINT-LEX:TOKEN s" :" ASSERT$
-   2 LINT-LEX:TOKEN s" REAL" ASSERT$
-   4 LINT-LEX:TOKEN s" ;" ASSERT$
-   ROW-RESET  s" EPRIM: FOO .( PE-N EPRIM;" ROW+
-   LEX-ROW  0 1 1 ASSERT-BAD-AT  LINT-LEX:COUNT 0 ASSERT= ;
 
 \ Openers and closers spelled in a top-level comment or string body never reach
 \ the row scanner at all, so no registry token appears and the paren comment
@@ -717,34 +600,20 @@ variable REG-I
    LEX-ROW  ASSERT-ONE-ROW ;
 
 \ A header field names the primitive, so an opener or a closer standing there
-\ means the header is missing. Every case reports the OPENER site, and the scan
-\ stops with no token from the row or after it.
+\ means the header is missing. Every case reports the header field it rejects,
+\ and the scan stops with no token from the row or after it.
 : TEST-ROW-BAD-HEADER ( -- )
-   ROW-RESET  s" EPRIM: EPRIM: FOO EPRIM;" ROW+
-   LEX-ROW  0 1 1 ASSERT-BAD-AT  LINT-LEX:COUNT 0 ASSERT=
+   ROW-RESET  s" EPRIM: EPRIM: PE-N EPRIM;" ROW+
+   LEX-ROW  7 1 8 ASSERT-BAD-AT  LINT-LEX:COUNT 0 ASSERT=
    ROW-RESET  s" EPRIM: EPRIM;" ROW+
-   LEX-ROW  0 1 1 ASSERT-BAD-AT  LINT-LEX:COUNT 0 ASSERT=
+   LEX-ROW  7 1 8 ASSERT-BAD-AT  LINT-LEX:COUNT 0 ASSERT=
    ROW-RESET  s" EPPRIM: ECLOSE-PRIVATE FOO PE-N ECLOSE-PRIVATE" ROW+
-   LEX-ROW  0 1 1 ASSERT-BAD-AT  LINT-LEX:COUNT 0 ASSERT=
+   LEX-ROW  8 1 9 ASSERT-BAD-AT  LINT-LEX:COUNT 0 ASSERT=
    ROW-RESET  s" EPPRIM: PK ECLOSE-PRIVATE" ROW+
-   LEX-ROW  0 1 1 ASSERT-BAD-AT  LINT-LEX:COUNT 0 ASSERT= ;
+   LEX-ROW  11 1 12 ASSERT-BAD-AT  LINT-LEX:COUNT 0 ASSERT= ;
 
-\ A row that nests an opener is malformed at its opener, and so is one a parsed
-\ operand or a string literal runs off the end of.
-: TEST-ROW-BAD-BODY ( -- )
-   ROW-RESET  s" EPRIM: FOO EPRIM: BAR EPRIM; EPRIM;" ROW+
-   LEX-ROW  0 1 1 ASSERT-BAD-AT
-   ROW-RESET  s" EPRIM: FOO EPPRIM: PK BAR ECLOSE-PRIVATE EPRIM;" ROW+
-   LEX-ROW  0 1 1 ASSERT-BAD-AT
-   ROW-RESET  s" EPRIM: FOO [']" ROW+
-   LEX-ROW  0 1 1 ASSERT-BAD-AT
-   ROW-RESET  s" EPRIM: FOO s" ROW+  ROW-Q  s"  unclosed" ROW+
-   LEX-ROW  0 1 1 ASSERT-BAD-AT
-   ROW-RESET  s" EPRIM: FOO s" ROW+  ROW-BS ROW-Q  s"  unclosed" ROW+
-   LEX-ROW  0 1 1 ASSERT-BAD-AT ;
-
-\ The diagnostic names the opener, not the point of discovery, and the tokens
-\ before the row survive while nothing at or after it is exposed.
+\ The diagnostic names the token the rule rejects and the row's opener; the
+\ tokens before the row survive while nothing at or after it is exposed.
 : LATE-BAD-ROW$  ( -- ^u8 n )
    ROW-RESET
    s" : FIRST dup ;" ROW+  ROW-NL
@@ -754,7 +623,8 @@ variable REG-I
 
 : TEST-ROW-DIAGNOSTIC-SPAN ( -- )
    LATE-BAD-ROW$ LINT-LEX:SOURCE
-   17 2 4 ASSERT-BAD-AT
+   24 2 11 ASSERT-BAD-AT
+   LINT-LEX:ROW-LINE@ 2 ASSERT=  LINT-LEX:ROW-COL@ 4 ASSERT=
    LINT-LEX:COUNT 4 ASSERT=
    0 LINT-LEX:TOKEN s" :" ASSERT$
    1 LINT-LEX:TOKEN s" FIRST" ASSERT$
@@ -788,7 +658,7 @@ variable REG-I
 
 : TEST-ROW-REUSE-AFTER-ERROR ( -- )
    ROW-RESET  s" EPRIM: FOO PE-N PE-IN" ROW+
-   LEX-ROW  0 1 1 ASSERT-BAD-AT
+   LEX-ROW  21 1 22 ASSERT-BAD-AT
    EIGHT-BARE-ROWS$ LINT-LEX:SOURCE
    LINT-LEX:ERROR? 0= ASSERT
    LINT-LEX:ERROR-KIND@ 0 ASSERT=
@@ -827,17 +697,16 @@ variable REG-I
    5 LINT-LEX:TOKEN s" AFTER" ASSERT$
    7 LINT-LEX:TOKEN s" ;" ASSERT$ ;
 
-\ A row the source ends inside, or that lacks its header, is malformed
-\ at its opener.
+\ A row the source ends inside is malformed at the source's end.
 : TEST-ROW-UNCLOSED ( -- )
    ROW-RESET  s" EPRIM: FOO PE-N" ROW+
-   LEX-ROW  0 1 1 ASSERT-BAD-AT  LINT-LEX:COUNT 0 ASSERT=
+   LEX-ROW  15 1 16 ASSERT-BAD-AT  LINT-LEX:COUNT 0 ASSERT=
    ROW-RESET  s" EPPRIM: PK FOO PE-N" ROW+
-   LEX-ROW  0 1 1 ASSERT-BAD-AT  LINT-LEX:COUNT 0 ASSERT=
+   LEX-ROW  19 1 20 ASSERT-BAD-AT  LINT-LEX:COUNT 0 ASSERT=
    ROW-RESET  s" EPRIM:" ROW+
-   LEX-ROW  0 1 1 ASSERT-BAD-AT  LINT-LEX:COUNT 0 ASSERT=
+   LEX-ROW  6 1 7 ASSERT-BAD-AT  LINT-LEX:COUNT 0 ASSERT=
    ROW-RESET  s" EPPRIM: PK" ROW+
-   LEX-ROW  0 1 1 ASSERT-BAD-AT  LINT-LEX:COUNT 0 ASSERT= ;
+   LEX-ROW  10 1 11 ASSERT-BAD-AT  LINT-LEX:COUNT 0 ASSERT= ;
 
 \ A row ends at the first closer of either kind, whichever row it opened, and
 \ the closer after it is a word of the source again.
@@ -857,6 +726,18 @@ variable REG-I
    0 LINT-LEX:TOKEN s" EPPRIM: PK FOO PE-N EPRIM;" ASSERT$
    1 LINT-LEX:KIND@ LINT-LEX:WORD ASSERT=
    1 LINT-LEX:TOKEN s" ECLOSE-PRIVATE" ASSERT$ ;
+
+\ A REF clause is `REF` and the token after it, so a closer there is its
+\ operand and the row closes at the second closer.
+: TEST-ROW-REF-OPERAND ( -- )
+   ROW-RESET  s" EPRIM: FOO PE-N REF EPRIM; EPRIM;" ROW+
+   LEX-ROW  ASSERT-ONE-ROW ;
+
+\ A row body holds only atoms and REF clauses: a parsing word there makes the
+\ row malformed.
+: TEST-ROW-PARSER-IN-BODY ( -- )
+   ROW-RESET  s" EPRIM: FOO postpone EPRIM; PE-N EPRIM;" ROW+
+   LEX-ROW  11 1 12 ASSERT-BAD-AT  LINT-LEX:COUNT 0 ASSERT= ;
 
 : TEST-BIG-LEXER  ( -- )
    BIG-LEX$ LINT-LEX:SOURCE
@@ -886,22 +767,17 @@ variable REG-I
    TEST-LEXER-REUSE-AFTER-ERROR
    TEST-LEXER-RELEASE
    TEST-ROW-QUOTE-NAMES
-   TEST-ROW-STRING-BODY
-   TEST-ROW-PARSED-OPERAND
-   TEST-ROW-COMMENTS-INERT
-   TEST-ROW-ATTACHED-PAREN
-   TEST-ROW-CONTROL-COMMENT
-   TEST-ROW-PRINT-BODY
    TEST-ROW-FAKE-IN-COMMENT-AND-STRING
    TEST-ROW-CASE-FOLD
    TEST-ROW-BAD-HEADER
-   TEST-ROW-BAD-BODY
    TEST-ROW-DIAGNOSTIC-SPAN
    TEST-ROW-DEFINER-POSITION
    TEST-ROW-REUSE-AFTER-ERROR
    TEST-ROW-DEFINER-NAMES
    TEST-ROW-UNCLOSED
    TEST-ROW-EITHER-CLOSER
+   TEST-ROW-REF-OPERAND
+   TEST-ROW-PARSER-IN-BODY
    TEST-BIG-LEXER
    s" source-lex-test: ok (" type TEST-N @ 1- FMT:.INT s"  assertions)" type cr ;
 

@@ -143,14 +143,9 @@ variable CA-COMPOSE-LABEL-U
    CA-FILE-A@ CA-FILE-U @ REJECTION:FILE!
    CA-SRC-A@ CA-SRC-U @ 1 1 0 REJECTION:SOURCE! ;
 
-: CA-SAY ( ^u8 n -- )
-   REJECTION:EMIT-STR ;
-
-: CA-TICKS ( ^u8 n -- )
-   96 REJECTION:EMIT1  CA-SAY  96 REJECTION:EMIT1 ;
-
-\ Each lexer defect sits at an opener word, a string opener or a row opener, so
-\ the record's token is that word read out of the source, at its own width.
+\ A string defect sits at its opener and a row defect at the token the row rule
+\ rejects, so the record's token is that word read out of the source, at its own
+\ width; at the source's end it is empty.
 : CA-LEX-TOKEN$ ( -- ^u8 n )
    LINT-LEX:ERROR-BYTE@ {: at:n :}
    CA-SRC-A@ at +  at CA-WORD-END at - ;
@@ -158,24 +153,13 @@ variable CA-COMPOSE-LABEL-U
 : CA-LEX-ROW? ( -- bool )
    LINT-LEX:ERROR-KIND@ LINT-LEX:MALFORMED-REGISTRY = ;
 
-\ An incomplete primitive-axiom row stops the scan like an open string but gets
-\ its own code and help: a caller told to close a string literal would look for
-\ a quote that is not there.
-: CA-LEX-HELP ( -- )
-   s" close the row: `EPRIM:` ends at `EPRIM;`, " CA-SAY
-   s" `EPPRIM:` at `ECLOSE-PRIVATE`" CA-SAY ;
-
-: CA-LEX-ROW-RECORD ( -- )
-   s" E-MALFORMED-REGISTRY-ROW" REJECTION:OPEN
-   s" the primitive-axiom row opened at " CA-SAY  CA-LEX-TOKEN$ CA-TICKS
-   s"  does not close" CA-SAY
-   CA-LEX-TOKEN$ REJECTION:AT  s" opened here" CA-SAY
-   REJECTION:HELP  CA-LEX-HELP ;
-
-\ A string defect gets the load's record.
+\ A string defect gets the load's record. A malformed primitive-axiom row stops
+\ the scan like an open string but gets its own code and help: a caller told to
+\ close a string literal would look for a quote that is not there.
 : CA-LEX-RECORD ( -- )
    CA-ARM
-   CA-LEX-ROW? IF CA-LEX-ROW-RECORD
+   CA-LEX-ROW? IF
+      CA-LEX-TOKEN$ LINT-LEX:ROW-LINE@ LINT-LEX:ROW-COL@ VERIFY:ROW-REJECT
    ELSE CA-LEX-TOKEN$ INTERPRETER:LITERAL-REJECT THEN
    REJECTION:KEEP
    REJECTION:SOURCE-OFF ;

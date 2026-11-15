@@ -759,7 +759,7 @@ create LABEL-B HDR-BYTES allot           \ the conversation's name
 create SESSION-B HDR-BYTES allot         \ the initialized process's name
 create IN-B HDR-BYTES allot              \ its input
 create WANT-B HDR-BYTES allot            \ the stderr it must write
-create MSG-B HDR-BYTES allot             \ a message or a reply being composed
+create MSG-B HDR-BYTES allot             \ a message, a reply or a line being composed
 create PAR-B HDR-BYTES allot             \ a notification's params
 create DIR-B HDR-BYTES allot             \ the artifact directory
 create EXP-B HDR-BYTES allot             \ a publish expected
@@ -1227,13 +1227,6 @@ variable OPEN-N
    s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+ s\" ,\"result\":null}" MSG+
    MSG$ HEARD ;
 
-: PUBLISHED ( ^u8 n -- )
-   {: u:^ uu:n :}
-   MSG-B CLEAR
-   s\" {\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":" MSG+
-   u uu MSG+ s\" ,\"diagnostics\":[]}}" MSG+
-   MSG$ HEARD ;
-
 : ENDS ( -- )
    UNREAD s" " ALIKE
    ERR$ WANT$ ALIKE ;
@@ -1520,6 +1513,23 @@ variable OPEN-N
       else false then
    while 1 OUT-LEN +! repeat ;
 
+\ The text must not live in SB, where HEAR builds frame headers.
+: HEAR-FOR ( ^u8 n -- )
+   {: t:^ tu:n :}
+   [: HEAR ;] catch {: code:n :}
+   code E-PROC-TIMEOUT = if
+      LABEL$ type s" : waiting for " type t tu type cr
+   then
+   code 0<> if code throw then ;
+
+: PUBLISHED ( ^u8 n -- )
+   {: u:^ uu:n :}
+   MSG-B CLEAR
+   s\" {\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":" MSG+
+   u uu MSG+ s\" ,\"diagnostics\":[]}}" MSG+
+   MSG$ HEAR-FOR
+   MSG$ HEARD ;
+
 : SESSION-CAPABILITIES ( -- )  SHARED? @ 0= if HEAR CAPABILITIES then ;
 
 \ Reads stderr until it holds as many bytes as the conversation must write
@@ -1721,7 +1731,7 @@ variable PACKET-NEXT                     \ where the check's next packet starts
 
 : PUBLISHES ( -- )
    s" ]}}" EXP+
-   HEAR
+   EXP$ HEAR-FOR
    EXP$ HEARD ;
 
 \ A batch of independent opens can publish in any order.
@@ -1730,11 +1740,18 @@ variable PACKET-NEXT                     \ where the check's next packet starts
 3 TYPED-BUFFER PUB-USED bool
 variable PUB-COUNT
 
+: BATCH-WAIT$ ( n n -- ^u8 n )
+   {: heard:n count:n :}
+   MSG-B CLEAR
+   s" a publication of the batch, " MSG+ heard INT$ MSG+
+   s"  of " MSG+ count INT$ MSG+ s"  heard" MSG+
+   MSG$ ;
+
 : PUBLISH-BATCH ( n -- )
    {: count:n :}
    count PUB-COUNT !
    count 0 ?do
-      HEAR NEXT-BODY {: body:^ len:n :}
+      i count BATCH-WAIT$ HEAR-FOR NEXT-BODY {: body:^ len:n :}
       body PUB-BODIES i ptr-field !
       len i PUB-LENS !
       false i PUB-USED !
@@ -1879,10 +1896,10 @@ variable PUB-COUNT
    s" textDocument/didChange" LSP:E-LSP-PARAMS IGNORED
    URI-A CLOSE-DOC
    SAY
-   HEAR URI-A PUBLISHED
-   HEAR URI-B PUBLISHED
-   HEAR URI-A PUBLISHED
-   HEAR URI-A PUBLISHED ;
+   URI-A PUBLISHED
+   URI-B PUBLISHED
+   URI-A PUBLISHED
+   URI-A PUBLISHED ;
 
 : BAD-OPENS ( -- )
    s" textDocument/didOpen" s" " LSP:E-LSP-PARAMS UNAPPLIED
@@ -1915,7 +1932,7 @@ variable PUB-COUNT
    BAD-CHANGES
    URI-A CLOSE-DOC
    SAY
-   HEAR URI-A PUBLISHED ;
+   URI-A PUBLISHED ;
 
 \ ---- diagnostics ------------------------------------------------------------------
 

@@ -606,6 +606,9 @@ $300000 constant BIG-U
    S\" {\qtype\q:\qerror\q,\qsequence_number\q:2,\qcode\q:\qserver_error\q,\qmessage\q:\qThe server had an error.\q,\qparam\q:null}" ;
 : NESTED-ERROR$ ( -- ^u8 n )
    S\" {\qtype\q:\qerror\q,\qsequence_number\q:2,\qerror\q:{\qtype\q:\qserver_error\q,\qcode\q:\qserver_error\q,\qmessage\q:\qThe server had an error.\q,\qparam\q:null}}" ;
+\ OpenAI's error event when its servers are overloaded.
+: OVERLOADED$ ( -- ^u8 n )
+   S\" {\qtype\q:\qerror\q,\qerror\q:{\qtype\q:\qservice_unavailable_error\q,\qcode\q:\qserver_is_overloaded\q,\qheaders\q:{\qx-retry-metadata\q:\qNO_MORE_RETRY\q,\qretry-after\q:\q6\q,\qretry-after-ms\q:\q6000\q},\qmessage\q:\qOur servers are currently overloaded. Please try again later.\q,\qparam\q:null},\qsequence_number\q:2}" ;
 \ OpenAI's error event when the flex tier has no room for the request.
 : FLEX-OUT$ ( -- ^u8 n )
    S\" {\qtype\q:\qerror\q,\qerror\q:{\qtype\q:\qresource_unavailable\q,\qcode\q:\qflex_unavailable\q,\qheaders\q:{\qretry-after\q:\q300\q,\qretry-after-ms\q:\q300000\q,\qx-retry-metadata\q:\qNO_MORE_RETRY\q},\qmessage\q:\qFlex processing is temporarily unavailable. Please try again later or use standard processing.\q,\qparam\q:null},\qsequence_number\q:2}" ;
@@ -698,6 +701,7 @@ $300000 constant BIG-U
    then
    t t-u s" error-event" STR= if response FLAT-ERROR$ true BAD-STREAM exit then
    t t-u s" error-nested" STR= if response NESTED-ERROR$ true BAD-STREAM exit then
+   t t-u s" error-overloaded" STR= if response OVERLOADED$ true BAD-STREAM exit then
    t t-u s" flex-out" STR= if response FLEX-OUT$ true BAD-STREAM exit then
    \ flex-out to a request that names a service tier, else valid's reply.
    t t-u s" flex-then" STR= if
@@ -1483,6 +1487,7 @@ variable REFUSED-BASE-U
    SB-LOGGED
    s" error-nested" MODEL:E-UNAVAILABLE FAILS
    M MODEL:ERROR$ s" The server had an error." STR= ASSERT
+   s" error-overloaded" MODEL:E-UNAVAILABLE FAILS
    s" big" PREP M MODEL:CHAT MODEL-PEER:BIG$ STR= ASSERT
    s" http-bad" MODEL:E-HTTP FAILS
    M MODEL:HTTP-STATUS 400 = ASSERT
