@@ -192,12 +192,14 @@ package VERIFY
 
 public
 
-\ A source the scan cannot read on stops it with one of these, TOKEN-BYTE@ at
-\ the word that cannot finish: a reader (a definer, a parsing word) with no
-\ token after it, a string opener with no closing quote, a PRIM:, PPRIM:,
-\ EPRIM: or EPPRIM: row with no closer, a top-level escaped literal holding an
-\ escape the engine refuses.
+\ A reader (a definer, a parsing word) with no token after it stops the scan
+\ with this, TOKEN-BYTE@ at the reader.
 7187 constant E-MISSING-NAME
+
+\ A string opener with no closing quote, a PRIM:, PPRIM:, EPRIM: or EPPRIM: row
+\ with no closer, and a literal holding an escape the engine rejects are
+\ recorded where the scan meets them, which then stops with CHECKER-REJECT-RC:
+\ nothing throws these.
 7188 constant E-UNTERMINATED-STRING
 7189 constant E-MALFORMED-REGISTRY-ROW
 7194 constant E-BAD-ESCAPE
@@ -549,7 +551,7 @@ variable STR-DEC-TURN
    1 STR-DEC-TURN @ - STR-DEC-TURN !
    dst k ok ;
 
-\ A bad escape is refused at the opener, where the engine refuses it as a bad
+\ A bad escape is rejected at the opener with the engine's record of a bad
 \ string literal. An unterminated literal is left to the lexer, as a plain one
 \ is, except in a quiet composition.
 : RECORD-ESCAPED-STRING ( n -- )
@@ -557,7 +559,10 @@ variable STR-DEC-TURN
    QUIET-UNTERM
    FOUND @ 0= IF EXIT THEN
    4 SKIPPED-PAYLOAD {: raw:ptr rawu:n :}
-   raw rawu ESC-BYTES 0= IF E-BAD-ESCAPE throw THEN
+   raw rawu ESC-BYTES 0= IF
+      SOURCE@ TOKEN-START @ + 3 INTERPRETER:LITERAL-REJECT
+      CHECKER-REJECT-RC REJECTION:STOP
+   THEN
    kind raw rawu STR-RING-PUSH ;
 
 \ A body token is looked up among the live locals, byte for byte, after
@@ -705,7 +710,10 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
       34 SKIP-PAST
    THEN
    QUIET-UNTERM
-   FOUND @ 0= IF E-UNTERMINATED-STRING throw THEN
+   FOUND @ 0= IF
+      opener openeru INTERPRETER:LITERAL-REJECT
+      CHECKER-REJECT-RC REJECTION:STOP
+   THEN
    SOURCE@ start + SCAN-I @ start - ;
 
 : FOLD-C ( n -- n )
@@ -3260,9 +3268,23 @@ variable FILE-USE
    altu 0= IF 0 0= 0= EXIT THEN
    TOKEN-A @ TOKEN-U @ alt altu STR=CI ;
 
+\ The row opened by the top-level token at byte n has no closer.
 : ROW-UNCLOSED ( n -- )
    TOKEN-BYTE !
-   E-MALFORMED-REGISTRY-ROW throw ;
+   TOP-CUR-A @ TOP-CUR-U @ {: t:ptr tu:n :}
+   s" E-MALFORMED-REGISTRY-ROW" REJECTION:OPEN
+   s" the primitive-axiom row opened at `"
+   REJECTION:EMIT-STR  t tu REJECTION:EMIT-STR
+   s" ` does not close" REJECTION:EMIT-STR
+   t tu REJECTION:AT  s" opened here" REJECTION:EMIT-STR
+   REJECTION:HELP
+   s" close the row: `PRIM:` ends at `PRIM;`, "
+   REJECTION:EMIT-STR
+   s" `EPRIM:` at `EPRIM;`, `PPRIM:` at `PPRIM;` "
+   REJECTION:EMIT-STR
+   s" or `CLOSE-PRIVATE`, `EPPRIM:` at `ECLOSE-PRIVATE`"
+   REJECTION:EMIT-STR
+   CHECKER-REJECT-RC REJECTION:STOP ;
 
 \ A row declares no locals and, as every body reader, starts clear of the last
 \ body's literal and line: that literal may lie in decoded bytes a decode has

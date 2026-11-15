@@ -621,15 +621,22 @@ TYPED-VARIABLE RUNS-ON bool
 \ allots first, after its own rejections, so allot's rejections come before any
 \ of it is written.
 
-: BAD-LITERAL ( -- )
+public
+\ Writes the record of the string literal its opener t tu opens, which has no
+\ closing quote or holds a bad escape, through its help and leaves it open: the
+\ caller ends it.
+: LITERAL-REJECT ( ptr u8 n -- ) {: t:ptr tu:n :}
    s" E-UNTERMINATED-STRING" REJECTION:OPEN
-   s" the string " SAY  TOKEN$ TICKS
+   s" the string " SAY  t tu TICKS
    s"  opens has no closing quote or holds a bad escape" SAY
-   TOKEN$ REJECTION:AT  s" the string opens here" SAY
+   t tu REJECTION:AT  s" the string opens here" SAY
    REJECTION:HELP  s" end the string with " SAY  S\" \"" TICKS
    s" , and follow each backslash with an escape letter, or with " SAY
-   s" x" TICKS  s"  and two hex digits" SAY
-   RC-BAD-LITERAL REJECTION:STOP ;
+   s" x" TICKS  s"  and two hex digits" SAY ;
+private
+
+: BAD-LITERAL ( -- )
+   TOKEN$ LITERAL-REJECT  RC-BAD-LITERAL REJECTION:STOP ;
 
 : TOO-LONG ( -- )
    s" E-COUNTED-STRING-TOO-LONG" REJECTION:OPEN
