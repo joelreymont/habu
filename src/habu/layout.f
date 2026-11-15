@@ -509,10 +509,10 @@ $3888 constant ITEM-CELL
 \ would bind the tree's copy.
 $38B0 constant CHILD-CELL
 \ A storage definer the checker does not compile reads its declaration line
-\ through the CHECK:STORAGE-LINE this cell holds.
+\ through the word this cell holds.
 $38A8 constant STORAGE-LINE-CELL
 \ A storage definer whose element is whole cells reads its line through the
-\ CHECK:CELL-LINE this cell holds.
+\ word this cell holds.
 $38C0 constant CELL-LINE-CELL
 \ A definer's type and effect values are schema nodes the running engine's
 \ CHECK:TYPE-OP, which this cell holds, makes from a TYPE-OP-ABI code.

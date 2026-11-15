@@ -57,6 +57,9 @@ DYNAMIC-BUFFER PUB-OFF n
 
 private
 
+EXPORT CHECK:DECLARED
+EXPORT CHECK:DOES-PUBLISHED
+
 0 CWORK-VARIABLE M-SRC ^u8
 0 CWORK-VARIABLE M-SRC-U n
 0 CWORK-VARIABLE M-SCAN ^u8                 \ the text scanned last
@@ -124,7 +127,7 @@ private
 \ the scan has recorded the exact source spelling from the tape: the pending
 \ dictionary record holds only the bare tail of a qualified definition.
 : REGISTER-TRUST ( ^u8 n ^u8 n -- )
-   CHECK:DECLARED ;
+   DECLARED ;
 
 70 constant RC-REJECT                 \ CHECK:DEFINITION's reject status (check-hook.f CHECK-RC)
 
@@ -306,7 +309,7 @@ private
 : RETRACT ( -- )
    M-DOES @ 0<> if
       M-DOES-FRAME @ 0<> if
-         NULL-PTR 0 false CHECK:DOES-PUBLISHED
+         NULL-PTR 0 false DOES-PUBLISHED
          0 M-DOES-FRAME !
       then
       exit
@@ -469,14 +472,14 @@ public
 : SETTLE-UNIT ( n n bool ^u8 n ^u8 -- )
    {: entry-rc:n rc:n undefined:bool a:^ u:n p:^ :}
    entry-rc 0<> if
-      M-DOES-FRAME @ 0<> if NULL-PTR 0 false CHECK:DOES-PUBLISHED then
+      M-DOES-FRAME @ 0<> if NULL-PTR 0 false DOES-PUBLISHED then
       entry-rc throw
    then
    rc E-COMP-RECOVERY = if
       \ A HEAD-MARKED? definer keeps its rows, as a withheld colon word does;
       \ every other withheld definer is rolled back.
       M-DOES-FRAME @ 0<> if
-         NULL-PTR 0 HEAD-MARKED? CHECK:DOES-PUBLISHED
+         NULL-PTR 0 HEAD-MARKED? DOES-PUBLISHED
          HEAD-MARKED? if CHECKER-NATIVE-DOES-COMMIT then
          0 M-DOES-FRAME !
       then

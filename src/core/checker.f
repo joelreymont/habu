@@ -14530,7 +14530,7 @@ public
    name nameu CHECKER-REPLAY-NAME-OK? 0= IF EXIT THEN
    name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE ;
 
-\ A task's single slot admits what CHECK:STORAGE-LINE admits.
+\ A task's single slot admits what a storage definer's declaration line admits.
 : CHECKER-DEFSLOT ( ^u8 n ^u8 n -- )
    {: type:^ typeu:n name:^ nameu:n :}
    name nameu CHECKER-REPLAY-NAME-OK? 0= IF EXIT THEN

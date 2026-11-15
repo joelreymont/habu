@@ -1,5 +1,5 @@
 \ check-hook.f - the checks the compiler calls: CHECK:DEFINITION on each
-\ definition's source, CHECK:IMMEDIATE before an immediate word inside one, and
+\ definition's source, IMMEDIATE-CHECK before an immediate word inside one, and
 \ the facts text each record takes.
 
 package CHECK
@@ -69,12 +69,9 @@ INE-CELL RESERVED-PTR-U8-CELL INPUT-END
 : DISARMER ( bool -- [ -- ] )
    if [: REJECTION:SOURCE-OFF ;] else [: ;] then ;
 
-
-public
-
 \ An immediate word met inside a definition, before it runs: one the checker
 \ has no model for is refused unless it parses nothing.
-: IMMEDIATE ( ^u8 n ^u8 n bool -- )
+: IMMEDIATE-CHECK ( ^u8 n ^u8 n bool -- )
    drop
    {: ba:^ bu:n ta:^ tu:n :}
    ta tu NEUTRAL-PARSE-IMM? if exit then
@@ -83,8 +80,6 @@ public
       s" checker: preflight did not reject unmodeled immediate" 76 die
    then
    CHECK-RC throw ;
-
-private
 
 \ The name as written, which is what the wall prints: the first token of the
 \ source the engine hands the hook.
@@ -144,9 +139,6 @@ private
    sym FACTS-TAGS
    RQM @ 0= ;
 
-
-public
-
 \ A does> clause's publication, once the definer's record ndict@ 1 - is
 \ appended: it refuses nothing and writes facts only there, as `: PKG:X` hands
 \ it the tail X.
@@ -164,9 +156,6 @@ public
    0 REJECTION:TEXT-LEN !  made 1 - REND-RECORD
    RQM @ 0 <> if 2drop exit then
    LAY-FACTS ;
-
-private
-
 
 \ checker.f's TRUST-RAW, TRUST-DECL and CHECKER-DEFCAST, which the fields held:
 \ a checked body cannot name them (UNSAFE-TOK?), so each entry calls its token.
@@ -247,8 +236,6 @@ CAST: REG-XT ( n -- [ ^u8 n ^u8 n -- ] )
    then {: bytes:n :}
    na nu ta tu bytes ;
 
-public
-
 \ The declaration registrars' field entries: each runs its registrar, then lays
 \ the declared name's facts.
 : DECLARED ( ^u8 n ^u8 n -- )
@@ -274,6 +261,8 @@ public
 
 \ The line of a definer whose element is whole cells.
 : CELL-LINE ( ^u8 n -- ^u8 n ^u8 n n ) RES-TRUE DECL-LINE ;
+
+public
 
 : DEFINER-AT ( ^u8 n -- )
    REJECTION:AT  s" the definer was reading here" REJECTION:EMIT-STR ;
@@ -672,7 +661,7 @@ public
 \ build the builder's own checker checks, so a product's never replaces it.
 TRUSTED: INSTALL ( -- )
    BUILDING? if exit then
-   ['] CHECK:IMMEDIATE set-preflight
+   ['] IMMEDIATE-CHECK set-preflight
    ['] DEFINITION set-check ;
 
 \ Replace the checker's TRUST-RAW, TRUST-DECL, CHECKER-DEFER, CHECKER-DEFCAST
