@@ -520,6 +520,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    RES-RESET
    s" 200 OK" STATUS-LINE
    s" Content-Length: " RES+ STREAM-U RES-NUM CRLF+
+   s" X-Habu-Stream: held" RES+ CRLF+
    s" Connection: close" RES+ CRLF+ CRLF+ ;
 
 
@@ -2080,6 +2081,9 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    [: OWNER-HANDLE @ CURL:RESET drop ;] CURL:E-STATE TTHROWSQ
    [: CURL:LOOP-STOP ;] CURL:E-STATE TTHROWSQ
    subject STREAM-FIRST
+   s" HEADERS answers a stream's final block while its body is held" T-LABEL
+   STREAM-HEAD
+   subject RES-BUF RES-U @ HEADER-EXACT
    STALL-READY {: other:CURL:handle :}
    other BODY-BUF BODY-CAP >LEN CURL:START EXPECT-OK
    other AWAIT-ONE
@@ -2212,6 +2216,7 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
       response OF drop false TTRUE ENDOF
       failed OF dup CURL:LOST? TTRUE CURL:CODE>N 18 T= ENDOF
    ;MATCH
+   subject HEADER-REFUSED
    subject CURL:CLEANUP ;
 
 

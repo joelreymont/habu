@@ -299,12 +299,16 @@ CAST: >BYTES ( n -- ptr u8 )
 
 
 \ The private slot owns one record: request list, captured response pointer,
-\ response length and success flag. The record lasts exactly as long as CURL*.
+\ response length and what the capture holds. The record lasts exactly as long
+\ as CURL*. S.VALID is 0 for no capture, VALID-WHOLE for a finished transfer's
+\ headers and VALID-EARLY for a stream's headers published at its first chunk.
 0 constant S.LIST
 8 constant S.RESPONSE
 16 constant S.LENGTH
 24 constant S.VALID
 4 constant STATE-CELLS
+1 constant VALID-WHOLE
+2 constant VALID-EARLY
 
 : STATE-GET ( n -- n ) {: easy:n :}
    INFO-CELL CELL-CLEAR
@@ -331,12 +335,12 @@ CAST: >BYTES ( n -- ptr u8 )
    state STATE-LIST@ dup 0 <> if SLIST-RELEASE else drop then
    0 state S.LIST STATE-FIELD LE:U64! ;
 
-: STATE-PUBLISH ( n n n -- ) {: easy:n source:n u:n :}
+: STATE-PUBLISH ( n n n n -- ) {: easy:n source:n u:n valid:n :}
    easy STATE-GET {: state:n :}
    state STATE-CLEAR-RESPONSE
    source state S.RESPONSE STATE-FIELD LE:U64!
    u state S.LENGTH STATE-FIELD LE:U64!
-   1 state S.VALID STATE-FIELD LE:U64! ;
+   valid state S.VALID STATE-FIELD LE:U64! ;
 
 : STATE-DESTROY ( n -- )
    {: state:n :}
@@ -677,6 +681,7 @@ BEGIN-STRUCTURE REC-BYTES
    CELL +FIELD R.PAUSED                   \ the loop paused the handle's receive
    CELL +FIELD R.OWNER                    \ the TCB pointer
    CELL +FIELD R.TARGET                   \ the span's address
+   CELL +FIELD R.PRIVATE                  \ the handle's state record
    \ open_memstream's buffer and length, for the body and for the header
    \ capture, because the loop is what closes the streams and the opening
    \ task's row is not where it can read.
@@ -1044,7 +1049,7 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
    else
       valid 0= if headers headeru BYTES-RELEASE E-RESULT throw then
       KIND-RESPONSE idx REC R.KIND !
-      idx REC-EASY@ headers headeru STATE-PUBLISH
+      idx REC-EASY@ headers headeru VALID-WHOLE STATE-PUBLISH
    then
    idx SETTLE
    CURLM-OK ;
@@ -1067,7 +1072,7 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
    idx REC-EASY@ STATUS-TRY {: status:n valid:bool :}
    valid 0= if headers headeru BYTES-RELEASE E-RESULT throw then
    idx status u refused RESULT-STORE
-   idx REC-EASY@ headers headeru STATE-PUBLISH
+   idx REC-EASY@ headers headeru VALID-WHOLE STATE-PUBLISH
    idx SETTLE
    CURLM-OK ;
 
@@ -1086,8 +1091,26 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
    CURLM-OK ;
 
 
+\ libcurl writes every header of the final response before its first body
+\ byte, so at a running stream's first chunk the capture holds the final block.
+\ START-WITH-BODY cleared the state, so a state with no response marks that
+\ chunk. The copy is published and the capture stays open: STREAM-FINISH
+\ publishes the whole of it over the copy. A stream that fails keeps the copy
+\ VALID-EARLY, which HEADERS answers only while the transfer is in flight.
+: HEADERS-PUBLISH ( n -- n ) {: idx:n :}
+   idx REC R.PRIVATE @ STATE-VALID@ 0<> if CURLE-OK exit then
+   idx REC-HSTREAM@ STREAM-FLUSH 0<> if CURLE-WRITE-ERROR exit then
+   idx REC-HLEN-CELL LE:U64@ {: u:n :}
+   u 1 max 1 NEW-STATE {: copy:n :}
+   copy 0= if CURLE-OUT-OF-MEMORY exit then
+   u 0 > if copy >BYTES idx REC-HBUF-CELL LE:U64@ u COPY-OUT drop then
+   idx REC-EASY@ copy u VALID-EARLY STATE-PUBLISH
+   CURLE-OK ;
+
+
 \ The loop alone calls fflush; past the claim, readers hold CURL-LOCK, as the
 \ copy does until REQUEST-CHUNK; then the loop leaves the span until NEXT-ARM.
+\ A running stream publishes its headers before its first chunk is copied.
 : STREAM-DELIVER ( n -- n ) {: idx:n :}
    idx REC-MODE@ MODE-STREAM <> if CURLM-OK exit then
    idx REC R.REQUEST atomic@ REQUEST-WAITING <> if CURLM-OK exit then
@@ -1101,6 +1124,10 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
    {: source:n u:n frc:n :}
    frc CURLE-OK <> if idx frc FAIL-RUN exit then
    u idx REC R.OFFSET @ > if
+      idx REC-STATE@ STATE-DONE <> if
+         idx HEADERS-PUBLISH {: hrc:n :}
+         hrc CURLE-OK <> if idx hrc FAIL-RUN exit then
+      then
       idx REC-CAP@ u idx REC R.OFFSET @ - min {: count:n :}
       idx REC-STATE@ STATE-DONE = if
          idx REC R.STATUS @
@@ -1633,12 +1660,14 @@ private
    capacity LEN>N 0 AT-LEAST
    TASK:SELF dup FFI:>CELL 0<> if ['] OWNER-END swap TASK:AT-EXIT else drop then
    easy START-CLAIM {: idx:n :}
-   easy STATE-GET STATE-CLEAR-RESPONSE
+   easy STATE-GET {: state:n :}
+   state STATE-CLEAR-RESPONSE
    idx target capacity LEN>N mode BODY-OPEN dup 0= if
       drop idx REC-RELEASE OUT-OF-MEMORY exit
    then
    {: stream:n :}
    idx easy target capacity LEN>N stream 0 mode REC-FILL
+   state idx REC R.PRIVATE !
    idx REC-HBUF-CELL idx REC-HLEN-CELL STREAM-OPEN dup 0= if
       drop
       idx STREAM-DROP drop
@@ -1875,18 +1904,9 @@ private
    HBUF-CELL LE:U64@ dup 0= if drop E-RESULT throw then
    LEN-CELL LE:U64@ swap ;
 
-public
 
-\ The destination is borrowed only for this copy. It is untouched on an
-\ unavailable result or malformed capture, and the result names the whole
-\ final block even when only a prefix fits.
-: HEADERS ( handle ptr u8 len -- header-result )
-   {: subject:handle target capacity:len :}
-   subject HANDLE-CELL {: easy:n :}
-   capacity LEN>N 0 < if E-OPERAND throw then
-   easy HANDLE-BUSY? if E-STATE throw then
-   easy STATE-GET {: state:n :}
-   state STATE-VALID@ 0= if E-STATE throw then
+: HEADER-BLOCK ( n ptr u8 len -- header-result )
+   {: state:n target capacity:len :}
    state STATE-RESP@ >BYTES state STATE-LEN@ FINAL-BLOCK
       {: at:n finish:n :}
    finish at - {: u:n :}
@@ -1897,6 +1917,51 @@ public
    u >LEN
    u capacity LEN>N > if CURL-HEADER--RESULT:truncated
    else CURL-HEADER--RESULT:complete then ;
+
+
+\ A streamed transfer this task started and has not left.
+: OWN-STREAM? ( n -- bool ) {: idx:n :}
+   idx LEAVING? idx REC-STATE@ STATE-LEFT = or if false exit then
+   idx REC-MODE@ MODE-STREAM <> if false exit then
+   idx REC-OWNER@ FFI:>CELL TASK:SELF-N = ;
+
+
+\ A handle with no transfer in flight answers only a finished transfer's capture.
+: IDLE-HEADERS ( n ptr u8 len -- header-result )
+   {: easy:n target capacity:len :}
+   easy STATE-GET {: state:n :}
+   state STATE-VALID@ VALID-WHOLE <> if E-STATE throw then
+   state target capacity HEADER-BLOCK ;
+
+
+\ Runs under CURL-LOCK, which the loop holds to publish and replace a response.
+\ A handle in flight is the loop's, which drives it outside the lock, so the
+\ state comes from the record and no libcurl function touches the handle.
+: LOCKED-HEADERS ( n ptr u8 len -- header-result )
+   {: easy:n target capacity:len :}
+   easy REC-FIND {: idx:n :}
+   idx 0 < if easy target capacity IDLE-HEADERS exit then
+   idx OWN-STREAM? 0= if E-STATE throw then
+   idx REC R.PRIVATE @ {: state:n :}
+   state STATE-VALID@ 0= if E-STATE throw then
+   state target capacity HEADER-BLOCK ;
+
+public
+
+\ The destination is borrowed only for this copy. It is untouched on an
+\ unavailable result or malformed capture, and the result names the whole
+\ final block even when only a prefix fits. In flight, a streamed transfer this
+\ task started answers from the chunk its first NEXT or NEXT-ARM receives on,
+\ and E-STATE before it; a whole body in flight, and a transfer another task
+\ started, are E-STATE. A transfer that ended without a response is E-STATE.
+: HEADERS ( handle ptr u8 len -- header-result )
+   {: subject:handle target capacity:len :}
+   subject HANDLE-CELL {: easy:n :}
+   capacity LEN>N 0 < if E-OPERAND throw then
+   LOOP-LIVE atomic@ 0= if easy target capacity IDLE-HEADERS exit then
+   CURL-LOCK TASK:GET
+   [: easy target capacity LOCKED-HEADERS ;]
+   [: CURL-LOCK TASK:RELEASE ;] finally ;
 
 
 \ libcurl writes the body into the span as it arrives, never past it. An HTTP
@@ -1933,7 +1998,7 @@ public
    then
    easy STATUS-TRY {: status:n valid:bool :}
    valid 0= if captured capturedu BYTES-RELEASE E-RESULT throw then
-   easy captured capturedu STATE-PUBLISH
+   easy captured capturedu VALID-WHOLE STATE-PUBLISH
    status u refused FETCH-RESULT ;
 
 
