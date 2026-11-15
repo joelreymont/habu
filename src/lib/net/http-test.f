@@ -18,6 +18,7 @@ require src/lib/net/curl.f
 require src/lib/json.f
 require src/lib/num-types.f
 require src/lib/span.f
+require src/lib/byte-buffer.f
 require src/lib/memory.f
 require src/lib/net/http.f
 require src/lib/fd.f
@@ -195,6 +196,34 @@ variable ITEM-HOST-N
    seen if hu else 0 then ITEM-HOST-N !
    answer 200 HTTP:STATUS!
    answer [: ITEM-BODY ;] HTTP:JSON! ;
+
+
+create PARAM-BUF BUF:HDR-BYTES allot   \ the case disposes it once answered
+
+
+: PARAM-TEXT ( ptr u8 n -- )
+   BUF:N>BLEN PARAM-BUF BUF:APPEND-SPAN ;
+
+
+\ `key=[value] true`, or `key=[] false` for a parameter the query lacks.
+: PARAM-ONE ( HTTP:request ptr u8 n -- )
+   {: asked:HTTP:request key:ptr keyu:n :}
+   key keyu PARAM-TEXT
+   s" =[" PARAM-TEXT
+   asked key keyu PARAM-BUF HTTP:PARAM+ {: found:bool :}
+   found if s" ] true" else s" ] false" then PARAM-TEXT ;
+
+
+: PARAMS ( HTTP:request HTTP:response -- )
+   {: asked:HTTP:request answer:HTTP:response :}
+   PARAM-BUF 64 BUF:N>BLEN BUF:RESET
+   asked s" session" PARAM-ONE
+   s" , " PARAM-TEXT
+   asked s" b" PARAM-ONE
+   s" , " PARAM-TEXT
+   asked s" missing" PARAM-ONE
+   answer PARAM-BUF BUF:SPAN$ BUF:BLEN>N HTTP:BODY!
+   answer 200 HTTP:STATUS! ;
 
 
 PTR-VARIABLE VERSION-A
@@ -659,6 +688,7 @@ $2710 constant PARK-MS            \ far past every stop bound
    s" GET" s" /api/unauthorized" [: UNAUTHORIZED ;] HTTP:ROUTE
    s" GET" s" /api/unregistered" [: UNREGISTERED ;] HTTP:ROUTE
    s" GET" s" /api/items/{id}" [: ITEM ;] HTTP:ROUTE
+   s" GET" s" /api/params" [: PARAMS ;] HTTP:ROUTE
    s" GET" s" /api/version" [: ASKED-VERSION ;] HTTP:ROUTE
    s" POST" s" /api/echo" [: ECHO ;] HTTP:ROUTE
    s" POST" s" /api/chat" [: ECHO ;] HTTP:ROUTE
@@ -1201,6 +1231,15 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    S\" \qhost\q:\q127.0.0.1:" HAS? TTRUE
    s\" GET /api/ping HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" RAW-ONE
    s" json-route" TRANSCRIBE ;
+
+
+\ The first of two pairs named session answers, decoded; a pair with no "="
+\ answers its empty value. It runs after the transcribed requests, whose error
+\ bodies carry request ids.
+: PARAM-CASES ( -- )
+   s" GET" s" /api/params?a=1&session=4f2c%2Dx+y&b&session=2" FETCH 200 T=
+   RES$ s" session=[4f2c-x y] true, b=[] true, missing=[] false" T$=
+   PARAM-BUF BUF:DISPOSE ;
 
 
 \ The default error answer is one line of text naming the code, the message and
@@ -2814,6 +2853,7 @@ variable CALL-DONE
    SERVING-CASE
    TAKE-OVER-CASES
    SUBMIT-CASE
+   PARAM-CASES
    HTTP:STOP
    HTTP:ENDED-TASKS HTTP:TASK-TOTAL T=
    HTTP:KILLED-TASKS 0 T=
