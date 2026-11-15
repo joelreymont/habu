@@ -1495,6 +1495,14 @@ public
    9 base off LDR,  9 kept CBZ,
    NCOMP-DISPATCH:DECL-RETRACT-ROWS-OFF FIND  11 kept CBZ,
       9 9 1 SUBI,  9 G-PUSH  11 BLR, ;
+
+\ x11 = the operation at off in the target owner's record; no record, or a 0
+\ operation, branches to absent. The active native compiler retains its
+\ checker even while a build replaces the source dictionary: a distinct target
+\ checker owns this second record during source replacement.
+: TARGET ( n label -- ) {: off:n absent:label :}
+   11 DATA NCOMP-DISPATCH:TARGET-DECL-CELL LDR,  11 absent CBZ,
+   11 11 off LDR,  11 absent CBZ, ;
 ;package
 
 package ENGINE-EMIT
@@ -3141,13 +3149,12 @@ private
 \ the pages a large allot reserves stay untouched. A negative count raises the
 \ high-water instead.
 : BALLOT ( -- )
-   LBL LBL LBL LBL LBL {: grow:label zero:label store:label no-owner:label missing:label :}
+   LBL LBL LBL LBL {: grow:label zero:label store:label no-owner:label :}
    s" E-TASK-COMPILE" s" allot" B-TASK-GUARD
    A G-POP  7 DATA 0 LDR,  7 7 A ADD,  7 DP-CHECK
    A 0 CMPI,  C-GE grow BCOND,
    SP SP 32 SUBI,  30 SP 0 STR,  7 SP 8 STR,
-   11 DATA NCOMP-DISPATCH:TARGET-DECL-CELL LDR,  11 no-owner CBZ,
-   11 11 CHECKER-OWNER-ABI:GRID-REVOKE-OFF LDR,  11 missing CBZ,
+   CHECKER-OWNER-ABI:GRID-REVOKE-OFF no-owner DECL-OWNER:TARGET
    9 7 DATA SUB,  9 G-PUSH  11 BLR,
    no-owner LBL,
    7 SP 8 LDR,  30 SP 0 LDR,  SP SP 32 ADDI,
@@ -3159,9 +3166,7 @@ private
       31 10 0 STRB,  10 10 1 ADDI,  zero B,
    store LBL,
    7 DATA 0 STR,
-   RET,
-   missing LBL,
-   9 -8574 LIT64,  9 G-PUSH  BTHROW ;
+   RET, ;
 
 \ Selection takes the exact record a resolver has already borrowed. Validate
 \ its region, stride and published bound before consulting the owner mapping.
