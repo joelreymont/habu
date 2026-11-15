@@ -13733,21 +13733,6 @@ variable BWIN-N   variable BWIN-CAP   variable UWIN-VALID
 : BWIN-RESET ( -- )
    0 BWIN-N !  0 UWIN-VALID !  0 BWIN-HIT ! ;
 
-: BWIN-RELEASE ( -- )
-   BWIN-CAP @ 0= 0= IF
-      BWIN-P @ BWIN-CAP @ CHECKER-OWNER-ABI:BOUND-CELLS * cells munmap 0= 0= IF
-         s" checker: call binding munmap failed" 76 die
-      THEN
-   THEN
-   NULL-PTR BWIN-P !  0 BWIN-CAP !  BWIN-RESET
-   NULL-PTR TOK-SPELL-A !  0 TOK-SPELL-U !
-   NULL-PTR TOK-REC !  NULL-PTR TOK-ABI-EFF !
-   0 TOK-SYM !  0 TOK-CTL !  0 TOK-DONE !  0 TOK-LIVE-REC !
-   0 TOK-DEAD !  0 TOK-PEND-IX !  0 TOK-PEND-OFF !
-   0 TOK-SEEDED !  0 TOK-ABI-DONE !
-   NULL-PTR BIND-REC !  0 BIND-PEND-IX !  0 BIND-PEND-OFF !
-   0 BIND-SEEDED ! ;
-
 : BWIN-ENSURE ( -- )
    BWIN-N @ BWIN-CAP @ < IF EXIT THEN
    BWIN-N @ BWIN-MAX >= IF s" checker: call binding capacity overflow" 76 die THEN
@@ -13873,17 +13858,6 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
    QAPP-NEW 0 4 ARENA-CELLS-ZERO  0 QAPP-N !
    0 CWIN-DTERMS !  0 CWIN-RTERMS !
    0 CWIN-DOUT-TERMS !  0 CWIN-ROUT-TERMS ! ;
-
-: CWIN-UNMAP ( ^n n -- ) {: base:^ cap:n :}
-   cap 0= IF EXIT THEN
-   base cap CW-ROW * cells munmap 0 <> IF
-      s" checker: recorded site munmap failed" 76 die
-   THEN ;
-
-: CWIN-RELEASE ( -- )
-   CWIN-P @ CWIN-CAP @ CWIN-UNMAP
-   NULL-PTR CWIN-P !  0 CWIN-CAP !
-   CWIN-RESET ;
 
 : CWIN-ENSURE ( -- )
    CWIN-N @ CWIN-CAP @ < IF EXIT THEN
@@ -14148,10 +14122,6 @@ variable EV-LO   variable EV-N
 : EV-START ( -- )
    REC-IX @ EV-LO !  0 EV-N ! ;
 
-: EV-RELEASE ( -- )
-   EV-P EV-CAP EV-ROW ARENA-ROWS-RELEASE
-   0 EV-LO !  0 EV-N ! ;
-
 \ Every report files one row as it takes its ordinal, so ORD is always the next
 \ row.
 : EV-FILE ( n n n n -- )
@@ -14172,11 +14142,6 @@ variable EV-LO   variable EV-N
 
 : REC-OFF ( -- )
    0 REC-ON ! ;
-
-: REC-RELEASE ( -- )
-   REC-OFF
-   0 REC-IX !
-   MWIN-RESET  CWIN-RELEASE  BWIN-RELEASE  EV-RELEASE ;
 
 : REC-COMMIT ( -- )
    REC-ON @ 0= IF EXIT THEN
