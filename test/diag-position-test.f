@@ -24,7 +24,6 @@ package DIAG-POSITION-TEST
 PATH-CAP 1+ 4 * constant CAP
 70 constant REJECT-RC
 67 constant THROW-RC
-7194 constant BAD-ESCAPE-THROW
 
 create OUT CAP allot
 create ERR CAP allot
@@ -716,26 +715,6 @@ variable RC
    s" arena-atom.f" FIXTURE!
    s" E-BAD-STORAGE" s" [ -- xt ]" 2 9 18 27 REFUSED-MODES ;
 
-: THREW ( n -- )
-   {: code:n :}
-   GJA-LINE# @ 0 > dup TTRUE 0= IF EXIT THEN
-   0 GJA-LINE$ GJA-PARSE s" throw_code" code INT-FIELD= ;
-
-: THROWN-AT ( n ptr u8 n n n n n -- )
-   {: code:n tok:ptr toku:n line:n col:n bs:n be:n :}
-   s" " CHECK
-   s" E-STATEMENT-THROW" REJECTED-AS
-   0 tok toku line col bs be AT
-   code THREW
-   s" --all-errors" CHECK
-   s" E-STATEMENT-THROW" REJECTED-AS
-   0 tok toku line col bs be AT
-   0 s" message" code FMT:INT$ FIELD-HAS
-   s" --verify-only" CHECK
-   s" E-STATEMENT-THROW" REJECTED-AS
-   0 tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN
-   code THREW ;
-
 \ Under --verify-only the declaration pre-pass alone refuses the fixture.
 : PREPASS-REFUSED ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n n n n -- )
    {: c:ptr cu:n cls:ptr clsu:n why:ptr whyu:n tok:ptr toku:n line:n col:n bs:n be:n :}
@@ -839,12 +818,12 @@ variable RC
    s" VALUE-RECORD vr x n \ note" s" END-VALUE-RECORD" s" vrec-comment.f"
       TWO-LINE-FIXTURE
    s" E-BAD-DECLARATION" s" \" 1 21 20 21 REFUSED-MODES
-   0 s" label" s" no valid type follows" FIELD=
+   0 s" label" s" a comment, not a name" FIELD=
    s" a closed paren comment in a VALUE-RECORD" T-LABEL
    s" VALUE-RECORD vr x n ( note )" s" END-VALUE-RECORD" s" vrec-paren.f"
       TWO-LINE-FIXTURE
    s" E-BAD-DECLARATION" s" (" 1 21 20 21 REFUSED-MODES
-   0 s" label" s" no valid type follows" FIELD= ;
+   0 s" label" s" a signature, not a name" FIELD= ;
 
 : TEST-PREPASS-NAME-COMMENT ( -- )
    s" a comment after a SUMTYPE's name" T-LABEL
@@ -1441,12 +1420,11 @@ variable RC
 
 \ A top-level row the check replays gets the bytes the load's literals make. A
 \ decoded name nothing defines is stale and unplaced: the checked text does not
-\ hold it. A bad escape is refused at the literal's opener by each check, as the
-\ throw of its statement. The check's lexer reads no escape and reports a defect
-\ anywhere in the file in place before an earlier one, so an unclosed string
-\ after the bad escape is reported there, as after a definition that does not
-\ check; --verify-only composes the file as it reads it and keeps that
-\ definition's refusal before the string's.
+\ hold it. A bad escape is rejected at the literal's opener, by each check as
+\ by the load, before an unclosed string after it; --all-errors's lexer reads
+\ no escape and reports that string alone. The lexer's defect comes before an
+\ earlier definition that does not check; --verify-only composes the file as it
+\ reads it and keeps that definition's rejection before the string's.
 : TEST-ESCAPED-ROW ( -- )
    s" an escaped trust row: a hex escape" T-LABEL
    SB-RESET
@@ -1473,15 +1451,21 @@ variable RC
    s" E-TRUST-UNRESOLVED" s" NOPF" 1 5 4 8 REFUSED-AT
    s" a bad escape" T-LABEL
    s\" s\\\" A\\yB\" 2drop" s" escaped-bad.f" LINE-FIXTURE
-   BAD-ESCAPE-THROW s\" s\\\"" 1 1 0 3 THROWN-AT
-   s" E-UNTERMINATED-STRING" s" :1:1" 74 LOADED-AT
+   s" E-UNTERMINATED-STRING" s\" s\\\"" 1 1 0 3 REFUSED-MODES
+   s" E-UNTERMINATED-STRING" s" :1:1" REJECT-RC LOADED-AT
    s" a bad escape before a string that never closes" T-LABEL
    SB-RESET
    s\" s\\\" A\\yB\" 2drop" SB-APPEND LF+
    s\" s\" abc" SB-APPEND LF+
    s" escaped-bad-unterminated.f" FIXTURE!
-   s" E-UNTERMINATED-STRING" s\" s\"" 2 1 16 18 REFUSED-MODES
-   s" E-UNTERMINATED-STRING" s" :1:1" 74 LOADED-AT
+   s" " CHECK
+   s" E-UNTERMINATED-STRING" REJECTED-AS  0 s\" s\\\"" 1 1 0 3 AT
+   s" --all-errors" CHECK
+   s" E-UNTERMINATED-STRING" REJECTED-AS  0 s\" s\"" 2 1 16 18 AT
+   s" --verify-only" CHECK
+   s" E-UNTERMINATED-STRING" REJECTED-AS
+   0 s\" s\\\"" 1 1 0 3 FX-PATH$ CANON$ FX$ AT-IN
+   s" E-UNTERMINATED-STRING" s" :1:1" REJECT-RC LOADED-AT
    s" a definition that does not check before a string that never closes" T-LABEL
    SB-RESET
    s" : X ( -- ) NO-SUCH ;" SB-APPEND LF+
@@ -1625,8 +1609,8 @@ variable RC
    s\" s\\\" inc-t\\yarget.f\" included" SB-APPEND LF+
    s" require missing-dep.f" SB-APPEND LF+
    s" escaped-bad-path.f" FIXTURE!
-   BAD-ESCAPE-THROW s\" s\\\"" 1 1 0 3 THROWN-AT
-   s" E-UNTERMINATED-STRING" s" :1:1" 74 LOADED-AT
+   s" E-UNTERMINATED-STRING" s\" s\\\"" 1 1 0 3 REFUSED-MODES
+   s" E-UNTERMINATED-STRING" s" :1:1" REJECT-RC LOADED-AT
    s" a bad escape in a loader's path in a body" T-LABEL
    SB-RESET
    s\" : L ( -- ) s\\\" inc-t\\yarget.f\" included ;" SB-APPEND LF+
@@ -1637,7 +1621,7 @@ variable RC
    GJA-LINE# @ 2 T=
    0 s" E-REJECTED" s\" s\\\"" 1 12 11 14 VERIFY-REJECTED-AT
    1 s" E-MISSING-SOURCE" s" missing-dep.f" 2 9 50 63 VERIFY-REJECTED-AT
-   s" E-UNTERMINATED-STRING" s" :1:12" 74 LOADED-AT
+   s" E-UNTERMINATED-STRING" s" :1:12" REJECT-RC LOADED-AT
    s" a bad escape in a loader's path in a kernel: body" T-LABEL
    SB-RESET
    s\" kernel: L ( -- ) s\\\" inc-t\\yarget.f\" included ;" SB-APPEND LF+
@@ -1648,7 +1632,7 @@ variable RC
    GJA-LINE# @ 2 T=
    0 s" E-REJECTED" s\" s\\\"" 1 18 17 20 VERIFY-REJECTED-AT
    1 s" E-MISSING-SOURCE" s" missing-dep.f" 2 9 56 69 VERIFY-REJECTED-AT
-   s" E-UNTERMINATED-STRING" s" :1:18" 74 LOADED-AT ;
+   s" E-UNTERMINATED-STRING" s" :1:18" REJECT-RC LOADED-AT ;
 
 \ A word a create caller made is bound, and typed `-- ptr a`, by the run of that
 \ caller: its tick is admitted, and a call to it fails its check in source

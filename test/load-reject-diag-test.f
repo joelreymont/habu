@@ -637,13 +637,22 @@ variable RC
       s" :10:8" REJECT-RC CODE-REJECT-AT ;
 
 \ A string `s"` copies out of the file, which its line 3 `evaluate`s, is not
-\ the file's bytes, so its rejection is placed in the evaluated text, <input>.
+\ the file's bytes, so its rejection is placed at that `evaluate`, with the
+\ string in an evaluated note.
+: ASSERT-EVALUATED ( ptr u8 n ptr u8 n -- )
+   {: text:ptr textu:n label:ptr labelu:n :}
+   SB-RESET s" = evaluated: " SB-APPEND text textu SB-APPEND
+   ERR$ SB$ CONTAINS? TTRUE
+   SB-RESET s" ^ " SB-APPEND label labelu SB-APPEND
+   ERR$ SB$ CONTAINS? TTRUE ;
+
 : TEST-EVALUATED-PLACE ( -- )
-   s" an evaluated string's refusal is placed in <input>" T-LABEL
+   s" an evaluated string's rejection is placed at its evaluate" T-LABEL
    BODY$ S\" \n\ns\" lrd-zz-undefined\" evaluate\n" FS:WRITE-ALL
    BODY$ RUN
    s" error[E-UNDEFINED]: cannot find word `lrd-zz-undefined`" ASSERT-NAMED
-   s" <input>" s" :1:1" ASSERT-AT ;
+   BODY$ s" :3:22" ASSERT-AT
+   s" lrd-zz-undefined" s" not found" ASSERT-EVALUATED ;
 
 \ A slice of the file's own bytes that the file `evaluate`s is file text, so a
 \ refusal in it names the file's line of the refused token, whichever writer
@@ -701,13 +710,15 @@ variable RC
 
 \ A name only the checker holds, a PRODUCT replay with no word behind it, is
 \ refused by check-hook.f DEFINITION through src/core/check-walk.f
-\ REFUSE-DUPLICATE, which places the name in the evaluated string, <input>.
+\ REFUSE-DUPLICATE, placed at the `evaluate` that ran the string, with the
+\ string in an evaluated note.
 : TEST-REPLAY-DUP-PLACE ( -- )
-   s" an evaluated checker-only duplicate is placed at its name in <input>" T-LABEL
+   s" an evaluated checker-only duplicate is placed at its evaluate" T-LABEL
    BODY$ S\" : LRD-PREPLAY ( -- ) s\" lrdrep\" s\" FIELD x n\" CHECKER-DEFPRODUCT GENERATED-DECL-CTOR:REPLAY-LEGACY ;\nLRD-PREPLAY\ns\" : LRDREP:MAKE ( n -- n ) 1 + ;\" evaluate\n" FS:WRITE-ALL
    BODY$ RUN
    ERR$ s" error[E-DUPLICATE-DEFINITION]: `LRDREP:MAKE` is already defined" CONTAINS? TTRUE
-   s" <input>" s" :1:3" ASSERT-AT
+   BODY$ s" :3:36" ASSERT-AT
+   s" : LRDREP:MAKE ( n -- n ) 1 + ;" s" already defined" ASSERT-EVALUATED
    OUT-U @ 0 T=
    EXITED @ TTRUE
    RC @ REJECT-RC T= ;
@@ -851,9 +862,9 @@ variable RC
    s" a bare word a global and a used package share is rejected" T-LABEL
    SHADOW$ RUN
    SB-RESET
-   s" error[E-USING-SHADOW-GLOBAL]: `LRD-SHADOW` names both a global word" SB-APPEND
-   S\"  and a word of package `LRD-SH`\n --> " SB-APPEND  SHADOW$ SB-APPEND
-   S\" :7:1\n  |\n7 | LRD-SHADOW\n  | ^^^^^^^^^^ names two words\n" SB-APPEND
+   s" error[E-USING-SHADOW-GLOBAL]: `LRD-SHADOW` is both a global word" SB-APPEND
+   S\"  and a public of used package `LRD-SH`\n --> " SB-APPEND  SHADOW$ SB-APPEND
+   S\" :7:1\n  |\n7 | LRD-SHADOW\n  | ^^^^^^^^^^ ambiguous here\n" SB-APPEND
    S\"   = global: LRD-SHADOW\n  = package: LRD-SH:LRD-SHADOW\n" SB-APPEND
    s"   = help: write `LRD-SH:LRD-SHADOW` to call the package's word," SB-APPEND
    S\"  or rename one of the two: the global word has no qualified form\n\n"
