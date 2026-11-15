@@ -902,15 +902,18 @@ variable RC
    1 89 s" LRD-TRUST-IMM" ASSERT-IMM-DIAG ;
 
 \ A rejection at a token an immediate evaluated into the body, which no source
-\ holds, gets one record in the record form with no place.
+\ holds, gets one record in the record form, placed at the definition's `;`,
+\ where the check runs, with the token in a `word` note.
 : TEST-UNSOURCED-RECORD ( -- )
-   s" a rejection at an evaluated token gets a record with no place" T-LABEL
+   s" a rejection at an evaluated token is placed where the check runs" T-LABEL
    BODY$ S\" true REJECTION:JSON !\nTRUSTED: EV ( -- ) s\" drop\" evaluate ; immediate\ns\" EV\" 0 parse-imm\n: P ( -- ) ( a comment here ) 1 drop EV ;\n" FS:WRITE-ALL
    BODY$ RUN
    s" E-INPUT-UNDERFLOW" ASSERT-NAMED
    ERR$ GJA-PARSE dup GJA-OBJ {: root:SPAN:span<u8> :}
-   root s" token" GJA-REQ s" drop" GJA-ASSERT-STR
-   root s" line" GJA-HAS? TFALSE
+   root s" token" GJA-REQ s" ;" GJA-ASSERT-STR
+   root s" line" 4 GJA-ASSERT-INT-FIELD
+   root s" column" 41 GJA-ASSERT-INT-FIELD
+   root s" notes" GJA-REQ s" word" GJA-REQ s" drop" GJA-ASSERT-STR
    root GJA-RECORD-FORM ;
 
 \ T0 refuses a body no scan certified where the checker's scan bound nothing

@@ -8,6 +8,7 @@
 \ Sources, modules and the expected and actual output stay in the printed
 \ directory.
 
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/fs.f
@@ -96,10 +97,19 @@ variable PROG-U
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N {: o:len e:len rc:n :}
    o LEN>N  e LEN>N  rc ;
 
-\ The engine's line for an uncaught throw of code.
-: UNCAUGHT$ ( n -- ptr u8 n )
-   {: code:n :}
-   SB-RESET  s" hb: uncaught throw code " SB-APPEND  code FMT:SB-INT  SB$ ;
+\ The first line of the engine's record of an uncaught throw of code c, with its
+\ line feed.
+: THROWN-HEAD$ ( n -- ptr u8 n )
+   {: c:n :}
+   c ERROR:NAME$ {: name:ptr nameu:n :}
+   c ERROR:TEXT$ {: text:ptr textu:n :}
+   SB-RESET s" error[" SB-APPEND
+   nameu 0= if s" E-THROW" SB-APPEND else name nameu SB-APPEND then
+   s" ]: " SB-APPEND
+   textu 0= if
+      s" nothing caught a throw of code " SB-APPEND c FMT:SB-INT
+   else text textu SB-APPEND then
+   10 SB-APPEND-C  SB$ ;
 
 \ The program natively: it prints want and exits rc; answers its stderr's
 \ length.
@@ -114,13 +124,13 @@ variable PROG-U
    LABEL  OUT o want wu T$=
    e ;
 
-\ NATIVE-RUN with nothing on stderr for 0 and the uncaught throw of code for
-\ UNCAUGHT-RC.
+\ NATIVE-RUN with nothing on stderr for 0, and for UNCAUGHT-RC the record of
+\ the uncaught throw of code first.
 : NATIVE ( ptr u8 n n n -- )
    {: want:ptr wu:n rc:n code:n :}
    want wu rc NATIVE-RUN {: e:n :}
    rc 0= if  LABEL  ERR e s" " T$=  then
-   rc UNCAUGHT-RC = if  LABEL  ERR e RTRIM code UNCAUGHT$ T$=  then ;
+   rc UNCAUGHT-RC = if  LABEL  ERR e code THROWN-HEAD$ STARTS-WITH? TTRUE  then ;
 
 \ The program as a module, valid and run: it prints want and answers status, a
 \ throw's code whole.
@@ -214,8 +224,8 @@ public
    WANT WANT-U @ 0 0 WASM
    LABEL  MODULE MODULE-U @ WASM-HARNESS:VALID-WITHOUT-SAT? TFALSE ;
 
-\ THROW-ROW's program throws a code uncaught: natively the engine's uncaught
-\ throw names it, and the run answers status 1 with the code whole.
+\ THROW-ROW's program throws a code uncaught: natively the engine's record of
+\ the uncaught throw names it, and the run answers status 1 with the code whole.
 : THROW-ROW ( ptr u8 n ptr u8 n ptr u8 n n -- )
    {: name:ptr nu:n src:ptr su:n want:ptr wu:n code:n :}
    name nu src su name nu FILES

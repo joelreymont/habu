@@ -242,15 +242,15 @@ create HEAD-BUF HEAD-CAP allot
 \ first. So do `:}` (in the span), `kernel:` and `;match`, compared only inside
 \ their construct.
 : NAMES ( -- )
-   s" kwname" s" error[E-POLICY]: `begin` is an engine keyword outside the vocabulary and cannot name a definition" s" test/policy/kwname.f:2:" TIER0-REFUSES
-   s" own-keyword" s" error[E-POLICY]: `dup` is an engine keyword outside the vocabulary and cannot name a definition" s" test/policy/own-keyword.f:4:" TIER0-REFUSES
-   s" defname-p2" s" error[E-POLICY]: `tuck` is an engine keyword outside the vocabulary and cannot name a definition" s" test/policy/defname-p2.f:2:" TIER0-REFUSES
-   s" own-p2-keyword" s" error[E-POLICY]: `tuck` is an engine keyword outside the vocabulary and cannot name a definition" s" test/policy/own-p2-keyword.f:5:" TIER0-REFUSES
-   s" defname-interpret" s" error[E-POLICY]: `create` is an engine keyword outside the vocabulary and cannot name a definition" s" test/policy/defname-interpret.f:2:" TIER0-REFUSES
+   s" kwname" s" error[E-POLICY]: `begin` is not in the vocabulary this source may use" s" test/policy/kwname.f:2:" TIER0-REFUSES
+   s" own-keyword" s" error[E-POLICY]: `dup` is not in the vocabulary this source may use" s" test/policy/own-keyword.f:4:" TIER0-REFUSES
+   s" defname-p2" s" error[E-POLICY]: `tuck` is not in the vocabulary this source may use" s" test/policy/defname-p2.f:2:" TIER0-REFUSES
+   s" own-p2-keyword" s" error[E-POLICY]: `tuck` is not in the vocabulary this source may use" s" test/policy/own-p2-keyword.f:5:" TIER0-REFUSES
+   s" defname-interpret" s" error[E-POLICY]: `create` is not in the vocabulary this source may use" s" test/policy/defname-interpret.f:2:" TIER0-REFUSES
    TIER0 s" defname-span" 70 s" error[E-RESERVED-DEFINITION]: `package` is a compile keyword and cannot name a definition" s" test/policy/defname-span.f:2:" s" " SAYS
    TIER0 s" defname-endloc" 70 s" error[E-RESERVED-DEFINITION]: `:}` is a compile keyword and cannot name a definition" s" test/policy/defname-endloc.f:4:" s" " SAYS
-   s" defname-kernel" s" error[E-POLICY]: `kernel:` is an engine keyword outside the vocabulary and cannot name a definition" s" test/policy/defname-kernel.f:4:" TIER0-REFUSES
-   s" defname-semimatch" s" error[E-POLICY]: `;match` is an engine keyword outside the vocabulary and cannot name a definition" s" test/policy/defname-semimatch.f:4:" TIER0-REFUSES ;
+   s" defname-kernel" s" error[E-POLICY]: `kernel:` is not in the vocabulary this source may use" s" test/policy/defname-kernel.f:4:" TIER0-REFUSES
+   s" defname-semimatch" s" error[E-POLICY]: `;match` is not in the vocabulary this source may use" s" test/policy/defname-semimatch.f:4:" TIER0-REFUSES ;
 
 : HARNESSES ( -- )
    s" allow-sealed-admit" HARNESS!
@@ -323,8 +323,8 @@ create HEAD-BUF HEAD-CAP allot
 : BUILT ( -- )
    s" allow-fsm" HARNESS!
    s" fsm-table" 0 s" " s" " RUNS
-   s" fsm-action" s" E-POLICY habu: test/policy/fsm-action.f:3: not in vocabulary: emit" REFUSES
-   s" fsm-require" s" E-POLICY habu: test/policy/fsm-require.f:3: not in vocabulary: require" REFUSES ;
+   s" fsm-action" s" error[E-POLICY]: `emit` is not in the vocabulary this source may use" s" test/policy/fsm-action.f:3:36" REFUSES
+   s" fsm-require" s" error[E-POLICY]: `require` is not in the vocabulary this source may use" s" test/policy/fsm-require.f:3:36" REFUSES ;
 
 public
 

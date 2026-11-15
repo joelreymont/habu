@@ -28,11 +28,14 @@ require src/lib/time-cpu.f
 
 package SIGNATURE-NESTING
 
-$10000 constant CAP            \ bytes: the deepest text and its echo on stderr
+$10000 constant CAP            \ bytes: the deepest text
+\ bytes: its record on stderr echoes it three times, as its line, the caret line
+\ under it and the signature note
+CAP 4 * constant ERR-CAP
 10000 constant CHILD-MS
 create SRC-BUF CAP allot
 create OUT CAP allot
-create ERR CAP allot
+create ERR ERR-CAP allot
 TYPED-VARIABLE SRC-U len
 
 : SRC-RESET ( -- )
@@ -150,7 +153,7 @@ variable ERR-U
 \ The text in SRC-BUF, run as the subject, exits 70 and names why on stderr.
 : REFUSES ( ptr u8 n -- )
    {: why:ptr whyu:n :}
-   SRC$ OUT CAP >LEN ERR CAP >LEN CHILD-MS >MS SUBJECT:RUN
+   SRC$ OUT CAP >LEN ERR ERR-CAP >LEN CHILD-MS >MS SUBJECT:RUN
    {: outu:len erru:len oc :}
    erru LEN>N ERR-U !
    SRC$ OUT outu LEN>N ERR erru LEN>N oc 70 T-ENDING-EXITED=
