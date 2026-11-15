@@ -119,10 +119,12 @@ $FFFFFFFF constant GEN-MASK
 $C8 constant GOODBYE-MS           \ how long a stop waits for the 1001 frames to be written
 $C8 constant STOP-MARGIN-MS       \ scheduling slack over GOODBYE-MS
 
-\ An open socket from which no frame has arrived for PING-MS is pinged, and
-\ lost under 1006 once PONG-MS more pass with no frame. The count runs only
-\ while its read is armed: a frame sent while a handler call runs is not read
-\ until the call ends, so that time says nothing of the peer.
+\ An open socket from which no byte has arrived for PING-MS is pinged, and
+\ lost under 1006 once PONG-MS more pass with none, counted from when the
+\ ping left the queue for the kernel. The count runs only while its read is
+\ armed: bytes sent while a handler call runs are not read until the call
+\ ends, so that time says nothing of the peer. Bytes written say nothing of it
+\ either, since a vanished peer's kernel buffer still takes them.
 30000 constant PING-MS
 10000 constant PONG-MS
 $100000 constant TASK-STACK
@@ -145,6 +147,15 @@ HEAD-OFF HEAD-CAP + constant CTX-OFF
 CTX-OFF SHA1:CTX-BYTES + constant DIGEST-OFF
 DIGEST-OFF SHA1:DIGEST-BYTES + constant REGION-BYTES
 
+\ Where a spell's ping is: none yet; queued, with that many bytes of the
+\ queue, its own included, still to be written before it has left; or sent,
+\ at that time. Zero-filled storage reads as none.
+ENUM pinging
+   VARIANT none ;VARIANT
+   VARIANT queued FIELD ahead n ;VARIANT
+   VARIANT sent FIELD at n ;VARIANT
+;ENUM
+
 DYNAMIC-BUFFER LINK TCP4:connection
 \ The tables: CAP slots, mapped by START under LOCK while WS's task is not
 \ running. Nothing moves a slot while any task may read one, since START is
@@ -164,8 +175,8 @@ DYNAMIC-BUFFER OUT-AT n               \ its first byte not yet written
 DYNAMIC-BUFFER OUT-U n                \ its bytes queued
 DYNAMIC-BUFFER SINCE n                \ when the queue last moved, or was first filled
 DYNAMIC-BUFFER CLOSE-BY n             \ when a CLOSE gives up on the peer's answer
-DYNAMIC-BUFFER HEARD n                \ when PING-MS began: a frame read or a call ended
-DYNAMIC-BUFFER PINGED n               \ set once that spell's ping is queued
+DYNAMIC-BUFFER HEARD n                \ when PING-MS began: bytes read or a call ended
+DYNAMIC-BUFFER PINGED pinging         \ where that spell's ping is
 DYNAMIC-BUFFER GEN n                  \ retirements
 DYNAMIC-BUFFER PHASE n
 DYNAMIC-BUFFER STATUS n               \ the status a closed socket reports
@@ -481,11 +492,31 @@ RUN-IDLE RUN !
    idx code after [: SHUT ;] [: UNLOCK ;] finally drop ;
 
 
+\ A ping with that many bytes still to be written before it has left; one
+\ with none has left now.
+: PING-AHEAD ( n -- pinging ) {: ahead:n :}
+   ahead 0 > if ahead construct pinging queued exit then
+   mono-ns construct pinging sent ;
+
+
+\ Under LOCK: the queue moved by that many bytes, which may carry the spell's
+\ ping to the kernel.
+: MOVED ( n n -- ) {: idx:n u:n :}
+   u idx OUT-AT +!
+   mono-ns idx SINCE !
+   idx PINGED @
+   MATCH pinging
+      none OF ENDOF
+      queued OF u - PING-AHEAD idx PINGED ! ENDOF
+      sent OF drop ENDOF
+   ;MATCH ;
+
+
 : FLUSH ( n -- bool ) {: idx:n :}
    idx QUEUED 0= if true exit then
    idx LINK @ idx OUT @ idx OUT-AT @ idx QUEUED SPAN:SUB SPAN:$ TCP4:TRANSFER-BYTES TCP4:TRY-SEND
    MATCH TCP4:slice-result
-      moved OF BLEN>N idx OUT-AT +! mono-ns idx SINCE ! ENDOF
+      moved OF BLEN>N idx swap MOVED ENDOF
       empty OF ENDOF
       failed OF drop false exit ENDOF
    ;MATCH
@@ -517,36 +548,63 @@ RUN-IDLE RUN !
    STOP-AT @ 0 <> if STOP-AT @ over 0= if nip else min then then ;
 
 
-\ The quiet clock starts again. Written by the task while the slot is ready,
-\ and under LOCK by the worker whose call ends.
+\ The quiet clock starts again on bytes read or a call's end, and the spell
+\ has no ping. Written by the task while the slot is ready, and under LOCK by
+\ the worker whose call ends.
 : HEARD-NOW ( n -- ) {: idx:n :}
    mono-ns idx HEARD !
-   0 idx PINGED ! ;
+   construct pinging none idx PINGED ! ;
 
 
-\ When an open socket's ping is due, or once it is queued, when the socket
-\ is lost; 0 for one not open. Under LOCK, while no handler call holds it.
+\ When an open socket's ping is due, or once the ping has left the queue,
+\ when the socket is lost; 0 for one not open or whose ping is still queued,
+\ since the stall rule (GIVE-UP?) bounds a queue that stops moving. Under
+\ LOCK, while no handler call holds it.
 : QUIET-DUE ( n -- n ) {: idx:n :}
    idx PHASE @ PHASE-OPEN <> if 0 exit then
-   PING-MS idx PINGED @ 0 <> if PONG-MS + then
-   NS-PER-MS * idx HEARD @ + ;
+   idx PINGED @
+   MATCH pinging
+      none OF PING-MS NS-PER-MS * idx HEARD @ + ENDOF
+      queued OF drop 0 ENDOF
+      sent OF PONG-MS NS-PER-MS * + ENDOF
+   ;MATCH ;
 
 
-\ Under LOCK: an open socket quiet for PING-MS is pinged, once a spell.
-: PROBE ( n -- ) {: idx:n :}
-   idx PINGED @ 0 <> if exit then
-   idx QUIET-DUE {: due:n :}
-   due 0= mono-ns due < or if exit then
-   idx OVERFLOW? if exit then
-   idx WS-OPCODE:ping 0 HEADER-OUT
-   1 idx PINGED ! ;
-
-
-\ Under LOCK: the ping went unanswered for PONG-MS.
-: SILENT? ( n -- bool ) {: idx:n :}
-   idx PINGED @ 0= if false exit then
-   idx QUIET-DUE {: due:n :}
+\ A due, 0 being none, has come.
+: PASSED? ( n -- bool ) {: due:n :}
    due 0 <> mono-ns due >= and ;
+
+
+\ Under LOCK: the spell has no ping yet.
+: UNPINGED? ( n -- bool )
+   PINGED @
+   MATCH pinging
+      none OF true ENDOF
+      queued OF drop false ENDOF
+      sent OF drop false ENDOF
+   ;MATCH ;
+
+
+\ Under LOCK: an open socket quiet for PING-MS is pinged, once a spell. A ping
+\ behind queued bytes leaves once FLUSH has written them (MOVED); one on an
+\ empty queue goes on the task's next pass, so it counts as left at once.
+: PROBE ( n -- ) {: idx:n :}
+   idx UNPINGED? 0= if exit then
+   idx QUIET-DUE PASSED? 0= if exit then
+   idx OVERFLOW? if exit then
+   idx QUEUED {: before:n :}
+   idx WS-OPCODE:ping 0 HEADER-OUT
+   before 0 > if idx QUEUED else 0 then PING-AHEAD idx PINGED ! ;
+
+
+\ Under LOCK: the ping went unanswered for PONG-MS after it left the queue.
+: SILENT? ( n -- bool ) {: idx:n :}
+   idx PINGED @
+   MATCH pinging
+      none OF false ENDOF
+      queued OF drop false ENDOF
+      sent OF drop idx QUIET-DUE PASSED? ENDOF
+   ;MATCH ;
 
 
 \ The earlier of two dues, 0 being none.
@@ -913,7 +971,6 @@ RUN-IDLE RUN !
 
 
 : TURN ( n -- ) {: idx:n :}
-   idx HEARD-NOW
    idx F-WIRE @ WIRE>OPCODE
    MATCH opcode
       continuation OF idx DATA-IN ENDOF
@@ -949,7 +1006,7 @@ RUN-IDLE RUN !
 : INPUT ( n -- ) {: idx:n :}
    idx LINK @ idx IN @ RX-CAP SPAN:TAKE SPAN:$ TCP4:TRANSFER-BYTES TCP4:TRY-READ
    MATCH TCP4:try-read-result
-      data OF BLEN>N idx IN-U ! 0 idx IN-AT ! idx PARSE ENDOF
+      data OF BLEN>N idx IN-U ! 0 idx IN-AT ! idx HEARD-NOW idx PARSE ENDOF
       empty OF ENDOF
       closed OF drop idx LIVE? if idx LOSE else 0 idx OUT-AT ! 0 idx OUT-U ! idx FINISH then ENDOF
       failed OF drop idx LOSE ENDOF
